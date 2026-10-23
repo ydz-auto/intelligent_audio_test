@@ -2,7 +2,7 @@
 """
 数据库表重建脚本
 
-通过 ``Base.metadata.create_all()`` 重建全部 72 张表。
+通过 ``Base.metadata.create_all()`` 重建全部 89 张表。
 
 使用方式：
     python scripts/create_all_tables.py          # 使用 .env 中的 DATABASE_URL
@@ -10,11 +10,18 @@
 
 此脚本替代了历史迁移脚本（backend/scripts/migrations/202604~202607/），
 后者为一次性运行脚本，不适用于 FastAPI 微服务架构。
+
+INT-1623：本函数是「模型全集」的唯一来源 —— 任何一个 PO 模块漏导入，都会让
+``Base.metadata`` 随测试调度漂移（INT-1565 迁移守卫踩过：transfer_agent 两表
+漏导，-n 8 全量随机红）。新增服务 / 新 PO 模块必须在此登记。
 """
 
 import argparse
 import sys
 import os
+
+# 模型全集应有的表数（新增表必须同时改这里）
+EXPECTED_TABLE_COUNT = 89
 
 # 确保项目根目录在 sys.path 中
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -80,6 +87,11 @@ def _import_all_models():
     from api_test_service.infrastructure.persistence.models import API  # noqa: F401
     # api_gateway: 1 张表（INT-620 系统选项 KV；api_gateway 直管，无独立 config 微服务）
     from api_gateway.infrastructure.models.system_option_model import SystemOption  # noqa: F401
+    # transfer_agent: 2 张表（INT-1623 补入；此前漏导，真实库靠 transfer_agent 启动时
+    #                 自行 create_all 才有这两张表，全新库 / 重引导库都缺）
+    from transfer_agent.infrastructure.persistence.models import (  # noqa: F401
+        TransferRecord, TransferChunk,
+    )
 
 
 def create_all_tables(dry_run=False):
@@ -103,8 +115,9 @@ def create_all_tables(dry_run=False):
     for name in table_names:
         print(f"  - {name}")
 
-    if len(table_names) != 87:
-        print(f"\n⚠️ 警告: 预期 87 张表，实际注册 {len(table_names)} 张")
+    if len(table_names) != EXPECTED_TABLE_COUNT:
+        print(f"\n⚠️ 警告: 预期 {EXPECTED_TABLE_COUNT} 张表，"
+              f"实际注册 {len(table_names)} 张")
 
     if dry_run:
         print("\n--dry-run 模式，未执行 DDL")

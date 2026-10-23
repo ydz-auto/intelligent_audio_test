@@ -101,6 +101,12 @@ BOOTSTRAP_STEPS = [
     #     create_all 只建缺失的表，建库早于 INT-1555 的存量库在引导链里建表自愈；
     #     脚本幂等（表/索引存在即 SKIP），全新库为全 SKIP。
     ('python', 'scripts/migrations/202610/add_report_export_records_int1555.py'),
+    # ㊵ transfer_records / transfer_chunks 传输代理两表（INT-1623）：
+    #     create_all_tables.py 此前漏导 transfer_agent 的 PO，这两张表只靠
+    #     transfer_agent 启动时自建；本次已收口模型全集（89 表），本步为建库早于
+    #     该模块的存量库兜底建表 + 索引 + 唯一约束。脚本幂等（表/索引/约束存在
+    #     即 SKIP），全新库为全 SKIP。
+    ('python', 'scripts/migrations/202610/add_transfer_agent_tables_int1623.py'),
 ]
 
 

@@ -1183,6 +1183,35 @@
 "visibility",
 "worker_instance_id"
 ],
+"transfer_chunks": [
+"checksum",
+"chunk_index",
+"id",
+"received_at",
+"size",
+"transfer_id"
+],
+"transfer_records": [
+"category",
+"chunk_size",
+"created_at",
+"dst_zone",
+"ephemeral",
+"file_hash",
+"file_size",
+"final_path",
+"id",
+"key",
+"meta",
+"pkg_type",
+"signature",
+"src_zone",
+"status",
+"timestamp",
+"transfer_id",
+"ttl_seconds",
+"updated_at"
+],
 "upload_chunks": [
 "chunk_index",
 "chunk_size",

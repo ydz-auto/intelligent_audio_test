@@ -21,6 +21,12 @@ README ㊳），但：
 已有存量列的语义，不要靠改基线绕过迁移检查 —— 第 1 条只对「基线里没有的列」
 要求迁移，改基线等于绕过守卫）。
 
+INT-1623 补充：判定的模型集合取自「映射类的 __module__ 不在 tests/ 下」的真实
+PO（见 _registered_po_tables）。原因：Base.metadata 是进程级全局，xdist 把不同
+测试文件调度进同一 worker 时，别的测试 import 的模型 / 测试自建的临时 PO 都会
+注册进来，守卫结论会随调度红绿不定。真实模型的漏导另有
+tests/unit/test_int1623_transfer_tables_migration.py 的仓库 PO 扫描兜住。
+
 DB：无（sqlite 元数据 + 迁移目录文本）。
 """
 import importlib.util
@@ -53,14 +59,37 @@ def _load_module(path, name):
     return module
 
 
+def _registered_po_tables():
+    """真实模型的表集合（不含测试文件里临时定义的 PO）。
+
+    守卫读的是进程级全局 ``Base.metadata``：``-n 8 --dist loadgroup`` 会把不同
+    测试文件调度进同一 worker，别的测试 import 的模型都会注册进来。真实 PO 的
+    注册是幂等的，但**测试自建的临时 PO**（如 tests/unit/
+    test_int90_db_session_hygiene.py 的 int90_poison）也会注册 —— 守卫的结论
+    就会随调度红/绿不定（INT-1623 根因②）。按映射类的 ``__module__`` 过滤后，
+    判定只取决于真实模型。
+
+    INT-1623 根因①（模型全集漏导）在 scripts/create_all_tables.py 收口，并由
+    tests/unit/test_int1623_transfer_tables_migration.py 的仓库 PO 扫描兜住。
+    """
+    from shared.models.database import Base
+    tables = {}
+    for mapper in Base.registry.mappers:
+        module = mapper.class_.__module__ or ''
+        if module.startswith(('tests.', 'test_')):
+            continue
+        table = mapper.local_table
+        tables[table.name] = table
+    return tables
+
+
 @pytest.fixture(scope='module')
 def model_metadata():
-    """导入全部服务的 PO（与 scripts/create_all_tables.py 同口径）取元数据。"""
+    """导入全部服务的 PO（与 scripts/create_all_tables.py 同口径）取真实模型表。"""
     _load_module(
         os.path.join(PROJECT_ROOT, 'scripts', 'create_all_tables.py'),
         'int1565_create_all_tables')._import_all_models()
-    from shared.models.database import Base
-    return Base.metadata
+    return _registered_po_tables()
 
 
 def _baseline():
@@ -91,7 +120,7 @@ class TestModelColumnsCoveredByMigrations:
         baseline = _baseline()
         blob = _migration_text()
         missing = []
-        for table_name, table in model_metadata.tables.items():
+        for table_name, table in model_metadata.items():
             known = set(baseline.get(table_name, ()))
             for column in table.columns:
                 if column.name in known:
@@ -116,8 +145,7 @@ class TestModelColumnsCoveredByMigrations:
         baseline = _baseline()
         assert 'derived_test_type' not in baseline.get('test_cases', [])
         assert _mentions(_migration_text(), 'derived_test_type')
-        assert 'derived_test_type' in model_metadata.tables[
-            'test_cases'].columns
+        assert 'derived_test_type' in model_metadata['test_cases'].columns
 
 
 class TestDerivedTestTypeMigrationScript:
