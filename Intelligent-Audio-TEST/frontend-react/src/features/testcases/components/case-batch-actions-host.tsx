@@ -4,6 +4,8 @@
  * （用例专属参数/播放设备/声压/评估维度/调整分组/噪声/管理标签）+ 通用确认弹窗
  * （标签生成名称/用例参考更新）。数据 props 由各页 query 层提供（两页同源 queryKey，天然一致）。
  */
+import { useMemo } from 'react'
+
 import type { Dimension, EvaluationCategory } from '@/domain/models/evaluationDimension'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
@@ -32,6 +34,11 @@ export interface CaseBatchActionsHostProps {
   categories?: EvaluationCategory[]
   algorithmType?: string | null
   testType?: string | null
+  /**
+   * 当前页已加载的用例（含真实轮次数 rounds；INT-1642 批量设置评估维度「指定轮次」
+   * 取选中用例的真实轮次——多选取最大轮次；未加载到的 id 沿用已加载最大值）
+   */
+  cases?: Array<{ id: string; rounds: number }>
 }
 
 export function CaseBatchActionsHost({
@@ -46,7 +53,18 @@ export function CaseBatchActionsHost({
   categories = [],
   algorithmType,
   testType,
+  cases,
 }: CaseBatchActionsHostProps) {
+  /** 选中用例的真实最大轮次（批量设置评估维度「指定轮次」网格用；未知 id 不计入） */
+  const selectedRoundCount = useMemo(() => {
+    if (batchDialog?.kind !== 'dimensions') return 1
+    const wanted = new Set(batchDialog.ids)
+    const known = (cases ?? [])
+      .filter((c) => wanted.has(c.id))
+      .map((c) => c.rounds)
+    return Math.max(1, ...known)
+  }, [batchDialog, cases])
+
   return (
     <>
       {batchDialog?.kind === 'dimensions' && (
@@ -59,6 +77,7 @@ export function CaseBatchActionsHost({
           categories={categories}
           algorithmType={algorithmType}
           testType={testType}
+          roundCount={selectedRoundCount}
         />
       )}
       {batchDialog?.kind === 'group' && (

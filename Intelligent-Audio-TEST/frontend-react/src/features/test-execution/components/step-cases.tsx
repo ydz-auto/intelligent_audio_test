@@ -656,6 +656,7 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
         categories={categories}
         algorithmType={algorithmType}
         testType={selectedTestType}
+        cases={items}
       />
     </div>
   )

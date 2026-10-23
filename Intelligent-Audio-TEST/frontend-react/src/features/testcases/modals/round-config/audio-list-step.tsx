@@ -362,6 +362,11 @@ export function AudioListStep({
                         deviceName: deviceOptions.find((d) => d.id === v)?.name ?? null,
                       })
                     }
+                    // 闭合态按声明式 items 解析文案；缺省时 base-ui 回退原始 value（设备记录 id）
+                    items={deviceOptions.map((d) => ({
+                      value: d.id,
+                      label: `${d.name} (通道 ${d.channel}) [${d.type}]`,
+                    }))}
                   >
                     <SelectTrigger size='sm' className='h-8'>
                       <SelectValue placeholder='请选择设备' />

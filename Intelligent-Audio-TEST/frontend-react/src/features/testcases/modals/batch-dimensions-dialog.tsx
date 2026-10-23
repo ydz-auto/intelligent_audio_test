@@ -64,8 +64,9 @@ type RoundMode = 'all' | 'specific' | 'per_round'
 /** 轮次键：数字轮号或最后一轮 -1（§5.3.5 ④ 语义） */
 type RoundKey = number | -1
 
-/** mock 轮次数（§5.3.1~5.3.4 演示第 1~N 轮同口径；接线后按选中用例实际轮次） */
-const MOCK_ROUND_COUNT = 4
+/** 轮次号候选（1..N；N = 选中用例的真实轮次数，多选取最大轮次） */
+const roundNumbers = (total: number) =>
+  Array.from({ length: Math.max(1, total) }, (_, i) => i + 1)
 
 const defaultParam = (): DimensionParamValue => ({ weight: 50, threshold: 80 })
 
@@ -78,6 +79,7 @@ export function BatchDimensionsDialog({
   categories = [],
   algorithmType,
   testType,
+  roundCount = 1,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -87,9 +89,17 @@ export function BatchDimensionsDialog({
   categories?: EvaluationCategory[]
   algorithmType?: string | null
   testType?: string | null
+  /**
+   * 选中用例的真实轮次数（INT-1642：由页面按用例 config.rounds 派生，多选取最大轮次；
+   * 缺省 1）。轮次号网格与逐轮 Tab 均据此渲染，不再用固定 mock 轮次。
+   */
+  roundCount?: number
 }) {
+  const totalRounds = Math.max(1, roundCount)
   const [roundMode, setRoundMode] = useState<RoundMode>('all')
-  const [rounds, setRounds] = useState<RoundKey[]>([1, 2, -1])
+  const [rounds, setRounds] = useState<RoundKey[]>(() =>
+    totalRounds > 1 ? [...roundNumbers(totalRounds), -1] : [1]
+  )
   const [activeRound, setActiveRound] = useState<RoundKey>(1)
   const [selected, setSelected] = useState<Record<RoundKey, number[]>>({})
   /** 每轮次已选维度的权重/阈值参数（§5.3.5 已选维度参数卡） */
@@ -100,6 +110,10 @@ export function BatchDimensionsDialog({
   const [submitting, setSubmitting] = useState(false)
   /** 「指定轮次」勾选的轮次号（§5.3.5 与 §5.3.1~5.3.4 同口径） */
   const [specificRounds, setSpecificRounds] = useState<number[]>([1])
+
+  // 真实轮次少于初始勾选时收敛（避免对不存在的轮次提交 roundNumbers）
+  const specificValid = specificRounds.filter((r) => r <= totalRounds)
+  const specificChecked = specificValid.length > 0 ? specificValid : [1]
   /** 逐轮快捷操作：从其他轮次复制（Popover）+ 清空/应用到所有轮次（ConfirmDialog） */
   const [copyOpen, setCopyOpen] = useState(false)
   const [copySource, setCopySource] = useState<RoundKey>(1)
@@ -125,7 +139,7 @@ export function BatchDimensionsDialog({
 
   /** 当前模式下勾选网格实际作用的轮次集合 */
   const gridKeys: RoundKey[] =
-    roundMode === 'all' ? rounds : roundMode === 'specific' ? specificRounds : [activeRound]
+    roundMode === 'all' ? rounds : roundMode === 'specific' ? specificChecked : [activeRound]
 
   /** 传给 DimensionPicker 的已选集合（gridKeys 并集，主维度联动子维度） */
   const gridSelected = useMemo(
@@ -282,13 +296,13 @@ export function BatchDimensionsDialog({
           multiDimensions,
         })
       } else {
-        const idsToApply = roundMode === 'specific' ? specificRounds : rounds
+        const idsToApply = roundMode === 'specific' ? specificChecked : rounds
         const flat = [...new Set(idsToApply.flatMap((k) => selected[k] ?? []))]
         await batchTestcaseAction('update_dimensions', ids, {
           dimensions: flat.map((id) => toDimConfig(id, gridKeys)),
           testType: testType ?? '',
           roundMode: roundMode as TestcaseRoundMode,
-          roundNumbers: roundMode === 'specific' ? specificRounds : undefined,
+          roundNumbers: roundMode === 'specific' ? specificChecked : undefined,
           multiDimensions,
         })
       }
@@ -346,13 +360,13 @@ export function BatchDimensionsDialog({
             <div className='space-y-1.5'>
               <span className='text-sm font-medium'>指定轮次</span>
               <div className='border-border/60 flex flex-wrap gap-1.5 rounded-lg border p-2'>
-                {Array.from({ length: MOCK_ROUND_COUNT }, (_, i) => i + 1).map((round) => (
+                {roundNumbers(totalRounds).map((round) => (
                   <label
                     key={round}
                     className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'
                   >
                     <Checkbox
-                      checked={specificRounds.includes(round)}
+                      checked={specificChecked.includes(round)}
                       onCheckedChange={() => toggleSpecificRound(round)}
                     />
                     第{round}轮

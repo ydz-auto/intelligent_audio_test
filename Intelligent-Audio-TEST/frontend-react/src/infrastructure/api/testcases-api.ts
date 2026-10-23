@@ -274,3 +274,105 @@ export async function purgeTestCases(ids: string[]): Promise<number> {
   )
   return dto?.purged_count ?? 0
 }
+
+/** 单轮参考参数文件内容（GET|PUT /testcases/{id}/rounds/{n}/ref-params 实测 data 结构） */
+export interface RoundRefParams {
+  roundNumber: number
+  /** 真实存储路径（config.rounds[].referenceParamsPath，后端回填） */
+  referenceParamsPath: string
+  /** 文件内容（结构随算法参考参数定义） */
+  referenceParams: unknown
+}
+
+interface RoundRefParamsDto {
+  roundNumber?: number
+  referenceParamsPath?: string
+  referenceParams?: unknown
+}
+
+function toRoundRefParams(
+  dto: RoundRefParamsDto | null,
+  roundNumber: number
+): RoundRefParams {
+  return {
+    roundNumber: dto?.roundNumber ?? roundNumber,
+    referenceParamsPath: dto?.referenceParamsPath ?? '',
+    referenceParams: dto?.referenceParams ?? null,
+  }
+}
+
+/**
+ * 读取指定用例指定轮的参考参数文件内容（11_用例域.md §5.1「参考参数」步骤 +
+ * §3.3.2 行菜单；testcase_bp.py get_ref_params → task_service get_testcase_ref_params）。
+ * 未生成 / 路径不存在时后端 404（调用方按「未生成」空态处理，不作错误）。
+ */
+export async function fetchRoundRefParams(
+  id: string,
+  roundNumber: number
+): Promise<RoundRefParams> {
+  const dto = await apiClient.get<RoundRefParamsDto>(
+    `/testcases/${id}/rounds/${roundNumber}/ref-params`
+  )
+  return toRoundRefParams(dto, roundNumber)
+}
+
+/**
+ * 写入指定用例指定轮的参考参数文件（PUT .../ref-params，testcase:update）。
+ * body 顶层 `referenceParams`（task_service update_ref_params 只认此键）；
+ * 成功返回 { roundNumber, referenceParamsPath, referenceParams }（保存后的实际内容）。
+ */
+export async function updateRoundRefParams(
+  id: string,
+  roundNumber: number,
+  referenceParams: unknown
+): Promise<RoundRefParams> {
+  const dto = await apiClient.put<RoundRefParamsDto>(
+    `/testcases/${id}/rounds/${roundNumber}/ref-params`,
+    { referenceParams }
+  )
+  return toRoundRefParams(dto, roundNumber)
+}
+
+/** 导出格式：JSON（后端返回 JSON 数据，前端落文件）/ Excel（后端直接回 xlsx 字节流） */
+export type TestCaseExportFormat = 'json' | 'xlsx'
+
+export interface TestCaseExportResult {
+  blob: Blob
+  filename: string
+}
+
+/** 导出文件名时间戳（yyyyMMdd_HHmmss，与后端 download_name 同口径） */
+function exportTimestamp(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+}
+
+/**
+ * 导出用例（POST /testcases/export，testcase:import_export）。
+ * 后端 testcase_export_service：format=json 走 success_response（数据在信封 data，
+ * 结构 {test_cases, exported_at, total_count} 为止与导入端往返一致），
+ * format=xlsx 走 Response 字节流（Content-Disposition 附件）。
+ * 前端按格式落 Blob 供下载；空 ids 后端 400「未指定要导出的用例ID」由 client 抛 ApiError。
+ */
+export async function exportTestCases(
+  ids: string[],
+  format: TestCaseExportFormat
+): Promise<TestCaseExportResult> {
+  const filename = `testcases_export_${exportTimestamp()}.${format === 'json' ? 'json' : 'xlsx'}`
+  if (format === 'xlsx') {
+    const blob = await apiClient.post<Blob>(
+      '/testcases/export',
+      { ids, format },
+      { responseType: 'blob' }
+    )
+    return { blob, filename }
+  }
+  const data = await apiClient.post<unknown>('/testcases/export', { ids, format: 'json' })
+  return {
+    blob: new Blob([JSON.stringify(data ?? {}, null, 2)], {
+      type: 'application/json',
+    }),
+    filename,
+  }
+}

@@ -85,6 +85,14 @@ export function NoiseInterferenceStep({
   const bg = value.backgroundNoise
   const vp = value.voiceprint
 
+  /** 回填/导入产生的「文件名当音频 id」干扰项（audio_id 缺失时 codec 以文件名落 audioId） */
+  const nameResolvedInterferers = value.interferers.filter(
+    (ifr) =>
+      typeof ifr.audioId === 'string' &&
+      ifr.audioId !== '' &&
+      Number.isNaN(Number(ifr.audioId))
+  )
+
   const setBgAudio = (audio: { id: number | string; name: string; duration?: number | null; tags?: string[] }) => {
     const current = bg ?? { audioId: null, audioName: null, audio: null, spl: 94, deviceIds: [], loop: true }
     update({
@@ -382,12 +390,24 @@ export function NoiseInterferenceStep({
             </div>
           ))
         )}
-        <div className='flex items-start gap-2 rounded-lg border border-dashed p-2 text-xs'>
-          <TriangleAlert aria-hidden='true' className='text-warning mt-0.5 size-3.5 shrink-0' />
-          <p className='text-muted-foreground'>
-            导入时未匹配到音频 ID，保存后后端会按文件名解析（演示提示条）。
-          </p>
-        </div>
+        {/* 导入未匹配警示条（数据驱动：仅当存在「按文件名解析」的干扰音频时显示——
+            回填时 audio_id 缺失会以文件名落 audioId，数字 id 才是真实音频库记录） */}
+        {nameResolvedInterferers.length > 0 && (
+          <div className='flex items-start gap-2 rounded-lg border border-dashed p-2 text-xs'>
+            <TriangleAlert aria-hidden='true' className='text-warning mt-0.5 size-3.5 shrink-0' />
+            <p className='text-muted-foreground'>
+              导入时未匹配到音频 ID 的干扰音频：
+              {nameResolvedInterferers
+                .slice(0, 3)
+                .map((ifr) => ifr.audioName ?? String(ifr.audioId))
+                .join('、')}
+              {nameResolvedInterferers.length > 3
+                ? ` 等 ${nameResolvedInterferers.length} 个`
+                : ''}
+              ，保存后后端会按文件名解析。
+            </p>
+          </div>
+        )}
       </section>
 
       {/* 音频选择子弹窗（噪声单选） */}

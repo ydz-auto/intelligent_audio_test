@@ -50,6 +50,7 @@ import {
   copyTestCase,
   setTestCaseFavorite,
 } from '@/infrastructure/api/testcases-api'
+import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
 import { deleteTag } from '@/infrastructure/api/tags-api'
 
 export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
@@ -207,6 +208,30 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
       return next
     })
   }, [])
+
+  /**
+   * 导出「按当前筛选条件」的全量 id（INT-1642；POST /testcases/ids 契约只认 group 名，
+   * 与开始测试全选同口径）。未分组虚拟组后端无哨兵映射 → 以已加载的未分组行兜底。
+   */
+  const resolveExportIds = useCallback(async (): Promise<string[]> => {
+    if (filters.groupId === '__ungrouped__') {
+      return items.filter((c) => c.groupId == null).map((c) => c.id)
+    }
+    const groupName = groups.find((g) => g.id === filters.groupId)?.name
+    // 分组列表未就绪时不要退化成「全库」：以当前已加载的该分组行兜底
+    if (filters.groupId && !groupName) {
+      return items.filter((c) => c.groupId === filters.groupId).map((c) => c.id)
+    }
+    const { ids } = await fetchCaseIdsByFilter({
+      search: filters.search?.trim() || undefined,
+      group: groupName,
+      tag: filters.tag,
+      dimensionId: filters.dimensionId,
+      algorithmType: effectiveFilters.algorithmType,
+      trash: filters.trash,
+    })
+    return ids
+  }, [filters, groups, items, effectiveFilters.algorithmType])
 
   /** 视图页签切换：重置筛选与勾选集（URL 态回归：接线后 page/search/… 进 search） */
   const handleViewChange = (next: string) => {
@@ -506,6 +531,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         open={exportOpen}
         onOpenChange={setExportOpen}
         selectedCount={selected.size}
+        selectedIds={[...selected]}
+        resolveFilteredIds={resolveExportIds}
       />
       <GroupMutateDialog
         open={groupDialog.open}
@@ -530,6 +557,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         categories={categories}
         algorithmType={algorithmId}
         testType={selectedTestType}
+        cases={items}
       />
     </>
   )
