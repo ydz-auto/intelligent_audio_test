@@ -6,8 +6,9 @@
  * Footer 分页 Portal。
  * 弹窗群（§6）：新增/编辑抽屉（随页签三分叉）、详情、扫描、分组管理、告警规则、实验室管理
  * （INT-655 真实 /laboratories CRUD）、关联声压映射、删除/批量确认。
- * mock 数据对齐 api_gateway/schemas（device.py/playback.py/api.py + INT-487 lab/occupied 补口）；
- * 不接后端。全局算法联动（§2.2）：算法过滤走全局切换器（chip 只读 + ×），本页不重复筛选器。
+ * 全局算法联动（§2.2，INT-1622）：测试设备列表按 useAlgorithmStore().algorithmId 过滤
+ * （supportedAlgorithms contains，同后端 DeviceListQuery.algorithm_type 口径；列表全量拉取
+ * 故在 feature 层过滤），切换器变更即时联动、chip × 清空回全部；本页不重复算法筛选器。
  */
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
@@ -28,6 +29,7 @@ import { SectionPageLayout } from '@/components/layout/components/section-page-l
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { ApiError } from '@/infrastructure/api/api-error'
+import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import {
@@ -63,6 +65,7 @@ import type {
 } from '@/features/devices/types'
 import { DevicesPrimaryButtons } from '@/features/devices/components/devices-primary-buttons'
 import { findDeviceGroup } from '@/features/devices/lib/device-group-tree'
+import { filterTestDevicesByAlgorithm } from '@/features/devices/lib/device-algorithm-filter'
 import { DevicesFilterToolbar } from '@/features/devices/components/devices-filter-toolbar'
 import { DevicesStatsRow } from '@/features/devices/components/devices-stats-row'
 import { TestDeviceTable } from '@/features/devices/components/test-device-table'
@@ -139,6 +142,9 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     return map
   }, [algorithmOptions])
 
+  /** §2.2 全局算法：订阅右上角切换器同一 store（变更即时联动；空串＝全部算法） */
+  const algorithmId = useAlgorithmStore((s) => s.algorithmId)
+
   const testQuery = useTestDevices()
   const playbackQuery = usePlaybackDevices()
   const apiQuery = useApiDevices()
@@ -211,7 +217,18 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     setToggles((prev) => ({ ...prev, alarmsOpen: false }))
   }, [tab])
 
+  // 全局算法变更（含 chip × 清空）→ 回第一页并清空选择，避免对已不可见的设备做批量操作
+  useEffect(() => {
+    setPage(1)
+    setSelectedIds(new Set())
+  }, [algorithmId])
+
   const testDevices = testQuery.data ?? []
+  /** 测试设备先按全局算法收窄（§2.2）；工具栏/统计/徽标/分页均基于收窄后的口径 */
+  const algorithmFilteredTestDevices = useMemo(
+    () => filterTestDevicesByAlgorithm(testDevices, algorithmId),
+    [testDevices, algorithmId]
+  )
   const playbackDevices = playbackQuery.data ?? []
   const apiDevices = apiQuery.data ?? []
   const labs = labsQuery.data ?? []
@@ -227,7 +244,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
 
   const filteredRows = useMemo(() => {
     if (tab === 'test') {
-      let rows = testDevices
+      let rows = algorithmFilteredTestDevices
       const f = testFilters
       const keyword = f.search.trim().toLowerCase()
       if (keyword) {
@@ -284,7 +301,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     if (f.protocol) rows = rows.filter((row) => row.protocol === f.protocol)
     if (f.environment) rows = rows.filter((row) => row.environment === f.environment)
     return rows
-  }, [tab, testDevices, playbackDevices, apiDevices, testFilters, playbackFilters, apiFilters, groups, groupFilterDetail.data])
+  }, [tab, algorithmFilteredTestDevices, playbackDevices, apiDevices, testFilters, playbackFilters, apiFilters, groups, groupFilterDetail.data])
 
   const sortedRows = useMemo(() => {
     const rows = [...filteredRows]
@@ -331,13 +348,13 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       const testing = apiDevices.filter((d) => d.occupied).length
       return [apiDevices.length, online, offline, testing]
     }
-    const devices = tab === 'test' ? testDevices : playbackDevices
+    const devices = tab === 'test' ? algorithmFilteredTestDevices : playbackDevices
     const online = devices.filter((d) => d.status === 'online').length
     // §3.4 注 / INT-487：连接中/断开中为瞬时态不入徽章，离线只计 status==='offline'（P2-5 返修）
     const offline = devices.filter((d) => d.status === 'offline').length
     const error = devices.filter((d) => d.status === 'error').length
     return [devices.length, online, offline, error]
-  }, [tab, testDevices, playbackDevices, apiDevices])
+  }, [tab, algorithmFilteredTestDevices, playbackDevices, apiDevices])
 
   /* ───────── 选择 ───────── */
 
@@ -540,8 +557,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
 
   const onlineCount = tab === 'api'
     ? apiDevices.filter((d) => d.status === 'online').length
-    : (tab === 'test' ? testDevices : playbackDevices).filter((d) => d.status === 'online').length
-  const totalCount = tab === 'api' ? apiDevices.length : (tab === 'test' ? testDevices : playbackDevices).length
+    : (tab === 'test' ? algorithmFilteredTestDevices : playbackDevices).filter((d) => d.status === 'online').length
+  const totalCount = tab === 'api' ? apiDevices.length : (tab === 'test' ? algorithmFilteredTestDevices : playbackDevices).length
 
   return (
     <>
@@ -672,6 +689,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
                   rows={pageRows as TestDevice[]}
                   loading={testQuery.isLoading}
                   total={sortedRows.length}
+                  unfilteredTotal={testDevices.length}
                   searchKeyword={testFilters.search}
                   selectedIds={selectedIds}
                   batchMode={toggles.batchMode}
