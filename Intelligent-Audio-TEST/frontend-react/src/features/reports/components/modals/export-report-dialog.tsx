@@ -4,6 +4,9 @@
  * INT-381 返修：Dialog 内三页签——「导出」（主表单）+「导出进度」（实时进度/状态/错误，
  * 报告管理功能设计文档.md:249-252 实测）+「导出历史」（最近导出=报告/格式/时间/状态，
  * :538-543、:564-568 实测）。
+ * INT-1547 P2-4：删除写死的 MOCK_EXPORT_HISTORY 与前端模拟步进进度——
+ * 进度以后端 POST /reports/export 实际完成为准；导出历史只记录本次会话真实发起的导出
+ * （后端无历史接口，见 FEAT INT-1555）。
  */
 import { Download } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -31,6 +34,7 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs'
+import { ApiError } from '@/infrastructure/api/api-error'
 import { cn } from '@/lib/utils'
 
 const EXPORT_FORMATS = [
@@ -39,6 +43,10 @@ const EXPORT_FORMATS = [
   { value: 'pdf', label: 'PDF' },
   { value: 'html', label: 'HTML' },
 ] as const
+
+function formatLabel(value: string): string {
+  return EXPORT_FORMATS.find((item) => item.value === value)?.label ?? value
+}
 
 interface ExportTask {
   id: number
@@ -50,11 +58,26 @@ interface ExportTask {
   error?: string
 }
 
-const MOCK_EXPORT_HISTORY = [
-  { id: 1, scope: '旗舰音箱全量回归 · 第 3 轮报告', format: 'PDF', time: '2026-10-16 14:20', status: 'done' },
-  { id: 2, scope: '已选择 3 个报告', format: 'Excel', time: '2026-10-16 11:02', status: 'done' },
-  { id: 3, scope: 'API 通道并发稳定性验证报告', format: 'CSV', time: '2026-10-15 17:45', status: 'failed' },
-]
+/** 本次会话真实发起的导出记录（非 mock：无后端历史接口，FEAT INT-1555） */
+interface ExportHistoryRecord {
+  id: number
+  scope: string
+  format: string
+  time: string
+  status: 'done' | 'failed'
+}
+
+function nowLabel(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof ApiError && err.userMessage) return err.userMessage
+  if (err instanceof Error && err.message) return err.message
+  return '导出失败，请重试'
+}
 
 interface ExportReportDialogProps {
   open: boolean
@@ -62,7 +85,8 @@ interface ExportReportDialogProps {
   /** 导出范围描述（单报告名 / 已选择 {n} 个报告） */
   scope: string
   count: number
-  onExport: (format: string) => void
+  /** 真实导出（POST /reports/export）；resolve 即后端已生成文件，reject 即失败 */
+  onExport: (format: string) => Promise<void> | void
 }
 
 export function ExportReportDialog({
@@ -75,8 +99,9 @@ export function ExportReportDialog({
   const [format, setFormat] = useState<string>('csv')
   const [exporting, setExporting] = useState(false)
   const [task, setTask] = useState<ExportTask | null>(null)
+  const [history, setHistory] = useState<ExportHistoryRecord[]>([])
 
-  // 打开时清空导出进度态
+  // 打开时清空导出进度态（历史保留本次会话记录）
   useEffect(() => {
     if (open) {
       setExporting(false)
@@ -85,20 +110,27 @@ export function ExportReportDialog({
   }, [open])
 
   const handleExport = async () => {
+    const taskId = Date.now()
+    const startedAt = nowLabel()
     setExporting(true)
-    setTask({ id: Date.now(), scope, format, progress: 0, status: 'running' })
-    // 模拟进度轮询（mock：200ms 步进 → 100 完成；失败保留上次结果语义）
-    let progress = 0
-    const timer = setInterval(() => {
-      progress = Math.min(100, progress + 22)
-      setTask((t) => (t ? { ...t, progress } : t))
-      if (progress >= 100) {
-        clearInterval(timer)
-        setTask((t) => (t ? { ...t, status: 'done' } : t))
-        setExporting(false)
-        onExport(format)
-      }
-    }, 220)
+    setTask({ id: taskId, scope, format, progress: 0, status: 'running' })
+    try {
+      await onExport(format)
+      setTask((t) => (t ? { ...t, progress: 100, status: 'done' } : t))
+      setHistory((prev) => [
+        { id: taskId, scope, format: formatLabel(format), time: startedAt, status: 'done' },
+        ...prev,
+      ])
+    } catch (err) {
+      const message = errorMessage(err)
+      setTask((t) => (t ? { ...t, status: 'failed', error: message } : t))
+      setHistory((prev) => [
+        { id: taskId, scope, format: formatLabel(format), time: startedAt, status: 'failed' },
+        ...prev,
+      ])
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
@@ -163,13 +195,19 @@ export function ExportReportDialog({
                   <div
                     className={cn(
                       'h-full rounded-full transition-all duration-200',
-                      task.status === 'failed' ? 'bg-destructive' : 'bg-primary'
+                      task.status === 'failed' ? 'bg-destructive' : 'bg-primary',
+                      // 后端同步生成、无分段进度：处理中显示脉冲满条，完成才落 100%
+                      task.status === 'running' && 'w-full animate-pulse opacity-60'
                     )}
-                    style={{ width: `${task.progress}%` }}
+                    style={task.status === 'running' ? undefined : { width: `${task.progress}%` }}
                   />
                 </div>
                 <p className='font-mono text-muted-foreground text-xs tabular-nums'>
-                  {task.status === 'failed' ? '导出失败：服务端生成异常' : `${task.progress}%`}
+                  {task.status === 'failed'
+                    ? `导出失败：${task.error ?? '服务端生成异常'}`
+                    : task.status === 'done'
+                      ? '100% · 文件已下载'
+                      : `处理中 · ${formatLabel(task.format)} · 等待后端生成`}
                 </p>
                 {task.status === 'failed' && (
                   <Button size='sm' variant='outline' onClick={() => setTask(null)}>
@@ -185,7 +223,7 @@ export function ExportReportDialog({
           </TabsContent>
 
           <TabsContent value='history'>
-            {MOCK_EXPORT_HISTORY.length === 0 ? (
+            {history.length === 0 ? (
               <p className='text-muted-foreground py-6 text-center text-sm'>暂无导出历史</p>
             ) : (
               <table className='w-full text-sm'>
@@ -198,7 +236,7 @@ export function ExportReportDialog({
                   </tr>
                 </thead>
                 <tbody>
-                  {MOCK_EXPORT_HISTORY.map((item) => (
+                  {history.map((item) => (
                     <tr key={item.id} className='hover:bg-muted/30 border-t first:border-t-0'>
                       <td className='max-w-[180px] truncate px-3 py-2'>{item.scope}</td>
                       <td className='px-3 py-2'>{item.format}</td>

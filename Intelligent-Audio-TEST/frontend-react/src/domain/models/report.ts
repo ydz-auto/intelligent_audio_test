@@ -297,8 +297,10 @@ export interface ReportAudioItem {
   play_order?: number
   noise_spl?: number
   device_name?: string
-  /** 结果音频 url（外链） */
+  /** 结果音频 url（report_service 实测形如 /api/audios/play/{id} 的网关相对路径） */
   url?: string
+  /** 音频时长（秒；report_service audios[].duration 实测回传，播放器进度基准） */
+  duration?: number
 }
 
 /** §1.3 用例执行结果行 */

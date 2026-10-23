@@ -29,12 +29,12 @@ const REPORT_CONTENT_OPTIONS = [
   { value: 'anomaly', label: '异常统计识别' },
 ]
 
-export function StatisticsReportForm() {
+export function StatisticsReportForm({ reportIds }: { reportIds: number[] }) {
   const [reportType, setReportType] = useState<string>(REPORT_FORM_TYPES[0])
   const [format, setFormat] = useState('excel')
   const [title, setTitle] = useState('')
   const [content, setContent] = useState<string[]>(['summary', 'table'])
-  const { exportStatistics } = useStatisticsExport()
+  const { exportStatistics, exporting } = useStatisticsExport()
 
   const toggleContent = (value: string) => {
     setContent((prev) =>
@@ -43,7 +43,11 @@ export function StatisticsReportForm() {
   }
 
   const handleRun = () => {
-    exportStatistics(format as 'excel' | 'csv' | 'pdf' | 'html', title || `${reportType}·${content.length} 项内容`)
+    void exportStatistics({
+      format: format as 'excel' | 'csv' | 'pdf' | 'html',
+      name: title || `${reportType}·${content.length} 项内容`,
+      ids: reportIds,
+    })
   }
 
   return (
@@ -116,9 +120,9 @@ export function StatisticsReportForm() {
       </div>
 
       <div className='mt-4 flex justify-end'>
-        <Button size='sm' className='h-9 font-medium' onClick={handleRun}>
+        <Button size='sm' className='h-9 font-medium' disabled={exporting} onClick={handleRun}>
           <FileOutput data-icon='inline-start' />
-          生成报表
+          {exporting ? '生成中...' : '生成报表'}
         </Button>
       </div>
     </div>

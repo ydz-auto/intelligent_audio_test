@@ -148,7 +148,7 @@ export function StatisticsTabs({ data, loading, onExport }: StatisticsTabsProps)
       </TabsContent>
 
       <TabsContent value='report'>
-        <StatisticsReportForm />
+        <StatisticsReportForm reportIds={data?.reportIds ?? []} />
       </TabsContent>
     </Tabs>
   )

@@ -661,6 +661,7 @@ function toReportAudioItem(raw: unknown): import('@/domain/models/report').Repor
     noise_spl: rec.noise_spl !== undefined ? num(rec.noise_spl) : undefined,
     device_name: str(rec.device_name ?? rec.playback_device_name) ?? undefined,
     url: str(rec.url) ?? undefined,
+    duration: num(rec.duration),
   }
 }
 

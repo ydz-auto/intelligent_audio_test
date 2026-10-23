@@ -24,12 +24,13 @@ export function ReportStatisticsPage() {
   const [dimension, setDimension] = useState<StatisticDimension>('time')
   const [range, setRange] = useState<StatisticsTimeRange>({})
   const [runSeq, setRunSeq] = useState(0)
-  const { exportStatistics } = useStatisticsExport()
+  const { exportStatistics, exporting } = useStatisticsExport()
 
   // 执行统计分析：queryKey 注入 runSeq，点击「执行统计分析」即重查（§4.4 流程）
   const statsQuery = useReportStatistics(dimension, range, runSeq)
   const data = statsQuery.data
   const summary = data?.summary ?? []
+  const reportIds = data?.reportIds ?? []
 
   const handleRun = useCallback(() => {
     setRunSeq((seq) => seq + 1)
@@ -38,9 +39,13 @@ export function ReportStatisticsPage() {
 
   const handleExport = useCallback(
     (scope: string) => {
-      exportStatistics('excel', `${scope}（${dimension}）`)
+      void exportStatistics({
+        format: 'excel',
+        name: `${scope}（${dimension}）`,
+        ids: reportIds,
+      })
     },
-    [dimension, exportStatistics]
+    [dimension, exportStatistics, reportIds]
   )
 
   return (
@@ -55,9 +60,9 @@ export function ReportStatisticsPage() {
       </SectionPageLayout.Title>
 
       <SectionPageLayout.Actions>
-        <Button variant='outline' size='sm' onClick={() => handleExport('统计结果')}>
+        <Button variant='outline' size='sm' disabled={exporting} onClick={() => handleExport('统计结果')}>
           <FileDown data-icon='inline-start' />
-          导出统计结果
+          {exporting ? '导出中...' : '导出统计结果'}
         </Button>
       </SectionPageLayout.Actions>
 

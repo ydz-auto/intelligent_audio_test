@@ -11,6 +11,7 @@
  * 对应报告管理功能设计文档.md §3.6.1/:318-340 + §5.2.4/:570-594。
  */
 import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
 
 import type { ChartSeriesData } from '@/application/report-view/use-report-charts'
 import { CHART_COLORS, colorArray } from '@/application/report-view/use-report-charts'
@@ -59,6 +60,8 @@ export interface ReportStatisticsData {
   trend: ChartSeriesData
   scatter: ChartSeriesData
   heatmap: ChartSeriesData
+  /** 统计范围内的报告 id（统计结果导出的 ids 口径，POST /reports/export） */
+  reportIds: number[]
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -285,8 +288,10 @@ export function toReportStatisticsData(input: {
   task?: StatisticsTaskContext | null
   dimension: StatisticDimension
   range: StatisticsTimeRange
+  /** case-averages 独立查询加载中（评估指标/设备卡提示「统计加载中」，不再误显示「暂无数据」） */
+  averagesLoading?: boolean
 }): ReportStatisticsData {
-  const { counts, reports, averages, task, dimension, range } = input
+  const { counts, reports, averages, task, dimension, range, averagesLoading } = input
   const totalCases = reports.reduce((acc, r) => acc + (r.summary?.total_cases ?? 0), 0)
   const completed = reports.reduce((acc, r) => acc + (r.summary?.completed_cases ?? 0), 0)
   const failed = reports.reduce((acc, r) => acc + (r.summary?.failed_cases ?? 0), 0)
@@ -313,13 +318,13 @@ export function toReportStatisticsData(input: {
       key: 'metrics',
       label: '评估指标',
       value: metricCount,
-      hint: averages ? `任务「${task?.name ?? ''}」评估指标` : '暂无任务执行数据',
+      hint: averages ? `任务「${task?.name ?? ''}」评估指标` : averagesLoading ? '统计加载中…' : '暂无任务执行数据',
     },
     {
       key: 'devices',
       label: '设备性能',
       value: deviceCount,
-      hint: averages ? `资源 ${deviceCount} 个` : '暂无任务执行数据',
+      hint: averages ? `资源 ${deviceCount} 个` : averagesLoading ? '统计加载中…' : '暂无任务执行数据',
     },
   ]
 
@@ -346,14 +351,16 @@ export function toReportStatisticsData(input: {
     trend: buildTrend(reports),
     scatter,
     heatmap,
+    reportIds: reports.map((r) => r.id),
   }
 }
 
-/** 统计数据装配（真实端点；GET tab-counts + GET /reports + POST case-averages） */
-async function loadReportStatistics(
-  dimension: StatisticDimension,
-  range: StatisticsTimeRange
-): Promise<ReportStatisticsData> {
+/** 统计基础数据（tab-counts + 报告列表；快表，先出页面） */
+async function loadStatisticsBase(): Promise<{
+  counts: ReportCounts
+  reports: ReportListItem[]
+  taskReport: ReportListItem | undefined
+}> {
   const [counts, list] = await Promise.all([
     fetchReportCounts(),
     fetchReportList({
@@ -369,34 +376,65 @@ async function loadReportStatistics(
   // case-averages 需要任务上下文：取最近一份任务报告关联的 task_id（报告统计语义：
   // 统计该报告任务下的用例平均值；对比/二次对比/benchmark 报告无 task_id → 评估维度空态）
   const taskReport = reports.find((r) => typeof r.task_id === 'number' && r.task_id > 0)
-  let averages: ReportCaseAveragesData | null = null
-  let task: StatisticsTaskContext | null = null
-  if (taskReport) {
-    task = {
-      id: taskReport.task_id as number,
-      name: taskReport.task_name,
-      type: taskReport.task_type,
-    }
-    try {
-      averages = await fetchCaseAverages(task.id)
-    } catch {
-      // 单端点失败（后端缺口/任务无数据）不拖垮整页：统计卡仍来自 tab-counts/报告列表，
-      // 评估维度/散点·热力呈空态；缺口证据见本卡交付评论 + FEAT 卡
-      averages = null
-    }
-  }
-  return toReportStatisticsData({ counts, reports, averages, task, dimension, range })
+  return { counts, reports, taskReport }
 }
 
+/** INT-1547 P2-3：case-averages 可选端点（实测 60s 才 504）独立成查询——
+ * 统计卡/维度表格/趋势先出，评估指标与散点·热力随该查询到达后补齐，失败只降级该部分。 */
 export function useReportStatistics(
   dimension: StatisticDimension,
   range: StatisticsTimeRange,
   /** 执行序号：点击「执行统计分析」+1 → queryKey 变化 → 重查 */
   seq = 0
 ) {
-  return useQuery({
+  const baseQuery = useQuery({
     queryKey: ['report-statistics', dimension, seq, range.start ?? '', range.end ?? ''],
-    queryFn: () => loadReportStatistics(dimension, range),
+    queryFn: loadStatisticsBase,
     staleTime: 60_000,
   })
+
+  const taskReport = baseQuery.data?.taskReport
+  const task: StatisticsTaskContext | null = taskReport
+    ? {
+        id: taskReport.task_id as number,
+        name: taskReport.task_name,
+        type: taskReport.task_type,
+      }
+    : null
+
+  const averagesQuery = useQuery({
+    queryKey: ['report-statistics-averages', task?.id ?? null, seq],
+    queryFn: async () => {
+      try {
+        return await fetchCaseAverages(task!.id)
+      } catch {
+        // 单端点失败（后端缺口/任务无数据/超时）不拖垮整页：仅评估指标与散点·热力呈空态
+        return null
+      }
+    },
+    enabled: task !== null,
+    staleTime: 60_000,
+  })
+
+  const data = useMemo(() => {
+    if (!baseQuery.data) return undefined
+    return toReportStatisticsData({
+      counts: baseQuery.data.counts,
+      reports: baseQuery.data.reports,
+      averages: averagesQuery.data ?? null,
+      task,
+      dimension,
+      range,
+      averagesLoading: task !== null && averagesQuery.isPending,
+    })
+  }, [baseQuery.data, averagesQuery.data, averagesQuery.isPending, task, dimension, range])
+
+  return {
+    data,
+    isLoading: baseQuery.isLoading,
+    isError: baseQuery.isError,
+    refetch: baseQuery.refetch,
+    /** case-averages（评估指标/散点·热力）仍在加载 */
+    averagesLoading: task !== null && (averagesQuery.isPending || averagesQuery.isFetching),
+  }
 }
