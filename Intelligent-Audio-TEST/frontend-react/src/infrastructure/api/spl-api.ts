@@ -19,6 +19,7 @@ import type {
   SplHistoryItem,
   SplMapping,
   SplStats,
+  SplTestToneInput,
 } from '@/domain/models/splMapping'
 import type {
   SplCalibrationResultDto,
@@ -35,6 +36,8 @@ import {
   splMappingFromDto,
   splMappingUpdateRequestFromDomain,
   splStatsFromDto,
+  splTestToneRequestFromDomain,
+  splTestToneStopRequestFromDomain,
 } from '@/infrastructure/adapters/splAdapter'
 
 /** 物理域全量取回分页上限（后端无钳制；页面前端过滤分页） */
@@ -132,8 +135,7 @@ export async function deleteSplMapping(
   return { success: true }
 }
 
-/** 执行校准（§4.2.1；POST /spl/{id}/calibrate；现状后端为模拟校准 §11-12，请求体忽略） */
-export async function calibrateSplMapping(
+/** 执行校准（§4.2.1；POST /spl/{id}/calibrate；现状后端为模拟校准 §11-12，请求体忽略） */export async function calibrateSplMapping(
   id: number,
   options: ApiRequestOptions = {}
 ): Promise<{ success: boolean; calibrationStatus: string; message?: string }> {
@@ -144,6 +146,49 @@ export async function calibrateSplMapping(
     options
   )
   return splCalibrationResultFromDto(dto)
+}
+
+/**
+ * 播放设备系统唯一标识（§6.5 测试音必填；GET /playback-devices/{id} → device_unique_id，
+ * V9.7.10 handleTestSPL 同源：按 device_id 取唯一标识后再播放）。
+ */
+export async function fetchPlaybackDeviceUniqueId(
+  deviceId: number,
+  options: ApiRequestOptions = {}
+): Promise<string | null> {
+  const dto = await request<PlaybackDeviceItemDto>(
+    'GET',
+    `/playback-devices/${deviceId}`,
+    undefined,
+    options
+  )
+  return dto?.device_unique_id ?? null
+}
+
+/** 播放测试音（§6.5；POST /spl/test-tone；失败由 ApiError 承载，403=有待执行 E2E 任务拦截） */
+export async function playSplTestTone(
+  input: SplTestToneInput,
+  options: ApiRequestOptions = {}
+): Promise<void> {
+  await request(
+    'POST',
+    '/spl/test-tone',
+    splTestToneRequestFromDomain(input),
+    options
+  )
+}
+
+/** 停止测试音（§6.5；POST /spl/test-tone/stop；uniqueId 为空表示停止全部播放） */
+export async function stopSplTestTone(
+  uniqueId: string | null,
+  options: ApiRequestOptions = {}
+): Promise<void> {
+  await request(
+    'POST',
+    '/spl/test-tone/stop',
+    splTestToneStopRequestFromDomain(uniqueId),
+    options
+  )
 }
 
 /** 供测试/组件读取用的类型重导出（domain 模型口径一致） */

@@ -10,6 +10,7 @@ import type {
   SplHistoryItem,
   SplMapping,
   SplStats,
+  SplTestToneInput,
 } from '@/domain/models/splMapping'
 import type {
   CalibrationDataDto,
@@ -20,6 +21,8 @@ import type {
   SplMappingItemDto,
   SplMappingUpdateDto,
   SplStatsDto,
+  SplTestToneRequestDto,
+  SplTestToneStopRequestDto,
 } from '@/infrastructure/dto/spl.dto'
 import type { PlaybackDeviceItemDto } from '@/infrastructure/dto/playback-device.dto'
 import { toPlaybackDeviceType } from '@/infrastructure/adapters/playbackDeviceAdapter'
@@ -162,6 +165,25 @@ export function splMappingCreateRequestFromDomain(
     calibration_status: input.calibrationStatus,
     calibration_data: calibrationDataToDto(input.calibrationData),
   }
+}
+
+/** 测试音播放请求体（PlayTestToneRequest；后端 exclude_none 丢弃 null，缺省取 schema 默认 50/65） */
+export function splTestToneRequestFromDomain(
+  input: SplTestToneInput
+): SplTestToneRequestDto {
+  return {
+    gain_value: input.gainValue,
+    gain_offset: input.gainOffset,
+    target_spl: input.targetSpl,
+    unique_id: input.uniqueId,
+  }
+}
+
+/** 测试音停止请求体（StopTestToneRequest；unique_id 为空则以空体表达「停止全部」） */
+export function splTestToneStopRequestFromDomain(
+  uniqueId: string | null
+): SplTestToneStopRequestDto {
+  return { unique_id: uniqueId }
 }
 
 /**

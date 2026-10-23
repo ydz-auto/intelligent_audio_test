@@ -105,6 +105,19 @@ export interface SplCalibrationResultDto {
   calibration_status: string
 }
 
+/** 测试音播放请求（schemas/spl.py:56-60 PlayTestToneRequest） */
+export interface SplTestToneRequestDto {
+  gain_value: number
+  gain_offset: number | null
+  target_spl: number | null
+  unique_id: string | null
+}
+
+/** 测试音停止请求（schemas/spl.py:63-64 StopTestToneRequest） */
+export interface SplTestToneStopRequestDto {
+  unique_id: string | null
+}
+
 /** 播放设备引用（GET /playback-devices 子集） */
 export interface PlaybackDeviceRefDto {
   id: number
