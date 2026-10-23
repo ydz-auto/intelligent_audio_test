@@ -175,6 +175,10 @@ service TaskConfigService {
   rpc RextractTaskLifecycle(RextractTaskLifecycleRequest) returns (TaskConfigResponse);
   // ---- 用例移除（INT-305：执行详情模态窗四阶段删除用例，操作人走 x-user-id metadata）----
   rpc RemoveTaskCaseLifecycle(RemoveTaskCaseLifecycleRequest) returns (TaskConfigResponse);
+
+  // ---- 音频引用检查（INT-1449：audio_service 删除音频前定点查询，
+  // 替代 ListTestCases/ListTasks 全表分页 + config 字符串客户端扫描）----
+  rpc CheckAudioReferenced(CheckAudioReferencedRequest) returns (TaskConfigResponse);
 }
 
 // ==================== TaskConfigService Messages ====================
@@ -259,6 +263,11 @@ message RextractTaskLifecycleRequest {
 message RemoveTaskCaseLifecycleRequest {
   int32 task_id = 1;
   string case_id = 2;  // TaskCase.test_case_id（str）
+}
+// INT-1449：音频引用定点查询请求。返回 data JSON:
+// {"testcases": int, "background_noise": int, "tasks": int}
+message CheckAudioReferencedRequest {
+  int32 audio_id = 1;
 }
 message TaskConfigResponse {
   bool success = 1;
