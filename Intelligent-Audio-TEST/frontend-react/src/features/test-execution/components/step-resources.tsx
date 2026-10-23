@@ -49,6 +49,7 @@ import { ApiCard } from '@/features/test-execution/components/api-card'
 import { ParamCard } from '@/features/test-execution/components/param-card'
 import { SelectionSummary } from '@/features/test-execution/components/selection-summary'
 import { ExecutionDiagram } from '@/features/test-execution/components/execution-diagram'
+import { deriveApiTargetDeviceType } from '@/domain/models/apiConfig'
 import {
   MOCK_RESOURCE_LABS,
   NETWORK_OPTIONS,
@@ -138,7 +139,8 @@ export function StepResources({
       if (systemFilter === 'android' || systemFilter === 'harmony') return false
       if (vendorFilter !== 'all' && a.vendor !== vendorFilter) return false
       if (protocolFilter !== 'all') {
-        const isWs = a.deviceType === 'websocket_api'
+        // INT-1433：按显式 deviceType 或端点协议派生判定（与建任务 Realtime 路由同口径）
+        const isWs = deriveApiTargetDeviceType(a) === 'websocket_api'
         if (protocolFilter === 'websocket' && !isWs) return false
         if (protocolFilter === 'http' && isWs) return false
       }

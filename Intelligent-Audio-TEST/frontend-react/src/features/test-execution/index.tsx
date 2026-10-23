@@ -305,6 +305,7 @@ export function TestExecutionPage({
         apiCount={apiIds.length}
         deviceIds={deviceIds}
         apiIds={apiIds}
+        apis={resources.allApis}
         params={params}
       />
 

@@ -22,6 +22,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
+import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { ExecutionParams } from '@/domain/models/testExecution'
 
 interface TaskNameDialogProps {
@@ -33,6 +34,8 @@ interface TaskNameDialogProps {
   apiCount: number
   deviceIds: number[]
   apiIds: number[]
+  /** 被测 API 全量配置（INT-1433：launch 组装 case_devices 取 deviceType/端点协议派生） */
+  apis: ApiConfig[]
   params: ExecutionParams
 }
 
@@ -45,6 +48,7 @@ export function TaskNameDialog({
   apiCount,
   deviceIds,
   apiIds,
+  apis,
   params,
 }: TaskNameDialogProps) {
   const { defaultTaskName, launch } = useTestLaunch()
@@ -75,6 +79,7 @@ export function TaskNameDialog({
         deviceIds,
         apiIds,
         deviceTypes,
+        apis,
         params,
       })
       onOpenChange(false)

@@ -17,7 +17,12 @@ import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-st
 import { useResourceSelectionStore } from '@/infrastructure/stores/resource-selection-store'
 import { deriveTargetModes } from '@/application/test-execution/useTargetModes'
 import { navigateWithSearch } from '@/features/test-execution/lib/navigate-search'
-import type { ExecutionParams, TaskLaunchInput } from '@/domain/models/testExecution'
+import { deriveApiTargetDeviceType } from '@/domain/models/apiConfig'
+import type {
+  ExecutionParams,
+  TargetDeviceAssignment,
+  TaskLaunchInput,
+} from '@/domain/models/testExecution'
 import type { Device } from '@/domain/models/device'
 import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { TestCase } from '@/domain/models/testCase'
@@ -81,6 +86,8 @@ export function useTestLaunch() {
       deviceIds: number[]
       apiIds: number[]
       deviceTypes?: string[]
+      /** 被测 API 全量配置（INT-1433：组装 case_devices 时取 deviceType / 按端点协议派生） */
+      apis: ApiConfig[]
       params: ExecutionParams
     }) => {
       const caseStore = useCaseSelectionStore.getState()
@@ -89,6 +96,20 @@ export function useTestLaunch() {
       // INT-1119：逐目标模式载荷与 UI 同源（selectionOrder × targetModes 派生），
       // 保选中顺序、恰好覆盖全部选中目标一次（缺省=并行）
       const targetModes = deriveTargetModes(resourceStore.selectionOrder, execStore.targetModes)
+      // INT-1433：逐目标设备类型分配（device_type 三值）——按选中顺序取每个目标：
+      // 物理设备 → physical；API → 显式 deviceType 或按端点协议派生（websocket_api Realtime
+      // 路由前置）。createTask 按解析后的用例集展开为 case_devices，后端按
+      // (case_id, device_type, device_id) 落多条 TaskCase——同一用例在多个目标间执行。
+      const targetDeviceAssignments: TargetDeviceAssignment[] = resourceStore.selectionOrder
+        .map(({ targetType, targetId }): TargetDeviceAssignment | null => {
+          if (targetType === 'device') {
+            return { deviceType: 'physical', deviceId: String(targetId) }
+          }
+          const api = opts.apis.find((a) => a.id === targetId)
+          if (!api) return null
+          return { deviceType: deriveApiTargetDeviceType(api), deviceId: String(targetId) }
+        })
+        .filter((x): x is TargetDeviceAssignment => x !== null)
       const input: TaskLaunchInput = {
         name,
         // 用例不分类型（test_type 残留列待 INT-79 废弃），任务不再声明测试类型
@@ -102,6 +123,7 @@ export function useTestLaunch() {
         deviceIds: opts.deviceIds,
         apiIds: opts.apiIds,
         targetModes,
+        targetDeviceAssignments,
         params: opts.params,
       }
       try {

@@ -7,6 +7,8 @@
  * 本卡消费子集（被测 API 表格 + 编辑弹窗），完整配置域模型归设备管理页 API 页签。
  */
 
+import type { DeviceType } from './device'
+
 export interface ApiEndpoint {
   id: string | null
   endpoint: string
@@ -49,4 +51,15 @@ export interface ApiHealthCheckResult {
   responseTime: string | null
   error: string | null
   warning: string | null
+}
+
+/** API 目标设备类型派生（INT-1433）：显式 deviceType（http_api/websocket_api）优先；
+ * 未显式时按首个端点协议派生（ws/wss:// → websocket_api，其余 → http_api，缺省 http_api）。
+ * 建任务 case_devices 组装与 API 卡徽章/协议筛选同口径——websocket_api Realtime 路由前置。 */
+export function deriveApiTargetDeviceType(
+  api: Pick<ApiConfig, 'deviceType' | 'endpoints'>
+): DeviceType {
+  if (api.deviceType === 'websocket_api' || api.deviceType === 'http_api') return api.deviceType
+  const first = api.endpoints[0]?.endpoint ?? ''
+  return /^wss?:\/\//i.test(first) ? 'websocket_api' : 'http_api'
 }

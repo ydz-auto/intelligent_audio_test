@@ -150,7 +150,7 @@ export async function fetchFlowReport(reportId: number): Promise<ReportDetailDat
   return data
 }
 
-/** 创建任务（步骤三开始测试；POST /tasks，task:create；filter-all 口径显性化；INT-1115 2026-10-21 携带逐目标 target_modes，废弃全局 execution_mode/serial_first） */
+/** 创建任务（步骤三开始测试；POST /tasks，task:create；filter-all 口径显性化；INT-1115 2026-10-21 携带逐目标 target_modes，废弃全局 execution_mode/serial_first；INT-1433 2026-10-23 展开 case_devices 混选） */
 export async function createTask(input: TaskLaunchInput): Promise<{ id: number }> {
   const caseIds = input.filterAllMode
     // filter-all：按启动时当前筛选条件全量圈定（INT-646 代码审计 P2——不再是仅算法维度；
@@ -159,6 +159,16 @@ export async function createTask(input: TaskLaunchInput): Promise<{ id: number }
         input.caseFilter ?? { algorithmType: input.algorithmType ?? undefined }
       )).ids
     : input.testCaseIds
+  // INT-1433：逐目标设备类型分配 → case_devices（所选用例 × 选中目标展开；后端按
+  // (case_id, device_type, device_id) 落多条 TaskCase——websocket_api Realtime 路由可达
+  // + API/设备混跑，同一用例在多个目标间执行）。空数组 = 不携带（旧派生口径零回归）。
+  const caseDevices = (input.targetDeviceAssignments ?? []).flatMap((assignment) =>
+    caseIds.map((caseId) => ({
+      case_id: caseId,
+      device_type: assignment.deviceType,
+      device_id: assignment.deviceId,
+    }))
+  )
   const body: Record<string, unknown> = {
     name: input.name,
     algorithm_type: input.algorithmType || undefined,
@@ -173,6 +183,8 @@ export async function createTask(input: TaskLaunchInput): Promise<{ id: number }
       target_id: item.targetId,
       mode: item.mode,
     })),
+    // INT-1433：用例级目标分配（TaskCaseDeviceAssignment 契约）；空 = 不携带
+    case_devices: caseDevices.length > 0 ? caseDevices : undefined,
     config: {
       rounds: input.params.rounds,
       timeout: input.params.timeout,

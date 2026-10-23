@@ -44,6 +44,8 @@ const apiFormSchema = z.object({
   maxProcess: z.number().int().min(1).max(128),
   description: z.string().optional(),
   otherConfig: z.string().optional(),
+  // INT-1433：设备类型可选（http_api/websocket_api）或 auto 按端点协议派生（缺省 http_api）
+  deviceType: z.enum(['auto', 'http_api', 'websocket_api']),
 })
 
 type ApiForm = z.infer<typeof apiFormSchema>
@@ -87,6 +89,8 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   const algorithmList = algorithmOptions ?? []
   const [showKey, setShowKey] = useState(false)
   const [endpoints, setEndpoints] = useState<EndpointFormRow[]>([])
+  // INT-1433：设备类型派生提示（auto 态展示实际将路由到的类型）
+  const firstEndpoint = endpoints.find((e) => e.endpoint.trim())?.endpoint.trim() ?? ''
 
   const form = useForm<ApiForm>({
     resolver: zodResolver(apiFormSchema),
@@ -100,6 +104,10 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
       maxProcess: api?.defaultMaxProcess ?? 5,
       description: api?.description ?? '',
       otherConfig: '',
+      deviceType:
+        api?.deviceType === 'http_api' || api?.deviceType === 'websocket_api'
+          ? api.deviceType
+          : 'auto',
     },
   })
 
@@ -150,6 +158,8 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
       algorithmType: values.algorithmType,
       defaultMaxProcess: values.maxProcess,
       description: values.description || null,
+      // INT-1433：auto = 不落显式 deviceType（建任务时按端点协议派生）
+      deviceType: values.deviceType === 'auto' ? null : values.deviceType,
       endpoints: endpoints
         .filter((row) => row.endpoint.trim())
         .map((row) => ({
@@ -244,6 +254,36 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
               max={128}
               {...form.register('maxProcess', { valueAsNumber: true })}
             />
+          </div>
+
+          {/* 设备类型（INT-1433：可选 http_api/websocket_api，或 auto 按端点协议派生，缺省 http_api；
+              Realtime WS（websocket_api）是建任务路由到 Realtime 执行器的前置） */}
+          <div className='space-y-1.5'>
+            <Label>设备类型</Label>
+            <Select
+              value={form.watch('deviceType')}
+              onValueChange={(value) =>
+                form.setValue('deviceType', (value ?? 'auto') as ApiForm['deviceType'])
+              }
+            >
+              <SelectTrigger className='w-full justify-between'>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='auto'>自动（按端点协议派生）</SelectItem>
+                <SelectItem value='http_api'>HTTP API</SelectItem>
+                <SelectItem value='websocket_api'>Realtime WS</SelectItem>
+              </SelectContent>
+            </Select>
+            {form.watch('deviceType') === 'auto' && (
+              <p className='text-muted-foreground text-xs'>
+                {firstEndpoint
+                  ? `将按端点协议派生为：${
+                      /^wss?:\/\//i.test(firstEndpoint) ? 'Realtime WS' : 'HTTP API'
+                    }`
+                  : '未配置端点时缺省为 HTTP API'}
+              </p>
+            )}
           </div>
 
           <div className='space-y-1.5'>

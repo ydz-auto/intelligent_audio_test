@@ -30,6 +30,7 @@ import {
   ExecutionModeControl,
 } from '@/features/test-execution/components/execution-mode-control'
 import { cn } from '@/lib/utils'
+import { deriveApiTargetDeviceType } from '@/domain/models/apiConfig'
 import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { ExecutionMode } from '@/domain/models/testExecution'
 
@@ -76,8 +77,8 @@ export function ApiCard({
   onDelete,
 }: ApiCardProps) {
   const online = api.status === 'online'
-  // device_type 两值徽章（协议筛选同口径：websocket_api=WS，其余 HTTP）
-  const isWs = api.deviceType === 'websocket_api'
+  // device_type 两值徽章（INT-1433：显式 deviceType 或按端点协议派生，与建任务路由同口径）
+  const isWs = deriveApiTargetDeviceType(api) === 'websocket_api'
   const TypeIcon = isWs ? API_TYPE_ICON.websocket_api : API_TYPE_ICON.http_api
   const typeLabel = isWs ? API_TYPE_LABEL.websocket_api : API_TYPE_LABEL.http_api
   // INT-1223：Master URL 移除，端点只取 api_endpoints 首个

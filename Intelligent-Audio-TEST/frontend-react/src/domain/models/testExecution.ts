@@ -5,6 +5,8 @@
  * 用例执行详情（§5.2 多轮指标对比/日志分页）。
  */
 
+import type { DeviceType } from './device'
+
 /** 目标类型（INT-1115 target_modes.target_type 枚举） */
 export type TargetType = 'device' | 'api'
 
@@ -16,6 +18,16 @@ export interface TargetMode {
   targetType: TargetType
   targetId: number
   mode: ExecutionMode
+}
+
+/** 逐目标设备类型分配（INT-1433；device_type 三值——websocket_api Realtime 路由前置 + API/设备混跑）。
+ * 每个选中目标一条（物理设备 / HTTP API / WebSocket API）；createTask 按「所选用例 × 选中目标」
+ * 展开为后端 case_devices（TaskCaseDeviceAssignment 契约），后端按 (case_id, device_type, device_id)
+ * 落多条 TaskCase——同一用例在多个目标间执行成立。 */
+export interface TargetDeviceAssignment {
+  deviceType: DeviceType
+  /** 目标 id 字符串化（后端 device_id 契约为 str；物理设备/API 均取自身 id） */
+  deviceId: string
 }
 
 /** 执行参数（§3.6.3；INT-486 2026-10-16 口径：设备+API 混合执行，均可编辑） */
@@ -84,6 +96,12 @@ export interface TaskLaunchInput {
    * 恰好覆盖全部选中目标一次；缺省/空数组=全目标并行）。废弃全局 execution_mode/serial_first。
    */
   targetModes: TargetMode[]
+  /**
+   * 逐目标设备类型分配（INT-1433 2026-10-23；websocket_api Realtime 路由前置）：
+   * 每个选中目标一条；createTask 按解析后的用例集（filter-all/手动）展开为
+   * case_devices。空数组/缺省 = 不携带（旧派生口径，零回归）。
+   */
+  targetDeviceAssignments: TargetDeviceAssignment[]
   params: ExecutionParams
 }
 
