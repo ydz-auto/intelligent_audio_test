@@ -17,6 +17,7 @@ from api_gateway.schemas.report import (
     ReportExportRequest,
     GetCaseAveragesRequest,
     ReportExportQuery,
+    ReportExportHistoryQuery,
     ReportStatisticsQuery,
     ReportStatisticsTrendQuery,
     GenerateStatisticsReportRequest,
@@ -284,6 +285,28 @@ class ReportQueryService:
             return success_response(data)
         except Exception as e:
             return error_response(f'导出报告失败: {str(e)}')
+
+    # ------------------------------------------------------------------
+    # 导出历史（INT-1555：报告中心「导出历史」页签）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def get_export_history():
+        try:
+            query = _parse_query_params(ReportExportHistoryQuery)
+        except Exception as e:
+            return error_response(f'参数错误: {str(e)}', 400)
+
+        try:
+            stub = report_config_service.stub
+            resp = stub.ListExportHistory(report_pb.ListExportHistoryRequest(
+                data=_dumps({'page': query.page,
+                             'per_page': query.per_page})))
+            if not resp.success:
+                return error_response(resp.message or '查询导出历史失败')
+            return success_response(_loads(resp.data, {}) or {})
+        except Exception as e:
+            return error_response(f'查询导出历史失败: {str(e)}')
 
     # ------------------------------------------------------------------
     # 用例平均值

@@ -41,6 +41,9 @@ service ReportConfigService {
   rpc SearchReportCases(SearchReportCasesRequest) returns (ReportConfigResponse);
   // 导出报告
   rpc ExportReports(ExportReportsRequest) returns (ReportConfigResponse);
+  // 查询报告导出历史（INT-1555：报告中心「导出历史」页签数据源，
+  // 按导出时间倒序分页；已认证普通用户只看本人导出）
+  rpc ListExportHistory(ListExportHistoryRequest) returns (ReportConfigResponse);
   // 查询用例平均值
   rpc GetCaseAverages(GetCaseAveragesRequest) returns (ReportConfigResponse);
   // 下载用例日志（INT-1062：支持 files 逻辑文件名筛选，缺省 = 整包）
@@ -171,6 +174,9 @@ message SearchReportCasesRequest {
 }
 message ExportReportsRequest {
   string data = 1;  // JSON: {ids: [int], format: str}
+}
+message ListExportHistoryRequest {
+  string data = 1;  // JSON: {page: int, per_page: int}
 }
 message GetCaseAveragesRequest {
   string data = 1;  // JSON: {task_id, category, tags, categories, include_untagged}

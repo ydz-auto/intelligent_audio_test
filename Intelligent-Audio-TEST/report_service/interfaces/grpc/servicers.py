@@ -59,6 +59,9 @@ from report_service.domain.entities.benchmark import BaselineDraftEntry
 from report_service.application.services.report_share_service import (
     report_share_service,
 )
+from report_service.application.services.report_export_history_service import (
+    report_export_history_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -718,22 +721,54 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             return self._resp(False, str(e), {'items': []})
 
     def ExportReports(self, request, context=None):
-        """导出报告（Excel/PDF/CSV）。
+        """导出报告（Excel/PDF/CSV/HTML）。
 
         请求字段（proto ExportReportsRequest）：
             data: str  JSON: {ids: [int], format: str}
+
+        INT-1555：无论成败都登记一条导出历史（report_export_records），
+        供「导出历史」页签回查；登记失败不影响导出结果。
         """
         try:
             data_in = _loads(getattr(request, 'data', ''), {}) or {}
             report_ids = data_in.get('ids') or []
             format_type = data_in.get('format') or 'csv'
-            data = self.query_handler.handle_export_reports(report_ids, format_type)
-            if not data.get('content_base64'):
-                return self._resp(False, data.get('message', 'export failed'), data)
-            return self._resp(True, 'ok', data)
         except Exception as e:
             logger.exception("ExportReports failed")
             return self._resp(False, str(e), {})
+
+        try:
+            data = self.query_handler.handle_export_reports(report_ids, format_type)
+            if not data.get('content_base64'):
+                report_export_history_service.record(
+                    report_ids, format_type,
+                    {**data, 'success': False,
+                     'message': data.get('message') or 'export failed'})
+                return self._resp(False, data.get('message', 'export failed'), data)
+            report_export_history_service.record(
+                report_ids, format_type, {**data, 'success': True})
+            return self._resp(True, 'ok', data)
+        except Exception as e:
+            logger.exception("ExportReports failed")
+            report_export_history_service.record(
+                report_ids, format_type, {'success': False, 'message': str(e)})
+            return self._resp(False, str(e), {})
+
+    def ListExportHistory(self, request, context=None):
+        """查询报告导出历史（INT-1555，按导出时间倒序分页）。
+
+        请求字段（proto ListExportHistoryRequest）：
+            data: str  JSON: {page, per_page}
+        返回：{items: [{id, scope, format, created_at, status, error, report_ids}],
+              total, page, per_page}
+        """
+        try:
+            params_dict = _loads(getattr(request, 'data', ''), {}) or {}
+            data = report_export_history_service.list_history(params_dict)
+            return self._resp(True, 'ok', data)
+        except Exception as e:
+            logger.exception("ListExportHistory failed")
+            return self._resp(False, str(e), {'items': [], 'total': 0})
 
     def GetCaseAverages(self, request, context=None):
         """查询用例平均值（按分组和标签）。

@@ -44,6 +44,13 @@ def export_get(_: None = require_permission('report:read')):
     return _handle(ReportQueryService.export())
 
 
+@router.get('/export/history')
+def export_history(_: None = require_permission('report:read')):
+    # INT-1555：报告中心「导出历史」页签数据源；必须注册在 /{report_id}
+    # 之前，否则被 int 捕获返回 422（同 /statistics、/shared/{token} 注记）
+    return _handle(ReportQueryService.get_export_history())
+
+
 @router.get('/by_task/{task_id}')
 def get_by_task(task_id: int, _: None = require_permission('report:read')):
     # INT-262：网关透出按任务查报告（V9.7.10 单体能力，微服务化后丢失）

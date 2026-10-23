@@ -339,6 +339,12 @@ class ReportExportQuery(APIModel):
     format: str = Field('csv')
 
 
+class ReportExportHistoryQuery(APIModel):
+    """GET /reports/export/history 查询参数（INT-1555 导出历史）。"""
+    page: int = Field(1)
+    per_page: int = Field(20)
+
+
 # ===== 报告统计分析（INT-791：G04 报告统计分析页） =====
 
 

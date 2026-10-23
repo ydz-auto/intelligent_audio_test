@@ -50,6 +50,10 @@ def _import_all_models():
         ReportCase, ReportMetricStats, ReportComparisonMatrix,
         ReportFavorite, ReportShare,
     )
+    # report_service: 导出历史 1 张表（INT-1555 report_export_records）
+    from report_service.infrastructure.persistence.models import (  # noqa: F401
+        ReportExportRecord,
+    )
     # report_service: Benchmark 排行 4 张表（D1）
     from report_service.infrastructure.persistence.models import (  # noqa: F401
         BenchmarkRanking, BenchmarkMetricMapping, BenchmarkSource, BenchmarkBaseline,
@@ -99,8 +103,8 @@ def create_all_tables(dry_run=False):
     for name in table_names:
         print(f"  - {name}")
 
-    if len(table_names) != 83:
-        print(f"\n⚠️ 警告: 预期 83 张表，实际注册 {len(table_names)} 张")
+    if len(table_names) != 87:
+        print(f"\n⚠️ 警告: 预期 87 张表，实际注册 {len(table_names)} 张")
 
     if dry_run:
         print("\n--dry-run 模式，未执行 DDL")

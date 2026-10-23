@@ -125,6 +125,11 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.ExportReportsRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.ListExportHistory = channel.unary_unary(
+                '/report.ReportConfigService/ListExportHistory',
+                request_serializer=report__service__pb2.ListExportHistoryRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
         self.GetCaseAverages = channel.unary_unary(
                 '/report.ReportConfigService/GetCaseAverages',
                 request_serializer=report__service__pb2.GetCaseAveragesRequest.SerializeToString,
@@ -353,6 +358,14 @@ class ReportConfigServiceServicer:
 
     def ExportReports(self, request, context):
         """导出报告
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListExportHistory(self, request, context):
+        """查询报告导出历史（INT-1555：报告中心「导出历史」页签数据源，
+        按导出时间倒序分页；已认证普通用户只看本人导出）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -597,6 +610,11 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             'ExportReports': grpc.unary_unary_rpc_method_handler(
                     servicer.ExportReports,
                     request_deserializer=report__service__pb2.ExportReportsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'ListExportHistory': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListExportHistory,
+                    request_deserializer=report__service__pb2.ListExportHistoryRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
             'GetCaseAverages': grpc.unary_unary_rpc_method_handler(
@@ -1186,6 +1204,33 @@ class ReportConfigService:
             target,
             '/report.ReportConfigService/ExportReports',
             report__service__pb2.ExportReportsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListExportHistory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ListExportHistory',
+            report__service__pb2.ListExportHistoryRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,
             channel_credentials,
