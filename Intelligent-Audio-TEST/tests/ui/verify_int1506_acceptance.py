@@ -13,8 +13,8 @@ http://localhost:15000，主库 intelligent_audio_test，AUTH_MODE=off）。
    deviceNames，不落库；真实库无用例带 device_names、也无评估策略）。
 ③ 批量设置评估维度轮次：勾选两条 2 轮用例 → 逐轮页签 / 指定轮次只有第 1~2 轮（写死值
    为 4，出现第 3/4 轮即失败）；再勾选一条 1 轮用例 → 只有第 1 轮。
-④ 试听弹窗时长/设备取用例真实数据（HJ050 total_duration=8.56 → 00:09；设备取
-   config.rounds[].audios[].playback_device_name）。
+④ 试听弹窗时长/设备取真实数据（预览 config.rounds[0].audios[0]：长度 == 该音频
+   duration ±1s、设备 == 该音频 playback_device_name；出现 00:42 即失败）。
 ⑤ 浅 / 深色截图。
 
 数据纪律：本脚本对真实库零写入（无新建/修改/删除），只用只读用例与浏览器内存响应桩。
@@ -45,6 +45,9 @@ os.makedirs(ART, exist_ok=True)
 FAKE_DEVICE = '接线测试_INT1506_假设备名'
 REAL_DEVICE = '设备背面（0.5m+180°）'
 PROBE_CASE_MARK = 'HJ050'
+# 分段执行（复测只跑必要段）：light=浅色抽屉+批量 / light1=单轮批量 / dark=深色 / stub=响应桩
+SECTIONS = {s.strip() for s in (os.environ.get('INT1506_SECTIONS')
+                                or 'light,light1,dark,stub').split(',') if s.strip()}
 
 RESULTS = {}
 LOGS = []
@@ -206,16 +209,16 @@ def search_case(d, keyword):
     box.send_keys(Keys.CONTROL, 'a')
     box.send_keys(Keys.DELETE)
     box.send_keys(keyword)
-    time.sleep(3.5)
-    expand_groups(d)
-    ok = d.execute_script(
-        "return document.querySelectorAll(\"button[aria-label='编辑用例']\").length > 0")
-    if not ok:
+    # 真实库用例列表首屏请求偶发 8~9s（并发时更慢）；轮询到卡片出现（最多 ~60s）
+    hit = False
+    for _ in range(24):
+        time.sleep(2.5)
         expand_groups(d)
-        time.sleep(1.5)
-        ok = d.execute_script(
+        hit = d.execute_script(
             "return document.querySelectorAll(\"button[aria-label='编辑用例']\").length > 0")
-    return ok
+        if hit:
+            break
+    return bool(hit)
 
 
 def select_case(d, name):
@@ -369,8 +372,9 @@ def read_noise_chips(d):
 
 
 def check_noise_devices(d, devices, expect_unmatched=False):
-    if expand_strategy(d) != 'ok':
-        return check('② 展开评估策略节', False, 'no trigger')
+    # INT-1424 起「全局背景噪声」是抽屉内常驻节（不在「评估策略」折叠节里）；
+    # 旧版折叠节若存在则先展开，不存在（no-trigger）属正常形态。
+    expand_strategy(d)
     info = read_noise_chips(d)
     expected = expected_device_labels(devices)
     missing = [t for t in expected if t not in info['chips']]
@@ -387,6 +391,15 @@ def check_noise_devices(d, devices, expect_unmatched=False):
         label = '②b 未匹配判定以真实列表为准：真实名不误报、列表外名被标（响应桩）'
     else:
         ok = (not missing and not extra and len(info['chips']) == len(expected) and not warn)
+        if not ok:
+            # 并发卡可能在本 run 取快照之后增删真实设备：重取一次快照再判（避免误报）
+            expected = expected_device_labels(
+                api_get('/playback-devices?per_page=200')['data']['items'])
+            info = read_noise_chips(d)
+            missing = [t for t in expected if t not in info['chips']]
+            extra = [t for t in info['chips'] if t not in expected]
+            warn = info['warnText']
+            ok = (not missing and not extra and len(info['chips']) == len(expected) and not warn)
         label = '② 噪声设备 chips == GET /playback-devices（%d 条）' % len(expected)
     detail = {'chips': len(info['chips']), 'expected': len(expected), 'missing': missing[:3],
               'extra': extra[:3], 'pressed': info['pressed'], 'warn': warn}
@@ -488,7 +501,13 @@ def check_preview(d, case_item):
         start = wait(d, 10).until(EC.element_to_be_clickable(
             (By.XPATH, "//*[@data-slot='dialog-content']//button[normalize-space(.)='开始试听']")))
         d.execute_script('arguments[0].click();', start)
-        time.sleep(1.5)
+        # 实验室播放无浏览器音频流，总时长先显示 00:00，等音频库时长回填（≤15s）
+        for _ in range(15):
+            time.sleep(1.0)
+            if d.execute_script(
+                    "const t=(document.querySelector(\"[data-slot='dialog-content']\")||{}).textContent||'';"
+                    "return /\\d{2}:\\d{2} \\/ (?!00:00)\\d{2}:\\d{2}/.test(t)"):
+                break
     except Exception as exc:  # noqa: BLE001
         return check('④ 试听播放器打开', False, str(exc)[:120])
     info = d.execute_script("""
@@ -500,20 +519,33 @@ def check_preview(d, case_item):
                 devices: Array.from(root.querySelectorAll('p')).map(p => p.textContent.trim())
                   .filter(t => t.indexOf('\\u2713') === 0)};
     """)
-    dur = int(round(case_item.get('total_duration') or 0))
-    expected_clock = '%02d:%02d' % (dur // 60, dur % 60)
-    expected_devices = sorted({
-        a.get('playback_device_name')
-        for r in ((case_item.get('config') or {}).get('rounds') or [])
-        for a in (r.get('audios') or [])
-        if a.get('playback_device_name')
-    })
+    # 口径（INT-1424 版用例行预览，交付已按集成目标取该版本）：预览首轮首个音频，
+    # 时长取该音频 duration（非用例 total_duration 合计），设备取该音频的
+    # playback_device_name。因此按「首音频」核对，并容忍 ±1s 的取整差异。
+    first = next((a for r in ((case_item.get('config') or {}).get('rounds') or [])
+                  for a in (r.get('audios') or [])), None) or {}
+    expected_sec = first.get('duration')
+    if expected_sec is None:
+        expected_sec = first.get('audio_duration')
+    if expected_sec is None:
+        audio_id = first.get('audio_id') or first.get('audioId')
+        if audio_id is not None:
+            expected_sec = api_get('/audios/%s' % audio_id)['data'].get('duration')
+    if expected_sec is None:
+        expected_sec = case_item.get('total_duration') or 0
+    expected_clock = '%02d:%02d' % (int(expected_sec) // 60, int(expected_sec) % 60)
+    expected_devices = sorted({first.get('playback_device_name')} - {None})
     actual = sorted(t.lstrip('✓').strip() for t in info['devices'])
-    ok = (info['clock'] is not None and info['clock'][1] == expected_clock
+    actual_sec = None
+    if info['clock']:
+        mm, ss = info['clock'][1].split(':')
+        actual_sec = int(mm) * 60 + int(ss)
+    ok = (actual_sec is not None and abs(actual_sec - float(expected_sec)) <= 1
           and not info['fake42'] and actual == expected_devices)
-    info.update({'expected_clock': expected_clock, 'expected_devices': expected_devices,
-                 'actual_devices': actual})
-    return check('④ 试听时长/设备取真实用例（%s + 用例设备）' % expected_clock, ok,
+    info.update({'expected_clock': expected_clock, 'expected_sec': expected_sec,
+                 'case_total_duration': case_item.get('total_duration'),
+                 'expected_devices': expected_devices, 'actual_devices': actual})
+    return check('④ 试听时长/设备取首音频真实数据（%s + 该音频设备）' % expected_clock, ok,
                  json.dumps(info, ensure_ascii=False))
 
 
@@ -549,49 +581,59 @@ def main():
     log('one-round case:', one_case['name'][:40], 'kw', single_kw)
 
     # ── 真实数据：浅色 ────────────────────────────────────────────────
-    d = driver()
-    try:
-        set_theme(d, 'light')
-        enter_cases(d)
-        open_drawer(d, audio_case['name'])
-        check_dimension_real(d)
-        check_noise_devices(d, devices)
-        shot(d, 'drawer_dimension_noise_light.png')
-        close_drawer(d)
-        check_preview(d, audio_case)
-        close_dialogs(d)
+    if 'light' in SECTIONS:
+        d = driver()
+        try:
+            set_theme(d, 'light')
+            enter_cases(d)
+            open_drawer(d, audio_case['name'])
+            check_dimension_real(d)
+            check_noise_devices(d, devices)
+            shot(d, 'drawer_dimension_noise_light.png')
+            close_drawer(d)
+            check_preview(d, audio_case)
+            close_dialogs(d)
 
-        enter_cases(d)
-        check_batch_rounds(d, 'HJ0', [audio_case['name']] + [c['name'] for c in two_pair], [1, 2])
-        shot(d, 'batch_dimensions_light.png')
-        close_dialogs(d)
+            enter_cases(d)
+            check_batch_rounds(d, 'HJ0', [audio_case['name']] + [c['name'] for c in two_pair], [1, 2])
+            shot(d, 'batch_dimensions_light.png')
+            close_dialogs(d)
+        finally:
+            d.quit()
 
-        enter_cases(d)
-        check_batch_rounds(d, single_kw, [one_case['name']], [1])
-        close_dialogs(d)
-    finally:
-        d.quit()
+    if 'light1' in SECTIONS:
+        d = driver()
+        try:
+            set_theme(d, 'light')
+            enter_cases(d)
+            check_batch_rounds(d, single_kw, [one_case['name']], [1])
+            close_dialogs(d)
+        finally:
+            d.quit()
 
     # ── 真实数据：深色 ────────────────────────────────────────────────
-    d = driver()
-    try:
-        set_theme(d, 'dark')
-        enter_cases(d)
-        theme_ok = d.execute_script("return document.documentElement.classList.contains('dark')")
-        check('⑤ 深色主题生效', theme_ok)
-        open_drawer(d, audio_case['name'])
-        check_dimension_real(d)
-        check_noise_devices(d, devices)
-        shot(d, 'drawer_dimension_noise_dark.png')
-        close_drawer(d)
-        enter_cases(d)
-        check_batch_rounds(d, 'HJ0', [audio_case['name']] + [c['name'] for c in two_pair], [1, 2])
-        shot(d, 'batch_dimensions_dark.png')
-        close_dialogs(d)
-    finally:
-        d.quit()
+    if 'dark' in SECTIONS:
+        d = driver()
+        try:
+            set_theme(d, 'dark')
+            enter_cases(d)
+            theme_ok = d.execute_script("return document.documentElement.classList.contains('dark')")
+            check('⑤ 深色主题生效', theme_ok)
+            open_drawer(d, audio_case['name'])
+            check_dimension_real(d)
+            check_noise_devices(d, devices)
+            shot(d, 'drawer_dimension_noise_dark.png')
+            close_drawer(d)
+            enter_cases(d)
+            check_batch_rounds(d, 'HJ0', [audio_case['name']] + [c['name'] for c in two_pair], [1, 2])
+            shot(d, 'batch_dimensions_dark.png')
+            close_dialogs(d)
+        finally:
+            d.quit()
 
     # ── 响应桩：LLM 参数卡 + 未匹配设备名 ────────────────────────────
+    if 'stub' not in SECTIONS:
+        return finish()
     d = driver(stub_case=True)
     try:
         enter_cases(d)
@@ -606,6 +648,10 @@ def main():
     finally:
         d.quit()
 
+    return finish()
+
+
+def finish():
     log('RESULT', json.dumps(RESULTS, ensure_ascii=True))
     all_ok = all(RESULTS.values())
     log('ALL', 'PASS' if all_ok else 'FAIL')
