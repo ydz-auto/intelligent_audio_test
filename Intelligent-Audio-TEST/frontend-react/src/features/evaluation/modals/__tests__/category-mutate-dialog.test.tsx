@@ -49,7 +49,7 @@ function Harness({ category }: { category: EvaluationCategory }) {
           }))
         }
         category={state.category}
-        onSave={() => undefined}
+        onSave={async () => {}}
       />
     </>
   )
