@@ -264,15 +264,17 @@ class TestGroupServiceFilters:
         captured = {}
 
         class _StubTds:
-            def list_testcase_groups(self, algorithm_type=None, search=None):
-                captured['list_kwargs'] = {'algorithm_type': algorithm_type}
+            def list_testcase_groups(self, algorithm_type=None, search=None,
+                                     page=0, per_page=0):
+                captured['list_kwargs'] = {'algorithm_type': algorithm_type,
+                                           'page': page, 'per_page': per_page}
                 # INT-1470 P1：test_case_count 随列表 RPC 一并返回
                 return {'items': [
                     {'id': 'g1', 'name': '组1', 'algorithm_type': 'translation',
                      'test_case_count': 2},
                     {'id': 'g2', 'name': '组2', 'algorithm_type': 'asr',
                      'test_case_count': 0},
-                ]}
+                ], 'total': 2}
 
             def get_testcase_stats(self, **kwargs):
                 captured['stats_kwargs'] = kwargs
