@@ -146,6 +146,9 @@ python scripts/migrations/202610/add_derived_test_type_int1469.py --apply # ㊳ 
 | [add_access_tokens_table.py](202610/add_access_tokens_table.py) | 建 `access_tokens` 表（INT-1140 Access Token + skill/MCP 鉴权令牌） | 外部 agent/skill/MCP 鉴权令牌：`user_id BIGINT` / `name VARCHAR(100)` / `token_hash VARCHAR(64)`（SHA-256，`uq_access_tokens_token_hash` 唯一）/ `token_hint VARCHAR(10)`（末 4 位掩码）/ `scopes JSON`（RBAC 权限码列表，空=继承用户全部权限）/ `expires_at TIMESTAMP NULL`（NULL=永不过期）/ `status VARCHAR(20)`（enabled\|disabled）/ `last_used_at` / `last_used_ip VARCHAR(50)` / `deleted_at`（软删+status，对齐收藏/回收站语义）；索引 `ix_access_tokens_user_id(user_id)`；无外键；全新库 create_all 已含，执行为全 SKIP；幂等（缺唯一约束自愈），支持 `--dry-run` |
 | [add_derived_test_type_int1469.py](202610/add_derived_test_type_int1469.py) | `test_cases` 补执行口径派生列 `derived_test_type`（INT-1469 用例域性能优化） | 用例不存储类型（⑯ 已删 `test_cases.test_type`），执行口径由 config 形态 + 上传双变体名后缀派生；列表/统计/取 ID 原先物化全量 config 后 Python 过滤（1 万用例实测 ~500ms/请求），改为写时物化该列（task_service ORM `before_insert`/`before_update` 统一刷新，口径 = `derive_case_test_type`）后 SQL 等值过滤。列 `varchar(10) NOT NULL DEFAULT 'api'` + 索引 `ix_test_cases_derived_test_type`；回填按值比对只写有差异的行；幂等，默认 dry-run，`--apply` 执行；全新库 `create_all` 已含列与索引 |
 
+| [add_logs_query_indexes_int1468.py](202610/add_logs_query_indexes_int1468.py) | logs 表过滤索引补齐（INT-1468 日志域压测） | 读侧过滤一律走 `lower(level/module/category)`，既有裸列索引匹配不上 → 全表扫描；新增函数索引 `idx_logs_lower_level_id(lower(level), id)` / `idx_logs_lower_module_id` / `idx_logs_lower_category_id`（尾列 id 覆盖 `ORDER BY id DESC` 分页序）与 `idx_logs_task_id_id(task_id, id)`（任务日志合并视图按 id 倒序拉取）；不新增 created_at 索引（读侧从不按 created_at 过滤，业务时间列 time 已有 idx_time）；幂等（`CREATE INDEX IF NOT EXISTS`），支持 `--dry-run` |
+
+
 ## 新增迁移脚本约定
 
 1. 放入 `scripts/migrations/YYYYMM/`，一个变更一个脚本，文件名即意图（`add_xxx` / `fix_xxx` / `seed_xxx`）。

@@ -126,6 +126,15 @@ class BaseConfig:
     # 任务维度合并视图 DB 侧单次拉取行数上限（0 = 不限，INT-100）：替代
     # per_page=100000 全量拉取，与文件侧 MAX_SCAN_ENTRIES 同为下界语义兜底
     LOG_DB_MERGE_MAX_ROWS: int = _get_int('LOG_DB_MERGE_MAX_ROWS', 100000)
+    # DB 侧计数/统计短 TTL 缓存秒数（0 = 关闭，INT-1468）：logs 表为最大增长
+    # 表（30 万行级），列表 total 的 count(*) 与 stats 的 group by 每次请求全表
+    # 扫描；TTL 窗口内同过滤条件共享一次聚合结果（只缓存聚合值，不缓存行数据），
+    # 新写入日志在 TTL 内不计入（与文件侧扫描缓存同为有界展示时延）
+    LOG_DB_AGGREGATE_CACHE_TTL_SECONDS: int = _get_int(
+        'LOG_DB_AGGREGATE_CACHE_TTL_SECONDS', 3)
+    # 聚合缓存条目上限（防过滤条件组合把内存撑爆，超出按最早写入淘汰）
+    LOG_DB_AGGREGATE_CACHE_MAX_ENTRIES: int = _get_int(
+        'LOG_DB_AGGREGATE_CACHE_MAX_ENTRIES', 256)
 
     # --- gRPC 服务发现 ---
     E2E_TEST_SERVICE_HOST: str = _get_env('E2E_TEST_SERVICE_HOST', 'localhost')
