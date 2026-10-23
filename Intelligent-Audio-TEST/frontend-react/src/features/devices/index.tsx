@@ -793,14 +793,17 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
         onAddToMutate={handleScanAdd}
         fillMode={scanInvoker === 'drawer'}
       />
-      {/* 导入/导出（§4.5；INT-1624 接 INT-816；导入成功刷新列表/徽章/统计卡） */}
+      {/* 导入/导出（§4.5；INT-1624 接 INT-816；导入成功刷新列表/徽章/统计卡）
+          key={tab}：页签切换关闭弹窗时整组件重挂，重开必为空态（无上次文件 / 格式 / 范围 / 结果） */}
       <ImportDevicesDialog
+        key={tab}
         open={importOpen}
         onOpenChange={setImportOpen}
         tab={tab}
         onImported={invalidateAll}
       />
       <ExportDevicesDialog
+        key={tab}
         open={exportOpen}
         onOpenChange={setExportOpen}
         tab={tab}

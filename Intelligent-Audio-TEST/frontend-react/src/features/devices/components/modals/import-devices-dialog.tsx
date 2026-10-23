@@ -4,7 +4,8 @@
  * 拖拽或点击选文件（.json/.csv/.xlsx）→「开始导入」→ 计数结果 + errors 行号列表。
  * 后端逐行提交、不整批回滚——部分成功是既定口径，结果区照实呈现；
  * 导出含 status 且导入会写回，故提示「设备状态以本环境为准」（口径 B）。
- * 关闭即清空文件、错误与结果（重开无残留）。
+ * 关闭即清空文件、错误与结果（重开无残留）；页签切换由页面层 key={tab} 重挂复位，
+ * 取消 / Esc / 切页签三条关闭路径重开都是空态。
  */
 import { CheckCircle2, FileUp, UploadCloud } from 'lucide-react'
 import { useRef, useState } from 'react'
@@ -159,7 +160,7 @@ export function ImportDevicesDialog({ open, onOpenChange, tab, onImported }: Imp
           {result && (
             <div className='space-y-2 rounded-lg border p-3'>
               <p className='flex items-center gap-1.5 text-sm font-medium'>
-                <CheckCircle2 aria-hidden='true' className='size-4 text-emerald-600' />
+                <CheckCircle2 aria-hidden='true' className='text-success size-4' />
                 {formatImportSummary(result)}
               </p>
               {result.errors.length > 0 && (

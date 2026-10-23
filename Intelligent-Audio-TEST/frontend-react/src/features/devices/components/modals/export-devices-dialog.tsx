@@ -4,7 +4,8 @@
  * （全部 / 当前页选中 / 当前筛选结果——页面已是全量拉取 + 前端筛选分页，
  * 三者分别映射为不带 ids / 选中 ids / 筛选后 ids）+ 主钮「导出」→ 文件流直接存盘。
  * 后端无字段勾选与「高级选项」能力（ResourceExportQuery 仅 ids/format），按实际契约裁剪。
- * 关闭即清空格式、范围、错误与下载态（重开无残留）。
+ * 关闭即清空格式、范围、错误与下载态（重开无残留）；页签切换由页面层 key={tab} 重挂复位，
+ * 取消 / Esc / 切页签三条关闭路径重开都是空态。
  */
 import { Download } from 'lucide-react'
 import { useState } from 'react'

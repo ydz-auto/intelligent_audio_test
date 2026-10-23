@@ -3,7 +3,8 @@
 
 覆盖：
   1 设计文档 §4.5.1/§4.5.2 交互流程：更多操作 → 导入/导出弹窗（按页签取资源）、
-    选文件（点击 + 拖拽）、开始导入、计数与 errors、关闭重开无残留；
+    选文件（点击 + 拖拽）、开始导入、计数与 errors、关闭重开无残留
+    （取消 / Esc / 页内切页签三条关闭路径）；
     导出格式 JSON/Excel、范围 全部/选中/筛选后、文件下载与文件名时间戳。
   2 导出字段白名单（测试设备）：逐字段一致，不含 id / created_at。
   3 导入闭环：播放设备 导出→删除→导入（新建）→再导入（更新，不产生第二条）；
@@ -202,6 +203,34 @@ def goto_tab(drv, tab):
     time.sleep(1.5)
 
 
+# base-ui 关掉的弹窗以 aria-hidden 残留在 DOM，弹窗查询一律取最后一个（当前打开的）
+LAST_DIALOG = "(//div[@role='dialog'])[last()]"
+
+
+def click_tab(drv, label, slug):
+    """页内点击页签（TanStack 同路由换参，页面不重挂）——验证弹窗跨页签状态复位用。"""
+    tab = WebDriverWait(drv, 20).until(
+        EC.presence_of_element_located(
+            (By.XPATH, "//*[@role='tab'][contains(normalize-space(.), '%s')]" % label)))
+    js_click(drv, tab)
+    WebDriverWait(drv, 30).until(lambda d: d.current_url.rstrip('/').endswith('/devices/' + slug))
+    time.sleep(1.5)
+
+
+def dialog_export_state(drv):
+    """导出弹窗状态：格式 Select 回显文本 + 已选范围 radio value。"""
+    return drv.execute_script(
+        """
+        const ds = [...document.querySelectorAll('[role="dialog"]')];
+        const d = ds[ds.length - 1];
+        if (!d) return null;
+        const trig = d.querySelector('[data-slot="select-trigger"]');
+        const checked = [...d.querySelectorAll('input[type="radio"]')]
+          .filter(r => r.checked).map(r => r.value);
+        return {format: trig ? (trig.textContent || '').trim() : null, ranges: checked};
+        """)
+
+
 def api(drv, path, method='GET', body=None):
     return drv.execute_async_script(
         """
@@ -247,17 +276,20 @@ def click_menu_item(drv, text):
 
 
 def dialog_text(drv):
-    try:
-        return drv.find_element(By.CSS_SELECTOR, '[role="dialog"]').text
-    except Exception:
-        return ''
+    # base-ui 关掉的弹窗会以 aria-hidden 残留 DOM；一律取最后一个（当前打开的）弹窗
+    return drv.execute_script(
+        """
+        const ds = [...document.querySelectorAll('[role="dialog"]')];
+        const d = ds[ds.length - 1];
+        return d ? d.innerText : '';
+        """) or ''
 
 
 def close_dialog(drv):
     for label in ('关闭', '取消'):
         try:
             btn = drv.find_element(
-                By.XPATH, "//div[@role='dialog']//button[normalize-space(.)='%s']" % label)
+                By.XPATH, LAST_DIALOG + "//button[normalize-space(.)='%s']" % label)
             js_click(drv, btn)
             time.sleep(0.8)
             return True
@@ -265,7 +297,8 @@ def close_dialog(drv):
             continue
     # 兜底：右上角关闭按钮
     try:
-        js_click(drv, drv.find_element(By.CSS_SELECTOR, '[role="dialog"] [data-slot="dialog-close"]'))
+        btns = drv.find_elements(By.CSS_SELECTOR, '[role="dialog"] [data-slot="dialog-close"]')
+        js_click(drv, btns[-1])
         time.sleep(0.8)
         return True
     except Exception:
@@ -273,8 +306,9 @@ def close_dialog(drv):
 
 
 def upload_file(drv, path):
-    inp = WebDriverWait(drv, 10).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, '[role="dialog"] input[type="file"]')))
+    WebDriverWait(drv, 10).until(
+        lambda d: len(d.find_elements(By.CSS_SELECTOR, '[role="dialog"] input[type="file"]')) > 0)
+    inp = drv.find_elements(By.CSS_SELECTOR, '[role="dialog"] input[type="file"]')[-1]
     inp.send_keys(path)
     time.sleep(0.8)
 
@@ -282,7 +316,7 @@ def upload_file(drv, path):
 def start_import(drv):
     btn = WebDriverWait(drv, 10).until(
         EC.presence_of_element_located(
-            (By.XPATH, "//div[@role='dialog']//button[normalize-space(.)='开始导入']")))
+            (By.XPATH, LAST_DIALOG + "//button[normalize-space(.)='开始导入']")))
     js_click(drv, btn)
 
 
@@ -483,16 +517,16 @@ def do_import(drv, path, timeout=240):
 def choose_range(drv, label):
     radio = WebDriverWait(drv, 10).until(
         EC.presence_of_element_located(
-            (By.XPATH, "//div[@role='dialog']//label[contains(normalize-space(.), '%s')]/input[@type='radio']"
+            (By.XPATH, LAST_DIALOG + "//label[contains(normalize-space(.), '%s')]/input[@type='radio']"
              % label)))
     js_click(drv, radio)
     time.sleep(0.4)
 
 
 def choose_format(drv, label):
-    trigger = WebDriverWait(drv, 10).until(
-        EC.presence_of_element_located(
-            (By.CSS_SELECTOR, '[role="dialog"] [data-slot="select-trigger"]')))
+    WebDriverWait(drv, 10).until(
+        lambda d: len(d.find_elements(By.CSS_SELECTOR, '[role="dialog"] [data-slot="select-trigger"]')) > 0)
+    trigger = drv.find_elements(By.CSS_SELECTOR, '[role="dialog"] [data-slot="select-trigger"]')[-1]
     js_click(drv, trigger)
     time.sleep(0.7)
     item = WebDriverWait(drv, 10).until(
@@ -507,7 +541,7 @@ def do_export(drv, timeout=180):
     clear_fetch_log(drv)
     btn = WebDriverWait(drv, 10).until(
         EC.presence_of_element_located(
-            (By.XPATH, "//div[@role='dialog']//button[normalize-space(.)='导出']")))
+            (By.XPATH, LAST_DIALOG + "//button[normalize-space(.)='导出']")))
     js_click(drv, btn)
     files = download_wait(drv, before, timeout)
     time.sleep(1.0)
@@ -549,7 +583,7 @@ def enable_batch_mode(drv):
 
 
 def select_row(drv, aria_name):
-    cb = WebDriverWait(drv, 15).until(
+    cb = WebDriverWait(drv, 45).until(
         EC.presence_of_element_located((By.CSS_SELECTOR, "[role='checkbox'][aria-label='%s']" % aria_name)))
     js_click(drv, cb)
     time.sleep(0.5)
@@ -713,14 +747,15 @@ def main():
         check('导入弹窗打开（标题/格式提示/初始禁用）',
               '导入测试设备' in text and '支持格式：JSON / CSV / Excel' in text, text[:80].replace('\n', '|'))
         start_btn = drv.find_element(
-            By.XPATH, "//div[@role='dialog']//button[normalize-space(.)='开始导入']")
+            By.XPATH, LAST_DIALOG + "//button[normalize-space(.)='开始导入']")
         check('未选文件时「开始导入」禁用', start_btn.get_attribute('disabled') is not None)
         shot(drv, 'import_dialog_light')
 
         # 拖拽选文件一次（合成 dataTransfer drop）
         drv.execute_script(
             """
-            const input = document.querySelector('[role="dialog"] input[type="file"]');
+            const inputs = [...document.querySelectorAll('[role="dialog"] input[type="file"]')];
+            const input = inputs[inputs.length - 1];
             const zone = input.parentElement;
             const dt = new DataTransfer();
             dt.items.add(new File(['{}'], 'drag.json', {type: 'application/json'}));
@@ -760,8 +795,56 @@ def main():
         check('关闭再开无残留（无文件名/无结果）',
               'mixed_update.json' not in text2 and '成功导入' not in text2 and '设备状态以本环境为准' not in text2)
         start_btn2 = drv.find_element(
-            By.XPATH, "//div[@role='dialog']//button[normalize-space(.)='开始导入']")
+            By.XPATH, LAST_DIALOG + "//button[normalize-space(.)='开始导入']")
         check('重开后「开始导入」回到禁用', start_btn2.get_attribute('disabled') is not None)
+
+        # ============ 4b. 页签切换关闭弹窗后重开：导入/导出状态复位（打回 P2-1） ============
+        # 必须走页内页签点击（同路由换参、页面不重挂）；goto_tab 的整页重载会冲掉残留、测不出
+        upload_file(drv, files['mixed'])
+        check('页签切换前：导入弹窗已选文件',
+              os.path.basename(files['mixed']) in dialog_text(drv),
+              dialog_text(drv)[:80].replace('\n', '|'))
+        click_tab(drv, '播放设备', 'playback')
+        open_more_menu(drv)
+        js_click(drv, menu_item(drv, '导入设备'))
+        time.sleep(0.8)
+        tab_imp = dialog_text(drv)
+        check('切页签后重开导入：标题随新页签', '导入播放设备' in tab_imp,
+              tab_imp[:80].replace('\n', '|'))
+        check('切页签后重开导入：无上次文件名残留',
+              os.path.basename(files['mixed']) not in tab_imp)
+        start_btn_tab = drv.find_element(
+            By.XPATH, LAST_DIALOG + "//button[normalize-space(.)='开始导入']")
+        check('切页签后重开导入：「开始导入」回到禁用',
+              start_btn_tab.get_attribute('disabled') is not None)
+        shot(drv, 'tab_switch_import_reopen')
+        close_dialog(drv)
+
+        open_more_menu(drv)
+        js_click(drv, menu_item(drv, '导出设备'))
+        time.sleep(0.8)
+        choose_format(drv, 'Excel')
+        choose_range(drv, '当前筛选结果')
+        before_state = dialog_export_state(drv) or {}
+        check('页签切换前：导出弹窗格式 Excel + 范围「当前筛选结果」',
+              before_state.get('format') == 'Excel' and before_state.get('ranges') == ['filtered'],
+              str(before_state))
+        click_tab(drv, '测试设备', 'test')
+        open_more_menu(drv)
+        js_click(drv, menu_item(drv, '导出设备'))
+        time.sleep(0.8)
+        after_state = dialog_export_state(drv) or {}
+        check('切页签后重开导出：格式回 JSON', after_state.get('format') == 'JSON', str(after_state))
+        check('切页签后重开导出：范围回「全部」', after_state.get('ranges') == ['all'],
+              str(after_state))
+        shot(drv, 'tab_switch_export_reopen')
+        close_dialog(drv)
+
+        # 回到第 5 步起点：测试设备页签 + 导入弹窗打开
+        goto_tab(drv, 'test')
+        open_more_menu(drv)
+        js_click(drv, menu_item(drv, '导入设备'))
+        time.sleep(0.8)
 
         # ============ 5. 异常：.txt / 空文件 / 非法 JSON ============
         err_cases = [
