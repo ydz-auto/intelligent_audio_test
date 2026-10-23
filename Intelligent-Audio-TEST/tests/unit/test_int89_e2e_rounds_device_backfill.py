@@ -13,7 +13,9 @@ rounds 音频条目的 playback_device_name 解析与 e2e 缺省回填（自动�
 3. rounds 自带 playback_device_name：名字解析优先于缺省回填（不依赖标注）
 4. 有标注：标注 spl/设备优先，未命中条目回填（原行为回归保护）
 5. 显式传入 playback_device_id：全轮次使用显式值
-6. 非 e2e（api）：不注入 playback_device_id（回归保护）
+6. 非 e2e（api）：未传默认设备时不注入 playback_device_id（回归保护）
+7. INT-1668：显式默认设备对 api 用例同样回填（多轮「指定轮次 / 逐轮设置」），
+   已带设备的轮次不被覆盖；未传默认设备仍不注入
 """
 import os
 
@@ -167,7 +169,11 @@ class TestE2EDefaultDeviceBackfill:
                 assert audio_cfg['playback_device_id'] == 55
 
     def test_api_type_no_device_injected(self):
-        """非 e2e（api）：不注入 playback_device_id（回归保护）"""
+        """非 e2e（api）且未传默认设备：不注入 playback_device_id（回归保护）
+
+        INT-1668 边界：回归边界是「未传默认设备（playback_device_id=None）」，
+        而不是「test_type 不是 e2e」——传了默认设备时 api 用例同样回填。
+        """
         captured = []
         svc = _make_service(captured=captured)
         rounds = [{'roundNumber': 1,
@@ -177,6 +183,66 @@ class TestE2EDefaultDeviceBackfill:
         )
         audio_cfg = captured[0]['config']['rounds'][0]['audios'][0]
         assert 'playback_device_id' not in audio_cfg
+
+    def test_api_type_default_device_backfilled_to_all_rounds(self):
+        """INT-1668：api 用例 + 显式默认设备 → 缺设备的轮回填默认值
+
+        复现 INT-1614：「指定轮次」只给勾中的第 2 轮写设备 8，第 1/3 轮不写，
+        顶层 default_playback_device_id=8。此前回填被 `tt == 'e2e'` 挡住，
+        task_service 的逐轮「全或无」校验整体拒绝（建用例数 0）。
+        """
+        captured = []
+        svc = _make_service(captured=captured)
+        rounds = [
+            {'roundNumber': 1, 'audios': [{'audio_name': 'a.wav', 'play_order': 0}]},
+            {'roundNumber': 2, 'audios': [{'audio_name': 'b.wav', 'play_order': 1,
+                                           'playback_device_id': 8}]},
+            {'roundNumber': 3, 'audios': [{'audio_name': 'c.wav', 'play_order': 2}]},
+        ]
+        tc_ids = svc.create_test_case_from_audio(
+            1, ['api'], [], playback_device_id=8, rounds_config=rounds,
+            raw_annotations=None,
+        )
+        assert tc_ids == [100]
+        rounds_out = captured[0]['config']['rounds']
+        assert len(rounds_out) == 3
+        # 每一轮都必须带设备，才满足 task_service 的「全或无」校验
+        for rnd in rounds_out:
+            for audio_cfg in rnd['audios']:
+                assert audio_cfg['playback_device_id'] == 8
+        # 逐轮显式值不被覆盖（第 2 轮是 8 本身就一致；换一个显式值再验一次）
+        assert rounds_out[1]['audios'][0]['playback_device_id'] == 8
+
+    def test_api_type_explicit_round_device_not_overwritten(self):
+        """INT-1668：api 用例 + 默认设备 55 + 第 2 轮自带设备 9 → 第 2 轮保持 9"""
+        captured = []
+        svc = _make_service(captured=captured)
+        rounds = [
+            {'roundNumber': 1, 'audios': [{'audio_name': 'a.wav', 'play_order': 0}]},
+            {'roundNumber': 2, 'audios': [{'audio_name': 'b.wav', 'play_order': 1,
+                                           'playback_device_id': 9}]},
+        ]
+        svc.create_test_case_from_audio(
+            1, ['api'], [], playback_device_id=55, rounds_config=rounds,
+            raw_annotations=None,
+        )
+        rounds_out = captured[0]['config']['rounds']
+        assert rounds_out[0]['audios'][0]['playback_device_id'] == 55
+        assert rounds_out[1]['audios'][0]['playback_device_id'] == 9
+
+    def test_api_type_spl_not_backfilled(self):
+        """INT-1668：spl 缺省回填仍只对 e2e 生效，不外扩到 api"""
+        captured = []
+        svc = _make_service(captured=captured)
+        rounds = [{'roundNumber': 1,
+                   'audios': [{'audio_name': 'a.wav', 'play_order': 0}]}]
+        svc.create_test_case_from_audio(
+            1, ['api'], [], playback_device_id=55, rounds_config=rounds,
+            raw_annotations=None,
+        )
+        audio_cfg = captured[0]['config']['rounds'][0]['audios'][0]
+        assert audio_cfg['playback_device_id'] == 55
+        assert 'spl' not in audio_cfg
 
     def test_deleted_device_not_selected(self):
         """自动选中跳过 is_deleted 的 dry 设备"""
