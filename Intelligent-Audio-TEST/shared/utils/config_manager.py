@@ -83,7 +83,6 @@ class ConfigManager:
                     "device_service_workers": 5,
                     "audio_service_workers": 5,
                     "e2e_test_service_workers": 5,
-                    "api_adapter_service_workers": 8,
                     "api_test_service_workers": 8
                 },
                 "device_timing": {
@@ -135,7 +134,6 @@ class ConfigManager:
                     "device_service_workers": 5,
                     "audio_service_workers": 5,
                     "e2e_test_service_workers": 5,
-                    "api_adapter_service_workers": 8,
                     "api_test_service_workers": 8
                 },
                 "device_timing": {

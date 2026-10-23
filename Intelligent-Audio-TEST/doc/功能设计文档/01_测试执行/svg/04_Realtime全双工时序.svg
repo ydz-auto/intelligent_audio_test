@@ -50,7 +50,7 @@
     <text x="161" y="174" class="chip-t" fill="#64748b">api_test_service worker 实例内</text>
     <rect x="295" y="140" width="200" height="42" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
     <text x="395" y="158" class="box-name" text-anchor="middle" font-size="11">RealtimeAPIAdapter</text>
-    <text x="395" y="174" class="chip-t" fill="#64748b">api_adapter_service → P1 迁入 adapters/</text>
+    <text x="395" y="174" class="chip-t" fill="#64748b">api_test_service → P1 迁入 adapters/</text>
     <rect x="530" y="140" width="200" height="42" rx="8" fill="#cffafe" stroke="#0891b2" stroke-width="1.2"/>
     <text x="630" y="158" class="box-name" text-anchor="middle" font-size="11">audio_service</text>
     <text x="630" y="174" class="chip-t" fill="#64748b">gRPC :50052 RenderAudioStream（新增）</text>

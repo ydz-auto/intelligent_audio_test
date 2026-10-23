@@ -144,6 +144,8 @@ def create_app(config_name='default') -> FastAPI:
     # 根级挂载无 /api/v1 前缀；权限码 status:read / option:read|write）
     from api_gateway.routes.status_bp import router as status_router
     from api_gateway.routes.option_bp import router as option_router
+    # INT-1150：skill 包下载（/api/v1/agent/skill）+ MCP 适配端点（/api/v1/mcp）
+    from api_gateway.routes.agent_bp import router as agent_router, mcp_router
 
     app.include_router(auth_router, prefix='/api/v1/auth', tags=['auth'])
     app.include_router(user_router, prefix='/api/v1/auth', tags=['auth-management'])
@@ -183,6 +185,11 @@ def create_app(config_name='default') -> FastAPI:
     # INT-620：站点状态 / 系统选项 KV —— 对位 newAPI 根级路径（无 /api/v1 前缀）
     app.include_router(status_router, prefix='/api', tags=['status'])
     app.include_router(option_router, prefix='/api', tags=['option'])
+
+    # INT-1150：skill 包下载 + MCP 适配端点（联接你的 agent；MCP 与 skill
+    # 同一 access token 通用，AuthMiddleware 单分支鉴权）
+    app.include_router(agent_router, prefix='/api/v1/agent', tags=['agent-skill'])
+    app.include_router(mcp_router, prefix='/api/v1/mcp', tags=['mcp'])
 
     # INT-766/INT-787：系统健康汇总（网关 + 认证服务），供「关于」页版本与服务状态卡真实接线
     from api_gateway.routes.system_bp import router as system_router

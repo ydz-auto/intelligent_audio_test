@@ -183,7 +183,7 @@ class _ProxyUpdateRepo:
 
     def _api(self):
         return SimpleNamespace(
-            id=9, name='API-1', url='http://example.com', status='online',
+            id=9, name='API-1', status='online',
             output_types=[], device_type='http_api', api_endpoints=[],
             proxy_type=self.current_proxy_type, proxy_url=self.current_proxy_url,
         )
@@ -202,7 +202,7 @@ class TestCrudProxy:
         repo = _CreateRepo()
         _install_repo(monkeypatch, repo)
         res = APICrudService.create({
-            'name': 'API-P', 'api_url': 'http://example.com', 'meta': {},
+            'name': 'API-P', 'meta': {},
             'proxy_type': 'http', 'proxy_url': 'user:pass@proxy.local:8080',
         })
         assert res['code'] == 201
@@ -213,7 +213,7 @@ class TestCrudProxy:
         repo = _CreateRepo()
         _install_repo(monkeypatch, repo)
         res = APICrudService.create({
-            'name': 'API-P', 'api_url': 'http://example.com', 'meta': {},
+            'name': 'API-P', 'meta': {},
             'proxy_type': '', 'proxy_url': '   ',
         })
         assert res['code'] == 201
@@ -224,7 +224,7 @@ class TestCrudProxy:
         repo = _CreateRepo()
         _install_repo(monkeypatch, repo)
         res = APICrudService.create({
-            'name': 'API-P', 'api_url': 'http://example.com', 'meta': {},
+            'name': 'API-P', 'meta': {},
             'proxy_type': 'http', 'proxy_url': 'proxy.local:8080',
         })
         assert res['code'] == 400
@@ -235,7 +235,7 @@ class TestCrudProxy:
         repo = _CreateRepo()
         _install_repo(monkeypatch, repo)
         res = APICrudService.create({
-            'name': 'API-P', 'api_url': 'http://example.com', 'meta': {},
+            'name': 'API-P', 'meta': {},
             'proxy_type': '', 'proxy_url': 'user:pass@proxy.local:8080',
         })
         assert res['code'] == 400
@@ -246,7 +246,7 @@ class TestCrudProxy:
         repo = _CreateRepo()
         _install_repo(monkeypatch, repo)
         res = APICrudService.create({
-            'name': 'API-P', 'api_url': 'http://example.com', 'meta': {},
+            'name': 'API-P', 'meta': {},
             'proxy_type': 'socks4', 'proxy_url': 'user:pass@proxy.local:1080',
         })
         assert res['code'] == 400
@@ -289,7 +289,7 @@ class TestCrudProxy:
 
     def test_api_to_dict_returns_proxy_fields(self):
         api = SimpleNamespace(
-            id=1, name='API', api_url='http://example.com', status='online', meta={},
+            id=1, name='API', status='online', meta={},
             api_endpoints=[], output_types=[], device_type='http_api',
             proxy_type='socks5', proxy_url='user:pass@host:1080',
         )
@@ -303,15 +303,14 @@ class TestCrudProxy:
 class _HealthRepo:
     """test_connection 用：聚合根形态（proxy 字段生效）。"""
 
-    def __init__(self, api_url=None, endpoints=None, proxy_type=None, proxy_url=None):
-        self.api_url = api_url or 'http://api.example.com'
-        self.endpoints = endpoints or []
+    def __init__(self, endpoints=None, proxy_type=None, proxy_url=None):
+        self.endpoints = endpoints or [{'endpoint': 'http://api.example.com'}]
         self.proxy_type = proxy_type
         self.proxy_url = proxy_url
 
     def get_api(self, api_id):
         return SimpleNamespace(
-            id=7, name='API-H', url=self.api_url, status='online',
+            id=7, name='API-H', status='online',
             output_types=[], device_type='http_api',
             api_endpoints=self.endpoints,
             proxy_type=self.proxy_type, proxy_url=self.proxy_url,
@@ -346,7 +345,7 @@ class TestHealthCheckProxy:
         self._install_log_noop(monkeypatch)
 
         res = APICrudService.test_connection(7)
-        assert res['data']['api_url_status'] == 'True'
+        assert res['data']['endpoints_status'] == 'True'
         assert captured['proxies'] == {'http': 'http://user:pass@proxy.local:8080',
                                        'https': 'http://user:pass@proxy.local:8080'}
         # 健康检查 URL 追加 /health 前缀路径
@@ -366,7 +365,7 @@ class TestHealthCheckProxy:
         self._install_log_noop(monkeypatch)
 
         res = APICrudService.test_connection(7)
-        assert res['data']['api_url_status'] == 'True'
+        assert res['data']['endpoints_status'] == 'True'
         assert captured['proxies'] is None
 
     def test_ws_health_uses_websocket_proxy_kwargs(self, monkeypatch):
@@ -385,13 +384,13 @@ class TestHealthCheckProxy:
                 pass
 
         monkeypatch.setattr(ws_client, 'WebSocket', _FakeWS)
-        repo = _HealthRepo(api_url='ws://api.example.com/ws',
+        repo = _HealthRepo(endpoints=[{'endpoint': 'ws://api.example.com/ws'}],
                            proxy_type='socks5', proxy_url='user:pass@proxy.local:1080')
         _install_repo(monkeypatch, repo)
         self._install_log_noop(monkeypatch)
 
         res = APICrudService.test_connection(7)
-        assert res['data']['api_url_status'] == 'True'
+        assert res['data']['endpoints_status'] == 'True'
         assert captured['kwargs']['http_proxy_host'] == 'proxy.local'
         assert captured['kwargs']['http_proxy_port'] == 1080
         assert captured['kwargs']['http_proxy_auth'] == ('user', 'pass')
@@ -403,7 +402,7 @@ class TestHealthCheckProxy:
         captured = {}
 
         def fake_get(url, timeout=None, headers=None, proxies=None, **kw):
-            # api_url 为 http → 走 requests.get 分支，200 避免影响端点断言
+            # 端点走 ws → 不经 requests.get 分支，200 兜底避免影响端点断言
             return SimpleNamespace(status_code=200, text='{}', encoding='utf-8', json=lambda: {})
 
         monkeypatch.setattr(requests, 'get', fake_get)
@@ -421,7 +420,6 @@ class TestHealthCheckProxy:
 
         monkeypatch.setattr(ws_client, 'WebSocket', _FakeWS)
         repo = _HealthRepo(
-            api_url='http://api.example.com',
             endpoints=[{'endpoint': 'ws://api.example.com/stream', 'max_timeout': 30}],
             proxy_type='http', proxy_url='user:pass@proxy.local:8080')
         _install_repo(monkeypatch, repo)
@@ -662,105 +660,6 @@ class TestSecretMaskProxy:
     def test_mask_mapping_proxy_url_no_auth_unchanged(self):
         """无认证段（无 @）时原样保留，不误伤 host:port"""
         assert mask_mapping({'proxy_url': 'proxy.local:8080'}) == {'proxy_url': 'proxy.local:8080'}
-
-
-# ═══════════════════ vendor_config 契约（#2 交付） ═══════════════════
-
-class TestVendorConfigProxyContract:
-    """api_session_executor.vendor_config 必须显式携带 proxy_type / proxy_url。
-
-    api_adapter_service 透传白名单（现状仅 api_url/headers/timeout/adapter_class/
-    api_key_candidates）不会自动透传字段，缺失即「配置能存、执行不过代理」。
-    """
-
-    def test_vendor_config_carries_proxy_fields(self, monkeypatch):
-        import json as _json
-
-        from api_test_service.core import api_session_executor as ase_module
-        from api_test_service.core.api_session_executor import APISessionExecutor
-
-        class _FakeExecutor:
-            @property
-            def _log(self):
-                return lambda *a, **k: None
-
-        class _FakeACL:
-            def __init__(self):
-                self.captured = {}
-
-            def send_round(self, req):
-                self.captured['vendor_config'] = _json.loads(req.vendor_config)
-                return {'output_content': 'ok', 'output_audio_path': None,
-                        'response_metrics': {}}
-
-        api_config = SimpleNamespace(
-            id=1, name='API-P', api_url='http://api.example.com',
-            api_endpoints=[], default_max_process=5, meta={}, max_timeout=30,
-            vendor='vendor-x', adapter_class=None,
-            proxy_type='http', proxy_url='user:pass@proxy.local:8080',
-        )
-        fake_acl = _FakeACL()
-        monkeypatch.setattr(ase_module, '_adapter_acl', fake_acl)
-
-        executor = APISessionExecutor(_FakeExecutor())
-        result = executor._send_via_adapter(
-            task_id=100, algorithm_type='translation',
-            session=SimpleNamespace(
-                session_id='s1', session_timeout=60,
-                get_context=lambda: {}, get_context_for_request=lambda: {},
-            ),
-            round_number=1, total_rounds=1,
-            rendered_headers={'Authorization': 'Bearer x'}, rendered_body={},
-            api_specific_config={}, meta={}, api_config=api_config,
-            timeout=70, input_text='hello', input_type='text', start_time=0,
-            input_audio_path='', case_api_key='',
-        )
-        assert result['success'] is True
-        vc = fake_acl.captured['vendor_config']
-        assert vc['proxy_type'] == 'http'
-        assert vc['proxy_url'] == 'user:pass@proxy.local:8080'
-        assert vc['api_url'] == 'http://api.example.com'
-
-    def test_vendor_config_omits_proxy_when_unset(self, monkeypatch):
-        import json as _json
-
-        from api_test_service.core import api_session_executor as ase_module
-        from api_test_service.core.api_session_executor import APISessionExecutor
-
-        class _FakeExecutor:
-            @property
-            def _log(self):
-                return lambda *a, **k: None
-
-        class _FakeACL:
-            def send_round(self, req):
-                vc = _json.loads(req.vendor_config)
-                return {'output_content': 'ok', 'output_audio_path': None,
-                        'response_metrics': {}, '_vc': vc}
-
-        api_config = SimpleNamespace(
-            id=1, name='API-N', api_url='http://api.example.com',
-            api_endpoints=[], default_max_process=5, meta={}, max_timeout=30,
-            vendor='vendor-x', adapter_class=None,
-            proxy_type=None, proxy_url=None,
-        )
-        monkeypatch.setattr(ase_module, '_adapter_acl', _FakeACL())
-
-        executor = APISessionExecutor(_FakeExecutor())
-        result = executor._send_via_adapter(
-            task_id=100, algorithm_type='translation',
-            session=SimpleNamespace(
-                session_id='s1', session_timeout=60,
-                get_context=lambda: {}, get_context_for_request=lambda: {},
-            ),
-            round_number=1, total_rounds=1,
-            rendered_headers={}, rendered_body={},
-            api_specific_config={}, meta={}, api_config=api_config,
-            timeout=70, input_text='hello', input_type='text', start_time=0,
-            input_audio_path='', case_api_key='',
-        )
-        assert 'proxy_type' not in result.get('_vc', {})
-        assert 'proxy_url' not in result.get('_vc', {})
 
 
 # ═══════════════════ 迁移脚本 ═══════════════════

@@ -4,6 +4,7 @@ import { formatDurationSeconds, formatDurationText } from '../../utils/durationF
 import type { APIConfig, TestCase } from '../../domain'
 import { TestType, TaskStatus, ApiEndpointStatus, type VisibilityType } from '../../domain/enums'
 import { useTestCaseStore } from '../../store/testCaseStore'
+import { buildCaseDeviceAssignments } from '../../domain/model/task'
 
 interface UseTaskExecutionOptions {
   testType: typeof TestType[keyof typeof TestType]
@@ -39,6 +40,20 @@ interface UseTaskExecutionOptions {
  * 任务执行：创建并启动测试任务（e2e/api 差异分支）
  * 不包含步骤导航逻辑，仅负责任务的创建和启动
  */
+
+/** INT-1434：选中 API 的用例级目标——device_type 取显式值，未显式时传端点 URL 供派生（ws/wss → websocket_api） */
+function toCaseDeviceApiTargets(apiIds: (string | number)[], apis: APIConfig[]): Array<{ id: string | number; deviceType?: string | null; endpointUrl?: string }> {
+  return apiIds
+    .map(id => apis.find(a => String(a?.id) === String(id)))
+    .filter((a): a is APIConfig => !!a)
+    .map(a => ({
+      id: a.id,
+      deviceType: a.deviceType,
+      // 端点 URL（对齐 deviceFetching 口径：endpoints[0] 优先，兜底 apiUrl）
+      endpointUrl: a.endpoints?.[0]?.endpoint || a.apiUrl || '',
+    }))
+}
+
 export function useTaskExecution(options: UseTaskExecutionOptions) {
   const {
     testType, currentTaskId, taskName, taskVisibility, concurrentTasks,
@@ -79,6 +94,13 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
       e2eIsExecuting.value = true
       resetProgress()
 
+      // INT-1434：用例级被测设备选择（所选用例 × 选中目标；API 未显式 device_type 按端点协议派生）
+      const caseDevices = buildCaseDeviceAssignments({
+        caseIds: selectedCaseIds,
+        deviceIds: selectedDeviceIds.value,
+        apis: toCaseDeviceApiTargets(selectedAPIIds.value, apis.value),
+      })
+
       const payload = {
         name: taskName.value || `E2E测试任务_${new Date().toLocaleString()}`,
         // INT-282：显式携带执行口径（对齐 useE2eExecution 基线契约 type:'e2e'；
@@ -90,6 +112,8 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
         deviceIds: selectedDeviceIds.value,
         apiIds: selectedAPIIds.value,
         caseIds: selectedCaseIds,
+        // INT-1434：用例级被测设备选择（websocket_api 路由前置；缺省后端派生兜底）
+        caseDevices,
         // INT-1115：逐目标执行模式取代全局执行模式——本流无卡片级控件，缺省全并行（不发 target_modes/旧字段）
         config: { concurrentTasks: concurrentTasks.value },
       }
@@ -174,6 +198,13 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
     }
 
     try {
+      // INT-1434：用例级被测设备选择（所选用例 × 选中目标；API 未显式 device_type 按端点协议派生）
+      const caseDevices = buildCaseDeviceAssignments({
+        caseIds,
+        deviceIds: selectedDeviceIds.value,
+        apis: toCaseDeviceApiTargets(selectedAPIIds.value, apis.value),
+      })
+
       const taskData = {
         name: taskName.value || 'API测试任务',
         description: '通过API测试任务',
@@ -188,6 +219,8 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
         apiIds: selectedAPIIds.value,
         // INT-1072：混选 API + 设备，同任务同时携带 api_ids + device_ids
         deviceIds: selectedDeviceIds.value,
+        // INT-1434：用例级被测设备选择（websocket_api 路由前置；缺省后端派生兜底）
+        caseDevices,
         tags: [],
       }
 

@@ -177,6 +177,15 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
         except Exception as e:
             return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
 
+    def CheckAudioReferences(self, request, context=None):
+        try:
+            from task_service.application.queries.task_queries import CheckAudioReferencesQuery
+            return self._resp(self.qry.handle_check_audio_references(
+                CheckAudioReferencesQuery(audio_ids=tuple(request.audio_ids))
+            ))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
     # ---- 生命周期操作 ----
 
     def StartTaskLifecycle(self, request, context=None):

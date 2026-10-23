@@ -59,11 +59,11 @@
                ┌─────────────┘    │    │    └─────────────┐
                ▼                  ▼    ▼                  ▼
         ┌──────────────┐  ┌─────────────────┐   ┌──────────────────┐
-        │ 业务服务 (HTTP) │  │ 认证/算法/适配服务 │   │ gRPC-only 服务    │
+        │ 业务服务 (HTTP) │  │ 认证/算法服务    │   │ gRPC-only 服务    │
         │ task 5001     │  │ auth 5009       │   │ audio 50052       │
         │ e2e 5002      │  │ algorithm 5007  │   │ device 50053      │
-        │ api_test 5003 │  │ adapter 5008    │   └──────────────────┘
-        │ eval 5004     │  └─────────────────┘
+        │ api_test 5003 │  └─────────────────┘   └──────────────────┘
+        │ eval 5004     │
         │ report 5006   │
         └──────┬───────┘
                │
@@ -85,7 +85,6 @@
 | evaluation_service | 5004 | 50091 | 评估维度管理、指标计算（WER/DER/LLM Judge 等） |
 | report_service | 5006 | 51068 | 报告生成（异步）与查询、对比分析 |
 | algorithm_service | 5007 | 50067 | 被测算法配置、参考参数生成器 |
-| api_adapter_service | 5008 | 50081 | 被测算法适配（Qwen/火山 AST/SSE/HTTP） |
 | auth_service | 5009 | 51069 | 认证 / OAuth / RBAC 角色权限 |
 | audio_service | - | 50052 | 音频播放（gRPC-only） |
 | device_service | - | 50053 | 播放 / 环境设备驱动（gRPC-only） |
@@ -164,6 +163,7 @@ python scripts/create_all_tables.py
 | 202608 | [seed_rbac.py](scripts/migrations/202608/seed_rbac.py) | RBAC 角色 / 权限种子数据 |
 | 202609 | [add_pass_threshold_to_eval_params.py](scripts/migrations/202609/add_pass_threshold_to_eval_params.py) | 评估参数 pass_threshold 列 |
 | 202609 | [seed_voice_llm.py](scripts/migrations/202609/seed_voice_llm.py) 等 `seed_*.py` | 评估维度种子数据（VoiceLLM / 打断 / 环境音 / 时延 / 小艺指标等） |
+| 202610 | [drop_apis_api_url.py](scripts/migrations/202610/drop_apis_api_url.py) | 移除被测 API Master 入口 URL（先回填 api_endpoints 首项，后删 `apis.api_url`；INT-1361） |
 
 执行示例：
 
@@ -221,7 +221,6 @@ Intelligent-Audio-TEST/
 ├── evaluation_service/     # 评估维度
 ├── report_service/         # 报告生成
 ├── algorithm_service/      # 算法配置
-├── api_adapter_service/    # 算法适配
 ├── auth_service/           # 认证 / RBAC
 ├── audio_service/          # 音频播放（gRPC-only）
 ├── device_service/         # 设备驱动（gRPC-only）

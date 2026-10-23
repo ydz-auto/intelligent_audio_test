@@ -3,7 +3,7 @@
 > 版本：v1.0（V9.7.31 适配版）| 日期：2026-09-10 | 状态：适配自 V9.7.10《01_UseCase总览》v3.0/v3.1
 >
 > 适配目标：将 V9.7.10 单体「测试执行 v3.0 设计」映射到 V9.7.31 的 DDD + CQRS + 微服务 + 分布式部署架构。
-> 架构事实：12 微服务（api_gateway:5000 / task_service:5001 / e2e_test_service:5002 / api_test_service:5003（replicas:2）/ evaluation_service:5004 / api_adapter_service:5008 / audio_service（gRPC:50052）/ device_service（gRPC:50053）等）；服务间通信走 gRPC（`shared/proto` 11 个 proto + ACL 仓储模式）；无 MQ，事件走 Redis EventBus（`shared/utils/redis_pubsub.py`）。
+> 架构事实：12 微服务（api_gateway:5000 / task_service:5001 / e2e_test_service:5002 / api_test_service:5003（replicas:2）/ evaluation_service:5004 / api_test_service 内嵌适配器 / audio_service（gRPC:50052）/ device_service（gRPC:50053）等）；服务间通信走 gRPC（`shared/proto` 11 个 proto + ACL 仓储模式）；无 MQ，事件走 Redis EventBus（`shared/utils/redis_pubsub.py`）。
 
 ---
 
@@ -195,8 +195,8 @@ case_config (TestCase.config 列，JSON)
 | `audio_config.chunk_duration_ms` | chunk 时长 | 20 / 40 / 100（默认 100） | （新增列，JSON） |
 | `output_types` | API 输出类型列表 | `["audio", "text", "video", "image"]` 的子集 | （新增列） |
 
-> 【适配说明】`api_models.py` 现有列仅有 name / vendor / api_url / description / status / meta / algorithm_type / max_process / max_timeout / max_audio_duration / health_score / api_endpoints 等，**缺 `device_type` / `adapter_class` / `audio_config` / `output_types` 列，均标（新增）**；`rms_spl_mapping_id` 随 `api_rms_spl_mappings` 聚合（UC-0902）一并新增。
-> **adapter 选择逻辑**：`APIAdapterFactory.get_adapter()` 优先按 `adapter_class` 指定类名创建，未指定时按 `(protocol, vendor)` 自动匹配。`APIAdapterFactory` 现位于 `api_adapter_service/adapters/factory.py`；按 P3 规划 api_adapter_service(5008) 下线并入 api_test_service，注册表随迁（见 UC-1003）。
+> 【适配说明】`api_models.py` 现有列仅有 name / vendor / description / status / meta / algorithm_type / max_process / max_timeout / max_audio_duration / health_score / api_endpoints 等（INT-1361：api_url 已移除，api_endpoints 为唯一端点配置入口），**缺 `device_type` / `adapter_class` / `audio_config` / `output_types` 列，均标（新增）**；`rms_spl_mapping_id` 随 `api_rms_spl_mappings` 聚合（UC-0902）一并新增。
+> **adapter 选择逻辑**：`APIAdapterFactory.get_adapter()` 优先按 `adapter_class` 指定类名创建，未指定时按 `(protocol, vendor)` 自动匹配。`APIAdapterFactory` 原位于 `api_adapter_service/adapters/factory.py`（INT-1176 已删除）；按 P3 规划 api_adapter_service 下线并入 api_test_service，注册表随迁（见 UC-1003）。
 
 ## 0.6 多模态输出
 
@@ -392,7 +392,10 @@ Main Flow:
 
 扩展流程:
   3a. meta.api_key 不落明文日志；Realtime 执行时按密钥链
-      case_config → meta → env OPENAI_API_KEY 逐级回退
+      case_config → meta → env OPENAI_API_KEY 逐级回退；
+      端点级密钥池（api_endpoints[].api_keys，round-robin + 失败降级 + 冷却）
+      为 3.7 单值链的端点级扩展，Realtime / HTTP 通用（INT-1173 裁定
+      2026-10-22，详见 API测试功能设计文档 §3.10）
   4a. protocol=websocket 且 vendor=openai → 前端建议默认 adapter_class=OpenAIRealtimeAdapter
   8a. 校验失败 → api_gateway 返回统一错误码（api_gateway/utils/error_codes.py），不入库
   9a. 连通性失败 → status=offline → 发布 DEVICE_STATUS_CHANGED（DEVICE_EVENTS）
@@ -625,7 +628,7 @@ Postcondition: 前端实时获取逐帧结果，评估取最终聚合结果，�
 
 ### UC-1003：新增厂商 Realtime 适配器
 
-- **落位服务**：api_test_service:5003（适配器注册表）。`APIAdapterFactory` 现位于 `api_adapter_service/adapters/factory.py`，【适配说明：P3 阶段 api_adapter_service(5008) 下线并入 api_test_service，注册表与 adapter 实现随迁】
+- **落位服务**：api_test_service:5003（适配器注册表）。`APIAdapterFactory` 原位于 `api_adapter_service/adapters/factory.py`（INT-1176 已删除），【适配说明：P3 阶段 api_adapter_service 下线并入 api_test_service（已执行），注册表与 adapter 实现随迁】
 - **入口**：代码扩展（`APIAdapterFactory` 注册表注册），无 HTTP/gRPC 新入口；生效入口为 UC-0901 的 `adapter_class` 配置
 - **领域事件**：—（开发期变更）
 

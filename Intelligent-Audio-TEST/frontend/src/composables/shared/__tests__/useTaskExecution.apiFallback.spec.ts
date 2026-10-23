@@ -37,6 +37,7 @@ import { TestType } from '../../../domain/enums'
 /** 构造 API 模式 useTaskExecution 最小夹具 */
 const buildFlow = (overrides: {
   selectedTestCaseIds?: (string | number)[]
+  selectedDeviceIds?: (string | number)[]
   selectedAPIIds?: (string | number)[]
   apis?: any[]
   selectedAlgorithmType?: string | null
@@ -49,7 +50,7 @@ const buildFlow = (overrides: {
     selectedAlgorithmType: ref<string | null>(overrides.selectedAlgorithmType ?? 'voice_llm'),
     concurrentTasks: ref(5),
     selectedTestCaseIds: ref<(string | number)[]>(overrides.selectedTestCaseIds ?? []),
-    selectedDeviceIds: ref<(string | number)[]>([]),
+    selectedDeviceIds: ref<(string | number)[]>(overrides.selectedDeviceIds ?? []),
     e2eTestCases: ref<any[]>([]),
     selectedAPIIds: ref<(string | number)[]>(overrides.selectedAPIIds ?? [3]),
     apis: ref<any[]>(overrides.apis ?? [{ id: 3, name: 'voice-llm API', status: 'online', maxConcurrent: 5 }]),
@@ -145,5 +146,35 @@ describe('INT-282：startApiTask 全量回退分支', () => {
     // 废弃顶层旧字段：不再携带（缺省 targetModes → adapter 发空 target_modes = 全并行）
     expect(createArg.executionMode).toBeUndefined()
     expect(createArg.serialFirst).toBeUndefined()
+  })
+
+  it('INT-1434：创建载荷携带 caseDevices（用例 × 目标笛卡尔积；API 未显式 device_type 按端点协议派生）', async () => {
+    mocks.create.mockResolvedValueOnce({ id: 10 })
+    mocks.start.mockResolvedValueOnce({})
+
+    const flow = buildFlow({
+      selectedTestCaseIds: ['c1', 'c2'],
+      selectedDeviceIds: [101],
+      selectedAPIIds: [3, 9],
+      apis: [
+        { id: 3, name: 'http API', status: 'online', deviceType: 'http_api', endpoints: [{ endpoint: 'https://api.example.com/asr' }] },
+        { id: 9, name: 'realtime API', status: 'online', deviceType: null, endpoints: [{ endpoint: 'ws://rt.example.com/stream' }] },
+      ],
+    })
+    const started = await flow.startApiTask()
+
+    expect(started).toBe(true)
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
+      caseIds: ['c1', 'c2'],
+      // 物理设备 physical × 2 用例 + HTTP API http_api × 2 + Realtime API websocket_api × 2
+      caseDevices: [
+        { caseId: 'c1', deviceType: 'physical', deviceId: 101 },
+        { caseId: 'c1', deviceType: 'http_api', deviceId: 3 },
+        { caseId: 'c1', deviceType: 'websocket_api', deviceId: 9 },
+        { caseId: 'c2', deviceType: 'physical', deviceId: 101 },
+        { caseId: 'c2', deviceType: 'http_api', deviceId: 3 },
+        { caseId: 'c2', deviceType: 'websocket_api', deviceId: 9 },
+      ],
+    }))
   })
 })

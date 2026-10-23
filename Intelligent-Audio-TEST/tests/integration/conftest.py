@@ -31,13 +31,11 @@ def nonmesh_grpc_addresses_refused():
     refused = {
         'DEVICE_GRPC_ADDR': 'localhost:1',
         'AUTH_GRPC_ADDR': 'localhost:1',
-        'ADAPTER_GRPC_ADDR': 'localhost:1',
         'E2E_GRPC_ADDR': 'localhost:1',
     }
     caches = [
         _channels._get_device_channel,
         _channels._get_auth_channel,
-        _channels._get_adapter_channel,
         _channels._get_e2e_channel,
         _stubs.get_device_service_stub,
         _stubs.get_device_result_service_stub,
@@ -46,7 +44,6 @@ def nonmesh_grpc_addresses_refused():
         _stubs.get_playback_config_service_stub,
         _stubs.get_spl_config_service_stub,
         _stubs.get_auth_service_stub,
-        _stubs.get_adapter_service_stub,
         _stubs.get_e2e_execution_service_stub,
     ]
 

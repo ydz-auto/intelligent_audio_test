@@ -93,12 +93,12 @@ class DeviceAclRepositoryImpl(DeviceAclRepository):
             return False
 
     def register_task_devices(self, task_id: str, device_info_list: List[Dict]) -> bool:
-        """注册任务设备（通过 CreateDriver action=register 传递设备元数据）
+        """注册任务设备（通过 CreateDriver action=register 登记 SNS，供停止时清理）
 
-        INT-574：显式声明 action=register，消除 device_service 对 list 格式
-        缺省 action='initialize' 的隐式语义（会触发驱动解析，缺 system 时
-        报「设备系统 system 不能为空」）。仅登记、不初始化，真正的驱动初始化
-        由后续 initialize_driver(action=initialize) 显式承担。
+        INT-575：显式携带 action='register'，device_service 只登记不解析驱动，
+        避免无 action list 被默认 initialize 分支误触发驱动解析（system 缺失时报
+        「设备系统 system 不能为空」+ 误导性错误日志）。system/keywords 一并透传
+        与 get_device_info 组装的元数据对齐。
         """
         from shared.clients.grpc_clients import get_device_service_stub
         from shared.proto import device_service_pb2 as device_pb

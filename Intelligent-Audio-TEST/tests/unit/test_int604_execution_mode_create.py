@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""INT-604 验收测试（后端先行部分）：
-「选择设备/API」步骤新增执行模式配置 —— 同一用例在设备与 API 目标间 并行/串行 执行。
+"""INT-604/INT-1115 验收测试（后端先行部分）：
+「选择设备/API」步骤新增执行模式配置 —— 逐目标（设备/API 卡片级）并行/串行 执行。
 
 覆盖验收标准 1（单测）：
 - 混选任务创建 → 同一用例生成设备侧 + API 侧各一条 TaskCase（case×target 多行表达）；
-- execution_mode=parallel/serial 与 serial_first=device/api 均正确落 Task.config；
+- target_modes 保序落 Task.config；缺省/空数组 = 全目标并行（零回归）；
 - 无 case_devices 旧调用派生口径不回归（单条 TaskCase、device_type 由配置形态派生）；
 - 应用层幂等：同一 (task, case, 路由) 重复提交被拒（评审①补录）。
 
@@ -191,62 +191,109 @@ class TestMixedSelectionCreate:
 
 
 class TestExecutionModeConfigPersistence:
-    """execution_mode / serial_first 透传 config 落库（任务级字段）。"""
+    """target_modes 透传 config 落库（逐目标模式，列表保序）。"""
 
-    def test_default_parallel_device(self):
-        """缺省：config 不含 execution_mode/serial_first（查询侧默认 parallel/device）。"""
+    def test_default_parallel_no_target_modes(self):
+        """缺省：config 不含 target_modes（引擎按全并行处理，零回归）。"""
         _seed_cases()
         task_id = _create_task([_E2E_CASE_ID], config={'parallel': True})
         config = _read_task_config(task_id)
         assert config == {'parallel': True}
 
-    def test_serial_first_device_persisted(self):
+    def test_empty_target_modes_not_written(self, db):
+        """空数组 = 全目标并行：crud 服务不写入 config（与缺省一致）。"""
         _seed_cases()
-        task_id = _create_task([_E2E_CASE_ID], config={
-            'execution_mode': 'serial', 'serial_first': 'device'})
-        config = _read_task_config(task_id)
-        assert config['execution_mode'] == 'serial'
-        assert config['serial_first'] == 'device'
+        from task_service.application.task.task_crud_service import task_crud_service
+        result = task_crud_service.create({
+            'name': 'INT-1115 crud 空 target_modes',
+            'case_ids': [_E2E_CASE_ID],
+            'target_modes': [],
+        })
+        assert result.get('success')
+        config = _read_task_config(result['data']['id'])
+        assert config is None or 'target_modes' not in (config or {})
 
-    def test_serial_first_api_persisted(self):
+    def test_target_modes_persisted_in_order(self):
+        """混选逐目标模式保序落 config['target_modes']（设备+API 混排）。"""
         _seed_cases()
         task_id = _create_task([_E2E_CASE_ID], config={
-            'execution_mode': 'serial', 'serial_first': 'api'})
+            'target_modes': [
+                {'target_type': 'device', 'target_id': 1, 'mode': 'serial'},
+                {'target_type': 'device', 'target_id': 2, 'mode': 'parallel'},
+                {'target_type': 'api', 'target_id': 10, 'mode': 'serial'},
+            ],
+        })
         config = _read_task_config(task_id)
-        assert config['execution_mode'] == 'serial'
-        assert config['serial_first'] == 'api'
+        assert config['target_modes'] == [
+            {'target_type': 'device', 'target_id': 1, 'mode': 'serial'},
+            {'target_type': 'device', 'target_id': 2, 'mode': 'parallel'},
+            {'target_type': 'api', 'target_id': 10, 'mode': 'serial'},
+        ]
+
+    def test_serial_only_target_modes_persisted(self):
+        """仅串行目标时同样保序落库。"""
+        _seed_cases()
+        task_id = _create_task([_E2E_CASE_ID], config={
+            'target_modes': [
+                {'target_type': 'device', 'target_id': 1, 'mode': 'serial'},
+            ],
+        })
+        config = _read_task_config(task_id)
+        assert config['target_modes'] == [
+            {'target_type': 'device', 'target_id': 1, 'mode': 'serial'},
+        ]
 
 
 class TestTaskCrudServiceExecutionModeMerge:
     """task_crud_service.create 显式字段与 config 合并落库（网关透传路径）。"""
 
-    def test_explicit_fields_merged_into_config(self, db):
+    def test_target_modes_merged_into_config(self, db):
         _seed_cases()
         from task_service.application.task.task_crud_service import task_crud_service
         result = task_crud_service.create({
-            'name': 'INT-604 crud 任务',
+            'name': 'INT-1115 crud 任务',
             'case_ids': [_E2E_CASE_ID],
             'config': {'parallel': True},
-            'execution_mode': 'serial',
-            'serial_first': 'api',
+            'target_modes': [
+                {'target_type': 'device', 'target_id': 1, 'mode': 'serial'},
+                {'target_type': 'api', 'target_id': 10, 'mode': 'parallel'},
+            ],
         })
         assert result.get('success')
         task_id = result['data']['id']
         config = _read_task_config(task_id)
-        assert config['execution_mode'] == 'serial'
-        assert config['serial_first'] == 'api'
+        assert config['target_modes'] == [
+            {'target_type': 'device', 'target_id': 1, 'mode': 'serial'},
+            {'target_type': 'api', 'target_id': 10, 'mode': 'parallel'},
+        ]
         assert config['parallel'] is True  # 原有 config 键保留
 
-    def test_explicit_fields_without_config(self, db):
+    def test_target_modes_without_config(self, db):
         _seed_cases()
         from task_service.application.task.task_crud_service import task_crud_service
         result = task_crud_service.create({
-            'name': 'INT-604 crud 无 config',
+            'name': 'INT-1115 crud 无 config',
             'case_ids': [_E2E_CASE_ID],
-            'execution_mode': 'serial',
-            'serial_first': 'device',
+            'target_modes': [
+                {'target_type': 'device', 'target_id': 1, 'mode': 'serial'},
+            ],
         })
         assert result.get('success')
         config = _read_task_config(result['data']['id'])
-        assert config['execution_mode'] == 'serial'
-        assert config['serial_first'] == 'device'
+        assert config['target_modes'] == [
+            {'target_type': 'device', 'target_id': 1, 'mode': 'serial'},
+        ]
+
+    def test_no_target_modes_not_merged(self, db):
+        """不带 target_modes：config 不新增键（全并行默认，零回归）。"""
+        _seed_cases()
+        from task_service.application.task.task_crud_service import task_crud_service
+        result = task_crud_service.create({
+            'name': 'INT-1115 crud 默认并行',
+            'case_ids': [_E2E_CASE_ID],
+            'config': {'parallel': True},
+        })
+        assert result.get('success')
+        config = _read_task_config(result['data']['id'])
+        assert config == {'parallel': True}
+        assert 'target_modes' not in config

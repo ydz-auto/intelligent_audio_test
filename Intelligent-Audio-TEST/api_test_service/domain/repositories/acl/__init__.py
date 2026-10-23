@@ -4,9 +4,6 @@
 按 DDD 约定：跨域只读/调用查询的 ABC 定义在 domain/repositories/acl/，
 实现放在 infrastructure/acl/。
 """
-from api_test_service.domain.repositories.acl.adapter_acl_repository import (
-    AdapterAclRepository,
-)
 from api_test_service.domain.repositories.acl.algorithm_acl_repository import (
     AlgorithmQueryAclRepository,
 )
@@ -24,7 +21,6 @@ from api_test_service.domain.repositories.acl.testcase_acl_repository import (
 )
 
 __all__ = [
-    'AdapterAclRepository',
     'AlgorithmQueryAclRepository',
     'AudioConfigAclRepository',
     'EvaluationAclRepository',

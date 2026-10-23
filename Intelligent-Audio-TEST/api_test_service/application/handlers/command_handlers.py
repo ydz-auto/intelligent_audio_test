@@ -122,7 +122,6 @@ def _aggregate_to_dict(aggregate) -> dict:
     return {
         'id': aggregate.id,
         'name': aggregate.name,
-        'url': aggregate.url,
         'status': aggregate.status,
         'timeout_seconds': aggregate.timeout_seconds,
         'deleted': aggregate.deleted,

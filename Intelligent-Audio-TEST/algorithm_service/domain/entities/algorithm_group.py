@@ -23,6 +23,8 @@ class AlgorithmGroupSnapshot:
     name: str
     description: Optional[str] = None
     algorithm_type: Optional[str] = None
+    icon: Optional[str] = None
+    display_order: int = 0
 
 
 @dataclass
@@ -33,6 +35,8 @@ class AlgorithmGroupAggregate:
     - name: 分组名称（唯一）
     - description: 分组描述
     - algorithm_type: 分组对应的算法类型代码
+    - icon: 图标URL
+    - display_order: 排序权重（默认 0）
     - deleted: 逻辑删除标志
     """
 
@@ -40,6 +44,8 @@ class AlgorithmGroupAggregate:
     name: str
     description: Optional[str] = None
     algorithm_type: Optional[str] = None
+    icon: Optional[str] = None
+    display_order: int = 0
     deleted: bool = False
 
     def to_snapshot(self) -> AlgorithmGroupSnapshot:
@@ -49,6 +55,8 @@ class AlgorithmGroupAggregate:
             name=self.name,
             description=self.description,
             algorithm_type=self.algorithm_type,
+            icon=self.icon,
+            display_order=self.display_order,
         )
 
     def is_available(self) -> bool:

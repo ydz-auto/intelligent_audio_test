@@ -295,10 +295,9 @@ transcript = openai.Audio.transcribe(
 │  │  │ - id          │    │               │    │               │       │   │
 │  │  │ - name        │    │ [             │    │ {             │       │   │
 │  │  │ - vendor      │────│   {endpoint}, │────│   protocol,   │       │   │
-│  │  │ - api_url     │    │   {endpoint}  │    │   auth_type,  │       │   │
-│  │  │ - status      │    │ ]             │    │   headers,    │       │   │
-│  │  │ - meta (JSON) │    └───────────────┘    │   ...         │       │   │
-│  │  │ - ...         │                         │ }             │       │   │
+│  │  │ - status      │    │   {endpoint}  │    │   auth_type,  │       │   │
+│  │  │ - meta (JSON) │    │ ]             │    │   headers,    │       │   │
+│  │  │ - ...         │    └───────────────┘    │   ...         │       │   │
 │  │  └───────────────┘                         └───────────────┘       │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                    │                                        │
@@ -310,7 +309,7 @@ transcript = openai.Audio.transcribe(
 │  │      id = db.Column(db.Integer, primary_key=True)                   │   │
 │  │      name = db.Column(db.String(100))                               │   │
 │  │      vendor = db.Column(db.String(50))      # 厂商标识              │   │
-│  │      api_url = db.Column(db.String(500))    # 主URL                 │   │
+│  │      # INT-1361: api_url 已移除，api_endpoints 为唯一入口           │   │
 │  │      meta = db.Column(db.JSON)              # 元数据配置            │   │
 │  │      api_endpoints = db.Column(db.JSON)     # 端点列表              │   │
 │  │      algorithm_type = db.Column(db.String)  # 算法类型              │   │

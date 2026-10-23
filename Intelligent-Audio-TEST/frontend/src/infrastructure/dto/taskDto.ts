@@ -147,12 +147,23 @@ export interface TaskCreateDto {
   case_ids?: string[]
   device_ids?: number[]
   api_ids?: number[]
+  /** INT-1434：用例级被测设备选择（对应 TaskCaseDeviceAssignment 列表；
+   * 所选用例 × 选中目标 笛卡尔积；缺省后端按用例配置形态派生兜底，零回归） */
+  case_devices?: TaskCaseDeviceAssignmentDto[]
   /** INT-1115：逐目标执行模式（列表顺序 = 选中顺序 = 串行链顺序；缺省/空数组 = 全目标并行）。
    * 废弃顶层 execution_mode/serial_first：后端提交旧字段一律 422，前端不再携带 */
   target_modes?: TargetModeDto[]
   tags?: string[]
   algorithm_type?: string | null
   algorithm_params?: Record<string, any> | null
+}
+
+/** 用例级被测设备选择（TaskCaseDeviceAssignment，INT-1434） */
+export interface TaskCaseDeviceAssignmentDto {
+  case_id: string
+  device_type?: string
+  device_id?: string | number
+  lab_id?: number
 }
 
 /** 任务更新请求体（网关 update 直传 JSON，未走 schema 校验） */

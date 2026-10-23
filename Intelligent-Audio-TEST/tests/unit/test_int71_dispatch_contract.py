@@ -260,8 +260,7 @@ class TestStartTaskRoutesByDeviceType:
 
         class _FakeApiConfig:
             id = 1
-            api_url = 'http://api'
-            api_endpoints = []
+            api_endpoints = [{'endpoint': 'http://api'}]
             default_max_process = 1
             meta = {}
             max_timeout = 30
@@ -298,23 +297,23 @@ class TestStartTaskRoutesByDeviceType:
 # ==================== 5. 音频链路（input_type=audio 真实送达） ====================
 
 class TestAudioInputWiring:
-    """非实时路径音频不再空发送：执行侧携带混音产物引用，adapter 读真实字节。"""
+    """非实时路径音频不再空发送：执行侧携带混音产物引用，内嵌适配器读真实字节。"""
 
     def test_send_via_adapter_carries_audio_path(self, monkeypatch):
+        """_send_via_adapter 音频轮次把混音产物引用传给内嵌 execute（storage-ref）。"""
         import api_test_service.core.api_session_executor as executor_mod
+        from api_test_service.infrastructure.adapters import mock_vendor_adapter as mva
 
         captured = {}
 
-        class _FakeRoundDto:
-            pass
+        def _fake_chat(self_, **kwargs):
+            captured['input_data'] = kwargs.get('input_data')
+            captured['input_type'] = kwargs.get('input_type')
+            return {'success': True, 'asr': 'ok', 'trans': '', 'output': 'ok',
+                    'raw_response': {'mock': True}, 'latency': 100}
 
-        def _fake_send_round(req):
-            captured['req'] = req
-            return _FakeRoundDto()
-
-        monkeypatch.setattr(executor_mod._adapter_acl, 'send_round',
-                            _fake_send_round)
-        monkeypatch.setattr(executor_mod, 'dto_to_dict', lambda dto: {})
+        monkeypatch.setattr(mva.MockVendorAdapter, 'execute_voice_llm_chat',
+                            _fake_chat)
 
         ex = executor_mod.APISessionExecutor.__new__(
             executor_mod.APISessionExecutor)
@@ -323,23 +322,25 @@ class TestAudioInputWiring:
         session = SimpleNamespace(
             session_id='s-1', session_timeout=10,
             get_context=lambda: [], get_context_for_request=lambda: [])
-        api_config = SimpleNamespace(id=1, meta={}, api_endpoints=[],
-                                     api_url='http://api')
+        api_config = SimpleNamespace(id=1, meta={'vendor_adapter': 'mock'},
+                                     api_endpoints=[{'endpoint': 'http://api'}],
+                                     adapter_class=None, vendor='mock',
+                                     proxy_type=None, proxy_url=None)
         result = ex._send_via_adapter(
             task_id=31, algorithm_type='voice_llm', session=session,
             round_number=1, total_rounds=1,
             rendered_headers={}, rendered_body={},
-            api_specific_config={}, meta={},
-            api_config=api_config, timeout=20,
+            api_specific_config={}, meta={'vendor_adapter': 'mock'},
+            api_config=api_config,
             input_text='', input_type='audio', start_time=0.0,
             input_audio_path='local://audios/31/1/rendered/round_1.wav')
 
         assert result['success'] is True
-        assert captured['req'].input_data == \
+        assert captured['input_data'] == \
             'local://audios/31/1/rendered/round_1.wav'
-        assert captured['req'].input_type == 'audio'
+        assert captured['input_type'] == 'audio'
 
-    def test_send_via_adapter_fails_loud_without_audio(self, monkeypatch):
+    def test_send_via_adapter_fails_loud_without_audio(self):
         """音频轮次缺混音产物 → 轮次失败，拒绝静默空发送。"""
         import api_test_service.core.api_session_executor as executor_mod
 
@@ -357,7 +358,7 @@ class TestAudioInputWiring:
                 rendered_headers={}, rendered_body={},
                 api_specific_config={}, meta={},
                 api_config=SimpleNamespace(id=1, meta={}),
-                timeout=20, input_text='', input_type='audio',
+                input_text='', input_type='audio',
                 start_time=0.0, input_audio_path='')
 
     def test_round_request_wires_context_audio(self, monkeypatch):
@@ -396,10 +397,11 @@ class TestAudioInputWiring:
 
 
 class TestAdapterAudioResolution:
-    """adapter 侧音频引用解析：存储引用/裸路径/字节，失败抛错不静默。"""
+    """内嵌适配器音频引用解析：存储引用/裸路径/字节，失败抛错不静默。"""
 
     def test_storage_ref_resolved_via_storage_layer(self, monkeypatch):
-        from api_adapter_service.adapters.audio_input import resolve_audio_bytes
+        from api_test_service.infrastructure.adapters.audio_input import (
+            resolve_audio_bytes)
         import shared.infrastructure.storage as storage_mod
 
         monkeypatch.setattr(storage_mod.storage, 'load_bytes',
@@ -408,30 +410,49 @@ class TestAdapterAudioResolution:
         assert resolve_audio_bytes('oss://audios/x.wav') == b'STORED-AUDIO'
 
     def test_bare_path_read_from_disk(self, tmp_path):
-        from api_adapter_service.adapters.audio_input import resolve_audio_bytes
+        from api_test_service.infrastructure.adapters.audio_input import (
+            resolve_audio_bytes)
         f = tmp_path / 'a.wav'
         f.write_bytes(b'RAW-AUDIO')
         assert resolve_audio_bytes(str(f)) == b'RAW-AUDIO'
 
     def test_bytes_passthrough(self):
-        from api_adapter_service.adapters.audio_input import resolve_audio_bytes
+        from api_test_service.infrastructure.adapters.audio_input import (
+            resolve_audio_bytes)
         assert resolve_audio_bytes(b'\x00\x01') == b'\x00\x01'
 
     def test_invalid_input_raises(self):
-        from api_adapter_service.adapters.audio_input import resolve_audio_bytes
+        from api_test_service.infrastructure.adapters.audio_input import (
+            resolve_audio_bytes)
         with pytest.raises(ValueError):
             resolve_audio_bytes('')
         with pytest.raises(OSError):
             resolve_audio_bytes(os.path.join(
                 tempfile.gettempdir(), 'no-such-audio-file-int71.wav'))
 
-    def test_http_adapter_uploads_real_bytes(self, monkeypatch):
-        from api_adapter_service.adapters.http_adapter import HttpAdapter
+    def test_voice_llm_chat_uploads_real_bytes(self, monkeypatch):
+        """execute_voice_llm_chat audio 路径解析 storage-ref 为真实字节上传。"""
+        from api_test_service.infrastructure.adapters import (
+            api_driver_adapter as ada)
         import shared.infrastructure.storage as storage_mod
+
+        captured = {}
+
+        def _fake_call(**kwargs):
+            captured['files'] = kwargs.get('files')
+            return {'status_code': 200, 'latency': 10, 'raw_response': '',
+                    'json': {}, 'error': None}
 
         monkeypatch.setattr(storage_mod.storage, 'load_bytes',
                             lambda path: b'REAL-AUDIO-BYTES')
-        adapter = HttpAdapter({'base_url': 'http://api'})
-        files, _data = adapter._build_audio_payload(
-            's-1', 'local://audios/x.wav', 'zh', 'en', [], [], {}, '', 1, 1, 't')
-        assert files['audio'][1] == b'REAL-AUDIO-BYTES'
+        monkeypatch.setattr(ada.api_client, 'call', _fake_call)
+
+        from types import SimpleNamespace as _NS
+        api_config = _NS(id=1, meta={}, api_endpoints=[{'endpoint': 'http://api'}],
+                         proxy_type=None, proxy_url=None, max_timeout=30)
+        adapter = ada.ApiDriverAdapter(api_config, case_config={})
+        adapter.execute_voice_llm_chat(
+            session_id='s-1', input_type='audio',
+            input_data='local://audios/x.wav',
+            round_number=1, total_rounds=1, timeout=5)
+        assert captured['files']['audio'][1] == b'REAL-AUDIO-BYTES'

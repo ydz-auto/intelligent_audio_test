@@ -24,7 +24,7 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-from shared.models.common_enums import RealtimeFrameType
+from shared.models.common_enums import RealtimeFrameType, RealtimeRoundMode
 from api_test_service.infrastructure.adapters.proxy_utils import websocket_proxy_kwargs
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,10 @@ class RealtimeWSClient:
         self._event_queue: queue.Queue = queue.Queue()
         self._recv_thread: Optional[threading.Thread] = None
         self._connected = False
+        # INT-1177：最近一次握手失败的状态码 / 错误信息（连接前为空，
+        # 供适配器按 401/403/429 判定密钥池轮换）
+        self._handshake_error_status: Optional[int] = None
+        self._handshake_error = ''
 
         # 帧级中间状态（逐帧实时记录）
         self._frames: List[RealtimeFrame] = []
@@ -107,7 +111,13 @@ class RealtimeWSClient:
 
         proxy_type / proxy_url（INT-839）：显式入参优先于 __init__ 注入值；
         websocket-client 代理参数经 proxy_utils 分解（与 _call_websocket 同套）。
+
+        INT-1177：WS 握手异常状态码透出 —— WebSocketBadStatusException 的
+        status_code 记录到 last_handshake_status（现状吞成 generic Exception
+        只返回 False，适配器无从判定密钥池轮换）。
         """
+        self._handshake_error_status: Optional[int] = None
+        self._handshake_error = ''
         try:
             import websocket  # websocket-client
             ws_proxy_kwargs = websocket_proxy_kwargs(
@@ -119,6 +129,9 @@ class RealtimeWSClient:
                 **ws_proxy_kwargs)
             self._connected = True
         except Exception as e:
+            # INT-1177：透出握手 HTTP 状态码（401/403/429 → 密钥池轮换判定面）
+            self._handshake_error_status = getattr(e, 'status_code', None)
+            self._handshake_error = str(e)
             logger.error(f"Realtime WS 连接失败 url={self._url}: {e}")
             self._connected = False
             return False
@@ -196,6 +209,34 @@ class RealtimeWSClient:
         self.barge_in_detected = False
         self.barge_in_latency_ms = None
         self._speech_started_ts = None
+
+    # ── 轮次语义（INT-1299：round_config → 轮次模式，类型兼容归一）──
+
+    @staticmethod
+    def _as_bool(value) -> bool:
+        """布尔兼容解析（int/bool/str 三形态，对齐 harmony_xiaoyichat._as_bool）。
+
+        轮次配置经 JSON 落库/传输后 is_interruption 可能为 int(1/0) / bool /
+        str('true'/'1'/'0'/'false')，统一解析避免 '0'/'false' 字符串被裸 truthy
+        误判为打断轮。
+        """
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in ('true', '1', 'yes', 'y', '是')
+        return False
+
+    def resolve_round_mode(self, round_config) -> RealtimeRoundMode:
+        """轮次语义归一化：round_config → 轮次模式（默认 is_interruption 字段）。
+
+        RealtimeAdapterBase 同形方法面（默认传输路径直接使用本实现）；厂商协议
+        方言不同（barge_in / interrupt 等字段名）在品牌适配器覆写本方法。
+        """
+        if self._as_bool((round_config or {}).get('is_interruption')):
+            return RealtimeRoundMode.INTERRUPTION
+        return RealtimeRoundMode.NORMAL
 
     def recv(self, timeout: float = 5.0) -> dict:
         """从事件队列取一条事件并归一化；超时返回 connection_closed 语义的等待超时事件"""
@@ -362,3 +403,13 @@ class RealtimeWSClient:
     @property
     def connected(self) -> bool:
         return self._connected
+
+    @property
+    def last_handshake_status(self) -> Optional[int]:
+        """最近一次 WS 握手失败的 HTTP 状态码（无失败/未连接为 None）。"""
+        return self._handshake_error_status
+
+    @property
+    def last_handshake_error(self) -> str:
+        """最近一次 WS 握手失败的错误信息（无失败/未连接为空串）。"""
+        return self._handshake_error

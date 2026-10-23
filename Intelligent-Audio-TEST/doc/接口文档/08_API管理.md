@@ -30,7 +30,6 @@
         "id": 1,
         "name": "唤醒词检测API",
         "vendor": "Example Inc",
-        "api_url": "https://api.example.com/wakeword/v1/",
         "description": "用于测试唤醒词检测功能的API",
         "status": "online",
         "meta": {
@@ -103,7 +102,6 @@
     "id": 1,
     "name": "唤醒词检测API",
     "vendor": "Example Inc",
-    "api_url": "https://api.example.com/wakeword/v1/",
     "description": "用于测试唤醒词检测功能的API",
     "status": "online",
     "meta": {
@@ -160,7 +158,6 @@
 |--------|------|------|------|------|
 | name | STRING | body | 是 | API名称 |
 | vendor | STRING | body | 否 | API提供商 |
-| api_url | STRING | body | 否 | API基础URL |
 | description | STRING | body | 否 | API描述 |
 | meta | JSON | body | 是 | API元数据 |
 | default_max_process | INTEGER | body | 否 | 默认最大进程数，默认5，范围1-100 |
@@ -187,7 +184,6 @@
 {
   "name": "语音识别API",
   "vendor": "Example Inc",
-  "api_url": "https://api.example.com/asr/v1/",
   "description": "用于测试语音识别功能的API",
   "meta": {
     "协议": "HTTPS",
@@ -244,7 +240,6 @@
 | id | INTEGER | path | 是 | API ID |
 | name | STRING | body | 否 | API名称 |
 | vendor | STRING | body | 否 | API提供商 |
-| api_url | STRING | body | 否 | API基础URL |
 | description | STRING | body | 否 | API描述 |
 | meta | JSON | body | 否 | API元数据 |
 | default_max_process | INTEGER | body | 否 | 默认最大进程数，范围1-100 |
@@ -324,7 +319,6 @@
     "id": 1,
     "status": "online",
     "health_score": 95,
-    "api_url_status": "true",
     "endpoints_status": "true",
     "status_code": 200,
     "response_time": "120.50ms",

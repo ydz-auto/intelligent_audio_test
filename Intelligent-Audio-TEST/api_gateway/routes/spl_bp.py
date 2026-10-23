@@ -23,6 +23,21 @@ def get_by_device(device_id: int, _: None = require_permission('spl:read')):
     return to_response(SPLQueryService.get_by_device(device_id))
 
 
+# ==================== INT-1383 批量导入（静态段，须先于 /{mapping_id} 注册） ====================
+
+
+@router.post('/import')
+def import_mappings(_: None = require_permission('spl:create')):
+    """批量导入 SPL 映射（multipart 文件，CSV/XLSX/JSON；纯新增）"""
+    return to_response(SPLCommandService.import_mappings())
+
+
+@router.get('/import-template')
+def get_import_template(_: None = require_permission('spl:read')):
+    """下载 SPL 导入模板（CSV 列头 + 示例行）"""
+    return to_response(SPLCommandService.get_import_template())
+
+
 @router.get('/{mapping_id}')
 def get_one(mapping_id: int, _: None = require_permission('spl:read')):
     return to_response(SPLQueryService.get_one(mapping_id))

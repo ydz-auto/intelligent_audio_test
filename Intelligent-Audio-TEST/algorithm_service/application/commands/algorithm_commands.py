@@ -30,25 +30,33 @@ class CreateAlgorithmGroupCommand:
     - name: 分组名称（唯一）
     - description: 分组描述
     - algorithm_type: 分组对应的算法类型代码
+    - icon: 图标URL
+    - display_order: 排序权重（缺省 0）
     """
 
     name: str
     description: Optional[str] = None
     algorithm_type: Optional[str] = None
+    icon: Optional[str] = None
+    display_order: Optional[int] = 0
 
 
 @dataclass(frozen=True)
 class UpdateAlgorithmGroupCommand:
-    """更新算法分组命令。
+    """更新算法分组命令（PATCH 语义：icon/display_order 为 None 时不改动现值）。
 
     - id: 分组ID
     - name: 分组名称
     - description: 分组描述
+    - icon: 图标URL（None=不改）
+    - display_order: 排序权重（None=不改）
     """
 
     id: int
     name: str
     description: Optional[str] = None
+    icon: Optional[str] = None
+    display_order: Optional[int] = None
 
 
 @dataclass(frozen=True)

@@ -488,46 +488,6 @@ services:
       retries: 5
       start_period: 20s
 
-  api_adapter_service:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.api_adapter_service
-    ports:
-      - "${API_ADAPTER_SERVICE_HTTP_PORT:-5008}:5008"
-      - "${API_ADAPTER_SERVICE_GRPC_PORT:-50081}:50081"
-    environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
-      - REDIS_URL=redis://redis:6379
-      - OSS_ENDPOINT=http://rustfs:9000
-      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
-      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
-      - OSS_BUCKET_NAME=intelligent-audio-test
-      - OSS_KEY_PREFIX=intelligent_audio_test
-      - SERVICE_HOST=api_adapter_service
-      - SERVICE_NAME=api_adapter_service
-      - ADAPTER_SERVICE_HTTP_PORT=5008
-      - ADAPTER_SERVICE_GRPC_PORT=50081
-      - VOICE_LLM_API_BASE=${VOICE_LLM_API_BASE:-}
-      - VOICE_LLM_API_KEY=${VOICE_LLM_API_KEY:-}
-      - VOLC_WS_URL=${VOLC_WS_URL:-}
-      - VOLC_API_KEY=${VOLC_API_KEY:-}
-    volumes:
-      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
-      - service_logs:/app/logs
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      db_bootstrap:
-        condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5008/health', timeout=3)"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-
   api_test_service:
     build:
       context: ..
@@ -551,8 +511,6 @@ services:
       - TASK_SERVICE_GRPC_PORT=50061
       - AUDIO_SERVICE_HOST=audio_service
       - AUDIO_SERVICE_GRPC_PORT=50052
-      - ADAPTER_SERVICE_HOST=api_adapter_service
-      - ADAPTER_SERVICE_HTTP_PORT=5008
       - EVALUATION_SERVICE_HOST=evaluation_service
       - EVALUATION_SERVICE_GRPC_PORT=50091
     volumes:
@@ -564,8 +522,6 @@ services:
       redis:
         condition: service_healthy
       rustfs:
-        condition: service_healthy
-      api_adapter_service:
         condition: service_healthy
       db_bootstrap:
         condition: service_completed_successfully

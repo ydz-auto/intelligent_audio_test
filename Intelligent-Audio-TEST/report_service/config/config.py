@@ -9,7 +9,7 @@ class Config(BaseConfig):
     """report_service 配置。
 
     端口规划：
-    - HTTP (FastAPI): 5006（避免与 api_adapter_service 的 5008 冲突）
+    - HTTP (FastAPI): 5006
     - gRPC: 51068
     """
     PORT = int(os.environ.get('PORT', 5006))

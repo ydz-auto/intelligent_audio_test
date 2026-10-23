@@ -93,9 +93,16 @@ class BargeInVendorServer(FakeVendorRealtimeServer):
             self._started.set()
             await self._server.serve_forever()
 
+        def _run():
+            try:
+                self._loop.run_until_complete(serve())
+            except Exception:
+                # stop() 强制收口时 serve_forever 中途退出属预期，不抛线程异常
+                pass
+
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(
-            target=self._loop.run_until_complete, args=(serve(),), daemon=True)
+            target=_run, daemon=True, name='int61-barge-vendor-ws')
         self._thread.start()
         assert self._started.wait(timeout=5), '伪厂商服务器启动超时'
 
@@ -276,7 +283,7 @@ def harness(vendor_server, audio_pcm, monkeypatch):
 
     from types import SimpleNamespace
     api_config = SimpleNamespace(
-        id=7, endpoint=vendor_server.url, api_endpoints=[],
+        id=7, api_endpoints=[{'endpoint': vendor_server.url}],
         default_max_process=2, meta={'vendor': 'openai'}, max_timeout=30,
         vendor='openai')
     data = {

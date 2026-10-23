@@ -249,6 +249,9 @@ class ReportCommandService:
         except Exception as e:
             return error_response(f'参数错误: {str(e)}', 400)
 
+        # INT-1406：跨任务大结果集同步聚合可超客户端默认 deadline（60s），
+        # 显式传放宽后的超时（默认 600s），避免 DEADLINE_EXCEEDED → 网关 400
+        from api_gateway.config.config import Config
         try:
             stub = report_config_service.stub
             resp = stub.GenerateCompareReport(report_pb.GenerateCompareReportRequest(
@@ -256,7 +259,8 @@ class ReportCommandService:
                     'task_ids': req.task_ids,
                     'name': req.name or '',
                     'description': req.description or '',
-                })))
+                })),
+                timeout=Config.GRPC_REPORT_COMPARE_TIMEOUT_SECONDS)
             if not resp.success:
                 return error_response(resp.message or '生成对比报告失败')
             data = _loads(resp.data, {}) or {}

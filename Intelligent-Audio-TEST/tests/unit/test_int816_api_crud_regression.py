@@ -47,6 +47,7 @@ class _UpdateRepo:
 
     def __init__(self):
         self.captured = {}
+        self.stored_endpoints = []
 
     @staticmethod
     def _api():
@@ -57,6 +58,11 @@ class _UpdateRepo:
 
     def get_api(self, api_id):
         return self._api()
+
+    def get_api_endpoints(self, api_id):
+        # INT-1230 审计 D2'/D6'（endpoint 级返工）：update 合并端点级密钥池
+        # 的仓库读取口（真实仓储读 PO api_endpoints；mock 默认无既有池）
+        return self.stored_endpoints
 
     def update_api(self, api_id, fields):
         self.captured.update(fields)
@@ -71,7 +77,7 @@ class TestApiCreateEmptyMeta:
         _install_repo(monkeypatch, repo)
 
         res = APICrudService.create({
-            'name': 'API-New', 'api_url': 'http://example.com',
+            'name': 'API-New',
             'vendor': 'vendor-x', 'status': 'online', 'meta': {},
         })
 
@@ -84,7 +90,7 @@ class TestApiCreateEmptyMeta:
         repo = _CreateRepo()
         _install_repo(monkeypatch, repo)
 
-        res = APICrudService.create({'name': 'API-New', 'api_url': 'http://example.com'})
+        res = APICrudService.create({'name': 'API-New'})
 
         assert res['code'] == 400
         assert '缺少必要字段' in res['message']

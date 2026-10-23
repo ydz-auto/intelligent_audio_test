@@ -229,7 +229,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei','PingFang 
   <text x="372" y="834" class="note">spl_mappings（E2E 侧物理校准）</text>
 
   <rect x="608" y="746" width="300" height="94" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="5 4"/>
-  <text x="624" y="766" font-size="11" font-weight="700" fill="#475569">api_adapter_service :5008 / :50081（P3 下线）</text>
+  <text x="624" y="766" font-size="11" font-weight="700" fill="#475569">api_test_service 内嵌适配器（独立服务已删除）</text>
   <text x="624" y="784" class="body">APIAdapterFactory（现状）· HttpAPIAdapter</text>
   <text x="624" y="800" class="body">HttpStreamAdapter · RealtimeAPIAdapter</text>
   <text x="624" y="820" class="note">P1：并入 api_test_service/adapters/</text>
@@ -516,7 +516,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei','PingFang 
   <text x="642" y="707" class="pill-t" fill="#5b21b6">OpenAIRealtimeAdapter / DoubaoRealtime…</text>
   <rect x="878" y="636" width="338" height="80" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
   <text x="894" y="656" font-size="11.5" font-weight="700" fill="#4c1d95">落位与迁移</text>
-  <text x="894" y="674" class="body">现状：api_adapter_service/adapters/factory.py</text>
+  <text x="894" y="674" class="body">现状：api_test_service/adapters/factory.py</text>
   <text x="894" y="690" class="body">P1：api_test_service/infrastructure/adapters/</text>
   <text x="894" y="707" class="note">P3：5008 下线，注册表随迁，(protocol, vendor) 键不变</text>
 
@@ -818,7 +818,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei','PingFang 
     <text x="161" y="174" class="chip-t" fill="#64748b">api_test_service worker 实例内</text>
     <rect x="295" y="140" width="200" height="42" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
     <text x="395" y="158" class="box-name" text-anchor="middle" font-size="11">RealtimeAPIAdapter</text>
-    <text x="395" y="174" class="chip-t" fill="#64748b">api_adapter_service → P1 迁入 adapters/</text>
+    <text x="395" y="174" class="chip-t" fill="#64748b">api_test_service → P1 迁入 adapters/</text>
     <rect x="530" y="140" width="200" height="42" rx="8" fill="#cffafe" stroke="#0891b2" stroke-width="1.2"/>
     <text x="630" y="158" class="box-name" text-anchor="middle" font-size="11">audio_service</text>
     <text x="630" y="174" class="chip-t" fill="#64748b">gRPC :50052 RenderAudioStream（新增）</text>

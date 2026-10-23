@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -203,6 +204,27 @@ class AudioCommandHandler:
             self._testcase_creation_service = audio_testcase_creation_service
         return self._testcase_creation_service
 
+    @staticmethod
+    def _delete_audio_file_best_effort(file_path: str) -> None:
+        """尽力删除音频物理文件，不阻塞删除响应（INT-1306）。
+
+        OSS 不可达时 storage.delete 可能长时间挂起（连接/读取超时叠加，
+        真实环境实测 ~158s），软删落库与接口响应不应等待物理清理。改后台
+        线程尽力执行，异常/超时均记录后放行；DB 软删是删除的权威状态。
+        """
+        if not file_path:
+            return
+
+        def _run():
+            try:
+                storage.delete(file_path)
+            except Exception:
+                logger.debug("删除音频物理文件失败: file_path=%s", file_path, exc_info=True)
+
+        threading.Thread(
+            target=_run, daemon=True, name='audio-file-cleanup'
+        ).start()
+
     # ========== 音频元数据写操作 ==========
 
     def handle_update_metadata(self, cmd: UpdateAudioMetadataCommand) -> Dict[str, Any]:
@@ -351,17 +373,16 @@ class AudioCommandHandler:
                 deletable_audio_ids = []
                 skipped_audio_ids = []
 
+                # INT-1306：引用检查改 task_service 批量 gRPC（DB 侧单次扫描），
+                # 替代逐页 ListTestCases/ListTasks 全量拉取（真实库 580 用例下
+                # 超 gRPC 60s deadline）；引用状态未知时抛异常 fail-closed，不静默落库。
+                refs = self._task_acl.check_audio_references_batch(audio_ids)
                 for audio_id in audio_ids:
-                    if self._task_acl.check_audio_in_testcases(audio_id) > 0:
-                        skipped_audio_ids.append(audio_id)
-                        continue
-                    if self._task_acl.check_audio_in_testcase_noise(audio_id) > 0:
-                        skipped_audio_ids.append(audio_id)
-                        continue
-                    if self._device_acl.check_audio_in_devices(audio_id) > 0:
-                        skipped_audio_ids.append(audio_id)
-                        continue
-                    if self._task_acl.check_audio_in_tasks(audio_id) > 0:
+                    ref = refs.get(audio_id, {})
+                    if (ref.get('testcase_audio', 0) > 0
+                            or ref.get('testcase_noise', 0) > 0
+                            or ref.get('task', 0) > 0
+                            or self._device_acl.check_audio_in_devices(audio_id) > 0):
                         skipped_audio_ids.append(audio_id)
                         continue
                     deletable_audio_ids.append(audio_id)
@@ -371,10 +392,8 @@ class AudioCommandHandler:
 
                 audios = self.repo.get_audios_by_ids(deletable_audio_ids)
                 for audio in audios:
-                    try:
-                        storage.delete(audio.file_path)
-                    except Exception:
-                        logger.debug("批量删除音频时删除存储文件失败: audio_id=%s, file_path=%s", audio.id, audio.file_path, exc_info=True)
+                    # INT-1306：物理文件删除改后台尽力执行，OSS 不可达时不阻塞响应
+                    self._delete_audio_file_best_effort(audio.file_path)
                     self.repo.delete_audio_annotations(audio.id)
                     self.repo.delete_audio_tags(audio.id)
 
@@ -600,30 +619,39 @@ class AudioCommandHandler:
             return _fail('未找到音频文件', 404)
 
         try:
-            if self._task_acl.check_audio_in_testcases(cmd.audio_id) > 0:
+            # INT-1306：引用检查改 task_service 批量 gRPC（DB 侧单次扫描），
+            # 替代逐页 ListTestCases/ListTasks 全量拉取；引用状态未知时 fail-closed。
+            refs = self._task_acl.check_audio_references_batch([cmd.audio_id])
+            ref = refs.get(cmd.audio_id, {})
+            if ref.get('testcase_audio', 0) > 0:
                 return _fail('该音频文件已被测试用例使用，禁止删除')
-            if self._task_acl.check_audio_in_testcase_noise(cmd.audio_id) > 0:
+            if ref.get('testcase_noise', 0) > 0:
                 return _fail('该音频文件已被测试用例作为背景噪音使用，禁止删除')
             if self._device_acl.check_audio_in_devices(cmd.audio_id) > 0:
                 return _fail('该音频文件已被设备作为提示词使用，禁止删除')
-            if self._task_acl.check_audio_in_tasks(cmd.audio_id) > 0:
+            if ref.get('task', 0) > 0:
                 return _fail('该音频文件已被任务使用，禁止删除')
 
-            try:
-                storage.delete(audio.file_path)
-            except Exception:
-                logger.debug("删除音频时删除存储文件失败: audio_id=%s, file_path=%s", cmd.audio_id, audio.file_path, exc_info=True)
+            # INT-1306：物理文件删除改后台尽力执行，OSS 不可达时不阻塞响应
+            self._delete_audio_file_best_effort(audio.file_path)
 
             self.repo.delete_audio_annotations(cmd.audio_id)
             self.repo.delete_audio_tags(cmd.audio_id)
             self.repo.delete_audio(cmd.audio_id)
             self.repo.commit()
 
-            try:
-                from api_gateway.application.services.stats_cache import refresh_stats_cache
-                refresh_stats_cache()
-            except Exception:
-                logger.debug("删除音频后刷新统计缓存失败: audio_id=%s", cmd.audio_id, exc_info=True)
+            # INT-1306：统计缓存刷新改后台尽力执行（Redis 不可达时读缓存超时
+            # 会让删除响应拖到 ~9s+），缓存刷新不阻塞删除结果返回。
+            def _refresh_stats():
+                try:
+                    from api_gateway.application.services.stats_cache import refresh_stats_cache
+                    refresh_stats_cache()
+                except Exception:
+                    logger.debug("删除音频后刷新统计缓存失败: audio_id=%s", cmd.audio_id, exc_info=True)
+
+            threading.Thread(
+                target=_refresh_stats, daemon=True, name='audio-stats-refresh'
+            ).start()
 
             return _ok(message='音频文件已删除')
         except Exception as e:

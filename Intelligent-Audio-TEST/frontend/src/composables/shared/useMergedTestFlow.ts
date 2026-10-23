@@ -17,6 +17,7 @@ import { TaskStatus, DeviceStatus, ApiEndpointStatus, DeviceTabType, ViewMode, t
 import { getVisibilityPref, setVisibilityPref } from '../visibility/useVisibility'
 import { useModalControl, MODAL_TYPES } from '../modal/useModal'
 import type { AlgorithmOption, APIConfig, TestCase, TargetMode, ExecutionMode } from '../../domain'
+import { buildCaseDeviceAssignments } from '../../domain/model/task'
 import { formatDurationSeconds, formatDurationText } from '../../utils/durationFormat'
 
 /**
@@ -477,12 +478,27 @@ export function useMergedTestFlow() {
       concurrentTasks.value = apiConcurrent > 0 ? apiConcurrent : 4
 
       addLogRef({ content: '正在创建测试任务...', level: 'info' })
+      // INT-1434：用例级被测设备选择（所选用例 × 选中目标；API 未显式 device_type 按端点协议派生）
+      const caseDevices = buildCaseDeviceAssignments({
+        caseIds,
+        deviceIds,
+        apis: selectedAPIIds.value
+          .map(id => apis.value.find(a => String(a?.id) === String(id)))
+          .filter((a): a is APIConfig => !!a)
+          .map(a => ({
+            id: a.id,
+            deviceType: a.deviceType,
+            // 端点 URL（对齐 deviceFetching 口径：endpoints[0] 优先，兜底 apiUrl）
+            endpointUrl: a.endpoints?.[0]?.endpoint || a.apiUrl || '',
+          })),
+      })
       const response = await tasksPort.create({
         name: taskName.value || `测试任务_${new Date().toLocaleString()}`,
         visibility: taskVisibility.value,
         caseIds,
         deviceIds,
         apiIds,
+        caseDevices,
         algorithmType: selectedAlgorithmType.value || undefined,
         // INT-1268/INT-1115：逐目标执行模式（保选中顺序；缺省并行）；废弃顶层 execution_mode/serial_first
         targetModes: targetModesPayload.value,

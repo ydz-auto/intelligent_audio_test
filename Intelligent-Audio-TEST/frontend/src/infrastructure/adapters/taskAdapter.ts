@@ -25,7 +25,7 @@ import type {
 } from '../../domain/model/taskCaseDetail'
 import type { TaskStatusType } from '../../domain/enums'
 import type { ReportMetricConfig } from '../../domain/model/report'
-import type { TaskDto, TaskDetailDto, TaskCaseBriefDto, TaskCreateDto, TaskSourceBriefDto, TaskDomainStatsDto, TaskContainerStatsDto } from '../dto/taskDto'
+import type { TaskDto, TaskDetailDto, TaskCaseBriefDto, TaskCreateDto, TaskSourceBriefDto, TaskDomainStatsDto, TaskContainerStatsDto, TaskCaseDeviceAssignmentDto } from '../dto/taskDto'
 import { s } from './report.utils'
 import { toSafeNumber as n } from './commonAdapter'
 import { toAlgorithmResultItem, toReferenceParamsDict, toFieldMappingItem } from './report.mapping'
@@ -197,6 +197,13 @@ export function toTaskCreateDto(draft: TaskCreateDraft): TaskCreateDto {
     case_ids: draft.caseIds,
     device_ids: draft.deviceIds,
     api_ids: draft.apiIds,
+    // INT-1434：用例级被测设备选择（caseId/deviceType/deviceId/labId → snake_case 契约）
+    case_devices: draft.caseDevices?.map(a => ({
+      case_id: a.caseId,
+      device_type: a.deviceType,
+      device_id: a.deviceId,
+      lab_id: a.labId,
+    })),
     // INT-1115：逐目标执行模式（列表顺序 = 选中顺序 = 串行链顺序；缺省/空数组 = 全目标并行）
     target_modes: (draft.targetModes ?? []).map((item) => ({
       target_type: item.targetType,

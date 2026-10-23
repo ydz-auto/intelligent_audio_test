@@ -80,11 +80,16 @@ class AccessTokenRepository(AccessTokenRepositoryABC):
         return _po_to_entity(po) if po else None
 
     def list_by_user(self, user_id: int) -> List[AccessTokenAggregate]:
-        """列出用户全部 token（含软删行，按 created_at 升序）。"""
+        """列出用户未软删 token（软删行从管理列表消失，按 created_at 升序）。
+
+        与 count_active_by_user 同口径（deleted_at 置位即视为已删除），
+        软删行仍可通过 get_by_id / get_by_hash 查询（鉴权判定用）。
+        """
         session = get_db_session()
         pos = (
             session.query(AccessToken)
             .filter(AccessToken.user_id == user_id)
+            .filter(AccessToken.deleted_at.is_(None))
             .order_by(AccessToken.created_at.asc(), AccessToken.id.asc())
             .all()
         )

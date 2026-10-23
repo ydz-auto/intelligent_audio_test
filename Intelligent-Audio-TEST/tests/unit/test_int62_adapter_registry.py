@@ -99,7 +99,7 @@ def _make_api_config(endpoint, meta=None, max_timeout=5, vendor_adapter=None):
         meta['vendor_adapter'] = vendor_adapter
     return type('Cfg', (), {
         'endpoint': endpoint, 'meta': meta, 'max_timeout': max_timeout,
-        'api_endpoints': [], 'api_url': endpoint,
+        'api_endpoints': [{'endpoint': endpoint}],
     })()
 
 

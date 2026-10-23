@@ -16,7 +16,11 @@ from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit
 from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
 from shared.models.common_enums import OutputType, DeviceType, AudioBitDepth, AudioContainer
-from api_test_service.domain.entities.api import normalize_output_types, normalize_audio_config
+from api_test_service.domain.entities.api import (
+    normalize_output_types,
+    normalize_audio_config,
+    redact_endpoint_keys,
+)
 from api_test_service.infrastructure.adapters.proxy_utils import (
     build_proxy_url,
     validate_proxy,
@@ -32,6 +36,8 @@ logger = logging.getLogger(__name__)
 _AUDIO_SAMPLE_RATES = (8000, 16000, 24000, 48000)
 # 位深数字与枚举别名对应（UC-0901 用数字 16，08_混音与SPL映射.md §2.2 用 s16）
 _BIT_DEPTH_ALIASES = {16: AudioBitDepth.S16, 24: AudioBitDepth.S24, 32: AudioBitDepth.S32}
+# 密钥池上限（INT-1177 审计 D1/D2，endpoint 级沿用 INT-1230 审计 D1'）
+_MAX_API_KEYS = 20
 
 
 class APICrudService:
@@ -92,6 +98,25 @@ class APICrudService:
         if proxy_error:
             return proxy_error
 
+        return None
+
+    @staticmethod
+    def _validate_api_keys(api_keys, label='api_keys') -> str:
+        """校验端点级密钥池 api_keys（INT-1177 审计 D1/D2，INT-1230 审计 D1'）：
+        必须为字符串数组、元素非空、去重、上限 ≤20。返回错误信息或 None。
+        label 用于错误提示（端点级默认 api_keys）。"""
+        if not isinstance(api_keys, list):
+            return f"密钥池 ({label}) 必须是字符串数组"
+        if len(api_keys) > _MAX_API_KEYS:
+            return f"密钥池 ({label}) 最多支持 {_MAX_API_KEYS} 个密钥"
+        seen = set()
+        for key in api_keys:
+            if not isinstance(key, str) or not str(key).strip():
+                return f"密钥池 ({label}) 元素必须为非空字符串"
+            stripped = str(key).strip()
+            if stripped in seen:
+                return f"密钥池 ({label}) 元素不能重复"
+            seen.add(stripped)
         return None
 
     @staticmethod
@@ -164,9 +189,15 @@ class APICrudService:
 
         Args:
             endpoints_data: 端点字典列表，每个元素含 endpoint/name/max_process/...
+                （INT-1177 endpoint 级：每端点可含 api_keys 字符串数组作为该端点
+                密钥池；写侧拒收 api_keys_summary 摘要字段，防回传污染存储）
         """
         api_endpoints = []
         for ep in endpoints_data:
+            # INT-1230 审计 D6'：写侧拒收端点级摘要字段（防前端回传污染存储；
+            # 完整密钥池以 api_keys 明文入库，摘要为读侧派生）
+            if isinstance(ep, dict):
+                ep = {k: v for k, v in ep.items() if k != 'api_keys_summary'}
             api_endpoints.append({
                 'endpoint': ep.get('endpoint') or '',
                 'name': ep.get('name') or '',
@@ -176,7 +207,8 @@ class APICrudService:
                 'status': ep.get('status') or 'online',
                 'health_score': 100,
                 'priority': ep.get('priority') if ep.get('priority') is not None else 0,
-                'description': ep.get('description') or ''
+                'description': ep.get('description') or '',
+                'api_keys': ep.get('api_keys') or [],
             })
         return api_endpoints
 
@@ -194,7 +226,16 @@ class APICrudService:
             'max_audio_duration': ep.get('max_audio_duration'),
             'priority': ep.get('priority')
         }
-        return APICrudService._validate_endpoint_data(data)
+        error = APICrudService._validate_endpoint_data(data)
+        if error:
+            return error
+        # INT-1177 endpoint 级密钥池校验（INT-1230 审计 D1'/D2'）：每端点
+        # api_keys 必须为字符串数组、非空元素、去重、≤20
+        if ep.get('api_keys') is not None:
+            error = APICrudService._validate_api_keys(ep.get('api_keys'), label='api_keys')
+            if error:
+                return error
+        return None
 
     # ========== 序列化辅助 ==========
 
@@ -202,31 +243,48 @@ class APICrudService:
     def _api_to_dict(api):
         """将 API 对象序列化为 dict（兼容 APIAggregate 和 ORM PO 两种类型）"""
         endpoints = []
-        raw_eps = getattr(api, 'api_endpoints', None) or []
+        # INT-1230 审计 D6'：逐端点内嵌 api_keys_summary（完整密钥零响应）。
+        # 优先聚合根派生态（endpoint_keys_summary：完整 api_keys 已剥离），
+        # 回退 PO 原始 api_endpoints（读侧防御：派生摘要 + 剥离完整密钥）
+        raw_eps = getattr(api, 'endpoint_keys_summary', None)
+        if not raw_eps:
+            raw_eps = getattr(api, 'api_endpoints', None) or []
         for i, ep in enumerate(raw_eps):
+            if not isinstance(ep, dict):
+                continue
+            redacted = redact_endpoint_keys(ep)
             endpoints.append({
                 'id': f"{api.id}_{i}",
-                'endpoint': ep.get('endpoint', ''),
-                'name': ep.get('name', ''),
-                'max_process': ep.get('max_process', 5),
-                'max_timeout': ep.get('max_timeout', 30),
-                'max_audio_duration': ep.get('max_audio_duration', 60),
-                'status': ep.get('status', 'online'),
-                'health_score': ep.get('health_score', 100),
-                'priority': ep.get('priority', 0),
-                'description': ep.get('description', ''),
+                'endpoint': redacted.get('endpoint', ''),
+                'name': redacted.get('name', ''),
+                'max_process': redacted.get('max_process', 5),
+                'max_timeout': redacted.get('max_timeout', 30),
+                'max_audio_duration': redacted.get('max_audio_duration', 60),
+                'status': redacted.get('status', 'online'),
+                'health_score': redacted.get('health_score', 100),
+                'priority': redacted.get('priority', 0),
+                'description': redacted.get('description', ''),
+                'api_keys_summary': redacted.get('api_keys_summary'),
             })
 
         created_at = getattr(api, 'created_at', None)
         updated_at = getattr(api, 'updated_at', None)
+
+        # 防御：meta 中完整 api_keys 一律不输出（PO/聚合根双兼容——防未来
+        # PO 误入序列化层导致完整密钥回显）。endpoint 级密钥池摘要已逐端点
+        # 内嵌（api_keys_summary），meta 不再承载池。
+        raw_meta = getattr(api, 'meta', None)
+        meta = raw_meta if isinstance(raw_meta, dict) else {}
+        if 'api_keys' in meta:
+            meta = {k: v for k, v in meta.items() if k != 'api_keys'}
+
         return {
             'id': api.id,
             'name': api.name,
             'vendor': getattr(api, 'vendor', None),
-            'api_url': getattr(api, 'api_url', None) or getattr(api, 'url', None),
             'description': getattr(api, 'description', None),
             'status': api.status,
-            'meta': getattr(api, 'meta', None) if isinstance(getattr(api, 'meta', None), dict) else {},
+            'meta': meta,
             'algorithm_type': getattr(api, 'algorithm_type', None),
             'default_max_process': getattr(api, 'default_max_process', None),
             'default_max_timeout': getattr(api, 'default_max_timeout', None),
@@ -292,6 +350,10 @@ class APICrudService:
         if not data.get('name') or data.get('meta') is None:
             return {'success': False, 'message': '缺少必要字段: name, meta', 'data': None, 'code': 400}
 
+        # INT-1177：写侧拒收摘要字段（防前端回传 api_keys_summary 污染存储；
+        # 完整密钥池以 meta.api_keys 明文入库，摘要为读侧派生）
+        data = {k: v for k, v in data.items() if k != 'api_keys_summary'}
+
         error = cls._validate_api_data({
             'meta': data.get('meta'),
             'default_max_process': data.get('default_max_process'),
@@ -328,7 +390,6 @@ class APICrudService:
             create_data = {
                 'name': data['name'],
                 'vendor': data.get('vendor'),
-                'api_url': data.get('api_url'),
                 'description': data.get('description'),
                 'meta': data.get('meta', {}),
                 'algorithm_type': data.get('algorithm_type'),
@@ -381,6 +442,9 @@ class APICrudService:
         if not api:
             return {'success': False, 'message': '未找到API配置', 'data': None, 'code': 404}
 
+        # INT-1177：写侧拒收摘要字段（防前端回传 api_keys_summary 污染存储）
+        data = {k: v for k, v in data.items() if k != 'api_keys_summary'}
+
         # 校验 API 数据（代理字段剔除：update 为局部更新，代理对走下方
         # 合并口径校验，避免「只改 proxy_type 无 proxy_url」在此误判）
         data_dict = {k: v for k, v in data.items()
@@ -405,12 +469,21 @@ class APICrudService:
                 update_fields['name'] = data['name']
             if data.get('vendor') is not None:
                 update_fields['vendor'] = data['vendor']
-            if data.get('api_url') is not None:
-                update_fields['api_url'] = data['api_url']
             if data.get('description') is not None:
                 update_fields['description'] = data['description']
             if data.get('meta') is not None:
-                update_fields['meta'] = data['meta']
+                incoming_meta = data['meta']
+                # INT-1177 返工(2)：编辑无关字段保存时保留既有密钥池。
+                # 读侧防御（_api_to_dict）剥离 meta.api_keys，前端编辑表单
+                # 拿不到池、回传 meta 必无 api_keys——整块覆盖会静默清空池。
+                # 合并语义：入参 meta 未含 api_keys 时保留既有；显式传完整
+                # 数组才覆盖（空数组/清空语义另行明确，D2 口径）。
+                if 'api_keys' not in incoming_meta:
+                    current_meta = api_test_repository.get_api_meta(api_id)
+                    if isinstance(current_meta, dict) and current_meta.get('api_keys') is not None:
+                        incoming_meta = dict(incoming_meta)
+                        incoming_meta['api_keys'] = current_meta['api_keys']
+                update_fields['meta'] = incoming_meta
             if data.get('algorithm_type') is not None:
                 update_fields['algorithm_type'] = data['algorithm_type']
             if data.get('default_max_process') is not None:
@@ -457,8 +530,31 @@ class APICrudService:
                 default_max_timeout = getattr(api, 'default_max_timeout', None) or 30
                 default_max_audio_duration = getattr(api, 'default_max_audio_duration', None) or 60
 
+                # INT-1230 审计 D2'/D6'（endpoint 级返工）：读侧剥离完整
+                # api_keys，编辑表单拿不到池、回传端点必无 api_keys——整块覆盖
+                # 会静默清空既有池。合并语义：入参端点未含 api_keys 时按
+                # endpoint URL 匹配保留既有池；显式传完整数组才覆盖。
+                existing_endpoints = []
+                if data['endpoints']:
+                    existing_endpoints = api_test_repository.get_api_endpoints(api_id) or []
+                existing_pool_by_url = {}
+                for exist_ep in existing_endpoints:
+                    if isinstance(exist_ep, dict) and exist_ep.get('endpoint'):
+                        pool = exist_ep.get('api_keys') or []
+                        if pool:
+                            existing_pool_by_url[str(exist_ep['endpoint']).rstrip('/')] = list(pool)
+
+                merged_endpoints = []
+                for ep in data['endpoints']:
+                    if 'api_keys' not in ep:
+                        base = str(ep.get('endpoint') or '').rstrip('/')
+                        pool = existing_pool_by_url.get(base)
+                        if pool:
+                            ep = {**ep, 'api_keys': list(pool)}
+                    merged_endpoints.append(ep)
+
                 new_api_endpoints = cls._build_endpoints_list(
-                    data['endpoints'],
+                    merged_endpoints,
                     default_max_process,
                     default_max_timeout,
                     default_max_audio_duration
@@ -604,7 +700,7 @@ class APICrudService:
         if not api:
             return {'success': False, 'message': '未找到API配置', 'data': None, 'code': 404}
 
-        # INT-148：仓储返回 APIAggregate（无 api_url/health_score/api_endpoints 属性），
+        # INT-148：仓储返回 APIAggregate（无 health_score/api_endpoints 属性），
         # 统一经 _api_to_dict（PO/聚合根双兼容）取字段，修复健康检查恒 AttributeError
         info = cls._api_to_dict(api)
 
@@ -618,45 +714,7 @@ class APICrudService:
 
         start_time = time.time()
         try:
-            # 1. 测试 api_url 本身
-            api_url_status = False
-            api_url_error = None
-            if info.get('api_url'):
-                test_api_url = info['api_url']
-                parsed_api_url = urlparse(test_api_url)
-                api_scheme = parsed_api_url.scheme.lower()
-
-                try:
-                    if api_scheme in ['ws', 'wss']:
-                        ws = websocket.WebSocket()
-                        ws.settimeout(30)
-                        ws.connect(test_api_url, **ws_proxy_kwargs)
-                        ws.close()
-                        api_url_status = True
-                    elif api_scheme in ['http', 'https']:
-                        if test_api_url and not test_api_url.endswith('/'):
-                            test_api_url += '/health'
-                        elif test_api_url and test_api_url.endswith('/'):
-                            test_api_url += 'health'
-
-                        api_url_response = requests.get(
-                            test_api_url,
-                            timeout=30,
-                            headers={"User-Agent": "Task-Manager-Health-Checker/1.0"},
-                            proxies=requests_proxies,
-                        )
-                        if 200 <= api_url_response.status_code < 400:
-                            api_url_status = True
-                        else:
-                            api_url_error = f"api_url连接失败: {api_url_response.status_code}"
-                    else:
-                        api_url_error = f"不支持的协议: {api_scheme}"
-                except Exception as e:
-                    api_url_error = f"api_url连接异常: {str(e)}"
-            else:
-                api_url_error = "未配置api_url"
-
-            # 2. 测试 endpoints
+            # 健康检查：仅测试 endpoints（INT-1361 api_url 移除后唯一端点来源）
             endpoints_status = False
             endpoint_error = None
             endpoint_response = None
@@ -709,19 +767,19 @@ class APICrudService:
                     except Exception as e:
                         endpoint_error = f"端点连接异常: {str(e)}"
 
-            # 3. 综合判断 API 状态
-            overall_status = api_url_status
+            # 综合判断 API 状态
+            overall_status = endpoints_status
 
-            # 4. 记录日志
+            # 记录日志
             if overall_status:
-                log_content = f"API [{info['name']}] 连接测试成功: 主URL在线"
+                log_content = f"API [{info['name']}] 连接测试成功: 端点在线"
                 if not endpoints_status:
                     log_content += f" (端点测试状态: {endpoint_error})"
                 elif endpoint_duration > 0:
                     log_content += f", 端点响应耗时: {endpoint_duration:.2f}ms"
                 log_level = 'INFO'
             else:
-                log_content = f"API [{info['name']}] 连接测试失败: {api_url_error}"
+                log_content = f"API [{info['name']}] 连接测试失败: {endpoint_error}"
                 log_level = 'ERROR'
 
             cls._log(
@@ -748,9 +806,8 @@ class APICrudService:
                     'id': info['id'],
                     'status': new_status,
                     'health_score': info.get('health_score'),
-                    'api_url_status': str(api_url_status),
                     'endpoints_status': str(endpoints_status),
-                    'error': api_url_error if not overall_status else None,
+                    'error': endpoint_error if not overall_status else None,
                     'warning': endpoint_error if overall_status and not endpoints_status else None,
                     'status_code': endpoint_response.status_code if endpoint_response else None,
                     'response_time': f"{endpoint_duration:.2f}ms" if endpoint_duration > 0 else None,
@@ -781,7 +838,6 @@ class APICrudService:
                     'status': 'offline',
                     'error': str(e),
                     'health_score': info.get('health_score'),
-                    'api_url_status': str(False),
                     'endpoints_status': str(False),
                 },
                 'code': 200,
@@ -814,7 +870,6 @@ class APICrudService:
                     'id': api.id,
                     'status': api.status,
                     'health_score': api.health_score,
-                    'api_url_status': str(False),
                     'endpoints_status': str(False),
                 },
                 'code': 200,

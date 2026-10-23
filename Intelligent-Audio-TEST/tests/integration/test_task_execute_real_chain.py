@@ -176,7 +176,7 @@ def _api_double_responder(method, path):
         return True, {'code': 0, 'msg': 'success', 'status': 'healthy'}, 200
     if method == 'POST' and path == '/':
         # INT-118：多轮直发路径（meta.use_adapter=False 时 _send_direct POST
-        # api_url 根路径），逐轮文本应答，与既有异步协议路由互不干扰
+        # 首端点根路径），逐轮文本应答，与既有异步协议路由互不干扰
         return True, {'code': 0, 'msg': 'success',
                       'output': '你好，有什么可以帮助你的？'}, 200
     if method == 'POST' and path == '/api/create_task':
@@ -695,9 +695,9 @@ def _seed_execute_scenario(api_double, eval_double):
     s.flush()
 
     # 被测 API 配置（api_test_service 本服务 PO），主入口指向 HTTP 替身
-    api = API(name='int35 被测翻译 API', api_url=api_double.base_url,
+    api = API(name='int35 被测翻译 API',
               meta={}, algorithm_type='translation', status='online', deleted=False,
-              api_endpoints=[])
+              api_endpoints=[{'endpoint': api_double.base_url}])
     s.add(api)
     s.flush()
 
@@ -1222,11 +1222,11 @@ def _seed_int118_voice_llm_scenario(api_double, eval_double, with_eval_mappings=
     s.add(audio)
     s.flush()
 
-    api = API(name='int118 被测 voice_llm API', api_url=api_double.base_url,
+    api = API(name='int118 被测 voice_llm API',
               meta={'use_adapter': False}, algorithm_type='voice_llm',
               status='online', deleted=False,
-              # 生产多轮链 _get_vendor_api_url 优先 api_endpoints[].endpoint
-              #（MockAPIConfig 转换后无 api_url 属性，仅 endpoint 字段可承载）
+              # 生产多轮链 _get_vendor_endpoint 优先 api_endpoints[].endpoint
+              #（MockAPIConfig 转换后仅 endpoint 字段可承载）
               api_endpoints=[{'endpoint': api_double.base_url, 'name': 'Master'}])
     s.add(api)
     s.flush()

@@ -30,8 +30,6 @@ PROTO_MODULES = [
     'shared.proto.e2e_service_pb2_grpc',
     'shared.proto.api_test_service_pb2',
     'shared.proto.api_test_service_pb2_grpc',
-    'shared.proto.adapter_service_pb2',
-    'shared.proto.adapter_service_pb2_grpc',
     'shared.proto.transfer_agent_pb2',
     'shared.proto.transfer_agent_pb2_grpc',
 ]

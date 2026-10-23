@@ -49,6 +49,14 @@ class BaseConfig:
     # --- Redis ---
     REDIS_URL: str = _get_env('REDIS_URL', 'redis://localhost:6379')
 
+    # --- Redis 事件总线频道前缀（INT-1235）---
+    # 真实库栈与 5000 段开发栈共用同一 Redis 实例时，pub/sub 通道名跨 DB index
+    # 全局共享：真实栈 SSE 会转发测试栈发布的 task_log / task_progress 等事件，
+    # 事件里的 task_id/report_id 在主库不存在，前端名称解析逐个 404（INT-1227）。
+    # 真实栈经 real_stack.py 设置非空前缀（如 real_）把通道隔离成
+    # real_task_events 等；默认空 = 保持原通道名，5000 段等其它栈不受影响。
+    EVENT_CHANNEL_PREFIX: str = _get_env('EVENT_CHANNEL_PREFIX', '')
+
     # --- OSS (RustFS / S3 兼容) ---
     OSS_ENDPOINT: str = _get_env('OSS_ENDPOINT', 'http://localhost:9000')
     OSS_ACCESS_KEY: str = _get_env('OSS_ACCESS_KEY', required=True)
@@ -148,10 +156,6 @@ class BaseConfig:
     API_TEST_SERVICE_PORT: int = _get_int('API_TEST_SERVICE_PORT', 5003)
     API_TEST_SERVICE_GRPC_PORT: int = _get_int('API_TEST_SERVICE_GRPC_PORT', 50071)
 
-    # --- api_adapter_service gRPC ---
-    ADAPTER_SERVICE_HOST: str = _get_env('ADAPTER_SERVICE_HOST', 'localhost')
-    ADAPTER_SERVICE_GRPC_PORT: int = _get_int('ADAPTER_SERVICE_GRPC_PORT', 51081)
-
     # --- evaluation_service gRPC ---
     EVALUATION_SERVICE_HOST: str = _get_env('EVALUATION_SERVICE_HOST', 'localhost')
     EVALUATION_SERVICE_GRPC_PORT: int = _get_int('EVALUATION_SERVICE_GRPC_PORT', 50091)
@@ -181,9 +185,6 @@ class BaseConfig:
     # StartE2ETask 在 e2e_test_service 处理器内同步执行整个 E2E 用例
     # （多轮设备准备/播放/采集/评估），总时长结构性可超默认 deadline，须显式放宽。
     GRPC_E2E_SYNC_TIMEOUT_SECONDS: int = _get_int('GRPC_E2E_SYNC_TIMEOUT_SECONDS', 600)
-    # SendRound 同步执行被测请求：deadline = 请求单轮上限（request.timeout，
-    # 即 session_timeout，默认 60s）+ 本余量；余量覆盖适配器渲染/序列化/网络开销。
-    GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS: int = _get_int('GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS', 30)
     # 设备长时操作 gRPC 显式 deadline（INT-616）：device_service 侧 post_process
     # 含回复等待（BASE_REPLY_END_TIMEOUT 默认 60s）+ 录屏收尾，initialize/pre_process
     # 含 UI RPC/唤醒解锁，CollectResult(mode=round) 含 OSS 上传——均结构性可超默认
@@ -191,6 +192,16 @@ class BaseConfig:
     # post_process 60,016ms 被 DEADLINE_EXCEEDED 掐断）。已知长耗时设备操作调用点
     # 显式传本值；其余调用维持默认 deadline（INT-54 防假死悬挂的失败收敛路径不变）。
     GRPC_DEVICE_OP_DEADLINE_SECONDS: int = _get_int('GRPC_DEVICE_OP_DEADLINE_SECONDS', 180)
+
+    # --- gRPC 客户端收发消息上限（MB，INT-1292）---
+    # grpcio 客户端默认收包上限 4MiB：大响应 RPC（任务导出 23MB 包、报告/评估
+    # 只读导出）在客户端收不下 → RESOURCE_EXHAUSTED。统一放大到
+    # GRPC_MAX_MESSAGE_MB。默认 64MB：INT-1292 实测任务 419 导出跨服务响应
+    # ExportDimensionsForTasks 23,448,131B / ExportReportsForTasks 20,439,856B，
+    # 16MB（对齐 transfer_agent 分片口径 TRANSFER_GRPC_MAX_MESSAGE_MB）仍收不下；
+    # 64MB 覆盖最大实测单响应并留余量。服务端 send 上限默认不受 4MB 限制
+    # （实测可发送 >30MB），故只需客户端侧放开。
+    GRPC_MAX_MESSAGE_MB: int = _get_int('GRPC_MAX_MESSAGE_MB', 64)
 
     # --- 回收站保留期（INT-141）：软删除记录保留天数，过期由各服务
     # SoftDeleteCleaner 守护线程硬清理（定时调度走既有执行引擎/守护线程，

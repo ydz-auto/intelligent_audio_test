@@ -98,7 +98,7 @@ class SPLCommandService:
                 'device_type': device_type,
                 'distance': data.get('distance') or 1.0,
                 'target_spl': target_spl,
-                'digital_gain': None,
+                'digital_gain': data.get('digital_gain'),
                 'test_frequency': data.get('test_frequency') or 1000,
                 'calibration_status': calibration_status or CalibrationStatus.UNCALIBRATED.value,
                 'calibration_data': calibration_data,

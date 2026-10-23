@@ -25,17 +25,20 @@ import io
 import logging
 import time
 import wave
+from typing import Optional
 
 from shared.models.common_enums import (
     AdapterProtocol,
-    AdapterVendor,
     RealtimeFrameType,
     RealtimePacingStrategy,
     RealtimeRoundMode,
-    VendorAdapterType,
 )
 from shared.utils.config_manager import config_manager
-from shared.utils.api_key_provider import resolver_from_config
+from shared.utils.api_key_provider import (
+    endpoint_rotation_key,
+    resolver_from_config,
+)
+from shared.utils.dto_utils import dto_to_dict
 from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
 from api_test_service.domain.services.realtime_pacing_service import (
@@ -43,6 +46,7 @@ from api_test_service.domain.services.realtime_pacing_service import (
     RealtimePacingService,
 )
 from api_test_service.infrastructure.acl import (
+    AlgorithmQueryAclRepositoryImpl,
     AudioConfigAclRepositoryImpl,
     AudioRenderACLRepositoryImpl,
     EvaluationAclRepositoryImpl,
@@ -63,6 +67,9 @@ logger = logging.getLogger(__name__)
 
 # 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
 _evaluation_acl = EvaluationAclRepositoryImpl()
+
+# 算法字段映射 ACL（field_mapper 配置透传，与 E2E/HTTP 同构，INT-1299）
+_algo_acl = AlgorithmQueryAclRepositoryImpl()
 
 # 密钥链解析器（UC-0901 扩展流程 3a）：case_config → meta → env
 # OPENAI_API_KEY 逐级回退，各级键名经 config_manager secrets 段配置
@@ -199,7 +206,8 @@ class RealtimeSessionExecutor:
                 try:
                     result = self._execute_round(
                         client, api_config, round_config, round_number,
-                        len(rounds), task_id, case_config)
+                        len(rounds), task_id, case_config,
+                        algorithm_type=algorithm_type)
                 except Exception as e:
                     import traceback
                     self._log(level='ERROR',
@@ -269,11 +277,13 @@ class RealtimeSessionExecutor:
                                     session_id, *, proxy_type=None, proxy_url=None):
         """Realtime 传输对象工厂（INT-497 最小接线，仅替换构造对象一处）
 
-        配置了 REALTIME 品牌适配器（vendor_adapter=openai / openai_realtime，
-        方案审计 2026-10-16 拍板第 5 项）时经注册表严格分发（fallback=False：
-        resolve 失败必须抛错，不静默回退 RealtimeWSClient，防双通道语义歧义）；
-        否则保持既有 RealtimeWSClient 默认行为（api_driver / mock / 未配置，
-        向后兼容）。轮次编排零改动——适配器暴露 RealtimeWSClient 同形方法面。
+        INT-1299 分发表驱动化：不再用 if/else 白名单，统一经注册表表驱动入口
+        resolve_for(REALTIME, flat_key) 查表——配置了 REALTIME 品牌适配器
+        （vendor_adapter=openai / openai_realtime）命中映射 → 严格分发
+        （resolve 失败必须抛错，不静默回退 RealtimeWSClient，防双通道语义歧义）；
+        未映射（api_driver / mock / 未配置）→ None → 保持既有 RealtimeWSClient
+        默认行为（向后兼容）。新增厂商只加注册表维度与实现，本方法零改动。
+        轮次编排零改动——适配器暴露 RealtimeWSClient 同形方法面。
 
         配置来源与 HTTP 路径同口径：api_specific_config（API 级）优先，
         回退 case_config（用例级），再经 api.meta（adapter_type_from_config 内置）。
@@ -286,9 +296,9 @@ class RealtimeSessionExecutor:
                 if key not in sel_config and case_config.get(key) is not None:
                     sel_config[key] = case_config[key]
         a_type = adapter_type_from_config(api_config, sel_config)
-        if a_type in (VendorAdapterType.OPENAI, VendorAdapterType.OPENAI_REALTIME):
-            adapter_cls = vendor_adapter_registry.resolve(
-                AdapterProtocol.REALTIME, AdapterVendor.OPENAI, fallback=False)
+        adapter_cls = vendor_adapter_registry.resolve_for(
+            AdapterProtocol.REALTIME, a_type)
+        if adapter_cls is not None:
             return adapter_cls(
                 api_config=api_config, case_config=case_config, endpoint=url,
                 headers=headers,
@@ -308,17 +318,22 @@ class RealtimeSessionExecutor:
 
     # ── 轮次执行 ──
     def _execute_round(self, client, api_config, round_config, round_number,
-                       total_rounds, task_id, case_config) -> dict:
-        mode = RealtimeRoundMode.INTERRUPTION if round_config.get('is_interruption') \
-            else RealtimeRoundMode.NORMAL
+                       total_rounds, task_id, case_config,
+                       algorithm_type=None) -> dict:
+        # INT-1299：轮次模式经传输对象 resolve_round_mode 归一化（默认 is_interruption，
+        # 内部 _as_bool 类型兼容；厂商方言字段覆写），executor 不再自行 get 字段
+        mode = client.resolve_round_mode(round_config)
         if mode == RealtimeRoundMode.INTERRUPTION:
             return self._execute_interruption_round(
-                client, api_config, round_config, round_number, task_id, case_config)
+                client, api_config, round_config, round_number, task_id,
+                case_config, algorithm_type=algorithm_type)
         return self._execute_normal_round(
-            client, api_config, round_config, round_number, task_id, case_config)
+            client, api_config, round_config, round_number, task_id, case_config,
+            algorithm_type=algorithm_type)
 
     def _execute_normal_round(self, client, api_config, round_config,
-                              round_number, task_id, case_config) -> dict:
+                              round_number, task_id, case_config,
+                              algorithm_type=None) -> dict:
         """正常轮：流式推送混音音频（RenderAudioStream 消费链路）→ commit → 等 AI 完整回复
 
         INT-475 节奏：推流中按 RealtimePacingStrategy 插 recv() 检输出事件，
@@ -377,11 +392,12 @@ class RealtimeSessionExecutor:
             'frame_count': len(output['frame_results']),
             'error': None if complete else 'AI 回复未在超时内完成',
         }
-        result.update(self._collect_eval_fields(round_config, output))
+        result.update(self._collect_eval_fields(round_config, output, algorithm_type))
         return result
 
     def _execute_interruption_round(self, client, api_config, round_config,
-                                    round_number, task_id, case_config) -> dict:
+                                    round_number, task_id, case_config,
+                                    algorithm_type=None) -> dict:
         """打断轮（barge-in）：等 AI 开始 → 推打断混音音频 → 检测打断 → 等新回复
 
         INT-475 节奏策略不套打断轮推流阶段：步骤①已确认 AI 在说话，步骤④已有
@@ -468,7 +484,7 @@ class RealtimeSessionExecutor:
             'answer_text': client.output['text'],
             'error': None if (barge_in_detected and renewed) else '打断未生效或 AI 未重新回复',
         }
-        result.update(self._collect_eval_fields(round_config, client.output))
+        result.update(self._collect_eval_fields(round_config, client.output, algorithm_type))
         return result
 
     # ── 节奏（INT-475：输出调输入）──
@@ -639,7 +655,6 @@ class RealtimeSessionExecutor:
             'reference_params': case_config.get('reference_params', {}),
             'algorithm_type': algorithm_type,
         }
-        from shared.utils.dto_utils import dto_to_dict
         from api_test_service.infrastructure.acl import AlgorithmQueryAclRepositoryImpl
         all_params = dto_to_dict(
             AlgorithmQueryAclRepositoryImpl().extract_case_all_params(full_case_params)) or {}
@@ -662,19 +677,25 @@ class RealtimeSessionExecutor:
 
     # ── 辅助 ──
     @staticmethod
-    def _resolve_ws_url(api_config) -> str:
-        """解析 WS 连接地址：api_endpoints 优先 ws://wss://，回退 api_url 同规则"""
-        endpoints = list(getattr(api_config, 'api_endpoints', None) or [])
-        for ep in endpoints:
+    def _resolve_ws_endpoint(api_config) -> Optional[dict]:
+        """解析当前 ws 端点 dict：api_endpoints 中 ws://wss:// endpoint（INT-1361
+        api_url 移除后 api_endpoints 为唯一端点来源）。返回端点 dict（含 api_keys
+        池，INT-1177 endpoint 级轮换池来源）；无 ws 端点返回 None。"""
+        for ep in (getattr(api_config, 'api_endpoints', None) or []):
             url = (ep.get('endpoint') or '') if isinstance(ep, dict) else str(ep)
             if url.startswith(('ws://', 'wss://')):
-                return url
-        url = getattr(api_config, 'endpoint', None) or ''
-        if url.startswith(('ws://', 'wss://')):
-            return url
-        raise ValueError(
-            f"API {getattr(api_config, 'id', '?')} 未配置 WebSocket 端点"
-            "（需 ws:// 或 wss:// 前缀）")
+                return ep if isinstance(ep, dict) else {'endpoint': str(ep)}
+        return None
+
+    @staticmethod
+    def _resolve_ws_url(api_config) -> str:
+        """解析 WS 连接地址：api_endpoints 中首个 ws://wss:// endpoint（INT-1361 api_url 移除）"""
+        endpoint = RealtimeSessionExecutor._resolve_ws_endpoint(api_config)
+        if endpoint is None:
+            raise ValueError(
+                f"API {getattr(api_config, 'id', '?')} 未配置 WebSocket 端点"
+                "（需 ws:// 或 wss:// 前缀）")
+        return endpoint.get('endpoint', '')
 
     @staticmethod
     def _case_level_key(api_specific_config, case_config) -> str:
@@ -692,10 +713,24 @@ class RealtimeSessionExecutor:
     def _resolve_ws_headers(api_config, case_api_key='') -> dict:
         """解析 WS 握手头（_build_connect_headers 语义）：meta.ws_headers
         直传 + 密钥链 case_config → meta → env（UC-0901 扩展流程 3a，
-        禁止硬编码密钥）；显式 Authorization 头优先，不覆盖"""
+        禁止硬编码密钥）；显式 Authorization 头优先，不覆盖
+
+        INT-1177 endpoint 级（INT-1230 审计 D5'）：经 resolve_rotating 消费
+        **当前 ws 端点**的 api_keys 轮换池（传 `(api_id, ws endpoint URL)` 轮换
+        key，同一端点跨协议同源轮换游标；case 层单值最高优先不变；未配池
+        回退单值链）。
+        """
         meta = getattr(api_config, 'meta', None) or {}
         headers = dict(meta.get('ws_headers') or {})
-        api_key = _key_resolver.resolve(case_value=case_api_key, meta=meta)
+        endpoint = RealtimeSessionExecutor._resolve_ws_endpoint(api_config)
+        api_key = _key_resolver.resolve_rotating(
+            rotation_key=endpoint_rotation_key(
+                getattr(api_config, 'id', None),
+                (endpoint or {}).get('endpoint', '') or ''),
+            endpoint=endpoint,
+            case_value=case_api_key,
+            meta=meta,
+        )
         if api_key and not any(k.lower() == 'authorization' for k in headers):
             headers['Authorization'] = f'Bearer {api_key}'
         return headers
@@ -711,17 +746,48 @@ class RealtimeSessionExecutor:
         merged.setdefault('input_audio_sample_rate', audio_cfg.get('sample_rate', 24000))
         return merged
 
-    @staticmethod
-    def _collect_eval_fields(round_config, output) -> dict:
-        """评估入参字段：query/answer/original_topic（打断轮）"""
-        fields = {
-            'query': round_config.get('query', ''),
-            'question': round_config.get('question', round_config.get('query', '')),
-            'correct_answer': round_config.get('correct_answer', ''),
-            'answer': output.get('text', ''),
-        }
-        if round_config.get('original_topic'):
-            fields['original_topic'] = round_config['original_topic']
+    def _collect_eval_fields(self, round_config, output, algorithm_type=None) -> dict:
+        """评估入参字段 — field_mapper 配置透传（对齐 E2E/HTTP 同构，INT-1299）
+
+        评估入参字段名全部来自 algorithm_service FieldMappingQueryHandler 的
+        field_mappings 配置，代码内不再硬编码字段名（撤 'query'/'question'/
+        'correct_answer'/'answer'/'original_topic' 魔法字符串与兜底链）：
+
+        1. original.evaluation.output 的 param_mapping（source_param → target_param）：
+           source 为 case/reference 时从 round_config 取 source_param，其余
+           （api/device）从轮次输出取，映射 target_param 进 fields；
+        2. original.api.output 字段定义：从轮次输出取（对齐 api_task_runner
+           output_field_keys 模式，answer 等输出字段按 API 输出定义驱动）。
+
+        新增算法只改算法配置即可映射评估入参，本方法零改动；算法服务不可达时
+        （ACL 回退空 DTO）返回空 dict，round result 不携带评估字段。
+        """
+        algorithm_type = algorithm_type or 'voice_llm'
+        field_mappings = dto_to_dict(
+            _algo_acl.get_field_mappings(algorithm_type)) or {}
+        original = field_mappings.get('original') or {}
+        fields = {}
+
+        eval_output = (original.get('evaluation') or {}).get('output') or {}
+        for target_param, entry in eval_output.items():
+            if not isinstance(entry, dict):
+                continue
+            source = entry.get('source', 'api')
+            source_param = entry.get('source_param')
+            if not source_param:
+                continue
+            if source in ('case', 'reference'):
+                value = (round_config or {}).get(source_param)
+            else:
+                value = output.get(source_param)
+            if value is not None:
+                fields[target_param] = value
+
+        api_output = (original.get('api') or {}).get('output') or {}
+        for key in api_output:
+            value = output.get(key)
+            if value is not None:
+                fields[key] = value
         return fields
 
     def _refresh_progress(self, task_id):

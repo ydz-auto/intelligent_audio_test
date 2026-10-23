@@ -12,6 +12,8 @@ get_driver_for_device(system=None) → DeviceSystem.normalize(None) 抛
 - device_service servicer 新增 action='register' 分支：仅 factory.register_task_devices，
   不做驱动解析/initialize
 - list 格式缺省 action 收紧为 register，消除「list 缺省 initialize」隐式语义
+- INT-575 契约对齐：register 分支空列表不触发登记（纯 no-op），响应为
+  {task_id, registered}（不含 action）
 
 覆盖：
 - e2e ACL register_task_devices 构造的 device_config 含 action/system/keywords 断言
@@ -125,8 +127,9 @@ class TestServicerRegisterBranch:
         # 仅登记：factory.register_task_devices 收到完整设备列表
         factory.register_task_devices.assert_called_once_with('500', payload)
         factory.get_driver_for_device.assert_not_called()
+        # INT-575 契约：register 分支响应为 {task_id, registered}，不含 action
         data = json.loads(resp.data)
-        assert data['action'] == 'register'
+        assert data['task_id'] == '500'
         assert data['registered'] == 1
 
     def test_register_empty_list_still_succeeds(self):
@@ -137,7 +140,8 @@ class TestServicerRegisterBranch:
                 'action': 'register', 'device_sn': None,
                 'device_info_list': [], 'kwargs': {}}))
         assert resp.success is True
-        factory.register_task_devices.assert_called_once_with('500', [])
+        # INT-575 契约：空列表不触发 register_task_devices（登记是纯 no-op，无调用）
+        factory.register_task_devices.assert_not_called()
         factory.get_driver_for_device.assert_not_called()
 
 

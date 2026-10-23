@@ -18,6 +18,8 @@ export interface DynamicFormField {
   arrayItemType?: string;
   arrayItemTemplate?: any;
   disabled?: boolean;
+  /** INT-1434：按端点协议自动派生（如 deviceType ← apiUrl/endpoints[0].endpoint 的 ws/http 判定） */
+  autoDerive?: boolean;
 }
 
 // 兼容 re-export：保持既有 FormField 消费方 import 路径不变
@@ -195,6 +197,19 @@ export function generateDeviceFields(deviceType: string): DynamicFormField[] {
         type: 'text',
         required: true,
         placeholder: '请输入API名称'
+      }, {
+        // INT-1434：被测设备类型（决定执行路由；留空按端点协议自动派生，后端缺省 http_api）
+        key: 'deviceType',
+        label: '被测设备类型',
+        type: 'select',
+        required: false,
+        hint: '决定执行路由：websocket_api（Realtime）或 http_api（HTTP）。留空时按端点协议自动派生（ws/wss → websocket_api，其余 → http_api）',
+        autoDerive: true,
+        defaultValue: '',
+        options: [
+          { value: 'http_api', label: 'HTTP API' },
+          { value: 'websocket_api', label: 'WebSocket API' }
+        ]
       }, {
         key: 'vendor',
         label: '供应商 (vendor)',

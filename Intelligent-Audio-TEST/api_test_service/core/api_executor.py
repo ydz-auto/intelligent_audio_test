@@ -22,6 +22,7 @@ from api_test_service.infrastructure.persistence.api_rms_spl_repository import (
 from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
 from api_test_service.infrastructure.persistence.models import API
+from api_test_service.domain.entities.api import resolve_api_endpoint
 from api_test_service.core.api_concurrency_manager import APIConcurrencyManager
 from api_test_service.core.api_task_runner import APITaskRunner
 from api_test_service.core.api_result_processor import APIResultProcessor
@@ -668,7 +669,7 @@ class APIExecutor(BaseExecutor):
 
             processed.append(MockAPIConfig(
                 id=api_config.id,
-                endpoint=api_config.api_url,
+                endpoint=resolve_api_endpoint(api_config),
                 api_endpoints=api_config.api_endpoints or [],
                 default_max_process=api_config.default_max_process or config_manager.get_value('api_executor', 'default_max_process', 5),
                 meta=api_config.meta or {},

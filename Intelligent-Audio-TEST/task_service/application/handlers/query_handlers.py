@@ -25,6 +25,7 @@ from task_service.application.queries.task_queries import (
     GetTestCaseTagsQuery,
     GetTestCaseRefParamsQuery,
     FetchCaseIdsQuery,
+    CheckAudioReferencesQuery,
     ListTagCategoriesQuery,
     GetTagCategoryQuery,
     ListTagsQuery,
@@ -192,6 +193,14 @@ class TaskQueryHandler:
     def handle_get_task_detail(self, query: GetTaskDetailQuery) -> Dict[str, Any]:
         """处理任务详情查询（含时间预估）。委托 task_query_service.get_task_detail。"""
         return self.task_query_service.get_task_detail(query.task_id)
+
+    def handle_check_audio_references(self, query: CheckAudioReferencesQuery) -> Dict[str, Any]:
+        """处理音频删除引用检查查询（INT-1306）。
+
+        按 audio_id 集合查被测试用例/任务引用计数，替代调用方逐页
+        ListTestCases / ListTasks 全量拉取。委托 task_query_service。
+        """
+        return self.task_query_service.check_audio_references(query.audio_ids)
 
     def handle_get_task_progress_detailed(self, query: GetTaskProgressDetailedQuery) -> Dict[str, Any]:
         """处理任务实时进度查询（详细版）。委托 task_query_service.get_task_progress。"""

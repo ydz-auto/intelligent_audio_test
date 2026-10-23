@@ -12,8 +12,11 @@ _MASK = '****'
 
 # 敏感键名交替式（大小写不敏感；-/_ 分隔等价；token/password 等
 # 复合词已含词边界，纯数字值视为用量统计不脱敏）
+# INT-1177：补复数 api[-_]?keys（api_key 后跟 s 无词边界，需独立交替项，
+# 否则 meta.api_keys 键名整段明文泄漏）
 _KEY_ALTERNATION = (
     r'api[-_]?key'
+    r'|api[-_]?keys'
     r'|apikey'
     r'|access[-_]?key'
     r'|app[-_]?key'
@@ -38,14 +41,20 @@ _KEY_ALTERNATION = (
 
 # 键值对形态：JSON（"key": "value"）、kv（key=value）、key: value；
 # Bearer <token> 整体作为 authorization 的值一并掩码
+# INT-1177：value 组补 JSON 数组形态（api_keys=["sk-a","sk-b"]）——
+# 现状只掩到 [ 导致数组元素裸漏、结构被拆坏；整数组掩 ****。
+# 裸值组排除 { }：掩码产物（如 "api_keys": ****）再处理时不被 } 吞入，
+# 保证幂等；对象形态（key={"a":1}）走独立 obj 组（保留既有整值掩码行为）。
 _KV_PATTERN = re.compile(
     r'(?i)(?P<key>["\']?\b(?:' + _KEY_ALTERNATION + r')\b["\']?)'
     r'(?P<sep>\s*[:=]\s*)'
     r'(?P<value>'
     r'"(?P<dq>(?:[^"\\]|\\.)*)"'
+    r'|\[(?P<arr>[^\]]*)\]'
+    r'|(?P<obj>\{(?:[^{}]|"(?:[^"\\]|\\.)*")*\})'
     r"|'(?P<sq>[^']*)'"
     r'|(?:[Bb]earer\s+\S+'
-    r'|[^\s,;&\'"\\]+)'
+    r'|[^\s,;&\'"\\{}]+)'
     r')'
 )
 
@@ -92,6 +101,13 @@ def _mask_kv(match: 're.Match') -> str:
         inner = match.group('dq')
         masked = '' if inner.isdigit() else mask_value(inner)
         return '%s%s"%s"' % (match.group('key'), match.group('sep'), masked)
+    if match.group('arr') is not None:
+        # INT-1177：JSON 数组形态值（api_keys=["sk-a","sk-b"]）整数组掩 ****，
+        # 零明文且不再拆坏数组结构
+        return '%s%s%s' % (match.group('key'), match.group('sep'), mask_value(value))
+    if match.group('obj') is not None:
+        # 对象形态值（key={"a":1}）：整值掩码（保留既有行为，掩码后幂等）
+        return '%s%s%s' % (match.group('key'), match.group('sep'), mask_value(value))
     if match.group('sq') is not None:
         inner = match.group('sq')
         masked = '' if inner.isdigit() else mask_value(inner)
@@ -173,6 +189,10 @@ def _is_sensitive_key(key: str) -> bool:
         'access_token', 'refresh_token', 'id_token',
         'session_key', 'private_key', 'x_api_key',
         'token', 'password', 'passwd', 'pwd', 'cookie',
+        # INT-1177 密钥池：复数 api_keys（结构化 payload 整数组掩 ****）
+        'api_keys',
     }:
         return True
-    return normalized.endswith('_api_key') or normalized.endswith('_secret_key')
+    # INT-1177：复数 _api_keys 与单数 _api_key 平行（如 xxx_api_keys）
+    return (normalized.endswith('_api_key') or normalized.endswith('_secret_key')
+            or normalized.endswith('_api_keys'))

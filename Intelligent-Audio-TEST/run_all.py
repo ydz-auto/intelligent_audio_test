@@ -36,8 +36,6 @@ from shared.config.service_ports import (
     REPORT_SERVICE_GRPC_PORT,
     AUTH_SERVICE_HTTP_PORT,
     AUTH_SERVICE_GRPC_PORT,
-    API_ADAPTER_SERVICE_HTTP_PORT,
-    API_ADAPTER_SERVICE_GRPC_PORT,
     AUDIO_SERVICE_GRPC_PORT,
     DEVICE_SERVICE_GRPC_PORT,
     TRANSFER_AGENT_HTTP_PORT,
@@ -50,6 +48,7 @@ from shared.config.service_ports import (
     MOCK_THIRD_PARTY_EVAL_HTTP_PORT,
     MOCK_REALTIME_API_WS_PORT,
     MOCK_EVAL_SERVER_HTTP_PORT,
+    MOCK_DUT_API_HTTP_PORT,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,7 +91,7 @@ CHILD_ENV.setdefault('PYTHONUTF8', '1')
 # 这里按 services 配置在子进程环境里强制指定各自的端口
 # - HTTP 服务用 uvicorn 启动 {dir}.app:app
 # - gRPC-only 服务（audio_service / device_service）用 python -m {dir}.interfaces.grpc.server 启动
-# - report_service HTTP 端口改为 5006，避免与 api_adapter_service 的 5008 冲突
+# - report_service HTTP 端口为 5006
 # - transfer_agent（INT-28 跨区传输）HTTP 5010 / gRPC 50101
 services = [
     {'name': 'api_gateway',        'port': API_GATEWAY_PORT,            'grpc_port': None,                          'dir': 'api_gateway',         'http': True},
@@ -103,7 +102,6 @@ services = [
     {'name': 'algorithm_service',   'port': ALGORITHM_SERVICE_HTTP_PORT,'grpc_port': ALGORITHM_SERVICE_GRPC_PORT,   'dir': 'algorithm_service',   'http': True},
     {'name': 'report_service',      'port': REPORT_SERVICE_HTTP_PORT,   'grpc_port': REPORT_SERVICE_GRPC_PORT,      'dir': 'report_service',      'http': True},
     {'name': 'auth_service',        'port': AUTH_SERVICE_HTTP_PORT,      'grpc_port': AUTH_SERVICE_GRPC_PORT,         'dir': 'auth_service',        'http': True},
-    {'name': 'api_adapter_service', 'port': API_ADAPTER_SERVICE_HTTP_PORT, 'grpc_port': API_ADAPTER_SERVICE_GRPC_PORT, 'dir': 'api_adapter_service', 'http': True},
     {'name': 'transfer_agent',      'port': TRANSFER_AGENT_HTTP_PORT,   'grpc_port': TRANSFER_AGENT_GRPC_PORT,      'dir': 'transfer_agent',      'http': True},
     # gRPC-only 服务：无 app.py，仅启动 gRPC server
     {'name': 'audio_service',       'port': None,                       'grpc_port': AUDIO_SERVICE_GRPC_PORT,        'dir': 'audio_service',      'http': False},
@@ -122,6 +120,8 @@ mock_services = [
      'script': os.path.join('mock_services', 'mock_realtime_api.py')},
     {'name': 'mock_eval_server_judge', 'port': MOCK_EVAL_SERVER_HTTP_PORT,
      'script': os.path.join('mock_services', 'mock_eval_server_judge.py')},
+    {'name': 'mock_dut_api', 'port': MOCK_DUT_API_HTTP_PORT,
+     'script': os.path.join('mock_services', 'mock_dut_api.py')},
 ]
 
 # 前端 Vite dev server
@@ -585,7 +585,6 @@ def start_all():
     print(f"[INFO] Evaluation Service: http://localhost:{EVALUATION_SERVICE_HTTP_PORT}", flush=True)
     print(f"[INFO] Report Service:     http://localhost:{REPORT_SERVICE_HTTP_PORT}", flush=True)
     print(f"[INFO] Algorithm Service:  http://localhost:{ALGORITHM_SERVICE_HTTP_PORT}", flush=True)
-    print(f"[INFO] Adapter Service:    http://localhost:{API_ADAPTER_SERVICE_HTTP_PORT}", flush=True)
     print(f"[INFO] Auth Service:       http://localhost:{AUTH_SERVICE_HTTP_PORT}", flush=True)
     print(f"[INFO] Audio Service:      gRPC :{AUDIO_SERVICE_GRPC_PORT}", flush=True)
     print(f"[INFO] Device Service:     gRPC :{DEVICE_SERVICE_GRPC_PORT}", flush=True)
@@ -645,27 +644,37 @@ def _apply_test_db_override():
           flush=True)
 
 
-def _assert_not_shared_db():
-    """INT-453：拒绝无 --test-db 直连共享业务库（INT-246 同语义守卫）。
+def _assert_not_shared_db(allow_shared_db: bool = False):
+    """INT-453：拒绝无 --test-db / --allow-shared-db 直连共享业务库（INT-246 同语义守卫）。
 
     run_all 只面向本地调试与验收；共享业务库（intelligent_audio_test）只允许
     负责人手动操作与冒烟只读探测，实机链路回归 / 集成冒烟 / 验收一律
     --test-db 起栈（流水线约定）。生效 DATABASE_URL 指向共享业务库且未显式
-    --test-db 时，启动即 RuntimeError、零进程零写入——与 tests/conftest.py
-    的 pytest 会话守卫同语义；隔离测试库（intelligent_audio_test_test）与
-    非 Postgres URL（如 sqlite）均不受影响。
+    --test-db / --allow-shared-db 时，启动即 RuntimeError、零进程零写入——
+    与 tests/conftest.py 的 pytest 会话守卫同语义；隔离测试库
+    （intelligent_audio_test_test）与非 Postgres URL（如 sqlite）均不受影响。
+
+    INT-1190：真实库栈（常驻、连主库 intelligent_audio_test）是唯一被授权的
+    例外——必须显式 --allow-shared-db（默认仍拒绝），由 real_stack.py 启动器
+    使用；普通 run 不得直连共享业务库。
     """
     from shared.constants.database import (
         SHARED_BUSINESS_DB_NAME, ISOLATED_TEST_DB_NAME, database_name_of,
     )
     effective = database_name_of(CHILD_ENV.get('DATABASE_URL', ''))
-    if effective == SHARED_BUSINESS_DB_NAME:
+    if effective == SHARED_BUSINESS_DB_NAME and not allow_shared_db:
         raise RuntimeError(
             "INT-453 启动守卫：当前 DATABASE_URL 指向共享业务库 "
-            f"'{effective}' 且未显式 --test-db，拒绝启动（零进程零写入）。"
-            "共享业务库只允许负责人手动操作与冒烟只读探测；请带 --test-db"
+            f"'{effective}' 且未显式 --test-db / --allow-shared-db，拒绝启动（零进程零写入）。"
+            "共享业务库只允许负责人手动操作、冒烟只读探测与真实库栈"
+            "（--allow-shared-db，INT-1190）；请带 --test-db"
             f" 起栈（自动切隔离测试库 {ISOLATED_TEST_DB_NAME}），"
             "或确认 DATABASE_URL 指向隔离库。")
+    if effective == SHARED_BUSINESS_DB_NAME:
+        print(
+            f"[GUARD] INT-453 守卫已显式放行直连共享业务库 '{effective}'"
+            "（--allow-shared-db，INT-1190 真实库栈专用；仅走查/设计/页面实测）。",
+            flush=True)
 
 
 def stop_all():
@@ -688,10 +697,14 @@ if __name__ == '__main__':
         '--test-db', action='store_true',
         help='整栈切到隔离测试库（INT-246）：实机链路回归/集成冒烟/验收专用，'
              '共享业务库本栈不可见；冒烟后用 scripts/reset_test_db.py 清库')
+    parser.add_argument(
+        '--allow-shared-db', action='store_true',
+        help='显式放行直连共享业务库（INT-1190 真实库栈专用，默认拒绝）：'
+             '仅走查/设计/页面实测常驻真实库栈用；普通 run 不得使用')
     args = parser.parse_args()
     if args.test_db:
         _apply_test_db_override()
-    _assert_not_shared_db()
+    _assert_not_shared_db(allow_shared_db=args.allow_shared_db)
     try:
         start_all()
         while True:

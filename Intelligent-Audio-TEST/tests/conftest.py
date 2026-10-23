@@ -38,18 +38,18 @@ os.environ.setdefault(
     ) + '/pytest.db')
 
 # ── INT-342 .env 注入隔离守卫（进程级，先于一切测试模块导入）──
-# 部分单测以模块级/夹具级 import 服务 app.py（test_int114 → api_adapter_service.
-# app、test_transfer_* → transfer_agent.app、test_int61 → api_test_service.app），
+# 部分单测以模块级/夹具级 import 服务 app.py（test_transfer_* →
+# transfer_agent.app、test_int61 → api_test_service.app），
 # app.py 顶部的 load_dotenv('.env') 会把本机 .env 全部键注入 pytest 进程环境；
 # 而服务 Config 类属性（如 device_service Config.UI_CAPTURE_MODE，INT-296）在
 # 首次导入即冻结 —— 全量运行下先序文件的 app 导入替后序用例（如
 # test_int296::test_default_mode_is_strict 的 strict 默认断言）决定了配置值，
 # 出现「单跑过、全量挂」的环境变量污染（INT-342 实证：.env
-# UI_CAPTURE_MODE=explicit_degrade 经 test_int114 的 app 导入进入进程）。
+# UI_CAPTURE_MODE=explicit_degrade 经 app 导入进入进程）。
 # 与 INT-246 同款思路：conftest 作为测试进程环境的强制收敛点 —— 会话启动时
 # 从 shell/调用环境快照业务键基线，此后任何 load_dotenv 注入的键一律回退到
-# 快照值（快照中不存在的键直接移除）；shell 显式预置的变量（如 CI 注入、
-# ADAPTER_SERVICE_GRPC_PORT）不在快照差值内，不受影响。
+# 快照值（快照中不存在的键直接移除）；shell 显式预置的变量（如 CI 注入）不在
+# 快照差值内，不受影响。
 # 生效范围仅本 pytest 进程，服务真实启动路径（run_all / uvicorn）不经过此处。
 _INT342_ENV_KEYS = (
     # 业务/服务配置键（.env 全量键的过估计：多移除无害——app 导入方随 import
@@ -187,12 +187,12 @@ def pytest_collection_modifyitems(session, config, items):
 
 # ── INT-342：收集期逐模块 .env 注入回退 ──
 # 测试模块在收集期按序导入（Module.collect() 内做 import），模块级 import 服务
-# app.py（test_int114 → api_adapter_service.app、test_transfer_service_startup →
-# transfer_agent.app）的 load_dotenv 在本模块导入后立即污染进程环境 —— 晚导入的
-# 模块（如 test_int296 经 harmony_driver 链冻结 device_service Config.
-# UI_CAPTURE_MODE）会把污染值当默认值冻进类属性。pytest_pycollect_makeitem 在
-# 模块导入完成后的首个属性遍历触发：此点回退基线 = 本模块导入的注入不外溢，
-# 后序模块以干净环境导入（等价单文件运行环境，不依赖执行顺序）。
+# app.py（test_transfer_service_startup → transfer_agent.app）的 load_dotenv 在
+# 本模块导入后立即污染进程环境 —— 晚导入的模块（如 test_int296 经 harmony_driver
+# 链冻结 device_service Config.UI_CAPTURE_MODE）会把污染值当默认值冻进类属性。
+# pytest_pycollect_makeitem 在模块导入完成后的首个属性遍历触发：此点回退基线 =
+# 本模块导入的注入不外溢，后序模块以干净环境导入（等价单文件运行环境，不依赖
+# 执行顺序）。
 @pytest.hookimpl(trylast=True)
 def pytest_pycollect_makeitem(collector, name, obj):
     _int342_restore_env()

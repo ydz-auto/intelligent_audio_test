@@ -47,7 +47,6 @@ GRPC_PROBES = [
     ('auth_service', 51069, 'AUTH_SERVICE_GRPC_PORT'),
     ('api_test_service', 51071, None),  # 容器网络内探测
     ('evaluation_service', 51091, 'EVALUATION_SERVICE_GRPC_PORT'),
-    ('api_adapter_service', 51081, 'API_ADAPTER_SERVICE_GRPC_PORT'),
     ('transfer_agent', 51101, 'TRANSFER_AGENT_GRPC_PORT'),
 ]
 HTTP_PROBES = [
@@ -58,7 +57,6 @@ HTTP_PROBES = [
     ('evaluation_service', 5004, 'EVALUATION_SERVICE_HTTP_PORT'),
     ('report_service', 5006, 'REPORT_SERVICE_HTTP_PORT'),
     ('algorithm_service', 5007, 'ALGORITHM_SERVICE_HTTP_PORT'),
-    ('api_adapter_service', 5008, 'API_ADAPTER_SERVICE_HTTP_PORT'),
     ('auth_service', 5009, 'AUTH_SERVICE_HTTP_PORT'),
     ('transfer_agent', 5010, 'TRANSFER_AGENT_HTTP_PORT'),
 ]

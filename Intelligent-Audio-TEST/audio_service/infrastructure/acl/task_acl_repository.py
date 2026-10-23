@@ -6,7 +6,6 @@
 """
 from __future__ import annotations
 
-import json as _json
 import logging
 from typing import List, Optional
 
@@ -22,109 +21,55 @@ logger = logging.getLogger(__name__)
 class TaskACLRepositoryImpl(TaskACLRepository):
     """task_service 跨域只读查询 gRPC 实现。"""
 
-    def check_audio_in_testcases(self, audio_id: int) -> int:
-        """检查音频是否被测试用例引用"""
-        from shared.clients.grpc_clients import get_testcase_config_service_stub
+    def check_audio_references_batch(self, audio_ids) -> dict:
+        """批量检查音频被测试用例/任务引用计数（INT-1306）。
+
+        经 task_service.CheckAudioReferences gRPC（DB 侧单次扫描 test_cases /
+        test_tasks / task_case_relations config），替代逐页 ListTestCases /
+        ListTasks 全量拉取。返回 {audio_id: {'testcase_audio': N,
+        'testcase_noise': M, 'task': K}}；gRPC 失败时抛出异常（fail-closed：
+        引用状态未知时不允许删除）。
+        """
+        from shared.clients.grpc_clients import get_task_config_service_stub
         from shared.proto import task_service_pb2 as task_pb
         from shared.utils.grpc_json import loads as _loads
+        audio_ids = list(audio_ids)
+        stub = get_task_config_service_stub()
+        resp = stub.CheckAudioReferences(task_pb.CheckAudioReferencesRequest(
+            audio_ids=audio_ids,
+        ))
+        if not resp.success:
+            raise RuntimeError(resp.message or '音频引用检查失败')
+        data = _loads(resp.data, {}) or {}
+        references = data.get('references', {}) or {}
+        result = {}
+        for audio_id in audio_ids:
+            ref = references.get(str(audio_id), {}) if isinstance(references, dict) else {}
+            result[audio_id] = {
+                'testcase_audio': int(ref.get('testcase_audio', 0) or 0),
+                'testcase_noise': int(ref.get('testcase_noise', 0) or 0),
+                'task': int(ref.get('task', 0) or 0),
+            }
+        return result
+
+    def check_audio_in_testcases(self, audio_id: int) -> int:
+        """检查音频是否被测试用例引用"""
         try:
-            stub = get_testcase_config_service_stub()
-            count = 0
-            page = 1
-            per_page = 100
-            while True:
-                resp = stub.ListTestCases(task_pb.ListTestCasesRequest(
-                    page=page,
-                    per_page=per_page,
-                ))
-                if not resp.success:
-                    return 0
-                data = _loads(resp.data, {})
-                if not isinstance(data, dict):
-                    return 0
-                items = data.get('items', []) or []
-                for tc in items:
-                    config = tc.get('config')
-                    if not config:
-                        continue
-                    config_str = _json.dumps(config, ensure_ascii=False) if not isinstance(config, str) else config
-                    if f'"audio_id": {audio_id}' in config_str or f'"audio_id":{audio_id}' in config_str:
-                        count += 1
-                total_pages = data.get('pages', 1)
-                if page >= total_pages or not items:
-                    return count
-                page += 1
+            return int(self.check_audio_references_batch([audio_id]).get(audio_id, {}).get('testcase_audio', 0))
         except Exception:
             return 0
 
     def check_audio_in_testcase_noise(self, audio_id: int) -> int:
         """检查音频是否被测试用例作为背景噪音引用"""
-        from shared.clients.grpc_clients import get_testcase_config_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads
         try:
-            stub = get_testcase_config_service_stub()
-            count = 0
-            page = 1
-            per_page = 100
-            while True:
-                resp = stub.ListTestCases(task_pb.ListTestCasesRequest(
-                    page=page,
-                    per_page=per_page,
-                ))
-                if not resp.success:
-                    return 0
-                data = _loads(resp.data, {})
-                if not isinstance(data, dict):
-                    return 0
-                items = data.get('items', []) or []
-                for tc in items:
-                    config = tc.get('config')
-                    if not config:
-                        continue
-                    config_str = _json.dumps(config, ensure_ascii=False) if not isinstance(config, str) else config
-                    if (f'"background_noise": {{"audio_id": {audio_id}}}' in config_str or
-                        f'"background_noise":{{"audio_id":{audio_id}}}' in config_str):
-                        count += 1
-                total_pages = data.get('pages', 1)
-                if page >= total_pages or not items:
-                    return count
-                page += 1
+            return int(self.check_audio_references_batch([audio_id]).get(audio_id, {}).get('testcase_noise', 0))
         except Exception:
             return 0
 
     def check_audio_in_tasks(self, audio_id: int) -> int:
         """检查音频是否被任务引用"""
-        from shared.clients.grpc_clients import get_task_config_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads
         try:
-            stub = get_task_config_service_stub()
-            count = 0
-            page = 1
-            per_page = 100
-            while True:
-                resp = stub.ListTasks(task_pb.ListTasksRequest(
-                    page=page,
-                    per_page=per_page,
-                ))
-                if not resp.success:
-                    return 0
-                data = _loads(resp.data, {})
-                if not isinstance(data, dict):
-                    return 0
-                items = data.get('items', []) or []
-                for task_item in items:
-                    config = task_item.get('config')
-                    if not config:
-                        continue
-                    config_str = _json.dumps(config, ensure_ascii=False) if not isinstance(config, str) else config
-                    if str(audio_id) in config_str:
-                        count += 1
-                total_pages = data.get('pages', 1)
-                if page >= total_pages or not items:
-                    return count
-                page += 1
+            return int(self.check_audio_references_batch([audio_id]).get(audio_id, {}).get('task', 0))
         except Exception:
             return 0
 

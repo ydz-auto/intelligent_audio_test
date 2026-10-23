@@ -196,9 +196,11 @@ class TaskProgressStatsMixin:
                 'status': task.status,
                 'execution_status': task_execution_status,
                 'evaluation_status': task_evaluation_status,
+                # INT-1233：无用例级 device_type 行（含无 task_case_relations 的历史
+                # 任务）按任务级设备/API 关系回退派生（与列表/统计同口径）
                 'device_types': [dt for (dt,) in session.query(TaskCase.device_type)
                                  .filter(TaskCase.task_id == task.id, TaskCase.device_type.isnot(None))
-                                 .distinct().all()],
+                                 .distinct().all()] or self._fallback_task_device_types(session, task.id),
                 'total_cases': total,
                 'completed_cases': completed,
                 'failed_cases': task.failed_cases or 0,
@@ -218,6 +220,14 @@ class TaskProgressStatsMixin:
             }
         finally:
             session.close()
+
+    @staticmethod
+    def _fallback_task_device_types(session, task_id: int) -> list:
+        """INT-1233：无用例级 device_type 行时按任务级设备/API 关系回退派生。"""
+        from task_service.infrastructure.read_models.task_device_type_derivation import (
+            fetch_task_device_types,
+        )
+        return fetch_task_device_types(session, [task_id]).get(task_id, [])
 
     def _collect_api_resource_status(self, session, task, task_id: int) -> list:
         """收集 API 任务的资源状态（待处理/已完成用例数、平均响应时间）。

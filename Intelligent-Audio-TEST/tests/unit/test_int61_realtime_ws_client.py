@@ -64,9 +64,16 @@ class FakeVendorRealtimeServer:
             self._started.set()
             await self._server.serve_forever()
 
+        def _run():
+            try:
+                self._loop.run_until_complete(serve())
+            except Exception:
+                # stop() 强制收口时 serve_forever 中途退出属预期，不抛线程异常
+                pass
+
         self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(target=self._loop.run_until_complete, args=(serve(),),
-                                        daemon=True)
+        self._thread = threading.Thread(target=_run, daemon=True,
+                                        name='int61-fake-vendor-ws')
         self._thread.start()
         assert self._started.wait(timeout=5), '伪厂商服务器启动超时'
 
@@ -75,17 +82,43 @@ class FakeVendorRealtimeServer:
         return f'ws://127.0.0.1:{self.port}'
 
     def stop(self):
-        # 优雅关停（P3#3 夹具噪音收口）：await 关闭完成 → serve_forever() 随
-        # wait_closed() 正常返回、线程自然退出。原实现 close 后立即 loop.stop()，
-        # 未完成的 Server._close 任务被销毁，产生 PytestUnhandledThreadExceptionWarning
-        # （Event loop stopped before Future completed / Server._close never awaited）。
+        """优雅关停（P3#3 夹具噪音收口）+ INT-1187 宿主环境容错。
+
+        P3#3 原实现：await 关闭完成 → serve_forever() 随 wait_closed() 正常返回、
+        线程自然退出。原实现 close 后立即 loop.stop()，未完成的 Server._close
+        任务被销毁，产生 PytestUnhandledThreadExceptionWarning（Event loop stopped
+        before Future completed / Server._close never awaited）。
+
+        INT-1187 加固：全量 collection-order 下跨文件 asyncio 状态可能使本循环
+        处于已停止/已关闭状态（Event loop is closed / Task destroyed but pending），
+        此时跨线程提交 _close() 会直接抛异常打爆 fixture teardown。收口改为容错：
+        - 优先优雅 await close+wait_closed（serve_forever 随 wait_closed 正常返回）
+        - 提交/等待失败（循环已关、线程已死、超时）一律吞掉，改走强制停循环线程
+        - join 收尾（daemon 线程随进程退出回收）
+        """
         if self._server is not None and self._loop is not None:
-            async def _close():
-                self._server.close()
-                await self._server.wait_closed()
-            asyncio.run_coroutine_threadsafe(_close(), self._loop).result(timeout=5)
+            try:
+                async def _close():
+                    self._server.close()
+                    await self._server.wait_closed()
+                asyncio.run_coroutine_threadsafe(_close(), self._loop).result(timeout=5)
+            except Exception:
+                # 循环已关 / 线程已死 / 超时：走兜底强制停循环线程
+                pass
+            if self._thread is not None and self._thread.is_alive():
+                try:
+                    self._loop.call_soon_threadsafe(self._loop.stop)
+                except Exception:
+                    pass
         if self._thread is not None:
             self._thread.join(timeout=5)
+        # 收口：循环不再被线程引用后显式关闭，杜绝未回收循环/挂起任务跨文件泄漏
+        # （全量 collection-order 下 websockets-asyncio teardown ERROR 的污染源）
+        if self._loop is not None and not self._loop.is_closed():
+            try:
+                self._loop.close()
+            except Exception:
+                pass
 
 
 @pytest.fixture
