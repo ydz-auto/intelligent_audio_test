@@ -63,6 +63,24 @@ class MappingRepository(IMappingRepository):
         mappings = query.all()
         return [_po_to_dict(m) for m in mappings]
 
+    def list_by_algorithms(
+        self, algorithm_types: Optional[List[str]]
+    ) -> List[Dict[str, Any]]:
+        """批量查询多个算法的参数映射（INT-1666 配置缓存重载用）。
+
+        algorithm_types 为 None 时取全部未删除映射；传入列表时只取这些算法
+        （空列表 → 空结果）。按 id 稳定排序（原逐算法查询无显式排序）。
+        """
+        session = get_db_session()
+        query = session.query(ParamMappingPO).filter_by(deleted=False)
+        if algorithm_types is not None:
+            types = [t for t in algorithm_types if t]
+            if not types:
+                return []
+            query = query.filter(ParamMappingPO.algorithm_type.in_(types))
+        mappings = query.order_by(ParamMappingPO.id).all()
+        return [_po_to_dict(m) for m in mappings]
+
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """创建参数映射，返回新映射 dict。
 
@@ -182,6 +200,26 @@ class DimensionRelationRepository(IDimensionRelationRepository):
         items = session.query(AlgorithmDimensionRelationPO).filter_by(
             algorithm_type=algorithm_type, deleted=False
         ).all()
+        return [_po_to_dict(po) for po in items]
+
+    def list_by_algorithms(
+        self, algorithm_types: Optional[List[str]]
+    ) -> List[Dict[str, Any]]:
+        """批量查询多个算法的维度关联（INT-1666 配置缓存重载用）。
+
+        algorithm_types 为 None 时取全部未删除关联；传入列表时只取这些算法
+        （空列表 → 空结果）。
+        """
+        session = get_db_session()
+        query = session.query(AlgorithmDimensionRelationPO).filter_by(
+            deleted=False)
+        if algorithm_types is not None:
+            types = [t for t in algorithm_types if t]
+            if not types:
+                return []
+            query = query.filter(
+                AlgorithmDimensionRelationPO.algorithm_type.in_(types))
+        items = query.all()
         return [_po_to_dict(po) for po in items]
 
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:

@@ -95,6 +95,31 @@ class AlgorithmParamRepository(IAlgorithmParamRepository):
         params = query.order_by(model.ui_order).all()
         return [_po_to_dict(p) for p in params]
 
+    def list_by_algorithms(
+        self,
+        algorithm_types: Optional[List[str]],
+        param_type: str,
+    ) -> List[Dict[str, Any]]:
+        """批量查询多个算法的参数列表（param_type 为 device/api）。
+
+        INT-1666：algorithm_types 为 None 时取全部未删除参数；传入列表时
+        只取这些算法（空列表 → 空结果，不回落成全表，避免切片/全量重载里
+        「没有在线算法」时误扫全库）。供 config_cache 重载使用，把逐算法
+        查询压成单条 SQL。
+        """
+        session = get_db_session()
+        model = _resolve_param_model(param_type)
+        query = session.query(model).filter_by(deleted=False)
+        if algorithm_types is not None:
+            types = [t for t in algorithm_types if t]
+            if not types:
+                return []
+            query = query.filter(model.algorithm_type.in_(types))
+        params = query.order_by(
+            model.algorithm_type, model.ui_order, model.id
+        ).all()
+        return [_po_to_dict(p) for p in params]
+
     def create(
         self, data: Dict[str, Any], param_type_source: str
     ) -> Dict[str, Any]:

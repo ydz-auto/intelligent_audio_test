@@ -33,7 +33,9 @@ class _ParamCommandMixin(_ParamBaseMixin):
                 param_type_source=data.get("param_type_source") or "device",
             )
             result = self.param_command_handler.handle_create_param(cmd)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                algorithm_types=[data.get('algorithm_type')],
+            )
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -51,7 +53,9 @@ class _ParamCommandMixin(_ParamBaseMixin):
                 param_type_source="",
             )
             result = self.param_command_handler.handle_update_param(cmd)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                algorithm_types=[result.get('algorithm_type')],
+            )
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -100,7 +104,9 @@ class _ParamCommandMixin(_ParamBaseMixin):
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             cmd = CreateCaseParamCommand(data=data)
             result = self.param_command_handler.handle_create_case_param(cmd)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                algorithm_types=[data.get('algorithm_type')],
+            )
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -117,7 +123,9 @@ class _ParamCommandMixin(_ParamBaseMixin):
                 data=data,
             )
             result = self.param_command_handler.handle_update_case_param(cmd)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                algorithm_types=[result.get('algorithm_type')],
+            )
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -162,7 +170,9 @@ class _ParamCommandMixin(_ParamBaseMixin):
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             cmd = CreateReferenceParamCommand(data=data)
             result = self.param_command_handler.handle_create_reference_param(cmd)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                algorithm_types=[data.get('algorithm_type')],
+            )
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -179,7 +189,9 @@ class _ParamCommandMixin(_ParamBaseMixin):
                 data=data,
             )
             result = self.param_command_handler.handle_update_reference_param(cmd)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                algorithm_types=[result.get('algorithm_type')],
+            )
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -223,7 +235,10 @@ class _ParamCommandMixin(_ParamBaseMixin):
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             cmd = CreateMappingCommand(data=data)
             result = self.param_command_handler.handle_create_mapping(cmd)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                algorithm_types=[data.get('algorithm_type')],
+                dimension_ids=[data.get('dimension_id')],
+            )
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -240,7 +255,10 @@ class _ParamCommandMixin(_ParamBaseMixin):
                 data=data,
             )
             result = self.param_command_handler.handle_update_mapping(cmd)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                algorithm_types=[result.get('algorithm_type')],
+                dimension_ids=[result.get('dimension_id')],
+            )
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -281,7 +299,9 @@ class _ParamCommandMixin(_ParamBaseMixin):
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             cmd = CreateImportDeviceParamCommand(data=data)
             result = self.param_command_handler.handle_create_import_device_param(cmd)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                algorithm_types=[data.get('algorithm_type')],
+            )
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -297,7 +317,7 @@ class _ParamCommandMixin(_ParamBaseMixin):
                 algorithm_types = []
             cmd = BulkDeleteAlgorithmsCommand(algorithm_types=algorithm_types)
             result = self.param_command_handler.handle_bulk_delete_algorithms(cmd)
-            self._invalidate_cache()
+            self._invalidate_cache(algorithm_types=algorithm_types)
             return _success(result)
         except Exception as e:
             return _failure(str(e))

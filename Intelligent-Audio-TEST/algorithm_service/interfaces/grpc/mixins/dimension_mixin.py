@@ -29,7 +29,10 @@ class _DimensionMixin(_ParamBaseMixin):
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             cmd = CreateDimensionRelationCommand(data=data)
             result = self.param_command_handler.handle_create_dimension_relation(cmd)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                algorithm_types=[data.get('algorithm_type')],
+                dimension_ids=[data.get('dimension_id')],
+            )
             return _success({"id": result.get("id"), "created": True})
         except Exception as e:
             return _failure(str(e))
@@ -46,7 +49,9 @@ class _DimensionMixin(_ParamBaseMixin):
                 data=data,
             )
             self.param_command_handler.handle_update_dimension_relation_attrs(cmd)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                dimension_ids=[data.get('dimension_id')],
+            )
             return _success({"id": request.relation_id, "updated": True})
         except Exception as e:
             return _failure(str(e))
@@ -89,7 +94,13 @@ class _DimensionMixin(_ParamBaseMixin):
             data = _loads(request.data, []) if not isinstance(request, dict) else request
             dimension_id = int(request.dimension_id)
             dimension_relation_query_repository.sync_by_dimension(dimension_id, data)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                algorithm_types=[
+                    item.get('algorithm_type') for item in data
+                    if isinstance(item, dict)
+                ],
+                dimension_ids=[dimension_id],
+            )
             return _success({"dimension_id": dimension_id, "synced": True})
         except Exception as e:
             return _failure(str(e))
@@ -123,7 +134,9 @@ class _DimensionMixin(_ParamBaseMixin):
                 data=data,
             )
             result = self.param_command_handler.handle_update_dimension_relation_attrs(cmd)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                dimension_ids=[data.get('dimension_id')],
+            )
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -151,7 +164,9 @@ class _DimensionMixin(_ParamBaseMixin):
             )
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             result = dimension_param_repository.create(data)
-            self._invalidate_cache()
+            self._invalidate_cache(
+                dimension_ids=[data.get('dimension_id')],
+            )
             return _success({"id": result.get("id"), "created": True})
         except Exception as e:
             return _failure(str(e))
@@ -165,7 +180,9 @@ class _DimensionMixin(_ParamBaseMixin):
             dimension_param_repository.delete_by_dimension_and_direction(
                 int(request.dimension_id), request.param_direction
             )
-            self._invalidate_cache()
+            self._invalidate_cache(
+                dimension_ids=[int(request.dimension_id)],
+            )
             return _success({
                 "dimension_id": int(request.dimension_id),
                 "param_direction": request.param_direction,
@@ -209,7 +226,10 @@ class _DimensionMixin(_ParamBaseMixin):
             param_mapping_query_repository.sync_for_dimension(
                 dimension_id, params, direction, algorithm_type
             )
-            self._invalidate_cache()
+            self._invalidate_cache(
+                algorithm_types=[algorithm_type],
+                dimension_ids=[dimension_id],
+            )
             return _success({"dimension_id": dimension_id, "synced": True})
         except Exception as e:
             return _failure(str(e))

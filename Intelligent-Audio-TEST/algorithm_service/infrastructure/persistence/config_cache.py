@@ -6,18 +6,33 @@
 为 application 层提供统一配置缓存接口。
 
 缓存架构:
-  - L1: 进程内内存字典（每次 reload 从 DB 全量加载）
-  - L2: Redis HASH（key=algo_config_cache），写操作后自动刷新
+  - L1: 进程内内存快照（不可变约定：整份替换，不原地改）
+  - L2: Redis HASH（key=algo_config_cache），重载后整份覆盖
   - 跨进程通知: Redis Pub/Sub（channel=algo_config_invalidate）
     其他进程（如 task_service 通过 gRPC 触发写操作）调用 reload() 后，
     本进程通过 pubsub 收到通知，自动失效 L1 并从 DB 重新加载。
+
+刷新策略（INT-1666，替代原「每次写全量重建」）:
+  1. 按受影响范围失效: ``invalidate(algorithm_types=[...], dimension_ids=[...])``
+     只重载这些切片；不知道范围时才整份重载。写路径不再无条件全量重建。
+  2. 常数量级 SQL: 全量/切片构建对每张表只发一次批量 ``IN`` 查询
+     （原实现对每个算法 6 次查询 + 逐条维度关系查参数，典型 N+1，
+     一次重载 ~N*6+M 条 SQL）。
+  3. 构建不持快照锁: DB I/O 在 ``_build_lock`` 下进行，L1 只做原子替换
+     （双缓冲），读侧全程无锁，写操作不会因他人重载而排队到分钟级。
+  4. 失效合并: 同一时刻的多个失效请求合并成一轮重载；pubsub 通知在
+     ``_PUBSUB_COALESCE_WINDOW_SECONDS`` 窗口内只触发一次全量重载。
+  5. 失败保留旧快照: 构建中途抛错时 L1 原封不动（INT-94 回归点——旧
+     快照被清空会让执行链路提取不到 algorithm_result）。
 """
 
 import json
 import logging
-from typing import Dict, List, Any, Optional
+import os
+import uuid
 from datetime import datetime
 from threading import Lock, RLock, Thread
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +42,7 @@ from shared.models.database import end_read_transaction
 
 from algorithm_service.infrastructure.persistence.algorithm_repository import (
     algorithm_definition_query_repository,
-    algorithm_group_query_repository,
     dimension_param_repository,
-    param_mapping_query_repository,
 )
 from algorithm_service.infrastructure.persistence.param_repository import (
     algorithm_param_repository,
@@ -42,9 +55,41 @@ from algorithm_service.infrastructure.persistence.param_repository import (
 _REDIS_KEY = 'algo_config_cache'
 _RELOAD_CHANNEL = 'algo_config_invalidate'
 
+# pubsub 失效通知合并窗口（秒）：窗口内到达的多条通知只触发一次全量重载。
+# 写操作每次都会 publish 一条，突发写（前端保存 + 参数同步）会连发多条，
+# 原实现逐条全量重载造成重复构建。
+_PUBSUB_COALESCE_WINDOW_SECONDS = float(
+    os.environ.get('ALGO_CONFIG_PUBSUB_COALESCE_SECONDS', '0.2'))
+
+# 参数来源合法值（_serialize_mappings / 来源反推的判定顺序：case→reference→device→api）
+_VALID_MAPPING_SOURCES = ('case', 'reference', 'device', 'api')
+
+# 本进程标识：pubsub 通知带上发布方，收到的若是自己发的说明本地已同步刷新过，
+# 不再重复重载（Redis pub/sub 会把消息回投给发布者本身，原实现因此每写一次
+# 都要多跑一轮全量重载）。
+_INSTANCE_ID = f'{os.getpid()}-{uuid.uuid4().hex[:8]}'
+
+# 快照里「按算法分桶」的键（切片刷新与移除按此清单整组处理）
+_PER_ALGORITHM_KEYS = (
+    'algorithms',
+    'device_params',
+    'api_params',
+    'case_params',
+    'reference_params',
+    'mappings',
+)
+
+# 模块级 Redis 客户端单例：复用连接，避免每次 publish/save 都新建连接
+_redis_client = None
+_redis_client_lock = Lock()
+
 
 def _resolve_actual_source(algo_type: str, source: str, source_param: str) -> str:
-    """当 source 为 'evaluation' 或其他非法值时，根据 source_param 查对应参数表反推真实来源。"""
+    """当 source 为 'evaluation' 或其他非法值时，根据 source_param 查对应参数表反推真实来源。
+
+    仅供没有批量上下文（如外部单独调用 _serialize_mappings）时兜底使用；
+    配置缓存重载走 ``_make_source_resolver`` 的内存版，不再逐条查库。
+    """
     valid_sources = ('case', 'reference', 'device', 'api')
     if source in valid_sources:
         return source
@@ -79,12 +124,19 @@ def _resolve_actual_source(algo_type: str, source: str, source_param: str) -> st
 
 
 def _get_redis():
-    """获取 Redis 连接（惰性创建，连接失败返回 None）"""
-    try:
-        import redis as redis_lib
-        return redis_lib.from_url(BaseConfig.REDIS_URL, decode_responses=True)
-    except Exception:
-        return None
+    """获取 Redis 连接（惰性创建 + 复用；连接失败返回 None）"""
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    with _redis_client_lock:
+        if _redis_client is None:
+            try:
+                import redis as redis_lib
+                _redis_client = redis_lib.from_url(
+                    BaseConfig.REDIS_URL, decode_responses=True)
+            except Exception:
+                return None
+    return _redis_client
 
 
 class AlgorithmConfigCache:
@@ -92,13 +144,16 @@ class AlgorithmConfigCache:
 
     L1（内存）+ L2（Redis）双层缓存:
     - 读: L1 → L2 → DB（逐级回源）
-    - 写后刷新: 先更新 DB，再 reload() 刷新 L1，最后 PUBLISH 通知其他进程
+    - 写后刷新: 先更新 DB，再按受影响切片 reload L1，最后 PUBLISH 通知其他进程
     - 跨进程同步: 订阅 Redis pubsub，收到通知后自动 reload L1
     """
 
     _instance = None
     _instance_lock = Lock()
+    # 保护「待重载范围 + L1 快照引用」，只做内存操作，绝不跨 DB/Redis I/O
     _reload_lock = RLock()
+    # 串行化快照构建（DB 查询）：一次只构建一轮，并发的失效请求合并到下一轮
+    _build_lock = Lock()
 
     def __new__(cls):
         if cls._instance is None:
@@ -107,17 +162,272 @@ class AlgorithmConfigCache:
                     obj = super().__new__(cls)
                     obj._config_cache: Dict[str, Any] = {}
                     obj._last_reload_time: Optional[datetime] = None
-                    obj._config_cache = {}
+                    obj._pending_full = False
+                    obj._pending_algorithms: Set[str] = set()
+                    obj._pending_dimensions: Set[int] = set()
+                    # 先完成首次加载再登记单例，避免并发拿到空缓存实例
                     obj._load_all_configs()
                     cls._instance = obj
                     # 启动后台 pubsub 监听线程
                     obj._start_invalidation_listener()
         return cls._instance
 
-    # ---- L1 内存加载 ----
+    # ---- 快照结构 ----
+
+    @staticmethod
+    def _empty_snapshot() -> Dict[str, Any]:
+        return {
+            'algorithms': {},
+            'device_params': {},
+            'api_params': {},
+            'case_params': {},
+            'evaluation_dimension_params': {},
+            'mappings': {},
+            'reference_params': {},
+        }
+
+    @staticmethod
+    def _copy_snapshot(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+        """复制快照的外层与按算法分桶的内层 dict（值为列表，整组替换）。
+
+        切片刷新时在副本上改，最后整份替换引用——读侧永远看到完整快照。
+        """
+        copied: Dict[str, Any] = {}
+        for key, value in snapshot.items():
+            copied[key] = dict(value) if isinstance(value, dict) else value
+        return copied
+
+    # ---- 构建（只查库，不触碰 L1） ----
+
+    def _build_full_snapshot(self) -> Dict[str, Any]:
+        """从 DB 构建整份新快照；中途失败直接抛出，旧快照不动（INT-94）。
+
+        SQL 条数与算法/维度数量无关：每类配置一次批量 IN 查询。
+        """
+        log_not_emit('DEBUG', 'algorithm_config_cache',
+                     'Starting to load all algorithm configs', category='algorithm')
+
+        snapshot = self._empty_snapshot()
+
+        algorithms = algorithm_definition_query_repository.list_online_definitions()
+        algo_types: List[str] = []
+        for algo in algorithms:
+            algo_type = algo.get('algorithm_type') or algo.get('type')
+            if not algo_type:
+                continue
+            algo_types.append(algo_type)
+            snapshot['algorithms'][algo_type] = self._definition_slice(algo)
+
+        log_not_emit('INFO', 'algorithm_config_cache',
+                     f'Found {len(algo_types)} online algorithms', category='algorithm')
+
+        device_params = self._group_rows(
+            algorithm_param_repository.list_by_algorithms(algo_types, 'device'))
+        api_params = self._group_rows(
+            algorithm_param_repository.list_by_algorithms(algo_types, 'api'))
+        case_params = self._group_rows(
+            case_param_repository.list_by_algorithms(algo_types))
+        reference_params = self._group_rows(
+            reference_param_repository.list_by_algorithms(algo_types))
+        mappings = self._group_rows(
+            mapping_repository.list_by_algorithms(algo_types))
+        relations = dimension_relation_repository.list_by_algorithms(algo_types)
+
+        resolve_source = self._make_source_resolver(
+            device_params, api_params, case_params, reference_params)
+
+        for algo_type in algo_types:
+            snapshot['device_params'][algo_type] = self._serialize_params(
+                device_params.get(algo_type, []))
+            snapshot['api_params'][algo_type] = self._serialize_params(
+                api_params.get(algo_type, []))
+            snapshot['case_params'][algo_type] = self._serialize_params(
+                case_params.get(algo_type, []))
+            snapshot['reference_params'][algo_type] = (
+                self._serialize_reference_params(
+                    reference_params.get(algo_type, [])))
+            snapshot['mappings'][algo_type] = self._serialize_mappings(
+                mappings.get(algo_type, []), resolve_source, algo_type)
+
+        # 维度参数：一次 IN 取回全部受影响维度（原实现逐条维度关系查一次）
+        dim_ids = sorted({
+            rel.get('dimension_id') for rel in relations
+            if rel.get('dimension_id') is not None
+        })
+        snapshot['evaluation_dimension_params'].update(
+            self._load_dimension_params(dim_ids))
+
+        log_not_emit('INFO', 'algorithm_config_cache',
+                     f'Config loaded successfully, {len(algo_types)} algorithms cached',
+                     category='algorithm')
+        return snapshot
+
+    def _build_algorithm_slices(
+        self, algorithm_types: Iterable[str]
+    ) -> Dict[str, Any]:
+        """构建指定算法类型的切片（定义 + 五类子配置 + 映射）。
+
+        返回 ``types``（本次覆盖的算法，含已下线/已删除）与各切片数据；
+        应用时 ``types`` 里没有在线定义的类型会被整组移除。
+        只查库，不改 L1。
+        """
+        types = sorted({str(t) for t in algorithm_types or [] if t})
+        if not types:
+            return {'types': [], 'definitions': {}}
+
+        definitions = {}
+        for definition in algorithm_definition_query_repository.list_by_types(types):
+            algo_type = (definition.get('algorithm_type')
+                         or definition.get('type'))
+            if algo_type:
+                definitions[algo_type] = definition
+        online = [
+            t for t in types
+            if t in definitions and definitions[t].get('status') == 'online'
+        ]
+
+        device_params = self._group_rows(
+            algorithm_param_repository.list_by_algorithms(online, 'device'))
+        api_params = self._group_rows(
+            algorithm_param_repository.list_by_algorithms(online, 'api'))
+        case_params = self._group_rows(
+            case_param_repository.list_by_algorithms(online))
+        reference_params = self._group_rows(
+            reference_param_repository.list_by_algorithms(online))
+        mappings = self._group_rows(
+            mapping_repository.list_by_algorithms(online))
+
+        resolve_source = self._make_source_resolver(
+            device_params, api_params, case_params, reference_params)
+
+        return {
+            'types': types,
+            'definitions': {
+                t: self._definition_slice(definitions[t]) for t in online
+            },
+            'device_params': {
+                t: self._serialize_params(device_params.get(t, []))
+                for t in online
+            },
+            'api_params': {
+                t: self._serialize_params(api_params.get(t, []))
+                for t in online
+            },
+            'case_params': {
+                t: self._serialize_params(case_params.get(t, []))
+                for t in online
+            },
+            'reference_params': {
+                t: self._serialize_reference_params(reference_params.get(t, []))
+                for t in online
+            },
+            'mappings': {
+                t: self._serialize_mappings(
+                    mappings.get(t, []), resolve_source, t)
+                for t in online
+            },
+        }
+
+    def _load_dimension_params(
+        self, dimension_ids: Iterable[int]
+    ) -> Dict[int, List[Dict[str, Any]]]:
+        """构建评估维度参数切片（一次批量查询后按维度分组）。"""
+        ids = sorted({
+            int(dim_id) for dim_id in dimension_ids or [] if dim_id is not None
+        })
+        if not ids:
+            return {}
+        grouped: Dict[int, List[Dict[str, Any]]] = {dim_id: [] for dim_id in ids}
+        for row in dimension_param_repository.list_by_dimensions(ids):
+            dim_id = row.get('dimension_id')
+            if dim_id is None:
+                continue
+            grouped.setdefault(int(dim_id), []).append(
+                self._serialize_dimension_param(row))
+        return grouped
+
+    @staticmethod
+    def _group_rows(rows: Iterable[dict]) -> Dict[str, List[dict]]:
+        """按 algorithm_type 把批量查询结果分组。"""
+        grouped: Dict[str, List[dict]] = {}
+        for row in rows or []:
+            algo_type = row.get('algorithm_type')
+            if not algo_type:
+                continue
+            grouped.setdefault(algo_type, []).append(row)
+        return grouped
+
+    @staticmethod
+    def _definition_slice(algo: dict) -> Dict[str, Any]:
+        algo_type = algo.get('algorithm_type') or algo.get('type')
+        return {
+            'id': algo.get('id'),
+            'type': algo_type,
+            'name': algo.get('name'),
+            'description': algo.get('description'),
+            'status': algo.get('status'),
+            'icon': algo.get('icon'),
+            'display_order': algo.get('display_order'),
+        }
+
+    @staticmethod
+    def _apply_algorithm_slices(snapshot: Dict[str, Any], slices: Dict[str, Any]):
+        """把算法切片写进快照副本：在线类型逐桶刷新，其余整组移除。"""
+        definitions = slices.get('definitions') or {}
+        for algo_type in slices.get('types') or []:
+            if algo_type in definitions:
+                snapshot['algorithms'][algo_type] = definitions[algo_type]
+                # algorithms 桶由 definitions 提供，其余按算法分桶逐个刷新
+                for key in _PER_ALGORITHM_KEYS[1:]:
+                    snapshot[key][algo_type] = (
+                        slices.get(key, {}).get(algo_type, []))
+            else:
+                for key in _PER_ALGORITHM_KEYS:
+                    snapshot[key].pop(algo_type, None)
+
+    @staticmethod
+    def _make_source_resolver(
+        device_params: Dict[str, List[dict]],
+        api_params: Dict[str, List[dict]],
+        case_params: Dict[str, List[dict]],
+        reference_params: Dict[str, List[dict]],
+    ) -> Callable[[str, str], str]:
+        """用已批量取回的参数做内存版来源反推（判定顺序同 _resolve_actual_source）。"""
+        code_sets = {
+            'device': {t: {p.get('code') for p in rows if p.get('code')}
+                       for t, rows in device_params.items()},
+            'api': {t: {p.get('code') for p in rows if p.get('code')}
+                    for t, rows in api_params.items()},
+            'case': {t: {p.get('code') for p in rows if p.get('code')}
+                     for t, rows in case_params.items()},
+            'reference': {t: {p.get('code') for p in rows if p.get('code')}
+                          for t, rows in reference_params.items()},
+        }
+
+        def resolve(algo_type: str, source_param: str) -> str:
+            if not source_param:
+                return 'case'
+            for source in _VALID_MAPPING_SOURCES:
+                if source_param in code_sets[source].get(algo_type, ()):
+                    return source
+            return 'case'
+
+        return resolve
+
+    # ---- L1 安装 ----
+
+    def _install_snapshot(self, snapshot: Dict[str, Any]):
+        """原子替换 L1 快照（仅内存操作；L2 写在锁外）。"""
+        with self._reload_lock:
+            self._config_cache = snapshot
+            self._last_reload_time = datetime.now()
+            reload_time = self._last_reload_time
+        self._save_to_redis(snapshot, reload_time)
 
     def _load_all_configs(self):
-        """从本地数据库加载所有算法配置（纯读路径，事务边界在此收口）。
+        """全量重载 L1（构建不持快照锁，失败保留旧快照）。
+
+        从本地数据库加载所有算法配置（纯读路径，事务边界在此收口）。
 
         INT-1652：本函数只做 SELECT，原先既不 commit 也不 rollback —— 在 pubsub
         监听线程 / 单例首次构造时会话一直挂在 idle in transaction，持着表的
@@ -131,90 +441,37 @@ class AlgorithmConfigCache:
             end_read_transaction()
 
     def _load_all_configs_locked(self):
-        """从本地数据库加载所有算法配置（线程安全）。
+        """全量重载 L1（构建不持快照锁，失败保留旧快照）。
 
-        先构建完整新快照、全部查询成功后才原子替换 L1：加载中途失败（如
-        engine 已被换绑/销毁——pytest 模块级临时库、服务重启换库——时旧
-        session 首查即抛）不得把 L1 清空，否则执行链路在空缓存上提取
-        algorithm_result 恒为空（INT-94 全量回归失败族根因）。
+        不发 pubsub 通知：pubsub 监听线程与写后失效分别负责发布。
         """
-        with self._reload_lock:
-            log_not_emit('DEBUG', 'algorithm_config_cache', 'Starting to load all algorithm configs', category='algorithm')
-            new_cache = {
-                'algorithms': {},
-                'device_params': {},
-                'api_params': {},
-                'case_params': {},
-                'evaluation_dimension_params': {},
-                'mappings': {},
-                'reference_params': {},
-            }
-
-            algorithms = algorithm_definition_query_repository.list_online_definitions()
-
-            log_not_emit('INFO', 'algorithm_config_cache', f'Found {len(algorithms)} online algorithms', category='algorithm')
-
-            for algo in algorithms:
-                algo_type = algo.get('algorithm_type') or algo.get('type')
-                if not algo_type:
-                    continue
-                new_cache['algorithms'][algo_type] = {
-                    'id': algo.get('id'),
-                    'type': algo_type,
-                    'name': algo.get('name'),
-                    'description': algo.get('description'),
-                    'status': algo.get('status'),
-                    'icon': algo.get('icon'),
-                    'display_order': algo.get('display_order'),
-                }
-
-                device_params = algorithm_param_repository.list_by_algorithm(algo_type, 'device')
-                new_cache['device_params'][algo_type] = self._serialize_params(device_params)
-
-                api_params = algorithm_param_repository.list_by_algorithm(algo_type, 'api')
-                new_cache['api_params'][algo_type] = self._serialize_params(api_params)
-
-                mappings = mapping_repository.list_by_algorithm(algo_type)
-                new_cache['mappings'][algo_type] = self._serialize_mappings(mappings)
-
-                case_params = case_param_repository.list_by_algorithm(algo_type)
-                new_cache['case_params'][algo_type] = self._serialize_params(case_params)
-
-                ref_params = reference_param_repository.list_by_algorithm(algo_type)
-                new_cache['reference_params'][algo_type] = self._serialize_reference_params(ref_params)
-
-                dim_relations = dimension_relation_repository.list_by_algorithm(algo_type)
-                for rel in dim_relations:
-                    dim_id = rel.get('dimension_id') if isinstance(rel, dict) else None
-                    if dim_id and dim_id not in new_cache['evaluation_dimension_params']:
-                        params = dimension_param_repository.list_by_dimension(dim_id)
-                        new_cache['evaluation_dimension_params'][dim_id] = [
-                            self._serialize_dimension_param(p) for p in params
-                        ]
-
-            self._config_cache = new_cache
-            self._last_reload_time = datetime.now()
-
-            # 将快照写入 Redis（L2）
-            self._save_to_redis()
-
-            log_not_emit('INFO', 'algorithm_config_cache',
-                         f'Config loaded successfully, {len(algorithms)} algorithms cached', category='algorithm')
+        with self._build_lock:
+            snapshot = self._build_full_snapshot()
+            self._install_snapshot(snapshot)
 
     # ---- L2 Redis 持久化 ----
 
-    def _save_to_redis(self):
-        """将当前 L1 快照写入 Redis HASH"""
+    def _save_to_redis(
+        self,
+        snapshot: Optional[Dict[str, Any]] = None,
+        reload_time: Optional[datetime] = None,
+    ):
+        """将快照写入 Redis HASH（序列化与网络 I/O 均在快照锁外）。"""
         r = _get_redis()
         if r is None:
             return
+        if snapshot is None:
+            snapshot = self._config_cache
+        if reload_time is None:
+            reload_time = self._last_reload_time
         try:
             r.hset(_REDIS_KEY, mapping={
-                'snapshot': json.dumps(self._config_cache, ensure_ascii=False, default=str),
-                'reload_time': self._last_reload_time.isoformat() if self._last_reload_time else '',
+                'snapshot': json.dumps(snapshot, ensure_ascii=False, default=str),
+                'reload_time': reload_time.isoformat() if reload_time else '',
             })
         except Exception as e:
-            log_not_emit('WARN', 'algorithm_config_cache', f'Failed to save snapshot to Redis: {e}', category='algorithm')
+            log_not_emit('WARN', 'algorithm_config_cache',
+                         f'Failed to save snapshot to Redis: {e}', category='algorithm')
 
     def _load_from_redis(self) -> Optional[Dict[str, Any]]:
         """从 Redis 读取快照（L2 回源）"""
@@ -237,12 +494,15 @@ class AlgorithmConfigCache:
         if r is None:
             return
         try:
-            r.publish(_RELOAD_CHANNEL, datetime.now().isoformat())
+            r.publish(_RELOAD_CHANNEL, json.dumps({
+                'instance': _INSTANCE_ID,
+                'at': datetime.now().isoformat(),
+            }))
         except Exception:
             logger.warning("发布配置缓存失效通知到 Redis pubsub 失败", exc_info=True)
 
     def _start_invalidation_listener(self):
-        """启动后台线程，监听 Redis pubsub 失效通知"""
+        """启动后台线程，监听 Redis pubsub 失效通知（窗口内合并为一次重载）"""
         def _listen():
             import time
 
@@ -255,16 +515,29 @@ class AlgorithmConfigCache:
                 try:
                     pubsub = r.pubsub()
                     pubsub.subscribe(_RELOAD_CHANNEL)
-                    for _msg in pubsub.listen():
-                        if _msg.get('type') == 'message':
-                            log_not_emit('INFO', 'algorithm_config_cache',
-                                         'Received invalidation notice from Redis pubsub, reloading L1', category='algorithm')
-                            # 本线程的线程级 session 跨进程/套件生命周期存活，引擎
-                            # 换绑（pytest 模块级临时库、服务重启换库）后旧 session
-                            # 首查即抛，reload 静默失败——每条通知强制丢弃旧
-                            # session，绑定当前 engine（INT-94）。
-                            remove_db_session()
-                            self._load_all_configs()
+                    while True:
+                        msg = pubsub.get_message(
+                            ignore_subscribe_messages=True, timeout=5)
+                        if not msg:
+                            continue
+                        if msg.get('type') != 'message':
+                            continue
+                        notices = self._drain_invalidation_notices(
+                            [msg.get('data')], pubsub)
+                        foreign = [n for n in notices if n != _INSTANCE_ID]
+                        if not foreign:
+                            # 只有本进程自己发的通知：本地写路径已同步刷新过 L1
+                            continue
+                        log_not_emit(
+                            'INFO', 'algorithm_config_cache',
+                            f'Received {len(foreign)} foreign invalidation notice(s) '
+                            'from Redis pubsub, reloading L1', category='algorithm')
+                        # 本线程的线程级 session 跨进程/套件生命周期存活，引擎
+                        # 换绑（pytest 模块级临时库、服务重启换库）后旧 session
+                        # 首查即抛，reload 静默失败——每条通知强制丢弃旧
+                        # session，绑定当前 engine（INT-94）。
+                        remove_db_session()
+                        self._load_all_configs()
                 except Exception as e:
                     log_not_emit('WARN', 'algorithm_config_cache',
                                  f'Reload on invalidation notice failed, kept last snapshot: {e}',
@@ -272,6 +545,36 @@ class AlgorithmConfigCache:
                     time.sleep(3)
 
         Thread(target=_listen, daemon=True, name='algo-cache-pubsub').start()
+
+    @staticmethod
+    def _notice_instance(raw) -> str:
+        """解析通知载荷里的发布方标识；旧版纯时间戳载荷按「其他进程」处理。"""
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError):
+            return ''
+        if isinstance(payload, dict):
+            return str(payload.get('instance') or '')
+        return ''
+
+    @classmethod
+    def _drain_invalidation_notices(cls, first_payloads, pubsub) -> List[str]:
+        """在合并窗口内吞掉后续通知，返回本轮合并的全部发布方标识。
+
+        避免一次突发写连发多条通知时重复全量重载。
+        """
+        import time
+
+        publishers = [cls._notice_instance(p) for p in first_payloads]
+        deadline = time.monotonic() + max(_PUBSUB_COALESCE_WINDOW_SECONDS, 0.0)
+        while True:
+            remain = deadline - time.monotonic()
+            if remain <= 0:
+                return publishers
+            notice = pubsub.get_message(
+                ignore_subscribe_messages=True, timeout=remain)
+            if notice and notice.get('type') == 'message':
+                publishers.append(cls._notice_instance(notice.get('data')))
 
     # ---- 序列化 ----
 
@@ -336,7 +639,11 @@ class AlgorithmConfigCache:
         }
 
     @staticmethod
-    def _serialize_mappings(mappings) -> Dict[str, Any]:
+    def _serialize_mappings(
+        mappings,
+        resolve_source: Optional[Callable[[str, str], str]] = None,
+        algorithm_type: str = '',
+    ) -> Dict[str, Any]:
         # 合法来源值
         VALID_SOURCES = {'case', 'reference', 'device', 'api', 'case_config'}
         result = {'device': [], 'api': [], 'case': [], 'reference': [], 'case_config': []}
@@ -347,11 +654,18 @@ class AlgorithmConfigCache:
                 source = m.get('source') or m.get('source_type') or 'api'
                 # 修复历史脏数据：source='evaluation' 或其他非法值时反推真实来源
                 if source not in VALID_SOURCES:
-                    source = _resolve_actual_source(
-                        m.get('algorithm_type', ''),
-                        source,
-                        m.get('source_param') or m.get('source_field') or '',
-                    )
+                    source_param = (
+                        m.get('source_param') or m.get('source_field') or '')
+                    if resolve_source is not None:
+                        source = resolve_source(
+                            m.get('algorithm_type') or algorithm_type,
+                            source_param)
+                    else:
+                        source = _resolve_actual_source(
+                            m.get('algorithm_type') or algorithm_type,
+                            source,
+                            source_param,
+                        )
                 # 评估维度映射（dimension_id 非空）归入 evaluation 分组
                 if m.get('dimension_id') is not None:
                     result.setdefault('evaluation', []).append({
@@ -385,31 +699,104 @@ class AlgorithmConfigCache:
                     })
         return result
 
+    # ---- 失效调度 ----
+
+    def _register_invalidation(
+        self,
+        algorithm_types: Optional[Iterable[str]] = None,
+        dimension_ids: Optional[Iterable[int]] = None,
+        force_full: bool = False,
+    ):
+        """登记待重载范围（不查库）。
+
+        范围为空（未给或给了全空值）视为「不知道受影响范围」，按全量处理，
+        避免漏刷新导致写后读不一致。``force_full`` 供构建失败回填时使用。
+        """
+        algo_scope = {str(t) for t in algorithm_types or [] if t}
+        dim_scope = {int(d) for d in dimension_ids or [] if d is not None}
+        with self._reload_lock:
+            if force_full or (algorithm_types is None and dimension_ids is None):
+                self._pending_full = True
+            elif not algo_scope and not dim_scope:
+                # 给了范围但归一化后为空：宁全量不漏刷新
+                self._pending_full = True
+            else:
+                self._pending_algorithms.update(algo_scope)
+                self._pending_dimensions.update(dim_scope)
+
+    def _flush_pending_invalidations(self):
+        """执行一轮合并后的重载。
+
+        构建在 ``_build_lock`` 下串行化：并发的失效请求中，先到者构建，
+        后到者的范围留在待办里，由下一轮合并处理（同一突发最多重载两轮）。
+        构建读库发生在「取走待办」之后，因此被取走的范围一定包含最新提交。
+        """
+        with self._build_lock:
+            with self._reload_lock:
+                full = self._pending_full
+                algorithm_types = set(self._pending_algorithms)
+                dimension_ids = set(self._pending_dimensions)
+                self._pending_full = False
+                self._pending_algorithms.clear()
+                self._pending_dimensions.clear()
+
+            if not (full or algorithm_types or dimension_ids):
+                return  # 已被上一轮合并掉
+
+            try:
+                if full:
+                    self._install_snapshot(self._build_full_snapshot())
+                    return
+
+                slices = (self._build_algorithm_slices(algorithm_types)
+                          if algorithm_types else None)
+                dim_params = (self._load_dimension_params(dimension_ids)
+                              if dimension_ids else None)
+                snapshot = self._copy_snapshot(self._config_cache)
+                if slices is not None:
+                    self._apply_algorithm_slices(snapshot, slices)
+                if dim_params is not None:
+                    snapshot['evaluation_dimension_params'].update(dim_params)
+                self._install_snapshot(snapshot)
+            except Exception:
+                # 构建失败：旧快照原样保留（INT-94），范围放回待办，
+                # 下一次失效/重载时重试，避免这一轮的刷新被吞掉
+                self._register_invalidation(
+                    algorithm_types, dimension_ids, force_full=full)
+                raise
+
     # ---- 公开 API ----
+
+    def invalidate(
+        self,
+        algorithm_types: Optional[Iterable[str]] = None,
+        dimension_ids: Optional[Iterable[int]] = None,
+    ):
+        """写操作后调用: 按受影响范围刷新 L1 并通知其他进程。
+
+        - 两个范围都不给 → 全量重载
+        - 给范围 → 只重载对应切片（未受影响部分保持原快照）
+        """
+        self._register_invalidation(algorithm_types, dimension_ids)
+        self._flush_pending_invalidations()
+        self._publish_invalidation()
 
     def reload_if_changed(self) -> bool:
         """重新加载配置（与 reload 等效，保留接口兼容）"""
         try:
-            with self._reload_lock:
-                self._load_all_configs()
-                self._publish_invalidation()
-                return True
+            self.reload()
+            return True
         except Exception as e:
-            log_not_emit('ERROR', 'algorithm_config_cache', f'Error checking config changes: {e}', category='algorithm')
+            log_not_emit('ERROR', 'algorithm_config_cache',
+                         f'Error checking config changes: {e}', category='algorithm')
             return False
 
     def reload(self) -> bool:
         """强制重新加载，并通知其他进程"""
-        with self._reload_lock:
-            self._load_all_configs()
+        self._register_invalidation()
+        self._flush_pending_invalidations()
         self._publish_invalidation()
         return True
-
-    def invalidate(self):
-        """写操作后调用: 重新加载 L1 并通知其他进程"""
-        with self._reload_lock:
-            self._load_all_configs()
-        self._publish_invalidation()
 
     def get_last_reload_time(self) -> Optional[str]:
         if self._last_reload_time:
@@ -417,25 +804,28 @@ class AlgorithmConfigCache:
         return None
 
     def get_all_algorithms(self) -> List[Dict[str, Any]]:
+        cache = self._config_cache
         return [
             {'type': k, 'name': v.get('name', k), 'description': v.get('description')}
-            for k, v in self._config_cache.get('algorithms', {}).items()
+            for k, v in cache.get('algorithms', {}).items()
         ]
 
     def get_algorithm_config(self, algorithm_type: str) -> Optional[Dict[str, Any]]:
-        if algorithm_type not in self._config_cache.get('algorithms', {}):
+        cache = self._config_cache
+        if algorithm_type not in cache.get('algorithms', {}):
             return None
         return {
-            'definition': self._config_cache['algorithms'].get(algorithm_type),
-            'device_params': self._config_cache['device_params'].get(algorithm_type, []),
-            'api_params': self._config_cache['api_params'].get(algorithm_type, []),
-            'case_params': self._config_cache['case_params'].get(algorithm_type, []),
-            'mappings': self._config_cache['mappings'].get(algorithm_type, {}),
+            'definition': cache['algorithms'].get(algorithm_type),
+            'device_params': cache['device_params'].get(algorithm_type, []),
+            'api_params': cache['api_params'].get(algorithm_type, []),
+            'case_params': cache['case_params'].get(algorithm_type, []),
+            'mappings': cache['mappings'].get(algorithm_type, {}),
         }
 
     def get_algorithm_params(self, algorithm_type: str) -> List[Dict[str, Any]]:
-        device_params = self._config_cache.get('device_params', {}).get(algorithm_type, [])
-        api_params = self._config_cache.get('api_params', {}).get(algorithm_type, [])
+        cache = self._config_cache
+        device_params = cache.get('device_params', {}).get(algorithm_type, [])
+        api_params = cache.get('api_params', {}).get(algorithm_type, [])
         return device_params + api_params
 
     def get_device_params(self, algorithm_type: str) -> List[Dict[str, Any]]:
@@ -451,13 +841,17 @@ class AlgorithmConfigCache:
         return self._config_cache.get('reference_params', {}).get(algorithm_type, [])
 
     def get_param_mapping(self, algorithm_type: str, component_type: str) -> List[Dict[str, Any]]:
-        mappings = self._config_cache.get('mappings', {}).get(algorithm_type, {})
+        cache = self._config_cache
+        mappings = cache.get('mappings', {}).get(algorithm_type, {})
         if component_type == 'evaluation':
-            return self._get_evaluation_mappings(algorithm_type)
+            return self._get_evaluation_mappings(algorithm_type, cache)
         return mappings.get(component_type, [])
 
-    def _get_evaluation_mappings(self, algorithm_type: str) -> List[Dict[str, Any]]:
-        mappings = self._config_cache.get('mappings', {}).get(algorithm_type, {})
+    def _get_evaluation_mappings(
+        self, algorithm_type: str, cache: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        cache = cache if cache is not None else self._config_cache
+        mappings = cache.get('mappings', {}).get(algorithm_type, {})
         result = []
         seen = set()
         # 维度级映射（dimension_id 非空）在 _serialize_mappings 中统一归入 evaluation 桶，

@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterable, Optional
 
 import logging
 
@@ -43,10 +43,19 @@ class _ParamBaseMixin:
     """
 
     @staticmethod
-    def _invalidate_cache():
-        """写操作后刷新缓存（L1 重载 + Redis pubsub 通知其他进程）"""
+    def _invalidate_cache(
+        algorithm_types: Optional[Iterable[str]] = None,
+        dimension_ids: Optional[Iterable[int]] = None,
+    ):
+        """写操作后刷新缓存（按受影响切片重载 L1 + Redis pubsub 通知其他进程）。
+
+        INT-1666：能确定受影响范围的写操作只重载对应切片
+        （单个 algorithm_type / 单个 dimension_id），避免每次写都全量
+        重建整份算法配置快照；范围未知时不传参 → 全量重载。
+        """
         try:
             from algorithm_service.infrastructure.persistence.config_cache import get_config_cache
-            get_config_cache().invalidate()
+            get_config_cache().invalidate(
+                algorithm_types=algorithm_types, dimension_ids=dimension_ids)
         except Exception:
             logger.exception("刷新缓存失败（_invalidate_cache）")

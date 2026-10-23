@@ -78,6 +78,29 @@ class DimensionParamRepository(IDimensionParamRepository):
         ).order_by(EvaluationDimensionParamPO.ui_order).all()
         return [_po_to_dict(po) for po in items]
 
+    def list_by_dimensions(self, dimension_ids: List[int]) -> List[dict]:
+        """批量查询多个评估维度的参数（INT-1666 配置缓存重载用）。
+
+        一次 ``IN`` 查询取回全部维度的参数并按 (dimension_id, ui_order)
+        排序，调用方分组即可——消除原「逐条维度关系 list_by_dimension」
+        的 N+1。dimension_ids 为空时返回空列表（不发查询）。
+        """
+        from algorithm_service.infrastructure.persistence.models import (
+            EvaluationDimensionParam as EvaluationDimensionParamPO,
+        )
+        ids = [int(i) for i in dimension_ids or [] if i is not None]
+        if not ids:
+            return []
+        session = get_db_session()
+        items = session.query(EvaluationDimensionParamPO).filter(
+            EvaluationDimensionParamPO.dimension_id.in_(ids),
+            EvaluationDimensionParamPO.deleted == False,  # noqa: E712
+        ).order_by(
+            EvaluationDimensionParamPO.dimension_id,
+            EvaluationDimensionParamPO.ui_order,
+        ).all()
+        return [_po_to_dict(po) for po in items]
+
     def list_with_code_name(self, dimension_id: int) -> List[dict]:
         """查询评估维度参数列表，附加 code/name 字段（供 servicer GetDimensionParams）。"""
         from algorithm_service.infrastructure.persistence.models import (
