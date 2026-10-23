@@ -5,6 +5,7 @@
  *
  * 端点契约对照 api_gateway/routes/audio_bp.py + api_gateway/schemas/audio.py：
  *   GET    /audios                          列表（分页/facet；响应信封内 data.stats）
+ *   POST   /audios/by-md5                   按内容 MD5 批量查音频（INT-1582 批量更新标注匹配）
  *   GET    /audios/tags                     标签列表（PaginatedData 信封）
  *   POST   /audios/folder-tree              文件夹树（depth 增量）
  *   DELETE /audios/{id}                     删除（引用四路拦截文案由后端错误响应带回）
@@ -127,6 +128,28 @@ export async function fetchAudioDuration(
     (result.items.length === 1 ? result.items[0] : undefined)
   const duration = hit?.duration
   return duration != null && duration > 0 ? duration : null
+}
+
+/**
+ * 按内容 MD5 查音频（POST /audios/by-md5，body { md5_list }）。
+ * INT-1582 批量更新标注：拖入音频文件算内容 MD5 后全库匹配，替代只按文件名匹配已载入行。
+ * 后端响应 data = { <md5>: { id, name } }，只含命中项；键统一小写，便于前端按小写 MD5 取值。
+ */
+export async function fetchAudiosByMd5(
+  md5List: string[]
+): Promise<Record<string, { id: number; name: string }>> {
+  if (md5List.length === 0) return {}
+  const dto = await request<Record<string, { id?: number; name?: string } | null>>(
+    'POST',
+    '/audios/by-md5',
+    { md5_list: md5List }
+  )
+  const result: Record<string, { id: number; name: string }> = {}
+  for (const [md5, audio] of Object.entries(dto ?? {})) {
+    if (!audio || audio.id == null) continue
+    result[md5.toLowerCase()] = { id: Number(audio.id), name: String(audio.name ?? '') }
+  }
+  return result
 }
 
 /** 文件夹树（POST /audios/folder-tree；depth=10 全量渲染，响应信封内 data.tree.folders 为顶层节点） */

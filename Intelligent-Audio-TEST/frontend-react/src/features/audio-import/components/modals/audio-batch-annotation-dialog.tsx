@@ -1,11 +1,15 @@
 /**
  * 批量更新标注弹窗（§6.19；Dialog sm:max-w-3xl）。
- * 拖放区（音频+标注文件按文件名匹配）+ 真实解析进度 + 已解析摘要 + 算法 select
- * + 「同步刷新关联测试用例的参考参数」checkbox + 匹配结果列表（仅看未匹配）
+ * 拖放区（音频 + 标注文件）+ 真实进度（计算 MD5 → 查库 → 解析标注）+ 已解析摘要
+ * + 算法 select + 「同步刷新关联测试用例的参考参数」checkbox + 匹配结果列表（仅看未匹配）
  * + 主钮「开始更新」（POST /audios/batch/annotations {items,algorithm_type,refresh_test_cases}）
  * → toast「更新完成 成功 {s} 失败 {f} 刷新用例 {z}」。
- * V9.7.10 BatchAnnotationModal 对位：标注解析（txt/json/jsonl/rttm/stm）+ 文件名匹配；
- * 提交载荷经 useAudioMutations.batchAnnotations（items 随请求提交）。
+ *
+ * 匹配口径与 V9.7.10 BatchAnnotationModal 一致（INT-1582）：
+ *   拖入的音频文件按内容算 MD5（分块流式，lib/md5）→ 音频与标注按文件基名建立
+ *   baseName→md5 桥接 → POST /audios/by-md5 全库按 MD5 命中（不受列表分页/筛选限制，
+ *   文件名被改过但内容相同的音频同样命中）。未匹配行按原因分类：
+ *   未拖入对应音频文件 / 音频 MD5 在库内不存在 / 标注解析失败。
  */
 import { FileCheck2, Link, Link2Off } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
@@ -32,9 +36,10 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { useAudioMutations } from '@/application/audio/useAudioList'
-import { useAudioList } from '@/application/audio/useAudioList'
 import { useAlgorithmOptions } from '@/application/evaluation/use-dimensions'
+import { fetchAudiosByMd5 } from '@/infrastructure/api/audios-api'
 import { parseAnnotationFile as parseAnnotation } from '@/features/audio-import/lib/annotation'
+import { md5OfFile } from '@/features/audio-import/lib/md5'
 
 export type AudioBatchAnnotationDialogProps = {
   open: boolean
@@ -42,10 +47,20 @@ export type AudioBatchAnnotationDialogProps = {
 }
 
 const ANNOTATION_EXTS = ['.json', '.jsonl', '.rttm', '.stm', '.txt']
+const AUDIO_EXTS = ['.wav', '.mp3', '.m4a', '.flac', '.aac', '.ogg']
+/** 计算 MD5 的并发文件数（V9.7.10 同款） */
+const MD5_CONCURRENCY = 4
+/** by-md5 单次查询的 MD5 个数上限（V9.7.10 同款分块，避免 IN 列表过大） */
+const MD5_QUERY_BATCH = 500
 
-/** 去扩展名（用于音频/标注按文件名匹配） */
+/** 去扩展名（音频与标注按文件基名配对） */
 function baseName(name: string): string {
   return name.replace(/\.[^.]+$/, '')
+}
+
+function hasExt(name: string, exts: string[]): boolean {
+  const lower = name.toLowerCase()
+  return exts.some((ext) => lower.endsWith(ext))
 }
 
 type MatchRow = {
@@ -53,20 +68,21 @@ type MatchRow = {
   audioName: string
   audioId: number | null
   matched: boolean
+  /** 未匹配原因（UI 直出，替代笼统的「未匹配到音频」） */
+  unmatchedReason?: string
   annotations: unknown[]
 }
 
+type Stage = '计算音频 MD5' | '按 MD5 查询音频库' | '解析标注文件'
+
 export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProps) {
   const { batchAnnotations } = useAudioMutations()
-  // 文件名匹配需要跨页完整音频集（INT-1216 列表改服务端分页后，对话框独立拉全量；
-  // 仅弹窗打开时才请求，避免页面常驻时多拉一份）
-  const audioListQuery = useAudioList({ allRows: true, enabled: props.open })
-  const audioList = audioListQuery.data?.items ?? []
   const algorithmOptionsQuery = useAlgorithmOptions()
   const algorithmOptions = algorithmOptionsQuery.data ?? []
 
-  const [parsed, setParsed] = useState(0)
+  const [processed, setProcessed] = useState(0)
   const [total, setTotal] = useState(0)
+  const [stage, setStage] = useState<Stage | ''>('')
   const [processing, setProcessing] = useState(false)
   const [refreshCases, setRefreshCases] = useState(true)
   const [algorithmType, setAlgorithmType] = useState('')
@@ -78,6 +94,12 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
   const matchedCount = useMemo(() => rows.filter((r) => r.matched).length, [rows])
   const unmatchedCount = useMemo(() => rows.length - matchedCount, [rows, matchedCount])
   const selectedAlgorithmLabel = algorithmOptions.find((o) => o.value === algorithmType)?.label
+
+  const resetProgress = () => {
+    setProcessed(0)
+    setTotal(0)
+    setStage('')
+  }
 
   const exportUnmatched = () => {
     const lines = rows.filter((r) => !r.matched).map((r) => r.annotationName)
@@ -96,48 +118,91 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
     [onlyUnmatched, rows]
   )
 
-  const handleFiles = (incoming: FileList | null) => {
+  const handleFiles = async (incoming: FileList | null) => {
     if (!incoming) return
     const list = Array.from(incoming)
-    const annotationFiles = list.filter((f) =>
-      ANNOTATION_EXTS.some((e) => f.name.toLowerCase().endsWith(e))
-    )
+    const audioFiles = list.filter((f) => hasExt(f.name, AUDIO_EXTS))
+    const annotationFiles = list.filter((f) => hasExt(f.name, ANNOTATION_EXTS))
     if (annotationFiles.length === 0) {
       toast.error('未选择标注文件（.json/.jsonl/.rttm/.stm/.txt）')
       return
     }
 
     setProcessing(true)
-    setParsed(0)
-    setTotal(annotationFiles.length)
-
-    // 逐文件解析（真实文本读取）+ 按文件名匹配音频
-    const nextRows: MatchRow[] = []
-    let done = 0
-    for (const file of annotationFiles) {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const content = String(reader.result ?? '')
-        const annotations = parseAnnotation(file.name, content)
-        const base = baseName(file.name).toLowerCase()
-        const matchedAudio = audioList.find(
-          (a) => baseName(a.originalFilename ?? a.name).toLowerCase() === base
+    setRows([])
+    try {
+      // 1. 音频文件按内容算 MD5，并以文件基名索引（audio1.wav → md5）
+      setStage('计算音频 MD5')
+      setProcessed(0)
+      setTotal(audioFiles.length)
+      const baseNameToMd5 = new Map<string, string>()
+      const md5Set = new Set<string>()
+      for (let i = 0; i < audioFiles.length; i += MD5_CONCURRENCY) {
+        const batch = audioFiles.slice(i, i + MD5_CONCURRENCY)
+        const results = await Promise.all(
+          batch.map(async (file) => {
+            try {
+              return { name: file.name, md5: await md5OfFile(file) }
+            } catch {
+              return null
+            }
+          })
         )
+        for (const result of results) {
+          if (!result) continue
+          md5Set.add(result.md5)
+          baseNameToMd5.set(baseName(result.name).toLowerCase(), result.md5.toLowerCase())
+        }
+        setProcessed(Math.min(i + MD5_CONCURRENCY, audioFiles.length))
+      }
+
+      // 2. 分批按 MD5 查全库（不依赖当前列表已载入的行，分页/筛选之外同样命中）
+      setStage('按 MD5 查询音频库')
+      const md5ToAudio: Record<string, { id: number; name: string }> = {}
+      const md5List = Array.from(md5Set)
+      setTotal(md5List.length)
+      for (let i = 0; i < md5List.length; i += MD5_QUERY_BATCH) {
+        const chunk = md5List.slice(i, i + MD5_QUERY_BATCH)
+        Object.assign(md5ToAudio, await fetchAudiosByMd5(chunk))
+        setProcessed(Math.min(i + MD5_QUERY_BATCH, md5List.length))
+      }
+
+      // 3. 解析标注并出匹配结果（基名 → md5 → 库内音频）
+      setStage('解析标注文件')
+      setProcessed(0)
+      setTotal(annotationFiles.length)
+      const nextRows: MatchRow[] = []
+      for (let i = 0; i < annotationFiles.length; i += 1) {
+        const file = annotationFiles[i]
+        const content = await file.text()
+        const annotations = parseAnnotation(file.name, content)
+        const md5 = baseNameToMd5.get(baseName(file.name).toLowerCase())
+        const matchedAudio = md5 ? md5ToAudio[md5] : undefined
         nextRows.push({
           annotationName: file.name,
-          audioName: matchedAudio ? matchedAudio.name : '未匹配到音频',
+          audioName: matchedAudio ? matchedAudio.name : '',
           audioId: matchedAudio ? matchedAudio.id : null,
           matched: matchedAudio != null,
+          unmatchedReason: matchedAudio
+            ? undefined
+            : audioFiles.length === 0
+              ? '未拖入音频文件，无法按内容 MD5 匹配'
+              : md5
+                ? '音频内容 MD5 不在库内（该音频尚未上传）'
+                : '未拖入与标注同名的音频文件',
           annotations,
         })
-        done += 1
-        setParsed(done)
-        if (done === annotationFiles.length) {
-          setRows(nextRows)
-          setProcessing(false)
-        }
+        setProcessed(i + 1)
       }
-      reader.readAsText(file)
+      setRows(nextRows)
+      if (audioFiles.length === 0) {
+        toast.info('未拖入音频文件：请同时拖入对应音频，按内容 MD5 匹配全库音频')
+      }
+    } catch {
+      toast.error('标注文件处理失败，请重试')
+    } finally {
+      setProcessing(false)
+      resetProgress()
     }
   }
 
@@ -160,8 +225,7 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
         `更新完成 成功 ${result.success} 失败 ${result.failed} 刷新用例 ${result.refreshed}`
       )
       setRows([])
-      setParsed(0)
-      setTotal(0)
+      resetProgress()
       props.onOpenChange(false)
     } catch {
       toast.error('批量更新标注失败，请重试')
@@ -177,8 +241,7 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
         props.onOpenChange(open)
         if (!open) {
           setRows([])
-          setParsed(0)
-          setTotal(0)
+          resetProgress()
         }
       }}
     >
@@ -186,8 +249,8 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
         <DialogHeader>
           <DialogTitle>批量更新标注</DialogTitle>
           <DialogDescription>
-            按文件名匹配音频与标注文件（audio1.wav ↔ audio1.json）。
-            文件名匹配基于当前列表载入的前 200 条音频，超出部分请先筛选后再操作。
+            同时拖入音频与标注文件，按音频内容 MD5 在音频库全量匹配（audio1.wav + audio1.json
+            为一组）；文件名被改过但内容相同也能命中，不受列表分页与筛选限制。
           </DialogDescription>
         </DialogHeader>
 
@@ -203,6 +266,7 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
               variant='outline'
               size='sm'
               type='button'
+              disabled={processing}
               onClick={() => fileRef.current?.click()}
             >
               选择文件
@@ -214,23 +278,23 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
               accept='.wav,.mp3,.m4a,.flac,.aac,.ogg,.json,.jsonl,.rttm,.stm,.txt'
               className='hidden'
               onChange={(e) => {
-                handleFiles(e.target.files)
+                void handleFiles(e.target.files)
                 e.target.value = ''
               }}
             />
           </div>
 
-          {/* 处理进度（真实解析进度） */}
+          {/* 处理进度（计算 MD5 → 查库 → 解析标注） */}
           {processing && (
             <div className='bg-muted/40 rounded-md px-2.5 py-2'>
               <div className='bg-muted h-1.5 w-full overflow-hidden rounded-full'>
                 <div
                   className='bg-primary h-full rounded-full transition-all duration-150'
-                  style={{ width: `${total > 0 ? (parsed / total) * 100 : 0}%` }}
+                  style={{ width: `${total > 0 ? (processed / total) * 100 : 0}%` }}
                 />
               </div>
               <p className='text-muted-foreground mt-1 text-xs tabular-nums'>
-                正在处理... {parsed}/{total}
+                {stage || '处理中'}... {processed}/{total}
               </p>
             </div>
           )}
@@ -245,7 +309,7 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
               <span>
                 未匹配 <span className='font-mono text-[var(--destructive)] tabular-nums'>{rows.length - matchedCount}</span>
               </span>
-              <Button variant='ghost' size='sm' className='h-7 px-2' onClick={() => { setRows([]); setParsed(0); setTotal(0) }}>
+              <Button variant='ghost' size='sm' className='h-7 px-2' onClick={() => { setRows([]); resetProgress() }}>
                 重新选择
               </Button>
             </div>
@@ -333,7 +397,7 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
                       <span className='min-w-0 flex-1 truncate'>{row.annotationName}</span>
                       <span className='text-muted-foreground text-xs'>→</span>
                       <span className={cn('min-w-0 flex-1 truncate', !row.matched && 'text-[var(--destructive)]')}>
-                        {row.audioName}
+                        {row.matched ? row.audioName : row.unmatchedReason}
                         {row.audioId != null && (
                           <span className='text-muted-foreground font-mono text-xs tabular-nums'>
                             {' '}#{row.audioId}
