@@ -5,8 +5,6 @@
  * 与类型徽章移除；正式类型维度=算法类型（algorithmType，test_type 残留待 INT-79 废弃）。
  * INT-490 卡片流逆转：列显隐选项随表格版式废止，常量收敛为视图页签与格式化工具。
  */
-import { MOCK_ALGORITHMS } from '@/domain/models/algorithm'
-
 export type TestCasesViewKey = 'by-group' | 'by-tag'
 
 /** 视图页签（line 变体，§3.1）：按分组 / 按标签 */
@@ -19,14 +17,16 @@ export const TEST_CASES_TAB_WHITELIST: string[] = TEST_CASES_TABS.map(
   (t) => t.key
 )
 
-/** 算法类型 id → 中文名（useAlgorithmLabels 等价；数据源 MOCK_ALGORITHMS 登记表） */
-export const ALGORITHM_LABELS: Record<string, string> = Object.fromEntries(
-  MOCK_ALGORITHMS.map((a) => [a.id, a.name])
-)
-
-export function getAlgorithmLabel(algorithmType: string | null): string {
+/**
+ * 算法类型 id → 中文名（真实 GET /algorithm/options 的 value→name）。
+ * 不内置本地假字典：调用方经 useAlgorithmLabelMap() 取真实映射传入，未取到原样回退 id。
+ */
+export function getAlgorithmLabel(
+  algorithmType: string | null,
+  labels?: Record<string, string>
+): string {
   if (!algorithmType) return '—'
-  return ALGORITHM_LABELS[algorithmType] ?? algorithmType
+  return labels?.[algorithmType] ?? algorithmType
 }
 
 /** ISO 时间串 → 「YYYY-MM-DD HH:mm」（轻量格式化，无 dayjs；异常原样返回） */

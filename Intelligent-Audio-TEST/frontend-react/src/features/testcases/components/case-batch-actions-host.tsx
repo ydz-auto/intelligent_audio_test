@@ -4,6 +4,8 @@
  * （用例专属参数/播放设备/声压/评估维度/调整分组/噪声/管理标签）+ 通用确认弹窗
  * （标签生成名称/用例参考更新）。数据 props 由各页 query 层提供（两页同源 queryKey，天然一致）。
  */
+import { useMemo } from 'react'
+
 import type { Dimension, EvaluationCategory } from '@/domain/models/evaluationDimension'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
@@ -26,6 +28,8 @@ export interface CaseBatchActionsHostProps {
   handleConfirm: (state: CaseConfirmState) => void
   groups: TestCaseGroup[]
   tags: TagItem[]
+  /** 当前页用例（含真实轮次数 rounds；批量弹窗轮次 Tab 按选中用例实际轮次渲染） */
+  cases?: Array<{ id: string; rounds: number }>
   /** 全量评估维度（含子维度；批量设置评估维度 DimensionPicker 主/子分组云用） */
   dimensions: Dimension[]
   /** 评估维度分类（DimensionPicker 分类分组组头；负责人 2026-10-19 口径） */
@@ -42,11 +46,25 @@ export function CaseBatchActionsHost({
   handleConfirm,
   groups,
   tags,
+  cases = [],
   dimensions,
   categories = [],
   algorithmType,
   testType,
 }: CaseBatchActionsHostProps) {
+  /**
+   * 选中用例的实际轮次数（各用例 config.rounds 长度并集 = 最大值；取不到的用例不计）。
+   * 0 = 未加载到轮次信息，弹窗内给空态而不是编造轮次。
+   */
+  const roundCount = useMemo(() => {
+    if (!batchDialog) return 0
+    const roundsById = new Map(cases.map((c) => [c.id, c.rounds]))
+    const known = batchDialog.ids
+      .map((id) => roundsById.get(id) ?? 0)
+      .filter((n) => n > 0)
+    return known.length > 0 ? Math.max(...known) : 0
+  }, [batchDialog, cases])
+
   return (
     <>
       {batchDialog?.kind === 'dimensions' && (
@@ -55,6 +73,7 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
+          roundCount={roundCount}
           dimensions={dimensions}
           categories={categories}
           algorithmType={algorithmType}
@@ -85,6 +104,7 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
+          roundCount={roundCount}
         />
       )}
       {batchDialog?.kind === 'device' && (
@@ -93,6 +113,7 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
+          roundCount={roundCount}
         />
       )}
       {batchDialog?.kind === 'spl' && (
@@ -101,6 +122,7 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
+          roundCount={roundCount}
         />
       )}
       {batchDialog?.kind === 'noise' && (
@@ -109,6 +131,7 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
+          roundCount={roundCount}
         />
       )}
       <CaseConfirmDialog

@@ -6,33 +6,29 @@
  * （已配置则钮位换「移除」destructive 软钮）；噪声音频卡（文件名+时长+标签 chips+更换/试听）
  * ——点「添加全局噪声/更换」打开音频选择子弹窗（AudioSelectDialog audioType='noise' 单选，
  * 真实 GET /audios 经 infrastructure/api/audioLibraryApi）；声压级 dB number 0-120 step 1；
- * 循环播放 Switch；播放设备 chips 多选（设备名存在但未匹配到 ID 时黄色警示 chip）。
+ * 循环播放 Switch；播放设备 chips 多选（真实 GET /playback-devices，设备名存在但未匹配到 ID
+ * 时黄色警示 chip——未匹配判定以真实设备列表为准）。
  * 数据契约 TestCaseBackgroundNoiseItem { audio_id, audio_name?, audio?, spl, device_ids[],
  *   device_names[]?, loop }（schemas/testcase.py:68-82 extra='allow' 兼容）。
  */
 import { AudioWaveform, Plus, Trash2, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import type {
   TestCaseBackgroundNoiseItem,
 } from '@/domain/models/evaluationStrategy'
 import { AudioSelectDialog } from '@/features/testcases/modals/audio/audio-select-dialog'
-
-/** mock 播放设备（§5.1.3.2 设备 chips 多选；接线后走 /playback-devices 同源） */
-const MOCK_PLAYBACK_DEVICES = [
-  { id: 'dev-1', name: '音频接口 A', channelIndex: 1 },
-  { id: 'dev-2', name: '音频接口 B', channelIndex: 2 },
-  { id: 'dev-3', name: '功放 左声道', channelIndex: 1 },
-  { id: 'dev-4', name: '功放 右声道', channelIndex: 2 },
-  { id: 'dev-5', name: '实验室喇叭组', channelIndex: 3 },
-]
+import { playbackDeviceLabel } from '@/features/testcases/modals/round-config/playback-device-label'
+import { fetchRealPlaybackDevices } from '@/infrastructure/api/playback-api'
 
 const formatDuration = (s: number | null | undefined) =>
   s == null ? '—' : s < 60 ? `${s}s` : s % 60 === 0 ? `${s / 60}m` : `${Math.floor(s / 60)}m ${s % 60}s`
@@ -47,23 +43,29 @@ export function GlobalNoiseEditor({
 }) {
   const [selectingAudio, setSelectingAudio] = useState(false)
   const configured = value != null
+  const devicesQuery = useQuery({
+    queryKey: ['playback-devices', 'real'],
+    queryFn: fetchRealPlaybackDevices,
+    staleTime: 30_000,
+  })
+  const devices = devicesQuery.data ?? []
 
-  const toggleDevice = (id: string) =>
+  const toggleDevice = (id: number | string) =>
     onChange({
       ...value,
       deviceIds: (() => {
-        const next = new Set(value?.deviceIds ?? [])
-        if (next.has(id)) next.delete(id)
-        else next.add(id)
-        return [...next]
+        const next = new Set((value?.deviceIds ?? []).map(String))
+        if (next.has(String(id))) next.delete(String(id))
+        else next.add(String(id))
+        return [...next].map((v) => (/^\d+$/.test(v) ? Number(v) : v))
       })(),
     })
 
-  /** 播放设备名存在但未匹配到 ID（旧配置残留名；黄色警示 chip） */
+  /** 播放设备名存在但未匹配到真实设备列表中的 ID（旧配置残留名；黄色警示 chip） */
   const unmatchedDeviceNames =
-    value?.deviceNames?.filter(
-      (name) => !MOCK_PLAYBACK_DEVICES.some((d) => d.name === name)
-    ) ?? []
+    devicesQuery.isLoading || devicesQuery.isError
+      ? []
+      : (value?.deviceNames?.filter((name) => !devices.some((d) => d.name === name)) ?? [])
 
   return (
     <div className='space-y-2'>
@@ -172,39 +174,54 @@ export function GlobalNoiseEditor({
             </div>
           </div>
 
-          {/* 播放设备（可多选）chips */}
+          {/* 播放设备（可多选）chips —— 真实 GET /playback-devices */}
           <div className='space-y-1.5'>
             <Label className='text-sm'>播放设备（可多选）</Label>
-            <div className='flex flex-wrap gap-1.5'>
-              {MOCK_PLAYBACK_DEVICES.map((d) => {
-                const checked = (value?.deviceIds ?? []).includes(d.id)
-                return (
-                  <button
-                    key={d.id}
-                    type='button'
-                    aria-pressed={checked}
-                    onClick={() => toggleDevice(d.id)}
-                    className={cn(
-                      'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
-                      checked
-                        ? 'bg-primary/10 border-primary/40 text-primary font-medium'
-                        : 'hover:bg-accent border-border text-muted-foreground'
-                    )}
+            {devicesQuery.isLoading ? (
+              <div className='text-muted-foreground flex h-8 items-center gap-2 text-xs'>
+                <Spinner className='size-3.5' />
+                加载播放设备...
+              </div>
+            ) : devicesQuery.isError ? (
+              <p className='text-destructive text-xs'>播放设备加载失败，请稍后重试</p>
+            ) : (
+              <div className='flex flex-wrap gap-1.5'>
+                {devices.length === 0 ? (
+                  <p className='text-muted-foreground/70 text-xs'>暂无可用的播放设备</p>
+                ) : (
+                  devices.map((d) => {
+                    const checked = (value?.deviceIds ?? [])
+                      .map(String)
+                      .includes(String(d.id))
+                    return (
+                      <button
+                        key={d.id}
+                        type='button'
+                        aria-pressed={checked}
+                        onClick={() => toggleDevice(d.id)}
+                        className={cn(
+                          'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+                          checked
+                            ? 'bg-primary/10 border-primary/40 text-primary font-medium'
+                            : 'hover:bg-accent border-border text-muted-foreground'
+                        )}
+                      >
+                        {playbackDeviceLabel(d)}
+                      </button>
+                    )
+                  })
+                )}
+                {unmatchedDeviceNames.map((name) => (
+                  <span
+                    key={name}
+                    className='flex items-center gap-1 rounded-full border border-yellow-500/50 bg-yellow-500/10 px-2.5 py-1 text-xs text-yellow-700 dark:text-yellow-400'
                   >
-                    {d.name} (通道 {d.channelIndex})
-                  </button>
-                )
-              })}
-              {unmatchedDeviceNames.map((name) => (
-                <span
-                  key={name}
-                  className='flex items-center gap-1 rounded-full border border-yellow-500/50 bg-yellow-500/10 px-2.5 py-1 text-xs text-yellow-700 dark:text-yellow-400'
-                >
-                  <TriangleAlert aria-hidden='true' className='size-3.5 shrink-0' />
-                  未匹配到播放设备ID：{name}
-                </span>
-              ))}
-            </div>
+                    <TriangleAlert aria-hidden='true' className='size-3.5 shrink-0' />
+                    未匹配到播放设备ID：{name}
+                  </span>
+                ))}
+              </div>
+            )}
             <p className='text-muted-foreground/70 text-xs'>
               留空表示不指定播放设备；存在旧配置设备名但未匹配到 ID 时显示警示。
             </p>

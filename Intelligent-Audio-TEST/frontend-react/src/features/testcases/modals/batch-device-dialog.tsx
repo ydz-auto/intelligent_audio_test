@@ -52,17 +52,20 @@ export function BatchDeviceDialog({
   onOpenChange,
   count,
   ids,
+  roundCount,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   count: number
   ids: string[]
+  /** 选中用例实际轮次数（config.rounds 派生；0=空态） */
+  roundCount: number
 }) {
   const queryClient = useQueryClient()
   const [scanState, setScanState] = useState<ScanState>('ready')
   const [scanError, setScanError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [scope, setScope] = useState(createRoundScope())
+  const [scope, setScope] = useState(() => createRoundScope(roundCount))
   const [layers, setLayers] = useState<ApplyLayerId[]>([])
   const {
     current: deviceId,
@@ -223,6 +226,7 @@ export function BatchDeviceDialog({
             name='batch-device-round'
             value={scope}
             onChange={setScope}
+            roundCount={roundCount}
           />
           <ApplyLayerField
             value={layers}

@@ -17,13 +17,14 @@ vi.mock('@/infrastructure/api/testcases-batch-api', () => ({
 
 const mockedBatch = vi.mocked(batchTestcaseAction)
 
-const setup = () => {
+const setup = (roundCount = 4) => {
   render(
     <BatchDimensionsDialog
       open
       onOpenChange={vi.fn()}
       count={3}
       ids={['tc-1', 'tc-2', 'tc-3']}
+      roundCount={roundCount}
       dimensions={MOCK_CASE_DIMENSIONS}
       algorithmType={null}
       testType='e2e'
@@ -153,5 +154,25 @@ describe('BatchDimensionsDialog（§5.3.5）', () => {
     // 复制到第 1 轮确认后仍为空（第 2 轮未配置，复制空选择）
     await user.click(popover.getByRole('button', { name: '确定' }))
     expect(roundCloud().getByText('已选 0 项')).toBeInTheDocument()
+  })
+
+  it('逐轮 Tab 按选中用例实际轮次渲染（2 轮用例不出第 3 轮，添加轮次禁用）', async () => {
+    const user = userEvent.setup()
+    setup(2)
+    await goPerRound(user)
+    expect(screen.getByRole('button', { name: '第 1 轮' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '第 2 轮' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '第 3 轮' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /添加轮次/ })).toBeDisabled()
+  })
+
+  it('无轮次信息时给空态并禁用确定', async () => {
+    const user = userEvent.setup()
+    setup(0)
+    expect(screen.getAllByText('所选用例暂无可配置的轮次信息').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByRole('button', { name: '确定' })).toBeDisabled()
+    // 指定轮次同样空态，不渲染轮次勾选
+    await user.click(screen.getByText('指定轮次（统一设置）'))
+    expect(screen.queryByText('第1轮')).not.toBeInTheDocument()
   })
 })

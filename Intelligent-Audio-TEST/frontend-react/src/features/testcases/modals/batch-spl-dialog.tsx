@@ -37,13 +37,16 @@ export function BatchSplDialog({
   onOpenChange,
   count,
   ids,
+  roundCount,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   count: number
   ids: string[]
+  /** 选中用例实际轮次数（config.rounds 派生；0=空态） */
+  roundCount: number
 }) {
-  const [scope, setScope] = useState(createRoundScope())
+  const [scope, setScope] = useState(() => createRoundScope(roundCount))
   const [layers, setLayers] = useState<ApplyLayerId[]>([])
   const [submitting, setSubmitting] = useState(false)
   const { current: spl, setCurrent: setSpl, perRound } = usePerRoundValue('', scope)
@@ -130,6 +133,7 @@ export function BatchSplDialog({
             name='batch-spl-round'
             value={scope}
             onChange={setScope}
+            roundCount={roundCount}
           />
         </div>
 

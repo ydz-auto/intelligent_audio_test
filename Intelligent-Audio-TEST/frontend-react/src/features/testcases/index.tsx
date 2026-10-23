@@ -500,6 +500,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         handleConfirm={batch.handleConfirm}
         groups={groups}
         tags={tags}
+        cases={items}
         dimensions={allDimensions}
         categories={categories}
         algorithmType={algorithmId}

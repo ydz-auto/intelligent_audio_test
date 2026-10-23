@@ -621,6 +621,7 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
         handleConfirm={batch.handleConfirm}
         groups={groups}
         tags={tags}
+        cases={items}
         dimensions={dimensions}
         categories={categories}
         algorithmType={algorithmType}

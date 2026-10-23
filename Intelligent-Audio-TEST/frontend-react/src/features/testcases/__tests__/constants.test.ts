@@ -19,11 +19,13 @@ describe('testcases constants', () => {
     expect(formatCaseDuration(undefined)).toBe('—')
   })
 
-  it('getAlgorithmLabel：登记表 id → 中文名，未登记原样返回', () => {
-    expect(getAlgorithmLabel('asr-v3')).toBe('通用识别引擎')
-    expect(getAlgorithmLabel('asr-stream')).toBe('流式识别引擎')
-    expect(getAlgorithmLabel('unknown-algo')).toBe('unknown-algo')
-    expect(getAlgorithmLabel(null)).toBe('—')
+  it('getAlgorithmLabel：真实算法字典 id → 中文名，未登记/无字典原样返回', () => {
+    const labels = { voice_llm: '小样本分类模型', asr: '通用识别引擎' }
+    expect(getAlgorithmLabel('voice_llm', labels)).toBe('小样本分类模型')
+    expect(getAlgorithmLabel('asr', labels)).toBe('通用识别引擎')
+    expect(getAlgorithmLabel('unknown-algo', labels)).toBe('unknown-algo')
+    expect(getAlgorithmLabel('voice_llm')).toBe('voice_llm')
+    expect(getAlgorithmLabel(null, labels)).toBe('—')
   })
 
   it('视图白名单仅含 by-group / by-tag', () => {

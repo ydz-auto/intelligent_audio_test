@@ -59,7 +59,11 @@ export function AudioPreviewConfigDialog({
         </DialogHeader>
 
         {stage === 'playing' ? (
-          <AudioPlayerPanel mode={mode} onBack={() => setStage('config')} />
+          <AudioPlayerPanel
+            mode={mode}
+            caseItem={caseItem}
+            onBack={() => setStage('config')}
+          />
         ) : (
           <div className='space-y-4'>
             <div className='space-y-1.5'>
