@@ -181,13 +181,22 @@ WHERE t.deleted = false
   AND r.excluded = 0                                 -- INT-305：剔除被删用例结果行
   AND visible_condition(t.created_by_user_id, t.visibility, uid, admin)   -- INT-423 可见性
 GROUP BY t.id HAVING count(r.id) > 0
-ORDER BY <排序键>, t.id ASC                          -- task_id 兜底稳定次序
+ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 ```
 
-响应 `data`：`{ items: [{ task_id, task_name, task_status, result_count, created_at }], total, page, per_page }`（网关 `success_response` 信封）。
+**性能要求（硬性，负责人 2026-10-23 实测口径，验收必查）**
 
-- `result_count` = 该任务可挑结果行数（`excluded=0`），供阶段 1 行尾「{n} 条」；
-- `task_status` = 任务执行状态（三终态之一），**不是**结果级执行状态（原实现误用候选行 `execution_status`）；
+1. **聚合在 task_service 一次完成**：`test_tasks ⋈ test_results` 的计数聚合在仓储层单条 SQL 内 `GROUP BY t.id` 出结果；网关只做参数校验、透传与 `success_response` 信封，**禁止**把候选/结果行下发到网关再聚合，响应体也不得携带候选行数组。
+2. **分页在服务端聚合结果上做**（窗口函数 `count(*) over()` 或子查询 + `LIMIT/OFFSET`），不得把全量任务行拉进进程内存再切片。
+3. **返回体只含任务级字段**：`id / name / execution_status / pickable_count / created_at`；不含结果行、用例/设备/评估等结果级装饰，不携带候选树结构。
+4. **基线对照**：现行 `GET /tasks/cherry-picks/candidates?page=1&per_page=200` 真实库实测 **7169 ms**（total=3614 行，INT-1280 登记）；本端点单次请求目标 **< 2s**（见验收第 2 条）。
+5. **阶段解耦**：阶段 2 候选查询的性能优化（candidates 慢查询、候选树重建）**另行开卡，与本端点解耦**——本端点不等待、不复用其优化结果，验收不以阶段 2 性能为条件；反之本端点的性能也不得靠裁剪阶段 2 能力来换。
+
+响应 `data`：`{ items: [{ id, name, execution_status, pickable_count, created_at }], total, page, per_page }`（网关 `success_response` 信封）。
+
+- `id` / `name` = 任务 ID / 任务名（任务级，不是结果行）；
+- `execution_status` = **任务**执行状态（三终态之一），不是结果级执行状态（原实现误用候选行的 `execution_status`）；
+- `pickable_count` = 该任务可挑结果行数（`excluded=0`），供阶段 1 行尾「{n} 条」；
 - `created_at` = 任务创建时间（ISO 8601），**不是**首条结果时间（原实现取候选行时间）；
 - `total` = 满足条件的任务总数（不受分页影响）。
 
@@ -206,17 +215,17 @@ ORDER BY <排序键>, t.id ASC                          -- task_id 兜底稳定�
 验收：
 
 1. 真实库栈（`/health` → `database=intelligent_audio_test`）下 `total` 与同口径 SQL `count(DISTINCT t.id)` 一致；2026-10-23 基线与分布（只读取证）：非删除任务 125（全部是 completed 79 / failed 39 / stopped 7），其中含可挑结果的 117 个、结果行 3614 条；首屏 200 行候选只覆盖 task 419（138）与 418（62）。
-2. 单次请求 < 2s：不得复用 candidates 的用例/设备/评估装饰链路（实测 `per_page=200` 超 60s）。
+2. 单次请求 < 2s（基线：candidates 首页 `per_page=200` 实测 7169 ms / 曾超 60s）：聚合须在 task_service 单条 `GROUP BY` 内完成，网关侧不得接收候选行再聚合；性能要求见上文「性能要求（硬性）」5 条，逐条验收。
 3. 既有回归不破坏：`tests/unit/test_int339_cherry_pick.py`、`test_int577_cherry_pick_upgrade.py`、`test_int1130_cherry_pick_case_meta.py`、`test_int339_acceptance.py`；5000 段隔离库冒烟。
 4. 可见性：非 owner 非 admin 用户看不到他人私有任务（INT-423 同口径）。
 
 前端接线（另卡，React 接线项目）：
 
-- 阶段 1 `PickTaskRow` 改由本端点取数（`result_count→count`、`task_status→executionStatus`、`created_at` 直接映射），删除候选首页聚合与客户端状态权重排序；
+- 阶段 1 `PickTaskRow` 改由本端点取数（`pickable_count→count`、`execution_status→executionStatus`、`created_at` 直接映射），删除候选首页聚合与客户端状态权重排序；
 - 「来源任务」筛选选项 `fetchPickableTasks` 同源切换（顺带去掉候选 30s 缓存兜底）；
 - 「全选当前筛选」须覆盖 `total` 全部任务（按 `per_page` 拉齐或显式提示已加载 N/total），不允许再出现只选到首页。
 
-已知边界（不在本卡，交规划师排卡）：阶段 2 候选树仍由 candidates 首页 200 行重建（18 §11-3 降级）。本卡上线后用户可选到结果数 > 200 的任务，阶段 2 展示仍是「已加载 200 条」，跨页全选由 `POST /candidates/select-all` 保证。
+已知边界（**阶段 2 性能另行开卡，与本端点解耦**）：阶段 2 候选树仍由 candidates 首页 200 行重建（18 §11-3 降级），其慢查询优化由规划师另立卡，不并入本卡、不阻塞本端点验收。本卡上线后用户可选到结果数 > 200 的任务，阶段 2 展示仍是「已加载 200 条」，跨页全选由 `POST /candidates/select-all` 保证。
 
 ## 9. 前端设计
 
@@ -259,6 +268,8 @@ ORDER BY <排序键>, t.id ASC                          -- task_id 兜底稳定�
 8. 页面无 "Cherry-Pick" 英文字样（接口路径除外）。
 
 ## 13. 实现演进裁定记录
+
+- **2026-10-23（续·负责人性能口径并入契约，方案一致性审计员回写）**：负责人要求契约设计必须带性能要求，已并入 §8.1「性能要求（硬性）」：①聚合在 task_service 仓储层单条 `GROUP BY` 完成，网关禁止接收候选行再聚合、响应不得下发候选行数组；②分页在服务端聚合结果上做，不得全量入内存切片；③返回体只含任务级字段 `id / name / execution_status / pickable_count / created_at`（本次按负责人口径统一字段名，替代初稿的 `task_id/task_name/task_status/result_count`），不含结果级装饰与候选树；④基线 7169 ms（candidates `per_page=200`、total=3614），本端点目标 < 2s；⑤**阶段 2 候选查询性能优化另行开卡、与本端点解耦**，互不阻塞、验收互不挂钩。前端接线字段映射同步改为 `pickable_count→count`、`execution_status→executionStatus`。
 
 - **2026-10-23（INT-1496 FEAT 契约审查裁定，方案一致性审计员）**：挑选向导阶段 1「选择任务」清单数据源缺陷收口。原 `fetchPickableTasks` 与阶段 1 行聚合都取 `GET /tasks/cherry-picks/candidates` 首页 200 行客户端聚合，真实库候选结果行 3614 条集中在大任务（task 419 138 条、418 62 条），200 行只覆盖 2 个任务；真实库含可挑结果的终态任务 117 个（非删除任务 125，均为终态）。裁定：新增轻量端点 `GET /tasks/cherry-picks/pickable-tasks`（完整契约见 §8.1，含入选 SQL、排序、字段、分层落位与验收）；**方向 B（18 §11-3 候选树聚合端点）不实施**，留作可选增强；`candidates` 契约与分页语义不变，不做兼容层、不留双口径。前端阶段 1 消费切换与「全选当前筛选」覆盖 `total` 另立 React 接线卡；阶段 2 200 行降级边界保持，交规划师按 §11-3 或阶段 2 分页排卡。
 
