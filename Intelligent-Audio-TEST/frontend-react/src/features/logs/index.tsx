@@ -271,7 +271,11 @@ export function LogsPage() {
   }
 
   const handleExport = (format: LogExportInput['format']) => {
-    exportLogs.mutate({ input: { format }, query })
+    // 导出成功后关闭弹窗（V9.7.10 口径：确认即关；避免停在弹窗上重复误触）
+    exportLogs.mutate(
+      { input: { format }, query },
+      { onSuccess: () => exportDialog.close() }
+    )
   }
 
   const handleClear = (beforeDatetime: string | null, keepMarked: boolean) => {
@@ -561,6 +565,12 @@ export function LogsPage() {
 
 /* ───────────────────────── 分页条（§4.4 PageFooterPortal） ───────────────────────── */
 
+/** 每页条数 Select 选项（value=字符串化条数；作 items 供关闭态回显「N 条/页」） */
+const PAGE_SIZE_ITEMS = LOG_PAGE_SIZE_OPTIONS.map((size) => ({
+  value: String(size),
+  label: `${size} 条/页`,
+}))
+
 function PaginationBar({
   page,
   pageCount,
@@ -586,6 +596,7 @@ function PaginationBar({
         onValueChange={(value) =>
           onPageSizeChange(Number(value ?? LOG_DEFAULT_PAGE_SIZE))
         }
+        items={PAGE_SIZE_ITEMS}
       >
         <SelectTrigger size='sm' className='w-24'>
           <SelectValue />

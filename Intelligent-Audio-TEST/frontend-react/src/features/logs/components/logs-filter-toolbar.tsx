@@ -6,7 +6,7 @@
  * 算法筛选与全局切换器联动（§2.2：切换全局算法后同步为当前全局算法，可改选）。
  */
 import { ChevronDown, ChevronUp, Eraser, Search } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -97,6 +97,15 @@ function LevelChips({
 export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
+  // 算法 Select 的 items：『全部算法』+ 全局算法选项（关闭态由 Select.Value 按此映射回显 label）
+  const algorithmItems = useMemo(
+    () => [
+      { value: 'all', label: '全部算法' },
+      ...props.algorithmOptions.map((option) => ({ value: option.value, label: option.name })),
+    ],
+    [props.algorithmOptions]
+  )
+
   const hasAdvanced = Object.values(props.advanced).some(Boolean)
   const advancedText = hasAdvanced
     ? `${advancedOpen ? '收起' : '展开'}高级过滤（${Object.values(props.advanced).filter(Boolean).length} 项）`
@@ -120,7 +129,11 @@ export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
           />
         </div>
 
-        <Select value={props.category} onValueChange={(v) => props.onCategory(v ?? 'all')}>
+        <Select
+          value={props.category}
+          onValueChange={(v) => props.onCategory(v ?? 'all')}
+          items={LOG_CATEGORY_OPTIONS}
+        >
           <SelectTrigger size='sm' className='w-32' aria-label='分类'>
             <SelectValue placeholder='所有分类' />
           </SelectTrigger>
@@ -133,7 +146,11 @@ export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
           </SelectContent>
         </Select>
 
-        <Select value={props.module} onValueChange={(v) => props.onModule(v ?? 'all')}>
+        <Select
+          value={props.module}
+          onValueChange={(v) => props.onModule(v ?? 'all')}
+          items={LOG_MODULE_OPTIONS}
+        >
           <SelectTrigger size='sm' className='w-32' aria-label='模块'>
             <SelectValue placeholder='所有模块' />
           </SelectTrigger>
@@ -146,7 +163,11 @@ export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
           </SelectContent>
         </Select>
 
-        <Select value={props.markFilter} onValueChange={(v) => props.onMarkFilter(v ?? 'all')}>
+        <Select
+          value={props.markFilter}
+          onValueChange={(v) => props.onMarkFilter(v ?? 'all')}
+          items={LOG_MARK_FILTER_OPTIONS}
+        >
           <SelectTrigger size='sm' className='w-32' aria-label='标记筛选'>
             <SelectValue placeholder='所有标记' />
           </SelectTrigger>
@@ -162,6 +183,7 @@ export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
         <Select
           value={props.algorithmType}
           onValueChange={(v) => props.onAlgorithmType(v ?? 'all')}
+          items={algorithmItems}
         >
           <SelectTrigger size='sm' className='w-36' aria-label='算法类型'>
             <SelectValue placeholder='全部算法' />
