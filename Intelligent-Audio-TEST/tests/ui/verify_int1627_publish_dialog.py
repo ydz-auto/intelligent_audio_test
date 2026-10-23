@@ -317,7 +317,7 @@ def drain_network(drv):
 
 def open_daily(drv, page_size=100):
     drv.get(BASE + '/tasks/daily?pageSize=%d' % page_size)
-    wait_text(drv, TASK_NAME, 90)
+    wait_text(drv, TASK_NAME, 150)   # 真实库列表偶发 >90s，给足余量
     time.sleep(1.0)
 
 
@@ -459,6 +459,7 @@ def main():
 
         # ============ 2b. 失败错误态（深色）+ 重试恢复 ============
         log('[2b] 错误态深色 + 点重试恢复')
+        stack.set_mode('normal')   # 上一步仍是 500 注入，列表页本身要先能加载出行
         set_theme(drv, 'dark')
         open_daily(drv)
         assert theme_is(drv, 'dark'), '深色主题未生效'
