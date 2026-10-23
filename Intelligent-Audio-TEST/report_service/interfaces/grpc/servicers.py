@@ -11,11 +11,14 @@ GetReportByTask / GenerateReport / UpdateReportStatus）
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 
 from shared.proto import report_service_pb2 as report_pb
 from shared.proto import report_service_pb2_grpc as report_grpc
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps, fold_business_code
+
+from report_service.domain.request_budget import RequestBudget, budget_from_grpc_context
 
 from report_service.application.commands.report_commands import (
     CreateReportCommand,
@@ -67,6 +70,18 @@ logger = logging.getLogger(__name__)
 
 # 批量删除单次上限（对齐旧库 ReportBatchDeleteRequest max_length=100）
 MAX_BATCH_DELETE = 100
+
+
+def _budget_scope(context):
+    """把 gRPC 调用的剩余时限注入请求预算（INT-1572 返工二轮）。
+
+    报告链路由多个阶段共享网关的一次调用截止（默认 60s）：跨域用例取数若按固定
+    整批截止收尾，会把后续的结果聚合顶过截止。这里把剩余时限记进请求上下文，
+    ACL 按「剩余 - 预留」分配（见 domain/request_budget.py）。无 context（单测 /
+    进程内调用）时返回空上下文，各阶段用配置的固定兜底值。
+    """
+    seconds = budget_from_grpc_context(context)
+    return RequestBudget(seconds) if seconds is not None else nullcontext()
 
 
 def _aggregate_to_dict(aggregate: Optional[ReportAggregate]) -> Optional[Dict[str, Any]]:
@@ -391,11 +406,12 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         """生成对比报告。"""
         try:
             data = _loads(getattr(request, 'data', ''), {}) or {}
-            result = self.command_handler.handle_generate_compare_report(
-                task_ids=data.get('task_ids', []),
-                name=data.get('name'),
-                description=data.get('description'),
-            )
+            with _budget_scope(context):
+                result = self.command_handler.handle_generate_compare_report(
+                    task_ids=data.get('task_ids', []),
+                    name=data.get('name'),
+                    description=data.get('description'),
+                )
             return self._resp(
                 result.get('success', False),
                 result.get('message', ''),
@@ -409,10 +425,11 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         """生成二次对比报告。"""
         try:
             data = _loads(getattr(request, 'data', ''), {}) or {}
-            result = self.command_handler.handle_generate_secondary_compare_report(
-                report_ids=data.get('report_ids', []),
-                description=data.get('description'),
-            )
+            with _budget_scope(context):
+                result = self.command_handler.handle_generate_secondary_compare_report(
+                    report_ids=data.get('report_ids', []),
+                    description=data.get('description'),
+                )
             return self._resp(
                 result.get('success', False),
                 result.get('message', ''),
@@ -792,7 +809,8 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         """
         try:
             params_dict = _loads(getattr(request, 'data', ''), {}) or {}
-            data = self.query_handler.handle_get_case_averages(params_dict)
+            with _budget_scope(context):
+                data = self.query_handler.handle_get_case_averages(params_dict)
             if data.get('success') is False:
                 return self._resp(False, data.get('message', 'failed'), data)
             return self._resp(True, 'ok', data)

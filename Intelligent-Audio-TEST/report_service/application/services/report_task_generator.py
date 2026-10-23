@@ -32,6 +32,7 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_algo_get_field_mapping,
 )
 from report_service.infrastructure.persistence.report_repository import report_repository
+from shared.infrastructure.user_context import capture_identity, run_with_identity
 from shared.models.common_enums import TaskStatus
 from shared.utils.log_handler import log_and_emit
 from shared.utils.query_utils import now_cst
@@ -334,10 +335,17 @@ def _watchdog_scan_once():
 
 
 def _submit_generation(task_id, lock, name, description, submit_log_message):
-    """登记轨迹并提交线程池；提交失败回收轨迹与锁并上报失败（INT-117 失败可上报）。"""
+    """登记轨迹并提交线程池；提交失败回收轨迹与锁并上报失败（INT-117 失败可上报）。
+
+    INT-1572 返工三轮：把发起请求的操作人身份带进生成线程。生成线程里的跨域
+    用例取数经出站拦截器附加 x-user-id，缺身份时 task_service 会把 PRIVATE 用例
+    按 404 返回——owner 自己的私有用例会在报告里静默消失。
+    """
     _generation_tracker.mark_submitted(task_id)
+    identity = capture_identity()
     try:
         _report_executor.submit(
+            run_with_identity, identity,
             ReportTaskGenerator._generate_task_report_async,
             task_id, name, description, lock
         )

@@ -50,6 +50,34 @@ def get_current_user_id():
     return _current_user_id.get()
 
 
+def capture_identity():
+    """捕获当前操作人身份 (user_id, is_admin)，供线程池 / 后台线程显式透传。
+
+    contextvars 不跨线程传播：提交到共享线程池的任务要带着身份进 worker，
+    否则出站 gRPC 不带 x-user-id，下游按未认证身份过滤可见性（INT-1572）。
+    """
+    return (_current_user_id.get(), bool(_current_user_is_admin.get()))
+
+
+def run_with_identity(identity, fn, *args, **kwargs):
+    """在工作线程里恢复操作人身份后执行 fn，结束后复原（线程池线程复用防串号）。
+
+    identity 取自 ``capture_identity()``；为 None 时按未认证身份执行。
+    只透传身份，不透传其他上下文（请求预算 deadline / DB session scope 属于
+    发起请求本身，后台线程沿用会读到已过期的截止时刻）。
+    """
+    user_id, is_admin = identity if identity else (None, False)
+    prev_user_id = _current_user_id.get()
+    prev_is_admin = _current_user_is_admin.get()
+    _current_user_id.set(normalize_user_id(user_id))
+    _current_user_is_admin.set(bool(is_admin))
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        _current_user_id.set(prev_user_id)
+        _current_user_is_admin.set(prev_is_admin)
+
+
 def set_current_user_is_admin(is_admin: bool) -> None:
     """设置当前上下文的管理员标志（网关按 '*' 通配权限判定）"""
     _current_user_is_admin.set(bool(is_admin))

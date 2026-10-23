@@ -132,13 +132,36 @@ class DimensionParamDTO:
 
 @dataclass
 class TestCaseDTO:
-    """测试用例 DTO（TestCaseConfigService.ListTestCases items）"""
+    """测试用例 DTO（TestCaseConfigService.GetTestCaseDetail 载荷，INT-1572）"""
     id: Optional[int] = None
     name: Optional[str] = None
     test_type: Optional[str] = None
     algorithm_type: Optional[str] = None
     config: Any = None
     result_data: Any = None
+
+
+@dataclass
+class TestCaseLookupResult:
+    """按 ID 批量取用例的结果（含完整性口径，INT-1572 返工）。
+
+    报告侧统计（case-averages / 对比）取不到用例时会按 id 兜底继续算，调用方
+    必须能区分「用例本来就不存在」与「查询没做完」两种情况，否则整批截止后
+    会拿部分用例算出「看起来正常」的错数值（INT-1482 复测 P2）。
+
+    Attributes:
+        items: {str(id): TestCaseDTO}，取到的用例（口径同原 list_testcases_by_ids）
+        missing_ids: 请求了但没有返回的 id（软删 / 不存在 / 查询未完成）
+        incomplete_ids: 其中因整批截止 / 单条超时 / 单条失败而未完成查询的 id
+    """
+    items: dict
+    missing_ids: list
+    incomplete_ids: list
+
+    @property
+    def partial(self) -> bool:
+        """查询是否不完整（有本该取到、但因超时/失败没取到的用例）。"""
+        return bool(self.incomplete_ids)
 
 
 @dataclass

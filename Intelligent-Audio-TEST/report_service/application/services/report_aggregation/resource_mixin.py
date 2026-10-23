@@ -7,6 +7,9 @@ from __future__ import annotations
 
 from report_service.application.services.report_aggregation.common import _r_get
 from report_service.application.services.report_utils import ReportUtils
+from report_service.application.services.report_utils.resource_mixin import (
+    result_type_from_db_payload,
+)
 from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_task_devices,
     _grpc_get_task_apis,
@@ -163,7 +166,9 @@ class _AggregationResourceMixin:
 
         返回 (device_result_types, api_result_types)，key 为设备/API ID。
         """
-        from shared.utils.result_data_store import load_full_result_data
+        from report_service.application.services.report_utils.result_data_loader import (
+            load_full_result_data_cached,
+        )
         from report_service.application.services.report_data_builder_task_mixin import (
             ReportDataTaskMixin,
         )
@@ -179,11 +184,15 @@ class _AggregationResourceMixin:
             r_data_path = r.get('result_data_path') if isinstance(r, dict) else getattr(r, 'result_data_path', None)
             if not r_data:
                 continue
-            try:
-                full_data = load_full_result_data(r_data, r_data_path)
-            except Exception:
-                continue
-            result_type = ReportDataTaskMixin._extract_result_type(full_data)
+            # INT-1572 返工：DB 轻量载荷已有 result_type 时不再读 OSS 结果文件
+            # （缺失对象每条一次 head 请求，138 用例叠成几十秒）
+            result_type = result_type_from_db_payload(r_data)
+            if result_type is None:
+                try:
+                    full_data = load_full_result_data_cached(r_data, r_data_path)
+                except Exception:
+                    continue
+                result_type = ReportDataTaskMixin._extract_result_type(full_data)
             if r_device_id and r_device_id in dev_id_set:
                 device_result_types[r_device_id] = result_type
             if r_api_id and r_api_id in api_id_set:

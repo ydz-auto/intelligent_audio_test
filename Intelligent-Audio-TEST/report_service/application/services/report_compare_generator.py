@@ -32,6 +32,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
+from shared.infrastructure.user_context import capture_identity, run_with_identity
 from shared.utils.log_handler import log_and_emit
 from shared.utils.query_utils import now_cst
 
@@ -231,8 +232,12 @@ def _submit_secondary_generation(report_ids, report_key, description):
     track_id = _secondary_track_id(report_key)
     _secondary_generation_tracker.mark_submitted(
         track_id, meta={'chain': 'secondary', 'reportIds': list(report_key)})
+    # INT-1572 返工三轮：同 _submit_generation，操作人身份随任务带进生成线程，
+    # 否则跨域取数按未认证身份过滤可见性，私有用例会被静默丢弃。
+    identity = capture_identity()
     try:
         _secondary_executor.submit(
+            run_with_identity, identity,
             ReportCompareGenerator._secondary_compare_async,
             report_ids, description, report_key
         )

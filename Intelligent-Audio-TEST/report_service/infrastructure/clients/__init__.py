@@ -24,6 +24,7 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_dimension_params,
     # ---- TestCaseConfigService：测试用例查询 ----
     _grpc_list_testcases_by_ids,
+    _grpc_lookup_testcases_by_ids,
     # ---- TagConfigService：标签分类查询 ----
     _grpc_get_tag_category,
     # ---- DeviceConfigService：设备查询 ----
@@ -72,6 +73,7 @@ __all__ = [
     '_grpc_get_dimension_params',
     # TestCaseConfigService
     '_grpc_list_testcases_by_ids',
+    '_grpc_lookup_testcases_by_ids',
     # TagConfigService
     '_grpc_get_tag_category',
     # DeviceConfigService
