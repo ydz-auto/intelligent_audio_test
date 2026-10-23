@@ -18,6 +18,8 @@ ServerDbScopeInterceptor 在 RPC 结束 remove_db_session）。
 - `init_db(pool_size)`：初始化连接池
 - `warm_up_pool(size)`：预建连接池连接（消除首批并发请求的建连尖峰）
 - `remove_db_session()`：清理当前 scope 的 session
+- `end_read_transaction()`：只读查询后结束事务（不碰待提交写），避免
+  idle in transaction 长时间持锁（INT-1652）
 - `bind_request_session_scope()` / `release_request_session_scope(token)`：
   HTTP 请求级 scope 绑定/解绑+清理（DbSessionScopeMiddleware 专用）
 - `Model.query`：描述符，代理到 scoped_session.query(cls)（32 个文件在用）
@@ -296,3 +298,47 @@ def create_db_session():
 def remove_db_session():
     """清理当前 scope 的 DB session（gRPC 拦截器 / 请求中间件 / 后台线程结束时调用）。"""
     _scoped_session.remove()
+
+
+def end_read_transaction(session=None):
+    """只读查询后结束当前事务，把连接从 idle in transaction 释放出来。
+
+    INT-1652 起因：后台线程（如 algorithm_service 的配置缓存加载）与没有请求级
+    scope 的 HTTP 进程，SELECT 之后既没有 commit 也没有 rollback，连接就挂着
+    事务空转；一张 ACCESS SHARE 就足以把随后的 DDL 顶在锁队列里，再把整张表的
+    读写堵死。只读查询结束即回滚是零成本的（无需写 WAL），事务生命周期从
+    「线程/进程存活期」收敛到「单次查询」。
+
+    安全边界：**仅当 session 没有待提交改动**（new / dirty / deleted 皆空且不在
+    嵌套事务里）才回滚；有待提交写时原样返回 False，交给事务所有者显式
+    commit/rollback，绝不吞掉调用链上未提交的写。
+
+    Args:
+        session: 目标 Session；缺省取当前 scope 的 scoped_session。
+
+    Returns:
+        bool：是否实际结束了事务。
+    """
+    from sqlalchemy.orm import Session as _Session
+
+    sess = session if session is not None else _scoped_session
+    try:
+        if isinstance(sess, _Session):
+            # 毒化会话（事务内语句失败后 PendingRollbackError）：rollback 解毒
+            if not sess.is_active:
+                sess.rollback()
+                return True
+            if not sess.in_transaction() or sess.in_nested_transaction():
+                return False
+            if sess.new or sess.dirty or sess.deleted:
+                return False
+            sess.rollback()
+            return True
+        # scoped_session：先按当前 scope 取到真实 Session（不存在则不新建）
+        real = sess() if sess.registry.has() else None
+        if real is None:
+            return False
+        return end_read_transaction(real)
+    except Exception:  # noqa: BLE001 - 收尾失败不得影响调用方结果
+        logger.debug('结束只读事务失败（保持原状）', exc_info=True)
+        return False

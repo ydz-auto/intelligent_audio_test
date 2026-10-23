@@ -13,6 +13,16 @@
 
 种子/迁移脚本以子进程运行（与 README 手工口径 1:1，脚本各自处理幂等与输出）；
 连接串统一经 DATABASE_URI 环境变量注入（compose 设置）。
+
+INT-1652（DDL 锁预算）：本入口给每个子进程注入 PGOPTIONS，让它们建立的**每一条**
+数据库连接（psycopg2 与 SQLAlchemy/psycopg2 底层同是 libpq）在会话级带上：
+    lock_timeout                       —— DDL 等锁上限（默认 5s），不再无限等
+    statement_timeout                  —— 单条语句上限（默认 300s）
+    idle_in_transaction_session_timeout —— 会话在事务里空转上限（默认 60s）
+外加 application_name=db_bootstrap（失败时据此只清理本 job 自己的孤儿后端）。
+任一步失败 / 超时：打印锁诊断（持锁者 pid + 表名）、清理本 job 的 idle in
+transaction 后端，并以非零码退出 —— 迁移进程或容器消失后不会留下占着
+ACCESS EXCLUSIVE 锁队列头部的孤儿 Postgres 后端（2026-10-23 事故形态）。
 """
 import os
 import subprocess
@@ -20,6 +30,57 @@ import sys
 
 SCRIPTS = '/opt/scripts'
 APP_ROOT = '/app'
+
+# ===== INT-1652：DDL 锁预算 =====
+# 事故：db_bootstrap 的 ALTER TABLE 需要 ACCESS EXCLUSIVE，被应用层 idle in
+# transaction 一挡就无限等待；发起它的 run 容器被删后 Postgres 后端不退出，
+# 永久占住锁队列头部，把整张表的读写全部堵死（/algorithm/* 全站 40s+ → 60s 超时）。
+# 没有 lock_timeout 就没有任何自愈可能，故这三个上限是硬性预算（可用环境变量覆盖）。
+BOOTSTRAP_APP_NAME = 'db_bootstrap'
+DEFAULT_LOCK_TIMEOUT_MS = 5000
+DEFAULT_STATEMENT_TIMEOUT_MS = 300000
+DEFAULT_IDLE_IN_TX_TIMEOUT_MS = 60000
+# 单步进程级兜底：statement_timeout 之外仍有 Python 层死循环 / 交互提示卡住等
+# 不受 SQL 超时约束的等待，超时即 kill 该步并按失败收口（不留孤儿进程/后端）。
+DEFAULT_STEP_TIMEOUT_SECONDS = 900
+
+
+def _int_env(name, default):
+    """读取正整数环境变量，非法值回落默认（预算类配置不接受 0/负数）。"""
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == '':
+        return default
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        print(f"[BOOTSTRAP] [WARN] 环境变量 {name}={raw!r} 非法，回落默认 {default}", flush=True)
+        return default
+    if value <= 0:
+        print(f"[BOOTSTRAP] [WARN] 环境变量 {name}={raw!r} 非正数，回落默认 {default}", flush=True)
+        return default
+    return value
+
+
+def lock_budget():
+    """本次引导的锁预算（毫秒 / 秒），环境变量可覆盖以便大库放宽。"""
+    return {
+        'lock_timeout_ms': _int_env('DB_BOOTSTRAP_LOCK_TIMEOUT_MS', DEFAULT_LOCK_TIMEOUT_MS),
+        'statement_timeout_ms': _int_env('DB_BOOTSTRAP_STATEMENT_TIMEOUT_MS',
+                                         DEFAULT_STATEMENT_TIMEOUT_MS),
+        'idle_in_tx_timeout_ms': _int_env('DB_BOOTSTRAP_IDLE_IN_TX_TIMEOUT_MS',
+                                          DEFAULT_IDLE_IN_TX_TIMEOUT_MS),
+        'step_timeout_s': _int_env('DB_BOOTSTRAP_STEP_TIMEOUT_SECONDS',
+                                   DEFAULT_STEP_TIMEOUT_SECONDS),
+    }
+
+
+def build_pgoptions(budget):
+    """把锁预算编成 libpq 的 PGOPTIONS 串（会话级 SET 的等价物）。"""
+    return (
+        f'-c lock_timeout={budget["lock_timeout_ms"]} '
+        f'-c statement_timeout={budget["statement_timeout_ms"]} '
+        f'-c idle_in_transaction_session_timeout={budget["idle_in_tx_timeout_ms"]}'
+    )
 
 # 引导链：按 scripts/migrations/README.md「执行顺序总览」精选结构/种子项。
 # 排除项（数据回填/清洗/一次性修复）：backfill_*、cleanup_*、
@@ -110,14 +171,8 @@ BOOTSTRAP_STEPS = [
 ]
 
 
-def main():
-    if not os.path.isdir(SCRIPTS):
-        print(f"[BOOTSTRAP] scripts 卷未挂载: {SCRIPTS} 不存在", flush=True)
-        return 1
-    if not os.environ.get('DATABASE_URI'):
-        print("[BOOTSTRAP] DATABASE_URI 未设置", flush=True)
-        return 1
-
+def _prepare_env(budget):
+    """子进程环境：库连接串映射 + OSS 兜底凭据 + 锁预算 PGOPTIONS。"""
     env = os.environ.copy()
     # 脚本读 BaseConfig.DATABASE_URL（required=True）而非 DATABASE_URI：
     # compose 注入的 DATABASE_URI（迁移脚本口径）同步映射到 DATABASE_URL。
@@ -126,6 +181,188 @@ def main():
     # 缺省注入与 rustfs 容器一致的本地凭据，显式配置的值优先。
     env.setdefault('OSS_ACCESS_KEY', 'intelligent_audio_test')
     env.setdefault('OSS_SECRET_KEY', 'intelligent_audio_test666')
+
+    # INT-1652：锁预算经 PGOPTIONS 下发到子进程建立的每条连接（libpq 会话参数，
+    # 与执行 DDL 前 SET lock_timeout / statement_timeout 等价，且覆盖到全部 76 个
+    # 迁移脚本 —— 它们分别用 psycopg2.connect / create_engine，无法统一插钩子）。
+    pgoptions = build_pgoptions(budget)
+    inherited = (env.get('PGOPTIONS') or '').strip()
+    env['PGOPTIONS'] = f'{inherited} {pgoptions}'.strip() if inherited else pgoptions
+    # 只标记本 job 的连接：失败清理时据此 terminate，绝不碰业务服务的会话。
+    env['PGAPPNAME'] = BOOTSTRAP_APP_NAME
+    return env
+
+
+def _diagnostic_connection(env):
+    """打开一条 autocommit 诊断连接（只读系统视图，不参与迁移事务）。"""
+    import psycopg2
+    conn = psycopg2.connect(env['DATABASE_URI'], connect_timeout=10,
+                            application_name=f'{BOOTSTRAP_APP_NAME}_diag')
+    conn.autocommit = True
+    return conn
+
+
+def _print_lock_diagnostics(env):
+    """打印当前库的等锁 / 空转会话（表名 + 持锁者 pid），供失败时定位。
+
+    只在失败路径调用：此时迁移子进程已退出，但挡住它的那个会话（例如应用层
+    idle in transaction）仍在，正好指出「谁占着哪张表」。
+    """
+    queries = [
+        ('等锁会话', """
+            SELECT w.pid AS waiting_pid,
+                   host(w.client_addr) AS waiting_client,
+                   c.relname AS relation,
+                   l.mode AS lock_mode,
+                   b.pid AS blocker_pid,
+                   host(b.client_addr) AS blocker_client,
+                   b.state AS blocker_state,
+                   now() - b.state_change AS blocker_state_age,
+                   left(regexp_replace(b.query, '\\s+', ' ', 'g'), 100) AS blocker_last_query
+              FROM pg_locks l
+              JOIN pg_stat_activity w ON w.pid = l.pid
+              JOIN pg_locks bl ON bl.locktype = l.locktype
+                              AND bl.database IS NOT DISTINCT FROM l.database
+                              AND bl.relation IS NOT DISTINCT FROM l.relation
+                              AND bl.granted AND bl.pid <> l.pid
+              JOIN pg_stat_activity b ON b.pid = bl.pid
+              LEFT JOIN pg_class c ON c.oid = l.relation
+             WHERE NOT l.granted
+               AND l.database = (SELECT oid FROM pg_database
+                                  WHERE datname = current_database())
+             ORDER BY w.pid
+             LIMIT 10
+        """),
+        ('idle in transaction 会话', """
+            SELECT pid, host(client_addr) AS client, state,
+                   now() - state_change AS idle_age,
+                   left(regexp_replace(query, '\\s+', ' ', 'g'), 100) AS last_query
+              FROM pg_stat_activity
+             WHERE datname = current_database()
+               AND pid <> pg_backend_pid()
+               AND state LIKE 'idle in transaction%'
+             ORDER BY state_change
+             LIMIT 10
+        """),
+        # 失败那一刻迁移语句本身已经退出，等锁方可能已不在——把「持有强锁的会话」
+        # 一并列出，才能真正回答「谁占着哪张表」（事故里就是应用层的那个会话）。
+        ('持有强锁的会话', """
+            SELECT a.pid, host(a.client_addr) AS client, a.state,
+                   now() - a.state_change AS state_age,
+                   c.relname AS relation, l.mode AS lock_mode,
+                   left(regexp_replace(a.query, '\\s+', ' ', 'g'), 100) AS last_query
+              FROM pg_locks l
+              JOIN pg_stat_activity a ON a.pid = l.pid
+              JOIN pg_class c ON c.oid = l.relation
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE l.granted
+               AND l.locktype = 'relation'
+               AND l.mode IN ('AccessExclusiveLock', 'ExclusiveLock',
+                              'ShareRowExclusiveLock', 'ShareLock')
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND a.pid <> pg_backend_pid()
+             ORDER BY a.state_change
+             LIMIT 10
+        """),
+    ]
+    print("[BOOTSTRAP] ---- 锁诊断（失败时的库内等锁 / 空转会话）----", flush=True)
+    try:
+        conn = _diagnostic_connection(env)
+    except Exception as exc:  # noqa: BLE001 - 诊断失败不得遮盖原始失败
+        print(f"[BOOTSTRAP] 锁诊断连接失败: {exc}", flush=True)
+        return
+    try:
+        with conn.cursor() as cur:
+            for title, sql in queries:
+                try:
+                    cur.execute(sql)
+                    rows = cur.fetchall()
+                    cols = [d[0] for d in cur.description]
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[BOOTSTRAP] [{title}] 查询失败: {exc}", flush=True)
+                    continue
+                if not rows:
+                    print(f"[BOOTSTRAP] [{title}] 无", flush=True)
+                    continue
+                for row in rows:
+                    detail = ', '.join(f'{k}={v}' for k, v in zip(cols, row))
+                    print(f"[BOOTSTRAP] [{title}] {detail}", flush=True)
+    finally:
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _cleanup_own_orphans(env):
+    """terminate 本 job 遗留的 idle in transaction 后端（application_name 精确匹配）。
+
+    迁移步超时被 kill、或脚本异常没关连接时，Postgres 后端可能仍挂在事务里持锁。
+    这里只清理 application_name=db_bootstrap 的会话，业务服务连接不受影响。
+    返回被终止的 pid 列表。
+    """
+    terminated = []
+    try:
+        conn = _diagnostic_connection(env)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[BOOTSTRAP] 孤儿会话清理跳过（诊断连接失败）: {exc}", flush=True)
+        return terminated
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT pid FROM pg_stat_activity
+                 WHERE datname = current_database()
+                   AND application_name = %s
+                   AND pid <> pg_backend_pid()
+                   AND state LIKE 'idle in transaction%%'
+            """, (BOOTSTRAP_APP_NAME,))
+            pids = [row[0] for row in cur.fetchall()]
+            for pid in pids:
+                cur.execute('SELECT pg_terminate_backend(%s)', (pid,))
+                terminated.append(pid)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[BOOTSTRAP] 孤儿会话清理失败: {exc}", flush=True)
+    finally:
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+    if terminated:
+        print(f"[BOOTSTRAP] 已清理本 job 的 idle in transaction 后端: {terminated}", flush=True)
+    return terminated
+
+
+def _run_step(step, script_root, env, confirmation, step_timeout_s):
+    """跑单个引导步；返回 (returncode, timed_out)。
+
+    timeout 兜底覆盖 SQL 超时照不到的 Python 层等待；超时时子进程被 kill，
+    其连接随进程结束关闭。
+    """
+    try:
+        result = subprocess.run(list(step), cwd=script_root, env=env,
+                                input=confirmation + '\n', text=True,
+                                timeout=step_timeout_s)
+        return result.returncode, False
+    except subprocess.TimeoutExpired:
+        print(f"[BOOTSTRAP] [FAIL] {step[1]} 超过单步时限 {step_timeout_s}s，已终止进程",
+              flush=True)
+        return 1, True
+
+
+def main():
+    if not os.path.isdir(SCRIPTS):
+        print(f"[BOOTSTRAP] scripts 卷未挂载: {SCRIPTS} 不存在", flush=True)
+        return 1
+    if not os.environ.get('DATABASE_URI'):
+        print("[BOOTSTRAP] DATABASE_URI 未设置", flush=True)
+        return 1
+
+    budget = lock_budget()
+    env = _prepare_env(budget)
+    print(f"[BOOTSTRAP] DDL 锁预算：lock_timeout={budget['lock_timeout_ms']}ms "
+          f"statement_timeout={budget['statement_timeout_ms']}ms "
+          f"idle_in_transaction_session_timeout={budget['idle_in_tx_timeout_ms']}ms "
+          f"单步时限={budget['step_timeout_s']}s", flush=True)
     # 交互式确认类 seed 脚本（202609 seed_voice_llm 等 6 个的 input() 提示）：
     # stdin 预喂 y 逐条确认（脚本幂等，重复执行安全）。
     confirmations = ['y'] * len(BOOTSTRAP_STEPS)
@@ -145,16 +382,28 @@ def main():
             print(f"[BOOTSTRAP] [SKIP] 脚本不存在: {script}", flush=True)
             continue
         print(f"[BOOTSTRAP] ==> {script}", flush=True)
-        result = subprocess.run(list(step), cwd=script_root, env=env,
-                                input=confirmations.pop(0) + '\n',
-                                text=True)
-        if result.returncode != 0:
-            print(f"[BOOTSTRAP] [FAIL] {script} 退出码 {result.returncode}", flush=True)
-            return result.returncode
+        returncode, timed_out = _run_step(step, script_root, env,
+                                          confirmations.pop(0),
+                                          budget['step_timeout_s'])
+        if timed_out or returncode != 0:
+            print(f"[BOOTSTRAP] [FAIL] {script} 退出码 {returncode}"
+                  f"{'（超时）' if timed_out else ''}", flush=True)
+            # INT-1652：失败即收口——先把「谁占着哪张表」打出来（表名 + 持锁者
+            # pid），再清掉本 job 自己遗留的空转事务，最后非零退出。既不无声地
+            # 挂在锁队列里，也不把连接留在 idle in transaction。
+            _print_lock_diagnostics(env)
+            _cleanup_own_orphans(env)
+            return returncode or 1
 
     print("[BOOTSTRAP] 数据库结构引导完成（全脚本幂等通过）。", flush=True)
     return 0
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as exc:  # noqa: BLE001 - 未预期异常也必须非零退出且可诊断
+        import traceback
+        traceback.print_exc()
+        print(f"[BOOTSTRAP] [FAIL] 引导入口异常: {exc}", flush=True)
+        sys.exit(1)

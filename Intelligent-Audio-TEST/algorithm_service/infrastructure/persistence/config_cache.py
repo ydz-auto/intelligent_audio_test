@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 from shared.utils.log_handler import log_not_emit
 from shared.infrastructure.config import BaseConfig
+from shared.models.database import end_read_transaction
 
 from algorithm_service.infrastructure.persistence.algorithm_repository import (
     algorithm_definition_query_repository,
@@ -116,6 +117,20 @@ class AlgorithmConfigCache:
     # ---- L1 内存加载 ----
 
     def _load_all_configs(self):
+        """从本地数据库加载所有算法配置（纯读路径，事务边界在此收口）。
+
+        INT-1652：本函数只做 SELECT，原先既不 commit 也不 rollback —— 在 pubsub
+        监听线程 / 单例首次构造时会话一直挂在 idle in transaction，持着表的
+        ACCESS SHARE，把随后的迁移 DDL 顶在锁队列里（2026-10-23 事故中
+        algorithm_service 就是这样堵住 case_algorithm_params 的）。加载结束
+        （成功或异常）一律结束只读事务，连接立即归还，不再跨线程存活。
+        """
+        try:
+            self._load_all_configs_locked()
+        finally:
+            end_read_transaction()
+
+    def _load_all_configs_locked(self):
         """从本地数据库加载所有算法配置（线程安全）。
 
         先构建完整新快照、全部查询成功后才原子替换 L1：加载中途失败（如

@@ -159,10 +159,12 @@ python scripts/migrations/202610/add_transfer_agent_tables_int1623.py     # ㊵ 
 
 > ✅ **2026-10-23 修复记录（INT-1623）**：`scripts/create_all_tables.py::_import_all_models()` 从未导入 `transfer_agent` 的 PO（`TransferRecord` / `TransferChunk`），注册 87 张表、比真实全集（89 张）少两张；`tests/data/schema_baseline.json` 按这份不完整元数据采集，同样漏收这两张表。真实库有表是 `transfer_agent` 启动时自行 `create_all` 的次生路径，全新库 / 重引导库没有。更麻烦的是：INT-1565 守卫读进程级全局 `Base.metadata`，任一测试 import transfer_agent 应用层就注册进这两张表，`-n 8 --dist loadgroup` 下守卫随调度红/绿不定，阻塞 INT-1568 推送。本卡：① `create_all_tables.py` 补导入两表 + `EXPECTED_TABLE_COUNT=89`（模型全集唯一来源，漏登记即被 `tests/unit/test_int1623_transfer_tables_migration.py` 的仓库 PO 扫描抓红）；② 补 ㊵ `add_transfer_agent_tables_int1623.py` 并纳入 `BOOTSTRAP_STEPS`（存量库兜底建表，全新库全 SKIP）；③ 两表登记进基线快照（属快照漏收的存量表，不是本批新增列，登记不算绕过）。真实 Postgres 临时库实测：dry-run 全列举 → 建表/索引 → 二次执行全 SKIP → 25 列（19+6）与生产库 `information_schema` 逐项一致 → ORM 写入读回正常，用后即删。
 
-## 新增迁移脚本约定
+> ✅ **2026-10-23 修复记录（INT-1652）**：db_bootstrap 的 DDL 没有锁预算 —— `ALTER TABLE` 要 `ACCESS EXCLUSIVE`，被一条应用层 `idle in transaction` 的 `ACCESS SHARE` 一挡就无限等待；发起它的 run 容器被删后 Postgres 后端不退出，永久占住 `case_algorithm_params` 的锁队列头部，algorithm_service 所有查该表的 SELECT 全部排在它后面，`/algorithm/*` 全站 60s 超时（`DEADLINE_EXCEEDED`）。修复：① `docker/db_bootstrap_entrypoint.py` 给每个迁移子进程注入 `PGOPTIONS`（`lock_timeout=5s` / `statement_timeout=300s` / `idle_in_transaction_session_timeout=60s`，可用 `DB_BOOTSTRAP_LOCK_TIMEOUT_MS` / `DB_BOOTSTRAP_STATEMENT_TIMEOUT_MS` / `DB_BOOTSTRAP_IDLE_IN_TX_TIMEOUT_MS` / `DB_BOOTSTRAP_STEP_TIMEOUT_SECONDS` 覆盖），外加 `application_name=db_bootstrap`；单步另有进程级超时兜底，失败时打印锁诊断（表名 + 持锁者 pid）并定向 terminate 本 job 的 `idle in transaction` 后端，非零退出。② 迁移脚本里「已存在即跳过」的判断一律改成 SQLSTATE（`42701`/`42P07`/`42710` 等），不再按异常文本匹配 —— SQLAlchemy 的异常串带原 SQL，`ADD COLUMN IF NOT EXISTS ...` 会让 `'exists'` 命中**所有**错误，`lock_timeout`（`55P03`）被当成「列已存在」吞掉、迁移报 SKIP 却什么都没建成（本次实测复现）。真实 Postgres 临时库验收：`tests/integration/test_int1652_ddl_lock_timeout_pg.py`（持 `ACCESS EXCLUSIVE` → DDL 在 3s 预算内失败退出 → 放锁后同一 DDL 成功 → 不留 `idle in transaction`），静态/接线守卫见 `tests/unit/test_int1652_ddl_lock_budget.py`。
 
+## 新增迁移脚本约定
 1. 放入 `scripts/migrations/YYYYMM/`，一个变更一个脚本，文件名即意图（`add_xxx` / `fix_xxx` / `seed_xxx`）。
 2. 沿用现有模板：psycopg2/SQLAlchemy 直连 + savepoint 逐表回滚 + `[SKIP]` 跳过已完成项；文件头 docstring 写明目标、幂等性、用法、依赖。
 3. 必须幂等——重复执行不得报错、不得产生重复数据（种子用 `ON CONFLICT DO NOTHING`）。
 4. 涉及破坏性操作（DROP / 改类型）时在 docstring 与本 README 中显著标注。
 5. 执行完成后更新本 README 的「执行顺序总览」与执行记录。
+6. 「已就绪即跳过」只能按 SQLSTATE 判定（`42701` duplicate_column / `42P07` duplicate_table / `42710` duplicate_object / `42703` undefined_column / `42P01` undefined_table / `42704` undefined_object 等），**禁止按异常文本匹配**：SQLAlchemy 异常串里带原 SQL，`IF NOT EXISTS` 会让 `'exists'` 命中所有错误，把锁超时（`55P03`）当成「已存在」吞掉（INT-1652）。
