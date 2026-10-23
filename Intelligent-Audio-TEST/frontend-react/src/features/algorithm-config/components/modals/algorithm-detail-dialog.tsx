@@ -45,6 +45,23 @@ function labelOf(
   return options.find((o) => o.value === value)?.label ?? value
 }
 
+/**
+ * 维度 id → 名称解析（INT-1558）：
+ * 后端 associated_dimensions 只回 dimension_id 不回 dimension_name，名称由前端
+ * dimensionOptions（evaluation/dimensions）补；查不到的（已删除 / 接口未返回）兜底
+ * `已删除维度 #<id>`，不留空白单元格。
+ */
+export function resolveDimensionName(
+  dimensions: Dimension[],
+  dimensionId: number | string | null | undefined,
+  dimensionName?: string | null
+): string {
+  if (dimensionName) return dimensionName
+  if (dimensionId == null || dimensionId === '') return '—'
+  const name = dimensions.find((d) => String(d.id) === String(dimensionId))?.name
+  return name || `已删除维度 #${dimensionId}`
+}
+
 function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className='grid grid-cols-[100px_1fr] gap-2 text-sm'>
@@ -249,7 +266,13 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
                   <StaticTable headers={['评估维度', '权重', '默认']}>
                     {algorithm.associatedDimensions.map((relation) => (
                       <tr key={relation.id} className='border-border/50 border-b last:border-b-0'>
-                        <td className='px-3 py-2'>{relation.dimensionName}</td>
+                        <td className='px-3 py-2'>
+                          {resolveDimensionName(
+                            props.dimensions ?? [],
+                            relation.dimensionId,
+                            relation.dimensionName
+                          )}
+                        </td>
                         <td className='px-3 py-2 font-mono text-xs tabular-nums'>
                           {relation.weight}
                         </td>
@@ -306,8 +329,7 @@ function MappingRows({
         const dimName =
           mapping.dimensionName ||
           (mapping.dimensionId != null
-            ? dimensions.find((d) => String(d.id) === String(mapping.dimensionId))?.name ||
-              `维度(${mapping.dimensionId})`
+            ? resolveDimensionName(dimensions, mapping.dimensionId)
             : '')
         return (
           <tr key={mapping.id || `${mapping.source}-${mapping.sourceParam}-${mapping.targetParam}-${mapping.dimensionId ?? ''}`} className='border-border/50 border-b last:border-b-0'>
