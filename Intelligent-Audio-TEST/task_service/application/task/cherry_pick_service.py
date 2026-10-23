@@ -391,7 +391,7 @@ class CherryPickService:
         - 默认仅终态任务（§10 显式终态集合 completed/failed/stopped）
         - 默认剔除 excluded=1 行（被删用例排除，INT-305 聚合口径）
         - 评估状态取自 evaluation_service（TestResultDimension 存在性），
-          经 gRPC 批量查询（P1.7 先例），跨服务不直连
+          INT-1625 起走 ACL 共享库只读投影（只取存在性集合，不再回传全部维度行）
         - INT-657：task_ids 命中容器任务时经 task_cherry_pick_relations
           解析其引用的源结果参与候选命中（容器自身无 test_results 行，
           引用方案 A §5.1），命中项标注为容器任务（与源任务口径一致）
@@ -468,7 +468,7 @@ class CherryPickService:
                     result_ids_in_scope = [r[0] for r in session.query(TestResult.id).filter(
                         TestResult.task_id.in_(scope_ids),
                         TestResult.excluded == 0).all()] if scope_ids else []
-                evaluated = self._evaluated_result_ids(result_ids_in_scope)
+                evaluated = self._evaluated_result_ids(result_ids_in_scope, session=session)
                 if evaluation_status == EvaluationStatus.PENDING:
                     # 未评估：不在已评估集合（含维度行缺失场景）
                     q = q.filter(~TestResult.id.in_(evaluated))
@@ -491,9 +491,10 @@ class CherryPickService:
             rows = (q.order_by(TestResult.task_id.desc(), TestResult.id)
                     .offset((page - 1) * per_page).limit(per_page).all())
 
-            # 批量取评估状态标注（结果级已评估/未评估，gRPC 范围批量化）
+            # 批量取评估状态标注（结果级已评估/未评估，存在性投影一次 IN 取回）
             row_result_ids = [r.id for r, _t in rows]
-            evaluated_map = self._evaluated_result_ids(row_result_ids) if row_result_ids else {}
+            evaluated_map = (self._evaluated_result_ids(row_result_ids, session=session)
+                             if row_result_ids else {})
 
             # INT-577 §11-2：候选行补展示字段——case_name / device_name / api_name /
             # result_type（多级挑选树节点命名与 result_type 分组/筛选数据源）
@@ -505,6 +506,11 @@ class CherryPickService:
             api_ids_in_page = {r.api_id for r, _t in rows if r.api_id is not None}
             device_names = self._fetch_device_names(list(device_ids_in_page)) if device_ids_in_page else {}
             api_names = self._fetch_api_names(list(api_ids_in_page)) if api_ids_in_page else {}
+
+            # INT-1625：result_type 的文件读取批量化（原逐行 storage.exists +
+            # load_bytes，200 行就是 200 次串行 OSS 往返），并发预取后按原
+            # load_full_result_data 口径逐行解析（文件优先、缺失回退 DB）。
+            result_types = self._result_type_map(rows)
 
             # INT-657：容器引用命中的结果标注为容器任务（与源任务口径一致）；
             # 同结果同时被源任务直查命中的保留源任务标注（直查优先，不混淆归属）
@@ -535,7 +541,7 @@ class CherryPickService:
                     'device_name': device_names.get(result.device_id),
                     'api_name': api_names.get(result.api_id),
                     # INT-577 §11-2：result_type（result_data/result_data_path 解析，缺省 default）
-                    'result_type': self._extract_result_type(result.result_data, result.result_data_path),
+                    'result_type': result_types.get(result.id, 'default'),
                     'algorithm_type': result.algorithm_type,
                     'execution_status': result.execution_status,
                     'evaluated': result.id in evaluated_map,
@@ -587,15 +593,19 @@ class CherryPickService:
                     })
         return direct_ids, result_map
 
-    def _evaluated_result_ids(self, result_ids: Optional[List[int]]) -> set:
-        """经 evaluation_service gRPC 批量查询已评估结果 ID 集合（P1.7 先例口径）。"""
+    def _evaluated_result_ids(self, result_ids: Optional[List[int]], session=None) -> set:
+        """批量查询已评估结果 ID 集合（P1.7 先例口径）。
+
+        INT-1625：改 ACL 的共享库只读投影（只取「有无维度行」的存在性集合，
+        不再经 gRPC 回传全部维度行——候选首页 200 个结果 ID 对应 5592 行维度，
+        宿主实测 5~22s，是 60s 超时的主要来源）。
+        """
         from task_service.infrastructure.acl.evaluation_config_acl_repository import (
             evaluation_config_acl_repository,
         )
         try:
-            grouped = evaluation_config_acl_repository.get_dimension_results_by_result_ids(
-                list(result_ids) if result_ids else [])
-            return {int(rid) for rid, items in (grouped or {}).items() if items}
+            return evaluation_config_acl_repository.get_evaluated_result_ids(
+                list(result_ids) if result_ids else [], session=session)
         except Exception as e:
             logger.warning(f"批量查询评估结果失败（按未评估降级）: {e}")
             return set()
@@ -1194,8 +1204,11 @@ class CherryPickService:
                         audio_ids.add(aid)
             audio_map = {}
             if audio_ids:
+                # INT-1625：只取时长窄字段（原 GetAudiosByIds 逐音频查标签+标注，
+                # 真实库 337 个音频实测 22.8s；口径同 RPC 的 audios.deleted 过滤）
                 from task_service.infrastructure.acl.audio_acl_repository import audio_acl_repository
-                audio_map = audio_acl_repository.list_audios_by_ids(audio_ids)
+                durations = audio_acl_repository.get_audio_durations(audio_ids, session=session)
+                audio_map = {aid: {'duration': dur} for aid, dur in durations.items()}
             out: Dict[str, Dict[str, Any]] = {}
             for tc in rows:
                 config = tc.config or {}
@@ -1232,13 +1245,35 @@ class CherryPickService:
             return {}
 
     @staticmethod
-    def _extract_result_type(result_data, result_data_path=None) -> str:
-        """结果级 result_type 解析（口径对齐 report_data_builder_task_mixin._extract_result_type，
-        缺省 'default'）；委托 shared.utils.result_data_store.extract_result_type，
-        与购物车快照（§11-5）共用同一实现。
+    def _result_type_map(rows) -> Dict[int, str]:
+        """批量解析候选行 result_type（INT-1625）。
+
+        候选行 result_type 取自结果文件（`result_data_path` → OSS），原实现逐行
+        串行 `storage.exists` + `load_bytes`——真实库首页 200 行就是 200 次 OSS
+        往返，与 SQL/聚合无关但同样压在候选接口的响应时间上。
+
+        批量做法：先把本页带路径的结果文件并发预取（工作线程数有界），再按
+        `extract_result_type` 的原口径（文件优先、缺失回退 DB 行内数据）逐行解析，
+        解析结果与逐行读取完全一致。
+
+        返回 {result_id: result_type}；`rows` 为 (TestResult, Task) 元组列表。
         """
-        from shared.utils.result_data_store import extract_result_type
-        return extract_result_type(result_data, result_data_path)
+        from shared.utils.result_data_store import read_result_data_file, extract_result_type
+        from concurrent.futures import ThreadPoolExecutor
+
+        path_by_id = {r.id: r.result_data_path for r, _t in rows if r.result_data_path}
+        file_data: Dict[int, dict] = {}
+        if path_by_id:
+            workers = min(12, len(path_by_id))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                fetched = pool.map(read_result_data_file, list(path_by_id.values()))
+                for result_id, data in zip(path_by_id.keys(), fetched):
+                    if data:
+                        file_data[result_id] = data
+        return {
+            r.id: extract_result_type(file_data.get(r.id) or r.result_data, None)
+            for r, _t in rows
+        }
 
 
 def task_lifecycle_start(task_id: int) -> dict:

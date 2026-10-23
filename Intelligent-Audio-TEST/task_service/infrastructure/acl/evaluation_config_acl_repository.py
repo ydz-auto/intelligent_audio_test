@@ -79,6 +79,32 @@ class EvaluationConfigAclRepository:
         from shared.clients.grpc_clients import get_evaluation_config_service_stub
         return get_evaluation_config_service_stub()
 
+    def get_evaluated_result_ids(self, result_ids, session=None) -> set:
+        """按结果 ID 集合批量取「已评估」结果 ID 集合。
+
+        INT-1625：候选行 `evaluated` 标记与 `evaluation_status` 筛选原经 gRPC
+        `GetDimensionResultsByResultIds` 取回全部维度行（真实库候选首页 200 个
+        结果 ID 对应 5592 行、宿主实测 5~22s，其中多数行只为判「有无」），候选页
+        只需「是否存在维度行」的布尔集合。改共享库窄字段只读投影（口径同 RPC 的
+        仓储查询：`test_result_dimensions` 有无该 `test_result_id` 的行，不过滤
+        软删；先例见 `_read_projection`）。
+
+        失败返回空集合（仅日志告警，等价原「按未评估降级」）。
+        """
+        ids = [int(r) for r in (result_ids or []) if r is not None]
+        if not ids:
+            return set()
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.acl._read_projection import fetch_rows
+        session = session or get_db_session()
+        rows = fetch_rows(
+            session,
+            'SELECT DISTINCT test_result_id FROM test_result_dimensions '
+            'WHERE test_result_id IN :ids',
+            ids,
+        )
+        return {int(r[0]) for r in rows if r[0] is not None}
+
     def get_dimension_results_by_result_ids(self, result_ids) -> dict:
         """批量获取维度评估结果，按 test_result_id 分组返回。
 
