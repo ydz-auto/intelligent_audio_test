@@ -40,15 +40,15 @@ import {
 /** 候选行样例：任务1042 → 用例c1 → 设备d1 → real-time/final；用例c2 → 设备d1 */
 const CANDIDATES: CherryPickCandidate[] = [
   // 任务 A 用例 c1 设备 d1 real-time（2 行）
-  { resultId: 1, taskId: 1042, taskName: '任务A', caseId: 'c1', caseName: '用例001', deviceId: 1, deviceName: '设备-01', apiId: null, apiName: null, resultType: 'real-time', algorithmType: 'CRM', executionStatus: 'completed', evaluationStatus: 'completed', evaluated: true, createdAt: '2026-10-15T09:00:00' },
-  { resultId: 2, taskId: 1042, taskName: '任务A', caseId: 'c1', caseName: '用例001', deviceId: 1, deviceName: '设备-01', apiId: null, apiName: null, resultType: 'real-time', algorithmType: 'CRM', executionStatus: 'completed', evaluationStatus: 'completed', evaluated: true, createdAt: '2026-10-15T09:01:00' },
+  { resultId: 1, taskId: 1042, taskName: '任务A', caseId: 'c1', caseName: '用例001', tags: ['拒识', '多轮拒识'], groupId: 'g1', groupName: '拒识', totalDuration: 12.09, rounds: 3, deviceId: 1, deviceName: '设备-01', apiId: null, apiName: null, resultType: 'real-time', algorithmType: 'CRM', executionStatus: 'completed', evaluationStatus: 'completed', evaluated: true, createdAt: '2026-10-15T09:00:00' },
+  { resultId: 2, taskId: 1042, taskName: '任务A', caseId: 'c1', caseName: '用例001', tags: ['拒识', '多轮拒识'], groupId: 'g1', groupName: '拒识', totalDuration: 12.09, rounds: 3, deviceId: 1, deviceName: '设备-01', apiId: null, apiName: null, resultType: 'real-time', algorithmType: 'CRM', executionStatus: 'completed', evaluationStatus: 'completed', evaluated: true, createdAt: '2026-10-15T09:01:00' },
   // 任务 A 用例 c1 设备 d1 final（1 行）
-  { resultId: 3, taskId: 1042, taskName: '任务A', caseId: 'c1', caseName: '用例001', deviceId: 1, deviceName: '设备-01', apiId: null, apiName: null, resultType: 'final', algorithmType: 'CRM', executionStatus: 'completed', evaluationStatus: 'evaluating', evaluated: false, createdAt: '2026-10-15T09:02:00' },
+  { resultId: 3, taskId: 1042, taskName: '任务A', caseId: 'c1', caseName: '用例001', tags: ['拒识', '多轮拒识'], groupId: 'g1', groupName: '拒识', totalDuration: 12.09, rounds: 3, deviceId: 1, deviceName: '设备-01', apiId: null, apiName: null, resultType: 'final', algorithmType: 'CRM', executionStatus: 'completed', evaluationStatus: 'evaluating', evaluated: false, createdAt: '2026-10-15T09:02:00' },
   // 任务 A 用例 c2 设备 d1 real-time（2 行）
-  { resultId: 4, taskId: 1042, taskName: '任务A', caseId: 'c2', caseName: '用例002', deviceId: 1, deviceName: '设备-01', apiId: null, apiName: null, resultType: 'real-time', algorithmType: 'CRM', executionStatus: 'completed', evaluationStatus: 'completed', evaluated: true, createdAt: '2026-10-15T09:03:00' },
-  { resultId: 5, taskId: 1042, taskName: '任务A', caseId: 'c2', caseName: '用例002', deviceId: 1, deviceName: '设备-01', apiId: null, apiName: null, resultType: 'real-time', algorithmType: 'CRM', executionStatus: 'completed', evaluationStatus: 'completed', evaluated: true, createdAt: '2026-10-15T09:04:00' },
-  // 任务 B 用例 c3 设备 d2 real-time（1 行）——跨任务独立根（R8）
-  { resultId: 6, taskId: 1041, taskName: '任务B', caseId: 'c3', caseName: '用例003', deviceId: 2, deviceName: '设备-02', apiId: null, apiName: null, resultType: 'real-time', algorithmType: 'CRM', executionStatus: 'failed', evaluationStatus: 'failed', evaluated: true, createdAt: '2026-10-15T10:00:00' },
+  { resultId: 4, taskId: 1042, taskName: '任务A', caseId: 'c2', caseName: '用例002', tags: ['静默拒识'], groupId: 'g1', groupName: '拒识', totalDuration: 3.79, rounds: 2, deviceId: 1, deviceName: '设备-01', apiId: null, apiName: null, resultType: 'real-time', algorithmType: 'CRM', executionStatus: 'completed', evaluationStatus: 'completed', evaluated: true, createdAt: '2026-10-15T09:03:00' },
+  { resultId: 5, taskId: 1042, taskName: '任务A', caseId: 'c2', caseName: '用例002', tags: ['静默拒识'], groupId: 'g1', groupName: '拒识', totalDuration: 3.79, rounds: 2, deviceId: 1, deviceName: '设备-01', apiId: null, apiName: null, resultType: 'real-time', algorithmType: 'CRM', executionStatus: 'completed', evaluationStatus: 'completed', evaluated: true, createdAt: '2026-10-15T09:04:00' },
+  // 任务 B 用例 c3 设备 d2 real-time（1 行）——跨任务独立根（R8）；分组/标签/时长缺省（降级场景）
+  { resultId: 6, taskId: 1041, taskName: '任务B', caseId: 'c3', caseName: '用例003', tags: [], groupId: null, groupName: null, totalDuration: null, rounds: null, deviceId: 2, deviceName: '设备-02', apiId: null, apiName: null, resultType: 'real-time', algorithmType: 'CRM', executionStatus: 'failed', evaluationStatus: 'failed', evaluated: true, createdAt: '2026-10-15T10:00:00' },
 ]
 
 /** 建树辅助：返回任务级节点（按 key 查找） */
@@ -191,6 +191,21 @@ describe('buildPickTree 用例级元信息（§3.7.1）', () => {
     const taskA = findTask(tree, 1042)
     const c1 = findCase(taskA, 'c1')
     expect(c1.algorithmType).toBeNull()
+  })
+
+  it('用例节点携带 §11-7 真名：tags/groupId/groupName/totalDuration/rounds', () => {
+    const tree = buildPickTree(CANDIDATES)
+    const c1 = findCase(findTask(tree, 1042), 'c1')
+    expect(c1.tags).toEqual(['拒识', '多轮拒识'])
+    expect(c1.groupId).toBe('g1')
+    expect(c1.groupName).toBe('拒识')
+    expect(c1.totalDuration).toBe(12.09)
+    expect(c1.rounds).toBe(3)
+    // 缺省行（c3）→ 空标签 / null 分组，由用例层组织落兜底桶
+    const c3 = findCase(findTask(tree, 1041), 'c3')
+    expect(c3.tags).toEqual([])
+    expect(c3.groupId).toBeNull()
+    expect(c3.totalDuration).toBeNull()
   })
 })
 

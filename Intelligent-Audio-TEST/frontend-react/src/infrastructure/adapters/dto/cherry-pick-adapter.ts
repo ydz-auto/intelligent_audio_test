@@ -6,6 +6,8 @@
  * result_type/algorithm_type，购物车快照已返 source_case_name/source_device_name/
  * source_result_type（source_api_name 缺省 undefined）——adapter 直取；
  * 缺名（后端返回 null / case_id 兜底）时经 name map 二次装饰，仍缺则降级显示 ID。
+ * INT-1497 §11-7：candidates 另返 tags/group_id/group_name/duration/rounds，adapter 转
+ * tags/groupId/groupName/totalDuration/rounds，用例层组织与用例卡直接消费。
  */
 import type {
   CherryPickCandidate,
@@ -56,6 +58,13 @@ export function fromCandidateDto(
     taskName: dto.task_name,
     caseId: dto.case_id,
     caseName,
+    // INT-1497 §11-7：用例域真名（标签/分组/时长/轮次）→ camelCase Domain；
+    // 后端缺省（null）才落降级：tags=[] 归「未设置标签」桶、groupId=null 归「未分组」桶。
+    tags: dto.tags ?? [],
+    groupId: dto.group_id,
+    groupName: dto.group_name,
+    totalDuration: dto.duration,
+    rounds: dto.rounds,
     deviceId: dto.device_id,
     deviceName:
       dto.device_name ??

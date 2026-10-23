@@ -19,6 +19,14 @@ export interface CherryPickCandidate {
   caseId: string
   /** 缺名时显示用例 ID（§11-2 降级口径） */
   caseName: string | null
+  /** 用例标签（§11-7 候选真名；空数组 → 标签视图「未设置标签」兜底桶） */
+  tags: string[]
+  /** 用例分组（§11-7；groupId 为 null → 分组视图「未分组」兜底桶） */
+  groupId: string | null
+  groupName: string | null
+  /** 用例时长（秒）/轮次（§11-7；compact 用例卡徽章数据源） */
+  totalDuration: number | null
+  rounds: number | null
   /** 设备/API 二选一（TestResult.device_id / api_id 实测） */
   deviceId: number | null
   deviceName: string | null
@@ -47,8 +55,16 @@ export interface PickTreeBranch {
   children: PickTreeItem[]
   /** 用例级：case_id（CaseIdBadge 复制展示，§3.7.1） */
   caseId?: string
-  /** 用例级：算法类型（§3.7.1 算法徽章；§11-7 tags/时长等落地后补全卡片级元信息） */
+  /** 用例级：算法类型（§3.7.1 算法徽章） */
   algorithmType?: string | null
+  /** 用例级：标签（§11-7 真实名；用例层标签视图聚合与用例卡标签行数据源） */
+  tags?: string[]
+  /** 用例级：用例分组 id/名（§11-7；分组视图聚合，groupId=null 落「未分组」桶） */
+  groupId?: string | null
+  groupName?: string | null
+  /** 用例级：时长（秒）/轮次（§11-7；用例卡徽章数据源） */
+  totalDuration?: number | null
+  rounds?: number | null
 }
 
 /** 挑选树节点——叶（执行结果行） */

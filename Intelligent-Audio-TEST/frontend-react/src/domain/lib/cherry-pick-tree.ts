@@ -193,6 +193,7 @@ export function buildPickTree(
         name: caseDisplay,
         caseId,
         algorithmType: caseRows[0]?.algorithmType ?? null,
+        ...caseMeta(caseRows),
         count: caseRows.length,
         resultIds: caseRows.map((c) => c.resultId),
         children: buildDeviceBranches(caseRows, addedResultIds, {
@@ -222,6 +223,24 @@ export function buildPickTree(
  * 叶结果行携带 taskName 消歧（同一叶在任务 A/B 各出现一次，按 result_id 独立勾选）。
  * ============================================================ */
 
+/** 用例级元信息（§11-7 真名：标签/分组/时长/轮次；同一用例跨候选行取值一致，取首行） */
+function caseMeta(rows: CherryPickCandidate[]): {
+  tags: string[]
+  groupId: string | null
+  groupName: string | null
+  totalDuration: number | null
+  rounds: number | null
+} {
+  const row = rows[0]
+  return {
+    tags: row?.tags ?? [],
+    groupId: row?.groupId ?? null,
+    groupName: row?.groupName ?? null,
+    totalDuration: row?.totalDuration ?? null,
+    rounds: row?.rounds ?? null,
+  }
+}
+
 /** 用例级分支构造（三视图用例节点共用：名称 + CaseIdBadge + 算法徽章 + 计数，§3.8.3） */
 function buildCaseNode(
   caseId: string,
@@ -238,6 +257,7 @@ function buildCaseNode(
     name: caseDisplayName(rows[0]?.caseName, caseId),
     caseId,
     algorithmType: rows[0]?.algorithmType ?? null,
+    ...caseMeta(rows),
     count: rows.length,
     resultIds: rows.map((c) => c.resultId),
     children: buildChildren(rows, addedResultIds),

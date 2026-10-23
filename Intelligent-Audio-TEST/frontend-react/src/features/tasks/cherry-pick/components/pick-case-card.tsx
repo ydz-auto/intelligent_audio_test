@@ -1,7 +1,7 @@
 /**
  * 挑选/购物车 compact 用例卡（18_挑选合并交互重设计.md §3.8.3/§4.2，INT-1047）。
  * CaseCard compact 变体：复用 features/testcases/components/case-card.tsx 字段口径
- * （名称 / CaseIdBadge / 算法徽章 / 计数 Badge），hideMeta + 精简操作区 + 展开三角。
+ * （名称 / CaseIdBadge / 算法徽章 / 标签 / 时长 / 轮次 / 计数 Badge），hideMeta + 精简操作区 + 展开三角。
  * 用例视图用例节点与购物车用例节点共用；勾选走 R6 用例级（购物车侧为批量移除选择）。
  */
 import { ChevronDown, ChevronRight } from 'lucide-react'
@@ -19,6 +19,12 @@ export interface PickCaseCardProps {
   caseId?: string
   /** 算法类型（算法徽章） */
   algorithmType?: string | null
+  /** 用例标签（§11-7 真实名；标签行 TagBadge） */
+  tags?: string[]
+  /** 用例时长（秒；徽章「{时长}」） */
+  totalDuration?: number | null
+  /** 用例轮次（徽章「{n} 轮」） */
+  rounds?: number | null
   /** 计数 Badge「{n} 条」 */
   count: number
   /** 勾选态（R3 三态） */
@@ -39,6 +45,9 @@ export function PickCaseCard({
   name,
   caseId,
   algorithmType,
+  tags = [],
+  totalDuration = null,
+  rounds = null,
   count,
   state,
   onToggle,
@@ -53,10 +62,10 @@ export function PickCaseCard({
       caseItem={{
         id: caseId ?? name,
         name,
-        tags: [],
+        tags,
         algorithmType: algorithmType ?? null,
-        totalDuration: null,
-        rounds: 0,
+        totalDuration,
+        rounds: rounds ?? undefined,
       }}
       selected={state === 'checked'}
       showCheckbox={false}
