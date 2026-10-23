@@ -77,7 +77,10 @@ class TestCaseGroupMixin:
                     session, dimension_id, keyword)
                 query = query.filter(TestCaseGroup.id.in_(list(case_counts.keys())))
             else:
-                case_counts = {}
+                # INT-1470 P1：无用例级筛选时也带回分组计数（口径同
+                # GetTestCaseStats group_by=group_id：未删除 + 私有可见性），
+                # 网关据此在一次 RPC 内拿到列表与计数，省掉逐请求的第二次聚合
+                case_counts = self._count_group_matched_cases(session, None, None)
 
             rows = query.all()
             return [{
