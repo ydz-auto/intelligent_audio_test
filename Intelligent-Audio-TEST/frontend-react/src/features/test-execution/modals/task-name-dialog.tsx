@@ -5,8 +5,9 @@
  * 确认即创建+启动+跳 step=3（useTestLaunch.launch）。
  * INT-486 2026-10-16 口径：设备+API 混合执行，摘要含设备/API 双计数。
  * INT-1119 2026-10-21：摘要存在串行目标时附「· 串行 {s} 个目标」，全并行时省略（§5.1）。
+ * INT-1528 2026-10-23：重置默认名称挂 open 副作用——取消/清空后从底部「开始测试」重开也恢复默认名。
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { useTestLaunch } from '@/application/test-execution/useTestLaunch'
 import { useTargetModes } from '@/application/test-execution/useTargetModes'
@@ -56,11 +57,11 @@ export function TaskNameDialog({
   const [name, setName] = useState(() => defaultTaskName())
   const [starting, setStarting] = useState(false)
 
-  // open 变更时重置默认名称
-  const handleOpenChange = (next: boolean) => {
-    if (next) setName(defaultTaskName())
-    onOpenChange(next)
-  }
+  // open 变更时重置默认名称（INT-1528：父组件以受控 open 直接置 true，base-ui Dialog 不会以
+  // true 回调 onOpenChange，故重置必须挂在 open 副作用上，保证取消/清空后重开仍为默认名）
+  useEffect(() => {
+    if (open) setName(defaultTaskName())
+  }, [open, defaultTaskName])
 
   // §5.1 摘要：存在串行目标时附「· 串行 {s} 个目标」，全并行时省略
   const summary = `${caseCount} 条 · ${deviceCount} 台 · ${apiCount} 个 · 并发 ${params.concurrency}${
@@ -89,7 +90,7 @@ export function TaskNameDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-sm'>
         <DialogHeader>
           <DialogTitle>任务名称</DialogTitle>
