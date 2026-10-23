@@ -142,9 +142,12 @@ class _TaskDataProxy:
 
     # ---- TestCaseGroup 查询/创建 ----
 
-    def list_testcase_groups(self, algorithm_type=None, search=None, reraise=False):
+    def list_testcase_groups(self, algorithm_type=None, search=None,
+                             page=0, per_page=0, reraise=False):
         """通过 gRPC 查询 TestCaseGroup 列表
 
+        INT-1470：page/per_page 透传分页下推；缺省（0）= 不分页返回全部
+        （home_service / stats_cache / MCP group_list 等旧调用方行为不变）。
         reraise=True 时失败上抛（首页统计链路 INT-204，同 get_task_stats）；
         默认 False 维持吞异常返回 {} 的既有失败语义（分组列表页等）。
         """
@@ -153,6 +156,8 @@ class _TaskDataProxy:
             resp = stub.ListTestCaseGroups(task_pb.ListTestCaseGroupsRequest(
                 algorithm_type=algorithm_type or '',
                 search=search or '',
+                page=int(page or 0),
+                per_page=int(per_page or 0),
             ))
             if not resp.success:
                 raise RuntimeError(f"ListTestCaseGroups gRPC 失败: {resp.message}")

@@ -294,13 +294,17 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
         """查询 TestCaseGroup 列表
 
         过滤逻辑删除，支持 algorithm_type / 名称搜索过滤。
+        INT-1470：page/per_page 缺省（0）= 不分页、返回全部（旧调用方行为不变，
+        data.total == len(data.items)）；否则 SQL 侧只返回当前页，计数只算当前页。
         """
         try:
-            items = testcase_repository.list_groups(
+            result = testcase_repository.list_groups_page(
                 algorithm_type=request.algorithm_type or '',
                 search=request.search or '',
+                page=request.page,
+                per_page=request.per_page,
             )
-            return self._resp(True, '', {'items': items})
+            return self._resp(True, '', result)
         except Exception as e:
             logger.exception('ListTestCaseGroups failed')
             return self._resp(False, str(e))
