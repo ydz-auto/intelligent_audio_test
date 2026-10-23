@@ -150,9 +150,73 @@
 | `POST /tasks/cherry-picks/sets/{setId}/to-cart` | 挑选集恢复进购物车 |
 | `GET /tasks/cherry-picks/sets` | 挑选集列表 |
 | `POST /tasks/cherry-picks/preview` | 合并预览（下单前统计/失效校验） |
+| `GET /tasks/cherry-picks/pickable-tasks` | 可挑选终态任务清单（挑选向导阶段 1 数据源，INT-1496；契约见 §8.1） |
 | `GET /tasks/{taskId}/cherry-pick-source` | 新任务溯源（各结果来源任务） |
 
 命名边界：前端/Domain 用 camelCase；snake_case 只允许出现在后端数据库与 DTO 转换层（总览 §1.3 口径）。
+
+### 8.1 可挑选任务清单接口（INT-1496 契约裁定，2026-10-23）
+
+> 结论：采用**方向 A（轻）**。交互规范 18 §3.8.2 阶段 1 的「数据源=候选行聚合」改为本端点；方向 B（18 §11-3 候选树聚合端点）仍为可选增强，不在本卡实施。
+
+缺陷背景（2026-10-23 真实库实测）：原实现取 `GET /tasks/cherry-picks/candidates` 首页 200 行（`per_page` 封顶 200、不翻页）在客户端按 `task_id` 聚合出任务清单。真实库候选结果行 3614 条，集中在大任务（task 419 138 条、418 62 条），首页 200 行只覆盖 2 个任务，而真实库含可挑结果的终态任务有 117 个——阶段 1 清单严重残缺。同接口 `per_page=200` 实测 60s 未返回，阶段 1 也不应再背这条慢查询。
+
+**接口**：`GET /tasks/cherry-picks/pickable-tasks`，权限 `task:read`，前缀沿用 `/api/v1/tasks/cherry-picks`。
+
+| 参数 | 类型 / 取值 | 缺省 | 说明 |
+| --- | --- | --- | --- |
+| `keyword` | string | 空 | 任务名模糊匹配（`ILIKE %kw%`；只匹配任务名，不匹配任务 ID） |
+| `status` | `completed` / `failed` / `stopped` | 全部 | 任务状态过滤（`PickableTaskStatus` 枚举值） |
+| `sort_by` | `status` / `name` / `created_at` | `status` | `status` 排序 = 权重 completed→failed→stopped，同权重按任务名 |
+| `sort_order` | `asc` / `desc` | `asc` | 时间倒序由前端显式传 `sort_by=created_at&sort_order=desc` |
+| `page` | int ≥ 1 | 1 | |
+| `per_page` | int 1–200 | 50 | 与 candidates 同口径（上行越界 → 400） |
+
+入选口径（服务端一次 GROUP BY，不下发候选结果行）：
+
+```
+test_tasks t JOIN test_results r ON r.task_id = t.id
+WHERE t.deleted = false
+  AND t.status IN PickableTaskStatus                 -- 显式枚举，不写字面量
+  AND r.excluded = 0                                 -- INT-305：剔除被删用例结果行
+  AND visible_condition(t.created_by_user_id, t.visibility, uid, admin)   -- INT-423 可见性
+GROUP BY t.id HAVING count(r.id) > 0
+ORDER BY <排序键>, t.id ASC                          -- task_id 兜底稳定次序
+```
+
+响应 `data`：`{ items: [{ task_id, task_name, task_status, result_count, created_at }], total, page, per_page }`（网关 `success_response` 信封）。
+
+- `result_count` = 该任务可挑结果行数（`excluded=0`），供阶段 1 行尾「{n} 条」；
+- `task_status` = 任务执行状态（三终态之一），**不是**结果级执行状态（原实现误用候选行 `execution_status`）；
+- `created_at` = 任务创建时间（ISO 8601），**不是**首条结果时间（原实现取候选行时间）；
+- `total` = 满足条件的任务总数（不受分页影响）。
+
+边界（本卡不做）：
+
+- 容器任务（cherry-pick 合并容器）自身无 `test_results` 行，不入本清单——与现状一致；再挑容器结果仍走 INT-657 的显式 `task_ids` 口径，是否纳入清单另立卡评估。
+- 不含设备 / 用例 / 评估状态等结果级条件：阶段 1 只做任务维度过滤与排序。
+- `candidates` 契约与分页语义保持不变，不做兼容层、不留双口径。
+
+落位（DDD 四层，上层不绕过 Application 直触 Infrastructure）：
+
+- 网关：`routes/cherry_pick_bp.py` 新增路由 → `schemas/cherry_pick.py` 新增 `CherryPickPickableTasksQuery` → `application/services/task/cherry_pick_service.py` → ACL `infrastructure/acl/cherry_pick_acl_repository.py` + `infrastructure/grpc_proxies/cherry_pick_proxies.py`。
+- 契约：`shared/proto/task_service.proto` 新增 `rpc ListCherryPickPickableTasks(CherryPickPickableTasksRequest) returns (TaskConfigResponse)` 与消息（`data` JSON，同 candidates 风格），重新生成 `shared/proto/task_service_pb2*.py`（两服务共用同一份生成物）。
+- task_service：`interfaces/grpc/cherry_pick.py` 新增 servicer 方法 → `application/task/cherry_pick_service.py` → `infrastructure/persistence/cherry_pick_repository.py` 承载上述 GROUP BY（application 不直连 session）。
+
+验收：
+
+1. 真实库栈（`/health` → `database=intelligent_audio_test`）下 `total` 与同口径 SQL `count(DISTINCT t.id)` 一致；2026-10-23 基线与分布（只读取证）：非删除任务 125（全部是 completed 79 / failed 39 / stopped 7），其中含可挑结果的 117 个、结果行 3614 条；首屏 200 行候选只覆盖 task 419（138）与 418（62）。
+2. 单次请求 < 2s：不得复用 candidates 的用例/设备/评估装饰链路（实测 `per_page=200` 超 60s）。
+3. 既有回归不破坏：`tests/unit/test_int339_cherry_pick.py`、`test_int577_cherry_pick_upgrade.py`、`test_int1130_cherry_pick_case_meta.py`、`test_int339_acceptance.py`；5000 段隔离库冒烟。
+4. 可见性：非 owner 非 admin 用户看不到他人私有任务（INT-423 同口径）。
+
+前端接线（另卡，React 接线项目）：
+
+- 阶段 1 `PickTaskRow` 改由本端点取数（`result_count→count`、`task_status→executionStatus`、`created_at` 直接映射），删除候选首页聚合与客户端状态权重排序；
+- 「来源任务」筛选选项 `fetchPickableTasks` 同源切换（顺带去掉候选 30s 缓存兜底）；
+- 「全选当前筛选」须覆盖 `total` 全部任务（按 `per_page` 拉齐或显式提示已加载 N/total），不允许再出现只选到首页。
+
+已知边界（不在本卡，交规划师排卡）：阶段 2 候选树仍由 candidates 首页 200 行重建（18 §11-3 降级）。本卡上线后用户可选到结果数 > 200 的任务，阶段 2 展示仍是「已加载 200 条」，跨页全选由 `POST /candidates/select-all` 保证。
 
 ## 9. 前端设计
 
@@ -195,6 +259,8 @@
 8. 页面无 "Cherry-Pick" 英文字样（接口路径除外）。
 
 ## 13. 实现演进裁定记录
+
+- **2026-10-23（INT-1496 FEAT 契约审查裁定，方案一致性审计员）**：挑选向导阶段 1「选择任务」清单数据源缺陷收口。原 `fetchPickableTasks` 与阶段 1 行聚合都取 `GET /tasks/cherry-picks/candidates` 首页 200 行客户端聚合，真实库候选结果行 3614 条集中在大任务（task 419 138 条、418 62 条），200 行只覆盖 2 个任务；真实库含可挑结果的终态任务 117 个（非删除任务 125，均为终态）。裁定：新增轻量端点 `GET /tasks/cherry-picks/pickable-tasks`（完整契约见 §8.1，含入选 SQL、排序、字段、分层落位与验收）；**方向 B（18 §11-3 候选树聚合端点）不实施**，留作可选增强；`candidates` 契约与分页语义不变，不做兼容层、不留双口径。前端阶段 1 消费切换与「全选当前筛选」覆盖 `total` 另立 React 接线卡；阶段 2 200 行降级边界保持，交规划师按 §11-3 或阶段 2 分页排卡。
 
 - **2026-10-21（INT-1130 实施 + 方案一致性审计回写，实现演进裁定）**：挑选合并候选接口 `POST /tasks/cherry-picks/candidates`（`task_service/application/task/cherry_pick_service.py` `list_candidates → _query_candidate_results`）候选行在既有 `case_id/case_name/algorithm_type` 基础上补用例级元信息（交互规范 18_挑选合并 §11-7 落地）：
   - `tags: string[]` — `test_cases → test_case_tags → tags.name`（去重保序；同源用例管理列表 `TestCaseListItem.tags`）
