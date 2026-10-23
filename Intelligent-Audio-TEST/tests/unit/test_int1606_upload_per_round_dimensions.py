@@ -291,6 +291,37 @@ def test_a1_14_non_dict_round_item_skipped():
     assert config['rounds'][1] == 'not-a-dict'
 
 
+def test_a1_15_r4_branch_non_list_round_dimensions_normalized():
+    """R4 分支（无顶层维度且无轮自带）：轮内非 list 维度归一为 []，不把脏形态落库（R5 / 审计 P2-1）。"""
+    rounds = [
+        _round(1, {'dimensions': None}),
+        _round(2, {'dimensions': {'id': 11}}),
+        _round(3, {'enabled': True}),
+    ]
+
+    config = _build(rounds)
+
+    assert config['rounds'][0]['evaluation']['dimensions'] == []
+    assert config['rounds'][1]['evaluation']['dimensions'] == []
+    assert config['rounds'][2]['evaluation'] == {'enabled': True, 'dimensions': []}
+    assert 'dimensions' not in config
+    # 读侧不炸：脏形态若原样落库，_merge_dimensions_config 迭代 None 会抛 TypeError
+    assert _merge(config, 0) == []
+    assert _merge(config, 1) == []
+
+
+def test_a1_16_top_level_multi_test_type_filter_before_dedupe():
+    """顶层 multi 桶按「归一化 → tt 过滤 → 去重」：同 id 先 e2e 后 api 时 api 用例仍保留该条目（R3 / 审计 P3-1）。"""
+    rounds = [_round(1, {'dimensions': [_dim(11)]})]
+    top = [_dim(91, test_type=TT_E2E, round_scope='multi'),
+           _dim(91, test_type=TT_API, round_scope='multi')]
+
+    config = _build(rounds, top, tt=TT_API)
+
+    assert _ids(config['dimensions']) == [91]
+    assert config['dimensions'][0]['test_type'] == TT_API
+
+
 # ==== A4 评测链冒烟（纯 py，读侧不变量） ====
 
 def _merge(config, round_number):

@@ -307,11 +307,12 @@ class CreationRoundConfigMixin:
 
     def _apply_payload_round_dimensions(self, round_items, top_dims, tt, config, audio):
         """R1：整体以载荷为准写入各轮维度，并按 R3 归并整体维度。"""
-        top_normalized = self._dedupe_dimensions(self._normalize_dimensions(top_dims))
-        ignored_top_dims = [d for d in top_normalized
+        top_normalized = self._normalize_dimensions(top_dims)
+        ignored_top_dims = [d for d in self._dedupe_dimensions(top_normalized)
                             if not self._is_overall_scope_dimension(d)]
-        overall_dims = self._filter_dimension_by_test_type(
-            [d for d in top_normalized if self._is_overall_scope_dimension(d)], tt)
+        # R3：归一化 → test_type 过滤 → 按 (id, round_scope) 去重保序（与 R2 回填分支同口径）
+        overall_dims = self._dedupe_dimensions(self._filter_dimension_by_test_type(
+            [d for d in top_normalized if self._is_overall_scope_dimension(d)], tt))
         if ignored_top_dims:
             logger.warning(
                 "上传生成用例时轮内已自带评估维度，忽略顶层逐轮维度: audio=%s, audio_id=%s, "
@@ -350,10 +351,15 @@ class CreationRoundConfigMixin:
 
     @staticmethod
     def _ensure_round_dimension_placeholders(round_items):
-        """R4：无维度可写时，只给缺失维度的轮补 []，不覆盖已有配置。"""
+        """R4：无维度可写时，只给缺失维度的轮补 []，不覆盖已有配置。
+
+        非 list 的 `dimensions`（None / dict 等脏载荷）同样归一为 []（R5）：读侧
+        `case_loader._merge_dimensions_config` 会直接迭代该值，原样落库会把 TypeError
+        推迟到评估侧爆发（INT-1615 审计 P2-1）。
+        """
         for round_item in round_items:
             if not isinstance(round_item.get('evaluation'), dict):
                 round_item['evaluation'] = {}
-            if 'dimensions' not in round_item['evaluation']:
+            if not isinstance(round_item['evaluation'].get('dimensions'), list):
                 round_item['evaluation']['dimensions'] = []
 
