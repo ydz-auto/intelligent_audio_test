@@ -120,9 +120,14 @@ def _run_migration(uri, *args):
     """以真实 CLI 方式运行迁移脚本（独立进程，DATABASE_URL 注入连接串）。"""
     env = dict(os.environ)
     env['DATABASE_URL'] = uri
+    # 子进程输出固定 UTF-8 并按 UTF-8 解码：脚本输出含中文，Windows 下父进程
+    # text=True 默认按 locale(GBK) 解码，环境里只设 PYTHONIOENCODING=utf-8
+    # 时子进程写 UTF-8 而父进程按 GBK 解 → UnicodeDecodeError 假红。
+    env['PYTHONIOENCODING'] = 'utf-8'
+    env['PYTHONUTF8'] = '1'
     return subprocess.run(
         [sys.executable, _MIGRATION, *args], env=env, cwd=PROJECT_ROOT,
-        capture_output=True, text=True)
+        capture_output=True, text=True, encoding='utf-8', errors='replace')
 
 
 def _derived_values(uri):
