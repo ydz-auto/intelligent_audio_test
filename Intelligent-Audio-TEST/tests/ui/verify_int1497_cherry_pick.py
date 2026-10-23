@@ -1,25 +1,30 @@
 # -*- coding: utf-8 -*-
 """INT-1497 挑选合并阶段 2 用例层组织·候选分组/标签/时长真名接线——浏览器实测。
 
-被测产物：交付提交 d4614f3e 的 frontend-react 构建（dist，交付分支
-agent/react-c/int-1497-c7b4f63ebcca），由本脚本起一个只读静态服务 + /api 反向代理
-转发到 docker 真实库栈后端（默认 127.0.0.1:15000，/health database=intelligent_audio_test）。
+被测产物（两种入口）：
+  A) docker 部署的 React 前端 http://127.0.0.1:15173（nginx /api → api_gateway:5000，
+     即真实库栈 15000）——验收时 15173 镜像源码 = wiring/react 7988e9f5，
+     其 11 个交付文件与 d4614f3e 完全一致，故可直接对容器实测；
+  B) 交付提交 d4614f3e 的 frontend-react dist 构建，由本脚本起静态服务 + /api 反代
+     到 127.0.0.1:15000。
 
 验收点（卡内）：
 1) 分组视图按真实分组名聚合（如「拒识」），不再全落「未分组」
 2) 标签视图按真实标签聚合，不再全落「未设置标签」
-3) 用例卡显示真实标签；CaseIdBadge 保留；轮次徽章按真实 rounds
+3) 用例卡显示真实标签/时长/轮次；CaseIdBadge 保留
 4) 过时提示「候选未返分组/标签字段（§11-7）」已移除
 5) 浅色 + 深色截图
 
 用法：
+  INT1497_BASE_URL=http://127.0.0.1:15173 python verify_int1497_cherry_pick.py
   python verify_int1497_cherry_pick.py --dist <frontend-react/dist 路径>
-  （DIST 也可用环境变量 INT1497_DIST；后端/端口可用 INT1497_BACKEND / INT1497_PORT 覆盖）
+  （后端/端口可用 INT1497_BACKEND / INT1497_PORT 覆盖）
 """
 import argparse
 import json
 import mimetypes
 import os
+import re
 import sys
 import threading
 import time
@@ -43,7 +48,12 @@ CHROME_BINARY = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
 
 BACKEND = os.environ.get('INT1497_BACKEND', 'http://127.0.0.1:15000')
 PORT = int(os.environ.get('INT1497_PORT', '5390'))
-BASE = f'http://127.0.0.1:{PORT}'
+# 两种被测入口：
+#  1) 本脚本自起静态服务 + /api 代理（--dist 指定交付分支构建产物）
+#  2) 直接用已部署的 docker React 容器（INT1497_BASE_URL=http://127.0.0.1:15173），
+#     其 nginx 已 /api → api_gateway:5000（同一 docker 真实库栈）
+EXTERNAL_BASE = os.environ.get('INT1497_BASE_URL', '').rstrip('/')
+BASE = EXTERNAL_BASE or f'http://127.0.0.1:{PORT}'
 
 TASK_ID = 419
 TASK_NAME_HINT = '小艺拒识E2E测试任务'
@@ -252,7 +262,11 @@ def perf_network(drv):
 # ---------------------------------------------------------------- 主流程
 def run(dist):
     os.makedirs(ARTIFACTS, exist_ok=True)
-    start_server(dist)
+    if EXTERNAL_BASE:
+        print('被测入口（已部署容器）:', BASE)
+    else:
+        start_server(dist)
+        print('被测入口（本地静态服务）:', BASE)
     # 探活代理与后端
     with urllib.request.urlopen(BASE + '/api/v1/auth/mode', timeout=10) as r:
         assert r.status == 200, '代理 /api 失败'
@@ -297,6 +311,10 @@ def run(dist):
         # 子组头计数「137 条」形态 + 用例卡真实标签/轮次
         assert '轮' in txt, '用例卡未渲染轮次徽章'
         results.append('用例卡轮次徽章渲染（如「3 轮」）')
+
+        # 用例卡时长徽章（task 419 候选 duration 有值：12.09 / 3.79 / 10.0 …→「12s」形态）
+        assert re.search(r'\b\d+s\b|\b\d+m\b', txt), '用例卡未渲染时长徽章'
+        results.append('用例卡显示真实时长（如「12s」）')
 
         # 用例卡标签：TagBadge 的 title 为「{name} · 分类：...」
         card_tags = [e for e in drv.find_elements(
@@ -385,8 +403,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--dist', default=os.environ.get('INT1497_DIST', ''))
     args = ap.parse_args()
-    if not args.dist or not os.path.isdir(args.dist):
-        raise SystemExit('需要 --dist <frontend-react/dist>（被测交付分支构建产物）')
+    if not EXTERNAL_BASE and (not args.dist or not os.path.isdir(args.dist)):
+        raise SystemExit(
+            '需要 --dist <frontend-react/dist>，或设 INT1497_BASE_URL 直接用已部署前端')
     run(args.dist)
 
 
