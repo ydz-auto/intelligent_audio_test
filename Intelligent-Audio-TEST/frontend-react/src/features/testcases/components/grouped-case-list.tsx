@@ -50,6 +50,10 @@ import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
 import { formatCaseDuration } from '@/features/testcases/constants'
 import { CaseCard, type CaseCardCallbacks } from '@/features/testcases/components/case-card'
+import {
+  CaseListErrorBanner,
+  CaseListErrorState,
+} from '@/features/testcases/components/case-list-error'
 import { CaseGroupActions } from '@/features/testcases/components/case-group-actions'
 import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
 import {
@@ -125,11 +129,16 @@ function GroupCard({
   const groupSubView = useSessionMap((s) => s.groupSubView)
   const setGroupSubView = useSessionMap((s) => s.setGroupSubView)
   /** 组内用例懒加载（展开才拉；Vue fetchCasesByGroup 对位，INT-1267） */
-  const { items: list, total, hasMore, isLoading, isFetching, loadMore } = useGroupCases(
-    group.id,
-    filters,
-    expanded
-  )
+  const {
+    items: list,
+    total,
+    hasMore,
+    isLoading,
+    isFetching,
+    isError: groupError,
+    refetch: refetchGroup,
+    loadMore,
+  } = useGroupCases(group.id, filters, expanded)
 
   const subView = (groupSubView[group.id] ?? 'flat') as GroupSubView
   const groupDuration = list.reduce((sum, c) => sum + (c.totalDuration ?? 0), 0)
@@ -277,10 +286,24 @@ function GroupCard({
       </div>
       {expanded && (
         <div className='space-y-2 border-t px-3 py-3'>
+          {/* 组内查询失败（INT-1605）：不得渲染成「该分组暂无用例」 */}
+          {groupError && list.length > 0 && (
+            <CaseListErrorBanner
+              message='该分组用例加载失败，当前显示的是已加载的数据'
+              onRetry={refetchGroup}
+            />
+          )}
           {isLoading && list.length === 0 ? (
             <div className='space-y-2'>
               <Skeleton className='h-16 w-full' />
               <Skeleton className='h-16 w-full' />
+            </div>
+          ) : list.length === 0 && groupError ? (
+            <div className='flex flex-col items-center gap-2 py-6 text-center'>
+              <p className='text-destructive text-xs'>该分组用例加载失败</p>
+              <Button variant='outline' size='sm' className='h-7' onClick={refetchGroup}>
+                重试
+              </Button>
             </div>
           ) : list.length === 0 ? (
             <p className='text-muted-foreground py-6 text-center text-xs'>
@@ -312,6 +335,8 @@ export function GroupedCaseList({
   cases,
   loading,
   groupsLoading,
+  isError,
+  onRetry,
   trash,
   hasQueryFilters,
   filters,
@@ -328,6 +353,10 @@ export function GroupedCaseList({
   loading: boolean
   /** 分组列表加载（INT-1284：分组卡渲染以 /groups 为准；缺省沿用 loading，兼容旧调用） */
   groupsLoading?: boolean
+  /** 用例列表查询失败（INT-1605）：失败且无数据时渲染错误态，不得伪装成「没有找到」空态 */
+  isError?: boolean
+  /** 查询失败重试（refetch） */
+  onRetry?: () => void
   trash: boolean
   /** 非回收站筛选是否激活（搜索/分组/标签/维度）——回收站空态区分「真空」与「筛选无匹配」 */
   hasQueryFilters: boolean
@@ -446,6 +475,18 @@ export function GroupedCaseList({
     )
   }
 
+  // 查询失败且无任何可展示用例：显式错误态 + 重试（INT-1605）。
+  // 不得落到下方「没有找到符合条件的测试用例」空态——否则接口挂了与库空在 UI 上无法区分。
+  if (isError && cases.length === 0) {
+    return (
+      <CaseListErrorState
+        title='用例列表加载失败'
+        description='用例列表获取失败，请重试'
+        onRetry={onRetry}
+      />
+    )
+  }
+
   /**
    * 空态三态（§3.3 INT-592 平铺流文案）：回收站空 → 筛选无匹配 → 全空。
    * 以可见用例集为准——筛选把全部用例排除后即使分组列表非空也走空态（INT-595 补）。
@@ -497,6 +538,13 @@ export function GroupedCaseList({
 
   return (
     <div className={cn('space-y-3 transition-opacity', dimmed && 'opacity-60')}>
+      {/* 翻页 / 筛选失败但有上次数据：保留旧列表 + 行内提示（INT-1605） */}
+      {isError && cases.length > 0 && (
+        <CaseListErrorBanner
+          message='用例列表加载失败，当前显示的是上一次加载的数据'
+          onRetry={onRetry}
+        />
+      )}
       {/* 列表头：全选 + 已选择计数 + 排序 */}
       <div className='flex items-center justify-between gap-2'>
         <div className='flex items-center gap-2'>

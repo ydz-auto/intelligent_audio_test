@@ -7,7 +7,7 @@
  * + 批量浮条（§5.6）+ 分页 Portal（§3.9）。
  * 数据经 infrastructure/api/audios-api.ts（INT-645 切真实后端，client.ts 统一 fetch）。
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Download, FolderOpen, List, MoreHorizontal, Plus, RefreshCw, Tags, Trash2, UploadCloud } from 'lucide-react'
 
@@ -25,7 +25,7 @@ import { SectionPageLayout } from '@/components/layout/components/section-page-l
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { usePermissions } from '@/application/hooks/use-permissions'
-import { downloadAudio } from '@/infrastructure/api/audios-api'
+import { downloadAudio, type AudioListResult } from '@/infrastructure/api/audios-api'
 import {
   useAudioList,
   useAudioMutations,
@@ -127,12 +127,19 @@ export function AudioImportPage() {
     filters.tags.length > 0 && filters.tagMode === 'or'
   const needAllRows = view === 'folder' || tagsClientSide
 
+  // 列表失败时保留上一次成功加载的行（INT-1583：翻页/筛选失败不清空已有数据）
+  // React Query 的 placeholderData 只覆盖 pending 态，查询失败后 data 变 undefined，
+  // 故在此留一份「最近一次成功结果」快照供失败时回显。
+  const lastGoodList = useRef<AudioListResult | null>(null)
+  if (audiosQuery.data) lastGoodList.current = audiosQuery.data
+  const listData = audiosQuery.data ?? lastGoodList.current ?? undefined
+
   // 服务端已做 scalar facet（+ AND 标签）过滤；OR 标签在此按全量行客户端过滤
   const displayRows = tagsClientSide
-    ? (audiosQuery.data?.items ?? []).filter((row) =>
+    ? (listData?.items ?? []).filter((row) =>
         filters.tags.some((tag) => row.tags.includes(tag))
       )
-    : (audiosQuery.data?.items ?? [])
+    : (listData?.items ?? [])
 
   // 排序：服务端分页按后端 created_at desc（列表排序钮隐藏）；allRows 模式才可客户端排序
   const sorted = useMemo(() => {
@@ -148,14 +155,32 @@ export function AudioImportPage() {
 
   const displayTotal = tagsClientSide
     ? sorted.length
-    : (audiosQuery.data?.total ?? sorted.length)
+    : (listData?.total ?? sorted.length)
   const pageCount = Math.max(1, Math.ceil(displayTotal / pageSize))
   const safePage = Math.min(page, pageCount)
 
-  // 越界兜底：筛选/删除后总页数收缩时把页码拉回
+  /* ───────── 列表失败（INT-1583） ───────── */
+
+  // 失败不等于空库：表格显示错误态 / 保留旧数据 + 行内提示，标题计数不再显示 0
+  const listError = audiosQuery.isError
+  const lastErrorToastAt = useRef(0)
+
+  // 翻页 / 筛选失败但仍有上次数据：toast 一次（首屏失败由表格错误态承担）
   useEffect(() => {
+    if (!listError) return
+    if (audiosQuery.errorUpdatedAt === lastErrorToastAt.current) return
+    lastErrorToastAt.current = audiosQuery.errorUpdatedAt
+    if (displayRows.length === 0) return
+    toast.error('音频列表加载失败，已保留上一次加载的数据，请重试')
+  }, [listError, audiosQuery.errorUpdatedAt, displayRows.length])
+
+  // 越界兜底：筛选/删除后总页数收缩时把页码拉回。
+  // 仅在查询成功时兜底——失败时 pageCount 会因 data 缺失回落成 1，若照旧拉回会把刚翻页的
+  // 失败状态整个吞掉（用户点「下一页」毫无反应），见 INT-1583。
+  useEffect(() => {
+    if (!audiosQuery.isSuccess) return
     if (page > 0 && pageCount > 0 && page > pageCount) setPage(pageCount)
-  }, [page, pageCount])
+  }, [audiosQuery.isSuccess, page, pageCount])
 
   // 列表视图行：服务端分页时即当前页；OR 标签客户端过滤时按本地分页切片
   const listRows = useMemo(
@@ -315,7 +340,7 @@ export function AudioImportPage() {
           <span className='flex flex-wrap items-center gap-2'>
             音频管理
             <Badge variant='outline' className='font-normal tabular-nums'>
-              共 {displayTotal} 个
+              {listError ? '共 — 个' : `共 ${displayTotal} 个`}
             </Badge>
           </span>
         </SectionPageLayout.Title>
@@ -405,7 +430,10 @@ export function AudioImportPage() {
           <div className='flex h-full min-h-0 flex-col gap-3'>
             <UploadProgressCard />
 
-            <AudioStatsRow stats={audiosQuery.data?.stats} />
+            {/* 首屏失败且无历史统计时不摆一排永久骨架（错误态已表明加载失败，INT-1583） */}
+            {(!listError || listData != null) && (
+              <AudioStatsRow stats={listData?.stats} />
+            )}
 
             <Tabs value={view} onValueChange={(value) => setView(value as AudioViewMode)}>
               <TabsList variant='line' className='w-fit'>
@@ -441,6 +469,8 @@ export function AudioImportPage() {
                 <AudioTable
                   rows={listRows}
                   loading={audiosQuery.isLoading}
+                  isError={listError}
+                  onRetry={() => void audiosQuery.refetch()}
                   total={displayTotal}
                   searchKeyword={filters.search}
                   selectedIds={selectedIds}
@@ -454,6 +484,8 @@ export function AudioImportPage() {
                   tree={folderTree}
                   rows={sorted}
                   loading={audiosQuery.isLoading}
+                  isError={listError}
+                  onRetry={() => void audiosQuery.refetch()}
                   selectedIds={selectedIds}
                   canUpload={canUpload}
                   onFolderImport={() => setFolderImportOpen(true)}
@@ -474,7 +506,8 @@ export function AudioImportPage() {
               onOpenBulkDialog={(state) => setBulkDialog(state)}
             />
 
-            {view === 'list' && (
+            {/* 失败且无行时分页无意义（不显示「共 0 条」误导为库空，INT-1583） */}
+            {view === 'list' && !(listError && displayRows.length === 0) && (
               <PageFooterPortal>
                 <PaginationBar
                   page={safePage}

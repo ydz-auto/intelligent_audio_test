@@ -4,8 +4,10 @@
  * 打开时按目标用户回填，角色变更走 assign_role、信息变更走 update、权限变更走 grant。
  * 新建态状态字段置灰固定「正常」（POST /auth/users 不落 status，INT-691 P3-1），
  * 创建后可在列表中启用/停用；编辑态状态可选并随 PUT 落库。
+ * 密码口径（INT-1584）：用户管理入口 8–128 位、新建必填、编辑留空不改；
+ * 非法长度在本层拦下（字段级红字 + 零请求）。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,6 +42,14 @@ import {
 } from '@/domain/models/user'
 
 import { PermissionMatrix } from '../components/permission-matrix'
+import { validateUserPassword } from './password-validation'
+
+type UserUpdatePatch = Partial<
+  Pick<PlatformUser, 'displayName' | 'email' | 'status' | 'roleCode' | 'roleName'>
+> & {
+  /** 新密码（8–128 位）；缺省表示不修改密码 */
+  password?: string
+}
 
 type UserMutateDrawerProps = {
   open: boolean
@@ -56,12 +66,7 @@ type UserMutateDrawerProps = {
     roleCode: string
     status: PlatformUserStatus
   }) => void
-  onUpdate: (
-    userId: string,
-    patch: Partial<
-      Pick<PlatformUser, 'displayName' | 'email' | 'status' | 'roleCode' | 'roleName'>
-    >
-  ) => void
+  onUpdate: (userId: string, patch: UserUpdatePatch) => void
   onAssignRole: (userId: string, roleCode: string, roleName: string) => void
   onGrantPermissions: (userId: string, permissions: string[]) => void
 }
@@ -72,11 +77,13 @@ export function UserMutateDrawer(props: UserMutateDrawerProps) {
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
   const [roleCode, setRoleCode] = useState('tester')
   const [status, setStatus] = useState<PlatformUserStatus>('active')
   const [permissions, setPermissions] = useState<string[]>([])
+  const passwordRef = useRef<HTMLInputElement>(null)
 
-  // 打开/切换目标用户时回填（编辑态不回填密码）
+  // 打开/切换目标用户时回填（编辑态不回填密码，错误态一并清空）
   useEffect(() => {
     if (!props.open) return
     const target = props.user
@@ -84,6 +91,7 @@ export function UserMutateDrawer(props: UserMutateDrawerProps) {
     setDisplayName(target?.displayName ?? '')
     setEmail(target?.email ?? '')
     setPassword('')
+    setPasswordError('')
     setRoleCode(target?.roleCode ?? 'tester')
     setStatus(target?.status ?? 'active')
     setPermissions(target?.extraPermissions ?? [])
@@ -92,13 +100,20 @@ export function UserMutateDrawer(props: UserMutateDrawerProps) {
   const baseRoleName = ROLE_META[roleCode as RoleCode]?.name ?? roleCode
 
   const handleSave = () => {
+    const passwordValue = password.trim()
+    const passwordMessage = validateUserPassword(password, props.mode)
+    setPasswordError(passwordMessage)
+    if (passwordMessage) {
+      passwordRef.current?.focus()
+      return
+    }
     if (isCreate) {
-      if (!username.trim() || !email.trim() || !password.trim()) return
+      if (!username.trim() || !email.trim()) return
       props.onCreate({
         username: username.trim(),
         displayName: displayName.trim() || undefined,
         email: email.trim(),
-        password,
+        password: passwordValue,
         roleCode,
         status,
       })
@@ -107,7 +122,10 @@ export function UserMutateDrawer(props: UserMutateDrawerProps) {
       if (roleCode !== props.user.roleCode) {
         props.onAssignRole(props.user.id, roleCode, baseRoleName)
       }
-      props.onUpdate(props.user.id, { displayName, email, status })
+      // 编辑态密码留空 → patch 不含 password 键（保持「留空表示不修改密码」）
+      const patch: UserUpdatePatch = { displayName, email, status }
+      if (passwordValue) patch.password = passwordValue
+      props.onUpdate(props.user.id, patch)
       if (
         JSON.stringify(permissions) !==
         JSON.stringify(props.user.extraPermissions)
@@ -180,16 +198,34 @@ export function UserMutateDrawer(props: UserMutateDrawerProps) {
               <div className='grid gap-1.5'>
                 <label className='text-sm font-medium' htmlFor='user-password'>
                   密码
+                  {isCreate && <span className='text-destructive'>*</span>}
                 </label>
                 <Input
+                  ref={passwordRef}
                   id='user-password'
                   type='password'
+                  aria-invalid={Boolean(passwordError)}
+                  aria-describedby={
+                    passwordError ? 'user-password-error' : undefined
+                  }
                   placeholder={
                     isCreate ? '输入密码（8–128 位）' : '留空表示不修改密码'
                   }
                   value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={(event) => {
+                    setPassword(event.target.value)
+                    if (passwordError) setPasswordError('')
+                  }}
                 />
+                {passwordError && (
+                  <p
+                    id='user-password-error'
+                    role='alert'
+                    className='text-destructive text-xs'
+                  >
+                    {passwordError}
+                  </p>
+                )}
               </div>
             </div>
           </SideDrawerSection>

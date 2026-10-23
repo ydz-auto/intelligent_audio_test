@@ -15,6 +15,27 @@ import { useAuthStore } from '@/infrastructure/stores/auth-store'
 
 import { RankingFiltersBar } from '../ranking-filters'
 
+// INT-1619：指标下拉的真实数据源来自 /benchmarks/metric-mappings（jsdom 里不发请求）。
+// 闭合态触发器必须显示 metricName 而不是 metricCode。
+vi.mock('@/application/rankings/useMetricMappings', () => ({
+  useMetricMappings: () => ({
+    mappings: [
+      {
+        id: 1,
+        dimensionName: '环境',
+        metricCode: 'ENV_UNDERSTAND_SCORE',
+        metricName: '环境理解评分',
+        unit: '分',
+        direction: 'higher_is_better',
+        scenarioTags: [],
+        active: true,
+      },
+    ],
+    isLoading: false,
+    isFailed: false,
+  }),
+}))
+
 const initialAuth = useAuthStore.getState()
 
 /** AUTH_MODE=off 开放模式启动引导回填的 dev_user（后端 AuthMiddleware off 分支：permissions=['*']） */
@@ -122,6 +143,33 @@ describe('RankingFiltersBar 主体搜索重置（P2-1）', () => {
     // 跨过防抖窗口：不回灌旧值
     await new Promise((resolve) => setTimeout(resolve, 400))
     expect(onFilterChange).not.toHaveBeenCalledWith({ subjectName: '远场' })
+  })
+})
+
+describe('RankingFiltersBar 筛选 Select 闭合态文案（INT-1619）', () => {
+  it('指标 / 数据来源有选中值时，触发器显示中文标签而不是原始枚举', () => {
+    renderBar({
+      filters: {
+        ...DEFAULT_FILTERS,
+        metricCode: 'ENV_UNDERSTAND_SCORE',
+        source: 'platform_test',
+      },
+    })
+
+    const metricTrigger = screen.getByLabelText('指标')
+    expect(metricTrigger).toHaveTextContent('环境理解评分')
+    expect(metricTrigger).not.toHaveTextContent('ENV_UNDERSTAND_SCORE')
+
+    const sourceTrigger = screen.getByLabelText('数据来源')
+    expect(sourceTrigger).toHaveTextContent('平台实测')
+    expect(sourceTrigger).not.toHaveTextContent('platform_test')
+  })
+
+  it('未选中时触发器显示 placeholder 全部指标 / 全部来源', () => {
+    renderBar({})
+
+    expect(screen.getByLabelText('指标')).toHaveTextContent('全部指标')
+    expect(screen.getByLabelText('数据来源')).toHaveTextContent('全部来源')
   })
 })
 

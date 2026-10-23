@@ -1,0 +1,164 @@
+[
+  {
+    "step": "ENV-start 环境核对",
+    "ok": true,
+    "detail": "health={'status': 'ok', 'service': 'api_gateway', 'version': 'V9.7.31', 'database': 'intelligent_audio_test'} frontend=lib-react.5c68ee069a.js",
+    "evidence": {}
+  },
+  {
+    "step": "AUTH 会话为真实账号",
+    "ok": true,
+    "detail": "me={'user_id': 369, 'username': '接线测试_admin'}",
+    "evidence": {}
+  },
+  {
+    "step": "K1 角色列表 5 行 + 权限数列对齐 /auth/roles",
+    "ok": true,
+    "detail": "rows=5 missing=[] ui_counts=['1', '91', '48', '31', '10'] api_counts=['1', '91', '48', '31', '10'] GET_roles=[200]",
+    "evidence": {}
+  },
+  {
+    "step": "K2 超级管理员行菜单仅「详情」",
+    "ok": true,
+    "detail": "items=['详情']",
+    "evidence": {}
+  },
+  {
+    "step": "K3 超级管理员详情：矩阵全禁用 + 无保存按钮",
+    "ok": true,
+    "detail": "switches=130 disabled=130 reason=True save_btn=False",
+    "evidence": {}
+  },
+  {
+    "step": "K4 系统角色菜单：详情+编辑、无删除",
+    "ok": true,
+    "detail": "items=['详情', '编辑']",
+    "evidence": {}
+  },
+  {
+    "step": "K5 编辑角色回填（名称/描述/已选权限）",
+    "ok": true,
+    "detail": "name='测试工程师' desc='测试工程师（含测试主管）' checked=91 expected=91 switches=130",
+    "evidence": {}
+  },
+  {
+    "step": "K6 取消勾选一个权限",
+    "ok": true,
+    "detail": "drop=testcase:update checked=91 -> 90",
+    "evidence": {}
+  },
+  {
+    "step": "K7 矩阵保存：POST 请求 + GET 回读（少 1 个权限）",
+    "ok": true,
+    "detail": "POST=[{'method': 'POST', 'url': '/api/v1/auth/roles/2/permissions', 'status': 200, 'body': '{\"permission_codes\":[\"task:read\",\"task:create\",\"task:update\",\"task:delete\",\"task:execute\",\"task:merge\",\"task:batch\",\"task:reextract\",\"task:publish\",\"task:export\",\"task:import\",\"task:cherry_pick\",\"task.result.review\",\"task.result.ai_review\",\"task:share\",\"published_task:read\",\"published_task:execute\",\"published_task:version\",\"published_task:archive\",\"testcase:read\",\"testcase:create\",\"testcase:delete', 'resp': '{\"success\":true,\"code\":0,\"message\":\"角色权限已更新\",\"notice\":\"权限变更对已签发令牌不即时生效，最长延迟至令牌过期（24h）；强失效（Redis 黑名单）本期未实现\"}'}] readback=90 drop_present=False body_tail=on:write\",\"sse:read\",\"auth:login\",\"auth:callback\",\"auth:refresh\",\"auth:logout\",\"auth:me\"]}",
+    "evidence": {}
+  },
+  {
+    "step": "K8 还原矩阵：GET 回读与原始一致",
+    "ok": true,
+    "detail": "restored=91 original=91 equal=True",
+    "evidence": {}
+  },
+  {
+    "step": "K9 新建角色名称留空提交",
+    "ok": true,
+    "detail": "POST=[{'method': 'POST', 'url': '/api/v1/auth/roles', 'status': 400, 'body': '{\"name\":\"\",\"description\":\"\",\"permission_codes\":[]}', 'resp': '{\"success\":false,\"code\":100,\"message\":\"name 为必填项\"}'}] dialog_open=False（前端无必填校验则会产生请求，记观察项）",
+    "evidence": {}
+  },
+  {
+    "step": "K10 新建自定义角色 → GET 回读",
+    "ok": true,
+    "detail": "POST=[{'method': 'POST', 'url': '/api/v1/auth/roles', 'status': 201, 'body': '{\"name\":\"接线测试_角色_1023224810\",\"description\":\"INT-1485 走查自建角色，验收后删除\",\"permission_codes\":[\"home:read\",\"report:read\"]}', 'resp': '{\"success\":true,\"code\":0,\"message\":\"创建成功\",\"data\":{\"role_id\":80},\"notice\":\"权限变更对已签发令牌不即时生效，最长延迟至令牌过期（24h）；强失效（Redis 黑名单）本期未实现\"}'}] role={'id': 80, 'name': '接线测试_角色_1023224810', 'is_system': False} picked=['home:read', 'report:read'] readback_perms=['report:read', 'home:read']",
+    "evidence": {}
+  },
+  {
+    "step": "K11 删除自定义角色 → GET 回读消失",
+    "ok": true,
+    "detail": "menu=['详情', '编辑', '删除'] DELETE=[{'method': 'DELETE', 'url': '/api/v1/auth/roles/80', 'status': 200, 'body': '', 'resp': '{\"success\":true,\"code\":0,\"message\":\"删除成功\",\"notice\":\"权限变更对已签发令牌不即时生效，最长延迟至令牌过期（24h）；强失效（Redis 黑名单）本期未实现\"}'}] gone=True",
+    "evidence": {}
+  },
+  {
+    "step": "ENV-mid-K 环境核对",
+    "ok": true,
+    "detail": "health={'status': 'ok', 'service': 'api_gateway', 'version': 'V9.7.31', 'database': 'intelligent_audio_test'} frontend=lib-react.5c68ee069a.js",
+    "evidence": {}
+  },
+  {
+    "step": "L1 密码字段标注",
+    "ok": true,
+    "detail": "label='密码' placeholder='输入密码（8–128 位）' 必填星号=False",
+    "evidence": {}
+  },
+  {
+    "step": "L2 1 位密码 UI 提交",
+    "ok": true,
+    "detail": "POST=1 status=[201] body=['{\"username\":\"接线测试_pw1_1023224810\",\"email\":\"接线测试_pw1_1023224810@example.com\",\"password\":\"x\",\"role_id\":2}'] 回读={'id': 443, 'username': '接线测试_pw1_1023224810'}",
+    "evidence": {}
+  },
+  {
+    "step": "L3 密码 7 位接口提交",
+    "ok": true,
+    "detail": "username=接线测试_pw7_1023224810 status=201 code=0 user_id=444",
+    "evidence": {}
+  },
+  {
+    "step": "L3 密码 129 位接口提交",
+    "ok": true,
+    "detail": "username=接线测试_pw129_1023224810 status=400 code=203 user_id=None",
+    "evidence": {}
+  },
+  {
+    "step": "L4 密码探针用户已清理",
+    "ok": true,
+    "detail": "left=[]",
+    "evidence": {}
+  },
+  {
+    "step": "M1 guest 真实账号登录",
+    "ok": true,
+    "detail": "me={'user_id': 373, 'username': '接线测试_guest'} perms=10",
+    "evidence": {}
+  },
+  {
+    "step": "M2 guest /dashboard 控制台 SEVERE",
+    "ok": true,
+    "detail": "SEVERE=2 option403=2 msgs=['http://localhost:15173/api/option/ - Failed to load resource: the server responded with a status of 403 (Forbidden)', 'http://localhost:15173/api/option/ - Failed to load resource: the server responded with a status of 403 (Forbidden)']",
+    "evidence": {}
+  },
+  {
+    "step": "M3 guest 侧栏六域不出现",
+    "ok": true,
+    "detail": "url=http://localhost:15173/dashboard nav_hidden=True",
+    "evidence": {}
+  },
+  {
+    "step": "M4 guest 直达设置 → /403",
+    "ok": true,
+    "detail": "url=http://localhost:15173/403?from=%2Fsystem-settings%2Fsite%2Finfo body=\n    403禁止访问您没有必要的权限，无法查看此资源。来源页面：/system-settings/site/info返回返回主页切换账号\n  \n\n",
+    "evidence": {}
+  },
+  {
+    "step": "M5 guest 设置页控制台 SEVERE",
+    "ok": true,
+    "detail": "count=0 msgs=[]",
+    "evidence": {}
+  },
+  {
+    "step": "ENV-mid-M 环境核对",
+    "ok": true,
+    "detail": "health={'status': 'ok', 'service': 'api_gateway', 'version': 'V9.7.31', 'database': 'intelligent_audio_test'} frontend=lib-react.5c68ee069a.js",
+    "evidence": {}
+  },
+  {
+    "step": "Z1 清理：自建用户/角色已删、tester 权限已还原",
+    "ok": true,
+    "detail": "roles_left=[] users_left=[] tester_perms=91 original=91",
+    "evidence": {}
+  },
+  {
+    "step": "ENV-end 环境核对",
+    "ok": true,
+    "detail": "health={'status': 'ok', 'service': 'api_gateway', 'version': 'V9.7.31', 'database': 'intelligent_audio_test'} frontend=lib-react.5c68ee069a.js",
+    "evidence": {}
+  }
+]

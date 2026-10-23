@@ -29,6 +29,8 @@ const SOURCE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'external_import', label: '外部基线' },
 ]
 
+const METRIC_ALL_LABEL = '全部指标'
+
 export function RankingFiltersBar(props: {
   filters: RankingFilters
   suites: string[]
@@ -43,6 +45,20 @@ export function RankingFiltersBar(props: {
   const { filters, suites, onFilterChange, onReset, isFetching, onCompute, computePending } = props
   const { mappings, isFailed: mappingsFailed } = useMetricMappings()
   const { canCompute } = useBenchmarkAccess()
+
+  // INT-1619：Select.Root 的 items 是 value↔label 表，闭合态触发器据它取中文标签；
+  // 不传时 base-ui 的 Select.Value 直接渲染原始值（ENV_UNDERSTAND_SCORE / platform_test）。
+  const metricItems = useMemo(
+    () => [
+      { value: '', label: METRIC_ALL_LABEL },
+      ...mappings.map((mapping) => ({
+        value: mapping.metricCode,
+        label: mapping.metricName,
+      })),
+    ],
+    [mappings]
+  )
+  const sourceItems = useMemo(() => [...SOURCE_OPTIONS], [])
 
   // 主体搜索：本地输入态 + 防抖 300ms 写 URL
   const [subjectInput, setSubjectInput] = useState(filters.subjectName)
@@ -136,13 +152,14 @@ export function RankingFiltersBar(props: {
       ) : (
         <Select
           value={filters.metricCode}
+          items={metricItems}
           onValueChange={(value) => onFilterChange({ metricCode: value ?? '' })}
         >
           <SelectTrigger size='sm' className='w-40' aria-label='指标'>
-            <SelectValue placeholder='全部指标' />
+            <SelectValue placeholder={METRIC_ALL_LABEL} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value=''>全部指标</SelectItem>
+            <SelectItem value=''>{METRIC_ALL_LABEL}</SelectItem>
             {mappings.map((mapping) => (
               <SelectItem key={mapping.metricCode} value={mapping.metricCode}>
                 {mapping.metricName}
@@ -155,6 +172,7 @@ export function RankingFiltersBar(props: {
       {/* 数据来源 */}
       <Select
         value={filters.source}
+        items={sourceItems}
         onValueChange={(value) => onFilterChange({ source: value ?? '' })}
       >
         <SelectTrigger size='sm' className='w-32' aria-label='数据来源'>

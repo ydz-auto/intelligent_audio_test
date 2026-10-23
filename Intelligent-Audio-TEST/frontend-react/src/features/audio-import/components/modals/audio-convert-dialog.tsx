@@ -53,12 +53,21 @@ export function AudioConvertDialog(props: AudioConvertDialogProps) {
   if (!props.audio) return null
   const audio = props.audio
 
+  const isLossless = targetFormat === 'WAV' || targetFormat === 'FLAC'
+  const paramOptions = isLossless ? CONVERT_BIT_DEPTH_OPTIONS : CONVERT_BITRATE_OPTIONS
+
   const handleConvert = async () => {
     setPending(true)
     try {
       const result = await convert.mutateAsync({
         id: audio.id,
-        format: targetFormat,
+        options: {
+          format: targetFormat,
+          sampleRate: Number(sampleRate),
+          channels: Number(channels),
+          // 位深度仅无损格式、比特率仅有损格式在 audio_service 生效，随目标格式只提交对应项
+          ...(isLossless ? { bitDepth: Number(bitDepth) } : { bitrate: Number(bitrate) }),
+        },
       })
       toast.success(result.message ?? '转换成功')
       props.onOpenChange(false)
@@ -68,9 +77,6 @@ export function AudioConvertDialog(props: AudioConvertDialogProps) {
       setPending(false)
     }
   }
-
-  const isLossless = targetFormat === 'WAV' || targetFormat === 'FLAC'
-  const paramOptions = isLossless ? CONVERT_BIT_DEPTH_OPTIONS : CONVERT_BITRATE_OPTIONS
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -166,8 +172,8 @@ export function AudioConvertDialog(props: AudioConvertDialogProps) {
           批量转换：在列表中勾选多个音频后可从批量操作进入本弹窗，逐文件执行转换。
         </p>
         <p className='text-muted-foreground text-xs'>
-          注：采样率 / 声道数 / 位深度 / 比特率当前为展示项，后端 ConvertFormatRequest 仅接收
-          format（待 FEAT 扩展后生效）。
+          采样率与声道数对所有目标格式生效；位深度仅 WAV / FLAC 等无损格式生效，比特率仅 MP3 /
+          AAC 等有损格式生效。转换完成后音频元数据按目标参数回写。
         </p>
 
         <DialogFooter>

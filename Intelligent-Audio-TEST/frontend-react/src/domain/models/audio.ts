@@ -34,6 +34,24 @@ export interface AudioAsset {
   updatedAt: string | null
 }
 
+/**
+ * 格式转换参数（§3.3.1；POST /audios/{id}/convert 对照 ConvertFormatRequest）。
+ * 附加参数全部可选，不传时后端保持仅转换格式的原行为；
+ * 位深度仅对无损格式（WAV/FLAC）生效，比特率仅对有损格式（MP3/AAC）生效。
+ */
+export interface AudioConvertOptions {
+  /** 目标格式（输出白名单 MP3/WAV/FLAC/AAC） */
+  format: string
+  /** 目标采样率（Hz，支持 8000-192000） */
+  sampleRate?: number
+  /** 目标声道数（1-8） */
+  channels?: number
+  /** 目标位深度（bit，支持 8/16/24/32） */
+  bitDepth?: number
+  /** 目标比特率（kbps，如 128/320） */
+  bitrate?: number
+}
+
 /** 音频列表统计（GET /audios 响应内 data.stats，AudioListStats 实测） */
 export interface AudioListStats {
   totalFiles: number

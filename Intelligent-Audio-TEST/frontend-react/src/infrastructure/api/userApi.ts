@@ -86,17 +86,25 @@ export async function createUser(input: {
 /**
  * 更新用户（PUT /auth/users/{id}；email/status/displayName 落库，displayName
  * 缺省键不发送——编辑态未改显示名时保留原值；显式传空串则清空后端 display_name）。
+ * password 非空时随 PUT 提交改密（后端已支持，INT-1584）；留空/缺省不带该键，
+ * 保持「留空表示不修改密码」。
  */
+export type UserUpdatePatch = Partial<
+  Pick<PlatformUser, 'displayName' | 'email' | 'status' | 'roleCode' | 'roleName'>
+> & {
+  /** 新密码（8–128 位）；空串视为不修改 */
+  password?: string
+}
+
 export async function updateUser(
   userId: string,
-  patch: Partial<
-    Pick<PlatformUser, 'displayName' | 'email' | 'status' | 'roleCode' | 'roleName'>
-  >
+  patch: UserUpdatePatch
 ): Promise<PlatformUser> {
   const body: Record<string, unknown> = {}
   if (patch.displayName !== undefined) body.display_name = patch.displayName
   if (patch.email !== undefined) body.email = patch.email
   if (patch.status !== undefined) body.status = toBackendStatus(patch.status)
+  if (patch.password) body.password = patch.password
   await apiClient.put(`/auth/users/${userId}`, body)
   return {
     id: userId,
