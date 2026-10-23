@@ -14,7 +14,7 @@
  * INT-1026 组头「批量修改」九项弹窗（CaseBatchActionsHost）与行内/分组操作并存（集成合流保留）。
  */
 import { ListChecks, X } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -174,6 +174,35 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
     () => groups.find((g) => g.id === filters.groupId)?.name,
     [groups, filters.groupId]
   )
+
+  /**
+   * INT-1544：页面筛选持续同步进 case-selection store（缺陷根因——此前 store.filter 恒为 {}，
+   * filter-all 圈定忽略筛选条件，界面「全部 1 条」却按全部用例建任务）。
+   * 本组件在离开步骤一时卸载，筛选态必须落到 store 才能随启动流程传入 createTask；
+   * 键与 POST /testcases/ids 契约一致（search / group 名 / tag / dimension_id / algorithm_type，
+   * 与「全选结果」同一口径）。收藏/回收站是列表视图开关，不进圈定条件。
+   */
+  useEffect(() => {
+    store.getState().setFilter(
+      {
+        search: filters.search?.trim() || undefined,
+        group: groupName ?? null,
+        tag: filters.tag ?? null,
+        dimensionId: filters.dimensionId ?? null,
+        algorithmType: filters.algorithmType ?? algorithmType ?? null,
+      },
+      total
+    )
+  }, [
+    store,
+    filters.search,
+    filters.tag,
+    filters.dimensionId,
+    filters.algorithmType,
+    groupName,
+    algorithmType,
+    total,
+  ])
 
   const handleToggleSelect = (id: string, checked: boolean) => {
     if (canSelect && checked !== selectedSet.has(id)) store.getState().toggleCase(id)

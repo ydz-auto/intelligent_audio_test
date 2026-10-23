@@ -72,6 +72,8 @@ export function TestExecutionPage({
   const reportStatus = useExecutionStore((s) => s.reportStatus)
   const resetFlow = useExecutionStore((s) => s.resetFlow)
   const manualCaseIds = useCaseSelectionStore((s) => s.manualCaseIds)
+  const caseFilterAllMode = useCaseSelectionStore((s) => s.filterAllMode)
+  const filterAllTotal = useCaseSelectionStore((s) => s.filterAllTotal)
   const clearCases = useCaseSelectionStore((s) => s.clearSelection)
   const deviceIds = useResourceSelectionStore((s) => s.deviceIds)
   const apiIds = useResourceSelectionStore((s) => s.apiIds)
@@ -154,6 +156,12 @@ export function TestExecutionPage({
     // 用例校验：filterAll（未手动选择按筛选全量圈定）或已勾选任一用例
     if (caseState.filterAllMode === false && caseState.manualCaseIds.length === 0) {
       toast.warning('当前筛选条件下没有可用的测试用例，请选择用例或调整筛选条件')
+      return
+    }
+    // INT-1544：filter-all 圈定现在真的按筛选条件取数——筛选结果为空时不再放行
+    // （否则提交 case_ids=[] 由后端报错），与列表「全部 0 条用例」一致地拦在入口
+    if (caseState.filterAllMode && caseState.filterAllTotal === 0) {
+      toast.warning('当前筛选条件下没有可用的测试用例，请调整筛选条件')
       return
     }
     const errors = launch.validate({
@@ -300,7 +308,9 @@ export function TestExecutionPage({
         open={taskNameOpen}
         onOpenChange={setTaskNameOpen}
         algorithmType={algorithmType}
-        caseCount={manualCaseIds.length}
+        // INT-1544：filter-all（未手动勾选）时按当前筛选条件的用例总数显示，
+        // 与步骤一「全部 N 条用例」及实际提交的 case_ids 一致
+        caseCount={caseFilterAllMode ? filterAllTotal : manualCaseIds.length}
         deviceCount={deviceIds.length}
         apiCount={apiIds.length}
         deviceIds={deviceIds}

@@ -65,6 +65,21 @@ export const DEFAULT_EXECUTION_PARAMS: ExecutionParams = {
   exportFormats: ['html'],
 }
 
+/**
+ * filter-all 圈定条件（INT-1544：步骤一页面筛选与任务启动同源）。
+ * 键与 POST /testcases/ids 契约一致（task_service fetch_case_ids）：
+ * search = 关键字（该端点不认 keyword）、group = 分组**名**（不认 group_id，INT-1267）、
+ * tag = 标签名 / dimensionId / algorithmType 同列表筛选项。
+ * 注意：收藏/回收站是列表视图开关，不是圈定条件（ids 端点无 favorite 键）。
+ */
+export interface CaseSelectionFilter {
+  search?: string
+  group?: string | null
+  tag?: string | null
+  dimensionId?: number | null
+  algorithmType?: string | null
+}
+
 /** 任务创建/启动载荷（task_bp.py POST /tasks + POST /tasks/{id}/start；TODO 接线） */
 export interface TaskLaunchInput {
   name: string
@@ -75,18 +90,10 @@ export interface TaskLaunchInput {
   /** 圈定模式：未手动选择时按筛选条件全量圈定（filter-all 口径显性化） */
   filterAllMode: boolean
   /**
-   * filter-all 圈定用当前筛选条件（关键字/分组/标签/评估维度/算法；camelCase，
-   * 与 infrastructure TestCaseFilter 同构——随启动流程由 case-selection store 传入，
-   * createTask 经 toTestCaseQuery 转 snake_case 调 POST /testcases/ids 全量圈定）。
+   * filter-all 圈定用当前筛选条件（INT-1544：case-selection store 由步骤一持续同步，
+   * 与列表「全部 N 条用例」同源；createTask 经 POST /testcases/ids 全量圈定）。
    */
-  caseFilter?: {
-    keyword?: string
-    groupId?: string | null
-    tags?: string[]
-    dimensionId?: number | null
-    type?: 'e2e' | 'api' | null
-    algorithmType?: string | null
-  }
+  caseFilter?: CaseSelectionFilter
   /** 所选设备 id 集（设备+API 混合执行） */
   deviceIds: number[]
   /** 所选 API id 集（设备+API 混合执行） */
