@@ -199,6 +199,7 @@ export function AccessTokenCreateDialog(props: AccessTokenCreateDialogProps) {
               onValueChange={(value) =>
                 form.setValue('expiry', value as AccessTokenExpiryPreset)
               }
+              items={ACCESS_TOKEN_EXPIRY_PRESETS}
             >
               <SelectTrigger id='access-token-expiry' size='sm' className='w-full'>
                 <SelectValue />
