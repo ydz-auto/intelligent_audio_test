@@ -5,7 +5,8 @@
  * 数据源：来源任务取真实任务列表（fetchTaskList，按可发布执行状态过滤）；
  * 主钮「发布」POST /api/v1/published-tasks（published_task.py PublishedTaskCreateRequest 契约）。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { AlertCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
@@ -46,6 +47,11 @@ const BENCHMARK_CATEGORIES = [
 /** 可发布执行状态（§5.2：已完成/失败/已停止/待执行可发布为资产） */
 const PUBLISHABLE_STATUSES = ['completed', 'failed', 'stopped', 'pending']
 
+/** 超过该时长仍无结果 → 提示加载较慢（仍继续等待，可手动重新加载） */
+const SOURCE_TASKS_SLOW_MS = 8_000
+/** 硬超时：中止在途请求并转错误态 + 重试，不留永久「加载中…」（INT-1627） */
+const SOURCE_TASKS_TIMEOUT_MS = 60_000
+
 export function PublishTaskDialog({
   open,
   onOpenChange,
@@ -68,33 +74,93 @@ export function PublishTaskDialog({
   const [publishing, setPublishing] = useState(false)
   const [sourceTasks, setSourceTasks] = useState<TaskListItem[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
+  /** 来源任务列表错误文案（失败/超时 → 错误态 + 重试，不再静默留空） */
+  const [tasksError, setTasksError] = useState<string | null>(null)
+  /** 加载超过阈值仍无结果（提示可继续等待或重新加载） */
+  const [tasksSlow, setTasksSlow] = useState(false)
+  /** 重新加载计数（重试按钮重新发起请求） */
+  const [reloadTick, setReloadTick] = useState(0)
 
   // 打开弹窗时取真实任务列表作来源任务选项（可发布状态过滤；空库显示空态提示）
   useEffect(() => {
     if (!open) return
     let cancelled = false
+    const controller = new AbortController()
     setTasksLoading(true)
-    fetchTaskList({ perPage: 100 })
+    setTasksError(null)
+    setTasksSlow(false)
+    const slowTimer = setTimeout(() => {
+      if (!cancelled) setTasksSlow(true)
+    }, SOURCE_TASKS_SLOW_MS)
+    const timeoutTimer = setTimeout(() => {
+      controller.abort()
+    }, SOURCE_TASKS_TIMEOUT_MS)
+    fetchTaskList({ perPage: 100, signal: controller.signal })
       .then((res) => {
         if (cancelled) return
         setSourceTasks(res.items)
-        setTasksLoading(false)
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (cancelled) return
+        if (controller.signal.aborted) {
+          setTasksError('来源任务加载超时，请重试')
+        } else {
+          setTasksError(
+            err instanceof ApiError && err.userMessage
+              ? err.userMessage
+              : '来源任务加载失败，请重试'
+          )
+        }
+      })
+      .finally(() => {
+        if (cancelled) return
+        clearTimeout(slowTimer)
+        clearTimeout(timeoutTimer)
         setTasksLoading(false)
+        setTasksSlow(false)
       })
     return () => {
       cancelled = true
+      clearTimeout(slowTimer)
+      clearTimeout(timeoutTimer)
+      controller.abort()
     }
-  }, [open])
+  }, [open, reloadTick])
+
+  const publishable = useMemo(
+    () =>
+      sourceTasks.filter((t) =>
+        PUBLISHABLE_STATUSES.includes(t.execution_status ?? '')
+      ),
+    [sourceTasks]
+  )
+  /** Select 选项表（base-ui 闭合态按 items 回显 label，缺省则显示裸 id—INT-1627） */
+  const sourceItems = useMemo(() => {
+    const list = publishable.map((t) => ({
+      value: String(t.id),
+      label: `${t.name}（${getExecutionStatusMeta(t.execution_status).label} · 用例 ${t.total_cases ?? 0}）`,
+    }))
+    if (task && !list.some((item) => item.value === String(task.id))) {
+      list.unshift({ value: String(task.id), label: task.name })
+    }
+    return list
+  }, [publishable, task])
 
   if (!hasPermission('task:publish')) return null
 
-  const publishable = sourceTasks.filter((t) =>
-    PUBLISHABLE_STATUSES.includes(t.execution_status ?? '')
-  )
   const source = publishable.find((t) => String(t.id) === sourceTaskId)
+  /** 预选来源任务（列表未就绪时先用入口带入的名称，避免摘要行空白） */
+  const presetTask =
+    task && String(task.id) === sourceTaskId ? task : undefined
+  /** 预选任务在当前列表页中的真实行（用于判断状态下是否可发布） */
+  const presetInList = sourceTasks.find((t) => String(t.id) === sourceTaskId)
+  /** 列表已确认该来源任务状态不可发布 → 主钮禁用并说明原因 */
+  const blockedByStatus = presetInList != null && source == null
+
+  const retryTasks = () => setReloadTick((n) => n + 1)
+
+  /** 提交用来源任务 id：列表命中优先，未就绪时回退入口带入的预选任务（对齐 V9.7.10 可提交口径） */
+  const submitTaskId = source?.id ?? (sourceTaskId ? Number(sourceTaskId) : null)
 
   const handleSourceChange = (value: string | null) => {
     setSourceTaskId(value)
@@ -103,11 +169,11 @@ export function PublishTaskDialog({
   }
 
   const publish = async () => {
-    if (!source || !name.trim()) return
+    if (submitTaskId == null || Number.isNaN(submitTaskId) || !name.trim()) return
     setPublishing(true)
     try {
       await publishTask({
-        sourceTaskId: source.id,
+        sourceTaskId: submitTaskId,
         name: name.trim(),
         description: description.trim() || null,
         publishReason: publishReason.trim() || null,
@@ -141,6 +207,7 @@ export function PublishTaskDialog({
             <Select
               value={sourceTaskId ?? undefined}
               onValueChange={handleSourceChange}
+              items={sourceItems}
             >
               <SelectTrigger className='w-full' aria-label='选择来源任务'>
                 <SelectValue placeholder='选择要发布的任务' />
@@ -159,7 +226,45 @@ export function PublishTaskDialog({
                 )}
               </SelectContent>
             </Select>
-            {source && (
+
+            {/* 加载慢/失败：给出可操作反馈，不把用户锁在 disabled（INT-1627） */}
+            {(tasksError != null || tasksSlow) && (
+              <div
+                role={tasksError ? 'alert' : undefined}
+                className={
+                  tasksError
+                    ? 'text-destructive flex items-center gap-2 text-xs'
+                    : 'text-muted-foreground flex items-center gap-2 text-xs'
+                }
+              >
+                {tasksError ? (
+                  <AlertCircle aria-hidden='true' className='size-3.5 shrink-0' />
+                ) : (
+                  <RefreshCw aria-hidden='true' className='size-3.5 shrink-0 animate-spin' />
+                )}
+                <span className='flex-1'>
+                  {tasksError ?? '来源任务加载较慢，仍在加载中'}
+                </span>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  className='h-6 gap-1 px-2'
+                  onClick={retryTasks}
+                >
+                  {tasksError ? '重试' : '重新加载'}
+                </Button>
+              </div>
+            )}
+
+            {/* 列表加载成功但无可发布任务：明确空态原因（而非空白下拉） */}
+            {!tasksLoading && tasksError == null && publishable.length === 0 && (
+              <p className='text-muted-foreground text-xs'>
+                暂无可发布的来源任务（需为已完成 / 失败 / 已停止 / 待执行）
+              </p>
+            )}
+
+            {source ? (
               <div className='bg-muted/50 mt-1 flex items-center gap-2 rounded-lg border p-2 text-xs'>
                 <Badge variant='outline' className='rounded-md px-1.5'>
                   {source.name}
@@ -169,6 +274,23 @@ export function PublishTaskDialog({
                   {source.device_count ?? 0} 设备
                 </span>
               </div>
+            ) : (
+              presetTask && (
+                <div className='bg-muted/50 mt-1 flex items-center gap-2 rounded-lg border p-2 text-xs'>
+                  <Badge variant='outline' className='rounded-md px-1.5'>
+                    {presetTask.name}
+                  </Badge>
+                  <span className='text-muted-foreground'>
+                    {tasksLoading
+                      ? '来源任务状态加载中…'
+                      : tasksError
+                        ? '来源任务状态未知（列表加载失败，可直接发布由后端校验）'
+                        : presetInList
+                          ? `${getExecutionStatusMeta(presetInList.execution_status).label} · 当前状态不可发布`
+                          : '来源任务状态未知（不在当前列表页）'}
+                  </span>
+                </div>
+              )
             )}
           </div>
 
@@ -220,7 +342,7 @@ export function PublishTaskDialog({
               </div>
               <div className='flex flex-col gap-1.5'>
                 <Label className='text-sm'>被测类别</Label>
-                <Select value={benchmarkCategory} onValueChange={(value) => setBenchmarkCategory(value ?? 'none')}>
+                <Select value={benchmarkCategory} onValueChange={(value) => setBenchmarkCategory(value ?? 'none')} items={BENCHMARK_CATEGORIES}>
                   <SelectTrigger size='sm' className='w-full' aria-label='被测类别'>
                     <SelectValue />
                   </SelectTrigger>
@@ -241,7 +363,10 @@ export function PublishTaskDialog({
           <Button variant='outline' disabled={publishing} onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button disabled={!source || !name.trim() || publishing} onClick={() => void publish()}>
+          <Button
+            disabled={submitTaskId == null || !name.trim() || publishing || blockedByStatus}
+            onClick={() => void publish()}
+          >
             {publishing ? '发布中...' : '发布'}
           </Button>
         </DialogFooter>
