@@ -33,6 +33,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { UploadOptions } from '@/features/audio-import/components/modals/upload-options'
 import { startRealAudioUpload, type PerFileUploadConfig } from '@/application/audio/useAudioUploadProcess'
+import { DEFAULT_SPL } from '@/features/audio-import/constants'
 import { parseAnnotationsForAudios } from '@/features/audio-import/lib/annotation'
 import { formatFileSize } from '@/features/audio-import/lib/format'
 
@@ -74,7 +75,7 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
   const [algorithmType, setAlgorithmType] = useState('')
   const [dimensionIds, setDimensionIds] = useState<number[]>([])
   const [playbackDevice, setPlaybackDevice] = useState('')
-  const [defaultSpl, setDefaultSpl] = useState(65)
+  const [defaultSpl, setDefaultSpl] = useState(DEFAULT_SPL)
   const [caseGroup, setCaseGroup] = useState('folder')
   const [customGroupName, setCustomGroupName] = useState('')
   const [tags, setTags] = useState('')
