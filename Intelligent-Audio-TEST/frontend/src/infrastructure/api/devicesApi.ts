@@ -6,7 +6,15 @@
  */
 import { request, type RequestOptions } from '../http/client';
 import { APP_CONFIG } from '../../utils/config';
-import type { PaginatedDto } from '../dto/common';
+import type { PaginatedDto, ImportReportDto } from '../dto/common';
+import type { ExportFile, ImportReport } from '../../domain/model/common';
+import {
+  buildFallbackExportFilename,
+  toExportFile,
+  toImportReport,
+  toResourceExportQueryDto,
+  type ResourceExportParams,
+} from '../adapters/fileTransferAdapter';
 import type {
   DeviceItemDto,
   DeviceListDto,
@@ -108,6 +116,31 @@ export const devicesApi = {
       'GET', '/test-devices', null, { ...options, params }
     );
     return toDeviceList(dto);
+  },
+
+  /**
+   * 导出测试设备（INT-816 / INT-1628：GET /test-devices/export）。
+   * format∈{json,excel}（默认 json），ids 为导出白名单；响应为文件流，文件名取自 Content-Disposition。
+   */
+  async exportFile(params: ResourceExportParams = {}, options: RequestOptions = {}): Promise<ExportFile> {
+    const blob = await request<Blob>('GET', '/test-devices/export', null, {
+      ...options,
+      params: toResourceExportQueryDto(params.ids, params.format) as unknown as Record<string, any>,
+      responseType: 'blob',
+    });
+    const safeBlob = blob instanceof Blob ? blob : new Blob([blob as unknown as BlobPart]);
+    return toExportFile(safeBlob, buildFallbackExportFilename('test_devices', params.format));
+  },
+
+  /** 导入测试设备（INT-816 / INT-1628：POST /test-devices/import，multipart 字段名 file，按 serial_number 匹配） */
+  async importFile(file: File, options: RequestOptions = {}): Promise<ImportReport> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const dto = await request<ImportReportDto>('POST', '/test-devices/import', formData, {
+      ...options,
+      isMultipart: true,
+    });
+    return toImportReport(dto);
   },
 
   /** 设备详情 */

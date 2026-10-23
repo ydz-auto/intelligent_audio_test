@@ -77,6 +77,31 @@ function applyResponseInterceptors(response: any): any {
   return currentResponse;
 }
 
+/**
+ * INT-1628：二进制响应（blob / arraybuffer）附带响应头。
+ *
+ * 下载类接口（设备/播放/API 导入导出、日志导出等）需要读取 Content-Disposition 决定存盘文件名，
+ * 而 request 原先只把文件体返回给调用方。这里以非枚举属性 `__responseHeaders` 挂在返回对象上，
+ * 既有调用方（只把返回值当 Blob 用）行为不变；键名统一小写。
+ */
+function attachResponseHeaders<T>(payload: T, headers: Record<string, string> | undefined | null): T {
+  if (!headers || !payload || typeof payload !== 'object') return payload;
+  try {
+    const normalized: Record<string, string> = {};
+    for (const [key, value] of Object.entries(headers)) {
+      if (value !== undefined && value !== null) normalized[key.toLowerCase()] = String(value);
+    }
+    Object.defineProperty(payload, '__responseHeaders', {
+      value: normalized,
+      enumerable: false,
+      configurable: true,
+    });
+  } catch {
+    // 冻结/不可扩展对象：忽略响应头，调用方回落到本地兜底文件名
+  }
+  return payload;
+}
+
 // ===== JWT 认证拦截器 =====
 // 自动在请求头注入 Authorization: Bearer <token>
 addRequestInterceptor(async (config) => {
@@ -177,7 +202,7 @@ export async function request<T = any>(
           const contentType = result.headers?.['content-type'] || 'application/octet-stream';
           const blob = new Blob([result.data], { type: contentType });
           const blobResult = responseType === 'blob' ? blob : await blob.arrayBuffer();
-          return blobResult as unknown as T;
+          return attachResponseHeaders(blobResult as unknown as T, result.headers);
         }
         if (result instanceof ArrayBuffer || result instanceof Uint8Array) {
            const blob = new Blob([result as any]);
@@ -273,7 +298,13 @@ async function handleResponse(response: Response, responseType: string = 'json',
       }
       throw error;
     }
-    return responseType === 'blob' ? await response.blob() : await response.arrayBuffer();
+    const payload = responseType === 'blob' ? await response.blob() : await response.arrayBuffer();
+    // INT-1628：附带响应头（Content-Disposition 文件名），非本次调用方无感
+    const responseHeaders: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+    return attachResponseHeaders(payload as unknown as any, responseHeaders);
   }
 
   let data : any;

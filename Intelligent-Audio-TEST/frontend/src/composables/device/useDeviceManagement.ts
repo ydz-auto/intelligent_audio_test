@@ -6,9 +6,38 @@ import { useModalControl } from '../modal/useModal';
 import { useNotification } from '../modal/useNotification';
 import { HttpStatus, ViewMode, DeviceStatus, DeviceTabType } from '../../domain/enums';
 import type { DeviceTabTypeType } from '../../domain/enums';
-import type { PlaybackDevice, TestDeviceView, ApiDeviceView, DeviceUnion, APIResponse } from '@/domain';
+import type { PlaybackDevice, TestDeviceView, ApiDeviceView, DeviceUnion, APIResponse, ImportReport, ExportRangeOption } from '@/domain';
 import { MODAL_TYPES } from '../modal/constants';
 import { usePagination } from '../usePagination';
+import { downloadBlob } from '../../utils/utils';
+import { toUserErrorMessage } from '../../utils/errorMessage';
+
+/** 导出范围 id 集合（由页面层按当前页签勾选/筛选结果提供；后端只认全部或 ids 白名单） */
+export interface DeviceExportScope {
+  selectedIds?: (string | number)[];
+  filteredIds?: (string | number)[];
+}
+
+/** 页签 → 导入导出端点所属的端口（test-devices / playback-devices / apis） */
+function getDeviceTransferPort(type: DeviceTabTypeType) {
+  if (type === DeviceTabType.PLAYBACK) return playbackPort;
+  if (type === DeviceTabType.API) return apisPort;
+  return devicesPort;
+}
+
+/** 页签 → 导入导出标题用资源名 */
+function getDeviceResourceLabel(type: DeviceTabTypeType): string {
+  if (type === DeviceTabType.PLAYBACK) return '播放设备';
+  if (type === DeviceTabType.API) return '测试API';
+  return '测试设备';
+}
+
+/** 导出 ids 归一：剔除空值后转字符串（后端 ResourceExportQuery.ids 为 int CSV） */
+function normalizeExportIds(ids?: (string | number)[]): string[] {
+  return (ids || [])
+    .filter((id) => id !== undefined && id !== null && String(id).trim() !== '')
+    .map((id) => String(id).trim());
+}
 
 // 设备类型已统一收敛至 domain/model/device.ts（TestDeviceView/ApiDeviceView），
 // 原 DeviceBase/TestDevice/ApiDevice/DeviceUnion 本地定义已删除
@@ -322,24 +351,89 @@ export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabTyp
     }
   };
 
-  const importDevices = (type?: string) => {
-    modalManager.open(MODAL_TYPES.IMPORT_EXPORT, {
-      title: '导入设备',
-      mode: 'import',
-      deviceType: type || activeDeviceType.value,
-      onConfirm: async () => {
-        await fetchDevices();
-        await notifyDevicesChanged();
+  const importDevices = async (type?: string) => {
+    const targetType = (type || activeDeviceType.value) as DeviceTabTypeType;
+    const port = getDeviceTransferPort(targetType);
+    const label = getDeviceResourceLabel(targetType);
+    try {
+      const result = await modalManager.open(MODAL_TYPES.IMPORT_EXPORT, {
+        title: `导入${label}`,
+        mode: 'import',
+        // 后端 INT-816：导入支持 JSON / CSV / Excel（导出仅 JSON / Excel）
+        supportedFormats: ['json', 'csv', 'excel'],
+        showPreview: true,
+        importHint: '命中匹配键的设备会更新，未命中的会新建；非法行跳过并给出行号。导入后设备状态以本环境为准。',
+        resultNote: '状态以本环境为准',
+        importAction: (file: File) => port.importFile(file),
+        // 导入成功即刷新列表/分页总数/页头统计（弹窗保持打开展示计数与错误）
+        onImported: async () => {
+          await fetchDevices();
+          await notifyDevicesChanged();
+        },
+      });
+      if (result?.result) {
+        const report = result.result as ImportReport;
+        notification.success(
+          `导入完成：成功 ${report.importedCount} 个，更新 ${report.updatedCount} 个，跳过 ${report.skippedCount} 个`,
+        );
       }
-    });
+    } catch (error) {
+      console.error('导入设备失败:', error);
+      notification.error(toUserErrorMessage(error, '导入设备失败，请稍后重试'));
+    }
   };
 
-  const exportDevices = (type?: string) => {
-    modalManager.open(MODAL_TYPES.IMPORT_EXPORT, {
-      title: '导出设备',
-      mode: 'export',
-      deviceType: type || activeDeviceType.value
-    });
+  const exportDevices = async (type?: string, scope: DeviceExportScope = {}) => {
+    const targetType = (type || activeDeviceType.value) as DeviceTabTypeType;
+    const port = getDeviceTransferPort(targetType);
+    const label = getDeviceResourceLabel(targetType);
+    const selectedIds = normalizeExportIds(scope.selectedIds);
+    const filteredIds = normalizeExportIds(scope.filteredIds);
+
+    // 后端只支持「全部」与「ids 白名单」；「筛选后」由前端把当前筛选结果的完整 id 集合作为 ids 传入。
+    // 取不到 id 集合（为空）的范围直接置灰，避免造出无法真实执行的导出范围。
+    const ranges: ExportRangeOption[] = [
+      { value: 'all', label: '全部数据' },
+      {
+        value: 'selected',
+        label: `选中数据（${selectedIds.length} 台）`,
+        disabled: selectedIds.length === 0,
+        hint: selectedIds.length === 0 ? '请先在列表中勾选设备' : '',
+      },
+      {
+        value: 'filtered',
+        label: `筛选后数据（${filteredIds.length} 台）`,
+        disabled: filteredIds.length === 0,
+        hint: filteredIds.length === 0 ? '当前筛选结果为空' : '',
+      },
+    ];
+
+    try {
+      const result = await modalManager.open(MODAL_TYPES.IMPORT_EXPORT, {
+        title: `导出${label}`,
+        mode: 'export',
+        supportedFormats: ['json', 'excel'],
+        exportRanges: ranges,
+        exportAction: async (config: Record<string, any>) => {
+          const ids = config.range === 'selected' ? selectedIds
+            : config.range === 'filtered' ? filteredIds
+            : undefined;
+          if (config.range === 'selected' && ids!.length === 0) {
+            throw new Error('请先在列表中勾选设备');
+          }
+          const file = await port.exportFile({ format: config.format, ids });
+          // 文件名取自响应 Content-Disposition（缺失时 infrastructure 兜底）
+          downloadBlob(file.blob, file.filename);
+          return { filename: file.filename };
+        },
+      });
+      if (result?.result?.filename) {
+        notification.success(`已导出：${result.result.filename}`);
+      }
+    } catch (error) {
+      console.error('导出设备失败:', error);
+      notification.error(toUserErrorMessage(error, '导出设备失败，请稍后重试'));
+    }
   };
 
   const testDeviceConnection = async (id: number | string, type?: string) => {

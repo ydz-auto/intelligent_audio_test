@@ -14,3 +14,17 @@ export interface PaginatedDto<T> {
   per_page: number
   pages: number
 }
+
+/** 对应后端 ResourceImportResult（api_gateway/schemas/common.py，INT-816） */
+export interface ImportReportDto {
+  imported_count?: number
+  updated_count?: number
+  skipped_count?: number
+  errors?: unknown[]
+}
+
+/** 三资源导出查询（后端 ResourceExportQuery：format∈{json,excel}，ids 为 CSV 串） */
+export interface ResourceExportQueryDto {
+  format: string
+  ids?: string
+}

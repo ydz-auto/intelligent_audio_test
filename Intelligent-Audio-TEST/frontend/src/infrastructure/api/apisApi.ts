@@ -5,8 +5,16 @@
 import { request, type RequestOptions } from '../http/client';
 import { toAPIConfig, toApiUpsertDto, toApiHealthCheckResult, toApiQueryDto } from '../adapters/apiConfigAdapter';
 import { toArrayOrPaginated } from '../adapters/commonAdapter';
-import type { APIConfigDto, PaginatedDto, ApiHealthCheckDto } from '../dto';
+import type { APIConfigDto, PaginatedDto, ApiHealthCheckDto, ImportReportDto } from '../dto';
 import type { APIConfig, ApiHealthCheckResult } from '../../domain/model/apiConfig';
+import type { ExportFile, ImportReport } from '../../domain/model/common';
+import {
+  buildFallbackExportFilename,
+  toExportFile,
+  toImportReport,
+  toResourceExportQueryDto,
+  type ResourceExportParams,
+} from '../adapters/fileTransferAdapter';
 
 export const apisApi = {
   /** API 列表 → APIConfig[]；查询参数 camelCase Domain → snake_case query（对齐 ApiListQuery） */
@@ -31,6 +39,31 @@ export const apisApi = {
 
   async delete(id: string | number) {
     return request('DELETE', `/apis/${id}`);
+  },
+
+  /**
+   * 导出 API 配置（INT-816 / INT-1628：GET /apis/export）。
+   * format∈{json,excel}（默认 json），ids 为导出白名单；文件名取自 Content-Disposition。
+   */
+  async exportFile(params: ResourceExportParams = {}, options: RequestOptions = {}): Promise<ExportFile> {
+    const blob = await request<Blob>('GET', '/apis/export', null, {
+      ...options,
+      params: toResourceExportQueryDto(params.ids, params.format) as unknown as Record<string, any>,
+      responseType: 'blob',
+    });
+    const safeBlob = blob instanceof Blob ? blob : new Blob([blob as unknown as BlobPart]);
+    return toExportFile(safeBlob, buildFallbackExportFilename('apis', params.format));
+  },
+
+  /** 导入 API 配置（POST /apis/import，multipart 字段名 file，按 name 匹配） */
+  async importFile(file: File, options: RequestOptions = {}): Promise<ImportReport> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const dto = await request<ImportReportDto>('POST', '/apis/import', formData, {
+      ...options,
+      isMultipart: true,
+    });
+    return toImportReport(dto);
   },
 
   /** 连接测试（POST /apis/{id}/health，后端 health_check 与 test_connection 同实现）→ ApiHealthCheckResult（camelCase） */

@@ -75,3 +75,19 @@ export type PaginatedResult<T> = Paginated<T>
  * 部分后端接口分页字段可能缺省（deviceFetching 等消费方做数组/分页双兜底）
  */
 export type ListResponse<T> = Partial<Pick<Paginated<T>, 'items' | 'pages' | 'total'>>
+
+// ===== 资源导入导出（INT-816 端点前端契约，INT-1628） =====
+
+/** 导出文件：blob 为后端文件流，filename 取自 Content-Disposition（缺头时按资源+时间兜底） */
+export interface ExportFile {
+  blob: Blob
+  filename: string
+}
+
+/** 导入计数报告（后端 imported_count/updated_count/skipped_count + 逐行 errors） */
+export interface ImportReport {
+  importedCount: number
+  updatedCount: number
+  skippedCount: number
+  errors: string[]
+}

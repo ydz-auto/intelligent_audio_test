@@ -37,15 +37,16 @@
             <a href="#" @click.prevent="batchHealthCheck" class="dropdown-item">批量健康度检查</a>
           </div>
         </div>
-        <div class="dropdown">
+        <div class="dropdown" v-if="canImportDevices || canExportDevices">
           <button class="btn btn-secondary dropdown-toggle" @click="toggleDropdown('importExportDropdown'); $event.stopPropagation()">
             <i class="fas fa-exchange-alt btn-icon"></i>
             导入/导出
             <i class="fas fa-chevron-down dropdown-icon"></i>
           </button>
           <div id="importExportDropdown" class="dropdown-menu" :class="{ active: dropdowns.importExportDropdown }">
-            <a href="#" @click.prevent="importDevices" class="dropdown-item">导入设备</a>
-            <a href="#" @click.prevent="exportDevices" class="dropdown-item">导出设备</a>
+            <!-- INT-1628：入口按当前页签挂后端权限码（导出 read / 导入 create） -->
+            <a v-if="canImportDevices" href="#" @click.prevent="importDevices" class="dropdown-item">导入设备</a>
+            <a v-if="canExportDevices" href="#" @click.prevent="exportDevices" class="dropdown-item">导出设备</a>
           </div>
         </div>
       </div>
@@ -386,7 +387,8 @@ import "../../assets/styles/tasks/stats.css"
 import "../../assets/styles/device/device.css"
 import { computed } from 'vue';
 import { useDevice } from './device';
-import { DeviceStatus, DeviceTabType } from '../../domain/enums';
+import { AuthMode, DeviceStatus, DeviceTabType, getEffectiveAuthMode } from '../../domain/enums';
+import { useAuthStore } from '../../store/authStore';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
@@ -496,6 +498,30 @@ function setStatusFilter(value: string | number) {
 function setPlaybackTypeFilter(value: string | number) {
   playbackTypeFilter.value = String(value) as any;
 }
+
+// ===== 导入/导出入口权限（INT-1628：逐资源挂后端权限码，导出 read / 导入 create） =====
+// AUTH_MODE=off 部署后端注入 permissions=['*']，前端无 token/用户；按 useDashboardPermission 口径全放行。
+const DEVICE_EXPORT_PERMISSIONS: Record<string, string> = {
+  [DeviceTabType.TEST]: 'device:read',
+  [DeviceTabType.PLAYBACK]: 'playback:read',
+  [DeviceTabType.API]: 'api_config:read',
+};
+
+const DEVICE_IMPORT_PERMISSIONS: Record<string, string> = {
+  [DeviceTabType.TEST]: 'device:create',
+  [DeviceTabType.PLAYBACK]: 'playback:create',
+  [DeviceTabType.API]: 'api_config:create',
+};
+
+const authStore = useAuthStore();
+
+function hasDevicePermission(permission: string): boolean {
+  if (getEffectiveAuthMode() === AuthMode.OFF) return true;
+  return authStore.hasPermission(permission);
+}
+
+const canImportDevices = computed(() => hasDevicePermission(DEVICE_IMPORT_PERMISSIONS[activeTab.value]));
+const canExportDevices = computed(() => hasDevicePermission(DEVICE_EXPORT_PERMISSIONS[activeTab.value]));
 </script>
 
 <style scoped>@import './Device.css';

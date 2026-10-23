@@ -29,6 +29,11 @@ import {
   getDeviceManagement
 } from './deviceState';
 import { fetchAllDevices } from './deviceFetching';
+import {
+  allFilteredPlaybackDevices,
+  allFilteredTestDevices,
+  allFilteredAPIDevices,
+} from './deviceComputed';
 import { useNotification } from '../../composables/modal/useNotification';
 
 const notification = useNotification();
@@ -278,11 +283,18 @@ export async function batchHealthCheck() {
 }
 
 export function importDevices() {
-  getDeviceManagement()!.importDevices(activeTab.value);
+  void getDeviceManagement()!.importDevices(activeTab.value);
 }
 
 export function exportDevices() {
-  getDeviceManagement()!.exportDevices(activeTab.value);
+  // 导出范围由页面层提供当前页签的勾选/筛选 id 集合（后端只认全部或 ids 白名单）
+  const selectedIds = [...selectedDevices.value];
+  const filteredIds = activeTab.value === DeviceTabType.PLAYBACK
+    ? allFilteredPlaybackDevices.value.map(device => device.id)
+    : activeTab.value === DeviceTabType.API
+      ? allFilteredAPIDevices.value.map(device => device.id)
+      : allFilteredTestDevices.value.map(device => device.id);
+  void getDeviceManagement()!.exportDevices(activeTab.value, { selectedIds, filteredIds });
 }
 
 export async function testDevice(deviceId: string | number) {
