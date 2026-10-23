@@ -46,6 +46,12 @@ interface PointDraft {
   spl: string
 }
 
+/** 设备类型 Select 的 value→label 映射（缺 items 时闭合态显示 raw value「dry/noise」） */
+const DEVICE_TYPE_SELECT_ITEMS = DEVICE_TYPE_OPTIONS.map((option) => ({
+  value: option.value,
+  label: option.label,
+}))
+
 /** 默认点集（编辑新建态：按 §11-12 模拟校准口径 5 点占位） */
 const DEFAULT_POINTS: PointDraft[] = [
   { gainOffset: '-10', spl: '55' },
@@ -215,7 +221,11 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
             </div>
             <div className='space-y-2'>
               <Label>关联播放设备</Label>
-              <Select value={deviceId} onValueChange={(value) => setDeviceId(value ?? '')}>
+              <Select
+                value={deviceId}
+                onValueChange={(value) => setDeviceId(value ?? '')}
+                items={deviceOptions}
+              >
                 <SelectTrigger size='sm' className='w-full' aria-label='关联播放设备'>
                   <SelectValue placeholder='不使用声压映射' />
                 </SelectTrigger>
@@ -230,7 +240,11 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
             </div>
             <div className='space-y-2'>
               <Label>设备类型</Label>
-              <Select value={deviceType} onValueChange={(value) => setDeviceType(value ?? 'dry')}>
+              <Select
+                value={deviceType}
+                onValueChange={(value) => setDeviceType(value ?? 'dry')}
+                items={DEVICE_TYPE_SELECT_ITEMS}
+              >
                 <SelectTrigger size='sm' className='w-full' aria-label='设备类型'>
                   <SelectValue />
                 </SelectTrigger>

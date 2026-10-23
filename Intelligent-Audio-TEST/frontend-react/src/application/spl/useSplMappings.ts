@@ -2,7 +2,7 @@
  * 物理域 SPL 映射 query hooks（application 层；16_设备域.md §10 组件树落位）。
  * queryKey 前缀 ['spl'] / ['spl-stats'] / ['playback-device-refs'] / ['spl-history']；
  * 增删改/校准后 invalidate 自动刷新列表与统计。
- * mock 阶段列表全量返回、前端过滤分页（接线后 URL 态化）。
+ * 列表由 GET /spl 全量返回、前端过滤分页（URL 态化待后续卡）。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 

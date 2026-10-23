@@ -5,7 +5,9 @@
  * 禁用）+ 双口径 Tabs + 筛选工具栏（搜索+校准状态 facet+关联设备/关联 API facet）+ 统计徽章行
  * + DataTable（物理域/数字域）+ 三口径对称 Alert + 分页 Portal。
  * 弹窗群（§6.7-6.12 / §6.22）：映射表单/详情/校准历史/数字校准/数字表单/数字详情/批量 SPL 配置/删除确认。
- * mock 数据对齐 api_gateway/schemas/spl.py + api_rms_spl.py；不接后端。
+ * 数据经 infrastructure/api/client.ts 直连 api_gateway 真实接口（GET /spl、/spl/stats、
+ * /playback-devices、/digital-spl、/apis；写走 POST/PUT/DELETE），snake_case↔camelCase
+ * 转换落在 infrastructure/adapters/splAdapter.ts、digitalSplAdapter.ts。
  */
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -127,7 +129,9 @@ export function SplMappingPage() {
       rows = rows.filter(
         (row) =>
           row.name.toLowerCase().includes(keyword) ||
-          (row.description ?? '').toLowerCase().includes(keyword)
+          (row.description ?? '').toLowerCase().includes(keyword) ||
+          (row.deviceName ?? '').toLowerCase().includes(keyword) ||
+          (row.deviceModel ?? '').toLowerCase().includes(keyword)
       )
     }
     if (filters.calibrationStatus !== 'all') {
@@ -325,9 +329,14 @@ export function SplMappingPage() {
                 )}
                 {canSplCreate && (
                   <Tooltip>
-                    <TooltipTrigger render={<Button variant='outline' size='sm' className='gap-1.5' disabled />}>
-                      <UploadCloud aria-hidden='true' className='size-3.5' />
-                      导入映射数据
+                    {/* 禁用按钮吞指针事件 → 触发器包一层可悬停 span，tooltip 才可达 */}
+                    <TooltipTrigger
+                      render={<span className='inline-flex cursor-not-allowed' tabIndex={0} />}
+                    >
+                      <Button variant='outline' size='sm' className='pointer-events-none gap-1.5' disabled>
+                        <UploadCloud aria-hidden='true' className='size-3.5' />
+                        导入映射数据
+                      </Button>
                     </TooltipTrigger>
                     <TooltipContent>映射导入后端建设中</TooltipContent>
                   </Tooltip>
