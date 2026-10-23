@@ -168,8 +168,16 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
     def get_dimension_basics_by_ids(
         self, dim_ids: List[int]
     ) -> List[dict]:
-        """按 dim_id 列表批量查询维度基础信息（id/name/type/description）。
-        返回 dict 列表，供 gRPC servicer 直接序列化。"""
+        """按 dim_id 列表批量查询维度信息（id/name/type/description + 报告指标口径字段）。
+
+        返回 dict 列表，供 gRPC servicer 直接序列化。
+
+        INT-1571：除基础信息外一并返回 statistic_method / score_unit / agg_denominator /
+        sort_order / dimension_type / parent_dimension_id 等口径字段——报告侧需要按
+        ID 还原“评估时使用的维度”列头与聚合口径，而这些维度可能已停用/软删。
+        本查询按 ID 解析引用，**不过滤 status/deleted**（与 GetDimension 的 404 语义不同），
+        否则历史任务的报告会丢掉全部指标。
+        """
         session = get_db_session()
         dims = session.query(DimensionPO).filter(DimensionPO.id.in_(dim_ids)).all()
         return [
@@ -178,6 +186,19 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
                 'name': d.name,
                 'type': d.type,
                 'description': d.description,
+                'dimension_type': d.dimension_type,
+                'parent_dimension_id': d.parent_dimension_id,
+                'category_id': d.category_id,
+                'task_type_code': d.task_type_code,
+                'statistic_method': d.statistic_method,
+                'score_unit': d.score_unit,
+                'decimal_places': d.decimal_places,
+                'agg_denominator': d.agg_denominator,
+                'sort_order': d.sort_order,
+                'weight': d.weight,
+                'exclude_rounds': d.exclude_rounds,
+                'status': d.status,
+                'deleted': d.deleted,
             }
             for d in dims
         ]

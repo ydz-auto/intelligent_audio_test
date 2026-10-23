@@ -30,7 +30,6 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_apis_by_ids,
     _grpc_list_dimensions_all,
     _grpc_algo_get_field_mapping,
-    _dim_id,
 )
 from report_service.infrastructure.persistence.report_repository import report_repository
 from shared.models.common_enums import TaskStatus
@@ -603,10 +602,9 @@ class ReportTaskGenerator:
         all_dimensions_all = _grpc_list_dimensions_all()
         summary_dim_values = ReportDataBuilder._calculate_summary_dimensions(dim_stats)
 
-        if dim_stats:
-            all_dimensions = [d for d in all_dimensions_all if _dim_id(d) in dim_stats]
-        else:
-            all_dimensions = all_dimensions_all
+        # INT-1571：结果引用的维度可能已停用/软删（不在活跃列表里），按 ID 补全历史维度，
+        # 否则老任务会得到空指标集并在下方被判定「任务没有关联任何评估维度」
+        all_dimensions = ReportDataBuilder._get_result_dimensions(all_dimensions_all, dim_stats)
 
         test_cases, test_case_ids = ReportDataBuilder._get_task_test_cases(task_ids_for_query)
         devices_list, apis_list, device_ids, api_ids = ReportDataBuilder._get_task_resources(task_ids_for_query)
