@@ -266,9 +266,12 @@ class TestGroupServiceFilters:
         class _StubTds:
             def list_testcase_groups(self, algorithm_type=None, search=None):
                 captured['list_kwargs'] = {'algorithm_type': algorithm_type}
+                # INT-1470 P1：test_case_count 随列表 RPC 一并返回
                 return {'items': [
-                    {'id': 'g1', 'name': '组1', 'algorithm_type': 'translation'},
-                    {'id': 'g2', 'name': '组2', 'algorithm_type': 'asr'},
+                    {'id': 'g1', 'name': '组1', 'algorithm_type': 'translation',
+                     'test_case_count': 2},
+                    {'id': 'g2', 'name': '组2', 'algorithm_type': 'asr',
+                     'test_case_count': 0},
                 ]}
 
             def get_testcase_stats(self, **kwargs):
@@ -303,10 +306,11 @@ class TestGroupServiceFilters:
     def test_no_filter_keeps_all_groups(self, monkeypatch):
         payload, http_code, captured = self._run(
             monkeypatch, query={}, stats_items=[])
-        # 无筛选时仅做当前页计数统计，不携带用例级过滤参数；
-        # INT-528：收藏/回收站口径（默认 False）随计数下推，与可见数据口径一致
-        assert captured['stats_kwargs'] == {'group_by': 'group_id', 'favorite': False, 'deleted': False}
+        # INT-1470 P1：默认口径不再发第二次聚合 RPC（GetTestCaseStats），
+        # 计数由 ListTestCaseGroups 随列表带回；收藏/回收站口径仍下推统计。
+        assert 'stats_kwargs' not in captured
         assert payload['data']['total'] == 2
+        assert [i['test_case_count'] for i in payload['data']['items']] == [2, 0]
 
     def test_recycle_scope_forwarded_with_keyword(self, monkeypatch):
         """INT-528：回收站态 keyword 筛选下 favorite/deleted 随统计下推。"""

@@ -93,17 +93,23 @@ class GroupService:
         end = start + per_page
         page_groups = all_groups[start:end]
 
-        if not has_case_filters:
+        if not has_case_filters and (favorite or only_deleted):
+            # INT-528：收藏/回收站口径需用例级过滤，只能走聚合统计 RPC；
+            # 默认口径（无筛选、非收藏、非回收站）见下方分支，计数随列表一次带回
             group_ids = [str(g.get('id')) for g in page_groups]
             if group_ids:
-                # INT-528：收藏/回收站口径同步作用于无筛选分组计数，
-                # 回收站态分组卡计数为已删用例数（与可见数据一致）
                 stats = _tds.get_testcase_stats(
                     group_by='group_id', favorite=favorite, deleted=only_deleted)
                 items = stats.get('items') or []
                 case_counts = {item.get('key', ''): item.get('count', 0) for item in items}
                 # 仅保留当前页分组
                 case_counts = {k: v for k, v in case_counts.items() if k in group_ids}
+        elif not has_case_filters:
+            # INT-1470 P1：默认口径计数由 task_service 的 ListTestCaseGroups
+            # 一次带回（同 GetTestCaseStats group_by=group_id 口径：未删除 +
+            # 可见性过滤），不再逐请求发第二次全表聚合 RPC
+            case_counts = {str(g.get('id')): int(g.get('test_case_count') or 0)
+                           for g in page_groups}
 
         pages = (total + per_page - 1) // per_page if per_page else 1
 
