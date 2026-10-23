@@ -12,7 +12,7 @@ import {
   Tag,
   TriangleAlert,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import type { PickFilters } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
@@ -22,11 +22,14 @@ import {
   useCherryPickCaseView,
   useCherryPickDeviceView,
   useCherryPickResultTypeView,
+  usePickableTasks,
   usePickFilterOptions,
 } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import { usePickOrg } from '@/application/tasks/cherry-pick/use-pick-org'
 import type {
+  PickableTaskSortBy,
+  PickableTaskSortOrder,
   PickTreeBranch,
   PickTreeItem,
   PickTreeLeaf,
@@ -43,11 +46,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PickFilterBar } from '@/features/tasks/cherry-pick/components/pick-filter-bar'
-import {
-  PickTaskStage,
-  getTaskStatusOrder,
-  type PickTaskRow,
-} from '@/features/tasks/cherry-pick/components/pick-task-stage'
+import { PickTaskStage } from '@/features/tasks/cherry-pick/components/pick-task-stage'
 import { SlowCandidatesNotice } from '@/features/tasks/cherry-pick/components/slow-candidates-notice'
 import { PickCaseView } from '@/features/tasks/cherry-pick/components/pick-case-view'
 import {
@@ -76,8 +75,11 @@ export function PickStep({
   presetTaskIds?: number[]
 }) {
   const options = usePickFilterOptions()
-  // 阶段 1 任务集聚合（全量候选，不受阶段 2 任务筛选影响，§3.8.2 数据源=候选行聚合）
-  const allCandidatesQuery = useCherryPickCandidates(EMPTY_PICK_FILTERS)
+  /** 阶段 1 服务端排序（INT-1496 sort_by/sort_order；取代原客户端状态权重排序） */
+  const [sortBy, setSortBy] = useState<PickableTaskSortBy>('status')
+  const [sortOrder, setSortOrder] = useState<PickableTaskSortOrder>('asc')
+  // 阶段 1 任务清单（pickable-tasks 任务级聚合 + 服务端分页排序，不受阶段 2 任务筛选影响）
+  const pickableTasksQuery = usePickableTasks({ sortBy, sortOrder })
   const candidatesQuery = useCherryPickCandidates(filters)
   const caseView = useCherryPickCaseView(candidatesQuery.data)
   const deviceView = useCherryPickDeviceView(candidatesQuery.data)
@@ -100,39 +102,31 @@ export function PickStep({
   /** §3.8.3 用例层组织（三视图共享：分组/标签 + 平铺/交叉，阶段 2 会话态，usePickOrg） */
   const { org, subView, setOrg, setSubView } = usePickOrg()
 
-  /** 阶段 1 任务行聚合（终态候选按 taskId 分组，§3.8.2 按状态/名称排序） */
-  const taskRows = useMemo<PickTaskRow[]>(() => {
-    const rows = allCandidatesQuery.data ?? []
-    const map = new Map<number, PickTaskRow>()
-    for (const c of rows) {
-      const cur = map.get(c.taskId)
-      if (cur) {
-        cur.count += 1
-        if (!cur.createdAt && c.createdAt) cur.createdAt = c.createdAt
-      } else {
-        map.set(c.taskId, {
-          taskId: c.taskId,
-          taskName: c.taskName,
-          executionStatus: c.executionStatus,
-          createdAt: c.createdAt,
-          count: 1,
-        })
-      }
-    }
-    return [...map.values()].sort(
-      (a, b) =>
-        getTaskStatusOrder(a.executionStatus) - getTaskStatusOrder(b.executionStatus) ||
-        a.taskName.localeCompare(b.taskName, 'zh-CN')
-    )
-  }, [allCandidatesQuery.data])
+  /** 阶段 1 任务行（服务端已按 sort_by/sort_order 排序，前端不再聚合/重排） */
+  const taskRows = pickableTasksQuery.items
 
-  /** 任务名映射（阶段 2 任务集摘要条；fetchPickableTasks 兜底补未入候选页的任务） */
+  /** 任务名映射（阶段 2 任务集摘要条；pickable-tasks 为全量清单，选项作补充） */
   const taskNameById = useMemo(() => {
     const map = new Map<number, string>()
-    for (const c of allCandidatesQuery.data ?? []) map.set(c.taskId, c.taskName)
+    for (const t of pickableTasksQuery.items) map.set(t.taskId, t.taskName)
     for (const t of options.tasks) if (!map.has(t.id)) map.set(t.id, t.name)
     return map
-  }, [allCandidatesQuery.data, options.tasks])
+  }, [pickableTasksQuery.items, options.tasks])
+
+  /** 状态同步（§3.8.2）：清单刷新后剔除已不可挑选的旧任务，返回上一步/切换排序不残留 */
+  useEffect(() => {
+    if (pickableTasksQuery.isLoading || pickableTasksQuery.isError) return
+    const available = new Set(pickableTasksQuery.items.map((t) => t.taskId))
+    setSelectedTaskIds((prev) => {
+      if (prev.size === 0) return prev
+      const next = new Set([...prev].filter((id) => available.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [
+    pickableTasksQuery.items,
+    pickableTasksQuery.isLoading,
+    pickableTasksQuery.isError,
+  ])
 
   const selectedTaskNames = useMemo(
     () => [...selectedTaskIds].map((id) => taskNameById.get(id)).filter(Boolean) as string[],
@@ -208,11 +202,18 @@ export function PickStep({
     return (
       <PickTaskStage
         tasks={taskRows}
+        total={pickableTasksQuery.total}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSortChange={(nextSortBy, nextSortOrder) => {
+          setSortBy(nextSortBy)
+          setSortOrder(nextSortOrder)
+        }}
         selectedTaskIds={selectedTaskIds}
-        loading={allCandidatesQuery.isLoading}
-        slow={allCandidatesQuery.isSlow}
-        isError={allCandidatesQuery.isError}
-        onRetry={allCandidatesQuery.retryCandidates}
+        loading={pickableTasksQuery.isLoading}
+        slow={pickableTasksQuery.isSlow}
+        isError={pickableTasksQuery.isError}
+        onRetry={pickableTasksQuery.retry}
         onToggle={(taskId) =>
           setSelectedTaskIds((prev) => {
             const next = new Set(prev)

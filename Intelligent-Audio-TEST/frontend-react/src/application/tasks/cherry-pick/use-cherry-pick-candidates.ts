@@ -7,6 +7,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import type { CherryPickCandidate } from '@/domain/models/cherryPick'
+import type {
+  PickableTask,
+  PickableTaskSortBy,
+  PickableTaskSortOrder,
+} from '@/domain/models/cherryPick'
 import {
   buildPickCaseView,
   buildPickDeviceView,
@@ -15,11 +20,11 @@ import {
 } from '@/domain/lib/cherry-pick-tree'
 import type { CherryPickFilters } from '@/infrastructure/api/cherry-pick-api'
 import {
+  fetchAllPickableTasks,
+  fetchCandidateFacets,
   fetchCherryPickCandidates,
   fetchPickCaseNames,
-  fetchPickableDevices,
-  fetchPickableTasks,
-  fetchResultTypeOptions,
+  fetchPickableTaskOptions,
 } from '@/infrastructure/api/cherry-pick-api'
 
 /** 挑选工作区筛选状态（会话级记忆，§6.4；不持久化） */
@@ -143,27 +148,66 @@ export function useCherryPickCandidates(filters: PickFilters) {
   return { ...candidatesQuery, data, isSlow, retryCandidates }
 }
 
-/** 筛选器选项（来源任务/设备/结果类型，动态选项数据源 §3.4） */
+/** 阶段 1 可挑选任务清单（INT-1496 `GET /tasks/cherry-picks/pickable-tasks`）。
+ *  服务端排序（sort_by/sort_order）取代客户端状态权重排序；按 per_page 拉齐分页，
+ *  使「全选当前筛选」覆盖 total 全部任务，不出现只选到首页。 */
+export function usePickableTasks(params: {
+  sortBy: PickableTaskSortBy
+  sortOrder: PickableTaskSortOrder
+}) {
+  const queryClient = useQueryClient()
+  const [retryNonce, setRetryNonce] = useState(0)
+  const queryKey = [
+    'cherry-pick',
+    'pickable-tasks',
+    params.sortBy,
+    params.sortOrder,
+    retryNonce,
+  ] as const
+  const query = useQuery({
+    queryKey,
+    queryFn: () =>
+      fetchAllPickableTasks({ sortBy: params.sortBy, sortOrder: params.sortOrder }),
+    staleTime: 30_000,
+  })
+  const { isSlow, restartSlow } = useSlowPending(
+    query.isFetching,
+    SLOW_CANDIDATES_THRESHOLD_MS,
+    `${params.sortBy}:${params.sortOrder}:${retryNonce}`
+  )
+  const retry = () => {
+    restartSlow()
+    void queryClient.cancelQueries({ queryKey })
+    setRetryNonce((n) => n + 1)
+  }
+  return {
+    items: (query.data?.items ?? []) as PickableTask[],
+    total: query.data?.total ?? 0,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    isSlow,
+    retry,
+  }
+}
+
+/** 筛选器选项（来源任务/设备/结果类型，动态选项数据源 §3.4）。
+ *  来源任务与阶段 1 清单同源（pickable-tasks）；设备/结果类型仍由阶段 2
+ *  candidates facet 提供（一次查询同时出两类选项，§11-3 降级不在本卡范围）。 */
 export function usePickFilterOptions() {
   const tasks = useQuery({
     queryKey: ['cherry-pick', 'options', 'tasks'],
-    queryFn: fetchPickableTasks,
+    queryFn: fetchPickableTaskOptions,
     staleTime: 60_000,
   })
-  const devices = useQuery({
-    queryKey: ['cherry-pick', 'options', 'devices'],
-    queryFn: fetchPickableDevices,
-    staleTime: 60_000,
-  })
-  const resultTypes = useQuery({
-    queryKey: ['cherry-pick', 'options', 'result-types'],
-    queryFn: fetchResultTypeOptions,
+  const facets = useQuery({
+    queryKey: ['cherry-pick', 'options', 'facets'],
+    queryFn: fetchCandidateFacets,
     staleTime: 60_000,
   })
   return {
     tasks: tasks.data ?? [],
-    devices: devices.data ?? [],
-    resultTypes: resultTypes.data ?? [],
+    devices: facets.data?.devices ?? [],
+    resultTypes: facets.data?.resultTypes ?? [],
   }
 }
 

@@ -1,33 +1,59 @@
 /**
- * 挑选阶段 1 · 选择任务（18_挑选合并交互重设计.md §3.8.2，INT-1047）。
- * 搜索（任务名）+ 多选 + 全选当前筛选 + 清空 + 下一步：选择结果；
+ * 挑选阶段 1 · 选择任务（18_挑选合并交互重设计.md §3.8.2，INT-1047 / INT-1509）。
+ * 搜索（任务名）+ 服务端排序（任务名/状态/创建时间，升降序）+ 多选 + 全选当前筛选 + 清空 + 下一步。
  * 任务行 = Checkbox + 任务名 + 执行状态 StatusBadge + 结果计数「{n} 条」+ 创建时间（mono）。
- * 数据源 = 候选行聚合的可挑选终态任务集合（§3.8.2，按状态/名称排序）。
+ * 数据源 = `GET /tasks/cherry-picks/pickable-tasks`（INT-1496 §8.1，服务端任务级聚合 + 分页排序）；
+ * 不再由 candidates 首页 200 行客户端聚合，也不再做客户端状态权重排序。
  */
-import { ArrowRight, Search, TriangleAlert } from 'lucide-react'
+import {
+  ArrowDownWideNarrow,
+  ArrowRight,
+  ArrowUpNarrowWide,
+  Search,
+  TriangleAlert,
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import type {
+  PickableTask,
+  PickableTaskSortBy,
+  PickableTaskSortOrder,
+} from '@/domain/models/cherryPick'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { SlowCandidatesNotice } from '@/features/tasks/cherry-pick/components/slow-candidates-notice'
 import { formatPickDateTime } from '@/features/tasks/cherry-pick/constants'
 import { cn } from '@/lib/utils'
 
-/** 阶段 1 任务行（候选行按 taskId 聚合） */
-export interface PickTaskRow {
-  taskId: number
-  taskName: string
-  executionStatus: string
-  createdAt: string | null
-  count: number
-}
+/** 阶段 1 任务行（pickable-tasks 任务级聚合行） */
+export type PickTaskRow = PickableTask
+
+/** 排序键选项（服务端 sort_by 枚举） */
+export const PICK_TASK_SORT_OPTIONS: { value: PickableTaskSortBy; label: string }[] = [
+  { value: 'status', label: '状态' },
+  { value: 'name', label: '任务名' },
+  { value: 'created_at', label: '创建时间' },
+]
 
 export interface PickTaskStageProps {
   tasks: PickTaskRow[]
+  /** 当前筛选命中的任务总数（服务端 total，不受分页影响；「全选当前筛选」覆盖它） */
+  total: number
+  /** 服务端排序键 / 方向 */
+  sortBy: PickableTaskSortBy
+  sortOrder: PickableTaskSortOrder
+  onSortChange: (sortBy: PickableTaskSortBy, sortOrder: PickableTaskSortOrder) => void
   selectedTaskIds: ReadonlySet<number>
   loading: boolean
   /** 加载超过阈值仍未就绪（INT-1280 慢加载 → 可重试反馈而非无限骨架屏） */
@@ -35,28 +61,18 @@ export interface PickTaskStageProps {
   isError: boolean
   onRetry: () => void
   onToggle: (taskId: number) => void
-  /** 全选当前筛选（传入搜索命中集） */
+  /** 全选当前筛选（传入搜索命中集；已按分页拉齐，覆盖 total 全部任务） */
   onSelectAll: (taskIds: number[]) => void
   onClear: () => void
   onNext: () => void
 }
 
-/** 终态排序权重（§3.8.2 按状态/名称排序：已完成 → 执行失败 → 已停止） */
-export function getTaskStatusOrder(status: string): number {
-  switch (status) {
-    case 'completed':
-      return 0
-    case 'failed':
-      return 1
-    case 'stopped':
-      return 2
-    default:
-      return 3
-  }
-}
-
 export function PickTaskStage({
   tasks,
+  total,
+  sortBy,
+  sortOrder,
+  onSortChange,
   selectedTaskIds,
   loading,
   slow = false,
@@ -76,6 +92,7 @@ export function PickTaskStage({
   }, [tasks, kw])
 
   const selectedCount = selectedTaskIds.size
+  const ascending = sortOrder === 'asc'
 
   return (
     <div className='flex min-h-0 flex-1 flex-col gap-3'>
@@ -91,8 +108,50 @@ export function PickTaskStage({
             aria-label='搜索任务名称'
           />
         </div>
+        <div className='flex items-center gap-0.5'>
+          <Select
+            value={sortBy}
+            onValueChange={(value) => {
+              if (value) onSortChange(value as PickableTaskSortBy, sortOrder)
+            }}
+            items={PICK_TASK_SORT_OPTIONS}
+          >
+            <SelectTrigger size='sm' aria-label='排序方式'>
+              <SelectValue placeholder='排序方式'>
+                {PICK_TASK_SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? '排序方式'}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {PICK_TASK_SORT_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant='ghost'
+            size='sm'
+            className='text-muted-foreground h-7 gap-1 px-1.5 text-[0.8rem]'
+            aria-label={ascending ? '当前升序，切换为降序' : '当前降序，切换为升序'}
+            onClick={() => onSortChange(sortBy, ascending ? 'desc' : 'asc')}
+          >
+            {ascending ? (
+              <ArrowUpNarrowWide aria-hidden='true' className='size-3.5' />
+            ) : (
+              <ArrowDownWideNarrow aria-hidden='true' className='size-3.5' />
+            )}
+            {ascending ? '升序' : '降序'}
+          </Button>
+        </div>
         <span className='text-muted-foreground text-xs'>
           已选 <span className='font-medium'>{selectedCount}</span> 个任务
+          {total > 0 && (
+            <span className='text-muted-foreground/70'>
+              {' '}
+              / 共 {total} 个可挑选任务
+            </span>
+          )}
         </span>
         <span className='text-muted-foreground/70 ml-auto text-xs'>
           仅已完成、执行失败、已停止的终态任务可挑选
@@ -193,6 +252,10 @@ export function PickTaskStage({
           >
             清空
           </Button>
+          <span className='text-muted-foreground/70 text-xs'>
+            全选当前筛选将选中命中全部 {kw ? filtered.length : total} 个任务
+            {kw ? '（搜索命中）' : '（跨页，不受每页条数限制）'}
+          </span>
         </div>
         <Button
           size='sm'

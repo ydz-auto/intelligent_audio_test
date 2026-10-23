@@ -1,6 +1,7 @@
 /**
  * 挑选合并 API（infrastructure/api，18_挑选合并交互重设计.md §7.3，INT-713）。
  * 真实接口（经 client.ts 统一信封解包；后端缺口按 §11-2/§11-5 降级，不写兼容层）：
+ *   GET    /api/v1/tasks/cherry-picks/pickable-tasks （阶段 1 可挑选任务清单，INT-1496）
  *   GET    /api/v1/tasks/cherry-picks/candidates      （候选行，多条件 AND）
  *   GET    /api/v1/tasks/cherry-picks/cart            （购物车读）
  *   POST   /api/v1/tasks/cherry-picks/cart/items      （加购）
@@ -21,6 +22,7 @@ import {
   fromCandidateDto,
   fromCartGroupDto,
   fromContainerDto,
+  fromPickableTaskDto,
   fromPreviewDto,
   fromSetListItemDto,
 } from '@/infrastructure/adapters/dto/cherry-pick-adapter'
@@ -28,6 +30,11 @@ import type {
   CheckoutAction,
   CherryPickCandidate,
   CherryPickContainer,
+  PickableTask,
+  PickableTaskPage,
+  PickableTaskSortBy,
+  PickableTaskSortOrder,
+  PickableTaskStatus,
   PickCartGroup,
   PickPreview,
   PickSet,
@@ -47,6 +54,7 @@ import type {
   CherryPickSaveSetResultDto,
   CherryPickSetListItemDto,
   CherryPickSourceTraceDto,
+  PickableTaskPageDto,
   TaskContainerItemDto,
   TaskListPageDto,
 } from '@/infrastructure/dto/cherry-pick.dto'
@@ -251,24 +259,117 @@ export async function fetchCherryPickCandidates(
   return items
 }
 
-/** 候选行结果类型去重集合（§11-2 候选未返 result_type → 空选项，facet 显示「无选项」） */
-export async function fetchResultTypeOptions(): Promise<string[]> {
-  const items = await fetchBaseCandidates()
-  return [...new Set(items.map((c) => c.resultType).filter((t): t is string => t != null))]
+/* ============================================================
+ * 可挑选任务清单（阶段 1 数据源，INT-1496 §8.1）
+ * 服务端任务级聚合 + 服务端分页/排序；不再由 candidates 首页 200 行客户端聚合。
+ * ============================================================ */
+
+/** 可挑选任务查询（服务端参数；`status` 是**任务**状态，非结果级） */
+export interface PickableTaskFilters {
+  /** 任务名模糊匹配（后端只匹配任务名，不匹配任务 ID） */
+  keyword?: string
+  /** 任务状态过滤（completed/failed/stopped；缺省 = 全部三终态） */
+  status?: PickableTaskStatus
+  /** 排序键，缺省 status（权重 completed→failed→stopped，同权重按任务名） */
+  sortBy?: PickableTaskSortBy
+  sortOrder?: PickableTaskSortOrder
 }
 
-/** 可挑选来源任务集合（候选行聚合去重） */
-export async function fetchPickableTasks(): Promise<{ id: number; name: string }[]> {
-  const items = await fetchBaseCandidates()
-  const map = new Map<number, string>()
-  for (const c of items) map.set(c.taskId, c.taskName)
-  return [...map].map(([id, name]) => ({ id, name }))
+export interface PickableTaskQuery extends PickableTaskFilters {
+  page?: number
+  perPage?: number
+}
+
+/** 单页可挑选任务（GET /tasks/cherry-picks/pickable-tasks；per_page 上限 200） */
+export async function fetchPickableTaskPage(
+  query: PickableTaskQuery = {}
+): Promise<PickableTaskPage> {
+  const params: Record<string, unknown> = {
+    page: query.page ?? 1,
+    per_page: query.perPage ?? MAX_OPTION_PAGE,
+  }
+  if (query.keyword && query.keyword.trim()) params.keyword = query.keyword.trim()
+  if (query.status) params.status = query.status
+  if (query.sortBy) params.sort_by = query.sortBy
+  if (query.sortOrder) params.sort_order = query.sortOrder
+
+  const data = await request<PickableTaskPageDto>(
+    'GET',
+    '/tasks/cherry-picks/pickable-tasks',
+    undefined,
+    { params }
+  )
+  return {
+    items: (data.items ?? []).map(fromPickableTaskDto),
+    total: data.total ?? 0,
+    page: data.page ?? params.page,
+    perPage: data.per_page ?? params.per_page,
+  }
+}
+
+/** 按 per_page 拉齐分页（阶段 1 清单与「全选当前筛选」须覆盖 total 全部任务，
+ *  不允许只取首页）；`MAX_FULL_PAGES` 防御异常 total 造成的长循环。 */
+const MAX_FULL_PAGES = 10
+
+export async function fetchAllPickableTasks(
+  filters: PickableTaskFilters = {}
+): Promise<{ items: PickableTask[]; total: number }> {
+  const first = await fetchPickableTaskPage({
+    ...filters,
+    page: 1,
+    perPage: MAX_OPTION_PAGE,
+  })
+  const items = [...first.items]
+  const pages = Math.min(
+    Math.ceil(first.total / MAX_OPTION_PAGE),
+    MAX_FULL_PAGES
+  )
+  if (pages > 1) {
+    const rest = await Promise.all(
+      Array.from({ length: pages - 1 }, (_, i) =>
+        fetchPickableTaskPage({
+          ...filters,
+          page: i + 2,
+          perPage: MAX_OPTION_PAGE,
+        }).catch(() => null)
+      )
+    )
+    for (const data of rest) {
+      if (data) items.push(...data.items)
+    }
+  }
+  return { items, total: first.total }
+}
+
+/** 「来源任务」筛选选项（同源 pickable-tasks 全量；与阶段 1 清单同一数据源） */
+export async function fetchPickableTaskOptions(): Promise<{ id: number; name: string }[]> {
+  const { items } = await fetchAllPickableTasks({ sortBy: 'name', sortOrder: 'asc' })
+  return items.map((t) => ({ id: t.taskId, name: t.taskName }))
+}
+
+/* ============================================================
+ * 阶段 2 候选 facet（设备 / 结果类型，仍由 candidates 首页 200 行重建，§11-3 降级不在本卡范围）
+ * ============================================================ */
+
+/** 阶段 2 facet 数据源（一次 candidates 查询同时出设备/结果类型选项；会话内由
+ *  React Query 缓存与并发去重，不再保留模块级 30s 兜底缓存——阶段 1 已不经过 candidates） */
+export async function fetchCandidateFacets(): Promise<{
+  devices: { id: number; name: string }[]
+  resultTypes: string[]
+}> {
+  const { devices } = await getDeviceApiNameMaps()
+  const items = await fetchCherryPickCandidates({})
+  return {
+    devices: buildDeviceFacet(items, devices),
+    resultTypes: [...new Set(items.map((c) => c.resultType).filter((t): t is string => t != null))],
+  }
 }
 
 /** 设备集合（候选行聚合去重 + 设备表名装饰；§11-2 缺名降级「设备 {id}」） */
-export async function fetchPickableDevices(): Promise<{ id: number; name: string }[]> {
-  const { devices } = await getDeviceApiNameMaps()
-  const items = await fetchBaseCandidates()
+function buildDeviceFacet(
+  items: CherryPickCandidate[],
+  devices: Map<number, string>
+): { id: number; name: string }[] {
   const map = new Map<number, string>()
   for (const c of items) {
     if (c.deviceId != null) {
@@ -278,34 +379,10 @@ export async function fetchPickableDevices(): Promise<{ id: number; name: string
   return [...map].map(([id, name]) => ({ id, name }))
 }
 
-/** 未筛选候选（筛选选项数据源；30s 会话缓存，避免三处选项各拉一次全量）。
- *  INT-1280：并发在途合并为同一 promise，向导挂载时三处选项不再各发起一条
- *  candidates 慢查询（真实库 10–45s），改为共享一次结果。 */
-let baseCandidatesCache: { data: CherryPickCandidate[]; ts: number } | null = null
-let baseCandidatesPromise: Promise<CherryPickCandidate[]> | null = null
-
-async function fetchBaseCandidates(): Promise<CherryPickCandidate[]> {
-  if (baseCandidatesCache && Date.now() - baseCandidatesCache.ts < 30_000) {
-    return baseCandidatesCache.data
-  }
-  if (!baseCandidatesPromise) {
-    baseCandidatesPromise = fetchCherryPickCandidates({})
-      .then((items) => {
-        baseCandidatesCache = { data: items, ts: Date.now() }
-        return items
-      })
-      .finally(() => {
-        baseCandidatesPromise = null
-      })
-  }
-  return baseCandidatesPromise
-}
-
 /** 测试用：重置会话缓存（vitest / 走查隔离） */
 export function __resetCherryPickSessionCache() {
   deviceApiMapsPromise = null
   caseNameMapPromise = null
-  baseCandidatesCache = null
 }
 
 /* ============================================================
