@@ -180,7 +180,8 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
               <th className='px-3 py-2 text-left font-medium'>应用</th>
               <th className='px-3 py-2 text-left font-medium'>支持算法</th>
               <th className='px-3 py-2 text-left font-medium'>驱动</th>
-              <th className='w-[52px] px-3 py-2 text-center font-medium'>提示词</th>
+              {/* INT-1480 P3-2：原 w-[52px] 减去 px-3 后不足三字宽，CJK 逐字断行成竖排 */}
+              <th className='w-[68px] whitespace-nowrap px-3 py-2 text-center font-medium'>提示词</th>
               <th className='px-3 py-2 text-left font-medium'>
                 <button
                   type='button'

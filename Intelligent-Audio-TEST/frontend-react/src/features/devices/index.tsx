@@ -900,6 +900,10 @@ function PaginationBar({
       <span className='text-muted-foreground tabular-nums'>共 {total} 条</span>
       <Select
         value={String(pageSize)}
+        items={PAGE_SIZE_OPTIONS.map((size) => ({
+          value: String(size),
+          label: `${size} 条/页`,
+        }))}
         onValueChange={(value) => onPageSizeChange(Number(value ?? DEFAULT_PAGE_SIZE))}
       >
         <SelectTrigger size='sm' className='w-24'>

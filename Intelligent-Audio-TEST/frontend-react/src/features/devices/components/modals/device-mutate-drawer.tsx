@@ -82,6 +82,34 @@ const ANDROID_API_LEVELS = ['26', '28', '30', '32', '33', '34']
 const HARMONY_API_LEVELS = ['3.0', '3.1', '3.2', '4.0', '4.2']
 const FORMAT_OPTIONS = ['WAV', 'MP3', 'FLAC', 'AAC', 'OGG', 'WMA']
 const PROTOCOL_OPTIONS = ['http', 'https', 'ws', 'wss']
+
+/**
+ * base-ui Select 闭合态标签解析只认 Root 的 `items`（未传时直接回显原始 value，
+ * 见 node_modules/@base-ui/react/internals/resolveValueLabel.js resolveSelectedLabel）：
+ * 程序设值/编辑回填的 Select 必须补 items，否则显示 physical / usb / offline_duration 等枚举码。
+ * INT-1480 P2-1：本抽屉全部 Select 逐个补齐（选项与 SelectContent 子项同源常量）。
+ */
+const TEST_DEVICE_TYPE_OPTIONS = [
+  { value: 'physical', label: '真机' },
+  { value: 'http_api', label: 'HTTP API' },
+  { value: 'websocket_api', label: 'Realtime WS' },
+]
+const PLAYBACK_DEVICE_TYPE_OPTIONS = [
+  { value: 'dry', label: '干声设备' },
+  { value: 'noise', label: '噪声设备' },
+]
+const CONNECTION_TYPE_OPTIONS = [
+  { value: 'usb', label: 'USB连接' },
+  { value: 'remote', label: '远程连接' },
+]
+const PRIORITY_OPTIONS = Array.from({ length: 10 }, (_, i) => ({
+  value: String(i + 1),
+  label: String(i + 1),
+}))
+const PROTOCOL_SELECT_OPTIONS = PROTOCOL_OPTIONS.map((value) => ({
+  value,
+  label: value.toUpperCase(),
+}))
 const ENV_OPTIONS = [
   { value: 'development', label: '开发' },
   { value: 'testing', label: '测试' },
@@ -595,21 +623,25 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                   <Field label='设备类型' required error={errors.deviceType?.message}>
                     <Select
                       value={form.watch('deviceType')}
+                      items={TEST_DEVICE_TYPE_OPTIONS}
                       onValueChange={(value) => form.setValue('deviceType', value ?? '')}
                     >
                       <SelectTrigger size='sm' className='w-full'>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value='physical'>真机</SelectItem>
-                        <SelectItem value='http_api'>HTTP API</SelectItem>
-                        <SelectItem value='websocket_api'>Realtime WS</SelectItem>
+                        {TEST_DEVICE_TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </Field>
                   <Field label='设备系统' required error={errors.system?.message}>
                     <Select
                       value={form.watch('system')}
+                      items={SYSTEM_OPTIONS}
                       onValueChange={(value) => form.setValue('system', value ?? '')}
                     >
                       <SelectTrigger size='sm' className='w-full'>
@@ -638,6 +670,10 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                     >
                       <Select
                         value={form.watch('apiLevel')}
+                        items={(form.watch('system') === 'HarmonyOS'
+                          ? HARMONY_API_LEVELS
+                          : ANDROID_API_LEVELS
+                        ).map((level) => ({ value: level, label: `API ${level}` }))}
                         onValueChange={(value) => form.setValue('apiLevel', value ?? '')}
                       >
                         <SelectTrigger size='sm' className='w-full'>
@@ -665,14 +701,18 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                   <Field label='连接方式' required error={errors.connectionType?.message}>
                     <Select
                       value={form.watch('connectionType')}
+                      items={CONNECTION_TYPE_OPTIONS}
                       onValueChange={(value) => form.setValue('connectionType', value ?? '')}
                     >
                       <SelectTrigger size='sm' className='w-full'>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value='usb'>USB连接</SelectItem>
-                        <SelectItem value='remote'>远程连接</SelectItem>
+                        {CONNECTION_TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </Field>
@@ -690,6 +730,13 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                   <Field label='驱动关键字' className='col-span-2'>
                     <Select
                       value={form.watch('keywords') ?? ''}
+                      items={[
+                        { value: '', label: '不使用驱动关键字' },
+                        ...driverKeywords.map((kw) => ({
+                          value: kw.keywords,
+                          label: `${kw.name}（${kw.system}）`,
+                        })),
+                      ]}
                       onValueChange={(value) => form.setValue('keywords', value ?? '')}
                     >
                       <SelectTrigger size='sm' className='w-full'>
@@ -741,15 +788,16 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                       <Field label='优先级'>
                         <Select
                           value={form.watch('priority')}
+                          items={PRIORITY_OPTIONS}
                           onValueChange={(value) => form.setValue('priority', value ?? '5')}
                         >
                           <SelectTrigger size='sm' className='w-full'>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {Array.from({ length: 10 }, (_, i) => String(i + 1)).map((value) => (
-                              <SelectItem key={value} value={value}>
-                                {value}
+                            {PRIORITY_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -798,14 +846,18 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                   <Field label='设备类型' required error={errors.deviceType?.message}>
                     <Select
                       value={form.watch('deviceType')}
+                      items={PLAYBACK_DEVICE_TYPE_OPTIONS}
                       onValueChange={(value) => form.setValue('deviceType', value ?? '')}
                     >
                       <SelectTrigger size='sm' className='w-full'>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value='dry'>干声设备</SelectItem>
-                        <SelectItem value='noise'>噪声设备</SelectItem>
+                        {PLAYBACK_DEVICE_TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </Field>
@@ -824,6 +876,13 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                   <Field label='声压映射'>
                     <Select
                       value={form.watch('splMappingId')}
+                      items={[
+                        { value: '', label: '不使用声压映射' },
+                        ...splOptions.map((mapping) => ({
+                          value: String(mapping.id),
+                          label: `${mapping.name}（${mapping.calibrationStatus === 'calibrated' ? '已校准' : '未校准'}）`,
+                        })),
+                      ]}
                       onValueChange={(value) => form.setValue('splMappingId', value ?? '')}
                     >
                       <SelectTrigger size='sm' className='w-full'>
@@ -859,15 +918,16 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                   <Field label='协议' required error={errors.protocol?.message}>
                     <Select
                       value={form.watch('protocol')}
+                      items={PROTOCOL_SELECT_OPTIONS}
                       onValueChange={(value) => form.setValue('protocol', value ?? '')}
                     >
                       <SelectTrigger size='sm' className='w-full'>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {PROTOCOL_OPTIONS.map((value) => (
-                          <SelectItem key={value} value={value}>
-                            {value.toUpperCase()}
+                        {PROTOCOL_SELECT_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -876,6 +936,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                   <Field label='环境'>
                     <Select
                       value={form.watch('environment')}
+                      items={ENV_OPTIONS}
                       onValueChange={(value) => form.setValue('environment', value ?? '')}
                     >
                       <SelectTrigger size='sm' className='w-full'>
@@ -894,6 +955,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                   <Field label='代理类型'>
                     <Select
                       value={form.watch('proxyType') ?? ''}
+                      items={PROXY_TYPE_OPTIONS}
                       onValueChange={(value) => form.setValue('proxyType', value ?? '')}
                     >
                       <SelectTrigger size='sm' className='w-full'>
@@ -922,6 +984,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                   <Field label='关联算法' required error={errors.algorithmType?.message}>
                     <Select
                       value={form.watch('algorithmType')}
+                      items={algorithmOptions}
                       onValueChange={(value) => form.setValue('algorithmType', value ?? '')}
                       disabled={!canReadAlgorithm}
                     >

@@ -491,6 +491,10 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
               <span className='flex items-center gap-1.5 py-0.5'>
                 <Select
                   value={memberAdd[group.id] ?? ''}
+                  items={props.testDevices.map((device) => ({
+                    value: String(device.id),
+                    label: `${device.name}（#${device.id}）`,
+                  }))}
                   onValueChange={(value) => {
                     const deviceId = Number(value)
                     if (deviceId) void addMember(group.id, deviceId)
@@ -559,6 +563,10 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
                     render={
                       <Select
                         value={groupType}
+                        items={[
+                          { value: 'test', label: '测试设备组' },
+                          { value: 'playback', label: '播放设备组' },
+                        ]}
                         onValueChange={(value) => setGroupType(value as DeviceGroupType)}
                       >
                         <SelectTrigger id='group-type' size='sm' className='w-full'>

@@ -84,7 +84,14 @@ export function AssociateSplDialog({
         <div className='flex flex-col gap-2'>
           <div className='flex items-center gap-2'>
             <AudioLines aria-hidden='true' className='text-muted-foreground size-4 shrink-0' />
-            <Select value={mappingId} onValueChange={(value) => { setMappingId(value ?? ''); setError(null) }}>
+            <Select
+              value={mappingId}
+              items={splOptions.map((mapping) => ({
+                value: String(mapping.id),
+                label: `${mapping.name}（${mapping.calibrationStatus === 'calibrated' ? '已校准' : '未校准'}）`,
+              }))}
+              onValueChange={(value) => { setMappingId(value ?? ''); setError(null) }}
+            >
               <SelectTrigger
                 size='sm'
                 className={cn('w-full', error && 'border-destructive')}
