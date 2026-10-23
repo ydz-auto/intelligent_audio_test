@@ -50,7 +50,6 @@ import { AudioPreviewDialog } from '@/features/audio-import/components/modals/au
 import { AudioMetadataDialog } from '@/features/audio-import/components/modals/audio-metadata-dialog'
 import { AudioConvertDialog } from '@/features/audio-import/components/modals/audio-convert-dialog'
 import { AudioFeatureAnalysisDialog } from '@/features/audio-import/components/modals/audio-feature-analysis-dialog'
-import { AudioPlaybackHistoryDialog } from '@/features/audio-import/components/modals/audio-playback-history-dialog'
 import { AudioBatchTagsDialog } from '@/features/audio-import/components/modals/audio-batch-tags-dialog'
 import { AudioBatchOperationDialog } from '@/features/audio-import/components/modals/audio-batch-operation-dialog'
 import type { AudioAsset } from '@/domain/models/audio'
@@ -328,8 +327,6 @@ export function AudioImportPage() {
     onConvert: (audio: AudioAsset) => setRowDialog({ kind: 'convert', audioId: audio.id }),
     onFeatureAnalysis: (audio: AudioAsset) =>
       setRowDialog({ kind: 'feature-analysis', audioId: audio.id }),
-    onPlaybackHistory: (audio: AudioAsset) =>
-      setRowDialog({ kind: 'playback-history', audioId: audio.id }),
     onDelete: (audio: AudioAsset) => setDeleteTarget(audio),
   }
 
@@ -555,11 +552,6 @@ export function AudioImportPage() {
       />
       <AudioFeatureAnalysisDialog
         open={rowDialog?.kind === 'feature-analysis'}
-        onOpenChange={(open) => !open && setRowDialog(null)}
-        audio={currentRowAudio}
-      />
-      <AudioPlaybackHistoryDialog
-        open={rowDialog?.kind === 'playback-history'}
         onOpenChange={(open) => !open && setRowDialog(null)}
         audio={currentRowAudio}
       />

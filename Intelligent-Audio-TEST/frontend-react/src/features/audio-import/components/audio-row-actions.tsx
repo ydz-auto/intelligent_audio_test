@@ -1,12 +1,11 @@
 /**
  * 音频行操作菜单（§5.3.1；DataTableRowActionMenu 对位，w-48 align='end'）。
- * 预览/详情/下载/转换格式/特征分析·质量评估/播放历史/删除——按 audio:* 权限逐项显隐
- * （§8.3：algo_engineer 只读，仅预览/详情/下载/特征分析/播放历史；删除 audio:delete、
+ * 预览/详情/下载/转换格式/特征分析·质量评估/删除——按 audio:* 权限逐项显隐
+ * （§8.3：algo_engineer 只读，仅预览/详情/下载/特征分析；删除 audio:delete、
  * 转换 audio:convert、编辑元数据 audio:update）。
  */
 import {
   AudioLines,
-  Clock3,
   Download,
   Eye,
   MoreHorizontal,
@@ -34,7 +33,6 @@ export type AudioRowActionsProps = {
   onDownload: () => void
   onConvert: () => void
   onFeatureAnalysis: () => void
-  onPlaybackHistory: () => void
   onDelete: () => void
 }
 
@@ -76,10 +74,6 @@ export function AudioRowActions(props: AudioRowActionsProps) {
         <DropdownMenuItem onClick={props.onFeatureAnalysis}>
           <AudioLines aria-hidden='true' />
           特征分析·质量评估
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={props.onPlaybackHistory}>
-          <Clock3 aria-hidden='true' />
-          播放历史
         </DropdownMenuItem>
         {props.canDelete && (
           <>
