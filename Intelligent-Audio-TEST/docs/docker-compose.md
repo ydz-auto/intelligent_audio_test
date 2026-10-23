@@ -110,7 +110,35 @@ python docker/run_stack.py down -v --yes
   （Linux 容器无宿主 USB 栈）。容器形态覆盖设备管理面全链路（CRUD/状态/
   告警）；E2E 物理链（真机放音/采集）验收时该服务可保留宿主形态例外
   （INT-272 卡面已论证，成员保留裁定权）。
+  - **2026-10-23 实测（Windows + Docker Desktop/WSL2）**：usbipd-win
+    5.3.0 经 `bind --force` + `attach --wsl` 已打通「宿主 USB → WSL2 VM →
+    Docker 容器」链路，容器内可见 `/dev/bus/usb` 设备节点（一次性容器
+    `--device /dev/bus/usb:/dev/bus/usb` 验证通过）。仍有两个缺口：
+    ① 运行栈必须以 `devices: /dev/bus/usb:/dev/bus/usb` 启动（主 compose
+    已带，run 隔离 override 栈缺此映射）；② 统一镜像仅装 adb、缺 hdc
+    二进制（`Dockerfile.service` 运行阶段只装 adb），鸿蒙链路
+    （harmony_driver 调 `hdc`）容器内不可用——需补 Linux 版 hdc 进
+    device_service 镜像，或鸿蒙真机链路保留宿主形态。
 - **mock_services**（INT-137/182）：仅联调/验收用、默认关闭，不进生产编排。
   需要时宿主形态直起（脚本自带 CLI，独立可运行）或按需补 profile。
+- **audio_service 物理放音链路**（2026-10-23 补记，此前文档盲区）：
+  PyAudio/PortAudio 驱动需真实声卡（RME Fireface 802/UCX II 等专业 USB
+  声卡）+ Windows COM/WASAPI（`audio_driver.py` 调 `ctypes.windll.ole32.
+  CoInitializeEx`）。WSL2 VM 无音频栈（`/dev/snd` 为空，usbipd 无法转发
+  音频类设备），容器内 PyAudio 拿不到宿主声卡——仅能起降级形态（混音/
+  渲染链可用，物理放音不可用，CI 由 `tests/fixtures/pyaudio_shim` 兜底）。
+  与 device_service 同理，物理放音验收时该服务保留宿主形态例外；容器化
+  需 Linux 宿主 + ALSA/PulseAudio 直通才成立。
+- **混合部署形态（2026-10-23 全仓排查）**：物理世界依赖只有两个——
+  device_service（adb/hdc/USB/串口/hypium）与 audio_service（声卡/
+  WASAPI）必须宿主；其余业务服务（api_gateway/task/evaluation/report/
+  algorithm/auth/api_test/frontend）与基础设施（postgres/redis/rustfs）
+  全容器化已闭环。e2e_test_service 零硬件调用（设备操作 gRPC 委托
+  device_service），纯容器可跑，真机 E2E 时经 `DEVICE_SERVICE_HOST`/
+  `AUDIO_SERVICE_HOST` 指向宿主实例（host.docker.internal）；compose 里
+  给 e2e 挂 `/dev/bus/usb` 属冗余防御。transfer_agent 未纳入 compose
+  编排（B 区实例需跨区网络部署），属编排缺口而非技术不可行。mock
+  四件套（mock_dut/mock_realtime/mock_eval/mock_third_party_eval）本就是
+  真硬件替身，iso 栈已示范容器化。
 - `run_all.py` 宿主形态仍可用（本地调试），但启动期不再清场；生产/验收形态
   一律 compose。
