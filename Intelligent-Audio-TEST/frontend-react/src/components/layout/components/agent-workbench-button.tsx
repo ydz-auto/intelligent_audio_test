@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 export function AgentWorkbenchButton() {
   const { hasPermission } = usePermissions()
   const open = useAgentWorkbench((s) => s.open)
+  const minimized = useAgentWorkbench((s) => s.minimized)
   const toggle = useAgentWorkbench((s) => s.toggle)
   const setOpen = useAgentWorkbench((s) => s.setOpen)
 
@@ -27,8 +28,10 @@ export function AgentWorkbenchButton() {
   if (!hasPermission('report:read')) return null
 
   const handleClick = () => {
-    // 从整页形态回到登录壳任意页面：浮窗已关闭时重新打开
-    if (!open) setOpen(true)
+    // 浮窗已最小化（右下角胶囊态）时点导航按钮：恢复浮窗，而非关闭整窗
+    // （setOpen(true) 会按 store 语义重置 minimized=false）；未打开则打开；
+    // 打开且未最小化才关闭。
+    if (!open || minimized) setOpen(true)
     else toggle()
   }
 
