@@ -22,6 +22,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import type { EvaluationCategory } from '@/domain/models/evaluationDimension'
 import { DEFAULT_CATEGORY_ICON } from '@/features/evaluation/constants'
+import { ApiError } from '@/infrastructure/api/api-error'
 
 const categorySchema = z.object({
   name: z.string().min(1, '分类名称不能为空'),
@@ -44,9 +45,11 @@ export function CategoryMutateDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   category: EvaluationCategory | null
-  onSave: (input: Partial<EvaluationCategory>, isNew: boolean) => void
+  /** 返回 Promise：失败时弹窗保持打开并就地展示错误（重名 400 等） */
+  onSave: (input: Partial<EvaluationCategory>, isNew: boolean) => Promise<void>
 }) {
   const [pending, setPending] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const isNew = !category
 
   const defaultValues = useMemo(() => {
@@ -67,15 +70,24 @@ export function CategoryMutateDialog({
   })
 
   useEffect(() => {
-    if (!open) form.reset(emptyValues())
+    if (!open) {
+      form.reset(emptyValues())
+      setSubmitError(null)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   const handleSave = form.handleSubmit(async (values) => {
     setPending(true)
+    setSubmitError(null)
     try {
-      onSave(values, isNew)
+      await onSave(values, isNew)
       onOpenChange(false)
+    } catch (error) {
+      // 保存失败（如分类名称已存在 400）：保留弹窗与已填内容，就地提示
+      setSubmitError(
+        error instanceof ApiError ? error.userMessage : '保存失败，请稍后重试'
+      )
     } finally {
       setPending(false)
     }
@@ -127,6 +139,11 @@ export function CategoryMutateDialog({
               {...form.register('icon')}
             />
           </div>
+          {submitError && (
+            <p className='text-destructive text-xs' role='alert'>
+              {submitError}
+            </p>
+          )}
         </form>
 
         <DialogFooter>

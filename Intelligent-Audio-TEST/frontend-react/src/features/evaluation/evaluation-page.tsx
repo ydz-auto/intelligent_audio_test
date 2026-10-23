@@ -23,6 +23,7 @@ import {
   useAlgorithmOptions,
   useTestHealth,
 } from '@/application/evaluation/use-dimensions'
+import { ApiError } from '@/infrastructure/api/api-error'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { PageFooterPortal } from '@/components/layout/components/page-footer'
@@ -520,10 +521,28 @@ export function EvaluationPage() {
 
   /* ───────── 分类 / 导入导出 ───────── */
 
-  const handleSaveCategory = (input: Partial<EvaluationCategory>, isNew: boolean) => {
-    void categoryMutations.save
-      .mutateAsync(input)
-      .then(() => toast.success(isNew ? '分类添加成功' : '分类更新成功'))
+  // 编辑分类必须把当前分类 id 并入 input（saveEvaluationCategory 以 id 判定 PUT，
+  // 缺失即走 POST 新建 → 出现改名后的重复分类）；失败抛回弹窗，由弹窗保留内容并提示。
+  const handleSaveCategory = async (
+    input: Partial<EvaluationCategory>,
+    isNew: boolean
+  ) => {
+    const editingId = categoryDialog.category?.id
+    try {
+      await categoryMutations.save.mutateAsync(
+        editingId != null ? { ...input, id: editingId } : input
+      )
+      toast.success(isNew ? '分类添加成功' : '分类更新成功')
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError
+          ? error.userMessage
+          : isNew
+            ? '分类添加失败'
+            : '分类更新失败'
+      )
+      throw error
+    }
   }
 
   const handleExport = (format: 'json' | 'excel') => {
