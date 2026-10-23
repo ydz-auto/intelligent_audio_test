@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { Dimension } from '@/domain/models/evaluationDimension'
 import {
+  dimensionFormSchema,
   emptyDimensionFormValues,
   toDimensionFormValues,
   toDimensionSaveInput,
@@ -251,3 +252,32 @@ describe('toDimensionSaveInput', () => {
   })
 })
 
+describe('dimensionFormSchema 结果区间校验（INT-1551）', () => {
+  it('结果最小值 ≥ 结果最大值时在 resultMax 上给出中文错误', () => {
+    const values = { ...emptyDimensionFormValues(), name: '接线测试_区间' }
+    values.resultMin = 100
+    values.resultMax = 50
+    const result = dimensionFormSchema.safeParse(values)
+    expect(result.success).toBe(false)
+    if (result.success) return
+    const issue = result.error.issues.find((i) => i.path[0] === 'resultMax')
+    expect(issue?.message).toBe('结果最大值必须大于最小值')
+  })
+
+  it('清空数值输入（NaN）给出中文文案而非 zod 默认英文', () => {
+    const values = { ...emptyDimensionFormValues(), name: '接线测试_区间' }
+    values.resultMin = Number.NaN
+    const result = dimensionFormSchema.safeParse(values)
+    expect(result.success).toBe(false)
+    if (result.success) return
+    const issue = result.error.issues.find((i) => i.path[0] === 'resultMin')
+    expect(issue?.message).toBe('结果最小值请输入数字')
+  })
+
+  it('区间合法时整表通过校验', () => {
+    const values = { ...emptyDimensionFormValues(), name: '接线测试_区间' }
+    values.resultMin = 0
+    values.resultMax = 100
+    expect(dimensionFormSchema.safeParse(values).success).toBe(true)
+  })
+})

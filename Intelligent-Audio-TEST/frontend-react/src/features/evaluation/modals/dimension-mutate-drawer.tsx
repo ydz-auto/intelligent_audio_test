@@ -42,6 +42,60 @@ import { ResultSection } from '@/features/evaluation/mutate/result-section'
 import { ApiSection } from '@/features/evaluation/mutate/api-section'
 import { AlgorithmSection } from '@/features/evaluation/mutate/algorithm-section'
 
+/** 表单顶层字段 → 所属分节（错误摘要前缀，便于定位到对应 Tab；INT-1551） */
+const FIELD_SECTION_LABELS: Record<string, string> = {
+  name: '基本信息',
+  description: '基本信息',
+  evaluationType: '基本信息',
+  categoryId: '基本信息',
+  status: '基本信息',
+  keywords: '基本信息',
+  scoreUnit: '基本信息',
+  dimensionType: '层级配置',
+  parentDimensionId: '层级配置',
+  resultType: '结果配置',
+  resultMin: '结果配置',
+  resultMax: '结果配置',
+  decimalPlaces: '结果配置',
+  weight: '结果配置',
+  estimatedExecTime: '结果配置',
+  rule: '结果配置',
+  llmModel: '结果配置',
+  llmPromptTemplate: '结果配置',
+  llmMaxTokens: '结果配置',
+  llmTemperature: '结果配置',
+  apiUrl: 'API配置',
+  apiMethod: 'API配置',
+  apiTimeout: 'API配置',
+  apiHeaders: 'API配置',
+  apiBodyTemplate: 'API配置',
+  statisticMethod: 'API配置',
+  aggDenominator: 'API配置',
+  excludeRounds: 'API配置',
+  requiredInputs: 'API配置',
+  outputFields: 'API配置',
+  apiEndpoints: 'API配置',
+  associatedAlgorithms: '关联算法',
+}
+
+/** 校验错误摘要最多展示条数（超出后收尾为「等 N 处」） */
+const VALIDATION_SUMMARY_MAX = 3
+
+/** 校验问题 → 一行「分节：文案」摘要（去重、限条数；INT-1551） */
+function summarizeValidationIssues(
+  issues: ReadonlyArray<{ path: readonly PropertyKey[]; message: string }>
+): string {
+  const messages: string[] = []
+  for (const issue of issues) {
+    const section = FIELD_SECTION_LABELS[String(issue.path[0] ?? '')]
+    const text = section ? `${section}：${issue.message}` : issue.message
+    if (!messages.includes(text)) messages.push(text)
+  }
+  return messages.length > VALIDATION_SUMMARY_MAX
+    ? `${messages.slice(0, VALIDATION_SUMMARY_MAX).join('；')} 等 ${messages.length} 处`
+    : messages.join('；')
+}
+
 export function DimensionMutateDrawer({
   open,
   onOpenChange,
@@ -101,6 +155,9 @@ export function DimensionMutateDrawer({
   }, [open, mode, effectiveDimension, presetParentId, presetCategoryId])
 
   const form = useForm<DimensionFormValues>({
+    // mode:'onChange'：字段错误随输入即时显示（INT-1551：默认 onSubmit 下 errors 不产出，
+    // 与「!isValid 禁用保存」叠加成无原因禁用死路）
+    mode: 'onChange',
     resolver: zodResolver(dimensionFormSchema),
     defaultValues: emptyDimensionFormValues(),
     values: defaultValues,
@@ -159,6 +216,14 @@ export function DimensionMutateDrawer({
   }
 
   const isSub = form.watch('dimensionType') === 'sub'
+  // INT-1551：保存按钮的可用性与「为什么不能保存」同源——直接对当前表单值跑 schema，
+  // 不依赖 RHF 提交后才产出的 errors（onSubmit 模式下 min≥max 这类跨字段校验不可见，
+  // 与 !isValid 禁用叠加会形成无提示的禁用死路）。
+  const validation = dimensionFormSchema.safeParse(form.watch())
+  const isFormValid = validation.success
+  const validationSummary = validation.success
+    ? ''
+    : summarizeValidationIssues(validation.error.issues)
   const tabs = isSub
     ? ['basic', 'hierarchy', 'result']
     : ['basic', 'hierarchy', 'result', 'api', 'algorithm']
@@ -224,22 +289,32 @@ export function DimensionMutateDrawer({
         </form>
 
         <SheetFooter className='border-t px-4 py-3'>
-          <div className='flex items-center justify-end gap-2'>
-            <Button
-              variant='outline'
-              type='button'
-              disabled={save.isPending}
-              onClick={() => handleOpenChange(false)}
-            >
-              取消
-            </Button>
-            <Button
-              type='submit'
-              form='dimension-mutate-form'
-              disabled={save.isPending || !form.formState.isValid || !canManage}
-            >
-              {save.isPending ? '保存中…' : '保存'}
-            </Button>
+          <div className='flex w-full items-center justify-between gap-3'>
+            {!isFormValid && (
+              <p
+                className='text-muted-foreground min-w-0 text-xs'
+                data-testid='dimension-form-validation-summary'
+              >
+                请先修正：{validationSummary}
+              </p>
+            )}
+            <div className='ml-auto flex shrink-0 items-center gap-2'>
+              <Button
+                variant='outline'
+                type='button'
+                disabled={save.isPending}
+                onClick={() => handleOpenChange(false)}
+              >
+                取消
+              </Button>
+              <Button
+                type='submit'
+                form='dimension-mutate-form'
+                disabled={save.isPending || !isFormValid || !canManage}
+              >
+                {save.isPending ? '保存中…' : '保存'}
+              </Button>
+            </div>
           </div>
         </SheetFooter>
       </SheetContent>

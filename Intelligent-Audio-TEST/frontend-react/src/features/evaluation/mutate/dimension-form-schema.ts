@@ -126,8 +126,10 @@ export const dimensionFormSchema = z
     keywords: z.string(),
     scoreUnit: z.string(),
     resultType: z.enum(['0', '1', '2', '3', 'llm_judge']),
-    resultMin: z.number(),
-    resultMax: z.number(),
+    // valueAsNumber 下清空输入得 NaN，默认文案是英文（Invalid input: expected number…）；
+    // 给中文文案，行内错误/页脚摘要才可读（INT-1551）
+    resultMin: z.number({ error: '结果最小值请输入数字' }),
+    resultMax: z.number({ error: '结果最大值请输入数字' }),
     decimalPlaces: z.number().min(0).max(4, '小数位数 0-4'),
     weight: z.number().min(WEIGHT_MIN).max(WEIGHT_MAX, '权重 1-10'),
     estimatedExecTime: z.number().min(1, '预计执行时间 ≥1 秒'),
