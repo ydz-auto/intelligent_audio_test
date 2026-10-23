@@ -5,6 +5,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 
+import { hasPermission } from '@/domain/models/user'
 import {
   getSystemOptions,
   SYSTEM_OPTIONS_QUERY_KEY,
@@ -13,13 +14,17 @@ import { useAuthStore } from '@/infrastructure/stores/auth-store'
 
 export function useSystemOptions() {
   const user = useAuthStore((s) => s.user)
+  // INT-1225：/api/option/ 为 option:read 鉴权端点，公开页站头（匿名）也会挂载
+  // useNotifications → 本 hook——匿名不拉取（401 无意义且落控制台 SEVERE）。
+  // INT-1585：已登录但无 option:read（guest 等低权限角色）同样不发请求，
+  // 否则每次整页加载全局站头都会打出 403 SEVERE；消费方落到默认值/无权限态。
+  // 门禁只翻转 enabled，queryKey 恒定（避免缓存分裂）。'*' 由 hasPermission 统一处理。
+  const canReadOptions = hasPermission(user, 'option:read')
+
   return useQuery({
     queryKey: [...SYSTEM_OPTIONS_QUERY_KEY],
     queryFn: getSystemOptions,
     staleTime: 5 * 60_000,
-    // INT-1225：/api/option/ 为 option:read 鉴权端点，公开页站头（匿名）也会挂载
-    // useNotifications → 本 hook——匿名不拉取（401 无意义且落控制台 SEVERE），
-    // 公告/系统设置等登录态消费照常（user 就绪即触发）。
-    enabled: !!user,
+    enabled: canReadOptions,
   })
 }
