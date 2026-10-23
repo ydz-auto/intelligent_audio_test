@@ -6,10 +6,18 @@
 - _build_config_and_apply_dimensions：构建 config 字典并应用评估维度
 """
 import copy
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class CreationRoundConfigMixin:
     """轮次配置（rounds_config）解析与 config 构建职责"""
+
+    # 多轮整体评估口径的 round_scope 取值（与读侧 case_loader.OVERALL_ROUND_SCOPE、
+    # 网关 DimensionItem.round_scope 协议一致）；其余值（single / per_round / 未标注）
+    # 一律按逐轮口径处理
+    OVERALL_ROUND_SCOPE = 'multi'
 
     def _resolve_rounds_and_strip_params(self, tt, audio_id, audio, spl,
                                           effective_playback_device_id, rounds_config, algorithm_params,
@@ -170,7 +178,17 @@ class CreationRoundConfigMixin:
     def _build_config_and_apply_dimensions(self, audio, rounds_resolved, dimensions_data, tt,
                                             noise_spl, noise_audio_id, noise_device_ids=None,
                                             case_background_noise=None):
-        """构建 config 字典，应用噪声配置和评估维度"""
+        """构建 config 字典，应用噪声配置和评估维度
+
+        维度写侧规则（INT-1606 / INT-1607 评审裁定）：
+        - 任一轮自带 `evaluation.dimensions`（list，显式 [] 也算）→ 整体以载荷为准：
+          自带轮写「归一化 → test_type 过滤 → 去重保序」后的逐轮维度；未自带轮写 []；
+          顶层维度只保留 multi 口径（并入 `config.dimensions`），逐轮口径忽略并告警。
+        - 所有轮都未自带 → 顶层维度回填每一轮（改动前口径），multi 写 `config.dimensions`。
+        - 既无顶层有效维度也无轮自带 → 只给缺失维度的轮补 []。
+        轮内 `round_scope='multi'` 一律归并进 `config.dimensions` 并从轮内移除：E2E 整体
+        评估只认顶层 config.dimensions（finalization_mixin.py:84），仅留轮内会永不出整体分。
+        """
         config = {
             'source_audio': audio.name,
             'auto_generated': True,
@@ -186,44 +204,156 @@ class CreationRoundConfigMixin:
                 'device_ids': noise_device_ids or [],
                 'loop': True,
             }
-        if dimensions_data:
-            raw_dims = []
-            if isinstance(dimensions_data, dict):
-                raw_dims = dimensions_data.get('dimensions', [])
-            elif isinstance(dimensions_data, list):
-                raw_dims = dimensions_data
-            norm_dims = []
-            for d in raw_dims:
-                if isinstance(d, dict):
-                    norm_dims.append(d)
-                elif hasattr(d, 'model_dump'):
-                    norm_dims.append(d.model_dump(by_alias=False, exclude_none=True))
-                else:
-                    norm_dims.append({'id': d})
-            filtered_dims = [d for d in norm_dims if not d.get('test_type') or d.get('test_type') == tt]
-            seen_keys = set()
-            unique_dims = []
-            for d in filtered_dims:
-                dim_id = d.get('id')
-                scope = d.get('round_scope', 'single')
-                key = (dim_id, scope)
-                if dim_id and key not in seen_keys:
-                    seen_keys.add(key)
-                    unique_dims.append(d)
-            single_round_dims = [d for d in unique_dims if d.get('round_scope', 'single') == 'single']
-            multi_round_dims = [d for d in unique_dims if d.get('round_scope') == 'multi']
-            for round_item in rounds_resolved:
-                if isinstance(round_item, dict):
-                    if 'evaluation' not in round_item:
-                        round_item['evaluation'] = {}
-                    round_item['evaluation']['dimensions'] = single_round_dims
-            if multi_round_dims:
-                config['dimensions'] = multi_round_dims
+        top_dims = self._extract_top_level_dimensions(dimensions_data)
+        round_items = [r for r in rounds_resolved if isinstance(r, dict)]
+        if any(self._round_self_provides_dimensions(r) for r in round_items):
+            # R1：任一轮自带维度 → 整体以载荷为准，不拿顶层维度回填未自带轮
+            self._apply_payload_round_dimensions(round_items, top_dims, tt, config, audio)
+        elif top_dims is not None:
+            # R2：所有轮都未自带 → 顶层维度回填每一轮（旧调用方行为零变化）
+            self._apply_top_level_dimensions(round_items, top_dims, tt, config)
         else:
-            for round_item in rounds_resolved:
-                if isinstance(round_item, dict):
-                    if 'evaluation' not in round_item:
-                        round_item['evaluation'] = {}
-                    if 'dimensions' not in round_item['evaluation']:
-                        round_item['evaluation']['dimensions'] = []
+            # R4：无顶层维度且无轮自带 → 维持现状，只给缺失轮补 []
+            self._ensure_round_dimension_placeholders(round_items)
         return config
+
+    # ==== 评估维度写侧辅助（INT-1606 R1~R6） ====
+
+    @staticmethod
+    def _extract_top_level_dimensions(dimensions_data):
+        """顶层维度载荷解析：只有解析结果是 list 且非空才有效。
+
+        `{'dimensions': []}` 是真值 dict，不能按 truthiness 判为「有顶层维度」，
+        否则会把未自带维度的轮覆盖成空（INT-1607 评审 S6）。
+        """
+        if isinstance(dimensions_data, dict):
+            raw_dims = dimensions_data.get('dimensions')
+        elif isinstance(dimensions_data, list):
+            raw_dims = dimensions_data
+        else:
+            raw_dims = None
+        if not isinstance(raw_dims, list) or not raw_dims:
+            return None
+        return raw_dims
+
+    @staticmethod
+    def _normalize_dimension(dim):
+        """维度条目归一：dict 原样，裸 id（int）包装成 {'id': n}，其它形态跳过。"""
+        if isinstance(dim, dict):
+            return dim
+        if hasattr(dim, 'model_dump'):
+            return dim.model_dump(by_alias=False, exclude_none=True)
+        if isinstance(dim, int):
+            return {'id': dim}
+        return None
+
+    def _normalize_dimensions(self, raw_dims):
+        """归一化维度列表，跳过无法识别的条目（不抛异常）。"""
+        normalized = []
+        for d in raw_dims or []:
+            item = self._normalize_dimension(d)
+            if item is not None:
+                normalized.append(item)
+        return normalized
+
+    @staticmethod
+    def _filter_dimension_by_test_type(dims, tt):
+        """按用例类型过滤：未标注 test_type 的条目对两类用例都生效。"""
+        return [d for d in dims if not d.get('test_type') or d.get('test_type') == tt]
+
+    @classmethod
+    def _is_overall_scope_dimension(cls, dim):
+        """维度条目是否为多轮整体评估口径（round_scope=multi）。
+
+        逐轮集合 = round_scope != 'multi'（per_round / 未标注同属逐轮，与读侧
+        case_loader._merge_dimensions_config 对齐，评审 S7）。
+        """
+        return isinstance(dim, dict) and dim.get('round_scope') == cls.OVERALL_ROUND_SCOPE
+
+    @staticmethod
+    def _dedupe_dimensions(dims):
+        """按 (id, round_scope) 去重保序，id 为真值才保留。"""
+        seen_keys = set()
+        unique_dims = []
+        for d in dims:
+            dim_id = d.get('id')
+            key = (dim_id, d.get('round_scope', 'single'))
+            if dim_id and key not in seen_keys:
+                seen_keys.add(key)
+                unique_dims.append(d)
+        return unique_dims
+
+    @staticmethod
+    def _round_self_provides_dimensions(round_item):
+        """该轮是否自带评估维度。
+
+        `evaluation` 为 dict 且含 `dimensions` 键、值为 list 才算自带（显式 `[]` 算自带）；
+        判定在任何 test_type 过滤之前（评审 S5）。
+        """
+        if not isinstance(round_item, dict):
+            return False
+        evaluation = round_item.get('evaluation')
+        return (isinstance(evaluation, dict)
+                and 'dimensions' in evaluation
+                and isinstance(evaluation['dimensions'], list))
+
+    def _resolve_round_dimensions(self, raw_dims, tt):
+        """轮内维度：归一化 → test_type 过滤 → 去重保序，再分逐轮 / 整体两桶。"""
+        dims = self._dedupe_dimensions(
+            self._filter_dimension_by_test_type(self._normalize_dimensions(raw_dims), tt))
+        round_scoped = [d for d in dims if not self._is_overall_scope_dimension(d)]
+        overall_scoped = [d for d in dims if self._is_overall_scope_dimension(d)]
+        return round_scoped, overall_scoped
+
+    def _apply_payload_round_dimensions(self, round_items, top_dims, tt, config, audio):
+        """R1：整体以载荷为准写入各轮维度，并按 R3 归并整体维度。"""
+        top_normalized = self._dedupe_dimensions(self._normalize_dimensions(top_dims))
+        ignored_top_dims = [d for d in top_normalized
+                            if not self._is_overall_scope_dimension(d)]
+        overall_dims = self._filter_dimension_by_test_type(
+            [d for d in top_normalized if self._is_overall_scope_dimension(d)], tt)
+        if ignored_top_dims:
+            logger.warning(
+                "上传生成用例时轮内已自带评估维度，忽略顶层逐轮维度: audio=%s, audio_id=%s, "
+                "test_type=%s, ignored_dim_ids=%s",
+                getattr(audio, 'name', None), getattr(audio, 'id', None), tt,
+                [d.get('id') for d in ignored_top_dims],
+            )
+        for round_item in round_items:
+            if not self._round_self_provides_dimensions(round_item):
+                # 未自带轮写空，不用顶层回填（评审 S1）；evaluation 非 dict（如 null）先归一为 {}
+                if not isinstance(round_item.get('evaluation'), dict):
+                    round_item['evaluation'] = {}
+                round_item['evaluation']['dimensions'] = []
+                continue
+            round_scoped, round_overall = self._resolve_round_dimensions(
+                round_item['evaluation']['dimensions'], tt)
+            round_item['evaluation']['dimensions'] = list(round_scoped)
+            overall_dims.extend(round_overall)
+        overall_dims = self._dedupe_dimensions(overall_dims)
+        if overall_dims:
+            config['dimensions'] = overall_dims
+
+    def _apply_top_level_dimensions(self, round_items, top_dims, tt, config):
+        """R2：所有轮都未自带维度时，顶层维度回填每一轮（改动前口径）。"""
+        dims = self._dedupe_dimensions(
+            self._filter_dimension_by_test_type(self._normalize_dimensions(top_dims), tt))
+        round_scoped = [d for d in dims if not self._is_overall_scope_dimension(d)]
+        overall_scoped = [d for d in dims if self._is_overall_scope_dimension(d)]
+        for round_item in round_items:
+            if not isinstance(round_item.get('evaluation'), dict):
+                round_item['evaluation'] = {}
+            # 每轮独立 list 拷贝，避免各轮共享同一引用
+            round_item['evaluation']['dimensions'] = list(round_scoped)
+        if overall_scoped:
+            config['dimensions'] = list(overall_scoped)
+
+    @staticmethod
+    def _ensure_round_dimension_placeholders(round_items):
+        """R4：无维度可写时，只给缺失维度的轮补 []，不覆盖已有配置。"""
+        for round_item in round_items:
+            if not isinstance(round_item.get('evaluation'), dict):
+                round_item['evaluation'] = {}
+            if 'dimensions' not in round_item['evaluation']:
+                round_item['evaluation']['dimensions'] = []
+
