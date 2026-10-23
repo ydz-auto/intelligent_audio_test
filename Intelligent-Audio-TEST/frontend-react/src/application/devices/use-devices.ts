@@ -79,7 +79,7 @@ export function useApiDevices() {
   })
 }
 
-/** 实验室列表（§6.26；GET /laboratories——INT-487 后端待立项，mock 先行） */
+/** 实验室列表（§6.26；GET /laboratories——INT-655 真实端点） */
 export function useLaboratories() {
   return useQuery({
     queryKey: ['devices', 'labs'],
@@ -201,7 +201,16 @@ export function useDeviceMutations() {
   })
 
   const control = useMutation({
-    mutationFn: ({ id, action }: { id: number; action: string }) => controlDevice(id, action),
+    mutationFn: ({
+      id,
+      action,
+      params,
+    }: {
+      id: number
+      action: string
+      /** P2-2：操作参数（install_app: file_path/package_name；uninstall_app: package_name） */
+      params?: Record<string, unknown>
+    }) => controlDevice(id, action, params),
   })
 
   /** 「测试中」占用态本地瞬时态兜底（INT-487：置/清 occupied + 列表失效刷新） */
@@ -330,7 +339,7 @@ export function useAlarmRuleMutations() {
   return { save, remove }
 }
 
-/** 实验室 CRUD（§6.26；INT-487 后端待立项，mock 先行） */
+/** 实验室 CRUD（§6.26；INT-655 /laboratories 真实端点，成功失效列表重拉） */
 export function useLaboratoryMutations() {
   const queryClient = useQueryClient()
 

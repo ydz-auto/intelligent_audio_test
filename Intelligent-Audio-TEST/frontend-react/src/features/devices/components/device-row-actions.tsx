@@ -225,10 +225,9 @@ export function DeviceRowActions(props: DeviceRowActionsProps) {
         )}
 
         {props.canDelete && (
+          /* P2-3：删除属元数据操作，不受离线状态限制（V9.7.10 无在线前置，INT-1217 编辑同口径） */
           <DropdownMenuItem
             variant='destructive'
-            disabled={isOffline}
-            title={isOffline ? offlineTooltip : undefined}
             onClick={props.onDelete}
           >
             删除

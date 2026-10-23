@@ -7,9 +7,8 @@
  * 列表端点统一 PaginatedData { items,total,page,per_page,pages }：本页全量拉取
  * （per_page=1000，对照 Vue BATCH_LIST_PARAMS.defaultBatchPageSize），
  * 筛选/分页由 feature 层前端完成（接线前 mock 同口径）。
- * INT-487 待后端：laboratories CRUD 无端点（§11-24，mock 先行 + FEAT 证据）、
- * lab_id/lab_name/occupied 后端 DTO 未暴露（§11-25/26）——occupied 以本地瞬时
- * 覆盖兜底（见 setDeviceOccupied），lab 字段落地后接线不返工。
+ * 实验室 CRUD 走 INT-655 真实端点 /laboratories（laboratory_bp.py 实测契约）；
+ * occupied 后端 DTO 未暴露（§11-26）——以本地瞬时覆盖兜底（见 setDeviceOccupied）。
  */
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
@@ -28,6 +27,7 @@ import type { TestDeviceItemDto } from '@/infrastructure/dto/test-device.dto'
 import type { PlaybackDeviceItemDto } from '@/infrastructure/dto/playback-device.dto'
 import type { ApiItemDto } from '@/infrastructure/dto/apis.dto'
 import type { DeviceGroupItemDto } from '@/infrastructure/dto/device-group.dto'
+import type { LaboratoryDto } from '@/infrastructure/dto/laboratory.dto'
 import type {
   AlarmDto,
   AlarmRuleDto,
@@ -39,12 +39,12 @@ import { playbackDeviceFromDto } from '@/infrastructure/adapters/playbackDeviceA
 import { apiDeviceFromDto } from '@/infrastructure/adapters/apiDeviceAdapter'
 import { extractEndpointApiKeys } from '@/infrastructure/adapters/api-keys'
 import { deviceGroupFromDto, deviceGroupsToTree } from '@/infrastructure/adapters/deviceGroupAdapter'
+import { laboratoryFromDto } from '@/infrastructure/adapters/laboratoryAdapter'
 import {
   alarmFromDto,
   alarmRuleFromDto,
   statusEventFromDto,
 } from '@/infrastructure/adapters/alarmAdapter'
-import { MOCK_LABORATORIES } from '../mock/devices-mock'
 
 /** 后端统一分页信封（api_gateway/schemas/common.py PaginatedData） */
 interface PaginatedDto<T> {
@@ -135,9 +135,12 @@ export async function fetchApiDevices(options: ApiRequestOptions = {}): Promise<
   return applyOccupied('api', (dto?.items ?? []).map(apiDeviceFromDto))
 }
 
-/** 实验室列表（§6.26；GET /laboratories——INT-487 后端 CRUD 未立项，mock 先行） */
-export async function fetchLaboratories(): Promise<Laboratory[]> {
-  return [...MOCK_LABORATORIES]
+/** 实验室列表（§6.26；GET /laboratories——INT-655 真实端点，全量拉取前端分页） */
+export async function fetchLaboratories(options: ApiRequestOptions = {}): Promise<Laboratory[]> {
+  const dto = await request<PaginatedDto<LaboratoryDto>>(
+    'GET', '/laboratories', undefined, { ...options, params: LIST_ALL_PARAMS }
+  )
+  return (dto?.items ?? []).map(laboratoryFromDto)
 }
 
 /** 设备分组列表（§6.3；GET /test-devices/device-groups——INT-832 起每项含 parent_id，返回嵌套树） */
@@ -487,10 +490,13 @@ function controlActionToPath(action: string): string | null {
   }
 }
 
-/** 设备控制操作（§3.4.1；POST /test-devices/{id}/{action}；health_check 走批量端点） */
+/** 设备控制操作（§3.4.1；POST /test-devices/{id}/{action}；health_check 走批量端点）
+ *  P2-2：操作参数按 device_command_service.control 契约放 body.params
+ *  （install_app: {file_path, package_name}；uninstall_app: {package_name}）。 */
 export async function controlDevice(
   id: number,
   action: string,
+  params: Record<string, unknown> = {},
   options: ApiRequestOptions = {}
 ): Promise<{ success: boolean; action?: string; id?: number }> {
   if (action === 'health_check') {
@@ -507,7 +513,8 @@ export async function controlDevice(
     // 无 Vue 对位/未立项 → 本地幂等成功，不产生真实调用）
     return { success: true, action, id }
   }
-  await request('POST', `/test-devices/${id}/${path}`, undefined, options)
+  const body = Object.keys(params).length > 0 ? { params } : undefined
+  await request('POST', `/test-devices/${id}/${path}`, body, options)
   return { success: true, action, id }
 }
 
@@ -598,48 +605,51 @@ export async function deleteAlarmRule(
   return deleteGuard(() => request('DELETE', `/test-devices/alarm-rules/${id}`, undefined, options))
 }
 
-/* ==================== 实验室（§6.26；INT-487 后端 /laboratories CRUD 未立项，mock 先行） ==================== */
+/* ==================== 实验室（§6.26；INT-655 laboratory_bp.py /laboratories 真实契约） ==================== */
 
-let laboratoryStore: Laboratory[] = [...MOCK_LABORATORIES]
-let nextLabId = 100
+/** 实验室可写字段（LaboratoryCreateSchema/LaboratoryUpdateSchema 字段集，camelCase → snake_case） */
+type LaboratoryUpsertInput = Partial<
+  Omit<
+    Laboratory,
+    'id' | 'createdAt' | 'updatedAt' | 'deviceCount' | 'playbackDeviceCount' | 'testCaseCount'
+  >
+>
 
-function now(): string {
-  return new Date().toISOString()
-}
-
-/** 新建实验室（§6.26；POST /laboratories——INT-487 后端待立项，mock 先行） */
-export async function createLaboratory(
-  input: Omit<Laboratory, 'id' | 'createdAt' | 'updatedAt' | 'deviceCount' | 'playbackDeviceCount' | 'testCaseCount'>
-): Promise<{ success: boolean }> {
-  const lab: Laboratory = {
-    ...input,
-    id: nextLabId++,
-    deviceCount: 0,
-    playbackDeviceCount: 0,
-    testCaseCount: 0,
-    createdAt: now(),
-    updatedAt: now(),
+function toLaboratoryUpsertDto(data: LaboratoryUpsertInput): Record<string, unknown> {
+  const dto: Record<string, unknown> = {}
+  const pick = <K extends keyof LaboratoryUpsertInput>(key: K, snake: string) => {
+    const value = data[key]
+    if (value !== undefined) dto[snake] = value
   }
-  laboratoryStore = [lab, ...laboratoryStore]
+  pick('code', 'code')
+  pick('name', 'name')
+  pick('building', 'building')
+  pick('floor', 'floor')
+  pick('roomNumber', 'room_number')
+  pick('description', 'description')
+  pick('status', 'status')
+  return dto
+}
+
+/** 新建实验室（§6.26；POST /laboratories——201 + data.id；code 冲突 409） */
+export async function createLaboratory(
+  input: LaboratoryUpsertInput
+): Promise<{ success: boolean }> {
+  await request('POST', '/laboratories', toLaboratoryUpsertDto(input))
   return { success: true }
 }
 
-/** 删除实验室（§6.26；DELETE /laboratories/{id}——INT-487 后端待立项，mock 先行） */
+/** 删除实验室（§6.26；DELETE /laboratories/{id}——关联资源非空时后端 409，文案经 deleteGuard 透出） */
 export async function deleteLaboratory(id: number): Promise<{ success: boolean; message?: string }> {
-  laboratoryStore = laboratoryStore.filter((l) => l.id !== id)
-  return { success: true }
+  return deleteGuard(() => request('DELETE', `/laboratories/${id}`, undefined))
 }
 
-/** 编辑实验室（§6.26；PUT /laboratories/{id}——INT-487 后端待立项，mock 先行；P3-21 返修补「编辑」） */
+/** 编辑实验室（§6.26；PUT /laboratories/{id}——P3-21 返修补「编辑」） */
 export async function updateLaboratory(
   id: number,
-  patch: Partial<
-    Omit<Laboratory, 'id' | 'createdAt' | 'updatedAt' | 'deviceCount' | 'playbackDeviceCount' | 'testCaseCount'>
-  >
+  patch: LaboratoryUpsertInput
 ): Promise<{ success: boolean }> {
-  laboratoryStore = laboratoryStore.map((l) =>
-    l.id === id ? { ...l, ...patch, updatedAt: now() } : l
-  )
+  await request('PUT', `/laboratories/${id}`, toLaboratoryUpsertDto(patch))
   return { success: true }
 }
 

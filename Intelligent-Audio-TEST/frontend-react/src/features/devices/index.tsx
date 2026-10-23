@@ -5,7 +5,7 @@
  * 监控告警面板（仅测试页签，开关②）→ 筛选工具栏 → 统计徽章行 → 页签表格 → 批量浮条）+
  * Footer 分页 Portal。
  * 弹窗群（§6）：新增/编辑抽屉（随页签三分叉）、详情、扫描、分组管理、告警规则、实验室管理
- * （入口禁用 INT-487）、关联声压映射、删除/批量确认。
+ * （INT-655 真实 /laboratories CRUD）、关联声压映射、删除/批量确认。
  * mock 数据对齐 api_gateway/schemas（device.py/playback.py/api.py + INT-487 lab/occupied 补口）；
  * 不接后端。全局算法联动（§2.2）：算法过滤走全局切换器（chip 只读 + ×），本页不重复筛选器。
  */
@@ -27,6 +27,7 @@ import { PageFooterPortal } from '@/components/layout/components/page-footer'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { ApiError } from '@/infrastructure/api/api-error'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import {
@@ -366,9 +367,9 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
 
   /* ───────── 行操作分派 ───────── */
 
-  /** P2-3 返修：行级控制透传 device.id（不再打向 id=0） */
-  const handleControl = async (id: number, action: string) => {
-    const result = await control.mutateAsync({ id, action })
+  /** P2-3 返修：行级控制透传 device.id（不再打向 id=0）；P2-2：操作参数透传到请求体 */
+  const handleControl = async (id: number, action: string, params?: Record<string, unknown>) => {
+    const result = await control.mutateAsync({ id, action, params })
     void result
     toast.success('操作已提交')
   }
@@ -800,13 +801,27 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
         onConfirm={(kind, filePath, packageName) => {
           const device = operateState.device
           if (!device) return
-          void handleControl(device.id, kind === 'install-app' ? 'install_app' : 'uninstall_app')
-          toast.success(
+          // P2-2：安装/卸载参数进真实请求体（device_command_service.control 契约 body.params：
+          // install_app 需 file_path（+ package_name），uninstall_app 需 package_name）
+          const action = kind === 'install-app' ? 'install_app' : 'uninstall_app'
+          const params =
             kind === 'install-app'
-              ? `已发起安装「${packageName}」（路径 ${filePath}）`
-              : `已发起卸载「${packageName}」`
-          )
-          setOperateState({ open: false, kind: null, device: null })
+              ? { file_path: filePath, package_name: packageName }
+              : { package_name: packageName }
+          void (async () => {
+            try {
+              await control.mutateAsync({ id: device.id, action, params })
+              toast.success(
+                kind === 'install-app'
+                  ? `已发起安装「${packageName}」（路径 ${filePath}）`
+                  : `已发起卸载「${packageName}」`
+              )
+            } catch (error) {
+              toast.error(error instanceof ApiError ? error.userMessage : '操作失败，请重试')
+            } finally {
+              setOperateState({ open: false, kind: null, device: null })
+            }
+          })()
         }}
       />
 
