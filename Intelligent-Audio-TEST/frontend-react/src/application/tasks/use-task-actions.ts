@@ -141,8 +141,13 @@ export function useTaskActions() {
 
   /** 重命名（INT-1290：PUT /tasks/{id} {name}；成功后列表/详情经 ['tasks'] 前缀统一刷新） */
   const rename = useMutation({
-    mutationFn: ({ taskId, name }: { taskId: number; name: string }) =>
-      updateTask(taskId, { name }),
+    mutationFn: ({
+      taskId,
+      patch,
+    }: {
+      taskId: number
+      patch: { name?: string; description?: string }
+    }) => updateTask(taskId, patch),
     onSuccess: () => {
       toast.success('任务名称已更新')
       invalidateTasks()

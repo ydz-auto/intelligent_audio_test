@@ -48,7 +48,7 @@ export function RenameTaskDialog({
   const handleConfirm = () => {
     if (!dirty || !task) return
     rename.mutate(
-      { taskId: task.id, name: trimmed },
+      { taskId: task.id, patch: { name: trimmed } },
       { onSuccess: () => onOpenChange(false) }
     )
   }
