@@ -1,0 +1,20 @@
+{
+  "expect": "broken",
+  "base": "http://127.0.0.1:5387",
+  "A_empty_name": {
+    "writes": [
+      {
+        "method": "POST",
+        "resp": "{\"success\":false,\"code\":100,\"message\":\"name 为必填项\"}",
+        "status": 400,
+        "url": "/api/v1/auth/roles"
+      }
+    ],
+    "errors": [],
+    "aria_invalid": null,
+    "dialog_open": false
+  },
+  "B_backend_400": {
+    "skipped": "dialog closed after A (broken behaviour)"
+  }
+}

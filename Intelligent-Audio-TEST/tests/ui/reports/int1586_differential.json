@@ -1,0 +1,27 @@
+{
+  "expect": "fixed",
+  "base": "http://127.0.0.1:5387",
+  "A_empty_name": {
+    "writes": [],
+    "errors": [
+      "请输入角色名称"
+    ],
+    "aria_invalid": "true",
+    "dialog_open": true
+  },
+  "B_backend_400": {
+    "writes": [
+      {
+        "method": "POST",
+        "resp": "{\"success\":false,\"code\":203,\"message\":\"角色名已存在: admin\"}",
+        "status": 400,
+        "url": "/api/v1/auth/roles"
+      }
+    ],
+    "toasts": [
+      "角色名已存在: admin"
+    ],
+    "dialog_open": true,
+    "name_value": "admin"
+  }
+}
