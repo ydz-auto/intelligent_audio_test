@@ -16,9 +16,12 @@
 import json
 import os
 import re
+from typing import Optional
 
 from shared.infrastructure.storage import storage
 from shared.utils.log_handler import log_not_emit
+# 缺值哨兵单一定义在 status_constants（零依赖），本模块 re-export 供结果文件工具共用
+from shared.utils.status_constants import RESULT_TYPE_PENDING  # noqa: F401
 
 HEAVY_KEYS = ['adjusted_reference_params', 'raw_results', 'alignment_info']
 
@@ -207,6 +210,29 @@ def extract_result_type(result_data_from_db, result_data_path=None) -> str:
             parsed = _json.loads(result_data_from_db)
             if isinstance(parsed, dict) and parsed.get('result_type'):
                 return str(parsed['result_type'])
-        return 'default'
+        return RESULT_TYPE_PENDING
     except Exception:
-        return 'default'
+        return RESULT_TYPE_PENDING
+
+
+def materialize_result_type(explicit_value, result_data_from_db) -> Optional[str]:
+    """写时物化 result_type（INT-1510 §8.2.3，DB-first 口径）。
+
+    优先调用方显式给出的 ``explicit_value``，否则按 ``extract_result_type`` 的
+    只读 DB 轻量 JSON 口径解析（path 传 None，**不回源对象存储**）：
+
+    - 落库口径：缺值（None / 空串 / 缺值哨兵 ``RESULT_TYPE_PENDING``）一律存
+      NULL —— 与「结果类型待补充」桶的查询口径（``IS NULL OR = ''``）一致；
+    - 对外口径：读侧把 NULL 统一输出 ``default``（§8.2.2）。
+
+    写路径（task_result 落库）与存量回填迁移共用本函数，避免两处口径漂移。
+    """
+    raw = explicit_value
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        raw = extract_result_type(result_data_from_db, None)
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text or text == RESULT_TYPE_PENDING:
+        return None
+    return text

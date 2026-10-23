@@ -27,6 +27,8 @@ from shared.models.common_enums import (
 from shared.utils.status_constants import (
     ExecutionStatus, EvaluationStatus, TaskCaseStatus, TaskStatus,
     FINISHED_TASK_STATUSES,
+    # 结果类型缺值哨兵（INT-1510 §8.2.2）：与写路径落库口径（NULL）配对的过滤值
+    RESULT_TYPE_PENDING,
 )
 
 from task_service.infrastructure.persistence.cherry_pick_repository import cherry_pick_repository
@@ -289,6 +291,10 @@ class CherryPickService:
           与 case_ids 精确语义区分，前端「按用例搜索」改走此参数）
         - execution_status / evaluation_status: 结果执行/评估状态
         - start_date / end_date: 结果执行时间范围（TestResult.created_at）
+        - api_ids: 结果级 API 维度过滤（INT-1510 §8.2.4；叶明细分页按展开的
+          API 节点过滤，服务端出 total，不靠客户端过滤）
+        - result_type: 结果类型等值过滤（INT-1510 §8.2.4）；取值 `default`
+          命中缺值桶（落库 NULL/空串，与写路径口径一致）
         - excluded=True 时返回被删用例排除行（缺省剔除，对齐 INT-305 口径）
         - select_all=True（INT-577）：不翻页，返回当前筛选命中全部 result_id 集合
           （跨页全选语义 §11-4；与候选行查询同一条件口径）
@@ -296,8 +302,10 @@ class CherryPickService:
         try:
             task_ids = [int(t) for t in (data.get('task_ids') or [])]
             device_ids = [int(d) for d in (data.get('device_ids') or [])]
+            api_ids = [int(a) for a in (data.get('api_ids') or [])]
             case_ids = [str(c) for c in (data.get('case_ids') or [])]
             case_keyword = (data.get('case_keyword') or '').strip() or None
+            result_type = (data.get('result_type') or '').strip() or None
             execution_status = data.get('execution_status') or None
             evaluation_status = data.get('evaluation_status') or None
             start_date = data.get('start_date') or None
@@ -309,8 +317,9 @@ class CherryPickService:
             if select_all:
                 # INT-577 §11-4：跨页全选——不翻页，命中全部 result_id 集合
                 rows = self._query_candidate_results(
-                    task_ids=task_ids, device_ids=device_ids, case_ids=case_ids,
-                    case_keyword=case_keyword,
+                    task_ids=task_ids, device_ids=device_ids, api_ids=api_ids,
+                    case_ids=case_ids, case_keyword=case_keyword,
+                    result_type=result_type,
                     execution_status=execution_status,
                     evaluation_status=evaluation_status,
                     start_date=start_date, end_date=end_date,
@@ -321,8 +330,9 @@ class CherryPickService:
                 }}
 
             rows, total = self._query_candidate_results(
-                task_ids=task_ids, device_ids=device_ids, case_ids=case_ids,
-                case_keyword=case_keyword,
+                task_ids=task_ids, device_ids=device_ids, api_ids=api_ids,
+                case_ids=case_ids, case_keyword=case_keyword,
+                result_type=result_type,
                 execution_status=execution_status,
                 evaluation_status=evaluation_status,
                 start_date=start_date, end_date=end_date,
@@ -385,13 +395,16 @@ class CherryPickService:
 
     def _query_candidate_results(self, task_ids, device_ids, case_ids, case_keyword,
                                  execution_status, evaluation_status,
-                                 start_date, end_date, page, per_page) -> tuple:
+                                 start_date, end_date, page, per_page,
+                                 api_ids=None, result_type=None) -> tuple:
         """挑选候选结果查询核心（只读，CQRS 查询侧无副作用）。
 
         - 默认仅终态任务（§10 显式终态集合 completed/failed/stopped）
         - 默认剔除 excluded=1 行（被删用例排除，INT-305 聚合口径）
         - 评估状态取自 evaluation_service（TestResultDimension 存在性），
           INT-1625 起走 ACL 共享库只读投影（只取存在性集合，不再回传全部维度行）
+        - INT-1510：api_ids / result_type 服务端过滤（叶明细分页口径；
+          result_type=default 命中落库 NULL/空串的缺值桶）
         - INT-657：task_ids 命中容器任务时经 task_cherry_pick_relations
           解析其引用的源结果参与候选命中（容器自身无 test_results 行，
           引用方案 A §5.1），命中项标注为容器任务（与源任务口径一致）
@@ -431,6 +444,17 @@ class CherryPickService:
                 q = q.filter(conds[0] if len(conds) == 1 else or_(*conds))
             if device_ids:
                 q = q.filter(TestResult.device_id.in_(device_ids))
+            if api_ids:
+                # INT-1510 §8.2.4：结果级 API 维度过滤（与 device_ids 同层 AND）
+                q = q.filter(TestResult.api_id.in_(api_ids))
+            if result_type:
+                # INT-1510 §8.2.4：result_type 等值过滤；default = 缺值桶
+                # （落库口径 NULL/空串，§8.2.2「结果类型待补充」）
+                if result_type == RESULT_TYPE_PENDING:
+                    q = q.filter(or_(TestResult.result_type.is_(None),
+                                     TestResult.result_type == ''))
+                else:
+                    q = q.filter(TestResult.result_type == result_type)
             if case_ids:
                 q = q.filter(TestResult.test_case_id.in_(case_ids))
             if case_keyword:
@@ -507,10 +531,9 @@ class CherryPickService:
             device_names = self._fetch_device_names(list(device_ids_in_page)) if device_ids_in_page else {}
             api_names = self._fetch_api_names(list(api_ids_in_page)) if api_ids_in_page else {}
 
-            # INT-1625：result_type 的文件读取批量化（原逐行 storage.exists +
-            # load_bytes，200 行就是 200 次串行 OSS 往返），并发预取后按原
-            # load_full_result_data 口径逐行解析（文件优先、缺失回退 DB）。
-            result_types = self._result_type_map(rows)
+            # INT-1510 §8.2.3 第 1 条：result_type 直接取落库列（读侧 DB-first，
+            # 请求路径零对象存储往返；原 INT-1625 的文件并发预取已删除，不留开关）
+            # 缺值（落库 NULL）按「结果类型待补充」桶对外输出 default。
 
             # INT-657：容器引用命中的结果标注为容器任务（与源任务口径一致）；
             # 同结果同时被源任务直查命中的保留源任务标注（直查优先，不混淆归属）
@@ -540,8 +563,8 @@ class CherryPickService:
                     # INT-577 §11-2：设备/API 名（TestResult 归属二选一，缺省 None）
                     'device_name': device_names.get(result.device_id),
                     'api_name': api_names.get(result.api_id),
-                    # INT-577 §11-2：result_type（result_data/result_data_path 解析，缺省 default）
-                    'result_type': result_types.get(result.id, 'default'),
+                    # INT-1510 §8.2.3：result_type 取落库列，缺值输出 default
+                    'result_type': result.result_type or RESULT_TYPE_PENDING,
                     'algorithm_type': result.algorithm_type,
                     'execution_status': result.execution_status,
                     'evaluated': result.id in evaluated_map,
@@ -1243,37 +1266,6 @@ class CherryPickService:
         except Exception as e:
             logger.warning(f"批量查询 API 名称失败: {e}")
             return {}
-
-    @staticmethod
-    def _result_type_map(rows) -> Dict[int, str]:
-        """批量解析候选行 result_type（INT-1625）。
-
-        候选行 result_type 取自结果文件（`result_data_path` → OSS），原实现逐行
-        串行 `storage.exists` + `load_bytes`——真实库首页 200 行就是 200 次 OSS
-        往返，与 SQL/聚合无关但同样压在候选接口的响应时间上。
-
-        批量做法：先把本页带路径的结果文件并发预取（工作线程数有界），再按
-        `extract_result_type` 的原口径（文件优先、缺失回退 DB 行内数据）逐行解析，
-        解析结果与逐行读取完全一致。
-
-        返回 {result_id: result_type}；`rows` 为 (TestResult, Task) 元组列表。
-        """
-        from shared.utils.result_data_store import read_result_data_file, extract_result_type
-        from concurrent.futures import ThreadPoolExecutor
-
-        path_by_id = {r.id: r.result_data_path for r, _t in rows if r.result_data_path}
-        file_data: Dict[int, dict] = {}
-        if path_by_id:
-            workers = min(12, len(path_by_id))
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                fetched = pool.map(read_result_data_file, list(path_by_id.values()))
-                for result_id, data in zip(path_by_id.keys(), fetched):
-                    if data:
-                        file_data[result_id] = data
-        return {
-            r.id: extract_result_type(file_data.get(r.id) or r.result_data, None)
-            for r, _t in rows
-        }
 
 
 def task_lifecycle_start(task_id: int) -> dict:

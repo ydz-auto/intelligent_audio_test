@@ -79,6 +79,11 @@ class ResultExcludeStatus(str):
 # 任务终态状态集合（completed/failed/stopped）
 FINISHED_TASK_STATUSES = frozenset({TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED})
 
+# 结果类型缺值哨兵（INT-1510 §8.2.2）：UX「结果类型待补充」桶的对外取值。
+# 落库为 NULL（test_results.result_type），读侧输出本值，过滤参数同值命中缺值桶。
+# 定义在本模块（零依赖）以免读侧为拿一个常量而 import 对象存储基础设施。
+RESULT_TYPE_PENDING = 'default'
+
 # 执行终态状态集合（completed/failed；ExecutionStatus 无 SKIPPED）
 FINISHED_EXECUTION_STATUSES = frozenset({ExecutionStatus.COMPLETED, ExecutionStatus.FAILED})
 

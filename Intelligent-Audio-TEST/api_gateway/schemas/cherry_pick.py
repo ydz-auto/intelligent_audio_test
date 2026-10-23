@@ -34,10 +34,16 @@ class CherryPickCandidatesQuery(BaseModel):
     """挑选候选查询参数（GET /tasks/cherry-picks/candidates，多条件 AND）
 
     多值字段为逗号分隔 ID 串（GET 查询串契约，BFF 层拆分）。
+    INT-1510 §8.2.4 增量参数（既有参数与分页语义不变）：
+    - `api_ids`：结果级 API 维度过滤（叶明细分页按展开的 API 节点过滤）
+    - `result_type`：结果类型等值过滤；取值 `default` 命中缺值桶
+      （落库 NULL/空串，「结果类型待补充」）
     """
     task_ids: str = Field('', description='来源任务 ID（逗号分隔）')
     device_ids: str = Field('', description='被测设备 ID（逗号分隔，点名维度）')
+    api_ids: str = Field('', description='API ID（逗号分隔，结果级 API 维度过滤）')
     case_ids: str = Field('', description='用例 ID（逗号分隔，点名维度）')
+    result_type: Optional[str] = Field(None, description='结果类型等值过滤（default=缺值桶）')
     execution_status: Optional[str] = Field(None, description='结果执行状态过滤')
     evaluation_status: Optional[str] = Field(None, description='评估状态（evaluated/pending）')
     start_date: Optional[str] = Field(None, description='结果执行时间起（ISO）')

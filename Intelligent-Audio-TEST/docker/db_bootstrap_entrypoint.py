@@ -175,6 +175,11 @@ BOOTSTRAP_STEPS = [
     #     脚本幂等（列存在即 SKIP、回填按值比对），全新库为全 SKIP；默认 dry-run，
     #     引导链必须带 --apply。
     ('python', 'scripts/migrations/202610/add_device_kind_int1679.py', '--apply'),
+    # ㊷ test_results 结果类型列（INT-1510 §8.2.3）：create_all 只建缺失的表、
+    #     不给存量表补列；候选/树接口的 result_type 改 DB-first（请求路径零 OSS
+    #     往返）依赖该列。脚本幂等（列存在即 SKIP、回填按值比对，只读 DB 轻量
+    #     JSON 不回源对象存储），全新库为全 SKIP；默认 dry-run，引导链须 --apply。
+    ('python', 'scripts/migrations/202610/add_test_result_result_type_int1510.py', '--apply'),
 ]
 
 

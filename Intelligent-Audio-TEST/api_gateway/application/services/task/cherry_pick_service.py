@@ -159,7 +159,9 @@ class CherryPickService:
         payload = {
             'task_ids': _split_ints(query.task_ids),
             'device_ids': _split_ints(query.device_ids),
+            'api_ids': _split_ints(query.api_ids),
             'case_ids': _split_strs(query.case_ids),
+            'result_type': (query.result_type or '').strip() or None,
             'execution_status': query.execution_status,
             'evaluation_status': query.evaluation_status,
             'start_date': query.start_date,
@@ -206,8 +208,10 @@ class CherryPickService:
         payload = {
             'task_ids': _split_ints(body.get('task_ids')),
             'device_ids': _split_ints(body.get('device_ids')),
+            'api_ids': _split_ints(body.get('api_ids')),
             'case_ids': _split_strs(body.get('case_ids')),
             'case_keyword': (body.get('case_keyword') or '').strip() or None,
+            'result_type': (body.get('result_type') or '').strip() or None,
             'execution_status': body.get('execution_status'),
             'evaluation_status': body.get('evaluation_status'),
             'start_date': body.get('start_date'),

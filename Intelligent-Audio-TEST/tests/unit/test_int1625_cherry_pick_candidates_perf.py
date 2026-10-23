@@ -5,9 +5,8 @@
 - 候选行 `evaluated` 标记与 `evaluation_status` 筛选改走存在性投影
   `get_evaluated_result_ids`，不再经 `GetDimensionResultsByResultIds` 回传
   全部维度行（真实库首页 200 个结果 ID = 5592 行，宿主实测 5~22s）；
-- 候选行 `result_type` 的文件读取并发预取（原逐行 `storage.exists` +
-  `load_bytes`，200 行 = 200 次串行 OSS 往返），解析口径仍是
-  `extract_result_type`（文件优先、缺失回退 DB 行内数据）；
+- 候选行 `result_type` 改 DB-first（INT-1510 §8.2.3 收口）：直接取落库列，
+  请求路径零 OSS 往返（INT-1625 的并发文件预取已删除，本文件两条用例随口径改写）；
 - 用例时长取窄字段 `get_audio_durations`（原 `GetAudiosByIds` 逐音频 N+1）。
 
 DB：进程级 SQLite（tests/conftest.py 注入），按需 create_all，用例内自行清理，
@@ -67,7 +66,7 @@ def db():
 def _seed(rows):
     """种子：1 个终态源任务 + 按 rows 建结果。
 
-    rows: [(case_id, result_data, result_data_path)...]
+    rows: [(case_id, result_data, result_data_path, result_type)...]
     返回 (task_id, [result_id...])
     """
     from task_service.infrastructure.persistence.models import Task, TestCase, TestResult
@@ -78,14 +77,16 @@ def _seed(rows):
         session.add(task)
         session.flush()
         result_ids = []
-        for idx, (case_id, result_data, path) in enumerate(rows):
+        for idx, row in enumerate(rows):
+            case_id, result_data, path = row[0], row[1], row[2]
+            result_type = row[3] if len(row) > 3 else None
             if session.query(TestCase).filter(TestCase.id == case_id).first() is None:
                 session.add(TestCase(id=case_id, name=f'INT1625用例{idx}',
                                      description='', config={}, algorithm_type='asr'))
             r = TestResult(task_id=task.id, test_case_id=case_id, device_id=7,
                            algorithm_type='asr', execution_status='completed',
                            algorithm_result={'idx': idx}, result_data=result_data,
-                           result_data_path=path)
+                           result_data_path=path, result_type=result_type)
             session.add(r)
             session.flush()
             result_ids.append(r.id)
@@ -150,49 +151,52 @@ def test_candidates_evaluation_status_filter_uses_existence_projection(db, monke
     assert [it['result_id'] for it in resp['data']['items']] == [result_ids[0]]
 
 
-def test_result_type_prefetched_from_files(db, monkeypatch):
-    """result_type 文件读取批量预取：每行有路径就预取一次，解析口径不变。"""
+def test_result_type_from_db_column_without_oss(db, monkeypatch):
+    """result_type 取落库列（INT-1510 DB-first）：带文件路径也不再回源 OSS。"""
     from task_service.application.task.cherry_pick_service import cherry_pick_service
+    from shared.infrastructure.storage import storage
     from shared.utils import result_data_store as rds
 
     task_id, result_ids = _seed([
-        ('INT1625-C5', None, 'case_result/1/a/result_data.json'),
-        ('INT1625-C6', None, 'case_result/1/b/result_data.json'),
-        # 无路径：回退 DB 行内数据
-        ('INT1625-C7', {'result_type': 'api'}, None),
+        ('INT1625-C5', None, 'case_result/1/a/result_data.json', 'asr'),
+        ('INT1625-C6', {'result_type': 'api'}, 'case_result/1/b/result_data.json', 'voice'),
+        # 缺值落库 NULL → 对外 default（待补充桶），同样不读文件
+        ('INT1625-C7', None, 'case_result/1/c/result_data.json', None),
     ])
 
-    read_paths = []
+    def _boom(*_args, **_kwargs):
+        raise AssertionError('候选查询不得回源对象存储（INT-1510 §8.2.3）')
 
-    def _fake_read(path):
-        read_paths.append(path)
-        return {'result_type': 'asr'}
-
-    monkeypatch.setattr(rds, 'read_result_data_file', _fake_read)
+    monkeypatch.setattr(storage, 'exists', _boom)
+    monkeypatch.setattr(storage, 'load_bytes', _boom)
+    monkeypatch.setattr(rds, 'read_result_data_file', _boom)
 
     resp = cherry_pick_service.list_candidates({'task_ids': [task_id], 'page': 1, 'per_page': 50})
     assert resp['success'] is True
     by_result = {it['result_id']: it for it in resp['data']['items']}
     assert by_result[result_ids[0]]['result_type'] == 'asr'
-    assert by_result[result_ids[1]]['result_type'] == 'asr'
-    assert by_result[result_ids[2]]['result_type'] == 'api'
-    assert sorted(read_paths) == ['case_result/1/a/result_data.json',
-                                  'case_result/1/b/result_data.json']
+    assert by_result[result_ids[1]]['result_type'] == 'voice'
+    assert by_result[result_ids[2]]['result_type'] == 'default'
 
 
-def test_result_type_falls_back_when_file_missing(db, monkeypatch):
-    """文件预取为空（对象缺失）时回退 DB 行内 result_type，不报错。"""
+def test_result_type_missing_column_falls_back_to_default(db, monkeypatch):
+    """落库缺值（NULL）统一输出 default，不报错。"""
     from task_service.application.task.cherry_pick_service import cherry_pick_service
     from shared.utils import result_data_store as rds
 
     task_id, result_ids = _seed([
-        ('INT1625-C8', {'result_type': 'voice'}, 'case_result/1/c/result_data.json'),
+        ('INT1625-C8', {'result_type': 'voice'}, 'case_result/1/c/result_data.json', None),
     ])
-    monkeypatch.setattr(rds, 'read_result_data_file', lambda _p: {})
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError('缺值行不得回源对象存储')
+
+    monkeypatch.setattr(rds, 'read_result_data_file', _boom)
 
     resp = cherry_pick_service.list_candidates({'task_ids': [task_id], 'page': 1, 'per_page': 50})
     assert resp['success'] is True
-    assert resp['data']['items'][0]['result_type'] == 'voice'
+    # 读侧只看落库列：行内 JSON 的 voice 不再在请求路径解析
+    assert resp['data']['items'][0]['result_type'] == 'default'
 
 
 def test_audio_durations_uses_narrow_projection(db, monkeypatch):

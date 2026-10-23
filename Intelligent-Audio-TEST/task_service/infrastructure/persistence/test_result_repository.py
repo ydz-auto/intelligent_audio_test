@@ -128,11 +128,17 @@ class TestResultRepository(TestResultRepositoryABC):
 
         从 data dict 构造 TestResult PO，flush 后返回自增主键。
 
+        INT-1510 §8.2.3：写时物化 result_type（读侧 DB-first，请求路径零 OSS
+        往返）。取值优先 data['result_type']，否则按 `extract_result_type` 的
+        只读 DB 轻量 JSON 口径解析（path 传 None，不回源对象存储）；缺值哨兵
+        'default' 落库为 NULL —— 对外仍统一输出 default（§8.2.2「结果类型待补充」桶）。
+
         Returns:
             新结果 ID。
         """
         session = get_db_session()
         try:
+            from shared.utils.result_data_store import materialize_result_type
             po = TestResult(
                 task_id=task_id,
                 test_case_id=data.get('test_case_id'),
@@ -145,6 +151,8 @@ class TestResultRepository(TestResultRepositoryABC):
                 execution_steps=data.get('execution_steps'),
                 result_data=data.get('result_data'),
                 result_data_path=data.get('result_data_path'),
+                result_type=materialize_result_type(
+                    data.get('result_type'), data.get('result_data')),
                 error_message=data.get('error_message'),
             )
             session.add(po)
