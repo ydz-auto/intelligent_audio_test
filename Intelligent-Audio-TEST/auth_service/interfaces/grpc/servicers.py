@@ -81,6 +81,19 @@ def _user_to_dict(user, overrides=None) -> dict:
     return d
 
 
+def _user_to_list_dict(user) -> dict:
+    """UserAggregate → 列表项 dict（INT-1465：列表不返回权限明细）。
+
+    单条用户的生效权限码全集约 1.6KB，per_page=10 时把响应撑到 30KB+，
+    而用户管理列表页不展示权限；权限明细由 GetUser 详情给出（含 overrides）。
+    列表场景仓储也不加载权限（见 user_repository.list_users），两处一致。
+    其余字段与详情保持同名同义，前端列表接口契约只少 permissions 一个键。
+    """
+    d = _user_to_dict(user)
+    d.pop('permissions', None)
+    return d
+
+
 def _role_to_dict(role) -> dict:
     """RoleEntity → dict"""
     return {
@@ -242,7 +255,11 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
             return _fail(str(e))
 
     def ListUsers(self, request, context=None) -> auth_pb.AuthResponse:
-        """列出用户（分页 + status/keyword/role_id 过滤）"""
+        """列出用户（分页 + status/keyword/role_id 过滤）
+
+        INT-1465：列表项走窄 DTO（不含 permissions），避免 10 条 30KB+ 的
+        序列化/传输开销；权限明细只在详情 GetUser 返回。
+        """
         try:
             from auth_service.application.queries.auth_queries import (
                 ListUsersQuery,
@@ -258,7 +275,7 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
             # INT-297：列表信封统一为 {items, page, pages, per_page, total}
             page_size = q.page_size or 20
             return _ok({
-                'items': [_user_to_dict(u) for u in users],
+                'items': [_user_to_list_dict(u) for u in users],
                 'total': total,
                 'page': q.page,
                 'per_page': page_size,

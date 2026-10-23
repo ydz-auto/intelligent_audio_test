@@ -134,12 +134,32 @@ def _role_name_by_id(session, role_id: Optional[int]) -> str:
     return row[0] if row else ''
 
 
-def _user_po_to_entity(po: User, permissions: Optional[List[str]] = None) -> UserAggregate:
+def _role_names_by_ids(session, role_ids) -> Dict[int, str]:
+    """批量查角色名：{role_id: name}，一次查询覆盖整页用户（INT-1465）。
+
+    列表场景原按用户逐条查 roles 表（每用户 1 次），与权限查询一起构成
+    N+1；此处把角色名收敛为整页 1 次查询。
+    """
+    ids = {rid for rid in role_ids if rid}
+    if not ids:
+        return {}
+    rows = session.query(Role.id, Role.name).filter(Role.id.in_(ids)).all()
+    return {rid: name for rid, name in rows}
+
+
+def _user_po_to_entity(
+    po: User,
+    permissions: Optional[List[str]] = None,
+    role_name: Optional[str] = None,
+) -> UserAggregate:
     """User PO → UserAggregate。
 
     Args:
         po: User PO 对象。
         permissions: 权限码列表；为 None 时自动查询该用户的生效权限。
+            列表查询显式传 []（INT-1465：列表不加载权限，见 list_users）。
+        role_name: 角色名；为 None 时按 po.role_id 单查，
+            列表查询传批量查好的值避免 N+1。
 
     字段映射：
         po.oauth_id         → aggregate.oauth_subject（OAuth 提供商返回的用户唯一 ID）
@@ -148,6 +168,8 @@ def _user_po_to_entity(po: User, permissions: Optional[List[str]] = None) -> Use
     """
     if permissions is None:
         permissions = _query_user_permissions(po.id, po.role_id)
+    if role_name is None:
+        role_name = _role_name_by_id(get_db_session(), po.role_id)
     return UserAggregate(
         id=po.id,
         username=po.username,
@@ -159,7 +181,7 @@ def _user_po_to_entity(po: User, permissions: Optional[List[str]] = None) -> Use
         oauth_provider=po.oauth_provider,
         oauth_subject=po.oauth_id,
         display_name=po.display_name,
-        role_name=_role_name_by_id(get_db_session(), po.role_id),
+        role_name=role_name,
         created_at=po.created_at,
         updated_at=po.updated_at,
         last_login_at=po.last_login_at,
@@ -442,7 +464,15 @@ class UserRepository(UserRepositoryABC):
             .limit(page_size)
             .all()
         )
-        aggregates = [_user_po_to_entity(po) for po in pos]
+        # INT-1465：列表查询不加载生效权限（权限明细仅详情 GetUser 给出），
+        # 角色名整页一次批量查——原逐用户查权限(2 次)+角色名(1 次)是 N+1，
+        # 并发下把 Postgres 连接池占满，10 条列表响应还因权限码全集膨胀到 30KB+。
+        role_names = _role_names_by_ids(session, (po.role_id for po in pos))
+        aggregates = [
+            _user_po_to_entity(
+                po, permissions=[], role_name=role_names.get(po.role_id, ''))
+            for po in pos
+        ]
         return total, aggregates
 
     def get_user_permissions(self, user_id: int) -> List[str]:
