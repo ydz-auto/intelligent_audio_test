@@ -44,6 +44,9 @@ _ERROR_HTTP_STATUS = {
     AuthErrorCode.WILDCARD_FORBIDDEN: 400,
     AuthErrorCode.SELF_OPERATION_FORBIDDEN: 403,
     AuthErrorCode.PERMISSION_NOT_GRANTED: 400,
+    # 管理入口参数非法（INT-1590：用户管理密码长度 8–128）——
+    # 与网关层前置校验同口径 400 + code:203（未登记码的默认映射）
+    AuthErrorCode.INVALID_PARAMS: 400,
     # 自助改密原密码校验失败（INT-794：401 与登录链防枚举语义一致）
     AuthErrorCode.AUTH_CREDENTIALS_INVALID: 401,
     # 自定义 OAuth 提供方（INT-51）

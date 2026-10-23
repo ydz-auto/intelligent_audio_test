@@ -434,6 +434,10 @@ class AuthErrorCode(str, Enum):
     WILDCARD_FORBIDDEN = 'WILDCARD_FORBIDDEN'
     SELF_OPERATION_FORBIDDEN = 'SELF_OPERATION_FORBIDDEN'
     PERMISSION_NOT_GRANTED = 'PERMISSION_NOT_GRANTED'
+    # 管理入口参数非法（INT-1590：用户管理建号/改密密码长度 8–128）。
+    # 网关未登记的 AuthErrorCode 统一映射 HTTP 400 + code:203（OPERATION_FAILED），
+    # 与网关层前置校验同码，保证网关拦截与 gRPC 直连兜底对同一非法输入一致。
+    INVALID_PARAMS = 'INVALID_PARAMS'
     # 自助改密原密码校验失败（INT-794：网关映射 401 + code:106，与登录链防枚举语义一致）
     AUTH_CREDENTIALS_INVALID = 'AUTH_CREDENTIALS_INVALID'
     # 自定义 OAuth 提供方（INT-51）

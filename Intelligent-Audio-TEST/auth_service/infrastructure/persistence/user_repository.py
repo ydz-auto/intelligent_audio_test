@@ -35,10 +35,27 @@ from auth_service.domain.repositories.user_repository_abc import (
 logger = logging.getLogger(__name__)
 
 
+# bcrypt 的输入上限（字节）：算法本身只消费前 72 字节。
+BCRYPT_MAX_PASSWORD_BYTES = 72
+
+
+def _bcrypt_input(password: str) -> bytes:
+    """密码 → bcrypt 输入字节，显式截断到 72 字节（INT-1590）。
+
+    bcrypt 5.0 对 >72 字节的输入直接抛 ValueError（4.x 及以前静默截断），
+    而用户管理入口契约是 8–128 位——不截断会让 73~128 位密码在哈希阶段
+    炸成 bcrypt 的英文原始异常。此处显式采用「截断接受」语义：哈希与
+    校验共用本函数，保证同一密码的哈希/校验一致（前 72 字节相同即视为
+    同一密码，与 bcrypt 算法口径一致）。
+    """
+    return password.encode('utf-8')[:BCRYPT_MAX_PASSWORD_BYTES]
+
+
 def _hash_password(password: str) -> str:
     """明文密码 → bcrypt 哈希（infrastructure 层职责，聚合根不持有密码）。"""
     import bcrypt
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    return bcrypt.hashpw(_bcrypt_input(password),
+                         bcrypt.gensalt()).decode('utf-8')
 
 
 # ── PO ↔ Entity 转换函数 ────────────────────────────────────────────
@@ -400,7 +417,7 @@ class UserRepository(UserRepositoryABC):
             return None
         try:
             if not bcrypt.checkpw(
-                    password.encode('utf-8'),
+                    _bcrypt_input(password),
                     po.password_hash.encode('utf-8')):
                 return None
         except ValueError:
@@ -421,7 +438,7 @@ class UserRepository(UserRepositoryABC):
             return False
         try:
             return bcrypt.checkpw(
-                password.encode('utf-8'),
+                _bcrypt_input(password),
                 po.password_hash.encode('utf-8'),
             )
         except ValueError:
