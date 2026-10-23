@@ -102,13 +102,13 @@ def db():
 
 class TestAPIAggregateNewColumns:
     def test_defaults(self):
-        api = APIAggregate(id=1, name='n', url='http://x')
+        api = APIAggregate(id=1, name='n')
         assert api.device_type == DeviceType.HTTP_API.value
         assert api.adapter_class is None
         assert api.audio_config is None
 
     def test_set_audio_config_keeps_known_keys(self):
-        api = APIAggregate(id=1, name='n', url='http://x')
+        api = APIAggregate(id=1, name='n')
         result = api.set_audio_config({
             'sample_rate': 24000, 'bit_depth': 's16', 'channels': 1,
             'container': 'pcm', 'evil_key': 'x',
@@ -116,12 +116,12 @@ class TestAPIAggregateNewColumns:
         assert result == {'sample_rate': 24000, 'bit_depth': 's16', 'channels': 1, 'container': 'pcm'}
 
     def test_set_audio_config_none_allowed(self):
-        api = APIAggregate(id=1, name='n', url='http://x')
+        api = APIAggregate(id=1, name='n')
         assert api.set_audio_config(None) is None
         assert api.audio_config is None
 
     def test_set_audio_config_rejects_non_dict(self):
-        api = APIAggregate(id=1, name='n', url='http://x')
+        api = APIAggregate(id=1, name='n')
         with pytest.raises(ValueError):
             api.set_audio_config('24000')
 
@@ -211,7 +211,7 @@ class TestAPICrudServiceNewColumns:
 
     def test_api_to_dict_echoes_new_columns(self):
         api = SimpleNamespace(
-            id=9, name='n', vendor='openai', api_url=None, description=None,
+            id=9, name='n', vendor='openai', description=None,
             status='online', meta={}, algorithm_type=None,
             default_max_process=5, default_max_timeout=30, default_max_audio_duration=60,
             health_score=100, output_types=['audio', 'text'],
@@ -262,7 +262,7 @@ class TestAPICrudServiceNewColumns:
 
     def test_aggregate_default_rms_spl_mapping_id_is_none(self):
         """聚合根缺省 None（旧 PO 行 / 未设默认时 _api_to_dict 回传 None 而非 AttributeError）。"""
-        aggregate = APIAggregate(id=1, name='n', url='http://x')
+        aggregate = APIAggregate(id=1, name='n')
         data = APICrudService._api_to_dict(aggregate)
         assert data['rms_spl_mapping_id'] is None
 
@@ -282,7 +282,7 @@ class TestAPICrudServiceNewColumns:
             po_id = po.id
 
             aggregate = APIAggregate(
-                id=po_id, name='INT300 Save', url='http://x',
+                id=po_id, name='INT300 Save',
                 rms_spl_mapping_id=7)
             _apply_aggregate_to_po(aggregate, po)
             assert po.rms_spl_mapping_id == 7

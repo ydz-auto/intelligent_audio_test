@@ -169,7 +169,7 @@ def _make_api_config(endpoint, meta=None, max_timeout=5):
     meta = dict(meta or {})
     return SimpleNamespace(
         endpoint=endpoint, meta=meta, max_timeout=max_timeout,
-        api_endpoints=[], api_url=endpoint, id=7,
+        api_endpoints=[{'endpoint': endpoint}], id=7,
         vendor='openai', default_max_process=2)
 
 

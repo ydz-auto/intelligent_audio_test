@@ -145,3 +145,15 @@ class StopTestToneData(APIModel):
 class SplCalibrationResult(APIModel):
     id: int = Field(...)
     calibration_status: str = Field(...)
+
+
+class SplImportResult(APIModel):
+    """SPL 批量导入计数报告（成功/失败 + 行级错误明细，INT-1383）。
+
+    对齐卡面契约：{ message, data: { imported, failed, errors } }，
+    后端统一 snake_case 上线（imported_count / failed_count / errors）。
+    """
+
+    imported_count: int = Field(...)
+    failed_count: int = Field(...)
+    errors: List[str] = Field(default_factory=list)

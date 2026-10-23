@@ -67,7 +67,6 @@ HTTP_PORTS = {
     'EVALUATION_SERVICE_HTTP_PORT': 5004,
     'REPORT_SERVICE_HTTP_PORT': 5006,
     'ALGORITHM_SERVICE_HTTP_PORT': 5007,
-    'API_ADAPTER_SERVICE_HTTP_PORT': 5008,
     'AUTH_SERVICE_HTTP_PORT': 5009,
     'FRONTEND_PORT': 8080,
 }
@@ -80,7 +79,6 @@ GRPC_PORTS = {
     'ALGORITHM_SERVICE_GRPC_PORT': 50067,
     'REPORT_SERVICE_GRPC_PORT': 51068,
     'AUTH_SERVICE_GRPC_PORT': 51069,
-    'API_ADAPTER_SERVICE_GRPC_PORT': 50081,
     'EVALUATION_SERVICE_GRPC_PORT': 50091,
     'API_TEST_SERVICE_GRPC_PORT': 50071,  # api_test_service 宿主不发布端口（UC-1001）
 }
@@ -195,7 +193,7 @@ def _plan_path(project: str) -> str:
     return os.path.join(PLAN_DIR, f'{project}.json')
 
 
-def _save_plan(project, offset, auth_mode, db, gateway_http, frontend, postgres, adapter_http):
+def _save_plan(project, offset, auth_mode, db, gateway_http, frontend, postgres):
     os.makedirs(PLAN_DIR, exist_ok=True)
     plan = {
         'project': project,
@@ -205,7 +203,6 @@ def _save_plan(project, offset, auth_mode, db, gateway_http, frontend, postgres,
         'gateway_http': gateway_http,
         'frontend': frontend,
         'postgres': postgres,
-        'adapter_http': adapter_http,
         'created_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
     }
     with open(_plan_path(project), 'w', encoding='utf-8') as fh:
@@ -290,7 +287,7 @@ def cmd_up(args):
     if rc != 0:
         sys.exit('[ISO-STACK] compose up 失败（见上；端口冲突不清理、交执行者处置）')
     _save_plan(project, offset, args.auth_mode, ISOLATED_TEST_DB_NAME,
-               5000 + offset, 8080 + offset, 5432 + offset, 5008 + offset)
+               5000 + offset, 8080 + offset, 5432 + offset)
     deadline = time.time() + args.wait
     while time.time() < deadline:
         if _health_check(project, env, quiet=True):
@@ -393,7 +390,7 @@ def cmd_smoke(args):
         '/smoke.py',
         '--api-base', 'http://api_gateway:5000/api/v1',
         '--health-url', 'http://api_gateway:5000/health',
-        '--adapter-url', 'http://api_adapter_service:5008',
+        '--dut-url', 'http://mock_dut_api:5096',
         '--audio-dir', '/data',
     ]
     if args.username:

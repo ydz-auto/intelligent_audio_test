@@ -16,6 +16,10 @@ class ApiEndpointItem(APIModel):
     health_score: Optional[int] = Field(None)
     priority: Optional[int] = Field(None)
     description: Optional[str] = Field(None)
+    # INT-1177 endpoint 级密钥池非敏感摘要 {count, tails[]}（INT-1230 审计 D6'，
+    # 逐端点内嵌；完整密钥零响应）。网关读侧返回原始 dict（无 response_model
+    # 过滤），本字段仅作文档一致性，非必需。
+    api_keys_summary: Optional[Dict[str, Any]] = Field(None)
 
 
 class ApiListQuery(APIModel):
@@ -30,12 +34,15 @@ class ApiItem(APIModel):
     id: int = Field(...)
     name: str = Field(...)
     vendor: Optional[str] = Field(None)
-    api_url: Optional[str] = Field(None)
     proxy_type: Optional[str] = Field(None)
     proxy_url: Optional[str] = Field(None)
     description: Optional[str] = Field(None)
     status: Optional[str] = Field(None)
     meta: Dict[str, Any] = Field(default_factory=dict)
+    # INT-1177 密钥池非敏感摘要 {count, tails[]}（读侧顶层直出；完整密钥零响应）。
+    # 网关读侧返回原始 dict（无 response_model 过滤），顶层字段直接透出，
+    # 本字段仅作文档一致性，非必需。
+    api_keys_summary: Optional[Dict[str, Any]] = Field(None)
     algorithm_type: Optional[str] = Field(None)
     default_max_process: Optional[int] = Field(None)
     default_max_timeout: Optional[int] = Field(None)
@@ -59,7 +66,6 @@ class ApiHealthCheckData(APIModel):
     id: int = Field(...)
     status: str = Field(...)
     health_score: Optional[int] = Field(None)
-    api_url_status: Optional[str] = Field(None)
     endpoints_status: Optional[str] = Field(None)
     status_code: Optional[int] = Field(None)
     response_time: Optional[str] = Field(None)
@@ -76,12 +82,15 @@ class ApiEndpointInput(APIModel):
     status: Optional[str] = Field(None)
     priority: Optional[int] = Field(None)
     description: Optional[str] = Field(None)
+    # INT-1177 endpoint 级密钥池（INT-1230 审计 D1'）：每端点 api_keys 纯字符串
+    # 数组，作为该端点轮换池。必补本字段——APIModel extra="ignore" 会丢
+    # endpoints[].api_keys 入参。写侧校验在 api_crud_service._validate_endpoint_obj。
+    api_keys: Optional[List[str]] = Field(None)
 
 
 class ApiCreateInput(APIModel):
     name: str = Field(...)
     vendor: Optional[str] = Field(None)
-    api_url: Optional[str] = Field(None)
     proxy_type: Optional[str] = Field(None)
     proxy_url: Optional[str] = Field(None)
     description: Optional[str] = Field(None)
@@ -101,7 +110,6 @@ class ApiCreateInput(APIModel):
 class ApiUpdateInput(APIModel):
     name: Optional[str] = Field(None)
     vendor: Optional[str] = Field(None)
-    api_url: Optional[str] = Field(None)
     proxy_type: Optional[str] = Field(None)
     proxy_url: Optional[str] = Field(None)
     description: Optional[str] = Field(None)

@@ -28,7 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCAN_DIRS = [
     'shared', 'api_gateway', 'task_service', 'e2e_test_service', 'api_test_service',
     'evaluation_service', 'report_service', 'device_service', 'algorithm_service',
-    'api_adapter_service', 'auth_service', 'audio_service', 'scripts',
+    'auth_service', 'audio_service', 'scripts',
 ]
 SCAN_FILES = ['run_all.py']
 

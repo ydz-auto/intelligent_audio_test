@@ -184,7 +184,7 @@ def harness(rt_config, monkeypatch):
     rt_executor._render_service = RenderStub(chunk_count=8)
 
     api_config = SimpleNamespace(
-        id=7, endpoint=server.url, api_endpoints=[],
+        id=7, api_endpoints=[{'endpoint': server.url}],
         default_max_process=2, meta={'vendor': 'openai'}, max_timeout=30,
         vendor='openai')
     data = {

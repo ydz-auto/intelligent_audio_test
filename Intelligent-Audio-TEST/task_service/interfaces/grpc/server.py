@@ -20,6 +20,7 @@ from concurrent import futures
 import grpc
 
 from shared.proto import task_service_pb2_grpc as task_grpc
+from shared.infrastructure.config import BaseConfig
 from shared.infrastructure.grpc_interceptors import (
     server_db_scope_interceptor, server_log_interceptor, server_user_context_interceptor,
 )
@@ -53,8 +54,16 @@ def start_grpc_server(port=TASK_SERVICE_GRPC_PORT):
     """
     # gRPC 线程池大小配置化：优先读取 concurrency_config.json 中的 grpc.task_service_workers
     _max_workers = config_manager.get_value('grpc', 'task_service_workers', 10)
+    # grpcio 默认收发上限 4MiB，恰为聚合查询响应上限（INT-1224：用例标签视图
+    # view=tag perPage=50 真实库实测 4.07MiB → RESOURCE_EXHAUSTED），显式放大；
+    # 客户端 channel 侧需同步设置（shared/clients/_grpc_channels.py）。
+    _max_message_bytes = BaseConfig.GRPC_MAX_MESSAGE_MB * 1024 * 1024
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_max_workers),
+        options=[
+            ('grpc.max_receive_message_length', _max_message_bytes),
+            ('grpc.max_send_message_length', _max_message_bytes),
+        ],
         interceptors=[server_db_scope_interceptor, server_log_interceptor,
                       server_user_context_interceptor],
     )

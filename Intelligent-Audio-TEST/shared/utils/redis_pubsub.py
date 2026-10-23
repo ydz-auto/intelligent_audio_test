@@ -19,12 +19,19 @@ logger = logging.getLogger(__name__)
 # ========== 事件总线枚举 ==========
 
 class EventChannel(str, Enum):
-    """Redis 事件总线频道枚举 — 禁止裸字符串"""
-    TASK_EVENTS = 'task_events'          # 任务级事件（创建/完成/停止）
-    CASE_EVENTS = 'case_events'         # 用例级事件（执行完成/评估完成）
-    DEVICE_EVENTS = 'device_events'     # 设备状态变更事件
-    REPORT_EVENTS = 'report_events'    # 报告生成事件
-    CONFIG_EVENTS = 'config_events'     # 配置变更事件（维度 CRUD 等）
+    """Redis 事件总线频道枚举 — 禁止裸字符串
+
+    频道名统一带环境前缀 BaseConfig.EVENT_CHANNEL_PREFIX（默认空）：
+    真实库栈（real_stack.py 启动时设置 real_）订阅/发布到 real_task_events 等，
+    与 5000 段开发栈（前缀为空）在共享 Redis pub/sub 上按命名空间隔离，
+    避免测试栈事件被真实栈 SSE 转发（INT-1235 / INT-1227）。
+    发布与订阅必须走同一枚举，前缀不一致会丢事件。
+    """
+    TASK_EVENTS = BaseConfig.EVENT_CHANNEL_PREFIX + 'task_events'          # 任务级事件（创建/完成/停止）
+    CASE_EVENTS = BaseConfig.EVENT_CHANNEL_PREFIX + 'case_events'         # 用例级事件（执行完成/评估完成）
+    DEVICE_EVENTS = BaseConfig.EVENT_CHANNEL_PREFIX + 'device_events'     # 设备状态变更事件
+    REPORT_EVENTS = BaseConfig.EVENT_CHANNEL_PREFIX + 'report_events'    # 报告生成事件
+    CONFIG_EVENTS = BaseConfig.EVENT_CHANNEL_PREFIX + 'config_events'     # 配置变更事件（维度 CRUD 等）
 
 
 class EventType(str, Enum):

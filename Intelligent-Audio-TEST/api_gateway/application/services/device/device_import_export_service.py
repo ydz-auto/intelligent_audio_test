@@ -80,7 +80,7 @@ _PLAYBACK_DEVICE_FIELDS = [
 ]
 
 _API_FIELDS = [
-    'name', 'vendor', 'api_url', 'description', 'meta', 'algorithm_type',
+    'name', 'vendor', 'description', 'meta', 'algorithm_type',
     'default_max_process', 'default_max_timeout', 'default_max_audio_duration',
     'status', 'endpoints', 'output_types', 'device_type', 'adapter_class',
     'audio_config',

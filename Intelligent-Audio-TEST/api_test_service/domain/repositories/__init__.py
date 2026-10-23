@@ -8,7 +8,6 @@ from api_test_service.domain.repositories.api_test_repository_abc import (
     APITestRepositoryABC,
 )
 from api_test_service.domain.repositories.acl import (
-    AdapterAclRepository,
     AlgorithmQueryAclRepository,
     AudioConfigAclRepository,
     TaskDataAclRepository,
@@ -17,7 +16,6 @@ from api_test_service.domain.repositories.acl import (
 
 __all__ = [
     'APITestRepositoryABC',
-    'AdapterAclRepository',
     'AlgorithmQueryAclRepository',
     'AudioConfigAclRepository',
     'TaskDataAclRepository',

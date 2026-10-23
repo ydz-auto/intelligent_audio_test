@@ -4,7 +4,7 @@
 
 本文档集为 **语音交互大模型（voice_llm）测试能力改造** 项目的完整技术设计文档。改造目标是在现有智能音频测试平台中新增 voice_llm 测试类型，支持多轮会话、声纹注册、干扰人播放、导轨控制、设备音量控制等能力。
 
-**核心架构**：双记录用例架构（test_type=api/e2e）+ 三服务协作（主后端 + eval_server + api_adapter_service）
+**核心架构**：双记录用例架构（test_type=api/e2e）+ 三服务协作（主后端 + eval_server + api_test_service）
 
 **文档总计**：75 个技术设计文档 + 本导航索引，按 **5 步测试流程** 组织，每步内按服务（backend/frontend/eval_server/api_adapter）分目录。
 
@@ -513,7 +513,7 @@ graph TD
 | backgroundNoise | E2E 轮次顶层的背景噪声配置，含 audioId/deviceIds/spl/loop 属性，loop 控制循环播放 |
 | 统一音频模型 | 干声/噪声/干扰人统一为 `{file, device_index, channel, gain, delay, is_noise}` 格式，play_overlap→play_multi 按设备分组混音；is_noise=True 循环播放且不计入完成判定 |
 | eval_server | 评估微服务（Flask, port 5001），执行 WER/LLM Judge 等评估任务 |
-| api_adapter_service | API适配微服务（Flask, port 8000），适配不同厂商的 API 协议 |
+| api_adapter_service | API适配微服务（Flask, port 8000，已删除的独立适配服务），适配不同厂商的 API 协议 |
 
 ---
 

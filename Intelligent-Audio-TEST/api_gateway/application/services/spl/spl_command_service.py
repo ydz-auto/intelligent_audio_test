@@ -5,6 +5,12 @@
 保留对路由层的签名不变（静态方法 + success_response/error_response 包装）。
 保留 Pydantic schema 校验。校准点校验逻辑已下沉到微服务。
 """
+import io
+import json
+
+import pandas as pd
+from fastapi.responses import Response
+
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
@@ -15,10 +21,25 @@ from api_gateway.schemas.spl import (
     SPLMappingUpdateRequest,
     PlayTestToneRequest,
     StopTestToneRequest,
+    SplImportResult,
 )
 
 
 _spl_acl = SplConfigAclRepositoryImpl()
+
+_EXCEL_EXTENSIONS = ('xlsx', 'xls')
+
+# 导入列（snake_case，对齐 SPLMappingCreateRequest 与卡面契约）
+_IMPORT_HEADERS = [
+    'name', 'description', 'device_id', 'device_type', 'distance',
+    'target_spl', 'digital_gain', 'test_frequency', 'calibration_points',
+]
+
+# 模板示例行（calibration_points 为 JSON 数组字符串）
+_IMPORT_TEMPLATE_EXAMPLE = [
+    '示例映射', '', '1', '', '1.0', '65', '', '1000',
+    '[{"spl":65,"gainOffset":0}]',
+]
 
 
 class SPLCommandService:
@@ -139,3 +160,157 @@ class SPLCommandService:
             return error_response(result.get('message', '操作失败'), code=ErrorCode.DATABASE_ERROR)
 
         return success_response(result.get('data'), result.get('message', '测试音已停止'))
+
+    # ========== 批量导入（INT-1383） ==========
+
+    @staticmethod
+    def import_mappings():
+        """批量导入 SPL 映射（multipart 文件，CSV/XLSX/JSON）。
+
+        纯新增（create-only）：同名行各自新建，不按 name 匹配更新。
+        逐行经 ACL create → device_service SPLCommandService.create，
+        成功 imported+1，失败 failed+1 并记 `第N行: <原因>`。
+        """
+        try:
+            if 'file' not in request.files:
+                return error_response("未上传文件")
+            file = request.files['file']
+            if not file.filename:
+                return error_response("未选择文件")
+
+            rows, err = SPLCommandService._parse_import_file(file)
+            if err is not None:
+                return err
+
+            imported_count, failed_count, errors = SPLCommandService._apply_import_rows(rows)
+            return success_response(
+                SplImportResult(
+                    imported_count=imported_count,
+                    failed_count=failed_count,
+                    errors=errors,
+                ),
+                f"成功导入 {imported_count} 个，失败 {failed_count} 个",
+            )
+        except Exception as e:
+            return error_response(str(e))
+
+    @staticmethod
+    def get_import_template():
+        """返回导入模板 CSV（列头 + 示例行），Content-Disposition attachment。"""
+        import csv as _csv
+
+        buffer = io.StringIO()
+        writer = _csv.writer(buffer)
+        writer.writerow(_IMPORT_HEADERS)
+        writer.writerow(_IMPORT_TEMPLATE_EXAMPLE)
+        # 带 UTF-8 BOM，Excel 直接打开不乱码
+        content = ('﻿' + buffer.getvalue()).encode('utf-8')
+        return Response(
+            content=content,
+            media_type='text/csv',
+            headers={"Content-Disposition": "attachment; filename=spl_import_template.csv"},
+        )
+
+    @staticmethod
+    def _parse_import_file(file):
+        """解析上传文件（JSON / CSV / Excel），返回 (rows, None) 或 (None, err)。"""
+        filename = (file.filename or '').lower()
+        ext = filename.rsplit('.', 1)[-1] if '.' in filename else ''
+
+        try:
+            if ext == 'json':
+                data = json.loads(file.read().decode('utf-8'))
+                if isinstance(data, dict):
+                    rows = data.get('spl_mappings') or data.get('rows') or data.get('items')
+                else:
+                    rows = data
+            elif ext == 'csv':
+                df = pd.read_csv(io.BytesIO(file.read()), encoding='utf-8-sig')
+                rows = df.to_dict('records')
+            elif ext in _EXCEL_EXTENSIONS:
+                df = pd.read_excel(io.BytesIO(file.read()))
+                rows = df.to_dict('records')
+            else:
+                return None, error_response("仅支持 JSON, CSV 或 Excel 格式的导入")
+        except Exception as e:
+            return None, error_response(f"文件解析失败: {str(e)}")
+
+        if not isinstance(rows, list) or not rows:
+            return None, error_response("导入数据为空")
+        return rows, None
+
+    @staticmethod
+    def _apply_import_rows(rows):
+        """逐行导入：行级校验 → 过创建 schema → ACL create；失败记行号错误。"""
+        imported_count = 0
+        failed_count = 0
+        errors = []
+
+        for idx, raw_row in enumerate(rows):
+            try:
+                row = SPLCommandService._clean_import_row(raw_row)
+                if not row.get('name'):
+                    raise ValueError('缺少必填字段 name')
+                if row.get('device_id') is None and row.get('device_type') is None:
+                    raise ValueError('必须提供 device_id 或 device_type 之一')
+
+                payload = SPLCommandService._build_create_payload(row)
+                if payload is None:
+                    raise ValueError('数据校验失败')
+
+                result = _spl_acl.create(payload)
+                if not result.get('success'):
+                    raise Exception(result.get('message') or '创建失败')
+                imported_count += 1
+            except Exception as e:
+                failed_count += 1
+                errors.append(f"第{idx + 1}行: {str(e)}")
+
+        return imported_count, failed_count, errors
+
+    @staticmethod
+    def _clean_import_row(raw_row):
+        """清洗单行：NaN → 剔除；calibration_points JSON 字符串 → calibration_data。"""
+        row = {}
+        for k, v in raw_row.items():
+            v = SPLCommandService._clean_cell(v)
+            if v is None:
+                continue
+            row[k] = v
+
+        cp = row.pop('calibration_points', None)
+        if cp is not None:
+            points = cp
+            if isinstance(cp, str):
+                stripped = cp.strip()
+                if stripped:
+                    try:
+                        points = json.loads(stripped)
+                    except Exception:
+                        raise ValueError('calibration_points 必须是 JSON 数组字符串')
+            if isinstance(points, list):
+                row['calibration_data'] = {'points': points}
+            else:
+                raise ValueError('calibration_points 必须是 JSON 数组字符串')
+        return row
+
+    @staticmethod
+    def _clean_cell(val):
+        """单元格清洗：None / NaN → None，其余原样返回。"""
+        if val is None:
+            return None
+        try:
+            if pd.isna(val):
+                return None
+        except Exception:
+            pass
+        return val
+
+    @staticmethod
+    def _build_create_payload(row):
+        """按创建 schema 校验并 dump（exclude_none），非法返回 None。"""
+        try:
+            model = SPLMappingCreateRequest.model_validate(row)
+        except Exception:
+            return None
+        return model.model_dump(by_alias=False, exclude_none=True)

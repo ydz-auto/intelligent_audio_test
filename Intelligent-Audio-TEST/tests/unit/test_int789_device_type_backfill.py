@@ -140,7 +140,7 @@ def _seed(db):
     # T3 api-only → http_api + api_id
     t3 = make_task('T3-api-only')
     make_case_row(t3, 'T3C1')
-    api3 = API(name='api3', api_url='http://x', api_endpoints=[], status='online',
+    api3 = API(name='api3', api_endpoints=[{'endpoint': 'http://x'}], status='online',
                meta={}, algorithm_type='translation')
     s.add(api3); s.flush()
     s.add(TaskAPI(task_id=t3, api_id=api3.id)); s.flush()
@@ -149,7 +149,7 @@ def _seed(db):
     # T4 兼有 device+api → http_api（设计 §3.3 API 优先）+ api_id
     t4 = make_task('T4-both')
     make_case_row(t4, 'T4C1')
-    api4 = API(name='api4', api_url='http://y', api_endpoints=[], status='online',
+    api4 = API(name='api4', api_endpoints=[{'endpoint': 'http://y'}], status='online',
                meta={}, algorithm_type='translation')
     s.add(api4); s.flush()
     s.add(TaskDevice(task_id=t4, device_id=301)); s.flush()
@@ -177,9 +177,8 @@ def _seed(db):
     # T8 api + ws 前缀 → websocket_api
     t8 = make_task('T8-ws')
     make_case_row(t8, 'T8C1')
-    api8 = API(name='api8', api_url='ws://realtime',
-               api_endpoints=[{'url': 'ws://realtime/audio'}], status='online',
-               meta={}, algorithm_type='translation')
+    api8 = API(name='api8', api_endpoints=[{'url': 'ws://realtime/audio'}],
+               status='online', meta={}, algorithm_type='translation')
     s.add(api8); s.flush()
     s.add(TaskAPI(task_id=t8, api_id=api8.id)); s.flush()
     expected['T8C1'] = ('websocket_api', str(api8.id))
@@ -187,7 +186,7 @@ def _seed(db):
     # T9 api + http 前缀（非 ws）→ 保持 http_api
     t9 = make_task('T9-api-http')
     make_case_row(t9, 'T9C1')
-    api9 = API(name='api9', api_url='http://h', api_endpoints=[{'url': 'http://h/x'}],
+    api9 = API(name='api9', api_endpoints=[{'url': 'http://h/x'}],
                status='online', meta={}, algorithm_type='translation')
     s.add(api9); s.flush()
     s.add(TaskAPI(task_id=t9, api_id=api9.id)); s.flush()

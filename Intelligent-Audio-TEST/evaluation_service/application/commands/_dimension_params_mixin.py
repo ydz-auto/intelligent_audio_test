@@ -14,6 +14,24 @@ from evaluation_service.application.commands._command_utils import (
 )
 
 
+def _serialize_default_value(value):
+    """default_value 写侧序列化（INT-1398）。
+
+    修复真值判断吞字段缺口：数值 0 / 布尔 false 为 falsy，旧代码 `if value else None`
+    把它们静默落成 NULL；改为 None→NULL、其余值一律保留并 JSON 序列化。
+    字符串兜底解析（与读侧 parse_json_or_raw 口径闭合）：旧客户端上送的 JSON 字符串
+    （如 '0' / '0.5' / 'false'）解析为原生类型后再序列化，避免再落成 '"0"'。
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (ValueError, TypeError):
+            pass
+    return json.dumps(value)
+
+
 class DimensionParamsMixin:
     """维度参数读写：输入参数 / 输出字段 / ParamMapping / body_template 同步"""
 
@@ -41,7 +59,7 @@ class DimensionParamsMixin:
                 'label': inp.get('label', inp.get('param_name', '')),
                 'field_type': inp.get('field_type', inp.get('type', 'text')),
                 'required': inp.get('required', True),
-                'default_value': json.dumps(inp.get('default_value')) if inp.get('default_value') else None,
+                'default_value': _serialize_default_value(inp.get('default_value')),
                 'help_text': inp.get('help_text', inp.get('description', '')),
                 'ui_order': inp.get('ui_order', idx),
             })
@@ -67,7 +85,7 @@ class DimensionParamsMixin:
                 'output_role': outp.get('output_role', 'main'),
                 'visible_in_report': outp.get('visible_in_report', True),
                 'required': False,
-                'default_value': json.dumps(outp.get('default_value')) if outp.get('default_value') else None,
+                'default_value': _serialize_default_value(outp.get('default_value')),
                 'help_text': outp.get('help_text', ''),
                 'ui_order': outp.get('ui_order', idx),
                 'pass_threshold': outp.get('pass_threshold'),

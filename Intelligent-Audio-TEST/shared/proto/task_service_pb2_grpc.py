@@ -569,6 +569,11 @@ class TaskConfigServiceStub:
                 request_serializer=task__service__pb2.GetCaseResultsRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
                 _registered_method=True)
+        self.CheckAudioReferences = channel.unary_unary(
+                '/task_service.TaskConfigService/CheckAudioReferences',
+                request_serializer=task__service__pb2.CheckAudioReferencesRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
         self.FavoriteTask = channel.unary_unary(
                 '/task_service.TaskConfigService/FavoriteTask',
                 request_serializer=task__service__pb2.FavoriteEntityRequest.SerializeToString,
@@ -705,6 +710,15 @@ class TaskConfigServiceServicer:
 
     def GetCaseResults(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CheckAudioReferences(self, request, context):
+        """---- 音频删除引用检查（INT-1306）----
+        按 audio_id 集合一次查被测试用例/任务引用计数（DB 侧扫描 config），
+        供 audio_service 删除/批量删除前调用，替代逐页 ListTestCases/ListTasks 全量拉取。
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -846,6 +860,11 @@ def add_TaskConfigServiceServicer_to_server(servicer, server):
             'GetCaseResults': grpc.unary_unary_rpc_method_handler(
                     servicer.GetCaseResults,
                     request_deserializer=task__service__pb2.GetCaseResultsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'CheckAudioReferences': grpc.unary_unary_rpc_method_handler(
+                    servicer.CheckAudioReferences,
+                    request_deserializer=task__service__pb2.CheckAudioReferencesRequest.FromString,
                     response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
             ),
             'FavoriteTask': grpc.unary_unary_rpc_method_handler(
@@ -1233,6 +1252,33 @@ class TaskConfigService:
             target,
             '/task_service.TaskConfigService/GetCaseResults',
             task__service__pb2.GetCaseResultsRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CheckAudioReferences(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/CheckAudioReferences',
+            task__service__pb2.CheckAudioReferencesRequest.SerializeToString,
             task__service__pb2.TaskConfigResponse.FromString,
             options,
             channel_credentials,

@@ -1,5 +1,7 @@
 import logging
 
+from pydantic import ValidationError
+
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
@@ -39,6 +41,10 @@ class TaskCommandService:
     def create():
         try:
             req = TaskCreateRequest.model_validate(request.get_json())
+        except ValidationError as e:
+            # INT-233 口径：请求体校验失败 → 422 结构化错误（INT-1115 旧字段/target_modes 违规同走此路）
+            return error_response(f"请求数据验证失败: {str(e)}",
+                                  code=ErrorCode.INVALID_PARAMS, http_code=422)
         except Exception as e:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 

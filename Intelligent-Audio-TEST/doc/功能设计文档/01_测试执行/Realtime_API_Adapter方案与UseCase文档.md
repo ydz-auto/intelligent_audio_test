@@ -113,7 +113,7 @@ flowchart LR
 | P0 | DB 迁移（`task_case_relations` 增 `device_type` + `idx_tc_rel_device`；新建 `api_rms_spl_mappings`）＋ 枚举（`shared/models/common_enums.py` 增 `DeviceType`/`APIProtocol`/`OutputType`/`CalibrationStatus`，前端 `domain/enums.ts` 镜像）＋ proto（`api_test_service.proto` 增 `ApiRmsSplConfigService`、`audio_service.proto` 增 `RenderAudioStream`、`evaluation_service.proto` 扩展 `EvaluateCaseRequest`） | task_service、api_test_service、audio_service、evaluation_service、shared |
 | P1 | adapter 族六文件 + `application/services/` 执行器（`RealtimeSessionExecutor`/`APISessionExecutor`）+ audio_service `RenderAudioStream` + `RmsSplService`；`StartAPITest` 按 `device_type` 分发 | api_test_service、audio_service |
 | P2 | 消费方迁移（`task_dispatch` 按 `device_type` 跨服务分发、网关 `/api/digital-spl` 蓝图、前端三页面与枚举消费）＋ 删除废弃实现（废弃清单见 05） | task_service、api_gateway、frontend |
-| P3 | `DROP` 单体遗留列 + `api_adapter_service` 下线（服务目录与 `docker/Dockerfile.api_adapter_service` 移除） | api_adapter_service、docker |
+| P3 | `DROP` 单体遗留列 + `api_adapter_service` 下线（服务目录与 `docker/Dockerfile.api_adapter_service` 移除，INT-1176 已执行） | api_adapter_service、docker |
 
 ---
 

@@ -56,7 +56,7 @@ class APITestRepositoryABC(ABC):
         """创建 API 配置，返回聚合根。
 
         Args:
-            data: 包含 API 字段的字典（name, vendor, api_url, ...）
+            data: 包含 API 字段的字典（name, vendor, description, ...）
         """
 
     @abstractmethod

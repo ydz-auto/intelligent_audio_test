@@ -181,6 +181,10 @@ class EvaluationCommandService:
         try:
             validated = DimensionUpdateInput.model_validate(data)
             data = validated.model_dump(exclude_none=True, by_alias=False)
+            # INT-1351：显式传入 category_id=null（未分类）时保留该键，透传 evaluation_service 清空分类；
+            # 否则 exclude_none 丢弃后编辑设未分类不落库（对齐 INT-1334 标签同款修复）
+            if 'category_id' in validated.model_fields_set:
+                data['category_id'] = validated.category_id
         except Exception as e:
             return error_response(f"数据验证失败: {str(e)}")
 

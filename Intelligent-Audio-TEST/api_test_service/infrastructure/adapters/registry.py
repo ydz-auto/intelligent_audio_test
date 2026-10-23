@@ -38,6 +38,7 @@ from shared.models.common_enums import (
     VendorAdapterType,
 )
 
+from api_test_service.domain.entities.api import resolve_api_endpoint
 from api_test_service.domain.ports import ApiVendorAdapter
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,64 @@ _FLAT_KEY_DIMENSIONS = {
     VendorAdapterType.OPENAI: (AdapterProtocol.REALTIME, AdapterVendor.OPENAI),
     VendorAdapterType.OPENAI_REALTIME: (AdapterProtocol.REALTIME, AdapterVendor.OPENAI),
 }
+
+# adapter_class 显式通道（INT-1169/1176，决策 a：保留列 + 内嵌映射 + 显式校验）。
+# 存量值仅 MockDialogAdapter（主库/隔离库均 deleted 冒烟残留）→ 映射
+# vendor_adapter='mock'；未知值报错，拒绝静默降级到 API_DRIVER（对齐独立服务
+# factory.py:103-106 显式报错语义）。旧文档类名（HttpAPIAdapter 等）从未落地
+# 可解析类，仅文档回写不建映射。
+_ADAPTER_CLASS_MAPPING = {
+    'MockDialogAdapter': VendorAdapterType.MOCK,
+}
+
+
+def _resolve_adapter_class(api_config=None, case_config=None):
+    """解析用例配置 adapter_class（apis.adapter_class 列 + case 级覆盖）。"""
+    raw = None
+    if isinstance(case_config, dict):
+        raw = case_config.get('adapter_class')
+    if raw is None and api_config is not None:
+        raw = getattr(api_config, 'adapter_class', None)
+    return str(raw) if raw is not None else None
+
+
+def _adapter_class_override(api_config=None, case_config=None):
+    """adapter_class → 内嵌扁平 key；未知类名显式报错（拒绝静默降级）。"""
+    raw = _resolve_adapter_class(api_config, case_config)
+    if raw is None:
+        return None
+    mapped = _ADAPTER_CLASS_MAPPING.get(raw)
+    if mapped is None:
+        raise ValueError(
+            f"adapter_class {raw!r} 未注册"
+            f"（已注册: {sorted(_ADAPTER_CLASS_MAPPING)}）—— "
+            f"未知适配器类名禁止静默降级到 API_DRIVER")
+    return mapped
+
+
+def _vendor_mock_guard(api_config=None, case_config=None) -> bool:
+    """vendor='mock' 且无 adapter_class / vendor_adapter 时兜底 MOCK。
+
+    INT-1170 审计非阻塞项 3：现 dimensions_from_config 不读 vendor 字段，
+    vendor='mock' 且无显式 adapter_class/vendor_adapter 的配置会静默落到
+    API_DRIVER（直发首端点 /chat），与 mock 厂商语义不符——此处兜底映射。
+    """
+    vendor = None
+    if isinstance(case_config, dict):
+        vendor = case_config.get('vendor')
+    if vendor is None and api_config is not None:
+        vendor = getattr(api_config, 'vendor', None)
+    return str(vendor or '').strip().lower() == 'mock'
+
+
+def _has_explicit_vendor_adapter(api_config=None, case_config=None) -> bool:
+    """是否显式配置了 vendor_adapter（case_config > api_config.meta）。"""
+    raw = None
+    if isinstance(case_config, dict):
+        raw = case_config.get(_ADAPTER_TYPE_CONFIG_KEY)
+    if raw is None and api_config is not None:
+        raw = (getattr(api_config, 'meta', None) or {}).get(_ADAPTER_TYPE_CONFIG_KEY)
+    return raw is not None
 
 
 def _check_dependencies(dependencies: list) -> Tuple[bool, str]:
@@ -344,6 +403,38 @@ class VendorAdapterRegistry:
             reason = f"无可用适配器实现（已注册: {self._registered_keys()}）"
         raise VendorAdapterNotFoundError(protocol, vendor, reason=reason)
 
+    def resolve_for(self, protocol, adapter_type, *, fallback: bool = False) -> Optional[type]:
+        """表驱动分发入口：扁平 key 在该协议下有映射 → 严格 resolve；无映射 → None。
+
+        INT-1299 分发表驱动化（替代 if/else 白名单）：执行链按当前协议查
+        _FLAT_KEY_DIMENSIONS 扁平 key 映射，命中协议维度即 resolve
+        （fallback=False——显式配置了 REALTIME 品牌却回退默认传输对象会造成
+        双通道语义歧义，方案审计 2026-10-16 拍板）；未映射（未配置 / 默认
+        API_DRIVER / 协议不匹配 / 未知扁平 key）返回 None，由调用方保持默认
+        构造（向后兼容）。新增厂商从此只加枚举 + 映射一行 + 注册类，调用方零改动。
+
+        Args:
+            protocol: AdapterProtocol 维度（执行链当前协议）。
+            adapter_type: VendorAdapterType 扁平 key（或等值字符串）。
+            fallback: 透传 resolve 兜底开关（默认 False，严格分发）。
+
+        Returns:
+            适配器类（type）；该协议下无映射 → None。
+        """
+        if not isinstance(adapter_type, VendorAdapterType):
+            try:
+                adapter_type = VendorAdapterType(str(adapter_type))
+            except ValueError:
+                return None
+        dims = _FLAT_KEY_DIMENSIONS.get(adapter_type)
+        if dims is None:
+            return None
+        mapped_protocol, vendor = dims
+        protocol = _coerce_protocol(protocol)
+        if mapped_protocol is None or mapped_protocol != protocol:
+            return None
+        return self.resolve(protocol, vendor, fallback=fallback)
+
     def get_by_key(self, protocol, vendor) -> Optional[VendorAdapterEntry]:
         """精确查一个条目（不降级），返回原始 entry"""
         return self._table.get((_coerce_protocol(protocol), _coerce_vendor(vendor)))
@@ -417,19 +508,8 @@ def adapter_type_from_config(api_config=None, case_config=None) -> VendorAdapter
 
 
 def _resolve_endpoint(api_config) -> str:
-    """解析候选端点（api_endpoints 优先，回退 endpoint/api_url）用于协议前缀推断"""
-    if api_config is None:
-        return ''
-    for source in (getattr(api_config, 'api_endpoints', None) or [],):
-        for ep in source:
-            url = (ep.get('endpoint') or '') if isinstance(ep, dict) else str(ep)
-            if url:
-                return url
-    for attr in ('endpoint', 'api_url'):
-        val = getattr(api_config, attr, None)
-        if isinstance(val, str) and val:
-            return val
-    return ''
+    """解析候选端点（api_endpoints 首个非空 endpoint，INT-1361 起唯一来源）用于协议前缀推断"""
+    return resolve_api_endpoint(api_config)
 
 
 def infer_protocol(api_config=None, case_config=None) -> AdapterProtocol:
@@ -462,8 +542,19 @@ def dimensions_from_config(api_config=None, case_config=None) -> Tuple[AdapterPr
     扁平 key 取 adapter_type_from_config（case_config.vendor_adapter >
     api_config.meta.vendor_adapter > API_DRIVER）；OPENAI / OPENAI_REALTIME
     协议维度固定 REALTIME（首期），其余按 infer_protocol 推断。
+
+    INT-1169/1176 扩展：
+    - adapter_class 显式通道优先（存量 MockDialogAdapter → MOCK，未知报错）；
+    - vendor='mock' 且无 adapter_class/vendor_adapter 时兜底 MOCK（防静默
+      落到 API_DRIVER 的守卫，INT-1170 审计项 3）。
     """
     a_type = adapter_type_from_config(api_config, case_config)
+    override = _adapter_class_override(api_config, case_config)
+    if override is not None:
+        a_type = override
+    elif (_vendor_mock_guard(api_config, case_config)
+          and not _has_explicit_vendor_adapter(api_config, case_config)):
+        a_type = VendorAdapterType.MOCK
     protocol, vendor = _FLAT_KEY_DIMENSIONS[a_type]
     if protocol is None:
         protocol = infer_protocol(api_config, case_config)

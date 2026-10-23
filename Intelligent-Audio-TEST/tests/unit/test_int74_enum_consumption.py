@@ -66,11 +66,11 @@ class TestNormalizeOutputTypes:
 
 class TestAPIAggregateOutputTypes:
     def test_default_empty(self):
-        api = APIAggregate(id=1, name='n', url='http://x')
+        api = APIAggregate(id=1, name='n')
         assert api.output_types == []
 
     def test_set_output_types_normalizes(self):
-        api = APIAggregate(id=1, name='n', url='http://x')
+        api = APIAggregate(id=1, name='n')
         result = api.set_output_types(['text', 'audio', 'audio', 'bogus'])
         assert result == ['audio', 'text']
         assert api.output_types == ['audio', 'text']
@@ -227,6 +227,19 @@ class TestSPLCalibrationFlow:
         assert res['code'] == 201
         assert repo.create_data['calibration_status'] == CalibrationStatus.CALIBRATED.value
         assert repo.create_data['calibration_status'] == 'calibrated'
+
+    def test_create_persists_digital_gain(self, spl_svc):
+        """INT-1337 回归：create 按请求体落 digital_gain，不再硬编码 None。"""
+        svc, repo = spl_svc
+        res = svc.create({'name': '映射', 'device_id': 1, 'digital_gain': 2.0})
+        assert res['code'] == 201
+        assert repo.create_data['digital_gain'] == 2.0
+
+    def test_create_without_digital_gain_keeps_none(self, spl_svc):
+        svc, repo = spl_svc
+        res = svc.create({'name': '映射', 'device_id': 1})
+        assert res['code'] == 201
+        assert repo.create_data['digital_gain'] is None
 
     def test_update_env_param_change_resets_to_uncalibrated(self, spl_svc):
         svc, repo = spl_svc

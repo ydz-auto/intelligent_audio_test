@@ -6,7 +6,7 @@
 | 适配自 | V9.7.10《08_混音与SPL映射》v1.1 |
 | 架构基线 | DDD + CQRS + 微服务 + Redis 分布式 |
 | 上游索引 | 《Realtime_API_Adapter方案与UseCase文档.md》配套文档清单 · 第 8 篇 |
-| 服务落位 | audio_service（混音编排+格式适配+SPL 增益，gRPC:50052）/ api_test_service（执行器+映射数据归属，gRPC:50071）/ api_adapter_service（数据面 Adapter 消费）/ device_service（E2E 对照映射数据源，gRPC:50053） |
+| 服务落位 | audio_service（混音编排+格式适配+SPL 增益，gRPC:50052）/ api_test_service（执行器+映射数据归属，gRPC:50071）/ api_test_service（数据面 Adapter 消费）/ device_service（E2E 对照映射数据源，gRPC:50053） |
 
 > 【适配说明】V9.7.10 为单体架构，`AudioStreamOrchestrator` 与三种 executor 同进程直调；V9.7.31 拆分后，混音编排下沉到 audio_service，经新增 gRPC 双出口暴露——`RenderAudioStream`（server-streaming，逐 chunk）与 `RenderAudioFile`（unary，服务端聚合整文件），api_test_service 侧仅保留 gRPC 流消费客户端（ACL 仓储）。三种 API 模式的混音编排语义不变：噪声合并 → 格式适配 → RMS 补偿+SPL 增益 → 时间轴 → 混音 → 切片。SPL 映射数据归属 api_test_service（`api_rms_spl_mappings` 表新增），audio_service 经 ACL 只读+TTL 缓存（**裁定注 2026-10-14，INT-323 代码核验**：该 ACL+TTL 取数路径未实现，实际由 api_test_service 预载映射 dict 随每轮 render_config 传入，详见 §6.2 读取路径处裁定注；计算落位 audio_service 不变）。E2E 对照链路不变。不新建服务、不引入 MQ。`RenderAudioStream` 的 proto 字段口径与《07_流式推送与结果获取.md》草案完全一致。
 
@@ -46,7 +46,7 @@ flowchart LR
         ASPL[ApiRmsSplService（新增）]
         ACLT[ApiTestAclRepositoryImpl（新增）]
     end
-    subgraph api_adapter_service[api_adapter_service]
+    subgraph api_test_service[api_test_service]
         AD[HttpAPIAdapter / HttpStreamAdapter / RealtimeAPIAdapter]
     end
     EX --> ACLR
@@ -667,7 +667,7 @@ def _execute_normal_round(self, adapter, round_config, ...):
 
     # 2. 混音 + 切片：gRPC server-streaming（跨服务边界，audio_service :50052）
     for chunk in self._render_acl.render_stream(request):   # AudioChunk(seq, pcm_base64, offset_ms, last)
-        # 3. 流式推送（数据面经 api_adapter_service）
+        # 3. 流式推送（数据面经 api_test_service）
         adapter.send(chunk.pcm_base64, is_audio=True)
         time.sleep(request.chunk_duration_ms / 1000)        # 模拟实时速率
 

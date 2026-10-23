@@ -233,7 +233,7 @@ def harness(mock_rt, audio_pcm, monkeypatch):
     rt_executor._render_service = RenderServiceStub(audio_pcm, chunk_ms=20)
 
     api_config = SimpleNamespace(
-        id=7, endpoint=mock_rt.url, api_endpoints=[],
+        id=7, api_endpoints=[{'endpoint': mock_rt.url}],
         default_max_process=2, meta={'vendor': 'openai'}, max_timeout=30,
         vendor='openai')
     data = {
@@ -322,7 +322,7 @@ class TestOpenAIRealtimeE2E:
         )
         mock_rt.set_behavior({'disconnect_after_events': 2})
         adapter = OpenAIRealtimeAdapter(
-            SimpleNamespace(id=7, endpoint=mock_rt.url, api_endpoints=[], meta={}),
+            SimpleNamespace(id=7, api_endpoints=[{'endpoint': mock_rt.url}], meta={}),
             case_config={}, endpoint=mock_rt.url)
         assert adapter.initialize() is True
         try:
@@ -348,7 +348,7 @@ class TestOpenAIRealtimeE2E:
         )
         mock_rt.set_behavior({'protocol_error_on_event': 'session.update'})
         adapter = OpenAIRealtimeAdapter(
-            SimpleNamespace(id=7, endpoint=mock_rt.url, api_endpoints=[], meta={}),
+            SimpleNamespace(id=7, api_endpoints=[{'endpoint': mock_rt.url}], meta={}),
             case_config={}, endpoint=mock_rt.url)
         assert adapter.initialize() is True
         try:
@@ -374,7 +374,7 @@ class TestWiringDispatch:
     @staticmethod
     def _cfg(endpoint='ws://mock', vendor_adapter=None, meta=None):
         cfg = SimpleNamespace(
-            id=7, endpoint=endpoint, api_endpoints=[], meta=dict(meta or {}),
+            id=7, api_endpoints=[{'endpoint': endpoint}], meta=dict(meta or {}),
             max_timeout=30, vendor='openai')
         return cfg
 

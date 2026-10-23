@@ -203,7 +203,7 @@ def grpc_mesh(pg_db, api_double):
     for clear in _channel_caches + _stub_caches:
         clear()
 
-    yield {'online_api_url': api_double}
+    yield {'online_endpoint': api_double}
 
     for clear in _channel_caches + _stub_caches:
         clear()
@@ -334,7 +334,7 @@ class TestStartApiPrecheck:
         finally:
             session.close()
 
-    def _create_api_config(self, api_url):
+    def _create_api_config(self, endpoint):
         """经真实 ACL 写入 apis 表（api_test_service 仓储），返回 api id。"""
         from api_test_service.infrastructure.persistence.api_test_repository import (
             api_test_repository,
@@ -342,8 +342,7 @@ class TestStartApiPrecheck:
 
         po = api_test_repository.create_api({
             'name': f'INT148 预检 {uuid.uuid4().hex[:6]}',
-            'api_url': api_url,
-            'api_endpoints': [{'endpoint': api_url, 'max_timeout': 5}],
+            'api_endpoints': [{'endpoint': endpoint, 'max_timeout': 5}],
             'algorithm_type': 'voice_llm',
             'status': 'online',
         })
@@ -355,7 +354,7 @@ class TestStartApiPrecheck:
             TaskLifecycleMixin,
         )
 
-        api_id = self._create_api_config(grpc_mesh['online_api_url'])
+        api_id = self._create_api_config(grpc_mesh['online_endpoint'])
 
         # 真实 gRPC 链路健康检查（test_connection → /health 替身）：
         # 防降级假通过——ACL 返回 None（gRPC 失败）时预检会静默跳过

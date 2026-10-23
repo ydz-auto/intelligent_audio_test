@@ -36,7 +36,7 @@ class AccessTokenRepositoryABC(ABC):
 
     @abstractmethod
     def list_by_user(self, user_id: int) -> List['AccessTokenAggregate']:
-        """列出用户全部 token（含软删行，按 created_at 升序）。"""
+        """列出用户未软删 token（软删行从管理列表消失，按 created_at 升序）。"""
 
     @abstractmethod
     def count_active_by_user(self, user_id: int) -> int:

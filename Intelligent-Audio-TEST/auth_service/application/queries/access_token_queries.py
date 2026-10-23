@@ -14,7 +14,7 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class ListAccessTokensQuery:
-    """列出当前用户全部 token（含软删行，掩码展示由接口层处理）。"""
+    """列出当前用户未软删 token（掩码展示由接口层处理）。"""
     user_id: int
 
 

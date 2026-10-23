@@ -82,7 +82,7 @@ class TestCreatePassthrough:
 
     def test_create_accepts_snake_case_proxy_fields(self, client, acl):
         resp = client.post('/api/v1/apis', json={
-            'name': 'API-1', 'api_url': 'http://example.com',
+            'name': 'API-1',
             'proxy_type': 'socks5h', 'proxy_url': 'user:pass@proxy.example.com:8080',
         })
         assert resp.status_code == 201, resp.text
@@ -105,7 +105,7 @@ class TestCreatePassthrough:
     def test_create_without_proxy_fields_loads_unchanged(self, client, acl):
         """缺省代理字段 → 下发 data dict 不含 proxy_*（回归：exclude_none 透传负载不变）。"""
         resp = client.post('/api/v1/apis', json={
-            'name': 'API-1', 'api_url': 'http://example.com', 'vendor': 'v',
+            'name': 'API-1', 'vendor': 'v',
         })
         assert resp.status_code == 201, resp.text
         sent = acl.create_calls[0]

@@ -30,6 +30,7 @@ from task_service.infrastructure.visibility_context import visibility_identity
 from task_service.infrastructure.read_models.task_read_model_detail import TaskDetailReadModelMixin
 from task_service.infrastructure.read_models.task_read_model_progress_stats import TaskProgressStatsMixin
 from task_service.infrastructure.read_models.task_read_model_case_results import TaskCaseResultsMixin
+from task_service.infrastructure.read_models.task_device_type_derivation import fetch_task_device_types
 
 logger = logging.getLogger(__name__)
 
@@ -282,8 +283,12 @@ class TaskReadModel(
                 #   api   = 无物理设备用例（含无 device_type 行与未知类型行）
                 #   e2e   = 含物理设备用例且无 API 设备用例
                 #   mixed = 物理设备用例与 API 设备用例兼有
+                # INT-1233：历史任务无 task_case_relations 行（仅剩设备/API 关系）
+                # 时按任务级关系回退派生——有 task_device_relations → physical、
+                # 有 task_api_relations → http_api（与 read model device_types 输出
+                # 口径一致，避免无用例任务全部落入 api）。
                 from shared.models.common_enums import DeviceType
-                from task_service.infrastructure.persistence.models import TaskCase
+                from task_service.infrastructure.persistence.models import TaskCase, TaskDevice, TaskAPI
                 physical_exists = sa_select(TaskCase.id).where(
                     TaskCase.task_id == Task.id,
                     TaskCase.device_type == DeviceType.PHYSICAL.value,
@@ -294,6 +299,20 @@ class TaskReadModel(
                         DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value,
                     ]),
                 ).correlate(Task).exists()
+                # INT-1233：任务级关系回退（无用例级 device_type 行时）
+                case_type_exists = sa_select(TaskCase.id).where(
+                    TaskCase.task_id == Task.id,
+                    TaskCase.device_type.isnot(None),
+                    TaskCase.device_type != '',
+                ).correlate(Task).exists()
+                dev_rel_exists = sa_select(TaskDevice.id).where(
+                    TaskDevice.task_id == Task.id,
+                ).correlate(Task).exists()
+                api_rel_exists = sa_select(TaskAPI.id).where(
+                    TaskAPI.task_id == Task.id,
+                ).correlate(Task).exists()
+                physical_exists = or_(physical_exists, and_(~case_type_exists, dev_rel_exists))
+                api_exists = or_(api_exists, and_(~case_type_exists, api_rel_exists))
                 if task_type == 'mixed':
                     query = query.filter(physical_exists, api_exists)
                 elif task_type == 'e2e':
@@ -435,16 +454,10 @@ class TaskReadModel(
                         source_tasks_map.setdefault(cid, briefs)
                 except Exception as cp_err:
                     logger.debug("挑选合并容器批量判定降级（表可能未建）: %s", cp_err)
-            # 批量取页面任务的用例级被测设备类型集合（差异#2 收尾：取代 task.type 输出）
-            device_types_map = {}
-            if page_task_ids:
-                dt_rows = (session.query(TaskCase.task_id, TaskCase.device_type)
-                           .filter(TaskCase.task_id.in_(page_task_ids)).all())
-                for tid, dt in dt_rows:
-                    if dt:
-                        device_types_map.setdefault(tid, [])
-                        if dt not in device_types_map[tid]:
-                            device_types_map[tid].append(dt)
+            # 批量取页面任务的用例级被测设备类型集合（差异#2 收尾：取代 task.type 输出）。
+            # INT-1233：无用例级 device_type 行（含无 task_case_relations 的历史任务）
+            # 按任务级设备/API 关系回退派生（与 task_type 筛选、stats type_counts 同口径）。
+            device_types_map = fetch_task_device_types(session, page_task_ids) if page_task_ids else {}
             # INT-141：当前用户对本页任务的收藏集合（is_favorite 标记）
             favorite_ids = set()
             if user_id and page_task_ids:
@@ -613,13 +626,9 @@ class TaskReadModel(
         processed = completed + failed
         percent = round(processed / total * 100, 2) if total > 0 else 0.0
         # 用例级被测设备类型集合（差异#2 收尾：取代 task.type 输出）
-        device_types = []
-        if session is not None:
-            from task_service.infrastructure.persistence.models import TaskCase
-            dt_rows = (session.query(TaskCase.device_type)
-                       .filter(TaskCase.task_id == task.id, TaskCase.device_type.isnot(None))
-                       .distinct().all())
-            device_types = [dt for (dt,) in dt_rows]
+        # INT-1233：无用例级 device_type 行（含无 task_case_relations 的历史任务）
+        # 按任务级设备/API 关系回退派生（与 search_tasks / stats 同口径）。
+        device_types = fetch_task_device_types(session, [task.id]).get(task.id, []) if session is not None else []
         return {
             'task_id': task.id,
             'name': task.name,

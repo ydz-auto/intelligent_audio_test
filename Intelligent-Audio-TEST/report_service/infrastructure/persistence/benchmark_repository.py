@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Integer, func
+from sqlalchemy import Integer, func, or_
 
 from shared.models.database import get_db_session
 from report_service.domain.entities.benchmark import MetricMapping, RankingDirection
@@ -23,9 +23,25 @@ from report_service.infrastructure.persistence.models import (
     BenchmarkRanking,
     BenchmarkReport,
     BenchmarkSource,
+    Report,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _visible_report_filter(session) -> 'object':
+    """INT-1218：排行行源报告可见性过滤条件（查询侧统一口径）。
+
+    benchmark_rankings.report_id 引用 test_reports（软删 deleted=true 或硬删
+    行不存在），若继续展示排行行，「查看报告」入口即失效（GET /reports/{id}
+    404）。查询侧统一过滤：report_id 为空（external_import 轨）或 report_id
+    指向未软删且仍存在的报告。
+    """
+    visible_report_ids = session.query(Report.id).filter(Report.deleted.is_(False))
+    return or_(
+        BenchmarkRanking.report_id.is_(None),
+        BenchmarkRanking.report_id.in_(visible_report_ids),
+    )
 
 
 def _benchmark_report_dict(po: BenchmarkReport) -> Dict[str, Any]:
@@ -157,6 +173,7 @@ class BenchmarkRepositoryImpl(BenchmarkRepository):
                     BenchmarkRanking.published_task_id == int(filters['published_task_id']))
             if filters.get('subject_name'):
                 query = query.filter(BenchmarkRanking.subject_name == filters['subject_name'])
+            query = query.filter(_visible_report_filter(session))
             query = query.order_by(
                 BenchmarkRanking.benchmark_suite, BenchmarkRanking.category,
                 BenchmarkRanking.metric_code, BenchmarkRanking.rank,
@@ -171,6 +188,7 @@ class BenchmarkRepositoryImpl(BenchmarkRepository):
             query = session.query(BenchmarkRanking.subject_name).distinct()
             if suite:
                 query = query.filter(BenchmarkRanking.benchmark_suite == suite)
+            query = query.filter(_visible_report_filter(session))
             return [row[0] for row in query.order_by(BenchmarkRanking.subject_name).all()]
         finally:
             session.close()

@@ -198,7 +198,7 @@
   <text x="966" y="822" class="note">require_permission 辅助</text>
 
   <rect x="44" y="838" width="290" height="90" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.2" stroke-dasharray="5 4"/>
-  <text x="60" y="858" font-size="11" font-weight="700" fill="#475569">api_adapter_service :5008/:50081</text>
+  <text x="60" y="858" font-size="11" font-weight="700" fill="#475569">api_test_service 内嵌适配器</text>
   <text x="60" y="876" class="body">语音 LLM 适配（P3 下线）</text>
   <text x="60" y="892" class="body">Qwen/火山 AST/SSE/HTTP/Mock</text>
   <text x="60" y="910" class="note">P1：并入 api_test_service/adapters/</text>

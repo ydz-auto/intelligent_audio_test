@@ -182,8 +182,7 @@ interface APIConfig {
   id: string | number;
   name: string;
   vendor?: string;
-  apiUrl?: string;                     // 主端点（卡片展示字段）
-  apiEndpoints?: any[];                // 端点列表（搜索匹配 url/endpoint）
+  apiEndpoints?: any[];                // 端点列表（唯一端点入口，卡片展示取首个 endpoint，搜索匹配 url/endpoint）
   status: 'online' | 'offline' | 'busy' | 'error';
   algorithmType?: string;              // 关联算法类型（页面过滤依据）
   maxConcurrent?: number;              // 汇总并发上限用
@@ -262,7 +261,7 @@ views/APITest.vue                          # 视图壳：组合 useApiTest 与�
     <ResourceSelectionGrid
       :items="filteredAPIs"
       :selected-ids="selectedAPIIds"
-      :display-fields="[{ key: 'apiUrl', label: '端点' }, { key: 'description', label: '描述' }]"
+      :display-fields="[{ key: 'endpoint', label: '端点' }, { key: 'description', label: '描述' }]"
       @toggle-selection="toggleAPISelection"
       @action-click="handleResourceAction"
     />
@@ -359,7 +358,7 @@ const nextStep = async () => {
 
 ### 7.1 组件定位
 
-未新建独立的 APISelector.vue；步骤2 复用公共 `ResourceSelectionGrid` 多选网格，APITest.vue 通过 `apiDisplayFields` 配置展示字段（端点 apiUrl / 描述 description），工具栏提供新增 API（openApiEditModal）/ 搜索（apiSearchQuery）/ 状态筛选（apiFilter）与分页（PaginationComponent）。数据过滤收敛于 useApiTest 的 `allFilteredAPIs`（见 §6.3），不再让展示组件自行拉取/过滤数据。
+未新建独立的 APISelector.vue；步骤2 复用公共 `ResourceSelectionGrid` 多选网格，APITest.vue 通过 `apiDisplayFields` 配置展示字段（端点 endpoint，取 api_endpoints 首个 / 描述 description），工具栏提供新增 API（openApiEditModal）/ 搜索（apiSearchQuery）/ 状态筛选（apiFilter）与分页（PaginationComponent）。数据过滤收敛于 useApiTest 的 `allFilteredAPIs`（见 §6.3），不再让展示组件自行拉取/过滤数据。
 
 ### 7.2 交互行为
 

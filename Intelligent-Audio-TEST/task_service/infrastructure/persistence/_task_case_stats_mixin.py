@@ -309,6 +309,19 @@ class TaskCaseStatsMixin:
         per_task: dict = {}
         for tid, dt in rows:
             per_task.setdefault(tid, set()).add(dt)
+        # INT-1233：无用例级 device_type 行的任务按任务级设备/API 关系回退派生
+        # （历史任务无 task_case_relations，仅剩 task_device_relations/
+        # task_api_relations——与列表 device_types、task_type 筛选同口径）
+        covered_ids = set(per_task)
+        all_ids = {t[0] for t in task_q.all()}
+        missing_ids = all_ids - covered_ids
+        if missing_ids:
+            from task_service.infrastructure.read_models.task_device_type_derivation import (
+                fetch_task_device_types,
+            )
+            rel_map = fetch_task_device_types(session, list(missing_ids))
+            for tid, dts in rel_map.items():
+                per_task.setdefault(tid, set()).update(dts)
         counts = {'api': 0, 'e2e': 0, 'mixed': 0}
         for dts in per_task.values():
             has_physical = DeviceType.PHYSICAL.value in dts
@@ -319,8 +332,8 @@ class TaskCaseStatsMixin:
                 counts['e2e'] += 1
             else:
                 counts['api'] += 1
-        # 无用例（无 device_type 行）的任务按前端口径计入 api
-        no_case = task_q.count() - len(per_task)
+        # 无用例级 device_type 且无关系的任务按前端口径计入 api
+        no_case = len(all_ids) - len(per_task)
         counts['api'] += int(no_case) if no_case > 0 else 0
         return {'items': [{'key': k, 'count': int(v)} for k, v in counts.items()]}
 

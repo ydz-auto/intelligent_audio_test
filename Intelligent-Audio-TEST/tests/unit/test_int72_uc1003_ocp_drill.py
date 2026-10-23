@@ -1,18 +1,19 @@
 # -*- coding: utf-8 -*-
-"""INT-72 验收测试 — UC-1003 OCP 实弹演练（测试工程师2）。
+"""INT-72 验收测试（INT-1169/1176 改写）— 内嵌注册表 UC-1003 OCP 实弹演练。
 
-设计验收标准：新厂商适配器只新增一个子类文件，基类 / executor / 工厂
-零改动（OCP），vendor 枚举化，注册即生效。
+api_adapter_service 删除后，OCP 演练指向内嵌 vendor_adapter_registry：
+新厂商适配器只新增一个子类文件（@register_vendor_adapter 自注册），
+基类 / 注册表 / 执行链零改动（OCP），注册即生效。
 
-本文件真实地向 adapters 包写入一个新厂商子类模块（内部自注册），重载
-包模拟服务重启（pkgutil 自动发现），验证 (protocol, vendor) 自动匹配与
-adapter_class 显式类名通道都能命中新适配器；结束后完整还原（模块文件 /
-sys.modules / 单例注册表），不污染同进程其他用例（如精确快照断言）。
+本文件真实地向 api_test_service/infrastructure/adapters 包写入一个新厂商子类
+模块，import 触发装饰器自注册，验证 create_from_config 自动匹配，
+结束后完整还原（模块文件 / sys.modules / 单例注册表），不污染同进程其他用例。
 """
 import hashlib
 import importlib
 import os
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,40 +22,46 @@ import pytest
 os.environ.setdefault('OSS_ACCESS_KEY', 'ut-dummy-ak')
 os.environ.setdefault('OSS_SECRET_KEY', 'ut-dummy-sk')
 
-ADAPTERS_PKG = 'api_adapter_service.adapters'
-NEW_MODULE_NAME = 'zz_acceptance_acme_adapter'
-GUARDED_FILES = ('factory.py', 'base.py')
+from shared.models.common_enums import AdapterProtocol, AdapterVendor  # noqa: E402
 
+ADAPTERS_PKG = 'api_test_service.infrastructure.adapters'
+NEW_MODULE_NAME = 'zz_acceptance_acme_adapter'
+GUARDED_FILES = ('registry.py', 'api_driver_adapter.py')
+
+# 演练厂商注册键：(HTTP, API_DRIVER) —— 与既有 ApiDriverAdapter（(ANY, API_DRIVER)
+# 遗留单维）不同键，不覆盖；create_from_config 在演练期间按该键精确命中。
 NEW_MODULE_SRC = f'''# -*- coding: utf-8 -*-
 """验收演练：模拟新厂商 Acme 仅新增一个子类文件即完成接入（UC-1003）。"""
-from api_adapter_service.adapters.base import BaseAdapter
-from api_adapter_service.adapters.factory import api_adapter_factory
-from api_adapter_service.domain.enums import AdapterProtocol
+from api_test_service.domain.ports import ApiVendorAdapter
+from api_test_service.infrastructure.adapters.registry import register_vendor_adapter
+from shared.models.common_enums import AdapterProtocol, AdapterVendor
 
 
-class AcmeRealtimeAdapter(BaseAdapter):
-    """UC-1003 演练厂商适配器（websocket 协议）。"""
+@register_vendor_adapter
+class AcmeRealtimeAdapter(ApiVendorAdapter):
+    """UC-1003 演练厂商适配器（HTTP 协议，vendor=api_driver 键）。"""
 
-    def send_request(self, task_id, session_id, input_type, input_data,
-                     **kwargs):
+    protocol = AdapterProtocol.HTTP
+    vendor = AdapterVendor.API_DRIVER
+
+    def __init__(self, api_config=None, case_config=None, endpoint=None,
+                 test_case_id=None, task_id=None):
+        self.api_config = api_config
+        self.case_config = case_config or {{}}
+
+    def render_request_parts(self, context_data):
+        return {{}}, dict(context_data or {{}})
+
+    def execute(self, context_data, files=None, method=None):
         return {{
-            'asr_text': 'acme-asr', 'trans_text': 'acme-trans',
-            'output': 'acme-out', 'session_id': session_id,
-            'latency': 0.0, 'raw_response': {{'vendor': 'acme'}},
+            'success': True, 'latency': 0, 'status_code': 200,
+            'raw_response': {{'vendor': 'acme'}}, 'error': None,
+            'json': {{}}, 'asr': 'acme-asr', 'trans': 'acme-trans',
         }}
-
-
-api_adapter_factory.register(
-    AdapterProtocol.WEBSOCKET, 'acme', AcmeRealtimeAdapter)
 '''
 
-DEFAULT_REGISTRY_SNAPSHOT = {
-    '(http, default)': 'HttpAdapter',
-    '(mock, default)': 'MockDialogAdapter',
-    '(mock, mock)': 'MockDialogAdapter',
-    '(sse, default)': 'SseAdapter',
-    '(websocket, qwen)': 'QwenAdapter',
-    '(websocket, volc_ast)': 'VolcAstAdapter',
+DEFAULT_ADAPTER_NAMES = {
+    'ApiDriverAdapter', 'MockVendorAdapter', 'OpenAIRealtimeAdapter',
 }
 
 
@@ -82,19 +89,17 @@ def acme_drill():
         f.write(NEW_MODULE_SRC)
     importlib.invalidate_caches()
     try:
-        # 重载包 = 服务重启：__init__ 的 pkgutil 自动发现应导入新模块并自注册
-        importlib.reload(pkg)
+        importlib.import_module(f'{ADAPTERS_PKG}.{NEW_MODULE_NAME}')
         yield pkg_dir, guarded_before
     finally:
         if os.path.exists(new_path):
             os.remove(new_path)
         sys.modules.pop(f'{ADAPTERS_PKG}.{NEW_MODULE_NAME}', None)
         importlib.invalidate_caches()
-        importlib.reload(pkg)
-        from api_adapter_service.adapters.factory import api_adapter_factory
-        with api_adapter_factory._lock:
-            api_adapter_factory._table.pop(('websocket', 'acme'), None)
-            api_adapter_factory._by_name.pop('AcmeRealtimeAdapter', None)
+        from api_test_service.infrastructure.adapters import \
+            vendor_adapter_registry
+        vendor_adapter_registry.unregister(
+            AdapterProtocol.HTTP, AdapterVendor.API_DRIVER)
 
 
 class TestUC1003OCPDrill:
@@ -102,102 +107,51 @@ class TestUC1003OCPDrill:
 
     def test_new_vendor_single_file_zero_touch(self, acme_drill):
         pkg_dir, guarded_before = acme_drill
-        # 基类 / 工厂零改动：写入新厂商文件前后哈希一致
+        # 基类 / 注册表零改动：写入新厂商文件前后哈希一致
         for name, digest in guarded_before.items():
             assert _file_hash(os.path.join(pkg_dir, name)) == digest, name
 
-        from api_adapter_service.adapters.factory import api_adapter_factory
         mod = importlib.import_module(f'{ADAPTERS_PKG}.{NEW_MODULE_NAME}')
         cls = mod.AcmeRealtimeAdapter
 
-        # (protocol, vendor) 自动匹配命中新厂商
-        assert api_adapter_factory.resolve(
-            'acme', {'protocol': 'websocket'}) is cls
-        # 归一化：大小写 / 空白容错
-        assert api_adapter_factory.resolve(
-            ' ACME ', {'protocol': 'WebSocket'}) is cls
-        # 实例化与调用可用
-        adapter = api_adapter_factory.get_adapter(
-            'acme', {'protocol': 'websocket'})
+        from api_test_service.infrastructure.adapters import \
+            vendor_adapter_registry
+        # create_from_config 按 (HTTP, API_DRIVER) 精确命中演练适配器
+        cfg = SimpleNamespace(
+            id=1, meta={'vendor_adapter': 'api_driver'}, api_endpoints=[{'endpoint': 'http://x'}],
+            adapter_class=None, vendor=None,
+            proxy_type=None, proxy_url=None, max_timeout=30)
+        adapter = vendor_adapter_registry.create_from_config(cfg, {})
         assert isinstance(adapter, cls)
-        assert adapter.send_request('t', 's', 'text', 'hi')['output'] == (
-            'acme-out')
+        assert adapter.execute({})['asr'] == 'acme-asr'
 
-    def test_new_vendor_via_adapter_class_channel(self, acme_drill):
-        """adapter_class 显式类名同样命中新厂商（通道零改动即对新类生效）。"""
-        from api_adapter_service.adapters.factory import api_adapter_factory
-        mod = importlib.import_module(f'{ADAPTERS_PKG}.{NEW_MODULE_NAME}')
-        assert api_adapter_factory.resolve(
-            'anything-else',
-            {'protocol': 'http',
-             'adapter_class': 'AcmeRealtimeAdapter'},
-        ) is mod.AcmeRealtimeAdapter
-
-    def test_registry_restored_to_default_snapshot(self):
+    def test_registry_restored_to_default(self):
         """演练还原后注册表回到内置快照（不污染同进程其他用例）。"""
-        from api_adapter_service.adapters.factory import api_adapter_factory
-        assert api_adapter_factory.list_adapters() == (
-            DEFAULT_REGISTRY_SNAPSHOT)
+        from api_test_service.infrastructure.adapters import \
+            vendor_adapter_registry
+        names = {e['class'] for e in vendor_adapter_registry.list_adapters()}
+        assert 'AcmeRealtimeAdapter' not in names
+        assert DEFAULT_ADAPTER_NAMES <= names
 
 
 class TestRegistrySemantics:
-    """注册表语义复核（独立工厂实例，不触碰单例）。"""
+    """注册表语义复核（只读断言 / 独立配置）。"""
 
-    def test_conflict_raises_and_idempotent_same_class(self):
-        """同 (protocol, vendor) 注册不同实现 → 抛错；同类重复注册幂等。"""
-        from api_adapter_service.adapters.base import BaseAdapter
-        from api_adapter_service.adapters.factory import APIAdapterFactory
-        from api_adapter_service.domain.enums import AdapterProtocol, Vendor
-
-        factory = APIAdapterFactory()
-
-        class FakeA(BaseAdapter):
-            def send_request(self, **kwargs):
-                return {}
-
-        class FakeB(BaseAdapter):
-            def send_request(self, **kwargs):
-                return {}
-
-        factory.register(AdapterProtocol.WEBSOCKET, Vendor.QWEN, FakeA)
-        with pytest.raises(ValueError, match='适配器注册冲突'):
-            factory.register(AdapterProtocol.WEBSOCKET, Vendor.QWEN, FakeB)
-        # 同类重复注册幂等
-        assert factory.register(
-            AdapterProtocol.WEBSOCKET, Vendor.QWEN, FakeA) is FakeA
-
-    def test_non_baseadapter_rejected(self):
-        """非 BaseAdapter 子类禁止注册。"""
-        from api_adapter_service.adapters.factory import APIAdapterFactory
-
-        factory = APIAdapterFactory()
-        with pytest.raises(TypeError, match='BaseAdapter'):
-            factory.register('http', 'default', dict)
-
-    def test_adapter_class_unknown_lists_registered(self):
-        """adapter_class 拼错类名 → 明确报错并列出已注册类名。"""
-        from api_adapter_service.adapters.factory import APIAdapterFactory, \
-            api_adapter_factory  # 导入 factory 即触发父包自动发现与自注册
-
+    def test_unknown_adapter_class_lists_registered(self):
+        cfg = SimpleNamespace(
+            id=1, meta={}, api_endpoints=[{'endpoint': 'http://x'}],
+            adapter_class='Nope', vendor=None, proxy_type=None,
+            proxy_url=None, max_timeout=30)
+        from api_test_service.infrastructure.adapters import registry as reg
         with pytest.raises(ValueError, match='未注册'):
-            APIAdapterFactory().resolve('qwen', {'protocol': 'sse',
-                                                 'adapter_class': 'Nope'})
-        assert 'Nope' not in api_adapter_factory._by_name
+            reg._adapter_class_override(cfg, None)
 
-    def test_websocket_unregistered_rejected_no_silent_fallback(self):
-        """websocket + 未登记 vendor 且未配 adapter_class → 拒绝静默降级。"""
-        from api_adapter_service.adapters.factory import APIAdapterFactory
-
-        with pytest.raises(ValueError, match='websocket'):
-            APIAdapterFactory().get_adapter('doubao',
-                                            {'protocol': 'websocket'})
-
-    def test_vendor_alias_and_case_folding(self):
-        """vendor 别名（volc→volc_ast / qwen3→qwen）与大小写归一化生效。"""
-        from api_adapter_service.adapters.factory import api_adapter_factory  # 导入 factory 即触发父包自动发现与自注册
-
-        # 只读使用单例（内置适配器注册在模块级单例上）
-        assert api_adapter_factory.resolve(
-            'volc', {'protocol': 'websocket'}).__name__ == 'VolcAstAdapter'
-        assert api_adapter_factory.resolve(
-            'Qwen3', {'protocol': 'websocket'}).__name__ == 'QwenAdapter'
+    def test_vendor_mock_guard(self):
+        from api_test_service.infrastructure.adapters import \
+            vendor_adapter_registry
+        cfg = SimpleNamespace(
+            id=1, meta={}, api_endpoints=[{'endpoint': 'http://x'}],
+            adapter_class=None, vendor='mock', proxy_type=None,
+            proxy_url=None, max_timeout=30)
+        adapter = vendor_adapter_registry.create_from_config(cfg, {})
+        assert type(adapter).__name__ == 'MockVendorAdapter'

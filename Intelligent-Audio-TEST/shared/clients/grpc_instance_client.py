@@ -13,6 +13,7 @@ channel 按 (host, port) 缓存复用，拦截器与共享工厂同构
 import grpc
 from functools import lru_cache
 
+from shared.clients._grpc_channels import _channel_options
 from shared.infrastructure.grpc_interceptors import (
     client_deadline_interceptor,
     client_log_interceptor,
@@ -26,7 +27,7 @@ _INSTANCE_INTERCEPTORS = [client_log_interceptor, client_worker_context_intercep
 
 @lru_cache(maxsize=16)
 def _get_channel(addr):
-    chan = grpc.insecure_channel(addr)
+    chan = grpc.insecure_channel(addr, options=_channel_options())
     return grpc.intercept_channel(chan, *_INSTANCE_INTERCEPTORS)
 
 

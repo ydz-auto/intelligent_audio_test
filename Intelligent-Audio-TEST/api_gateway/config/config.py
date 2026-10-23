@@ -1,6 +1,6 @@
 """API Gateway 领域配置"""
 import os
-from shared.infrastructure.config import BaseConfig
+from shared.infrastructure.config import BaseConfig, _get_int
 
 
 class Config(BaseConfig):
@@ -92,6 +92,22 @@ class Config(BaseConfig):
     # 分享链接拼接用公开 origin（请求 base URL 不可用时回退；
     # 形态与前端路由 /report/:reportId?share= 一致）
     PUBLIC_ORIGIN = os.environ.get('PUBLIC_ORIGIN', 'http://localhost:5000')
+
+    # ===== MCP 自转发基址（INT-1150）=====
+    # MCP tools/call 把调用转发回网关自身 REST 端点时使用的内部基址。
+    # 必须服务端配置，不得跟随客户端 Host 头 —— 已认证调用者把网关当跳板
+    # 向内网任意地址发注册表内工具路径请求属认证 SSRF（审计打回 P2）。
+    # 空 = 回退网关自身监听地址 http://127.0.0.1:{PORT}；部署在反向代理/
+    # 容器网络后如需显式指定内部入口，设 MCP_SELF_FORWARD_BASE
+    # （如 http://api_gateway:5000）。
+    MCP_SELF_FORWARD_BASE = os.environ.get('MCP_SELF_FORWARD_BASE', '')
+
+    # ===== 报告对比（INT-1406）=====
+    # 跨任务大结果集同步聚合的 GenerateCompareReport gRPC 调用显式超时（秒）。
+    # 客户端默认 deadline 为 60s（GRPC_CLIENT_DEADLINE_SECONDS），跨任务大结果集
+    # 同步聚合实测 >60s → DEADLINE_EXCEEDED → 网关 400；此配置显式放宽该调用。
+    GRPC_REPORT_COMPARE_TIMEOUT_SECONDS: int = _get_int(
+        'GRPC_REPORT_COMPARE_TIMEOUT_SECONDS', 600)
 
     @classmethod
     def validate(cls):

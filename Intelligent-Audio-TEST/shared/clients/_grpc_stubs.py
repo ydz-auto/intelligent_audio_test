@@ -12,7 +12,6 @@ from shared.clients._grpc_channels import (
     _get_task_channel,
     _get_api_test_channel,
     _get_evaluation_channel,
-    _get_adapter_channel,
     _get_algorithm_channel,
     _get_report_channel,
     _get_auth_channel,
@@ -242,15 +241,6 @@ def get_api_rms_spl_config_service_stub():
     """ApiRmsSplConfigService stub：被测 API RMS→SPL 映射 CRUD/校准/默认项（UC-0902）"""
     from shared.proto import api_test_service_pb2_grpc
     return api_test_service_pb2_grpc.ApiRmsSplConfigServiceStub(_get_api_test_channel())
-
-
-# ==================== adapter_service stubs ====================
-
-@lru_cache(maxsize=1)
-def get_adapter_service_stub():
-    """AdapterService stub：发送单轮测试请求"""
-    from shared.proto import adapter_service_pb2_grpc
-    return adapter_service_pb2_grpc.AdapterServiceStub(_get_adapter_channel())
 
 
 # ==================== algorithm_service stubs ====================

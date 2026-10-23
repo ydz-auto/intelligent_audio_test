@@ -100,7 +100,7 @@ class AlgorithmGroupServicer(_pb_grpc.AlgorithmGroupServiceServicer):
         """创建算法分组。
 
         请求字段（CreateAlgorithmGroupRequest.data JSON）：
-        name / description / algorithm_type
+        name / description / algorithm_type / icon / display_order
         """
         from algorithm_service.application.commands.algorithm_commands import (
             CreateAlgorithmGroupCommand,
@@ -110,6 +110,8 @@ class AlgorithmGroupServicer(_pb_grpc.AlgorithmGroupServiceServicer):
             name=data.get("name", ""),
             description=data.get("description"),
             algorithm_type=data.get("algorithm_type"),
+            icon=data.get("icon"),
+            display_order=data.get("display_order", 0),
         )
         new_id = self.command_handler.handle_create_group(cmd)
         return {"id": new_id, "name": cmd.name}
@@ -128,6 +130,8 @@ class AlgorithmGroupServicer(_pb_grpc.AlgorithmGroupServiceServicer):
             id=int(request.group_id),
             name=data.get("name", ""),
             description=data.get("description"),
+            icon=data.get("icon"),
+            display_order=data.get("display_order"),
         )
         self.command_handler.handle_update_group(cmd)
         return {"id": cmd.id, "updated": True}
@@ -250,6 +254,9 @@ class AlgorithmDefinitionServicer(_ParamMethodsMixin, _pb_grpc.AlgorithmDefiniti
             name=data.get("name", ""),
             algorithm_type=data.get("algorithm_type") or data.get("type") or "",
             description=data.get("description"),
+            status=data.get("status"),
+            icon=data.get("icon"),
+            display_order=data.get("display_order"),
         )
         new_id = self.command_handler.handle_create_definition(cmd)
         return {"id": new_id, "name": cmd.name}

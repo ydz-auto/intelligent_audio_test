@@ -185,7 +185,7 @@ message AlgorithmResponse {
 
 // ===== 分组请求 =====
 message CreateAlgorithmGroupRequest {
-  string data = 1;  // JSON: name/description/algorithm_type
+  string data = 1;  // JSON: name/description/algorithm_type/icon/display_order
 }
 message UpdateAlgorithmGroupRequest {
   int32 group_id = 1;

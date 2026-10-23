@@ -10,7 +10,6 @@
 | `task_service.proto` | task_service | api_gateway / e2e_test_service / evaluation_service | 任务执行引擎 + 任务/用例/标签/算法配置 CRUD + 跨服务数据查询 |
 | `api_test_service.proto` | api_test_service | api_gateway | API 测试服务接口 |
 | `evaluation_service.proto` | evaluation_service | api_gateway / task_service | 评估服务 + 评估配置 + 评估数据查询 |
-| `adapter_service.proto` | api_adapter_service | e2e_test_service / task_service | 多厂商 API 适配器服务 |
 | `algorithm_service.proto` | algorithm_service | api_gateway / task_service | 算法分组/定义管理 |
 | `report_service.proto` | report_service | api_gateway | 报告配置服务 |
 | `transfer_agent.proto` | transfer_agent | evaluation_service / task_service / 远端 transfer_agent | 跨区传输会话/分片/状态/完成（T-A / T-B） |
@@ -36,7 +35,7 @@
 在当前目录（`shared/proto`）下执行：
 
 ```bash
-protoc --python_out=. --grpc_python_out=. -I. e2e_service.proto task_service.proto api_test_service.proto evaluation_service.proto adapter_service.proto algorithm_service.proto report_service.proto auth_service.proto transfer_agent.proto
+protoc --python_out=. --grpc_python_out=. -I. e2e_service.proto task_service.proto api_test_service.proto evaluation_service.proto algorithm_service.proto report_service.proto auth_service.proto transfer_agent.proto
 ```
 
 **本环境无 `protoc` 命令**，改用已安装的 grpc_tools 逐个生成（单文件可独立生成，不依赖跨文件 import）：

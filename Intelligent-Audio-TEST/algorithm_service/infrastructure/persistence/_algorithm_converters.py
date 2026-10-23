@@ -75,6 +75,8 @@ def _group_po_to_entity(po: AlgorithmGroupPO) -> AlgorithmGroupAggregate:
         name=po.name,
         description=po.description,
         algorithm_type=None,
+        icon=po.icon,
+        display_order=po.display_order or 0,
         deleted=po.deleted or False,
     )
 
@@ -180,11 +182,16 @@ def _apply_group_to_po(aggregate: AlgorithmGroupAggregate, po: AlgorithmGroupPO)
     """将 AlgorithmGroupAggregate 可写字段映射回 AlgorithmGroup PO。
 
     说明：PO 表无 algorithm_type 列，不写回该字段。
+    icon 沿用 definition 侧口径（None 不清除现值）；
+    display_order 聚合根恒为 int，直接写回。
     只更新可变字段，不覆盖 id / created_at 等不可变元数据。
     """
     from shared.infrastructure.user_context import get_current_user_id
     po.name = aggregate.name
     po.description = aggregate.description
+    if aggregate.icon is not None:
+        po.icon = aggregate.icon
+    po.display_order = aggregate.display_order
     po.deleted = aggregate.deleted
     po.updated_at = datetime.now()
     po.updated_by_user_id = get_current_user_id()

@@ -7,13 +7,22 @@ task_service 域的 TestCase / Task 等数据通过 gRPC 只读访问，
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from audio_service.domain.dto import TestCaseDTO
 
 
 class TaskACLRepository(ABC):
     """task_service 跨域只读查询接口。"""
+
+    @abstractmethod
+    def check_audio_references_batch(self, audio_ids: List[int]) -> Dict[int, Dict[str, int]]:
+        """批量检查音频被测试用例/任务引用计数（INT-1306）。
+
+        返回 {audio_id: {'testcase_audio': N, 'testcase_noise': M, 'task': K}}；
+        引用状态未知（gRPC 失败）时抛出异常，调用方应 fail-closed 拒绝删除。
+        """
+        ...
 
     @abstractmethod
     def check_audio_in_testcases(self, audio_id: int) -> int:

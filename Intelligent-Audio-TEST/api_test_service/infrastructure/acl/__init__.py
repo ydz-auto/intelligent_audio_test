@@ -5,9 +5,6 @@
 所有只读查询方法经 shared.utils.dto_utils.dict_to_dto /
 dict_list_to_dto 转换为 dataclass DTO 返回。
 """
-from api_test_service.infrastructure.acl.adapter_acl_repository import (
-    AdapterAclRepositoryImpl,
-)
 from api_test_service.infrastructure.acl.algorithm_acl_repository import (
     AlgorithmQueryAclRepositoryImpl,
 )
@@ -31,7 +28,6 @@ from api_test_service.infrastructure.acl.testcase_acl_repository import (
 )
 
 __all__ = [
-    'AdapterAclRepositoryImpl',
     'AlgorithmQueryAclRepositoryImpl',
     'AudioConfigAclRepositoryImpl',
     'AudioRenderACLRepositoryImpl',

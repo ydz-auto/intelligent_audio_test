@@ -224,6 +224,35 @@ class TaskCaseDeviceAssignment(APIModel):
     lab_id: Optional[int] = Field(None)
 
 
+class TargetModeItem(APIModel):
+    """逐目标执行模式项（INT-1115 target_modes 契约 §5.2.4（一））。
+
+    - target_type 见 TargetType 枚举（device/api）：target_id 分别命中
+      device_ids（device）/ api_ids（api）；
+    - mode 复用 ExecutionMode（parallel/serial）；
+    - 列表顺序即串行链顺序（选中顺序；同类型道内相对顺序生效）。
+    """
+    target_type: str = Field(...)
+    target_id: int = Field(...)
+    mode: str = Field('parallel')
+
+    @field_validator('target_type')
+    @classmethod
+    def _validate_target_type(cls, v):
+        from shared.models.common_enums import TargetType
+        if v not in tuple(item.value for item in TargetType):
+            raise ValueError(f"target_type 合法值: {[item.value for item in TargetType]}")
+        return v
+
+    @field_validator('mode')
+    @classmethod
+    def _validate_mode(cls, v):
+        from shared.models.common_enums import ExecutionMode
+        if v not in tuple(item.value for item in ExecutionMode):
+            raise ValueError(f"mode 合法值: {[item.value for item in ExecutionMode]}")
+        return v
+
+
 class TaskCreateParameters(APIModel):
     case_ids: List[str] = Field(default_factory=list)
     device_ids: List[int] = Field(default_factory=list)
@@ -245,28 +274,64 @@ class TaskCreateRequest(APIModel):
     case_devices: Optional[List[TaskCaseDeviceAssignment]] = Field(None)
     # 实验室扩展（INT-493/INT-540）：关联实验室 ID 列表（可选，缺省=不限定实验室，兼容现状）
     lab_ids: Optional[List[int]] = Field(None)
-    # INT-604：任务执行模式（同一用例在设备/API 目标间 并行/串行）。默认并行（现行为）。
-    # 由网关显式字段承接，task_service 合并进 Task.config 落库；取值见 ExecutionMode/SerialFirst 枚举。
-    execution_mode: Optional[str] = Field('parallel')
-    serial_first: Optional[str] = Field('device')
+    # INT-1115：逐目标执行模式（目标卡片级 并行/串行，§5.2.4）。列表顺序=选中顺序=
+    # 串行链顺序；出现时必须恰好覆盖 device_ids ∪ api_ids 全部目标一次；缺省/空数组
+    # = 全目标并行（现行为，零回归）。旧全局 execution_mode/serial_first 已废弃。
+    target_modes: Optional[List[TargetModeItem]] = Field(None)
     # INT-566：新建任务可见性（shared/private；None 服务端默认 shared）
     visibility: Optional[str] = Field(None)
 
-    @field_validator('execution_mode')
+    @model_validator(mode='before')
     @classmethod
-    def _validate_execution_mode(cls, v):
-        from shared.models.common_enums import ExecutionMode
-        if v is not None and v not in tuple(item.value for item in ExecutionMode):
-            raise ValueError(f"execution_mode 合法值: {[item.value for item in ExecutionMode]}")
-        return v
+    def _reject_deprecated_execution_fields(cls, data):
+        """提交旧字段 execution_mode/serial_first 一律 422（消息指明改用 target_modes）。
 
-    @field_validator('serial_first')
-    @classmethod
-    def _validate_serial_first(cls, v):
-        from shared.models.common_enums import SerialFirst
-        if v is not None and v not in tuple(item.value for item in SerialFirst):
-            raise ValueError(f"serial_first 合法值: {[item.value for item in SerialFirst]}")
-        return v
+        旧 INT-604 全局执行模式字段已被 §5.2.4 逐目标 target_modes 契约取代；
+        schema 不再声明这两个字段（extra="ignore" 不会自动拒绝），须在此显式拒绝。
+        """
+        if not isinstance(data, dict):
+            return data
+        deprecated = [k for k in (
+            'execution_mode', 'executionMode', 'serial_first', 'serialFirst') if k in data]
+        if deprecated:
+            raise ValueError(
+                f"已废弃字段 {'/'.join(deprecated)}：全局执行模式口径已废弃，"
+                "请改用逐目标 target_modes（[{target_type, target_id, mode}]）")
+        return data
+
+    @model_validator(mode='after')
+    def _validate_target_modes_coverage(self):
+        """target_modes 校验：target_id 命中选中目标，且恰好覆盖全部选中目标一次。
+
+        缺省/空数组 = 全目标并行，跳过校验（零回归）；违反即 422 并列出缺失/多余/重复。
+        """
+        target_modes = self.target_modes
+        if not target_modes:
+            return self
+        selected = {('device', d) for d in (self.device_ids or [])} | \
+                   {('api', a) for a in (self.api_ids or [])}
+
+        seen = {}
+        extra, duplicate = [], []
+        for item in target_modes:
+            key = (item.target_type, item.target_id)
+            if key not in selected:
+                extra.append(item)
+            elif key in seen:
+                duplicate.append(item)
+            seen[key] = True
+        missing = [key for key in selected if key not in seen]
+
+        if missing or extra or duplicate:
+            problems = []
+            if missing:
+                problems.append(f"缺失: {'、'.join(f'{t} {i}' for t, i in missing)}")
+            if extra:
+                problems.append(f"多余: {'、'.join(f'{it.target_type} {it.target_id}' for it in extra)}")
+            if duplicate:
+                problems.append(f"重复: {'、'.join(f'{it.target_type} {it.target_id}' for it in duplicate)}")
+            raise ValueError(f"target_modes 必须恰好覆盖全部选中目标一次（{'; '.join(problems)}）")
+        return self
 
 
 class TaskValidateError(APIModel):

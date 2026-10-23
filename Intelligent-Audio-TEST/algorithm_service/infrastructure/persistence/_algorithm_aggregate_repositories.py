@@ -94,6 +94,8 @@ class AlgorithmGroupRepository(IAlgorithmGroupRepository):
             po = AlgorithmGroupPO(
                 name=aggregate.name,
                 description=aggregate.description,
+                icon=aggregate.icon,
+                display_order=aggregate.display_order,
                 deleted=aggregate.deleted,
                 created_by_user_id=get_current_user_id(),
             )

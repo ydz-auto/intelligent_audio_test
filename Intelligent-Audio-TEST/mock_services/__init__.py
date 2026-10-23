@@ -6,6 +6,7 @@
 - mock_third_party_eval  第三方评估 C 区替身（HTTP，:5099）
 - mock_realtime_api      Realtime 被测产品替身（WebSocket，:5098）
 - mock_eval_server_judge eval_server 裁判端点替身（HTTP，:5097，INT-182）
+- mock_dut_api          被测 API DUT 替身（HTTP，:5096，INT-1176）
 
 红线：生产路径零引用 —— 任何生产服务不得 import 本包；不进生产 docker-compose
 编排与镜像；由 run_all.py 按 MOCK_SERVICES_ENABLED=true 可选启动。

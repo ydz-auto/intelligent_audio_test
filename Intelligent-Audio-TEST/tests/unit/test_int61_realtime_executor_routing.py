@@ -140,8 +140,18 @@ class TestWSResolutionHelpers:
         assert RealtimeSessionExecutor._resolve_ws_url(cfg) == 'wss://vendor/ws'
 
     def test_resolve_ws_url_falls_back_to_endpoint(self):
+        # INT-1361：api_url 移除后仅 api_endpoints 为端点来源，
+        # endpoint 顶层回退已删除；仅剩顶层 endpoint 时显式报错
         cfg = _api_config(endpoint='ws://vendor/rt')
-        assert RealtimeSessionExecutor._resolve_ws_url(cfg) == 'ws://vendor/rt'
+        try:
+            RealtimeSessionExecutor._resolve_ws_url(cfg)
+            raise AssertionError('缺 api_endpoints 的 WS 端点应显式报错')
+        except ValueError:
+            pass
+
+        cfg_eps = _api_config(endpoint='ws://fallback/rt',
+                              endpoints=[{'endpoint': 'ws://vendor/rt'}])
+        assert RealtimeSessionExecutor._resolve_ws_url(cfg_eps) == 'ws://vendor/rt'
 
     def test_resolve_ws_url_rejects_non_ws(self):
         try:

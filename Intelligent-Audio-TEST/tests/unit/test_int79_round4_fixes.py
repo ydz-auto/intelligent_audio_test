@@ -140,8 +140,7 @@ class TestApiCaseConfigFallback:
 
         class _FakeApiConfig:
             id = 1
-            api_url = 'http://api'
-            api_endpoints = []
+            api_endpoints = [{'endpoint': 'http://api'}]
             default_max_process = 1
             meta = {}
             max_timeout = 30
@@ -169,7 +168,7 @@ class TestApiCaseConfigFallback:
         assert data['api_specific_config'] == config
 
     def test_api_section_wins_when_present(self, monkeypatch):
-        api_section = {'api_url': 'http://x'}
+        api_section = {'endpoint': 'http://x'}
         config = {'api': api_section, 'vendor': 'top', 'rounds': []}
         ok, data = self._run(monkeypatch, config, 'http_api')
         assert ok is True

@@ -1,7 +1,7 @@
 # 联接你的 Agent：Access Token 与 skill / MCP 使用说明
 
-> 版本：v1.0（使用说明版）
-> 日期：2026-10-21
+> 版本：v1.1（使用说明版 · 2026-10-22 入口位置口径同步）
+> 日期：2026-10-22
 > 归属：V9.7.31 · INT-1140「Access Token + 智能音频测试 skill / MCP（联接你的 agent）」
 > 类型：使用说明（面向外部 agent 接入本平台能力）
 
@@ -17,7 +17,7 @@
 | **skill 包** | 可下载、可安装到外部 agent 的技能包（SKILL.md + MCP 配置模板），内含能力清单与 curl 调用示例 | Claude Code / Codex 等 CLI agent |
 | **MCP 端点** | 平台网关提供的 MCP 协议端点（JSON-RPC 2.0，`initialize` / `tools/list` / `tools/call`），外部 MCP 客户端连入即可调用平台能力 | MCP 客户端（Claude Desktop 等） |
 
-> **方向说明**：本能力是让**外部 agent 反向调用平台**（经 skill / MCP + access token），与前端「灵犀 Agent」演示（前端直连用户自配外部 LLM provider 的对话式 AI）方向相反、互不替代、不共用实现。
+> **方向说明**：本能力是让**外部 agent 反向调用平台**（经 skill / MCP + access token），与前端「灵犀Agent」演示（前端直连用户自配外部 LLM provider 的对话式 AI）方向相反、互不替代、不共用实现。
 
 ### 1.2 能力覆盖与「除外」边界
 
@@ -28,13 +28,19 @@
 
 ### 1.3 契约来源与实现状态
 
-| 环节 | 实施卡 | 状态（2026-10-21） |
+| 环节 | 实施卡 | 状态（2026-10-22） |
 | --- | --- | --- |
 | auth_service Access Token 领域（表 / CRUD / 校验 RPC） | INT-1148（BE1） | ✅ done（已合入开发基线） |
-| api_gateway 鉴权扩展 + access-token CRUD 路由 | INT-1149（BE2） | 👀 in_review |
-| skill 下载 + MCP 适配端点（网关内） | INT-1150（BE3） | 🔄 实施中（未落地；本文档按 INT-1142 已裁定契约编写，落地后回写） |
-| 旧 Vue 前端（导航入口 / 入口页面 / 个人配置页 token 管理） | INT-1151 | ⏳ 待实施 |
-| 本文档 | INT-1152 | 本卡 |
+| api_gateway 鉴权扩展 + access-token CRUD 路由 | INT-1149（BE2） | ✅ done |
+| skill 下载 + MCP 适配端点（网关内） | INT-1150（BE3） | ✅ done |
+| 旧 Vue 前端（联接你的 agent 入口 / 入口页面 / 个人配置页 token 管理） | INT-1151 | 作废（旧 Vue 不加，2026-10-22 负责人裁定「旧Vue 直接废弃」；代码保留不回退） |
+| 本文档 | INT-1152 | ✅ done |
+| React 前端（灵犀Agent 页 /ai-chat 右上角 + Agent 工作台浮窗头行右上角入口 / 入口页面 / 个人配置页 token 管理） | INT-1153 | ✅ done |
+| 新 Vue 前端（入口 + 入口页面） | INT-1154 | ✅ done（入口位置 2026-10-22 裁定返工中：顶栏 TopBarRight 移除，改放灵犀Agent 页 /ai-chat 右上角 + Agent 工作台浮窗头行右上角，经 INT-701 派发实施） |
+| 新 Vue 前端（个人配置页 token 管理） | INT-1155 | ✅ done |
+| 缺陷修复（access_tokens 列表过滤软删行） | INT-1182 | ✅ done |
+| 本文档（入口位置口径同步） | INT-1188 | ✅ done |
+| 本文档（旧 Vue 不加口径回写） | INT-1242 | 本卡 |
 
 本文档正文按 **INT-1140 规格 + INT-1142 可行性评审已裁定契约**编写；与实现出入处见 §5 实现演进裁定记录。
 
@@ -53,7 +59,7 @@ Access Token 是平台为外部 agent / skill / MCP 调用能力接口签发的�
 
 ### 2.2 创建 Access Token（个人配置页）
 
-入口：**个人配置页 → Access Token 管理区块 → 创建**（token 的创建 / 复制 / 管理在个人配置页，不在「联接你的 agent」入口页面内）。
+入口：**个人配置页 → Access Token 管理区块 → 创建**（token 的创建 / 复制 / 管理在个人配置页，不在「连接你的 agent」入口页面内）。
 
 创建表单：
 
@@ -113,7 +119,7 @@ Access Token 是平台为外部 agent / skill / MCP 调用能力接口签发的�
 
 ### 3.1 下载 skill
 
-1. 浏览器登录平台，点击导航栏「联接你的 agent」**炫彩入口按钮**，打开入口页面。
+1. 浏览器登录平台，按所属前端点击「**连接你的 agent**」**炫彩入口按钮**，打开入口页面。两端入口位置（2026-10-22 最终裁定）：入口只在 **React / 新 Vue = 灵犀Agent 页 /ai-chat 右上角 + Agent 工作台浮窗头行右上角**（导航栏 / 顶栏均无入口）；**旧 Vue 无入口（不加）**；文案统一「连接你的 agent」。
 2. 入口页面内展示使用说明与 skill 服务地址配置（见 §3.3）。
 3. 点击**炫彩「下载 skill」按钮**，下载 skill 包（zip：SKILL.md + MCP 配置模板）。
 
@@ -200,3 +206,5 @@ tools 注册表 = INT-1140 覆盖能力清单：
 - **2026-10-21（INT-1152 一致性审计回写，实现演进裁定）**：每用户上限按「未软删 token 数」计（`count_active_by_user`，含已停用），**停用不释放配额，仅删除（软删）可释放**——§2.5 据此回写；实现侧该限额报错文案（「删除或停用」）略过宽，不改变行为语义。
 - **2026-10-21（INT-1149 实施，实现演进裁定）**：网关 AuthMiddleware **Bearer 单分支**（JWT 优先 → 非 JWT 走 access token 查证）；AUTH_MODE=off 下先尝试 access token 查证、均失败才回落 dev_user；**生效权限 = 用户当前权限 ∩ token scopes**（`GetUserPermissions` 实时拉取，不用 JWT 快照）；网关 `/api/v1/auth/access-tokens[/{id}]` 转发 auth_service 同前缀端点。
 - **2026-10-21（INT-1152 使用说明文档）**：本文档按 INT-1140 规格 + INT-1142 已裁定契约编写；**skill 包与 MCP 端点（INT-1150 / BE3）尚未落地**，落地后须回写：skill zip 内 SKILL.md / mcp.json 模板的具体字段、MCP 端点 `/api/v1/mcp` 的请求 / 响应格式、tools 注册表具体工具名与参数映射；若实现与本文档契约有出入，以本节实现演进裁定方式回写。
+- **2026-10-22（INT-1188 文档同步，实现演进裁定）**：新 Vue「连接你的 agent」入口位置按 React 二轮裁定同步（INT-1140 线程负责人回复「1 同步」）——**顶栏 TopBarRight 与左侧栏导航均不放**，入口改放**灵犀Agent 页 /ai-chat 右上角 + Agent 工作台浮窗头行右上角**；文案统一「连接你的 agent」，炫彩样式不变。入口位置（旧 Vue 侧已被 2026-10-22 INT-1242「旧Vue 直接废弃」裁定更正为两端，见下条）：**React / 新 Vue = 灵犀Agent 页 /ai-chat 右上角 + Agent 工作台浮窗头行右上角**（导航栏 / 顶栏均无入口）。新 Vue 返工经 INT-701 派发实施中，落地后本节与 §3.1 无需再改。
+- **2026-10-22（INT-1242 文档同步，负责人裁定「旧Vue 直接废弃」）**：更正 2026-10-21 的「三个前端都加」口径——「连接你的 agent」按钮**只加在 React 和新 Vue 两个前端，旧 Vue 不加**（来源 INT-1140 线程负责人 2026-10-22 裁定）。旧 Vue 入口卡 INT-1151 已 **cancelled**，代码保留不回退；§1.3 旧 Vue 行改「作废」，§3.1 入口位置改两端口径（旧 Vue 无入口）。
