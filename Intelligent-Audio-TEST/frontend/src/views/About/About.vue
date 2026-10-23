@@ -37,7 +37,8 @@
         <h2 class="about-h2">文档链接</h2>
         <p class="about-lead">
           首次使用与功能操作说明见<router-link to="/user-guide">使用手册</router-link>；
-          接口认证、示例与错误码见<router-link to="/user-guide-api">API 手册</router-link>。
+          接口认证、示例与错误码见<router-link to="/user-guide-api">API 手册</router-link>；
+          接入方开发者（Realtime API / HTTP API / 实体设备）见<router-link to="/user-guide-integration">接入指南</router-link>。
           角色与权限说明见平台文档（<code>docs/RBAC权限划分.md</code>，仓库内文档）。
         </p>
 
@@ -114,6 +115,14 @@
             <span class="doc-link-text">
               <span class="doc-link-title">API 手册</span>
               <span class="doc-link-desc">接口认证、示例与错误码</span>
+            </span>
+            <i class="fas fa-arrow-right doc-link-arrow"></i>
+          </router-link>
+          <router-link to="/user-guide-integration" class="doc-link">
+            <i class="fas fa-plug doc-link-icon"></i>
+            <span class="doc-link-text">
+              <span class="doc-link-title">接入指南</span>
+              <span class="doc-link-desc">Realtime / HTTP API / 实体设备接入</span>
             </span>
             <i class="fas fa-arrow-right doc-link-arrow"></i>
           </router-link>

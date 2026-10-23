@@ -4,14 +4,16 @@
       <!-- 左目录 -->
       <aside class="guide-sidebar">
         <!-- 手册切换 -->
-        <nav class="guide-manual-switch" aria-label="用户手册">
-          <router-link to="/user-guide" class="manual-item" :class="{ active: isUsageManual }">
-            <i class="fas fa-book manual-icon"></i>
-            <span class="manual-text">使用手册</span>
-          </router-link>
-          <router-link to="/user-guide-api" class="manual-item" :class="{ active: !isUsageManual }">
-            <i class="fas fa-code manual-icon"></i>
-            <span class="manual-text">API 手册</span>
+        <nav class="guide-manual-switch" aria-label="站内文档">
+          <router-link
+            v-for="manual in manuals"
+            :key="manual.path"
+            :to="manual.path"
+            class="manual-item"
+            :class="{ active: route.path === manual.path }"
+          >
+            <i class="fas manual-icon" :class="manual.icon"></i>
+            <span class="manual-text">{{ manual.label }}</span>
           </router-link>
         </nav>
 
@@ -44,7 +46,8 @@
         >
           <h2 class="guide-h2">{{ section.title }}</h2>
           <template v-for="(block, i) in section.blocks" :key="i">
-            <p v-if="block.kind === 'paragraph'" class="guide-paragraph">{{ block.text }}</p>
+            <h3 v-if="block.kind === 'heading'" class="guide-h3">{{ block.text }}</h3>
+            <p v-else-if="block.kind === 'paragraph'" class="guide-paragraph">{{ block.text }}</p>
             <ul v-else-if="block.kind === 'list'" class="guide-list">
               <li v-for="(item, j) in block.items" :key="j">{{ item }}</li>
             </ul>
@@ -98,18 +101,30 @@ import '../../assets/styles/layouts/main.css'
 
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { API_GUIDE, USER_GUIDE, type GuideDocument } from './guideContent'
+import { API_GUIDE, INTEGRATION_GUIDE, USER_GUIDE, type GuideDocument } from './guideContent'
 import { useNotification } from '../../composables/modal/useNotification'
 
 /**
- * 站内文档页（INT-745 A06）：左目录 + 右内容（原 Vue card + 排版 token）。
- * 手册切换跨路由（/user-guide ↔ /user-guide-api），滚回页顶。
+ * 站内文档页（INT-745 A06 + INT-1435 接入指南）：左目录 + 右内容（原 Vue card + 排版 token）。
+ * 手册切换跨路由（/user-guide ↔ /user-guide-api ↔ /user-guide-integration），滚回页顶。
  */
 const route = useRoute()
 const notification = useNotification()
 
-const isUsageManual = computed(() => route.path === '/user-guide')
-const guideDoc = computed<GuideDocument>(() => (isUsageManual.value ? USER_GUIDE : API_GUIDE))
+/** 手册切换项：路径 → 文档内容（INT-1435 接入指南第三本） */
+const manuals = [
+  { path: '/user-guide', label: '使用手册', icon: 'fa-book' },
+  { path: '/user-guide-api', label: 'API 手册', icon: 'fa-code' },
+  { path: '/user-guide-integration', label: '接入指南', icon: 'fa-plug' },
+] as const
+
+const GUIDE_BY_PATH: Record<string, GuideDocument> = {
+  '/user-guide': USER_GUIDE,
+  '/user-guide-api': API_GUIDE,
+  '/user-guide-integration': INTEGRATION_GUIDE,
+}
+
+const guideDoc = computed<GuideDocument>(() => GUIDE_BY_PATH[route.path] ?? USER_GUIDE)
 
 const activeId = ref('')
 const copiedIdx = ref('')
@@ -282,6 +297,13 @@ onBeforeUnmount(() => {
   border-top: none;
   padding-top: 0;
   margin-top: 0;
+}
+/* 章内小节标题（INT-1435 接入指南：接入总览/写适配器/用例特殊处理/注册配置/验证/FAQ） */
+.guide-h3 {
+  margin: 20px 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--foreground);
 }
 .guide-paragraph {
   margin: 0 0 12px;

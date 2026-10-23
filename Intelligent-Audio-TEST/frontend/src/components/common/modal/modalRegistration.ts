@@ -4,52 +4,57 @@
  * 注册属于「组件装配」职责：将 Presentation 组件接入 Application 层的
  * ModalManager 注册表。依赖方向为 Presentation → Application，合法。
  * Application（composables/）禁止反向依赖组件，故本文件不得迁回 composables/。
+ *
+ * INT-1275：模态窗组件全部改为 defineAsyncComponent 懒加载——注册表仍同步建立，
+ * 但每个模态窗组件拆成独立 chunk，仅在对应弹窗首次打开时拉取，避免 30+ 弹窗
+ * （及其基础设施依赖）全部压进应用入口 chunk。
  */
+import { defineAsyncComponent } from 'vue'
 import { getModalManager } from '../../../composables/modal/useModal'
 import { MODAL_TYPES } from '../../../composables/modal/constants'
-import TestCaseModal from '../test-case/TestCaseModal/index.vue'
-import AddTestCaseModal from '../test-case/AddTestCaseModal.vue'
-import ModalConfirm from './ModalConfirm.vue'
-import InputConfirmModal from './InputConfirmModal.vue'
-import APIEditModal from './APIEditModal.vue'
-import DetailViewModal from './DetailViewModal.vue'
-import ImportExportModal from './ImportExportModal.vue'
-import CRUDFormModal from './CRUDFormModal.vue'
-import UploadFileModal from './UploadFileModal.vue'
-import URLImportModal from './URLImportModal.vue'
-import FolderImportModal from './FolderImportModal.vue'
-import ScanDevicesModal from './ScanDevicesModal.vue'
-import ApiRmsSplCalibrationModal from './ApiRmsSplCalibrationModal.vue'
-import GlobalPlaybackDeviceModal from './GlobalPlaybackDeviceModal.vue'
-import BatchAlgorithmParamsModal from './BatchAlgorithmParamsModal.vue'
-import BatchSPLModal from './BatchSPLModal.vue'
-import BatchPlaybackDeviceModal from './BatchPlaybackDeviceModal.vue'
-import BatchAdjustGroupModal from './BatchAdjustGroupModal.vue'
-import BatchDimensionModal from './BatchDimensionModal.vue'
-import BatchNoiseModal from './BatchNoiseModal.vue'
-import BatchTagsModal from './BatchTagsModal.vue'
-import BatchRefreshReferenceModal from './BatchRefreshReferenceModal.vue'
-import TagCategoryModal from './TagCategoryModal.vue'
-import TagEditModal from './TagEditModal.vue'
+const TestCaseModal = defineAsyncComponent(() => import('../test-case/TestCaseModal/index.vue'))
+const AddTestCaseModal = defineAsyncComponent(() => import('../test-case/AddTestCaseModal.vue'))
+const ModalConfirm = defineAsyncComponent(() => import('./ModalConfirm.vue'))
+const InputConfirmModal = defineAsyncComponent(() => import('./InputConfirmModal.vue'))
+const APIEditModal = defineAsyncComponent(() => import('./APIEditModal.vue'))
+const DetailViewModal = defineAsyncComponent(() => import('./DetailViewModal.vue'))
+const ImportExportModal = defineAsyncComponent(() => import('./ImportExportModal.vue'))
+const CRUDFormModal = defineAsyncComponent(() => import('./CRUDFormModal.vue'))
+const UploadFileModal = defineAsyncComponent(() => import('./UploadFileModal.vue'))
+const URLImportModal = defineAsyncComponent(() => import('./URLImportModal.vue'))
+const FolderImportModal = defineAsyncComponent(() => import('./FolderImportModal.vue'))
+const ScanDevicesModal = defineAsyncComponent(() => import('./ScanDevicesModal.vue'))
+const ApiRmsSplCalibrationModal = defineAsyncComponent(() => import('./ApiRmsSplCalibrationModal.vue'))
+const GlobalPlaybackDeviceModal = defineAsyncComponent(() => import('./GlobalPlaybackDeviceModal.vue'))
+const BatchAlgorithmParamsModal = defineAsyncComponent(() => import('./BatchAlgorithmParamsModal.vue'))
+const BatchSPLModal = defineAsyncComponent(() => import('./BatchSPLModal.vue'))
+const BatchPlaybackDeviceModal = defineAsyncComponent(() => import('./BatchPlaybackDeviceModal.vue'))
+const BatchAdjustGroupModal = defineAsyncComponent(() => import('./BatchAdjustGroupModal.vue'))
+const BatchDimensionModal = defineAsyncComponent(() => import('./BatchDimensionModal.vue'))
+const BatchNoiseModal = defineAsyncComponent(() => import('./BatchNoiseModal.vue'))
+const BatchTagsModal = defineAsyncComponent(() => import('./BatchTagsModal.vue'))
+const BatchRefreshReferenceModal = defineAsyncComponent(() => import('./BatchRefreshReferenceModal.vue'))
+const TagCategoryModal = defineAsyncComponent(() => import('./TagCategoryModal.vue'))
+const TagEditModal = defineAsyncComponent(() => import('./TagEditModal.vue'))
 // INT-739：标签管理页批量改分类
-import BatchTagCategoryModal from './BatchTagCategoryModal.vue'
-import TestCaseDetailModal from './TestCaseDetailModal.vue'
-import AudioPlayerModal from '../audio/AudioPlayerModal.vue'
-import AudioSelectModal from '../audio/AudioSelectModal.vue'
-import TaskDetailModal from './TaskDetailModal.vue'
+const BatchTagCategoryModal = defineAsyncComponent(() => import('./BatchTagCategoryModal.vue'))
+const TestCaseDetailModal = defineAsyncComponent(() => import('./TestCaseDetailModal.vue'))
+const AudioPlayerModal = defineAsyncComponent(() => import('../audio/AudioPlayerModal.vue'))
+const AudioSelectModal = defineAsyncComponent(() => import('../audio/AudioSelectModal.vue'))
+const TaskDetailModal = defineAsyncComponent(() => import('./TaskDetailModal.vue'))
 // INT-302/F4：ReevaluateSelectModal（旧重评估类型选择）由 ReexecuteOptionsModal
 // 范围选择取代（含"重新提取设备输出"勾选恢复），死注册与死组件一并清理
-import ReexecuteOptionsModal from './ReexecuteOptionsModal.vue'
+const ReexecuteOptionsModal = defineAsyncComponent(() => import('./ReexecuteOptionsModal.vue'))
 // INT-340：测试结果人工复核（单条/批量改判 + 备注必填 + 复核历史展示）
-import ResultReviewModal from './ResultReviewModal.vue'
+const ResultReviewModal = defineAsyncComponent(() => import('./ResultReviewModal.vue'))
 // INT-745：公开页「需要登录」引导（受限项 Dialog，5 秒倒计时跳登录）
-import LoginRequiredModal from './LoginRequiredModal.vue'
+const LoginRequiredModal = defineAsyncComponent(() => import('./LoginRequiredModal.vue'))
 // INT-744：个人中心·修改密码 / 编辑资料对话框（POST /auth/change-password / PUT /auth/self）
-import ChangePasswordModal from './ChangePasswordModal.vue'
-import EditProfileModal from './EditProfileModal.vue'
+const ChangePasswordModal = defineAsyncComponent(() => import('./ChangePasswordModal.vue'))
+const EditProfileModal = defineAsyncComponent(() => import('./EditProfileModal.vue'))
 // INT-1155：个人中心·Access Token 创建 / 编辑对话框（POST/PATCH /api/v1/auth/access-tokens）
-import AccessTokenCreateModal from './AccessTokenCreateModal.vue'
-import AccessTokenEditModal from './AccessTokenEditModal.vue'
+const AccessTokenCreateModal = defineAsyncComponent(() => import('./AccessTokenCreateModal.vue'))
+const AccessTokenEditModal = defineAsyncComponent(() => import('./AccessTokenEditModal.vue'))
 
 export function registerGlobalModals() {
   const manager = getModalManager();

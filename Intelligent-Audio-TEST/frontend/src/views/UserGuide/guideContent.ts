@@ -12,6 +12,7 @@ export interface GuideSection {
 }
 
 export type GuideBlock =
+  | { kind: 'heading'; text: string }
   | { kind: 'paragraph'; text: string }
   | { kind: 'list'; items: string[] }
   | { kind: 'code'; language: string; code: string }
@@ -374,6 +375,351 @@ export const API_GUIDE: GuideDocument = {
           kind: 'code',
           language: 'powershell',
           code: 'curl.exe -X POST "$env:API_BASE_URL/auth/login" `\n  -H "Content-Type: application/json" `\n  -d \'{"username":"admin","password":"******"}\'',
+        },
+      ],
+    },
+  ],
+}
+
+/**
+ * 接入指南（INT-1435）—— 面向接入方开发者，三章：Realtime API / 普通 HTTP API / 实体设备 E2E。
+ * 内容转写自 INT-1291 产出（doc/ 下三份接入指南 md，统一结构：接入总览3件事 →
+ * 写适配器/驱动（继承谁+模板+覆写点）→ 用例特殊处理（含『适用算法』列）→ 注册配置 → 验证 → FAQ）。
+ */
+export const INTEGRATION_GUIDE: GuideDocument = {
+  title: '接入指南',
+  subtitle: '面向接入方开发者：Realtime API（websocket_api）/ 普通 HTTP API（http_api）/ 实体设备 E2E（physical）三类被测对象的接入方法。',
+  sections: [
+    {
+      id: 'realtime-api',
+      title: 'Realtime API 接入（websocket_api）',
+      blocks: [
+        { kind: 'heading', text: '一、接入总览（3 件事）' },
+        {
+          kind: 'table',
+          headers: ['你要做的事', '放哪', '写代码？'],
+          rows: [
+            ['① 厂商协议适配器（WS 事件/握手/输出）', 'api_test_service/infrastructure/adapters/vendors/你的厂商.py', '✅'],
+            ['② 厂商注册（枚举 + 映射 + @register）', 'common_enums.py + registry.py', '✅（约 5 行）'],
+            ['③ 参数配置（评估字段/会话/用例）', '算法配置 field_mapper + APIs 表 + 用例配置', '❌ 纯配置'],
+          ],
+        },
+        {
+          kind: 'paragraph',
+          text: '执行器（RealtimeSessionExecutor）是通用的：正常轮/打断轮/推流节奏/等待全是通用编排，用例配置驱动。接任何厂商都不改执行器。',
+        },
+        { kind: 'heading', text: '二、写适配器（= Realtime 的 driver）' },
+        { kind: 'heading', text: '2.1 继承谁' },
+        {
+          kind: 'code',
+          language: 'text',
+          code: 'ApiVendorAdapter (Port，抽象契约，domain/ports/)\n   ├── RealtimeAdapterBase   ← Realtime 厂商继承这个（协议级，protocol/）\n   │      └── OpenAIRealtimeAdapter  （官方样例：5 个类属性，零覆写）\n   │      └── 你的厂商适配器\n   └── (HTTP 厂商) 直接实现 Port（见《接入指南·普通 HTTP API》）',
+        },
+        {
+          kind: 'paragraph',
+          text: '继承 RealtimeAdapterBase 白拿：WS 连接、事件队列、pre_process/send/recv/output/close 同形方法面、代理透传、密钥链、会话亲和。',
+        },
+        { kind: 'heading', text: '2.2 最小模板（事件协议与 OpenAI 相同 → 5 行就够）' },
+        {
+          kind: 'code',
+          language: 'python',
+          code: `# adapters/vendors/my_vendor_adapter.py
+from shared.models.common_enums import AdapterProtocol, AdapterVendor, VendorAdapterType
+from api_test_service.infrastructure.adapters.protocol.realtime_adapter_base import RealtimeAdapterBase
+from api_test_service.infrastructure.adapters.registry import register_vendor_adapter
+
+@register_vendor_adapter
+class MyVendorRealtimeAdapter(RealtimeAdapterBase):
+    protocol = AdapterProtocol.REALTIME
+    vendor = AdapterVendor.MY_VENDOR
+    adapter_type = VendorAdapterType.MY_VENDOR
+    display_name = 'xx Realtime 适配器'
+    _transport_vendor = 'openai'   # 事件协议与 OpenAI 相同 → 到此结束`,
+        },
+        { kind: 'heading', text: '2.3 协议不同 → 覆写点表' },
+        {
+          kind: 'table',
+          headers: ['厂商差异', '覆写方法', '写什么'],
+          rows: [
+            ['握手载荷不同', 'pre_process', '你的 session.update 字段'],
+            ['事件字段不同', 'recv', '厂商事件 → 归一化 RealtimeFrameType（打断依赖 user_speech_started / response_cancelled）'],
+            ['输出结构不同', 'output / post_process', '聚合 audio/text/frame'],
+            ['等待语义不同', 'wait_ai_speaking / wait_ai_complete', 'AI 开口/完成判定'],
+            ['打断字段方言不同', 'resolve_round_mode', '默认读 is_interruption（_as_bool 兼容 int/bool/str）；厂商用 barge_in 等覆写'],
+            ['传输完全私有', '_build_client', '替换默认 WS 客户端'],
+          ],
+        },
+        {
+          kind: 'code',
+          language: 'python',
+          code: `# 覆写示例：厂商打断事件名不同 → 归一化
+def recv(self, timeout=5.0):
+    evt = self._client.recv(timeout)
+    if evt.get('type') == 'vendor_a_barge':   # 厂商自己的打断事件
+        return {'type': RealtimeFrameType.USER_SPEECH_STARTED.value, ...}
+    return evt`,
+        },
+        { kind: 'heading', text: '三、注册（20 家也就这几行）' },
+        {
+          kind: 'code',
+          language: 'python',
+          code: `# common_enums.py
+class AdapterVendor(str, Enum):     MY_VENDOR = 'my_vendor'
+class VendorAdapterType(str, Enum): MY_VENDOR = 'my_vendor'
+
+# registry.py
+_FLAT_KEY_DIMENSIONS = { ..., VendorAdapterType.MY_VENDOR: (AdapterProtocol.REALTIME, AdapterVendor.MY_VENDOR) }`,
+        },
+        {
+          kind: 'paragraph',
+          text: '分发是表驱动的（resolve_for）：配置了 vendor_adapter=my_vendor 走你的适配器；未配置走默认。执行器零改动。',
+        },
+        { kind: 'heading', text: '四、用例特殊处理（纯配置）' },
+        {
+          kind: 'table',
+          headers: ['用例场景', '配什么', '适用算法', '谁来处理'],
+          rows: [
+            ['正常对话轮', '每轮输入音频 + query', '全部', '执行器通用编排'],
+            ['打断轮（插话）', 'is_interruption: true + interruption_delay_ms（默认 1000ms）', '仅 voice_llm 等对话类', '执行器 _execute_interruption_round 通用编排'],
+            ['推流中打断', 'API 配置 allow_barge_in 节奏策略', '仅 voice_llm 等对话类', '执行器 _pacing_gate'],
+            ['拒识', 'is_reject: true + timing（静默/回复过程中）', '仅 voice_llm（reject_judge 维度）', '评估侧计算器'],
+            ['评估字段名/映射', 'param_mapping（source→target）', '按算法各自声明', 'field_mapper（配置）'],
+          ],
+        },
+        {
+          kind: 'paragraph',
+          text: '打断轮 / 拒识 / 推流中打断是 voice_llm 这类「对话/拒识算法」的用例语义，其他算法（asr/der/wer 等）不需要，各自有自己的字段与评估计算器，字段区分靠 field_mapper 按 algorithm_type 的 param_mapping。',
+        },
+        {
+          kind: 'paragraph',
+          text: '关键：这些特殊处理你不需要写代码。打断轮时序（等 AI 开口 → 延时 → 推打断音频 → 检测窗口）由通用执行器编排；拒识判定由评估侧 reject_judge 计算器负责；字段名映射由 field_mapper 配置驱动。适配器唯一要保证：厂商事件正确归一到 user_speech_started / response_cancelled（打断）和如实采集轮次结果（拒识）。',
+        },
+        { kind: 'heading', text: '五、APIs 表 + 建任务（配置）' },
+        {
+          kind: 'list',
+          items: [
+            'APIs 表一行：vendor=my_vendor、api_url（ws:// 或 wss://）、device_type=websocket_api、meta（session_config / audio_config / ws_headers / api_key）、proxy_type / proxy_url',
+            '建任务：选用例 + 选 API（可同时选多个 API 和物理设备混跑）→ 用例在选中目标上分别执行（case_devices 指派 device_type）',
+          ],
+        },
+        { kind: 'heading', text: '六、验证' },
+        {
+          kind: 'list',
+          items: [
+            'mock 冒烟：mock_realtime_api.py --barge-in（预置「AI 说话 + 打断」事件序列）→ 正常轮 + 打断轮跑通',
+            '真机：换 api_url 为被测端点，核对事件协议与归一化（response.audio.delta 等）',
+            '回归：test_int497_openai_realtime_e2e.py（分发 + 打断轮）、test_int475_realtime_pacing.py（节奏策略）',
+          ],
+        },
+        { kind: 'heading', text: '七、FAQ' },
+        {
+          kind: 'list',
+          items: [
+            '我的服务事件字段和 OpenAI 不同？在适配器 recv 归一化即可，用户侧能力不受影响。',
+            '怎么确认打断测试生效？看轮次结果打断指标（barge_in 统计）；页面有实时帧可观察。',
+            '被测端要满足什么才能测打断？会话跨轮保持且会自主回复；VAD 能检出用户开口（发 user_speech_started）或主动取消回复（发 response.cancelled）。不满足也能跑正常对话轮。',
+          ],
+        },
+      ],
+    },
+    {
+      id: 'http-api',
+      title: '普通 HTTP API 接入（http_api）',
+      blocks: [
+        { kind: 'heading', text: '一、接入总览（3 件事）' },
+        {
+          kind: 'table',
+          headers: ['你要做的事', '放哪', '写代码？'],
+          rows: [
+            ['① 适配器（实现 Port 抽象方法）', 'api_test_service/infrastructure/adapters/vendors/你的厂商.py', '✅'],
+            ['② 注册（枚举 + 映射 + @register）', 'common_enums.py + registry.py', '✅（约 5 行）'],
+            ['③ 参数配置（请求模板/输出字段/用例）', 'APIs 表 meta + field_mapper + 用例', '❌ 纯配置'],
+          ],
+        },
+        { kind: 'heading', text: '二、写适配器（HTTP 无协议基类，直接实现 Port）' },
+        {
+          kind: 'code',
+          language: 'python',
+          code: `# adapters/vendors/my_http_adapter.py
+from shared.models.common_enums import AdapterVendor, VendorAdapterType
+from api_test_service.domain.ports.api_vendor_adapter import ApiVendorAdapter
+from api_test_service.infrastructure.adapters.registry import register_vendor_adapter
+
+@register_vendor_adapter
+class MyHttpAdapter(ApiVendorAdapter):
+    vendor = AdapterVendor.MY_VENDOR
+    adapter_type = VendorAdapterType.MY_VENDOR
+
+    def render_request_parts(self, context_data):        # 请求头/体（按厂商协议）
+        return headers, body                              # (rendered_headers, rendered_body)
+
+    def execute(self, context_data, files=None, method=None):   # 发请求 → 结构化结果
+        return {'success': True, 'latency_ms': ..., 'status_code': 200,
+                'json': {...}, 'text': ...}
+
+    def execute_voice_llm_chat(self, **kwargs):           # 多轮会话默认路径（可选覆写）
+        ...`,
+        },
+        {
+          kind: 'list',
+          items: [
+            '请求模板参数来自 field_mapper build_api_request_data（注入 context_data）',
+            '输出字段按 api 输出字段定义提取（output_field_keys 模式，对齐 api_task_runner）',
+            '密钥链 / 代理透传',
+          ],
+        },
+        { kind: 'heading', text: '三、注册 + 配置' },
+        {
+          kind: 'code',
+          language: 'python',
+          code: `# common_enums.py
+class AdapterVendor(str, Enum):     MY_VENDOR = 'my_vendor'
+class VendorAdapterType(str, Enum): MY_VENDOR = 'my_vendor'
+
+# registry.py
+_FLAT_KEY_DIMENSIONS = { ..., VendorAdapterType.MY_VENDOR: (协议维度, AdapterVendor.MY_VENDOR) }`,
+        },
+        {
+          kind: 'list',
+          items: [
+            'APIs 表：vendor=my_vendor、api_url（http(s):// → 自动识别 http_api）、meta（请求模板 / 密钥 / 代理）',
+            '用例特殊处理（纯配置）：单轮 = execute；多轮 = execute_voice_llm_chat；评估字段映射走 field_mapper（param_mapping）',
+          ],
+        },
+        { kind: 'heading', text: '四、用例特殊处理（适用算法）' },
+        {
+          kind: 'table',
+          headers: ['用例场景', '配什么', '适用算法', '谁来处理'],
+          rows: [
+            ['单轮一问一答', '输入 query + 期望 answer', '全部', '执行器通用'],
+            ['多轮会话', 'rounds 列表（execute_voice_llm_chat）', '对话类（voice_llm 等）', '适配器 execute_voice_llm_chat'],
+            ['拒识 / 打断', 'is_reject / timing / is_interruption', '仅 voice_llm 等对话/拒识算法', '评估侧计算器 / 执行器编排'],
+            ['评估字段名/映射', 'param_mapping（source→target）', '按算法各自声明', 'field_mapper（配置）'],
+          ],
+        },
+        {
+          kind: 'paragraph',
+          text: '打断 / 拒识仅 voice_llm 这类「对话/拒识算法」需要，其他算法（asr/der/wer 等）不需要，各自有自己的字段与评估计算器。',
+        },
+        { kind: 'heading', text: '五、验证' },
+        {
+          kind: 'list',
+          items: [
+            'mock 冒烟：mock_dut_api.py 跑通单轮/多轮',
+            '真机：换 api_url，核对请求/响应结构与 field_mapper 输出字段提取',
+            '回归：API 测试集成用例不回归',
+          ],
+        },
+        { kind: 'heading', text: '六、FAQ' },
+        {
+          kind: 'list',
+          items: [
+            '流式响应（SSE）怎么接？在 execute 内消费流式响应，聚合为结构化结果返回。',
+            '厂商鉴权特殊？走密钥链（case_config → meta → env），或适配器 render_request_parts 自定义头。',
+          ],
+        },
+      ],
+    },
+    {
+      id: 'physical-e2e',
+      title: '实体设备 E2E 接入（physical）',
+      blocks: [
+        { kind: 'heading', text: '一、接入总览（3 件事）' },
+        {
+          kind: 'table',
+          headers: ['你要做的事', '放哪', '写代码？'],
+          rows: [
+            ['① 设备驱动（连接/放音/采集/操作）', 'device_service/infrastructure/drivers/你的设备.py', '✅'],
+            ['② 注册（@register_driver）', '同文件装饰器', '✅（几行）'],
+            ['③ 配置（设备记录/驱动参数/用例）', 'Devices 表 + 设备配置 + 用例', '❌ 纯配置'],
+          ],
+        },
+        { kind: 'heading', text: '二、写驱动（继承 BaseDeviceDriver）' },
+        {
+          kind: 'code',
+          language: 'python',
+          code: `# drivers/my_device_driver.py
+from device_service.infrastructure.drivers.base_driver import BaseDeviceDriver
+from device_service.infrastructure.drivers.registry import register_driver
+from device_service.infrastructure.drivers.driver_types import DevicePlatform
+
+@register_driver
+class MyDeviceDriver(BaseDeviceDriver):
+    app_type = 'my_device'                        # 自定义开放字符串
+    version = 'v1'
+    platform = DevicePlatform.ANDROID             # 封闭枚举: android / harmonyos / ios
+    dependencies = []                             # 可选: SDK 依赖（缺失自动标记）
+
+    def initialize(self, device_sn, task_id=None, test_case_id=None, **kw): ...
+    def pre_process(self, device_sn, **kw): ...   # 每轮前（音量/App 状态/噪声环境设置）
+    def post_process(self, device_sn, **kw): ...  # 每轮后（采集结果/回采检测）
+    def get_results(self, device_sn, **kw): ...   # 本轮输出（音频/文本/SPL）
+    def teardown(self, device_sn, **kw): ...      # 关 App/清理`,
+        },
+        {
+          kind: 'list',
+          items: [
+            'Redis 分布式停止/暂停（多实例一致，降级进程内注册表）',
+            'UI 抓取降级标记、teardown 自动关 App',
+            '播放时间戳提取（_extract_playback_timestamps）',
+            '_wait_for_condition（超时 + 停止检查）、统一日志',
+          ],
+        },
+        { kind: 'heading', text: '三、注册（Key 三元组）' },
+        {
+          kind: 'code',
+          language: 'python',
+          code: `# Key = (app_type, version, platform)
+# driver_registry.resolve(app_type, version, platform)  版本可降级 v1
+# @register_driver 装饰即注册；依赖缺失自动标记 MISSING_DEPENDENCY（仍展示）`,
+        },
+        {
+          kind: 'list',
+          items: [
+            'app_type / version：自定义开放字符串（每个新 App 驱动自声明，不需改枚举）',
+            'platform：封闭枚举（DevicePlatform：android / harmonyos / ios）',
+          ],
+        },
+        { kind: 'heading', text: '四、用例特殊处理（适用算法）' },
+        {
+          kind: 'table',
+          headers: ['用例场景', '配什么', '适用算法', '谁来处理'],
+          rows: [
+            ['正常轮', '每轮输入音频', '全部', 'rounds_loop 通用编排'],
+            ['打断轮（插话）', 'is_interruption: true（+ai_start_timeout）', '仅 voice_llm 等对话类', '执行器透传 → 驱动 post_process 回采 PCM 检测 AI 开口（参照 harmony_xiaoyichat _wait_ai_reply_start_via_pcm）'],
+            ['拒识', 'is_reject: true + timing', '仅 voice_llm（reject_judge）', '评估侧计算器；驱动如实采集'],
+            ['设备输出字段', 'field_mapper get_mapped_device_output_fields', '按算法各自声明', '配置'],
+          ],
+        },
+        {
+          kind: 'paragraph',
+          text: '打断检测是驱动能力（只有驱动能回采设备声学）——对应 Realtime 适配器的 wait_ai_speaking。打断/拒识仅 voice_llm 这类对话/拒识算法需要，其他算法不需要。',
+        },
+        { kind: 'heading', text: '五、配置 + 建任务' },
+        {
+          kind: 'list',
+          items: [
+            'Devices 表：设备类型 / 序列号 / 驱动参数（app_type 关联驱动）',
+            '建任务：case_devices device_type=physical + device_id（设备侧），可与 API 目标混跑（同一用例设备侧 + API 侧分别执行）',
+          ],
+        },
+        { kind: 'heading', text: '六、验证' },
+        {
+          kind: 'list',
+          items: [
+            '扫描/初始化冒烟：driver_registry.list_drivers() 可见、依赖无缺失、设备可初始化',
+            '单用例跑通：正常轮 → 打断轮（验证回采检测）',
+            '回归：E2E 集成测试不回归',
+          ],
+        },
+        { kind: 'heading', text: '七、FAQ' },
+        {
+          kind: 'list',
+          items: [
+            '设备版本差异大？resolve(app_type, version, platform) 支持版本降级 v1，同 app_type+platform 下任意可用版本兜底。',
+            '驱动依赖 SDK 缺失？注册时自动标记 MISSING_DEPENDENCY，管理界面可见，不影响其他驱动。',
+            '打断检测必须回采 PCM？是——只有驱动能访问设备声学数据；Realtime 侧对应的是协议事件 wait_ai_speaking。',
+          ],
         },
       ],
     },

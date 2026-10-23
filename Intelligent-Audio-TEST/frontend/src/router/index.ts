@@ -35,6 +35,8 @@ const routes: Array<RouteRecordRaw> = [
   { path: '/', name: 'home', component: () => import('../views/Home/Home.vue'), meta: { public: true, layout: 'public', title: '首页' } },
   { path: '/user-guide', name: 'userGuide', component: () => import('../views/UserGuide/UserGuide.vue'), meta: { public: true, layout: 'public', title: '使用手册' } },
   { path: '/user-guide-api', name: 'userGuideApi', component: () => import('../views/UserGuide/UserGuideApi.vue'), meta: { public: true, layout: 'public', title: 'API 手册' } },
+  // INT-1435：接入指南 doc 页（Realtime / HTTP / 设备三章），与使用手册/API 手册共用 UserGuide 骨架
+  { path: '/user-guide-integration', name: 'userGuideIntegration', component: () => import('../views/UserGuide/UserGuideIntegration.vue'), meta: { public: true, layout: 'public', title: '接入指南' } },
   { path: '/about', name: 'about', component: () => import('../views/About/About.vue'), meta: { public: true, layout: 'public', title: '关于' } },
   { path: '/rankings', name: 'rankings', component: () => import('../views/BenchmarkRanking/BenchmarkRanking.vue'), meta: { public: true, layout: 'public', title: '排行榜' } },
   { path: '/benchmarks', name: 'benchmarkRankingLegacy', redirect: '/rankings' },
