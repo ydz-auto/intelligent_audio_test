@@ -41,6 +41,13 @@ class Config(BaseConfig):
     # 对比 / 二次对比报告生成线程池容量：与任务报告同款饥饿模式，独立队列独立配置。
     REPORT_COMPARE_GEN_MAX_WORKERS = int(os.environ.get('REPORT_COMPARE_GEN_MAX_WORKERS', 8))
 
+    # ===== 报告 task_name 实时补名（INT-1776）=====
+    # 报告读路径向 task_service 批量补任务名的等待上限（秒）。报告列表已有
+    # 慢的历史（跨域 gRPC + 聚合），补名不得成为新的阻塞点：超时即整页
+    # 降级为 ''，不影响列表 / 详情 / 导出返回 200。
+    REPORT_TASK_NAME_TIMEOUT_SECONDS = float(
+        os.environ.get('REPORT_TASK_NAME_TIMEOUT_SECONDS', 5))
+
     # ===== 任务用例 ACL 按 ID 取数（INT-1572）=====
     # report_service 报告链路按用例 ID 取用例（对比 / case-averages / 报告生成）
     # 走 task_service.TestCaseConfigService.GetTestCaseDetail——该服务没有按 ID

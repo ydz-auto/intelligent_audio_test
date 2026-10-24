@@ -170,9 +170,17 @@ class ReportCasesQueryMixin:
 
     @staticmethod
     def _assemble_html_report_data(aggregate, summary_data) -> dict:
-        """组装报告数据（与 get_one API 返回的 data 字段结构一致）。"""
+        """组装报告数据（与 get_one API 返回的 data 字段结构一致）。
+
+        INT-1776：task_name 从未持久化（config 里没有该键），此处向
+        task_service 补名，失败 / 超时降级为 ''（hero 不输出任务行）。
+        """
+        from report_service.application.services.report_task_name_enricher import (
+            enrich_task_names,
+        )
+
         config = aggregate.config or {}
-        return {
+        report_data = {
             'id': aggregate.id,
             'name': config.get('name', '未命名报告'),
             'type': aggregate.report_type,
@@ -184,6 +192,8 @@ class ReportCasesQueryMixin:
             'analysis': config.get('analysis', ''),
             'created_at': str(aggregate.created_at) if aggregate.created_at else None,
         }
+        enrich_task_names([report_data])
+        return report_data
 
     @staticmethod
     def _build_html_filename(report_id: int, report_name: str) -> str:

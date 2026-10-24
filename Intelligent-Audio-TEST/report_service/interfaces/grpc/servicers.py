@@ -62,6 +62,9 @@ from report_service.domain.entities.benchmark import BaselineDraftEntry
 from report_service.application.services.report_share_service import (
     report_share_service,
 )
+from report_service.application.services.report_task_name_enricher import (
+    enrich_task_names,
+)
 from report_service.application.services.report_export_history_service import (
     report_export_history_service,
 )
@@ -473,10 +476,14 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 report_id=getattr(request, 'report_id'),
             )
             aggregate = self.query_handler.handle_get(query)
+            data = _aggregate_to_dict(aggregate)
+            # INT-1776：任务名补名（单条一次 RPC；失败 / 超时降级为 ''）
+            if data is not None:
+                enrich_task_names([data])
             return self._resp(
                 aggregate is not None,
                 'ok' if aggregate is not None else 'report not found',
-                _aggregate_to_dict(aggregate),
+                data,
                 # INT-566 P1-5：不存在/私有非 owner → 业务码 404（防探测口径）
                 code=0 if aggregate is not None else 404,
             )
@@ -495,10 +502,14 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 task_id=getattr(request, 'task_id'),
             )
             aggregate = self.query_handler.handle_get_by_task(query)
+            data = _aggregate_to_dict(aggregate)
+            # INT-1776：任务名补名（单条一次 RPC；失败 / 超时降级为 ''）
+            if data is not None:
+                enrich_task_names([data])
             return self._resp(
                 aggregate is not None,
                 'ok' if aggregate is not None else 'report not found',
-                _aggregate_to_dict(aggregate),
+                data,
             )
         except Exception as e:
             logger.exception("GetReportByTask failed")
@@ -592,6 +603,8 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 if item is not None:
                     item['is_favorite'] = str(item.get('id')) in fav_ids
                     items.append(item)
+            # INT-1776：整页一次批量补任务名（去重后单次 RPC；失败 / 超时降级为 ''）
+            enrich_task_names(items)
             # INT-297：分页信封统一为 {items, page, pages, per_page, total}
             total = self.query_handler.handle_count_reports(query)
             return self._resp(True, 'ok', {
