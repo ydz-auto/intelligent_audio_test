@@ -1,41 +1,204 @@
 {
+ "tag": "1024125426",
+ "group": "接线测试_INT1538_R5pause组_1024125426",
+ "case": "接线测试_INT1538_R5pause用例_1024125426",
  "resolver": "MAP rustfs 127.0.0.1",
- "group_visible": true,
+ "health": {
+  "body": "{\"status\":\"ok\",\"service\":\"api_gateway\",\"version\":\"V9.7.31\",\"database\":\"intelligent_audio_test\"}",
+  "status": 200
+ },
+ "audio_patched": 2,
+ "create_group": {
+  "status": 201,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"分组创建成功\",\"data\":{\"id\":\"0ab9fab7-f38c-4201-9469-c975d6dac1c7\"}}"
+ },
+ "create_case": {
+  "status": 201,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"测试用例创建成功\",\"data\":{\"id\":\"877c8b36-bec7-4360-9dfa-dfd83ea280d7\"}}"
+ },
  "time_ready": "00:00 / 00:04",
- "stage_body": "成功态复测夹具（run 结束清理）\n\n最后编辑时间 2026-10-24 01:50\n\n8s\n2 轮\n接线测试_INT1538_播放器复测_case\n4a13b42d-9258-4259-be49-c7b1f9cc8aa4\n\nINT-1538 P1-5 试听播放器成功态复测夹具（run 结束清理）\n\n最后编辑时间 2026-10-24 01:50\n\n8s\n2 轮\n\n已加载全部 1 个分组\n\n测试用例预览｜接线测试_INT1538_播放器复测_case 音频\n\n浏览器播放试听中\n\n00:00 / 00:04\n\n暂停\n停止\n\n播放设备（浏览器播放）\n\n本机扬声器直接输出\n\n返回试听配置\nClose",
- "progress_sequence": [
-  "00:03 / 00:04",
-  "00:03 / 00:04",
-  "00:03 / 00:04",
-  "00:03 / 00:04",
-  "00:03 / 00:04",
-  "00:03 / 00:04",
-  "00:03 / 00:04"
+ "stream_fetch": [],
+ "media_ready": {
+  "dur": 4,
+  "paused": false,
+  "t": 0.226828
+ },
+ "player_buttons": [
+  {
+   "aria": "复制用例",
+   "text": ""
+  },
+  {
+   "aria": "收藏",
+   "text": ""
+  },
+  {
+   "aria": "编辑用例",
+   "text": ""
+  },
+  {
+   "aria": "删除用例",
+   "text": ""
+  },
+  {
+   "aria": "播放",
+   "text": "播放"
+  },
+  {
+   "aria": "停止",
+   "text": "停止"
+  },
+  {
+   "aria": null,
+   "text": "返回试听配置"
+  },
+  {
+   "aria": null,
+   "text": "Close"
+  }
  ],
- "pause_sequence": [
-  "00:03 / 00:04",
-  "00:03 / 00:04",
-  "00:04 / 00:04",
-  "00:04 / 00:04",
-  "00:04 / 00:04",
-  "00:04 / 00:04"
+ "playing_sequence": [
+  {
+   "ui": "00:00 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": false,
+    "t": 1.01
+   }
+  },
+  {
+   "ui": "00:01 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": false,
+    "t": 1.35
+   }
+  }
  ],
- "pause_holds": false,
- "resume_sequence": [
-  "00:00 / 00:04",
-  "00:01 / 00:04",
-  "00:01 / 00:04",
-  "00:02 / 00:04",
-  "00:02 / 00:04",
-  "00:02 / 00:04",
-  "00:03 / 00:04",
-  "00:00 / 00:04"
+ "playing_advances": true,
+ "clicked_pause": "暂停",
+ "paused_sequence": [
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": true,
+    "t": 2.74
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": true,
+    "t": 2.74
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": true,
+    "t": 2.74
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": true,
+    "t": 2.74
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": true,
+    "t": 2.74
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": true,
+    "t": 2.74
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": true,
+    "t": 2.74
+   }
+  }
  ],
- "ended": true,
- "alerts": [],
- "console": [],
- "dark_time_playing": "00:01 / 00:04",
+ "paused_at": "00:02 / 00:04",
+ "pause_holds": true,
  "dark_class": "dark",
  "dark_bg": "rgb(19, 29, 46)",
- "alerts_dark": []
+ "clicked_resume": true,
+ "resumed_sequence": [
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": false,
+    "t": 2.83
+   }
+  },
+  {
+   "ui": "00:03 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": false,
+    "t": 3.15
+   }
+  },
+  {
+   "ui": "00:03 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": false,
+    "t": 3.48
+   }
+  },
+  {
+   "ui": "00:03 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": false,
+    "t": 3.83
+   }
+  },
+  {
+   "ui": "00:04 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": true,
+    "t": 4
+   }
+  },
+  {
+   "ui": "00:04 / 00:04",
+   "media": {
+    "dur": 4,
+    "paused": true,
+    "t": 4
+   }
+  }
+ ],
+ "resume_advances": true,
+ "final_media": {
+  "dur": 4,
+  "paused": true,
+  "t": 4
+ },
+ "final_time": "00:04 / 00:04",
+ "ended": true,
+ "alerts": [],
+ "cleanup_case": 200,
+ "cleanup_group": 200
 }

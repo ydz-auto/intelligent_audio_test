@@ -1,0 +1,24 @@
+{
+ "frontend": "http://localhost:15173",
+ "gateway": "http://localhost:15000",
+ "gateway_health": {"status": "ok", "service": "api_gateway", "version": "V9.7.31", "database": "intelligent_audio_test"},
+ "note": "本轮 iat-react-frontend:latest 被外部重建/重启两次（容器 started 04:06 → 重建成 05:03 镜像 → started 05:03），因此两次取证落在不同构建上，下面分列，不合并成一套。",
+ "builds": [
+  {
+   "used_by": "分组删除/同名复用（P1-2）、批量联动计数（P1-3）",
+   "window": "04:12–04:40（UTC）",
+   "image_created": "2026-10-24T03:45:08Z",
+   "assets": ["lib-react.5c68ee069a.js", "17.6c16fa12d9.js", "index.4ab9908f8e.js", "index.1a615933ee.css"],
+   "card_baseline_match": "lib-react.5c68ee069a.js 与卡面基线一致"
+  },
+  {
+   "used_by": "试听播放器暂停/继续/播完（P2-5）",
+   "window": "05:10–05:33（UTC）",
+   "image_created": "2026-10-24T05:03:34Z",
+   "assets": ["lib-react.0da624625f.js", "17.2e14d7ca5c.js", "index.0745b316eb.js", "index.011ec02252.css"],
+   "card_baseline_match": "主包哈希已变——该镜像由外部在本 run 进行中重建，播放器取证基于此构建；与终审记录的 6.c5a3bd5a3e / index.09b283e58a 亦不同"
+  }
+ ],
+ "auditor_reference": {"lib-react": "lib-react.5c68ee069a.js", "chunk": "6.c5a3bd5a3e", "index": "index.09b283e58a"},
+ "previous_delivery_recorded": {"lib-react": "lib-react.5c68ee069a.js", "chunk": "17.6c16fa12d9.js", "index": "index.f8be49c1e5"}
+}

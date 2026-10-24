@@ -1,0 +1,49 @@
+{
+ "tag": "1024121155",
+ "group_name": "接线测试_INT1538_R5组_1024121155",
+ "health": {
+  "body": "{\"status\":\"ok\",\"service\":\"api_gateway\",\"version\":\"V9.7.31\",\"database\":\"intelligent_audio_test\"}",
+  "status": 200
+ },
+ "groups_list": {
+  "status": 200,
+  "total": 15,
+  "items": 15
+ },
+ "cases_total": 579,
+ "noise_total": 0,
+ "create": {
+  "status": 201,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"分组创建成功\",\"data\":{\"id\":\"dd723362-82db-4d6c-beb2-e8e21edd8bbe\"}}"
+ },
+ "group_id": "dd723362-82db-4d6c-beb2-e8e21edd8bbe",
+ "delete": {
+  "status": 200,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"分组已删除\",\"data\":{\"id\":\"dd723362-82db-4d6c-beb2-e8e21edd8bbe\"}}"
+ },
+ "after_delete_listed": [],
+ "after_delete_listed&only_deleted=1": {
+  "status": 200,
+  "names": [],
+  "raw": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"items\":[],\"total\":0,\"page\":1,\"per_page\":200,\"pages\":0}}"
+ },
+ "after_delete_listed&include_deleted=1": {
+  "status": 200,
+  "names": [],
+  "raw": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"items\":[],\"total\":0,\"page\":1,\"per_page\":200,\"pages\":0}}"
+ },
+ "after_delete_listed&is_deleted=1": {
+  "status": 200,
+  "names": [],
+  "raw": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"items\":[],\"total\":0,\"page\":1,\"per_page\":200,\"pages\":0}}"
+ },
+ "recreate_same_name": {
+  "status": 201,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"分组创建成功\",\"data\":{\"id\":\"6c330531-5752-4007-bb2f-bc6a727cd410\"}}"
+ },
+ "group_id2": "6c330531-5752-4007-bb2f-bc6a727cd410",
+ "cleanup_delete2": {
+  "status": 200,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"分组已删除\",\"data\":{\"id\":\"6c330531-5752-4007-bb2f-bc6a727cd410\"}}"
+ }
+}
