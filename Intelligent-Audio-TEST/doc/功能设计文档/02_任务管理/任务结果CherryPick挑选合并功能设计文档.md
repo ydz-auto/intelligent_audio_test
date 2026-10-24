@@ -152,7 +152,7 @@
 | `POST /tasks/cherry-picks/preview` | 合并预览（下单前统计/失效校验） |
 | `GET /tasks/cherry-picks/pickable-tasks` | 可挑选终态任务清单（挑选向导阶段 1 数据源，INT-1496；契约见 §8.1） |
 | `GET /tasks/cherry-picks/candidates/tree` | 阶段 2 候选树聚合（任务→用例→设备/API→result_type，节点计数 + result_id 集，服务端一次聚合；INT-1510，契约见 §8.2） |
-| `GET /tasks/{taskId}/cherry-pick-source` | 新任务溯源（各结果来源任务；非容器 200+空 groups，契约见 §8.3） |
+| `GET /tasks/cherry-picks/{taskId}/source` | 新任务溯源（各结果来源任务 + 结果级字段 + 源任务状态，非容器 200+空 groups，契约见 §8.3；INT-1714 起追加结果级字段。旧文写的 `GET /tasks/{taskId}/cherry-pick-source` 是历史占位名，只出现在注释/docstring，实际路由一直是本行这个） |
 
 命名边界：前端/Domain 用 camelCase；snake_case 只允许出现在后端数据库与 DTO 转换层（总览 §1.3 口径）。
 
@@ -367,6 +367,46 @@ ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 
 只读探针口径：与同域 `review_count` / `review_history` 一致——无数据即空结果，避免读探针用 4xx 表达正常空结果；存在性判定只保留「任务不存在 / 容器已软删」一处（INT-1715 ①，防止软删容器仍返 200 被当成容器）。
 
+
+#### 8.3.1 容器溯源字段表（交互规范 18 §11-8 落地，INT-1714，2026-10-24）
+
+**接口与场景判定**：见 §8.3（含 §8.3 的场景表与编号说明）；本节只登记该端点的响应结果级字段与取值语义。端点本体 `GET /api/v1/tasks/cherry-picks/{task_id}/source`，权限 `task:read`。网关路由 `api_gateway/routes/cherry_pick_bp.py:103`（前缀 `/api/v1/tasks/cherry-picks` 见 `app.py:165`）；服务侧 `CherryPickService.source_trace`（`task_service/application/task/cherry_pick_service.py:951`）。gRPC `GetCherryPickSource` 以 JSON 字符串透传（`shared/utils/grpc_json`），网关无响应模型、直返 `data`——**扩字段不改网关、不新增端点、不改路由与返回层级、不动 proto**。
+
+响应 `data`：`{ task_id, is_cherry_pick, total, groups[] }`；`groups[] = { source_task_id, source_task_name, source_task_status, results[] }`。
+
+`results[]` 字段表（前 9 项为老字段，一个不删、不改名、不改语义）：
+
+| 字段 | 类型 | 语义 |
+| --- | --- | --- |
+| `id` | int | 关系行 ID |
+| `result_id` | int | 源结果 ID |
+| `source_task_id` | int | 来源任务 ID |
+| `source_task_name` | string | 来源任务名快照（关系行缺名回落 `任务 {id}`） |
+| `source_case_id` | string | 源用例 ID（UUID，展示配 `case_name`） |
+| `source_device_id` | int \| null | 源设备 ID |
+| `source_api_id` | int \| null | 源 API ID |
+| `created_at` | string | **关系行**创建时间（老字段，语义不变） |
+| `missing` | bool | 源结果行已不存在（物理删除）为 `true` |
+| `result_type` | string \| null | 源结果类型；取落库列 `test_results.result_type`，NULL / 空串输出 `default`（「结果类型待补充」桶）；`missing=true` 为 null |
+| `execution_status` | string \| null | 源结果执行状态（completed / failed / stopped / pending / running）；`missing=true` 为 null |
+| `evaluated` | bool | 源结果是否已评估（`test_result_dimensions` 有该结果行，与候选行同口径）；`missing=true` 为 false |
+| `case_name` | string \| null | 源用例名；用例目录查不到（含已软删）为 null，前端渲染「未知用例」，**不裸显 UUID** |
+| `device_name` | string \| null | 设备名（device_service ACL 批量）；无设备 / 查不到为 null |
+| `api_name` | string \| null | API 名（api_test ACL 批量）；无 API / 查不到为 null |
+| `result_created_at` | string \| null | **源结果自身**创建时间（ISO 8601），区别于关系行 `created_at`；`missing=true` 为 null |
+
+`groups[]`：`source_task_id`（int）、`source_task_name`（string）、`source_task_status`（string \| null，`Task.status`；来源任务行查不到为 null；软删来源任务仍返其状态、不带删除标记）、`results[]`（上表）。
+
+**取值与语义（实现演进裁定，2026-10-24）**
+
+1. `result_type` **取落库列，不再从 `result_data` / `result_data_path` 解析**：INT-1510 把结果类型落成列、INT-1669 起读侧 DB-first，与候选行同源（`result.result_type or RESULT_TYPE_PENDING`），请求路径零对象存储往返。交互规范 18 §11-8 表格里的旧解析口径以本条为准。
+2. 缺名 / 缺失态不在接口侧拼文案：`case_name=null` 由前端出「未知用例」；`missing=true` 行结果级字段全部 null、`evaluated=false`，关系行快照字段（`source_task_id` / `source_case_id` / `source_device_id` / `source_api_id` / `created_at`）照常返回。
+3. 非容器判定以 §8.3 场景表为准（INT-1715 存活判定已合入 V9.7.31）：存活普通任务 / 无关系行 → **200** + `{is_cherry_pick: false, total: 0, groups: []}`；任务不存在 / 容器已软删 → **404**（服务层 `{'code': 404}`；旧版本经网关 `_CODE_HTTP_MAP.get(None, 400)` 兜底成 400+`code:203` 的口径已由 INT-1715 取代）。前端按「非 200 即非容器、静默 + 空 groups 即回落页面任务」判定，不改语义、不加别名端点。
+4. 软删**容器**不再返 200：INT-1715（已合入 V9.7.31）在 `source_trace` 加存活校验——容器 Task 已软删即按「不存在」返回 404，不给软删容器渲染机会；存活普通任务仍 200 + 空 groups（见 §8.3 场景表）。软删来源任务仍返其 `Task.status`、不带删除标记（现状不变）。
+5. 性能：一次 `TestResult` 多列投影（`_source_result_snapshots`）+ `_evaluated_result_ids` 一次 IN + `_case_name_map` 一次 IN + device / api 名各一次批量 gRPC（id 非空才调，失败降级 null）+ `Task.id IN` 一次（`cherry_pick_repository.source_task_status_map`）；语句数与关系行数无关，无逐行查询、无对象存储往返。
+6. 部署前置：主库 `test_results.result_type` 列**已存在**（2026-10-24 INT-1742 审计实测，5546 行、值全 NULL → 对外统一 `default` 桶）；新环境仍必须先执行迁移 ㊷（`scripts/migrations/202610/add_test_result_result_type_int1510.py`，幂等、默认 dry-run，已在 `docker/db_bootstrap_entrypoint.py:182` 引导链；entrypoint 以 COPY 进镜像，需重建 `db_bootstrap`），否则容器溯源与候选接口均 `UndefinedColumn` → 500。
+7. 前端同步点：`CherryPickSourceTraceDto` 的结果时间改读 `result_created_at`（原可选 `created_at` 会静默读到关系行时间），由前端 §5.5 卡处理。
+
 ## 9. 前端设计
 
 > **INT-577 交互升级（2026-10-17 裁定，本卡实施）**：本节的「四页签 + 三步向导」口径已被专项交互规范《18_挑选合并功能交互重设计.md》（INT-576）整体升级取代——任务列表终态**三页签**（日常/已发布/挑选合并，「合并」页签收编），挑选合并页承载统一容器列表（merged ∪ cherry_pick，`merge_type` facet + 统计徽章）+ **页内四步向导**（挑选→购物车→复核→下单）+ **多级挑选树**（任务→用例→设备/API→result_type，联动 R1-R10）+ 购物车树形分组/移除矩阵 + 全局购物车角标。本节保留旧文作为演进记录，冲突处以后者为准（替代关系见 18 号规范 §0.2）。
@@ -410,6 +450,8 @@ ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 ## 13. 实现演进裁定记录
 
 - **2026-10-24（INT-1755 章节编号裁定，方案一致性审计员）**：INT-1733（阶段 2 候选树聚合 · INT-1510 契约）与 INT-1706（溯源接口契约）在同一篇文档抢同一节号 §8.2，导致 INT-1733 的两个 doc 提交无法直接合入 V9.7.31。**裁定方案 A：候选树契约保持 §8.2（含 §8.2.1~§8.2.7 原样不动），溯源契约顺延为 §8.3。** 依据是已合入 V9.7.31 代码的引用面：`INT-1510 §8.2.x` 在代码里已落地 26 处（`api_gateway/schemas/cherry_pick.py:37`、`task_service/application/task/cherry_pick_service.py` 多处、`shared/utils/result_data_store.py:219/226`、`shared/utils/status_constants.py:82`、`task_service/infrastructure/persistence/models/result_models.py:38`、`test_result_repository.py:131/134`、`scripts/migrations/202610/add_test_result_result_type_int1510.py`、`scripts/migrations/README.md`、`docker/db_bootstrap_entrypoint.py:178` 及单测），而 `INT-1706 §8.2` 只有 4 处注释级引用（`task_service/application/task/cherry_pick_service.py:1062`、`tests/unit/test_int1714_cherry_pick_source_fields.py:13/241`、`tests/unit/test_int339_cherry_pick.py:411`）；让引用面大的一侧保持原号，改动面最小，也不会产生代码与文档的第二套编号。同步项：§8 接口表「新任务溯源」行改指 §8.3；INT-1670 卡面、INT-1669 回写（§8.2.7）、UX 18 号规范对「§8.2 = 候选树」的引用全部继续成立，无需改动。遗留：上述 4 处 `INT-1706 §8.2` 的代码注释仍写作 §8.2，按本节说明其指向已变为 §8.3（注释级、不影响行为，下轮改到这些文件时顺带同步，不为它单开代码卡）。
+
+- **2026-10-24（INT-1714 实施 + 方案一致性审计 INT-1739 回写，实现演进裁定）**：容器溯源端点 `GET /api/v1/tasks/cherry-picks/{task_id}/source` 按交互规范 18 §11-8 在既有返回结构上**追加** 7 个结果级字段（`result_type` / `execution_status` / `evaluated` / `case_name` / `device_name` / `api_name` / `result_created_at`）与 `groups[].source_task_status`，老字段与返回层级不变；完整字段表与语义见新增的 §8.3.1。§8 接口草案里的历史占位路由 `GET /tasks/{taskId}/cherry-pick-source` 同步更正为真实路由。三条裁定：①`result_type` 取落库列（INT-1510 落列 / INT-1669 读侧 DB-first），**不按** §11-8 旧文字解析 `result_data` / `result_data_path`，与候选行同口径、零 OSS 往返；②缺名与缺失态不在接口侧拼文案——`case_name` 缺名返回 null（前端出「未知用例」，不裸显 UUID），`missing=true` 行结果级字段 null、`evaluated=false`；③软删来源任务仍返其 `Task.status`（无删除标记）；软删容器「仍返 200」的旧现状已由 INT-1715 修复为 404（存活判定，见 §8.3 场景表）。本卡只扩 `source_trace` 返回内容：网关零改动、不动 proto、不改 `relations_by_container` 的共用返回结构；六类数据均批量取（一次结果多列投影 + 各自一次 `IN` + 两次名查询 gRPC），无 N+1、无对象存储往返。发版前置：迁移 ㊷（`result_type` 列，幂等）已在 `db_bootstrap` 引导链；主库该列已存在（2026-10-24 复核），新环境部署仍须重建 `db_bootstrap` 并跑 ㊷，否则容器溯源/候选接口 `UndefinedColumn` → 500。前端同步点：`CherryPickSourceTraceDto` 的结果时间改读 `result_created_at`。<br>落地分支 `agent/a/int-1714` @ `1f05b0e29`（本审计只回写文档，不改代码；`agent/agent/int-1739` 提交见卡 INT-1739 评论）。
 
 - **2026-10-24（INT-1510 FEAT 契约审查裁定，方案一致性审计员）**：阶段 2「候选树由 candidates 首页 200 行重建」的性能与完整性收口。**裁定方向 B（服务端候选树聚合端点 `GET /tasks/cherry-picks/candidates/tree`）**，完整契约见 §8.2；方向 C 的行接口优化降级为叶明细分页与平铺辅助视图，不再承担树骨架。核心理由是完整性（命中 3614 行 / 117 任务，200 行只覆盖 5.5%，且每行唯一、(任务,用例,设备/API) 聚合不减少条目数）。同日真实库只读取证定位到成本主体：`result_type` 无列、取值经 `load_full_result_data` 在 `result_data_path` 非空时**先读 OSS**（每行 exists + download 2 次往返，`read_timeout=60`），因此把「tree 端点零 OSS 往返 + 装饰次数与行数解耦 + 首屏最坏情况 < 2 s」列为硬性验收，并要求 result_type 落库/回填一次收口。`candidates` 新增 `api_ids`/`result_type` 服务端过滤（既有契约与分页语义不变）。阶段 1 `pickable-tasks` 契约不动；前端 React 接线另卡。（裁定当日的「可挑行 2598/3614 的 DB JSON 已含该键」统计后被 INT-1669 复核修正为「顶层键命中 0 行、3614/3614 落 `default` 桶」，见 §8.2.7 第 4/5 条。）
 
