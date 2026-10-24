@@ -48,9 +48,11 @@ import {
 } from '@/infrastructure/api/testcases-batch-api'
 import {
   copyTestCase,
+  fetchAllTestCaseIdsByFilter,
   setTestCaseFavorite,
 } from '@/infrastructure/api/testcases-api'
 import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
+import { resolveExportIds } from '@/features/testcases/lib/export-scope'
 import { deleteTag } from '@/infrastructure/api/tags-api'
 
 export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
@@ -210,28 +212,20 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   }, [])
 
   /**
-   * 导出「按当前筛选条件」的全量 id（INT-1642；POST /testcases/ids 契约只认 group 名，
-   * 与开始测试全选同口径）。未分组虚拟组后端无哨兵映射 → 以已加载的未分组行兜底。
+   * 导出「按当前筛选条件」的全量 id（INT-1642；取数口径见 features/testcases/lib/export-scope）。
+   * 代码审计 P2 返工：收藏态原走 POST /testcases/ids，后端 fetch_case_ids 不认 favorite，
+   * 「只看收藏」下导出的是全库；现收藏/未分组走列表端点逐页翻完，其余仍走轻量 /ids。
    */
-  const resolveExportIds = useCallback(async (): Promise<string[]> => {
-    if (filters.groupId === '__ungrouped__') {
-      return items.filter((c) => c.groupId == null).map((c) => c.id)
-    }
-    const groupName = groups.find((g) => g.id === filters.groupId)?.name
-    // 分组列表未就绪时不要退化成「全库」：以当前已加载的该分组行兜底
-    if (filters.groupId && !groupName) {
-      return items.filter((c) => c.groupId === filters.groupId).map((c) => c.id)
-    }
-    const { ids } = await fetchCaseIdsByFilter({
-      search: filters.search?.trim() || undefined,
-      group: groupName,
-      tag: filters.tag,
-      dimensionId: filters.dimensionId,
-      algorithmType: effectiveFilters.algorithmType,
-      trash: filters.trash,
-    })
-    return ids
-  }, [filters, groups, items, effectiveFilters.algorithmType])
+  const resolveFilteredIds = useCallback(
+    () =>
+      resolveExportIds(effectiveFilters, {
+        fetchAllIds: fetchAllTestCaseIdsByFilter,
+        fetchIdsByFilter: async (query) => (await fetchCaseIdsByFilter(query)).ids,
+        groups,
+        loadedItems: items,
+      }),
+    [effectiveFilters, groups, items]
+  )
 
   /** 视图页签切换：重置筛选与勾选集（URL 态回归：接线后 page/search/… 进 search） */
   const handleViewChange = (next: string) => {
@@ -532,7 +526,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         onOpenChange={setExportOpen}
         selectedCount={selected.size}
         selectedIds={[...selected]}
-        resolveFilteredIds={resolveExportIds}
+        resolveFilteredIds={resolveFilteredIds}
       />
       <GroupMutateDialog
         open={groupDialog.open}

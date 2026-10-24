@@ -11,7 +11,7 @@
  * 文件导入弹窗（§5.7.1）不再从用例管理页暴露；本弹窗仅保留导出。
  */
 import { FileSpreadsheet } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
-import { downloadBlob } from '@/features/evaluation/download-blob'
+import { downloadBlob } from '@/lib/download-blob'
 import {
   exportTestCases,
   type TestCaseExportFormat,
@@ -60,6 +60,19 @@ export function ExportDialog({
   const [format, setFormat] = useState<TestCaseExportFormat>('json')
   const [scope, setScope] = useState<ExportScope>('filter')
   const [submitting, setSubmitting] = useState(false)
+
+  /**
+   * 导出范围复位（INT-1642 代码审计 P3-2）：弹窗常驻挂载，上次选「仅导出已选」→ 取消 →
+   * 清空勾选 → 重开，该 radio 会停在「禁用 + 选中」，点导出只报「请先选择要导出的用例」。
+   * 开窗回落「按当前筛选」；勾选清零时若仍停在「已选」也回落（防清选后残留）。
+   */
+  useEffect(() => {
+    if (open) setScope('filter')
+  }, [open])
+
+  useEffect(() => {
+    if (selectedCount === 0 && scope === 'selected') setScope('filter')
+  }, [selectedCount, scope])
 
   const handleExport = async () => {
     setSubmitting(true)

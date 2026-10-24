@@ -49,7 +49,7 @@ import { groupCasesByTag } from '@/domain/lib/sub-view-aggregation'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
-import { formatCaseDuration } from '@/features/testcases/constants'
+import { formatCaseDuration, UNGROUPED_GROUP_ID } from '@/features/testcases/constants'
 import { CaseCard, type CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import {
   CaseListErrorBanner,
@@ -70,9 +70,6 @@ import type { BatchActionKey } from '@/features/testcases/components/case-bulk-a
 const GROUP_LIST_PAGE = 5
 
 type GroupSortKey = 'count' | 'name' | 'createdAt'
-
-/** 未分组虚拟组哨兵 groupId（fetchTestCases 契约：不带 group_id 拉大页后前端过滤） */
-const UNGROUPED_ID = '__ungrouped__'
 
 /** 分组级操作回调（index 页级装配，弹窗/toast 演示） */
 export interface GroupActionCallbacks {
@@ -154,7 +151,7 @@ function GroupCard({
    */
   const handleGroupToggleAll = async (checked: boolean) => {
     if (!onToggleAll) return
-    if (trash || filters.favorite || group.id === UNGROUPED_ID) {
+    if (trash || filters.favorite || group.id === UNGROUPED_GROUP_ID) {
       onToggleAll(list.map((x) => x.id), checked)
       return
     }
@@ -385,22 +382,22 @@ export function GroupedCaseList({
   const groupCases = useMemo(() => {
     const map = new Map<string, TestCaseListItem[]>()
     for (const c of cases) {
-      const key = c.groupId ?? UNGROUPED_ID
+      const key = c.groupId ?? UNGROUPED_GROUP_ID
       map.set(key, [...(map.get(key) ?? []), c])
     }
     return map
   }, [cases])
 
-  const ungroupedCases = groupCases.get(UNGROUPED_ID) ?? []
+  const ungroupedCases = groupCases.get(UNGROUPED_GROUP_ID) ?? []
   /** /groups 已含「未分组」真实条目时不重复渲染虚拟组（INT-1267 空组也渲染） */
   const hasNamedUngrouped = useMemo(() => groups.some((g) => g.name === '未分组'), [groups])
   const ungroupedGroup = useMemo<TestCaseGroup | null>(
     () =>
       ungroupedCases.length > 0 &&
       !hasNamedUngrouped &&
-      (filters.groupId == null || filters.groupId === UNGROUPED_ID)
+      (filters.groupId == null || filters.groupId === UNGROUPED_GROUP_ID)
         ? {
-            id: UNGROUPED_ID,
+            id: UNGROUPED_GROUP_ID,
             name: '未分组',
             description: null,
             algorithmType: null,
@@ -636,8 +633,8 @@ export function GroupedCaseList({
         <GroupCard
           group={ungroupedGroup}
           filters={filters}
-          expanded={expanded.has(UNGROUPED_ID)}
-          onToggleExpanded={() => toggleGroupExpanded(UNGROUPED_ID)}
+          expanded={expanded.has(UNGROUPED_GROUP_ID)}
+          onToggleExpanded={() => toggleGroupExpanded(UNGROUPED_GROUP_ID)}
           selected={selected}
           tagRegistry={tagRegistry}
           trash={trash}

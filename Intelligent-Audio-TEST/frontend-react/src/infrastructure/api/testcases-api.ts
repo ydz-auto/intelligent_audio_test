@@ -125,6 +125,39 @@ export async function fetchTagGroupedTestCases(
   return fetchTestCases(query)
 }
 
+/** 全量圈定每页条数（导出范围翻页；后端 per_page 无上限，此值兼顾响应体量与请求数） */
+const ID_SCAN_PAGE_SIZE = 200
+/** 翻页硬上限（防后端 pages 异常导致死循环；200×100=2 万条远超单库用例量） */
+const ID_SCAN_MAX_PAGES = 100
+
+/**
+ * 「当前筛选」全量 id 圈定（INT-1642 导出范围；与列表同端点同口径）。
+ * 逐页翻完 GET /testcases 直到最后一页，返回全部命中 id——收藏（favorite）、回收站
+ * （only_deleted）、分组（group_id，含未分组哨兵的前端过滤）、标签、维度、算法全部生效，
+ * 不退化成「全库」（POST /testcases/ids 后端 fetch_case_ids 不认 favorite，会静默返回全库，
+ * 代码审计 P2）也不退化成「仅当前页」。
+ */
+export async function fetchAllTestCaseIdsByFilter(
+  query: TestCaseListQuery
+): Promise<string[]> {
+  const ids: string[] = []
+  for (let page = 1; page <= ID_SCAN_MAX_PAGES; page += 1) {
+    const result = await fetchTestCases({
+      ...query,
+      page,
+      perPage: ID_SCAN_PAGE_SIZE,
+    })
+    ids.push(...result.items.map((c) => c.id))
+    // 未分组哨兵在 fetchTestCases 内前端过滤：items 可能少于本页行数，但 pages/total
+    // 仍是未过滤集合的分页信息，按 pages 判终止才对。
+    const totalPages =
+      result.pages ??
+      Math.max(1, Math.ceil((result.total || 0) / ID_SCAN_PAGE_SIZE))
+    if (page >= totalPages) return ids
+  }
+  throw new Error('用例数量超出导出范围上限，请缩小筛选条件后重试')
+}
+
 /**
  * 用例保存载荷（camelCase Domain 写侧；对照 api_gateway/schemas/testcase.py
  * TestCaseCreateSchema/TestCaseUpdateSchema，Vue testcasesApi.create/update 口径）。
