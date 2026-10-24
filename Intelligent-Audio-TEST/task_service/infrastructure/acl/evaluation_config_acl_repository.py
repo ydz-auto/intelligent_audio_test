@@ -106,6 +106,43 @@ class EvaluationConfigAclRepository:
         )
         return {int(r[0]) for r in rows if r[0] is not None}
 
+    def get_dimension_evaluation_statuses(self, result_ids, session=None) -> dict:
+        """按结果 ID 批量取维度行的评估过程状态（INT-1715 ②）。
+
+        容器用例行评估态要跟随**所选结果**，而结果行（`test_results`）没有评估列，
+        评估过程状态落在 evaluation_service 的 `test_result_dimensions`（每条结果
+        按维度多行）。与 `get_evaluated_result_ids` 同口径：共享库窄字段只读投影
+        （表无软删列，不过滤），一次 IN 取回，不逐结果走 gRPC。
+
+        Returns:
+            {result_id: [evaluation_status, ...]}；失败返回空 dict（调用方按
+            「无维度行」退化为源用例行口径）。
+        """
+        ids = [int(r) for r in (result_ids or []) if r is not None]
+        if not ids:
+            return {}
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.acl._read_projection import fetch_rows
+        own_session = session is None
+        session = session or get_db_session()
+        try:
+            rows = fetch_rows(
+                session,
+                'SELECT test_result_id, evaluation_status FROM test_result_dimensions '
+                'WHERE test_result_id IN :ids',
+                ids,
+            )
+        finally:
+            if own_session:
+                session.close()
+        grouped: dict = {}
+        for row in rows:
+            rid = row[0]
+            if rid is None:
+                continue
+            grouped.setdefault(int(rid), []).append(row[1])
+        return grouped
+
     def get_dimension_results_by_result_ids(self, result_ids) -> dict:
         """批量获取维度评估结果，按 test_result_id 分组返回。
 

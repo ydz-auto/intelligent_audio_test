@@ -54,6 +54,21 @@ _CASE_EXEC_PRECEDENCE = (
     ExecutionStatus.PENDING,
 )
 
+# 所选结果维度行 → 容器 TaskCase 评估状态的聚合优先级（INT-1715 ②）：
+# 与 evaluation_service 收尾口径（_check_all_results_completed）同构——任一维度
+# 失败即失败；仍在评估中的过渡态取最靠后者；全部完成才 completed。
+_CASE_EVAL_PRECEDENCE = (
+    EvaluationStatus.FAILED,
+    EvaluationStatus.STOPPED,
+    EvaluationStatus.CALCULATING,
+    EvaluationStatus.RUNNING,
+    EvaluationStatus.QUEUED,
+    EvaluationStatus.PENDING,
+)
+
+# 溯源/非容器同口径字面量（前端按「非 200 即非容器、静默」判定，改口径须同步前端）
+_NOT_CHERRY_PICK_MESSAGE = '该任务不是挑选合并容器任务'
+
 
 class CherryPickService:
     """挑选合并应用服务（S1-S5 命令与查询）。"""
@@ -838,6 +853,30 @@ class CherryPickService:
                 return candidate
         return ExecutionStatus.COMPLETED
 
+    @staticmethod
+    def _aggregate_case_eval_status(statuses) -> Optional[str]:
+        """所选结果维度行的评估过程状态 → 容器 TaskCase 评估状态（多条取最差）。
+
+        INT-1715 ② 返工：评估侧同样按**所选结果**派生，不再继承可能陈旧的源
+        TaskCase 评估态（实测任务 417/用例 4c42c1d5：结果 5480 维度行全 completed，
+        源用例行却是 failed → 容器用例行被推导成 failed，与所选结果相反）。
+
+        口径与 evaluation_service 收尾（`_check_all_results_completed`）同构：
+        任一维度 evaluation_status=failed 即用例评估失败；仍处评估过渡态
+        （pending/queued/running/calculating）取最靠后者（推导为 evaluating）；
+        全部 completed → completed。
+
+        无维度行（结果从未评估、或投影降级）返回 None，由调用方退回源用例行口径
+        ——此时没有可派生的依据。
+        """
+        present = {s for s in statuses if s}
+        if not present:
+            return None
+        for candidate in _CASE_EVAL_PRECEDENCE:
+            if candidate in present:
+                return candidate
+        return EvaluationStatus.COMPLETED
+
     def _create_container_task(self, name: str, data: dict,
                                rows: Dict[int, tuple],
                                valid_items: List[Dict[str, Any]],
@@ -845,8 +884,9 @@ class CherryPickService:
         """创建 cherry-pick 容器任务（原子：Task + TaskCase + 关系表同事务）。
 
         - 创建即 completed（§5.3，对齐现有合并容器任务口径）
-        - TaskCase 用例集 = 所选结果的用例集合，执行状态按所选结果派生
-          （INT-1715 ②；避免容器详情全部显示待执行，也避免与所选结果相反）
+        - TaskCase 用例集 = 所选结果的用例集合，执行状态按所选结果派生、
+          评估状态按所选结果维度行派生（INT-1715 ②；避免容器详情全部显示
+          待执行，也避免与所选结果相反）
         - 任务级配置取首个来源任务（§5.2 默认口径），data 覆盖优先
         """
         from task_service.infrastructure.persistence.models import (
@@ -906,17 +946,44 @@ class CherryPickService:
             for tc in source_case_map.values():
                 case_device_map[tc.test_case_id] = tc
 
+            # 参与状态派生的所选结果（按用例分组）。INT-1715 P3：已被「从任务移除
+            # 用例」排除的结果（excluded=1）不参与派生——购物车若混入源任务已移除
+            # 的结果，不应把容器用例行状态带偏（候选查询本就剔除这类行）。
+            case_rows: Dict[str, List[Any]] = {}
+            for result, _task in rows.values():
+                if (getattr(result, 'excluded', 0) or 0) == 1:
+                    continue
+                if result.test_case_id:
+                    case_rows.setdefault(result.test_case_id, []).append(result)
+
+            # 评估过程状态投影（一次 IN 取回，失败降级为空 dict → 退回源用例行口径）
+            dim_eval_map: Dict[int, List[str]] = {}
+            selected_result_ids = [r.id for rs in case_rows.values() for r in rs]
+            try:
+                from task_service.infrastructure.acl.evaluation_config_acl_repository import (
+                    evaluation_config_acl_repository,
+                )
+                dim_eval_map = evaluation_config_acl_repository.get_dimension_evaluation_statuses(
+                    selected_result_ids, session=session)
+            except Exception as e:
+                logger.warning(f"容器用例评估状态投影失败（退回源用例行口径）: {e}")
+
             for case_id in case_ids:
                 src_tc = case_device_map.get(case_id)
+                selected = case_rows.get(case_id) or []
                 # 执行侧按「所选结果」聚合（INT-1715 ②）：源 TaskCase 可能在人工
                 # 复核只改判结果、未回写用例行时陈旧（实测结果 5715 completed /
                 # 源用例行 failed），继续继承源行会让容器关联用例区与结果相反。
                 case_exec = self._aggregate_case_exec_status(
-                    [r.execution_status for r, _t in rows.values()
-                     if r.test_case_id == case_id])
-                # 评估侧：test_results 无评估列，沿用源 TaskCase 的评估终态
-                # （无源行时按已完成兜底，仅参与 status 推导）
-                case_eval = (src_tc.evaluation_status if src_tc else EvaluationStatus.COMPLETED)
+                    [r.execution_status for r in selected])
+                # 评估侧同样按所选结果派生（INT-1715 ② 返工）：结果行无评估列，
+                # 取该用例所选结果在 test_result_dimensions 的评估过程状态聚合；
+                # 无维度行（源结果从未评估/投影降级）才退回源用例行评估态。
+                case_eval = self._aggregate_case_eval_status(
+                    [s for r in selected for s in dim_eval_map.get(r.id) or []])
+                if case_eval is None:
+                    case_eval = (src_tc.evaluation_status if src_tc
+                                 else EvaluationStatus.COMPLETED)
                 session.add(TaskCase(
                     task_id=task_id,
                     test_case_id=case_id,
@@ -1014,7 +1081,7 @@ class CherryPickService:
             # （回收站可恢复，级联删会丢溯源），存活判定放在读侧；否则软删容器
             # 仍会被前端按「200 即容器」渲染，与 GET /tasks?cherry_pick=true 口径矛盾。
             if not self._repo.container_task_alive(task_id):
-                return {'success': False, 'message': '该任务不是挑选合并容器任务',
+                return {'success': False, 'message': _NOT_CHERRY_PICK_MESSAGE,
                         'data': {'code': 404}, 'code': 404}
             relations = self._repo.relations_by_container(task_id)
             if not relations:

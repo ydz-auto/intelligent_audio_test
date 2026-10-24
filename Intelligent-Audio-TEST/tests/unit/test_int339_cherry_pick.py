@@ -37,10 +37,15 @@ def _ensure_tables():
             Tag, TaskTag, TestCase, TestResult,
             CherryPickCartItem, TaskCherryPickRelation, CherryPickSet, CherryPickSetItem,
         )
+        # INT-1715 ②：容器用例行评估态按所选结果的维度行派生（共享库表）
+        from evaluation_service.infrastructure.persistence.models.result_models import (
+            TestResultDimension,
+        )
         _TASK_TABLES = [t.__table__ for t in (
             Task, TaskCase, TaskMergeRelation, TaskDevice, TaskAPI, Favorite,
             Tag, TaskTag, TestCase, TestResult,
             CherryPickCartItem, TaskCherryPickRelation, CherryPickSet, CherryPickSetItem,
+            TestResultDimension,
         )]
         Base.metadata.create_all(bind=get_engine(), tables=_TASK_TABLES)
     return _TASK_TABLES
@@ -893,6 +898,176 @@ def test_checkout_merge_case_status_aggregates_worst_result(db):
         assert tc.status == 'failed'
         container = session.get(Task, container_id)
         assert container.failed_cases == 1 and container.completed_cases == 0
+    finally:
+        remove_db_session()
+
+
+def _add_dimension_rows(result_ids, statuses_by_result):
+    """写 test_result_dimensions 行（INT-1715 ② 评估侧派生输入）。
+
+    statuses_by_result: {result_id: [evaluation_status, ...]}；SQLite 下
+    BigInteger 主键不自增，按 result_id*100+序号 显式给定 id。
+    """
+    from evaluation_service.infrastructure.persistence.models.result_models import (
+        TestResultDimension,
+    )
+    session = get_db_session()
+    try:
+        for result_id in result_ids:
+            for i, eval_status in enumerate(statuses_by_result.get(result_id) or []):
+                session.add(TestResultDimension(
+                    id=int(result_id) * 100 + i,
+                    test_result_id=int(result_id),
+                    dimension_id=i + 1,
+                    evaluation_status=eval_status,
+                    status=eval_status,
+                ))
+        session.commit()
+    finally:
+        remove_db_session()
+
+
+def test_checkout_merge_case_eval_status_follows_selected_result(db):
+    """INT-1715 ② 返工：评估侧按所选结果维度行派生（源用例行评估态陈旧也不跟）。
+
+    构造实测形态（任务 417 / 用例 4c42c1d5 / 结果 5480）：所选结果维度行全
+    completed，源 TaskCase 评估态却是 failed。修复前容器用例行评估侧继承源行
+    → status=failed，与所选结果相反；修复后应 completed。
+    """
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+    from task_service.infrastructure.persistence.models import Task, TaskCase
+
+    src_id, results = _seed_source_task(name='INT1715评估派生源')
+    stale_case_id, stale_result_id, _dev = results[0]
+    session = get_db_session()
+    try:
+        session.query(TaskCase).filter(
+            TaskCase.task_id == src_id,
+            TaskCase.test_case_id == stale_case_id,
+        ).update({'evaluation_status': 'failed', 'status': 'failed'})
+        session.commit()
+    finally:
+        remove_db_session()
+    _add_dimension_rows([stale_result_id], {stale_result_id: ['completed'] * 3})
+
+    set_current_user_id(42)
+    cherry_pick_service.cart_add({'result_ids': [r[1] for r in results]})
+    resp = cherry_pick_service.checkout({'action': 'merge', 'name': 'INT1715评估派生容器'})
+    assert resp['success'] is True, resp.get('message')
+    container_id = resp['data']['task_id']
+
+    session = get_db_session()
+    try:
+        cases = {tc.test_case_id: tc for tc in
+                 session.query(TaskCase).filter_by(task_id=container_id).all()}
+        derived = cases[stale_case_id]
+        assert derived.evaluation_status == 'completed', '容器用例行评估态应跟随所选结果'
+        assert derived.status == 'completed'
+        container = session.get(Task, container_id)
+        assert container.completed_cases == 2 and container.failed_cases == 0
+    finally:
+        remove_db_session()
+
+
+def test_checkout_merge_case_eval_status_failed_dimension_wins(db):
+    """任一维度 evaluation_status=failed → 容器用例行评估失败（不把失败藏成完成）。"""
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+    from task_service.infrastructure.persistence.models import Task, TaskCase
+
+    _src, results = _seed_source_task(name='INT1715评估失败源')
+    case_id, result_id, _dev = results[0]
+    # 源用例行是 completed，维度行一完成一失败 → 以维度行失败为准
+    _add_dimension_rows([result_id], {result_id: ['completed', 'failed']})
+
+    set_current_user_id(42)
+    cherry_pick_service.cart_add({'result_ids': [r[1] for r in results]})
+    resp = cherry_pick_service.checkout({'action': 'merge', 'name': 'INT1715评估失败容器'})
+    assert resp['success'] is True, resp.get('message')
+    container_id = resp['data']['task_id']
+
+    session = get_db_session()
+    try:
+        tc = session.query(TaskCase).filter_by(
+            task_id=container_id, test_case_id=case_id).one()
+        assert tc.evaluation_status == 'failed'
+        assert tc.status == 'failed'
+    finally:
+        remove_db_session()
+
+
+def test_checkout_merge_case_eval_status_falls_back_without_dimension_rows(db):
+    """无维度行（源结果从未评估）时退回源用例行评估态（兜底口径固定）。"""
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+    from task_service.infrastructure.persistence.models import Task, TaskCase
+
+    src_id, results = _seed_source_task(name='INT1715评估兜底源')
+    case_id, _result_id, _dev = results[0]
+    session = get_db_session()
+    try:
+        session.query(TaskCase).filter(
+            TaskCase.task_id == src_id,
+            TaskCase.test_case_id == case_id,
+        ).update({'evaluation_status': 'failed', 'status': 'failed'})
+        session.commit()
+    finally:
+        remove_db_session()
+
+    set_current_user_id(42)
+    cherry_pick_service.cart_add({'result_ids': [r[1] for r in results]})
+    resp = cherry_pick_service.checkout({'action': 'merge', 'name': 'INT1715评估兜底容器'})
+    assert resp['success'] is True, resp.get('message')
+    container_id = resp['data']['task_id']
+
+    session = get_db_session()
+    try:
+        tc = session.query(TaskCase).filter_by(
+            task_id=container_id, test_case_id=case_id).one()
+        assert tc.evaluation_status == 'failed'
+        assert tc.status == 'failed'
+    finally:
+        remove_db_session()
+
+
+def test_checkout_merge_ignores_excluded_results_in_status(db):
+    """INT-1715 P3：excluded=1（从源任务移除用例）的结果不参与容器状态派生。"""
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+    from task_service.infrastructure.persistence.models import (
+        Task, TaskCase, TestResult,
+    )
+
+    session = get_db_session()
+    try:
+        task = Task(name='INT1715排除源', status='completed', algorithm_type='asr')
+        session.add(task)
+        session.flush()
+        src_id = task.id
+        session.add(TaskCase(
+            task_id=src_id, test_case_id='INT1715-EXC', status='completed',
+            execution_status='completed', evaluation_status='completed',
+            device_type='physical', device_id='7',
+        ))
+        r_ok = TestResult(task_id=src_id, test_case_id='INT1715-EXC', device_id=7,
+                          algorithm_type='asr', execution_status='completed')
+        r_excluded = TestResult(task_id=src_id, test_case_id='INT1715-EXC', device_id=8,
+                                algorithm_type='asr', execution_status='failed',
+                                excluded=1)
+        session.add_all([r_ok, r_excluded])
+        session.commit()
+        result_ids = [r_ok.id, r_excluded.id]
+    finally:
+        remove_db_session()
+
+    set_current_user_id(42)
+    cherry_pick_service.cart_add({'result_ids': result_ids})
+    resp = cherry_pick_service.checkout({'action': 'merge', 'name': 'INT1715排除容器'})
+    assert resp['success'] is True, resp.get('message')
+    container_id = resp['data']['task_id']
+
+    session = get_db_session()
+    try:
+        tc = session.query(TaskCase).filter_by(task_id=container_id).one()
+        assert tc.execution_status == 'completed', '排除行不应把容器用例行带成 failed'
+        assert tc.status == 'completed'
     finally:
         remove_db_session()
 
