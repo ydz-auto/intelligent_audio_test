@@ -17,7 +17,7 @@ import {
   type CompositionSummary,
 } from '@/domain/lib/container-composition'
 import type { ContainerSourceTrace, PickCartGroup } from '@/domain/models/cherryPick'
-import { fetchContainerSourceTrace } from '@/infrastructure/api/cherry-pick-api'
+import { fetchContainerSourceTraceDomain } from '@/infrastructure/api/cherry-pick-api'
 
 export interface ContainerCompositionModel {
   /** 200（groups 可为空）→ 挑选合并容器；null（任意 ApiError）→ 非容器，静默不渲染 */
@@ -52,7 +52,7 @@ export function useContainerComposition(
   const detailQuery = useTaskDetail(taskId)
   const sourceQuery = useQuery({
     queryKey: ['task', taskId, 'cherry-pick-source'],
-    queryFn: () => fetchContainerSourceTrace(taskId),
+    queryFn: () => fetchContainerSourceTraceDomain(taskId),
     // 非容器是常态（实测 400 / code:203），不做重试，避免每个普通任务详情页重复请求
     retry: false,
     staleTime: 60_000,

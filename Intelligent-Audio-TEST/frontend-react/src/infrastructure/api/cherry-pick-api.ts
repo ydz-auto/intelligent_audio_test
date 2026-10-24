@@ -570,7 +570,7 @@ export async function checkoutCart(payload: CheckoutPayload): Promise<CheckoutRe
  * **任意 `ApiError`（非容器实测 HTTP 400 / `code:203`，以及 5xx / 网络中断）→ null**，
  * 由详情页按「非挑选合并容器」静默处理，绝不因这个可选增强区把详情页变错误态。
  */
-export async function fetchContainerSourceTrace(
+export async function fetchContainerSourceTraceDomain(
   taskId: number
 ): Promise<ContainerSourceTrace | null> {
   try {
