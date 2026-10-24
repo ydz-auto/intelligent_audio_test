@@ -1,0 +1,50 @@
+{
+ "before_alive": [
+  [
+   "fca57b38-ec6b-4916-8cf5-d76836e9ddf5",
+   "接线测试_INT1538_播放器复测_case"
+  ],
+  [
+   "4a13b42d-9258-4259-be49-c7b1f9cc8aa4",
+   "接线测试_INT1538_播放器复测_case"
+  ]
+ ],
+ "before_alive_total": 2,
+ "before_deleted_total": 0,
+ "ops": [
+  [
+   "DELETE",
+   "fca57b38-ec6b-4916-8cf5-d76836e9ddf5",
+   200
+  ],
+  [
+   "PURGE",
+   "fca57b38-ec6b-4916-8cf5-d76836e9ddf5",
+   200
+  ],
+  [
+   "DELETE",
+   "4a13b42d-9258-4259-be49-c7b1f9cc8aa4",
+   200
+  ],
+  [
+   "PURGE",
+   "4a13b42d-9258-4259-be49-c7b1f9cc8aa4",
+   200
+  ],
+  [
+   "DELETE_GROUP",
+   "e2fe8ce3-7785-457c-a455-f57f4ab68d33",
+   200
+  ]
+ ],
+ "groups_before": [
+  [
+   "e2fe8ce3-7785-457c-a455-f57f4ab68d33",
+   "接线测试_INT1538_播放器复测组"
+  ]
+ ],
+ "after_alive_total": 0,
+ "after_deleted_total": 0,
+ "groups_after": []
+}
