@@ -140,6 +140,10 @@ class CherryPickService:
             case_ids = {str(it.get('source_case_id')) for it in items if it.get('source_case_id')}
             device_ids = {int(it['source_device_id']) for it in items if it.get('source_device_id') is not None}
             case_names = self._case_name_map(case_ids) if case_ids else {}
+            # INT-1693 §11-7：购物车用例视图按 分组/标签 组织，行级补 tags/group_id/
+            # group_name（与候选行同源同口径，按响应内全部 source_case_id 一次批量回填）；
+            # with_duration=False——购物车不用时长，不触发 audio gRPC 慢路径。
+            case_meta = self._case_meta_map(case_ids, with_duration=False) if case_ids else {}
             device_names = self._fetch_device_names(list(device_ids)) if device_ids else {}
             grouped: Dict[int, List[Dict[str, Any]]] = {}
             invalid_item_ids: List[int] = []
@@ -153,6 +157,12 @@ class CherryPickService:
                     it['source_case_name'] = case_names.get(it['source_case_id'])
                 if it.get('source_device_id') is not None:
                     it['source_device_name'] = device_names.get(it['source_device_id'])
+                # INT-1693 §11-7：行级用例分组/标签（缺省 []/null/null，用例已软删或
+                # 查不到同落缺省；容器来源行按 source_case_id 取，天然覆盖）
+                meta = case_meta.get(str(it.get('source_case_id'))) if it.get('source_case_id') else None
+                it['tags'] = (meta or {}).get('tags', [])
+                it['group_id'] = (meta or {}).get('group_id')
+                it['group_name'] = (meta or {}).get('group_name')
                 grouped.setdefault(it['source_task_id'], []).append(it)
             groups = [{
                 'source_task_id': task_id,
@@ -1194,7 +1204,7 @@ class CherryPickService:
             session.close()
 
     @staticmethod
-    def _case_meta_map(case_ids) -> Dict[str, Dict[str, Any]]:
+    def _case_meta_map(case_ids, with_duration: bool = True) -> Dict[str, Dict[str, Any]]:
         """批量查询用例级元信息（INT-1130 §11-7）：tags/group_id/group_name/duration/rounds。
 
         与用例管理列表（TestCaseListItem tags/groupId/groupName/totalDuration）同源口径：
@@ -1203,6 +1213,9 @@ class CherryPickService:
         - duration：collect_audios(config) 逐音频时长累加（同 total_duration 路径，
           audio_service gRPC 批量查询），无音频/无时长返回 None
         - rounds：len(config.get('rounds') or [])（轮次数，不返回 rounds 数组本身）
+
+        INT-1693：with_duration=False 时跳过音频收集与 audio gRPC（购物车只要分组/
+        标签），此时 duration 恒 None，分组/标签口径与候选行完全一致。
 
         失败（如表异常 / gRPC 失败）返回空 dict，仅日志告警，不阻断候选查询。
         """
@@ -1220,11 +1233,12 @@ class CherryPickService:
                     .filter(TestCase.id.in_(ids)).all())
             # duration 同源 total_duration：批量收集引用音频，经 gRPC 一次性查时长
             audio_ids = set()
-            for tc in rows:
-                for audio_item in common.collect_audios(tc.config or {}):
-                    aid = audio_item.get('audio_id')
-                    if aid is not None:
-                        audio_ids.add(aid)
+            if with_duration:
+                for tc in rows:
+                    for audio_item in common.collect_audios(tc.config or {}):
+                        aid = audio_item.get('audio_id')
+                        if aid is not None:
+                            audio_ids.add(aid)
             audio_map = {}
             if audio_ids:
                 # INT-1625：只取时长窄字段（原 GetAudiosByIds 逐音频查标签+标注，
