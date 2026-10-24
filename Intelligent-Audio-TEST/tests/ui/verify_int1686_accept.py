@@ -37,8 +37,9 @@ os.makedirs(ART, exist_ok=True)
 LOGIN_USER = os.environ.get('IAT_LOGIN_USER', '接线测试_admin')
 LOGIN_PASS = os.environ.get('IAT_LOGIN_PASS', 'JieXianTest@2026')
 
-ALGO_TYPE = 'wire_test_int1686b'
-ALGO_NAME = '接线测试_验收去重算法1686b'
+ALGO_SUFFIX = os.environ.get('ALGO_SUFFIX', 'b')  # type 有唯一约束（软删不释放），每轮换后缀
+ALGO_TYPE = 'wire_test_int1686' + ALGO_SUFFIX
+ALGO_NAME = '接线测试_验收去重算法1686' + ALGO_SUFFIX
 DUP_FIELD_LABEL = '接线测试阈值'
 GROUP_ID = 'dec6503f-a86e-4b5d-b60e-7f4801b82325'  # 音频上传生成（3 条真实用例）
 DEVICE_NAME = '设备正左侧（1m-90°）'
