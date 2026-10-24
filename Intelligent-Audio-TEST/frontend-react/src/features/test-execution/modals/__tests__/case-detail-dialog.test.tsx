@@ -16,7 +16,6 @@ import { CaseDetailDialog } from '../case-detail-dialog'
 const fetchDetailMock = vi.hoisted(() => vi.fn())
 const fetchLogsMock = vi.hoisted(() => vi.fn())
 const fetchTaskMock = vi.hoisted(() => vi.fn())
-const fetchResultsMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/infrastructure/api/test-execution-api', () => ({
   fetchCaseExecutionDetail: fetchDetailMock,
@@ -24,9 +23,6 @@ vi.mock('@/infrastructure/api/test-execution-api', () => ({
 }))
 vi.mock('@/infrastructure/api/tasks-list-api', () => ({
   fetchTaskDetail: fetchTaskMock,
-}))
-vi.mock('@/infrastructure/api/reviewApi', () => ({
-  fetchCaseResults: fetchResultsMock,
 }))
 // 复核会话/弹窗本体已由浏览器实测 + 关联用例入口验证；本测试聚焦入口接线，用轻量桩
 vi.mock('@/features/ai-review/ai-review-session-dialog', () => ({
@@ -52,6 +48,28 @@ vi.mock('@/features/tasks/components/manual-review-dialog', () => ({
     open ? <div data-testid='manual-review-dialog' data-case={caseName} /> : null,
 }))
 
+const caseResults = [
+  {
+    id: 5400,
+    deviceId: 10,
+    deviceName: 'pura90豆包',
+    apiId: null,
+    apiName: null,
+    executionStatus: 'completed',
+    responseTime: 0,
+    errorMessage: null,
+    reviewed: false,
+    reviewedByUserId: null,
+    reviewedAt: null,
+    lastReviewComment: null,
+    lastReviewAction: null,
+    reviewHistory: [],
+    sourceTaskId: 417,
+    sourceTaskName: null,
+    dimensions: [],
+  },
+]
+
 const detail = {
   caseId: 'case-1',
   taskId: 417,
@@ -62,17 +80,21 @@ const detail = {
   score: 85,
   algorithmType: 'voice_llm',
   algorithmResults: [],
+  metricConfigs: [{ code: '清晰度', name: '清晰度' }],
+  metricColumns: [{ key: '清晰度', label: '清晰度', dimension: '清晰度' }],
+  multiRound: false,
+  results: caseResults,
+  resultAudios: [],
+  referenceAudios: [],
   devices: [
     {
+      resultId: 5400,
       deviceId: 10,
       deviceName: 'pura90豆包',
-      status: 'pass' as const,
-      duration: 3,
-      score: 85,
+      executionStatus: 'completed',
       metrics: [{ dimension: '清晰度', value: '0.55' }],
       asrReference: null,
       translationReference: null,
-      audioResults: [],
     },
   ],
 }
@@ -91,21 +113,35 @@ const apiDetail = {
     { paramCode: 'round_count', paramType: 'number', label: 'round count', value: 2 },
     { paramCode: 'total_latency', paramType: 'number', label: 'total latency(ms)', value: 16.544 },
   ],
+  metricConfigs: [],
+  metricColumns: [],
+  multiRound: false,
+  results: [
+    {
+      id: 3693,
+      deviceId: null,
+      deviceName: null,
+      apiId: null,
+      apiName: null,
+      executionStatus: 'completed',
+      responseTime: 16544,
+      errorMessage: null,
+      reviewed: false,
+      reviewedByUserId: null,
+      reviewedAt: null,
+      lastReviewComment: null,
+      lastReviewAction: null,
+      reviewHistory: [],
+      sourceTaskId: 1257,
+      sourceTaskName: null,
+      dimensions: [],
+    },
+  ],
+  resultAudios: [],
+  referenceAudios: [],
   devices: [],
 }
-const apiCaseResults = {
-  taskId: 1257,
-  caseId: 'case-2',
-  caseName: 'API用例',
-  results: [{ id: 3693, deviceName: null, apiName: null, executionStatus: 'completed', responseTime: 16544 }],
-}
 const taskTerminal = { id: 417, name: '任务', status: 'completed' }
-const caseResults = {
-  taskId: 417,
-  caseId: 'case-1',
-  caseName: '用例一',
-  results: [{ id: 5400, deviceName: 'pura90豆包' }],
-}
 
 function renderDialog() {
   const client = new QueryClient({
@@ -123,7 +159,6 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     vi.clearAllMocks()
     fetchDetailMock.mockResolvedValue(detail)
     fetchLogsMock.mockResolvedValue({ items: [], total: 0, page: 1 })
-    fetchResultsMock.mockResolvedValue(caseResults)
     useAuthStore.setState({
       user: {
         id: '1',
@@ -162,7 +197,7 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     fetchTaskMock.mockReturnValue(new Promise<never>(() => {}))
     renderDialog()
     await waitFor(() => {
-      expect(fetchResultsMock).toHaveBeenCalled()
+      expect(fetchDetailMock).toHaveBeenCalled()
     })
     expect(screen.queryByRole('button', { name: '人工复核' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'AI 复核' })).not.toBeInTheDocument()
@@ -198,7 +233,7 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     fetchTaskMock.mockResolvedValue({ ...taskTerminal, status: 'running' })
     renderDialog()
     await waitFor(() => {
-      expect(fetchResultsMock).toHaveBeenCalled()
+      expect(fetchDetailMock).toHaveBeenCalled()
     })
     expect(screen.queryByRole('button', { name: '人工复核' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'AI 复核' })).not.toBeInTheDocument()
@@ -206,7 +241,7 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
 
   it('无执行结果 → 人工复核/AI 复核入口均隐藏', async () => {
     fetchTaskMock.mockResolvedValue(taskTerminal)
-    fetchResultsMock.mockResolvedValue({ ...caseResults, results: [] })
+    fetchDetailMock.mockResolvedValue({ ...detail, results: [] })
     renderDialog()
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: '人工复核' })).not.toBeInTheDocument()
@@ -227,7 +262,7 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     })
     renderDialog()
     await waitFor(() => {
-      expect(fetchResultsMock).toHaveBeenCalled()
+      expect(fetchDetailMock).toHaveBeenCalled()
     })
     expect(screen.queryByRole('button', { name: '人工复核' })).not.toBeInTheDocument()
     const aiBtn = await screen.findByRole('button', { name: 'AI 复核' })
@@ -237,7 +272,6 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
   // ---- INT-1066 返工 P2：API/voice_llm 用例（devices 空）分节①结果摘要 ----
   it('API 用例（devices 空）有执行结果 → 分节①展示结果摘要而非「暂无执行结果」，复核钮可用', async () => {
     fetchDetailMock.mockResolvedValue(apiDetail)
-    fetchResultsMock.mockResolvedValue(apiCaseResults)
     fetchTaskMock.mockResolvedValue({ ...taskTerminal, status: 'completed' })
     renderDialog()
     // 结果行摘要渲染（执行完成 + 响应时间 + 算法结果指标），不再出现「暂无执行结果」
@@ -249,8 +283,7 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
   })
 
   it('API 用例（devices 空）无任何结果 → 分节①「暂无执行结果」且复核入口隐藏', async () => {
-    fetchDetailMock.mockResolvedValue({ ...apiDetail, algorithmResults: [] })
-    fetchResultsMock.mockResolvedValue({ ...apiCaseResults, results: [] })
+    fetchDetailMock.mockResolvedValue({ ...apiDetail, algorithmResults: [], results: [] })
     fetchTaskMock.mockResolvedValue({ ...taskTerminal, status: 'completed' })
     renderDialog()
     await waitFor(() => {
@@ -258,6 +291,43 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     })
     expect(screen.queryByRole('button', { name: '人工复核' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'AI 复核' })).not.toBeInTheDocument()
+  })
+
+  // ---- INT-1688：真实响应形态（设备名 / 维度列 / 结果音频）----
+  it('INT-1688：设备名 + @round/@overall 维度列 + 结果音频渲染（有结果用例不再空白/恒失败）', async () => {
+    fetchDetailMock.mockResolvedValue({
+      ...detail,
+      multiRound: true,
+      metricColumns: [
+        { key: '接管率占比@round:1', label: '接管率占比@round:1', dimension: '接管率占比', round: 1 },
+        { key: '接管率占比@overall', label: '接管率占比@overall', dimension: '接管率占比' },
+      ],
+      devices: [
+        {
+          ...detail.devices[0],
+          metrics: [
+            { dimension: '接管率占比', round: 1, value: '1' },
+            { dimension: '接管率占比', value: '1' },
+          ],
+        },
+      ],
+      resultAudios: [
+        {
+          audioName: 'user_wav (第1轮)',
+          deviceName: '9-pura90小艺-1.0.0',
+          url: null,
+          path: 'case_pcm/402/a.wav',
+        },
+      ],
+    })
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    renderDialog()
+    expect(await screen.findByText('接管率占比@round:1')).toBeInTheDocument()
+    expect(screen.getByText('接管率占比@overall')).toBeInTheDocument()
+    expect(screen.getByText('user_wav (第1轮)')).toBeInTheDocument()
+    // 设备名在头部徽章与表格设备列各出现一次
+    expect(screen.getAllByText('pura90豆包').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByRole('button', { name: '试听' })).toBeInTheDocument()
   })
 
   it('E2E 用例（devices 非空）时长 null → 头部不渲染「耗时」', async () => {

@@ -17,11 +17,15 @@ import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { CaseResultForReview } from '@/domain/models/review'
-import { toAiReviewDimensionIds } from '@/domain/models/review'
-import type { CaseAlgorithmResult } from '@/domain/models/testExecution'
+import { executionStatusLabel, toAiReviewDimensionIds } from '@/domain/models/review'
+import type {
+  CaseAlgorithmResult,
+  CaseAudioResult,
+  CaseDeviceResult,
+} from '@/domain/models/testExecution'
+import { stream, streamByPath } from '@/infrastructure/api/audios-api'
 import { fetchCaseExecutionDetail, fetchCaseLogs } from '@/infrastructure/api/test-execution-api'
 import { fetchTaskDetail } from '@/infrastructure/api/tasks-list-api'
-import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -34,7 +38,10 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
-import { AudioPlayerModal } from '@/features/report-view/components/case-report-detail/audio-player-modal'
+import {
+  AudioPlayerModal,
+  type AudioItemMeta,
+} from '@/features/report-view/components/case-report-detail/audio-player-modal'
 import { formatResultValue } from '@/features/report-view/components/case-report-detail/case-report-utils'
 import { AiReviewSessionDialog } from '@/features/ai-review/ai-review-session-dialog'
 import { ManualReviewDialog } from '@/features/tasks/components/manual-review-dialog'
@@ -142,7 +149,7 @@ function ApiCaseResultSummary({
 
 export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDetailDialogProps) {
   const [page, setPage] = useState(1)
-  const [playingAudio, setPlayingAudio] = useState<string | null>(null)
+  const [playingAudio, setPlayingAudio] = useState<AudioItemMeta | null>(null)
   const [manualReviewOpen, setManualReviewOpen] = useState(false)
   const [aiReviewOpen, setAiReviewOpen] = useState(false)
   const { hasPermission } = usePermissions()
@@ -159,32 +166,28 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
     enabled: open,
     staleTime: 15_000,
   })
-  // INT-1064 复核入口准入（10 §5.2：终态任务 + fetchCaseResults 有执行结果 + task.result.ai_review）
+  // INT-1064 复核入口准入（10 §5.2：终态任务 + 有执行结果 + task.result.ai_review）
   const taskQuery = useQuery({
     queryKey: ['tasks', 'detail', taskId],
     queryFn: () => fetchTaskDetail(taskId),
     enabled: open && taskId > 0,
     staleTime: 30_000,
   })
-  const resultsQuery = useQuery({
-    queryKey: ['tasks', 'cases', taskId, caseId, 'results'],
-    queryFn: () => fetchCaseResults(taskId, caseId),
-    enabled: open && taskId > 0 && Boolean(caseId),
-    staleTime: 15_000,
-  })
 
   const detail = detailQuery.data
   const logs = logsQuery.data
+  // INT-1688：执行结果行随详情一并取回（/results），不再单独查询
+  const caseResults: CaseResultForReview[] = detail?.results ?? []
   const taskTerminal = ['completed', 'failed', 'stopped', 'skipped'].includes(
     taskQuery.data?.status ?? ''
   )
-  const hasCaseResults = (resultsQuery.data?.results.length ?? 0) > 0
+  const hasCaseResults = caseResults.length > 0
   // INT-1279 P2：dimension_ids 源（taskQuery.data.cases）异步加载——与 canAiReview 同 gate
   // 在 taskQuery.data 就绪后再计算；taskLoading 期间入口不可见，避免维度静默缺省 → 真实库 400。
   const aiReviewReady = taskQuery.data != null && !taskQuery.isLoading
   // INT-1279：用例评估维度 id（任务用例简报 evaluation_dimensions 溯源；真实库结果无 LLM 判分维度时显式传）
   const aiReviewDimensionIds = toAiReviewDimensionIds(
-    taskQuery.data?.cases.find((c) => c.case_id === caseId)?.evaluation_dimensions
+    taskQuery.data?.cases?.find((c) => c.case_id === caseId)?.evaluation_dimensions
   )
   // 复核按钮位置以 10 §5.2「分节①区头右侧」收口（注记 3）：终态任务 + 有执行结果 + 权限
   // 人工复核（task.result.review）→ 19 §3.2 弹窗；AI 复核（task.result.ai_review）→ 19 §5 会话
@@ -210,6 +213,48 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
     toast.success('已复制')
   }
 
+  /** 结果/参考音频试听：直出 url → 音频库 id → 静态路径换预签名地址，三种来源统一到 INT-356 弹窗 */
+  const playAudio = async (audio: CaseAudioResult, audioType: 'result' | 'reference') => {
+    try {
+      const url =
+        audio.url ??
+        (audio.audioId != null
+          ? await stream(audio.audioId)
+          : audio.path
+            ? await streamByPath(audio.path)
+            : null)
+      if (!url) throw new Error('音频地址缺失')
+      setPlayingAudio({
+        audio_id: audio.audioId ?? audio.audioName,
+        audio_name: audio.audioName,
+        audio_type: audioType,
+        url,
+      })
+    } catch {
+      toast.error('音频播放地址获取失败')
+    }
+  }
+
+  /** 设备×维度取值表（列键与 metricColumns 同口径：单轮裸名 / @round:{n} / @overall） */
+  const metricValuesByDevice = (device: CaseDeviceResult, multiRound: boolean) => {
+    const map: Record<string, string> = {}
+    for (const metric of device.metrics) {
+      const key =
+        metric.round != null
+          ? `${metric.dimension}@round:${metric.round}`
+          : multiRound
+            ? `${metric.dimension}@overall`
+            : metric.dimension
+      map[key] = metric.value
+    }
+    return map
+  }
+
+  /** 有真实执行数据才渲染设备×维度表；无结果用例退回结果摘要（空态不回归） */
+  const hasDeviceTable =
+    (detail?.devices.length ?? 0) > 0 &&
+    (caseResults.length > 0 || (detail?.devices ?? []).some((d) => d.metrics.length > 0))
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-4xl' data-slot='case-detail-dialog'>
@@ -230,8 +275,18 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
               </div>
               <div className='flex flex-wrap items-center gap-2'>
                 <StatusBadge
-                  label={detail.executionStatus === 'completed' ? '执行完成' : detail.executionStatus}
-                  variant={detail.executionStatus === 'completed' ? 'success' : 'warning'}
+                  label={
+                    detail.executionStatus === 'completed'
+                      ? '执行完成'
+                      : executionStatusLabel(detail.executionStatus)
+                  }
+                  variant={
+                    detail.executionStatus === 'completed'
+                      ? 'success'
+                      : detail.executionStatus === 'failed'
+                        ? 'danger'
+                        : 'warning'
+                  }
                 />
                 <StatusBadge
                   label={detail.evaluationStatus === 'completed' ? '评估完成' : '评估中'}
@@ -248,7 +303,7 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                 )}
                 <span className='flex flex-wrap gap-1'>
                   {detail.devices.map((d) => (
-                    <Badge key={d.deviceId} variant='outline' className='text-[11px]'>
+                    <Badge key={d.deviceName} variant='outline' className='text-[11px]'>
                       {d.deviceName}
                     </Badge>
                   ))}
@@ -305,47 +360,63 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                   </Button>
                 )}
               </div>
-              {detail.devices.length > 0 ? (
-                <div className='overflow-hidden rounded-lg border'>
+              {hasDeviceTable ? (
+                <div className='overflow-x-auto rounded-lg border'>
                   <table className='w-full text-left text-sm'>
                     <thead className='bg-muted/50 border-b'>
                       <tr className='text-muted-foreground text-xs'>
                         <th className='px-3 py-2 font-medium'>设备</th>
-                        {detail.devices[0].metrics.map((metric) => (
-                          <th key={`${metric.dimension}-${metric.round ?? 'overall'}`} className='px-3 py-2 text-end font-medium'>
-                            {metric.round != null
-                              ? `${metric.dimension}@round:${metric.round}`
-                              : `${metric.dimension}@overall`}
+                        {detail.metricColumns.map((column) => (
+                          <th key={column.key} className='px-3 py-2 text-end font-medium whitespace-nowrap'>
+                            {column.label}
                           </th>
                         ))}
-                        <th className='px-3 py-2 text-end font-medium'>结果</th>
+                        <th className='px-3 py-2 text-end font-medium whitespace-nowrap'>执行状态</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {detail.devices.map((device) => (
-                        <tr key={device.deviceId} className='border-b last:border-0 hover:bg-muted/30'>
-                          <td className='px-3 py-2'>
-                            <span className='font-medium'>{device.deviceName}</span>
-                          </td>
-                          {device.metrics.map((metric, index) => (
-                            <td key={index} className='px-3 py-2 text-end font-mono text-xs tabular-nums'>
-                              {metric.value}
+                      {detail.devices.map((device) => {
+                        const values = metricValuesByDevice(device, detail.multiRound)
+                        return (
+                          <tr key={device.deviceName} className='border-b last:border-0 hover:bg-muted/30'>
+                            <td className='px-3 py-2 whitespace-nowrap'>
+                              <span className='font-medium'>{device.deviceName}</span>
                             </td>
-                          ))}
-                          <td className='px-3 py-2 text-end'>
-                            <StatusBadge
-                              label={device.status === 'pass' ? '通过' : '失败'}
-                              variant={device.status === 'pass' ? 'success' : 'danger'}
-                            />
-                          </td>
-                        </tr>
-                      ))}
+                            {detail.metricColumns.map((column) => (
+                              <td
+                                key={column.key}
+                                className='px-3 py-2 text-end font-mono text-xs tabular-nums'
+                              >
+                                {values[column.key] ?? '—'}
+                              </td>
+                            ))}
+                            <td className='px-3 py-2 text-end'>
+                              <StatusBadge
+                                label={
+                                  device.executionStatus
+                                    ? executionStatusLabel(device.executionStatus)
+                                    : '—'
+                                }
+                                variant={
+                                  device.executionStatus === 'completed'
+                                    ? 'success'
+                                    : device.executionStatus === 'failed'
+                                      ? 'danger'
+                                      : device.executionStatus
+                                        ? 'warning'
+                                        : 'neutral'
+                                }
+                              />
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
               ) : (
                 <ApiCaseResultSummary
-                  results={resultsQuery.data?.results ?? []}
+                  results={caseResults}
                   algorithmResults={detail.algorithmResults}
                 />
               )}
@@ -354,7 +425,7 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
               {detail.devices.some((d) => d.asrReference) && (
                 <div className='mt-3 grid gap-3 sm:grid-cols-2'>
                   {detail.devices.map((device) => (
-                    <div key={`ref-${device.deviceId}`} className='space-y-2'>
+                    <div key={`ref-${device.deviceName}`} className='space-y-2'>
                       {device.asrReference && (
                         <div className='space-y-1'>
                           <p className='text-muted-foreground text-xs'>ASR 参考文本（{device.deviceName}）</p>
@@ -376,32 +447,54 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                 </div>
               )}
 
-              {/* 结果音频列表（试听→INT-356 弹窗复用） */}
-              {detail.devices.some((d) => d.audioResults.length > 0) && (
+              {/* 结果音频列表（INT-1688：result_audios + algorithm_results 的 audio_file 项；试听→INT-356 弹窗复用） */}
+              {detail.resultAudios.length > 0 && (
                 <div className='mt-3 space-y-1'>
                   <p className='text-muted-foreground text-xs'>结果音频</p>
-                  {detail.devices.map((device) =>
-                    device.audioResults.map((audio, index) => (
-                      <div
-                        key={`${device.deviceId}-${audio.audioName}-${index}`}
-                        className='flex items-center gap-2 rounded-lg border px-3 py-2 text-sm'
+                  {detail.resultAudios.map((audio, index) => (
+                    <div
+                      key={`${audio.audioName}-${index}`}
+                      className='flex items-center gap-2 rounded-lg border px-3 py-2 text-sm'
+                    >
+                      <span className='font-mono text-xs'>{audio.audioName}</span>
+                      {audio.deviceName && (
+                        <span className='text-muted-foreground text-xs'>{audio.deviceName}</span>
+                      )}
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        className='ml-auto h-6 gap-1 text-xs'
+                        onClick={() => void playAudio(audio, 'result')}
                       >
-                        <span className='font-mono text-xs'>{audio.audioName}</span>
-                        <span className='text-muted-foreground text-xs tabular-nums'>
-                          {device.deviceName} · {audio.duration}s
-                        </span>
-                        <Button
-                          variant='ghost'
-                          size='sm'
-                          className='ml-auto h-6 gap-1 text-xs'
-                          onClick={() => setPlayingAudio(audio.audioName)}
-                        >
-                          <Play aria-hidden='true' className='size-3' />
-                          试听
-                        </Button>
-                      </div>
-                    ))
-                  )}
+                        <Play aria-hidden='true' className='size-3' />
+                        试听
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 参考音频（用例输入音频 audio_list；旧 Vue 走「音频时间轴」） */}
+              {detail.referenceAudios.length > 0 && (
+                <div className='mt-3 space-y-1'>
+                  <p className='text-muted-foreground text-xs'>参考音频（用例输入）</p>
+                  {detail.referenceAudios.map((audio, index) => (
+                    <div
+                      key={`${audio.audioName}-${index}`}
+                      className='flex items-center gap-2 rounded-lg border px-3 py-2 text-sm'
+                    >
+                      <span className='font-mono text-xs'>{audio.audioName}</span>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        className='ml-auto h-6 gap-1 text-xs'
+                        onClick={() => void playAudio(audio, 'reference')}
+                      >
+                        <Play aria-hidden='true' className='size-3' />
+                        试听
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               )}
             </section>
@@ -469,17 +562,13 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
         )}
       </DialogContent>
 
-      {/* 试听弹窗（INT-356 §5 复用件） */}
+      {/* 试听弹窗（INT-356 §5 复用件；INT-1688：url 为预签名地址，真实音频流） */}
       <AudioPlayerModal
         open={playingAudio != null}
         onOpenChange={(next) => {
           if (!next) setPlayingAudio(null)
         }}
-        audio={
-          playingAudio
-            ? { audio_id: playingAudio, audio_name: playingAudio, audio_type: 'result' }
-            : undefined
-        }
+        audio={playingAudio ?? undefined}
       />
 
       {/* 分节①区头「人工复核」入口（10 §5.2）→ 19 §3.2 复核弹窗（结果区真实结果行，无执行结果不开放） */}
@@ -489,7 +578,7 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
         taskId={taskId}
         taskName={taskQuery.data?.name}
         caseName={detail?.name}
-        results={resultsQuery.data?.results ?? []}
+        results={caseResults}
         evaluationStatus={detail?.evaluationStatus}
       />
 
