@@ -158,6 +158,18 @@ class DataTransferGatewayService:
                 return error_response(str(e), code=400)
             result = _data_acl.execute_import(tmp_path, options or {})
             if not result.success:
+                data = result.data if isinstance(result.data, dict) else None
+                # INT-1760 / D0 A3 第 3 条：source_map 登记失败是 partial 状态
+                # （数据段已全部提交、映射快照在批次登记里），必须把 data 原样
+                # 带回（sourceMapPending + batchId），不能塞进 detail 或丢掉
+                if data and data.get('sourceMapPending'):
+                    payload = {
+                        'success': False,
+                        'code': 500,
+                        'message': result.message or '导入完成但映射登记失败',
+                        'data': data,
+                    }
+                    return payload, 500
                 return _failure(result, '导入失败', default_http=500)
             return success_response(result.data, message=result.message or '导入成功')
         except Exception as e:

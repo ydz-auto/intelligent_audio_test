@@ -134,6 +134,10 @@ class BaseConfig:
     # 请求 intent=restore 时默认不校验（回执写明无法重新执行）。
     DATA_TRANSFER_CASE_CONSISTENCY_REQUIRED: bool = _get_bool(
         'DATA_TRANSFER_CASE_CONSISTENCY_REQUIRED', True)
+    # 本端稳定服务标识（INT-1760 / D0 A4）：导出写 manifest.serverInfo.source，
+    # 导入侧以它作为 source_map.source_server。空则回落 SERVICE_NAME-hostname
+    # 并打 WARNING（hostname 换机即变，只作兼容兜底，生产必须显式配置）。
+    DATA_TRANSFER_SERVER_ID: str = _get_env('DATA_TRANSFER_SERVER_ID', '')
 
     # --- 服务发现 ---
     SERVICE_HOST: str = _get_env('SERVICE_HOST', '0.0.0.0')

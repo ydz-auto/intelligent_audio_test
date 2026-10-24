@@ -5,6 +5,7 @@
 - Task / TaskTag / TaskCase / TaskDevice / TaskAPI / TaskMergeRelation / TestResult
 - TagCategory / Tag / TestCaseGroup / TestCase / TestCaseTag
 - Log
+- DataTransferSourceMap（离线搬运 source_map，INT-1760）
 
 不归属本服务的表（如 Dimension / TestResultDimension / Device / Audio / API /
 Algorithm* / Report* / User* / StatsCache）不在本包定义，
@@ -30,6 +31,7 @@ from .cherry_pick_models import (
 from .review_models import TestResultReview
 from .ai_review_models import AiReview
 from .system_models import Log
+from .transfer_source_map_models import DataTransferSourceMap
 
 __all__ = [
     # 任务
@@ -51,6 +53,8 @@ __all__ = [
     'TestResultReview',
     # AI 复核记录（INT-821/INT-800：机器判定，独立表）
     'AiReview',
+    # 离线搬运 source_map（INT-1760：A 原始 id → 本地 id，增量回导翻译用）
+    'DataTransferSourceMap',
     # 系统日志
     'Log',
 ]

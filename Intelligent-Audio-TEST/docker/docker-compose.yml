@@ -221,6 +221,10 @@ services:
       - REPORT_SERVICE_HOST=report_service
       - REPORT_SERVICE_GRPC_PORT=51068
       - DATA_TRANSFER_TMP_DIR=/app/storage/data_transfer
+      # INT-1760：本端稳定服务标识（导入写 manifest.serverInfo.source，导入侧作
+      # source_map.source_server）。不配则回落 task_service-<容器 hostname>，
+      # 容器重建即变 → 跨机增量回导断链；部署须在 .env 显式指定。
+      - DATA_TRANSFER_SERVER_ID=${DATA_TRANSFER_SERVER_ID:-}
     volumes:
       # 与 api_gateway 共享：数据导入/导出 ZIP 中转（INT-25），两容器必须挂同一卷
       - data_transfer_tmp:/app/storage/data_transfer

@@ -217,6 +217,11 @@ BOOTSTRAP_STEPS = [
     #     必须是引导链最后一步（tests/unit/test_int1741_analyze_stale_statistics.py
     #     的 test_bootstrap_step_is_last 钉死）：分析完若再跑 DDL，统计又会过期。
     ('python', 'scripts/migrations/202610/analyze_stale_statistics_int1741.py', '--apply'),
+    # ㊹ data_transfer_source_maps 离线搬运映射表（INT-1760 / D0 A3-A4）：
+    #     create_all 只建缺失的表，建库早于本卡的存量库（真实库 / 隔离库）在引导
+    #     链里建表自愈，否则整包导入段 6 登记即 UndefinedTable。脚本幂等（表 /
+    #     索引 / 唯一约束存在即 SKIP），全新库为全 SKIP。
+    ('python', 'scripts/migrations/202610/add_data_transfer_source_maps_int1760.py'),
 ]
 
 

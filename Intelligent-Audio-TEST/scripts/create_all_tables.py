@@ -2,7 +2,7 @@
 """
 数据库表重建脚本
 
-通过 ``Base.metadata.create_all()`` 重建全部 89 张表。
+通过 ``Base.metadata.create_all()`` 重建全部 90 张表。
 
 使用方式：
     python scripts/create_all_tables.py          # 使用 .env 中的 DATABASE_URL
@@ -21,7 +21,7 @@ import sys
 import os
 
 # 模型全集应有的表数（新增表必须同时改这里）
-EXPECTED_TABLE_COUNT = 89
+EXPECTED_TABLE_COUNT = 90
 
 # 确保项目根目录在 sys.path 中
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,6 +39,7 @@ def _import_all_models():
         Task, TaskTag, TaskCase, TaskDevice, TaskAPI, TaskMergeRelation,
         TestResult, TagCategory, Tag, TestCaseGroup, TestCase, TestCaseTag,
         EvaluationStrategy, Log, Favorite, TestResultReview, AiReview,
+        DataTransferSourceMap,
     )
     # evaluation_service: 3 张表
     from evaluation_service.infrastructure.persistence.models import (  # noqa: F401

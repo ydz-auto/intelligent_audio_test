@@ -83,6 +83,28 @@ class FkMappingKey(str, Enum):
     TEST_REPORTS = 'test_reports'
 
 
+class SourceMapEntity(str, Enum):
+    """source_map 登记的实体类型（INT-1760 / D0 A4）
+
+    值与 FkMappingKey 一一对应：登记来源就是导入编排层拿到的四类 old→new
+    主键映射。关联表的自增主键不登记（无可翻译语义）。
+    """
+    TASKS = 'tasks'
+    TEST_RESULTS = 'test_results'
+    TEST_RESULT_DIMENSIONS = 'test_result_dimensions'
+    TEST_REPORTS = 'test_reports'
+
+    @classmethod
+    def values(cls) -> frozenset:
+        return frozenset(item.value for item in cls)
+
+
+# source_map 持久化表（归属 task_service；INT-1760 §5.3 / D0 A3）
+SOURCE_MAP_TABLE = 'data_transfer_source_maps'
+# 失败重放快照在批次登记 HASH 的 task_service 字段内的键名（D0 A3 第 3 条）
+SOURCE_MAP_BATCH_FIELD = 'source_map'
+
+
 @dataclass(frozen=True)
 class FkRule:
     """外键转换规则（设计文档 4.7.2）：子表.外键列 ← 引用哪个映射"""

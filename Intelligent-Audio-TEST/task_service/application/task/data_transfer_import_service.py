@@ -7,6 +7,8 @@
   3. gRPC report_service.ImportReports（单事务 + 自登记批次）
   4. 文件经存储抽象回写（放最后：DB 全部成功后才动文件）
   5. 更新 result_data_path（task_id 重映射的行，独立小事务）
+  6. source_map 登记（INT-1760：A 原始 id → 本地 id，一次事务 upsert；
+     失败返回 partial 不补偿——数据是对的，快照留批次登记供重放）
 
 任一段失败：按逆序补偿（清文件 → 报表回滚 → 维度回滚 → task 段回滚）；
 补偿自身失败必须显式报错要求人工介入（批次登记保留 TTL 7 天），不得静默。
@@ -33,6 +35,7 @@ from shared.utils.log_handler import log_not_emit
 from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
 from task_service.domain.services.data_transfer import (
     filter_merge_relations,
+    plan_source_map_entries,
     plan_task_segment,
     rewrite_fk_rows,
 )
@@ -67,6 +70,22 @@ _CONFLICT_PREVIEW_CAP = 500
 # 远端应用服务在"DB 已提交但批次登记失败"时返回的专用错误前缀（审计问题 1③）：
 # 编排层据此把该段并入人工介入清单，防止孤儿数据静默残留
 _COMMITTED_WITHOUT_REGISTRY_MARKER = '已提交但批次登记失败'
+
+# source_map 批次登记里的服务字段名（与 tables 主键登记同一 HASH 字段，INT-1760）
+_SOURCE_MAP_OWNER = 'task_service'
+
+
+class SourceMapRegistrationError(RuntimeError):
+    """source_map 登记失败（数据段已全部提交）
+
+    按 D0 A3 第 3 条：远端/本地数据都是对的，**不回滚**，返回 partial 状态
+    （code 500 + sourceMapPending），映射快照已写进批次登记供重放。
+    """
+
+    def __init__(self, message: str, entries: List[dict], snapshot_saved: bool):
+        super().__init__(message)
+        self.entries = entries or []
+        self.snapshot_saved = snapshot_saved
 
 
 def _remaps_only(mapping: Dict[int, int]) -> Dict[int, int]:
@@ -251,6 +270,7 @@ class DataTransferImportService:
         mappings: Dict[str, Dict[int, int]] = {}
         inserted_pks: Dict[str, List[int]] = {}
         rows_by_table: Dict[str, List[dict]] = {}
+        source_map_inserted: List[dict] = []
 
         try:
             # ===== 段 0：解析（ZIP 条目已由 zip_io 做路径安全校验，防 zip-slip）=====
@@ -335,6 +355,11 @@ class DataTransferImportService:
             reporter.report(ImportProgressStep.UPDATING_PATHS, '更新文件路径')
             self._update_result_paths(rows_by_table, mappings, files_tracker, reporter)
 
+            # ===== 段 6：source_map 登记（INT-1760 / D0 A3：编排层唯一写入方，
+            #      放在全部数据段成功之后的一次事务 upsert，失败走 partial 不补偿）=====
+            source_map_inserted = self._register_source_maps(
+                manifest, rows_by_table, mappings, batch_id)
+
             # ===== 完成 =====
             stats = self._build_stats(plan, dims_rows, report_tables_rows,
                                       files_tracker, mappings)
@@ -347,10 +372,33 @@ class DataTransferImportService:
             transfer_batch_registry.delete(batch_id)
             return {'success': True, 'message': '导入成功', 'data': stats}
 
+        except SourceMapRegistrationError as e:
+            # D0 A3 第 3 条：数据段已全部提交，远端数据是对的 —— **不回滚**，
+            # 返回 partial（code 500 + sourceMapPending + batchId），映射快照已
+            # 写进批次登记，失败后可人工/脚本重放登记（禁止静默）
+            log_not_emit('ERROR', _MODULE_NAME,
+                         f'导入完成但 source_map 登记失败 batch={batch_id}: {e}',
+                         category='system', exc_info=True)
+            message = str(e)
+            reporter.report(ImportProgressStep.ERROR, message)
+            return {
+                'success': False,
+                'message': message,
+                'code': 500,
+                'data': {
+                    'partial': True,
+                    'sourceMapPending': True,
+                    'batchId': batch_id,
+                    'entryCount': len(e.entries),
+                    'snapshotSaved': e.snapshot_saved,
+                    'compensationErrors': [],
+                },
+            }
         except Exception as e:
             log_not_emit('ERROR', _MODULE_NAME,
                          f'导入失败 batch={batch_id}: {e}', category='system', exc_info=True)
-            compensation_errors = self._compensate(files_tracker, inserted_pks, batch_id)
+            compensation_errors = self._compensate(
+                files_tracker, inserted_pks, batch_id, source_map_inserted)
             # 远端段"已提交但批次登记失败"：远端存在无登记孤儿行，自动补偿够不着，
             # 必须并入人工介入清单（规格架构决策 3"不得静默"）
             if _COMMITTED_WITHOUT_REGISTRY_MARKER in str(e):
@@ -375,7 +423,8 @@ class DataTransferImportService:
 
     def _compensate(self, files_tracker: List[tuple],
                     inserted_pks: Dict[str, List[int]],
-                    batch_id: str) -> List[str]:
+                    batch_id: str,
+                    source_map_inserted: List[dict] = None) -> List[str]:
         """按逆序回滚已提交段。返回补偿失败清单（非空即需人工介入）。
 
         问题 1 修复：远端段回滚**无条件**调用——批次未登记时远端本就 no-op
@@ -383,8 +432,15 @@ class DataTransferImportService:
         仅当全部回滚成功才销毁批次登记。
         问题 2 修复：task 段直接用编排方内存中的 inserted_pks 回滚，
         不依赖 Redis 读登记（登记恰可能因本次故障不可用）。
+        INT-1760：source_map 只回删**本批次新增**的条目（覆盖的旧行无快照，
+        删掉等于丢历史映射），避免孤儿映射。
         """
         errors: List[str] = []
+        if source_map_inserted:
+            try:
+                transfer_repository.delete_source_maps(source_map_inserted)
+            except Exception as e:
+                errors.append(f'source_map 回删失败: {e}')
         if files_tracker:
             cleanup_failures = delete_written_files(files_tracker)
             errors.extend(f'文件清理失败: {f}' for f in cleanup_failures)
@@ -423,6 +479,15 @@ class DataTransferImportService:
                 deleted['task_service'] = transfer_repository.rollback_task_segment(task_pks)
             except Exception as e:
                 errors.append(f'task_service 回滚失败: {e}')
+        # INT-1760：映射按批次快照回删（任务行删掉后映射即孤儿）
+        source_map_entries = transfer_batch_registry.load_source_map(
+            batch_id, _SOURCE_MAP_OWNER)
+        if source_map_entries:
+            try:
+                deleted['source_map'] = transfer_repository.delete_source_maps(
+                    source_map_entries)
+            except Exception as e:
+                errors.append(f'source_map 回滚失败: {e}')
         try:
             deleted['evaluation_service'] = evaluation_transfer_acl_repository.rollback_dimension_import(batch_id)
         except Exception as e:
@@ -443,6 +508,50 @@ class DataTransferImportService:
                 'data': {'batch_id': batch_id, 'deleted': deleted}}
 
     # ---------- 内部工具 ----------
+
+    def _register_source_maps(self, manifest: dict,
+                              rows_by_table: Dict[str, List[dict]],
+                              mappings: Dict[str, Dict[int, int]],
+                              batch_id: str) -> List[dict]:
+        """登记 A 原始 id → 本地 id 映射（INT-1760 / D0 A3）。
+
+        时序：全部数据段成功后一次事务 upsert；不在各子步骤里分散登记。
+        先写 Redis 快照再写库——登记失败时快照是重放的唯一依据。
+        Returns: 本批次**新增**的条目（补偿只回删这些；覆盖的旧行不动）。
+        Raises: SourceMapRegistrationError（编排层转 partial，不补偿）。
+        """
+        server_info = manifest.get('serverInfo') or {}
+        source_server = str(server_info.get('source') or '')
+        entries, warnings = plan_source_map_entries(source_server, rows_by_table, mappings)
+        for warning in warnings:
+            log_not_emit('WARNING', _MODULE_NAME,
+                         f'source_map 跳行 batch={batch_id}: {warning}', category='system')
+        if not entries:
+            return []
+
+        snapshot_saved = True
+        try:
+            transfer_batch_registry.record_source_map(batch_id, _SOURCE_MAP_OWNER, entries)
+        except Exception as e:
+            snapshot_saved = False
+            log_not_emit('ERROR', _MODULE_NAME,
+                         'source_map 快照写入批次登记失败 '
+                         f'batch={batch_id}（DB 登记继续，人工回滚将缺少快照）: {e}',
+                         category='system', exc_info=True)
+        try:
+            result = transfer_repository.upsert_source_maps(entries)
+        except Exception as e:
+            log_not_emit('ERROR', _MODULE_NAME,
+                         f'source_map 登记失败 batch={batch_id} entries={len(entries)}: {e}',
+                         category='system', exc_info=True)
+            raise SourceMapRegistrationError(
+                f'导入数据已提交，但 source_map 登记失败（{len(entries)} 条映射待重放，'
+                f'batch_id={batch_id}）: {e}', entries, snapshot_saved) from e
+        log_not_emit('INFO', _MODULE_NAME,
+                     f'source_map 登记完成 batch={batch_id} '
+                     f'inserted={result["insertedCount"]} updated={result["updatedCount"]}',
+                     category='system')
+        return result['inserted']
 
     def _update_result_paths(self, rows_by_table: Dict[str, List[dict]],
                              mappings: Dict[str, Dict[int, int]],
