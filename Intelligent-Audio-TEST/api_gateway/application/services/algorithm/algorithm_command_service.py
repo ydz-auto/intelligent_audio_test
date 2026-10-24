@@ -58,7 +58,15 @@ def _validate_api_scope(api_id, algorithm_type):
     """
     if api_id is None:
         return None
-    result = api_config_service.get_one(int(api_id)) or {}
+    # 更新路径的载荷是裸 JSON（无 schema 兜底），非法值必须落 400 而不是
+    # 未捕获的 ValueError/TypeError（审计 P3-1）。
+    try:
+        api_id_int = int(api_id)
+    except (TypeError, ValueError):
+        return error_response(f"api_id={api_id!r} 非法：应为正整数", 400)
+    if api_id_int < 1:
+        return error_response(f"api_id={api_id!r} 非法：应为正整数", 400)
+    result = api_config_service.get_one(api_id_int) or {}
     data = result.get('data') or {}
     if not result.get('success') or not data:
         return error_response(
@@ -214,6 +222,10 @@ class AlgorithmCommandService:
                 return scope_error
 
         data = req.model_dump(by_alias=False, exclude_none=True)
+        # 判别键必须显式回写：schema 是 extra="ignore"，param_type_source 不在字段里
+        # 会被 model_dump 丢掉，algorithm_service 于是回落 "device" —— 带 api_id 的
+        # 「API 参数」会被建进 algorithm_device_params（该表无 api_id 列，被静默忽略）。
+        data['param_type_source'] = param_type_source
         result = _algorithm_acl.create_param(data)
 
         if result.get('success'):

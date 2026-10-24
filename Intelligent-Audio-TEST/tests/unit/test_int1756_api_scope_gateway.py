@@ -200,6 +200,48 @@ def test_update_mapping_validates_api_id(monkeypatch, apis, acl):
     assert acl == []
 
 
+# ========== 非法 api_id 是 400，不是未捕获 ValueError（审计 P3-1） ==========
+
+@pytest.mark.parametrize('bad', ['abc', '', '1.5', {}, []])
+def test_validate_scope_rejects_non_integer_api_id(apis, bad):
+    result = command_service._validate_api_scope(bad, 'translation')
+    assert result is not None
+    http_code, payload = _http(result)
+    assert http_code == 400
+    assert 'api_id' in payload['message']
+    assert apis.calls == []  # 非法值不查 API
+
+
+def test_validate_scope_rejects_non_positive_api_id(apis):
+    for bad in (0, -3):
+        result = command_service._validate_api_scope(bad, 'translation')
+        assert result is not None
+        assert _http(result)[0] == 400
+    assert apis.calls == []
+
+
+def test_update_param_invalid_api_id_returns_400(monkeypatch, apis, acl):
+    """更新载荷是裸 JSON（无 schema 兜底），非法 api_id 必须是 400 而非 500。"""
+    monkeypatch.setattr(command_service, 'request', _FakeRequest({
+        'api_id': 'abc', 'param_name': '新名称',
+    }))
+    http_code, payload = _http(
+        command_service.AlgorithmCommandService.update_param(5))
+    assert http_code == 400
+    assert 'api_id' in payload['message']
+    assert acl == []
+
+
+def test_update_mapping_invalid_api_id_returns_400(monkeypatch, apis, acl):
+    monkeypatch.setattr(command_service, 'request', _FakeRequest({
+        'api_id': 'abc', 'target_param': 'x',
+    }))
+    http_code, payload = _http(
+        command_service.AlgorithmCommandService.update_mapping(3))
+    assert http_code == 400
+    assert acl == []
+
+
 # ========== DTO 兼容 snake_case / camelCase ==========
 
 def test_schemas_accept_api_id_in_both_cases():
