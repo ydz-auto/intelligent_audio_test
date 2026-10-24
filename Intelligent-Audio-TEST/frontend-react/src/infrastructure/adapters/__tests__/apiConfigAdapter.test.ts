@@ -80,3 +80,46 @@ describe('apiConfigFromDto 逐端点透传摘要', () => {
     ])
   })
 })
+
+describe('apiConfigFromDto meta / audio_config（INT-1777）', () => {
+  const BASE_DTO: ApiItemDto = {
+    id: 2,
+    name: 'metaAPI',
+    vendor: null,
+    description: null,
+    status: 'online',
+    meta: { protocol: 'https', appendix_test: 1 },
+    proxy_type: null,
+    proxy_url: null,
+    algorithm_type: 'voice_llm',
+    default_max_process: 5,
+    default_max_timeout: 30,
+    default_max_audio_duration: 60,
+    health_score: null,
+    endpoints: [BASE_ENDPOINT_DTO],
+    output_types: null,
+    device_type: 'http_api',
+    adapter_class: null,
+    audio_config: { sample_rate: 16000, bit_depth: 's16', channels: 1, container: 'pcm' },
+    rms_spl_mapping_id: null,
+    created_at: null,
+    updated_at: null,
+  }
+
+  it('meta / audio_config 透传为领域字段（编辑回填依赖）', () => {
+    const config = apiConfigFromDto(BASE_DTO)
+    expect(config.meta).toEqual({ protocol: 'https', appendix_test: 1 })
+    expect(config.audioConfig).toEqual({
+      sample_rate: 16000,
+      bit_depth: 's16',
+      channels: 1,
+      container: 'pcm',
+    })
+  })
+
+  it('meta 缺省为 {}，audio_config 缺省为 null', () => {
+    const config = apiConfigFromDto({ ...BASE_DTO, meta: undefined as never, audio_config: null })
+    expect(config.meta).toEqual({})
+    expect(config.audioConfig).toBeNull()
+  })
+})
