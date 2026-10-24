@@ -289,6 +289,27 @@
         </tbody>
       </table>
     </div>
+    <!-- 单来源容器（真库 503） -->
+    <div class="card">
+      <div class="section-title" style="margin-bottom:10px">② 单来源容器 · 真库 ID 503（1 个来源任务 / 1 条结果 → 「全部失败」）</div>
+      <div class="row" style="gap:10px">
+        <span class="name">接线测试_INT1286_1792673624</span>
+        <span class="badge b-outline">结果挑选</span>
+        <span class="badge b-success">已完成</span>
+        <span class="badge b-danger">全部失败</span>
+      </div>
+      <div class="sub" style="margin-top:6px">挑选合并自 1 个来源任务　·　描述可在任务信息中编辑</div>
+      <div class="row" style="margin-top:12px;gap:8px">
+        <div class="stat"><div class="k">来源任务</div><div class="v">1 个</div></div>
+        <div class="stat"><div class="k">结果</div><div class="v">1 条</div></div>
+        <div class="stat"><div class="k">用例</div><div class="v">1 个</div></div>
+      </div>
+      <div class="tree">
+        <div class="node"><span class="chev">▾</span><span class="ico">▤</span><span>E2E测试任务_2026/9/22 20:32:29</span><span class="count neg">1 条 · 失败 1</span><span class="hint">→ 未知用例 ×1</span></div>
+        <div class="leaf indent1"><span class="ico">•</span><span class="mono id">源结果 #3837</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-09-22 20:33</span><span style="flex:1"></span><span class="hint">溯源 ↗</span></div>
+      </div>
+    </div>
+    <div class="caption">注：503 为真库现存单来源容器（描述「挑选合并自 1 个来源任务」，1 条用例 failed → 信息头显示「全部失败」而非「部分失败」，列表执行状态列仍显示「已失败」）；任务层即使只有 1 个来源任务也渲染，否则叶行丢掉归属（§5.5.3 ②）；该用例在 `test_cases` 已不存在 → 叶行降级「未知用例」。</div>
     <div class="caption">注：信息头「部分失败 3/5」按容器用例状态（`failed_cases/case_count`）统计；叶行「已失败」按源结果状态统计（实测 2 条失败）。两者不一致源于容器 TaskCase 状态继承源 TaskCase，实测口径差异见规范 §5.5.1 结论 2 与 §11-8 附缺陷。</div>
   </div>
 
@@ -396,6 +417,27 @@
         <div class="empty"><div class="t">该合并任务暂无报告</div><div>合并任务无执行过程，报告需手动生成</div>
           <div style="margin-top:10px"><button class="btn primary">生成报告</button></div></div>
       </div>
+
+      <div class="card">
+        <div class="section-title" style="margin-bottom:10px">② 单来源容器 · 真库 ID 503（1 个来源任务 / 1 条结果 → 「全部失败」）</div>
+        <div class="row" style="gap:10px">
+          <span class="name">接线测试_INT1286_1792673624</span>
+          <span class="badge b-outline">结果挑选</span>
+          <span class="badge b-success">已完成</span>
+          <span class="badge b-danger">全部失败</span>
+        </div>
+        <div class="sub" style="margin-top:6px">挑选合并自 1 个来源任务　·　描述可在任务信息中编辑</div>
+        <div class="row" style="margin-top:12px;gap:8px">
+          <div class="stat"><div class="k">来源任务</div><div class="v">1 个</div></div>
+          <div class="stat"><div class="k">结果</div><div class="v">1 条</div></div>
+          <div class="stat"><div class="k">用例</div><div class="v">1 个</div></div>
+        </div>
+        <div class="tree">
+          <div class="node"><span class="chev">▾</span><span class="ico">▤</span><span>E2E测试任务_2026/9/22 20:32:29</span><span class="count neg">1 条 · 失败 1</span><span class="hint">→ 未知用例 ×1</span></div>
+          <div class="leaf indent1"><span class="ico">•</span><span class="mono id">源结果 #3837</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-09-22 20:33</span><span style="flex:1"></span><span class="hint">溯源 ↗</span></div>
+        </div>
+      </div>
+      <div class="caption">注：503 单来源容器——任务层只有 1 个来源任务仍渲染（§5.5.3 ②）；1 条用例全失败 → 信息头「全部失败」、列表「已失败」，都不是「部分失败」（§5.5.4）。</div>
     </div>
   </div>
 </div>
