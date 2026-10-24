@@ -379,18 +379,25 @@ class AiReviewService:
 
     @staticmethod
     def _write_audit(event: str, **fields) -> None:
-        """审计事件落 logs 表（category=System，旁路，失败仅告警）。"""
-        from task_service.infrastructure.persistence.log_repository import log_repository
+        """审计事件落审计文件（category=System，旁路，失败仅告警）。
+
+        INT-1793：S4 直写仓储改调审计写入器（task_service 单写者 H4），
+        操作人由写盘侧从 content JSON 提取（H2）。
+        """
+        from shared.models.common_enums import AuditLogCategory
         content = {'event': event}
         content.update({k: v for k, v in fields.items() if v is not None})
         try:
-            log_repository.batch_create([{
-                'module': 'ai_review',
-                'source': 'ai_review_service',
-                'content': json.dumps(content, ensure_ascii=False),
-            }])
+            from shared.logging.audit_writer import write_audit_event
+            write_audit_event(
+                event=event,
+                category=AuditLogCategory.SYSTEM.value,
+                module='ai_review',
+                source='ai_review_service',
+                content=json.dumps(content, ensure_ascii=False),
+            )
         except Exception:
-            logger.warning('审计事件 %s 落库失败', event, exc_info=True)
+            logger.warning('审计事件 %s 写审计文件失败', event, exc_info=True)
 
     @staticmethod
     def _refresh_stats_cache() -> None:

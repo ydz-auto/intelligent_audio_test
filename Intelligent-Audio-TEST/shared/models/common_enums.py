@@ -453,11 +453,12 @@ class AuthErrorCode(str, Enum):
 
 
 class AuditLogCategory(str, Enum):
-    """审计类日志 category 枚举 — log_handler emit 分流按此判定入 DB 队列
+    """审计事件 category 枚举 — 审计落文件路径的 category 段（INT-1793 契约五值）
 
-    审计事件（auth/benchmark）无 task_id/test_case_id，emit 分流不得按
-    任务/用例条件降级为只写本地文件：凡 category 属于本枚举的日志必须
-    落 logs 表（INT-30 P1 回归修复）。
+    审计事件的身份由 emit 的 `audit_event` 实参判定（H1），category 只决定
+    文件路径段：`logs/audit/{YYYY-MM-DD}/{category}.{service}.{identity}.jsonl`。
+    category 属于本枚举但不是审计事件（如设备运维日志 category='device'、
+    无 audit_event）只写服务文件，不进审计目录。
     """
     AUTH = 'auth'
     BENCHMARK = 'benchmark'
@@ -465,6 +466,8 @@ class AuditLogCategory(str, Enum):
     DEVICE = 'device'
     # 数据可见性审计（INT-466/573：PRIVATE_RESOURCE_ACCESS / 可见性切换 / admin 访问私有资源）
     VISIBILITY = 'visibility'
+    # task_service 直写仓储的三类系统审计（INT-1793 契约：发布/人工复核/AI 复核）
+    SYSTEM = 'system'
 
 
 AUDIT_LOG_CATEGORIES = frozenset(item.value for item in AuditLogCategory)
