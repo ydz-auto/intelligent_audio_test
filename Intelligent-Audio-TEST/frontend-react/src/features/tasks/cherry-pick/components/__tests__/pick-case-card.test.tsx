@@ -8,6 +8,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { PickCaseCard } from '@/features/tasks/cherry-pick/components/pick-case-card'
 
+/** 真实 GET /algorithm/options 派生的 value→name 替身（页面级 useAlgorithmLabels 下传） */
+const ALGORITHM_LABELS: Record<string, string> = {
+  'asr-v3': '通用识别引擎',
+  voice_llm: '小艺语音大模型',
+}
+
 function renderCard(overrides: Partial<Parameters<typeof PickCaseCard>[0]> = {}) {
   const onToggle = vi.fn()
   const onToggleOpen = vi.fn()
@@ -16,6 +22,7 @@ function renderCard(overrides: Partial<Parameters<typeof PickCaseCard>[0]> = {})
       name='用例001'
       caseId='c1'
       algorithmType='asr-v3'
+      algorithmLabels={ALGORITHM_LABELS}
       count={3}
       state='checked'
       onToggle={onToggle}
@@ -35,6 +42,17 @@ describe('PickCaseCard（§3.8.3 用例节点 = CaseCard compact）', () => {
     expect(screen.getByText('通用识别引擎')).toBeInTheDocument() // asr-v3 算法中文名
     expect(screen.getByText('3 条')).toBeInTheDocument()
     expect(screen.getByLabelText('选择 用例001')).toBeChecked()
+  })
+
+  it('算法徽章取真实选项中文名（ENUM 类型码 voice_llm → 小艺语音大模型）', () => {
+    renderCard({ algorithmType: 'voice_llm' })
+    expect(screen.getByText('小艺语音大模型')).toBeInTheDocument()
+    expect(screen.queryByText('voice_llm')).not.toBeInTheDocument()
+  })
+
+  it('算法不在选项中（已下线 / 未加载）不渲染类型码', () => {
+    renderCard({ algorithmType: 'unknown_algo' })
+    expect(screen.queryByText('unknown_algo')).not.toBeInTheDocument()
   })
 
   it('勾选切换触发 onToggle（state 驱动，点击后翻转）', () => {

@@ -45,7 +45,10 @@ import {
 } from '@/components/ui/sheet'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
+import {
+  useAlgorithmLabels,
+  useAlgorithmOptions,
+} from '@/application/hooks/use-algorithm-options'
 import {
   useEvaluationCategories,
   useEvaluationDimensions,
@@ -198,14 +201,8 @@ export function CaseMutateDrawer({
   const [descriptionValue, setDescriptionValue] = useState(caseItem?.description ?? '')
   const { options: algorithmOptions, isLoading: loadingAlgorithms } =
     useAlgorithmOptions()
-  /** 算法类型码 → 中文名（评估维度提示条用真实选项，INT-1687） */
-  const algorithmLabels = useMemo(
-    () =>
-      Object.fromEntries(
-        algorithmOptions.map((a) => [a.value, a.name])
-      ) as Record<string, string>,
-    [algorithmOptions]
-  )
+  /** 算法类型码 → 中文名（评估维度提示条用真实选项，INT-1687；口径统一走 useAlgorithmLabels） */
+  const algorithmLabels = useAlgorithmLabels()
   const [rounds, setRounds] = useState<RoundDraft[]>(defaultRounds())
   const [activeRound, setActiveRound] = useState(1)
   /** 评估策略节值（§5.1.3；受控：mode/strategyId/overrides） */

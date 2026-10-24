@@ -19,6 +19,8 @@ export interface PickCaseCardProps {
   caseId?: string
   /** 算法类型（算法徽章） */
   algorithmType?: string | null
+  /** 算法类型码 → 中文名（真实 GET /algorithm/options，useAlgorithmLabels）；缺项时不渲染算法徽章 */
+  algorithmLabels?: Record<string, string>
   /** 用例标签（§11-7 真实名；标签行 TagBadge） */
   tags?: string[]
   /** 用例时长（秒；徽章「{时长}」） */
@@ -45,6 +47,7 @@ export function PickCaseCard({
   name,
   caseId,
   algorithmType,
+  algorithmLabels,
   tags = [],
   totalDuration = null,
   rounds = null,
@@ -68,6 +71,7 @@ export function PickCaseCard({
         rounds: rounds ?? undefined,
       }}
       selected={state === 'checked'}
+      algorithmLabels={algorithmLabels}
       showCheckbox={false}
       leading={
         <Checkbox
