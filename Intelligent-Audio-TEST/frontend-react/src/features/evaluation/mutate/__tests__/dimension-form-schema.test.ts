@@ -13,6 +13,7 @@ import {
   toDimensionFormValues,
   toDimensionSaveInput,
 } from '@/features/evaluation/mutate/dimension-form-schema'
+import { toDimensionInputDto } from '@/infrastructure/dto/evaluation.dto'
 
 const mockDimension: Dimension = {
   id: 1,
@@ -249,6 +250,46 @@ describe('toDimensionSaveInput', () => {
     expect(input.requiredInputs?.[0].defaultValue).toBeUndefined()
     expect(input.outputFields?.[0].defaultValue).toBeUndefined()
     expect(input.outputFields?.[0].passThreshold).toBeNull()
+  })
+
+  it('编辑「输入显示标签」保存后写 DTO 的 param_name 为新值（INT-1690）', () => {
+    const values = toDimensionFormValues(mockDimension)
+    // 用户改「输入显示标签 1」：ASR识别结果 → 输入新标签C
+    values.requiredInputs[0].paramName = '输入新标签C'
+    const input = toDimensionSaveInput(values)
+    expect(input.requiredInputs?.[0].paramName).toBe('输入新标签C')
+    // label 不得再压过可见的 paramName（同一份数据单一口径）
+    expect(input.requiredInputs?.[0].label).toBe('输入新标签C')
+    const dto = toDimensionInputDto(input)
+    const requiredInputs = dto.required_inputs as Array<Record<string, unknown>>
+    // 后端按 param_name 优先，缺了它就会被旧 label 覆盖 → 编辑不落库
+    expect(requiredInputs[0].param_name).toBe('输入新标签C')
+    expect(requiredInputs[0].label).toBe('输入新标签C')
+  })
+
+  it('旧数据 param_name 为空时回显仍回退 label（INT-1690 兼容）', () => {
+    const values = toDimensionFormValues({
+      ...mockDimension,
+      requiredInputs: [
+        {
+          paramCode: 'q_text',
+          paramName: '',
+          label: '输入原标签B',
+          fieldType: 'text',
+          required: true,
+          uiOrder: 1,
+        },
+      ],
+    })
+    expect(values.requiredInputs[0].paramName).toBe('输入原标签B')
+  })
+
+  it('输出字段 param_name 仍随编辑更新（INT-1690 不回归）', () => {
+    const values = toDimensionFormValues(mockDimension)
+    values.outputFields[0].paramName = '输出新标签C'
+    const dto = toDimensionInputDto(toDimensionSaveInput(values))
+    const outputFields = dto.output_fields as Array<Record<string, unknown>>
+    expect(outputFields[0].param_name).toBe('输出新标签C')
   })
 })
 

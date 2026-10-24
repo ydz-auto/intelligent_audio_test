@@ -78,7 +78,6 @@ function isPassRole(aggRole: string): boolean {
 const NEW_INPUT_ROW: RequiredInputRow = {
   paramCode: '',
   paramName: '',
-  label: '',
   fieldType: 'text',
   required: false,
   defaultValue: '',
@@ -88,7 +87,6 @@ const NEW_INPUT_ROW: RequiredInputRow = {
 const NEW_OUTPUT_ROW: OutputFieldRow = {
   paramCode: '',
   paramName: '',
-  label: '',
   fieldPath: '',
   fieldType: 'number',
   outputRole: 'main',

@@ -353,6 +353,9 @@ export function toDimensionInputDto(data: Partial<Dimension>): Record<string, un
     const inputs = Array.isArray(data.requiredInputs) ? data.requiredInputs : []
     result.required_inputs = inputs.map((item) => ({
       key: item.paramCode,
+      // INT-1690：后端 _save_input_params 按 param_name 优先（无则退回 label），此前只送
+      // label → 编辑「输入显示标签」被旧 label 覆盖不落库。对齐 output_fields 补 param_name。
+      param_name: item.paramName,
       label: item.label,
       field_type: item.fieldType,
       required: item.required,
