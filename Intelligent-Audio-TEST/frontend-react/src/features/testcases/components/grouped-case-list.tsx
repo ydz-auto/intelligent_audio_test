@@ -15,9 +15,10 @@
  * 用户点组头展开后会话内保持展开态——INT-490 P2 默认全展开口径废弃）。
  */
 import { ArrowUpDown, ChevronDown, Clock3, FolderOpen, SearchX, Tags, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useIsFetching } from '@tanstack/react-query'
 
+import { useCaseRoundsRegistry } from '@/application/testcases/case-rounds-registry'
 import { useSessionMap, type GroupSubView } from '@/application/testcases/use-session-map'
 import { useGroupCases } from '@/application/testcases/use-group-cases'
 import type { TestCaseListFilters } from '@/application/testcases/use-testcases-list'
@@ -139,6 +140,15 @@ function GroupCard({
     refetch: refetchGroup,
     loadMore,
   } = useGroupCases(group.id, filters, expanded)
+
+  /**
+   * 组内已加载用例的轮次登记（INT-1506 审返 P2）：组内用例来自按分组懒加载的分页，
+   * 不在列表首页 items 里；批量弹窗按选中 id 解析轮次时靠这里的登记，避免「轮次未知」假空态。
+   */
+  const { register: registerCaseRounds } = useCaseRoundsRegistry()
+  useEffect(() => {
+    registerCaseRounds(list)
+  }, [list, registerCaseRounds])
 
   const subView = (groupSubView[group.id] ?? 'flat') as GroupSubView
   const groupDuration = list.reduce((sum, c) => sum + (c.totalDuration ?? 0), 0)

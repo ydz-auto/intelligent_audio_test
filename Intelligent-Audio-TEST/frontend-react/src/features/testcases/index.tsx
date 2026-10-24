@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
+import { CaseRoundsProvider } from '@/application/testcases/case-rounds-registry'
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
 import { useCaseTags, useTagCategories } from '@/application/testcases/use-case-tags'
 import { useTagMutations } from '@/application/tags/useTags'
@@ -342,7 +343,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   }, [items, selected])
 
   return (
-    <>
+    <CaseRoundsProvider cases={items}>
       <SectionPageLayout fixedContent>
         <SectionPageLayout.Breadcrumb>
           <nav aria-label='面包屑' className='text-sm'>
@@ -527,12 +528,11 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         handleConfirm={batch.handleConfirm}
         groups={groups}
         tags={tags}
-        cases={items}
         dimensions={allDimensions}
         categories={categories}
         algorithmType={algorithmId}
         testType={selectedTestType}
       />
-    </>
+    </CaseRoundsProvider>
   )
 }

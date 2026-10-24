@@ -17,7 +17,7 @@ vi.mock('@/infrastructure/api/testcases-batch-api', () => ({
 
 const mockedBatch = vi.mocked(batchTestcaseAction)
 
-const setup = (roundCount = 4) => {
+const setup = (roundCount = 4, unknownRoundCount = 0) => {
   render(
     <BatchDimensionsDialog
       open
@@ -25,6 +25,7 @@ const setup = (roundCount = 4) => {
       count={3}
       ids={['tc-1', 'tc-2', 'tc-3']}
       roundCount={roundCount}
+      unknownRoundCount={unknownRoundCount}
       dimensions={MOCK_CASE_DIMENSIONS}
       algorithmType={null}
       testType='e2e'
@@ -174,5 +175,24 @@ describe('BatchDimensionsDialog（§5.3.5）', () => {
     // 指定轮次同样空态，不渲染轮次勾选
     await user.click(screen.getByText('指定轮次（统一设置）'))
     expect(screen.queryByText('第1轮')).not.toBeInTheDocument()
+  })
+
+  it('轮次未知（用例未加载）不算无轮次：显式提示、仍可按所有轮次提交', async () => {
+    const user = userEvent.setup()
+    setup(0, 2)
+    // 不再是「暂无可配置的轮次信息」假空态
+    expect(screen.queryByText('所选用例暂无可配置的轮次信息')).not.toBeInTheDocument()
+    expect(screen.getAllByText(/其中 2 个用例的轮次信息尚未加载/).length).toBeGreaterThanOrEqual(1)
+    // 没有已知轮次：按轮次的两档禁用，但「所有轮次（统一设置）」可提交
+    expect(screen.getByRole('radio', { name: '指定轮次（统一设置）' })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: '逐轮设置（每轮可不同）' })).toBeDisabled()
+    const ok = screen.getByRole('button', { name: '确定' })
+    expect(ok).toBeEnabled()
+    await user.click(roundCloud().getByRole('button', { name: /识别准确率/ }))
+    await user.click(ok)
+    expect(mockedBatch).toHaveBeenCalledTimes(1)
+    const [action, , payload = {}] = mockedBatch.mock.calls[0]
+    expect(action).toBe('update_dimensions')
+    expect(payload.roundMode).toBe('all')
   })
 })
