@@ -7,6 +7,10 @@
 策略不再持有任何算法类型的硬编码字段表，新增算法/厂商只改配置即可完成输出映射；
 `AlgorithmStrategyFactory` 只登记结构性语义确实不同的算法类型。
 
+展示字段清单只取 API 声明（C0 裁定 3「优先且唯一」）。设备输出声明
+（`algorithm_device_params(direction=output)`）不进入清单，只经
+`device_output_fields` 参数供 `VoiceLlmStrategy` 解析 `rounds` 轮内子键的类型与展示名。
+
 `map_api_results` 已废弃（C0 裁定 4 / INT-1748）：映射责任在执行侧，
 评估侧只按 `target_param` 取值，不再保留第二个入口。
 """
@@ -27,18 +31,21 @@ class AlgorithmResultStrategy(ABC):
         algo_res: Optional[Dict[str, Any]] = None,
         result_data: Optional[Dict[str, Any]] = None,
         normalize_audio_path_fn: Optional[Callable[[str], str]] = None,
+        device_output_fields: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         """处理算法结果，提取和规范化字段
 
         Args:
             combined_data: 合并后的算法结果 + result_data
-            output_fields: 配置声明的输出字段列表
+            output_fields: 配置声明的 API 输出字段列表
                 （含 param_type / label / target_param / field_path）
             resource: 设备/API 名称
             device_fields: 固定设备字段类型映射 (DEVICE_FIELDS，仅默认策略使用)
             algo_res: 原始 algorithm_result（默认策略用于提取设备字段）
             result_data: 完整 result_data（默认策略用于提取 raw_results_list）
             normalize_audio_path_fn: 音频路径规范化函数
+            device_output_fields: 设备输出声明 (algorithm_device_params(direction=output))，
+                仅用于解析 rounds 轮内子键的类型/展示名，不进入展示字段清单
 
         Returns:
             algorithm_results 扁平列表
@@ -52,8 +59,10 @@ class VoiceLlmStrategy(AlgorithmResultStrategy):
     只保留无法配置化的结构语义（C0 裁定 2）：
     - `rounds` 数组按轮展开为 `{key}@round:N` 键形；
     - 轮次内的 `evaluation` 子字典是评估回填，不是输出字段，跳过；
-    - 轮内未知键（未在 output_fields 声明）不输出——键集合来自配置。
-    字段清单 / 字段类型 / 展示名全部来自 output_fields，不再硬编码。
+    - 轮内未知键（既不在 API 声明、也不在设备声明里）不输出——键集合来自配置。
+    顶层字段清单 / 字段类型 / 展示名来自 output_fields（API 声明）；
+    轮内子键的类型/展示名先取设备声明 `device_output_fields`（E2E 结果的轮内键），
+    再由 API 声明覆盖（API 结果的轮内键）。
 
     （原 `get_output_fields` 中的硬编码字段表与 `map_api_results` 固定映射已删除。）
     """
@@ -67,14 +76,20 @@ class VoiceLlmStrategy(AlgorithmResultStrategy):
         algo_res: Optional[Dict[str, Any]] = None,
         result_data: Optional[Dict[str, Any]] = None,
         normalize_audio_path_fn: Optional[Callable[[str], str]] = None,
+        device_output_fields: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         algorithm_results: List[Dict[str, Any]] = []
 
-        # 轮内子键的类型/展示名按声明键反查（target_param 是执行侧映射后的键）
+        # 轮内子键的类型/展示名按声明键反查：设备声明打底（E2E 结果的轮内键），
+        # API 声明优先覆盖（API 结果的轮内键就是 API 输出参数）
         declared: Dict[str, Dict[str, Any]] = {}
-        for field in output_fields or []:
+        for field in (device_output_fields or []):
             key = field.get('target_param') or field.get('source_param')
             if key and key not in declared:
+                declared[key] = field
+        for field in (output_fields or []):
+            key = field.get('target_param') or field.get('source_param')
+            if key:
                 declared[key] = field
 
         # 输出顺序沿用配置声明顺序（ui_order / id），与改造前硬编码表顺序一致
@@ -96,36 +111,36 @@ class VoiceLlmStrategy(AlgorithmResultStrategy):
 
             # rounds 数组展开为按轮次扁平的 param_code；键集合与类型均取配置声明
             rounds_arr = combined_data.get(param_key)
-            if not isinstance(rounds_arr, list):
-                continue
-            for r_idx, r_item in enumerate(rounds_arr):
-                if not isinstance(r_item, dict):
-                    continue
-                raw_round = r_item.get('round')
-                rn = (raw_round + 1) if isinstance(raw_round, int) else (r_idx + 1)
-                out = r_item.get('output') or {}
-                if not isinstance(out, dict):
-                    continue
-                for sub_key, val in out.items():
-                    if val is None or sub_key == 'evaluation':
+            if isinstance(rounds_arr, list):
+                for r_idx, r_item in enumerate(rounds_arr):
+                    if not isinstance(r_item, dict):
                         continue
-                    sub_field = declared.get(sub_key)
-                    if sub_field is None:
+                    raw_round = r_item.get('round')
+                    rn = (raw_round + 1) if isinstance(raw_round, int) else (r_idx + 1)
+                    out = r_item.get('output') or {}
+                    if not isinstance(out, dict):
                         continue
-                    sub_type = sub_field.get('param_type') or 'text'
-                    if sub_type == 'audio_file' and isinstance(val, str) and val:
-                        if normalize_audio_path_fn:
-                            val = normalize_audio_path_fn(val)
-                    sub_label = sub_field.get('label') or sub_key
-                    algorithm_results.append({
-                        'device': resource,
-                        'param_code': f'{sub_key}@round:{rn}',
-                        'param_type': sub_type,
-                        'label': f'{sub_label} (第{rn}轮)',
-                        'value': val,
-                        'round_number': rn,
-                        'dimension_name': None,
-                    })
+                    for sub_key, val in out.items():
+                        if val is None or sub_key == 'evaluation':
+                            continue
+                        sub_field = declared.get(sub_key)
+                        if sub_field is None:
+                            continue
+                        sub_type = sub_field.get('param_type') or 'text'
+                        if sub_type == 'audio_file' and isinstance(val, str) and val:
+                            if normalize_audio_path_fn:
+                                val = normalize_audio_path_fn(val)
+                        sub_label = sub_field.get('label') or sub_key
+                        algorithm_results.append({
+                            'device': resource,
+                            'param_code': f'{sub_key}@round:{rn}',
+                            'param_type': sub_type,
+                            'label': f'{sub_label} (第{rn}轮)',
+                            'value': val,
+                            'round_number': rn,
+                            'dimension_name': None,
+                        })
+            # 非 list 的 rounds 与改造前一致：不展开，但保留 rounds 条目本身
             algorithm_results.append({
                 'device': resource,
                 'param_code': param_key,
@@ -157,6 +172,7 @@ class DefaultStrategy(AlgorithmResultStrategy):
         algo_res: Optional[Dict[str, Any]] = None,
         result_data: Optional[Dict[str, Any]] = None,
         normalize_audio_path_fn: Optional[Callable[[str], str]] = None,
+        device_output_fields: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         algorithm_results: List[Dict[str, Any]] = []
 

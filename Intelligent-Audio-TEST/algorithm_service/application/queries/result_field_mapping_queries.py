@@ -38,11 +38,13 @@ class ResultFieldMappingQueryHandler:
 
         来源：
         - 字段清单与类型：`algorithm_api_params(direction=output)`（API 输出声明，
-          优先且唯一）+ `algorithm_device_params(direction=output)`（设备输出声明，
-          供同一算法类型的设备/E2E 结果展示，API 侧已声明的键不重复）；
-          顺序均按 ui_order / id；
-        - API 字段的映射目标键：`param_mappings(source='api', source_direction='output')`，
+          优先且唯一），顺序按 ui_order / id；
+        - 映射目标键：`param_mappings(source='api', source_direction='output')`，
           无映射时按恒等（target_param = param_code）。
+
+        设备输出声明（`algorithm_device_params(direction=output)`）**不进入**本清单，
+        只供 `VoiceLlmStrategy` 解析 rounds 轮内子键的类型/展示名
+        （见 `shared.clients.algo_get_device_output_fields` → `device_output_fields`）。
 
         配置缺失时明确降级并写 WARNING，不再回落到任何硬编码字段表，避免静默错值。
 
@@ -57,20 +59,24 @@ class ResultFieldMappingQueryHandler:
 
         try:
             api_declared = cls._output_declarations(algorithm_type, 'api')
-            device_declared = cls._output_declarations(algorithm_type, 'device')
-            if not api_declared and not device_declared:
-                log_not_emit(
-                    'WARNING', 'result_field_mapping_queries',
-                    f'algorithm_type={algorithm_type} 无 direction=output 的输出字段声明，'
-                    f'输出字段按空清单降级（请在算法配置中补输出字段声明）',
-                    category='algorithm', algorithm_type=algorithm_type,
-                )
-                return []
             if not api_declared:
                 log_not_emit(
                     'WARNING', 'result_field_mapping_queries',
-                    f'algorithm_type={algorithm_type} 无 algorithm_api_params(direction=output) '
-                    f'声明，API 结果将无输出字段（仅设备声明可用）',
+                    f'algorithm_type={algorithm_type} 无 algorithm_api_params(direction=output) 声明，'
+                    f'输出字段按空清单降级（请在算法配置中补 API 输出字段声明）',
+                    category='algorithm', algorithm_type=algorithm_type,
+                )
+                return []
+
+            declared_codes = {
+                p.get('param_code') for p in api_declared if isinstance(p, dict)
+            }
+            if 'rounds' not in declared_codes and cls._is_round_structural(algorithm_type):
+                # 部分声明：有输出声明但缺 rounds，轮次展开会整段消失，必须显式提示
+                log_not_emit(
+                    'WARNING', 'result_field_mapping_queries',
+                    f'algorithm_type={algorithm_type} 有 API 输出声明但缺 rounds 声明，'
+                    f'轮次展开按空降级（请在算法配置中补 rounds 输出字段声明）',
                     category='algorithm', algorithm_type=algorithm_type,
                 )
 
@@ -107,24 +113,6 @@ class ResultFieldMappingQueryHandler:
                     'ui_order': p.get('ui_order') or 0,
                 })
 
-            for p in device_declared:
-                param_code = p.get('param_code')
-                if not param_code or param_code in seen:
-                    continue
-                seen.add(param_code)
-                fields.append({
-                    'source': 'device',
-                    'source_param': param_code,
-                    'target_param': param_code,
-                    'param_type': p.get('param_type') or 'text',
-                    'label': p.get('label') or p.get('param_name') or param_code,
-                    'dimension_id': None,
-                    'dimension_name': None,
-                    'transform_type': 'none',
-                    'field_path': None,
-                    'ui_order': p.get('ui_order') or 0,
-                })
-
             cls._output_field_cache[algorithm_type] = fields
             return fields
 
@@ -132,6 +120,17 @@ class ResultFieldMappingQueryHandler:
             log_not_emit('ERROR', 'result_field_mapping_queries',
                          f'Error loading output fields for {algorithm_type}: {e}', category='algorithm')
             return []
+
+    @staticmethod
+    def _is_round_structural(algorithm_type: str) -> bool:
+        """该算法类型的结果结构里是否含 rounds 数组（由策略承载的结构语义）。"""
+        from shared.domain.algorithm_result_strategy import (
+            AlgorithmStrategyFactory,
+            VoiceLlmStrategy,
+        )
+        return isinstance(
+            AlgorithmStrategyFactory.get_strategy(algorithm_type), VoiceLlmStrategy
+        )
 
     @staticmethod
     def _output_declarations(algorithm_type: str, param_type: str) -> List[Dict[str, Any]]:

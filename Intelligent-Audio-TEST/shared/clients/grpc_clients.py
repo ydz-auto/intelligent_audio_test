@@ -145,6 +145,7 @@ from shared.clients._grpc_algo_audio import (
     algo_convert_field_value,
     algo_convert_field_values,
     algo_get_output_fields,
+    algo_get_device_output_fields,
     algo_get_reference_output_fields,
     algo_extract_result_fields,
     algo_get_timeline_fields,

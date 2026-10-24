@@ -395,6 +395,10 @@ class TaskQueryService:
 
                 # 7a. 收集所有维度 ID，批量查询 aux 参数（快照为空时才需要）
                 output_fields = _algo_repo.algo_get_output_fields(algorithm_type) if algorithm_type else []
+                # 设备输出声明只用于轮内子键类型/展示名解析，不进展示字段清单
+                device_output_fields = (
+                    _algo_repo.algo_get_device_output_fields(algorithm_type) if algorithm_type else []
+                )
 
                 # 构建 aux_params_map（与 report_service 逻辑一致）
                 aux_params_map = {}
@@ -463,6 +467,7 @@ class TaskQueryService:
                             aux_params_map, result_dim_rows,
                             output_fields, algorithm_type,
                             normalize_audio_path_fn=_normalize_audio_path_for_task,
+                            device_output_fields=device_output_fields,
                         )
                     )
             except Exception as e:

@@ -2,10 +2,12 @@
 """INT-1748 voice_llm 输出映射去硬编码（C3）契约测试。
 
 覆盖：
-- 输出字段清单改由 algorithm_api_params(direction=output) 声明驱动（含映射 target_param）；
-- 零声明时明确降级（空清单 + WARNING），不再回落到硬编码字段表；
+- 输出字段清单改由 algorithm_api_params(direction=output) 声明驱动（含映射 target_param），
+  设备输出声明不进入展示清单（C0 裁定 3：API 声明优先且唯一）；
+- 设备声明只用于 rounds 轮内子键的类型/展示名解析；
+- 零声明时明确降级（空清单 + WARNING），部分声明缺 rounds 时也告警，不再回落到硬编码字段表；
 - 配置路径与改造前硬编码路径结果逐字段一致（声明等价时）；
-- 轮内未声明的键不输出（键集合来自配置）；
+- 轮内未声明的键不输出（键集合来自配置）；rounds 非 list 时保留 rounds 条目；
 - map_api_results 全链路删除（handler / 客户端封装 / RPC 桩返回明确失败）。
 """
 import os
@@ -136,28 +138,57 @@ def test_zero_declaration_degrades_to_empty_with_warning(monkeypatch):
 
     assert ResultFieldMappingQueryHandler.get_output_fields('voice_llm') == []
     assert logged and logged[0][0] == 'WARNING'
-    assert '无 direction=output 的输出字段声明' in logged[0][1]
+    assert '无 algorithm_api_params(direction=output) 声明' in logged[0][1]
     # 降级结果不缓存：补齐声明后无需重启即可生效
     assert 'voice_llm' not in ResultFieldMappingQueryHandler._output_field_cache
 
 
-def test_device_output_declarations_merged_after_api(monkeypatch):
-    """设备输出声明并入展示字段（API 已声明的键不重复），类型取声明。"""
-    _patch_repos(
-        monkeypatch,
-        params=[_declared('asr_text', 'text', ui_order=10, pid=1)],
-        device_params=[
-            dict(_declared('start_ms', 'timestamp', ui_order=1, pid=11)),
-            dict(_declared('user_wav', 'audio_file', ui_order=2, pid=12)),
-            dict(_declared('asr_text', 'text', ui_order=3, pid=13)),
-            dict(_declared('input_text', 'text', ui_order=4, pid=14), direction='input'),
+def test_device_output_declarations_not_in_display_list(monkeypatch):
+    """设备输出声明不进入展示字段清单（C0 裁定 3：API 声明优先且唯一）。"""
+    repo = _FakeParamRepo(
+        [_declared('asr_text', 'text', ui_order=10, pid=1)],
+        [
+            _declared('start_ms', 'timestamp', ui_order=1, pid=11),
+            _declared('user_wav', 'text', ui_order=2, pid=12),
         ],
     )
+    monkeypatch.setattr(queries, 'algorithm_param_repository', repo)
+    monkeypatch.setattr(queries, 'mapping_repository', _FakeMappingRepo([]))
+
     fields = ResultFieldMappingQueryHandler.get_output_fields('voice_llm')
-    assert [f['source_param'] for f in fields] == ['asr_text', 'start_ms', 'user_wav']
-    by_code = {f['source_param']: f for f in fields}
-    assert by_code['asr_text']['source'] == 'api'  # API 声明优先
-    assert by_code['start_ms']['param_type'] == 'timestamp'
+    assert [f['source_param'] for f in fields] == ['asr_text']
+    assert all(f['source'] == 'api' for f in fields)
+    # 展示清单根本不查设备表
+    assert ('voice_llm', 'device') not in repo.calls
+
+
+def test_missing_rounds_declaration_warns(monkeypatch):
+    """部分声明（有输出声明但缺 rounds）时写 WARNING，不静默丢整段轮次。"""
+    _patch_repos(monkeypatch, params=[
+        _declared('session_id', 'text', ui_order=10, pid=1),
+    ])
+    logged = []
+    monkeypatch.setattr(
+        queries, 'log_not_emit',
+        lambda level, module, content, **kwargs: logged.append((level, content)),
+    )
+
+    fields = ResultFieldMappingQueryHandler.get_output_fields('voice_llm')
+    assert [f['source_param'] for f in fields] == ['session_id']
+    assert any(level == 'WARNING' and '缺 rounds 声明' in content for level, content in logged)
+
+
+def test_non_round_algorithm_no_rounds_warning(monkeypatch):
+    """无 rounds 结构的算法类型（默认策略）不因缺 rounds 声明告警。"""
+    _patch_repos(monkeypatch, params=[_declared('vendor_score', 'number', ui_order=1)])
+    logged = []
+    monkeypatch.setattr(
+        queries, 'log_not_emit',
+        lambda level, module, content, **kwargs: logged.append((level, content)),
+    )
+
+    ResultFieldMappingQueryHandler.get_output_fields('brand_new_algo')
+    assert not [c for _level, c in logged if '缺 rounds 声明' in c]
 
 
 def test_new_algorithm_type_config_only(monkeypatch):
@@ -232,12 +263,97 @@ def test_voice_llm_round_keys_come_from_config():
     assert {r['param_code']: r['param_type'] for r in rows}['score@round:1'] == 'number'
 
 
+def test_voice_llm_round_sub_keys_use_device_declarations():
+    """展示清单只有 API 声明时，E2E 结果的轮内键仍由设备声明解析类型/展示名。"""
+    output_fields = [
+        {'source': 'api', 'source_param': 'rounds', 'target_param': 'rounds',
+         'param_type': 'json', 'label': 'round results'},
+    ]
+    device_output_fields = [
+        {'source': 'device', 'source_param': 'user_wav', 'target_param': 'user_wav',
+         'param_type': 'audio_file', 'label': None},
+        {'source': 'device', 'source_param': 'start_ms', 'target_param': 'start_ms',
+         'param_type': 'timestamp', 'label': '开始时间'},
+    ]
+    combined = {'rounds': [
+        {'round': 0, 'output': {'user_wav': 'a.wav', 'start_ms': 12, 'undeclared': 'x'}},
+        {'round': 1, 'output': {'start_ms': 34}},
+    ]}
+    rows = VoiceLlmStrategy().process_algorithm_result(
+        combined, output_fields, 'dev_01', DEVICE_FIELDS, None, None,
+        lambda p: 'norm:' + p, device_output_fields,
+    )
+    codes = [r['param_code'] for r in rows]
+    assert codes == [
+        'user_wav@round:1', 'start_ms@round:1', 'start_ms@round:2', 'rounds',
+    ]
+    by_code = {r['param_code']: r for r in rows}
+    assert by_code['user_wav@round:1']['value'] == 'norm:a.wav'  # audio_file 归一
+    assert by_code['user_wav@round:1']['label'] == 'user_wav (第1轮)'  # 未配展示名回落键名
+    assert by_code['start_ms@round:2']['param_type'] == 'timestamp'
+    assert by_code['start_ms@round:2']['label'] == '开始时间 (第2轮)'
+
+
+def test_voice_llm_api_declaration_overrides_device_for_round_keys():
+    """同一轮内键同时有 API 与设备声明时，API 声明优先（类型/展示名）。"""
+    output_fields = [
+        {'source': 'api', 'source_param': 'answer', 'target_param': 'answer',
+         'param_type': 'text', 'label': '模型回答'},
+        {'source': 'api', 'source_param': 'rounds', 'target_param': 'rounds',
+         'param_type': 'json', 'label': 'round results'},
+    ]
+    device_output_fields = [
+        {'source': 'device', 'source_param': 'answer', 'target_param': 'answer',
+         'param_type': 'text', 'label': '设备回答'},
+    ]
+    combined = {'answer': 'top', 'rounds': [{'round': 0, 'output': {'answer': 'hi'}}]}
+    rows = VoiceLlmStrategy().process_algorithm_result(
+        combined, output_fields, 'api_01', DEVICE_FIELDS, None, None, None,
+        device_output_fields,
+    )
+    by_code = {r['param_code']: r for r in rows}
+    assert by_code['answer@round:1']['label'] == '模型回答 (第1轮)'
+
+
+def test_voice_llm_rounds_non_list_keeps_rounds_entry():
+    """rounds 存在但非 list：不展开，但保留 rounds 条目（与改造前一致）。"""
+    fields = [
+        {'source_param': 'rounds', 'target_param': 'rounds', 'param_type': 'json',
+         'label': 'round results'},
+    ]
+    combined = {'rounds': {'round': 1, 'output': {'asr_text': 'hi'}}}
+    rows = VoiceLlmStrategy().process_algorithm_result(
+        combined, fields, 'api_01', DEVICE_FIELDS, None, None, None,
+    )
+    assert [r['param_code'] for r in rows] == ['rounds']
+    assert rows[0]['value'] == combined['rounds']
+
+
 def test_zero_output_fields_emits_nothing():
     """零声明时不再靠硬编码表产出任何条目（明确降级）。"""
     combined = {'session_id': 's1', 'rounds': [{'round': 0, 'output': {'asr_text': 'hi'}}]}
     assert VoiceLlmStrategy().process_algorithm_result(
         combined, [], 'api_01', DEVICE_FIELDS, None, None, None,
     ) == []
+
+
+def test_device_output_fields_client_helper(monkeypatch):
+    """设备输出声明客户端封装：只取 direction=output，code/type 归一为 ACL 字段形态。"""
+    import shared.clients._grpc_algo_audio as algo_audio
+
+    monkeypatch.setattr(algo_audio, 'algo_get_device_params', lambda t: [
+        {'code': 'user_wav', 'type': 'audio_file', 'direction': 'output',
+         'label': None, 'ui_order': 13},
+        {'code': 'input_text', 'type': 'text', 'direction': 'input', 'label': None},
+        {'code': 'start_ms', 'param_type': 'timestamp', 'direction': 'output',
+         'label': '开始时间'},
+    ])
+    fields = algo_audio.algo_get_device_output_fields('voice_llm')
+    assert [f['source_param'] for f in fields] == ['user_wav', 'start_ms']
+    assert fields[0]['param_type'] == 'audio_file'
+    assert fields[0]['label'] is None  # 未配展示名时回落键名（由策略处理）
+    assert fields[1]['param_type'] == 'timestamp'
+    assert fields[1]['label'] == '开始时间'
 
 
 # ---------- map_api_results 全链路删除 ----------

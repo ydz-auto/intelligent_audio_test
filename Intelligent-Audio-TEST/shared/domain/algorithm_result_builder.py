@@ -51,7 +51,7 @@ def collect_aux_values(resp_data, aux_entries):
 def build_algorithm_results_for_result(
     result, resource, algo_res, result_data, aux_params_map,
     dim_result_rows, output_fields, algorithm_type,
-    normalize_audio_path_fn=None,
+    normalize_audio_path_fn=None, device_output_fields=None,
 ):
     """为单个 TestResult 构建 algorithm_results 扁平列表。
 
@@ -66,9 +66,11 @@ def build_algorithm_results_for_result(
         result_data: 完整 result_data (dict 或 None；JSON 字符串形式同样幂等规范化)
         aux_params_map: {dimension_id: [{param, dimension_name}, ...]}
         dim_result_rows: 该 TestResult 的维度结果行列表（dict 或 ORM 均可）
-        output_fields: 算法输出字段列表
+        output_fields: 算法输出字段列表（API 输出声明，GetOutputFields）
         algorithm_type: 算法类型
         normalize_audio_path_fn: 音频路径规范化函数（缺省用 shared Config）
+        device_output_fields: 设备输出声明（algorithm_device_params(direction=output)），
+            仅供策略解析 rounds 轮内子键的类型/展示名，不进入展示字段清单
 
     Returns:
         list[dict]: algorithm_results 扁平列表
@@ -199,6 +201,7 @@ def build_algorithm_results_for_result(
         algo_res=algo_res,
         result_data=result_data,
         normalize_audio_path_fn=normalize_audio_path_fn or _default_normalize_audio_path,
+        device_output_fields=device_output_fields,
     ))
 
     return algorithm_results

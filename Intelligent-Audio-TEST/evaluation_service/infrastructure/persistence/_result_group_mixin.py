@@ -214,12 +214,15 @@ class GroupResultMixin:
 
             # 查询 output_fields
             output_fields = self._load_output_fields(algorithm_type)
+            # 设备输出声明：只用于轮内子键类型/展示名解析，不进展示字段清单
+            device_output_fields = self._load_device_output_fields(algorithm_type)
 
             # 调用公共方法构建 algorithm_results
             from report_service.application.services.report_data_builder import ReportDataBuilder
             algorithm_results = ReportDataBuilder.build_algorithm_results_for_result(
                 test_result, resource, algo_result, result_data,
-                aux_params_map, dim_result_rows, output_fields, algorithm_type
+                aux_params_map, dim_result_rows, output_fields, algorithm_type,
+                device_output_fields=device_output_fields,
             )
 
             # 存入 result_data['algorithm_results']
@@ -322,3 +325,15 @@ class GroupResultMixin:
             except Exception:
                 pass
         return output_fields
+
+    @staticmethod
+    def _load_device_output_fields(algorithm_type):
+        """查询设备输出声明（只用于 rounds 轮内子键类型/展示名解析）"""
+        device_output_fields = []
+        if algorithm_type:
+            try:
+                from shared.clients.grpc_clients import algo_get_device_output_fields
+                device_output_fields = algo_get_device_output_fields(algorithm_type) or []
+            except Exception:
+                pass
+        return device_output_fields

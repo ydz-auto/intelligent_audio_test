@@ -302,6 +302,32 @@ def algo_get_output_fields(algorithm_type: str, test_type: str = None):
                                test_type=test_type or '') or []
 
 
+def algo_get_device_output_fields(algorithm_type: str):
+    """获取设备输出声明（algorithm_device_params(direction=output)，ACL 字段形态）。
+
+    设备声明不进入 GetOutputFields 的展示字段清单（C0 裁定 3：API 声明优先且唯一），
+    只供结果构建侧解析 rounds 轮内子键的参数类型与展示名（INT-1748）。
+    复用既有 GetDeviceParamsList RPC（`algo_get_device_params`），不新增 RPC。
+    """
+    fields = []
+    for p in algo_get_device_params(algorithm_type) or []:
+        if not isinstance(p, dict) or p.get('direction') != 'output':
+            continue
+        code = p.get('code') or p.get('param_code')
+        if not code:
+            continue
+        fields.append({
+            'source': 'device',
+            'source_param': code,
+            'target_param': code,
+            'param_type': p.get('type') or p.get('param_type') or 'text',
+            # 只取显式展示名；为空时由策略回落为 param_code（与改造前的轮内 label 一致）
+            'label': p.get('label'),
+            'ui_order': p.get('ui_order') or 0,
+        })
+    return fields
+
+
 def algo_get_reference_output_fields(algorithm_type: str):
     """获取参考输出字段"""
     return _call_algo_query_rpc('GetReferenceOutputFields', algorithm_type=algorithm_type or '') or []
