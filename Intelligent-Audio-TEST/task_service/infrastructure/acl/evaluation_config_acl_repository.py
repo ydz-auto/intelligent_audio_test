@@ -80,6 +80,20 @@ class EvaluationConfigAclRepository:
         from shared.clients.grpc_clients import get_evaluation_config_service_stub
         return get_evaluation_config_service_stub()
 
+    def evaluated_result_id_select(self):
+        """「已评估结果 ID」只读子查询（供聚合 SQL 内过滤，零回传行数）。
+
+        INT-1510 §8.2.3 第 3 条：候选树聚合的 `evaluation_status` 过滤若先取
+        全部结果 ID 再 IN（原 candidates 口径）会把命中集拉进进程内存；这里给出
+        可下推的 `SELECT test_result_id FROM test_result_dimensions` 子查询，
+        由调用方仓储拼进主聚合 SQL 的 `IN/NOT IN`。
+
+        口径同 `get_evaluated_result_ids`：`test_result_dimensions` 有无该
+        `test_result_id` 的行即「已评估」，不过滤软删。
+        """
+        from sqlalchemy import select, text
+        return select(text('test_result_id')).select_from(text('test_result_dimensions'))
+
     def get_evaluated_result_ids(self, result_ids, session=None) -> set:
         """按结果 ID 集合批量取「已评估」结果 ID 集合。
 

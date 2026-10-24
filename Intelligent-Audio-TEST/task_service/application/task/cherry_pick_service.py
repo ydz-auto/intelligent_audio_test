@@ -69,6 +69,9 @@ _CASE_EVAL_PRECEDENCE = (
 # 溯源/非容器同口径字面量（前端按「非 200 即非容器、静默」判定，改口径须同步前端）
 _NOT_CHERRY_PICK_MESSAGE = '该任务不是挑选合并容器任务'
 
+# 候选树 evaluation_status 取值（§8.2.2：evaluated/pending，与 candidates 同口径）
+_TREE_EVALUATION_STATUSES = ('evaluated', 'pending')
+
 
 class CherryPickService:
     """挑选合并应用服务（S1-S5 命令与查询）。"""
@@ -428,6 +431,193 @@ class CherryPickService:
         except Exception as e:
             logger.error(f"可挑选任务清单查询失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
+    # ==================== 阶段 2 候选树聚合（INT-1510 §8.2） ====================
+
+    def candidate_tree(self, data: dict) -> dict:
+        """阶段 2 候选树聚合（设计文档 §8.2.2，INT-1510）。
+
+        一次请求返回「任务 → 用例 → 设备/API → result_type」的分组计数与每个
+        `result_type` 节点的 `result_id` 集，取代「candidates 首页 200 行由客户端
+        重建树」的降级路径（§8.2.1 缺陷根因）。
+
+        性能硬性（§8.2.3）：
+        - 分组计数与 result_id 集在仓储单条聚合 SQL 内完成（不拉结果行进内存）；
+        - `result_type` 取落库列，请求路径零 OSS 往返；
+        - 跨服务调用只剩设备名 / API 名各 1 次批量（去重集合），与行数无关；
+        - body 体量随命中结果行数增长（真实库 3614 行实测约 1.0MB），本卡不做缓存。
+
+        容器任务（INT-657）经 `task_cherry_pick_relations` 展开，命中行归属容器
+        任务（直查命中优先），与 candidates 同口径。
+        """
+        try:
+            task_ids = [int(t) for t in (data.get('task_ids') or [])]
+            if not task_ids or len(task_ids) > 200:
+                return {'success': False, 'message': 'task_ids 必填且为 1–200 个',
+                        'data': {'code': 400}, 'code': 400}
+            device_ids = [int(d) for d in (data.get('device_ids') or [])]
+            api_ids = [int(a) for a in (data.get('api_ids') or [])]
+            case_ids = [str(c) for c in (data.get('case_ids') or [])]
+            case_keyword = (data.get('case_keyword') or '').strip() or None
+            execution_status = data.get('execution_status') or None
+            evaluation_status = data.get('evaluation_status') or None
+            if evaluation_status is not None and evaluation_status not in _TREE_EVALUATION_STATUSES:
+                return {'success': False, 'message': f'不支持的评估状态: {evaluation_status}',
+                        'data': {'code': 400}, 'code': 400}
+            start_date = self._parse_iso_dt(data.get('start_date'))
+            end_date = self._parse_iso_dt(data.get('end_date'))
+
+            # INT-657：容器任务经引用关系解析（容器自身无 test_results 行）
+            direct_task_ids, container_result_map = self._resolve_container_task_ids(task_ids)
+            if not direct_task_ids and not container_result_map:
+                return {'success': True, 'message': 'ok', 'data': {
+                    'total': 0, 'task_count': 0,
+                    'meta': {'tasks': [], 'cases': [], 'devices': [], 'apis': []},
+                    'tree': [],
+                }}
+
+            from task_service.infrastructure.visibility_context import visibility_identity
+            user_id, is_admin = visibility_identity()
+
+            result = self._repo.candidate_tree(
+                direct_task_ids, container_result_map,
+                device_ids=device_ids, api_ids=api_ids, case_ids=case_ids,
+                case_keyword=case_keyword, execution_status=execution_status,
+                evaluation_status=evaluation_status,
+                start_date=start_date, end_date=end_date,
+                user_id=user_id, is_admin=is_admin,
+            )
+            groups = result['groups']
+
+            tree, total, case_ids_hit, device_ids_hit, api_ids_hit = self._assemble_tree(groups)
+            meta = {
+                'tasks': sorted(result['tasks'], key=lambda t: t['task_id']),
+                'cases': self._tree_case_meta(case_ids_hit),
+                'devices': self._tree_device_meta(device_ids_hit),
+                'apis': self._tree_api_meta(api_ids_hit),
+            }
+            return {'success': True, 'message': 'ok', 'data': {
+                'total': total,
+                'task_count': len(tree),
+                'meta': meta,
+                'tree': tree,
+            }}
+        except (ValueError, TypeError) as e:
+            return {'success': False, 'message': f'查询参数非法: {e}',
+                    'data': {'code': 400}, 'code': 400}
+        except Exception as e:
+            logger.error(f"候选树聚合查询失败: {e}", exc_info=True)
+            return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
+    @staticmethod
+    def _parse_iso_dt(value) -> Optional[datetime]:
+        """ISO 8601 时间串 → datetime（非法值按未传处理，与 candidates 同口径）。"""
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(str(value))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _assemble_tree(groups: List[Dict[str, Any]]) -> tuple:
+        """把仓储的分组行装配为四层树（只在分组行上做字典归并，与行数无关）。
+
+        Returns:
+            (tree, total, case_ids, device_ids, api_ids)——
+            后三者是去重集合（meta 去重表的入参）。
+        """
+        task_map: Dict[int, Dict[str, Any]] = {}
+        case_ids, device_ids, api_ids = set(), set(), set()
+        total = 0
+        for group in groups:
+            count = int(group.get('count') or 0)
+            total += count
+            task_id = group['task_id']
+            case_id = group.get('case_id')
+            if case_id:
+                case_ids.add(case_id)
+            if group.get('device_id') is not None:
+                device_ids.add(group['device_id'])
+            if group.get('api_id') is not None:
+                api_ids.add(group['api_id'])
+
+            task_node = task_map.setdefault(
+                task_id, {'task_id': task_id, 'count': 0, 'cases': {}})
+            task_node['count'] += count
+            case_node = task_node['cases'].setdefault(
+                case_id, {'case_id': case_id, 'count': 0, 'devices': {}})
+            case_node['count'] += count
+            device_key = (group.get('device_id'), group.get('api_id'))
+            device_node = case_node['devices'].setdefault(device_key, {
+                'device_id': group.get('device_id'),
+                'api_id': group.get('api_id'),
+                'count': 0,
+                'result_types': [],
+            })
+            device_node['count'] += count
+            device_node['result_types'].append({
+                'result_type': group.get('result_type'),
+                'count': count,
+                'result_ids': list(group.get('result_ids') or []),
+            })
+
+        tree = []
+        for task_id in sorted(task_map):
+            task_node = task_map[task_id]
+            cases = []
+            for case_id in sorted(task_node['cases'],
+                                  key=lambda c: (c is None, c or '')):
+                case_node = task_node['cases'][case_id]
+                devices = []
+                for key in sorted(case_node['devices'],
+                                  key=lambda k: (k[0] is None, k[0] or 0,
+                                                 k[1] is None, k[1] or 0)):
+                    device_node = case_node['devices'][key]
+                    device_node['result_types'].sort(
+                        key=lambda rt: (rt['result_type'] or ''))
+                    devices.append(device_node)
+                cases.append({'case_id': case_id, 'count': case_node['count'],
+                              'devices': devices})
+            tree.append({'task_id': task_id, 'count': task_node['count'],
+                         'cases': cases})
+        return tree, total, case_ids, device_ids, api_ids
+
+    def _tree_case_meta(self, case_ids) -> List[Dict[str, Any]]:
+        """meta.cases 去重表（字段口径同 §8.1 用例元信息；查不到的用例落缺省）。"""
+        if not case_ids:
+            return []
+        meta_map = self._case_meta_map(case_ids)
+        out = []
+        for case_id in sorted(case_ids):
+            meta = meta_map.get(str(case_id)) or {}
+            out.append({
+                'case_id': case_id,
+                'case_name': meta.get('case_name') or case_id,
+                'algorithm_type': meta.get('algorithm_type'),
+                'tags': meta.get('tags', []),
+                'group_id': meta.get('group_id'),
+                'group_name': meta.get('group_name'),
+                'duration': meta.get('duration'),
+                'rounds': meta.get('rounds'),
+            })
+        return out
+
+    def _tree_device_meta(self, device_ids) -> List[Dict[str, Any]]:
+        """meta.devices 去重表（设备名 1 次批量 gRPC，失败落 None）。"""
+        if not device_ids:
+            return []
+        names = self._fetch_device_names(sorted(device_ids))
+        return [{'device_id': d, 'device_name': names.get(d)}
+                for d in sorted(device_ids)]
+
+    def _tree_api_meta(self, api_ids) -> List[Dict[str, Any]]:
+        """meta.apis 去重表（API 名 1 次批量 gRPC，失败落 None）。"""
+        if not api_ids:
+            return []
+        names = self._fetch_api_names(sorted(api_ids))
+        return [{'api_id': a, 'api_name': names.get(a)}
+                for a in sorted(api_ids)]
 
     def _query_candidate_results(self, task_ids, device_ids, case_ids, case_keyword,
                                  execution_status, evaluation_status,
@@ -1448,6 +1638,10 @@ class CherryPickService:
                             if audio and audio.get('duration'):
                                 duration += float(audio.get('duration'))
                 out[str(tc.id)] = {
+                    # INT-1510 §8.2.2：候选树 meta.cases 需要用例名与算法类型
+                    # （candidates 只取 tags/group/duration/rounds 四个键，不暴露）
+                    'case_name': tc.name,
+                    'algorithm_type': tc.algorithm_type,
                     'tags': list(dict.fromkeys(t.name for t in tc.tags)),
                     'group_id': tc.group_id,
                     'group_name': tc.group.name if tc.group else None,

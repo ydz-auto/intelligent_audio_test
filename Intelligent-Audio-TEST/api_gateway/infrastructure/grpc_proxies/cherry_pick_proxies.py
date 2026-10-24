@@ -132,6 +132,16 @@ class _CherryPickProxy:
                           default_return=lambda e: {'success': False, 'message': f'查询可挑选任务失败: {e}', 'data': None, 'code': 500},
                           error_msg_prefix='查询可挑选任务失败')
 
+    # INT-1510 §8.2：阶段 2 候选树聚合（节点计数 + result_id 集由 task_service 出）
+    def list_candidate_tree(self, query: dict):
+        def _call():
+            resp = self.stub.ListCherryPickCandidateTree(task_pb.CherryPickCandidateTreeRequest(
+                data=json.dumps(query or {}, ensure_ascii=False, default=str)))
+            return self._resp(resp)
+        return _grpc_call(_call,
+                          default_return=lambda e: {'success': False, 'message': f'查询候选树失败: {e}', 'data': None, 'code': 500},
+                          error_msg_prefix='查询候选树失败')
+
     # ---- 下单（三出口 + 预览）----
 
     def preview(self):

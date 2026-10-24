@@ -17,7 +17,7 @@ from shared.infrastructure.visibility_filter import visible_condition
 from shared.models.common_enums import PickableTaskStatus
 from shared.models.database import get_db_session
 from shared.utils.db_session import with_session
-from shared.utils.status_constants import RESULT_TYPE_PENDING
+from shared.utils.status_constants import EvaluationStatus, RESULT_TYPE_PENDING
 from task_service.infrastructure.persistence.models import (
     Task, TestResult,
     CherryPickCartItem, TaskCherryPickRelation, CherryPickSet, CherryPickSetItem,
@@ -512,6 +512,162 @@ class CherryPickRepository:
             } for row in rows],
             'total': total,
         }
+
+    # ==================== 候选树聚合（INT-1510 阶段 2） ====================
+
+    @staticmethod
+    def _decode_result_ids(value) -> List[int]:
+        """归一化组内 result_id 聚合值（PG list / SQLite 逗号串）为升序 int 列表。"""
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple)):
+            return sorted(int(v) for v in value if v is not None)
+        return sorted(int(part) for part in str(value).split(',')
+                      if str(part).strip())
+
+    @with_session(auto_commit=False)
+    def candidate_tree(self, direct_task_ids, container_result_map, *,
+                       device_ids=None, api_ids=None, case_ids=None,
+                       case_keyword=None, execution_status=None,
+                       evaluation_status=None, start_date=None, end_date=None,
+                       user_id=None, is_admin=False) -> Dict[str, Any]:
+        """阶段 2 候选树聚合（设计文档 §8.2.2/§8.2.3，INT-1510）。
+
+        性能硬性 1/2：分组计数与每个叶节点的 `result_id` 集在**单条 SQL** 内
+        GROUP BY 完成（主聚合），随后按命中的去重任务集再取 1 条任务元信息；
+        不把结果行 ORM 对象拉进进程内存，`result_type` 只读落库列（零 OSS 往返）。
+
+        分组维度：有效任务（容器任务按 `container_result_map` 归属标注，直查命中
+        优先）→ 用例 → 设备/API（`device_id`/`api_id` 二选一）→ `result_type`
+        （缺值 NULL/空串归缺值桶 `default`）。
+
+        Args:
+            direct_task_ids: 非容器任务（及不可再挑容器）直查范围
+            container_result_map: {result_id: {'task_id': 容器任务 ID, ...}}
+            evaluation_status: 'evaluated'/'pending'（评估域存在性子查询，不回传行）
+            user_id / is_admin: INT-423 可见性（同 candidates 口径）
+
+        Returns:
+            {'groups': [{task_id, case_id, device_id, api_id, result_type,
+                         count, result_ids}],
+             'tasks': [{task_id, task_name, task_status}]}
+        """
+        from shared.models.database import get_db_session
+
+        session = get_db_session()
+        direct_ids = [int(t) for t in (direct_task_ids or [])]
+        container_map = container_result_map or {}
+
+        # 有效任务：容器引用命中且未被直查命中的结果归属容器任务（直查优先）
+        effective_task = TestResult.task_id
+        if container_map:
+            label_case = case(
+                {int(rid): int(label['task_id']) for rid, label in container_map.items()},
+                value=TestResult.id, else_=None)
+            if direct_ids:
+                effective_task = case(
+                    (TestResult.task_id.in_(direct_ids), TestResult.task_id),
+                    else_=sa_func.coalesce(label_case, TestResult.task_id))
+            else:
+                effective_task = sa_func.coalesce(label_case, TestResult.task_id)
+
+        # §8.2.2：result_type 缺值（NULL/空串）归「结果类型待补充」桶，对外值 default
+        result_type_expr = sa_func.coalesce(
+            sa_func.nullif(TestResult.result_type, ''), RESULT_TYPE_PENDING)
+
+        filters = [
+            TestResult.excluded == 0,
+            # §10：仅终态任务可挑选
+            Task.status.in_([s.value for s in PickableTaskStatus]),
+            Task.deleted == False,  # noqa: E712
+            # INT-423：私有任务对非 owner 不可挑选
+            visible_condition(Task.created_by_user_id, Task.visibility, user_id, is_admin),
+        ]
+        if direct_ids or container_map:
+            conds = []
+            if direct_ids:
+                conds.append(TestResult.task_id.in_(direct_ids))
+            if container_map:
+                conds.append(TestResult.id.in_(list(container_map.keys())))
+            if len(conds) == 1:
+                filters.append(conds[0])
+            else:
+                from sqlalchemy import or_
+                filters.append(or_(*conds))
+        else:
+            # 无直查任务且无容器命中（全部来源任务为不可再挑容器）：恒空集
+            return {'groups': [], 'tasks': []}
+
+        if device_ids:
+            filters.append(TestResult.device_id.in_([int(d) for d in device_ids]))
+        if api_ids:
+            filters.append(TestResult.api_id.in_([int(a) for a in api_ids]))
+        if case_ids:
+            filters.append(TestResult.test_case_id.in_([str(c) for c in case_ids]))
+        if case_keyword:
+            from task_service.infrastructure.persistence.models import TestCase
+            from sqlalchemy import select as sa_select, or_ as sa_or
+            kw = f'%{case_keyword}%'
+            matched = sa_select(TestCase.id).where(
+                sa_or(TestCase.name.like(kw), TestCase.id.like(kw)))
+            filters.append(TestResult.test_case_id.in_(matched))
+        if execution_status:
+            filters.append(TestResult.execution_status == execution_status)
+        if evaluation_status:
+            # 评估域存在性投影（INT-1625 口径；子查询下推，不回传结果 ID 列表）
+            from task_service.infrastructure.acl.evaluation_config_acl_repository import (
+                evaluation_config_acl_repository,
+            )
+            evaluated = evaluation_config_acl_repository.evaluated_result_id_select()
+            if evaluation_status == EvaluationStatus.PENDING:
+                filters.append(~TestResult.id.in_(evaluated))
+            else:
+                filters.append(TestResult.id.in_(evaluated))
+        if start_date is not None:
+            filters.append(TestResult.created_at >= start_date)
+        if end_date is not None:
+            filters.append(TestResult.created_at <= end_date)
+
+        # 生产库恒为 PostgreSQL（array_agg）；单测进程级 SQLite 无该聚合函数，
+        # 用 group_concat 取得同一集合，应用层统一归一为升序 int 列表
+        dialect = session.bind.dialect.name if session.bind is not None else 'postgresql'
+        id_agg = (sa_func.group_concat(TestResult.id) if dialect == 'sqlite'
+                  else sa_func.array_agg(TestResult.id))
+
+        rows = (session.query(
+                    effective_task.label('task_id'),
+                    TestResult.test_case_id.label('case_id'),
+                    TestResult.device_id.label('device_id'),
+                    TestResult.api_id.label('api_id'),
+                    result_type_expr.label('result_type'),
+                    id_agg.label('result_ids'),
+                )
+                .join(Task, TestResult.task_id == Task.id)
+                .filter(*filters)
+                .group_by(effective_task, TestResult.test_case_id,
+                          TestResult.device_id, TestResult.api_id, result_type_expr)
+                .order_by(effective_task.asc(), TestResult.test_case_id.asc())
+                .all())
+
+        groups = [{
+            'task_id': int(row.task_id),
+            'case_id': row.case_id,
+            'device_id': row.device_id,
+            'api_id': row.api_id,
+            'result_type': row.result_type,
+            'result_ids': self._decode_result_ids(row.result_ids),
+        } for row in rows]
+        for group in groups:
+            group['count'] = len(group['result_ids'])
+
+        # 去重任务元信息（第 2 条 SQL，只取命中任务集）
+        tree_task_ids = sorted({g['task_id'] for g in groups})
+        task_rows = (session.query(Task.id, Task.name, Task.status)
+                     .filter(Task.id.in_(tree_task_ids)).all()) if tree_task_ids else []
+        tasks = [{'task_id': int(r[0]), 'task_name': r[1], 'task_status': r[2]}
+                 for r in task_rows]
+        return {'groups': groups, 'tasks': tasks}
+
 
 
 # 单例

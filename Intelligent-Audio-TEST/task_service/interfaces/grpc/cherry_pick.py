@@ -134,6 +134,15 @@ class CherryPickServiceServicer(task_grpc.CherryPickServiceServicer):
         except Exception as e:
             return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
 
+    def ListCherryPickCandidateTree(self, request, context=None):
+        """阶段 2 候选树聚合（INT-1510 §8.2；聚合在仓储单条 SQL，网关只透传）。"""
+        try:
+            from task_service.application.task.cherry_pick_service import cherry_pick_service
+            data = _loads(request.data, {})
+            return self._resp(cherry_pick_service.candidate_tree(data))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
     # ---- 下单（三出口 + 预览）----
 
     def CherryPickPreview(self, request, context=None):

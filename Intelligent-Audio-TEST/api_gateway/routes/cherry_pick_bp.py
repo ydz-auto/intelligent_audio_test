@@ -73,6 +73,13 @@ def list_candidates(_: None = require_permission('task:read')):
     return to_response(CherryPickService.list_candidates())
 
 
+# INT-1510 §8.2：阶段 2 候选树聚合（任务→用例→设备/API→result_type，节点计数 +
+# result_id 集，服务端一次聚合）。网关只做参数校验（task_ids 必填 1–200）与信封。
+@router.get('/candidates/tree')
+def list_candidate_tree(_: None = require_permission('task:read')):
+    return to_response(CherryPickService.list_candidate_tree())
+
+
 # INT-1496 §8.1：挑选向导阶段 1「可挑选任务清单」（任务级聚合，服务端分页；
 # 替代 candidates 首页 200 行的客户端聚合）。网关只做参数校验与信封，不做聚合。
 @router.get('/pickable-tasks')

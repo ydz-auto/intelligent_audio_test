@@ -20,6 +20,7 @@ from api_gateway.schemas.cherry_pick import (
     CherryPickSaveSetRequest,
     CherryPickCandidatesQuery,
     CherryPickPickableTasksQuery,
+    CherryPickCandidateTreeQuery,
     CherryPickCheckoutRequest,
     _CODE_HTTP_MAP,
 )
@@ -194,6 +195,46 @@ class CherryPickService:
         result = _cherry_pick_acl.list_pickable_tasks(payload)
         if not result.get('success'):
             return error_response(result.get('message', '查询可挑选任务失败'),
+                                  http_code=_CODE_HTTP_MAP.get(result.get('code'), 400))
+        return success_response(result.get('data') or {})
+
+    # INT-1510 §8.2：阶段 2 候选树聚合（任务→用例→设备/API→result_type）。
+    # 网关只做参数校验（task_ids 必填 1–200、越界 400）、透传与信封；
+    # 分组计数与 result_id 集由 task_service 仓储单条 SQL 聚合，网关不接收
+    # 结果行、不做树构建（性能硬性 §8.2.3 第 2 条）。
+    @staticmethod
+    def list_candidate_tree():
+        try:
+            query = _parse_query_params(CherryPickCandidateTreeQuery)
+        except Exception as e:
+            return error_response(f"数据验证失败: {e}", http_code=400)
+        raw = (query.task_ids or '').strip()
+        if raw:
+            parts = [p.strip() for p in raw.split(',') if p.strip()]
+            try:
+                task_ids = [int(p) for p in parts]
+            except ValueError:
+                return error_response('task_ids 含非法值（须为逗号分隔整数）', http_code=400)
+        else:
+            task_ids = []
+        if not task_ids:
+            return error_response('task_ids 必填且不能为空（1–200 个）', http_code=400)
+        if len(task_ids) > 200:
+            return error_response('task_ids 最多 200 个', http_code=400)
+        payload = {
+            'task_ids': task_ids,
+            'device_ids': _split_ints(query.device_ids),
+            'api_ids': _split_ints(query.api_ids),
+            'case_ids': _split_strs(query.case_ids),
+            'case_keyword': (query.case_keyword or '').strip() or None,
+            'execution_status': query.execution_status,
+            'evaluation_status': query.evaluation_status,
+            'start_date': query.start_date,
+            'end_date': query.end_date,
+        }
+        result = _cherry_pick_acl.list_candidate_tree(payload)
+        if not result.get('success'):
+            return error_response(result.get('message', '查询候选树失败'),
                                   http_code=_CODE_HTTP_MAP.get(result.get('code'), 400))
         return success_response(result.get('data') or {})
 

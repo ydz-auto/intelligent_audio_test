@@ -310,6 +310,8 @@ service CherryPickService {
   rpc ListCherryPickCandidates(CherryPickCandidatesRequest) returns (TaskConfigResponse);
   // ---- 可挑选任务清单（INT-1496 挑选向导阶段 1 数据源；服务端一次 GROUP BY 聚合）----
   rpc ListCherryPickPickableTasks(CherryPickPickableTasksRequest) returns (TaskConfigResponse);
+  // ---- 阶段 2 候选树聚合（INT-1510 §8.2：任务→用例→设备/API→result_type，节点计数 + result_id 集）----
+  rpc ListCherryPickCandidateTree(CherryPickCandidateTreeRequest) returns (TaskConfigResponse);
   // ---- 下单（三出口 action=merge/reexecute/reevaluate + 合并预览）----
   rpc CherryPickPreview(CherryPickEmptyRequest) returns (TaskConfigResponse);
   rpc CherryPickCheckout(CherryPickCheckoutRequest) returns (TaskConfigResponse);
@@ -339,6 +341,13 @@ message CherryPickCandidatesRequest {
 message CherryPickPickableTasksRequest {
   string data = 1;  // JSON: {keyword?, status?, sort_by?, sort_order?, page, per_page}
                     // 任务级聚合结果（items 只含 id/name/execution_status/pickable_count/created_at）
+}
+message CherryPickCandidateTreeRequest {
+  string data = 1;  // JSON: {task_ids: [int]（必填 1–200）, device_ids?, api_ids?, case_ids?,
+                    //       case_keyword?, execution_status?, evaluation_status?,
+                    //       start_date?, end_date?}
+                    // 返回 data: {total, task_count, meta{tasks,cases,devices,apis}, tree[...]}
+                    // 聚合（分组计数 + result_id 集）由 task_service 仓储单条 SQL 完成
 }
 message CherryPickCheckoutRequest {
   string data = 1;  // JSON: {action: 'merge'|'reexecute'|'reevaluate'（缺省 merge）,

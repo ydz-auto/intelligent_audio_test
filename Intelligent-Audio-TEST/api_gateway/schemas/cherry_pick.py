@@ -70,6 +70,25 @@ class CherryPickPickableTasksQuery(BaseModel):
     per_page: int = Field(50, ge=1, le=200)
 
 
+class CherryPickCandidateTreeQuery(BaseModel):
+    """阶段 2 候选树聚合查询参数（GET /tasks/cherry-picks/candidates/tree，INT-1510 §8.2.2）
+
+    `task_ids` 必填（逗号分隔 int，1–200 个；缺失/空/越界 → 400，校验必须留在
+    网关：`TaskConfigResponse` 无 code 字段，不能依赖 task_service 业务码）。
+    其余维度过滤与 candidates 同语义；无 `page`/`per_page`——树端点一次返回
+    全部节点计数与 `result_id` 集，叶明细分页仍走 candidates。
+    """
+    task_ids: str = Field('', description='来源任务 ID（逗号分隔，必填 1–200 个）')
+    device_ids: str = Field('', description='被测设备 ID（逗号分隔，结果级）')
+    api_ids: str = Field('', description='API ID（逗号分隔，结果级）')
+    case_ids: str = Field('', description='用例 ID（逗号分隔，精确）')
+    case_keyword: Optional[str] = Field(None, description='用例名/用例 ID 模糊')
+    execution_status: Optional[str] = Field(None, description='结果执行状态过滤')
+    evaluation_status: Optional[str] = Field(None, description='评估状态（evaluated/pending）')
+    start_date: Optional[str] = Field(None, description='结果执行时间起（ISO）')
+    end_date: Optional[str] = Field(None, description='结果执行时间止（ISO）')
+
+
 class CherryPickCheckoutRequest(BaseModel):
     """下单请求（POST /tasks/cherry-picks/cart/checkout，三出口）"""
     action: str = Field('merge', description='下单出口：merge/reexecute/reevaluate')

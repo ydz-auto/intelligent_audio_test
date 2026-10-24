@@ -1681,6 +1681,11 @@ class CherryPickServiceStub:
                 request_serializer=task__service__pb2.CherryPickPickableTasksRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
                 _registered_method=True)
+        self.ListCherryPickCandidateTree = channel.unary_unary(
+                '/task_service.CherryPickService/ListCherryPickCandidateTree',
+                request_serializer=task__service__pb2.CherryPickCandidateTreeRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
         self.CherryPickPreview = channel.unary_unary(
                 '/task_service.CherryPickService/CherryPickPreview',
                 request_serializer=task__service__pb2.CherryPickEmptyRequest.SerializeToString,
@@ -1773,6 +1778,13 @@ class CherryPickServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListCherryPickCandidateTree(self, request, context):
+        """---- 阶段 2 候选树聚合（INT-1510 §8.2：任务→用例→设备/API→result_type，节点计数 + result_id 集）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def CherryPickPreview(self, request, context):
         """---- 下单（三出口 action=merge/reexecute/reevaluate + 合并预览）----
         """
@@ -1849,6 +1861,11 @@ def add_CherryPickServiceServicer_to_server(servicer, server):
             'ListCherryPickPickableTasks': grpc.unary_unary_rpc_method_handler(
                     servicer.ListCherryPickPickableTasks,
                     request_deserializer=task__service__pb2.CherryPickPickableTasksRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ListCherryPickCandidateTree': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListCherryPickCandidateTree,
+                    request_deserializer=task__service__pb2.CherryPickCandidateTreeRequest.FromString,
                     response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
             ),
             'CherryPickPreview': grpc.unary_unary_rpc_method_handler(
@@ -2165,6 +2182,33 @@ class CherryPickService:
             target,
             '/task_service.CherryPickService/ListCherryPickPickableTasks',
             task__service__pb2.CherryPickPickableTasksRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListCherryPickCandidateTree(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/ListCherryPickCandidateTree',
+            task__service__pb2.CherryPickCandidateTreeRequest.SerializeToString,
             task__service__pb2.TaskConfigResponse.FromString,
             options,
             channel_credentials,
