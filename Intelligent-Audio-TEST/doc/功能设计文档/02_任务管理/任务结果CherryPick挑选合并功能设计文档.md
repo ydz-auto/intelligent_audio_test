@@ -151,8 +151,12 @@
 | `GET /tasks/cherry-picks/sets` | 挑选集列表 |
 | `POST /tasks/cherry-picks/preview` | 合并预览（下单前统计/失效校验） |
 | `GET /tasks/cherry-picks/pickable-tasks` | 可挑选终态任务清单（挑选向导阶段 1 数据源，INT-1496；契约见 §8.1） |
+<<<<<<< HEAD
 | `GET /tasks/cherry-picks/candidates/tree` | 阶段 2 候选树聚合（任务→用例→设备/API→result_type，节点计数 + result_id 集，服务端一次聚合；INT-1510，契约见 §8.2） |
 | `GET /tasks/{taskId}/cherry-pick-source` | 新任务溯源（各结果来源任务；非容器 200+空 groups，契约见 §8.3） |
+=======
+| `GET /tasks/cherry-picks/{taskId}/source` | 容器溯源（各结果来源任务 + 结果级字段 + 源任务状态，INT-1714；契约见 §8.2。旧文写的 `GET /tasks/{taskId}/cherry-pick-source` 是历史占位名，代码里只出现在注释/docstring，实际路由一直是本行这个） |
+>>>>>>> 2419f5c51 (docs(task): INT-1739 回写 §8.2 容器溯源字段表（INT-1714 §11-8 实现演进裁定）)
 
 命名边界：前端/Domain 用 camelCase；snake_case 只允许出现在后端数据库与 DTO 转换层（总览 §1.3 口径）。
 
@@ -230,6 +234,7 @@ ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 
 已知边界（**阶段 2 性能另行开卡，与本端点解耦**）：阶段 2 候选树仍由 candidates 首页 200 行重建（18 §11-3 降级），其慢查询优化由规划师另立卡，不并入本卡、不阻塞本端点验收。本卡上线后用户可选到结果数 > 200 的任务，阶段 2 展示仍是「已加载 200 条」，跨页全选由 `POST /candidates/select-all` 保证。
 
+<<<<<<< HEAD
 > 后续（2026-10-24，INT-1510 契约审查）：阶段 2 已裁定走服务端候选树聚合端点，契约见 §8.2；本节的「200 行降级」边界在 §8.2 落地后失效，`candidates` 保留为叶明细分页与 `select-all` 口径来源。
 
 ### 8.2 阶段 2 候选树聚合接口（INT-1510 契约裁定，2026-10-24）
@@ -366,6 +371,46 @@ ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 裁定理由：「不是容器」是查询的正常结果，不是错误。任务详情页的复核范围解析（`useReviewRecordScope`）对每个任务都会探一次本接口，普通任务恒 400 会在 Network 里制造每页一次的 4xx 噪音（INT-1701 日巡命中）。前端据此约定保持零改动：`groups` 为空且请求成功即回落「归属=页面任务」。
 
 只读探针口径：与同域 `review_count` / `review_history` 一致——无数据即空结果，避免读探针用 4xx 表达正常空结果；存在性判定只保留「任务不存在 / 容器已软删」一处（INT-1715 ①，防止软删容器仍返 200 被当成容器）。
+=======
+### 8.2 容器溯源接口（交互规范 18 §11-8 落地，INT-1714，2026-10-24）
+
+**接口**：`GET /api/v1/tasks/cherry-picks/{task_id}/source`，权限 `task:read`。网关路由 `api_gateway/routes/cherry_pick_bp.py:103`（前缀 `/api/v1/tasks/cherry-picks` 见 `app.py:165`）；服务侧 `CherryPickService.source_trace`（`task_service/application/task/cherry_pick_service.py:951`）。gRPC `GetCherryPickSource` 以 JSON 字符串透传（`shared/utils/grpc_json`），网关无响应模型、直返 `data`——**扩字段不改网关、不新增端点、不改路由与返回层级、不动 proto**。
+
+响应 `data`：`{ task_id, is_cherry_pick, total, groups[] }`；`groups[] = { source_task_id, source_task_name, source_task_status, results[] }`。
+
+`results[]` 字段表（前 9 项为老字段，一个不删、不改名、不改语义）：
+
+| 字段 | 类型 | 语义 |
+| --- | --- | --- |
+| `id` | int | 关系行 ID |
+| `result_id` | int | 源结果 ID |
+| `source_task_id` | int | 来源任务 ID |
+| `source_task_name` | string | 来源任务名快照（关系行缺名回落 `任务 {id}`） |
+| `source_case_id` | string | 源用例 ID（UUID，展示配 `case_name`） |
+| `source_device_id` | int \| null | 源设备 ID |
+| `source_api_id` | int \| null | 源 API ID |
+| `created_at` | string | **关系行**创建时间（老字段，语义不变） |
+| `missing` | bool | 源结果行已不存在（物理删除）为 `true` |
+| `result_type` | string \| null | 源结果类型；取落库列 `test_results.result_type`，NULL / 空串输出 `default`（「结果类型待补充」桶）；`missing=true` 为 null |
+| `execution_status` | string \| null | 源结果执行状态（completed / failed / stopped / pending / running）；`missing=true` 为 null |
+| `evaluated` | bool | 源结果是否已评估（`test_result_dimensions` 有该结果行，与候选行同口径）；`missing=true` 为 false |
+| `case_name` | string \| null | 源用例名；用例目录查不到（含已软删）为 null，前端渲染「未知用例」，**不裸显 UUID** |
+| `device_name` | string \| null | 设备名（device_service ACL 批量）；无设备 / 查不到为 null |
+| `api_name` | string \| null | API 名（api_test ACL 批量）；无 API / 查不到为 null |
+| `result_created_at` | string \| null | **源结果自身**创建时间（ISO 8601），区别于关系行 `created_at`；`missing=true` 为 null |
+
+`groups[]`：`source_task_id`（int）、`source_task_name`（string）、`source_task_status`（string \| null，`Task.status`；来源任务行查不到为 null；软删来源任务仍返其状态、不带删除标记）、`results[]`（上表）。
+
+**取值与语义（实现演进裁定，2026-10-24）**
+
+1. `result_type` **取落库列，不再从 `result_data` / `result_data_path` 解析**：INT-1510 把结果类型落成列、INT-1669 起读侧 DB-first，与候选行同源（`result.result_type or RESULT_TYPE_PENDING`），请求路径零对象存储往返。交互规范 18 §11-8 表格里的旧解析口径以本条为准。
+2. 缺名 / 缺失态不在接口侧拼文案：`case_name=null` 由前端出「未知用例」；`missing=true` 行结果级字段全部 null、`evaluated=false`，关系行快照字段（`source_task_id` / `source_case_id` / `source_device_id` / `source_api_id` / `created_at`）照常返回。
+3. 非容器判定未变：服务层返回 `{'code': 404}` → gRPC `_resp` 弹出 `data.code` 后信封无业务码 → 网关 `_CODE_HTTP_MAP.get(None, 400)` 兜底，对外 **HTTP 400 + `code:203`**（2026-10-24 实测 `GET /api/v1/tasks/cherry-picks/419/source`）。前端按「非 200 即非容器、静默」判定，不改语义、不加别名端点。
+4. 软删**容器**仍返 200（端点只查关系表、不校验容器 Task 存活，`task_cherry_pick_relations` 不随容器软删级联）——已按 §11-8 尾注另立 **INT-1715** 修复，本接口契约不含存活校验。
+5. 性能：一次 `TestResult` 多列投影（`_source_result_snapshots`）+ `_evaluated_result_ids` 一次 IN + `_case_name_map` 一次 IN + device / api 名各一次批量 gRPC（id 非空才调，失败降级 null）+ `Task.id IN` 一次（`cherry_pick_repository.source_task_status_map`）；语句数与关系行数无关，无逐行查询、无对象存储往返。
+6. 部署前置：主库 `test_results` 现无 `result_type` 列（2026-10-24 复核），发版必须先执行迁移 ㊷（`scripts/migrations/202610/add_test_result_result_type_int1510.py`，已在 `docker/db_bootstrap_entrypoint.py:182` 引导链、幂等；entrypoint 以 COPY 进镜像，需重建 `db_bootstrap`），否则容器溯源与候选接口均 `UndefinedColumn` → 500。
+7. 前端同步点：`CherryPickSourceTraceDto` 的结果时间改读 `result_created_at`（原可选 `created_at` 会静默读到关系行时间），由前端 §5.5 卡处理。
+>>>>>>> 2419f5c51 (docs(task): INT-1739 回写 §8.2 容器溯源字段表（INT-1714 §11-8 实现演进裁定）)
 
 ## 9. 前端设计
 
@@ -409,12 +454,16 @@ ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 
 ## 13. 实现演进裁定记录
 
+<<<<<<< HEAD
 - **2026-10-24（INT-1755 章节编号裁定，方案一致性审计员）**：INT-1733（阶段 2 候选树聚合 · INT-1510 契约）与 INT-1706（溯源接口契约）在同一篇文档抢同一节号 §8.2，导致 INT-1733 的两个 doc 提交无法直接合入 V9.7.31。**裁定方案 A：候选树契约保持 §8.2（含 §8.2.1~§8.2.7 原样不动），溯源契约顺延为 §8.3。** 依据是已合入 V9.7.31 代码的引用面：`INT-1510 §8.2.x` 在代码里已落地 26 处（`api_gateway/schemas/cherry_pick.py:37`、`task_service/application/task/cherry_pick_service.py` 多处、`shared/utils/result_data_store.py:219/226`、`shared/utils/status_constants.py:82`、`task_service/infrastructure/persistence/models/result_models.py:38`、`test_result_repository.py:131/134`、`scripts/migrations/202610/add_test_result_result_type_int1510.py`、`scripts/migrations/README.md`、`docker/db_bootstrap_entrypoint.py:178` 及单测），而 `INT-1706 §8.2` 只有 4 处注释级引用（`task_service/application/task/cherry_pick_service.py:1062`、`tests/unit/test_int1714_cherry_pick_source_fields.py:13/241`、`tests/unit/test_int339_cherry_pick.py:411`）；让引用面大的一侧保持原号，改动面最小，也不会产生代码与文档的第二套编号。同步项：§8 接口表「新任务溯源」行改指 §8.3；INT-1670 卡面、INT-1669 回写（§8.2.7）、UX 18 号规范对「§8.2 = 候选树」的引用全部继续成立，无需改动。遗留：上述 4 处 `INT-1706 §8.2` 的代码注释仍写作 §8.2，按本节说明其指向已变为 §8.3（注释级、不影响行为，下轮改到这些文件时顺带同步，不为它单开代码卡）。
 
 - **2026-10-24（INT-1510 FEAT 契约审查裁定，方案一致性审计员）**：阶段 2「候选树由 candidates 首页 200 行重建」的性能与完整性收口。**裁定方向 B（服务端候选树聚合端点 `GET /tasks/cherry-picks/candidates/tree`）**，完整契约见 §8.2；方向 C 的行接口优化降级为叶明细分页与平铺辅助视图，不再承担树骨架。核心理由是完整性（命中 3614 行 / 117 任务，200 行只覆盖 5.5%，且每行唯一、(任务,用例,设备/API) 聚合不减少条目数）。同日真实库只读取证定位到成本主体：`result_type` 无列、取值经 `load_full_result_data` 在 `result_data_path` 非空时**先读 OSS**（每行 exists + download 2 次往返，`read_timeout=60`），因此把「tree 端点零 OSS 往返 + 装饰次数与行数解耦 + 首屏最坏情况 < 2 s」列为硬性验收，并要求 result_type 落库/回填一次收口。`candidates` 新增 `api_ids`/`result_type` 服务端过滤（既有契约与分页语义不变）。阶段 1 `pickable-tasks` 契约不动；前端 React 接线另卡。（裁定当日的「可挑行 2598/3614 的 DB JSON 已含该键」统计后被 INT-1669 复核修正为「顶层键命中 0 行、3614/3614 落 `default` 桶」，见 §8.2.7 第 4/5 条。）
 
 - **2026-10-24（INT-1669 实施 + 方案一致性审计回写，实现演进裁定）**：§8.2 的行接口收口落地（`338b5cd19` 主体 + `1a5836897` 返工，均已进 V9.7.31）。`test_results.result_type` 落库列 + 写时物化，`candidates` 读侧改 DB-first、请求路径零 OSS 往返（INT-1625 的 OSS 并发预取已删除、不留开关），`api_ids` / `result_type` 为服务端过滤且 `select-all` 同口径，缺值桶对外统一 `default`。**§8.2.3 第 3 条的「duration（audio gRPC）」「evaluation 再 1 次批量」在 INT-1625 后已改共享库窄字段只读投影**（`task_service/infrastructure/acl/audio_acl_repository.py:44`、`evaluation_config_acl_repository.py:83`），真实跨服务调用只剩设备名 1 次（API 名亦已于 INT-1500 改共享库窄字段投影）。迁移编号为 **㊷**（`add_test_result_result_type_int1510.py`，㊶ 已被 INT-1679 的 device_kind 占用），已登记 README 与 db_bootstrap 引导链，**主库尚未执行**——部署须重建 db_bootstrap 镜像后先跑 ㊷ 再上 task_service 新镜像。详见 §8.2.7。
 
+=======
+- **2026-10-24（INT-1714 实施 + 方案一致性审计 INT-1739 回写，实现演进裁定）**：容器溯源端点 `GET /api/v1/tasks/cherry-picks/{task_id}/source` 按交互规范 18 §11-8 在既有返回结构上**追加** 7 个结果级字段（`result_type` / `execution_status` / `evaluated` / `case_name` / `device_name` / `api_name` / `result_created_at`）与 `groups[].source_task_status`，老字段与返回层级不变；完整字段表与语义见新增的 §8.2。§8 接口草案里的历史占位路由 `GET /tasks/{taskId}/cherry-pick-source` 同步更正为真实路由。三条裁定：①`result_type` 取落库列（INT-1510 落列 / INT-1669 读侧 DB-first），**不按** §11-8 旧文字解析 `result_data` / `result_data_path`，与候选行同口径、零 OSS 往返；②缺名与缺失态不在接口侧拼文案——`case_name` 缺名返回 null（前端出「未知用例」，不裸显 UUID），`missing=true` 行结果级字段 null、`evaluated=false`；③软删容器仍返 200、软删来源任务仍返其 `Task.status`（无删除标记）保持现状，前者由 INT-1715 另修。本卡只扩 `source_trace` 返回内容：网关零改动、不动 proto、不改 `relations_by_container` 的共用返回结构；六类数据均批量取（一次结果多列投影 + 各自一次 `IN` + 两次名查询 gRPC），无 N+1、无对象存储往返。发版前置：主库 `test_results` 尚无 `result_type` 列，部署必须先跑迁移 ㊷ 并重建 `db_bootstrap` 镜像，否则容器溯源/候选接口 `UndefinedColumn` → 500。前端同步点：`CherryPickSourceTraceDto` 的结果时间改读 `result_created_at`。<br>落地分支 `agent/a/int-1714` @ `1f05b0e29`（本审计只回写文档，不改代码；`agent/agent/int-1739` 提交见卡 INT-1739 评论）。
+>>>>>>> 2419f5c51 (docs(task): INT-1739 回写 §8.2 容器溯源字段表（INT-1714 §11-8 实现演进裁定）)
 - **2026-10-24（负责人口径 + INT-1693 实施，购物车行补用例分组/标签）**：负责人 2026-10-24 于 INT-1499 定购物车三视图口径「用例视图 = 任务 → 分组/标签组织（照用例管理页）」。INT-1130 只把 `tags / group_id / group_name / duration / rounds` 装饰到挑选候选行，购物车快照行没有这组字段，用例视图只能全落「未分组 / 未设置标签」兜底桶。本卡把**候选行的用例级元信息口径原样延伸到购物车行**：
   - 落点 `GET /tasks/cherry-picks/cart` 的 `data.groups[].items[]` 行级，三字段 `tags: string[]` / `group_id: string|null` / `group_name: string|null`，来源与候选行完全一致（`test_cases → test_case_tags → tags.name` 去重保序；`test_cases.group_id → test_case_groups.name`），缺省 `[]` / `null` / `null`；用例已软删或查不到同落缺省（与 `_case_meta_map` 吞异常返回空映射的既有行为一致）。**2026-10-24 返工（测试反馈 P2）**：软删口径由 `_case_meta_map` 的用例批量查询补 `test_cases.deleted = false` 实现——用例管理页已看不到的用例一律不进映射，调用方落缺省。
   - **实现演进裁定（2026-10-24 方案一致性审计回写，INT-1737）**：本节原写「候选侧结果本就由 `TestResult.excluded` 挡掉，补过滤不改变候选可见行为」，**与实现不符，以本条为准更正**。全局软删用例（`soft_delete_testcase` / `soft_delete_testcases_by_ids`）只改 `test_cases.deleted`，不回写 `test_results.excluded`（`excluded=1` 仅由「从任务移除用例」置位），故候选查询的 `TestResult.excluded == 0` 挡不住「用例已软删但结果仍在可挑选终态任务里」的行；共享 helper 补 `deleted = false` 后，这些**候选行**的 `tags / group_id / group_name` 由真实值变为 `[]/null/null`（口径与用例管理页一致：用例已删除即归「未分组 / 未设置标签」）。主库只读实测（2026-10-24）：`excluded=0` 且引用软删用例的结果行 35 条，其中落在未删除终态任务（可挑选）上的 21 行 / 20 个用例。属预期口径统一，无功能破坏，候选端点字段与结构不变；若后续要求候选侧严格保持原值，另给 helper 加「仅存活」开关，不属本卡范围。
