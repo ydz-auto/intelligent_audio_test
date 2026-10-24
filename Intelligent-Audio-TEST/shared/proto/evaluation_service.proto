@@ -198,6 +198,13 @@ service EvaluationDataService {
   rpc ImportDimensions(ImportDimensionsRequest) returns (EvaluationDataResponse);
   // 回滚一次维度导入批次：按批次登记主键删除（补偿失败时人工介入的兜底入口）
   rpc RollbackDimensionImport(RollbackDimensionImportRequest) returns (EvaluationDataResponse);
+  // 增量回导合并（INT-1762 D4）：按 (test_result_id, dimension_id) 覆盖集合并维度评分，
+  // 只覆盖包内出现的维度（含各 round），覆盖前旧行落批次快照；包内 result id 在
+  // A 侧无任何维度行 → success=false + data.code=409 + data.missing_result_ids，零写入。
+  // 出参 {imported, deleted, id_mapping, skipped_dimensions, batch_id, rollback_available}
+  rpc MergeDimensions(MergeDimensionsRequest) returns (EvaluationDataResponse);
+  // 回滚一次维度合并批次（INT-1762 D4）：按快照恢复被覆盖的旧行、删除本批次新插入行
+  rpc RollbackDimensionMerge(RollbackDimensionMergeRequest) returns (EvaluationDataResponse);
   // LLM 复检（INT-800/INT-823）：单次 AI 复核，聚合 ASR/参考文本/维度分/LLM 评语，
   // 复用 llm_judge 端点 worker 与维度配置重新判分，返回 verdict/confidence/reasoning。
   // 非 E 域 Agent 编排（架构红线）：单次 LLM 调用，不做多步编排。
@@ -227,6 +234,18 @@ message ImportDimensionsRequest {
 }
 
 message RollbackDimensionImportRequest {
+  string batch_id = 1;
+}
+
+// 增量回导维度合并（INT-1762 D4）。data 为 JSON：
+// {rows: [维度评分行], result_id_mapping: {old: new}(可选，等价映射),
+//  dimension_id_mapping: {B 维度 id: A 维度 id}(可选，空=包内已是 A 维度 id),
+//  batch_id: str}
+message MergeDimensionsRequest {
+  string data = 1;
+}
+
+message RollbackDimensionMergeRequest {
   string batch_id = 1;
 }
 

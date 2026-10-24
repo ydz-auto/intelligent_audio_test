@@ -180,7 +180,13 @@ BOOTSTRAP_STEPS = [
     #     往返）依赖该列。脚本幂等（列存在即 SKIP、回填按值比对，只读 DB 轻量
     #     JSON 不回源对象存储），全新库为全 SKIP；默认 dry-run，引导链须 --apply。
     ('python', 'scripts/migrations/202610/add_test_result_result_type_int1510.py', '--apply'),
-    # ㊸ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
+    # ㊸ 增量回导合并快照两表（INT-1762 D4）：evaluation_merge_snapshots /
+    #     report_merge_snapshots。create_all 只建缺失的表，建库早于本卡的存量库
+    #     （真实库 / 隔离库）缺这两张表 → 合并 RPC 首次调用即 UndefinedTable。
+    #     脚本幂等（表/索引存在即 SKIP），全新库为全 SKIP；默认 dry-run，引导链
+    #     必须带 --apply。必须排在末步统计兜底（INT-1741 ANALYZE）之前。
+    ('python', 'scripts/migrations/202610/add_merge_snapshots_int1762.py', '--apply'),
+    # ㊹ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
     #     归零后长期不会触发 → 83/95 张表 last_analyze 恒为 NULL、n_live_tup 与真实
