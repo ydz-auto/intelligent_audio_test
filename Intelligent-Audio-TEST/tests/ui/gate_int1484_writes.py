@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """INT-1484 开工门禁：直连 :15000 实测评估维度 POST / PUT / DELETE。
 
-口径（需求规划师 2026-10-24 裁定，`<15s` 已撤销）：写操作不出现网关 60s
-DEADLINE_EXCEEDED、返回 2xx/预期业务 4xx、GET 回读一致；空闲态单次写 ≤40s。
->40s 仅作为「可能环境阻塞」提示，最终按是否 60s 超时 / 是否有锁队列迹象判定。
+口径（需求规划师 2026-10-24 裁定·第 2 轮，放行精简载荷）：
+- 载荷 ≤1 输入参数 + 1 输出参数 + 1 端点（不关联算法）；
+- 判定 = 不出现网关 60s DEADLINE_EXCEEDED + 返回 2xx + GET 回读逐字段一致 + 无锁队列迹象；
+- 耗时只记录、不作门禁（40s 参考上限已撤销）。
 
 仅在 docker 真实库栈（intelligent_audio_test）上使用；fixture 带「接线测试_INT1484_」前缀，
 脚本末尾 DELETE 清理，不留残留。
@@ -45,27 +46,17 @@ BODY = {
     'required_inputs': [
         {'param_code': 'q_text', 'param_name': '提问文本', 'label': '提问文本', 'field_type': 'text',
          'required': True, 'default_value': '', 'help_text': '', 'ui_order': 1},
-        {'param_code': 'asr_ref', 'param_name': '参考文本', 'label': '参考文本', 'field_type': 'text',
-         'required': False, 'default_value': '', 'help_text': '', 'ui_order': 2},
-        {'param_code': 'ai_wav', 'param_name': '回复音频', 'label': '回复音频', 'field_type': 'audio',
-         'required': False, 'default_value': '', 'help_text': '', 'ui_order': 3},
     ],
     'output_fields': [
         {'param_code': 'score', 'param_name': '评分', 'label': '评分', 'field_path': 'score',
          'field_type': 'number', 'output_role': 'main', 'agg_role': 'value', 'default_value': '',
          'pass_threshold': None, 'visible_in_report': True, 'help_text': '', 'ui_order': 1},
-        {'param_code': 'reason', 'param_name': '原因', 'label': '原因', 'field_path': 'reason',
-         'field_type': 'text', 'output_role': 'aux', 'agg_role': None, 'default_value': '',
-         'pass_threshold': None, 'visible_in_report': True, 'help_text': '', 'ui_order': 2},
     ],
     'api_endpoints': [
         {'url': 'http://host.docker.internal:15000/health', 'name': '主端点(在线)', 'priority': 1,
          'max_process': 5, 'max_timeout': 30, 'max_audio_duration': 60},
-        {'url': 'http://host.docker.internal:15000/health', 'name': '备端点(在线)', 'priority': 2,
-         'max_process': 5, 'max_timeout': 30, 'max_audio_duration': 60},
     ],
     'api_settings': {'method': 'POST', 'timeout': 30000, 'headers': {}, 'bodyTemplate': {}},
-    'associated_algorithms': [{'algorithm_type': 'voice_llm', 'is_default': True, 'weight': 1.0}],
 }
 
 LIMIT = float(os.environ.get('GATE_LIMIT', '40'))
@@ -84,7 +75,7 @@ def main():
 
     st, body, dt = call('POST', '/evaluation/dimensions', BODY)
     did = ((body or {}).get('data') or {}).get('id') if isinstance(body, dict) else None
-    gate('POST /evaluation/dimensions ≤%.0fs 且 2xx（无 60s 超时）' % LIMIT, dt < LIMIT and 200 <= st < 300 and did is not None,
+    gate('POST /evaluation/dimensions 精简载荷无 60s 超时且 2xx', dt < 60 and 200 <= st < 300 and did is not None,
          {'status': st, 'elapsed_s': dt, 'id': did,
           'resp': (json.dumps(body, ensure_ascii=False)[:300] if did is None else '')})
 
@@ -92,13 +83,15 @@ def main():
     if did:
         st_g, body_g, dt_g = call('GET', '/evaluation/dimensions/%s' % did)
         d = (body_g.get('data') or {}) if isinstance(body_g, dict) else {}
-        readback = {'inputs': len(d.get('required_inputs') or []),
-                    'outputs': len(d.get('output_fields') or []),
-                    'algorithms': [a.get('algorithm_type') for a in (d.get('associated_algorithms') or [])],
-                    'endpoints': [e.get('name') for e in (d.get('api_endpoints') or [])]}
-        gate('GET 回读参数/算法已落库（INT-1553 修复）',
-             readback['inputs'] == 3 and readback['outputs'] == 2
-             and 'voice_llm' in readback['algorithms'],
+        readback = {'inputs': [(x.get('param_code'), x.get('param_name')) for x in (d.get('required_inputs') or [])],
+                    'outputs': [(x.get('param_code'), x.get('field_path'), x.get('pass_threshold'))
+                                for x in (d.get('output_fields') or [])],
+                    'endpoints': [(e.get('url'), e.get('name')) for e in (d.get('api_endpoints') or [])],
+                    'rules': len((d.get('rule') or {}).get('rules') or [])}
+        gate('GET 回读参数/端点逐字段一致（精简载荷：1 输入 / 1 输出 / 1 端点）',
+             len(readback['inputs']) == 1 and readback['inputs'][0][0] == 'q_text'
+             and len(readback['outputs']) == 1 and readback['outputs'][0][0] == 'score'
+             and len(readback['endpoints']) == 1,
              {'status': st_g, 'elapsed_s': dt_g, **readback})
 
         upd = dict(BODY)
@@ -106,11 +99,11 @@ def main():
         upd['required_inputs'] = BODY['required_inputs']
         upd['output_fields'] = BODY['output_fields']
         st_p, body_p, dt_p = call('PUT', '/evaluation/dimensions/%s' % did, upd)
-        gate('PUT /evaluation/dimensions/{id} ≤%.0fs 且 2xx（无 60s 超时）' % LIMIT, dt_p < LIMIT and 200 <= st_p < 300,
+        gate('PUT /evaluation/dimensions/{id} 精简载荷无 60s 超时且 2xx', dt_p < 60 and 200 <= st_p < 300,
              {'status': st_p, 'elapsed_s': dt_p, 'resp': json.dumps(body_p, ensure_ascii=False)[:300]})
 
         st_d, body_d, dt_d = call('DELETE', '/evaluation/dimensions/%s' % did)
-        gate('DELETE /evaluation/dimensions/{id} ≤%.0fs 且 2xx（无 60s 超时）' % LIMIT, dt_d < LIMIT and 200 <= st_d < 300,
+        gate('DELETE /evaluation/dimensions/{id} 无 60s 超时且 2xx', dt_d < 60 and 200 <= st_d < 300,
              {'status': st_d, 'elapsed_s': dt_d, 'resp': json.dumps(body_d, ensure_ascii=False)[:300]})
 
         st, body, _ = call('GET', '/evaluation/dimensions?per_page=1000')
