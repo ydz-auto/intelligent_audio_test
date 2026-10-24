@@ -150,6 +150,11 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.ListCaseLogsRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.GetCaseDimensionRawResponse = channel.unary_unary(
+                '/report.ReportConfigService/GetCaseDimensionRawResponse',
+                request_serializer=report__service__pb2.GetCaseDimensionRawResponseRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
         self.BuildReferenceParams = channel.unary_unary(
                 '/report.ReportConfigService/BuildReferenceParams',
                 request_serializer=report__service__pb2.BuildReferenceParamsRequest.SerializeToString,
@@ -405,6 +410,14 @@ class ReportConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetCaseDimensionRawResponse(self, request, context):
+        """报告详情按需读取某用例某维度的 API 原始响应（INT-1752：默认不随报告详情下发，
+        显式请求时按 offset/limit 分页返回，单页与总量均有上限）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def BuildReferenceParams(self, request, context):
         """构建参考参数（供 api_gateway task_query_service 调用）
         """
@@ -648,6 +661,11 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             'ListCaseLogs': grpc.unary_unary_rpc_method_handler(
                     servicer.ListCaseLogs,
                     request_deserializer=report__service__pb2.ListCaseLogsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'GetCaseDimensionRawResponse': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCaseDimensionRawResponse,
+                    request_deserializer=report__service__pb2.GetCaseDimensionRawResponseRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
             'BuildReferenceParams': grpc.unary_unary_rpc_method_handler(
@@ -1357,6 +1375,33 @@ class ReportConfigService:
             target,
             '/report.ReportConfigService/ListCaseLogs',
             report__service__pb2.ListCaseLogsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCaseDimensionRawResponse(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/GetCaseDimensionRawResponse',
+            report__service__pb2.GetCaseDimensionRawResponseRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,
             channel_credentials,

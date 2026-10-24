@@ -139,13 +139,18 @@ def _grpc_get_test_results_by_task_and_case(test_case_ids, task_ids=None):
 # EvaluationDataService —— 维度评估结果查询
 # ======================================================================
 
-def _grpc_get_dimension_results_by_result_ids(result_ids):
+def _grpc_get_dimension_results_by_result_ids(result_ids, include_body=False):
     """通过 gRPC (evaluation_service.EvaluationDataService) 批量查询维度评估结果。
 
     返回 {result_id: [item_dict, ...]} 映射，item_dict 含
     dimension_id / dimension_name / dimension_value / api_raw_response 等字段。
+
+    Args:
+        include_body: INT-1752 —— 是否携带 api_request_body / api_raw_response。
+            加权聚合（weighted_sum_ratio / weighted_wer）与报告详情按需展开
+            原始响应时为 True；默认 False 保持既有轻量载荷。
     """
-    raw = _eval_data.get_dimension_results_by_result_ids(result_ids)
+    raw = _eval_data.get_dimension_results_by_result_ids(result_ids, include_body=include_body)
     return {rid: [_dto_to_dict(d) for d in items] for rid, items in raw.items()}
 
 

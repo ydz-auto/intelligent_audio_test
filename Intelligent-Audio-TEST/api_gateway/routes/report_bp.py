@@ -191,3 +191,13 @@ def download_case_logs(report_id: int, case_id: str,
     # INT-1062：下载端点补路由级权限（审计要求，否则「列表端点比下载更严」口径不一致）；
     # ?files= URL 编码 JSON 数组筛选，缺省整包（向后兼容）
     return _handle(ReportQueryService.download_case_logs(report_id, case_id))
+
+
+# ---- API 原始响应按需展开（INT-1752）----
+# 默认不随报告详情下发：仅显式请求时读取，返回单页切片（offset/limit）。
+# 非 API 用例 / 维度无原始响应时 data.available=false，前端据此不显示展开入口。
+@router.get('/{report_id}/cases/{case_id}/dimensions/{dimension_id}/raw-response')
+def get_case_dimension_raw_response(report_id: int, case_id: str, dimension_id: int,
+                                    _: None = require_permission('report:read')):
+    return _handle(ReportQueryService.get_case_dimension_raw_response(
+        report_id, case_id, dimension_id))

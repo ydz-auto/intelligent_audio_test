@@ -119,11 +119,18 @@ class ReportDataTaskMixin:
         return list(leaf_ids)
 
     @staticmethod
-    def _get_dimension_results_batch(result_ids):
+    def _get_dimension_results_batch(result_ids, include_body=False):
+        """批量查询维度评估结果。
+
+        Args:
+            include_body: INT-1752 —— 是否携带 api_request_body / api_raw_response。
+                报告生成链在存在加权维度（weighted_sum_ratio / weighted_wer）时二次
+                拉取带 body 的结果，供策略提取分子/分母；默认不携带以控制载荷。
+        """
         if not result_ids:
             return {}, []
 
-        dim_map = _grpc_get_dim_results(result_ids)
+        dim_map = _grpc_get_dim_results(result_ids, include_body=include_body)
 
         dim_results_map = {}
         dim_stats = {}

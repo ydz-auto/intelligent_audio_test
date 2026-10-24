@@ -139,7 +139,7 @@ class GroupResultMixin:
                 # Multi-round: aggregate before final status update
                 if self.is_multi_round_result(result_id):
                     self.aggregate_round_results(result_id, task_id, test_case_id)
-                self.update_task_case_status(result_id, True, task_id, test_case_id, test_type)
+                self.update_task_case_status(result_id, True, task_id, test_case_id)
 
     @staticmethod
     def _unwrap_calc_result(resp_data):

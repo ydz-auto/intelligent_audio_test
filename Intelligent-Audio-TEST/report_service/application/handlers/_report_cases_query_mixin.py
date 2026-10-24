@@ -106,6 +106,190 @@ class ReportCasesQueryMixin:
         """空分页响应（统一契约）。"""
         return {'items': [], 'total': 0, 'page': 1, 'per_page': 20, 'pages': 1}
 
+    # ---- API 原始响应按需展开（INT-1752）----
+
+    #: 未指定 limit 时的单页字符数
+    RAW_RESPONSE_DEFAULT_LIMIT = 20000
+    #: 单页字符数上限（请求超过按上限截断）
+    RAW_RESPONSE_MAX_LIMIT = 200000
+    #: 单次读取的原始响应字符上限（超出只取前 N 字符并标记 truncated）
+    RAW_RESPONSE_MAX_TOTAL = 8 * 1024 * 1024
+
+    def handle_get_case_dimension_raw_response(self, report_id: int, params_dict: dict) -> dict:
+        """报告详情按需读取某用例某维度的 API 原始响应（INT-1752）。
+
+        默认不随报告详情下发：只有显式请求该端点才读取 api_raw_response，
+        且按 offset/limit 分页返回，HTTP 响应大小恒定，不随原始响应线性增长。
+
+        Args:
+            report_id: 报告 ID
+            params_dict: case_id(str) / dimension_id(int) / offset / limit / round_number
+
+        Returns:
+            dict: available 为 False 时表示该用例/维度没有可展开的原始响应
+            （非 API 用例、维度无原始响应、维度不属于该用例等），message 说明原因；
+            available 为 True 时含 content 分页切片与 total_chars/next_offset/has_more。
+        """
+        import json
+        import time
+
+        started = time.perf_counter()
+
+        def _elapsed():
+            return round((time.perf_counter() - started) * 1000, 2)
+
+        case_id = str(params_dict.get('case_id') or '').strip()
+        try:
+            dimension_id = int(params_dict.get('dimension_id'))
+        except (TypeError, ValueError):
+            return {'available': False, 'message': 'dimension_id 非法', 'elapsed_ms': _elapsed()}
+        try:
+            offset = max(int(params_dict.get('offset') or 0), 0)
+        except (TypeError, ValueError):
+            offset = 0
+        try:
+            limit = int(params_dict.get('limit') or 0)
+        except (TypeError, ValueError):
+            limit = 0
+        if limit <= 0:
+            limit = self.RAW_RESPONSE_DEFAULT_LIMIT
+        limit = min(limit, self.RAW_RESPONSE_MAX_LIMIT)
+        try:
+            round_number = int(params_dict.get('round_number') or 0)
+        except (TypeError, ValueError):
+            round_number = 0
+
+        base = {
+            'available': False,
+            'report_id': report_id,
+            'test_case_id': case_id,
+            'dimension_id': dimension_id,
+            'offset': offset,
+            'limit': limit,
+        }
+
+        aggregate = self.repository.get_by_id(report_id)
+        if aggregate is None:
+            return {**base, 'message': '报告不存在或已删除', 'elapsed_ms': _elapsed()}
+
+        # 用例必须属于该报告（防止跨报告/跨任务探测）
+        report_case_ids = {
+            str(getattr(c, 'test_case_id', '') or '')
+            for c in self.repository.load_cases(report_id) or []
+        }
+        if case_id not in report_case_ids:
+            return {**base, 'message': '该用例不属于此报告', 'elapsed_ms': _elapsed()}
+
+        # 报告覆盖的任务集合：主任务 + 摘要 metadata 里的 task_ids（对比/合并报告）
+        task_ids = []
+        if aggregate.task_id is not None:
+            task_ids.append(aggregate.task_id)
+        try:
+            for summary in self.repository.load_summaries(report_id) or []:
+                metadata = getattr(summary, 'metadata', None) or {}
+                for tid in (metadata.get('task_ids') or []) if isinstance(metadata, dict) else []:
+                    if tid not in task_ids:
+                        task_ids.append(tid)
+        except Exception:  # noqa: BLE001 — 摘要缺失不影响主任务口径
+            logger.debug("load_summaries failed for report %s", report_id, exc_info=True)
+        if not task_ids:
+            return {**base, 'message': '报告未关联任务', 'elapsed_ms': _elapsed()}
+
+        from report_service.infrastructure.clients.grpc_clients import (
+            _grpc_get_dimension_by_ids,
+            _grpc_get_dimension_results_by_result_ids,
+            _grpc_get_test_results_by_task_and_case,
+        )
+
+        try:
+            results = _grpc_get_test_results_by_task_and_case([case_id], task_ids) or []
+        except Exception as e:  # noqa: BLE001
+            logger.warning("raw response: 查询测试结果失败 %s", e)
+            results = []
+
+        # 只有 API 结果才有原始响应入口；设备（e2e）结果直接返回不可用
+        api_results = [r for r in results if getattr(r, 'api_id', None)]
+        if not api_results:
+            return {**base, 'message': '该用例非 API 用例，无 API 原始响应', 'elapsed_ms': _elapsed()}
+
+        result_ids = [getattr(r, 'id', None) for r in api_results if getattr(r, 'id', None) is not None]
+        if not result_ids:
+            return {**base, 'message': '该用例尚无测试结果', 'elapsed_ms': _elapsed()}
+
+        try:
+            dim_map = _grpc_get_dimension_results_by_result_ids(result_ids, include_body=True) or {}
+        except Exception as e:  # noqa: BLE001
+            logger.warning("raw response: 查询维度结果失败 %s", e)
+            dim_map = {}
+
+        candidates = []
+        for rid in result_ids:
+            for item in dim_map.get(rid, []) or []:
+                if not isinstance(item, dict):
+                    continue
+                if item.get('dimension_id') != dimension_id:
+                    continue
+                if item.get('api_raw_response') is None:
+                    continue
+                candidates.append(item)
+        if not candidates:
+            return {**base, 'message': '该维度未留存 API 原始响应', 'elapsed_ms': _elapsed()}
+
+        def _round_of(item):
+            value = item.get('round_number')
+            return value if value is not None else None
+
+        chosen = None
+        if round_number:
+            chosen = next((it for it in candidates if _round_of(it) == round_number), None)
+        if chosen is None:
+            # 未指定轮次：整体（round_number 为空）优先，其次最早一轮
+            chosen = next((it for it in candidates if _round_of(it) is None), None)
+        if chosen is None:
+            chosen = min(candidates, key=lambda it: (_round_of(it) is None, _round_of(it) or 0))
+
+        raw = chosen.get('api_raw_response')
+        if isinstance(raw, str):
+            content = raw
+        else:
+            try:
+                content = json.dumps(raw, ensure_ascii=False, default=str)
+            except (TypeError, ValueError):
+                content = str(raw)
+
+        total_chars = len(content)
+        truncated = total_chars > self.RAW_RESPONSE_MAX_TOTAL
+        if truncated:
+            content = content[:self.RAW_RESPONSE_MAX_TOTAL]
+            total_chars = len(content)
+        page = content[offset:offset + limit]
+        next_offset = offset + len(page)
+        has_more = next_offset < total_chars
+
+        dimension_name = None
+        try:
+            dims = _grpc_get_dimension_by_ids([dimension_id]) or {}
+            dim_dto = dims.get(str(dimension_id)) or dims.get(dimension_id)
+            dimension_name = getattr(dim_dto, 'name', None) if dim_dto is not None else None
+        except Exception:  # noqa: BLE001
+            dimension_name = None
+
+        return {
+            **base,
+            'available': True,
+            'message': '',
+            'dimension_name': dimension_name,
+            'round_number': _round_of(chosen),
+            'source_result_id': chosen.get('test_result_id') or chosen.get('result_id'),
+            'content': page,
+            'content_type': 'application/json',
+            'total_chars': total_chars,
+            'next_offset': next_offset,
+            'has_more': has_more,
+            'truncated': truncated,
+            'elapsed_ms': _elapsed(),
+        }
+
     # ---- 导出 ----
 
     def handle_export_reports(self, report_ids: list, format_type: str) -> dict:

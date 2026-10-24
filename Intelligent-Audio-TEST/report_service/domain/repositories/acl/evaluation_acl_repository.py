@@ -17,9 +17,14 @@ class EvaluationDataAclRepository(ABC):
 
     @abstractmethod
     def get_dimension_results_by_result_ids(
-        self, result_ids,
+        self, result_ids, include_body: bool = False,
     ) -> Dict[int, List[DimensionResultDTO]]:
-        """按 result_ids 查询维度评估结果，返回 {result_id: [DTO, ...]}。"""
+        """按 result_ids 查询维度评估结果，返回 {result_id: [DTO, ...]}。
+
+        Args:
+            include_body: 是否携带 api_request_body / api_raw_response 大字段
+                （INT-1752：加权聚合取分子/分母、报告详情按需展开原始响应时为 True）
+        """
         ...
 
 
