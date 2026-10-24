@@ -359,17 +359,13 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
             return _failure(str(e))
 
     def MapApiResults(self, request, context=None):
-        """映射 API 结果。
+        """已废弃（C0 裁定 4 / INT-1748），固定返回失败。
 
-        解析 raw_results JSON，调用
-        ResultFieldMappingQueryHandler.map_api_results(...)。
+        映射责任已收口到执行侧（产出轮次即生成 `{target_param: value}`），
+        评估侧只按 target_param 取值，不再保留第二个映射入口。
+        RPC 定义保留仅为不动 proto / pb2（避免 protoc 版本漂移）。
         """
-        try:
-            raw_results = _loads(request.raw_results, {})
-            data = self.result_field_mapping_handler.map_api_results(raw_results)
-            return _success(data)
-        except Exception as e:
-            return _failure(str(e))
+        return _failure('已废弃：映射责任在执行侧，评估侧按 target_param 取值')
 
     def ExtractRoundResults(self, request, context=None):
         """提取单轮结果。

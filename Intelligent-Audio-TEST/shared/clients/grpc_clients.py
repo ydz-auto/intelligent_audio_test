@@ -149,7 +149,6 @@ from shared.clients._grpc_algo_audio import (
     algo_extract_result_fields,
     algo_get_timeline_fields,
     algo_get_full_field_mapping,
-    algo_map_api_results,
     algo_extract_round_results,
     algo_extract_case_all_params,
     algo_normalize_algorithm_params,

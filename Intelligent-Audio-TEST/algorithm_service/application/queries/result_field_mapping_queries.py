@@ -13,7 +13,6 @@ from algorithm_service.infrastructure.persistence.param_repository import (
     mapping_repository,
 )
 from shared.utils.log_handler import log_not_emit
-from shared.domain.algorithm_result_strategy import AlgorithmStrategyFactory
 
 
 class ResultFieldMappingQueryHandler:
@@ -35,48 +34,96 @@ class ResultFieldMappingQueryHandler:
 
     @classmethod
     def get_output_fields(cls, algorithm_type: str, test_type: Optional[str] = None) -> List[Dict[str, Any]]:
-        # 通过策略模式消除 voice_llm 硬编码分支
-        strategy = AlgorithmStrategyFactory.get_strategy(algorithm_type)
-        strategy_fields = strategy.get_output_fields(test_type)
-        if strategy_fields is not None:
-            return strategy_fields
+        """读取算法输出字段声明（配置驱动，C0 裁定 3）。
 
+        来源：
+        - 字段清单与类型：`algorithm_api_params(direction=output)`（API 输出声明，
+          优先且唯一）+ `algorithm_device_params(direction=output)`（设备输出声明，
+          供同一算法类型的设备/E2E 结果展示，API 侧已声明的键不重复）；
+          顺序均按 ui_order / id；
+        - API 字段的映射目标键：`param_mappings(source='api', source_direction='output')`，
+          无映射时按恒等（target_param = param_code）。
+
+        配置缺失时明确降级并写 WARNING，不再回落到任何硬编码字段表，避免静默错值。
+
+        Args:
+            algorithm_type: 算法类型
+            test_type: 仅为 RPC 契约保留，输出字段不再按 test_type 分支
+        """
+        if not algorithm_type:
+            return []
         if algorithm_type in cls._output_field_cache:
             return cls._output_field_cache[algorithm_type]
 
         try:
-            mappings = mapping_repository.list_by_algorithm(algorithm_type)
-            output_mappings = [
-                m for m in mappings
-                if isinstance(m, dict)
-                and m.get('source') in ('api', 'device')
-                and m.get('source_direction') == 'output'
-            ]
+            api_declared = cls._output_declarations(algorithm_type, 'api')
+            device_declared = cls._output_declarations(algorithm_type, 'device')
+            if not api_declared and not device_declared:
+                log_not_emit(
+                    'WARNING', 'result_field_mapping_queries',
+                    f'algorithm_type={algorithm_type} 无 direction=output 的输出字段声明，'
+                    f'输出字段按空清单降级（请在算法配置中补输出字段声明）',
+                    category='algorithm', algorithm_type=algorithm_type,
+                )
+                return []
+            if not api_declared:
+                log_not_emit(
+                    'WARNING', 'result_field_mapping_queries',
+                    f'algorithm_type={algorithm_type} 无 algorithm_api_params(direction=output) '
+                    f'声明，API 结果将无输出字段（仅设备声明可用）',
+                    category='algorithm', algorithm_type=algorithm_type,
+                )
 
-            param_type_map = {}
-            device_params = algorithm_param_repository.list_by_algorithm(algorithm_type, 'device')
-            api_params = algorithm_param_repository.list_by_algorithm(algorithm_type, 'api')
-            for p in device_params + api_params:
-                if isinstance(p, dict):
-                    p_code = p.get('param_code') or p.get('code')
-                    if p_code:
-                        param_type_map[p_code] = p.get('param_type') or p.get('type')
+            mappings = mapping_repository.list_by_algorithm(algorithm_type, source_type='api')
+            mapping_by_source: Dict[str, Dict[str, Any]] = {}
+            for m in mappings:
+                if not isinstance(m, dict) or m.get('source') != 'api':
+                    continue
+                if m.get('source_direction') != 'output':
+                    continue
+                source_param = m.get('source_param')
+                if source_param and source_param not in mapping_by_source:
+                    mapping_by_source[source_param] = m
 
-            fields = []
-            for m in output_mappings:
-                field_info = {
-                    'source_param': m.get('source_param'),
-                    'target_param': m.get('target_param'),
-                    'transform_type': m.get('transform_type'),
-                    'dimension_id': m.get('dimension_id'),
-                    'dimension_name': m.get('dimension_name'),
-                    'param_type': cls._resolve_param_type(
-                        param_type_map,
-                        m.get('source_param') or '',
-                        m.get('transform_type') or 'none',
-                    ),
-                }
-                fields.append(field_info)
+            fields: List[Dict[str, Any]] = []
+            seen = set()
+
+            for p in api_declared:
+                param_code = p.get('param_code')
+                if not param_code or param_code in seen:
+                    continue
+                seen.add(param_code)
+                mapping = mapping_by_source.get(param_code) or {}
+                fields.append({
+                    'source': 'api',
+                    'source_param': param_code,
+                    'target_param': mapping.get('target_param') or param_code,
+                    'param_type': p.get('param_type') or 'text',
+                    'label': p.get('label') or p.get('param_name') or param_code,
+                    'dimension_id': mapping.get('dimension_id'),
+                    'dimension_name': None,
+                    'transform_type': mapping.get('transform_type') or 'none',
+                    'field_path': p.get('field_path'),
+                    'ui_order': p.get('ui_order') or 0,
+                })
+
+            for p in device_declared:
+                param_code = p.get('param_code')
+                if not param_code or param_code in seen:
+                    continue
+                seen.add(param_code)
+                fields.append({
+                    'source': 'device',
+                    'source_param': param_code,
+                    'target_param': param_code,
+                    'param_type': p.get('param_type') or 'text',
+                    'label': p.get('label') or p.get('param_name') or param_code,
+                    'dimension_id': None,
+                    'dimension_name': None,
+                    'transform_type': 'none',
+                    'field_path': None,
+                    'ui_order': p.get('ui_order') or 0,
+                })
 
             cls._output_field_cache[algorithm_type] = fields
             return fields
@@ -85,6 +132,16 @@ class ResultFieldMappingQueryHandler:
             log_not_emit('ERROR', 'result_field_mapping_queries',
                          f'Error loading output fields for {algorithm_type}: {e}', category='algorithm')
             return []
+
+    @staticmethod
+    def _output_declarations(algorithm_type: str, param_type: str) -> List[Dict[str, Any]]:
+        """按来源（api / device）读取 direction=output 的声明，按 ui_order / id 排序。"""
+        params = algorithm_param_repository.list_by_algorithm(algorithm_type, param_type)
+        declared = [
+            p for p in params
+            if isinstance(p, dict) and (p.get('direction') or '') == 'output'
+        ]
+        return sorted(declared, key=lambda item: (item.get('ui_order') or 0, item.get('id') or 0))
 
     @classmethod
     def get_reference_output_fields(cls, algorithm_type: str) -> List[Dict[str, Any]]:
@@ -187,7 +244,7 @@ class ResultFieldMappingQueryHandler:
                 'param_code': param_code,
                 'source_param': f.get('source_param'),
                 'param_type': f.get('param_type', 'text'),
-                'label': f.get('dimension_name') or param_code,
+                'label': f.get('label') or f.get('dimension_name') or param_code,
             })
 
         ref_output_fields = cls.get_reference_output_fields(algorithm_type)
@@ -202,23 +259,6 @@ class ResultFieldMappingQueryHandler:
             })
 
         return {'result': result_fields, 'reference': reference_fields}
-
-    @classmethod
-    def map_api_results(cls, algorithm_type, raw_results, test_type=None):
-        # 通过策略模式消除 voice_llm 硬编码分支
-        strategy = AlgorithmStrategyFactory.get_strategy(algorithm_type)
-        mapped = strategy.map_api_results(raw_results, test_type)
-        if mapped is not None:
-            return mapped
-
-        output_fields = cls.get_output_fields(algorithm_type)
-        mapped = {}
-        for field in output_fields:
-            source_param = field.get('source_param', '')
-            target_param = field.get('target_param', source_param)
-            if source_param and source_param in raw_results:
-                mapped[target_param] = raw_results[source_param]
-        return mapped
 
     @classmethod
     def extract_round_results(cls, algorithm_result, test_type=None):

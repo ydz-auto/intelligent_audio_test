@@ -326,15 +326,6 @@ def algo_get_full_field_mapping(algorithm_type: str):
     return _call_algo_query_rpc('GetFullFieldMapping', algorithm_type=algorithm_type or '') or {}
 
 
-def algo_map_api_results(algorithm_type: str, raw_results=None, test_type: str = None):
-    """映射 API 结果"""
-    import json as _json
-    return _call_algo_query_rpc('MapApiResults',
-                               algorithm_type=algorithm_type or '',
-                               raw_results=_json.dumps(raw_results or {}, ensure_ascii=False),
-                               test_type=test_type or '') or {}
-
-
 def algo_extract_round_results(algorithm_result=None, test_type: str = None):
     """提取轮次结果"""
     import json as _json
