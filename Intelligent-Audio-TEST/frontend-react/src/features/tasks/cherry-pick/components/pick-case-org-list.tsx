@@ -96,6 +96,8 @@ export interface PickCaseOrgListProps {
   onSubViewChange: (subView: PickSubView) => void
   /** 设备/结果类型视图节点内嵌时不重复渲染组织控件（视图级已渲染一次） */
   showControls?: boolean
+  /** 算法类型码 → 中文名（真实 GET /algorithm/options，页面级 useAlgorithmLabels 下传） */
+  algorithmLabels?: Record<string, string>
 }
 
 /**
@@ -113,6 +115,7 @@ export function PickCaseOrgList({
   onOrgChange,
   onSubViewChange,
   showControls = true,
+  algorithmLabels,
 }: PickCaseOrgListProps) {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set())
   const [lastSignal, setLastSignal] = useState<{
@@ -160,6 +163,7 @@ export function PickCaseOrgList({
         name={b.name}
         caseId={b.caseId}
         algorithmType={b.algorithmType}
+        algorithmLabels={algorithmLabels}
         tags={b.tags}
         totalDuration={b.totalDuration}
         rounds={b.rounds}

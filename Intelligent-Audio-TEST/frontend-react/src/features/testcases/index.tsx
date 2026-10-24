@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { useAlgorithmLabels } from '@/application/hooks/use-algorithm-options'
 import { useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
 import { useCaseTags, useTagCategories } from '@/application/testcases/use-case-tags'
@@ -87,6 +88,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const allDimsQuery = useEvaluationDimensions()
   /** 评估维度分类（DimensionPicker 分类分组组头；负责人 2026-10-19 口径） */
   const categoriesQuery = useEvaluationCategories()
+  /** 算法类型码 → 中文名（真实 GET /algorithm/options；用例卡算法徽章，INT-1687） */
+  const algorithmLabels = useAlgorithmLabels()
 
   /**
    * 用例列表失败态（INT-1605，与 INT-1560 标签页 / INT-1583 音频页同型）：
@@ -461,6 +464,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
                   hasQueryFilters={hasQueryFilters}
                   selected={selected}
                   tagRegistry={tags}
+                  algorithmLabels={algorithmLabels}
                   callbacks={rowCallbacks}
                   onBatchAction={batch.openBatch}
                   actionCallbacks={groupCallbacks}
@@ -475,6 +479,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
                   onRetry={() => void listQuery.refetch()}
                   selected={selected}
                   tagRegistry={tags}
+                  algorithmLabels={algorithmLabels}
                   callbacks={rowCallbacks}
                   onToggleSelect={toggleSelect}
                   onToggleAll={toggleAll}
