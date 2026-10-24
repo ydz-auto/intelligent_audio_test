@@ -29,6 +29,7 @@ import {
   computeSelectionStats,
   getBranchSelectionState,
   getCartBranchSelectionState,
+  hasResultTypeVariety,
   invertVisibleSelection,
   selectAllVisible,
   toggleBranchSelection,
@@ -998,16 +999,25 @@ describe('购物车三视图树构建（A 组，INT-1694 二次口径：任务�
     expect(collectLeaves(taskOfB1)[0].entryId).toBe('b1')
   })
 
-  it('购物车只有一个来源任务 → A 组任务层省略（叶直挂用例卡）', () => {
+  it('购物车只有一个来源任务 → 任务层仍恒显（购物车/复核抽屉与阶段 2 单任务省略口径相反）', () => {
     const single = [multiCartGroups[0]]
     const caseTree = buildCartCaseView(single)
     const device = collectDevices(collectCases(caseTree)[0].children)[0]
     const rt = collectResultTypes(device.children)[0]
-    expect(rt.children.every((n) => n.kind === 'leaf')).toBe(true)
+    const caseTasks = collectTasks(rt.children)
+    expect(caseTasks.map((t) => t.name)).toEqual(['任务A'])
+    expect(collectLeaves(caseTasks[0])[0].entryId).toBe('a1')
     const deviceTree = buildCartDeviceView(single)
     const rt2 = collectResultTypes(collectDevices(deviceTree)[0].children)[0]
     const caseNode = collectCases(collectOrgs(rt2.children)[0].children)[0]
-    expect(caseNode.children.every((n) => n.kind === 'leaf')).toBe(true)
+    const deviceTasks = collectTasks(caseNode.children)
+    expect(deviceTasks.map((t) => t.name)).toEqual(['任务A'])
+    expect(collectLeaves(deviceTasks[0])[0].entryId).toBe('a1')
+    const rtTree = buildCartResultTypeView(single)
+    const rtCase = collectCases(
+      collectOrgs(collectDevices(collectResultTypes(rtTree)[0].children)[0].children)[0].children
+    )[0]
+    expect(collectTasks(rtCase.children).map((t) => t.name)).toEqual(['任务A'])
   })
 
   it('三视图共享同一购物车条目集（同一 entryId 集，§4.2 切换不丢条目）', () => {
@@ -1168,5 +1178,25 @@ describe('叶 toggle', () => {
     const tree = buildPickTree(CANDIDATES)
     const ids = collectVisibleResultIds(tree)
     expect(ids.sort()).toEqual([1, 2, 3, 4, 5, 6])
+  })
+})
+
+describe('结果类型种类判定（负责人 2026-10-24T12:39Z：<2 种隐藏结果类型视图入口）', () => {
+  it('全部同一种 → 无区分度', () => {
+    expect(hasResultTypeVariety(['default', 'default', 'default'])).toBe(false)
+  })
+
+  it('≥2 种 → 有区分度', () => {
+    expect(hasResultTypeVariety(['default', 'real-time'])).toBe(true)
+    expect(hasResultTypeVariety(['default', null])).toBe(true)
+  })
+
+  it('null / 空串折叠为「结果类型待补充」兜底桶，同值不算两种', () => {
+    expect(hasResultTypeVariety([null, undefined, '', ''])).toBe(false)
+    expect(hasResultTypeVariety([null, 'default'])).toBe(true)
+  })
+
+  it('空集（加载中/无候选）→ 无区分度', () => {
+    expect(hasResultTypeVariety([])).toBe(false)
   })
 })

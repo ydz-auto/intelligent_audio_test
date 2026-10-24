@@ -17,10 +17,13 @@ export type CartView = 'task' | 'case' | 'device' | 'resultType'
 export function CartViewSwitcher({
   view,
   onChange,
+  showResultType = true,
   className,
 }: {
   view: CartView
   onChange: (view: CartView) => void
+  /** 结果类型种类 <2 时不渲染「结果类型视图」入口（负责人 2026-10-24T12:39Z 追加口径） */
+  showResultType?: boolean
   className?: string
 }) {
   return (
@@ -54,15 +57,17 @@ export function CartViewSwitcher({
         <Smartphone aria-hidden='true' className='size-3.5' />
         设备视图
       </Button>
-      <Button
-        variant={view === 'resultType' ? 'default' : 'ghost'}
-        size='sm'
-        className='h-6 gap-1 px-2 text-xs'
-        onClick={() => onChange('resultType')}
-      >
-        <Tag aria-hidden='true' className='size-3.5' />
-        结果类型视图
-      </Button>
+      {showResultType && (
+        <Button
+          variant={view === 'resultType' ? 'default' : 'ghost'}
+          size='sm'
+          className='h-6 gap-1 px-2 text-xs'
+          onClick={() => onChange('resultType')}
+        >
+          <Tag aria-hidden='true' className='size-3.5' />
+          结果类型视图
+        </Button>
+      )}
     </div>
   )
 }

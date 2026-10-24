@@ -6,12 +6,15 @@
  * 用例子模式渲染用例层组织控件（复用阶段 2 的 usePickOrg + PickCaseOrgControls）。
  */
 import { ListChecks, Save, Smartphone, Tag, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import { usePickOrg } from '@/application/tasks/cherry-pick/use-pick-org'
-import type { CartTaskSubView } from '@/domain/lib/cherry-pick-tree'
+import {
+  hasResultTypeVariety,
+  type CartTaskSubView,
+} from '@/domain/lib/cherry-pick-tree'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -68,6 +71,23 @@ export function CartPanel({
   /** 用例层组织（用例视图顶层 + 任务视图用例子模式共享，复用阶段 2 usePickOrg） */
   const { org, subView, setOrg, setSubView } = usePickOrg()
 
+  /** 结果类型只有 1 种时不渲染「结果类型视图」与「结果类型」子模式入口
+   *  （负责人 2026-10-24T12:39Z 追加口径；真实库 result_type 全为 default 时该视图无区分度） */
+  const resultTypeVariety = useMemo(
+    () =>
+      hasResultTypeVariety(
+        groups.flatMap((g) => g.entries.map((e) => e.sourceResultType))
+      ),
+    [groups]
+  )
+
+  /** 停在已隐藏的结果类型入口上时回落默认视图（任务视图 / 用例子模式） */
+  useEffect(() => {
+    if (resultTypeVariety) return
+    if (view === 'resultType') setView('task')
+    if (taskSubView === 'resultType') setTaskSubView('case')
+  }, [resultTypeVariety, view, taskSubView])
+
   const selectedCount = selectedEntryIds.size
 
   const askRemove = (title: string, desc: string, onConfirm: () => void) => {
@@ -122,7 +142,12 @@ export function CartPanel({
           <>
             {/* §4.2 视图切换器（任务视图默认 + 用例/设备/结果类型；购物车抽屉与复核步骤共用） */}
             <div className='mb-3 flex flex-wrap items-center gap-2'>
-              <CartViewSwitcher view={view} onChange={setView} className='w-max' />
+              <CartViewSwitcher
+                view={view}
+                onChange={setView}
+                showResultType={resultTypeVariety}
+                className='w-max'
+              />
               {/* 任务视图：任务下再分三子模式（INT-1694 B 组） */}
               {view === 'task' && (
                 <div className='bg-muted/60 flex items-center gap-0.5 rounded-lg p-0.5'>
@@ -144,15 +169,17 @@ export function CartPanel({
                     <Smartphone aria-hidden='true' className='size-3.5' />
                     设备
                   </Button>
-                  <Button
-                    variant={taskSubView === 'resultType' ? 'default' : 'ghost'}
-                    size='sm'
-                    className='h-6 gap-1 px-2 text-xs'
-                    onClick={() => setTaskSubView('resultType')}
-                  >
-                    <Tag aria-hidden='true' className='size-3.5' />
-                    结果类型
-                  </Button>
+                  {resultTypeVariety && (
+                    <Button
+                      variant={taskSubView === 'resultType' ? 'default' : 'ghost'}
+                      size='sm'
+                      className='h-6 gap-1 px-2 text-xs'
+                      onClick={() => setTaskSubView('resultType')}
+                    >
+                      <Tag aria-hidden='true' className='size-3.5' />
+                      结果类型
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -190,8 +217,6 @@ export function CartPanel({
               taskSubView={taskSubView}
               org={org}
               subView={subView}
-              onOrgChange={setOrg}
-              onSubViewChange={setSubView}
               selectedEntryIds={selectedEntryIds}
               readOnly={readOnly}
               onToggleLeaf={(leaf: CartTreeLeaf) =>

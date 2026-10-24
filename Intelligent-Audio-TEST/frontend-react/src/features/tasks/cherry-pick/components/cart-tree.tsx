@@ -48,7 +48,6 @@ import { CaseSubGroupHeader } from '@/features/testcases/components/case-sub-gro
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { cn } from '@/lib/utils'
 import { PickCaseCard } from '@/features/tasks/cherry-pick/components/pick-case-card'
-import { PickCaseOrgControls } from '@/features/tasks/cherry-pick/components/pick-case-org-list'
 import type { CartView } from '@/features/tasks/cherry-pick/components/cart-view-switcher'
 
 function LeafRow({
@@ -314,8 +313,6 @@ export interface CartTreeProps {
   org?: PickOrgDimension
   /** 用例层子视图（平铺 / 交叉） */
   subView?: PickSubView
-  onOrgChange?: (org: PickOrgDimension) => void
-  onSubViewChange?: (subView: PickSubView) => void
   className?: string
 }
 
@@ -336,8 +333,6 @@ export function CartTree({
   expandSignal,
   org = 'group',
   subView = 'flat',
-  onOrgChange,
-  onSubViewChange,
   className,
 }: CartTreeProps) {
   /** 视图树（纯函数重建；A 组三视图任务在最末一级，任务视图任务在第一级；
@@ -556,16 +551,6 @@ export function CartTree({
 
   return (
     <div className={cn('flex flex-col', className)}>
-      {rootIsCaseLayer && onOrgChange && onSubViewChange && (
-        <div className='px-1 pb-2'>
-          <PickCaseOrgControls
-            org={org}
-            subView={subView}
-            onOrgChange={onOrgChange}
-            onSubViewChange={onSubViewChange}
-          />
-        </div>
-      )}
       {rootIsCaseLayer
         ? renderCaseOrgLayer(items as CartTreeBranch[])
         : items.map((item) => renderCartItem(item, 0))}

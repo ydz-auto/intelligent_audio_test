@@ -38,6 +38,7 @@ import { ApiError } from '@/infrastructure/api/api-error'
 import {
   clearSelection,
   computeSelectionStats,
+  hasResultTypeVariety,
   invertVisibleSelection,
   selectAllVisible,
   toggleBranchSelection,
@@ -92,6 +93,11 @@ export function PickStep({
   // 设备 / 结果类型视图的组织层纳入树构建（result_type 之下、用例卡之上）
   const deviceView = useCherryPickDeviceView(candidatesQuery.data, org, subView)
   const resultTypeView = useCherryPickResultTypeView(candidatesQuery.data, org, subView)
+  /** 结果类型只有 1 种时不渲染「结果类型视图」入口（负责人 2026-10-24T12:39Z 追加口径） */
+  const resultTypeVariety = useMemo(
+    () => hasResultTypeVariety((candidatesQuery.data ?? []).map((c) => c.resultType)),
+    [candidatesQuery.data]
+  )
   const addEntries = usePickCartStore((s) => s.addEntries)
 
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(
@@ -104,6 +110,11 @@ export function PickStep({
     tick: 0,
   })
   const [adding, setAdding] = useState(false)
+
+  /** 停在已隐藏的结果类型视图上时回落默认视图（用例视图） */
+  useEffect(() => {
+    if (!resultTypeVariety && view === 'resultType') setView('case')
+  }, [resultTypeVariety, view])
 
   /** 阶段 1 任务行（服务端已按 sort_by/sort_order 排序，前端不再聚合/重排） */
   const taskRows = pickableTasksQuery.items
@@ -279,15 +290,17 @@ export function PickStep({
             <Smartphone aria-hidden='true' className='size-3.5' />
             设备视图
           </Button>
-          <Button
-            variant={view === 'resultType' ? 'default' : 'ghost'}
-            size='sm'
-            className='h-6 gap-1 px-2 text-xs'
-            onClick={() => setView('resultType')}
-          >
-            <Tag aria-hidden='true' className='size-3.5' />
-            结果类型视图
-          </Button>
+          {resultTypeVariety && (
+            <Button
+              variant={view === 'resultType' ? 'default' : 'ghost'}
+              size='sm'
+              className='h-6 gap-1 px-2 text-xs'
+              onClick={() => setView('resultType')}
+            >
+              <Tag aria-hidden='true' className='size-3.5' />
+              结果类型视图
+            </Button>
+          )}
         </div>
         <Button
           variant='ghost'

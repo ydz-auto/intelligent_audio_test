@@ -1101,14 +1101,28 @@ function cartEntriesOf(groups: PickCartGroup[]): PickCartEntry[] {
   return groups.flatMap((g) => g.entries)
 }
 
-/** A 组省略判定：整棵购物车只有 1 个来源任务时任务层恒定单值 */
-function omitCartTaskLayer(groups: PickCartGroup[]): boolean {
-  return shouldOmitTaskLayer(cartEntriesOf(groups).map((e) => e.sourceTaskId))
+/**
+ * 结果类型维度是否具备多样性：种类 <2 时「结果类型视图」入口不渲染
+ * （负责人 2026-10-24T12:39Z 追加口径；真实库 result_type 全为 default 时该视图与默认视图同形）。
+ * null / 空串折叠成「结果类型待补充」兜底桶，与树内分组口径一致，同样计入种类。
+ */
+export function hasResultTypeVariety(
+  resultTypes: readonly (string | null | undefined)[]
+): boolean {
+  const seen = new Set<string>()
+  for (const resultType of resultTypes) {
+    seen.add((resultType ?? '').trim() || PENDING_RESULT_TYPE_KEY)
+    if (seen.size >= 2) return true
+  }
+  return false
 }
 
-/** 购物车用例视图（A 组）：用例（PickCaseCard）→ 设备/API → result_type → 任务 → 叶 */
+/**
+ * 购物车用例视图（A 组）：用例（PickCaseCard）→ 设备/API → result_type → 任务 → 叶。
+ * 购物车 / 复核抽屉恒显任务层（单任务也不省略，与阶段 2 单任务省略口径相反）。
+ */
 export function buildCartCaseView(groups: PickCartGroup[]): CartTreeBranch[] {
-  return cartCaseViewNodes(cartEntriesOf(groups), 'cv', true, omitCartTaskLayer(groups))
+  return cartCaseViewNodes(cartEntriesOf(groups), 'cv', true, false)
 }
 
 /** 购物车设备视图（A 组）：设备/API → result_type → 组织层 → 用例（PickCaseCard）→ 任务 → 叶 */
@@ -1121,7 +1135,7 @@ export function buildCartDeviceView(
     cartEntriesOf(groups),
     'dv',
     true,
-    omitCartTaskLayer(groups),
+    false,
     org,
     subView
   )
@@ -1137,7 +1151,7 @@ export function buildCartResultTypeView(
     cartEntriesOf(groups),
     'rtv',
     true,
-    omitCartTaskLayer(groups),
+    false,
     org,
     subView
   )
