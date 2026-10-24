@@ -376,6 +376,51 @@ class TestRawResponseHandler:
         assert '未留存' in data['message']
 
 
+class TestRawResponseRealClientContract:
+    """真实 gRPC 客户端契约：_grpc_get_test_results_by_task_and_case 返回 list[dict]
+    （report_service/infrastructure/clients/grpc_clients.py:129-135 经 _dto_to_dict），
+    _grpc_get_dimension_by_ids 返回 {id_str: dict}（:170-176）。
+
+    handler 必须按 dict 取字段；按对象属性取（getattr）会让真实 API 用例恒判为
+    「非 API 用例」——INT-1752 实测（主库 task 598 / 结果 6952，api_id=285）。
+    """
+
+    _CASE = '8f5fe088-6a42-4dd2-a1dc-7972de135283'
+
+    def _repo(self):
+        return _FakeRepo(cases=(self._CASE,))
+
+    def test_api_case_available_with_dict_results(self):
+        import json
+        raw = {'code': 0, 'data': {'result': {'errors': 1, 'length': 100}}}
+        dict_results = [{'id': 11, 'api_id': 285, 'test_case_id': self._CASE}]
+        dim_items = {11: [{'test_result_id': 11, 'dimension_id': 9, 'round_number': None,
+                           'api_raw_response': raw}]}
+        from report_service.infrastructure.clients import grpc_clients as gc
+        with patch.object(gc, '_grpc_get_test_results_by_task_and_case', return_value=dict_results), \
+             patch.object(gc, '_grpc_get_dimension_results_by_result_ids', return_value=dim_items), \
+             patch.object(gc, '_grpc_get_dimension_by_ids', return_value={}):
+            data = _handler(self._repo()).handle_get_case_dimension_raw_response(
+                3, {'case_id': self._CASE, 'dimension_id': 9})
+        assert data['available'] is True, data.get('message')
+        assert json.loads(data['content']) == raw
+        assert data['source_result_id'] == 11
+
+    def test_dimension_name_resolved_from_dict_payload(self):
+        raw = {'code': 0, 'data': {'result': {'errors': 1, 'length': 100}}}
+        dict_results = [{'id': 11, 'api_id': 285, 'test_case_id': self._CASE}]
+        dim_items = {11: [{'test_result_id': 11, 'dimension_id': 9, 'round_number': None,
+                           'api_raw_response': raw}]}
+        # 真实 _grpc_get_dimension_by_ids 返回 {dim_id_str: dict}
+        from report_service.infrastructure.clients import grpc_clients as gc
+        with patch.object(gc, '_grpc_get_test_results_by_task_and_case', return_value=dict_results), \
+             patch.object(gc, '_grpc_get_dimension_results_by_result_ids', return_value=dim_items), \
+             patch.object(gc, '_grpc_get_dimension_by_ids', return_value={'9': {'id': 9, 'name': 'WER'}}):
+            data = _handler(self._repo()).handle_get_case_dimension_raw_response(
+                3, {'case_id': self._CASE, 'dimension_id': 9})
+        assert data.get('dimension_name') == 'WER'
+
+
 # ---------------- 5. update_task_case_status 参数收敛 ----------------
 
 def test_update_task_case_status_has_no_unused_test_type_param():
