@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from shared.models.common_enums import (
     AlarmStatus,
+    DeviceKind,
     DeviceStatusEventSource,
     DeviceStatusEventType,
 )
@@ -30,6 +31,12 @@ from device_service.infrastructure.persistence.models import (
     DeviceStatusEvent,
 )
 from device_service.domain.repositories import DeviceMonitorRepositoryInterface
+
+# 本仓储的读取全部按「测试设备 id」语义（契约 §1.2：播放设备不进状态历史与监控统计）。
+# device_status_events 用 device_id 指向两张表（devices / playback_devices），两张表
+# id 各自自增且真实库已重叠，所以每条按测试设备语义的查询都必须带 device_kind 过滤
+# （INT-1679）。kind 不作为对外参数：本期没有「播放设备历史」需求。
+_TEST_KIND = DeviceKind.TEST.value
 
 # 状态重放只认 online/offline 事件（health_check / operation 的 to_status 不参与可用率）
 _STATE_EVENT_TYPES = (
@@ -66,6 +73,7 @@ def _event_to_dict(po: DeviceStatusEvent) -> dict:
     return {
         'id': po.id,
         'device_id': po.device_id,
+        'device_kind': po.device_kind,
         'event_type': po.event_type,
         'from_status': po.from_status,
         'to_status': po.to_status,
@@ -369,6 +377,7 @@ def _daily_metric_sources(session, dialect_name: str, scope_ids: List[int],
     """
     filters = (
         DeviceStatusEvent.device_id.in_(scope_ids),
+        DeviceStatusEvent.device_kind == _TEST_KIND,
         DeviceStatusEvent.created_at >= range_start,
         DeviceStatusEvent.created_at < range_end,
         _test_device_event_filter(),
@@ -457,6 +466,7 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
         session = get_db_session()
         po = DeviceStatusEvent(
             device_id=int(data['device_id']),
+            device_kind=data.get('device_kind') or _TEST_KIND,
             event_type=data['event_type'],
             from_status=data.get('from_status'),
             to_status=data.get('to_status'),
@@ -477,7 +487,10 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
         必须排除；本期不提供播放侧历史查询参数（INT-1677）。
         """
         session = get_db_session()
-        query = session.query(DeviceStatusEvent).filter(_test_device_event_filter())
+        query = session.query(DeviceStatusEvent).filter(
+            DeviceStatusEvent.device_kind == _TEST_KIND,
+            _test_device_event_filter(),
+        )
         if device_ids:
             query = query.filter(DeviceStatusEvent.device_id.in_([int(d) for d in device_ids]))
         if event_type:
@@ -510,6 +523,7 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
             DeviceStatusEvent.success,
         ).filter(
             DeviceStatusEvent.device_id.in_([int(d) for d in device_ids]),
+            DeviceStatusEvent.device_kind == _TEST_KIND,
             DeviceStatusEvent.event_type == DeviceStatusEventType.HEALTH_CHECK.value,
             # 防御性一致：播放侧当前不写 health_check，仍按同一谓词排除（INT-1677）
             _test_device_event_filter(),
@@ -539,6 +553,7 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
             func.max(DeviceStatusEvent.id).label('max_id'),
         ).filter(
             DeviceStatusEvent.device_id.in_([int(d) for d in device_ids]),
+            DeviceStatusEvent.device_kind == _TEST_KIND,
             DeviceStatusEvent.event_type.in_(
                 [DeviceStatusEventType.ONLINE.value, DeviceStatusEventType.OFFLINE.value]),
             # 防御性一致：播放侧当前不写 online/offline，仍按同一谓词排除（INT-1677）
@@ -560,6 +575,7 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
             func.max(DeviceStatusEvent.id).label('max_id'),
         ).filter(
             DeviceStatusEvent.device_id.in_([int(d) for d in device_ids]),
+            DeviceStatusEvent.device_kind == _TEST_KIND,
             DeviceStatusEvent.event_type == DeviceStatusEventType.HEALTH_CHECK.value,
         ).group_by(DeviceStatusEvent.device_id).subquery()
         rows = session.query(DeviceStatusEvent).join(
@@ -599,6 +615,7 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
             select(func.max(DeviceStatusEvent.id))
             .where(
                 DeviceStatusEvent.device_id.in_(device_ids),
+                DeviceStatusEvent.device_kind == _TEST_KIND,
                 DeviceStatusEvent.event_type.in_(_STATE_EVENT_TYPES),
                 DeviceStatusEvent.created_at < range_start,
                 _test_device_event_filter(),
@@ -608,6 +625,7 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
         daily_query = _daily_stats_query(session, device_ids, range_start, range_end)
         range_state_query = _state_rows_query(session, [
             DeviceStatusEvent.device_id.in_(device_ids),
+            DeviceStatusEvent.device_kind == _TEST_KIND,
             DeviceStatusEvent.event_type.in_(_STATE_EVENT_TYPES),
             DeviceStatusEvent.created_at >= range_start,
             DeviceStatusEvent.created_at < range_end,

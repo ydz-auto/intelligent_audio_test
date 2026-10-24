@@ -494,6 +494,19 @@ class DeviceGroupType(str, Enum):
     PLAYBACK = 'playback'  # 播放设备组
 
 
+class DeviceKind(str, Enum):
+    """设备状态事件的设备类型枚举（INT-1679）
+
+    区分 `device_status_events` 里一条事件属于哪张设备表：`devices`（测试设备）
+    还是 `playback_devices`（播放设备）。两张表的 id 各自自增、真实库里已重叠，
+    只凭 `device_id` 无法判断来源；查询侧只统计测试设备（契约 §1.2）必须靠本列。
+
+    与 `DeviceGroupType` 语义不同（那是设备**分组**类型），不复用、不双口径。
+    """
+    TEST = 'test'          # 测试设备（被测设备，devices 表）
+    PLAYBACK = 'playback'  # 播放设备（playback_devices 表）
+
+
 class LaboratoryStatus(str, Enum):
     """实验室状态枚举（INT-655 实验室管理；实验室扩展功能设计.md §4.1/§6.26）"""
     ACTIVE = 'active'          # 启用

@@ -13,6 +13,7 @@ import threading
 from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit
 from shared.models.common_enums import (
+    DeviceKind,
     DeviceStatusEventSource,
     DeviceStatusEventType,
     PlaybackControlAction,
@@ -434,8 +435,9 @@ class PlaybackCommandService:
     def _record_control_event(device, from_status: str, to_status: str, action: str, **extra) -> None:
         """落一条 operation 事件（detail.operation=动作名），失败不影响主流程
 
-        ``source`` 必须是 PLAYBACK_OPERATION：播放设备与测试设备共用 device_status_events
-        的 device_id 空间，读测试设备口径按 source 排除播放控制事件（INT-1677）。
+        ``source`` 必须是 PLAYBACK_OPERATION（INT-1677）、``device_kind='playback'``
+        （INT-1679）：播放设备与测试设备共用 device_status_events 的 device_id 空间，
+        读测试设备口径按 source 与 device_kind 双重排除播放控制事件（契约 §1.2）。
         """
         detail = {'operation': action}
         detail.update({k: v for k, v in extra.items() if v is not None})
@@ -449,6 +451,7 @@ class PlaybackCommandService:
                 source=DeviceStatusEventSource.PLAYBACK_OPERATION.value,
                 success=True,
                 detail=detail,
+                device_kind=DeviceKind.PLAYBACK.value,
             )
         except Exception:
             logger.warning("播放设备控制事件落库失败 device_id=%s action=%s", device.id, action, exc_info=True)

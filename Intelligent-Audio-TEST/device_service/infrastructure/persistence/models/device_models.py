@@ -10,6 +10,7 @@ INT-655 新增表：laboratories（实验室，见 scripts/migrations/202608/add
 P5 改造：从 shared/models/models/device_models.py 真正下沉到本服务。
 """
 from shared.models.database import Base, utc8now
+from shared.models.common_enums import DeviceKind
 from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
     Index, text,
@@ -175,6 +176,9 @@ class DeviceStatusEvent(Base):
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
     device_id = Column(Integer, nullable=False, index=True, comment='设备ID')
+    device_kind = Column(String(20), nullable=False, default=DeviceKind.TEST.value,
+                         server_default=DeviceKind.TEST.value, index=False,
+                         comment='设备类型 (test/playback)')
     event_type = Column(String(20), nullable=False, comment='事件类型 (online/offline/health_check/operation)')
     from_status = Column(String(20), comment='变更前状态')
     to_status = Column(String(20), comment='变更后状态')

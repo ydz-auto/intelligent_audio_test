@@ -168,6 +168,13 @@ BOOTSTRAP_STEPS = [
     #     该模块的存量库兜底建表 + 索引 + 唯一约束。脚本幂等（表/索引/约束存在
     #     即 SKIP），全新库为全 SKIP。
     ('python', 'scripts/migrations/202610/add_transfer_agent_tables_int1623.py'),
+    # ㊶ device_status_events 补设备类型列 device_kind（INT-1679）：
+    #     播放设备控制事件与测试设备事件 id 空间重叠，查询侧按 device_kind='test'
+    #     过滤（契约 §1.2）。create_all 只建缺失的表、不给存量表补列，建库早于本卡
+    #     的存量库在引导链里自愈；回填只命中 detail.operation ∈ 三个播放控制动作。
+    #     脚本幂等（列存在即 SKIP、回填按值比对），全新库为全 SKIP；默认 dry-run，
+    #     引导链必须带 --apply。
+    ('python', 'scripts/migrations/202610/add_device_kind_int1679.py', '--apply'),
 ]
 
 
