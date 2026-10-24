@@ -21,6 +21,14 @@ export interface RuleRow {
 }
 
 /**
+ * rule 中除 `rules` 外的其余键（INT-1732）。
+ * 后端把 rule 当不透明 JSON 原样落库（api_gateway DimensionInput.rule: Dict，命令侧无结构收口），
+ * 真实库里 55/63 维度带 `defaultScore`。表单只编辑 rules 编辑器，其余键必须随保存原样带回，
+ * 否则「打开编辑 → 不改字段 → 保存」会静默丢掉 defaultScore（P2）。
+ */
+type RuleExtra = Record<string, unknown>
+
+/**
  * 所需输入配置行（API配置节「所需输入配置」编辑器行；对齐 DimensionRequiredInput：
  * paramCode / paramName / fieldType / required / defaultValue / helpText / uiOrder）。
  * INT-1690：编辑器只有「显示标签」一个可见口径（绑定 paramName），旧隐藏 label 字段
@@ -132,7 +140,10 @@ export const dimensionFormSchema = z
     decimalPlaces: z.number().min(0).max(4, '小数位数 0-4'),
     weight: z.number().min(WEIGHT_MIN).max(WEIGHT_MAX, '权重 1-10'),
     estimatedExecTime: z.number().min(1, '预计执行时间 ≥1 秒'),
-    rule: z.array(ruleRowSchema).min(1, '请至少配置一条评分规则'),
+    // INT-1732：评分规则可空（真实库 55/63 维度 rules=[]），不再强制至少 1 条
+    rule: z.array(ruleRowSchema),
+    /** rule 中除 rules 外的其余键（defaultScore 等），保存时原样带回 */
+    ruleExtra: z.record(z.string(), z.unknown()),
     llmModel: z.string(),
     llmPromptTemplate: z.string(),
     llmMaxTokens: z.number().min(1).max(8192),
@@ -188,6 +199,7 @@ export function emptyDimensionFormValues(): DimensionFormValues {
     decimalPlaces: 2,
     weight: 5,
     estimatedExecTime: 5,
+    // 默认 5 条规则只用于新建（编辑反填不再兜底，见 toDimensionFormValues INT-1732）
     rule: [
       { condition: '>=', value: 95, score: 10 },
       { condition: '>=', value: 90, score: 9 },
@@ -195,6 +207,7 @@ export function emptyDimensionFormValues(): DimensionFormValues {
       { condition: '>=', value: 70, score: 7 },
       { condition: '<', value: 70, score: 0 },
     ],
+    ruleExtra: {},
     llmModel: '',
     llmPromptTemplate: '',
     llmMaxTokens: 1024,
@@ -244,9 +257,11 @@ export function emptyDimensionFormValues(): DimensionFormValues {
       },
     ],
     apiEndpoints: [
+      // INT-1732 P3-3：V9.7.10 新建端点 URL 为空（此前预填 api.example.com 示例地址，
+      // 不改直接保存就落一条假端点）
       {
-        url: 'https://api.example.com/evaluation/accuracy',
-        name: '主评估端点',
+        url: '',
+        name: '',
         priority: 1,
         maxProcess: 5,
         maxTimeout: 30,
@@ -256,18 +271,43 @@ export function emptyDimensionFormValues(): DimensionFormValues {
   }
 }
 
+/**
+ * rule 归一为普通对象（INT-1732）。
+ * - 对象：浅拷贝（含 rules 与 defaultScore 等）
+ * - JSON 字符串（历史数据）：解析，失败按空对象
+ * - 数组（更早的 rule 直接是规则列表）：包成 { rules }
+ * - null/其它：空对象
+ */
+function parseRuleObject(rule: Dimension['rule']): RuleExtra {
+  if (rule == null) return {}
+  if (Array.isArray(rule)) return { rules: rule }
+  if (typeof rule === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(rule)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return { ...(parsed as RuleExtra) }
+      }
+      if (Array.isArray(parsed)) return { rules: parsed }
+    } catch {
+      return {}
+    }
+    return {}
+  }
+  return typeof rule === 'object' ? { ...rule } : {}
+}
+
 /** 编辑态 Dimension → 表单值（反填） */
 export function toDimensionFormValues(dimension: Dimension): DimensionFormValues {
-  const rules = Array.isArray(dimension.rule)
-    ? dimension.rule
-    : typeof dimension.rule === 'object' && dimension.rule?.rules
-      ? dimension.rule.rules
-      : []
-  const ruleRows: RuleRow[] = rules.map((r) => ({
-    condition: String(r.condition),
-    value: Number(r.value),
-    score: Number(r.score),
-  }))
+  // INT-1732：rule 是后端不透明 JSON（可能是对象，历史数据也可能是 JSON 字符串）。
+  // 解析成对象后拆两半：rules 进规则编辑器，其余键（defaultScore 等）进 ruleExtra 原样带回。
+  const { rules: parsedRules, ...ruleExtra } = parseRuleObject(dimension.rule)
+  const ruleRows: RuleRow[] = (Array.isArray(parsedRules) ? parsedRules : [])
+    .filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === 'object')
+    .map((r) => ({
+      condition: String(r.condition),
+      value: Number(r.value),
+      score: Number(r.score),
+    }))
   // 子编辑器反填（P3-2）：缺省（null/空）时回退默认行，保证编辑态可继续编辑
   // INT-1690：显示标签只有 paramName 一个口径；旧数据 param_name 缺失时仍可用 label 兜底回显
   const requiredInputs = (dimension.requiredInputs ?? []).map((ri) => ({
@@ -321,7 +361,9 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
     decimalPlaces: dimension.decimalPlaces ?? 2,
     weight: dimension.weight ?? 5,
     estimatedExecTime: dimension.estimatedExecTime ?? 5,
-    rule: ruleRows.length > 0 ? ruleRows : emptyDimensionFormValues().rule,
+    // INT-1732：空规则就空着（不再用默认 5 条兜底——那会让真实维度凭空出现规则、保存即覆盖）
+    rule: ruleRows,
+    ruleExtra,
     llmModel: dimension.llmJudgeConfig?.model ?? '',
     llmPromptTemplate: dimension.llmJudgeConfig?.promptTemplate ?? '',
     llmMaxTokens: dimension.llmJudgeConfig?.maxTokens ?? 1024,
@@ -416,7 +458,9 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
     decimalPlaces: values.decimalPlaces,
     weight: values.weight,
     estimatedExecTime: values.estimatedExecTime,
-    rule: { rules: values.rule },
+    // INT-1732：rules 以编辑器为准，rule 其余键（defaultScore 等）原样保留；
+    // 空规则维度原样保存后 rule 仍是 { rules: [], defaultScore }，不再被默认模板覆盖
+    rule: { ...values.ruleExtra, rules: values.rule },
     statisticMethod: values.statisticMethod,
     aggDenominator: values.aggDenominator,
     excludeRounds: values.excludeRounds.map(Number),

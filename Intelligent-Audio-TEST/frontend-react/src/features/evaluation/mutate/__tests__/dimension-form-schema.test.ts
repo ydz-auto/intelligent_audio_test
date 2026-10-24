@@ -74,6 +74,12 @@ describe('emptyDimensionFormValues', () => {
     expect(values.apiEndpoints.length).toBeGreaterThan(0)
     expect(values.apiEndpoints[0].priority).toBe(1)
   })
+
+  it('默认 API 端点 URL 为空（INT-1732 P3-3：不再预填 api.example.com 假端点）', () => {
+    const values = emptyDimensionFormValues()
+    expect(values.apiEndpoints[0].url).toBe('')
+    expect(values.apiEndpoints[0].name).toBe('')
+  })
 })
 
 describe('toDimensionFormValues', () => {
@@ -290,6 +296,80 @@ describe('toDimensionSaveInput', () => {
     const dto = toDimensionInputDto(toDimensionSaveInput(values))
     const outputFields = dto.output_fields as Array<Record<string, unknown>>
     expect(outputFields[0].param_name).toBe('输出新标签C')
+  })
+})
+
+describe('INT-1732 评分规则不再被默认模板顶替', () => {
+  it('编辑空规则维度：反填不留默认 5 条，原样保存 rule 仍为 {rules:[], defaultScore}', () => {
+    const dimension: Dimension = {
+      ...mockDimension,
+      resultType: 0,
+      rule: { rules: [], defaultScore: 7 },
+    }
+    const values = toDimensionFormValues(dimension)
+    expect(values.rule).toEqual([])
+    const input = toDimensionSaveInput(values)
+    expect(input.rule).toEqual({ rules: [], defaultScore: 7 })
+    expect(input.resultType).toBe(0)
+  })
+
+  it('rule 里的其它键（defaultScore 之外）也在保存时保留', () => {
+    const dimension: Dimension = {
+      ...mockDimension,
+      rule: { rules: [], defaultScore: 0, type: 'threshold', min: 0, max: 1 },
+    }
+    const input = toDimensionSaveInput(toDimensionFormValues(dimension))
+    expect(input.rule).toEqual({
+      rules: [],
+      defaultScore: 0,
+      type: 'threshold',
+      min: 0,
+      max: 1,
+    })
+  })
+
+  it('已有规则的维度：编辑保存后规则原样，增 1 条 / 删 1 条均生效', () => {
+    const values = toDimensionFormValues({
+      ...mockDimension,
+      rule: {
+        rules: [
+          { condition: '>=', value: 95, score: 10 },
+          { condition: '<', value: 95, score: 0 },
+        ],
+        defaultScore: 3,
+      },
+    })
+    values.rule.splice(0, 1)
+    values.rule.push({ condition: '>=', value: 60, score: 6 })
+    const input = toDimensionSaveInput(values)
+    expect(input.rule).toEqual({
+      defaultScore: 3,
+      rules: [
+        { condition: '<', value: 95, score: 0 },
+        { condition: '>=', value: 60, score: 6 },
+      ],
+    })
+  })
+
+  it('rule 是 JSON 字符串（历史数据）时同样可反填并保留未知键', () => {
+    const values = toDimensionFormValues({
+      ...mockDimension,
+      rule: JSON.stringify({
+        rules: [{ condition: '>=', value: 90, score: 9 }],
+        defaultScore: 5,
+      }),
+    })
+    expect(values.rule).toEqual([{ condition: '>=', value: 90, score: 9 }])
+    expect(toDimensionSaveInput(values).rule).toEqual({
+      rules: [{ condition: '>=', value: 90, score: 9 }],
+      defaultScore: 5,
+    })
+  })
+
+  it('空规则可通过表单校验（去掉「至少一条」）', () => {
+    const values = { ...emptyDimensionFormValues(), name: '接线测试_空规则' }
+    values.rule = []
+    expect(dimensionFormSchema.safeParse(values).success).toBe(true)
   })
 })
 

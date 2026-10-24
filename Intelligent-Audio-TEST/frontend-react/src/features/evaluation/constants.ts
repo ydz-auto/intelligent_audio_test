@@ -50,6 +50,9 @@ export const WEIGHT_MAX = 10
 
 /** 结果类型映射（resultType 数值/字符串 → 中文标签） */
 export const RESULT_TYPE_LABELS: Record<string, string> = {
+  // INT-1732 P3-1：真实库 46/63 维度 result_type=0（旧数据，不在 §5.5 选项内），
+  // 抽屉闭合态补中文标签；值照常回写，不改成 1
+  '0': '未设置',
   '1': '数值',
   '2': '布尔',
   '3': '文本',

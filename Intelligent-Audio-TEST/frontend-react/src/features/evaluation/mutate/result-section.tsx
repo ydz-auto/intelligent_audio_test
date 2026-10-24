@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Textarea } from '@/components/ui/textarea'
-import { WEIGHT_MAX, WEIGHT_MIN } from '@/features/evaluation/constants'
+import { RESULT_TYPE_LABELS, WEIGHT_MAX, WEIGHT_MIN } from '@/features/evaluation/constants'
 import type {
   DimensionFormValues,
   RuleRow,
@@ -71,8 +71,7 @@ export function ResultSection({
           >
             <SelectTrigger className='w-full justify-between'>
               <SelectValue>
-                {RESULT_TYPE_OPTIONS.find((o) => o.value === resultType)?.label ??
-                  '请选择结果类型'}
+                {RESULT_TYPE_LABELS[resultType] ?? '请选择结果类型'}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -238,10 +237,10 @@ export function ResultSection({
         )}
       </div>
 
-      {/* 评分规则编辑器 */}
+      {/* 评分规则编辑器（可空：真实库多数维度未配置规则，INT-1732） */}
       <div className='space-y-2'>
         <div className='flex items-center justify-between'>
-          <Label required>评分规则</Label>
+          <Label>评分规则</Label>
           <Button
             type='button'
             variant='outline'
@@ -258,6 +257,14 @@ export function ResultSection({
         <p className='text-muted-foreground text-xs'>
           配置评分规则：根据结果值区间映射得分
         </p>
+        {fields.length === 0 && (
+          <p
+            className='text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-center text-xs'
+            data-testid='dimension-rule-empty'
+          >
+            该维度未配置评分规则
+          </p>
+        )}
         <div className='space-y-2'>
           {fields.map((field, index) => (
             <div
