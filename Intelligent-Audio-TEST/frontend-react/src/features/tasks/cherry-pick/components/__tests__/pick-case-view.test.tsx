@@ -49,6 +49,11 @@ const BRANCHES: PickTreeBranch[] = [
   },
 ]
 
+/** 真实 GET /algorithm/options 派生的 value→name 替身（页面级 useAlgorithmLabels 下传） */
+const ALGORITHM_LABELS: Record<string, string> = {
+  'asr-v3': '通用识别引擎',
+}
+
 function setup(overrides: Partial<Parameters<typeof PickCaseView>[0]> = {}) {
   const onToggleLeaf = vi.fn()
   const onToggleBranch = vi.fn()
@@ -64,6 +69,7 @@ function setup(overrides: Partial<Parameters<typeof PickCaseView>[0]> = {}) {
       subView='flat'
       onOrgChange={onOrgChange}
       onSubViewChange={onSubViewChange}
+      algorithmLabels={ALGORITHM_LABELS}
       {...overrides}
     />
   )

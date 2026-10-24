@@ -12,6 +12,12 @@ import { MOCK_TAGS } from '@/infrastructure/mock/testcases-mock'
 import { Badge } from '@/components/ui/badge'
 import { CaseCard, type CaseCardCallbacks } from '@/features/testcases/components/case-card'
 
+/** 算法类型码 → 中文名（真实 GET /algorithm/options value→name 的测试替身，INT-1687） */
+const ALGORITHM_LABELS: Record<string, string> = {
+  'asr-v3': '通用识别引擎',
+  'asr-stream': '流式识别引擎',
+}
+
 const makeCase = (overrides: Partial<TestCaseListItem> = {}): TestCaseListItem => ({
   id: 'tc-001',
   name: '智能音箱-播放音乐-中文-客厅',
@@ -49,17 +55,34 @@ describe('CaseCard', () => {
         caseItem={makeCase()}
         selected={false}
         tagRegistry={MOCK_TAGS}
+        algorithmLabels={ALGORITHM_LABELS}
         callbacks={noopCallbacks}
         onToggleSelect={vi.fn()}
       />
     )
     expect(screen.getByText('智能音箱-播放音乐-中文-客厅')).toBeInTheDocument()
-    expect(screen.getByText('通用识别引擎')).toBeInTheDocument() // asr-v3 算法中文名
+    expect(screen.getByText('通用识别引擎')).toBeInTheDocument() // asr-v3 → 真实选项中文名
     expect(screen.getByText('2 轮')).toBeInTheDocument()
     expect(screen.getByText('2m 36s')).toBeInTheDocument()
     // INT-487 分类角标
     expect(screen.getByText('设备类型')).toBeInTheDocument()
     expect(screen.getByText('语种')).toBeInTheDocument()
+  })
+
+  it('INT-1687：算法名未命中真实选项时不显示类型码（徽章整枚不渲染）', () => {
+    const { container } = render(
+      <CaseCard
+        caseItem={makeCase({ algorithmType: 'voice_llm' })}
+        selected={false}
+        tagRegistry={MOCK_TAGS}
+        algorithmLabels={ALGORITHM_LABELS}
+        callbacks={noopCallbacks}
+      />
+    )
+    expect(screen.queryByText('voice_llm')).not.toBeInTheDocument()
+    // 其余徽章（时长/轮次）照常渲染
+    expect(screen.getByText('2 轮')).toBeInTheDocument()
+    expect(container.textContent).not.toContain('voice_llm')
   })
 
   it('行内操作五钮：预览/复制/收藏/编辑/删除', () => {

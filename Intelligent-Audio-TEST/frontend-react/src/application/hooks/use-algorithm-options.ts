@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
 
 import { hasPermission } from '@/domain/models/user'
 import { fetchAlgorithmOptions } from '@/infrastructure/api/algorithm-api'
@@ -33,4 +34,19 @@ export function useAlgorithmOptions() {
     refetch: query.refetch,
     canRead,
   }
+}
+
+/**
+ * 算法类型码 → 中文名映射（真实选项 value→name；用例卡徽章 / 抽屉评估提示条共用，INT-1687）。
+ * 选项未加载完成或算法已下线时缺项，调用方据此不渲染名称（不回落 mock 表/类型码）。
+ */
+export function useAlgorithmLabels(): Record<string, string> {
+  const { options } = useAlgorithmOptions()
+  return useMemo(
+    () =>
+      Object.fromEntries(
+        options.map((o) => [o.value, o.name])
+      ) as Record<string, string>,
+    [options]
+  )
 }

@@ -4,8 +4,9 @@
  * INT-486 用例不分类型口径（负责人 2026-10-16）：用例无 api/e2e 之分，测试类型 facet
  * 与类型徽章移除；正式类型维度=算法类型（algorithmType，test_type 残留待 INT-79 废弃）。
  * INT-490 卡片流逆转：列显隐选项随表格版式废止，常量收敛为视图页签与格式化工具。
+ * INT-1687：算法中文名一律取真实 GET /algorithm/options（useAlgorithmLabels 提供
+ * value→name 表）；本文件的查表函数未命中即返回 null，不回落到 mock 登记表或类型码。
  */
-import { MOCK_ALGORITHMS } from '@/domain/models/algorithm'
 
 export type TestCasesViewKey = 'by-group' | 'by-tag'
 
@@ -26,14 +27,18 @@ export const TEST_CASES_TAB_WHITELIST: string[] = TEST_CASES_TABS.map(
   (t) => t.key
 )
 
-/** 算法类型 id → 中文名（useAlgorithmLabels 等价；数据源 MOCK_ALGORITHMS 登记表） */
-export const ALGORITHM_LABELS: Record<string, string> = Object.fromEntries(
-  MOCK_ALGORITHMS.map((a) => [a.id, a.name])
-)
-
-export function getAlgorithmLabel(algorithmType: string | null): string {
-  if (!algorithmType) return '—'
-  return ALGORITHM_LABELS[algorithmType] ?? algorithmType
+/**
+ * 算法类型码 → 中文名。表由真实 GET /algorithm/options 的 value→name 提供
+ * （application/hooks/use-algorithm-options.ts 的 useAlgorithmLabels）；
+ * 未命中（选项未加载 / 算法已下线）返回 null，由调用方隐藏徽章/提示——
+ * 不回落成类型码（INT-1687：voice_llm / wire_test_param 曾被原样显示）。
+ */
+export function getAlgorithmLabel(
+  algorithmType: string | null | undefined,
+  labels?: Record<string, string>
+): string | null {
+  if (!algorithmType) return null
+  return labels?.[algorithmType] ?? null
 }
 
 /** ISO 时间串 → 「YYYY-MM-DD HH:mm」（轻量格式化，无 dayjs；异常原样返回） */
