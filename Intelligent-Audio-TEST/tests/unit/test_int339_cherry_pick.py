@@ -761,3 +761,138 @@ def test_read_side_none_user_empty_states(db):
     ):
         assert resp['success'] is False and resp['code'] == 401
 
+
+# ==================== INT-1715：容器溯源存活判定 + 用例行状态派生 ====================
+
+def test_source_trace_rejects_soft_deleted_container(db):
+    """INT-1715 ①：容器 Task 软删后 source 端点不再返 200（与「非容器」同口径）。
+
+    关系行不随软删级联（回收站 restore_tasks 可恢复，级联删会丢溯源），存活
+    判定放在读侧：软删容器返回 success=false + 业务码（前端「任意非 200 即非
+    容器、静默」）；恢复后重新可溯源。修复前关系行存在即返 200，软删容器被
+    前端当存活容器渲染，与 GET /tasks?cherry_pick=true 口径矛盾。
+    """
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+    from task_service.infrastructure.persistence.models import Task, TaskCherryPickRelation
+
+    _src, results = _seed_source_task(name='INT1715软删容器源')
+    set_current_user_id(42)
+    cherry_pick_service.cart_add({'result_ids': [r[1] for r in results]})
+    resp = cherry_pick_service.checkout({'action': 'merge', 'name': 'INT1715软删容器'})
+    assert resp['success'] is True, resp.get('message')
+    container_id = resp['data']['task_id']
+
+    # 软删容器（回收站同口径：deleted=True，关系行不动）
+    session = get_db_session()
+    try:
+        session.get(Task, container_id).deleted = True
+        session.commit()
+    finally:
+        remove_db_session()
+
+    trace = cherry_pick_service.source_trace(container_id)
+    assert trace['success'] is False, '软删容器不得再返回 200 容器数据'
+    assert trace['code'] == 404
+    assert not (trace.get('data') or {}).get('groups'), '软删容器不得返回溯源分组'
+
+    # 关系行保留（不级联删），软删态由读侧存活判定兜住
+    session = get_db_session()
+    try:
+        assert session.query(TaskCherryPickRelation).filter_by(
+            cherry_pick_task_id=container_id).count() == 2, '关系行不应随软删级联删除'
+        session.get(Task, container_id).deleted = False
+        session.commit()
+    finally:
+        remove_db_session()
+
+    # 回收站恢复后重新可溯源（这也是不级联删的理由）
+    restored = cherry_pick_service.source_trace(container_id)
+    assert restored['success'] is True, restored.get('message')
+    assert restored['data']['total'] == 2
+
+
+def test_checkout_merge_case_status_follows_selected_result(db):
+    """INT-1715 ②：容器 TaskCase 执行状态按所选结果派生（源用例行陈旧也不跟）。
+
+    构造实测形态（容器 580 / 结果 5715）：源 TaskCase 执行状态 failed，而所选
+    结果 execution_status=completed —— 修复前容器用例行继承源行仍为 failed，
+    与所选结果相反；修复后应与所选结果一致。
+    """
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+    from task_service.infrastructure.persistence.models import Task, TaskCase
+
+    src_id, results = _seed_source_task(name='INT1715状态派生源')
+    session = get_db_session()
+    try:
+        session.query(TaskCase).filter(
+            TaskCase.task_id == src_id,
+            TaskCase.test_case_id == results[0][0],
+        ).update({'execution_status': 'failed', 'status': 'failed'})
+        session.commit()
+    finally:
+        remove_db_session()
+
+    set_current_user_id(42)
+    cherry_pick_service.cart_add({'result_ids': [r[1] for r in results]})
+    resp = cherry_pick_service.checkout({'action': 'merge', 'name': 'INT1715状态派生容器'})
+    assert resp['success'] is True, resp.get('message')
+    container_id = resp['data']['task_id']
+
+    session = get_db_session()
+    try:
+        cases = {tc.test_case_id: tc for tc in
+                 session.query(TaskCase).filter_by(task_id=container_id).all()}
+        stale_case = cases[results[0][0]]
+        assert stale_case.execution_status == 'completed', '容器用例行应跟随所选结果'
+        assert stale_case.status == 'completed'
+        assert cases[results[1][0]].status == 'completed'
+        container = session.get(Task, container_id)
+        assert container.completed_cases == 2 and container.failed_cases == 0
+    finally:
+        remove_db_session()
+
+
+def test_checkout_merge_case_status_aggregates_worst_result(db):
+    """同一用例命中多条所选结果时按最差执行状态收敛（不把失败藏成 completed）。"""
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+    from task_service.infrastructure.persistence.models import (
+        Task, TaskCase, TestResult,
+    )
+
+    session = get_db_session()
+    try:
+        task = Task(name='INT1715聚合源', status='completed', algorithm_type='asr')
+        session.add(task)
+        session.flush()
+        src_id = task.id
+        session.add(TaskCase(
+            task_id=src_id, test_case_id='INT1715-AGG', status='completed',
+            execution_status='completed', evaluation_status='completed',
+            device_type='physical', device_id='7',
+        ))
+        r_ok = TestResult(task_id=src_id, test_case_id='INT1715-AGG', device_id=7,
+                          algorithm_type='asr', execution_status='completed')
+        r_bad = TestResult(task_id=src_id, test_case_id='INT1715-AGG', device_id=8,
+                           algorithm_type='asr', execution_status='failed')
+        session.add_all([r_ok, r_bad])
+        session.commit()
+        result_ids = [r_ok.id, r_bad.id]
+    finally:
+        remove_db_session()
+
+    set_current_user_id(42)
+    cherry_pick_service.cart_add({'result_ids': result_ids})
+    resp = cherry_pick_service.checkout({'action': 'merge', 'name': 'INT1715聚合容器'})
+    assert resp['success'] is True, resp.get('message')
+    container_id = resp['data']['task_id']
+
+    session = get_db_session()
+    try:
+        tc = session.query(TaskCase).filter_by(task_id=container_id).one()
+        assert tc.execution_status == 'failed'
+        assert tc.status == 'failed'
+        container = session.get(Task, container_id)
+        assert container.failed_cases == 1 and container.completed_cases == 0
+    finally:
+        remove_db_session()
+

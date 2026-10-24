@@ -43,6 +43,17 @@ _PICKABLE_TASK_STATUSES = tuple(s.value for s in PickableTaskStatus)
 _PICKABLE_TASK_SORT_KEYS = ('status', 'name', 'created_at')
 _PICKABLE_TASK_SORT_ORDERS = ('asc', 'desc')
 
+# 同用例多条所选结果 → 容器 TaskCase 执行状态的聚合优先级（INT-1715 ②）：
+# 越靠前越「异常」，同一用例被多条结果命中时取最差，避免把失败藏成 completed。
+_CASE_EXEC_PRECEDENCE = (
+    ExecutionStatus.FAILED,
+    ExecutionStatus.STOPPED,
+    ExecutionStatus.RUNNING,
+    ExecutionStatus.QUEUED,
+    ExecutionStatus.SKIPPED,
+    ExecutionStatus.PENDING,
+)
+
 
 class CherryPickService:
     """挑选合并应用服务（S1-S5 命令与查询）。"""
@@ -735,7 +746,7 @@ class CherryPickService:
         """下单 merge：生成 cherry-pick 容器任务 + 结果引用关系（方案 A）。
 
         - 容器任务创建即 completed（§5.3，对齐现有合并容器口径）+ TaskCase
-          状态继承源结果（双状态派生表达式自动生效）
+          执行状态按所选结果派生（INT-1715 ②，双状态派生表达式自动生效）
         - 关系行（result_id + 溯源快照）与容器任务同事务原子创建
         - 任务级配置：算法参数/标签取首个来源任务，创建时允许编辑（§5.2 默认口径）
         - 下单成功已下单条目出清，未下单条目保留（§3 购物车口径）
@@ -813,6 +824,20 @@ class CherryPickService:
         finally:
             session.close()
 
+    @staticmethod
+    def _aggregate_case_exec_status(statuses) -> str:
+        """所选结果执行状态 → 容器 TaskCase 执行状态（单条即原值，多条取最差）。
+
+        容器 TaskCase 必须跟随**所选结果**（INT-1715 ②）：源 TaskCase 可能因人工
+        复核只改判结果、未回写用例行而陈旧，继承源行会让容器关联用例区与所选
+        结果状态相反。
+        """
+        present = {s for s in statuses if s}
+        for candidate in _CASE_EXEC_PRECEDENCE:
+            if candidate in present:
+                return candidate
+        return ExecutionStatus.COMPLETED
+
     def _create_container_task(self, name: str, data: dict,
                                rows: Dict[int, tuple],
                                valid_items: List[Dict[str, Any]],
@@ -820,8 +845,8 @@ class CherryPickService:
         """创建 cherry-pick 容器任务（原子：Task + TaskCase + 关系表同事务）。
 
         - 创建即 completed（§5.3，对齐现有合并容器任务口径）
-        - TaskCase 用例集 = 所选结果的用例集合，状态继承对应源结果
-          （避免容器任务详情全部显示待执行，对齐 merge_tasks 先例）
+        - TaskCase 用例集 = 所选结果的用例集合，执行状态按所选结果派生
+          （INT-1715 ②；避免容器详情全部显示待执行，也避免与所选结果相反）
         - 任务级配置取首个来源任务（§5.2 默认口径），data 覆盖优先
         """
         from task_service.infrastructure.persistence.models import (
@@ -860,7 +885,7 @@ class CherryPickService:
             session.flush()
             task_id = container.id
 
-            # TaskCase：用例集 = 所选结果用例集合，状态继承对应源结果的 TaskCase
+            # TaskCase：用例集 = 所选结果用例集合，执行状态按所选结果派生（INT-1715 ②）
             case_ids = sorted({r.test_case_id for r, _t in rows.values() if r.test_case_id})
             # 设备/API/标签继承（详情/统计/报告侧设备列表展示依赖）
             device_ids = {r.device_id for r, _t in rows.values() if r.device_id is not None}
@@ -883,11 +908,14 @@ class CherryPickService:
 
             for case_id in case_ids:
                 src_tc = case_device_map.get(case_id)
-                # 结果继承：源结果行 execution_status 决定 TaskCase 执行侧状态
-                # （容器任务无执行过程，结果即终态快照）
-                result_rows = [r for r, _t in rows.values() if r.test_case_id == case_id]
-                result_exec = result_rows[0].execution_status if result_rows else ExecutionStatus.COMPLETED
-                case_exec = (src_tc.execution_status if src_tc else result_exec)
+                # 执行侧按「所选结果」聚合（INT-1715 ②）：源 TaskCase 可能在人工
+                # 复核只改判结果、未回写用例行时陈旧（实测结果 5715 completed /
+                # 源用例行 failed），继续继承源行会让容器关联用例区与结果相反。
+                case_exec = self._aggregate_case_exec_status(
+                    [r.execution_status for r, _t in rows.values()
+                     if r.test_case_id == case_id])
+                # 评估侧：test_results 无评估列，沿用源 TaskCase 的评估终态
+                # （无源行时按已完成兜底，仅参与 status 推导）
                 case_eval = (src_tc.evaluation_status if src_tc else EvaluationStatus.COMPLETED)
                 session.add(TaskCase(
                     task_id=task_id,
@@ -981,6 +1009,13 @@ class CherryPickService:
         - `groups[].source_task_status` 取 `Task.status`（一次 IN）
         """
         try:
+            # INT-1715 ①：容器 Task 已软删（或不存在）→ 与「非容器」同口径返回
+            # （success=false、非 200、不返回容器数据）。关系行不随软删级联
+            # （回收站可恢复，级联删会丢溯源），存活判定放在读侧；否则软删容器
+            # 仍会被前端按「200 即容器」渲染，与 GET /tasks?cherry_pick=true 口径矛盾。
+            if not self._repo.container_task_alive(task_id):
+                return {'success': False, 'message': '该任务不是挑选合并容器任务',
+                        'data': {'code': 404}, 'code': 404}
             relations = self._repo.relations_by_container(task_id)
             if not relations:
                 return {'success': True, 'message': 'ok', 'data': {

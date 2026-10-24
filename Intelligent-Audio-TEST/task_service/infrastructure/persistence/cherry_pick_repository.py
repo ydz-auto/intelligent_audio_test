@@ -390,6 +390,19 @@ class CherryPickRepository:
         ).first() is not None
 
     @with_session(auto_commit=False)
+    def container_task_alive(self, task_id: int) -> bool:
+        """容器 Task 存活判定：任务行存在且未软删（INT-1715 §11-8）。
+
+        关系表不随容器软删级联（回收站 restore_tasks 可恢复，级联删会丢溯源），
+        存活判定放在读侧；与 GET /tasks/{id} 对软删任务的「不存在」口径同源。
+        """
+        session = get_db_session()
+        return session.query(Task.id).filter(
+            Task.id == int(task_id),
+            Task.deleted == False,  # noqa: E712
+        ).first() is not None
+
+    @with_session(auto_commit=False)
     def container_ids_in(self, task_ids: List[int]) -> List[int]:
         """批量判定容器任务（列表 cherry_pick 输出用，避免 N+1）。"""
         ids = [int(t) for t in (task_ids or [])]
