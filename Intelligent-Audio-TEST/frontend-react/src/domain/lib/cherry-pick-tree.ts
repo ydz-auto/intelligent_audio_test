@@ -218,10 +218,47 @@ export function buildPickTree(
 }
 
 /* ============================================================
- * 三视图树构建（§3.8.3 裁定③，INT-1047）：用例 / 设备 / 结果类型
- * 任务维度由阶段 1 承载（§3.8.2），三视图树内不再设任务级分支；
- * 叶结果行携带 taskName 消歧（同一叶在任务 A/B 各出现一次，按 result_id 独立勾选）。
+ * 三视图树构建（负责人 2026-10-24 口径，INT-1694）：用例 / 设备 / 结果类型
+ * 第一层一律为任务组头；同一设备/用例/结果类型出现在两个任务下各自挂各自任务，
+ * 不跨任务合并（§3.8.3 / §4.2 原「树内不设任务级」口径作废）。
+ * 节点 key 一律带 taskId 命名空间，防跨任务撞键。
  * ============================================================ */
+
+/** 按任务分簇（三视图第 1 层数据源；保持候选行原顺序：任务按首次出现、任务内按原顺序） */
+function groupCandidatesByTask(
+  candidates: CherryPickCandidate[]
+): { taskId: number; taskName: string; rows: CherryPickCandidate[] }[] {
+  const taskMap = new Map<number, CherryPickCandidate[]>()
+  for (const c of candidates) {
+    const list = taskMap.get(c.taskId) ?? []
+    list.push(c)
+    taskMap.set(c.taskId, list)
+  }
+  return [...taskMap].map(([taskId, rows]) => ({
+    taskId,
+    taskName: rows[0]?.taskName ?? `任务 ${taskId}`,
+    rows,
+  }))
+}
+
+/** 任务级分支（三视图第 1 层共用）：任务名 + 计数 + 全量结果 id 快照（三态勾选/整组统计用） */
+function buildPickTaskBranch(
+  taskId: number,
+  taskName: string,
+  rows: CherryPickCandidate[],
+  children: PickTreeItem[],
+  keyPrefix: string
+): PickTreeBranch {
+  return {
+    kind: 'branch',
+    key: `${keyPrefix}-task:${taskId}`,
+    level: 'task',
+    name: taskName,
+    count: rows.length,
+    resultIds: rows.map((c) => c.resultId),
+    children,
+  }
+}
 
 /** 用例级元信息（§11-7 真名：标签/分组/时长/轮次；同一用例跨候选行取值一致，取首行） */
 function caseMeta(rows: CherryPickCandidate[]): {
@@ -264,31 +301,37 @@ function buildCaseNode(
   }
 }
 
-/** 用例视图（§3.8.3）：用例（用例管理卡）→ 设备/API → result_type → 结果行 */
+/**
+ * 用例视图（负责人 2026-10-24 口径）：任务 → 用例层组织（组件按分组/标签聚合，INT-1694）
+ * → 用例（用例管理卡）→ 设备/API → result_type → 结果行。
+ * 第 2 层组织在 UI 侧由 PickCaseOrgList 聚合，domain 只给任务 → 用例平铺。
+ */
 export function buildPickCaseView(
   candidates: CherryPickCandidate[],
   addedResultIds: ReadonlySet<number> = new Set()
 ): PickTreeBranch[] {
-  const caseMap = new Map<string, CherryPickCandidate[]>()
-  for (const c of candidates) {
-    const list = caseMap.get(c.caseId) ?? []
-    list.push(c)
-    caseMap.set(c.caseId, list)
-  }
+  return groupCandidatesByTask(candidates).map(({ taskId, taskName, rows }) => {
+    const caseMap = new Map<string, CherryPickCandidate[]>()
+    for (const c of rows) {
+      const list = caseMap.get(c.caseId) ?? []
+      list.push(c)
+      caseMap.set(c.caseId, list)
+    }
 
-  const cases: PickTreeBranch[] = []
-  for (const [caseId, caseRows] of caseMap) {
-    cases.push(
-      buildCaseNode(caseId, caseRows, addedResultIds, 'pcase', (rows, added) =>
-        buildDeviceBranches(rows, added, {
-          device: (dk) => `pcase-device:${caseId}:${dk}`,
-          resultType: (dk, rt) => `pcase-resultType:${caseId}:${dk}:${rt}`,
-        })
+    const cases: PickTreeBranch[] = []
+    for (const [caseId, caseRows] of caseMap) {
+      cases.push(
+        buildCaseNode(caseId, caseRows, addedResultIds, `pcase-t${taskId}`, (r, added) =>
+          buildDeviceBranches(r, added, {
+            device: (dk) => `pcase-t${taskId}-device:${caseId}:${dk}`,
+            resultType: (dk, rt) => `pcase-t${taskId}-resultType:${caseId}:${dk}:${rt}`,
+          })
+        )
       )
-    )
-  }
+    }
 
-  return cases
+    return buildPickTaskBranch(taskId, taskName, rows, cases, 'pcase')
+  })
 }
 
 /** 设备视图（§3.8.3）：设备/API → result_type → 用例 → 结果行（设备/结果类型视图用例级叶直挂） */
