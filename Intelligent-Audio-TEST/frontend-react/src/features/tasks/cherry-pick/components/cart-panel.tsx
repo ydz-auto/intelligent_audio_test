@@ -156,17 +156,16 @@ export function CartPanel({
                 </div>
               )}
             </div>
-            {/* 任务视图用例子模式：用例层组织控件（分组/标签 + 平铺/交叉，作用到每个任务节点内） */}
-            {view === 'task' && taskSubView === 'case' && (
-              <div className='mb-2'>
-                <PickCaseOrgControls
-                  org={org}
-                  subView={subView}
-                  onOrgChange={setOrg}
-                  onSubViewChange={setSubView}
-                />
-              </div>
-            )}
+            {/* 用例层组织控件常显（四视图与任务视图三子模式共用同一份 org 会话态；
+                用例视图 / 用例子模式作用于用例卡层，设备 / 结果类型视图作用于树内组织层） */}
+            <div className='mb-2'>
+              <PickCaseOrgControls
+                org={org}
+                subView={subView}
+                onOrgChange={setOrg}
+                onSubViewChange={setSubView}
+              />
+            </div>
             {!readOnly && invalidItemIds.length > 0 && (
               <div className='border-warning/40 bg-warning/10 mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs'>
                 <span className='flex-1'>

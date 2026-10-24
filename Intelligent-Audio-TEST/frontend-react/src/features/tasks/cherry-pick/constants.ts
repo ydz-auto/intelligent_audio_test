@@ -20,6 +20,7 @@ export const PICK_LEVEL_ICONS: Record<PickLevel, string> = {
   case: 'ListChecks',
   device: 'Smartphone',
   resultType: 'Tag',
+  caseOrg: 'FolderTree',
 }
 
 /** 层级中文（汇总条/确认文案） */
@@ -28,6 +29,7 @@ export const PICK_LEVEL_LABELS: Record<PickLevel, string> = {
   case: '用例',
   device: '设备',
   resultType: '结果类型',
+  caseOrg: '用例组织',
 }
 
 /** 挑选筛选：执行状态（仅终态，§3.4） */

@@ -4,8 +4,14 @@
  * 依赖规则：domain 零依赖（不 import application/infrastructure/interfaces）。
  */
 
-/** 挑选层级（四级分组 + 结果行叶） */
-export type PickLevel = 'task' | 'case' | 'device' | 'resultType'
+/** 挑选层级（四级分组 + 用例层组织 + 结果行叶） */
+export type PickLevel = 'task' | 'case' | 'device' | 'resultType' | 'caseOrg'
+
+/** 用例层组织维度（分组视图 / 标签视图；INT-1694 组织层独立一层） */
+export type PickCaseOrgDimension = 'group' | 'tag'
+
+/** 用例层子视图（平铺 / 交叉：分组视图内按标签、标签视图内按用例分组） */
+export type PickCaseOrgSubView = 'flat' | 'byTag' | 'byGroup'
 
 /** 可挑选任务终态集合（cherry_pick_service.py PickableTaskStatus 实测） */
 export const PICKABLE_TASK_STATUS = ['completed', 'failed', 'stopped'] as const
@@ -65,6 +71,8 @@ export interface PickTreeBranch {
   /** 用例级：时长（秒）/轮次（§11-7；用例卡徽章数据源） */
   totalDuration?: number | null
   rounds?: number | null
+  /** 组织层：当前维度（分组 / 标签；图标与移除文案数据源） */
+  orgKind?: PickCaseOrgDimension
 }
 
 /** 挑选树节点——叶（执行结果行） */
@@ -142,6 +150,8 @@ export interface CartTreeBranch {
   groupName?: string | null
   totalDuration?: number | null
   rounds?: number | null
+  /** 组织层：当前维度（分组 / 标签；图标与移除文案数据源） */
+  orgKind?: PickCaseOrgDimension
 }
 
 /** 购物车树——叶 */

@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  FolderTree,
   ListChecks,
   Smartphone,
   Tag,
@@ -32,6 +33,7 @@ import {
 } from '@/components/ui/collapsible'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
+import { PickCaseCard } from '@/features/tasks/cherry-pick/components/pick-case-card'
 import { formatPickDateTime } from '@/features/tasks/cherry-pick/constants'
 import { getEvaluationStatusMeta } from '@/features/tasks/constants'
 import { cn } from '@/lib/utils'
@@ -41,6 +43,7 @@ const LEVEL_ICONS = {
   case: ListChecks,
   device: Smartphone,
   resultType: Tag,
+  caseOrg: FolderTree,
 } as const
 
 /** 设备/API 二选一：叶行名称 */
@@ -148,7 +151,7 @@ function BranchRow({
   onToggleOpen,
   onToggleLeaf,
   onToggleBranch,
-  renderCaseLayer,
+  renderCaseNode,
 }: {
   branch: PickTreeBranch
   selectedIds: ReadonlySet<number>
@@ -157,26 +160,14 @@ function BranchRow({
   onToggleOpen: (key: string) => void
   onToggleLeaf: (leaf: PickTreeLeaf) => void
   onToggleBranch: (branch: PickTreeBranch, select: boolean) => void
-  /** §3.8.3 用例层组织：设备/结果类型视图 result_type/设备 节点下用例层改由组织列表渲染 */
-  renderCaseLayer?: (caseBranches: PickTreeBranch[]) => ReactNode
+  /** 用例卡渲染（INT-1694：用例节点 = CaseCard compact，组织层组头下挂用例卡） */
+  renderCaseNode?: (branch: PickTreeBranch) => ReactNode
 }) {
   const state = getBranchSelectionState(branch, selectedIds)
   const Icon = isApiDeviceBranch(branch) ? ArrowLeftRight : LEVEL_ICONS[branch.level]
   const hasChildren = branch.children.length > 0
   const open = openKeys.has(branch.key)
   const indent = depth * 14 + 4
-
-  /** 用例层（children 全为用例级分支 → 走 renderCaseLayer 组织列表，替代内联文本行） */
-  const caseLayerChildren =
-    renderCaseLayer &&
-    branch.children.length > 0 &&
-    branch.children.every(
-      (c) => c.kind === 'branch' && c.level === 'case'
-    )
-      ? (branch.children.filter(
-          (c): c is PickTreeBranch => c.kind === 'branch' && c.level === 'case'
-        ) as PickTreeBranch[])
-      : null
 
   return (
     <Collapsible open={open} onOpenChange={() => onToggleOpen(branch.key)}>
@@ -246,30 +237,28 @@ function BranchRow({
       {hasChildren && (
         <CollapsibleContent>
           <div className='flex flex-col'>
-            {caseLayerChildren ? (
-              renderCaseLayer?.(caseLayerChildren)
-            ) : (
-              branch.children.map((child) =>
-                child.kind === 'leaf' ? (
-                  <LeafRow
-                    key={child.key}
-                    leaf={child}
-                    selected={selectedIds.has(child.resultId)}
-                    onToggle={onToggleLeaf}
-                  />
-                ) : (
-                  <BranchRow
-                    key={child.key}
-                    branch={child}
-                    selectedIds={selectedIds}
-                    openKeys={openKeys}
-                    depth={depth + 1}
-                    onToggleOpen={onToggleOpen}
-                    onToggleLeaf={onToggleLeaf}
-                    onToggleBranch={onToggleBranch}
-                    renderCaseLayer={renderCaseLayer}
-                  />
-                )
+            {branch.children.map((child) =>
+              child.kind === 'leaf' ? (
+                <LeafRow
+                  key={child.key}
+                  leaf={child}
+                  selected={selectedIds.has(child.resultId)}
+                  onToggle={onToggleLeaf}
+                />
+              ) : child.level === 'case' && renderCaseNode ? (
+                <div key={child.key}>{renderCaseNode(child)}</div>
+              ) : (
+                <BranchRow
+                  key={child.key}
+                  branch={child}
+                  selectedIds={selectedIds}
+                  openKeys={openKeys}
+                  depth={depth + 1}
+                  onToggleOpen={onToggleOpen}
+                  onToggleLeaf={onToggleLeaf}
+                  onToggleBranch={onToggleBranch}
+                  renderCaseNode={renderCaseNode}
+                />
               )
             )}
           </div>
@@ -298,15 +287,14 @@ export interface PickTreeProps {
   onToggleBranch: (branch: PickTreeBranch, select: boolean) => void
   /** 外部「全部展开/全部收起」信号（{ all, tick }，tick 自增触发重放） */
   expandSignal?: { all: boolean; tick: number }
-  /** §3.8.3 用例层组织：设备/结果类型视图 result_type/设备 节点下用例层改由组织列表渲染 */
-  renderCaseLayer?: (caseBranches: PickTreeBranch[]) => ReactNode
   className?: string
 }
 
 /**
- * 多级挑选树（INT-1694 二次口径）：层级由调用方树的形状决定（任务在末级时任务分支
- * 也由本组件统一渲染行形态）；「全部展开/全部收起」由外部控制。
- * 共享同一 selectedResultIds 集（Zustand 上层）。
+ * 多级挑选树（INT-1694 三次口径）：层级由调用方树的形状决定（任务在末级、组织层在
+ * result_type 之下用例卡之上时也由本组件统一渲染行形态）；用例节点 = CaseCard compact，
+ * 组织层组头 = 普通分支行（名称 + 计数 + 三态 Checkbox + 展开/收起）。
+ * 「全部展开/全部收起」由外部控制。共享同一 selectedResultIds 集（Zustand 上层）。
  */
 export function PickTree({
   items,
@@ -314,7 +302,6 @@ export function PickTree({
   onToggleLeaf,
   onToggleBranch,
   expandSignal,
-  renderCaseLayer,
   className,
 }: PickTreeProps) {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set())
@@ -327,6 +314,47 @@ export function PickTree({
     setOpenKeys(expandSignal.all ? collectAllKeys(items) : new Set())
   }
 
+  const toggleOpenKey = (key: string) =>
+    setOpenKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+
+  /** 用例节点（CaseCard compact，§3.8.4 全站用例显示统一）+ 卡内子树 */
+  const renderCaseNode = (branch: PickTreeBranch) => {
+    const open = openKeys.has(branch.key)
+    return (
+      <PickCaseCard
+        key={branch.key}
+        name={branch.name}
+        caseId={branch.caseId}
+        algorithmType={branch.algorithmType}
+        tags={branch.tags ?? []}
+        totalDuration={branch.totalDuration ?? null}
+        rounds={branch.rounds ?? null}
+        count={branch.count}
+        state={getBranchSelectionState(branch, selectedIds)}
+        onToggle={(select) => onToggleBranch(branch, select)}
+        open={open}
+        onToggleOpen={() => toggleOpenKey(branch.key)}
+      >
+        {open ? (
+          <div className='space-y-0.5 px-3 pb-3'>
+            <PickTree
+              items={branch.children}
+              selectedIds={selectedIds}
+              onToggleLeaf={onToggleLeaf}
+              onToggleBranch={onToggleBranch}
+              expandSignal={expandSignal}
+            />
+          </div>
+        ) : undefined}
+      </PickCaseCard>
+    )
+  }
+
   return (
     <div className={cn('flex flex-col', className)}>
       {items.map((item) =>
@@ -337,6 +365,8 @@ export function PickTree({
             selected={selectedIds.has(item.resultId)}
             onToggle={onToggleLeaf}
           />
+        ) : item.level === 'case' ? (
+          <div key={item.key}>{renderCaseNode(item)}</div>
         ) : (
           <BranchRow
             key={item.key}
@@ -344,17 +374,10 @@ export function PickTree({
             selectedIds={selectedIds}
             openKeys={openKeys}
             depth={0}
-            onToggleOpen={(key) =>
-              setOpenKeys((prev) => {
-                const next = new Set(prev)
-                if (next.has(key)) next.delete(key)
-                else next.add(key)
-                return next
-              })
-            }
+            onToggleOpen={toggleOpenKey}
             onToggleLeaf={onToggleLeaf}
             onToggleBranch={onToggleBranch}
-            renderCaseLayer={renderCaseLayer}
+            renderCaseNode={renderCaseNode}
           />
         )
       )}

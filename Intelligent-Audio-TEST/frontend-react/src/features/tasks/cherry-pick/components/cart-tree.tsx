@@ -340,15 +340,17 @@ export function CartTree({
   onSubViewChange,
   className,
 }: CartTreeProps) {
-  /** 视图树（纯函数重建；A 组三视图任务在最末一级，任务视图任务在第一级） */
+  /** 视图树（纯函数重建；A 组三视图任务在最末一级，任务视图任务在第一级；
+   *  设备/结果类型视图与子模式的组织层在 result_type/设备 之下、用例卡之上） */
   const items = useMemo<CartTreeItem[]>(() => {
-    if (view === 'task') return buildCartTaskView(groups, taskSubView)
-    if (view === 'device') return buildCartDeviceView(groups)
-    if (view === 'resultType') return buildCartResultTypeView(groups)
+    if (view === 'task') return buildCartTaskView(groups, taskSubView, org, subView)
+    if (view === 'device') return buildCartDeviceView(groups, org, subView)
+    if (view === 'resultType') return buildCartResultTypeView(groups, org, subView)
     return buildCartCaseView(groups)
-  }, [view, taskSubView, groups])
+  }, [view, taskSubView, groups, org, subView])
 
-  /** 用例层组织只在「用例视图顶层」与「任务视图用例子模式」生效（目标树表口径） */
+  /** 用例层组件组织只在「用例视图顶层」与「任务视图用例子模式」生效——
+   *  设备/结果类型（含任务视图对应子模式）的组织层由树内 caseOrg 组头节点渲染 */
   const hasCaseOrgLayer = view === 'case' || (view === 'task' && taskSubView === 'case')
 
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set())
@@ -378,7 +380,11 @@ export function CartTree({
           ? '用例'
           : branch.level === 'resultType'
             ? '结果类型'
-            : '任务'
+            : branch.level === 'caseOrg'
+              ? branch.orgKind === 'tag'
+                ? '标签组'
+                : '分组'
+              : '任务'
     onRemoveNode(collectEntryIds([branch]), levelLabel, branch.name, branch.count)
   }
 

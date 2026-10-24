@@ -6,11 +6,16 @@
  */
 import { useState } from 'react'
 
-/** 用例层组织维度（分组视图 / 标签视图） */
-export type PickOrgDimension = 'group' | 'tag'
+import type {
+  PickCaseOrgDimension,
+  PickCaseOrgSubView,
+} from '@/domain/models/cherryPick'
+
+/** 用例层组织维度（分组视图 / 标签视图；domain 类型别名，零重复定义） */
+export type PickOrgDimension = PickCaseOrgDimension
 
 /** 子视图（平铺 / 交叉：分组视图内按标签、标签视图内按用例分组） */
-export type PickSubView = 'flat' | 'byTag' | 'byGroup'
+export type PickSubView = PickCaseOrgSubView
 
 export interface PickOrgState {
   org: PickOrgDimension

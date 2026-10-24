@@ -1,9 +1,9 @@
 /**
- * 挑选树测试（18_挑选合并交互重设计.md §3.8.3，INT-1127 实施）。
- * renderCaseLayer：设备/结果类型视图 result_type/设备 节点下用例层改由组织列表渲染
- * （替代默认内联用例分支行），顶/二层分支行仍为 PickTree 层级行。
+ * 挑选树测试（18_挑选合并交互重设计.md §3.8.3，INT-1127 / INT-1694 三次口径）。
+ * 组织层：result_type 之下、用例卡之上的 caseOrg 分支行（名称 + 计数 + 三态 Checkbox + 展开）；
+ * 用例节点统一渲染为 CaseCard compact（PickCaseCard），卡内子树继续走 PickTree。
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type {
@@ -28,7 +28,7 @@ const LEAF: PickTreeLeaf = {
   added: false,
 }
 
-/** 设备视图树（设备→result_type→用例→叶，INT-1047 buildPickDeviceView 形态） */
+/** 设备视图树（设备→result_type→组织层→用例→叶，buildPickDeviceView 形态） */
 const DEVICE_VIEW: PickTreeBranch[] = [
   {
     kind: 'branch',
@@ -48,14 +48,25 @@ const DEVICE_VIEW: PickTreeBranch[] = [
         children: [
           {
             kind: 'branch',
-            key: 'dv-case:device:1:real-time:c1',
-            level: 'case',
-            name: '用例001',
-            caseId: 'c1',
-            algorithmType: null,
+            key: 'dv-org:device:1:real-time:group:g1',
+            level: 'caseOrg',
+            orgKind: 'group',
+            name: '拒识',
             count: 1,
             resultIds: [1],
-            children: [LEAF],
+            children: [
+              {
+                kind: 'branch',
+                key: 'dv-case:device:1:real-time:c1',
+                level: 'case',
+                name: '用例001',
+                caseId: 'c1',
+                algorithmType: null,
+                count: 1,
+                resultIds: [1],
+                children: [LEAF],
+              },
+            ],
           },
         ],
       },
@@ -63,7 +74,7 @@ const DEVICE_VIEW: PickTreeBranch[] = [
   },
 ]
 
-function setup(renderCaseLayer?: (caseBranches: PickTreeBranch[]) => React.ReactNode) {
+function setup() {
   const onToggleLeaf = vi.fn()
   const onToggleBranch = vi.fn()
   render(
@@ -73,45 +84,39 @@ function setup(renderCaseLayer?: (caseBranches: PickTreeBranch[]) => React.React
       onToggleLeaf={onToggleLeaf}
       onToggleBranch={onToggleBranch}
       expandSignal={{ all: true, tick: 1 }}
-      renderCaseLayer={renderCaseLayer}
     />
   )
   return { onToggleLeaf, onToggleBranch }
 }
 
-describe('PickTree renderCaseLayer（§3.8.3 用例层组织作用层，INT-1127）', () => {
-  it('不传 renderCaseLayer：result_type 下用例层为默认分支行（回归）', () => {
+describe('PickTree 组织层与用例卡（INT-1694：result_type → 组织层 → 用例卡）', () => {
+  it('顶/二层仍为分支行，组织层第三层为组头分支行（名称 + 计数）', () => {
     setup()
-    // 设备-01 同时出现于设备分支行与叶行设备名，real-time 出现于分支行与叶徽章
-    expect(screen.getAllByText('设备-01').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('real-time').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('用例001').length).toBeGreaterThan(0) // 分支行
+    expect(screen.getByTestId('pick-branch-dv-device:device:1')).toBeInTheDocument()
+    expect(
+      screen.getByTestId('pick-branch-dv-resultType:device:1:real-time')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByTestId('pick-branch-dv-org:device:1:real-time:group:g1')
+    ).toBeInTheDocument()
+    expect(screen.getByText('拒识')).toBeInTheDocument()
+    expect(screen.getAllByText('1 条').length).toBeGreaterThan(0)
   })
 
-  it('传 renderCaseLayer：result_type 下用例层改由组织列表渲染（顶/二层仍为分支行）', () => {
-    setup((caseBranches) => (
-      <div data-testid='case-layer'>
-        {caseBranches.map((b) => (
-          <div key={b.key}>org:{b.name}</div>
-        ))}
-      </div>
-    ))
-    expect(screen.getByTestId('case-layer')).toBeInTheDocument()
-    expect(screen.getByText('org:用例001')).toBeInTheDocument()
-    // 顶/二层仍为分支行（设备/result_type）
-    expect(screen.getByText('设备-01')).toBeInTheDocument()
-    expect(screen.getByText('real-time')).toBeInTheDocument()
+  it('组织组头可三态勾选：点击组头 Checkbox → onToggleBranch(组头, true)', () => {
+    const { onToggleBranch } = setup()
+    fireEvent.click(screen.getByLabelText('拒识（1 条）'))
+    expect(onToggleBranch).toHaveBeenCalledWith(
+      expect.objectContaining({ level: 'caseOrg', name: '拒识' }),
+      true
+    )
   })
 
-  it('renderCaseLayer 不影响叶行渲染（用例卡展开后叶行照常）', () => {
-    setup((caseBranches) => (
-      <div data-testid='case-layer'>
-        {caseBranches.map((b) => (
-          <div key={b.key}>org:{b.name}</div>
-        ))}
-      </div>
-    ))
-    // 用例卡由 renderCaseLayer 接管，叶行不再以默认行出现在 result_type 下
-    expect(screen.queryByText('任务A')).not.toBeInTheDocument()
+  it('组织组头下是用例卡（PickCaseCard），展开后叶行照常渲染', () => {
+    setup()
+    // 用例卡显示用例名与用例 ID 徽章（CaseCard compact）
+    expect(screen.getAllByText('用例001').length).toBeGreaterThan(0)
+    // 全部展开 signal 打到底：叶行 data-testid 出现（任务层 → 叶）
+    expect(screen.getByTestId('pick-leaf-1')).toBeInTheDocument()
   })
 })
