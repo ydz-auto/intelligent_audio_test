@@ -180,6 +180,12 @@ BOOTSTRAP_STEPS = [
     #     往返）依赖该列。脚本幂等（列存在即 SKIP、回填按值比对，只读 DB 轻量
     #     JSON 不回源对象存储），全新库为全 SKIP；默认 dry-run，引导链须 --apply。
     ('python', 'scripts/migrations/202610/add_test_result_result_type_int1510.py', '--apply'),
+    # ㊸ algorithm_api_params 补输出字段取值路径列 field_path（INT-1747 / C2）：
+    #     API 输出字段按 field_path 从厂商原始响应取嵌套值（data.events[0].text），
+    #     为空保持「按 param_code 取顶层键」的存量行为。create_all 只建缺失的表、
+    #     不给存量表补列，存量库（真实库 / 隔离库）缺该列时新镜像读声明表即
+    #     UndefinedColumn。脚本幂等（列存在即 SKIP），全新库为全 SKIP。
+    ('python', 'scripts/migrations/202610/add_api_param_field_path_int1747.py', '--apply'),
 ]
 
 

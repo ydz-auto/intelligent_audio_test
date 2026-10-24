@@ -226,7 +226,13 @@ class EndpointWorker(EvaluationLoggerMixin):
         field_defs = algorithm_acl_repository.get_field_mappings(algorithm_type)
         # 按维度获取映射字段（多对一映射时不同维度可能映射不同 source）
         dim_id = representative_dim_data.get('id')
-        output_field_keys = field_defs.get_mapped_device_output_field_keys(algorithm_type)
+        # 输出字段键集合 = device ∪ api（INT-1747 / C0 §9.2）：API 独有输出字段
+        # 也要进入输出字段展示/提取。**只**用于输出字段取值，不扩展到评估入参
+        # 映射——入参仍只认 param_mappings。
+        output_field_keys = list(dict.fromkeys(
+            field_defs.get_mapped_device_output_field_keys(algorithm_type)
+            + field_defs.get_mapped_api_output_field_keys(algorithm_type)
+        ))
 
         eval_input_fields = field_defs.get_evaluation_input_fields(algorithm_type)
 

@@ -9,6 +9,13 @@ _logger = logging.getLogger(__name__)
 
 from api_test_service.infrastructure.adapters import vendor_adapter_registry
 from shared.utils.dto_utils import dto_to_dict
+from shared.utils.api_output_extractor import (
+    META_FALLBACK_KEYS,
+    SOURCE_DECLARED,
+    SOURCE_META_FALLBACK,
+    extract_api_output_fields,
+    get_api_output_field_defs,
+)
 from shared.utils.audio_path_utils import resolve_audio_local_path
 from api_test_service.infrastructure.acl import AlgorithmQueryAclRepositoryImpl
 from shared.utils.config_manager import config_manager
@@ -402,7 +409,6 @@ class APITaskRunner:
         """提取最终结果 — 使用字段映射器动态获取字段"""
         # 通过 ACL 仓储获取字段定义与参数，内联实现 get_reference_field_codes + get_api_output_fields 逻辑
         field_mappings = dto_to_dict(_algo_acl.get_field_mappings(algorithm_type)) or {}
-        output_field_keys = list(((field_mappings.get('original', {}) or {}).get('api', {}).get('output', {}) or {}).keys())
 
         # 内联实现 get_reference_field_codes 逻辑
         device_params = [dto_to_dict(d) for d in _algo_acl.get_device_params(algorithm_type)]
@@ -444,29 +450,60 @@ class APITaskRunner:
         input_field = field_codes.get('input_field')
 
         final_json = final_result_result.get('json', {})
+        if not isinstance(final_json, dict):
+            final_json = {}
         final_data = final_json.get('data', {})
+        if not isinstance(final_data, dict):
+            final_data = {}
 
         if not final_data and final_result_result.get('raw_response'):
             try:
                 import ast
                 raw_json = ast.literal_eval(final_result_result['raw_response'])
-                final_data = raw_json.get('data', {})
+                if isinstance(raw_json, dict):
+                    final_json = raw_json
+                    final_data = raw_json.get('data', {}) or {}
             except Exception as e:
                 self._log('WARNING', f"解析raw_response失败: {str(e)}", task_id=task_id)
 
-        algo_results = {}
-        for key in output_field_keys:
-            if key in final_data:
-                algo_results[key] = final_data[key]
-            elif input_field and key == output_field:
-                for candidate in [output_field, 'result']:
-                    if candidate in final_data:
-                        algo_results[key] = final_data[candidate]
-                        break
+        # 输出字段提取（INT-1747 / C2，C0 §9.2 §9.3）：声明表优先，
+        # field_path 在厂商原始响应上按路径取值；零声明才走 meta 解析器兜底。
+        values, source = extract_api_output_fields(
+            field_mappings, final_json, flat_source=final_data,
+            fallback_values={key: final_result_result.get(key)
+                             for key in META_FALLBACK_KEYS},
+        )
 
-        for key in output_field_keys:
-            if key not in algo_results:
-                algo_results[key] = ''
+        algo_results = {}
+        if source == SOURCE_DECLARED:
+            declared_defs = get_api_output_field_defs(field_mappings)
+            output_field_keys = list(values.keys())
+            for key in output_field_keys:
+                definition = declared_defs.get(key) or {}
+                if not definition.get('field_path') and key in final_data:
+                    # 存量口径：无 field_path 按 param_code 取 json.data 顶层键
+                    algo_results[key] = final_data[key]
+                    continue
+                value = values.get(key)
+                if value is None and input_field and key == output_field:
+                    for candidate in [output_field, 'result']:
+                        if candidate in final_data:
+                            algo_results[key] = final_data[candidate]
+                            break
+                    if key in algo_results:
+                        continue
+                if value is not None:
+                    algo_results[key] = value
+
+            for key in output_field_keys:
+                if key not in algo_results:
+                    algo_results[key] = ''
+        elif source == SOURCE_META_FALLBACK:
+            self._log('WARNING',
+                      f"算法类型 {algorithm_type} 无 API 输出声明，"
+                      f"按 meta 解析器兜底提取: {sorted(values.keys())}",
+                      task_id=task_id)
+            algo_results = dict(values)
 
         latency = final_result_result['latency']
         return algo_results, latency
