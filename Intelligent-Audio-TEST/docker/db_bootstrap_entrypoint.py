@@ -180,6 +180,15 @@ BOOTSTRAP_STEPS = [
     #     往返）依赖该列。脚本幂等（列存在即 SKIP、回填按值比对，只读 DB 轻量
     #     JSON 不回源对象存储），全新库为全 SKIP；默认 dry-run，引导链须 --apply。
     ('python', 'scripts/migrations/202610/add_test_result_result_type_int1510.py', '--apply'),
+    # ㊸ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
+    #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
+    #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
+    #     归零后长期不会触发 → 83/95 张表 last_analyze 恒为 NULL、n_live_tup 与真实
+    #     行数差 2~3 个数量级。本步在业务服务连库前，对「本统计周期从未分析过且
+    #     行数 ≥ 1000」的表补一次 ANALYZE（只更新统计，不动数据）。
+    #     幂等（ANALYZE 写入 last_analyze，重复执行命中 0 张表）；best-effort，
+    #     单表失败只 WARN 不阻断部署。默认 dry-run，引导链必须带 --apply。
+    ('python', 'scripts/migrations/202610/analyze_stale_statistics_int1741.py', '--apply'),
 ]
 
 
