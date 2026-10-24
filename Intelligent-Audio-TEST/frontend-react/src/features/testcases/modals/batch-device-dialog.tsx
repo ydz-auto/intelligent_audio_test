@@ -78,6 +78,12 @@ export function BatchDeviceDialog({
   })
   const devices = devicesQuery.data ?? []
 
+  // 声明式 items：闭合态从 items 取 label，否则 base-ui 回退显示原始设备 id（INT-1686）
+  const deviceItems = devices.map((d) => ({
+    value: String(d.id),
+    label: `${d.name} (通道 ${d.channelIndex ?? '—'}) [${d.deviceType === 'dry' ? '干声' : d.deviceType === 'noise' ? '噪声' : d.deviceType ?? '未知'}]`,
+  }))
+
   const scanMutation = useMutation({
     mutationFn: scanRealPlaybackDevices,
     onMutate: () => {
@@ -174,14 +180,15 @@ export function BatchDeviceDialog({
               value={deviceId}
               onValueChange={(v) => setDeviceId(v ?? '')}
               disabled={!available || devices.length === 0}
+              items={deviceItems}
             >
               <SelectTrigger size='sm' className='h-8 w-full'>
                 <SelectValue placeholder='请选择设备' />
               </SelectTrigger>
               <SelectContent>
-                {devices.map((d) => (
-                  <SelectItem key={d.id} value={String(d.id)}>
-                    {d.name} (通道 {d.channelIndex ?? '—'}) [{d.deviceType === 'dry' ? '干声' : d.deviceType === 'noise' ? '噪声' : d.deviceType ?? '未知'}]
+                {deviceItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
                   </SelectItem>
                 ))}
               </SelectContent>

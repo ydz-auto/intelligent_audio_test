@@ -124,6 +124,15 @@ export function AudioListStep({
     () => (devicesQuery.data ?? []).map(toDeviceOption),
     [devicesQuery.data]
   )
+  /** 播放设备 Select 的声明式 items：闭合态取 label，否则 base-ui 回退显示设备 id（INT-1686） */
+  const deviceSelectItems = useMemo(
+    () =>
+      deviceOptions.map((d) => ({
+        value: d.id,
+        label: `${d.name} (通道 ${d.channel}) [${d.type}]`,
+      })),
+    [deviceOptions]
+  )
 
   /** 真实音频库（标签工具数据源 + 时长/标签展示；GET /audios 大页拉取） */
   const [audioLibrary, setAudioLibrary] = useState<
@@ -363,18 +372,15 @@ export function AudioListStep({
                       })
                     }
                     // 闭合态按声明式 items 解析文案；缺省时 base-ui 回退原始 value（设备记录 id）
-                    items={deviceOptions.map((d) => ({
-                      value: d.id,
-                      label: `${d.name} (通道 ${d.channel}) [${d.type}]`,
-                    }))}
+                    items={deviceSelectItems}
                   >
                     <SelectTrigger size='sm' className='h-8'>
                       <SelectValue placeholder='请选择设备' />
                     </SelectTrigger>
                     <SelectContent>
-                      {deviceOptions.map((d) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          {d.name} (通道 {d.channel}) [{d.type}]
+                      {deviceSelectItems.map((d) => (
+                        <SelectItem key={d.value} value={d.value}>
+                          {d.label}
                         </SelectItem>
                       ))}
                     </SelectContent>

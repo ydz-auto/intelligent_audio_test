@@ -120,6 +120,12 @@ export function EvaluationStrategyEditor({
   const overrides = value.overrides ?? null
   const selectedStrategy = strategies.find((s) => String(s.id) === String(strategyId)) ?? null
 
+  // 声明式 items：闭合态取 label（策略名），否则 base-ui 回退显示策略 id（INT-1686）
+  const strategyItems = strategies.map((s) => ({
+    value: String(s.id),
+    label: s.name,
+  }))
+
   /** 覆盖计数（徽章「已引用并覆盖 {n} 项」） */
   const overrideCount = (overrides?.dimensions ? 1 : 0) + (overrides?.backgroundNoise ? 1 : 0)
 
@@ -274,7 +280,11 @@ export function EvaluationStrategyEditor({
             <div className='space-y-3'>
               <div className='space-y-1.5'>
                 <Label className='text-sm'>选择策略</Label>
-                <Select value={strategyId ?? ''} onValueChange={(v) => onChange({ ...value, strategyId: v ?? null })}>
+                <Select
+                  value={strategyId ?? ''}
+                  onValueChange={(v) => onChange({ ...value, strategyId: v ?? null })}
+                  items={strategyItems}
+                >
                   <SelectTrigger size='sm' className='h-8 w-full sm:max-w-md'>
                     <SelectValue placeholder='请选择要引用的评估策略' />
                   </SelectTrigger>

@@ -49,6 +49,12 @@ export function BatchAdjustGroupDialog({
   const [mode, setMode] = useState<'move' | 'copy'>('move')
   const [submitting, setSubmitting] = useState(false)
 
+  // 声明式 items：闭合态从 items 取 label，否则 base-ui 回退显示原始分组 id（INT-1686）
+  const groupItems = [
+    ...groups.map((g) => ({ value: g.id, label: g.name })),
+    { value: '__new__', label: '+ 新建分组' },
+  ]
+
   const handleSubmit = async () => {
     if (!groupValue) return
     setSubmitting(true)
@@ -83,17 +89,20 @@ export function BatchAdjustGroupDialog({
         <div className='space-y-4'>
           <div className='space-y-1.5'>
             <span className='text-sm font-medium'>目标分组</span>
-            <Select value={groupValue} onValueChange={(v) => setGroupValue(v ?? '')}>
+            <Select
+              value={groupValue}
+              onValueChange={(v) => setGroupValue(v ?? '')}
+              items={groupItems}
+            >
               <SelectTrigger size='sm' className='h-8 w-full'>
                 <SelectValue placeholder='请选择分组' />
               </SelectTrigger>
               <SelectContent>
-                {groups.map((g) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.name}
+                {groupItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
                   </SelectItem>
                 ))}
-                <SelectItem value='__new__'>+ 新建分组</SelectItem>
               </SelectContent>
             </Select>
             {groupValue === '__new__' && (

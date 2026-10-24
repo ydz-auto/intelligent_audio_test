@@ -66,6 +66,24 @@ function toFormField(raw: Record<string, unknown>): AlgorithmFormField {
   }
 }
 
+/** 按 fieldCode 去重（保留首次出现的顺序）。后端部分算法 schema 同时下发顶层扁平
+ *  `fields` 与 `groups[].fields`，两处都含同一字段；直接拼接会让同一字段渲染出两个
+ *  输入框（INT-1686）。fieldCode 为空的行无法判定同源，原样保留。 */
+export function dedupeFormFields(
+  fields: AlgorithmFormField[]
+): AlgorithmFormField[] {
+  const seen = new Set<string>()
+  const result: AlgorithmFormField[] = []
+  for (const field of fields) {
+    if (field.code) {
+      if (seen.has(field.code)) continue
+      seen.add(field.code)
+    }
+    result.push(field)
+  }
+  return result
+}
+
 /** 算法参数表单 schema（GET /algorithm/form-schema/{algo_type}） */
 export async function fetchAlgorithmFormSchema(
   algoType: string

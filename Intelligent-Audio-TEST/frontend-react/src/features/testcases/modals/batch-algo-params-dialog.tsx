@@ -30,6 +30,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import {
+  dedupeFormFields,
   fetchAlgorithmFormSchema,
   type AlgorithmFormField,
 } from '@/infrastructure/api/algorithm-form-api'
@@ -215,13 +216,19 @@ export function BatchAlgoParamsDialog({
     resetParams()
   }
 
-  /** 展平（顶层 fields + 分组内 fields 按 uiOrder 归并；§5.3.1 参数表单逐字段） */
+  /** 展平（顶层 fields + 分组内 fields 按 fieldCode 去重；§5.3.1 参数表单逐字段） */
   const allFields = schemaQuery.data
-    ? [
+    ? dedupeFormFields([
         ...schemaQuery.data.fields,
         ...schemaQuery.data.groups.flatMap((g) => g.fields),
-      ].filter((f) => !f.hidden)
+      ]).filter((f) => !f.hidden)
     : []
+
+  // 声明式 items：闭合态从 items 取 label，否则 base-ui 回退显示原始算法类型码（INT-1686）
+  const algorithmItems = algorithmOptions.map((a) => ({
+    value: a.value,
+    label: a.name,
+  }))
 
   const handleSubmit = async () => {
     if (!algorithmType) return
@@ -285,14 +292,18 @@ export function BatchAlgoParamsDialog({
                 加载算法列表...
               </div>
             ) : (
-              <Select value={algorithmType} onValueChange={handleAlgorithmChange}>
+              <Select
+                value={algorithmType}
+                onValueChange={handleAlgorithmChange}
+                items={algorithmItems}
+              >
                 <SelectTrigger size='sm' className='h-8 w-full'>
                   <SelectValue placeholder='请选择算法' />
                 </SelectTrigger>
                 <SelectContent>
-                  {algorithmOptions.map((a) => (
+                  {algorithmItems.map((a) => (
                     <SelectItem key={a.value} value={a.value}>
-                      {a.name}
+                      {a.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
