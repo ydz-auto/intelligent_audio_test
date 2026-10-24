@@ -11,7 +11,7 @@
  * 无 JSON 用例文件时按最子级文件夹分组并推断单轮（1 音频 1 轮 / 多音频 1 轮多音频）。
  */
 import { FolderInput, FolderTree } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { UploadOptions } from '@/features/audio-import/components/modals/upload-options'
 import { startRealAudioUpload, type PerFileUploadConfig } from '@/application/audio/useAudioUploadProcess'
+import { useUploadRoundScope } from '@/application/audio/useUploadRoundScope'
 import type { UploadRoundConfig } from '@/infrastructure/api/audio-upload-api'
 import { DEFAULT_SPL } from '@/features/audio-import/constants'
 import { parseAnnotationsForAudios } from '@/features/audio-import/lib/annotation'
@@ -67,6 +68,10 @@ const AUDIO_EXTS = ['.wav', '.mp3', '.m4a', '.flac', '.aac', '.ogg']
 /** JSON 用例文件扩展名（文件夹导入：每个 .json 作为一个用例分组的候选，§5.7.6） */
 const CASE_JSON_EXTS = ['.json']
 
+/** §5.7.2 文件夹导入未附 JSON 用例时的 N=1 收敛 Tooltip（与上传窗同一收敛规则，文案按本窗语义改写） */
+const SINGLE_ROUND_HINT =
+  '本次导入未附多轮 JSON 用例文件，生成的用例为单轮；多轮用例请在导入时随附 JSON 用例文件'
+
 export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
   const [formatFilter, setFormatFilter] = useState('all')
   const [recursive, setRecursive] = useState(true)
@@ -75,14 +80,13 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
   const [audioType, setAudioType] = useState('dry')
   const [generateTestCase, setGenerateTestCase] = useState(false)
   const [algorithmType, setAlgorithmType] = useState('')
-  const [dimensionIds, setDimensionIds] = useState<number[]>([])
-  const [playbackDevice, setPlaybackDevice] = useState('')
   const [defaultSpl, setDefaultSpl] = useState(DEFAULT_SPL)
   const [caseGroup, setCaseGroup] = useState('folder')
   const [customGroupName, setCustomGroupName] = useState('')
   const [tags, setTags] = useState('')
   const [inheritTags, setInheritTags] = useState(true)
   const [importing, setImporting] = useState(false)
+  const [caseGroups, setCaseGroups] = useState<Map<string, CaseGroup>>(new Map())
   const dirRef = useRef<HTMLInputElement | null>(null)
 
   const audioFiles = useMemo(() => {
@@ -125,6 +129,41 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
       return next
     })
   }
+
+  // JSON 用例文件（§5.7.6）：选择文件后即解析，供 §5.7.2 轮次基数 N（各分组 rounds 最大长度）
+  const jsonFiles = useMemo(
+    () =>
+      files.filter((f) => CASE_JSON_EXTS.some((ext) => f.name.toLowerCase().endsWith(ext))),
+    [files]
+  )
+  useEffect(() => {
+    let cancelled = false
+    if (!generateTestCase || jsonFiles.length === 0) {
+      setCaseGroups(new Map())
+      return
+    }
+    void buildCaseGroups(jsonFiles).then((groups) => {
+      if (!cancelled) setCaseGroups(groups)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [jsonFiles, generateTestCase])
+
+  const roundCount = useMemo(() => {
+    let max = 1
+    for (const group of caseGroups.values()) {
+      max = Math.max(max, group.rounds.length)
+    }
+    return max
+  }, [caseGroups])
+
+  // 改选文件夹 / 改文件集时轮次选择重置为默认（§5.7.2）
+  const fileSignature = useMemo(() => files.map(relativePathOf).sort().join('|'), [files])
+  const roundScope = useUploadRoundScope({
+    roundCount,
+    resetKey: `${fileSignature}#${generateTestCase}`,
+  })
 
   const handleStartImport = async () => {
     if (audioFiles.length === 0) {
@@ -194,8 +233,11 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
         createTestCase: generateTestCase,
         algorithmType: algorithmType || null,
         algorithmParams: [],
-        dimensions: dimensionIds,
-        playbackDeviceId: playbackDevice ? Number(playbackDevice) : null,
+        dimensions: roundScope.dimensionItems,
+        multiDimensions: roundScope.multiDimensionItems,
+        dimensionPlan: roundScope.dimensionPlan,
+        devicePlan: roundScope.devicePlan,
+        playbackDeviceId: roundScope.defaultDeviceId,
         spl: defaultSpl,
         noiseAudioId: null,
         noiseSpl: 60,
@@ -352,10 +394,9 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
             onGenerateTestCaseChange={setGenerateTestCase}
             algorithmType={algorithmType}
             onAlgorithmTypeChange={setAlgorithmType}
-            dimensionIds={dimensionIds}
-            onDimensionIdsChange={setDimensionIds}
-            playbackDevice={playbackDevice}
-            onPlaybackDeviceChange={setPlaybackDevice}
+            roundCount={roundCount}
+            roundScope={roundScope}
+            singleRoundHint={SINGLE_ROUND_HINT}
             defaultSpl={defaultSpl}
             onDefaultSplChange={setDefaultSpl}
             caseGroup={caseGroup}
