@@ -37,6 +37,7 @@ import {
   applyLayerToTargets,
   ApplyLayerField,
   createRoundScope,
+  existingRounds,
   RoundScopeThreeField,
   usePerRoundValue,
   type ApplyLayerId,
@@ -150,13 +151,17 @@ export function BatchNoiseDialog({
   onOpenChange,
   count,
   ids,
+  roundCount = 1,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   count: number
   ids: string[]
+  /** 选中用例的真实轮次数（多选取最大轮次，未知回落 1——INT-1731） */
+  roundCount?: number
 }) {
-  const [scope, setScope] = useState(createRoundScope())
+  const totalRounds = Math.max(1, roundCount)
+  const [scope, setScope] = useState(() => createRoundScope(totalRounds))
   const [pickingAudio, setPickingAudio] = useState(false)
   const [layers, setLayers] = useState<ApplyLayerId[]>(['case-bg', 'segment-bg'])
   const [submitting, setSubmitting] = useState(false)
@@ -198,9 +203,11 @@ export function BatchNoiseDialog({
     const targets = applyLayerToTargets(layers)
     let payload: TestcaseBatchPayload
     if (scope.mode === 'per_round') {
-      // 逐轮设置：round_values = {轮次号: {audioId, spl, deviceIds, targets}}，仅含用户实际编辑过的轮次
+      // 逐轮设置：round_values = {轮次号: {audioId, spl, deviceIds, targets}}，仅含用户实际编辑过的真实轮次
       const roundValues: Record<string, unknown> = {}
       for (const [roundKey, nv] of Object.entries(perRound)) {
+        const round = Number(roundKey)
+        if (!Number.isInteger(round) || round < 1 || round > totalRounds) continue
         if (!nv.audio) continue
         const roundSpl = Number(nv.spl)
         if (Number.isNaN(roundSpl)) continue
@@ -221,6 +228,13 @@ export function BatchNoiseDialog({
     } else {
       const splValue = Number(spl)
       if (!audio || Number.isNaN(splValue)) return
+      const roundNumbers =
+        scope.mode === 'specific' ? existingRounds(scope.specificRounds, totalRounds) : undefined
+      // 指定轮次未勾选任何真实轮次：不提交（后端对不存在/空轮次静默回成功——INT-1731）
+      if (roundNumbers && roundNumbers.length === 0) {
+        toast.error('请至少选择一个轮次')
+        return
+      }
       payload = {
         noiseAudioId: audio.id,
         noiseSpl: splValue,
@@ -229,8 +243,7 @@ export function BatchNoiseDialog({
           .filter((n) => !Number.isNaN(n)),
         targets,
         roundMode: scope.mode as TestcaseRoundMode,
-        roundNumbers:
-          scope.mode === 'specific' ? scope.specificRounds : undefined,
+        roundNumbers,
       }
     }
     setSubmitting(true)
@@ -366,6 +379,7 @@ export function BatchNoiseDialog({
             name='batch-noise-round'
             value={scope}
             onChange={setScope}
+            roundCount={totalRounds}
           />
 
           {/* 应用层级（默认勾选 case级/segment级背景噪声） */}

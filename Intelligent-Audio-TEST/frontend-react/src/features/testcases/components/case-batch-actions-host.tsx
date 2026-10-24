@@ -35,11 +35,21 @@ export interface CaseBatchActionsHostProps {
   algorithmType?: string | null
   testType?: string | null
   /**
-   * 当前页已加载的用例（含真实轮次数 rounds；INT-1642 批量设置评估维度「指定轮次」
-   * 取选中用例的真实轮次——多选取最大轮次；未加载到的 id 沿用已加载最大值）
+   * 当前页已加载的用例（含真实轮次数 rounds；INT-1642 批量设置评估维度「指定轮次」、
+   * INT-1731 专属参数/播放设备/声压/噪声四窗「轮次范围」均取选中用例的真实轮次——
+   * 多选取最大轮次；未加载到的 id 沿用已加载最大值）
    */
   cases?: Array<{ id: string; rounds: number }>
 }
+
+/** 按选中用例真实轮次渲染「轮次范围」的批量窗（INT-1731：五窗同口径） */
+const ROUND_SCOPED_KINDS = new Set<BatchDialogState['kind']>([
+  'dimensions',
+  'params',
+  'device',
+  'spl',
+  'noise',
+])
 
 export function CaseBatchActionsHost({
   batchDialog,
@@ -55,9 +65,9 @@ export function CaseBatchActionsHost({
   testType,
   cases,
 }: CaseBatchActionsHostProps) {
-  /** 选中用例的真实最大轮次（批量设置评估维度「指定轮次」网格用；未知 id 不计入） */
+  /** 选中用例的真实最大轮次（轮次范围各窗用；未知 id 不计入，全部未知回落 1） */
   const selectedRoundCount = useMemo(() => {
-    if (batchDialog?.kind !== 'dimensions') return 1
+    if (!batchDialog || !ROUND_SCOPED_KINDS.has(batchDialog.kind)) return 1
     const wanted = new Set(batchDialog.ids)
     const known = (cases ?? [])
       .filter((c) => wanted.has(c.id))
@@ -104,6 +114,7 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
+          roundCount={selectedRoundCount}
         />
       )}
       {batchDialog?.kind === 'device' && (
@@ -112,6 +123,7 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
+          roundCount={selectedRoundCount}
         />
       )}
       {batchDialog?.kind === 'spl' && (
@@ -120,6 +132,7 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
+          roundCount={selectedRoundCount}
         />
       )}
       {batchDialog?.kind === 'noise' && (
@@ -128,6 +141,7 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
+          roundCount={selectedRoundCount}
         />
       )}
       <CaseConfirmDialog

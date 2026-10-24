@@ -40,6 +40,7 @@ import {
   applyLayerToTargets,
   ApplyLayerField,
   createRoundScope,
+  existingRounds,
   RoundScopeThreeField,
   usePerRoundValue,
   type ApplyLayerId,
@@ -52,17 +53,21 @@ export function BatchDeviceDialog({
   onOpenChange,
   count,
   ids,
+  roundCount = 1,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   count: number
   ids: string[]
+  /** 选中用例的真实轮次数（多选取最大轮次，未知回落 1——INT-1731） */
+  roundCount?: number
 }) {
+  const totalRounds = Math.max(1, roundCount)
   const queryClient = useQueryClient()
   const [scanState, setScanState] = useState<ScanState>('ready')
   const [scanError, setScanError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [scope, setScope] = useState(createRoundScope())
+  const [scope, setScope] = useState(() => createRoundScope(totalRounds))
   const [layers, setLayers] = useState<ApplyLayerId[]>([])
   const {
     current: deviceId,
@@ -118,9 +123,11 @@ export function BatchDeviceDialog({
     const targets = applyLayerToTargets(layers)
     let payload: TestcaseBatchPayload
     if (scope.mode === 'per_round') {
-      // 逐轮设置：round_values = {轮次号: {deviceId, targets}}，仅含用户实际编辑过的轮次
+      // 逐轮设置：round_values = {轮次号: {deviceId, targets}}，仅含用户实际编辑过的真实轮次
       const roundValues: Record<string, unknown> = {}
       for (const [roundKey, roundDeviceId] of Object.entries(perRound)) {
+        const round = Number(roundKey)
+        if (!Number.isInteger(round) || round < 1 || round > totalRounds) continue
         if (roundDeviceId === '') continue
         const numeric = Number(roundDeviceId)
         if (Number.isNaN(numeric)) continue
@@ -133,12 +140,18 @@ export function BatchDeviceDialog({
       payload = { roundMode: 'per_round', roundNumbers: [], roundValues }
     } else {
       if (!deviceId) return
+      const roundNumbers =
+        scope.mode === 'specific' ? existingRounds(scope.specificRounds, totalRounds) : undefined
+      // 指定轮次未勾选任何真实轮次：不提交（后端对不存在/空轮次静默回成功——INT-1731）
+      if (roundNumbers && roundNumbers.length === 0) {
+        toast.error('请至少选择一个轮次')
+        return
+      }
       payload = {
         playbackDevices: { deviceId: Number(deviceId) },
         targets,
         roundMode: scope.mode as TestcaseRoundMode,
-        roundNumbers:
-          scope.mode === 'specific' ? scope.specificRounds : undefined,
+        roundNumbers,
       }
     }
     setSubmitting(true)
@@ -230,6 +243,7 @@ export function BatchDeviceDialog({
             name='batch-device-round'
             value={scope}
             onChange={setScope}
+            roundCount={totalRounds}
           />
           <ApplyLayerField
             value={layers}
