@@ -73,7 +73,6 @@ function setup(renderCaseLayer?: (caseBranches: PickTreeBranch[]) => React.React
       onToggleLeaf={onToggleLeaf}
       onToggleBranch={onToggleBranch}
       expandSignal={{ all: true, tick: 1 }}
-      showLeafTask
       renderCaseLayer={renderCaseLayer}
     />
   )

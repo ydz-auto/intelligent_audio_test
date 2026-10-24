@@ -79,13 +79,10 @@ function LeafRow({
   leaf,
   selected,
   onToggle,
-  showLeafTask,
 }: {
   leaf: PickTreeLeaf
   selected: boolean
   onToggle: (leaf: PickTreeLeaf) => void
-  /** §3.8.3 三视图叶行携带来源任务名消歧（设备/结果类型/用例视图内树） */
-  showLeafTask?: boolean
 }) {
   const evalMeta = getEvaluationStatusMeta(leaf.evaluationStatus)
   return (
@@ -98,14 +95,6 @@ function LeafRow({
         onCheckedChange={() => onToggle(leaf)}
         aria-label={`结果 ${leaf.resultId}`}
       />
-      {showLeafTask && (
-        <span
-          className='text-muted-foreground/60 max-w-28 shrink-0 truncate font-mono text-[10px] tabular-nums'
-          title={`来源任务：${leaf.taskName}`}
-        >
-          {leaf.taskName}
-        </span>
-      )}
       <span className='min-w-0 flex-1 truncate font-medium'>{leaf.caseName}</span>
       <span className='text-muted-foreground min-w-0 max-w-40 truncate'>
         {leafDeviceName(leaf)}
@@ -159,7 +148,6 @@ function BranchRow({
   onToggleOpen,
   onToggleLeaf,
   onToggleBranch,
-  showLeafTask,
   renderCaseLayer,
 }: {
   branch: PickTreeBranch
@@ -169,7 +157,6 @@ function BranchRow({
   onToggleOpen: (key: string) => void
   onToggleLeaf: (leaf: PickTreeLeaf) => void
   onToggleBranch: (branch: PickTreeBranch, select: boolean) => void
-  showLeafTask?: boolean
   /** §3.8.3 用例层组织：设备/结果类型视图 result_type/设备 节点下用例层改由组织列表渲染 */
   renderCaseLayer?: (caseBranches: PickTreeBranch[]) => ReactNode
 }) {
@@ -269,7 +256,6 @@ function BranchRow({
                     leaf={child}
                     selected={selectedIds.has(child.resultId)}
                     onToggle={onToggleLeaf}
-                    showLeafTask={showLeafTask}
                   />
                 ) : (
                   <BranchRow
@@ -281,7 +267,6 @@ function BranchRow({
                     onToggleOpen={onToggleOpen}
                     onToggleLeaf={onToggleLeaf}
                     onToggleBranch={onToggleBranch}
-                    showLeafTask={showLeafTask}
                     renderCaseLayer={renderCaseLayer}
                   />
                 )
@@ -313,15 +298,14 @@ export interface PickTreeProps {
   onToggleBranch: (branch: PickTreeBranch, select: boolean) => void
   /** 外部「全部展开/全部收起」信号（{ all, tick }，tick 自增触发重放） */
   expandSignal?: { all: boolean; tick: number }
-  /** §3.8.3 三视图叶行携带来源任务名消歧（阶段 1 承载任务维度后的视图） */
-  showLeafTask?: boolean
   /** §3.8.3 用例层组织：设备/结果类型视图 result_type/设备 节点下用例层改由组织列表渲染 */
   renderCaseLayer?: (caseBranches: PickTreeBranch[]) => ReactNode
   className?: string
 }
 
 /**
- * 多级挑选树：默认收起至任务级（§6.2 层级不迷失）；「全部展开/全部收起」由外部控制。
+ * 多级挑选树（INT-1694 二次口径）：层级由调用方树的形状决定（任务在末级时任务分支
+ * 也由本组件统一渲染行形态）；「全部展开/全部收起」由外部控制。
  * 共享同一 selectedResultIds 集（Zustand 上层）。
  */
 export function PickTree({
@@ -330,7 +314,6 @@ export function PickTree({
   onToggleLeaf,
   onToggleBranch,
   expandSignal,
-  showLeafTask,
   renderCaseLayer,
   className,
 }: PickTreeProps) {
@@ -353,7 +336,6 @@ export function PickTree({
             leaf={item}
             selected={selectedIds.has(item.resultId)}
             onToggle={onToggleLeaf}
-            showLeafTask={showLeafTask}
           />
         ) : (
           <BranchRow
@@ -372,7 +354,6 @@ export function PickTree({
             }
             onToggleLeaf={onToggleLeaf}
             onToggleBranch={onToggleBranch}
-            showLeafTask={showLeafTask}
             renderCaseLayer={renderCaseLayer}
           />
         )

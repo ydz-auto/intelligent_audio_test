@@ -373,7 +373,6 @@ export function PickStep({
               onToggleLeaf={handleToggleLeaf}
               onToggleBranch={handleToggleBranch}
               expandSignal={expandSignal}
-              showLeafTask
               renderCaseLayer={(caseBranches) => (
                 <PickCaseOrgList
                   branches={caseBranches}

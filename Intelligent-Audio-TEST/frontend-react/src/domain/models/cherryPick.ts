@@ -104,6 +104,13 @@ export interface PickCartEntry {
   sourceApiName: string | null
   /** §11-5 未补前为 null，result_type 级分组折叠为「结果类型待补充」 */
   sourceResultType: string | null
+  /** 用例标签/分组/时长/轮次（INT-1694：任务视图用例层组织数据源；INT-1693 后端补字段后
+   *  由 adapter 映射，当前缺省 → 组织层落「未分组 / 未设置标签」兜底桶） */
+  sourceTags?: string[]
+  sourceGroupId?: string | null
+  sourceGroupName?: string | null
+  sourceTotalDuration?: number | null
+  sourceRounds?: number | null
   executionStatus: string
   /** 快照未含评估状态 → null 显示「—」（对照原 Vue 购物车口径） */
   evaluationStatus: string | null
@@ -129,6 +136,12 @@ export interface CartTreeBranch {
   children: CartTreeItem[]
   /** 用例级：sourceCaseId（§4.2 用例节点 CaseCard compact 展示） */
   caseId?: string
+  /** 用例级：标签/分组/时长/轮次（INT-1694 任务视图用例层组织；缺省落兜底桶） */
+  tags?: string[]
+  groupId?: string | null
+  groupName?: string | null
+  totalDuration?: number | null
+  rounds?: number | null
 }
 
 /** 购物车树——叶 */
