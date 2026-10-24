@@ -109,8 +109,9 @@ export function CherryPickTab({
     })
   }
 
+  // h-full：页签在 tasks 页 min-h-0 flex-1 overflow-auto 容器内，不定高则向导列表无法内部滚动（INT-1509）
   return (
-    <div className='flex min-h-0 flex-1 flex-col gap-3'>
+    <div className='flex h-full min-h-0 flex-1 flex-col gap-3'>
       {/* 页签 Actions */}
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <div className='flex flex-wrap items-center gap-2'>

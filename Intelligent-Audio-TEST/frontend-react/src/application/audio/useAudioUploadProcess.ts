@@ -12,8 +12,10 @@ import {
   mergeChunks,
   registerUploadFiles,
   uploadChunk,
+  type UploadRoundConfig,
   type UploadTestCaseConfig,
 } from '@/infrastructure/api/audio-upload-api'
+import { applyMergedAudioId } from '@/features/audio-import/lib/case-rounds'
 
 export interface UploadBatchResult {
   successCount: number
@@ -36,6 +38,10 @@ export interface UploadProgressEvent {
 export interface PerFileUploadConfig {
   groupName?: string
   annotations?: unknown[]
+  /** 所属分组整组轮次（文件夹导入；组内文件共享同一引用，merge 后回填 audio_id） */
+  rounds?: UploadRoundConfig[]
+  /** 是否该分组最后一个待处理文件（§5.7.6 建用例单位：仅它 merge 时 create_test_case=true） */
+  isGroupFinalMerge?: boolean
 }
 
 /** 分片阶段在总进度中的占比：init/register 起于 2%，分片累计到 90%，合并 95%，完成 100% */
@@ -89,6 +95,7 @@ export async function runAudioUpload(
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
+    const fileConfig = perFile?.[i]
     const isLastFile = i === files.length - 1
     if (i === 0) emit(PROGRESS_START, file.name)
     try {
@@ -109,10 +116,18 @@ export async function runAudioUpload(
       }
       const merged = await mergeChunks(taskId, registered.fileId, file.name, {
         ...config,
+        // §5.7.6 建用例单位：带分组轮次时只有「分组末文件」建用例，其余文件只入库
+        createTestCase: config.createTestCase && (fileConfig?.isGroupFinalMerge ?? true),
         // 每文件覆盖：分组名 / 标注（perFile 与 files 平行，缺省用 config 全局值）
-        groupName: perFile?.[i]?.groupName ?? config.groupName,
-        annotations: perFile?.[i]?.annotations ?? config.annotations ?? [],
+        groupName: fileConfig?.groupName ?? config.groupName,
+        annotations: fileConfig?.annotations ?? config.annotations ?? [],
+        // 整组轮次：末文件 merge 时一次提交（前序文件已回填的 audio_id 一并带出）
+        rounds: fileConfig?.rounds,
       })
+      // 回填本文件真实 audio_id 到整组 rounds（供后续同组末文件建用例时使用）
+      if (merged.audioId != null && fileConfig?.rounds?.length) {
+        applyMergedAudioId(fileConfig.rounds, merged.audioName ?? file.name, merged.audioId)
+      }
       // 合并阶段只由最后一个文件推到最后档，避免中间文件合并时进度倒退（多文件整体进度单调）
       if (isLastFile) emit(PROGRESS_MERGED, file.name)
       result.successCount += 1

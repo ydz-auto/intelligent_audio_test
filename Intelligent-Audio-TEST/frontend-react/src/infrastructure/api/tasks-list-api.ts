@@ -49,6 +49,8 @@ export interface TaskListQuery {
   favorite?: boolean
   trash?: boolean
   algorithmType?: string | null
+  /** 中止信号（INT-1627：弹窗内加载超时/关闭时取消在途请求，不占网关线程） */
+  signal?: AbortSignal
 }
 
 /**
@@ -74,7 +76,7 @@ export async function fetchTaskList(
     'GET',
     '/tasks',
     undefined,
-    { params }
+    { params, signal: query.signal }
   )
   const items = toTaskListPage(dto)
   // tags 后端 TaskListQuery 未支持（无 tags 参数）：在返回页上近似过滤（分页下仅对当前页生效）

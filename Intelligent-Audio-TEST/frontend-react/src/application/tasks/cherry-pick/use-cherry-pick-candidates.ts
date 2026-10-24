@@ -7,6 +7,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import type { CherryPickCandidate } from '@/domain/models/cherryPick'
+import type {
+  PickableTask,
+  PickableTaskSortBy,
+  PickableTaskSortOrder,
+} from '@/domain/models/cherryPick'
 import {
   buildPickCaseView,
   buildPickDeviceView,
@@ -15,11 +20,11 @@ import {
 } from '@/domain/lib/cherry-pick-tree'
 import type { CherryPickFilters } from '@/infrastructure/api/cherry-pick-api'
 import {
+  fetchAllPickableTasks,
+  fetchCandidateFacets,
   fetchCherryPickCandidates,
   fetchPickCaseNames,
-  fetchPickableDevices,
-  fetchPickableTasks,
-  fetchResultTypeOptions,
+  fetchPickableTaskOptions,
 } from '@/infrastructure/api/cherry-pick-api'
 
 /** 挑选工作区筛选状态（会话级记忆，§6.4；不持久化） */
@@ -85,8 +90,13 @@ export function useSlowPending(
   return { isSlow, restartSlow }
 }
 
-/** 候选行查询（多条件 AND）；用例名慢路径背景拉取，就绪后二次装饰 caseName（§11-2 降级 → 名称） */
-export function useCherryPickCandidates(filters: PickFilters) {
+/** 候选行查询（多条件 AND）；用例名慢路径背景拉取，就绪后二次装饰 caseName（§11-2 降级 → 名称）。
+ *  `enabled=false`（挑选向导阶段 1）时不发起——阶段 1 只走 pickable-tasks（INT-1509）。 */
+export function useCherryPickCandidates(
+  filters: PickFilters,
+  options: { enabled?: boolean } = {}
+) {
+  const enabled = options.enabled ?? true
   const queryClient = useQueryClient()
   // INT-1280：retryNonce 进入查询键——无数据慢查询的 refetch 会被 query-core 去重到在途
   // retryer 而不重发（见 query.fetch「仅已有数据才 cancelRefetch」），重试必须换键生成全新查询。
@@ -101,11 +111,13 @@ export function useCherryPickCandidates(filters: PickFilters) {
     queryKey: candidatesQueryKey,
     queryFn: () => fetchCherryPickCandidates(toApiFilters(filters)),
     staleTime: 15_000,
+    enabled,
   })
   const caseNamesQuery = useQuery({
     queryKey: ['cherry-pick', 'case-names'],
     queryFn: fetchPickCaseNames,
     staleTime: 5 * 60_000,
+    enabled,
   })
   // INT-1280：候选在途超阈值 → isSlow，UI 给可重试反馈而非无限骨架屏
   const { isSlow, restartSlow } = useSlowPending(
@@ -143,27 +155,69 @@ export function useCherryPickCandidates(filters: PickFilters) {
   return { ...candidatesQuery, data, isSlow, retryCandidates }
 }
 
-/** 筛选器选项（来源任务/设备/结果类型，动态选项数据源 §3.4） */
-export function usePickFilterOptions() {
+/** 阶段 1 可挑选任务清单（INT-1496 `GET /tasks/cherry-picks/pickable-tasks`）。
+ *  服务端排序（sort_by/sort_order）取代客户端状态权重排序；按 per_page 拉齐分页，
+ *  使「全选当前筛选」覆盖 total 全部任务，不出现只选到首页。 */
+export function usePickableTasks(params: {
+  sortBy: PickableTaskSortBy
+  sortOrder: PickableTaskSortOrder
+}) {
+  const queryClient = useQueryClient()
+  const [retryNonce, setRetryNonce] = useState(0)
+  const queryKey = [
+    'cherry-pick',
+    'pickable-tasks',
+    params.sortBy,
+    params.sortOrder,
+    retryNonce,
+  ] as const
+  const query = useQuery({
+    queryKey,
+    queryFn: () =>
+      fetchAllPickableTasks({ sortBy: params.sortBy, sortOrder: params.sortOrder }),
+    staleTime: 30_000,
+  })
+  const { isSlow, restartSlow } = useSlowPending(
+    query.isFetching,
+    SLOW_CANDIDATES_THRESHOLD_MS,
+    `${params.sortBy}:${params.sortOrder}:${retryNonce}`
+  )
+  const retry = () => {
+    restartSlow()
+    void queryClient.cancelQueries({ queryKey })
+    setRetryNonce((n) => n + 1)
+  }
+  return {
+    items: (query.data?.items ?? []) as PickableTask[],
+    total: query.data?.total ?? 0,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    isSlow,
+    retry,
+  }
+}
+
+/** 筛选器选项（来源任务/设备/结果类型，动态选项数据源 §3.4）。
+ *  来源任务与阶段 1 清单同源（pickable-tasks）；设备/结果类型仍由阶段 2
+ *  candidates facet 提供（一次查询同时出两类选项，§11-3 降级不在本卡范围）。
+ *  `enabled=false`（阶段 1）时整组不发起——阶段 1 只允许打一条 pickable-tasks。 */
+export function usePickFilterOptions(enabled = true) {
   const tasks = useQuery({
     queryKey: ['cherry-pick', 'options', 'tasks'],
-    queryFn: fetchPickableTasks,
+    queryFn: fetchPickableTaskOptions,
     staleTime: 60_000,
+    enabled,
   })
-  const devices = useQuery({
-    queryKey: ['cherry-pick', 'options', 'devices'],
-    queryFn: fetchPickableDevices,
+  const facets = useQuery({
+    queryKey: ['cherry-pick', 'options', 'facets'],
+    queryFn: fetchCandidateFacets,
     staleTime: 60_000,
-  })
-  const resultTypes = useQuery({
-    queryKey: ['cherry-pick', 'options', 'result-types'],
-    queryFn: fetchResultTypeOptions,
-    staleTime: 60_000,
+    enabled,
   })
   return {
     tasks: tasks.data ?? [],
-    devices: devices.data ?? [],
-    resultTypes: resultTypes.data ?? [],
+    devices: facets.data?.devices ?? [],
+    resultTypes: facets.data?.resultTypes ?? [],
   }
 }
 

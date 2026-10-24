@@ -47,7 +47,7 @@ function renderSummaryItem(label: string, value: string | undefined) {
   return (
     <div className='flex items-baseline gap-2 text-xs'>
       <span className='text-muted-foreground w-16 shrink-0'>{label}</span>
-      <span className='min-w-0 truncate font-mono'>{value || '全部'}</span>
+      <span className='min-w-0 truncate'>{value || '全部'}</span>
     </div>
   )
 }

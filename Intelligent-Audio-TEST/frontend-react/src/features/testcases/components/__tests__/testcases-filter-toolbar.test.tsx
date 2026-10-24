@@ -326,7 +326,9 @@ describe('TestCasesFilterToolbar', () => {
     await user.click(screen.getByRole('button', { name: /标签操作/ }))
     await user.click(await screen.findByText('编辑标签'))
     expect(screen.getByText('编辑标签')).toBeInTheDocument()
-    expect(screen.getByLabelText('标签名称')).toHaveValue('音箱')
+    // INT-1591：Label 为必填项渲染「标签名称 *」，精确匹配永远失败；用正则匹配可见标签文本
+    // （与 tag-mutate-dialog.test.tsx 同口径）
+    expect(screen.getByLabelText(/标签名称/)).toHaveValue('音箱')
   })
 
   it('INT-1030 回归：评估维度 facet 按 分组→主维度→子维度 展示并可单选', async () => {

@@ -145,12 +145,17 @@ function restoreMatchMedia() {
 /** 受控外壳：模拟 React Query 异步返回 groups（首帧空数组，加载后补齐） */
 function Harness({
   loading = false,
+  groupsLoading,
+  groups,
   cases = CASES,
   trash = false,
   hasQueryFilters = false,
   filters = {},
 }: {
   loading?: boolean
+  /** 分组列表查询态（INT-1657 用例：分组先到、扁平集仍在加载） */
+  groupsLoading?: boolean
+  groups?: TestCaseGroup[]
   cases?: TestCaseListItem[]
   trash?: boolean
   hasQueryFilters?: boolean
@@ -160,9 +165,10 @@ function Harness({
   return (
     <QueryClientProvider client={queryClient}>
       <GroupedCaseList
-        groups={loading ? [] : GROUPS}
+        groups={groups ?? (loading ? [] : GROUPS)}
         cases={loading ? [] : cases}
         loading={loading}
+        groupsLoading={groupsLoading}
         trash={trash}
         hasQueryFilters={hasQueryFilters}
         filters={filters}
@@ -223,6 +229,30 @@ describe('GroupedCaseList', () => {
   it('加载态渲染骨架而非分组头', () => {
     render(<Harness loading />)
     expect(screen.queryByText('智能音箱功能测试')).not.toBeInTheDocument()
+  })
+
+  it('INT-1657：分组已到位、用例列表仍在加载 → 渲染分组卡 + 加载提示，不显「没有找到」空态', () => {
+    render(<Harness loading groupsLoading={false} groups={GROUPS} cases={[]} />)
+    // 首屏误判回归：扁平集未到位时不得给空态结论
+    expect(screen.queryByText('没有找到符合条件的测试用例')).not.toBeInTheDocument()
+    expect(screen.queryByText('尝试清空「分组」「标签」筛选')).not.toBeInTheDocument()
+    // 加载态可见（骨架/进度）
+    expect(screen.getByRole('status')).toHaveTextContent('用例列表加载中…')
+    // INT-1284 口径保留：分组卡立即渲染，计数取 testCaseCount
+    expect(screen.getByText('智能音箱功能测试')).toBeInTheDocument()
+    expect(screen.getByText('6 条')).toBeInTheDocument()
+  })
+
+  it('INT-1657：分组与用例列表均未到位 → 骨架态，不显「没有找到」空态', () => {
+    render(<Harness loading groupsLoading groups={[]} />)
+    expect(screen.queryByText('没有找到符合条件的测试用例')).not.toBeInTheDocument()
+    expect(screen.queryByText('智能音箱功能测试')).not.toBeInTheDocument()
+  })
+
+  it('INT-1657：扁平集到位后空态口径不变（加载结束且无用例 → 空态）', () => {
+    render(<Harness cases={[]} />)
+    expect(screen.getByText('没有找到符合条件的测试用例')).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('INT-1267：/groups 空组也渲染，组头计数用 testCaseCount', async () => {

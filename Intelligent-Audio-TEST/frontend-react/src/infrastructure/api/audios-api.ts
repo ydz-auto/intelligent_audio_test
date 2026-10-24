@@ -17,6 +17,9 @@
  *   GET    /audios/{id}/stream              预签名 URL（§6.14 浏览器播放 + §5.3.1 下载二次取流）
  *   POST   /audios/{id}/preview             实验室播放（BatchPlaybackRequest，§6.14）
  *   POST   /audios/{id}/stop-preview        停止实验室播放（§6.14）
+ *   GET    /audios/{id}/features            特征分析（§6.23；INT-820 → 频谱/能量/时域三组）
+ *   GET    /audios/{id}/quality             质量评估（§6.23；INT-820 → SNR/动态范围/频率响应/评分）
+ *   POST   /audios/{id}/process             处理操作（§6.23；INT-820 → denoise/gain/trim）
  *
  * snake_case 契约：infrastructure 是唯一 snake→camel 转换层（adapters/audioAdapter.ts），
  * application/domain 层只见 camelCase Domain，展示层不感知 wire 字段。
@@ -24,19 +27,29 @@
 import type {
   AudioAsset,
   AudioConvertOptions,
+  AudioFeatures,
   AudioFolderNode,
   AudioListStats,
+  AudioProcessRequest,
+  AudioProcessResult,
+  AudioQuality,
 } from '@/domain/models/audio'
 import { request } from '@/infrastructure/api/client'
 import { ApiError } from '@/infrastructure/api/api-error'
 import {
+  audioFeaturesFromDto,
   audioFromDto,
+  audioProcessResultFromDto,
+  audioQualityFromDto,
   audioStatsFromDto,
   folderNodeFromDto,
 } from '@/infrastructure/adapters/audioAdapter'
 import type {
+  AudioFeaturesDto,
   AudioItemDto,
   AudioListDto,
+  AudioProcessResultDto,
+  AudioQualityDto,
   AudioTagListDto,
   FolderTreeDto,
 } from '@/infrastructure/dto/audio.dto'
@@ -299,10 +312,58 @@ export async function convertAudio(
 }
 
 /**
+ * 特征分析（GET /audios/{id}/features；§6.23 特征分区，INT-820 §3.3.2）。
+ * 响应 data = { spectral, energy, time_domain, audio_id, duration }，
+ * 由 audio_service compute_features 计算（字段以 200 响应为准）。
+ * 端点异常（如分析失败 400 / 音频不存在 404）由 client 抛 ApiError，
+ * 调用方须呈现错误态 + 重试，不得退化成空态。
+ */
+export async function getAudioFeatures(id: number): Promise<AudioFeatures> {
+  const dto = await request<AudioFeaturesDto>('GET', `/audios/${id}/features`)
+  if (!dto) throw new ApiError({ message: '特征分析返回为空' })
+  return audioFeaturesFromDto(dto)
+}
+
+/**
+ * 质量评估（GET /audios/{id}/quality；§6.23 质量评估分区）。
+ * 响应 data = { snr_db, dynamic_range_db, frequency_response_score, quality_score, audio_id, duration }。
+ */
+export async function getAudioQuality(id: number): Promise<AudioQuality> {
+  const dto = await request<AudioQualityDto>('GET', `/audios/${id}/quality`)
+  if (!dto) throw new ApiError({ message: '质量评估返回为空' })
+  return audioQualityFromDto(dto)
+}
+
+/**
+ * 处理操作（POST /audios/{id}/process；§6.23 处理操作，INT-820 §3.3.2）。
+ * body 对照 AudioProcessRequest{ operation, mode, gain_db, start_ms, end_ms }：
+ * operation 必填（denoise / gain / trim），mode 默认 new（建新音频记录，回 new_audio_id），
+ * overwrite 覆盖原记录 file_path（破坏性，调用方须二次确认）。
+ */
+export async function processAudio(
+  id: number,
+  payload: AudioProcessRequest
+): Promise<AudioProcessResult> {
+  const body: Record<string, unknown> = {
+    operation: payload.operation,
+    mode: payload.mode ?? 'new',
+  }
+  if (payload.gainDb !== undefined) body.gain_db = payload.gainDb
+  if (payload.startMs !== undefined) body.start_ms = payload.startMs
+  if (payload.endMs !== undefined) body.end_ms = payload.endMs
+  const dto = await request<AudioProcessResultDto>(
+    'POST',
+    `/audios/${id}/process`,
+    body
+  )
+  if (!dto) throw new ApiError({ message: '处理操作返回为空' })
+  return audioProcessResultFromDto(dto)
+}
+
+/**
  * URL 导入（POST /audios/url-import；后端为单条契约 URLImportRequest{ url, audio_type }，
  * 批量由本层循环逐条提交并统计成功/失败）。
- */
-export async function urlImportAudios(
+ */export async function urlImportAudios(
   urls: string[],
   audioType = 'dry'
 ): Promise<{ successCount: number; failedCount: number }> {

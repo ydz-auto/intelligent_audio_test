@@ -187,6 +187,7 @@ export function BatchAlgoParamsDialog({
   count,
   ids,
   roundCount,
+  unknownRoundCount = 0,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -194,6 +195,8 @@ export function BatchAlgoParamsDialog({
   ids: string[]
   /** 选中用例实际轮次数（config.rounds 派生；0=空态） */
   roundCount: number
+  /** 选中用例中轮次未知（列表尚未加载）的条数 */
+  unknownRoundCount?: number
 }) {
   const { options: algorithmOptions, isLoading: loadingAlgorithms } =
     useAlgorithmOptions()
@@ -352,6 +355,7 @@ export function BatchAlgoParamsDialog({
             value={scope}
             onChange={setScope}
             roundCount={roundCount}
+            unknownRoundCount={unknownRoundCount}
           />
         </div>
 

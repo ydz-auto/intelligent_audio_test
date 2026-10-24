@@ -6,6 +6,7 @@
  *   PUT  /tags/categories/{id}                     （TagCategoryUpdateSchema）
  *   DELETE /tags/categories/{id}
  *   GET  /tags?page&per_page                       （TagDetailListData）
+ *   GET  /tags/names?page&per_page&keyword         （TagNameListData，标签名列表）
  *   POST /tags                                    （TagCreateSchema）
  *   PUT  /tags/{id}                               （TagUpdateSchema）
  *   DELETE /tags/{id}?cascade=false
@@ -28,6 +29,7 @@ import {
   type TagCategoryListDataDto,
   type TagDetailListDataDto,
   type TagItemDto,
+  type TagNameListDataDto,
 } from '@/infrastructure/dto/test-tag.dto'
 
 /** 标签/分类全量（facet 选项 + 登记表；现接口无分页 UI），拉大页供前端切分 */
@@ -39,6 +41,21 @@ export async function fetchTags(): Promise<TagItem[]> {
     params: { page: 1, per_page: TAG_LIST_PAGE_SIZE },
   })
   return (dto.items ?? []).map(toTagItem)
+}
+
+/**
+ * 标签名列表（GET /tags/names；keyword 服务端过滤）——用例表单标签 Combobox 建议下拉
+ * 与「已有标签」搜索共用（11_用例域.md §5.1 / §4.3 `['tags','names']`，INT-1591）。
+ */
+export async function fetchTagNames(keyword?: string): Promise<string[]> {
+  const dto = await apiClient.get<TagNameListDataDto>('/tags/names', {
+    params: {
+      page: 1,
+      per_page: TAG_LIST_PAGE_SIZE,
+      keyword: keyword?.trim() || undefined,
+    },
+  })
+  return dto.items ?? []
 }
 
 /** 标签分类（标签 facet 选项分组头 + 标签管理页左分类树） */

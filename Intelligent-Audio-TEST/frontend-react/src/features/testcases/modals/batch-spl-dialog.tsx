@@ -38,6 +38,7 @@ export function BatchSplDialog({
   count,
   ids,
   roundCount,
+  unknownRoundCount = 0,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -45,6 +46,8 @@ export function BatchSplDialog({
   ids: string[]
   /** 选中用例实际轮次数（config.rounds 派生；0=空态） */
   roundCount: number
+  /** 选中用例中轮次未知（列表尚未加载）的条数 */
+  unknownRoundCount?: number
 }) {
   const [scope, setScope] = useState(() => createRoundScope(roundCount))
   const [layers, setLayers] = useState<ApplyLayerId[]>([])
@@ -134,6 +137,7 @@ export function BatchSplDialog({
             value={scope}
             onChange={setScope}
             roundCount={roundCount}
+            unknownRoundCount={unknownRoundCount}
           />
         </div>
 

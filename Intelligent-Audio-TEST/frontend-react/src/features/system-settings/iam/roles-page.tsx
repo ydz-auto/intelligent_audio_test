@@ -229,17 +229,20 @@ export function RolesPage() {
         permissionModules={permissionCatalogQuery.data ?? []}
         canUpdate={canUpdate}
         onOpenChange={setDialogOpen}
-        onCreate={(input) => {
-          mutations.createRole.mutate(input)
-          setDialogOpen(false)
+        isSaving={
+          mutations.createRole.isPending ||
+          mutations.updateRole.isPending ||
+          mutations.setPermissions.isPending
+        }
+        onCreate={async (input) => {
+          // 关窗时机下移：成功由 RoleDialog 关闭，失败保留弹窗与输入（toast 由 mutation 层弹出）
+          await mutations.createRole.mutateAsync(input)
         }}
-        onUpdate={(roleId, patch) => {
-          mutations.updateRole.mutate({ roleId, patch })
-          setDialogOpen(false)
+        onUpdate={async (roleId, patch) => {
+          await mutations.updateRole.mutateAsync({ roleId, patch })
         }}
-        onSetPermissions={(roleId, permissions) => {
-          mutations.setPermissions.mutate({ roleId, permissions })
-          setDialogOpen(false)
+        onSetPermissions={async (roleId, permissions) => {
+          await mutations.setPermissions.mutateAsync({ roleId, permissions })
         }}
       />
 
@@ -279,10 +282,21 @@ type RoleDialogProps = {
   permissionModules: Parameters<typeof PermissionMatrix>[0]['permissionModules']
   canUpdate: boolean
   onOpenChange: (open: boolean) => void
-  onCreate: (input: { name: string; description: string; permissions: string[] }) => void
-  onUpdate: (roleId: string, patch: { name?: string; description?: string }) => void
-  onSetPermissions: (roleId: string, permissions: string[]) => void
+  /** 任一角色 mutation 进行中（提交按钮禁用，防重复提交） */
+  isSaving: boolean
+  onCreate: (input: {
+    name: string
+    description: string
+    permissions: string[]
+  }) => Promise<void>
+  onUpdate: (roleId: string, patch: { name?: string; description?: string }) => Promise<void>
+  onSetPermissions: (roleId: string, permissions: string[]) => Promise<void>
 }
+
+/** 表单字段（字段级错误的定位键，与 Input 的 id 后缀一致） */
+type RoleDialogField = 'name'
+
+type RoleDialogFieldErrors = Partial<Record<RoleDialogField, string>>
 
 function RoleDialog(props: RoleDialogProps) {
   const isCreate = props.mode === 'create'
@@ -293,6 +307,7 @@ function RoleDialog(props: RoleDialogProps) {
   const [description, setDescription] = useState('')
   const [permissions, setPermissions] = useState<string[]>([])
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<RoleDialogFieldErrors>({})
 
   useEffect(() => {
     if (!props.open) return
@@ -300,20 +315,51 @@ function RoleDialog(props: RoleDialogProps) {
     setName(target?.name ?? '')
     setDescription(target?.description ?? '')
     setPermissions(target?.permissions ?? [])
+    setFieldErrors({})
   }, [props.open, props.role])
 
-  const handleConfirmSave = () => {
-    setConfirmOpen(false)
-    if (!props.role) return
-    if (name !== props.role.name || description !== props.role.description) {
-      props.onUpdate(props.role.id, { name, description })
-    }
-    props.onSetPermissions(props.role.id, permissions)
+  const clearFieldError = (field: RoleDialogField) =>
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
+
+  /** 必填校验（§05 系统设置：zod 口径的前端拦截，中文红字 + aria-invalid） */
+  const validate = (): RoleDialogFieldErrors => {
+    const errors: RoleDialogFieldErrors = {}
+    if (!name.trim()) errors.name = '请输入角色名称'
+    return errors
   }
 
-  const handleSaveClick = () => {
+  const handleConfirmSave = async () => {
+    setConfirmOpen(false)
+    const target = props.role
+    if (!target) return
+    try {
+      // 名称/描述有变更才更新基础信息，权限恒做全量替换
+      if (name.trim() !== target.name || description !== target.description) {
+        await props.onUpdate(target.id, { name: name.trim(), description })
+      }
+      await props.onSetPermissions(target.id, permissions)
+      props.onOpenChange(false)
+    } catch {
+      // 任一提交失败：弹窗保持打开、输入与矩阵保留（toast 由 mutation 层弹出）
+    }
+  }
+
+  const handleSaveClick = async () => {
+    const errors = validate()
+    setFieldErrors(errors)
+    if (Object.keys(errors).length > 0) return
     if (isCreate) {
-      props.onCreate({ name, description, permissions })
+      try {
+        await props.onCreate({ name: name.trim(), description, permissions })
+        props.onOpenChange(false)
+      } catch {
+        // 失败保留弹窗与输入（toast 由 mutation 层弹出）
+      }
       return
     }
     if (props.role) {
@@ -347,8 +393,18 @@ function RoleDialog(props: RoleDialogProps) {
                   placeholder='输入角色名称'
                   disabled={!isCreate && !props.canUpdate}
                   value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  aria-invalid={Boolean(fieldErrors.name)}
+                  aria-describedby={fieldErrors.name ? 'role-name-error' : undefined}
+                  onChange={(event) => {
+                    setName(event.target.value)
+                    clearFieldError('name')
+                  }}
                 />
+                {fieldErrors.name && (
+                  <p id='role-name-error' className='text-destructive text-xs'>
+                    {fieldErrors.name}
+                  </p>
+                )}
               </div>
               <div className='grid gap-1.5'>
                 <Label htmlFor='role-description'>描述</Label>
@@ -383,11 +439,15 @@ function RoleDialog(props: RoleDialogProps) {
             />
           </div>
           <DialogFooter>
-            <Button variant='outline' onClick={() => props.onOpenChange(false)}>
+            <Button
+              variant='outline'
+              disabled={props.isSaving}
+              onClick={() => props.onOpenChange(false)}
+            >
               取消
             </Button>
             {!readOnly && (
-              <Button onClick={handleSaveClick}>
+              <Button onClick={() => void handleSaveClick()} disabled={props.isSaving}>
                 {isCreate ? '创建' : '保存'}
               </Button>
             )}

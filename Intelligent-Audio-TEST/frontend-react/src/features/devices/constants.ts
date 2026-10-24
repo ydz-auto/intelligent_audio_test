@@ -81,3 +81,37 @@ export const DEVICES_STATS_LABELS: Record<DevicesTabKey, string[]> = {
   playback: ['总设备数', '在线设备', '离线设备', '异常设备'],
   api: ['总测试API数', '可用API', '不可用API', '测试中API'],
 }
+
+/* ───────── 导入 / 导出（§3.3/§4.5；INT-816 三资源端点，INT-1624 接线） ───────── */
+
+/** 资源中文名（弹窗标题与提示用；页签值 → 与菜单同源） */
+export const DEVICES_RESOURCE_LABEL: Record<DevicesTabKey, string> = {
+  test: '测试设备',
+  playback: '播放设备',
+  api: '测试 API',
+}
+
+/** 导入文件接收类型（后端 device_import_export_service.py `_parse_import_file` 支持集） */
+export const DEVICES_IMPORT_ACCEPT = '.json,.csv,.xlsx'
+
+/** 导入格式提示文案（§4.5.1） */
+export const DEVICES_IMPORT_FORMAT_HINT = '支持格式：JSON / CSV / Excel'
+
+/** 导出格式选项（ResourceExportQuery.format；默认 JSON） */
+export const DEVICES_EXPORT_FORMAT_OPTIONS: ReadonlyArray<{
+  value: 'json' | 'excel'
+  label: string
+}> = [
+  { value: 'json', label: 'JSON' },
+  { value: 'excel', label: 'Excel' },
+]
+
+/** 导出范围选项（§4.5.2；映射见 domain/models/deviceImportExport.ts） */
+export const DEVICES_EXPORT_RANGE_OPTIONS: ReadonlyArray<{
+  value: 'all' | 'selected' | 'filtered'
+  label: string
+}> = [
+  { value: 'all', label: '全部' },
+  { value: 'selected', label: '当前页选中' },
+  { value: 'filtered', label: '当前筛选结果' },
+]

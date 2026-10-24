@@ -64,6 +64,13 @@ type RoundMode = 'all' | 'specific' | 'per_round'
 /** 轮次键：数字轮号或最后一轮 -1（§5.3.5 ④ 语义；历史配置兼容） */
 type RoundKey = number | -1
 
+/**
+ * 「轮次未知」时的哨兵键：选中用例一条轮次都没加载时，「所有轮次」档没有一个具体轮号可挂，
+ * 用该键承载已选维度/参数（不渲染成轮次 Tab、不参与 round_dimensions）。
+ * 提交时统一模式按 roundMode='all' 交给后端落全部轮次，选的维度不会丢。
+ */
+const ALL_ROUNDS_SENTINEL = -2 as RoundKey
+
 /** 逐轮 Tab 初值：按选中用例实际轮次 1..N 展开（N=0 时为空态，不编造轮次） */
 const roundKeysOf = (roundCount: number): number[] =>
   Array.from({ length: roundCount }, (_, i) => i + 1)
@@ -113,6 +120,8 @@ export function BatchDimensionsDialog({
   const [copyOpen, setCopyOpen] = useState(false)
   const [copySource, setCopySource] = useState<RoundKey>(1)
   const [confirmAction, setConfirmAction] = useState<null | 'clear' | 'applyAll'>(null)
+  /** 统一模式未选任何维度就提交 = 清空（后端空数组语义），先二次确认 */
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false)
 
   const roundLabels = (key: RoundKey) => (key === -1 ? '最后一轮' : `第 ${key} 轮`)
 
@@ -129,8 +138,8 @@ export function BatchDimensionsDialog({
             其中 {unknownRoundCount} 个用例的轮次信息尚未加载
           </p>
           <p className='text-muted-foreground mt-1 text-xs leading-relaxed'>
-            这些用例不在当前已加载的列表里，轮次未知不等于没有轮次。可选择「所有轮次（统一设置）」继续；
-            按轮次设置前请先展开/加载这些用例。
+            这些用例不在当前已加载的列表里，轮次未知不等于没有轮次。可选择「所有轮次（统一设置）」继续
+            （所选维度应用到全部轮次）；按轮次逐个设置前请先展开/加载这些用例。
           </p>
         </>
       ) : (
@@ -163,9 +172,18 @@ export function BatchDimensionsDialog({
     })
   }
 
-  /** 当前模式下勾选网格实际作用的轮次集合 */
+  /**
+   * 当前模式下勾选网格实际作用的轮次集合：
+   * 「所有轮次」档在轮次未知（rounds 为空）时用哨兵键承载，否则点维度是空操作、确定却清空全部维度。
+   */
   const gridKeys: RoundKey[] =
-    roundMode === 'all' ? rounds : roundMode === 'specific' ? specificRounds : [activeRound]
+    roundMode === 'all'
+      ? rounds.length > 0
+        ? rounds
+        : [ALL_ROUNDS_SENTINEL]
+      : roundMode === 'specific'
+        ? specificRounds
+        : [activeRound]
 
   /** 传给 DimensionPicker 的已选集合（gridKeys 并集，主维度联动子维度） */
   const gridSelected = useMemo(
@@ -300,17 +318,13 @@ export function BatchDimensionsDialog({
     ...getEffectiveParam(id, keys),
   })
 
-  const handleSubmit = async () => {
-    // 轮次未知（列表未加载）不阻断「所有轮次（统一设置）」；其余两档必须有已知轮次才可提交
-    if (roundCount === 0 && roundMode !== 'all') {
-      toast.error('所选用例的轮次信息尚未加载，无法按轮次设置评估维度')
-      return
-    }
-    // 一条轮次都取不到且没有未加载用例：确无轮次信息，保持不可提交
-    if (roundCount === 0 && unknownRoundCount === 0) {
-      toast.error('所选用例暂无可配置的轮次信息，无法设置评估维度')
-      return
-    }
+  /** 统一模式（所有轮次/指定轮次）要提交的维度 id 集合；「所有轮次」档含轮次未知时的哨兵键 */
+  const unifiedFlat = (): number[] =>
+    roundMode === 'specific'
+      ? [...new Set(specificRounds.flatMap((k) => selected[k] ?? []))]
+      : gridSelected
+
+  const submitPayload = async () => {
     setSubmitting(true)
     try {
       const multiDimensions = multiSelected.map((id) => ({
@@ -332,8 +346,7 @@ export function BatchDimensionsDialog({
           multiDimensions,
         })
       } else {
-        const idsToApply = roundMode === 'specific' ? specificRounds : rounds
-        const flat = [...new Set(idsToApply.flatMap((k) => selected[k] ?? []))]
+        const flat = unifiedFlat()
         await batchTestcaseAction('update_dimensions', ids, {
           dimensions: flat.map((id) => toDimConfig(id, gridKeys)),
           testType: testType ?? '',
@@ -349,6 +362,25 @@ export function BatchDimensionsDialog({
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleSubmit = async () => {
+    // 轮次未知（列表未加载）不阻断「所有轮次（统一设置）」；其余两档必须有已知轮次才可提交
+    if (roundCount === 0 && roundMode !== 'all') {
+      toast.error('所选用例的轮次信息尚未加载，无法按轮次设置评估维度')
+      return
+    }
+    // 一条轮次都取不到且没有未加载用例：确无轮次信息，保持不可提交
+    if (roundCount === 0 && unknownRoundCount === 0) {
+      toast.error('所选用例暂无可配置的轮次信息，无法设置评估维度')
+      return
+    }
+    // 统一模式未选任何维度 = 清空所选轮次的评估维度（后端空数组即清空，不可撤销）：二次确认
+    if (roundMode !== 'per_round' && unifiedFlat().length === 0) {
+      setConfirmClearOpen(true)
+      return
+    }
+    await submitPayload()
   }
 
   return (
@@ -600,7 +632,7 @@ export function BatchDimensionsDialog({
             <p className='text-muted-foreground mb-2 text-xs'>
               {roundMode === 'per_round'
                 ? '已按当前算法过滤可用维度；未选维度的轮次将被清空'
-                : '已按当前算法过滤可用维度；不选任何维度点确定即清除所选轮次的评估维度'}
+                : '已按当前算法过滤可用维度；清空已选维度并点确定会先二次确认，再清除所选轮次的评估维度'}
             </p>
             <div
               data-testid='batch-dim-round-cloud'
@@ -637,7 +669,7 @@ export function BatchDimensionsDialog({
             </div>
           ) : (
             <p className='text-muted-foreground/70 text-xs'>
-              未选择评估维度——不选任何维度点确定即清除所选轮次的评估维度
+              未选择评估维度——点确定会先二次确认，确认后清除所选轮次的评估维度
             </p>
           )}
 
@@ -711,6 +743,18 @@ export function BatchDimensionsDialog({
           confirmText='确定清空'
           destructive
           handleConfirm={clearRound}
+        />
+        <ConfirmDialog
+          open={confirmClearOpen}
+          onOpenChange={(o) => !o && setConfirmClearOpen(false)}
+          title='确定清空所选用例的评估维度？'
+          desc={`当前未选择任何维度，确定后将清空所选 ${count} 个用例当前轮次范围的评估维度（含权重/阈值），无法撤销。`}
+          confirmText='确定清空'
+          destructive
+          handleConfirm={() => {
+            setConfirmClearOpen(false)
+            void submitPayload()
+          }}
         />
         <ConfirmDialog
           open={confirmAction === 'applyAll'}

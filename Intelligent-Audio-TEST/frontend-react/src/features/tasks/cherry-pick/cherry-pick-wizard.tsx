@@ -116,7 +116,8 @@ export function CherryPickWizard({
         </Button>
       </div>
 
-      <div className='min-h-0 flex-1'>
+      {/* 步骤区撑满剩余高度：阶段 1 任务列表内部滚动、底部操作栏常驻（INT-1509） */}
+      <div className='flex min-h-0 flex-1 flex-col'>
         {step === 'pick' && (
           <PickStep
             filters={filters}

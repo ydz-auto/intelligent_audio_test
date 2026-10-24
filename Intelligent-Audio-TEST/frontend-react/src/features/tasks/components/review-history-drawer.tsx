@@ -8,7 +8,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { History } from 'lucide-react'
 
-import { useReviewHistory } from '@/application/tasks/useReview'
+import { useScopedReviewHistory } from '@/application/tasks/useReview'
 import { Badge } from '@/components/ui/badge'
 import {
   Sheet,
@@ -49,8 +49,9 @@ export function ReviewHistoryDrawer({
   resultId?: number
 }) {
   const queryClient = useQueryClient()
-  // 抽屉未打开或 taskId<=0（test-execution 挂载即渲染的 taskId ?? 0）时不发 /review-history 无效请求
-  const { data, isLoading, isError } = useReviewHistory(taskId, open && taskId > 0)
+  // 抽屉未打开或 taskId<=0（test-execution 挂载即渲染的 taskId ?? 0）时不发 /review-history 无效请求。
+  // INT-1626：挑选合并容器按「结果归属任务」聚合（容器行引用源任务结果，复核留痕落源任务）。
+  const { data, isLoading, isError } = useScopedReviewHistory(taskId, open && taskId > 0)
   // 后端按时间正序返回 → 展示侧倒序（最新在前，§3.4「服务端按时间倒序」口径）
   const items = (data ?? [])
     .filter((item) => (resultId ? item.resultId === resultId : true))
@@ -106,9 +107,21 @@ export function ReviewHistoryDrawer({
                       <span className='text-muted-foreground'>
                         操作人 {item.createdByUserId != null ? `用户 #${item.createdByUserId}` : '—'}
                       </span>
-                      <Badge variant='outline' className='rounded-sm px-1.5 text-[10px] font-normal'>
-                        {caseName}
-                      </Badge>
+                      {/* 长用例名（实测 80 字 ≈ 578px > 抽屉 512px）不得溢出抽屉：截断 + Tooltip 全文 */}
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Badge
+                              variant='outline'
+                              className='max-w-full min-w-0 shrink rounded-sm px-1.5 text-[10px] font-normal'
+                              data-slot='review-history-case-name'
+                            />
+                          }
+                        >
+                          <span className='min-w-0 truncate'>{caseName}</span>
+                        </TooltipTrigger>
+                        <TooltipContent className='max-w-xs break-all'>{caseName}</TooltipContent>
+                      </Tooltip>
                     </div>
                     <div className='mt-1 flex flex-wrap items-center gap-1.5'>
                       <Badge variant='secondary' className='rounded-sm px-1.5 text-[10px]'>

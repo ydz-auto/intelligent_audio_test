@@ -43,6 +43,31 @@ export interface TestCaseListDataDto {
   pages: number
 }
 
+/**
+ * 用例试听响应（POST /testcases/{id}/preview → testcase.py TestCasePreviewData 逐字段）。
+ * frontend 模式回音频流 URL（多轮时 audio_stream_urls 连续播放），
+ * backend 模式由网关经播放编排在用例配置设备上放音，仅回时长。
+ */
+export interface TestCasePreviewDto {
+  test_case_id: string
+  preview_task_id?: string | null
+  status: string
+  message?: string | null
+  duration?: number | null
+  playback_mode?: string | null
+  audio_id?: number | string | null
+  audio_stream_url?: string | null
+  /** 多轮音频连续播放（>1 条时返回） */
+  audio_stream_urls?: string[] | null
+}
+
+/** 停止用例试听响应（POST /testcases/{id}/stop_preview → TestCaseStopPreviewData） */
+export interface TestCaseStopPreviewDto {
+  test_case_id: string
+  status: string
+  message?: string | null
+}
+
 /** 用例执行详情·算法结果扁平项（task_bp.py get_case_detail algorithm_results 实测；API/voice_llm 用例分节①结果摘要消费） */
 export interface CaseAlgorithmResultDto {
   param_code: string

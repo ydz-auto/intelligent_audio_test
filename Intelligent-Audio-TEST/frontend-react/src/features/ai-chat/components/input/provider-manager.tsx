@@ -70,8 +70,9 @@ function ModelListField({
   }
   return (
     <div className='grid gap-1.5'>
+      {/* 行 key 只用下标：key 含输入值会让每次按键重建整行 input，焦点与后续键入全部丢失（INT-1596） */}
       {models.map((model, index) => (
-        <div className='flex items-center gap-1.5' key={`${model}-${index}`}>
+        <div className='flex items-center gap-1.5' key={index}>
           <Input
             className='h-7 font-mono text-xs'
             onChange={(event) => updateAt(index, event.target.value)}
@@ -126,8 +127,21 @@ function ProviderForm({
   const [testing, setTesting] = useState(false)
   const [fetching, setFetching] = useState(false)
 
+  /** 字段填了合法值就把该字段的校验红字清掉，不必等下次保存（INT-1596） */
+  const clearError = (key: 'name' | 'baseUrl' | 'apiKey') => {
+    setErrors((prev) => {
+      if (!prev[key]) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
+    if (key === 'models') return
+    if (!String(value).trim()) return
+    clearError(key)
   }
 
   const validate = (): boolean => {

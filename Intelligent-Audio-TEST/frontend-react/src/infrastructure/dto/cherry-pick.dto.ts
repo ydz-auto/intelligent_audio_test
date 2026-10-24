@@ -46,6 +46,27 @@ export interface CherryPickCandidateDto {
   created_at: string | null
 }
 
+/** 可挑选任务行（GET /tasks/cherry-picks/pickable-tasks，INT-1496 §8.1 实测响应）
+ *  - `execution_status` 是**任务**执行状态（completed/failed/stopped），不是结果级状态
+ *  - `pickable_count` 是该任务可挑结果行数（excluded=0），与 candidates 同口径
+ *  - `created_at` 是**任务**创建时间（ISO 8601），不是首条结果时间
+ */
+export interface PickableTaskDto {
+  id: number
+  name: string
+  execution_status: string
+  pickable_count: number
+  created_at: string | null
+}
+
+/** 可挑选任务分页（`total` 不受分页影响） */
+export interface PickableTaskPageDto {
+  items: PickableTaskDto[]
+  total: number
+  page: number
+  per_page: number
+}
+
 /** 购物车条目快照（cherry_pick_repository._cart_item_to_dict + cart_get invalid 标注） */
 export interface CherryPickCartItemDto {
   item_id: number

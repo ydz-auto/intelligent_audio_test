@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { PlatformRole } from '@/domain/models/role'
+import { ApiError } from '@/infrastructure/api/api-error'
 import {
   createRole,
   deleteRole,
@@ -19,6 +20,12 @@ import {
   setRolePermissions,
   updateRole,
 } from '@/infrastructure/api/roleApi'
+
+/** 错误 → 可展示文案（ApiError.userMessage 已收敛后端 message，见 infrastructure/api/api-error.ts） */
+function toErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return error.userMessage || fallback
+  return fallback
+}
 
 export function useRolesQuery() {
   return useQuery({
@@ -48,7 +55,7 @@ export function useRoleMutations() {
       toast.success('角色已创建')
       invalidateRoles()
     },
-    onError: () => toast.error('角色保存失败'),
+    onError: (error) => toast.error(toErrorMessage(error, '创建角色失败')),
   })
 
   const updateRoleMutation = useMutation({
@@ -58,7 +65,7 @@ export function useRoleMutations() {
       toast.success('角色权限已更新')
       invalidateRoles()
     },
-    onError: () => toast.error('角色保存失败'),
+    onError: (error) => toast.error(toErrorMessage(error, '更新角色失败')),
   })
 
   const setPermissions = useMutation({
@@ -68,7 +75,7 @@ export function useRoleMutations() {
       toast.success('角色权限已更新')
       invalidateRoles()
     },
-    onError: () => toast.error('角色保存失败'),
+    onError: (error) => toast.error(toErrorMessage(error, '保存角色权限失败')),
   })
 
   const deleteRoleMutation = useMutation({
@@ -77,11 +84,7 @@ export function useRoleMutations() {
       toast.success('角色已删除')
       invalidateRoles()
     },
-    onError: (error: unknown) => {
-      const message =
-        error instanceof Error && error.message ? error.message : '角色保存失败'
-      toast.error(message)
-    },
+    onError: (error) => toast.error(toErrorMessage(error, '删除角色失败')),
   })
 
   return {

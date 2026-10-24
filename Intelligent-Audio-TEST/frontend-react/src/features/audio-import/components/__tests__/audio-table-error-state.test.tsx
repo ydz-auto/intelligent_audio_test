@@ -54,7 +54,6 @@ function baseProps(overrides: Partial<AudioTableProps> = {}): AudioTableProps {
     onDownload: vi.fn(),
     onConvert: vi.fn(),
     onFeatureAnalysis: vi.fn(),
-    onPlaybackHistory: vi.fn(),
     onDelete: vi.fn(),
     ...overrides,
   }

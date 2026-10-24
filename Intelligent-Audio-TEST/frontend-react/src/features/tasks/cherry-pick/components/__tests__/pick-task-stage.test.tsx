@@ -22,9 +22,14 @@ function setup(selected = new Set<number>(), overrides: Partial<Parameters<typeo
   const onClear = vi.fn()
   const onNext = vi.fn()
   const onRetry = vi.fn()
+  const onSortChange = vi.fn()
   render(
     <PickTaskStage
       tasks={TASKS}
+      total={TASKS.length}
+      sortBy='status'
+      sortOrder='asc'
+      onSortChange={onSortChange}
       selectedTaskIds={selected}
       loading={false}
       isError={false}
@@ -36,7 +41,7 @@ function setup(selected = new Set<number>(), overrides: Partial<Parameters<typeo
       {...overrides}
     />
   )
-  return { onToggle, onSelectAll, onClear, onNext, onRetry }
+  return { onToggle, onSelectAll, onClear, onNext, onRetry, onSortChange }
 }
 
 describe('PickTaskStage（§3.8.2 阶段 1 选择任务）', () => {
@@ -71,10 +76,32 @@ describe('PickTaskStage（§3.8.2 阶段 1 选择任务）', () => {
     expect(onSelectAll).toHaveBeenCalledWith([1041])
   })
 
-  it('全选当前筛选（无搜索）传全部任务', () => {
+  it('全选当前筛选（无搜索）传全部任务，并提示覆盖 total 全部任务', () => {
     const { onSelectAll } = setup()
+    expect(screen.getByText(/共 3 个可挑选任务/)).toBeInTheDocument()
+    expect(screen.getByText(/全选当前筛选将选中命中全部 3 个任务/)).toBeInTheDocument()
     fireEvent.click(screen.getByText('全选当前筛选'))
     expect(onSelectAll).toHaveBeenCalledWith([1042, 1041, 1040])
+  })
+
+  it('已选计数与 total 并显（INT-1509：跨页全选覆盖 total）', () => {
+    setup(new Set([1042, 1041]), { total: 117 })
+    expect(screen.getByText('2', { selector: '.font-medium' })).toBeInTheDocument()
+    expect(screen.getByText(/\/ 共 117 个可挑选任务/)).toBeInTheDocument()
+  })
+
+  it('排序方向切换触发 onSortChange（服务端 sort_by/sort_order 取代客户端排序）', () => {
+    const { onSortChange } = setup()
+    fireEvent.click(screen.getByLabelText('当前升序，切换为降序'))
+    expect(onSortChange).toHaveBeenCalledWith('status', 'desc')
+  })
+
+  it('降序时按钮显示降序并可切回升序', () => {
+    const { onSortChange } = setup(new Set(), { sortOrder: 'desc', sortBy: 'created_at' })
+    const btn = screen.getByLabelText('当前降序，切换为升序')
+    expect(btn).toHaveTextContent('降序')
+    fireEvent.click(btn)
+    expect(onSortChange).toHaveBeenCalledWith('created_at', 'asc')
   })
 
   it('清空触发 onClear；下一步：选择结果（{n}）按选中数启用/禁用', () => {

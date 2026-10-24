@@ -214,3 +214,25 @@ export interface CherryPickContainer {
   /** 容器报告摘要（「查看报告」跳转 /report/:id 数据源；无报告时 null） */
   reports: { count: number; reports: { id: number; name: string | null }[] } | null
 }
+
+/** 可挑选任务（阶段 1 数据源，INT-1496 `GET /tasks/cherry-picks/pickable-tasks`）
+ *  任务级聚合行：`count` = 该任务可挑结果行数（excluded=0），`executionStatus` 是**任务**状态。 */
+export interface PickableTask {
+  taskId: number
+  taskName: string
+  executionStatus: string
+  createdAt: string | null
+  count: number
+}
+
+/** 可挑选任务分页（`total` 为满足条件的任务总数，不受分页影响） */
+export interface PickableTaskPage {
+  items: PickableTask[]
+  total: number
+  page: number
+  perPage: number
+}
+
+/** 可挑选任务排序键（服务端 sort_by 枚举，INT-1496 §8.1） */
+export type PickableTaskSortBy = 'status' | 'name' | 'created_at'
+export type PickableTaskSortOrder = 'asc' | 'desc'

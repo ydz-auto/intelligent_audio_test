@@ -378,7 +378,11 @@ export function AlarmPanel(props: AlarmPanelProps) {
             <div className='flex flex-col gap-2'>
               {/* 工具行：状态 facet + 级别 facet + 「告警规则」 */}
               <div className='flex flex-wrap items-center gap-2'>
-                <Select value={alarmStatus} onValueChange={(value) => setAlarmStatus(value ?? 'all')}>
+                <Select
+                  value={alarmStatus}
+                  onValueChange={(value) => setAlarmStatus(value ?? 'all')}
+                  items={[{ value: 'all', label: '全部状态' }, ...STATUS_FILTER_OPTIONS]}
+                >
                   <SelectTrigger size='sm' className='w-28'>
                     <SelectValue placeholder='全部状态' />
                   </SelectTrigger>
@@ -391,7 +395,11 @@ export function AlarmPanel(props: AlarmPanelProps) {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={severity} onValueChange={(value) => setSeverity(value ?? 'all')}>
+                <Select
+                  value={severity}
+                  onValueChange={(value) => setSeverity(value ?? 'all')}
+                  items={[{ value: 'all', label: '全部级别' }, ...SEVERITY_FILTER_OPTIONS]}
+                >
                   <SelectTrigger size='sm' className='w-28'>
                     <SelectValue placeholder='全部级别' />
                   </SelectTrigger>
@@ -442,7 +450,17 @@ export function AlarmPanel(props: AlarmPanelProps) {
           ) : (
             <div className='flex flex-col gap-2'>
               <div className='flex flex-wrap items-center gap-2'>
-                <Select value={eventType} onValueChange={(value) => setEventType(value ?? 'all')}>
+                <Select
+                  value={eventType}
+                  onValueChange={(value) => setEventType(value ?? 'all')}
+                  items={[
+                    { value: 'all', label: '全部事件' },
+                    ...Object.entries(DEVICE_EVENT_TYPE_META).map(([value, meta]) => ({
+                      value,
+                      label: meta.label,
+                    })),
+                  ]}
+                >
                   <SelectTrigger size='sm' className='w-32'>
                     <SelectValue placeholder='全部事件' />
                   </SelectTrigger>
@@ -455,7 +473,11 @@ export function AlarmPanel(props: AlarmPanelProps) {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={timeRange} onValueChange={(value) => setTimeRange((value ?? '7d') as HistoryTimeRange)}>
+                <Select
+                  value={timeRange}
+                  onValueChange={(value) => setTimeRange((value ?? '7d') as HistoryTimeRange)}
+                  items={TIME_RANGE_OPTIONS}
+                >
                   <SelectTrigger size='sm' className='w-28'>
                     <SelectValue placeholder='全部时间' />
                   </SelectTrigger>

@@ -43,6 +43,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { groupCasesByTag } from '@/domain/lib/sub-view-aggregation'
@@ -467,9 +468,14 @@ export function GroupedCaseList({
     }
   }
 
+  // INT-1657：用例列表首屏仍在加载（/testcases 单页真实库 8~20s）时，不得把「还没有数据」
+  // 当成「没有找到符合条件的测试用例」——那要等扁平集到位（空/有）才能下结论。
+  const casesPending = loading && cases.length === 0
+
   // INT-1284：骨架以分组列表加载为准（/groups 快）；分组到位后即使用例列表仍加载
   // （/testcases 单页响应慢），也立即渲染分组卡（计数取 test_case_count），不阻塞卡渲染。
-  if (groupsLoading ?? loading) {
+  // INT-1657：仅当分组也未到位、或分组筛不出任何卡可渲染时才继续骨架。
+  if ((groupsLoading ?? loading) || (casesPending && sortedGroups.length === 0)) {
     return (
       <div className='space-y-3'>
         {Array.from({ length: 4 }).map((_, i) => (
@@ -502,8 +508,9 @@ export function GroupedCaseList({
    * 以可见用例集为准——筛选把全部用例排除后即使分组列表非空也走空态（INT-595 补）。
    * INT-1267：分组卡渲染不依赖「当前已加载用例页」，故只要列表页还有数据分组卡全量渲染；
    * 空态仍以平铺集为准（真实库列表页首屏恒有数据，空组由 /groups 全量分组卡兜住）。
+   * INT-1657：首屏扁平集仍在加载（casesPending）时不得给空态结论，落到下方分组卡流 + 加载提示。
    */
-  if (cases.length === 0) {
+  if (!casesPending && cases.length === 0) {
     return (
       <div className='bg-card ring-foreground/10 rounded-xl py-8 ring-1'>
         <Empty className='h-[400px]'>
@@ -554,6 +561,14 @@ export function GroupedCaseList({
           message='用例列表加载失败，当前显示的是上一次加载的数据'
           onRetry={onRetry}
         />
+      )}
+      {/* 用例列表首屏加载中（INT-1657）：分组卡已按 /groups 渲染，扁平集到位前只给加载提示，
+          不下「没有找到」结论 */}
+      {casesPending && (
+        <div role='status' className='text-muted-foreground flex items-center gap-2 text-xs'>
+          <Spinner className='size-3.5' />
+          用例列表加载中…
+        </div>
       )}
       {/* 列表头：全选 + 已选择计数 + 排序 */}
       <div className='flex items-center justify-between gap-2'>

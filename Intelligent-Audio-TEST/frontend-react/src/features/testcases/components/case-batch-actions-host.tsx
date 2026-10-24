@@ -102,6 +102,7 @@ export function CaseBatchActionsHost({
           count={batchDialog.count}
           ids={batchDialog.ids}
           roundCount={roundCount}
+          unknownRoundCount={unknownCount}
         />
       )}
       {batchDialog?.kind === 'device' && (
@@ -111,6 +112,7 @@ export function CaseBatchActionsHost({
           count={batchDialog.count}
           ids={batchDialog.ids}
           roundCount={roundCount}
+          unknownRoundCount={unknownCount}
         />
       )}
       {batchDialog?.kind === 'spl' && (
@@ -120,6 +122,7 @@ export function CaseBatchActionsHost({
           count={batchDialog.count}
           ids={batchDialog.ids}
           roundCount={roundCount}
+          unknownRoundCount={unknownCount}
         />
       )}
       {batchDialog?.kind === 'noise' && (
@@ -129,6 +132,7 @@ export function CaseBatchActionsHost({
           count={batchDialog.count}
           ids={batchDialog.ids}
           roundCount={roundCount}
+          unknownRoundCount={unknownCount}
         />
       )}
       <CaseConfirmDialog

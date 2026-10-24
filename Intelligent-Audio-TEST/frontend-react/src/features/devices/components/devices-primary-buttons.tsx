@@ -5,7 +5,8 @@
  * 权限：主按钮随页签 device:create/playback:create/api_config:create，无权限 disabled +
  * Tooltip「无权限执行此操作」；菜单项按码显隐（§8 隐藏而非置灰）。
  * INT-655：实验室管理入口接真实 /laboratories CRUD → 可用；
- * 导入/导出无处理器（§11-21）→ 禁用 + Tooltip「设备导入导出后端建设中」。
+ * INT-1624：导入/导出改接 INT-816 真实端点（导入按 create 码、导出按 read 码显隐），
+ * 点击开对应弹窗，不再禁用。
  */
 import {
   Bell,
@@ -47,6 +48,10 @@ export interface DevicesPrimaryButtonsProps {
   toggles: DeviceHeaderToggles
   onTogglesChange: (next: DeviceHeaderToggles) => void
   canCreate: boolean
+  /** 导入设备（INT-1624：随页签 create 码，§8 隐藏而非置灰） */
+  canImport: boolean
+  /** 导出设备（INT-1624：随页签 read 码） */
+  canExport: boolean
   canControl: boolean
   /** 批量健康检查（P2-8 返修：device:control 且仅测试页签） */
   canBatchHealth: boolean
@@ -202,24 +207,18 @@ export function DevicesPrimaryButtons(props: DevicesPrimaryButtonsProps) {
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          {/* 导入/导出（§3.3/§11-21：现状无处理器 → 禁用 + Tooltip P3-25） */}
-          {props.canCreate && (
-            <Tooltip>
-              <TooltipTrigger render={<DropdownMenuItem disabled className='gap-2' />}>
-                <Upload aria-hidden='true' />
-                导入设备
-              </TooltipTrigger>
-              <TooltipContent>设备导入导出后端建设中</TooltipContent>
-            </Tooltip>
+          {/* 导入/导出（§3.3、§4.5；INT-1624 接 INT-816 → 入口解禁） */}
+          {props.canImport && (
+            <DropdownMenuItem onClick={props.onImport}>
+              <Upload aria-hidden='true' />
+              导入设备
+            </DropdownMenuItem>
           )}
-          {props.canCreate && (
-            <Tooltip>
-              <TooltipTrigger render={<DropdownMenuItem disabled className='gap-2' />}>
-                <Download aria-hidden='true' />
-                导出设备
-              </TooltipTrigger>
-              <TooltipContent>设备导入导出后端建设中</TooltipContent>
-            </Tooltip>
+          {props.canExport && (
+            <DropdownMenuItem onClick={props.onExport}>
+              <Download aria-hidden='true' />
+              导出设备
+            </DropdownMenuItem>
           )}
         </DropdownMenuContent>
       </DropdownMenu>

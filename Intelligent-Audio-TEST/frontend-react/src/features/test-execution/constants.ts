@@ -43,28 +43,41 @@ export const TEST_FLOW_CONFIG: TestFlowConfig = {
 /** 网络环境选项（执行参数，对齐端到端测试功能设计文档 :338） */
 export const NETWORK_OPTIONS = ['默认', 'Wi-Fi', '移动网络', '飞行模式'] as const
 
+/**
+ * Select 选项（value/label 成对；直接作 base-ui Select 的 items，关闭态才能显示 label，
+ * 见 INT-1633 / 日志域 INT-1561 同口径）
+ */
+export type ResourceSelectOption = { value: string; label: string }
+
+/** 设备/API 状态筛选（§3.6 步骤二筛选行文案） */
+export const RESOURCE_STATUS_OPTIONS: ResourceSelectOption[] = [
+  { value: 'all', label: '全部状态' },
+  { value: 'online', label: '在线' },
+  { value: 'offline', label: '离线' },
+]
+
 /** 被测对象系统类型筛选（INT-486 口径 2026-10-16：Android/鸿蒙/播放设备等；数据来自 device.system/type） */
-export const RESOURCE_SYSTEM_OPTIONS = [
+export const RESOURCE_SYSTEM_OPTIONS: ResourceSelectOption[] = [
   { value: 'all', label: '全部系统' },
   { value: 'android', label: 'Android' },
   { value: 'harmony', label: '鸿蒙' },
   { value: 'api', label: 'API 网关' },
-] as const
+]
 
 /** 被测 API 厂商筛选（INT-486 口径 2026-10-16：按 API 筛选维度含厂商） */
-export const RESOURCE_VENDOR_OPTIONS = [
+export const RESOURCE_VENDOR_OPTIONS: ResourceSelectOption[] = [
   { value: 'all', label: '全部厂商' },
   { value: '内部 ASR 组', label: '内部 ASR 组' },
   { value: '内部唤醒组', label: '内部唤醒组' },
   { value: 'TTS 组', label: 'TTS 组' },
-] as const
+]
 
 /** 被测 API 协议筛选（INT-486 口径 2026-10-16：按 API 筛选维度含协议） */
-export const RESOURCE_PROTOCOL_OPTIONS = [
+export const RESOURCE_PROTOCOL_OPTIONS: ResourceSelectOption[] = [
   { value: 'all', label: '全部协议' },
   { value: 'http', label: 'HTTP' },
   { value: 'websocket', label: 'WebSocket' },
-] as const
+]
 
 /**
  * 实验室-被测对象绑定 mock（INT-487 设备-实验室绑定待接线；本页演示过滤口径）。

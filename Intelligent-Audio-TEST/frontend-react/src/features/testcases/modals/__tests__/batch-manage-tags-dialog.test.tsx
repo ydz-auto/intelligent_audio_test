@@ -103,4 +103,40 @@ describe('BatchManageTagsDialog（§5.3.7，INT-1295 分页）', () => {
       { tags: ['标签1', '标签2'] }
     )
   })
+
+  describe('改名模式（INT-1591：新旧同名禁用确定）', () => {
+    const chooseRenameSource = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(screen.getByText('修改标签名字'))
+      await user.click(screen.getByRole('combobox'))
+      const option = await screen.findByRole('option', { name: '标签1' })
+      await user.click(option)
+    }
+
+    it('新标签名与原标签名相同 →「确定」禁用且不发请求', async () => {
+      const user = userEvent.setup()
+      setup()
+      await chooseRenameSource(user)
+
+      await user.type(screen.getByPlaceholderText('输入新标签名称'), '标签1')
+
+      const confirm = screen.getByRole('button', { name: '确定' })
+      expect(confirm).toBeDisabled()
+      await user.click(confirm)
+      expect(mockedBatch).not.toHaveBeenCalled()
+    })
+
+    it('新标签名不同 →「确定」可用并提交 rename_tag', async () => {
+      const user = userEvent.setup()
+      setup()
+      await chooseRenameSource(user)
+
+      await user.type(screen.getByPlaceholderText('输入新标签名称'), '标签1改')
+      await user.click(screen.getByRole('button', { name: '确定' }))
+
+      expect(mockedBatch).toHaveBeenCalledWith('rename_tag', [], {
+        oldTagName: '标签1',
+        newTagName: '标签1改',
+      })
+    })
+  })
 })

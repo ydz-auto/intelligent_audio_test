@@ -42,7 +42,6 @@ export type AudioFolderViewProps = {
   onDownload: (audio: AudioAsset) => void
   onConvert: (audio: AudioAsset) => void
   onFeatureAnalysis: (audio: AudioAsset) => void
-  onPlaybackHistory: (audio: AudioAsset) => void
   onDelete: (audio: AudioAsset) => void
 }
 
@@ -215,7 +214,6 @@ export function AudioFolderView(props: AudioFolderViewProps) {
             onDownload={props.onDownload}
             onConvert={props.onConvert}
             onFeatureAnalysis={props.onFeatureAnalysis}
-            onPlaybackHistory={props.onPlaybackHistory}
             onDelete={props.onDelete}
           />
         </div>

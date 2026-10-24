@@ -5,6 +5,7 @@
  */
 import { PackageOpen, Upload } from 'lucide-react'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 
 import { Button } from '@/components/ui/button'
@@ -47,6 +48,14 @@ export function DeviceOperateDialog(props: DeviceOperateDialogProps) {
     resolver: zodResolver(uninstallAppSchema),
     defaultValues: { packageName: '' },
   })
+
+  // INT-1480 P3-1：关窗不清空 → 重开残留上次输入。useForm 只认挂载时的 defaultValues，
+  // 而本组件在 open=false 时 return null 但不卸载，故每次打开（含 Esc/遮罩/取消钮关闭后重开）显式 reset。
+  useEffect(() => {
+    if (!props.open) return
+    installForm.reset({ filePath: '', packageName: '' })
+    uninstallForm.reset({ packageName: '' })
+  }, [props.open, props.kind, installForm, uninstallForm])
 
   if (!props.open || !props.kind) return null
 

@@ -13,6 +13,7 @@ import type {
   CherryPickCandidate,
   CherryPickContainer,
   CherryPickSourceTask,
+  PickableTask,
   PickCartEntry,
   PickCartGroup,
   PickDuplicate,
@@ -25,6 +26,7 @@ import type {
   CherryPickCartItemDto,
   CherryPickPreviewDto,
   CherryPickSetListItemDto,
+  PickableTaskDto,
   TaskContainerItemDto,
   TaskSourceBriefDto,
 } from '@/infrastructure/dto/cherry-pick.dto'
@@ -213,5 +215,17 @@ export function fromContainerDto(
     isFavorite: dto.is_favorite,
     // 容器报告摘要（「查看报告」跳转数据源；后端返 null → 无报告禁用该项）
     reports: dto.reports,
+  }
+}
+
+/** 可挑选任务行 DTO→Domain（INT-1496 §8.1：pickable_count→count、
+ *  execution_status→executionStatus（**任务**状态）、created_at 直接映射） */
+export function fromPickableTaskDto(dto: PickableTaskDto): PickableTask {
+  return {
+    taskId: dto.id,
+    taskName: dto.name,
+    executionStatus: dto.execution_status,
+    createdAt: dto.created_at,
+    count: dto.pickable_count,
   }
 }

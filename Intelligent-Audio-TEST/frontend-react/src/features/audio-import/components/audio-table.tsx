@@ -58,7 +58,6 @@ export type AudioTableProps = {
   onDownload: (audio: AudioAsset) => void
   onConvert: (audio: AudioAsset) => void
   onFeatureAnalysis: (audio: AudioAsset) => void
-  onPlaybackHistory: (audio: AudioAsset) => void
   onDelete: (audio: AudioAsset) => void
 }
 
@@ -303,7 +302,6 @@ export function AudioTable(props: AudioTableProps) {
                       onDownload={() => props.onDownload(row)}
                       onConvert={() => props.onConvert(row)}
                       onFeatureAnalysis={() => props.onFeatureAnalysis(row)}
-                      onPlaybackHistory={() => props.onPlaybackHistory(row)}
                       onDelete={() => props.onDelete(row)}
                     />
                   </div>

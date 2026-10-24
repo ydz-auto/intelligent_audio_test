@@ -52,8 +52,8 @@ function ReportCaseRow({ c }: { c: ReportSnapshotCase }) {
             {c.category}
           </Badge>
         )}
-        {(c.tags ?? []).length > 0 && (
-          <span className='text-muted-foreground text-xs'>{(c.tags ?? []).join('、')}</span>
+        {c.tags.length > 0 && (
+          <span className='text-muted-foreground text-xs'>{c.tags.join('、')}</span>
         )}
       </div>
       {metrics.length > 0 && (

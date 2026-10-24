@@ -53,6 +53,18 @@ export interface TagDetailListDataDto {
   pages: number
 }
 
+/**
+ * GET /tags/names 标签名列表响应（testcase.py TagListData；items 为纯名称字符串，
+ * 供用例表单标签 Combobox 建议下拉按 keyword 服务端搜索，INT-1591 §5.1）
+ */
+export interface TagNameListDataDto {
+  items: string[]
+  total: number
+  page: number
+  per_page: number
+  pages: number
+}
+
 /** 分类创建/更新请求体（testcase.py TagCategoryCreate/UpdateSchema；null 字段省略） */
 export interface TagCategoryUpsertDto {
   name?: string

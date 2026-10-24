@@ -61,6 +61,7 @@ function buildDailyItems(
     onQuickView: () => void
     onPublish: () => void
     onReexecute: (task: TaskListItem, actionType: ReexecuteActionType) => void
+    onRename: () => void
     onDelete: () => void
     onFavorite: () => void
     onUnfavorite: () => void
@@ -141,6 +142,14 @@ function buildDailyItems(
       onSelect: () => actions.onReexecute(task, 'reevaluate'),
     })
   }
+  // INT-1290 重命名（§3.6.2 行菜单「重命名」，task:update，回收站行不可重命名）
+  if (has('task:update') && !task.deleted) {
+    items.push({
+      key: 'rename',
+      label: '重命名',
+      onSelect: actions.onRename,
+    })
+  }
   if (has('task:publish')) {
     items.push({
       key: 'publish',
@@ -184,12 +193,15 @@ export function TaskRowActions({
   onQuickView,
   onPublish,
   onReexecute,
+  onRename,
 }: {
   task: TaskListItem
   onQuickView: (task: TaskListItem) => void
   onPublish?: (task: TaskListItem) => void
   /** 重新执行/重新评估 → §5.7 范围选择弹窗 */
   onReexecute: (task: TaskListItem, actionType: ReexecuteActionType) => void
+  /** 重命名（INT-1290：打开名称编辑弹窗） */
+  onRename?: (task: TaskListItem) => void
 }) {
   const { hasPermission } = usePermissions()
   const navigate = useNavigate()
@@ -214,6 +226,7 @@ export function TaskRowActions({
     onPublish: () =>
       onPublish ? onPublish(task) : toast.success('发布流程见发布任务弹窗'),
     onReexecute,
+    onRename: () => onRename?.(task),
     onDelete: () => setConfirm({ kind: 'row-delete', task }),
     onFavorite: () => actions.favorite.mutate(task.id),
     onUnfavorite: () => actions.unfavorite.mutate(task.id),

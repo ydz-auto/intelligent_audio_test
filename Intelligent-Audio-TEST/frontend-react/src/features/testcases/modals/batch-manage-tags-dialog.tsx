@@ -4,6 +4,7 @@
  * 改名→原标签 Select + 新标签名 Input。提交走 POST /testcases/batch
  * （add_tags / remove_tags / rename_tag），rename_tag 不携带 ids（标签级操作）。
  * INT-1295：已有标签点选区照现 Vue availableSuggestions（排除已选 chips）+ 分页 20 条/页。
+ * INT-1591：改名模式新旧同名时「确定」禁用（V9.7.10 BatchTagsModal isValid 口径），不发请求。
  */
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
@@ -92,9 +93,11 @@ export function BatchManageTagsDialog({
       let action: TestcaseBatchAction
       let payload: Parameters<typeof batchTestcaseAction>[2]
       if (mode === 'rename') {
-        if (!renameFrom || !renameTo.trim()) return
+        // INT-1591：新旧同名属无效输入（V9.7.10 BatchTagsModal isValid 口径），不发请求
+        const nextName = renameTo.trim()
+        if (!renameFrom || !nextName || nextName === renameFrom) return
         action = 'rename_tag'
-        payload = { oldTagName: renameFrom, newTagName: renameTo.trim() }
+        payload = { oldTagName: renameFrom, newTagName: nextName }
       } else {
         if (chips.length === 0) return
         action = mode === 'add' ? 'add_tags' : 'remove_tags'
@@ -251,7 +254,10 @@ export function BatchManageTagsDialog({
             disabled={
               submitting ||
               (mode === 'rename'
-                ? !renameFrom || !renameTo.trim()
+                ? !renameFrom ||
+                  !renameTo.trim() ||
+                  // INT-1591：新旧同名禁用「确定」（照 V9.7.10 BatchTagsModal isValid）
+                  renameTo.trim() === renameFrom
                 : chips.length === 0)
             }
             onClick={() => void handleSubmit()}
