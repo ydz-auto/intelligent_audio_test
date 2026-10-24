@@ -13,6 +13,7 @@ import threading
 from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit
 from shared.models.common_enums import (
+    DeviceStatusEventSource,
     DeviceStatusEventType,
     PlaybackControlAction,
     PlaybackRepairAction,
@@ -431,7 +432,11 @@ class PlaybackCommandService:
 
     @staticmethod
     def _record_control_event(device, from_status: str, to_status: str, action: str, **extra) -> None:
-        """落一条 operation 事件（detail.operation=动作名），失败不影响主流程"""
+        """落一条 operation 事件（detail.operation=动作名），失败不影响主流程
+
+        ``source`` 必须是 PLAYBACK_OPERATION：播放设备与测试设备共用 device_status_events
+        的 device_id 空间，读测试设备口径按 source 排除播放控制事件（INT-1677）。
+        """
         detail = {'operation': action}
         detail.update({k: v for k, v in extra.items() if v is not None})
         try:
@@ -441,7 +446,7 @@ class PlaybackCommandService:
                 event_type=DeviceStatusEventType.OPERATION.value,
                 from_status=from_status,
                 to_status=to_status,
-                source='operation',
+                source=DeviceStatusEventSource.PLAYBACK_OPERATION.value,
                 success=True,
                 detail=detail,
             )

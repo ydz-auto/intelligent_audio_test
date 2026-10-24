@@ -11,10 +11,16 @@ from bisect import bisect_right
 from datetime import date, datetime, time as dt_time, timedelta
 from typing import Dict, List, Optional
 
-from sqlalchemy import Date, DateTime, Float, Integer, String, cast, func, literal, select
+from sqlalchemy import (
+    Date, DateTime, Float, Integer, String, cast, func, literal, or_, select,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 
-from shared.models.common_enums import AlarmStatus, DeviceStatusEventType
+from shared.models.common_enums import (
+    AlarmStatus,
+    DeviceStatusEventSource,
+    DeviceStatusEventType,
+)
 from shared.models.database import get_db_session
 from shared.utils.query_utils import now_cst
 from device_service.infrastructure.persistence.models import (
@@ -36,6 +42,24 @@ _FAILURE_EVENT_TYPES = (
     DeviceStatusEventType.HEALTH_CHECK.value,
     DeviceStatusEventType.OPERATION.value,
 )
+# 非测试设备主体写入的事件来源（INT-1677）：device_status_events 被测试设备与
+# 播放设备两个 id 空间共用，source 是主体判别位。凡新增非测试设备写入方，必须
+# 登记进本集合，否则其事件会被统计到同号测试设备（契约 §0）。
+_NON_TEST_DEVICE_EVENT_SOURCES = frozenset({
+    DeviceStatusEventSource.PLAYBACK_OPERATION.value,
+})
+
+
+def _test_device_event_filter():
+    """测试设备口径的事件过滤谓词（排除非测试设备主体写入的事件）。
+
+    必须对 ``source IS NULL`` 宽容：SQL 的 ``NOT IN`` 遇 NULL 返回 NULL，会把历史
+    NULL 行静默漏统计；仓储写入默认 'monitor' 不能当作历史数据兜底（契约 §1.1）。
+    """
+    return or_(
+        DeviceStatusEvent.source.is_(None),
+        DeviceStatusEvent.source.notin_(_NON_TEST_DEVICE_EVENT_SOURCES),
+    )
 
 
 def _event_to_dict(po: DeviceStatusEvent) -> dict:
@@ -347,6 +371,7 @@ def _daily_metric_sources(session, dialect_name: str, scope_ids: List[int],
         DeviceStatusEvent.device_id.in_(scope_ids),
         DeviceStatusEvent.created_at >= range_start,
         DeviceStatusEvent.created_at < range_end,
+        _test_device_event_filter(),
     )
     day_bucket = _day_bucket_expr(dialect_name)
     flags = _event_flag_expressions()
@@ -405,7 +430,10 @@ def _daily_stats_query(session, scope_ids: List[int],
 
 
 def _state_rows_query(session, criteria):
-    """状态事件支（区间内 online/offline + 各设备区间前基线），供可用率重放。"""
+    """状态事件支（区间内 online/offline + 各设备区间前基线），供可用率重放。
+
+    排除谓词在函数内统一套用：区间状态支与基线支共用本函数，避免两处口径漂移。
+    """
     return session.query(
         literal(_ROW_STATE).label('row_kind'),
         literal(None).label('day_bucket'),
@@ -418,7 +446,7 @@ def _state_rows_query(session, criteria):
         cast(literal(None), Float).label('cpu'),
         cast(literal(None), Float).label('memory'),
         cast(literal(None), Float).label('battery'),
-    ).filter(*criteria)
+    ).filter(*criteria, _test_device_event_filter())
 
 
 class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
@@ -443,8 +471,13 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
     def list_status_events(self, device_ids: List[int] = None, event_type: str = None,
                            start_time=None, end_time=None,
                            page: int = 1, per_page: int = 50) -> dict:
+        """状态历史（两个端点共用）：只返回测试设备事件。
+
+        播放设备控制事件（source=playback_operation）与测试设备共用 device_id 空间，
+        必须排除；本期不提供播放侧历史查询参数（INT-1677）。
+        """
         session = get_db_session()
-        query = session.query(DeviceStatusEvent)
+        query = session.query(DeviceStatusEvent).filter(_test_device_event_filter())
         if device_ids:
             query = query.filter(DeviceStatusEvent.device_id.in_([int(d) for d in device_ids]))
         if event_type:
@@ -478,6 +511,8 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
         ).filter(
             DeviceStatusEvent.device_id.in_([int(d) for d in device_ids]),
             DeviceStatusEvent.event_type == DeviceStatusEventType.HEALTH_CHECK.value,
+            # 防御性一致：播放侧当前不写 health_check，仍按同一谓词排除（INT-1677）
+            _test_device_event_filter(),
         ).order_by(
             DeviceStatusEvent.device_id,
             DeviceStatusEvent.created_at,
@@ -506,6 +541,8 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
             DeviceStatusEvent.device_id.in_([int(d) for d in device_ids]),
             DeviceStatusEvent.event_type.in_(
                 [DeviceStatusEventType.ONLINE.value, DeviceStatusEventType.OFFLINE.value]),
+            # 防御性一致：播放侧当前不写 online/offline，仍按同一谓词排除（INT-1677）
+            _test_device_event_filter(),
         ).group_by(DeviceStatusEvent.device_id).subquery()
         rows = session.query(DeviceStatusEvent).join(
             latest,
@@ -564,6 +601,7 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
                 DeviceStatusEvent.device_id.in_(device_ids),
                 DeviceStatusEvent.event_type.in_(_STATE_EVENT_TYPES),
                 DeviceStatusEvent.created_at < range_start,
+                _test_device_event_filter(),
             )
             .group_by(DeviceStatusEvent.device_id)
         )

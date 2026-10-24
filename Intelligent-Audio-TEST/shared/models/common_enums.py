@@ -532,6 +532,28 @@ class DeviceStatusEventType(str, Enum):
     OPERATION = 'operation'
 
 
+class DeviceStatusEventSource(str, Enum):
+    """设备状态事件来源枚举（INT-1677，契约《设备监控统计与播放设备控制接口契约》§0）
+
+    ``device_status_events`` 被测试设备与播放设备两个 id 空间共用，``source``
+    是事件主体（哪个设备空间）的判别位：读测试设备口径的所有路径统一排除
+    ``PLAYBACK_OPERATION``（排除集合见 device_monitor_repository）。
+
+    - MONITOR            监控线程/状态轮询写入（仓储默认值）
+    - MANUAL             人工操作
+    - HEALTH_CHECK       健康检查
+    - OPERATION          测试设备操作（connect / disconnect / reboot / install_app 等）
+    - PLAYBACK_OPERATION 播放设备控制（restart / reset-config / re-enumerate）
+
+    新增非测试设备写入方必须登记进排除集合，否则其事件会被计入同号测试设备。
+    """
+    MONITOR = 'monitor'
+    MANUAL = 'manual'
+    HEALTH_CHECK = 'health_check'
+    OPERATION = 'operation'
+    PLAYBACK_OPERATION = 'playback_operation'
+
+
 class PkgType(str, Enum):
     """跨区传输包类型枚举 — transfer_agent 传输包协议（设计文档 09_跨区网络传输方案 §4.2.1）
 
