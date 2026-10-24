@@ -27,6 +27,7 @@ import {
 } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import { usePickOrg } from '@/application/tasks/cherry-pick/use-pick-org'
+import { useAlgorithmLabels } from '@/application/hooks/use-algorithm-options'
 import type {
   PickableTaskSortBy,
   PickableTaskSortOrder,
@@ -104,6 +105,8 @@ export function PickStep({
   const [adding, setAdding] = useState(false)
   /** §3.8.3 用例层组织（三视图共享：分组/标签 + 平铺/交叉，阶段 2 会话态，usePickOrg） */
   const { org, subView, setOrg, setSubView } = usePickOrg()
+  /** 算法类型码 → 中文名（真实 /algorithm/options；挑选域用例卡徽章共用，INT-1687 返工 P1） */
+  const algorithmLabels = useAlgorithmLabels()
 
   /** 阶段 1 任务行（服务端已按 sort_by/sort_order 排序，前端不再聚合/重排） */
   const taskRows = pickableTasksQuery.items
@@ -354,6 +357,7 @@ export function PickStep({
             subView={subView}
             onOrgChange={setOrg}
             onSubViewChange={setSubView}
+            algorithmLabels={algorithmLabels}
           />
         ) : (
           // 设备/结果类型视图：顶/二层分支行 + 每 result_type/设备 节点下用例层组织（§3.8.3 用例层组织）
@@ -386,6 +390,7 @@ export function PickStep({
                   onOrgChange={setOrg}
                   onSubViewChange={setSubView}
                   showControls={false}
+                  algorithmLabels={algorithmLabels}
                 />
               )}
             />

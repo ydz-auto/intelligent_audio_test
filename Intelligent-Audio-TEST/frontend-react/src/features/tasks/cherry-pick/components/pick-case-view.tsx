@@ -29,6 +29,8 @@ export interface PickCaseViewProps {
   subView: PickSubView
   onOrgChange: (org: PickOrgDimension) => void
   onSubViewChange: (subView: PickSubView) => void
+  /** 算法类型码 → 中文名（真实 GET /algorithm/options，页面级 useAlgorithmLabels 下传） */
+  algorithmLabels?: Record<string, string>
 }
 
 /**
@@ -45,6 +47,7 @@ export function PickCaseView({
   subView,
   onOrgChange,
   onSubViewChange,
+  algorithmLabels,
 }: PickCaseViewProps) {
   return (
     <PickCaseOrgList
@@ -57,6 +60,7 @@ export function PickCaseView({
       subView={subView}
       onOrgChange={onOrgChange}
       onSubViewChange={onSubViewChange}
+      algorithmLabels={algorithmLabels}
     />
   )
 }
