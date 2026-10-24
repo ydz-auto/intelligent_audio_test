@@ -232,6 +232,49 @@ def expand_group(d, name):
     raise AssertionError('分组展开后未加载用例卡')
 
 
+def collapse_group_if_expanded(d, name):
+    """场景 A 前置：确保目标分组未展开（组内 0 条已加载）。
+
+    首屏有时会自动展开第一个分组并加载首页 20 条，此时「轮次全未知」态不可达。
+    点组头收起，直到「编辑用例」按钮归零。
+    """
+    for _ in range(3):
+        n = d.execute_script(
+            "return document.querySelectorAll(\"button[aria-label='编辑用例']\").length")
+        if n == 0:
+            return 0
+        state = d.execute_script(
+            """
+            const name = arguments[0];
+            const leaves = [...document.querySelectorAll('span,div')]
+              .filter(e => e.children.length === 0 && (e.textContent || '').trim() === name);
+            for (const leaf of leaves) {
+              let p = leaf;
+              for (let i = 0; i < 6 && p; i++) {
+                const cls = String(p.className || '');
+                if (cls.includes('cursor-pointer')) {
+                  p.scrollIntoView({block: 'center'});
+                  p.click();
+                  return 'ok';
+                }
+                p = p.parentElement;
+              }
+            }
+            return 'not-found';
+            """, name)
+        log('collapse group', name, state, 'cards before', n)
+        if state != 'ok':
+            break
+        try:
+            wait(d, 30).until(lambda x: x.execute_script(
+                "return document.querySelectorAll(\"button[aria-label='编辑用例']\").length") == 0)
+            time.sleep(1.0)
+        except Exception:
+            time.sleep(1.5)
+    return d.execute_script(
+        "return document.querySelectorAll(\"button[aria-label='编辑用例']\").length")
+
+
 def select_whole_group(d, name):
     el = wait(d, 60).until(EC.presence_of_element_located(
         (By.CSS_SELECTOR, "[role='checkbox'][aria-label='全选分组 %s']" % name)))
@@ -402,6 +445,7 @@ def unknown_notice(d):
 def scenario_a(d, ctx, theme):
     """① 分组不展开 → 全选分组（组内 0 条加载）→ 可勾选、可提交非空维度。"""
     enter_cases(d)
+    loaded = collapse_group_if_expanded(d, ctx['group_name'])
     select_whole_group(d, ctx['group_name'])
     open_dimensions(d)
     text = dialog_text(d)
@@ -412,7 +456,8 @@ def scenario_a(d, ctx, theme):
     notice = unknown_notice(d)
     m = re.search(r'(\d+)\s*个用例的轮次信息尚未加载', notice)
     check('[%s] A2 未加载条数 == 全组 %d（组内一条都没加载）' % (theme, ctx['group_total']),
-          bool(m) and int(m.group(1)) == ctx['group_total'], notice)
+          bool(m) and int(m.group(1)) == ctx['group_total'],
+          'ui_loaded_cards=%s notice=%s' % (loaded, notice))
     check('[%s] A3 不出现「暂无可配置的轮次信息」假空态' % theme,
           '暂无可配置的轮次信息' not in text, '')
     check('[%s] A4 默认档位「所有轮次」' % theme,
