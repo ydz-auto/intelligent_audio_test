@@ -146,3 +146,32 @@ class EvaluationDataServiceServicer(eval_grpc.EvaluationDataServiceServicer):
                 dimension_transfer_service.rollback_dimension_import(request.batch_id)))
         except Exception as e:
             return self._resp(False, str(e))
+
+    # ==================== 增量回导维度合并（INT-1762 D4） ====================
+
+    def MergeDimensions(self, request, context=None):
+        """按 (test_result_id, dimension_id) 覆盖集合并包内维度评分（覆盖集 + 快照）。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            from evaluation_service.application.dimension_merge_service import (
+                dimension_merge_service,
+            )
+            return self._resp(*self._from_result(
+                dimension_merge_service.merge_dimensions(
+                    data.get('rows') or [],
+                    data.get('result_id_mapping') or {},
+                    data.get('dimension_id_mapping') or {},
+                    data.get('batch_id') or '')))
+        except Exception as e:
+            return self._resp(False, str(e))
+
+    def RollbackDimensionMerge(self, request, context=None):
+        """按批次快照回滚维度合并（删除本批新行 + 插回被覆盖旧行）。"""
+        try:
+            from evaluation_service.application.dimension_merge_service import (
+                dimension_merge_service,
+            )
+            return self._resp(*self._from_result(
+                dimension_merge_service.rollback_merge(request.batch_id)))
+        except Exception as e:
+            return self._resp(False, str(e))

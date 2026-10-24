@@ -978,6 +978,43 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             logger.exception("RollbackReportImport failed")
             return self._resp(False, str(e), {})
 
+    # ==================== 增量回导报告原地替换（INT-1762 D4） ====================
+
+    def ReplaceReports(self, request, context=None):
+        """按 A 原任务原地替换报告 7 表（保留报告 id / visibility / owner，单事务 + 快照）。
+
+        请求字段（proto ReplaceReportsRequest）：
+            data: str  JSON：{rows_by_table: {表名: [行]}, task_id, target_report_id?, batch_id}
+        """
+        try:
+            data = _loads(getattr(request, 'data', ''), {}) or {}
+            from report_service.application.report_replacement_service import (
+                report_replacement_service,
+            )
+            result = report_replacement_service.replace_reports(
+                data.get('rows_by_table') or {},
+                data.get('task_id'),
+                data.get('target_report_id'),
+                data.get('batch_id') or '')
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), code=result.get('code', 0))
+        except Exception as e:
+            logger.exception("ReplaceReports failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def RollbackReportReplacement(self, request, context=None):
+        """按批次快照回滚报告替换（删除本批新行 + 插回旧报告 7 表行）。"""
+        try:
+            from report_service.application.report_replacement_service import (
+                report_replacement_service,
+            )
+            result = report_replacement_service.rollback_replacement(request.batch_id)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), code=result.get('code', 0))
+        except Exception as e:
+            logger.exception("RollbackReportReplacement failed")
+            return self._resp(False, str(e), {}, 500)
+
     # ==================== 报告分享（INT-971） ====================
 
     def CreateReportShare(self, request, context=None):

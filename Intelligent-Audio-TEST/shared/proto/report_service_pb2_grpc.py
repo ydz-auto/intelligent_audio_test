@@ -170,6 +170,16 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.RollbackReportImportRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.ReplaceReports = channel.unary_unary(
+                '/report.ReportConfigService/ReplaceReports',
+                request_serializer=report__service__pb2.ReplaceReportsRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.RollbackReportReplacement = channel.unary_unary(
+                '/report.ReportConfigService/RollbackReportReplacement',
+                request_serializer=report__service__pb2.RollbackReportReplacementRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
         self.FavoriteReport = channel.unary_unary(
                 '/report.ReportConfigService/FavoriteReport',
                 request_serializer=report__service__pb2.FavoriteReportRequest.SerializeToString,
@@ -434,6 +444,24 @@ class ReportConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ReplaceReports(self, request, context):
+        """增量回导报告原地替换（INT-1762 D4，D0-A5 裁定）：保留 A 报告 id / visibility /
+        created_by_user_id / type / created_at，UPDATE 内容字段并重建 6 子表；
+        旧行与本批新行在同一事务内落 report_merge_snapshots 批次快照。
+        出参 {replaced_tasks, deleted_counts, inserted_report_ids, batch_id,
+        rollback_available, warnings}
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RollbackReportReplacement(self, request, context):
+        """回滚一次报告替换批次（INT-1762 D4）：删除本批新行、按快照恢复旧报告 7 表
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def FavoriteReport(self, request, context):
         """---- 收藏 / 回收站（INT-141：report 归 report_service，user_id 走 x-user-id metadata）----
         收藏 / 取消收藏（幂等：重复收藏返回成功 + already_favorited；未收藏的取消同样成功）
@@ -668,6 +696,16 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             'RollbackReportImport': grpc.unary_unary_rpc_method_handler(
                     servicer.RollbackReportImport,
                     request_deserializer=report__service__pb2.RollbackReportImportRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'ReplaceReports': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReplaceReports,
+                    request_deserializer=report__service__pb2.ReplaceReportsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'RollbackReportReplacement': grpc.unary_unary_rpc_method_handler(
+                    servicer.RollbackReportReplacement,
+                    request_deserializer=report__service__pb2.RollbackReportReplacementRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
             'FavoriteReport': grpc.unary_unary_rpc_method_handler(
@@ -1465,6 +1503,60 @@ class ReportConfigService:
             target,
             '/report.ReportConfigService/RollbackReportImport',
             report__service__pb2.RollbackReportImportRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReplaceReports(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ReplaceReports',
+            report__service__pb2.ReplaceReportsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RollbackReportReplacement(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/RollbackReportReplacement',
+            report__service__pb2.RollbackReportReplacementRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,
             channel_credentials,
