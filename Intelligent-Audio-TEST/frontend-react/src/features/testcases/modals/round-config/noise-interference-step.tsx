@@ -28,12 +28,12 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
-import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type {
   RoundInterfererDraft,
   RoundNoiseDraft,
 } from '@/features/testcases/modals/round-config/round-nav'
 import { AudioSelectDialog } from '@/features/testcases/modals/audio/audio-select-dialog'
+import { playbackDeviceLabel } from '@/features/testcases/modals/round-config/playback-device-label'
 import { fetchRealPlaybackDevices } from '@/infrastructure/api/playback-api'
 
 const formatDuration = (s: number | null | undefined) => {
@@ -42,11 +42,8 @@ const formatDuration = (s: number | null | undefined) => {
   return sec < 60 ? `${sec}s` : sec % 60 === 0 ? `${sec / 60}m` : `${Math.floor(sec / 60)}m ${sec % 60}s`
 }
 
-/** 播放设备选项文案「{设备名} (通道 {n}) [干声/噪声]」 */
-const deviceLabel = (d: PlaybackDevice) =>
-  `${d.name} (通道 ${d.channelIndex ?? '—'}) [${
-    d.deviceType === 'dry' ? '干声' : d.deviceType === 'noise' ? '噪声' : d.deviceType ?? '未知'
-  }]`
+/** 播放设备选项文案「{设备名} (通道 {n}) [干声/噪声]」——与全局背景噪声 chips 同源 */
+const deviceLabel = playbackDeviceLabel
 
 let ifrSeq = 0
 const nextIfrId = () => `ifr-${++ifrSeq}`

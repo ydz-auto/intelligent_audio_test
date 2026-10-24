@@ -7,7 +7,6 @@
  * INT-1687：算法中文名一律取真实 GET /algorithm/options（useAlgorithmLabels 提供
  * value→name 表）；本文件的查表函数未命中即返回 null，不回落到 mock 登记表或类型码。
  */
-
 export type TestCasesViewKey = 'by-group' | 'by-tag'
 
 /**

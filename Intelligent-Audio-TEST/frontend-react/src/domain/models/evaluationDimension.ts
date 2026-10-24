@@ -10,8 +10,9 @@
 export interface LlmJudgeConfig {
   model: string
   promptTemplate: string
-  maxTokens: number
-  temperature: number
+  /** 未下发时缺省由维度表单层提供（features/evaluation/mutate/dimension-form-schema.ts），读侧不编造 */
+  maxTokens?: number
+  temperature?: number
 }
 
 /** 维度关联的算法（associated_algorithms 列表项） */

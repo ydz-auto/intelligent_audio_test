@@ -5,12 +5,34 @@
  * INT-486 用例不分类型口径：不渲染类型徽章。
  */
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactElement } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import { MOCK_TAGS } from '@/infrastructure/mock/testcases-mock'
 import { Badge } from '@/components/ui/badge'
 import { CaseCard, type CaseCardCallbacks } from '@/features/testcases/components/case-card'
+import { useAuthStore } from '@/infrastructure/stores/auth-store'
+
+/** 本地演示管理员（permissions '*'）：算法名映射取真实 GET /algorithm/options（INT-1506） */
+const ADMIN_USER = {
+  id: 'mock-user-001',
+  username: 'demo_admin',
+  displayName: '演示管理员',
+  roleName: '超级管理员',
+  permissions: ['*'],
+}
+
+/** 算法选项 query 缓存（照 useAlgorithmOptions 的 queryKey / 响应形态） */
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+queryClient.setQueryData(['shell', 'algorithm', 'options'], [
+  { value: 'asr-v3', name: '通用识别引擎' },
+])
+
+/** CaseCard 读算法名映射（useAlgorithmLabelMap → useQuery），需 QueryClient 上下文 */
+const renderCard = (ui: ReactElement) =>
+  render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
 
 /** 算法类型码 → 中文名（真实 GET /algorithm/options value→name 的测试替身，INT-1687） */
 const ALGORITHM_LABELS: Record<string, string> = {
@@ -49,8 +71,12 @@ const noopCallbacks: CaseCardCallbacks = {
 }
 
 describe('CaseCard', () => {
+  beforeEach(() => {
+    useAuthStore.setState({ user: ADMIN_USER })
+  })
+
   it('渲染名称/算法徽章/时长/轮次与标签分类角标', () => {
-    render(
+    renderCard(
       <CaseCard
         caseItem={makeCase()}
         selected={false}
@@ -86,7 +112,7 @@ describe('CaseCard', () => {
   })
 
   it('行内操作五钮：预览/复制/收藏/编辑/删除', () => {
-    render(
+    renderCard(
       <CaseCard
         caseItem={makeCase()}
         selected={false}
@@ -110,7 +136,7 @@ describe('CaseCard', () => {
       onPreview: vi.fn(),
       onEdit: vi.fn(),
     }
-    render(
+    renderCard(
       <CaseCard
         caseItem={makeCase()}
         selected={false}
@@ -127,7 +153,7 @@ describe('CaseCard', () => {
 
   it('INT-595 §3.3.2：无关联音频（audioCount=0）时预览钮置灰，Tooltip 说明，点击不触发回调', () => {
     const callbacks: CaseCardCallbacks = { ...noopCallbacks, onPreview: vi.fn() }
-    render(
+    renderCard(
       <CaseCard
         caseItem={makeCase({ audioCount: 0 })}
         selected={false}
@@ -146,7 +172,7 @@ describe('CaseCard', () => {
   })
 
   it('回收站态：删除元信息 + 恢复/彻底删除两钮，不渲染普通五钮', () => {
-    render(
+    renderCard(
       <CaseCard
         caseItem={makeCase({
           deleted: true,
@@ -172,7 +198,7 @@ describe('CaseCard', () => {
 
 describe('CaseCard 全站统一插槽（INT-1046：报告/任务域消费）', () => {
   it('报告式：hideMeta + 自定义 actions + expandedContent，不渲染默认五钮', () => {
-    render(
+    renderCard(
       <CaseCard
         caseItem={makeCase({
           algorithmType: null,
@@ -209,7 +235,7 @@ describe('CaseCard 全站统一插槽（INT-1046：报告/任务域消费）', (
   it('任务式：可点击名称 + meta 次行 + badgeLeading + footer，勾选回调生效', () => {
     const onNameClick = vi.fn()
     const onToggle = vi.fn()
-    render(
+    renderCard(
       <CaseCard
         caseItem={makeCase({ tags: [] })}
         selected={false}

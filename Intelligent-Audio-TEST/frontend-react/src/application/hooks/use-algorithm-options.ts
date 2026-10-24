@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
 import { hasPermission } from '@/domain/models/user'
 import { fetchAlgorithmOptions } from '@/infrastructure/api/algorithm-api'

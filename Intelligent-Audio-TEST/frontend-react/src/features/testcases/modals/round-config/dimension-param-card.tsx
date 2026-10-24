@@ -1,29 +1,19 @@
 /**
  * 已选维度参数卡（用例编辑抽屉 §5.1 / §5.1.2 共用）。
  * 每维度：名称 + LLM Judge 徽章 + 移除钮；权重 number 0-100 默认 50 + 阈值 number 0-100 默认 80
- * （非 LLM Judge）；LLM Judge 时 模型 Select + Prompt 模板 Select——选项来源改为
- * infrastructure/api/llm-judge-options（后端口径，当前留桩待接线；INT-1658 去掉组件内硬编码）。
+ * （非 LLM Judge）；LLM Judge 时 模型 + Prompt 模板（自由文本，默认值取维度自身配置）。
+ * 模型/Prompt 后端没有可枚举的选项接口（`GET /algorithm/options` 只下发算法类型，不含
+ * LLM 模型），因此不渲染写死的下拉选项、也不写死默认模型：默认值读维度配置
+ * `dimension.llmJudgeConfig`（§5.5 维度表单同源字段），用户在此可覆盖，未改动不写入 case config。
  * 数据契约 config.dimensions 项 = { id, name, weight, threshold, (llmJudgeConfig: {model, promptTemplate}) }
  */
 import { SlidersHorizontal } from 'lucide-react'
-import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import type { Dimension } from '@/domain/models/evaluationDimension'
-import {
-  getLlmJudgeOptions,
-  withCurrentOption,
-} from '@/infrastructure/api/llm-judge-options'
 
 export interface DimensionParamValue {
   weight: number
@@ -31,9 +21,6 @@ export interface DimensionParamValue {
   model?: string
   promptTemplate?: string
 }
-
-/** LLM Judge 可选值（后端口径；infrastructure 层留桩待接线，INT-1658 去掉组件内硬编码） */
-const LLM_OPTIONS = getLlmJudgeOptions()
 
 export function DimensionParamCard({
   dimension,
@@ -47,26 +34,10 @@ export function DimensionParamCard({
   onRemove: () => void
 }) {
   const llmJudge = dimension.resultType === 'llm_judge'
-  // 默认值：维度自身 llmJudgeConfig 优先，缺省取后端候选集首项
-  const [model, setModel] = useState(
-    params.model ?? dimension.llmJudgeConfig?.model ?? LLM_OPTIONS.models[0] ?? ''
-  )
-  const [prompt, setPrompt] = useState(
-    params.promptTemplate ??
-      dimension.llmJudgeConfig?.promptTemplate ??
-      LLM_OPTIONS.promptTemplates[0] ??
-      ''
-  )
-
-  // 存量值可能不在后端候选集：并入选项保证回显（否则 Select 显示空白）
-  const modelOptions = withCurrentOption(LLM_OPTIONS.models, model)
-  const promptOptions = withCurrentOption(LLM_OPTIONS.promptTemplates, prompt)
-
-  const commit = (patch: Partial<DimensionParamValue>) => {
-    onChange(patch)
-    if (patch.model) setModel(patch.model)
-    if (patch.promptTemplate) setPrompt(patch.promptTemplate)
-  }
+  /** 默认值回退维度自身 LLM Judge 配置（维度配置接口下发；未配置即空，不注入占位模型） */
+  const model = params.model ?? dimension.llmJudgeConfig?.model ?? ''
+  const promptTemplate =
+    params.promptTemplate ?? dimension.llmJudgeConfig?.promptTemplate ?? ''
 
   return (
     <div className='bg-background ring-foreground/10 rounded-lg p-3 ring-1'>
@@ -98,7 +69,7 @@ export function DimensionParamCard({
             max={100}
             step={1}
             value={params.weight}
-            onChange={(e) => commit({ weight: Number(e.target.value) })}
+            onChange={(e) => onChange({ weight: Number(e.target.value) })}
             className='h-8'
           />
         </div>
@@ -111,50 +82,39 @@ export function DimensionParamCard({
               max={100}
               step={1}
               value={params.threshold}
-              onChange={(e) => commit({ threshold: Number(e.target.value) })}
+              onChange={(e) => onChange({ threshold: Number(e.target.value) })}
               className='h-8'
             />
           </div>
         ) : (
           <>
             <div className='space-y-1.5'>
-              <Label className='text-sm'>模型</Label>
-              <Select
+              <Label htmlFor={`dim-model-${dimension.id}`} className='text-sm'>
+                模型
+              </Label>
+              <Input
+                id={`dim-model-${dimension.id}`}
                 value={model}
-                onValueChange={(v) => commit({ model: v ?? undefined })}
-                items={modelOptions.map((m) => ({ value: m, label: m }))}
-              >
-                <SelectTrigger size='sm' className='h-8 w-full'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {modelOptions.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                placeholder='填写该维度使用的模型名'
+                onChange={(e) => onChange({ model: e.target.value })}
+                className='h-8'
+              />
             </div>
-            <div className='space-y-1.5'>
-              <Label className='text-sm'>Prompt 模板</Label>
-              <Select
-                value={prompt}
-                onValueChange={(v) => commit({ promptTemplate: v ?? undefined })}
-                items={promptOptions.map((t) => ({ value: t, label: t }))}
-              >
-                <SelectTrigger size='sm' className='h-8 w-full'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {promptOptions.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className='space-y-1.5 sm:col-span-2'>
+              <Label htmlFor={`dim-prompt-${dimension.id}`} className='text-sm'>
+                Prompt 模板
+              </Label>
+              <Input
+                id={`dim-prompt-${dimension.id}`}
+                value={promptTemplate}
+                placeholder='可使用 {{asr_result}} {{asr_ref}} 等变量'
+                onChange={(e) => onChange({ promptTemplate: e.target.value })}
+                className='h-8'
+              />
             </div>
+            <p className='text-muted-foreground/70 text-xs sm:col-span-2'>
+              默认取该维度定义中的 LLM Judge 配置，留空表示沿用维度定义。
+            </p>
           </>
         )}
       </div>

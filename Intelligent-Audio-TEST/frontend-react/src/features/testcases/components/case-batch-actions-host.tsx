@@ -9,6 +9,7 @@ import { useMemo } from 'react'
 import type { Dimension, EvaluationCategory } from '@/domain/models/evaluationDimension'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
+import { useCaseRoundsRegistry } from '@/application/testcases/case-rounds-registry'
 import type { BatchDialogState } from '@/application/testcases/use-case-batch-actions'
 import type { CaseConfirmState } from '@/features/testcases/modals/case-confirms'
 import { BatchAdjustGroupDialog } from '@/features/testcases/modals/batch-adjust-group-dialog'
@@ -34,22 +35,7 @@ export interface CaseBatchActionsHostProps {
   categories?: EvaluationCategory[]
   algorithmType?: string | null
   testType?: string | null
-  /**
-   * 当前页已加载的用例（含真实轮次数 rounds；INT-1642 批量设置评估维度「指定轮次」、
-   * INT-1731 专属参数/播放设备/声压/噪声四窗「轮次范围」均取选中用例的真实轮次——
-   * 多选取最大轮次；未加载到的 id 沿用已加载最大值）
-   */
-  cases?: Array<{ id: string; rounds: number }>
 }
-
-/** 按选中用例真实轮次渲染「轮次范围」的批量窗（INT-1731：五窗同口径） */
-const ROUND_SCOPED_KINDS = new Set<BatchDialogState['kind']>([
-  'dimensions',
-  'params',
-  'device',
-  'spl',
-  'noise',
-])
 
 export function CaseBatchActionsHost({
   batchDialog,
@@ -63,17 +49,17 @@ export function CaseBatchActionsHost({
   categories = [],
   algorithmType,
   testType,
-  cases,
 }: CaseBatchActionsHostProps) {
-  /** 选中用例的真实最大轮次（轮次范围各窗用；未知 id 不计入，全部未知回落 1） */
-  const selectedRoundCount = useMemo(() => {
-    if (!batchDialog || !ROUND_SCOPED_KINDS.has(batchDialog.kind)) return 1
-    const wanted = new Set(batchDialog.ids)
-    const known = (cases ?? [])
-      .filter((c) => wanted.has(c.id))
-      .map((c) => c.rounds)
-    return Math.max(1, ...known)
-  }, [batchDialog, cases])
+  /**
+   * 选中用例的实际轮次数：由页级轮次登记表（CaseRoundsProvider）按选中 id 解析——
+   * 列表首页、分组卡懒加载页、开始测试列表登记过的用例都能取到，不再只看首页 100 条。
+   * roundCount=0 且 unknownCount>0 表示轮次尚未加载（弹窗提示，不当成「无轮次」）。
+   */
+  const { resolve } = useCaseRoundsRegistry()
+  const { roundCount, unknownCount } = useMemo(
+    () => (batchDialog ? resolve(batchDialog.ids) : { roundCount: 0, unknownCount: 0 }),
+    [batchDialog, resolve]
+  )
 
   return (
     <>
@@ -83,11 +69,12 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
+          roundCount={roundCount}
+          unknownRoundCount={unknownCount}
           dimensions={dimensions}
           categories={categories}
           algorithmType={algorithmType}
           testType={testType}
-          roundCount={selectedRoundCount}
         />
       )}
       {batchDialog?.kind === 'group' && (
@@ -114,7 +101,8 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
-          roundCount={selectedRoundCount}
+          roundCount={roundCount}
+          unknownRoundCount={unknownCount}
         />
       )}
       {batchDialog?.kind === 'device' && (
@@ -123,7 +111,8 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
-          roundCount={selectedRoundCount}
+          roundCount={roundCount}
+          unknownRoundCount={unknownCount}
         />
       )}
       {batchDialog?.kind === 'spl' && (
@@ -132,7 +121,8 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
-          roundCount={selectedRoundCount}
+          roundCount={roundCount}
+          unknownRoundCount={unknownCount}
         />
       )}
       {batchDialog?.kind === 'noise' && (
@@ -141,7 +131,8 @@ export function CaseBatchActionsHost({
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           ids={batchDialog.ids}
-          roundCount={selectedRoundCount}
+          roundCount={roundCount}
+          unknownRoundCount={unknownCount}
         />
       )}
       <CaseConfirmDialog

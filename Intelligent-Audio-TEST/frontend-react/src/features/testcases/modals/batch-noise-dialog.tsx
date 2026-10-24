@@ -151,17 +151,20 @@ export function BatchNoiseDialog({
   onOpenChange,
   count,
   ids,
-  roundCount = 1,
+  roundCount,
+  unknownRoundCount = 0,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   count: number
   ids: string[]
-  /** 选中用例的真实轮次数（多选取最大轮次，未知回落 1——INT-1731） */
-  roundCount?: number
+  /** 选中用例实际轮次数（config.rounds 派生；0=空态——INT-1731/INT-1506） */
+  roundCount: number
+  /** 选中用例中轮次未知（列表尚未加载）的条数 */
+  unknownRoundCount?: number
 }) {
   const totalRounds = Math.max(1, roundCount)
-  const [scope, setScope] = useState(() => createRoundScope(totalRounds))
+  const [scope, setScope] = useState(() => createRoundScope(roundCount))
   const [pickingAudio, setPickingAudio] = useState(false)
   const [layers, setLayers] = useState<ApplyLayerId[]>(['case-bg', 'segment-bg'])
   const [submitting, setSubmitting] = useState(false)
@@ -379,7 +382,8 @@ export function BatchNoiseDialog({
             name='batch-noise-round'
             value={scope}
             onChange={setScope}
-            roundCount={totalRounds}
+            roundCount={roundCount}
+            unknownRoundCount={unknownRoundCount}
           />
 
           {/* 应用层级（默认勾选 case级/segment级背景噪声） */}

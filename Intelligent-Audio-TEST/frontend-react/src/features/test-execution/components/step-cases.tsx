@@ -22,6 +22,7 @@ import { useAlgorithmChannel } from '@/application/test-execution/useAlgorithmCh
 import { useCaseSelection } from '@/application/test-execution/useCaseSelection'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useAlgorithmLabels } from '@/application/hooks/use-algorithm-options'
+import { CaseRoundsProvider } from '@/application/testcases/case-rounds-registry'
 import { useTestCasesList, type TestCaseListFilters } from '@/application/testcases/use-testcases-list'
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
 import { useCaseTags, useTagCategories } from '@/application/testcases/use-case-tags'
@@ -506,163 +507,164 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   const canManage = !readOnly
 
   return (
-    <div className='flex flex-col gap-3'>
-      {/* 视图页签：按分组/按标签（用例管理页同款） */}
-      <Tabs value={caseView} onValueChange={(v) => setCaseView(v as TestCasesViewKey)}>
-        <TabsList variant='line' className='max-w-full flex-wrap justify-start'>
-          {TEST_CASES_TABS.map((t) => (
-            <TabsTrigger key={t.key} value={t.key} className='px-3'>
-              {t.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+    <CaseRoundsProvider cases={items}>
+      <div className='flex flex-col gap-3'>
+        {/* 视图页签：按分组/按标签（用例管理页同款） */}
+        <Tabs value={caseView} onValueChange={(v) => setCaseView(v as TestCasesViewKey)}>
+          <TabsList variant='line' className='max-w-full flex-wrap justify-start'>
+            {TEST_CASES_TABS.map((t) => (
+              <TabsTrigger key={t.key} value={t.key} className='px-3'>
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
-      {/* 筛选工具栏（用例管理页同款：搜索/分组/标签分类/评估维度）；readOnly 隐藏收藏回收站/重置 */}
-      <TestCasesFilterToolbar
-        filters={filters}
-        onChange={setFilters}
-        onReset={handleReset}
-        isFiltered={isFiltered}
-        groups={groups}
-        tags={tags}
-        tagsError={tagsQuery.isError}
-        tagsLoading={tagsQuery.isLoading}
-        onRetryTags={() => void tagsQuery.refetch()}
-        dimensions={dimensions}
-        categories={categories}
-        tagCategories={tagCategories}
-        onUpdateTag={handleUpdateTag}
-        onDeleteTag={handleDeleteTag}
-        onCopyTag={handleCopyTag}
-        cases={items}
-        onRestoreAll={handleRestoreAll}
-        readOnly={readOnly}
-      />
+        {/* 筛选工具栏（用例管理页同款：搜索/分组/标签分类/评估维度）；readOnly 隐藏收藏回收站/重置 */}
+        <TestCasesFilterToolbar
+          filters={filters}
+          onChange={setFilters}
+          onReset={handleReset}
+          isFiltered={isFiltered}
+          groups={groups}
+          tags={tags}
+          tagsError={tagsQuery.isError}
+          tagsLoading={tagsQuery.isLoading}
+          onRetryTags={() => void tagsQuery.refetch()}
+          dimensions={dimensions}
+          categories={categories}
+          tagCategories={tagCategories}
+          onUpdateTag={handleUpdateTag}
+          onDeleteTag={handleDeleteTag}
+          onCopyTag={handleCopyTag}
+          cases={items}
+          onRestoreAll={handleRestoreAll}
+          readOnly={readOnly}
+        />
 
-      {/* 向导专用选择操作（§3.5：本页不启用批量浮条，汇总行承担选择态操作） */}
-      {canManage && canSelect && (
-        <div className='flex flex-wrap items-center gap-2'>
-          <Button
-            variant='outline'
-            size='sm'
-            className='h-8 gap-1.5 text-xs'
-            disabled={pendingSelectAll}
-            onClick={() => void handleSelectAllFiltered()}
-          >
-            <ListChecks aria-hidden='true' className='size-3.5' />
-            全选结果
-          </Button>
-          <Button variant='outline' size='sm' className='h-8 gap-1.5 text-xs' onClick={() => void handleInvert()}>
-            反选
-          </Button>
-          {isFiltered && (
-            <Button variant='ghost' size='sm' className='h-8 gap-1.5 text-xs' onClick={handleReset}>
-              <X aria-hidden='true' className='size-3.5' />
-              重置
+        {/* 向导专用选择操作（§3.5：本页不启用批量浮条，汇总行承担选择态操作） */}
+        {canManage && canSelect && (
+          <div className='flex flex-wrap items-center gap-2'>
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-8 gap-1.5 text-xs'
+              disabled={pendingSelectAll}
+              onClick={() => void handleSelectAllFiltered()}
+            >
+              <ListChecks aria-hidden='true' className='size-3.5' />
+              全选结果
             </Button>
+            <Button variant='outline' size='sm' className='h-8 gap-1.5 text-xs' onClick={() => void handleInvert()}>
+              反选
+            </Button>
+            {isFiltered && (
+              <Button variant='ghost' size='sm' className='h-8 gap-1.5 text-xs' onClick={handleReset}>
+                <X aria-hidden='true' className='size-3.5' />
+                重置
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* 内容区（分组/标签卡片流，与用例管理页同一组件）；readOnly 不传动作回调 → 动作钮隐藏 */}
+        <div className='min-h-0 flex-1 overflow-auto'>
+          {caseView === 'by-group' ? (
+            <GroupedCaseList
+              groups={groups}
+              cases={items}
+              loading={listQuery.isLoading}
+              groupsLoading={groupsQuery.isLoading}
+              filters={effectiveFilters}
+              trash={filters.trash ?? false}
+              hasQueryFilters={hasQueryFilters}
+              selected={selectedSet}
+              tagRegistry={tags}
+              algorithmLabels={algorithmLabels}
+              callbacks={canManage ? rowCallbacks : undefined}
+              onBatchAction={batch.openBatch}
+              actionCallbacks={canManage ? groupCallbacks : undefined}
+              onToggleSelect={canManage ? handleToggleSelect : undefined}
+              onToggleAll={canManage ? handleToggleAll : undefined}
+            />
+          ) : (
+            <TagCaseList
+              cases={items}
+              loading={listQuery.isLoading}
+              selected={selectedSet}
+              tagRegistry={tags}
+              algorithmLabels={algorithmLabels}
+              callbacks={canManage ? rowCallbacks : undefined}
+              onToggleSelect={canManage ? handleToggleSelect : undefined}
+              onToggleAll={canManage ? handleToggleAll : undefined}
+              onCreate={canManage ? () => openCreateCase(null) : undefined}
+            />
           )}
         </div>
-      )}
 
-      {/* 内容区（分组/标签卡片流，与用例管理页同一组件）；readOnly 不传动作回调 → 动作钮隐藏 */}
-      <div className='min-h-0 flex-1 overflow-auto'>
-        {caseView === 'by-group' ? (
-          <GroupedCaseList
-            groups={groups}
-            cases={items}
-            loading={listQuery.isLoading}
-            groupsLoading={groupsQuery.isLoading}
-            filters={effectiveFilters}
-            trash={filters.trash ?? false}
-            hasQueryFilters={hasQueryFilters}
-            selected={selectedSet}
-            tagRegistry={tags}
-            algorithmLabels={algorithmLabels}
-            callbacks={canManage ? rowCallbacks : undefined}
-            onBatchAction={batch.openBatch}
-            actionCallbacks={canManage ? groupCallbacks : undefined}
-            onToggleSelect={canManage ? handleToggleSelect : undefined}
-            onToggleAll={canManage ? handleToggleAll : undefined}
-          />
-        ) : (
-          <TagCaseList
-            cases={items}
-            loading={listQuery.isLoading}
-            selected={selectedSet}
-            tagRegistry={tags}
-            algorithmLabels={algorithmLabels}
-            callbacks={canManage ? rowCallbacks : undefined}
-            onToggleSelect={canManage ? handleToggleSelect : undefined}
-            onToggleAll={canManage ? handleToggleAll : undefined}
-            onCreate={canManage ? () => openCreateCase(null) : undefined}
+        {/* 已选汇总行（常驻） */}
+        {canManage && (
+          <SelectionSummary
+            mode='case'
+            count={selection.selectedCount}
+            manual={selection.summary.manual}
+            invertAdded={selection.summary.invertAdded}
+            total={total}
+            onClear={selection.clearSelection}
           />
         )}
-      </div>
 
-      {/* 已选汇总行（常驻） */}
-      {canManage && (
-        <SelectionSummary
-          mode='case'
-          count={selection.selectedCount}
-          manual={selection.summary.manual}
-          invertAdded={selection.summary.invertAdded}
-          total={total}
-          onClear={selection.clearSelection}
+        {/* 弹窗群（复用用例管理页组件，§5：行内/分组操作） */}
+        <CaseMutateDrawer
+          open={mutateOpen}
+          onOpenChange={setMutateOpen}
+          caseItem={mutateCase}
+          groups={groups}
+          presetGroupId={presetGroupId}
         />
-      )}
+        <GroupMutateDialog
+          open={groupDialog.open}
+          onOpenChange={(open) => setGroupDialog((prev) => ({ ...prev, open }))}
+          group={groupDialog.group}
+        />
+        <AudioPreviewConfigDialog
+          open={previewCase != null}
+          onOpenChange={(open) => !open && setPreviewCase(null)}
+          caseItem={previewCase}
+        />
+        <CaseConfirmDialog
+          open={confirm != null}
+          onOpenChange={(open) => !open && setConfirm(null)}
+          state={confirm}
+          onConfirm={handleConfirm}
+        />
+        <ConfirmDialog
+          open={copyGroup != null}
+          onOpenChange={(open) => !open && setCopyGroup(null)}
+          title='复制分组'
+          desc={`确定要复制分组「${copyGroup?.name ?? ''}」下的 ${copyGroup?.testCaseCount ?? 0} 个用例吗？复制后将成为新分组：${copyGroup?.name ?? ''}_copy`}
+          confirmText='复制'
+          handleConfirm={() => {
+            if (copyGroup) handleCopyGroup(copyGroup)
+            setCopyGroup(null)
+          }}
+        />
 
-      {/* 弹窗群（复用用例管理页组件，§5：行内/分组操作） */}
-      <CaseMutateDrawer
-        open={mutateOpen}
-        onOpenChange={setMutateOpen}
-        caseItem={mutateCase}
-        groups={groups}
-        presetGroupId={presetGroupId}
-      />
-      <GroupMutateDialog
-        open={groupDialog.open}
-        onOpenChange={(open) => setGroupDialog((prev) => ({ ...prev, open }))}
-        group={groupDialog.group}
-      />
-      <AudioPreviewConfigDialog
-        open={previewCase != null}
-        onOpenChange={(open) => !open && setPreviewCase(null)}
-        caseItem={previewCase}
-      />
-      <CaseConfirmDialog
-        open={confirm != null}
-        onOpenChange={(open) => !open && setConfirm(null)}
-        state={confirm}
-        onConfirm={handleConfirm}
-      />
-      <ConfirmDialog
-        open={copyGroup != null}
-        onOpenChange={(open) => !open && setCopyGroup(null)}
-        title='复制分组'
-        desc={`确定要复制分组「${copyGroup?.name ?? ''}」下的 ${copyGroup?.testCaseCount ?? 0} 个用例吗？复制后将成为新分组：${copyGroup?.name ?? ''}_copy`}
-        confirmText='复制'
-        handleConfirm={() => {
-          if (copyGroup) handleCopyGroup(copyGroup)
-          setCopyGroup(null)
-        }}
-      />
-
-      {/* 批量弹窗群（INT-1026：组头「批量修改」九项与 /testcases 同款弹窗，共享 host） */}
-      <CaseBatchActionsHost
-        batchDialog={batch.batchDialog}
-        setBatchDialog={batch.setBatchDialog}
-        confirm={batch.confirm}
-        setConfirm={batch.setConfirm}
-        handleConfirm={batch.handleConfirm}
-        groups={groups}
-        tags={tags}
-        dimensions={dimensions}
-        categories={categories}
-        algorithmType={algorithmType}
-        testType={selectedTestType}
-        cases={items}
-      />
-    </div>
+        {/* 批量弹窗群（INT-1026：组头「批量修改」九项与 /testcases 同款弹窗，共享 host） */}
+        <CaseBatchActionsHost
+          batchDialog={batch.batchDialog}
+          setBatchDialog={batch.setBatchDialog}
+          confirm={batch.confirm}
+          setConfirm={batch.setConfirm}
+          handleConfirm={batch.handleConfirm}
+          groups={groups}
+          tags={tags}
+          dimensions={dimensions}
+          categories={categories}
+          algorithmType={algorithmType}
+          testType={selectedTestType}
+        />
+      </div>
+    </CaseRoundsProvider>
   )
 }
