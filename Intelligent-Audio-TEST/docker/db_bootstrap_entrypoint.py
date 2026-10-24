@@ -189,6 +189,12 @@ BOOTSTRAP_STEPS = [
     #     幂等（ANALYZE 写入 last_analyze，重复执行命中 0 张表）；best-effort，
     #     单表失败只 WARN 不阻断部署。默认 dry-run，引导链必须带 --apply。
     ('python', 'scripts/migrations/202610/analyze_stale_statistics_int1741.py', '--apply'),
+    # ㊸ apis.meta.protocol 存量取值归一化（INT-1770）：前端写真 http/https/ws/wss，
+    #     适配器维度枚举只认 http/websocket/realtime/any，旧值在建任务时抛
+    #     ValueError。代码侧已按映射兜底（只读兼容），本步把存量值回写标准词表；
+    #     只命中 protocol ∈ {https, ws, wss} 的行，脚本幂等（归一后再次执行 0 行），
+    #     全新库为 0 行；默认 dry-run，引导链须 --apply。
+    ('python', 'scripts/migrations/202610/normalize_api_meta_protocol_int1770.py', '--apply'),
 ]
 
 
