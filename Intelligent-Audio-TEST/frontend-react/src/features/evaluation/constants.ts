@@ -48,12 +48,11 @@ export const DIMENSION_SEARCH_PLACEHOLDER = '搜索评估维度...'
 export const WEIGHT_MIN = 1
 export const WEIGHT_MAX = 10
 
-/** 结果类型映射（resultType 数值/字符串 → 中文标签） */
+/** 结果类型映射（resultType 数值 → 中文标签；LLM Judge 是维度属性而非结果类型，INT-1681） */
 export const RESULT_TYPE_LABELS: Record<string, string> = {
   '1': '数值',
   '2': '布尔',
   '3': '文本',
-  llm_judge: 'LLM Judge',
 }
 
 /** 统计方式选项（§5.5 统计方式 Select） */

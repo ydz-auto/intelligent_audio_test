@@ -128,6 +128,7 @@ export function dimensionFromDto(dto: DimensionItemDto): Dimension {
     scoreUnit: dto.score_unit ?? null,
     type: dto.type ?? null,
     resultType: dto.result_type ?? null,
+    llmJudge: dto.llm_judge ?? false,
     resultMin: dto.result_min ?? null,
     resultMax: dto.result_max ?? null,
     decimalPlaces: dto.decimal_places ?? null,

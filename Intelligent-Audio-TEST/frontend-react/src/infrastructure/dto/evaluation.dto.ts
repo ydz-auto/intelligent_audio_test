@@ -52,6 +52,8 @@ export interface DimensionItemDto {
   score_unit: string | null
   type: string | null
   result_type: number | null
+  /** LLM Judge 派生布尔（后端按维度 task_type_code 判定；不是结果类型） */
+  llm_judge?: boolean
   result_min: number | null
   result_max: number | null
   decimal_places: number | null
@@ -247,6 +249,7 @@ export function toDimension(dto: DimensionItemDto): Dimension {
     scoreUnit: dto.score_unit,
     type: dto.type,
     resultType: dto.result_type,
+    llmJudge: dto.llm_judge ?? false,
     resultMin: dto.result_min,
     resultMax: dto.result_max,
     decimalPlaces: dto.decimal_places,

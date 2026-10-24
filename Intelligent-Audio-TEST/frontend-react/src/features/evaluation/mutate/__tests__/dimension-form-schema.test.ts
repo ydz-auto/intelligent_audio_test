@@ -1,7 +1,7 @@
 /**
  * 评估维度表单 schema/转换器（11_用例域.md §5.5）单元测试。
  * 覆盖空表单初值、编辑反填（toDimensionFormValues）、保存载荷收敛
- * （toDimensionSaveInput：子维度不携带 API 配置、LLM Judge 结果类型映射、
+ * （toDimensionSaveInput：子维度不携带 API 配置、结果类型只发整数（INT-1681）、
  * 所需输入/输出字段/API 端点随载荷提交——P3-2 收敛）。
  */
 import { describe, expect, it } from 'vitest'
@@ -87,14 +87,13 @@ describe('toDimensionFormValues', () => {
     expect(values.rule[0]).toEqual({ condition: '>=', value: 95, score: 10 })
   })
 
-  it('LLM Judge 结果类型映射为 llm_judge 字符串', () => {
+  it('LLM Judge 维度按原整数结果类型反填（不是 llm_judge 字符串；INT-1681）', () => {
     const values = toDimensionFormValues({
       ...mockDimension,
-      resultType: 'llm_judge',
-      llmJudgeConfig: { model: 'gpt-4o-mini', promptTemplate: '', maxTokens: 1024, temperature: 0.7 },
+      resultType: 1,
+      llmJudge: true,
     })
-    expect(values.resultType).toBe('llm_judge')
-    expect(values.llmModel).toBe('gpt-4o-mini')
+    expect(values.resultType).toBe('1')
   })
 
   it('所需输入/输出字段/API 端点反填（P3-2）', () => {
@@ -167,20 +166,14 @@ describe('toDimensionSaveInput', () => {
     expect(input.apiEndpoints).toBeUndefined()
   })
 
-  it('LLM Judge 保存载荷携带 llmJudgeConfig', () => {
-    const values = toDimensionFormValues({
-      ...mockDimension,
-      resultType: 'llm_judge',
-      llmJudgeConfig: { model: 'gpt-4o-mini', promptTemplate: 'p', maxTokens: 512, temperature: 0.5 },
-    })
+  it('结果类型保存为整数且不携带 llmJudgeConfig（INT-1681：不发 llm_judge 字符串）', () => {
+    const values = toDimensionFormValues({ ...mockDimension, llmJudge: true })
     const input = toDimensionSaveInput(values)
-    expect(input.resultType).toBe('llm_judge')
-    expect(input.llmJudgeConfig).toEqual({
-      model: 'gpt-4o-mini',
-      promptTemplate: 'p',
-      maxTokens: 512,
-      temperature: 0.5,
-    })
+    expect(input.resultType).toBe(1)
+    expect(input).not.toHaveProperty('llmJudgeConfig')
+    const dto = toDimensionInputDto(input)
+    expect(dto.result_type).toBe(1)
+    expect(dto).not.toHaveProperty('llm_judge_config')
   })
 
   it('输出字段 passThreshold 反填与保存往返（INT-1350 三轮 P1）', () => {

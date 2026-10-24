@@ -129,8 +129,13 @@ export interface Dimension {
   scoreUnit?: string | null
   /** 评估类型（type 原值：auto/manual） */
   type?: string | null
-  /** 结果类型（后端原值 int；llm_judge 字符串兼容判「LLM Judge」徽章） */
-  resultType?: number | 'llm_judge' | null
+  /** 结果类型（后端原值 int：1 数值 / 2 布尔 / 3 文本） */
+  resultType?: number | null
+  /**
+   * 是否 LLM Judge 维度（后端派生布尔 llm_judge：由维度自身 task_type_code 判定）。
+   * LLM Judge 不是结果类型，结果类型仍是数值/布尔/文本。
+   */
+  llmJudge?: boolean
   resultMin?: number | null
   resultMax?: number | null
   decimalPlaces?: number | null

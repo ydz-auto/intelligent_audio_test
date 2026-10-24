@@ -124,7 +124,9 @@ export const dimensionFormSchema = z
     parentDimensionId: z.string(),
     keywords: z.string(),
     scoreUnit: z.string(),
-    resultType: z.enum(['0', '1', '2', '3', 'llm_judge']),
+    // 结果类型只有整数口径（网关 schemas/evaluation.py 是 int）；LLM Judge 由维度
+    // 自身 task_type_code 表达，不再是结果类型选项（INT-1681 裁定 A）
+    resultType: z.enum(['0', '1', '2', '3']),
     // valueAsNumber 下清空输入得 NaN，默认文案是英文（Invalid input: expected number…）；
     // 给中文文案，行内错误/页脚摘要才可读（INT-1551）
     resultMin: z.number({ error: '结果最小值请输入数字' }),
@@ -133,10 +135,6 @@ export const dimensionFormSchema = z
     weight: z.number().min(WEIGHT_MIN).max(WEIGHT_MAX, '权重 1-10'),
     estimatedExecTime: z.number().min(1, '预计执行时间 ≥1 秒'),
     rule: z.array(ruleRowSchema).min(1, '请至少配置一条评分规则'),
-    llmModel: z.string(),
-    llmPromptTemplate: z.string(),
-    llmMaxTokens: z.number().min(1).max(8192),
-    llmTemperature: z.number().min(0).max(2),
     apiUrl: z.string(),
     apiMethod: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']),
     apiTimeout: z.number().min(1),
@@ -195,10 +193,6 @@ export function emptyDimensionFormValues(): DimensionFormValues {
       { condition: '>=', value: 70, score: 7 },
       { condition: '<', value: 70, score: 0 },
     ],
-    llmModel: '',
-    llmPromptTemplate: '',
-    llmMaxTokens: 1024,
-    llmTemperature: 0.7,
     apiUrl: '',
     apiMethod: 'POST',
     apiTimeout: 30000,
@@ -312,20 +306,13 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
       dimension.parentDimensionId != null ? String(dimension.parentDimensionId) : '',
     keywords: dimension.keywords ?? '',
     scoreUnit: dimension.scoreUnit ?? '',
-    resultType:
-      dimension.resultType === 'llm_judge'
-        ? 'llm_judge'
-        : String(dimension.resultType ?? 1) as DimensionFormValues['resultType'],
+    resultType: String(dimension.resultType ?? 1) as DimensionFormValues['resultType'],
     resultMin: dimension.resultMin ?? 0,
     resultMax: dimension.resultMax ?? 100,
     decimalPlaces: dimension.decimalPlaces ?? 2,
     weight: dimension.weight ?? 5,
     estimatedExecTime: dimension.estimatedExecTime ?? 5,
     rule: ruleRows.length > 0 ? ruleRows : emptyDimensionFormValues().rule,
-    llmModel: dimension.llmJudgeConfig?.model ?? '',
-    llmPromptTemplate: dimension.llmJudgeConfig?.promptTemplate ?? '',
-    llmMaxTokens: dimension.llmJudgeConfig?.maxTokens ?? 1024,
-    llmTemperature: dimension.llmJudgeConfig?.temperature ?? 0.7,
     apiUrl: dimension.apiUrl ?? '',
     apiMethod: toApiMethod(dimension.apiSettings),
     apiTimeout: toApiTimeout(dimension.apiSettings),
@@ -407,10 +394,8 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
       : null,
     keywords: isSub ? null : values.keywords || null,
     scoreUnit: values.scoreUnit || null,
-    resultType:
-      values.resultType === 'llm_judge'
-        ? 'llm_judge'
-        : Number(values.resultType),
+    // 只发整数（后端 result_type 是 int）；LLM Judge 是维度属性，不写结果类型（INT-1681）
+    resultType: Number(values.resultType),
     resultMin: values.resultMin,
     resultMax: values.resultMax,
     decimalPlaces: values.decimalPlaces,
@@ -482,15 +467,6 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
             ? parseJsonValue(values.apiBodyTemplate)
             : undefined,
         },
-    llmJudgeConfig:
-      values.resultType === 'llm_judge'
-        ? {
-            model: values.llmModel,
-            promptTemplate: values.llmPromptTemplate,
-            maxTokens: values.llmMaxTokens,
-            temperature: values.llmTemperature,
-          }
-        : null,
   }
 }
 
