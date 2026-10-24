@@ -400,7 +400,12 @@ def test_serialize_params_passes_field_path_only_when_present():
 # ==================== 8. 网关参数 CRUD 透传（打回 P1/P2） ====================
 
 class _FakeParamRepo:
-    """参数仓储替身：只记录下发给 UpdateParam RPC 的字段，不连库。"""
+    """参数仓储替身：只记录下发给 UpdateParam RPC 的字段，不连库。
+
+    ``get_device_param`` 对 API 参数返回 None —— 这是修复后的真实 ACL 语义
+    （按 GetParam 响应里的 ``param_type_source`` 判类型，不再跨表回落）；
+    来源判定的真实链路用例见 ``test_int1747_param_source_type_judgment.py``。
+    """
 
     def __init__(self, *, device=None, api=None, api_list=None):
         self._device = device

@@ -14,6 +14,8 @@ import json
 from typing import Any, Dict, List, Optional
 
 from shared.proto import algorithm_service_pb2 as _pb
+from shared.utils.dto_utils import dict_to_dto
+from shared.utils.grpc_json import loads as _loads
 from task_service.domain.dto.task_acl_dto import (
     DeviceParamDTO, ApiParamDTO, CaseParamDTO, ReferenceParamDTO, CreateAckDTO,
 )
@@ -76,15 +78,32 @@ class AlgorithmParamMixin:
             return None
         return _one(resp, dto_cls=ApiParamDTO)
 
-    def get_device_param(self, param_id: int):
-        """按 ID 查询未删除的设备参数。"""
+    def _get_param_raw(self, param_id: int) -> Optional[Dict[str, Any]]:
+        """调用 GetParam RPC 并返回原始 payload（含 param_type_source）。
+
+        INT-1747：来源由 algorithm_service 的 GetParam 在响应里带出（先查 device
+        再回落 api），调用方必须按它判类型。旧实现只看「返回是否为空」，
+        导致任何 API 参数都能被 get_device_param 取到（回落 api 行）。
+        """
         resp = _get_stub().GetParam(_pb.GetParamRequest(param_id=int(param_id)))
-        return _one(resp, dto_cls=DeviceParamDTO)
+        if not resp.success or not resp.data:
+            return None
+        payload = _loads(resp.data, None)
+        return payload if isinstance(payload, dict) else None
+
+    def get_device_param(self, param_id: int):
+        """按 ID 查询未删除的设备参数（按 RPC 返回的来源判定，不跨表回落）。"""
+        payload = self._get_param_raw(param_id)
+        if not payload or payload.get("param_type_source") != "device":
+            return None
+        return dict_to_dto(payload, DeviceParamDTO)
 
     def get_api_param(self, param_id: int):
-        """按 ID 查询未删除的 API 参数。"""
-        resp = _get_stub().GetParam(_pb.GetParamRequest(param_id=int(param_id)))
-        return _one(resp, dto_cls=ApiParamDTO)
+        """按 ID 查询未删除的 API 参数（按 RPC 返回的来源判定，不跨表回落）。"""
+        payload = self._get_param_raw(param_id)
+        if not payload or payload.get("param_type_source") != "api":
+            return None
+        return dict_to_dto(payload, ApiParamDTO)
 
     def list_device_params(
         self, algorithm_type: Optional[str] = None
