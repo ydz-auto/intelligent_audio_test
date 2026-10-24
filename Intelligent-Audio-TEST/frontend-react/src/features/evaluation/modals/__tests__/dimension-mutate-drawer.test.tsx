@@ -86,6 +86,15 @@ const DETAIL: Dimension = {
   ],
 }
 
+/** 空规则 + result_type=0 的真实维度形态（INT-1732：真实库 55/63 维度 rules=[] 带 defaultScore） */
+const EMPTY_RULE_ROW: Dimension = {
+  ...LIST_ROW,
+  id: 121,
+  name: '拒识成功数量',
+  resultType: 0,
+  rule: { rules: [], defaultScore: 7 },
+}
+
 /** 复刻评估维度页的受控用法：关闭时把 dimension 置空（evaluation-page.tsx 同款）。 */
 function Harness({ dimension }: { dimension: Dimension }) {
   const [state, setState] = useState<{
@@ -214,5 +223,33 @@ describe('DimensionMutateDrawer 回填（INT-1660）', () => {
       expect(screen.getByLabelText('输入参数键名 1')).toHaveValue('custom_param')
     )
     expect(screen.getByLabelText('输出字段代码 1')).toHaveValue('custom_result')
+  })
+
+  it('空规则维度：不注入默认规则、结果类型 0 显示中文标签、原样保存保留 defaultScore（INT-1732）', async () => {
+    const user = userEvent.setup()
+    detailStore.current = {}
+    saveMock.mockClear()
+    render(<Harness dimension={EMPTY_RULE_ROW} />)
+
+    await user.click(screen.getByRole('button', { name: '编辑维度' }))
+    await waitFor(() =>
+      expect(screen.getByLabelText(/维度名称/)).toHaveValue(EMPTY_RULE_ROW.name)
+    )
+    await user.click(screen.getByRole('tab', { name: '结果配置' }))
+
+    // 空规则：明确提示，且不得凭空出现默认 5 条
+    expect(screen.getByTestId('dimension-rule-empty')).toHaveTextContent(
+      '该维度未配置评分规则'
+    )
+    expect(screen.queryByLabelText('规则 1 阈值')).not.toBeInTheDocument()
+    // result_type=0 → 中文标签（不再是「请选择结果类型」）
+    expect(screen.getByText('未设置')).toBeInTheDocument()
+    expect(screen.queryByText('请选择结果类型')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
+    const payload = saveMock.mock.calls[0][0] as Partial<Dimension>
+    expect(payload.rule).toEqual({ rules: [], defaultScore: 7 })
+    expect(payload.resultType).toBe(0)
   })
 })

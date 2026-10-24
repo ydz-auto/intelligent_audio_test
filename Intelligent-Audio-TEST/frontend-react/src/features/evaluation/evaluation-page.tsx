@@ -785,12 +785,18 @@ export function EvaluationPage() {
                       <ListChecks aria-hidden='true' className='size-4' />
                     </EmptyMedia>
                     <EmptyHeader>
-                      <EmptyTitle>暂无评估维度</EmptyTitle>
+                      {/* INT-1732 P3-2：库里有维度、只是筛选没匹配时不得引导「创建第一个」；
+                          空态文案对齐 V9.7.10「暂无评估维度数据」 */}
+                      <EmptyTitle>
+                        {dimensions.length > 0 ? '暂无评估维度数据' : '暂无评估维度'}
+                      </EmptyTitle>
                       <EmptyDescription>
-                        点击右上角「新增维度」创建第一个评估维度
+                        {dimensions.length > 0
+                          ? '当前筛选条件下没有匹配的评估维度，试试调整搜索关键词或筛选条件'
+                          : '点击右上角「新增维度」创建第一个评估维度'}
                       </EmptyDescription>
                     </EmptyHeader>
-                    {canManage && (
+                    {dimensions.length === 0 && canManage && (
                       <EmptyContent>
                         <Button
                           variant='outline'
