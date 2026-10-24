@@ -46,6 +46,7 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { usePlaybackDevices } from '@/application/audio/usePlaybackDevices'
+import type { PlaybackDeviceOption } from '@/infrastructure/api/audio-upload-api'
 import { scanRealPlaybackDevices } from '@/infrastructure/api/playback-api'
 import { cn } from '@/lib/utils'
 import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
@@ -133,6 +134,7 @@ function toThreeValue(
 /** 逐轮快捷操作三件（§5.7.1；文案逐字照 11_用例域 §5.3.5 ③） */
 function PerRoundQuickActions({
   subject,
+  applyAllSubject,
   activeRound,
   roundCount,
   valueEmpty,
@@ -140,8 +142,13 @@ function PerRoundQuickActions({
   onClear,
   onApplyAll,
 }: {
-  /** 「评估维度」/「播放设备」 */
+  /** 清空确认框主体：「评估维度」/「播放设备」（§9 逐字） */
   subject: string
+  /**
+   * 应用到所有轮次确认框主体：维度段 §9 逐字为「维度」（「将第 {n} 轮的维度配置…」），
+   * 设备段为「播放设备」；缺省同 subject。
+   */
+  applyAllSubject?: string
   activeRound: number
   roundCount: number
   /** 当前轮是否无取值（清空钮禁用条件） */
@@ -256,7 +263,7 @@ function PerRoundQuickActions({
       <ConfirmDialog
         open={confirmAction === 'applyAll'}
         onOpenChange={(open) => !open && setConfirmAction(null)}
-        title={`将第 ${activeRound} 轮的${subject}配置应用到所有其他轮次？`}
+        title={`将第 ${activeRound} 轮的${applyAllSubject ?? subject}配置应用到所有其他轮次？`}
         desc={`其他轮次的${subject}配置将被覆盖为当前轮次的内容。`}
         confirmText='确定应用'
         handleConfirm={() => {
@@ -296,20 +303,28 @@ export function UploadOptions(props: UploadOptionsProps) {
     },
     onSuccess: (scanned) => {
       setScanning(false)
-      // 扫描到的设备并入列表（照 §5.7.4：按 name|channelIndex 去重追加）
+      // 扫描到的设备并入列表（照 §5.7.4：按 name|channelIndex 去重追加——
+      // 同名同型号不同通道是不同设备，按 model 去重会把它们吞掉）
       queryClient.setQueryData<typeof playbackDevices>(
         ['playback-devices'],
         (prev) => {
           const existing = prev ?? []
-          const keys = new Set(existing.map((d) => `${d.name}|${d.model}`))
-          const appended = scanned
-            .filter((d) => !keys.has(`${d.name}|${d.model ?? ''}`))
-            .map((d) => ({
-              id: d.id,
-              name: d.name,
-              model: d.model ?? '',
-              deviceType: d.deviceType ?? '',
-            }))
+          const keyOf = (device: { name: string; channelIndex?: number | null }) =>
+            `${device.name}|${device.channelIndex ?? ''}`
+          const keys = new Set(existing.map(keyOf))
+          const appended: PlaybackDeviceOption[] = []
+          for (const device of scanned) {
+            const key = keyOf(device)
+            if (keys.has(key)) continue
+            keys.add(key)
+            appended.push({
+              id: device.id,
+              name: device.name,
+              model: device.model ?? '',
+              deviceType: device.deviceType ?? '',
+              channelIndex: device.channelIndex ?? null,
+            })
+          }
           return [...existing, ...appended]
         }
       )
@@ -423,6 +438,7 @@ export function UploadOptions(props: UploadOptionsProps) {
             {roundScope.dimensionScope.mode === 'per_round' && (
               <PerRoundQuickActions
                 subject='评估维度'
+                applyAllSubject='维度'
                 activeRound={roundScope.dimensionScope.activeRound}
                 roundCount={roundCount}
                 valueEmpty={roundScope.dimensionIds.length === 0}

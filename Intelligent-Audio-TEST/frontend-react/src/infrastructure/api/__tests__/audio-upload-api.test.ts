@@ -197,4 +197,30 @@ describe('mergeChunks（三档轮次范围载荷）', () => {
     const payload = postMock.mock.calls[0][1]
     expect(payload.dimensions).toEqual([{ id: 7, name: '对话连贯性', round_scope: 'multi' }])
   })
+
+  it('「逐轮设置」切回「所有轮次」：顶层只发当前统一集，逐轮档残留值不得混入（审计 P2-1）', async () => {
+    // catalog 里带着逐轮档的旧值（4），统一集只有新选的 3
+    const staleDims = [...dims, { id: 9, name: '逐轮三分类评估', round_scope: 'single' as const }]
+    await mergeChunks('task-1', 'file-3', 'c.wav', baseConfig({
+      rounds,
+      dimensions: staleDims,
+      multiDimensions: multi,
+      dimensionPlan: { mode: 'all', uniformIds: [3], specificRounds: [1], perRoundIds: { 1: [3, 4, 9] } },
+      devicePlan: { mode: 'all', uniformId: 12, specificRounds: [1], perRoundIds: {} },
+    }))
+    const payload = postMock.mock.calls[0][1]
+    expect(payload.dimensions).toEqual([dims[0], ...multi])
+  })
+
+  it('「所有轮次」档未选任何维度：顶层只有 multi，不带逐轮残留（审计 P2-1）', async () => {
+    await mergeChunks('task-1', 'file-3', 'c.wav', baseConfig({
+      rounds,
+      dimensions: dims,
+      multiDimensions: multi,
+      dimensionPlan: { mode: 'all', uniformIds: [], specificRounds: [1], perRoundIds: { 1: [3, 4] } },
+      devicePlan: { mode: 'all', uniformId: 12, specificRounds: [1], perRoundIds: {} },
+    }))
+    const payload = postMock.mock.calls[0][1]
+    expect(payload.dimensions).toEqual(multi)
+  })
 })

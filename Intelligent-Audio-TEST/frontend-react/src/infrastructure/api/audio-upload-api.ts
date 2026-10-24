@@ -30,6 +30,8 @@ export interface PlaybackDeviceOption {
   name: string
   model: string
   deviceType: string
+  /** 通道号（§5.7.4 重新扫描按 name|channelIndex 去重，同名同型号不同通道不能被吞） */
+  channelIndex: number | null
 }
 
 export async function fetchPlaybackDevices(): Promise<PlaybackDeviceOption[]> {
@@ -39,6 +41,7 @@ export async function fetchPlaybackDevices(): Promise<PlaybackDeviceOption[]> {
       name?: string
       model?: string | null
       device_type?: string | null
+      channel_index?: number | null
     }>
   }>('/playback-devices', { params: { page: 1, per_page: 100 } })
   return (dto?.items ?? []).map((d) => ({
@@ -46,6 +49,7 @@ export async function fetchPlaybackDevices(): Promise<PlaybackDeviceOption[]> {
     name: d.name ?? '',
     model: d.model ?? '',
     deviceType: d.device_type ?? '',
+    channelIndex: d.channel_index ?? null,
   }))
 }
 
@@ -262,6 +266,10 @@ function buildMergeRounds(
  * 顶层 dimensions（§5.7.7）：
  * - 「所有轮次」档 = 统一 single 集 + multi 集（后端对未自带 evaluation 的轮次回填该集）；
  * - 「指定轮次」/「逐轮设置」= 只放 multi（逐轮 single 已写在轮内，顶层不放逐轮维度）。
+ *
+ * 「所有轮次」档只取 `dimensionPlan.uniformIds`（= UI 当前显示的已选集合）。
+ * `config.dimensions` 是各档用到的 id 并集（兼作逐轮条目的 name/weight 目录），含切档前
+ * 逐轮档的残留值，直接当统一集会把旧值一并提交（审计 P2-1）。
  */
 function buildTopLevelDimensions(
   config: UploadTestCaseConfig
@@ -269,8 +277,9 @@ function buildTopLevelDimensions(
   if (!config.createTestCase) return undefined
   const multi = config.multiDimensions ?? []
   const plan = config.dimensionPlan
-  if (!plan || plan.mode === 'all') return [...config.dimensions, ...multi]
-  return multi
+  if (!plan) return [...config.dimensions, ...multi]
+  if (plan.mode !== 'all') return multi
+  return [...toDimensionItems(config, [...new Set(plan.uniformIds)]), ...multi]
 }
 
 /** 合并分片 + 按需生成测试用例（POST /upload/merge） */
