@@ -584,7 +584,7 @@ class AlgorithmConfigCache:
         for p in params:
             if not isinstance(p, dict):
                 continue
-            result.append({
+            entry = {
                 'id': p.get('id'),
                 'algorithm_type': p.get('algorithm_type'),
                 'code': p.get('param_code') or p.get('code'),
@@ -600,7 +600,12 @@ class AlgorithmConfigCache:
                 'ui_group': p.get('ui_group', 'default'),
                 'hidden': p.get('hidden', False),
                 'param_type': p.get('param_type'),
-            })
+            }
+            # 输出字段取值路径（INT-1747）：只有 API 参数有该列，设备参数不带此键，
+            # 避免把 None 混进 device 字段定义。
+            if p.get('field_path') is not None:
+                entry['field_path'] = p.get('field_path')
+            result.append(entry)
         return result
 
     @staticmethod

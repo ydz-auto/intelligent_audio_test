@@ -39,6 +39,7 @@ from shared.utils.api_key_provider import (
     resolver_from_config,
 )
 from shared.utils.dto_utils import dto_to_dict
+from shared.utils.api_output_extractor import extract_api_output_fields
 from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.domain.entities.api import resolve_audio_sample_rate
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
@@ -760,8 +761,9 @@ class RealtimeSessionExecutor:
         1. original.evaluation.output 的 param_mapping（source_param → target_param）：
            source 为 case/reference 时从 round_config 取 source_param，其余
            （api/device）从轮次输出取，映射 target_param 进 fields；
-        2. original.api.output 字段定义：从轮次输出取（对齐 api_task_runner
-           output_field_keys 模式，answer 等输出字段按 API 输出定义驱动）。
+        2. original.api.output 字段定义：按 ``field_path`` 从轮次输出取值
+           （为空按 param_code 取顶层键；统一走 shared.utils.api_output_extractor，
+           INT-1747）。
 
         新增算法只改算法配置即可映射评估入参，本方法零改动；算法服务不可达时
         （ACL 回退空 DTO）返回空 dict，round result 不携带评估字段。
@@ -787,9 +789,13 @@ class RealtimeSessionExecutor:
             if value is not None:
                 fields[target_param] = value
 
-        api_output = (original.get('api') or {}).get('output') or {}
-        for key in api_output:
-            value = output.get(key)
+        # ② 输出字段提取（INT-1747 / C2，C0 §9.3）：与单轮 `extract_final_result`、
+        # 多轮 `_attach_api_output_fields` 共用同一入口，按 field_path 从 WS
+        # 聚合输出取嵌套值；为空仍按 param_code 取顶层键（存量行为）。
+        # 本方法产出的是**评估入参字段**，按卡面约束「入参只认 param_mappings、
+        # 不动入参侧」，零声明时不做 meta 解析器兜底（与改前一致返回空）。
+        values, _ = extract_api_output_fields(field_mappings, output)
+        for key, value in values.items():
             if value is not None:
                 fields[key] = value
         return fields

@@ -38,7 +38,8 @@ class CreateParamCommand:
 
     - data: 参数字段集合（algorithm_type / param_code / param_name / label
             / param_type / direction / required / default_value
-            / validation_rules / help_text / ui_order / hidden）
+            / validation_rules / help_text / ui_order / hidden
+            / field_path（仅 API 参数，INT-1747））
     - param_type_source: 参数来源（device/api）
     """
 

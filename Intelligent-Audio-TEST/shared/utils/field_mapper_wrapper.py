@@ -40,6 +40,18 @@ class FieldMapperWrapper:
             return list(mapped_device_output.keys())
         return [f.get('code') for f in mapped_device_output if isinstance(f, dict)]
 
+    def get_mapped_api_output_field_keys(self, algorithm_type: str = '') -> list:
+        """获取映射后的 API 输出字段 key 列表（target_param，与设备侧同构）
+
+        INT-1747 / C0 §9.2：``rounds[i].output`` 以 target_param 为键、覆盖
+        该算法类型全部 direction=output 的 api 参数（未映射即恒等保留），
+        因此评估侧的输出字段键集合取 device ∪ api。仅供输出字段展示/提取使用。
+        """
+        mapped_api_output = self._data.get('mapped', {}).get('api', {})
+        if isinstance(mapped_api_output, dict):
+            return list(mapped_api_output.keys())
+        return [f.get('code') for f in mapped_api_output if isinstance(f, dict)]
+
     def get_mapped_device_output(self, algorithm_type: str = '') -> dict:
         """获取映射后的设备输出字段（raw dict，key=target_param）"""
         return self._data.get('mapped', {}).get('device', {}) or {}
