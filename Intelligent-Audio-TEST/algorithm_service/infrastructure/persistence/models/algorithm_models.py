@@ -184,6 +184,7 @@ class AlgorithmApiParam(Base):
     help_text = Column(Text, comment='帮助提示文字')
     ui_order = Column(Integer, default=0, comment='界面排序')
     hidden = Column(Boolean, default=False, comment='是否隐藏')
+    field_path = Column(String(255), comment='输出字段取值路径（点号 + 数组下标，如 data.events[0].text；空 = 按 param_code 取顶层键）')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
@@ -204,7 +205,8 @@ class AlgorithmApiParam(Base):
             'validation': parse_json_or_raw(self.validation_rules),
             'help_text': self.help_text,
             'ui_order': self.ui_order,
-            'hidden': self.hidden
+            'hidden': self.hidden,
+            'field_path': self.field_path,
         }
 
 

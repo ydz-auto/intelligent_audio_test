@@ -1,0 +1,11 @@
+ => 22 warnings, 1 error in 21.49s
+tests/integration/test_int103_multi_round_case_writeback.py => 5 passed in 132.99s (0:02:12)
+tests/integration/test_int120_evaluation_hang_convergence.py => 1 failed, 2 warnings in 119.99s (0:01:59)
+tests/integration/test_int364_reeval_ghost_row_real_chain.py => 3 passed in 129.13s (0:02:09)
+tests/integration/test_int423_visibility_migration_real_pg.py => 1 failed, 2 passed, 4 warnings in 7.87s
+tests/unit/test_int1150_mcp_skill.py => 3 failed, 37 passed in 1.04s
+tests/unit/test_int143_reference_param_single_query.py => 1 failed, 10 passed in 3.26s
+tests/unit/test_int299_operator_columns.py => 1 failed, 9 passed in 2.34s
+tests/unit/test_int464_visibility_audio_service.py => 2 failed, 24 passed in 1.89s
+tests/unit/test_int539_testcase_lab_filter.py => 12 passed in 1.59s
+tests/unit/test_int844_benchmark_operator_columns.py => 19 passed in 3.28s

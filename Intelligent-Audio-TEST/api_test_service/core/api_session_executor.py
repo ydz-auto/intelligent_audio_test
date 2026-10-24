@@ -7,6 +7,10 @@ import requests as http_requests
 from datetime import timezone, timedelta
 
 from shared.utils.dto_utils import dto_to_dict
+from shared.utils.api_output_extractor import (
+    SOURCE_META_FALLBACK,
+    extract_api_output_fields,
+)
 from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
 from shared.utils.query_utils import now_cst
 from shared.utils.config_manager import config_manager
@@ -182,6 +186,9 @@ class APISessionExecutor:
                     round_results, case_config=None):
         """执行多轮循环，返回 all_rounds_success"""
         all_rounds_success = True
+        # 输出字段声明（INT-1747 / C2）：整例取一次，逐轮按同一份声明提取
+        field_mappings = dto_to_dict(
+            _algo_acl.get_field_mappings(algorithm_type)) or {}
 
         for round_idx, round_config in enumerate(rounds):
             if not isinstance(round_config, dict):
@@ -203,7 +210,7 @@ class APISessionExecutor:
                 round_number=round_number, round_config=round_config,
                 case_algorithm_params=case_algorithm_params,
                 algorithm_type=algorithm_type, case_config=case_config,
-                total_rounds=len(rounds)
+                total_rounds=len(rounds), field_mappings=field_mappings
             )
 
             if round_result and not round_result.get('error'):
@@ -362,7 +369,8 @@ class APISessionExecutor:
 
     def _send_round_request(self, task_id, api_config, api_specific_config, session,
                             round_number, round_config, case_algorithm_params,
-                            algorithm_type, case_config=None, total_rounds=None):
+                            algorithm_type, case_config=None, total_rounds=None,
+                            field_mappings=None):
         """发送单轮请求"""
         if total_rounds is None:
             total_rounds = round_number
@@ -406,7 +414,7 @@ class APISessionExecutor:
                 case_api_key = case_config.get(case_cfg_key) or ''
 
             if use_adapter:
-                return self._send_via_adapter(
+                round_result = self._send_via_adapter(
                     task_id, algorithm_type, session, round_number, total_rounds,
                     rendered_headers, rendered_body, api_specific_config, meta,
                     api_config, input_text, input_type, start_time,
@@ -414,10 +422,14 @@ class APISessionExecutor:
                     case_api_key=case_api_key,
                 )
             else:
-                return self._send_direct(
+                round_result = self._send_direct(
                     task_id, round_number, api_config, meta, rendered_headers,
                     rendered_body, timeout, input_text, input_type, start_time
                 )
+            self._attach_api_output_fields(
+                round_result, field_mappings, algorithm_type, task_id,
+                unwrap_execute_result=use_adapter)
+            return round_result
         except http_requests.Timeout:
             latency = time.time() - start_time
             self._log('WARNING', f"Round {round_number} timeout ({session.session_timeout}s)", task_id=task_id)
@@ -557,6 +569,42 @@ class APISessionExecutor:
             'output': output_text, 'latency': round(latency, 3),
             'success': True, 'raw_response': task_result
         }
+
+    def _attach_api_output_fields(self, round_result, field_mappings,
+                                  algorithm_type, task_id,
+                                  unwrap_execute_result=False):
+        """轮次输出字段提取（INT-1747 / C2，C0 §9.2 §9.3）。
+
+        与单轮 ``api_task_runner.extract_final_result``、Realtime
+        ``_collect_eval_fields`` 共用 ``shared.utils.api_output_extractor``：
+        声明表 ``algorithm_api_params(direction=output)`` 优先，``field_path``
+        在厂商原始响应上按路径取值；零声明时才按 meta 解析器已产出的
+        ``asr`` / ``trans`` / ``output`` 逐键兜底。
+
+        提取结果以 ``param_code`` 为键写入 ``round_result['output_fields']``；
+        C1（INT-1746）在同一入口上做 ``target_param`` 映射并落
+        ``rounds[i].output``。适配器路径的 ``raw_response`` 是 execute 结果
+        （``json`` 才是厂商响应，``unwrap_execute_result=True``）；直连路径
+        的 ``raw_response`` 即厂商响应。
+        """
+        raw = round_result.get('raw_response') if isinstance(round_result, dict) else None
+        if unwrap_execute_result and isinstance(raw, dict):
+            vendor_response = raw.get('json')
+            fallback_values = raw
+        else:
+            vendor_response = raw
+            fallback_values = raw if isinstance(raw, dict) else {}
+        values, source = extract_api_output_fields(
+            field_mappings, vendor_response, fallback_values=fallback_values)
+        if source == SOURCE_META_FALLBACK:
+            self._log('WARNING',
+                      f"算法类型 {algorithm_type} 无 API 输出声明，"
+                      f"按 meta 解析器兜底提取: {sorted(values.keys())}",
+                      task_id=task_id)
+        extracted = {key: value for key, value in values.items()
+                     if value not in (None, '')}
+        if extracted:
+            round_result['output_fields'] = extracted
 
     def _aggregate_round_results(self, round_results, session, api_config=None,
                                  task_id=None):

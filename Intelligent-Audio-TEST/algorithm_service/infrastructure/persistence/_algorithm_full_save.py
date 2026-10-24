@@ -116,7 +116,7 @@ def _upsert_device_api_params(session, algorithm_type: str, items: List[Dict[str
         submitted_keys.add(key)
         row, revive = _pick_target(active, deleted, key)
         if row is None:
-            row = po_cls(
+            create_kwargs = dict(
                 algorithm_type=algorithm_type,
                 param_code=param_code,
                 param_name=item.get('param_name') or param_code,
@@ -132,6 +132,10 @@ def _upsert_device_api_params(session, algorithm_type: str, items: List[Dict[str
                 ui_order=item.get('ui_order') or 0,
                 hidden=bool(item.get('hidden')) or False,
             )
+            # 输出字段取值路径仅 API 参数有该列（INT-1747）；设备参数不带此键
+            if 'field_path' in po_cls.__table__.columns:
+                create_kwargs['field_path'] = item.get('field_path')
+            row = po_cls(**create_kwargs)
             session.add(row)
             continue
         row.deleted = False
@@ -149,6 +153,8 @@ def _upsert_device_api_params(session, algorithm_type: str, items: List[Dict[str
             row.help_text = item.get('help_text')
         row.ui_order = item.get('ui_order') if item.get('ui_order') is not None else row.ui_order
         row.hidden = bool(item.get('hidden')) or False
+        if 'field_path' in po_cls.__table__.columns and item.get('field_path') is not None:
+            row.field_path = item.get('field_path')
         if revive:
             row.updated_at = datetime.now()
 

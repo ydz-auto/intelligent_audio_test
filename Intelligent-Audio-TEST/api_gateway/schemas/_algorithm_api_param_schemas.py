@@ -29,6 +29,10 @@ class AlgorithmApiParamCreate(APIModel):
     help_text: Optional[str] = Field(None)
     ui_order: int = Field(default=0, ge=0, description='界面排序')
     hidden: bool = Field(default=False, description='是否隐藏')
+    field_path: Optional[str] = Field(
+        None, max_length=255,
+        description='输出字段在厂商原始响应中的取值路径（点号 + 数组下标，'
+                    '如 data.events[0].text；空 = 按 param_code 取顶层键）')
 
 
 class AlgorithmApiParamUpdate(APIModel):
@@ -47,6 +51,7 @@ class AlgorithmApiParamUpdate(APIModel):
     help_text: Optional[str] = Field(None)
     ui_order: Optional[int] = Field(None)
     hidden: Optional[bool] = Field(None)
+    field_path: Optional[str] = Field(None, max_length=255)
 
 
 class AlgorithmApiParamItem(APIModel):
@@ -69,6 +74,7 @@ class AlgorithmApiParamItem(APIModel):
     help_text: Optional[str]
     ui_order: int
     hidden: bool
+    field_path: Optional[str] = None
 
 
 class AlgorithmApiParamListResponse(APIModel):
