@@ -331,6 +331,20 @@ class CherryPickRepository:
         } for r in rows]
 
     @with_session(auto_commit=False)
+    def source_task_status_map(self, task_ids: List[int]) -> Dict[int, str]:
+        """批量取来源任务状态（INT-1714 §11-8 溯源补 groups[].source_task_status）。
+
+        一次 `Task.id IN (...)`（不逐组查）；来源任务被物理删除时缺省不出现，
+        调用侧按 null 降级。
+        """
+        ids = [int(t) for t in (task_ids or []) if t is not None]
+        if not ids:
+            return {}
+        session = get_db_session()
+        rows = session.query(Task.id, Task.status).filter(Task.id.in_(ids)).all()
+        return {int(r[0]): r[1] for r in rows}
+
+    @with_session(auto_commit=False)
     def relations_by_containers(self, container_ids: List[int]) -> List[Dict[str, Any]]:
         """批量取容器任务的引用关系（候选查询容器命中解析，INT-657）。
 

@@ -969,6 +969,16 @@ class CherryPickService:
         探一次本接口，普通任务恒 400 只会制造接口噪音。对齐同域的读探针
         `review_count` / `review_history`：无数据即空结果，不做任务存在性判定
         （存在性由任务详情接口负责）。
+
+        INT-1714 §11-8：在既有返回结构上**追加**结果级字段（老字段不改名、
+        不改语义、不删）——叶行状态徽章/result_type 分层/信息头来源任务状态位
+        的数据源。批量实现（一次结果多列投影 + 各自一次 IN），无逐行查询：
+        - `result_type` 取落库列（与候选行同源，INT-1510/INT-1669 口径），
+          缺值输出 `default`；缺失行取不到结果，输出 null
+        - `execution_status`/`result_created_at` 缺失行为 null；
+          `evaluated` 缺失行恒 false
+        - `case_name` 缺名返回 null（「未知用例」是前端文案，不裸显 UUID）
+        - `groups[].source_task_status` 取 `Task.status`（一次 IN）
         """
         try:
             relations = self._repo.relations_by_container(task_id)
@@ -980,10 +990,36 @@ class CherryPickService:
                     'groups': [],
                 }}
             result_ids = [r['result_id'] for r in relations]
-            existing = self._results_exist(result_ids)
+            snapshots = self._source_result_snapshots(result_ids)
+            existing_ids = [rid for rid in result_ids if rid in snapshots]
+
+            evaluated_ids = (self._evaluated_result_ids(existing_ids)
+                             if existing_ids else set())
+            case_ids = sorted({s['test_case_id'] for s in snapshots.values()
+                               if s.get('test_case_id')})
+            case_names = self._case_name_map(case_ids) if case_ids else {}
+            device_ids = sorted({s['device_id'] for s in snapshots.values()
+                                 if s.get('device_id') is not None})
+            api_ids = sorted({s['api_id'] for s in snapshots.values()
+                              if s.get('api_id') is not None})
+            device_names = self._fetch_device_names(device_ids) if device_ids else {}
+            api_names = self._fetch_api_names(api_ids) if api_ids else {}
+            source_task_status = self._repo.source_task_status_map(
+                sorted({r['source_task_id'] for r in relations}))
+
             grouped: Dict[int, List[Dict[str, Any]]] = {}
             for r in relations:
-                r['missing'] = r['result_id'] not in existing
+                snap = snapshots.get(r['result_id'])
+                r['missing'] = snap is None
+                # 结果级追加字段（缺失行取不到结果 → null / false）
+                r['result_type'] = snap['result_type'] if snap else None
+                r['execution_status'] = snap['execution_status'] if snap else None
+                r['evaluated'] = bool(snap) and r['result_id'] in evaluated_ids
+                r['case_name'] = (case_names.get(snap['test_case_id'])
+                                  if snap and snap.get('test_case_id') else None)
+                r['device_name'] = device_names.get(snap['device_id']) if snap else None
+                r['api_name'] = api_names.get(snap['api_id']) if snap else None
+                r['result_created_at'] = snap['result_created_at'] if snap else None
                 grouped.setdefault(r['source_task_id'], []).append(r)
             return {'success': True, 'message': 'ok', 'data': {
                 'task_id': task_id,
@@ -992,12 +1028,46 @@ class CherryPickService:
                 'groups': [{
                     'source_task_id': src_id,
                     'source_task_name': (rows[0].get('source_task_name') if rows else None) or f'任务 {src_id}',
+                    # INT-1714：来源任务状态（列表 DTO TaskSourceBriefDto 同口径）
+                    'source_task_status': source_task_status.get(src_id),
                     'results': rows,
                 } for src_id, rows in grouped.items()],
             }}
         except Exception as e:
             logger.error(f"挑选溯源查询失败 task_id={task_id}: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
+    @staticmethod
+    def _source_result_snapshots(result_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+        """批量取源结果级字段（INT-1714 §11-8 溯源补字段）。
+
+        一次 IN 多列投影：同时得出 missing 判定与 result_type/execution_status/
+        result_created_at/用例·设备·API 归属，不逐行查、不走对象存储。
+        `result_type` 与候选行同源取落库列，缺值输出 `default`（待补充桶）。
+        结果行缺失（已删）不出现在返回 dict 中，调用侧按 missing 处理。
+        """
+        ids = sorted({int(r) for r in (result_ids or [])})
+        if not ids:
+            return {}
+        from task_service.infrastructure.persistence.models import TestResult
+        from shared.models.database import get_db_session
+        session = get_db_session()
+        try:
+            rows = session.query(
+                TestResult.id, TestResult.result_type, TestResult.execution_status,
+                TestResult.created_at, TestResult.test_case_id,
+                TestResult.device_id, TestResult.api_id,
+            ).filter(TestResult.id.in_(ids)).all()
+            return {int(r[0]): {
+                'result_type': r[1] or RESULT_TYPE_PENDING,
+                'execution_status': r[2],
+                'result_created_at': r[3].isoformat() if r[3] else None,
+                'test_case_id': r[4],
+                'device_id': r[5],
+                'api_id': r[6],
+            } for r in rows}
+        finally:
+            session.close()
 
     # ==================== S4 下单 reexecute ====================
 
