@@ -12,6 +12,7 @@ from shared.utils.query_utils import now_cst
 from shared.utils.config_manager import config_manager
 from shared.utils.api_key_provider import resolver_from_config
 from api_test_service.application.round_render_service import RoundRenderService
+from api_test_service.domain.entities.api import resolve_audio_sample_rate
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
 from api_test_service.infrastructure.acl import (
     TaskDataAclRepositoryImpl,
@@ -653,13 +654,12 @@ class APISessionExecutor:
 
     @staticmethod
     def _resolve_output_sample_rate(api_config):
-        """AI 输出 wav 采样率：api.audio_config.sample_rate，缺省 24000（回退默认）。"""
-        cfg = (getattr(api_config, 'audio_config', None) or {}) \
-            if api_config is not None else {}
-        try:
-            return int(cfg.get('sample_rate') or 24000)
-        except (TypeError, ValueError):
-            return 24000
+        """AI 输出 wav 采样率：api.audio_config.sample_rate，缺省 24000（回退默认）。
+
+        INT-1771：与 Realtime / 轮次渲染共用 domain 层 resolve_audio_sample_rate，
+        顶层列优先、列空时 meta.audio_config 存量兼容。
+        """
+        return resolve_audio_sample_rate(api_config)
 
     def _save_ai_output_wav(self, pcm: bytes, api_id=None, task_id=None,
                             sample_rate: int = 24000) -> 'str | None':

@@ -40,6 +40,7 @@ from shared.utils.api_key_provider import (
 )
 from shared.utils.dto_utils import dto_to_dict
 from api_test_service.application.round_render_service import RoundRenderService
+from api_test_service.domain.entities.api import resolve_audio_sample_rate
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
 from api_test_service.domain.services.realtime_pacing_service import (
     RealtimePacingContext,
@@ -163,8 +164,7 @@ class RealtimeSessionExecutor:
 
         client = None
         session_id = f"rt-{task_id}-{api_id}"
-        dst_sample_rate = int((getattr(api_config, 'meta', None) or {})
-                              .get('audio_config', {}).get('sample_rate', 24000))
+        dst_sample_rate = resolve_audio_sample_rate(api_config)
         try:
             url = self._resolve_ws_url(api_config)
             headers = self._resolve_ws_headers(
@@ -737,13 +737,17 @@ class RealtimeSessionExecutor:
 
     @staticmethod
     def _build_session_config(api_config, session_config) -> dict:
-        """会话配置（session.update 载荷）：VAD/音频格式/voice 全配置化"""
+        """会话配置（session.update 载荷）：VAD/音频格式/voice 全配置化
+
+        采样率经 resolve_audio_sample_rate 取（顶层列优先、meta 存量兼容，
+        INT-1771），与 HTTP / 轮次渲染同一口径。
+        """
         meta = getattr(api_config, 'meta', None) or {}
         merged = dict(meta.get('session_config') or {})
         merged.update(session_config or {})
-        audio_cfg = meta.get('audio_config') or {}
         merged.setdefault('input_audio_format', 'pcm16')
-        merged.setdefault('input_audio_sample_rate', audio_cfg.get('sample_rate', 24000))
+        merged.setdefault('input_audio_sample_rate',
+                          resolve_audio_sample_rate(api_config))
         return merged
 
     def _collect_eval_fields(self, round_config, output, algorithm_type=None) -> dict:

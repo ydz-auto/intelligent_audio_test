@@ -93,7 +93,7 @@ _FLAT_KEY_DIMENSIONS = { ..., VendorAdapterType.MY_VENDOR: (AdapterProtocol.REAL
 
 ## 五、APIs 表 + 建任务（配置）
 
-- **APIs 表一行**：`vendor=my_vendor`、`api_url`（`ws://` 或 `wss://`）、`device_type=websocket_api`、meta（session_config / audio_config / ws_headers / api_key）、proxy_type / proxy_url
+- **APIs 表一行**：`vendor=my_vendor`、`api_url`（`ws://` 或 `wss://`）、`device_type=websocket_api`、`audio_config`（顶层列，目标音频格式；meta.audio_config 仅存量兼容，INT-1771）、meta（session_config / ws_headers / api_key）、proxy_type / proxy_url
 - **建任务**：选用例 + 选 API（可同时选多个 API 和物理设备混跑）→ 用例在选中目标上分别执行（case_devices 指派 device_type）
 
 ## 六、验证

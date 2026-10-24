@@ -16,6 +16,7 @@ import logging
 import time
 from typing import Dict, Iterator, List, Optional
 
+from api_test_service.domain.entities.api import resolve_target_audio_format
 from api_test_service.domain.repositories.acl.audio_render_acl_repository import (
     AudioRenderAclRepository,
     RenderChunkDTO,
@@ -166,19 +167,9 @@ class RoundRenderService:
 
     @staticmethod
     def _resolve_target_format(api_config, stream: bool = False) -> dict:
-        audio_cfg = (getattr(api_config, 'meta', None) or {}).get('audio_config') or {}
-        fmt = {
-            'sample_rate': int(audio_cfg.get('sample_rate') or 24000),
-            'bit_depth': str(audio_cfg.get('bit_depth') or 's16'),
-            'channels': int(audio_cfg.get('channels') or 1),
-        }
-        if audio_cfg.get('container'):
-            fmt['container'] = str(audio_cfg['container'])
-        if stream:
-            # Realtime WS 推送输入协议为 s16 单声道（INT-61 dst_fmt 语义）
-            fmt['bit_depth'] = 's16'
-            fmt['channels'] = 1
-        return fmt
+        """目标格式单一取值口径（INT-1771）：顶层列优先、meta 存量兼容，
+        三条执行路径共用 domain 层 resolve_target_audio_format。"""
+        return resolve_target_audio_format(api_config, stream=stream)
 
     # ── SPL 映射预载（实体 → dict，随 render_config 传给 audio_service）──
 
