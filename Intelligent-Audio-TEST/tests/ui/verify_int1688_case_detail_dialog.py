@@ -1,23 +1,30 @@
 # -*- coding: utf-8 -*-
 """INT-1688 返工实测：case-detail 弹窗按 V9.7.10 轮次 Tab 呈现（行=指标 / 列=设备）。
 
-口径（INT-1723 回写后的 10_测试执行.md §5.2）：
+口径（INT-1723 回写后的 10_测试执行.md §5.2，INT-1688 06:08 返工裁定）：
 - 轮次 Tab：第1轮…第N轮 + 整体（整体有评估值才出现）；无轮次标记 → 单个「指标」Tab；
 - 表体：行=指标（metric_configs 顺序），列=设备（表头=设备名 + 执行状态徽章）；
   `@round:{n}` / `@overall` 只是内部键，不得出现在界面上；
-- 结果/参考音频随当前 Tab 按轮过滤。
+- 结果音频（detail `result_audios`）**不随轮次 Tab 过滤**，按设备分组全量（空则整块不渲染）；
+- 执行结果音频（`algorithm_results` 的 audio_file 项）按当前 Tab 与轮次过滤，
+  label 用原始参数名（去掉 `@round:N` / `@overall`）+ 单个轮次 chip（不重复）；
+- 参考音频（`audio_list`）按当前 Tab 过滤（现状保留）；
+- 换用例时轮次 Tab 复位到第一个有数据的 Tab。
 
 验收点：
 1. 单轮用例（任务 402 / 7bac162b…）：Tab = 第1轮 + 整体，6 个维度行、设备名 pura90小艺；
 2. 多轮用例（任务 402 / d8bdd5a6… DD139，7 轮）：Tab = 第1轮…第7轮 + 整体，
-   切第7轮后值与音频随轮变化（第1轮音频不再显示）；
-3. 浅 / 深色截图 + Network（detail / results 均 200）；
-4. 无结果用例（任务 399）空态不回归。
+   切第7轮后值与音频随轮变化（第1轮音频不再显示）、label 不带「（第N轮）」；
+3. 换用例复位：停在多轮「第7轮」后开单轮用例 → 默认落在「第1轮」；
+4. 结果音频块：有数据时按设备分组全量（与 Tab 无关），无数据时整块不渲染；
+5. 浅 / 深色截图 + Network（detail / results 均 200）；
+6. 无结果用例（任务 399）空态不回归。
 
 环境：docker 真实库栈 15000 + 本 worktree dev server（-c rsbuild.realstack.config.ts 代理 15000）。
 """
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -133,32 +140,91 @@ def expected_view(case_id):
 
     tabs = []
     if not has_round:
-        tabs.append({'label': '指标', 'round': None, 'rows': rows_for(lambda r: True)})
+        tabs.append({'label': '指标', 'kind': 'all', 'round': None,
+                     'rows': rows_for(lambda r: True)})
     else:
         rounds = sorted({r for _, r in all_points if r is not None} | set(audio_rounds))
         for rnd in rounds:
-            tabs.append({'label': '第%d轮' % rnd, 'round': rnd, 'rows': rows_for(lambda r, _r=rnd: r == _r)})
+            tabs.append({'label': '第%d轮' % rnd, 'kind': 'round', 'round': rnd,
+                         'rows': rows_for(lambda r, _r=rnd: r == _r)})
         overall_values = [
             value for bucket in points.values() for key, value in bucket.items() if key[1] is None
         ]
         if any(v not in (None, '') for v in overall_values):
-            tabs.append({'label': '整体', 'round': None, 'rows': rows_for(lambda r: r is None)})
+            tabs.append({'label': '整体', 'kind': 'overall', 'round': None,
+                         'rows': rows_for(lambda r: r is None)})
 
-    audios = {}
+    # 执行结果音频（algorithm_results 的 audio_file 项）：UI label = 原始参数名（去掉内部后缀），
+    # 轮次信息只在 chip 上出现一次（P3 返工）。
+    audios = []
     for a in detail.get('algorithm_results') or []:
-        if a.get('param_type') == 'audio_file' and a.get('value'):
-            audios.setdefault(a.get('round_number'), []).append(a.get('label') or a.get('param_code'))
-    refs = {}
-    for a in detail.get('audio_list') or []:
-        refs.setdefault(a.get('roundNumber'), []).append(a.get('filename'))
+        if a.get('param_type') != 'audio_file' or not a.get('value'):
+            continue
+        code = a.get('param_code') or ''
+        base = re.sub(r'@round:\d+$', '', code, flags=re.I)
+        base = re.sub(r'@overall$', '', base, flags=re.I).strip() or code
+        m = re.search(r'@round:(\d+)$', code, flags=re.I)
+        overall = bool(re.search(r'@overall$', code, flags=re.I))
+        audios.append({
+            'label': base,
+            'round': int(m.group(1)) if m else (None if overall else a.get('round_number')),
+            'overall': overall,
+            'dimension': a.get('dimension_name'),
+        })
+    refs = [
+        {'label': a.get('filename'), 'round': a.get('roundNumber')}
+        for a in detail.get('audio_list') or []
+    ]
+
+    # 结果音频（detail result_audios）：按设备分组，不随 Tab 过滤。
+    result_audio_groups = []
+    for device, items in (detail.get('result_audios') or {}).items():
+        names = [
+            (i.get('filename') or i.get('param_code') or '')
+            for i in (items or [])
+        ]
+        result_audio_groups.append({'device': device, 'names': [n for n in names if n]})
 
     return {
         'devices': devices,
         'tabs': tabs,
         'audios': audios,
         'refs': refs,
+        'resultAudioGroups': result_audio_groups,
         'configured': configured,
     }
+
+
+def tab_has_data(tab):
+    """V9.7.10 tabHasMetricData：Tab 内任一维度值非空且非「—」才算有数据。"""
+    return any(
+        value not in ('', '—')
+        for row in tab['rows']
+        for value in row['values'].values()
+    )
+
+
+def visible_audio_labels(expected, tab):
+    """执行结果音频字段按 Tab 的可见集合（V9.7.10 :834-891 同口径，独立重算）。"""
+    kind = tab.get('kind')
+    rnd = tab.get('round')
+    out = []
+    for a in expected['audios']:
+        if kind in (None, 'all'):
+            ok = True
+        elif kind == 'overall':
+            ok = True if a['dimension'] is None else a['overall']
+        else:
+            ok = False if a['overall'] else (a['round'] is None or a['round'] == rnd)
+        if ok:
+            out.append(a['label'])
+    return out
+
+
+def visible_ref_labels(expected, tab):
+    if tab.get('kind') != 'round':
+        return [r['label'] for r in expected['refs']]
+    return [r['label'] for r in expected['refs'] if r['round'] in (None, tab.get('round'))]
 
 
 def chrome_major():
@@ -242,14 +308,45 @@ const table = dlg.querySelector('table');
 const heads = table ? [...table.querySelectorAll('thead th')].map(t => (t.textContent||'').trim()) : [];
 const rows = table ? [...table.querySelectorAll('tbody tr')].map(tr =>
   [...tr.querySelectorAll('td')].map(td => (td.textContent||'').trim())) : [];
-const audioItems = [...dlg.querySelectorAll('div.flex.items-center.gap-2.rounded-lg.border')]
-  .map(d => (d.textContent||'').trim());
+const rowSpans = el => [...el.querySelectorAll('span')].map(s => (s.textContent||'').trim()).filter(Boolean);
+const sectionByLabel = label => {
+  const p = [...dlg.querySelectorAll('p')].find(x => (x.textContent||'').trim() === label);
+  return p ? p.parentElement : null;
+};
+// 执行结果音频：每行 = [label, chip..., device?]
+const fieldBlock = sectionByLabel('执行结果音频');
+const fieldRows = fieldBlock
+  ? [...fieldBlock.querySelectorAll('div.flex.items-center.gap-2.rounded-lg.border')]
+      .map(d => ({ spans: rowSpans(d), preview: (d.textContent||'').trim() }))
+  : [];
+// 结果音频（按设备分组）：组标题 = 设备名
+const resBlock = sectionByLabel('结果音频');
+let resGroups = [];
+if (resBlock) {
+  let current = null;
+  for (const child of [...resBlock.children]) {
+    if (child.tagName === 'P' && child.classList.contains('font-medium')) { current = { device: (child.textContent||'').trim(), rows: [] }; resGroups.push(current); }
+    else if (current && child.querySelectorAll) {
+      for (const d of [...child.querySelectorAll('div.flex.items-center.gap-2.rounded-lg.border')]) {
+        current.rows.push({ spans: rowSpans(d), preview: (d.textContent||'').trim() });
+      }
+    }
+  }
+}
+const refBlock = sectionByLabel('参考音频（用例输入）');
+const refRows = refBlock
+  ? [...refBlock.querySelectorAll('div.flex.items-center.gap-2.rounded-lg.border')]
+      .map(d => ({ spans: rowSpans(d), preview: (d.textContent||'').trim() }))
+  : [];
 return {
   badges,
   tabs,
   heads,
   rows,
-  audioItems,
+  fieldRows,
+  resultAudioGroups: resGroups,
+  refRows,
+  hasResultAudioBlock: !!resBlock,
   dialogText: (dlg.textContent || ''),
   audioSrc: [...dlg.querySelectorAll('audio')].map(a => a.currentSrc || a.src || ''),
 };
@@ -313,12 +410,39 @@ def open_case_dialog(drv, frag, attempt=1):
     time.sleep(1.2)
 
 
+def open_case_dialog_same_page(drv, frag):
+    """同页换用例（不 reload，保留组件状态）——用于验证 P3 换用例复位 Tab。"""
+    close_dialog(drv)
+    WebDriverWait(drv, 30).until(
+        lambda d: not d.find_elements(By.CSS_SELECTOR, '[data-slot="case-detail-dialog"]')
+    )
+    box = WebDriverWait(drv, 60).until(
+        lambda d: d.find_element(By.XPATH, "//input[@placeholder='搜索用例名称或 ID…']")
+    )
+    box.clear()
+    js_click(drv, box, 0.3)
+    box.send_keys(frag)
+    time.sleep(2.5)
+    btn = WebDriverWait(drv, 60).until(
+        lambda d: d.find_element(
+            By.XPATH,
+            "//button[starts-with(@title,'查看用例详情：')][contains(@title,'%s')]" % frag,
+        )
+    )
+    js_click(drv, btn, 1.0)
+    WebDriverWait(drv, 60).until(
+        lambda d: d.find_element(By.CSS_SELECTOR, '[data-slot="case-detail-dialog"]')
+    )
+    wait_text(drv, '执行结果与指标', 90)
+    time.sleep(1.2)
+
+
 def collect(drv):
     return drv.execute_script(COLLECT_JS) or {}
 
 
 def verify_case(drv, expected, tag):
-    """核对当前打开的弹窗：Tab 列表 / 每 Tab 行=指标列=设备 / 内部键不外露。"""
+    """核对当前打开的弹窗：Tab 列表 / 每 Tab 行=指标列=设备 / 内部键不外露 / 音频口径。"""
     data = collect(drv)
     dtext = data.get('dialogText', '')
     tabs = [t['label'] for t in data.get('tabs', [])]
@@ -336,19 +460,41 @@ def verify_case(drv, expected, tag):
               and any(dev in h for h in data['heads'][1:]),
               data.get('heads'))
 
-    first = expected['tabs'][0]
-    check('%s：默认选中首 Tab「%s」' % (tag, first['label']),
+    # 结果音频（result_audios）：不随 Tab 过滤，按设备分组；空数据整块不渲染
+    want_groups = expected['resultAudioGroups']
+    got_groups = data.get('resultAudioGroups') or []
+    check('%s：结果音频块%s' % (tag, '存在' if want_groups else '不渲染（result_audios 为空）'),
+          bool(got_groups) == bool(want_groups),
+          {'want_groups': want_groups, 'got_groups': got_groups})
+    if want_groups:
+        check('%s：结果音频按设备分组（组标题=设备名）' % tag,
+              [g['device'] for g in got_groups] == [g['device'] for g in want_groups],
+              {'want': [g['device'] for g in want_groups], 'got': [g['device'] for g in got_groups]})
+        want_names = [n for g in want_groups for n in g['names']]
+        got_names = [r['spans'][0] for g in got_groups for r in g['rows']]
+        check('%s：结果音频行 = filename（全量）' % tag, got_names == want_names,
+              {'want': want_names, 'got': got_names})
+
+    # 默认 Tab = 第一个有数据的轮次（V9.7.10 tabHasMetricData + :1317-1328），
+    # 多轮用例第1轮没有维度值时默认落在第2轮。
+    first = next((t for t in expected['tabs'] if tab_has_data(t)), expected['tabs'][0])
+    check('%s：默认选中第一个有数据的 Tab「%s」' % (tag, first['label']),
           any(t['label'] == first['label'] and t['selected'] for t in data.get('tabs', [])),
           data.get('tabs'))
     _check_rows(tag, data, first, expected)
-    _check_audios(tag + '·' + first['label'], data, first, expected)
+    _check_audios(tag, data, first, expected)
 
     if len(expected['tabs']) > 1:
         last = expected['tabs'][-1]
         click_tab(drv, last['label'])
         data2 = collect(drv)
         _check_rows(tag, data2, last, expected)
-        _check_audios(tag + '·' + last['label'], data2, last, expected)
+        _check_audios(tag, data2, last, expected)
+        # P2：结果音频块与 Tab 无关（切 Tab 后内容不变）
+        if want_groups:
+            check('%s：结果音频不随轮次 Tab 过滤' % tag,
+                  (data2.get('resultAudioGroups') or []) == got_groups,
+                  {'before': got_groups, 'after': data2.get('resultAudioGroups')})
         return data2
     return data
 
@@ -378,23 +524,25 @@ def _check_rows(tag, data, tab_expected, expected):
               ui_vals == want_vals, {'want': want_vals, 'got': ui_vals})
 
 
-def _check_audios(label, data, tab_expected, expected):
-    dtext = data.get('dialogText', '')
-    rnd = tab_expected['round']
-    if rnd is None:
-        want_result = [n for names in expected['audios'].values() for n in names]
-        want_ref = [n for names in expected['refs'].values() for n in names]
-    else:
-        want_result = expected['audios'].get(rnd, [])
-        want_ref = expected['refs'].get(rnd, [])
-    for name in want_result:
-        check('%s：结果音频「%s」可见' % (label, name), name in dtext, dtext[:300])
-    for name in want_ref:
-        check('%s：参考音频「%s」可见' % (label, name), name in dtext, dtext[:300])
-    if rnd is not None:
-        other = [n for r, names in expected['audios'].items() if r != rnd for n in names]
-        leaked = [n for n in other if n in dtext]
-        check('%s：其它轮次结果音频已过滤' % label, not leaked, leaked)
+def _check_audios(tag, data, tab_expected, expected):
+    label = '%s·%s' % (tag, tab_expected['label'])
+    # 执行结果音频字段：按 Tab 过滤，label = 原始参数名（不带「（第N轮）」）
+    want = visible_audio_labels(expected, tab_expected)
+    got_rows = data.get('fieldRows') or []
+    got = [r['spans'][0] for r in got_rows if r.get('spans')]
+    check('%s：执行结果音频 = %s' % (label, want), got == want, {'want': want, 'got': got})
+    dup = [r['preview'] for r in got_rows if '（第' in r['preview'] or '第' in (r['spans'][0] if r.get('spans') else '')]
+    check('%s：音频 label 不含轮次（轮次只在 chip，P3）' % label, not dup, dup)
+    chips = [s for r in got_rows for s in r.get('spans', [])[1:] if re.fullmatch(r'第\d+轮|整体', s)]
+    check('%s：每条音频至多一个轮次 chip' % label,
+          all(sum(1 for s in r.get('spans', []) if re.fullmatch(r'第\d+轮|整体', s)) <= 1 for r in got_rows),
+          [r.get('spans') for r in got_rows])
+
+    # 参考音频（audio_list）：按当前 Tab 轮次过滤（现状保留）
+    want_ref = visible_ref_labels(expected, tab_expected)
+    got_ref = [r['spans'][0] for r in (data.get('refRows') or []) if r.get('spans')]
+    check('%s：参考音频 = %d 条' % (label, len(want_ref)), got_ref == want_ref,
+          {'want': want_ref, 'got': got_ref})
 
 
 def network_responses(drv):
@@ -520,6 +668,35 @@ def main():
               any(r and r[0] == '打断成功数量' for r in (data7.get('rows') or [])),
               data7.get('rows'))
         evidence['shots']['multi_round7_light'] = shot(drv, 'R_case_detail_task402_multi_round7_light')
+
+        netlog_multi = network_responses(drv)
+        evidence['network_multi'] = {
+            'detail': network_status(netlog_multi, '/cases/%s/detail' % MULTI_CASE_ID),
+            'results': network_status(netlog_multi, '/cases/%s/results' % MULTI_CASE_ID),
+        }
+        check('Network：多轮 GET .../detail → 200',
+              any(c == 200 for _, c in evidence['network_multi']['detail']),
+              evidence['network_multi']['detail'])
+        check('Network：多轮 GET .../results → 200',
+              any(c == 200 for _, c in evidence['network_multi']['results']),
+              evidence['network_multi']['results'])
+
+        # ---------- P3：同页换用例，轮次 Tab 复位到第一个有数据的 Tab ----------
+        stuck = [t['label'] for t in (collect(drv).get('tabs') or []) if t.get('selected')]
+        open_case_dialog_same_page(drv, SINGLE_FRAG)
+        after = collect(drv)
+        sel = [t['label'] for t in (after.get('tabs') or []) if t.get('selected')]
+        want_sel = next((t['label'] for t in single['tabs'] if tab_has_data(t)),
+                        single['tabs'][0]['label'])
+        check('P3：换用例后轮次 Tab 复位（多轮停在「%s」→ 单轮默认「%s」）'
+              % ('/'.join(stuck), want_sel),
+              sel == [want_sel], {'before': stuck, 'after': sel,
+                                  'tabs': after.get('tabs')})
+        _check_rows('换用例复位', after,
+                    next((t for t in single['tabs'] if tab_has_data(t)), single['tabs'][0]), single)
+        evidence['shots']['reset_after_switch_light'] = shot(
+            drv, 'R_case_detail_task402_reset_after_switch_light'
+        )
 
         # ---------- 深色（同源 reload） ----------
         drv.execute_script("localStorage.setItem(arguments[0], 'dark')", DARK_KEY)
