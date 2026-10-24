@@ -175,7 +175,9 @@ class DeviceStatusEvent(Base):
         Index('ix_status_event_device_time', 'device_id', 'created_at'),
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
-    device_id = Column(Integer, nullable=False, index=True, comment='设备ID')
+    # INT-1784：device_id 是 ix_status_event_device_time(device_id, created_at) 的前缀，
+    # 单列索引（ix_device_status_events_device_id）下线
+    device_id = Column(Integer, nullable=False, comment='设备ID')
     device_kind = Column(String(20), nullable=False, default=DeviceKind.TEST.value,
                          server_default=DeviceKind.TEST.value, index=False,
                          comment='设备类型 (test/playback)')
@@ -218,7 +220,9 @@ class DeviceAlarm(Base):
     device_name = Column(String(100), comment='设备名称快照')
     metric_type = Column(String(30), nullable=False, comment='告警指标')
     severity = Column(String(20), nullable=False, default='warning', comment='告警级别 (info/warning/critical)')
-    status = Column(String(20), nullable=False, default='active', index=True, comment='告警状态 (active/acknowledged/resolved)')
+    # INT-1784：status 是 ix_alarm_status_time(status, triggered_at) 的前缀，
+    # 单列索引（ix_device_alarms_status）下线
+    status = Column(String(20), nullable=False, default='active', comment='告警状态 (active/acknowledged/resolved)')
     trigger_value = Column(Float, comment='触发时的指标值')
     threshold_value = Column(Float, comment='触发时的阈值')
     content = Column(Text, comment='告警内容描述')

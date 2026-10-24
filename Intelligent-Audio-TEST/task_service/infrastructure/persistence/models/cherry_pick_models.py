@@ -36,7 +36,7 @@ class CherryPickCartItem(Base):
     __table_args__ = (
         # 幂等：同一用户对同一结果只加购一次
         UniqueConstraint('user_id', 'result_id', name='uq_cherry_cart_user_result'),
-        Index('idx_cherry_cart_user', 'user_id'),
+        # INT-1784：idx_cherry_cart_user 已下线（user_id 是 (user_id, source_task_id) 的前缀）
         Index('idx_cherry_cart_user_source', 'user_id', 'source_task_id'),
     )
     id = Column(_PK_BIGINT, primary_key=True, autoincrement=True, comment='主键ID')

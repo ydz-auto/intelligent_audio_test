@@ -64,7 +64,8 @@ class Dimension(Base):
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
     # INT-423 数据可见性：private/shared 二值，默认 shared（存量零回归）
     visibility = Column(String(20), nullable=False, default='shared', server_default='shared', comment='可见性 (shared/private)')
-    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    # INT-1784：(created_by_user_id, visibility) 复合索引覆盖该列，单列索引下线
+    created_by_user_id = Column(BigInteger, nullable=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     deleted_by_user_id = Column(BigInteger, nullable=True, comment='执行删除操作的用户ID（JWT，INT-841）')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')

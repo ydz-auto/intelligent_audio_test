@@ -40,7 +40,8 @@ class Task(Base):
     completed_cases = Column(Integer, nullable=False, default=0, comment='已执行完成的用例数量')
     failed_cases = Column(Integer, nullable=False, default=0, comment='执行失败的用例数量')
     created_by = Column(Integer, comment='创建者用户ID')
-    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    # INT-1784：(created_by_user_id, visibility) 复合索引覆盖该列，单列索引下线
+    created_by_user_id = Column(BigInteger, nullable=True, comment='创建者用户ID')
     visibility = Column(String(20), nullable=False, default='shared', server_default='shared', comment='数据可见性 (shared/private，INT-423)')
     # INT-573：最后启动操作人（start/retry 记录；控制操作校验 owner 或启动人）
     last_started_by_user_id = Column(BigInteger, nullable=True, index=True, comment='最后启动操作人用户ID（INT-573 启动人记录）')

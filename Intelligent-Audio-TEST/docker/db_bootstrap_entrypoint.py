@@ -218,6 +218,13 @@ BOOTSTRAP_STEPS = [
     #     音频不做路径归一。脚本幂等（自然键已存在且类型正确即 SKIP、软删行恢复），
     #     默认 dry-run，引导链须 --apply。API 输出声明与 source='api' 映射归 INT-1746。
     ('python', 'scripts/migrations/202610/seed_voice_llm_device_output_int1748.py', '--apply'),
+    # ㊸ 冗余索引下线 + 废弃空表报告明细表（INT-1784）：索引有三个重建源（ORM 的
+    #     Index(...) / Column(index=True)、本链里 202608/202610 的采索引脚本、存量库的
+    #     历史索引），前两者已同步移除，本步兜底——按「索引名 + 定义」双匹配才 DROP，
+    #     定义对不上（被人改过）或覆盖索引缺失时跳过并 WARN。report_detail_data 先确认
+    #     to_regclass 存在且 0 行才 DROP TABLE。幂等（第二次执行全部 SKIP）。
+    #     默认 dry-run，引导链必须带 --apply。
+    ('python', 'scripts/migrations/202610/drop_redundant_indexes_int1784.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器

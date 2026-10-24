@@ -95,7 +95,8 @@ class TestCase(Base):
     # 解析结果落库 config.dimensions / config.background_noise，本列另存引用与覆盖源）
     strategy_id = Column(String(50), ForeignKey('evaluation_strategies.id'), nullable=True, index=True, comment='评估策略ID（引用可复用策略，P1 不回灌）')
     strategy_overrides = Column(JSON, nullable=True, comment='评估策略覆盖 JSON（{dimensions, background_noise}，用例级覆盖语义）')
-    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    # INT-1784：(created_by_user_id, visibility) 复合索引覆盖该列，单列索引下线
+    created_by_user_id = Column(BigInteger, nullable=True, comment='创建者用户ID')
     # INT-464 跟随用例同步的最小列（与迁移 add_visibility_columns_int423 对齐）：
     # 用例建/改后 task_service 需按本列做「取最宽松」聚合，把引用音频可见性经 gRPC 同步
     visibility = Column(String(20), nullable=False, default='shared', server_default='shared',
