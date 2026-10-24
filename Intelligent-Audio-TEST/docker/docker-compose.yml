@@ -3,6 +3,24 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
+    # INT-1783 观测基线（档 0）：pg_stat_statements 只能经 shared_preload_libraries
+    # 在**服务端启动时**加载，运行期无法补载，故以 -c 直接内联在 command 里
+    # （不额外挂配置文件，避免整份 conf 覆盖镜像默认的 listen_addresses / hba 等）。
+    # 慢 SQL 阈值 log_min_duration_statement=500ms 让慢语句进 postgres 容器日志
+    # （档 2 logs 收口与索引二次评审的取数源）；因每秒可产生上百行，本服务补上
+    # 与其他服务一致的 json-file 轮转上限，避免无界增长吃满磁盘。
+    # 注意：这些参数只在本卡批准的「档 0~3」范围内，shared_buffers / work_mem
+    # 仍保持镜像默认（档 5 未批准）。
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.max=5000
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - log_min_duration_statement=500
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-intelligent_audio_test}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-intelligent_audio_test666}
@@ -16,6 +34,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   redis:
     image: redis:7

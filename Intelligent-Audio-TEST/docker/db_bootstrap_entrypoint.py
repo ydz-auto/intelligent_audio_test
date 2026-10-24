@@ -186,7 +186,13 @@ BOOTSTRAP_STEPS = [
     #     只命中 protocol ∈ {https, ws, wss} 的行，脚本幂等（归一后再次执行 0 行），
     #     全新库为 0 行；默认 dry-run，引导链须 --apply。
     ('python', 'scripts/migrations/202610/normalize_api_meta_protocol_int1770.py', '--apply'),
-    # ㊹ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
+    # ㊹ pg_stat_statements 扩展（INT-1783 观测基线·档 0）：库侧建扩展是「存量库 /
+    #     全新库都要自愈」的结构对象，create_all 只建表，故进引导链。扩展的共享内存
+    #     依赖服务端启动参数 shared_preload_libraries（本卡落在 docker/docker-compose.yml
+    #     的 postgres 服务），脚本只回读配置、不一致只 WARN 不阻断。幂等（扩展存在即
+    #     SKIP），默认 dry-run，引导链必须带 --apply。
+    ('python', 'scripts/migrations/202610/add_pg_stat_statements_int1783.py', '--apply'),
+    # ㊺ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
     #     归零后长期不会触发 → 83/95 张表 last_analyze 恒为 NULL、n_live_tup 与真实
@@ -196,6 +202,8 @@ BOOTSTRAP_STEPS = [
     #     单表失败只 WARN 不阻断部署。默认 dry-run，引导链必须带 --apply。
     #     必须留在引导链末尾（INT-1741 单测断言）：ANALYZE 之后再有 DDL/写入会
     #     立刻作废统计，INT-1770 的 apis UPDATE 因此排在它前面。
+    #     必须是引导链最后一步（tests/unit/test_int1741_analyze_stale_statistics.py
+    #     的 test_bootstrap_step_is_last 钉死）：分析完若再跑 DDL，统计又会过期。
     ('python', 'scripts/migrations/202610/analyze_stale_statistics_int1741.py', '--apply'),
 ]
 
