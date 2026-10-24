@@ -87,16 +87,29 @@ def api_get(path, tok):
         return e.code, e.read().decode('utf-8', 'replace')
 
 
+def expand_case_list(d):
+    """容器任务的用例清单在折叠区里（「用例清单 N 个」），展开后才渲染用例行。"""
+    for b in d.find_elements(By.TAG_NAME, 'button'):
+        t = b.text or ''
+        if '用例清单' in t:
+            js_click(d, b)
+            print('EXPAND 用例清单:', t.replace('\n', ' ')[:60])
+            time.sleep(3)
+            return True
+    return False
+
+
 def open_case(d, task_id, hint, wait_key='执行结果'):
     d.get(BASE + f'/tasks/{task_id}')
     for _ in range(3):
         try:
-            wait_text(d, '测试用例_', 150)
+            wait_text(d, '返回任务列表', 150)
             break
         except Exception:
             print('slow load, reload')
             d.refresh()
-    time.sleep(2)
+    time.sleep(3)
+    expand_case_list(d)
     rows = [e for e in d.find_elements(By.TAG_NAME, 'button') if '测试用例_' in (e.text or '')]
     print('case rows', len(rows))
     row = next((r for r in rows if hint in (r.text or '')), rows[0] if rows else None)
