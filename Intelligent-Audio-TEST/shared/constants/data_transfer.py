@@ -131,6 +131,29 @@ class ImportProgressStep(str, Enum):
     ERROR = 'error'
 
 
+class TransferIntent(str, Enum):
+    """导入意图（INT-1759，D0 裁定 A10-2）
+
+    - migrate：任务迁移，引用用例必须在目标库可用（默认）
+    - restore：历史结果查看 / 备份恢复，无需重新执行 → 默认不做用例硬校验，
+      但预检回执必须写明"未校验用例一致性，导入后无法重新执行"
+    """
+    MIGRATE = 'migrate'
+    RESTORE = 'restore'
+
+
+DEFAULT_TRANSFER_INTENT = TransferIntent.MIGRATE.value
+
+# ===== 用例一致性硬校验（INT-1759，D0 裁定 A10）=====
+# 拒绝导入的业务码（同时作为 HTTP 状态码）
+CASE_CONSISTENCY_FAILED_CODE = 422
+# 回执里缺失用例 ID 列表上限（超出以 truncated=true + missingCount 表达全量条数）
+CASE_CONSISTENCY_LIST_CAP = 500
+CASE_CONSISTENCY_REJECT_MESSAGE = '目标库缺少 {count} 个测试用例，拒绝导入'
+# restore 意图下不校验用例一致性时的固定告警文案
+RESTORE_SKIP_CONSISTENCY_WARNING = 'restore 意图未校验用例一致性，导入后无法重新执行'
+
+
 # ===== ZIP 包结构（设计文档 4.2，文件名用表名）=====
 MANIFEST_NAME = 'manifest.json'
 DB_DIR = 'db'

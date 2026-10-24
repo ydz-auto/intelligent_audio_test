@@ -9,7 +9,7 @@ import json
 
 from shared.clients.grpc_clients import get_review_service_stub
 
-from ._common import _grpc_call
+from ._common import _attach_code, _grpc_call
 
 from shared.proto import task_service_pb2 as task_pb
 
@@ -18,12 +18,10 @@ class _ReviewProxy:
     """人工复核代理：转发到 gRPC task_service.ReviewService。"""
 
     def _resp(self, resp):
-        """统一解析 TaskConfigResponse 为 dict（业务码透传，INT-141 F2 口径）。"""
+        """统一解析 TaskConfigResponse 为 dict（业务码透传，INT-1759 proto code）"""
         data = json.loads(resp.data) if resp.data else None
-        result = {'success': resp.success, 'message': resp.message, 'data': data}
-        if not resp.success and isinstance(data, dict) and isinstance(data.get('code'), int):
-            result['code'] = data['code']
-        return result
+        return _attach_code({'success': resp.success, 'message': resp.message,
+                             'data': data}, resp)
 
     @property
     def stub(self):

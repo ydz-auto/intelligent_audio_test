@@ -12,11 +12,17 @@
 补偿自身失败必须显式报错要求人工介入（批次登记保留 TTL 7 天），不得静默。
 """
 import uuid
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from shared.constants.data_transfer import (
+    CASE_CONSISTENCY_FAILED_CODE,
+    CASE_CONSISTENCY_LIST_CAP,
+    CASE_CONSISTENCY_REJECT_MESSAGE,
+    DEFAULT_TRANSFER_INTENT,
     FkMappingKey,
     ImportProgressStep,
+    RESTORE_SKIP_CONSISTENCY_WARNING,
+    TransferIntent,
     TransferTable,
     fk_rules_of,
 )
@@ -74,8 +80,17 @@ class DataTransferImportService:
 
     # ---------- 预检（M3） ----------
 
-    def preview_import(self, zip_path: str) -> dict:
-        """解析 ZIP 并返回预检结果（manifest 摘要 + stats + conflicts + warnings）。"""
+    def preview_import(self, zip_path: str, options: Optional[dict] = None) -> dict:
+        """解析 ZIP 并返回预检结果（manifest 摘要 + stats + conflicts + warnings
+        + caseConsistency）。
+
+        用例一致性在预检阶段**只报告不阻断**（D0 裁定 A10-3）：前端据
+        `data.caseConsistency.complete` 决定是否允许执行导入。
+        """
+        try:
+            required, intent = self._resolve_policy(options)
+        except ValueError as e:
+            return {'success': False, 'message': str(e), 'code': 400, 'data': None}
         manifest = validate_manifest(read_manifest(zip_path))
         rows_by_table = read_db_tables(zip_path)
 
@@ -104,7 +119,7 @@ class DataTransferImportService:
                 'existingName': '',
             })
 
-        warnings = self._build_warnings(rows_by_table)
+        warnings = self._build_warnings(rows_by_table, intent)
         stats = dict(manifest.get('stats') or {})
         stats['tableRows'] = {name: len(rows) for name, rows in rows_by_table.items() if rows}
 
@@ -121,11 +136,62 @@ class DataTransferImportService:
                 },
                 'stats': stats,
                 'conflicts': conflicts,
+                'intent': intent,
+                'caseConsistency': self._case_consistency(rows_by_table, required),
                 'warnings': warnings,
             },
         }
 
-    def _build_warnings(self, rows_by_table: Dict[str, List[dict]]) -> List[str]:
+    @staticmethod
+    def _resolve_policy(options: Optional[dict]) -> Tuple[bool, str]:
+        """解析用例一致性策略 → (required, intent)（D0 裁定 A10-1/2）
+
+        - 全局 `DATA_TRANSFER_CASE_CONSISTENCY_REQUIRED` 是总闸；
+        - 请求级 `require_case_consistency` **只能放宽到 false**，全局 false 时
+          传 true 不得反向收紧（防前端提权）；
+        - `intent='restore'`（历史结果查看/备份恢复）默认不校验，显式传
+          `require_case_consistency=true` 时仍按总闸校验。
+
+        Raises: ValueError 当 intent 非法（调用方映射 400）。
+        """
+        from shared.infrastructure.config import BaseConfig
+        opts = options or {}
+        intent = str(opts.get('intent') or DEFAULT_TRANSFER_INTENT).strip().lower()
+        if intent not in {i.value for i in TransferIntent}:
+            raise ValueError(f'不支持的导入意图 intent={intent}（仅支持 migrate/restore）')
+        required = bool(BaseConfig.DATA_TRANSFER_CASE_CONSISTENCY_REQUIRED)
+        request_flag = opts.get('require_case_consistency')
+        if request_flag is False:
+            required = False
+        elif request_flag is None and intent == TransferIntent.RESTORE.value:
+            required = False
+        return required, intent
+
+    def _case_consistency(self, rows_by_table: Dict[str, List[dict]],
+                          required: bool) -> dict:
+        """用例一致性校验回执（预检与执行共用，INT-1759）
+
+        引用来源只有 `task_case_relations.test_case_id`（`collect_external_references`），
+        结果/报告行不带用例引用，不产生误报。
+
+        `missingCaseIds` = 目标库缺失 ∪ 已软删 ∪ 私有且非 owner（不可用即缺失），
+        另给 `invisibleCaseIds` 供前端区分"真的没有"与"有但无权用"。
+        """
+        from task_service.domain.services.data_transfer import collect_external_references
+        refs = collect_external_references(rows_by_table)
+        availability = transfer_repository.fetch_case_availability(refs['test_case_ids'])
+        unavailable = sorted(availability['missing'] | availability['invisible'])
+        return {
+            'required': required,
+            'complete': not unavailable,
+            'missingCaseIds': unavailable[:CASE_CONSISTENCY_LIST_CAP],
+            'invisibleCaseIds': sorted(availability['invisible'])[:CASE_CONSISTENCY_LIST_CAP],
+            'missingCount': len(unavailable),
+            'truncated': len(unavailable) > CASE_CONSISTENCY_LIST_CAP,
+        }
+
+    def _build_warnings(self, rows_by_table: Dict[str, List[dict]],
+                        intent: str = DEFAULT_TRANSFER_INTENT) -> List[str]:
         """外部配置引用缺失 warning（外部实体不迁移不重映射）"""
         from task_service.domain.services.data_transfer import collect_external_references
         warnings: List[str] = []
@@ -163,12 +229,22 @@ class DataTransferImportService:
             except Exception as e:
                 log_not_emit('WARNING', _MODULE_NAME,
                              f'校验 API 引用失败（跳过该 warning）: {e}', category='system')
+        if intent == TransferIntent.RESTORE.value:
+            warnings.append(RESTORE_SKIP_CONSISTENCY_WARNING)
         return warnings
 
     # ---------- 执行导入（M4 核心） ----------
 
-    def execute_import(self, zip_path: str) -> dict:
-        """执行导入：分段提交 + 失败逆序补偿。返回导入统计（含 remappedIds）。"""
+    def execute_import(self, zip_path: str, options: Optional[dict] = None) -> dict:
+        """执行导入：分段提交 + 失败逆序补偿。返回导入统计（含 remappedIds）。
+
+        用例一致性硬校验在**段 1 任何写库动作之前**执行（INT-1759）：
+        拒绝时直接返回 422 + 缺失清单，不登记批次、不写 DB、不动文件。
+        """
+        try:
+            required, intent = self._resolve_policy(options)
+        except ValueError as e:
+            return {'success': False, 'message': str(e), 'code': 400, 'data': None}
         batch_id = uuid.uuid4().hex
         reporter = ImportProgressReporter(batch_id)
         files_tracker: List[tuple] = []
@@ -186,6 +262,24 @@ class DataTransferImportService:
             rows_by_table[TransferTable.TASK_MERGE_RELATIONS.value] = filter_merge_relations(
                 rows_by_table.get(TransferTable.TASK_MERGE_RELATIONS.value, []),
                 export_task_ids)
+
+            # ===== 用例一致性硬校验（INT-1759：早于批次登记与段 1 写入）=====
+            if required:
+                consistency = self._case_consistency(rows_by_table, required=True)
+                if not consistency['complete']:
+                    sample = '、'.join(consistency['missingCaseIds'][:10])
+                    more = '…' if consistency['missingCount'] > len(consistency['missingCaseIds']) else ''
+                    message = (CASE_CONSISTENCY_REJECT_MESSAGE.format(
+                        count=consistency['missingCount']) + f'：{sample}{more}')
+                    log_not_emit('WARNING', _MODULE_NAME,
+                                 f'{message} batch={batch_id}', category='system')
+                    reporter.report(ImportProgressStep.ERROR, message)
+                    return {
+                        'success': False,
+                        'message': message,
+                        'code': CASE_CONSISTENCY_FAILED_CODE,
+                        'data': dict(consistency, intent=intent),
+                    }
 
             existing_ids = transfer_repository.fetch_existing_ids()
             plan = plan_task_segment(rows_by_table, existing_ids)

@@ -32,13 +32,15 @@ class DataTransferAclRepositoryImpl(DataTransferAclRepository):
             'options': options or {},
         }))
 
-    def preview_import(self, zip_path: str) -> CommandResultDTO:
+    def preview_import(self, zip_path: str,
+                       options: Optional[Dict] = None) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import data_transfer_service
-        return _wrap(data_transfer_service.preview_import(zip_path))
+        return _wrap(data_transfer_service.preview_import(zip_path, options or {}))
 
-    def execute_import(self, zip_path: str) -> CommandResultDTO:
+    def execute_import(self, zip_path: str,
+                       options: Optional[Dict] = None) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import data_transfer_service
-        return _wrap(data_transfer_service.execute_import(zip_path))
+        return _wrap(data_transfer_service.execute_import(zip_path, options or {}))
 
     def get_progress_snapshot(self) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import data_transfer_service

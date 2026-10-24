@@ -9,7 +9,7 @@
 """
 import logging
 from datetime import datetime
-from typing import Callable, Dict, List, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from shared.models.database import get_db_session
 from shared.utils.log_handler import log_not_emit
@@ -193,16 +193,62 @@ class TransferRepository:
         finally:
             session.close()
 
-    def fetch_existing_case_ids(self, case_ids: List[str]) -> Set[str]:
-        """目标库中实际存在的用例 ID 集合（预检 warning 用）"""
-        if not case_ids:
-            return set()
+    def fetch_case_availability(self, case_ids: List[str],
+                                user_id: Optional[int] = None,
+                                is_admin: Optional[bool] = None) -> Dict[str, Set[str]]:
+        """目标库中用例的可用性三分（INT-1759 用例一致性硬校验，D0 裁定 A10-4）
+
+        - missing：目标库不存在，或已软删（`test_cases.deleted`）
+        - invisible：存在且未软删，但私有用例且操作人非 owner / 非 admin
+          （可见性口径同 `visible_condition`，厂商私有数据不可当作"已存在"）
+        - available：其余（导入后可重新执行的用例）
+
+        身份缺省取 gRPC metadata 透传的当前操作人（x-user-id / x-user-is-admin）。
+
+        Args:
+            case_ids: 导出包内 task_case_relations 引用的用例 ID（str）
+            user_id: 显式操作人（None 时取上下文）
+            is_admin: 显式管理员标志（None 时取上下文）
+        """
+        ids = {str(cid) for cid in case_ids or [] if cid is not None}
+        if not ids:
+            return {'available': set(), 'missing': set(), 'invisible': set()}
+        from task_service.infrastructure.visibility_context import visibility_identity
+        from shared.infrastructure.visibility_filter import check_visible, VisibilityDenied
+        uid, admin = visibility_identity(user_id)
+        if is_admin is not None:
+            admin = bool(is_admin)
         session = get_db_session()
         try:
-            found = session.query(TestCase.id).filter(TestCase.id.in_(case_ids)).all()
-            return {row[0] for row in found}
+            rows = (session.query(TestCase.id, TestCase.created_by_user_id,
+                                  TestCase.visibility, TestCase.deleted)
+                    .filter(TestCase.id.in_(ids)).all())
         finally:
             session.close()
+        existing = {str(row[0]) for row in rows if not row[3]}
+        invisible: Set[str] = set()
+        for case_id, owner, visibility, deleted in rows:
+            if deleted:
+                continue
+            try:
+                check_visible(owner, visibility or 'shared', uid, admin)
+            except VisibilityDenied:
+                invisible.add(str(case_id))
+        return {
+            'available': existing - invisible,
+            'missing': ids - existing,
+            'invisible': invisible,
+        }
+
+    def fetch_existing_case_ids(self, case_ids: List[str],
+                                user_id: Optional[int] = None,
+                                is_admin: Optional[bool] = None) -> Set[str]:
+        """目标库中**可用**用例 ID 集合（预检 warning / 一致性校验共用）
+
+        可用 = 未软删 且 当前操作人可见（INT-1759：软删用例、私有非 owner 用例
+        都不算"已存在"，否则导入后无法重新执行却通过校验）。
+        """
+        return self.fetch_case_availability(case_ids, user_id, is_admin)['available']
 
     def fetch_task_names(self, task_ids: List[int]) -> Dict[int, str]:
         """按 ID 列表取任务名（预检冲突展示用）"""

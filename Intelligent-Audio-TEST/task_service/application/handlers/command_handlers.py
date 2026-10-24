@@ -359,14 +359,14 @@ class TaskCommandHandler:
         from task_service.application.task.data_transfer_import_service import (
             data_transfer_import_service,
         )
-        return data_transfer_import_service.preview_import(cmd.zip_path)
+        return data_transfer_import_service.preview_import(cmd.zip_path, cmd.options)
 
     def handle_execute_import(self, cmd: ExecuteImportCommand) -> Dict:
         """处理执行导入命令。委托 data_transfer_import_service.execute_import。"""
         from task_service.application.task.data_transfer_import_service import (
             data_transfer_import_service,
         )
-        return data_transfer_import_service.execute_import(cmd.zip_path)
+        return data_transfer_import_service.execute_import(cmd.zip_path, cmd.options)
 
     def handle_rollback_import(self, cmd: RollbackImportCommand) -> Dict:
         """处理批次回滚命令。委托 data_transfer_import_service.rollback_import。"""

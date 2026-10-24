@@ -368,14 +368,22 @@ class ExportTasksCommand(Command):
 
 @dataclass(frozen=True)
 class PreviewImportCommand(Command):
-    """导入预检命令。委托 data_transfer_import_service.preview_import。"""
+    """导入预检命令。委托 data_transfer_import_service.preview_import。
+
+    options（INT-1759）：{require_case_consistency?: bool, intent?: migrate/restore}
+    """
     zip_path: str = ''
+    options: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class ExecuteImportCommand(Command):
-    """执行导入命令（分段提交 + 补偿回滚）。委托 data_transfer_import_service.execute_import。"""
+    """执行导入命令（分段提交 + 补偿回滚）。委托 data_transfer_import_service.execute_import。
+
+    options 同 PreviewImportCommand（用例一致性请求级策略）。
+    """
     zip_path: str = ''
+    options: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
