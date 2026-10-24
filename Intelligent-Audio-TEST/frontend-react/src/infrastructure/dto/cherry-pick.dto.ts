@@ -189,6 +189,8 @@ export interface CherryPickSourceTraceDto {
   groups: {
     source_task_id: number
     source_task_name: string | null
+    /** §11-8 FEAT 落地后返回；当前实测缺省 undefined */
+    source_task_status?: string | null
     results: {
       result_id: number
       source_task_id: number
@@ -197,6 +199,14 @@ export interface CherryPickSourceTraceDto {
       source_device_id: number | null
       source_api_id: number | null
       missing: boolean
+      /** §11-8 FEAT 落地后返回；当前实测缺省 undefined（前端按 §5.5.4 降级口径先落） */
+      result_type?: string | null
+      execution_status?: string | null
+      evaluated?: boolean | null
+      case_name?: string | null
+      device_name?: string | null
+      api_name?: string | null
+      created_at?: string | null
     }[]
   }[]
 }

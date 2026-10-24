@@ -181,6 +181,50 @@ export interface CherryPickSourceTask {
   status: string
 }
 
+/* ============================================================
+ * 容器溯源（GET /tasks/cherry-picks/{task_id}/source，18 §5.5.1/§5.5.3）
+ * 实测只到 id 级：无 case_name / device_name / api_name / result_type /
+ * 结果级执行·评估状态 / 源任务 status（§11-8 FEAT 落地后补齐，adapter 直取不换树）。
+ * ============================================================ */
+
+/** 容器引用的一条源结果（groups[].results[]） */
+export interface ContainerSourceResult {
+  resultId: number
+  sourceCaseId: string | null
+  sourceDeviceId: number | null
+  sourceApiId: number | null
+  /** 源结果已删除（源任务或结果被删，仅保留溯源记录） */
+  missing: boolean
+  /** §11-8 未落地 → null（折叠「结果类型待补充」） */
+  resultType: string | null
+  /** §11-8 未落地 → null（叶行状态降级取同 source_case_id 的容器用例行） */
+  executionStatus: string | null
+  /** §11-8 未落地 → null（降级取容器用例行评估状态） */
+  evaluated: boolean | null
+  caseName: string | null
+  deviceName: string | null
+  apiName: string | null
+  /** 源结果创建时间（§11-8 未落地 → null） */
+  createdAt: string | null
+}
+
+/** 容器来源任务分组（groups[]） */
+export interface ContainerSourceGroup {
+  sourceTaskId: number
+  sourceTaskName: string | null
+  /** §11-8 未落地 → null：信息头 Popover 该位不渲染、不占位、不显示「—」（§5.5.2 ②） */
+  sourceTaskStatus: string | null
+  results: ContainerSourceResult[]
+}
+
+/** 容器溯源（200 且 groups 非空 → 挑选合并容器；200 且 groups=[] → 容器但关系行缺失） */
+export interface ContainerSourceTrace {
+  taskId: number
+  isCherryPick: boolean
+  total: number
+  groups: ContainerSourceGroup[]
+}
+
 export interface CherryPickContainer {
   id: number
   name: string

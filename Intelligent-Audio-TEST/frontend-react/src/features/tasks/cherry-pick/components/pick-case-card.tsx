@@ -31,6 +31,8 @@ export interface PickCaseCardProps {
   badgeLeading?: React.ReactNode
   /** 右操作区（购物车：移除该组钮） */
   actions?: React.ReactNode
+  /** 只读态（容器组成区 §5.5.3：不渲染勾选框，既成事实不可选择） */
+  readOnly?: boolean
   /** 展开区（设备/结果类型子树） */
   children?: React.ReactNode
 }
@@ -46,6 +48,7 @@ export function PickCaseCard({
   onToggleOpen,
   badgeLeading,
   actions,
+  readOnly = false,
   children,
 }: PickCaseCardProps) {
   return (
@@ -61,13 +64,15 @@ export function PickCaseCard({
       selected={state === 'checked'}
       showCheckbox={false}
       leading={
-        <Checkbox
-          checked={state === 'checked'}
-          indeterminate={state === 'indeterminate'}
-          onCheckedChange={(c) => onToggle(c)}
-          aria-label={`选择 ${name}`}
-          className='mt-1 shrink-0'
-        />
+        readOnly ? undefined : (
+          <Checkbox
+            checked={state === 'checked'}
+            indeterminate={state === 'indeterminate'}
+            onCheckedChange={(c) => onToggle(c)}
+            aria-label={`选择 ${name}`}
+            className='mt-1 shrink-0'
+          />
+        )
       }
       hideMeta
       badgeLeading={

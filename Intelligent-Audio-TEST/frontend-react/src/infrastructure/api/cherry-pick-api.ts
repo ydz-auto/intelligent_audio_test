@@ -23,11 +23,13 @@ import {
   fromContainerDto,
   fromPreviewDto,
   fromSetListItemDto,
+  fromSourceTraceDto,
 } from '@/infrastructure/adapters/dto/cherry-pick-adapter'
 import type {
   CheckoutAction,
   CherryPickCandidate,
   CherryPickContainer,
+  ContainerSourceTrace,
   PickCartGroup,
   PickPreview,
   PickSet,
@@ -471,8 +473,29 @@ export async function checkoutCart(payload: CheckoutPayload): Promise<CheckoutRe
 }
 
 /* ============================================================
- * 统一容器列表（§11-1 落地前客户端双查询合并）
+ * 容器溯源 + 统一容器列表（§11-1 落地前客户端双查询合并）
  * ============================================================ */
+
+/**
+ * 容器溯源（GET /tasks/cherry-picks/{taskId}/source，§5.5.2 ⑤）：
+ * 200 且 groups 非空 → 挑选合并容器；200 且 groups=[] → 容器（关系行缺失）；
+ * **任意 `ApiError`（非容器实测 HTTP 400 / `code:203`，以及 5xx / 网络中断）→ null**，
+ * 由详情页按「非挑选合并容器」静默处理，绝不因这个可选增强区把详情页变错误态。
+ */
+export async function fetchContainerSourceTrace(
+  taskId: number
+): Promise<ContainerSourceTrace | null> {
+  try {
+    const dto = await request<CherryPickSourceTraceDto>(
+      'GET',
+      `/tasks/cherry-picks/${Number(taskId)}/source`
+    )
+    return fromSourceTraceDto(dto)
+  } catch (err) {
+    if (err instanceof ApiError) return null
+    throw err
+  }
+}
 
 export interface ContainerFilters {
   search?: string

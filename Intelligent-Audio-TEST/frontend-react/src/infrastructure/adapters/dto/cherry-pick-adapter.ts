@@ -11,6 +11,9 @@ import type {
   CherryPickCandidate,
   CherryPickContainer,
   CherryPickSourceTask,
+  ContainerSourceGroup,
+  ContainerSourceResult,
+  ContainerSourceTrace,
   PickCartEntry,
   PickCartGroup,
   PickDuplicate,
@@ -23,6 +26,7 @@ import type {
   CherryPickCartItemDto,
   CherryPickPreviewDto,
   CherryPickSetListItemDto,
+  CherryPickSourceTraceDto,
   TaskContainerItemDto,
   TaskSourceBriefDto,
 } from '@/infrastructure/dto/cherry-pick.dto'
@@ -202,5 +206,42 @@ export function fromContainerDto(
     sourceTasks,
     createdAt: dto.created_at ?? '',
     isFavorite: dto.is_favorite,
+  }
+}
+
+/**
+ * 容器溯源 DTO → Domain（§5.5.1 实测只到 id 级；§11-8 新增的结果级字段直取，
+ * 未返回时为 null，前端按 §5.5.4 降级口径处理，不改树结构）。
+ */
+export function fromSourceTraceDto(
+  dto: CherryPickSourceTraceDto
+): ContainerSourceTrace {
+  return {
+    taskId: dto.task_id,
+    isCherryPick: dto.is_cherry_pick,
+    total: dto.total,
+    groups: (dto.groups ?? []).map(
+      (g): ContainerSourceGroup => ({
+        sourceTaskId: g.source_task_id,
+        sourceTaskName: g.source_task_name ?? null,
+        sourceTaskStatus: g.source_task_status ?? null,
+        results: (g.results ?? []).map(
+          (r): ContainerSourceResult => ({
+            resultId: r.result_id,
+            sourceCaseId: r.source_case_id ?? null,
+            sourceDeviceId: r.source_device_id ?? null,
+            sourceApiId: r.source_api_id ?? null,
+            missing: r.missing === true,
+            resultType: r.result_type?.trim() ? r.result_type : null,
+            executionStatus: r.execution_status?.trim() ? r.execution_status : null,
+            evaluated: r.evaluated ?? null,
+            caseName: r.case_name?.trim() ? r.case_name : null,
+            deviceName: r.device_name?.trim() ? r.device_name : null,
+            apiName: r.api_name?.trim() ? r.api_name : null,
+            createdAt: r.created_at ?? null,
+          })
+        ),
+      })
+    ),
   }
 }
