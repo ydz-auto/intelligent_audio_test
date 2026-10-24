@@ -8,15 +8,21 @@
  * INT-949：停止/暂停/继续点击先弹 ConfirmDialog（§5.8 + 旧 Vue 基线），确认才发请求。
  * INT-1241：任务类型概念已移除——API 资源区按真实 apis 数据无条件渲染（不再按任务类型推导显隐）。
  */
-import { Pause, Play, RefreshCw, RotateCcw, Square } from 'lucide-react'
+import { ChevronRight, Pause, Play, RefreshCw, RotateCcw, Square } from 'lucide-react'
 import { useState } from 'react'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { useContainerComposition } from '@/application/tasks/use-container-composition'
 import { useTaskActions } from '@/application/tasks/use-task-actions'
 import { useTaskDetail } from '@/application/tasks/use-task-detail'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import {
   Empty,
   EmptyContent,
@@ -28,6 +34,8 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { CaseAssociation } from '@/features/tasks/detail/case-association'
+import { ContainerComposition } from '@/features/tasks/detail/container-composition'
+import { ContainerHeaderBadges } from '@/features/tasks/detail/container-header-badges'
 import { ProgressCard } from '@/features/tasks/detail/progress-card'
 import { RealtimeLogs } from '@/features/tasks/detail/realtime-logs'
 import { TaskInfoCard } from '@/features/tasks/detail/task-info-card'
@@ -88,6 +96,10 @@ export function TaskDetailContent({
   const { hasPermission } = usePermissions()
   const detailQuery = useTaskDetail(taskId)
   const actions = useTaskActions()
+  // 容器识别 + 组成数据（§5.5.2 ⑤：source 端点 200 → 容器；任意 ApiError → null 静默非容器）
+  const composition = useContainerComposition(taskId)
+  const isContainer = composition.isContainer
+  const [casesOpen, setCasesOpen] = useState(false)
   const [reexecuteAction, setReexecuteAction] = useState<'retry' | 'reevaluate' | null>(null)
   const [confirm, setConfirm] = useState<TaskConfirmState | null>(null)
   const [confirmPending, setConfirmPending] = useState(false)
@@ -167,10 +179,52 @@ export function TaskDetailContent({
   return (
     <>
       <div className='flex flex-col gap-4'>
-        <TaskInfoCard detail={detail} />
-        <ProgressCard detail={detail} />
+        <TaskInfoCard
+          detail={detail}
+          headerExtra={
+            isContainer ? (
+              <ContainerHeaderBadges trace={composition.trace} detail={detail} />
+            ) : undefined
+          }
+        />
+        {/* §5.5.2 ④ 容器版面：组成区紧跟信息卡（首屏主区）；进度卡 / 实时日志卡对容器隐藏 */}
+        {isContainer && (
+          <ContainerComposition
+            trace={composition.trace}
+            entries={composition.entries}
+            summary={composition.summary}
+          />
+        )}
+        {!isContainer && <ProgressCard detail={detail} />}
         <ApiResources apis={detail.apis} />
-        <CaseAssociation detail={detail} onCaseSelect={onCaseSelect} />
+        {/* 关联用例卡对容器降级为「用例清单」折叠区，置于组成区之后 */}
+        {isContainer ? (
+          <Collapsible open={casesOpen} onOpenChange={setCasesOpen}>
+            <div className='bg-card rounded-xl border'>
+              <CollapsibleTrigger className='hover:bg-muted/40 flex w-full flex-wrap items-center gap-2 rounded-xl px-4 py-3 text-left transition-colors'>
+                <ChevronRight
+                  aria-hidden='true'
+                  className={cn(
+                    'text-muted-foreground size-4 shrink-0 transition-transform',
+                    casesOpen && 'rotate-90'
+                  )}
+                />
+                <span className='text-sm font-medium'>用例清单</span>
+                <Badge variant='secondary' className='rounded-md px-1.5 text-[11px] tabular-nums'>
+                  {detail.cases?.length ?? 0} 个
+                </Badge>
+                <span className='text-muted-foreground text-xs'>
+                  组成区已按用例组织，此处为平铺清单
+                </span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className='border-t p-2'>
+                <CaseAssociation detail={detail} onCaseSelect={onCaseSelect} />
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
+        ) : (
+          <CaseAssociation detail={detail} onCaseSelect={onCaseSelect} />
+        )}
 
 
         {!compact && (
@@ -244,11 +298,13 @@ export function TaskDetailContent({
           </div>
         )}
 
-        <RealtimeLogs
-          taskId={taskId}
-          executionMode={mode === 'execution'}
-          hasRealtimeDevice={hasRealtimeDevice}
-        />
+        {!isContainer && (
+          <RealtimeLogs
+            taskId={taskId}
+            executionMode={mode === 'execution'}
+            hasRealtimeDevice={hasRealtimeDevice}
+          />
+        )}
       </div>
 
       <ReexecuteScopeDialog

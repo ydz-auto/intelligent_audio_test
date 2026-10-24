@@ -46,11 +46,14 @@ export function PickCaseOrgControls({
   subView,
   onOrgChange,
   onSubViewChange,
+  hint = '候选未返分组/标签字段，按「未分组」/「未设置标签」组织（§11-7）',
 }: {
   org: PickOrgDimension
   subView: PickSubView
   onOrgChange: (org: PickOrgDimension) => void
   onSubViewChange: (subView: PickSubView) => void
+  /** 右端提示文案；传 null 隐藏（数据源已带真实分组/标签时，如容器组成区） */
+  hint?: string | null
 }) {
   return (
     <div className='flex flex-wrap items-center gap-2 px-1'>
@@ -76,6 +79,9 @@ export function PickCaseOrgControls({
         onValueChange={onSubViewChange}
         options={org === 'group' ? GROUP_SUB_VIEW_OPTIONS : TAG_SUB_VIEW_OPTIONS}
       />
+      {hint && (
+        <span className='text-muted-foreground/70 ml-auto text-[11px]'>{hint}</span>
+      )}
     </div>
   )
 }

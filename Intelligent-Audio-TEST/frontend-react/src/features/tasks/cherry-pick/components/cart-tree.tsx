@@ -41,6 +41,20 @@ import { cn } from '@/lib/utils'
 import { PickCaseCard } from '@/features/tasks/cherry-pick/components/pick-case-card'
 import type { CartView } from '@/features/tasks/cherry-pick/components/cart-view-switcher'
 
+/** 执行状态文案（§5.5.4 叶行：已完成 success / 已失败 destructive / 已停止 neutral） */
+function executionLabel(status: string): string {
+  if (status === 'completed') return '已完成'
+  if (status === 'failed') return '执行失败'
+  if (status === 'stopped') return '已停止'
+  return '状态未知'
+}
+
+function executionVariant(status: string): 'success' | 'danger' | 'neutral' {
+  if (status === 'completed') return 'success'
+  if (status === 'failed') return 'danger'
+  return 'neutral'
+}
+
 function LeafRow({
   leaf,
   selected,
@@ -48,15 +62,18 @@ function LeafRow({
   onRemoveSingle,
   readOnly,
   showLeafTask,
+  renderTrailing,
 }: {
   leaf: CartTreeLeaf
   selected: boolean
   onToggleLeaf: (leaf: CartTreeLeaf) => void
   onRemoveSingle: (entryId: string) => void
-  /** 只读态（algo_engineer：抽屉只读，增删钮隐藏，§8） */
+  /** 只读态（algo_engineer：抽屉只读，增删钮隐藏，§8；容器组成区同口径） */
   readOnly: boolean
   /** §4.2 三视图：叶行携带来源任务名消歧（任务分组视图组内同源，不显示） */
   showLeafTask?: boolean
+  /** 叶行尾部附加内容（容器组成区：源结果 id / 评估状态 / 时间 / 溯源钮，§5.5.3） */
+  renderTrailing?: (leaf: CartTreeLeaf) => ReactNode
 }) {
   return (
     <div
@@ -95,9 +112,10 @@ function LeafRow({
         </span>
       )}
       <StatusBadge
-        label={leaf.executionStatus === 'completed' ? '已完成' : '执行失败'}
-        variant={leaf.executionStatus === 'completed' ? 'success' : 'danger'}
+        label={executionLabel(leaf.executionStatus)}
+        variant={executionVariant(leaf.executionStatus)}
       />
+      {renderTrailing?.(leaf)}
       {leaf.invalid && (
         <span className='text-destructive shrink-0 text-[11px]' title='源结果已删除'>
           已失效
@@ -131,6 +149,8 @@ function BranchRow({
   readOnly,
   showLeafTask,
   renderCaseNode,
+  renderTrailing,
+  renderBranchExtra,
 }: {
   branch: CartTreeBranch
   selectedEntryIds: ReadonlySet<string>
@@ -146,6 +166,10 @@ function BranchRow({
   showLeafTask?: boolean
   /** §4.2/§3.8.4：用例级子项统一渲染 PickCaseCard（设备/结果类型视图用例层） */
   renderCaseNode?: (branch: CartTreeBranch) => ReactNode
+  /** 叶行尾部附加内容（容器组成区，§5.5.3） */
+  renderTrailing?: (leaf: CartTreeLeaf) => ReactNode
+  /** 分支节点计数后缀（容器组成区：失败计数「· 失败 {f}」，§5.5.4） */
+  renderBranchExtra?: (branch: CartTreeBranch) => ReactNode
 }) {
   const state = getCartBranchSelectionState(branch, selectedEntryIds)
   const hasChildren = branch.children.length > 0
@@ -210,6 +234,7 @@ function BranchRow({
         <Badge variant='secondary' className='shrink-0 font-mono text-[10px]'>
           {branch.count} 条
         </Badge>
+        {renderBranchExtra?.(branch)}
         {!readOnly && (
           <Button
             variant='ghost'
@@ -235,6 +260,7 @@ function BranchRow({
                   onRemoveSingle={onRemoveEntry}
                   readOnly={readOnly}
                   showLeafTask={showLeafTask}
+                  renderTrailing={renderTrailing}
                 />
               ) : child.level === 'case' && renderCaseNode ? (
                 renderCaseNode(child)
@@ -253,6 +279,8 @@ function BranchRow({
                   readOnly={readOnly}
                   showLeafTask={showLeafTask}
                   renderCaseNode={renderCaseNode}
+                  renderTrailing={renderTrailing}
+                  renderBranchExtra={renderBranchExtra}
                 />
               )
             )}
@@ -293,10 +321,14 @@ export interface CartTreeProps {
   ) => void
   /** 移除整组（来源任务） */
   onRemoveTask: (taskId: number, taskName: string, count: number) => void
-  /** 只读态（algo_engineer：增删钮隐藏，§8） */
+  /** 只读态（algo_engineer：增删钮隐藏，§8；容器组成区同口径） */
   readOnly?: boolean
   /** 全部展开信号 */
   expandSignal?: { all: boolean; tick: number }
+  /** 叶行尾部附加内容（容器组成区 §5.5.3：源结果 id / 评估状态 / 时间 / 溯源钮） */
+  renderLeafTrailing?: (leaf: CartTreeLeaf) => ReactNode
+  /** 分支节点计数后缀（容器组成区 §5.5.4：失败计数「· 失败 {f}」） */
+  renderBranchExtra?: (branch: CartTreeBranch) => ReactNode
   className?: string
 }
 
@@ -317,6 +349,8 @@ export function CartTree({
   onRemoveTask,
   readOnly = false,
   expandSignal,
+  renderLeafTrailing,
+  renderBranchExtra,
   className,
 }: CartTreeProps) {
   /** 三视图树（§4.2 ② 纯函数重建；任务分组=现状 buildCartTree） */
@@ -401,6 +435,7 @@ export function CartTree({
         onToggle={(select) => onToggleBranch(branch, select)}
         open={open}
         onToggleOpen={() => toggleOpenKey(branch.key)}
+        readOnly={readOnly}
         badgeLeading={
           topLevel && taskCount > 0 ? (
             <span className='text-muted-foreground/70 shrink-0 text-[11px]'>
@@ -438,6 +473,7 @@ export function CartTree({
                   onRemoveSingle={onRemoveEntry}
                   readOnly={readOnly}
                   showLeafTask={showLeafTask}
+                  renderTrailing={renderLeafTrailing}
                 />
               ) : (
                 <BranchRow
@@ -454,6 +490,8 @@ export function CartTree({
                   readOnly={readOnly}
                   showLeafTask={showLeafTask}
                   renderCaseNode={renderCaseNode}
+                  renderTrailing={renderLeafTrailing}
+                  renderBranchExtra={renderBranchExtra}
                 />
               )
             )}
@@ -475,6 +513,7 @@ export function CartTree({
           onRemoveSingle={onRemoveEntry}
           readOnly={readOnly}
           showLeafTask={showLeafTask}
+          renderTrailing={renderLeafTrailing}
         />
       )
     }
@@ -496,6 +535,8 @@ export function CartTree({
         readOnly={readOnly}
         showLeafTask={showLeafTask}
         renderCaseNode={renderCaseNode}
+        renderTrailing={renderLeafTrailing}
+        renderBranchExtra={renderBranchExtra}
       />
     )
   }
@@ -544,6 +585,7 @@ export function CartTree({
           <Badge variant='secondary' className='shrink-0 font-mono text-[10px]'>
             {branch.count} 条
           </Badge>
+          {renderBranchExtra?.(branch)}
           {!readOnly &&
             (isTaskView ? (
               <Button
