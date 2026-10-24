@@ -99,7 +99,7 @@ export function OverallEvaluationEditor({
               ...v,
               weight: patch.weight ?? v.weight,
               threshold: patch.threshold ?? v.threshold,
-              ...(patch.model || patch.promptTemplate
+              ...(patch.model !== undefined || patch.promptTemplate !== undefined
                 ? {
                     llmJudgeConfig: {
                       model: patch.model ?? v.llmJudgeConfig?.model ?? '',

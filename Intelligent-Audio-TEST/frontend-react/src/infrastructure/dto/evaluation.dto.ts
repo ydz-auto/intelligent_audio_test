@@ -244,6 +244,8 @@ export function toEvaluationCategory(dto: CategoryItemDto): EvaluationCategory {
  * llm_judge_config → LlmJudgeConfig。
  * 用例参数卡的模型/Prompt 默认值取维度定义（§5.5）——读侧不映射时该默认恒为空，
  * 用户侧只能手填；未下发配置时返回 null（参数卡留空，不注入占位模型）。
+ * maxTokens / temperature 未下发即留空：缺省值只由维度表单层给（dimension-form-schema.ts），
+ * 读侧不补魔法默认值，避免同一个缺省在两处各写一份。
  */
 function toLlmJudgeConfig(
   raw: DimensionItemDto['llm_judge_config']
@@ -264,8 +266,8 @@ function toLlmJudgeConfig(
   return {
     model,
     promptTemplate,
-    maxTokens: maxTokens ?? 1024,
-    temperature: temperature ?? 0.7,
+    maxTokens: maxTokens ?? undefined,
+    temperature: temperature ?? undefined,
   }
 }
 

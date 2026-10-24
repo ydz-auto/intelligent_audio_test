@@ -9,6 +9,7 @@ import { useMemo } from 'react'
 import type { Dimension, EvaluationCategory } from '@/domain/models/evaluationDimension'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
+import { useCaseRoundsRegistry } from '@/application/testcases/case-rounds-registry'
 import type { BatchDialogState } from '@/application/testcases/use-case-batch-actions'
 import type { CaseConfirmState } from '@/features/testcases/modals/case-confirms'
 import { BatchAdjustGroupDialog } from '@/features/testcases/modals/batch-adjust-group-dialog'
@@ -28,8 +29,6 @@ export interface CaseBatchActionsHostProps {
   handleConfirm: (state: CaseConfirmState) => void
   groups: TestCaseGroup[]
   tags: TagItem[]
-  /** 当前页用例（含真实轮次数 rounds；批量弹窗轮次 Tab 按选中用例实际轮次渲染） */
-  cases?: Array<{ id: string; rounds: number }>
   /** 全量评估维度（含子维度；批量设置评估维度 DimensionPicker 主/子分组云用） */
   dimensions: Dimension[]
   /** 评估维度分类（DimensionPicker 分类分组组头；负责人 2026-10-19 口径） */
@@ -46,24 +45,21 @@ export function CaseBatchActionsHost({
   handleConfirm,
   groups,
   tags,
-  cases = [],
   dimensions,
   categories = [],
   algorithmType,
   testType,
 }: CaseBatchActionsHostProps) {
   /**
-   * 选中用例的实际轮次数（各用例 config.rounds 长度并集 = 最大值；取不到的用例不计）。
-   * 0 = 未加载到轮次信息，弹窗内给空态而不是编造轮次。
+   * 选中用例的实际轮次数：由页级轮次登记表（CaseRoundsProvider）按选中 id 解析——
+   * 列表首页、分组卡懒加载页、开始测试列表登记过的用例都能取到，不再只看首页 100 条。
+   * roundCount=0 且 unknownCount>0 表示轮次尚未加载（弹窗提示，不当成「无轮次」）。
    */
-  const roundCount = useMemo(() => {
-    if (!batchDialog) return 0
-    const roundsById = new Map(cases.map((c) => [c.id, c.rounds]))
-    const known = batchDialog.ids
-      .map((id) => roundsById.get(id) ?? 0)
-      .filter((n) => n > 0)
-    return known.length > 0 ? Math.max(...known) : 0
-  }, [batchDialog, cases])
+  const { resolve } = useCaseRoundsRegistry()
+  const { roundCount, unknownCount } = useMemo(
+    () => (batchDialog ? resolve(batchDialog.ids) : { roundCount: 0, unknownCount: 0 }),
+    [batchDialog, resolve]
+  )
 
   return (
     <>
@@ -74,6 +70,7 @@ export function CaseBatchActionsHost({
           count={batchDialog.count}
           ids={batchDialog.ids}
           roundCount={roundCount}
+          unknownRoundCount={unknownCount}
           dimensions={dimensions}
           categories={categories}
           algorithmType={algorithmType}

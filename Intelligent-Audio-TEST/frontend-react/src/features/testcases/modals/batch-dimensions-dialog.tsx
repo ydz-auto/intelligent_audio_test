@@ -76,6 +76,7 @@ export function BatchDimensionsDialog({
   count,
   ids,
   roundCount,
+  unknownRoundCount = 0,
   dimensions,
   categories = [],
   algorithmType,
@@ -85,8 +86,10 @@ export function BatchDimensionsDialog({
   onOpenChange: (open: boolean) => void
   count: number
   ids: string[]
-  /** 选中用例实际轮次数（config.rounds 派生；0=空态） */
+  /** 已加载用例的实际轮次数（config.rounds 派生；0=未取到） */
   roundCount: number
+  /** 选中用例中轮次未知（列表尚未加载）的条数；>0 时不得当成「无轮次」 */
+  unknownRoundCount?: number
   dimensions: Dimension[]
   categories?: EvaluationCategory[]
   algorithmType?: string | null
@@ -112,6 +115,29 @@ export function BatchDimensionsDialog({
   const [confirmAction, setConfirmAction] = useState<null | 'clear' | 'applyAll'>(null)
 
   const roundLabels = (key: RoundKey) => (key === -1 ? '最后一轮' : `第 ${key} 轮`)
+
+  /** 轮次信息一条都没取到，但有用例尚未加载：提示「未加载」，不显示「无轮次」假空态 */
+  const roundsUnknown = roundCount === 0 && unknownRoundCount > 0
+  /** 有已知轮次才能用「指定轮次 / 逐轮设置」两档（否则禁用，避免提交空轮次列表） */
+  const hasRounds = roundCount > 0
+  /** 轮次取不到时的统一提示块 */
+  const noRoundNotice = (
+    <div className='border-border/60 rounded-lg border border-dashed px-3 py-4 text-center'>
+      {roundsUnknown ? (
+        <>
+          <p className='text-foreground text-sm'>
+            其中 {unknownRoundCount} 个用例的轮次信息尚未加载
+          </p>
+          <p className='text-muted-foreground mt-1 text-xs leading-relaxed'>
+            这些用例不在当前已加载的列表里，轮次未知不等于没有轮次。可选择「所有轮次（统一设置）」继续；
+            按轮次设置前请先展开/加载这些用例。
+          </p>
+        </>
+      ) : (
+        <p className='text-muted-foreground text-sm'>所选用例暂无可配置的轮次信息</p>
+      )}
+    </div>
+  )
 
   /** 可新增的轮次号：实际轮次范围内尚未作为 Tab 打开的轮次（无则禁用「添加轮次」） */
   const nextRound = (() => {
@@ -275,7 +301,13 @@ export function BatchDimensionsDialog({
   })
 
   const handleSubmit = async () => {
-    if (roundCount === 0) {
+    // 轮次未知（列表未加载）不阻断「所有轮次（统一设置）」；其余两档必须有已知轮次才可提交
+    if (roundCount === 0 && roundMode !== 'all') {
+      toast.error('所选用例的轮次信息尚未加载，无法按轮次设置评估维度')
+      return
+    }
+    // 一条轮次都取不到且没有未加载用例：确无轮次信息，保持不可提交
+    if (roundCount === 0 && unknownRoundCount === 0) {
       toast.error('所选用例暂无可配置的轮次信息，无法设置评估维度')
       return
     }
@@ -339,19 +371,31 @@ export function BatchDimensionsDialog({
               />
               所有轮次（统一设置）
             </label>
-            <label className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'>
+            <label
+              className={cn(
+                'hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm',
+                !hasRounds && 'cursor-not-allowed opacity-50'
+              )}
+            >
               <input
                 type='radio'
                 name='batch-dim-round-mode'
+                disabled={!hasRounds}
                 checked={roundMode === 'specific'}
                 onChange={() => setRoundMode('specific')}
               />
               指定轮次（统一设置）
             </label>
-            <label className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'>
+            <label
+              className={cn(
+                'hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm',
+                !hasRounds && 'cursor-not-allowed opacity-50'
+              )}
+            >
               <input
                 type='radio'
                 name='batch-dim-round-mode'
+                disabled={!hasRounds}
                 checked={roundMode === 'per_round'}
                 onChange={() => setRoundMode('per_round')}
               />
@@ -359,12 +403,18 @@ export function BatchDimensionsDialog({
             </label>
           </div>
 
-          {/* 无轮次信息：默认「所有轮次」档位同样明确空态，不编造轮次 */}
-          {roundCount === 0 && roundMode === 'all' && (
-            <div className='border-border/60 rounded-lg border border-dashed px-3 py-4 text-center'>
-              <p className='text-muted-foreground text-sm'>所选用例暂无可配置的轮次信息</p>
-            </div>
+          {/* 已选中用例中有未加载的条数：轮次选项只覆盖已加载用例，显式说明（不当成无轮次） */}
+          {unknownRoundCount > 0 && (
+            <p
+              data-testid='batch-dim-rounds-unknown'
+              className='text-muted-foreground text-xs leading-relaxed'
+            >
+              其中 {unknownRoundCount} 个用例的轮次信息尚未加载，轮次选项按已加载用例计算。
+            </p>
           )}
+
+          {/* 无轮次信息：明确空态（未加载 ≠ 无轮次），不编造轮次 */}
+          {roundCount === 0 && roundMode === 'all' && noRoundNotice}
 
           {/* 指定轮次：轮次号 Checkbox 组（§5.3.5 与 §5.3.1~5.3.4 RoundScopeField 同口径；按实际轮次） */}
           {roundMode === 'specific' && (
@@ -373,7 +423,9 @@ export function BatchDimensionsDialog({
               <div className='border-border/60 flex flex-wrap gap-1.5 rounded-lg border p-2'>
                 {roundCount === 0 ? (
                   <span className='text-muted-foreground text-xs'>
-                    所选用例暂无可配置的轮次信息
+                    {roundsUnknown
+                      ? `其中 ${unknownRoundCount} 个用例的轮次信息尚未加载，无法指定轮次`
+                      : '所选用例暂无可配置的轮次信息'}
                   </span>
                 ) : (
                   roundKeysOf(roundCount).map((round) => (
@@ -396,11 +448,7 @@ export function BatchDimensionsDialog({
           {/* 逐轮模式轮次 Tab（§5.3.5 ②；按选中用例实际轮次渲染）+ 快捷操作工具栏（§5.3.5 ③） */}
           {roundMode === 'per_round' &&
             (roundCount === 0 ? (
-              <div className='border-border/60 rounded-lg border border-dashed px-3 py-4 text-center'>
-                <p className='text-muted-foreground text-sm'>
-                  所选用例暂无可配置的轮次信息
-                </p>
-              </div>
+              noRoundNotice
             ) : (
             <div className='space-y-1.5'>
               <div className='border-border/60 flex flex-wrap items-center gap-1.5 rounded-lg border p-2'>
@@ -645,7 +693,10 @@ export function BatchDimensionsDialog({
           <Button variant='outline' onClick={() => onOpenChange(false)} disabled={submitting}>
             取消
           </Button>
-          <Button onClick={() => void handleSubmit()} disabled={submitting || roundCount === 0}>
+          <Button
+            onClick={() => void handleSubmit()}
+            disabled={submitting || (roundCount === 0 && unknownRoundCount === 0)}
+          >
             {submitting && <Spinner className='size-3.5' />}
             确定
           </Button>
