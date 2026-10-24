@@ -9,6 +9,7 @@ import type {
   CaseMetricConfig,
   CaseMetricPoint,
   CaseMetricRow,
+  CaseResultAudioField,
   CaseRoundTab,
 } from '@/domain/models/testExecution'
 import type { CaseResultForReview } from '@/domain/models/review'
@@ -161,30 +162,84 @@ function buildRoundTabs(
   return tabs
 }
 
-/** 结果音频：result_audios（设备键 → 音频项，无轮次信息）+ algorithm_results 里 param_type=audio_file 的项 */
-function buildResultAudios(dto: CaseDetailDto): CaseAudioResult[] {
-  const fromResultAudios = Object.entries(dto.result_audios ?? {}).flatMap(([device, audios]) =>
-    (audios ?? []).map((audio) => ({
-      audioName: audio.filename ?? audio.param_code ?? '音频',
-      deviceName: device || null,
+/**
+ * 设备标识 → 可读设备名（V9.7.10 getDeviceName:1001-1014 同口径）：
+ * `result_audios` 的键与 `algorithm_results.device` 可能是设备 id（`9`）、
+ * 算法侧内部标识（`9-pura90小艺-1.0.0`）或 `t<id>-<时间戳>-…`。先按 /results 结果行的
+ * deviceId 匹配（最可靠），再退回内部标识 / 时间戳形态，都没有则原样展示。
+ */
+function resolveDeviceName(key: string, rows: CaseResultForReview[]): string {
+  if (!key) return ''
+  for (const row of rows) {
+    if (row.deviceId != null && row.deviceName) {
+      const id = String(row.deviceId)
+      if (key === id || key.startsWith(`${id}-`)) return row.deviceName
+    }
+  }
+  if (/^t\d+-\d{12}-/.test(key)) {
+    const parts = key.split('-')
+    if (parts.length >= 4) return parts.slice(3).join('-')
+  }
+  const internal = key.match(/^\d+-(.+?)-\d+(?:\.\d+)*$/)
+  if (internal) return internal[1]
+  return key
+}
+
+/**
+ * 结果音频（detail `result_audios`：设备键 → 音频项，无轮次信息）。
+ * 10 §5.2 ①（INT-1723 ②）：**不随轮次 Tab 过滤**，按设备分组全量展示
+ * （组标题＝设备名，行＝filename，缺省 param_code，再缺省「音频N」）。
+ */
+function buildResultAudios(
+  dto: CaseDetailDto,
+  rows: CaseResultForReview[]
+): CaseAudioResult[] {
+  return Object.entries(dto.result_audios ?? {}).flatMap(([device, audios]) =>
+    (audios ?? []).map((audio, index) => ({
+      audioName: audio.filename || audio.param_code || `音频${index + 1}`,
+      deviceName: resolveDeviceName(device, rows) || null,
       round: null,
       url: audio.url ?? null,
       path: null,
     }))
   )
-  const fromAlgorithm = (dto.algorithm_results ?? [])
+}
+
+/**
+ * 执行结果音频字段（detail `algorithm_results` 里 `param_type=audio_file` 的项）。
+ * V9.7.10 把这类项当**结果字段**（TestCaseReportDetail.vue:246/:297 播放钮），轮次标记取自
+ * param_code 的 `@round:N` / `@overall` 后缀，回退 `round_number`；**不能**并进不按轮过滤的
+ * 「结果音频」块（否则 7 轮用例会在每个 Tab 铺满全部音频）。
+ * label 用原始参数名去掉内部后缀，轮次信息只在 chip 上展示一次（不重复）。
+ */
+function buildResultAudioFields(
+  dto: CaseDetailDto,
+  rows: CaseResultForReview[]
+): CaseResultAudioField[] {
+  return (dto.algorithm_results ?? [])
     .filter((r) => r.param_type === 'audio_file' && typeof r.value === 'string' && r.value)
-    .map((r) => ({
-      audioName: r.label ?? r.param_code,
-      // algorithm_results.device 是「{id}-{设备名}-{版本}」内部标识（实测 9-pura90小艺-1.0.0），
-      // 不是可读设备名 → 结果音频行只展示 label，不重复设备标识
-      deviceName: null,
-      // algorithm_results.round_number 为 1 起轮次（param_code `user_wav@round:1` 同值）
-      round: r.round_number ?? null,
-      url: null,
-      path: r.value as string,
-    }))
-  return [...fromResultAudios, ...fromAlgorithm]
+    .map((r) => {
+      const paramCode = r.param_code ?? ''
+      const roundMatch = paramCode.match(/@round:(\d+)$/i)
+      const overall = /@overall$/i.test(paramCode)
+      const round = roundMatch
+        ? Number(roundMatch[1])
+        : overall
+          ? null
+          : (r.round_number ?? null)
+      const base = paramCode.replace(/@round:\d+$/i, '').replace(/@overall$/i, '').trim()
+      return {
+        paramCode,
+        label: base || r.label || paramCode || '音频',
+        round,
+        overall,
+        dimensionName: r.dimension_name ?? null,
+        // algorithm_results.device 是内部标识（实测 `9-pura90小艺-1.0.0`）→ 还原可读设备名
+        deviceName: r.device ? resolveDeviceName(r.device, rows) || null : null,
+        url: null,
+        path: r.value as string,
+      }
+    })
 }
 
 /** 参考/输入音频（detail audio_list；音频库 id 用于 /audios/{id}/stream 取流） */
@@ -239,7 +294,8 @@ export function caseDetailFromDto(
     }
   })
 
-  const resultAudios = buildResultAudios(dto)
+  const resultAudios = buildResultAudios(dto, resultRows)
+  const resultAudioFields = buildResultAudioFields(dto, resultRows)
   const referenceAudios = buildReferenceAudios(dto)
 
   return {
@@ -264,13 +320,15 @@ export function caseDetailFromDto(
       rounds: r.rounds,
     })),
     metricConfigs,
-    // 轮次 Tab 也吸收结果/参考音频出现的轮次（照 V9.7.10 roundTabs 从字段提取轮次）
+    // 轮次 Tab 也吸收结果字段（algorithm_results 的 audio_file 项）/ 参考音频出现的轮次
+    // （照 V9.7.10 roundTabs 从指标 key + 字段提取轮次）
     roundTabs: buildRoundTabs(devices, metricConfigs, [
-      ...resultAudios.map((a) => a.round),
+      ...resultAudioFields.map((a) => a.round),
       ...referenceAudios.map((a) => a.round),
     ]),
     devices,
     resultAudios,
+    resultAudioFields,
     referenceAudios,
     results: resultRows,
   }

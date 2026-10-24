@@ -94,6 +94,7 @@ const detail = {
   ],
   results: caseResults,
   resultAudios: [],
+  resultAudioFields: [],
   referenceAudios: [],
   devices: [
     {
@@ -146,20 +147,26 @@ const apiDetail = {
     },
   ],
   resultAudios: [],
+  resultAudioFields: [],
   referenceAudios: [],
   devices: [],
 }
 const taskTerminal = { id: 417, name: '任务', status: 'completed' }
 
-function renderDialog() {
+function renderDialog(caseId = 'case-1') {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
-  return render(
+  const ui = (id: string) => (
     <QueryClientProvider client={client}>
-      <CaseDetailDialog open onOpenChange={vi.fn()} taskId={417} caseId='case-1' />
+      <CaseDetailDialog open onOpenChange={vi.fn()} taskId={417} caseId={id} />
     </QueryClientProvider>
   )
+  const result = render(ui(caseId))
+  return {
+    ...result,
+    rerenderCase: (id: string) => result.rerender(ui(id)),
+  }
 }
 
 describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1064/INT-1066）', () => {
@@ -301,7 +308,7 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     expect(screen.queryByRole('button', { name: 'AI 复核' })).not.toBeInTheDocument()
   })
 
-  // ---- INT-1688（返工）：轮次 Tab + 行=指标/列=设备 + 按轮过滤音频 ----
+  // ---- INT-1688（返工）：轮次 Tab + 行=指标/列=设备 + 结果音频两种口径 ----
   it('INT-1688：轮次 Tab（第1轮/整体）+ 指标行 + 设备列，不再显示 @round 内部键', async () => {
     fetchDetailMock.mockResolvedValue({
       ...detail,
@@ -321,11 +328,14 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
           rows: [{ dimension: '接管率占比', values: { pura90豆包: '1' } }],
         },
       ],
-      resultAudios: [
+      resultAudioFields: [
         {
-          audioName: 'user_wav (第1轮)',
-          deviceName: null,
+          paramCode: 'user_wav@round:1',
+          label: 'user_wav',
           round: 1,
+          overall: false,
+          dimensionName: null,
+          deviceName: null,
           url: null,
           path: 'case_pcm/402/a.wav',
         },
@@ -342,11 +352,13 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     expect(screen.getByText('指标')).toBeInTheDocument()
     expect(screen.getAllByText('pura90豆包').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('接管率占比')).toBeInTheDocument()
-    expect(screen.getByText('user_wav (第1轮)')).toBeInTheDocument()
+    // 执行结果音频字段：label 用原始参数名（轮次只在 chip 上出现一次）
+    expect(screen.getByText('user_wav')).toBeInTheDocument()
+    expect(screen.queryByText(/user_wav \(第1轮\)/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '试听' })).toBeInTheDocument()
   })
 
-  it('INT-1688 返工：多轮 7 轮 → Tab 切换按轮出值、音频随 Tab 过滤', async () => {
+  it('INT-1688 返工 P2：执行结果音频字段随轮次 Tab 过滤，「整体」Tab 无维度归属的全显', async () => {
     const roundTabs: CaseRoundTab[] = [1, 2, 3, 4, 5, 6, 7].map((round) => ({
       key: `round:${round}`,
       label: `第${round}轮`,
@@ -364,10 +376,16 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     fetchDetailMock.mockResolvedValue({
       ...detail,
       roundTabs,
-      resultAudios: [
-        { audioName: '第1轮音频', deviceName: null, round: 1, url: null, path: 'r0.wav' },
-        { audioName: '第7轮音频', deviceName: null, round: 7, url: null, path: 'r6.wav' },
-      ],
+      resultAudioFields: [1, 2, 3, 4, 5, 6, 7].map((round) => ({
+        paramCode: `user_wav@round:${round}`,
+        label: `r${round}_wav`,
+        round,
+        overall: false,
+        dimensionName: null,
+        deviceName: null,
+        url: null,
+        path: `r${round - 1}.wav`,
+      })),
     })
     fetchTaskMock.mockResolvedValue(taskTerminal)
     renderDialog()
@@ -375,16 +393,113 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
       'aria-selected',
       'true'
     )
-    // 默认第 1 轮：只看到第 1 轮音频
-    expect(screen.getByText('第1轮音频')).toBeInTheDocument()
-    expect(screen.queryByText('第7轮音频')).not.toBeInTheDocument()
-    // 切到第 7 轮：值随轮次变化，音频一并过滤
+    // 默认第 1 轮：只看到第 1 轮字段
+    expect(screen.getByText('r1_wav')).toBeInTheDocument()
+    expect(screen.queryByText('r7_wav')).not.toBeInTheDocument()
+    // 切到第 7 轮：值随轮次变化，字段一并过滤
     await userEvent.click(screen.getByRole('tab', { name: '第7轮' }))
     await waitFor(() => {
       expect(screen.getByText('0.7')).toBeInTheDocument()
     })
-    expect(screen.getByText('第7轮音频')).toBeInTheDocument()
-    expect(screen.queryByText('第1轮音频')).not.toBeInTheDocument()
+    expect(screen.getByText('r7_wav')).toBeInTheDocument()
+    expect(screen.queryByText('r1_wav')).not.toBeInTheDocument()
+    // 「整体」Tab：无维度归属的结果字段全部显示
+    await userEvent.click(screen.getByRole('tab', { name: '整体' }))
+    await waitFor(() => {
+      expect(screen.getByText('r1_wav')).toBeInTheDocument()
+    })
+    expect(screen.getByText('r7_wav')).toBeInTheDocument()
+  })
+
+  it('INT-1688 返工 P2：result_audios 按设备分组，任何轮次 Tab 都显示全部', async () => {
+    fetchDetailMock.mockResolvedValue({
+      ...detail,
+      roundTabs: [
+        {
+          key: 'round:1',
+          label: '第1轮',
+          round: 1,
+          kind: 'round',
+          rows: [{ dimension: '合成成功率', values: { pura90豆包: '0.1' } }],
+        },
+        {
+          key: 'overall',
+          label: '整体',
+          round: null,
+          kind: 'overall',
+          rows: [{ dimension: '合成成功率', values: { pura90豆包: '5' } }],
+        },
+      ],
+      resultAudios: [
+        { audioName: '设备A输出.wav', deviceName: '设备A', round: null, url: '/a.wav', path: null },
+        { audioName: '设备B输出.wav', deviceName: '设备B', round: null, url: '/b.wav', path: null },
+      ],
+    })
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    renderDialog()
+    // 默认第 1 轮：分组标题＝设备名、两条都在（不按轮次过滤）
+    expect(await screen.findByText('设备A输出.wav')).toBeInTheDocument()
+    expect(screen.getByText('设备A')).toBeInTheDocument()
+    expect(screen.getByText('设备B输出.wav')).toBeInTheDocument()
+    expect(screen.getByText('设备B')).toBeInTheDocument()
+    // 切到「整体」Tab：仍显示全部
+    await userEvent.click(screen.getByRole('tab', { name: '整体' }))
+    expect(screen.getByText('设备A输出.wav')).toBeInTheDocument()
+    expect(screen.getByText('设备B输出.wav')).toBeInTheDocument()
+  })
+
+  it('INT-1688 返工 P3：换用例后轮次 Tab 复位到第一个有数据的 Tab', async () => {
+    const sevenTabs: CaseRoundTab[] = [1, 2, 3, 4, 5, 6, 7].map((round) => ({
+      key: `round:${round}`,
+      label: `第${round}轮`,
+      round,
+      kind: 'round',
+      rows: [{ dimension: '合成成功率', values: { pura90豆包: `0.${round}` } }],
+    }))
+    sevenTabs.push({
+      key: 'overall',
+      label: '整体',
+      round: null,
+      kind: 'overall',
+      rows: [{ dimension: '合成成功率', values: { pura90豆包: '5' } }],
+    })
+    const nextCaseTabs: CaseRoundTab[] = [
+      {
+        key: 'round:1',
+        label: '第1轮',
+        round: 1,
+        kind: 'round',
+        rows: [{ dimension: '合成成功率', values: { pura90豆包: '0.1' } }],
+      },
+      {
+        key: 'overall',
+        label: '整体',
+        round: null,
+        kind: 'overall',
+        rows: [{ dimension: '合成成功率', values: { pura90豆包: '5' } }],
+      },
+    ]
+    fetchDetailMock.mockImplementation((_taskId: number, cid: string) =>
+      Promise.resolve(
+        cid === 'case-1'
+          ? { ...detail, roundTabs: sevenTabs }
+          : { ...detail, caseId: 'case-2', name: '另一个用例', roundTabs: nextCaseTabs }
+      )
+    )
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    const { rerenderCase } = renderDialog('case-1')
+    await screen.findByRole('tab', { name: '第7轮' })
+    // 先停在「整体」
+    await userEvent.click(screen.getByRole('tab', { name: '整体' }))
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: '整体' })).toHaveAttribute('aria-selected', 'true')
+    })
+    // 换用例：不再只做越界钳制（旧实现会落到末位「整体」），复位到第一个有数据的「第1轮」
+    rerenderCase('case-2')
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: '第1轮' })).toHaveAttribute('aria-selected', 'true')
+    })
+    expect(screen.getByRole('tab', { name: '整体' })).toHaveAttribute('aria-selected', 'false')
   })
 
   it('E2E 用例（devices 非空）时长 null → 头部不渲染「耗时」', async () => {

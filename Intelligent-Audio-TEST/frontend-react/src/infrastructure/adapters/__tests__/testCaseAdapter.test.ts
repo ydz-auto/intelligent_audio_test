@@ -303,23 +303,33 @@ describe('caseDetailFromDto', () => {
       expect(detail.devices[0].executionStatus).toBeNull()
       expect(detail.roundTabs.map((t) => [t.key, t.rows])).toEqual([['all', []]])
       expect(detail.resultAudios).toEqual([])
+      expect(detail.resultAudioFields).toEqual([])
       expect(detail.results).toEqual([])
     })
 
-    it('结果音频：algorithm_results 的 audio_file 项带轮次（供按 Tab 过滤），path 供 stream-by-path', () => {
+    it('结果音频：result_audios 单独成块（按设备分组、无轮次）；audio_file 字段单独成集（带轮次）', () => {
       const detail = caseDetailFromDto(detailDto, results)
-      expect(detail.resultAudios).toEqual([
+      // 本用例 result_audios 为空 → 「结果音频」块无内容
+      expect(detail.resultAudios).toEqual([])
+      // algorithm_results 的 audio_file 项是「执行结果字段」：label 去 @round 内部后缀、带 1 起轮次
+      expect(detail.resultAudioFields).toEqual([
         {
-          audioName: 'user_wav (第1轮)',
-          deviceName: null,
+          paramCode: 'user_wav@round:1',
+          label: 'user_wav',
           round: 1,
+          overall: false,
+          dimensionName: null,
+          deviceName: 'pura90小艺',
           url: null,
           path: 'case_pcm/402/xxx/r0_in.wav',
         },
         {
-          audioName: 'ai_wav (第1轮)',
-          deviceName: null,
+          paramCode: 'ai_wav@round:1',
+          label: 'ai_wav',
           round: 1,
+          overall: false,
+          dimensionName: null,
+          deviceName: 'pura90小艺',
           url: null,
           path: 'case_pcm/402/xxx/r0_out.wav',
         },
@@ -332,6 +342,70 @@ describe('caseDetailFromDto', () => {
           round: null,
           url: '/api/v1/audios/1622/stream',
           path: null,
+        },
+      ])
+    })
+
+    it('result_audios：设备键还原可读设备名；行名 filename → param_code → 「音频N」', () => {
+      const detail = caseDetailFromDto(
+        {
+          ...detailDto,
+          result_audios: {
+            '9': [
+              { url: '/a.wav', filename: 'out.wav' },
+              { url: null, param_code: 'ai_wav' },
+              { url: null },
+            ],
+            '9-pura90小艺-1.0.0': [{ url: '/b.wav', filename: 'b.wav' }],
+          },
+        },
+        results
+      )
+      expect(detail.resultAudios).toEqual([
+        { audioName: 'out.wav', deviceName: 'pura90小艺', round: null, url: '/a.wav', path: null },
+        { audioName: 'ai_wav', deviceName: 'pura90小艺', round: null, url: null, path: null },
+        { audioName: '音频3', deviceName: 'pura90小艺', round: null, url: null, path: null },
+        { audioName: 'b.wav', deviceName: 'pura90小艺', round: null, url: '/b.wav', path: null },
+      ])
+    })
+
+    it('audio_file 字段：@overall 后缀 → overall 标记；无后缀时回退 round_number', () => {
+      const detail = caseDetailFromDto(
+        {
+          ...detailDto,
+          algorithm_results: [
+            {
+              param_code: 'summary_wav@overall',
+              param_type: 'audio_file',
+              value: 'p/overall.wav',
+              dimension_name: '接管率占比',
+              device: '9-pura90小艺-1.0.0',
+            },
+            { param_code: 'plain_wav', param_type: 'audio_file', round_number: 2, value: 'p/r2.wav' },
+          ],
+        },
+        results
+      )
+      expect(detail.resultAudioFields).toEqual([
+        {
+          paramCode: 'summary_wav@overall',
+          label: 'summary_wav',
+          round: null,
+          overall: true,
+          dimensionName: '接管率占比',
+          deviceName: 'pura90小艺',
+          url: null,
+          path: 'p/overall.wav',
+        },
+        {
+          paramCode: 'plain_wav',
+          label: 'plain_wav',
+          round: 2,
+          overall: false,
+          dimensionName: null,
+          deviceName: null,
+          url: null,
+          path: 'p/r2.wav',
         },
       ])
     })
@@ -439,9 +513,18 @@ describe('caseDetailFromDto', () => {
       ])
     })
 
-    it('结果/参考音频带 1 起轮次，明细随 Tab 过滤（整体 Tab 展示全部）', () => {
+    it('执行结果音频字段带 1 起轮次（供按 Tab 过滤）；参考音频同样带轮次', () => {
       const detail = caseDetailFromDto(multiDto, multiResults)
-      expect(detail.resultAudios.map((a) => a.round)).toEqual([1, 2, 3, 4, 5, 6, 7])
+      expect(detail.resultAudios).toEqual([])
+      expect(detail.resultAudioFields.map((a) => [a.label, a.round])).toEqual([
+        ['user_wav', 1],
+        ['user_wav', 2],
+        ['user_wav', 3],
+        ['user_wav', 4],
+        ['user_wav', 5],
+        ['user_wav', 6],
+        ['user_wav', 7],
+      ])
       expect(detail.referenceAudios.map((a) => a.round)).toEqual([1, 2, 3, 4, 5, 6, 7])
     })
 

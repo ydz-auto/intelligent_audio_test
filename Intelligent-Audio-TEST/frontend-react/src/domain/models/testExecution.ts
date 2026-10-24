@@ -176,7 +176,7 @@ export interface CaseRoundTab {
 
 /** 结果音频（可试听）：url 为后端直出地址，path 为静态相对路径（播放前经 stream-by-path 换预签名 URL） */
 export interface CaseAudioResult {
-  /** 展示名（filename / label / param_code） */
+  /** 展示名（filename / param_code / 「音频N」） */
   audioName: string
   deviceName: string | null
   /** 音频库 id（参考音频 audio_list 有；结果音频一般为 null） */
@@ -185,6 +185,27 @@ export interface CaseAudioResult {
   round?: number | null
   url: string | null
   path: string | null
+}
+
+/**
+ * 执行结果音频字段（detail algorithm_results 里 `param_type=audio_file` 的项）。
+ * V9.7.10 把这类项当作**结果字段**（TestCaseReportDetail.vue:246/:297 播放钮、:834-891 按 Tab
+ * 过滤），与 `result_audios` 的「结果音频」块不是一回事：后者按设备分组、任何 Tab 都显示全部。
+ */
+export interface CaseResultAudioField {
+  /** 原始 param_code（如 `user_wav@round:1`） */
+  paramCode: string
+  /** 展示名：原始参数名去掉 `@round:N` / `@overall` 内部后缀（内部键不进 UI） */
+  label: string
+  /** 轮次（1 起）；整体评估字段与无轮次标记字段为 null */
+  round: number | null
+  /** param_code 以 `@overall` 结尾（整体评估字段） */
+  overall: boolean
+  /** 所属评估维度（整体 Tab 下用于区分「有维度归属」与「设备/API 执行结果」） */
+  dimensionName: string | null
+  deviceName: string | null
+  url: string | null
+  path: string
 }
 
 /** 设备结果行（detail devices 设备名 + /results 结果行维度组合；10 §5.2） */
@@ -230,8 +251,10 @@ export interface CaseExecutionDetail {
   /** 轮次 Tab（第1轮…第N轮 + 整体；无轮次标记时单个「指标」Tab） */
   roundTabs: CaseRoundTab[]
   devices: CaseDeviceResult[]
-  /** 结果音频（result_audios + algorithm_results 的 audio_file 项） */
+  /** 结果音频（detail `result_audios`：按设备分组，任何轮次 Tab 都显示全部） */
   resultAudios: CaseAudioResult[]
+  /** 执行结果音频字段（algorithm_results 的 audio_file 项；按当前轮次 Tab 过滤） */
+  resultAudioFields: CaseResultAudioField[]
   /** 参考/输入音频（detail audio_list；旧 Vue 走「音频时间轴」） */
   referenceAudios: CaseAudioResult[]
   /** 执行结果行（/results；复核入口准入与人工复核弹窗消费） */

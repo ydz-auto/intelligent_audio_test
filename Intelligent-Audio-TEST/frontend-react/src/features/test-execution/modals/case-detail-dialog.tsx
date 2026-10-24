@@ -2,9 +2,11 @@
  * 用例详情弹窗（§5.2；interfaces/features/test-execution/modals；Dialog sm:max-w-4xl，
  * 内滚 contentHeight='min(72dvh,720px)'）。
  * 头：用例名 + 双状态徽章 + 耗时 + 评分徽章 + CaseIdBadge（点击复制）+ 设备名列表。
- * 分节①执行结果与指标——轮次 Tab（第1轮…第N轮 / 整体，单轮为单个「指标」）+ 指标×设备表
+ * 分节①执行结果与指标——轮次 Tab（第1轮…第N轮 / 整体，单轮不渲染 Tab 栏）+ 指标×设备表
  * （行=指标、列=设备，V9.7.10 currentRoundTableData 同口径）+ ASR/翻译参考文本块 +
- * 结果音频/参考音频（按当前 Tab 轮次过滤；试听→INT-356 弹窗复用）；
+ * 结果音频（`result_audios`，按设备分组、**不随轮次 Tab 过滤**，10 §5.2 ① INT-1723 ⑤）+
+ * 执行结果音频字段（`algorithm_results` 的 audio_file 项，按当前 Tab 轮次过滤，V9.7.10 结果字段口径）；
+ * 试听→INT-356 弹窗复用；换用例时轮次 Tab 复位到第一个有数据的 Tab。
  * 分节②执行日志——「加载更多日志」+ 等宽容器 + 分页 100 条/页。
  * 数据源 GET /tasks/{taskId}/cases/{caseId}/detail + /results + GET /logs?task_id&test_case_id。
  * 复核入口（INT-1055/INT-1066，10 §5.2 注记 3）：分节①区头右侧「人工复核」/「AI 复核」两钮
@@ -19,7 +21,12 @@ import { toast } from 'sonner'
 
 import type { CaseResultForReview } from '@/domain/models/review'
 import { executionStatusLabel, toAiReviewDimensionIds } from '@/domain/models/review'
-import type { CaseAlgorithmResult, CaseAudioResult } from '@/domain/models/testExecution'
+import type {
+  CaseAlgorithmResult,
+  CaseAudioResult,
+  CaseResultAudioField,
+  CaseRoundTab,
+} from '@/domain/models/testExecution'
 import { stream, streamByPath } from '@/infrastructure/api/audios-api'
 import { fetchCaseExecutionDetail, fetchCaseLogs } from '@/infrastructure/api/test-execution-api'
 import { fetchTaskDetail } from '@/infrastructure/api/tasks-list-api'
@@ -52,6 +59,33 @@ interface CaseDetailDialogProps {
 }
 
 const LOG_PER_PAGE = 100
+
+/**
+ * 执行结果音频字段（algorithm_results 的 audio_file 项）按当前 Tab 过滤——
+ * V9.7.10 `currentRoundResultTextFields`（TestCaseReportDetail.vue:834-891）同口径：
+ * - 单轮「指标」Tab / 无 Tab：全部；
+ * - 「整体」Tab：无维度归属（设备/API 执行结果）全部显示，有维度归属只显示 `@overall` 项；
+ * - 轮次 Tab：无轮次标记的字段所有 Tab 都显示，有轮次标记的只在本轮（`@overall` 不混入）。
+ */
+function isAudioFieldVisible(
+  field: CaseResultAudioField,
+  tab: CaseRoundTab | null
+): boolean {
+  if (!tab || tab.kind === 'all') return true
+  if (tab.kind === 'overall') {
+    return field.dimensionName == null ? true : field.overall
+  }
+  if (field.overall) return false
+  if (field.round == null) return true
+  return field.round === tab.round
+}
+
+/** Tab 是否有评估数据（V9.7.10 tabHasMetricData：有非空值才算） */
+function tabHasData(tab: CaseRoundTab): boolean {
+  return tab.rows.some((row) =>
+    Object.values(row.values).some((value) => value !== '' && value !== '—')
+  )
+}
 
 /**
  * 分节① API/voice_llm 用例结果摘要（INT-1066 返工，10 §5.2 同口径对齐旧 Vue TestCaseDetailModal）：
@@ -146,7 +180,8 @@ function ApiCaseResultSummary({
 
 export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDetailDialogProps) {
   const [page, setPage] = useState(1)
-  const [activeRoundTab, setActiveRoundTab] = useState(0)
+  // 轮次 Tab 选中态绑定 caseId：换用例即失配 → 复位到第一个有数据的 Tab（P3，V9.7.10 :1317-1328）
+  const [tabChoice, setTabChoice] = useState<{ caseId: string; tabKey: string } | null>(null)
   const [playingAudio, setPlayingAudio] = useState<AudioItemMeta | null>(null)
   const [manualReviewOpen, setManualReviewOpen] = useState(false)
   const [aiReviewOpen, setAiReviewOpen] = useState(false)
@@ -212,7 +247,15 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
   }
 
   /** 结果/参考音频试听：直出 url → 音频库 id → 静态路径换预签名地址，三种来源统一到 INT-356 弹窗 */
-  const playAudio = async (audio: CaseAudioResult, audioType: 'result' | 'reference') => {
+  const playAudio = async (
+    audio: {
+      url: string | null
+      path?: string | null
+      audioId?: number | null
+      audioName?: string | null
+    },
+    audioType: 'result' | 'reference'
+  ) => {
     try {
       const url =
         audio.url ??
@@ -223,8 +266,8 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
             : null)
       if (!url) throw new Error('音频地址缺失')
       setPlayingAudio({
-        audio_id: audio.audioId ?? audio.audioName,
-        audio_name: audio.audioName,
+        audio_id: audio.audioId ?? audio.audioName ?? '',
+        audio_name: audio.audioName ?? undefined,
         audio_type: audioType,
         url,
       })
@@ -233,23 +276,47 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
     }
   }
 
-  /** 当前轮次 Tab（切换用例后 Tab 数变少时钳制到末位，避免越界） */
   const roundTabs = detail?.roundTabs ?? []
-  const currentTab =
-    roundTabs.length > 0
-      ? roundTabs[Math.min(activeRoundTab, roundTabs.length - 1)]
-      : null
+  /** 第一个有评估数据的 Tab（V9.7.10 tabHasMetricData + :1317-1328 初始化口径） */
+  const firstTabWithDataKey =
+    (roundTabs.find(tabHasData) ?? roundTabs[0])?.key ?? null
+  /** 换用例或所选 Tab 消失 → 回第一个有数据的 Tab（不再只做越界钳制，P3） */
+  const activeTabKey =
+    tabChoice &&
+    tabChoice.caseId === caseId &&
+    roundTabs.some((tab) => tab.key === tabChoice.tabKey)
+      ? tabChoice.tabKey
+      : firstTabWithDataKey
+  const currentTab = roundTabs.find((tab) => tab.key === activeTabKey) ?? null
 
   /**
-   * 结果/参考音频按当前 Tab 轮次过滤（V9.7.10 currentRound*TextFields:835-880 同口径）：
+   * 参考音频（audio_list，带 roundNumber）按当前 Tab 轮次过滤（现状保留，10 §5.2 本次返工未改口径）：
    * 「整体」Tab 与单轮「指标」Tab 展示全部；轮次 Tab 只留本轮与无轮次信息的音频。
    */
   const audiosForCurrentTab = (audios: CaseAudioResult[]) => {
     if (!currentTab || currentTab.kind !== 'round') return audios
     return audios.filter((audio) => audio.round == null || audio.round === currentTab.round)
   }
-  const currentResultAudios = detail ? audiosForCurrentTab(detail.resultAudios) : []
   const currentReferenceAudios = detail ? audiosForCurrentTab(detail.referenceAudios) : []
+
+  /**
+   * 结果音频（result_audios）不随轮次 Tab 过滤（10 §5.2 ① INT-1723 ⑤）：按设备分组全量展示。
+   */
+  const resultAudioGroups = (() => {
+    const groups: Array<{ deviceName: string; audios: CaseAudioResult[] }> = []
+    for (const audio of detail?.resultAudios ?? []) {
+      const deviceName = audio.deviceName || '未标注设备'
+      const group = groups.find((g) => g.deviceName === deviceName)
+      if (group) group.audios.push(audio)
+      else groups.push({ deviceName, audios: [audio] })
+    }
+    return groups
+  })()
+
+  /** 执行结果音频字段（algorithm_results 的 audio_file 项）按当前 Tab 过滤 */
+  const visibleResultAudioFields = (detail?.resultAudioFields ?? []).filter((field) =>
+    isAudioFieldVisible(field, currentTab)
+  )
 
   /** 有真实执行数据才渲染指标×设备表；无结果用例退回结果摘要（空态不回归） */
   const hasDeviceTable =
@@ -366,7 +433,7 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                   {/* 轮次 Tab（第1轮…第N轮 + 整体）；单轮「指标」Tab 不渲染 Tab 栏 */}
                   {roundTabs.length > 1 && (
                     <div className='flex flex-wrap gap-1' role='tablist' aria-label='轮次切换'>
-                      {roundTabs.map((tab, index) => (
+                      {roundTabs.map((tab) => (
                         <button
                           key={tab.key}
                           type='button'
@@ -378,7 +445,7 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                               ? 'bg-primary text-primary-foreground'
                               : 'text-muted-foreground hover:bg-muted'
                           )}
-                          onClick={() => setActiveRoundTab(index)}
+                          onClick={() => setTabChoice({ caseId, tabKey: tab.key })}
                         >
                           {tab.label}
                         </button>
@@ -483,30 +550,70 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                 </div>
               )}
 
-              {/* 结果音频列表（INT-1688：result_audios + algorithm_results 的 audio_file 项，
-                  按当前轮次 Tab 过滤；试听→INT-356 弹窗复用） */}
-              {currentResultAudios.length > 0 && (
-                <div className='mt-3 space-y-1'>
+              {/* 结果音频（INT-1688：detail result_audios，按设备分组；10 §5.2 ①
+                  ——**不随轮次 Tab 过滤**，任何 Tab 都显示全部；试听→INT-356 弹窗复用） */}
+              {resultAudioGroups.length > 0 && (
+                <div className='mt-3 space-y-2'>
                   <p className='text-muted-foreground text-xs'>结果音频</p>
-                  {currentResultAudios.map((audio, index) => (
+                  {resultAudioGroups.map((group) => (
+                    <div key={group.deviceName} className='space-y-1'>
+                      <p className='text-xs font-medium'>{group.deviceName}</p>
+                      {group.audios.map((audio, index) => (
+                        <div
+                          key={`${group.deviceName}-${audio.audioName}-${index}`}
+                          className='flex items-center gap-2 rounded-lg border px-3 py-2 text-sm'
+                        >
+                          <span className='font-mono text-xs'>{audio.audioName}</span>
+                          <Button
+                            variant='ghost'
+                            size='sm'
+                            className='ml-auto h-6 gap-1 text-xs'
+                            onClick={() => void playAudio(audio, 'result')}
+                          >
+                            <Play aria-hidden='true' className='size-3' />
+                            试听
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 执行结果音频字段（algorithm_results 的 audio_file 项，V9.7.10 视为结果字段）：
+                  按当前 Tab 过滤；轮次只在 chip 上出现一次，label 用原始参数名（不含 @round/@overall） */}
+              {visibleResultAudioFields.length > 0 && (
+                <div className='mt-3 space-y-1'>
+                  <p className='text-muted-foreground text-xs'>执行结果音频</p>
+                  {visibleResultAudioFields.map((field, index) => (
                     <div
-                      key={`${audio.audioName}-${index}`}
+                      key={`${field.paramCode}-${index}`}
                       className='flex items-center gap-2 rounded-lg border px-3 py-2 text-sm'
                     >
-                      <span className='font-mono text-xs'>{audio.audioName}</span>
-                      {audio.round != null && (
+                      <span className='font-mono text-xs'>{field.label}</span>
+                      {field.round != null && (
                         <span className='bg-muted text-muted-foreground rounded px-1 text-[10px]'>
-                          第{audio.round}轮
+                          第{field.round}轮
                         </span>
                       )}
-                      {audio.deviceName && (
-                        <span className='text-muted-foreground text-xs'>{audio.deviceName}</span>
+                      {field.overall && (
+                        <span className='bg-muted text-muted-foreground rounded px-1 text-[10px]'>
+                          整体
+                        </span>
+                      )}
+                      {field.deviceName && (
+                        <span className='text-muted-foreground text-xs'>{field.deviceName}</span>
                       )}
                       <Button
                         variant='ghost'
                         size='sm'
                         className='ml-auto h-6 gap-1 text-xs'
-                        onClick={() => void playAudio(audio, 'result')}
+                        onClick={() =>
+                          void playAudio(
+                            { url: field.url, path: field.path, audioName: field.label },
+                            'result'
+                          )
+                        }
                       >
                         <Play aria-hidden='true' className='size-3' />
                         试听
