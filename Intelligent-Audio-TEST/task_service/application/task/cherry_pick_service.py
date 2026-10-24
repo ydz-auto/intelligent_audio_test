@@ -1217,6 +1217,10 @@ class CherryPickService:
         INT-1693：with_duration=False 时跳过音频收集与 audio gRPC（购物车只要分组/
         标签），此时 duration 恒 None，分组/标签口径与候选行完全一致。
 
+        INT-1693 返工：用例软删（deleted=true）与查不到同口径——一律不进 map，
+        调用方落缺省（tags / group_id / group_name = []/null/null），与用例管理页
+        已看不到的用例保持一致；候选侧结果本就由 TestResult.excluded 挡掉，不受影响。
+
         失败（如表异常 / gRPC 失败）返回空 dict，仅日志告警，不阻断候选查询。
         """
         ids = [str(c) for c in (case_ids or []) if c]
@@ -1230,7 +1234,9 @@ class CherryPickService:
         try:
             rows = (session.query(TestCase)
                     .options(joinedload(TestCase.group), joinedload(TestCase.tags))
-                    .filter(TestCase.id.in_(ids)).all())
+                    .filter(TestCase.id.in_(ids),
+                            TestCase.deleted == False)  # noqa: E712
+                    .all())
             # duration 同源 total_duration：批量收集引用音频，经 gRPC 一次性查时长
             audio_ids = set()
             if with_duration:
@@ -1250,12 +1256,15 @@ class CherryPickService:
             for tc in rows:
                 config = tc.config or {}
                 duration = 0.0
-                for audio_item in common.collect_audios(config):
-                    audio_id = audio_item.get('audio_id')
-                    if audio_id:
-                        audio = audio_map.get(audio_id)
-                        if audio and audio.get('duration'):
-                            duration += float(audio.get('duration'))
+                # INT-1693 返工：with_duration=False 不做音频收集（原来仍逐用例跑
+                # collect_audios 只为算恒为 None 的 duration，纯浪费）
+                if with_duration:
+                    for audio_item in common.collect_audios(config):
+                        audio_id = audio_item.get('audio_id')
+                        if audio_id:
+                            audio = audio_map.get(audio_id)
+                            if audio and audio.get('duration'):
+                                duration += float(audio.get('duration'))
                 out[str(tc.id)] = {
                     'tags': list(dict.fromkeys(t.name for t in tc.tags)),
                     'group_id': tc.group_id,

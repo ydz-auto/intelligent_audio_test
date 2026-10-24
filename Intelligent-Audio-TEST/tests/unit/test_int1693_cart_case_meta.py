@@ -201,6 +201,67 @@ def test_cart_case_missing_falls_back_to_defaults(db):
     assert gone['group_name'] is None
 
 
+def test_cart_soft_deleted_case_falls_back_to_defaults(db):
+    """用例已软删（deleted=true）→ 落缺省 []/null/null，与用例管理页口径一致。
+
+    返工项（测试工程师 2026-10-24 P2）：原实现只按 id 批量取用例，软删用例仍
+    返回原分组/标签，购物车会按「用例管理页已看不到」的分组组织。
+    """
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+    from task_service.infrastructure.persistence.models import (
+        Task, TestCase, TestCaseGroup, Tag, TestResult,
+    )
+
+    session = get_db_session()
+    try:
+        session.add(TestCaseGroup(id='gDel', name='INT1693已删分组'))
+        session.flush()
+        tag = Tag(name='INT1693已删标签')
+        session.add(tag)
+        session.flush()
+        deleted_case = TestCase(id='INT1693-DEL', name='已软删用例',
+                                group_id='gDel', config={}, deleted=True)
+        deleted_case.tags = [tag]
+        session.add(deleted_case)
+        # 对照组：存活用例，同分组同标签，必须仍返回真实值
+        alive_case = TestCase(id='INT1693-ALIVE', name='存活用例',
+                              group_id='gDel', config={})
+        alive_case.tags = [tag]
+        session.add(alive_case)
+        task = Task(name='INT1693软删源任务', status='completed', total_cases=2,
+                    algorithm_type='asr')
+        session.add(task)
+        session.flush()
+        deleted_rid = TestResult(task_id=task.id, test_case_id='INT1693-DEL',
+                                 device_id=11, algorithm_type='asr',
+                                 execution_status='completed',
+                                 algorithm_result={'a': 1})
+        alive_rid = TestResult(task_id=task.id, test_case_id='INT1693-ALIVE',
+                               device_id=12, algorithm_type='asr',
+                               execution_status='completed',
+                               algorithm_result={'a': 2})
+        session.add_all([deleted_rid, alive_rid])
+        session.commit()
+        deleted_result_id, alive_result_id = deleted_rid.id, alive_rid.id
+    finally:
+        remove_db_session()
+
+    set_current_user_id(1698)
+    assert cherry_pick_service.cart_add(
+        {'result_ids': [deleted_result_id, alive_result_id]})['success'] is True
+    rows = _cart_rows(cherry_pick_service.cart_get())
+
+    deleted = rows['INT1693-DEL']
+    assert deleted['tags'] == []
+    assert deleted['group_id'] is None
+    assert deleted['group_name'] is None
+
+    alive = rows['INT1693-ALIVE']
+    assert alive['tags'] == ['INT1693已删标签']
+    assert alive['group_id'] == 'gDel'
+    assert alive['group_name'] == 'INT1693已删分组'
+
+
 def test_cart_empty_structure_unchanged(db):
     """空购物车响应结构不变（分组/总数/失效集合语义不动）。"""
     from task_service.application.task.cherry_pick_service import cherry_pick_service
