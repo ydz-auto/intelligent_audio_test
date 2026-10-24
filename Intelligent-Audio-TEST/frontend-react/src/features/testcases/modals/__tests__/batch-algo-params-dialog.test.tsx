@@ -61,7 +61,13 @@ const setup = () => {
   })
   return render(
     <QueryClientProvider client={client}>
-      <BatchAlgoParamsDialog open onOpenChange={vi.fn()} count={2} ids={['tc-1', 'tc-2']} />
+      <BatchAlgoParamsDialog
+        open
+        onOpenChange={vi.fn()}
+        count={2}
+        ids={['tc-1', 'tc-2']}
+        roundCount={1}
+      />
     </QueryClientProvider>
   )
 }

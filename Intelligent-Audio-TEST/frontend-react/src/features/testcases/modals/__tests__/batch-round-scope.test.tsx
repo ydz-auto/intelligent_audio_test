@@ -159,10 +159,12 @@ describe('批量设置声压级：提交轮次收口（INT-1731）', () => {
   })
 })
 
-describe('四窗未拿到轮次信息时回落 1 轮（不是 4 轮）', () => {
-  it('播放设备窗默认 roundCount=1：指定轮次只有第 1 轮', async () => {
+describe('轮次范围按传入 roundCount 渲染（1 轮不是 4 轮）', () => {
+  it('播放设备窗 roundCount=1：指定轮次只有第 1 轮', async () => {
     const user = userEvent.setup()
-    renderWithProviders(<BatchDeviceDialog open onOpenChange={vi.fn()} count={1} ids={['tc-1']} />)
+    renderWithProviders(
+      <BatchDeviceDialog open onOpenChange={vi.fn()} count={1} ids={['tc-1']} roundCount={1} />
+    )
     await user.click(screen.getByText('指定轮次（统一设置）'))
     const grid = within(screen.getByTestId('batch-device-round-specific-rounds'))
     expect(grid.getByText('第1轮')).toBeInTheDocument()

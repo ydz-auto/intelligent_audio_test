@@ -52,7 +52,13 @@ const setup = () => {
   })
   return render(
     <QueryClientProvider client={client}>
-      <BatchDeviceDialog open onOpenChange={vi.fn()} count={2} ids={['tc-1', 'tc-2']} />
+      <BatchDeviceDialog
+        open
+        onOpenChange={vi.fn()}
+        count={2}
+        ids={['tc-1', 'tc-2']}
+        roundCount={1}
+      />
     </QueryClientProvider>
   )
 }
