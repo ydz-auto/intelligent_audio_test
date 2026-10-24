@@ -37,9 +37,26 @@ export function MultiSelectFilter({
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
 
+  /**
+   * 选项兜底（INT-1738 实测）：真实库聚合行存在缺名项（`all_metrics[].name` / 标签名为空），
+   * 直接 `toLowerCase()` 会整页 500（报告 395 复现）；同时去重，避免下拉重复 key。
+   */
+  const safeOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const option of options) {
+      if (typeof option !== 'string') continue
+      const value = option.trim()
+      if (!value || seen.has(value)) continue
+      seen.add(value)
+      out.push(option)
+    }
+    return out
+  }, [options])
+
   const filtered = useMemo(
-    () => options.filter((o) => o.toLowerCase().includes(query.trim().toLowerCase())),
-    [options, query]
+    () => safeOptions.filter((o) => o.toLowerCase().includes(query.trim().toLowerCase())),
+    [safeOptions, query]
   )
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize))
   // 关键词变化重置翻页（当前页可能越界）

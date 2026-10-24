@@ -610,13 +610,40 @@ function toReportCaseItem(raw: unknown): ReportCaseItem {
     name: str(rec.name ?? rec.case_name ?? '') ?? '',
     description: rec.description !== undefined ? str(rec.description) : undefined,
     category: str(rec.category ?? rec.test_case_type ?? undefined),
-    tags: Array.isArray(rec.tags) ? (rec.tags as unknown[]).map(String) : [],
+    // 标签实测为对象数组 [{id,name}]（report_service build_case_item）→ 域模型只用名称
+    tags: Array.isArray(rec.tags)
+      ? (rec.tags as unknown[])
+          .map((t) =>
+            typeof t === 'string' ? t : String((t as { name?: unknown; tag_name?: unknown })?.name ?? (t as { tag_name?: unknown })?.tag_name ?? '')
+          )
+          .filter((t) => t.length > 0)
+      : [],
     metrics: (rec.metrics ?? {}) as ReportCaseItem['metrics'],
     caseParams: toParamDict(rec.case_params ?? rec.caseParams),
     metricScore: (rec.metric_score ?? rec.metricScore) as ReportCaseItem['metricScore'],
     metricError: (rec.metric_error ?? rec.metricError) as ReportCaseItem['metricError'],
+    // 结果行实测为 snake_case（start_time / end_time / result_type）→ 域模型 camelCase（§1.3）
     results: Array.isArray(rec.results)
-      ? (rec.results as import('@/domain/models/report').ReportCaseResult[])
+      ? (rec.results as Record<string, unknown>[]).map((r) => ({
+          resource: String(r.resource ?? ''),
+          status: r.status !== undefined ? String(r.status) : undefined,
+          result_type:
+            r.result_type !== undefined && r.result_type !== null
+              ? String(r.result_type)
+              : undefined,
+          startTime:
+            r.startTime !== undefined
+              ? String(r.startTime)
+              : r.start_time !== undefined && r.start_time !== null
+                ? String(r.start_time)
+                : undefined,
+          endTime:
+            r.endTime !== undefined
+              ? String(r.endTime)
+              : r.end_time !== undefined && r.end_time !== null
+                ? String(r.end_time)
+                : undefined,
+        }))
       : [],
     audios: Array.isArray(rec.audios)
       ? (rec.audios as import('@/domain/models/report').ReportAudioItem[])

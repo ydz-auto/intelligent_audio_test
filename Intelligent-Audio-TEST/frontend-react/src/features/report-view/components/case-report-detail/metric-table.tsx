@@ -15,6 +15,7 @@ import type {
   ReportMetricConfig,
 } from '@/domain/models/report'
 import { extractCaseResourceMetrics } from '@/application/report-view/case-matrix'
+import type { CaseDisplaySettings } from '@/application/report-view/use-case-display-settings'
 import { cn } from '@/lib/utils'
 
 import {
@@ -56,6 +57,14 @@ export function formatMetricLabel(key: string): string {
   return key
 }
 
+/** 指标 key 是否保留（显示设置：隐藏的评估维度 / 轮次；无轮次标记的 key 恒保留） */
+function keepMetricKey(key: string, hiddenMetrics: string[], hiddenRounds: string[]): boolean {
+  const { base, roundTag } = parseMetricKey(key)
+  if (hiddenMetrics.includes(base)) return false
+  if (roundTag && hiddenRounds.includes(roundTag)) return false
+  return true
+}
+
 interface MetricTableProps {
   caseItem: ReportCaseItem
   report: ReportDetailData
@@ -63,6 +72,8 @@ interface MetricTableProps {
   activeRoundTab: string
   setActiveRoundTab: (tab: string) => void
   currentRoundMetricKeys: string[]
+  /** §3.5.10 显示设置（不传 = 全显）；裁评估维度 / 轮次 / 资源 */
+  display?: CaseDisplaySettings
 }
 
 export function MetricTable({
@@ -72,12 +83,20 @@ export function MetricTable({
   activeRoundTab,
   setActiveRoundTab,
   currentRoundMetricKeys,
+  display,
 }: MetricTableProps) {
   const allMetrics: ReportMetricConfig[] = report.summary.all_metrics
   const resourceMetrics = useMemo(() => extractCaseResourceMetrics(caseItem), [caseItem])
-  const resources = Object.keys(resourceMetrics)
-  const isComparison = resources.length > 1
   const headers = report.summary.resource_headers ?? []
+  const hiddenMetrics = display?.hiddenMetrics ?? []
+  const hiddenRounds = display?.hiddenRounds ?? []
+  const hiddenResources = display?.hiddenResources ?? []
+
+  const resources = useMemo(
+    () => Object.keys(resourceMetrics).filter((r) => !hiddenResources.includes(r)),
+    [resourceMetrics, hiddenResources]
+  )
+  const isComparison = resources.length > 1
 
   const allMetricKeys = useMemo(() => {
     const keys = new Set<string>()
@@ -86,6 +105,19 @@ export function MetricTable({
     }
     return [...keys]
   }, [resourceMetrics])
+
+  /** 显示设置裁剪：评估维度按基础维度名、轮次按 `overall` / `round:N`（无轮次标记的 key 恒显示） */
+  const visibleMetricKeys = useMemo(
+    () => allMetricKeys.filter((k) => keepMetricKey(k, hiddenMetrics, hiddenRounds)),
+    [allMetricKeys, hiddenMetrics, hiddenRounds]
+  )
+  /** 可见轮次 Tab（显示设置「轮次」全清 → 展示提示，不空表） */
+  const visibleRoundTabs = roundTabs.filter(
+    (t) => !t.roundTag || !hiddenRounds.includes(t.roundTag)
+  )
+  const allRoundsHidden =
+    roundTabs.length > 0 && visibleRoundTabs.length === 0 && hiddenRounds.length > 0
+  const allMetricsHidden = allMetricKeys.length > 0 && visibleMetricKeys.length === 0 && hiddenMetrics.length > 0
 
   const decimalPlaces = (metricName: string) => {
     const base = metricName.replace(/@round:\d+$|@overall$/i, '')
@@ -122,7 +154,9 @@ export function MetricTable({
 
   // 对比模式：当前轮次 key → 主/子维度层级分组行（照 V9.7.10 groupedMetricsForCurrentRound + currentRoundTableData）
   const dimensionRows = useMemo(() => {
-    const keys = isComparison ? currentRoundMetricKeys : allMetricKeys
+    const keys = (isComparison ? currentRoundMetricKeys : allMetricKeys).filter((k) =>
+      keepMetricKey(k, hiddenMetrics, hiddenRounds)
+    )
     type Group = {
       groupLabel: string
       mainItem: { metricKey: string; base: string } | null
@@ -188,13 +222,13 @@ export function MetricTable({
       }
     }
     return rows
-  }, [allMetricKeys, currentRoundMetricKeys, isComparison, allMetrics])
+  }, [allMetricKeys, currentRoundMetricKeys, isComparison, allMetrics, hiddenMetrics, hiddenRounds])
 
   return (
     <div className='space-y-2'>
-      {isComparison && roundTabs.length > 1 && (
+      {isComparison && visibleRoundTabs.length > 1 && (
         <div className='flex flex-wrap gap-1' role='tablist' aria-label='轮次切换'>
-          {roundTabs.map((tab) => (
+          {visibleRoundTabs.map((tab) => (
             <button
               key={tab.key}
               type='button'
@@ -246,8 +280,8 @@ export function MetricTable({
                     const unit = metricUnit(row.metricKey)
                     return (
                       <td key={r} className='px-3 py-2 font-mono text-xs tabular-nums'>
-                        {v === undefined ? '—' : v.toFixed(decimalPlaces(row.metricKey))}
-                        {unit && <span className='text-muted-foreground ms-0.5'>{unit}</span>}
+                        {typeof v === 'number' && Number.isFinite(v) ? v.toFixed(decimalPlaces(row.metricKey)) : '—'}
+                        {typeof v === 'number' && unit && <span className='text-muted-foreground ms-0.5'>{unit}</span>}
                       </td>
                     )
                   })}
@@ -256,7 +290,11 @@ export function MetricTable({
               {dimensionRows.length === 0 && (
                 <tr>
                   <td colSpan={resources.length + 1} className='text-muted-foreground p-4 text-center text-sm'>
-                    暂无指标数据
+                    {allMetricsHidden
+                      ? '未选择评估维度'
+                      : allRoundsHidden
+                        ? '未选择轮次'
+                        : '暂无指标数据'}
                   </td>
                 </tr>
               )}
@@ -275,9 +313,9 @@ export function MetricTable({
               </tr>
             </thead>
             <tbody>
-              {allMetricKeys.map((key) => {
+              {visibleMetricKeys.map((key) => {
                 const v = metricValue(key)
-                if (v === undefined) return null
+                if (typeof v !== 'number' || !Number.isFinite(v)) return null
                 const base = parseMetricKey(key).base
                 const score = getScore(key) ?? getScore(base)
                 const error = getError(key) ?? getError(base)
@@ -298,9 +336,15 @@ export function MetricTable({
                   </tr>
                 )
               })}
-              {allMetricKeys.length === 0 && (
+              {visibleMetricKeys.length === 0 && (
                 <tr>
-                  <td colSpan={4} className='text-muted-foreground p-4 text-center text-sm'>暂无指标数据</td>
+                  <td colSpan={4} className='text-muted-foreground p-4 text-center text-sm'>
+                    {allMetricsHidden
+                      ? '未选择评估维度'
+                      : allRoundsHidden
+                        ? '未选择轮次'
+                        : '暂无指标数据'}
+                  </td>
                 </tr>
               )}
             </tbody>
