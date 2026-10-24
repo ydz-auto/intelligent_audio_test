@@ -66,18 +66,6 @@ export function getEvaluationStatusMeta(status: string | null) {
   )
 }
 
-/** 算法类型 → 中文（mock 占位值，真实枚举随算法域接线对齐） */
-export const ALGORITHM_TYPE_LABELS: Record<string, string> = {
-  asr_streaming: '流式语音识别',
-  wakeword_detect: '唤醒词检测',
-  tts_eval: '语音合成评估',
-}
-
-export function getAlgorithmTypeLabel(type: string | null | undefined): string | null {
-  if (!type) return null
-  return ALGORITHM_TYPE_LABELS[type] ?? type
-}
-
 /** 筛选选项（§3.5 全量中文） */
 export const EXECUTION_STATUS_OPTIONS = [
   { value: 'pending', label: '待执行' },
