@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>18 合并后任务（挑选合并容器）呈现 · 新 Vue 设计图</title>
+<style>
+/* ==========================================================================
+ * UX设计-VUE · 合并后任务（容器）呈现 · 设计稿样式
+ * 颜色/圆角/阴影全部取自 frontend/src/assets/styles/theme-presets.css 与 theme.css 现值
+ * 浅色 = theme-presets.css :root；深色 = .dark
+ * ========================================================================== */
+:root{
+  --primary:#ff6a00; --primary-hover:#e65c00; --primary-foreground:#fff;
+  --secondary:#1976d2; --success:#52c41a; --warning:#ffa940; --destructive:#f5222d;
+  --success-light:rgba(82,196,26,.10); --warning-light:rgba(255,169,64,.10);
+  --destructive-light:rgba(245,34,45,.10); --secondary-light:#e3f2fd;
+  --info-light:rgba(25,118,210,.10);
+  --foreground:#333; --muted:#f5f5f5; --muted-foreground:#777; --text-light:#999;
+  --accent:rgba(255,106,0,.10); --border:#e5e7eb; --background:#fff; --card:#fff;
+  --radius-card:16px; --radius-control:8px; --radius-tag:4px; --radius-pill:9999px;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.08); --shadow-md:0 4px 12px rgba(0,0,0,.10);
+  --font-sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --page-bg:#f5f5f5;
+}
+.dark{
+  --primary:#ff8c3b; --primary-hover:#ffa05c; --primary-foreground:#1a1a1a;  --secondary:#6aa5e0; --success:#6fd45c; --warning:#ffc069; --destructive:#ff6b70;
+  --success-light:rgba(111,212,92,.14); --warning-light:rgba(255,192,105,.14);
+  --destructive-light:rgba(255,107,112,.14); --secondary-light:rgba(106,165,224,.16);
+  --info-light:rgba(106,165,224,.16);
+  --foreground:#f5f5f5; --muted:#3a3a3a; --muted-foreground:#a3a3a3; --text-light:#8a8a8a;
+  --accent:rgba(255,138,59,.18); --border:rgba(255,255,255,.12); --background:#2a2a2a; --card:#333;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.35); --shadow-md:0 4px 12px rgba(0,0,0,.45);
+  --page-bg:#202020;
+  color:var(--foreground);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--font-sans);background:var(--page-bg);color:var(--foreground);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.doc{max-width:1180px;margin:0 auto;padding:28px 24px 60px}
+.doc-head{border-bottom:1px solid var(--border);padding-bottom:14px;margin-bottom:22px}
+.doc-title{font-size:20px;font-weight:700;letter-spacing:.2px}
+.doc-sub{font-size:12px;color:var(--muted-foreground);margin-top:6px;line-height:1.7}
+.theme-label{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--muted-foreground);margin:26px 0 10px;letter-spacing:.4px}
+.theme-label::after{content:"";flex:1;height:1px;background:var(--border)}
+.surface{background:var(--page-bg);border:1px solid var(--border);border-radius:var(--radius-card);padding:22px;box-shadow:var(--shadow-sm)}
+.surface.dark-surface{background:var(--page-bg)}
+
+/* 卡片 */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-card);box-shadow:var(--shadow-sm);padding:18px 20px;margin-bottom:16px}
+.card-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.task-name{font-size:16px;font-weight:600}
+.sub-line{font-size:12px;color:var(--muted-foreground);margin-top:6px}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* 徽章 */
+.badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:var(--radius-pill);font-size:12px;font-weight:500;line-height:1;white-space:nowrap}
+.b-outline{border:1px solid var(--border);color:var(--muted-foreground);background:transparent}
+.b-muted{background:var(--muted);color:var(--muted-foreground)}
+.b-primary{background:var(--accent);color:var(--primary)}
+.b-secondary{background:var(--secondary-light);color:var(--secondary)}
+.b-success{background:var(--success-light);color:var(--success)}
+.b-warn{background:var(--warning-light);color:#b26a00}
+.b-danger{background:var(--destructive-light);color:var(--destructive)}
+.b-info{background:var(--info-light);color:var(--secondary)}
+.dark .b-warn{color:var(--warning)}
+.badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block}
+
+/* 统计 */
+.stats{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin-top:14px}
+.stat{min-width:92px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--background)}
+.stat .k{font-size:11px;color:var(--muted-foreground);letter-spacing:.2px}
+.stat .v{font-size:15px;font-weight:600;margin-top:2px}
+.stat.clickable{cursor:pointer}
+.stat.clickable:hover{border-color:var(--primary);background:var(--accent)}
+.grow{flex:1}
+
+/* 按钮 */
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:var(--radius-control);border:1px solid var(--border);background:var(--background);color:var(--foreground);font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--primary);color:var(--primary)}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:var(--primary-foreground)}
+.btn-primary:hover{background:var(--primary-hover);border-color:var(--primary-hover);color:var(--primary-foreground)}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--muted-foreground)}
+.btn-ghost:hover{color:var(--primary);background:var(--accent)}
+.btn-sm{height:26px;padding:0 10px;font-size:12px}
+
+/* 组成区 */
+.section-head{display:flex;align-items:center;gap:8px}
+.section-title{font-size:14px;font-weight:600}
+.section-hint{margin-left:auto;font-size:12px;color:var(--muted-foreground)}
+.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0 10px}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--radius-control);overflow:hidden;background:var(--background)}
+.seg span{padding:5px 11px;font-size:12px;color:var(--muted-foreground);cursor:pointer;border-right:1px solid var(--border)}
+.seg span:last-child{border-right:none}
+.seg span:hover{color:var(--foreground)}
+.seg span.on{background:var(--accent);color:var(--primary);font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-pill);font-size:12px;color:var(--muted-foreground);background:var(--background);cursor:pointer}
+.pill:hover{color:var(--foreground)}
+.alert{display:flex;gap:8px;align-items:flex-start;padding:9px 12px;border-radius:var(--radius-control);background:var(--warning-light);color:var(--foreground);font-size:12px;margin:6px 0 10px;border:1px solid transparent}
+.alert .ic{color:#b26a00}
+.dark .alert .ic{color:var(--warning)}
+
+/* 树 */
+.tree{border:1px solid var(--border);border-radius:var(--radius-control);padding:6px 4px;background:var(--background)}
+.node{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:var(--radius-control);cursor:default}
+.node:hover{background:var(--muted)}
+.node .name{font-size:14px}
+.node .name.strong{font-weight:600}
+.chev{width:14px;color:var(--muted-foreground);font-size:11px;text-align:center;flex:none}
+.ico{width:16px;height:16px;color:var(--muted-foreground);flex:none;display:inline-flex;align-items:center;justify-content:center}
+.ico svg{width:14px;height:14px}
+.count{margin-left:2px;font-size:11px;font-weight:500;color:var(--muted-foreground);background:var(--muted);border-radius:var(--radius-pill);padding:1px 7px;font-family:var(--font-mono)}
+.count.neg{color:var(--destructive);background:var(--destructive-light)}
+.hint{font-size:12px;color:var(--muted-foreground)}
+.case-card{margin:4px 8px 4px 40px;border:1px solid var(--border);border-radius:var(--radius-control);padding:8px 12px;background:var(--card);box-shadow:var(--shadow-sm)}
+.case-card .row1{display:flex;align-items:flex-start;gap:8px}
+.case-name{font-size:13px;font-weight:500;line-height:1.5;flex:1}
+.case-meta{display:flex;align-items:center;gap:5px;margin-top:5px;flex-wrap:wrap}
+.case-id{font-family:var(--font-mono);font-size:10px;color:var(--muted-foreground);background:var(--muted);border-radius:var(--radius-tag);padding:1px 5px}
+.leaf{display:flex;align-items:center;gap:8px;min-height:30px;padding:3px 8px 3px 60px;border-radius:var(--radius-control);font-size:12px}
+.leaf:hover{background:var(--muted)}
+.leaf .id{font-family:var(--font-mono);color:var(--foreground)}
+.leaf .trace{margin-left:auto;color:var(--secondary);font-size:12px;cursor:pointer;white-space:nowrap}
+.leaf .trace:hover{text-decoration:underline}
+.leaf.missing{opacity:.72;text-decoration:line-through}
+.leaf.missing .trace{text-decoration:none}
+.tip{display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--muted-foreground)}
+.indent1{padding-left:26px}.indent2{padding-left:42px}
+
+/* 折叠区 / 空态 */
+.collapse{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border:1px dashed var(--border);border-radius:var(--radius-control);font-size:13px;color:var(--muted-foreground);cursor:pointer;margin-top:12px}
+.collapse:hover{color:var(--foreground);border-color:var(--muted-foreground)}
+.empty{border:1px dashed var(--border);border-radius:var(--radius-control);padding:22px;text-align:center;color:var(--muted-foreground)}
+.empty .t{font-size:13px;font-weight:600;color:var(--foreground)}
+.empty .d{font-size:12px;margin-top:4px}
+.empty .btn{margin-top:10px}
+
+/* 列表行（页签） */
+.list-row{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-card);box-shadow:var(--shadow-sm);padding:14px 16px}
+.list-row .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.list-row .meta{display:flex;align-items:center;gap:14px;margin-top:8px;font-size:12px;color:var(--muted-foreground);flex-wrap:wrap}
+.list-row .meta i{font-style:normal;color:var(--text-light)}
+.expand-bar{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--muted-foreground);cursor:pointer;user-select:none}
+.expand-bar:hover{color:var(--primary)}
+.expand-body{margin-top:10px;border:1px solid var(--border);border-radius:var(--radius-control);padding:10px;background:var(--background);max-height:420px;overflow:auto}
+
+/* 注释 */
+.legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 24px;font-size:12px;color:var(--muted-foreground);margin-top:10px}
+.legend b{color:var(--foreground);font-weight:600}
+.panel-note{font-size:12px;color:var(--muted-foreground);margin:8px 0 12px}
+.divider{height:1px;background:var(--border);margin:14px 0}
+.hl{box-shadow:0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent);border-radius:var(--radius-card)}
+</style>
+</head>
+<body>
+<div class="doc">
+  <div class="doc-head">
+    <div class="doc-title">18 · 合并后任务（挑选合并容器）呈现 · 新 Vue 设计图</div>
+    <div class="doc-sub">
+      规范：<code>doc/UX设计规范-VUE/18_挑选合并_合并后任务呈现.md</code>（INT-1718，同步 React §5.5 / INT-1699）　·
+      数据：主库 <code>intelligent_audio_test</code> 真实取值——容器 <b>580</b>（2 个来源任务 / 5 条结果 / 用例 5 个 / 失败 3 个 / 设备 pura90小艺）与单来源容器 <b>503</b>（1 源 1 结果）。两容器已软删，取值为软删前的真实关系行与源结果行。<br>
+      视觉：原 Vue 语义令牌（<code>theme-presets.css</code> / <code>theme.css</code>），圆角 16px 卡片 / 8px 控件 / 胶囊徽章；字体 Inter。
+    </div>
+  </div>
+
+  <!-- ================= 浅色 ================= -->
+  <div id="light-section">
+  <div class="theme-label">浅色（:root）</div>
+  <div class="surface">
+
+    <!-- 落点②：容器详情 -->
+    <div class="card">
+      <div class="card-head">
+        <span class="task-name">小艺拒识挑选合并_2026/10/24 09:12:31</span>
+        <span class="badge b-outline">结果挑选</span>
+        <span class="badge b-warn"><span class="dot"></span>部分失败 3/5</span>
+      </div>
+      <div class="sub-line">描述：挑选合并自 2 个来源任务　·　创建时间 <span class="mono">2026-10-24 09:12</span></div>
+      <div class="stats">
+        <div class="stat clickable"><div class="k">来源任务</div><div class="v">2 个 ▾</div></div>
+        <div class="stat"><div class="k">结果</div><div class="v">5 条</div></div>
+        <div class="stat"><div class="k">用例</div><div class="v">5 个</div></div>
+        <div class="stat"><div class="k">设备</div><div class="v">1 台</div></div>
+        <div class="stat"><div class="k">评估状态</div><div class="v" style="font-size:13px">已完成</div></div>
+        <span class="grow"></span>
+        <button class="btn">生成 AI 报告</button>
+        <button class="btn btn-primary">复用本次结果重新挑选</button>
+        <button class="btn btn-ghost">开始挑选</button>
+      </div>
+    </div>
+
+    <!-- 组成区 -->
+    <div class="card hl">
+      <div class="section-head">
+        <span class="section-title">组成</span>
+        <span class="badge b-muted">只读</span>
+        <span class="section-hint">来源 2 个任务 · 结果 5 条</span>
+      </div>
+
+      <div class="toolbar">
+        <div class="seg"><span class="on">任务视图</span><span>用例视图</span><span>设备视图</span><span>结果类型视图</span></div>
+        <div class="seg"><span class="on">分组视图</span><span>标签视图</span></div>
+        <div class="seg"><span class="on">平铺</span><span>交叉</span></div>
+        <span class="grow"></span>
+        <span class="pill">执行状态：全部 ▾</span>
+        <span class="pill">评估状态：全部 ▾</span>
+        <span class="pill">全部收起</span>
+      </div>
+
+      <div class="alert"><span class="ic">⚠</span><div>本容器由 2 个来源任务挑选合并生成，无执行过程；结果状态为挑选时的快照，报告需手动生成。</div></div>
+
+      <div class="tree">
+        <!-- 任务 419 -->
+        <div class="node"><span class="chev">▾</span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="3" width="12" height="10" rx="2" opacity=".35"/><rect x="4" y="5" width="8" height="1.6" rx=".8"/><rect x="4" y="8" width="5" height="1.6" rx=".8"/></svg></span><span class="name strong">小艺拒识E2E测试任务_2026/10/13 17:32:59</span><span class="badge b-success">已完成</span><span class="count">3 条</span><span class="grow"></span><span class="hint mono">来源任务 #419</span></div>
+        <div class="node indent1"><span class="chev">▾</span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h5l1.4 2H14v8H2z" opacity=".55"/></svg></span><span class="name">分组：拒识</span><span class="count">3 个用例</span></div>
+
+        <div class="case-card">
+          <div class="row1">
+            <div class="case-name">测试用例_JS161_多轮拒识-用户Backchannel拒识_Backchannel-嗯嗯_法律事务_女_退租纠纷附和拒识_silence_1目标用户.wav</div>
+            <span class="count">1 条</span>
+          </div>
+          <div class="case-meta">
+            <span class="case-id">77ca28bc</span>
+            <span class="badge b-secondary">voice_llm</span>
+            <span class="badge b-outline">拒识</span>
+          </div>
+        </div>
+        <div class="node indent2"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="2" width="8" height="12" rx="2" opacity=".55"/><rect x="6.5" y="11.5" width="3" height="1" rx=".5"/></svg></span><span class="name">pura90小艺</span><span class="count">1 条</span></div>
+        <div class="node indent2" style="padding-left:58px"><span class="chev">▾</span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 3.5v5L8 14 2 10.5v-5z" opacity=".5"/></svg></span><span class="name mono" style="font-size:12px">结果类型待补充</span><span class="count">1 条</span></div>
+        <div class="leaf"><span class="ico">•</span><span class="id">源结果 #5714</span><span class="badge b-success">已完成</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-10-14 09:27</span><span class="trace">溯源 ↗</span></div>
+
+        <div class="case-card">
+          <div class="row1">
+            <div class="case-name">测试用例_JS062_静默状态一次拒识-目标人非交互意图拒识-对他人讲话上下文判断_对他人讲话_社交通信_女_骚扰拦截拒识_silence_1目标用户.wav</div>
+            <span class="count">1 条</span>
+          </div>
+          <div class="case-meta">
+            <span class="case-id">0dc13869</span>
+            <span class="badge b-secondary">voice_llm</span>
+            <span class="badge b-outline">拒识</span>
+            <span class="tip">ⓘ 用例状态继承自来源任务；结果状态以叶行为准</span>
+          </div>
+        </div>
+        <div class="node indent2"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="2" width="8" height="12" rx="2" opacity=".55"/><rect x="6.5" y="11.5" width="3" height="1" rx=".5"/></svg></span><span class="name">pura90小艺</span><span class="count">1 条</span></div>
+        <div class="node indent2" style="padding-left:58px"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 3.5v5L8 14 2 10.5v-5z" opacity=".5"/></svg></span><span class="name mono" style="font-size:12px">结果类型待补充</span><span class="count">1 条</span></div>
+        <div class="leaf"><span class="ico">•</span><span class="id">源结果 #5715</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-10-14 09:29</span><span class="trace">溯源 ↗</span></div>
+
+        <div class="case-card">
+          <div class="row1">
+            <div class="case-name">测试用例_JS177_多轮拒识-用户Backchannel拒识_Backchannel-行_出行交通_女_通勤路线附和拒识_response_2目标用户.wav</div>
+            <span class="count">1 条</span>
+          </div>
+          <div class="case-meta">
+            <span class="case-id">14a13fa8</span>
+            <span class="badge b-secondary">voice_llm</span>
+            <span class="badge b-outline">拒识</span>
+          </div>
+        </div>
+        <div class="node indent2"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="2" width="8" height="12" rx="2" opacity=".55"/><rect x="6.5" y="11.5" width="3" height="1" rx=".5"/></svg></span><span class="name">pura90小艺</span><span class="count">1 条</span></div>
+        <div class="node indent2" style="padding-left:58px"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 3.5v5L8 14 2 10.5v-5z" opacity=".5"/></svg></span><span class="name mono" style="font-size:12px">结果类型待补充</span><span class="count">1 条</span></div>
+        <div class="leaf"><span class="ico">•</span><span class="id">源结果 #5716</span><span class="badge b-success">已完成</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-10-14 09:32</span><span class="trace">溯源 ↗</span></div>
+
+        <!-- 任务 384 -->
+        <div class="node" style="margin-top:8px"><span class="chev">▾</span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="3" width="12" height="10" rx="2" opacity=".35"/><rect x="4" y="5" width="8" height="1.6" rx=".8"/><rect x="4" y="8" width="5" height="1.6" rx=".8"/></svg></span><span class="name strong">E2E测试任务_2026/9/21 14:09:29</span><span class="badge b-danger">已失败</span><span class="count neg">2 条 · 失败 2</span><span class="grow"></span><span class="hint mono">来源任务 #384</span></div>
+        <div class="node indent1"><span class="chev">▾</span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h5l1.4 2H14v8H2z" opacity=".55"/></svg></span><span class="name">未分组</span><span class="count">2 个用例</span></div>
+
+        <div class="case-card">
+          <div class="row1"><div class="case-name" style="color:var(--muted-foreground)">未知用例</div><span class="count">1 条</span></div>
+          <div class="case-meta"><span class="case-id">a03cc920</span><span class="tip">源用例已删除，仅保留 id</span></div>
+        </div>
+        <div class="node indent2"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="2" width="8" height="12" rx="2" opacity=".55"/><rect x="6.5" y="11.5" width="3" height="1" rx=".5"/></svg></span><span class="name">pura90小艺</span><span class="count">1 条</span></div>
+        <div class="node indent2" style="padding-left:58px"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 3.5v5L8 14 2 10.5v-5z" opacity=".5"/></svg></span><span class="name mono" style="font-size:12px">结果类型待补充</span><span class="count">1 条</span></div>
+        <div class="leaf"><span class="ico">•</span><span class="id">源结果 #3792</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-09-21 20:18</span><span class="trace">溯源 ↗</span></div>
+
+        <div class="case-card">
+          <div class="row1"><div class="case-name" style="color:var(--muted-foreground)">未知用例</div><span class="count">1 条</span></div>
+          <div class="case-meta"><span class="case-id">88a1d74d</span><span class="tip">源用例已删除，仅保留 id</span></div>
+        </div>
+        <div class="node indent2"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="2" width="8" height="12" rx="2" opacity=".55"/><rect x="6.5" y="11.5" width="3" height="1" rx=".5"/></svg></span><span class="name">pura90小艺</span><span class="count">1 条</span></div>
+        <div class="node indent2" style="padding-left:58px"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 3.5v5L8 14 2 10.5v-5z" opacity=".5"/></svg></span><span class="name mono" style="font-size:12px">结果类型待补充</span><span class="count">1 条</span></div>
+        <div class="leaf"><span class="ico">•</span><span class="id">源结果 #3796</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-09-21 20:31</span><span class="trace">溯源 ↗</span></div>
+      </div>
+
+      <div class="collapse"><span>▸</span>用例清单（5）<span class="grow"></span><span class="hint">原「关联用例」页签降级为折叠区</span></div>
+    </div>
+
+    <!-- 报告 -->
+    <div class="card">
+      <div class="section-head"><span class="section-title">报告</span></div>
+      <div class="empty" style="margin-top:10px">
+        <div class="t">该合并任务暂无报告</div>
+        <div class="d">合并任务无执行过程，报告需手动生成</div>
+        <button class="btn btn-sm">生成报告</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 落点③ -->
+  <div class="theme-label">落点③：挑选合并页签 · 行展开（同一套组成区，420px 内滚动）</div>
+  <div class="surface">
+    <div class="list-row">
+      <div class="top">
+        <span class="task-name" style="font-size:15px">小艺拒识挑选合并_2026/10/24 09:12:31</span>
+        <span class="badge b-outline">结果挑选</span>
+        <span class="badge b-warn"><span class="dot"></span>部分失败</span>
+        <span class="badge b-secondary">评估已完成</span>
+        <span class="grow"></span>
+        <button class="btn btn-sm">查看详情</button>
+        <button class="btn btn-sm">生成报告</button>
+      </div>
+      <div class="meta">
+        <span><i>来源</i> 2 个任务 · 结果 5 条</span>
+        <span><i>用例</i> 5 个</span>
+        <span><i>设备</i> pura90小艺</span>
+        <span><i>创建</i> <span class="mono">2026-10-24 09:12</span></span>
+      </div>
+      <div class="expand-bar"><span>▾</span> 收起溯源</div>
+      <div class="expand-body">
+        <div class="node"><span class="chev">▾</span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="3" width="12" height="10" rx="2" opacity=".35"/><rect x="4" y="5" width="8" height="1.6" rx=".8"/><rect x="4" y="8" width="5" height="1.6" rx=".8"/></svg></span><span class="name strong">小艺拒识E2E测试任务_2026/10/13 17:32:59</span><span class="count">3 条</span><span class="grow"></span><span class="hint mono">来源任务 #419</span></div>
+        <div class="leaf"><span class="ico">•</span><span class="id">源结果 #5714</span><span class="badge b-success">已完成</span><span class="badge b-secondary">已评估</span><span class="trace">溯源 ↗</span></div>
+        <div class="leaf"><span class="ico">•</span><span class="id">源结果 #5715</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="trace">溯源 ↗</span></div>
+        <div class="leaf"><span class="ico">•</span><span class="id">源结果 #5716</span><span class="badge b-success">已完成</span><span class="badge b-secondary">已评估</span><span class="trace">溯源 ↗</span></div>
+        <div class="node" style="margin-top:6px"><span class="chev">▾</span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="3" width="12" height="10" rx="2" opacity=".35"/><rect x="4" y="5" width="8" height="1.6" rx=".8"/><rect x="4" y="8" width="5" height="1.6" rx=".8"/></svg></span><span class="name strong">E2E测试任务_2026/9/21 14:09:29</span><span class="count neg">2 条 · 失败 2</span><span class="grow"></span><span class="hint mono">来源任务 #384</span></div>
+        <div class="leaf"><span class="ico">•</span><span class="id">源结果 #3792</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="trace">溯源 ↗</span></div>
+        <div class="leaf"><span class="ico">•</span><span class="id">源结果 #3796</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="trace">溯源 ↗</span></div>
+      </div>
+    </div>
+    <div class="panel-note">说明：展开区与落点②是<strong>同一组件</strong>（图中为节省纵向高度，第二层「分组 / 用例卡 / 设备 / result_type」按任务折叠展示，实际展开态与落点②一致）；首次展开按需补 1 次 <code>GET /tasks/{id}</code> 取用例 / 设备名，按 <code>taskId</code> 缓存；整任务合并（<code>whole</code>）行仍显示源任务列表。</div>
+
+    <!-- 单来源容器 -->
+    <div class="theme-label" style="margin-top:6px">单来源容器 · 真实历史样本 503（1 源 1 结果 → 「全部失败」；任务层恒渲染）</div>
+    <div class="list-row">
+      <div class="top">
+        <span class="task-name" style="font-size:15px">接线测试_INT1286_1792673624</span>
+        <span class="badge b-outline">结果挑选</span>
+        <span class="badge b-danger">已失败</span>
+        <span class="grow"></span>
+        <span class="hint mono">来源 1 个任务 · 结果 1 条</span>
+      </div>
+      <div class="expand-body" style="margin-top:12px">
+        <div class="node"><span class="chev">▾</span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="3" width="12" height="10" rx="2" opacity=".35"/><rect x="4" y="5" width="8" height="1.6" rx=".8"/><rect x="4" y="8" width="5" height="1.6" rx=".8"/></svg></span><span class="name strong">E2E测试任务_2026/9/22 20:32:29</span><span class="badge b-danger">已失败</span><span class="count neg">1 条 · 失败 1</span><span class="grow"></span><span class="hint mono">来源任务 #401</span></div>
+        <div class="node indent1"><span class="chev">▾</span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h5l1.4 2H14v8H2z" opacity=".55"/></svg></span><span class="name">未分组</span><span class="count">1 个用例</span></div>
+        <div class="case-card"><div class="row1"><div class="case-name" style="color:var(--muted-foreground)">未知用例</div><span class="count">1 条</span></div><div class="case-meta"><span class="case-id">1e98e5e6</span><span class="tip">源用例已删除，仅保留 id</span></div></div>
+        <div class="node indent2"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="2" width="8" height="12" rx="2" opacity=".55"/><rect x="6.5" y="11.5" width="3" height="1" rx=".5"/></svg></span><span class="name">pura90小艺</span><span class="count">1 条</span></div>
+        <div class="leaf" style="padding-left:58px"><span class="ico">•</span><span class="id">源结果 #3837</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="trace">溯源 ↗</span></div>
+      </div>
+      <div class="panel-note" style="margin-bottom:0">信息头在容器详情显示「全部失败」（<code>failed_cases = case_count</code>）；列表执行状态列显示「已失败」；均不显示「部分失败」。</div>
+    </div>
+  </div>
+
+  </div>
+
+  <!-- ================= 深色 ================= -->
+  <div class="dark" id="dark-section" style="margin-top:8px">
+    <div class="theme-label">深色（.dark）</div>
+    <div class="surface">
+      <div class="card">
+        <div class="card-head">
+          <span class="task-name">小艺拒识挑选合并_2026/10/24 09:12:31</span>
+          <span class="badge b-outline">结果挑选</span>
+          <span class="badge b-warn"><span class="dot"></span>部分失败 3/5</span>
+        </div>
+        <div class="sub-line">描述：挑选合并自 2 个来源任务　·　创建时间 <span class="mono">2026-10-24 09:12</span></div>
+        <div class="stats">
+          <div class="stat clickable"><div class="k">来源任务</div><div class="v">2 个 ▾</div></div>
+          <div class="stat"><div class="k">结果</div><div class="v">5 条</div></div>
+          <div class="stat"><div class="k">用例</div><div class="v">5 个</div></div>
+          <div class="stat"><div class="k">设备</div><div class="v">1 台</div></div>
+          <div class="stat"><div class="k">评估状态</div><div class="v" style="font-size:13px">已完成</div></div>
+          <span class="grow"></span>
+          <button class="btn">生成 AI 报告</button>
+          <button class="btn btn-primary">复用本次结果重新挑选</button>
+          <button class="btn btn-ghost">开始挑选</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-head">
+          <span class="section-title">组成</span>
+          <span class="badge b-muted">只读</span>
+          <span class="section-hint">来源 2 个任务 · 结果 5 条</span>
+        </div>
+        <div class="toolbar">
+          <div class="seg"><span class="on">任务视图</span><span>用例视图</span><span>设备视图</span><span>结果类型视图</span></div>
+          <div class="seg"><span class="on">分组视图</span><span>标签视图</span></div>
+          <div class="seg"><span class="on">平铺</span><span>交叉</span></div>
+          <span class="grow"></span>
+          <span class="pill">执行状态：全部 ▾</span>
+          <span class="pill">评估状态：全部 ▾</span>
+          <span class="pill">全部收起</span>
+        </div>
+        <div class="alert"><span class="ic">⚠</span><div>本容器由 2 个来源任务挑选合并生成，无执行过程；结果状态为挑选时的快照，报告需手动生成。</div></div>
+        <div class="tree">
+          <div class="node"><span class="chev">▾</span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="3" width="12" height="10" rx="2" opacity=".35"/><rect x="4" y="5" width="8" height="1.6" rx=".8"/><rect x="4" y="8" width="5" height="1.6" rx=".8"/></svg></span><span class="name strong">小艺拒识E2E测试任务_2026/10/13 17:32:59</span><span class="badge b-success">已完成</span><span class="count">3 条</span><span class="grow"></span><span class="hint mono">来源任务 #419</span></div>
+          <div class="node indent1"><span class="chev">▾</span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h5l1.4 2H14v8H2z" opacity=".55"/></svg></span><span class="name">分组：拒识</span><span class="count">3 个用例</span></div>
+          <div class="case-card">
+            <div class="row1"><div class="case-name">测试用例_JS161_多轮拒识-用户Backchannel拒识_Backchannel-嗯嗯_法律事务_女_退租纠纷附和拒识_silence_1目标用户.wav</div><span class="count">1 条</span></div>
+            <div class="case-meta"><span class="case-id">77ca28bc</span><span class="badge b-secondary">voice_llm</span><span class="badge b-outline">拒识</span></div>
+          </div>
+          <div class="node indent2"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="2" width="8" height="12" rx="2" opacity=".55"/><rect x="6.5" y="11.5" width="3" height="1" rx=".5"/></svg></span><span class="name">pura90小艺</span><span class="count">1 条</span></div>
+          <div class="node indent2" style="padding-left:58px"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 3.5v5L8 14 2 10.5v-5z" opacity=".5"/></svg></span><span class="name mono" style="font-size:12px">结果类型待补充</span><span class="count">1 条</span></div>
+          <div class="leaf"><span class="ico">•</span><span class="id">源结果 #5714</span><span class="badge b-success">已完成</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-10-14 09:27</span><span class="trace">溯源 ↗</span></div>
+
+          <div class="case-card">
+            <div class="row1"><div class="case-name">测试用例_JS062_静默状态一次拒识-目标人非交互意图拒识-对他人讲话上下文判断_对他人讲话_社交通信_女_骚扰拦截拒识_silence_1目标用户.wav</div><span class="count">1 条</span></div>
+            <div class="case-meta"><span class="case-id">0dc13869</span><span class="badge b-secondary">voice_llm</span><span class="badge b-outline">拒识</span><span class="tip">ⓘ 用例状态继承自来源任务；结果状态以叶行为准</span></div>
+          </div>
+          <div class="node indent2"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="2" width="8" height="12" rx="2" opacity=".55"/><rect x="6.5" y="11.5" width="3" height="1" rx=".5"/></svg></span><span class="name">pura90小艺</span><span class="count">1 条</span></div>
+          <div class="node indent2" style="padding-left:58px"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 3.5v5L8 14 2 10.5v-5z" opacity=".5"/></svg></span><span class="name mono" style="font-size:12px">结果类型待补充</span><span class="count">1 条</span></div>
+          <div class="leaf"><span class="ico">•</span><span class="id">源结果 #5715</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-10-14 09:29</span><span class="trace">溯源 ↗</span></div>
+
+          <div class="case-card">
+            <div class="row1"><div class="case-name">测试用例_JS177_多轮拒识-用户Backchannel拒识_Backchannel-行_出行交通_女_通勤路线附和拒识_response_2目标用户.wav</div><span class="count">1 条</span></div>
+            <div class="case-meta"><span class="case-id">14a13fa8</span><span class="badge b-secondary">voice_llm</span><span class="badge b-outline">拒识</span></div>
+          </div>
+          <div class="node indent2"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="2" width="8" height="12" rx="2" opacity=".55"/><rect x="6.5" y="11.5" width="3" height="1" rx=".5"/></svg></span><span class="name">pura90小艺</span><span class="count">1 条</span></div>
+          <div class="node indent2" style="padding-left:58px"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 3.5v5L8 14 2 10.5v-5z" opacity=".5"/></svg></span><span class="name mono" style="font-size:12px">结果类型待补充</span><span class="count">1 条</span></div>
+          <div class="leaf"><span class="ico">•</span><span class="id">源结果 #5716</span><span class="badge b-success">已完成</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-10-14 09:32</span><span class="trace">溯源 ↗</span></div>
+          <div class="node" style="margin-top:8px"><span class="chev">▾</span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="3" width="12" height="10" rx="2" opacity=".35"/><rect x="4" y="5" width="8" height="1.6" rx=".8"/><rect x="4" y="8" width="5" height="1.6" rx=".8"/></svg></span><span class="name strong">E2E测试任务_2026/9/21 14:09:29</span><span class="badge b-danger">已失败</span><span class="count neg">2 条 · 失败 2</span><span class="grow"></span><span class="hint mono">来源任务 #384</span></div>
+          <div class="node indent1"><span class="chev">▾</span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h5l1.4 2H14v8H2z" opacity=".55"/></svg></span><span class="name">未分组</span><span class="count">2 个用例</span></div>
+          <div class="case-card"><div class="row1"><div class="case-name" style="color:var(--muted-foreground)">未知用例</div><span class="count">1 条</span></div><div class="case-meta"><span class="case-id">a03cc920</span><span class="tip">源用例已删除，仅保留 id</span></div></div>
+          <div class="node indent2"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="2" width="8" height="12" rx="2" opacity=".55"/><rect x="6.5" y="11.5" width="3" height="1" rx=".5"/></svg></span><span class="name">pura90小艺</span><span class="count">1 条</span></div>
+          <div class="node indent2" style="padding-left:58px"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 3.5v5L8 14 2 10.5v-5z" opacity=".5"/></svg></span><span class="name mono" style="font-size:12px">结果类型待补充</span><span class="count">1 条</span></div>
+          <div class="leaf"><span class="ico">•</span><span class="id">源结果 #3792</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-09-21 20:18</span><span class="trace">溯源 ↗</span></div>
+          <div class="case-card"><div class="row1"><div class="case-name" style="color:var(--muted-foreground)">未知用例</div><span class="count">1 条</span></div><div class="case-meta"><span class="case-id">88a1d74d</span><span class="tip">源用例已删除，仅保留 id</span></div></div>
+          <div class="node indent2"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="2" width="8" height="12" rx="2" opacity=".55"/><rect x="6.5" y="11.5" width="3" height="1" rx=".5"/></svg></span><span class="name">pura90小艺</span><span class="count">1 条</span></div>
+          <div class="node indent2" style="padding-left:58px"><span class="chev"></span><span class="ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 2l6 3.5v5L8 14 2 10.5v-5z" opacity=".5"/></svg></span><span class="name mono" style="font-size:12px">结果类型待补充</span><span class="count">1 条</span></div>
+          <div class="leaf"><span class="ico">•</span><span class="id">源结果 #3796</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-09-21 20:31</span><span class="trace">溯源 ↗</span></div>
+        </div>
+        <div class="collapse"><span>▸</span>用例清单（5）<span class="grow"></span><span class="hint">原「关联用例」页签降级为折叠区</span></div>
+      </div>
+
+      <div class="card">
+        <div class="section-head"><span class="section-title">报告</span></div>
+        <div class="empty" style="margin-top:10px">
+          <div class="t">该合并任务暂无报告</div>
+          <div class="d">合并任务无执行过程，报告需手动生成</div>
+          <button class="btn btn-sm">生成报告</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="theme-label">设计标注（与规范章节对应）</div>
+  <div class="legend">
+    <div><b>信息头</b>：合并方式徽章 / 来源·结果·用例 StatBadge / 部分失败 3/5（§2.2）</div>
+    <div><b>组成区</b>：四视图（任务视图默认）+ 组织控件 + 筛选工具行（§3.2）</div>
+    <div><b>树层级</b>：任务 → 分组 → 用例卡 → 设备 → result_type → 叶（§3.2 任务视图）</div>
+    <div><b>只读</b>：叶行无复选框、无「移除该组」（§4.4）</div>
+    <div><b>状态冲突</b>：#5715 叶失败 / 用例卡继承状态，卡右上 ⓘ（§5）</div>
+    <div><b>降级</b>：result_type 折叠「结果类型待补充」，叶状态取用例行（§4.6）</div>
+    <div><b>版面</b>：进度概览 / 实时日志不渲染；关联用例降级折叠区（§2.4）</div>
+    <div><b>报告</b>：空态引导手动生成（§7）</div>
+    <div><b>落点①</b>：组成区外描边高亮 1.2s（图中为静态示意）</div>
+    <div><b>圆角</b>：卡片 16px（--radius-card）/ 控件 8px（--radius-control）/ 徽章胶囊</div>
+    <div><b>颜色</b>：主色 #ff6a00（深 #ff8c3b）、失败 #f5222d、部分失败 #ffa940</div>
+  </div>
+</div>
+</body>
+</html>
