@@ -75,6 +75,9 @@ export interface CaseAudioListItemDto {
   duration?: number | null
   url?: string | null
   testType?: string | null
+  /** 所属轮次（1 起；camelCase 实测，snake_case 兜底） */
+  roundNumber?: number | null
+  round_number?: number | null
 }
 
 /** 用例执行详情（task_bp.py GET /tasks/{id}/cases/{cid}/detail 实测） */

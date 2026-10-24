@@ -134,28 +134,44 @@ export interface RealtimeFrame {
   timestamp: string
 }
 
-/** 用例执行结果（§5.2 设备×维度对比；preparedComparisonData 口径平移） */
+/** 用例执行结果（§5.2 设备×维度；preparedComparisonData 口径平移） */
 export interface CaseMetricPoint {
   dimension: string
-  /** 多轮时维度列带轮次后缀 @round:{n} / @overall；单轮为 undefined（列名不带后缀） */
+  /** 轮次（1 起）；整体评估（round_number null）为 undefined */
   round?: number
   value: string
 }
 
-/** 评估维度配置（detail metric_configs；维度列顺序权威源） */
+/** 评估维度配置（detail metric_configs；指标行顺序权威源） */
 export interface CaseMetricConfig {
   code: string
   name: string
 }
 
-/** 维度列（设备×维度表头；旧 Vue TestCaseDetailModal metricsMap 键口径） */
-export interface CaseMetricColumn {
-  /** 列键：`{dimension}`（单轮）/ `{dimension}@round:{n}` / `{dimension}@overall` */
-  key: string
-  /** 列头文案（多轮带 @round:{n} / @overall 后缀） */
-  label: string
+/** 指标行（行=指标、列=设备；V9.7.10 currentRoundTableData 同口径） */
+export interface CaseMetricRow {
+  /** 指标（评估维度）名，行头展示 */
   dimension: string
-  round?: number
+  /** 设备名 → 显示值（该设备本轮无此维度时缺省 → 渲染「—」） */
+  values: Record<string, string>
+}
+
+/**
+ * 轮次 Tab（V9.7.10 TestCaseReportDetail roundTabs / currentRoundTableData 同口径）：
+ * 有轮次标记 → 「第1轮…第N轮」+「整体」（整体有评估数据才出现）；
+ * 无任何轮次标记 → 单个「指标」Tab（不渲染 Tab 栏）。
+ * `@round:{n}` / `@overall` 只是数据侧内部键，不得作为列头展示（INT-1723 规范回写）。
+ */
+export interface CaseRoundTab {
+  /** `round:{n}` / `overall` / `all` */
+  key: string
+  /** 展示文案：第N轮 / 整体 / 指标 */
+  label: string
+  /** 轮次（1 起）；整体与单轮「指标」Tab 为 null */
+  round: number | null
+  kind: 'round' | 'overall' | 'all'
+  /** 本 Tab 的指标行（行=指标，列=设备；无值维度不出行） */
+  rows: CaseMetricRow[]
 }
 
 /** 结果音频（可试听）：url 为后端直出地址，path 为静态相对路径（播放前经 stream-by-path 换预签名 URL） */
@@ -165,6 +181,8 @@ export interface CaseAudioResult {
   deviceName: string | null
   /** 音频库 id（参考音频 audio_list 有；结果音频一般为 null） */
   audioId?: number | null
+  /** 所属轮次（1 起；无轮次信息为 null → 所有轮次 Tab 下都展示） */
+  round?: number | null
   url: string | null
   path: string | null
 }
@@ -207,12 +225,10 @@ export interface CaseExecutionDetail {
   score: number | null
   algorithmType: string | null
   algorithmResults: CaseAlgorithmResult[]
-  /** 评估维度配置（列顺序权威源；后端 metric_configs） */
+  /** 评估维度配置（指标行顺序权威源；后端 metric_configs） */
   metricConfigs: CaseMetricConfig[]
-  /** 维度列（多轮/整体已展开；旧 Vue metricsMap 同口径） */
-  metricColumns: CaseMetricColumn[]
-  /** 是否多轮（任一维度带 round_number）→ 列名带 @round:{n} / @overall 后缀 */
-  multiRound: boolean
+  /** 轮次 Tab（第1轮…第N轮 + 整体；无轮次标记时单个「指标」Tab） */
+  roundTabs: CaseRoundTab[]
   devices: CaseDeviceResult[]
   /** 结果音频（result_audios + algorithm_results 的 audio_file 项） */
   resultAudios: CaseAudioResult[]

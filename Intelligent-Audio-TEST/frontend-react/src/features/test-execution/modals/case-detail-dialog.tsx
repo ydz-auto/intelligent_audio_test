@@ -2,8 +2,9 @@
  * 用例详情弹窗（§5.2；interfaces/features/test-execution/modals；Dialog sm:max-w-4xl，
  * 内滚 contentHeight='min(72dvh,720px)'）。
  * 头：用例名 + 双状态徽章 + 耗时 + 评分徽章 + CaseIdBadge（点击复制）+ 设备名列表。
- * 分节①执行结果与指标——设备×维度对比表（多轮维度列带 @round:{n}/@overall 后缀）+
- * ASR/翻译参考文本块 + 结果音频列表（试听→INT-356 弹窗复用）；
+ * 分节①执行结果与指标——轮次 Tab（第1轮…第N轮 / 整体，单轮为单个「指标」）+ 指标×设备表
+ * （行=指标、列=设备，V9.7.10 currentRoundTableData 同口径）+ ASR/翻译参考文本块 +
+ * 结果音频/参考音频（按当前 Tab 轮次过滤；试听→INT-356 弹窗复用）；
  * 分节②执行日志——「加载更多日志」+ 等宽容器 + 分页 100 条/页。
  * 数据源 GET /tasks/{taskId}/cases/{caseId}/detail + /results + GET /logs?task_id&test_case_id。
  * 复核入口（INT-1055/INT-1066，10 §5.2 注记 3）：分节①区头右侧「人工复核」/「AI 复核」两钮
@@ -18,11 +19,7 @@ import { toast } from 'sonner'
 
 import type { CaseResultForReview } from '@/domain/models/review'
 import { executionStatusLabel, toAiReviewDimensionIds } from '@/domain/models/review'
-import type {
-  CaseAlgorithmResult,
-  CaseAudioResult,
-  CaseDeviceResult,
-} from '@/domain/models/testExecution'
+import type { CaseAlgorithmResult, CaseAudioResult } from '@/domain/models/testExecution'
 import { stream, streamByPath } from '@/infrastructure/api/audios-api'
 import { fetchCaseExecutionDetail, fetchCaseLogs } from '@/infrastructure/api/test-execution-api'
 import { fetchTaskDetail } from '@/infrastructure/api/tasks-list-api'
@@ -149,6 +146,7 @@ function ApiCaseResultSummary({
 
 export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDetailDialogProps) {
   const [page, setPage] = useState(1)
+  const [activeRoundTab, setActiveRoundTab] = useState(0)
   const [playingAudio, setPlayingAudio] = useState<AudioItemMeta | null>(null)
   const [manualReviewOpen, setManualReviewOpen] = useState(false)
   const [aiReviewOpen, setAiReviewOpen] = useState(false)
@@ -235,22 +233,25 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
     }
   }
 
-  /** 设备×维度取值表（列键与 metricColumns 同口径：单轮裸名 / @round:{n} / @overall） */
-  const metricValuesByDevice = (device: CaseDeviceResult, multiRound: boolean) => {
-    const map: Record<string, string> = {}
-    for (const metric of device.metrics) {
-      const key =
-        metric.round != null
-          ? `${metric.dimension}@round:${metric.round}`
-          : multiRound
-            ? `${metric.dimension}@overall`
-            : metric.dimension
-      map[key] = metric.value
-    }
-    return map
-  }
+  /** 当前轮次 Tab（切换用例后 Tab 数变少时钳制到末位，避免越界） */
+  const roundTabs = detail?.roundTabs ?? []
+  const currentTab =
+    roundTabs.length > 0
+      ? roundTabs[Math.min(activeRoundTab, roundTabs.length - 1)]
+      : null
 
-  /** 有真实执行数据才渲染设备×维度表；无结果用例退回结果摘要（空态不回归） */
+  /**
+   * 结果/参考音频按当前 Tab 轮次过滤（V9.7.10 currentRound*TextFields:835-880 同口径）：
+   * 「整体」Tab 与单轮「指标」Tab 展示全部；轮次 Tab 只留本轮与无轮次信息的音频。
+   */
+  const audiosForCurrentTab = (audios: CaseAudioResult[]) => {
+    if (!currentTab || currentTab.kind !== 'round') return audios
+    return audios.filter((audio) => audio.round == null || audio.round === currentTab.round)
+  }
+  const currentResultAudios = detail ? audiosForCurrentTab(detail.resultAudios) : []
+  const currentReferenceAudios = detail ? audiosForCurrentTab(detail.referenceAudios) : []
+
+  /** 有真实执行数据才渲染指标×设备表；无结果用例退回结果摘要（空态不回归） */
   const hasDeviceTable =
     (detail?.devices.length ?? 0) > 0 &&
     (caseResults.length > 0 || (detail?.devices ?? []).some((d) => d.metrics.length > 0))
@@ -361,58 +362,93 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                 )}
               </div>
               {hasDeviceTable ? (
-                <div className='overflow-x-auto rounded-lg border'>
-                  <table className='w-full text-left text-sm'>
-                    <thead className='bg-muted/50 border-b'>
-                      <tr className='text-muted-foreground text-xs'>
-                        <th className='px-3 py-2 font-medium'>设备</th>
-                        {detail.metricColumns.map((column) => (
-                          <th key={column.key} className='px-3 py-2 text-end font-medium whitespace-nowrap'>
-                            {column.label}
-                          </th>
-                        ))}
-                        <th className='px-3 py-2 text-end font-medium whitespace-nowrap'>执行状态</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detail.devices.map((device) => {
-                        const values = metricValuesByDevice(device, detail.multiRound)
-                        return (
-                          <tr key={device.deviceName} className='border-b last:border-0 hover:bg-muted/30'>
-                            <td className='px-3 py-2 whitespace-nowrap'>
-                              <span className='font-medium'>{device.deviceName}</span>
-                            </td>
-                            {detail.metricColumns.map((column) => (
+                <div className='space-y-2'>
+                  {/* 轮次 Tab（第1轮…第N轮 + 整体）；单轮「指标」Tab 不渲染 Tab 栏 */}
+                  {roundTabs.length > 1 && (
+                    <div className='flex flex-wrap gap-1' role='tablist' aria-label='轮次切换'>
+                      {roundTabs.map((tab, index) => (
+                        <button
+                          key={tab.key}
+                          type='button'
+                          role='tab'
+                          aria-selected={currentTab?.key === tab.key}
+                          className={cn(
+                            'rounded-md px-2.5 py-1 text-xs transition-colors',
+                            currentTab?.key === tab.key
+                              ? 'bg-primary text-primary-foreground'
+                              : 'text-muted-foreground hover:bg-muted'
+                          )}
+                          onClick={() => setActiveRoundTab(index)}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/* 指标×设备表：行=指标、列=设备（V9.7.10 currentRoundTableData 同口径） */}
+                  <div className='overflow-x-auto rounded-lg border'>
+                    <table className='w-full text-left text-sm'>
+                      <thead className='bg-muted/50 border-b'>
+                        <tr className='text-muted-foreground text-xs'>
+                          <th className='px-3 py-2 font-medium whitespace-nowrap'>指标</th>
+                          {detail.devices.map((device) => (
+                            <th
+                              key={device.deviceName}
+                              className='px-3 py-2 font-medium whitespace-nowrap'
+                            >
+                              <span className='flex items-center gap-1.5'>
+                                {device.deviceName}
+                                <StatusBadge
+                                  label={
+                                    device.executionStatus
+                                      ? executionStatusLabel(device.executionStatus)
+                                      : '—'
+                                  }
+                                  variant={
+                                    device.executionStatus === 'completed'
+                                      ? 'success'
+                                      : device.executionStatus === 'failed'
+                                        ? 'danger'
+                                        : device.executionStatus
+                                          ? 'warning'
+                                          : 'neutral'
+                                  }
+                                />
+                              </span>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(currentTab?.rows ?? []).map((row) => (
+                          <tr
+                            key={row.dimension}
+                            className='border-b last:border-0 hover:bg-muted/30'
+                          >
+                            <td className='px-3 py-2 whitespace-nowrap'>{row.dimension}</td>
+                            {detail.devices.map((device) => (
                               <td
-                                key={column.key}
-                                className='px-3 py-2 text-end font-mono text-xs tabular-nums'
+                                key={device.deviceName}
+                                className='px-3 py-2 font-mono text-xs tabular-nums'
                               >
-                                {values[column.key] ?? '—'}
+                                {row.values[device.deviceName] ?? '—'}
                               </td>
                             ))}
-                            <td className='px-3 py-2 text-end'>
-                              <StatusBadge
-                                label={
-                                  device.executionStatus
-                                    ? executionStatusLabel(device.executionStatus)
-                                    : '—'
-                                }
-                                variant={
-                                  device.executionStatus === 'completed'
-                                    ? 'success'
-                                    : device.executionStatus === 'failed'
-                                      ? 'danger'
-                                      : device.executionStatus
-                                        ? 'warning'
-                                        : 'neutral'
-                                }
-                              />
+                          </tr>
+                        ))}
+                        {(currentTab?.rows.length ?? 0) === 0 && (
+                          <tr>
+                            <td
+                              colSpan={detail.devices.length + 1}
+                              className='text-muted-foreground p-4 text-center text-sm'
+                            >
+                              暂无指标数据
                             </td>
                           </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               ) : (
                 <ApiCaseResultSummary
@@ -447,16 +483,22 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                 </div>
               )}
 
-              {/* 结果音频列表（INT-1688：result_audios + algorithm_results 的 audio_file 项；试听→INT-356 弹窗复用） */}
-              {detail.resultAudios.length > 0 && (
+              {/* 结果音频列表（INT-1688：result_audios + algorithm_results 的 audio_file 项，
+                  按当前轮次 Tab 过滤；试听→INT-356 弹窗复用） */}
+              {currentResultAudios.length > 0 && (
                 <div className='mt-3 space-y-1'>
                   <p className='text-muted-foreground text-xs'>结果音频</p>
-                  {detail.resultAudios.map((audio, index) => (
+                  {currentResultAudios.map((audio, index) => (
                     <div
                       key={`${audio.audioName}-${index}`}
                       className='flex items-center gap-2 rounded-lg border px-3 py-2 text-sm'
                     >
                       <span className='font-mono text-xs'>{audio.audioName}</span>
+                      {audio.round != null && (
+                        <span className='bg-muted text-muted-foreground rounded px-1 text-[10px]'>
+                          第{audio.round}轮
+                        </span>
+                      )}
                       {audio.deviceName && (
                         <span className='text-muted-foreground text-xs'>{audio.deviceName}</span>
                       )}
@@ -474,16 +516,21 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                 </div>
               )}
 
-              {/* 参考音频（用例输入音频 audio_list；旧 Vue 走「音频时间轴」） */}
-              {detail.referenceAudios.length > 0 && (
+              {/* 参考音频（用例输入音频 audio_list；按当前轮次 Tab 过滤） */}
+              {currentReferenceAudios.length > 0 && (
                 <div className='mt-3 space-y-1'>
                   <p className='text-muted-foreground text-xs'>参考音频（用例输入）</p>
-                  {detail.referenceAudios.map((audio, index) => (
+                  {currentReferenceAudios.map((audio, index) => (
                     <div
                       key={`${audio.audioName}-${index}`}
                       className='flex items-center gap-2 rounded-lg border px-3 py-2 text-sm'
                     >
                       <span className='font-mono text-xs'>{audio.audioName}</span>
+                      {audio.round != null && (
+                        <span className='bg-muted text-muted-foreground rounded px-1 text-[10px]'>
+                          第{audio.round}轮
+                        </span>
+                      )}
                       <Button
                         variant='ghost'
                         size='sm'
