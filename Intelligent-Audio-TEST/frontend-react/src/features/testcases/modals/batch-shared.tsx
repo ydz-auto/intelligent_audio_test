@@ -16,11 +16,14 @@ export type RoundScopeMode = 'all' | 'specific'
 export function RoundScopeField({
   name,
   roundCount,
+  unknownRoundCount = 0,
 }: {
   /** radio name（同页多弹窗实例隔离，防表单串扰） */
   name: string
   /** 轮次数（由选中用例 config.rounds 派生；0=无可配置轮次，给空态） */
   roundCount: number
+  /** 选中用例中轮次未知（列表尚未加载）的条数；>0 时不得当成「无轮次」 */
+  unknownRoundCount?: number
 }) {
   const [mode, setMode] = useState<RoundScopeMode>('all')
   const [selected, setSelected] = useState<number[]>([])
@@ -44,10 +47,16 @@ export function RoundScopeField({
           />
           所有轮次
         </label>
-        <label className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'>
+        <label
+          className={cn(
+            'hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm',
+            roundCount === 0 && 'cursor-not-allowed opacity-50'
+          )}
+        >
           <input
             type='radio'
             name={name}
+            disabled={roundCount === 0}
             checked={mode === 'specific'}
             onChange={() => setMode('specific')}
           />
@@ -58,7 +67,9 @@ export function RoundScopeField({
         <div className='border-border/60 flex flex-wrap gap-1.5 rounded-lg border p-2'>
           {roundCount === 0 ? (
             <span className='text-muted-foreground text-xs'>
-              所选用例暂无可配置的轮次信息
+              {unknownRoundCount > 0
+                ? `其中 ${unknownRoundCount} 个用例的轮次信息尚未加载，无法指定轮次`
+                : '所选用例暂无可配置的轮次信息'}
             </span>
           ) : (
             Array.from({ length: roundCount }, (_, i) => i + 1).map((round) => (
@@ -109,13 +120,21 @@ export function RoundScopeThreeField({
   value,
   onChange,
   roundCount,
+  unknownRoundCount = 0,
 }: {
   name: string
   value: RoundScopeThreeValue
   onChange: (next: RoundScopeThreeValue) => void
   /** 轮次数（由选中用例 config.rounds 派生；0=无可配置轮次，给空态） */
   roundCount: number
+  /** 选中用例中轮次未知（列表尚未加载）的条数；>0 时不得当成「无轮次」 */
+  unknownRoundCount?: number
 }) {
+  const hasRounds = roundCount > 0
+  const roundEmptyText =
+    unknownRoundCount > 0
+      ? `其中 ${unknownRoundCount} 个用例的轮次信息尚未加载，无法按轮次设置`
+      : '所选用例暂无可配置的轮次信息'
   const setMode = (mode: RoundScopeThreeMode) => onChange({ ...value, mode })
   const toggleSpecificRound = (round: number) =>
     onChange({
@@ -138,19 +157,31 @@ export function RoundScopeThreeField({
           />
           所有轮次（统一设置）
         </label>
-        <label className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'>
+        <label
+          className={cn(
+            'hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm',
+            !hasRounds && 'cursor-not-allowed opacity-50'
+          )}
+        >
           <input
             type='radio'
             name={name}
+            disabled={!hasRounds}
             checked={value.mode === 'specific'}
             onChange={() => setMode('specific')}
           />
           指定轮次（统一设置）
         </label>
-        <label className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'>
+        <label
+          className={cn(
+            'hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm',
+            !hasRounds && 'cursor-not-allowed opacity-50'
+          )}
+        >
           <input
             type='radio'
             name={name}
+            disabled={!hasRounds}
             checked={value.mode === 'per_round'}
             onChange={() => setMode('per_round')}
           />
@@ -160,10 +191,8 @@ export function RoundScopeThreeField({
 
       {value.mode === 'specific' && (
         <div className='border-border/60 flex flex-wrap gap-1.5 rounded-lg border p-2'>
-          {roundCount === 0 ? (
-            <span className='text-muted-foreground text-xs'>
-              所选用例暂无可配置的轮次信息
-            </span>
+          {!hasRounds ? (
+            <span className='text-muted-foreground text-xs'>{roundEmptyText}</span>
           ) : (
             Array.from({ length: roundCount }, (_, i) => i + 1).map((round) => (
               <label
@@ -183,10 +212,8 @@ export function RoundScopeThreeField({
 
       {value.mode === 'per_round' && (
         <div className='border-border/60 flex flex-wrap items-center gap-1.5 rounded-lg border p-2'>
-          {value.rounds.length === 0 ? (
-            <span className='text-muted-foreground text-xs'>
-              所选用例暂无可配置的轮次信息
-            </span>
+          {!hasRounds ? (
+            <span className='text-muted-foreground text-xs'>{roundEmptyText}</span>
           ) : (
             value.rounds.map((round) => (
               <button

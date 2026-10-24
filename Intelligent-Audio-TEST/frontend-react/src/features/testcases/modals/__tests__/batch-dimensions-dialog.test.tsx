@@ -177,7 +177,7 @@ describe('BatchDimensionsDialog（§5.3.5）', () => {
     expect(screen.queryByText('第1轮')).not.toBeInTheDocument()
   })
 
-  it('轮次未知（用例未加载）不算无轮次：显式提示、仍可按所有轮次提交', async () => {
+  it('轮次未知（用例未加载）不算无轮次：显式提示、按所有轮次选中的维度真的进载荷', async () => {
     const user = userEvent.setup()
     setup(0, 2)
     // 不再是「暂无可配置的轮次信息」假空态
@@ -188,11 +188,31 @@ describe('BatchDimensionsDialog（§5.3.5）', () => {
     expect(screen.getByRole('radio', { name: '逐轮设置（每轮可不同）' })).toBeDisabled()
     const ok = screen.getByRole('button', { name: '确定' })
     expect(ok).toBeEnabled()
+    // 轮次未知时点维度必须真的勾上（哨兵键承载），不能是空操作
     await user.click(roundCloud().getByRole('button', { name: /识别准确率/ }))
+    expect(roundCloud().getByText('已选 3 项')).toBeInTheDocument()
+    expect(screen.getByText('维度权重和阈值配置')).toBeInTheDocument()
     await user.click(ok)
     expect(mockedBatch).toHaveBeenCalledTimes(1)
     const [action, , payload = {}] = mockedBatch.mock.calls[0]
     expect(action).toBe('update_dimensions')
     expect(payload.roundMode).toBe('all')
+    // 关键：选中的维度必须进载荷（空数组=后端清空，不可撤销）
+    expect(payload.dimensions!).toHaveLength(3)
+    expect(payload.dimensions![0]).toMatchObject({ id: 1, name: '识别准确率', weight: 50, threshold: 80 })
+    expect(payload.multiDimensions).toEqual([])
+  })
+
+  it('统一模式未选任何维度点确定：先二次确认，确认后才发清空载荷', async () => {
+    const user = userEvent.setup()
+    setup()
+    await user.click(screen.getByRole('button', { name: '确定' }))
+    // 未确认前不提交
+    expect(mockedBatch).not.toHaveBeenCalled()
+    expect(screen.getByText('确定清空所选用例的评估维度？')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '确定清空' }))
+    expect(mockedBatch).toHaveBeenCalledTimes(1)
+    const [, , payload = {}] = mockedBatch.mock.calls[0]
+    expect(payload.dimensions).toEqual([])
   })
 })

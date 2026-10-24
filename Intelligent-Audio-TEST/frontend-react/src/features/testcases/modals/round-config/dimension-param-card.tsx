@@ -95,7 +95,7 @@ export function DimensionParamCard({
               <Input
                 id={`dim-model-${dimension.id}`}
                 value={model}
-                placeholder='如：gpt-4o-mini'
+                placeholder='填写该维度使用的模型名'
                 onChange={(e) => onChange({ model: e.target.value })}
                 className='h-8'
               />
