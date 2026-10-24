@@ -10,9 +10,18 @@
 """
 from __future__ import annotations
 
+import logging
+
 from shared.utils.grpc_json import loads as _loads
 
-from algorithm_service.interfaces.grpc.mixins.param_helpers import _success, _failure, _ParamBaseMixin
+from algorithm_service.interfaces.grpc.mixins.param_helpers import (
+    _success,
+    _failure,
+    _ParamBaseMixin,
+    _normalize_dimension_param_data,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class _DimensionMixin(_ParamBaseMixin):
@@ -157,18 +166,24 @@ class _DimensionMixin(_ParamBaseMixin):
     # ---- 评估维度参数管理 ----
 
     def CreateDimensionParam(self, request, context=None):
-        """创建单条评估维度参数。"""
+        """创建单条评估维度参数。
+
+        写侧先归一数值/布尔字段（INT-1683）：空串 → NULL，非法值直接失败，
+        不再让数据库解析报错把整条参数静默丢弃。
+        """
         try:
             from algorithm_service.infrastructure.persistence.algorithm_repository import (
                 dimension_param_repository,
             )
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
+            data = _normalize_dimension_param_data(data)
             result = dimension_param_repository.create(data)
             self._invalidate_cache(
                 dimension_ids=[data.get('dimension_id')],
             )
             return _success({"id": result.get("id"), "created": True})
         except Exception as e:
+            logger.warning("CreateDimensionParam 失败: %s", e)
             return _failure(str(e))
 
     def DeleteDimensionParamsByDirection(self, request, context=None):
