@@ -1,11 +1,11 @@
 /**
- * features/tasks/constants 状态/算法类型映射纯函数测试（对位 09_任务域.md §3.6.1/§9 文案）。
+ * features/tasks/constants 状态映射纯函数测试（对位 09_任务域.md §3.6.1/§9 文案）。
  * 任务类型（API测试/端到端测试）概念已移除（INT-1241，负责人 2026-10-22 口径），无对应用例。
+ * 算法类型占位标签已删除（INT-1707，生产代码零引用，真实枚举归算法域）。
  */
 import { describe, expect, it } from 'vitest'
 
 import {
-  getAlgorithmTypeLabel,
   getEvaluationStatusMeta,
   getExecutionStatusMeta,
 } from '@/features/tasks/constants'
@@ -56,17 +56,5 @@ describe('getEvaluationStatusMeta', () => {
       label: '—',
       variant: 'neutral',
     })
-  })
-})
-
-describe('getAlgorithmTypeLabel', () => {
-  it('已知算法类型映射中文', () => {
-    expect(getAlgorithmTypeLabel('asr_streaming')).toBe('流式语音识别')
-    expect(getAlgorithmTypeLabel('wakeword_detect')).toBe('唤醒词检测')
-  })
-
-  it('空值与未知值回退', () => {
-    expect(getAlgorithmTypeLabel(null)).toBeNull()
-    expect(getAlgorithmTypeLabel('custom_alg')).toBe('custom_alg')
   })
 })
