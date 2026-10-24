@@ -207,12 +207,17 @@ class ReportCasesQueryMixin:
             logger.warning("raw response: 查询测试结果失败 %s", e)
             results = []
 
+        # 真实契约：_grpc_get_test_results_by_task_and_case 返回 list[dict]（经 dto_to_dict），
+        # _grpc_get_dimension_by_ids 返回 {dim_id_str: dict}；按对象属性取会恒判为非 API 用例。
+        def _field(obj, key):
+            return obj.get(key) if isinstance(obj, dict) else getattr(obj, key, None)
+
         # 只有 API 结果才有原始响应入口；设备（e2e）结果直接返回不可用
-        api_results = [r for r in results if getattr(r, 'api_id', None)]
+        api_results = [r for r in results if _field(r, 'api_id')]
         if not api_results:
             return {**base, 'message': '该用例非 API 用例，无 API 原始响应', 'elapsed_ms': _elapsed()}
 
-        result_ids = [getattr(r, 'id', None) for r in api_results if getattr(r, 'id', None) is not None]
+        result_ids = [rid for rid in (_field(r, 'id') for r in api_results) if rid is not None]
         if not result_ids:
             return {**base, 'message': '该用例尚无测试结果', 'elapsed_ms': _elapsed()}
 
@@ -270,7 +275,7 @@ class ReportCasesQueryMixin:
         try:
             dims = _grpc_get_dimension_by_ids([dimension_id]) or {}
             dim_dto = dims.get(str(dimension_id)) or dims.get(dimension_id)
-            dimension_name = getattr(dim_dto, 'name', None) if dim_dto is not None else None
+            dimension_name = _field(dim_dto, 'name') if dim_dto is not None else None
         except Exception:  # noqa: BLE001
             dimension_name = None
 
