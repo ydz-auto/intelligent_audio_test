@@ -234,11 +234,12 @@ ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 | 场景 | HTTP | 响应 data |
 | --- | --- | --- |
 | 挑选合并容器（有关系行） | 200 | `{task_id, is_cherry_pick: true, total, groups: [{source_task_id, source_task_name, results: [...]}]}`（results 逐条含 `missing` 标注，§10） |
-| 普通任务 / 无关系行（含任务 id 不存在） | **200** | `{task_id, is_cherry_pick: false, total: 0, groups: []}` |
+| 普通任务 / 无关系行（存活的 Task） | **200** | `{task_id, is_cherry_pick: false, total: 0, groups: []}` |
+| 任务不存在 / 容器 Task 已软删（INT-1715 存活判定） | 404 | `{code: 404}`（不返回容器数据，避免软删容器仍被渲染成容器） |
 
 裁定理由：「不是容器」是查询的正常结果，不是错误。任务详情页的复核范围解析（`useReviewRecordScope`）对每个任务都会探一次本接口，普通任务恒 400 会在 Network 里制造每页一次的 4xx 噪音（INT-1701 日巡命中）。前端据此约定保持零改动：`groups` 为空且请求成功即回落「归属=页面任务」。
 
-只读探针口径：与同域 `review_count` / `review_history` 一致——无数据即空结果，本接口不做任务存在性判定（任务是否存在由任务详情接口判定），避免读探针用 4xx 表达正常空结果。
+只读探针口径：与同域 `review_count` / `review_history` 一致——无数据即空结果，避免读探针用 4xx 表达正常空结果；存在性判定只保留「任务不存在 / 容器已软删」一处（INT-1715 ①，防止软删容器仍返 200 被当成容器）。
 
 ## 9. 前端设计
 

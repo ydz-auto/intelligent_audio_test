@@ -414,8 +414,9 @@ def test_checkout_merge_container_and_reference_resolution(db):
     assert plain_trace['data'] == {
         'task_id': src_a_id, 'is_cherry_pick': False, 'total': 0, 'groups': [],
     }
-    # 无该任务同样按空结果返回（对齐 review_count/review_history 读探针口径，不做存在性判定）
-    assert cherry_pick_service.source_trace(987654321)['data']['groups'] == []
+    # 合入适配（INT-1742）：任务不存在/容器已软删由 INT-1715 存活判定返 404，
+    # 不再按「不做存在性判定」返空结果（存活普通任务仍是上面的 200 + 空 groups）
+    assert cherry_pick_service.source_trace(987654321)['code'] == 404
 
 
 def test_checkout_merge_case_status_inherit_and_counts(db):

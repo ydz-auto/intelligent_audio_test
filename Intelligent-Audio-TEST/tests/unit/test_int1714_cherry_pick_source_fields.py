@@ -10,7 +10,8 @@
 - 老字段一个不删、不改名、不改语义
 - `missing=true` 的行结果级字段为 null、`evaluated=false`
 - `groups[].source_task_status` 取来源任务状态
-- 非容器任务口径不变（服务层 404，对外仍 400 + code:203）
+- 非容器任务口径按 INT-1706 §8.2：存活普通任务 200 + `is_cherry_pick:false` +
+  空 `groups`（不再是 4xx）；任务不存在/容器已软删按 INT-1715 存活判定返 404
 
 DB：进程级 SQLite（对齐 test_int339 口径），gRPC 依赖按需打桩以隔离外部服务。
 """
@@ -237,13 +238,20 @@ def test_source_trace_missing_rows_null_result_fields(db, patched_names, monkeyp
 
 
 def test_source_trace_non_container_unchanged(db, patched_names):
-    """非容器任务口径不变：服务层 404（对外仍 400 + code:203，本卡不动）。"""
+    """非容器任务口径：存活普通任务按 INT-1706 §8.2 返 200 + 空 groups。
+
+    合入适配（INT-1742）：本用例原断言的 404 是 INT-1706 之前的口径；INT-1706
+    把「不是容器」改成正常查询结果（200 + `is_cherry_pick:false` + `groups: []`），
+    本卡追加的结果级字段不改变这一口径。任务不存在/容器已软删的 404 由
+    INT-1715 的存活判定负责（见 test_int339 的对应断言）。
+    """
     service = patched_names
     src_task_id, _ = _seed()
     set_current_user_id(42)
 
     resp = service.source_trace(src_task_id)
-    assert resp['success'] is False
-    assert resp['code'] == 404
+    assert resp['success'] is True
+    assert resp['data']['is_cherry_pick'] is False
+    assert resp['data']['groups'] == []
 
     set_current_user_id(None)
