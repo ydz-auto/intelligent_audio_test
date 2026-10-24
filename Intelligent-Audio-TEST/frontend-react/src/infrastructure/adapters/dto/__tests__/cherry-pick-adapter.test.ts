@@ -5,8 +5,14 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { fromCartEntryDto } from '@/infrastructure/adapters/dto/cherry-pick-adapter'
-import type { CherryPickCartItemDto } from '@/infrastructure/dto/cherry-pick.dto'
+import {
+  fromCartEntryDto,
+  fromSourceTraceDto,
+} from '@/infrastructure/adapters/dto/cherry-pick-adapter'
+import type {
+  CherryPickCartItemDto,
+  CherryPickSourceTraceDto,
+} from '@/infrastructure/dto/cherry-pick.dto'
 
 function baseItem(overrides: Partial<CherryPickCartItemDto> = {}): CherryPickCartItemDto {
   return {
@@ -93,5 +99,56 @@ describe('fromCartEntryDto', () => {
 
   it('source_result_type 空白 → null（result_type 级折叠「结果类型待补充」）', () => {
     expect(fromCartEntryDto(baseItem({ source_result_type: '  ' })).sourceResultType).toBeNull()
+  })
+})
+
+describe('fromSourceTraceDto（INT-1711 容器溯源；审计 P2-1 回归）', () => {
+  const dto: CherryPickSourceTraceDto = {
+    task_id: 595,
+    is_cherry_pick: true,
+    total: 1,
+    groups: [
+      {
+        source_task_id: 419,
+        source_task_name: '任务419',
+        results: [
+          {
+            result_id: 5714,
+            source_task_id: 419,
+            source_task_name: '任务419',
+            source_case_id: 'c1',
+            source_device_id: 9,
+            source_api_id: null,
+            missing: false,
+            // 关系行时间 = 并入容器的时间，实测 5 条叶行同值（= 容器 created_at）
+            created_at: '2026-10-24T03:41:47.289098',
+          },
+        ],
+      },
+    ],
+  }
+
+  it('关系行 created_at 不得映射为源结果时间（§11-8 字段未返 → null，叶行不渲染时间）', () => {
+    expect(fromSourceTraceDto(dto).groups[0].results[0].resultCreatedAt).toBeNull()
+  })
+
+  it('§11-8 的 result_created_at 返值后直取真值', () => {
+    const withResultTime: CherryPickSourceTraceDto = {
+      ...dto,
+      groups: [
+        {
+          ...dto.groups[0],
+          results: [
+            {
+              ...dto.groups[0].results[0],
+              result_created_at: '2026-10-14T09:27:22',
+            },
+          ],
+        },
+      ],
+    }
+    expect(fromSourceTraceDto(withResultTime).groups[0].results[0].resultCreatedAt).toBe(
+      '2026-10-14T09:27:22'
+    )
   })
 })

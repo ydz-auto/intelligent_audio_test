@@ -206,6 +206,9 @@ export interface CherryPickSourceTraceDto {
       case_name?: string | null
       device_name?: string | null
       api_name?: string | null
+      /** 源结果创建时间（§11-8 FEAT 落地后返回；当前实测缺省 undefined） */
+      result_created_at?: string | null
+      /** 关系行创建时间（= 并入容器的时间，**不是**源结果时间；前端不消费，勿映射为结果时间） */
       created_at?: string | null
     }[]
   }[]

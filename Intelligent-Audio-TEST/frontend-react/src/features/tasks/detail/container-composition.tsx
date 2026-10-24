@@ -141,9 +141,15 @@ export function ContainerComposition({
             未评估
           </Badge>
         )}
-        <span className='text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap tabular-nums'>
-          {formatPickDateTime(entry.resultCreatedAt)}
-        </span>
+        {/* 源结果时间：§11-8 的 result_created_at 未落地 → 不渲染（不拿关系行时间顶替，见审计 P2-1） */}
+        {entry.resultCreatedAt && (
+          <span
+            className='text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap tabular-nums'
+            title='源结果时间'
+          >
+            {formatPickDateTime(entry.resultCreatedAt)}
+          </span>
+        )}
         <Button
           variant='ghost'
           size='sm'
@@ -281,7 +287,7 @@ export function ContainerComposition({
         onEvaluationChange={setEvaluation}
         onExpandAll={() => setExpandSignal((s) => ({ all: true, tick: s.tick + 1 }))}
         onCollapseAll={() => setExpandSignal((s) => ({ all: false, tick: s.tick + 1 }))}
-        degraded={entries.some((e) => e.statusFromCase)}
+        degraded={entries.some((e) => e.statusFromCase || e.evaluationFromCase)}
         org={org}
         subView={subView}
         onOrgChange={setOrg}

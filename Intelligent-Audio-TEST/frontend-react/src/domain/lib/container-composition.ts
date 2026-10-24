@@ -28,12 +28,14 @@ import {
 
 /** 组成条目（与 PickCartEntry 同形 + 容器叶行展示所需字段） */
 export interface CompositionEntry extends PickCartEntry {
-  /** 源结果创建时间（mono 叶行时间；§11-8 未落地时由 source 端点 created_at 提供） */
+  /** 源结果创建时间（§11-8 的 result_created_at；未落地 → null，叶行时间位不渲染） */
   resultCreatedAt: string | null
   /** 结果级已评估（§11-8 未落地 → 降级取容器用例行评估状态） */
   evaluated: boolean
   /** 执行状态是否来自降级（同 source_case_id 的容器用例行，工具行一次性提示用） */
   statusFromCase: boolean
+  /** 评估状态是否来自降级（同 source_case_id 的容器用例行，工具行一次性提示用） */
+  evaluationFromCase: boolean
   /** 用例分组名（详情 cases[].group_name，用例层组织数据源） */
   sourceCaseGroupName: string | null
   /** 用例标签（详情 cases[].tags，用例层组织数据源） */
@@ -97,6 +99,7 @@ function toCompositionEntry(
     result.executionStatus ?? caseRow?.execution_status ?? 'unknown'
 
   // 评估侧同口径：结果级 evaluated 未返 → 容器用例行 evaluation_status === completed
+  const evaluationFromCase = result.evaluated == null
   const evaluated =
     result.evaluated ?? (caseRow?.evaluation_status === 'completed')
   const evaluationStatus = evaluated
@@ -119,9 +122,10 @@ function toCompositionEntry(
     executionStatus,
     evaluationStatus,
     invalid: result.missing,
-    resultCreatedAt: result.createdAt,
+    resultCreatedAt: result.resultCreatedAt,
     evaluated,
     statusFromCase,
+    evaluationFromCase,
     sourceCaseGroupName: caseRow?.group_name ?? null,
     sourceCaseTags: caseRow?.tags ?? [],
   }

@@ -28,7 +28,7 @@ export interface ContainerCompositionModel {
   /** 按来源任务分组（与购物车 PickCartGroup 同构，喂 CartTree / 三视图） */
   groups: PickCartGroup[]
   summary: CompositionSummary
-  /** 任一叶行状态取自降级用例行（工具行一次性提示，§5.5.4） */
+  /** 任一叶行执行状态 / 评估状态取自降级用例行（工具行一次性提示，§5.5.4） */
   statusDegraded: boolean
 }
 
@@ -90,6 +90,6 @@ export function useContainerComposition(
     entries,
     groups,
     summary,
-    statusDegraded: entries.some((e) => e.statusFromCase),
+    statusDegraded: entries.some((e) => e.statusFromCase || e.evaluationFromCase),
   }
 }

@@ -238,7 +238,9 @@ export function fromSourceTraceDto(
             caseName: r.case_name?.trim() ? r.case_name : null,
             deviceName: r.device_name?.trim() ? r.device_name : null,
             apiName: r.api_name?.trim() ? r.api_name : null,
-            createdAt: r.created_at ?? null,
+            // 取结果时间只认 §11-8 的 result_created_at；r.created_at 是关系行时间（并入容器的时间），
+            // 语义不同且实测 5 条叶行同值（= 容器 created_at），不得顶替（INT-1711 审计 P2-1）
+            resultCreatedAt: r.result_created_at ?? null,
           })
         ),
       })

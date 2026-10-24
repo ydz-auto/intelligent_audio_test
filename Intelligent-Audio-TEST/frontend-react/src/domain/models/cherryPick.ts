@@ -204,8 +204,11 @@ export interface ContainerSourceResult {
   caseName: string | null
   deviceName: string | null
   apiName: string | null
-  /** 源结果创建时间（§11-8 未落地 → null） */
-  createdAt: string | null
+  /**
+   * 源结果创建时间（§11-8 的 `result_created_at`）。
+   * §11-8 未落地 → null，叶行时间位**不渲染**（source 端点现有的 `created_at` 是关系行时间 = 并入容器的时间，语义不同，不得顶替）。
+   */
+  resultCreatedAt: string | null
 }
 
 /** 容器来源任务分组（groups[]） */

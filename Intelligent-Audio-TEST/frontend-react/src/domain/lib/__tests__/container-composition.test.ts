@@ -77,7 +77,7 @@ const TRACE: ContainerSourceTrace = {
           caseName: null,
           deviceName: null,
           apiName: null,
-          createdAt: '2026-10-20T10:00:00',
+          resultCreatedAt: '2026-10-14T09:27:22',
         },
       ],
     },
@@ -98,7 +98,7 @@ const TRACE: ContainerSourceTrace = {
           caseName: null,
           deviceName: null,
           apiName: null,
-          createdAt: null,
+          resultCreatedAt: null,
         },
         {
           resultId: 3796,
@@ -112,7 +112,7 @@ const TRACE: ContainerSourceTrace = {
           caseName: null,
           deviceName: null,
           apiName: null,
-          createdAt: null,
+          resultCreatedAt: null,
         },
       ],
     },
@@ -151,10 +151,18 @@ describe('toCompositionEntries（§5.5.3 数据装配 + §5.5.4 降级口径）'
     expect(a.executionStatus).toBe('completed')
     expect(a.evaluated).toBe(true)
     expect(a.statusFromCase).toBe(true)
+    expect(a.evaluationFromCase).toBe(true)
 
     expect(b.executionStatus).toBe('failed')
     expect(b.evaluated).toBe(false)
     expect(b.evaluationStatus).toBe('pending')
+    expect(b.evaluationFromCase).toBe(true)
+  })
+
+  it('源结果时间只认 resultCreatedAt（缺值 → null，不拿关系行时间顶替，审计 P2-1）', () => {
+    const entries = toCompositionEntries(TRACE, CASES, DEVICES, APIS)
+    expect(entries[0].resultCreatedAt).toBe('2026-10-14T09:27:22')
+    expect(entries[1].resultCreatedAt).toBeNull()
   })
 
   it('§11-8 字段回来后直取结果级真值，不再降级', () => {
@@ -180,6 +188,7 @@ describe('toCompositionEntries（§5.5.3 数据装配 + §5.5.4 降级口径）'
     expect(entry.sourceResultType).toBe('real-time')
     expect(entry.executionStatus).toBe('failed')
     expect(entry.statusFromCase).toBe(false)
+    expect(entry.evaluationFromCase).toBe(false)
     expect(entry.evaluated).toBe(true)
     expect(entry.sourceCaseName).toBe('结果级用例名')
     expect(entry.sourceDeviceName).toBe('结果级设备名')
