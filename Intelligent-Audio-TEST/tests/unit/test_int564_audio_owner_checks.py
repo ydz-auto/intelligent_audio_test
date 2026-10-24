@@ -125,6 +125,9 @@ def _stub_ref_acl(handler):
         check_audio_in_testcases=lambda _: 0,
         check_audio_in_testcase_noise=lambda _: 0,
         check_audio_in_tasks=lambda _: 0,
+        # 合入适配（INT-1722）：INT-1306 已把引用检查改为批量 gRPC，桩需同步补
+        # check_audio_references_batch（本用例只关注 owner 校验，引用恒 0 放行）
+        check_audio_references_batch=lambda ids: {i: {} for i in ids},
     )
     handler._device_acl = SimpleNamespace(
         check_audio_in_devices=lambda _: 0,
