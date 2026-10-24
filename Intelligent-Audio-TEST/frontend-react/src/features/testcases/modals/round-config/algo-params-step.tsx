@@ -25,6 +25,7 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import type { RoundAlgorithmParamItem } from '@/features/testcases/modals/round-config/round-nav'
 import {
+  dedupeFormFields,
   fetchAlgorithmFormSchema,
   type AlgorithmFormField,
 } from '@/infrastructure/api/algorithm-form-api'
@@ -167,14 +168,14 @@ export function AlgorithmParamsStep({
     enabled: Boolean(algorithmType),
   })
 
-  /** 展平（顶层 fields + 分组内 fields 按 uiOrder 归并；§5.3.1 参数表单逐字段） + 排除专项字段 */
+  /** 展平（顶层 fields + 分组内 fields 按 fieldCode 去重；§5.3.1 参数表单逐字段） + 排除专项字段 */
   const allFields = useMemo(
     () =>
       schemaQuery.data
-        ? [
+        ? dedupeFormFields([
             ...schemaQuery.data.fields,
             ...schemaQuery.data.groups.flatMap((g) => g.fields),
-          ]
+          ])
             .filter((f) => !f.hidden)
             .filter(isEligible)
         : [],
@@ -244,9 +245,29 @@ export function AlgorithmParamsStep({
     )
   }
 
-  /** schema 分组（非空组按渲染；无分组时顶层 fields 直接平铺） */
+  /** schema 分组（非空组按渲染；无分组时顶层 fields 直接平铺）。
+   *  同一字段既在顶层 fields 又在 groups[].fields 时只渲一次：进组的字段只在组内出现，
+   *  顶层只平铺未进组的字段（INT-1686）。 */
   const groups = schemaQuery.data?.groups ?? []
-  const topFields = schemaQuery.data?.fields.filter((f) => !f.hidden).filter(isEligible) ?? []
+  const groupedCodes = new Set<string>()
+  const renderGroups = groups
+    .map((group) => {
+      const fields = dedupeFormFields(group.fields)
+        .filter((f) => !f.hidden)
+        .filter(isEligible)
+        .filter((f) => {
+          if (!f.code) return true
+          if (groupedCodes.has(f.code)) return false
+          groupedCodes.add(f.code)
+          return true
+        })
+      return { group, fields }
+    })
+    .filter((item) => item.fields.length > 0)
+  const topFields = dedupeFormFields(schemaQuery.data?.fields ?? [])
+    .filter((f) => !f.hidden)
+    .filter(isEligible)
+    .filter((f) => !f.code || !groupedCodes.has(f.code))
 
   return (
     <div className='space-y-3'>
@@ -265,9 +286,7 @@ export function AlgorithmParamsStep({
           ))}
         </div>
       )}
-      {groups.map((group) => {
-        const fields = group.fields.filter((f) => !f.hidden).filter(isEligible)
-        if (fields.length === 0) return null
+      {renderGroups.map(({ group, fields }) => {
         const isCollapsed = collapsed.has(group.name || group.label)
         return (
           <div key={group.name || group.label} className='overflow-hidden rounded-lg border'>
