@@ -180,7 +180,13 @@ BOOTSTRAP_STEPS = [
     #     往返）依赖该列。脚本幂等（列存在即 SKIP、回填按值比对，只读 DB 轻量
     #     JSON 不回源对象存储），全新库为全 SKIP；默认 dry-run，引导链须 --apply。
     ('python', 'scripts/migrations/202610/add_test_result_result_type_int1510.py', '--apply'),
-    # ㊸ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
+    # ㊸ apis.meta.protocol 存量取值归一化（INT-1770）：前端写真 http/https/ws/wss，
+    #     适配器维度枚举只认 http/websocket/realtime/any，旧值在建任务时抛
+    #     ValueError。代码侧已按映射兜底（只读兼容），本步把存量值回写标准词表；
+    #     只命中 protocol ∈ {https, ws, wss} 的行，脚本幂等（归一后再次执行 0 行），
+    #     全新库为 0 行；默认 dry-run，引导链须 --apply。
+    ('python', 'scripts/migrations/202610/normalize_api_meta_protocol_int1770.py', '--apply'),
+    # ㊹ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
     #     归零后长期不会触发 → 83/95 张表 last_analyze 恒为 NULL、n_live_tup 与真实
@@ -188,13 +194,9 @@ BOOTSTRAP_STEPS = [
     #     行数 ≥ 1000」的表补一次 ANALYZE（只更新统计，不动数据）。
     #     幂等（ANALYZE 写入 last_analyze，重复执行命中 0 张表）；best-effort，
     #     单表失败只 WARN 不阻断部署。默认 dry-run，引导链必须带 --apply。
+    #     必须留在引导链末尾（INT-1741 单测断言）：ANALYZE 之后再有 DDL/写入会
+    #     立刻作废统计，INT-1770 的 apis UPDATE 因此排在它前面。
     ('python', 'scripts/migrations/202610/analyze_stale_statistics_int1741.py', '--apply'),
-    # ㊸ apis.meta.protocol 存量取值归一化（INT-1770）：前端写真 http/https/ws/wss，
-    #     适配器维度枚举只认 http/websocket/realtime/any，旧值在建任务时抛
-    #     ValueError。代码侧已按映射兜底（只读兼容），本步把存量值回写标准词表；
-    #     只命中 protocol ∈ {https, ws, wss} 的行，脚本幂等（归一后再次执行 0 行），
-    #     全新库为 0 行；默认 dry-run，引导链须 --apply。
-    ('python', 'scripts/migrations/202610/normalize_api_meta_protocol_int1770.py', '--apply'),
 ]
 
 
