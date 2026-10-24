@@ -8,6 +8,7 @@ import threading
 from threading import Lock
 
 from evaluation_service.domain.services.endpoint_helpers import get_endpoint_url, get_endpoint_field
+from shared.constants.evaluation_dimension import is_llm_judge_dimension
 
 
 class WorkerManagementMixin:
@@ -47,11 +48,16 @@ class WorkerManagementMixin:
         super().__init__(**kwargs)
 
     def _get_timeout_from_dim_config(self, dim_data, default_timeout=30):
-        dim_type = dim_data.get('dimension_type', 'main')
         # 'or {}' 兜底显式 null（JSON null → None）：get(key, {}) 只能兜住键缺失
         api_settings = dim_data.get('api_settings') or {}
 
-        if dim_type == 'llm_judge':
+        # INT-1671：LLM 判分维度判定与读模型 / AI 复核同源（shared 谓词）。
+        # 有意行为变更：task_type_code 含 llm_judge 但 dimension_type 非 'llm_judge'
+        # 的维度（如活体 id=164 high_freq_llm_judge）超时由「timeout 或 30」改为
+        # 「timeout 或 120（LLM 裁判默认）」。
+        if is_llm_judge_dimension(
+                task_type_code=dim_data.get('task_type_code'),
+                dimension_type=dim_data.get('dimension_type')):
             return api_settings.get('timeout', 120)
 
         timeout = api_settings.get('timeout')

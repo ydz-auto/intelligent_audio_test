@@ -104,6 +104,9 @@ class DimensionItem(APIModel):
     score_unit: Optional[str] = Field(None)
     type: Optional[str] = Field(None)
     result_type: Optional[int] = Field(None)
+    # INT-1671：LLM Judge 派生标识（由 task_type_code / dimension_type 派生，
+    # result_type 语义不动）；前端已选维度参数卡据此渲染模型 / Prompt 模板 Select
+    llm_judge: Optional[bool] = Field(None)
     result_min: Optional[float] = Field(None)
     result_max: Optional[float] = Field(None)
     decimal_places: Optional[int] = Field(None)
@@ -127,6 +130,19 @@ class DimensionItem(APIModel):
 
 class DimensionListData(PaginatedData[DimensionItem]):
     pass
+
+
+class LlmJudgeOptionItem(APIModel):
+    """LLM Judge 单个可选模型 / Prompt 模板项（INT-1671）。"""
+    value: str = Field(...)
+    label: str = Field(...)
+    is_default: bool = Field(False)
+
+
+class LlmJudgeOptionsData(APIModel):
+    """LLM Judge 选项端点数据体（来源 shared/config/llm_judge_options.json）。"""
+    models: List[LlmJudgeOptionItem] = Field(default_factory=list)
+    prompt_templates: List[LlmJudgeOptionItem] = Field(default_factory=list)
 
 
 class HealthCheckResultItem(APIModel):

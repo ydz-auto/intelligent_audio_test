@@ -271,6 +271,19 @@ class _EvaluationConfigProxy:
             error_msg_prefix='获取维度选项失败',
         )
 
+    def get_llm_judge_options(self):
+        """LLM Judge 可选模型 / Prompt 模板（INT-1671，evaluation_service 读配置登记表）。"""
+        from shared.proto import evaluation_service_pb2 as eval_pb
+        def _call():
+            stub = get_evaluation_config_service_stub()
+            resp = stub.GetLlmJudgeOptions(eval_pb.GetLlmJudgeOptionsRequest())
+            return self._resp(resp)
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'获取 LLM Judge 选项失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='获取 LLM Judge 选项失败',
+        )
+
     def get_dimension_by_ids(self, dim_ids):
         """按 ID 批量查询维度，返回 dict: {success, message, data}
         data 为 dict: {dim_id_str: dimension_dict, ...} 供调用方按 ID 取维度。
