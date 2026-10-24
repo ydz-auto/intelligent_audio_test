@@ -61,6 +61,7 @@ python scripts/migrations/202610/add_test_result_result_type_int1510.py --apply 
 python scripts/migrations/202610/add_pg_stat_statements_int1783.py --apply  # ㊸ 安装 pg_stat_statements 扩展（INT-1783 PG 观测基线·档 0；服务端 shared_preload_libraries 在 docker-compose.yml 的 postgres 服务；幂等，扩展已存在即 SKIP；默认 dry-run）
 python scripts/migrations/202610/add_api_param_field_path_int1747.py --apply    # ㊸ algorithm_api_params 补输出字段取值路径列 field_path（INT-1747 / C2，C0 §9.2 §9.3：非空按路径从厂商原始响应取嵌套值，空 = 按 param_code 取顶层键；VARCHAR(255) NULL 无索引；lock_timeout 5s 可经 DB_MIGRATION_LOCK_TIMEOUT_MS 覆盖；幂等，全新库 create_all 已含为全 SKIP）
 python scripts/migrations/202610/add_data_transfer_source_maps_int1760.py  # ㊹ 建 data_transfer_source_maps 离线搬运映射表 + 唯一约束 + 两索引（INT-1760 / D0 A3-A4：整包导入重映射时登记 A 原始 id → 本地 id，供增量回导翻译；映射永久保留无 TTL；全新库 create_all 已含，执行为全 SKIP）
+python scripts/migrations/202610/add_data_transfer_source_maps_int1760.py  # ㊸ 建 data_transfer_source_maps 离线搬运映射表 + 唯一约束 + 两索引（INT-1760 / D0 A3-A4：整包导入重映射时登记 A 原始 id → 本地 id，供增量回导翻译；映射永久保留无 TTL；全新库 create_all 已含，执行为全 SKIP；建表 DDL 须排在 ㊹ 统计兜底 ANALYZE 之前）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。

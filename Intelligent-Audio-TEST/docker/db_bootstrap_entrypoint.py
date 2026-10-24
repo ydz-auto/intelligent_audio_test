@@ -204,6 +204,14 @@ BOOTSTRAP_STEPS = [
     #     补列，存量库缺列时新镜像读参数即 UndefinedColumn；脚本幂等（列/索引存在
     #     即 SKIP）、默认 dry-run，引导链必须带 --apply（等锁超过 10s 抛 55P03 不吞）。
     ('python', 'scripts/migrations/202610/add_api_id_scope_int1751.py', '--apply'),
+    # ㊸ data_transfer_source_maps 离线搬运映射表（INT-1760 / D0 A3-A4）：
+    #     create_all 只建缺失的表，建库早于本卡的存量库（真实库 / 隔离库）在引导
+    #     链里建表自愈，否则整包导入段 6 登记即 UndefinedTable。脚本幂等（表 /
+    #     索引 / 唯一约束存在即 SKIP），全新库为全 SKIP。
+    #     注：本步是建表 DDL，必须排在 ㊹ 的 ANALYZE 之前（INT-1741 口径：统计
+    #     兜底在建表之后、且保持引导链末位），不要追加到末尾。
+    ('python', 'scripts/migrations/202610/add_data_transfer_source_maps_int1760.py'),
+    # ㊹ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     # ㊺ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
@@ -216,12 +224,8 @@ BOOTSTRAP_STEPS = [
     #     立刻作废统计，INT-1770 的 apis UPDATE 因此排在它前面。
     #     必须是引导链最后一步（tests/unit/test_int1741_analyze_stale_statistics.py
     #     的 test_bootstrap_step_is_last 钉死）：分析完若再跑 DDL，统计又会过期。
+    #     必须保持 BOOTSTRAP_STEPS 末位（新增 DDL 步骤一律插到本步之前）。
     ('python', 'scripts/migrations/202610/analyze_stale_statistics_int1741.py', '--apply'),
-    # ㊹ data_transfer_source_maps 离线搬运映射表（INT-1760 / D0 A3-A4）：
-    #     create_all 只建缺失的表，建库早于本卡的存量库（真实库 / 隔离库）在引导
-    #     链里建表自愈，否则整包导入段 6 登记即 UndefinedTable。脚本幂等（表 /
-    #     索引 / 唯一约束存在即 SKIP），全新库为全 SKIP。
-    ('python', 'scripts/migrations/202610/add_data_transfer_source_maps_int1760.py'),
 ]
 
 
