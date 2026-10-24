@@ -120,7 +120,7 @@ export function EvaluationPage() {
   const globalAlgorithmId = useAlgorithmStore((s) => s.algorithmId)
   const setGlobalAlgorithmId = useAlgorithmStore((s) => s.setAlgorithmId)
 
-  // 本地状态列表（mock 阶段行级操作就地回写，不依赖重拉；query 变化时同步）
+  // 本地状态列表（行级操作就地回写，不依赖重拉；query 变化时同步）
   const [dimensions, setDimensions] = useState<Dimension[]>([])
   useEffect(() => {
     if (dimensionsQuery.data) setDimensions(dimensionsQuery.data)
