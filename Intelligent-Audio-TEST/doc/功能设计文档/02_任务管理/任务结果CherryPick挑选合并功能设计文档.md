@@ -151,7 +151,8 @@
 | `GET /tasks/cherry-picks/sets` | 挑选集列表 |
 | `POST /tasks/cherry-picks/preview` | 合并预览（下单前统计/失效校验） |
 | `GET /tasks/cherry-picks/pickable-tasks` | 可挑选终态任务清单（挑选向导阶段 1 数据源，INT-1496；契约见 §8.1） |
-| `GET /tasks/{taskId}/cherry-pick-source` | 新任务溯源（各结果来源任务；非容器 200+空 groups，契约见 §8.2） |
+| `GET /tasks/cherry-picks/candidates/tree` | 阶段 2 候选树聚合（任务→用例→设备/API→result_type，节点计数 + result_id 集，服务端一次聚合；INT-1510，契约见 §8.2） |
+| `GET /tasks/{taskId}/cherry-pick-source` | 新任务溯源（各结果来源任务；非容器 200+空 groups，契约见 §8.3） |
 
 命名边界：前端/Domain 用 camelCase；snake_case 只允许出现在后端数据库与 DTO 转换层（总览 §1.3 口径）。
 
@@ -227,7 +228,130 @@ ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 
 已知边界（**阶段 2 性能另行开卡，与本端点解耦**）：阶段 2 候选树仍由 candidates 首页 200 行重建（18 §11-3 降级），其慢查询优化由规划师另立卡，不并入本卡、不阻塞本端点验收。本卡上线后用户可选到结果数 > 200 的任务，阶段 2 展示仍是「已加载 200 条」，跨页全选由 `POST /candidates/select-all` 保证。
 
-### 8.2 溯源接口契约（INT-1706 裁定，2026-10-24）
+> 后续（2026-10-24，INT-1510 契约审查）：阶段 2 已裁定走服务端候选树聚合端点，契约见 §8.2；本节的「200 行降级」边界在 §8.2 落地后失效，`candidates` 保留为叶明细分页与 `select-all` 口径来源。
+
+### 8.2 阶段 2 候选树聚合接口（INT-1510 契约裁定，2026-10-24）
+
+> **结论：采用方向 B（服务端候选树聚合端点）**，并在同一张卡内把方向 C 的必备性能收口作为硬性前提（禁止逐行回源 OSS、装饰次数与结果行数解耦）。理由：阶段 2 的缺陷首先是**完整性**——树由 `candidates` 首页 200 行重建（UX 规范 18 §11-3 降级），而真实库命中 3614 行且集中在少数大任务；只要树的数据源仍是「一页平铺行」，任何单页耗时优化都拿不到正确节点计数。方向 C 的行接口优化仍然必要，但只承担**叶明细分页**与平铺辅助视图，不承担树骨架。端点形态按 UX 规范 18 §11-3（任务→用例→设备/API→result_type，含每节点 `result_id` 集与计数），三视图（用例/设备/结果类型）由同一棵树重排。
+
+#### 8.2.1 缺陷根因（2026-10-24 真实库只读取证 + 代码核对）
+
+| # | 事实（实测 / 代码位置） | 对方案的含义 |
+| --- | --- | --- |
+| 1 | 可挑结果行 **3614 条 / 117 个终态任务**（`test_tasks ⋈ test_results`，`t.deleted=false`、`t.status∈三终态`、`r.excluded=0`） | 与 §8.1 登记一致；200 行首页只覆盖 5.5% |
+| 2 | 全表 5537 行，`count(distinct task_id, test_case_id, device_id, api_id)` = **5537**，即每行唯一 | 按 (任务,用例,设备/API) 聚合**不减少**条目数；聚合的收益只能来自「去掉逐行装饰」，不能指望节点数远小于行数 |
+| 3 | `result_type` **不是列**（`task_service/infrastructure/persistence/models/result_models.py` 的 `TestResult` 无该字段）；取值走 `shared/utils/result_data_store.py:extract_result_type → load_full_result_data`，而后者在 `result_data_path` 非空时**先读 OSS 文件**：`storage.exists` + `storage.load_bytes`（`shared/infrastructure/storage.py:265/302`），每行 **2 次 OSS 往返**；`shared/clients/oss_client.py:94-95` connect_timeout=5 / **read_timeout=60** | 候选查询当前的成本主体是「按行数线性放大的对象存储往返」，其长尾可把单请求拖到 60s 级（见 #5） |
+| 4 | 有 `result_data_path` 的行：全表 3562/5537，可挑范围 2805/3614；可挑行中 **2598/3614 的 DB 轻量 JSON 已含 `result_type`**，1016 行缺键 | 大多数行根本不需要 OSS：改为 DB-first 取值即可消除大部分往返；缺键存量行需一次性收口（见 §8.2.3 第 1 条）。**〔INT-1669 落地复核修正：2598 是含嵌套 `raw_results_list` 的行数，顶层键命中 0 行，回填后 3614/3614 落缺值桶，见 §8.2.7 第 4/5 条〕** |
+| 5 | 每请求另有 **4 条跨服务 gRPC** 装饰：evaluation（`evaluated`）、audio（用例时长）、device（设备名）、api_test（API 名），均在 `task_service/application/task/cherry_pick_service.py:_query_candidate_results` | 装饰链与行数/节点数耦合，需按「去重后的集合」批量化并限定条数 |
+| 6 | 本 run 在 :15000 实测：`candidates?per_page=200` **60.4s** 返回 `gRPC DEADLINE_EXCEEDED`；另一次 `per_page=1` 亦在 60s 级失败（当日引擎重启与并发压测期间，属尾部风险佐证；良态基线取 §8.1 登记的 **7169 ms**） | 性能红线必须按「最坏情况」定，而不是按良态平均值定 |
+
+#### 8.2.2 接口契约
+
+**接口**：`GET /tasks/cherry-picks/candidates/tree`，权限 `task:read`，前缀沿用 `/api/v1/tasks/cherry-picks`；可见性 INT-423（非 owner 非 admin 不可见私有任务）。
+
+| 参数 | 类型 / 取值 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `task_ids` | 逗号分隔 int，**1–200 个** | 是 | 阶段 1 已选任务集（阶段 2 的作用域）；空数组或越界 → 400 |
+| `device_ids` | 逗号分隔 int | 否 | 设备维度过滤（结果级） |
+| `api_ids` | 逗号分隔 int | 否 | API 维度过滤（结果级） |
+| `case_ids` | 逗号分隔 string | 否 | 用例精确过滤 |
+| `case_keyword` | string | 否 | 用例名/用例 ID 模糊（与 `case_ids` 语义同 candidates） |
+| `execution_status` | `completed` / `failed` / `stopped` | 否 | **结果**执行状态 |
+| `evaluation_status` | `evaluated` / `pending` | 否 | 评估状态（口径同 candidates） |
+| `start_date` / `end_date` | ISO 8601 | 否 | 结果执行时间范围 |
+
+响应 `data`（网关 `success_response` 信封）：
+
+```json
+{
+  "total": 3614,
+  "task_count": 117,
+  "meta": {
+    "tasks":   [{"task_id": 419, "task_name": "...", "task_status": "completed"}],
+    "cases":   [{"case_id": "...", "case_name": "...", "algorithm_type": "...",
+                 "tags": [], "group_id": null, "group_name": null,
+                 "duration": 12.5, "rounds": 2}],
+    "devices": [{"device_id": 1, "device_name": "..."}],
+    "apis":    [{"api_id": 7, "api_name": "..."}]
+  },
+  "tree": [
+    {"task_id": 419, "count": 138, "cases": [
+      {"case_id": "...", "count": 6, "devices": [
+        {"device_id": 1, "api_id": null, "count": 2, "result_types": [
+          {"result_type": "real-time", "count": 2, "result_ids": [1, 2]}
+        ]},
+        {"device_id": null, "api_id": 7, "count": 4, "result_types": [
+          {"result_type": "final", "count": 4, "result_ids": [3, 4, 5, 6]}
+        ]}
+      ]}
+    ]}
+  ]
+}
+```
+
+字段口径：
+
+- `total` = 命中**结果行**总数，必须与同口径 SQL 一致；等于全部 `tree[*].cases[*].devices[*].result_types[*].count` 之和；`task_count` = 命中任务数。
+- `meta` 为**去重表**：`cases` 按 `case_id`、`devices` 按 `device_id`、`apis` 按 `api_id`、`tasks` 按 `task_id` 各一条，供三视图节点命名与用例卡元信息使用；`duration` / `rounds` / `tags` / `group_*` 口径同 §8.1 的用例元信息（`total_duration` 同源）。
+- `tree` 为三视图共用的最细分组：任务 → 用例 → 设备/API（`device_id`、`api_id` 二选一，与 `TestResult` 归属一致）→ `result_type`；每个 `result_type` 节点带 `result_ids`（该节点下的全部结果 ID，用于 R1-R10 三态勾选与节点级全选）。
+- `result_type` 缺值按 UX 规范 18 §3.7.1 归「结果类型待补充」桶（不得回源 OSS 判定，见 §8.2.3）；**对外取值统一为 `default`**（单一常量 `RESULT_TYPE_PENDING`，`shared/utils/status_constants.py:85`），过滤参数传 `default` 命中缺值桶，不得另立第二个缺值取值。
+- 容器任务（INT-657）语义保持不变：容器任务自身无结果行，`task_ids` 含容器时经 `task_cherry_pick_relations` 展开引用结果，命中行归属标注为**容器任务**（直查命中的源任务优先），与 `candidates` 现行口径一致。
+
+#### 8.2.3 性能硬性要求（验收必查，逐条核对）
+
+1. **tree 端点零 OSS 往返**：`result_type` 必须取自数据库（新增落库列或直接读 `test_results.result_data` 轻量 JSON），禁止逐行/逐节点调用 `storage.exists/load_bytes`。存量缺键行（可挑范围 1016 行）由随卡交付的一次性迁移/回填收口（可离线回源 OSS 一次），**请求路径不得回源**；不回填的行按「结果类型待补充」桶呈现。`candidates` 的 `result_type` 取值同步改为 DB-first（同一收口）。〔已由 INT-1669 落地：迁移 ㊷ + 写时物化，见 §8.2.7〕
+2. **聚合在 task_service 仓储完成**：`test_tasks ⋈ test_results` 的分组计数在仓储层单条 SQL（至多 2 条：主聚合 + 去重元信息）内完成，`total` 与节点计数不依赖把结果行拉进进程内存；网关只做参数校验、透传与信封，**不得接收结果行再聚合**。
+3. **跨服务调用 ≤ 4 次/请求且与行数无关**：用例元信息（tags/group）与 `duration`（audio gRPC）按**去重后的用例集合**各 1 次批量；设备名、API 名各 1 次；`evaluation_status` 过滤时允许再 1 次 evaluation 批量。禁止按行/按节点循环调用。〔INT-1500/INT-1625/INT-1669 演进后现行口径：`duration`、`evaluated`、API 名均已改共享库窄字段只读投影，不再有 audio / evaluation / api_test gRPC；**真实跨服务调用只剩设备名 1 次**，见 §8.2.7〕
+4. **叶明细走服务端分页**：tree 只给节点计数与 `result_id` 集，不给结果行明细；叶明细由 `candidates` 按「当前展开节点」的过滤组合（`task_ids + case_ids + device_id 或 api_id + result_type`）分页取，`per_page` 1–200，`total` = 该节点命中数（翻页语义正确，不因客户端过滤而错页）。
+5. **首屏 < 2 s**：以「`task_ids` = 全部 117 个可挑任务、3614 行、无其它筛选」为最坏情况实测；`evaluation_status` 过滤路径、叶明细分页（≤200 行）各自单独实测，均 < 2 s。并行/高负载下的绝对时延不可判定时，按 devloop 性能口径用同栈多轮 A/B 给逐轮数据，不取中位冒充。
+6. **不得回退或双口径**：不得恢复「拉全量候选行再客户端聚合」；阶段 2 的树骨架与节点计数**唯一来源**为 tree 端点，`candidates` 仅作叶明细分页与 `select-all` 口径来源，二者不是两套树口径。
+
+#### 8.2.4 落位（DDD 四层，与 §8.1 同构）
+
+- 网关：`routes/cherry_pick_bp.py` 新增路由 → `schemas/cherry_pick.py` 新增 `CherryPickCandidateTreeQuery`（`task_ids` 必填校验、`per_page` 不适用）→ `application/services/task/cherry_pick_service.py` → ACL `infrastructure/acl/cherry_pick_acl_repository.py` + `infrastructure/grpc_proxies/cherry_pick_proxies.py`。
+- 契约：`shared/proto/task_service.proto` 新增 `rpc ListCherryPickCandidateTree(CherryPickCandidateTreeRequest) returns (TaskConfigResponse)` 与消息（`data` JSON，同 candidates 风格），重新生成 `shared/proto/task_service_pb2*.py`（两服务共用同一份生成物）。
+- task_service：`interfaces/grpc/cherry_pick.py` 新增 servicer 方法 → `application/task/cherry_pick_service.py` → `infrastructure/persistence/cherry_pick_repository.py` 承载聚合 SQL 与去重元信息查询（application 不直连 session）。
+- `candidates` 增量参数：`api_ids`、`result_type` 服务端过滤（新增可选参数，既有参数与分页语义不变）；`api_ids` / `result_type` 的客户端过滤随前端接线卡删除。
+
+#### 8.2.5 验收
+
+1. **完整性**：真实库栈（`/health` → `database=intelligent_audio_test`）下 `total=3614`、`task_count=117`，与同口径 SQL 一致；`tree` 各级计数求和 = `total`；任一视图分组（task / case / device / result_type）抽样计数与 SQL 一致。
+2. **性能**：§8.2.3 第 5 条的三条路径分别实测，逐轮数据入交付评论；同时核对第 1/3 条（tree 请求期间无 OSS 往返、跨服务调用次数达标）。
+3. **分页/选择**：「全选当前筛选」仍走 `POST /candidates/select-all`，其返回集合与 tree 各 `result_type` 节点 `result_ids` 并集一致；叶明细分页逐页 `result_id` 不重不漏。
+4. **权限/可见性**：非 owner 非 admin 看不到他人私有任务及其结果（INT-423 同口径）。
+5. **回归**：`tests/unit/test_int339_cherry_pick.py`、`test_int577_cherry_pick_upgrade.py`、`test_int1130_cherry_pick_case_meta.py`、`test_int339_acceptance.py` 全绿；阶段 1 `pickable-tasks` 契约与响应不变。
+
+#### 8.2.6 边界（本卡不做）
+
+- 不改阶段 1 `pickable-tasks` 的契约与响应（§8.1），不接受它承担阶段 2 的树数据。
+- React 阶段 2 接线（树数据源切换、三视图重排、删除客户端 `api_ids`/`result_type` 过滤、全选提示改为服务端全量）另立接线卡，依赖本卡 done。
+- `task_ids` 上限 200：当前真实库 117 个可挑任务，留有余量；接近上限时另立卡收窄范围或分批挑选，不偷偷放大上限。
+- 不在本卡做 tree 响应的 ETag/缓存层；如后续需要另立卡。
+
+#### 8.2.7 实现演进裁定（2026-10-24，INT-1669 落地复核）
+
+> 本节记录 §8.2 定稿后、行接口收口（INT-1669）落地时发生的口径变化。**冲突以本节为准**；§8.2.1 / §8.2.3 的原始表述保留为裁定当日的取证记录。
+
+| # | §8.2 原表述 | 落地现状（INT-1669，2026-10-24） | 证据 |
+| --- | --- | --- | --- |
+| 1 | §8.2.3 第 3 条「`duration`（audio gRPC）」 | 候选行 `duration` 已改共享库窄字段只读投影，**不再有 audio gRPC 调用**（INT-1625 起） | `task_service/infrastructure/acl/audio_acl_repository.py:44` |
+| 2 | §8.2.3 第 3 条「`evaluation_status` 过滤时允许再 1 次 evaluation 批量」 | `evaluated` 标记与 `evaluation_status` 过滤已改共享库存在性投影，**不再有 evaluation gRPC 调用** | `task_service/infrastructure/acl/evaluation_config_acl_repository.py:83` |
+| 3 | §8.2.3 第 3 条「API 名各 1 次」 | API 名称已改共享库窄字段批量投影（`apis` 表，`deleted = FALSE`），**不再有 api_test gRPC 调用** | `task_service/infrastructure/acl/report_acl_repository.py:174`（INT-1500 `e4d4e3030`，已进 V9.7.31） |
+| 4 | §8.2.1 第 4 条「可挑行 2598/3614 的 DB 轻量 JSON 已含 `result_type`」 | 2598 是**含嵌套 `raw_results_list`** 的行数，其 `result_type` 取值全为 `default`；**顶层 `result_data.result_type` 命中 0 行**（全表 5546 行、可挑 3614 行均为 0）。`extract_result_type` 只读顶层键，故按原口径取不到任何值 | 2026-10-24 主库只读实测；`shared/utils/result_data_store.py:196` |
+| 5 | §8.2.3 第 1 条「存量缺键行（可挑范围 1016 行）由随卡迁移回填」 | 回填**命中 0 行**：缺键的是全部 3614 行（2598 行只有嵌套键、1016 行无该键），因此迁移后 3614/3614 全部落「结果类型待补充」桶 | `scripts/migrations/202610/add_test_result_result_type_int1510.py` 模块注释（只读 DB 轻量 JSON、不回源 OSS） |
+
+因此 §8.2.3 第 3 条的现行口径是：**真实跨服务调用只剩设备名 1 次**（`task_service/application/task/cherry_pick_service.py:1172` → `device_acl_repository.get_device_statuses`，device_service `GetDeviceStatuses` RPC），与结果行数、节点数无关；其余装饰全部走共享库只读投影。
+
+`result_type` 的单一取值定义（不得双口径）：
+
+- 落库列 `test_results.result_type VARCHAR(50) NULL`（`task_service/infrastructure/persistence/models/result_models.py:40`）；写时由 `submit()` 物化（显式值优先，否则只读 DB 轻量 JSON、不回源 OSS，`task_service/infrastructure/persistence/test_result_repository.py:131/154`），缺值落 NULL。
+- 对外取值 `default` = 缺值桶（`RESULT_TYPE_PENDING`，`shared/utils/status_constants.py:85`）：读侧统一输出该值，过滤参数传 `default` 命中 `NULL / 空串`。`candidates`、`select-all`、购物车/挑选集快照（`source_result_type`）同用这一口径。
+- 迁移 ㊷ `scripts/migrations/202610/add_test_result_result_type_int1510.py`（幂等、默认 dry-run、不建索引），已登记 `scripts/migrations/README.md` 与 `docker/db_bootstrap_entrypoint.py` 的 `BOOTSTRAP_STEPS` ㊷。**主库尚未执行**（2026-10-24 实测 `information_schema` 无该列）：部署顺序必须是「重建 db_bootstrap 镜像（迁移脚本是 COPY 进镜像的）→ 启动执行 ㊷ `--apply` → 再上 task_service 新镜像」，未执行前按落库列读会 `UndefinedColumn`。
+- 数据事实（2026-10-24 主库只读实测）：可挑范围 3614 行经 ㊷ 回填后**全部落 `default` 桶**，即阶段 2 树的 `result_type` 层在真实库上只有一个节点（UX 18 §3.7.1「结果类型待补充」）。这是数据现状而非契约问题；若后续要求多桶，需另立卡补真实 `result_type` 来源。
+
+### 8.3 溯源接口契约（INT-1706 裁定，2026-10-24）
+
+> **编号说明（INT-1755 裁定，2026-10-24）**：本节即 INT-1706 的溯源契约，原占 §8.2，因与阶段 2 候选树契约（§8.2，INT-1510）撞号，顺延为 §8.3；INT-1706 / INT-1714 代码注释中写作「§8.2」的溯源口径均指本节。裁定记录见 §13。
 
 **接口**：`GET /tasks/cherry-picks/{taskId}/source`，权限 `task:read`（设计 §8 表）。
 
@@ -282,6 +406,12 @@ ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 8. 页面无 "Cherry-Pick" 英文字样（接口路径除外）。
 
 ## 13. 实现演进裁定记录
+
+- **2026-10-24（INT-1755 章节编号裁定，方案一致性审计员）**：INT-1733（阶段 2 候选树聚合 · INT-1510 契约）与 INT-1706（溯源接口契约）在同一篇文档抢同一节号 §8.2，导致 INT-1733 的两个 doc 提交无法直接合入 V9.7.31。**裁定方案 A：候选树契约保持 §8.2（含 §8.2.1~§8.2.7 原样不动），溯源契约顺延为 §8.3。** 依据是已合入 V9.7.31 代码的引用面：`INT-1510 §8.2.x` 在代码里已落地 26 处（`api_gateway/schemas/cherry_pick.py:37`、`task_service/application/task/cherry_pick_service.py` 多处、`shared/utils/result_data_store.py:219/226`、`shared/utils/status_constants.py:82`、`task_service/infrastructure/persistence/models/result_models.py:38`、`test_result_repository.py:131/134`、`scripts/migrations/202610/add_test_result_result_type_int1510.py`、`scripts/migrations/README.md`、`docker/db_bootstrap_entrypoint.py:178` 及单测），而 `INT-1706 §8.2` 只有 4 处注释级引用（`task_service/application/task/cherry_pick_service.py:1062`、`tests/unit/test_int1714_cherry_pick_source_fields.py:13/241`、`tests/unit/test_int339_cherry_pick.py:411`）；让引用面大的一侧保持原号，改动面最小，也不会产生代码与文档的第二套编号。同步项：§8 接口表「新任务溯源」行改指 §8.3；INT-1670 卡面、INT-1669 回写（§8.2.7）、UX 18 号规范对「§8.2 = 候选树」的引用全部继续成立，无需改动。遗留：上述 4 处 `INT-1706 §8.2` 的代码注释仍写作 §8.2，按本节说明其指向已变为 §8.3（注释级、不影响行为，下轮改到这些文件时顺带同步，不为它单开代码卡）。
+
+- **2026-10-24（INT-1510 FEAT 契约审查裁定，方案一致性审计员）**：阶段 2「候选树由 candidates 首页 200 行重建」的性能与完整性收口。**裁定方向 B（服务端候选树聚合端点 `GET /tasks/cherry-picks/candidates/tree`）**，完整契约见 §8.2；方向 C 的行接口优化降级为叶明细分页与平铺辅助视图，不再承担树骨架。核心理由是完整性（命中 3614 行 / 117 任务，200 行只覆盖 5.5%，且每行唯一、(任务,用例,设备/API) 聚合不减少条目数）。同日真实库只读取证定位到成本主体：`result_type` 无列、取值经 `load_full_result_data` 在 `result_data_path` 非空时**先读 OSS**（每行 exists + download 2 次往返，`read_timeout=60`），因此把「tree 端点零 OSS 往返 + 装饰次数与行数解耦 + 首屏最坏情况 < 2 s」列为硬性验收，并要求 result_type 落库/回填一次收口。`candidates` 新增 `api_ids`/`result_type` 服务端过滤（既有契约与分页语义不变）。阶段 1 `pickable-tasks` 契约不动；前端 React 接线另卡。（裁定当日的「可挑行 2598/3614 的 DB JSON 已含该键」统计后被 INT-1669 复核修正为「顶层键命中 0 行、3614/3614 落 `default` 桶」，见 §8.2.7 第 4/5 条。）
+
+- **2026-10-24（INT-1669 实施 + 方案一致性审计回写，实现演进裁定）**：§8.2 的行接口收口落地（`338b5cd19` 主体 + `1a5836897` 返工，均已进 V9.7.31）。`test_results.result_type` 落库列 + 写时物化，`candidates` 读侧改 DB-first、请求路径零 OSS 往返（INT-1625 的 OSS 并发预取已删除、不留开关），`api_ids` / `result_type` 为服务端过滤且 `select-all` 同口径，缺值桶对外统一 `default`。**§8.2.3 第 3 条的「duration（audio gRPC）」「evaluation 再 1 次批量」在 INT-1625 后已改共享库窄字段只读投影**（`task_service/infrastructure/acl/audio_acl_repository.py:44`、`evaluation_config_acl_repository.py:83`），真实跨服务调用只剩设备名 1 次（API 名亦已于 INT-1500 改共享库窄字段投影）。迁移编号为 **㊷**（`add_test_result_result_type_int1510.py`，㊶ 已被 INT-1679 的 device_kind 占用），已登记 README 与 db_bootstrap 引导链，**主库尚未执行**——部署须重建 db_bootstrap 镜像后先跑 ㊷ 再上 task_service 新镜像。详见 §8.2.7。
 
 - **2026-10-24（负责人口径 + INT-1693 实施，购物车行补用例分组/标签）**：负责人 2026-10-24 于 INT-1499 定购物车三视图口径「用例视图 = 任务 → 分组/标签组织（照用例管理页）」。INT-1130 只把 `tags / group_id / group_name / duration / rounds` 装饰到挑选候选行，购物车快照行没有这组字段，用例视图只能全落「未分组 / 未设置标签」兜底桶。本卡把**候选行的用例级元信息口径原样延伸到购物车行**：
   - 落点 `GET /tasks/cherry-picks/cart` 的 `data.groups[].items[]` 行级，三字段 `tags: string[]` / `group_id: string|null` / `group_name: string|null`，来源与候选行完全一致（`test_cases → test_case_tags → tags.name` 去重保序；`test_cases.group_id → test_case_groups.name`），缺省 `[]` / `null` / `null`；用例已软删或查不到同落缺省（与 `_case_meta_map` 吞异常返回空映射的既有行为一致）。**2026-10-24 返工（测试反馈 P2）**：软删口径由 `_case_meta_map` 的用例批量查询补 `test_cases.deleted = false` 实现——用例管理页已看不到的用例一律不进映射，调用方落缺省；候选侧结果本就由 `TestResult.excluded` 挡掉，补过滤不改变候选可见行为。
