@@ -38,10 +38,13 @@ export function GroupMutateDialog({
   open,
   onOpenChange,
   group,
+  onCreated,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   group: TestCaseGroup | null
+  /** 新建成功回调（关闭前触发；INT-1658 复测：facet 底部「+ 新增分组」据此预填分组筛选） */
+  onCreated?: (group: { id: string; name: string }) => void
 }) {
   const isEdit = group != null
   const [name, setName] = useState(group?.name ?? '')
@@ -51,12 +54,15 @@ export function GroupMutateDialog({
   const { options: algorithmOptions, isLoading: loadingAlgorithms } =
     useAlgorithmOptions()
 
-  // 对话框常挂载：打开/切换编辑对象时重置表单（INT-997 接线后提交须取当前对象值）
+  // 对话框常挂载：打开/切换编辑对象时重置表单（INT-997 接线后提交须取当前对象值；
+  // INT-1658 补 open 依赖——「新建分组」连续打开时 group 恒为 null，仅靠 group 变化
+  // 不会重置，会残留上次未提交的输入）
   useEffect(() => {
+    if (!open) return
     setName(group?.name ?? '')
     setDescription(group?.description ?? '')
     setAlgorithmType(group?.algorithmType ?? '')
-  }, [group])
+  }, [group, open])
 
   const handleSubmit = async () => {
     if (!name.trim()) return
@@ -70,7 +76,8 @@ export function GroupMutateDialog({
       if (isEdit && group) {
         await updateGroup(group.id, draft)
       } else {
-        await createGroup(draft)
+        const created = await createGroup(draft)
+        onCreated?.({ id: created.id, name: draft.name })
       }
       toast.success(isEdit ? '更新分组成功' : '添加分组成功')
       onOpenChange(false)

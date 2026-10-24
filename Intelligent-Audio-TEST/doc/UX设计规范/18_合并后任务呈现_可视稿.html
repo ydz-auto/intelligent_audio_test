@@ -83,7 +83,7 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="doc-title">18 挑选合并功能交互重设计 · §5.5 合并后任务（挑选合并容器）呈现 · INT-1699 · 真实数据：主库 intelligent_audio_test 容器任务 580（2 个来源任务 / 5 条结果 / 用例 5 个 / 设备 pura90小艺）</div>
+  <div class="doc-title">18 挑选合并功能交互重设计 · §5.5 合并后任务（挑选合并容器）呈现 · INT-1699 · 真实数据：主库 intelligent_audio_test 容器任务 580（2 个来源任务 / 5 条结果 / 用例 5 个 / 设备 pura90小艺）——580 已软删，取值为软删前真实返回；单来源面板 503 为已软删历史样本</div>
 
   <!-- ============ LIGHT ============ -->
   <div class="app" id="light">
@@ -289,9 +289,9 @@
         </tbody>
       </table>
     </div>
-    <!-- 单来源容器（真库 503） -->
+    <!-- 单来源容器（历史样本 503，容器已软删） -->
     <div class="card">
-      <div class="section-title" style="margin-bottom:10px">② 单来源容器 · 真库 ID 503（1 个来源任务 / 1 条结果 → 「全部失败」）</div>
+      <div class="section-title" style="margin-bottom:10px">② 单来源容器 · 历史样本 ID 503（容器已软删；1 个来源任务 / 1 条结果 → 「全部失败」）</div>
       <div class="row" style="gap:10px">
         <span class="name">接线测试_INT1286_1792673624</span>
         <span class="badge b-outline">结果挑选</span>
@@ -309,7 +309,7 @@
         <div class="leaf indent1"><span class="ico">•</span><span class="mono id">源结果 #3837</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-09-22 20:33</span><span style="flex:1"></span><span class="hint">溯源 ↗</span></div>
       </div>
     </div>
-    <div class="caption">注：503 为真库现存单来源容器（描述「挑选合并自 1 个来源任务」，1 条用例 failed → 信息头显示「全部失败」而非「部分失败」，列表执行状态列仍显示「已失败」）；任务层即使只有 1 个来源任务也渲染，否则叶行丢掉归属（§5.5.3 ②）；该用例在 `test_cases` 已不存在 → 叶行降级「未知用例」。</div>
+    <div class="caption">注：503 为关系表遗留的「历史样本」——容器 Task 已于 2026-10-22 软删（`GET /tasks/503` → 404），仅 `task_cherry_pick_relations` 关系行未级联删除；取值取自软删前的真实返回（描述「挑选合并自 1 个来源任务」，1 条用例 failed → 信息头显示「全部失败」而非「部分失败」，列表执行状态列仍显示「已失败」）。单来源容器本身合法：`checkout_merge` 不限制来源任务数。任务层即使只有 1 个来源任务也渲染，否则叶行丢掉归属（§5.5.3 ②）；该用例在 `test_cases` 已不存在 → 叶行降级「未知用例」。</div>
     <div class="caption">注：信息头「部分失败 3/5」按容器用例状态（`failed_cases/case_count`）统计；叶行「已失败」按源结果状态统计（实测 2 条失败）。两者不一致源于容器 TaskCase 状态继承源 TaskCase，实测口径差异见规范 §5.5.1 结论 2 与 §11-8 附缺陷。</div>
   </div>
 
@@ -419,7 +419,7 @@
       </div>
 
       <div class="card">
-        <div class="section-title" style="margin-bottom:10px">② 单来源容器 · 真库 ID 503（1 个来源任务 / 1 条结果 → 「全部失败」）</div>
+        <div class="section-title" style="margin-bottom:10px">② 单来源容器 · 历史样本 ID 503（容器已软删；1 个来源任务 / 1 条结果 → 「全部失败」）</div>
         <div class="row" style="gap:10px">
           <span class="name">接线测试_INT1286_1792673624</span>
           <span class="badge b-outline">结果挑选</span>
@@ -437,7 +437,7 @@
           <div class="leaf indent1"><span class="ico">•</span><span class="mono id">源结果 #3837</span><span class="badge b-danger">已失败</span><span class="badge b-secondary">已评估</span><span class="hint mono">2026-09-22 20:33</span><span style="flex:1"></span><span class="hint">溯源 ↗</span></div>
         </div>
       </div>
-      <div class="caption">注：503 单来源容器——任务层只有 1 个来源任务仍渲染（§5.5.3 ②）；1 条用例全失败 → 信息头「全部失败」、列表「已失败」，都不是「部分失败」（§5.5.4）。</div>
+      <div class="caption">注：503 单来源容器（历史样本，容器 Task 已软删，取值取自软删前真实返回）——任务层只有 1 个来源任务仍渲染（§5.5.3 ②）；1 条用例全失败 → 信息头「全部失败」、列表「已失败」，都不是「部分失败」（§5.5.4）。</div>
     </div>
   </div>
 </div>

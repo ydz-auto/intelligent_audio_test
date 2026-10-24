@@ -90,7 +90,10 @@ import { serializeVoiceprint } from '@/features/testcases/modals/round-config/ro
 import { EvaluationStep } from '@/features/testcases/modals/round-config/evaluation-step'
 import { GlobalNoiseEditor } from '@/features/testcases/modals/round-config/global-noise-editor'
 import { OverallEvaluationEditor } from '@/features/testcases/modals/round-config/overall-evaluation-editor'
-import { ReferenceStep } from '@/features/testcases/modals/round-config/reference-step'
+import {
+  ReferenceStep,
+  referencePathForRound,
+} from '@/features/testcases/modals/round-config/reference-step'
 import {
   EvaluationStrategyEditor,
   serializeEvaluationStrategy,
@@ -663,6 +666,8 @@ export function CaseMutateDrawer({
                     <div className='px-3 py-3' data-testid='case-step-body'>
                       <StepBody
                         step={step}
+                        caseId={caseItem?.id ?? null}
+                        caseReferenceParams={caseItem?.referenceParams}
                         activeRound={activeRoundDraft}
                         algorithmType={algorithmType}
                         dimensions={dimensions}
@@ -738,6 +743,8 @@ export function CaseMutateDrawer({
 
 function StepBody({
   step,
+  caseId,
+  caseReferenceParams,
   activeRound,
   algorithmType,
   dimensions,
@@ -748,6 +755,10 @@ function StepBody({
   onNoiseChange,
 }: {
   step: (typeof STEPS)[number]
+  /** 当前用例 id（编辑态；参考参数步骤按用例+轮次读写真实文件） */
+  caseId: string | null
+  /** 用例参考参数独立列（[{round_number, reference_params_path}]；路径行真实值兜底） */
+  caseReferenceParams: unknown
   activeRound: RoundDraft | undefined
   algorithmType: string
   dimensions: Dimension[]
@@ -786,6 +797,16 @@ function StepBody({
         />
       )
     case '参考参数':
-      return <ReferenceStep generated={activeRound !== undefined && activeRound.audioCount > 0} />
+      return (
+        <ReferenceStep
+          caseId={caseId}
+          roundNumber={activeRound?.number ?? 1}
+          generated={activeRound !== undefined && activeRound.audioCount > 0}
+          pathFallback={referencePathForRound(
+            caseReferenceParams,
+            activeRound?.number ?? 1
+          )}
+        />
+      )
   }
 }

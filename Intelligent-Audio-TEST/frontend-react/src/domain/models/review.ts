@@ -225,6 +225,22 @@ export function aiConfidenceLabel(confidence?: number | null): string {
 // ---------------------------------------------------------------------------
 
 /** 用例执行结果行（任务侧复核消费；case results 行，INT-795） */
+/**
+ * 结果行评估维度（GET /tasks/{taskId}/cases/{caseId}/results results[].dimensions）。
+ * roundNumber：null=整体评估，0 起=第 (roundNumber+1) 轮（旧 Vue TestCaseDetailModal
+ * metricsMap 同口径：`{name}@round:{rn+1}` / `{name}@overall`）。
+ */
+export interface CaseResultDimension {
+  dimensionId: number | null
+  name: string
+  value: unknown
+  score: number | null
+  status: string | null
+  evaluationStatus: string | null
+  errorMessage: string | null
+  roundNumber: number | null
+}
+
 export interface CaseResultForReview {
   id: number
   deviceId: number | null
@@ -234,6 +250,12 @@ export interface CaseResultForReview {
   executionStatus: string | null
   responseTime: number | null
   errorMessage: string | null
+  /** 结果行评估维度（INT-1688：用例详情弹窗设备×维度表数据源） */
+  dimensions?: CaseResultDimension[]
+  /** 设备侧 ASR 识别结果（旧 Vue asr_result 同源） */
+  asrResult?: string | null
+  /** 设备侧翻译结果 */
+  translationResult?: string | null
   reviewed: boolean
   reviewedByUserId: number | null
   reviewedAt: string | null

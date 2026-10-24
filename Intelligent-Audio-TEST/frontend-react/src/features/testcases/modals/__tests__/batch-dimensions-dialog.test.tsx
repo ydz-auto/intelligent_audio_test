@@ -142,6 +142,51 @@ describe('BatchDimensionsDialog（§5.3.5）', () => {
     expect(roundCloud().getByText('已选 3 项')).toBeInTheDocument()
   })
 
+  it('「指定轮次」网格按选中用例真实轮次数渲染（INT-1642：不再是固定 4 轮）', async () => {
+    const user = userEvent.setup()
+    render(
+      <BatchDimensionsDialog
+        open
+        onOpenChange={vi.fn()}
+        count={2}
+        ids={['tc-1', 'tc-2']}
+        dimensions={MOCK_CASE_DIMENSIONS}
+        roundCount={2}
+      />
+    )
+    await user.click(screen.getByText('指定轮次（统一设置）'))
+    expect(screen.getByText('第1轮')).toBeInTheDocument()
+    expect(screen.getByText('第2轮')).toBeInTheDocument()
+    expect(screen.queryByText('第3轮')).not.toBeInTheDocument()
+    expect(screen.queryByText('第4轮')).not.toBeInTheDocument()
+
+    // 逐轮 Tab 同口径：按真实轮次逐个展开，不额外合成「最后一轮」页签（INT-1506）
+    await user.click(screen.getByText('逐轮设置（每轮可不同）'))
+    expect(screen.getByRole('button', { name: '第 1 轮' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '第 2 轮' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '最后一轮' })).not.toBeInTheDocument()
+  })
+
+  it('单轮用例：指定轮次只有第 1 轮，逐轮 Tab 无「最后一轮」重复项', async () => {
+    const user = userEvent.setup()
+    render(
+      <BatchDimensionsDialog
+        open
+        onOpenChange={vi.fn()}
+        count={1}
+        ids={['tc-1']}
+        dimensions={MOCK_CASE_DIMENSIONS}
+        roundCount={1}
+      />
+    )
+    await user.click(screen.getByText('指定轮次（统一设置）'))
+    expect(screen.getByText('第1轮')).toBeInTheDocument()
+    expect(screen.queryByText('第2轮')).not.toBeInTheDocument()
+    await user.click(screen.getByText('逐轮设置（每轮可不同）'))
+    expect(screen.getByRole('button', { name: '第 1 轮' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '最后一轮' })).not.toBeInTheDocument()
+  })
+
   it('逐轮模式停留在默认第 1 轮时，「从其他轮次复制」源默认为首个其他轮次（第 2 轮）而非自身', async () => {
     const user = userEvent.setup()
     setup()

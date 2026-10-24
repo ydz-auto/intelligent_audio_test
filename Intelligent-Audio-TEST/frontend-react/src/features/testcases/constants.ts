@@ -7,6 +7,13 @@
  */
 export type TestCasesViewKey = 'by-group' | 'by-tag'
 
+/**
+ * 未分组虚拟组哨兵（唯一事实源；代码审计 P3-1 收敛——原 index 与 grouped-case-list 各写一遍）。
+ * 契约：GET /testcases 的 group_id 为精确匹配、后端无该哨兵，故不携带 group_id 拉全量后
+ * 前端按 groupId == null 过滤（infrastructure/api/testcases-api.ts fetchTestCases 同口径）。
+ */
+export const UNGROUPED_GROUP_ID = '__ungrouped__'
+
 /** 视图页签（line 变体，§3.1）：按分组 / 按标签 */
 export const TEST_CASES_TABS: Array<{ key: TestCasesViewKey; label: string }> = [
   { key: 'by-group', label: '按分组' },

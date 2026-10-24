@@ -125,6 +125,39 @@ export async function fetchTagGroupedTestCases(
   return fetchTestCases(query)
 }
 
+/** 全量圈定每页条数（导出范围翻页；后端 per_page 无上限，此值兼顾响应体量与请求数） */
+const ID_SCAN_PAGE_SIZE = 200
+/** 翻页硬上限（防后端 pages 异常导致死循环；200×100=2 万条远超单库用例量） */
+const ID_SCAN_MAX_PAGES = 100
+
+/**
+ * 「当前筛选」全量 id 圈定（INT-1642 导出范围；与列表同端点同口径）。
+ * 逐页翻完 GET /testcases 直到最后一页，返回全部命中 id——收藏（favorite）、回收站
+ * （only_deleted）、分组（group_id，含未分组哨兵的前端过滤）、标签、维度、算法全部生效，
+ * 不退化成「全库」（POST /testcases/ids 后端 fetch_case_ids 不认 favorite，会静默返回全库，
+ * 代码审计 P2）也不退化成「仅当前页」。
+ */
+export async function fetchAllTestCaseIdsByFilter(
+  query: TestCaseListQuery
+): Promise<string[]> {
+  const ids: string[] = []
+  for (let page = 1; page <= ID_SCAN_MAX_PAGES; page += 1) {
+    const result = await fetchTestCases({
+      ...query,
+      page,
+      perPage: ID_SCAN_PAGE_SIZE,
+    })
+    ids.push(...result.items.map((c) => c.id))
+    // 未分组哨兵在 fetchTestCases 内前端过滤：items 可能少于本页行数，但 pages/total
+    // 仍是未过滤集合的分页信息，按 pages 判终止才对。
+    const totalPages =
+      result.pages ??
+      Math.max(1, Math.ceil((result.total || 0) / ID_SCAN_PAGE_SIZE))
+    if (page >= totalPages) return ids
+  }
+  throw new Error('用例数量超出导出范围上限，请缩小筛选条件后重试')
+}
+
 /**
  * 用例保存载荷（camelCase Domain 写侧；对照 api_gateway/schemas/testcase.py
  * TestCaseCreateSchema/TestCaseUpdateSchema，Vue testcasesApi.create/update 口径）。
@@ -273,4 +306,106 @@ export async function purgeTestCases(ids: string[]): Promise<number> {
     { ids }
   )
   return dto?.purged_count ?? 0
+}
+
+/** 单轮参考参数文件内容（GET|PUT /testcases/{id}/rounds/{n}/ref-params 实测 data 结构） */
+export interface RoundRefParams {
+  roundNumber: number
+  /** 真实存储路径（config.rounds[].referenceParamsPath，后端回填） */
+  referenceParamsPath: string
+  /** 文件内容（结构随算法参考参数定义） */
+  referenceParams: unknown
+}
+
+interface RoundRefParamsDto {
+  roundNumber?: number
+  referenceParamsPath?: string
+  referenceParams?: unknown
+}
+
+function toRoundRefParams(
+  dto: RoundRefParamsDto | null,
+  roundNumber: number
+): RoundRefParams {
+  return {
+    roundNumber: dto?.roundNumber ?? roundNumber,
+    referenceParamsPath: dto?.referenceParamsPath ?? '',
+    referenceParams: dto?.referenceParams ?? null,
+  }
+}
+
+/**
+ * 读取指定用例指定轮的参考参数文件内容（11_用例域.md §5.1「参考参数」步骤 +
+ * §3.3.2 行菜单；testcase_bp.py get_ref_params → task_service get_testcase_ref_params）。
+ * 未生成 / 路径不存在时后端 404（调用方按「未生成」空态处理，不作错误）。
+ */
+export async function fetchRoundRefParams(
+  id: string,
+  roundNumber: number
+): Promise<RoundRefParams> {
+  const dto = await apiClient.get<RoundRefParamsDto>(
+    `/testcases/${id}/rounds/${roundNumber}/ref-params`
+  )
+  return toRoundRefParams(dto, roundNumber)
+}
+
+/**
+ * 写入指定用例指定轮的参考参数文件（PUT .../ref-params，testcase:update）。
+ * body 顶层 `referenceParams`（task_service update_ref_params 只认此键）；
+ * 成功返回 { roundNumber, referenceParamsPath, referenceParams }（保存后的实际内容）。
+ */
+export async function updateRoundRefParams(
+  id: string,
+  roundNumber: number,
+  referenceParams: unknown
+): Promise<RoundRefParams> {
+  const dto = await apiClient.put<RoundRefParamsDto>(
+    `/testcases/${id}/rounds/${roundNumber}/ref-params`,
+    { referenceParams }
+  )
+  return toRoundRefParams(dto, roundNumber)
+}
+
+/** 导出格式：JSON（后端返回 JSON 数据，前端落文件）/ Excel（后端直接回 xlsx 字节流） */
+export type TestCaseExportFormat = 'json' | 'xlsx'
+
+export interface TestCaseExportResult {
+  blob: Blob
+  filename: string
+}
+
+/** 导出文件名时间戳（yyyyMMdd_HHmmss，与后端 download_name 同口径） */
+function exportTimestamp(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+}
+
+/**
+ * 导出用例（POST /testcases/export，testcase:import_export）。
+ * 后端 testcase_export_service：format=json 走 success_response（数据在信封 data，
+ * 结构 {test_cases, exported_at, total_count} 为止与导入端往返一致），
+ * format=xlsx 走 Response 字节流（Content-Disposition 附件）。
+ * 前端按格式落 Blob 供下载；空 ids 后端 400「未指定要导出的用例ID」由 client 抛 ApiError。
+ */
+export async function exportTestCases(
+  ids: string[],
+  format: TestCaseExportFormat
+): Promise<TestCaseExportResult> {
+  const filename = `testcases_export_${exportTimestamp()}.${format === 'json' ? 'json' : 'xlsx'}`
+  if (format === 'xlsx') {
+    const blob = await apiClient.post<Blob>(
+      '/testcases/export',
+      { ids, format },
+      { responseType: 'blob' }
+    )
+    return { blob, filename }
+  }
+  const data = await apiClient.post<unknown>('/testcases/export', { ids, format: 'json' })
+  return {
+    blob: new Blob([JSON.stringify(data ?? {}, null, 2)], {
+      type: 'application/json',
+    }),
+    filename,
+  }
 }

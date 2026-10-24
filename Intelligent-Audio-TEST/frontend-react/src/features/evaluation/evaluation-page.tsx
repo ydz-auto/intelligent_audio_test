@@ -66,7 +66,7 @@ import { CategoryMutateDialog } from '@/features/evaluation/modals/category-muta
 import { RuleCalcDialog } from '@/features/evaluation/modals/dimension-rule-calc-dialog'
 import { HealthTestDialog } from '@/features/evaluation/modals/health-test-dialog'
 import { EvaluationConfirmDialog } from '@/features/evaluation/modals/evaluation-confirms'
-import { downloadBlob } from '@/features/evaluation/download-blob'
+import { downloadBlob } from '@/lib/download-blob'
 import type {
   CategoryDialogState,
   EvaluationConfirmState,

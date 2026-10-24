@@ -54,6 +54,13 @@ def log(msg):
     print(msg, flush=True)
 
 
+def fmt_num(v):
+    """与前端展示口径一致：整数值不补 .0（6000.0 → 6000、1.0 → 1）。"""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v)
+
+
 def js_click(drv, el):
     drv.execute_script('arguments[0].click()', el)
 
@@ -246,15 +253,16 @@ def main():
             fdata = json.loads(f['resp'])['data']
             sp, en, td = fdata['spectral'], fdata['energy'], fdata['time_domain']
             for text in (
-                '%s Hz' % sp['dominant_frequency'],
-                '%s–%s Hz' % (sp['fundamental_range_low'], sp['fundamental_range_high']),
-                '%s%%' % sp['harmonic_distortion'],
-                '%s dBFS' % en['average_energy_db'],
-                '%s dBFS' % en['peak_energy_db'],
-                str(en['energy_concentration']),
-                str(td['zero_crossing_rate']),
-                str(td['active_duration_ratio']),
-                '%s s' % td['onset_time'],
+                '%s Hz' % fmt_num(sp['dominant_frequency']),
+                '%s–%s Hz' % (fmt_num(sp['fundamental_range_low']),
+                              fmt_num(sp['fundamental_range_high'])),
+                '%s%%' % fmt_num(sp['harmonic_distortion']),
+                '%s dBFS' % fmt_num(en['average_energy_db']),
+                '%s dBFS' % fmt_num(en['peak_energy_db']),
+                fmt_num(en['energy_concentration']),
+                fmt_num(td['zero_crossing_rate']),
+                fmt_num(td['active_duration_ratio']),
+                '%s s' % fmt_num(td['onset_time']),
             ):
                 assert text in body_text, '特征未渲染期望值「%s」' % text
             evidence['assertions'].append('特征三组真实值全部渲染')
