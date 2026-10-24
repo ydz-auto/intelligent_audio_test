@@ -25,9 +25,9 @@ def is_llm_judge_dimension(
 
     - 空值 / None → False；
     - 子串匹配、大小写敏感（与 `ai_review_checker` 原口径逐字一致）；
-    - 真库样例：`task_type_code='high_freq_llm_judge'` + `dimension_type='main'`
-      （活体维度 id=164）、`task_type_code='llm_judge'` → True；
-      普通维度（如 algorithm_type 类）→ False。
+    - 真库样例（2026-10-24 只读抽样主库）：`task_type_code='high_freq_llm_judge'`
+      + `dimension_type='sub'`（活体维度 id=164）、`task_type_code='llm_judge'`
+      + `dimension_type='main'`（id=1）→ True；普通维度（如 algorithm_type 类）→ False。
     """
     ttc = str(task_type_code or '')
     dtyp = str(dimension_type or '')
