@@ -6,11 +6,13 @@
  * ids 沿用 GroupedCaseList resolveCaseIds 语义（组内勾选优先、否则组内全量）；
  * name/refresh 确认执行用弹窗打开时捕获的 ids（INT-1026 修复点：组头无勾选时
  * 也正确作用于组内全量，替代旧实现读页级勾选集）。
+ * INT-1781：delete-group 成功后经 onGroupDeleted 回给页面，删除当前筛选分组时清 filters.groupId。
  */
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
+import type { TestCaseListFilters } from '@/application/testcases/use-testcases-list'
 import type { BatchActionKey } from '@/features/testcases/components/case-bulk-actions'
 import type { CaseConfirmState } from '@/features/testcases/modals/case-confirms'
 import { deleteGroup } from '@/infrastructure/api/groups-api'
@@ -41,11 +43,28 @@ export interface BatchDialogState {
   ids: string[]
 }
 
+/**
+ * 分组删除成功后的筛选同步（INT-1781）：删的正是当前筛选分组才清空 groupId，
+ * 否则 chip 会回落「分组 全部」、列表仍按已删 id 查询（整页空态）。
+ * 按 **id** 比对而非 name——同名分组不能被误清。与标签域 handleDeleteTag 同口径。
+ */
+export function clearDeletedGroupFilter(
+  filters: TestCaseListFilters,
+  deletedGroupId: string
+): TestCaseListFilters {
+  return filters.groupId === deletedGroupId
+    ? { ...filters, groupId: null }
+    : filters
+}
+
 export function useCaseBatchActions({
   onClearSelection,
+  onGroupDeleted,
 }: {
   /** 确认执行后清空本页勾选集（/testcases 本地 Set / /start-test 用例选择 store） */
   onClearSelection: () => void
+  /** 分组删除成功回调（/testcases 用它清掉「正在筛选的分组」；未装配方忽略即可） */
+  onGroupDeleted?: (groupId: string) => void
 }) {
   const queryClient = useQueryClient()
   const [batchDialog, setBatchDialog] = useState<BatchDialogState | null>(null)
@@ -155,7 +174,11 @@ export function useCaseBatchActions({
           break
         case 'delete-group':
           // INT-997：删除分组接 DELETE /groups/{id}?cascade=true（连同组下用例，不可逆）
-          if (ids[0]) await deleteGroup(ids[0], true)
+          if (ids[0]) {
+            await deleteGroup(ids[0], true)
+            // INT-1781：删的是当前筛选分组 → 页面清掉 filters.groupId（否则 chip 回落「全部」但查询无效 id）
+            onGroupDeleted?.(ids[0])
+          }
           toast.success('删除分组成功')
           break
         case 'restore-all':
@@ -196,6 +219,8 @@ export function useCaseBatchActions({
       await queryClient.invalidateQueries({ queryKey: ['testcases'] })
       if (state.kind === 'delete-group') {
         await queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
+        // INT-1284：分组内懒加载缓存（独立前缀）同步失效——已删分组的内层行不得残留
+        await queryClient.invalidateQueries({ queryKey: ['testcase-group-cases'] })
       }
       onClearSelection()
       setConfirm(null)
