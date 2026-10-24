@@ -2,7 +2,8 @@
 """logs 表每日保留清扫（INT-1785）。
 
 背景：`logs` 已不再承接业务日志（INT-81 去库化），但历史存量与审计事件仍留
-在库里，此前没有任何保留策略。本清扫按 `LOG_DB_RETENTION_DAYS`（默认 180 天）
+在库里，此前没有任何保留策略。本清扫按 `LOG_DB_RETENTION_DAYS`（默认 30 天，
+负责人 2026-10-24 定，INT-1793 落地前的过渡期口径）
 每日一次归档并删除过期行，**归档先于删除**，失败保留数据。
 
 与一次性历史清理脚本共用 `log_db_archive.LogArchivePurger` 的分批流式实现：
@@ -198,5 +199,5 @@ def get_retention_cleaner() -> LogRetentionCleaner:
 
 
 def log_db_retention_days() -> int:
-    """配置读取便捷函数（默认 180，未配置时走 BaseConfig 默认）。"""
+    """配置读取便捷函数（默认 30，未配置时走 BaseConfig 默认）。"""
     return int(BaseConfig.LOG_DB_RETENTION_DAYS or 0)

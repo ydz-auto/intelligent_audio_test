@@ -28,8 +28,9 @@ class LogSettings:
     business_max_bytes: int
     business_retention_days: int
     # DB 日志保留天数（INT-1785）：logs 表过期行由 task_service 每日归档后
-    # 删除；0 = 关闭清扫。默认 180 天，与文件侧两个保留天数并列
-    db_retention_days: int = 180
+    # 删除；0 = 关闭清扫。负责人 2026-10-24 定 30 天（INT-1793 落地前的
+    # 过渡期口径），与文件侧两个保留天数并列
+    db_retention_days: int = 30
     # 读取侧单次查询最大物化条数（0 = 不限）；默认远高于常规任务量，
     # 仅在大任务轮询场景兜底（total 变下界语义）
     business_max_scan_entries: int = 100_000

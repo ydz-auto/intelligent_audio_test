@@ -351,9 +351,40 @@ def test_retention_cleaner_uses_log_settings(monkeypatch):
     reset_log_settings()
     try:
         assert LogRetentionCleaner().retention_days() == 1
-        monkeypatch.setattr(BaseConfig, 'LOG_DB_RETENTION_DAYS', 180, raising=False)
+        # 负责人 2026-10-24 定：保留期 30 天（INT-1793 落地前的过渡期口径）
+        monkeypatch.setattr(BaseConfig, 'LOG_DB_RETENTION_DAYS', 30, raising=False)
         reset_log_settings()
-        assert LogRetentionCleaner().retention_days() == 180
+        assert LogRetentionCleaner().retention_days() == 30
+    finally:
+        reset_log_settings()
+
+
+def test_default_retention_30_days_archives_31_day_old_row(monkeypatch):
+    """保留期 30 天口径：31 天前的行归档后删除，今天的行保留。"""
+    from shared.infrastructure.config import BaseConfig
+    from shared.logging.config import reset_log_settings
+
+    monkeypatch.setattr(BaseConfig, 'LOG_DB_RETENTION_DAYS', 30, raising=False)
+    reset_log_settings()
+    try:
+        old = (_now() - timedelta(days=31)).replace(microsecond=0)
+        fresh = _now().replace(microsecond=0)
+        _seed([
+            (old, 'execution', _TASK_ID, 'c11', '31 天前'),
+            (fresh, 'execution', _TASK_ID, 'c11', '今天的行'),
+        ])
+        storage = FakeStorage()
+        cleaner = LogRetentionCleaner(storage=storage, batch_size=10)
+        cleaner._acquire_lock = lambda: None
+        cleaner._release_lock = lambda token: None
+
+        summary = cleaner.run_once()
+        assert summary['retention_days'] == 30
+        assert (summary['archived'], summary['deleted']) == (1, 1)
+        assert _count() == 1
+
+        entries = storage.archive(f'tasks/{_TASK_ID}/c11/{old.strftime("%Y-%m-%d")}')
+        assert [e['content'] for e in entries] == ['31 天前']
     finally:
         reset_log_settings()
 
