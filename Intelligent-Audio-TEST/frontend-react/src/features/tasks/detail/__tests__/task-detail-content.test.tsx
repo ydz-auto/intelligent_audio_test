@@ -20,6 +20,28 @@ vi.mock('@/application/hooks/use-permissions', () => ({
   usePermissions: () => ({ hasPermission: () => true, hasAnyPermission: () => true }),
 }))
 
+// 组成区桩（INT-1730）：该 hook 内部 useQuery 需要 QueryClientProvider，而本文件只断言
+// ApiResources 接线、与容器组成区无关 → 直接按「非容器」桩掉，不为此在测试里搭 QueryClient
+vi.mock('@/application/tasks/use-container-composition', () => ({
+  useContainerComposition: () => ({
+    isContainer: false,
+    isLoading: false,
+    trace: null,
+    entries: [],
+    groups: [],
+    summary: {
+      total: 0,
+      failed: 0,
+      unevaluated: 0,
+      missing: 0,
+      taskCount: 0,
+      caseCount: 0,
+      deviceCount: 0,
+    },
+    statusDegraded: false,
+  }),
+}))
+
 // 子卡桩：本测试聚焦 TaskDetailContent 自身 ApiResources 接线
 vi.mock('@/features/tasks/detail/task-info-card', () => ({
   TaskInfoCard: () => <div data-testid='task-info-card' />,

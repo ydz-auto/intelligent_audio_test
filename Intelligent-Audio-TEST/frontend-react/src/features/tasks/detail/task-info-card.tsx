@@ -27,7 +27,14 @@ function InfoGrid({ items }: { items: Array<{ label: string; value: string | num
   )
 }
 
-export function TaskInfoCard({ detail }: { detail: TaskDetailData }) {
+export function TaskInfoCard({
+  detail,
+  headerExtra,
+}: {
+  detail: TaskDetailData
+  /** 头行附加内容（容器信息头徽章组，§5.5.2 ②；非容器不传） */
+  headerExtra?: React.ReactNode
+}) {
   const execMeta = getExecutionStatusMeta(detail.execution_status)
   const evalMeta = getEvaluationStatusMeta(detail.evaluation_status)
 
@@ -46,6 +53,7 @@ export function TaskInfoCard({ detail }: { detail: TaskDetailData }) {
             variant={evalMeta.variant}
             pulse={evalMeta.pulse}
           />
+          {headerExtra}
         </div>
         <div className='text-muted-foreground text-xs tabular-nums'>
           创建时间 {formatDateTime(detail.created_at)} · 创建人 张测试
