@@ -23,12 +23,23 @@ from evaluation_service.infrastructure.persistence.evaluation_repository import 
     evaluation_repository,
 )
 from shared.constants.evaluation_dimension import is_llm_judge_dimension
+from shared.models.database import end_read_transaction
 
 logger = logging.getLogger(__name__)
 
 
 class EvaluationQueryService:
-    """评估维度读操作应用服务（CQRS Query）。"""
+    """评估维度读操作应用服务（CQRS Query）。
+
+    INT-1691：查询侧每个方法都是「只读一次会话」，返回前必须结束事务
+    （end_read_transaction）。原先读路径既没有 commit 也没有 rollback，连接在
+    gRPC 线程 / 线程池线程 / HTTP 线程上一直挂着空事务，持有 dimensions、
+    evaluation_dimension_params 的 ACCESS SHARE —— 迁移 DDL 需要 ACCESS
+    EXCLUSIVE，被这条空事务一挡就排进锁队列，之后所有读写该表的会话都排在
+    DDL 之后，网关 60s DEADLINE_EXCEEDED（INT-1651 / INT-1664 事故机制）。
+    序列化在 finally 之前完成，回滚不会让返回的 dict 失效；
+    end_read_transaction 检测到有 pending 写时不回滚，不会吞掉调用链上的写。
+    """
 
     def __init__(self, repo: EvaluationRepositoryABC = None):
         self.repo = repo or evaluation_repository
@@ -78,6 +89,8 @@ class EvaluationQueryService:
         except Exception as e:
             logger.error(f"查询分类列表失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
+        finally:
+            end_read_transaction()
 
     def list_dimensions(
         self,
@@ -117,6 +130,8 @@ class EvaluationQueryService:
         except Exception as e:
             logger.error(f"查询评分维度列表失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
+        finally:
+            end_read_transaction()
 
     def get_dimension(self, dim_id: int) -> Dict[str, Any]:
         """查询单个维度完整配置，仅在编辑维度时调用。"""
@@ -169,6 +184,8 @@ class EvaluationQueryService:
         except Exception as e:
             logger.error(f"查询评估维度详情失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
+        finally:
+            end_read_transaction()
 
     @staticmethod
     def _serialize_dimension(dim: Any) -> Dict[str, Any]:
@@ -248,6 +265,8 @@ class EvaluationQueryService:
         except Exception as e:
             logger.error(f"查询维度选项失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
+        finally:
+            end_read_transaction()
 
     def get_llm_judge_options(self) -> Dict[str, Any]:
         """查询 LLM Judge 可选模型 / Prompt 模板（读 shared/config 登记表，零 DB）。
@@ -294,6 +313,8 @@ class EvaluationQueryService:
         except Exception as e:
             logger.error(f"批量查询维度基础信息失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
+        finally:
+            end_read_transaction()
 
     def get_dimension_results_by_result_ids(self, result_ids: list, include_body: bool = False) -> Dict[str, Any]:
         """按 result_id 列表批量查询维度评估结果（含 dimension_name）。
@@ -312,6 +333,8 @@ class EvaluationQueryService:
         except Exception as e:
             logger.error(f"批量查询维度评估结果失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
+        finally:
+            end_read_transaction()
 
 
 # 模块级单例

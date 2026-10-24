@@ -102,6 +102,14 @@ class WorkerManagementMixin:
             return self.endpoint_workers[endpoint_url]
 
     def _load_all_endpoint_configs(self):
+        """从 Repository 加载全部维度端点配置并预创建端点 Worker。
+
+        INT-1691：本方法在 lifespan（主线程）与维度配置热更新订阅线程
+        （DimensionConfigSub，长驻）上执行，属纯读路径。读后必须结束事务，
+        否则订阅线程会把「空事务 + dimensions ACCESS SHARE」带到下一次事件，
+        挡住迁移 DDL。结束事务放在 finally，异常路径也不遗留。
+        """
+        from shared.models.database import end_read_transaction
         try:
             from evaluation_service.infrastructure.evaluation_api.endpoint_worker import EndpointWorker
             from evaluation_service.infrastructure.persistence.evaluation_dimension_repository import (
@@ -130,6 +138,8 @@ class WorkerManagementMixin:
                                 )
         except Exception as e:
             self._log(level='error', content=f"加载维度配置失败: {str(e)}", category='system')
+        finally:
+            end_read_transaction()
 
     def reload_endpoint_configs(self):
         """热加载维度端点配置（订阅 DimensionConfigChanged 事件后调用）。

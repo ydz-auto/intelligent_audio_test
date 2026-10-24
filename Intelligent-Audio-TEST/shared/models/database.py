@@ -31,7 +31,7 @@ import threading
 import uuid
 from datetime import datetime, timezone, timedelta
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import declarative_base, scoped_session, sessionmaker, Query
 from sqlalchemy.pool import QueuePool
@@ -149,6 +149,46 @@ def _session_scopefunc():
 # scoped_session：在 init_db 之前调用 get_db_session() 取到的 session 无绑定 engine
 _SessionFactory = sessionmaker(bind=None, autoflush=True, autocommit=False)
 _scoped_session = scoped_session(_SessionFactory, scopefunc=_session_scopefunc)
+
+
+# ---- 未提交写标记（INT-1691）----
+# end_read_transaction 的安全边界原先只看 new / dirty / deleted，但 flush 之后
+# 这三个集合就被清空了：**已 flush 未 commit 的写**（INSERT/UPDATE 已经发出）
+# 在会话上看起来「干净」，此时回滚会把调用链上的写静默丢掉。INT-1691 给
+# evaluation_service 的读路径接只读收口时，读方法里的 autoflush 正好会制造这种
+# 状态（先 add 再读，读时 flush，随后收口）。这里用会话事件记录「本事务已发生
+# DML」，commit / rollback 时清除；end_read_transaction 见到标记即原样返回。
+_UNCOMMITTED_WRITE_KEY = '_int1691_uncommitted_write'
+
+
+@event.listens_for(_SessionFactory.class_, 'after_flush')
+def _mark_uncommitted_write(session, flush_context):
+    """flush 真正发出 DML 后打标（无工作量的空 flush 不会触发本事件）。"""
+    session.info[_UNCOMMITTED_WRITE_KEY] = True
+
+
+@event.listens_for(_SessionFactory.class_, 'after_bulk_update')
+def _mark_uncommitted_bulk_update(update_context):
+    """query.update() 等批量 DML 不经 ORM flush，单独打标。"""
+    update_context.session.info[_UNCOMMITTED_WRITE_KEY] = True
+
+
+@event.listens_for(_SessionFactory.class_, 'after_bulk_delete')
+def _mark_uncommitted_bulk_delete(delete_context):
+    """query.delete() 等批量 DML 不经 ORM flush，单独打标。"""
+    delete_context.session.info[_UNCOMMITTED_WRITE_KEY] = True
+
+
+@event.listens_for(_SessionFactory.class_, 'after_transaction_end')
+def _clear_uncommitted_write_on_tx_end(session, transaction):
+    """根事务结束（commit / rollback / close）即清标。
+
+    用 after_transaction_end 而不是 after_commit / after_rollback：Session.close()
+    只发前者（实测 close 不发 after_rollback），漏清会让已关闭的 session 复用后
+    「永远像有未提交写」，只读收口彻底失效。嵌套事务结束不清（外层可能仍有写）。
+    """
+    if transaction.parent is None:
+        session.info.pop(_UNCOMMITTED_WRITE_KEY, None)
 
 
 def bind_request_session_scope():
@@ -331,6 +371,10 @@ def end_read_transaction(session=None):
             if not sess.in_transaction() or sess.in_nested_transaction():
                 return False
             if sess.new or sess.dirty or sess.deleted:
+                return False
+            # INT-1691：已 flush 未 commit 的写（new/dirty 已被 flush 清空）同样
+            # 是「待提交改动」——回滚会把它静默丢掉，按有写处理。
+            if sess.info.get(_UNCOMMITTED_WRITE_KEY):
                 return False
             sess.rollback()
             return True

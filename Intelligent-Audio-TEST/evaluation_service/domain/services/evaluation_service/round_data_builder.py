@@ -278,6 +278,15 @@ class RoundDataBuilderMixin:
                 content=f"[_fill_round_audio_paths] 查询音频失败: error={e}",
                 task_id=task_id, test_case_id=test_case_id
             )
+        finally:
+            # INT-1691：评估链路跑在 EndpointWorker / 线程池长驻线程上，
+            # 纯读查询结束即结束事务（有 pending 写时不回滚，见
+            # shared/models/database.py::end_read_transaction）。
+            try:
+                from shared.models.database import end_read_transaction
+                end_read_transaction()
+            except Exception:  # noqa: BLE001 - 收尾失败不影响评估结果
+                pass
 
     def _normalize_round_eval_fields(self, round_cfg, case_config=None,
                                      task_id=None, test_case_id=None):

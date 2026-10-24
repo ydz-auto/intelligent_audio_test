@@ -12,7 +12,7 @@ PO ↔ Entity 转换规则：
 """
 from typing import List, Optional
 
-from shared.models.database import get_db_session
+from shared.models.database import end_read_transaction, get_db_session
 from shared.utils.status_constants import EvaluationStatus
 
 from evaluation_service.infrastructure.persistence.orm_models import (
@@ -105,36 +105,45 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
     # ========== Dimension 读 ==========
 
     def get_dimension_by_id(self, dim_id: int) -> Optional[EvaluationDimension]:
-        """按 ID 加载维度聚合根"""
+        """按 ID 加载维度聚合根（INT-1691：返回前结束只读事务）"""
         session = get_db_session()
-        po = session.get(DimensionPO, dim_id)
-        if po is None or po.deleted:
-            return None
-        return _dimension_po_to_entity(po)
+        try:
+            po = session.get(DimensionPO, dim_id)
+            if po is None or po.deleted:
+                return None
+            return _dimension_po_to_entity(po)
+        finally:
+            end_read_transaction()
 
     def list_dimensions_by_ids(self, dim_ids: List[int]) -> List[EvaluationDimension]:
-        """批量加载维度聚合根（仅未删除）"""
+        """批量加载维度聚合根（仅未删除；INT-1691：返回前结束只读事务）"""
         session = get_db_session()
-        if not dim_ids:
-            return []
-        pos = session.query(DimensionPO).filter(
-            DimensionPO.id.in_(dim_ids),
-            DimensionPO.deleted == False,  # noqa: E712
-        ).all()
-        return [_dimension_po_to_entity(po) for po in pos]
+        try:
+            if not dim_ids:
+                return []
+            pos = session.query(DimensionPO).filter(
+                DimensionPO.id.in_(dim_ids),
+                DimensionPO.deleted == False,  # noqa: E712
+            ).all()
+            return [_dimension_po_to_entity(po) for po in pos]
+        finally:
+            end_read_transaction()
 
     def list_active_dimensions_by_algorithm(
         self, algorithm_type: str
     ) -> List[EvaluationDimension]:
         """按算法类型列出可用维度（未删除 + 已启用 + API 在线）"""
         session = get_db_session()
-        pos = session.query(DimensionPO).filter(
-            DimensionPO.task_type_code == algorithm_type,
-            DimensionPO.deleted == False,  # noqa: E712
-            DimensionPO.status == True,  # noqa: E712
-            DimensionPO.api_status == 'online',
-        ).all()
-        return [_dimension_po_to_entity(po) for po in pos]
+        try:
+            pos = session.query(DimensionPO).filter(
+                DimensionPO.task_type_code == algorithm_type,
+                DimensionPO.deleted == False,  # noqa: E712
+                DimensionPO.status == True,  # noqa: E712
+                DimensionPO.api_status == 'online',
+            ).all()
+            return [_dimension_po_to_entity(po) for po in pos]
+        finally:
+            end_read_transaction()
 
     def list_active_dimensions_by_ids(
         self, dim_ids: List[int]
@@ -142,28 +151,40 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
         """按 ID 列表批量加载可用维度（未删除 + 已启用）。
 
         供 dimension_loader 在评估时按 unique_dimension_ids 加载维度用。
+        INT-1691：评估链路跑在 EndpointWorker / 线程池等长驻线程上，这些线程
+        没有请求级 scope，多轮评估共用同一线程级 session —— 读完必须结束事务，
+        否则整段评估期间一直挂着 dimensions 的 ACCESS SHARE。
         """
         session = get_db_session()
-        if not dim_ids:
-            return []
-        pos = session.query(DimensionPO).filter(
-            DimensionPO.id.in_(dim_ids),
-            DimensionPO.deleted == False,  # noqa: E712
-            DimensionPO.status == True,  # noqa: E712
-        ).all()
-        return [_dimension_po_to_entity(po) for po in pos]
+        try:
+            if not dim_ids:
+                return []
+            pos = session.query(DimensionPO).filter(
+                DimensionPO.id.in_(dim_ids),
+                DimensionPO.deleted == False,  # noqa: E712
+                DimensionPO.status == True,  # noqa: E712
+            ).all()
+            return [_dimension_po_to_entity(po) for po in pos]
+        finally:
+            end_read_transaction()
 
     def list_all_endpoint_dimensions(self) -> List[EvaluationDimension]:
         """加载全部维度（含已禁用，不含已删除），用于端点 Worker 初始化预加载。
 
         供 worker_management._load_all_endpoint_configs 使用——它需要扫描全部
         维度的 api_endpoints/api_url 配置以预创建端点 Worker。
+        INT-1691：本方法在 lifespan 与配置热更新订阅线程（DimensionConfigSub）
+        上调用，订阅线程长驻且每次维度变更都会再读一次 —— 不结束事务会形成
+        「同一事务里反复 SELECT dimensions」的空事务（事故采样形态）。
         """
         session = get_db_session()
-        pos = session.query(DimensionPO).filter(
-            DimensionPO.deleted == False,  # noqa: E712
-        ).all()
-        return [_dimension_po_to_entity(po) for po in pos]
+        try:
+            pos = session.query(DimensionPO).filter(
+                DimensionPO.deleted == False,  # noqa: E712
+            ).all()
+            return [_dimension_po_to_entity(po) for po in pos]
+        finally:
+            end_read_transaction()
 
     def get_dimension_basics_by_ids(
         self, dim_ids: List[int]
@@ -179,50 +200,59 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
         否则历史任务的报告会丢掉全部指标。
         """
         session = get_db_session()
-        dims = session.query(DimensionPO).filter(DimensionPO.id.in_(dim_ids)).all()
-        return [
-            {
-                'id': d.id,
-                'name': d.name,
-                'type': d.type,
-                'description': d.description,
-                'dimension_type': d.dimension_type,
-                'parent_dimension_id': d.parent_dimension_id,
-                'category_id': d.category_id,
-                'task_type_code': d.task_type_code,
-                'statistic_method': d.statistic_method,
-                'score_unit': d.score_unit,
-                'decimal_places': d.decimal_places,
-                'agg_denominator': d.agg_denominator,
-                'sort_order': d.sort_order,
-                'weight': d.weight,
-                'exclude_rounds': d.exclude_rounds,
-                'status': d.status,
-                'deleted': d.deleted,
-            }
-            for d in dims
-        ]
+        try:
+            dims = session.query(DimensionPO).filter(DimensionPO.id.in_(dim_ids)).all()
+            return [
+                {
+                    'id': d.id,
+                    'name': d.name,
+                    'type': d.type,
+                    'description': d.description,
+                    'dimension_type': d.dimension_type,
+                    'parent_dimension_id': d.parent_dimension_id,
+                    'category_id': d.category_id,
+                    'task_type_code': d.task_type_code,
+                    'statistic_method': d.statistic_method,
+                    'score_unit': d.score_unit,
+                    'decimal_places': d.decimal_places,
+                    'agg_denominator': d.agg_denominator,
+                    'sort_order': d.sort_order,
+                    'weight': d.weight,
+                    'exclude_rounds': d.exclude_rounds,
+                    'status': d.status,
+                    'deleted': d.deleted,
+                }
+                for d in dims
+            ]
+        finally:
+            end_read_transaction()
 
     # ========== DimensionScore 读 ==========
 
     def list_scores_by_result_id(
         self, result_id: int
     ) -> List[DimensionScore]:
-        """读取某 TestResult 的所有维度评分"""
+        """读取某 TestResult 的所有维度评分（INT-1691：返回前结束只读事务）"""
         session = get_db_session()
-        pos = session.query(TestResultDimensionPO).filter(
-            TestResultDimensionPO.test_result_id == result_id,
-        ).all()
-        return [_trd_po_to_entity(po) for po in pos]
+        try:
+            pos = session.query(TestResultDimensionPO).filter(
+                TestResultDimensionPO.test_result_id == result_id,
+            ).all()
+            return [_trd_po_to_entity(po) for po in pos]
+        finally:
+            end_read_transaction()
 
     def list_pending_scores(self, result_id: int) -> List[DimensionScore]:
-        """读取待评估的维度评分"""
+        """读取待评估的维度评分（INT-1691：返回前结束只读事务）"""
         session = get_db_session()
-        pos = session.query(TestResultDimensionPO).filter(
-            TestResultDimensionPO.test_result_id == result_id,
-            TestResultDimensionPO.evaluation_status == EvaluationStatus.PENDING,
-        ).all()
-        return [_trd_po_to_entity(po) for po in pos]
+        try:
+            pos = session.query(TestResultDimensionPO).filter(
+                TestResultDimensionPO.test_result_id == result_id,
+                TestResultDimensionPO.evaluation_status == EvaluationStatus.PENDING,
+            ).all()
+            return [_trd_po_to_entity(po) for po in pos]
+        finally:
+            end_read_transaction()
 
     def find_score(
         self, result_id: int, dimension_id: int, round_number: Optional[int] = None
@@ -230,18 +260,22 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
         """按 result_id + dimension_id + round_number 查找已存在的维度评分记录。
 
         round_number 为 None 时匹配 round_number IS NULL。
+        INT-1691：返回实体（值已复制），返回前结束只读事务。
         """
         session = get_db_session()
-        q = session.query(TestResultDimensionPO).filter(
-            TestResultDimensionPO.test_result_id == result_id,
-            TestResultDimensionPO.dimension_id == dimension_id,
-        )
-        if round_number is not None:
-            q = q.filter(TestResultDimensionPO.round_number == round_number)
-        else:
-            q = q.filter(TestResultDimensionPO.round_number.is_(None))
-        po = q.first()
-        return _trd_po_to_entity(po) if po else None
+        try:
+            q = session.query(TestResultDimensionPO).filter(
+                TestResultDimensionPO.test_result_id == result_id,
+                TestResultDimensionPO.dimension_id == dimension_id,
+            )
+            if round_number is not None:
+                q = q.filter(TestResultDimensionPO.round_number == round_number)
+            else:
+                q = q.filter(TestResultDimensionPO.round_number.is_(None))
+            po = q.first()
+            return _trd_po_to_entity(po) if po else None
+        finally:
+            end_read_transaction()
 
     # ========== DimensionScore 写 ==========
 
@@ -485,33 +519,36 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
                 避免对报告/导出等大批量消费方回传大 JSON 字段）。
         """
         session = get_db_session()
-        rows = session.query(
-            TestResultDimensionPO, DimensionPO.name
-        ).outerjoin(
-            DimensionPO, TestResultDimensionPO.dimension_id == DimensionPO.id
-        ).filter(
-            TestResultDimensionPO.test_result_id.in_(result_ids)
-        ).all()
+        try:
+            rows = session.query(
+                TestResultDimensionPO, DimensionPO.name
+            ).outerjoin(
+                DimensionPO, TestResultDimensionPO.dimension_id == DimensionPO.id
+            ).filter(
+                TestResultDimensionPO.test_result_id.in_(result_ids)
+            ).all()
 
-        items = []
-        for dim, dim_name in rows:
-            item = {
-                'id': dim.id,
-                'test_result_id': dim.test_result_id,
-                'dimension_id': dim.dimension_id,
-                'dimension_name': dim_name,
-                'dimension_value': dim.dimension_value,
-                'score': dim.score,
-                'status': dim.status,
-                'evaluation_status': dim.evaluation_status,
-                'error_message': dim.error_message,
-                'round_number': getattr(dim, 'round_number', None),
-            }
-            if include_body:
-                item['api_request_body'] = dim.api_request_body
-                item['api_raw_response'] = dim.api_raw_response
-            items.append(item)
-        return items
+            items = []
+            for dim, dim_name in rows:
+                item = {
+                    'id': dim.id,
+                    'test_result_id': dim.test_result_id,
+                    'dimension_id': dim.dimension_id,
+                    'dimension_name': dim_name,
+                    'dimension_value': dim.dimension_value,
+                    'score': dim.score,
+                    'status': dim.status,
+                    'evaluation_status': dim.evaluation_status,
+                    'error_message': dim.error_message,
+                    'round_number': getattr(dim, 'round_number', None),
+                }
+                if include_body:
+                    item['api_request_body'] = dim.api_request_body
+                    item['api_raw_response'] = dim.api_raw_response
+                items.append(item)
+            return items
+        finally:
+            end_read_transaction()
 
     def delete_scores_by_result_ids(self, result_ids: List[int]) -> int:
         """按 result_id 列表批量删除维度评估记录。返回删除行数。"""
