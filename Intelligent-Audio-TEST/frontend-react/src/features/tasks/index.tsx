@@ -38,6 +38,10 @@ import { QuickViewDialog } from '@/features/tasks/components/quick-view-dialog'
 import { PublishTaskDialog } from '@/features/tasks/components/publish-task-dialog'
 import { TaskTypeDialog } from '@/features/tasks/components/task-type-dialog'
 import { ReexecuteScopeDialog } from '@/features/tasks/components/reexecute-scope-dialog'
+import {
+  RenameTaskDialog,
+  type RenameTaskTarget,
+} from '@/features/tasks/components/rename-task-dialog'
 import { DataExportDialog } from '@/features/tasks/components/data-export-dialog'
 import { DataImportDialog } from '@/features/tasks/components/data-import-dialog'
 import type { ReexecuteActionType } from '@/features/tasks/components/task-row-actions'
@@ -65,6 +69,8 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
   } | null>(null)
   const [exportTasks, setExportTasks] = useState<TaskListItem[] | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  /** 重命名（INT-1290：行菜单「重命名」→ 名称编辑弹窗） */
+  const [renameTask, setRenameTask] = useState<RenameTaskTarget | null>(null)
   /** 日常列表勾选任务 id 集（§3.8.1 工具栏「开始挑选」预选直达阶段 2 的数据源） */
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(new Set())
 
@@ -125,6 +131,11 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
 
   const handleQuickView = (task: TaskListItem) => {
     setQuickViewTask(task)
+  }
+
+  /** 重命名（INT-1290：行菜单「重命名」→ 名称编辑弹窗，保存后列表/详情经 ['tasks'] 前缀刷新） */
+  const handleRename = (task: TaskListItem) => {
+    setRenameTask({ id: task.id, name: task.name })
   }
 
   const handlePublish = (task: TaskListItem) => {
@@ -330,6 +341,7 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
                 onBatchPublish={handleBatchPublish}
                 onJoinPick={handleJoinPick}
                 onReexecute={handleReexecute}
+                onRename={handleRename}
                 onExport={handleExport}
                 onCompare={handleCompare}
                 selected={selectedTaskIds}
@@ -370,6 +382,11 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
         taskId={reexecuteState?.task.id ?? 0}
         taskName={reexecuteState?.task.name ?? ''}
         actionType={reexecuteState?.actionType ?? 'retry'}
+      />
+      <RenameTaskDialog
+        open={renameTask != null}
+        onOpenChange={(open) => !open && setRenameTask(null)}
+        task={renameTask}
       />
       <DataExportDialog
         open={exportTasks != null}

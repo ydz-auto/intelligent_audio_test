@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 import {
   caseDetailFromDto,
   testCaseListItemFromDto,
+  testCasePreviewFromDto,
 } from '@/infrastructure/adapters/testCaseAdapter'
 import type { TestCaseListItemDto } from '@/infrastructure/dto/testcase.dto'
 
@@ -191,5 +192,43 @@ describe('caseDetailFromDto', () => {
       status: 'pass',
       metrics: [{ dimension: '清晰度', value: '0.55' }],
     })
+  })
+})
+
+describe('testCasePreviewFromDto（INT-1534 试听接线）', () => {
+  it('frontend 多轮：audio_stream_urls 优先，单键回退，playback_mode 归一为二值', () => {
+    const preview = testCasePreviewFromDto({
+      test_case_id: 'tc-1',
+      status: 'frontend_preview_ready',
+      message: '前端播放模式，返回音频流URL',
+      duration: 12.5,
+      playback_mode: 'frontend',
+      audio_id: 101,
+      audio_stream_url: '/api/v1/audios/download?path=a.wav',
+      audio_stream_urls: [
+        '/api/v1/audios/download?path=a.wav',
+        '/api/v1/audios/download?path=b.wav',
+      ],
+    })
+    expect(preview).toMatchObject({
+      testCaseId: 'tc-1',
+      playbackMode: 'frontend',
+      duration: 12.5,
+      audioId: 101,
+      audioStreamUrl: '/api/v1/audios/download?path=a.wav',
+    })
+    expect(preview.audioStreamUrls).toHaveLength(2)
+  })
+
+  it('backend 无流地址：audio_stream_urls 空数组，时长可为 null，playback_mode 兜底 backend', () => {
+    const preview = testCasePreviewFromDto({
+      test_case_id: 'tc-2',
+      status: 'preview_started',
+      duration: null,
+      audio_stream_url: null,
+    })
+    expect(preview.playbackMode).toBe('backend')
+    expect(preview.duration).toBeNull()
+    expect(preview.audioStreamUrls).toEqual([])
   })
 })

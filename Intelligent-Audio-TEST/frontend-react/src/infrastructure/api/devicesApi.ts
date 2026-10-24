@@ -21,6 +21,10 @@ import type {
 } from '@/domain/models/alarm'
 import type { Laboratory } from '@/domain/models/laboratory'
 import type { DeviceGroup } from '@/domain/models/deviceGroup'
+import type {
+  DeviceExportFormat,
+  DeviceImportResult,
+} from '@/domain/models/deviceImportExport'
 import { request, type ApiRequestOptions } from '@/infrastructure/api/client'
 import { ApiError } from '@/infrastructure/api/api-error'
 import type { TestDeviceItemDto } from '@/infrastructure/dto/test-device.dto'
@@ -40,6 +44,8 @@ import { apiDeviceFromDto } from '@/infrastructure/adapters/apiDeviceAdapter'
 import { extractEndpointApiKeys } from '@/infrastructure/adapters/api-keys'
 import { deviceGroupFromDto, deviceGroupsToTree } from '@/infrastructure/adapters/deviceGroupAdapter'
 import { laboratoryFromDto } from '@/infrastructure/adapters/laboratoryAdapter'
+import { deviceImportResultFromDto } from '@/infrastructure/adapters/deviceImportExportAdapter'
+import type { DeviceImportResultDto } from '@/infrastructure/dto/device-import-export.dto'
 import {
   alarmFromDto,
   alarmRuleFromDto,
@@ -663,4 +669,83 @@ export async function scanDevices(
     undefined, options
   )
   return dto ?? []
+}
+
+/* ==================== 导入导出（§3.3/§4.5；INT-816 三资源端点） ==================== */
+
+/**
+ * 页签 → 资源端点与导出文件名前缀（INT-816 device_import_export_service.py
+ * `_ResourceSpec.resource/export_prefix` 实测契约）。
+ * 与 features/devices 的 DevicesTabKey 同构；infrastructure 不反向依赖 features，故本地定义。
+ */
+export type DeviceResourceTab = 'test' | 'playback' | 'api'
+
+const RESOURCE_ENDPOINTS: Record<
+  DeviceResourceTab,
+  { path: string; exportPrefix: string }
+> = {
+  test: { path: '/test-devices', exportPrefix: 'test_devices' },
+  playback: { path: '/playback-devices', exportPrefix: 'playback_devices' },
+  api: { path: '/apis', exportPrefix: 'apis' },
+}
+
+export interface DeviceExportOptions {
+  /** json=默认；excel 对应后端 xlsx 文件流 */
+  format?: DeviceExportFormat
+  /** 导出范围非「全部」时的 id 集；空数组按不传处理（避免误导出全量） */
+  ids?: number[]
+}
+
+/** 导出文件的浏览器侧文件名（后端 Content-Disposition 同名口径：`<prefix>_YYYYmmdd_HHMMSS.<ext>`） */
+export function buildDeviceExportFilename(
+  tab: DeviceResourceTab,
+  format: DeviceExportFormat,
+  now: Date = new Date()
+): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  const stamp =
+    `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+    `_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+  return `${RESOURCE_ENDPOINTS[tab].exportPrefix}_${stamp}.${format === 'excel' ? 'xlsx' : 'json'}`
+}
+
+/**
+ * 导出资源（GET /{resource}/export?format=&ids=，文件流）。
+ * 响应是文件流（不走 `{code,message,data}` 信封），以 blob 取流；
+ * client.ts 不解包、不解析 JSON，避免把 XLSX 当 JSON 读坏。
+ * 文件名按后端命名口径在前端生成——client.ts 不暴露响应头（基座文件，
+ * 本卡不改），Content-Disposition 仍可在 Network 面板核对。
+ */
+export async function exportDeviceResource(
+  tab: DeviceResourceTab,
+  input: DeviceExportOptions = {},
+  options: ApiRequestOptions = {}
+): Promise<{ blob: Blob; filename: string }> {
+  const format = input.format ?? 'json'
+  const ids = input.ids && input.ids.length > 0 ? input.ids.join(',') : undefined
+  const blob = await request<Blob>('GET', `${RESOURCE_ENDPOINTS[tab].path}/export`, undefined, {
+    ...options,
+    params: { format, ids },
+    responseType: 'blob',
+    unwrapResponse: false,
+  })
+  return { blob, filename: buildDeviceExportFilename(tab, format) }
+}
+
+/**
+ * 导入资源（POST /{resource}/import，multipart 字段名 `file`；JSON/CSV/XLSX）。
+ * 返回计数报告（逐行提交、不整批回滚：部分成功是后端既定口径）。
+ * 无文件 / 空文件 / 不支持格式由后端 400，ApiError 透出中文 message。
+ */
+export async function importDeviceResource(
+  tab: DeviceResourceTab,
+  file: File,
+  options: ApiRequestOptions = {}
+): Promise<DeviceImportResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const dto = await request<DeviceImportResultDto>(
+    'POST', `${RESOURCE_ENDPOINTS[tab].path}/import`, formData, options
+  )
+  return deviceImportResultFromDto(dto)
 }

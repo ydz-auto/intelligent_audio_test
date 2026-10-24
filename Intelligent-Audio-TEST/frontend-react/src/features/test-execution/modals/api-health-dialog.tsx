@@ -46,13 +46,14 @@ export function ApiHealthDialog({
             {testing ? '正在测试连接…' : '暂无测试结果'}
           </p>
         ) : (
-          <div className='space-y-4'>
-            <div className='flex items-center justify-between'>
+          <div className='min-w-0 space-y-4'>
+            {/* INT-1632：长错误串（DNS/HTTP 异常全文）不得撑开弹窗，min-w-0 让 1fr 列可收缩 */}
+            <div className='flex items-center justify-between gap-2'>
               <StatusBadge
                 label={online ? '在线' : '离线'}
                 variant={online ? 'success' : 'danger'}
               />
-              <span className='flex items-center gap-2 text-sm'>
+              <span className='flex shrink-0 items-center gap-2 text-sm'>
                 <span className='text-muted-foreground'>健康分</span>
                 <span className='text-lg font-semibold tabular-nums'>
                   {result.healthScore ?? '—'}
@@ -61,20 +62,28 @@ export function ApiHealthDialog({
             </div>
             <Progress value={result.healthScore ?? 0} size='sm' className='h-1.5' />
 
-            <dl className='text-muted-foreground grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs'>
-              <dt>端点状态</dt>
+            <dl className='text-muted-foreground grid min-w-0 grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs'>
+              <dt className='whitespace-nowrap'>端点状态</dt>
               {/* INT-1223：api_url_status 移除，「端点状态」行绑 endpointsStatus */}
-              <dd className='text-foreground'>{result.endpointsStatus ?? '—'}</dd>
-              <dt>HTTP 状态码</dt>
-              <dd className='text-foreground font-mono'>{result.statusCode ?? '—'}</dd>
-              <dt>响应时间</dt>
-              <dd className='text-foreground font-mono'>{result.responseTime ?? '—'}</dd>
-              <dt>错误信息</dt>
-              <dd className='text-foreground'>{result.error ?? '无'}</dd>
+              <dd className='text-foreground min-w-0 break-all'>
+                {result.endpointsStatus ?? '—'}
+              </dd>
+              <dt className='whitespace-nowrap'>HTTP 状态码</dt>
+              <dd className='text-foreground min-w-0 font-mono break-all'>
+                {result.statusCode ?? '—'}
+              </dd>
+              <dt className='whitespace-nowrap'>响应时间</dt>
+              <dd className='text-foreground min-w-0 font-mono break-all'>
+                {result.responseTime ?? '—'}
+              </dd>
+              <dt className='whitespace-nowrap'>错误信息</dt>
+              <dd className='text-foreground min-w-0 break-all'>
+                {result.error ?? '无'}
+              </dd>
             </dl>
 
             {result.error && (
-              <div className='bg-destructive/10 text-destructive rounded-md border border-destructive/25 p-3 text-xs'>
+              <div className='bg-destructive/10 text-destructive min-w-0 rounded-md border border-destructive/25 p-3 text-xs break-all whitespace-pre-wrap'>
                 {result.error}
               </div>
             )}

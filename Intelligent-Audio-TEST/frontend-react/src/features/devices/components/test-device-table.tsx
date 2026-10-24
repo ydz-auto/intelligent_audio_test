@@ -36,6 +36,8 @@ export interface TestDeviceTableProps {
   rows: TestDevice[]
   loading: boolean
   total: number
+  /** 未过滤前的设备总数（区分「暂无设备」与「筛选后无匹配」；缺省按搜索关键词判定） */
+  unfilteredTotal?: number
   searchKeyword: string
   selectedIds: Set<number>
   batchMode: boolean
@@ -110,6 +112,9 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
   const isEmpty = !props.loading && props.rows.length === 0
   const allSelected =
     !isEmpty && props.rows.length > 0 && props.selectedIds.size === props.rows.length
+  /** 有设备但被搜索/筛选（含全局算法联动）排除 → 「未找到匹配」；否则「暂无设备」 */
+  const filteredOut =
+    props.unfilteredTotal != null ? props.unfilteredTotal > 0 : Boolean(props.searchKeyword)
 
   if (props.loading) {
     return (
@@ -131,15 +136,15 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
           </EmptyMedia>
           <EmptyHeader>
             <EmptyTitle>
-              {props.searchKeyword ? '未找到匹配的设备' : '暂无设备'}
+              {filteredOut ? '未找到匹配的设备' : '暂无设备'}
             </EmptyTitle>
             <EmptyDescription>
-              {props.searchKeyword
+              {filteredOut
                 ? '换个关键词或清除筛选条件试试'
                 : '点击右上角「添加设备」登记第一台设备，或调整筛选条件'}
             </EmptyDescription>
           </EmptyHeader>
-          {!props.searchKeyword && (
+          {!filteredOut && (
             <EmptyContent>
               <Button variant='outline' size='sm' onClick={props.onEmptyAdd}>
                 <Server aria-hidden='true' className='size-3.5' />
@@ -180,7 +185,8 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
               <th className='px-3 py-2 text-left font-medium'>应用</th>
               <th className='px-3 py-2 text-left font-medium'>支持算法</th>
               <th className='px-3 py-2 text-left font-medium'>驱动</th>
-              <th className='w-[52px] px-3 py-2 text-center font-medium'>提示词</th>
+              {/* INT-1480 P3-2：原 w-[52px] 减去 px-3 后不足三字宽，CJK 逐字断行成竖排 */}
+              <th className='w-[68px] whitespace-nowrap px-3 py-2 text-center font-medium'>提示词</th>
               <th className='px-3 py-2 text-left font-medium'>
                 <button
                   type='button'

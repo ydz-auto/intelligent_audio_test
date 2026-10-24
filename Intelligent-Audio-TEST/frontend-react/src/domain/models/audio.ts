@@ -72,3 +72,96 @@ export interface AudioFolderNode {
   depth: number
   children: AudioFolderNode[]
 }
+
+/** 频谱特征（§6.23；GET /audios/{id}/features → spectral） */
+export interface AudioSpectralFeatures {
+  /** 基频范围下限（Hz） */
+  fundamentalRangeLow: number
+  /** 基频范围上限（Hz） */
+  fundamentalRangeHigh: number
+  /** 主频（Hz） */
+  dominantFrequency: number
+  /** 谐波失真（%，0-100） */
+  harmonicDistortion: number
+}
+
+/** 能量分布（features → energy） */
+export interface AudioEnergyFeatures {
+  /** 平均能量（dBFS） */
+  averageEnergyDb: number
+  /** 峰值能量（dBFS） */
+  peakEnergyDb: number
+  /** 能量集中度（0-1） */
+  energyConcentration: number
+}
+
+/** 时域特征（features → time_domain） */
+export interface AudioTimeDomainFeatures {
+  /** 过零率（0-1） */
+  zeroCrossingRate: number
+  /** 有效时长占比（0-1） */
+  activeDurationRatio: number
+  /** 起始时间（秒） */
+  onsetTime: number
+}
+
+/** 音频特征分析结果（§6.23 特征分区；audioId/duration 供与音频行时长对照） */
+export interface AudioFeatures {
+  spectral: AudioSpectralFeatures
+  energy: AudioEnergyFeatures
+  timeDomain: AudioTimeDomainFeatures
+  audioId: number
+  /** 分析样本时长（秒） */
+  duration: number
+}
+
+/** 音频质量评估（§6.23 质量评估分区；GET /audios/{id}/quality） */
+export interface AudioQuality {
+  /** 信噪比（dB） */
+  snrDb: number
+  /** 动态范围（dB） */
+  dynamicRangeDb: number
+  /** 频率响应评分（0-100） */
+  frequencyResponseScore: number
+  /** 综合质量评分（0-100） */
+  qualityScore: number
+  audioId: number
+  /** 分析样本时长（秒） */
+  duration: number
+}
+
+/** 处理操作类型（§6.23 处理操作：降噪 / 增益调整 / 剪辑） */
+export type AudioProcessOperation = 'denoise' | 'gain' | 'trim'
+
+/** 处理产物落位方式：new=生成新音频记录；overwrite=覆盖原文件（破坏性） */
+export type AudioProcessMode = 'new' | 'overwrite'
+
+/** 处理操作请求（POST /audios/{id}/process；参数按 operation 取用） */
+export interface AudioProcessRequest {
+  operation: AudioProcessOperation
+  /** 默认 new（生成新文件并建新音频记录）；overwrite 改原记录 file_path */
+  mode?: AudioProcessMode
+  /** 增益调整量（dB，仅 operation=gain） */
+  gainDb?: number
+  /** 剪辑起点（毫秒，仅 operation=trim） */
+  startMs?: number
+  /** 剪辑终点（毫秒，仅 operation=trim；缺省到音频末尾） */
+  endMs?: number | null
+}
+
+/** 处理结果（POST /audios/{id}/process） */
+export interface AudioProcessResult {
+  audioId: number
+  operation: AudioProcessOperation
+  mode: AudioProcessMode
+  /** 处理产物格式（统一 wav） */
+  format: string
+  /** 处理产物存储路径 */
+  filePath: string
+  /** 处理产物时长（秒） */
+  duration: number
+  /** 处理产物大小（字节） */
+  size: number
+  /** mode=new 时生成的新音频记录 id；overwrite 为 null */
+  newAudioId: number | null
+}

@@ -54,11 +54,20 @@ import {
   MOCK_RESOURCE_LABS,
   NETWORK_OPTIONS,
   RESOURCE_PROTOCOL_OPTIONS,
+  RESOURCE_STATUS_OPTIONS,
   RESOURCE_SYSTEM_OPTIONS,
   RESOURCE_VENDOR_OPTIONS,
 } from '@/features/test-execution/constants'
 import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { Device } from '@/domain/models/device'
+
+/**
+ * 实验室筛选选项（INT-1633：作 Select items，关闭态才会把 'all'/lab id 映射成中文名）
+ */
+const LAB_FILTER_OPTIONS = [
+  { value: 'all', label: '全部实验室' },
+  ...MOCK_RESOURCE_LABS.map((lab) => ({ value: lab.id, label: lab.name })),
+]
 
 interface StepResourcesProps {
   voiceLlmAlert: string
@@ -228,27 +237,33 @@ export function StepResources({
         <Select
           value={statusFilter}
           onValueChange={(v) => setStatusFilter(v as 'all' | 'online' | 'offline')}
+          items={RESOURCE_STATUS_OPTIONS}
         >
           <SelectTrigger className='h-8 w-28 text-xs'>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value='all'>全部状态</SelectItem>
-            <SelectItem value='online'>在线</SelectItem>
-            <SelectItem value='offline'>离线</SelectItem>
+            {RESOURCE_STATUS_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
         {/* 实验室 facet（INT-486 口径；INT-487 设备-实验室绑定待接线） */}
-        <Select value={labFilter} onValueChange={(v) => setLabFilter(v ?? 'all')}>
+        <Select
+          value={labFilter}
+          onValueChange={(v) => setLabFilter(v ?? 'all')}
+          items={LAB_FILTER_OPTIONS}
+        >
           <SelectTrigger className='h-8 w-32 text-xs'>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value='all'>全部实验室</SelectItem>
-            {MOCK_RESOURCE_LABS.map((lab) => (
-              <SelectItem key={lab.id} value={lab.id}>
-                {lab.name}
+            {LAB_FILTER_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -258,6 +273,7 @@ export function StepResources({
         <Select
           value={systemFilter}
           onValueChange={(v) => setSystemFilter(v as 'all' | 'android' | 'harmony' | 'api')}
+          items={RESOURCE_SYSTEM_OPTIONS}
         >
           <SelectTrigger className='h-8 w-32 text-xs'>
             <SelectValue />
@@ -272,7 +288,11 @@ export function StepResources({
         </Select>
 
         {/* 厂商 facet（API 筛选维度，INT-486 口径） */}
-        <Select value={vendorFilter} onValueChange={(v) => setVendorFilter(v ?? 'all')}>
+        <Select
+          value={vendorFilter}
+          onValueChange={(v) => setVendorFilter(v ?? 'all')}
+          items={RESOURCE_VENDOR_OPTIONS}
+        >
           <SelectTrigger className='h-8 w-32 text-xs'>
             <SelectValue />
           </SelectTrigger>
@@ -289,6 +309,7 @@ export function StepResources({
         <Select
           value={protocolFilter}
           onValueChange={(v) => setProtocolFilter(v as 'all' | 'http' | 'websocket')}
+          items={RESOURCE_PROTOCOL_OPTIONS}
         >
           <SelectTrigger className='h-8 w-32 text-xs'>
             <SelectValue />

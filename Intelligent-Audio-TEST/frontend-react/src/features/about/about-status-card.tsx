@@ -83,7 +83,7 @@ export function AboutStatusCard() {
 
   return (
     <Card>
-      <CardHeader className='flex-row items-center justify-between gap-2 [.border-b]:pb-4'>
+      <CardHeader className='flex flex-row items-center justify-between gap-2 [.border-b]:pb-4'>
         <CardTitle className='text-sm font-semibold'>版本与服务状态</CardTitle>
         <Button
           variant='ghost'

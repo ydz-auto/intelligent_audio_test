@@ -615,7 +615,6 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
           onOpenChange={setMutateOpen}
           caseItem={mutateCase}
           groups={groups}
-          tags={tags}
           presetGroupId={presetGroupId}
         />
         <GroupMutateDialog

@@ -14,7 +14,7 @@ import type {
 import type {
   BenchmarkMetricMappingDto,
   BenchmarkRankingDto,
-} from '@/infrastructure/mock/benchmark-mock'
+} from '@/infrastructure/api/benchmarkTypes'
 import type {
   BenchmarkReportRankingDto,
   BenchmarkReportRankingRowDto,

@@ -28,6 +28,11 @@ vi.mock('@/infrastructure/api/reviewApi', () => ({
   rejectAiReview: vi.fn(),
 }))
 
+// INT-1626：抽屉范围解析（容器溯源）桩——本测试走普通任务（非容器）
+vi.mock('@/infrastructure/api/cherry-pick-api', () => ({
+  fetchContainerSourceTrace: vi.fn().mockResolvedValue(null),
+}))
+
 const singleResult: CaseResultForReview = {
   id: 5400,
   deviceId: 10,

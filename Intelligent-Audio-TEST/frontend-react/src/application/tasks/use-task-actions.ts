@@ -139,6 +139,7 @@ export function useTaskActions() {
     onError: (error) => toast.error(toErrorMessage(error, '移除用例失败')),
   })
 
+  /** 重命名（INT-1290：PUT /tasks/{id} {name}；成功后列表/详情经 ['tasks'] 前缀统一刷新） */
   const rename = useMutation({
     mutationFn: ({
       taskId,

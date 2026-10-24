@@ -22,12 +22,13 @@ export interface RuleRow {
 
 /**
  * 所需输入配置行（API配置节「所需输入配置」编辑器行；对齐 DimensionRequiredInput：
- * paramCode / paramName / label / fieldType / required / defaultValue / helpText / uiOrder）。
+ * paramCode / paramName / fieldType / required / defaultValue / helpText / uiOrder）。
+ * INT-1690：编辑器只有「显示标签」一个可见口径（绑定 paramName），旧隐藏 label 字段
+ * 会在保存时压过可见值，已移除；落库时 param_name / label 同取 paramName。
  */
 export interface RequiredInputRow {
   paramCode: string
   paramName: string
-  label: string
   /** 字段类型（后端契约原值：text/number/audio/boolean/json/timestamp） */
   fieldType: string
   required: boolean
@@ -40,13 +41,13 @@ export interface RequiredInputRow {
 
 /**
  * 输出字段配置行（API配置节「输出字段配置」编辑器行；对齐 DimensionOutputField：
- * paramCode / paramName / label / fieldPath / fieldType / outputRole / aggRole /
+ * paramCode / paramName / fieldPath / fieldType / outputRole / aggRole /
  * defaultValue / passThreshold / visibleInReport / helpText / uiOrder）。
+ * INT-1690：同输入行，隐藏 label 字段移除，paramName 为唯一可见口径。
  */
 export interface OutputFieldRow {
   paramCode: string
   paramName: string
-  label: string
   /** 提取路径（field_path，如 wer 或 data.result.wer） */
   fieldPath: string
   fieldType: string
@@ -84,7 +85,6 @@ const ruleRowSchema = z.object({
 const requiredInputRowSchema = z.object({
   paramCode: z.string(),
   paramName: z.string(),
-  label: z.string(),
   fieldType: z.string(),
   required: z.boolean(),
   defaultValue: z.string(),
@@ -94,7 +94,6 @@ const requiredInputRowSchema = z.object({
 const outputFieldRowSchema = z.object({
   paramCode: z.string(),
   paramName: z.string(),
-  label: z.string(),
   fieldPath: z.string(),
   fieldType: z.string(),
   outputRole: z.string(),
@@ -213,7 +212,6 @@ export function emptyDimensionFormValues(): DimensionFormValues {
       {
         paramCode: 'asr_result',
         paramName: 'ASR识别结果',
-        label: 'ASR识别结果',
         fieldType: 'text',
         required: true,
         defaultValue: '',
@@ -223,7 +221,6 @@ export function emptyDimensionFormValues(): DimensionFormValues {
       {
         paramCode: 'asr_ref',
         paramName: '参考文本',
-        label: '参考文本',
         fieldType: 'text',
         required: true,
         defaultValue: '',
@@ -235,7 +232,6 @@ export function emptyDimensionFormValues(): DimensionFormValues {
       {
         paramCode: 'score',
         paramName: '评分结果',
-        label: '评分结果',
         fieldPath: 'score',
         fieldType: 'number',
         outputRole: 'main',
@@ -273,10 +269,10 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
     score: Number(r.score),
   }))
   // 子编辑器反填（P3-2）：缺省（null/空）时回退默认行，保证编辑态可继续编辑
+  // INT-1690：显示标签只有 paramName 一个口径；旧数据 param_name 缺失时仍可用 label 兜底回显
   const requiredInputs = (dimension.requiredInputs ?? []).map((ri) => ({
     paramCode: ri.paramCode ?? '',
-    paramName: ri.paramName ?? ri.label ?? '',
-    label: ri.label ?? ri.paramName ?? '',
+    paramName: ri.paramName || ri.label || '',
     fieldType: ri.fieldType ?? 'text',
     required: ri.required === undefined ? true : !!ri.required,
     defaultValue: formDefaultValue(ri.defaultValue),
@@ -285,8 +281,7 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
   }))
   const outputFields = (dimension.outputFields ?? []).map((of) => ({
     paramCode: of.paramCode ?? '',
-    paramName: of.paramName ?? of.label ?? '',
-    label: of.label ?? of.paramName ?? '',
+    paramName: of.paramName || of.label || '',
     fieldPath: of.fieldPath ?? of.paramCode ?? '',
     fieldType: of.fieldType ?? 'number',
     outputRole: of.outputRole ?? 'main',
@@ -431,12 +426,14 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
       weight: values.weight,
     })),
     // P3-2：所需输入/输出字段/API 端点随保存载荷提交（子维度继承父维度，不携带）
+    // INT-1690：param_name / label 同取可见的 paramName —— 旧隐藏 label 会把编辑掉的
+    // 「输入显示标签」用旧值覆盖，后端又按 param_name 优先，导致编辑不落库。
     requiredInputs: isSub
       ? undefined
       : values.requiredInputs.map((ri) => ({
           paramCode: ri.paramCode,
-          paramName: ri.paramName || ri.label,
-          label: ri.label || ri.paramName,
+          paramName: ri.paramName,
+          label: ri.paramName,
           fieldType: ri.fieldType,
           required: ri.required,
           // INT-1350 三轮：default_value 按 field_type 解析类型（number→Number /
@@ -450,8 +447,8 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
       ? undefined
       : values.outputFields.map((of) => ({
           paramCode: of.paramCode,
-          paramName: of.paramName || of.label,
-          label: of.label || of.paramName,
+          paramName: of.paramName,
+          label: of.paramName,
           fieldPath: of.fieldPath,
           fieldType: of.fieldType,
           outputRole: of.outputRole,

@@ -6,11 +6,44 @@ import type {
   CaseDeviceResult,
   CaseExecutionDetail,
 } from '@/domain/models/testExecution'
-import type { TestCase, TestCaseListItem } from '@/domain/models/testCase'
+import type {
+  TestCase,
+  TestCaseListItem,
+  TestCasePreview,
+} from '@/domain/models/testCase'
 import type {
   CaseDetailDto,
   TestCaseListItemDto,
+  TestCasePreviewDto,
 } from '@/infrastructure/dto/testcase.dto'
+
+/**
+ * 用例试听 DTO → Domain（§5.2；preview_type/playback_mode 后端默认 backend，这里归一为二值）。
+ * audio_stream_urls 多轮时优先使用，单轮回退到 audio_stream_url（后端两键并存）。
+ */
+export function testCasePreviewFromDto(dto: TestCasePreviewDto): TestCasePreview {
+  const urls = (dto.audio_stream_urls ?? []).filter(
+    (url): url is string => typeof url === 'string' && url.length > 0
+  )
+  const single =
+    typeof dto.audio_stream_url === 'string' && dto.audio_stream_url.length > 0
+      ? dto.audio_stream_url
+      : null
+  return {
+    testCaseId: dto.test_case_id,
+    previewTaskId: dto.preview_task_id ?? null,
+    status: dto.status,
+    message: dto.message ?? null,
+    duration:
+      dto.duration != null && Number.isFinite(Number(dto.duration))
+        ? Number(dto.duration)
+        : null,
+    playbackMode: dto.playback_mode === 'frontend' ? 'frontend' : 'backend',
+    audioId: dto.audio_id ?? null,
+    audioStreamUrl: single ?? urls[0] ?? null,
+    audioStreamUrls: urls.length > 0 ? urls : single ? [single] : [],
+  }
+}
 
 export function testCaseFromDto(dto: TestCaseListItemDto): TestCase {
   const rounds = dto.config.rounds?.length ?? 1

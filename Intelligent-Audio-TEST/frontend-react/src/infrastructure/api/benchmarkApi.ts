@@ -14,7 +14,7 @@
  * 联想输入（防抖 300ms 写 URL，未选中前是局部串），精确匹配会打空列表；主体
  * 子串筛选由 application 层 filterRankingRows 在 Domain 行上承担（与 mock 阶段同口径）。
  */
-import type { BenchmarkMetricMappingDto, BenchmarkRankingDto } from '@/infrastructure/mock/benchmark-mock'
+import type { BenchmarkMetricMappingDto, BenchmarkRankingDto } from '@/infrastructure/api/benchmarkTypes'
 import { request } from '@/infrastructure/api/client'
 
 export interface RankingQueryParams {

@@ -77,6 +77,8 @@ def driver():
                     pass
     d = webdriver.Chrome(options=o, service=Service(executable_path=path) if path else Service())
     d.set_page_load_timeout(45)
+    # 网关业务写偶发 60s+（SSE 线程池 / 慢写），异步脚本默认 60s 会被误判成失败
+    d.set_script_timeout(240)
     for attempt in range(3):
         try:
             d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': FETCH_PATCH})

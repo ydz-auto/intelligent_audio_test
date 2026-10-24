@@ -65,6 +65,14 @@ export const LOG_SCOPE_OPTIONS = [
   { value: 'mine', label: '仅自己' },
 ] as const
 
+/** 按后端原值取选项中文标签（找不到时回落原值）；只用于界面回显，不外发 */
+export function getLogOptionLabel(
+  options: LogSelectOption[],
+  value: string
+): string {
+  return options.find((option) => option.value === value)?.label ?? value
+}
+
 export type LogScope = (typeof LOG_SCOPE_OPTIONS)[number]['value']
 
 /** 标记颜色选项（§4.5 批量浮条「标记颜色」；mark 值同 LOG_MARK_FILTER_OPTIONS 非 all） */

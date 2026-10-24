@@ -81,6 +81,20 @@ const FIELD_SECTION_LABELS: Record<string, string> = {
 /** 校验错误摘要最多展示条数（超出后收尾为「等 N 处」） */
 const VALIDATION_SUMMARY_MAX = 3
 
+/** 新增态表单初值（含「添加子维度」预填的父维度 / 分类；INT-1660） */
+function createFormValues(
+  presetParentId?: number | null,
+  presetCategoryId?: number | null
+): DimensionFormValues {
+  const base = emptyDimensionFormValues()
+  if (presetParentId != null) {
+    base.dimensionType = 'sub'
+    base.parentDimensionId = String(presetParentId)
+  }
+  if (presetCategoryId != null) base.categoryId = String(presetCategoryId)
+  return base
+}
+
 /** 校验问题 → 一行「分节：文案」摘要（去重、限条数；INT-1551） */
 function summarizeValidationIssues(
   issues: ReadonlyArray<{ path: readonly PropertyKey[]; message: string }>
@@ -133,26 +147,12 @@ export function DimensionMutateDrawer({
     [categories, createdCategories]
   )
   // 编辑反填必须走详情（列表不下发 required_inputs/output_fields）：
-  // 抽屉先以列表数据渲染基础字段，详情返回后 RHF `values` 重同步全量配置
+  // 抽屉先以列表数据渲染基础字段，详情返回后再重同步全量配置
   const { data: detailDimension } = useEvaluationDimensionDetail(
     open && mode === 'edit' && dimension ? dimension.id : null
   )
   const effectiveDimension = detailDimension ?? dimension
-
-  const defaultValues = useMemo(() => {
-    if (!open) return undefined
-    if (mode === 'edit' && effectiveDimension)
-      return toDimensionFormValues(effectiveDimension)
-    const base = emptyDimensionFormValues()
-    if (presetParentId != null) {
-      base.dimensionType = 'sub'
-      base.parentDimensionId = String(presetParentId)
-    }
-    if (presetCategoryId != null) {
-      base.categoryId = String(presetCategoryId)
-    }
-    return base
-  }, [open, mode, effectiveDimension, presetParentId, presetCategoryId])
+  const dimensionId = dimension?.id ?? null
 
   const form = useForm<DimensionFormValues>({
     // mode:'onChange'：字段错误随输入即时显示（INT-1551：默认 onSubmit 下 errors 不产出，
@@ -160,17 +160,32 @@ export function DimensionMutateDrawer({
     mode: 'onChange',
     resolver: zodResolver(dimensionFormSchema),
     defaultValues: emptyDimensionFormValues(),
-    values: defaultValues,
   })
 
-  // 关闭 Sheet 时重置表单，避免下次打开残留旧值
+  // 打开 / 关闭 / 切换行时显式 reset：不用 useForm 的 values —— 它按深相等判重跳过同步，
+  // 关闭时 form.reset(空值) 不更新其内部比对值，重开同一行（值深相等）同步被跳过 →
+  // 空表 + 「维度名称不能为空」；换成另一行对象不同才生效（INT-1660，同 INT-1577）。
   useEffect(() => {
     if (!open) {
       form.reset(emptyDimensionFormValues())
       setCreatedCategories([])
+      return
     }
+    form.reset(
+      mode === 'edit' && effectiveDimension
+        ? toDimensionFormValues(effectiveDimension)
+        : createFormValues(presetParentId, presetCategoryId)
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, mode, dimensionId, presetParentId, presetCategoryId])
+
+  // 详情到达后再同步一次：首次打开时以上一步用的是列表行（无 required_inputs /
+  // output_fields），详情对象替换后必须重同步，故依赖 detailDimension 而不是行 id。
+  useEffect(() => {
+    if (!open || mode !== 'edit' || !detailDimension) return
+    form.reset(toDimensionFormValues(detailDimension))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, mode, detailDimension])
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {

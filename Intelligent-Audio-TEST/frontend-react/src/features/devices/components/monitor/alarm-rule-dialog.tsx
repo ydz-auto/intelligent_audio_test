@@ -189,6 +189,7 @@ export function AlarmRuleDialog({
                     <Label htmlFor='rule-metric'>告警指标</Label>
                     <Select
                       value={form.metricType}
+                      items={[...METRIC_OPTIONS]}
                       onValueChange={(value) =>
                         setForm({ ...form, metricType: value as AlarmMetricType })
                       }
@@ -224,6 +225,7 @@ export function AlarmRuleDialog({
                     <Label htmlFor='rule-severity'>告警级别</Label>
                     <Select
                       value={form.severity}
+                      items={[...SEVERITY_OPTIONS]}
                       onValueChange={(value) =>
                         setForm({ ...form, severity: value as AlarmSeverity })
                       }
@@ -285,18 +287,22 @@ export function AlarmRuleDialog({
                 {
                   key: 'metric',
                   header: '指标',
+                  // 同上：指标名可达 7 字（连续健康检查失败次数），不 nowrap 会被压成逐字竖排
+                  className: 'whitespace-nowrap',
                   render: (rule: AlarmRule) => ALARM_METRIC_META[rule.metricType].label,
                 },
                 {
                   key: 'threshold',
                   header: '阈值',
-                  className: 'text-right font-mono tabular-nums',
+                  // INT-1480 P3-2：表头不得逐字换行（CJK 可在任意字符间断行，需 nowrap 撑开列宽）
+                  className: 'text-right font-mono tabular-nums whitespace-nowrap',
                   render: (rule: AlarmRule) =>
                     `${rule.thresholdValue} ${ALARM_METRIC_META[rule.metricType].unit}`,
                 },
                 {
                   key: 'severity',
                   header: '级别',
+                  className: 'whitespace-nowrap',
                   render: (rule: AlarmRule) => {
                     const severity = ALARM_SEVERITY_META[rule.severity]
                     return (
@@ -317,7 +323,7 @@ export function AlarmRuleDialog({
                 {
                   key: 'email',
                   header: '邮件',
-                  className: 'text-center',
+                  className: 'text-center whitespace-nowrap',
                   render: (rule: AlarmRule) => (
                     <Switch
                       size='sm'
@@ -332,7 +338,7 @@ export function AlarmRuleDialog({
                 {
                   key: 'enabled',
                   header: '启用',
-                  className: 'text-center',
+                  className: 'text-center whitespace-nowrap',
                   render: (rule: AlarmRule) => (
                     <Switch
                       size='sm'

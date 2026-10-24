@@ -19,13 +19,12 @@ export interface AudioListFilters {
   tagMode: TagMode
 }
 
-/** 行操作弹窗分派态（§5.3.1 + §6.13-6.15/6.23-6.24） */
+/** 行操作弹窗分派态（§5.3.1 + §6.13-6.15/6.23） */
 export type AudioRowDialogState =
   | { kind: 'preview'; audioId: number }
   | { kind: 'metadata'; audioId: number }
   | { kind: 'convert'; audioId: number }
   | { kind: 'feature-analysis'; audioId: number }
-  | { kind: 'playback-history'; audioId: number }
 
 /** 批量浮条弹窗分派态（§5.6 + §6.25；「批量设置标签」走独立 AudioBatchTagsDialog） */
 export type AudioBulkDialogState =

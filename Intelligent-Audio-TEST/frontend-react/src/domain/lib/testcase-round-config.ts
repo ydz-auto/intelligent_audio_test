@@ -12,6 +12,7 @@
  * 纯函数无副作用，可单测（vitest .ts 直跑）。
  */
 import type { CaseEvaluationStrategy } from '@/domain/models/evaluationStrategy'
+import type { CasePlaybackDevice } from '@/domain/models/testCase'
 import {
   emptyRoundNoise,
   type RoundAudioDraft,
@@ -38,6 +39,44 @@ export function defaultRounds(): RoundDraft[] {
       noise: emptyRoundNoise(),
     },
   ]
+}
+
+/**
+ * 用例 config.rounds[].audios[] → 已配置播放设备（去重；INT-1534 播放器设备区真实数据源）。
+ * 后端音频条目字段为 playback_device_id / playback_device_name（INT-996 编辑回填同款），
+ * 缺设备名时以「设备 {id}」占位，避免把未命名的设备静默丢掉。
+ */
+export function casePlaybackDevicesFromConfig(
+  config: Record<string, unknown> | null | undefined
+): CasePlaybackDevice[] {
+  if (!config) return []
+  const rounds = Array.isArray(config.rounds) ? config.rounds : []
+  const seen = new Set<string>()
+  const devices: CasePlaybackDevice[] = []
+  for (const round of rounds) {
+    if (!round || typeof round !== 'object') continue
+    const audios = Array.isArray((round as { audios?: unknown[] }).audios)
+      ? ((round as { audios: Array<Record<string, unknown>> }).audios ?? [])
+      : []
+    for (const audio of audios) {
+      if (!audio || typeof audio !== 'object') continue
+      const rawId = audio.playback_device_id ?? audio.playbackDeviceId ?? null
+      const rawName = audio.playback_device_name ?? audio.playbackDeviceName ?? null
+      const id = rawId == null || rawId === '' ? null : String(rawId)
+      const name =
+        typeof rawName === 'string' && rawName.trim() !== ''
+          ? rawName
+          : id
+            ? `设备 ${id}`
+            : null
+      if (!name) continue
+      const key = `${id ?? ''}::${name}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      devices.push({ id, name })
+    }
+  }
+  return devices
 }
 
 /**

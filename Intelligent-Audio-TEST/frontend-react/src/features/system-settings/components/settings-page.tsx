@@ -5,12 +5,13 @@
  * - 加载「正在加载设置…」/ 错误「设置加载失败」+「重试」。
  */
 import { useParams } from '@tanstack/react-router'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Lock } from 'lucide-react'
 import { Suspense, useMemo, useState, type ReactNode } from 'react'
 
 import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import type { SystemOptions } from '@/domain/models/option'
+import { usePermissions } from '@/application/hooks/use-permissions'
 import { useSystemOptions } from '@/application/settings/use-system-options'
 
 import { SettingsPageProvider } from './settings-page-context'
@@ -86,6 +87,12 @@ export function SettingsPage<
   TSectionId extends string,
 >(props: SettingsPageProps<TSettings, TSectionId>) {
   const { data, isLoading, isError, refetch } = useSystemOptions()
+  // INT-1585：分区设置全部来自 GET /api/option/（option:read）。无该权限时 query
+  // 被门禁关掉（不发 403），此处必须给明确的无权限提示，不能落「可重试」错误态
+  // ——403 不是可重试故障，重试仍 403。半权限账号（有 user:read 无 option:read）
+  // 可经路由守卫进入本页，故按权限码显式判定。
+  const { hasPermission } = usePermissions()
+  const canReadOptions = hasPermission('option:read')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const params = useParams({ from: props.routePath as any })
   const activeSection = (params?.section ?? props.defaultSection) as TSectionId
@@ -95,6 +102,18 @@ export function SettingsPage<
     if (props.resolveSettings) return props.resolveSettings(data)
     return props.defaultSettings
   }, [props, data])
+
+  if (!canReadOptions) {
+    return (
+      <SettingsPageFrame title={sectionMeta.title}>
+        <ErrorState
+          icon={Lock}
+          title='无权限查看系统设置'
+          description='当前账号缺少 option:read 权限，无法读取站点选项。如需查看或修改，请联系管理员分配权限。'
+        />
+      </SettingsPageFrame>
+    )
+  }
 
   if (isLoading) {
     return (

@@ -9,9 +9,19 @@
  * snake→camel 转换收敛在 adapters/dto；application/domain 层只见 camelCase Domain。
  */
 import { apiClient } from './client'
-import type { TestCaseListItem } from '@/domain/models/testCase'
-import { testCaseListItemFromDto } from '@/infrastructure/adapters/testCaseAdapter'
-import type { TestCaseListDataDto } from '@/infrastructure/dto/testcase.dto'
+import type {
+  PreviewPlaybackMode,
+  TestCaseListItem,
+  TestCasePreview,
+} from '@/domain/models/testCase'
+import {
+  testCaseListItemFromDto,
+  testCasePreviewFromDto,
+} from '@/infrastructure/adapters/testCaseAdapter'
+import type {
+  TestCaseListDataDto,
+  TestCasePreviewDto,
+} from '@/infrastructure/dto/testcase.dto'
 
 export interface TestCaseListQuery {
   page?: number
@@ -196,6 +206,39 @@ export async function copyTestCase(id: string): Promise<string> {
 /** 恢复单个测试用例（POST /testcases/{id}/restore；favorite_trash_bp INT-141） */
 export async function restoreTestCase(id: string): Promise<void> {
   await apiClient.post(`/testcases/${id}/restore`)
+}
+
+/**
+ * 试听测试用例（POST /testcases/{id}/preview；11_用例域.md §5.2 试听三件套接线）。
+ * 载荷对照 api_gateway/schemas/testcase.py TestCasePreviewRequest：
+ *   { offset（秒）, preview_type, playback_mode }（后端默认 backend，APIModel 同时收 camelCase）；
+ * 响应 TestCasePreviewData：frontend 模式回音频流 URL（多轮 audio_stream_urls），
+ * backend 模式由网关经播放编排在用例配置设备上放音、只回时长。
+ * 失败（未配置音频 / 有待执行 E2E 任务 / 音频引擎不可用）由 client 抛 ApiError，
+ * 文案直接取 userMessage（§8「音频试听失败: {err}」）。
+ */
+export async function previewTestCase(
+  id: string,
+  payload: {
+    offset?: number
+    previewType: PreviewPlaybackMode
+    playbackMode: PreviewPlaybackMode
+  }
+): Promise<TestCasePreview> {
+  const dto = await apiClient.post<TestCasePreviewDto>(
+    `/testcases/${id}/preview`,
+    {
+      offset: Number.isFinite(payload.offset) ? Number(payload.offset) : 0,
+      preview_type: payload.previewType,
+      playback_mode: payload.playbackMode,
+    }
+  )
+  return testCasePreviewFromDto(dto)
+}
+
+/** 停止试听（POST /testcases/{id}/stop_preview；§5.2 启停语义，随播放器停止/关闭触发） */
+export async function stopTestCasePreview(id: string): Promise<void> {
+  await apiClient.post(`/testcases/${id}/stop_preview`)
 }
 
 /** 彻底删除单个测试用例（DELETE /testcases/{id}/purge；admin/owner 由服务端按 metadata 校验） */

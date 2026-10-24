@@ -1,9 +1,16 @@
 /**
  * 算法详情弹窗（§7.2；Dialog sm:max-w-3xl + DetailSection 分节）。
- * 基本信息 + 参数定义（设备/API/用例三页签静态表）+ 参数映射（设备/API/评估三页签静态表）。
+ * 基本信息 + 参数定义（设备/API/用例三页签静态表）+ 参数映射（设备/API/评估三页签）。
  * 权限 algorithm:read（tester 只读查看恢复入口，§12-2）。
+ *
+ * INT-1644（对齐编辑模态窗评估维度视图，只读）：
+ * - 参数映射 → 评估参数：按目标维度分组（组头 维度名 + 主/子徽章 + 父维度名 + 条数，可折叠，
+ *   默认展开；空维度「未指定维度」，查不到「已删除维度 #id」），不再是一张几百行平铺长表。
+ * - 评估维度关联：主维度与其子维度成组相邻、子维度带「子」徽章 + 父维度名；
+ *   已删除维度统一排末尾按 id 升序，仍显示「已删除维度 #id」。
  */
-import { useMemo } from 'react'
+import { Fragment, useMemo, useState } from 'react'
+import { ChevronDown, Folder } from 'lucide-react'
 
 import {
   Dialog,
@@ -20,7 +27,12 @@ import {
 } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import type { AlgorithmDefinition, DeviceApiParam } from '@/domain/models/algorithmConfig'
+import type {
+  AlgorithmDefinition,
+  DeviceApiParam,
+  DimensionRelation,
+  ParamMapping,
+} from '@/domain/models/algorithmConfig'
 import type { Dimension } from '@/domain/models/evaluationDimension'
 import { AlgorithmStatusBadge } from '@/features/algorithm-config/components/algorithm-status-badge'
 import {
@@ -60,6 +72,159 @@ export function resolveDimensionName(
   if (dimensionId == null || dimensionId === '') return '—'
   const name = dimensions.find((d) => String(d.id) === String(dimensionId))?.name
   return name || `已删除维度 #${dimensionId}`
+}
+
+/**
+ * 评估映射行/分组维度名（详情只读口径，INT-1644）：以 dimensions 全量为准，
+ * 查不到的一律 `已删除维度 #<id>`（行内 dimensionName 是存量快照，已删维度不采信）；
+ * 维度列表尚未加载（空）时退回行内 dimensionName，避免加载瞬间整表被误标为已删除。
+ */
+export function resolveMappingDimensionName(
+  dimensions: Dimension[],
+  dimensionId: number | string | null | undefined,
+  dimensionName?: string | null
+): string {
+  if (dimensionId == null || dimensionId === '') return ''
+  const name = dimensions.find((d) => String(d.id) === String(dimensionId))?.name
+  if (name) return name
+  if (dimensions.length === 0 && dimensionName) return dimensionName
+  return `已删除维度 #${dimensionId}`
+}
+
+/** 主/子维度徽章样式（与编辑模态窗 mappings-section 同款） */
+const mainBadge =
+  'bg-primary/20 text-primary inline-flex size-3.5 items-center justify-center rounded-[3px] text-[9px] font-semibold'
+const subBadge =
+  'bg-muted text-muted-foreground border-border inline-flex size-3.5 items-center justify-center rounded-[3px] border text-[9px] font-semibold'
+
+/** 组头折叠按钮（照编辑模态窗 GroupHeaderButton，去掉可编辑内容） */
+function GroupHeaderButton({
+  name,
+  badge,
+  hint,
+  count,
+  collapsed,
+  onToggle,
+}: {
+  name: string
+  badge?: React.ReactNode
+  hint?: string
+  count: number
+  collapsed: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type='button'
+      onClick={onToggle}
+      aria-expanded={!collapsed}
+      className='hover:bg-muted/60 flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs font-medium transition-colors'
+    >
+      <ChevronDown
+        aria-hidden='true'
+        className={cn('size-3.5 shrink-0 transition-transform', collapsed && '-rotate-90')}
+      />
+      <Folder aria-hidden='true' className='text-muted-foreground size-3.5 shrink-0' />
+      <span className='truncate'>{name}</span>
+      {badge}
+      {hint && <span className='text-muted-foreground/70 text-[11px] font-normal'>{hint}</span>}
+      <span className='bg-muted text-muted-foreground ml-auto shrink-0 rounded-full px-1.5 text-[10px] tabular-nums'>
+        {count} 条
+      </span>
+    </button>
+  )
+}
+
+export type EvaluationMappingGroup = {
+  /** 分组键：dimensionId 字符串，空维度 `__none__` */
+  key: string
+  /** 组头显示名（维度名 / 未指定维度 / 已删除维度 #id） */
+  name: string
+  /** dimensions 中命中的维度（组头主/子徽章用；已删除/未指定为 undefined） */
+  dimension?: Dimension
+  rows: ParamMapping[]
+}
+
+/**
+ * 评估映射按目标维度分组（INT-1644 A）：组序按维度名中文排序，
+ * 组内保持接口返回顺序；空维度归「未指定维度」。
+ */
+export function groupEvaluationMappings(
+  mappings: ParamMapping[],
+  dimensions: Dimension[]
+): EvaluationMappingGroup[] {
+  const dimById = new Map(dimensions.map((d) => [String(d.id), d]))
+  const map = new Map<string, ParamMapping[]>()
+  for (const mapping of mappings) {
+    const key =
+      mapping.dimensionId == null || String(mapping.dimensionId) === ''
+        ? '__none__'
+        : String(mapping.dimensionId)
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(mapping)
+  }
+  return Array.from(map.entries())
+    .map(([key, rows]) => ({
+      key,
+      name:
+        key === '__none__'
+          ? '未指定维度'
+          : resolveMappingDimensionName(dimensions, key, rows[0]?.dimensionName),
+      dimension: dimById.get(key),
+      rows,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
+}
+
+/** 评估维度关联行（主维度 + 紧随其后的子维度，已删除维度排末尾） */
+export type OrderedDimensionRelation = {
+  relation: DimensionRelation
+  /** dimensions 中命中的维度（已删除为 undefined） */
+  dimension: Dimension | undefined
+}
+
+/**
+ * 评估维度关联排序（INT-1644 B）：主维度行在前、其子维度紧随其后；
+ * 父维度不在 dimensions 的按「已删除维度 #<父id>」兜底（渲染时解析）；
+ * 已删除维度统一排末尾，按 dimensionId 升序。
+ */
+export function orderAssociatedDimensions(
+  relations: DimensionRelation[],
+  dimensions: Dimension[]
+): OrderedDimensionRelation[] {
+  const dimById = new Map(dimensions.map((d) => [String(d.id), d]))
+  const resolved = relations
+    .map((relation) => ({ relation, dimension: dimById.get(String(relation.dimensionId)) }))
+    .filter((item): item is OrderedDimensionRelation => item.dimension !== undefined)
+  const deleted = relations
+    .filter((relation) => !dimById.has(String(relation.dimensionId)))
+    .sort((a, b) => Number(a.dimensionId) - Number(b.dimensionId))
+
+  const isSub = (item: OrderedDimensionRelation) => item.dimension?.parentDimensionId != null
+  const mains = resolved.filter((item) => !isSub(item))
+  const subs = resolved.filter(isSub)
+
+  const ordered: OrderedDimensionRelation[] = []
+  const seen = new Set<number>()
+  const push = (item: OrderedDimensionRelation) => {
+    if (seen.has(item.relation.id)) return
+    seen.add(item.relation.id)
+    ordered.push(item)
+  }
+  for (const main of mains) {
+    push(main)
+    for (const sub of subs) {
+      if (
+        String(sub.dimension?.parentDimensionId ?? '') === String(main.relation.dimensionId)
+      ) {
+        push(sub)
+      }
+    }
+  }
+  // 父维度未关联到本算法的子维度：原序补在主维度块之后，避免丢行
+  for (const sub of subs) push(sub)
+
+  return [...ordered, ...deleted.map((relation) => ({ relation, dimension: undefined }))]
 }
 
 function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -254,7 +419,10 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
                     <MappingRows mappings={algorithm.mappings.api} empty='无 API 参数映射' />
                   </TabsContent>
                   <TabsContent value='evaluation' className='pt-2'>
-                    <MappingRows mappings={algorithm.mappings.evaluation} empty='无评估参数映射' evaluation dimensions={props.dimensions} />
+                    <EvaluationMappingRows
+                      mappings={algorithm.mappings.evaluation}
+                      dimensions={props.dimensions ?? []}
+                    />
                   </TabsContent>
                 </Tabs>
               </section>
@@ -265,28 +433,55 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
                     评估维度关联
                   </h3>
                   <StaticTable headers={['评估维度', '权重', '默认']}>
-                    {algorithm.associatedDimensions.map((relation) => (
-                      <tr key={relation.id} className='border-border/50 border-b last:border-b-0'>
-                        <td className='px-3 py-2'>
-                          {resolveDimensionName(
-                            props.dimensions ?? [],
-                            relation.dimensionId,
-                            relation.dimensionName
-                          )}
-                        </td>
-                        <td className='px-3 py-2 font-mono text-xs tabular-nums'>
-                          {relation.weight}
-                        </td>
-                        <td className='px-3 py-2'>
-                          <Badge
-                            variant={relation.isDefault ? 'default' : 'outline'}
-                            className={cn('px-1.5 text-[11px] font-normal', !relation.isDefault && 'text-muted-foreground')}
-                          >
-                            {relation.isDefault ? '默认' : '—'}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
+                    {orderAssociatedDimensions(
+                      algorithm.associatedDimensions,
+                      props.dimensions ?? []
+                    ).map(({ relation, dimension }) => {
+                      const dimensions = props.dimensions ?? []
+                      const isSub = dimension?.parentDimensionId != null
+                      return (
+                        <tr key={relation.id} className='border-border/50 border-b last:border-b-0'>
+                          <td className='px-3 py-2'>
+                            <span className='inline-flex flex-wrap items-center gap-1.5'>
+                              <span>
+                                {resolveDimensionName(
+                                  dimensions,
+                                  relation.dimensionId,
+                                  relation.dimensionName
+                                )}
+                              </span>
+                              {dimension &&
+                                (isSub ? (
+                                  <>
+                                    <span className={subBadge}>子</span>
+                                    <span className='text-muted-foreground/70 text-[11px]'>
+                                      （
+                                      {resolveDimensionName(
+                                        dimensions,
+                                        dimension.parentDimensionId
+                                      )}
+                                      ）
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className={mainBadge}>主</span>
+                                ))}
+                            </span>
+                          </td>
+                          <td className='px-3 py-2 font-mono text-xs tabular-nums'>
+                            {relation.weight}
+                          </td>
+                          <td className='px-3 py-2'>
+                            <Badge
+                              variant={relation.isDefault ? 'default' : 'outline'}
+                              className={cn('px-1.5 text-[11px] font-normal', !relation.isDefault && 'text-muted-foreground')}
+                            >
+                              {relation.isDefault ? '默认' : '—'}
+                            </Badge>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </StaticTable>
                 </section>
               )}
@@ -298,18 +493,13 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
   )
 }
 
+/** 设备 / API 参数映射（平铺 5 列，INT-1160 列口径） */
 function MappingRows({
   mappings,
   empty,
-  evaluation = false,
-  dimensions = [],
 }: {
   mappings: AlgorithmDefinition['mappings']['device']
   empty: string
-  /** evaluation 行带 来源/目标评估维度/维度内目标参数 列（INT-1160 列口径对齐 V9.7.10） */
-  evaluation?: boolean
-  /** 评估维度全量（evaluation 列 dimension_id → 名称解析；缺省显示 维度(id) 兜底） */
-  dimensions?: Dimension[]
 }) {
   if (mappings.length === 0) {
     return (
@@ -320,52 +510,115 @@ function MappingRows({
   }
   return (
     <StaticTable
-      headers={
-        evaluation
-          ? ['来源', '源参数代码', '源参数名称', '目标评估维度', '目标参数', '转换']
-          : ['源参数代码', '源参数名称', '目标参数代码', '目标参数名称', '转换']
-      }
+      headers={['源参数代码', '源参数名称', '目标参数代码', '目标参数名称', '转换']}
     >
-      {mappings.map((mapping) => {
-        const dimName =
-          mapping.dimensionName ||
-          (mapping.dimensionId != null
-            ? resolveDimensionName(dimensions, mapping.dimensionId)
-            : '')
+      {mappings.map((mapping) => (
+        <tr key={mapping.id || `${mapping.source}-${mapping.sourceParam}-${mapping.targetParam}-${mapping.dimensionId ?? ''}`} className='border-border/50 border-b last:border-b-0'>
+          <td className='px-3 py-2 font-mono text-xs'>{mapping.sourceParam || '—'}</td>
+          <td className='px-3 py-2 text-xs'>{mapping.paramName || '—'}</td>
+          <td className='px-3 py-2 font-mono text-xs'>{mapping.targetParam || '—'}</td>
+          <td className='px-3 py-2 text-xs'>{mapping.targetParamName || '—'}</td>
+          <td className='px-3 py-2 text-xs'>
+            {labelOf(TRANSFORM_TYPE_OPTIONS, mapping.transformType)}
+          </td>
+        </tr>
+      ))}
+    </StaticTable>
+  )
+}
+
+/** 评估映射来源列选项（与编辑模态窗同口径） */
+const EVALUATION_SOURCE_LABELS = [
+  { value: 'case', label: '用例参数' },
+  { value: 'case_config', label: '用例配置' },
+  { value: 'reference', label: '参考参数' },
+  { value: 'device', label: '设备输出' },
+  { value: 'api', label: 'API输出' },
+] as const
+
+/**
+ * 评估参数映射（INT-1644 A）：只读「评估维度分组视图」，照编辑模态窗
+ * EvaluationMappingSection 评估维度视图。组头可折叠，默认全部展开。
+ */
+function EvaluationMappingRows({
+  mappings,
+  dimensions,
+}: {
+  mappings: ParamMapping[]
+  dimensions: Dimension[]
+}) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const groups = useMemo(
+    () => groupEvaluationMappings(mappings, dimensions),
+    [mappings, dimensions]
+  )
+
+  if (mappings.length === 0) {
+    return (
+      <div className='bg-card ring-foreground/10 text-muted-foreground rounded-lg px-3 py-4 text-center text-xs ring-1'>
+        无评估参数映射
+      </div>
+    )
+  }
+
+  const toggleCollapsed = (key: string) => {
+    const next = new Set(collapsed)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    setCollapsed(next)
+  }
+
+  return (
+    <StaticTable
+      headers={['来源', '源参数代码', '源参数名称', '目标评估维度', '目标参数', '转换']}
+    >
+      {groups.map((group) => {
+        const isCollapsed = collapsed.has(group.key)
+        const isSub = group.dimension?.parentDimensionId != null
+        const parentName = isSub
+          ? resolveDimensionName(dimensions, group.dimension?.parentDimensionId)
+          : ''
         return (
-          <tr key={mapping.id || `${mapping.source}-${mapping.sourceParam}-${mapping.targetParam}-${mapping.dimensionId ?? ''}`} className='border-border/50 border-b last:border-b-0'>
-            {evaluation && (
-              <td className='px-3 py-2 text-xs'>
-                {labelOf(
-                  [
-                    { value: 'case', label: '用例参数' },
-                    { value: 'case_config', label: '用例配置' },
-                    { value: 'reference', label: '参考参数' },
-                    { value: 'device', label: '设备输出' },
-                    { value: 'api', label: 'API输出' },
-                  ],
-                  mapping.source ?? 'case'
-                )}
+          <Fragment key={group.key}>
+            <tr className='bg-muted/40 border-border/50 border-b'>
+              <td colSpan={6} className='px-0 py-0'>
+                <GroupHeaderButton
+                  name={group.name}
+                  count={group.rows.length}
+                  collapsed={isCollapsed}
+                  onToggle={() => toggleCollapsed(group.key)}
+                  badge={
+                    group.dimension ? (
+                      isSub ? (
+                        <span className={subBadge}>子</span>
+                      ) : (
+                        <span className={mainBadge}>主</span>
+                      )
+                    ) : undefined
+                  }
+                  hint={parentName ? `（${parentName}）` : undefined}
+                />
               </td>
-            )}
-            <td className='px-3 py-2 font-mono text-xs'>{mapping.sourceParam || '—'}</td>
-            <td className='px-3 py-2 text-xs'>{mapping.paramName || '—'}</td>
-            {evaluation && (
-              <>
-                <td className='px-3 py-2 text-xs'>{dimName || '—'}</td>
-                <td className='px-3 py-2 font-mono text-xs'>{mapping.targetParam || '—'}</td>
-              </>
-            )}
-            {!evaluation && (
-              <td className='px-3 py-2 font-mono text-xs'>{mapping.targetParam || '—'}</td>
-            )}
-            {!evaluation && (
-              <td className='px-3 py-2 text-xs'>{mapping.targetParamName || '—'}</td>
-            )}
-            <td className='px-3 py-2 text-xs'>
-              {labelOf(TRANSFORM_TYPE_OPTIONS, mapping.transformType)}
-            </td>
-          </tr>
+            </tr>
+            {!isCollapsed &&
+              group.rows.map((mapping) => (
+                <tr
+                  key={mapping.id || `${mapping.source}-${mapping.sourceParam}-${mapping.targetParam}-${mapping.dimensionId ?? ''}`}
+                  className='border-border/50 border-b last:border-b-0'
+                >
+                  <td className='px-3 py-2 text-xs'>
+                    {labelOf(EVALUATION_SOURCE_LABELS, mapping.source ?? 'case')}
+                  </td>
+                  <td className='px-3 py-2 font-mono text-xs'>{mapping.sourceParam || '—'}</td>
+                  <td className='px-3 py-2 text-xs'>{mapping.paramName || '—'}</td>
+                  <td className='px-3 py-2 text-xs'>{group.name || '—'}</td>
+                  <td className='px-3 py-2 font-mono text-xs'>{mapping.targetParam || '—'}</td>
+                  <td className='px-3 py-2 text-xs'>
+                    {labelOf(TRANSFORM_TYPE_OPTIONS, mapping.transformType)}
+                  </td>
+                </tr>
+              ))}
+          </Fragment>
         )
       })}
     </StaticTable>

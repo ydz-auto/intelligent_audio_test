@@ -96,10 +96,37 @@ export async function uploadChunk(
   await apiClient.post('/audios/upload/chunk', form)
 }
 
+/** merge 载荷单轮音频（schemas/testcase.py TestCaseAudioConfigItem：audio_name/play_order/spl/playback_device_id） */
+export interface UploadRoundAudioConfig {
+  /** 音频文件名（后端按它在本上传任务内匹配 audio_id） */
+  audio_name: string
+  /** 同轮内播放顺序（1..n 升序） */
+  play_order: number
+  /** 音频 id（组内先前文件 merge 返回后回填；未回填时后端按 audio_name 兜底匹配） */
+  audio_id?: number
+  spl?: number
+  /** 播放设备（§5.7.7：逐轮设备写这里，不写顶层 playback_device_id） */
+  playback_device_id?: number
+  playback_device_name?: string
+  background_noise?: unknown
+  [key: string]: unknown
+}
+
+/** merge 载荷单轮配置（RoundConfigItem 子集；INT-1613：多轮由 JSON 用例文件定义） */
+export interface UploadRoundConfig {
+  /** 轮次号按数组下标 1..N 升序连续写（§5.7.6：下标 i = 第 i+1 轮） */
+  round_number: number
+  audios: UploadRoundAudioConfig[]
+  background_noise?: unknown
+  [key: string]: unknown
+}
+
 /** 生成测试用例配置（merge 载荷 test_case_config；照 TestCaseUploadConfig/RoundConfigItem 实测） */
 export interface UploadTestCaseConfig {
   /** 是否生成测试用例（原 test_types.length>0 语义；用例类型由后端默认落库） */
   createTestCase: boolean
+  /** 整组轮次（文件夹导入：JSON 用例解析结果或按文件夹推断；缺省时按当前文件单轮） */
+  rounds?: UploadRoundConfig[]
   algorithmType: string | null
   algorithmParams: Array<{ field_code: string; field_value: unknown }>
   dimensions: number[]
@@ -117,8 +144,36 @@ export interface UploadTestCaseConfig {
 
 export interface MergeChunksResult {
   audioId: number | null
+  /** 合并后音频真实名称（组内 rounds 回填 audio_id 的匹配键；后端 data.name） */
+  audioName: string | null
   testCaseId: string | null
   testCaseCount: number
+}
+
+/**
+ * merge 载荷轮次（§5.7.6/§5.7.7）：
+ * - 整组 rounds 优先（文件夹导入的 JSON 用例解析结果 / 按文件夹推断），缺省时按当前文件单轮；
+ * - `round_number` 一律按数组下标重写 1..N（JSON 里原有编号可能缺省或乱序）；
+ * - 播放设备写进每轮 `audios[].playback_device_id`（当前只有统一一档 = 所有轮次同一 id），
+ *   顶层另发 `default_playback_device_id`——建用例链路只读它作缺省兜底，不承载逐轮语义。
+ */
+function buildMergeRounds(
+  config: UploadTestCaseConfig,
+  filename: string
+): UploadRoundConfig[] {
+  const source =
+    config.rounds && config.rounds.length > 0
+      ? config.rounds
+      : [{ round_number: 1, audios: [{ audio_name: filename, play_order: 1 }] }]
+  return source.map((round, index) => ({
+    ...round,
+    round_number: index + 1,
+    audios: (round.audios ?? []).map((audio) =>
+      config.playbackDeviceId != null && audio.playback_device_id == null
+        ? { ...audio, playback_device_id: config.playbackDeviceId }
+        : { ...audio }
+    ),
+  }))
 }
 
 /** 合并分片 + 按需生成测试用例（POST /upload/merge） */
@@ -131,6 +186,7 @@ export async function mergeChunks(
   const createTestCase = config.createTestCase
   const dto = await apiClient.post<{
     audio_id?: number | string
+    name?: string
     test_case_id?: string | null
     test_case_count?: number
   }>('/audios/upload/merge', {
@@ -148,23 +204,20 @@ export async function mergeChunks(
     spl: config.spl,
     noise_audio_id: config.noiseAudioId,
     noise_spl: config.noiseSpl,
-    playback_device_id: config.playbackDeviceId,
+    // §5.7.7：顶层键名是 default_playback_device_id（建用例链路唯一消费的兜底缺省键）
+    default_playback_device_id: config.playbackDeviceId,
     description: '',
     asr_text: '',
     annotations: config.annotations ?? [],
     test_case_config: {
-      rounds: [
-        {
-          round_number: 1,
-          audios: [{ audio_name: filename, play_order: 1 }],
-        },
-      ],
+      rounds: buildMergeRounds(config, filename),
       group_name: config.groupName || undefined,
       inherit_tags: config.inheritTags,
     },
   })
   return {
     audioId: dto?.audio_id != null ? Number(dto.audio_id) : null,
+    audioName: dto?.name ?? null,
     testCaseId: dto?.test_case_id ?? null,
     testCaseCount: Number(dto?.test_case_count ?? 0),
   }

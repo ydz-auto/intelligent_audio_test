@@ -4,6 +4,8 @@
  *   GET /tasks/{id}/cases/{id}/results   → 设备×结果列表（result_id/复核标注/评语）
  *   GET /tasks/{id}/cases/{id}/detail    → 设备×维度表（低分维度识别，默认复核维度）
  *   GET /tasks/results/{task_id}/ai-review-history → 已有 ai_reviews 结论（按 testCaseId 过滤，幂等复用）
+ *   INT-1626：历史按结果归属任务查（容器行引用源任务结果，按容器 id 查恒空），
+ *   task_id 取结果行 source_task_id（普通任务即自身）。
  * 装配结果作为灵犀Agent 复核会话系统提示 + 首条 assistant 摘要卡输入（§5.2/§5.3）。
  */
 import { useQuery } from '@tanstack/react-query'
@@ -64,10 +66,31 @@ export function useAiReviewContext(
     enabled,
     staleTime: 30_000,
   })
+  // INT-1626：AI 复核记录按结果归属任务落库（ai_reviews.task_id = test_results.task_id）。
+  // 挑选合并容器行引用源任务结果，按容器 id 查历史恒空 → 用结果行的 sourceTaskId 集合查。
+  const sourceTaskIds = [
+    ...new Set(
+      (resultsQuery.data?.results ?? [])
+        .map((r) => r.sourceTaskId)
+        .filter((id): id is number => typeof id === 'number' && id > 0)
+    ),
+  ].sort((a, b) => a - b)
   const historyQuery = useQuery({
-    queryKey: ['tasks', 'ai-reviews', 'history', taskId],
-    queryFn: () => fetchAiReviewHistory(taskId),
-    enabled: enabled && Boolean(taskId),
+    // 普通任务 key 与 useAiReview 轮询历史同源（单结果归属=页面任务），共享缓存与失效；
+    // 容器任务（多来源）用来源任务串单独成键
+    queryKey: [
+      'tasks',
+      'ai-reviews',
+      'history',
+      sourceTaskIds.length === 1 ? sourceTaskIds[0] : sourceTaskIds.join(','),
+    ],
+    queryFn: async () => {
+      const lists = await Promise.all(
+        sourceTaskIds.map((id) => fetchAiReviewHistory(id))
+      )
+      return lists.flat()
+    },
+    enabled: enabled && sourceTaskIds.length > 0,
     staleTime: 15_000,
   })
 

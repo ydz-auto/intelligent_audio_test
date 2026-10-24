@@ -70,7 +70,9 @@ function PublishedExpandRow({
   onOpenReport: () => void
 }) {
   const [versionsOpen, setVersionsOpen] = useState(true)
-  const [legacy] = useState(!detail.has_task_snapshot)
+  // INT-1627：以冻结体本身判定（has_task_snapshot 与 snapshot_config.taskSnapshot
+  // 任一缺失都按历史版本处理，避免入口渲染后弹窗空体）
+  const legacy = readTaskSnapshot(detail.snapshot_config) == null
   const reportSummary = readReportSummary(readReportSnapshot(detail.report_snapshot))
 
   return (
