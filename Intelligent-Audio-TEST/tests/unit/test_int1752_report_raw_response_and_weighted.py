@@ -522,3 +522,207 @@ class TestReportServicerRawResponse:
         assert captured == {'report_id': 5,
                             'params': {'case_id': 'c1', 'dimension_id': 9,
                                        'offset': 10, 'limit': 50, 'round_number': 3}}
+
+
+# ---------------- 8. 对比报告：源任务解析 + 加权降级标注（终审 P2 返工） ----------------
+
+class _Comparison:
+    def __init__(self, task_ids):
+        self.comparison_data = {'task_ids': list(task_ids)}
+
+
+class _CompareAggregate:
+    """对比报告聚合根：task_id 落 0（NULL 在实体层归一成 0）。"""
+
+    def __init__(self, task_id=0):
+        self.task_id = task_id
+
+
+class _CompareRepo:
+    def __init__(self, task_ids=(412, 390), with_matrix=True):
+        self._comparison = _Comparison(task_ids) if with_matrix else None
+
+    def get_by_id(self, report_id):
+        return _CompareAggregate()
+
+    def load_cases(self, report_id):
+        return [_Case('c1')]
+
+    def load_comparison(self, report_id):
+        return self._comparison
+
+    def load_summaries(self, report_id):
+        return []
+
+
+class TestComparisonReportRawResponse:
+    """P2-1：对比报告 task_id=0，源任务只在对比矩阵里。"""
+
+    def test_resolves_source_tasks_from_comparison_matrix(self):
+        captured = {}
+        raw = {'code': 0, 'data': {'result': {'errors': 1, 'length': 100}}}
+
+        def _fake_results(case_ids, task_ids):
+            captured['task_ids'] = task_ids
+            return [{'id': 11, 'api_id': 285, 'test_case_id': 'c1'}]
+
+        dim_items = {11: [{'test_result_id': 11, 'dimension_id': 9,
+                           'round_number': None, 'api_raw_response': raw}]}
+        from report_service.infrastructure.clients import grpc_clients as gc
+        with patch.object(gc, '_grpc_get_test_results_by_task_and_case', side_effect=_fake_results), \
+             patch.object(gc, '_grpc_get_dimension_results_by_result_ids', return_value=dim_items), \
+             patch.object(gc, '_grpc_get_dimension_by_ids', return_value={}):
+            data = _handler(_CompareRepo(task_ids=(412, 390))).handle_get_case_dimension_raw_response(
+                567, {'case_id': 'c1', 'dimension_id': 9})
+
+        assert captured['task_ids'] == [412, 390]      # 不是 [0]
+        assert data['available'] is True, data.get('message')
+        assert data['source_result_id'] == 11
+
+    def test_task_id_zero_is_not_queried_as_real_task(self):
+        captured = {}
+
+        def _fake_results(case_ids, task_ids):
+            captured['task_ids'] = task_ids
+            return []
+
+        from report_service.infrastructure.clients import grpc_clients as gc
+        with patch.object(gc, '_grpc_get_test_results_by_task_and_case', side_effect=_fake_results):
+            data = _handler(_CompareRepo(with_matrix=False)).handle_get_case_dimension_raw_response(
+                567, {'case_id': 'c1', 'dimension_id': 9})
+
+        assert 'task_ids' not in captured             # 0 视为未关联，不发无意义查询
+        assert data['available'] is False
+        assert '未关联任务' in data['message']
+
+
+def _compare_task():
+    return {'id': 412, 'name': 'T412', 'status': TaskStatus.COMPLETED.value,
+            'total_cases': 2, 'completed_cases': 2, 'failed_cases': 0}
+
+
+def _patch_compare_helpers():
+    """屏蔽对比 / 二次对比链的 gRPC 辅助，只保留 core_metrics 的真实计算。"""
+    from report_service.application.services.report_compare_helpers import ReportCompareHelpers
+    from report_service.application.services.report_utils import ReportUtils
+    import report_service.application.services.report_compare_generator_data_mixin as compare_mod
+    import report_service.application.services.report_helpers as report_helpers_mod
+
+    return [
+        patch.object(ReportCompareHelpers, '_get_task_type', return_value='device'),
+        patch.object(ReportCompareHelpers, '_calculate_task_weighted_values', return_value={}),
+        patch.object(ReportCompareHelpers, '_collect_resources_batch',
+                     return_value=({'DevA'}, [{'id': 1, 'name': 'DevA'}], [])),
+        patch.object(ReportCompareHelpers, '_build_case_data_compare', return_value=[]),
+        patch.object(ReportCompareHelpers, '_get_source_cases', return_value=[]),
+        patch.object(ReportCompareHelpers, '_build_comparison_matrix', return_value={}),
+        patch.object(ReportUtils, 'build_resource_headers', return_value=[]),
+        patch.object(ReportUtils, 'calculate_device_api_stats', return_value=({}, {})),
+        patch.object(compare_mod, '_grpc_list_testcases_by_ids',
+                     return_value={'101': {'group': {'id': 1, 'name': 'g1'}, 'tags': []},
+                                   '102': {'group': {'id': 1, 'name': 'g1'}, 'tags': []}}),
+        # 对比链 dim_results_map=None → extract_dimension_values 走 gRPC 兜底，
+        # 用带维度值但不带原始响应的映射替代真实网络调用。
+        patch.object(report_helpers_mod, '_grpc_get_dim_results',
+                     side_effect=lambda ids: {rid: _dim_results_map(with_raw=False).get(rid, [])
+                                              for rid in ids}),
+    ]
+
+
+def _patch_secondary_helpers(all_dimensions, all_metrics, batch):
+    from report_service.application.services.report_compare_helpers import ReportCompareHelpers
+    from report_service.application.services.report_data_builder import ReportDataBuilder
+
+    return _patch_compare_helpers() + [
+        patch.object(ReportCompareHelpers, '_collect_all_resources',
+                     return_value=(_results(), ['DevA'], [], [], [1], [], None)),
+        patch.object(ReportCompareHelpers, '_build_all_dimensions',
+                     return_value=(all_dimensions, all_metrics, None)),
+        patch.object(ReportDataBuilder, '_get_dimension_results_batch', side_effect=batch),
+        patch.object(ReportDataBuilder, '_get_task_test_cases', return_value=([], [])),
+        patch.object(ReportCompareHelpers, '_get_source_cases_from_reports', return_value=[{'name': 'c1'}]),
+        patch.object(ReportCompareHelpers, '_build_comparison_matrix_secondary', return_value={}),
+    ]
+
+
+def _compare_metric(data_dict, name):
+    return next(m for m in data_dict['all_metrics'] if m.get('name') == name)
+
+
+class TestComparisonChainDegradationMarking:
+    """P2-2：对比链不得静默降级，all_metrics 必须带降级标。"""
+
+    def test_compare_chain_marks_weighted_degradation(self):
+        from report_service.application.services.report_compare_generator_data_mixin import (
+            ReportCompareDataMixin,
+        )
+        from report_service.application.services.report_compare_helpers import ReportCompareHelpers
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            for p in _patch_compare_helpers() + [
+                patch.object(ReportCompareHelpers, '_get_all_dimensions_with_results', return_value=_dims()),
+            ] + _patch_grpc():
+                stack.enter_context(p)
+            data_dict, error = ReportCompareDataMixin._prepare_compare_data(
+                [_compare_task()], [412], _results())
+
+        assert error is None
+        wer = _compare_metric(data_dict, 'WER')
+        # 对比链无维度结果映射 → 加权必然降级，但必须标注（不再静默）
+        assert wer['aggregation_degraded'] is True
+        assert wer['degradation_reason'] == 'missing_api_raw_response'
+        assert wer['applied_method'] == 'average'
+        assert 'aggregation_degraded' not in _compare_metric(data_dict, '准确率')
+
+    def test_secondary_chain_requests_raw_body_when_weighted_dimension(self):
+        from report_service.application.services.report_compare_generator_secondary_mixin import (
+            ReportSecondaryDataMixin,
+        )
+        from contextlib import ExitStack
+
+        captured = {}
+
+        def _fake_batch(result_ids, include_body=False):
+            captured['include_body'] = include_body
+            return _dim_results_map(with_raw=False), {}
+
+        metrics = [{'id': 1, 'name': '准确率'}, {'id': 9, 'name': 'WER'}]
+        with ExitStack() as stack:
+            for p in _patch_secondary_helpers(_dims(), metrics, _fake_batch) + _patch_grpc():
+                stack.enter_context(p)
+            data_dict, error = ReportSecondaryDataMixin._prepare_secondary_data(
+                [1, 2], [], [_compare_task()], [412])
+
+        assert error is None
+        assert captured['include_body'] is True
+        # 原始响应缺失 → 加权降级并打标
+        wer = _compare_metric(data_dict, 'WER')
+        assert wer['aggregation_degraded'] is True
+        assert wer['degradation_reason'] == 'missing_api_raw_response'
+
+    def test_secondary_chain_skips_raw_body_without_weighted_dimension(self):
+        from report_service.application.services.report_compare_generator_secondary_mixin import (
+            ReportSecondaryDataMixin,
+        )
+        from contextlib import ExitStack
+
+        captured = {}
+
+        def _fake_batch(result_ids, include_body=False):
+            captured['include_body'] = include_body
+            return {}, {}
+
+        avg_only = [{'id': 1, 'name': '准确率', 'statistic_method': 'average',
+                     'agg_denominator': 'case', 'exclude_rounds': []}]
+        with ExitStack() as stack:
+            for p in _patch_secondary_helpers(avg_only, [{'id': 1, 'name': '准确率'}],
+                                              _fake_batch) + _patch_grpc():
+                stack.enter_context(p)
+            data_dict, error = ReportSecondaryDataMixin._prepare_secondary_data(
+                [1, 2], [], [_compare_task()], [412])
+
+        assert error is None
+        assert captured['include_body'] is False       # 无加权维度时载荷不变
+        assert all('aggregation_degraded' not in m for m in data_dict['all_metrics'])
+

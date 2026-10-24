@@ -180,18 +180,11 @@ class ReportCasesQueryMixin:
         if case_id not in report_case_ids:
             return {**base, 'message': '该用例不属于此报告', 'elapsed_ms': _elapsed()}
 
-        # 报告覆盖的任务集合：主任务 + 摘要 metadata 里的 task_ids（对比/合并报告）
-        task_ids = []
-        if aggregate.task_id is not None:
-            task_ids.append(aggregate.task_id)
-        try:
-            for summary in self.repository.load_summaries(report_id) or []:
-                metadata = getattr(summary, 'metadata', None) or {}
-                for tid in (metadata.get('task_ids') or []) if isinstance(metadata, dict) else []:
-                    if tid not in task_ids:
-                        task_ids.append(tid)
-        except Exception:  # noqa: BLE001 — 摘要缺失不影响主任务口径
-            logger.debug("load_summaries failed for report %s", report_id, exc_info=True)
+        # 报告覆盖的任务集合：主任务 → 对比矩阵 comparison_data.task_ids → 摘要兜底。
+        # 对比/二次对比报告的 test_reports.task_id 落 0/NULL（ReportAggregate(task_id=0)
+        # 且 _report_po_to_entity 把 None 归一成 0），源任务只在对比矩阵里，
+        # 因此不能直接用 aggregate.task_id，必须复用报告源任务解析口径。
+        task_ids = self._resolve_report_source_task_ids(report_id) or []
         if not task_ids:
             return {**base, 'message': '报告未关联任务', 'elapsed_ms': _elapsed()}
 
