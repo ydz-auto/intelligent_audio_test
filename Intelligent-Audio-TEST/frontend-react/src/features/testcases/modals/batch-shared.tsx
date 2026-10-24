@@ -15,11 +15,11 @@ export type RoundScopeMode = 'all' | 'specific'
 
 export function RoundScopeField({
   name,
-  roundCount = 4,
+  roundCount = 1,
 }: {
   /** radio name（同页多弹窗实例隔离，防表单串扰） */
   name: string
-  /** mock 轮次数（§5.3.1~5.3.4 演示第 1~N 轮，接线后按选中用例实际轮次） */
+  /** 轮次数（§5.3.1~5.3.4：按选中用例真实轮次，多选取最大轮次；未知回落 1——INT-1731） */
   roundCount?: number
 }) {
   const [mode, setMode] = useState<RoundScopeMode>('all')
@@ -56,7 +56,7 @@ export function RoundScopeField({
       </div>
       {mode === 'specific' && (
         <div className='border-border/60 flex flex-wrap gap-1.5 rounded-lg border p-2'>
-          {Array.from({ length: roundCount }, (_, i) => i + 1).map((round) => (
+          {roundNumbers(roundCount).map((round) => (
             <label
               key={round}
               className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'
@@ -81,17 +81,30 @@ export interface RoundScopeThreeValue {
   mode: RoundScopeThreeMode
   /** 指定轮次勾选的轮次号 */
   specificRounds: number[]
-  /** 逐轮模式轮次 Tab（第1~N 轮；mock 演示，接线后按选中用例实际轮次） */
+  /** 逐轮模式轮次 Tab（第1~N 轮；按选中用例真实轮次） */
   rounds: number[]
   /** 逐轮模式当前编辑轮次 */
   activeRound: number
 }
 
-export function createRoundScope(roundCount = 4): RoundScopeThreeValue {
+/** 轮次号候选（1..N；N = 选中用例真实轮次数，多选取最大轮次，未知回落 1——INT-1731） */
+export function roundNumbers(total: number): number[] {
+  return Array.from({ length: Math.max(1, total) }, (_, i) => i + 1)
+}
+
+/** 勾选轮次收敛到真实存在的轮次（不存在轮次不得提交，否则后端静默回成功不生效——INT-1731） */
+export function existingRounds(rounds: number[], total: number): number[] {
+  const max = Math.max(1, total)
+  return [...new Set(rounds.filter((r) => Number.isInteger(r) && r >= 1 && r <= max))].sort(
+    (a, b) => a - b
+  )
+}
+
+export function createRoundScope(roundCount = 1): RoundScopeThreeValue {
   return {
     mode: 'all',
     specificRounds: [1],
-    rounds: Array.from({ length: roundCount }, (_, i) => i + 1),
+    rounds: roundNumbers(roundCount),
     activeRound: 1,
   }
 }
@@ -101,11 +114,12 @@ export function RoundScopeThreeField({
   name,
   value,
   onChange,
-  roundCount = 4,
+  roundCount = 1,
 }: {
   name: string
   value: RoundScopeThreeValue
   onChange: (next: RoundScopeThreeValue) => void
+  /** 轮次数（按选中用例真实轮次，多选取最大轮次；未知回落 1——INT-1731） */
   roundCount?: number
 }) {
   const setMode = (mode: RoundScopeThreeMode) => onChange({ ...value, mode })
@@ -151,8 +165,11 @@ export function RoundScopeThreeField({
       </div>
 
       {value.mode === 'specific' && (
-        <div className='border-border/60 flex flex-wrap gap-1.5 rounded-lg border p-2'>
-          {Array.from({ length: roundCount }, (_, i) => i + 1).map((round) => (
+        <div
+          data-testid={`${name}-specific-rounds`}
+          className='border-border/60 flex flex-wrap gap-1.5 rounded-lg border p-2'
+        >
+          {roundNumbers(roundCount).map((round) => (
             <label
               key={round}
               className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'
