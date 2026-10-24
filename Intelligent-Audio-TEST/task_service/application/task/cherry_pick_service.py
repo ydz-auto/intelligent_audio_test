@@ -963,12 +963,22 @@ class CherryPickService:
 
         返回容器任务每条引用结果的来源任务/用例/设备；源结果已删的行
         标注 missing（引用方案 A 的缺失场景，§10）。
+
+        INT-1706 §8.2：「不是容器」是正常查询结果（200 + `groups: []` +
+        `is_cherry_pick: false`），不再用 4xx 表达——任务详情页对每个任务都会
+        探一次本接口，普通任务恒 400 只会制造接口噪音。对齐同域的读探针
+        `review_count` / `review_history`：无数据即空结果，不做任务存在性判定
+        （存在性由任务详情接口负责）。
         """
         try:
             relations = self._repo.relations_by_container(task_id)
             if not relations:
-                return {'success': False, 'message': '该任务不是挑选合并容器任务',
-                        'data': {'code': 404}, 'code': 404}
+                return {'success': True, 'message': 'ok', 'data': {
+                    'task_id': task_id,
+                    'is_cherry_pick': False,
+                    'total': 0,
+                    'groups': [],
+                }}
             result_ids = [r['result_id'] for r in relations]
             existing = self._results_exist(result_ids)
             grouped: Dict[int, List[Dict[str, Any]]] = {}

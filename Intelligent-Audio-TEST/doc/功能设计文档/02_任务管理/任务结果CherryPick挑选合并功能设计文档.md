@@ -151,7 +151,7 @@
 | `GET /tasks/cherry-picks/sets` | 挑选集列表 |
 | `POST /tasks/cherry-picks/preview` | 合并预览（下单前统计/失效校验） |
 | `GET /tasks/cherry-picks/pickable-tasks` | 可挑选终态任务清单（挑选向导阶段 1 数据源，INT-1496；契约见 §8.1） |
-| `GET /tasks/{taskId}/cherry-pick-source` | 新任务溯源（各结果来源任务） |
+| `GET /tasks/{taskId}/cherry-pick-source` | 新任务溯源（各结果来源任务；非容器 200+空 groups，契约见 §8.2） |
 
 命名边界：前端/Domain 用 camelCase；snake_case 只允许出现在后端数据库与 DTO 转换层（总览 §1.3 口径）。
 
@@ -226,6 +226,19 @@ ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 - 「全选当前筛选」须覆盖 `total` 全部任务（按 `per_page` 拉齐或显式提示已加载 N/total），不允许再出现只选到首页。
 
 已知边界（**阶段 2 性能另行开卡，与本端点解耦**）：阶段 2 候选树仍由 candidates 首页 200 行重建（18 §11-3 降级），其慢查询优化由规划师另立卡，不并入本卡、不阻塞本端点验收。本卡上线后用户可选到结果数 > 200 的任务，阶段 2 展示仍是「已加载 200 条」，跨页全选由 `POST /candidates/select-all` 保证。
+
+### 8.2 溯源接口契约（INT-1706 裁定，2026-10-24）
+
+**接口**：`GET /tasks/cherry-picks/{taskId}/source`，权限 `task:read`（设计 §8 表）。
+
+| 场景 | HTTP | 响应 data |
+| --- | --- | --- |
+| 挑选合并容器（有关系行） | 200 | `{task_id, is_cherry_pick: true, total, groups: [{source_task_id, source_task_name, results: [...]}]}`（results 逐条含 `missing` 标注，§10） |
+| 普通任务 / 无关系行（含任务 id 不存在） | **200** | `{task_id, is_cherry_pick: false, total: 0, groups: []}` |
+
+裁定理由：「不是容器」是查询的正常结果，不是错误。任务详情页的复核范围解析（`useReviewRecordScope`）对每个任务都会探一次本接口，普通任务恒 400 会在 Network 里制造每页一次的 4xx 噪音（INT-1701 日巡命中）。前端据此约定保持零改动：`groups` 为空且请求成功即回落「归属=页面任务」。
+
+只读探针口径：与同域 `review_count` / `review_history` 一致——无数据即空结果，本接口不做任务存在性判定（任务是否存在由任务详情接口判定），避免读探针用 4xx 表达正常空结果。
 
 ## 9. 前端设计
 

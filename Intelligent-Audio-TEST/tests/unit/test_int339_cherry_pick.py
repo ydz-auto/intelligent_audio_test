@@ -403,8 +403,14 @@ def test_checkout_merge_container_and_reference_resolution(db):
     grouped_srcs = {g['source_task_id'] for g in trace['data']['groups']}
     assert grouped_srcs == {src_a_id, src_b_id}
 
-    # 普通任务溯源查询 404
-    assert cherry_pick_service.source_trace(src_a_id)['code'] == 404
+    # 普通任务溯源：正常结果（200 + 空 groups），不再是 4xx（INT-1706 §8.2）
+    plain_trace = cherry_pick_service.source_trace(src_a_id)
+    assert plain_trace['success'] is True
+    assert plain_trace['data'] == {
+        'task_id': src_a_id, 'is_cherry_pick': False, 'total': 0, 'groups': [],
+    }
+    # 无该任务同样按空结果返回（对齐 review_count/review_history 读探针口径，不做存在性判定）
+    assert cherry_pick_service.source_trace(987654321)['data']['groups'] == []
 
 
 def test_checkout_merge_case_status_inherit_and_counts(db):
