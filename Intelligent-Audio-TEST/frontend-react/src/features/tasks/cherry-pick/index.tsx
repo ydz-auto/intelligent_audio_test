@@ -38,6 +38,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import type { CherryPickContainer } from '@/domain/models/cherryPick'
+import { containerMixState } from '@/domain/lib/container-composition'
 import {
   formatPickDateTime,
   MERGE_TYPE_LABELS,
@@ -258,6 +259,9 @@ function ContainerRow({
   const evalMeta = getEvaluationStatusMeta(container.evaluationStatus)
   const mergeLabel = MERGE_TYPE_LABELS[container.mergeType]
   const sourceDesc = `来源 ${container.sourceTaskCount} 个任务 · 结果 ${container.sourceResultCount} 条`
+  // §5.5.4 列表执行状态列：混态（0 < failed_cases < case_count）显示「部分失败」，
+  // 纯前端展示映射，后端字符串仍为 failed；无失败 / 计数缺失 → 沿用原状态徽章。
+  const mixState = containerMixState(container.failedCases, container.caseCount)
 
   return (
     <>
@@ -287,7 +291,20 @@ function ContainerRow({
           </Badge>
         </td>
         <td className='px-3 py-2'>
-          <StatusBadge label={execMeta.label} variant={execMeta.variant} />
+          {mixState === 'partial' ? (
+            <StatusBadge
+              variant='warning'
+              title={`部分失败 ${container.failedCases}/${container.caseCount}`}
+            >
+              <span
+                className='bg-warning size-1.5 shrink-0 rounded-full'
+                aria-hidden='true'
+              />
+              <span className='min-w-0 truncate leading-normal'>部分失败</span>
+            </StatusBadge>
+          ) : (
+            <StatusBadge label={execMeta.label} variant={execMeta.variant} />
+          )}
         </td>
         <td className='px-3 py-2'>
           <StatusBadge

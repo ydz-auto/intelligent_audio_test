@@ -5,16 +5,21 @@
  */
 import { useQuery } from '@tanstack/react-query'
 
+import { ApiError } from '@/infrastructure/api/api-error'
 import {
   fetchTaskDetail,
   fetchTaskLogs,
 } from '@/infrastructure/api/tasks-list-api'
 
-export function useTaskDetail(taskId: number) {
+export function useTaskDetail(taskId: number, enabled = true) {
   return useQuery({
     queryKey: ['tasks', 'detail', taskId],
     queryFn: () => fetchTaskDetail(taskId),
     staleTime: 30_000,
+    enabled,
+    // 404（任务不存在 / 容器已软删）重试无意义：直接进错误态，由落点③ 展开区给「重试」入口
+    retry: (failureCount, error) =>
+      !(error instanceof ApiError && error.httpStatus === 404) && failureCount < 3,
   })
 }
 

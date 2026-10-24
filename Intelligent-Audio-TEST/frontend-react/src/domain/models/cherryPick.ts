@@ -235,6 +235,9 @@ export interface CherryPickContainer {
   executionStatus: string
   evaluationStatus: string
   totalCases: number | null
+  /** 容器用例数 / 失败用例数（列表「部分失败」纯前端展示映射的 f/c 口径，§5.5.4；缺省 null → 不映射） */
+  caseCount: number | null
+  failedCases: number | null
   mergeType: MergeType
   sourceTaskCount: number
   sourceResultCount: number
