@@ -742,8 +742,33 @@ class StudioSnapshotReason(str, Enum):
 
     每次编辑在同一数据库事务落不可变历史版本；snapshot_reason 记录
     版本产生方式：ai_edit（AI 结构化编辑）/ manual_edit（人工编辑）/
-    restore（历史版本恢复为新版本）。
+    restore（历史版本恢复为新版本）/ import（文件导入建初始版，INT-1763）。
     """
     AI_EDIT = 'ai_edit'
     MANUAL_EDIT = 'manual_edit'
     RESTORE = 'restore'
+    IMPORT = 'import'
+
+
+class ReportStudioSourceType(str, Enum):
+    """Report Studio 文档来源类型（INT-1763，离线搬运设计文档 §6.4 / D0 A6）
+
+    - platform_report：文档挂在平台报告（test_reports.id）上，存量行为；
+    - uploaded_file：用户上传的 MD / HTML / PPTX 文件型独立报告（3b）；
+    - agent_summary：Agent 分析总结文档（3c），血缘走 report_id 或 parent_doc_id。
+
+    列默认值 platform_report，迁移后存量行全部落该值（语义等价，无需回填）。
+    """
+    PLATFORM_REPORT = 'platform_report'
+    UPLOADED_FILE = 'uploaded_file'
+    AGENT_SUMMARY = 'agent_summary'
+
+
+class StudioUploadFormat(str, Enum):
+    """Report Studio 文件型报告上传格式白名单（INT-1763，设计文档 §6.2）
+
+    扩展名 + Content-Type 双校验；md 入 markdown_content，html/pptx 只落文件。
+    """
+    MD = 'md'
+    HTML = 'html'
+    PPTX = 'pptx'

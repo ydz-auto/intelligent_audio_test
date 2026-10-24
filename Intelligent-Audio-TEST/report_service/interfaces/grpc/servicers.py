@@ -1409,6 +1409,17 @@ class StudioServicer(report_grpc.ReportStudioServiceServicer):
             logger.exception("CreateStudioDocument failed")
             return self._resp(False, str(e), {}, 500)
 
+    def CreateStudioUploadDocument(self, request, context=None):
+        """文件型独立报告导入建档（INT-1763 §6.2，source_type=uploaded_file）。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.command_handler.handle_create_upload_document(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("CreateStudioUploadDocument failed")
+            return self._resp(False, str(e), {}, 500)
+
     def UpdateStudioDocument(self, request, context=None):
         """人工编辑（expected_version 乐观锁，冲突 409 + 差异）。"""
         try:
@@ -1453,6 +1464,17 @@ class StudioServicer(report_grpc.ReportStudioServiceServicer):
                               result.get('data'), result.get('code', 0))
         except Exception as e:
             logger.exception("GetStudioDocument failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def ListStudioDocuments(self, request, context=None):
+        """文档列表（INT-1763 §6.4）：report_id / source_type / parent_doc_id 过滤。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.query_handler.handle_list_documents(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("ListStudioDocuments failed")
             return self._resp(False, str(e), {}, 500)
 
     def ListStudioDocumentVersions(self, request, context=None):

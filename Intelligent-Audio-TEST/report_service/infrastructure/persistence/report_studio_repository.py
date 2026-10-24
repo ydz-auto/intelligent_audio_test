@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import func, update
 
 from shared.models.database import get_db_session, utc8now
+from shared.models.common_enums import ReportStudioSourceType
 from report_service.domain.entities.report_studio import (
     ReportStudioChartSpec,
     ReportStudioDocument,
@@ -46,6 +47,11 @@ def _doc_to_entity(po: DocumentPO) -> ReportStudioDocument:
         created_by=po.created_by,
         created_at=po.created_at.isoformat() if po.created_at else None,
         updated_at=po.updated_at.isoformat() if po.updated_at else None,
+        source_type=po.source_type or ReportStudioSourceType.PLATFORM_REPORT.value,
+        parent_doc_id=po.parent_doc_id,
+        source_file_path=po.source_file_path,
+        source_format=po.source_format,
+        source_file_size=po.source_file_size,
     )
 
 
@@ -104,6 +110,11 @@ class ReportStudioRepositoryImpl(ReportStudioRepository):
             session.add(DocumentPO(
                 doc_id=doc.doc_id,
                 report_id=doc.report_id,
+                source_type=doc.source_type or ReportStudioSourceType.PLATFORM_REPORT.value,
+                parent_doc_id=doc.parent_doc_id,
+                source_file_path=doc.source_file_path,
+                source_format=doc.source_format,
+                source_file_size=doc.source_file_size,
                 agent_session_id=doc.agent_session_id,
                 title=doc.title,
                 markdown_content=doc.markdown_content,
@@ -134,6 +145,36 @@ class ReportStudioRepositoryImpl(ReportStudioRepository):
         try:
             po = session.query(DocumentPO).filter(DocumentPO.doc_id == doc_id).first()
             return _doc_to_entity(po) if po else None
+        finally:
+            session.close()
+
+    def list_documents(self, report_id: Optional[int] = None,
+                       source_type: Optional[str] = None,
+                       parent_doc_id: Optional[str] = None,
+                       created_by: Optional[int] = None,
+                       limit: int = 100, offset: int = 0):
+        """按来源/报告/父文档过滤的文档列表（INT-1763，设计文档 §6.4）。
+
+        过滤条件全部显式给出：``report_id`` 非空时天然排除上传文档（其 report_id
+        为 NULL），再叠 ``source_type`` 才能保证平台报告文档列表与迁移前一致。
+        返回 ``(rows, total)``，total 为过滤后全量计数（分页用）。
+        """
+        session = get_db_session()
+        try:
+            query = session.query(DocumentPO)
+            if report_id is not None:
+                query = query.filter(DocumentPO.report_id == report_id)
+            if source_type:
+                query = query.filter(DocumentPO.source_type == source_type)
+            if parent_doc_id:
+                query = query.filter(DocumentPO.parent_doc_id == parent_doc_id)
+            if created_by is not None:
+                query = query.filter(DocumentPO.created_by == created_by)
+            total = query.count()
+            rows = query.order_by(
+                DocumentPO.updated_at.desc(), DocumentPO.doc_id.asc()
+            ).offset(max(int(offset), 0)).limit(max(int(limit), 1)).all()
+            return [_doc_to_entity(r) for r in rows], total
         finally:
             session.close()
 

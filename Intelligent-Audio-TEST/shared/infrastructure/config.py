@@ -139,6 +139,11 @@ class BaseConfig:
     # 并打 WARNING（hostname 换机即变，只作兼容兜底，生产必须显式配置）。
     DATA_TRANSFER_SERVER_ID: str = _get_env('DATA_TRANSFER_SERVER_ID', '')
 
+    # --- 文件型独立报告导入（INT-1763 §6.2，D0 A11-2）---
+    # Report Studio 上传文件（md/html/pptx）大小上限（MB），独立于搬运整包上限；
+    # 超限网关直接 413，不落盘。
+    REPORT_STUDIO_UPLOAD_MAX_MB: int = _get_int('REPORT_STUDIO_UPLOAD_MAX_MB', 50)
+
     # --- 服务发现 ---
     SERVICE_HOST: str = _get_env('SERVICE_HOST', '0.0.0.0')
     SERVICE_NAME: str = _get_env('SERVICE_NAME', 'unknown')

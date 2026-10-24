@@ -225,6 +225,15 @@ BOOTSTRAP_STEPS = [
     #     to_regclass 存在且 0 行才 DROP TABLE。幂等（第二次执行全部 SKIP）。
     #     默认 dry-run，引导链必须带 --apply。
     ('python', 'scripts/migrations/202610/drop_redundant_indexes_int1784.py', '--apply'),
+    # ㊹ Report Studio 文档来源类型（INT-1763 §6.2/§6.4）：create_all 只建缺失的表、
+    #     不给存量表补列，建库早于本卡的存量库在引导链里自愈——补 source_type /
+    #     parent_doc_id / source_file_path / source_format / source_file_size 五列，
+    #     放开 documents 与 chart_specs 的 report_id 非空，建 idx_rs_doc_source_type /
+    #     idx_rs_doc_parent 两个索引。脚本幂等（列/索引存在即 SKIP，DROP NOT NULL
+    #     先查 is_nullable），全新库为全 SKIP；默认 dry-run，引导链必须带 --apply。
+    #     须排在 ㊸ 统计兜底 ANALYZE 之前（该步固定为引导链末步，见
+    #     test_int1741::test_bootstrap_step_is_last）。
+    ('python', 'scripts/migrations/202610/alter_report_studio_sources.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器

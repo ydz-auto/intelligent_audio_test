@@ -27,6 +27,10 @@ class ReportStudioCommandHandler:
     def handle_create_document(self, data: dict) -> dict:
         return self._service.create_document(data)
 
+    def handle_create_upload_document(self, data: dict) -> dict:
+        """文件型独立报告导入（INT-1763 §6.2，source_type=uploaded_file）。"""
+        return self._service.create_upload_document(data)
+
     def handle_update_document(self, data: dict) -> dict:
         return self._service.update_document(data)
 
@@ -45,6 +49,9 @@ class ReportStudioQueryHandler:
 
     def handle_get_document(self, data: dict) -> dict:
         return self._service.get_document(data)
+
+    def handle_list_documents(self, data: dict) -> dict:
+        return self._service.list_documents(data)
 
     def handle_list_versions(self, data: dict) -> dict:
         return self._service.list_versions(data)

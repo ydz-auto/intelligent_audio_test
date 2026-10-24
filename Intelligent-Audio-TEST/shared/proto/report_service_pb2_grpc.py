@@ -2495,6 +2495,16 @@ class ReportStudioServiceStub:
                 request_serializer=report__service__pb2.StudioDocumentRequest.SerializeToString,
                 response_deserializer=report__service__pb2.StudioResponse.FromString,
                 _registered_method=True)
+        self.CreateStudioUploadDocument = channel.unary_unary(
+                '/report.ReportStudioService/CreateStudioUploadDocument',
+                request_serializer=report__service__pb2.StudioDocumentRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
+        self.ListStudioDocuments = channel.unary_unary(
+                '/report.ReportStudioService/ListStudioDocuments',
+                request_serializer=report__service__pb2.StudioDocumentRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
         self.GetStudioDocument = channel.unary_unary(
                 '/report.ReportStudioService/GetStudioDocument',
                 request_serializer=report__service__pb2.StudioDocumentRequest.SerializeToString,
@@ -2546,6 +2556,21 @@ class ReportStudioServiceServicer:
 
     def CreateStudioDocument(self, request, context):
         """用现有 reportId 创建草稿（可绑定已有 agentSessionId，可空）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateStudioUploadDocument(self, request, context):
+        """文件型独立报告导入建档（INT-1763 §6.2）：source_type=uploaded_file，
+        report_id / parent_doc_id 可空；文件本体由网关落 OSS，本 RPC 只传元数据
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListStudioDocuments(self, request, context):
+        """文档列表（INT-1763 §6.4）：按 report_id / source_type / parent_doc_id 过滤
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -2612,6 +2637,16 @@ def add_ReportStudioServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'CreateStudioDocument': grpc.unary_unary_rpc_method_handler(
                     servicer.CreateStudioDocument,
+                    request_deserializer=report__service__pb2.StudioDocumentRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+            'CreateStudioUploadDocument': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateStudioUploadDocument,
+                    request_deserializer=report__service__pb2.StudioDocumentRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+            'ListStudioDocuments': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListStudioDocuments,
                     request_deserializer=report__service__pb2.StudioDocumentRequest.FromString,
                     response_serializer=report__service__pb2.StudioResponse.SerializeToString,
             ),
@@ -2685,6 +2720,60 @@ class ReportStudioService:
             request,
             target,
             '/report.ReportStudioService/CreateStudioDocument',
+            report__service__pb2.StudioDocumentRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateStudioUploadDocument(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/CreateStudioUploadDocument',
+            report__service__pb2.StudioDocumentRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListStudioDocuments(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/ListStudioDocuments',
             report__service__pb2.StudioDocumentRequest.SerializeToString,
             report__service__pb2.StudioResponse.FromString,
             options,

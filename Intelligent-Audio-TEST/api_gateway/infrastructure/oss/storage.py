@@ -4,6 +4,7 @@
 OSS 不可用时自动降级到本地磁盘存储。
 """
 import os
+import uuid
 from typing import Optional
 
 from shared.infrastructure.storage import storage
@@ -47,6 +48,9 @@ class ReportOSSStorage:
 
     CATEGORY = 'reports'
     PREFIX = 'reports'
+    # 文件型独立报告（INT-1763 §6.2 / D0 A11-1）：复用 reports 类别，
+    # 不得新造 category（多桶模式下未知 category 直接 ValueError）
+    STUDIO_UPLOAD_PREFIX = 'studio_uploads'
 
     @staticmethod
     def upload_report_file(local_path: str, report_id: str, file_name: Optional[str] = None) -> str:
@@ -55,6 +59,20 @@ class ReportOSSStorage:
             file_name = os.path.basename(local_path)
         key = f'{report_id}/{file_name}'
         return storage.save_file(local_path, ReportOSSStorage.CATEGORY, key)
+
+    @staticmethod
+    def upload_studio_upload(data: bytes, file_name: str,
+                             content_type: str = 'application/octet-stream') -> str:
+        """上传文件型独立报告（md/html/pptx），key = studio_uploads/{uuid}.{ext}"""
+        ext = os.path.splitext(file_name or '')[1].lower()
+        key = f'{ReportOSSStorage.STUDIO_UPLOAD_PREFIX}/{uuid.uuid4().hex}{ext}'
+        return storage.save_bytes(data, ReportOSSStorage.CATEGORY, key,
+                                  content_type=content_type)
+
+    @staticmethod
+    def download_bytes(path: str) -> bytes:
+        """读取存储对象字节（上传件预览/下载）"""
+        return storage.load_bytes(path)
 
     @staticmethod
     def upload_report_bytes(data: bytes, report_id: str, file_name: str) -> str:

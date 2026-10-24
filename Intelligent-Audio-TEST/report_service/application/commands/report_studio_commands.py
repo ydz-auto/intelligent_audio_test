@@ -17,6 +17,12 @@ class CreateStudioDocumentCommand:
 
 
 @dataclass(frozen=True)
+class CreateStudioUploadDocumentCommand:
+    """文件型独立报告导入（INT-1763 §6.2）：source_type=uploaded_file 建文档。"""
+    data: Dict[str, Any]
+
+
+@dataclass(frozen=True)
 class UpdateStudioDocumentCommand:
     """人工编辑：expected_version 乐观锁 + 幂等键；冲突 409 + 差异。"""
     data: Dict[str, Any]

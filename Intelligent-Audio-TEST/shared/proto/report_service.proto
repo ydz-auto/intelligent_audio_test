@@ -318,6 +318,11 @@ message BenchmarkResponse {
 service ReportStudioService {
   // 用现有 reportId 创建草稿（可绑定已有 agentSessionId，可空）
   rpc CreateStudioDocument(StudioDocumentRequest) returns (StudioResponse);
+  // 文件型独立报告导入建档（INT-1763 §6.2）：source_type=uploaded_file，
+  // report_id / parent_doc_id 可空；文件本体由网关落 OSS，本 RPC 只传元数据
+  rpc CreateStudioUploadDocument(StudioDocumentRequest) returns (StudioResponse);
+  // 文档列表（INT-1763 §6.4）：按 report_id / source_type / parent_doc_id 过滤
+  rpc ListStudioDocuments(StudioDocumentRequest) returns (StudioResponse);
   // 当前版本、Markdown、图表引用、ETag
   rpc GetStudioDocument(StudioDocumentRequest) returns (StudioResponse);
   // 人工编辑，expected_version + 幂等键；冲突 409 + 差异
@@ -339,6 +344,8 @@ service ReportStudioService {
 message StudioDocumentRequest {
   string data = 1;  // JSON：doc_id/report_id/agent_session_id/title/markdown_content/
                     // chart_refs/style_prefs/expected_version/idempotency_key/version
+                    // 以及 INT-1763 的 source_type/source_format/source_file_path/
+                    // source_file_size/parent_doc_id/limit/offset
 }
 
 message StudioChartDataRequest {

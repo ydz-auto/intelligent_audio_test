@@ -26,9 +26,11 @@ from shared.infrastructure.user_context import (
     get_current_user_is_admin,
 )
 from shared.models.common_enums import (
+    ReportStudioSourceType,
     StudioExportFormat,
     StudioExportStatus,
     StudioSnapshotReason,
+    StudioUploadFormat,
 )
 from report_service.config.config import Config
 
@@ -66,6 +68,19 @@ def _load_report(report_id: int):
     from report_service.application.handlers.report_handlers import ReportQueryHandler
     from report_service.application.queries.report_queries import GetReportQuery
     return ReportQueryHandler().handle_get(GetReportQuery(report_id=int(report_id)))
+
+
+def _report_id_by_task(task_id: int) -> Optional[int]:
+    """按任务 ID 取该任务最新未删除报告的 id（导入时 task_id → report_id 关联）。
+
+    复用报告仓储 ``get_by_task``：私有报告对非 owner 不可见时返回 None，
+    与报告详情读侧的行级可见性口径一致（不额外开权限口子）。
+    """
+    from report_service.infrastructure.persistence.report_repository import (
+        report_repository,
+    )
+    aggregate = report_repository.get_by_task(int(task_id))
+    return int(aggregate.id) if aggregate is not None else None
 
 
 class ReportStudioService:
@@ -117,6 +132,15 @@ class ReportStudioService:
             'created_by': doc.created_by,
             'created_at': doc.created_at,
             'updated_at': doc.updated_at,
+            'source_type': doc.source_type,
+            'parent_doc_id': doc.parent_doc_id,
+            'source_file_path': doc.source_file_path,
+            'source_format': doc.source_format,
+            'source_file_size': doc.source_file_size,
+            # 上传件（html/pptx）的鉴权下载引用，前端按沙箱 iframe/下载打开
+            'source_download_ref': (
+                f'/api/v1/report-studio/documents/{doc.doc_id}/source'
+                if doc.source_file_path else None),
         }
         if include_content:
             data['markdown_content'] = doc.markdown_content
@@ -168,6 +192,7 @@ class ReportStudioService:
             markdown_content=markdown, chart_refs=chart_refs, style_prefs=style_prefs,
             current_version=1, etag_hash=etag, agent_session_id=agent_session_id,
             created_by=created_by,
+            source_type=ReportStudioSourceType.PLATFORM_REPORT.value,
         )
         version = ReportStudioVersion(
             id=0, doc_id=doc_id, version=1, markdown_content=markdown,
@@ -181,9 +206,165 @@ class ReportStudioService:
             return {'success': False, 'message': f'创建文档失败: {e}', 'data': None, 'code': 500}
         return {'success': True, 'message': 'ok', 'data': self._doc_dict(doc), 'code': 0}
 
+    def create_upload_document(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """文件型独立报告导入（3b，设计文档 §6.2 / §6.4）。
+
+        调用方（网关）已完成文件白名单/大小校验与 OSS 落盘，本方法只做领域建
+        文档：``source_type='uploaded_file'``、``report_id`` 可空（独立文档库）、
+        ``parent_doc_id`` 可空（3c 用）。md 正文进 ``markdown_content`` 并落版本
+        快照；html/pptx 只记文件引用与元数据（不做格式转换）。
+
+        ``created_by`` 必须是**导入操作人**（对象级权限按它判定），不得沿用远端
+        用户 id；``report_id`` 给定时关联该平台报告（调用方按 task_id 解析）。
+        """
+        try:
+            fmt = StudioUploadFormat(str(data.get('source_format') or '').strip().lower())
+        except ValueError:
+            supported = ' / '.join(f.value for f in StudioUploadFormat)
+            return {'success': False,
+                    'message': f'不支持的文件格式，仅支持 {supported}',
+                    'data': None, 'code': 400}
+
+        markdown = data.get('markdown_content') or ''
+        file_path = data.get('source_file_path') or None
+        if fmt is StudioUploadFormat.MD:
+            # md 直接进正文，不落文件列（file_path 由网关忽略）
+            file_path = None
+            if not str(markdown).strip():
+                return {'success': False, 'message': 'Markdown 文件内容为空',
+                        'data': None, 'code': 400}
+        elif not file_path:
+            return {'success': False, 'message': '缺少源文件路径',
+                    'data': None, 'code': 400}
+
+        report_id = data.get('report_id')
+        task_id = data.get('task_id')
+        if task_id not in (None, '', 0):
+            try:
+                task_id = int(task_id)
+            except (TypeError, ValueError):
+                return {'success': False, 'message': 'task_id 非法',
+                        'data': None, 'code': 400}
+            # task_id 关联：一个任务的可见报告可能有多份，按最新未删除报告关联；
+            # 没有可见报告时不静默建无主文档，让调用方明确处理（404）。
+            resolved = _report_id_by_task(task_id)
+            if resolved is None:
+                return {'success': False,
+                        'message': f'任务 {task_id} 下没有可关联的平台报告',
+                        'data': {'task_id': task_id}, 'code': 404}
+            report_id = resolved
+        if report_id not in (None, '', 0):
+            # 关联平台报告时校验报告存在（事实源复用报告 7 表）
+            try:
+                report_id = int(report_id)
+            except (TypeError, ValueError):
+                return {'success': False, 'message': 'report_id 非法',
+                        'data': None, 'code': 400}
+            if _load_report(report_id) is None:
+                return {'success': False, 'message': '关联的报告不存在',
+                        'data': None, 'code': 404}
+        else:
+            report_id = None
+
+        parent_doc_id = data.get('parent_doc_id') or None
+        if parent_doc_id and self.repo.get_document(str(parent_doc_id)) is None:
+            return {'success': False, 'message': '父文档不存在',
+                    'data': None, 'code': 404}
+
+        title = (data.get('title') or data.get('file_name')
+                 or f'导入报告 {fmt.value.upper()}')
+        source_file_size = data.get('source_file_size')
+        try:
+            source_file_size = int(source_file_size) if source_file_size is not None else None
+        except (TypeError, ValueError):
+            source_file_size = None
+
+        doc_id = data.get('doc_id') or _new_id()
+        created_by = get_current_user_id()
+        etag = _md5(1, markdown or file_path or '')
+        chart_refs: List[str] = []
+
+        from report_service.domain.entities.report_studio import (
+            ReportStudioDocument,
+            ReportStudioVersion,
+        )
+        doc = ReportStudioDocument(
+            doc_id=doc_id, report_id=report_id, title=str(title),
+            markdown_content=str(markdown), chart_refs=chart_refs,
+            current_version=1, etag_hash=etag, agent_session_id=None,
+            created_by=created_by,
+            source_type=ReportStudioSourceType.UPLOADED_FILE.value,
+            parent_doc_id=parent_doc_id,
+            source_file_path=file_path,
+            source_format=fmt.value,
+            source_file_size=source_file_size,
+        )
+        version = ReportStudioVersion(
+            id=0, doc_id=doc_id, version=1, markdown_content=str(markdown),
+            chart_specs={'chart_refs': chart_refs}, parent_version=None,
+            snapshot_reason=StudioSnapshotReason.IMPORT.value, created_by=created_by,
+        )
+        try:
+            self.repo.create_document(doc, version)
+        except Exception as e:
+            logger.exception('创建导入 Report Studio 文档失败')
+            return {'success': False, 'message': f'创建文档失败: {e}',
+                    'data': None, 'code': 500}
+        return {'success': True, 'message': 'ok', 'data': self._doc_dict(doc), 'code': 0}
+
     # ------------------------------------------------------------------
     # 读侧：文档
     # ------------------------------------------------------------------
+
+    def list_documents(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """文档列表（INT-1763 §6.4）：report_id / source_type / parent_doc_id 显式过滤。
+
+        过滤条件由调用方显式给出——平台报告详情页的文档列表必须同时带
+        ``report_id`` 与 ``source_type='platform_report'``，否则会混入该报告下
+        的导入文档；独立文档库用 ``source_type='uploaded_file'``。
+        未认证（AUTH_MODE=off）或管理员可见全部，其余按 created_by 只看本人。
+        """
+        source_type = data.get('source_type')
+        if source_type:
+            try:
+                source_type = ReportStudioSourceType(str(source_type)).value
+            except ValueError:
+                supported = ' / '.join(s.value for s in ReportStudioSourceType)
+                return {'success': False,
+                        'message': f'未知的 source_type，仅支持 {supported}',
+                        'data': None, 'code': 400}
+
+        report_id = data.get('report_id')
+        try:
+            report_id = int(report_id) if report_id not in (None, '', 0) else None
+        except (TypeError, ValueError):
+            return {'success': False, 'message': 'report_id 非法',
+                    'data': None, 'code': 400}
+
+        user_id = get_current_user_id()
+        created_by = None
+        if user_id is not None and not get_current_user_is_admin():
+            created_by = int(user_id)
+
+        try:
+            limit = min(max(int(data.get('limit') or 100), 1), 500)
+            offset = max(int(data.get('offset') or 0), 0)
+        except (TypeError, ValueError):
+            return {'success': False, 'message': 'limit/offset 非法',
+                    'data': None, 'code': 400}
+
+        rows, total = self.repo.list_documents(
+            report_id=report_id, source_type=source_type,
+            parent_doc_id=data.get('parent_doc_id') or None,
+            created_by=created_by, limit=limit, offset=offset)
+        return {
+            'success': True, 'message': 'ok',
+            'data': {
+                'items': [self._doc_dict(d, include_content=False) for d in rows],
+                'total': total, 'limit': limit, 'offset': offset,
+            },
+            'code': 0,
+        }
 
     def get_document(self, data: Dict[str, Any]) -> Dict[str, Any]:
         doc_id = data.get('doc_id')
@@ -329,6 +510,17 @@ class ReportStudioService:
             return {'success': False, 'message': '图表不存在', 'data': None, 'code': 404}
         if spec.doc_id != str(doc_id):
             return {'success': False, 'message': '图表与文档不匹配', 'data': None, 'code': 403}
+
+        # INT-1763 §6.4：上传文档的图表没有平台报告行（report_id 可空），
+        # 不能 int(None) 强转（会抛 TypeError → gRPC 500）；提示重新绑定报告。
+        if spec.report_id is None:
+            return {
+                'success': False,
+                'message': '图表未绑定平台报告，需重新绑定报告',
+                'data': {'chart_id': spec.chart_id, 'rebind_required': True,
+                         'report_id': None},
+                'code': 409,
+            }
 
         aggregate = _load_report(int(spec.report_id))
         if aggregate is None:
