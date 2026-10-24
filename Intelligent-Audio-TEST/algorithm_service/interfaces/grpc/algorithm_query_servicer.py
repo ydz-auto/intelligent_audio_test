@@ -265,6 +265,21 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
         except Exception as e:
             return _failure(str(e))
 
+    def ConvertFieldValues(self, request, context=None):
+        """批量字段值转换（INT-1749）。
+
+        解析 request.data 中 items 列表，委托
+        FieldMappingQueryHandler.convert_field_values 一次完成 N 个值的转换；
+        data 返回 {'values': [...], 'errors': [...]}（非法输入保留原值 + 错误回传）。
+        """
+        try:
+            payload = _loads(request.data, {})
+            items = payload.get('items') or []
+            data = self.field_mapping_handler.convert_field_values(items)
+            return _success(data)
+        except Exception as e:
+            return _failure(str(e))
+
     # ============================================================
     # 结果字段映射器（原 algorithm_result_field_mapper）
     # ============================================================

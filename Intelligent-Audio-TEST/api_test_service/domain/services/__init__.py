@@ -59,8 +59,13 @@ class ConcurrencyValidator:
 
 # === API 校验领域服务 re-export ===
 from api_test_service.domain.services.api_validator import APIValidator
+# === 评估入参变换领域服务 re-export（INT-1749）===
+from api_test_service.domain.services.eval_output_transform_service import (
+    EvalOutputTransformService,
+)
 
 __all__ = [
     "ConcurrencyValidator",
     "APIValidator",
+    "EvalOutputTransformService",
 ]

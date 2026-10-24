@@ -41,6 +41,9 @@ from shared.utils.api_key_provider import (
 from shared.utils.dto_utils import dto_to_dict
 from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
+from api_test_service.domain.services.eval_output_transform_service import (
+    EvalOutputTransformService,
+)
 from api_test_service.domain.services.realtime_pacing_service import (
     RealtimePacingContext,
     RealtimePacingService,
@@ -761,12 +764,17 @@ class RealtimeSessionExecutor:
 
         新增算法只改算法配置即可映射评估入参，本方法零改动；算法服务不可达时
         （ACL 回退空 DTO）返回空 dict，round result 不携带评估字段。
+
+        transform_type（INT-1749）：参数映射上配置的变换在执行侧取值后、写入
+        轮次 output 之前应用一次（评估侧不再变换），一次批量 gRPC 处理全部字段；
+        变换失败或算法服务不可达时按原值保留（WARNING），不丢值、不吞空串。
         """
         algorithm_type = algorithm_type or 'voice_llm'
         field_mappings = dto_to_dict(
             _algo_acl.get_field_mappings(algorithm_type)) or {}
         original = field_mappings.get('original') or {}
         fields = {}
+        transform_types = {}
 
         eval_output = (original.get('evaluation') or {}).get('output') or {}
         for target_param, entry in eval_output.items():
@@ -782,13 +790,14 @@ class RealtimeSessionExecutor:
                 value = output.get(source_param)
             if value is not None:
                 fields[target_param] = value
+                transform_types[target_param] = entry.get('transform_type')
 
         api_output = (original.get('api') or {}).get('output') or {}
         for key in api_output:
             value = output.get(key)
             if value is not None:
                 fields[key] = value
-        return fields
+        return EvalOutputTransformService.apply(fields, transform_types, _algo_acl)
 
     def _refresh_progress(self, task_id):
         """会话收尾：刷新进度（状态回写由 result_processor 统一负责）"""
