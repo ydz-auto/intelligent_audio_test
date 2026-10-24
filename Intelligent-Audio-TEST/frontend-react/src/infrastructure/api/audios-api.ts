@@ -207,6 +207,23 @@ export async function stream(id: number): Promise<string> {
   return url
 }
 
+/**
+ * 静态路径音频流 URL（INT-1688；用例执行详情结果音频 result_audios / algorithm_results 的
+ * audio_file 项是 `case_pcm/...` 相对路径，无音频库 id）：
+ * GET /audios/stream-by-path?path=… 返回 JSON 预签名 URL（与 /audios/{id}/stream 同形）。
+ */
+export async function streamByPath(path: string): Promise<string> {
+  const result = await request<{ url?: string }>(
+    'GET',
+    '/audios/stream-by-path',
+    undefined,
+    { params: { path } }
+  )
+  const url = result?.url
+  if (!url) throw new ApiError({ message: '获取音频播放地址失败' })
+  return url
+}
+
 /** 实验室播放载荷（BatchPlaybackRequest，api_gateway/schemas/audio.py:207；
  * playback_device_id | playback_device_ids | device_unique_ids 三选一 + spl + offset） */
 export interface AudioPreviewPayload {

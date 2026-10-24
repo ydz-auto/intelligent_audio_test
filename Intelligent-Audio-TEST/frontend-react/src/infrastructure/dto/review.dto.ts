@@ -37,6 +37,21 @@ export interface ReviewSubmitResponseDto {
   review_count: number
 }
 
+/**
+ * 结果行评估维度（GET /tasks/{task_id}/cases/{case_id}/results results[].dimensions 实测）：
+ * round_number NULL=整体评估、0 起=该轮；value 为原始指标值（null 表示本次未产出）。
+ */
+export interface CaseResultDimensionDto {
+  dimension_id: number | null
+  name: string
+  value: unknown
+  score: number | null
+  status: string | null
+  evaluation_status: string | null
+  error_message: string | null
+  round_number: number | null
+}
+
 /** 用例执行结果行（GET /tasks/{task_id}/cases/{case_id}/results，INT-340 复核字段实测） */
 export interface CaseResultForReviewDto {
   id: number
@@ -47,6 +62,12 @@ export interface CaseResultForReviewDto {
   execution_status: string | null
   response_time: number | null
   error_message: string | null
+  /** 结果行评估维度（INT-1688：用例详情弹窗维度列数据源） */
+  dimensions?: CaseResultDimensionDto[] | null
+  /** 设备侧 ASR 识别结果（旧 Vue TestCaseDetailModal asr_result 同源） */
+  asr_result?: string | null
+  /** 设备侧翻译结果 */
+  translation_result?: string | null
   reviewed: boolean
   reviewed_by_user_id: number | null
   reviewed_at: string | null

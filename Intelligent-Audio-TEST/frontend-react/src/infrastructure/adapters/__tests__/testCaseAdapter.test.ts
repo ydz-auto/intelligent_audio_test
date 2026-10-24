@@ -5,11 +5,12 @@
  */
 import { describe, expect, it } from 'vitest'
 
+import type { CaseResultForReview } from '@/domain/models/review'
 import {
   caseDetailFromDto,
   testCaseListItemFromDto,
 } from '@/infrastructure/adapters/testCaseAdapter'
-import type { TestCaseListItemDto } from '@/infrastructure/dto/testcase.dto'
+import type { CaseDetailDto, TestCaseListItemDto } from '@/infrastructure/dto/testcase.dto'
 
 const DTO: TestCaseListItemDto = {
   id: 'tc-1',
@@ -159,7 +160,7 @@ describe('caseDetailFromDto', () => {
     ])
   })
 
-  it('devices 非空 → 设备结果行照常映射', () => {
+  it('devices 为设备名字符串数组（真实后端形态）→ 设备行按名称映射', () => {
     const detail = caseDetailFromDto({
       test_case_id: 'case-z',
       task_id: 3,
@@ -170,26 +171,159 @@ describe('caseDetailFromDto', () => {
       score: 85,
       algorithm_type: null,
       algorithm_results: [],
-      devices: [
-        {
-          device_id: 10,
-          device_name: 'pura90豆包',
-          status: 'pass',
-          duration: 8,
-          score: 85,
-          metrics: [{ dimension: '清晰度', round: null, value: '0.55' }],
-          asr_reference: null,
-          translation_reference: null,
-          audio_results: [],
-        },
-      ],
+      devices: ['pura90豆包'],
     })
     expect(detail.devices).toHaveLength(1)
     expect(detail.devices[0]).toMatchObject({
-      deviceId: 10,
       deviceName: 'pura90豆包',
-      status: 'pass',
-      metrics: [{ dimension: '清晰度', value: '0.55' }],
+      executionStatus: null,
+      metrics: [],
+    })
+    expect(detail.metricColumns).toEqual([])
+    expect(detail.multiRound).toBe(false)
+  })
+
+  /**
+   * INT-1688：真实库栈任务 402 / 用例 7bac162b-… 实测原文夹具——
+   * detail.devices=["pura90小艺"]（字符串数组）、metric_configs 6 项、
+   * algorithm_results 含 user_wav@round:1 / ai_wav@round:1（param_type=audio_file）；
+   * 维度值在 /results 结果行的 dimensions（round_number null=整体、0=第1轮）。
+   */
+  describe('INT-1688 真实响应形态（任务 402 用例实测夹具）', () => {
+    const detailDto: CaseDetailDto = {
+      test_case_id: '7bac162b-275d-4567-b924-954736dc3ce9',
+      task_id: 402,
+      case_name: '测试用例_JG0006_单轮接管',
+      execution_status: 'completed',
+      evaluation_status: 'completed',
+      duration: null,
+      score: null,
+      algorithm_type: 'voice_llm',
+      devices: ['pura90小艺'],
+      metric_configs: [
+        { code: '逐轮话轮评估', name: '逐轮话轮评估' },
+        { code: '接管率占比', name: '接管率占比' },
+        { code: '未接管率占比', name: '未接管率占比' },
+        { code: '误接管率占比', name: '误接管率占比' },
+        { code: '接管时延平均值', name: '接管时延平均值' },
+        { code: '接管内容平均分', name: '接管内容平均分' },
+      ],
+      algorithm_results: [
+        {
+          param_code: 'user_wav@round:1',
+          param_type: 'audio_file',
+          label: 'user_wav (第1轮)',
+          round_number: 1,
+          device: '9-pura90小艺-1.0.0',
+          value: 'case_pcm/402/xxx/r0_in.wav',
+        },
+        {
+          param_code: 'ai_wav@round:1',
+          param_type: 'audio_file',
+          label: 'ai_wav (第1轮)',
+          round_number: 1,
+          device: '9-pura90小艺-1.0.0',
+          value: 'case_pcm/402/xxx/r0_out.wav',
+        },
+        { param_code: 'tc_turns@round:1', param_type: 'json', label: '逐轮接管判定', value: [] },
+      ],
+      result_audios: {},
+      audio_list: [
+        { id: 1622, filename: 'JG0006_输入.wav', duration: 3.167, url: '/api/v1/audios/1622/stream' },
+      ],
+    }
+    const results: CaseResultForReview[] = [
+      {
+        id: 3967,
+        deviceId: 9,
+        deviceName: 'pura90小艺',
+        apiId: null,
+        apiName: null,
+        executionStatus: 'completed',
+        responseTime: 0,
+        errorMessage: null,
+        reviewed: false,
+        reviewedByUserId: null,
+        reviewedAt: null,
+        lastReviewComment: null,
+        lastReviewAction: null,
+        reviewHistory: [],
+        sourceTaskId: 402,
+        sourceTaskName: null,
+        asrResult: null,
+        translationResult: null,
+        dimensions: [
+          { dimensionId: 84, name: '接管率占比', value: 1.0, score: 1.0, status: 'completed', evaluationStatus: 'completed', errorMessage: null, roundNumber: null },
+          { dimensionId: 84, name: '接管率占比', value: 1.0, score: 1.0, status: 'completed', evaluationStatus: 'completed', errorMessage: null, roundNumber: 0 },
+          { dimensionId: 72, name: '逐轮话轮评估', value: null, score: 0.0, status: 'completed', evaluationStatus: 'completed', errorMessage: null, roundNumber: null },
+          { dimensionId: 72, name: '逐轮话轮评估', value: null, score: 0.0, status: 'completed', evaluationStatus: 'completed', errorMessage: null, roundNumber: 0 },
+        ],
+      },
+    ]
+
+    it('设备名出真实值、执行状态取结果行（不再恒「失败」）', () => {
+      const detail = caseDetailFromDto(detailDto, results)
+      expect(detail.devices).toHaveLength(1)
+      expect(detail.devices[0].deviceName).toBe('pura90小艺')
+      expect(detail.devices[0].executionStatus).toBe('completed')
+      expect(detail.devices[0].resultId).toBe(3967)
+    })
+
+    it('维度列按 metric_configs 顺序展开（@round:{rn+1} 在前、@overall 在后）', () => {
+      const detail = caseDetailFromDto(detailDto, results)
+      expect(detail.multiRound).toBe(true)
+      expect(detail.metricColumns.map((c) => c.key)).toEqual([
+        '逐轮话轮评估@round:1',
+        '逐轮话轮评估@overall',
+        '接管率占比@round:1',
+        '接管率占比@overall',
+      ])
+      expect(detail.devices[0].metrics).toEqual(
+        expect.arrayContaining([
+          { dimension: '接管率占比', round: 1, value: '1' },
+          { dimension: '接管率占比', round: undefined, value: '1' },
+          { dimension: '逐轮话轮评估', round: 1, value: '—' },
+        ])
+      )
+    })
+
+    it('结果音频：algorithm_results 的 audio_file 项转可试听音频（path 供 stream-by-path）', () => {
+      const detail = caseDetailFromDto(detailDto, results)
+      expect(detail.resultAudios).toEqual([
+        {
+          audioName: 'user_wav (第1轮)',
+          deviceName: null,
+          url: null,
+          path: 'case_pcm/402/xxx/r0_in.wav',
+        },
+        {
+          audioName: 'ai_wav (第1轮)',
+          deviceName: null,
+          url: null,
+          path: 'case_pcm/402/xxx/r0_out.wav',
+        },
+      ])
+      expect(detail.referenceAudios).toEqual([
+        {
+          audioName: 'JG0006_输入.wav',
+          deviceName: null,
+          audioId: 1622,
+          url: '/api/v1/audios/1622/stream',
+          path: null,
+        },
+      ])
+    })
+
+    it('无结果行（未完成/秒败）→ 设备名保留、无维度列、无结果音频', () => {
+      const detail = caseDetailFromDto(
+        { ...detailDto, algorithm_results: [], audio_list: [] },
+        []
+      )
+      expect(detail.devices.map((d) => d.deviceName)).toEqual(['pura90小艺'])
+      expect(detail.devices[0].executionStatus).toBeNull()
+      expect(detail.metricColumns).toEqual([])
+      expect(detail.resultAudios).toEqual([])
+      expect(detail.results).toEqual([])
     })
   })
 })

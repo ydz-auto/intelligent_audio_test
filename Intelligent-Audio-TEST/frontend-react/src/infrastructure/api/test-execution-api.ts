@@ -31,7 +31,9 @@ import { apiConfigFromDto, apiHealthFromDto } from '@/infrastructure/adapters/ap
 import { extractEndpointApiKeys } from '@/infrastructure/adapters/api-keys'
 import { deviceFromDto } from '@/infrastructure/adapters/deviceAdapter'
 import { caseDetailFromDto, testCaseFromDto } from '@/infrastructure/adapters/testCaseAdapter'
+import { toCaseResultsForReview } from '@/infrastructure/adapters/reviewAdapter'
 import type { CaseDetailDto, TestCaseListItemDto } from '@/infrastructure/dto/testcase.dto'
+import type { CaseResultsDataDto } from '@/infrastructure/dto/review.dto'
 import type { ApiHealthCheckDataDto, ApiItemDto } from '@/infrastructure/dto/apis.dto'
 import type { DeviceItemDto } from '@/infrastructure/dto/device.dto'
 import {
@@ -227,13 +229,23 @@ export async function exportReport(
   return { filename }
 }
 
-/** 用例执行详情（§5.2；GET /tasks/{taskId}/cases/{caseId}/detail，task:read） */
+/**
+ * 用例执行详情（§5.2；GET /tasks/{taskId}/cases/{caseId}/detail + /results，task:read）。
+ * INT-1688：detail 只给设备**名字**与维度配置，维度值在 /results 结果行的 dimensions 里，
+ * 故两请求并行取回后一并交给适配器组合（旧 Vue TestCaseDetailModal fetchDetail 同口径）。
+ */
 export async function fetchCaseExecutionDetail(
   taskId: number,
   caseId: string
 ): Promise<CaseExecutionDetail> {
-  const dto = await request<CaseDetailDto>('GET', `/tasks/${taskId}/cases/${caseId}/detail`)
-  return caseDetailFromDto(dto ?? ({} as CaseDetailDto))
+  const [dto, resultsDto] = await Promise.all([
+    request<CaseDetailDto>('GET', `/tasks/${taskId}/cases/${caseId}/detail`),
+    request<CaseResultsDataDto>('GET', `/tasks/${taskId}/cases/${caseId}/results`),
+  ])
+  return caseDetailFromDto(
+    dto ?? ({} as CaseDetailDto),
+    toCaseResultsForReview(resultsDto ?? ({} as CaseResultsDataDto)).results
+  )
 }
 
 /** 用例日志（§5.2 日志分页；GET /logs?task_id&test_case_id，log:read） */

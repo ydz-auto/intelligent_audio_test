@@ -6,6 +6,7 @@
  */
 
 import type { DeviceType } from './device'
+import type { CaseResultForReview } from './review'
 
 /** 目标类型（INT-1115 target_modes.target_type 枚举） */
 export type TargetType = 'device' | 'api'
@@ -136,21 +137,49 @@ export interface RealtimeFrame {
 /** 用例执行结果（§5.2 设备×维度对比；preparedComparisonData 口径平移） */
 export interface CaseMetricPoint {
   dimension: string
-  /** 多轮时维度列带轮次后缀 @round:{n} / @overall */
+  /** 多轮时维度列带轮次后缀 @round:{n} / @overall；单轮为 undefined（列名不带后缀） */
   round?: number
   value: string
 }
 
+/** 评估维度配置（detail metric_configs；维度列顺序权威源） */
+export interface CaseMetricConfig {
+  code: string
+  name: string
+}
+
+/** 维度列（设备×维度表头；旧 Vue TestCaseDetailModal metricsMap 键口径） */
+export interface CaseMetricColumn {
+  /** 列键：`{dimension}`（单轮）/ `{dimension}@round:{n}` / `{dimension}@overall` */
+  key: string
+  /** 列头文案（多轮带 @round:{n} / @overall 后缀） */
+  label: string
+  dimension: string
+  round?: number
+}
+
+/** 结果音频（可试听）：url 为后端直出地址，path 为静态相对路径（播放前经 stream-by-path 换预签名 URL） */
+export interface CaseAudioResult {
+  /** 展示名（filename / label / param_code） */
+  audioName: string
+  deviceName: string | null
+  /** 音频库 id（参考音频 audio_list 有；结果音频一般为 null） */
+  audioId?: number | null
+  url: string | null
+  path: string | null
+}
+
+/** 设备结果行（detail devices 设备名 + /results 结果行维度组合；10 §5.2） */
 export interface CaseDeviceResult {
-  deviceId: number
+  /** /results 结果行 id（无执行结果时为 null） */
+  resultId: number | null
+  deviceId: number | null
   deviceName: string
-  status: 'pass' | 'fail'
-  duration: number
-  score: number | null
+  /** 结果行执行状态（completed/failed/stopped/skipped；无结果行为 null → 显示「—」） */
+  executionStatus: string | null
   metrics: CaseMetricPoint[]
   asrReference: string | null
   translationReference: string | null
-  audioResults: Array<{ audioName: string; duration: number | null }>
 }
 
 /** 用例执行详情·算法结果扁平项（GET /tasks/{taskId}/cases/{caseId}/detail algorithm_results 实测；
@@ -178,5 +207,17 @@ export interface CaseExecutionDetail {
   score: number | null
   algorithmType: string | null
   algorithmResults: CaseAlgorithmResult[]
+  /** 评估维度配置（列顺序权威源；后端 metric_configs） */
+  metricConfigs: CaseMetricConfig[]
+  /** 维度列（多轮/整体已展开；旧 Vue metricsMap 同口径） */
+  metricColumns: CaseMetricColumn[]
+  /** 是否多轮（任一维度带 round_number）→ 列名带 @round:{n} / @overall 后缀 */
+  multiRound: boolean
   devices: CaseDeviceResult[]
+  /** 结果音频（result_audios + algorithm_results 的 audio_file 项） */
+  resultAudios: CaseAudioResult[]
+  /** 参考/输入音频（detail audio_list；旧 Vue 走「音频时间轴」） */
+  referenceAudios: CaseAudioResult[]
+  /** 执行结果行（/results；复核入口准入与人工复核弹窗消费） */
+  results: CaseResultForReview[]
 }
