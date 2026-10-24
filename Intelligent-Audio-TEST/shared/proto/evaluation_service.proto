@@ -121,8 +121,6 @@ service EvaluationConfigService {
   rpc ListDimensions(ListDimensionsRequest) returns (EvaluationConfigResponse);
   rpc GetDimension(GetDimensionRequest) returns (EvaluationConfigResponse);
   rpc GetDimensionOptions(GetDimensionOptionsRequest) returns (EvaluationConfigResponse);
-  // LLM Judge 可选模型 / Prompt 模板（读 shared/config 登记表，零 DB）
-  rpc GetLlmJudgeOptions(GetLlmJudgeOptionsRequest) returns (EvaluationConfigResponse);
   rpc GetDimensionByIds(GetDimensionByIdsRequest) returns (EvaluationConfigResponse);
   rpc HealthCheck(HealthCheckRequest) returns (EvaluationConfigResponse);
 }
@@ -172,8 +170,6 @@ message GetDimensionRequest {
 message GetDimensionOptionsRequest {
   string algorithm_type = 1;
 }
-// 空 request：LLM Judge 选项是全局登记表口径（shared/config/llm_judge_options.json），无查询参数
-message GetLlmJudgeOptionsRequest {}
 message GetDimensionByIdsRequest {
   string dim_ids = 1;  // JSON: list[int]，Dimension.id 列表
 }

@@ -15,8 +15,6 @@ from api_gateway.schemas.evaluation import (
     DimensionListQuery,
     DimensionOptionsQuery,
     HealthCheckResultItem,
-    LlmJudgeOptionItem,
-    LlmJudgeOptionsData,
 )
 
 
@@ -66,22 +64,6 @@ class EvaluationQueryService:
             return error_response(result.get('message', '获取维度选项失败'))
 
         return success_response(result.get('data'))
-
-    # 获取 LLM Judge 可选模型 / Prompt 模板（INT-1671，来源 shared/config 登记表）
-    @staticmethod
-    def get_llm_judge_options():
-        result = _evaluation_acl.get_llm_judge_options()
-
-        if not result.get('success'):
-            return error_response(result.get('message', '获取 LLM Judge 选项失败'))
-
-        raw = result.get('data') or {}
-        return success_response(LlmJudgeOptionsData(
-            models=[LlmJudgeOptionItem(**item) for item in (raw.get('models') or [])],
-            prompt_templates=[
-                LlmJudgeOptionItem(**item) for item in (raw.get('prompt_templates') or [])
-            ],
-        ))
 
     # 获取所有评分维度
     @staticmethod

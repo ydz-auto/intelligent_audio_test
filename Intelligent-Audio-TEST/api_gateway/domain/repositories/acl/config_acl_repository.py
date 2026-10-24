@@ -358,9 +358,6 @@ class EvaluationConfigAclRepository(ABC):
     def get_dimension_options(self, algorithm_type=None) -> CommandResultDTO: ...
 
     @abstractmethod
-    def get_llm_judge_options(self) -> CommandResultDTO: ...
-
-    @abstractmethod
     def list_dimensions(self, **kwargs) -> CommandResultDTO: ...
 
     @abstractmethod

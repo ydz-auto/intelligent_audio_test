@@ -467,10 +467,6 @@ class EvaluationConfigAclRepositoryImpl(EvaluationConfigAclRepository):
         from api_gateway.infrastructure.grpc_proxies import evaluation_config_service
         return _wrap(evaluation_config_service.get_dimension_options(algorithm_type=algorithm_type))
 
-    def get_llm_judge_options(self) -> CommandResultDTO:
-        from api_gateway.infrastructure.grpc_proxies import evaluation_config_service
-        return _wrap(evaluation_config_service.get_llm_judge_options())
-
     def list_dimensions(self, **kwargs) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import evaluation_config_service
         return _wrap(evaluation_config_service.list_dimensions(**kwargs))
