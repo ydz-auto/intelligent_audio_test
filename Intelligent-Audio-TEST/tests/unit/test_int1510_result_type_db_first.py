@@ -9,7 +9,9 @@
 - 过滤后分页 `total` = 命中数、逐页 result_id 不重不漏；
 - `select_all` 返回集合 = 同条件全量 result_id 集合；
 - 写路径 `submit()` 物化 result_type（显式值优先、否则读 DB 轻量 JSON、
-  缺值落 NULL）。
+  缺值落 NULL）；
+- 加购 / 另存挑选集快照 `source_result_type` 同取落库列（INT-1669 返工：
+  与候选行同口径，请求路径零 OSS）。
 
 DB：进程级 SQLite（tests/conftest.py 注入），按需 create_all，用例内自行清理，
 对齐 test_int1625 口径。
@@ -307,7 +309,49 @@ def test_submit_pending_sentinel_stored_as_null(db):
         remove_db_session()
 
 
-# ==================== 5. 网关层参数校验与透传 ====================
+# ==================== 5. 加购 / 另存快照同口径（INT-1669 返工）====================
+
+def test_cart_and_set_snapshot_use_db_result_type_without_oss(db, monkeypatch):
+    """加购 / 另存挑选集的 source_result_type 取落库列，零 OSS（无双口径）。
+
+    INT-1669 返工（审计 P2）：加购、另存与候选行属同一挑选合并请求路径，
+    快照必须读 `test_results.result_type`，不得再按 result_data 文件解析。
+    """
+    from shared.infrastructure.user_context import set_current_user_id
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+
+    calls = _forbid_oss(monkeypatch)
+    set_current_user_id(42)
+    try:
+        _task_id, result_ids = _seed([
+            # 行内 JSON 故意与落库列不同：快照只认列值
+            {'case_id': 'INT1510-CART1', 'result_type': 'asr',
+             'result_data': {'result_type': 'voice'},
+             'result_data_path': 'case_result/1/cart1/result_data.json'},
+            # 缺值列 → 快照输出 default（待补充桶）
+            {'case_id': 'INT1510-CART2', 'result_type': None,
+             'result_data_path': 'case_result/1/cart2/result_data.json'},
+        ])
+        added = cherry_pick_service.cart_add({'result_ids': result_ids})
+        assert added['success'] is True
+
+        cart = cherry_pick_service.cart_get()
+        assert cart['success'] is True
+        by_case = {it['source_case_id']: it for it in cart['data']['groups'][0]['items']}
+        assert by_case['INT1510-CART1']['source_result_type'] == 'asr'
+        assert by_case['INT1510-CART2']['source_result_type'] == 'default'
+
+        saved = cherry_pick_service.cart_save_as_set({'name': 'INT1510集'})
+        assert saved['success'] is True
+        set_id = cherry_pick_service.sets_list()['data']['items'][0]['set_id']
+        items = cherry_pick_service.set_detail(set_id)['data']['items']
+        assert {it['source_result_type'] for it in items} == {'asr', 'default'}
+    finally:
+        set_current_user_id(None)
+    assert calls['n'] == 0, '加购 / 另存路径不得触达对象存储'
+
+
+# ==================== 6. 网关层参数校验与透传 ====================
 
 class _FakeState:
     def __init__(self, json_body=None):

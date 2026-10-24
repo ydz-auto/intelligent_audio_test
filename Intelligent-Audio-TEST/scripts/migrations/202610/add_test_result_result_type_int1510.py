@@ -6,8 +6,10 @@
   `load_full_result_data`，在 `result_data_path` 非空时先读对象存储
   （`storage.exists` + `storage.load_bytes`，每行 2 次 OSS 往返，
   read_timeout=60），是阶段 2 候选接口长尾的主因；
-- 可挑范围内 2805/3614 行有 `result_data_path`，其中 2598 行 DB 轻量 JSON
-  已含 `result_type`，1016 行缺键。
+- 可挑范围内 2805/3614 行有 `result_data_path`；主库实测顶层
+  `result_data.result_type` 键命中 **0 行**（`result_type` 只出现在嵌套的
+  `raw_results_list[*].result_type`，取值均为 default），故回填后
+  3614/3614 全部落入「待补充」桶（设计文档旧统计 2598/1016 不成立）。
 
 本迁移把 result_type 落成列并回填存量行，读侧改 DB-first（请求路径零 OSS 往返）：
 - 值域沿用现有口径（asr / api / voice / real-time / final 等），

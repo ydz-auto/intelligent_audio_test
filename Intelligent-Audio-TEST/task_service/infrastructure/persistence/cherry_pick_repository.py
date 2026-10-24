@@ -17,6 +17,7 @@ from shared.infrastructure.visibility_filter import visible_condition
 from shared.models.common_enums import PickableTaskStatus
 from shared.models.database import get_db_session
 from shared.utils.db_session import with_session
+from shared.utils.status_constants import RESULT_TYPE_PENDING
 from task_service.infrastructure.persistence.models import (
     Task, TestResult,
     CherryPickCartItem, TaskCherryPickRelation, CherryPickSet, CherryPickSetItem,
@@ -34,22 +35,25 @@ def _result_trace_snapshot(result: TestResult, source_task: Optional[Task]) -> D
         'source_case_id': result.test_case_id,
         'source_device_id': result.device_id,
         'source_api_id': result.api_id,
-        # INT-577 §11-5：来源结果类型快照（result_data/result_data_path 解析，缺省 default）
+        # INT-577 §11-5：来源结果类型快照（取落库列，缺值 default）
         'source_result_type': _extract_result_type(result),
         'execution_status': result.execution_status,
     }
 
 
-def _extract_result_type(result: TestResult) -> Optional[str]:
-    """结果行 result_type 快照（口径对齐 shared.extract_result_type，缺省 'default'）。"""
-    from shared.utils.result_data_store import extract_result_type
-    try:
-        return extract_result_type(
-            getattr(result, 'result_data', None),
-            getattr(result, 'result_data_path', None),
-        )
-    except Exception:
-        return 'default'
+def _extract_result_type(result: TestResult) -> str:
+    """结果行 result_type 快照（INT-1669 返工：与候选行同一落库列口径）。
+
+    读 `test_results.result_type`，缺值（NULL / 空串）输出缺值哨兵
+    `RESULT_TYPE_PENDING`（UX「结果类型待补充」桶）。**不解析**
+    `result_data` / `result_data_path`，加购与另存路径零对象存储往返，
+    与候选行不再构成双口径。
+    """
+    value = getattr(result, 'result_type', None)
+    if value is None:
+        return RESULT_TYPE_PENDING
+    text = str(value).strip()
+    return text or RESULT_TYPE_PENDING
 
 
 class CherryPickRepository:
