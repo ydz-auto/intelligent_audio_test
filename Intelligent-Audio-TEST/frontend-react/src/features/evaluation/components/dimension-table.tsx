@@ -114,7 +114,7 @@ export function DimensionTable({
               const category = categories.find(
                 (c) => c.id === dimension.categoryId
               )
-              const isLlmJudge = dimension.resultType === 'llm_judge'
+              const isLlmJudge = dimension.llmJudge === true
               const apiOnline = dimension.apiStatus !== 'offline'
               // 禁用态 Tooltip 口径（§7 注 1）：写权限缺失 →「无 {权限码} 权限」；移动边界 → 边界提示
               const permManageTooltip = '无 evaluation:dim_manage 权限'

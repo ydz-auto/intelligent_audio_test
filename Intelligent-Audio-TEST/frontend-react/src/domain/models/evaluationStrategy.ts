@@ -12,7 +12,7 @@ export interface TestCaseDimensionItem {
   name: string
   weight: number
   threshold: number
-  /** LLM Judge 时随带（resultType='llm_judge' 维度；§5.1.3.1 参数卡） */
+  /** 历史 LLM Judge 配置残留（旧数据原样透传，前端不再写新值；INT-1681） */
   llmJudgeConfig?: {
     model: string
     promptTemplate: string

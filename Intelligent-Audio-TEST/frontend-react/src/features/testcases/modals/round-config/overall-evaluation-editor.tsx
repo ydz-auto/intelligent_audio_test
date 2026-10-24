@@ -5,8 +5,8 @@
  * （默认开；已有维度数据时自动启用；关闭即清空维度数组 emit 空数组）；维度多选用 DimensionPicker
  * （V9.7.10 主/子分组云 + 分类分组：主维度「主」徽章/子维度「子」徽章，勾主联动子；
  * categories 传入时按分类聚合组头）；已选维度参数卡（权重 0-100 默认 50
- * + 阈值 0-100 默认 80 非 LLM Judge；LLM Judge 时 模型 + Prompt 模板自由文本，默认取维度自身配置）。
- * 数据契约 config.dimensions = [{ id, name, weight, threshold, (llmJudgeConfig: {model, promptTemplate}) }]
+ * + 阈值 0-100 默认 80 非 LLM Judge；LLM Judge 只留只读徽章，无模型 / Prompt 模板下拉，INT-1681）。
+ * 数据契约 config.dimensions = [{ id, name, weight, threshold }]（历史 llmJudgeConfig 原样透传、不主动清理）
  * ——TestCaseDimensionItem {id,name,weight,threshold,test_type}（schemas/testcase.py:85-90）；
  * 触发条件=顶层数组非空；报告取值整体优先、无整体结果取各轮算术平均。
  */
@@ -68,21 +68,13 @@ export function OverallEvaluationEditor({
       .map((d) => {
         const existing = itemOf(Number(d.id))
         if (existing) return existing
-        const llmJudge = d.resultType === 'llm_judge'
+        // 新选维度只带权重/阈值：LLM Judge 由维度自身 task_type_code 表达，
+        // 不再写 llmJudgeConfig（INT-1681）
         return {
           id: d.id,
           name: d.name,
           weight: defaultParams().weight,
           threshold: defaultParams().threshold,
-          // INT-1506：LLM Judge 默认值只取维度自身 llmJudgeConfig，缺省留空——不注入写死的假模型
-          ...(llmJudge
-            ? {
-                llmJudgeConfig: {
-                  model: d.llmJudgeConfig?.model ?? '',
-                  promptTemplate: d.llmJudgeConfig?.promptTemplate ?? '',
-                },
-              }
-            : {}),
         }
       })
     onChange(list)
@@ -91,6 +83,7 @@ export function OverallEvaluationEditor({
   const handleRemove = (id: number) =>
     onChange(value.filter((v) => Number(v.id) !== id))
 
+  // 只改权重/阈值；条目上可能已有的历史 llmJudgeConfig 原样透传（INT-1681）
   const handleParamChange = (id: number, patch: Partial<DimensionParamValue>) =>
     onChange(
       value.map((v) =>
@@ -99,16 +92,6 @@ export function OverallEvaluationEditor({
               ...v,
               weight: patch.weight ?? v.weight,
               threshold: patch.threshold ?? v.threshold,
-              ...(patch.model !== undefined || patch.promptTemplate !== undefined
-                ? {
-                    llmJudgeConfig: {
-                      model: patch.model ?? v.llmJudgeConfig?.model ?? '',
-                      promptTemplate: patch.promptTemplate ?? v.llmJudgeConfig?.promptTemplate ?? '',
-                    },
-                  }
-                : v.llmJudgeConfig
-                  ? { llmJudgeConfig: v.llmJudgeConfig }
-                  : {}),
             }
           : v
       )
@@ -182,8 +165,6 @@ export function OverallEvaluationEditor({
                     params={{
                       weight: item.weight,
                       threshold: item.threshold,
-                      model: item.llmJudgeConfig?.model,
-                      promptTemplate: item.llmJudgeConfig?.promptTemplate,
                     }}
                     onChange={(patch) => handleParamChange(Number(item.id), patch)}
                     onRemove={() => handleRemove(Number(item.id))}

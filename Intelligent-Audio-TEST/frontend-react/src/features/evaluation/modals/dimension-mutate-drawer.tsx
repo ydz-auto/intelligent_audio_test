@@ -60,10 +60,6 @@ const FIELD_SECTION_LABELS: Record<string, string> = {
   weight: '结果配置',
   estimatedExecTime: '结果配置',
   rule: '结果配置',
-  llmModel: '结果配置',
-  llmPromptTemplate: '结果配置',
-  llmMaxTokens: '结果配置',
-  llmTemperature: '结果配置',
   apiUrl: 'API配置',
   apiMethod: 'API配置',
   apiTimeout: 'API配置',
@@ -288,7 +284,7 @@ export function DimensionMutateDrawer({
               <HierarchySection form={form} mainDimensions={mainDimensions} />
             </TabsContent>
             <TabsContent value='result' className='min-h-0 flex-1 overflow-y-auto pb-4'>
-              <ResultSection form={form} />
+              <ResultSection form={form} isLlmJudge={effectiveDimension?.llmJudge === true} />
             </TabsContent>
             {!isSub && (
               <TabsContent value='api' className='min-h-0 flex-1 overflow-y-auto pb-4'>
