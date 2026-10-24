@@ -409,3 +409,27 @@ export async function exportTestCases(
     filename,
   }
 }
+
+/** 模板下载文件名（与后端 Content-Disposition 同名口径：testcase_template_YYYYmmdd_HHMMSS.xlsx） */
+export function buildTestCaseTemplateFilename(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `testcase_template_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.xlsx`
+}
+
+export interface TestCaseTemplateResult {
+  blob: Blob
+  filename: string
+}
+
+/**
+ * 下载导入模板（GET /testcases/template/download，testcase:import_export；
+ * 11_用例域.md §5.7.3 + testcase_bp.py 实测挂码）。
+ * 后端回 xlsx 附件字节流（Content-Type application/vnd.openxmlformats-…sheet，
+ * Content-Disposition attachment；文件名由前端按同口径生成），不走 JSON 信封。
+ */
+export async function downloadTestCaseTemplate(): Promise<TestCaseTemplateResult> {
+  const blob = await apiClient.get<Blob>('/testcases/template/download', {
+    responseType: 'blob',
+  })
+  return { blob, filename: buildTestCaseTemplateFilename() }
+}
