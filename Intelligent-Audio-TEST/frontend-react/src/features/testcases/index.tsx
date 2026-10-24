@@ -1,6 +1,6 @@
 /**
  * 用例管理页（11_用例域.md §3.1 页面总骨架，SectionPageLayout fixedContent + 双视图表格）。
- * 装配：Breadcrumb 工作台/用例管理｜Title「用例管理」｜Actions（+新增用例/导入用例/导出/模板下载）｜
+ * 装配：Breadcrumb 工作台/用例管理｜Title「用例管理」｜Actions（+新增用例/新建分组/导入用例/导出/模板下载）｜
  * Content（视图页签 line → 筛选工具栏 → 分组/平铺表格 → 批量浮条）/ Footer（分页 Portal）。
  * 「导入用例」为单入口（负责人 2026-10-17 口径：只走音频导入页生成，照 V9.7.10 跳 /AudioImport）。
  * 路由 /testcases/$view（by-group/by-tag 白名单在路由层）；mock 态全部弹窗/toast 演示，
@@ -8,7 +8,7 @@
  */
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { FileDown, FileSpreadsheet, FileUp, Plus } from 'lucide-react'
+import { FileDown, FileSpreadsheet, FileUp, FolderPlus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -49,8 +49,11 @@ import {
 } from '@/infrastructure/api/testcases-batch-api'
 import {
   copyTestCase,
+  fetchAllTestCaseIdsByFilter,
   setTestCaseFavorite,
 } from '@/infrastructure/api/testcases-api'
+import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
+import { resolveExportIds } from '@/features/testcases/lib/export-scope'
 import { deleteTag } from '@/infrastructure/api/tags-api'
 
 export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
@@ -67,7 +70,12 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const [mutateOpen, setMutateOpen] = useState(false)
   const [presetGroupId, setPresetGroupId] = useState<string | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
-  const [groupDialog, setGroupDialog] = useState<{ open: boolean; group: TestCaseGroup | null }>({ open: false, group: null })
+  const [groupDialog, setGroupDialog] = useState<{
+    open: boolean
+    group: TestCaseGroup | null
+    /** 建组成功后是否预填分组筛选（§3.4：仅分组 facet 底部「+ 新增分组」入口带；页头入口不带） */
+    selectAfterCreate?: boolean
+  }>({ open: false, group: null })
   const [previewCase, setPreviewCase] = useState<TestCaseListItem | null>(null)
 
   /** 生效筛选（全局算法联动合并；INT-1284 分组内懒加载按同一筛选取数） */
@@ -209,6 +217,22 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     })
   }, [])
 
+  /**
+   * 导出「按当前筛选条件」的全量 id（INT-1642；取数口径见 features/testcases/lib/export-scope）。
+   * 代码审计 P2 返工：收藏态原走 POST /testcases/ids，后端 fetch_case_ids 不认 favorite，
+   * 「只看收藏」下导出的是全库；现收藏/未分组走列表端点逐页翻完，其余仍走轻量 /ids。
+   */
+  const resolveFilteredIds = useCallback(
+    () =>
+      resolveExportIds(effectiveFilters, {
+        fetchAllIds: fetchAllTestCaseIdsByFilter,
+        fetchIdsByFilter: async (query) => (await fetchCaseIdsByFilter(query)).ids,
+        groups,
+        loadedItems: items,
+      }),
+    [effectiveFilters, groups, items]
+  )
+
   /** 视图页签切换：重置筛选与勾选集（URL 态回归：接线后 page/search/… 进 search） */
   const handleViewChange = (next: string) => {
     setFilters({})
@@ -325,6 +349,24 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     await queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
   }
 
+  /**
+   * 分组 facet 底部「+ 新增分组」建组成功 → 预填分组筛选（11_用例域.md §3.4）。
+   * 先等分组选项刷新再写筛选：否则 facet trigger 解析不到新组名（回落「全部」）、
+   * 分组视图会先闪一次空态（可见分组按 groupId 过滤）。
+   */
+  const handleGroupCreated = useCallback(
+    (created: { id: string; name: string }) => {
+      void (async () => {
+        try {
+          await queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
+        } finally {
+          if (created.id) setFilters((prev) => ({ ...prev, groupId: created.id }))
+        }
+      })()
+    },
+    [queryClient]
+  )
+
   const openCreate = () => {
     setPresetGroupId(null)
     setMutateCase(null)
@@ -373,6 +415,19 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
             <Button size='sm' className='h-7 gap-1.5' onClick={openCreate}>
               <Plus aria-hidden='true' className='size-3.5' />
               新增用例
+            </Button>
+          )}
+          {/* INT-1658：页面级建组入口（V9.7.10 TestCaseListContainer「创建分组」对位；
+              仅分组视图暴露，组弹窗以 group=null 打开走 POST /groups） */}
+          {view === 'by-group' && hasPermission('group:create') && (
+            <Button
+              size='sm'
+              variant='outline'
+              className='h-7 gap-1.5'
+              onClick={() => setGroupDialog({ open: true, group: null })}
+            >
+              <FolderPlus aria-hidden='true' className='size-3.5' />
+              新建分组
             </Button>
           )}
           {hasPermission('testcase:import_export') && (
@@ -438,6 +493,16 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               onUpdateTag={handleUpdateTag}
               onDeleteTag={handleDeleteTag}
               onCopyTag={handleCopyTag}
+              onCreateGroup={
+                hasPermission('group:create')
+                  ? () =>
+                      setGroupDialog({
+                        open: true,
+                        group: null,
+                        selectAfterCreate: true,
+                      })
+                  : undefined
+              }
               cases={items}
               onRestoreAll={() =>
                 batch.setConfirm({
@@ -507,11 +572,21 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         open={exportOpen}
         onOpenChange={setExportOpen}
         selectedCount={selected.size}
+        selectedIds={[...selected]}
+        resolveFilteredIds={resolveFilteredIds}
       />
       <GroupMutateDialog
         open={groupDialog.open}
-        onOpenChange={(open) => setGroupDialog((prev) => ({ ...prev, open }))}
+        onOpenChange={(open) =>
+          // 关闭即清「建组后预填」标记，避免之后的页头建组也触发预填
+          setGroupDialog((prev) => ({
+            open,
+            group: prev.group,
+            selectAfterCreate: open ? prev.selectAfterCreate : false,
+          }))
+        }
         group={groupDialog.group}
+        onCreated={groupDialog.selectAfterCreate ? handleGroupCreated : undefined}
       />
       <AudioPreviewConfigDialog
         open={previewCase != null}

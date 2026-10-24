@@ -61,6 +61,9 @@ function audioTypeLabel(audioType?: string): string {
     wakeword: '唤醒词音频',
     dialogue: '对话音频',
     final: '最终结果音频',
+    // INT-1688：用例执行详情弹窗的两类音频（结果音频 / 参考输入音频）
+    result: '结果音频',
+    reference: '参考音频',
   }
   return map[audioType ?? ''] ?? '未知类型'
 }

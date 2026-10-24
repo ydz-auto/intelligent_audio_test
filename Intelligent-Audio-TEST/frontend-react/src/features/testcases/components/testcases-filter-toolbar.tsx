@@ -75,19 +75,24 @@ export interface TestCasesFilterToolbarProps {
   onRetryTags?: () => void
   /** readOnly 观察态（10_测试执行.md §3.1.1）：收藏/回收站切换、全部恢复、重置隐藏 */
   readOnly?: boolean
+  /** 分组 facet 底部「+ 新增分组」（§3.4/§5.7.4；group:create 时由页面装配，打开新建分组弹窗） */
+  onCreateGroup?: () => void
 }
 
-/** 单选 facet chip（Popover + 选项列表 + 选中态） */
+/** 单选 facet chip（Popover + 选项列表 + 选中态 + 可选底部固定动作项，§3.4） */
 function SingleFacet({
   label,
   value,
   options,
   onChange,
+  footerAction,
 }: {
   label: string
   value: string | null | undefined
   options: Array<{ value: string; label: string; dotColor?: string }>
   onChange: (value: string | null) => void
+  /** 下拉底部固定动作项（分组 facet「+ 新增分组」→ §5.7.4 新建分组弹窗） */
+  footerAction?: { label: string; onSelect: () => void }
 }) {
   const current = options.find((o) => o.value === value)
   const [open, setOpen] = useState(false)
@@ -138,6 +143,20 @@ function SingleFacet({
             )}
           </button>
         ))}
+        {footerAction && (
+          <div className='mt-1 border-t pt-1'>
+            <button
+              type='button'
+              onClick={() => {
+                setOpen(false)
+                footerAction.onSelect()
+              }}
+              className='hover:bg-accent flex w-full items-center rounded-md px-2 py-1.5 text-start text-sm font-medium transition-colors'
+            >
+              {footerAction.label}
+            </button>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   )
@@ -580,6 +599,7 @@ export function TestCasesFilterToolbar({
   tagsLoading = false,
   onRetryTags,
   readOnly = false,
+  onCreateGroup,
 }: TestCasesFilterToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null)
   const [searchInput, setSearchInput] = useState(filters.search ?? '')
@@ -646,6 +666,9 @@ export function TestCasesFilterToolbar({
           value={filters.groupId ?? null}
           options={groupOptions}
           onChange={(v) => update({ groupId: v ?? null })}
+          footerAction={
+            onCreateGroup ? { label: '+ 新增分组', onSelect: onCreateGroup } : undefined
+          }
         />
         <TagFacet
           value={filters.tag ?? null}

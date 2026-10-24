@@ -8,6 +8,12 @@
  * useLogRealtime 据此在「WS 主通道 ↔ POST /logs/refresh 轮询兜底」间切换（本层只管 WS 主通道）。
  * 鉴权待后端立项（§12-1）：/socket.io 白名单免认证 + connect 无 token 校验，通道现即可连；
  * auth 注入 token 仅为前向兼容，后端当前忽略。
+ *
+ * transport 固定 websocket（INT-1685）：engine.io 会话（sid、房间订阅、上行队列）只存在于接住握手的
+ * 那一个 uvicorn worker 里，而同一容器的多 worker 共享一个监听 socket；polling 的后续 HTTP 请求会被
+ * 内核分给任意 worker，落到别的进程即「会话未知」（4 worker 实测 websocket-only 6/6，带 polling 3/6）。
+ * websocket 是单条长连接，不依赖会话粘滞，多 worker 与粘滞无关；不配 polling 回退，连不上交由
+ * application 层切 POST /logs/refresh 轮询兜底。
  */
 import { io, type Socket } from 'socket.io-client'
 import { useEffect, useRef, useState } from 'react'
@@ -85,7 +91,7 @@ export function useLogRealtimeWs(options: UseLogRealtimeWsOptions): LogRealtimeW
     const token = authTokenStore.get()
     const socket = io('/ws/logs', {
       path: '/socket.io',
-      transports: ['polling', 'websocket'],
+      transports: ['websocket'],
       timeout: 5_000, // 握手超时 5s 内判 WS 不可用 → application 层降级轮询兜底
       reconnection: true,
       reconnectionDelay: 1_000,

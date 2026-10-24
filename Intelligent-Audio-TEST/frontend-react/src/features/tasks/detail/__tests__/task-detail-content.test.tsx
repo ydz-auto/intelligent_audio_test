@@ -3,6 +3,7 @@
  * ApiResources 区块按真实 apis 数据无条件渲染——有 apis 即显示、无 apis 即隐藏，
  * 不再由任务类型（isApi / deriveTaskType）推导显隐（旧双口径已随概念移除一并消解）。
  */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -62,7 +63,16 @@ function renderDetail(overrides: Record<string, unknown> = {}) {
     isError: false,
     refetch: vi.fn(),
   })
-  return render(<TaskDetailContent taskId={419} />)
+  // TaskDetailContent 渲染期经 useTaskActions() 取 QueryClient（操作按钮/刷新），
+  // 测试侧补 Provider；retry/gcTime 与其它域组件测试同法。
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  })
+  return render(
+    <QueryClientProvider client={client}>
+      <TaskDetailContent taskId={419} />
+    </QueryClientProvider>
+  )
 }
 
 describe('TaskDetailContent API 资源区（INT-1241 移除任务类型概念）', () => {

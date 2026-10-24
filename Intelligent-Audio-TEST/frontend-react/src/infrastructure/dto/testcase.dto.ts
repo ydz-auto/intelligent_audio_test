@@ -80,6 +80,28 @@ export interface CaseAlgorithmResultDto {
   rounds?: unknown
 }
 
+/** 评估维度配置项（GET /tasks/{id}/cases/{cid}/detail metric_configs 实测：{code,name}） */
+export interface CaseMetricConfigDto {
+  code: string
+  name: string
+}
+
+/** 结果音频项（detail result_audios 实测：设备键 → [{url, filename, param_code}]） */
+export interface CaseResultAudioDto {
+  url?: string | null
+  filename?: string | null
+  param_code?: string | null
+}
+
+/** 参考/输入音频项（detail audio_list 实测；后端部分字段为 camelCase，照原样声明） */
+export interface CaseAudioListItemDto {
+  id: number
+  filename: string
+  duration?: number | null
+  url?: string | null
+  testType?: string | null
+}
+
 /** 用例执行详情（task_bp.py GET /tasks/{id}/cases/{cid}/detail 实测） */
 export interface CaseDetailDto {
   test_case_id: string
@@ -93,19 +115,15 @@ export interface CaseDetailDto {
   score: number | null
   algorithm_type: string | null
   algorithm_results: CaseAlgorithmResultDto[]
-  devices: Array<{
-    device_id: number
-    device_name: string
-    status: string
-    duration: number | null
-    score: number | null
-    metrics: Array<{
-      dimension: string
-      round: number | null
-      value: string | number | null
-    }>
-    asr_reference: string | null
-    translation_reference: string | null
-    audio_results: Array<{ audio_name: string; duration: number | null }>
-  }>
+  /**
+   * 设备名列表——后端 `task_query_service` 实测按 `list(set(pr['device_name']))` 派生，
+   * **字符串数组**（INT-1688 修正：此前按对象数组声明，真实响应对应元素全 undefined）。
+   */
+  devices: string[]
+  /** 评估维度配置（维度列顺序权威源；实测 6 项） */
+  metric_configs?: CaseMetricConfigDto[]
+  /** 结果音频（设备键 → 音频项；多数用例为空，音频在 algorithm_results 的 audio_file 项里） */
+  result_audios?: Record<string, CaseResultAudioDto[]>
+  /** 参考/输入音频（用例音频列表；旧 Vue 走「音频时间轴」，不在结果音频区） */
+  audio_list?: CaseAudioListItemDto[]
 }

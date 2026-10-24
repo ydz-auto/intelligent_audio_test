@@ -5,7 +5,7 @@
  * （默认开；已有维度数据时自动启用；关闭即清空维度数组 emit 空数组）；维度多选用 DimensionPicker
  * （V9.7.10 主/子分组云 + 分类分组：主维度「主」徽章/子维度「子」徽章，勾主联动子；
  * categories 传入时按分类聚合组头）；已选维度参数卡（权重 0-100 默认 50
- * + 阈值 0-100 默认 80 非 LLM Judge；LLM Judge 时 模型 Select + Prompt 模板 Select）。
+ * + 阈值 0-100 默认 80 非 LLM Judge；LLM Judge 时 模型 + Prompt 模板自由文本，默认取维度自身配置）。
  * 数据契约 config.dimensions = [{ id, name, weight, threshold, (llmJudgeConfig: {model, promptTemplate}) }]
  * ——TestCaseDimensionItem {id,name,weight,threshold,test_type}（schemas/testcase.py:85-90）；
  * 触发条件=顶层数组非空；报告取值整体优先、无整体结果取各轮算术平均。
