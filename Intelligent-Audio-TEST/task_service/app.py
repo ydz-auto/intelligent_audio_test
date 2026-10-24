@@ -131,8 +131,19 @@ async def lifespan(app: FastAPI):
     _soft_delete_cleaner = get_soft_delete_cleaner()
     _soft_delete_cleaner.start()
 
+    # 启动 logs 表保留清扫守护线程（INT-1785）：每日按 LOG_DB_RETENTION_DAYS
+    # 归档并删除过期行，审计类（auth/device/benchmark）不参与；单日失败不阻断服务
+    from task_service.infrastructure.persistence.log_retention_cleaner import (
+        get_retention_cleaner,
+    )
+    _log_retention_cleaner = get_retention_cleaner()
+    _log_retention_cleaner.start()
+
     logger.info("task_service FastAPI app started")
     yield
+
+    # 停止日志保留清扫线程
+    _log_retention_cleaner.stop()
 
     # 停止软删除清理线程
     _soft_delete_cleaner.stop()

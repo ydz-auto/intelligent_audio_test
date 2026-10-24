@@ -27,6 +27,9 @@ class LogSettings:
     business_db_enabled: bool
     business_max_bytes: int
     business_retention_days: int
+    # DB 日志保留天数（INT-1785）：logs 表过期行由 task_service 每日归档后
+    # 删除；0 = 关闭清扫。默认 180 天，与文件侧两个保留天数并列
+    db_retention_days: int = 180
     # 读取侧单次查询最大物化条数（0 = 不限）；默认远高于常规任务量，
     # 仅在大任务轮询场景兜底（total 变下界语义）
     business_max_scan_entries: int = 100_000
@@ -53,6 +56,7 @@ def _build_settings() -> LogSettings:
         business_db_enabled=BaseConfig.LOG_BUSINESS_DB_ENABLED,
         business_max_bytes=max(1, BaseConfig.LOG_BUSINESS_MAX_MB) * 1024 * 1024,
         business_retention_days=max(1, BaseConfig.LOG_BUSINESS_RETENTION_DAYS),
+        db_retention_days=int(BaseConfig.LOG_DB_RETENTION_DAYS or 0),
         business_max_scan_entries=max(0, BaseConfig.LOG_BUSINESS_MAX_SCAN_ENTRIES),
         business_scan_cache_ttl_seconds=max(0, BaseConfig.LOG_BUSINESS_SCAN_CACHE_TTL_SECONDS),
         business_scan_cache_entry_max_entries=max(

@@ -160,6 +160,10 @@ class BaseConfig:
     LOG_BUSINESS_DB_ENABLED: bool = _get_bool('LOG_BUSINESS_DB_ENABLED', False)
     LOG_BUSINESS_MAX_MB: int = _get_int('LOG_BUSINESS_MAX_MB', 50)
     LOG_BUSINESS_RETENTION_DAYS: int = _get_int('LOG_BUSINESS_RETENTION_DAYS', 30)
+    # DB 日志保留天数（INT-1785）：业务日志已去库化，logs 表只剩历史存量与
+    # 审计事件（auth/device/benchmark 不参与清扫）。task_service 每日一次按
+    # 本天数归档并删除过期行（归档先于删除）；0 = 关闭清扫
+    LOG_DB_RETENTION_DAYS: int = _get_int('LOG_DB_RETENTION_DAYS', 180)
     # 读取侧单次查询最大物化条数（0 = 不限）：大任务轮询兜底，total 变下界语义
     LOG_BUSINESS_MAX_SCAN_ENTRIES: int = _get_int('LOG_BUSINESS_MAX_SCAN_ENTRIES', 100000)
     # 读取侧同参数查询结果短 TTL 缓存秒数（0 = 关闭，INT-100）：TTL 窗口内
