@@ -11,8 +11,12 @@
 元素字段同 `_log_po_to_dict`，按 time 升序），否则归档后 UI 读不到。
 
 安全要点：
-- 归档写成功之后才删该批；任一文件写失败 → 该批一行不删，脚本以 2 退出；
+- 归档写成功之后才删该批；归档只认真 OSS 落盘（`ArchiveStore` 严格语义，OSS 写
+  失败不会静默降级到本地磁盘），写后回查对象确实在 OSS；
+- 读既有归档时「读失败」不当「文件不存在」，一律中止该批（旧归档不被覆盖）；
 - 合并同名归档文件按 id 去重，重跑不会重复（上一轮「已归档未删成」的行）；
+- DB 中断（连接拒绝 / 库启动中）也走失败出口：打印已完成批次、以 2 退出，该批
+  未删除，重跑幂等续上；
 - `--vacuum-full` 是显式开关（默认关）：VACUUM FULL 取 ACCESS EXCLUSIVE 锁，
   由执行者确认低峰窗口后再开；
 - `--dry-run` 只统计不写不删。
@@ -28,6 +32,7 @@
 import argparse
 import os
 import sys
+import traceback
 from datetime import datetime
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
@@ -101,13 +106,41 @@ def _vacuum_full() -> None:
     print('[VACUUM FULL] 完成', flush=True)
 
 
+def _print_failure(reason: str, result) -> None:
+    """失败出口：打印失败原因、已完成批次与统计（DB 中断 / 归档失败共用）。"""
+    print(f'[失败] {reason}', flush=True)
+    if result is None:
+        print('已完成批次: 无', flush=True)
+        print('未删除任何数据；修复后可重跑（幂等，同名归档按 id 去重）', flush=True)
+        return
+    done = ', '.join(f"批 {b['batch']}(归档 {b['archived']}/删除 {b['deleted']})"
+                     for b in result.completed_batches) or '无'
+    print(f'已完成批次: {done}', flush=True)
+    print(f'已归档 {result.archived_count} 条 / 已删除 {result.deleted_count} 条', flush=True)
+    if result.remaining_count is not None:
+        print(f'剩余条数: {result.remaining_count}', flush=True)
+    print('已完成批次保持已归档/已删除状态；失败批次未删除，修复后可重跑'
+          '（幂等，同名归档按 id 去重）', flush=True)
+
+
 def main(argv=None) -> int:
+    """脚本入口：任何异常（DB 中断、存储不可用）都以 2 退出并打印已完成批次。"""
     args = _parse_args(argv)
+    ctx = {}
+    try:
+        return _execute(args, ctx)
+    except Exception as e:  # noqa: BLE001 - DB/存储中断也要给出统计与非零退出
+        _print_failure(f'执行中断（{type(e).__name__}）: {e}', ctx.get('result'))
+        traceback.print_exc(file=sys.stderr)
+        return EXIT_ARCHIVE_FAILED
+
+
+def _execute(args, ctx) -> int:
     cutoff = _parse_cutoff(args.cutoff)
 
     from shared.models.database import init_db, get_db_session
     from task_service.infrastructure.persistence.log_db_archive import (
-        AUDIT_LOG_CATEGORIES, LogArchivePurger, parse_categories,
+        AUDIT_LOG_CATEGORIES, ArchiveStore, LogArchivePurger, parse_categories,
     )
 
     init_db()
@@ -130,6 +163,8 @@ def main(argv=None) -> int:
     print(f'清理前 pg_total_relation_size(logs): {_format_size(size_before)}', flush=True)
 
     purger = LogArchivePurger(
+        # 严格存储端口：归档只认真 OSS 落盘，读失败不当「不存在」（不得走 Storage）
+        store=ArchiveStore(),
         batch_size=args.batch_size,
         categories=categories,
         exclude_audit=True,
@@ -138,8 +173,12 @@ def main(argv=None) -> int:
             f'  批 {idx}: 归档 {archived} 条 / 删除 {deleted} 条', flush=True),
     )
     result = purger.run(cutoff)
+    ctx['result'] = result
 
     if args.dry_run:
+        if result.failed:
+            _print_failure(result.failure_reason, result)
+            return EXIT_ARCHIVE_FAILED
         print(f'[DRY-RUN] 将归档/删除 {result.archived_count} 条；'
               f'当前剩余 {result.remaining_count} 条；未写文件、未删数据', flush=True)
         return EXIT_OK
@@ -152,11 +191,7 @@ def main(argv=None) -> int:
     print(f'耗时: {result.elapsed_seconds:.2f}s', flush=True)
 
     if result.failed:
-        done = ', '.join(f"批 {b['batch']}(归档 {b['archived']}/删除 {b['deleted']})"
-                         for b in result.completed_batches) or '无'
-        print(f'[失败] {result.failure_reason}', flush=True)
-        print(f'已完成批次: {done}', flush=True)
-        print('该批未删除；修复归档写入后可重跑（幂等，同名归档按 id 去重）', flush=True)
+        _print_failure(result.failure_reason, result)
         return EXIT_ARCHIVE_FAILED
 
     if args.vacuum_full:

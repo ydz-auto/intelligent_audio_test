@@ -43,17 +43,17 @@ class LogRetentionCleaner:
             0 或负数 = 关闭清扫（只打一条 INFO，不触碰数据）；
         scan_interval: 扫描间隔秒数（默认 24h）；
         batch_size: 单批行数；
-        storage: 统一存储层（测试注入用）。
+        store: 归档对象存储端口 `ArchiveStore`（测试注入用；默认走 OSS 严格语义）。
     """
 
     def __init__(self, retention_days: Optional[int] = None,
                  scan_interval: int = SCAN_INTERVAL_SECONDS,
-                 batch_size: int = 2000, storage=None,
+                 batch_size: int = 2000, store=None,
                  service_name: str = 'task_service'):
         self._retention_days = retention_days
         self.scan_interval = scan_interval
         self.batch_size = batch_size
-        self._storage = storage
+        self._store = store
         self.service_name = service_name
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -88,7 +88,7 @@ class LogRetentionCleaner:
         cutoff = now_cst().replace(tzinfo=None) - timedelta(days=days)
         try:
             purger = LogArchivePurger(
-                storage=self._storage,
+                store=self._store,
                 batch_size=self.batch_size,
                 exclude_audit=True,
             )

@@ -24,6 +24,13 @@ DB 里 `logs` 只剩两类数据——**历史存量**与**仍在落库的审计
 安全不变量（本模块的唯一硬约束）：**归档写成功之后才删该批**。
 某批归档写失败时该批一行不删，由调用方决定是否重试（重跑幂等）。
 合并同名文件时按 `id` 去重——上一轮「已归档未删成」的行重跑不会重复入库。
+
+「写成功」与「不存在」的判定走 `ArchiveStore`（严格语义），不走
+`shared.infrastructure.storage.Storage`：后者 OSS 写失败会静默降级写本地磁盘并
+返回 `local://`，且 `exists()`/`load_bytes()` 把 OSS 读失败吞掉回落本地副本——
+删库前用它会把「归档只在本地」当成成功（丢归档），或把「读失败」当成「文件不
+存在」而整文件覆盖（丢老条目）。`ArchiveStore` 只接受真 OSS 落盘，读失败一律
+中止该批。
 """
 from __future__ import annotations
 
@@ -53,6 +60,87 @@ AUDIT_LOG_CATEGORIES = frozenset({'auth', 'device', 'benchmark'})
 
 class ArchiveFormatError(RuntimeError):
     """已有归档文件内容不是 JSON 数组（宁可整批中止也不覆盖既有归档）。"""
+
+
+class ArchiveStoreError(RuntimeError):
+    """归档对象存储走不通：该批一行都不能删（宁可留着，不能丢归档）。"""
+
+
+# 对象存储明确表示「没有这个 key」的错误码；只有这些才算「文件不存在」
+_NOT_FOUND_ERROR_CODES = frozenset({'NoSuchKey', 'NoSuchObject', 'NotFound', '404'})
+_ARCHIVE_CONTENT_TYPE = 'application/json'
+
+
+def is_not_found_error(exc: BaseException) -> bool:
+    """存储异常是否是「对象不存在」。
+
+    连接失败 / 超时 / 权限 / 5xx 一律 **不算** 不存在——把它们当成不存在就是
+    INT-1785 P1-2 丢归档的根因。
+    """
+    try:
+        from botocore.exceptions import ClientError
+    except Exception:  # noqa: BLE001 - 没有 botocore 时一律按「失败」处理
+        return False
+    if not isinstance(exc, ClientError):
+        return False
+    response = getattr(exc, 'response', None) or {}
+    code = str((response.get('Error') or {}).get('Code', ''))
+    status = (response.get('ResponseMetadata') or {}).get('HTTPStatusCode')
+    return code in _NOT_FOUND_ERROR_CODES or status == 404
+
+
+class ArchiveStore:
+    """归档对象的严格读写端口（删库前唯一的存储访问入口）。
+
+    与 `shared.infrastructure.storage.Storage` 的差异正是本卡失败安全的落点：
+
+    - 写：只走对象存储，失败直接抛 `ArchiveStoreError`，**不做本地降级**；
+      写完用 head 回查，确认对象真的在 OSS 里，才算归档成功；
+    - 读：只有对象存储明确回「不存在」才返回 None；读失败抛
+      `ArchiveStoreError`，调用方中止该批（数据保留），绝不覆盖既有归档。
+
+    参数 `client` 是对象存储客户端（默认 `shared.clients.oss_client.oss`），
+    需实现 `download_bytes / upload_bytes / exists`（与 `OSSClient` 一致）。
+    """
+
+    def __init__(self, client=None):
+        self._client = client
+
+    @property
+    def client(self):
+        if self._client is None:
+            from shared.clients.oss_client import oss as default_client
+            self._client = default_client
+        return self._client
+
+    def read_bytes(self, category: str, key: str) -> Optional[bytes]:
+        """读对象；返回 None 仅代表「确认不存在」，其余异常都抛出。"""
+        try:
+            return self.client.download_bytes(category, key)
+        except Exception as e:  # noqa: BLE001 - 读失败不能当作不存在
+            if is_not_found_error(e):
+                return None
+            raise ArchiveStoreError(
+                f'归档对象读取失败（不当作「不存在」）: {category}/{key}: {e}') from e
+
+    def write_bytes(self, category: str, key: str, payload: bytes) -> str:
+        """写对象并回查落盘；返回 `{category}/{key}`。"""
+        try:
+            self.client.upload_bytes(payload, category, key,
+                                     content_type=_ARCHIVE_CONTENT_TYPE)
+        except Exception as e:  # noqa: BLE001 - 禁止降级本地后再删库
+            raise ArchiveStoreError(
+                f'归档对象写入 OSS 失败（不允许降级本地后删库）: {category}/{key}: {e}') from e
+
+        try:
+            landed = bool(self.client.exists(category, key))
+        except Exception as e:  # noqa: BLE001 - 回查失败也不能认为写成功
+            raise ArchiveStoreError(
+                f'归档对象写后回查失败（无法确认已落 OSS）: {category}/{key}: {e}') from e
+        if not landed:
+            raise ArchiveStoreError(
+                f'归档对象写后回查不存在（无法确认已落 OSS）: {category}/{key}')
+        return f'{category}/{key}'
 
 
 def is_audit_category(category: Any) -> bool:
@@ -134,35 +222,34 @@ def merge_archive_entries(existing: Sequence[Dict[str, Any]],
     return merged
 
 
-def load_archive_entries(storage, group_key: str) -> List[Dict[str, Any]]:
-    """读取已有归档文件条目；文件不存在返回空列表。
+def load_archive_entries(store: ArchiveStore, group_key: str) -> List[Dict[str, Any]]:
+    """读取已有归档文件条目；对象确认不存在返回空列表。
 
-    文件存在但内容不是 JSON 数组时抛 `ArchiveFormatError`：调用方会中止该批
-    （不删除），避免像既有网关实现那样把读不出来的旧归档直接覆盖掉。
+    读失败抛 `ArchiveStoreError`、内容不是 JSON 数组抛 `ArchiveFormatError`：
+    两种都由调用方中止该批（不删除），避免像既有网关实现那样把读不出来的旧归档
+    直接覆盖掉。
     """
-    path = f'{ARCHIVE_STORAGE_CATEGORY}/{group_key}{ARCHIVE_FILE_SUFFIX}'
-    if not storage.exists(path):
-        return []
-    data = storage.load_bytes(path)
+    key = f'{group_key}{ARCHIVE_FILE_SUFFIX}'
+    data = store.read_bytes(ARCHIVE_STORAGE_CATEGORY, key)
     if not data:
         return []
     try:
         parsed = json.loads(data)
     except ValueError as e:
-        raise ArchiveFormatError(f'归档文件不是合法 JSON: {path}: {e}') from e
+        raise ArchiveFormatError(
+            f'归档文件不是合法 JSON: {ARCHIVE_STORAGE_CATEGORY}/{key}: {e}') from e
     if not isinstance(parsed, list):
-        raise ArchiveFormatError(f'归档文件顶层不是数组: {path}')
+        raise ArchiveFormatError(
+            f'归档文件顶层不是数组: {ARCHIVE_STORAGE_CATEGORY}/{key}')
     return parsed
 
 
-def write_archive_entries(storage, group_key: str,
+def write_archive_entries(store: ArchiveStore, group_key: str,
                           entries: Sequence[Dict[str, Any]]) -> str:
     """写出归档文件（整体覆盖），返回带 category 前缀的存储路径。"""
     key = f'{group_key}{ARCHIVE_FILE_SUFFIX}'
     payload = json.dumps(list(entries), ensure_ascii=False, indent=2).encode('utf-8')
-    storage.save_bytes(payload, ARCHIVE_STORAGE_CATEGORY, key,
-                       content_type='application/json')
-    return f'{ARCHIVE_STORAGE_CATEGORY}/{key}'
+    return store.write_bytes(ARCHIVE_STORAGE_CATEGORY, key, payload)
 
 
 @dataclass
@@ -187,7 +274,7 @@ class LogArchivePurger:
     """按截止时间分批归档并删除 logs 行（流式，内存上界 = batch_size）。
 
     参数：
-      storage: 统一存储层（`shared.infrastructure.storage.storage`），测试可注入；
+      store: 归档对象存储端口 `ArchiveStore`（默认按 OSS 客户端延迟构造）；
       batch_size: 单批行数（同时是内存上界）；
       categories: 显式指定参与清理的分类；None = 全部非审计类；
       exclude_audit: categories 为 None 时是否排除审计类（默认 True）；
@@ -195,24 +282,23 @@ class LogArchivePurger:
       on_batch: 进度回调 `(batch_index, archived, deleted) -> None`。
     """
 
-    def __init__(self, storage=None, batch_size: int = 2000,
+    def __init__(self, store: Optional[ArchiveStore] = None, batch_size: int = 2000,
                  categories: Optional[Sequence[str]] = None,
                  exclude_audit: bool = True, dry_run: bool = False,
                  on_batch: Optional[Callable[[int, int, int], None]] = None):
-        self._storage = storage
+        self._store = store
         self.batch_size = max(1, int(batch_size))
         self.categories = [c.strip().lower() for c in (categories or []) if str(c).strip()]
         self.exclude_audit = exclude_audit
         self.dry_run = dry_run
         self.on_batch = on_batch
 
-    # ---- 存储层延迟解析（脚本/服务都不必显式依赖 OSS）----
+    # ---- 存储端口延迟解析（脚本/服务都不必显式依赖 OSS）----
     @property
-    def storage(self):
-        if self._storage is None:
-            from shared.infrastructure.storage import storage as default_storage
-            self._storage = default_storage
-        return self._storage
+    def store(self) -> ArchiveStore:
+        if self._store is None:
+            self._store = ArchiveStore()
+        return self._store
 
     # ---- 查询条件 ----
     def _apply_filters(self, query, cutoff: datetime):
@@ -245,13 +331,35 @@ class LogArchivePurger:
 
     # ---- 主流程 ----
     def run(self, cutoff: datetime) -> PurgeResult:
+        """执行一轮清理；**不向上抛异常**（DB 中断也走 failed + 已完成批次）。
+
+        任何未预期异常（含 psycopg2 连接中断、库启动中等）都只记在本轮结果里，
+        调用方据此打印统计并非零退出；已提交的批次数据与归档保持一致。
+        """
         started = time.monotonic()
         result = PurgeResult()
+        try:
+            self._run_batches(cutoff, result)
+        except Exception as e:  # noqa: BLE001 - 保留数据，交给调用方报错
+            result.failed = True
+            if not result.failure_reason:
+                if self.dry_run:
+                    result.failure_reason = f'dry-run 统计失败: {e}'
+                else:
+                    result.failure_reason = (
+                        f'第 {result.batch_count + 1} 批读取失败: {e}')
+            logger.error('[logs 归档清理] %s（已完成 %s 批：归档 %s 条、删除 %s 条）',
+                         result.failure_reason, result.batch_count,
+                         result.archived_count, result.deleted_count)
+        finally:
+            result.elapsed_seconds = time.monotonic() - started
+        return result
+
+    def _run_batches(self, cutoff: datetime, result: PurgeResult) -> None:
         if self.dry_run:
             result.archived_count = self.count(cutoff)
             result.remaining_count = self.remaining()
-            result.elapsed_seconds = time.monotonic() - started
-            return result
+            return
 
         last_id = 0
         touched = set()
@@ -292,9 +400,12 @@ class LogArchivePurger:
                 self.on_batch(result.batch_count, len(batch), deleted)
 
         result.archived_file_count = len(touched)
-        result.remaining_count = self.remaining()
-        result.elapsed_seconds = time.monotonic() - started
-        return result
+        try:
+            result.remaining_count = self.remaining()
+        except Exception as e:  # noqa: BLE001 - 统计失败不改已完成的清理结果
+            result.failed = True
+            result.failure_reason = result.failure_reason or f'统计剩余条数失败: {e}'
+            logger.error('[logs 归档清理] %s', result.failure_reason)
 
     def _fetch_batch(self, cutoff: datetime, last_id: int) -> List[Log]:
         """keyset 分页（按自增 id）：删除不影响游标，也不会 OFFSET 漂移。"""
@@ -320,8 +431,8 @@ class LogArchivePurger:
             grouped.setdefault(key, []).append(log_po_to_archive_entry(po))
 
         for key, entries in grouped.items():
-            existing = load_archive_entries(self.storage, key)
-            write_archive_entries(self.storage, key, merge_archive_entries(existing, entries))
+            existing = load_archive_entries(self.store, key)
+            write_archive_entries(self.store, key, merge_archive_entries(existing, entries))
         return list(grouped)
 
     def _delete_batch(self, log_ids: List[int]) -> int:
