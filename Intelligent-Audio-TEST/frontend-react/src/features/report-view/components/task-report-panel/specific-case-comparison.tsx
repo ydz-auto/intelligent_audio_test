@@ -49,6 +49,7 @@ import { Input } from '@/components/ui/input'
 import { useReportCases } from '@/application/report-view/use-report-cases'
 import { useReportReviews } from '@/application/report-view/useReportReviews'
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { useAlgorithmLabels } from '@/application/hooks/use-algorithm-options'
 import type { ReportCaseItem, ReportDetailData, ReportLogFile } from '@/domain/models/report'
 import type { CaseResultForReview } from '@/domain/models/review'
 import { toAiReviewDimensionIds } from '@/domain/models/review'
@@ -261,6 +262,9 @@ export function SpecificCaseComparison({
     return [...map.values()]
   }, [report.summary.all_case_tags, report.summary.all_tags])
 
+  /** 算法类型码 → 中文名（真实 /algorithm/options；用例卡算法徽章，INT-1687） */
+  const algorithmLabels = useAlgorithmLabels()
+
   const [collapsed, setCollapsed] = useState(false)
   const [detailCase, setDetailCase] = useState<ReportCaseItem>()
   // INT-1067 两段流程：① 下载日志 → 文件选择 Dialog（§4.10a）→ ② 确认 → 打包下载 + 进度 Dialog（§4.10b）
@@ -351,6 +355,7 @@ export function SpecificCaseComparison({
         selected={false}
         showCheckbox={false}
         tagRegistry={reportTagRegistry}
+        algorithmLabels={algorithmLabels}
         leading={<StatusDot status={status} className='mt-1.5' />}
         titleExtra={
           <>

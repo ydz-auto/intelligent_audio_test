@@ -98,6 +98,8 @@ interface GroupCardProps {
   onToggleExpanded: () => void
   selected: Set<string>
   tagRegistry: TagItem[]
+  /** 算法类型码 → 中文名（真实 /algorithm/options；缺项时卡片不渲染算法徽章） */
+  algorithmLabels?: Record<string, string>
   trash: boolean
   /** 行内五钮回调；不传（readOnly 观察态）→ 卡片不渲染操作钮 */
   callbacks?: CaseCardCallbacks
@@ -116,6 +118,7 @@ function GroupCard({
   onToggleExpanded,
   selected,
   tagRegistry,
+  algorithmLabels,
   trash,
   callbacks,
   actions,
@@ -178,6 +181,7 @@ function GroupCard({
       caseItem={c}
       selected={selected.has(c.id)}
       tagRegistry={tagRegistry}
+      algorithmLabels={algorithmLabels}
       callbacks={callbacks}
       onToggleSelect={onToggleSelect}
     />
@@ -342,6 +346,7 @@ export function GroupedCaseList({
   filters,
   selected,
   tagRegistry,
+  algorithmLabels,
   callbacks,
   onBatchAction,
   actionCallbacks,
@@ -364,6 +369,8 @@ export function GroupedCaseList({
   filters: TestCaseListFilters
   selected: Set<string>
   tagRegistry: TagItem[]
+  /** 算法类型码 → 中文名（真实 /algorithm/options；缺项时卡片不渲染算法徽章） */
+  algorithmLabels?: Record<string, string>
   /** 行内五钮回调；不传（readOnly 观察态）→ 卡片不渲染操作钮 */
   callbacks?: CaseCardCallbacks
   onBatchAction: (action: BatchActionKey, ids: string[]) => void
@@ -606,6 +613,7 @@ export function GroupedCaseList({
           onToggleExpanded={() => toggleGroupExpanded(group.id)}
           selected={selected}
           tagRegistry={tagRegistry}
+          algorithmLabels={algorithmLabels}
           trash={trash}
           callbacks={callbacks}
           actions={buildGroupActions(group)}
@@ -625,6 +633,7 @@ export function GroupedCaseList({
           onToggleExpanded={() => toggleGroupExpanded(UNGROUPED_ID)}
           selected={selected}
           tagRegistry={tagRegistry}
+          algorithmLabels={algorithmLabels}
           trash={trash}
           callbacks={callbacks}
           actions={

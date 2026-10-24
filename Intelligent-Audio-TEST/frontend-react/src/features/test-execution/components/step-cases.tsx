@@ -21,6 +21,7 @@ import { toast } from 'sonner'
 import { useAlgorithmChannel } from '@/application/test-execution/useAlgorithmChannel'
 import { useCaseSelection } from '@/application/test-execution/useCaseSelection'
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { useAlgorithmLabels } from '@/application/hooks/use-algorithm-options'
 import { useTestCasesList, type TestCaseListFilters } from '@/application/testcases/use-testcases-list'
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
 import { useCaseTags, useTagCategories } from '@/application/testcases/use-case-tags'
@@ -77,6 +78,8 @@ interface StepCasesProps {
 export function StepCases({ readOnly, view }: StepCasesProps) {
   const { hasPermission } = usePermissions()
   const { algorithmType } = useAlgorithmChannel()
+  /** 算法类型码 → 中文名（真实 /algorithm/options；卡片算法徽章，INT-1687） */
+  const algorithmLabels = useAlgorithmLabels()
   const selection = useCaseSelection([])
   const store = useCaseSelectionStore
   const queryClient = useQueryClient()
@@ -575,6 +578,7 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
             hasQueryFilters={hasQueryFilters}
             selected={selectedSet}
             tagRegistry={tags}
+            algorithmLabels={algorithmLabels}
             callbacks={canManage ? rowCallbacks : undefined}
             onBatchAction={batch.openBatch}
             actionCallbacks={canManage ? groupCallbacks : undefined}
@@ -587,6 +591,7 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
             loading={listQuery.isLoading}
             selected={selectedSet}
             tagRegistry={tags}
+            algorithmLabels={algorithmLabels}
             callbacks={canManage ? rowCallbacks : undefined}
             onToggleSelect={canManage ? handleToggleSelect : undefined}
             onToggleAll={canManage ? handleToggleAll : undefined}

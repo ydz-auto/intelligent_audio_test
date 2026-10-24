@@ -198,6 +198,14 @@ export function CaseMutateDrawer({
   const [descriptionValue, setDescriptionValue] = useState(caseItem?.description ?? '')
   const { options: algorithmOptions, isLoading: loadingAlgorithms } =
     useAlgorithmOptions()
+  /** 算法类型码 → 中文名（评估维度提示条用真实选项，INT-1687） */
+  const algorithmLabels = useMemo(
+    () =>
+      Object.fromEntries(
+        algorithmOptions.map((a) => [a.value, a.name])
+      ) as Record<string, string>,
+    [algorithmOptions]
+  )
   const [rounds, setRounds] = useState<RoundDraft[]>(defaultRounds())
   const [activeRound, setActiveRound] = useState(1)
   /** 评估策略节值（§5.1.3；受控：mode/strategyId/overrides） */
@@ -665,6 +673,7 @@ export function CaseMutateDrawer({
                         step={step}
                         activeRound={activeRoundDraft}
                         algorithmType={algorithmType}
+                        algorithmLabels={algorithmLabels}
                         dimensions={dimensions}
                         categories={categories}
                         onEvaluationChange={(evaluation) =>
@@ -740,6 +749,7 @@ function StepBody({
   step,
   activeRound,
   algorithmType,
+  algorithmLabels,
   dimensions,
   categories,
   onEvaluationChange,
@@ -750,6 +760,8 @@ function StepBody({
   step: (typeof STEPS)[number]
   activeRound: RoundDraft | undefined
   algorithmType: string
+  /** 算法类型码 → 中文名（真实 /algorithm/options；评估提示条用） */
+  algorithmLabels?: Record<string, string>
   dimensions: Dimension[]
   categories: EvaluationCategory[]
   onEvaluationChange: (evaluation: RoundEvaluationDraft) => void
@@ -781,6 +793,7 @@ function StepBody({
           dimensions={dimensions}
           categories={categories}
           algorithmType={algorithmType || null}
+          algorithmLabels={algorithmLabels}
           value={activeRound?.evaluation ?? newRoundEvaluation()}
           onChange={onEvaluationChange}
         />

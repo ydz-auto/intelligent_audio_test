@@ -71,6 +71,7 @@ export function TagCaseList({
   onRetry,
   selected,
   tagRegistry,
+  algorithmLabels,
   callbacks,
   onToggleSelect,
   onToggleAll,
@@ -84,6 +85,8 @@ export function TagCaseList({
   onRetry?: () => void
   selected: Set<string>
   tagRegistry: TagItem[]
+  /** 算法类型码 → 中文名（真实 /algorithm/options；缺项时卡片不渲染算法徽章） */
+  algorithmLabels?: Record<string, string>
   /** 行内五钮回调；不传（readOnly 观察态）→ 卡片不渲染操作钮 */
   callbacks?: CaseCardCallbacks
   /** 勾选切换；不传（readOnly 观察态）→ 卡片/标签头勾选框隐藏 */
@@ -335,6 +338,7 @@ export function TagCaseList({
                                 caseItem={c}
                                 selected={selected.has(c.id)}
                                 tagRegistry={tagRegistry}
+                                algorithmLabels={algorithmLabels}
                                 callbacks={callbacks}
                                 onToggleSelect={onToggleSelect}
                               />
@@ -351,6 +355,7 @@ export function TagCaseList({
                       caseItem={c}
                       selected={selected.has(c.id)}
                       tagRegistry={tagRegistry}
+                      algorithmLabels={algorithmLabels}
                       callbacks={callbacks}
                       onToggleSelect={onToggleSelect}
                     />

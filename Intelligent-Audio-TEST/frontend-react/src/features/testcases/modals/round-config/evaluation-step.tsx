@@ -31,16 +31,21 @@ export function EvaluationStep({
   dimensions,
   categories = [],
   algorithmType,
+  algorithmLabels,
   value,
   onChange,
 }: {
   dimensions: Dimension[]
   categories?: EvaluationCategory[]
   algorithmType?: string | null
+  /** 算法类型码 → 中文名（真实 /algorithm/options）；缺项时提示条不写名称（不显类型码，INT-1687） */
+  algorithmLabels?: Record<string, string>
   value: RoundEvaluationDraft
   onChange: (next: RoundEvaluationDraft) => void
 }) {
   const dimensionOf = (id: number) => dimensions.find((d) => d.id === id)
+  /** INT-1687：算法名取真实选项，未命中不回落类型码 */
+  const algorithmLabel = getAlgorithmLabel(algorithmType, algorithmLabels)
 
   const handleToggle = (ids: number[], checked: boolean) => {
     onChange({
@@ -79,7 +84,9 @@ export function EvaluationStep({
       </p>
       {algorithmType && (
         <p className='rounded-md bg-muted/60 px-2 py-1.5 text-xs'>
-          已根据算法类型「{getAlgorithmLabel(algorithmType)}」过滤可用维度
+          {algorithmLabel
+            ? `已根据算法类型「${algorithmLabel}」过滤可用维度`
+            : '已根据当前算法过滤可用维度'}
         </p>
       )}
 

@@ -8,7 +8,8 @@
  * - 卡头：勾选框 + 名称（超长 tooltip 截断，可点击开详情）+ ID 徽章（点击复制）+
  *   titleExtra（上下文附加，如报告分类/复核 Badge）；
  * - 次行：描述/最后编辑时间（回收站态换 删除时间/删除人元信息；meta 插槽可整体替代）；
- * - 徽章行：算法（getAlgorithmLabel）+ 时长/轮次（数据缺省不落空徽章）+ badgeLeading 上下文前导；
+ * - 徽章行：算法（getAlgorithmLabel，名取自真实 /algorithm/options）+ 时长/轮次（数据缺省不落空徽章）
+ *   + badgeLeading 上下文前导；算法名未命中真实选项时整枚徽章不渲染（不显示类型码，INT-1687）；
  * - 标签行：TagBadge 分类角标（≤6 +N 展开/收起）；
  * - 行内操作区：缺省=行内五钮（预览/复制/收藏/编辑/删除；回收站态换 恢复/彻底删除），
  *   上下文差异经 actions 插槽覆盖；
@@ -69,6 +70,8 @@ export interface CaseCardProps<T extends CaseCardItem> {
   selected: boolean
   /** 标签登记表（TagBadge 分类角标/数据驱动色；缺省空表走灰色兜底） */
   tagRegistry?: TagItem[]
+  /** 算法类型码 → 中文名（真实 GET /algorithm/options，useAlgorithmLabels）；缺项时不渲染算法徽章 */
+  algorithmLabels?: Record<string, string>
   /** 缺省行内五钮（回收站态换 恢复/彻底删除）；与 actions 互斥，传 actions 时忽略 */
   callbacks?: CaseCardCallbacks<T>
   /** 勾选切换；缺省/无时渲染勾选框也不可交互（showCheckbox=false 不渲染） */
@@ -103,6 +106,7 @@ export function CaseCard<T extends CaseCardItem>({
   caseItem,
   selected,
   tagRegistry = [],
+  algorithmLabels,
   callbacks,
   onToggleSelect,
   showCheckbox = true,
@@ -119,6 +123,8 @@ export function CaseCard<T extends CaseCardItem>({
 }: CaseCardProps<T>) {
   const [tagsExpanded, setTagsExpanded] = useState(false)
   const disabled = caseItem.deleted === true
+  /** 算法中文名（真实 /algorithm/options 的 value→name；未命中=null → 不渲染徽章，INT-1687） */
+  const algorithmLabel = getAlgorithmLabel(caseItem.algorithmType, algorithmLabels)
 
   const registry = new Map(tagRegistry.map((t) => [t.name, t]))
   const resolveTag = (name: string): TagItem =>
@@ -193,7 +199,7 @@ export function CaseCard<T extends CaseCardItem>({
   /** 徽章行是否有可渲染内容（数据缺省不落空徽章，对齐 V9.7.10 TestCaseCard.vue v-if 口径） */
   const hasBadges =
     badgeLeading != null ||
-    Boolean(caseItem.algorithmType) ||
+    Boolean(algorithmLabel) ||
     (caseItem.totalDuration != null && caseItem.totalDuration > 0) ||
     (caseItem.rounds != null && caseItem.rounds > 0)
 
@@ -338,9 +344,9 @@ export function CaseCard<T extends CaseCardItem>({
           {!hideBadges && hasBadges && (
             <div className='mt-2 flex flex-wrap items-center gap-1.5'>
               {badgeLeading}
-              {caseItem.algorithmType && (
+              {algorithmLabel && (
                 <Badge variant='secondary' className='rounded-md px-1.5'>
-                  {getAlgorithmLabel(caseItem.algorithmType)}
+                  {algorithmLabel}
                 </Badge>
               )}
               {caseItem.totalDuration != null && caseItem.totalDuration > 0 && (
