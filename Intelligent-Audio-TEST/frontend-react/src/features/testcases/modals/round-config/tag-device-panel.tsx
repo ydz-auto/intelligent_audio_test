@@ -40,6 +40,12 @@ export function TagDevicePanel({
   const [tag, setTag] = useState('')
   const [deviceId, setDeviceId] = useState('')
 
+  // 声明式 items：闭合态取 label，否则 base-ui 回退显示设备 id（INT-1686）
+  const deviceItems = devices.map((d) => ({
+    value: d.id,
+    label: `${d.name} (通道 ${d.channel}) [${d.type}]`,
+  }))
+
   const confirm = () => {
     if (!tag || !deviceId) return
     onConfirm(tag, deviceId)
@@ -75,14 +81,18 @@ export function TagDevicePanel({
           </div>
           <div className='space-y-1.5'>
             <span className='text-sm font-medium'>目标播放设备</span>
-            <Select value={deviceId} onValueChange={(v) => setDeviceId(v ?? '')}>
+            <Select
+              value={deviceId}
+              onValueChange={(v) => setDeviceId(v ?? '')}
+              items={deviceItems}
+            >
               <SelectTrigger size='sm' className='h-8 w-full'>
                 <SelectValue placeholder='请选择设备' />
               </SelectTrigger>
               <SelectContent>
-                {devices.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name} (通道 {d.channel}) [{d.type}]
+                {deviceItems.map((d) => (
+                  <SelectItem key={d.value} value={d.value}>
+                    {d.label}
                   </SelectItem>
                 ))}
               </SelectContent>
