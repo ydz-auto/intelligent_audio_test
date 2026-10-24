@@ -1,6 +1,6 @@
 /**
  * 重命名任务弹窗（09_任务域.md §5.5 形态 + 注：日常/合并行菜单「重命名」= Dialog max-w-sm 单字段；
- * INT-1290 接线）。保存发真实 PUT /tasks/{id}（infrastructure/api/tasks-actions-api.updateTaskName，
+ * INT-1290 接线）。保存发真实 PUT /tasks/{id}（infrastructure/api/tasks-actions-api.updateTask，
  * 经 use-task-actions.rename），成功后 ['tasks'] 前缀失效 → 列表/详情名称同步刷新；
  * 失败 toast（ApiError.userMessage 中文文案），弹窗保留可重试。
  */
@@ -48,7 +48,7 @@ export function RenameTaskDialog({
   const handleConfirm = () => {
     if (!dirty || !task) return
     rename.mutate(
-      { taskId: task.id, name: trimmed },
+      { taskId: task.id, patch: { name: trimmed } },
       { onSuccess: () => onOpenChange(false) }
     )
   }
