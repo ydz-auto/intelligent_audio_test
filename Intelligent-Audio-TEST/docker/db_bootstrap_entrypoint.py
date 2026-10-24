@@ -211,6 +211,13 @@ BOOTSTRAP_STEPS = [
     #     注：本步是建表 DDL，必须排在 ㊽ 的 ANALYZE 之前（INT-1741 口径：统计
     #     兜底在建表之后、且保持引导链末位），不要追加到末尾。
     ('python', 'scripts/migrations/202610/add_data_transfer_source_maps_int1760.py'),
+    # ㊸ voice_llm 设备输出声明修正种子（INT-1748 / C3）：`rounds` 轮内子键的
+    #     类型与音频路径归一改由 algorithm_device_params(direction=output) 解析
+    #     （改造前取硬编码 DEVICE_FIELDS）。补 record_file=audio_file、user_wav /
+    #     ai_wav 由 text 改 audio_file，否则历史结果的完整录音路径丢失、两个通道
+    #     音频不做路径归一。脚本幂等（自然键已存在且类型正确即 SKIP、软删行恢复），
+    #     默认 dry-run，引导链须 --apply。API 输出声明与 source='api' 映射归 INT-1746。
+    ('python', 'scripts/migrations/202610/seed_voice_llm_device_output_int1748.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
