@@ -30,6 +30,8 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { UploadOptions } from '@/features/audio-import/components/modals/upload-options'
 import { startRealAudioUpload, type PerFileUploadConfig } from '@/application/audio/useAudioUploadProcess'
+import { useUploadRoundScope } from '@/application/audio/useUploadRoundScope'
+import { DEFAULT_SPL } from '@/features/audio-import/constants'
 import { parseAnnotationsForAudios } from '@/features/audio-import/lib/annotation'
 import { formatFileSize } from '@/features/audio-import/lib/format'
 
@@ -56,15 +58,17 @@ const CONFLICT_OPTIONS = [
 
 const ACCEPTED_AUDIO = '.wav,.mp3,.m4a,.flac,.aac,.ogg'
 
+/** §5.7.2 上传窗 N=1 收敛 Tooltip（§9 文案表逐字） */
+const SINGLE_ROUND_HINT =
+  '本次上传生成的用例为单轮；多轮用例请在「批量从文件夹导入」中随附 JSON 用例文件'
+
 export function AudioUploadDialog(props: AudioUploadDialogProps) {
   const [dragging, setDragging] = useState(false)
   const [files, setFiles] = useState<File[]>([])
   const [audioType, setAudioType] = useState('dry')
   const [generateTestCase, setGenerateTestCase] = useState(false)
   const [algorithmType, setAlgorithmType] = useState('')
-  const [dimensionIds, setDimensionIds] = useState<number[]>([])
-  const [playbackDevice, setPlaybackDevice] = useState('')
-  const [defaultSpl, setDefaultSpl] = useState(65)
+  const [defaultSpl, setDefaultSpl] = useState(DEFAULT_SPL)
   const [caseGroup, setCaseGroup] = useState('folder')
   const [customGroupName, setCustomGroupName] = useState('')
   const [tags, setTags] = useState('')
@@ -74,6 +78,8 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
   const [conflict, setConflict] = useState('rename')
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement | null>(null)
+  // 上传窗轮次基数恒为 1（§5.7.2 / §5.7.6：每音频文件生成一个单轮用例）
+  const roundScope = useUploadRoundScope({ roundCount: 1 })
 
   const stats = useMemo(() => {
     const audioCount = files.filter((f) => ACCEPTED_AUDIO.split(',').some((ext) => f.name.toLowerCase().endsWith(ext))).length
@@ -125,8 +131,11 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
         createTestCase: generateTestCase,
         algorithmType: algorithmType || null,
         algorithmParams: [],
-        dimensions: dimensionIds,
-        playbackDeviceId: playbackDevice ? Number(playbackDevice) : null,
+        dimensions: roundScope.dimensionItems,
+        multiDimensions: roundScope.multiDimensionItems,
+        dimensionPlan: roundScope.dimensionPlan,
+        devicePlan: roundScope.devicePlan,
+        playbackDeviceId: roundScope.defaultDeviceId,
         spl: defaultSpl,
         noiseAudioId: null,
         noiseSpl: 60,
@@ -324,10 +333,9 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
             onGenerateTestCaseChange={setGenerateTestCase}
             algorithmType={algorithmType}
             onAlgorithmTypeChange={setAlgorithmType}
-            dimensionIds={dimensionIds}
-            onDimensionIdsChange={setDimensionIds}
-            playbackDevice={playbackDevice}
-            onPlaybackDeviceChange={setPlaybackDevice}
+            roundCount={1}
+            roundScope={roundScope}
+            singleRoundHint={SINGLE_ROUND_HINT}
             defaultSpl={defaultSpl}
             onDefaultSplChange={setDefaultSpl}
             caseGroup={caseGroup}

@@ -5,11 +5,13 @@
  * + 主钮「开始导入」→ 走真实上传（startRealAudioUpload，与上传弹窗同链路）。
  * V9.7.10 FolderImportModal 对位：per-folder 分组名（root/folder/custom 三型）与标注文件
  * 解析（json/jsonl/rttm/stm/txt）随 merge 载荷逐文件落库；标注代码取上传时选择的算法类型
- * （INT-1028 口径：导入窗口不选标注代码）。JSON 用例分组策略（testCaseStrategy
- * buildTestCaseGroups：Rounds/Flat/TxtArray 多轮用例）本卡未实现，显式标缺口（见交付评论）。
+ * （INT-1028 口径：导入窗口不选标注代码）。
+ * §5.7.6 恢复多轮导入（INT-1613）：随附的 `.json` 用例文件 = 一个用例分组（其 `rounds`
+ * 数组即该用例轮数），组内**最后一个待处理文件** merge 时才建用例、整组 rounds 一次提交；
+ * 无 JSON 用例文件时按最子级文件夹分组并推断单轮（1 音频 1 轮 / 多音频 1 轮多音频）。
  */
 import { FolderInput, FolderTree } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -33,7 +35,17 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { UploadOptions } from '@/features/audio-import/components/modals/upload-options'
 import { startRealAudioUpload, type PerFileUploadConfig } from '@/application/audio/useAudioUploadProcess'
+import { useUploadRoundScope } from '@/application/audio/useUploadRoundScope'
+import type { UploadRoundConfig } from '@/infrastructure/api/audio-upload-api'
+import { DEFAULT_SPL } from '@/features/audio-import/constants'
 import { parseAnnotationsForAudios } from '@/features/audio-import/lib/annotation'
+import {
+  buildAudioImportGroups,
+  buildCaseGroups,
+  leafFolderName,
+  relativePathOf,
+  type CaseGroup,
+} from '@/features/audio-import/lib/case-rounds'
 import { formatFileSize } from '@/features/audio-import/lib/format'
 
 export type AudioFolderImportDialogProps = {
@@ -53,16 +65,12 @@ const FORMAT_FILTER_OPTIONS = [
 /** 支持的音频扩展名（§6.17 supportedFormats 对位；目录选择后按此过滤） */
 const AUDIO_EXTS = ['.wav', '.mp3', '.m4a', '.flac', '.aac', '.ogg']
 
-/** 取文件所在的最子级文件夹名（V9.7.10 getLeafFolderName 对位：webkitRelativePath 倒数第二段；
- *  无文件夹结构时按文件名去扩展名回退） */
-function folderNameOf(file: File): string {
-  const rel = file.webkitRelativePath || ''
-  if (rel) {
-    const parts = rel.split('/').filter(Boolean)
-    if (parts.length >= 2) return parts[parts.length - 2] ?? ''
-  }
-  return file.name.replace(/\.[^.]+$/, '')
-}
+/** JSON 用例文件扩展名（文件夹导入：每个 .json 作为一个用例分组的候选，§5.7.6） */
+const CASE_JSON_EXTS = ['.json']
+
+/** §5.7.2 文件夹导入未附 JSON 用例时的 N=1 收敛 Tooltip（与上传窗同一收敛规则，文案按本窗语义改写） */
+const SINGLE_ROUND_HINT =
+  '本次导入未附多轮 JSON 用例文件，生成的用例为单轮；多轮用例请在导入时随附 JSON 用例文件'
 
 export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
   const [formatFilter, setFormatFilter] = useState('all')
@@ -72,14 +80,13 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
   const [audioType, setAudioType] = useState('dry')
   const [generateTestCase, setGenerateTestCase] = useState(false)
   const [algorithmType, setAlgorithmType] = useState('')
-  const [dimensionIds, setDimensionIds] = useState<number[]>([])
-  const [playbackDevice, setPlaybackDevice] = useState('')
-  const [defaultSpl, setDefaultSpl] = useState(65)
+  const [defaultSpl, setDefaultSpl] = useState(DEFAULT_SPL)
   const [caseGroup, setCaseGroup] = useState('folder')
   const [customGroupName, setCustomGroupName] = useState('')
   const [tags, setTags] = useState('')
   const [inheritTags, setInheritTags] = useState(true)
   const [importing, setImporting] = useState(false)
+  const [caseGroups, setCaseGroups] = useState<Map<string, CaseGroup>>(new Map())
   const dirRef = useRef<HTMLInputElement | null>(null)
 
   const audioFiles = useMemo(() => {
@@ -92,8 +99,8 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
   }, [files, formatFilter])
 
   const folderNames = useMemo(() => {
-    const names = Array.from(new Set(files.map(folderNameOf)))
-    return recursive || files.length === 0 ? names : [folderNameOf(files[0])]
+    const names = Array.from(new Set(files.map(leafFolderName)))
+    return recursive || files.length === 0 ? names : [leafFolderName(files[0])]
   }, [files, recursive])
 
   const stats = useMemo(() => {
@@ -114,7 +121,7 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
     setFiles(Array.from(incoming))
     // 为每个叶子文件夹预填分组名（V9.7.10 folderGroupNames 默认 folder→folder）
     const names = Array.from(
-      new Set(Array.from(incoming).map(folderNameOf))
+      new Set(Array.from(incoming).map(leafFolderName))
     )
     setGroupNames((prev) => {
       const next = { ...prev }
@@ -123,6 +130,41 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
     })
   }
 
+  // JSON 用例文件（§5.7.6）：选择文件后即解析，供 §5.7.2 轮次基数 N（各分组 rounds 最大长度）
+  const jsonFiles = useMemo(
+    () =>
+      files.filter((f) => CASE_JSON_EXTS.some((ext) => f.name.toLowerCase().endsWith(ext))),
+    [files]
+  )
+  useEffect(() => {
+    let cancelled = false
+    if (!generateTestCase || jsonFiles.length === 0) {
+      setCaseGroups(new Map())
+      return
+    }
+    void buildCaseGroups(jsonFiles).then((groups) => {
+      if (!cancelled) setCaseGroups(groups)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [jsonFiles, generateTestCase])
+
+  const roundCount = useMemo(() => {
+    let max = 1
+    for (const group of caseGroups.values()) {
+      max = Math.max(max, group.rounds.length)
+    }
+    return max
+  }, [caseGroups])
+
+  // 改选文件夹 / 改文件集时轮次选择重置为默认（§5.7.2）
+  const fileSignature = useMemo(() => files.map(relativePathOf).sort().join('|'), [files])
+  const roundScope = useUploadRoundScope({
+    roundCount,
+    resetKey: `${fileSignature}#${generateTestCase}`,
+  })
+
   const handleStartImport = async () => {
     if (audioFiles.length === 0) {
       toast.info('未选择任何音频文件，请先选择文件夹')
@@ -130,15 +172,51 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
     }
     setImporting(true)
     try {
-      // 标注文件（json/jsonl/rttm/stm/txt）按文件名匹配音频解析；标注代码取导入算法类型随 merge 落库
+      // JSON 用例文件（§5.7.6）：每个 .json 解析为一个用例分组，其 rounds 数组即该用例轮数。
+      // 仅在生成测试用例时解析；解析失败的 JSON 不参与分组（全失败时提示，避免静默按文件夹推断）。
+      const jsonFiles = files.filter((f) =>
+        CASE_JSON_EXTS.some((ext) => f.name.toLowerCase().endsWith(ext))
+      )
+      const caseGroups = generateTestCase
+        ? await buildCaseGroups(jsonFiles)
+        : new Map<string, CaseGroup>()
+      if (generateTestCase && jsonFiles.length > 0 && caseGroups.size === 0) {
+        toast.error(
+          `检测到 ${jsonFiles.length} 个 JSON 用例文件，但全部解析失败（请检查 JSON 格式），本次不会按 JSON 生成用例分组`
+        )
+      }
+      // 分组轮次：JSON rounds 优先，否则按最子级文件夹推断（1 音频 1 轮 / 多音频 1 轮多音频）
+      const importGroups = buildAudioImportGroups(audioFiles, caseGroups)
+      const groupOfFile = new Map<
+        File,
+        { rounds: UploadRoundConfig[]; isGroupFinalMerge: boolean }
+      >()
+      for (const group of importGroups) {
+        group.files.forEach((file, index) => {
+          groupOfFile.set(file, {
+            rounds: group.rounds,
+            // 组内最后一个待处理文件才建用例（前序文件只入库）
+            isGroupFinalMerge: index === group.files.length - 1,
+          })
+        })
+      }
+      // 已识别为用例分组的 JSON 不再当标注文件解析（V9.7.10 nonTestCaseAnnotationFiles 同口径）
+      const caseJsonFiles = new Set(
+        Array.from(caseGroups.values()).map((group) => group.fileName)
+      )
+      const annotationSourceFiles = files.filter(
+        (f) => !caseJsonFiles.has(relativePathOf(f))
+      )
+      // 标注文件（jsonl/rttm/stm/txt）按文件名匹配音频解析；标注代码取导入算法类型随 merge 落库
       const perFileAnnotations = await parseAnnotationsForAudios(
-        files,
+        annotationSourceFiles,
         audioFiles,
         algorithmType || undefined
       )
       // per-folder 分组名（V9.7.10 groupNameType 对位：root=根目录 / folder=最子级文件夹 / custom=逐文件夹自定义名）
       const perFile: PerFileUploadConfig[] = audioFiles.map((f, idx) => {
-        const folder = folderNameOf(f)
+        const folder = leafFolderName(f)
+        const group = groupOfFile.get(f)
         return {
           groupName:
             caseGroup === 'custom'
@@ -147,14 +225,19 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
                 ? (folder || undefined)
                 : undefined,
           annotations: perFileAnnotations[idx],
+          rounds: group?.rounds,
+          isGroupFinalMerge: group?.isGroupFinalMerge,
         }
       })
       const result = await startRealAudioUpload(audioFiles, {
         createTestCase: generateTestCase,
         algorithmType: algorithmType || null,
         algorithmParams: [],
-        dimensions: dimensionIds,
-        playbackDeviceId: playbackDevice ? Number(playbackDevice) : null,
+        dimensions: roundScope.dimensionItems,
+        multiDimensions: roundScope.multiDimensionItems,
+        dimensionPlan: roundScope.dimensionPlan,
+        devicePlan: roundScope.devicePlan,
+        playbackDeviceId: roundScope.defaultDeviceId,
         spl: defaultSpl,
         noiseAudioId: null,
         noiseSpl: 60,
@@ -311,10 +394,9 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
             onGenerateTestCaseChange={setGenerateTestCase}
             algorithmType={algorithmType}
             onAlgorithmTypeChange={setAlgorithmType}
-            dimensionIds={dimensionIds}
-            onDimensionIdsChange={setDimensionIds}
-            playbackDevice={playbackDevice}
-            onPlaybackDeviceChange={setPlaybackDevice}
+            roundCount={roundCount}
+            roundScope={roundScope}
+            singleRoundHint={SINGLE_ROUND_HINT}
             defaultSpl={defaultSpl}
             onDefaultSplChange={setDefaultSpl}
             caseGroup={caseGroup}

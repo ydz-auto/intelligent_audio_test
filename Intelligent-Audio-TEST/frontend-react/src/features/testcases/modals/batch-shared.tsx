@@ -6,9 +6,15 @@
  * 供 §5.3.1~5.3.5 全部轮次级批量弹窗共用（负责人反馈「其他批量操作也是三档轮次范围逐项可用」）。
  * 内部受控状态随弹窗重新挂载即重置；数据契约 roundMode/rounds/appliedLayers 留接线批次。
  */
-import { useCallback, useState } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 export type RoundScopeMode = 'all' | 'specific'
@@ -102,11 +108,23 @@ export function RoundScopeThreeField({
   value,
   onChange,
   roundCount = 4,
+  renderTabIndicator,
+  disabledModes = [],
+  disabledHint,
 }: {
   name: string
   value: RoundScopeThreeValue
   onChange: (next: RoundScopeThreeValue) => void
   roundCount?: number
+  /**
+   * 逐轮 Tab 角标插槽（§5.7.1 上传选项共用件：维度段=该轮已选维度数、设备段=已选对勾）。
+   * 可选；现有调用方不传 = 保持原渲染（零回归）。
+   */
+  renderTabIndicator?: (round: number) => ReactNode
+  /** 禁用档（§5.7.2：上传窗 N=1 时「指定轮次」「逐轮设置」禁用）；不传 = 三档全可用 */
+  disabledModes?: RoundScopeThreeMode[]
+  /** 禁用档 hover 提示文案（§9 文案表） */
+  disabledHint?: string
 }) {
   const setMode = (mode: RoundScopeThreeMode) => onChange({ ...value, mode })
   const toggleSpecificRound = (round: number) =>
@@ -117,37 +135,44 @@ export function RoundScopeThreeField({
         : [...value.specificRounds, round],
     })
 
+  /** 单档 radio；禁用档加 cursor-not-allowed/opacity-50，并外包 Tooltip（桌面 hover 文案） */
+  const renderModeOption = (mode: RoundScopeThreeMode, label: string) => {
+    const disabled = disabledModes.includes(mode)
+    const option = (
+      <label
+        className={cn(
+          'hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm',
+          disabled && 'cursor-not-allowed opacity-50 hover:bg-transparent'
+        )}
+      >
+        <input
+          type='radio'
+          name={name}
+          checked={value.mode === mode}
+          disabled={disabled}
+          onChange={() => setMode(mode)}
+        />
+        {label}
+      </label>
+    )
+    if (!disabled || !disabledHint) return option
+    return (
+      <TooltipProvider delay={0}>
+        <Tooltip>
+          <TooltipTrigger render={option} />
+          <TooltipContent className='max-w-72 text-xs'>{disabledHint}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+
   return (
     <div className='space-y-2'>
       <span className='text-sm font-medium'>轮次范围</span>
       <div className='flex flex-wrap items-center gap-x-4 gap-y-1.5'>
-        <label className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'>
-          <input
-            type='radio'
-            name={name}
-            checked={value.mode === 'all'}
-            onChange={() => setMode('all')}
-          />
-          所有轮次（统一设置）
-        </label>
-        <label className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'>
-          <input
-            type='radio'
-            name={name}
-            checked={value.mode === 'specific'}
-            onChange={() => setMode('specific')}
-          />
-          指定轮次（统一设置）
-        </label>
-        <label className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'>
-          <input
-            type='radio'
-            name={name}
-            checked={value.mode === 'per_round'}
-            onChange={() => setMode('per_round')}
-          />
-          逐轮设置（每轮可不同）
-        </label>
+        {renderModeOption('all', '所有轮次（统一设置）')}
+        {renderModeOption('specific', '指定轮次（统一设置）')}
+        {renderModeOption('per_round', '逐轮设置（每轮可不同）')}
       </div>
 
       {value.mode === 'specific' && (
@@ -175,13 +200,14 @@ export function RoundScopeThreeField({
               type='button'
               onClick={() => onChange({ ...value, activeRound: round })}
               className={cn(
-                'rounded-md border px-2.5 py-1 text-sm transition-colors',
+                'inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-sm transition-colors',
                 value.activeRound === round
                   ? 'bg-primary/10 border-primary/40 text-foreground font-medium'
                   : 'hover:bg-accent text-muted-foreground'
               )}
             >
               第{round}轮
+              {renderTabIndicator?.(round)}
             </button>
           ))}
         </div>
