@@ -189,9 +189,11 @@ BOOTSTRAP_STEPS = [
     # ㊹ voice_llm 的 API 输出声明 + source='api' 评估映射种子（INT-1746 / C1，
     #     C0 裁定 1/3）：评估侧只按 rounds[i].output.get(target_param) 取值，
     #     映射责任在执行侧，而这两件配置真实库上都缺 → API 用例的 llm_judge
-    #     维度入参恒空。脚本幂等（自然键已存在即 SKIP）。依赖 llm_judge 维度
-    #     已存在（202609/seed_llm_judge_dimension.py，不在引导链内）：缺维度时
-    #     只补声明段并提示，不报错。
+    #     维度入参恒空。A 段 8 条 direction=output 声明（answer + C3 展示清单
+    #     session_id / round_count / total_latency / context_mode /
+    #     history_count / error / rounds）。脚本幂等（自然键已存在即 SKIP）。
+    #     依赖 llm_judge 维度已存在（202609/seed_llm_judge_dimension.py，不在
+    #     引导链内）：缺维度时只补声明段并提示，不报错。
     ('python', 'scripts/migrations/202610/seed_api_eval_mapping_int1746.py', '--apply'),
 ]
 

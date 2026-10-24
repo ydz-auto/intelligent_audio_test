@@ -20,10 +20,19 @@ param_code 键，不等于维度的 target_param。
 
 本脚本补的配置
 --------------
-A. ``algorithm_api_params``：(voice_llm, answer, text, output)
-   —— ``field_path`` 留空（NULL）。文本型 + 空路径的字段在响应里取不到时，
-   执行侧按轮次规范文本（HTTP 链 ``answer_text`` / WS 聚合 ``text``）兜底，
-   三条 API 链共用这一份声明。
+A. ``algorithm_api_params``（direction=output）8 条：
+
+   - ``answer``（text）—— 评估入参来源。``field_path`` 留空（NULL）；文本型
+     + 空路径的字段在响应里取不到时，执行侧按轮次规范文本（HTTP 链
+     ``answer_text`` / WS 聚合 ``text``）兜底，三条 API 链共用这一份声明。
+   - ``session_id`` / ``round_count`` / ``total_latency`` / ``context_mode`` /
+     ``history_count`` / ``error`` / ``rounds`` —— voice_llm 的展示字段。
+     C3（INT-1748）删除 ``VoiceLlmStrategy.get_output_fields`` 的硬编码 7 字段
+     后，这 7 条只剩本声明一个来源：缺 ``rounds`` 会让任务详情的轮次展开整段
+     降级为空，其余 6 条是会话元字段不展示。``param_name`` 取基线展示名。
+
+   ``response_audio``（audio_file）主库已有，本脚本不重复插。
+
 B. ``param_mappings``：(voice_llm, source=api, source_param=answer,
    target_param=answer, transform_type=none)，逐条写给所有未删除的
    ``task_type_code='llm_judge'`` 维度（param_mappings 的 dimension_id 作用域
@@ -37,6 +46,12 @@ target_param 被两个来源争用。
 
 幂等性：按 ``uq_algorithm_api_param_direction`` / ``uq_algorithm_source_to_dimension``
 的自然键比对，已存在即 SKIP；重复执行不报错、不产生重复行。
+
+依赖顺序：``202609/seed_voice_llm.py`` 的 Step 5 会 DELETE ``session_id`` /
+``context_history`` / ``round_number`` / ``response_latency`` / ``session_status``
+这 5 条会话协议字段（「由执行引擎管理」）。它在引导链里是第 ⑪ 步、早于本脚本
+（㊹），所以本脚本补回的 ``session_id`` 不会被它删掉；**重跑 seed_voice_llm
+之后再跑本脚本即可恢复**，不要把本脚本排到它前面。
 
 用法：
     python scripts/migrations/202610/seed_api_eval_mapping_int1746.py            # 预览
@@ -58,17 +73,37 @@ if _REPO_ROOT not in sys.path:
 
 ALGORITHM_TYPE = 'voice_llm'
 
-# A 段：API 输出声明（文本型、field_path 留空 → 空值时按轮次规范文本兜底）
-API_OUTPUT_DECL = {
-    'algorithm_type': ALGORITHM_TYPE,
-    'param_code': 'answer',
-    'param_name': '回复文本',
-    'param_type': 'text',
-    'direction': 'output',
-    'required': False,
-    'ui_order': 22,
-    'hidden': False,
-}
+# A 段：API 输出声明（direction=output）
+# ui_order 按展示顺序：会话元字段 10~60，回复文本 22（评估入参），rounds 70（最后）。
+# ``answer`` 的 field_path 留空 → 响应里取不到时按轮次规范文本兜底。
+# 另 7 条是展示字段，label 取 ``VoiceLlmStrategy.get_output_fields`` 的基线名。
+# ``response_audio`` 主库已有，不重复插。
+API_OUTPUT_DECLS = [
+    {'algorithm_type': ALGORITHM_TYPE, 'param_code': 'session_id',
+     'param_name': 'session ID', 'param_type': 'text', 'direction': 'output',
+     'required': False, 'ui_order': 10, 'hidden': False},
+    {'algorithm_type': ALGORITHM_TYPE, 'param_code': 'round_count',
+     'param_name': 'round count', 'param_type': 'number', 'direction': 'output',
+     'required': False, 'ui_order': 20, 'hidden': False},
+    {'algorithm_type': ALGORITHM_TYPE, 'param_code': 'answer',
+     'param_name': '回复文本', 'param_type': 'text', 'direction': 'output',
+     'required': False, 'ui_order': 22, 'hidden': False},
+    {'algorithm_type': ALGORITHM_TYPE, 'param_code': 'total_latency',
+     'param_name': 'total latency(ms)', 'param_type': 'number',
+     'direction': 'output', 'required': False, 'ui_order': 30, 'hidden': False},
+    {'algorithm_type': ALGORITHM_TYPE, 'param_code': 'context_mode',
+     'param_name': 'context mode', 'param_type': 'text', 'direction': 'output',
+     'required': False, 'ui_order': 40, 'hidden': False},
+    {'algorithm_type': ALGORITHM_TYPE, 'param_code': 'history_count',
+     'param_name': 'history count', 'param_type': 'number',
+     'direction': 'output', 'required': False, 'ui_order': 50, 'hidden': False},
+    {'algorithm_type': ALGORITHM_TYPE, 'param_code': 'error',
+     'param_name': 'error', 'param_type': 'text', 'direction': 'output',
+     'required': False, 'ui_order': 60, 'hidden': False},
+    {'algorithm_type': ALGORITHM_TYPE, 'param_code': 'rounds',
+     'param_name': 'round results', 'param_type': 'json', 'direction': 'output',
+     'required': False, 'ui_order': 70, 'hidden': False},
+]
 
 # B 段：评估映射（source='api'）
 EVAL_MAPPING = {
@@ -95,45 +130,47 @@ def _table_exists(conn, name):
 
 
 def _seed_api_output_decl(conn, dry_run):
-    """A 段：algorithm_api_params(direction=output) 补 voice_llm.answer"""
+    """A 段：algorithm_api_params(direction=output) 逐个补 voice_llm 输出声明"""
     if not _table_exists(conn, 'algorithm_api_params'):
         print('[SKIP] 表 algorithm_api_params 不存在（空库请先 create_all_tables.py）')
-        return False
+        return 0
 
-    decl = API_OUTPUT_DECL
-    existing = conn.execute(text(
-        'SELECT id, param_type, deleted FROM algorithm_api_params '
-        'WHERE algorithm_type = :at AND param_code = :pc AND direction = :dir '
-        '  AND deleted = false'
-    ), {'at': decl['algorithm_type'], 'pc': decl['param_code'],
-        'dir': decl['direction']}).fetchone()
+    inserted = 0
+    for decl in API_OUTPUT_DECLS:
+        existing = conn.execute(text(
+            'SELECT id, param_type, deleted FROM algorithm_api_params '
+            'WHERE algorithm_type = :at AND param_code = :pc AND direction = :dir '
+            '  AND deleted = false'
+        ), {'at': decl['algorithm_type'], 'pc': decl['param_code'],
+            'dir': decl['direction']}).fetchone()
 
-    if existing:
-        print(f"[SKIP] 输出声明 {decl['algorithm_type']}.{decl['param_code']}"
-              f"（{decl['direction']}）已存在 id={existing[0]} "
-              f"param_type={existing[1]}")
-        if existing[1] != decl['param_type']:
-            print(f"  [WARN] 存量 param_type={existing[1]} 与种子 "
-                  f"{decl['param_type']} 不一致；不改写存量行，请人工确认")
-        return False
+        if existing:
+            print(f"[SKIP] 输出声明 {decl['algorithm_type']}.{decl['param_code']}"
+                  f"（{decl['direction']}）已存在 id={existing[0]} "
+                  f"param_type={existing[1]}")
+            if existing[1] != decl['param_type']:
+                print(f"  [WARN] 存量 param_type={existing[1]} 与种子 "
+                      f"{decl['param_type']} 不一致；不改写存量行，请人工确认")
+            continue
 
-    print(f"[{'DRY' if dry_run else 'APPLY'}] INSERT algorithm_api_params "
-          f"{decl['algorithm_type']}.{decl['param_code']} "
-          f"({decl['param_type']}, {decl['direction']})")
-    if dry_run:
-        return False
+        print(f"[{'DRY' if dry_run else 'APPLY'}] INSERT algorithm_api_params "
+              f"{decl['algorithm_type']}.{decl['param_code']} "
+              f"({decl['param_type']}, {decl['direction']})")
+        if dry_run:
+            continue
 
-    conn.execute(text(
-        'INSERT INTO algorithm_api_params '
-        '  (algorithm_type, param_code, param_name, param_type, direction, '
-        '   required, ui_order, hidden, deleted, created_at, updated_at) '
-        'VALUES '
-        '  (:at, :pc, :pn, :pt, :dir, :req, :uo, :hidden, false, NOW(), NOW())'
-    ), {'at': decl['algorithm_type'], 'pc': decl['param_code'],
-        'pn': decl['param_name'], 'pt': decl['param_type'],
-        'dir': decl['direction'], 'req': decl['required'],
-        'uo': decl['ui_order'], 'hidden': decl['hidden']})
-    return True
+        conn.execute(text(
+            'INSERT INTO algorithm_api_params '
+            '  (algorithm_type, param_code, param_name, param_type, direction, '
+            '   required, ui_order, hidden, deleted, created_at, updated_at) '
+            'VALUES '
+            '  (:at, :pc, :pn, :pt, :dir, :req, :uo, :hidden, false, NOW(), NOW())'
+        ), {'at': decl['algorithm_type'], 'pc': decl['param_code'],
+            'pn': decl['param_name'], 'pt': decl['param_type'],
+            'dir': decl['direction'], 'req': decl['required'],
+            'uo': decl['ui_order'], 'hidden': decl['hidden']})
+        inserted += 1
+    return inserted
 
 
 def _seed_param_mappings(conn, dry_run):
@@ -193,7 +230,9 @@ def migrate(dry_run=True):
     engine = create_engine(_database_url())
     with engine.begin() as conn:
         print(f"=== A 段：voice_llm API 输出声明 ({'DRY' if dry_run else 'APPLY'}) ===")
-        _seed_api_output_decl(conn, dry_run)
+        decl_inserted = _seed_api_output_decl(conn, dry_run)
+        if not dry_run:
+            print(f"\n[APPLY] algorithm_api_params 新增 {decl_inserted} 条")
         print(f"\n=== B 段：voice_llm source=api 评估映射 ({'DRY' if dry_run else 'APPLY'}) ===")
         inserted = _seed_param_mappings(conn, dry_run)
         if not dry_run:

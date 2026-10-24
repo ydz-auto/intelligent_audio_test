@@ -59,7 +59,8 @@ def _is_text_param(definition) -> bool:
 
 
 def extract_declared_output_fields(api_output_defs: dict, raw_response,
-                                   flat_source=None, text_output=None) -> dict:
+                                   flat_source=None, text_output=None,
+                                   text_fallback_codes=None) -> dict:
     """按声明提取，返回 ``{param_code: value}``（字段全集，缺失值为 None）。
 
     - ``field_path`` 非空：在 ``raw_response``（厂商原始响应）上按路径取值；
@@ -69,14 +70,20 @@ def extract_declared_output_fields(api_output_defs: dict, raw_response,
       用 ``raw_response`` 本身。
 
     ``text_output``（INT-1746）：轮次的规范文本输出（各链自行解析出的回复
-    文本）。声明为文本型、``field_path`` 为空、且在响应里取不到的字段，取该
-    值兜底——voice_llm 的回复文本在三条链上的原生键名各不相同（HTTP 为
+    文本）。voice_llm 的回复文本在三条链上的原生键名各不相同（HTTP 为
     ``output`` / WS 为 ``text``），声明表无法用一个 ``field_path`` 同时命中，
     由调用方把规范文本传进来即可同一份声明跨链生效。
+
+    ``text_fallback_codes``：允许取规范文本兜底的 ``param_code`` 集合，只由
+    「评估映射实际消费的文本型声明」构成（见 ``_text_fallback_codes``）。
+    其他文本声明是会话级展示字段（``session_id`` / ``context_mode`` /
+    ``error`` …），给它们兜底会把回复文本写进展示字段，因此不在集合内一律
+    不兜底。为空集时不启用兜底。
     """
     source = flat_source if isinstance(flat_source, dict) else raw_response
     if not isinstance(source, dict):
         source = {}
+    fallback_codes = set(text_fallback_codes or ())
     values = {}
     for code, definition in (api_output_defs or {}).items():
         field_path = definition.get('field_path') if isinstance(definition, dict) else None
@@ -84,7 +91,8 @@ def extract_declared_output_fields(api_output_defs: dict, raw_response,
             values[code] = extract_by_path(raw_response, field_path)
             continue
         value = source.get(code)
-        if value in (None, '') and text_output not in (None, '') and _is_text_param(definition):
+        if (value in (None, '') and text_output not in (None, '')
+                and code in fallback_codes and _is_text_param(definition)):
             value = text_output
         values[code] = value
     return values
@@ -101,8 +109,10 @@ def extract_api_output_fields(field_mappings, raw_response, *,
     """
     defs = get_api_output_field_defs(field_mappings)
     if defs:
-        return (extract_declared_output_fields(defs, raw_response, flat_source,
-                                               text_output=text_output),
+        return (extract_declared_output_fields(
+                    defs, raw_response, flat_source,
+                    text_output=text_output,
+                    text_fallback_codes=_text_fallback_codes(field_mappings, defs)),
                 SOURCE_DECLARED)
     values = {
         key: value for key, value in (fallback_values or {}).items()
@@ -123,6 +133,31 @@ def get_eval_output_mappings(field_mappings) -> dict:
         return {}
     output = evaluation.get('output') or {}
     return output if isinstance(output, dict) else {}
+
+
+def _text_fallback_codes(field_mappings, api_output_defs) -> set:
+    """允许用轮次规范文本兜底的 ``param_code`` 集合。
+
+    只覆盖评估映射（``source ∈ api/device``）实际消费、且声明为文本型、
+    ``field_path`` 为空的字段。voice_llm 除了回复文本还有一批会话级展示
+    声明（``session_id`` / ``context_mode`` / ``error`` …，C3/INT-1748 的
+    展示清单），它们不在评估入参里，给它们兜底会把回复文本写成会话字段值。
+    """
+    codes = set()
+    for entry in get_eval_output_mappings(field_mappings).values():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get('source', 'api') not in ROUND_OUTPUT_SOURCES:
+            continue
+        source_param = entry.get('source_param')
+        definition = (api_output_defs or {}).get(source_param)
+        if definition is None:
+            continue
+        field_path = definition.get('field_path') if isinstance(definition, dict) else None
+        if field_path or not _is_text_param(definition):
+            continue
+        codes.add(source_param)
+    return codes
 
 
 def build_eval_output(field_mappings, api_values, *, log=None):

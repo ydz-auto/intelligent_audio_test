@@ -67,11 +67,24 @@ class _LogExecutorStub:
 # ==================== 1. 声明提取的文本兜底 ====================
 
 def test_declared_text_output_falls_back_to_round_text():
-    """文本型 + 空 field_path + 响应里没有该键 → 取轮次规范文本。"""
+    """文本型 + 空 field_path + 评估消费该字段 + 响应里没有该键 → 取轮次规范文本。"""
     defs = {'answer': {'code': 'answer', 'param_type': 'text'}}
     values = extract_declared_output_fields(
-        defs, {'asr_text': 'x'}, text_output='你好呀')
+        defs, {'asr_text': 'x'}, text_output='你好呀',
+        text_fallback_codes={'answer'})
     assert values == {'answer': '你好呀'}
+
+
+def test_declared_text_display_field_does_not_take_text_fallback():
+    """会话级展示文本字段（非评估消费）不拿回复文本兜底，避免污染展示值。"""
+    defs = {'session_id': {'code': 'session_id', 'param_type': 'text'},
+            'answer': {'code': 'answer', 'param_type': 'text'}}
+    values = extract_declared_output_fields(
+        defs, {}, text_output='你好呀', text_fallback_codes={'answer'})
+    assert values == {'session_id': None, 'answer': '你好呀'}
+    # 不传兜底集合 = 不兜底（默认关闭）
+    assert extract_declared_output_fields(
+        defs, {}, text_output='你好呀') == {'session_id': None, 'answer': None}
 
 
 def test_declared_audio_output_does_not_take_text_fallback():
@@ -87,18 +100,47 @@ def test_declared_value_wins_over_text_fallback():
     """响应里真有该键时以响应为准，规范文本只做缺值兜底。"""
     defs = {'answer': {'code': 'answer', 'param_type': 'text'}}
     values = extract_declared_output_fields(
-        defs, {'answer': '厂商原文'}, text_output='兜底文本')
+        defs, {'answer': '厂商原文'}, text_output='兜底文本',
+        text_fallback_codes={'answer'})
     assert values == {'answer': '厂商原文'}
 
 
 def test_extract_api_output_fields_passes_text_output_through():
-    mappings = _field_mappings(api_output={
-        'answer': {'code': 'answer', 'param_type': 'text'},
-    })
+    mappings = _field_mappings(
+        api_output={
+            'answer': {'code': 'answer', 'param_type': 'text'},
+        },
+        eval_output={'answer': _eval_entry('api', 'answer', 'answer')})
     values, source = extract_api_output_fields(
         mappings, {'text': 'WS 文本'}, text_output='WS 文本')
     assert source == 'declared'
     assert values == {'answer': 'WS 文本'}
+
+
+def test_extract_with_session_level_declarations_keeps_round_output_clean():
+    """种子的 8 条声明 + 只映射 answer：其余文本声明不拿回复文本兜底。"""
+    mappings = _field_mappings(
+        api_output={
+            'answer': {'code': 'answer', 'param_type': 'text'},
+            'session_id': {'code': 'session_id', 'param_type': 'text'},
+            'round_count': {'code': 'round_count', 'param_type': 'number'},
+            'total_latency': {'code': 'total_latency', 'param_type': 'number'},
+            'context_mode': {'code': 'context_mode', 'param_type': 'text'},
+            'history_count': {'code': 'history_count', 'param_type': 'number'},
+            'error': {'code': 'error', 'param_type': 'text'},
+            'rounds': {'code': 'rounds', 'param_type': 'json'},
+            'response_audio': {'code': 'response_audio',
+                               'param_type': 'audio_file'},
+        },
+        eval_output={'answer': _eval_entry('api', 'answer', 'answer')})
+    values, _ = extract_api_output_fields(
+        mappings, {'output': '厂商回复'}, text_output='厂商回复')
+    assert values['answer'] == '厂商回复'
+    for code in ('session_id', 'context_mode', 'error', 'round_count',
+                 'total_latency', 'history_count', 'rounds',
+                 'response_audio'):
+        assert values[code] is None, f'{code} 不应被填值'
+    assert build_eval_output(mappings, values) == {'answer': '厂商回复'}
 
 
 # ==================== 2. build_eval_output ====================
@@ -345,6 +387,47 @@ def test_normalize_round_output_dict_short_circuit():
 
 # ==================== 7. 种子形状可达性 ====================
 
+def _load_seed_module():
+    import importlib.util
+    path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        'scripts', 'migrations', '202610', 'seed_api_eval_mapping_int1746.py')
+    spec = importlib.util.spec_from_file_location('_seed_int1746', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_seed_declares_voice_llm_display_output_fields():
+    """A 段声明集合：answer + 7 条展示字段，rounds 最后，不重复插 response_audio。
+
+    C3（INT-1748）删掉 ``VoiceLlmStrategy.get_output_fields`` 的硬编码 7 字段后，
+    这 7 条只剩种子一个来源（需求规划师 2026-10-24 08:05Z 种子边界）。
+    """
+    seed = _load_seed_module()
+    decls = seed.API_OUTPUT_DECLS
+
+    assert all(d['algorithm_type'] == 'voice_llm' and d['direction'] == 'output'
+               for d in decls)
+    codes = [d['param_code'] for d in decls]
+    assert sorted(codes) == sorted([
+        'answer', 'session_id', 'round_count', 'total_latency',
+        'context_mode', 'history_count', 'error', 'rounds'])
+    assert len(codes) == len(set(codes)), '声明 param_code 不能重复'
+    assert 'response_audio' not in codes, '主库已有，重复插会破坏幂等语义'
+
+    types = {d['param_code']: d['param_type'] for d in decls}
+    assert types['rounds'] == 'json'
+    for code in ('answer', 'session_id', 'context_mode', 'error'):
+        assert types[code] == 'text'
+    for code in ('round_count', 'total_latency', 'history_count'):
+        assert types[code] == 'number'
+
+    assert max(decls, key=lambda d: d['ui_order'])['param_code'] == 'rounds'
+    orders = [d['ui_order'] for d in decls]
+    assert len(orders) == len(set(orders)), 'ui_order 不能重复'
+
+
 def _stub_field_definition_cache(monkeypatch, *, api_params, mappings):
     from algorithm_service.application.queries import field_mapping_queries as q
     from types import SimpleNamespace
@@ -361,14 +444,17 @@ def _stub_field_definition_cache(monkeypatch, *, api_params, mappings):
 
 
 def test_seed_shape_makes_eval_mapping_visible(monkeypatch):
-    """声明 + source='api' 映射两件齐备 → 评估映射出现在 GetFieldMappings。"""
+    """声明 + source='api' 映射两件齐备 → 映射可见，8 条声明全进 api.output。"""
+    seed = _load_seed_module()
+    api_params = [
+        {'code': d['param_code'], 'direction': d['direction'],
+         'param_type': d['param_type'], 'label': d['param_name']}
+        for d in seed.API_OUTPUT_DECLS
+    ] + [{'code': 'response_audio', 'direction': 'output',
+          'param_type': 'audio_file'}]
     defs = _stub_field_definition_cache(
         monkeypatch,
-        api_params=[
-            {'code': 'answer', 'direction': 'output', 'param_type': 'text'},
-            {'code': 'response_audio', 'direction': 'output',
-             'param_type': 'audio_file'},
-        ],
+        api_params=api_params,
         mappings=[{'source': 'api', 'source_param': 'answer',
                    'target_param': 'answer', 'dimension_id': 1,
                    'transform_type': 'none'}],
@@ -376,6 +462,10 @@ def test_seed_shape_makes_eval_mapping_visible(monkeypatch):
     entry = defs['original']['evaluation']['output']['answer']
     assert entry['source'] == 'api'
     assert entry['target_param'] == 'answer'
+    # 8 条种子声明 + 存量 response_audio 全部可见（C3 展示清单的来源）
+    expected = {d['param_code'] for d in seed.API_OUTPUT_DECLS} | {'response_audio'}
+    assert set(defs['original']['api']['output']) == expected
+    assert set(defs['mapped']['api']) == expected
 
 
 def test_mapping_without_api_declaration_is_dropped(monkeypatch):
