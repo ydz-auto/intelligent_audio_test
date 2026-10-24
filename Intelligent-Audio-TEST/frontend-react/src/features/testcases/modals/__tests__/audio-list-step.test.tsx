@@ -25,6 +25,12 @@ vi.mock('@/infrastructure/api/audioLibraryApi', () => ({
     }),
 }))
 
+// INT-1734 合入 INT-1614 后，音频选择窗内的上传窗改走 useUploadRoundScope → useEvaluationDimensions
+// （useQuery 需 QueryClientProvider）。本文件只断言 Select 闭合态文案，维度目录桩成空即可。
+vi.mock('@/application/evaluation/use-dimensions', () => ({
+  useEvaluationDimensions: () => ({ data: [], isLoading: false }),
+}))
+
 const DRAFT: RoundAudioDraft = {
   id: 'a1',
   audioId: 1,
