@@ -81,6 +81,43 @@ describe('GroupMutateDialog（INT-1658 页面级建组入口）', () => {
     expect(screen.getByLabelText('分组名称 *')).toHaveValue('')
   })
 
+  it('group=null 创建成功 → onCreated 收到新建分组 id（facet 底部入口据此预填筛选）', async () => {
+    const user = userEvent.setup()
+    const onCreated = vi.fn()
+    const onOpenChange = vi.fn()
+    render(
+      <GroupMutateDialog
+        open
+        onOpenChange={onOpenChange}
+        group={null}
+        onCreated={onCreated}
+      />
+    )
+
+    await user.type(screen.getByLabelText('分组名称 *'), '接线测试_预填筛选')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(onCreated).toHaveBeenCalledWith({ id: '9', name: '接线测试_预填筛选' })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('group 非空（编辑）不触发 onCreated', async () => {
+    const user = userEvent.setup()
+    const onCreated = vi.fn()
+    render(
+      <GroupMutateDialog
+        open
+        onOpenChange={vi.fn()}
+        group={EXISTING_GROUP}
+        onCreated={onCreated}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+
   it('group 非空 → 标题「编辑分组」，提交走 PUT /groups/{id}', async () => {
     const user = userEvent.setup()
     render(<GroupMutateDialog open onOpenChange={vi.fn()} group={EXISTING_GROUP} />)

@@ -38,10 +38,13 @@ export function GroupMutateDialog({
   open,
   onOpenChange,
   group,
+  onCreated,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   group: TestCaseGroup | null
+  /** 新建成功回调（关闭前触发；INT-1658 复测：facet 底部「+ 新增分组」据此预填分组筛选） */
+  onCreated?: (group: { id: string; name: string }) => void
 }) {
   const isEdit = group != null
   const [name, setName] = useState(group?.name ?? '')
@@ -73,7 +76,8 @@ export function GroupMutateDialog({
       if (isEdit && group) {
         await updateGroup(group.id, draft)
       } else {
-        await createGroup(draft)
+        const created = await createGroup(draft)
+        onCreated?.({ id: created.id, name: draft.name })
       }
       toast.success(isEdit ? '更新分组成功' : '添加分组成功')
       onOpenChange(false)

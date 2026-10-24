@@ -69,7 +69,12 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const [mutateOpen, setMutateOpen] = useState(false)
   const [presetGroupId, setPresetGroupId] = useState<string | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
-  const [groupDialog, setGroupDialog] = useState<{ open: boolean; group: TestCaseGroup | null }>({ open: false, group: null })
+  const [groupDialog, setGroupDialog] = useState<{
+    open: boolean
+    group: TestCaseGroup | null
+    /** 建组成功后是否预填分组筛选（§3.4：仅分组 facet 底部「+ 新增分组」入口带；页头入口不带） */
+    selectAfterCreate?: boolean
+  }>({ open: false, group: null })
   const [previewCase, setPreviewCase] = useState<TestCaseListItem | null>(null)
 
   /** 生效筛选（全局算法联动合并；INT-1284 分组内懒加载按同一筛选取数） */
@@ -343,6 +348,24 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     await queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
   }
 
+  /**
+   * 分组 facet 底部「+ 新增分组」建组成功 → 预填分组筛选（11_用例域.md §3.4）。
+   * 先等分组选项刷新再写筛选：否则 facet trigger 解析不到新组名（回落「全部」）、
+   * 分组视图会先闪一次空态（可见分组按 groupId 过滤）。
+   */
+  const handleGroupCreated = useCallback(
+    (created: { id: string; name: string }) => {
+      void (async () => {
+        try {
+          await queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
+        } finally {
+          if (created.id) setFilters((prev) => ({ ...prev, groupId: created.id }))
+        }
+      })()
+    },
+    [queryClient]
+  )
+
   const openCreate = () => {
     setPresetGroupId(null)
     setMutateCase(null)
@@ -471,7 +494,12 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               onCopyTag={handleCopyTag}
               onCreateGroup={
                 hasPermission('group:create')
-                  ? () => setGroupDialog({ open: true, group: null })
+                  ? () =>
+                      setGroupDialog({
+                        open: true,
+                        group: null,
+                        selectAfterCreate: true,
+                      })
                   : undefined
               }
               cases={items}
@@ -548,8 +576,16 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
       />
       <GroupMutateDialog
         open={groupDialog.open}
-        onOpenChange={(open) => setGroupDialog((prev) => ({ ...prev, open }))}
+        onOpenChange={(open) =>
+          // 关闭即清「建组后预填」标记，避免之后的页头建组也触发预填
+          setGroupDialog((prev) => ({
+            open,
+            group: prev.group,
+            selectAfterCreate: open ? prev.selectAfterCreate : false,
+          }))
+        }
         group={groupDialog.group}
+        onCreated={groupDialog.selectAfterCreate ? handleGroupCreated : undefined}
       />
       <AudioPreviewConfigDialog
         open={previewCase != null}

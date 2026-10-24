@@ -10,7 +10,7 @@
  * → 按 §3.2 在本层留桩 `// 待接线`，取值沿用 V9.7.10
  * OverallEvaluationEditor.vue llmModelOptions/llmPromptOptions（Vue 基准）。
  * 待 FEAT INT-1671（LLM Judge 枚举端点 + 维度读模型 llm_judge 标识）落地后
- * 本函数改为 request 调用，调用方不变。
+ * 本函数改为 request 调用（届时为异步），调用方需同步改为异步取数。
  */
 export interface LlmJudgeOptions {
   /** 可选模型（后端 LLM_JUDGE 模型池） */
