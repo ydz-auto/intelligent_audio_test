@@ -2,6 +2,8 @@
 
 > **实施状态**：本文档描述的 keywords/api_id 绑定方案为**设计提案，尚未实施**。经代码核对：`AlgorithmDeviceParam`、`AlgorithmApiParam`、`ParamMapping` 三个模型中均**不存在** keywords/api_id 字段。当前设备驱动的解析由 `backend/utils/device_driver/registry.py` 按 `(app_type, version, platform)` 三元组完成（AppType/DevicePlatform 枚举驱动），keywords 字符串匹配机制仍保留于 `driver_factory.py` 的专用驱动注册表（`_specialized_drivers`）。文中标注"现状核对"处为与代码库对齐的说明，其余保留原提案内容供后续实施参考。
 
+> **C0 裁定（2026-10-24，INT-1745，方案一致性审计）**：§二/§三 的 `keywords` / `api_id` 字段方案仍为提案；与之相邻的另一条语义——**API 输出字段的声明与取值**——已裁定，见 **§九**：输出字段由 `algorithm_api_params(direction=output)` 声明（补 `field_path`），映射到评估维度参数在执行侧完成，`map_api_results` 废弃。
+
 ## 一、需求背景
 
 设备参数需要和设备驱动绑定，API参数需要和API绑定。
@@ -177,3 +179,66 @@ api_params = [p for p in api_params if p.get('api_id') == target_api_id]
 | 1 | translation | device | asr_result | asr_ref | face2face,面对面 | NULL |
 | 2 | translation | device | translation | candidate | face2face,面对面 | NULL |
 | 3 | translation | api | result | candidate | NULL | 1 |
+
+## 九、API 输出字段声明与取值口径（C0 裁定，2026-10-24）
+
+> **状态：已裁定，未实施。** 本节由方案一致性审计员在 INT-1745（C0）出具，配套实施卡 C1（INT-1746）/ C2（INT-1747）/ C3（INT-1748）/ C4（INT-1749）。落地前代码行为仍以 §一~§八 各段「现状核对」为准。
+
+### 9.1 四条裁定
+
+| # | 待裁问题 | 裁定 | 依据 |
+|---|---------|------|------|
+| 1 | 映射责任归属 | **执行侧映射**：三条 API 执行链在产出轮次结果时即生成 `{target_param: value}`，评估侧只按 `target_param` 取 | E2E 早已在设备侧映射（`device_service/infrastructure/acl/algorithm_query_acl_repository.py:148-196` 的 `convert_device_output` → `e2e_test_service/domain/services/e2e_calculation_service.py:216-244`），评估侧 `evaluation_service/domain/services/evaluation_service/round_data_builder.py:171` 只认 `target_param`；改执行侧不动唯一已通的 E2E 链 |
+| 2 | `rounds[]` 结构 | **强制 `rounds[i].output` 子字典**，执行侧不再把评估字段平铺到轮次顶层 | 三处消费者都按 `rounds[i].output` 取值：`round_data_builder.py:150,171`、`evaluation_service/infrastructure/evaluation_api/endpoint_worker.py:291`、`report_service/application/services/report_aggregation/stats_mixin.py:627`；今天只有 Realtime 链平铺（`api_test_service/core/realtime_session_executor.py:395,487`），且没有任何消费者读平铺键 |
+| 3 | 输出字段声明归属 | **`algorithm_api_params(direction=output)` 优先且唯一**；`apis.meta.result_parser` / `asr_mapping` / `trans_mapping` 仅在「该算法类型零输出声明」时兜底 | 声明表可维护、带 `param_type`、可参与映射与报告；`meta` 解析器是厂商方言私货，承载不了嵌套路径（`api_test_service/infrastructure/adapters/api_driver_adapter.py:451-493,506-546`） |
+| 4 | `map_api_results` 去留 | **废弃**：删 `shared` 客户端封装 + `ResultFieldMappingQueryHandler.map_api_results` + 策略实现，RPC 桩返回明确失败 | 全仓无调用方（`shared/clients/_grpc_algo_audio.py:310` 的 `algo_map_api_results` 无人调）；且 servicer 传参已坏——`algorithm_service/interfaces/grpc/algorithm_query_servicer.py:337` 只传 `raw_results`，而 `algorithm_service/application/queries/result_field_mapping_queries.py:207` 需要 `(algorithm_type, raw_results)`，该 RPC 今天必然 TypeError |
+
+### 9.2 两跳取值链路（目标态）
+
+```
+厂商原始响应
+   │ ① 声明驱动提取：algorithm_api_params(direction=output) 的 field_path（空 = 按 param_code 取顶层键）
+   ▼
+{api_param_code: value}
+   │ ② 参数映射：param_mappings(source='api', source_direction='output')，source_param = param_code
+   │    有映射 → target_param；无映射 → 恒等（target = param_code）
+   │    transform_type 在这一跳应用
+   ▼
+rounds[i].output = {target_param: value}      ← 评估侧唯一读取的口径
+```
+
+- **字段全集**：`rounds[i].output` 覆盖该算法类型**全部** `direction=output` 的 api 参数，而不只是被映射过的参数——与设备链 `get_mapped_device_output_fields` 的「未映射恒等保留」语义对齐（`algorithm_service/application/queries/field_mapping_queries.py:88-103`）。
+- **方向过滤**：只取 `source_direction='output'`。`algorithm_service/infrastructure/persistence/config_cache.py:843-907` 的 `_get_evaluation_mappings` 目前把 `direction` 硬编码为 `output`，实施时不得据此把 input 映射混进输出。
+
+### 9.3 声明优先级与兜底（逐键）
+
+| 优先级 | 来源 | 触发条件 | 行为 |
+|-------|------|---------|------|
+| 1 | `algorithm_api_params(direction=output).field_path` | 该键已声明且 `field_path` 非空 | 按路径从原始响应提取；语法为点号 + 数字下标，`a.b.0.c` 与 `a.b[0].c` 等价 |
+| 2 | `algorithm_api_params(direction=output).param_code` | 已声明、`field_path` 为空 | 按 `param_code` 在响应顶层取值（= 现状行为，存量零改动） |
+| 3 | `apis.meta.result_parser`（voice_llm）/ `asr_mapping` + `trans_mapping`（translation） | **该算法类型一条 output 声明都没有** | 走既有解析器，其产出的 `asr` / `trans` / `output` 键进入第 ② 跳；必须打 WARNING 列出兜底键 |
+| — | 无 | 键既未声明、兜底也没有 | 不写入 `output`，不报错 |
+
+- 优先级是**逐键**的：声明优先，`meta` 只补未声明的键，不做合并冲突裁决。
+- 同一算法类型下不允许「声明一套 + meta 再覆盖一次」并存；补齐声明后兜底分支即为死代码，应在 C3 / 清理卡删除。
+- 提取函数复用 `shared/utils/path_extractor.py:extract_by_path`（现支持 `a.b.0.c`），**只扩展该函数兼容 `[n]` 写法，不新增第二个提取器**。
+
+### 9.4 存量兼容（不回归路径）
+
+| 存量形态 | 落地后行为 |
+|---------|-----------|
+| 历史 `rounds[].output` 为字符串 | 只读兼容：`shared/utils/round_data_utils.py:17-28` 的 `normalize_round_output` 继续归一为 `{'text': ...}`；新数据不再产生字符串 output |
+| 未配 `source='api'` 映射、也未声明 output 字段的老 API | 走 §9.3 兜底解析，轮次 output 只含 `asr`/`trans`/`output` 键；评估侧按 `target_param` 取不到值时沿用现有「无值不覆盖维度默认值」语义（`round_data_builder.py:204-205`）并留 ERROR 日志，不报错、不阻断执行 |
+| E2E 设备链 | 不动：仍由 `convert_device_output` + `_map_round_output` 产出 `{target_param: value}`（`device_service/infrastructure/acl/algorithm_query_acl_repository.py:187-196`、`e2e_calculation_service.py:216-244`） |
+| 主库现状（2026-10-24 实测） | `param_mappings` 无 `source='api'` 行（仅有 case / case_config / device / evaluation / reference）；`algorithm_api_params` 中 voice_llm 仅 `response_audio` 一条 output 声明 → **今天 API 用例没有任何路径能出评估值**，须按 §9.5 补声明与种子 |
+
+### 9.5 实施边界（未实施）
+
+| 项 | 卡 | 边界 |
+|---|----|------|
+| 执行侧映射 + `rounds[i].output` 子字典 | C1 INT-1746 | 三条 API 链产出 `target_param` 视图；HTTP 轮次补 `answer_text`（与 Realtime 对齐），`algorithm_result.text_output` 由其拼接，不再对 `output` 做字符串拼接（`api_session_executor.py:568`）；**不动** `evaluation_service` 的取值代码 |
+| `field_path` 列 + 声明驱动提取 | C2 INT-1747 | `algorithm_api_params` 加 `field_path VARCHAR(255) NULL`（空 = 按 `param_code`）、DTO / RPC 透传；单轮（`api_task_runner.py:401-472`）、多轮、Realtime 三条链共用一个提取入口 |
+| 去硬编码 | C3 INT-1748 | `VoiceLlmStrategy.get_output_fields` / `process_algorithm_result` 改读配置；**删除** `map_api_results` 实现而非配置化它 |
+| `transform_type` 生效 | C4 INT-1749 | 在 §9.2 第 ② 跳（执行侧映射处）应用一次，评估侧不重复应用；批量取变换而非逐字段 RPC |
+| `api_id` 作用域（同类型多厂商） | C6 INT-1751 | 声明表补 api_id 维度；本轮不做，声明按算法类型作用域 |
+

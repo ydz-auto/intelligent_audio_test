@@ -454,6 +454,19 @@ class ParamMapping(db.Model):
 | `reference` | `text`（direction=output） | 从参考参数的输出参考（标准文本）中提取 |
 | `reference` | `audio`（direction=input） | 从参考参数的输入参考（待测音频）中提取 |
 
+### 6.5 rounds[] 结构与评估取值口径（C0 裁定 2026-10-24，未实施）
+
+> 本节由 INT-1745（C0）出具，是 §6.4 的**取值口径补充**：§6.4 说明「从哪取」，本节钉死「取到的数据长什么样、由谁写」。实施卡 C1（INT-1746）/ C2（INT-1747）/ C3（INT-1748）/ C4（INT-1749）。
+
+1. **`rounds[i].output` 是唯一的数据子字典**：键为映射后的 `target_param`（未配映射时为源 `param_code`）。轮次元字段（`round` / `round_number` / `latency` / `success` / `mode` / `first_frame_latency_ms` 等）留作兄弟键，**不进** `output`。
+   - 现状：E2E 已是此结构（`e2e_test_service/domain/services/e2e_calculation_service.py:216-244`）；HTTP 多轮的 `output` 是纯文本（`api_test_service/core/api_session_executor.py:512-521`），经 `shared/utils/round_data_utils.py:26-27` 归一成 `{'text': ...}`；Realtime 把评估字段平铺在轮次顶层（`api_test_service/core/realtime_session_executor.py:395,487`、`_aggregate:600-610`），评估侧 `normalize_round_output(None)` 得 `{}` → 维度入参全空。
+2. **映射责任在执行侧**（`api_test_service`）。评估侧不做 source→target 翻译，只按 `target_param` 取值，`round_data_builder.py:162-172` 的 `source in ('device','api')` 分支**不动**。
+3. **`device` 与 `api` 两条分支同构**：都从同一 `output` 里按 `target_param` 取，区别只在「谁把值写进去」。
+4. **`transform_type` 在写 `output` 之前应用一次**（执行侧），评估侧不重复应用。现状：`transform_type` 只在输入方向被用到（`algorithm_service/application/queries/field_mapping_queries.py:197-200`）；评估入参链路完全不应用，`shared/clients/_grpc_algo_audio.py:271` 的 `algo_convert_field_value` 无调用方。
+5. **`map_api_results` 不承担此职责**：该 RPC 无调用方且传参错位（`algorithm_service/interfaces/grpc/algorithm_query_servicer.py:337` 只传 1 个参数，`result_field_mapping_queries.py:207` 需要 2 个），按 C0 裁定废弃，不作为评估入参入口。
+6. **维度输入若期望来自 API 输出**，必须满足其一：以该 `target_param` 为 `param_code` 在 `algorithm_api_params(direction=output)` 有声明；或建 `param_mappings(source='api', source_param=<已声明的 api 输出参数>, target_param=<维度入参>)`。否则 `config_cache.py:87-123`（`_resolve_actual_source`）会把无归属键按 `case` 兜底，最终读成空值——这是「评估请求发出但维度无值」的第二条成因（主库 2026-10-24 实测：`param_mappings` 无 `source='api'` 行，`algorithm_api_params` 中 voice_llm 仅 `response_audio` 一条 output 声明）。
+7. **声明优先级与兜底**见 [18_设备参数和API参数绑定方案.md](./18_设备参数和API参数绑定方案.md) §九：声明（`field_path` → `param_code`）优先，`apis.meta.result_parser` / `asr_mapping` / `trans_mapping` 仅在该算法类型零输出声明时逐键兜底。
+
 ---
 
 ## 7. task_type 与 dimensions 多维度结果配置
