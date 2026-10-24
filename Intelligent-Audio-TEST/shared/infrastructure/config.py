@@ -76,6 +76,13 @@ class BaseConfig:
 
     # --- OSS (RustFS / S3 兼容) ---
     OSS_ENDPOINT: str = _get_env('OSS_ENDPOINT', 'http://localhost:9000')
+    # 对浏览器/第三方暴露的 OSS 地址（INT-1719）：预签名 URL 一律由独立客户端按此
+    # endpoint 签名，内部读写仍走 OSS_ENDPOINT。
+    # compose 里 OSS_ENDPOINT=http://rustfs:9000 只有容器内可解析，把它签进 URL 交给
+    # 宿主浏览器 → net::ERR_NAME_NOT_RESOLVED（INT-1710 用例预览「音频播放失败」）。
+    # 空串 = 回落 OSS_ENDPOINT（宿主/单机部署零行为变化）；跨机访问要改成局域网 IP
+    # 或公开域名，不要写死 127.0.0.1。
+    OSS_PUBLIC_ENDPOINT: str = _get_env('OSS_PUBLIC_ENDPOINT', '')
     OSS_ACCESS_KEY: str = _get_env('OSS_ACCESS_KEY', required=True)
     OSS_SECRET_KEY: str = _get_env('OSS_SECRET_KEY', required=True)
     OSS_REGION: str = _get_env('OSS_REGION', 'us-east-1')

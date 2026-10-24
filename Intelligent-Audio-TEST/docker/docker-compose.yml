@@ -97,6 +97,10 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
       - REDIS_URL=redis://redis:6379
       - OSS_ENDPOINT=http://rustfs:9000
+      # 预签名 URL 的签名 endpoint（INT-1719）：该 URL 返回给浏览器/第三方，
+      # 必须宿主可达；容器内的 rustfs:9000 宿主解析不了（ERR_NAME_NOT_RESOLVED）。
+      # 跨机访问在 .env 覆盖成局域网 IP 或公开域名，不要写死 127.0.0.1。
+      - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
       - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
       - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
       - OSS_BUCKET_NAME=intelligent-audio-test
@@ -164,6 +168,10 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
       - REDIS_URL=redis://redis:6379
       - OSS_ENDPOINT=http://rustfs:9000
+      # 预签名 URL 的签名 endpoint（INT-1719）：该 URL 返回给浏览器/第三方，
+      # 必须宿主可达；容器内的 rustfs:9000 宿主解析不了（ERR_NAME_NOT_RESOLVED）。
+      # 跨机访问在 .env 覆盖成局域网 IP 或公开域名，不要写死 127.0.0.1。
+      - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
       - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
       - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
       - OSS_BUCKET_NAME=intelligent-audio-test
@@ -321,6 +329,10 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
       - REDIS_URL=redis://redis:6379
       - OSS_ENDPOINT=http://rustfs:9000
+      # 预签名 URL 的签名 endpoint（INT-1719）：该 URL 返回给浏览器/第三方，
+      # 必须宿主可达；容器内的 rustfs:9000 宿主解析不了（ERR_NAME_NOT_RESOLVED）。
+      # 跨机访问在 .env 覆盖成局域网 IP 或公开域名，不要写死 127.0.0.1。
+      - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
       - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
       - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
       - OSS_BUCKET_NAME=intelligent-audio-test
@@ -453,6 +465,10 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
       - REDIS_URL=redis://redis:6379
       - OSS_ENDPOINT=http://rustfs:9000
+      # 预签名 URL 的签名 endpoint（INT-1719）：该 URL 返回给浏览器/第三方，
+      # 必须宿主可达；容器内的 rustfs:9000 宿主解析不了（ERR_NAME_NOT_RESOLVED）。
+      # 跨机访问在 .env 覆盖成局域网 IP 或公开域名，不要写死 127.0.0.1。
+      - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
       - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
       - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
       - OSS_BUCKET_NAME=intelligent-audio-test

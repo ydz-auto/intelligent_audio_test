@@ -5,6 +5,9 @@ OSS 客户端封装 - S3 兼容（开发环境 RustFS / 生产环境 AWS S3）
   开发：OSS_ENDPOINT=http://localhost:9000  (RustFS)
   生产：OSS_ENDPOINT=https://s3.amazonaws.com (S3)
 
+预签名 URL 的签名 endpoint 取 OSS_PUBLIC_ENDPOINT（INT-1719，空串回落
+OSS_ENDPOINT）：它是对浏览器/第三方暴露的地址，容器部署下与内部读写地址不同。
+
 所有服务通过此客户端上传/下载文件，不直接操作本地磁盘路径。
 """
 import os
@@ -115,6 +118,35 @@ class OSSClient:
             ),
             region_name=BaseConfig.OSS_REGION,
         )
+
+        # 预签名客户端（INT-1719）：签名用 endpoint 取「对浏览器/第三方暴露」的公共
+        # 地址（OSS_PUBLIC_ENDPOINT），与内部读写 endpoint 解耦。容器里 OSS_ENDPOINT
+        # 是服务名（rustfs:9000），签进 URL 交给宿主浏览器会 ERR_NAME_NOT_RESOLVED。
+        # 按公共 endpoint 独立客户端直接签名，而不是生成后改 URL 前缀：SigV4 下 Host
+        # 参与签名，前缀替换会变成 SignatureDoesNotMatch 403。
+        # 公共值未配置（空串）或归一后与内部一致时直接复用主客户端——宿主/单机部署
+        # 零行为变化，也不多建一条连接池。一致性用去尾斜杠比较，避免仅写法差异重复建。
+        public_endpoint = _normalize_endpoint(BaseConfig.OSS_PUBLIC_ENDPOINT or '')
+        if public_endpoint and public_endpoint.rstrip('/') != endpoint.rstrip('/'):
+            logger.info('OSS 预签名 endpoint=%s（内部读写 endpoint=%s，'
+                        'OSS_PUBLIC_ENDPOINT）', public_endpoint, endpoint)
+            # 参数（key/secret/region/重试超时）与主客户端一致；签名是纯本地计算，
+            # 不访问 OSS，因此**不**对公共客户端重复 _ensure_buckets_exist（公共地址
+            # 未必从本进程可达，如宿主端口）。
+            self._presign_client = boto3.client(
+                's3',
+                endpoint_url=public_endpoint,
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+                config=BotoConfig(
+                    retries={'max_attempts': 3, 'mode': 'standard'},
+                    connect_timeout=5,
+                    read_timeout=60,
+                ),
+                region_name=BaseConfig.OSS_REGION,
+            )
+        else:
+            self._presign_client = self._client
 
         # 管理类短超时客户端（INT-1348）：delete_object/exists/delete_prefix 等
         # 管理操作对超时不敏感，复用长 read_timeout（60s）× 3 次重试会在 OSS
@@ -367,24 +399,27 @@ class OSSClient:
         """
         生成预签名 URL（前端直传/直下）
 
+        签名 endpoint 走 OSS_PUBLIC_ENDPOINT（未配置则回落 OSS_ENDPOINT），
+        保证返回给浏览器/第三方的 URL 可从容器外解析（INT-1719）。
+
         :param expires: 过期秒数（默认 1 小时）
         :return: 预签名 URL
         """
         self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
-        return self._client.generate_presigned_url(
+        return self._presign_client.generate_presigned_url(
             'get_object',
             Params={'Bucket': bucket, 'Key': full_key},
             ExpiresIn=expires,
         )
 
     def get_upload_presigned_url(self, category: str, key: str, expires: int = 3600) -> str:
-        """生成上传预签名 URL（前端直传）"""
+        """生成上传预签名 URL（前端直传，INT-1719 起走公共 endpoint 签名）"""
         self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
-        return self._client.generate_presigned_url(
+        return self._presign_client.generate_presigned_url(
             'put_object',
             Params={'Bucket': bucket, 'Key': full_key},
             ExpiresIn=expires,
@@ -402,11 +437,11 @@ class OSSClient:
 
     def get_part_upload_presigned_url(self, category: str, key: str, upload_id: str,
                                        part_number: int, expires: int = 3600) -> str:
-        """生成单个分片上传的预签名 URL（前端直传分片到 OSS）"""
+        """生成单个分片上传的预签名 URL（前端直传分片到 OSS，INT-1719 起走公共 endpoint 签名）"""
         self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
-        return self._client.generate_presigned_url(
+        return self._presign_client.generate_presigned_url(
             'upload_part',
             Params={
                 'Bucket': bucket,
