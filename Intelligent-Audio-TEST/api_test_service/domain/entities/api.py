@@ -142,7 +142,12 @@ class APIAggregate:
     deleted: bool = False
     # API 输出类型列表（OutputType 枚举值子集，多模态输出采集口径，INT-74）
     output_types: List[str] = field(default_factory=list)
-    # 被测设备类型（DeviceType 枚举值，决定执行路由，UC-0901）
+    # 被测 API 传输协议（APIProtocol：http/websocket/sse/grpc，INT-1799）
+    protocol: str = "http"
+    # 流式 / 非流式（true = 流式 = 实时）；执行道由本字段唯一决定（INT-1799）
+    streaming: bool = False
+    # 【已废弃，P3 删列】被测设备类型——协议与流式性已由上面两字段承载，
+    # 聚合根不再读写该值（保留字段仅为构造兼容，读侧序列化不输出）
     device_type: str = "http_api"
     # 指定适配器类名（未指定时按 protocol+vendor 自动匹配，UC-0901）
     adapter_class: Optional[str] = None

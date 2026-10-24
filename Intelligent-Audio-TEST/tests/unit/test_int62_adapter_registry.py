@@ -93,13 +93,17 @@ def echo_server():
 
 
 def _make_api_config(endpoint, meta=None, max_timeout=5, vendor_adapter=None):
-    """最小 api_config 替身（与 _process_api_configs 的 MockAPIConfig 同形）"""
+    """最小 api_config 替身（与 _process_api_configs 的 MockAPIConfig 同形）
+
+    INT-1799：协议单一来源为 `apis.protocol` 列，替身必须带 protocol 属性。
+    """
     meta = dict(meta or {})
     if vendor_adapter:
         meta['vendor_adapter'] = vendor_adapter
     return type('Cfg', (), {
         'endpoint': endpoint, 'meta': meta, 'max_timeout': max_timeout,
         'api_endpoints': [{'endpoint': endpoint}],
+        'protocol': 'websocket' if str(endpoint).startswith(('ws://', 'wss://')) else 'http',
     })()
 
 

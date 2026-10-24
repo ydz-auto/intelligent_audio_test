@@ -52,13 +52,17 @@ from api_test_service.infrastructure.adapters.vendors.openai_realtime_adapter im
 
 
 def _make_api_config(endpoint, meta=None, max_timeout=5, vendor_adapter=None):
-    """最小 api_config 替身（与 test_int62 _make_api_config 同形）"""
+    """最小 api_config 替身（与 test_int62 _make_api_config 同形）
+
+    INT-1799：协议单一来源为 `apis.protocol` 列，替身必须带 protocol 属性。
+    """
     meta = dict(meta or {})
     if vendor_adapter:
         meta['vendor_adapter'] = vendor_adapter
     return type('Cfg', (), {
         'endpoint': endpoint, 'meta': meta, 'max_timeout': max_timeout,
         'api_endpoints': [{'endpoint': endpoint}],
+        'protocol': 'websocket' if str(endpoint).startswith(('ws://', 'wss://')) else 'http',
     })()
 
 
@@ -358,18 +362,37 @@ class TestCreateFromConfigCompat:
         with pytest.raises(ValueError, match='未知的 vendor_adapter 配置'):
             adapter_type_from_config(cfg)
 
-    def test_endpoint_prefix_protocol_inference(self):
-        """协议维度推断：endpoint 前缀 ws:// → WEBSOCKET，http(s):// → HTTP"""
+    def test_protocol_read_from_column(self):
+        """协议维度只读 apis.protocol 列（INT-1799：端点前缀/用例级/meta 来源已删除）"""
         assert infer_protocol(_make_api_config('ws://h')) is AdapterProtocol.WEBSOCKET
         assert infer_protocol(_make_api_config('wss://h')) is AdapterProtocol.WEBSOCKET
         assert infer_protocol(_make_api_config('http://h')) is AdapterProtocol.HTTP
         assert infer_protocol(_make_api_config('https://h')) is AdapterProtocol.HTTP
+        # 无 API 对象 = 注册表默认维度（不是业务兜底）
         assert infer_protocol(None, {}) is AdapterProtocol.HTTP
 
-    def test_explicit_protocol_overrides_prefix(self):
-        """显式 protocol 配置优先于 endpoint 前缀推断"""
+    def test_meta_protocol_no_longer_read(self):
+        """meta.protocol 迁移后已删除：写进 meta 也不再影响协议判定（INT-1799）"""
         cfg = _make_api_config('http://h', meta={'protocol': 'realtime'})
-        assert infer_protocol(cfg, {}) is AdapterProtocol.REALTIME
+        assert infer_protocol(cfg, {}) is AdapterProtocol.HTTP
+
+    def test_missing_protocol_column_rejected(self):
+        """对象缺 protocol 属性（列值缺失）→ 配置错误，不再按端点前缀猜"""
+        cfg = type('Cfg', (), {
+            'endpoint': 'ws://h', 'meta': {}, 'max_timeout': 5,
+            'api_endpoints': [{'endpoint': 'ws://h'}],
+        })()
+        with pytest.raises(ValueError, match='缺少 protocol 配置'):
+            infer_protocol(cfg, {})
+
+    def test_unimplemented_protocol_rejected(self):
+        """sse / grpc 的协议级适配器未上线（A1/A2）→ 报错，不静默降级 HTTP"""
+        cfg = type('Cfg', (), {
+            'endpoint': 'http://h', 'meta': {}, 'max_timeout': 5,
+            'api_endpoints': [{'endpoint': 'http://h'}], 'protocol': 'grpc',
+        })()
+        with pytest.raises(ValueError, match='实现未上线'):
+            infer_protocol(cfg, {})
 
     def test_dimensions_from_config(self):
         cfg = _make_api_config('ws://mock', vendor_adapter='mock')

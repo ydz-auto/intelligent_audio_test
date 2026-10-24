@@ -68,18 +68,24 @@ class AudioRenderAclRepository(ABC):
         ...
 
 
-def route_render_mode(device_type: str, stream: bool = False) -> str:
-    """按执行设备类型路由混音出口（08 设计文档 §3.1 路由表的消费端镜像）：
+def route_render_mode(streaming: bool) -> str:
+    """按流式性路由混音出口（08 设计文档 §3.1 路由表的消费端镜像，INT-1799）：
 
-    - http_api + stream=False → 'file'
-    - http_api + stream=True / websocket_api → 'stream'
-    - physical → ValueError（E2E 走 device_driver 物理路径，不经 RenderService）
+    - streaming=False → 'file'（整段混音，RenderAudioFile）
+    - streaming=True  → 'stream'（逐 chunk，RenderAudioStream）
+
+    旧签名 `route_render_mode(device_type, stream)` 已废弃：混音出口只由被测
+    API 的 `streaming` 决定（协议不参与）；physical 设备不经 RenderService，
+    物理路径由 device_driver 承载，不在此表内。
     """
-    if device_type == DeviceType.PHYSICAL.value:
+    if isinstance(streaming, bool):
+        return 'stream' if streaming else 'file'
+    # 兜底：仍按历史 device_type 值调用的调用方按亲和域令牌判定（确定性映射）
+    legacy = str(streaming or '').strip().lower()
+    if legacy == DeviceType.PHYSICAL.value:
         raise ValueError("physical 设备走 device_driver 物理混音路径，不经 RenderService")
-    if device_type == DeviceType.WEBSOCKET_API.value or (
-            device_type == DeviceType.HTTP_API.value and stream):
+    if legacy == DeviceType.WEBSOCKET_API.value:
         return 'stream'
-    if device_type == DeviceType.HTTP_API.value:
+    if legacy == DeviceType.HTTP_API.value:
         return 'file'
-    raise ValueError(f"未知执行设备类型: {device_type}")
+    raise ValueError(f"未知执行道/流式性: {streaming!r}")

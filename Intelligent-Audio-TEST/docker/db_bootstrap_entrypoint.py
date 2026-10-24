@@ -180,6 +180,14 @@ BOOTSTRAP_STEPS = [
     #     往返）依赖该列。脚本幂等（列存在即 SKIP、回填按值比对，只读 DB 轻量
     #     JSON 不回源对象存储），全新库为全 SKIP；默认 dry-run，引导链须 --apply。
     ('python', 'scripts/migrations/202610/add_test_result_result_type_int1510.py', '--apply'),
+    # ㊸-1 apis 协议 × 流式性两列（INT-1799 / B0 裁定）：create_all 只建缺失的表、
+    #     不给存量表补列。步骤固定为 加两列 → 按 device_type 回填（http_api→
+    #     http/false，websocket_api→websocket/true，非法或与 meta.protocol 冲突即
+    #     中止并列 id）→ 收紧 NOT NULL/默认 → 删除 apis.meta 的 protocol 键。
+    #     脚本幂等（列已 NOT NULL 即 SKIP、回填按值比对、meta 无键即跳过），
+    #     全新库为全 SKIP。**必须排在 INT-1741 统计兜底之前**（那步是引导链末步，
+    #     tests 有守护用例）。默认 dry-run，引导链须带 --apply。
+    ('python', 'scripts/migrations/202610/add_api_protocol_streaming_int1798.py', '--apply'),
     # ㊸ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器

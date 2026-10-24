@@ -15,7 +15,10 @@ from urllib.parse import urlparse
 from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit
 from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
-from shared.models.common_enums import OutputType, DeviceType, AudioBitDepth, AudioContainer
+from shared.models.common_enums import (
+    OutputType, AudioBitDepth, AudioContainer, APIProtocol,
+    normalize_protocol, is_protocol_streaming_available,
+)
 from api_test_service.domain.entities.api import (
     normalize_output_types,
     normalize_audio_config,
@@ -76,10 +79,22 @@ class APICrudService:
                 return (f"非法的输出类型 (output_types): {', '.join(map(str, invalid))}，"
                         f"仅支持: {', '.join(valid_values)}")
 
+        # INT-1799（B0 裁定）：device_type 已废弃——写请求携带非空值一律 400，
+        # 不再做值域校验（协议与流式性由 protocol / streaming 两列承载）
         device_type = data.get('device_type')
-        if device_type is not None and device_type not in {item.value for item in DeviceType}:
-            return (f"非法的被测设备类型 (device_type): {device_type}，"
-                    f"仅支持: {', '.join(item.value for item in DeviceType)}")
+        if device_type not in (None, ''):
+            return "device_type 已废弃，请改用 protocol + streaming"
+
+        protocol = data.get('protocol')
+        if protocol is not None:
+            try:
+                normalize_protocol(protocol)
+            except ValueError as e:
+                return str(e)
+
+        streaming = data.get('streaming')
+        if streaming is not None and not isinstance(streaming, bool):
+            return "流式性 (streaming) 必须为布尔值"
 
         adapter_class = data.get('adapter_class')
         if adapter_class is not None:
@@ -98,6 +113,24 @@ class APICrudService:
         if proxy_error:
             return proxy_error
 
+        return None
+
+    @staticmethod
+    def _validate_lane_combo(protocol, streaming):
+        """协议 × 流式性可用矩阵校验（INT-1799 / B0 裁定 §3.2.3）。
+
+        只放行已实现执行器的组合（http+非流式、websocket+流式）；其余组合
+        显式拒绝，文案固定，不静默降级。protocol 需已归一为规范值。
+        """
+        try:
+            normalized = normalize_protocol(protocol)
+        except ValueError as e:
+            return str(e)
+        if not isinstance(streaming, bool):
+            return "流式性 (streaming) 必须为布尔值"
+        if not is_protocol_streaming_available(normalized, streaming):
+            return (f"协议 {normalized} 与流式性 streaming={str(bool(streaming)).lower()} "
+                    f"的组合实现未上线")
         return None
 
     @staticmethod
@@ -291,7 +324,9 @@ class APICrudService:
             'default_max_audio_duration': getattr(api, 'default_max_audio_duration', None),
             'health_score': getattr(api, 'health_score', None),
             'output_types': normalize_output_types(getattr(api, 'output_types', None)),
-            'device_type': getattr(api, 'device_type', None) or 'http_api',
+            # INT-1799：读侧只出 protocol / streaming，不再返回已废弃的 device_type
+            'protocol': getattr(api, 'protocol', None) or APIProtocol.HTTP.value,
+            'streaming': bool(getattr(api, 'streaming', False)),
             'adapter_class': getattr(api, 'adapter_class', None),
             'audio_config': getattr(api, 'audio_config', None),
             'rms_spl_mapping_id': getattr(api, 'rms_spl_mapping_id', None),
@@ -361,11 +396,22 @@ class APICrudService:
             'default_max_audio_duration': data.get('default_max_audio_duration'),
             'output_types': data.get('output_types'),
             'device_type': data.get('device_type'),
+            'protocol': data.get('protocol'),
+            'streaming': data.get('streaming'),
             'adapter_class': data.get('adapter_class'),
             'audio_config': data.get('audio_config'),
             'proxy_type': data.get('proxy_type'),
             'proxy_url': data.get('proxy_url'),
         })
+        if error:
+            return {'success': False, 'message': error, 'data': None, 'code': 400}
+
+        # INT-1799：新建缺省 protocol='http' / streaming=false（前端预选同值），
+        # 再按可用矩阵校验组合（未上线组合显式 400，不静默降级）
+        protocol = normalize_protocol(data.get('protocol') or APIProtocol.HTTP.value)
+        streaming = data.get('streaming')
+        streaming = False if streaming is None else bool(streaming)
+        error = cls._validate_lane_combo(protocol, streaming)
         if error:
             return {'success': False, 'message': error, 'data': None, 'code': 400}
 
@@ -402,7 +448,8 @@ class APICrudService:
                 'status': data.get('status') or 'online',
                 'api_endpoints': api_endpoints,
                 'output_types': normalize_output_types(data.get('output_types')),
-                'device_type': data.get('device_type') or 'http_api',
+                'protocol': protocol,
+                'streaming': streaming,
                 'adapter_class': data.get('adapter_class'),
                 'audio_config': normalize_audio_config(data.get('audio_config')),
                 'proxy_type': (data.get('proxy_type') or '').strip() or None,
@@ -453,6 +500,16 @@ class APICrudService:
         if error:
             return {'success': False, 'message': error, 'data': None, 'code': 400}
 
+        # INT-1799：可用矩阵按「提交值 + 当前值」合并口径校验——只改其中一维
+        # 时也要保证最终状态是已上线的组合（例：http+false 任务改 streaming=true → 400）
+        merged_protocol = (data.get('protocol') if data.get('protocol') is not None
+                           else (getattr(api, 'protocol', None) or APIProtocol.HTTP.value))
+        merged_streaming = (data['streaming'] if isinstance(data.get('streaming'), bool)
+                            else bool(getattr(api, 'streaming', False)))
+        error = cls._validate_lane_combo(merged_protocol, merged_streaming)
+        if error:
+            return {'success': False, 'message': error, 'data': None, 'code': 400}
+
         # 代理校验（INT-839）：按「更新字段 + 当前 DB 值」合并口径校验，
         # 单字段更新（只改 proxy_type 或只改 proxy_url）也保证最终状态合法；
         # 显式传 None 表示清空代理
@@ -496,8 +553,10 @@ class APICrudService:
                 update_fields['status'] = data['status']
             if data.get('output_types') is not None:
                 update_fields['output_types'] = normalize_output_types(data['output_types'])
-            if data.get('device_type') is not None:
-                update_fields['device_type'] = data['device_type']
+            if isinstance(data.get('streaming'), bool):
+                update_fields['streaming'] = data['streaming']
+            if data.get('protocol') is not None:
+                update_fields['protocol'] = normalize_protocol(data['protocol'])
             if data.get('adapter_class') is not None:
                 update_fields['adapter_class'] = data['adapter_class']
             if data.get('audio_config') is not None:
@@ -629,7 +688,8 @@ class APICrudService:
 
     @classmethod
     def get_all(cls, page: int = 1, per_page: int = 10, keyword: str = None,
-                status: str = None, algorithm_type: str = None) -> dict:
+                status: str = None, algorithm_type: str = None,
+                protocol: str = None, streaming: bool = None) -> dict:
         """分页查询 API 列表
 
         Args:
@@ -638,14 +698,24 @@ class APICrudService:
             keyword: 搜索关键字
             status: 状态过滤
             algorithm_type: 算法类型过滤
+            protocol: 协议等值过滤（INT-1799，规范值）
+            streaming: 流式性等值过滤（INT-1799，None = 不过滤）
 
         Returns:
             dict: {success, message, data, code}
         """
         try:
+            # 协议筛选入参同样只接受规范值（别名归一后过滤，非法值 400 而非静默空集）
+            if protocol:
+                try:
+                    protocol = normalize_protocol(protocol)
+                except ValueError as e:
+                    return {'success': False, 'message': str(e), 'data': None, 'code': 400}
+
             result = api_test_repository.list_apis(
                 page=page, per_page=per_page,
                 keyword=keyword, status=status, algorithm_type=algorithm_type,
+                protocol=protocol, streaming=streaming,
             )
 
             data = {

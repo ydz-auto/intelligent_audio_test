@@ -5,7 +5,7 @@ import logging
 from shared.utils.dto_utils import dto_to_dict
 from shared.utils.status_constants import ExecutionStatus, EvaluationStatus, TaskCaseStatus
 from shared.utils.query_utils import now_cst
-from shared.models.common_enums import DeviceType
+from shared.models.common_enums import DeviceType, ExecutionLane, APIProtocol, lane_of
 from shared.models.database import get_db_session
 from shared.infrastructure.base_executor import BaseExecutor
 from api_test_service.infrastructure.acl import (
@@ -55,16 +55,44 @@ class APIExecutor(BaseExecutor):
         # Realtime 同源服务对（被测 API 数字域 RMS→SPL）
         self._spl_repo = ApiRmsSplRepositoryImpl()
         self._spl_service = ApiRmsSplService(self._spl_repo)
-        # 执行器注册表：device_type 运行时分发（INT-61）
-        # physical → e2e_test_service E2EExecutor（task_service 侧分发，不经本服务）
+        # 执行器注册表：按执行道（ExecutionLane）注册（INT-1799 / B0 裁定 §3.4）
+        # 道只由 apis.streaming 决定；协议不参与定道，道内再按协议/轮次选策略。
+        # physical 不在此表（E2E 走 e2e_test_service，由 task_service 侧分发）。
         self._executor_registry = {
-            DeviceType.HTTP_API.value: self._session_executor,
-            DeviceType.WEBSOCKET_API.value: self._realtime_executor,
+            ExecutionLane.NON_STREAMING.value: self._session_executor,
+            ExecutionLane.STREAMING.value: self._realtime_executor,
         }
 
-    def route_executor(self, device_type):
-        """按被测设备类型取执行器；未知类型回退 APISessionExecutor（旧任务兼容）"""
-        return self._executor_registry.get(device_type, self._session_executor)
+    # 历史 device_type 值 → 执行道（INT-1799 兼容：老调用方/老测试仍可传
+    # http_api / websocket_api，映射是确定性的，不是「未知值静默回退」）
+    _LEGACY_DEVICE_TYPE_LANES = {
+        DeviceType.HTTP_API.value: ExecutionLane.NON_STREAMING,
+        DeviceType.WEBSOCKET_API.value: ExecutionLane.STREAMING,
+    }
+
+    @classmethod
+    def _coerce_lane(cls, lane):
+        """把 lane（ExecutionLane / 道值 / 历史 device_type 值）归一为道值。
+
+        未知 / None 一律抛 ValueError——删除旧「未知类型回退 APISessionExecutor」
+        的静默兜底（否则脏数据会被悄悄跑到非流式道）。
+        """
+        if isinstance(lane, ExecutionLane):
+            return lane.value
+        raw = str(lane or '').strip().lower()
+        if raw in {item.value for item in ExecutionLane}:
+            return raw
+        legacy = cls._LEGACY_DEVICE_TYPE_LANES.get(raw)
+        if legacy is not None:
+            return legacy.value
+        raise ValueError(
+            f"未知执行道: {lane!r}（合法值: "
+            f"{', '.join(item.value for item in ExecutionLane)}；"
+            f"兼容历史 device_type: http_api/websocket_api）")
+
+    def route_executor(self, lane):
+        """按执行道取执行器；未知 lane 抛 ValueError（不静默回退）。"""
+        return self._executor_registry[self._coerce_lane(lane)]
 
     def _get_result_mapper(self):
         """返回 DeviceResult ACL 仓储，供 ResultsMixin 使用"""
@@ -199,10 +227,12 @@ class APIExecutor(BaseExecutor):
             self.execution_engine._emit_progress(task_id, force=True)
 
     def _execute_single_or_multi(self, task_id, tc_rel_id, data):
-        """按用例级 device_type 分发执行器，再按 rounds 分流（INT-61）
+        """按执行道分发执行器（INT-1799：道只由 streaming 决定）
 
-        websocket_api → RealtimeSessionExecutor（含单轮，流式会话语义统一）；
-        其余（http_api / 旧数据缺省）保持既有行为不变。
+        - streaming=true  → 流式道：websocket 会话策略（RealtimeSessionExecutor）；
+          其他协议的流式实现（SSE / gRPC server-stream）未上线，显式报错。
+        - streaming=false → 非流式道：rounds>1 走 APISessionExecutor，否则线性
+          （rounds 只是道内策略，不再用于推断流式性）。
         """
         test_case_id = data['test_case_id']
         case_name = data['case_name']
@@ -211,20 +241,24 @@ class APIExecutor(BaseExecutor):
 
         case_config = self._load_case_config(test_case_id)
 
-        device_type = data.get('device_type') or DeviceType.HTTP_API.value
-        executor = self.route_executor(device_type)
-        if executor is not self._session_executor:
+        lane = lane_of(bool(data.get('streaming')))
+        if lane is ExecutionLane.STREAMING:
+            protocol = data.get('protocol') or APIProtocol.WEBSOCKET.value
+            if protocol != APIProtocol.WEBSOCKET.value:
+                raise ValueError(
+                    f"协议 {protocol} 与流式性 streaming=true 的组合实现未上线"
+                    f"（当前仅 websocket 流式会话有执行器）")
             self._log(level='INFO',
-                      content=f"用例 {case_name} device_type={device_type}，进入 Realtime 流式会话模式",
+                      content=f"用例 {case_name} streaming=true protocol={protocol}，进入流式道",
                       task_id=task_id, test_case_id=test_case_id)
-            return executor.execute(task_id, tc_rel_id, data, case_config)
+            return self.route_executor(lane).execute(task_id, tc_rel_id, data, case_config)
 
         rounds = case_config.get('rounds', [])
         if rounds and len(rounds) > 1:
             self._log(level='INFO',
-                      content=f"用例 {case_name} 配置了 {len(rounds)} 轮，进入多轮会话模式",
+                      content=f"用例 {case_name} 配置了 {len(rounds)} 轮，进入非流式多轮会话模式",
                       task_id=task_id, test_case_id=test_case_id)
-            return self._session_executor.execute(task_id, tc_rel_id, data, case_config)
+            return self.route_executor(lane).execute(task_id, tc_rel_id, data, case_config)
 
         return self._execute_linear(task_id, tc_rel_id, data, case_config, algorithm_type, case_algorithm_params)
 
@@ -579,8 +613,9 @@ class APIExecutor(BaseExecutor):
         tc_rel_id_local = tc_rel.get('id')
         test_case_id = case.get('id')
         case_name = case.get('name')
-        # 差异#2 收尾：执行方式由 device_type 决定（task.type 已废弃）——
-        # 调度侧路由决策优先于 TaskCase 行值（INT-71），旧数据缺省按 HTTP API 口径
+        # INT-1799：执行道由 apis.streaming 决定（不再看 device_type / rounds）。
+        # device_type 仍是调度侧亲和域令牌（physical / http_api / websocket_api），
+        # 这里只用于音频渲染出口与失败文案兜底。
         case_device_type = device_type or tc_rel.get('device_type') or DeviceType.HTTP_API.value
         case_config = case.get('config', {}) or {}
         algorithm_type = self._get_algorithm_type(case, case_config)
@@ -590,6 +625,18 @@ class APIExecutor(BaseExecutor):
             self._fail_tc_rel(tc_rel_id_local, error_msg, task_id=task_id)
             self._log('ERROR', f"API 用例 {case_name} 执行失败: {error_msg}", task_id)
             return False, None
+
+        # INT-1799 单执行单元单道断言：一个任务内所有被测 API 的 streaming 必须
+        # 一致（任务只用一个执行器跑全部 api_configs）。不一致即用例失败并写明
+        # 原因（防历史脏数据绕过建任务校验后静默跑错道）。
+        lane_flags = {bool(getattr(cfg, 'streaming', False)) for cfg in processed_api_configs}
+        if len(lane_flags) > 1:
+            error_msg = "同一任务内 API 流式性不一致（混选流式与非流式），无法确定执行道"
+            self._fail_tc_rel(tc_rel_id_local, error_msg, task_id=task_id)
+            self._log('ERROR', f"API 用例 {case_name} 执行失败: {error_msg}", task_id)
+            return False, None
+        case_streaming = lane_flags.pop()
+        case_protocol = getattr(processed_api_configs[0], 'protocol', None) or APIProtocol.HTTP.value
 
         audio_data, total_audio_duration, error_msg = self._get_audio_data(
             tc_rel_test_case_id, case_device_type, case_name, task_id, tc_rel_id_local
@@ -616,6 +663,10 @@ class APIExecutor(BaseExecutor):
             'test_case_id': test_case_id,
             'case_name': case_name,
             'algorithm_type': algorithm_type,
+            # INT-1799：执行道判据（streaming 单值 + 协议，供流式道选策略）；
+            # device_type 仅供亲和令牌透传 / 渲染出口 / 失败文案，不再定道
+            'streaming': case_streaming,
+            'protocol': case_protocol,
             'device_type': case_device_type,
             'device_id': device_id or tc_rel.get('device_id') or '',
             'api_configs': processed_api_configs,
@@ -655,7 +706,7 @@ class APIExecutor(BaseExecutor):
         for api_config in api_configs:
             class MockAPIConfig:
                 def __init__(self, id, endpoint, api_endpoints, default_max_process, meta, max_timeout, vendor, adapter_class=None,
-                             proxy_type=None, proxy_url=None):
+                             proxy_type=None, proxy_url=None, protocol=None, streaming=False):
                     self.id = id
                     self.endpoint = endpoint
                     self.api_endpoints = api_endpoints
@@ -666,6 +717,9 @@ class APIExecutor(BaseExecutor):
                     self.adapter_class = adapter_class
                     self.proxy_type = proxy_type
                     self.proxy_url = proxy_url
+                    # INT-1799：白名单漏复制即恒 None/False（执行道与协议推断都会错）
+                    self.protocol = protocol
+                    self.streaming = streaming
 
             processed.append(MockAPIConfig(
                 id=api_config.id,
@@ -678,6 +732,8 @@ class APIExecutor(BaseExecutor):
                 adapter_class=getattr(api_config, 'adapter_class', None),
                 proxy_type=getattr(api_config, 'proxy_type', None),
                 proxy_url=getattr(api_config, 'proxy_url', None),
+                protocol=getattr(api_config, 'protocol', None) or APIProtocol.HTTP.value,
+                streaming=bool(getattr(api_config, 'streaming', False)),
             ))
         return processed
 

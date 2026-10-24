@@ -36,9 +36,10 @@ from shared.models.common_enums import (
     AdapterProtocol,
     AdapterVendor,
     VendorAdapterType,
+    APIProtocol,
+    normalize_protocol,
 )
 
-from api_test_service.domain.entities.api import resolve_api_endpoint
 from api_test_service.domain.ports import ApiVendorAdapter
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_ADAPTER_TYPE = VendorAdapterType.API_DRIVER
 
 _ADAPTER_TYPE_CONFIG_KEY = 'vendor_adapter'
-_PROTOCOL_CONFIG_KEY = 'protocol'
 
 
 class VendorAdapterStatus(str, Enum):
@@ -507,33 +507,38 @@ def adapter_type_from_config(api_config=None, case_config=None) -> VendorAdapter
             f"（合法值: {[t.value for t in VendorAdapterType]}）")
 
 
-def _resolve_endpoint(api_config) -> str:
-    """解析候选端点（api_endpoints 首个非空 endpoint，INT-1361 起唯一来源）用于协议前缀推断"""
-    return resolve_api_endpoint(api_config)
-
-
 def infer_protocol(api_config=None, case_config=None) -> AdapterProtocol:
-    """推断协议维度：显式 protocol 配置 > endpoint 前缀 > 默认 HTTP。
+    """协议维度推断 — 唯一来源 `api_config.protocol` 列值（INT-1799 / B0 裁定 §3.4.5）。
 
-    case_config.protocol / api_config.meta.protocol 显式值优先（拒绝魔法字符串，
-    未知值报错）；否则按 endpoint 前缀 ws://wss:// → WEBSOCKET、http(s):// → HTTP。
+    已删除的三处旧来源：用例级 `case_config.protocol`、`api_config.meta.protocol`
+    与端点前缀兜底（`meta.protocol` 迁移后已从库里删除，双来源会打架且无人裁决）。
+
+    - `api_config` 缺省（None）：返回注册表默认维度 HTTP（无 API 对象即无执行
+      决策，属注册表默认值，不是业务兜底）。
+    - 列值缺失 / 不在 4 值内：抛 ValueError（配置错误，400），不静默降级。
+    - `sse` / `grpc` 的协议级 base 适配器未落地（A1 / A2）：抛 ValueError。
     """
-    raw = None
-    if isinstance(case_config, dict):
-        raw = case_config.get(_PROTOCOL_CONFIG_KEY)
-    if raw is None and api_config is not None:
-        raw = (getattr(api_config, 'meta', None) or {}).get(_PROTOCOL_CONFIG_KEY)
-    if raw is not None:
-        try:
-            return AdapterProtocol(str(raw))
-        except ValueError:
-            raise ValueError(
-                f"未知的 {_PROTOCOL_CONFIG_KEY} 配置: {raw!r}"
-                f"（合法值: {[p.value for p in AdapterProtocol]}）")
-    url = _resolve_endpoint(api_config)
-    if url.startswith(('ws://', 'wss://')):
-        return AdapterProtocol.WEBSOCKET
-    return AdapterProtocol.HTTP
+    if api_config is None:
+        return AdapterProtocol.HTTP
+    raw = getattr(api_config, 'protocol', None)
+    if raw is None or str(raw).strip() == '':
+        raise ValueError(
+            "API 缺少 protocol 配置（apis.protocol 列，INT-1799）："
+            "用例级 protocol / meta.protocol / 端点前缀推断均已废弃")
+    try:
+        normalized = normalize_protocol(raw)
+    except ValueError as e:
+        raise ValueError(f"未知的 protocol 配置: {raw!r}（{e}）")
+    mapping = {
+        APIProtocol.HTTP.value: AdapterProtocol.HTTP,
+        APIProtocol.WEBSOCKET.value: AdapterProtocol.WEBSOCKET,
+    }
+    adapter_protocol = mapping.get(normalized)
+    if adapter_protocol is None:
+        raise ValueError(
+            f"协议 {normalized} 的适配器实现未上线（A1 gRPC / A2 SSE），"
+            f"不接受按其他协议静默执行")
+    return adapter_protocol
 
 
 def dimensions_from_config(api_config=None, case_config=None) -> Tuple[AdapterProtocol, AdapterVendor]:

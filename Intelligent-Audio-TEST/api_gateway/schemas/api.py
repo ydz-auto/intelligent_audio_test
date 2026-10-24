@@ -28,6 +28,9 @@ class ApiListQuery(APIModel):
     keyword: Optional[str] = Field(None)
     status: Optional[str] = Field(None)
     algorithm_type: Optional[str] = Field(None)
+    # INT-1799：协议 / 流式性两维等值筛选（前端列表按新列筛选）
+    protocol: Optional[str] = Field(None)
+    streaming: Optional[bool] = Field(None)
 
 
 class ApiItem(APIModel):
@@ -50,6 +53,10 @@ class ApiItem(APIModel):
     health_score: Optional[int] = Field(None)
     endpoints: List[ApiEndpointItem] = Field(default_factory=list)
     output_types: List[str] = Field(default_factory=list)
+    # INT-1799：协议 / 流式性正交两维（device_type 已废弃，读侧不再返回）
+    protocol: Optional[str] = Field(None)
+    streaming: Optional[bool] = Field(None)
+    # 【已废弃，P3 删列】仅为契约过渡保留字段声明；响应体不再出现该键
     device_type: Optional[str] = Field(None)
     adapter_class: Optional[str] = Field(None)
     audio_config: Optional[Dict[str, Any]] = Field(None)
@@ -102,6 +109,10 @@ class ApiCreateInput(APIModel):
     status: Optional[str] = Field(None)
     endpoints: List[ApiEndpointInput] = Field(default_factory=list)
     output_types: Optional[List[str]] = Field(None)
+    # INT-1799：协议 / 流式性（缺省 http / false）。device_type 保留字段仅用于
+    # 「显式拒绝」——收到非空值后端 400（B0 裁定：不做兼容窗口、不做双写）。
+    protocol: Optional[str] = Field(None)
+    streaming: Optional[bool] = Field(None)
     device_type: Optional[str] = Field(None)
     adapter_class: Optional[str] = Field(None)
     audio_config: Optional[Dict[str, Any]] = Field(None)
@@ -121,6 +132,9 @@ class ApiUpdateInput(APIModel):
     status: Optional[str] = Field(None)
     endpoints: Optional[List[ApiEndpointInput]] = Field(None)
     output_types: Optional[List[str]] = Field(None)
+    # INT-1799：只提交需要改的维度；device_type 保留字段仅用于显式拒绝（400）
+    protocol: Optional[str] = Field(None)
+    streaming: Optional[bool] = Field(None)
     device_type: Optional[str] = Field(None)
     adapter_class: Optional[str] = Field(None)
     audio_config: Optional[Dict[str, Any]] = Field(None)
