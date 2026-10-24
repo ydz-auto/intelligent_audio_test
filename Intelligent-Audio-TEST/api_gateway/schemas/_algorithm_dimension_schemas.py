@@ -129,6 +129,8 @@ class DimensionRelationUpdateRequest(APIModel):
 class ParamMappingCreate(APIModel):
     """创建参数映射请求"""
     algorithm_type: str = Field(..., description='关联算法类型')
+    # INT-1756（C6a）：API 实例级作用域，缺省为算法类型级默认
+    api_id: Optional[int] = Field(None, ge=1, description='API 实例ID（空=算法类型级默认）')
     source_type: str = Field(..., description='源类型：device, api')
     source_param: str = Field(..., min_length=1, max_length=50, description='源参数代码')
     source_direction: str = Field(default='output', description='源参数方向：input, output')
@@ -139,6 +141,7 @@ class ParamMappingCreate(APIModel):
 
 class ParamMappingUpdate(APIModel):
     """更新参数映射请求"""
+    api_id: Optional[int] = Field(None, ge=1, description='API 实例ID（空=不改）')
     source_type: Optional[str] = Field(None)
     source_param: Optional[str] = Field(None)
     source_direction: Optional[str] = Field(None)
@@ -173,6 +176,7 @@ class ParamMappingListResponse(APIModel):
 class MappingCreateRequest(APIModel):
     """创建参数映射请求"""
     algorithm_type: str = Field(...)
+    api_id: Optional[int] = Field(None, ge=1, description='API 实例ID（空=算法类型级默认）')
     source_type: str = Field(...)
     source_param: str = Field(...)
     source_direction: str = Field(default='output')
@@ -183,6 +187,7 @@ class MappingCreateRequest(APIModel):
 
 class MappingUpdateRequest(APIModel):
     """更新参数映射请求"""
+    api_id: Optional[int] = Field(None, ge=1, description='API 实例ID（空=不改）')
     source_type: Optional[str] = Field(None)
     source_param: Optional[str] = Field(None)
     source_direction: Optional[str] = Field(None)

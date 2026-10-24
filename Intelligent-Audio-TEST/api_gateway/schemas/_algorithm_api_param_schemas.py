@@ -15,6 +15,9 @@ from api_gateway.schemas.base import APIModel
 class AlgorithmApiParamCreate(APIModel):
     """创建API参数请求"""
     algorithm_type: str = Field(..., description='关联算法类型')
+    # INT-1756（C6a）：API 实例级作用域，缺省为算法类型级默认；
+    # 存在性与 algorithm_type 一致性由网关写路径校验（DB 不建跨服务外键）。
+    api_id: Optional[int] = Field(None, ge=1, description='API 实例ID（空=算法类型级默认）')
     param_code: str = Field(..., min_length=1, max_length=50, description='参数代码')
     param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称')
     label: Optional[str] = Field(None, max_length=100, description='字段显示名称')
@@ -37,6 +40,7 @@ class AlgorithmApiParamCreate(APIModel):
 
 class AlgorithmApiParamUpdate(APIModel):
     """更新API参数请求"""
+    api_id: Optional[int] = Field(None, ge=1, description='API 实例ID（空=不改）')
     param_code: Optional[str] = Field(None, max_length=50)
     param_name: Optional[str] = Field(None, max_length=100)
     label: Optional[str] = Field(None, max_length=100)

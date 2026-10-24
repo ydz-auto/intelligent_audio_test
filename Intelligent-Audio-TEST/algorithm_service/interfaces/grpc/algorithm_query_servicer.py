@@ -31,6 +31,21 @@ def _failure(message: str, data: Any = None):
     )
 
 
+def _optional_api_id(request: Any):
+    """取 proto3 optional ``api_id`` 的 presence。
+
+    INT-1756：未传（旧调用方 / 旧 stub）返回 None → 回落算法级默认；
+    显式传值（含 0）原样返回。
+    """
+    try:
+        if request.HasField('api_id'):
+            return int(request.api_id)
+    except (ValueError, AttributeError):
+        # 旧 stub 生成的 request 没有该字段
+        return None
+    return None
+
+
 class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
     """算法领域查询 gRPC servicer（CQRS 读侧）。
 
@@ -146,9 +161,10 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
             return _failure(str(e))
 
     def GetApiParamsList(self, request, context=None):
-        """获取 API 参数列表（按 algorithm_type）。"""
+        """获取 API 参数列表（按 algorithm_type；可选 api_id 作用域）。"""
         try:
-            data = self.config_handler.get_api_params(request.algorithm_type)
+            data = self.config_handler.get_api_params(
+                request.algorithm_type, _optional_api_id(request))
             return _success(data)
         except Exception as e:
             return _failure(str(e))
@@ -170,10 +186,11 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
             return _failure(str(e))
 
     def GetParamMappingForComponent(self, request, context=None):
-        """获取组件参数映射（按 algorithm_type + component_type）。"""
+        """获取组件参数映射（按 algorithm_type + component_type；可选 api_id 作用域）。"""
         try:
             data = self.config_handler.get_param_mapping(
-                request.algorithm_type, request.component_type
+                request.algorithm_type, request.component_type,
+                _optional_api_id(request)
             )
             return _success(data)
         except Exception as e:
@@ -211,10 +228,10 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
     # ============================================================
 
     def GetFieldMappings(self, request, context=None):
-        """获取字段映射定义（按 algorithm_type）。"""
+        """获取字段映射定义（按 algorithm_type；可选 api_id 作用域）。"""
         try:
             data = self.field_mapping_handler.get_field_definitions(
-                request.algorithm_type
+                request.algorithm_type, _optional_api_id(request)
             )
             return _success(data)
         except Exception as e:

@@ -34,11 +34,43 @@ from api_gateway.schemas.algorithm import (
 from api_gateway.infrastructure.grpc_proxies.algorithm_proxies import (
     algorithm_query_service as _algorithm_service_proxy,
 )
+from api_gateway.infrastructure.grpc_proxies.api_config_proxies import (
+    api_config_service,
+)
 
 
 _algorithm_acl = AlgorithmConfigAclRepositoryImpl()
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_api_scope(api_id, algorithm_type):
+    """写路径校验 ``api_id`` 作用域（INT-1756 C6a）。
+
+    两张参数表的 ``api_id`` 指向 api_test_service 的 ``apis.id``，跨服务 DB 外键
+    违反架构红线（父卡 INT-1751 硬错 1），存在性与归属只能在网关写路径保证：
+
+    - ``api_id`` 为空 → 算法类型级默认，不校验；
+    - 对应 API 不存在 → 400；
+    - API 的 ``algorithm_type`` 与参数行不一致 → 400。
+
+    返回 ``error_response(...)``，通过则返回 None。
+    """
+    if api_id is None:
+        return None
+    result = api_config_service.get_one(int(api_id)) or {}
+    data = result.get('data') or {}
+    if not result.get('success') or not data:
+        return error_response(
+            f"api_id={api_id} 对应的 API 不存在或查询失败: "
+            f"{result.get('message') or ''}", 400)
+    api_algorithm_type = data.get('algorithm_type')
+    if (algorithm_type and api_algorithm_type
+            and str(api_algorithm_type) != str(algorithm_type)):
+        return error_response(
+            f"api_id={api_id} 属于算法类型 {api_algorithm_type}，"
+            f"与 algorithm_type={algorithm_type} 不一致", 400)
+    return None
 
 
 def _clear_definition_draft(algo_type):
@@ -175,6 +207,12 @@ class AlgorithmCommandService:
             except Exception as e:
                 return error_response(f"请求数据验证失败: {str(e)}", 400)
 
+        if param_type_source == 'api':
+            scope_error = _validate_api_scope(
+                getattr(req, 'api_id', None), getattr(req, 'algorithm_type', None))
+            if scope_error is not None:
+                return scope_error
+
         data = req.model_dump(by_alias=False, exclude_none=True)
         result = _algorithm_acl.create_param(data)
 
@@ -190,6 +228,12 @@ class AlgorithmCommandService:
         现在该判断逻辑下沉到微服务。网关侧直接把原始 JSON 传给代理。
         """
         data = request.get_json() or {}
+        # INT-1756：载荷带 api_id 时校验作用域（更新载荷不含 algorithm_type 时
+        # 只校验 API 存在性，类型一致性由创建/整份保存路径保证）
+        scope_error = _validate_api_scope(
+            data.get('api_id', data.get('apiId')), data.get('algorithm_type'))
+        if scope_error is not None:
+            return scope_error
         result = _algorithm_acl.update_param(param_id, data)
 
         if result.get('success'):
@@ -215,6 +259,11 @@ class AlgorithmCommandService:
         except Exception as e:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
+        scope_error = _validate_api_scope(
+            getattr(req, 'api_id', None), req.algorithm_type)
+        if scope_error is not None:
+            return scope_error
+
         data = req.model_dump(by_alias=False, exclude_none=True)
         result = _algorithm_acl.create_mapping(data)
 
@@ -225,10 +274,17 @@ class AlgorithmCommandService:
     @staticmethod
     def update_mapping(mapping_id: int):
         """更新参数映射"""
+        json_data = request.get_json() or {}
         try:
-            req = MappingUpdateRequest.model_validate(request.get_json())
+            req = MappingUpdateRequest.model_validate(json_data)
         except Exception as e:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
+
+        scope_error = _validate_api_scope(
+            json_data.get('api_id', json_data.get('apiId')),
+            json_data.get('algorithm_type'))
+        if scope_error is not None:
+            return scope_error
 
         data = req.model_dump(by_alias=False, exclude_none=True)
         result = _algorithm_acl.update_mapping(mapping_id, data)

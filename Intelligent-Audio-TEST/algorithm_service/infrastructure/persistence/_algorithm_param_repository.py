@@ -129,6 +129,8 @@ class AlgorithmParamRepository(IAlgorithmParamRepository):
         - param_code / param_name / label / param_type / direction / required
         - default_value / validation_rules / help_text / ui_order / hidden
         - field_path（仅 API 参数有该列，INT-1747）
+        - api_id（INT-1756 C6a）：仅 AlgorithmApiParam 有该列；设备参数表没有，
+          传入时忽略（两张表共用本仓储）。
         """
         session = get_db_session()
         try:
@@ -146,6 +148,8 @@ class AlgorithmParamRepository(IAlgorithmParamRepository):
                 help_text=data.get("help_text"),
                 ui_order=data.get("ui_order") or 0,
                 hidden=data.get("hidden") or False,
+                **({"api_id": data.get("api_id")}
+                   if hasattr(model, "api_id") else {}),
             )
             if "field_path" in model.__table__.columns:
                 kwargs["field_path"] = data.get("field_path")

@@ -496,6 +496,9 @@ message GetDeviceParamsListRequest {
 }
 message GetApiParamsListRequest {
   string algorithm_type = 1;
+  // INT-1756（C6a）：API 实例级作用域。proto3 optional 拿 presence 语义，
+  // 区分「未传」（回落算法级默认）与显式传值；响应仍是 JSON 字符串，行带 api_id。
+  optional int32 api_id = 2;
 }
 message GetCaseParamsListRequest {
   string algorithm_type = 1;
@@ -506,6 +509,7 @@ message GetReferenceParamsListRequest {
 message GetParamMappingForComponentRequest {
   string algorithm_type = 1;
   string component_type = 2;  // device/api/case/reference/evaluation
+  optional int32 api_id = 3;  // INT-1756：API 实例级作用域（未传=算法级默认）
 }
 message GetEvaluationDimensionParamsRequest {
   int32 dimension_id = 1;
@@ -519,6 +523,7 @@ message ReloadConfigRequest {}
 message GetFieldMappingsRequest {
   string algorithm_type = 1;
   string component_type = 2;  // device/api/evaluation
+  optional int32 api_id = 3;  // INT-1756：API 实例级作用域（未传=算法级默认）
 }
 message GetEvaluationFieldMappingsRequest {
   string algorithm_type = 1;

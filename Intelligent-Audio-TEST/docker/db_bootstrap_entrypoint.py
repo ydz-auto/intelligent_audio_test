@@ -198,6 +198,12 @@ BOOTSTRAP_STEPS = [
     #     不给存量表补列，存量库（真实库 / 隔离库）缺该列时新镜像读声明表即
     #     UndefinedColumn。脚本幂等（列存在即 SKIP），全新库为全 SKIP。
     ('python', 'scripts/migrations/202610/add_api_param_field_path_int1747.py', '--apply'),
+    # ㊸ api_id 作用域（INT-1751 第八节 / INT-1756 C6a）：algorithm_api_params /
+    #     param_mappings 补 api_id 列并把两条旧唯一索引拆成「算法级 / API 级」
+    #     各一条（统一 NULLS NOT DISTINCT）。create_all 只建缺失的表、不给存量表
+    #     补列，存量库缺列时新镜像读参数即 UndefinedColumn；脚本幂等（列/索引存在
+    #     即 SKIP）、默认 dry-run，引导链必须带 --apply（等锁超过 10s 抛 55P03 不吞）。
+    ('python', 'scripts/migrations/202610/add_api_id_scope_int1751.py', '--apply'),
     # ㊺ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器

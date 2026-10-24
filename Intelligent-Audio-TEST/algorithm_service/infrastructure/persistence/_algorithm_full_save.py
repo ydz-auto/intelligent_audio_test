@@ -100,8 +100,16 @@ def _pick_target(active, deleted, key):
 # ========== 六类子实体 upsert（自然键 find-or-upsert + 提交集外软删） ==========
 
 def _upsert_device_api_params(session, algorithm_type: str, items: List[Dict[str, Any]], po_cls) -> None:
-    """设备/API 参数 upsert（自然键：algorithm_type + param_code + direction）。"""
-    all_rows = session.query(po_cls).filter_by(algorithm_type=algorithm_type).all()
+    """设备/API 参数 upsert（自然键：algorithm_type + param_code + direction）。
+
+    INT-1756：本 upsert 的载荷是算法级定义（自然键不含 api_id），只管理
+    ``api_id IS NULL`` 的算法级行；API 实例级行由独立写路径维护，不能被
+    这里的「提交集外软删」当成未提交行清掉。
+    """
+    query = session.query(po_cls).filter_by(algorithm_type=algorithm_type)
+    if hasattr(po_cls, 'api_id'):
+        query = query.filter_by(api_id=None)
+    all_rows = query.all()
     active, deleted = _split_rows(
         all_rows, lambda r: (r.param_code, r.direction)
     )
@@ -284,9 +292,12 @@ def _upsert_mappings(session, algorithm_type: str, items: List[Dict[str, Any]]) 
 
     兼容 payload 两种形态：平铺列表（item 自带 source）或
     按 source 分组的 dict（{"device": [...]}，已由 handler 归一为列表）。
+
+    INT-1756：同 _upsert_device_api_params，只管理算法级行（api_id IS NULL），
+    API 实例级映射不受算法定义整份保存影响。
     """
     all_rows = session.query(ParamMappingPO).filter_by(
-        algorithm_type=algorithm_type
+        algorithm_type=algorithm_type, api_id=None
     ).all()
     active, deleted = _split_rows(
         all_rows, lambda r: (r.source, r.source_param, r.dimension_id)
