@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import { BatchAdjustGroupDialog } from '@/features/testcases/modals/batch-adjust-group-dialog'
+import { batchTestcaseAction } from '@/infrastructure/api/testcases-batch-api'
 
 vi.mock('@/infrastructure/api/groups-api', () => ({ createGroup: vi.fn() }))
 vi.mock('@/infrastructure/api/testcases-batch-api', () => ({
@@ -64,5 +65,27 @@ describe('BatchAdjustGroupDialog 目标分组 Select（INT-1686 P2）', () => {
   it('未选时显示占位符「请选择分组」', () => {
     setup()
     expect(screen.getByRole('combobox')).toHaveTextContent('请选择分组')
+  })
+})
+
+describe('BatchAdjustGroupDialog 空 ids 守卫（INT-1780）', () => {
+  it('ids 为空时「确定」禁用且不提交批量请求', async () => {
+    const user = userEvent.setup()
+    render(
+      <BatchAdjustGroupDialog
+        open
+        onOpenChange={vi.fn()}
+        count={0}
+        ids={[]}
+        groups={GROUPS}
+      />
+    )
+    await user.click(screen.getByRole('combobox'))
+    await user.click(await screen.findByRole('option', { name: '接线测试_分组A' }))
+
+    const confirm = screen.getByRole('button', { name: '确定' })
+    expect(confirm).toBeDisabled()
+    await user.click(confirm)
+    expect(batchTestcaseAction).not.toHaveBeenCalled()
   })
 })
