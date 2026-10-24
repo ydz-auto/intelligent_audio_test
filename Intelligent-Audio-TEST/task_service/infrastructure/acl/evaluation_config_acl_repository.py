@@ -15,6 +15,7 @@ import json
 import logging
 from typing import List
 
+from shared.constants.evaluation_dimension import is_llm_judge_dimension
 from shared.utils.grpc_json import loads as _loads
 
 _logger = logging.getLogger(__name__)
@@ -197,10 +198,11 @@ class EvaluationConfigAclRepository:
             return {'success': False, 'message': str(e), 'data': None}
 
     def list_llm_judge_dimension_ids(self) -> list:
-        """查询全部 LLM 判分维度 ID（task_type_code/dimension_type 含 'llm_judge'）。
+        """查询全部 LLM 判分维度 ID（口径见 shared.constants.evaluation_dimension）。
 
         经 evaluation_service.ListDimensions 拉全量过滤（维度量级小，单页够）；
         失败返回空列表。INT-822 发起缺省维度口径：结果现有已完成评估的 LLM 判分维度。
+        注：判定统一调用 `is_llm_judge_dimension`（INT-1700），不再内联字符串匹配。
         """
         try:
             payload = self.list_dimensions(page=1, per_page=1000)
@@ -212,9 +214,10 @@ class EvaluationConfigAclRepository:
         for d in items:
             if not isinstance(d, dict):
                 continue
-            ttc = d.get('task_type_code') or ''
-            dt = d.get('dimension_type') or ''
-            if 'llm_judge' in ttc or dt == 'llm_judge':
+            if is_llm_judge_dimension(
+                task_type_code=d.get('task_type_code'),
+                dimension_type=d.get('dimension_type'),
+            ):
                 if d.get('id') is not None:
                     out.append(int(d['id']))
         return out
