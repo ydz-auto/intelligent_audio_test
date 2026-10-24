@@ -108,12 +108,15 @@ function buildLeafRows(
  * 设备/result_type/任务/结果行叶 子树（用例视图用，§3.7.1 层级完整性：
  * 同一设备多个 result_type 各成独立并列分支，不压平为平铺叶）。
  * INT-1694 二次口径：result_type 之下是任务层（叶的前一级），任务数 ≤ 1 时省略。
+ * INT-1694 四次口径（负责人 2026-10-24）：全部候选只有 1 种 result_type 时
+ * result_type 层无区分度 → 整层省略（设备 → 任务 → 叶），与「结果类型视图」入口同判。
  */
 function buildDeviceBranches(
   rows: CherryPickCandidate[],
   addedResultIds: ReadonlySet<number>,
   keys: DeviceLevelKeys,
-  omitTaskLayer: boolean
+  omitTaskLayer: boolean,
+  omitResultTypeLayer: boolean
 ): PickTreeBranch[] {
   const deviceMap = new Map<string, CherryPickCandidate[]>()
   for (const c of rows) {
@@ -130,6 +133,24 @@ function buildDeviceBranches(
       deviceRows[0]?.deviceId ?? null,
       deviceRows[0]?.apiId ?? null
     )
+    // 结果类型只有 1 种：该层无区分度，整层省略（设备 → 任务 → 叶）
+    if (omitResultTypeLayer) {
+      devices.push({
+        kind: 'branch',
+        key: keys.device(dk),
+        level: 'device',
+        name: deviceDisplay,
+        count: deviceRows.length,
+        resultIds: deviceRows.map((c) => c.resultId),
+        children: buildTaskLeafBranches(
+          deviceRows,
+          addedResultIds,
+          keys.device(dk),
+          omitTaskLayer
+        ),
+      })
+      continue
+    }
     const resultTypeMap = new Map<string, CherryPickCandidate[]>()
     for (const c of deviceRows) {
       const rt = resultTypeKey(c)
@@ -215,7 +236,9 @@ export function buildPickTree(
             resultType: (dk, rt) => `resultType:${taskId}:${caseId}:${dk}:${rt}`,
           },
           // 单任务树构建（buildPickTree）任务已在第一级，末端不再插任务层
-          true
+          true,
+          // 快捷加购旧树（PickDialog 内部形态）保留 result_type 层，不参与 A/B 组省略口径
+          false
         ),
       })
     }
@@ -476,11 +499,16 @@ function cartCaseOrgLevel(
  * → 用例（用例管理卡）→ 设备/API → result_type → **任务** → 结果行。
  * 第 1 层组织在 UI 侧由 PickCaseOrgList 聚合，domain 只给用例平铺；
  * 用例/设备/result_type 层跨任务共享，任务层在最末一级。
- */export function buildPickCaseView(
+ */
+export function buildPickCaseView(
   candidates: CherryPickCandidate[],
   addedResultIds: ReadonlySet<number> = new Set()
 ): PickTreeBranch[] {
   const omitTaskLayer = shouldOmitTaskLayer(candidates.map((c) => c.taskId))
+  // 结果类型只有 1 种 → result_type 层整层省略（视图入口同样隐藏）
+  const omitResultTypeLayer = !hasResultTypeVariety(
+    candidates.map((c) => c.resultType)
+  )
   const caseMap = new Map<string, CherryPickCandidate[]>()
   for (const c of candidates) {
     const list = caseMap.get(c.caseId) ?? []
@@ -499,7 +527,8 @@ function cartCaseOrgLevel(
             device: (dk) => `pcv-device:${caseId}:${dk}`,
             resultType: (dk, rt) => `pcv-resultType:${caseId}:${dk}:${rt}`,
           },
-          omitTaskLayer
+          omitTaskLayer,
+          omitResultTypeLayer
         )
       )
     )
@@ -519,12 +548,38 @@ export function buildPickDeviceView(
   subView: PickCaseOrgSubView = 'flat'
 ): PickTreeBranch[] {
   const omitTaskLayer = shouldOmitTaskLayer(candidates.map((c) => c.taskId))
+  // 结果类型只有 1 种 → result_type 层整层省略（设备 → 组织层 → 用例卡）
+  const omitResultTypeLayer = !hasResultTypeVariety(
+    candidates.map((c) => c.resultType)
+  )
   const deviceMap = new Map<string, CherryPickCandidate[]>()
   for (const c of candidates) {
     const k = deviceKey(c)
     const list = deviceMap.get(k) ?? []
     list.push(c)
     deviceMap.set(k, list)
+  }
+
+  /** 用例卡集合（组织层之下，同一设备/result_type 内按 caseId 聚合） */
+  const buildCases = (
+    rows: CherryPickCandidate[],
+    prefix: string
+  ): PickTreeBranch[] => {
+    const caseMap = new Map<string, CherryPickCandidate[]>()
+    for (const c of rows) {
+      const list = caseMap.get(c.caseId) ?? []
+      list.push(c)
+      caseMap.set(c.caseId, list)
+    }
+    const cases: PickTreeBranch[] = []
+    for (const [caseId, caseRows] of caseMap) {
+      cases.push(
+        buildCaseNode(caseId, caseRows, addedResultIds, prefix, (r, added, caseKey) =>
+          buildTaskLeafBranches(r, added, caseKey, omitTaskLayer)
+        )
+      )
+    }
+    return cases
   }
 
   const devices: PickTreeBranch[] = []
@@ -534,6 +589,23 @@ export function buildPickDeviceView(
       deviceRows[0]?.deviceId ?? null,
       deviceRows[0]?.apiId ?? null
     )
+    if (omitResultTypeLayer) {
+      devices.push({
+        kind: 'branch',
+        key: `dv-device:${dk}`,
+        level: 'device',
+        name: deviceDisplay,
+        count: deviceRows.length,
+        resultIds: deviceRows.map((c) => c.resultId),
+        children: buildCaseOrgBranches(
+          buildCases(deviceRows, `dv-case:${dk}`),
+          org,
+          subView,
+          `dv-org:${dk}`
+        ),
+      })
+      continue
+    }
     const resultTypeMap = new Map<string, CherryPickCandidate[]>()
     for (const c of deviceRows) {
       const rt = resultTypeKey(c)
@@ -544,25 +616,6 @@ export function buildPickDeviceView(
 
     const resultTypes: PickTreeBranch[] = []
     for (const [rt, rtRows] of resultTypeMap) {
-      const caseMap = new Map<string, CherryPickCandidate[]>()
-      for (const c of rtRows) {
-        const list = caseMap.get(c.caseId) ?? []
-        list.push(c)
-        caseMap.set(c.caseId, list)
-      }
-      const cases: PickTreeBranch[] = []
-      for (const [caseId, caseRows] of caseMap) {
-        cases.push(
-          buildCaseNode(
-            caseId,
-            caseRows,
-            addedResultIds,
-            `dv-case:${dk}:${rt}`,
-            (rows, added, caseKey) =>
-              buildTaskLeafBranches(rows, added, caseKey, omitTaskLayer)
-          )
-        )
-      }
       resultTypes.push({
         kind: 'branch',
         key: `dv-resultType:${dk}:${rt}`,
@@ -572,7 +625,7 @@ export function buildPickDeviceView(
         resultIds: rtRows.map((c) => c.resultId),
         // 组织层：result_type 之下、用例卡之上（分组/标签组头 → 用例卡）
         children: buildCaseOrgBranches(
-          cases,
+          buildCases(rtRows, `dv-case:${dk}:${rt}`),
           org,
           subView,
           `dv-org:${dk}:${rt}`
@@ -982,12 +1035,14 @@ function buildCartResultTypeNode(
   }
 }
 
-/** 用例视图形状：用例 → 设备/API → result_type → (任务层 | 叶) */
+/** 用例视图形状：用例 → 设备/API → result_type → (任务层 | 叶)
+ *  （result_type 只有 1 种时省略该层：用例 → 设备/API → (任务层 | 叶)） */
 function cartCaseViewNodes(
   entries: PickCartEntry[],
   keyPrefix: string,
   taskLayer: boolean,
-  omitTaskLayer: boolean
+  omitTaskLayer: boolean,
+  omitResultTypeLayer = false
 ): CartTreeBranch[] {
   const cases: CartTreeBranch[] = []
   for (const caseRows of groupEntries(entries, cartCaseKey).values()) {
@@ -997,6 +1052,9 @@ function cartCaseViewNodes(
         for (const deviceRows of groupEntries(rows, cartDeviceKey).values()) {
           devices.push(
             buildCartDeviceNode(deviceRows, caseKey, (dRows, deviceKey) => {
+              if (omitResultTypeLayer) {
+                return cartLeafLayer(dRows, deviceKey, taskLayer, omitTaskLayer)
+              }
               const resultTypes: CartTreeItem[] = []
               for (const rtRows of groupEntries(dRows, cartResultTypeKey).values()) {
                 resultTypes.push(
@@ -1019,6 +1077,7 @@ function cartCaseViewNodes(
 /**
  * 设备视图形状：设备/API → result_type → **用例层组织** → 用例 → (任务层 | 叶)
  * （A 组购物车设备视图与 B 组任务视图设备子模式共用；组织层独立一层）
+ * result_type 只有 1 种时省略该层：设备/API → 组织层 → 用例。
  */
 function cartDeviceViewNodes(
   entries: PickCartEntry[],
@@ -1026,27 +1085,41 @@ function cartDeviceViewNodes(
   taskLayer: boolean,
   omitTaskLayer: boolean,
   org: PickCaseOrgDimension = 'group',
-  subView: PickCaseOrgSubView = 'flat'
+  subView: PickCaseOrgSubView = 'flat',
+  omitResultTypeLayer = false
 ): CartTreeBranch[] {
+  /** 用例卡集合（组织层之下） */
+  const buildCases = (rows: PickCartEntry[], prefix: string): CartTreeBranch[] => {
+    const cases: CartTreeBranch[] = []
+    for (const caseRows of groupEntries(rows, cartCaseKey).values()) {
+      cases.push(
+        buildCartCaseNode(caseRows, prefix, (leafRows, caseKey) =>
+          cartLeafLayer(leafRows, caseKey, taskLayer, omitTaskLayer)
+        )
+      )
+    }
+    return cases
+  }
+
   const devices: CartTreeBranch[] = []
   for (const deviceRows of groupEntries(entries, cartDeviceKey).values()) {
     devices.push(
       buildCartDeviceNode(deviceRows, keyPrefix, (rows, deviceKey) => {
+        if (omitResultTypeLayer) {
+          return cartCaseOrgLevel(
+            buildCases(rows, deviceKey),
+            org,
+            subView,
+            deviceKey
+          )
+        }
         const resultTypes: CartTreeItem[] = []
         for (const rtRows of groupEntries(rows, cartResultTypeKey).values()) {
           resultTypes.push(
-            buildCartResultTypeNode(rtRows, deviceKey, (rtRowList, rtKey) => {
-              const cases: CartTreeBranch[] = []
-              for (const caseRows of groupEntries(rtRowList, cartCaseKey).values()) {
-                cases.push(
-                  buildCartCaseNode(caseRows, rtKey, (leafRows, caseKey) =>
-                    cartLeafLayer(leafRows, caseKey, taskLayer, omitTaskLayer)
-                  )
-                )
-              }
+            buildCartResultTypeNode(rtRows, deviceKey, (rtRowList, rtKey) =>
               // 组织层：result_type 之下、用例卡之上
-              return cartCaseOrgLevel(cases, org, subView, rtKey)
-            })
+              cartCaseOrgLevel(buildCases(rtRowList, rtKey), org, subView, rtKey)
+            )
           )
         }
         return resultTypes
@@ -1101,6 +1174,13 @@ function cartEntriesOf(groups: PickCartGroup[]): PickCartEntry[] {
   return groups.flatMap((g) => g.entries)
 }
 
+/** 购物车结果类型种类 <2 → 树内省略 result_type 层（与「结果类型视图」入口同一判定） */
+function cartOmitResultTypeLayer(groups: PickCartGroup[]): boolean {
+  return !hasResultTypeVariety(
+    cartEntriesOf(groups).map((e) => e.sourceResultType)
+  )
+}
+
 /**
  * 结果类型维度是否具备多样性：种类 <2 时「结果类型视图」入口不渲染
  * （负责人 2026-10-24T12:39Z 追加口径；真实库 result_type 全为 default 时该视图与默认视图同形）。
@@ -1119,13 +1199,21 @@ export function hasResultTypeVariety(
 
 /**
  * 购物车用例视图（A 组）：用例（PickCaseCard）→ 设备/API → result_type → 任务 → 叶。
- * 购物车 / 复核抽屉恒显任务层（单任务也不省略，与阶段 2 单任务省略口径相反）。
+ * 购物车 / 复核抽屉恒显任务层（单任务也不省略，与阶段 2 单任务省略口径相反）；
+ * 结果类型只有 1 种时 result_type 层省略（用例 → 设备/API → 任务 → 叶）。
  */
 export function buildCartCaseView(groups: PickCartGroup[]): CartTreeBranch[] {
-  return cartCaseViewNodes(cartEntriesOf(groups), 'cv', true, false)
+  return cartCaseViewNodes(
+    cartEntriesOf(groups),
+    'cv',
+    true,
+    false,
+    cartOmitResultTypeLayer(groups)
+  )
 }
 
-/** 购物车设备视图（A 组）：设备/API → result_type → 组织层 → 用例（PickCaseCard）→ 任务 → 叶 */
+/** 购物车设备视图（A 组）：设备/API → result_type → 组织层 → 用例（PickCaseCard）→ 任务 → 叶
+ *  （结果类型只有 1 种时 result_type 层省略：设备/API → 组织层 → 用例 → 任务 → 叶） */
 export function buildCartDeviceView(
   groups: PickCartGroup[],
   org: PickCaseOrgDimension = 'group',
@@ -1137,7 +1225,8 @@ export function buildCartDeviceView(
     true,
     false,
     org,
-    subView
+    subView,
+    cartOmitResultTypeLayer(groups)
   )
 }
 
@@ -1176,11 +1265,27 @@ export function buildCartTaskView(
 ): CartTreeBranch[] {
   return groups.map((group) => {
     const keyPrefix = `tv${group.taskId}`
+    /** 结果类型种类按全集判定（跨任务同一口径），单种类时任务内也不渲染该层 */
+    const omitResultTypeLayer = cartOmitResultTypeLayer(groups)
     const children: CartTreeItem[] =
       subView === 'case'
-        ? cartCaseViewNodes(group.entries, keyPrefix, false, false)
+        ? cartCaseViewNodes(
+            group.entries,
+            keyPrefix,
+            false,
+            false,
+            omitResultTypeLayer
+          )
         : subView === 'device'
-          ? cartDeviceViewNodes(group.entries, keyPrefix, false, false, org, caseOrgSubView)
+          ? cartDeviceViewNodes(
+              group.entries,
+              keyPrefix,
+              false,
+              false,
+              org,
+              caseOrgSubView,
+              omitResultTypeLayer
+            )
           : cartResultTypeViewNodes(
               group.entries,
               keyPrefix,

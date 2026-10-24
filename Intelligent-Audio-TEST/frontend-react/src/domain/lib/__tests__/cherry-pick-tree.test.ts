@@ -810,8 +810,8 @@ describe('购物车树与移除矩阵（§4.2/§4.3）', () => {
     expect(caseNode.name).toBe('用例不可用 1e98e5e6…')
     const deviceNode = caseNode.children[0] as CartTreeBranch
     expect(deviceNode.name).toBe('设备不可用 9')
-    const rt = deviceNode.children[0] as CartTreeBranch
-    const leaf = rt.children[0]
+    // 单一种类 result_type → 该层省略，叶直接挂在设备下
+    const leaf = deviceNode.children[0]
     expect(leaf.kind === 'leaf' && leaf.caseName).toBe('用例不可用 1e98e5e6…')
   })
 
@@ -923,7 +923,20 @@ describe('购物车三视图树构建（A 组，INT-1694 二次口径：任务�
 
   it('用例视图：同一用例/设备/result_type 跨两任务 → 上层共享，仅任务层分叉', () => {
     const shared = [
-      { taskId: 1042, taskName: '任务A', entries: [multiCartGroups[0].entries[0]] },
+      {
+        taskId: 1042,
+        taskName: '任务A',
+        entries: [
+          multiCartGroups[0].entries[0], // a1 real-time
+          // 第二种 result_type 仅用于让该层出现（单一种类时整层省略，见「结果类型只有 1 种」用例组）
+          {
+            ...multiCartGroups[0].entries[0],
+            itemId: 'a2f',
+            resultId: 12,
+            sourceResultType: 'final',
+          },
+        ],
+      },
       {
         taskId: 1043,
         taskName: '任务B',
@@ -941,11 +954,11 @@ describe('购物车三视图树构建（A 组，INT-1694 二次口径：任务�
     const tree = buildCartCaseView(shared)
     const cases = collectCases(tree)
     expect(cases).toHaveLength(1) // 用例卡只出现一次
-    expect(cases[0].count).toBe(2)
+    expect(cases[0].count).toBe(3)
     const devices = collectDevices(cases[0].children)
     expect(devices).toHaveLength(1) // 设备层共享
     const rts = collectResultTypes(devices[0].children)
-    expect(rts).toHaveLength(1) // result_type 层共享
+    expect(rts.map((r) => r.name)).toEqual(['real-time', 'final']) // result_type 层共享，不按任务分簇
     const tasks = collectTasks(rts[0].children)
     expect(tasks.map((t) => t.name)).toEqual(['任务A', '任务B'])
     expect(tasks[0].entryIds).toEqual(['a1'])
@@ -1157,6 +1170,108 @@ describe('购物车任务视图（B 组，INT-1694：任务在第一级，下分
     const tree = buildCartTaskView([groups[0]], 'case')
     expect(branches(tree)).toHaveLength(1)
     expect(branches(tree)[0].level).toBe('task')
+  })
+})
+
+describe('结果类型只有 1 种 → 树内省略 result_type 层（负责人 2026-10-24 追加口径）', () => {
+  /** 阶段 2：任务A（c1/c2）+ 任务B（c3），全部 real-time → 单一种类、多任务 */
+  const singleTypeCandidates = CANDIDATES.filter((c) => c.resultType === 'real-time')
+
+  /** 购物车：两个任务，全部 default → 单一种类（任务层恒显） */
+  const singleTypeCart = [
+    {
+      taskId: 1042,
+      taskName: '任务A',
+      entries: [
+        { itemId: 'a1', resultId: 1, sourceTaskId: 1042, sourceTaskName: '任务A', sourceCaseId: 'c1', sourceCaseName: '用例001', sourceDeviceId: 1, sourceDeviceName: '设备-01', sourceApiId: null, sourceApiName: null, sourceResultType: 'default', executionStatus: 'completed', evaluationStatus: 'completed', invalid: false },
+      ],
+    },
+    {
+      taskId: 1043,
+      taskName: '任务B',
+      entries: [
+        { itemId: 'b1', resultId: 2, sourceTaskId: 1043, sourceTaskName: '任务B', sourceCaseId: 'c1', sourceCaseName: '用例001', sourceDeviceId: 1, sourceDeviceName: '设备-01', sourceApiId: null, sourceApiName: null, sourceResultType: 'default', executionStatus: 'completed', evaluationStatus: 'completed', invalid: false },
+      ],
+    },
+  ]
+
+  it('阶段 2 用例视图：用例 → 设备/API → 任务 → 叶（无 result_type 层）', () => {
+    const view = buildPickCaseView(singleTypeCandidates)
+    const c1 = view.find((n) => n.kind === 'branch' && n.caseId === 'c1') as PickTreeBranch
+    const device = c1.children.find(
+      (n): n is PickTreeBranch => n.kind === 'branch' && n.level === 'device'
+    ) as PickTreeBranch
+    expect(device.children.every((n) => n.kind === 'branch' && n.level === 'task')).toBe(true)
+    const tasks = device.children as PickTreeBranch[]
+    expect(tasks.map((t) => t.name)).toEqual(['任务A'])
+    expect(tasks[0].children.every((n) => n.kind === 'leaf')).toBe(true)
+  })
+
+  it('阶段 2 设备视图：设备/API → 组织层 → 用例 → 任务 → 叶（组织层直接挂在设备下）', () => {
+    const view = buildPickDeviceView(singleTypeCandidates)
+    const d1 = view.find((n) => n.kind === 'branch' && n.name === '设备-01') as PickTreeBranch
+    expect(d1.children.every((n) => n.kind === 'branch' && n.level === 'caseOrg')).toBe(true)
+    const org = d1.children[0] as PickTreeBranch
+    expect(org.orgKind).toBe('group')
+    const caseNode = org.children[0] as PickTreeBranch
+    expect(caseNode.level).toBe('case')
+    expect(caseNode.children.every((n) => n.kind === 'branch' && n.level === 'task')).toBe(true)
+  })
+
+  it('阶段 2 单任务 + 单一种类：任务层与 result_type 层同时省略（用例 → 设备 → 叶）', () => {
+    const view = buildPickCaseView(singleTypeCandidates.filter((c) => c.taskId === 1042))
+    const c1 = view.find((n) => n.kind === 'branch' && n.caseId === 'c1') as PickTreeBranch
+    const device = c1.children[0] as PickTreeBranch
+    expect(device.kind).toBe('branch')
+    expect(device.level).toBe('device')
+    expect(device.children.every((n) => n.kind === 'leaf')).toBe(true)
+  })
+
+  it('购物车用例视图：用例 → 设备 → 任务 → 叶（任务层恒显，result_type 层省略）', () => {
+    const tree = buildCartCaseView(singleTypeCart)
+    const caseNode = tree[0] as CartTreeBranch
+    expect(caseNode.level).toBe('case')
+    const device = caseNode.children[0] as CartTreeBranch
+    expect(device.level).toBe('device')
+    const tasks = device.children as CartTreeBranch[]
+    expect(tasks.map((t) => t.name)).toEqual(['任务A', '任务B'])
+    expect(tasks[0].entryIds).toEqual(['a1'])
+    expect(tasks[0].children.every((n) => n.kind === 'leaf')).toBe(true)
+  })
+
+  it('购物车设备视图：设备 → 组织层 → 用例 → 任务 → 叶', () => {
+    const tree = buildCartDeviceView(singleTypeCart)
+    const device = tree[0] as CartTreeBranch
+    expect(device.level).toBe('device')
+    const org = device.children[0] as CartTreeBranch
+    expect(org.level).toBe('caseOrg')
+    const caseNode = org.children[0] as CartTreeBranch
+    expect(caseNode.level).toBe('case')
+    expect((caseNode.children as CartTreeBranch[]).map((t) => t.name)).toEqual(['任务A', '任务B'])
+  })
+
+  it('购物车任务视图设备子模式：任务 → 设备 → 组织层 → 用例 → 叶（任务内同样省略）', () => {
+    const tree = buildCartTaskView(singleTypeCart, 'device')
+    const taskA = tree[0] as CartTreeBranch
+    expect(taskA.level).toBe('task')
+    const device = taskA.children[0] as CartTreeBranch
+    expect(device.level).toBe('device')
+    const org = device.children[0] as CartTreeBranch
+    expect(org.level).toBe('caseOrg')
+    const caseNode = org.children[0] as CartTreeBranch
+    expect(caseNode.level).toBe('case')
+    expect(caseNode.children.every((n) => n.kind === 'leaf')).toBe(true)
+  })
+
+  it('反向对照：≥2 种 result_type 时该层保留（CANDIDATES 为 real-time + final）', () => {
+    const view = buildPickCaseView(CANDIDATES)
+    const c1 = view.find((n) => n.kind === 'branch' && n.caseId === 'c1') as PickTreeBranch
+    const device = c1.children.find(
+      (n): n is PickTreeBranch => n.kind === 'branch' && n.level === 'device'
+    ) as PickTreeBranch
+    expect(
+      device.children.map((n) => (n.kind === 'branch' ? n.level : 'leaf'))
+    ).toEqual(['resultType', 'resultType'])
   })
 })
 
