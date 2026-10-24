@@ -186,6 +186,13 @@ BOOTSTRAP_STEPS = [
     #     不给存量表补列，存量库（真实库 / 隔离库）缺该列时新镜像读声明表即
     #     UndefinedColumn。脚本幂等（列存在即 SKIP），全新库为全 SKIP。
     ('python', 'scripts/migrations/202610/add_api_param_field_path_int1747.py', '--apply'),
+    # ㊹ voice_llm 的 API 输出声明 + source='api' 评估映射种子（INT-1746 / C1，
+    #     C0 裁定 1/3）：评估侧只按 rounds[i].output.get(target_param) 取值，
+    #     映射责任在执行侧，而这两件配置真实库上都缺 → API 用例的 llm_judge
+    #     维度入参恒空。脚本幂等（自然键已存在即 SKIP）。依赖 llm_judge 维度
+    #     已存在（202609/seed_llm_judge_dimension.py，不在引导链内）：缺维度时
+    #     只补声明段并提示，不报错。
+    ('python', 'scripts/migrations/202610/seed_api_eval_mapping_int1746.py', '--apply'),
 ]
 
 

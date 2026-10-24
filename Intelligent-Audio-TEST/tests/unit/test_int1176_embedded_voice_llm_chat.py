@@ -164,10 +164,12 @@ class TestSendViaAdapterResultMapping:
             api_config=api_config, input_text='hi',
             input_type='text', start_time=0.0, input_audio_path='')
         assert set(result.keys()) == {
-            'round_number', 'input', 'input_type', 'output',
+            'round_number', 'input', 'input_type', 'answer_text',
             'output_audio_path', 'latency', 'response_metrics',
             'success', 'raw_response'}
-        assert result['output'] == 'hi'
+        # INT-1746：轮次文本输出落 answer_text，output 由
+        # _attach_api_output_fields 写映射后的 dict
+        assert result['answer_text'] == 'hi'
         assert result['output_audio_path'] is None
         assert 'latency' in result['response_metrics']
         assert result['success'] is True

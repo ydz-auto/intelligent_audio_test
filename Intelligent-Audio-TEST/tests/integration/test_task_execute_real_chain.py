@@ -1316,8 +1316,11 @@ class TestInt118VoiceLlmMultiRoundEvalChain:
         assert algo.get('round_count') == 3 and algo.get('success_count') == 3, \
             f'3 轮应全部执行成功: {algo}'
         rounds = algo.get('rounds', [])
-        assert [r.get('output') for r in rounds] == \
+        # INT-1746：轮次文本落 answer_text，output 为映射后的 {target_param: value}
+        assert [r.get('answer_text') for r in rounds] == \
             ['你好，有什么可以帮助你的？'] * 3, f'逐轮应答不符: {rounds}'
+        assert all(isinstance(r.get('output'), dict) for r in rounds), \
+            f'rounds[i].output 应为映射后 dict: {rounds}'
 
         # 评估维度出行：两条 voice_llm 维度均产出已完成得分
         from evaluation_service.infrastructure.persistence.models import TestResultDimension
