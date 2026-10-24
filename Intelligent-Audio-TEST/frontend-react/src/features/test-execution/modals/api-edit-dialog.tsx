@@ -166,6 +166,31 @@ function endpointKey(): string {
   return Math.random().toString(36).slice(2, 9)
 }
 
+/**
+ * 表单初值 = 每次打开的重置值（INT-1777 复测 P2-1）。
+ * `useForm({ values })` 只在深比较变化时重置，而编辑对象跨开合是同一个引用：
+ * 取消（或关闭）后重开必须复位，否则上次取消的输入会残留、并在重开直接保存时被写库。
+ */
+function computeFormValues(
+  api: ApiConfig | undefined,
+  algorithmList: ReadonlyArray<{ id: string; name: string }>,
+  globalAlgorithmId: string
+): ApiForm {
+  return {
+    name: api?.name ?? '',
+    algorithmType:
+      api?.algorithmType ??
+      algorithmList.find((a) => a.id === globalAlgorithmId)?.name ??
+      '',
+    maxProcess: api?.defaultMaxProcess ?? 5,
+    description: api?.description ?? '',
+    deviceType:
+      api?.deviceType === 'http_api' || api?.deviceType === 'websocket_api'
+        ? api.deviceType
+        : 'auto',
+  }
+}
+
 interface ApiEditDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -203,19 +228,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
 
   const form = useForm<ApiForm>({
     resolver: zodResolver(apiFormSchema),
-    values: {
-      name: api?.name ?? '',
-      algorithmType:
-        api?.algorithmType ??
-        algorithmList.find((a) => a.id === globalAlgorithmId)?.name ??
-        '',
-      maxProcess: api?.defaultMaxProcess ?? 5,
-      description: api?.description ?? '',
-      deviceType:
-        api?.deviceType === 'http_api' || api?.deviceType === 'websocket_api'
-          ? api.deviceType
-          : 'auto',
-    },
+    values: computeFormValues(api, algorithmList, globalAlgorithmId),
   })
 
   const watchedDeviceType = form.watch('deviceType')
@@ -242,9 +255,11 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     }
   }, [open, api])
 
-  // 每次打开重置页签与草稿（关闭再打开不残留上次输入）
+  // 每次打开重置页签、草稿与表单（关闭再打开不残留上次输入，含取消后的表单字段）
   useEffect(() => {
     if (!open) return
+    // P2-1：values 深比较在同引用 api 上不会触发重置，开合必须显式 reset
+    form.reset(computeFormValues(api, algorithmList, globalAlgorithmId))
     setTab('basic')
     setMetaDraft(requestTemplateDraftFromMeta(api?.meta))
     setMetaTouched(false)
@@ -252,6 +267,8 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     setAudioDraft(audioConfigDraftFrom(api?.audioConfig))
     setAudioTouched(false)
     setAudioCleared(false)
+    // algorithmList / globalAlgorithmId 只作打开瞬间的缺省算法来源，迟到的选项由 values 深比较补齐
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, api])
 
   // 最新快照到达后刷新草稿（用户已触碰的字段不覆盖）

@@ -5,6 +5,7 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ApiConfig } from '@/domain/models/apiConfig'
@@ -72,6 +73,33 @@ function renderDialog(api?: ApiConfig, fresh?: ApiConfig) {
 
 function openRequestTab() {
   fireEvent.click(screen.getByRole('tab', { name: '请求模板' }))
+}
+
+/** 可开合的宿主：复测 P2-1「取消 / 关闭后重开不残留上次输入」 */
+function renderReopenable(api?: ApiConfig) {
+  fetchApiMock.mockResolvedValue(null)
+  function Harness() {
+    const [open, setOpen] = useState(true)
+    return (
+      <>
+        <button type='button' onClick={() => setOpen(true)}>
+          重新打开
+        </button>
+        <ApiEditDialog open={open} onOpenChange={setOpen} api={api} />
+      </>
+    )
+  }
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <Harness />
+    </QueryClientProvider>
+  )
+}
+
+function cancelAndReopen() {
+  fireEvent.click(screen.getByRole('button', { name: '取消' }))
+  fireEvent.click(screen.getByRole('button', { name: '重新打开' }))
 }
 
 beforeEach(() => {
@@ -203,5 +231,38 @@ describe('meta / audio_config 保存口径（INT-1777）', () => {
     expect(JSON.parse(body.value)).toEqual({ text: '{{text}}' })
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText('HTTP API（http_api）')).toBeInTheDocument()
+  })
+})
+
+describe('取消 / 关闭后重开不残留（INT-1777 复测 P2-1）', () => {
+  it('编辑态：改名称后取消 → 重开回填已保存值，直接保存不会写入被取消的输入', async () => {
+    renderReopenable(API_FIXTURE)
+    fireEvent.change(screen.getByLabelText('API 名称 *'), {
+      target: { value: '不该保存的名字' },
+    })
+    cancelAndReopen()
+    expect(screen.getByLabelText('API 名称 *')).toHaveValue('接线测试_API')
+
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
+    expect(saveMock.mock.calls[0][0].name).toBe('接线测试_API')
+  })
+
+  it('新增态：改名称 / 最大并发后取消 → 重开为空值', () => {
+    renderReopenable(undefined)
+    fireEvent.change(screen.getByLabelText('API 名称 *'), {
+      target: { value: '不该保存的名字' },
+    })
+    fireEvent.change(screen.getByLabelText('最大并发'), { target: { value: '42' } })
+    cancelAndReopen()
+    expect(screen.getByLabelText('API 名称 *')).toHaveValue('')
+    expect(screen.getByLabelText('最大并发')).toHaveValue(5)
+  })
+
+  it('取消后重开，页签仍落基础页签', () => {
+    renderReopenable(API_FIXTURE)
+    openRequestTab()
+    cancelAndReopen()
+    expect(screen.getByRole('tab', { name: '基础' }).getAttribute('aria-selected')).toBe('true')
   })
 })
