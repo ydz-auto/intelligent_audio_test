@@ -128,6 +128,9 @@ class AlgorithmParamCrudService(
                 'required', 'default_value', 'validation_rules', 'help_text',
                 'ui_order', 'hidden'
             ]
+            if not is_device:
+                # INT-1747：field_path 只存在于 algorithm_api_params，设备参数表无该列
+                updatable_fields.append('field_path')
             # 键名归一化：snake_case 直接命中；camelCase（paramName/uiOrder 等）转 snake_case 后再匹配；
             # 未知字段忽略，避免作为空集更新造成静默 no-op
             update_fields = {}

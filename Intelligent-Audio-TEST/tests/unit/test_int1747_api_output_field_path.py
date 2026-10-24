@@ -395,3 +395,150 @@ def test_serialize_params_passes_field_path_only_when_present():
     assert serialized[0]['field_path'] == 'data.translation.text'
     assert 'field_path' not in serialized[1]
     assert 'field_path' not in serialized[2]
+
+
+# ==================== 8. 网关参数 CRUD 透传（打回 P1/P2） ====================
+
+class _FakeParamRepo:
+    """参数仓储替身：只记录下发给 UpdateParam RPC 的字段，不连库。"""
+
+    def __init__(self, *, device=None, api=None, api_list=None):
+        self._device = device
+        self._api = api
+        self._api_list = api_list or []
+        self.sent_fields = None
+        self.commits = 0
+
+    def get_device_param(self, param_id):
+        return self._device
+
+    def get_api_param(self, param_id):
+        return self._api
+
+    def list_api_params(self, algorithm_type=None):
+        return list(self._api_list)
+
+    def update_param_attrs(self, param, fields):
+        self.sent_fields = fields
+
+    def commit(self):
+        self.commits += 1
+
+
+def _crud_service(repo):
+    from task_service.application.algorithm.algorithm_param_crud_service import (
+        AlgorithmParamCrudService,
+    )
+    svc = AlgorithmParamCrudService.__new__(AlgorithmParamCrudService)
+    svc.repo = repo
+    return svc
+
+
+def test_update_param_sends_field_path_for_api_param():
+    """P1：PUT /algorithm/params/{id} 对 API 参数必须把 field_path 下发到 UpdateParam RPC。"""
+    repo = _FakeParamRepo(api={'id': 1, 'algorithm_type': 'voice_llm',
+                               'param_code': 'text', 'direction': 'output'})
+    result = _crud_service(repo).update_param(
+        1, {'field_path': 'data.translation.text', 'ui_order': 9})
+
+    assert result['success'] is True
+    assert repo.sent_fields == {'field_path': 'data.translation.text', 'ui_order': 9}
+    assert repo.commits == 1
+
+
+def test_update_param_sends_field_path_for_camel_case_key():
+    repo = _FakeParamRepo(api={'id': 1, 'param_code': 'text', 'direction': 'output'})
+    _crud_service(repo).update_param(1, {'fieldPath': 'data.events[0].text'})
+    assert repo.sent_fields == {'field_path': 'data.events[0].text'}
+
+
+def test_update_param_does_not_send_field_path_for_device_param():
+    """设备参数表无 field_path 列：设备分支不得下发该键（避免双口径 / 无效写）。"""
+    repo = _FakeParamRepo(device={'id': 2, 'param_code': 'device_code'})
+    result = _crud_service(repo).update_param(
+        2, {'field_path': 'data.translation.text', 'ui_order': 3})
+
+    assert result['success'] is True
+    assert repo.sent_fields == {'ui_order': 3}
+
+
+def test_update_fields_apply_to_api_param_model():
+    """下发字段确实落到 AlgorithmApiParam PO（_apply_update_fields 按 hasattr 写值）。"""
+    from algorithm_service.infrastructure.persistence._param_converters import (
+        _apply_update_fields,
+    )
+    from algorithm_service.infrastructure.persistence.models import (
+        AlgorithmApiParam, AlgorithmDeviceParam,
+    )
+    api_po = AlgorithmApiParam()
+    _apply_update_fields(api_po, {'field_path': 'data.translation.text'})
+    assert api_po.field_path == 'data.translation.text'
+
+    # 设备 PO 无该属性：不抛异常、不产生属性（共用函数的既有语义）
+    device_po = AlgorithmDeviceParam()
+    _apply_update_fields(device_po, {'field_path': 'x'})
+    assert not hasattr(device_po, 'field_path')
+
+
+def test_api_param_dto_keeps_field_path_device_dto_does_not():
+    """P2：task_service ACL 的 dict→DTO 投影（列表/详情读路径）不得丢 field_path。"""
+    from dataclasses import asdict
+    from shared.utils.dto_utils import dict_to_dto
+    from task_service.domain.dto.task_acl_dto import ApiParamDTO, DeviceParamDTO
+
+    payload = {'id': 1, 'algorithm_type': 'voice_llm', 'param_code': 'text',
+               'direction': 'output', 'field_path': 'data.translation.text'}
+
+    api_dto = dict_to_dto(payload, ApiParamDTO)
+    assert api_dto.field_path == 'data.translation.text'
+    assert asdict(api_dto)['field_path'] == 'data.translation.text'
+
+    # 设备参数不加该字段，避免双口径
+    assert 'field_path' not in {f.name for f in DeviceParamDTO.__dataclass_fields__.values()}
+
+
+def test_list_params_returns_field_path():
+    """GET /algorithm/params?param_type=api 的序列化结果含 field_path。"""
+    from task_service.application.algorithm.algorithm_param_query_service import (
+        AlgorithmParamQueryService,
+    )
+    from task_service.domain.dto.task_acl_dto import ApiParamDTO
+
+    repo = _FakeParamRepo(api_list=[
+        ApiParamDTO(id=1, algorithm_type='voice_llm', param_code='text',
+                    direction='output', field_path='data.translation.text'),
+        ApiParamDTO(id=2, algorithm_type='voice_llm', param_code='response_audio',
+                    direction='output'),
+    ])
+    svc = AlgorithmParamQueryService.__new__(AlgorithmParamQueryService)
+    svc.repo = repo
+    result = svc.list_params(algorithm_type='voice_llm', param_type='api')
+
+    items = result['data']['items']
+    assert items[0]['field_path'] == 'data.translation.text'
+    assert items[1]['field_path'] is None
+
+
+def test_grpc_update_param_boundary_keeps_field_path():
+    """进程内全链：UpdateParamRequest(JSON) → task_service servicer → service 白名单 → 下发字段。
+
+    复刻打回 P1 的复现路径（不连库、不写库），只是把入口从直调 service 换成真实 gRPC 边界。
+    """
+    import json
+    from shared.proto import task_service_pb2 as task_pb
+    from task_service.interfaces.grpc.algorithm_config import (
+        AlgorithmConfigServiceServicer,
+    )
+
+    repo = _FakeParamRepo(api={'id': 1, 'algorithm_type': 'voice_llm',
+                               'param_code': 'text', 'direction': 'output'})
+    servicer = AlgorithmConfigServiceServicer()
+    servicer._svc = _crud_service(repo)
+
+    resp = servicer.UpdateParam(task_pb.UpdateParamRequest(
+        param_id=1,
+        data=json.dumps({'field_path': 'data.translation.text', 'uiOrder': 9}),
+    ))
+
+    assert resp.success is True
+    assert repo.sent_fields == {'field_path': 'data.translation.text', 'ui_order': 9}
