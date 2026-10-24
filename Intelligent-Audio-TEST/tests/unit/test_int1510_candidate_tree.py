@@ -16,8 +16,10 @@
 - 选择口径：select-all 返回集合 = tree 各 result_type 节点 result_ids 并集。
 
 DB：进程级 SQLite（tests/conftest.py 注入），按需 create_all，用例内自行清理，
-对齐 test_int1496 / test_int1130 口径。评估域表在单测库内以最小 DDL 建出
-（只读投影 `test_result_dimensions`，与生产共享库同语义）。
+对齐 test_int1496 / test_int1130 口径。评估域表走 ORM 全 schema create_all
+（只读投影 `test_result_dimensions`，与生产共享库同语义）——不得在本进程级
+共享库里建裁剪版同表，否则 create_all 的 checkfirst 会跳过，后序文件拿到缺列
+的旧表（INT-1754 集成实测：INT-339 收集序在后即报 no column named algorithm_type）。
 """
 import os
 
@@ -41,14 +43,6 @@ _OWNER = 42
 _OTHER = 43
 _ADMIN = 99
 
-_MIN_EVAL_TABLE_DDL = (
-    'CREATE TABLE IF NOT EXISTS test_result_dimensions ('
-    ' id INTEGER PRIMARY KEY AUTOINCREMENT,'
-    ' test_result_id INTEGER NOT NULL,'
-    ' dimension_id INTEGER)'
-)
-
-
 def _ensure_tables():
     global _TABLES
     if _TABLES is None:
@@ -57,13 +51,14 @@ def _ensure_tables():
             Task, TaskCase, Tag, TaskTag, TestCase, TestCaseGroup, TestCaseTag,
             TestResult, TaskCherryPickRelation,
         )
+        from evaluation_service.infrastructure.persistence.models import (
+            TestResultDimension,
+        )
         _TABLES = [t.__table__ for t in (
             Task, TaskCase, Tag, TaskTag, TestCase, TestCaseGroup, TestCaseTag,
-            TestResult, TaskCherryPickRelation,
+            TestResult, TaskCherryPickRelation, TestResultDimension,
         )]
         Base.metadata.create_all(bind=get_engine(), tables=_TABLES)
-        with get_engine().begin() as conn:
-            conn.execute(text(_MIN_EVAL_TABLE_DDL))
         remove_db_session()
     return _TABLES
 
@@ -390,8 +385,10 @@ def test_filter_by_evaluation_status(db):
     session = get_db_session()
     try:
         session.execute(
-            text('INSERT INTO test_result_dimensions (test_result_id, dimension_id) '
-                 'VALUES (:rid, 1)'), {'rid': result_ids[0]})
+            text('INSERT INTO test_result_dimensions '
+                 '(id, test_result_id, dimension_id, evaluation_status) '
+                 'VALUES (:id, :rid, 1, :st)'),
+            {'id': 900001, 'rid': result_ids[0], 'st': 'completed'})
         session.commit()
     finally:
         remove_db_session()
