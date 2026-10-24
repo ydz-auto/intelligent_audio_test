@@ -17,7 +17,7 @@ import json
 import logging
 from datetime import datetime
 
-from shared.models.common_enums import AuditEvent
+from shared.models.common_enums import AuditEvent, AuditLogCategory
 
 from task_service.infrastructure.persistence._task_converters import _UTC_PLUS_8
 from task_service.infrastructure.persistence.published_task_repository import (
@@ -28,7 +28,6 @@ from task_service.infrastructure.persistence.models.published_task_models import
     PUBLISHED_TASK_TYPE_API,
     PUBLISHED_TASK_TYPE_E2E,
 )
-from task_service.infrastructure.persistence.log_repository import log_repository
 
 logger = logging.getLogger(__name__)
 
@@ -164,22 +163,27 @@ class PublishedTaskService:
 
     @staticmethod
     def _write_audit(event: AuditEvent, payload: dict) -> None:
-        """审计事件落 logs 表（category=System）。
+        """审计事件落审计文件（category=System，INT-1793 S4 改调审计写入器）。
 
-        审计写入失败仅告警不回滚：主流程已成功，审计为旁路记录。
+        task_service 是审计文件的唯一写盘者（H4），本进程内直接调用写入器，
+        不再直写 logs 表（logs 表零写入）。审计写入失败仅告警不回滚：
+        主流程已成功，审计为旁路记录。
         """
         try:
-            log_repository.batch_create([{
-                'module': 'published_task',
-                'source': 'published_task_service',
-                'content': json.dumps({
+            from shared.logging.audit_writer import write_audit_event
+            write_audit_event(
+                event=event.value,
+                category=AuditLogCategory.SYSTEM.value,
+                module='published_task',
+                source='published_task_service',
+                content=json.dumps({
                     'event': event.value,
                     **payload,
                     'result': 'success',
                 }, ensure_ascii=False),
-            }])
+            )
         except Exception:
-            logger.warning('审计事件 %s 落库失败', event.value, exc_info=True)
+            logger.warning('审计事件 %s 写审计文件失败', event.value, exc_info=True)
 
     @staticmethod
     def _resolve_operator(data: dict):

@@ -33,6 +33,8 @@ def write_device_audit(event, module: str, content: Dict[str, Any]) -> None:
         log_not_emit(
             'INFO', module, json.dumps(payload, ensure_ascii=False, default=str),
             category=AuditLogCategory.DEVICE.value, source='api_gateway',
+            # INT-1793 H1：显式审计标记——同 category 的设备运维日志不带本实参
+            audit_event=event,
         )
     except Exception:
         logger.warning('审计事件 %s 落库失败', getattr(event, 'value', event), exc_info=True)
