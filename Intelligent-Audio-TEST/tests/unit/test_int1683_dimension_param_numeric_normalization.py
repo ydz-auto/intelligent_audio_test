@@ -43,7 +43,9 @@ class _FakeRepo:
 
 class _MixinForTest(_DimensionMixin):
     @staticmethod
-    def _invalidate_cache():
+    def _invalidate_cache(**_kwargs):
+        # INT-1666 起 dimension_mixin 按受影响范围失效（algorithm_types / dimension_ids），
+        # 夹具按缺省全量失效语义吞掉参数即可。
         return None
 
 
