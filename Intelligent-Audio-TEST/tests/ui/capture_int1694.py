@@ -2,12 +2,17 @@
 """INT-1694 取证：阶段 2 三视图（任务末级）+ 购物车任务视图/三视图（任务首级/末级）。
 
 对接本 run dev server（5331，/api 代理 docker 真实栈 15000，库 intelligent_audio_test）。
+AUTH_MODE=off：购物车写接口需真实用户，故先在 /login 走 RSA-OAEP 加密登录写
+localStorage['iatp:auth:token:v1']（账号 接线测试_admin，与 verify_int1592 同口径）；
+取证完成后 DELETE /tasks/cherry-picks/cart/items 清空购物车，避免残留真实主库。
 输出：tests/ui/artifacts/int1694/*.png
 """
 import os
 import sys
 import time
 import json
+import urllib.error
+import urllib.request
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -16,11 +21,67 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 
 BASE = 'http://127.0.0.1:5331'
+API = 'http://127.0.0.1:15000'
+LOGIN_USER = '接线测试_admin'
+LOGIN_PASS = 'JieXianTest@2026'
 CHROME = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
 HERE = os.path.dirname(os.path.abspath(__file__))
 ART = os.path.join(HERE, 'artifacts', 'int1694')
 os.makedirs(ART, exist_ok=True)
 SHOTS = []
+TOKEN = {'v': None}
+
+
+LOGIN_JS = r"""
+return (async () => {
+  const keyResp = await fetch('/api/v1/auth/login/encryption-key').then(r=>r.json());
+  const d = keyResp.data || keyResp;
+  if(!d.enabled) return {step:'disabled'};
+  const pem = d.public_key.replace(/-----[^-]+-----/g,'').replace(/\s+/g,'');
+  const bin = Uint8Array.from(atob(pem), c=>c.charCodeAt(0));
+  const key = await crypto.subtle.importKey('spki', bin, {name:'RSA-OAEP', hash:'SHA-256'}, false, ['encrypt']);
+  const enc = await crypto.subtle.encrypt({name:'RSA-OAEP'}, key, new TextEncoder().encode(arguments[0]));
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(enc)));
+  const body = new URLSearchParams({username: arguments[1], password_encrypted: b64, encryption_key_id: d.kid});
+  const r = await fetch('/api/v1/auth/login', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
+  const txt = await r.text();
+  let j = {}; try { j = JSON.parse(txt); } catch(e) {}
+  if (r.ok && j.access_token) localStorage.setItem('iatp:auth:token:v1', j.access_token);
+  return {status: r.status, token: j.access_token || null, body: r.ok ? 'ok' : txt.slice(0,300)};
+})()
+"""
+
+
+def login(drv):
+    """页面内加密登录（AUTH_MODE=off 下购物车写接口要求真实用户）。"""
+    drv.set_script_timeout(120)
+    res = {}
+    for _ in range(3):
+        try:
+            drv.get(BASE + '/login')
+            time.sleep(4)
+            res = drv.execute_script(LOGIN_JS, LOGIN_PASS, LOGIN_USER)
+            if res.get('token'):
+                break
+        except Exception:
+            time.sleep(2)
+    TOKEN['v'] = res.get('token')
+    print('LOGIN', res.get('status'), bool(res.get('token')))
+    if not TOKEN['v']:
+        raise RuntimeError('登录失败：%s' % res.get('body'))
+
+
+def clear_cart():
+    """收尾：清空本 run 加进购物车的条目（真实主库不留残留）。"""
+    req = urllib.request.Request(API + '/api/v1/tasks/cherry-picks/cart/items', method='DELETE')
+    if TOKEN['v']:
+        req.add_header('Authorization', 'Bearer ' + TOKEN['v'])
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            print('CART_CLEAR', json.loads(r.read() or b'{}').get('message'))
+    except Exception as exc:
+        print('CART_CLEAR_FAILED', exc)
+
 
 
 def make_driver(w=1600, h=1600):
@@ -225,6 +286,7 @@ def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else 'light'
     d = make_driver()
     try:
+        login(d)
         d.get(BASE + '/tasks/cherry-pick')
         time.sleep(2)
         if mode == 'dark':
@@ -245,6 +307,7 @@ def main():
         print('OK')
     finally:
         d.quit()
+        clear_cart()
 
 
 if __name__ == '__main__':
