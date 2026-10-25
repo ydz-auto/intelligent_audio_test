@@ -89,6 +89,7 @@ import {
   AUDIO_CHANNEL_OPTIONS,
   AUDIO_CONTAINER_OPTIONS,
   AUDIO_SAMPLE_RATE_OPTIONS,
+  ENDPOINT_NUMERIC_RULES,
   HTTP_METHOD_OPTIONS,
   RESPONSE_PARSER_PATH_DEFAULTS,
   audioConfigDraftFrom,
@@ -101,9 +102,12 @@ import {
   newKeyValueRow,
   requestTemplateDraftFromMeta,
   responseParserDraftFromMeta,
+  validateEndpointNumbers,
   type AppendModeValue,
   type AudioConfigDraft,
   type BodyTemplateMode,
+  type EndpointNumericErrors,
+  type EndpointNumericField,
   type KeyValueRow,
   type MetaDraftError,
   type RequestTemplateDraft,
@@ -254,6 +258,8 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   const algorithmList = algorithmOptions ?? []
   const [tab, setTab] = useState<ApiTab>('basic')
   const [endpoints, setEndpoints] = useState<EndpointFormRow[]>([])
+  // INT-1939 返工：端点行四项整数的字段级错误（按行 key 分组；表单 noValidate 后由 zod / 自查替代原生约束）
+  const [endpointErrors, setEndpointErrors] = useState<Record<string, EndpointNumericErrors>>({})
   // 请求模板页签草稿（meta 键级合并；未触碰不发 meta）
   const [metaDraft, setMetaDraft] = useState<RequestTemplateDraft>(emptyRequestTemplateDraft)
   const [metaTouched, setMetaTouched] = useState(false)
@@ -322,6 +328,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     // P2-1：values 深比较在同引用 api 上不会触发重置，开合必须显式 reset
     form.reset(computeFormValues(api, algorithmList, globalAlgorithmId))
     setTab('basic')
+    setEndpointErrors({})
     setMetaDraft(requestTemplateDraftFromMeta(api?.meta))
     setMetaTouched(false)
     setMetaErrors([])
@@ -399,8 +406,28 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     setAudioCleared(true)
   }
 
+  const endpointErrorOf = (key: string, field: EndpointNumericField) =>
+    endpointErrors[key]?.[field]
+
   const updateEndpoint = (key: string, patch: Partial<EndpointFormRow>) => {
     setEndpoints((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)))
+    // 改过的字段立刻清掉该行提示，其余字段的错误保留到下次保存
+    setEndpointErrors((prev) => {
+      const rowErrors = prev[key]
+      if (!rowErrors) return prev
+      const remaining = { ...rowErrors }
+      for (const field of Object.keys(patch)) delete remaining[field as EndpointNumericField]
+      const next = { ...prev }
+      if (Object.keys(remaining).length > 0) next[key] = remaining
+      else delete next[key]
+      return next
+    })
+  }
+
+  const setEndpointNumber = (key: string, field: EndpointNumericField, value: string) => {
+    const patch: Partial<EndpointFormRow> = {}
+    patch[field] = value
+    updateEndpoint(key, patch)
   }
 
   const addEndpoint = () => {
@@ -409,9 +436,32 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
 
   const removeEndpoint = (key: string) => {
     setEndpoints((prev) => prev.filter((row) => row.key !== key))
+    setEndpointErrors((prev) => {
+      if (!prev[key]) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
   }
 
   const handleSave = async (values: ApiForm) => {
+    // INT-1939 返工：表单 noValidate 后原生 min/max 不再拦截，端点行四项整数在此自查
+    // （口径同原原生约束：整数 + 区间；空串按缺省值兜底，不报错）。
+    // 只校验会提交的行——端点 URL 为空的行整行不下发。
+    const submittedEndpoints = endpoints.filter((row) => row.endpoint.trim())
+    const rowErrors: Record<string, EndpointNumericErrors> = {}
+    for (const row of submittedEndpoints) {
+      const errors = validateEndpointNumbers(row)
+      if (Object.keys(errors).length > 0) rowErrors[row.key] = errors
+    }
+    if (Object.keys(rowErrors).length > 0) {
+      // 拦截提交：弹窗不关、留在基础页签（端点行所在页签）并逐字段给出中文内联提示
+      setEndpointErrors(rowErrors)
+      setTab('basic')
+      return
+    }
+    setEndpointErrors({})
+
     const payload: Partial<ApiConfig> & { name: string } = {
       id: api?.id,
       name: values.name,
@@ -421,23 +471,21 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
       // INT-1800：协议 + 流式性两维独立提交；`device_type` 永不出现（后端写了会 400）
       protocol: values.protocol,
       streaming: values.streaming,
-      endpoints: endpoints
-        .filter((row) => row.endpoint.trim())
-        .map((row) => ({
-          id: null,
-          endpoint: row.endpoint.trim(),
-          name: row.name.trim() || null,
-          priority: Number(row.priority) || 1,
-          maxProcess: Number(row.maxProcess) || 1,
-          maxTimeout: Number(row.maxTimeout) || 30,
-          maxAudioDuration: Number(row.maxAudioDuration) || 60,
-          status: 'online',
-          healthScore: null,
-          description: null,
-          apiKeysSummary: row.apiKeysSummary,
-          // INT-1437 密钥池：textarea 草稿瞬态透传，adapter 拆行转 api_keys 落库
-          apiKeysText: row.apiKeysText,
-        })),
+      endpoints: submittedEndpoints.map((row) => ({
+        id: null,
+        endpoint: row.endpoint.trim(),
+        name: row.name.trim() || null,
+        priority: Number(row.priority) || 1,
+        maxProcess: Number(row.maxProcess) || 1,
+        maxTimeout: Number(row.maxTimeout) || 30,
+        maxAudioDuration: Number(row.maxAudioDuration) || 60,
+        status: 'online',
+        healthScore: null,
+        description: null,
+        apiKeysSummary: row.apiKeysSummary,
+        // INT-1437 密钥池：textarea 草稿瞬态透传，adapter 拆行转 api_keys 落库
+        apiKeysText: row.apiKeysText,
+      })),
     }
 
     // meta 写入（母卡 §3.1）：两个页签都未触碰 → 不下发 meta 键；
@@ -792,48 +840,37 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                               <X aria-hidden='true' className='size-3.5' />
                             </Button>
                           </div>
-                          <div className='grid grid-cols-5 gap-1.5'>
+                          <div className='grid grid-cols-5 items-start gap-1.5'>
                             <Input
                               value={row.name}
                               onChange={(e) => updateEndpoint(row.key, { name: e.target.value })}
                               placeholder='名称'
                               className='h-7 text-xs'
                             />
-                            <Input
-                              value={row.priority}
-                              type='number'
-                              min={1}
-                              max={10}
-                              onChange={(e) => updateEndpoint(row.key, { priority: e.target.value })}
-                              placeholder='优先级'
-                              className='h-7 text-xs'
-                            />
-                            <Input
-                              value={row.maxProcess}
-                              type='number'
-                              min={1}
-                              max={100}
-                              onChange={(e) => updateEndpoint(row.key, { maxProcess: e.target.value })}
-                              placeholder='最大进程'
-                              className='h-7 text-xs'
-                            />
-                            <Input
-                              value={row.maxTimeout}
-                              type='number'
-                              min={1}
-                              max={300}
-                              onChange={(e) => updateEndpoint(row.key, { maxTimeout: e.target.value })}
-                              placeholder='超时(s)'
-                              className='h-7 text-xs'
-                            />
-                            <Input
-                              value={row.maxAudioDuration}
-                              type='number'
-                              min={1}
-                              onChange={(e) => updateEndpoint(row.key, { maxAudioDuration: e.target.value })}
-                              placeholder='音频时长(s)'
-                              className='h-7 text-xs'
-                            />
+                            {/* INT-1939 返工：四项整数改由 validateEndpointNumbers 自查并给中文内联提示
+                                （表单 noValidate 后原生 min/max 只是展示，不再拦截提交） */}
+                            {ENDPOINT_NUMERIC_RULES.map((rule) => (
+                              <div key={rule.field} className='space-y-0.5'>
+                                <Input
+                                  value={row[rule.field]}
+                                  type='number'
+                                  min={rule.min}
+                                  max={rule.max ?? undefined}
+                                  aria-label={`端点${rule.label}`}
+                                  aria-invalid={Boolean(endpointErrorOf(row.key, rule.field))}
+                                  onChange={(e) =>
+                                    setEndpointNumber(row.key, rule.field, e.target.value)
+                                  }
+                                  placeholder={rule.label}
+                                  className='h-7 text-xs'
+                                />
+                                {endpointErrorOf(row.key, rule.field) && (
+                                  <p className='text-destructive text-xs'>
+                                    {endpointErrorOf(row.key, rule.field)}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
                           </div>
                           {/* INT-1437 密钥池：端点行内多行 textarea（每行一个 key，整段粘贴自动拆行）；
                               编辑回显只显示摘要（count + 尾号），完整密钥不出现 */}

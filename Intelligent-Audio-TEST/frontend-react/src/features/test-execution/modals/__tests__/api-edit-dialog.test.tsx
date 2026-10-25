@@ -441,6 +441,59 @@ describe('保存失败不关闭弹窗、草稿保留（INT-1939）', () => {
   })
 })
 
+describe('端点行四项整数校验（INT-1939 返工：noValidate 后原生 min/max 不再拦截）', () => {
+  it('优先级 99（越界）→ 中文内联提示、拦截提交、弹窗不关，并跳回基础页签', async () => {
+    const { onOpenChange } = renderDialog(API_FIXTURE)
+    fireEvent.change(screen.getByLabelText('端点优先级'), { target: { value: '99' } })
+    // 切到别的页签再保存：出错页签应自动跳回基础
+    openRequestTab()
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(await screen.findByText('请输入 1~10 的整数')).toBeInTheDocument()
+    expect(screen.getByLabelText('端点优先级')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('tab', { name: '基础' }).getAttribute('aria-selected')).toBe('true')
+    expect(saveMock).not.toHaveBeenCalled()
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it('最大进程 5000 / 超时 301 / 音频时长 0 → 各自内联提示、保存请求不发出', async () => {
+    renderDialog(API_FIXTURE)
+    fireEvent.change(screen.getByLabelText('端点最大进程'), { target: { value: '5000' } })
+    fireEvent.change(screen.getByLabelText('端点超时(s)'), { target: { value: '301' } })
+    fireEvent.change(screen.getByLabelText('端点音频时长(s)'), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(await screen.findByText('请输入 1~100 的整数')).toBeInTheDocument()
+    expect(screen.getByText('请输入 1~300 的整数')).toBeInTheDocument()
+    expect(screen.getByText('请输入 ≥1 的整数')).toBeInTheDocument()
+    expect(saveMock).not.toHaveBeenCalled()
+  })
+
+  it('改回合法值后提示消失，保存提交该值', async () => {
+    renderDialog(API_FIXTURE)
+    const priority = screen.getByLabelText('端点优先级')
+    fireEvent.change(priority, { target: { value: '99' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByText('请输入 1~10 的整数')).toBeInTheDocument()
+
+    fireEvent.change(priority, { target: { value: '9' } })
+    expect(screen.queryByText('请输入 1~10 的整数')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
+    const endpoints = saveMock.mock.calls[0][0].endpoints as Array<{ priority: number }>
+    expect(endpoints[0].priority).toBe(9)
+  })
+
+  it('留空不算错（按缺省值兜底），与改动前一致', async () => {
+    renderDialog(API_FIXTURE)
+    fireEvent.change(screen.getByLabelText('端点优先级'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
+    const endpoints = saveMock.mock.calls[0][0].endpoints as Array<{ priority: number }>
+    expect(endpoints[0].priority).toBe(1)
+  })
+})
+
 describe('最大并发校验内联提示（INT-1939）', () => {
   it('留空 → 中文内联提示、保存请求不发出', async () => {
     renderDialog(API_FIXTURE)

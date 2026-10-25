@@ -349,6 +349,46 @@ export function mergeResponseParserMeta(
 }
 
 /* ------------------------------------------------------------------ */
+/* 端点行四项整数（优先级 / 最大进程 / 超时 / 音频时长） */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 端点行数值字段的合法区间（与旧实现的原生 min/max 完全一致）。
+ * INT-1939 返工：表单加了 noValidate 后原生约束不再拦截，改由这里自查。
+ */
+export const ENDPOINT_NUMERIC_RULES = [
+  { field: 'priority', label: '优先级', min: 1, max: 10 },
+  { field: 'maxProcess', label: '最大进程', min: 1, max: 100 },
+  { field: 'maxTimeout', label: '超时(s)', min: 1, max: 300 },
+  { field: 'maxAudioDuration', label: '音频时长(s)', min: 1, max: null },
+] as const
+
+export type EndpointNumericField = (typeof ENDPOINT_NUMERIC_RULES)[number]['field']
+export type EndpointNumericErrors = Partial<Record<EndpointNumericField, string>>
+export type EndpointNumericDraft = Record<EndpointNumericField, string>
+
+function endpointRangeMessage(min: number, max: number | null): string {
+  return max == null ? `请输入 ≥${min} 的整数` : `请输入 ${min}~${max} 的整数`
+}
+
+/**
+ * 端点行四项整数的字段级校验（整数 + 区间，口径同原原生 min/max）。
+ * 空串不报错：保存时按 `Number(v) || 缺省` 兜底，与改动前行为一致。
+ */
+export function validateEndpointNumbers(row: EndpointNumericDraft): EndpointNumericErrors {
+  const errors: EndpointNumericErrors = {}
+  for (const rule of ENDPOINT_NUMERIC_RULES) {
+    const raw = row[rule.field].trim()
+    if (raw === '') continue
+    const value = Number(raw)
+    if (!Number.isInteger(value) || value < rule.min || (rule.max != null && value > rule.max)) {
+      errors[rule.field] = endpointRangeMessage(rule.min, rule.max)
+    }
+  }
+  return errors
+}
+
+/* ------------------------------------------------------------------ */
 /* audio_config（顶层列 apis.audio_config，四项 = 采样率/位深/通道数/容器） */
 /* ------------------------------------------------------------------ */
 
