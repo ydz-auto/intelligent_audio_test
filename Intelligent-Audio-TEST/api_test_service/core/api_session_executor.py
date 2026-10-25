@@ -192,9 +192,12 @@ class APISessionExecutor:
                     round_results, case_config=None):
         """执行多轮循环，返回 all_rounds_success"""
         all_rounds_success = True
-        # 输出字段声明（INT-1747 / C2）：整例取一次，逐轮按同一份声明提取
+        # 输出字段声明（INT-1747 / C2）：整例取一次，逐轮按同一份声明提取。
+        # INT-1757（C6b）：按本 API 实例作用域取（api_id=api_config.id），
+        # 同 algorithm_type 下两家 API 的输出声明互不覆盖。
         field_mappings = dto_to_dict(
-            _algo_acl.get_field_mappings(algorithm_type)) or {}
+            _algo_acl.get_field_mappings(
+                algorithm_type, api_id=getattr(api_config, 'id', None))) or {}
 
         for round_idx, round_config in enumerate(rounds):
             if not isinstance(round_config, dict):

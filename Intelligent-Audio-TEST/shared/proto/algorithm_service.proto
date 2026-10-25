@@ -551,6 +551,8 @@ message ConvertFieldValuesRequest {
 message GetOutputFieldsRequest {
   string algorithm_type = 1;
   string test_type = 2;  // 可选，voice_llm 区分 api/e2e
+  // INT-1757（C6b）：输出声明按 API 实例级作用域取（未传=算法级默认）。
+  optional int32 api_id = 3;
 }
 message GetReferenceOutputFieldsRequest {
   string algorithm_type = 1;

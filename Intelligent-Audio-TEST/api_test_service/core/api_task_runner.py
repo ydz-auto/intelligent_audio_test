@@ -172,7 +172,9 @@ class APITaskRunner:
             max_process = getattr(api_config, 'default_max_process', None) or config_manager.get_value('api_executor', 'default_max_process', 5)
             max_timeout = getattr(api_config, 'max_timeout', 30) or 30
 
-            field_mappings = dto_to_dict(_algo_acl.get_field_mappings(algorithm_type)) or {}
+            # INT-1757（C6b）：API 入参声明按本 API 实例作用域取（api_config.id）
+            field_mappings = dto_to_dict(_algo_acl.get_field_mappings(
+                algorithm_type, api_id=getattr(api_config, 'id', None))) or {}
             api_input_fields = (field_mappings.get('original', {}) or {}).get('api', {}).get('input', {})
             case_config = api_specific_config.get('case_config', {})
 
@@ -410,14 +412,21 @@ class APITaskRunner:
         finally:
             release_base_url(selected_url)
 
-    def extract_final_result(self, task_id, final_result_result, algorithm_type='translation'):
-        """提取最终结果 — 使用字段映射器动态获取字段"""
+    def extract_final_result(self, task_id, final_result_result, algorithm_type='translation',
+                             api_id=None):
+        """提取最终结果 — 使用字段映射器动态获取字段
+
+        INT-1757（C6b）：``api_id`` 传入时输出声明 / API 参数 / 参数映射都按
+        API 实例级作用域取（API 级行覆盖算法级、未覆盖键回落）；不传时与改动前
+        一致（算法级默认），设备链/E2E 链行为不变。
+        """
         # 通过 ACL 仓储获取字段定义与参数，内联实现 get_reference_field_codes + get_api_output_fields 逻辑
-        field_mappings = dto_to_dict(_algo_acl.get_field_mappings(algorithm_type)) or {}
+        field_mappings = dto_to_dict(
+            _algo_acl.get_field_mappings(algorithm_type, api_id=api_id)) or {}
 
         # 内联实现 get_reference_field_codes 逻辑
         device_params = [dto_to_dict(d) for d in _algo_acl.get_device_params(algorithm_type)]
-        api_params = [dto_to_dict(d) for d in _algo_acl.get_api_params(algorithm_type)]
+        api_params = [dto_to_dict(d) for d in _algo_acl.get_api_params(algorithm_type, api_id=api_id)]
         all_params = device_params + api_params
         field_codes = {
             'reference': [],
@@ -442,7 +451,8 @@ class APITaskRunner:
                 if not field_codes['output_field']:
                     field_codes['output_field'] = code
         for comp_type in ['device', 'api', 'evaluation']:
-            comp_mappings = [dto_to_dict(d) for d in _algo_acl.get_param_mapping(algorithm_type, comp_type)]
+            comp_mappings = [dto_to_dict(d) for d in _algo_acl.get_param_mapping(
+                algorithm_type, comp_type, api_id=api_id)]
             for mapping in comp_mappings:
                 direction = mapping.get('source_direction', mapping.get('direction', 'output'))
                 target_key = mapping.get('target_param', mapping.get('source_param'))

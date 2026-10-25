@@ -212,13 +212,13 @@ def test_build_eval_output_mapping_missing_value_omitted():
 def _patch_single_round_acl(monkeypatch, field_mappings):
     from api_test_service.core import api_task_runner as runner_mod
     monkeypatch.setattr(runner_mod._algo_acl, 'get_field_mappings',
-                        lambda algorithm_type: field_mappings)
+                        lambda algorithm_type, api_id=None: field_mappings)
     monkeypatch.setattr(runner_mod._algo_acl, 'get_device_params',
-                        lambda algorithm_type: [])
+                        lambda algorithm_type, api_id=None: [])
     monkeypatch.setattr(runner_mod._algo_acl, 'get_api_params',
-                        lambda algorithm_type: [])
+                        lambda algorithm_type, api_id=None: [])
     monkeypatch.setattr(runner_mod._algo_acl, 'get_param_mapping',
-                        lambda algorithm_type, comp_type: [])
+                        lambda algorithm_type, comp_type, api_id=None: [])
     return runner_mod
 
 
@@ -331,7 +331,7 @@ def _make_realtime_executor():
 def _patch_realtime_acl(monkeypatch, field_mappings):
     from api_test_service.core import realtime_session_executor as rt_mod
     monkeypatch.setattr(rt_mod._algo_acl, 'get_field_mappings',
-                        lambda algorithm_type: field_mappings)
+                        lambda algorithm_type, api_id=None: field_mappings)
     return rt_mod
 
 
@@ -432,12 +432,12 @@ def _stub_field_definition_cache(monkeypatch, *, api_params, mappings):
     from algorithm_service.application.queries import field_mapping_queries as q
     from types import SimpleNamespace
     cache = SimpleNamespace(
-        get_device_params=lambda algorithm_type: [],
+        get_device_params=lambda algorithm_type, api_id=None: [],
         get_api_params=lambda algorithm_type, api_id=None: api_params,
-        get_reference_params=lambda algorithm_type: [],
+        get_reference_params=lambda algorithm_type, api_id=None: [],
         get_param_mapping=lambda algorithm_type, component, api_id=None: (
             mappings if component == 'evaluation' else []),
-        get_case_params=lambda algorithm_type: [],
+        get_case_params=lambda algorithm_type, api_id=None: [],
     )
     monkeypatch.setattr(q, 'get_config_cache', lambda: cache)
     return q.FieldMappingQueryHandler.get_field_definitions('voice_llm')

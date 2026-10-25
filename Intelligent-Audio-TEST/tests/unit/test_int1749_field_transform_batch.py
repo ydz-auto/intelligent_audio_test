@@ -314,7 +314,7 @@ class _FakeAlgoAcl:
         self._values = values
         self.calls = []
 
-    def get_field_mappings(self, algorithm_type):
+    def get_field_mappings(self, algorithm_type, api_id=None):
         return self._field_mappings
 
     def convert_field_values(self, items):

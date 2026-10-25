@@ -302,11 +302,11 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
     # ============================================================
 
     def GetOutputFields(self, request, context=None):
-        """获取输出字段（按 algorithm_type + 可选 test_type）。"""
+        """获取输出字段（按 algorithm_type + 可选 test_type + 可选 api_id 作用域）。"""
         try:
             test_type = request.test_type or None
             data = self.result_field_mapping_handler.get_output_fields(
-                request.algorithm_type, test_type
+                request.algorithm_type, test_type, _optional_api_id(request)
             )
             return _success(data)
         except Exception as e:

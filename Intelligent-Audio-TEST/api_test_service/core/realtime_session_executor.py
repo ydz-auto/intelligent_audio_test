@@ -403,7 +403,8 @@ class RealtimeSessionExecutor:
         # INT-1746：评估入参统一落轮次 output 子字典（不再平铺到轮次顶层）
         result['output'] = self._collect_eval_fields(
             round_config, output, algorithm_type,
-            text_output=result.get('answer_text'))
+            text_output=result.get('answer_text'),
+            api_id=getattr(api_config, 'id', None))
         return result
 
     def _execute_interruption_round(self, client, api_config, round_config,
@@ -498,7 +499,8 @@ class RealtimeSessionExecutor:
         # INT-1746：评估入参统一落轮次 output 子字典（不再平铺到轮次顶层）
         result['output'] = self._collect_eval_fields(
             round_config, client.output, algorithm_type,
-            text_output=result.get('answer_text'))
+            text_output=result.get('answer_text'),
+            api_id=getattr(api_config, 'id', None))
         return result
 
     # ── 节奏（INT-475：输出调输入）──
@@ -765,7 +767,7 @@ class RealtimeSessionExecutor:
         return merged
 
     def _collect_eval_fields(self, round_config, output, algorithm_type=None,
-                             text_output=None) -> dict:
+                             text_output=None, api_id=None) -> dict:
         """轮次评估输出 → ``{target_param: value}``（C0 裁定 1/2，INT-1299 / INT-1746）
 
         评估入参字段名全部来自 algorithm_service FieldMappingQueryHandler 的
@@ -791,8 +793,10 @@ class RealtimeSessionExecutor:
         变换失败或算法服务不可达时按原值保留（WARNING），不丢值、不吞空串。
         """
         algorithm_type = algorithm_type or 'voice_llm'
+        # INT-1757（C6b）：输出声明按 API 实例作用域取（api_id），同 algorithm_type
+        # 下两家 API 的输出声明/映射互不覆盖；不传 api_id 时回落算法级默认。
         field_mappings = dto_to_dict(
-            _algo_acl.get_field_mappings(algorithm_type)) or {}
+            _algo_acl.get_field_mappings(algorithm_type, api_id=api_id)) or {}
         # ① 输出字段提取（INT-1747 / C2，C0 §9.3）：与单轮 `extract_final_result`、
         # 多轮 `_attach_api_output_fields` 共用同一入口，按 field_path 从 WS
         # 聚合输出取嵌套值；为空仍按 param_code 取顶层键（存量行为）。

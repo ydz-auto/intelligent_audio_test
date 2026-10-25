@@ -142,7 +142,7 @@ class _GrpcBackedAcl:
         self._impl = AlgorithmQueryAclRepositoryImpl()
         self.calls = []
 
-    def get_field_mappings(self, algorithm_type):
+    def get_field_mappings(self, algorithm_type, api_id=None):
         return self._field_mappings
 
     def get_device_params(self, *args, **kwargs):

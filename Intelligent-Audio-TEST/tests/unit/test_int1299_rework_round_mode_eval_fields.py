@@ -180,7 +180,7 @@ class _ACLStub:
     def __init__(self, data):
         self._data = data
 
-    def get_field_mappings(self, algorithm_type):
+    def get_field_mappings(self, algorithm_type, api_id=None):
         return self._data
 
 
@@ -225,7 +225,7 @@ class TestCollectEvalFieldsFieldMapper:
         """algorithm_type 缺省 → voice_llm（对齐既有默认）"""
         captured = {}
         class _RecordingACL:
-            def get_field_mappings(self, algorithm_type):
+            def get_field_mappings(self, algorithm_type, api_id=None):
                 captured['algorithm_type'] = algorithm_type
                 return _FIELD_MAPPINGS
         monkeypatch.setattr(rt_executor_module, '_algo_acl', _RecordingACL())

@@ -95,7 +95,8 @@ class _RealTransformAcl:
         self._field_mappings = field_mappings
         self.calls = []
 
-    def get_field_mappings(self, algorithm_type):
+    def get_field_mappings(self, algorithm_type, api_id=None):
+        # INT-1757（C6b）：执行链调用带 api_id 形参，替身按算法级默认返回
         return self._field_mappings
 
     def convert_field_values(self, items):
@@ -318,13 +319,13 @@ def test_single_round_extract_final_result_applies_transform(monkeypatch):
         return None if data.get('errors') else data.get('values')
 
     monkeypatch.setattr(runner_mod._algo_acl, 'get_field_mappings',
-                        lambda algorithm_type: mappings)
+                        lambda algorithm_type, api_id=None: mappings)
     monkeypatch.setattr(runner_mod._algo_acl, 'get_device_params',
                         lambda algorithm_type: [])
     monkeypatch.setattr(runner_mod._algo_acl, 'get_api_params',
-                        lambda algorithm_type: [])
+                        lambda algorithm_type, api_id=None: [])
     monkeypatch.setattr(runner_mod._algo_acl, 'get_param_mapping',
-                        lambda algorithm_type, comp_type: [])
+                        lambda algorithm_type, comp_type, api_id=None: [])
     monkeypatch.setattr(runner_mod._algo_acl, 'convert_field_values', _convert)
 
     runner = runner_mod.APITaskRunner(_LogExecutorStub())

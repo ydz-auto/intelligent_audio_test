@@ -6,7 +6,12 @@ CQRS 读侧 - 迁移自 shared/algorithm/algorithm_result_field_mapper.py
 
 from typing import Dict, List, Any, Optional
 
-from algorithm_service.infrastructure.persistence.config_cache import get_config_cache
+from algorithm_service.infrastructure.persistence.config_cache import (
+    get_config_cache,
+    _api_param_merge_key,
+    _mapping_merge_key,
+    _merge_level_rows,
+)
 from algorithm_service.infrastructure.persistence.param_repository import (
     algorithm_param_repository,
     reference_param_repository,
@@ -18,7 +23,9 @@ from shared.utils.log_handler import log_not_emit
 class ResultFieldMappingQueryHandler:
     """结果字段映射查询处理器"""
 
-    _output_field_cache: Dict[str, List[Dict[str, Any]]] = {}
+    # INT-1757（C6b）：键改 (algorithm_type, api_id)。只按 algorithm_type 存会让第二家
+    # 同算法类型的 API 直接命中第一家的输出声明缓存（串味）。
+    _output_field_cache: Dict[tuple, List[Dict[str, Any]]] = {}
     _TRANSFORM_TO_PARAM_TYPE = {
         'rttm_to_obj': 'rttm',
         'stm_to_obj': 'stm',
@@ -33,7 +40,8 @@ class ResultFieldMappingQueryHandler:
         return 'text'
 
     @classmethod
-    def get_output_fields(cls, algorithm_type: str, test_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_output_fields(cls, algorithm_type: str, test_type: Optional[str] = None,
+                          api_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """读取算法输出字段声明（配置驱动，C0 裁定 3）。
 
         来源：
@@ -48,17 +56,24 @@ class ResultFieldMappingQueryHandler:
 
         配置缺失时明确降级并写 WARNING，不再回落到任何硬编码字段表，避免静默错值。
 
+        INT-1757（C6b）：按 api_id 作用域合并——传 api_id 时该 API 的声明/映射行按
+        唯一键覆盖同键算法级行（`_api_param_merge_key` / `_mapping_merge_key`），
+        未覆盖键回落算法级；不传时只取算法级行（api_id IS NULL），不混入别家 API
+        的行。进程内缓存键改 `(algorithm_type, api_id)`。
+
         Args:
             algorithm_type: 算法类型
             test_type: 仅为 RPC 契约保留，输出字段不再按 test_type 分支
+            api_id: API 实例 id；None 表示算法级默认视图
         """
         if not algorithm_type:
             return []
-        if algorithm_type in cls._output_field_cache:
-            return cls._output_field_cache[algorithm_type]
+        cache_key = (algorithm_type, api_id)
+        if cache_key in cls._output_field_cache:
+            return cls._output_field_cache[cache_key]
 
         try:
-            api_declared = cls._output_declarations(algorithm_type, 'api')
+            api_declared = cls._output_declarations(algorithm_type, 'api', api_id)
             if not api_declared:
                 log_not_emit(
                     'WARNING', 'result_field_mapping_queries',
@@ -80,7 +95,9 @@ class ResultFieldMappingQueryHandler:
                     category='algorithm', algorithm_type=algorithm_type,
                 )
 
-            mappings = mapping_repository.list_by_algorithm(algorithm_type, source_type='api')
+            mappings = _merge_level_rows(
+                mapping_repository.list_by_algorithm(algorithm_type, source_type='api'),
+                api_id, _mapping_merge_key)
             mapping_by_source: Dict[str, Dict[str, Any]] = {}
             for m in mappings:
                 if not isinstance(m, dict) or m.get('source') != 'api':
@@ -113,12 +130,13 @@ class ResultFieldMappingQueryHandler:
                     'ui_order': p.get('ui_order') or 0,
                 })
 
-            cls._output_field_cache[algorithm_type] = fields
+            cls._output_field_cache[cache_key] = fields
             return fields
 
         except Exception as e:
             log_not_emit('ERROR', 'result_field_mapping_queries',
-                         f'Error loading output fields for {algorithm_type}: {e}', category='algorithm')
+                         f'Error loading output fields for {algorithm_type} (api_id={api_id}): {e}',
+                         category='algorithm')
             return []
 
     @staticmethod
@@ -133,9 +151,22 @@ class ResultFieldMappingQueryHandler:
         )
 
     @staticmethod
-    def _output_declarations(algorithm_type: str, param_type: str) -> List[Dict[str, Any]]:
-        """按来源（api / device）读取 direction=output 的声明，按 ui_order / id 排序。"""
+    def _output_declarations(algorithm_type: str, param_type: str,
+                             api_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """按来源（api / device）读取 direction=output 的声明，按 ui_order / id 排序。
+
+        INT-1757（C6b）：api 来源按 ``api_id`` 合并算法级行（API 级覆盖同键算法级，
+        未覆盖回落；不传 api_id 只取算法级行）。设备声明保持算法级口径。
+        """
         params = algorithm_param_repository.list_by_algorithm(algorithm_type, param_type)
+        if param_type == 'api':
+            # 仓储返回的 dict 用 param_code（`_api_param_merge_key` 是 config_cache
+            # 内存 dict 的 code 口径，直接套会让所有行同键、互相顶掉），唯一键取
+            # (direction, param_code)。
+            params = _merge_level_rows(
+                params, api_id,
+                lambda p: ((p.get('direction') or 'output'), p.get('param_code')),
+            )
         declared = [
             p for p in params
             if isinstance(p, dict) and (p.get('direction') or '') == 'output'

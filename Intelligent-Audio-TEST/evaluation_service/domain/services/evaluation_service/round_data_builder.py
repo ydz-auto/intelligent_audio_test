@@ -41,7 +41,7 @@ class RoundDataBuilderMixin:
 
     def _build_rounds_list(self, algorithm_result, reference_params_col,
                             field_mapper, algorithm_type, test_type, task_id, test_case_id,
-                            algorithm_params_col=None):
+                            algorithm_params_col=None, api_id=None):
         """从 algo_result.rounds 构建 [{reference, hypothesis, ...}, ...] 列表
 
         遍历 param_mappings，按 source 类型从每轮的 output（device/api）、
@@ -53,7 +53,10 @@ class RoundDataBuilderMixin:
         rounds = algorithm_result.get('rounds', [])
         # field_mapper 是通过 ACL 包装器包装的对象
         output_field_keys = field_mapper.get_mapped_device_output_field_keys(algorithm_type)
-        mappings = algorithm_acl_repository.get_param_mapping(algorithm_type, 'evaluation')
+        # INT-1757（C6b）：评估入参映射按 API 实例作用域取（API 级覆盖算法级、
+        # 未覆盖键回落），同 algorithm_type 下两家 API 的映射互不覆盖。
+        mappings = algorithm_acl_repository.get_param_mapping(
+            algorithm_type, 'evaluation', api_id=api_id)
 
         if not mappings:
             # INT-118 评估侧尾巴：无 evaluation param mappings = 该算法类型无法评估，

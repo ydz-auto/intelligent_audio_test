@@ -169,13 +169,13 @@ def test_extract_declared_output_fields_missing_key_is_none():
 def _patch_single_round_acl(monkeypatch, field_mappings):
     from api_test_service.core import api_task_runner as runner_mod
     monkeypatch.setattr(runner_mod._algo_acl, 'get_field_mappings',
-                        lambda algorithm_type: field_mappings)
+                        lambda algorithm_type, api_id=None: field_mappings)
     monkeypatch.setattr(runner_mod._algo_acl, 'get_device_params',
-                        lambda algorithm_type: [])
+                        lambda algorithm_type, api_id=None: [])
     monkeypatch.setattr(runner_mod._algo_acl, 'get_api_params',
-                        lambda algorithm_type: [])
+                        lambda algorithm_type, api_id=None: [])
     monkeypatch.setattr(runner_mod._algo_acl, 'get_param_mapping',
-                        lambda algorithm_type, comp_type: [])
+                        lambda algorithm_type, comp_type, api_id=None: [])
     return runner_mod
 
 
@@ -316,7 +316,7 @@ def test_realtime_collect_eval_fields_uses_field_path(monkeypatch):
     from api_test_service.core import realtime_session_executor as rt_mod
     mappings = _output_defs(('text', {'field_path': 'nested.answer'}))
     monkeypatch.setattr(rt_mod._algo_acl, 'get_field_mappings',
-                        lambda algorithm_type: mappings)
+                        lambda algorithm_type, api_id=None: mappings)
     executor = rt_mod.RealtimeSessionExecutor.__new__(
         rt_mod.RealtimeSessionExecutor)
     fields = executor._collect_eval_fields(
@@ -329,7 +329,7 @@ def test_realtime_collect_eval_fields_zero_declaration_stays_empty(monkeypatch):
     param_mappings（卡面约束，与改前一致返回空）。"""
     from api_test_service.core import realtime_session_executor as rt_mod
     monkeypatch.setattr(rt_mod._algo_acl, 'get_field_mappings',
-                        lambda algorithm_type: {'original': {'api': {'output': {}}}})
+                        lambda algorithm_type, api_id=None: {'original': {'api': {'output': {}}}})
     executor = rt_mod.RealtimeSessionExecutor.__new__(
         rt_mod.RealtimeSessionExecutor)
     fields = executor._collect_eval_fields({}, {'text': '会话输出'}, 'voice_llm')
@@ -352,7 +352,7 @@ def test_endpoint_worker_output_field_keys_union(monkeypatch):
                    'api': {'api_only': {'target_param': 'api_only'}}},
     })
     monkeypatch.setattr(ew.algorithm_acl_repository, 'get_field_mappings',
-                        lambda algorithm_type: wrapper)
+                        lambda algorithm_type, api_id=None: wrapper)
     worker = ew.EndpointWorker.__new__(ew.EndpointWorker)
     worker._log = lambda **kwargs: None
     captured = {}
@@ -360,7 +360,7 @@ def test_endpoint_worker_output_field_keys_union(monkeypatch):
     def _capture_context(task_id, test_case_id, algorithm_result,
                          representative_dim_data, algorithm_type,
                          output_field_keys, dim_id, eval_input_fields, kwargs,
-                         group_items=None):
+                         group_items=None, api_id=None):
         captured['output_field_keys'] = output_field_keys
         return {}
 

@@ -377,7 +377,8 @@ class APIExecutor(BaseExecutor):
                     api_paths, select_base_url, release_base_url
                 )
                 algo_result_dict, latency = self._task_runner.extract_final_result(
-                    task_id, final_result_result, algorithm_type
+                    task_id, final_result_result, algorithm_type,
+                    api_id=getattr(api_config, 'id', None)
                 )
                 # 输出侧实测口径（INT-300 F3 三口径对称补齐）：线性单轮
                 # 与多轮会话/Realtime 同源——单轮协议回传的输出音频引用
