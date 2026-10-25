@@ -293,3 +293,45 @@ def test_eval_side_reads_same_value_without_second_transform(monkeypatch):
         assert eval_item[target] == round_result['output'][target]
     assert eval_item['answer'] == {'a': 1}
     assert eval_item['audio_out'] == 'YWJj'
+
+
+# ---------------------------------------------------------------- 单轮链
+
+class _LogExecutorStub:
+    def _log(self, *args, **kwargs):
+        pass
+
+
+def test_single_round_extract_final_result_applies_transform(monkeypatch):
+    """HTTP 单轮：extract_final_result 的映射入口同样在落轮次 output 前变换。"""
+    from algorithm_service.application.queries.field_mapping_queries import (
+        FieldMappingQueryHandler,
+    )
+    from api_test_service.core import api_task_runner as runner_mod
+
+    mappings = _field_mappings(monkeypatch)
+    calls = []
+
+    def _convert(items):
+        calls.append(list(items))
+        data = FieldMappingQueryHandler.convert_field_values(items)
+        return None if data.get('errors') else data.get('values')
+
+    monkeypatch.setattr(runner_mod._algo_acl, 'get_field_mappings',
+                        lambda algorithm_type: mappings)
+    monkeypatch.setattr(runner_mod._algo_acl, 'get_device_params',
+                        lambda algorithm_type: [])
+    monkeypatch.setattr(runner_mod._algo_acl, 'get_api_params',
+                        lambda algorithm_type: [])
+    monkeypatch.setattr(runner_mod._algo_acl, 'get_param_mapping',
+                        lambda algorithm_type, comp_type: [])
+    monkeypatch.setattr(runner_mod._algo_acl, 'convert_field_values', _convert)
+
+    runner = runner_mod.APITaskRunner(_LogExecutorStub())
+    algo_results, _ = runner.extract_final_result(
+        1, {'json': {'code': 0, 'data': {'text': '{"a": 1}', 'audio': 'abc'}},
+            'latency': 5}, 'voice_llm')
+
+    assert algo_results['answer'] == {'a': 1}
+    assert algo_results['audio_out'] == 'YWJj'
+    assert len(calls) == 1
