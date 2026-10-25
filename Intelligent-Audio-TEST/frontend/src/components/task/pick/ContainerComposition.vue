@@ -32,6 +32,7 @@
       <button
         type="button"
         class="cc-btn cc-alert-action"
+        data-layout-btn
         data-testid="composition-only-missing"
         :aria-pressed="onlyMissing ? 'true' : 'false'"
         @click="toggleOnlyMissing"
@@ -481,17 +482,32 @@ function resetFilters() {
   min-width: 0;
 }
 
-.cc-alert-action {
+/* §7 失效 Alert 的操作按钮：尺寸 / 圆角沿用 .cc-btn，只把语义色换成 warning。
+   必须带 data-layout-btn 退出全局 button catch-all（INT-735 / INT-1832 同一手法），
+   否则 button.css 的 0,6,1 基类会压掉 12px / 1px 边框 / warning 色。 */
+.cc-btn.cc-alert-action {
   flex-shrink: 0;
   margin-left: auto;
   color: var(--warning);
   border-color: var(--warning);
 }
 
-.cc-alert-action[aria-pressed='true'] {
-  background: var(--warning-light);
+.cc-btn.cc-alert-action:hover {
+  color: var(--warning-dark);
+  border-color: var(--warning-dark);
+}
+
+/* 选中态：Alert 底色本身是 --warning-light，选中要比底色更实才看得出 */
+.cc-btn.cc-alert-action[aria-pressed='true'] {
+  background: var(--warning);
   border-color: var(--warning);
-  color: var(--warning);
+  color: var(--warning-foreground);
+}
+
+.cc-btn.cc-alert-action[aria-pressed='true']:hover {
+  background: var(--warning-dark);
+  border-color: var(--warning-dark);
+  color: var(--warning-foreground);
 }
 
 /* §5 文案：失败条目是正常业务态（不得出现「异常 / 不可合并」） */

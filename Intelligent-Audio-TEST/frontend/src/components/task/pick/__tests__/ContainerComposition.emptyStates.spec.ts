@@ -124,6 +124,9 @@ describe('失效态（§7 / §5 / §10.4）', () => {
     expect(alert.exists()).toBe(true);
     expect(alert.text()).toContain('1 条源结果已失效（源任务或结果已被删除），仅保留溯源记录');
     expect(alert.find('[data-testid="composition-only-missing"]').text()).toBe('只看失效');
+    // 必须带 data-layout-btn 退出全局 button catch-all，否则 12px / 1px 边框 / warning 色
+    // 会被 button.css 的 0,6,1 基类压掉（INT-1837 复审 P2）
+    expect(alert.find('[data-testid="composition-only-missing"]').attributes('data-layout-btn')).toBeDefined();
   });
 
   it('叶行整行 muted + 删除线 + 徽章「已失效」；节点计数追加「· 失效 1」', async () => {

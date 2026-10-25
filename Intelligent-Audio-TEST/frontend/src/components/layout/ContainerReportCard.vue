@@ -49,6 +49,7 @@
         v-if="canCreate"
         type="button"
         class="btn btn-primary btn-sm"
+        data-layout-btn
         :disabled="generating"
         @click="generate"
       >生成报告</button>
