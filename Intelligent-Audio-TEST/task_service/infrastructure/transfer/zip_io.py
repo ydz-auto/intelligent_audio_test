@@ -14,6 +14,7 @@ from shared.constants.data_transfer import (
     DIMENSIONS_SNAPSHOT_PATH,
     FILES_AUDIOS_DIR,
     FILES_CASE_RESULTS_DIR,
+    FILES_DIR,
     FILES_REF_PARAMS_DIR,
     MANIFEST_NAME,
 )
@@ -111,7 +112,8 @@ def iter_file_entries(zip_path: str, subdir: str) -> Iterator[Tuple[str, bytes]]
     subdir = subdir.strip('/')
     if subdir.startswith('files/'):
         subdir = subdir[len('files/'):]
-    prefix = f'files/{subdir}/'
+    # subdir 为空（或只给 'files'）时遍历整个 files/ 树，供按内容特征筛选用
+    prefix = 'files/' if subdir in ('', 'files') else f'files/{subdir}/'
     with zipfile.ZipFile(zip_path, 'r') as zf:
         for name in zf.namelist():
             normalized = match_zip_entry_name(name, _ALLOWED_PREFIXES)
@@ -133,3 +135,17 @@ def ref_params_entries(zip_path: str) -> Iterator[Tuple[str, bytes]]:
 
 def audios_entries(zip_path: str) -> Iterator[Tuple[str, bytes]]:
     return iter_file_entries(zip_path, FILES_AUDIOS_DIR)
+
+
+def raw_objects_entries(zip_path: str) -> Iterator[Tuple[str, bytes]]:
+    """迭代包内原始报文对象条目，产出 (存储 key, 压缩字节)。
+
+    key 形如 `raw/resp/{sha[:2]}/{sha}.json.gz`（INT-1811：内容寻址，
+    导入侧原样回写，免 id 重映射）。包内路径 = `files/` + key，即
+    `files/raw/resp/...`，与结果文件同处 files/ 树但互不重叠。
+    """
+    from shared.utils.raw_payload import parse_object_key
+
+    for key, data in iter_file_entries(zip_path, FILES_DIR):
+        if parse_object_key(key) is not None:
+            yield key, data

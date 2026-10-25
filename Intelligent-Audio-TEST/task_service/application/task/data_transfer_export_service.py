@@ -31,6 +31,7 @@ from task_service.domain.services.data_transfer import (
     build_manifest,
     case_set_hash,
     collect_external_references,
+    collect_raw_object_refs,
     translate_dimension_rows,
     translate_report_tables,
 )
@@ -41,6 +42,11 @@ from task_service.infrastructure.transfer.file_transfer import (
     iter_audio_entries,
     iter_ref_params_entries,
     iter_result_file_entries,
+)
+from task_service.infrastructure.transfer.raw_payload_store import (
+    RawObjectCollector,
+    RawObjectError,
+    iter_raw_object_entries,
 )
 from task_service.infrastructure.transfer.zip_io import build_zip
 
@@ -167,6 +173,16 @@ class DataTransferExportService:
         if include_audios:
             audio_infos = self._collect_audio_infos(case_configs)
             entries_iter = _chain(entries_iter, iter_audio_entries(audio_infos))
+        # 4.5) 原始报文对象（INT-1811）：维度行上的 uri 按内容寻址去重打包。
+        #      导出读不到对象即整包失败（不得跳过：行里有 uri、包里没对象 =
+        #      对端一库悬空指针）。原始报文不计入 fileCount（单独在 rawObjects 段）
+        raw_refs, raw_errors = collect_raw_object_refs(dimension_rows)
+        if raw_errors:
+            return {'success': False,
+                    'message': '原始报文对象无法定位（导出中止，避免产生悬空指针）: '
+                               + '；'.join(raw_errors[:5]),
+                    'code': 500}
+        raw_collector = RawObjectCollector(iter_raw_object_entries(raw_refs))
         stats_collector = _FileStatsCollector(entries_iter)
 
         # 5) manifest（fileCount/totalFileSize 由 stats_collector 延迟填充）
@@ -183,6 +199,8 @@ class DataTransferExportService:
                 # INT-1760 / D0 A4：写稳定服务标识（配置项），导入侧以它作
                 # source_map.source_server；不再依赖会随容器重建变化的 hostname
                 source=resolve_transfer_server_id(),
+                # INT-1811：包内原始报文对象清单（与 files/raw/ 条目一一对应）
+                raw_objects=raw_collector.summary(),
             )
 
         db_tables = {table.value: rows_by_table.get(table.value, []) for table in TransferTable}
@@ -192,13 +210,21 @@ class DataTransferExportService:
         db_tables[TransferTable.TEST_RESULT_DIMENSIONS.value] = dimension_rows
         zip_name = f"task_export_{time.strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}.zip"
         zip_path = os.path.join(_export_tmp_dir(), zip_name)
-        build_zip(zip_path, db_tables, _manifest_provider, stats_collector,
-                  dimensions_snapshot=dimension_defs)
+        try:
+            build_zip(zip_path, db_tables, _manifest_provider,
+                      _chain(stats_collector, raw_collector),
+                      dimensions_snapshot=dimension_defs)
+        except RawObjectError as e:
+            _discard_zip(zip_path)
+            log_not_emit('ERROR', _MODULE_NAME,
+                         f'导出中止（原始报文对象不可用）: {e}', category='system')
+            return {'success': False, 'message': f'导出失败: {e}', 'code': 500}
 
         manifest = _manifest_provider()
         log_not_emit('INFO', _MODULE_NAME,
                      f'导出完成: tasks={clean_ids} zip={zip_name} '
-                     f'files={stats_collector.file_count}', category='system')
+                     f'files={stats_collector.file_count} '
+                     f'rawObjects={raw_collector.count}', category='system')
         return {
             'success': True,
             'message': '导出成功',
@@ -207,6 +233,8 @@ class DataTransferExportService:
                 'manifest': manifest,
                 'file_count': stats_collector.file_count,
                 'total_file_size': stats_collector.total_size,
+                'raw_object_count': raw_collector.count,
+                'raw_object_bytes': raw_collector.total_bytes,
             },
         }
 
@@ -319,45 +347,64 @@ class DataTransferExportService:
                         'code': INCREMENTAL_UNMAPPED_CODE,
                         'data': {'unmappedTaskIds': unmapped_tasks}}
 
-        # 4) 打包（无文件条目：增量包不搬结果/音频/参考参数文件）
+        # 4) 打包（无结果/音频文件条目；但维度行引用的原始报文对象必须随包携带，
+        #    INT-1811：只搬行不搬对象 = 对端一库悬空指针）
         db_tables: Dict[str, List[dict]] = {}
         if IncrementalInclude.DIMENSIONS.value in include:
             db_tables[TransferTable.TEST_RESULT_DIMENSIONS.value] = dimension_rows
         if IncrementalInclude.REPORTS.value in include:
             db_tables.update(report_tables)
 
-        manifest = build_incremental_manifest(
-            source_task={
-                'id': source_task_id,
-                'name': task_row.get('name'),
-                'caseCount': len(case_ids),
-                'caseSetHash': case_set_hash(case_ids),
-            },
-            task_rows=[{
-                'id': source_task_id,
-                'name': task_row.get('name'),
-                'status': task_row.get('status'),
-                'resultCount': len(local_result_ids),
-            }],
-            dimension_count=len(dimension_rows),
-            report_count=len(report_tables.get(TransferTable.TEST_REPORTS.value) or []),
-            entities=include,
-            # serverInfo.source 写 B 自己的稳定标识（A 导入侧仅作诊断，不参与合并）
-            source=resolve_transfer_server_id(),
-            options={'include': include},
-        )
+        raw_refs, raw_errors = collect_raw_object_refs(dimension_rows)
+        if raw_errors:
+            return {'success': False,
+                    'message': '原始报文对象无法定位（导出中止，避免产生悬空指针）: '
+                               + '；'.join(raw_errors[:5]),
+                    'code': 500}
+        raw_collector = RawObjectCollector(iter_raw_object_entries(raw_refs))
+
+        # manifest 延迟生成：rawObjects 清单在对象条目写完后才完整（与整包同口径）
+        def _manifest_provider():
+            return build_incremental_manifest(
+                source_task={
+                    'id': source_task_id,
+                    'name': task_row.get('name'),
+                    'caseCount': len(case_ids),
+                    'caseSetHash': case_set_hash(case_ids),
+                },
+                task_rows=[{
+                    'id': source_task_id,
+                    'name': task_row.get('name'),
+                    'status': task_row.get('status'),
+                    'resultCount': len(local_result_ids),
+                }],
+                dimension_count=len(dimension_rows),
+                report_count=len(report_tables.get(TransferTable.TEST_REPORTS.value) or []),
+                entities=include,
+                # serverInfo.source 写 B 自己的稳定标识（A 导入侧仅作诊断，不参与合并）
+                source=resolve_transfer_server_id(),
+                options={'include': include},
+                raw_objects=raw_collector.summary(),
+            )
         _sweep_expired_exports()
         zip_name = (f"incremental_{time.strftime('%Y%m%d%H%M%S')}_"
                     f'{uuid.uuid4().hex[:8]}.zip')
         zip_path = os.path.join(_export_tmp_dir(), zip_name)
-        build_zip(zip_path, db_tables, manifest, iter(()),
-                  dimensions_snapshot=dimension_defs)
+        try:
+            build_zip(zip_path, db_tables, _manifest_provider, raw_collector,
+                      dimensions_snapshot=dimension_defs)
+        except RawObjectError as e:
+            _discard_zip(zip_path)
+            log_not_emit('ERROR', _MODULE_NAME,
+                         f'增量导出中止（原始报文对象不可用）: {e}', category='system')
+            return {'success': False, 'message': f'增量导出失败: {e}', 'code': 500}
+        manifest = _manifest_provider()
 
         log_not_emit('INFO', _MODULE_NAME,
                      f'增量导出完成: localTask={local_task_id} sourceTask={source_task_id} '
                      f'include={include} dims={len(dimension_rows)} '
                      f'reports={len(report_tables.get(TransferTable.TEST_REPORTS.value) or [])} '
-                     f'zip={zip_name}', category='system')
+                     f'rawObjects={raw_collector.count} zip={zip_name}', category='system')
         return {
             'success': True,
             'message': '增量导出成功',
@@ -367,6 +414,8 @@ class DataTransferExportService:
                 'sourceTaskId': source_task_id,
                 'dimensionCount': len(dimension_rows),
                 'reportCount': len(report_tables.get(TransferTable.TEST_REPORTS.value) or []),
+                'rawObjectCount': raw_collector.count,
+                'rawObjectBytes': raw_collector.total_bytes,
             },
         }
 
@@ -391,6 +440,16 @@ class DataTransferExportService:
 def _chain(first, second):
     yield from first
     yield from second
+
+
+def _discard_zip(zip_path: str) -> None:
+    """导出中途失败时删掉半成品 ZIP（不留坏包给下载）"""
+    try:
+        if os.path.isfile(zip_path):
+            os.remove(zip_path)
+    except OSError as e:
+        log_not_emit('WARNING', _MODULE_NAME,
+                     f'清理半成品导出 ZIP 失败: {zip_path}: {e}', category='system')
 
 
 data_transfer_export_service = DataTransferExportService()

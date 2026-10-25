@@ -8,7 +8,7 @@
   A 侧「最新报告 / 新建」定位（A5-2）；
 - A 侧维度定义链翻译（name + 父链 + task_type_code，A2-4）、未匹配跳过；
 - 增量包结构 / 一致性校验（多任务、id 不一致、缺 sourceTask）；
-- manifest 1.1 生成与 1.0/1.1 双版本接受、非法版本拒绝（A1）；
+- manifest 1.2 生成与 1.0/1.1/1.2 三版本接受、非法版本拒绝（A1 + INT-1811）；
 - 导入编排：段序（维度 → 报告）、指纹校验（409）、反向 id 校验（409）、
   逆序补偿（报告 → 维度）与补偿失败显式上报（A8）。
 """
@@ -186,20 +186,24 @@ def test_validate_incremental_package_requires_source_task():
 
 
 def test_manifest_versions_accept_10_and_11():
+    # INT-1811：包结构变更（携带原始报文对象）→ 产出升 1.2；
+    # 1.0 / 1.1 历史包仍在接受集内（不因版本号误拒）
     assert SUPPORTED_MANIFEST_VERSIONS == {ManifestVersion.V1_0.value,
-                                           ManifestVersion.V1_1.value}
+                                           ManifestVersion.V1_1.value,
+                                           ManifestVersion.V1_2.value}
     manifest = build_incremental_manifest(
         source_task={'id': 12, 'name': 't', 'caseCount': 2, 'caseSetHash': 'h'},
         task_rows=[{'id': 12, 'name': 't', 'status': 'completed', 'resultCount': 3}],
         dimension_count=4, report_count=1,
         entities=[IncrementalInclude.DIMENSIONS.value, IncrementalInclude.REPORTS.value],
         source='B-server')
-    assert manifest['version'] == ManifestVersion.V1_1.value
+    assert manifest['version'] == ManifestVersion.V1_2.value
     assert manifest['sourceTask']['id'] == 12
     assert manifest['stats']['resultCount'] == 0  # 增量包不搬结果本体
-    assert validate_manifest(manifest)['version'] == '1.1'
-    # 1.0 整包仍可导入（不因版本号误拒历史包）
+    assert validate_manifest(manifest)['version'] == '1.2'
+    # 1.0 整包 / 1.1 历史增量包仍可导入（不因版本号误拒）
     assert validate_manifest({'version': '1.0', 'tasks': []})['version'] == '1.0'
+    assert validate_manifest({'version': '1.1', 'tasks': []})['version'] == '1.1'
     with pytest.raises(Exception):
         validate_manifest({'version': '9.9', 'tasks': []})
 
@@ -370,7 +374,7 @@ def _wire_export(export_module, monkeypatch, transfer_repo, eval_acl, report_acl
 
 # ---------- 编排：增量导出 ----------
 
-def test_export_incremental_builds_v11_package_with_translated_ids(
+def test_export_incremental_builds_v12_package_with_translated_ids(
         export_module, monkeypatch, tmp_path):
     dims = [{'id': 1, 'test_result_id': 205, 'dimension_id': 2, 'round_number': 0},
             {'id': 2, 'test_result_id': 206, 'dimension_id': 2, 'round_number': 0}]
@@ -401,7 +405,7 @@ def test_export_incremental_builds_v11_package_with_translated_ids(
         dim_rows = json.loads(zf.read('db/test_result_dimensions.json').decode('utf-8'))
         report_rows = json.loads(zf.read('db/test_reports.json').decode('utf-8'))
 
-    assert manifest['version'] == '1.1'
+    assert manifest['version'] == '1.2'
     assert manifest['sourceTask']['id'] == 12
     assert manifest['sourceTask']['caseSetHash'] == case_set_hash(['c1', 'c2'])
     assert manifest['tasks'] == [{'id': 12, 'name': 'B 任务', 'status': 'completed',
