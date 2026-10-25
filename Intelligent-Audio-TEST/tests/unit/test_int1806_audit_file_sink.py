@@ -464,6 +464,139 @@ class TestS4DirectWriter:
         reset_audit_writer()
 
 
+class TestS4RealCallSitesOperator:
+    """P2-1 回归：跑真实 S4 调用点，审计行必须可归因（H2 / 验收 3）。
+
+    旧单测手工构造带 operator 的 content，绕过了 S4 调用点本身，故 AI 复核 3 类
+    与已发布任务归档落盘后 operator_id / user_id 为 null 未被发现。
+    """
+
+    @pytest.fixture()
+    def audit_root(self, tmp_path, monkeypatch):
+        monkeypatch.setattr('shared.logging.config._SETTINGS',
+                            _make_settings(tmp_path / 'logs'))
+        monkeypatch.setenv('SERVICE_NAME', 'task_service')
+        from shared.infrastructure.user_context import set_current_user_id
+        reset_audit_writer()
+        set_current_user_id(77)
+        yield tmp_path / 'logs'
+        set_current_user_id(None)
+        reset_audit_writer()
+
+    @staticmethod
+    def _records(logs_root, event):
+        records = []
+        for path in logs_root.joinpath(AUDIT_DIR).rglob('*.jsonl'):
+            for line in path.read_text(encoding='utf-8').splitlines():
+                record = json.loads(line)
+                if record.get('event') == event:
+                    records.append(record)
+        return records
+
+    def test_ai_review_initiated_carries_operator(self, audit_root, monkeypatch):
+        from task_service.application.task import ai_review_service as module
+
+        monkeypatch.setattr(module.test_result_repository, 'get_by_id',
+                            lambda _id: {'task_id': 9, 'test_case_id': 'TC-1'})
+        monkeypatch.setattr(module.task_repository, 'get_task_dict_by_id',
+                            lambda _id: {'status': 'completed'})
+        monkeypatch.setattr(module.ai_review_repository,
+                            'latest_by_result_dimension', lambda *a: None)
+        monkeypatch.setattr(module.ai_review_repository, 'create',
+                            lambda **kw: {'id': 1, **kw})
+        monkeypatch.setattr(module.ai_review_executor, 'submit', lambda _id: None)
+
+        result = module.AiReviewService().initiate_review(
+            {'result_ids': [5], 'dimension_ids': [3]})
+        assert result['success'], result['message']
+
+        records = self._records(audit_root, 'AI_REVIEW_INITIATED')
+        assert len(records) == 1, records
+        assert records[0]['operator_id'] == 77
+        assert records[0]['user_id'] == 77, 'H2：user_id = operator_id，读侧「仅自己」可命中'
+
+    def test_ai_review_adopted_carries_operator(self, audit_root, monkeypatch):
+        from shared.infrastructure.user_context import set_current_user_id
+        from task_service.application.task import ai_review_service as module
+
+        set_current_user_id(88)
+        monkeypatch.setattr(
+            module.ai_review_repository, 'get',
+            lambda _id: {'id': 11, 'result_id': 5, 'task_id': 9, 'test_case_id': 'TC-1',
+                         'dimension_id': 3, 'status': 'completed',
+                         'adopted': False, 'rejected': False})
+        monkeypatch.setattr(module.ai_review_repository, 'adopt', lambda *a, **k: True)
+        monkeypatch.setattr(module.test_result_repository, 'get_by_id',
+                            lambda _id: {'task_id': 9, 'test_case_id': 'TC-1'})
+        monkeypatch.setattr(module.task_repository, 'get_task_dict_by_id',
+                            lambda _id: {'status': 'completed'})
+        monkeypatch.setattr(module.review_repository, 'apply_review',
+                            lambda **kw: {'applied': ['execution_status']})
+        monkeypatch.setattr(module.review_repository, 'recalc_task_stats', lambda _id: None)
+        monkeypatch.setattr(module.AiReviewService, '_refresh_stats_cache',
+                            staticmethod(lambda: None))
+
+        result = module.AiReviewService().adopt_review(
+            11, {'comment': '采纳', 'execution_status': 'completed'})
+        assert result['success'], result['message']
+
+        records = self._records(audit_root, 'AI_REVIEW_ADOPTED')
+        assert len(records) == 1, records
+        assert records[0]['operator_id'] == 88
+        assert records[0]['user_id'] == 88
+
+    def test_ai_review_rejected_carries_operator(self, audit_root, monkeypatch):
+        from shared.infrastructure.user_context import set_current_user_id
+        from task_service.application.task import ai_review_service as module
+
+        set_current_user_id(66)
+        monkeypatch.setattr(
+            module.ai_review_repository, 'get',
+            lambda _id: {'id': 12, 'result_id': 5, 'task_id': 9, 'test_case_id': 'TC-1',
+                         'dimension_id': 3, 'status': 'completed',
+                         'adopted': False, 'rejected': False})
+        monkeypatch.setattr(module.ai_review_repository, 'reject', lambda *a, **k: True)
+
+        result = module.AiReviewService().reject_review(12)
+        assert result['success'], result['message']
+
+        records = self._records(audit_root, 'AI_REVIEW_REJECTED')
+        assert len(records) == 1, records
+        assert records[0]['operator_id'] == 66
+        assert records[0]['user_id'] == 66
+
+    def test_published_task_archive_carries_operator(self, audit_root, monkeypatch):
+        from task_service.application.services import published_task_service as module
+
+        class _PT:
+            id = 7
+            task_group_id = 7
+            version = 1
+            source_task_id = 3
+            status = 'published'
+            created_by_user_id = 42
+            visibility = 'shared'
+            archived_by = None
+
+        pt = _PT()
+
+        def _archive(_id, archived_by=None):
+            pt.status = 'archived'
+            pt.archived_by = archived_by
+            return pt
+
+        monkeypatch.setattr(module.repo, 'get_by_id', lambda _id: pt)
+        monkeypatch.setattr(module.repo, 'archive', _archive)
+
+        result = module.PublishedTaskService.archive(7, operator_user_id=42)
+        assert result['success'], result['message']
+
+        records = self._records(audit_root, 'PUBLISHED_TASK_ARCHIVED')
+        assert len(records) == 1, records
+        assert records[0]['operator_id'] == 42, '归档审计必须可归因（archived_by 不是别名键）'
+        assert records[0]['user_id'] == 42
+
+
 # ---------------------------------------------------------------------------
 # 保留清扫（审计子树 + 单清扫者 + 30 天统一）
 # ---------------------------------------------------------------------------
@@ -524,6 +657,42 @@ class TestAuditRetention:
         stats = sweep_audit_dates(_make_settings(logs_root))
         assert stats == {'archived': 0, 'deleted': 0, 'failed': 1}
         assert target.exists(), '归档失败必须保留本地（绝不先删后传）'
+
+    def test_local_fallback_archive_is_failure_not_success(self, tmp_path, monkeypatch):
+        """P1-1：save_file 静默降级返回 local:// 不算归档，原件不得删除。
+
+        shared Storage 在 OSS 不可达 / 未配置时会把文件复制到容器本地并返回
+        `local://...`（不抛异常，容器重建即丢）。归档判定必须以 `oss://` 为准，
+        否则「归档成功」实为删掉唯一持久副本。
+        """
+        logs_root = tmp_path / 'logs'
+        expired = (date.today() - timedelta(days=60)).isoformat()
+        target = logs_root / AUDIT_DIR / expired / 'auth.api_gateway.h-1.jsonl'
+        _touch(target)
+
+        from shared.infrastructure.storage import storage
+        monkeypatch.setattr(
+            storage, 'save_file',
+            lambda local_path, category, key: f'local://{category}/{key}')
+
+        stats = sweep_audit_dates(_make_settings(logs_root))
+        assert stats == {'archived': 0, 'deleted': 0, 'failed': 1}, \
+            'local:// 降级写本地不是归档成功，应计 failed'
+        assert target.exists(), '仅存在本地降级副本时，审计原件必须保留'
+
+    def test_empty_archive_location_is_failure(self, tmp_path, monkeypatch):
+        """存储端口返回空 / 非字符串同样不算归档成功。"""
+        logs_root = tmp_path / 'logs'
+        expired = (date.today() - timedelta(days=60)).isoformat()
+        target = logs_root / AUDIT_DIR / expired / 'auth.api_gateway.h-1.jsonl'
+        _touch(target)
+
+        from shared.infrastructure.storage import storage
+        monkeypatch.setattr(storage, 'save_file', lambda *a, **k: None)
+
+        stats = sweep_audit_dates(_make_settings(logs_root))
+        assert stats == {'archived': 0, 'deleted': 0, 'failed': 1}
+        assert target.exists()
 
     def test_cutoff_date_follows_retention(self):
         today = date(2026, 10, 24)

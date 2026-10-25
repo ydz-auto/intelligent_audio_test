@@ -141,6 +141,7 @@ class AiReviewService:
                     'data': {'code': 400, 'skipped': skipped}, 'code': 400}
 
         self._write_audit(AuditEvent.AI_REVIEW_INITIATED.value,
+                          operator_id=self._current_user_id(),
                           result_ids=result_ids,
                           affected_task_ids=affected_task_ids,
                           force=force,
@@ -286,6 +287,7 @@ class AiReviewService:
             self._sync_dimension_review_status([rec['result_id']], evaluation_status)
 
         self._write_audit(AuditEvent.AI_REVIEW_ADOPTED.value,
+                          operator_id=user_id,
                           review_id=review_id,
                           result_ids=[rec['result_id']],
                           affected_task_ids=[task_id],
@@ -324,6 +326,7 @@ class AiReviewService:
         user_id = self._current_user_id()
         ai_review_repository.reject(review_id, user_id)
         self._write_audit(AuditEvent.AI_REVIEW_REJECTED.value,
+                          operator_id=user_id,
                           review_id=review_id,
                           result_ids=[rec['result_id']],
                           affected_task_ids=[rec['task_id']])
