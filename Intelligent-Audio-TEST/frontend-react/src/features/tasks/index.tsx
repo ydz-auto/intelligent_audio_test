@@ -4,11 +4,12 @@
  * Content（Tabs → 筛选工具栏 → 页签表格 → 批量浮条）/ Footer（分页 Portal）。
  * 页签路径式 /tasks/$tab（白名单校验在路由层）；「挑选合并」页签由 CherryPickTab 自持
  * （统一容器列表 + 四步向导），旧「合并」页签已收编（§2.2 裁定①）。
- * 模态窗群：任务类型/发布/快速查看 + §5.7 重新执行·重新评估范围 + §5.12 导出/导入数据。
+ * 模态窗群：任务类型/发布/快速查看 + §5.7 重新执行·重新评估范围 + §5.12 导出/导入数据
+ * + 链路 2 增量导出 / 增量导入（INT-1765：单任务两段子集导出、合并回原任务不回灌副本）。
  */
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChartLine, FileDown, Plus } from 'lucide-react'
+import { ChartLine, FileDown, FileUp, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -19,6 +20,7 @@ import { useCherryPickContainers } from '@/application/tasks/cherry-pick/use-che
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ApiError } from '@/infrastructure/api/api-error'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import { fetchPublishedTaskList, publishTask as publishTaskRequest } from '@/infrastructure/api/tasks-list-api'
@@ -69,6 +71,11 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
   } | null>(null)
   const [exportTasks, setExportTasks] = useState<TaskListItem[] | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  /** 增量导出（链路 2，INT-1765）：单任务的「新评估 + 最新报告」子集导出 */
+  const [incrementalExportTasks, setIncrementalExportTasks] =
+    useState<TaskListItem[] | null>(null)
+  /** 增量回导（链路 2，INT-1765）：把增量包合并到本侧原任务 */
+  const [incrementalImportOpen, setIncrementalImportOpen] = useState(false)
   /** 重命名（INT-1290：行菜单「重命名」→ 名称编辑弹窗） */
   const [renameTask, setRenameTask] = useState<RenameTaskTarget | null>(null)
   /** 日常列表勾选任务 id 集（§3.8.1 工具栏「开始挑选」预选直达阶段 2 的数据源） */
@@ -131,6 +138,34 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
 
   const handleQuickView = (task: TaskListItem) => {
     setQuickViewTask(task)
+  }
+
+  /** 已勾选任务（增量导出要求恰好 1 个；按当前列表项还原名称/状态） */
+  const selectedTasks = useMemo(
+    () => (items as TaskListItem[]).filter((t) => selectedTaskIds.has(t.id)),
+    [items, selectedTaskIds]
+  )
+  /** 增量导出入参单任务（0 或多个时给出禁用原因） */
+  const incrementalExportTask =
+    selectedTaskIds.size === 1 ? selectedTasks[0] : undefined
+  const incrementalExportHint =
+    selectedTaskIds.size === 0
+      ? '请先在任务列表勾选 1 个任务，再导出增量'
+      : selectedTaskIds.size > 1
+        ? '增量导出只支持单个任务，请仅勾选 1 个'
+        : incrementalExportTask
+          ? '导出该任务的新评估与最新报告（合并回原任务，不产生副本）'
+          : '所选任务不在当前列表页，请重新勾选'
+
+  /**
+   * 增量回导成功后刷新（INT-1765 跨组件同步点）：
+   * 任务列表行（报告数 / 更新时间）、任务详情报告页签、报告列表页与统计卡片
+   * 全部走 TanStack Query 前缀失效（['tasks'] / ['reports']），禁止只改本地 state。
+   */
+  const refreshAfterIncrementalImport = () => {
+    void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    void queryClient.invalidateQueries({ queryKey: ['reports'] })
+    void queryClient.invalidateQueries({ queryKey: ['home'] })
   }
 
   /** 重命名（INT-1290：行菜单「重命名」→ 名称编辑弹窗，保存后列表/详情经 ['tasks'] 前缀刷新） */
@@ -270,6 +305,39 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
             导入数据
           </Button>
         )}
+        {hasPermission('task:import') && (
+          <Button
+            size='sm'
+            variant='outline'
+            className='h-7 gap-1.5'
+            onClick={() => setIncrementalImportOpen(true)}
+          >
+            <FileUp aria-hidden='true' className='size-3.5' />
+            导入增量
+          </Button>
+        )}
+        {hasPermission('task:export') && (
+          <Tooltip>
+            {/* 触发器用 span 包住按钮：按钮 disabled 时自身不派发鼠标事件，
+                包一层才能让「未勾选的原因」提示照常显示 */}
+            <TooltipTrigger render={<span className='inline-flex' />}>
+              <Button
+                size='sm'
+                variant='outline'
+                className='h-7 gap-1.5'
+                disabled={!incrementalExportTask}
+                onClick={() =>
+                  incrementalExportTask &&
+                  setIncrementalExportTasks([incrementalExportTask])
+                }
+              >
+                <FileDown aria-hidden='true' className='size-3.5' />
+                导出增量
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{incrementalExportHint}</TooltipContent>
+          </Tooltip>
+        )}
         {hasPermission('task:read') && (
           <Button
             size='sm'
@@ -402,6 +470,23 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
         open={importOpen}
         onOpenChange={setImportOpen}
         onImported={() => void listQuery.refetch()}
+      />
+      {/* 链路 2 增量回导（INT-1765）：导出增量（单任务两段子集）/ 导入增量（合并回原任务） */}
+      <DataExportDialog
+        mode='incremental'
+        open={incrementalExportTasks != null}
+        onOpenChange={(open) => !open && setIncrementalExportTasks(null)}
+        tasks={(incrementalExportTasks ?? []).map((t) => ({
+          id: t.id,
+          name: t.name,
+          status: t.execution_status,
+        }))}
+      />
+      <DataImportDialog
+        mode='incremental'
+        open={incrementalImportOpen}
+        onOpenChange={setIncrementalImportOpen}
+        onImported={refreshAfterIncrementalImport}
       />
     </>
   )
