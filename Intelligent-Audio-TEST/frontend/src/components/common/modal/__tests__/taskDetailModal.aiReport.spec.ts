@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: (loc: any) => mocks.pushes.push(loc) }),
+  // INT-1838：组件同时读当前路由 query（「开始挑选」跳挑选合并页签保留既有参数）
+  useRoute: () => ({ query: {} }),
 }))
 
 vi.mock('../../../../composables/task/tasksPort', () => ({
