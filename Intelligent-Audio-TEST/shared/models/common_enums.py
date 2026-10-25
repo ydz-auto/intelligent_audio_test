@@ -182,12 +182,15 @@ def lane_of(streaming: bool) -> ExecutionLane:
     return ExecutionLane.STREAMING if bool(streaming) else ExecutionLane.NON_STREAMING
 
 
-# B1 上线时可写的协议 × 流式性组合（B0 裁定 §3.2.3）：只有已实现执行器的两种。
-# 其余组合写侧显式 400（「实现未上线」），A1（gRPC）/ A2（SSE / http 流式）
-# 落地后在此扩展，不得在写侧静默降级。
+# B1 上线时可写的协议 × 流式性组合（B0 裁定 §3.2.3），A1 扩 gRPC 两种。
+# 其余组合写侧显式 400（「实现未上线」），A2（SSE / http 流式）落地后在此扩展，
+# 不得在写侧静默降级。
 AVAILABLE_PROTOCOL_STREAMING = frozenset({
     (APIProtocol.HTTP.value, False),
     (APIProtocol.WEBSOCKET.value, True),
+    # INT-1789（A1）：gRPC unary = 非流式，server-stream / bidi = 流式
+    (APIProtocol.GRPC.value, False),
+    (APIProtocol.GRPC.value, True),
 })
 
 
@@ -271,12 +274,15 @@ class AdapterProtocol(str, Enum):
 
     语义域区别于 APIProtocol（传输协议分型）：AdapterProtocol 是适配器三级体系
     （base_adaptor → 协议_base_adaptor → 品牌适配器）中协议级 base 的分型依据，
-    覆盖 HTTP / WEBSOCKET / REALTIME；ANY 为遗留适配器（仅 adapter_type）注册时的
-    协议通配维度。REALTIME 落本枚举，不复用/扩展 APIProtocol（方案审计 2026-10-16 拍板）。
+    覆盖 HTTP / WEBSOCKET / REALTIME / GRPC；ANY 为遗留适配器（仅 adapter_type）
+    注册时的协议通配维度。REALTIME 落本枚举，不复用/扩展 APIProtocol（方案审计
+    2026-10-16 拍板）。GRPC 由 A1（INT-1789）在协议级 base 落地时新增；SSE 仍待
+    A2（INT-1790）落地后补（B1 明确本卡不扩）。
     """
     HTTP = 'http'
     WEBSOCKET = 'websocket'
     REALTIME = 'realtime'
+    GRPC = 'grpc'
     ANY = 'any'
 
 

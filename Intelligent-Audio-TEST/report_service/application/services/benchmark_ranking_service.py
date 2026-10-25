@@ -77,9 +77,20 @@ def _resolve_subject(summary: Dict[str, Any], fallback_name: str) -> Tuple[str, 
     devices = [d for d in (summary.get('devices') or []) if isinstance(d, dict)]
     if apis:
         api = apis[0]
-        raw_type = (api.get('type') or api.get('protocol') or 'http').lower()
-        device_type = (DeviceType.WEBSOCKET_API.value if 'websocket' in raw_type
-                       else DeviceType.HTTP_API.value)
+        # INT-1799：被测主体类型按快照的 apis[].streaming 派生（协议不再定类型）
+        if api.get('streaming') is not None:
+            device_type = (DeviceType.WEBSOCKET_API.value if bool(api.get('streaming'))
+                           else DeviceType.HTTP_API.value)
+        else:
+            # 历史报告快照（B1 之前生成）无 streaming 键：按旧字段回退派生并记
+            # WARNING；历史报告不重算（B0 裁定 §3.5 report_service 行）
+            raw_type = (api.get('type') or api.get('protocol')
+                        or api.get('device_type') or 'http').lower()
+            device_type = (DeviceType.WEBSOCKET_API.value if 'websocket' in raw_type
+                           else DeviceType.HTTP_API.value)
+            logger.warning(
+                "报告快照 summary.apis[0] 缺少 streaming 键（历史快照），"
+                "按 %r 回退派生被测主体类型为 %s", raw_type, device_type)
         return (api.get('name') or fallback_name, device_type, SubjectType.CLOSED_SOURCE.value)
     if devices:
         device = devices[0]

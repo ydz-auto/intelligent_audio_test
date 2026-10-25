@@ -28,6 +28,7 @@ from api_test_service.core.api_task_runner import APITaskRunner
 from api_test_service.core.api_result_processor import APIResultProcessor
 from api_test_service.core.api_session_executor import APISessionExecutor
 from api_test_service.core.realtime_session_executor import RealtimeSessionExecutor
+from api_test_service.core.grpc_stream_executor import GrpcStreamExecutor
 from shared.utils.config_manager import config_manager
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,9 @@ class APIExecutor(BaseExecutor):
         self._result_processor = APIResultProcessor(self)
         self._session_executor = APISessionExecutor(self)
         self._realtime_executor = RealtimeSessionExecutor(self)
+        # 流式道 gRPC 策略（INT-1789 / A1）：server-stream 按事件、bidi 按轮次；
+        # 多轮聚合/落库/评估复用 APISessionExecutor，不新增第三条道。
+        self._grpc_stream_executor = GrpcStreamExecutor(self)
         # 线性流混音渲染经 ACL 端口出站（RenderService 消费链路，INT-98 接线）
         self._render_service = RoundRenderService(
             AudioRenderACLRepositoryImpl(), spl_repo=ApiRmsSplRepositoryImpl(),
@@ -109,6 +113,8 @@ class APIExecutor(BaseExecutor):
     # protocol → 承载该策略的执行器属性名（未登记的协议 = 实现未上线）
     _STREAMING_STRATEGIES = {
         APIProtocol.WEBSOCKET.value: '_realtime_executor',
+        # A1（INT-1789）：gRPC server-stream / bidi 同属流式道，道内按方法形态切轮
+        APIProtocol.GRPC.value: '_grpc_stream_executor',
     }
 
     def streaming_strategy(self, protocol):
@@ -121,8 +127,12 @@ class APIExecutor(BaseExecutor):
         if attr is None:
             raise ValueError(
                 f"协议 {protocol} 与流式性 streaming=true 的组合实现未上线"
-                f"（当前仅 websocket 流式会话有执行器）")
+                f"（当前仅 websocket 会话 / gRPC server-stream·bidi 有执行器）")
         return getattr(self, attr), self.STREAMING_CAPABILITIES.get(key, frozenset())
+
+    # 非流式道里没有「DUT 任务协议」（health/create_task/轮询/取结果）的协议：
+    # 这些协议一次调用即一轮，直接按 rounds 逐次调用会话执行器（INT-1789）。
+    _NO_DUT_PROTOCOLS = frozenset({APIProtocol.GRPC.value})
 
     def _get_result_mapper(self):
         """返回 DeviceResult ACL 仓储，供 ResultsMixin 使用"""
@@ -282,6 +292,28 @@ class APIExecutor(BaseExecutor):
             return executor.execute(task_id, tc_rel_id, data, case_config)
 
         rounds = case_config.get('rounds', [])
+        # 非流式道内策略：HTTP 走 DUT 任务协议（health/create_task/轮询/取结果，
+        # 单轮 = 线性）；gRPC unary 没有该任务协议，一次调用即一轮，按轮次
+        # 逐次调用（单轮是 rounds=1 的特例，仍走会话执行器）。
+        if data.get('protocol') in self._NO_DUT_PROTOCOLS:
+            if not rounds:
+                # 空 rounds（用例详情取不到等）不能落成「零请求 + 成功」：
+                # 非流式道的会话执行器空 rounds 不进循环、直接判成功。gRPC
+                # 一次调用即一轮，按 1 轮执行并留痕，与线性道同口径。
+                self._log(level='WARNING',
+                          content=(f"用例 {case_name} protocol={data.get('protocol')} "
+                                   f"未配置轮次（rounds 为空），一次调用即一轮，"
+                                   f"按 1 轮执行"),
+                          task_id=task_id, test_case_id=test_case_id)
+                case_config = {**(case_config or {}), 'rounds': [{}]}
+                rounds = case_config['rounds']
+            self._log(level='INFO',
+                      content=(f"用例 {case_name} protocol={data.get('protocol')} "
+                               f"streaming=false，非流式道按轮次直调"
+                               f"（rounds={len(rounds)}）"),
+                      task_id=task_id, test_case_id=test_case_id)
+            return self.route_executor(lane).execute(task_id, tc_rel_id, data, case_config)
+
         if rounds and len(rounds) > 1:
             self._log(level='INFO',
                       content=f"用例 {case_name} 配置了 {len(rounds)} 轮，进入非流式多轮会话模式",

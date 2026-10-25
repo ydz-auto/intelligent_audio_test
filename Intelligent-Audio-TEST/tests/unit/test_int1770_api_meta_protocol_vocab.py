@@ -81,11 +81,16 @@ def test_unknown_protocol_column_raises(raw):
         infer_protocol(_make_api_config(protocol=raw), {})
 
 
-@pytest.mark.parametrize('raw', ['sse', 'grpc'])
+@pytest.mark.parametrize('raw', ['sse'])
 def test_unimplemented_protocol_raises(raw):
-    """sse / grpc 列值合法但适配器未上线（A1 / A2）→ 显式报错，不静默走 HTTP"""
+    """sse 列值合法但适配器未上线（A2 / INT-1790）→ 显式报错，不静默走 HTTP"""
     with pytest.raises(ValueError, match='未上线'):
         infer_protocol(_make_api_config(protocol=raw), {})
+
+
+def test_grpc_protocol_maps_to_grpc():
+    """grpc 列值已由 A1（INT-1789）上线 → 正向映射到 AdapterProtocol.GRPC"""
+    assert infer_protocol(_make_api_config(protocol='grpc'), {}) is AdapterProtocol.GRPC
 
 
 def test_none_api_config_defaults_http():

@@ -22,6 +22,7 @@ from api_test_service.infrastructure.adapters.registry import (
 
 # 内置适配器注册副作用（装饰器入表；实现类不经本包 __init__ 导出）
 from api_test_service.infrastructure.adapters import api_driver_adapter  # noqa: F401
+from api_test_service.infrastructure.adapters import grpc_adapter  # noqa: F401
 from api_test_service.infrastructure.adapters import mock_vendor_adapter  # noqa: F401
 from api_test_service.infrastructure.adapters import protocol  # noqa: F401
 from api_test_service.infrastructure.adapters import transport  # noqa: F401

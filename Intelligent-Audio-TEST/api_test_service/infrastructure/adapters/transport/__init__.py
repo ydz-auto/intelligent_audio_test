@@ -6,6 +6,8 @@
 
 - http_client.py        ← 原 adapters/api_client.py 迁入（APIClient / api_client / endpoint_protocol）
 - realtime_ws_client.py ← 原厂商 WS 传输包文件迁入（RealtimeFrame / RealtimeWSClient）
+- grpc_client.py        ← gRPC 动态 descriptor 客户端（INT-1789 / A1：unary /
+  server-stream / bidi，归一事件 + 错误码映射）
 
 上层（适配器 / 执行器）经本包统一导入传输件，不感知具体文件落位。
 """
@@ -18,6 +20,16 @@ from api_test_service.infrastructure.adapters.transport.realtime_ws_client impor
     RealtimeFrame,
     RealtimeWSClient,
 )
+from api_test_service.infrastructure.adapters.transport.grpc_client import (
+    GrpcBidiSession,
+    GrpcCallError,
+    GrpcClient,
+    GrpcMethod,
+    GrpcProtoError,
+    compile_proto,
+    load_compiled_proto,
+    message_to_payload,
+)
 
 __all__ = [
     'APIClient',
@@ -25,4 +37,12 @@ __all__ = [
     'endpoint_protocol',
     'RealtimeFrame',
     'RealtimeWSClient',
+    'GrpcBidiSession',
+    'GrpcCallError',
+    'GrpcClient',
+    'GrpcMethod',
+    'GrpcProtoError',
+    'compile_proto',
+    'load_compiled_proto',
+    'message_to_payload',
 ]
