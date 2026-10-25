@@ -30,7 +30,7 @@ import {
   type ChartDataset,
   type ChartOptions,
 } from 'chart.js'
-import { MatrixController } from 'chartjs-chart-matrix'
+import { MatrixController, MatrixElement } from 'chartjs-chart-matrix'
 import zoomPlugin from 'chartjs-plugin-zoom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -65,6 +65,7 @@ ChartJS.register(
   RadialLinearScale,
   RadarController,
   MatrixController,
+  MatrixElement,
   Legend,
   Tooltip,
   Filler,
