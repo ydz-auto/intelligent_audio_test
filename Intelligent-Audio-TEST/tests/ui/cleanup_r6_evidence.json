@@ -1,0 +1,38 @@
+{
+ "soft_deleted_before": [
+  [
+   "e1fa0ec7-67be-431a-b203-3af270c35bde",
+   "接线测试_INT1538_R6用例_1024142217"
+  ],
+  [
+   "13195f94-4951-4a7f-b3cd-feb80e7d1dcb",
+   "接线测试_INT1538_R6用例_1024142045"
+  ],
+  [
+   "5fb70cff-a7ea-4632-8683-134a5b879840",
+   "接线测试_INT1538_R6用例_1024141837"
+  ]
+ ],
+ "purge": [
+  [
+   "e1fa0ec7-67be-431a-b203-3af270c35bde",
+   200,
+   "{\"success\":true,\"message\":\"ok\",\"data\":{\"purged_count\":1}}"
+  ],
+  [
+   "13195f94-4951-4a7f-b3cd-feb80e7d1dcb",
+   200,
+   "{\"success\":true,\"message\":\"ok\",\"data\":{\"purged_count\":1}}"
+  ],
+  [
+   "5fb70cff-a7ea-4632-8683-134a5b879840",
+   200,
+   "{\"success\":true,\"message\":\"ok\",\"data\":{\"purged_count\":1}}"
+  ]
+ ],
+ "soft_deleted_after": [],
+ "alive_after": [],
+ "groups_alive_r6": [],
+ "groups_deleted_r6": [],
+ "all_soft_deleted_total": 104
+}

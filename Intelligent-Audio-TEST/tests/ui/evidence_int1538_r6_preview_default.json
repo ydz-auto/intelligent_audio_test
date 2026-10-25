@@ -1,0 +1,445 @@
+{
+ "tag": "1024142217",
+ "group": "接线测试_INT1538_R6组_1024142217",
+ "case": "接线测试_INT1538_R6用例_1024142217",
+ "resolver": "(none/default)",
+ "bundle": "http://localhost:15173/static/js/lib-react.5c68ee069a.js,http://localhost:15173/static/js/17.6c16fa12d9.js,http://localhost:15173/static/js/index.14cd9c0908.js",
+ "health": {
+  "body": "{\"status\":\"ok\",\"service\":\"api_gateway\",\"version\":\"V9.7.31\",\"database\":\"intelligent_audio_test\"}",
+  "status": 200
+ },
+ "audio_2358": {
+  "status": 200,
+  "name": "url_src_A.wav",
+  "duration": 4.0,
+  "audio_type": "dry",
+  "file_path": "oss://audios/direct/url_src_A_6.wav"
+ },
+ "base_case": "71f2ce67-10f8-4b80-931e-8616353366e2",
+ "audio_patched": 2,
+ "create_group": {
+  "status": 201,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"分组创建成功\",\"data\":{\"id\":\"32116505-d2de-42f3-91ea-af75b0cd20e4\"}}"
+ },
+ "create_case": {
+  "status": 201,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"测试用例创建成功\",\"data\":{\"id\":\"e1fa0ec7-67be-431a-b203-3af270c35bde\"}}"
+ },
+ "preview_api": [
+  {
+   "body": {
+    "playback_mode": "frontend"
+   },
+   "status": 200,
+   "resp": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"test_case_id\":\"e1fa0ec7-67be-431a-b203-3af270c35bde\",\"status\":\"frontend_preview_ready\",\"message\":\"前端播放模式，返回音频流URL\",\"duration\":4.0,\"playback_mode\":\"frontend\",\"audio_id\":2358,\"audio_stream_url\":\"http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=fhrSypgG4PhrTtMVBULjiqu96xw%3D&Expires=1792826548\"}}"
+  },
+  {
+   "body": {
+    "playback_mode": "frontend",
+    "audio_ids": [
+     2358
+    ]
+   },
+   "status": 200,
+   "resp": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"test_case_id\":\"e1fa0ec7-67be-431a-b203-3af270c35bde\",\"status\":\"frontend_preview_ready\",\"message\":\"前端播放模式，返回音频流URL\",\"duration\":4.0,\"playback_mode\":\"frontend\",\"audio_id\":2358,\"audio_stream_url\":\"http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=fhrSypgG4PhrTtMVBULjiqu96xw%3D&Expires=1792826548\"}}"
+  },
+  {
+   "body": {
+    "audio_ids": [
+     2358
+    ],
+    "playback_mode": "frontend"
+   },
+   "status": 200,
+   "resp": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"test_case_id\":\"e1fa0ec7-67be-431a-b203-3af270c35bde\",\"status\":\"frontend_preview_ready\",\"message\":\"前端播放模式，返回音频流URL\",\"duration\":4.0,\"playback_mode\":\"frontend\",\"audio_id\":2358,\"audio_stream_url\":\"http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=fhrSypgG4PhrTtMVBULjiqu96xw%3D&Expires=1792826548\"}}"
+  }
+ ],
+ "time_ready": "00:00 / 00:04",
+ "fetch_preview": [
+  {
+   "method": "POST",
+   "url": "/api/v1/testcases/e1fa0ec7-67be-431a-b203-3af270c35bde/preview",
+   "status": 200,
+   "resp": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"test_case_id\":\"e1fa0ec7-67be-431a-b203-3af270c35bde\",\"status\":\"frontend_preview_ready\",\"message\":\"前端播放模式，返回音频流URL\",\"duration\":4.0,\"playback_mode\":\"frontend\",\"audio_id\":2358,\"audio_stream_url\":\"http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566\"}}"
+  }
+ ],
+ "preview_urls": [
+  "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566"
+ ],
+ "preview_url_hosts": [
+  "127.0.0.1:9000"
+ ],
+ "media_ready": {
+  "dur": 4,
+  "error": null,
+  "networkState": 1,
+  "paused": false,
+  "readyState": 4,
+  "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+  "t": 0.28
+ },
+ "console_at_ready": [],
+ "playing_sequence": [
+  {
+   "ui": "00:00 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": false,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 0.7
+   }
+  },
+  {
+   "ui": "00:00 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": false,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 0.89
+   }
+  },
+  {
+   "ui": "00:00 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": false,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 1.07
+   }
+  }
+ ],
+ "playing_advances": true,
+ "clicked_pause": "暂停",
+ "paused_sequence": [
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": true,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 2.24
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": true,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 2.24
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": true,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 2.24
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": true,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 2.24
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": true,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 2.24
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": true,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 2.24
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": true,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 2.24
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": true,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 2.24
+   }
+  }
+ ],
+ "paused_at": "00:02 / 00:04",
+ "pause_holds": true,
+ "paused_buttons": [
+  {
+   "aria": "编辑用例",
+   "text": ""
+  },
+  {
+   "aria": "删除用例",
+   "text": ""
+  },
+  {
+   "aria": "播放",
+   "text": "播放"
+  },
+  {
+   "aria": "停止",
+   "text": "停止"
+  },
+  {
+   "aria": null,
+   "text": "返回试听配置"
+  },
+  {
+   "aria": null,
+   "text": "Close"
+  }
+ ],
+ "dark_class": "dark",
+ "dark_bg": "rgb(19, 29, 46)",
+ "clicked_resume": true,
+ "resumed_sequence": [
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": false,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 2.32
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": false,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 2.61
+   }
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": false,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 2.94
+   }
+  },
+  {
+   "ui": "00:03 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": false,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 3.28
+   }
+  },
+  {
+   "ui": "00:03 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": false,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 3.61
+   }
+  },
+  {
+   "ui": "00:03 / 00:04",
+   "media": {
+    "dur": 4,
+    "error": null,
+    "networkState": 1,
+    "paused": false,
+    "readyState": 4,
+    "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+    "t": 3.94
+   }
+  }
+ ],
+ "resume_advances": true,
+ "final_media": {
+  "dur": 4,
+  "error": null,
+  "networkState": 1,
+  "paused": true,
+  "readyState": 4,
+  "src": "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=U31pV1LNpIjsDjeyz6HT9hElxuk%3D&Expires=1792826566",
+  "t": 4
+ },
+ "final_time": "00:04 / 00:04",
+ "ended": true,
+ "post_end_ui_series": [
+  {
+   "ui": "00:04 / 00:04",
+   "media_t": 4,
+   "paused": true
+  },
+  {
+   "ui": "00:04 / 00:04",
+   "media_t": 4,
+   "paused": true
+  },
+  {
+   "ui": "00:04 / 00:04",
+   "media_t": 4,
+   "paused": true
+  },
+  {
+   "ui": "00:04 / 00:04",
+   "media_t": 4,
+   "paused": true
+  }
+ ],
+ "replay_click": true,
+ "replay_sequence": [
+  {
+   "ui": "00:00 / 00:04",
+   "t": 0,
+   "paused": false
+  },
+  {
+   "ui": "00:00 / 00:04",
+   "t": 0.36,
+   "paused": false
+  },
+  {
+   "ui": "00:00 / 00:04",
+   "t": 0.79,
+   "paused": false
+  },
+  {
+   "ui": "00:01 / 00:04",
+   "t": 1.22,
+   "paused": false
+  },
+  {
+   "ui": "00:01 / 00:04",
+   "t": 1.66,
+   "paused": false
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "t": 2.09,
+   "paused": false
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "t": 2.53,
+   "paused": false
+  },
+  {
+   "ui": "00:02 / 00:04",
+   "t": 2.97,
+   "paused": false
+  },
+  {
+   "ui": "00:03 / 00:04",
+   "t": 3.4,
+   "paused": false
+  },
+  {
+   "ui": "00:03 / 00:04",
+   "t": 3.84,
+   "paused": false
+  },
+  {
+   "ui": "00:00 / 00:04",
+   "t": 4,
+   "paused": true
+  }
+ ],
+ "post_replay_ui_series": [
+  {
+   "ui": "00:00 / 00:04",
+   "media_t": 4,
+   "paused": true
+  },
+  {
+   "ui": "00:00 / 00:04",
+   "media_t": 4,
+   "paused": true
+  },
+  {
+   "ui": "00:00 / 00:04",
+   "media_t": 4,
+   "paused": true
+  },
+  {
+   "ui": "00:00 / 00:04",
+   "media_t": 4,
+   "paused": true
+  }
+ ],
+ "alerts": [],
+ "console_severe": [],
+ "console_name_not_resolved": [],
+ "console_total": 0,
+ "cleanup_case": 200,
+ "cleanup_group": 200
+}

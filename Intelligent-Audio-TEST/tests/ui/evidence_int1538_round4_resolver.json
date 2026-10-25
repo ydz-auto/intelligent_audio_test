@@ -1,0 +1,80 @@
+{
+ "case_name": "接线测试_INT1538_播放器复测_case",
+ "case_id": "fca57b38-ec6b-4916-8cf5-d76836e9ddf5",
+ "group": "接线测试_INT1538_播放器复测组",
+ "resolver": "MAP rustfs 127.0.0.1",
+ "shot_prefix": "s1",
+ "base": "http://localhost:15173",
+ "bundle": "http://localhost:15173/static/js/lib-react.5c68ee069a.js http://localhost:15173/static/js/17.6c16fa12d9.js http://localhost:15173/static/js/index.f8be49c1e5.js",
+ "health": {
+  "body": "{\"detail\":\"Not Found\"}",
+  "status": 200
+ },
+ "group_visible": true,
+ "card_found": true,
+ "config_text": "音频试听配置\n用例「接线测试_INT1538_播放器复测_case」\n播放模式\n浏览器播放\n音频将通过浏览器前端直接播放\n实验室播放\n音频将通过用例配置中的播放设备在实验室播放\n偏移量（秒）\n取消\n开始试听\nClose",
+ "mode_radio_browser": [
+  {
+   "checked": true
+  },
+  {
+   "checked": false
+  }
+ ],
+ "stream_fetch": [],
+ "metadata_time": "00:00 / 00:04",
+ "time_sequence_initial": [
+  "00:00 / 00:04"
+ ],
+ "btn_after_load": "播放",
+ "time_playing_1": "00:00 / 00:04",
+ "btn_playing": "播放",
+ "time_playing_2": "00:00 / 00:04",
+ "pause_pair": [
+  "00:00 / 00:04",
+  "00:00 / 00:04"
+ ],
+ "pause_stable": true,
+ "btn_paused": "播放",
+ "time_sequence_end": [
+  "00:00 / 00:04",
+  "00:01 / 00:04",
+  "00:02 / 00:04",
+  "00:03 / 00:04",
+  "00:00 / 00:04"
+ ],
+ "ended_time": "00:00 / 00:04",
+ "btn_ended": "播放",
+ "alerts_browser": [],
+ "media_src": [],
+ "preview_response": [
+  {
+   "method": "POST",
+   "reqBody": "{\"offset\":0,\"preview_type\":\"frontend\",\"playback_mode\":\"frontend\"}",
+   "resBody": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"test_case_id\":\"fca57b38-ec6b-4916-8cf5-d76836e9ddf5\",\"status\":\"frontend_preview_ready\",\"message\":\"前端播放模式，返回音频流URL\",\"duration\":4.0,\"playback_mode\":\"frontend\",\"audio_id\":2358,\"audio_stream_url\":\"http://rustfs:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=7o7liAVTD24BJsgf%2BleTWqs5O1M%3D&Expires=1792811277\"}}",
+   "status": 200,
+   "t": 1792807677002,
+   "url": "/api/v1/testcases/fca57b38-ec6b-4916-8cf5-d76836e9ddf5/preview"
+  }
+ ],
+ "console_errors": [],
+ "lab_alerts": [],
+ "lab_fetch": [],
+ "lab_time": "00:12 / --:--",
+ "dark_class": "dark",
+ "dark_bg": "rgb(19, 29, 46)",
+ "dark_stream_fetch": [],
+ "dark_metadata_time": "00:00 / 00:04",
+ "dark_time_playing": "00:04 / 00:04",
+ "audio_api": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"items\":[{\"id\":2358,\"name\":\"url_src_A.wav\",\"original_filename\":\"url_src_A.wav\",\"file_path\":\"oss://audios/direct/url_src_A_6.wav\",\"duration\":4.0,\"size\":128078,\"sample_rate\":16000.0,\"channels\":1,\"bitrate\":256000,\"format\":\"wav\",\"audio_type\":\"dry\",\"asr_text\":\"\",\"description\":\"\",\"source_language\":\"\",\"tags\":[],\"annotations\":[],\"created_at\":\"2026-10-23T15:59:46.884931\",\"updated_at\":\"2026-10-24T01:50:33.832224\",\"visibility\":\"shared\"}],\"total\":1,\"page\":1,\"per_page\":10,\"pages\":1,\"stats\":{\"total_files\":1,\"total_size\":\"1173.71 MB\",\"total_duration\":\"134:49\",\"today_uploads\":0}}}",
+ "shots": [
+  "s11_preview_config_light.png",
+  "s12_player_browser_loaded_light.png",
+  "s13_player_browser_playing_light.png",
+  "s14_player_browser_paused_light.png",
+  "s15_player_browser_ended_light.png",
+  "s16_player_lab_error_light.png",
+  "s17_preview_config_dark.png",
+  "s18_player_browser_playing_dark.png"
+ ]
+}

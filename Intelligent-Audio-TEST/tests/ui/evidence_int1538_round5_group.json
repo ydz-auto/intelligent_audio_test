@@ -1,0 +1,81 @@
+{
+ "tag": "1024122041",
+ "group_name": "接线测试_INT1538_R5组_1024122041",
+ "renamed": "接线测试_INT1538_R5组_1024122041_改",
+ "sections": {
+  "rename": {
+   "ok": true,
+   "dur": 31.2
+  },
+  "delete": {
+   "ok": true,
+   "dur": 27.1
+  },
+  "recreate_same_name": {
+   "ok": true,
+   "dur": 0.9
+  }
+ },
+ "create_group": {
+  "status": 201,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"分组创建成功\",\"data\":{\"id\":\"85f2bfd0-1e97-4ee4-aa6c-2c3d631864f8\"}}"
+ },
+ "group_id": "85f2bfd0-1e97-4ee4-aa6c-2c3d631864f8",
+ "create_case": {
+  "status": 201,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"测试用例创建成功\",\"data\":{\"id\":\"505c19d2-74bb-4709-8cb8-5266ce228034\"}}"
+ },
+ "case_id": "505c19d2-74bb-4709-8cb8-5266ce228034",
+ "exists_after_create": true,
+ "edit_dialog_text": "编辑分组\n分组用于用例的组织与批量调整\n分组名称 *\n27/50\n描述\nINT-1538 返工 P1-2 自建组\n算法类型\n全部算法\n取消\n保存\nClose",
+ "name_before": "接线测试_INT1538_R5组_1024122041",
+ "rename_toasts": [
+  ""
+ ],
+ "rename_fetch": [
+  [
+   "PUT",
+   "/api/v1/groups/85f2bfd0-1e97-4ee4-aa6c-2c3d631864f8",
+   200,
+   "{\"name\":\"接线测试_INT1538_R5组_1024122041_改\",\"description\":\"INT-1538 返工 P1-2 自建组\",\"algorithm_type\":\"\"}"
+  ],
+  [
+   "GET",
+   "/api/v1/groups?page=1&per_page=200",
+   200,
+   null
+  ]
+ ],
+ "exists_after_rename": true,
+ "old_name_still_exists": false,
+ "delete_btn_count": 1,
+ "delete_dialog_text": "删除分组\n确定要删除分组 \"接线测试_INT1538_R5组_1024122041_改\" 及其下所有测试用例吗？此操作不可逆！\n取消\n删除",
+ "delete_confirm_button": "删除",
+ "delete_toasts": [
+  "删除分组成功"
+ ],
+ "delete_fetch": [
+  [
+   "DELETE",
+   "/api/v1/groups/85f2bfd0-1e97-4ee4-aa6c-2c3d631864f8?cascade=true",
+   200
+  ],
+  [
+   "GET",
+   "/api/v1/groups?page=1&per_page=200",
+   200
+  ]
+ ],
+ "exists_after_delete": false,
+ "groups_total_after_delete": 19,
+ "recreate": {
+  "status": 201,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"分组创建成功\",\"data\":{\"id\":\"0a3d83bb-1ec3-4cb0-8dd7-c1e55f12b885\"}}"
+ },
+ "recreate_id": "0a3d83bb-1ec3-4cb0-8dd7-c1e55f12b885",
+ "exists_after_recreate": true,
+ "cleanup_delete2": {
+  "status": 200,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"分组已删除\",\"data\":{\"id\":\"0a3d83bb-1ec3-4cb0-8dd7-c1e55f12b885\"}}"
+ }
+}
