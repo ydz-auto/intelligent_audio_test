@@ -6,7 +6,7 @@
 TOAST 合计约 695MB）。本脚本把报文按**内容寻址**搬到对象存储，只把指针回写到
 ``api_raw_*_uri`` 等列（列由 ``add_raw_payload_pointers_int1807.py`` 建）。
 
-对象口径（与 C2 读写路径共用，改口径先改卡）：
+对象口径（唯一实现在 shared/utils/raw_payload.py，在线读写路径与离线搬运共用，改口径先改卡）：
     key      raw/resp/{sha[:2]}/{sha}.json.gz  /  raw/req/{sha[:2]}/{sha}.json.gz
     category case_result（多桶模式免新增配置；单桶模式自动落
              {OSS_KEY_PREFIX}/case_result/raw/...）
@@ -103,11 +103,16 @@ GATE_SQL = (
 
 
 # ---------------------------------------------------------------- 对象口径
-# 口径唯一事实源是 shared.infrastructure.raw_payload_store（C2 读写路径共用同一份
-# 实现，避免脚本与在线路径各算一套 sha / gzip 而互相读不出对方写的对象）。
-from shared.infrastructure.raw_payload_store import (  # noqa: E402  （sys.path 已前置仓库根）
-    CATEGORY, CONTENT_TYPE, GZIP_COMPRESS_LEVEL,
-    canonical_bytes, compress, object_key, sha256_hex,
+# 口径唯一实现在 shared/utils/raw_payload.py（INT-1811 归一）：回填脚本、在线读写
+# 路径（shared.infrastructure.raw_payload_store 也从这里导入口径）与离线搬运 1.0 旧包
+# 现场物化共用同一份算法，否则同一报文会算出不同 sha，A→B→A 往返膨胀。
+from shared.utils.raw_payload import (  # noqa: E402  (sys.path 已在上面注入仓库根)
+    RAW_CATEGORY as CATEGORY,
+    RAW_CONTENT_TYPE as CONTENT_TYPE,
+    canonical_bytes,
+    compress,
+    object_key,
+    sha256_hex,
 )
 
 

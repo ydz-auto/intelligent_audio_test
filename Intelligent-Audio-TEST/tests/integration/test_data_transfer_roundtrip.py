@@ -310,7 +310,9 @@ class TestRoundtrip:
             db_files = {n for n in names if n.startswith('db/')}
             assert len(db_files) == 16  # INT-656：新增 task_cherry_pick_relations 表（无容器任务时为空数组）
             manifest = json.loads(zf.read('manifest.json'))
-            assert manifest['version'] == '1.0'
+            # 整包导出版本随 INT-1811 由 1.0 升到 1.2（包内携带原始报文对象段）
+            from shared.constants.data_transfer import FULL_MANIFEST_VERSION
+            assert manifest['version'] == FULL_MANIFEST_VERSION
             assert manifest['stats']['taskCount'] == 2
             assert manifest['stats']['resultCount'] == 2
             assert manifest['stats']['dimensionCount'] == 1

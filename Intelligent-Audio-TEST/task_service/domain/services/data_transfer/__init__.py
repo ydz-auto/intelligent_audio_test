@@ -24,6 +24,12 @@ from task_service.domain.services.data_transfer.manifest import (
     build_manifest,
     validate_manifest,
 )
+from task_service.domain.services.data_transfer.raw_objects import (
+    RawObjectRef,
+    collect_raw_object_refs,
+    raw_pointer_columns,
+    strip_raw_pointer_columns,
+)
 from task_service.domain.services.data_transfer.source_map import (
     dedupe_entries,
     plan_source_map_entries,
@@ -45,7 +51,11 @@ __all__ = [
     'package_report_ids',
     'plan_source_map_entries',
     'plan_task_segment',
+    'RawObjectRef',
+    'raw_pointer_columns',
+    'collect_raw_object_refs',
     'rewrite_fk_rows',
+    'strip_raw_pointer_columns',
     'translate_dimension_rows',
     'translate_report_tables',
     'validate_incremental_package',
