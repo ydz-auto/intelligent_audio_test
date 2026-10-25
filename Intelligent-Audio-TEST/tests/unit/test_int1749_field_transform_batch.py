@@ -361,10 +361,9 @@ class TestRealtimeCollectEvalFieldsTransform:
         # 只有配了非 none 变换的 target_param 进批量请求，且只发一次
         assert acl.calls == [[{'transform_type': 'json_parse',
                                'value': '{"text": "hello"}'}]]
-        assert fields['answer'] == {'text': 'hello'}
-        assert fields['query'] == 'q1'
-        # 未配置映射的 api 输出字段原样保留
-        assert fields['asr_text'] == '{"text": "hello"}'
+        # C1（INT-1746）结构：output 内只有映射后的 target_param，
+        # 源键不残留；case 来源由评估侧按轮加载，不进执行侧 output
+        assert fields == {'answer': {'text': 'hello'}}
 
     def test_no_transform_config_skips_rpc(self, monkeypatch):
         import api_test_service.core.realtime_session_executor as mod

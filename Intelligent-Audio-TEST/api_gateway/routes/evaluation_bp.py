@@ -23,14 +23,6 @@ def get_dimension_options(_: None = require_permission('evaluation:read')):
         return to_response(result)
     return result
 
-# INT-1671：LLM Judge 可选模型 / Prompt 模板（登记表 shared/config/llm_judge_options.json）
-@router.get('/llm-judge/options')
-def get_llm_judge_options(_: None = require_permission('evaluation:read')):
-    result = EvaluationQueryService.get_llm_judge_options()
-    if isinstance(result, tuple) and len(result) == 2:
-        return to_response(result)
-    return result
-
 @router.get('/dimensions')
 def get_all(_: None = require_permission('evaluation:read')):
     result = EvaluationQueryService.get_all()

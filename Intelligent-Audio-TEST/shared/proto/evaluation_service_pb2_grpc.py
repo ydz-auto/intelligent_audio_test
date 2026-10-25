@@ -357,11 +357,6 @@ class EvaluationConfigServiceStub:
                 request_serializer=evaluation__service__pb2.GetDimensionOptionsRequest.SerializeToString,
                 response_deserializer=evaluation__service__pb2.EvaluationConfigResponse.FromString,
                 _registered_method=True)
-        self.GetLlmJudgeOptions = channel.unary_unary(
-                '/evaluation_service.EvaluationConfigService/GetLlmJudgeOptions',
-                request_serializer=evaluation__service__pb2.GetLlmJudgeOptionsRequest.SerializeToString,
-                response_deserializer=evaluation__service__pb2.EvaluationConfigResponse.FromString,
-                _registered_method=True)
         self.GetDimensionByIds = channel.unary_unary(
                 '/evaluation_service.EvaluationConfigService/GetDimensionByIds',
                 request_serializer=evaluation__service__pb2.GetDimensionByIdsRequest.SerializeToString,
@@ -454,13 +449,6 @@ class EvaluationConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def GetLlmJudgeOptions(self, request, context):
-        """LLM Judge 可选模型 / Prompt 模板（读 shared/config 登记表，零 DB）
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
     def GetDimensionByIds(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -534,11 +522,6 @@ def add_EvaluationConfigServiceServicer_to_server(servicer, server):
             'GetDimensionOptions': grpc.unary_unary_rpc_method_handler(
                     servicer.GetDimensionOptions,
                     request_deserializer=evaluation__service__pb2.GetDimensionOptionsRequest.FromString,
-                    response_serializer=evaluation__service__pb2.EvaluationConfigResponse.SerializeToString,
-            ),
-            'GetLlmJudgeOptions': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetLlmJudgeOptions,
-                    request_deserializer=evaluation__service__pb2.GetLlmJudgeOptionsRequest.FromString,
                     response_serializer=evaluation__service__pb2.EvaluationConfigResponse.SerializeToString,
             ),
             'GetDimensionByIds': grpc.unary_unary_rpc_method_handler(
@@ -877,33 +860,6 @@ class EvaluationConfigService:
             target,
             '/evaluation_service.EvaluationConfigService/GetDimensionOptions',
             evaluation__service__pb2.GetDimensionOptionsRequest.SerializeToString,
-            evaluation__service__pb2.EvaluationConfigResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def GetLlmJudgeOptions(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/evaluation_service.EvaluationConfigService/GetLlmJudgeOptions',
-            evaluation__service__pb2.GetLlmJudgeOptionsRequest.SerializeToString,
             evaluation__service__pb2.EvaluationConfigResponse.FromString,
             options,
             channel_credentials,

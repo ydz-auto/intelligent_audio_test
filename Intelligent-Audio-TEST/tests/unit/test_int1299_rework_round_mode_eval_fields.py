@@ -186,21 +186,21 @@ class _ACLStub:
 
 class TestCollectEvalFieldsFieldMapper:
     def test_case_reference_api_sources_mapped_to_targets(self, monkeypatch):
-        """source 为 case/reference 从 round_config 取，api 从轮次输出取"""
+        """api 源按 param_mappings 映射到 target_param（INT-1746 收口）
+
+        case/reference 来源改由评估侧按轮自行加载（C0 裁定 1），执行侧 output
+        只保留 api/device 侧的键：被映射的 ``text`` 只以 target_param ``answer``
+        出现；没配映射的 ``audio_text`` 按自身参数名保留（评估侧 mapped 键与
+        报告展开都按它读）。
+        """
         monkeypatch.setattr(rt_executor_module, '_algo_acl', _ACLStub(_FIELD_MAPPINGS))
         ex = _executor()
         fields = ex._collect_eval_fields(
             {'query': '你好', 'correct_answer': '对的', 'ref_text': '参考文本'},
             {'text': 'AI回复', 'audio_text': '副文本'},
             'voice_llm')
-        assert fields == {
-            'question': '你好',
-            'correct_answer': '对的',
-            'reference_text': '参考文本',
-            'answer': 'AI回复',       # api 源：source_param=text → 轮次输出
-            'text': 'AI回复',          # api.output 字段定义
-            'audio_text': '副文本',     # api.output 字段定义
-        }
+        assert fields == {'answer': 'AI回复', 'audio_text': '副文本'}
+        assert 'text' not in fields  # source_param 不残留
 
     def test_missing_source_value_skipped(self, monkeypatch):
         """round_config 缺 source_param → 该 target 不出现（无兜底链）"""
@@ -208,12 +208,7 @@ class TestCollectEvalFieldsFieldMapper:
         ex = _executor()
         fields = ex._collect_eval_fields(
             {'query': '你好'}, {'text': 'AI回复', 'audio_text': '副文本'}, 'voice_llm')
-        assert fields == {
-            'question': '你好',
-            'answer': 'AI回复',
-            'text': 'AI回复',
-            'audio_text': '副文本',
-        }
+        assert fields == {'answer': 'AI回复', 'audio_text': '副文本'}
 
     def test_no_field_mappings_returns_empty(self, monkeypatch):
         monkeypatch.setattr(rt_executor_module, '_algo_acl', _ACLStub({}))

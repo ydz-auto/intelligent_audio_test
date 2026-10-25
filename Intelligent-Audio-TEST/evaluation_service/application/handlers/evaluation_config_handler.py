@@ -86,10 +86,6 @@ class EvaluationConfigHandler:
     def get_dimension_options(self, algorithm_type: str = '') -> Dict[str, Any]:
         return self.query.get_dimension_options(algorithm_type)
 
-    def get_llm_judge_options(self) -> Dict[str, Any]:
-        """LLM Judge 可选模型 / Prompt 模板（INT-1671，读 shared/config 登记表）。"""
-        return self.query.get_llm_judge_options()
-
 
 # 模块级单例
 evaluation_config_handler = EvaluationConfigHandler()

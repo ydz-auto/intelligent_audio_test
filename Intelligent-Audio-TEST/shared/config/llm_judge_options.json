@@ -1,8 +1,0 @@
-{
-  "models": [
-    {"value": "gpt-4o-mini", "label": "gpt-4o-mini", "is_default": true}
-  ],
-  "prompt_templates": [
-    {"value": "default", "label": "默认（服务端内置）", "is_default": true}
-  ]
-}

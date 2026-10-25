@@ -16,9 +16,6 @@ from typing import Any, Dict, Optional
 from evaluation_service.domain.repositories.evaluation_repository_abc import (
     EvaluationRepositoryABC,
 )
-from evaluation_service.domain.services.llm_judge_options_registry import (
-    llm_judge_options_registry,
-)
 from evaluation_service.infrastructure.persistence.evaluation_repository import (
     evaluation_repository,
 )
@@ -252,7 +249,7 @@ class EvaluationQueryService:
                             'category_id': d.category_id,
                             'task_type_code': d.task_type_code,
                             'requires_audio': d.id in audio_dim_ids,
-                            # INT-1671：与列表/详情同源派生（前端 LLM Judge 参数卡判定）
+                            # INT-1671：与列表/详情同源派生（前端只读徽章标识）
                             'llm_judge': is_llm_judge_dimension(
                                 task_type_code=d.task_type_code,
                                 dimension_type=d.dimension_type,
@@ -267,18 +264,6 @@ class EvaluationQueryService:
             return {'success': False, 'message': str(e), 'code': 500}
         finally:
             end_read_transaction()
-
-    def get_llm_judge_options(self) -> Dict[str, Any]:
-        """查询 LLM Judge 可选模型 / Prompt 模板（读 shared/config 登记表，零 DB）。
-
-        INT-1671：登记表缺失/损坏时注册表退化为空列表，端点仍 200（不抛 500）。
-        """
-        try:
-            options = llm_judge_options_registry.get_options()
-            return {'success': True, 'message': '', 'data': options}
-        except Exception as e:
-            logger.error(f"查询 LLM Judge 选项失败: {e}")
-            return {'success': False, 'message': str(e), 'code': 500}
 
     @staticmethod
     def _serialize_dimension_param(param: Any) -> Dict[str, Any]:

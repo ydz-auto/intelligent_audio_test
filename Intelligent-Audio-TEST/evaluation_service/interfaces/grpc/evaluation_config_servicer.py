@@ -122,13 +122,6 @@ class EvaluationConfigServiceServicer(eval_grpc.EvaluationConfigServiceServicer)
         except Exception as e:
             return eval_pb.EvaluationConfigResponse(success=False, message=str(e), data="")
 
-    def GetLlmJudgeOptions(self, request, context=None):
-        """LLM Judge 可选模型 / Prompt 模板（INT-1671，读 shared/config 登记表）。"""
-        try:
-            return self._resp(self.handler.get_llm_judge_options())
-        except Exception as e:
-            return eval_pb.EvaluationConfigResponse(success=False, message=str(e), data="")
-
     def GetDimensionByIds(self, request, context=None):
         """按 dim_id 列表批量查询维度基础信息（id/name/type/description）。
 
