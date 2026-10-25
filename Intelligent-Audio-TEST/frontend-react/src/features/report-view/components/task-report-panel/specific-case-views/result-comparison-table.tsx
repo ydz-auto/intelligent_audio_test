@@ -1,17 +1,22 @@
 /**
- * 叶表「结果对比」（15_报告域.md §3.3.7，INT-1738）。
+ * 叶表「结果对比」（15_报告域.md §3.3.7，INT-1738 / INT-1774）。
  *
  * 三视图共用一张组件，仅行列维度不同：
  * - 行集：用例视图 = 设备/API × result_type（设备名只在首行显示，result_type 作次级 mono 徽章）；
  *   设备视图 = 当前资源的 result_type；结果类型视图 = 当前 result_type 下的设备/API。
  * - 列（依次）：资源（设备视图改「结果类型」、结果类型视图改「设备/API」）｜执行状态｜执行时间｜
- *   每个已选评估维度一列（值按 `all_metrics[].decimal_places`，默认 2；缺值「—」）。
+ *   **每个已选主维度一列，列头只用基础维度名**（不带「（整体）/（第 N 轮）」后缀）。
+ * - **轮次轴 = Tab**（INT-1774）：标题行右侧，一个轮次一个 Tab；Tab 集合与激活项由上层
+ *   （`case-report-expanded`）注入，本组件不持有轮次状态；可用轮次 ≤ 1 时整条 Tab 栏不渲染。
  * - 排序：按资源名升序稳定；「失败」不置顶，以状态徽章区分（§3.3.7）。
- * - 兜底：无结果「该用例暂无执行结果」；有结果无指标「暂无可对比指标」；资源为空「未知设备/未知 API」。
+ * - 兜底：无结果「该用例暂无执行结果」；有结果无指标「暂无可对比指标」；资源为空「未知设备/未知 API」；
+ *   轮次全清「未选择轮次」+「显示设置」入口（状态 / 时间两列照常）。
  */
 import { ArrowLeftRight, Smartphone } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { ReportMetricConfig, ReportResourceHeader } from '@/domain/models/report'
 import type {
   LeafMetricColumn,
@@ -26,6 +31,7 @@ import {
   resultTypeText,
 } from '@/application/report-view/report-case-view-model'
 import { getDeviceName } from '../../case-report-detail/case-report-utils'
+import type { RoundTab } from '../../case-report-detail/case-report-utils'
 import { cn } from '@/lib/utils'
 
 export interface ResultComparisonTableProps {
@@ -37,11 +43,20 @@ export interface ResultComparisonTableProps {
   resultType?: string
   headers: ReportResourceHeader[]
   allMetrics: ReportMetricConfig[]
-  /** 叶表指标列（主维度 × 轮次，由显示设置决定） */
+  /** 叶表指标列（已选主维度，一维一列；由上层按当前激活轮次装配） */
   columns: LeafMetricColumn[]
   /** 显示设置已选资源 / 结果类型（已解析的最终集合；空数组 = 全部取消，见口径 A） */
   selectedResources: string[]
   selectedResultTypes: string[]
+  /** 轮次 Tab（= chips 已选 ∩ 本用例有数据的轮次；≤ 1 个时上层给空数组） */
+  roundTabs: RoundTab[]
+  /** 当前激活 Tab（数据值按它的轮次后缀取） */
+  activeRoundTab: string
+  onActiveRoundTabChange: (label: string) => void
+  /** 显示设置「轮次」chips 全清（多轮用例）→ 指标区「未选择轮次」 */
+  noRoundSelected?: boolean
+  /** 「未选择轮次」时打开显示设置（工具栏 Popover） */
+  onOpenDisplaySettings?: () => void
   className?: string
 }
 
@@ -116,6 +131,11 @@ export function ResultComparisonTable({
   columns,
   selectedResources,
   selectedResultTypes,
+  roundTabs,
+  activeRoundTab,
+  onActiveRoundTabChange,
+  noRoundSelected = false,
+  onOpenDisplaySettings,
   className,
 }: ResultComparisonTableProps) {
   const rows = buildResultComparisonRows(caseItem, {
@@ -142,20 +162,56 @@ export function ResultComparisonTable({
 
   return (
     <div className={cn('space-y-1.5', className)}>
-      <div className='flex flex-wrap items-center gap-2'>
-        <p className='text-sm font-semibold'>结果对比</p>
-        {view === 'resource' && resourceKey && (
-          <span className='text-muted-foreground text-xs'>{resourceLabel(resourceKey, headers)}</span>
-        )}
-        {view === 'resultType' && (
-          <Badge variant='outline' className='font-mono text-[10px]'>
-            {resultTypeText(resultType ?? DEFAULT_RESULT_TYPE)}
-          </Badge>
-        )}
-        {columns.length > 12 && (
-          <span className='text-warning text-[11px]'>列较多（{columns.length}），可在显示设置中收窄维度</span>
+      <div className='flex flex-wrap items-center justify-between gap-2'>
+        <div className='flex flex-wrap items-center gap-2'>
+          <p className='text-sm font-semibold'>结果对比</p>
+          {view === 'resource' && resourceKey && (
+            <span className='text-muted-foreground text-xs'>{resourceLabel(resourceKey, headers)}</span>
+          )}
+          {view === 'resultType' && (
+            <Badge variant='outline' className='font-mono text-[10px]'>
+              {resultTypeText(resultType ?? DEFAULT_RESULT_TYPE)}
+            </Badge>
+          )}
+          {!noRoundSelected && columns.length > 12 && (
+            <span className='text-warning text-[11px]'>列较多（{columns.length}），可在显示设置中收窄维度</span>
+          )}
+        </div>
+
+        {/* 轮次轴 = Tab（§3.3.7 INT-1774）：一个轮次一个 Tab；可用轮次 ≤ 1 → 整条不渲染 */}
+        {roundTabs.length > 0 && (
+          <Tabs
+            value={activeRoundTab}
+            onValueChange={onActiveRoundTabChange}
+            aria-label='轮次切换'
+            className='max-w-full'
+          >
+            <TabsList className='h-7 gap-0.5 overflow-x-auto p-0.5'>
+              {roundTabs.map((tab) => (
+                <TabsTrigger key={tab.key} value={tab.label} className='px-2 text-xs'>
+                  {tab.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
         )}
       </div>
+
+      {noRoundSelected && (
+        <div className='text-muted-foreground flex flex-wrap items-center gap-2 text-xs'>
+          <span>未选择轮次</span>
+          {onOpenDisplaySettings && (
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-6 px-2 text-xs'
+              onClick={onOpenDisplaySettings}
+            >
+              显示设置
+            </Button>
+          )}
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div className='text-muted-foreground flex h-16 items-center justify-center rounded-lg border text-xs'>
@@ -222,10 +278,8 @@ export function ResultComparisonTable({
                         {formatStartTime(row.startTime)}
                       </td>
                       {columns.map((column) => {
-                        // 该资源无当前轮次键时回退基础维度名（单轮键无 @overall 后缀，§3.3.7 叶表）
-                        const value = column.metricKey
-                          ? (row.metrics[column.metricKey] ?? row.metrics[column.base])
-                          : undefined
+                        // 值取当前激活 Tab 的轮次后缀键（不回退基础维度键，§3.3.7）；缺值「—」
+                        const value = row.metrics[column.metricKey]
                         return (
                           <td key={column.key} className='px-3 py-2 font-mono text-xs tabular-nums'>
                             {formatMetricCell(
@@ -241,7 +295,7 @@ export function ResultComparisonTable({
               </tbody>
             </table>
           </div>
-          {columns.length === 0 && (
+          {!noRoundSelected && columns.length === 0 && (
             <p className='text-muted-foreground text-xs'>暂无可对比指标</p>
           )}
         </>

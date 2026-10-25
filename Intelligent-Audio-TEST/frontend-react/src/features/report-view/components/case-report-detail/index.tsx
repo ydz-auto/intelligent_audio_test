@@ -2,7 +2,10 @@
  * 用例级报告卡片（15_报告域.md §3.5，TestCaseReportDetail 对位——七块复杂结构）。
  * 块一评分指标 / 块二多轮对话结果 / 块三执行结果（含参考数据、用例参数、评估结果、
  * 设备·API 执行结果、时间轴对比、音频时间轴、结果音频）+ 用例描述 + 详细日志。
- * 块一/块三共享轮次 Tab 状态（useCaseRoundTabs）。
+ *
+ * **轮次轴（INT-1774）**：块一/块三共享同一个 `activeRoundTab`。展开区场景由
+ * `case-report-expanded.tsx` 注入（与叶表轮次 Tab 共用，一张卡一个轮次轴）；
+ * 详情 Dialog 走 `CaseReportDetail`，自建一份、始终全显、不受叶表 Tab 影响。
  *
  * **INT-1738 §3.5.10 显示设置裁剪**：传入 `display`（区级一份状态）时按「卡片内容」一级开关 +
  * 「评估维度 / 轮次 / 资源」二级选择裁剪；不传（详情 Dialog §4.7）→ 全显七块。
@@ -15,12 +18,12 @@ import {
   isBlockVisible,
   type CaseDisplaySettings,
 } from '@/application/report-view/use-case-display-settings'
+import { useCaseRoundTabs, type CaseRoundState } from '@/application/report-view/use-case-round-tabs'
 
 import { getDeviceName } from './case-report-utils'
 import { MetricTable } from './metric-table'
 import { MultiRoundResult } from './multi-round-result'
 import { ExecutionResults } from './execution-results'
-import { useCaseRoundTabs } from './use-case-round-tabs'
 
 interface CaseReportDetailProps {
   caseItem: ReportCaseItem
@@ -31,6 +34,10 @@ interface CaseReportDetailProps {
   onRestoreDisplay?: () => void
 }
 
+/**
+ * 详情 Dialog 口径：自建一份轮次轴（全显、不受叶表 Tab 影响，§3.3.7）。
+ * 展开区请直接用 `CaseReportDetailView` 并注入展开区容器的 `roundState`。
+ */
 export function CaseReportDetail({
   caseItem,
   report,
@@ -38,6 +45,29 @@ export function CaseReportDetail({
   onRestoreDisplay,
 }: CaseReportDetailProps) {
   const roundState = useCaseRoundTabs(caseItem)
+  return (
+    <CaseReportDetailView
+      caseItem={caseItem}
+      report={report}
+      display={display}
+      onRestoreDisplay={onRestoreDisplay}
+      roundState={roundState}
+    />
+  )
+}
+
+interface CaseReportDetailViewProps extends CaseReportDetailProps {
+  /** 轮次轴状态（展开区注入，与叶表共用；详情 Dialog 自建） */
+  roundState: CaseRoundState
+}
+
+export function CaseReportDetailView({
+  caseItem,
+  report,
+  display,
+  onRestoreDisplay,
+  roundState,
+}: CaseReportDetailViewProps) {
   const settings = display
   const visible = (key: Parameters<typeof isBlockVisible>[1]) =>
     settings ? isBlockVisible(settings, key) : true
@@ -90,6 +120,7 @@ export function CaseReportDetail({
             activeRoundTab={roundState.activeRoundTab}
             setActiveRoundTab={roundState.setActiveRoundTab}
             currentRoundMetricKeys={roundState.currentRoundMetricKeys}
+            noRoundSelected={roundState.noRoundSelected}
             display={settings}
           />
         </section>

@@ -13,7 +13,7 @@
  * 本文件是纯函数集合（可单测，无 React / 无请求）。
  */
 import { extractCaseResourceMetrics } from './case-matrix'
-import { parseMetricKey, roundTagLabel } from '@/features/report-view/components/case-report-detail/case-report-utils'
+import { parseMetricKey } from '@/features/report-view/components/case-report-detail/case-report-utils'
 import type {
   ReportAlgorithmResult,
   ReportAudioItem,
@@ -422,85 +422,51 @@ export function collectRounds(metricKeys: string[]): string[] {
   })
 }
 
-/**
- * 默认轮次（§3.3.7 防爆列口径）：有 `@overall` 取「整体」，否则取第一个有数据的轮次；
- * 单轮用例（指标键无轮次后缀）返回 `['']`（基础维度列）。
- */
-export function defaultLeafRounds(metricKeys: string[]): string[] {
-  const rounds = collectRounds(metricKeys)
-  if (rounds.includes('overall')) return ['overall']
-  if (rounds.length > 0) return [rounds[0]]
-  return ['']
-}
-
-/** 叶表指标列（评估维度 × 轮次，§3.3.7） */
+/** 叶表指标列（一个已选主维度一列，§3.3.7 / §3.5.10，INT-1774） */
 export interface LeafMetricColumn {
-  /** 列 key（base@round，稳定） */
+  /** 列 key（= 基础维度名，稳定；轮次已不是列维度） */
   key: string
-  /** 列头文案 */
+  /** 列头文案（**只用基础维度名，不带轮次后缀**） */
   label: string
-  /** 该列对应数据里的真实指标键（可能缺省 → 全「—」） */
-  metricKey?: string
+  /** 该列在数据里的取值键 = `{基础维度}{当前激活 Tab 的轮次后缀}`（无轮次后缀即基础维度本身） */
+  metricKey: string
   /** 基础维度名 */
   base: string
-  /** 轮次标记（'' = 无轮次后缀） */
+  /** 当前激活轮次标记（'' = 无轮次后缀） */
   round: string
 }
 
 /**
- * 叶表列集 = 已选主维度 × 已选轮次；`round` 为 '' 表示按基础维度列（单轮 / 轮次全清兜底）。
- * 子维度默认不进叶表（由 includeSubDimensions 控制，§3.5.10「默认全选的唯一例外」）。
+ * 叶表列集 = **已选主维度，一维一列**（INT-1774：轮次移出列，改为标题行 Tab）。
+ * 列头只用基础维度名；取值键按 `activeRoundTag` 拼轮次后缀，缺该轮数据时由表格显示「—」
+ * （**不回退基础维度键**——多轮用例的指标键带后缀，回退会让整列变「—」之外还会取错值）。
+ * 子维度默认不进叶表，由 `includeSubDimensions` 控制（§3.5.10）。
+ *
+ * @param metricKeys 本用例全部指标键（未去轮次后缀）
+ * @param selectedBaseDimensions 显示设置「评估维度」已选（去后缀的基础维度名）
+ * @param activeRoundTag 当前激活轮次的标记（`null` = 无轮次后缀）
  */
 export function buildLeafMetricColumns(
   metricKeys: string[],
   selectedBaseDimensions: string[],
-  selectedRounds: string[],
+  activeRoundTag: string | null,
   includeSubDimensions: boolean,
   subDimensionNames: string[] = []
 ): LeafMetricColumn[] {
-  const byBase = new Map<string, string[]>()
-  for (const key of metricKeys) {
-    const { base } = parseMetricKey(key)
-    const list = byBase.get(base) ?? []
-    list.push(key)
-    byBase.set(base, list)
-  }
+  const availableBases = new Set(metricKeys.map((key) => parseMetricKey(key).base))
   const subs = new Set(subDimensionNames)
-  const rounds = selectedRounds.length > 0 ? selectedRounds : ['']
+  const round = activeRoundTag ?? ''
   const columns: LeafMetricColumn[] = []
   for (const base of selectedBaseDimensions) {
+    if (!availableBases.has(base)) continue
     if (subs.has(base) && !includeSubDimensions) continue
-    const keys = byBase.get(base)
-    if (!keys || keys.length === 0) continue
-    for (const round of rounds) {
-      const metricKey = keys.find((k) => (parseMetricKey(k).roundTag ?? '') === round)
-      if (!metricKey) continue
-      columns.push({
-        key: `${base}@${round}`,
-        label: round ? `${base}（${roundTagLabel(round)}）` : base,
-        metricKey,
-        base,
-        round,
-      })
-    }
-  }
-  if (columns.length === 0 && includeSubDimensions) {
-    // 子维度被选但主维度未选：按已选维度直接出列（评分指标块内仍全显）
-    for (const base of selectedBaseDimensions) {
-      const keys = byBase.get(base)
-      if (!keys || keys.length === 0) continue
-      for (const round of rounds) {
-        const metricKey = keys.find((k) => (parseMetricKey(k).roundTag ?? '') === round)
-        if (!metricKey) continue
-        columns.push({
-          key: `${base}@${round}`,
-          label: round ? `${base}（${roundTagLabel(round)}）` : base,
-          metricKey,
-          base,
-          round,
-        })
-      }
-    }
+    columns.push({
+      key: base,
+      label: base,
+      metricKey: round ? `${base}@${round}` : base,
+      base,
+      round,
+    })
   }
   return columns
 }

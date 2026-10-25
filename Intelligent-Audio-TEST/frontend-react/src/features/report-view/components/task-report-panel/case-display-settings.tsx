@@ -57,6 +57,9 @@ export interface CaseDisplaySettingsProps {
   rounds: { key: string; label: string }[]
   resourceOptions: { key: string; label: string; kind: 'device' | 'api' }[]
   resultTypeOptions: { key: string; label: string }[]
+  /** 受控开合（叶表「未选择轮次」入口从卡内打开时由外层控制；不传 = 非受控） */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 const toggleIn = <T extends string>(list: T[], value: T, checked: boolean): T[] =>
@@ -169,6 +172,8 @@ export function CaseDisplaySettings({
   rounds,
   resourceOptions,
   resultTypeOptions,
+  open,
+  onOpenChange,
 }: CaseDisplaySettingsProps) {
   const isMobile = useIsMobile()
 
@@ -304,7 +309,8 @@ export function CaseDisplaySettings({
                   type='button'
                   aria-pressed={active}
                   onClick={() =>
-                    onChange({ hiddenRounds: toggleIn(settings.hiddenRounds, round.key, active) })
+                    // 点击即翻转：当前已选（active）→ 加入隐藏；未选 → 移出隐藏（INT-1774 走查修复）
+                    onChange({ hiddenRounds: toggleIn(settings.hiddenRounds, round.key, !active) })
                   }
                   className={cn(
                     'rounded-md border px-2 py-0.5 text-xs transition-colors',
@@ -417,7 +423,7 @@ export function CaseDisplaySettings({
   if (isMobile) {
     return (
       <div className='flex items-center gap-1.5'>
-        <Sheet>
+        <Sheet open={open} onOpenChange={onOpenChange}>
           <SheetTrigger render={<Button variant='outline' size='sm' className='h-7 px-2' aria-label='显示设置' />}>
             {label}
           </SheetTrigger>
@@ -439,7 +445,7 @@ export function CaseDisplaySettings({
 
   return (
     <div className='flex items-center gap-1.5'>
-      <Popover>
+      <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger render={<Button variant='outline' size='sm' className='h-7 gap-1 px-2 text-xs' />}>
           {label}
         </PopoverTrigger>

@@ -54,7 +54,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Input } from '@/components/ui/input'
 import { useReportCases } from '@/application/report-view/use-report-cases'
 import {
-  buildLeafMetricColumns,
   caseResourceKeys,
   resultTypeText,
   type MergedReportCase,
@@ -85,8 +84,7 @@ import {
   type ReportCaseSubGroup,
 } from './specific-case-grouping'
 
-import { CaseReportDetail } from '../case-report-detail'
-import { getDeviceName } from '../case-report-detail/case-report-utils'
+import { getDeviceName, roundTagLabel } from '../case-report-detail/case-report-utils'
 import { CaseDetailDialog } from '../modals/case-detail-dialog'
 import { LogDownloadProgressDialog } from '../modals/log-download-progress-dialog'
 import { LogFileSelectDialog } from '../modals/log-file-select-dialog'
@@ -97,9 +95,7 @@ import { CaseDisplaySettings } from './case-display-settings'
 import { FilterDimensionTree } from './filter-dimension-tree'
 import { FilterTagTree } from './filter-tag-tree'
 import { MultiSelectFilter, SelectedConditionsBar } from './multi-select-filter'
-import {
-  ResultComparisonTable,
-} from './specific-case-views/result-comparison-table'
+import { CaseReportExpanded } from './specific-case-views/case-report-expanded'
 
 /** 日志下载进度视图态（§4.10b：进度 Dialog 受控数据，由真实下载流计算） */
 interface LogDownloadViewState {
@@ -290,6 +286,8 @@ export function SpecificCaseComparison({
   }, [report.summary.all_case_tags, report.summary.all_tags])
 
   const [collapsed, setCollapsed] = useState(false)
+  /** 显示设置 Popover 受控（叶表「未选择轮次」入口可从卡内打开，§3.3.7 兜底） */
+  const [displaySettingsOpen, setDisplaySettingsOpen] = useState(false)
   const [detailCase, setDetailCase] = useState<ReportCaseItem>()
   // INT-1067 两段流程：① 下载日志 → 文件选择 Dialog（§4.10a）→ ② 确认 → 打包下载 + 进度 Dialog（§4.10b）
   const [fileSelectCase, setFileSelectCase] = useState<ReportCaseItem>()
@@ -413,72 +411,28 @@ export function SpecificCaseComparison({
     setCaseViewLimit(NODE_PAGE_SIZE)
   }, [effectiveView])
 
-  // ---- 显示设置派生：叶表列集 / 行集 ----
+  // ---- 显示设置派生：叶表行集 / 轮次 chips / 维度（列集按每卡激活轮次在展开区容器内装配） ----
   const settings = display.settings
   const selectedBaseDimensions = views.baseDimensions.filter(
     (d) => !settings.hiddenMetrics.includes(d)
   )
-  /** 已选轮次：全选时 = 数据里的全部轮次（默认列由 defaultLeafRounds 决定，见下） */
-  const selectedRounds = views.rounds.filter((r) => !settings.hiddenRounds.includes(r))
-  /** 默认轮次（有整体取整体，否则首个有数据轮次；单轮 = 基础维度） */
-  const defaultRounds = useMemo(() => {
-    if (views.rounds.includes('overall')) return ['overall']
-    if (views.rounds.length > 0) return [views.rounds[0]]
-    return ['']
-  }, [views.rounds])
-  const leafRounds = selectedRounds.length > 0 ? selectedRounds : ['']
-  const leafColumnsAll = useMemo(
-    () =>
-      buildLeafMetricColumns(
-        views.metricKeys,
-        selectedBaseDimensions,
-        leafRounds,
-        settings.includeSubDimensions,
-        taxonomy.subDimensions
-      ),
-    [views.metricKeys, selectedBaseDimensions, leafRounds, settings.includeSubDimensions, taxonomy.subDimensions]
-  )
   /**
-   * 叶表默认列 = 主维度 × 默认轮次（§3.3.7 防爆列；默认全选的唯一例外）。
-   * 用户未改动轮次设置时按默认轮次出列；改过则按已选轮次。
+   * 已选轮次 = 可用轮次集（叶表 Tab 候选 + 评分指标块 / 执行结果块轮次范围，§3.3.7 / §3.5.10）。
+   * 报告里没有任何轮次 chip（单轮报告）时传 `undefined`——空数组只表示「用户把 chips 全清了」，
+   * 两种语义不能混（否则单轮用例会误显示「未选择轮次」）。
    */
-  const roundsUntouched = settings.hiddenRounds.length === 0 && views.rounds.length > 0
-  const leafColumns = useMemo(
-    () =>
-      roundsUntouched
-        ? buildLeafMetricColumns(
-            views.metricKeys,
-            selectedBaseDimensions,
-            defaultRounds,
-            settings.includeSubDimensions,
-            taxonomy.subDimensions
-          )
-        : leafColumnsAll,
-    [roundsUntouched, views.metricKeys, selectedBaseDimensions, defaultRounds, leafColumnsAll, settings.includeSubDimensions, taxonomy.subDimensions]
-  )
+  const hasRoundChips = views.rounds.length > 0
+  const selectedRounds = hasRoundChips
+    ? views.rounds.filter((r) => !settings.hiddenRounds.includes(r))
+    : undefined
+  /** chips 被全清（显式标志，见上） */
+  const roundsAllCleared = hasRoundChips && selectedRounds!.length === 0
   const selectedResources = views.resourceKeys.filter(
     (k) => !settings.hiddenResources.includes(k)
   )
   const selectedResultTypes = views.resultTypes.filter(
     (k) => !settings.hiddenResultTypes.includes(k)
   )
-
-  const renderLeaf = (c: ReportCaseItem, ctx: LeafContext) => {
-    if (settings.hiddenBlocks.includes('resultComparison')) return null
-    return (
-      <ResultComparisonTable
-        caseItem={c as MergedReportCase}
-        view={ctx.view}
-        resourceKey={ctx.resourceKey}
-        resultType={ctx.resultType}
-        headers={headers}
-        allMetrics={report.summary.all_metrics}
-        columns={leafColumns}
-        selectedResources={selectedResources}
-        selectedResultTypes={selectedResultTypes}
-      />
-    )
-  }
 
   /** 用例卡渲染（平铺 / 组内共用同一条 CaseCard 口径） */
   const renderCaseCard = (c: ReportCaseItem, leafCtx: LeafContext) => {
@@ -595,15 +549,23 @@ export function SpecificCaseComparison({
         }
         expandedContent={
           expanded ? (
-            <div className='space-y-4 border-t p-3'>
-              {renderLeaf(c, leafCtx)}
-              <CaseReportDetail
-                caseItem={c}
-                report={report}
-                display={isExporting ? undefined : settings}
-                onRestoreDisplay={display.reset}
-              />
-            </div>
+            <CaseReportExpanded
+              caseItem={c}
+              view={leafCtx.view}
+              resourceKey={leafCtx.resourceKey}
+              resultType={leafCtx.resultType}
+              report={report}
+              display={isExporting ? undefined : settings}
+              onRestoreDisplay={display.reset}
+              selectedBaseDimensions={selectedBaseDimensions}
+              includeSubDimensions={settings.includeSubDimensions}
+              subDimensionNames={taxonomy.subDimensions}
+              selectedRounds={selectedRounds}
+              roundsAllCleared={roundsAllCleared}
+              selectedResources={selectedResources}
+              selectedResultTypes={selectedResultTypes}
+              onOpenDisplaySettings={isExporting ? undefined : () => setDisplaySettingsOpen(true)}
+            />
           ) : undefined
         }
       />
@@ -975,6 +937,8 @@ export function SpecificCaseComparison({
                 onChange={display.update}
                 onReset={display.reset}
                 hiddenCount={display.hiddenCount}
+                open={displaySettingsOpen}
+                onOpenChange={setDisplaySettingsOpen}
                 dimensionSections={taxonomy.dimensionSections}
                 rounds={views.rounds.map((r) => ({ key: r, label: roundTagLabel(r) }))}
                 resourceOptions={views.resourceNodes.map((n) => ({
@@ -1342,12 +1306,6 @@ function resourceStatusVariant(status?: string): 'secondary' | 'destructive' | '
   if (normalized === 'fail') return 'destructive'
   if (normalized === 'warning') return 'warning'
   return 'outline'
-}
-
-function roundTagLabel(roundTag: string): string {
-  if (roundTag === 'overall') return '整体'
-  const n = roundTag.split(':')[1]
-  return n ? `第 ${n} 轮` : roundTag
 }
 
 function StatusDot({ status, className }: { status: string; className?: string }) {

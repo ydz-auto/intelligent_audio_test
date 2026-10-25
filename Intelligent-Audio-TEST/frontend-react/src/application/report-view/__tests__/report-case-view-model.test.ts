@@ -1,7 +1,7 @@
 /**
- * 具体用例三视图纯函数单测（15_报告域.md §3.3.7 / §3.5.10，INT-1738）。
+ * 具体用例三视图纯函数单测（15_报告域.md §3.3.7 / §3.5.10，INT-1738 / INT-1774）。
  * 覆盖：按 test_case_id 合并与资源并集、结果类型解析与显隐判定、三视图聚合、
- * 叶表行集 / 列集（默认轮次与防爆列）、显示设置隐藏计数。
+ * 叶表行集 / 列集（一维一列，轮次改 Tab 后不再是列维度）、显示设置隐藏计数。
  */
 import { describe, expect, it } from 'vitest'
 
@@ -11,7 +11,6 @@ import {
   buildLeafMetricColumns,
   buildResultComparisonRows,
   collectRounds,
-  defaultLeafRounds,
   groupCasesByResource,
   groupCasesByResultType,
   hasNonDefaultResultType,
@@ -187,10 +186,7 @@ describe('叶表行集 / 列集', () => {
     expect(rows).toHaveLength(0)
   })
 
-  it('默认轮次：有 @overall 取整体，否则首个有数据轮次，单轮为「」', () => {
-    expect(defaultLeafRounds(['A@overall', 'A@round:1'])).toEqual(['overall'])
-    expect(defaultLeafRounds(['A@round:1', 'A@round:2'])).toEqual(['round:1'])
-    expect(defaultLeafRounds(['A'])).toEqual([''])
+  it('轮次集合按轮次升序、「整体」末位', () => {
     expect(collectRounds(['A@round:2', 'A@overall', 'A@round:1'])).toEqual([
       'round:1',
       'round:2',
@@ -198,12 +194,12 @@ describe('叶表行集 / 列集', () => {
     ])
   })
 
-  it('叶表列 = 主维度 × 默认轮次，子维度默认不进列', () => {
+  it('叶表列 = 已选主维度一维一列，列头不带轮次后缀（INT-1774）', () => {
     const keys = ['接管率占比@overall', '接管率占比@round:1', '评分@overall', '打断次数@overall']
     const columns = buildLeafMetricColumns(
       keys,
       ['接管率占比', '评分', '打断次数'],
-      ['overall'],
+      'overall',
       false,
       ['评分']
     )
@@ -211,16 +207,42 @@ describe('叶表行集 / 列集', () => {
       '接管率占比@overall',
       '打断次数@overall',
     ])
-    expect(columns[0].label).toBe('接管率占比（整体）')
+    // 列头只用基础维度名，不带「（整体）」后缀
+    expect(columns.map((c) => c.label)).toEqual(['接管率占比', '打断次数'])
 
     const withSub = buildLeafMetricColumns(
       keys,
       ['接管率占比', '评分', '打断次数'],
-      ['overall'],
+      'overall',
       true,
       ['评分']
     )
     expect(withSub.map((c) => c.base)).toEqual(['接管率占比', '评分', '打断次数'])
+  })
+
+  it('切换轮次 Tab 只换取值键，列数不变', () => {
+    const keys = ['接管率占比@overall', '接管率占比@round:1', '打断次数@overall', '打断次数@round:1']
+    const dims = ['接管率占比', '打断次数']
+    const overall = buildLeafMetricColumns(keys, dims, 'overall', false)
+    const round1 = buildLeafMetricColumns(keys, dims, 'round:1', false)
+    expect(overall.map((c) => c.key)).toEqual(round1.map((c) => c.key))
+    expect(overall.map((c) => c.label)).toEqual(round1.map((c) => c.label))
+    expect(round1.map((c) => c.metricKey)).toEqual([
+      '接管率占比@round:1',
+      '打断次数@round:1',
+    ])
+  })
+
+  it('单轮用例（无轮次后缀）列取基础维度键', () => {
+    const columns = buildLeafMetricColumns(['接管率占比', '打断次数'], ['接管率占比'], null, false)
+    expect(columns[0].metricKey).toBe('接管率占比')
+    expect(columns[0].label).toBe('接管率占比')
+    expect(columns[0].round).toBe('')
+  })
+
+  it('本用例没有的维度不出列（不产整列「—」）', () => {
+    const columns = buildLeafMetricColumns(['A@overall'], ['A', 'B'], 'overall', false)
+    expect(columns.map((c) => c.base)).toEqual(['A'])
   })
 })
 

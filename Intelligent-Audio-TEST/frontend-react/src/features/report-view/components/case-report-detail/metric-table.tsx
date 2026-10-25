@@ -72,6 +72,8 @@ interface MetricTableProps {
   activeRoundTab: string
   setActiveRoundTab: (tab: string) => void
   currentRoundMetricKeys: string[]
+  /** 显示设置「轮次」chips 全清（§3.5.10 兜底「未选择轮次」） */
+  noRoundSelected?: boolean
   /** §3.5.10 显示设置（不传 = 全显）；裁评估维度 / 轮次 / 资源 */
   display?: CaseDisplaySettings
 }
@@ -83,6 +85,7 @@ export function MetricTable({
   activeRoundTab,
   setActiveRoundTab,
   currentRoundMetricKeys,
+  noRoundSelected = false,
   display,
 }: MetricTableProps) {
   const allMetrics: ReportMetricConfig[] = report.summary.all_metrics
@@ -292,7 +295,7 @@ export function MetricTable({
                   <td colSpan={resources.length + 1} className='text-muted-foreground p-4 text-center text-sm'>
                     {allMetricsHidden
                       ? '未选择评估维度'
-                      : allRoundsHidden
+                      : allRoundsHidden || noRoundSelected
                         ? '未选择轮次'
                         : '暂无指标数据'}
                   </td>
@@ -341,7 +344,7 @@ export function MetricTable({
                   <td colSpan={4} className='text-muted-foreground p-4 text-center text-sm'>
                     {allMetricsHidden
                       ? '未选择评估维度'
-                      : allRoundsHidden
+                      : allRoundsHidden || noRoundSelected
                         ? '未选择轮次'
                         : '暂无指标数据'}
                   </td>
