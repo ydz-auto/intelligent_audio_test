@@ -9,8 +9,8 @@
       <span>实时连接已断开，进度已切换为 HTTP 轮询刷新（日志暂不可用），正在自动重连...</span>
     </div>
 
-    <!-- 任务信息和进度概览 -->
-    <div class="test-progress-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px;">
+    <!-- 任务信息和进度概览（INT-1832：挑选合并容器形态信息卡占满整行、进度概览隐藏） -->
+    <div class="test-progress-container" :class="{ 'is-container': isContainerMode }">
       <!-- 任务信息卡片 -->
       <div class="task-info-panel">
         <div class="task-basic-info" style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border);">
@@ -18,6 +18,14 @@
             <i class="fas fa-tasks" style="color: var(--primary);"></i>
             {{ testType }}测试任务
           </h4>
+          <!-- INT-1832 规范 18 §2.2：容器信息头（合并方式 / 来源 / 结果 / 用例 / 创建时间 / 混合态） -->
+          <ContainerHeaderBadges
+            v-if="isContainerMode"
+            :source="containerSource"
+            :failed-cases="failedCases"
+            :case-count="caseCount"
+            :created-at="createdAt"
+          />
           <div class="task-meta" style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
             <div class="meta-item flex items-center gap-2">
               <i class="fas fa-clock" style="color: var(--muted-foreground); font-size: 14px;"></i>
@@ -64,7 +72,9 @@
             </div>
             <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--foreground);">{{ taskInfo.expectedTotalTime || '--' }}</div>
           </div>
-          <div class="task-detail-item" style="background-color: var(--muted); padding: 16px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 8px;">
+          <!-- INT-1832 规范 18 §1.3：容器 started_at=min(源结果时间)、completed_at=max(源结果时间)，
+               跨度「跨月」不具业务含义，容器形态不得展示为耗时 -->
+          <div v-if="!isContainerMode" class="task-detail-item" style="background-color: var(--muted); padding: 16px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 8px;">
             <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted-foreground);">
               <i class="fas fa-clock" style="font-size: 14px;"></i>
               已用时长
@@ -102,8 +112,8 @@
         </div>
       </div>
 
-      <!-- 进度概览卡片 -->
-      <div class="progress-overview">
+      <!-- 进度概览卡片（INT-1832：容器无执行过程，进度恒 100% 且 used_time 为跨月跨度，容器形态不渲染） -->
+      <div v-if="!isContainerMode" class="progress-overview">
         <div class="progress-item" style="margin-bottom: 20px;">
           <div class="progress-label" style="font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--foreground); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
             <i class="fas fa-chart-line" style="color: var(--primary);"></i>
@@ -185,9 +195,14 @@
       </div>
     </div>
 
-    <!-- 关联信息卡片 -->
-    <div class="task-association-section" style="margin-top: 24px; background-color: var(--background); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 24px; border: 1px solid var(--border);">
-      <div class="association-tabs" style="display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border);">
+    <!-- INT-1832 规范 18 §2.4：「组成」区挂载位（首屏主区，紧跟任务信息卡、位于关联区之前）。
+         本卡只留位不造树——四视图组成区本体由 P3 落地后填进该 slot；非容器不渲染。 -->
+    <slot v-if="isContainerMode" name="composition" />
+
+    <!-- 关联信息卡片（容器形态：原「关联用例 / 关联设备(API)」页签组不再出现，
+         降级为「用例清单（{c}）」+「关联资源（{d}）」两个独立折叠区，默认收起） -->
+    <div class="task-association-section" :class="{ 'is-container': isContainerMode }">
+      <div v-if="!isContainerMode" class="association-tabs" style="display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border);">
         <button class="tab-btn" :class="{ active: activeTab === 'cases' }" @click="$emit('update:active-tab', 'cases')" style="padding: 12px 24px; border: none; background: none; font-size: 16px; font-weight: 500; color: var(--muted-foreground); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.3s ease;">
           关联用例
         </button>
@@ -195,9 +210,25 @@
           关联{{ testType === 'API' ? 'API' : '设备' }}
         </button>
       </div>
-      <div class="association-content">
+      <div class="association-content" :class="{ 'is-container': isContainerMode }">
+        <!-- 容器形态折叠区头：用例清单（原「关联用例」页签降级）。
+             用 div + role=button：全局 button 基线（居中/inline-flex/内边距）不适用于整行折叠头，
+             且 CSS 冻结期不得用 !important 覆盖。 -->
+        <div
+          v-if="isContainerMode"
+          class="container-collapse-header"
+          role="button"
+          tabindex="0"
+          :aria-expanded="casesSectionOpen ? 'true' : 'false'"
+          @click="casesSectionOpen = !casesSectionOpen"
+          @keydown.enter.prevent="casesSectionOpen = !casesSectionOpen"
+          @keydown.space.prevent="casesSectionOpen = !casesSectionOpen"
+        >
+          <i class="fas fa-chevron-right container-collapse-caret" :class="{ 'is-open': casesSectionOpen }"></i>
+          用例清单（{{ caseCount }}）
+        </div>
         <!-- 关联用例列表 -->
-        <div class="associated-cases" v-show="activeTab === 'cases'" style="display: flex; flex-direction: column; gap: 12px;">
+        <div class="associated-cases" v-show="isContainerMode ? casesSectionOpen : activeTab === 'cases'" style="display: flex; flex-direction: column; gap: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
             <h5 style="margin: 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--foreground); display: flex; align-items: center; gap: 8px;">
               <i class="fas fa-list-check" style="color: var(--primary);"></i>
@@ -439,8 +470,22 @@
           </div>
         </div>
 
+        <!-- 容器形态折叠区头：关联资源（原「关联设备 / API」页签保留为独立折叠区，列表渲染不变） -->
+        <div
+          v-if="isContainerMode"
+          class="container-collapse-header"
+          role="button"
+          tabindex="0"
+          :aria-expanded="resourcesSectionOpen ? 'true' : 'false'"
+          @click="resourcesSectionOpen = !resourcesSectionOpen"
+          @keydown.enter.prevent="resourcesSectionOpen = !resourcesSectionOpen"
+          @keydown.space.prevent="resourcesSectionOpen = !resourcesSectionOpen"
+        >
+          <i class="fas fa-chevron-right container-collapse-caret" :class="{ 'is-open': resourcesSectionOpen }"></i>
+          关联资源（{{ associatedDevices ? associatedDevices.length : 0 }}）
+        </div>
         <!-- 关联设备/API列表 -->
-        <div class="associated-devices" v-show="activeTab === 'devices'" style="display: flex; flex-direction: column; gap: 12px;">
+        <div class="associated-devices" v-show="isContainerMode ? resourcesSectionOpen : activeTab === 'devices'" style="display: flex; flex-direction: column; gap: 12px;">
           <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--foreground); display: flex; align-items: center; gap: 8px;">
             <i class="fas fa-{{ testType === 'API' ? 'server' : 'mobile-alt' }}" style="color: var(--primary);"></i>
         关联{{ testType === 'API' ? 'API' : '设备' }}
@@ -466,8 +511,8 @@
       </div>
     </div>
 
-    <!-- 实时日志区域 -->
-    <div v-if="showLogs" class="real-time-logs" style="margin-top: 24px; background-color: var(--background); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 24px; border: 1px solid var(--border);">
+    <!-- 实时日志区域（INT-1832：容器无执行记录、日志恒空，容器形态不渲染） -->
+    <div v-if="showLogs && !isContainerMode" class="real-time-logs" style="margin-top: 24px; background-color: var(--background); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 24px; border: 1px solid var(--border);">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <h4 style="margin: 0; font-size: 18px; font-weight: var(--font-weight-semibold); color: var(--foreground); display: flex; align-items: center; gap: 8px;">
           <i class="fas fa-file-alt" style="color: var(--primary);"></i>
@@ -597,6 +642,8 @@ import AiReviewDialog from '../common/modal/AiReviewDialog.vue';
 import AiReviewSessionDialog from '../ai-review/AiReviewSessionDialog.vue';
 import ReviewHistoryDrawer from '../common/modal/ReviewHistoryDrawer.vue';
 import TestCaseCard from '../common/test-case/TestCaseCard.vue';
+// INT-1832：挑选合并容器详情信息头（规范 18 §2.2）
+import ContainerHeaderBadges from './ContainerHeaderBadges.vue';
 import * as reviewAiApi from '../../infrastructure/api/reviewAiApi';
 // INT-301 F3：双徽章图标/文案单一定义源 utils/taskStatusBadge.ts；配色单一定义源 TaskCard.css
 
@@ -623,7 +670,18 @@ const props = defineProps({
   isExecuting: {type: Boolean, default: false},
   connectionFallback: {type: Boolean, default: false},
   /** INT-796：任务详情人工复核/AI复核（§3 入口；终态任务 + task.result.review 门控） */
-  taskId: {type: [String, Number], default: ''}
+  taskId: {type: [String, Number], default: ''},
+  /**
+   * INT-1832：挑选合并容器溯源数据（`useContainerComposition` 归一后的 PickSource）。
+   * null = 非容器（普通任务 / 整任务合并容器 / 端点非 200）→ 保持现四区形态、静默无痕。
+   */
+  containerSource: {type: Object, default: null},
+  /** INT-1832：详情 failedCases（信息头混合态徽章判定） */
+  failedCases: {type: Number, default: 0},
+  /** INT-1832：详情 caseCount（信息头「用例 {c} 个」+ 混合态分母） */
+  caseCount: {type: Number, default: 0},
+  /** INT-1832：详情 createdAt（信息头创建时间位） */
+  createdAt: {type: String, default: ''}
 });
 
 const emit = defineEmits([
@@ -658,8 +716,15 @@ const finishedTaskStatuses = [
 ];
 
 const shouldShowPauseResumeButton = computed(() => !finishedTaskStatuses.includes(props.taskStatus));
-
 const shouldShowStopButton = computed(() => !finishedTaskStatuses.includes(props.taskStatus));
+
+// ===== INT-1832：挑选合并容器形态（规范 18 §2.4）=====
+// 容器判定由宿主经 useContainerComposition 归一后以 containerSource 注入（null = 非容器静默）。
+// 容器形态：信息卡整行、进度概览与实时日志不渲染、关联页签组降级为两个折叠区。
+const isContainerMode = computed(() => props.containerSource !== null && props.containerSource !== undefined);
+// 两个折叠区互不依赖、默认收起；容器形态下 activeTab 不再生效（§15-7 不留死状态：页签组本身不渲染）
+const casesSectionOpen = ref(false);
+const resourcesSectionOpen = ref(false);
 
 // INT-410：重执行入口三态准入（completed/failed/stopped；pending 不允许，需先停止）。
 // 与任务列表/卡片同源 REEXECUTE_ELIGIBLE_STATUSES，禁止散落字面量。
@@ -1412,6 +1477,79 @@ const scrollToBottom = () => {
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border);
     margin: 20px 0;
+}
+
+/* ===== INT-1832：挑选合并容器形态版面（规范 18 §2.4）=====
+   原两列网格（信息卡 1fr + 进度概览 1fr）→ 单列；原由模板内联样式承载，
+   收进 scoped 样式以便容器态切换（非容器取值与原先逐项一致）。 */
+.test-progress-container{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 24px;
+}
+
+.test-progress-container.is-container{
+    grid-template-columns: 1fr;
+}
+
+/* 关联区外壳：容器形态下让位给内部折叠区卡片 */
+.task-association-section{
+    margin-top: 24px;
+    background-color: var(--background);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 24px;
+    border: 1px solid var(--border);
+}
+
+.task-association-section.is-container{
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+}
+
+.association-content.is-container{
+    margin: 24px 0;
+}
+
+/* 容器形态折叠区头（用例清单 / 关联资源）：默认收起，两个区互不依赖 */
+.container-collapse-header{
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 0;
+    border: none;
+    border-top: 1px solid var(--border);
+    background: transparent;
+    color: var(--foreground);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+
+.container-collapse-header:first-child{
+    border-top: none;
+    padding-top: 0;
+}
+
+.container-collapse-header:hover{
+    color: var(--primary);
+}
+
+.container-collapse-caret{
+    font-size: 12px;
+    color: var(--muted-foreground);
+    transition: transform 0.2s;
+}
+
+.container-collapse-caret.is-open{
+    transform: rotate(90deg);
 }
 
 .association-content h5{

@@ -37,6 +37,10 @@
         :execution-status="executionStatus"
         :evaluation-status="evaluationStatus"
         :task-id="props.taskId"
+        :container-source="containerSource ?? undefined"
+        :failed-cases="Number(task?.failedCases ?? 0)"
+        :case-count="Number(task?.caseCount ?? task?.totalCases ?? 0)"
+        :created-at="task?.createdAt || ''"
         @update:active-tab="newTab => activeTab = newTab"
         @test-case-click="showTestCaseDetails"
         @pause-test="pauseTest"
@@ -99,6 +103,8 @@ import { tasksPort } from '@/composables/task/tasksPort';
 import { confirmReviewOverwrite } from '@/composables/task/useReviewOverwrite';
 import { logsPort } from '@/composables/task/logsPort';
 import { useTaskProgress } from '../../../composables/task/useTaskProgress';
+// INT-1832：挑选合并容器识别（source 端点，异常归一 null = 非容器静默）
+import { useContainerComposition } from '../../../composables/task/useContainerComposition';
 import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModal';
 import { useNotification } from '../../../composables/modal/useNotification';
 import { isNotFoundOrForbidden, canEditResource } from '@/composables/visibility/useVisibility';
@@ -125,6 +131,9 @@ const error = ref<string | null>(null);
 type TaskDetail = Task & Record<string, any>;
 const task = ref<TaskDetail | null>(null);
 const activeTab = ref('cases');
+// INT-1832 规范 18 §2.3：容器识别写死——详情接口无 is_cherry_pick / merge_type，
+// 一律由 source 溯源端点判定；4xx（站内普通任务常态）/5xx/网络异常 → null，详情保持现状。
+const { source: containerSource } = useContainerComposition(computed(() => props.taskId));
 const isPaused = ref(false);
 const localLogs = ref<Log[]>([]);
 
