@@ -40,7 +40,10 @@ class _FakeSession:
 
 
 def _driver_cfg(meta=None, adapter_class=None, vendor=None):
+    # INT-1799：协议维度唯一来源是 apis.protocol 列（端点前缀/元数据推断已废），
+    # 替身按主库形状补齐 protocol='http'，否则 create_from_config 即 ValueError。
     return SimpleNamespace(id=1, meta=meta or {}, api_endpoints=[{'endpoint': 'http://dut:5008'}],
+                           protocol='http', streaming=False,
                            adapter_class=adapter_class, vendor=vendor,
                            proxy_type=None, proxy_url=None, max_timeout=30)
 

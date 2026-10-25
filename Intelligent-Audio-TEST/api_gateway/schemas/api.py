@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
@@ -28,6 +28,34 @@ class ApiListQuery(APIModel):
     keyword: Optional[str] = Field(None)
     status: Optional[str] = Field(None)
     algorithm_type: Optional[str] = Field(None)
+    # INT-1799：协议 / 流式性两维等值筛选（前端列表按新列筛选）
+    protocol: Optional[str] = Field(None)
+    streaming: Optional[bool] = Field(None)
+
+    @field_validator('protocol', mode='before')
+    @classmethod
+    def _blank_protocol_means_no_filter(cls, value):
+        """query 形态：协议筛选器未选中时前端传空串，按「不过滤」处理。"""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator('streaming', mode='before')
+    @classmethod
+    def _streaming_query_tristate(cls, value):
+        """query 形态三态：空串 / none / all = 不过滤；true|false|1|0 归一为 bool。
+
+        直接交给 pydantic 会因 '' 不是合法 bool 抛验证错（整页列表 500）。
+        """
+        if isinstance(value, str):
+            key = value.strip().lower()
+            if key in ('', 'none', 'null', 'all'):
+                return None
+            if key in ('true', '1', 'yes'):
+                return True
+            if key in ('false', '0', 'no'):
+                return False
+        return value
 
 
 class ApiItem(APIModel):
@@ -50,6 +78,10 @@ class ApiItem(APIModel):
     health_score: Optional[int] = Field(None)
     endpoints: List[ApiEndpointItem] = Field(default_factory=list)
     output_types: List[str] = Field(default_factory=list)
+    # INT-1799：协议 / 流式性正交两维（device_type 已废弃，读侧不再返回）
+    protocol: Optional[str] = Field(None)
+    streaming: Optional[bool] = Field(None)
+    # 【已废弃，P3 删列】仅为契约过渡保留字段声明；响应体不再出现该键
     device_type: Optional[str] = Field(None)
     adapter_class: Optional[str] = Field(None)
     audio_config: Optional[Dict[str, Any]] = Field(None)
@@ -102,6 +134,10 @@ class ApiCreateInput(APIModel):
     status: Optional[str] = Field(None)
     endpoints: List[ApiEndpointInput] = Field(default_factory=list)
     output_types: Optional[List[str]] = Field(None)
+    # INT-1799：协议 / 流式性（缺省 http / false）。device_type 保留字段仅用于
+    # 「显式拒绝」——收到非空值后端 400（B0 裁定：不做兼容窗口、不做双写）。
+    protocol: Optional[str] = Field(None)
+    streaming: Optional[bool] = Field(None)
     device_type: Optional[str] = Field(None)
     adapter_class: Optional[str] = Field(None)
     audio_config: Optional[Dict[str, Any]] = Field(None)
@@ -121,6 +157,9 @@ class ApiUpdateInput(APIModel):
     status: Optional[str] = Field(None)
     endpoints: Optional[List[ApiEndpointInput]] = Field(None)
     output_types: Optional[List[str]] = Field(None)
+    # INT-1799：只提交需要改的维度；device_type 保留字段仅用于显式拒绝（400）
+    protocol: Optional[str] = Field(None)
+    streaming: Optional[bool] = Field(None)
     device_type: Optional[str] = Field(None)
     adapter_class: Optional[str] = Field(None)
     audio_config: Optional[Dict[str, Any]] = Field(None)

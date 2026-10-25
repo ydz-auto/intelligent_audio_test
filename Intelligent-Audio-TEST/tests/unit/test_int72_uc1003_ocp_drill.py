@@ -120,7 +120,7 @@ class TestUC1003OCPDrill:
         cfg = SimpleNamespace(
             id=1, meta={'vendor_adapter': 'api_driver'}, api_endpoints=[{'endpoint': 'http://x'}],
             adapter_class=None, vendor=None,
-            proxy_type=None, proxy_url=None, max_timeout=30)
+            proxy_type=None, proxy_url=None, max_timeout=30, protocol='http')
         adapter = vendor_adapter_registry.create_from_config(cfg, {})
         assert isinstance(adapter, cls)
         assert adapter.execute({})['asr'] == 'acme-asr'
@@ -141,7 +141,7 @@ class TestRegistrySemantics:
         cfg = SimpleNamespace(
             id=1, meta={}, api_endpoints=[{'endpoint': 'http://x'}],
             adapter_class='Nope', vendor=None, proxy_type=None,
-            proxy_url=None, max_timeout=30)
+            proxy_url=None, max_timeout=30, protocol='http')
         from api_test_service.infrastructure.adapters import registry as reg
         with pytest.raises(ValueError, match='未注册'):
             reg._adapter_class_override(cfg, None)
@@ -152,6 +152,6 @@ class TestRegistrySemantics:
         cfg = SimpleNamespace(
             id=1, meta={}, api_endpoints=[{'endpoint': 'http://x'}],
             adapter_class=None, vendor='mock', proxy_type=None,
-            proxy_url=None, max_timeout=30)
+            proxy_url=None, max_timeout=30, protocol='http')
         adapter = vendor_adapter_registry.create_from_config(cfg, {})
         assert type(adapter).__name__ == 'MockVendorAdapter'

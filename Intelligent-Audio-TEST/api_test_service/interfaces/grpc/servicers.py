@@ -209,14 +209,24 @@ class APITestServiceServicer(api_grpc.APITestServiceServicer):
             return api_pb.DeleteAPIConfigResponse(success=False, message=str(e), data="")
 
     def ListAPIConfigs(self, request, context=None):
-        """分页查询 API 列表"""
+        """分页查询 API 列表（INT-1799：支持 protocol / streaming 两维等值筛选）"""
         try:
+            raw_streaming = (getattr(request, 'streaming', '') or '').strip().lower()
+            if raw_streaming in ('', 'none'):
+                streaming = None
+            elif raw_streaming in ('true', 'false'):
+                streaming = raw_streaming == 'true'
+            else:
+                return api_pb.ListAPIConfigsResponse(
+                    success=False, message=f"非法的流式性筛选 (streaming): {raw_streaming}", data="")
             result = self.crud_service.get_all(
                 page=request.page or 1,
                 per_page=request.per_page or 10,
                 keyword=request.keyword or None,
                 status=request.status or None,
                 algorithm_type=request.algorithm_type or None,
+                protocol=getattr(request, 'protocol', '') or None,
+                streaming=streaming,
             )
             return api_pb.ListAPIConfigsResponse(
                 success=result.get('success', False),

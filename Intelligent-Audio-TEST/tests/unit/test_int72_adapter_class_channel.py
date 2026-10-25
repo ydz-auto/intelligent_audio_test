@@ -21,10 +21,11 @@ from api_test_service.infrastructure.adapters import vendor_adapter_registry
 
 
 def _cfg(meta=None, adapter_class=None, vendor=None):
+    # INT-1799：协议单一来源为 apis.protocol 列，替身必须带 protocol 属性
     return SimpleNamespace(
         id=1, meta=meta or {}, api_endpoints=[{'endpoint': 'http://api'}],
         adapter_class=adapter_class, vendor=vendor, proxy_type=None,
-        proxy_url=None, max_timeout=30)
+        proxy_url=None, max_timeout=30, protocol='http')
 
 
 class TestAdapterClassChannelEmbedded:

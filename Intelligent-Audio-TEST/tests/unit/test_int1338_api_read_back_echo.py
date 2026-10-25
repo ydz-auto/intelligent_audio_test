@@ -178,7 +178,8 @@ class TestAppReadSideEcho:
             return _api_po_to_entity(_full_po(id=api_id))
 
         def list_apis(self, page=1, per_page=10, keyword=None,
-                      status=None, algorithm_type=None):
+                      status=None, algorithm_type=None,
+                      protocol=None, streaming=None):
             po = _full_po(id=38)
             po2 = _full_po(id=40, name='接线测试_INT1338_列表2', vendor='WalkVendor2',
                            algorithm_type='tts_eval',

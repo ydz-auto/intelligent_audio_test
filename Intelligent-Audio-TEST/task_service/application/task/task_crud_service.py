@@ -57,6 +57,18 @@ class TaskCrudService:
         """创建任务。"""
         try:
             from api_gateway.application.services.stats_cache import refresh_stats_cache
+            from task_service.infrastructure.persistence._task_crud_mixin import (
+                ExecutionAffinityError, resolve_api_affinity_token,
+            )
+
+            # INT-1799 单执行单元单道：任务内所有被测 API 的 streaming 必须一致
+            # （一个执行器跑全部 api_configs）。混选 → 400，不落猜测值。
+            api_ids = data.get('api_ids') or []
+            if api_ids:
+                try:
+                    resolve_api_affinity_token(api_ids)
+                except ExecutionAffinityError as e:
+                    return {'success': False, 'message': str(e), 'data': None, 'code': 400}
 
             # INT-1115：逐目标执行模式透传进 config 落库（列表保序；查询侧与引擎
             # 统一从 Task.config['target_modes'] 读取）。缺省/空数组不写入 = 全目标并行。
@@ -89,6 +101,13 @@ class TaskCrudService:
 
             return {'success': True, 'message': '任务创建成功', 'data': {'id': task_id}, 'code': 201}
         except Exception as e:
+            # INT-1799：仓储派生亲和域时取不到 API streaming / 混道 → 400（非 500）
+            from task_service.infrastructure.persistence._task_crud_mixin import (
+                ExecutionAffinityError,
+            )
+            if isinstance(e, ExecutionAffinityError):
+                logger.warning(f"任务执行亲和域无法确定: {e}")
+                return {'success': False, 'message': str(e), 'data': None, 'code': 400}
             logger.error(f"创建任务失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 

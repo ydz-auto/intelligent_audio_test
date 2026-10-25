@@ -79,7 +79,9 @@ def _api_po_to_entity(po: API) -> APIAggregate:
         status=po.status or "active",
         deleted=po.deleted or False,
         output_types=normalize_output_types(po.output_types),
-        device_type=po.device_type or "http_api",
+        # INT-1799：协议 × 流式性正交两列（执行道只由 streaming 决定）
+        protocol=po.protocol or "http",
+        streaming=bool(po.streaming),
         adapter_class=po.adapter_class,
         audio_config=po.audio_config,
         rms_spl_mapping_id=po.rms_spl_mapping_id,
@@ -117,6 +119,9 @@ def _apply_aggregate_to_po(aggregate: APIAggregate, po: API) -> None:
     po.status = aggregate.status
     po.deleted = aggregate.deleted
     po.max_timeout = aggregate.timeout_seconds
+    # INT-1799：协议 × 流式性回写（device_type 不再回写——已废弃）
+    po.protocol = aggregate.protocol or 'http'
+    po.streaming = bool(aggregate.streaming)
     po.rms_spl_mapping_id = aggregate.rms_spl_mapping_id
     po.proxy_type = aggregate.proxy_type
     po.proxy_url = aggregate.proxy_url
@@ -276,7 +281,10 @@ class APITestRepository(APITestRepositoryABC):
                 health_score=100,
                 api_endpoints=data.get('api_endpoints', []),
                 output_types=data.get('output_types', []),
-                device_type=data.get('device_type') or 'http_api',
+                # INT-1799：协议 × 流式性（写侧已校验；此处只做缺省兜底，
+                # device_type 不再写入——列保留但废弃）
+                protocol=data.get('protocol') or 'http',
+                streaming=bool(data.get('streaming', False)),
                 adapter_class=data.get('adapter_class'),
                 audio_config=data.get('audio_config'),
                 created_by_user_id=get_current_user_id(),
@@ -333,7 +341,8 @@ class APITestRepository(APITestRepositoryABC):
 
     def list_apis(self, page: int = 1, per_page: int = 10,
                  keyword: str = None, status: str = None,
-                 algorithm_type: str = None) -> dict:
+                 algorithm_type: str = None,
+                 protocol: str = None, streaming: bool = None) -> dict:
         """分页查询 API 列表，items 为 APIAggregate 聚合根列表。
 
         Args:
@@ -342,6 +351,8 @@ class APITestRepository(APITestRepositoryABC):
             keyword: 搜索关键字（name/description）
             status: 状态过滤
             algorithm_type: 算法类型过滤
+            protocol: 协议等值过滤（INT-1799；规范值 http/websocket/sse/grpc）
+            streaming: 流式性等值过滤（INT-1799；None = 不过滤）
 
         Returns:
             dict: {items, total, page, per_page, pages}
@@ -358,6 +369,11 @@ class APITestRepository(APITestRepositoryABC):
             query = query.filter(API.status == status)
         if algorithm_type:
             query = query.filter(API.algorithm_type == algorithm_type)
+        # INT-1799：协议 / 流式性两维等值筛选（两者相互独立，可单用可组合）
+        if protocol:
+            query = query.filter(API.protocol == protocol)
+        if streaming is not None:
+            query = query.filter(API.streaming == bool(streaming))
 
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
         # PO → Entity 显式转换后再返回
