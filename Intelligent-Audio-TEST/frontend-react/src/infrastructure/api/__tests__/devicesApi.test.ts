@@ -80,6 +80,8 @@ describe('createApiDevice/updateApiDevice 密钥池写侧（INT-1437）', () => 
       rmsSplMappingId: null,
       rmsSplMappingName: null,
       occupied: false,
+      // INT-1938：ApiDevice 新增的列（只读进模型，POST 不提交）
+      audioConfig: null,
     })
     const [url, init] = lastCall()
     expect(url).toBe(`${API_BASE_URL}/apis`)
@@ -88,6 +90,9 @@ describe('createApiDevice/updateApiDevice 密钥池写侧（INT-1437）', () => 
     expect(body.endpoints[0].api_keys).toEqual(['sk-dev-1', 'sk-dev-2'])
     expect('apiKeysText' in body.endpoints[0]).toBe(false)
     expect('apiKeysSummary' in body.endpoints[0]).toBe(false)
+    // INT-1938：设备抽屉新增不写 device_type / audio_config（只给模型补列，供 §5.3 弹窗回显）
+    expect('device_type' in body).toBe(false)
+    expect('audio_config' in body).toBe(false)
   })
 
   it('updateApiDevice：留空不显式传 api_keys（保留既有池）', async () => {

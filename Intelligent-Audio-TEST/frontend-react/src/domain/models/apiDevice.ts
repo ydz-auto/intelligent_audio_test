@@ -2,6 +2,10 @@
  * 测试 API 领域模型（domain 层；16_设备域.md §3.6 落位——「完整配置域模型归设备管理页 API 页签」）。
  * 形态对照 api_gateway/schemas/api.py ApiItem/ApiEndpointItem 实测逐字段；
  * 与 10_测试执行.md 的 ApiConfig 子集模型同源，本页消费全字段。
+ * INT-1938：补 audioConfig（ApiItem 实测列），供「测试 API」页签行「编辑」复用 §5.3 API
+ * 编辑弹窗（10_测试执行.md:323）时回显音频格式——不补会在保存时把 audio_config 清空。
+ * 该卡的 deviceType 部分随 INT-1800 一并退役（`device_type` 后端读侧不再返回、写侧 400，
+ * 协议与流式性改由 protocol / streaming 两维表达），故本模型不含 deviceType。
  * API 资源不挂实验室（迁移未给 apis 加 lab_id，INT-487 注记），本模型无 labId。
  */
 export interface ApiEndpoint {
@@ -47,6 +51,8 @@ export interface ApiDevice {
   defaultMaxAudioDuration: number | null
   healthScore: number | null
   endpoints: ApiEndpoint[]
+  /** 目标音频格式声明（顶层列 apis.audio_config，非 meta.audio_config；INT-1777）——API 编辑弹窗回显用 */
+  audioConfig: Record<string, unknown> | null
   /** RMS-SPL 默认映射（rms_spl_mapping_id → 映射名；未关联「去配置」link → /SPLMapping?domain=digital） */
   rmsSplMappingId: number | null
   rmsSplMappingName: string | null

@@ -10,6 +10,7 @@
  * （supportedAlgorithms contains，同后端 DeviceListQuery.algorithm_type 口径；列表全量拉取
  * 故在 feature 层过滤），切换器变更即时联动、chip × 清空回全部；本页不重复算法筛选器。
  */
+import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -66,6 +67,9 @@ import type {
 import { DevicesPrimaryButtons } from '@/features/devices/components/devices-primary-buttons'
 import { findDeviceGroup } from '@/features/devices/lib/device-group-tree'
 import { filterTestDevicesByAlgorithm } from '@/features/devices/lib/device-algorithm-filter'
+import { apiConfigFromApiDevice } from '@/features/devices/lib/api-device-to-api-config'
+// INT-1938：API 编辑复用 §5.3 五页签弹窗（与「开始测试」同件，16_设备域.md:157）
+import { ApiEditDialog } from '@/features/test-execution/modals/api-edit-dialog'
 import { DevicesFilterToolbar } from '@/features/devices/components/devices-filter-toolbar'
 import { DevicesStatsRow } from '@/features/devices/components/devices-stats-row'
 import { TestDeviceTable } from '@/features/devices/components/test-device-table'
@@ -89,6 +93,7 @@ import {
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { ApiDevice } from '@/domain/models/apiDevice'
+import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { DeviceGroup } from '@/domain/models/deviceGroup'
 
 const DEFAULT_FILTERS: DevicesFilters = {
@@ -198,6 +203,13 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     kind: 'test',
     device: null,
   })
+  /** INT-1938：「测试 API」页签的编辑复用 §5.3 API 编辑弹窗（与「开始测试」同件，五页签），
+   *  设备抽屉只留新增（扫描预填 / 端点数组）——UX 16_设备域.md:157/561 */
+  const [apiEditState, setApiEditState] = useState<{ open: boolean; api: ApiConfig | null }>({
+    open: false,
+    api: null,
+  })
+  const queryClient = useQueryClient()
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)
   const [labManagerOpen, setLabManagerOpen] = useState(false)
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false)
@@ -417,6 +429,11 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
   }
 
   const handleDetailEdit = (kind: DevicesTabKey, device: TestDevice | PlaybackDevice | ApiDevice) => {
+    // INT-1938：API 与行菜单「编辑」同口径，开 §5.3 五页签弹窗（两个入口不出现两套表单）
+    if (kind === 'api') {
+      setApiEditState({ open: true, api: apiConfigFromApiDevice(device as ApiDevice) })
+      return
+    }
     setMutateState({ open: true, mode: 'edit', kind, device })
   }
 
@@ -568,7 +585,9 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       canControl,
       canHealth,
       onDetail: (device: ApiDevice) => setDetailState({ open: true, kind: 'api', device }),
-      onEdit: (device: ApiDevice) => openMutate({ open: true, mode: 'edit', kind: 'api', device }),
+      onEdit: (device: ApiDevice) =>
+        // INT-1938：改开 §5.3 五页签弹窗（设备抽屉不含 meta 请求模板 / 响应解析 / 输出字段 / 映射）
+        setApiEditState({ open: true, api: apiConfigFromApiDevice(device) }),
       onHealth: (device: ApiDevice) => {
         // 接线 INT-644：API 健康检查走 POST /apis/{id}/health（区别于测试设备 /test-devices/health-check）
         // P3-a 返修：handleControl 自带成功/失败提示，页面不再无条件补「已发起」，避免失败时两条 toast 并存
@@ -842,6 +861,17 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
         onEdit={handleDetailEdit}
         canUpdate={canUpdate}
         algorithmNameMap={algorithmNameMap}
+      />
+      {/* INT-1938：「测试 API」页签编辑入口（行菜单「编辑」/ 详情「编辑」）复用的 §5.3 五页签弹窗 */}
+      <ApiEditDialog
+        open={apiEditState.open}
+        onOpenChange={(open) => {
+          setApiEditState((prev) => ({ ...prev, open }))
+          // 弹窗保存走 test-execution 的 useApisCrud（只失效 ['test-execution','apis']），
+          // 本页「测试 API」列表要自行失效才能看到新名字 / 新端点数
+          if (!open) void queryClient.invalidateQueries({ queryKey: ['devices', 'api'] })
+        }}
+        api={apiEditState.api ?? undefined}
       />
       <DeviceGroupManagerDialog
         open={groupManagerOpen}

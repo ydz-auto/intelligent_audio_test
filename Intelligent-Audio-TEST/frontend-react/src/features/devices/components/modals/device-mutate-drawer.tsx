@@ -573,6 +573,8 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
             rmsSplMappingId: null,
             rmsSplMappingName: null,
             occupied: false,
+            // INT-1938：该列只读进「测试 API」模型（供 §5.3 编辑弹窗回显），新增抽屉不写
+            audioConfig: null,
           })
         }
       }

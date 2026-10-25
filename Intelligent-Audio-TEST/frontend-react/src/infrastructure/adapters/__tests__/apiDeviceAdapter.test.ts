@@ -105,3 +105,23 @@ describe('apiDeviceFromDto 协议来源（INT-1800：只读 protocol 列）', ()
     expect(device.streaming).toBe(false)
   })
 })
+
+describe('apiDeviceFromDto audio_config（INT-1938 编辑弹窗回显）', () => {
+  it('audio_config 透传（顶层列，非 meta.audio_config）', () => {
+    const device = apiDeviceFromDto({
+      ...BASE_API_DTO,
+      audio_config: { sample_rate: 16000, bit_depth: 's16', channels: 1, container: 'pcm' },
+    })
+    expect(device.audioConfig).toEqual({
+      sample_rate: 16000,
+      bit_depth: 's16',
+      channels: 1,
+      container: 'pcm',
+    })
+  })
+
+  it('未设置的存量记录映射为 null（不写成 undefined）', () => {
+    const device = apiDeviceFromDto(BASE_API_DTO)
+    expect(device.audioConfig).toBeNull()
+  })
+})

@@ -48,6 +48,9 @@ export function apiDeviceFromDto(dto: ApiItemDto): ApiDevice {
     defaultMaxAudioDuration: dto.default_max_audio_duration,
     healthScore: dto.health_score,
     endpoints,
+    // INT-1938：§5.3 API 编辑弹窗（从「测试 API」页签行「编辑」打开）回显依赖该列
+    // （device_type 已随 INT-1800 退役，协议/流式性走 protocol / streaming）
+    audioConfig: dto.audio_config ?? null,
     rmsSplMappingId: dto.rms_spl_mapping_id,
     rmsSplMappingName: null,
     occupied: false,
