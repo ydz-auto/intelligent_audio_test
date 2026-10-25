@@ -1,24 +1,33 @@
 /**
- * 新增/编辑 API 弹窗（INT-1777，母卡 INT-1750 C5 规格 v3；interfaces/features/test-execution/modals）。
+ * 新增/编辑 API 弹窗（INT-1777 五页签骨架 + INT-1778 后三个页签；母卡 INT-1750 C5 规格 v3；
+ * interfaces/features/test-execution/modals）。
  *
- * 五页签骨架：
+ * 五个页签：
  * - 基础：现有字段（名称 / 关联算法 / 最大并发 / 设备类型 / 描述 / 端点列表与密钥池）口径不变，
  *   新增 audio_config 编辑区（顶层列 apis.audio_config，四项：采样率/位深/通道数/容器）；
  * - 请求模板：写 meta（按目标设备类型显隐 HTTP / WS 两组键）；
- * - 响应解析 / 输出字段 / 映射：本卡只落页签骨架 + 占位空态，内容由实施卡二填。
+ * - 响应解析：写 meta（result_parser 等 8 个解析器键；顶部固定提示 C0 裁定口径）；
+ * - 输出字段 / 映射：只读，算法类型作用域（数据源见 application/test-execution/useApiAlgorithmReadonly）。
  *
  * meta 读写口径（母卡 §3.1，后端整块 replace）：打开弹窗以 GET /apis 的 api.meta 为 base；
  * 页签只覆盖自己声明的键；保存提交合并后的整对象；清空的键从 base 删除；**未触碰任何 meta 字段不发 meta**。
+ * 请求模板与响应解析都改过时按「base → 请求模板 → 响应解析」串行合并。
  * audio_config 未改动不发该键，显式「清除」传 {}；禁止写 meta.audio_config。
  * 页签显隐用 deriveApiTargetDeviceType（编辑态显式 deviceType 优先，新增态按端点草稿派生）。
  */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
-import { FileText, Plus, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { ExternalLink, FileText, Plus, X } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
+import {
+  useAlgorithmApiMappings,
+  useAlgorithmApiParams,
+  type ReadonlyQueryState,
+} from '@/application/test-execution/useApiAlgorithmReadonly'
 import { useApisCrud } from '@/application/test-execution/useApisCrud'
 import { useTestAlgorithmOptions } from '@/application/test-execution/useTestAlgorithmOptions'
 import { fetchApi } from '@/infrastructure/api/test-execution-api'
@@ -50,6 +59,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import type { ApiConfig } from '@/domain/models/apiConfig'
@@ -61,19 +79,26 @@ import {
   AUDIO_CONTAINER_OPTIONS,
   AUDIO_SAMPLE_RATE_OPTIONS,
   HTTP_METHOD_OPTIONS,
+  RESPONSE_PARSER_PATH_DEFAULTS,
   audioConfigDraftFrom,
   buildAudioConfig,
   deriveDraftTargetDeviceType,
   emptyAudioConfigDraft,
   emptyRequestTemplateDraft,
+  emptyResponseParserDraft,
   mergeRequestTemplateMeta,
+  mergeResponseParserMeta,
   newKeyValueRow,
   requestTemplateDraftFromMeta,
+  responseParserDraftFromMeta,
+  type AppendModeValue,
   type AudioConfigDraft,
   type BodyTemplateMode,
   type KeyValueRow,
   type MetaDraftError,
   type RequestTemplateDraft,
+  type ResponseParserDraft,
+  type ResponseParserDraftError,
 } from './api-edit-dialog-model'
 
 const apiFormSchema = z.object({
@@ -89,12 +114,12 @@ type ApiForm = z.infer<typeof apiFormSchema>
 
 type ApiTab = 'basic' | 'request' | 'response' | 'output' | 'mapping'
 
-const API_TABS: ReadonlyArray<{ value: ApiTab; label: string; placeholder: string }> = [
-  { value: 'basic', label: '基础', placeholder: '' },
-  { value: 'request', label: '请求模板', placeholder: '' },
-  { value: 'response', label: '响应解析', placeholder: '响应解析器与各输出映射（result_parser / asr_mapping 等 meta 键）' },
-  { value: 'output', label: '输出字段', placeholder: '该算法类型声明的输出字段（只读，算法类型级）' },
-  { value: 'mapping', label: '映射', placeholder: '该算法类型的 API 输出映射（只读，算法类型级）' },
+const API_TABS: ReadonlyArray<{ value: ApiTab; label: string }> = [
+  { value: 'basic', label: '基础' },
+  { value: 'request', label: '请求模板' },
+  { value: 'response', label: '响应解析' },
+  { value: 'output', label: '输出字段' },
+  { value: 'mapping', label: '映射' },
 ]
 
 /** base-ui Select 不接受空串为「未设置」，统一用哨兵值映射草稿里的 '' */
@@ -133,6 +158,12 @@ const CONTAINER_OPTIONS = [
 const BODY_TEMPLATE_MODE_OPTIONS = [
   { value: 'json', label: '结构化 JSON' },
   { value: 'raw', label: '原始字符串模板' },
+] as const
+// INT-1778 append_mode 三态（'' = 不写该键，沿用后端缺省）
+const APPEND_MODE_OPTIONS = [
+  { value: UNSET, label: '未设置（按缺省：流式取最后一条）' },
+  { value: 'true', label: '是（逐句结束追加拼接）' },
+  { value: 'false', label: '否（保留最后一条分片）' },
 ] as const
 
 /** 端点编辑行（INT-1223：复用 device-mutate-drawer 端点编辑器形态；端点四整数校验项齐全——INT-1362 补优先级/音频时长） */
@@ -178,9 +209,12 @@ function computeFormValues(
 ): ApiForm {
   return {
     name: api?.name ?? '',
+    // 关联算法的存储值是**算法类型码**（apis.algorithm_type，缺省取全局算法；INT-1778 修：
+    // 原实现回填/提交的是显示名，导致 api 的 algorithm_type 落成「小艺语音大模型」，
+    // 按类型码取参数的输出字段 / 映射页签恒空）
     algorithmType:
       api?.algorithmType ??
-      algorithmList.find((a) => a.id === globalAlgorithmId)?.name ??
+      algorithmList.find((a) => a.id === globalAlgorithmId)?.id ??
       '',
     maxProcess: api?.defaultMaxProcess ?? 5,
     description: api?.description ?? '',
@@ -209,6 +243,10 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   const [metaDraft, setMetaDraft] = useState<RequestTemplateDraft>(emptyRequestTemplateDraft)
   const [metaTouched, setMetaTouched] = useState(false)
   const [metaErrors, setMetaErrors] = useState<MetaDraftError[]>([])
+  // INT-1778 响应解析页签草稿（同样写 meta，与请求模板各自 dirty、保存时串行合并）
+  const [responseDraft, setResponseDraft] = useState<ResponseParserDraft>(emptyResponseParserDraft)
+  const [responseTouched, setResponseTouched] = useState(false)
+  const [responseErrors, setResponseErrors] = useState<ResponseParserDraftError[]>([])
   // audio_config 草稿（顶层列；未改动不发该键）
   const [audioDraft, setAudioDraft] = useState<AudioConfigDraft>(emptyAudioConfigDraft)
   const [audioTouched, setAudioTouched] = useState(false)
@@ -233,6 +271,15 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
 
   const watchedDeviceType = form.watch('deviceType')
   const algorithmType = form.watch('algorithmType')
+
+  // INT-1778 只读页签数据源（algorithm:read）：切到相关页签才请求，避免每次打开多发两个 GET。
+  // 响应解析页签也要 params 数据——C0 兜底口径的判定依据就是同一次
+  // GET /algorithm/params?param_type=api 有没有 direction=output 行。
+  const paramsQuery = useAlgorithmApiParams(
+    algorithmType,
+    open && (tab === 'response' || tab === 'output')
+  )
+  const mappingsQuery = useAlgorithmApiMappings(algorithmType, open && tab === 'mapping')
 
   // 端点列表（唯一端点入口；编辑回显，关闭清空）
   useEffect(() => {
@@ -264,6 +311,9 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     setMetaDraft(requestTemplateDraftFromMeta(api?.meta))
     setMetaTouched(false)
     setMetaErrors([])
+    setResponseDraft(responseParserDraftFromMeta(api?.meta))
+    setResponseTouched(false)
+    setResponseErrors([])
     setAudioDraft(audioConfigDraftFrom(api?.audioConfig))
     setAudioTouched(false)
     setAudioCleared(false)
@@ -276,15 +326,31 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     if (!open || !detailQuery.data) return
     const fresh = detailQuery.data
     if (!metaTouched) setMetaDraft(requestTemplateDraftFromMeta(fresh.meta))
+    if (!responseTouched) setResponseDraft(responseParserDraftFromMeta(fresh.meta))
     if (!audioTouched) {
       setAudioDraft(audioConfigDraftFrom(fresh.audioConfig))
       setAudioCleared(false)
     }
-  }, [open, detailQuery.data, metaTouched, audioTouched])
+  }, [open, detailQuery.data, metaTouched, responseTouched, audioTouched])
 
   // 页签显隐依据：显式 deviceType 优先，auto 按当前端点草稿派生（编辑态与新增态同口径）
   const targetDeviceType = deriveDraftTargetDeviceType(watchedDeviceType, endpoints)
   const isWebSocket = targetDeviceType === 'websocket_api'
+
+  // C0（INT-1745）判定结果展示：只说「该算法类型的声明情况」，不描述系统当前行为
+  const c0Status = !algorithmType
+    ? '未选择关联算法，无法判定'
+    : paramsQuery.state === 'loading'
+      ? '正在读取该算法类型的输出字段声明…'
+      : paramsQuery.state === 'ready'
+        ? paramsQuery.noOutputDeclared
+          ? '该类型未声明输出字段 → 解析走本页 meta 兜底'
+          : `该类型已声明 ${paramsQuery.outputParams.length} 个输出字段 → 本页解析器不兜底`
+        : paramsQuery.state === 'forbidden'
+          ? '无权查看算法配置，无法判定'
+          : paramsQuery.state === 'error'
+            ? '算法配置读取失败，无法判定'
+            : '未判定'
 
   const metaErrorOf = (field: MetaDraftError['field']) =>
     metaErrors.find((error) => error.field === field)?.message
@@ -293,6 +359,15 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     setMetaDraft((prev) => ({ ...prev, ...patch }))
     setMetaTouched(true)
     setMetaErrors([])
+  }
+
+  const responseErrorOf = (field: ResponseParserDraftError['field']) =>
+    responseErrors.find((error) => error.field === field)?.message
+
+  const updateResponse = (patch: Partial<ResponseParserDraft>) => {
+    setResponseDraft((prev) => ({ ...prev, ...patch }))
+    setResponseTouched(true)
+    setResponseErrors([])
   }
 
   const updateAudio = (patch: Partial<AudioConfigDraft>) => {
@@ -347,12 +422,24 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
         })),
     }
 
-    // 请求模板（meta）：未触碰 → 不下发 meta 键；触碰 → 提交 base 合并后的整对象
-    if (metaTouched) {
-      const { meta, errors } = mergeRequestTemplateMeta(baseApi?.meta, metaDraft, targetDeviceType)
-      if (errors.length > 0) {
-        setMetaErrors(errors)
-        setTab('request')
+    // meta 写入（母卡 §3.1）：两个页签都未触碰 → 不下发 meta 键；
+    // 触碰 → 以 base 为底按「请求模板 → 响应解析」串行合并，提交合并后的整对象。
+    if (metaTouched || responseTouched) {
+      let meta: Record<string, unknown> = baseApi?.meta ?? {}
+      const requestResult = metaTouched
+        ? mergeRequestTemplateMeta(meta, metaDraft, targetDeviceType)
+        : { meta, errors: [] as MetaDraftError[] }
+      meta = requestResult.meta
+      const responseResult = responseTouched
+        ? mergeResponseParserMeta(meta, responseDraft)
+        : { meta, errors: [] as ResponseParserDraftError[] }
+      meta = responseResult.meta
+
+      setMetaErrors(requestResult.errors)
+      setResponseErrors(responseResult.errors)
+      if (requestResult.errors.length > 0 || responseResult.errors.length > 0) {
+        // 非法 JSON 保存前拦截：弹窗不关、请求不发出，并跳到第一个出错的页签
+        setTab(requestResult.errors.length > 0 ? 'request' : 'response')
         return
       }
       payload.meta = meta
@@ -410,6 +497,8 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                   <Label>关联算法 *</Label>
                   <Select
                     value={form.watch('algorithmType')}
+                    // 收起态靠 items 取 label（INT-1633 同口径）；漏传会直接回显算法类型码
+                    items={algorithmList.map((algorithm) => ({ value: algorithm.id, label: algorithm.name }))}
                     onValueChange={(value) => form.setValue('algorithmType', value ?? '')}
                   >
                     <SelectTrigger className={cn('w-full justify-between', !form.watch('algorithmType') && 'text-muted-foreground')}>
@@ -417,7 +506,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                     </SelectTrigger>
                     <SelectContent>
                       {algorithmList.map((algorithm) => (
-                        <SelectItem key={algorithm.id} value={algorithm.name}>
+                        <SelectItem key={algorithm.id} value={algorithm.id}>
                           {algorithm.name}
                         </SelectItem>
                       ))}
@@ -833,16 +922,221 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                 </div>
               </TabsContent>
 
-              {/* 以下三个页签本卡只落骨架 + 占位空态，内容由实施卡二填 */}
-              {API_TABS.filter((item) => item.placeholder).map((item) => (
-                <TabsContent key={item.value} value={item.value}>
-                  <TabPlaceholder
-                    title={item.label}
-                    placeholder={item.placeholder}
-                    hasAlgorithm={Boolean(algorithmType)}
+              {/* 响应解析页签（INT-1778 §2.3）：写 meta 的 8 个解析器键 */}
+              <TabsContent value='response' className='space-y-3'>
+                <div className='bg-muted/40 space-y-1.5 rounded-lg border p-2.5 text-xs'>
+                  <p className='flex flex-wrap items-center gap-1.5 font-medium'>
+                    解析兜底口径（C0 裁定口径 · INT-1745）
+                    <Badge variant='secondary' className='font-normal'>
+                      {c0Status}
+                    </Badge>
+                  </p>
+                  <p className='text-muted-foreground'>
+                    按 C0 裁定口径：本页 meta 解析器只在该算法类型
+                    <span className='text-foreground font-medium'>零输出字段声明</span>
+                    时逐键兜底 —— 判定方式是同一次{' '}
+                    <code className='font-mono'>
+                      GET /algorithm/params?algorithm_type=…&amp;param_type=api
+                    </code>{' '}
+                    没有 <code className='font-mono'>direction=output</code> 行；该类型声明了输出字段时，
+                    解析以「输出字段」页签的声明为准，本页解析器不作兜底，两者不按字段混用。
+                  </p>
+                </div>
+
+                <div className='space-y-1.5'>
+                  <Label htmlFor='meta-result-parser'>响应解析器（result_parser）</Label>
+                  <Textarea
+                    id='meta-result-parser'
+                    rows={4}
+                    value={responseDraft.resultParser}
+                    onChange={(e) => updateResponse({ resultParser: e.target.value })}
+                    placeholder={
+                      '{\n  "asr_text_path": "data.text",\n  "trans_text_path": "data.translation",\n  "session_id_path": "data.session_id"\n}'
+                    }
+                    className='font-mono text-xs'
+                    aria-invalid={Boolean(responseErrorOf('resultParser'))}
                   />
-                </TabsContent>
-              ))}
+                  {responseErrorOf('resultParser') ? (
+                    <p className='text-destructive text-xs'>{responseErrorOf('resultParser')}</p>
+                  ) : (
+                    <p className='text-muted-foreground text-xs'>
+                      JSON 对象（键：asr_text_path / trans_text_path / session_id_path）；留空则不写入该键。
+                    </p>
+                  )}
+                </div>
+
+                <div className='grid grid-cols-2 gap-2'>
+                  <ResponsePathInput
+                    id='meta-asr-mapping'
+                    label='ASR 文本映射（asr_mapping）'
+                    defaultValue={RESPONSE_PARSER_PATH_DEFAULTS.asrMapping}
+                    value={responseDraft.asrMapping}
+                    onChange={(value) => updateResponse({ asrMapping: value })}
+                  />
+                  <ResponsePathInput
+                    id='meta-trans-mapping'
+                    label='翻译文本映射（trans_mapping）'
+                    defaultValue={RESPONSE_PARSER_PATH_DEFAULTS.transMapping}
+                    value={responseDraft.transMapping}
+                    onChange={(value) => updateResponse({ transMapping: value })}
+                  />
+                  <ResponsePathInput
+                    id='meta-sentence-end-mapping'
+                    label='句结束标志（sentence_end_mapping）'
+                    defaultValue={RESPONSE_PARSER_PATH_DEFAULTS.sentenceEndMapping}
+                    value={responseDraft.sentenceEndMapping}
+                    onChange={(value) => updateResponse({ sentenceEndMapping: value })}
+                  />
+                  <ResponsePathInput
+                    id='meta-session-end-mapping'
+                    label='会话结束标志（session_end_mapping）'
+                    defaultValue={RESPONSE_PARSER_PATH_DEFAULTS.sessionEndMapping}
+                    value={responseDraft.sessionEndMapping}
+                    onChange={(value) => updateResponse({ sessionEndMapping: value })}
+                  />
+                  <ResponsePathInput
+                    id='meta-error-code-mapping'
+                    label='业务错误码（error_code_mapping）'
+                    defaultValue={RESPONSE_PARSER_PATH_DEFAULTS.errorCodeMapping}
+                    value={responseDraft.errorCodeMapping}
+                    onChange={(value) => updateResponse({ errorCodeMapping: value })}
+                  />
+                  <ResponsePathInput
+                    id='meta-error-msg-mapping'
+                    label='业务错误信息（error_msg_mapping）'
+                    defaultValue={RESPONSE_PARSER_PATH_DEFAULTS.errorMsgMapping}
+                    value={responseDraft.errorMsgMapping}
+                    onChange={(value) => updateResponse({ errorMsgMapping: value })}
+                  />
+                </div>
+
+                <div className='space-y-1.5'>
+                  <Label>流式结果拼接（append_mode）</Label>
+                  <Select
+                    value={responseDraft.appendMode || UNSET}
+                    items={APPEND_MODE_OPTIONS}
+                    onValueChange={(value) =>
+                      updateResponse({
+                        appendMode: (value && value !== UNSET ? value : '') as AppendModeValue,
+                      })
+                    }
+                  >
+                    <SelectTrigger
+                      className='w-full justify-between'
+                      aria-label='流式结果拼接（append_mode）'
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UNSET}>未设置（按缺省：流式取最后一条）</SelectItem>
+                      <SelectItem value='true'>是（逐句结束追加拼接）</SelectItem>
+                      <SelectItem value='false'>否（保留最后一条分片）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className='text-muted-foreground text-xs'>
+                    仅流式（Realtime WS）响应生效：是 = 只拼接标记为句结束的分片；否 = 保留最后一条分片。
+                  </p>
+                </div>
+              </TabsContent>
+
+              {/* 输出字段页签（INT-1778 §2.4）：只读，算法类型级 */}
+              <TabsContent value='output' className='space-y-3'>
+                {algorithmType ? (
+                  <>
+                    <AlgorithmTypeBanner
+                      onClose={() => onOpenChange(false)}
+                      showJump={paramsQuery.state !== 'forbidden'}
+                    />
+                    <ReadonlyTabBody
+                      state={paramsQuery.state}
+                      isEmpty={paramsQuery.outputParams.length === 0}
+                      loadingHint='正在读取该算法类型的输出字段声明…'
+                      errorHint='输出字段读取失败'
+                      emptyTitle='该算法类型未声明输出字段'
+                      emptyDescription='该算法类型未声明输出字段，解析走 meta 兜底（见响应解析页签）。'
+                    >
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>参数代码</TableHead>
+                            <TableHead>类型</TableHead>
+                            <TableHead>响应路径（field_path）</TableHead>
+                            <TableHead>标签</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {paramsQuery.outputParams.map((param) => (
+                            <TableRow key={param.id}>
+                              <TableCell className='font-mono text-xs'>{param.paramCode}</TableCell>
+                              <TableCell className='text-xs'>{param.paramType}</TableCell>
+                              <TableCell className='font-mono text-xs'>
+                                {param.fieldPath ?? '—'}
+                              </TableCell>
+                              <TableCell className='text-xs'>{param.label ?? '—'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </ReadonlyTabBody>
+                  </>
+                ) : (
+                  <ReadonlyTabUnselected tabLabel='输出字段' />
+                )}
+              </TabsContent>
+
+              {/* 映射页签（INT-1778 §2.5）：只读，唯一数据源 /algorithm/mappings?source_type=api */}
+              <TabsContent value='mapping' className='space-y-3'>
+                {algorithmType ? (
+                  <>
+                    <AlgorithmTypeBanner
+                      onClose={() => onOpenChange(false)}
+                      showJump={mappingsQuery.state !== 'forbidden'}
+                    />
+                    <ReadonlyTabBody
+                      state={mappingsQuery.state}
+                      isEmpty={mappingsQuery.rows.length === 0}
+                      loadingHint='正在读取该算法类型的 API 输出映射…'
+                      errorHint='映射读取失败'
+                      emptyTitle='该算法类型未配置来源为 API 输出的映射'
+                      emptyDescription='该算法类型没有 source=api 的参数映射；如需新增，请到算法配置页的评估参数映射里添加。'
+                    >
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>源参数（source_param）</TableHead>
+                            <TableHead>目标维度</TableHead>
+                            <TableHead>目标参数（target_param）</TableHead>
+                            <TableHead>转换（transform_type）</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {mappingsQuery.rows.map((mapping) => (
+                            <TableRow key={mapping.id}>
+                              <TableCell className='font-mono text-xs'>
+                                {mapping.sourceParam}
+                              </TableCell>
+                              <TableCell className='text-xs'>
+                                {mapping.dimensionName ??
+                                  (mapping.dimensionId != null
+                                    ? `#${mapping.dimensionId}`
+                                    : '—')}
+                              </TableCell>
+                              <TableCell className='font-mono text-xs'>
+                                {mapping.targetParam || '—'}
+                              </TableCell>
+                              <TableCell className='text-xs'>
+                                {mapping.transformType || '—'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </ReadonlyTabBody>
+                  </>
+                ) : (
+                  <ReadonlyTabUnselected tabLabel='映射' />
+                )}
+              </TabsContent>
             </div>
           </Tabs>
 
@@ -970,29 +1264,144 @@ function JsonTextarea({
   )
 }
 
-/** 未实施页签占位空态（响应解析 / 输出字段 / 映射，内容由实施卡二填） */
-function TabPlaceholder({
-  title,
-  placeholder,
-  hasAlgorithm,
+/** 响应解析页签的单条路径输入（6 个 *_mapping 键；占位符 = 后端内置缺省，不预填不写库） */
+function ResponsePathInput({
+  id,
+  label,
+  defaultValue,
+  value,
+  onChange,
 }: {
-  title: string
-  placeholder: string
-  hasAlgorithm: boolean
+  id: string
+  label: string
+  defaultValue: string
+  value: string
+  onChange: (value: string) => void
 }) {
   return (
-    <Empty className='border-border/60 min-h-[18rem] border'>
+    <div className='space-y-1'>
+      <Label htmlFor={id} className='text-xs'>
+        {label}
+      </Label>
+      <Input
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={`留空 = 默认 ${defaultValue}`}
+        className='font-mono text-xs'
+      />
+    </div>
+  )
+}
+
+/** 算法类型级横幅（输出字段 / 映射页签共用；母卡 §2.4 / §2.5） */
+function AlgorithmTypeBanner({
+  onClose,
+  showJump,
+}: {
+  onClose: () => void
+  showJump: boolean
+}) {
+  return (
+    <div className='bg-muted/40 flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2.5 text-xs'>
+      <p className='text-muted-foreground flex-1'>
+        <Badge variant='secondary' className='mr-1.5'>
+          算法类型级
+        </Badge>
+        算法类型级声明，本类型下所有 API 共用；
+        {showJump ? '此处只读，维护入口在算法配置页。' : '当前账号不可查看。'}
+      </p>
+      {showJump && <AlgorithmConfigJump onBeforeNavigate={onClose} />}
+    </div>
+  )
+}
+
+/**
+ * 「去算法配置」跳转按钮。
+ * useNavigate 需要路由上下文，所以只有真的渲染这个按钮时才调用（未选算法 / 无权限时不渲染）。
+ */
+function AlgorithmConfigJump({ onBeforeNavigate }: { onBeforeNavigate: () => void }) {
+  const navigate = useNavigate()
+  return (
+    <Button
+      type='button'
+      variant='outline'
+      size='sm'
+      className='h-7 flex-none gap-1 text-xs'
+      onClick={() => {
+        onBeforeNavigate()
+        void navigate({ to: '/AlgorithmConfig' })
+      }}
+    >
+      <ExternalLink aria-hidden='true' className='size-3.5' />
+      去算法配置
+    </Button>
+  )
+}
+
+/** 只读页签的取数状态包装：加载 / 无权（403 降级）/ 错误 / 空态都收敛在这里 */
+function ReadonlyTabBody({
+  state,
+  isEmpty,
+  loadingHint,
+  errorHint,
+  emptyTitle,
+  emptyDescription,
+  children,
+}: {
+  state: ReadonlyQueryState
+  isEmpty: boolean
+  loadingHint: string
+  errorHint: string
+  emptyTitle: string
+  emptyDescription: string
+  children: ReactNode
+}) {
+  if (state === 'forbidden') {
+    return (
+      <ReadonlyTabEmpty
+        title='无权查看算法配置'
+        description='当前账号缺少 algorithm:read 权限，本页签不可用；不影响其它页签保存。'
+      />
+    )
+  }
+  if (state === 'error') {
+    return <ReadonlyTabEmpty title={errorHint} description='算法配置暂时读取不到，稍后可重新打开弹窗再试。' />
+  }
+  if (state !== 'ready') {
+    return (
+      <div className='text-muted-foreground flex items-center justify-center gap-2 py-10 text-xs'>
+        <Spinner className='size-4' />
+        {loadingHint}
+      </div>
+    )
+  }
+  if (isEmpty) {
+    return <ReadonlyTabEmpty title={emptyTitle} description={emptyDescription} />
+  }
+  return <div className='border-border/60 overflow-x-auto rounded-lg border'>{children}</div>
+}
+
+function ReadonlyTabEmpty({ title, description }: { title: string; description: string }) {
+  return (
+    <Empty className='border-border/60 border'>
       <EmptyHeader>
         <EmptyMedia variant='icon'>
           <FileText aria-hidden='true' className='size-4' />
         </EmptyMedia>
-        <EmptyTitle>{hasAlgorithm ? `${title}页签建设中` : '未选择关联算法'}</EmptyTitle>
-        <EmptyDescription>
-          {hasAlgorithm
-            ? `${placeholder}，将在后续版本提供。`
-            : '请先在「基础」页签选择关联算法，再回来查看该页签。'}
-        </EmptyDescription>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
       </EmptyHeader>
     </Empty>
+  )
+}
+
+/** 未选关联算法时的只读页签空态 */
+function ReadonlyTabUnselected({ tabLabel }: { tabLabel: string }) {
+  return (
+    <ReadonlyTabEmpty
+      title='未选择关联算法'
+      description={`请先在「基础」页签选择关联算法，再回来查看「${tabLabel}」页签（数据按算法类型汇总，与单个 API 无关）。`}
+    />
   )
 }

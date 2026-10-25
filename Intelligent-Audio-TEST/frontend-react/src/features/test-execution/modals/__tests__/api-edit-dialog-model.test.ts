@@ -1,7 +1,7 @@
 /**
- * INT-1777：API 编辑弹窗请求模板 / audio_config 草稿模型单测。
- * 锁定母卡 §3.1 的 meta 合并规则（base 保留未知键、清空删键、隐藏组不删）
- * 与 audio_config 顶层列四项口径。
+ * INT-1777 / INT-1778：API 编辑弹窗请求模板 / 响应解析 / audio_config 草稿模型单测。
+ * 锁定母卡 §3.1 的 meta 合并规则（base 保留未知键、清空删键、隐藏组不删）、
+ * §2.3 响应解析 8 键口径与 audio_config 顶层列四项口径。
  */
 import { describe, expect, it } from 'vitest'
 
@@ -9,9 +9,12 @@ import {
   audioConfigDraftFrom,
   buildAudioConfig,
   deriveDraftTargetDeviceType,
+  emptyResponseParserDraft,
   mergeRequestTemplateMeta,
+  mergeResponseParserMeta,
   newKeyValueRow,
   requestTemplateDraftFromMeta,
+  responseParserDraftFromMeta,
 } from '../api-edit-dialog-model'
 
 describe('requestTemplateDraftFromMeta 编辑态回填', () => {
@@ -129,6 +132,123 @@ describe('mergeRequestTemplateMeta（后端整块 replace → 前端合并）', 
       { field: 'headers', message: '请求头名称不能为空' },
       { field: 'headers', message: '请求头名称重复：a' },
     ])
+  })
+})
+
+describe('响应解析页签（INT-1778 §2.3，写 meta 的 8 个键）', () => {
+  it('编辑态回填 8 个键；append_mode 布尔 → 三态文本', () => {
+    const draft = responseParserDraftFromMeta({
+      result_parser: { asr_text_path: 'data.text', session_id_path: 'data.sid' },
+      asr_mapping: 'data.asr.text',
+      trans_mapping: 'data.translation',
+      sentence_end_mapping: 'data.is_end',
+      session_end_mapping: 'data.finished',
+      error_code_mapping: 'code',
+      error_msg_mapping: 'msg',
+      append_mode: true,
+    })
+    expect(JSON.parse(draft.resultParser)).toEqual({
+      asr_text_path: 'data.text',
+      session_id_path: 'data.sid',
+    })
+    expect(draft.asrMapping).toBe('data.asr.text')
+    expect(draft.transMapping).toBe('data.translation')
+    expect(draft.sentenceEndMapping).toBe('data.is_end')
+    expect(draft.sessionEndMapping).toBe('data.finished')
+    expect(draft.errorCodeMapping).toBe('code')
+    expect(draft.errorMsgMapping).toBe('msg')
+    expect(draft.appendMode).toBe('true')
+
+    expect(responseParserDraftFromMeta({ append_mode: false }).appendMode).toBe('false')
+    expect(responseParserDraftFromMeta({}).appendMode).toBe('')
+    expect(responseParserDraftFromMeta(null)).toEqual(emptyResponseParserDraft())
+  })
+
+  it('保存：只覆盖 8 个声明键，请求模板 / 未知键原样保留', () => {
+    const base = {
+      protocol: 'wss',
+      appendix_test: 1,
+      method: 'POST',
+      body_template: { text: '{{text}}' },
+      asr_mapping: 'old.path',
+    }
+    const draft = responseParserDraftFromMeta(base)
+    draft.resultParser = '{"asr_text_path":"data.text"}'
+    draft.asrMapping = 'data.asr.text'
+    draft.transMapping = ' data.translation '
+
+    const { meta, errors } = mergeResponseParserMeta(base, draft)
+    expect(errors).toEqual([])
+    expect(meta).toEqual({
+      protocol: 'wss',
+      appendix_test: 1,
+      method: 'POST',
+      body_template: { text: '{{text}}' },
+      result_parser: { asr_text_path: 'data.text' },
+      asr_mapping: 'data.asr.text',
+      trans_mapping: 'data.translation',
+    })
+  })
+
+  it('清空 8 个键 → 从 base 删除（后端回落到内置缺省，不写 null / 空串）', () => {
+    const base = {
+      result_parser: { asr_text_path: 'a' },
+      asr_mapping: 'a',
+      append_mode: true,
+      appendix_test: 1,
+    }
+    const draft = responseParserDraftFromMeta(base)
+    draft.resultParser = ''
+    draft.asrMapping = '   '
+    draft.appendMode = ''
+
+    const { meta, errors } = mergeResponseParserMeta(base, draft)
+    expect(errors).toEqual([])
+    expect(meta).toEqual({ appendix_test: 1 })
+  })
+
+  it('append_mode 三态：true / false 写布尔，末态为空串则删键', () => {
+    const truthy = mergeResponseParserMeta({}, { ...emptyResponseParserDraft(), appendMode: 'true' })
+    expect(truthy.meta.append_mode).toBe(true)
+    const falsy = mergeResponseParserMeta({}, { ...emptyResponseParserDraft(), appendMode: 'false' })
+    expect(falsy.meta.append_mode).toBe(false)
+  })
+
+  it('result_parser 非法 JSON / 非对象 → 字段级错误（调用方拦截保存）', () => {
+    const broken = mergeResponseParserMeta(
+      {},
+      { ...emptyResponseParserDraft(), resultParser: '{bad json' }
+    )
+    expect(broken.errors).toEqual([
+      { field: 'resultParser', message: '响应解析器 JSON 格式不正确' },
+    ])
+
+    const arrayValue = mergeResponseParserMeta(
+      {},
+      { ...emptyResponseParserDraft(), resultParser: '[1,2]' }
+    )
+    expect(arrayValue.errors).toEqual([
+      { field: 'resultParser', message: '响应解析器必须是 JSON 对象' },
+    ])
+  })
+
+  it('两个写 meta 的页签串行合并：互不覆盖对方声明的键', () => {
+    const base = { appendix_test: 1 }
+    const requestDraft = requestTemplateDraftFromMeta(base)
+    requestDraft.method = 'POST'
+    const requestMeta = mergeRequestTemplateMeta(base, requestDraft, 'http_api').meta
+
+    const responseMeta = mergeResponseParserMeta(requestMeta, {
+      ...emptyResponseParserDraft(),
+      asrMapping: 'data.text',
+      appendMode: 'true',
+    }).meta
+    expect(responseMeta).toEqual({
+      appendix_test: 1,
+      method: 'POST',
+      asr_mapping: 'data.text',
+      append_mode: true,
+    })
   })
 })
 
