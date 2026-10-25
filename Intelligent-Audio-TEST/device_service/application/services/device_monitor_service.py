@@ -281,9 +281,6 @@ class DeviceMonitorService:
                 json.dumps(payload, ensure_ascii=False, default=str),
                 category=AuditLogCategory.DEVICE.value, source='backend',
                 device_id=alarm.get('device_id'),
-                # INT-1793 H1 + H4：显式审计标记；宿主机进程经 BatchCreateLogs
-                # 交 task_service 落审计文件（本机服务文件对读侧不可见）
-                audit_event=AuditEvent.DEVICE_ALARM_TRIGGERED,
             )
         except Exception:
             logger.debug("告警审计日志写入失败", exc_info=True)

@@ -2,12 +2,11 @@
 """INT-65 专项：已发布任务审计事件 + 操作人回填。
 
 覆盖：
-- publish：published_by 回填 operator_user_id；PUBLISHED_TASK_CREATED 落审计文件
-- create_version：新版本 published_by 持久化 + PUBLISHED_TASK_VERSION_CREATED 落审计文件
-- execute：PUBLISHED_TASK_EXECUTED 落审计文件（含 new_task_id/operator_user_id）
-- archive：archived_by 回填 + PUBLISHED_TASK_ARCHIVED 落审计文件；幂等归档不重复审计
-- AUTH_MODE=off 兜底：operator 缺失时保持 None，审计事件仍落盘（published_by=None）
-审计写入器以 fake 替身注入（不依赖 DB/gRPC/日志目录）。
+- publish：published_by 回填 operator_user_id；PUBLISHED_TASK_CREATED 落 logs
+- create_version：新版本 published_by 持久化 + PUBLISHED_TASK_VERSION_CREATED 落 logs
+- execute：PUBLISHED_TASK_EXECUTED 落 logs（含 new_task_id/operator_user_id）
+- archive：archived_by 回填 + PUBLISHED_TASK_ARCHIVED 落 logs；幂等归档不重复审计
+- AUTH_MODE=off 兜底：operator 缺失时保持 None，审计事件仍落库（published_by=None）
 - 网关 _current_operator_user_id：0/空 → None，JWT user_id → int
 仓储与日志仓储以 fake 替身注入（不依赖 DB/gRPC）。
 """
@@ -150,18 +149,14 @@ class FakeRepo:
 
 
 class FakeLogRepo:
-    """审计写入器替身（INT-1793：S4 改调审计文件写入器，不再直写仓储）。"""
+    """log_repository 替身：捕获审计写入。"""
 
     def __init__(self):
         self.batch = []
 
-    def write_audit_event(self, **kwargs):
-        self.batch.append({
-            'content': kwargs.get('content'),
-            'event': kwargs.get('event'),
-            'category': kwargs.get('category'),
-        })
-        return len(self.batch)
+    def batch_create(self, logs):
+        self.batch.extend(logs)
+        return list(range(len(self.batch)))
 
 
 @pytest.fixture
@@ -170,7 +165,7 @@ def env(monkeypatch):
     fake_repo = FakeRepo()
     fake_log = FakeLogRepo()
     monkeypatch.setattr(pts_module, 'repo', fake_repo)
-    monkeypatch.setattr('shared.logging.audit_writer.write_audit_event', fake_log.write_audit_event)
+    monkeypatch.setattr(pts_module, 'log_repository', fake_log)
     return {'repo': fake_repo, 'log': fake_log}
 
 

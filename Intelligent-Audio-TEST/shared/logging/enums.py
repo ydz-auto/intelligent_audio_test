@@ -1,22 +1,9 @@
 # -*- coding: utf-8 -*-
-"""日志体系枚举（INT-81 / INT-1793）。
+"""日志体系枚举（INT-81）。
 
 业务日志类型与环境标识全部枚举化，禁止魔法字符串路径拼接。
-审计事件的 category 枚举复用 `shared.models.common_enums.AuditLogCategory`
-（五值，唯一来源），此处只做日志体系内的转出与审计目录常量。
 """
 from enum import Enum
-
-from shared.models.common_enums import (
-    AUDIT_LOG_CATEGORIES,
-    AuditLogCategory,
-)
-
-# 审计文件子树（相对 LOG_ROOT_DIR）：logs/audit/{YYYY-MM-DD}/...
-AUDIT_DIR = 'audit'
-
-# 审计 JSONL 扩展名（与业务/服务日志的 .log 区分，读侧按树区分）
-AUDIT_FILE_SUFFIX = '.jsonl'
 
 
 class BusinessLogType(str, Enum):

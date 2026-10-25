@@ -21,28 +21,21 @@ from shared.infrastructure.user_context import get_current_user_id
 
 
 class _EmitMixin:
-    """日志三分流（INT-81 / INT-1793 契约 Q1，三分支互斥、每个分支 return）：
+    """日志三分流（INT-81）：
 
     - 业务日志（有 task_id）→ 业务日志文件（logs/business/...，去库化），
       可经 LOG_BUSINESS_DB_ENABLED 回退开关恢复入库；需实时查看的推 WebSocket
-    - 审计事件（显式携带 `audit_event`）→ 审计文件（logs/audit/...），
-      经 task_service 的 BatchCreateLogs 单写者落盘（H4）；
-      可经 LOG_AUDIT_DB_ENABLED 故障回退双写入库
-    - 其余（同 category 的运维日志、预览日志、审计开关关闭）→ 只写本地服务文件
-
-    「一条事件恰好一行」靠分流顺序保证：审计身份只看 `audit_event` 实参
-    （H1），不看 category —— category='device' 同时承载真审计事件与设备运维
-    日志，按 category 搬文件会把运维日志灌进审计语料。
+    - 审计类日志（auth/benchmark/device 审计）→ 本地服务文件 + DB 队列
+    - 其余系统日志（无任务上下文）→ 只写本地服务文件
     """
 
     def emit(self, record):
         """
-        分流处理日志（三分支互斥）：
+        分流处理日志：
         - 有 task_id → 业务日志文件（+ WebSocket）；
           LOG_BUSINESS_DB_ENABLED=True 时兼容性双写入库队列
-        - audit_event → 审计文件（BatchCreateLogs 单写者落盘）；
-          LOG_AUDIT_DB_ENABLED=True 时故障回退双写入库
-        - 其余 → 只写本地服务文件（删除原 S2 入库路径）
+        - 无 task_id 且审计类 → 本地服务文件 + DB 队列
+        - 其余 → 只写本地服务文件
         """
         try:
             # 跳过内部模块日志
@@ -66,54 +59,96 @@ class _EmitMixin:
             if 'WebSocket' in log_message or 'socketio' in log_message or 'emitting event' in log_message:
                 return
 
-            # === 分流判断（INT-1793 契约 Q1：三分支互斥，每个分支 return）===
+            # === 分流判断 ===
             task_id = getattr(record, 'task_id', None)
             test_case_id = getattr(record, 'test_case_id', None)
             category = str(getattr(record, 'category', '') or '').lower()
-            # H1：审计身份只看显式 audit_event 实参，不看 category
-            audit_event = getattr(record, 'audit_event', None)
+            # 审计类日志（auth/benchmark）无 task_id/test_case_id，但必须落库
+            # （INT-30 P1 回归修复：原分流把无任务上下文的审计事件降级为只写
+            # 本地文件，logs 表永远收不到审计行）
+            is_audit_log = category in AUDIT_LOG_CATEGORIES
+            is_task_related = task_id is not None or test_case_id is not None
 
-            # === 分支 1：业务日志（INT-81）：有 task_id 落业务文件，不写 logs 表 ===
-            # 分流顺序约束（INT-81 审计问题 4 固化）：带 task_id 的设备/音频交互
-            # 日志（category='device'/'audio'）是业务日志，必须先于审计判断命中
+            # === 业务日志（INT-81）：有 task_id 落业务文件，停止写 logs 表 ===
+            # 分流顺序约束（INT-81 审计问题 4 固化，不得改为「审计类别优先」）：
+            # - 审计事件写入器（write_auth_audit / write_benchmark_audit /
+            #   write_device_audit）按约定永不携带 task_id/test_case_id，
+            #   走下方「无任务上下文」分支保证落库；
+            # - AUDIT_LOG_CATEGORIES 中的 'device' 与业务日志类型 DEVICE 共用
+            #   同一 category 名：任务执行期的设备交互/音频链路日志
+            #   （category='device'/'audio' 且带 task_id）是业务日志，
+            #   必须走业务文件路径（去库化），若按审计类别优先改道会把整个
+            #   设备/音频业务日志流灌回 logs 表，违反本卡验收标准 3；
+            # - 回滚开关 LOG_BUSINESS_DB_ENABLED=True 时带 task_id 的审计类别
+            #   日志经 _enqueue_db_log 入库（审计不参与 TTL 去重），双保险。
             if task_id is not None:
                 self._enqueue_business_log(record, task_id, test_case_id,
                                            category, log_message)
                 if self._settings.business_db_enabled:
                     self._enqueue_db_log(record, task_id, test_case_id,
-                                         category, log_message)
+                                         category, log_message, is_audit_log)
                 return
 
-            # === 分支 2：审计事件 → 审计文件（task_service 单写者落盘，H4）===
-            if audit_event and self._settings.audit_enabled:
-                self._enqueue_audit_log(record, audit_event, category, log_message)
-                if self._settings.audit_db_enabled:
-                    # 故障回退：同一事件再入 DB 一次（读侧不感知）
-                    self._enqueue_db_log(record, None, test_case_id, category, log_message)
-                return
+            # 非任务日志：默认只写文件不入库不推 WS；审计类双写文件 + 入库队列
+            if not is_task_related:
+                if self._file_handler:
+                    try:
+                        self._file_handler.emit(record)
+                    except Exception:
+                        # 文件写入失败不影响主流程
+                        pass
+                if not is_audit_log:
+                    return
 
-            # === 分支 3：其余（含审计开关关闭、D2 预览日志、同 category 运维日志）
-            # → 只写服务文件；原「无 task_id 审计类入 DB 队列」的 S2 路径已删除 ===
-            if self._file_handler:
+            # === 以下为入库路径（无 task_id 的用例日志 或 审计日志）===
+
+            # 准备异步写入的数据
+            # 超长日志截断：超过 LOG_CONTENT_MAX_LENGTH 字符时截断并追加标记，避免大日志长驻队列/DB 导致内存膨胀
+            _content = log_message
+            if len(_content) > LOG_CONTENT_MAX_LENGTH:
+                _content = _content[:LOG_CONTENT_MAX_LENGTH] + '... [truncated]'
+            log_data = {
+                'time': datetime.now(timezone(timedelta(hours=8))),
+                'level': record.levelname.upper(),
+                'module': record.module if hasattr(record, 'module') else 'unknown',
+                'category': category or 'system',
+                'source': getattr(record, 'source', 'backend').lower(),
+                'content': _content,
+                'task_id': task_id,
+                'device_id': getattr(record, 'device_id', None),
+                'api_id': getattr(record, 'api_id', None),
+                'test_case_id': test_case_id,
+                'thread_id': getattr(record, 'thread_id', None) or str(threading.get_ident()),
+                'algorithm_type': getattr(record, 'algorithm_type', None),
+                'user_id': get_current_user_id(),
+                'push_to_websocket': getattr(record, 'push_to_websocket', True)
+            }
+
+            # 放入队列：非阻塞，满时丢弃最旧一条再入队最新日志（保证最新日志不丢），并打印 stderr 便于发现丢日志
+            try:
+                self.queue.put_nowait(log_data)
+            except queue.Full:
                 try:
-                    self._file_handler.emit(record)
-                except Exception:
-                    # 文件写入失败不影响主流程
-                    pass
-            return
+                    # 队列满：丢弃最旧一条（FIFO 队头），腾出空间入队最新日志
+                    self.queue.get_nowait()
+                    self.queue.put_nowait(log_data)
+                except (queue.Empty, queue.Full):
+                    # 并发竞争下其他线程已取空/再次塞满：直接丢弃新日志并计数
+                    self._dropped_log_count = getattr(self, '_dropped_log_count', 0) + 1
+                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - WARN - Log queue full (maxsize={self.queue.maxsize}), dropped oldest log to make room for latest: [{log_data.get('level')}] {log_data.get('module')} - {log_data.get('content')[:200]}", file=sys.stderr)
+            except Exception as qe:
+                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - ERROR - put queue failed: {qe}", file=sys.stderr)
 
         except Exception as e:
             # emit 自身异常总是打印，避免静默失败；
             # stderr 可能是坏管道（INT-102），打印失败静默，不影响调用方
             safe_console_print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - ERROR - emit failed: {str(e)}", file=sys.stderr)
 
-    def _enqueue_db_log(self, record, task_id, test_case_id, category, log_message):
-        """入库路径（仅回滚开关可达）：业务回滚双写 / 审计故障回退双写。
+    def _enqueue_db_log(self, record, task_id, test_case_id, category, log_message, is_audit_log):
+        """业务日志兼容性入库路径（LOG_BUSINESS_DB_ENABLED=True 回滚开关）。
 
-        与历史入库行为一致：TTL 去重（审计类别除外）+ 截断 + 入 DB 队列。
-        条目 sink='db' 告知 task_service 走原 batch_create 实现。
+        与历史入库行为一致：TTL 去重（审计除外）+ 截断 + 入 DB 队列。
         """
-        is_audit_log = category in AUDIT_LOG_CATEGORIES
         if not is_audit_log:
             ctx_key = f"{record.levelno}-{record.module}-{task_id}-{test_case_id}-{category}-{log_message}"
             log_fingerprint = hashlib.md5(ctx_key.encode('utf-8')).hexdigest()
@@ -133,8 +168,6 @@ class _EmitMixin:
         if len(_content) > LOG_CONTENT_MAX_LENGTH:
             _content = _content[:LOG_CONTENT_MAX_LENGTH] + '... [truncated]'
         log_data = {
-            'kind': 'db',
-            'sink': 'db',
             'time': datetime.now(timezone(timedelta(hours=8))),
             'level': record.levelname.upper(),
             'module': record.module if hasattr(record, 'module') else 'unknown',
@@ -196,44 +229,6 @@ class _EmitMixin:
             'evaluation_id': getattr(record, 'evaluation_id', None) or get_current_evaluation_id(),
             'log_type': log_type_for_category(category).value,
             'push_to_websocket': getattr(record, 'push_to_websocket', True),
-        }
-        try:
-            self.queue.put_nowait(entry)
-        except queue.Full:
-            try:
-                self.queue.get_nowait()
-                self.queue.put_nowait(entry)
-            except (queue.Empty, queue.Full):
-                self._dropped_log_count = getattr(self, '_dropped_log_count', 0) + 1
-
-    def _enqueue_audit_log(self, record, audit_event, category, log_message):
-        """审计事件入队列：worker 合并进 BatchCreateLogs 批次（sink='audit_file'）。
-
-        审计事件只落审计 JSONL（不写服务文件、不推 WebSocket）；实际写盘方是
-        task_service（H4 单写者），本条只做载荷组装并随条目透传产生进程名。
-        内容不截断（审计语料完整），操作人字段由写盘侧从 content JSON 提取（H2）。
-        """
-        from shared.logging.config import resolve_service_name
-
-        entry = {
-            'kind': 'audit',
-            'sink': 'audit_file',
-            'event': audit_event,
-            'service': resolve_service_name(),
-            'time': datetime.now(timezone(timedelta(hours=8))),
-            'level': record.levelname.upper(),
-            'category': category,
-            'module': record.module if hasattr(record, 'module') else 'unknown',
-            'source': getattr(record, 'source', 'backend').lower(),
-            'content': log_message,
-            'task_id': None,
-            'device_id': getattr(record, 'device_id', None),
-            'api_id': getattr(record, 'api_id', None),
-            'test_case_id': getattr(record, 'test_case_id', None),
-            'thread_id': getattr(record, 'thread_id', None) or str(threading.get_ident()),
-            'algorithm_type': getattr(record, 'algorithm_type', None),
-            'user_id': get_current_user_id(),
-            'push_to_websocket': False,
         }
         try:
             self.queue.put_nowait(entry)

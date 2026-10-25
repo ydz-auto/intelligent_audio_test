@@ -97,9 +97,8 @@ class TestAuditEventEnum:
     def test_no_sixth_event_channel(self):
         """验收标准 4：EventBus 仍五通道（test_event_channel_hygiene 另证 EventChannel==5），
         审计 Log 类别按需扩展（INT-466 增 VISIBILITY，走现有 logs 落库通道）。"""
-        # INT-1793 契约：审计 category 五值（+system = S4 三类系统审计）
         assert AUDIT_LOG_CATEGORIES == frozenset(
-            {'auth', 'benchmark', 'device', 'visibility', 'system'})
+            {'auth', 'benchmark', 'device', 'visibility'})
         assert AuditLogCategory.AUTH.value == 'auth'
 
 

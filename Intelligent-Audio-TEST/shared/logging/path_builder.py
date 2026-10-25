@@ -21,7 +21,7 @@ import os
 import re
 from typing import Optional
 
-from shared.logging.enums import AUDIT_DIR, AUDIT_FILE_SUFFIX, BusinessLogType
+from shared.logging.enums import BusinessLogType
 
 BUSINESS_DIR = 'business'
 # 缺省段常量（枚举化，拒绝魔法字符串）
@@ -30,8 +30,6 @@ SHARED_SEGMENT = 'shared'    # 无评估ID且无轮次上下文
 
 _SEGMENT_SAFE_RE = re.compile(r'[^A-Za-z0-9_\-.一-鿿]')
 _SPLIT_SUFFIX_RE = re.compile(r'-(\d{3})\.log$')
-_AUDIT_SPLIT_SUFFIX_RE = re.compile(r'-(\d{3})\.jsonl$')
-_AUDIT_DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 
 class BusinessLogPathBuilder:
@@ -120,54 +118,3 @@ class BusinessLogPathBuilder:
                 if name.startswith(stem + '-') and name.endswith('.log'):
                     max_index = max(max_index, BusinessLogPathBuilder.split_index_of(name))
         return os.path.join(dir_path, f'{stem}-{max_index + 1:03d}.log')
-
-
-class AuditLogPathBuilder:
-    """审计日志相对路径构建（相对 LOG_ROOT_DIR，INT-1793 契约 §3.1）。
-
-    路径模板（写入/读取两侧唯一权威实现）：
-        audit/{YYYY-MM-DD}/{category}.{service}.{hostname}-{pid}.jsonl
-        audit/{YYYY-MM-DD}/{category}.{service}.{hostname}-{pid}-NNN.jsonl   # 超限切分
-
-    - 日期在路径最前：按时间窗筛选只枚举对应日期目录；保留期按目录日期
-      整目录回收（不依赖 mtime，进程重启后追加写不会刷新日期段）
-    - `{service}` 是**产生事件的进程**（随条目透传），`{hostname}-{pid}` 是
-      **写盘进程**标识（task_service 单写者，H4）
-    - 切分序号按写盘进程的活跃文件 stem 递增，不跨进程合并序号
-    """
-
-    def build_rel_path(self, *, category, service_name: str, date_seg: str,
-                       process_id) -> str:
-        """构建审计日志相对路径。category/日期/服务名缺一不可。"""
-        category_seg = self.sanitize_segment(category)
-        service_seg = self.sanitize_segment(service_name)
-        if not _AUDIT_DATE_RE.match(str(date_seg)):
-            raise ValueError(f'audit log path requires YYYY-MM-DD date, got {date_seg!r}')
-        stem = f'{category_seg}.{service_seg}.{self.sanitize_segment(process_id)}'
-        return os.path.join(AUDIT_DIR, str(date_seg), f'{stem}{AUDIT_FILE_SUFFIX}')
-
-    def build_date_dir(self, date_seg: str) -> str:
-        """某日审计目录（相对 LOG_ROOT_DIR），读取侧枚举用。"""
-        return os.path.join(AUDIT_DIR, str(date_seg))
-
-    @staticmethod
-    def sanitize_segment(value) -> str:
-        """路径段清洗（与业务日志同规则，拒绝分隔符/..）。"""
-        return BusinessLogPathBuilder.sanitize_segment(value)
-
-    @staticmethod
-    def split_index_of(filename: str) -> int:
-        """解析切分序号（{base}-001.jsonl → 1），无序号返回 0（活跃文件）。"""
-        match = _AUDIT_SPLIT_SUFFIX_RE.search(filename)
-        return int(match.group(1)) if match else 0
-
-    @staticmethod
-    def next_split_path(dir_path: str, active_filename: str) -> str:
-        """返回活跃审计文件的下一个切分目标路径（-NNN 取现存最大值+1）。"""
-        stem = active_filename[:-len(AUDIT_FILE_SUFFIX)]
-        max_index = 0
-        if os.path.isdir(dir_path):
-            for name in os.listdir(dir_path):
-                if name.startswith(stem + '-') and name.endswith(AUDIT_FILE_SUFFIX):
-                    max_index = max(max_index, AuditLogPathBuilder.split_index_of(name))
-        return os.path.join(dir_path, f'{stem}-{max_index + 1:03d}{AUDIT_FILE_SUFFIX}')

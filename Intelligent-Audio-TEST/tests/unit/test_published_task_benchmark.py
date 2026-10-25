@@ -156,18 +156,14 @@ class FakeRepo:
 
 
 class FakeLogRepo:
-    """审计写入器替身（INT-1793：S4 改调审计文件写入器，不再直写仓储）。"""
+    """log_repository 替身：捕获审计写入。"""
 
     def __init__(self):
         self.batch = []
 
-    def write_audit_event(self, **kwargs):
-        self.batch.append({
-            'content': kwargs.get('content'),
-            'event': kwargs.get('event'),
-            'category': kwargs.get('category'),
-        })
-        return len(self.batch)
+    def batch_create(self, logs):
+        self.batch.extend(logs)
+        return list(range(len(self.batch)))
 
 
 @pytest.fixture
@@ -176,7 +172,7 @@ def env(monkeypatch):
     fake_repo = FakeRepo()
     fake_log = FakeLogRepo()
     monkeypatch.setattr(pts_module, 'repo', fake_repo)
-    monkeypatch.setattr('shared.logging.audit_writer.write_audit_event', fake_log.write_audit_event)
+    monkeypatch.setattr(pts_module, 'log_repository', fake_log)
     return {'repo': fake_repo, 'log': fake_log}
 
 
@@ -227,11 +223,10 @@ class TestPublishBenchmark:
         assert env['repo'].create_kwargs['benchmark'] is True
 
     def test_audit_write_failure_does_not_break_publish(self, env, monkeypatch):
-        def broken_write_audit_event(**kwargs):
-            raise RuntimeError('audit file down')
+        def broken_batch_create(logs):
+            raise RuntimeError('db down')
 
-        monkeypatch.setattr('shared.logging.audit_writer.write_audit_event',
-                            broken_write_audit_event)
+        monkeypatch.setattr(env['log'], 'batch_create', broken_batch_create)
         result = published_task_service.publish({
             'source_task_id': 123,
             'name': '审计失败不阻断',

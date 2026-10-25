@@ -153,18 +153,12 @@ class FakeRepo:
 
 
 class FakeLogRepo:
-    """审计写入器替身（INT-1793：S4 改调审计文件写入器）。"""
-
     def __init__(self):
         self.batch = []
 
-    def write_audit_event(self, **kwargs):
-        self.batch.append({
-            'content': kwargs.get('content'),
-            'event': kwargs.get('event'),
-            'category': kwargs.get('category'),
-        })
-        return len(self.batch)
+    def batch_create(self, logs):
+        self.batch.extend(logs)
+        return list(range(len(self.batch)))
 
 
 @pytest.fixture
@@ -172,7 +166,7 @@ def env(monkeypatch):
     fake_repo = FakeRepo()
     fake_log = FakeLogRepo()
     monkeypatch.setattr(pts_module, 'repo', fake_repo)
-    monkeypatch.setattr('shared.logging.audit_writer.write_audit_event', fake_log.write_audit_event)
+    monkeypatch.setattr(pts_module, 'log_repository', fake_log)
     return {'repo': fake_repo, 'log': fake_log}
 
 
@@ -185,7 +179,7 @@ class TestPublishDerivesTypeAndAlgorithmType:
             {'case_id': 'c2', 'device_type': 'http_api', 'device_id': '7', 'lab_id': None},
         ])
         monkeypatch.setattr(pts_module, 'repo', repo)
-        monkeypatch.setattr('shared.logging.audit_writer.write_audit_event', FakeLogRepo().write_audit_event)
+        monkeypatch.setattr(pts_module, 'log_repository', FakeLogRepo())
 
         result = published_task_service.publish({'source_task_id': 123, 'name': 'API 任务'})
 
@@ -198,7 +192,7 @@ class TestPublishDerivesTypeAndAlgorithmType:
             {'case_id': 'c1', 'device_type': 'physical', 'device_id': '3', 'lab_id': None},
         ])
         monkeypatch.setattr(pts_module, 'repo', repo)
-        monkeypatch.setattr('shared.logging.audit_writer.write_audit_event', FakeLogRepo().write_audit_event)
+        monkeypatch.setattr(pts_module, 'log_repository', FakeLogRepo())
 
         published_task_service.publish({'source_task_id': 123, 'name': 'E2E 任务'})
 
@@ -209,7 +203,7 @@ class TestPublishDerivesTypeAndAlgorithmType:
         repo = FakeRepo(case_devices=[])
         repo.get_task_api_ids = lambda task_id: [7]
         monkeypatch.setattr(pts_module, 'repo', repo)
-        monkeypatch.setattr('shared.logging.audit_writer.write_audit_event', FakeLogRepo().write_audit_event)
+        monkeypatch.setattr(pts_module, 'log_repository', FakeLogRepo())
 
         published_task_service.publish({'source_task_id': 123, 'name': '历史快照'})
 
@@ -219,7 +213,7 @@ class TestPublishDerivesTypeAndAlgorithmType:
         repo = FakeRepo(case_devices=[])
         repo.source_task = make_task(algorithm_type='asr')
         monkeypatch.setattr(pts_module, 'repo', repo)
-        monkeypatch.setattr('shared.logging.audit_writer.write_audit_event', FakeLogRepo().write_audit_event)
+        monkeypatch.setattr(pts_module, 'log_repository', FakeLogRepo())
 
         published_task_service.publish({'source_task_id': 123, 'name': 'ASR 任务'})
 
@@ -235,7 +229,7 @@ class TestCreateVersionTypeSemantics:
             snapshot_config={'caseIds': [1], 'deviceIds': [], 'apiIds': [],
                              'tags': [], 'algorithmType': 'asr'}))
         monkeypatch.setattr(pts_module, 'repo', repo)
-        monkeypatch.setattr('shared.logging.audit_writer.write_audit_event', FakeLogRepo().write_audit_event)
+        monkeypatch.setattr(pts_module, 'log_repository', FakeLogRepo())
 
         result = published_task_service.create_version(1001, {'name': 'v2'})
 
@@ -250,7 +244,7 @@ class TestCreateVersionTypeSemantics:
             case_devices=[{'case_id': 'c1', 'device_type': 'websocket_api',
                            'device_id': '9', 'lab_id': None}])
         monkeypatch.setattr(pts_module, 'repo', repo)
-        monkeypatch.setattr('shared.logging.audit_writer.write_audit_event', FakeLogRepo().write_audit_event)
+        monkeypatch.setattr(pts_module, 'log_repository', FakeLogRepo())
 
         published_task_service.create_version(1001, {'source_task_id': 555})
 

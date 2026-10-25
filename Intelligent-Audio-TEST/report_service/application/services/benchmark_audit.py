@@ -32,8 +32,6 @@ def write_benchmark_audit(
         log_not_emit(
             'INFO', module, json.dumps(payload, ensure_ascii=False, default=str),
             category=AuditLogCategory.BENCHMARK.value, source=module,
-            # INT-1793 H1：显式审计标记——只有带本实参的日志进审计文件
-            audit_event=event,
         )
     except Exception:
         logger.warning('审计事件 %s 落库失败', event.value, exc_info=True)

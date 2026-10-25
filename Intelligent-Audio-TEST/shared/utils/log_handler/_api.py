@@ -57,20 +57,15 @@ def get_db_handler():
     return _state._global_db_handler
 
 # 保留log_and_emit作为包装函数，支持外部直接调用
-def log_not_emit(level, module, content, category='system', source='backend', task_id=None, device_id=None, api_id=None, test_case_id=None, algorithm_type=None, push_to_websocket=False, enable_console_log=None, audit_event=None, **kwargs):
+def log_not_emit(level, module, content, category='system', source='backend', task_id=None, device_id=None, api_id=None, test_case_id=None, algorithm_type=None, push_to_websocket=False, enable_console_log=None, **kwargs):
 
-    """核心方法：记录日志不推送到 WebSocket
-
-    audit_event（INT-1793 H1）：显式携带 AuditEvent 枚举值/事件名的日志才算
-    审计事件，落审计文件（logs/audit/...）；不带本实参的日志即使 category 相同
-    （如设备运维日志 category='device'）也绝不进审计目录。
-    """
-    log_and_emit(level, module, content, category=category, source=source, task_id=task_id, device_id=device_id, api_id=api_id, test_case_id=test_case_id, algorithm_type=algorithm_type, push_to_websocket=False, enable_console_log=enable_console_log, audit_event=audit_event, **kwargs)
+    """核心方法：保存日志到数据库不推送到 WebSocket"""
+    log_and_emit(level, module, content, category=category, source=source, task_id=task_id, device_id=device_id, api_id=api_id, test_case_id=test_case_id, algorithm_type=algorithm_type, push_to_websocket=False, enable_console_log=enable_console_log, **kwargs)
     return
 
 # 保留log_and_emit作为包装函数，支持外部直接调用
-def log_and_emit(level, module, content, category='system', source='backend', task_id=None, device_id=None, api_id=None, test_case_id=None, algorithm_type=None, push_to_websocket=True, enable_console_log=None, audit_event=None, **kwargs):
-    """核心方法：记录日志并按需推送到 WebSocket（审计事件落审计文件）"""
+def log_and_emit(level, module, content, category='system', source='backend', task_id=None, device_id=None, api_id=None, test_case_id=None, algorithm_type=None, push_to_websocket=True, enable_console_log=None, **kwargs):
+    """核心方法：保存日志到数据库并推送到 WebSocket"""
 
     # 统一脱敏（INT-70 §8.1）：本函数的控制台直打不经过 handler.emit，
     # 须在入口先行掩码，保证密钥与敏感头不出现在任何出口
@@ -117,8 +112,6 @@ def log_and_emit(level, module, content, category='system', source='backend', ta
         record.api_id = api_id
         record.test_case_id = test_case_id
         record.algorithm_type = algorithm_type
-        # 审计事件显式标记（INT-1793 H1）：仅本实参非空才进审计文件
-        record.audit_event = getattr(audit_event, 'value', audit_event) or None
 
         # 将推送标志存入 record
         record.push_to_websocket = push_to_websocket

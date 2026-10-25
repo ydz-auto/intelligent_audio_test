@@ -39,7 +39,6 @@ from shared.logging import (  # noqa: E402
     sweep_expired_files,
     sweep_log_root,
 )
-from shared.logging.config import resolve_service_name  # noqa: E402
 from shared.logging.enums import LogEnvironment  # noqa: E402
 from shared.logging.path_builder import BUSINESS_DIR  # noqa: E402
 from shared.logging.service_handler import (  # noqa: E402
@@ -54,7 +53,7 @@ _AGE_DAY = 86400
 
 def _make_settings(root, *, business_max_bytes=50 * 1024 * 1024,
                    service_retention_days=30, business_retention_days=30,
-                   business_max_scan_entries=100_000, sweep_service='api_gateway'):
+                   business_max_scan_entries=100_000):
     return LogSettings(
         root_dir=root,
         environment=LogEnvironment.DEV,
@@ -65,8 +64,6 @@ def _make_settings(root, *, business_max_bytes=50 * 1024 * 1024,
         business_max_bytes=business_max_bytes,
         business_retention_days=business_retention_days,
         business_max_scan_entries=business_max_scan_entries,
-        # INT-1793：清扫只由 LOG_SWEEP_SERVICE 执行，测试按当前进程名放行
-        sweep_service=sweep_service,
     )
 
 
@@ -255,8 +252,7 @@ class TestRetentionSeparation:
         _age_file(biz_40d, 40)
 
         settings = _make_settings(str(root), service_retention_days=30,
-                                  business_retention_days=35,
-                                  sweep_service=resolve_service_name())
+                                  business_retention_days=35)
         sweep_log_root(settings)
 
         # 服务日志按 30 天清（32 天文件删除）；业务日志按 35 天清（32 天保留）

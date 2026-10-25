@@ -123,7 +123,7 @@ class ReviewService:
                     logger.error(f"复核后任务统计重算失败 task_id={task_id}: {e}", exc_info=True)
 
             self._write_audit(result_ids, execution_status, evaluation_status,
-                              affected_task_ids, operator_id=user_id)
+                              affected_task_ids)
             self._refresh_stats_cache()
 
             if not reviewed:
@@ -210,36 +210,24 @@ class ReviewService:
     @staticmethod
     def _write_audit(result_ids: List[int], execution_status: Optional[str],
                      evaluation_status: Optional[str],
-                     affected_task_ids: List[int],
-                     operator_id: Optional[int] = None) -> None:
-        """审计事件落审计文件（category=System，旁路，失败仅告警）。
-
-        INT-1793：S4 直写仓储改调审计写入器（task_service 单写者 H4）；
-        operator_id 由请求线程解析后随 content 落 YAML/JSON，写盘侧据此提取
-        user_id（H2：不依赖 worker 线程的 contextvar）。
-        """
-        from shared.models.common_enums import AuditLogCategory
+                     affected_task_ids: List[int]) -> None:
+        """审计事件落 logs 表（category=System，旁路，失败仅告警）。"""
+        from task_service.infrastructure.persistence.log_repository import log_repository
         try:
-            from shared.logging.audit_writer import write_audit_event
-            write_audit_event(
-                event=AuditEvent.MANUAL_REVIEW_SUBMITTED.value,
-                category=AuditLogCategory.SYSTEM.value,
-                module='task_review',
-                source='review_service',
-                content=json.dumps({
+            log_repository.batch_create([{
+                'module': 'task_review',
+                'source': 'review_service',
+                'content': json.dumps({
                     'event': AuditEvent.MANUAL_REVIEW_SUBMITTED.value,
-                    'operator_id': operator_id,
                     'result_ids': result_ids,
                     'affected_task_ids': affected_task_ids,
                     'execution_status': execution_status,
                     'evaluation_status': evaluation_status,
-                    'target_type': 'result',
-                    'action': 'manual_review',
                     'result': 'success',
                 }, ensure_ascii=False),
-            )
+            }])
         except Exception:
-            logger.warning('审计事件 %s 写审计文件失败', AuditEvent.MANUAL_REVIEW_SUBMITTED.value,
+            logger.warning('审计事件 %s 落库失败', AuditEvent.MANUAL_REVIEW_SUBMITTED.value,
                            exc_info=True)
 
     @staticmethod

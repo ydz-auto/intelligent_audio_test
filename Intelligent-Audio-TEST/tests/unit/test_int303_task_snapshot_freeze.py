@@ -457,11 +457,9 @@ class FakeLogRepository:
     def __init__(self):
         self.logs = []
 
-    def write_audit_event(self, **kwargs):
-        self.logs.append({'content': kwargs.get('content'),
-                          'event': kwargs.get('event'),
-                          'category': kwargs.get('category')})
-        return len(self.logs)
+    def batch_create(self, logs):
+        self.logs.extend(logs)
+        return logs
 
 
 class TestExecuteFrozenRestore:
@@ -470,7 +468,7 @@ class TestExecuteFrozenRestore:
     def _run(self, monkeypatch, repo, pt):
         import task_service.application.services.published_task_service as pts_module
         monkeypatch.setattr(pts_module, 'repo', repo)
-        monkeypatch.setattr('shared.logging.audit_writer.write_audit_event', FakeLogRepository().write_audit_event)
+        monkeypatch.setattr(pts_module, 'log_repository', FakeLogRepository())
         return PublishedTaskService.execute(pt.id)
 
     def test_execute_restores_frozen_cases(self, monkeypatch):
@@ -551,7 +549,7 @@ class TestCreateVersionTaskSnapshotSemantics:
     def _run(self, monkeypatch, repo, data):
         import task_service.application.services.published_task_service as pts_module
         monkeypatch.setattr(pts_module, 'repo', repo)
-        monkeypatch.setattr('shared.logging.audit_writer.write_audit_event', FakeLogRepository().write_audit_event)
+        monkeypatch.setattr(pts_module, 'log_repository', FakeLogRepository())
         return PublishedTaskService.create_version(1001, data)
 
     def test_new_source_task_refreezes_task_snapshot(self, monkeypatch):

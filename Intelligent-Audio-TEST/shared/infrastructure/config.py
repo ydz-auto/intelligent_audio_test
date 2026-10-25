@@ -156,48 +156,20 @@ class BaseConfig:
     LOG_ROOT_DIR: str = _get_env('LOG_ROOT_DIR', './logs')
     # 环境标识（dev/prod）：prod 下 DEBUG 级日志不落业务文件
     LOG_ENVIRONMENT: str = _get_env('LOG_ENVIRONMENT', 'dev').lower()
-    # 文件日志统一保留期（INT-1793 契约 / 负责人 2026-10-24 裁定：全部日志文件 30 天）。
-    # 审计/业务/服务三棵树都继承本值；细分类别只允许「显式覆盖」，不得内置不同默认。
-    LOG_FILE_RETENTION_DAYS: int = _get_int('LOG_FILE_RETENTION_DAYS', 30)
     # 服务运行日志：logs/{service_name}/ 单文件上限与保留天数（按天+按大小双条件轮转）
     LOG_SERVICE_MAX_MB: int = _get_int('LOG_SERVICE_MAX_MB', 50)
-    LOG_SERVICE_RETENTION_DAYS: int = _get_int(
-        'LOG_SERVICE_RETENTION_DAYS', LOG_FILE_RETENTION_DAYS)
+    LOG_SERVICE_RETENTION_DAYS: int = _get_int('LOG_SERVICE_RETENTION_DAYS', 30)
     # 业务日志（执行/评估/设备）：去库化落文件开关与阈值
     LOG_BUSINESS_ENABLED: bool = _get_bool('LOG_BUSINESS_ENABLED', True)
     # 回滚开关：True 时业务日志同时保留入库（历史行为），默认仅落文件
     LOG_BUSINESS_DB_ENABLED: bool = _get_bool('LOG_BUSINESS_DB_ENABLED', False)
     LOG_BUSINESS_MAX_MB: int = _get_int('LOG_BUSINESS_MAX_MB', 50)
-    LOG_BUSINESS_RETENTION_DAYS: int = _get_int(
-        'LOG_BUSINESS_RETENTION_DAYS', LOG_FILE_RETENTION_DAYS)
+    LOG_BUSINESS_RETENTION_DAYS: int = _get_int('LOG_BUSINESS_RETENTION_DAYS', 30)
     # DB 日志保留天数（INT-1785）：业务日志已去库化，logs 表只剩历史存量与
     # 审计事件（auth/device/benchmark 不参与清扫）。task_service 每日一次按
     # 本天数归档并删除过期行（归档先于删除）；0 = 关闭清扫。
     # 负责人 2026-10-24 定：日志保留期 30 天（INT-1793 落地前为过渡期口径）
     LOG_DB_RETENTION_DAYS: int = _get_int('LOG_DB_RETENTION_DAYS', 30)
-    # --- 审计日志落文件（INT-1793 契约 §3.4，logs 表零写入）---
-    # 审计落文件总开关（关 = emit 路径退回仅服务文件、不落 DB；task_service 内
-    # S4 直写路径无服务文件兜底，关闭即不落审计——旁路记录不阻塞主流程）
-    LOG_AUDIT_ENABLED: bool = _get_bool('LOG_AUDIT_ENABLED', True)
-    # 故障回退：True 时审计事件同时入库一份（仅 emit 路径，读侧不感知，非口径开关；
-    # task_service 内 S4 直写路径只落文件）
-    LOG_AUDIT_DB_ENABLED: bool = _get_bool('LOG_AUDIT_DB_ENABLED', False)
-    # 单审计文件切分阈值（MB）
-    LOG_AUDIT_MAX_MB: int = _get_int('LOG_AUDIT_MAX_MB', 50)
-    # 审计文件保留天数：继承统一文件保留期，显式设置才覆盖
-    LOG_AUDIT_RETENTION_DAYS: int = _get_int(
-        'LOG_AUDIT_RETENTION_DAYS', LOG_FILE_RETENTION_DAYS)
-    # 到期前归档到 {storage}/archives/audit/{date}/（归档件不自动删）
-    LOG_AUDIT_ARCHIVE_ENABLED: bool = _get_bool('LOG_AUDIT_ARCHIVE_ENABLED', True)
-    # 读侧单次物化上限（0 = 不限；A 道读侧消费）
-    LOG_AUDIT_MAX_SCAN_ENTRIES: int = _get_int('LOG_AUDIT_MAX_SCAN_ENTRIES', 100000)
-    # 无时间筛选的默认窗口天数（A 道读侧消费）
-    LOG_AUDIT_QUERY_DEFAULT_DAYS: int = _get_int('LOG_AUDIT_QUERY_DEFAULT_DAYS', 30)
-    # 同参查询结果 TTL 缓存秒数（0 = 关闭；A 道读侧消费）
-    LOG_AUDIT_SCAN_CACHE_TTL_SECONDS: int = _get_int(
-        'LOG_AUDIT_SCAN_CACHE_TTL_SECONDS', 3)
-    # 唯一清扫者：其余进程跳过清扫（共享日志卷多进程并发清扫会误删/重复上传）
-    LOG_SWEEP_SERVICE: str = _get_env('LOG_SWEEP_SERVICE', 'api_gateway').strip() or 'api_gateway'
     # 读取侧单次查询最大物化条数（0 = 不限）：大任务轮询兜底，total 变下界语义
     LOG_BUSINESS_MAX_SCAN_ENTRIES: int = _get_int('LOG_BUSINESS_MAX_SCAN_ENTRIES', 100000)
     # 读取侧同参数查询结果短 TTL 缓存秒数（0 = 关闭，INT-100）：TTL 窗口内
