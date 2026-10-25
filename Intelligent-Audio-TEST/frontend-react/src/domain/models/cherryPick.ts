@@ -4,8 +4,14 @@
  * 依赖规则：domain 零依赖（不 import application/infrastructure/interfaces）。
  */
 
-/** 挑选层级（四级分组 + 结果行叶） */
-export type PickLevel = 'task' | 'case' | 'device' | 'resultType'
+/** 挑选层级（四级分组 + 用例层组织 + 结果行叶） */
+export type PickLevel = 'task' | 'case' | 'device' | 'resultType' | 'caseOrg'
+
+/** 用例层组织维度（分组视图 / 标签视图，18 §3.8.3 用例层组织） */
+export type PickCaseOrgDimension = 'group' | 'tag'
+
+/** 用例层子视图（平铺 / 交叉：分组视图内按标签、标签视图内按用例分组） */
+export type PickCaseOrgSubView = 'flat' | 'byTag' | 'byGroup'
 
 /** 可挑选任务终态集合（cherry_pick_service.py PickableTaskStatus 实测） */
 export const PICKABLE_TASK_STATUS = ['completed', 'failed', 'stopped'] as const
@@ -92,6 +98,15 @@ export interface PickCartEntry {
   /** 快照未含评估状态 → null 显示「—」（对照原 Vue 购物车口径） */
   evaluationStatus: string | null
   invalid: boolean
+  /**
+   * 用例标签（§3.8.3 用例层组织数据源；容器组成区由详情 `cases[].tags` 提供，
+   * 购物车快照 INT-1693 未落地前缺省 → 全落「未设置标签」兜底桶）
+   */
+  sourceCaseTags?: string[]
+  /** 用例分组 id（同上；容器详情无 group_id → 缺省，以组名作稳定键） */
+  sourceCaseGroupId?: string | null
+  /** 用例分组名（同上，容器详情 `cases[].group_name`） */
+  sourceCaseGroupName?: string | null
 }
 
 /** 购物车分组（按来源任务） */
@@ -113,6 +128,12 @@ export interface CartTreeBranch {
   children: CartTreeItem[]
   /** 用例级：sourceCaseId（§4.2 用例节点 CaseCard compact 展示） */
   caseId?: string
+  /** 用例级：标签 / 分组（§3.8.3 用例层组织交叉聚合数据源） */
+  tags?: string[]
+  groupId?: string | null
+  groupName?: string | null
+  /** 组织层：当前维度（分组 / 标签；图标与移除文案数据源） */
+  orgKind?: PickCaseOrgDimension
 }
 
 /** 购物车树——叶 */

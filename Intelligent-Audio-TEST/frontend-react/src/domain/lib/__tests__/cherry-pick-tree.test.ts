@@ -778,6 +778,90 @@ describe('购物车三视图树构建（§4.2 ②，INT-1128）', () => {
   })
 })
 
+describe('设备/结果类型视图用例层组织层（§3.8.3 A 组第 3 层，INT-1740）', () => {
+  /** 组织数据源：用例 c1 属「会议」组、标签 [冒烟]；c2 无分组无标签；c3 属「会议」组、标签 [回归] */
+  const orgGroups = [
+    {
+      taskId: 420,
+      taskName: '任务420',
+      entries: [
+        { itemId: 'o1', resultId: 11, sourceTaskId: 420, sourceTaskName: '任务420', sourceCaseId: 'c1', sourceCaseName: '用例001', sourceDeviceId: 1, sourceDeviceName: '设备-01', sourceApiId: null, sourceApiName: null, sourceResultType: 'real-time', executionStatus: 'completed', evaluationStatus: 'completed', invalid: false, sourceCaseGroupId: 'g1', sourceCaseGroupName: '会议', sourceCaseTags: ['冒烟'] },
+        { itemId: 'o2', resultId: 12, sourceTaskId: 420, sourceTaskName: '任务420', sourceCaseId: 'c2', sourceCaseName: '用例002', sourceDeviceId: 1, sourceDeviceName: '设备-01', sourceApiId: null, sourceApiName: null, sourceResultType: 'real-time', executionStatus: 'completed', evaluationStatus: 'completed', invalid: false, sourceCaseGroupId: null, sourceCaseGroupName: null, sourceCaseTags: [] },
+        { itemId: 'o3', resultId: 13, sourceTaskId: 420, sourceTaskName: '任务420', sourceCaseId: 'c3', sourceCaseName: '用例003', sourceDeviceId: 1, sourceDeviceName: '设备-01', sourceApiId: null, sourceApiName: null, sourceResultType: 'real-time', executionStatus: 'completed', evaluationStatus: 'completed', invalid: false, sourceCaseGroupId: 'g1', sourceCaseGroupName: '会议', sourceCaseTags: ['回归'] },
+      ],
+    },
+  ]
+
+  const branchOf = (items: CartTreeItem[], level: string) =>
+    items.filter((n): n is CartTreeBranch => n.kind === 'branch' && n.level === level)
+  const caseNames = (items: CartTreeItem[]) =>
+    branchOf(items, 'case').map((c) => c.name)
+
+  it('不传 org 时保持旧形状（result_type 下直接挂用例，购物车未接控件不受影响）', () => {
+    const devices = buildCartDeviceView(orgGroups)
+    const rt = branchOf(devices[0].children, 'resultType')[0]
+    expect(caseNames(rt.children)).toEqual(['用例001', '用例002', '用例003'])
+    expect(branchOf(rt.children, 'caseOrg')).toHaveLength(0)
+  })
+
+  it('设备视图：组织层在 result_type 之下、用例卡之上（分组视图，兜底桶收尾）', () => {
+    const devices = buildCartDeviceView(orgGroups, 'group', 'flat')
+    const rt = branchOf(devices[0].children, 'resultType')[0]
+    const orgNodes = branchOf(rt.children, 'caseOrg')
+    expect(orgNodes.map((n) => n.name)).toEqual(['会议', '未分组'])
+    expect(orgNodes[0].orgKind).toBe('group')
+    expect(orgNodes[0].count).toBe(2)
+    expect(caseNames(orgNodes[0].children)).toEqual(['用例001', '用例003'])
+    expect(caseNames(orgNodes[1].children)).toEqual(['用例002'])
+    // 平铺子视图：组内直接挂用例卡，不再出子组头
+    expect(branchOf(orgNodes[0].children, 'caseOrg')).toHaveLength(0)
+  })
+
+  it('结果类型视图：组织层在设备/API 之下、用例卡之上', () => {
+    const rts = buildCartResultTypeView(orgGroups, 'group', 'flat')
+    const device = branchOf(rts[0].children, 'device')[0]
+    const orgNodes = branchOf(device.children, 'caseOrg')
+    expect(orgNodes.map((n) => n.name)).toEqual(['会议', '未分组'])
+    expect(caseNames(orgNodes[0].children)).toEqual(['用例001', '用例003'])
+  })
+
+  it('交叉子视图：组内再按另一维度分子组（分组视图内按标签）', () => {
+    const devices = buildCartDeviceView(orgGroups, 'group', 'byTag')
+    const rt = branchOf(devices[0].children, 'resultType')[0]
+    const meeting = branchOf(rt.children, 'caseOrg').find((n) => n.name === '会议')!
+    const subNodes = branchOf(meeting.children, 'caseOrg')
+    expect(subNodes.map((n) => n.name).sort()).toEqual(['冒烟', '回归'].sort())
+    expect(subNodes[0].orgKind).toBe('tag')
+  })
+
+  it('标签视图：按标签分桶，无标签用例入「未设置标签」兜底桶', () => {
+    const devices = buildCartDeviceView(orgGroups, 'tag', 'flat')
+    const rt = branchOf(devices[0].children, 'resultType')[0]
+    const orgNodes = branchOf(rt.children, 'caseOrg')
+    expect(orgNodes.map((n) => n.name)).toEqual(['回归', '冒烟', '未设置标签'])
+    expect(caseNames(orgNodes[2].children)).toEqual(['用例002'])
+  })
+
+  it('组织层不改变条目全集（组头 entryIds 为组内并集，§3.8.3 勾选联动不变）', () => {
+    const bare = buildCartDeviceView(orgGroups)
+    const organized = buildCartDeviceView(orgGroups, 'group', 'flat')
+    const rtBare = branchOf(bare[0].children, 'resultType')[0]
+    const rtOrg = branchOf(organized[0].children, 'resultType')[0]
+    expect(collectEntryIds(organized).sort()).toEqual(collectEntryIds(bare).sort())
+    const orgNodes = branchOf(rtOrg.children, 'caseOrg')
+    expect([...orgNodes.flatMap((n) => n.entryIds)].sort()).toEqual(
+      [...rtBare.entryIds].sort()
+    )
+    // 组头三态：全选组内条目 → checked，只选一条 → indeterminate
+    const meeting = orgNodes[0]
+    const all = toggleCartBranchSelection(meeting, new Set(), true)
+    expect(getCartBranchSelectionState(meeting, all)).toBe('checked')
+    expect(
+      getCartBranchSelectionState(meeting, new Set(['o1']))
+    ).toBe('indeterminate')
+  })
+})
+
 describe('叶 toggle', () => {
   it('toggleLeafSelection 单条取反', () => {
     const tree = buildPickTree(CANDIDATES)

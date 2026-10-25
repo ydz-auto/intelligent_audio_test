@@ -16,6 +16,8 @@ import type {
   CartTreeItem,
   CartTreeLeaf,
   PickCartGroup,
+  PickCaseOrgDimension,
+  PickCaseOrgSubView,
 } from '@/domain/models/cherryPick'
 import {
   buildCartCaseView,
@@ -329,6 +331,13 @@ export interface CartTreeProps {
   renderLeafTrailing?: (leaf: CartTreeLeaf) => ReactNode
   /** 分支节点计数后缀（容器组成区 §5.5.4：失败计数「· 失败 {f}」） */
   renderBranchExtra?: (branch: CartTreeBranch) => ReactNode
+  /**
+   * 用例层组织维度（§3.8.3 A 组第 3 层）。传值时设备 / 结果类型视图在
+   * result_type 之下、用例卡之上插入组织层；不传保持无组织层形状（购物车侧未接控件时不受影响）。
+   */
+  org?: PickCaseOrgDimension
+  /** 用例层子视图（平铺 / 交叉） */
+  subView?: PickCaseOrgSubView
   className?: string
 }
 
@@ -351,15 +360,17 @@ export function CartTree({
   expandSignal,
   renderLeafTrailing,
   renderBranchExtra,
+  org,
+  subView = 'flat',
   className,
 }: CartTreeProps) {
   /** 三视图树（§4.2 ② 纯函数重建；任务分组=现状 buildCartTree） */
   const items = useMemo<CartTreeItem[]>(() => {
     if (view === 'case') return buildCartCaseView(groups)
-    if (view === 'device') return buildCartDeviceView(groups)
-    if (view === 'resultType') return buildCartResultTypeView(groups)
+    if (view === 'device') return buildCartDeviceView(groups, org, subView)
+    if (view === 'resultType') return buildCartResultTypeView(groups, org, subView)
     return buildCartTree(groups)
-  }, [view, groups])
+  }, [view, groups, org, subView])
 
   /** 三视图叶行携带来源任务名消歧（任务分组视图组内同源，不显示） */
   const showLeafTask = view !== 'task'
@@ -391,7 +402,11 @@ export function CartTree({
           ? '用例'
           : branch.level === 'resultType'
             ? '结果类型'
-            : '任务'
+            : branch.level === 'caseOrg'
+              ? branch.orgKind === 'tag'
+                ? '标签组'
+                : '分组'
+              : '任务'
     onRemoveNode(
       collectEntryIds([branch]),
       levelLabel,
@@ -407,7 +422,11 @@ export function CartTree({
         ? '设备'
         : branch.level === 'case'
           ? '用例'
-          : '结果类型'
+          : branch.level === 'caseOrg'
+            ? branch.orgKind === 'tag'
+              ? '标签组'
+              : '分组'
+            : '结果类型'
     onRemoveNode(
       collectEntryIds([branch]),
       levelLabel,

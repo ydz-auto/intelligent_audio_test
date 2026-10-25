@@ -12,6 +12,7 @@ import {
   ListChecks,
   Smartphone,
   Tag,
+  Tags,
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
@@ -41,6 +42,7 @@ const LEVEL_ICONS = {
   case: ListChecks,
   device: Smartphone,
   resultType: Tag,
+  caseOrg: Tags,
 } as const
 
 /** 设备/API 二选一：叶行名称 */

@@ -10,12 +10,19 @@ import type {
   CherryPickCandidate,
   PickCartEntry,
   PickCartGroup,
+  PickCaseOrgDimension,
+  PickCaseOrgSubView,
   PickLevel,
   PickTreeBranch,
   PickTreeItem,
   PickTreeLeaf,
   SelectionState,
 } from '@/domain/models/cherryPick'
+import {
+  groupCasesByCaseGroup,
+  groupCasesByTag,
+  type SubViewCaseItem,
+} from '@/domain/lib/sub-view-aggregation'
 
 /* ============================================================
  * 挑选树构建（候选平铺行 → 四级分组 + 结果行叶）
@@ -760,8 +767,69 @@ function buildCartCaseBranch(
     caseId: first?.sourceCaseId ?? undefined,
     count: entries.length,
     entryIds: entries.map((e) => e.itemId),
+    // §3.8.3 用例层组织交叉聚合数据源（缺 tags/分组 → 兜底桶）
+    tags: first?.sourceCaseTags ?? [],
+    groupId: first?.sourceCaseGroupId ?? null,
+    groupName: first?.sourceCaseGroupName ?? null,
     children: buildChildren(entries),
   }
+}
+
+/* ============================================================
+ * 用例层组织层（§3.8.3 用例层组织，INT-1125 口径；设备 / 结果类型视图第 3 层）
+ * 组织层是独立分支层：组头 / 兜底桶是该层节点，用例卡挂在其下；
+ * 平铺子视图组内直接挂用例卡，交叉子视图组内再按另一维度分子组（层级语义不变）。
+ * 组织只影响视觉分组，entryIds 并集保证组头勾选 = 组内全部条目，不改变勾选联动。
+ * ============================================================ */
+
+/** 组织聚合入参（用例级分支携带 tags/分组真名，字段缺省才落兜底桶） */
+interface CartCaseOrgEntry extends SubViewCaseItem {
+  branch: CartTreeBranch
+}
+
+/** 交叉子视图的下一维度（分组视图内按标签、标签视图内按用例分组） */
+function crossOrgKind(orgKind: PickCaseOrgDimension): PickCaseOrgDimension {
+  return orgKind === 'group' ? 'tag' : 'group'
+}
+
+function toCartCaseOrgEntries(cases: CartTreeBranch[]): CartCaseOrgEntry[] {
+  return cases.map((b) => ({
+    branch: b,
+    tags: b.tags ?? [],
+    groupId: b.groupId ?? null,
+    groupName: b.groupName ?? null,
+  }))
+}
+
+/** 用例卡集合 → 组织层分支（组头节点 = 名称 + 计数 + 组内用例卡） */
+function buildCartCaseOrgLevel(
+  cases: CartTreeBranch[],
+  orgKind: PickCaseOrgDimension,
+  subView: PickCaseOrgSubView,
+  keyPrefix: string
+): CartTreeItem[] {
+  const groups =
+    orgKind === 'group'
+      ? groupCasesByCaseGroup(toCartCaseOrgEntries(cases))
+      : groupCasesByTag(toCartCaseOrgEntries(cases), [])
+  return groups.map((g) => {
+    const groupCases = g.cases.map((c) => c.branch)
+    const key = `${keyPrefix}-org:${orgKind}:${g.key}`
+    const entryIds = [...new Set(groupCases.flatMap((b) => b.entryIds))]
+    return {
+      kind: 'branch' as const,
+      key,
+      level: 'caseOrg' as const,
+      orgKind,
+      name: g.label,
+      count: entryIds.length,
+      entryIds,
+      children:
+        subView === 'flat'
+          ? groupCases
+          : buildCartCaseOrgLevel(groupCases, crossOrgKind(orgKind), 'flat', key),
+    }
+  })
 }
 
 /** 购物车用例视图（§4.2 ②）：用例（PickCaseCard）→ 设备/API → result_type → 叶 */
@@ -795,8 +863,17 @@ export function buildCartCaseView(groups: PickCartGroup[]): CartTreeBranch[] {
   return cases
 }
 
-/** 购物车设备视图（§4.2 ②）：设备/API → result_type → 用例（PickCaseCard）→ 叶 */
-export function buildCartDeviceView(groups: PickCartGroup[]): CartTreeBranch[] {
+/**
+ * 购物车设备视图（§4.2 ② / §5.5.3 ③）：
+ * 设备/API → result_type →〔用例层组织〕→ 用例（PickCaseCard）→ 叶。
+ * 传 `org` 时在 result_type 之下、用例卡之上插入独立组织层（§3.8.3 A 组第 3 层，
+ * 容器组成区设备视图走此分支）；不传则保持无组织层的旧形状。
+ */
+export function buildCartDeviceView(
+  groups: PickCartGroup[],
+  org?: PickCaseOrgDimension,
+  subView: PickCaseOrgSubView = 'flat'
+): CartTreeBranch[] {
   const deviceMap = new Map<string, PickCartEntry[]>()
   for (const g of groups) {
     for (const e of g.entries) {
@@ -846,7 +923,10 @@ export function buildCartDeviceView(groups: PickCartGroup[]): CartTreeBranch[] {
         name: rt === PENDING_RESULT_TYPE_KEY ? PENDING_RESULT_TYPE_LABEL : rt,
         count: rtRows.length,
         entryIds: rtRows.map((e) => e.itemId),
-        children: cases,
+        // 组织层：result_type 之下、用例卡之上（§3.8.3 A 组第 3 层）
+        children: org
+          ? buildCartCaseOrgLevel(cases, org, subView, `dv-${dk}-${rt}`)
+          : cases,
       })
     }
 
@@ -864,8 +944,17 @@ export function buildCartDeviceView(groups: PickCartGroup[]): CartTreeBranch[] {
   return devices
 }
 
-/** 购物车结果类型视图（§4.2 ②）：result_type → 设备/API → 用例（PickCaseCard）→ 叶 */
-export function buildCartResultTypeView(groups: PickCartGroup[]): CartTreeBranch[] {
+/**
+ * 购物车结果类型视图（§4.2 ② / §5.5.3 ③）：
+ * result_type → 设备/API →〔用例层组织〕→ 用例（PickCaseCard）→ 叶。
+ * 传 `org` 时在设备/API 之下、用例卡之上插入独立组织层（§3.8.3 A 组第 3 层，
+ * 容器组成区结果类型视图走此分支）；不传则保持无组织层的旧形状。
+ */
+export function buildCartResultTypeView(
+  groups: PickCartGroup[],
+  org?: PickCaseOrgDimension,
+  subView: PickCaseOrgSubView = 'flat'
+): CartTreeBranch[] {
   const rtMap = new Map<string, PickCartEntry[]>()
   for (const g of groups) {
     for (const e of g.entries) {
@@ -915,7 +1004,10 @@ export function buildCartResultTypeView(groups: PickCartGroup[]): CartTreeBranch
         name: deviceDisplay,
         count: deviceRows.length,
         entryIds: deviceRows.map((e) => e.itemId),
-        children: cases,
+        // 组织层：设备/API 之下、用例卡之上（§3.8.3 A 组第 3 层）
+        children: org
+          ? buildCartCaseOrgLevel(cases, org, subView, `rtv-${rt}-${dk}`)
+          : cases,
       })
     }
 
@@ -1002,4 +1094,5 @@ export const PICK_LEVEL_LABELS: Record<PickLevel, string> = {
   case: '用例',
   device: '设备',
   resultType: '结果类型',
+  caseOrg: '用例组织',
 }
