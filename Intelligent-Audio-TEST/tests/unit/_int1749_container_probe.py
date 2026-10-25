@@ -66,6 +66,40 @@ def main():
             {'plain': 'p'}, {'plain': 'none'}, acl)
         assert same == {'plain': 'p'} and not server_received
 
+        # 执行链：HTTP 多轮 _attach_api_output_fields 走真实 ACL → 真实 gRPC
+        server_received.clear()
+        mappings = {
+            'original': {
+                'api': {'output': {
+                    'reply_text': {'code': 'reply_text', 'param_type': 'text',
+                                   'direction': 'output', 'field_path': 'data.text'},
+                    'reply_audio': {'code': 'reply_audio', 'param_type': 'audio',
+                                    'direction': 'output', 'field_path': 'data.audio'},
+                }},
+                'evaluation': {'output': {
+                    'answer': {'source': 'api', 'source_param': 'reply_text',
+                               'target_param': 'answer',
+                               'transform_type': 'json_parse'},
+                    'audio_out': {'source': 'api', 'source_param': 'reply_audio',
+                                  'target_param': 'audio_out',
+                                  'transform_type': 'base64'},
+                }},
+            }
+        }
+        from api_test_service.core.api_session_executor import APISessionExecutor
+        executor = object.__new__(APISessionExecutor)
+        executor._executor = type('_E', (), {'_log': lambda *a, **k: None})()
+        round_result = {'round_number': 1, 'answer_text': '{"a": 1}',
+                        'raw_response': {'data': {'text': '{"a": 1}',
+                                                  'audio': 'abc'}}}
+        executor._attach_api_output_fields(
+            round_result, mappings, 'voice_llm', 't1')
+        print('CHAIN_ROUND_OUTPUT', round_result['output'],
+              'RPC', len(server_received))
+        assert round_result['output'] == {'answer': {'a': 1},
+                                          'audio_out': 'YWJj'}, round_result
+        assert len(server_received) == 1, len(server_received)
+
         # 非法输入：保留原值，不抛异常
         server_received.clear()
         bad = EvalOutputTransformService.apply(
