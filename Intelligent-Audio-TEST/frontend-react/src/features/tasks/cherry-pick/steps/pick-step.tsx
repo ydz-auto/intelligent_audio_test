@@ -39,6 +39,7 @@ import { ApiError } from '@/infrastructure/api/api-error'
 import {
   clearSelection,
   computeSelectionStats,
+  hasResultTypeVariety,
   invertVisibleSelection,
   selectAllVisible,
   toggleBranchSelection,
@@ -52,7 +53,6 @@ import { SlowCandidatesNotice } from '@/features/tasks/cherry-pick/components/sl
 import { PickCaseView } from '@/features/tasks/cherry-pick/components/pick-case-view'
 import {
   PickCaseOrgControls,
-  PickCaseOrgList,
 } from '@/features/tasks/cherry-pick/components/pick-case-org-list'
 import { PickTree } from '@/features/tasks/cherry-pick/components/pick-tree'
 import { SelectedSummaryBar } from '@/features/tasks/cherry-pick/components/selected-summary-bar'
@@ -88,9 +88,17 @@ export function PickStep({
     enabled: phase === 'results',
   })
   const options = usePickFilterOptions(phase === 'results')
+  /** §3.8.3 用例层组织（三视图共享：分组/标签 + 平铺/交叉，阶段 2 会话态，usePickOrg） */
+  const { org, subView, setOrg, setSubView } = usePickOrg()
   const caseView = useCherryPickCaseView(candidatesQuery.data)
-  const deviceView = useCherryPickDeviceView(candidatesQuery.data)
-  const resultTypeView = useCherryPickResultTypeView(candidatesQuery.data)
+  // 设备 / 结果类型视图的组织层纳入树构建（result_type 之下、用例卡之上）
+  const deviceView = useCherryPickDeviceView(candidatesQuery.data, org, subView)
+  const resultTypeView = useCherryPickResultTypeView(candidatesQuery.data, org, subView)
+  /** 结果类型只有 1 种时不渲染「结果类型视图」入口（负责人 2026-10-24T12:39Z 追加口径） */
+  const resultTypeVariety = useMemo(
+    () => hasResultTypeVariety((candidatesQuery.data ?? []).map((c) => c.resultType)),
+    [candidatesQuery.data]
+  )
   const addEntries = usePickCartStore((s) => s.addEntries)
 
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(
@@ -103,10 +111,13 @@ export function PickStep({
     tick: 0,
   })
   const [adding, setAdding] = useState(false)
-  /** §3.8.3 用例层组织（三视图共享：分组/标签 + 平铺/交叉，阶段 2 会话态，usePickOrg） */
-  const { org, subView, setOrg, setSubView } = usePickOrg()
   /** 算法类型码 → 中文名（真实 /algorithm/options；挑选域用例卡徽章共用，INT-1687 返工 P1） */
   const algorithmLabels = useAlgorithmLabels()
+
+  /** 停在已隐藏的结果类型视图上时回落默认视图（用例视图） */
+  useEffect(() => {
+    if (!resultTypeVariety && view === 'resultType') setView('case')
+  }, [resultTypeVariety, view])
 
   /** 阶段 1 任务行（服务端已按 sort_by/sort_order 排序，前端不再聚合/重排） */
   const taskRows = pickableTasksQuery.items
@@ -282,15 +293,17 @@ export function PickStep({
             <Smartphone aria-hidden='true' className='size-3.5' />
             设备视图
           </Button>
-          <Button
-            variant={view === 'resultType' ? 'default' : 'ghost'}
-            size='sm'
-            className='h-6 gap-1 px-2 text-xs'
-            onClick={() => setView('resultType')}
-          >
-            <Tag aria-hidden='true' className='size-3.5' />
-            结果类型视图
-          </Button>
+          {resultTypeVariety && (
+            <Button
+              variant={view === 'resultType' ? 'default' : 'ghost'}
+              size='sm'
+              className='h-6 gap-1 px-2 text-xs'
+              onClick={() => setView('resultType')}
+            >
+              <Tag aria-hidden='true' className='size-3.5' />
+              结果类型视图
+            </Button>
+          )}
         </div>
         <Button
           variant='ghost'
@@ -360,7 +373,8 @@ export function PickStep({
             algorithmLabels={algorithmLabels}
           />
         ) : (
-          // 设备/结果类型视图：顶/二层分支行 + 每 result_type/设备 节点下用例层组织（§3.8.3 用例层组织）
+          // 设备/结果类型视图：顶/二层分支行 + result_type/设备 节点下的**组织层**
+          // （分组/标签组头 → 用例卡，树由 buildPickDeviceView / buildPickResultTypeView 构建）
           <div className='flex min-h-0 flex-col'>
             <div className='border-b py-2'>
               <PickCaseOrgControls
@@ -377,22 +391,7 @@ export function PickStep({
               onToggleLeaf={handleToggleLeaf}
               onToggleBranch={handleToggleBranch}
               expandSignal={expandSignal}
-              showLeafTask
-              renderCaseLayer={(caseBranches) => (
-                <PickCaseOrgList
-                  branches={caseBranches}
-                  selectedIds={selectedIds}
-                  onToggleLeaf={handleToggleLeaf}
-                  onToggleBranch={handleToggleBranch}
-                  expandSignal={expandSignal}
-                  org={org}
-                  subView={subView}
-                  onOrgChange={setOrg}
-                  onSubViewChange={setSubView}
-                  showControls={false}
-                  algorithmLabels={algorithmLabels}
-                />
-              )}
+              algorithmLabels={algorithmLabels}
             />
           </div>
         )}

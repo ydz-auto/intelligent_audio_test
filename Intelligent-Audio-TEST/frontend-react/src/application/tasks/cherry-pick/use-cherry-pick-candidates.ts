@@ -6,6 +6,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
+import type {
+  PickOrgDimension,
+  PickSubView,
+} from '@/application/tasks/cherry-pick/use-pick-org'
 import type { CherryPickCandidate } from '@/domain/models/cherryPick'
 import type {
   PickableTask,
@@ -239,20 +243,28 @@ export function useCherryPickCaseView(candidates: CherryPickCandidate[] | undefi
   )
 }
 
-/** 设备视图树（§3.8.3：设备/API→result_type→用例→结果行，新增） */
-export function useCherryPickDeviceView(candidates: CherryPickCandidate[] | undefined) {
+/** 设备视图树（§3.8.3：设备/API→result_type→组织层→用例→任务→结果行，INT-1694） */
+export function useCherryPickDeviceView(
+  candidates: CherryPickCandidate[] | undefined,
+  org: PickOrgDimension = 'group',
+  subView: PickSubView = 'flat'
+) {
   const resultIdSet = usePickCartStore((s) => s.resultIdSet)
   return useMemo(
-    () => buildPickDeviceView(candidates ?? [], resultIdSet),
-    [candidates, resultIdSet]
+    () => buildPickDeviceView(candidates ?? [], resultIdSet, org, subView),
+    [candidates, resultIdSet, org, subView]
   )
 }
 
-/** 结果类型视图树（§3.8.3：result_type→设备/API→用例→结果行，新增） */
-export function useCherryPickResultTypeView(candidates: CherryPickCandidate[] | undefined) {
+/** 结果类型视图树（§3.8.3：result_type→设备/API→组织层→用例→任务→结果行，INT-1694） */
+export function useCherryPickResultTypeView(
+  candidates: CherryPickCandidate[] | undefined,
+  org: PickOrgDimension = 'group',
+  subView: PickSubView = 'flat'
+) {
   const resultIdSet = usePickCartStore((s) => s.resultIdSet)
   return useMemo(
-    () => buildPickResultTypeView(candidates ?? [], resultIdSet),
-    [candidates, resultIdSet]
+    () => buildPickResultTypeView(candidates ?? [], resultIdSet, org, subView),
+    [candidates, resultIdSet, org, subView]
   )
 }

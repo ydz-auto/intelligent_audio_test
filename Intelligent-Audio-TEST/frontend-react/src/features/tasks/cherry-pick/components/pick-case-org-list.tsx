@@ -187,7 +187,6 @@ export function PickCaseOrgList({
               onToggleLeaf={onToggleLeaf}
               onToggleBranch={onToggleBranch}
               expandSignal={expandSignal}
-              showLeafTask
             />
           </div>
         ) : undefined}

@@ -41,7 +41,17 @@ const BRANCHES: PickTreeBranch[] = [
             name: 'real-time',
             count: 2,
             resultIds: [1, 2],
-            children: LEAVES,
+            children: [
+              {
+                kind: 'branch',
+                key: 'pcase-resultType:c1:device:1:real-time-task:1042',
+                level: 'task',
+                name: '任务A',
+                count: 2,
+                resultIds: [1, 2],
+                children: LEAVES,
+              },
+            ],
           },
         ],
       },
@@ -90,11 +100,11 @@ describe('PickCaseView（§3.8.3 用例视图组织维度）', () => {
     expect(screen.getByText('未设置标签')).toBeInTheDocument()
   })
 
-  it('用例卡展开 → 设备/result_type 子树 + 叶携来源任务名（复用 PickTree 层级行）', () => {
+  it('用例卡展开 → 设备/result_type → 任务 子树 + 叶（复用 PickTree 层级行）', () => {
     setup({ expandSignal: { all: true, tick: 1 } })
     expect(screen.getAllByText('设备-01').length).toBeGreaterThan(0) // 分支行 + 叶行设备名
     expect(screen.getAllByText('real-time').length).toBeGreaterThan(0) // result_type 分支 + 叶徽章
-    expect(screen.getAllByText('任务A').length).toBeGreaterThan(0) // 叶行来源任务名消歧
+    expect(screen.getAllByText('任务A').length).toBeGreaterThan(0) // 任务层节点（叶的前一级）
   })
 
   it('勾选用例卡触发 onToggleBranch（R6 用例级 = 其下全部结果）', () => {

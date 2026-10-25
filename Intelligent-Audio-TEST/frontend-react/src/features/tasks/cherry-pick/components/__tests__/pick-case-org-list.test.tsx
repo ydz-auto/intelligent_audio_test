@@ -171,8 +171,9 @@ describe('PickCaseOrgList（§3.8.3 用例层组织，INT-1125）', () => {
 
   it('用例卡展开 → 结果行叶（设备/结果类型视图用例下叶直挂，复用 PickTree 层级行）', () => {
     setup({ expandSignal: { all: true, tick: 1 } })
-    expect(screen.getAllByText('任务A').length).toBeGreaterThan(0) // 叶行来源任务名消歧
+    // 叶行不再显示来源任务名（INT-1694：任务已是树内节点）
     expect(screen.getAllByText('设备-01').length).toBeGreaterThan(0)
+    expect(screen.getByLabelText('结果 1')).toBeInTheDocument()
   })
 
   it('勾选用例卡触发 onToggleBranch（R6 用例级 = 其下全部结果）', () => {
