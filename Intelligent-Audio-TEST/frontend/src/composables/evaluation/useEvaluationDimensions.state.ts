@@ -17,8 +17,6 @@ import {
   DEFAULT_MAX_TIMEOUT,
   DEFAULT_MAX_AUDIO_DURATION,
   DEFAULT_API_TIMEOUT,
-  DEFAULT_LLM_MAX_TOKENS,
-  DEFAULT_LLM_TEMPERATURE,
   DIMENSION_TYPE_SUB,
 } from './useEvaluationDimensions.constants';
 
@@ -87,12 +85,6 @@ export function createEvalDimensionState() {
       { key: 'asr_ref', label: '参考文本', source: 'device', required: true, description: '标准参考文本' }
     ],
     associatedAlgorithms: [],
-    llmJudgeConfig: {
-      model: '',
-      promptTemplate: '',
-      maxTokens: DEFAULT_LLM_MAX_TOKENS,
-      temperature: DEFAULT_LLM_TEMPERATURE
-    }
   };
 
   const newDimension = ref<Partial<EvaluationDimension>>({
@@ -133,12 +125,6 @@ export function createEvalDimensionState() {
       { key: 'asr_ref', label: '参考文本', source: 'device', required: true, description: '标准参考文本' }
     ],
     associatedAlgorithms: [],
-    llmJudgeConfig: {
-      model: '',
-      promptTemplate: '',
-      maxTokens: DEFAULT_LLM_MAX_TOKENS,
-      temperature: DEFAULT_LLM_TEMPERATURE
-    }
   } as any);
 
   // ========== 视图模式（列表/分组） ==========
