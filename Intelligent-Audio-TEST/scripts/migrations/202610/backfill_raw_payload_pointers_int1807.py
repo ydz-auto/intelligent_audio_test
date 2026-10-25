@@ -55,8 +55,6 @@ OSS_SECRET_KEY / OSS_BUCKET_NAME / OSS_KEY_PREFIX 必须与服务侧一致（单
 退出码：0 完成且无失败组；1 存在失败组 / 门禁未归零；2 连续失败超阈值中止。
 """
 import argparse
-import gzip
-import hashlib
 import json
 import os
 import sys
@@ -77,9 +75,6 @@ if not os.environ.get('DATABASE_URL'):
         '@localhost:5432/intelligent_audio_test')
 
 TABLE = 'test_result_dimensions'
-CATEGORY = 'case_result'
-CONTENT_TYPE = 'application/json+gzip'
-GZIP_COMPRESS_LEVEL = 9
 
 DEFAULT_BATCH_GROUPS = 200
 DEFAULT_SLEEP_SECONDS = 0.5
@@ -108,25 +103,12 @@ GATE_SQL = (
 
 
 # ---------------------------------------------------------------- 对象口径
-
-def canonical_bytes(value) -> bytes:
-    """规范化 JSON 字节：键序 / 分隔符固定，否则键序不同会产出重复对象。"""
-    return json.dumps(value, sort_keys=True, separators=(',', ':'),
-                      ensure_ascii=False).encode('utf-8')
-
-
-def sha256_hex(value) -> str:
-    return hashlib.sha256(canonical_bytes(value)).hexdigest()
-
-
-def object_key(kind: str, sha: str) -> str:
-    """内容寻址 key：raw/resp/{sha[:2]}/{sha}.json.gz（req 同理）。"""
-    return f'raw/{kind}/{sha[:2]}/{sha}.json.gz'
-
-
-def compress(raw: bytes) -> bytes:
-    """gzip 压缩；mtime 固定为 0（sha 对未压缩字节算，压缩差异不影响 key）。"""
-    return gzip.compress(raw, compresslevel=GZIP_COMPRESS_LEVEL, mtime=0)
+# 口径唯一事实源是 shared.infrastructure.raw_payload_store（C2 读写路径共用同一份
+# 实现，避免脚本与在线路径各算一套 sha / gzip 而互相读不出对方写的对象）。
+from shared.infrastructure.raw_payload_store import (  # noqa: E402  （sys.path 已前置仓库根）
+    CATEGORY, CONTENT_TYPE, GZIP_COMPRESS_LEVEL,
+    canonical_bytes, compress, object_key, sha256_hex,
+)
 
 
 def _default_uploader(data: bytes, key: str) -> str:

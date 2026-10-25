@@ -37,8 +37,13 @@ class TestResultDimension(Base):
     status = Column(String(20), nullable=True, comment='维度评估结果状态 (passed/failed)')
     evaluation_status = Column(String(20), default=EvaluationStatus.PENDING, nullable=False, comment='评估过程状态 (pending/running/completed/stopped)')
     error_message = Column(Text, comment='评估过程中的错误信息')
-    api_raw_response = Column(JSON, comment='评测API的原始响应数据')
-    api_request_body = Column(JSON, comment='评测API的原始请求体数据')
+    # 注意：两列一律 none_as_null=True。Column(JSON) 默认 none_as_null=False 会把
+    # Python None 落成 JSON 字面量 null（``IS NULL`` 为假）——C2（INT-1809）起这两列
+    # 只被「置空」，必须是真正的 SQL NULL，否则 C1 切换门禁
+    # （``api_* IS NOT NULL AND api_*_uri IS NULL``）会在每次重评 / 存储不可用失败后
+    # 把「本来没有报文」的行误判成悬空指针。ORM 与 Core update 共用本列类型，一处覆盖。
+    api_raw_response = Column(JSON(none_as_null=True), comment='评测API的原始响应数据')
+    api_request_body = Column(JSON(none_as_null=True), comment='评测API的原始请求体数据')
     # 原始报文指针（INT-1807 / C1）：报文按内容寻址搬进对象存储后，行上只留指针；
     # 请求体与响应是两个独立对象（各自去重），不打包成一份。全部可空、无默认值。
     # 本卡只建列 + 回填脚本，没有任何读写路径使用它们（写路径切换归 C2、删列归 M1）。

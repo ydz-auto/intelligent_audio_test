@@ -12,6 +12,11 @@ PO ↔ Entity 转换规则：
 """
 from typing import List, Optional
 
+from shared.infrastructure.raw_payload_store import (
+    KIND_REQUEST,
+    KIND_RESPONSE,
+    raw_payload_store,
+)
 from shared.models.database import end_read_transaction, get_db_session
 from shared.utils.status_constants import EvaluationStatus
 
@@ -353,16 +358,28 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
     def reset_score_to_pending(self, score_id: int) -> None:
         """重置维度评分记录为 pending（含 commit）。
 
-        清空 score/error_message/api_request_body/api_raw_response，
+        清空 score/error_message/api_request_body/api_raw_response 与对应的对象指针列，
         evaluation_status 置为 pending，供重新评估复用。
         """
         session = get_db_session()
+        # INT-1809（C2）：重评前把旧报文指针一并清掉——否则重评失败时行上会留着
+        # 指向上一轮报文的陈旧指针（评分已是新的 / 报文还是旧的）。
         reset_fields = {
             'evaluation_status': EvaluationStatus.PENDING,
             'score': None,
             'error_message': None,
             'api_request_body': None,
             'api_raw_response': None,
+            'api_request_body_uri': None,
+            'api_request_body_sha256': None,
+            'api_request_body_bytes': None,
+            'api_request_body_content_type': None,
+            'api_request_body_created_at': None,
+            'api_raw_response_uri': None,
+            'api_raw_response_sha256': None,
+            'api_raw_response_bytes': None,
+            'api_raw_response_content_type': None,
+            'api_raw_response_created_at': None,
         }
         # 仅重置 PO 上存在的列，避免列名不存在报错
         existing_cols = {c.name for c in TestResultDimensionPO.__table__.columns}
@@ -517,38 +534,77 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
             include_body: 是否携带 api_request_body / api_raw_response（LLM 复检
                 INT-823 上下文聚合用；默认 False 保持既有 read model 调用载荷不变，
                 避免对报告/导出等大批量消费方回传大 JSON 字段）。
+
+        INT-1809（C2）：``include_body`` 的报文改**按指针读对象**（sha256 校验），
+        不再读 JSON 列——M1 删列后这里也不会退化成「读已删列报错」。载荷形状不变
+        （仍是解析后的 dict）。对象缺失 / 损坏 / 存储不可用 → 抛
+        ``RawPayloadError``（调用方据此显式报错，绝不返回空上下文）。
         """
         session = get_db_session()
+        # 只取需要的列：绝不 SELECT 两个 JSON 大字段（C2 起它们不该再有读者），
+        # 报文按指针在会话外读对象（不在持连接期间做 OSS IO）。
         try:
             rows = session.query(
-                TestResultDimensionPO, DimensionPO.name
+                TestResultDimensionPO.id,
+                TestResultDimensionPO.test_result_id,
+                TestResultDimensionPO.dimension_id,
+                DimensionPO.name,
+                TestResultDimensionPO.dimension_value,
+                TestResultDimensionPO.score,
+                TestResultDimensionPO.status,
+                TestResultDimensionPO.evaluation_status,
+                TestResultDimensionPO.error_message,
+                TestResultDimensionPO.round_number,
+                TestResultDimensionPO.api_request_body_uri,
+                TestResultDimensionPO.api_request_body_sha256,
+                TestResultDimensionPO.api_raw_response_uri,
+                TestResultDimensionPO.api_raw_response_sha256,
             ).outerjoin(
                 DimensionPO, TestResultDimensionPO.dimension_id == DimensionPO.id
             ).filter(
                 TestResultDimensionPO.test_result_id.in_(result_ids)
             ).all()
-
-            items = []
-            for dim, dim_name in rows:
-                item = {
-                    'id': dim.id,
-                    'test_result_id': dim.test_result_id,
-                    'dimension_id': dim.dimension_id,
-                    'dimension_name': dim_name,
-                    'dimension_value': dim.dimension_value,
-                    'score': dim.score,
-                    'status': dim.status,
-                    'evaluation_status': dim.evaluation_status,
-                    'error_message': dim.error_message,
-                    'round_number': getattr(dim, 'round_number', None),
-                }
-                if include_body:
-                    item['api_request_body'] = dim.api_request_body
-                    item['api_raw_response'] = dim.api_raw_response
-                items.append(item)
-            return items
         finally:
             end_read_transaction()
+
+        items = []
+        payload_refs = []
+        for (dim_id, result_id, dimension_id, dim_name, dimension_value, score,
+             status, evaluation_status, error_message, round_number,
+             req_uri, req_sha, resp_uri, resp_sha) in rows:
+            item = {
+                'id': dim_id,
+                'test_result_id': result_id,
+                'dimension_id': dimension_id,
+                'dimension_name': dim_name,
+                'dimension_value': dimension_value,
+                'score': score,
+                'status': status,
+                'evaluation_status': evaluation_status,
+                'error_message': error_message,
+                'round_number': round_number,
+            }
+            items.append(item)
+            payload_refs.append((req_uri, req_sha, resp_uri, resp_sha))
+
+        if include_body:
+            for item, (req_uri, req_sha, resp_uri, resp_sha) in zip(items, payload_refs):
+                item['api_request_body'] = self._load_raw_payload(
+                    KIND_REQUEST, req_uri, req_sha)
+                item['api_raw_response'] = self._load_raw_payload(
+                    KIND_RESPONSE, resp_uri, resp_sha)
+        return items
+
+    @staticmethod
+    def _load_raw_payload(kind: str, uri: Optional[str], sha256: Optional[str]):
+        """按指针读原始报文对象；无指针（历史无报文行）→ None。
+
+        sha256 不符 / 解压失败 / 对象不存在 / 存储不可用一律抛
+        ``RawPayloadError``，由调用方显式报错（不返回空上下文）。
+        """
+        if not uri and not sha256:
+            return None
+        return raw_payload_store.load(kind, uri, sha256)
 
     def delete_scores_by_result_ids(self, result_ids: List[int]) -> int:
         """按 result_id 列表批量删除维度评估记录。返回删除行数。"""

@@ -39,10 +39,33 @@ _remove_db_session()
 
 # ==================== 测试库 fixture ====================
 
+# INT-1809（C2）：原始报文已外置——单测用内存对象存储承载「对象」，行上只写指针
+# （与生产路径共用 apply_pointer / RawPayloadStore 同一套口径）。
+_MEMORY_OBJECTS = {}
+
+
+def _mem_upload(data, key):
+    _MEMORY_OBJECTS[key] = data
+    return f'oss://case_result/{key}'
+
+
+def _mem_download(uri):
+    return _MEMORY_OBJECTS[uri.split('case_result/', 1)[1]]
+
+
+def _memory_store():
+    from shared.infrastructure.raw_payload_store import RawPayloadStore
+    return RawPayloadStore(uploader=_mem_upload, downloader=_mem_download)
+
 
 @pytest.fixture()
 def trd_db(monkeypatch):
     """真实内存 SQLite 引擎 + test_result_dimensions + dimensions 表。"""
+    _MEMORY_OBJECTS.clear()
+    store = _memory_store()
+    monkeypatch.setattr(repo_mod, 'raw_payload_store', store)
+    import evaluation_service.infrastructure.persistence._result_group_mixin as grm_mod
+    monkeypatch.setattr(grm_mod, 'raw_payload_store', store)
     from sqlalchemy import create_engine, text
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
@@ -95,6 +118,11 @@ def _insert_dim(factory, dim_id, name='LLM语义评分', task_type_code='llm_jud
 def _insert_trd(factory, result_id=99, dimension_id=7, evaluation_status=EvaluationStatus.COMPLETED,
                 score=4.2, req_body=None, raw_resp=None, **kwargs):
     from evaluation_service.infrastructure.persistence.orm_models import TestResultDimension
+    from shared.infrastructure.raw_payload_store import (
+        KIND_REQUEST,
+        KIND_RESPONSE,
+        apply_pointer,
+    )
     session = factory()
     try:
         po = TestResultDimension(
@@ -103,8 +131,13 @@ def _insert_trd(factory, result_id=99, dimension_id=7, evaluation_status=Evaluat
             dimension_value=kwargs.get('dimension_value', score),
             score=score, status=kwargs.get('status'),
             evaluation_status=evaluation_status, error_message=kwargs.get('error_message'),
-            api_request_body=req_body, api_raw_response=raw_resp,
         )
+        # INT-1809（C2）：报文进对象存储，行上只留指针（JSON 两列保持 NULL）
+        store = _memory_store()
+        apply_pointer(po, KIND_REQUEST,
+                      store.store(KIND_REQUEST, req_body) if req_body is not None else None)
+        apply_pointer(po, KIND_RESPONSE,
+                      store.store(KIND_RESPONSE, raw_resp) if raw_resp is not None else None)
         session.add(po)
         session.commit()
         return po.id
