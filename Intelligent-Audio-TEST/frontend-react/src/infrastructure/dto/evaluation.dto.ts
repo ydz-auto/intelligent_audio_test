@@ -441,7 +441,9 @@ export function toDimensionInputDto(data: Partial<Dimension>): Record<string, un
   if (data.excludeRounds !== undefined) result.exclude_rounds = data.excludeRounds
   if (data.associatedAlgorithms !== undefined) result.associated_algorithms = data.associatedAlgorithms
   if (data.status !== undefined) result.status = data.status
-  if (data.llmJudgeConfig !== undefined) result.llm_judge_config = data.llmJudgeConfig
+  // llm_judge_config 不再回写：写侧唯一入口 toDimensionSaveInput 已不产出该字段，
+  // 后端 INT-1735 起也不再读取（api_gateway / evaluation_service 无该键处理）。
+  // 读侧映射与用例 config 里的历史 llmJudgeConfig 原样透传保持不变（INT-1681）。
   return result
 }
 
