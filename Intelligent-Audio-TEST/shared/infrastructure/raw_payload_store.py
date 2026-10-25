@@ -6,7 +6,13 @@
 响应 + 6,164 个请求体）。C1（INT-1807）给表补了指针列并回填对象，C2（INT-1809）
 把写路径切到「组级一次上传 + 只写指针」、读路径切到「按指针读对象」。
 
-对象口径（改口径先改卡，三处必须一致：本模块、C1 回填脚本、M1 归档工具）：
+口径实现在 ``shared/utils/raw_payload.py``（INT-1924 归一，纯函数、不依赖 DB /
+存储 / 网络）：规范化字节 / sha256 / 对象 key / gzip 级别一律从那里导入，本模块
+**只做存储、指针与进程内缓存**，不再自带一份实现——两份实现一旦漂移，同一份报文
+会算出不同 sha，回填写入的对象与在线写入的对象互读不出来（A→B→A 往返膨胀）。
+
+对象口径（改口径先改卡，三处必须一致：shared/utils/raw_payload.py、C1 回填脚本、
+离线搬运）：
     key      ``raw/resp/{sha[:2]}/{sha}.json.gz`` / ``raw/req/{sha[:2]}/{sha}.json.gz``
     category ``case_result``（多桶模式用 case-result 桶；单桶模式自动加
              ``{OSS_KEY_PREFIX}/case_result/`` 前缀）
@@ -31,13 +37,20 @@ from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Any, Dict, NamedTuple, Optional, Tuple
 
-CATEGORY = 'case_result'
-CONTENT_TYPE = 'application/json+gzip'
-GZIP_COMPRESS_LEVEL = 9
+from shared.utils.raw_payload import (
+    RAW_CATEGORY as CATEGORY,
+    RAW_CONTENT_TYPE as CONTENT_TYPE,
+    RAW_KIND_REQUEST,
+    RAW_KIND_RESPONSE,
+    canonical_bytes,
+    compress,
+    object_key,
+    sha256_hex,
+)
 
 #: 响应体 / 请求体两个独立取值空间（也是对象 key 的第二段）
-KIND_RESPONSE = 'resp'
-KIND_REQUEST = 'req'
+KIND_RESPONSE = RAW_KIND_RESPONSE
+KIND_REQUEST = RAW_KIND_REQUEST
 KINDS = (KIND_RESPONSE, KIND_REQUEST)
 
 #: kind → 指针列前缀（列由 C1 迁移脚本建）
@@ -75,28 +88,7 @@ class RawPayloadPointer(NamedTuple):
     created_at: datetime
 
 
-# ------------------------------------------------------------------ 对象口径
-
-def canonical_bytes(value) -> bytes:
-    """规范化 JSON 字节：键序 / 分隔符固定，否则键序不同会产出重复对象。"""
-    return json.dumps(value, sort_keys=True, separators=(',', ':'),
-                      ensure_ascii=False).encode('utf-8')
-
-
-def sha256_hex(value) -> str:
-    """规范化字节的 sha256（内容寻址 key 与指针列 sha256 的唯一取值）。"""
-    return hashlib.sha256(canonical_bytes(value)).hexdigest()
-
-
-def object_key(kind: str, sha: str) -> str:
-    """内容寻址 key：raw/resp/{sha[:2]}/{sha}.json.gz（req 同理）。"""
-    return f'raw/{kind}/{sha[:2]}/{sha}.json.gz'
-
-
-def compress(raw: bytes) -> bytes:
-    """gzip 压缩；mtime 固定为 0（sha 对未压缩字节算，压缩差异不影响 key）。"""
-    return gzip.compress(raw, compresslevel=GZIP_COMPRESS_LEVEL, mtime=0)
-
+# ------------------------------------------------------------------ 指针列
 
 def column_names(kind: str) -> Tuple[str, ...]:
     """该 kind 的五列列名（uri / sha256 / bytes / content_type / created_at）。"""

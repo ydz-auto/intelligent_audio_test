@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""原始报文外置对象（raw payload）口径的**唯一实现**（INT-1807 / INT-1811）
+"""原始报文外置对象（raw payload）口径的**唯一实现**（INT-1807 / INT-1811 / INT-1924）
 
 `test_result_dimensions` 的原始报文按内容寻址外置到对象存储，行上只留指针：
 
@@ -14,6 +14,9 @@
 A→B→A 往返膨胀）：
 
 - 迁移回填：``scripts/migrations/202610/backfill_raw_payload_pointers_int1807.py``
+- 在线读写 / 指针 / 缓存层：``shared/infrastructure/raw_payload_store.py``
+  （INT-1924 归一：该层只做存储与指针，规范化字节 / sha256 / key / gzip 级别全部
+  从这里导入，不再自带实现）
 - 离线搬运 1.0 旧包现场物化：``task_service/infrastructure/transfer/raw_payload_store.py``
 
 本模块是纯函数，不依赖 DB / 存储 / 网络。
