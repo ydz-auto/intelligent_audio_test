@@ -3,9 +3,22 @@
 
 负责一组维度的评估结果处理流程编排，以及
 algorithm_results 扁平快照的预提取与写回。
+
+INT-1809（C2）：原始报文改「组级一次上传 + uri-only 落库」——
+- 写：组入口按值去重上传（resp / req / 每轮 per_round 各一次），行上只写指针；
+  对象写失败即整组按失败语义结束（不写任何 uri、不留 local://）。
+- 读：快照构建改为吃**内存里的 payload**（本组刚写入的值按 sha 命中），
+  只有别的组写下的行才按 sha 读对象，且每个唯一 sha 只读一次。
+
+INT-1889 预存缺陷（本卡不动）：``algorithm_type`` 恒空导致输出声明退化为算法级。
 """
 import json
 
+from shared.infrastructure.raw_payload_store import (
+    KIND_REQUEST,
+    KIND_RESPONSE,
+    raw_payload_store,
+)
 from shared.models.database import get_db_session
 from shared.utils.status_constants import ExecutionStatus
 from shared.utils.json_utils import deserialize_algorithm_result
@@ -49,7 +62,7 @@ class GroupResultMixin:
                     content=f"预提取 algorithm_results 失败: {e}",
                 )
 
-    def process_group_dimension_results(self, resp_data, group_items, task_id, test_case_id, result_id, api_request_body, test_type=TestType.API.value):
+    def process_group_dimension_results(self, resp_data, group_items, task_id, test_case_id, result_id, api_request_body, test_type=TestType.API.value, payload_store=None):
         """
         处理一组维度的评估结果
 
@@ -57,8 +70,12 @@ class GroupResultMixin:
 
         INT-116: DB 会话只覆盖本地 TestResultDimension 写入并尽快提交释放连接，
         gRPC 读取、快照预提取（多次 gRPC+文件 IO）与状态推进全部移出会话——
-        严禁在持连接（开事务）期间做跨服务调用/长 IO，防止连接池被长耗时
+        严禁在持连接（开事务）期间做跨服务调用/长 IO，防止连接池被长耗
         调用占满（task_service 过载时每次 gRPC 可达 30s 超时）。
+
+        INT-1809（C2）：原始报文在**组入口**按值去重上传一次，组内各行只写指针。
+        逐行上传会把每天约 8 千次写放大成 5 万次 OSS 操作，故不允许下沉到行级；
+        逐轮值（per_round）每行可能不同，按值去重而非假设组内相同。
 
         Args:
             resp_data: API响应数据
@@ -68,7 +85,35 @@ class GroupResultMixin:
             result_id: 结果ID
             api_request_body: API请求体
             test_type: 测试类型 (api 或 e2e)
+            payload_store: 原始报文对象存储（默认进程级单例；测试可注入）
+
+        Raises:
+            StorageUnavailableError: 原始报文对象写失败（allow_fallback=False）。
+                此时不写任何 uri，异常上抛由调用方按既有失败语义收口
+                （endpoint_worker → mark_case_failed_if_active）。
         """
+        store = payload_store or raw_payload_store
+
+        # INT-1809（C2）：组级一次上传（先对象后库）。失败即整组不落库：
+        # 不留「有评分但没有报文」的静默丢数据，也不留 local:// 假指针。
+        per_round = resp_data.get('per_round', []) if isinstance(resp_data, dict) else []
+        payload_cache = store.new_group_cache()
+        try:
+            payload_cache.warm(KIND_RESPONSE, resp_data)
+            payload_cache.warm(KIND_REQUEST, api_request_body)
+            for per_round_item in per_round:
+                payload_cache.warm(KIND_RESPONSE, per_round_item)
+        except Exception as e:  # noqa: BLE001 - 对象写失败按组失败收口
+            self._log(
+                level='ERROR',
+                category='storage',
+                content=f'原始报文外置失败，本组不写 uri 并按失败处理'
+                        f'（result_id={result_id}, 用例ID: {test_case_id}）: {e}',
+                task_id=task_id,
+                test_case_id=test_case_id,
+            )
+            raise
+
         # 获取api_id和device_id（P1.4: 通过 gRPC 读 TestResult）——会话外执行
         api_id = None
         device_id = None
@@ -106,10 +151,9 @@ class GroupResultMixin:
                 )
 
                 # 更新维度评估结果，传入session避免重复创建
-                self.update_dimension_result_completed(dimension_result_id, raw_value, score, task_id=task_id, test_case_id=test_case_id, api_raw_response=resp_data, api_request_body=api_request_body, session=local_db_session)
+                self.update_dimension_result_completed(dimension_result_id, raw_value, score, task_id=task_id, test_case_id=test_case_id, api_raw_response=resp_data, api_request_body=api_request_body, session=local_db_session, raw_payload_cache=payload_cache)
 
             # 整体评估的 per_round 结果覆盖逐轮 TRD 记录（按 round_number 字段定位，不依赖数组下标）
-            per_round = resp_data.get('per_round', []) if isinstance(resp_data, dict) else []
             if per_round:
                 # INT-176：仅原生 per_round（子服务守卫早返回路径打 per_round_native 标记）
                 # 落库后才允许清理旧逐轮行；切片 fallback / 旧版子服务无标记
@@ -121,6 +165,7 @@ class GroupResultMixin:
                     task_id=task_id, test_case_id=test_case_id,
                     api_request_body=api_request_body,
                     is_native=is_native,
+                    raw_payload_cache=payload_cache,
                 )
 
             # 循环结束后统一提交
@@ -129,8 +174,9 @@ class GroupResultMixin:
             local_db_session.close()
 
         # 会话外：预提取 algorithm_results 快照，存入 result_data['algorithm_results']
+        # INT-1809（C2）：快照构建吃本组内存 payload，不回读对象（见 _load_dim_result_rows）
         self._build_and_store_algorithm_results(
-            result_id, task_id, test_case_id, test_type
+            result_id, task_id, test_case_id, test_type, payload_context=payload_cache
         )
 
         # 检查是否所有维度都已完成评估，如果是，更新TaskCase状态
@@ -168,10 +214,14 @@ class GroupResultMixin:
         """
         return cls._unwrap_calc_result(resp_data).get('per_round_native') is True
 
-    def _build_and_store_algorithm_results(self, result_id, task_id, test_case_id, test_type=TestType.API.value):
+    def _build_and_store_algorithm_results(self, result_id, task_id, test_case_id, test_type=TestType.API.value, payload_context=None):
         """预提取 algorithm_results 扁平列表并存入 result_data['algorithm_results']。
 
         在评估完成后调用，报告页和详情页可直接读取，无需重复提取。
+
+        INT-1809（C2）：``payload_context`` 为本次组处理的内存 payload 缓存
+        （sha → 值）。快照构建优先吃内存，只有别的维度组写下的行才按 sha 读对象，
+        避免「每组全量读该 result 所有行」在外置后退化成 OSS 往返放大。
         """
         if not result_id:
             return
@@ -206,8 +256,8 @@ class GroupResultMixin:
             if not (algo_result or result_data):
                 return
 
-            # 查询 dim_result_rows（含 api_raw_response，本地 DB）
-            dim_result_rows = self._load_dim_result_rows(result_id)
+            # 查询 dim_result_rows（INT-1809：只读指针列，payload 来自内存 / 对象）
+            dim_result_rows = self._load_dim_result_rows(result_id, payload_context)
 
             # 查询 aux_params_map（通过 gRPC 调 algorithm_service）
             aux_params_map = self._load_aux_params_map(dim_result_rows)
@@ -270,22 +320,60 @@ class GroupResultMixin:
                 return api_data.get('name') or f'api_{api_id}'
         return f'result_{result_id}'
 
-    @staticmethod
-    def _load_dim_result_rows(result_id):
-        """查询该结果的维度评估记录（含 api_raw_response，本地 DB）"""
+    def _load_dim_result_rows(self, result_id, payload_context=None):
+        """该结果的维度评估行，供快照构建（**不回读 JSON 列**）。
+
+        INT-1809（C2）：payload 解析顺序——
+        1. 内存：本次组处理刚写入的值（按行上 sha256 命中 ``payload_context``）；
+        2. 对象：别的维度组写下的行，按其 sha256 从对象存储读，**每个唯一 sha
+           只读一次**（内容寻址天然去重；``raw_payload_store`` 另有进程内缓存）；
+        3. 行上既无字节也无指针 → payload 为 None（历史无报文行）。
+        对象读失败即抛（调用方不写快照），绝不拿空 payload 静默降级。
+        """
         local_db_session = get_db_session()
         try:
             from evaluation_service.infrastructure.persistence.orm_models import TestResultDimension
-            return local_db_session.query(
-                TestResultDimension
+            rows = local_db_session.query(
+                TestResultDimension.dimension_id,
+                TestResultDimension.round_number,
+                TestResultDimension.api_raw_response_uri,
+                TestResultDimension.api_raw_response_sha256,
             ).filter(TestResultDimension.test_result_id == result_id).all()
         finally:
             local_db_session.close()
 
+        payloads = {}
+        memory_hits = 0
+        pending = {}
+        for dimension_id, round_number, uri, sha in rows:
+            if sha:
+                value = payload_context.value_for_sha(sha) if payload_context else None
+                if value is not None:
+                    payloads[sha] = value
+                    memory_hits += 1
+                elif uri:
+                    pending.setdefault(sha, uri)
+        for sha, uri in pending.items():
+            payloads[sha] = raw_payload_store.load(KIND_RESPONSE, uri, sha)
+
+        if pending:
+            self._log(
+                level='INFO',
+                category='storage',
+                content=f"快照构建读取原始报文: 行={len(rows)} 内存命中={memory_hits} "
+                        f"对象读取={len(pending)}（唯一 sha 计数，非行数）",
+            )
+        return [{
+            'dimension_id': dimension_id,
+            'round_number': round_number,
+            'api_raw_response': payloads.get(sha) if sha else None,
+        } for dimension_id, round_number, _uri, sha in rows]
+
     @staticmethod
     def _load_aux_params_map(dim_result_rows):
         """查询 aux 参数映射（通过 gRPC 调 algorithm_service，仅收集可见的 output/aux 参数）"""
-        all_dim_ids = set(dr.dimension_id for dr in dim_result_rows if dr.dimension_id)
+        all_dim_ids = set(dr.get('dimension_id') for dr in dim_result_rows
+                          if dr.get('dimension_id'))
         aux_params_map = {}
         if not all_dim_ids:
             return aux_params_map
