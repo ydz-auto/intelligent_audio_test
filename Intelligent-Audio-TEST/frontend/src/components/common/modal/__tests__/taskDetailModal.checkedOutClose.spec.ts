@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: (loc: any) => mocks.pushes.push(loc) }),
+  useRoute: () => ({ query: {} }),
 }))
 
 vi.mock('../../../../composables/task/tasksPort', () => ({
@@ -108,7 +109,8 @@ describe('TaskDetailModal 下单成功关闭父级模态（INT-1007）', () => {
     await flushPromises()
 
     expect(w.emitted('close'), '跳转前应 emit close 关闭父级 TASK_DETAIL 模态').toBeTruthy()
-    expect(mocks.pushes).toEqual(['/tasks/100'])
+    // INT-1835 规范 18 §3.1：merge 出口改为带 ?focus=composition 落到容器详情组成区
+    expect(mocks.pushes).toEqual([{ path: '/tasks/100', query: { focus: 'composition' } }])
   })
 
   it('checked-out 无 taskId（如空来源 reevaluate）：不跳转、不关闭父级模态', async () => {
