@@ -104,11 +104,15 @@ class TestExecuteDispatch:
         assert calls.get('hit') is True
 
     def test_streaming_true_with_unsupported_protocol_rejected(self):
-        """http + streaming=true（A2 未上线）→ 显式报错，不得静默走非流式"""
+        """未知协议 + streaming=true → 显式报错，不得静默走非流式
+
+        A2（INT-1790）后 websocket / sse / http / grpc 四种协议都有流式策略，
+        「未上线」只剩注册表外的协议值，故用 mqtt 验证同一道报错口径。
+        """
         executor = _make_api_executor()
-        data = {'test_case_id': 1, 'case_name': 'http-stream',
-                'streaming': True, 'protocol': 'http',
-                'api_configs': [_api_config(protocol='http')], 'audio': {},
+        data = {'test_case_id': 1, 'case_name': 'mqtt-stream',
+                'streaming': True, 'protocol': 'mqtt',
+                'api_configs': [_api_config(protocol='mqtt')], 'audio': {},
                 'api_specific_config': {}, 'total_audio_duration': 1.0,
                 'case_algorithm_params': {}, 'algorithm_type': 'translation'}
         executor._load_case_config = lambda tc_id: {'rounds': [{'round_number': 1}]}

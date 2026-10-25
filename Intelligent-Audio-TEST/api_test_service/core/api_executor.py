@@ -29,6 +29,7 @@ from api_test_service.core.api_result_processor import APIResultProcessor
 from api_test_service.core.api_session_executor import APISessionExecutor
 from api_test_service.core.realtime_session_executor import RealtimeSessionExecutor
 from api_test_service.core.grpc_stream_executor import GrpcStreamExecutor
+from api_test_service.core.stream_session_executor import StreamSessionExecutor
 from shared.utils.config_manager import config_manager
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,8 @@ class APIExecutor(BaseExecutor):
         # 流式道 gRPC 策略（INT-1789 / A1）：server-stream 按事件、bidi 按轮次；
         # 多轮聚合/落库/评估复用 APISessionExecutor，不新增第三条道。
         self._grpc_stream_executor = GrpcStreamExecutor(self)
+        # A2（INT-1790）：流式道「按事件」策略（SSE / http chunked）
+        self._stream_executor = StreamSessionExecutor(self)
         # 线性流混音渲染经 ACL 端口出站（RenderService 消费链路，INT-98 接线）
         self._render_service = RoundRenderService(
             AudioRenderACLRepositoryImpl(), spl_repo=ApiRmsSplRepositoryImpl(),
@@ -99,14 +102,15 @@ class APIExecutor(BaseExecutor):
         return self._executor_registry[self._coerce_lane(lane)]
 
     # ── 流式道内策略（B0 裁定 §3.1 「按能力声明选择，不按协议名写 if/else」）──
-    # 流式道收敛的骨架：B1 只注册已实现的 websocket 会话策略（按轮次 + pacing /
-    # 打断），A1（gRPC server-stream / bidi）与 A2（SSE / http chunked）落地时
-    # 只需在下面两张表各补一行——道本身（streaming / non_streaming）不再变。
+    # 流式道收敛的骨架：B1 注册 websocket 会话策略（按轮次 + pacing / 打断），
+    # A2（INT-1790）补 SSE / http chunked 的按事件策略（`event_rounds`）；
+    # A1（gRPC）落地时按同一张表补一行。道本身（streaming / non_streaming）不再变。
     STREAMING_CAPABILITIES = {
         APIProtocol.WEBSOCKET.value: frozenset({
             'session_rounds', 'pacing', 'barge_in', 'client_push', 'session_affinity'}),
-        # A2：SSE 按事件切轮；A1：gRPC server-stream 同理，bidi 另有会话语义
+        # A2：SSE / http chunked 按事件（句子边界）切轮
         APIProtocol.SSE.value: frozenset({'event_rounds'}),
+        APIProtocol.HTTP.value: frozenset({'event_rounds'}),
         APIProtocol.GRPC.value: frozenset({
             'event_rounds', 'session_rounds', 'client_push', 'session_affinity'}),
     }
@@ -115,6 +119,9 @@ class APIExecutor(BaseExecutor):
         APIProtocol.WEBSOCKET.value: '_realtime_executor',
         # A1（INT-1789）：gRPC server-stream / bidi 同属流式道，道内按方法形态切轮
         APIProtocol.GRPC.value: '_grpc_stream_executor',
+        # http + streaming=true = chunked 流式（非 text/event-stream），B0 §3.2.1
+        APIProtocol.HTTP.value: '_stream_executor',
+        APIProtocol.SSE.value: '_stream_executor',
     }
 
     def streaming_strategy(self, protocol):
@@ -127,7 +134,7 @@ class APIExecutor(BaseExecutor):
         if attr is None:
             raise ValueError(
                 f"协议 {protocol} 与流式性 streaming=true 的组合实现未上线"
-                f"（当前仅 websocket 会话 / gRPC server-stream·bidi 有执行器）")
+                f"（当前仅 websocket 会话 / gRPC server-stream·bidi / sse·http chunked 有执行器）")
         return getattr(self, attr), self.STREAMING_CAPABILITIES.get(key, frozenset())
 
     # 非流式道里没有「DUT 任务协议」（health/create_task/轮询/取结果）的协议：
@@ -270,7 +277,9 @@ class APIExecutor(BaseExecutor):
         """按执行道分发执行器（INT-1799：道只由 streaming 决定）
 
         - streaming=true  → 流式道：websocket 会话策略（RealtimeSessionExecutor）；
-          其他协议的流式实现（SSE / gRPC server-stream）未上线，显式报错。
+          sse / http chunked 走按事件策略（StreamSessionExecutor，A2）；
+          gRPC server-stream / bidi 走 GrpcStreamExecutor（A1）；
+          注册表外的协议显式报错，不静默降级。
         - streaming=false → 非流式道：rounds>1 走 APISessionExecutor，否则线性
           （rounds 只是道内策略，不再用于推断流式性）。
         """

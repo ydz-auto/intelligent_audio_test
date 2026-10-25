@@ -182,15 +182,19 @@ def lane_of(streaming: bool) -> ExecutionLane:
     return ExecutionLane.STREAMING if bool(streaming) else ExecutionLane.NON_STREAMING
 
 
-# B1 上线时可写的协议 × 流式性组合（B0 裁定 §3.2.3），A1 扩 gRPC 两种。
-# 其余组合写侧显式 400（「实现未上线」），A2（SSE / http 流式）落地后在此扩展，
-# 不得在写侧静默降级。
+# 可写的协议 × 流式性组合（B0 裁定 §3.2.3）：每种组合都必须有落地的执行器。
+# 其余组合写侧显式 400（「实现未上线」），不得在写侧静默降级。
+# A1（INT-1789）放开 gRPC 两种；A2（INT-1790）放开 sse+true（text/event-stream）
+# 与 http+true（chunked 流式）。
 AVAILABLE_PROTOCOL_STREAMING = frozenset({
     (APIProtocol.HTTP.value, False),
     (APIProtocol.WEBSOCKET.value, True),
     # INT-1789（A1）：gRPC unary = 非流式，server-stream / bidi = 流式
     (APIProtocol.GRPC.value, False),
     (APIProtocol.GRPC.value, True),
+    # INT-1790（A2）：SSE 事件流与 HTTP chunked 流式
+    (APIProtocol.SSE.value, True),
+    (APIProtocol.HTTP.value, True),
 })
 
 

@@ -24,6 +24,11 @@ from api_test_service.domain.entities.api import (
     normalize_audio_config,
     redact_endpoint_keys,
 )
+from api_test_service.domain.value_objects.sse_policy import (
+    SSE_MAX_MS as _SSE_MAX_MS,
+    SSE_MAX_RECONNECT_ATTEMPTS as _SSE_MAX_RECONNECT_ATTEMPTS,
+    SSE_MAX_RETRY_MS as _SSE_MAX_RETRY_MS,
+)
 from api_test_service.infrastructure.adapters.proxy_utils import (
     build_proxy_url,
     validate_proxy,
@@ -41,6 +46,32 @@ _AUDIO_SAMPLE_RATES = (8000, 16000, 24000, 48000)
 _BIT_DEPTH_ALIASES = {16: AudioBitDepth.S16, 24: AudioBitDepth.S24, 32: AudioBitDepth.S32}
 # 密钥池上限（INT-1177 审计 D1/D2，endpoint 级沿用 INT-1230 审计 D1'）
 _MAX_API_KEYS = 20
+# `meta.sse` 允许键与取值范围（A2 / INT-1790，A0 §3.5 ④ + A2 补充两项）
+_SSE_CONFIG_KEYS = (
+    'event_name_field',
+    'idle_timeout_ms',
+    'retry_ms',
+    'reconnect_enabled',
+    'max_reconnect_attempts',
+    'max_duration_ms',
+    'params',
+)
+# 超时上限 1 小时（毫秒）、重试退避上限 60s、重连次数上限 10：
+# 常量定义在 domain/value_objects/sse_policy.py，执行侧（sse_client 的线缆
+# retry 限幅）引用同一组口径，避免两处魔法数字漂移
+
+
+def _validate_ms_field(sse: dict, key: str, maximum: int, minimum: int = 0) -> str:
+    """毫秒字段校验（int 且落在 [minimum, maximum]）；未提交视为不校验。"""
+    value = sse.get(key)
+    if value is None:
+        return ''
+    if isinstance(value, bool) or not isinstance(value, int):
+        return f"SSE 配置 {key} (meta.sse.{key}) 必须为整数毫秒"
+    if value < minimum or value > maximum:
+        return (f"SSE 配置 {key} (meta.sse.{key}) 必须在 "
+                f"{minimum}-{maximum} 毫秒之间")
+    return ''
 
 
 class APICrudService:
@@ -113,14 +144,77 @@ class APICrudService:
         if proxy_error:
             return proxy_error
 
+        # A2（INT-1790）：`meta.sse` 协议子对象校验（A0 §3.5 ④）
+        sse_error = APICrudService._validate_sse_config(meta)
+        if sse_error:
+            return sse_error
+
+        return None
+
+    @staticmethod
+    def _validate_sse_config(meta) -> str:
+        """校验 `meta.sse`（SSE 协议子对象）：未知键、非法超时一律 400。
+
+        允许键（A0 §3.5 ④ + A2 补充）：
+        `event_name_field` / `idle_timeout_ms` / `retry_ms` / `reconnect_enabled` /
+        `max_reconnect_attempts` / `max_duration_ms` / `params`。
+        未知键显式拒绝——防止把 WS 的会话配置（pacing / barge_in 等）写进 SSE
+        而执行侧静默忽略。
+
+        显式 `null` 与「键未提交」同义（不 400），执行侧一律回落默认值
+        （A2 终审 F1：两侧口径必须一致，不允许「可存不可用」）。
+        """
+        if not isinstance(meta, dict) or meta.get('sse') is None:
+            return None
+        sse = meta.get('sse')
+        if not isinstance(sse, dict):
+            return "SSE 配置 (meta.sse) 必须是一个 JSON 对象"
+        invalid = sorted(set(sse) - set(_SSE_CONFIG_KEYS))
+        if invalid:
+            return (f"非法的 SSE 配置键 (meta.sse): {', '.join(invalid)}，"
+                    f"仅支持: {', '.join(_SSE_CONFIG_KEYS)}")
+
+        event_name_field = sse.get('event_name_field')
+        if event_name_field is not None and (
+                not isinstance(event_name_field, str) or not event_name_field.strip()):
+            return "SSE 事件名键 (meta.sse.event_name_field) 必须为非空字符串"
+
+        timeout_error = _validate_ms_field(
+            sse, 'idle_timeout_ms', _SSE_MAX_MS, minimum=1)
+        if timeout_error:
+            return timeout_error
+        timeout_error = _validate_ms_field(
+            sse, 'max_duration_ms', _SSE_MAX_MS, minimum=1)
+        if timeout_error:
+            return timeout_error
+        timeout_error = _validate_ms_field(
+            sse, 'retry_ms', _SSE_MAX_RETRY_MS, minimum=0)
+        if timeout_error:
+            return timeout_error
+
+        reconnect = sse.get('reconnect_enabled')
+        if reconnect is not None and not isinstance(reconnect, bool):
+            return "SSE 重连开关 (meta.sse.reconnect_enabled) 必须为布尔值"
+
+        attempts = sse.get('max_reconnect_attempts')
+        if attempts is not None and (
+                not isinstance(attempts, int) or isinstance(attempts, bool)
+                or attempts < 0 or attempts > _SSE_MAX_RECONNECT_ATTEMPTS):
+            return (f"SSE 重连次数上限 (meta.sse.max_reconnect_attempts) 必须在 "
+                    f"0-{_SSE_MAX_RECONNECT_ATTEMPTS} 之间")
+
+        params = sse.get('params')
+        if params is not None and not isinstance(params, dict):
+            return "SSE 请求参数 (meta.sse.params) 必须是一个 JSON 对象"
         return None
 
     @staticmethod
     def _validate_lane_combo(protocol, streaming):
         """协议 × 流式性可用矩阵校验（INT-1799 / B0 裁定 §3.2.3）。
 
-        只放行已实现执行器的组合（http+非流式、websocket+流式）；其余组合
-        显式拒绝，文案固定，不静默降级。protocol 需已归一为规范值。
+        只放行已实现执行器的组合（A2 后为 http+非流式、websocket+流式、
+        sse+流式、http+流式）；其余组合显式拒绝，文案固定，不静默降级。
+        protocol 需已归一为规范值。
         """
         try:
             normalized = normalize_protocol(protocol)

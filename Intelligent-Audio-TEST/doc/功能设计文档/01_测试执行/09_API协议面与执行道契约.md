@@ -522,3 +522,88 @@ gRPC 音频帧（二进制不进 `payload`，音频仍走 `rounds[i].output_audi
 **跨卡后续**：B2（INT-1800）前端「协议下拉 sse/grpc 置灰」是基于 B1 时点写的；A1 落地后
 `grpc` 后端已可写可执行，前端应解除 grpc 置灰（`sse` 继续置灰到 A2），该改动归 A3 / B2 收口，
 不在 A1 范围（A1 不改前端）。
+
+## 十一、A2（INT-1790）实施回写（2026-10-25）
+
+> 状态：**已实施**。本节是实施后的事实回写，与 §三 的裁定一致；§3.1 组合矩阵里
+> 「A2 未上线 → 400」的一列自本节起失效，以本节为准。
+
+### 11.1 交付件
+
+| 文件 | 内容 |
+|------|------|
+| `api_test_service/infrastructure/adapters/transport/sse_client.py` | 新增 `HttpStreamClient`：`text/event-stream` 逐帧解析（`event` / `data` 多行拼接 / `id` / `retry` / 注释心跳）、chunked「一行一个 JSON」兜底、空闲超时、时长上限、按 `Last-Event-ID` 重连；产出归一事件（§4.1 四值 `event_type`） |
+| `api_test_service/domain/services/stream_round_splitter.py` | 新增 `StreamRoundSplitter`：句子边界切轮 / 零声明一条 message 一轮 / `append_mode` 聚合 / 会话结束收尾 |
+| `api_test_service/core/stream_session_executor.py` | 新增 `StreamSessionExecutor`：流式道「按事件」策略，读流 → 切轮 → 轮次 `output` → 多轮结果落库 → 评估入队 |
+| `api_test_service/core/eval_output_collector.py`、`core/evaluation_submitter.py` | `RealtimeSessionExecutor` 的评估字段收集 / 评估入队提库，两条流式策略共用（行为不变） |
+| `api_test_service/core/api_executor.py` | `_STREAMING_STRATEGIES` 补 `sse` / `http` → `_stream_executor`；`STREAMING_CAPABILITIES` 补 `sse` / `http → {event_rounds}` |
+| `shared/models/common_enums.py` | 可用矩阵在 A1 的 gRPC 两种基础上再扩 `sse+true`、`http+true`，合计 6 组：`http+false`、`websocket+true`、`grpc+false`、`grpc+true`、`sse+true`、`http+true` |
+| `api_test_service/application/api_crud_service.py` | `meta.sse` 校验（未知键 / 非法超时 400） |
+| `api_test_service/domain/value_objects/sse_policy.py` | SSE 配置边界常量（`SSE_MAX_MS` / `SSE_MAX_RETRY_MS` / `SSE_MAX_RECONNECT_ATTEMPTS`），写侧校验与执行侧线缆限幅共用 |
+
+### 11.2 `meta.sse` 键（写侧校验口径）
+
+| 键 | 类型 / 范围 | 缺省 | 说明 |
+|----|------------|------|------|
+| `event_name_field` | 非空字符串 | `event` | payload 内事件名键（不进 `field_path`）；执行侧按该键写入事件名，缺省键 `event` 不被额外占用（A2 返工 P3-1） |
+| `idle_timeout_ms` | 整数 1-3600000 | `apis.default_max_timeout × 1000` | 无字节多久算空闲超时 |
+| `retry_ms` | 整数 0-60000 | `1000` | 重连退避**上限**；服务端帧内 `retry:` 只可缩短、不可放大，并再限幅到 60000 与剩余 `max_duration_ms`（A2 返工 P3-2） |
+| `reconnect_enabled` | 布尔 | `false` | 缺省不重连（A0 §3.5 ④：断流即失败，重连会让轮次数不可复现） |
+| `max_reconnect_attempts` | 整数 0-10 | `2` | 重连次数上限，用尽转 504 |
+| `max_duration_ms` | 整数 1-3600000 | 空（不设上限） | 单条流的整体时长护栏，防挂死 |
+| `params` | JSON 对象 | 空 | GET 请求的查询参数，支持 `{{placeholder}}` |
+
+未知键一律 400（防止把 WS 的 `pacing` / `barge_in` 等会话语义写进 SSE 而被静默忽略）。
+显式 `null` 与「键未提交」同义：写侧不拒绝，执行侧一律回落上表缺省值（A2 终审 F1，
+禁止出现「配置能存、执行不可用」）；`0` 是 `retry_ms` / `max_reconnect_attempts` 的
+合法值，不会被缺省值吞掉。
+
+### 11.3 分帧与终止条件
+
+| 情形 | 归一事件 | 业务码 |
+|------|---------|--------|
+| 服务端正常关闭连接（EOF） | `end_stream` | —（正常收尾） |
+| 空闲超时（`idle_timeout_ms` 内无字节） | 可重连则先重连（心跳事件）；否则 `error` | `504` `idle timeout` |
+| 传输层异常断开且未到 EOF | 同上 | `504` `connection closed without end_stream` |
+| 整体时长超 `max_duration_ms` | `error` | `504` `stream duration exceeded` |
+| HTTP 非 2xx | 连接即失败 | `biz_code` = HTTP status，`error_source=sse` |
+| 网络层（DNS / 拒绝 / TLS） | 连接即失败 | `503`，`error_source=network` |
+| 帧不是合法 JSON 对象 | `error` | `502` |
+| 重连退避期间命中停止 / 用例移除 | 立即 `error`（`504` `reconnect aborted by control signal`），不等满退避 | `504` |
+
+重连退避口径（A2 返工 P3-2）：生效退避 = `min(线缆 retry:, 配置 retry_ms, 60000,
+剩余 max_duration_ms)`；等待按 0.2s 片长回询执行器控制口（暂停 / 停止 / 用例移除），
+服务端给出超大 `retry:` 也不会把任务挂起。
+
+用例移除（A2 终审 F3）：执行中用例被删除（Redis 用例级中断标志）时，执行器按
+INT-305 与 Realtime 会话同口径**静默收敛**——只记 INFO 日志，返回失败但不落结果行、
+不发 `CASE_FAILED`、不提交评估；退避期间命中同一标志时，传输层仍以
+`504 reconnect aborted by control signal` 结束本次读流，执行器收尾前再确认一次标志，
+同样静默收敛。用例移除不是流式失败，不计入任务失败轮次。
+
+失败文案（A2 终审 F2）：流式层失败（连接失败 / 空闲超时 / 时长上限 / 非 2xx /
+非 JSON 帧）没有失败轮次，落库 `error_message` 与 TaskCase 终态文案取执行器聚合出的
+具体原因（如 `流式错误[504]: idle timeout`），不再退化成「0 轮失败」；只有轮内业务
+失败（有失败轮次、无传输级错误）才用「N 轮失败」。
+
+`http+streaming=true`（chunked）走同一客户端：响应 `Content-Type` 不含
+`text/event-stream` 时按「一行一个 JSON」分帧。
+
+### 11.4 切轮口径
+
+- 声明 `sentence_end_mapping`：该字段（在 `payload` 的 `data` 根上取值，同存量
+  `api_driver_adapter` 口径）为 `true` 的事件结束一轮；
+- 零声明（缺键 / 空串）：**一条 `message` 事件 = 一轮**；
+- `session_end_mapping`（缺省 `session_finished`）为 `true` → 会话结束，未闭合的
+  残轮作为最后一轮交出；
+- `append_mode`：`true` 轮内文本拼接，`false` 取最后一条非空；
+- 轮次输出 `rounds[i].output` 仍是 `{target_param: value}`（C0/C1），字段提取走
+  `field_path`（C2），文本型字段按 `text` 兜底。
+
+### 11.5 未做（边界）
+
+- gRPC 接入见 §十（A1 / INT-1789，与本卡同批合入）；
+- `AdapterProtocol` 未加 `sse` 成员：A2 没有协议级 vendor adapter base（传输与执行
+  都在本卡新增件里），加成员会得到一个无人注册的死值；
+- 音频输入推流与平台 frame/summary 实时流推送（SSE 是「一问多回、客户端只读」）；
+- 前端协议页签（A3 / INT-1791）。

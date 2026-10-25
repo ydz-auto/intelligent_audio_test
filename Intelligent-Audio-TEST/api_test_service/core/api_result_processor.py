@@ -228,7 +228,10 @@ class APIResultProcessor:
         error_msg = None
         if not success:
             failed_rounds = [r for r in algo_result.get('rounds', []) if not r.get('success')]
-            error_msg = f"{len(failed_rounds)} 轮失败"
+            # 失败原因优先取执行器聚合出的具体原因（A2 终审 F2）：流式道的传输级
+            # 失败（连接失败 / 空闲超时 / 时长上限）没有失败轮次，只报「0 轮失败」
+            # 会把排障引向错误方向。WS 会话不带该键，行为不变。
+            error_msg = aggregated.get('error') or f"{len(failed_rounds)} 轮失败"
 
         result_data = {
             'test_case_id': test_case_id,

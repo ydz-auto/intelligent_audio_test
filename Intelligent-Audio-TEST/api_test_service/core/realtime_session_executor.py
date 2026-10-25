@@ -38,27 +38,19 @@ from shared.utils.api_key_provider import (
     endpoint_rotation_key,
     resolver_from_config,
 )
-from shared.utils.dto_utils import dto_to_dict
-from shared.utils.api_output_extractor import (
-    build_eval_output,
-    extract_api_output_fields,
-    get_output_transform_types,
-)
 from api_test_service.application.round_render_service import RoundRenderService
+from api_test_service.core import eval_output_collector, evaluation_submitter
+from api_test_service.core.eval_output_collector import collect_round_eval_fields
+from api_test_service.core.evaluation_submitter import submit_case_evaluation
 from api_test_service.domain.entities.api import resolve_audio_sample_rate
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
-from api_test_service.domain.services.eval_output_transform_service import (
-    EvalOutputTransformService,
-)
 from api_test_service.domain.services.realtime_pacing_service import (
     RealtimePacingContext,
     RealtimePacingService,
 )
 from api_test_service.infrastructure.acl import (
-    AlgorithmQueryAclRepositoryImpl,
     AudioConfigAclRepositoryImpl,
     AudioRenderACLRepositoryImpl,
-    EvaluationAclRepositoryImpl,
 )
 from api_test_service.infrastructure.adapters import (
     _ADAPTER_TYPE_CONFIG_KEY,
@@ -74,11 +66,11 @@ from shared.utils.realtime_session_registry import RealtimeSessionRegistry
 
 logger = logging.getLogger(__name__)
 
-# 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
-_evaluation_acl = EvaluationAclRepositoryImpl()
-
-# 算法字段映射 ACL（field_mapper 配置透传，与 E2E/HTTP 同构，INT-1299）
-_algo_acl = AlgorithmQueryAclRepositoryImpl()
+# 算法字段映射 / 评估入队 ACL 由 core/eval_output_collector 与
+# core/evaluation_submitter 统一持有（INT-1790 提库）。本模块保留同名引用作为
+# 既有单测 / 集成测试的替身注入点（rt_mod._algo_acl / rt_mod._evaluation_acl）。
+_algo_acl = eval_output_collector._algo_acl
+_evaluation_acl = evaluation_submitter._evaluation_acl
 
 # 密钥链解析器（UC-0901 扩展流程 3a）：case_config → meta → env
 # OPENAI_API_KEY 逐级回退，各级键名经 config_manager secrets 段配置
@@ -664,32 +656,21 @@ class RealtimeSessionExecutor:
     # ── 评估提交（异步入队，不阻塞会话）──
     def _submit_evaluation(self, task_id, result_id, test_case_id, case_config,
                            data, algorithm_type, aggregated, api_id):
-        """提交评估：复用多轮会话评估入参链路，test_type 沿用 api（评估引擎不动）"""
-        case_algorithm_params = data.get('case_algorithm_params')
-        full_case_params = {
-            'algorithm_params': case_algorithm_params or {},
-            'reference_params': case_config.get('reference_params', {}),
-            'algorithm_type': algorithm_type,
-        }
-        from api_test_service.infrastructure.acl import AlgorithmQueryAclRepositoryImpl
-        all_params = dto_to_dict(
-            AlgorithmQueryAclRepositoryImpl().extract_case_all_params(full_case_params)) or {}
-        # 算法服务不可达时 ACL 回退 ExtractedCaseParamsDTO()（evaluation=None），
-        # 键存在但值为 None，get 默认值不生效 → 显式 None 兜底（INT-119）
-        eval_params = (all_params.get('evaluation') or {}) if isinstance(all_params, dict) else {}
-        eval_params['algorithm_type'] = algorithm_type
-        eval_params['test_type'] = 'api'
+        """提交评估：复用多轮会话评估入参链路，test_type 沿用 api（评估引擎不动）
 
-        _evaluation_acl.submit_evaluate_case(
-            task_id=task_id,
-            result_id=result_id,
-            test_case_id=test_case_id,
+        实现见 `core/evaluation_submitter.submit_case_evaluation`：INT-1790（A2）
+        提库后与按事件切的流式策略共用同一入参口径。
+        """
+        submit_case_evaluation(
+            task_id=task_id, result_id=result_id, test_case_id=test_case_id,
             algorithm_result=aggregated.get('algorithm_result', {}),
-            eval_params=eval_params,
-        )
-        self._log(level='INFO', category='evaluation',
-                  content=f"API {api_id} Realtime 会话完成，已提交评估队列",
-                  task_id=task_id, api_id=api_id)
+            case_algorithm_params=data.get('case_algorithm_params'),
+            reference_params=case_config.get('reference_params', {}),
+            algorithm_type=algorithm_type, acl=_evaluation_acl,
+            log=lambda level, msg: self._log(level=level, category='evaluation',
+                                             content=f"API {api_id} Realtime 会话完成，"
+                                                     f"{msg}",
+                                             task_id=task_id, api_id=api_id))
 
     # ── 辅助 ──
     @staticmethod
@@ -770,51 +751,15 @@ class RealtimeSessionExecutor:
                              text_output=None, api_id=None) -> dict:
         """轮次评估输出 → ``{target_param: value}``（C0 裁定 1/2，INT-1299 / INT-1746）
 
-        评估入参字段名全部来自 algorithm_service FieldMappingQueryHandler 的
-        field_mappings 配置，代码内不再硬编码字段名（撤 'query'/'question'/
-        'correct_answer'/'answer'/'original_topic' 魔法字符串与兜底链）：
-
-        1. original.api.output 字段定义：按 ``field_path`` 从轮次输出取值
-           （为空按 param_code 取顶层键；统一走 shared.utils.api_output_extractor，
-           INT-1747）；
-        2. ``param_mappings`` 的 api/device 条目把这些 param_code 映射成
-           ``target_param``（shared.utils.api_output_extractor.build_eval_output，
-           INT-1746）；零映射时按全等兜底。
-
-        返回值整体写入 ``rounds[i].output``（**不再平铺到轮次顶层**——评估侧
-        三个消费者只读 output 子字典）。case/reference 来源的维度入参由评估侧
-        按轮自行加载，执行侧不再重复解析。
-
-        新增算法只改算法配置即可映射评估入参，本方法零改动；算法服务不可达时
-        （ACL 回退空 DTO）返回空 dict，round result 不携带评估字段。
-
-        transform_type（INT-1749）：参数映射上配置的变换在执行侧取值后、写入
-        轮次 output 之前应用一次（评估侧不再变换），一次批量 gRPC 处理全部字段；
-        变换失败或算法服务不可达时按原值保留（WARNING），不丢值、不吞空串。
+        实现见 `core/eval_output_collector.collect_round_eval_fields`：INT-1790
+        （A2）把本方法提库，按轮次切（WS）与按事件切（SSE）两条策略共用同一
+        实现（字段提取 field_path → param_mappings 映射 → transform_type 变换）。
+        返回值整体写入 ``rounds[i].output``。
         """
-        algorithm_type = algorithm_type or 'voice_llm'
-        # INT-1757（C6b）：输出声明按 API 实例作用域取（api_id），同 algorithm_type
-        # 下两家 API 的输出声明/映射互不覆盖；不传 api_id 时回落算法级默认。
-        field_mappings = dto_to_dict(
-            _algo_acl.get_field_mappings(algorithm_type, api_id=api_id)) or {}
-        # ① 输出字段提取（INT-1747 / C2，C0 §9.3）：与单轮 `extract_final_result`、
-        # 多轮 `_attach_api_output_fields` 共用同一入口，按 field_path 从 WS
-        # 聚合输出取嵌套值；为空仍按 param_code 取顶层键（存量行为）。
-        # 零声明时不做 meta 解析器兜底（入参侧只认声明表，与改前一致返回空）。
-        # text_output：WS 聚合输出的规范文本键是 ``text``，与 HTTP 链的
-        # ``output`` 不同名，由声明表按文本型字段统一兜底（见
-        # extract_declared_output_fields）。
-        # ② 评估映射（INT-1746 / C1）→ ③ transform_type 批量变换（INT-1749）：
-        # 变换在写 rounds[i].output 之前、对映射后的 target_param 值做一次。
-        values, _ = extract_api_output_fields(
-            field_mappings, output, text_output=text_output)
-        extracted = {key: value for key, value in values.items()
-                     if value not in (None, '')}
-        eval_output = build_eval_output(
-            field_mappings, extracted,
-            log=lambda level, msg: self._log_eval_output(level, msg))
-        return EvalOutputTransformService.apply(
-            eval_output, get_output_transform_types(field_mappings), _algo_acl)
+        return collect_round_eval_fields(
+            output, algorithm_type=algorithm_type, api_id=api_id,
+            text_output=text_output, log=self._log_eval_output,
+            acl=_algo_acl)
 
     def _log_eval_output(self, level, message):
         """评估映射兜底日志：走执行器 _log（任务日志可见），替身无执行器时退模块日志。"""

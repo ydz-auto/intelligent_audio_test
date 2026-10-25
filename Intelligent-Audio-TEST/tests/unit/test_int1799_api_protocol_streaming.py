@@ -76,9 +76,10 @@ class TestAvailabilityMatrix:
     @pytest.mark.parametrize('protocol,streaming,want', [
         ('http', False, True),
         ('websocket', True, True),
-        ('http', True, False),
+        # A2（INT-1790）：SSE 与 http chunked 流式上线
+        ('http', True, True),
+        ('sse', True, True),
         ('websocket', False, False),
-        ('sse', True, False),
         ('sse', False, False),
         # INT-1789（A1）：gRPC 两种组合随执行器落地同步开放
         ('grpc', False, True),
@@ -88,11 +89,12 @@ class TestAvailabilityMatrix:
         assert is_protocol_streaming_available(protocol, streaming) is want
 
     def test_matrix_shape(self):
-        # B1 只放行 http+false / websocket+true；A1 扩 grpc 两种（B0 §3.2.3
-        # 明确「A1/A2 落地后同步扩可用矩阵」）
+        # B0 §3.2.3 明确「A1 / A2 落地后同步扩可用矩阵」：
+        # A1（INT-1789）补 grpc 两种，A2（INT-1790）补 sse / http 流式两种
         assert AVAILABLE_PROTOCOL_STREAMING == {
             ('http', False), ('websocket', True),
-            ('grpc', False), ('grpc', True)}
+            ('grpc', False), ('grpc', True),
+            ('http', True), ('sse', True)}
 
 
 # ──────────────────────────── 迁移映射 ────────────────────────────
@@ -152,9 +154,11 @@ class TestCrudValidation:
     @pytest.mark.parametrize('protocol,streaming,want_ok', [
         ('http', False, True),
         ('websocket', True, True),
-        ('http', True, False),
+        # A2（INT-1790）：SSE 与 http chunked 流式上线
+        ('http', True, True),
+        ('sse', True, True),
         ('websocket', False, False),
-        ('sse', True, False),
+        ('sse', False, False),
         # INT-1789（A1）：gRPC 执行器落地，两种组合放行
         ('grpc', False, True),
         ('grpc', True, True),
@@ -199,22 +203,23 @@ class TestCrudValidation:
 
     def test_create_rejects_unavailable_combo(self):
         from api_test_service.application.api_crud_service import APICrudService
-        # A1（INT-1789）落地 gRPC 执行器后 grpc 组合已放行；这里用仍未上线的
-        # sse 组合验证「未上线组合 400」的写侧口径不变。
+        # A1（INT-1789）落地 gRPC、A2（INT-1790）落地 sse / http 流式后，
+        # 仍未上线的组合只剩 sse+false / websocket+false；这里用 sse+false
+        # 验证「未上线组合 400」的写侧口径不变。
         result = APICrudService.create({
-            'name': 'demo', 'meta': {}, 'protocol': 'sse', 'streaming': True})
+            'name': 'demo', 'meta': {}, 'protocol': 'sse', 'streaming': False})
         assert result['code'] == 400
         assert '实现未上线' in result['message']
 
     def test_update_merges_current_values_for_matrix(self, monkeypatch):
-        """只改一维：http+false 改 streaming=true → 400（合并后组合未上线）"""
+        """只改一维：sse+true 改 streaming=false → 400（合并后组合仍未上线）"""
         from api_test_service.application import api_crud_service as mod
-        api = SimpleNamespace(id=1, protocol='http', streaming=False,
+        api = SimpleNamespace(id=1, protocol='sse', streaming=True,
                               proxy_type=None, proxy_url=None,
                               default_max_process=5, default_max_timeout=30,
                               default_max_audio_duration=60, api_endpoints=[])
         monkeypatch.setattr(mod.api_test_repository, 'get_api', lambda _id: api)
-        result = mod.APICrudService.update(1, {'streaming': True})
+        result = mod.APICrudService.update(1, {'streaming': False})
         assert result['code'] == 400
         assert '实现未上线' in result['message']
 
@@ -327,12 +332,22 @@ class TestStreamingStrategy:
         assert caps == executor.STREAMING_CAPABILITIES['websocket']
         assert {'session_rounds', 'pacing', 'barge_in'} <= caps
 
-    @pytest.mark.parametrize('protocol', ['sse', 'http', '', None])
-    def test_unimplemented_protocol_rejected(self, protocol):
-        """SSE / http 流式（A2 未上线）→ 显式报错，不静默走非流式。
+    def test_event_rounds_strategies_registered(self):
+        """A2（INT-1790）：SSE / http chunked 走按事件策略（同一执行器实例）"""
+        from api_test_service.core.api_executor import APIExecutor
+        executor = APIExecutor(_EngineStub())
+        for protocol in ('sse', 'http'):
+            impl, caps = executor.streaming_strategy(protocol)
+            assert impl is executor._stream_executor
+            assert caps == frozenset({'event_rounds'})
+        assert executor._stream_executor is not executor._realtime_executor
 
-        A1（INT-1789）落地后 gRPC 已有流式策略，不再在本列（见
-        `test_grpc_strategy_registered`）。
+    @pytest.mark.parametrize('protocol', ['', None])
+    def test_unimplemented_protocol_rejected(self, protocol):
+        """空 / 未知协议 → 显式报错，不静默走非流式。
+
+        A1（INT-1789）与 A2（INT-1790）落地的协议已有流式策略，不在本列
+        （见 `test_grpc_strategy_registered` / `test_event_rounds_strategies_registered`）。
         """
         from api_test_service.core.api_executor import APIExecutor
         executor = APIExecutor(_EngineStub())
