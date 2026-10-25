@@ -178,6 +178,7 @@ describe('fromContainerDto（列表计数口径，INT-1716）', () => {
     ],
     devices: [],
     apis: [],
+    reports: null,
     mergeType: 'picked' as const,
   }
 

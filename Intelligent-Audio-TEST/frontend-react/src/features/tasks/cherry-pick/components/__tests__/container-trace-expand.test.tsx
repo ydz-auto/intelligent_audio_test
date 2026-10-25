@@ -36,6 +36,7 @@ const CONTAINER: CherryPickContainer = {
   sourceTasks: [],
   createdAt: '2026-10-24 03:41',
   isFavorite: false,
+  reports: null,
 }
 
 function model(overrides: Record<string, unknown> = {}) {
