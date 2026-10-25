@@ -43,6 +43,8 @@
                 autofocus
               />
             </div>
+            <!-- INT-1832 规范 18 §2.1：容器行合并方式徽章（名称右侧） -->
+            <span v-if="mergeTypeBadge" class="task-merge-type" :class="`task-merge-type--${mergeTypeBadge.kind}`">{{ mergeTypeBadge.text }}</span>
             <!-- INT-423/467：可见性徽标（私有带锁图标，仅展示在用户可见的私有任务上） -->
             <VisibilityBadge :visibility="task.visibility" />
           </div>
@@ -68,6 +70,11 @@
             <span v-if="task.deleted" class="task-meta-item">
               <i class="fas fa-user-times"></i>
               删除人{{ deletedByLabel }}
+            </span>
+            <!-- INT-1832 规范 18 §2.1：容器行次行「来源 {n} 个任务 · 结果 {m} 条」 -->
+            <span v-if="sourceCountText" class="task-meta-item task-source-count">
+              <i class="fas fa-code-branch"></i>
+              {{ sourceCountText }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-tasks"></i>
@@ -120,6 +127,8 @@
               autofocus
             />
           </div>
+          <!-- INT-1832 规范 18 §2.1：容器行合并方式徽章（名称右侧） -->
+          <span v-if="mergeTypeBadge" class="task-merge-type" :class="`task-merge-type--${mergeTypeBadge.kind}`">{{ mergeTypeBadge.text }}</span>
         </div>
         <div class="task-description">{{ task.description || '' }}</div>
         <div class="task-meta">
@@ -143,6 +152,11 @@
             <span v-if="task.deleted" class="task-meta-item">
               <i class="fas fa-user-times"></i>
               删除人{{ deletedByLabel }}
+            </span>
+            <!-- INT-1832 规范 18 §2.1：容器行次行「来源 {n} 个任务 · 结果 {m} 条」 -->
+            <span v-if="sourceCountText" class="task-meta-item task-source-count">
+              <i class="fas fa-code-branch"></i>
+              {{ sourceCountText }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-tasks"></i>
@@ -254,6 +268,26 @@ const {
 const deletedByLabel = computed(() => {
   const uid = props.task?.deletedByUserId
   return uid !== undefined && uid !== null ? `用户 #${uid}` : '—'
+})
+
+/**
+ * INT-1832 规范 18 §2.1：挑选合并容器行的合并方式徽章。
+ * `picked`（结果挑选）—`--secondary` 系 outline；`whole`（整任务合并，历史形态）—中性 outline。
+ * 非容器行（mergeType 缺省）不渲染，卡片其余用法零变化。
+ */
+const mergeTypeBadge = computed(() => {
+  const mergeType = props.task?.mergeType
+  if (mergeType === 'picked') return { text: '结果挑选', kind: 'picked' }
+  if (mergeType === 'whole') return { text: '整任务合并', kind: 'whole' }
+  return null
+})
+
+/** 容器行次行计数（sourceTaskCount / sourceResultCount 由列表接口下发，缺省不渲染） */
+const sourceCountText = computed(() => {
+  const taskCount = props.task?.sourceTaskCount
+  const resultCount = props.task?.sourceResultCount
+  if (taskCount === undefined || taskCount === null) return ''
+  return `来源 ${taskCount} 个任务 · 结果 ${resultCount ?? 0} 条`
 })
 
 /** INT-215：动作图标类支持 iconClass（静态串/按行函数）回退 icon；用于收藏星标 fas/far 区分 */

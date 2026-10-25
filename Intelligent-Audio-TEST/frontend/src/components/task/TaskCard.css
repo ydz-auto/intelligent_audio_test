@@ -433,3 +433,32 @@
 .task-indicator.failed {
   color: var(--destructive);
 }
+
+/* ===== INT-1832 规范 18 §2.1：挑选合并容器行标识 =====
+   合并方式徽章（名称右侧）+ 次行「来源 n 个任务 · 结果 m 条」；圆角/配色全走语义令牌 */
+.task-merge-type {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.task-merge-type--picked {
+  border-color: var(--secondary);
+  color: var(--secondary);
+}
+
+.task-merge-type--whole {
+  border-color: var(--muted-foreground);
+  color: var(--muted-foreground);
+}
+
+.task-source-count {
+  font-variant-numeric: tabular-nums;
+}
