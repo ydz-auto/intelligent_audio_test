@@ -502,6 +502,48 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     expect(screen.getByRole('tab', { name: '整体' })).toHaveAttribute('aria-selected', 'false')
   })
 
+  it('INT-1861：同一用例关闭重开后轮次 Tab 复位到第一个有数据的 Tab', async () => {
+    const sevenTabs: CaseRoundTab[] = [1, 2, 3, 4, 5, 6, 7].map((round) => ({
+      key: `round:${round}`,
+      label: `第${round}轮`,
+      round,
+      kind: 'round',
+      rows: [{ dimension: '合成成功率', values: { pura90豆包: `0.${round}` } }],
+    }))
+    sevenTabs.push({
+      key: 'overall',
+      label: '整体',
+      round: null,
+      kind: 'overall',
+      rows: [{ dimension: '合成成功率', values: { pura90豆包: '5' } }],
+    })
+    fetchDetailMock.mockResolvedValue({ ...detail, roundTabs: sevenTabs })
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    // 弹窗由父层常驻挂载（open 开关），不是每次打开都重挂——同用例重开必须自己复位
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    const ui = (isOpen: boolean) => (
+      <QueryClientProvider client={client}>
+        <CaseDetailDialog open={isOpen} onOpenChange={vi.fn()} taskId={417} caseId="case-1" />
+      </QueryClientProvider>
+    )
+    const { rerender } = render(ui(true))
+    await screen.findByRole('tab', { name: '第7轮' })
+    // 先停在「整体」
+    await userEvent.click(screen.getByRole('tab', { name: '整体' }))
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: '整体' })).toHaveAttribute('aria-selected', 'true')
+    })
+    // 关闭（caseId 不变）再重开：复位到第一个有数据的「第1轮」
+    rerender(ui(false))
+    rerender(ui(true))
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: '第1轮' })).toHaveAttribute('aria-selected', 'true')
+    })
+    expect(screen.getByRole('tab', { name: '整体' })).toHaveAttribute('aria-selected', 'false')
+  })
+
   it('E2E 用例（devices 非空）时长 null → 头部不渲染「耗时」', async () => {
     fetchDetailMock.mockResolvedValue({ ...detail, duration: null })
     renderDialog()
