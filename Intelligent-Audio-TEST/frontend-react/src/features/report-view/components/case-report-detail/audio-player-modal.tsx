@@ -68,7 +68,10 @@ function audioTypeLabel(audioType?: string): string {
   return map[audioType ?? ''] ?? '未知类型'
 }
 
-/** 演示时长（秒）：audio_id 数字哈希派生 8~42s，保证同 id 恒定；显式 duration/真实流优先 */
+/**
+ * 演示时长（秒）：audio_id 数字哈希派生 8~42s，保证同 id 恒定；显式 duration 优先。
+ * 仅用于 mock 播放（无真实流）；有真实流时总时长只认媒体元数据（INT-1860）。
+ */
 function mockDuration(audio?: AudioItemMeta): number {
   if (audio?.duration && audio.duration > 0) return audio.duration
   const id = String(audio?.audio_id ?? '')
@@ -92,7 +95,7 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
   /** GET /audios/{id}/stream 换取的预签名播放地址（audio.url 非绝对外链时用） */
   const [streamUrl, setStreamUrl] = useState('')
   const [resolving, setResolving] = useState(false)
-  /** 真实流的媒体时长（loadedmetadata 回填；无真实流时按 audio_id 派生演示值） */
+  /** 真实流的媒体时长（loadedmetadata 回填）；无真实流时按 audio_id 派生演示值（mock 播放） */
   const [mediaDuration, setMediaDuration] = useState(0)
   const barRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -106,7 +109,10 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
         : null
   const playUrl = directUrl || streamUrl
   const isRealStream = Boolean(playUrl)
-  const duration = mediaDuration > 0 ? mediaDuration : mockDuration(audio)
+  // INT-1860：有真实流时总时长只认媒体元数据；元数据未到或流不可用（error / readyState=0）
+  // 一律显示「—」，不再回落到 audio_id 派生演示时长（避免 404 时仍显示 0:36 这类假时长）。
+  const duration = isRealStream ? mediaDuration : mockDuration(audio)
+  const durationLabel = duration > 0 ? formatTime(duration) : '—'
 
   const stop = useCallback(() => {
     setPlaying(false)
@@ -158,39 +164,6 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
       cancelled = true
     }
   }, [open, directUrl, audioId])
-
-  // 真实流事件接线（timeupdate/ended/error → 进度/时长/错误）
-  useEffect(() => {
-    const el = audioRef.current
-    if (!el || !isRealStream) return
-    const onTimeUpdate = () => {
-      if (!dragging) setCurrent(el.currentTime)
-    }
-    const onLoadedMeta = () => {
-      if (Number.isFinite(el.duration) && el.duration > 0) {
-        setMediaDuration(el.duration)
-        setCurrent(0)
-      }
-    }
-    const onEnded = () => {
-      setPlaying(false)
-      setCurrent(0)
-    }
-    const onError = () => {
-      setPlaying(false)
-      setPlayError('音频播放失败，请检查音频文件是否有效')
-    }
-    el.addEventListener('timeupdate', onTimeUpdate)
-    el.addEventListener('loadedmetadata', onLoadedMeta)
-    el.addEventListener('ended', onEnded)
-    el.addEventListener('error', onError)
-    return () => {
-      el.removeEventListener('timeupdate', onTimeUpdate)
-      el.removeEventListener('loadedmetadata', onLoadedMeta)
-      el.removeEventListener('ended', onEnded)
-      el.removeEventListener('error', onError)
-    }
-  }, [isRealStream, dragging])
 
   // mock 播放推进：无真实流时 playing 200ms 步进，到末尾自动停止（红④ 模拟）
   useEffect(() => {
@@ -262,8 +235,33 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
         </DialogHeader>
         {audio ? (
           <div className='space-y-4'>
-            {/* 真实 <audio>：playUrl（外链或预签名地址）就绪即挂载，preload 取媒体时长/元数据 */}
-            <audio ref={audioRef} src={playUrl || undefined} preload='metadata' className='hidden' />
+            {/* 真实 <audio>：playUrl（外链或预签名地址）就绪即挂载，preload 取媒体时长/元数据。
+                事件用 JSX props 而非 ref + useEffect 注册：弹窗内容经 Portal 异步挂载，
+                用 effect 注册会在「打开时元素才出现」的 commit 里错过绑定（INT-1860）。 */}
+            <audio
+              ref={audioRef}
+              src={playUrl || undefined}
+              preload='metadata'
+              className='hidden'
+              onTimeUpdate={(e) => {
+                if (!dragging) setCurrent(e.currentTarget.currentTime)
+              }}
+              onLoadedMetadata={(e) => {
+                const el = e.currentTarget
+                if (Number.isFinite(el.duration) && el.duration > 0) {
+                  setMediaDuration(el.duration)
+                  setCurrent(0)
+                }
+              }}
+              onEnded={() => {
+                setPlaying(false)
+                setCurrent(0)
+              }}
+              onError={() => {
+                setPlaying(false)
+                setPlayError('音频播放失败，请检查音频文件是否有效')
+              }}
+            />
 
             {/* 错误提示（照 V9.7.10 error-message，可关闭） */}
             {playError && (
@@ -320,7 +318,12 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
               </div>
               <div className='flex items-center justify-between px-1 text-xs font-mono tabular-nums'>
                 <span className='bg-card rounded px-1.5 py-0.5 shadow-sm'>{formatTime(current)}</span>
-                <span className='text-muted-foreground bg-card rounded px-1.5 py-0.5 shadow-sm'>{formatTime(duration)}</span>
+                <span
+                  data-testid='audio-duration'
+                  className='text-muted-foreground bg-card rounded px-1.5 py-0.5 shadow-sm'
+                >
+                  {durationLabel}
+                </span>
               </div>
 
               <div className='flex items-center justify-center gap-2 pt-1'>
