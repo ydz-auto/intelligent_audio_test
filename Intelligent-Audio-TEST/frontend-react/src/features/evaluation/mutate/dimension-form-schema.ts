@@ -2,7 +2,7 @@
  * 评估维度表单 schema + 转换器（features/evaluation/mutate；11_用例域.md §5.5）。
  * 六分组节（基本信息/层级配置/结果配置/API配置/关联算法）字段常量与 RHF+zod schema；
  * 表单值类型由 schema 推导（DimensionFormValues），编辑态由 Dimension 反填、保存态
- * 收敛为 Partial<Dimension>（mock 阶段不真正提交）。
+ * 收敛为 Partial<Dimension>。
  */
 import { z } from 'zod'
 
@@ -197,13 +197,15 @@ export function emptyDimensionFormValues(): DimensionFormValues {
     decimalPlaces: 2,
     weight: 5,
     estimatedExecTime: 5,
-    // 默认 5 条规则只用于新建（编辑反填不再兜底，见 toDimensionFormValues INT-1732）
+    // 默认 6 条规则只用于新建（编辑反填不再兜底，见 toDimensionFormValues INT-1732）；
+    // 档位对齐 V9.7.10 dimensionTemplate.rule（>=60→6 / <60→0，INT-1816 P3-2）
     rule: [
       { condition: '>=', value: 95, score: 10 },
       { condition: '>=', value: 90, score: 9 },
       { condition: '>=', value: 80, score: 8 },
       { condition: '>=', value: 70, score: 7 },
-      { condition: '<', value: 70, score: 0 },
+      { condition: '>=', value: 60, score: 6 },
+      { condition: '<', value: 60, score: 0 },
     ],
     ruleExtra: {},
     apiUrl: '',
@@ -235,21 +237,9 @@ export function emptyDimensionFormValues(): DimensionFormValues {
         uiOrder: 2,
       },
     ],
-    outputFields: [
-      {
-        paramCode: 'score',
-        paramName: '评分结果',
-        fieldPath: 'score',
-        fieldType: 'number',
-        outputRole: 'main',
-        aggRole: 'value',
-        defaultValue: '',
-        passThreshold: '',
-        visibleInReport: true,
-        helpText: '',
-        uiOrder: 1,
-      },
-    ],
+    // INT-1816 P3-1：V9.7.10 newDimension 不带输出字段，新建不预填示例（score/评分结果）；
+    // 只填名称直接保存不再凭空落一条假输出字段
+    outputFields: [],
     apiEndpoints: [
       // INT-1732 P3-3：V9.7.10 新建端点 URL 为空（此前预填 api.example.com 示例地址，
       // 不改直接保存就落一条假端点）
@@ -370,10 +360,9 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
       requiredInputs.length > 0
         ? requiredInputs
         : emptyDimensionFormValues().requiredInputs,
-    outputFields:
-      outputFields.length > 0
-        ? outputFields
-        : emptyDimensionFormValues().outputFields,
+    // INT-1816 P3-1：空就空着（不兜底默认输出字段——否则没有输出字段的维度会凭空
+    // 出现示例 score 行，保存即落库）
+    outputFields,
     apiEndpoints:
       apiEndpoints.length > 0
         ? apiEndpoints

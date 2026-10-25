@@ -3,6 +3,7 @@
  * Dialog sm:max-w-lg：标题「API健康测试结果」+ 头部维度名 + 总状态 StatusBadge
  * （在线=success/离线=danger）+ 端点明细表（端点 URL mono truncate / 状态徽章 /
  * 响应时间 tabular-nums / 信息）；主钮「关闭」。打开时自动触发健康探测（门槛 evaluation:read）。
+ * 无端点（results 为空）时走空态文案，不显示「总状态 在线」（INT-1816 P3-3）。
  */
 import { useEffect } from 'react'
 import { toast } from 'sonner'
@@ -51,6 +52,10 @@ export function HealthTestDialog({
   }, [open, dimension])
 
   const data = healthTest.data
+  // INT-1816 P3-3：后端对无端点维度返回 results=[] + overallStatus='online'，
+  // 空结果不能表达成「总状态 在线」——没有可探测端点时走空态文案
+  const results = data?.results ?? []
+  const hasResults = results.length > 0
   const online = data?.overallStatus !== 'offline'
 
   return (
@@ -68,7 +73,7 @@ export function HealthTestDialog({
             <Spinner />
             <span className='text-muted-foreground text-sm'>正在健康探测...</span>
           </div>
-        ) : data ? (
+        ) : data && hasResults ? (
           <div className='space-y-3'>
             <div className='flex items-center gap-2'>
               <span className='text-muted-foreground text-sm'>总状态</span>
@@ -89,7 +94,7 @@ export function HealthTestDialog({
                   </tr>
                 </thead>
                 <tbody>
-                  {data.results.map((result, index) => (
+                  {results.map((result, index) => (
                     <tr
                       key={index}
                       className='border-border/50 hover:bg-muted/40 border-b last:border-b-0'
@@ -133,7 +138,7 @@ export function HealthTestDialog({
           </div>
         ) : (
           <p className='text-muted-foreground py-8 text-center text-sm'>
-            暂无健康探测数据
+            {data ? '该维度未配置 API 端点，无可探测端点' : '暂无健康探测数据'}
           </p>
         )}
 

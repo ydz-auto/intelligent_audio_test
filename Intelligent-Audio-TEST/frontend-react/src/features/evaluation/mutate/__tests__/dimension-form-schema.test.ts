@@ -66,13 +66,29 @@ describe('emptyDimensionFormValues', () => {
     expect(values.rule.length).toBeGreaterThan(0)
   })
 
-  it('所需输入/输出字段/API 端点带默认行（P3-2 子编辑器收敛进表单）', () => {
+  it('所需输入/API 端点带默认行，输出字段默认空（P3-2 子编辑器收敛进表单）', () => {
     const values = emptyDimensionFormValues()
     expect(values.requiredInputs.length).toBeGreaterThan(0)
     expect(values.requiredInputs[0].paramCode).toBe('asr_result')
-    expect(values.outputFields.length).toBeGreaterThan(0)
     expect(values.apiEndpoints.length).toBeGreaterThan(0)
     expect(values.apiEndpoints[0].priority).toBe(1)
+  })
+
+  it('默认不预填输出字段（INT-1816 P3-1：V9.7.10 newDimension 无 outputFields）', () => {
+    const values = emptyDimensionFormValues()
+    expect(values.outputFields).toEqual([])
+  })
+
+  it('默认评分规则 6 档对齐 V9.7.10 dimensionTemplate.rule（INT-1816 P3-2）', () => {
+    const values = emptyDimensionFormValues()
+    expect(values.rule).toEqual([
+      { condition: '>=', value: 95, score: 10 },
+      { condition: '>=', value: 90, score: 9 },
+      { condition: '>=', value: 80, score: 8 },
+      { condition: '>=', value: 70, score: 7 },
+      { condition: '>=', value: 60, score: 6 },
+      { condition: '<', value: 60, score: 0 },
+    ])
   })
 
   it('默认 API 端点 URL 为空（INT-1732 P3-3：不再预填 api.example.com 假端点）', () => {
@@ -119,6 +135,11 @@ describe('toDimensionFormValues', () => {
       url: 'https://api.example.com/evaluation/accuracy',
       priority: 1,
     })
+  })
+
+  it('无输出字段的维度反填为空，不塞示例 score 行（INT-1816 P3-1）', () => {
+    const values = toDimensionFormValues({ ...mockDimension, outputFields: [] })
+    expect(values.outputFields).toEqual([])
   })
 })
 
