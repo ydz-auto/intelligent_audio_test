@@ -368,6 +368,8 @@ export interface ReportListQueryDto {
   deleted?: boolean
   /** INT-423/467：可见性过滤（private|shared；服务端行级过滤） */
   visibility?: string
+  /** INT-1837：按任务过滤（后端 /reports 既有 task_id 查询参数） */
+  task_id?: number
 }
 
 /** 报告更新请求体（ReportUpdateRequest） */

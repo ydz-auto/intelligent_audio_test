@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   getReviewCount: vi.fn(),
   getSource: vi.fn(),
   hasPermission: vi.fn(() => true),
+  reportsGetAll: vi.fn(),
 }))
 
 vi.mock('../../../../composables/task/tasksPort', () => ({
@@ -58,6 +59,11 @@ vi.mock('../../../../composables/modal/useModal', () => ({
 
 vi.mock('../../../../composables/modal/useNotification', () => ({
   useNotification: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() }),
+}))
+
+// INT-1837：容器详情「报告」区走 GET /reports?task_id=（不打真实网络）
+vi.mock('../../../../composables/report/reportsPort', () => ({
+  reportsPort: { getAll: mocks.reportsGetAll },
 }))
 
 // 只替换容器溯源端点，其余 infrastructure 保持真实
@@ -110,6 +116,7 @@ beforeEach(() => {
   mocks.getProgress.mockResolvedValue(null)
   mocks.getReviewCount.mockResolvedValue(0)
   mocks.getOne.mockResolvedValue(CONTAINER_TASK)
+  mocks.reportsGetAll.mockResolvedValue({ items: [], total: 0, page: 1, perPage: 1, pages: 1 })
 })
 
 const mountModal = async () => {
@@ -138,6 +145,12 @@ describe('TaskDetailModal 容器接线（INT-1832）', () => {
     expect(w.find('.real-time-logs').exists()).toBe(false)
     expect(w.find('.association-tabs').exists()).toBe(false)
     expect(w.findAll('.container-collapse-header')).toHaveLength(2)
+
+    // INT-1837 §7：容器报告区（无报告 → 空态引导手动生成）
+    await flushPromises()
+    expect(mocks.reportsGetAll).toHaveBeenCalledWith(expect.objectContaining({ taskId: 580 }))
+    expect(w.find('.crc').exists()).toBe(true)
+    expect(w.find('.crc').text()).toContain('该合并任务暂无报告')
   })
 
   it('source 400 / code:203（普通任务）→ 非容器静默，详情四区形态不变', async () => {
@@ -152,6 +165,9 @@ describe('TaskDetailModal 容器接线（INT-1832）', () => {
     expect(w.find('.progress-overview').exists()).toBe(true)
     expect(w.find('.real-time-logs').exists()).toBe(true)
     expect(w.find('.association-tabs').exists()).toBe(true)
+    // INT-1837：普通任务不渲染容器报告区（也无任何组成区错误态）
+    expect(w.find('.crc').exists()).toBe(false)
+    expect(w.find('.cc-empty').exists()).toBe(false)
     // 详情本身未被可选增强区拖入错态
     expect(w.find('.error-state').exists()).toBe(false)
     expect(w.text()).toContain('小艺拒识挑选合并')

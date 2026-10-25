@@ -478,6 +478,11 @@ export interface ReportListQuery {
   deleted?: boolean
   /** INT-423/467：可见性过滤（private|shared；服务端行级过滤） */
   visibility?: string
+  /**
+   * 按任务过滤（后端 ReportListQuery.task_id；INT-1837 容器详情「报告」区取本任务报告，
+   * 复用既有列表端点，不新增端点）
+   */
+  taskId?: number
 }
 
 // ===== 对比报告展示模型 =====

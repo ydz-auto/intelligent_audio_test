@@ -22,6 +22,25 @@
       </div>
     </header>
 
+    <!-- §7 失效态：源结果已删除（missing=true）——顶部 Alert（--warning）+「只看失效」。
+         与执行 / 评估筛选同一套 filterCompositionTree 语义，不另造筛选。 -->
+    <div v-if="showToolbar && summary.missing > 0" class="cc-alert" role="alert">
+      <i class="fas fa-triangle-exclamation cc-alert-icon"></i>
+      <span class="cc-alert-text">
+        {{ summary.missing }} 条源结果已失效（源任务或结果已被删除），仅保留溯源记录
+      </span>
+      <button
+        type="button"
+        class="cc-btn cc-alert-action"
+        data-layout-btn
+        data-testid="composition-only-missing"
+        :aria-pressed="onlyMissing ? 'true' : 'false'"
+        @click="toggleOnlyMissing"
+      >
+        {{ onlyMissing ? '查看全部结果' : '只看失效' }}
+      </button>
+    </div>
+
     <!-- 工具行：四视图 + 用例层组织 + 执行/评估筛选 + 全部展开/收起（§3.2/§4.2）。
          加载中 / 补拉失败 / 无来源记录时只有骨架或空态，不渲染无数据的工具行（§7）。 -->
     <div v-if="showToolbar" class="cc-toolbar">
@@ -212,6 +231,8 @@ const subView = ref<CartOrgSubView>('flat');
 /** 工具行筛选（§5，纯客户端） */
 const execFilter = ref<string>('all');
 const evalFilter = ref<string>('all');
+/** §7「只看失效」：与执行 / 评估筛选同一套 filterCompositionTree 语义 */
+const onlyMissing = ref(false);
 const expandedKeys = ref<ReadonlySet<string>>(new Set<string>());
 /** 降级期提示关闭态：会话内一次性（模块级状态，切视图 / 重挂组件不再冒出来） */
 const degradedDismissed = ref(isDegradedHintDismissed());
@@ -247,7 +268,7 @@ const hasOrgData = computed(() => {
 const degraded = computed(() => isCompositionDegraded(props.entries));
 
 const filtersActive = computed(
-  () => execFilter.value !== 'all' || evalFilter.value !== 'all',
+  () => execFilter.value !== 'all' || evalFilter.value !== 'all' || onlyMissing.value,
 );
 
 /** 工具行 / 摘要徽章只在有数据可操作时出现：加载中 → 骨架；补拉失败 / 无来源记录 → 空态（§7） */
@@ -263,8 +284,14 @@ const filteredRoots = computed<CartTreeNode[]>(() => {
     execFilter.value as CompositionExecutionFilter,
     evalFilter.value as CompositionEvaluationFilter,
     entryMap.value,
+    onlyMissing.value ? 'missing' : 'all',
   );
 });
+
+/** §7 Alert 操作：只看失效 ↔ 查看全部结果 */
+function toggleOnlyMissing() {
+  onlyMissing.value = !onlyMissing.value;
+}
 
 function expandAll() {
   expandedKeys.value = new Set(collectCartNodeKeys(filteredRoots.value));
@@ -284,6 +311,7 @@ function toggleExpand(key: string) {
 function resetFilters() {
   execFilter.value = 'all';
   evalFilter.value = 'all';
+  onlyMissing.value = false;
 }
 </script>
 
@@ -432,6 +460,56 @@ function resetFilters() {
   color: inherit;
 }
 
+/* §7 失效 Alert：warning 系语义令牌，深浅两套自动成立 */
+.cc-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-control);
+  background: var(--warning-light);
+  color: var(--foreground);
+  font-size: 12px;
+}
+
+.cc-alert-icon {
+  flex-shrink: 0;
+  color: var(--warning);
+}
+
+.cc-alert-text {
+  min-width: 0;
+}
+
+/* §7 失效 Alert 的操作按钮：尺寸 / 圆角沿用 .cc-btn，只把语义色换成 warning。
+   必须带 data-layout-btn 退出全局 button catch-all（INT-735 / INT-1832 同一手法），
+   否则 button.css 的 0,6,1 基类会压掉 12px / 1px 边框 / warning 色。 */
+.cc-btn.cc-alert-action {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.cc-btn.cc-alert-action:hover {
+  color: var(--warning-dark);
+  border-color: var(--warning-dark);
+}
+
+/* 选中态：Alert 底色本身是 --warning-light，选中要比底色更实才看得出 */
+.cc-btn.cc-alert-action[aria-pressed='true'] {
+  background: var(--warning);
+  border-color: var(--warning);
+  color: var(--warning-foreground);
+}
+
+.cc-btn.cc-alert-action[aria-pressed='true']:hover {
+  background: var(--warning-dark);
+  border-color: var(--warning-dark);
+  color: var(--warning-foreground);
+}
+
 /* §5 文案：失败条目是正常业务态（不得出现「异常 / 不可合并」） */
 .cc-note {
   margin: 0;
@@ -456,6 +534,7 @@ function resetFilters() {
 .cc-skeleton-bar,
 .cc-skeleton-count {
   display: inline-block;
+  border: 1px solid var(--border);
   border-radius: var(--radius-tag);
   background: var(--muted);
 }

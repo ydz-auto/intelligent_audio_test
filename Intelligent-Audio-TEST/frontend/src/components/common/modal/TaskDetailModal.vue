@@ -88,6 +88,10 @@
         </template>
       </TestExecutionComponent>
 
+      <!-- INT-1837 规范 18 §7/§8.2：容器详情「报告」区——容器无执行过程、不自动生成报告，
+           空态引导手动生成；非容器不渲染（普通任务保持现状） -->
+      <ContainerReportCard v-if="isContainer" :task-id="props.taskId" />
+
       <!-- INT-467：任务可见性徽标 + 分享/设为私有切换（owner/admin 可切换；
            非 owner 私有任务 403 提示；切换成功 emit save → 列表即时刷新徽标） -->
       <div v-if="task" class="task-visibility-bar">
@@ -150,6 +154,8 @@ import { useNotification } from '../../../composables/modal/useNotification';
 import { isNotFoundOrForbidden, canEditResource } from '@/composables/visibility/useVisibility';
 import { summarizeCaseStatuses } from '../../../utils/caseStatusSummary';
 import TestExecutionComponent from '../../layout/TestExecutionComponent.vue';
+// INT-1837 规范 18 §7：容器详情「报告」区（空态引导手动生成）
+import ContainerReportCard from '../../layout/ContainerReportCard.vue';
 import ContainerComposition from '../../task/pick/ContainerComposition.vue';
 import { toCompositionEntries } from '../../task/pick/compositionTree';
 import CherryPickDialog from './CherryPickDialog.vue';
