@@ -27,6 +27,10 @@ from shared.logging.path_builder import BUSINESS_DIR
 AUDIT_ARCHIVE_CATEGORY = 'archives'
 AUDIT_ARCHIVE_PREFIX = AUDIT_DIR
 _AUDIT_DATE_FORMAT = '%Y-%m-%d'
+# 归档是否真的落进对象存储：存储层 save_file 在 OSS 不可达 / 未配置时会静默
+# 降级写容器本地目录并返回 `local://`（INT-1785 P1-1 同类语义）。审计原件是
+# 唯一持久副本，只有 `oss://` 才算归档成功，其余一律按失败保留本地重试。
+_ARCHIVE_WRITTEN_SCHEME = 'oss://'
 
 
 def _warning(message: str) -> None:
@@ -92,6 +96,11 @@ def audit_cutoff_date(retention_days: int, today=None) -> datetime.date:
     return base - timedelta(days=max(1, retention_days))
 
 
+def _archive_written_to_object_storage(location) -> bool:
+    """归档写入是否真落对象存储（`oss://`）；本地降级 / 空值一律不算。"""
+    return isinstance(location, str) and location.startswith(_ARCHIVE_WRITTEN_SCHEME)
+
+
 def sweep_audit_dates(settings: LogSettings = None) -> dict:
     """按日期目录清扫审计子树（到期先归档、归档失败保留本地）。
 
@@ -122,16 +131,23 @@ def sweep_audit_dates(settings: LogSettings = None) -> dict:
             if resolved.audit_archive_enabled:
                 try:
                     from shared.infrastructure.storage import storage
-                    storage.save_file(
+                    location = storage.save_file(
                         path, AUDIT_ARCHIVE_CATEGORY,
                         f'{AUDIT_ARCHIVE_PREFIX}/{entry}/{filename}',
                     )
-                    stats['archived'] += 1
                 except Exception as e:
                     # 归档失败：保留本地、下轮重试，绝不先删后传
                     stats['failed'] += 1
                     _warning(f'audit archive failed, kept locally: {path} ({e})')
                     continue
+                if not _archive_written_to_object_storage(location):
+                    # 降级写本地（local://）不算归档：副本不持久，保留原件
+                    stats['failed'] += 1
+                    _warning(
+                        'audit archive not persisted to object storage, '
+                        f'kept locally: {path} (location={location})')
+                    continue
+                stats['archived'] += 1
             try:
                 os.remove(path)
                 stats['deleted'] += 1

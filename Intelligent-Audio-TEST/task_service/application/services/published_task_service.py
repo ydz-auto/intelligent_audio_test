@@ -611,6 +611,7 @@ class PublishedTaskService:
                 'task_group_id': pt.task_group_id or pt.id,
                 'version': pt.version,
                 'source_task_id': pt.source_task_id,
+                'operator_id': operator_user_id or pt.archived_by,
                 'archived_by': pt.archived_by,
             })
             return {

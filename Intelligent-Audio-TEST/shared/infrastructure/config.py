@@ -171,9 +171,11 @@ class BaseConfig:
     LOG_BUSINESS_RETENTION_DAYS: int = _get_int(
         'LOG_BUSINESS_RETENTION_DAYS', LOG_FILE_RETENTION_DAYS)
     # --- 审计日志落文件（INT-1793 契约 §3.4，logs 表零写入）---
-    # 审计落文件总开关（关 = 审计事件退回仅服务文件，不落 DB）
+    # 审计落文件总开关（关 = emit 路径退回仅服务文件、不落 DB；task_service 内
+    # S4 直写路径无服务文件兜底，关闭即不落审计——旁路记录不阻塞主流程）
     LOG_AUDIT_ENABLED: bool = _get_bool('LOG_AUDIT_ENABLED', True)
-    # 故障回退：True 时审计事件同时入库一份（读侧不感知，非口径开关）
+    # 故障回退：True 时审计事件同时入库一份（仅 emit 路径，读侧不感知，非口径开关；
+    # task_service 内 S4 直写路径只落文件）
     LOG_AUDIT_DB_ENABLED: bool = _get_bool('LOG_AUDIT_DB_ENABLED', False)
     # 单审计文件切分阈值（MB）
     LOG_AUDIT_MAX_MB: int = _get_int('LOG_AUDIT_MAX_MB', 50)
