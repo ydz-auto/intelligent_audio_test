@@ -390,3 +390,23 @@ class ExecuteImportCommand(Command):
 class RollbackImportCommand(Command):
     """批次回滚命令（人工介入兜底入口）。委托 data_transfer_import_service.rollback_import。"""
     batch_id: str = ''
+
+
+@dataclass(frozen=True)
+class ExportIncrementalCommand(Command):
+    """增量导出命令（链路 2，INT-1761）。委托 export_incremental。
+
+    options（D0 A1/A2）：{include: ['dimensions'|'reports']}
+    """
+    task_ids: List[int] = field(default_factory=list)
+    options: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ImportIncrementalCommand(Command):
+    """增量导入命令（链路 2）。委托 import_incremental。
+
+    增量包暂无请求级选项（用例硬校验不作用于本链路），保留 options 以便演进。
+    """
+    zip_path: str = ''
+    options: Dict[str, Any] = field(default_factory=dict)

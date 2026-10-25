@@ -33,3 +33,16 @@ class DataTransferAclRepository(ABC):
     @abstractmethod
     def get_progress_snapshot(self) -> CommandResultDTO:
         """最近一次导入进度快照"""
+
+    @abstractmethod
+    def export_incremental(self, task_ids: List[int],
+                           options: Optional[Dict] = None) -> CommandResultDTO:
+        """增量导出（链路 2，INT-1761）：返回 data.zip_path 供网关下发
+
+        options: {include: ['dimensions'|'reports']}；未映射结果行 → code=409。
+        """
+
+    @abstractmethod
+    def import_incremental(self, zip_path: str,
+                           options: Optional[Dict] = None) -> CommandResultDTO:
+        """增量导入（链路 2）：合并回 A 原任务（维度覆盖集 + 报告原地替换）"""

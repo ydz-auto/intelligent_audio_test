@@ -1196,6 +1196,24 @@ service DataTransferService {
   rpc ExecuteImport(ExecuteImportRequest) returns (TaskConfigResponse);
   // 回滚一次导入批次：入参 {batch_id}，按批次登记的主键删除（补偿失败时人工介入的兜底入口）
   rpc RollbackImport(RollbackImportRequest) returns (TaskConfigResponse);
+  // 增量导出（链路 2，INT-1761）：入参 {task_ids:[int], options:{include:[dimensions,reports]}}
+  // 出参 {zip_path(共享盘相对 DATA_TRANSFER_TMP_DIR), manifest, sourceTaskId,
+  //       dimensionCount, reportCount}。包内 id 已翻译回 A 原始 id；
+  // 存在未映射结果行 → success=false + code=409 + data.unmappedResultIds，不产出包。
+  rpc ExportIncremental(ExportIncrementalRequest) returns (TaskConfigResponse);
+  // 增量导入（链路 2）：入参 {zip_path}，把维度覆盖集合并 + 报告原地替换到 A 原任务。
+  // 出参合并回执（mergedDimensions / replacedReportId / warnings / batchId /
+  // rollbackAvailable）；失败按 code 透传（400/403/404/409/500）。
+  rpc ImportIncremental(ImportIncrementalRequest) returns (TaskConfigResponse);
+}
+
+message ExportIncrementalRequest {
+  // JSON: {task_ids: [int], options: {include: ['dimensions'|'reports']}}
+  string data = 1;
+}
+message ImportIncrementalRequest {
+  string zip_path = 1;  // 共享盘上 ZIP 文件的绝对路径（DATA_TRANSFER_TMP_DIR/import/ 下）
+  string data = 2;      // 保留：增量包暂无请求级选项
 }
 
 message ExportTasksRequest {

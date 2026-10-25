@@ -45,3 +45,16 @@ class DataTransferAclRepositoryImpl(DataTransferAclRepository):
     def get_progress_snapshot(self) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import data_transfer_service
         return _wrap(data_transfer_service.get_progress_snapshot())
+
+    def export_incremental(self, task_ids: List[int],
+                           options: Optional[Dict] = None) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import data_transfer_service
+        return _wrap(data_transfer_service.export_incremental({
+            'task_ids': task_ids,
+            'options': options or {},
+        }))
+
+    def import_incremental(self, zip_path: str,
+                           options: Optional[Dict] = None) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import data_transfer_service
+        return _wrap(data_transfer_service.import_incremental(zip_path, options or {}))

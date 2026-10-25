@@ -92,6 +92,10 @@ def _shared_filename() -> str:
     return f"task_export_{time.strftime('%Y%m%d%H%M%S')}.zip"
 
 
+def _incremental_filename() -> str:
+    return f"incremental_{time.strftime('%Y%m%d%H%M%S')}.zip"
+
+
 class DataTransferGatewayService:
     """网关侧导出/导入编排"""
 
@@ -186,6 +190,58 @@ class DataTransferGatewayService:
         if not result.success:
             return error_response(result.message or '读取进度失败', code=result.code or 500)
         return success_response(result.data)
+
+    # ---------- 增量回导（链路 2，INT-1761）----------
+
+    @staticmethod
+    def export_incremental(request):
+        """增量导出：返回 FileResponse（ZIP 下载）
+
+        导出侧硬闸命中（未映射结果行）时 task_service 回 code=409 +
+        `data.unmappedResultIds`，此处原样透出 JSON 错误（不产出文件）。
+        """
+        if not request.task_ids:
+            return error_response('task_ids 不能为空', code=400)
+        result = _data_acl.export_incremental(
+            request.task_ids, {'include': list(request.include or [])})
+        if not result.success:
+            return _failure(result, '增量导出失败')
+        zip_path = (result.data or {}).get('zip_path') or ''
+        if not zip_path or not os.path.isfile(zip_path):
+            log_not_emit('ERROR', _module,
+                         f'增量导出 ZIP 不可见: {zip_path}'
+                         '（检查 DATA_TRANSFER_TMP_DIR 共享挂载）', category='system')
+            return error_response('导出文件不可访问（网关与任务服务未共享临时目录）', code=500)
+        return FileResponse(
+            zip_path,
+            media_type='application/zip',
+            filename=_incremental_filename(),
+        )
+
+    @staticmethod
+    def import_incremental(upload_file, options: dict = None):
+        """增量导入：保存上传 ZIP → 调 task_service（两段跨服务合并）→ 删临时文件
+
+        失败码透传（400/403/404/409/500），`data` 明细（unmappedResultIds /
+        missingIds / expected+actual / compensationErrors）原样带回。
+        """
+        tmp_path = None
+        try:
+            try:
+                tmp_path = _save_upload_to_tmp(upload_file)
+            except ValueError as e:
+                return error_response(str(e), code=400)
+            result = _data_acl.import_incremental(tmp_path, options or {})
+            if not result.success:
+                return _failure(result, '增量导入失败', default_http=500)
+            return success_response(result.data, message=result.message or '增量回导完成')
+        except Exception as e:
+            log_not_emit('ERROR', _module, f'增量导入异常: {e}', category='system',
+                         exc_info=True)
+            return error_response(f'增量导入异常: {e}', code=500)
+        finally:
+            if tmp_path:
+                _remove_tmp(tmp_path)
 
 
 def _remove_tmp(path: str) -> None:

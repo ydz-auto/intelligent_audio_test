@@ -23,6 +23,12 @@ from shared.constants.data_transfer import (
     DEFAULT_TRANSFER_INTENT,
     FkMappingKey,
     ImportProgressStep,
+    INCREMENTAL_FINGERPRINT_CODE,
+    INCREMENTAL_ID_MISSING_CODE,
+    INCREMENTAL_INVALID_PACKAGE_CODE,
+    INCREMENTAL_REPORT_TABLES,
+    INCREMENTAL_TASK_FORBIDDEN_CODE,
+    INCREMENTAL_TASK_NOT_FOUND_CODE,
     RESTORE_SKIP_CONSISTENCY_WARNING,
     TransferIntent,
     TransferTable,
@@ -34,13 +40,23 @@ from shared.utils.data_transfer_batch import transfer_batch_registry
 from shared.utils.log_handler import log_not_emit
 from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
 from task_service.domain.services.data_transfer import (
+    build_dimension_id_mapping,
+    case_set_hash,
     filter_merge_relations,
+    package_report_ids,
     plan_source_map_entries,
     plan_task_segment,
     rewrite_fk_rows,
+    validate_incremental_package,
 )
-from task_service.infrastructure.acl.evaluation_transfer_acl import evaluation_transfer_acl_repository
-from task_service.infrastructure.acl.report_transfer_acl import report_transfer_acl_repository
+from task_service.infrastructure.acl.evaluation_transfer_acl import (
+    TransferMergeError,
+    evaluation_transfer_acl_repository,
+)
+from task_service.infrastructure.acl.report_transfer_acl import (
+    TransferReplaceError,
+    report_transfer_acl_repository,
+)
 from task_service.infrastructure.persistence.transfer_repository import transfer_repository
 from task_service.infrastructure.transfer.file_transfer import (
     delete_written_files,
@@ -52,6 +68,7 @@ from task_service.infrastructure.transfer.zip_io import (
     audios_entries,
     case_results_entries,
     read_db_tables,
+    read_dimensions_snapshot,
     read_manifest,
     ref_params_entries,
 )
@@ -86,6 +103,15 @@ class SourceMapRegistrationError(RuntimeError):
         super().__init__(message)
         self.entries = entries or []
         self.snapshot_saved = snapshot_saved
+
+
+class IncrementalValidationError(ValueError):
+    """增量导入前置校验失败（携带 HTTP 语义业务码与回执明细，未写任何数据）"""
+
+    def __init__(self, message: str, code: int = 400, data: Optional[dict] = None):
+        super().__init__(message)
+        self.code = int(code or 400)
+        self.data = data or {}
 
 
 def _remaps_only(mapping: Dict[int, int]) -> Dict[int, int]:
@@ -422,6 +448,234 @@ class DataTransferImportService:
                 'data': {'batch_id': batch_id,
                          'compensation_errors': compensation_errors},
             }
+
+    # ---------- 增量导入（链路 2，INT-1761 / D0 裁定 A2/A5/A7） ----------
+
+    def import_incremental(self, zip_path: str, options: Optional[dict] = None) -> dict:
+        """增量包合并导入：维度覆盖集合并 → 报告原地替换（合并回 A 原任务）。
+
+        与整包导入的差异：
+        - 不建任务 / 不写结果 / 不动文件，包内 id 已是 A 原始 id，不做重映射；
+        - 只有维度 id 需要翻译（按维度定义链，A2-4）；
+        - 失败按逆序补偿（报告段 → 维度段），依赖 D4 的旧值快照恢复原值。
+
+        Returns: 回执统计（含 mergedDimensions / replacedReportId / warnings /
+            batchId / rollbackAvailable）；失败时 code 为 HTTP 语义码。
+        """
+        batch_id = uuid.uuid4().hex
+        reporter = ImportProgressReporter(batch_id)
+        try:
+            return self._run_incremental_import(zip_path, batch_id, reporter)
+        except IncrementalValidationError as e:
+            # 前置校验失败：未写任何数据，不补偿
+            log_not_emit('WARNING', _MODULE_NAME,
+                         f'增量导入校验失败 batch={batch_id} code={e.code}: {e}',
+                         category='system')
+            reporter.report(ImportProgressStep.ERROR, str(e))
+            return {'success': False, 'message': str(e), 'code': e.code, 'data': e.data}
+        except (TransferMergeError, TransferReplaceError) as e:
+            # 远端段已自己回滚（单事务）；补偿仍无条件执行，兜住「远端已提交但
+            # 回执丢失」等窗口，并显式区分是否给了业务码
+            log_not_emit('ERROR', _MODULE_NAME,
+                         f'增量导入失败 batch={batch_id} code={e.code}: {e}',
+                         category='system', exc_info=True)
+            errors = self._compensate_incremental(batch_id)
+            message = str(e)
+            if errors:
+                message += ('；补偿回滚部分失败，需人工介入核查'
+                            f'（batch_id={batch_id}，登记保留 7 天）: ' + '；'.join(errors))
+            data = dict(e.data or {})
+            data.setdefault('batchId', batch_id)
+            data['compensationErrors'] = errors
+            reporter.report(ImportProgressStep.ERROR, message)
+            return {'success': False, 'message': message, 'code': e.code, 'data': data}
+        except Exception as e:
+            log_not_emit('ERROR', _MODULE_NAME,
+                         f'增量导入异常 batch={batch_id}: {e}', category='system',
+                         exc_info=True)
+            errors = self._compensate_incremental(batch_id)
+            message = f'增量导入失败: {e}'
+            if errors:
+                message += ('；补偿回滚部分失败，需人工介入核查'
+                            f'（batch_id={batch_id}，登记保留 7 天）: ' + '；'.join(errors))
+            reporter.report(ImportProgressStep.ERROR, message)
+            return {'success': False, 'message': message, 'code': 500,
+                    'data': {'batchId': batch_id, 'compensationErrors': errors}}
+
+    def _run_incremental_import(self, zip_path: str, batch_id: str,
+                                reporter: ImportProgressReporter) -> dict:
+        """增量导入主体（校验 → 段 1 维度合并 → 段 2 报告替换）。
+
+        Raises: IncrementalValidationError（前置校验）/ TransferMergeError /
+            TransferReplaceError（远端段失败），由 import_incremental 统一处置。
+        """
+        # ===== 段 0：解析与结构校验 =====
+        reporter.report(ImportProgressStep.PARSING, '解析增量包')
+        manifest = validate_manifest(read_manifest(zip_path))
+        rows_by_table = read_db_tables(zip_path)
+        structure_errors = validate_incremental_package(manifest, rows_by_table)
+        if structure_errors:
+            raise IncrementalValidationError('；'.join(structure_errors),
+                                             INCREMENTAL_INVALID_PACKAGE_CODE,
+                                             {'errors': structure_errors})
+        source_task = manifest.get('sourceTask') or {}
+        task_id = int(source_task['id'])
+
+        # ===== 定位 A 原任务 + 可见性（A7）=====
+        identity = transfer_repository.fetch_task_identity(task_id)
+        if identity is None or identity.get('deleted'):
+            raise IncrementalValidationError(
+                f'源任务不存在或已删除（sourceTaskId={task_id}）',
+                INCREMENTAL_TASK_NOT_FOUND_CODE, {'sourceTaskId': task_id})
+        from shared.infrastructure.user_context import (
+            get_current_user_id, get_current_user_is_admin,
+        )
+        from task_service.infrastructure.persistence.task_repository import task_repository
+        if not task_repository.filter_visible_task_ids(
+                [task_id], user_id=get_current_user_id(),
+                is_admin=get_current_user_is_admin()):
+            raise IncrementalValidationError(
+                f'无权写入该任务（sourceTaskId={task_id}）',
+                INCREMENTAL_TASK_FORBIDDEN_CODE, {'sourceTaskId': task_id})
+
+        warnings: List[str] = []
+        # ===== 指纹校验（A7）：用例集哈希不符即拒绝；任务名只做二次提示 =====
+        expected_hash = str(source_task.get('caseSetHash') or '')
+        actual_hash = case_set_hash(transfer_repository.fetch_task_case_ids(task_id))
+        if expected_hash and expected_hash != actual_hash:
+            raise IncrementalValidationError(
+                f'源任务与增量包不匹配，拒绝合并（用例集指纹不符，sourceTaskId={task_id}）',
+                INCREMENTAL_FINGERPRINT_CODE,
+                {'expected': expected_hash, 'actual': actual_hash,
+                 'sourceTaskId': task_id})
+        package_name = str(source_task.get('name') or '')
+        if package_name and identity.get('name') and package_name != identity.get('name'):
+            warnings.append(
+                f'任务名与包内不一致（A 库 {identity.get("name")!r} / 包内 {package_name!r}），'
+                '按任务 id 合并')
+
+        dim_rows = [row for row in (rows_by_table.get(
+            TransferTable.TEST_RESULT_DIMENSIONS.value) or []) if isinstance(row, dict)]
+        report_tables = {table.value: rows_by_table.get(table.value) or []
+                         for table in INCREMENTAL_REPORT_TABLES}
+
+        # ===== A 侧反向 id 校验（A2-3）：禁止把 B 的本地 id 当 A id 写入 =====
+        package_result_ids = sorted({int(row['test_result_id']) for row in dim_rows
+                                     if row.get('test_result_id') is not None})
+        if package_result_ids:
+            existing_ids = transfer_repository.fetch_existing_result_ids(package_result_ids)
+            missing_ids = [rid for rid in package_result_ids if rid not in existing_ids]
+            if missing_ids:
+                raise IncrementalValidationError(
+                    f'包内 {len(missing_ids)} 个 test_result_id 在目标库不存在: '
+                    f'{missing_ids[:20]}', INCREMENTAL_ID_MISSING_CODE,
+                    {'missingIds': missing_ids, 'sourceTaskId': task_id})
+
+        # ===== 维度 id 翻译（A2-4）：按 (name, 父链, task_type_code) 映射到 A =====
+        dimension_id_mapping: Dict[int, int] = {}
+        if dim_rows:
+            package_defs = read_dimensions_snapshot(zip_path)
+            if not package_defs:
+                raise IncrementalValidationError(
+                    '增量包缺少 meta/dimensions.json（维度定义快照），无法翻译维度 id',
+                    INCREMENTAL_INVALID_PACKAGE_CODE, {'sourceTaskId': task_id})
+            target_defs = evaluation_transfer_acl_repository.list_dimension_defs()
+            dimension_id_mapping, unmatched, mapping_warnings = build_dimension_id_mapping(
+                package_defs, target_defs)
+            warnings.extend(mapping_warnings)
+            if unmatched:
+                warnings.append(
+                    f'目标库匹配不到 {len(unmatched)} 个维度定义，相关维度行已跳过: '
+                    f'{unmatched[:20]}')
+            # **本地过滤**：未命中的维度行绝不交给远端——远端在映射为空时按
+            # 「包内已是 A 维度 id」处理，直写 B 的 dimension_id 会污染 A 的评分
+            kept_rows = [row for row in dim_rows
+                         if int(row['dimension_id']) in dimension_id_mapping]
+            if len(kept_rows) != len(dim_rows):
+                warnings.append(
+                    f'跳过 {len(dim_rows) - len(kept_rows)} 行未命中维度映射的评分'
+                    f'（共 {len(dim_rows)} 行）')
+            dim_rows = kept_rows
+
+        # ===== 段 1：维度覆盖集合并（evaluation_service 单事务 + 旧值快照）=====
+        dimension_stats: Dict = {}
+        if dim_rows:
+            reporter.report(ImportProgressStep.MERGING_DIMENSIONS, '合并维度评分')
+            dimension_stats = evaluation_transfer_acl_repository.merge_dimensions(
+                dim_rows, dimension_id_mapping, batch_id)
+            # 批次登记（7 天 TTL）：D4 快照已按 batch_id 落各自库，这里只保留可回滚指针
+            transfer_batch_registry.record(batch_id, 'evaluation_service', {})
+
+        # ===== 段 2：报告原地替换（report_service 单事务 + 旧值快照）=====
+        report_stats: Dict = {}
+        if any(report_tables.values()):
+            reporter.report(ImportProgressStep.REPLACING_REPORTS, '替换平台报告')
+            package_ids = package_report_ids(report_tables)
+            # 只有「唯一且已翻译为 A 原始 id」的包内报告才当目标；多份 / 无 id 时
+            # 交给远端按「任务下最新 task 型报告」或新建定位（A5-2）
+            target_report_id = package_ids[0] if len(package_ids) == 1 else None
+            report_stats = report_transfer_acl_repository.replace_reports(
+                report_tables, task_id, target_report_id, batch_id)
+            transfer_batch_registry.record(batch_id, 'report_service', {})
+            warnings.extend(report_stats.get('warnings') or [])
+
+        skipped_dimensions = sorted(set(dimension_stats.get('skipped_dimensions') or []))
+        if skipped_dimensions:
+            warnings.append(
+                f'远端跳过 {len(skipped_dimensions)} 个未命中映射的维度: '
+                f'{skipped_dimensions[:20]}')
+
+        stats = {
+            'taskId': task_id,
+            'mergedDimensions': int(dimension_stats.get('imported') or 0),
+            'deletedDimensions': int(dimension_stats.get('deleted') or 0),
+            'skippedDimensions': skipped_dimensions,
+            'insertedReports': len(report_stats.get('inserted_report_ids') or []),
+            'replacedReportId': report_stats.get('report_id'),
+            'targetResolvedBy': report_stats.get('target_resolved_by'),
+            'warnings': warnings,
+            'batchId': batch_id,
+            # 合并段有快照即可回滚（批次登记保留 7 天）
+            'rollbackAvailable': bool(dimension_stats or report_stats),
+        }
+        reporter.report(ImportProgressStep.DONE,
+                        f"增量回导完成：维度 {stats['mergedDimensions']} 行，"
+                        f"报告 {stats['insertedReports']} 份", '')
+        self._publish_incremental_event(task_id, batch_id, stats)
+        log_not_emit('INFO', _MODULE_NAME,
+                     f'增量导入完成 batch={batch_id} stats={stats}', category='system')
+        return {'success': True, 'message': '增量回导完成', 'data': stats}
+
+    def _compensate_incremental(self, batch_id: str) -> List[str]:
+        """增量导入失败补偿（逆序：报告段 → 维度段）。返回补偿失败清单。
+
+        两个回滚 RPC 在「该段未提交」时远端按 no-op 返回 success，故无条件调用，
+        不依赖本地对「提交了几段」的判断（与整包补偿同口径）。
+        全部成功才销毁批次登记；失败时登记保留 7 天供人工回滚。
+        """
+        errors: List[str] = []
+        try:
+            report_transfer_acl_repository.rollback_report_replacement(batch_id)
+            transfer_batch_registry.remove_service(batch_id, 'report_service')
+        except Exception as e:
+            errors.append(f'报告替换段回滚失败: {e}')
+        try:
+            evaluation_transfer_acl_repository.rollback_dimension_merge(batch_id)
+            transfer_batch_registry.remove_service(batch_id, 'evaluation_service')
+        except Exception as e:
+            errors.append(f'维度合并段回滚失败: {e}')
+        if not errors:
+            transfer_batch_registry.delete(batch_id)
+        return errors
+
+    @staticmethod
+    def _publish_incremental_event(task_id: int, batch_id: str, stats: dict) -> None:
+        """增量回导成功发布 TASK_EVENTS / task_imported（mode=incremental 区分链路）"""
+        payload = {'task_ids': [int(task_id)], 'batch_id': batch_id,
+                   'mode': 'incremental',
+                   'merged_dimensions': stats.get('mergedDimensions', 0),
+                   'replaced_report_id': stats.get('replacedReportId')}
+        EventBus().publish(EventChannel.TASK_EVENTS, EventType.TASK_IMPORTED, payload)
 
     # ---------- 补偿（逆序：文件 → 报表 → 维度 → task 段）----------
 

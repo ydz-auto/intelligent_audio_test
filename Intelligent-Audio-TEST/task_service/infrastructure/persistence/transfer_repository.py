@@ -12,8 +12,8 @@ source_map（INT-1760）：整包导入发生重映射时登记 A 原始 id → 
 import logging
 from datetime import datetime
 from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
-from typing import Callable, Dict, Iterable, List, Set, Tuple
 
+from shared.constants.data_transfer import SourceMapEntity
 from shared.models.database import get_db_session
 from shared.utils.log_handler import log_not_emit
 from task_service.infrastructure.persistence.models import (
@@ -281,6 +281,60 @@ class TransferRepository:
         finally:
             session.close()
 
+    # ---------- 增量回导（INT-1761：定位原任务 / 指纹 / 反向 id 校验） ----------
+
+    def fetch_task_identity(self, task_id: int) -> Optional[dict]:
+        """任务基础身份（增量导入按 manifest.sourceTask.id 定位 A 原任务用）。
+
+        Returns: {'id', 'name', 'status', 'deleted'}；任务不存在返回 None。
+        软删任务也返回（deleted=True），由调用方按 404 语义拒绝（A7）。
+        """
+        if task_id is None:
+            return None
+        session = get_db_session()
+        try:
+            row = (session.query(Task.id, Task.name, Task.status, Task.deleted)
+                   .filter(Task.id == int(task_id)).first())
+            if row is None:
+                return None
+            return {'id': int(row[0]), 'name': row[1], 'status': row[2],
+                    'deleted': bool(row[3])}
+        finally:
+            session.close()
+
+    def fetch_task_case_ids(self, task_id: int) -> List[str]:
+        """任务当前用例 id 列表（caseSetHash 指纹计算口径，A7）。"""
+        if task_id is None:
+            return []
+        session = get_db_session()
+        try:
+            rows = (session.query(TaskCase.test_case_id)
+                    .filter(TaskCase.task_id == int(task_id)).all())
+            return [str(row[0]) for row in rows if row[0] is not None]
+        finally:
+            session.close()
+
+    def fetch_existing_result_ids(self, result_ids: Iterable[int]) -> Set[int]:
+        """给定结果 id 中在目标库**存在**的集合（A2-3 反向 id 校验用）。
+
+        判定口径是「结果行存在」而不是「已评估」：A 侧执行了但未评估的结果
+        在增量回导时本就没有维度行，B 侧重评出的分数要能插进来（与 D4 合并
+        仓储同口径）。
+        """
+        ids = sorted({int(rid) for rid in (result_ids or []) if rid is not None})
+        if not ids:
+            return set()
+        session = get_db_session()
+        try:
+            found: Set[int] = set()
+            for start in range(0, len(ids), _SOURCE_MAP_CHUNK):
+                chunk = ids[start:start + _SOURCE_MAP_CHUNK]
+                found.update(int(row[0]) for row in
+                             session.query(TestResult.id).filter(TestResult.id.in_(chunk)).all())
+            return found
+        finally:
+            session.close()
+
     def fetch_existing_ids(self) -> Dict[str, Set[int]]:
         """7 表当前全部主键集合（导入冲突判定 + 预检）"""
         session = get_db_session()
@@ -523,6 +577,29 @@ class TransferRepository:
         for row in self.fetch_source_maps(source_server, source_task_id):
             grouped.setdefault(row['entity_type'], []).append(row)
         return grouped
+
+    def fetch_source_task_refs(self, local_task_ids: Iterable[int]) -> List[dict]:
+        """B 本地任务 → 源任务引用（增量导出反查用，INT-1761）。
+
+        导出侧只拿得到 B 的本地 task_id，需先反查它当初整包导入时的
+        `(source_server, source_id)`，再按「源服务 + 源任务」取四类实体的映射。
+        同一本地任务若被不同源服务导入过，会返回多行——调用方按 source_server
+        去重，多源时拒绝导出（映射不唯一无法确定翻译基准）。
+        """
+        ids = sorted({int(tid) for tid in (local_task_ids or [])})
+        if not ids:
+            return []
+        session = get_db_session()
+        try:
+            rows = (session.query(DataTransferSourceMap)
+                    .filter(DataTransferSourceMap.entity_type == SourceMapEntity.TASKS.value,
+                            DataTransferSourceMap.local_id.in_(ids))
+                    .order_by(DataTransferSourceMap.source_server,
+                              DataTransferSourceMap.local_id)
+                    .all())
+            return [_source_map_to_dict(row) for row in rows]
+        finally:
+            session.close()
 
     def fetch_source_ids_by_local_ids(self, source_server: str, entity_type: str,
                                       local_ids: Iterable[int]) -> Dict[int, int]:

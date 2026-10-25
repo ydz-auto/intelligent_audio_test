@@ -70,13 +70,30 @@ class DimensionTransferRepository:
             dim_ids = {row['dimension_id'] for row in rows if row.get('dimension_id') is not None}
             dim_defs = []
             if dim_ids:
-                dim_pos = session.query(Dimension).filter(Dimension.id.in_(dim_ids)).all()
-                for po in dim_pos:
+                # INT-1761：增量回导按 (name, 父维度链, task_type_code) 匹配 A 侧维度
+                # （D0 A2-4）。子维度行只带自己的 definition，父定义不在快照里时
+                # A 侧无法重建父链 → 必须把整条祖先链一并带出
+                known: dict = {}
+                pending = set(dim_ids)
+                while pending:
+                    dim_pos = session.query(Dimension).filter(
+                        Dimension.id.in_(pending)).all()
+                    pending = set()
+                    for po in dim_pos:
+                        if po.id in known:
+                            continue
+                        known[po.id] = po
+                        parent_id = po.parent_dimension_id
+                        if parent_id is not None and parent_id not in known:
+                            pending.add(parent_id)
+                for po in known.values():
                     dim_defs.append({
                         'id': po.id,
                         'name': po.name,
                         'dimension_type': po.dimension_type,
                         'parent_dimension_id': po.parent_dimension_id,
+                        # 快照带 task_type_code（A 侧三维匹配的一项）
+                        'task_type_code': po.task_type_code,
                         'description': po.description,
                         'type': po.type,
                         'result_type': po.result_type,

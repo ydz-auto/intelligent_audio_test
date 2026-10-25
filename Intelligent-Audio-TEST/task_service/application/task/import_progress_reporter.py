@@ -19,6 +19,9 @@ from shared.utils.redis_pubsub import EventBus, EventChannel, EventType, RedisSt
 _STEP_BASE_PERCENT = {
     ImportProgressStep.PARSING.value: 0,
     ImportProgressStep.WRITING_DB.value: 5,
+    # 增量回导（INT-1761）：维度合并 → 报告替换，两段各占总进度的一段
+    ImportProgressStep.MERGING_DIMENSIONS.value: 20,
+    ImportProgressStep.REPLACING_REPORTS.value: 60,
     ImportProgressStep.EXTRACTING_FILES.value: 70,
     ImportProgressStep.UPDATING_PATHS.value: 90,
     ImportProgressStep.DONE.value: 100,

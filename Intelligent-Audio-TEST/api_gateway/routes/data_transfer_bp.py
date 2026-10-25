@@ -2,8 +2,10 @@
 """任务数据导入导出路由（INT-25，前缀 /api/v1/data-transfer，app.py 注册）
 
 - POST /export            导出任务数据 ZIP（权限 task:export）
+- POST /export-incremental 增量导出（链路 2，权限 task:export，INT-1761）
 - POST /import/preview    导入预检（权限 task:import，multipart）
 - POST /import            执行导入（权限 task:import，multipart，长耗时）
+- POST /import-incremental 增量导入（链路 2，权限 task:import，multipart，INT-1761）
 - GET  /import/progress   导入进度快照（权限 task:import）
 """
 from typing import Optional
@@ -15,7 +17,10 @@ from api_gateway.application.services.transfer.data_transfer_service import (
     DataTransferGatewayService,
 )
 from api_gateway.routes._response import to_response
-from api_gateway.schemas.data_transfer import TaskDataExportRequest
+from api_gateway.schemas.data_transfer import (
+    TaskDataExportRequest,
+    TaskDataIncrementalExportRequest,
+)
 from shared.constants.data_transfer import DEFAULT_TRANSFER_INTENT
 
 router = APIRouter()
@@ -45,6 +50,20 @@ def export_tasks(request: TaskDataExportRequest,
                  _: None = require_permission('task:export')):
     """导出任务数据为 ZIP 文件流（task_export_<timestamp>.zip）"""
     result = DataTransferGatewayService.export(request)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result  # FileResponse 直接透出
+
+
+@router.post('/export-incremental')
+def export_incremental(request: TaskDataIncrementalExportRequest,
+                       _: None = require_permission('task:export')):
+    """增量导出（链路 2）：B 侧新评估 + 新报告子集，id 经 source_map 翻译回 A。
+
+    请求：{taskIds: [int], include: ['dimensions','reports']}
+    存在未映射结果行（B 侧重执行产生）→ HTTP 409 + `data.unmappedResultIds`。
+    """
+    result = DataTransferGatewayService.export_incremental(request)
     if isinstance(result, tuple) and len(result) == 2:
         return to_response(result)
     return result  # FileResponse 直接透出
@@ -87,6 +106,21 @@ def execute_import(file: UploadFile,
         file, _import_options(
             _resolve_require_case_consistency(require_case_consistency,
                                               require_case_consistency_camel), intent))
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
+
+
+@router.post('/import-incremental')
+def import_incremental(file: UploadFile,
+                       _: None = require_permission('task:import')):
+    """增量导入（链路 2）：合并回 A 原任务（维度覆盖集 + 报告原地替换）
+
+    multipart ZIP（manifest 1.1 + sourceTask）。失败码透传：
+    400（包结构/多任务/id 不一致）、403（无权写任务）、404（源任务不存在）、
+    409（指纹不符 / 包内 id 不存在）、500（补偿失败，data.compensationErrors）。
+    """
+    result = DataTransferGatewayService.import_incremental(file, {})
     if isinstance(result, tuple) and len(result) == 2:
         return to_response(result)
     return result
