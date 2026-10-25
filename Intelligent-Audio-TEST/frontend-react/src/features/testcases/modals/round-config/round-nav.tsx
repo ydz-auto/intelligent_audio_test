@@ -13,15 +13,12 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-/** 单轮评估草稿（§5.1 评估维度步骤；params 按维度 id 存权重/阈值/LLM 配置） */
+/** 单轮评估草稿（§5.1 评估维度步骤；params 按维度 id 存权重/阈值，没有模型 / Prompt 配置） */
 export interface RoundEvaluationDraft {
   /** 启用本轮评估（首轮默认开；addRound 复制上一轮 enabled） */
   enabled: boolean
   selectedIds: number[]
-  params: Record<
-    number,
-    { weight: number; threshold: number; model?: string; promptTemplate?: string }
-  >
+  params: Record<number, { weight: number; threshold: number }>
 }
 
 /** 默认新轮评估草稿（enabled=false：新轮次默认关闭，首轮由调用方置 true） */

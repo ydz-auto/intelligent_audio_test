@@ -178,7 +178,10 @@ export function DimensionMutateDrawer({
               <HierarchySection form={form} mainDimensions={mainDimensions} />
             </TabsContent>
             <TabsContent value='result' className='min-h-0 flex-1 overflow-y-auto pb-4'>
-              <ResultSection form={form} />
+              <ResultSection
+                form={form}
+                isLlmJudge={mode === 'edit' && effectiveDimension?.llmJudge === true}
+              />
             </TabsContent>
             {!isSub && (
               <TabsContent value='api' className='min-h-0 flex-1 overflow-y-auto pb-4'>

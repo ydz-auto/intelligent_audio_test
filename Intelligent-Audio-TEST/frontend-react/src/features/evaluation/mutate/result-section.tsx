@@ -1,12 +1,14 @@
 /**
  * 评估维度表单「结果配置」分节（11_用例域.md §5.5 结果配置）。
- * 分数单位 · 结果类型*（数值/布尔/文本/LLM Judge）· LLM Judge 配置节（仅 LLM Judge）·
+ * 分数单位 · 结果类型*（数值/布尔/文本；LLM Judge 由维度 task_type_code 表达，
+ * 编辑 LLM Judge 维度时按后端派生 llm_judge 显示只读徽章，INT-1671 裁定 A）·
  * 结果最小值* · 结果最大值* · 小数位数*（0-4）· 权重*（1-10）· 预计执行时间(s)*（≥1）·
  * 评分规则（规则编辑器：行=「如果结果 {≥/>/=/</≤} {值} → {得分} 分」+ 添加/删除）。
  */
 import { Plus, Trash2 } from 'lucide-react'
 import { useFieldArray, type UseFormReturn } from 'react-hook-form'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -18,7 +20,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
-import { Textarea } from '@/components/ui/textarea'
 import { WEIGHT_MAX, WEIGHT_MIN } from '@/features/evaluation/constants'
 import type {
   DimensionFormValues,
@@ -29,15 +30,17 @@ const RESULT_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: '1', label: '数值' },
   { value: '2', label: '布尔' },
   { value: '3', label: '文本' },
-  { value: 'llm_judge', label: 'LLM Judge' },
 ]
 
 const CONDITION_OPTIONS = ['>=', '>', '=', '<', '<=']
 
 export function ResultSection({
   form,
+  isLlmJudge = false,
 }: {
   form: UseFormReturn<DimensionFormValues>
+  /** 后端派生 llm_judge：LLM Judge 维度只读显示，结果类型不可改（INT-1671） */
+  isLlmJudge?: boolean
 }) {
   const { register, watch, setValue, formState, control } = form
   const ruleField = useFieldArray({
@@ -45,7 +48,6 @@ export function ResultSection({
     name: 'rule',
   })
   const resultType = watch('resultType')
-  const isLlmJudge = resultType === 'llm_judge'
   const { fields, append, remove } = ruleField
 
   return (
@@ -61,84 +63,41 @@ export function ResultSection({
         </div>
         <div className='space-y-1.5'>
           <Label required>结果类型</Label>
-          <Select
-            value={resultType}
-            onValueChange={(value) =>
-              setValue('resultType', value as DimensionFormValues['resultType'], {
-                shouldDirty: true,
-              })
-            }
-          >
-            <SelectTrigger className='w-full justify-between'>
-              <SelectValue>
-                {RESULT_TYPE_OPTIONS.find((o) => o.value === resultType)?.label ??
-                  '请选择结果类型'}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {RESULT_TYPE_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {isLlmJudge ? (
+            <div className='flex h-9 items-center gap-2'>
+              <Badge variant='outline' className='gap-1 rounded-md px-1.5 text-[11px]'>
+                LLM Judge
+              </Badge>
+              <span className='text-muted-foreground text-xs'>
+                由维度任务类型（task_type_code=llm_judge）决定，不支持在此修改
+              </span>
+            </div>
+          ) : (
+            <Select
+              value={resultType}
+              onValueChange={(value) =>
+                setValue('resultType', value as DimensionFormValues['resultType'], {
+                  shouldDirty: true,
+                })
+              }
+            >
+              <SelectTrigger className='w-full justify-between'>
+                <SelectValue>
+                  {RESULT_TYPE_OPTIONS.find((o) => o.value === resultType)?.label ??
+                    '请选择结果类型'}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {RESULT_TYPE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </div>
-
-      {isLlmJudge && (
-        <div className='bg-muted/50 space-y-3 rounded-lg border p-3'>
-          <p className='text-sm font-medium'>LLM Judge 配置</p>
-          <div className='space-y-1.5'>
-            <Label htmlFor='llm-model' required>
-              模型
-            </Label>
-            <Input
-              id='llm-model'
-              placeholder='如：gpt-4o-mini'
-              {...register('llmModel')}
-            />
-          </div>
-          <div className='space-y-1.5'>
-            <Label htmlFor='llm-prompt' required>
-              Prompt 模板
-            </Label>
-            <Textarea
-              id='llm-prompt'
-              rows={3}
-              placeholder='可使用 {{asr_result}} {{asr_ref}} 等变量'
-              {...register('llmPromptTemplate')}
-            />
-          </div>
-          <div className='grid gap-3 sm:grid-cols-2'>
-            <div className='space-y-1.5'>
-              <Label htmlFor='llm-max-tokens' required>
-                最大 Token 数
-              </Label>
-              <Input
-                id='llm-max-tokens'
-                type='number'
-                min={1}
-                max={8192}
-                {...register('llmMaxTokens', { valueAsNumber: true })}
-              />
-            </div>
-            <div className='space-y-1.5'>
-              <Label htmlFor='llm-temperature' required>
-                Temperature
-              </Label>
-              <Input
-                id='llm-temperature'
-                type='number'
-                min={0}
-                max={2}
-                step={0.1}
-                {...register('llmTemperature', { valueAsNumber: true })}
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className='grid gap-3 sm:grid-cols-4'>
         <div className='space-y-1.5'>

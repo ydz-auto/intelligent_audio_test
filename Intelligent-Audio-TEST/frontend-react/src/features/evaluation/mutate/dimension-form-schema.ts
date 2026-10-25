@@ -122,17 +122,13 @@ export const dimensionFormSchema = z
     parentDimensionId: z.string(),
     keywords: z.string(),
     scoreUnit: z.string(),
-    resultType: z.enum(['0', '1', '2', '3', 'llm_judge']),
+    resultType: z.enum(['0', '1', '2', '3']),
     resultMin: z.number(),
     resultMax: z.number(),
     decimalPlaces: z.number().min(0).max(4, '小数位数 0-4'),
     weight: z.number().min(WEIGHT_MIN).max(WEIGHT_MAX, '权重 1-10'),
     estimatedExecTime: z.number().min(1, '预计执行时间 ≥1 秒'),
     rule: z.array(ruleRowSchema).min(1, '请至少配置一条评分规则'),
-    llmModel: z.string(),
-    llmPromptTemplate: z.string(),
-    llmMaxTokens: z.number().min(1).max(8192),
-    llmTemperature: z.number().min(0).max(2),
     apiUrl: z.string(),
     apiMethod: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']),
     apiTimeout: z.number().min(1),
@@ -191,10 +187,6 @@ export function emptyDimensionFormValues(): DimensionFormValues {
       { condition: '>=', value: 70, score: 7 },
       { condition: '<', value: 70, score: 0 },
     ],
-    llmModel: '',
-    llmPromptTemplate: '',
-    llmMaxTokens: 1024,
-    llmTemperature: 0.7,
     apiUrl: '',
     apiMethod: 'POST',
     apiTimeout: 30000,
@@ -309,20 +301,14 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
       dimension.parentDimensionId != null ? String(dimension.parentDimensionId) : '',
     keywords: dimension.keywords ?? '',
     scoreUnit: dimension.scoreUnit ?? '',
-    resultType:
-      dimension.resultType === 'llm_judge'
-        ? 'llm_judge'
-        : String(dimension.resultType ?? 1) as DimensionFormValues['resultType'],
+    // INT-1671 裁定 A：LLM Judge 由后端派生布尔表达，结果类型仍是数值/布尔/文本的整数
+    resultType: String(dimension.resultType ?? 1) as DimensionFormValues['resultType'],
     resultMin: dimension.resultMin ?? 0,
     resultMax: dimension.resultMax ?? 100,
     decimalPlaces: dimension.decimalPlaces ?? 2,
     weight: dimension.weight ?? 5,
     estimatedExecTime: dimension.estimatedExecTime ?? 5,
     rule: ruleRows.length > 0 ? ruleRows : emptyDimensionFormValues().rule,
-    llmModel: dimension.llmJudgeConfig?.model ?? '',
-    llmPromptTemplate: dimension.llmJudgeConfig?.promptTemplate ?? '',
-    llmMaxTokens: dimension.llmJudgeConfig?.maxTokens ?? 1024,
-    llmTemperature: dimension.llmJudgeConfig?.temperature ?? 0.7,
     apiUrl: dimension.apiUrl ?? '',
     apiMethod: toApiMethod(dimension.apiSettings),
     apiTimeout: toApiTimeout(dimension.apiSettings),
@@ -404,10 +390,7 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
       : null,
     keywords: isSub ? null : values.keywords || null,
     scoreUnit: values.scoreUnit || null,
-    resultType:
-      values.resultType === 'llm_judge'
-        ? 'llm_judge'
-        : Number(values.resultType),
+    resultType: Number(values.resultType),
     resultMin: values.resultMin,
     resultMax: values.resultMax,
     decimalPlaces: values.decimalPlaces,
@@ -473,15 +456,7 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
             ? parseJsonValue(values.apiBodyTemplate)
             : undefined,
         },
-    llmJudgeConfig:
-      values.resultType === 'llm_judge'
-        ? {
-            model: values.llmModel,
-            promptTemplate: values.llmPromptTemplate,
-            maxTokens: values.llmMaxTokens,
-            temperature: values.llmTemperature,
-          }
-        : null,
+    // INT-1671 裁定 A：不再写 llmJudgeConfig（历史数据后端保持原值，前端不删不清）
   }
 }
 

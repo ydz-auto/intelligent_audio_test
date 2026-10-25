@@ -3,7 +3,7 @@
  * 顶部单轮描述条 + 过滤提示条（当前算法有关联维度时才显示）+ DimensionPicker（V9.7.10
  * 主/子分组云 + 分类分组：搜索+已选计数，主维度「主」徽章/子维度「子」徽章，勾主联动子；
  * categories 传入时按分类聚合组头）+ 已选维度参数卡（权重 0-100 默认 50 + 阈值 0-100 默认 80
- * 非 LLM Judge；LLM Judge 时 模型 Select + Prompt 模板 Select，不含「最大 Token/Temperature」
+ * 非 LLM Judge；LLM Judge 只有只读徽章，没有模型 / Prompt 模板可选项——INT-1671 裁定 A）
  * ——属维度定义 §5.5）+ 底部「启用本轮评估」Checkbox。
  * 受控组件：value=RoundEvaluationDraft（enabled/selectedIds/params），onChange 回写轮次草稿，
  * 供 addRound 复制上一轮 evaluation（⚠️ 实施注意②）。

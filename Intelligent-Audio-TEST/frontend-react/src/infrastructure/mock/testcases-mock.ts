@@ -65,18 +65,19 @@ export const MOCK_DIMENSIONS: EvaluationDimensionItem[] = [
 
 /**
  * 用例编辑抽屉维度选项（§5.1 轮次评估步骤 / §5.1.2 整体评估共用，Dimension 全字段子集）。
- * 含主/子层级（main/sub + parentDimensionId）与 resultType='llm_judge' 维度 + 关联算法，
+ * 含主/子层级（main/sub + parentDimensionId）与 LLM Judge 维度（派生布尔 llmJudge，结果类型仍是
+ * 数值/布尔/文本的整数）+ 关联算法，
  * 按当前算法过滤（associated_algorithms 口径）；接线后收敛 GET /evaluation/dimensions 同源。
  */
 export const MOCK_CASE_DIMENSIONS: Dimension[] = [
   { id: 1, name: '识别准确率', description: '语音识别整体准确率', dimensionType: 'main', parentDimensionId: null, categoryId: 1, resultType: 1, weight: 9, status: true, associatedAlgorithms: [{ algorithmType: 'asr-v3', isDefault: true, weight: 9 }, { algorithmType: 'asr-stream', isDefault: false, weight: 8 }] },
   { id: 11, name: '字准率', description: '逐字识别准确率', dimensionType: 'sub', parentDimensionId: 1, categoryId: 1, resultType: 1, weight: 8, status: true },
   { id: 12, name: '句准率', description: '整句识别准确率', dimensionType: 'sub', parentDimensionId: 1, categoryId: 1, resultType: 1, weight: 7, status: true },
-  { id: 2, name: '语义理解', description: '指令语义理解与执行正确性', dimensionType: 'main', parentDimensionId: null, categoryId: 2, resultType: 'llm_judge', weight: 7, status: true, associatedAlgorithms: [{ algorithmType: 'asr-v3', isDefault: false, weight: 7 }, { algorithmType: 'eval-ensemble', isDefault: true, weight: 8 }] },
-  { id: 21, name: '指令完成度', description: '指令完整执行程度', dimensionType: 'sub', parentDimensionId: 2, categoryId: 2, resultType: 'llm_judge', weight: 6, status: true },
+  { id: 2, name: '语义理解', description: '指令语义理解与执行正确性', dimensionType: 'main', parentDimensionId: null, categoryId: 2, resultType: 1, llmJudge: true, weight: 7, status: true, associatedAlgorithms: [{ algorithmType: 'asr-v3', isDefault: false, weight: 7 }, { algorithmType: 'eval-ensemble', isDefault: true, weight: 8 }] },
+  { id: 21, name: '指令完成度', description: '指令完整执行程度', dimensionType: 'sub', parentDimensionId: 2, categoryId: 2, resultType: 1, llmJudge: true, weight: 6, status: true },
   { id: 3, name: '唤醒成功率', description: '唤醒词响应成功率', dimensionType: 'main', parentDimensionId: null, categoryId: 3, resultType: 1, weight: 6, status: true, associatedAlgorithms: [{ algorithmType: 'asr-stream', isDefault: true, weight: 6 }] },
   { id: 4, name: '响应时延', description: '指令响应端到端时延', dimensionType: 'main', parentDimensionId: null, categoryId: 3, resultType: 1, weight: 5, status: true, associatedAlgorithms: [{ algorithmType: 'asr-stream', isDefault: false, weight: 5 }, { algorithmType: 'eval-ensemble', isDefault: false, weight: 4 }] },
-  { id: 5, name: '对话连贯性', description: '多轮对话上下文一致性', dimensionType: 'main', parentDimensionId: null, categoryId: 2, resultType: 'llm_judge', weight: 6, status: true, associatedAlgorithms: [{ algorithmType: 'eval-ensemble', isDefault: true, weight: 6 }] },
+  { id: 5, name: '对话连贯性', description: '多轮对话上下文一致性', dimensionType: 'main', parentDimensionId: null, categoryId: 2, resultType: 1, llmJudge: true, weight: 6, status: true, associatedAlgorithms: [{ algorithmType: 'eval-ensemble', isDefault: true, weight: 6 }] },
 ]
 
 /**

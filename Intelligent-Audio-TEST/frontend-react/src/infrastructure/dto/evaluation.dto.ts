@@ -50,6 +50,8 @@ export interface DimensionItemDto {
   score_unit: string | null
   type: string | null
   result_type: number | null
+  /** LLM Judge 派生布尔（后端按维度 task_type_code / dimension_type 判定；不是结果类型） */
+  llm_judge?: boolean
   result_min: number | null
   result_max: number | null
   decimal_places: number | null
@@ -171,6 +173,7 @@ export function toDimension(dto: DimensionItemDto): Dimension {
     scoreUnit: dto.score_unit,
     type: dto.type,
     resultType: dto.result_type,
+    llmJudge: dto.llm_judge ?? false,
     resultMin: dto.result_min,
     resultMax: dto.result_max,
     decimalPlaces: dto.decimal_places,
@@ -295,7 +298,8 @@ export function toDimensionInputDto(data: Partial<Dimension>): Record<string, un
   if (data.excludeRounds !== undefined) result.exclude_rounds = data.excludeRounds
   if (data.associatedAlgorithms !== undefined) result.associated_algorithms = data.associatedAlgorithms
   if (data.status !== undefined) result.status = data.status
-  if (data.llmJudgeConfig !== undefined) result.llm_judge_config = data.llmJudgeConfig
+  // INT-1671 裁定 A：维度不再有模型 / Prompt 可配置项，写侧不发 llm_judge_config
+  // （历史数据后端保持原值不动，前端既不删也不补默认值）
   return result
 }
 

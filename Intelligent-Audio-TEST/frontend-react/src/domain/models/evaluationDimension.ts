@@ -6,7 +6,11 @@
  * 完整维度管理模型（Dimension + EvaluationCategory）归本页卡（features/evaluation）。
  */
 
-/** LLM Judge 配置（dimension.llmJudgeConfig，§5.5 结果配置节） */
+/**
+ * LLM Judge 配置（dimension.llmJudgeConfig）。
+ * INT-1671 裁定 A：平台没有模型 / Prompt 枚举能力，维度表单不再编辑、保存侧不再写入；
+ * 仅作历史数据只读原样透传，不删不清、不补默认值。
+ */
 export interface LlmJudgeConfig {
   model: string
   promptTemplate: string
@@ -126,8 +130,13 @@ export interface Dimension {
   scoreUnit?: string | null
   /** 评估类型（type 原值：auto/manual） */
   type?: string | null
-  /** 结果类型（后端原值 int；llm_judge 字符串兼容判「LLM Judge」徽章） */
-  resultType?: number | 'llm_judge' | null
+  /** 结果类型（后端原值 int：1 数值 / 2 布尔 / 3 文本；LLM Judge 不是结果类型） */
+  resultType?: number | null
+  /**
+   * 是否 LLM Judge 维度（后端派生布尔 llm_judge：由维度自身 task_type_code / dimension_type 判定）。
+   * 只读徽章标识，前端不据此提供模型 / Prompt 选择（INT-1671 裁定 A）。
+   */
+  llmJudge?: boolean
   resultMin?: number | null
   resultMax?: number | null
   decimalPlaces?: number | null
@@ -146,6 +155,7 @@ export interface Dimension {
   status?: boolean | null
   createdAt?: string | null
   updatedAt?: string | null
+  /** 历史 LLM Judge 配置（只读透传；表单不再编辑、保存侧不再写入） */
   llmJudgeConfig?: LlmJudgeConfig | null
 }
 

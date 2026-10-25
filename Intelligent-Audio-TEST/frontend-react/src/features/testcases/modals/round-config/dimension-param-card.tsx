@@ -1,37 +1,25 @@
 /**
  * 已选维度参数卡（用例编辑抽屉 §5.1 / §5.1.2 共用）。
- * 每维度：名称 + LLM Judge 徽章 + 移除钮；权重 number 0-100 默认 50 + 阈值 number 0-100 默认 80
- * （非 LLM Judge）；LLM Judge 时 模型 Select（gpt-4/gpt-4o/gpt-3.5-turbo/claude-3-opus/claude-3-sonnet）
- * + Prompt 模板 Select（default/accuracy/fluency/relevance）。
- * 数据契约 config.dimensions 项 = { id, name, weight, threshold, (llmJudgeConfig: {model, promptTemplate}) }
+ * 每维度：名称 + LLM Judge 只读徽章 + 移除钮；权重 number 0-100 默认 50 + 阈值 number 0-100 默认 80
+ * （非 LLM Judge）。
+ * LLM Judge 由维度自身 task_type_code 表达（后端派生 llm_judge），不是结果类型，
+ * 也没有模型 / Prompt 模板可选项（INT-1671 裁定 A 撤除）。
+ * 数据契约 config.dimensions 项 = { id, name, weight, threshold }。提交时按字段覆盖
+ * （EvaluationStrategyMergeService 只覆盖 weight / threshold / llmJudgeConfig），
+ * 因此历史条目上已有的 llmJudgeConfig 不会被这两个字段的提交清掉，原样透传。
  */
 import { SlidersHorizontal } from 'lucide-react'
-import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import type { Dimension } from '@/domain/models/evaluationDimension'
 
 export interface DimensionParamValue {
   weight: number
   threshold: number
-  model?: string
-  promptTemplate?: string
 }
-
-/** mock LLM 模型选项（接线后读算法 schema/维度配置） */
-const MOCK_LLM_MODELS = ['gpt-4', 'gpt-4o', 'gpt-3.5-turbo', 'claude-3-opus', 'claude-3-sonnet']
-/** mock Prompt 模板选项 */
-const MOCK_PROMPT_TEMPLATES = ['default', 'accuracy', 'fluency', 'relevance']
 
 export function DimensionParamCard({
   dimension,
@@ -44,15 +32,7 @@ export function DimensionParamCard({
   onChange: (patch: Partial<DimensionParamValue>) => void
   onRemove: () => void
 }) {
-  const llmJudge = dimension.resultType === 'llm_judge'
-  const [model, setModel] = useState(params.model ?? MOCK_LLM_MODELS[4])
-  const [prompt, setPrompt] = useState(params.promptTemplate ?? MOCK_PROMPT_TEMPLATES[0])
-
-  const commit = (patch: Partial<DimensionParamValue>) => {
-    onChange(patch)
-    if (patch.model) setModel(patch.model)
-    if (patch.promptTemplate) setPrompt(patch.promptTemplate)
-  }
+  const llmJudge = dimension.llmJudge === true
 
   return (
     <div className='bg-background ring-foreground/10 rounded-lg p-3 ring-1'>
@@ -84,11 +64,11 @@ export function DimensionParamCard({
             max={100}
             step={1}
             value={params.weight}
-            onChange={(e) => commit({ weight: Number(e.target.value) })}
+            onChange={(e) => onChange({ weight: Number(e.target.value) })}
             className='h-8'
           />
         </div>
-        {!llmJudge ? (
+        {!llmJudge && (
           <div className='space-y-1.5'>
             <Label className='text-sm'>阈值</Label>
             <Input
@@ -97,49 +77,10 @@ export function DimensionParamCard({
               max={100}
               step={1}
               value={params.threshold}
-              onChange={(e) => commit({ threshold: Number(e.target.value) })}
+              onChange={(e) => onChange({ threshold: Number(e.target.value) })}
               className='h-8'
             />
           </div>
-        ) : (
-          <>
-            <div className='space-y-1.5'>
-              <Label className='text-sm'>模型</Label>
-              <Select
-                value={model}
-                onValueChange={(v) => commit({ model: v ?? undefined })}
-              >
-                <SelectTrigger size='sm' className='h-8 w-full'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MOCK_LLM_MODELS.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className='space-y-1.5'>
-              <Label className='text-sm'>Prompt 模板</Label>
-              <Select
-                value={prompt}
-                onValueChange={(v) => commit({ promptTemplate: v ?? undefined })}
-              >
-                <SelectTrigger size='sm' className='h-8 w-full'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MOCK_PROMPT_TEMPLATES.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </>
         )}
       </div>
     </div>
