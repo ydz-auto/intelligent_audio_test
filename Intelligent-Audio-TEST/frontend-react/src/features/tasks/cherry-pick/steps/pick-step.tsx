@@ -25,6 +25,7 @@ import {
   useSelectAllCandidates,
 } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
+import { useCherryPickContainers } from '@/application/tasks/cherry-pick/use-cherry-pick-containers'
 import { usePickOrg } from '@/application/tasks/cherry-pick/use-pick-org'
 import { useAlgorithmLabels } from '@/application/hooks/use-algorithm-options'
 import type {
@@ -44,6 +45,7 @@ import {
   computeSelectionStatsFromIndex,
   invertVisibleSelection,
 } from '@/domain/lib/pick-candidate-tree'
+import { excludeContainerTaskRows } from '@/domain/lib/container-composition'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PickFilterBar } from '@/features/tasks/cherry-pick/components/pick-filter-bar'
@@ -79,6 +81,14 @@ export function PickStep({
   const [sortOrder, setSortOrder] = useState<PickableTaskSortOrder>('asc')
   // 阶段 1 任务清单（pickable-tasks 任务级聚合 + 服务端分页排序，不受阶段 2 任务筛选影响）
   const pickableTasksQuery = usePickableTasks({ sortBy, sortOrder })
+  // §5.5.5（INT-1717）：容器本身不进阶段 1 可挑选清单。后端 pickable-tasks 任务级聚合
+  // 本就不含容器（容器无 test_results），这里按既有容器列表再显式过滤一次，保证后端口径
+  // 变化时清单仍成立；与页签计数同一 query key → 向导内零新增请求。
+  const containersQuery = useCherryPickContainers({})
+  const containerTaskIds = useMemo(
+    () => new Set((containersQuery.data?.items ?? []).map((c) => c.id)),
+    [containersQuery.data]
+  )
   const [phase, setPhase] = useState<'tasks' | 'results'>(
     presetTaskIds && presetTaskIds.length > 0 ? 'results' : 'tasks'
   )
@@ -118,8 +128,11 @@ export function PickStep({
     if (!resultTypeVariety && view === 'resultType') setView('case')
   }, [resultTypeVariety, view])
 
-  /** 阶段 1 任务行（服务端已按 sort_by/sort_order 排序，前端不再聚合/重排） */
-  const taskRows = pickableTasksQuery.items
+  /** 阶段 1 任务行（服务端已按 sort_by/sort_order 排序；INT-1717 容器不进阶段 1 清单） */
+  const taskRows = useMemo(
+    () => excludeContainerTaskRows(pickableTasksQuery.items, containerTaskIds),
+    [pickableTasksQuery.items, containerTaskIds]
+  )
 
   /** 任务名映射（阶段 2 任务集摘要条；pickable-tasks 即全量可挑选任务清单） */
   const taskNameById = useMemo(() => {

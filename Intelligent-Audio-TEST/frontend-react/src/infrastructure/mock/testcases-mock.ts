@@ -65,8 +65,8 @@ export const MOCK_DIMENSIONS: EvaluationDimensionItem[] = [
 
 /**
  * 用例编辑抽屉维度选项（§5.1 轮次评估步骤 / §5.1.2 整体评估共用，Dimension 全字段子集）。
- * 含主/子层级（main/sub + parentDimensionId）与 LLM Judge 维度（llmJudge: true，LLM Judge
- * 不是结果类型；resultType 仍为整数——INT-1681）+ 关联算法，
+ * 含主/子层级（main/sub + parentDimensionId）与 LLM Judge 维度（派生布尔 llmJudge，结果类型仍是
+ * 数值/布尔/文本的整数——INT-1681）+ 关联算法，
  * 按当前算法过滤（associated_algorithms 口径）；接线后收敛 GET /evaluation/dimensions 同源。
  */
 export const MOCK_CASE_DIMENSIONS: Dimension[] = [

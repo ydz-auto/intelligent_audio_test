@@ -1,7 +1,7 @@
 /**
  * 评估维度表单 schema/转换器（11_用例域.md §5.5）单元测试。
  * 覆盖空表单初值、编辑反填（toDimensionFormValues）、保存载荷收敛
- * （toDimensionSaveInput：子维度不携带 API 配置、结果类型只发整数（INT-1681）、
+ * （toDimensionSaveInput：子维度不携带 API 配置、结果类型只发整数（INT-1681 / INT-1671 裁定 A）、
  * 所需输入/输出字段/API 端点随载荷提交——P3-2 收敛）。
  */
 import { describe, expect, it } from 'vitest'
@@ -109,7 +109,7 @@ describe('toDimensionFormValues', () => {
     expect(values.rule[0]).toEqual({ condition: '>=', value: 95, score: 10 })
   })
 
-  it('LLM Judge 维度按原整数结果类型反填（不是 llm_judge 字符串；INT-1681）', () => {
+  it('LLM Judge 维度按原整数结果类型反填（不是 llm_judge 字符串；INT-1681 / INT-1671）', () => {
     const values = toDimensionFormValues({
       ...mockDimension,
       resultType: 1,

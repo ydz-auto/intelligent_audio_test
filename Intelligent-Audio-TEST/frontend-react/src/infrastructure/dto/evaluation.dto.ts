@@ -53,7 +53,7 @@ export interface DimensionItemDto {
   score_unit: string | null
   type: string | null
   result_type: number | null
-  /** LLM Judge 派生布尔（后端按维度 task_type_code 判定；不是结果类型） */
+  /** LLM Judge 派生布尔（后端按维度 task_type_code / dimension_type 判定；不是结果类型） */
   llm_judge?: boolean
   /** 是否需要音频（派生布尔；列表端点实测不下发，仅 options 端点下发，INT-1843） */
   requires_audio?: boolean | null
@@ -443,7 +443,7 @@ export function toDimensionInputDto(data: Partial<Dimension>): Record<string, un
   if (data.status !== undefined) result.status = data.status
   // llm_judge_config 不再回写：写侧唯一入口 toDimensionSaveInput 已不产出该字段，
   // 后端 INT-1735 起也不再读取（api_gateway / evaluation_service 无该键处理）。
-  // 读侧映射与用例 config 里的历史 llmJudgeConfig 原样透传保持不变（INT-1681）。
+  // 读侧映射与用例 config 里的历史 llmJudgeConfig 原样透传保持不变（INT-1681 / INT-1671 裁定 A）。
   return result
 }
 

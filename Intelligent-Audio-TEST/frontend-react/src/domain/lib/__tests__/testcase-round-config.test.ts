@@ -76,7 +76,7 @@ describe('testcase round config 序列化（INT-877/996 合流）', () => {
   })
 
   describe('roundDraftFromConfig', () => {
-    it('回填轮次数 + 音频摘要 + 评估维度（含 llmJudgeConfig）', () => {
+    it('回填轮次数 + 音频摘要 + 评估维度（INT-1671 裁定 A：草稿只带权重/阈值）', () => {
       const draft = roundDraftFromConfig(
         {
           round_number: 2,
@@ -97,12 +97,7 @@ describe('testcase round config 序列化（INT-877/996 合流）', () => {
       expect(draft.audios[0].audioId).toBe(1)
       expect(draft.dimensionCount).toBe(1)
       expect(draft.evaluation.selectedIds).toEqual([2])
-      expect(draft.evaluation.params[2]).toMatchObject({
-        weight: 40,
-        threshold: 90,
-        model: 'claude-3-sonnet',
-        promptTemplate: 'accuracy',
-      })
+      expect(draft.evaluation.params[2]).toEqual({ weight: 40, threshold: 90 })
     })
 
     it('INT-996 算法参数独立列 + 噪声草稿按轮读取', () => {

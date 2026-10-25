@@ -133,15 +133,11 @@ export function roundDraftFromConfig(
   for (const d of dimensions) {
     const id = Number(d.id)
     if (!Number.isFinite(id) || id === 0) continue
-    const llm =
-      d.llmJudgeConfig && typeof d.llmJudgeConfig === 'object'
-        ? (d.llmJudgeConfig as Record<string, unknown>)
-        : null
+    // INT-1671 裁定 A：草稿只带权重/阈值；历史 llmJudgeConfig 不进草稿，
+    // 保存时由原始轮次条目原样透传（不删不清、不补默认值）。
     draft.params[id] = {
       weight: Number(d.weight ?? 50),
       threshold: Number(d.threshold ?? 80),
-      ...(llm?.model != null ? { model: String(llm.model) } : {}),
-      ...(llm?.promptTemplate != null ? { promptTemplate: String(llm.promptTemplate) } : {}),
     }
   }
   return {
@@ -234,14 +230,8 @@ export function roundsToConfig(
               name: String(origDim?.name ?? dimNameById.get(id) ?? `dim-${id}`),
               weight: p?.weight ?? Number(origDim?.weight ?? 50),
               threshold: p?.threshold ?? Number(origDim?.threshold ?? 80),
-              ...(p?.model || p?.promptTemplate
-                ? {
-                    llmJudgeConfig: {
-                      model: p?.model ?? '',
-                      promptTemplate: p?.promptTemplate ?? '',
-                    },
-                  }
-                : {}),
+              // INT-1671 裁定 A：保存侧不再写 llmJudgeConfig；历史条目上的值经
+              // ...(origDim ?? {}) 原样透传（不删不清、不补默认值）。
             }
           }),
         },

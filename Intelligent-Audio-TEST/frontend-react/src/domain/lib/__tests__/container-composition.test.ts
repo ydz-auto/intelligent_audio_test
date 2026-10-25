@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   containerMixState,
+  excludeContainerTaskRows,
   filterCompositionEntries,
   filterMissingEntries,
   groupCompositionEntries,
@@ -290,5 +291,25 @@ describe('containerMixState（列表「部分失败」映射，§5.5.4）', () =
     expect(containerMixState(null, 5)).toBe('none')
     expect(containerMixState(2, null)).toBe('none')
     expect(containerMixState(undefined, undefined)).toBe('none')
+  })
+})
+
+describe('excludeContainerTaskRows（§5.5.5 容器不进阶段 1 清单）', () => {
+  const rows = [
+    { taskId: 391, taskName: '任务甲' },
+    { taskId: 652, taskName: '挑选合并容器' },
+    { taskId: 419, taskName: '任务乙' },
+  ]
+
+  it('剔除容器 id 对应的任务行', () => {
+    expect(excludeContainerTaskRows(rows, new Set([652])).map((r) => r.taskId)).toEqual([391, 419])
+  })
+
+  it('容器集为空 → 原样返回（后端候选本就不含容器时不改清单）', () => {
+    expect(excludeContainerTaskRows(rows, new Set())).toBe(rows)
+  })
+
+  it('全部是容器 → 空清单（前端仍给空态，不臆造任务）', () => {
+    expect(excludeContainerTaskRows(rows, new Set([391, 419, 652]))).toEqual([])
   })
 })
