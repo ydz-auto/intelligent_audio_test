@@ -123,6 +123,23 @@ describe('TestExecutionComponent 容器信息头（INT-1832 §2.2）', () => {
     await w.find('.chb-stat--action').trigger('click')
     expect(w.find('.chb-popover-empty').text()).toBe('无来源任务记录')
   })
+
+  it('来源触发器用 div[role=button]（避开全局 button 基线），Enter / Space 可开合', async () => {
+    const w = mountContainer()
+    const trigger = w.find('.chb-stat--action')
+    expect(trigger.element.tagName).toBe('DIV')
+    expect(trigger.attributes('role')).toBe('button')
+    expect(trigger.attributes('tabindex')).toBe('0')
+    expect(trigger.attributes('aria-expanded')).toBe('false')
+
+    await trigger.trigger('keydown', { key: 'Enter' })
+    expect(w.find('.chb-popover').exists()).toBe(true)
+    expect(trigger.attributes('aria-expanded')).toBe('true')
+
+    await trigger.trigger('keydown', { key: ' ' })
+    expect(w.find('.chb-popover').exists()).toBe(false)
+    expect(trigger.attributes('aria-expanded')).toBe('false')
+  })
 })
 
 describe('TestExecutionComponent 容器版面（INT-1832 §2.4）', () => {

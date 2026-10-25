@@ -14,18 +14,23 @@
     <!-- 结构化摘要：来源 / 结果 / 用例 + 创建时间（替代描述字段里的「挑选合并自 n 个来源任务」堆叠） -->
     <div class="chb-stats">
       <div class="chb-source">
-        <button
-          type="button"
+        <!-- 用 div[role=button] 承载胶囊样式：原生 button 会被全局 button 基线（button.css:54）
+             以更高特异性改写 padding / border / radius / background / color / font-size，样式不生效 -->
+        <div
+          role="button"
+          tabindex="0"
           class="chb-stat chb-stat--action"
           :class="{ 'is-open': popoverOpen }"
           :aria-expanded="popoverOpen ? 'true' : 'false'"
           :title="`查看 ${sourceTaskCount} 个来源任务`"
           @click.stop="togglePopover"
+          @keydown.enter.prevent="togglePopover"
+          @keydown.space.prevent="togglePopover"
         >
           <i class="fas fa-code-branch"></i>
           来源 {{ sourceTaskCount }} 个任务
           <i class="fas fa-chevron-down chb-caret" :class="{ 'is-open': popoverOpen }"></i>
-        </button>
+        </div>
 
         <!-- 就地浮层（不 teleport，避免模态窗内被遮罩盖住——INT-1106 教训） -->
         <div v-if="popoverOpen" class="chb-popover" role="dialog" aria-label="来源任务" @click.stop>
@@ -199,20 +204,31 @@ onBeforeUnmount(() => {
   color: var(--foreground);
   font-size: 12px;
   font-weight: 500;
+  line-height: 1.4;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
+/* 来源 StatBadge（规范 18 §10.1）：secondary-light 底 + secondary 文本，可点开 Popover */
 .chb-stat--action {
+  background: var(--secondary-light);
+  color: var(--secondary);
+  border-color: var(--secondary);
   cursor: pointer;
+  user-select: none;
   font-family: inherit;
-  transition: color 0.2s, border-color 0.2s;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
 }
 
-.chb-stat--action:hover,
-.chb-stat--action.is-open {
-  color: var(--primary);
-  border-color: var(--primary);
+.chb-stat--action:hover {
+  /* 底加深 8%（§10.1），取令牌混色，不写死颜色 */
+  background: color-mix(in srgb, var(--secondary-light) 92%, var(--secondary));
+}
+
+.chb-stat--action.is-open,
+.chb-stat--action:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
 }
 
 .chb-caret {
