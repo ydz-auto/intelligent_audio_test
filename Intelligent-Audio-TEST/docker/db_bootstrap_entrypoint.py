@@ -234,6 +234,25 @@ BOOTSTRAP_STEPS = [
     #     须排在 ㊸ 统计兜底 ANALYZE 之前（该步固定为引导链末步，见
     #     test_int1741::test_bootstrap_step_is_last）。
     ('python', 'scripts/migrations/202610/alter_report_studio_sources.py', '--apply'),
+    # ㊾ voice_llm 的 API 输出声明 + source='api' 评估映射种子（INT-1746 / C1，
+    #     C0 裁定 1/3；本步在 INT-1875 补回——C1 交付分支有这个追加项，但集成
+    #     合入 INT-1746/INT-1749 时整份取了 int-1749 侧的引导链，本步静默丢失，
+    #     新环境跑完引导链 voice_llm 只剩 response_audio 一条输出声明）：
+    #     ① algorithm_api_params 补 8 条 direction=output 声明（answer + C3 展示
+    #        字段 session_id / round_count / total_latency / context_mode /
+    #        history_count / error / rounds）。INT-1748（C3）删除执行侧硬编码
+    #        7 字段后，展示字段清单只剩这份声明一个来源，缺 rounds 会让任务详情
+    #        的轮次展开整段降级；② param_mappings 逐未删除的 llm_judge 维度补
+    #        api.answer→answer，否则 API 用例走 llm_judge 维度时入参恒空。
+    #     脚本幂等（自然键已存在即 SKIP），默认 dry-run，引导链必须带 --apply。
+    #     依赖：必须在 ⑪ seed_voice_llm（Step 5 会 DELETE session_id 等会话协议
+    #     字段）之后，否则补回的 session_id 会被它删掉。
+    #     序号按 V9.7.31 现状顺延（㊸~㊽ 已由 INT-1827 重排，不复用旧号），物理位置
+    #     落在 ㊽ ANALYZE 之前的末尾追加位；INT-1748 的设备输出声明种子合入后须排在
+    #     本步之前（同为 voice_llm 声明种子，两步一起排在 ANALYZE 之前）。
+    #     盲点：llm_judge 维度种子（202609/seed_llm_judge_dimension.py）不在引导链内，
+    #     全新库 / 维度全部软删时 B 段插入 0 条，只补 A 段并提示（既有前置，非本步缺陷）。
+    ('python', 'scripts/migrations/202610/seed_api_eval_mapping_int1746.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
