@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
+import { EMPTY_SELECTION_HINT } from '@/application/testcases/use-case-batch-actions'
 import { createGroup } from '@/infrastructure/api/groups-api'
 import {
   batchTestcaseAction,
@@ -57,6 +58,11 @@ export function BatchAdjustGroupDialog({
 
   const handleSubmit = async () => {
     if (!groupValue) return
+    // INT-1780：空 ids 不得提交（旧实现在分组收起、未勾选时按 0 条发请求并提示成功）
+    if (ids.length === 0) {
+      toast.warning(EMPTY_SELECTION_HINT)
+      return
+    }
     setSubmitting(true)
     try {
       // 「+ 新建分组」：先建组拿到目标分组 id，再走批量动作
@@ -142,7 +148,10 @@ export function BatchAdjustGroupDialog({
           </Button>
           <Button
             disabled={
-              submitting || !groupValue || (groupValue === '__new__' && !newGroupName.trim())
+              submitting ||
+              ids.length === 0 ||
+              !groupValue ||
+              (groupValue === '__new__' && !newGroupName.trim())
             }
             onClick={() => void handleSubmit()}
           >

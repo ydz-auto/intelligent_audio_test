@@ -80,6 +80,31 @@ describe('CaseGroupActions', () => {
     expect(onBatchAction).toHaveBeenCalledWith('device', ['tc-002'])
   })
 
+  it('「删除用例」走 onBatchAction(delete) 真实批量通道（INT-1780：不再只 toast 假成功）', async () => {
+    const user = setupUser()
+    const onBatchAction = vi.fn()
+    render(<CaseGroupActions {...baseProps} onBatchAction={onBatchAction} />)
+    await user.click(screen.getByRole('button', { name: /批量修改/ }))
+    await user.click(await screen.findByText('删除用例'))
+    expect(onBatchAction).toHaveBeenCalledWith('delete', ['tc-001', 'tc-002', 'tc-003'])
+  })
+
+  it('组内用例未加载（收起态）时传空 ids，由 openBatch 统一拦截提示（INT-1780）', async () => {
+    const user = setupUser()
+    const onBatchAction = vi.fn()
+    render(
+      <CaseGroupActions
+        {...baseProps}
+        caseIds={[]}
+        selectedIds={[]}
+        onBatchAction={onBatchAction}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /批量修改/ }))
+    await user.click(await screen.findByText('调整分组'))
+    expect(onBatchAction).toHaveBeenCalledWith('group', [])
+  })
+
   it('回收站态整组操作面板隐藏（INT-215 口径）', () => {
     render(<CaseGroupActions {...baseProps} trash onBatchAction={vi.fn()} />)
     expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument()

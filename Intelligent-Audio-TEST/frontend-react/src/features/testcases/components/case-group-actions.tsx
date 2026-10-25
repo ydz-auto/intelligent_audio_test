@@ -4,11 +4,13 @@
  * （用例专属参数/播放设备/声压/调整分组/评价维度/噪声/标签生成名称/管理标签/用例参考更新，
  * 与 §3.7 批量浮条同源载荷，两通道同源）。
  * 批量九项触发 onBatchAction(action, ids)——ids=组内已勾选否则组内全量（resolveCaseIds 语义）。
+ * 组内用例懒加载（分组收起时 caseIds 为空），空 ids 由 useCaseBatchActions.openBatch 统一拦截
+ * 并提示「请先展开分组或勾选用例」（INT-1780，不再按 0 条提交并提示成功）。
+ * 末项「删除用例」走 onBatchAction('delete') → 批量删除确认 → 真实 POST /testcases/batch（INT-1780）。
  * 回收站态整组操作面板隐藏（INT-215 口径：trashMode 下组头无批量/编辑/删除）。
  */
 import { ChevronDown, Copy, Pencil, Plus, Settings2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -166,10 +168,13 @@ export function CaseGroupActions({
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
+            {/* INT-1780：原实现只 toast.success('批量删除用例')、不发任何请求（假成功）。
+                改走 onBatchAction('delete') → 批量删除确认弹窗 → 真实 POST /testcases/batch（delete）。
+                V9.7.10 组头菜单无此项（React 侧新增），保留入口但必须真实生效。 */}
             <DropdownMenuItem
               data-variant='destructive'
               onSelect={() => {
-                toast.success('批量删除用例', { description: `已移入回收站 ${resolveIds().length} 个用例` })
+                onBatchAction('delete', resolveIds())
                 setOpen(false)
               }}
             >

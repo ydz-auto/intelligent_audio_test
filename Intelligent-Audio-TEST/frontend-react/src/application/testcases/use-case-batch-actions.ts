@@ -41,6 +41,13 @@ export interface BatchDialogState {
   ids: string[]
 }
 
+/**
+ * 空选集提示（INT-1780）：分组未展开时组内用例尚未懒加载，组头「批量修改」九项的
+ * ids 恒为空；旧实现照样开弹窗并按 0 条发 POST /testcases/batch，提示「移动 0 个用例」
+ * ——误导性成功。空 ids 一律在入口拦截，不发请求、不提示成功。
+ */
+export const EMPTY_SELECTION_HINT = '请先展开分组或勾选用例'
+
 export function useCaseBatchActions({
   onClearSelection,
 }: {
@@ -67,6 +74,11 @@ export function useCaseBatchActions({
   }, [batchDialog, queryClient])
 
   const openBatch = (action: BatchActionKey, ids: string[]) => {
+    // INT-1780：空 ids 不开弹窗/不发请求（分组收起态组内用例未加载、也未勾选时的入口）
+    if (ids.length === 0) {
+      toast.warning(EMPTY_SELECTION_HINT)
+      return
+    }
     const count = ids.length
     switch (action) {
       case 'dimensions':
@@ -135,8 +147,14 @@ export function useCaseBatchActions({
 
   /** 确认弹窗回调（行内/分组/批量同源；INT-997 接真实接口，失败保留弹窗可重试/取消） */
   const handleConfirm = async (state: CaseConfirmState) => {
+    const ids = state.ids ?? []
+    // INT-1780 兜底：确认态带空 ids 时不得发请求、不得按成功提示（关闭即可）
+    if (ids.length === 0) {
+      toast.warning(EMPTY_SELECTION_HINT)
+      setConfirm(null)
+      return
+    }
     try {
-      const ids = state.ids ?? []
       switch (state.kind) {
         case 'delete':
           // INT-997：行删除接 DELETE /testcases/{id}（逻辑删除 → 回收站）
