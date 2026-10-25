@@ -81,7 +81,9 @@ class _WorkerMixin:
                             self._archive_thread.start()
 
                     if current_time - self._last_sweep_check >= self._sweep_check_interval:
-                        # 日志保留清扫（INT-81）：服务日志/业务日志按保留天数清理
+                        # 日志保留清扫（INT-81）：周期触发的只是「检查」——真正的
+                        # 清扫体由 `logs/.sweep_stamp` 收敛为当日首次触发才执行
+                        # （INT-1877 契约 §Q5），且只在 LOG_SWEEP_SERVICE 进程内跑
                         self._last_sweep_check = current_time
                         if self._sweep_thread is None or not self._sweep_thread.is_alive():
                             self._sweep_thread = threading.Thread(
@@ -127,7 +129,11 @@ class _WorkerMixin:
         return self._business_writer
 
     def _sweep_expired_logs(self):
-        """按保留天数清扫过期日志文件（服务日志 + 业务日志）。"""
+        """按保留天数清扫过期日志文件（服务 + 业务 + 审计三棵树）。
+
+        入口判定（单清扫者 / 当日首次触发）都在 `sweep_log_root` 内，
+        非当日已执行时立即返回 0，不产生存储探活与上传 I/O。
+        """
         try:
             from shared.logging import sweep_log_root
             sweep_log_root()

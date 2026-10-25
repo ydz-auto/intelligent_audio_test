@@ -36,8 +36,12 @@ from shared.logging.enums import AUDIT_DIR, AuditLogCategory, LogEnvironment  # 
 from shared.logging.path_builder import BUSINESS_DIR  # noqa: E402
 from shared.logging.retention import (  # noqa: E402
     audit_cutoff_date,
-    sweep_audit_dates,
+    read_sweep_stamp,
     sweep_log_root,
+    sweep_audit_dates,
+    sweep_stamp_path,
+    today_segment,
+    write_sweep_stamp,
 )
 from shared.models.common_enums import AuditEvent  # noqa: E402
 
@@ -728,3 +732,116 @@ class TestAuditRetention:
         deleted = sweep_log_root(_make_settings(logs_root))
         assert deleted == 2
         assert not audit_file.exists() and not service_file.exists()
+
+
+# ---------------------------------------------------------------------------
+# 每日一次（INT-1877 / 契约 §Q5 调度落点：logs/.sweep_stamp 幂等）
+# ---------------------------------------------------------------------------
+
+class TestSweepStampDailyOnce:
+    """log worker 仍按 600s 周期触发，清扫体只在当日首次触发时执行。"""
+
+    def _owner(self, monkeypatch, logs_root):
+        monkeypatch.setattr('shared.logging.retention.resolve_service_name',
+                            lambda: 'api_gateway')
+        return _make_settings(logs_root)
+
+    def _expired_audit(self, logs_root, suffix='h-1'):
+        expired = (date.today() - timedelta(days=90)).isoformat()
+        path = logs_root / AUDIT_DIR / expired / f'auth.api_gateway.{suffix}.jsonl'
+        _touch(path)
+        return path
+
+    @pytest.fixture(autouse=True)
+    def _fake_archive(self, monkeypatch):
+        from shared.infrastructure.storage import storage
+        monkeypatch.setattr(storage, 'save_file', lambda *a, **k: 'oss://x')
+
+    def test_second_sweep_same_day_is_skipped(self, tmp_path, monkeypatch):
+        logs_root = tmp_path / 'logs'
+        settings = self._owner(monkeypatch, logs_root)
+        first = self._expired_audit(logs_root)
+
+        assert sweep_log_root(settings) == 1
+        assert not first.exists()
+        stamp = sweep_stamp_path(str(logs_root))
+        assert read_sweep_stamp(stamp) == today_segment(), \
+            '当日首次清扫后必须落日期戳'
+
+        # 同日再来一次（模拟 600s 周期触发）：新造的到期文件也不得被清扫
+        second = self._expired_audit(logs_root, suffix='h-2')
+        assert sweep_log_root(settings) == 0, '同一天连续触发两次只执行一次'
+        assert second.exists(), '当日已执行过，第二次触发不得清理'
+
+    def test_stamp_from_previous_day_reruns(self, tmp_path, monkeypatch):
+        logs_root = tmp_path / 'logs'
+        settings = self._owner(monkeypatch, logs_root)
+        expired = self._expired_audit(logs_root)
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        write_sweep_stamp(sweep_stamp_path(str(logs_root)), yesterday)
+
+        assert sweep_log_root(settings) == 1, '跨日必须重新执行清扫'
+        assert not expired.exists()
+        assert read_sweep_stamp(sweep_stamp_path(str(logs_root))) == today_segment()
+        assert sweep_stamp_path(str(logs_root)).endswith('.sweep_stamp')
+
+    def test_stamp_lives_under_log_root_and_survives_sweep(self, tmp_path, monkeypatch):
+        logs_root = tmp_path / 'logs'
+        settings = self._owner(monkeypatch, logs_root)
+        logs_root.mkdir(parents=True, exist_ok=True)
+        assert sweep_log_root(settings) == 0
+        stamp = logs_root / '.sweep_stamp'
+        assert stamp.is_file(), '日期戳必须落在 {LOG_ROOT_DIR}/.sweep_stamp'
+
+        # 次日清扫时，mtime 已过 90 天的日期戳文件不得被服务日志清扫误删
+        old = (datetime.now() - timedelta(days=90)).timestamp()
+        os.utime(stamp, (old, old))
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        write_sweep_stamp(str(stamp), yesterday)
+        os.utime(stamp, (old, old))
+        sweep_log_root(settings)
+        assert stamp.is_file(), '日期戳文件不属于日志文件，清扫不得删除'
+
+    def test_non_owner_does_not_touch_stamp(self, tmp_path, monkeypatch):
+        logs_root = tmp_path / 'logs'
+        target = self._expired_audit(logs_root)
+        monkeypatch.setattr('shared.logging.retention.resolve_service_name',
+                            lambda: 'device_service')
+        assert sweep_log_root(
+            _make_settings(logs_root, sweep_service='api_gateway')) == 0
+        assert target.exists()
+        assert not os.path.exists(sweep_stamp_path(str(logs_root))), \
+            '非清扫者不得写日期戳（否则真清扫者当天会被跳过）'
+
+    def test_lock_holder_skips_without_writing_stamp(self, tmp_path, monkeypatch):
+        """另一进程正在清扫（拿不到锁）：本轮跳过且不落戳，由持锁方落。"""
+        logs_root = tmp_path / 'logs'
+        settings = self._owner(monkeypatch, logs_root)
+        target = self._expired_audit(logs_root)
+        monkeypatch.setattr('shared.logging.retention.acquire_sweep_stamp_lock',
+                            lambda _path: None)
+
+        assert sweep_log_root(settings) == 0
+        assert target.exists(), '未取到清扫锁不得执行清扫体'
+        assert not os.path.exists(sweep_stamp_path(str(logs_root)))
+
+    def test_corrupt_stamp_does_not_block_sweep(self, tmp_path, monkeypatch):
+        logs_root = tmp_path / 'logs'
+        settings = self._owner(monkeypatch, logs_root)
+        target = self._expired_audit(logs_root)
+        stamp = sweep_stamp_path(str(logs_root))
+        os.makedirs(str(logs_root), exist_ok=True)
+        with open(stamp, 'w', encoding='utf-8') as fh:
+            fh.write('not-a-date\n')
+
+        assert sweep_log_root(settings) == 1, '日期戳不可解析时应重新执行'
+        assert not target.exists()
+        assert read_sweep_stamp(stamp) == today_segment()
+
+    def test_stamp_write_is_atomic_no_temp_left(self, tmp_path):
+        stamp = str(tmp_path / '.sweep_stamp')
+        assert write_sweep_stamp(stamp, '2026-10-24') is True
+        assert read_sweep_stamp(stamp) == '2026-10-24'
+        leftovers = [name for name in os.listdir(str(tmp_path))
+                     if name.startswith('.sweep_stamp.tmp')]
+        assert leftovers == [], '原子写不得残留 tmp 文件'
