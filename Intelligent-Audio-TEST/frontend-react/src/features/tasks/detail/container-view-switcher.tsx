@@ -2,7 +2,8 @@
  * 容器组成区四视图切换 + 工具行（18_挑选合并功能交互重设计.md §5.5.3 ② / §5.5.4，INT-1711）。
  * 四视图：任务视图（默认）｜用例｜设备｜结果类型——直接复用购物车 `CartViewSwitcher`，层级与购物车同源。
  * 工具行：执行状态 / 评估状态筛选（纯客户端，命中叶保留、祖先保留、分支计数按命中集重算）、
- * 全部展开 / 全部收起；用例视图叠加用例层组织控件（复用 `PickCaseOrgControls`）。
+ * 全部展开 / 全部收起；用例 / 设备 / 结果类型视图叠加用例层组织控件（复用 `PickCaseOrgControls`，
+ * 组织层在设备 / 结果类型视图为 result_type 之下、用例卡之上的独立层，§3.8.3 A 组）。
  * 降级期在工具行右端显示一次性提示「结果级执行 / 评估状态待后端补字段，当前按用例状态显示」（§5.5.4）。
  * 纯 props，不取数。
  */
@@ -143,7 +144,7 @@ export function ContainerCompositionToolbar({
         )}
       </div>
 
-      {view === 'case' && (
+      {view !== 'task' && (
         <PickCaseOrgControls
           org={org}
           subView={subView}

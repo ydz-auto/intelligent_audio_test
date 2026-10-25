@@ -250,6 +250,9 @@ export function ContainerComposition({
       expandSignal={expandSignal}
       renderLeafTrailing={renderLeafTrailing}
       renderBranchExtra={renderBranchExtra}
+      // §3.8.3 A 组第 3 层：设备 / 结果类型视图在 result_type 之下、用例卡之上插入用例层组织
+      org={org}
+      subView={subView}
     />
   )
 
