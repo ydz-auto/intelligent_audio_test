@@ -141,14 +141,15 @@ def shot(d, name, theme='light'):
 
 
 def set_theme(d, mode):
-    d.execute_script("localStorage.setItem('iatp:theme:v1:mode', JSON.stringify('%s'))" % mode)
+    # 纯字符串，不能 JSON.stringify：写成 "dark"（带引号）不在允许集合里会静默回退浅色
+    d.execute_script("localStorage.setItem('iatp:theme:v1:mode', '%s')" % mode)
     d.get('about:blank')
     d.refresh() if False else None
 
 
 def apply_theme(d, mode):
     """写主题 key 后整页重载（about:blank 打断 bfcache）。"""
-    d.execute_script("localStorage.setItem('iatp:theme:v1:mode', JSON.stringify('%s'))" % mode)
+    d.execute_script("localStorage.setItem('iatp:theme:v1:mode', '%s')" % mode)
     url = d.current_url
     d.get('about:blank')
     d.get(url)
