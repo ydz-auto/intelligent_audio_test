@@ -211,21 +211,21 @@ BOOTSTRAP_STEPS = [
     #     注：本步是建表 DDL，必须排在 ㊽ 的 ANALYZE 之前（INT-1741 口径：统计
     #     兜底在建表之后、且保持引导链末位），不要追加到末尾。
     ('python', 'scripts/migrations/202610/add_data_transfer_source_maps_int1760.py'),
-    # ㊸ voice_llm 设备输出声明修正种子（INT-1748 / C3）：`rounds` 轮内子键的
+    # ㊽-1 voice_llm 设备输出声明修正种子（INT-1748 / C3）：`rounds` 轮内子键的
     #     类型与音频路径归一改由 algorithm_device_params(direction=output) 解析
     #     （改造前取硬编码 DEVICE_FIELDS）。补 record_file=audio_file、user_wav /
     #     ai_wav 由 text 改 audio_file，否则历史结果的完整录音路径丢失、两个通道
     #     音频不做路径归一。脚本幂等（自然键已存在且类型正确即 SKIP、软删行恢复），
     #     默认 dry-run，引导链须 --apply。API 输出声明与 source='api' 映射归 INT-1746。
     ('python', 'scripts/migrations/202610/seed_voice_llm_device_output_int1748.py', '--apply'),
-    # ㊸ 冗余索引下线 + 废弃空表报告明细表（INT-1784）：索引有三个重建源（ORM 的
+    # ㊽-2 冗余索引下线 + 废弃空表报告明细表（INT-1784）：索引有三个重建源（ORM 的
     #     Index(...) / Column(index=True)、本链里 202608/202610 的采索引脚本、存量库的
     #     历史索引），前两者已同步移除，本步兜底——按「索引名 + 定义」双匹配才 DROP，
     #     定义对不上（被人改过）或覆盖索引缺失时跳过并 WARN。report_detail_data 先确认
     #     to_regclass 存在且 0 行才 DROP TABLE。幂等（第二次执行全部 SKIP）。
     #     默认 dry-run，引导链必须带 --apply。
     ('python', 'scripts/migrations/202610/drop_redundant_indexes_int1784.py', '--apply'),
-    # ㊹ Report Studio 文档来源类型（INT-1763 §6.2/§6.4）：create_all 只建缺失的表、
+    # ㊽-3 Report Studio 文档来源类型（INT-1763 §6.2/§6.4）：create_all 只建缺失的表、
     #     不给存量表补列，建库早于本卡的存量库在引导链里自愈——补 source_type /
     #     parent_doc_id / source_file_path / source_format / source_file_size 五列，
     #     放开 documents 与 chart_specs 的 report_id 非空，建 idx_rs_doc_source_type /
@@ -234,7 +234,7 @@ BOOTSTRAP_STEPS = [
     #     须排在 ㊸ 统计兜底 ANALYZE 之前（该步固定为引导链末步，见
     #     test_int1741::test_bootstrap_step_is_last）。
     ('python', 'scripts/migrations/202610/alter_report_studio_sources.py', '--apply'),
-    # ㊾ voice_llm 的 API 输出声明 + source='api' 评估映射种子（INT-1746 / C1，
+    # ㊽-4 voice_llm 的 API 输出声明 + source='api' 评估映射种子（INT-1746 / C1，
     #     C0 裁定 1/3；本步在 INT-1875 补回——C1 交付分支有这个追加项，但集成
     #     合入 INT-1746/INT-1749 时整份取了 int-1749 侧的引导链，本步静默丢失，
     #     新环境跑完引导链 voice_llm 只剩 response_audio 一条输出声明）：
