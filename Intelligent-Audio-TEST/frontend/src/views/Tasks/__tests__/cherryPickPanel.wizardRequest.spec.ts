@@ -16,9 +16,13 @@ import { mount, flushPromises } from '@vue/test-utils'
 
 const api = vi.hoisted(() => ({ getSource: vi.fn() }))
 
-vi.mock('../../../infrastructure/api', () => ({
-  cherryPickApi: { getSource: api.getSource },
-}))
+vi.mock('../../../infrastructure/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../infrastructure/api')>()
+  return {
+    ...actual,
+    cherryPickApi: { ...actual.cherryPickApi, getSource: api.getSource },
+  }
+})
 vi.mock('../../../components/task/TaskCard.vue', () => ({
   default: {
     name: 'TaskCard',
@@ -36,6 +40,10 @@ vi.mock('../../../components/task/pick/CherryPickWizard.vue', () => ({
     props: ['presetTaskIds', 'initialStep'],
     template: '<div class="cpw-stub"><div class="cpw-preset">{{ presetTaskIds.join(",") }}</div><div class="cpw-step">{{ initialStep }}</div><button class="cpw-close" @click="$emit(\'close\')">X</button></div>',
   },
+}))
+// INT-1834：行展开组成区树会引入 CartTree / 用例卡链（算法标签 API），本 spec 与展开无关 → 桩掉
+vi.mock('../../../components/task/pick/ContainerComposition.vue', () => ({
+  default: { name: 'ContainerComposition', template: '<div class="cc-stub" />' },
 }))
 vi.mock('../../../composables/task/usePickCart', () => ({
   usePickCart: () => ({

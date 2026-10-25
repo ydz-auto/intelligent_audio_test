@@ -1,28 +1,27 @@
 /**
- * INT-339 P2-3：CherryPickPanel 溯源展开/收起回归。
+ * INT-339 P2-3 / INT-1834：挑选合并页签行展开 / 收起回归。
  *
- * 锁定口径（前端 UX 审计打回项 P2-3）：
- * - 溯源标题行常显（展开态不替换标题行），点击可再次收起（对照合并面板 MergedTaskPanel 基线）
- * - 展开后按卡加载来源分组（sourceLoadingByTask 每卡独立，多卡展开互不覆盖）
- * - 收起后再展开复用已缓存来源数据（sourcesByTask 按卡缓存）
- *
- * INT-577 升级适配：面板 props 由 cherryPick 更名为 containers，溯源 DOM 改 cpp-source-*。
+ * 锁定口径：
+ * - 溯源标题行常显（展开态不替换标题行），点击可再次收起；
+ * - 展开后正文区出现（picked = 组成区树，由 ContainerTraceExpand 承载）；
+ * - 收起后再展开复用缓存（按 taskId 缓存，§4.3），不重复补拉详情。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
-const api = vi.hoisted(() => ({ getSource: vi.fn() }))
+const api = vi.hoisted(() => ({ getSource: vi.fn(), getOne: vi.fn() }))
 
-vi.mock('../../../infrastructure/api', () => ({
-  cherryPickApi: { getSource: api.getSource },
-  // INT-1110：向导链 PickCaseCard → TestCaseCard → useAlgorithmLabels 依赖算法标签
-  algorithmApi: { getOptions: vi.fn(async () => ({ algorithms: [] })) },
-}))
+vi.mock('../../../infrastructure/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../infrastructure/api')>()
+  return {
+    ...actual,
+    cherryPickApi: { ...actual.cherryPickApi, getSource: api.getSource },
+    tasksApi: { ...actual.tasksApi, getOne: api.getOne },
+  }
+})
 vi.mock('../../../components/task/TaskCard.vue', () => ({
   default: { template: '<div class="task-card-stub" />' },
 }))
-// INT-1103：TestCaseCard 升级为全站统一组件后经 CherryPickWizard→PickTree 被间接引入；
-// 本测试只验面板溯源展开/收起，不验用例卡，卡组件以 stub 屏蔽其依赖链。
 vi.mock('../../../components/common/test-case/TestCaseCard.vue', () => ({
   default: { template: '<div class="test-case-card-stub" />' },
 }))
@@ -48,6 +47,7 @@ vi.mock('vue-router', () => ({
 }))
 
 import CherryPickPanel from '../CherryPickPanel.vue'
+import { clearContainerCompositionCache } from '../../../composables/task/useContainerComposition'
 
 const containersStub = (items: any[] = []) => ({
   items,
@@ -67,14 +67,26 @@ const containersStub = (items: any[] = []) => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  clearContainerCompositionCache()
   api.getSource.mockResolvedValue({
     taskId: 1,
     isCherryPick: true,
     total: 2,
     groups: [
-      { sourceTaskId: 10, sourceTaskName: '源任务A', results: [{ id: 1, resultId: 100 }] },
-      { sourceTaskId: 11, sourceTaskName: '源任务B', results: [{ id: 2, resultId: 101 }] },
+      { sourceTaskId: 10, sourceTaskName: '源任务A', results: [{ id: 1, resultId: 100, sourceCaseId: 'C1' }] },
+      { sourceTaskId: 11, sourceTaskName: '源任务B', results: [{ id: 2, resultId: 101, sourceCaseId: 'C2' }] },
     ],
+  })
+  api.getOne.mockResolvedValue({
+    id: 1,
+    name: '挑选任务X',
+    status: 'completed',
+    cases: [
+      { caseId: 'C1', name: '用例一', groupName: '分组A', tags: [], executionStatus: 'completed', evaluationStatus: 'completed' },
+      { caseId: 'C2', name: '用例二', groupName: '分组A', tags: [], executionStatus: 'completed', evaluationStatus: 'completed' },
+    ],
+    devices: [],
+    apis: [],
   })
 })
 
@@ -91,7 +103,7 @@ function mountPanel(items: any[] = []) {
 
 describe('CherryPickPanel 溯源展开/收起（P2-3）', () => {
   it('标题行常显：展开态不替换标题行，点击可再次收起', async () => {
-    const w = mountPanel([{ id: 1, name: '挑选任务X' }])
+    const w = mountPanel([{ id: 1, name: '挑选任务X', mergeType: 'picked' }])
     await flushPromises()
 
     // 初始：标题行存在、内容未展开
@@ -99,14 +111,13 @@ describe('CherryPickPanel 溯源展开/收起（P2-3）', () => {
     expect(w.find('.cpp-source-toggle i.fa-chevron-down').exists()).toBe(true)
     expect(w.find('.cpp-source-body').exists()).toBe(false)
 
-    // 点击展开 → 加载来源并展示内容
+    // 点击展开 → 组成区树正文出现
     await w.find('.cpp-source-toggle').trigger('click')
     await flushPromises()
     expect(w.find('.cpp-source-body').exists()).toBe(true)
     expect(w.find('.cpp-source-toggle i.fa-chevron-up').exists()).toBe(true)
-    expect(api.getSource).toHaveBeenCalledWith(1)
-    expect(w.text()).toContain('源任务A')
-    expect(w.text()).toContain('源任务B')
+    expect(w.find('[data-testid="container-trace-expand"]').exists()).toBe(true)
+    expect(api.getOne).toHaveBeenCalledWith(1)
 
     // 再点击标题 → 收起（标题行仍保留）
     await w.find('.cpp-source-toggle').trigger('click')
@@ -116,29 +127,21 @@ describe('CherryPickPanel 溯源展开/收起（P2-3）', () => {
     expect(w.find('.cpp-source-toggle i.fa-chevron-down').exists()).toBe(true)
   })
 
-  it('多卡展开互不覆盖：来源数据按卡独立缓存', async () => {
-    api.getSource.mockImplementation(async (taskId: number) => ({
-      taskId,
-      isCherryPick: true,
-      total: 1,
-      groups: [
-        { sourceTaskId: Number(taskId) * 10, sourceTaskName: `源${taskId}`, results: [{ id: taskId, resultId: taskId }] },
-      ],
-    }))
-    const w = mountPanel([{ id: 1, name: 'A' }, { id: 2, name: 'B' }])
+  it('收起再展开复用缓存：详情补拉只 1 次（§4.3 不重复请求）', async () => {
+    const w = mountPanel([{ id: 1, name: '挑选任务X', mergeType: 'picked' }])
     await flushPromises()
 
-    const titles = w.findAll('.cpp-source-toggle')
-    // 展开卡 1
-    await titles[0].trigger('click')
+    await w.find('.cpp-source-toggle').trigger('click')
     await flushPromises()
-    // 展开卡 2
-    await w.findAll('.cpp-source-toggle')[1].trigger('click')
+    expect(api.getOne).toHaveBeenCalledTimes(1)
+
+    await w.find('.cpp-source-toggle').trigger('click')
+    await flushPromises()
+    await w.find('.cpp-source-toggle').trigger('click')
     await flushPromises()
 
-    expect(api.getSource).toHaveBeenCalledTimes(2)
-    // 卡 1 溯源内容仍在（未被卡 2 覆盖）
-    expect(w.text()).toContain('源1')
-    expect(w.text()).toContain('源2')
+    expect(api.getOne).toHaveBeenCalledTimes(1)
+    expect(api.getSource).toHaveBeenCalledTimes(1)
+    expect(w.find('.cpp-source-body').exists()).toBe(true)
   })
 })

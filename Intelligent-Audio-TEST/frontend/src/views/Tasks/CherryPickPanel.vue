@@ -83,49 +83,41 @@
             @favorite-toggle="(task: any) => emit('task-action', { action: { id: isFavorite(Number(task.id)) ? 'unfavorite' : 'favorite' }, task })"
           />
 
-          <!-- 溯源展开（按合并方式自适应：整任务=源任务列表 / 挑选=源任务→结果分组；
-               INT-401：引用结果明细 + 缺失标注；INT-552：加载失败可见错误含重试） -->
-          <div class="cpp-source-toggle" @click="toggleSource(Number(ct.id))">
+          <!-- 溯源展开（按合并方式自适应）：
+               整任务合并（whole）= 源任务列表（保持现状）；
+               结果挑选（picked）= 组成区树（INT-1834 · 规范 18 §3 落点③：同源四视图，
+               任务视图默认；首次展开补 1 次 GET /tasks/{id}，按 taskId 缓存） -->
+          <div class="cpp-source-toggle" role="button" tabindex="0" @click="toggleSource(ct)" @keydown.enter.prevent="toggleSource(ct)" @keydown.space.prevent="toggleSource(ct)">
             <i class="fas fa-source-branch"></i>
             {{ expanded.has(Number(ct.id)) ? '收起溯源' : '源结果溯源' }}
             <i class="fas cpp-source-icon" :class="expanded.has(Number(ct.id)) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
           </div>
           <div v-if="expanded.has(Number(ct.id))" class="cpp-source-body">
-            <div v-if="sourceLoadingByTask[Number(ct.id)]" class="cpp-loading-hint"><i class="fas fa-spinner fa-spin"></i> 正在加载溯源…</div>
-            <template v-else-if="ct.mergeType === 'whole' && (ct.sourceTasks?.length ?? 0) > 0">
-              <div class="cpp-source-head">源任务列表（{{ ct.sourceTasks.length }} 个）</div>
-              <div v-for="st in ct.sourceTasks" :key="st.id" class="cpp-source-row">
-                <span class="cpp-source-name"><i class="fas fa-source-branch"></i> {{ st.name }}</span>
-                <span class="cpp-source-cases">结果 {{ st.resultCount ?? st.sourceResultCount ?? '-' }} 条</span>
-              </div>
-            </template>
-            <template v-else-if="(sourcesByTask[Number(ct.id)]?.length ?? 0) > 0">
-              <div class="cpp-source-head">源结果溯源（{{ sourcesByTask[Number(ct.id)].reduce((n, g) => n + g.results.length, 0) }} 条）</div>
-              <div v-for="group in sourcesByTask[Number(ct.id)]" :key="group.sourceTaskId" class="cpp-source-group">
-                <div class="cpp-source-row">
-                  <span class="cpp-source-name" :title="group.sourceTaskName">
-                    <i class="fas fa-source-branch"></i> {{ group.sourceTaskName }}
-                  </span>
-                  <span class="cpp-source-cases">结果 {{ group.results.length }} 条</span>
+            <!-- 结果挑选：组成区树（落点③） -->
+            <ContainerTraceExpand
+              v-if="ct.mergeType !== 'whole'"
+              :task-id="Number(ct.id)"
+              :summary="containerSummary(ct)"
+              @trace="openSourceTrace"
+            />
+            <!-- 整任务合并：源任务列表（不变） -->
+            <template v-else>
+              <div v-if="sourceLoadingByTask[Number(ct.id)]" class="cpp-loading-hint"><i class="fas fa-spinner fa-spin"></i> 正在加载溯源…</div>
+              <template v-else-if="(ct.sourceTasks?.length ?? 0) > 0">
+                <div class="cpp-source-head">源任务列表（{{ ct.sourceTasks.length }} 个）</div>
+                <div v-for="st in ct.sourceTasks" :key="st.id" class="cpp-source-row">
+                  <span class="cpp-source-name"><i class="fas fa-source-branch"></i> {{ st.name }}</span>
+                  <span class="cpp-source-cases">结果 {{ st.resultCount ?? st.sourceResultCount ?? '-' }} 条</span>
                 </div>
-                <!-- INT-401：引用结果明细 + 缺失标注（主库并入特性） -->
-                <div class="cpp-source-results">
-                  <div v-for="res in group.results" :key="res.resultId" class="cpp-source-result" :class="{ missing: res.missing }">
-                    <span class="cpp-source-case">{{ res.sourceCaseId ?? `结果 #${res.resultId}` }}</span>
-                    <span v-if="res.missing" class="cpp-row-badge missing-badge" title="源结果已被删除，此条引用不可达">
-                      <i class="fas fa-exclamation-triangle"></i> 源结果已缺失
-                    </span>
-                  </div>
-                </div>
+              </template>
+              <!-- INT-552：溯源加载失败可见错误（含重试），与「暂无来源」真实空态区分 -->
+              <div v-else-if="sourceErrorByTask[Number(ct.id)]" class="cpp-source-error">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>溯源加载失败，请重试</span>
+                <button class="cpp-source-retry source-retry-btn" @click="loadSource(Number(ct.id))"><i class="fas fa-redo"></i> 重试</button>
               </div>
+              <div v-else class="cpp-source-row"><span class="cpp-source-cases">该合并任务暂无来源记录</span></div>
             </template>
-            <!-- INT-552：溯源加载失败可见错误（含重试），与「暂无来源」真实空态区分 -->
-            <div v-else-if="sourceErrorByTask[Number(ct.id)]" class="cpp-source-error">
-              <i class="fas fa-exclamation-triangle"></i>
-              <span>溯源加载失败，请重试</span>
-              <button class="cpp-source-retry source-retry-btn" @click="loadSource(Number(ct.id))"><i class="fas fa-redo"></i> 重试</button>
-            </div>
-            <div v-else class="cpp-source-row"><span class="cpp-source-cases">该合并任务暂无来源记录</span></div>
           </div>
         </div>
       </div>
@@ -163,8 +155,9 @@ import '../../assets/styles/layouts/main.css'
  * CherryPickPanel —— 挑选合并统一容器页签（INT-577 M2/M3）。
  *
  * 统一容器列表（merged ∪ cherry_pick，§11-1）+ 合并方式 facet + stats 徽章行 +
- * Actions（开始挑选/打开购物车/管理挑选集）+ 溯源展开（按合并方式自适应；
- * INT-401 引用结果明细与缺失标注；INT-552 加载失败可见错误含重试）。
+ * Actions（开始挑选/打开购物车/管理挑选集）+ 溯源展开：picked（结果挑选）行展开即
+ * **组成区树**（INT-1834 · 规范 18 §3 落点③，与容器详情同源四视图，首次展开补拉 1 次
+ * `GET /tasks/{id}` 并按 taskId 缓存）；whole（整任务合并）行展开仍是源任务列表。
  * 页内四步向导（§10 #4）：替换列表区，含批量「加入挑选」预选入口。
  * RBAC（§8）：列表/购物车角标 task:read 只读可见；写链（开始挑选/增删/复核/下单）task:cherry_pick。
  */
@@ -173,13 +166,14 @@ import { useRoute, useRouter } from 'vue-router';
 import TaskCard from '../../components/task/TaskCard.vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import CherryPickWizard from '../../components/task/pick/CherryPickWizard.vue';
+import ContainerTraceExpand from '../../components/task/pick/ContainerTraceExpand.vue';
 import { cherryPickApi } from '../../infrastructure/api';
 import { usePickCart } from '../../composables/task/usePickCart';
 import { useCartDrawerState } from '../../composables/task/cartDrawerState';
 import { usePickWizardRequest, requestPickWizard, clearPickWizardRequest } from '../../composables/task/usePickWizardRequest';
+import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal';
 import { useAuthStore } from '../../store/authStore';
 import { PermissionPoint } from '../../domain/enums';
-import type { PickSource } from '../../infrastructure/api/cherryPickApi';
 import type { Task } from '../../domain/model/task';
 import type { MergeTypeFacet } from '../../composables/task/useCherryPickContainers';
 
@@ -221,12 +215,13 @@ const wizardPresetTaskIds = ref<(number | string)[]>([]);
 const wizardInitialStep = ref<'pick' | 'cart' | 'review' | 'checkout'>('pick');
 const setsPopoverOpen = ref(false);
 
-/** 溯源展开状态（默认收起；数据按卡独立缓存） */
+/** 溯源展开状态（默认收起；picked 行的组成模型由 ContainerTraceExpand 按 taskId 缓存） */
 const expanded = ref<Set<number>>(new Set());
 const sourceLoadingByTask = ref<Record<number, boolean>>({});
-const sourcesByTask = ref<Record<number, PickSource['groups']>>({});
-/** INT-552：溯源加载失败错误态（按卡独立，与「真无来源」空态区分） */
+/** INT-552：整任务合并「源任务列表」加载失败错误态（按卡独立，与「真无来源」空态区分） */
 const sourceErrorByTask = ref<Record<number, boolean>>({});
+
+const modalControl = useModalControl();
 
 function setFacet(value: MergeTypeFacet) {
   containers.filters.mergeType = value;
@@ -266,7 +261,13 @@ watch(pendingRequest, (req) => {
   }
 }, { immediate: true });
 
-function toggleSource(taskId: number) {
+/**
+ * 行展开 / 收起。
+ * - picked（结果挑选）：组成区树；数据由 ContainerTraceExpand 首次展开补拉并缓存，本层不请求。
+ * - whole（整任务合并）：源任务列表（列表 DTO 的 sourceTasks）；沿用 INT-552 的加载 / 错误态。
+ */
+function toggleSource(ct: any) {
+  const taskId = Number(ct.id);
   const next = new Set(expanded.value);
   const expanding = !next.has(taskId);
   if (expanding) {
@@ -275,17 +276,30 @@ function toggleSource(taskId: number) {
     next.delete(taskId);
   }
   expanded.value = next;
-  if (expanding) {
+  if (expanding && ct.mergeType === 'whole') {
     loadSource(taskId);
   }
 }
 
+/** 列表 DTO 的来源计数（补充给展开区，补拉未完成时兜底；缺省 → null 不占位） */
+function containerSummary(ct: any) {
+  return {
+    taskCount: ct.sourceTaskCount ?? null,
+    resultCount: ct.sourceResultCount ?? null,
+  };
+}
+
+/** 组成区叶行「溯源」：打开源任务详情（模态窗可叠层，不离开当前页签） */
+function openSourceTrace(payload: { resultId: number; sourceTaskId: number }) {
+  modalControl.open(MODAL_TYPES.TASK_DETAIL, { taskId: payload.sourceTaskId });
+}
+
+/** 整任务合并行：源任务列表取自列表 DTO；source 端点只用于加载 / 出错态（INT-552） */
 async function loadSource(taskId: number) {
   sourceLoadingByTask.value = { ...sourceLoadingByTask.value, [taskId]: true };
   sourceErrorByTask.value = { ...sourceErrorByTask.value, [taskId]: false };
   try {
-    const source = await cherryPickApi.getSource(taskId);
-    sourcesByTask.value = { ...sourcesByTask.value, [taskId]: source.groups ?? [] };
+    await cherryPickApi.getSource(taskId);
   } catch (error) {
     // INT-552：失败保留旧数据 + 可见错误（含重试），空态文案仅真无来源展示
     console.error('Failed to load pick source:', error);
@@ -508,7 +522,8 @@ defineExpose({ openWizardWithTasks, startWizard });
 .cpp-source-body {
   margin-top: 8px;
   padding: 8px 12px;
-  background: var(--color-slate-50, #f8fafc);
+  /* 语义令牌：深浅两套自动成立（picked 行展开内是组成区树，深色下不能用浅色常量底） */
+  background: var(--muted);
   border-radius: var(--radius-md);
 }
 .cpp-source-head {
@@ -517,16 +532,11 @@ defineExpose({ openWizardWithTasks, startWizard });
   color: var(--color-slate-500, #64748b);
   padding-bottom: 4px;
 }
-.cpp-source-group { padding: 4px 0; }
 .cpp-source-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 4px 0;
-  font-size: 13px;
-}
-.cpp-source-group {
   padding: 4px 0;
   font-size: 13px;
 }
@@ -537,40 +547,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   white-space: nowrap;
 }
 .cpp-source-cases { color: var(--color-slate-500, #64748b); font-size: 12px; }
-/* INT-401：引用结果明细 + 缺失标注 */
-.cpp-source-results {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 4px 0 2px 16px;
-}
-.cpp-source-result {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--color-slate-100, #f1f5f9);
-  font-size: 12px;
-  color: var(--color-slate-600, #475569);
-}
-.cpp-source-result.missing {
-  background: var(--color-red-50);
-  color: var(--destructive, #dc2626);
-}
-.cpp-row-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-}
-.cpp-source-case { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cpp-row-badge.missing-badge {
-  flex-shrink: 0;
-  color: var(--warning, #b45309);
-  font-size: 11px;
-}
-/* INT-552：溯源加载失败可见错误（含重试） */
+/* INT-552：整任务合并源任务列表加载失败可见错误（含重试） */
 .cpp-source-error {
   display: flex;
   align-items: center;
