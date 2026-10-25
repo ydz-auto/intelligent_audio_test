@@ -30,6 +30,8 @@ import { ReportReadingNav, type ReadingNavSection } from './components/report-re
 import { TaskReportPanel } from './components/task-report-panel'
 import { ComparisonReportPanel } from './components/comparison-report-panel'
 import { BenchmarkRankingBlock } from './components/benchmark-ranking-block'
+import { StudioDocumentSection } from '@/features/reports/components/studio-document-section'
+import { StudioSourceType } from '@/domain/models/report-studio'
 
 import '@/features/report-view/report-print.css'
 
@@ -42,6 +44,7 @@ const NAV: Record<'task' | 'comparison' | 'benchmark', ReadingNavSection[]> = {
     { id: 'report-case-category', label: '用例分组' },
     { id: 'report-case-tag', label: '用例标签' },
     { id: 'report-specific-cases', label: '具体用例' },
+    { id: 'report-documents', label: '报告文档' },
   ],
   benchmark: [
     { id: 'report-benchmark-ranking', label: 'Benchmark 排行' },
@@ -52,6 +55,7 @@ const NAV: Record<'task' | 'comparison' | 'benchmark', ReadingNavSection[]> = {
     { id: 'report-case-category', label: '用例分组' },
     { id: 'report-case-tag', label: '用例标签' },
     { id: 'report-specific-cases', label: '具体用例' },
+    { id: 'report-documents', label: '报告文档' },
   ],
   comparison: [
     { id: 'report-resource-stats', label: '设备与API' },
@@ -59,6 +63,7 @@ const NAV: Record<'task' | 'comparison' | 'benchmark', ReadingNavSection[]> = {
     { id: 'report-case-category', label: '用例分组' },
     { id: 'report-case-tag', label: '用例标签' },
     { id: 'report-specific-cases', label: '具体用例' },
+    { id: 'report-documents', label: '报告文档' },
   ],
 }
 
@@ -293,6 +298,20 @@ export function ReportViewPage() {
                 onExitEditing={() => setEditing(false)}
                 onSaveAnalysis={(content) => void saveAnalysis(content)}
               />
+            )}
+
+            {/* 报告文档区（INT-1766 3a/3c）：固定 report_id + source_type=platform_report，
+                上传的独立报告不混进平台报告文档列表（后端 list_documents 契约口径） */}
+            {hasPermission('report:read') && (
+              <section id='report-documents' className='scroll-mt-20'>
+                <StudioDocumentSection
+                  description='本报告的平台报告文档。上传的独立报告不在本列表，见报告中心「更多操作 → 报告文档」。'
+                  emptyText='该报告暂无平台报告文档'
+                  reportId={report.id}
+                  sourceType={StudioSourceType.PLATFORM_REPORT}
+                  title='报告文档'
+                />
+              </section>
             )}
           </main>
 

@@ -9,7 +9,15 @@
  * （features/reports/types.ts），页面以 navigate 回写。
  */
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { BarChart3, FilePlus2, MoreHorizontal, RefreshCw } from 'lucide-react'
+import {
+  ArchiveRestore,
+  BarChart3,
+  FilePlus2,
+  Files,
+  FileUp,
+  MoreHorizontal,
+  RefreshCw,
+} from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -47,6 +55,9 @@ import { ReportsPagination } from './components/reports-pagination'
 import type { ReportRowAction } from './components/report-row-actions'
 import { GenerateReportDialog } from './components/modals/generate-report-dialog'
 import { ExportReportDialog } from './components/modals/export-report-dialog'
+import { ImportReportPackageDialog } from './components/modals/import-report-package-dialog'
+import { UploadReportDialog } from './components/modals/upload-report-dialog'
+import { StudioDocumentLibraryDialog } from './components/studio-document-library-dialog'
 import { ReportCompareDialog } from './components/modals/report-compare-dialog'
 import { ReportRenameDialog } from './components/modals/report-rename-dialog'
 import { ReportProgressDialog } from './components/modals/report-progress-dialog'
@@ -245,6 +256,10 @@ export function ReportCenterPage() {
   // 弹窗状态
   const [generateOpen, setGenerateOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  // 报告导入（INT-1766 D8）：3a 报告包导入 / 3b 独立报告上传 / Studio 文档库
+  const [importPackageOpen, setImportPackageOpen] = useState(false)
+  const [uploadReportOpen, setUploadReportOpen] = useState(false)
+  const [studioLibraryOpen, setStudioLibraryOpen] = useState(false)
   const [exportCount, setExportCount] = useState(1)
   const [exportScope, setExportScope] = useState('')
   /** 导出目标 id 集（已选 或 当前筛选全量；P2-2：不得仅当前页） */
@@ -354,7 +369,23 @@ export function ReportCenterPage() {
           >
             <MoreHorizontal className='size-4' />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align='end' className='w-44'>
+          <DropdownMenuContent align='end' className='w-52'>
+            {hasPermission('task:import') && (
+              <DropdownMenuItem onClick={() => setImportPackageOpen(true)}>
+                <ArchiveRestore className='size-4' />
+                导入报告包
+              </DropdownMenuItem>
+            )}
+            {hasPermission('report:studio:create') && (
+              <DropdownMenuItem onClick={() => setUploadReportOpen(true)}>
+                <FileUp className='size-4' />
+                上传独立报告
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => setStudioLibraryOpen(true)}>
+              <Files className='size-4' />
+              报告文档
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => void navigate({ to: '/report-statistics' })}
             >
@@ -588,6 +619,19 @@ export function ReportCenterPage() {
         scope={exportScope}
         count={exportCount}
         onExport={(format) => reportActions.exportReport(exportIds, format)}
+      />
+      {/* 报告导入（INT-1766 D8）：3a 报告包 / 3b 独立报告 / Studio 文档库 */}
+      <ImportReportPackageDialog
+        open={importPackageOpen}
+        onOpenChange={setImportPackageOpen}
+      />
+      <UploadReportDialog
+        open={uploadReportOpen}
+        onOpenChange={setUploadReportOpen}
+      />
+      <StudioDocumentLibraryDialog
+        open={studioLibraryOpen}
+        onOpenChange={setStudioLibraryOpen}
       />
       <ReportCompareDialog
         open={compareOpen}

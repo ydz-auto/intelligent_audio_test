@@ -70,6 +70,31 @@ export async function fetchReportList(
   return request<ReportListData>('GET', '/reports', undefined, { params })
 }
 
+/**
+ * GET /reports/by_task/{taskId}（report_bp.py:54，INT-262 透出「按任务查报告」）。
+ * 返回该任务最新未删除报告（report_service 仓储 `get_by_task`，与上传独立报告时
+ * task_id → report_id 的解析口径一致）；无可见报告时后端回 404，这里收敛成 null，
+ * 调用方按「该任务还没有报告」处理，不当成加载失败。
+ */
+export async function fetchReportIdByTask(taskId: number): Promise<number | null> {
+  try {
+    const data = await request<{ id?: number }>(
+      'GET',
+      `/reports/by_task/${encodeURIComponent(String(taskId))}`
+    )
+    const id = Number(data?.id)
+    return Number.isFinite(id) && id > 0 ? id : null
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      (error.httpStatus === 404 || Number(error.code) === 404)
+    ) {
+      return null
+    }
+    throw error
+  }
+}
+
 /** GET /reports/tab-counts 全量分类计数（all/draft/published/comparison 四键服务端聚合） */
 export async function fetchReportCounts(): Promise<ReportCounts> {
   return request<ReportCounts>('GET', '/reports/tab-counts')

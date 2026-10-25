@@ -41,6 +41,7 @@ import { ContainerReportCard } from '@/features/tasks/detail/container-report-ca
 import { ProgressCard } from '@/features/tasks/detail/progress-card'
 import { RealtimeLogs } from '@/features/tasks/detail/realtime-logs'
 import { TaskInfoCard } from '@/features/tasks/detail/task-info-card'
+import { TaskReportDocuments } from '@/features/tasks/detail/task-report-documents'
 import { ReexecuteScopeDialog } from '@/features/tasks/components/reexecute-scope-dialog'
 import {
   TaskConfirmDialog,
@@ -230,6 +231,9 @@ export function TaskDetailContent({
 
         {/* §5.5.2 ④ 报告区：容器不自动生成报告 → 空态引导手动生成（§5.5.6，INT-1717） */}
         {isContainer && <ContainerReportCard taskId={taskId} />}
+
+        {/* 报告文档（INT-1766 3b：上传独立报告关联本任务后在此可见；快览弹窗态不渲染） */}
+        {!compact && hasPermission('report:read') && <TaskReportDocuments taskId={taskId} />}
 
         {!compact && (
           <div className='flex flex-wrap items-center gap-2'>
