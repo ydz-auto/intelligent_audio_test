@@ -14,6 +14,8 @@ import type {
   ImportProgress,
   ImportProgressStep,
   ImportResult,
+  IncrementalImportPreview,
+  IncrementalImportResult,
 } from '@/domain/models/data-transfer'
 
 /** POST /data-transfer/export 请求体（TaskDataExportRequest） */
@@ -39,7 +41,12 @@ export interface TaskImportPreviewDto {
     exportedAt: string
     serverInfo: { source?: string }
     tasks: ManifestTaskDto[]
-    options: { includeRefParams?: boolean; includeAudios?: boolean }
+    /** 整包：includeRefParams/includeAudios；增量包 1.1：include（dimensions/reports 子集） */
+    options: {
+      includeRefParams?: boolean
+      includeAudios?: boolean
+      include?: string[]
+    }
   }
   stats: {
     taskCount?: number
@@ -64,6 +71,33 @@ export interface TaskImportResultDto {
   remappedIds?: Record<string, Record<string, number>>
 }
 
+/**
+ * POST /data-transfer/export-incremental 请求体（TaskDataIncrementalExportRequest）。
+ * 契约字段为 camelCase（`taskIds` / `include`）；后端 APIModel 的 alias_generator
+ * 同时接受 snake_case，本层按契约拼写发送，不做双口径。
+ */
+export interface TaskDataIncrementalExportDto {
+  taskIds: number[]
+  include: string[]
+}
+
+/**
+ * POST /data-transfer/import-incremental 响应 data（D3 实际回执，camelCase）。
+ * 对照 task_service/application/task/data_transfer_import_service.py 的 stats 字典。
+ */
+export interface TaskIncrementalImportResultDto {
+  taskId?: number
+  mergedDimensions?: number
+  deletedDimensions?: number
+  skippedDimensions?: number[]
+  insertedReports?: number
+  replacedReportId?: number | null
+  targetResolvedBy?: string
+  warnings?: string[]
+  batchId?: string
+  rollbackAvailable?: boolean
+}
+
 /** GET /data-transfer/import/progress 响应 data（快照）与 socket payload 同构 */
 export interface ImportProgressDto {
   step: string
@@ -80,6 +114,8 @@ const VALID_STEPS: ImportProgressStep[] = [
   'writing_db',
   'extracting_files',
   'updating_paths',
+  'merging_dimensions',
+  'replacing_reports',
   'done',
   'error',
 ]
@@ -128,6 +164,49 @@ export function toImportResult(dto: TaskImportResultDto): ImportResult {
     importedReports: dto?.importedReports ?? 0,
     importedFiles: dto?.importedFiles ?? 0,
     remappedIds: dto?.remappedIds ?? {},
+  }
+}
+
+/**
+ * 整包预检响应（1.1 增量包）→ Domain IncrementalImportPreview。
+ * 增量包 tasks[] 恒为单条（sourceTask），源任务 id / 名称从它取；
+ * 维度/报告数以接口实际返回的 db 行数（stats.tableRows）为准，缺失时回落 manifest stats。
+ */
+export function toIncrementalImportPreview(
+  dto: TaskImportPreviewDto
+): IncrementalImportPreview {
+  const base = toImportPreview(dto)
+  const sourceTask = base.tasks[0]
+  const tableRows = dto?.stats?.tableRows ?? {}
+  return {
+    version: base.version,
+    exportedAt: base.exportedAt,
+    source: base.source,
+    sourceTaskId: sourceTask?.id ?? null,
+    sourceTaskName: sourceTask?.name ?? '',
+    sourceTaskStatus: sourceTask?.status ?? '',
+    sourceTaskResultCount: sourceTask?.resultCount ?? 0,
+    dimensionCount: tableRows.test_result_dimensions ?? base.stats.dimensionCount,
+    reportCount: tableRows.test_reports ?? base.stats.reportCount,
+    warnings: base.warnings,
+  }
+}
+
+/** POST /data-transfer/import-incremental 响应 data → Domain IncrementalImportResult */
+export function toIncrementalImportResult(
+  dto: TaskIncrementalImportResultDto
+): IncrementalImportResult {
+  return {
+    taskId: dto?.taskId ?? 0,
+    mergedDimensions: dto?.mergedDimensions ?? 0,
+    deletedDimensions: dto?.deletedDimensions ?? 0,
+    skippedDimensions: dto?.skippedDimensions ?? [],
+    insertedReports: dto?.insertedReports ?? 0,
+    replacedReportId: dto?.replacedReportId ?? null,
+    targetResolvedBy: dto?.targetResolvedBy ?? '',
+    warnings: dto?.warnings ?? [],
+    batchId: dto?.batchId ?? '',
+    rollbackAvailable: dto?.rollbackAvailable ?? false,
   }
 }
 
