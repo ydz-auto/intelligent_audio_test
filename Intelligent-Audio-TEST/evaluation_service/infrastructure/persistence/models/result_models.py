@@ -13,7 +13,7 @@ shared/models/models/result_models.py 中的 TestResultDimension 改为从这里
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
-    Index,
+    CHAR, Index,
 )
 from shared.utils.status_constants import EvaluationStatus
 
@@ -39,6 +39,19 @@ class TestResultDimension(Base):
     error_message = Column(Text, comment='评估过程中的错误信息')
     api_raw_response = Column(JSON, comment='评测API的原始响应数据')
     api_request_body = Column(JSON, comment='评测API的原始请求体数据')
+    # 原始报文指针（INT-1807 / C1）：报文按内容寻址搬进对象存储后，行上只留指针；
+    # 请求体与响应是两个独立对象（各自去重），不打包成一份。全部可空、无默认值。
+    # 本卡只建列 + 回填脚本，没有任何读写路径使用它们（写路径切换归 C2、删列归 M1）。
+    api_raw_response_uri = Column(Text, comment='原始响应对象路径（内容寻址 raw/resp/{sha[:2]}/{sha}.json.gz）')
+    api_raw_response_sha256 = Column(CHAR(64), comment='响应规范化 JSON 字节的 sha256（内容寻址 key 的取值依据）')
+    api_raw_response_bytes = Column(Integer, comment='响应对象压缩后字节数（gzip）')
+    api_raw_response_content_type = Column(String(64), comment='响应对象 content_type（固定 application/json+gzip）')
+    api_raw_response_created_at = Column(DateTime(timezone=True), comment='响应对象写入时间')
+    api_request_body_uri = Column(Text, comment='请求体对象路径（内容寻址 raw/req/{sha[:2]}/{sha}.json.gz）')
+    api_request_body_sha256 = Column(CHAR(64), comment='请求体规范化 JSON 字节的 sha256（内容寻址 key 的取值依据）')
+    api_request_body_bytes = Column(Integer, comment='请求体对象压缩后字节数（gzip）')
+    api_request_body_content_type = Column(String(64), comment='请求体对象 content_type（固定 application/json+gzip）')
+    api_request_body_created_at = Column(DateTime(timezone=True), comment='请求体对象写入时间')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='生成时间')

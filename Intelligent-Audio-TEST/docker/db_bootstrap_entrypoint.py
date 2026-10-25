@@ -253,6 +253,16 @@ BOOTSTRAP_STEPS = [
     #     盲点：llm_judge 维度种子（202609/seed_llm_judge_dimension.py）不在引导链内，
     #     全新库 / 维度全部软删时 B 段插入 0 条，只补 A 段并提示（既有前置，非本步缺陷）。
     ('python', 'scripts/migrations/202610/seed_api_eval_mapping_int1746.py', '--apply'),
+    # ㊽-5 test_result_dimensions 原始报文指针列（INT-1807 / C1）：补两组各五列
+    #     （response / request 各自 uri + sha256 + bytes + content_type + created_at），
+    #     为「报文按内容寻址搬进对象存储」做准备。create_all 只建缺失的表、不给存量表
+    #     补列，建库早于本卡的存量库（真实库 / 隔离库）缺列时 C2 的读写路径即
+    #     UndefinedColumn，故本步进引导链。**只加列**：应用读写路径不变，回填是独立
+    #     运维脚本（scripts/migrations/202610/backfill_raw_payload_pointers_int1807.py，
+    #     按设计不进引导链——主库要解压约 695MB TOAST，需限流并分次执行）。
+    #     幂等（列存在即 SKIP，10 列合成一条 ALTER TABLE 只拿一次锁），全新库为全 SKIP；
+    #     默认 dry-run，引导链必须带 --apply。须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202610/add_raw_payload_pointers_int1807.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
