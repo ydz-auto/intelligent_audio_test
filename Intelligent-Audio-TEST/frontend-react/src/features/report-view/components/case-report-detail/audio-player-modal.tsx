@@ -2,8 +2,9 @@
  * 音频播放 Modal（15_报告域.md §4.11，AudioPlayerModal 平移——照 V9.7.10 AudioPlayerModal.vue 抄写）。
  * 结构：音频标题 + 类型徽标 + 播放设备列表 → 进度条（点击/拖拽 seek）+ 当前/总时长
  * + 播放·暂停 / 停止 / 关闭 控制组 + 元信息（SPL/噪声级/播放顺序/音频 ID）+ 错误提示（可关闭）。
- * 真实 `<audio>`：audio.url 存在时走真实音频流（timeupdate/ended/error 驱动进度）；红线④ mock
- * 下多数音频无 url，退化为按 audio_id 派生时长模拟推进（seek 即时生效）。
+ * 真实 `<audio>`：audio.url 存在时走真实音频流（timeupdate/ended/error 驱动进度）；
+ * INT-1905 P3-3：无可用播放地址时不再按 audio_id 派生假时长模拟推进（FEAT INT-1556 收口前），
+ * 改为「音频暂不可播放」失败态，不展示假进度与 mock 字样。
  */
 import { Pause, Play, Square, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -37,11 +38,11 @@ export interface AudioItemMeta {
   play_order?: number
   noise_spl?: number
   device_name?: string
-  /** 真实音频流地址（红线④：mock 一般无 url → 模拟推进；接线后填） */
+  /** 真实音频流地址（缺省时经 GET /audios/{id}/stream 换预签名地址；取不到即失败态） */
   url?: string
   /** 播放设备列表（照 V9.7.10 selectedDevices；缺省按 device_name 兜底单设备） */
   playback_devices?: PlaybackDeviceInfo[]
-  /** mock 时长（秒；缺省按 audio_id 派生演示值） */
+  /** 音频时长（秒；后端下发时用，真实流元数据加载后以媒体时长为准） */
   duration?: number
 }
 
@@ -68,18 +69,6 @@ function audioTypeLabel(audioType?: string): string {
   return map[audioType ?? ''] ?? '未知类型'
 }
 
-/**
- * 演示时长（秒）：audio_id 数字哈希派生 8~42s，保证同 id 恒定；显式 duration 优先。
- * 仅用于 mock 播放（无真实流）；有真实流时总时长只认媒体元数据（INT-1860）。
- */
-function mockDuration(audio?: AudioItemMeta): number {
-  if (audio?.duration && audio.duration > 0) return audio.duration
-  const id = String(audio?.audio_id ?? '')
-  let hash = 0
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
-  return 8 + (hash % 35)
-}
-
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
   const mins = Math.floor(seconds / 60)
@@ -95,7 +84,7 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
   /** GET /audios/{id}/stream 换取的预签名播放地址（audio.url 非绝对外链时用） */
   const [streamUrl, setStreamUrl] = useState('')
   const [resolving, setResolving] = useState(false)
-  /** 真实流的媒体时长（loadedmetadata 回填）；无真实流时按 audio_id 派生演示值（mock 播放） */
+  /** 真实流的媒体时长（loadedmetadata 回填；无真实流时为 0，不派生假时长） */
   const [mediaDuration, setMediaDuration] = useState(0)
   const barRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -109,10 +98,16 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
         : null
   const playUrl = directUrl || streamUrl
   const isRealStream = Boolean(playUrl)
-  // INT-1860：有真实流时总时长只认媒体元数据；元数据未到或流不可用（error / readyState=0）
-  // 一律显示「—」，不再回落到 audio_id 派生演示时长（避免 404 时仍显示 0:36 这类假时长）。
-  const duration = isRealStream ? mediaDuration : mockDuration(audio)
+  // INT-1905 P3-3：无可用播放地址时整块换失败态、不做假进度；INT-1860：有真实流时总时长只认
+  // 媒体元数据，元数据未到或流不可用（error / readyState=0）一律显示「—」，不派生假时长。
+  const duration = mediaDuration > 0 ? mediaDuration : (isRealStream ? 0 : (audio?.duration ?? 0))
   const durationLabel = duration > 0 ? formatTime(duration) : '—'
+  /** 待解析播放地址：有 audio_id 但尚无地址（挂载首帧 resolving 还没置位时也算，避免闪失败态） */
+  const pendingStream = audioId !== null && !directUrl && !playError && !isRealStream
+  /** 地址解析中（GET /audios/{id}/stream），既非可播也非失败 */
+  const resolvingPlayUrl = !isRealStream && (resolving || pendingStream)
+  /** 无可用播放地址的终态（FEAT INT-1556 未收口时的常见情形） */
+  const unavailable = !isRealStream && !resolvingPlayUrl
 
   const stop = useCallback(() => {
     setPlaying(false)
@@ -140,7 +135,7 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
 
   // INT-1547 P2-2：report_service 给的 audios[].url 是网关相对路径（/api/audios/play/{id}，
   // 该路由未挂载，FEAT INT-1556）；有 audio_id 时统一经 GET /audios/{id}/stream 换预签名地址，
-  // 取不到才退化为模拟播放。
+  // 取不到即失败态（INT-1905 P3-3：不再退化为模拟播放）。
   useEffect(() => {
     if (!open || directUrl || audioId === null) {
       setStreamUrl('')
@@ -155,7 +150,7 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
         if (!cancelled) setStreamUrl(url)
       })
       .catch(() => {
-        if (!cancelled) setPlayError('音频播放地址获取失败，暂以模拟播放演示')
+        if (!cancelled) setPlayError('音频播放地址获取失败，请稍后重试')
       })
       .finally(() => {
         if (!cancelled) setResolving(false)
@@ -165,20 +160,7 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
     }
   }, [open, directUrl, audioId])
 
-  // mock 播放推进：无真实流时 playing 200ms 步进，到末尾自动停止（红④ 模拟）
-  useEffect(() => {
-    if (!playing || isRealStream) return
-    const timer = setInterval(() => {
-      setCurrent((prev) => {
-        if (prev + 0.2 >= duration) {
-          setPlaying(false)
-          return duration
-        }
-        return prev + 0.2
-      })
-    }, 200)
-    return () => clearInterval(timer)
-  }, [playing, duration, isRealStream])
+  // 真实流事件接线走 JSX props（见下方 <audio>，INT-1860）；无真实流不做模拟推进（INT-1905 P3-3）。
 
   const togglePlay = () => {
     setPlayError('')
@@ -187,9 +169,11 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
       audioRef.current?.pause()
       return
     }
+    // 无真实流时不可播放（失败态由下方 player panel 兜底，不做假进度）
+    if (!isRealStream) return
     setPlaying(true)
     const el = audioRef.current
-    if (isRealStream && el) {
+    if (el) {
       try {
         void el.play().catch(() => {
           setPlaying(false)
@@ -203,13 +187,14 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
   }
 
   const seekFromClientX = (clientX: number) => {
+    if (!isRealStream) return
     const rect = barRef.current?.getBoundingClientRect()
     if (!rect || rect.width <= 0) return
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
     const next = ratio * duration
     setCurrent(next)
     const el = audioRef.current
-    if (isRealStream && el) el.currentTime = next
+    if (el) el.currentTime = next
   }
 
   const progress = duration > 0 ? Math.min(100, (current / duration) * 100) : 0
@@ -290,7 +275,20 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
             </div>
 
             {/* 播放器：进度条 + 时间 + 控制组（照 V9.7.10 progress-bar/time-info/controls） */}
-            <div className='bg-muted/40 space-y-2 rounded-lg border p-4'>
+            {unavailable ? (
+              /* INT-1905 P3-3：无可用播放地址 → 失败态，不展示假进度与模拟播放 */
+              <div className='bg-muted/40 rounded-lg border border-dashed p-6 text-center'>
+                <p className='text-sm font-medium'>音频暂不可播放</p>
+                <p className='text-muted-foreground mt-1 text-xs'>
+                  该音频暂无可用播放地址，请稍后重试
+                </p>
+              </div>
+            ) : resolvingPlayUrl ? (
+              <div className='bg-muted/40 rounded-lg border p-6 text-center'>
+                <p className='text-muted-foreground text-sm'>正在获取音频地址…</p>
+              </div>
+            ) : (
+              <div className='bg-muted/40 space-y-2 rounded-lg border p-4'>
               <div
                 ref={barRef}
                 role='slider'
@@ -351,7 +349,8 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
                   停止
                 </Button>
               </div>
-            </div>
+              </div>
+            )}
 
             {/* 播放设备列表（照 V9.7.10 device-info） */}
             {devices.length > 0 && (
@@ -382,15 +381,11 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
               <span>音频 ID：<span className='font-mono'>{audio.audio_id}</span></span>
             </div>
 
-            <p className='text-muted-foreground text-center text-xs'>
-              {playing
-                ? '播放中…'
-                : resolving
-                  ? '正在获取音频地址…'
-                  : isRealStream
-                    ? '点击播放按钮预览音频'
-                    : '点击播放按钮预览音频（mock，进度为模拟播放）'}
-            </p>
+            {isRealStream && (
+              <p className='text-muted-foreground text-center text-xs'>
+                {playing ? '播放中…' : '点击播放按钮预览音频'}
+              </p>
+            )}
           </div>
         ) : (
           <p className='text-muted-foreground p-4 text-center text-sm'>无音频信息</p>

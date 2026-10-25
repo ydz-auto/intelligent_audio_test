@@ -1,13 +1,14 @@
 /**
- * 报表生成表单（15_报告域.md §2.2「报表生成」页签 + §4.4 流程：报表类型/内容/格式/执行）。
- * 报表类型 Select × 报表内容 Checkbox 组 × 报表格式 Select +「生成报表」执行按钮；
- * 导出链路复用 application/use-statistics-export。
+ * 报表生成表单（15_报告域.md §2.2「报表生成」页签 + §4.4 流程：报表类型/格式/执行）。
+ * 报表类型 Select × 报表格式 Select +「生成报表」执行按钮；导出链路复用
+ * application/use-statistics-export（POST /reports/export，只接受 ids + format）。
+ * INT-1905 P3-1：原「报表内容」Checkbox 组为死控件（导出链路无内容项参数，勾选不改变结果），
+ * 后端 report_service 补齐内容项契约前先行移除，不留无效交互（见交付评论的 FEAT 缺口）。
  */
 import { FileOutput } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -22,30 +23,16 @@ import {
   REPORT_FORM_TYPES,
 } from '@/features/report-statistics/constants'
 
-const REPORT_CONTENT_OPTIONS = [
-  { value: 'summary', label: '统计概览' },
-  { value: 'table', label: '统计明细表' },
-  { value: 'chart', label: '统计图表' },
-  { value: 'anomaly', label: '异常统计识别' },
-]
-
 export function StatisticsReportForm({ reportIds }: { reportIds: number[] }) {
   const [reportType, setReportType] = useState<string>(REPORT_FORM_TYPES[0])
   const [format, setFormat] = useState('excel')
   const [title, setTitle] = useState('')
-  const [content, setContent] = useState<string[]>(['summary', 'table'])
   const { exportStatistics, exporting } = useStatisticsExport()
-
-  const toggleContent = (value: string) => {
-    setContent((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
-    )
-  }
 
   const handleRun = () => {
     void exportStatistics({
       format: format as 'excel' | 'csv' | 'pdf' | 'html',
-      name: title || `${reportType}·${content.length} 项内容`,
+      name: title || reportType,
       ids: reportIds,
     })
   }
@@ -101,21 +88,6 @@ export function StatisticsReportForm({ reportIds }: { reportIds: number[] }) {
             placeholder='请输入报表名称'
             className='h-9'
           />
-        </div>
-
-        <div className='flex flex-col gap-2 sm:col-span-2'>
-          <span className='text-muted-foreground text-xs font-medium'>报表内容</span>
-          <div className='flex flex-wrap gap-x-5 gap-y-2'>
-            {REPORT_CONTENT_OPTIONS.map((option) => (
-              <label key={option.value} className='flex items-center gap-2 text-sm'>
-                <Checkbox
-                  checked={content.includes(option.value)}
-                  onCheckedChange={() => toggleContent(option.value)}
-                />
-                {option.label}
-              </label>
-            ))}
-          </div>
         </div>
       </div>
 
