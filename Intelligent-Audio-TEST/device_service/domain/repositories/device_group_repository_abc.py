@@ -7,6 +7,7 @@ application 层依赖此 ABC，不直接 import 具体仓储类。
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from device_service.domain.entities import DeviceGroupEntity
@@ -74,6 +75,11 @@ class DeviceMonitorRepositoryInterface(ABC):
 
     @abstractmethod
     def get_latest_health_details(self, device_ids: List[int]) -> Dict[int, dict]: ...
+
+    @abstractmethod
+    def aggregate_daily_stats(self, device_ids: List[int] = None, lab_id: int = None,
+                              start_date: date = None, end_date: date = None,
+                              now: datetime = None) -> dict: ...
 
     @abstractmethod
     def update_alarm_email(self, alarm_id: int, sent: bool, error: str = '') -> None: ...

@@ -6,20 +6,26 @@ CQRS 读侧 - 迁移自 shared/algorithm/algorithm_result_field_mapper.py
 
 from typing import Dict, List, Any, Optional
 
-from algorithm_service.infrastructure.persistence.config_cache import get_config_cache
+from algorithm_service.infrastructure.persistence.config_cache import (
+    get_config_cache,
+    _api_param_merge_key,
+    _mapping_merge_key,
+    _merge_level_rows,
+)
 from algorithm_service.infrastructure.persistence.param_repository import (
     algorithm_param_repository,
     reference_param_repository,
     mapping_repository,
 )
 from shared.utils.log_handler import log_not_emit
-from shared.domain.algorithm_result_strategy import AlgorithmStrategyFactory
 
 
 class ResultFieldMappingQueryHandler:
     """结果字段映射查询处理器"""
 
-    _output_field_cache: Dict[str, List[Dict[str, Any]]] = {}
+    # INT-1757（C6b）：键改 (algorithm_type, api_id)。只按 algorithm_type 存会让第二家
+    # 同算法类型的 API 直接命中第一家的输出声明缓存（串味）。
+    _output_field_cache: Dict[tuple, List[Dict[str, Any]]] = {}
     _TRANSFORM_TO_PARAM_TYPE = {
         'rttm_to_obj': 'rttm',
         'stm_to_obj': 'stm',
@@ -34,57 +40,138 @@ class ResultFieldMappingQueryHandler:
         return 'text'
 
     @classmethod
-    def get_output_fields(cls, algorithm_type: str, test_type: Optional[str] = None) -> List[Dict[str, Any]]:
-        # 通过策略模式消除 voice_llm 硬编码分支
-        strategy = AlgorithmStrategyFactory.get_strategy(algorithm_type)
-        strategy_fields = strategy.get_output_fields(test_type)
-        if strategy_fields is not None:
-            return strategy_fields
+    def get_output_fields(cls, algorithm_type: str, test_type: Optional[str] = None,
+                          api_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """读取算法输出字段声明（配置驱动，C0 裁定 3）。
 
-        if algorithm_type in cls._output_field_cache:
-            return cls._output_field_cache[algorithm_type]
+        来源：
+        - 字段清单与类型：`algorithm_api_params(direction=output)`（API 输出声明，
+          优先且唯一），顺序按 ui_order / id；
+        - 映射目标键：`param_mappings(source='api', source_direction='output')`，
+          无映射时按恒等（target_param = param_code）。
+
+        设备输出声明（`algorithm_device_params(direction=output)`）**不进入**本清单，
+        只供 `VoiceLlmStrategy` 解析 rounds 轮内子键的类型/展示名
+        （见 `shared.clients.algo_get_device_output_fields` → `device_output_fields`）。
+
+        配置缺失时明确降级并写 WARNING，不再回落到任何硬编码字段表，避免静默错值。
+
+        INT-1757（C6b）：按 api_id 作用域合并——传 api_id 时该 API 的声明/映射行按
+        唯一键覆盖同键算法级行（`_api_param_merge_key` / `_mapping_merge_key`），
+        未覆盖键回落算法级；不传时只取算法级行（api_id IS NULL），不混入别家 API
+        的行。进程内缓存键改 `(algorithm_type, api_id)`。
+
+        Args:
+            algorithm_type: 算法类型
+            test_type: 仅为 RPC 契约保留，输出字段不再按 test_type 分支
+            api_id: API 实例 id；None 表示算法级默认视图
+        """
+        if not algorithm_type:
+            return []
+        cache_key = (algorithm_type, api_id)
+        if cache_key in cls._output_field_cache:
+            return cls._output_field_cache[cache_key]
 
         try:
-            mappings = mapping_repository.list_by_algorithm(algorithm_type)
-            output_mappings = [
-                m for m in mappings
-                if isinstance(m, dict)
-                and m.get('source') in ('api', 'device')
-                and m.get('source_direction') == 'output'
-            ]
+            api_declared = cls._output_declarations(algorithm_type, 'api', api_id)
+            if not api_declared:
+                log_not_emit(
+                    'WARNING', 'result_field_mapping_queries',
+                    f'algorithm_type={algorithm_type} 无 algorithm_api_params(direction=output) 声明，'
+                    f'输出字段按空清单降级（请在算法配置中补 API 输出字段声明）',
+                    category='algorithm', algorithm_type=algorithm_type,
+                )
+                return []
 
-            param_type_map = {}
-            device_params = algorithm_param_repository.list_by_algorithm(algorithm_type, 'device')
-            api_params = algorithm_param_repository.list_by_algorithm(algorithm_type, 'api')
-            for p in device_params + api_params:
-                if isinstance(p, dict):
-                    p_code = p.get('param_code') or p.get('code')
-                    if p_code:
-                        param_type_map[p_code] = p.get('param_type') or p.get('type')
+            declared_codes = {
+                p.get('param_code') for p in api_declared if isinstance(p, dict)
+            }
+            if 'rounds' not in declared_codes and cls._is_round_structural(algorithm_type):
+                # 部分声明：有输出声明但缺 rounds，轮次展开会整段消失，必须显式提示
+                log_not_emit(
+                    'WARNING', 'result_field_mapping_queries',
+                    f'algorithm_type={algorithm_type} 有 API 输出声明但缺 rounds 声明，'
+                    f'轮次展开按空降级（请在算法配置中补 rounds 输出字段声明）',
+                    category='algorithm', algorithm_type=algorithm_type,
+                )
 
-            fields = []
-            for m in output_mappings:
-                field_info = {
-                    'source_param': m.get('source_param'),
-                    'target_param': m.get('target_param'),
-                    'transform_type': m.get('transform_type'),
-                    'dimension_id': m.get('dimension_id'),
-                    'dimension_name': m.get('dimension_name'),
-                    'param_type': cls._resolve_param_type(
-                        param_type_map,
-                        m.get('source_param') or '',
-                        m.get('transform_type') or 'none',
-                    ),
-                }
-                fields.append(field_info)
+            mappings = _merge_level_rows(
+                mapping_repository.list_by_algorithm(algorithm_type, source_type='api'),
+                api_id, _mapping_merge_key)
+            mapping_by_source: Dict[str, Dict[str, Any]] = {}
+            for m in mappings:
+                if not isinstance(m, dict) or m.get('source') != 'api':
+                    continue
+                if m.get('source_direction') != 'output':
+                    continue
+                source_param = m.get('source_param')
+                if source_param and source_param not in mapping_by_source:
+                    mapping_by_source[source_param] = m
 
-            cls._output_field_cache[algorithm_type] = fields
+            fields: List[Dict[str, Any]] = []
+            seen = set()
+
+            for p in api_declared:
+                param_code = p.get('param_code')
+                if not param_code or param_code in seen:
+                    continue
+                seen.add(param_code)
+                mapping = mapping_by_source.get(param_code) or {}
+                fields.append({
+                    'source': 'api',
+                    'source_param': param_code,
+                    'target_param': mapping.get('target_param') or param_code,
+                    'param_type': p.get('param_type') or 'text',
+                    'label': p.get('label') or p.get('param_name') or param_code,
+                    'dimension_id': mapping.get('dimension_id'),
+                    'dimension_name': None,
+                    'transform_type': mapping.get('transform_type') or 'none',
+                    'field_path': p.get('field_path'),
+                    'ui_order': p.get('ui_order') or 0,
+                })
+
+            cls._output_field_cache[cache_key] = fields
             return fields
 
         except Exception as e:
             log_not_emit('ERROR', 'result_field_mapping_queries',
-                         f'Error loading output fields for {algorithm_type}: {e}', category='algorithm')
+                         f'Error loading output fields for {algorithm_type} (api_id={api_id}): {e}',
+                         category='algorithm')
             return []
+
+    @staticmethod
+    def _is_round_structural(algorithm_type: str) -> bool:
+        """该算法类型的结果结构里是否含 rounds 数组（由策略承载的结构语义）。"""
+        from shared.domain.algorithm_result_strategy import (
+            AlgorithmStrategyFactory,
+            VoiceLlmStrategy,
+        )
+        return isinstance(
+            AlgorithmStrategyFactory.get_strategy(algorithm_type), VoiceLlmStrategy
+        )
+
+    @staticmethod
+    def _output_declarations(algorithm_type: str, param_type: str,
+                             api_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """按来源（api / device）读取 direction=output 的声明，按 ui_order / id 排序。
+
+        INT-1757（C6b）：api 来源按 ``api_id`` 合并算法级行（API 级覆盖同键算法级，
+        未覆盖回落；不传 api_id 只取算法级行）。设备声明保持算法级口径。
+        """
+        params = algorithm_param_repository.list_by_algorithm(algorithm_type, param_type)
+        if param_type == 'api':
+            # 仓储返回的 dict 用 param_code（`_api_param_merge_key` 是 config_cache
+            # 内存 dict 的 code 口径，直接套会让所有行同键、互相顶掉），唯一键取
+            # (direction, param_code)。
+            params = _merge_level_rows(
+                params, api_id,
+                lambda p: ((p.get('direction') or 'output'), p.get('param_code')),
+            )
+        declared = [
+            p for p in params
+            if isinstance(p, dict) and (p.get('direction') or '') == 'output'
+        ]
+        return sorted(declared, key=lambda item: (item.get('ui_order') or 0, item.get('id') or 0))
 
     @classmethod
     def get_reference_output_fields(cls, algorithm_type: str) -> List[Dict[str, Any]]:
@@ -187,7 +274,7 @@ class ResultFieldMappingQueryHandler:
                 'param_code': param_code,
                 'source_param': f.get('source_param'),
                 'param_type': f.get('param_type', 'text'),
-                'label': f.get('dimension_name') or param_code,
+                'label': f.get('label') or f.get('dimension_name') or param_code,
             })
 
         ref_output_fields = cls.get_reference_output_fields(algorithm_type)
@@ -202,23 +289,6 @@ class ResultFieldMappingQueryHandler:
             })
 
         return {'result': result_fields, 'reference': reference_fields}
-
-    @classmethod
-    def map_api_results(cls, algorithm_type, raw_results, test_type=None):
-        # 通过策略模式消除 voice_llm 硬编码分支
-        strategy = AlgorithmStrategyFactory.get_strategy(algorithm_type)
-        mapped = strategy.map_api_results(raw_results, test_type)
-        if mapped is not None:
-            return mapped
-
-        output_fields = cls.get_output_fields(algorithm_type)
-        mapped = {}
-        for field in output_fields:
-            source_param = field.get('source_param', '')
-            target_param = field.get('target_param', source_param)
-            if source_param and source_param in raw_results:
-                mapped[target_param] = raw_results[source_param]
-        return mapped
 
     @classmethod
     def extract_round_results(cls, algorithm_result, test_type=None):

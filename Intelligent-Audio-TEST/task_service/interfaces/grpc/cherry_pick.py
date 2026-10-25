@@ -16,19 +16,16 @@ class CherryPickServiceServicer(task_grpc.CherryPickServiceServicer):
 
     @staticmethod
     def _resp(result):
-        """统一包装返回结果为 TaskConfigResponse（含业务码透传，INT-141 F2 口径）。"""
+        """统一包装返回结果为 TaskConfigResponse（业务码走 proto code，INT-1759）"""
         data = result.get('data')
         if (not result.get('success')) and isinstance(data, dict) and isinstance(data.get('code'), int):
             data = dict(data)
             data.pop('code', None)
-            return task_pb.TaskConfigResponse(
-                success=False, message=result.get('message', ''),
-                data=_dumps(data) if data else "",
-            )
         return task_pb.TaskConfigResponse(
             success=result.get('success', False),
             message=result.get('message', ''),
             data=_dumps(data) if data is not None else "",
+            code=int(result.get('code') or 0),
         )
 
     @classmethod
@@ -123,6 +120,23 @@ class CherryPickServiceServicer(task_grpc.CherryPickServiceServicer):
             from task_service.application.task.cherry_pick_service import cherry_pick_service
             data = _loads(request.data, {})
             return self._resp(cherry_pick_service.list_candidates(data))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
+    def ListCherryPickPickableTasks(self, request, context=None):
+        try:
+            from task_service.application.task.cherry_pick_service import cherry_pick_service
+            data = _loads(request.data, {})
+            return self._resp(cherry_pick_service.pickable_tasks(data))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
+    def ListCherryPickCandidateTree(self, request, context=None):
+        """阶段 2 候选树聚合（INT-1510 §8.2；聚合在仓储单条 SQL，网关只透传）。"""
+        try:
+            from task_service.application.task.cherry_pick_service import cherry_pick_service
+            data = _loads(request.data, {})
+            return self._resp(cherry_pick_service.candidate_tree(data))
         except Exception as e:
             return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
 

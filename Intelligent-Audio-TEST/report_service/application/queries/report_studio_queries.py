@@ -17,6 +17,12 @@ class GetStudioDocumentQuery:
 
 
 @dataclass(frozen=True)
+class ListStudioDocumentsQuery:
+    """文档列表（INT-1763 §6.4）：report_id / source_type / parent_doc_id 过滤。"""
+    data: Dict[str, Any]
+
+
+@dataclass(frozen=True)
 class ListStudioDocumentVersionsQuery:
     """不可变版本列表。"""
     data: Dict[str, Any]

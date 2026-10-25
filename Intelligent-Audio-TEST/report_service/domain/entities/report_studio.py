@@ -10,12 +10,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from shared.models.common_enums import ReportStudioSourceType
+
 
 @dataclass(frozen=True)
 class ReportStudioDocument:
-    """Report Studio 文档聚合根。"""
+    """Report Studio 文档聚合根。
+
+    INT-1763：``report_id`` 可空（上传文档 / 孤儿 Agent 总结没有平台报告行），
+    来源由 ``source_type``（``ReportStudioSourceType``）承载；html/pptx 上传件记
+    ``source_file_path`` / ``source_format`` / ``source_file_size``，md 只进正文。
+    """
     doc_id: str
-    report_id: int
+    report_id: Optional[int]
     title: str
     markdown_content: str = ''
     chart_refs: List[str] = field(default_factory=list)
@@ -26,6 +33,11 @@ class ReportStudioDocument:
     created_by: Optional[int] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    source_type: str = ReportStudioSourceType.PLATFORM_REPORT.value
+    parent_doc_id: Optional[str] = None
+    source_file_path: Optional[str] = None
+    source_format: Optional[str] = None
+    source_file_size: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -44,10 +56,14 @@ class ReportStudioVersion:
 
 @dataclass(frozen=True)
 class ReportStudioChartSpec:
-    """Report Studio 图表定义源。"""
+    """Report Studio 图表定义源。
+
+    INT-1763：``report_id`` 可空（源为上传文档时没有平台报告行），读取侧
+    遇到空值返回「需重新绑定报告」语义，不做 int(None) 强转。
+    """
     chart_id: str
     doc_id: str
-    report_id: int
+    report_id: Optional[int]
     metric_params: Dict[str, Any] = field(default_factory=dict)
     style: Dict[str, Any] = field(default_factory=dict)
     version: int = 1

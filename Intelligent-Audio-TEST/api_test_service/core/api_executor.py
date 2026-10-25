@@ -377,7 +377,8 @@ class APIExecutor(BaseExecutor):
                     api_paths, select_base_url, release_base_url
                 )
                 algo_result_dict, latency = self._task_runner.extract_final_result(
-                    task_id, final_result_result, algorithm_type
+                    task_id, final_result_result, algorithm_type,
+                    api_id=getattr(api_config, 'id', None)
                 )
                 # 输出侧实测口径（INT-300 F3 三口径对称补齐）：线性单轮
                 # 与多轮会话/Realtime 同源——单轮协议回传的输出音频引用
@@ -655,7 +656,7 @@ class APIExecutor(BaseExecutor):
         for api_config in api_configs:
             class MockAPIConfig:
                 def __init__(self, id, endpoint, api_endpoints, default_max_process, meta, max_timeout, vendor, adapter_class=None,
-                             proxy_type=None, proxy_url=None):
+                             proxy_type=None, proxy_url=None, audio_config=None):
                     self.id = id
                     self.endpoint = endpoint
                     self.api_endpoints = api_endpoints
@@ -666,6 +667,9 @@ class APIExecutor(BaseExecutor):
                     self.adapter_class = adapter_class
                     self.proxy_type = proxy_type
                     self.proxy_url = proxy_url
+                    # 目标音频格式声明（INT-1771）：执行器各路径经
+                    # resolve_audio_config 统一取值，转换时必须保留顶层列
+                    self.audio_config = audio_config
 
             processed.append(MockAPIConfig(
                 id=api_config.id,
@@ -678,6 +682,7 @@ class APIExecutor(BaseExecutor):
                 adapter_class=getattr(api_config, 'adapter_class', None),
                 proxy_type=getattr(api_config, 'proxy_type', None),
                 proxy_url=getattr(api_config, 'proxy_url', None),
+                audio_config=getattr(api_config, 'audio_config', None),
             ))
         return processed
 

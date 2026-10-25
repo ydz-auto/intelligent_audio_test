@@ -32,7 +32,11 @@ class EvaluationDataServiceServicer(eval_grpc.EvaluationDataServiceServicer):
         return bool(result), '', None
 
     def GetDimensionResultsByResultIds(self, request, context=None):
-        """按 result_id 列表批量查询维度评估结果（含 dimension_name）。"""
+        """按 result_id 列表批量查询维度评估结果（含 dimension_name）。
+
+        INT-1752：request.include_body 为 true 时一并返回
+        api_request_body / api_raw_response（默认 false 保持既有轻量载荷）。
+        """
         try:
             result_ids = _loads(request.result_ids, [])
             if not isinstance(result_ids, list) or not result_ids:
@@ -42,7 +46,8 @@ class EvaluationDataServiceServicer(eval_grpc.EvaluationDataServiceServicer):
             from evaluation_service.application.queries.evaluation_query_service import (
                 evaluation_query_service,
             )
-            result = evaluation_query_service.get_dimension_results_by_result_ids(result_ids)
+            result = evaluation_query_service.get_dimension_results_by_result_ids(
+                result_ids, include_body=bool(getattr(request, 'include_body', False)))
             return self._resp(*self._from_result(result))
         except Exception as e:
             return self._resp(False, str(e))
@@ -144,5 +149,34 @@ class EvaluationDataServiceServicer(eval_grpc.EvaluationDataServiceServicer):
             )
             return self._resp(*self._from_result(
                 dimension_transfer_service.rollback_dimension_import(request.batch_id)))
+        except Exception as e:
+            return self._resp(False, str(e))
+
+    # ==================== 增量回导维度合并（INT-1762 D4） ====================
+
+    def MergeDimensions(self, request, context=None):
+        """按 (test_result_id, dimension_id) 覆盖集合并包内维度评分（覆盖集 + 快照）。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            from evaluation_service.application.dimension_merge_service import (
+                dimension_merge_service,
+            )
+            return self._resp(*self._from_result(
+                dimension_merge_service.merge_dimensions(
+                    data.get('rows') or [],
+                    data.get('result_id_mapping') or {},
+                    data.get('dimension_id_mapping') or {},
+                    data.get('batch_id') or '')))
+        except Exception as e:
+            return self._resp(False, str(e))
+
+    def RollbackDimensionMerge(self, request, context=None):
+        """按批次快照回滚维度合并（删除本批新行 + 插回被覆盖旧行）。"""
+        try:
+            from evaluation_service.application.dimension_merge_service import (
+                dimension_merge_service,
+            )
+            return self._resp(*self._from_result(
+                dimension_merge_service.rollback_merge(request.batch_id)))
         except Exception as e:
             return self._resp(False, str(e))

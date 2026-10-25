@@ -121,7 +121,7 @@ Realtime 测试以 WebSocket 全双工直连被测 Realtime API：上行推音�
 | WS/WSS 端点 | `api_endpoints` 中 `ws://` / `wss://` 前缀条目优先，回退 `api_url` 同规则；`RealtimeSessionExecutor._resolve_ws_url` 校验必须带 `ws://` / `wss://` 前缀 |
 | `meta.vendor_adapter` | `openai` / `openai_realtime`（`VendorAdapterType` 扁平 key）→ 注册表 `(AdapterProtocol.REALTIME, AdapterVendor.OPENAI)` 分发 `OpenAIRealtimeAdapter`（`api_test_service/infrastructure/adapters/vendors/openai_realtime_adapter.py`）；未配置回退 `RealtimeWSClient` 默认行为（api_driver / mock / 未配置，向后兼容） |
 | `meta.session_config` | `session.update` 载荷（VAD / voice / instructions 等），`_build_session_config` 合并用例级 `session` 覆盖 |
-| `meta.audio_config` | 目标音频格式声明（`sample_rate` 默认 **24000** / bit_depth / channels / container），`_build_session_config` 回退 `input_audio_sample_rate` |
+| `audio_config`（顶层列） | 目标音频格式声明（`sample_rate` 默认 **24000** / bit_depth / channels / container），与 HTTP 路径同源；`_build_session_config` 回退 `input_audio_sample_rate`。列空时才回退 `meta.audio_config`（存量兼容，INT-1771） |
 | `meta.ws_headers` | WS 握手头（直传，显式 `Authorization` 头优先，不覆盖） |
 | `meta.api_key` / 密钥链 | 见 2.1.1 |
 | `proxy_type` / `proxy_url` | 同 1.1，Realtime WS 连接（`realtime_ws_client.connect()`）经 `websocket_proxy_kwargs` 注入代理参数 |
@@ -159,7 +159,7 @@ Realtime 厂商适配器按**三级体系**落地（`api_test_service/infrastruc
 | `wait_ai_speaking` + `wait_ai_complete` | 起始窗口（`ai_start_timeout_seconds=25` 等首个 `ai_audio_delta`）/ 收尾窗口（`ai_complete_timeout_seconds=60` 等 `ai_audio_done`） | 等待语义差异 |
 | `_build_client` | 构造 `RealtimeWSClient`（url / headers / chunk_duration_ms / proxy 注入） | 私有传输替换 |
 
-**配置级差异（URL / 密钥 / 代理 / `session_config` / `audio_config`）一律走 `api.meta`，不写代码。**
+**配置级差异（URL / 密钥 / 代理 / `session_config`）一律走 `api.meta`，不写代码；`audio_config` 是顶层列（INT-1771），不进 meta。**
 
 ### 2.3 表驱动分发（INT-1299）与新增厂商接入
 

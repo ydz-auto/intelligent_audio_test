@@ -12,6 +12,7 @@ import logging
 from typing import Any, Dict, Optional, Tuple
 
 from shared.infrastructure.user_context import get_current_user_id
+from shared.models.database import end_read_transaction
 from shared.utils.query_utils import now_cst
 
 from evaluation_service.application.commands._command_utils import (
@@ -181,6 +182,9 @@ class DimensionOpsMixin(DimensionParamsMixin):
             self.repo.rollback()
             logger.error(f"删除评分维度失败: {e}")
             return command_error(str(e))
+        finally:
+            # INT-1691：404/403 提前返回不带写，收口只读事务
+            end_read_transaction()
 
     def _soft_delete_tree(self, dim_id: int) -> None:
         """递归软删一个维度及其子维度 / params / mappings / relations。
@@ -275,6 +279,9 @@ class DimensionOpsMixin(DimensionParamsMixin):
             self.repo.rollback()
             logger.error(f"批量操作失败: {e}")
             return command_error(str(e))
+        finally:
+            # INT-1691：export / 参数校验等提前返回路径同样收口
+            end_read_transaction()
 
     def _export_dimensions(self, ids) -> Dict[str, Any]:
         """导出维度数据（batch_action 的 export 分支）"""
@@ -335,6 +342,9 @@ class DimensionOpsMixin(DimensionParamsMixin):
         except Exception as e:
             logger.error(f"计算分值失败: {e}")
             return command_error(str(e))
+        finally:
+            # INT-1691：纯读路径，返回前结束事务
+            end_read_transaction()
 
     def health_check(self, dim_id: int) -> Dict[str, Any]:
         """对维度配置的 API 端点进行健康探测（委托 Infrastructure 层 EndpointHealthChecker）。"""
@@ -372,6 +382,9 @@ class DimensionOpsMixin(DimensionParamsMixin):
             self.repo.rollback()
             logger.error(f"健康探测失败: {e}")
             return command_error(str(e))
+        finally:
+            # INT-1691：健康探测期间不持连接，返回前结束事务
+            end_read_transaction()
 
     # ==================== 跨服务数据删除 ====================
 

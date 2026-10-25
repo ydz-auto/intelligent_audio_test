@@ -95,6 +95,31 @@ class AlgorithmParamRepository(IAlgorithmParamRepository):
         params = query.order_by(model.ui_order).all()
         return [_po_to_dict(p) for p in params]
 
+    def list_by_algorithms(
+        self,
+        algorithm_types: Optional[List[str]],
+        param_type: str,
+    ) -> List[Dict[str, Any]]:
+        """批量查询多个算法的参数列表（param_type 为 device/api）。
+
+        INT-1666：algorithm_types 为 None 时取全部未删除参数；传入列表时
+        只取这些算法（空列表 → 空结果，不回落成全表，避免切片/全量重载里
+        「没有在线算法」时误扫全库）。供 config_cache 重载使用，把逐算法
+        查询压成单条 SQL。
+        """
+        session = get_db_session()
+        model = _resolve_param_model(param_type)
+        query = session.query(model).filter_by(deleted=False)
+        if algorithm_types is not None:
+            types = [t for t in algorithm_types if t]
+            if not types:
+                return []
+            query = query.filter(model.algorithm_type.in_(types))
+        params = query.order_by(
+            model.algorithm_type, model.ui_order, model.id
+        ).all()
+        return [_po_to_dict(p) for p in params]
+
     def create(
         self, data: Dict[str, Any], param_type_source: str
     ) -> Dict[str, Any]:
@@ -103,11 +128,14 @@ class AlgorithmParamRepository(IAlgorithmParamRepository):
         字段映射与 servicers.py CreateParam 一致：
         - param_code / param_name / label / param_type / direction / required
         - default_value / validation_rules / help_text / ui_order / hidden
+        - field_path（仅 API 参数有该列，INT-1747）
+        - api_id（INT-1756 C6a）：仅 AlgorithmApiParam 有该列；设备参数表没有，
+          传入时忽略（两张表共用本仓储）。
         """
         session = get_db_session()
         try:
             model = _resolve_param_model(param_type_source)
-            po = model(
+            kwargs = dict(
                 algorithm_type=data.get("algorithm_type"),
                 param_code=data.get("param_code"),
                 param_name=data.get("param_name"),
@@ -120,7 +148,12 @@ class AlgorithmParamRepository(IAlgorithmParamRepository):
                 help_text=data.get("help_text"),
                 ui_order=data.get("ui_order") or 0,
                 hidden=data.get("hidden") or False,
+                **({"api_id": data.get("api_id")}
+                   if hasattr(model, "api_id") else {}),
             )
+            if "field_path" in model.__table__.columns:
+                kwargs["field_path"] = data.get("field_path")
+            po = model(**kwargs)
             session.add(po)
             session.flush()
             session.commit()

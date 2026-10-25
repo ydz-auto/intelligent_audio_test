@@ -3,7 +3,8 @@
 
 缺陷（INT-193 审计问题2）：
 - 列表 ORDER BY 仅 created_at DESC（SQL 路径 query_testcases 与 INT-193
-  派生路径 _paginate_derived_test_type 两处），同事务/一次 flush 批量创建
+  派生路径；后者 INT-1469 起改为 derived_test_type 列 SQL 过滤，本用例
+  仍锁定其分页平局序），同事务/一次 flush 批量创建
   的用例 created_at 全同（生产 Postgres now() 为事务级时间戳），平局序由
   引擎平局行为决定——跨页边界条目重复或漏行，分页正确性无保证。
 - 网关 TestCaseListQuery.page 无 ge=1：page=0 时 task_service 派生路径
@@ -12,7 +13,7 @@
 覆盖：
 - SQL 路径：同 created_at 批量插入 >1 页，逐页拉取无重复、无遗漏，
   拼接顺序 = created_at DESC + id ASC 确定序且跨调用稳定
-- 派生路径（test_type 过滤后内存分页）：同上
+- test_type 过滤路径（INT-1469 前为内存分页，现为 SQL 过滤）：同上
 - 主键 created_at 仍占优：次级键只在平局内生效，不改变新旧先序
 - 网关 schema：page=0/-1 校验失败，缺省 page=1 与合法值不受影响
 - 网关服务层 get_all：ValidationError → 422 结构化错误，校验失败不触达 ACL
@@ -139,7 +140,7 @@ class TestRepoTiePagination:
         assert walk1 == walk2
 
     def test_derived_path_tie_pagination_no_dup_no_miss_stable(self):
-        """派生路径（test_type 过滤后内存分页）：同上口径。"""
+        """test_type 过滤路径（INT-1469 起由 derived_test_type 列 SQL 过滤）：同上口径。"""
         from task_service.infrastructure.persistence.testcase_repository import (
             testcase_repository,
         )

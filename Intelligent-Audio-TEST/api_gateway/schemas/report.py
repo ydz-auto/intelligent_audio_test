@@ -313,6 +313,17 @@ class ReportCaseListQuery(APIModel):
     tags: Optional[List[str]] = Field(None)
 
 
+class ReportRawResponseQuery(APIModel):
+    """报告详情按需读取 API 原始响应（INT-1752）的查询参数。
+
+    默认关闭：只有显式请求该端点才读取 api_raw_response；单页字符数有默认值与上限，
+    前端按 has_more / next_offset 翻页。
+    """
+    offset: int = Field(0, ge=0)
+    limit: int = Field(0, ge=0)          # 0 = 服务端默认（20k 字符），上限 200k
+    round_number: int = Field(0, ge=0)   # 0 = 不指定轮次（整体优先）
+
+
 class ReportSearchCasesRequest(APIModel):
     keyword: Optional[str] = Field(None)
     category: Optional[str] = Field(None)
@@ -337,6 +348,12 @@ class ReportSearchCasesRequest(APIModel):
 class ReportExportQuery(APIModel):
     ids: str = Field('')
     format: str = Field('csv')
+
+
+class ReportExportHistoryQuery(APIModel):
+    """GET /reports/export/history 查询参数（INT-1555 导出历史）。"""
+    page: int = Field(1)
+    per_page: int = Field(20)
 
 
 # ===== 报告统计分析（INT-791：G04 报告统计分析页） =====

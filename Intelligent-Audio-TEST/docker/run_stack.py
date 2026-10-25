@@ -32,6 +32,16 @@ import time
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMPOSE_FILE = os.path.join(BASE_DIR, 'docker', 'docker-compose.yml')
 
+# INT-1820：compose 项目名必须显式钉住。不传 -p 时 compose 按 compose 文件父目录名推导
+# （= "docker"），与现役栈项目 intelligent-audio-test 不一致——那样 build 会产出栈根本不用的
+# 孤儿镜像 docker-<svc>:latest，up 则会另起一套同名服务的第二套栈。缺省与现役栈对齐，
+# 可用 --project / COMPOSE_PROJECT_NAME 覆盖。
+DEFAULT_PROJECT = 'intelligent-audio-test'
+
+
+def _project():
+    return os.environ.get('COMPOSE_PROJECT_NAME') or DEFAULT_PROJECT
+
 # 健康探测口径（与 scripts/health_smoke.py 一致）：10 个 HTTP /health
 # + 前端 HTTP + 11 个 gRPC TCP + 3 个 infra TCP。api_test_service 不发布宿主
 # 端口（UC-1001），探测在容器网络内经 compose exec 完成。
@@ -93,7 +103,7 @@ def _load_env_file():
 
 def _compose(*args):
     """执行 docker compose 子命令（继承当前环境；透传退出码）。"""
-    cmd = ['docker', 'compose', '-f', COMPOSE_FILE, *args]
+    cmd = ['docker', 'compose', '-p', _project(), '-f', COMPOSE_FILE, *args]
     print(f"[STACK] {' '.join(cmd)}", flush=True)
     result = subprocess.run(cmd, cwd=BASE_DIR)
     return result.returncode
@@ -251,7 +261,7 @@ def _compose_exec_tcp(service, port, timeout=5.0):
     构建期变量时的插值报错（exec 本身只需要运行中的容器）。
     """
     result = subprocess.run(
-        ['docker', 'compose', '-f', COMPOSE_FILE, 'exec', '-T', service,
+        ['docker', 'compose', '-p', _project(), '-f', COMPOSE_FILE, 'exec', '-T', service,
          'python', '-c',
          f"import socket; s=socket.create_connection(('127.0.0.1',{port}),{timeout}); s.close()"],
         capture_output=True, timeout=timeout + 10,
@@ -276,6 +286,9 @@ def cmd_wait(args):
 
 def main():
     parser = argparse.ArgumentParser(description='全栈 Docker Compose 薄封装（INT-272）')
+    parser.add_argument('--project', default=None,
+                        help=f'compose 项目名（缺省 {DEFAULT_PROJECT}，或 $COMPOSE_PROJECT_NAME）;'
+                             '隔离验证时用独立名字，避免碰到现役栈')
     sub = parser.add_subparsers(dest='command', required=True)
 
     p_up = sub.add_parser('up', help='拉起全栈（分离模式，容器归 daemon 托管）')
@@ -308,6 +321,11 @@ def main():
 
     args = parser.parse_args()
     _load_env_file()
+    # INT-1820：项目名优先级 = --project > 环境/.env 的 COMPOSE_PROJECT_NAME > 现役栈缺省名
+    if args.project:
+        os.environ['COMPOSE_PROJECT_NAME'] = args.project
+    else:
+        os.environ.setdefault('COMPOSE_PROJECT_NAME', DEFAULT_PROJECT)
     sys.exit(args.func(args))
 
 

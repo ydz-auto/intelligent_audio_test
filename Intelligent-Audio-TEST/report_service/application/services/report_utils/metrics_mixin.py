@@ -289,6 +289,9 @@ class MetricsMixin:
         tag_metric_data = ReportUtils._calculate_averages(tag_accumulator)
 
         # 9.1 对非 average 维度，用策略类聚合替换简单平均
+        # INT-1752：策略算不出来（加权维度缺 api_raw_response）时保留简单平均并记录降级说明，
+        # 不再静默——降级说明随 core_metrics 返回，最终写入报告 all_metrics。
+        aggregation_degraded = {}
         if custom_agg_dims:
             # dim_name -> output_params 映射
             dim_name_to_output_params = {}
@@ -299,9 +302,11 @@ class MetricsMixin:
                     dim_name_to_output_params[dim_name] = dim_output_params.get(_dim_id(dim), [])
                     dim_agg_denominator[dim_name] = _dim_agg_denominator(dim)
             ReportUtils._apply_resource_aggregation_strategies(
-                metric_data, resource_agg_items, dim_statistic_method, dim_name_to_output_params, dim_agg_denominator)
+                metric_data, resource_agg_items, dim_statistic_method, dim_name_to_output_params,
+                dim_agg_denominator, degraded_out=aggregation_degraded)
             ReportUtils._apply_aggregation_strategies(
-                tag_metric_data, tag_agg_items, dim_statistic_method, dim_name_to_output_params, dim_agg_denominator)
+                tag_metric_data, tag_agg_items, dim_statistic_method, dim_name_to_output_params,
+                dim_agg_denominator, degraded_out=aggregation_degraded)
 
         # 9.5 计算按标签分类统计的数据
         tag_category_metric_data = ReportUtils._calculate_tag_category_averages(
@@ -318,7 +323,9 @@ class MetricsMixin:
             "tag_category_metric_data": tag_category_metric_data,
             "raw_data": raw_data,
             "case_type_stats": case_type_stats,
-            "resources": resources
+            "resources": resources,
+            # INT-1752：加权聚合降级说明 {dim_name: {configured_method, applied_method, reason, detail}}
+            "aggregation_degraded": aggregation_degraded,
         }
 
     @staticmethod
@@ -353,18 +360,21 @@ class MetricsMixin:
 
     @staticmethod
     def _apply_resource_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None,
-                                               dim_agg_denominator=None):
+                                               dim_agg_denominator=None, degraded_out=None):
         """
         对非 average 维度，用策略类聚合替换简单平均值（resource 级别）。
 
         agg_items 结构: {dim_name: {resource: [items]}}
         metric_data 结构: {resource: {dim_name: value}}
         dim_agg_denominator: {dim_name: 'round'|'case'} 比率统计分母口径，默认 'round'
+
+        INT-1752：策略返回 None 时保留原简单平均值，并在 degraded_out[dim_name]
+        记录降级说明（加权维度缺原始响应时不再静默）。
         """
         if not agg_items:
             return
 
-        from report_service.domain.services.aggregation_strategies import get_strategy
+        from report_service.domain.services.aggregation_strategies import explain_degradation, get_strategy
 
         for dim_name, resources in agg_items.items():
             method = dim_statistic_method.get(dim_name, 'average')
@@ -382,10 +392,15 @@ class MetricsMixin:
                 )
                 if agg_val is not None and resource in metric_data:
                     metric_data[resource][dim_name] = agg_val
+                elif agg_val is None and degraded_out is not None:
+                    degradation = explain_degradation(method, items, output_params=output_params,
+                                            denominator_mode=denominator_mode)
+                    if degradation is not None:
+                        degraded_out.setdefault(dim_name, degradation)
 
     @staticmethod
     def _apply_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None,
-                                      dim_agg_denominator=None):
+                                      dim_agg_denominator=None, degraded_out=None):
         """
         对非 average 维度，用策略类聚合替换简单平均值。
 
@@ -394,11 +409,14 @@ class MetricsMixin:
         dim_statistic_method: {dim_name: statistic_method}
         dim_output_params: {dim_name: [{param_code, field_path, field_type}, ...]}
         dim_agg_denominator: {dim_name: 'round'|'case'} 比率统计分母口径，默认 'round'
+
+        INT-1752：策略返回 None 时保留原简单平均值，并在 degraded_out[dim_name]
+        记录降级说明（加权维度缺原始响应时不再静默）。
         """
         if not agg_items:
             return
 
-        from report_service.domain.services.aggregation_strategies import get_strategy
+        from report_service.domain.services.aggregation_strategies import explain_degradation, get_strategy
 
         for dim_name, groups in agg_items.items():
             method = dim_statistic_method.get(dim_name, 'average')
@@ -417,6 +435,11 @@ class MetricsMixin:
                     )
                     if agg_val is not None and group_key in metric_data and resource in metric_data[group_key]:
                         metric_data[group_key][resource][dim_name] = agg_val
+                    elif agg_val is None and degraded_out is not None:
+                        degradation = explain_degradation(method, items, output_params=output_params,
+                                            denominator_mode=denominator_mode)
+                        if degradation is not None:
+                            degraded_out.setdefault(dim_name, degradation)
 
     @staticmethod
     def _calculate_tag_category_averages(tag_accumulator, tag_category_map):

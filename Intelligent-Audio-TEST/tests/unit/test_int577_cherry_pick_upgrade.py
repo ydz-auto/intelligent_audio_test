@@ -101,6 +101,8 @@ def _seed_source_task(name='INT577源任务', status='completed',
                 algorithm_type=algorithm_type, execution_status='completed',
                 algorithm_result={'asr_result': f'文本{i}'},
                 result_data={'result_type': r_type, 'data': f'd{i}'},
+                # INT-1510：result_type 落库列（读侧 DB-first）；缺值哨兵不落库，存 NULL
+                result_type=None if r_type == 'default' else r_type,
             )
             session.add(r)
             session.flush()

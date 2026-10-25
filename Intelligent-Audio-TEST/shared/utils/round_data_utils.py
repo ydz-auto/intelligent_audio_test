@@ -5,12 +5,16 @@ algo_result.rounds[] 存在两条生产链口径，评估/分发侧取用前须�
 
 - E2E/设备链（E2ECalculationService.build_algorithm_result）：
   output 为按字段映射后的 dict，轮次编号在 ``round`` 键（0-indexed）
-- API 多轮链（APISessionExecutor._aggregate_round_results）：
-  output 为纯文本串（voice_llm 等 LLM 文本回复），轮次编号在
-  ``round_number`` 键（1-indexed，gRPC JSON 往返后可能为 str）
+- API 链（APISessionExecutor._aggregate_round_results /
+  RealtimeSessionExecutor._collect_eval_fields）：
+  INT-1746 起与 E2E 同构——output 为 ``{target_param: value}`` dict，
+  文本输出落在轮次同级 ``answer_text``；轮次编号在 ``round_number`` 键
+  （1-indexed，gRPC JSON 往返后可能为 str）
+- 历史数据：INT-1746 之前的 API 多轮结果 output 仍为纯文本串（voice_llm
+  LLM 文本回复），归一后为 ``{'text': str}``——存量结果/报告的读取路径不变
 
-归一约定：字符串 output 按文本输出归一为 ``{'text': str}``；
-轮次编号统一归一为 0-indexed int。
+归一约定：字符串 output 按文本输出归一为 ``{'text': str}``；dict 原样返回
+（短路，不改写新链已映射结构）；轮次编号统一归一为 0-indexed int。
 """
 
 

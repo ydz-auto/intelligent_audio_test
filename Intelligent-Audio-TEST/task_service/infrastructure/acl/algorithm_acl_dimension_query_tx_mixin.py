@@ -142,6 +142,15 @@ class AlgorithmDimensionQueryTxMixin:
         from shared.clients.grpc_clients import algo_get_output_fields
         return algo_get_output_fields(algorithm_type, test_type)
 
+    def algo_get_device_output_fields(self, algorithm_type: str):
+        """获取设备输出声明（direction=output），只用于轮内子键类型/展示名解析。
+
+        封装 shared.clients.grpc_clients.algo_get_device_output_fields，
+        通过 algorithm_service AlgorithmQueryService.GetDeviceParamsList RPC。
+        """
+        from shared.clients.grpc_clients import algo_get_device_output_fields
+        return algo_get_device_output_fields(algorithm_type)
+
     def algo_generate_reference_params(self, test_case_config=None, round_data=None):
         """生成参考参数。
 

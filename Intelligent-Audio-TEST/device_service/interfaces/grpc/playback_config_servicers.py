@@ -154,3 +154,55 @@ class PlaybackConfigServiceServicer(e2e_grpc.PlaybackConfigServiceServicer):
             )
         except Exception as e:
             return e2e_pb.StopPlaybackTestResponse(success=False, message=str(e), data="")
+
+    # ---- 播放设备控制（INT-1579，契约 §2.1/§2.2/§2.5）----
+    # code 透传业务码（200/400/404/409），网关据此映射 HTTP 状态码
+
+    def RestartPlaybackDevice(self, request, context=None):
+        try:
+            result = self.command.restart(request.device_id)
+            return e2e_pb.RestartPlaybackDeviceResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.RestartPlaybackDeviceResponse(success=False, message=str(e), data="", code=500)
+
+    def ResetPlaybackDeviceConfig(self, request, context=None):
+        try:
+            result = self.command.reset_config(request.device_id)
+            return e2e_pb.ResetPlaybackDeviceConfigResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.ResetPlaybackDeviceConfigResponse(success=False, message=str(e), data="", code=500)
+
+    def GetPlaybackDeviceDiagnosis(self, request, context=None):
+        try:
+            result = self.query.diagnosis(request.device_id)
+            return e2e_pb.GetPlaybackDeviceDiagnosisResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.GetPlaybackDeviceDiagnosisResponse(success=False, message=str(e), data="", code=500)
+
+    def RepairPlaybackDevice(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            result = self.command.repair(request.device_id, data)
+            return e2e_pb.RepairPlaybackDeviceResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.RepairPlaybackDeviceResponse(success=False, message=str(e), data="", code=500)

@@ -9,7 +9,7 @@ import json
 
 from shared.clients.grpc_clients import get_published_task_config_service_stub
 
-from ._common import _grpc_call
+from ._common import _attach_code, _grpc_call
 
 from shared.proto import task_service_pb2 as task_pb
 
@@ -18,13 +18,18 @@ class _PublishedTaskConfigProxy:
     """已发布任务配置 CRUD 代理：把方法调用转发到 gRPC PublishedTaskConfigService"""
 
     def _resp(self, resp):
-        """统一解析 TaskConfigResponse 为 dict"""
-        return {
+        """统一解析 TaskConfigResponse 为 dict（业务码透传，INT-1759 proto code）"""
+        result = {
             'success': resp.success,
             'message': resp.message,
             'data': json.loads(resp.data) if resp.data else None,
-            'code': resp.success and 0 or (resp.message and 400 or 500),
         }
+        _attach_code(result, resp)
+        # 业务码未填时保持原兜底：失败有文案 400 / 无文案 500、成功 0
+        if not result.get('success') and not result.get('code'):
+            result['code'] = 400 if result.get('message') else 500
+        result.setdefault('code', 0)
+        return result
 
     @property
     def stub(self):

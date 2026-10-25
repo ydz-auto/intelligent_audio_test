@@ -22,8 +22,8 @@ class Audio(Base):
     存储系统中所有音频文件的元数据及物理路径。
     """
     __tablename__ = 'audios'
+    # INT-1784：idx_audios_deleted 已下线（deleted 是 (deleted, created_at) 的列序前缀）
     __table_args__ = (
-        Index('idx_audios_deleted', 'deleted'),
         Index('idx_audios_created_at', 'created_at'),
         Index('idx_audios_deleted_created', 'deleted', 'created_at'),
         # INT-423 数据可见性：行级过滤高频列表表复合索引（与迁移脚本对齐）
@@ -47,7 +47,8 @@ class Audio(Base):
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
     deleted_by_user_id = Column(BigInteger, nullable=True, comment='执行删除操作的用户ID（JWT，INT-299）')
     source_language = Column(String(32), comment='源语言')
-    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    # INT-1784：(created_by_user_id, visibility) 复合索引覆盖该列，单列索引下线
+    created_by_user_id = Column(BigInteger, nullable=True, comment='创建者用户ID')
     visibility = Column(String(20), nullable=False, default='shared', server_default='shared',
                         comment='数据可见性（shared/private，INT-423）')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
@@ -61,7 +62,6 @@ class AudioAnnotation(Base):
     """
     __tablename__ = 'audio_annotations'
     __table_args__ = (
-        Index('idx_audio_annotations_audio_id', 'audio_id'),
         Index('idx_audio_annotations_audio_deleted', 'audio_id', 'deleted'),
     )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
@@ -87,7 +87,6 @@ class AudioTag(Base):
     """
     __tablename__ = 'audio_tags'
     __table_args__ = (
-        Index('idx_audio_tags_audio_id', 'audio_id'),
         Index('idx_audio_tags_tag_id', 'tag_id'),
         Index('idx_audio_tags_audio_tag', 'audio_id', 'tag_id'),
     )

@@ -6,7 +6,7 @@
 """
 from fastapi import APIRouter
 from fastapi.responses import Response
-from api_gateway.routes._response import to_response
+from api_gateway.routes._response import to_response, content_disposition
 from api_gateway.application.services.auth.dependencies import require_permission
 from api_gateway.application.services.report.report_query_sevice import ReportQueryService
 from api_gateway.application.services.report.report_command_sevice import ReportCommandService
@@ -22,7 +22,7 @@ def _handle(result):
         return Response(
             content=result['content'],
             media_type=result.get('mime_type', 'application/octet-stream'),
-            headers={'Content-Disposition': f"attachment; filename=\"{result.get('filename', 'export')}\""})
+            headers={'Content-Disposition': content_disposition(result.get('filename'))})
     if isinstance(result, tuple) and len(result) == 2:
         return to_response(result)
     return result
@@ -42,6 +42,13 @@ def tab_counts(_: None = require_permission('report:read')):
 @router.get('/export')
 def export_get(_: None = require_permission('report:read')):
     return _handle(ReportQueryService.export())
+
+
+@router.get('/export/history')
+def export_history(_: None = require_permission('report:read')):
+    # INT-1555：报告中心「导出历史」页签数据源；必须注册在 /{report_id}
+    # 之前，否则被 int 捕获返回 422（同 /statistics、/shared/{token} 注记）
+    return _handle(ReportQueryService.get_export_history())
 
 
 @router.get('/by_task/{task_id}')
@@ -184,3 +191,13 @@ def download_case_logs(report_id: int, case_id: str,
     # INT-1062：下载端点补路由级权限（审计要求，否则「列表端点比下载更严」口径不一致）；
     # ?files= URL 编码 JSON 数组筛选，缺省整包（向后兼容）
     return _handle(ReportQueryService.download_case_logs(report_id, case_id))
+
+
+# ---- API 原始响应按需展开（INT-1752）----
+# 默认不随报告详情下发：仅显式请求时读取，返回单页切片（offset/limit）。
+# 非 API 用例 / 维度无原始响应时 data.available=false，前端据此不显示展开入口。
+@router.get('/{report_id}/cases/{case_id}/dimensions/{dimension_id}/raw-response')
+def get_case_dimension_raw_response(report_id: int, case_id: str, dimension_id: int,
+                                    _: None = require_permission('report:read')):
+    return _handle(ReportQueryService.get_case_dimension_raw_response(
+        report_id, case_id, dimension_id))

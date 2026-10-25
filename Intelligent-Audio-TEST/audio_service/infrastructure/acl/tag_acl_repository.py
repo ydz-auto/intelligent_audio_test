@@ -9,9 +9,11 @@
 - 采用具体类 + 模块级单例。
 """
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+
+from audio_service.domain.exceptions import TagResolutionError
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,22 @@ class TagAclRepository:
             return items, data.get('pages', 1)
         except Exception:
             return [], 0
+
+    def _list_tags_page_strict(self, page: int = 1, per_page: int = 500, keyword: str = ''):
+        """查询单页标签列表；失败向上抛，供写路径区分「查无」与「查不了」."""
+        from shared.clients.grpc_clients import get_tag_config_service_stub
+        from shared.proto import task_service_pb2 as task_pb
+
+        stub = get_tag_config_service_stub()
+        resp = stub.ListTags(task_pb.ListTagsRequest(
+            page=page, per_page=per_page, keyword=keyword,
+        ))
+        if not resp.success:
+            raise RuntimeError(f'ListTags 失败: {resp.message or "未知原因"}')
+        data = _loads(resp.data, {})
+        if not isinstance(data, dict):
+            raise RuntimeError(f'ListTags 响应不是对象: {str(resp.data)[:200]}')
+        return data.get('items', []) or [], data.get('pages', 1)
 
     def get_tag_name_to_id_map(self, tag_names: List[str]) -> Dict[str, int]:
         """通过 gRPC 查询标签名 → ID 映射（Tag 属于 task_service 域）"""
@@ -116,22 +134,39 @@ class TagAclRepository:
         except Exception:
             return []
 
+    def _find_tag_by_name(self, tag_name: str) -> Optional[_TagProxy]:
+        """按名称精确查标签；传输/协议异常向上抛（与「查无此标签」区分）。
+
+        INT-1533：写路径必须能分辨「标签不存在，该创建」和「标签服务连不上」，
+        后者绝不能被当成「没有该标签」继续走创建，更不能最终降级成 NULL。
+        """
+        page = 1
+        per_page = 500
+        while True:
+            items, total_pages = self._list_tags_page_strict(page, per_page, keyword=tag_name)
+            for item in items:
+                if item.get('name') == tag_name:
+                    return _TagProxy(id=item.get('id'), name=item.get('name'))
+            if not items or page >= total_pages:
+                return None
+            page += 1
+
     def get_or_create_tag(self, tag_name: str):
-        """查找或创建标签，返回含 id 和 name 的对象（供 add_audio_tag 使用 tag.id）"""
+        """查找或创建标签，返回含 id 和 name 的对象（供 add_audio_tag 使用 tag.id）。
+
+        INT-1533：解析失败一律抛 TagResolutionError，不再返回 id=None 的代理
+        ——否则调用方会写出 audio_tags.tag_id 为 NULL 的关联行却回「成功」。
+        """
         try:
-            page = 1
-            per_page = 500
-            while True:
-                items, total_pages = self._list_tags_page(page, per_page, keyword=tag_name)
-                if not items:
-                    break
-                for item in items:
-                    if item.get('name') == tag_name:
-                        return _TagProxy(id=item.get('id'), name=item.get('name'))
-                if page >= total_pages or not items:
-                    break
-                page += 1
-            # 创建
+            found = self._find_tag_by_name(tag_name)
+        except Exception as e:
+            logger.warning("查询标签失败（继续尝试创建）: tag_name=%s err=%s", tag_name, e)
+            found = None
+        if found is not None:
+            return found
+
+        create_error = ''
+        try:
             from shared.clients.grpc_clients import get_tag_config_service_stub
             from shared.proto import task_service_pb2 as task_pb
             stub = get_tag_config_service_stub()
@@ -142,9 +177,22 @@ class TagAclRepository:
                 data = _loads(create_resp.data, {})
                 if isinstance(data, dict) and data.get('id'):
                     return _TagProxy(id=data.get('id'), name=data.get('name', tag_name))
-        except Exception:
-            logger.debug("通过 gRPC 查找或创建标签失败: tag_name=%s", tag_name, exc_info=True)
-        return _TagProxy(id=None, name=tag_name)
+                create_error = f'创建成功但响应缺少 id: {str(create_resp.data)[:200]}'
+            else:
+                create_error = create_resp.message or '创建标签失败'
+        except Exception as e:
+            create_error = f'{type(e).__name__}: {e}'
+
+        # 并发下同名标签可能已被其它请求创建（CreateTag 撞唯一约束），复查一次
+        try:
+            found = self._find_tag_by_name(tag_name)
+            if found is not None:
+                return found
+        except Exception as e:
+            create_error = f'{create_error}；复查失败: {type(e).__name__}: {e}'
+
+        logger.warning("标签解析失败: tag_name=%s err=%s", tag_name, create_error)
+        raise TagResolutionError(tag_name, create_error)
 
     def get_tag_id_to_name_map(self, tag_ids: List[int]) -> Dict[int, str]:
         """通过 gRPC 查询标签 ID → 名映射（Tag 属于 task_service 域）"""

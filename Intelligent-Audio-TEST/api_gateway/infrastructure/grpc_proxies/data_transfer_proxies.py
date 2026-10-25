@@ -10,7 +10,11 @@ import logging
 
 from shared.clients.grpc_clients import get_data_transfer_service_stub
 from shared.proto import task_service_pb2 as task_pb
-from api_gateway.infrastructure.grpc_proxies._common import _grpc_call, _logger
+from api_gateway.infrastructure.grpc_proxies._common import (
+    _attach_code,
+    _grpc_call,
+    _logger,
+)
 
 # ExecuteImport 为长耗时调用（含跨服务分段导入 + 文件回写），
 # 网关同步等待回包，超时放宽到 1 小时；进度经 Redis → SocketIO 通道可见。
@@ -28,7 +32,9 @@ class _DataTransferProxy:
         except (ValueError, TypeError):
             _logger.warning("DataTransfer 响应 data 非法 JSON: %r", resp.data[:200])
             data = None
-        return {'success': resp.success, 'message': resp.message, 'data': data}
+        result = {'success': resp.success, 'message': resp.message, 'data': data}
+        # 业务码以 proto `code` 字段为准（INT-1759：执行导入拒绝 422 等）
+        return _attach_code(result, resp)
 
     def export_tasks(self, data: dict) -> dict:
         """导出任务数据。data: {task_ids, options:{include_ref_params, include_audios}}"""
@@ -42,27 +48,88 @@ class _DataTransferProxy:
             'success': False, 'message': f'导出任务数据失败: {e}', 'data': None, 'code': 500},
             error_msg_prefix='导出任务数据失败')
 
-    def preview_import(self, zip_path: str) -> dict:
-        """导入预检（zip 在共享盘 DATA_TRANSFER_TMP_DIR/import/ 下）"""
+    def preview_import(self, zip_path: str, options: dict = None) -> dict:
+        """导入预检（zip 在共享盘 DATA_TRANSFER_TMP_DIR/import/ 下）
+
+        options（INT-1759）: {require_case_consistency?: bool, intent?: migrate/restore}
+        """
         def _call():
             stub = get_data_transfer_service_stub()
-            resp = stub.PreviewImport(task_pb.PreviewImportRequest(zip_path=zip_path),
-                                      timeout=_DEFAULT_TIMEOUT_SECONDS)
+            resp = stub.PreviewImport(
+                task_pb.PreviewImportRequest(
+                    zip_path=zip_path,
+                    data=json.dumps(options or {}, ensure_ascii=False, default=str)),
+                timeout=_DEFAULT_TIMEOUT_SECONDS)
             return self._resp(resp)
         return _grpc_call(_call, default_return=lambda e: {
             'success': False, 'message': f'导入预检失败: {e}', 'data': None, 'code': 500},
             error_msg_prefix='导入预检失败')
 
-    def execute_import(self, zip_path: str) -> dict:
+    def execute_import(self, zip_path: str, options: dict = None) -> dict:
         """执行导入（长耗时，timeout=3600s；进度走 Redis → SocketIO）"""
         def _call():
             stub = get_data_transfer_service_stub()
-            resp = stub.ExecuteImport(task_pb.ExecuteImportRequest(zip_path=zip_path),
-                                      timeout=_EXECUTE_TIMEOUT_SECONDS)
+            resp = stub.ExecuteImport(
+                task_pb.ExecuteImportRequest(
+                    zip_path=zip_path,
+                    data=json.dumps(options or {}, ensure_ascii=False, default=str)),
+                timeout=_EXECUTE_TIMEOUT_SECONDS)
             return self._resp(resp)
         return _grpc_call(_call, default_return=lambda e: {
             'success': False, 'message': f'执行导入失败: {e}', 'data': None, 'code': 500},
             error_msg_prefix='执行导入失败')
+
+    def export_incremental(self, data: dict) -> dict:
+        """增量导出（链路 2，INT-1761）。data: {task_ids, options:{include}}"""
+        def _call():
+            stub = get_data_transfer_service_stub()
+            resp = stub.ExportIncremental(task_pb.ExportIncrementalRequest(
+                data=json.dumps(data or {}, ensure_ascii=False, default=str)),
+                timeout=_DEFAULT_TIMEOUT_SECONDS)
+            return self._resp(resp)
+        return _grpc_call(_call, default_return=lambda e: {
+            'success': False, 'message': f'增量导出失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='增量导出失败')
+
+    def import_incremental(self, zip_path: str, options: dict = None) -> dict:
+        """增量导入（长耗时，timeout=3600s；进度走 Redis → SocketIO）"""
+        def _call():
+            stub = get_data_transfer_service_stub()
+            resp = stub.ImportIncremental(
+                task_pb.ImportIncrementalRequest(
+                    zip_path=zip_path,
+                    data=json.dumps(options or {}, ensure_ascii=False, default=str)),
+                timeout=_EXECUTE_TIMEOUT_SECONDS)
+            return self._resp(resp)
+        return _grpc_call(_call, default_return=lambda e: {
+            'success': False, 'message': f'增量导入失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='增量导入失败')
+
+    def export_report_package(self, data: dict) -> dict:
+        """导出报告包（INT-1764 D6）。data: {task_ids, report_ids, doc_version_scope}"""
+        def _call():
+            stub = get_data_transfer_service_stub()
+            resp = stub.ExportReportPackage(task_pb.ExportReportPackageRequest(
+                data=json.dumps(data or {}, ensure_ascii=False, default=str)),
+                timeout=_DEFAULT_TIMEOUT_SECONDS)
+            return self._resp(resp)
+        return _grpc_call(_call, default_return=lambda e: {
+            'success': False, 'message': f'导出报告包失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='导出报告包失败')
+
+    def import_report_package(self, zip_path: str, options: dict = None) -> dict:
+        """导入报告包（长耗时，timeout=3600s）"""
+        def _call():
+            stub = get_data_transfer_service_stub()
+            resp = stub.ImportReportPackage(
+                task_pb.ImportReportPackageRequest(
+                    zip_path=zip_path,
+                    data=json.dumps(options or {}, ensure_ascii=False, default=str)),
+                timeout=_EXECUTE_TIMEOUT_SECONDS)
+            return self._resp(resp)
+        return _grpc_call(_call, default_return=lambda e: {
+            'success': False, 'message': f'导入报告包失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='导入报告包失败')
 
     def get_progress_snapshot(self) -> dict:
         """最近一次导入进度快照（GET /import/progress 兜底）

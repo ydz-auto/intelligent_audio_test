@@ -16,6 +16,17 @@ class TestCaseGroupRepositoryABC(ABC):
         ...
 
     @abstractmethod
+    def list_groups_page(self, algorithm_type: str = '', search: str = '',
+                         dimension_id: int = None, keyword: str = None,
+                         page: int = 0, per_page: int = 0) -> Dict[str, Any]:
+        """查询 TestCaseGroup 列表 + 过滤后总数（INT-1470）。
+
+        page/per_page 为 0 或缺省 = 不分页（total == len(items)，旧调用方行为不变）；
+        否则只返回当前页分组，计数只对当前页聚合。
+        """
+        ...
+
+    @abstractmethod
     def get_groups_by_ids(self, group_ids: List[str]) -> List[Dict[str, Any]]:
         """按 ID 列表批量查询 TestCaseGroup。"""
         ...

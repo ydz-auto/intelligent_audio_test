@@ -11,8 +11,9 @@
    不同参数/过期/关闭（0）各回退到真实扫描；只缓存查询结果（返回列表为
    快照拷贝，CQRS 查询侧只读）。
 3. 合并视图 DB 拉取上限（api_gateway）：_db_merge_page_size 配置化
-   （LOG_DB_MERGE_MAX_ROWS，0 = 不限→int32 上限占位），合并视图调用
-   task_service 时全量过滤下推，不再 per_page=100000 全量拉取。
+   （LOG_DB_MERGE_MAX_ROWS，0 = 不限→按 LOG_DB_FETCH_CHUNK_ROWS 分块循环拉全量，
+   INT-1812 返工：单请求不再用 int32 占位一次要 10 万行，那样在真实库上会撞
+   gRPC 单条消息上限并被吞成空结果），合并视图调用 task_service 时全量过滤下推。
 """
 import os
 import sys
@@ -433,11 +434,15 @@ class TestMergedViewPushdownAndCap:
         service._get_task_logs_merged(self._query())
         assert fake_proxy['kwargs']['per_page'] == 500
 
-    def test_merged_view_unbounded_uses_int32_max(self, service, fake_proxy, monkeypatch):
+    def test_merged_view_unbounded_falls_back_to_chunk(self, service, fake_proxy,
+                                                       monkeypatch):
+        """0 = 不限：按单块行数循环拉全量（INT-1812 返工，不再 int32 占位）。"""
         monkeypatch.setattr('shared.infrastructure.config.BaseConfig.LOG_DB_MERGE_MAX_ROWS',
                             0)
+        monkeypatch.setattr('shared.infrastructure.config.BaseConfig.LOG_DB_FETCH_CHUNK_ROWS',
+                            500)
         service._get_task_logs_merged(self._query())
-        assert fake_proxy['kwargs']['per_page'] == 2 ** 31 - 1
+        assert fake_proxy['kwargs']['per_page'] == 500
 
     def test_merged_view_merges_file_and_db(self, service, fake_proxy, log_root):
         _write_business_file(log_root, f'{_TASK_ID}/dev-1/round-1/act.log',

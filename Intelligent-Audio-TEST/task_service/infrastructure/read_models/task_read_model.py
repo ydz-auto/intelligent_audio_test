@@ -24,6 +24,7 @@ from shared.utils.status_constants import (
 )
 from shared.models.common_enums import TestType
 from sqlalchemy import and_, or_, String  # String: search_tasks 中 Task.id.cast(String) 需要
+from sqlalchemy.orm import selectinload
 from shared.infrastructure.visibility_filter import VisibilityDenied, check_visible, visible_condition
 from task_service.infrastructure.visibility_context import visibility_identity
 
@@ -33,6 +34,20 @@ from task_service.infrastructure.read_models.task_read_model_case_results import
 from task_service.infrastructure.read_models.task_device_type_derivation import fetch_task_device_types
 
 logger = logging.getLogger(__name__)
+
+
+def _id_key(value: Any) -> str:
+    """跨服务 ID 归一化键（关系表整数 ID 与 gRPC 返回 ID 的类型可能不一致）。"""
+    return str(value)
+
+
+def _dedup_ids(id_groups) -> List[Any]:
+    """按归一化键去重并保留首次出现的原始 ID 值（保持传给下游 gRPC 的类型）。"""
+    seen: Dict[str, Any] = {}
+    for ids in id_groups:
+        for i in ids:
+            seen.setdefault(_id_key(i), i)
+    return list(seen.values())
 
 
 class TaskReadModel(
@@ -365,6 +380,8 @@ class TaskReadModel(
                 query = query.filter(execution_filter_condition(execution_status))
 
             query = query.order_by(Task.created_at.desc())
+            # INT-1462：tags 一次 selectin 批量取回，消除列表逐任务懒加载 N+1
+            query = query.options(selectinload(Task.tags))
             pagination = query.paginate(page=page, per_page=per_page, error_out=False)
             tasks = [row[0] for row in pagination.items]
             dual_status_map = {row[0].id: (row[1], row[2]) for row in pagination.items}
@@ -469,6 +486,16 @@ class TaskReadModel(
                                     Favorite.entity_id.in_([str(i) for i in page_task_ids]))
                             .all())
                 favorite_ids = {r[0] for r in fav_rows}
+            # INT-1462：报告 / 设备 / API 改为页级批量组装，消除列表 N+1 串行跨服务
+            # 调用——报告一次 RPC 取整页；设备/API 各一次 IN 查询 + 各一次批量 gRPC。
+            # 回收站模式不输出这些字段，跳过批量取数以省开销。
+            reports_by_task: Dict[int, List[Dict[str, Any]]] = {}
+            devices_by_task: Dict[int, List[Dict[str, Any]]] = {}
+            apis_by_task: Dict[int, List[Dict[str, Any]]] = {}
+            if page_task_ids and not deleted:
+                reports_by_task = self._fetch_reports_batch(page_task_ids)
+                devices_by_task, apis_by_task = self._fetch_relation_briefs_batch(
+                    session, page_task_ids)
             for task in tasks:
                 # INT-301：SQL 派生的执行/评估双状态（评估推进只落评估侧）
                 task_execution_status, task_evaluation_status = dual_status_map.get(
@@ -493,17 +520,8 @@ class TaskReadModel(
                         'created_at': task.created_at.isoformat() if task.created_at else None,
                     })
                     continue
-                # 通过 gRPC 查询任务的报告（替代直连 report_service PO）
-                reports = []
-                try:
-                    from task_service.infrastructure.acl.report_acl_repository import report_acl_repository
-
-                    payload = report_acl_repository.list_reports(
-                        task_id=task.id, page=1, per_page=100)
-                    reports = payload.get('items', []) or [] if payload else []
-                except Exception:
-                    logger.debug("查询任务 %s 的报告列表失败", task.id, exc_info=True)
-                    reports = []
+                # INT-1462：本页批量取回的报告摘要（组装阶段零跨服务往返）
+                reports = reports_by_task.get(task.id, [])
                 report_info = {
                     'count': len(reports),
                     'reports': [
@@ -519,12 +537,9 @@ class TaskReadModel(
                 }
                 # P3 改造：task.devices / task.apis 关系已移除，
                 # 通过 TaskDevice/TaskAPI 关联表 + gRPC 查询设备/API 信息
-                task_device_ids = [td.device_id for td in
-                                   session.query(TaskDevice).filter_by(task_id=task.id).all()]
-                task_api_ids = [ta.api_id for ta in
-                                session.query(TaskAPI).filter_by(task_id=task.id).all()]
-                devices = self._fetch_device_list(task_device_ids)
-                apis = self._fetch_api_list(task_api_ids)
+                # INT-1462：关系与设备/API 摘要均已按本页批量取回
+                devices = devices_by_task.get(task.id, [])
+                apis = apis_by_task.get(task.id, [])
                 items.append({
                     'id': task.id,
                     'name': task.name,
@@ -617,6 +632,65 @@ class TaskReadModel(
             session.close()
 
     # ---- 内部序列化 ----
+
+    @staticmethod
+    def _fetch_reports_batch(task_ids) -> Dict[int, List[Dict[str, Any]]]:
+        """页级批量取整页任务的报告摘要（INT-1462，一次 gRPC）。
+
+        Returns:
+            {task_id: [{id,name,status,type,created_at}, ...]}；失败降级为空 dict
+            （列表仍可渲染，仅报告徽标缺省）。
+        """
+        from task_service.infrastructure.acl.report_acl_repository import (
+            report_acl_repository,
+        )
+        try:
+            return report_acl_repository.list_reports_by_task_ids(task_ids)
+        except Exception:
+            logger.debug("批量查询报告摘要失败", exc_info=True)
+            return {}
+
+    def _fetch_relation_briefs_batch(self, session, task_ids) -> tuple:
+        """页级批量取任务→设备/API 关系并回填设备/API 摘要（INT-1462）。
+
+        TaskDevice / TaskAPI 各一次 IN 查询，设备状态与 API 配置各一次批量
+        gRPC 调用，取代原先逐任务 2 次 DB 查询 + 逐任务 gRPC 的 N+1。
+
+        Returns:
+            (devices_by_task, apis_by_task)，形如
+            {task_id: [{id,name,status,model}, ...]} / {task_id: [{id,name,status}, ...]}
+        """
+        from task_service.infrastructure.persistence.models import TaskDevice, TaskAPI
+
+        device_ids_by_task: Dict[int, List[Any]] = {}
+        api_ids_by_task: Dict[int, List[Any]] = {}
+        device_rows = (session.query(TaskDevice.task_id, TaskDevice.device_id)
+                       .filter(TaskDevice.task_id.in_(task_ids))
+                       .order_by(TaskDevice.task_id, TaskDevice.id).all())
+        for task_id, device_id in device_rows:
+            device_ids_by_task.setdefault(task_id, []).append(device_id)
+        api_rows = (session.query(TaskAPI.task_id, TaskAPI.api_id)
+                    .filter(TaskAPI.task_id.in_(task_ids))
+                    .order_by(TaskAPI.task_id, TaskAPI.id).all())
+        for task_id, api_id in api_rows:
+            api_ids_by_task.setdefault(task_id, []).append(api_id)
+
+        all_device_ids = _dedup_ids(device_ids_by_task.values())
+        all_api_ids = _dedup_ids(api_ids_by_task.values())
+        device_briefs = {_id_key(d.get('id')): d
+                         for d in self._fetch_device_list(all_device_ids)} if all_device_ids else {}
+        api_briefs = {_id_key(a.get('id')): a
+                      for a in self._fetch_api_list(all_api_ids)} if all_api_ids else {}
+
+        def _group(ids_by_task, briefs):
+            grouped: Dict[int, List[Dict[str, Any]]] = {}
+            for task_id, ids in ids_by_task.items():
+                rows = [briefs[_id_key(i)] for i in ids if _id_key(i) in briefs]
+                if rows:
+                    grouped[task_id] = rows
+            return grouped
+
+        return _group(device_ids_by_task, device_briefs), _group(api_ids_by_task, api_briefs)
 
     @staticmethod
     def _to_dto(task: Task, session=None) -> Dict[str, Any]:

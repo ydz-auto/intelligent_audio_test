@@ -57,6 +57,15 @@ class Config(BaseConfig):
     OAUTH_REDIRECT_BASE = os.environ.get(
         'OAUTH_REDIRECT_BASE', 'http://localhost:8000')
 
+    # 用户管理建号 / 改资料带密码的长度边界（INT-1590）：admin 入口显式
+    # 8–128 位。这是「用户管理」产品面的契约，与自助注册
+    # （AUTH_PASSWORD_MIN_LENGTH 默认 6，见 doc/UX设计规范/12_登录与错误页.md）
+    # 和自助改密（同 6，13_个人中心.md）不是同一入口，不共用、不统一。
+    AUTH_USER_ADMIN_PASSWORD_MIN_LENGTH = int(os.environ.get(
+        'AUTH_USER_ADMIN_PASSWORD_MIN_LENGTH', '8'))
+    AUTH_PASSWORD_MAX_LENGTH = int(os.environ.get(
+        'AUTH_PASSWORD_MAX_LENGTH', '128'))
+
     # JWT 配置
     JWT_SECRET = os.environ.get('JWT_SECRET', 'dev-secret-change-in-production')
     JWT_EXPIRE_HOURS = int(os.environ.get('JWT_EXPIRE_HOURS', '24'))

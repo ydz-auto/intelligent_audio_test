@@ -300,16 +300,24 @@ class TestCaseQueryService:
             overlap_rate = 0
 
         total_duration = 0
+        # INT-564 宿主优先只读豁免：用例预览为宿主端点，音频元数据改走批量
+        # permissive 读通道（by-ids），「能见宿主即可见其引用音频」，不被私有
+        # 音频（非本 owner）的严格详情 404 阻断。
+        _audio_by_id = {}
         try:
-            # 通过 ACL 获取音频信息
-            for aid in audio_ids:
-                res = _audio_acl.get_one(aid)
-                if res.get('success'):
-                    rec = res.get('data') or {}
-                    if rec.get('duration'):
-                        total_duration += rec.get('duration')
+            _ids = [int(a) if str(a).isdigit() else a for a in audio_ids]
+            _batch = _audio_acl.get_by_ids({'ids': _ids})
+            if _batch.get('success'):
+                for _rec in (_batch.get('data') or []):
+                    if isinstance(_rec, dict) and _rec.get('id') is not None:
+                        _audio_by_id[_rec['id']] = _rec
         except Exception:
-            logger.warning("预览用例 %s 时获取音频总时长失败", tc_id, exc_info=True)
+            logger.warning("预览用例 %s 批量获取音频信息失败", tc_id, exc_info=True)
+        for aid in audio_ids:
+            _key = int(aid) if str(aid).isdigit() else aid
+            rec = _audio_by_id.get(_key) or {}
+            if rec.get('duration'):
+                total_duration += rec.get('duration')
 
         # 前端播放模式：返回所有音频的预签名 URL，前端连续播放
         if playback_mode == 'frontend':
@@ -324,12 +332,11 @@ class TestCaseQueryService:
 
             audio_stream_urls = []
             for aid in audio_ids:
-                res = _audio_acl.get_one(aid)
-                if res.get('success'):
-                    rec = res.get('data') or {}
-                    file_path = rec.get('file_path')
-                    if file_path:
-                        audio_stream_urls.append(_make_presigned_url(file_path))
+                _key = int(aid) if str(aid).isdigit() else aid
+                rec = _audio_by_id.get(_key) or {}
+                file_path = rec.get('file_path')
+                if file_path:
+                    audio_stream_urls.append(_make_presigned_url(file_path))
 
             if not audio_stream_urls:
                 return error_response("音频文件不存在", 404)
@@ -458,7 +465,8 @@ class TestCaseQueryService:
         if not result.get('success'):
             code = result.get('code', 400)
             if code == 404:
-                return error_response(result.get('message', '未找到测试用例'), 404)
+                # INT-1645：HTTP 状态与 body code 对齐（原实现 body 404 / HTTP 400）
+                return error_response(result.get('message', '未找到测试用例'), 404, http_code=404)
             return error_response(result.get('message', '查询失败'))
 
         return success_response(result.get('data'))

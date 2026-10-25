@@ -123,7 +123,9 @@ def extract_associated_relations(associated_algorithms) -> List[Dict[str, Any]]:
     for algo in associated_algorithms or []:
         if isinstance(algo, dict):
             algo_type = algo.get('algorithmType') or algo.get('algorithm_type')
-            is_default = algo.get('isDefault', False)
+            # INT-1692：isDefault / is_default 双键兼容（与上面 algo_type 同口径），
+            # 否则后端内部/脚本用 snake_case 传 is_default 会被静默丢成 False。
+            is_default = algo.get('isDefault', algo.get('is_default', False))
             weight = algo.get('weight', 1.0)
         else:
             algo_type = algo
@@ -144,7 +146,8 @@ def get_default_algorithm_type(associated_algorithms) -> str:
         return DEFAULT_ALGORITHM_TYPE
     for algo in associated_algorithms:
         if isinstance(algo, dict):
-            if algo.get('isDefault'):
+            # INT-1692：与 extract_associated_relations 同步 is_default 双键兼容
+            if algo.get('isDefault') or algo.get('is_default'):
                 return algo.get('algorithmType') or algo.get('algorithm_type') or DEFAULT_ALGORITHM_TYPE
     # 没有标记默认的，取第一个
     for algo in associated_algorithms:

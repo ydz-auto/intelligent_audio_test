@@ -104,6 +104,9 @@ class DimensionItem(APIModel):
     score_unit: Optional[str] = Field(None)
     type: Optional[str] = Field(None)
     result_type: Optional[int] = Field(None)
+    # INT-1671：LLM Judge 派生标识（由 task_type_code / dimension_type 派生，
+    # result_type 语义不动）；只读徽章标识，前端不据此提供模型 / Prompt 选择
+    llm_judge: Optional[bool] = Field(None)
     result_min: Optional[float] = Field(None)
     result_max: Optional[float] = Field(None)
     decimal_places: Optional[int] = Field(None)

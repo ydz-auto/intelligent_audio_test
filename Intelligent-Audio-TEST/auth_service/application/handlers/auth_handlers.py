@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
+from auth_service.config.config import Config
 from auth_service.domain.entities.user import UserAggregate
 from auth_service.domain.entities.role import PermissionEntity, RoleEntity
 from auth_service.domain.exceptions import AuthDomainError
@@ -99,6 +100,31 @@ def _raise_if(condition: bool, message: str,
         raise AuthDomainError(message, error_code)
 
 
+# 用户管理入口密码长度契约（INT-1590）：admin 建号 / admin 改资料带密码时
+# 8–128 位，非空才校验。这是「用户管理」产品面口径，与自助注册
+# （网关 AUTH_PASSWORD_MIN_LENGTH 默认 6）和自助改密（同 6）不同入口，
+# 不要合并；本校验是 gRPC 直连绕过网关时的兜底。
+ADMIN_PASSWORD_ERR_OUT_OF_RANGE = '密码长度需为 {min_len}–{max_len} 位'
+
+
+def _validate_admin_password(password: Optional[str]) -> None:
+    """admin 入口密码长度兜底：非空密码须 8–128 位，否则 INVALID_PARAMS。
+
+    落在应用层而非 infrastructure，避免让调用方收到 bcrypt 对超长输入的
+    原始英文异常（那是字节上限副作用，不是契约）。
+    """
+    if not password:
+        return
+    min_len = int(Config.USER_ADMIN_PASSWORD_MIN_LENGTH)
+    max_len = int(Config.PASSWORD_MAX_LENGTH)
+    _raise_if(
+        not (min_len <= len(password) <= max_len),
+        ADMIN_PASSWORD_ERR_OUT_OF_RANGE.format(min_len=min_len,
+                                               max_len=max_len),
+        AuthErrorCode.INVALID_PARAMS,
+    )
+
+
 class AuthCommandHandler:
     """认证命令处理器 —— 处理所有用户与权限相关写操作。
 
@@ -119,6 +145,10 @@ class AuthCommandHandler:
             oauth_subject='',
             role_id=cmd.role_id,
             password=cmd.password,
+            # 自助注册标记（INT-1590）：此前漏标会被当成 admin 建号，既让
+            # 用户管理入口的 8–128 口径误伤注册（注册下限是 6），也让审计
+            # 事件落成 AUTH_USER_CREATED。
+            registered=True,
         )
         return self.handle_create_user(create_cmd)
 
@@ -128,9 +158,12 @@ class AuthCommandHandler:
         - username 必填且唯一（重名 → USERNAME_DUPLICATED）；
         - role_name 优先于 role_id 解析目标角色（默认注册走 role_name='guest'）；
         - 指定角色不存在 → ROLE_NOT_FOUND；
-        - password 非空时由仓储哈希落库。
+        - password 非空时由仓储哈希落库；admin 建号（registered=False）密码
+          须 8–128 位（INT-1590），自助注册仍走网关的 6 位下限口径。
         """
         _raise_if(not cmd.username, '用户名不能为空', AuthErrorCode.USERNAME_DUPLICATED)
+        if not cmd.registered:
+            _validate_admin_password(cmd.password)
         _raise_if(
             user_repository.get_by_username(cmd.username) is not None,
             f'用户名已存在: {cmd.username}', AuthErrorCode.USERNAME_DUPLICATED,
@@ -204,11 +237,13 @@ class AuthCommandHandler:
 
         - username 唯一性校验（改为已存在的用户名 → USERNAME_DUPLICATED）；
         - status 经 UserStatus 枚举校验（active/inactive/locked）；
-        - password 由仓储哈希落库。
+        - password 非空时须 8–128 位（INT-1590，gRPC 直连同样拒绝），
+          通过后由仓储哈希落库；None/空串=不修改。
         """
         aggregate = user_repository.get_by_id(cmd.user_id)
         _raise_if(aggregate is None,
                   f'用户不存在: id={cmd.user_id}', AuthErrorCode.USER_NOT_FOUND)
+        _validate_admin_password(cmd.password)
         if cmd.username is not None and cmd.username != aggregate.username:
             _raise_if(not cmd.username, '用户名不能为空',
                       AuthErrorCode.USERNAME_DUPLICATED)

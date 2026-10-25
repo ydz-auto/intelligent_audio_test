@@ -142,9 +142,12 @@ class _TaskDataProxy:
 
     # ---- TestCaseGroup 查询/创建 ----
 
-    def list_testcase_groups(self, algorithm_type=None, search=None, reraise=False):
+    def list_testcase_groups(self, algorithm_type=None, search=None,
+                             page=0, per_page=0, reraise=False):
         """通过 gRPC 查询 TestCaseGroup 列表
 
+        INT-1470：page/per_page 透传分页下推；缺省（0）= 不分页返回全部
+        （home_service / stats_cache / MCP group_list 等旧调用方行为不变）。
         reraise=True 时失败上抛（首页统计链路 INT-204，同 get_task_stats）；
         默认 False 维持吞异常返回 {} 的既有失败语义（分组列表页等）。
         """
@@ -153,6 +156,8 @@ class _TaskDataProxy:
             resp = stub.ListTestCaseGroups(task_pb.ListTestCaseGroupsRequest(
                 algorithm_type=algorithm_type or '',
                 search=search or '',
+                page=int(page or 0),
+                per_page=int(per_page or 0),
             ))
             if not resp.success:
                 raise RuntimeError(f"ListTestCaseGroups gRPC 失败: {resp.message}")
@@ -267,8 +272,14 @@ class _TaskDataProxy:
                   start_date=None, end_date=None, module=None, category=None,
                   mark=None, device_id=None, api_id=None, test_case_id=None,
                   thread_id=None, keyword=None, content_include=None,
-                  content_exclude=None, algorithm_type=None, user_id=None):
-        """通过 gRPC 查询 Log 列表（分页 + 过滤；INT-100 过滤下推 task_service）"""
+                  content_exclude=None, algorithm_type=None, user_id=None,
+                  reraise=False):
+        """通过 gRPC 查询 Log 列表（分页 + 过滤；INT-100 过滤下推 task_service）
+
+        reraise=True：失败上抛而不是吞成 {}（INT-1812 返工）。读侧合并视图
+        分块拉取时，任何一块失败都必须让调用方感知——吞成空结果会把
+        「拿不到数据」伪装成「没有数据」，导出与深分页因此静默丢行。
+        """
         def _call():
             stub = get_task_data_service_stub()
             resp = stub.ListLogs(task_pb.ListLogsRequest(
@@ -294,7 +305,8 @@ class _TaskDataProxy:
             if not resp.success:
                 raise RuntimeError(f"ListLogs gRPC 失败: {resp.message}")
             return json.loads(resp.data) if resp.data else {}
-        return _grpc_call(_call, default_return={}, error_msg_prefix='ListLogs gRPC 失败')
+        return _grpc_call(_call, default_return={}, error_msg_prefix='ListLogs gRPC 失败',
+                          reraise=reraise)
 
     def get_log_stats(self, level=None, module=None, category=None, mark=None,
                       device_id=None, task_id=None, keyword=None,
@@ -336,8 +348,14 @@ class _TaskDataProxy:
             return json.loads(resp.data) if resp.data else {}
         return _grpc_call(_call, default_return={}, error_msg_prefix='ListLogsAfterId gRPC 失败')
 
-    def get_logs_for_export(self, log_ids=None, level=None, module=None):
-        """通过 gRPC 按条件查询日志（导出用）"""
+    def get_logs_for_export(self, log_ids=None, level=None, module=None,
+                            reraise=False):
+        """通过 gRPC 按条件查询日志（导出用）
+
+        reraise=True：失败上抛而不是吞成 {}（INT-1812 返工 2）。导出整条链路
+        失败必须显式报错——吞成空结果会把「拿不到数据」伪装成「就这些行」，
+        传 legacy id 的导出会静默只剩文件行 / 只有表头的空 CSV。
+        """
         def _call():
             stub = get_task_data_service_stub()
             resp = stub.GetLogsForExport(task_pb.GetLogsForExportRequest(
@@ -348,7 +366,8 @@ class _TaskDataProxy:
             if not resp.success:
                 raise RuntimeError(f"GetLogsForExport gRPC 失败: {resp.message}")
             return json.loads(resp.data) if resp.data else {}
-        return _grpc_call(_call, default_return={}, error_msg_prefix='GetLogsForExport gRPC 失败')
+        return _grpc_call(_call, default_return={}, error_msg_prefix='GetLogsForExport gRPC 失败',
+                          reraise=reraise)
 
     def get_log_count(self, start_date=None):
         """通过 gRPC 查询日志总数（含按日期范围 hot 日志计数）"""

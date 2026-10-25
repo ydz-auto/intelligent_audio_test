@@ -162,6 +162,10 @@ class DeviceMonitorAclRepositoryImpl(DeviceMonitorAclRepository):
         from api_gateway.infrastructure.grpc_proxies import device_config_service
         return _wrap(device_config_service.get_alarm_stats())
 
+    def get_monitor_stats(self, query: dict) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import device_config_service
+        return _wrap(device_config_service.get_monitor_stats(query))
+
 
 class PlaybackConfigAclRepositoryImpl(PlaybackConfigAclRepository):
     """playback_config_service 实体 ACL 实现。"""
@@ -189,6 +193,24 @@ class PlaybackConfigAclRepositoryImpl(PlaybackConfigAclRepository):
     def stop_test(self, device_id) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import playback_config_service
         return _wrap(playback_config_service.stop_test(device_id))
+
+    # ---- INT-1579 控制端点 ----
+
+    def restart(self, device_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.restart(device_id))
+
+    def reset_config(self, device_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.reset_config(device_id))
+
+    def repair(self, device_id, actions) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.repair(device_id, actions))
+
+    def diagnosis(self, device_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.diagnosis(device_id))
 
     def get_all(self, **kwargs) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import playback_config_service

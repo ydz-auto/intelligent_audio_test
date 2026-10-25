@@ -8,6 +8,7 @@ import logging
 from typing import Any, Dict
 
 from shared.infrastructure.user_context import get_current_user_id
+from shared.models.database import end_read_transaction
 from shared.utils.query_utils import now_cst
 
 from evaluation_service.application.commands._command_utils import (
@@ -52,6 +53,9 @@ class CategoryCommandsMixin:
             self.repo.rollback()
             logger.error(f"创建分类失败: {e}")
             return command_error(str(e))
+        finally:
+            # INT-1691：404/403 等提前返回路径不能把「只读查询开的事务」留下
+            end_read_transaction()
 
     def update_category(self, cat_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
         """更新分类。"""
@@ -94,6 +98,8 @@ class CategoryCommandsMixin:
             self.repo.rollback()
             logger.error(f"更新分类失败: {e}")
             return command_error(str(e))
+        finally:
+            end_read_transaction()
 
     def delete_category(self, cat_id: int) -> Dict[str, Any]:
         """软删除分类。"""
@@ -118,3 +124,5 @@ class CategoryCommandsMixin:
             self.repo.rollback()
             logger.error(f"删除分类失败: {e}")
             return command_error(str(e))
+        finally:
+            end_read_transaction()

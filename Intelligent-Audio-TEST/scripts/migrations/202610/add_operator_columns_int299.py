@@ -113,7 +113,9 @@ def main(dry_run=False):
             dry_run)
 
     # 3. 既有三表 created_by 索引兜底（对齐 INT-141 脚本口径，幂等）
-    for table in ('audios', 'devices', 'playback_devices'):
+    #    INT-1784：audios 不再兜底——ix_audios_created_by_user_id 已下线，
+    #    该列由 (created_by_user_id, visibility) 复合索引覆盖。
+    for table in ('devices', 'playback_devices'):
         if not _table_exists(cur, table):
             continue
         _ensure_index(

@@ -611,6 +611,27 @@ class _DeviceConfigProxy:
             error_msg_prefix='查询状态历史失败',
         )
 
+    def get_monitor_stats(self, query):
+        """设备监控统计（INT-1578，历史监控 → 统计分析四图）"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.GetDeviceMonitorStats(device_pb.GetDeviceMonitorStatsRequest(
+                data=json.dumps(query or {}, ensure_ascii=False, default=str),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询监控统计失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='查询监控统计失败',
+        )
+
     def create_group(self, data):
         from shared.proto import device_service_pb2 as device_pb
 

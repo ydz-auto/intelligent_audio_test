@@ -9,7 +9,7 @@ import json
 
 from shared.clients.grpc_clients import get_cherry_pick_service_stub
 
-from ._common import _grpc_call
+from ._common import _attach_code, _grpc_call
 
 from shared.proto import task_service_pb2 as task_pb
 
@@ -18,12 +18,10 @@ class _CherryPickProxy:
     """挑选合并代理：转发到 gRPC task_service.CherryPickService。"""
 
     def _resp(self, resp):
-        """统一解析 TaskConfigResponse 为 dict（业务码透传，INT-141 F2 口径）。"""
+        """统一解析 TaskConfigResponse 为 dict（业务码透传，INT-1759 proto code）"""
         data = json.loads(resp.data) if resp.data else None
-        result = {'success': resp.success, 'message': resp.message, 'data': data}
-        if not resp.success and isinstance(data, dict) and isinstance(data.get('code'), int):
-            result['code'] = data['code']
-        return result
+        return _attach_code({'success': resp.success, 'message': resp.message,
+                             'data': data}, resp)
 
     @property
     def stub(self):
@@ -121,6 +119,26 @@ class _CherryPickProxy:
         return _grpc_call(_call,
                           default_return=lambda e: {'success': False, 'message': f'查询挑选候选失败: {e}', 'data': None, 'code': 500},
                           error_msg_prefix='查询挑选候选失败')
+
+    # INT-1496 §8.1：可挑选任务清单（阶段 1 数据源；聚合/分页由 task_service 完成）
+    def list_pickable_tasks(self, query: dict):
+        def _call():
+            resp = self.stub.ListCherryPickPickableTasks(task_pb.CherryPickPickableTasksRequest(
+                data=json.dumps(query or {}, ensure_ascii=False, default=str)))
+            return self._resp(resp)
+        return _grpc_call(_call,
+                          default_return=lambda e: {'success': False, 'message': f'查询可挑选任务失败: {e}', 'data': None, 'code': 500},
+                          error_msg_prefix='查询可挑选任务失败')
+
+    # INT-1510 §8.2：阶段 2 候选树聚合（节点计数 + result_id 集由 task_service 出）
+    def list_candidate_tree(self, query: dict):
+        def _call():
+            resp = self.stub.ListCherryPickCandidateTree(task_pb.CherryPickCandidateTreeRequest(
+                data=json.dumps(query or {}, ensure_ascii=False, default=str)))
+            return self._resp(resp)
+        return _grpc_call(_call,
+                          default_return=lambda e: {'success': False, 'message': f'查询候选树失败: {e}', 'data': None, 'code': 500},
+                          error_msg_prefix='查询候选树失败')
 
     # ---- 下单（三出口 + 预览）----
 

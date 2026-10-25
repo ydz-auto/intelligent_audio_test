@@ -20,13 +20,15 @@ class ReportDataAlgorithmMixin:
     @staticmethod
     def build_algorithm_results_for_result(
         result, resource, algo_res, result_data, aux_params_map,
-        dim_result_rows, output_fields, algorithm_type
+        dim_result_rows, output_fields, algorithm_type,
+        device_output_fields=None,
     ):
         """为单个 TestResult 构建 algorithm_results 扁平列表（委托共享组件）。"""
         return _algo_result_builder.build_algorithm_results_for_result(
             result, resource, algo_res, result_data,
             aux_params_map, dim_result_rows, output_fields, algorithm_type,
             normalize_audio_path_fn=ReportDataAlgorithmMixin._normalize_audio_path,
+            device_output_fields=device_output_fields,
         )
 
     @staticmethod

@@ -169,11 +169,13 @@ class TestAveragesCherryResolution:
             lambda tid: [{'test_case_id': 'ACC408-C1'},
                          {'test_case_id': 'ACC408-C2'}]
             if tid == CONTAINER_ID else [])
+        # INT-1572 返工：统计链路改用带完整性口径的 _grpc_lookup_testcases_by_ids
         monkeypatch.setattr(
-            grpc_clients, '_grpc_list_testcases_by_ids',
-            lambda ids: {i: {'id': i, 'name': f'用例{i}',
-                             'group': {'name': '分组1'}, 'tags': []}
-                         for i in ids})
+            grpc_clients, '_grpc_lookup_testcases_by_ids',
+            lambda ids: {'items': {i: {'id': i, 'name': f'用例{i}',
+                                       'group': {'name': '分组1'}, 'tags': []}
+                                   for i in ids},
+                         'missing_ids': [], 'incomplete_ids': [], 'partial': False})
         # 容器自身无 test_results 行：断言不走按 task_id 直查（返回空也不影响）
         monkeypatch.setattr(
             grpc_clients, '_grpc_get_test_results_by_task_ids', lambda ids: [])
@@ -240,11 +242,13 @@ class TestAveragesCherryResolution:
             lambda tid: [{'test_case_id': 'ACC408-C1', 'status': 'completed'},
                          {'test_case_id': 'ACC408-C2', 'status': 'completed'}]
             if tid == 1234 else [])
+        # INT-1572 返工：统计链路改用带完整性口径的 _grpc_lookup_testcases_by_ids
         monkeypatch.setattr(
-            grpc_clients, '_grpc_list_testcases_by_ids',
-            lambda ids: {i: {'id': i, 'name': f'用例{i}',
-                             'group': {'name': '分组1'}, 'tags': []}
-                         for i in ids})
+            grpc_clients, '_grpc_lookup_testcases_by_ids',
+            lambda ids: {'items': {i: {'id': i, 'name': f'用例{i}',
+                                       'group': {'name': '分组1'}, 'tags': []}
+                                   for i in ids},
+                         'missing_ids': [], 'incomplete_ids': [], 'partial': False})
         monkeypatch.setattr(
             grpc_clients, '_grpc_get_test_results_by_task_ids',
             lambda ids: [{'id': 11, 'task_id': 1234, 'test_case_id': 'ACC408-C1'},

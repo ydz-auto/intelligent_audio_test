@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse
 
 from api_gateway.infrastructure.acl import DataTransferAclRepositoryImpl
 from api_gateway.schemas.data_transfer import TaskDataExportRequest
-from api_gateway.utils.response import error_response, success_response
+from api_gateway.utils.response import error_response, format_response, success_response
 from shared.infrastructure.config import BaseConfig
 from shared.utils.log_handler import log_not_emit
 
@@ -25,6 +25,27 @@ _module = 'gateway.data_transfer'
 _data_acl = DataTransferAclRepositoryImpl()
 
 _ZIP_SUFFIX = '.zip'
+
+# task_service 业务码即 HTTP 语义码（INT-1759）；其余（含 0/500）按默认码兜底
+_HTTP_STATUS_CODES = frozenset({400, 401, 403, 404, 409, 413, 422})
+
+
+def _failure(result, default_message: str, default_code: int = 500,
+             default_http: int = 400):
+    """把 task_service 失败回执映射为 (payload, http_code)。
+
+    - 业务码取 TaskConfigResponse.code（INT-1759 前置透传），未填按 `default_code`；
+    - 码值本身是 HTTP 语义码（400/403/404/409/413/422…）时按码回 HTTP，
+      否则沿用调用方既有默认状态（预检 400 / 执行 500）；
+    - 回执若带 `data` 明细（如 422 的 missingCaseIds/missingCount），原样放 `data`。
+    """
+    code = int(result.get('code') or default_code)
+    http_code = code if code in _HTTP_STATUS_CODES else default_http
+    message = result.get('message') or default_message
+    data = result.get('data')
+    if isinstance(data, dict):
+        return format_response(code=code, message=message, data=data), http_code
+    return error_response(message, code=code, http_code=http_code)
 
 
 def _import_tmp_dir() -> str:
@@ -71,6 +92,13 @@ def _shared_filename() -> str:
     return f"task_export_{time.strftime('%Y%m%d%H%M%S')}.zip"
 
 
+def _incremental_filename() -> str:
+    return f"incremental_{time.strftime('%Y%m%d%H%M%S')}.zip"
+
+def _report_package_filename() -> str:
+    return f"report_export_{time.strftime('%Y%m%d%H%M%S')}.zip"
+
+
 class DataTransferGatewayService:
     """网关侧导出/导入编排"""
 
@@ -99,17 +127,20 @@ class DataTransferGatewayService:
         )
 
     @staticmethod
-    def preview_import(upload_file):
-        """导入预检：保存上传 ZIP → 调 task_service → 删临时文件"""
+    def preview_import(upload_file, options: dict = None):
+        """导入预检：保存上传 ZIP → 调 task_service → 删临时文件
+
+        options（INT-1759）: {require_case_consistency?: bool, intent?: migrate/restore}
+        """
         tmp_path = None
         try:
             try:
                 tmp_path = _save_upload_to_tmp(upload_file)
             except ValueError as e:
                 return error_response(str(e), code=400)
-            result = _data_acl.preview_import(tmp_path)
+            result = _data_acl.preview_import(tmp_path, options or {})
             if not result.success:
-                return error_response(result.message or '预检失败', code=result.code or 500)
+                return _failure(result, '预检失败')
             return success_response(result.data, message='预检完成')
         except Exception as e:
             log_not_emit('ERROR', _module, f'导入预检异常: {e}', category='system', exc_info=True)
@@ -119,10 +150,12 @@ class DataTransferGatewayService:
                 _remove_tmp(tmp_path)
 
     @staticmethod
-    def execute_import(upload_file):
+    def execute_import(upload_file, options: dict = None):
         """执行导入：保存上传 ZIP → 调 task_service（长耗时）→ 删临时文件
 
         实时进度走 SocketIO import_progress 事件；本接口回包携带最终统计。
+        用例一致性不满足时 task_service 返回 code=422（未写任何数据），
+        此处透传 HTTP 422 + data.missingCaseIds/missingCount。
         """
         tmp_path = None
         try:
@@ -130,16 +163,67 @@ class DataTransferGatewayService:
                 tmp_path = _save_upload_to_tmp(upload_file)
             except ValueError as e:
                 return error_response(str(e), code=400)
-            result = _data_acl.execute_import(tmp_path)
+            result = _data_acl.execute_import(tmp_path, options or {})
             if not result.success:
                 data = result.data if isinstance(result.data, dict) else None
-                return error_response(result.message or '导入失败',
-                                      code=result.code or 500,
-                                      http_code=500, detail=data)
+                # INT-1760 / D0 A3 第 3 条：source_map 登记失败是 partial 状态
+                # （数据段已全部提交、映射快照在批次登记里），必须把 data 原样
+                # 带回（sourceMapPending + batchId），不能塞进 detail 或丢掉
+                if data and data.get('sourceMapPending'):
+                    payload = {
+                        'success': False,
+                        'code': 500,
+                        'message': result.message or '导入完成但映射登记失败',
+                        'data': data,
+                    }
+                    return payload, 500
+                return _failure(result, '导入失败', default_http=500)
             return success_response(result.data, message=result.message or '导入成功')
         except Exception as e:
             log_not_emit('ERROR', _module, f'执行导入异常: {e}', category='system', exc_info=True)
             return error_response(f'执行导入异常: {e}', code=500)
+        finally:
+            if tmp_path:
+                _remove_tmp(tmp_path)
+
+    @staticmethod
+    def export_report_package(request):
+        """导出报告包（INT-1764 D6）：返回 FileResponse（ZIP 下载）"""
+        task_ids = [request.task_id] if request.task_id else []
+        if not task_ids and not request.report_ids:
+            return error_response('taskId / reportIds 至少提供一个', code=400)
+        result = _data_acl.export_report_package({
+            'task_ids': task_ids,
+            'report_ids': list(request.report_ids or []),
+            'doc_version_scope': request.doc_version_scope or '',
+        })
+        if not result.success:
+            return _failure(result, '导出报告包失败')
+        zip_path = (result.data or {}).get('zip_path') or ''
+        if not zip_path or not os.path.isfile(zip_path):
+            log_not_emit('ERROR', _module,
+                         f'报告包 ZIP 不可见: {zip_path}（检查 DATA_TRANSFER_TMP_DIR 共享挂载）',
+                         category='system')
+            return error_response('导出文件不可访问（网关与任务服务未共享临时目录）', code=500)
+        return FileResponse(zip_path, media_type='application/zip',
+                            filename=_report_package_filename())
+
+    @staticmethod
+    def import_report_package(upload_file, options: dict = None):
+        """导入报告包：保存上传 ZIP → 调 task_service（长耗时）→ 删临时文件"""
+        tmp_path = None
+        try:
+            try:
+                tmp_path = _save_upload_to_tmp(upload_file)
+            except ValueError as e:
+                return error_response(str(e), code=400)
+            result = _data_acl.import_report_package(tmp_path, options or {})
+            if not result.success:
+                return _failure(result, '导入报告包失败', default_http=500)
+            return success_response(result.data, message=result.message or '导入成功')
+        except Exception as e:
+            log_not_emit('ERROR', _module, f'导入报告包异常: {e}', category='system', exc_info=True)
+            return error_response(f'导入报告包异常: {e}', code=500)
         finally:
             if tmp_path:
                 _remove_tmp(tmp_path)
@@ -151,6 +235,58 @@ class DataTransferGatewayService:
         if not result.success:
             return error_response(result.message or '读取进度失败', code=result.code or 500)
         return success_response(result.data)
+
+    # ---------- 增量回导（链路 2，INT-1761）----------
+
+    @staticmethod
+    def export_incremental(request):
+        """增量导出：返回 FileResponse（ZIP 下载）
+
+        导出侧硬闸命中（未映射结果行）时 task_service 回 code=409 +
+        `data.unmappedResultIds`，此处原样透出 JSON 错误（不产出文件）。
+        """
+        if not request.task_ids:
+            return error_response('task_ids 不能为空', code=400)
+        result = _data_acl.export_incremental(
+            request.task_ids, {'include': list(request.include or [])})
+        if not result.success:
+            return _failure(result, '增量导出失败')
+        zip_path = (result.data or {}).get('zip_path') or ''
+        if not zip_path or not os.path.isfile(zip_path):
+            log_not_emit('ERROR', _module,
+                         f'增量导出 ZIP 不可见: {zip_path}'
+                         '（检查 DATA_TRANSFER_TMP_DIR 共享挂载）', category='system')
+            return error_response('导出文件不可访问（网关与任务服务未共享临时目录）', code=500)
+        return FileResponse(
+            zip_path,
+            media_type='application/zip',
+            filename=_incremental_filename(),
+        )
+
+    @staticmethod
+    def import_incremental(upload_file, options: dict = None):
+        """增量导入：保存上传 ZIP → 调 task_service（两段跨服务合并）→ 删临时文件
+
+        失败码透传（400/403/404/409/500），`data` 明细（unmappedResultIds /
+        missingIds / expected+actual / compensationErrors）原样带回。
+        """
+        tmp_path = None
+        try:
+            try:
+                tmp_path = _save_upload_to_tmp(upload_file)
+            except ValueError as e:
+                return error_response(str(e), code=400)
+            result = _data_acl.import_incremental(tmp_path, options or {})
+            if not result.success:
+                return _failure(result, '增量导入失败', default_http=500)
+            return success_response(result.data, message=result.message or '增量回导完成')
+        except Exception as e:
+            log_not_emit('ERROR', _module, f'增量导入异常: {e}', category='system',
+                         exc_info=True)
+            return error_response(f'增量导入异常: {e}', code=500)
+        finally:
+            if tmp_path:
+                _remove_tmp(tmp_path)
 
 
 def _remove_tmp(path: str) -> None:

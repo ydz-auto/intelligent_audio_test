@@ -17,6 +17,13 @@ service ReportConfigService {
   // 按同一套过滤条件计数（INT-280：HistoryReports Tab 计数服务端聚合；
   // 复用 ListReportsRequest，仅 status/report_type/favorite/deleted 过滤生效，分页字段忽略）
   rpc CountReports(ListReportsRequest) returns (ReportConfigResponse);
+  // 页级批量：一次取回整页任务的报告摘要（INT-1462：任务列表 N+1 串行 RPC 消解）
+  rpc ListReportsByTaskIds(ListReportsByTaskIdsRequest) returns (ReportConfigResponse);
+
+  // 四个视图 Tab 一次聚合计数（INT-1463：all/draft/published/comparison 单条
+  // 条件聚合 SQL，替代 4 次串行 CountReports；响应 data: {all,draft,published,comparison}）
+  rpc CountReportsByTabs(CountReportsByTabsRequest) returns (ReportConfigResponse);
+
   // 查询单个报告详情
   rpc GetReportDetail(GetReportDetailRequest) returns (ReportConfigResponse);
   // 查询报告生成进度（按报告 ID 推导任务/生成状态）
@@ -39,12 +46,18 @@ service ReportConfigService {
   rpc SearchReportCases(SearchReportCasesRequest) returns (ReportConfigResponse);
   // 导出报告
   rpc ExportReports(ExportReportsRequest) returns (ReportConfigResponse);
+  // 查询报告导出历史（INT-1555：报告中心「导出历史」页签数据源，
+  // 按导出时间倒序分页；已认证普通用户只看本人导出）
+  rpc ListExportHistory(ListExportHistoryRequest) returns (ReportConfigResponse);
   // 查询用例平均值
   rpc GetCaseAverages(GetCaseAveragesRequest) returns (ReportConfigResponse);
   // 下载用例日志（INT-1062：支持 files 逻辑文件名筛选，缺省 = 整包）
   rpc DownloadCaseLogs(DownloadCaseLogsRequest) returns (ReportConfigResponse);
   // 查询用例日志文件列表（INT-1062：文件选择 Dialog 取数，name 与下载 ZIP arcname / files= 同一套逻辑名）
   rpc ListCaseLogs(ListCaseLogsRequest) returns (ReportConfigResponse);
+  // 报告详情按需读取某用例某维度的 API 原始响应（INT-1752：默认不随报告详情下发，
+  // 显式请求时按 offset/limit 分页返回，单页与总量均有上限）
+  rpc GetCaseDimensionRawResponse(GetCaseDimensionRawResponseRequest) returns (ReportConfigResponse);
   // 构建参考参数（供 api_gateway task_query_service 调用）
   rpc BuildReferenceParams(BuildReferenceParamsRequest) returns (ReportConfigResponse);
   // 任务数据导出：按 task_id 列表拉取报告 7 表只读行
@@ -54,6 +67,23 @@ service ReportConfigService {
   rpc ImportReports(ImportReportsRequest) returns (ReportConfigResponse);
   // 回滚一次报告导入批次：按批次登记主键删除（补偿失败时人工介入的兜底入口）
   rpc RollbackReportImport(RollbackReportImportRequest) returns (ReportConfigResponse);
+  // 增量回导报告原地替换（INT-1762 D4，D0-A5 裁定）：保留 A 报告 id / visibility /
+  // created_by_user_id / type / created_at，UPDATE 内容字段并重建 6 子表；
+  // 旧行与本批新行在同一事务内落 report_merge_snapshots 批次快照。
+  // 出参 {replaced_tasks, deleted_counts, inserted_report_ids, batch_id,
+  //       rollback_available, warnings}
+  rpc ReplaceReports(ReplaceReportsRequest) returns (ReportConfigResponse);
+  // 回滚一次报告替换批次（INT-1762 D4）：删除本批新行、按快照恢复旧报告 7 表
+  rpc RollbackReportReplacement(RollbackReportReplacementRequest) returns (ReportConfigResponse);
+  // 报告包导出（INT-1764 D6，链路 3a + 3b/3c）：按 taskId / reportIds 输出报告 7 表
+  // 与 Report Studio 三表（文档 / 版本快照 / 图表规格）。
+  // 出参 {tables, studio, reportIds, taskIds, docVersionScope, entities, counts}
+  rpc ExportReportPackage(ExportReportPackageRequest) returns (ReportConfigResponse);
+  // 报告包导入（INT-1764 D6）：平台报告按 sourceTask 原地替换（复用 ReplaceReports
+  // 同一实现）→ Studio 文档拓扑序落库；agent_session_id 置空、源缺失降级为空并写
+  // 入回执 warnings，失败按批次快照补偿回滚 3a。
+  // 出参 {sourceTaskId, reportId, documentIdMapping, imported, warnings, batchId}
+  rpc ImportReportPackage(ImportReportPackageRequest) returns (ReportConfigResponse);
 
   // ---- 收藏 / 回收站（INT-141：report 归 report_service，user_id 走 x-user-id metadata）----
   // 收藏 / 取消收藏（幂等：重复收藏返回成功 + already_favorited；未收藏的取消同样成功）
@@ -120,8 +150,17 @@ message ListReportsRequest {
   bool deleted = 11;          // INT-141：仅回收站（软删除项，含删除人/删除时间）
 }
 
+message CountReportsByTabsRequest {
+  // 空请求：Tab 口径（all/draft/published/comparison）由服务端持有；
+  // 可见性 / 软删过滤沿用当前用户上下文与活跃口径。
+}
+
 message GetReportDetailRequest {
   int32 report_id = 1;
+}
+message ListReportsByTaskIdsRequest {
+  repeated int32 task_ids = 1;  // 页面任务 ID 集合（一次 RPC 取整页）
+  int32 per_task_limit = 2;     // 每个任务最多返回的摘要条数（0 = 服务端默认 100）
 }
 message GetReportProgressRequest {
   int32 report_id = 1;
@@ -166,6 +205,9 @@ message SearchReportCasesRequest {
 message ExportReportsRequest {
   string data = 1;  // JSON: {ids: [int], format: str}
 }
+message ListExportHistoryRequest {
+  string data = 1;  // JSON: {page: int, per_page: int}
+}
 message GetCaseAveragesRequest {
   string data = 1;  // JSON: {task_id, category, tags, categories, include_untagged}
 }
@@ -178,6 +220,14 @@ message ListCaseLogsRequest {
   int32 report_id = 1;
   string case_id = 2;
 }
+message GetCaseDimensionRawResponseRequest {
+  int32 report_id = 1;
+  string case_id = 2;
+  int32 dimension_id = 3;
+  int32 offset = 4;        // 字符偏移，默认 0
+  int32 limit = 5;         // 单页字符数，0 取服务端默认值，超过上限按上限截断
+  int32 round_number = 6;  // 可选：多轮用例指定轮次；0 = 不指定（整体优先）
+}
 message BuildReferenceParamsRequest {
   string data = 1;  // JSON: {case_info: dict, case_results: list, test_type: str}
 }
@@ -189,6 +239,27 @@ message ImportReportsRequest {
 }
 message RollbackReportImportRequest {
   string batch_id = 1;
+}
+// 增量回导报告原地替换（INT-1762 D4）。data 为 JSON：
+// {rows_by_table: {表名: [行]}, task_id: int, target_report_id: int(可选),
+//  batch_id: str}
+message ReplaceReportsRequest {
+  string data = 1;
+}
+message RollbackReportReplacementRequest {
+  string batch_id = 1;
+}
+// 报告包导出（INT-1764 D6）。data 为 JSON：
+// {task_ids: [int], report_ids: [int], doc_version_scope: 'full'|'latest'}
+message ExportReportPackageRequest {
+  string data = 1;
+}
+// 报告包导入（INT-1764 D6）。data 为 JSON：
+// {task_id: int(包内 sourceTask.id 在 A 的匹配任务), tables: {表名: [行]},
+//  studio: {三张 Studio 表: [行]}, target_report_id: int(可选), batch_id: str,
+//  doc_version_scope: 'full'|'latest'}
+message ImportReportPackageRequest {
+  string data = 1;
 }
 
 // ===== 收藏 / 回收站（INT-141）=====
@@ -285,6 +356,11 @@ message BenchmarkResponse {
 service ReportStudioService {
   // 用现有 reportId 创建草稿（可绑定已有 agentSessionId，可空）
   rpc CreateStudioDocument(StudioDocumentRequest) returns (StudioResponse);
+  // 文件型独立报告导入建档（INT-1763 §6.2）：source_type=uploaded_file，
+  // report_id / parent_doc_id 可空；文件本体由网关落 OSS，本 RPC 只传元数据
+  rpc CreateStudioUploadDocument(StudioDocumentRequest) returns (StudioResponse);
+  // 文档列表（INT-1763 §6.4）：按 report_id / source_type / parent_doc_id 过滤
+  rpc ListStudioDocuments(StudioDocumentRequest) returns (StudioResponse);
   // 当前版本、Markdown、图表引用、ETag
   rpc GetStudioDocument(StudioDocumentRequest) returns (StudioResponse);
   // 人工编辑，expected_version + 幂等键；冲突 409 + 差异
@@ -306,6 +382,8 @@ service ReportStudioService {
 message StudioDocumentRequest {
   string data = 1;  // JSON：doc_id/report_id/agent_session_id/title/markdown_content/
                     // chart_refs/style_prefs/expected_version/idempotency_key/version
+                    // 以及 INT-1763 的 source_type/source_format/source_file_path/
+                    // source_file_size/parent_doc_id/limit/offset
 }
 
 message StudioChartDataRequest {

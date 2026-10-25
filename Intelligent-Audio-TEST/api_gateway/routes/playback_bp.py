@@ -71,3 +71,28 @@ def test(device_id: int, _: None = require_permission('playback:control')):
 @router.post('/{device_id}/stop-test')
 def stop_test(device_id: int, _: None = require_permission('playback:control')):
     return to_response(PlaybackCommandService.stop_test(device_id))
+
+
+# INT-1579 播放设备控制（契约 §2.1/§2.2/§2.5）；body 可为空
+@router.post('/{device_id}/restart')
+def restart(device_id: int, _: None = require_permission('playback:control')):
+    """重启播放设备：音频通道层重开 + 重新枚举（不是硬件重启）"""
+    return to_response(PlaybackCommandService.restart(device_id))
+
+
+@router.post('/{device_id}/reset-config')
+def reset_config(device_id: int, _: None = require_permission('playback:control')):
+    """重置播放设备配置：按硬件重新探测采样率与通道索引（不动声压映射关联）"""
+    return to_response(PlaybackCommandService.reset_config(device_id))
+
+
+@router.get('/{device_id}/diagnosis')
+def diagnosis(device_id: int, _: None = require_permission('playback:read')):
+    """播放设备诊断（只读，固定 6 项）"""
+    return to_response(PlaybackQueryService.diagnosis(device_id))
+
+
+@router.post('/{device_id}/repair')
+def repair(device_id: int, _: None = require_permission('playback:control')):
+    """修复播放设备：re-enumerate / reopen-channel 两个安全动作"""
+    return to_response(PlaybackCommandService.repair(device_id))

@@ -48,6 +48,17 @@ DEFAULT_ADAPTER_TYPE = VendorAdapterType.API_DRIVER
 _ADAPTER_TYPE_CONFIG_KEY = 'vendor_adapter'
 _PROTOCOL_CONFIG_KEY = 'protocol'
 
+# 前端传输层词表 → 适配器协议维度（INT-1770）：旧 Vue FormField / 新 Vue
+# deviceFields 的「协议」写的是 http / https / ws / wss，而 AdapterProtocol
+# 只认 http / websocket / realtime / any。存量 apis.meta.protocol 仍带旧词表，
+# 此处按只读兼容映射归一（https 与 http 同属 HTTP 传输、ws/wss 同属 WEBSOCKET），
+# 迁移脚本 normalize_api_meta_protocol_int1770.py 负责回写标准值。
+_LEGACY_PROTOCOL_ALIASES = {
+    'https': AdapterProtocol.HTTP,
+    'ws': AdapterProtocol.WEBSOCKET,
+    'wss': AdapterProtocol.WEBSOCKET,
+}
+
 
 class VendorAdapterStatus(str, Enum):
     """适配器运行状态 — 供注册表与管理界面使用（INT-497，与驱动 DriverStatus 同构）"""
@@ -512,24 +523,55 @@ def _resolve_endpoint(api_config) -> str:
     return resolve_api_endpoint(api_config)
 
 
+def _configured_protocol(raw, source: str) -> Optional[AdapterProtocol]:
+    """配置里的 protocol 取值 → AdapterProtocol（INT-1770，不抛错）。
+
+    - AdapterProtocol 词表本身（含 http / websocket / realtime / any）原样返回；
+    - 前端传输层词表（https / ws / wss）按 _LEGACY_PROTOCOL_ALIASES 归一，
+      记 WARNING 留痕（存量数据待迁移脚本回写）；
+    - 其余未知值（如 ftp）记 WARNING 后返回 None，由调用方按优先级继续回落
+      （含端点前缀）—— 协议配置不得中断建任务（「配置看似正常、执行必失败」）。
+    """
+    try:
+        return AdapterProtocol(str(raw))
+    except ValueError:
+        pass
+    alias = _LEGACY_PROTOCOL_ALIASES.get(str(raw).strip().lower())
+    if alias is not None:
+        logger.warning(
+            '协议配置词表归一化（INT-1770）: %s=%r → %r（前端旧词表，'
+            '迁移脚本 normalize_api_meta_protocol_int1770.py 回写标准值）',
+            source, raw, alias.value)
+        return alias
+    logger.warning(
+        '忽略未知协议配置（INT-1770）: %s=%r（合法值: %s），按端点前缀兜底',
+        source, raw, [p.value for p in AdapterProtocol])
+    return None
+
+
 def infer_protocol(api_config=None, case_config=None) -> AdapterProtocol:
     """推断协议维度：显式 protocol 配置 > endpoint 前缀 > 默认 HTTP。
 
-    case_config.protocol / api_config.meta.protocol 显式值优先（拒绝魔法字符串，
-    未知值报错）；否则按 endpoint 前缀 ws://wss:// → WEBSOCKET、http(s):// → HTTP。
+    case_config.protocol / api_config.meta.protocol 显式值优先；取值经
+    _configured_protocol 归一（INT-1770：前端旧词表 https/ws/wss 映射为
+    HTTP/WEBSOCKET），归一不了的取值 WARNING 后视为未配置，按优先级继续回落
+    （用例级 → api 级 → 端点前缀），协议配置不抛错。
+    否则按 endpoint 前缀 ws://wss:// → WEBSOCKET、http(s):// → HTTP。
     """
-    raw = None
+    raw_candidates = []
     if isinstance(case_config, dict):
-        raw = case_config.get(_PROTOCOL_CONFIG_KEY)
-    if raw is None and api_config is not None:
-        raw = (getattr(api_config, 'meta', None) or {}).get(_PROTOCOL_CONFIG_KEY)
-    if raw is not None:
-        try:
-            return AdapterProtocol(str(raw))
-        except ValueError:
-            raise ValueError(
-                f"未知的 {_PROTOCOL_CONFIG_KEY} 配置: {raw!r}"
-                f"（合法值: {[p.value for p in AdapterProtocol]}）")
+        raw_candidates.append(
+            ('case_config.protocol', case_config.get(_PROTOCOL_CONFIG_KEY)))
+    if api_config is not None:
+        raw_candidates.append((
+            'api_config.meta.protocol',
+            (getattr(api_config, 'meta', None) or {}).get(_PROTOCOL_CONFIG_KEY)))
+    for source, raw in raw_candidates:
+        if raw is None or not str(raw).strip():
+            continue
+        protocol = _configured_protocol(raw, source)
+        if protocol is not None:
+            return protocol
     url = _resolve_endpoint(api_config)
     if url.startswith(('ws://', 'wss://')):
         return AdapterProtocol.WEBSOCKET

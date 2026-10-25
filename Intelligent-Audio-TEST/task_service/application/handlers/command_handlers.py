@@ -54,6 +54,8 @@ from task_service.application.commands.task_commands import (
     PreviewImportCommand,
     ExecuteImportCommand,
     RollbackImportCommand,
+    ExportReportPackageCommand,
+    ImportReportPackageCommand,
 )
 from task_service.domain.entities import TaskStatus
 from task_service.infrastructure.persistence.task_repository import task_repository
@@ -359,14 +361,14 @@ class TaskCommandHandler:
         from task_service.application.task.data_transfer_import_service import (
             data_transfer_import_service,
         )
-        return data_transfer_import_service.preview_import(cmd.zip_path)
+        return data_transfer_import_service.preview_import(cmd.zip_path, cmd.options)
 
     def handle_execute_import(self, cmd: ExecuteImportCommand) -> Dict:
         """处理执行导入命令。委托 data_transfer_import_service.execute_import。"""
         from task_service.application.task.data_transfer_import_service import (
             data_transfer_import_service,
         )
-        return data_transfer_import_service.execute_import(cmd.zip_path)
+        return data_transfer_import_service.execute_import(cmd.zip_path, cmd.options)
 
     def handle_rollback_import(self, cmd: RollbackImportCommand) -> Dict:
         """处理批次回滚命令。委托 data_transfer_import_service.rollback_import。"""
@@ -374,6 +376,36 @@ class TaskCommandHandler:
             data_transfer_import_service,
         )
         return data_transfer_import_service.rollback_import(cmd.batch_id)
+
+    def handle_export_incremental(self, cmd) -> Dict:
+        """处理增量导出命令（链路 2，INT-1761）。委托 export_incremental。"""
+        from task_service.application.task.data_transfer_export_service import (
+            data_transfer_export_service,
+        )
+        return data_transfer_export_service.export_incremental(cmd.task_ids, cmd.options)
+
+    def handle_import_incremental(self, cmd) -> Dict:
+        """处理增量导入命令（链路 2）。委托 import_incremental。"""
+        from task_service.application.task.data_transfer_import_service import (
+            data_transfer_import_service,
+        )
+        return data_transfer_import_service.import_incremental(cmd.zip_path, cmd.options)
+
+    def handle_export_report_package(self, cmd: ExportReportPackageCommand) -> Dict:
+        """处理报告包导出命令（INT-1764 D6）。"""
+        from task_service.application.task.data_transfer_export_service import (
+            data_transfer_export_service,
+        )
+        return data_transfer_export_service.export_report_package(
+            cmd.task_ids, cmd.report_ids, cmd.doc_version_scope)
+
+    def handle_import_report_package(self, cmd: ImportReportPackageCommand) -> Dict:
+        """处理报告包导入命令（INT-1764 D6）。"""
+        from task_service.application.task.data_transfer_import_service import (
+            data_transfer_import_service,
+        )
+        return data_transfer_import_service.import_report_package(
+            cmd.zip_path, cmd.options)
 
     # ==================================================================
     # task 域生命周期命令（gRPC servicer 入口）

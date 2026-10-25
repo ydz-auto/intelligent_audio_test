@@ -20,6 +20,11 @@ APP_LAUNCH_WAIT = config_manager.get_value('device_timing', 'app_launch_wait', 3
 # 超时参数（秒）— subprocess / hdc 命令超时
 ADB_TIMEOUT = config_manager.get_value('device_timing', 'adb_timeout', 10)
 HDC_TIMEOUT = config_manager.get_value('device_timing', 'hdc_timeout', 30)
+
+# 健康检查性能指标采集（INT-1578）：单条采集命令超时（契约 §1.3 要求 ≤ 5s）。
+# 独立于 ADB_TIMEOUT/HDC_TIMEOUT，避免采集慢拖垮健康检查主流程。
+METRICS_COMMAND_TIMEOUT = config_manager.get_value(
+    'device_timing', 'metrics_command_timeout', 5)
 LONG_HDC_TIMEOUT = config_manager.get_value('device_timing', 'long_hdc_timeout', 300)
 EXTRA_LONG_HDC_TIMEOUT = config_manager.get_value('device_timing', 'extra_long_hdc_timeout', 120)
 

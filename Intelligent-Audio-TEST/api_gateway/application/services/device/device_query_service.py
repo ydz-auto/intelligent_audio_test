@@ -11,9 +11,14 @@ from api_gateway.schemas.device import (
     DeviceListQuery,
     DeviceStatusQuery,
     DeviceHealthCheckRequest,
+    DeviceMonitorStatsQuery,
 )
 
 logger = logging.getLogger(__name__)
+
+# 监控统计口径（INT-1578 契约 §1.1）：区间跨度 ≤ 90 天（含首尾），本期仅 day 粒度
+MONITOR_STATS_MAX_RANGE_DAYS = 90
+MONITOR_STATS_GRANULARITY_DAY = 'day'
 
 _device_acl = DeviceAclRepositoryImpl()
 _device_group_acl = DeviceGroupAclRepositoryImpl()
@@ -142,22 +147,36 @@ class DeviceQueryService:
     # 获取单个设备详情
     @staticmethod
     def get_one(device_id):
-        result = _device_acl.get_one(device_id)
+        # INT-1467：占用态查询只依赖 device_id，与设备详情 RPC 无依赖关系，
+        # 并发发起（详情链路从「串行 2 次跨服务 RPC」降到 1 次），并发 10
+        # 压测下设备详情 avg/p95 明显下降；占用态为可选注入，失败降级空映射。
+        from concurrent.futures import ThreadPoolExecutor
+        import contextvars
+        executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='device-detail-occ')
+        try:
+            # 复制当前请求上下文再进线程：contextvars 不跨线程传播，而占用态 RPC
+            # 经出站拦截器附加 x-user-id / x-user-is-admin，必须与同步路径一致。
+            ctx = contextvars.copy_context()
+            occ_future = executor.submit(
+                ctx.run, DeviceQueryService._fetch_occupancy, [device_id])
+            result = _device_acl.get_one(device_id)
 
-        if not result.get('success'):
-            return wrap_grpc_response(
-                result,
-                default_error_msg='查询失败',
-                error_code_mapping={404: ('未找到设备', 404)},
-            )
+            if not result.get('success'):
+                return wrap_grpc_response(
+                    result,
+                    default_error_msg='查询失败',
+                    error_code_mapping={404: ('未找到设备', 404)},
+                )
 
-        data = result.get('data')
-        if isinstance(data, dict):
-            DeviceQueryService._inject_occupancy([data])
-            # INT-655：lab_name 由网关装饰（device_service 只返回 lab_id）
-            from api_gateway.application.services.device.lab_name_decorator import _decorate_lab_names
-            data = _decorate_lab_names([data])[0]
-        return success_response(data)
+            data = result.get('data')
+            if isinstance(data, dict):
+                DeviceQueryService._apply_occupancy([data], occ_future.result())
+                # INT-655：lab_name 缺省时由网关装饰（device_service 已返回则跳过）
+                from api_gateway.application.services.device.lab_name_decorator import _decorate_lab_names
+                data = _decorate_lab_names([data])[0]
+            return success_response(data)
+        finally:
+            executor.shutdown(wait=False)
 
     @staticmethod
     def _inject_occupancy(items):
@@ -169,11 +188,26 @@ class DeviceQueryService:
         """
         if not items:
             return items
-        from api_gateway.infrastructure.grpc_proxies.task_data_proxies import task_data_service
         device_ids = [item['id'] for item in items if item.get('id') is not None]
         if not device_ids:
             return items
-        occupancy = task_data_service.get_device_occupancy(device_ids=device_ids)
+        return DeviceQueryService._apply_occupancy(
+            items, DeviceQueryService._fetch_occupancy(device_ids))
+
+    @staticmethod
+    def _fetch_occupancy(device_ids):
+        """拉取设备占用态映射 {device_id(str): {occupied_status, task_id}}（可能为空）。"""
+        if not device_ids:
+            return {}
+        from api_gateway.infrastructure.grpc_proxies.task_data_proxies import task_data_service
+        return task_data_service.get_device_occupancy(device_ids=device_ids) or {}
+
+    @staticmethod
+    def _apply_occupancy(items, occupancy):
+        """把占用态映射回填到设备 item（无占用时置 null，保持字段存在）。"""
+        if not items:
+            return items
+        occupancy = occupancy or {}
         for item in items:
             occ = occupancy.get(str(item.get('id')))
             if occ:
@@ -236,6 +270,39 @@ class DeviceQueryService:
 
         if not result.get('success'):
             return wrap_grpc_response(result, default_error_msg='查询状态历史失败')
+
+        return success_response(result.get('data'))
+
+    @staticmethod
+    def get_monitor_stats(start_date, end_date, device_ids=None, lab_id=None,
+                          granularity=MONITOR_STATS_GRANULARITY_DAY):
+        """设备监控统计（历史监控 → 统计分析四图，INT-1578）。
+
+        start_date / end_date 缺参由路由层 FastAPI 校验返回 422；本方法按契约
+        校验区间与粒度，非法返回 400。
+        """
+        try:
+            query = DeviceMonitorStatsQuery.model_validate({
+                'start_date': start_date,
+                'end_date': end_date,
+                'device_ids': device_ids,
+                'lab_id': lab_id,
+                'granularity': granularity,
+            })
+        except Exception as e:
+            return error_response(f"请求参数错误: {str(e)}", 400)
+
+        if query.end_date < query.start_date:
+            return error_response('结束日期不能早于开始日期', 400)
+        if (query.end_date - query.start_date).days + 1 > MONITOR_STATS_MAX_RANGE_DAYS:
+            return error_response(f'统计区间不得超过 {MONITOR_STATS_MAX_RANGE_DAYS} 天', 400)
+        if str(query.granularity or '').strip().lower() != MONITOR_STATS_GRANULARITY_DAY:
+            return error_response(f'统计粒度仅支持 {MONITOR_STATS_GRANULARITY_DAY}', 400)
+
+        result = _device_monitor_acl.get_monitor_stats(query.model_dump(mode='json'))
+
+        if not result.get('success'):
+            return wrap_grpc_response(result, default_error_msg='查询监控统计失败')
 
         return success_response(result.get('data'))
 

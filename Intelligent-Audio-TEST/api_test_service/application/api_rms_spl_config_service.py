@@ -28,6 +28,13 @@ _MIN_REFERENCE_SPL = 30.0
 _MAX_REFERENCE_SPL = 120.0
 
 
+def _iso(value):
+    """datetime → ISO 字符串（gRPC 载荷按 JSON 序列化，datetime 不能直出）"""
+    if value and hasattr(value, 'isoformat'):
+        return value.isoformat()
+    return value if isinstance(value, str) else None
+
+
 def _mapping_to_dict(mapping) -> dict:
     """领域实体 → 序列化 dict（camelCase 由前端 Infrastructure 层转换）"""
     return {
@@ -50,6 +57,9 @@ def _mapping_to_dict(mapping) -> dict:
         'min_gain_linear': mapping.min_gain_linear,
         'max_gain_linear': mapping.max_gain_linear,
         'is_calibrated': mapping.is_calibrated(),
+        # INT-1504 缺陷3：读模型补齐时间字段（详情「创建/更新时间」不再恒显示 —）
+        'created_at': _iso(getattr(mapping, 'created_at', None)),
+        'updated_at': _iso(getattr(mapping, 'updated_at', None)),
     }
 
 

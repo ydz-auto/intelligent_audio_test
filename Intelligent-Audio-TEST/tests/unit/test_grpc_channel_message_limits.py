@@ -16,6 +16,7 @@ ExportReportsForTasks = 20,439,856B，均超 16MiB → (23448138 vs. 16777216)�
 3. 默认上限必须 ≥ 实测最大单响应 23,448,131B；
 4. 端到端：经共享 channel 工厂创建的客户端可收下 ≥ 实测边界的响应。
 """
+import importlib
 import os
 from concurrent import futures
 
@@ -35,6 +36,23 @@ _ALL_CHANNEL_GETTERS = (
     '_get_algorithm_channel', '_get_report_channel', '_get_auth_channel',
 )
 
+# INT-1425 测试自愈：9 个共享服务 gRPC 端口的互异已知值（与 config.py 默认一致）。
+# _grpc_channels 的 *_GRPC_ADDR 是模块级常量、import 时从 BaseConfig 一次性求值；
+# 全量套件前序测试会污染 *_SERVICE_GRPC_PORT env，污染值下部分 getter 解析到同一
+# target → 按 target 去重计数不足 9。固定端口后 reload 模块使模块级 ADDR 按互异
+# 值重新求值，消除 target 串扰（monkeypatch 自动还原 BaseConfig 类属性）。
+_DISTINCT_GRPC_PORTS = {
+    'E2E_TEST_SERVICE_GRPC_PORT': 50051,
+    'AUDIO_SERVICE_GRPC_PORT': 50052,
+    'DEVICE_SERVICE_GRPC_PORT': 50053,
+    'TASK_SERVICE_GRPC_PORT': 50061,
+    'API_TEST_SERVICE_GRPC_PORT': 50071,
+    'EVALUATION_SERVICE_GRPC_PORT': 50091,
+    'ALGORITHM_SERVICE_GRPC_PORT': 50067,
+    'REPORT_SERVICE_GRPC_PORT': 51068,
+    'AUTH_SERVICE_GRPC_PORT': 51069,
+}
+
 # INT-1292 实测任务 419（138 用例）导出跨服务最大单响应（ExportDimensionsForTasks，
 # 真实库栈 5700 实测抓取），低于默认上限即会重演 400 RESOURCE_EXHAUSTED。
 _REAL_EXPORT_RESPONSE_BYTES = 23_448_131
@@ -51,12 +69,23 @@ class TestChannelOptions:
 
     def test_all_channels_carry_enlarged_message_limits(self, monkeypatch):
         from shared.clients import _grpc_channels
+        from shared.infrastructure.config import BaseConfig
 
-        seen = {}
+        # 全量套件前序测试会污染 *_SERVICE_GRPC_PORT env，而 *_GRPC_ADDR 是
+        # 模块级常量、import 时从 BaseConfig 一次性求值 → 污染值下不同 getter
+        # 解析到同一 target，按 target 去重计数不足 9（INT-1425 全量回归失败点）。
+        # 先把 9 个端口固定为互异已知值（monkeypatch 自动还原），再 reload
+        # 模块使模块级 ADDR 按固定值重新求值，消除 target 串扰。
+        for attr, port in _DISTINCT_GRPC_PORTS.items():
+            monkeypatch.setattr(BaseConfig, attr, port)
+        _grpc_channels = importlib.reload(_grpc_channels)
+
+        created = []  # (getter 名, target, options)：逐 getter 独立记录
         real_insecure_channel = grpc.insecure_channel
+        current_getter = [None]
 
         def _fake_insecure_channel(target, options=None, **kwargs):
-            seen[target] = options
+            created.append((current_getter[0], target, options))
             return real_insecure_channel(target)
 
         monkeypatch.setattr(_grpc_channels.grpc, 'insecure_channel', _fake_insecure_channel)
@@ -64,6 +93,7 @@ class TestChannelOptions:
 
         try:
             for name in _ALL_CHANNEL_GETTERS:
+                current_getter[0] = name
                 getter = getattr(_grpc_channels, name)
                 getter.cache_clear()
                 getter()
@@ -71,12 +101,14 @@ class TestChannelOptions:
             for name in _ALL_CHANNEL_GETTERS:
                 getattr(_grpc_channels, name).cache_clear()
 
-        assert len(seen) == len(_ALL_CHANNEL_GETTERS), \
-            f'应创建 {len(_ALL_CHANNEL_GETTERS)} 个共享 channel: {list(seen)}'
-        for target, options in seen.items():
+        # 逐 getter 独立校验收发上限（不再按 target 去重计数）：即使多个 getter
+        # 恰巧解析到同一 target，各自 channel 也必须携带放大上限。
+        assert len(created) == len(_ALL_CHANNEL_GETTERS), \
+            f'应创建 {len(_ALL_CHANNEL_GETTERS)} 个共享 channel: {created}'
+        for name, target, options in created:
             opts = dict(options or [])
-            assert opts['grpc.max_receive_message_length'] == expected, target
-            assert opts['grpc.max_send_message_length'] == expected, target
+            assert opts['grpc.max_receive_message_length'] == expected, f'{name} -> {target}'
+            assert opts['grpc.max_send_message_length'] == expected, f'{name} -> {target}'
 
     def test_reads_config_dynamically(self, monkeypatch):
         from shared.clients import _grpc_channels

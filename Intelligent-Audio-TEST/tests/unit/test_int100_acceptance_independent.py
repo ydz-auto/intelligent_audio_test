@@ -174,11 +174,14 @@ class TestLargeTaskBoundedPulls:
         LogQueryService._get_task_logs_merged(_merged_query(per_page=50))
         assert inproc_stub.requests[0].per_page == 123
 
-        # 0 = 不限：int32 上限占位
+        # 0 = 不限：按块循环拉全部命中行。INT-1812 返工——单请求不再用 int32
+        # 占位一次要 10 万行（那条请求在真实库上会撞 gRPC 单条消息上限并被
+        # 代理吞成空结果，导出与深分页因此静默丢行）。
         monkeypatch.setattr('shared.infrastructure.config.BaseConfig.LOG_DB_MERGE_MAX_ROWS', 0)
+        monkeypatch.setattr('shared.infrastructure.config.BaseConfig.LOG_DB_FETCH_CHUNK_ROWS', 100)
         inproc_stub.requests.clear()
         resp, _ = LogQueryService._get_task_logs_merged(_merged_query(per_page=50))
-        assert inproc_stub.requests[0].per_page == 2 ** 31 - 1
+        assert [r.per_page for r in inproc_stub.requests] == [100, 100, 100]  # 250 行分 3 块
         assert resp['data']['total'] == self.DB_ROWS
 
     def test_file_scan_cap_single_file_and_multi_file(self, log_root, monkeypatch):

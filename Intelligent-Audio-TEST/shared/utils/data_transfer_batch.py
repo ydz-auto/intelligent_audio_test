@@ -4,6 +4,7 @@
 每个服务的导入段共用一个 batch_id（编排方生成），各服务把本段插入的主键
 登记到 data_transfer:batch:{batch_id} 的独立 field 下（field=服务名，
 value=JSON {表名: [主键]}）。回滚 RPC 按本服务 field 取主键删除，互不干扰。
+INT-1760：同一 field 内另存 `source_map` 映射快照（失败重放登记用）。
 
 补偿自身失败必须显式报错要求人工介入，不得静默——登记数据保留 TTL 7 天。
 """
@@ -13,6 +14,7 @@ from typing import Dict, List
 from shared.constants.data_transfer import (
     BATCH_TTL_SECONDS,
     REDIS_BATCH_KEY_PREFIX,
+    SOURCE_MAP_BATCH_FIELD,
 )
 from shared.utils.redis_pubsub import RedisStore
 
@@ -28,17 +30,39 @@ class TransferBatchRegistry:
         return f'{REDIS_BATCH_KEY_PREFIX}{batch_id}'
 
     def record(self, batch_id: str, service: str, tables_pks: Dict[str, List[int]]) -> None:
-        """登记一个服务段插入的主键集合（覆盖同服务旧登记）。"""
+        """登记一个服务段插入的主键集合（只覆盖 tables 字段，保留同段其他登记）。"""
         if not batch_id:
             raise ValueError('batch_id 不能为空')
         existing = self._store.load_task(self._key(batch_id))
-        existing[service] = {'tables': tables_pks}
+        payload = dict(existing.get(service) or {})
+        payload['tables'] = tables_pks
+        existing[service] = payload
         self._store.save_task(self._key(batch_id), existing, ttl_seconds=BATCH_TTL_SECONDS)
 
     def load_service(self, batch_id: str, service: str) -> Dict[str, List[int]]:
         """读取某服务段登记的 {表名: [主键]}；批次或服务段不存在返回空 dict。"""
         data = self._store.load_task(self._key(batch_id))
         return data.get(service, {}).get('tables', {}) or {}
+
+    def record_source_map(self, batch_id: str, service: str,
+                          entries: List[dict]) -> None:
+        """把 source_map 映射快照写进批次登记（INT-1760 / D0 A3 第 3 条）。
+
+        用途：DB 登记失败（或需要人工回滚）时按快照重放 upsert / 回删，而不是
+        靠人从日志里抠 id。与批次登记同一 TTL（7 天）。
+        """
+        if not batch_id:
+            raise ValueError('batch_id 不能为空')
+        existing = self._store.load_task(self._key(batch_id))
+        payload = dict(existing.get(service) or {})
+        payload[SOURCE_MAP_BATCH_FIELD] = entries
+        existing[service] = payload
+        self._store.save_task(self._key(batch_id), existing, ttl_seconds=BATCH_TTL_SECONDS)
+
+    def load_source_map(self, batch_id: str, service: str) -> List[dict]:
+        """读取批次登记的 source_map 快照；不存在返回空列表。"""
+        data = self._store.load_task(self._key(batch_id))
+        return data.get(service, {}).get(SOURCE_MAP_BATCH_FIELD, []) or []
 
     def remove_service(self, batch_id: str, service: str) -> None:
         """移除某服务段的登记（HDEL 字段级删除；整键最后一个字段删空时 Redis 自动清键）。

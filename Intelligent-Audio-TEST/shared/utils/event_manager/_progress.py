@@ -11,6 +11,7 @@ payload 契约见 shared/schemas/socket_payloads.py（snake_case，
 """
 import os
 import re
+import json
 import time
 import logging
 from datetime import datetime
@@ -53,6 +54,13 @@ EXPECTED_TOTAL_SMOOTHING_RATIO = 0.1
 
 # 时间预估兜底值（秒）
 DEFAULT_EXPECTED_TOTAL_SECONDS = 60
+
+# 进度事件「最近日志」条数上限（前端展示口径，两条取数路径共用）
+RECENT_LOG_LIMIT = 20
+
+# 业务日志尾部回读块大小（字节）：逐文件只回读末尾，凑够 20 条即止，
+# 避免大任务（上万行文件）在每次进度推送时全量扫描日志文件
+BUSINESS_LOG_TAIL_CHUNK_BYTES = 16 * 1024
 
 # INT-133：不存在任务的进度推送抑制窗口（秒）。窗口内对同一 task_id 的
 # 重复推送静默跳过（不查库、不打日志），过期后放行一轮重新核实；
@@ -182,11 +190,112 @@ def _current_concurrent_from_load_balancer(execution_engine) -> int:
     return sum(s.get('concurrent', 0) for s in url_status.values())
 
 
+def _file_tail_records(file_path, want) -> list:
+    """回读日志文件末尾的 JSON Lines 记录（文件内正序），最多 want 条。
+
+    业务日志是追加写的 JSON Lines（写入侧整行落盘即刷盘），最新记录在文件
+    尾部：从末尾按块回读、丢弃被截断的首行后逐行解析即可，块不足时按需
+    翻倍直到凑够 want 条或读到文件头。
+
+    返回 [(行起始字节偏移, 记录 dict)]。不整文件扫描：进度事件按推送频率
+    触发，大任务（上万行）全量物化会拖慢执行线程。
+    """
+    try:
+        size = os.path.getsize(file_path)
+    except OSError:
+        return []
+    chunk = BUSINESS_LOG_TAIL_CHUNK_BYTES
+    while True:
+        read_size = min(size, chunk)
+        start = size - read_size
+        try:
+            with open(file_path, 'rb') as handle:
+                handle.seek(start)
+                data = handle.read(read_size)
+        except OSError:
+            return []
+        line_start = start
+        if line_start > 0:
+            cut = data.find(b'\n')
+            if cut < 0:
+                data = b''
+            else:
+                # 首行可能从文件中间截断（非行首），丢弃到第一个换行符之后
+                line_start += cut + 1
+                data = data[cut + 1:]
+        records = []
+        offset = line_start
+        for raw in data.split(b'\n'):
+            current = offset
+            offset += len(raw) + 1
+            if not raw.strip():
+                continue
+            try:
+                record = json.loads(raw.decode('utf-8', errors='replace'))
+            except (ValueError, TypeError):
+                continue
+            if isinstance(record, dict):
+                records.append((current, record))
+        if len(records) >= want or start == 0:
+            return records[-want:]
+        chunk *= 4
+
+
+def _stable_log_id(rel_path, offset) -> int:
+    """文件条目稳定 int id（相对日志根路径 + 行起始偏移，替代 DB id）。
+
+    与 BusinessLogReader 的条目 id 同为文件侧派生 id（无 DB 行）；同一记录
+    在多次进度推送间稳定（前端列表 key 不抖动）。
+    """
+    import hashlib
+    return int(hashlib.md5(f'{rel_path}:{offset}'.encode('utf-8')).hexdigest()[:12], 16)
+
+
+def _build_logs_from_business_files(task_id_int) -> Optional[list]:
+    """从业务日志文件读取最近日志（INT-1808 / INT-1793 D5）。
+
+    INT-81 起业务日志写文件（logs/business/{task_id}/...），不再入 logs 表，
+    因此新任务的最近日志必须读文件，否则进度事件「最近日志」恒空。
+
+    返回 None 表示该任务在业务日志根下没有任何日志文件（目录不存在或无
+    .log 文件，即 INT-81 之前的历史任务），由调用方回落 DB 读取；文件存在
+    时以文件为准，读到空列表也不回落（避免把「本任务确实没有日志」误判为
+    历史任务而重复读库）。
+
+    取数：枚举任务下全部日志文件，逐文件只回读其最新 RECENT_LOG_LIMIT 条
+    （任一文件最多贡献 20 条，故全局最新 20 条必在该并集中），按 time 倒序
+    取前 20 再反转为正序——与 DB 路径输出顺序一致，level 统一小写。
+    """
+    from shared.logging import BusinessLogReader, get_log_settings
+
+    reader = BusinessLogReader()
+    files = reader.list_log_files(task_id=task_id_int)
+    if not files:
+        return None
+
+    root_dir = get_log_settings().root_dir
+    candidates = []  # (time, rel_path, offset, record)
+    for file_path in files:
+        rel_path = os.path.relpath(file_path, root_dir).replace(os.sep, '/')
+        for offset, record in _file_tail_records(file_path, RECENT_LOG_LIMIT):
+            candidates.append((record.get('time') or '', rel_path, offset, record))
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return [
+        ProgressLogItem(
+            id=_stable_log_id(rel_path, offset),
+            level=(record.get('level') or 'info').lower(),
+            message=record.get('content') or '',
+            timestamp=_ts_ms(record.get('time')),
+        )
+        for _time, rel_path, offset, record in reversed(candidates[:RECENT_LOG_LIMIT])
+    ]
+
+
 def _build_logs_via_grpc(task_id_int) -> list:
-    """通过 gRPC 查询最近日志并转为 ProgressLogItem 列表。"""
+    """通过 gRPC 查询最近日志并转为 ProgressLogItem 列表（历史任务回退路径）。"""
     try:
         from shared.clients.grpc_clients import list_logs
-        log_resp = list_logs(task_id=task_id_int, page=1, per_page=20)
+        log_resp = list_logs(task_id=task_id_int, page=1, per_page=RECENT_LOG_LIMIT)
         recent_log_items = log_resp.get('items', [])
     except Exception:
         recent_log_items = []
@@ -199,6 +308,24 @@ def _build_logs_via_grpc(task_id_int) -> list:
         )
         for log_item in reversed(recent_log_items)
     ]
+
+
+def _build_recent_logs(task_id_int) -> list:
+    """进度事件「最近日志」取数（INT-1808）：业务文件优先，历史任务回落 DB。
+
+    DB 回退条件仅一种：任务在业务日志根下无任何日志文件（INT-81 之前的
+    历史任务）。文件读取异常同样回落 DB 以保证进度事件不因日志读取失败
+    而中断（新任务两侧都可能为空，降级后事件照常发射）。
+    """
+    try:
+        file_logs = _build_logs_from_business_files(task_id_int)
+    except Exception:
+        logger.warning("业务日志文件读取失败，回落 DB 日志列表，task_id=%s",
+                       task_id_int, exc_info=True)
+        file_logs = None
+    if file_logs is not None:
+        return file_logs
+    return _build_logs_via_grpc(task_id_int)
 
 
 class _TaskProxy:
@@ -329,7 +456,7 @@ class ProgressMixin:
         device_types = grpc_progress.get('device_types') or []
         current_case = self._build_current_case_from_grpc(task_id, device_types, grpc_progress.get('current_case'))
         test_cases = self._build_test_cases_from_grpc(grpc_progress.get('test_cases', []))
-        logs = _build_logs_via_grpc(task_id_int)
+        logs = _build_recent_logs(task_id_int)
         api_resources = self._build_api_resources_from_grpc(device_types, grpc_progress.get('api_resource_status', []))
 
         started_at = _parse_dt(grpc_progress.get('started_at'))
@@ -438,7 +565,7 @@ class ProgressMixin:
 
         current_case = self._build_current_case_from_po(session, task_id, db_task, TaskCase, TestCase)
         test_cases = self._build_test_cases_from_po(session, db_task, TaskCase)
-        logs = _build_logs_via_grpc(db_task.id)
+        logs = _build_recent_logs(db_task.id)
         api_resources = self._build_api_resources_from_po(session, db_task)
         # INT-305：移除留痕行不计数（与列表/详情剔除口径一致）
         not_removed = task_case_not_removed(TaskCase)

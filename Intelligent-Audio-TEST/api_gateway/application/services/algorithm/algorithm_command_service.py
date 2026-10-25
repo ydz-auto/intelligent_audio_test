@@ -4,6 +4,8 @@
 按 DDD 原则，网关不再直接操作 DB，而是通过 gRPC 调用 algorithm_service。
 保留 Pydantic schema 校验。
 """
+import logging
+
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.infrastructure.acl import AlgorithmConfigAclRepositoryImpl
@@ -32,9 +34,72 @@ from api_gateway.schemas.algorithm import (
 from api_gateway.infrastructure.grpc_proxies.algorithm_proxies import (
     algorithm_query_service as _algorithm_service_proxy,
 )
+from api_gateway.infrastructure.grpc_proxies.api_config_proxies import (
+    api_config_service,
+)
 
 
 _algorithm_acl = AlgorithmConfigAclRepositoryImpl()
+
+logger = logging.getLogger(__name__)
+
+
+def _validate_api_scope(api_id, algorithm_type):
+    """写路径校验 ``api_id`` 作用域（INT-1756 C6a）。
+
+    两张参数表的 ``api_id`` 指向 api_test_service 的 ``apis.id``，跨服务 DB 外键
+    违反架构红线（父卡 INT-1751 硬错 1），存在性与归属只能在网关写路径保证：
+
+    - ``api_id`` 为空 → 算法类型级默认，不校验；
+    - 对应 API 不存在 → 400；
+    - API 的 ``algorithm_type`` 与参数行不一致 → 400。
+
+    返回 ``error_response(...)``，通过则返回 None。
+    """
+    if api_id is None:
+        return None
+    # 更新路径的载荷是裸 JSON（无 schema 兜底），非法值必须落 400 而不是
+    # 未捕获的 ValueError/TypeError（审计 P3-1）。
+    try:
+        api_id_int = int(api_id)
+    except (TypeError, ValueError):
+        return error_response(f"api_id={api_id!r} 非法：应为正整数", 400)
+    if api_id_int < 1:
+        return error_response(f"api_id={api_id!r} 非法：应为正整数", 400)
+    result = api_config_service.get_one(api_id_int) or {}
+    data = result.get('data') or {}
+    if not result.get('success') or not data:
+        return error_response(
+            f"api_id={api_id} 对应的 API 不存在或查询失败: "
+            f"{result.get('message') or ''}", 400)
+    api_algorithm_type = data.get('algorithm_type')
+    if (algorithm_type and api_algorithm_type
+            and str(api_algorithm_type) != str(algorithm_type)):
+        return error_response(
+            f"api_id={api_id} 属于算法类型 {api_algorithm_type}，"
+            f"与 algorithm_type={algorithm_type} 不一致", 400)
+    return None
+
+
+def _clear_definition_draft(algo_type):
+    """发布（新建/更新）或删除成功后清除该类型的草稿快照（INT-1514）。
+
+    清除失败只记日志、不改变主操作结果——与 algorithm_service
+    `handle_save_definition`「草稿清除失败不阻断发布」同口径；
+    残留快照会在下次发布/删除时再次被清除。
+    """
+    if not algo_type:
+        return
+    try:
+        result = _algorithm_service_proxy.clear_algorithm_definition_draft(algo_type)
+    except Exception as e:  # 代理层已兜底，双保险
+        logger.warning('清除算法草稿异常 algorithm_type=%s: %s', algo_type, e)
+        return
+    if not result.get('success'):
+        logger.warning(
+            '清除算法草稿失败 algorithm_type=%s: %s',
+            algo_type, result.get('message'),
+        )
 
 
 class AlgorithmCommandService:
@@ -52,6 +117,8 @@ class AlgorithmCommandService:
         result = _algorithm_acl.create_algorithm(data)
 
         if result.get('success'):
+            # 新建同类型的算法时丢弃历史草稿快照，避免重开编辑回显旧草稿
+            _clear_definition_draft(data.get('type') or data.get('algorithm_type'))
             return success_response(result.get('data'), result.get('message', 'Algorithm created'))
         return error_response(result.get('message', '操作失败'), result.get('code', 400))
 
@@ -67,6 +134,8 @@ class AlgorithmCommandService:
         result = _algorithm_acl.update_algorithm(algo_type, data)
 
         if result.get('success'):
+            # 发布成功后清除草稿快照（INT-1514，与 clear_snapshot 口径一致）
+            _clear_definition_draft(algo_type)
             return success_response(result.get('data'), result.get('message', 'Algorithm updated'))
         return error_response(result.get('message', '操作失败'), result.get('code', 400))
 
@@ -76,6 +145,8 @@ class AlgorithmCommandService:
         result = _algorithm_acl.delete_algorithm(algo_type)
 
         if result.get('success'):
+            # 算法删除级联清草稿，避免残留行指向已软删算法（INT-1514）
+            _clear_definition_draft(algo_type)
             return success_response(result.get('data'), result.get('message', 'Algorithm deleted'))
         return error_response(result.get('message', '操作失败'), result.get('code', 400))
 
@@ -144,12 +215,17 @@ class AlgorithmCommandService:
             except Exception as e:
                 return error_response(f"请求数据验证失败: {str(e)}", 400)
 
+        if param_type_source == 'api':
+            scope_error = _validate_api_scope(
+                getattr(req, 'api_id', None), getattr(req, 'algorithm_type', None))
+            if scope_error is not None:
+                return scope_error
+
         data = req.model_dump(by_alias=False, exclude_none=True)
-        # param_type_source 用于下游 device/api 分表路由，两个 schema 均不包含该字段，
-        # 且 APIModel extra="ignore" 会把它从 model_dump 结果中丢弃 → 重新注入，
-        # 防 API 参数（param_type_source='api'）错落 device_params 表（INT-1004 回归）。
-        # 空值归一为 'device'，与上方 schema 选择分支（非 api 一律 device）保持一致。
-        data['param_type_source'] = param_type_source or 'device'
+        # 判别键必须显式回写：schema 是 extra="ignore"，param_type_source 不在字段里
+        # 会被 model_dump 丢掉，algorithm_service 于是回落 "device" —— 带 api_id 的
+        # 「API 参数」会被建进 algorithm_device_params（该表无 api_id 列，被静默忽略）。
+        data['param_type_source'] = param_type_source
         result = _algorithm_acl.create_param(data)
 
         if result.get('success'):
@@ -164,6 +240,12 @@ class AlgorithmCommandService:
         现在该判断逻辑下沉到微服务。网关侧直接把原始 JSON 传给代理。
         """
         data = request.get_json() or {}
+        # INT-1756：载荷带 api_id 时校验作用域（更新载荷不含 algorithm_type 时
+        # 只校验 API 存在性，类型一致性由创建/整份保存路径保证）
+        scope_error = _validate_api_scope(
+            data.get('api_id', data.get('apiId')), data.get('algorithm_type'))
+        if scope_error is not None:
+            return scope_error
         result = _algorithm_acl.update_param(param_id, data)
 
         if result.get('success'):
@@ -189,6 +271,11 @@ class AlgorithmCommandService:
         except Exception as e:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
+        scope_error = _validate_api_scope(
+            getattr(req, 'api_id', None), req.algorithm_type)
+        if scope_error is not None:
+            return scope_error
+
         data = req.model_dump(by_alias=False, exclude_none=True)
         result = _algorithm_acl.create_mapping(data)
 
@@ -199,10 +286,17 @@ class AlgorithmCommandService:
     @staticmethod
     def update_mapping(mapping_id: int):
         """更新参数映射"""
+        json_data = request.get_json() or {}
         try:
-            req = MappingUpdateRequest.model_validate(request.get_json())
+            req = MappingUpdateRequest.model_validate(json_data)
         except Exception as e:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
+
+        scope_error = _validate_api_scope(
+            json_data.get('api_id', json_data.get('apiId')),
+            json_data.get('algorithm_type'))
+        if scope_error is not None:
+            return scope_error
 
         data = req.model_dump(by_alias=False, exclude_none=True)
         result = _algorithm_acl.update_mapping(mapping_id, data)
@@ -387,6 +481,11 @@ class AlgorithmCommandService:
         result = _algorithm_acl.bulk_delete(data)
 
         if result.get('success'):
+            # 只清实际被删的类型（未删成功的保留其草稿），级联清残留快照
+            payload = result.get('data') or {}
+            deleted_types = payload.get('deleted_types') or data.get('algorithm_types') or []
+            for algo_type in deleted_types:
+                _clear_definition_draft(algo_type)
             return success_response(result.get('data'), result.get('message', 'Bulk delete completed'))
         return error_response(result.get('message', '操作失败'), result.get('code', 400))
 

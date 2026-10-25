@@ -131,6 +131,33 @@ class _AlgorithmQueryProxy:
             error_msg_prefix='读取草稿失败',
         )
 
+    def clear_algorithm_definition_draft(self, algorithm_type):
+        """清除草稿快照（INT-1514：发布 / 删除成功后调用）。"""
+        from shared.proto import algorithm_service_pb2 as algo_pb
+
+        def _call():
+            resp = self.definition_stub.ClearAlgorithmDefinitionDraft(
+                algo_pb.ClearAlgorithmDefinitionDraftRequest(
+                    algorithm_type=algorithm_type or ''
+                )
+            )
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': resp.code,
+            }
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {
+                'success': False,
+                'message': f'清除草稿失败: {e}',
+                'data': None,
+                'code': 500,
+            },
+            error_msg_prefix='清除草稿失败',
+        )
+
 
 # 算法查询代理模块级单例
 algorithm_query_service = _AlgorithmQueryProxy()

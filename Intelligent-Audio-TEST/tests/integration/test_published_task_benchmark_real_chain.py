@@ -8,9 +8,15 @@
 覆盖验收标准：
 1. 发布可携带 benchmark 标记并持久化；snapshot_config 不被写入标记（快照不可变语义）
 2. 网关 GET /published-tasks?benchmark= 三态过滤（true/false/缺省/非法值 400/大小写归一）
-3. 审计事件 PUBLISHED_TASK_BENCHMARK_MARKED 落库 logs（module/level/category/content）
+3. 审计事件 PUBLISHED_TASK_BENCHMARK_MARKED 落审计 JSONL（event/module/level/category/content）
 4. 新版本继承/显式覆盖、归档保留标记（状态机兼容）
+
+审计断言口径（INT-1793 契约，INT-1886 同步）：审计事件落审计文件
+`{LOG_ROOT_DIR}/audit/{YYYY-MM-DD}/{category}.{service}.{hostname}-{pid}.jsonl`，
+logs 表零写入 —— 断言读审计文件，不再查 logs 表。
 """
+import glob
+import json
 import os
 import uuid
 
@@ -95,6 +101,30 @@ def pt_gateway(monkeypatch, db, storage_env, fake_redis, pt_chain):
         yield client
 
 
+@pytest.fixture(autouse=True)
+def _isolated_audit_root(tmp_path, monkeypatch):
+    """审计文件根按用例隔离（INT-1793 落文件后，本模块断言读审计 JSONL）。
+
+    - 显式指到 tmp_path 并强制 LOG_AUDIT_ENABLED：不依赖 .env，也不会因同进程
+      其它域用例构造过写入器单例而把审计行写到别的根；
+    - 重建配置快照 + 丢弃写入器单例（自建自清：收尾先关句柄，Windows 才能删目录）。
+    """
+    from shared.infrastructure.config import BaseConfig
+    from shared.logging.audit_writer import reset_audit_writer
+    from shared.logging.config import reset_log_settings
+
+    monkeypatch.setattr(BaseConfig, 'LOG_ROOT_DIR', str(tmp_path / 'audit_root'))
+    monkeypatch.setattr(BaseConfig, 'LOG_AUDIT_ENABLED', True)
+    reset_log_settings()
+    reset_audit_writer()
+    try:
+        yield
+    finally:
+        reset_audit_writer()
+        # 只清快照不重建：monkeypatch 收尾后才按恢复的 BaseConfig 惰性重建
+        reset_log_settings()
+
+
 def _seed_publishable_task():
     """写入一个可发布源任务（completed + 1 用例），返回 task_id。"""
     from shared.models.database import get_db_session
@@ -134,21 +164,39 @@ def _published_rows(db, **filters):
     return rows
 
 
-def _audit_logs(db, published_task_id):
-    from shared.models.database import get_db_session
-    from task_service.infrastructure.persistence.models.system_models import Log
+def _audit_entries(published_task_id):
+    """读取审计 JSONL，返回与该已发布任务（含版本链）相关的条目。
 
-    s = get_db_session()
-    rows = (s.query(Log)
-            .filter(Log.module == 'published_task',
-                    Log.content.like(f'%{published_task_id}%'))
-            .all())
-    s.close()
-    return rows
+    INT-1793 契约：审计事件只落审计文件、logs 表零写入（INT-1886 同步断言口径）。
+    按 module + content 内的已发布任务 ID 过滤：版本事件透传 task_group_id/
+    previous_version_id，v1 的 id 即分组 id，故所有版本的事件都能命中。
+    """
+    from shared.logging.config import get_log_settings
+    from shared.logging.enums import AUDIT_DIR, AUDIT_FILE_SUFFIX
+
+    root = get_log_settings().root_dir
+    pattern = os.path.join(root, AUDIT_DIR, '*', f'*{AUDIT_FILE_SUFFIX}')
+    entries = []
+    for path in sorted(glob.glob(pattern)):
+        with open(path, 'r', encoding='utf-8') as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue
+                if entry.get('module') != 'published_task':
+                    continue
+                if str(published_task_id) not in str(entry.get('content') or ''):
+                    continue
+                entries.append(entry)
+    return entries
 
 
 class TestPublishBenchmarkRealChain:
-    """验收标准 1+3：发布携带 benchmark 持久化 + 审计落库（网关 HTTP 全链路）"""
+    """验收标准 1+3：发布携带 benchmark 持久化 + 审计落审计文件（网关 HTTP 全链路）"""
 
     def test_publish_benchmark_true_persists_and_audits(self, pt_gateway, db):
         task_id = _seed_publishable_task()
@@ -166,12 +214,14 @@ class TestPublishBenchmarkRealChain:
         # 快照不可变语义：benchmark 是行级标记，不写入冻结快照结构
         assert 'benchmark' not in (row.snapshot_config or {})
 
-        logs = _audit_logs(db, pt_id)
-        assert logs, 'benchmark=true 发布应写审计事件'
-        audit = [l for l in logs if 'PUBLISHED_TASK_BENCHMARK_MARKED' in (l.content or '')]
-        assert audit, f'审计内容缺事件名: {[l.content for l in logs]}'
-        assert logs[0].level == 'INFO' and logs[0].category == 'System'
-        assert str(pt_id) in audit[0].content
+        entries = _audit_entries(pt_id)
+        assert entries, 'benchmark=true 发布应写审计事件'
+        audit = [e for e in entries if e.get('event') == 'PUBLISHED_TASK_BENCHMARK_MARKED']
+        assert audit, f'审计内容缺事件名: {[e.get("event") for e in entries]}'
+        marked = audit[0]
+        assert marked['level'] == 'INFO' and marked['category'] == 'system'
+        assert marked['module'] == 'published_task'
+        assert str(pt_id) in marked['content']
 
     def test_publish_without_benchmark_defaults_false_no_audit(self, pt_gateway, db):
         task_id = _seed_publishable_task()
@@ -185,11 +235,12 @@ class TestPublishBenchmarkRealChain:
         assert row.benchmark is False
         # 不带标记发布不产生 BENCHMARK_MARKED 审计
         # （INT-65 起仍无条件落 PUBLISHED_TASK_CREATED，见断言与单测 test_int65_published_task_audit）
-        logs = _audit_logs(db, pt_id)
-        benchmark_logs = [l for l in logs if 'PUBLISHED_TASK_BENCHMARK_MARKED' in (l.content or '')]
-        created_logs = [l for l in logs if 'PUBLISHED_TASK_CREATED' in (l.content or '')]
-        assert benchmark_logs == [], '不带标记发布不应产生 BENCHMARK_MARKED 审计'
-        assert created_logs, '发布应无条件落 PUBLISHED_TASK_CREATED 审计（INT-65）'
+        entries = _audit_entries(pt_id)
+        benchmark_events = [e for e in entries
+                            if e.get('event') == 'PUBLISHED_TASK_BENCHMARK_MARKED']
+        created_events = [e for e in entries if e.get('event') == 'PUBLISHED_TASK_CREATED']
+        assert benchmark_events == [], '不带标记发布不应产生 BENCHMARK_MARKED 审计'
+        assert created_events, '发布应无条件落 PUBLISHED_TASK_CREATED 审计（INT-65）'
 
 
 class TestGatewayBenchmarkFilterRealChain:
@@ -271,9 +322,9 @@ class TestVersionAndArchiveBenchmarkRealChain:
         v3 = _published_rows(db, id=v3_id)[0]
         assert v3.version == 3 and v3.benchmark is False and v3.is_current is True
         # v1/v2 各写过一次审计；v3 不带标记不得新增
-        marked_logs = [l for l in _audit_logs(db, pt_id)
-                       if 'PUBLISHED_TASK_BENCHMARK_MARKED' in (l.content or '')]
-        assert len(marked_logs) == 2
+        marked_events = [e for e in _audit_entries(pt_id)
+                         if e.get('event') == 'PUBLISHED_TASK_BENCHMARK_MARKED']
+        assert len(marked_events) == 2
 
         # v4：显式 benchmark=true（在 false 版本上重新标记）→ 覆盖为 true + 审计
         r4 = pt_gateway.post(f'/api/v1/published-tasks/{pt_id}/versions',
@@ -281,8 +332,8 @@ class TestVersionAndArchiveBenchmarkRealChain:
         assert r4.status_code == 201, r4.text[:300]
         v4_id = r4.json()['data']['id']
         assert _published_rows(db, id=v4_id)[0].benchmark is True
-        assert len([l for l in _audit_logs(db, pt_id)
-                    if 'PUBLISHED_TASK_BENCHMARK_MARKED' in (l.content or '')]) == 3
+        assert len([e for e in _audit_entries(pt_id)
+                    if e.get('event') == 'PUBLISHED_TASK_BENCHMARK_MARKED']) == 3
 
     def test_archive_keeps_marker_and_detail_exposes_it(self, pt_gateway, db):
         task_id = _seed_publishable_task()

@@ -23,9 +23,9 @@ class Report(Base):
     存储任务执行完成后生成的汇总分析报告。
     """
     __tablename__ = 'test_reports'
+    # INT-1784：idx_report_task_id（与 idx_test_reports_task_id 同定义）与
+    # idx_report_type（(type, status) 的列序前缀）已下线
     __table_args__ = (
-        Index('idx_report_task_id', 'task_id'),
-        Index('idx_report_type', 'type'),
         Index('idx_report_status', 'status'),
         Index('idx_report_created_at', 'created_at'),
         Index('idx_report_type_status', 'type', 'status'),
@@ -39,7 +39,8 @@ class Report(Base):
     analysis = Column(Text, comment='人工/自动分析结论')
     # INT-423 数据可见性：private/shared 二值，默认 shared（存量零回归）；7 张报告子表跟随父报告，不单独设列
     visibility = Column(String(20), nullable=False, default='shared', server_default='shared', comment='可见性 (shared/private)')
-    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    # INT-1784：(created_by_user_id, visibility) 复合索引覆盖该列，单列索引下线
+    created_by_user_id = Column(BigInteger, nullable=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')

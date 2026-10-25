@@ -967,6 +967,16 @@ class EvaluationDataServiceStub:
                 request_serializer=evaluation__service__pb2.RollbackDimensionImportRequest.SerializeToString,
                 response_deserializer=evaluation__service__pb2.EvaluationDataResponse.FromString,
                 _registered_method=True)
+        self.MergeDimensions = channel.unary_unary(
+                '/evaluation_service.EvaluationDataService/MergeDimensions',
+                request_serializer=evaluation__service__pb2.MergeDimensionsRequest.SerializeToString,
+                response_deserializer=evaluation__service__pb2.EvaluationDataResponse.FromString,
+                _registered_method=True)
+        self.RollbackDimensionMerge = channel.unary_unary(
+                '/evaluation_service.EvaluationDataService/RollbackDimensionMerge',
+                request_serializer=evaluation__service__pb2.RollbackDimensionMergeRequest.SerializeToString,
+                response_deserializer=evaluation__service__pb2.EvaluationDataResponse.FromString,
+                _registered_method=True)
         self.AiReviewCheck = channel.unary_unary(
                 '/evaluation_service.EvaluationDataService/AiReviewCheck',
                 request_serializer=evaluation__service__pb2.AiReviewCheckRequest.SerializeToString,
@@ -1022,6 +1032,23 @@ class EvaluationDataServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def MergeDimensions(self, request, context):
+        """增量回导合并（INT-1762 D4）：按 (test_result_id, dimension_id) 覆盖集合并维度评分，
+        只覆盖包内出现的维度（含各 round），覆盖前旧行落批次快照；包内 result id 在
+        A 侧无任何维度行 → success=false + data.code=409 + data.missing_result_ids，零写入。
+        出参 {imported, deleted, id_mapping, skipped_dimensions, batch_id, rollback_available}
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RollbackDimensionMerge(self, request, context):
+        """回滚一次维度合并批次（INT-1762 D4）：按快照恢复被覆盖的旧行、删除本批次新插入行
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def AiReviewCheck(self, request, context):
         """LLM 复检（INT-800/INT-823）：单次 AI 复核，聚合 ASR/参考文本/维度分/LLM 评语，
         复用 llm_judge 端点 worker 与维度配置重新判分，返回 verdict/confidence/reasoning。
@@ -1062,6 +1089,16 @@ def add_EvaluationDataServiceServicer_to_server(servicer, server):
             'RollbackDimensionImport': grpc.unary_unary_rpc_method_handler(
                     servicer.RollbackDimensionImport,
                     request_deserializer=evaluation__service__pb2.RollbackDimensionImportRequest.FromString,
+                    response_serializer=evaluation__service__pb2.EvaluationDataResponse.SerializeToString,
+            ),
+            'MergeDimensions': grpc.unary_unary_rpc_method_handler(
+                    servicer.MergeDimensions,
+                    request_deserializer=evaluation__service__pb2.MergeDimensionsRequest.FromString,
+                    response_serializer=evaluation__service__pb2.EvaluationDataResponse.SerializeToString,
+            ),
+            'RollbackDimensionMerge': grpc.unary_unary_rpc_method_handler(
+                    servicer.RollbackDimensionMerge,
+                    request_deserializer=evaluation__service__pb2.RollbackDimensionMergeRequest.FromString,
                     response_serializer=evaluation__service__pb2.EvaluationDataResponse.SerializeToString,
             ),
             'AiReviewCheck': grpc.unary_unary_rpc_method_handler(
@@ -1233,6 +1270,60 @@ class EvaluationDataService:
             target,
             '/evaluation_service.EvaluationDataService/RollbackDimensionImport',
             evaluation__service__pb2.RollbackDimensionImportRequest.SerializeToString,
+            evaluation__service__pb2.EvaluationDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def MergeDimensions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/evaluation_service.EvaluationDataService/MergeDimensions',
+            evaluation__service__pb2.MergeDimensionsRequest.SerializeToString,
+            evaluation__service__pb2.EvaluationDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RollbackDimensionMerge(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/evaluation_service.EvaluationDataService/RollbackDimensionMerge',
+            evaluation__service__pb2.RollbackDimensionMergeRequest.SerializeToString,
             evaluation__service__pb2.EvaluationDataResponse.FromString,
             options,
             channel_credentials,

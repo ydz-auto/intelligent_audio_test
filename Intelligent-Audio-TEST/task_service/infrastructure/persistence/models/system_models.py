@@ -23,12 +23,12 @@ class Log(Base):
     存储系统运行过程中的各类日志信息，用于审计和故障排查。
     """
     __tablename__ = 'logs'
+    # INT-1784：idx_task_id / idx_level / idx_category 三个裸列索引已下线——
+    # 它们分别是 (task_id, time) / (level, time) / (category, time) 的列序前缀，
+    # 复合索引同样能服务这些谓词，裸列索引只放大写放大（logs 是全库写最频繁的表）。
     __table_args__ = (
         Index('idx_task_time', 'task_id', 'time'),
         Index('idx_time', 'time'),
-        Index('idx_task_id', 'task_id'),
-        Index('idx_level', 'level'),
-        Index('idx_category', 'category'),
         Index('idx_module', 'module'),
         Index('idx_level_time', 'level', 'time'),
         Index('idx_category_time', 'category', 'time'),

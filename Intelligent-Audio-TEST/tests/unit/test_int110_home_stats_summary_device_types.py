@@ -65,22 +65,37 @@ class _StubDeviceAcl:
         }
 
 
+def _stub_device_status_counts():
+    """INT-1464 后设备状态走计数 RPC（ListDevices per_page=1 按 status 取 total）。
+
+    口径与旧实现（get_all 全量分页后按 status 计数）一致：2 在线 / 1 离线。
+    """
+    return 2, 1
+
+
 class _StubTaskDataService:
     """替代 grpc_proxies.task_data_service：空分组聚合（top_groups 路径不在此测）。"""
 
     @staticmethod
-    def list_testcase_groups():
+    def list_testcase_groups(**kwargs):
         return {'items': []}
 
     @staticmethod
-    def get_testcase_stats(group_by=None):
+    def get_testcase_stats(group_by=None, **kwargs):
         return {'items': []}
 
 
 def _make_client(monkeypatch) -> TestClient:
     monkeypatch.setattr(home_service_module, '_task_acl', _StubTaskAcl())
-    monkeypatch.setattr(home_service_module, '_device_acl', _StubDeviceAcl())
+    monkeypatch.setattr(home_service_module, '_device_acl', _StubDeviceAcl(), raising=False)
+    monkeypatch.setattr(home_service_module, 'fetch_device_status_counts',
+                        _stub_device_status_counts)
     monkeypatch.setattr(home_service_module, 'task_data_service', _StubTaskDataService())
+    # 汇总缓存不依赖真实 Redis：按未命中处理并吞掉写缓存
+    monkeypatch.setattr(home_service_module, 'load_summary_cache', lambda: None)
+    monkeypatch.setattr(home_service_module, 'store_summary_cache', lambda *a, **k: True)
+    monkeypatch.setattr(home_service_module, 'acquire_summary_refresh_lock', lambda: True)
+    monkeypatch.setattr(home_service_module, 'release_summary_refresh_lock', lambda: None)
 
     app = FastAPI()
     app.include_router(home_router, prefix='/api/v1/home')

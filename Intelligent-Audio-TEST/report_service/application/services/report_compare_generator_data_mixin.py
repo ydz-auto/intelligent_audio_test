@@ -15,6 +15,7 @@ from report_service.application.services.report_compare_helpers import ReportCom
 from report_service.application.services.report_compare_helpers import (
     _grpc_get_tasks_by_ids, _grpc_get_test_results_by_task_ids,
 )
+from report_service.application.services.report_task_generator import ReportTaskGenerator
 from report_service.infrastructure.clients.grpc_clients import (
     _grpc_list_testcases_by_ids, _dim_id, _dim_name, _dim_weight,
     _dim_score_unit, _dim_decimal_places,
@@ -160,6 +161,12 @@ class ReportCompareDataMixin:
             tasks_map=tasks_map,
             use_time_prefix=True
         )
+
+        # INT-1752：对比链路不加载维度结果映射（dim_results_map=None），加权维度必然
+        # 取不到分子/分母而退化为简单平均——在 all_metrics 对应指标上打降级标，
+        # 不得静默（与任务报告链同口径）。
+        ReportTaskGenerator._mark_degraded_metrics(
+            all_metrics, core_metrics.get('aggregation_degraded') or {})
 
         metric_data = core_metrics['metric_data']
         tag_metric_data = core_metrics['tag_metric_data']

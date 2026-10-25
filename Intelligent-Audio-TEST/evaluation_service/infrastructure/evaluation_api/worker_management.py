@@ -8,6 +8,7 @@ import threading
 from threading import Lock
 
 from evaluation_service.domain.services.endpoint_helpers import get_endpoint_url, get_endpoint_field
+from shared.constants.evaluation_dimension import is_llm_judge_dimension
 
 
 class WorkerManagementMixin:
@@ -47,11 +48,16 @@ class WorkerManagementMixin:
         super().__init__(**kwargs)
 
     def _get_timeout_from_dim_config(self, dim_data, default_timeout=30):
-        dim_type = dim_data.get('dimension_type', 'main')
         # 'or {}' 兜底显式 null（JSON null → None）：get(key, {}) 只能兜住键缺失
         api_settings = dim_data.get('api_settings') or {}
 
-        if dim_type == 'llm_judge':
+        # INT-1671：LLM 判分维度判定与读模型 / AI 复核同源（shared 谓词）。
+        # 有意行为变更：task_type_code 含 llm_judge 但 dimension_type 非 'llm_judge'
+        # 的维度（如活体 id=164 high_freq_llm_judge）超时由「timeout 或 30」改为
+        # 「timeout 或 120（LLM 裁判默认）」。
+        if is_llm_judge_dimension(
+                task_type_code=dim_data.get('task_type_code'),
+                dimension_type=dim_data.get('dimension_type')):
             return api_settings.get('timeout', 120)
 
         timeout = api_settings.get('timeout')
@@ -96,6 +102,14 @@ class WorkerManagementMixin:
             return self.endpoint_workers[endpoint_url]
 
     def _load_all_endpoint_configs(self):
+        """从 Repository 加载全部维度端点配置并预创建端点 Worker。
+
+        INT-1691：本方法在 lifespan（主线程）与维度配置热更新订阅线程
+        （DimensionConfigSub，长驻）上执行，属纯读路径。读后必须结束事务，
+        否则订阅线程会把「空事务 + dimensions ACCESS SHARE」带到下一次事件，
+        挡住迁移 DDL。结束事务放在 finally，异常路径也不遗留。
+        """
+        from shared.models.database import end_read_transaction
         try:
             from evaluation_service.infrastructure.evaluation_api.endpoint_worker import EndpointWorker
             from evaluation_service.infrastructure.persistence.evaluation_dimension_repository import (
@@ -124,6 +138,8 @@ class WorkerManagementMixin:
                                 )
         except Exception as e:
             self._log(level='error', content=f"加载维度配置失败: {str(e)}", category='system')
+        finally:
+            end_read_transaction()
 
     def reload_endpoint_configs(self):
         """热加载维度端点配置（订阅 DimensionConfigChanged 事件后调用）。

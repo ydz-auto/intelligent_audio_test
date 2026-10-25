@@ -30,6 +30,33 @@ import sys
 
 from sqlalchemy import create_engine, text
 
+# INT-1652：幂等重跑可跳过的 DDL 错误一律按 SQLSTATE 判定，不按异常文本 ——
+# SQLAlchemy 的异常串里带原 SQL，`IF NOT EXISTS` 让 'exists' 命中**所有**错误，
+# lock_timeout（55P03）会被当成「已存在」吞掉，迁移报 SKIP 却什么都没建成。
+_IGNORABLE_DDL_STATES = {
+    '42701',  # duplicate_column
+    '42P07',  # duplicate_table / relation already exists
+    '42710',  # duplicate_object
+    '42P06',  # duplicate_schema
+    '42703',  # undefined_column
+    '42P01',  # undefined_table
+    '42704',  # undefined_object
+    '42883',  # undefined_function
+    '3F000',  # invalid_schema_name
+}
+
+
+def _ddl_sqlstate(exc):
+    """取 psycopg2 的 SQLSTATE（SQLAlchemy 把原始异常挂在 .orig 上）。"""
+    orig = getattr(exc, 'orig', None)
+    return getattr(orig, 'pgcode', None) or getattr(exc, 'pgcode', None)
+
+
+def _is_ignorable_ddl_error(exc):
+    """幂等重跑的「已就绪 / 不存在」类错误（锁超时等真实失败不算）。"""
+    return _ddl_sqlstate(exc) in _IGNORABLE_DDL_STATES
+
+
 # ========================================================================
 # 配置
 # ========================================================================
@@ -79,12 +106,11 @@ def _exec_ddl(conn, sql, success_msg, skip_msg):
         print(f"  [OK] {success_msg}")
     except Exception as e:
         savepoint.rollback()
-        msg = str(e).lower()
-        if 'already' in msg or 'duplicate' in msg or 'exists' in msg \
-                or 'does not exist' in msg or 'not found' in msg:
+        if _is_ignorable_ddl_error(e):
             print(f"  [SKIP] {skip_msg}")
         else:
-            raise
+            raise RuntimeError(
+                f'DDL 失败（SQLSTATE={_ddl_sqlstate(e)}）: {sql} — {e}') from e
 
 
 # ========================================================================
@@ -844,15 +870,15 @@ INDEX_DEFINITIONS = [
     ('idx_dimensions_parent_dimension_id', 'dimensions', 'parent_dimension_id', False, None),
 
     # ── audio_annotations ──
-    ('idx_audio_annotations_audio_id', 'audio_annotations', 'audio_id', False, None),
+    # INT-1784：(audio_id, deleted) 复合索引已覆盖 audio_id 前缀，裸列索引不再创建
 
     # ── audio_tags ──
-    ('idx_audio_tags_audio_id', 'audio_tags', 'audio_id', False, None),
+    # INT-1784：(audio_id, tag_id) 复合索引已覆盖 audio_id 前缀
     ('idx_audio_tags_tag_id', 'audio_tags', 'tag_id', False, None),
 
     # ── audio_algorithm_relations ──
-    ('idx_audio_algo_rel_audio_id', 'audio_algorithm_relations', 'audio_id', False, None),
-    ('idx_audio_algo_rel_algorithm_type', 'audio_algorithm_relations', 'algorithm_type', False, None),
+    # INT-1784：idx_audio_algo_rel_audio_id / _algorithm_type 已下线——与本表
+    # idx_audio_algorithm_audio / idx_audio_algorithm_type 定义完全相同（重复名）。
 
     # ── device_tags ──
     ('idx_device_tags_device_id', 'device_tags', 'device_id', False, None),
@@ -895,7 +921,7 @@ INDEX_DEFINITIONS = [
     ('idx_test_results_algorithm_type', 'test_results', 'algorithm_type', False, None),
 
     # ── test_result_dimensions ──
-    ('idx_test_result_dimensions_test_result_id', 'test_result_dimensions', 'test_result_id', False, None),
+    # INT-1784：(test_result_id, round_number) 复合索引已覆盖 test_result_id 前缀
     ('idx_test_result_dimensions_dimension_id', 'test_result_dimensions', 'dimension_id', False, None),
 
     # ── test_reports ──
@@ -906,7 +932,7 @@ INDEX_DEFINITIONS = [
     ('idx_report_cases_test_case_id', 'report_cases', 'test_case_id', False, None),
 
     # ── logs ──
-    ('idx_logs_task_id', 'logs', 'task_id', False, None),
+    # INT-1784：idx_logs_task_id 已下线（task_id 是 idx_task_time(task_id, time) 的前缀）
     ('idx_logs_test_case_id', 'logs', 'test_case_id', False, None),
     ('idx_logs_device_id', 'logs', 'device_id', False, None),
     ('idx_logs_api_id', 'logs', 'api_id', False, None),
@@ -932,6 +958,17 @@ INDEX_DEFINITIONS = [
     ('idx_param_mappings_dimension_id', 'param_mappings', 'dimension_id', False, None),
     ('idx_algorithm_dimension_relations_algorithm_type', 'algorithm_dimension_relations', 'algorithm_type', False, None),
     ('idx_algorithm_dimension_relations_dimension_id', 'algorithm_dimension_relations', 'dimension_id', False, None),
+
+    # ── INT-1784：可见性复合索引兜底（覆盖 created_by_user_id 前缀）──
+    # 这 4 张表的 (created_by_user_id, visibility) 复合索引原先只由人工迁移
+    # add_visibility_columns_int423.py 创建、不在引导链里，全新库（create_all）
+    # 因此没有它们。本卡下线了同列的单列索引 ix_*_created_by_user_id，覆盖索引
+    # 必须随之进入引导链，否则新库的 created_by 过滤会退回全表扫描。
+    # 存量库已有（name 存在即 SKIP），audios 的那条在 ORM 元数据里，无需重复。
+    ('idx_test_tasks_created_visibility', 'test_tasks', 'created_by_user_id, visibility', False, None),
+    ('idx_test_cases_created_visibility', 'test_cases', 'created_by_user_id, visibility', False, None),
+    ('idx_test_reports_created_visibility', 'test_reports', 'created_by_user_id, visibility', False, None),
+    ('idx_dimensions_created_visibility', 'dimensions', 'created_by_user_id, visibility', False, None),
 ]
 
 

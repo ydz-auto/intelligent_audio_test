@@ -5,13 +5,22 @@ from __future__ import annotations
 import logging
 from typing import Dict, Optional
 
+from report_service.config.config import Config
 from report_service.domain.dto import ApiConfigDTO
 from report_service.domain.repositories.acl.apitest_acl_repository import (
     ApiTestAclRepository,
 )
+from report_service.infrastructure.acl.lookup_cache import TTLCache
 from shared.utils.dto_utils import dict_to_dto
 
 logger = logging.getLogger(__name__)
+
+# API 配置按 id 缓存（INT-1572 返工，与设备同因）：报告聚合按「每条测试结果」
+# 取 API 元数据，同一批 API 被重复取几十上百次。只缓存取到的配置。
+_api_cache = TTLCache(
+    Config.REPORT_RESOURCE_ACL_CACHE_TTL_SECONDS,
+    Config.REPORT_RESOURCE_ACL_CACHE_MAX_ENTRIES,
+)
 
 
 def _attach(dto, payload):
@@ -27,6 +36,9 @@ class ApiTestAclRepositoryImpl(ApiTestAclRepository):
     """api_test_service.APITestService 跨域只读查询 gRPC 实现。"""
 
     def get_api(self, api_id) -> Optional[ApiConfigDTO]:
+        cached = _api_cache.get(api_id)
+        if cached is not None:
+            return cached
         from shared.clients.grpc_clients import get_api_test_service_stub
         from shared.proto import api_test_service_pb2 as api_pb
         from shared.utils.grpc_json import loads as _loads
@@ -36,7 +48,9 @@ class ApiTestAclRepositoryImpl(ApiTestAclRepository):
             if not resp.success:
                 return None
             data = _loads(resp.data, None)
-            return _attach(dict_to_dto(data, ApiConfigDTO), data)
+            dto = _attach(dict_to_dto(data, ApiConfigDTO), data)
+            _api_cache.set(api_id, dto)
+            return dto
         except Exception as e:
             logger.warning("get_api gRPC failed: %s", e)
             return None

@@ -72,6 +72,22 @@ class AlgorithmDefinitionQueryRepository(IAlgorithmDefinitionQueryRepository):
         ).order_by(AlgorithmDefinitionPO.display_order).all()
         return [_po_to_dict(po) for po in items]
 
+    def list_by_types(self, algorithm_types: List[str]) -> List[dict]:
+        """按 type 列表批量查询未删除的算法定义（INT-1666 配置缓存切片重载用）。
+
+        一次 IN 查询取回全部定义，供 config_cache 按算法切片刷新时复用，
+        避免逐算法重复查询（原全量重载的 N+1 来源之一）。
+        """
+        types = [t for t in algorithm_types or [] if t]
+        if not types:
+            return []
+        session = get_db_session()
+        items = session.query(AlgorithmDefinitionPO).filter(
+            AlgorithmDefinitionPO.type.in_(types),
+            AlgorithmDefinitionPO.deleted == False,  # noqa: E712
+        ).order_by(AlgorithmDefinitionPO.display_order).all()
+        return [_po_to_dict(po) for po in items]
+
     def find_by_type(self, algorithm_type: str) -> Optional[dict]:
         """按 type 查询未删除的算法定义，返回 dict 或 None。"""
         session = get_db_session()

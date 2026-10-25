@@ -147,8 +147,7 @@ INDEX_DDL = [
     # device_status_events
     ('ix_status_event_device_time',
      'CREATE INDEX ix_status_event_device_time ON device_status_events (device_id, created_at)'),
-    ('ix_device_status_events_device_id',
-     'CREATE INDEX ix_device_status_events_device_id ON device_status_events (device_id)'),
+    # INT-1784：ix_device_status_events_device_id 已下线（device_id 是上面复合索引的前缀）
     ('ix_device_status_events_created_at',
      'CREATE INDEX ix_device_status_events_created_at ON device_status_events (created_at)'),
     # device_alarm_rules
@@ -159,8 +158,7 @@ INDEX_DDL = [
      'CREATE INDEX ix_alarm_status_time ON device_alarms (status, triggered_at)'),
     ('ix_device_alarms_device_id',
      'CREATE INDEX ix_device_alarms_device_id ON device_alarms (device_id)'),
-    ('ix_device_alarms_status',
-     'CREATE INDEX ix_device_alarms_status ON device_alarms (status)'),
+    # INT-1784：ix_device_alarms_status 已下线（status 是上面复合索引的前缀）
 ]
 
 

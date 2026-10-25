@@ -38,8 +38,8 @@ if _scripts_dir not in sys.path:
 from sqlalchemy import DateTime, create_engine, inspect  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
 
-# 导入全部服务的 PO 模型，注册到 Base.metadata（与 create_all_tables.py 同源，
-# 额外包含 transfer_agent 两表，保证对齐覆盖完整）
+# 导入全部服务的 PO 模型，注册到 Base.metadata（与 create_all_tables.py 同源；
+# INT-1623 起该函数已含 transfer_agent 两表，此处不再单独注册）
 from create_all_tables import _import_all_models  # noqa: E402
 
 
@@ -56,10 +56,6 @@ def _target_columns():
     from shared.models.database import Base
 
     _import_all_models()
-    # transfer_agent 不在 create_all_tables 的导入清单里，单独注册
-    from transfer_agent.infrastructure.persistence.models import (  # noqa: F401
-        TransferRecord, TransferChunk,
-    )
 
     targets = {}
     for table_name, table in sorted(Base.metadata.tables.items()):

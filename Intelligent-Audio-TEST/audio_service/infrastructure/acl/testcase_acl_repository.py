@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
+from audio_service.domain.exceptions import TestCaseCreationError
 from audio_service.domain.repositories.acl.testcase_acl_repository import (
     TestCaseConfigACLRepository,
 )
@@ -67,7 +68,11 @@ class TestCaseConfigACLRepositoryImpl(TestCaseConfigACLRepository):
     def create_testcase_config(self, data: dict) -> Optional[dict]:
         """创建测试用例（CreateTestCaseConfig）
 
-        返回创建结果 dict（含 id），失败返回 None。
+        返回创建结果 dict（含 id）。
+
+        INT-1668：失败不再返回 None 静默降级——task_service 返回 success=false
+        或 gRPC 调用异常时抛 TestCaseCreationError，由调用方（合并/秒传）整体
+        回滚并回 success=false，避免「用例没建出来但接口回成功」。
         """
         try:
             from shared.clients.grpc_clients import get_testcase_config_service_stub
@@ -79,11 +84,13 @@ class TestCaseConfigACLRepositoryImpl(TestCaseConfigACLRepository):
             resp = stub.CreateTestCaseConfig(req)
             if resp.success:
                 return _loads(resp.data, {}) or {}
-            else:
-                logger.error(f"创建测试用例失败: {resp.message}")
+            logger.error(f"创建测试用例失败: {resp.message}")
+            raise TestCaseCreationError(resp.message or 'task_service 未返回失败原因')
+        except TestCaseCreationError:
+            raise
         except Exception as e:
             logger.error(f"CreateTestCaseConfig gRPC 调用失败: {e}")
-        return None
+            raise TestCaseCreationError(f'CreateTestCaseConfig gRPC 调用失败: {e}') from e
 
     def update_testcase_config(self, tc_id: str, data: dict) -> Optional[dict]:
         """更新测试用例（UpdateTestCaseConfig）

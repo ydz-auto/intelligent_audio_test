@@ -13,9 +13,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_, select
 
 from shared.models.database import get_db_session
 from auth_service.infrastructure.persistence.models import (
@@ -35,10 +35,27 @@ from auth_service.domain.repositories.user_repository_abc import (
 logger = logging.getLogger(__name__)
 
 
+# bcrypt 的输入上限（字节）：算法本身只消费前 72 字节。
+BCRYPT_MAX_PASSWORD_BYTES = 72
+
+
+def _bcrypt_input(password: str) -> bytes:
+    """密码 → bcrypt 输入字节，显式截断到 72 字节（INT-1590）。
+
+    bcrypt 5.0 对 >72 字节的输入直接抛 ValueError（4.x 及以前静默截断），
+    而用户管理入口契约是 8–128 位——不截断会让 73~128 位密码在哈希阶段
+    炸成 bcrypt 的英文原始异常。此处显式采用「截断接受」语义：哈希与
+    校验共用本函数，保证同一密码的哈希/校验一致（前 72 字节相同即视为
+    同一密码，与 bcrypt 算法口径一致）。
+    """
+    return password.encode('utf-8')[:BCRYPT_MAX_PASSWORD_BYTES]
+
+
 def _hash_password(password: str) -> str:
     """明文密码 → bcrypt 哈希（infrastructure 层职责，聚合根不持有密码）。"""
     import bcrypt
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    return bcrypt.hashpw(_bcrypt_input(password),
+                         bcrypt.gensalt()).decode('utf-8')
 
 
 # ── PO ↔ Entity 转换函数 ────────────────────────────────────────────
@@ -134,12 +151,57 @@ def _role_name_by_id(session, role_id: Optional[int]) -> str:
     return row[0] if row else ''
 
 
-def _user_po_to_entity(po: User, permissions: Optional[List[str]] = None) -> UserAggregate:
+def _permission_count_expr():
+    """列表页「生效权限数」的相关标量子查询（INT-1465）。
+
+    口径与 ``_query_user_permissions`` 一致：角色权限为基线，用户 granted
+    追加、revoked 撤销（同一权限既 granted 又 revoked 时按撤销优先）。
+    列表只需要这个整数，不需要权限码全集——这里把它并进分页主查询，整页
+    只发 1 条 SQL，不额外增加数据库往返（并发 40 下往返会被连接池排队放大）。
+
+    不用 UNION/EXCEPT 派生表：派生表在内层无法引用外层 users 列（PG 需
+    LATERAL），因此拆成两段可加计数，两段都按 permission_id 去重：
+    1. 角色权限中未被撤销的个数；
+    2. 用户 granted 中不在角色基线、且未被撤销的个数。
+    """
+    role_baseline = select(RolePermission.permission_id).where(
+        RolePermission.role_id == User.role_id).correlate(User)
+    revoked = select(UserPermission.permission_id).where(
+        UserPermission.user_id == User.id,
+        UserPermission.granted.is_(False),
+    ).correlate(User)
+    role_count = (
+        select(func.count(func.distinct(RolePermission.permission_id)))
+        .where(RolePermission.role_id == User.role_id,
+               RolePermission.permission_id.notin_(revoked))
+        .correlate(User)
+        .scalar_subquery()
+    )
+    granted_extra_count = (
+        select(func.count(func.distinct(UserPermission.permission_id)))
+        .where(UserPermission.user_id == User.id,
+               UserPermission.granted.is_(True),
+               UserPermission.permission_id.notin_(role_baseline),
+               UserPermission.permission_id.notin_(revoked))
+        .correlate(User)
+        .scalar_subquery()
+    )
+    return role_count + granted_extra_count
+
+
+def _user_po_to_entity(
+    po: User,
+    permissions: Optional[List[str]] = None,
+    role_name: Optional[str] = None,
+) -> UserAggregate:
     """User PO → UserAggregate。
 
     Args:
         po: User PO 对象。
         permissions: 权限码列表；为 None 时自动查询该用户的生效权限。
+            列表查询显式传 []（INT-1465：列表不加载权限，见 list_users）。
+        role_name: 角色名；为 None 时按 po.role_id 单查，
+            列表查询传批量查好的值避免 N+1。
 
     字段映射：
         po.oauth_id         → aggregate.oauth_subject（OAuth 提供商返回的用户唯一 ID）
@@ -148,6 +210,8 @@ def _user_po_to_entity(po: User, permissions: Optional[List[str]] = None) -> Use
     """
     if permissions is None:
         permissions = _query_user_permissions(po.id, po.role_id)
+    if role_name is None:
+        role_name = _role_name_by_id(get_db_session(), po.role_id)
     return UserAggregate(
         id=po.id,
         username=po.username,
@@ -159,7 +223,7 @@ def _user_po_to_entity(po: User, permissions: Optional[List[str]] = None) -> Use
         oauth_provider=po.oauth_provider,
         oauth_subject=po.oauth_id,
         display_name=po.display_name,
-        role_name=_role_name_by_id(get_db_session(), po.role_id),
+        role_name=role_name,
         created_at=po.created_at,
         updated_at=po.updated_at,
         last_login_at=po.last_login_at,
@@ -353,7 +417,7 @@ class UserRepository(UserRepositoryABC):
             return None
         try:
             if not bcrypt.checkpw(
-                    password.encode('utf-8'),
+                    _bcrypt_input(password),
                     po.password_hash.encode('utf-8')):
                 return None
         except ValueError:
@@ -374,7 +438,7 @@ class UserRepository(UserRepositoryABC):
             return False
         try:
             return bcrypt.checkpw(
-                password.encode('utf-8'),
+                _bcrypt_input(password),
                 po.password_hash.encode('utf-8'),
             )
         except ValueError:
@@ -435,14 +499,35 @@ class UserRepository(UserRepositoryABC):
             )
         if role_id:
             q = q.filter(User.role_id == role_id)
-        total = q.count()
-        pos = (
-            q.order_by(User.id.asc())
+        # INT-1465：列表查询不加载生效权限（权限明细仅详情 GetUser 给出）。
+        # 原实现逐用户查权限(2 次)+角色名(1 次)是 N+1；上一版整页补 2 条批量
+        # 查询虽固定条数，但在并发 40 下仍因连接池排队把端点时延推过验收线。
+        # 这里把角色名、生效权限数、总数全部并进分页主查询：
+        # - 角色名：LEFT JOIN roles；
+        # - 生效权限数：相关标量子查询（_permission_count_expr）；
+        # - 总数：count(*) OVER ()，窗口在 LIMIT 之前求值，与独立 count 查询
+        #   同义，省掉一次往返。整页只发 1 条 SQL，且与页大小无关。
+        rows = (
+            q.outerjoin(Role, Role.id == User.role_id)
+            .with_entities(
+                User,
+                Role.name.label('role_name'),
+                _permission_count_expr().label('permission_count'),
+                func.count().over().label('total_count'),
+            )
+            .order_by(User.id.asc())
             .offset(max(page - 1, 0) * page_size)
             .limit(page_size)
             .all()
         )
-        aggregates = [_user_po_to_entity(po) for po in pos]
+        # 翻到空页时没有行可承载窗口计数，回退一次 count 查询（首页无数据同此）
+        total = int(rows[0].total_count) if rows else q.count()
+        aggregates = []
+        for po, role_name, permission_count, _total in rows:
+            aggregate = _user_po_to_entity(
+                po, permissions=[], role_name=role_name or '')
+            aggregate.permission_count = int(permission_count or 0)
+            aggregates.append(aggregate)
         return total, aggregates
 
     def get_user_permissions(self, user_id: int) -> List[str]:

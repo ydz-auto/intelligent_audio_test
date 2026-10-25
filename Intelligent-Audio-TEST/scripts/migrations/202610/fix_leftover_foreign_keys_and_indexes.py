@@ -266,15 +266,15 @@ INDEX_DEFINITIONS = [
     ('idx_dimensions_parent_dimension_id', 'dimensions', 'parent_dimension_id', False, None),
 
     # ── audio_annotations ──
-    ('idx_audio_annotations_audio_id', 'audio_annotations', 'audio_id', False, None),
+    # INT-1784：(audio_id, deleted) 复合索引已覆盖 audio_id 前缀，裸列索引不再创建
 
     # ── audio_tags ──
-    ('idx_audio_tags_audio_id', 'audio_tags', 'audio_id', False, None),
+    # INT-1784：(audio_id, tag_id) 复合索引已覆盖 audio_id 前缀
     ('idx_audio_tags_tag_id', 'audio_tags', 'tag_id', False, None),
 
     # ── audio_algorithm_relations ──
-    ('idx_audio_algo_rel_audio_id', 'audio_algorithm_relations', 'audio_id', False, None),
-    ('idx_audio_algo_rel_algorithm_type', 'audio_algorithm_relations', 'algorithm_type', False, None),
+    # INT-1784：idx_audio_algo_rel_audio_id / _algorithm_type 已下线——与本表
+    # idx_audio_algorithm_audio / idx_audio_algorithm_type 定义完全相同（重复名）。
 
     # ── device_tags ──
     ('idx_device_tags_device_id', 'device_tags', 'device_id', False, None),
@@ -317,7 +317,7 @@ INDEX_DEFINITIONS = [
     ('idx_test_results_algorithm_type', 'test_results', 'algorithm_type', False, None),
 
     # ── test_result_dimensions ──
-    ('idx_test_result_dimensions_test_result_id', 'test_result_dimensions', 'test_result_id', False, None),
+    # INT-1784：(test_result_id, round_number) 复合索引已覆盖 test_result_id 前缀
     ('idx_test_result_dimensions_dimension_id', 'test_result_dimensions', 'dimension_id', False, None),
 
     # ── test_reports ──
@@ -328,7 +328,7 @@ INDEX_DEFINITIONS = [
     ('idx_report_cases_test_case_id', 'report_cases', 'test_case_id', False, None),
 
     # ── logs ──
-    ('idx_logs_task_id', 'logs', 'task_id', False, None),
+    # INT-1784：idx_logs_task_id 已下线（task_id 是 idx_task_time(task_id, time) 的前缀）
     ('idx_logs_test_case_id', 'logs', 'test_case_id', False, None),
     ('idx_logs_device_id', 'logs', 'device_id', False, None),
     ('idx_logs_api_id', 'logs', 'api_id', False, None),
@@ -354,6 +354,15 @@ INDEX_DEFINITIONS = [
     ('idx_param_mappings_dimension_id', 'param_mappings', 'dimension_id', False, None),
     ('idx_algorithm_dimension_relations_algorithm_type', 'algorithm_dimension_relations', 'algorithm_type', False, None),
     ('idx_algorithm_dimension_relations_dimension_id', 'algorithm_dimension_relations', 'dimension_id', False, None),
+
+    # ── INT-1784：可见性复合索引兜底（覆盖 created_by_user_id 前缀）──
+    # 与 202608 列表保持一致：这 4 张表的复合索引原先只由人工迁移
+    # add_visibility_columns_int423.py 创建、不在引导链里，全新库没有它们；
+    # 单列索引 ix_*_created_by_user_id 下线后必须由复合索引兜底。
+    ('idx_test_tasks_created_visibility', 'test_tasks', 'created_by_user_id, visibility', False, None),
+    ('idx_test_cases_created_visibility', 'test_cases', 'created_by_user_id, visibility', False, None),
+    ('idx_test_reports_created_visibility', 'test_reports', 'created_by_user_id, visibility', False, None),
+    ('idx_dimensions_created_visibility', 'dimensions', 'created_by_user_id, visibility', False, None),
 ]
 
 

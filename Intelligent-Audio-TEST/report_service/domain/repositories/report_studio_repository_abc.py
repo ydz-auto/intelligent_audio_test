@@ -30,6 +30,19 @@ class ReportStudioRepository(ABC):
         """按 doc_id 读文档（不含版本）。"""
 
     @abstractmethod
+    def list_documents(self, report_id: Optional[int] = None,
+                       source_type: Optional[str] = None,
+                       parent_doc_id: Optional[str] = None,
+                       created_by: Optional[int] = None,
+                       limit: int = 100, offset: int = 0):
+        """按报告 / 来源类型 / 父文档过滤文档列表（INT-1763 §6.4）。
+
+        返回 ``(rows, total)``。调用方必须显式给出过滤条件——平台报告文档
+        列表须同时带 ``report_id`` 与 ``source_type='platform_report'``，
+        避免上传文档混入。
+        """
+
+    @abstractmethod
     def update_document(self, doc_id: str, expected_version: int,
                         markdown: str, chart_refs: List[str], style_prefs: Dict[str, Any],
                         etag_hash: str, new_version: int,

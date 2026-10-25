@@ -12,13 +12,25 @@ import threading
 
 from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit
+from shared.models.common_enums import (
+    DeviceKind,
+    DeviceStatusEventSource,
+    DeviceStatusEventType,
+    PlaybackControlAction,
+    PlaybackRepairAction,
+)
 from device_service.infrastructure.acl.task_acl_repository import task_acl_repository
 from device_service.domain.repositories import PlaybackRepositoryInterface, SPLRepositoryInterface
+from device_service.application.services.playback_channel_probe import match_physical_channel
 
 logger = logging.getLogger(__name__)
 
 # 用于存储测试播放的停止事件 {device_id: stop_event}
 test_stop_events = {}
+
+# 控制端点统一守卫：有运行中的 E2E 任务时禁止操作（与 test() 既有 403/409 守卫同口径）
+BUSY_MESSAGE = '设备正在执行测试，禁止执行该操作'
+DEVICE_NOT_FOUND_MESSAGE = '未找到播放设备'
 
 
 class PlaybackCommandService:
@@ -375,20 +387,22 @@ class PlaybackCommandService:
             logger.error(f'Device test error: {str(e)}', exc_info=True)
             return {'success': False, 'message': f'测试播放失败: {str(e)}', 'data': None, 'code': 400}
 
+    def _stop_test_playback(self, device) -> None:
+        """停止该设备的测试播放通道（幂等；reopen-channel 复用同一路径）"""
+        task_id = f'test_{device.id}'
+        self._stop_audio_via_grpc(task_id)
+        stop_event = test_stop_events.pop(device.id, None)
+        if stop_event:
+            stop_event.set()
+
     def stop_test(self, device_id: int, data: dict = None) -> dict:
         """停止测试"""
         device = self.repo.get_playback_device(device_id)
         if not device:
-            return {'success': False, 'message': '未找到播放设备', 'data': None, 'code': 404}
+            return {'success': False, 'message': DEVICE_NOT_FOUND_MESSAGE, 'data': None, 'code': 404}
 
         try:
-            task_id = f'test_{device_id}'
-            self._stop_audio_via_grpc(task_id)
-
-            stop_event = test_stop_events.get(device_id)
-            if stop_event:
-                stop_event.set()
-                test_stop_events.pop(device_id, None)
+            self._stop_test_playback(device)
 
             self._log(
                 level='INFO',
@@ -407,6 +421,238 @@ class PlaybackCommandService:
         except Exception as e:
             logger.error(f'Stop device test error: {str(e)}', exc_info=True)
             return {'success': False, 'message': f'停止测试失败: {str(e)}', 'data': None, 'code': 400}
+
+    # ========== 控制端点（INT-1579 契约 §2.1 / §2.2 / §2.5） ==========
+
+    @staticmethod
+    def _guard_control() -> dict:
+        """控制动作统一守卫：有运行中的 E2E 任务 → 409（不打断任务音频）"""
+        if task_acl_repository.has_running_e2e_tasks():
+            return {'success': False, 'message': BUSY_MESSAGE, 'data': None, 'code': 409}
+        return None
+
+    @staticmethod
+    def _record_control_event(device, from_status: str, to_status: str, action: str, **extra) -> None:
+        """落一条 operation 事件（detail.operation=动作名），失败不影响主流程
+
+        ``source`` 必须是 PLAYBACK_OPERATION（INT-1677）、``device_kind='playback'``
+        （INT-1679）：播放设备与测试设备共用 device_status_events 的 device_id 空间，
+        读测试设备口径按 source 与 device_kind 双重排除播放控制事件（契约 §1.2）。
+        """
+        detail = {'operation': action}
+        detail.update({k: v for k, v in extra.items() if v is not None})
+        try:
+            from device_service.application.services.device_monitor_service import device_monitor_service
+            device_monitor_service.record_status_event(
+                device_id=device.id,
+                event_type=DeviceStatusEventType.OPERATION.value,
+                from_status=from_status,
+                to_status=to_status,
+                source=DeviceStatusEventSource.PLAYBACK_OPERATION.value,
+                success=True,
+                detail=detail,
+                device_kind=DeviceKind.PLAYBACK.value,
+            )
+        except Exception:
+            logger.warning("播放设备控制事件落库失败 device_id=%s action=%s", device.id, action, exc_info=True)
+
+    def _resolve_device_index(self, device):
+        """解析物理设备索引：GetDeviceIndex 优先，未命中时按枚举结果归一化兜底"""
+        device_index = self._get_device_index_via_grpc(device.device_unique_id)
+        if device_index is not None:
+            return device_index
+        from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
+        devices, available = audio_service_acl_repository.enumerate_physical_devices()
+        if not available:
+            return None
+        matched = match_physical_channel(devices, device.device_unique_id, device.channel_index)
+        return matched.get('device_index') if matched else None
+
+    def restart(self, device_id: int) -> dict:
+        """重启播放设备（音频通道层重开 + 重新枚举，非硬件重启）"""
+        device = self.repo.get_playback_device(device_id)
+        if not device:
+            return {'success': False, 'message': DEVICE_NOT_FOUND_MESSAGE, 'data': None, 'code': 404}
+
+        guard = self._guard_control()
+        if guard:
+            return guard
+
+        try:
+            try:
+                self._stop_test_playback(device)
+            except Exception:
+                # 测试通道可能本就没在播放：停不掉不阻断通道重开
+                logger.debug("停止测试播放失败，继续重开音频通道 device_id=%s", device_id, exc_info=True)
+
+            device_index = self._resolve_device_index(device)
+            previous_status = device.status
+            new_status = 'online' if device_index is not None else 'offline'
+            self.repo.update_playback_device(device_id, {'status': new_status})
+            self._record_control_event(
+                device, previous_status, new_status,
+                PlaybackControlAction.RESTART.value, device_index=device_index)
+
+            self._log(
+                level='INFO',
+                category='DeviceTest',
+                source=f'Device:{device.name}',
+                content=f'已重新连接音频通道: 状态={new_status}, 设备索引={device_index}',
+                playback_device_id=device_id,
+            )
+
+            return {
+                'success': True,
+                'message': '已重新连接音频通道' if device_index is not None else '设备不可枚举，已标记离线',
+                'data': {'id': device.id, 'status': new_status, 'device_index': device_index},
+                'code': 200,
+            }
+        except Exception as e:
+            logger.error(f'Device restart error: {str(e)}', exc_info=True)
+            return {'success': False, 'message': f'重新连接音频通道失败: {str(e)}', 'data': None, 'code': 400}
+
+    def reset_config(self, device_id: int) -> dict:
+        """重置播放设备配置：按硬件重新探测采样率与通道索引
+
+        只写探测值有效且与库中不同的字段；不清除 current_spl_mapping_id
+        （声压映射由 associate-spl 独立维护）。
+        """
+        device = self.repo.get_playback_device(device_id)
+        if not device:
+            return {'success': False, 'message': DEVICE_NOT_FOUND_MESSAGE, 'data': None, 'code': 404}
+
+        guard = self._guard_control()
+        if guard:
+            return guard
+
+        try:
+            from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
+            devices, available = audio_service_acl_repository.enumerate_physical_devices()
+            matched = match_physical_channel(devices, device.device_unique_id,
+                                             device.channel_index) if available else None
+            if not matched:
+                return {
+                    'success': False,
+                    'message': '设备不可枚举，无法探测配置',
+                    'data': None,
+                    'code': 409,
+                }
+
+            previous_status = device.status
+            changed = {}
+            probe_rate = matched.get('sample_rate')
+            if isinstance(probe_rate, int) and probe_rate > 0 and probe_rate != device.sample_rate:
+                changed['sample_rate'] = probe_rate
+            probe_channel = matched.get('channel_index')
+            if probe_channel is not None and probe_channel != device.channel_index:
+                changed['channel_index'] = probe_channel
+
+            update_fields = dict(changed)
+            new_status = previous_status
+            if matched.get('device_index') is not None and previous_status != 'online':
+                update_fields['status'] = new_status = 'online'
+            if update_fields:
+                self.repo.update_playback_device(device_id, update_fields)
+                self._record_control_event(
+                    device, previous_status, new_status,
+                    PlaybackControlAction.RESET_CONFIG.value, **changed)
+
+            if changed:
+                message = '配置已按硬件重新探测'
+            elif new_status != previous_status:
+                message = f'配置与硬件一致，无变化，设备状态已更新为 {new_status}'
+            else:
+                message = '配置与硬件一致，无变化'
+
+            return {
+                'success': True,
+                'message': message,
+                'data': {'id': device.id, 'changed': changed, 'status': new_status},
+                'code': 200,
+            }
+        except Exception as e:
+            logger.error(f'Device reset config error: {str(e)}', exc_info=True)
+            return {'success': False, 'message': f'重置配置失败: {str(e)}', 'data': None, 'code': 400}
+
+    def repair(self, device_id: int, data: dict = None) -> dict:
+        """修复播放设备：只执行白名单内的安全动作（重扫描 / 重开通道）"""
+        device = self.repo.get_playback_device(device_id)
+        if not device:
+            return {'success': False, 'message': DEVICE_NOT_FOUND_MESSAGE, 'data': None, 'code': 404}
+
+        guard = self._guard_control()
+        if guard:
+            return guard
+
+        legal_actions = [a.value for a in PlaybackRepairAction]
+        actions = (data or {}).get('actions')
+        if not isinstance(actions, list) or not actions:
+            return {
+                'success': False,
+                'message': f'缺少修复动作，合法值: {", ".join(legal_actions)}',
+                'data': None,
+                'code': 400,
+            }
+
+        unknown = [a for a in actions if a not in legal_actions]
+        if unknown:
+            return {
+                'success': False,
+                'message': f'不支持的修复动作: {", ".join(str(a) for a in unknown)}，合法值: {", ".join(legal_actions)}',
+                'data': None,
+                'code': 400,
+            }
+
+        try:
+            results = []
+            for action in actions:
+                if action == PlaybackRepairAction.REOPEN_CHANNEL.value:
+                    # 与 restart 同一条代码路径，不复制实现
+                    restart_result = self.restart(device_id)
+                    results.append({
+                        'action': action,
+                        'success': bool(restart_result.get('success')),
+                        'message': restart_result.get('message', ''),
+                    })
+                else:
+                    results.append(self._re_enumerate(device))
+
+            failed = [r for r in results if not r['success']]
+            all_ok = not failed
+            if all_ok:
+                message = '修复完成'
+            else:
+                # 部分失败时不能再说「修复完成」，网关按 400 透出这条 message
+                message = '修复未完成: ' + '；'.join(
+                    f"{r['action']}: {r['message']}" for r in failed)
+            return {
+                'success': all_ok,
+                'message': message,
+                'data': {'results': results},
+                'code': 200 if all_ok else 400,
+            }
+        except Exception as e:
+            logger.error(f'Device repair error: {str(e)}', exc_info=True)
+            return {'success': False, 'message': f'修复失败: {str(e)}', 'data': None, 'code': 400}
+
+    def _re_enumerate(self, device) -> dict:
+        """修复动作 re-enumerate：重扫描物理设备并刷新状态"""
+        action = PlaybackRepairAction.RE_ENUMERATE.value
+        try:
+            device_index = self._resolve_device_index(device)
+            previous_status = device.status
+            new_status = 'online' if device_index is not None else 'offline'
+            self.repo.update_playback_device(device.id, {'status': new_status})
+            self._record_control_event(
+                device, previous_status, new_status, action, device_index=device_index)
+            return {
+                'action': action,
+                'success': True,
+                'message': f'已重新扫描物理设备，当前状态: {new_status}',
+            }
+        except Exception as e:
+            logger.warning("重新扫描播放设备失败 device_id=%s", device.id, exc_info=True)
+            return {'action': action, 'success': False, 'message': f'重新扫描失败: {str(e)}'}
 
     def check_status(self) -> dict:
         """检查所有播放设备状态（含写副作用：batch_update_playback_status）"""

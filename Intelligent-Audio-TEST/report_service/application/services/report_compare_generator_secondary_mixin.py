@@ -9,6 +9,9 @@ from report_service.application.services.report_utils import ReportUtils
 from report_service.application.services.report_query_builder import ReportQueryBuilder
 from report_service.application.services.report_compare_helpers import ReportCompareHelpers
 from report_service.application.services.report_data_builder import ReportDataBuilder
+from report_service.application.services.report_task_generator import ReportTaskGenerator
+from report_service.domain.services.aggregation_strategies import needs_raw_response
+from report_service.infrastructure.clients.grpc_clients import _dim_statistic_method
 
 
 class ReportSecondaryDataMixin:
@@ -30,7 +33,12 @@ class ReportSecondaryDataMixin:
         if error:
             return None, error
 
-        dim_results_map, _ = ReportDataBuilder._get_dimension_results_batch(res_ids)
+        # INT-1752：与任务报告链同口径——存在加权维度时才带 api_raw_response 二次拉取，
+        # 否则载荷不变；带 body 后加权策略可按分子/分母真实计算。
+        need_raw_body = any(
+            needs_raw_response(_dim_statistic_method(d)) for d in all_dimensions)
+        dim_results_map, _ = ReportDataBuilder._get_dimension_results_batch(
+            res_ids, include_body=need_raw_body)
 
         tasks_map = {}
         for t in tasks:
@@ -45,6 +53,11 @@ class ReportSecondaryDataMixin:
             tasks_map=tasks_map,
             use_time_prefix=False
         )
+
+        # INT-1752：加权维度仍算不出来（缺原始响应 / 分子分母取不到）时，
+        # 在 all_metrics 对应指标上打降级标，不静默退回简单平均。
+        ReportTaskGenerator._mark_degraded_metrics(
+            all_metrics, core_metrics.get('aggregation_degraded') or {})
 
         metric_data = core_metrics['metric_data']
         tag_metric_data = core_metrics['tag_metric_data']

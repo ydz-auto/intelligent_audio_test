@@ -19,12 +19,24 @@ from evaluation_service.domain.repositories.evaluation_repository_abc import (
 from evaluation_service.infrastructure.persistence.evaluation_repository import (
     evaluation_repository,
 )
+from shared.constants.evaluation_dimension import is_llm_judge_dimension
+from shared.models.database import end_read_transaction
 
 logger = logging.getLogger(__name__)
 
 
 class EvaluationQueryService:
-    """评估维度读操作应用服务（CQRS Query）。"""
+    """评估维度读操作应用服务（CQRS Query）。
+
+    INT-1691：查询侧每个方法都是「只读一次会话」，返回前必须结束事务
+    （end_read_transaction）。原先读路径既没有 commit 也没有 rollback，连接在
+    gRPC 线程 / 线程池线程 / HTTP 线程上一直挂着空事务，持有 dimensions、
+    evaluation_dimension_params 的 ACCESS SHARE —— 迁移 DDL 需要 ACCESS
+    EXCLUSIVE，被这条空事务一挡就排进锁队列，之后所有读写该表的会话都排在
+    DDL 之后，网关 60s DEADLINE_EXCEEDED（INT-1651 / INT-1664 事故机制）。
+    序列化在 finally 之前完成，回滚不会让返回的 dict 失效；
+    end_read_transaction 检测到有 pending 写时不回滚，不会吞掉调用链上的写。
+    """
 
     def __init__(self, repo: EvaluationRepositoryABC = None):
         self.repo = repo or evaluation_repository
@@ -74,6 +86,8 @@ class EvaluationQueryService:
         except Exception as e:
             logger.error(f"查询分类列表失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
+        finally:
+            end_read_transaction()
 
     def list_dimensions(
         self,
@@ -113,6 +127,8 @@ class EvaluationQueryService:
         except Exception as e:
             logger.error(f"查询评分维度列表失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
+        finally:
+            end_read_transaction()
 
     def get_dimension(self, dim_id: int) -> Dict[str, Any]:
         """查询单个维度完整配置，仅在编辑维度时调用。"""
@@ -165,6 +181,8 @@ class EvaluationQueryService:
         except Exception as e:
             logger.error(f"查询评估维度详情失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
+        finally:
+            end_read_transaction()
 
     @staticmethod
     def _serialize_dimension(dim: Any) -> Dict[str, Any]:
@@ -185,6 +203,12 @@ class EvaluationQueryService:
             'score_unit': dim.score_unit,
             'type': dim.type,
             'result_type': dim.result_type,
+            # INT-1671：LLM Judge 是「评估方法」而非「结果值类型」，故不改 result_type，
+            # 由 task_type_code / dimension_type 经 shared 谓词派生（与两处判定同源）。
+            'llm_judge': is_llm_judge_dimension(
+                task_type_code=dim.task_type_code,
+                dimension_type=dim.dimension_type,
+            ),
             'result_min': dim.result_min,
             'result_max': dim.result_max,
             'decimal_places': dim.decimal_places,
@@ -225,6 +249,11 @@ class EvaluationQueryService:
                             'category_id': d.category_id,
                             'task_type_code': d.task_type_code,
                             'requires_audio': d.id in audio_dim_ids,
+                            # INT-1671：与列表/详情同源派生（前端只读徽章标识）
+                            'llm_judge': is_llm_judge_dimension(
+                                task_type_code=d.task_type_code,
+                                dimension_type=d.dimension_type,
+                            ),
                         }
                         for d in dimensions
                     ]
@@ -233,6 +262,8 @@ class EvaluationQueryService:
         except Exception as e:
             logger.error(f"查询维度选项失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
+        finally:
+            end_read_transaction()
 
     @staticmethod
     def _serialize_dimension_param(param: Any) -> Dict[str, Any]:
@@ -267,6 +298,8 @@ class EvaluationQueryService:
         except Exception as e:
             logger.error(f"批量查询维度基础信息失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
+        finally:
+            end_read_transaction()
 
     def get_dimension_results_by_result_ids(self, result_ids: list, include_body: bool = False) -> Dict[str, Any]:
         """按 result_id 列表批量查询维度评估结果（含 dimension_name）。
@@ -285,6 +318,8 @@ class EvaluationQueryService:
         except Exception as e:
             logger.error(f"批量查询维度评估结果失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
+        finally:
+            end_read_transaction()
 
 
 # 模块级单例

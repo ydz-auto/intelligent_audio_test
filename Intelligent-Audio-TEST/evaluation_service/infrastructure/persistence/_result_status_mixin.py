@@ -15,7 +15,7 @@ from evaluation_service.infrastructure.acl import task_acl_repository
 class ResultStatusMixin:
     """TaskCase/Task 状态推进方法"""
 
-    def update_task_case_status(self, result_id, current_result_all_completed, task_id, test_case_id, test_type=None):
+    def update_task_case_status(self, result_id, current_result_all_completed, task_id, test_case_id):
         """
         更新TaskCase的状态。在多设备/多API执行时，需确保所有结果都评估完成后再更新最终状态。
 
@@ -23,12 +23,15 @@ class ResultStatusMixin:
         改为通过 task_acl_repository (gRPC) 调 task_service。
         注意：跨服务调用无原子事务，失败时通过日志告警。
 
+        INT-1752：移除了从未生效的 test_type 参数——预期维度数由用例 config 的
+        维度集合判定，不区分 api/e2e；需要 test_type 的分支（如算法结果快照）
+        由调用方各自传入，不经本方法传递。
+
         Args:
             result_id: 测试结果ID
             current_result_all_completed: 当前结果是否全部完成
             task_id: 任务ID
             test_case_id: 用例ID
-            test_type: 测试类型 (api 或 e2e)，用于筛选对应类型的维度
         """
         try:
             # 1. 获取任务信息以确定预期结果数量（P1.4: gRPC）

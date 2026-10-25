@@ -46,7 +46,10 @@ class AudioRelationMixin:
         return tag_acl_repository.get_all_tag_names()
 
     def get_or_create_tag(self, tag_name: str):
-        """查找或创建标签，返回含 id 和 name 的对象（供 add_audio_tag 使用 tag.id）"""
+        """查找或创建标签，返回含 id 和 name 的对象（供 add_audio_tag 使用 tag.id）
+
+        INT-1533：解析失败抛 TagResolutionError，不再返回 id=None。
+        """
         from audio_service.infrastructure.acl.tag_acl_repository import tag_acl_repository
         return tag_acl_repository.get_or_create_tag(tag_name)
 
@@ -58,7 +61,14 @@ class AudioRelationMixin:
         return count
 
     def add_audio_tag(self, audio_id: int, tag_id: int) -> AudioTagEntity:
-        """添加音频-标签关联，返回 AudioTagEntity 实体"""
+        """添加音频-标签关联，返回 AudioTagEntity 实体。
+
+        INT-1533：tag_id 为空说明标签解析失败，必须报错而不是写一行
+        tag_id=NULL 的关联（旧实现会静默落 NULL，接口还回成功）。
+        """
+        if tag_id is None:
+            from audio_service.domain.exceptions import TagResolutionError
+            raise TagResolutionError(f'audio_id={audio_id}', '标签 ID 为空，拒绝写入 audio_tags')
         session = get_db_session()
         audio_tag = AudioTag(audio_id=audio_id, tag_id=tag_id)
         session.add(audio_tag)

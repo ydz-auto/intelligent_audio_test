@@ -33,6 +33,12 @@ from report_service.infrastructure.clients.grpc_clients import (
 
 logger = logging.getLogger(__name__)
 
+# 报告音频项的播放地址：指向网关已挂载的音频流端点
+# （GET /api/v1/audios/{id}/stream 返 JSON 预签名 URL，前端以该 URL 播放）。
+# INT-1556：此前 task 模式输出 /api/audios/play/{id}，网关并无该路由（404），
+# 且与 compare 模式的口径不一致；两种模式统一到同一可用的流端点。
+AUDIO_STREAM_URL_TEMPLATE = '/api/v1/audios/{id}/stream'
+
 
 class ReportHelpers:
     """报告公共辅助方法集合。
@@ -88,14 +94,12 @@ class ReportHelpers:
             dev_id_key = 'device_id'
             dev_name_key = 'device_name'
             type_key = 'audio_type'
-            url_tmpl = '/api/v1/audios/{id}/stream'
             noise_spl_key = 'noise_spl'
             play_order_key = 'play_order'
         else:
             dev_id_key = 'playback_device_id'
             dev_name_key = 'playbackDeviceName'
             type_key = 'testType'
-            url_tmpl = '/api/audios/play/{id}'
             noise_spl_key = 'spl'
             play_order_key = 'play_order'
 
@@ -151,7 +155,7 @@ class ReportHelpers:
                             "id": audio.get('id'),
                             "filename": audio.get('original_filename') or audio.get('name'),
                             "duration": audio.get('duration'),
-                            "url": url_tmpl.format(id=audio.get('id')),
+                            "url": AUDIO_STREAM_URL_TEMPLATE.format(id=audio.get('id')),
                             "spl": audio_cfg.get('spl'),
                             "play_order" if is_compare else "playOrder": audio_cfg.get('play_order'),
                             dev_id_key if is_compare else "playbackDeviceId": dev_id,
@@ -175,7 +179,7 @@ class ReportHelpers:
                         "id": noise_audio.get('id'),
                         "filename": noise_audio.get('name'),
                         "duration": noise_audio.get('duration'),
-                        "url": url_tmpl.format(id=noise_audio.get('id')),
+                        "url": AUDIO_STREAM_URL_TEMPLATE.format(id=noise_audio.get('id')),
                         noise_spl_key: background_noise.get('spl'),
                         "roundNumber": round_number,
                     }

@@ -11,6 +11,8 @@ import queue
 import threading
 from datetime import datetime, timezone, timedelta
 
+from shared.logging.enums import LOG_TIME_FORMAT
+
 from . import _state
 
 
@@ -47,9 +49,11 @@ class _WorkerMixin:
                 if should_flush and batch:
                     self._process_batch(batch)
 
-                    # flush 后 batch 中每条 data 已带上数据库 id（或 _db_failed 标记），再推送 WebSocket
-                    # 仅推送成功入库的日志，失败批次由 _emit_websocket 内部跳过
+                    # flush 后 batch 中每条 data 已带 id（DB 行 id 或审计 cursor），
+                    # 再推送 WebSocket。审计事件（kind='audit'）恒不推 WS，跳过。
                     for data in batch:
+                        if data.get('kind') == 'audit':
+                            continue
                         if data.get('push_to_websocket') and data.get('id') is not None:
                             self._emit_websocket(data)
                         else:
@@ -77,7 +81,9 @@ class _WorkerMixin:
                             self._archive_thread.start()
 
                     if current_time - self._last_sweep_check >= self._sweep_check_interval:
-                        # 日志保留清扫（INT-81）：服务日志/业务日志按保留天数清理
+                        # 日志保留清扫（INT-81）：周期触发的只是「检查」——真正的
+                        # 清扫体由 `logs/.sweep_stamp` 收敛为当日首次触发才执行
+                        # （INT-1877 契约 §Q5），且只在 LOG_SWEEP_SERVICE 进程内跑
                         self._last_sweep_check = current_time
                         if self._sweep_thread is None or not self._sweep_thread.is_alive():
                             self._sweep_thread = threading.Thread(
@@ -123,7 +129,11 @@ class _WorkerMixin:
         return self._business_writer
 
     def _sweep_expired_logs(self):
-        """按保留天数清扫过期日志文件（服务日志 + 业务日志）。"""
+        """按保留天数清扫过期日志文件（服务 + 业务 + 审计三棵树）。
+
+        入口判定（单清扫者 / 当日首次触发）都在 `sweep_log_root` 内，
+        非当日已执行时立即返回 0，不产生存储探活与上传 I/O。
+        """
         try:
             from shared.logging import sweep_log_root
             sweep_log_root()
@@ -137,10 +147,12 @@ class _WorkerMixin:
             # 将 batch 中的 data 序列化为 JSON 兼容格式（datetime → ISO 字符串）
             logs_payload = []
             for data in batch:
+                is_audit = data.get('kind') == 'audit'
                 t = data.get('time')
-                if hasattr(t, 'isoformat'):
-                    t = t.isoformat()
-                logs_payload.append({
+                if hasattr(t, 'strftime'):
+                    # 审计条目用 LOG_TIME_FORMAT 固定宽度（写盘侧据此分配 cursor 并排序）
+                    t = t.strftime(LOG_TIME_FORMAT) if is_audit else t.isoformat()
+                item = {
                     'time': t,
                     'level': data.get('level', ''),
                     'category': data.get('category', ''),
@@ -155,7 +167,14 @@ class _WorkerMixin:
                     'algorithm_type': data.get('algorithm_type'),
                     # INT-806：操作人随条目携带（worker 线程不继承 contextvar）
                     'user_id': data.get('user_id'),
-                })
+                    # INT-1793：sink 决定 task_service 的落点（审计文件 / logs 表）
+                    'sink': data.get('sink') or 'db',
+                }
+                if is_audit:
+                    # 审计条目：event 必填（H1），service 为产生事件的进程（H4 路径段）
+                    item['event'] = data.get('event')
+                    item['service'] = data.get('service')
+                logs_payload.append(item)
             ids = batch_create_logs(logs_payload)
             for i, data in enumerate(batch):
                 if i < len(ids) and ids[i] is not None:

@@ -93,12 +93,10 @@ REPORT_FAVORITES_TABLE_SQL = """
 FAVORITES_INDEXES = (
     ('favorites', 'idx_favorite_user_type',
      'CREATE INDEX idx_favorite_user_type ON favorites (user_id, entity_type)'),
-    ('favorites', 'idx_favorite_user_id',
-     'CREATE INDEX idx_favorite_user_id ON favorites (user_id)'),
+    # INT-1784：idx_favorite_user_id 已下线（user_id 是该复合索引的前缀）
     ('report_favorites', 'idx_report_favorite_user',
      'CREATE INDEX idx_report_favorite_user ON report_favorites (user_id, entity_type)'),
-    ('report_favorites', 'idx_report_favorite_user_id',
-     'CREATE INDEX idx_report_favorite_user_id ON report_favorites (user_id)'),
+    # INT-1784：idx_report_favorite_user_id 已下线（user_id 是该复合索引的前缀）
 )
 
 
@@ -142,10 +140,9 @@ def main(dry_run=False):
         _add_column(cur, conn, table, 'deleted_by_user_id', 'BIGINT', dry_run)
         _add_column(cur, conn, table, 'created_by_user_id', 'BIGINT', dry_run)
         _add_column(cur, conn, table, 'updated_by_user_id', 'BIGINT', dry_run)
-        _ensure_index(
-            cur, conn, f'ix_{table}_created_by_user_id',
-            f'CREATE INDEX IF NOT EXISTS ix_{table}_created_by_user_id ON {table} (created_by_user_id)',
-            dry_run)
+        # INT-1784：ix_{table}_created_by_user_id 不再创建——这三张表都有
+        # (created_by_user_id, visibility) 复合索引（idx_*_created_visibility），
+        # 单列索引只是写放大；本步只保证列存在。
 
     # 2. 收藏表（按服务分治）
     _create_favorites_table(cur, conn, 'favorites', FAVORITES_TABLE_SQL, dry_run)

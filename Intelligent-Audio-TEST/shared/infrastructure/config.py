@@ -5,6 +5,23 @@
 import os
 from typing import Optional
 
+# INT-1491：gRPC 客户端默认端口一律取自 shared/config/service_ports.py（端口唯一来源），
+# 不在本文件重复写数字。此前这里仍写 INT-901 之前的 50061/50067/50071/50091，
+# Windows 排除端口段 50060-50159 内无法监听，服务端已按 service_ports 监听 510xx，
+# 网关/服务只要没有显式环境变量就会连回旧端口 → 整批 gRPC UNAVAILABLE。
+# 改端口只改 service_ports.py，客户端默认值随之生效。
+from shared.config.service_ports import (
+    ALGORITHM_SERVICE_GRPC_PORT as _ALGORITHM_SERVICE_GRPC_PORT,
+    API_TEST_SERVICE_GRPC_PORT as _API_TEST_SERVICE_GRPC_PORT,
+    AUDIO_SERVICE_GRPC_PORT as _AUDIO_SERVICE_GRPC_PORT,
+    AUTH_SERVICE_GRPC_PORT as _AUTH_SERVICE_GRPC_PORT,
+    DEVICE_SERVICE_GRPC_PORT as _DEVICE_SERVICE_GRPC_PORT,
+    E2E_TEST_GRPC_PORT as _E2E_TEST_GRPC_PORT,
+    EVALUATION_SERVICE_GRPC_PORT as _EVALUATION_SERVICE_GRPC_PORT,
+    REPORT_SERVICE_GRPC_PORT as _REPORT_SERVICE_GRPC_PORT,
+    TASK_SERVICE_GRPC_PORT as _TASK_SERVICE_GRPC_PORT,
+)
+
 
 class ConfigValidationError(RuntimeError):
     """配置校验异常"""
@@ -59,6 +76,13 @@ class BaseConfig:
 
     # --- OSS (RustFS / S3 兼容) ---
     OSS_ENDPOINT: str = _get_env('OSS_ENDPOINT', 'http://localhost:9000')
+    # 对浏览器/第三方暴露的 OSS 地址（INT-1719）：预签名 URL 一律由独立客户端按此
+    # endpoint 签名，内部读写仍走 OSS_ENDPOINT。
+    # compose 里 OSS_ENDPOINT=http://rustfs:9000 只有容器内可解析，把它签进 URL 交给
+    # 宿主浏览器 → net::ERR_NAME_NOT_RESOLVED（INT-1710 用例预览「音频播放失败」）。
+    # 空串 = 回落 OSS_ENDPOINT（宿主/单机部署零行为变化）；跨机访问要改成局域网 IP
+    # 或公开域名，不要写死 127.0.0.1。
+    OSS_PUBLIC_ENDPOINT: str = _get_env('OSS_PUBLIC_ENDPOINT', '')
     OSS_ACCESS_KEY: str = _get_env('OSS_ACCESS_KEY', required=True)
     OSS_SECRET_KEY: str = _get_env('OSS_SECRET_KEY', required=True)
     OSS_REGION: str = _get_env('OSS_REGION', 'us-east-1')
@@ -105,6 +129,20 @@ class BaseConfig:
     )
     # 网关 ZIP 上传大小上限（MB），显式设置防超大包拖垮网关
     DATA_TRANSFER_MAX_UPLOAD_MB: int = _get_int('DATA_TRANSFER_MAX_UPLOAD_MB', 2048)
+    # 链路 1 用例一致性硬校验（INT-1759，D0 裁定 A10）：引用用例在目标库缺失/已软删/
+    # 私有且非 owner 时拒绝导入。请求级 require_case_consistency 只能放宽到 false，
+    # 请求 intent=restore 时默认不校验（回执写明无法重新执行）。
+    DATA_TRANSFER_CASE_CONSISTENCY_REQUIRED: bool = _get_bool(
+        'DATA_TRANSFER_CASE_CONSISTENCY_REQUIRED', True)
+    # 本端稳定服务标识（INT-1760 / D0 A4）：导出写 manifest.serverInfo.source，
+    # 导入侧以它作为 source_map.source_server。空则回落 SERVICE_NAME-hostname
+    # 并打 WARNING（hostname 换机即变，只作兼容兜底，生产必须显式配置）。
+    DATA_TRANSFER_SERVER_ID: str = _get_env('DATA_TRANSFER_SERVER_ID', '')
+
+    # --- 文件型独立报告导入（INT-1763 §6.2，D0 A11-2）---
+    # Report Studio 上传文件（md/html/pptx）大小上限（MB），独立于搬运整包上限；
+    # 超限网关直接 413，不落盘。
+    REPORT_STUDIO_UPLOAD_MAX_MB: int = _get_int('REPORT_STUDIO_UPLOAD_MAX_MB', 50)
 
     # --- 服务发现 ---
     SERVICE_HOST: str = _get_env('SERVICE_HOST', '0.0.0.0')
@@ -118,15 +156,48 @@ class BaseConfig:
     LOG_ROOT_DIR: str = _get_env('LOG_ROOT_DIR', './logs')
     # 环境标识（dev/prod）：prod 下 DEBUG 级日志不落业务文件
     LOG_ENVIRONMENT: str = _get_env('LOG_ENVIRONMENT', 'dev').lower()
+    # 文件日志统一保留期（INT-1793 契约 / 负责人 2026-10-24 裁定：全部日志文件 30 天）。
+    # 审计/业务/服务三棵树都继承本值；细分类别只允许「显式覆盖」，不得内置不同默认。
+    LOG_FILE_RETENTION_DAYS: int = _get_int('LOG_FILE_RETENTION_DAYS', 30)
     # 服务运行日志：logs/{service_name}/ 单文件上限与保留天数（按天+按大小双条件轮转）
     LOG_SERVICE_MAX_MB: int = _get_int('LOG_SERVICE_MAX_MB', 50)
-    LOG_SERVICE_RETENTION_DAYS: int = _get_int('LOG_SERVICE_RETENTION_DAYS', 30)
+    LOG_SERVICE_RETENTION_DAYS: int = _get_int(
+        'LOG_SERVICE_RETENTION_DAYS', LOG_FILE_RETENTION_DAYS)
     # 业务日志（执行/评估/设备）：去库化落文件开关与阈值
     LOG_BUSINESS_ENABLED: bool = _get_bool('LOG_BUSINESS_ENABLED', True)
     # 回滚开关：True 时业务日志同时保留入库（历史行为），默认仅落文件
     LOG_BUSINESS_DB_ENABLED: bool = _get_bool('LOG_BUSINESS_DB_ENABLED', False)
     LOG_BUSINESS_MAX_MB: int = _get_int('LOG_BUSINESS_MAX_MB', 50)
-    LOG_BUSINESS_RETENTION_DAYS: int = _get_int('LOG_BUSINESS_RETENTION_DAYS', 30)
+    LOG_BUSINESS_RETENTION_DAYS: int = _get_int(
+        'LOG_BUSINESS_RETENTION_DAYS', LOG_FILE_RETENTION_DAYS)
+    # --- 审计日志落文件（INT-1793 契约 §3.4，logs 表零写入）---
+    # 审计落文件总开关（关 = emit 路径退回仅服务文件、不落 DB；task_service 内
+    # S4 直写路径无服务文件兜底，关闭即不落审计——旁路记录不阻塞主流程）
+    LOG_AUDIT_ENABLED: bool = _get_bool('LOG_AUDIT_ENABLED', True)
+    # 故障回退：True 时审计事件同时入库一份（仅 emit 路径，读侧不感知，非口径开关；
+    # task_service 内 S4 直写路径只落文件）
+    LOG_AUDIT_DB_ENABLED: bool = _get_bool('LOG_AUDIT_DB_ENABLED', False)
+    # 单审计文件切分阈值（MB）
+    LOG_AUDIT_MAX_MB: int = _get_int('LOG_AUDIT_MAX_MB', 50)
+    # 审计文件保留天数：继承统一文件保留期，显式设置才覆盖
+    LOG_AUDIT_RETENTION_DAYS: int = _get_int(
+        'LOG_AUDIT_RETENTION_DAYS', LOG_FILE_RETENTION_DAYS)
+    # 到期前归档到 {storage}/archives/audit/{date}/（归档件不自动删）
+    LOG_AUDIT_ARCHIVE_ENABLED: bool = _get_bool('LOG_AUDIT_ARCHIVE_ENABLED', True)
+    # 读侧单次物化上限（0 = 不限；A 道读侧消费）
+    LOG_AUDIT_MAX_SCAN_ENTRIES: int = _get_int('LOG_AUDIT_MAX_SCAN_ENTRIES', 100000)
+    # 无时间筛选的默认窗口天数（A 道读侧消费）
+    LOG_AUDIT_QUERY_DEFAULT_DAYS: int = _get_int('LOG_AUDIT_QUERY_DEFAULT_DAYS', 30)
+    # 同参查询结果 TTL 缓存秒数（0 = 关闭；A 道读侧消费）
+    LOG_AUDIT_SCAN_CACHE_TTL_SECONDS: int = _get_int(
+        'LOG_AUDIT_SCAN_CACHE_TTL_SECONDS', 3)
+    # 唯一清扫者：其余进程跳过清扫（共享日志卷多进程并发清扫会误删/重复上传）
+    LOG_SWEEP_SERVICE: str = _get_env('LOG_SWEEP_SERVICE', 'api_gateway').strip() or 'api_gateway'
+    # DB 日志保留天数（INT-1785）：业务日志已去库化，logs 表只剩历史存量与
+    # 审计事件（auth/device/benchmark 不参与清扫）。task_service 每日一次按
+    # 本天数归档并删除过期行（归档先于删除）；0 = 关闭清扫。
+    # 负责人 2026-10-24 定：日志保留期 30 天（INT-1793 落地前为过渡期口径）
+    LOG_DB_RETENTION_DAYS: int = _get_int('LOG_DB_RETENTION_DAYS', 30)
     # 读取侧单次查询最大物化条数（0 = 不限）：大任务轮询兜底，total 变下界语义
     LOG_BUSINESS_MAX_SCAN_ENTRIES: int = _get_int('LOG_BUSINESS_MAX_SCAN_ENTRIES', 100000)
     # 读取侧同参数查询结果短 TTL 缓存秒数（0 = 关闭，INT-100）：TTL 窗口内
@@ -140,37 +211,55 @@ class BaseConfig:
     # 任务维度合并视图 DB 侧单次拉取行数上限（0 = 不限，INT-100）：替代
     # per_page=100000 全量拉取，与文件侧 MAX_SCAN_ENTRIES 同为下界语义兜底
     LOG_DB_MERGE_MAX_ROWS: int = _get_int('LOG_DB_MERGE_MAX_ROWS', 100000)
+    # 合并视图 DB 侧单次 gRPC 拉取行数（INT-1812 返工）：ListLogs 响应是单条
+    # JSON 字符串，实测 2~3.5KB/行，5000 行约 12~18MB；一次要 10 万行约 160MB
+    # 必撞 gRPC 单条消息上限（客户端 GRPC_MAX_MESSAGE_MB=64MB / 服务端 send
+    # 64MB）→ RESOURCE_EXHAUSTED 被代理吞成空结果，导出与深分页静默丢行。
+    # 改为按块循环拉取，单块产物必须留在上限内。
+    LOG_DB_FETCH_CHUNK_ROWS: int = _get_int('LOG_DB_FETCH_CHUNK_ROWS', 5000)
+    # 导出（无 log_ids）DB 侧命中行数上限（0 = 不限）：超限显式报错让用户缩小
+    # 范围，绝不静默截断成部分数据（INT-1812 返工；默认不限＝与列表 total 一致）
+    LOG_DB_EXPORT_MAX_ROWS: int = _get_int('LOG_DB_EXPORT_MAX_ROWS', 0)
+    # DB 侧计数/统计短 TTL 缓存秒数（0 = 关闭，INT-1468）：logs 表为最大增长
+    # 表（30 万行级），列表 total 的 count(*) 与 stats 的 group by 每次请求全表
+    # 扫描；TTL 窗口内同过滤条件共享一次聚合结果（只缓存聚合值，不缓存行数据），
+    # 新写入日志在 TTL 内不计入（与文件侧扫描缓存同为有界展示时延）
+    LOG_DB_AGGREGATE_CACHE_TTL_SECONDS: int = _get_int(
+        'LOG_DB_AGGREGATE_CACHE_TTL_SECONDS', 3)
+    # 聚合缓存条目上限（防过滤条件组合把内存撑爆，超出按最早写入淘汰）
+    LOG_DB_AGGREGATE_CACHE_MAX_ENTRIES: int = _get_int(
+        'LOG_DB_AGGREGATE_CACHE_MAX_ENTRIES', 256)
 
     # --- gRPC 服务发现 ---
     E2E_TEST_SERVICE_HOST: str = _get_env('E2E_TEST_SERVICE_HOST', 'localhost')
-    E2E_TEST_SERVICE_GRPC_PORT: int = _get_int('E2E_TEST_SERVICE_GRPC_PORT', 50051)
+    E2E_TEST_SERVICE_GRPC_PORT: int = _get_int('E2E_TEST_SERVICE_GRPC_PORT', _E2E_TEST_GRPC_PORT)
     # --- audio_service gRPC（P2.5 从 e2e_test_service 拆出）---
     AUDIO_SERVICE_HOST: str = _get_env('AUDIO_SERVICE_HOST', 'localhost')
-    AUDIO_SERVICE_GRPC_PORT: int = _get_int('AUDIO_SERVICE_GRPC_PORT', 50052)
+    AUDIO_SERVICE_GRPC_PORT: int = _get_int('AUDIO_SERVICE_GRPC_PORT', _AUDIO_SERVICE_GRPC_PORT)
     # --- device_service gRPC（P2.5 从 e2e_test_service 拆出）---
     DEVICE_SERVICE_HOST: str = _get_env('DEVICE_SERVICE_HOST', 'localhost')
-    DEVICE_SERVICE_GRPC_PORT: int = _get_int('DEVICE_SERVICE_GRPC_PORT', 50053)
+    DEVICE_SERVICE_GRPC_PORT: int = _get_int('DEVICE_SERVICE_GRPC_PORT', _DEVICE_SERVICE_GRPC_PORT)
     TASK_SERVICE_HOST: str = _get_env('TASK_SERVICE_HOST', 'localhost')
-    TASK_SERVICE_GRPC_PORT: int = _get_int('TASK_SERVICE_GRPC_PORT', 50061)
+    TASK_SERVICE_GRPC_PORT: int = _get_int('TASK_SERVICE_GRPC_PORT', _TASK_SERVICE_GRPC_PORT)
     API_TEST_SERVICE_HOST: str = _get_env('API_TEST_SERVICE_HOST', 'localhost')
     API_TEST_SERVICE_PORT: int = _get_int('API_TEST_SERVICE_PORT', 5003)
-    API_TEST_SERVICE_GRPC_PORT: int = _get_int('API_TEST_SERVICE_GRPC_PORT', 50071)
+    API_TEST_SERVICE_GRPC_PORT: int = _get_int('API_TEST_SERVICE_GRPC_PORT', _API_TEST_SERVICE_GRPC_PORT)
 
     # --- evaluation_service gRPC ---
     EVALUATION_SERVICE_HOST: str = _get_env('EVALUATION_SERVICE_HOST', 'localhost')
-    EVALUATION_SERVICE_GRPC_PORT: int = _get_int('EVALUATION_SERVICE_GRPC_PORT', 50091)
+    EVALUATION_SERVICE_GRPC_PORT: int = _get_int('EVALUATION_SERVICE_GRPC_PORT', _EVALUATION_SERVICE_GRPC_PORT)
 
-    # --- algorithm_service gRPC（端口 50067 预留，proto 待接入）---
+    # --- algorithm_service gRPC（proto 待接入）---
     ALGORITHM_SERVICE_HOST: str = _get_env('ALGORITHM_SERVICE_HOST', 'localhost')
-    ALGORITHM_SERVICE_GRPC_PORT: int = _get_int('ALGORITHM_SERVICE_GRPC_PORT', 50067)
+    ALGORITHM_SERVICE_GRPC_PORT: int = _get_int('ALGORITHM_SERVICE_GRPC_PORT', _ALGORITHM_SERVICE_GRPC_PORT)
 
     # --- report_service gRPC ---
     REPORT_SERVICE_HOST: str = _get_env('REPORT_SERVICE_HOST', 'localhost')
-    REPORT_SERVICE_GRPC_PORT: int = _get_int('REPORT_SERVICE_GRPC_PORT', 51068)
+    REPORT_SERVICE_GRPC_PORT: int = _get_int('REPORT_SERVICE_GRPC_PORT', _REPORT_SERVICE_GRPC_PORT)
 
     # --- auth_service gRPC（51069，INT-926 平移避开 Windows Hyper-V 排除端口段）---
     AUTH_SERVICE_HOST: str = _get_env('AUTH_SERVICE_HOST', 'localhost')
-    AUTH_SERVICE_GRPC_PORT: int = _get_int('AUTH_SERVICE_GRPC_PORT', 51069)
+    AUTH_SERVICE_GRPC_PORT: int = _get_int('AUTH_SERVICE_GRPC_PORT', _AUTH_SERVICE_GRPC_PORT)
 
     # --- gRPC 客户端默认 deadline（INT-54）---
     # 未显式传 timeout 的 gRPC 客户端调用统一注入该 deadline（秒）。

@@ -5,7 +5,10 @@
 - _build_resources_list / _get_task_resources / _get_source_task_ids: 资源与任务关系收集
 - _get_task_test_cases: 任务用例批量查询
 - _calculate_summary_dimensions / _build_all_metrics: 汇总级维度值与指标构建
+- _get_result_dimensions: 结果引用维度取集（活跃维度 + 历史维度按 ID 补全）
 """
+import logging
+
 from shared.models.common_enums import TaskStatus
 
 from report_service.application.services.report_utils import ReportUtils
@@ -15,11 +18,14 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_task_devices,
     _grpc_get_task_apis,
     _grpc_get_task_merge_relations,
+    _grpc_get_dimension_by_ids,
     _grpc_list_testcases_by_ids,
     _dim_id, _dim_name, _dim_type_and_parent,
     _dim_statistic_method, _dim_score_unit, _dim_decimal_places,
     _dim_agg_denominator, _dim_sort_order,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ReportDataResourceMixin:
@@ -103,6 +109,48 @@ class ReportDataResourceMixin:
         tc_map = _grpc_list_testcases_by_ids(test_case_ids)
         test_cases = list(tc_map.values())
         return test_cases, test_case_ids
+
+    @staticmethod
+    def _get_result_dimensions(all_dimensions_all, dim_stats):
+        """取报告指标维度：任务结果引用的维度（活跃维度 + 历史维度按 ID 补全）。
+
+        INT-1571：dim_stats 的键来自 test_result_dimensions.dimension_id，即“评估当时
+        使用的维度”。维度后来被停用/软删后不会出现在 ListDimensions（只返回活跃维度）
+        的结果里，若仍按活跃列表取交集，老任务会得到空指标集，报告在 prepare_data
+        阶段被判定「任务没有关联任何评估维度」而恒失败（真实库 397/413 等）。
+
+        因此：结果引用但已不在活跃列表中的维度，按 ID 经 gRPC 解析（evaluation_service
+        GetDimensionByIds 按引用解析，不过滤 status/deleted），用其历史口径字段还原
+        指标列。解析不到的维度（已被硬删）跳过并记 WARNING，不影响其余维度出报告。
+        """
+        if not dim_stats:
+            return list(all_dimensions_all)
+        # dim_stats 正常为 {dimension_id: stat}；非标量键（异常桩数据）不参与取集
+        used_ids_order = [key for key in dim_stats if isinstance(key, (int, str))]
+        used_ids = set(used_ids_order)
+        if not used_ids:
+            return list(all_dimensions_all)
+
+        active_ids = {_dim_id(d) for d in all_dimensions_all}
+        selected = [d for d in all_dimensions_all if _dim_id(d) in used_ids]
+
+        missing_ids = [dim_id for dim_id in used_ids_order if dim_id not in active_ids]
+        if not missing_ids:
+            return selected
+
+        resolved = _grpc_get_dimension_by_ids(missing_ids)
+        unresolved = []
+        for dim_id in missing_ids:
+            dim = resolved.get(str(dim_id)) if resolved else None
+            if not dim:
+                unresolved.append(dim_id)
+                continue
+            selected.append(dim)
+        if unresolved:
+            logger.warning(
+                'report 历史维度解析失败，指标列将缺失: dim_ids=%s（维度已被硬删除）',
+                sorted(unresolved))
+        return selected
 
     @staticmethod
     def _calculate_summary_dimensions(dim_stats):

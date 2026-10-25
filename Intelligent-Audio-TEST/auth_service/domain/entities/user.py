@@ -34,6 +34,9 @@ class UserAggregate:
     role_id: Optional[int] = None
     status: str = 'active'
     permissions: List[str] = field(default_factory=list)
+    # 生效权限数（INT-1465）：列表场景不加载 permissions，只带计数供列表页展示；
+    # 详情场景仍以 permissions 明细为准，此字段不参与权限判断。
+    permission_count: int = 0
     deleted: bool = False
     oauth_provider: Optional[str] = None
     oauth_subject: Optional[str] = None

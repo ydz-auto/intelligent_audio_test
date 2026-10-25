@@ -86,6 +86,21 @@ def log_root(tmp_path, monkeypatch):
     yield root
     from shared.logging import reset_log_settings
     reset_log_settings()
+    import shared.logging.audit_reader as ar
+    ar._SCAN_CACHE.clear()
+
+
+def _write_audit_file(root, date_seg, records):
+    """在临时日志根下写审计 JSONL（审计读侧用例夹具）。"""
+    from shared.logging.enums import AUDIT_DIR
+
+    dir_path = os.path.join(root, AUDIT_DIR, date_seg)
+    os.makedirs(dir_path, exist_ok=True)
+    path = os.path.join(dir_path, 'auth.api_gateway.test-1.jsonl')
+    with open(path, 'w', encoding='utf-8') as handle:
+        for record in records:
+            handle.write(json.dumps(record, ensure_ascii=False) + '\n')
+    return path
 
 
 def _business_record(**overrides):
@@ -415,30 +430,30 @@ class TestServicerReadSideUserId:
 # ========== 6. 网关 refresh_logs 读侧带 user_id ==========
 
 class TestRefreshLogsUserId:
-    def test_refresh_logs_maps_user_id(self, monkeypatch):
-        """refresh_logs：gRPC 增量行 created_by_user_id → LogItem.user_id。"""
+    def test_refresh_logs_maps_user_id(self, log_root):
+        """refresh_logs：审计文件条目 user_id（写侧 H2 提取的 operator_id）→ LogItem.user_id。
+
+        INT-1812 起 refresh 的增量源是审计文件游标（契约 §Q4），不再读 logs 表
+        id；本用例随之改为构造审计 JSONL 行，映射口径不变（两前端零改动）。
+        """
         from api_gateway.application.services.log.log_query_service import (
             LogQueryService,
         )
-        import api_gateway.infrastructure.grpc_proxies as proxies_mod
-
-        resp = {'items': [{'id': 7, 'time': '2026-10-19T12:00:00',
-                           'level': 'INFO', 'category': 'auth',
-                           'module': 'gateway', 'source': 'db',
-                           'content': 'audit', 'created_by_user_id': 42}],
-                'max_id': 7}
-
-        class _FakeProxy:
-            def list_logs_after_id(self, last_id, limit=100):
-                return resp
-
-        monkeypatch.setattr(proxies_mod, 'task_data_service', _FakeProxy())
-
         from api_gateway.infrastructure.request_adapter import set_current_request
-        from types import SimpleNamespace
+        from shared.logging import cursor_to_date_seg
+
+        cursor = 1_790_000_000_000_000  # 契约 §Q4 游标域（事件时间 epoch 微秒）
+        _write_audit_file(log_root, cursor_to_date_seg(cursor), [{
+            'cursor': cursor,
+            'time': '2026-09-23 12:00:00.000000',
+            'level': 'INFO', 'category': 'auth', 'module': 'gateway',
+            'source': 'api_gateway', 'service': 'api_gateway',
+            'event': 'AUTH_LOGIN', 'operator_id': 42, 'user_id': 42,
+            'content': '{"operator_id": 42, "event": "AUTH_LOGIN"}',
+        }])
 
         class _FakeReq:
-            state = SimpleNamespace(_json_body={'last_id': 0})
+            state = SimpleNamespace(_json_body={'last_id': cursor - 1})
 
         set_current_request(_FakeReq())
         try:
@@ -447,3 +462,4 @@ class TestRefreshLogsUserId:
             set_current_request(None)
         items = result['data']['items']
         assert items[0]['user_id'] == 42
+        assert items[0]['id'] == cursor

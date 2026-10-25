@@ -76,6 +76,28 @@ class CaseParamRepository(ICaseParamRepository):
         params = query.order_by(CaseAlgorithmParamPO.ui_order).all()
         return [_po_to_dict(p) for p in params]
 
+    def list_by_algorithms(
+        self, algorithm_types: Optional[List[str]]
+    ) -> List[Dict[str, Any]]:
+        """批量查询多个算法的用例参数（INT-1666 配置缓存重载用）。
+
+        algorithm_types 为 None 时取全部未删除用例参数；传入列表时只取这些
+        算法（空列表 → 空结果）。按 (algorithm_type, ui_order, id) 稳定排序。
+        """
+        session = get_db_session()
+        query = session.query(CaseAlgorithmParamPO).filter_by(deleted=False)
+        if algorithm_types is not None:
+            types = [t for t in algorithm_types if t]
+            if not types:
+                return []
+            query = query.filter(CaseAlgorithmParamPO.algorithm_type.in_(types))
+        params = query.order_by(
+            CaseAlgorithmParamPO.algorithm_type,
+            CaseAlgorithmParamPO.ui_order,
+            CaseAlgorithmParamPO.id,
+        ).all()
+        return [_po_to_dict(p) for p in params]
+
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """创建用例参数，返回新参数 dict。
 
@@ -221,6 +243,28 @@ class ReferenceParamRepository(IReferenceParamRepository):
         if algorithm_type:
             query = query.filter_by(algorithm_type=algorithm_type)
         params = query.order_by(AlgorithmReferenceParamPO.id).all()
+        return [_po_to_dict(p) for p in params]
+
+    def list_by_algorithms(
+        self, algorithm_types: Optional[List[str]]
+    ) -> List[Dict[str, Any]]:
+        """批量查询多个算法的参考参数（INT-1666 配置缓存重载用）。
+
+        algorithm_types 为 None 时取全部未删除参考参数；传入列表时只取这些
+        算法（空列表 → 空结果）。按 (algorithm_type, id) 稳定排序。
+        """
+        session = get_db_session()
+        query = session.query(AlgorithmReferenceParamPO).filter_by(deleted=False)
+        if algorithm_types is not None:
+            types = [t for t in algorithm_types if t]
+            if not types:
+                return []
+            query = query.filter(
+                AlgorithmReferenceParamPO.algorithm_type.in_(types))
+        params = query.order_by(
+            AlgorithmReferenceParamPO.algorithm_type,
+            AlgorithmReferenceParamPO.id,
+        ).all()
         return [_po_to_dict(p) for p in params]
 
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:

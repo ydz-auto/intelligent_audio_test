@@ -16,6 +16,7 @@ from concurrent import futures
 import grpc
 
 from shared.proto import report_service_pb2_grpc as report_grpc
+from shared.infrastructure.config import BaseConfig
 from shared.infrastructure.grpc_interceptors import (
     server_db_scope_interceptor, server_log_interceptor, server_user_context_interceptor,
 )
@@ -28,6 +29,23 @@ from report_service.interfaces.grpc.servicers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _server_options() -> list:
+    """gRPC 收发消息上限（与共享客户端 channel、audio/task_service 服务端同口径）。
+
+    grpcio 服务端默认收包上限 4MiB：Report Studio 的 markdown 正文整段经
+    ``StudioDocumentRequest.data`` 转发（文件型独立报告导入，INT-1763 §6.2），
+    网关按 ``REPORT_STUDIO_UPLOAD_MAX_MB``（50MB）放行后，服务端仍卡在 4MiB 就
+    回 RESOURCE_EXHAUSTED，网关无对应映射 → HTTP 500（应 200 或 413）。既有的
+    Studio 大 markdown 编辑同样会静默失败，故按 ``BaseConfig.GRPC_MAX_MESSAGE_MB``
+    显式放大，与客户端 channel 保持一致。
+    """
+    max_bytes = max(int(BaseConfig.GRPC_MAX_MESSAGE_MB), 1) * 1024 * 1024
+    return [
+        ('grpc.max_receive_message_length', max_bytes),
+        ('grpc.max_send_message_length', max_bytes),
+    ]
 
 
 def start_grpc_server(port: int = REPORT_SERVICE_GRPC_PORT) -> grpc.Server:
@@ -47,6 +65,7 @@ def start_grpc_server(port: int = REPORT_SERVICE_GRPC_PORT) -> grpc.Server:
     _max_workers = config_manager.get_value('grpc', 'report_service_workers', 10)
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_max_workers),
+        options=_server_options(),
         interceptors=[server_db_scope_interceptor, server_log_interceptor,
                      server_user_context_interceptor],
     )

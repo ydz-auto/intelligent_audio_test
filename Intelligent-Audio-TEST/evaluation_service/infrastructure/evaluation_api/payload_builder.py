@@ -64,9 +64,13 @@ class PayloadBuilder(EvaluationLoggerMixin):
 
         return field_value
 
-    def build_payload(self, body_template, context, task_id=None, test_case_id=None, algorithm_type=None):
+    def build_payload(self, body_template, context, task_id=None, test_case_id=None,
+                      algorithm_type=None, api_id=None):
         """
         构建API请求的Payload
+
+        INT-1757（C6b）：``api_id`` 传入时 output_fields 按该 API 实例作用域取
+        （GetOutputFields 带 api_id），None 回落算法级默认。
         """
         processed_context = {}
 
@@ -75,7 +79,8 @@ class PayloadBuilder(EvaluationLoggerMixin):
             from evaluation_service.infrastructure.acl.algorithm_acl_repository import (
                 algorithm_acl_repository,
             )
-            output_fields = algorithm_acl_repository.get_output_fields(algorithm_type)
+            output_fields = algorithm_acl_repository.get_output_fields(
+                algorithm_type, api_id=api_id)
             for field in output_fields:
                 source_param = field.get('source_param', '')
                 if source_param:

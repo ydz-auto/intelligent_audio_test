@@ -17,6 +17,9 @@ from shared.utils.grpc_json import loads as _loads
 
 _logger = logging.getLogger(__name__)
 
+# 列表页每个任务回填的报告摘要上限（沿用历史 ListReports per_page=100 口径）
+REPORT_BRIEF_PER_TASK_LIMIT = 100
+
 
 class ReportAclRepository:
     """report_service 防腐层仓储（gRPC ACL 适配层）。"""
@@ -40,6 +43,35 @@ class ReportAclRepository:
             return _loads(resp.data, {}) or {}
         except Exception as e:
             _logger.warning("ListReports gRPC 异常: %s", e)
+            return {}
+
+    def list_reports_by_task_ids(self, task_ids) -> dict:
+        """页级批量查询整页任务的报告摘要（INT-1462）。
+
+        封装 report_service.ReportConfigService.ListReportsByTaskIds RPC——
+        列表页组装任务时一次往返取回整页报告，取代逐任务 ListReports 的 N+1。
+
+        Returns:
+            {task_id(int): [{id,name,status,type,created_at}, ...]}；失败返回空 dict。
+        """
+        if not task_ids:
+            return {}
+        from shared.clients.grpc_clients import get_report_config_service_stub
+        from shared.proto import report_service_pb2 as report_pb
+        try:
+            stub = get_report_config_service_stub()
+            resp = stub.ListReportsByTaskIds(report_pb.ListReportsByTaskIdsRequest(
+                task_ids=[int(t) for t in task_ids],
+                per_task_limit=REPORT_BRIEF_PER_TASK_LIMIT,
+            ))
+            if not resp.success:
+                _logger.warning("ListReportsByTaskIds 返回失败: %s", resp.message)
+                return {}
+            payload = _loads(resp.data, {}) or {}
+            raw = payload.get('items_by_task') or {}
+            return {int(tid): rows for tid, rows in raw.items()}
+        except Exception as e:
+            _logger.warning("ListReportsByTaskIds gRPC 异常: %s", e)
             return {}
 
     def list_reports_count(self) -> int:
@@ -139,16 +171,37 @@ class ApiTestAclRepository:
                 })
         return result
 
+    def fetch_api_summaries(self, api_ids: List, session=None) -> dict:
+        """批量获取 API 摘要 {api_id: {id, name, status}}。
+
+        INT-1500：api_test_service 没有按 ID 集合的批量查询接口，原实现逐个
+        调 `GetAPIConfig`（`fetch_api_list` / `fetch_api_names`），一页任务或
+        一页候选就是几十次下游调用（`/apis` 列表 400 时前端只能显示 ID 亦同源）。
+        改共享库窄字段只读投影（口径同 `GetAPIConfig`：`apis.deleted = FALSE`；
+        先例见 `_read_projection`）。
+
+        失败返回空 dict（仅日志告警），调用方按「无 API」降级。
+        """
+        ids = [int(a) for a in (api_ids or []) if a is not None]
+        if not ids:
+            return {}
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.acl._read_projection import fetch_rows
+        session = session or get_db_session()
+        rows = fetch_rows(
+            session,
+            'SELECT id, name, status FROM apis WHERE id IN :ids AND deleted = FALSE',
+            ids,
+        )
+        return {int(r[0]): {'id': int(r[0]), 'name': r[1], 'status': r[2]} for r in rows}
+
     def fetch_api_names(self, api_ids: List) -> dict:
         """批量获取 API 名称，返回 {api_id: name} 映射。失败时返回空 dict。"""
         if not api_ids:
             return {}
-        name_map = {}
-        for api_id in api_ids:
-            api_data = self.get_api_config(api_id)
-            if isinstance(api_data, dict):
-                name_map[api_id] = api_data.get('name')
-        return name_map
+        summaries = self.fetch_api_summaries(api_ids)
+        return {api_id: summaries[int(api_id)]['name'] for api_id in api_ids
+                if int(api_id) in summaries}
 
     def get_api_test_stub(self):
         """获取 APITestService gRPC stub。

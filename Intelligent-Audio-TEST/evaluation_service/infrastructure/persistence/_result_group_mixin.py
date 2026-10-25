@@ -139,7 +139,7 @@ class GroupResultMixin:
                 # Multi-round: aggregate before final status update
                 if self.is_multi_round_result(result_id):
                     self.aggregate_round_results(result_id, task_id, test_case_id)
-                self.update_task_case_status(result_id, True, task_id, test_case_id, test_type)
+                self.update_task_case_status(result_id, True, task_id, test_case_id)
 
     @staticmethod
     def _unwrap_calc_result(resp_data):
@@ -212,14 +212,17 @@ class GroupResultMixin:
             # 查询 aux_params_map（通过 gRPC 调 algorithm_service）
             aux_params_map = self._load_aux_params_map(dim_result_rows)
 
-            # 查询 output_fields
-            output_fields = self._load_output_fields(algorithm_type)
+            # 查询 output_fields（INT-1757 / C6b：按结果所属 API 实例作用域取）
+            output_fields = self._load_output_fields(algorithm_type, api_id=api_id)
+            # 设备输出声明：只用于轮内子键类型/展示名解析，不进展示字段清单
+            device_output_fields = self._load_device_output_fields(algorithm_type)
 
             # 调用公共方法构建 algorithm_results
             from report_service.application.services.report_data_builder import ReportDataBuilder
             algorithm_results = ReportDataBuilder.build_algorithm_results_for_result(
                 test_result, resource, algo_result, result_data,
-                aux_params_map, dim_result_rows, output_fields, algorithm_type
+                aux_params_map, dim_result_rows, output_fields, algorithm_type,
+                device_output_fields=device_output_fields,
             )
 
             # 存入 result_data['algorithm_results']
@@ -311,14 +314,31 @@ class GroupResultMixin:
         return aux_params_map
 
     @staticmethod
-    def _load_output_fields(algorithm_type):
-        """查询算法输出字段（通过 gRPC 调 algorithm_service）"""
+    def _load_output_fields(algorithm_type, api_id=None):
+        """查询算法输出字段（通过 gRPC 调 algorithm_service）
+
+        INT-1757（C6b）：``api_id`` 为该结果所属 API 实例（test_results.api_id），
+        输出声明按 API 级覆盖算法级合并取；None 回落算法级默认。
+        """
         output_fields = []
         if algorithm_type:
             try:
                 from evaluation_service.infrastructure.acl.algorithm_acl_repository import AlgorithmRepository
                 _algo_repo = AlgorithmRepository()
-                output_fields = _algo_repo.get_output_fields(algorithm_type) or []
+                output_fields = _algo_repo.get_output_fields(
+                    algorithm_type, api_id=api_id) or []
             except Exception:
                 pass
         return output_fields
+
+    @staticmethod
+    def _load_device_output_fields(algorithm_type):
+        """查询设备输出声明（只用于 rounds 轮内子键类型/展示名解析）"""
+        device_output_fields = []
+        if algorithm_type:
+            try:
+                from shared.clients.grpc_clients import algo_get_device_output_fields
+                device_output_fields = algo_get_device_output_fields(algorithm_type) or []
+            except Exception:
+                pass
+        return device_output_fields

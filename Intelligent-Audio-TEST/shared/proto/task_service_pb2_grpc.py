@@ -1676,6 +1676,16 @@ class CherryPickServiceStub:
                 request_serializer=task__service__pb2.CherryPickCandidatesRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
                 _registered_method=True)
+        self.ListCherryPickPickableTasks = channel.unary_unary(
+                '/task_service.CherryPickService/ListCherryPickPickableTasks',
+                request_serializer=task__service__pb2.CherryPickPickableTasksRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ListCherryPickCandidateTree = channel.unary_unary(
+                '/task_service.CherryPickService/ListCherryPickCandidateTree',
+                request_serializer=task__service__pb2.CherryPickCandidateTreeRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
         self.CherryPickPreview = channel.unary_unary(
                 '/task_service.CherryPickService/CherryPickPreview',
                 request_serializer=task__service__pb2.CherryPickEmptyRequest.SerializeToString,
@@ -1761,6 +1771,20 @@ class CherryPickServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListCherryPickPickableTasks(self, request, context):
+        """---- 可挑选任务清单（INT-1496 挑选向导阶段 1 数据源；服务端一次 GROUP BY 聚合）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListCherryPickCandidateTree(self, request, context):
+        """---- 阶段 2 候选树聚合（INT-1510 §8.2：任务→用例→设备/API→result_type，节点计数 + result_id 集）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def CherryPickPreview(self, request, context):
         """---- 下单（三出口 action=merge/reexecute/reevaluate + 合并预览）----
         """
@@ -1832,6 +1856,16 @@ def add_CherryPickServiceServicer_to_server(servicer, server):
             'ListCherryPickCandidates': grpc.unary_unary_rpc_method_handler(
                     servicer.ListCherryPickCandidates,
                     request_deserializer=task__service__pb2.CherryPickCandidatesRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ListCherryPickPickableTasks': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListCherryPickPickableTasks,
+                    request_deserializer=task__service__pb2.CherryPickPickableTasksRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ListCherryPickCandidateTree': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListCherryPickCandidateTree,
+                    request_deserializer=task__service__pb2.CherryPickCandidateTreeRequest.FromString,
                     response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
             ),
             'CherryPickPreview': grpc.unary_unary_rpc_method_handler(
@@ -2121,6 +2155,60 @@ class CherryPickService:
             target,
             '/task_service.CherryPickService/ListCherryPickCandidates',
             task__service__pb2.CherryPickCandidatesRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListCherryPickPickableTasks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/ListCherryPickPickableTasks',
+            task__service__pb2.CherryPickPickableTasksRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListCherryPickCandidateTree(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/ListCherryPickCandidateTree',
+            task__service__pb2.CherryPickCandidateTreeRequest.SerializeToString,
             task__service__pb2.TaskConfigResponse.FromString,
             options,
             channel_credentials,
@@ -8013,6 +8101,26 @@ class DataTransferServiceStub:
                 request_serializer=task__service__pb2.RollbackImportRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
                 _registered_method=True)
+        self.ExportIncremental = channel.unary_unary(
+                '/task_service.DataTransferService/ExportIncremental',
+                request_serializer=task__service__pb2.ExportIncrementalRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ImportIncremental = channel.unary_unary(
+                '/task_service.DataTransferService/ImportIncremental',
+                request_serializer=task__service__pb2.ImportIncrementalRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ExportReportPackage = channel.unary_unary(
+                '/task_service.DataTransferService/ExportReportPackage',
+                request_serializer=task__service__pb2.ExportReportPackageRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ImportReportPackage = channel.unary_unary(
+                '/task_service.DataTransferService/ImportReportPackage',
+                request_serializer=task__service__pb2.ImportReportPackageRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
 
 
 class DataTransferServiceServicer:
@@ -8051,6 +8159,42 @@ class DataTransferServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ExportIncremental(self, request, context):
+        """增量导出（链路 2，INT-1761）：入参 {task_ids:[int], options:{include:[dimensions,reports]}}
+        出参 {zip_path(共享盘相对 DATA_TRANSFER_TMP_DIR), manifest, sourceTaskId,
+        dimensionCount, reportCount}。包内 id 已翻译回 A 原始 id；
+        存在未映射结果行 → success=false + code=409 + data.unmappedResultIds，不产出包。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ImportIncremental(self, request, context):
+        """增量导入（链路 2）：入参 {zip_path}，把维度覆盖集合并 + 报告原地替换到 A 原任务。
+        出参合并回执（mergedDimensions / replacedReportId / warnings / batchId /
+        rollbackAvailable）；失败按 code 透传（400/403/404/409/500）。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ExportReportPackage(self, request, context):
+        """报告包导出（INT-1764 D6，链路 3a + 3b/3c）：入参 {task_ids, report_ids?,
+        doc_version_scope?}；出参 {zip_path, manifest}（ZIP 落共享盘，网关 FileResponse 下发）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ImportReportPackage(self, request, context):
+        """报告包导入（INT-1764 D6）：入参 {zip_path, data:{target_report_id?, batch_id?}}；
+        平台报告按 sourceTask.id 原地替换，Studio 文档拓扑序落库，出参为导入回执（含 warnings）。
+        长耗时调用，客户端超时需放宽。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DataTransferServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -8072,6 +8216,26 @@ def add_DataTransferServiceServicer_to_server(servicer, server):
             'RollbackImport': grpc.unary_unary_rpc_method_handler(
                     servicer.RollbackImport,
                     request_deserializer=task__service__pb2.RollbackImportRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ExportIncremental': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExportIncremental,
+                    request_deserializer=task__service__pb2.ExportIncrementalRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ImportIncremental': grpc.unary_unary_rpc_method_handler(
+                    servicer.ImportIncremental,
+                    request_deserializer=task__service__pb2.ImportIncrementalRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ExportReportPackage': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExportReportPackage,
+                    request_deserializer=task__service__pb2.ExportReportPackageRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ImportReportPackage': grpc.unary_unary_rpc_method_handler(
+                    servicer.ImportReportPackage,
+                    request_deserializer=task__service__pb2.ImportReportPackageRequest.FromString,
                     response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
             ),
     }
@@ -8185,6 +8349,114 @@ class DataTransferService:
             target,
             '/task_service.DataTransferService/RollbackImport',
             task__service__pb2.RollbackImportRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExportIncremental(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.DataTransferService/ExportIncremental',
+            task__service__pb2.ExportIncrementalRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ImportIncremental(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.DataTransferService/ImportIncremental',
+            task__service__pb2.ImportIncrementalRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExportReportPackage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.DataTransferService/ExportReportPackage',
+            task__service__pb2.ExportReportPackageRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ImportReportPackage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.DataTransferService/ImportReportPackage',
+            task__service__pb2.ImportReportPackageRequest.SerializeToString,
             task__service__pb2.TaskConfigResponse.FromString,
             options,
             channel_credentials,

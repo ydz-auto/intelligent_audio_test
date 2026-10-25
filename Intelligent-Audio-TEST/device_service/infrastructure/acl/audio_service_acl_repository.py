@@ -21,11 +21,14 @@ class AudioServiceACLRepository:
     所有方法返回纯 dict / list / bool，不返回 ORM 对象。
     """
 
-    def get_physical_devices(self) -> list:
-        """获取物理设备列表
+    def enumerate_physical_devices(self) -> tuple:
+        """枚举物理设备并区分「枚举不可用」与「没有设备」
 
-        通过 gRPC 调用 audio_service.AudioService.GetPhysicalDevices，
-        返回设备列表；gRPC 不可用时返回空列表。
+        契约 §2.5 要求：诊断在枚举不可用时返回 unsupported 而不是 error，
+        因此调用方必须能分辨 gRPC 失败（available=False）与空列表。
+
+        Returns:
+            (devices: list, available: bool)
         """
         from shared.clients.grpc_clients import get_audio_service_stub
         from shared.proto import audio_service_pb2 as _audio_pb
@@ -35,10 +38,18 @@ class AudioServiceACLRepository:
             resp = stub.GetPhysicalDevices(_audio_pb.GetPhysicalDevicesRequest())
             if resp.success:
                 data = _grpc_loads(resp.data, {}) or {}
-                return data.get('devices', []) or []
+                return list(data.get('devices', []) or []), True
         except Exception:
             logger.debug("gRPC 获取物理设备列表失败", exc_info=True)
-        return []
+        return [], False
+
+    def get_physical_devices(self) -> list:
+        """获取物理设备列表
+
+        通过 gRPC 调用 audio_service.AudioService.GetPhysicalDevices，
+        返回设备列表；gRPC 不可用时返回空列表。
+        """
+        return self.enumerate_physical_devices()[0]
 
     def get_device_index(self, unique_id: str):
         """获取设备索引

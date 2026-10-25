@@ -56,6 +56,9 @@ class ReportDataCaseMixin:
             "logs": "\n".join([(r.get('error_message') if isinstance(r, dict) else r.error_message) for r in case_results if (r.get('error_message') if isinstance(r, dict) else r.error_message)])
         }
 
+        # 设备输出声明按算法类型取一次（只用于轮内子键类型/展示名解析）
+        device_output_fields_cache = {}
+
         for result in case_results:
             resource = ReportHelpers.get_resource_name(result, task, use_time_prefix=False)
 
@@ -88,12 +91,27 @@ class ReportDataCaseMixin:
 
             if algo_res or result_data:
                 algorithm_type = tc_algo_type or ''
+                # INT-1757（C6b）：输出声明按结果所属 API 实例作用域取
+                # （result.api_id；设备/E2E 结果无该值 → 算法级默认）
+                result_api_id = (result.get('api_id') if isinstance(result, dict)
+                                 else getattr(result, 'api_id', None))
                 # 获取 output_fields（通过 gRPC 调 algorithm_service）
                 output_fields = []
+                device_output_fields = []
                 if algorithm_type:
                     try:
-                        from shared.clients.grpc_clients import algo_get_output_fields
-                        output_fields = algo_get_output_fields(algorithm_type) or []
+                        from shared.clients.grpc_clients import (
+                            algo_get_output_fields,
+                            algo_get_device_output_fields,
+                        )
+                        # INT-1757（C6b）：输出声明按结果所属 API 实例作用域取
+                        output_fields = algo_get_output_fields(
+                            algorithm_type, api_id=result_api_id) or []
+                        if algorithm_type not in device_output_fields_cache:
+                            device_output_fields_cache[algorithm_type] = (
+                                algo_get_device_output_fields(algorithm_type) or []
+                            )
+                        device_output_fields = device_output_fields_cache[algorithm_type]
                     except Exception:
                         pass
 
@@ -101,7 +119,8 @@ class ReportDataCaseMixin:
                     build_algorithm_results_for_result(
                         result, resource, algo_res, result_data,
                         aux_params_map, result_dims,
-                        output_fields, algorithm_type
+                        output_fields, algorithm_type,
+                        device_output_fields=device_output_fields,
                     )
                 )
 
