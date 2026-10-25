@@ -121,6 +121,11 @@ export function fromCartEntryDto(
       dto.source_result_type && dto.source_result_type.trim()
         ? dto.source_result_type
         : null, // §11-5 历史快照缺 source_result_type → 折叠「结果类型待补充」
+    // INT-1693 §11-7：cart_get 逐行补用例域真名（与候选行同口径）→ 购物车/复核的用例层组织
+    // 出真分组/真标签名；历史条目缺省时 tags=[] 归「未设置标签」、groupId/Name=null 归「未分组」。
+    sourceTags: dto.tags ?? [],
+    sourceGroupId: dto.group_id ?? null,
+    sourceGroupName: dto.group_name ?? null,
     executionStatus: dto.execution_status,
     evaluationStatus: null, // 快照未含评估状态 → 显示「—」
     invalid: dto.invalid,

@@ -37,6 +37,10 @@ import {
   toggleCartLeafSelection,
   toggleLeafSelection,
 } from '@/domain/lib/cherry-pick-tree'
+import {
+  groupCasesByCaseGroup,
+  groupCasesByTag,
+} from '@/domain/lib/sub-view-aggregation'
 
 /** 候选行样例：任务1042 → 用例c1 → 设备d1 → real-time/final；用例c2 → 设备d1 */
 const CANDIDATES: CherryPickCandidate[] = [
@@ -1150,6 +1154,85 @@ describe('购物车三视图树构建（A 组，INT-1694 二次口径：任务�
     expect(getCartBranchSelectionState(deviceTop, selected)).toBe('checked')
     expect(getCartBranchSelectionState(caseTop, selected)).toBe('indeterminate')
     expect(getCartBranchSelectionState(rtTop, selected)).toBe('indeterminate')
+  })
+})
+
+describe('购物车用例层组织接 INT-1693 真名（tags/group_id/group_name）', () => {
+  /** 任务A：用例001/002 同分组「拒识」（标签不同）；用例003 为历史条目（缺 tags/group） */
+  const groups = [
+    {
+      taskId: 1042,
+      taskName: '任务A',
+      entries: [
+        { itemId: 'a1', resultId: 1, sourceTaskId: 1042, sourceTaskName: '任务A', sourceCaseId: 'c1', sourceCaseName: '用例001', sourceDeviceId: 1, sourceDeviceName: '设备-01', sourceApiId: null, sourceApiName: null, sourceResultType: 'real-time', sourceTags: ['拒识', '多轮拒识'], sourceGroupId: 'g1', sourceGroupName: '拒识', executionStatus: 'completed', evaluationStatus: 'completed', invalid: false },
+        { itemId: 'a2', resultId: 2, sourceTaskId: 1042, sourceTaskName: '任务A', sourceCaseId: 'c2', sourceCaseName: '用例002', sourceDeviceId: 1, sourceDeviceName: '设备-01', sourceApiId: null, sourceApiName: null, sourceResultType: 'real-time', sourceTags: ['静默拒识'], sourceGroupId: 'g1', sourceGroupName: '拒识', executionStatus: 'completed', evaluationStatus: 'completed', invalid: false },
+        { itemId: 'a3', resultId: 3, sourceTaskId: 1042, sourceTaskName: '任务A', sourceCaseId: 'c3', sourceCaseName: '用例003', sourceDeviceId: 1, sourceDeviceName: '设备-01', sourceApiId: null, sourceApiName: null, sourceResultType: 'final', sourceTags: [], sourceGroupId: null, sourceGroupName: null, executionStatus: 'completed', evaluationStatus: 'completed', invalid: false },
+      ],
+    },
+  ]
+
+  /** 与 PickCaseOrgList 同口径：用例分支 → 聚合入参 */
+  const orgItems = (cases: CartTreeBranch[]) =>
+    cases.map((b) => ({
+      tags: b.tags ?? [],
+      groupId: b.groupId ?? null,
+      groupName: b.groupName ?? null,
+      totalDuration: b.totalDuration ?? null,
+    }))
+
+  it('用例视图顶层组头：按真分组聚合，历史条目仍落「未分组」（标签视图按真标签名）', () => {
+    const cases = buildCartCaseView(groups).filter(
+      (n): n is CartTreeBranch => n.kind === 'branch' && n.level === 'case'
+    )
+    expect(cases.map((c) => c.name)).toEqual(['用例001', '用例002', '用例003'])
+
+    const groupHeads = groupCasesByCaseGroup(orgItems(cases))
+    expect(groupHeads.map((g) => [g.label, g.cases.length])).toEqual([
+      ['拒识', 2],
+      ['未分组', 1],
+    ])
+
+    const tagHeads = groupCasesByTag(orgItems(cases), [])
+    expect(tagHeads.map((g) => g.label)).toEqual(
+      expect.arrayContaining(['拒识', '多轮拒识', '静默拒识', '未设置标签'])
+    )
+  })
+
+  it('设备视图 caseOrg 组头：显示真实分组名（历史条目组仍为「未分组」）', () => {
+    const deviceTree = buildCartDeviceView(groups)
+    const device = deviceTree.find(
+      (n): n is CartTreeBranch => n.kind === 'branch' && n.level === 'device'
+    )!
+    const byRt = (rt: string) =>
+      device.children.find(
+        (n): n is CartTreeBranch => n.kind === 'branch' && n.level === 'resultType' && n.name === rt
+      )!
+    const realtimeOrg = byRt('real-time').children.filter(
+      (n): n is CartTreeBranch => n.kind === 'branch' && n.level === 'caseOrg'
+    )
+    expect(realtimeOrg.map((o) => [o.name, o.count, o.entryIds])).toEqual([
+      ['拒识', 2, ['a1', 'a2']],
+    ])
+    expect(realtimeOrg[0].orgKind).toBe('group')
+
+    const finalOrg = byRt('final').children.filter(
+      (n): n is CartTreeBranch => n.kind === 'branch' && n.level === 'caseOrg'
+    )
+    expect(finalOrg.map((o) => [o.name, o.count])).toEqual([['未分组', 1]])
+
+    // 结果类型视图：result_type → 设备 → caseOrg，组头同为真名
+    const rtTree = buildCartResultTypeView(groups)
+    const realtimeRt = rtTree.find(
+      (n): n is CartTreeBranch => n.kind === 'branch' && n.level === 'resultType' && n.name === 'real-time'
+    )!
+    const rtDevice = realtimeRt.children.find(
+      (n): n is CartTreeBranch => n.kind === 'branch' && n.level === 'device'
+    )!
+    expect(
+      rtDevice.children
+        .filter((n): n is CartTreeBranch => n.kind === 'branch' && n.level === 'caseOrg')
+        .map((o) => o.name)
+    ).toEqual(['拒识'])
   })
 })
 

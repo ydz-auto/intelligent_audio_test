@@ -101,6 +101,30 @@ describe('fromCartEntryDto', () => {
   it('source_result_type 空白 → null（result_type 级折叠「结果类型待补充」）', () => {
     expect(fromCartEntryDto(baseItem({ source_result_type: '  ' })).sourceResultType).toBeNull()
   })
+
+  it('INT-1693：cart_get 逐行 tags/group_id/group_name 透传（用例层组织出真名）', () => {
+    expect(
+      fromCartEntryDto(
+        baseItem({ tags: ['拒识', '多轮拒识'], group_id: 'g1', group_name: '拒识' })
+      )
+    ).toMatchObject({
+      sourceTags: ['拒识', '多轮拒识'],
+      sourceGroupId: 'g1',
+      sourceGroupName: '拒识',
+    })
+  })
+
+  it('INT-1693：历史条目缺字段 → tags=[] / groupId=None（落「未设置标签 / 未分组」兜底桶，不报错）', () => {
+    expect(
+      fromCartEntryDto(baseItem({ tags: null, group_id: null, group_name: null }))
+    ).toMatchObject({ sourceTags: [], sourceGroupId: null, sourceGroupName: null })
+    // 后端未返字段（undefined）同口径
+    expect(
+      fromCartEntryDto(
+        baseItem({ tags: undefined, group_id: undefined, group_name: undefined })
+      )
+    ).toMatchObject({ sourceTags: [], sourceGroupId: null, sourceGroupName: null })
+  })
 })
 
 describe('fromSourceTraceDto（INT-1711 容器溯源；审计 P2-1 回归）', () => {
