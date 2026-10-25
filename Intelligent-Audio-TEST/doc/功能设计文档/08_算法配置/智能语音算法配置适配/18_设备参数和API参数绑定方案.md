@@ -1,6 +1,6 @@
 # 设备参数和API参数绑定方案
 
-> **实施状态**：本文档描述的 keywords/api_id 绑定方案为**设计提案，尚未实施**。经代码核对：`AlgorithmDeviceParam`、`AlgorithmApiParam`、`ParamMapping` 三个模型中均**不存在** keywords/api_id 字段。当前设备驱动的解析由 `backend/utils/device_driver/registry.py` 按 `(app_type, version, platform)` 三元组完成（AppType/DevicePlatform 枚举驱动），keywords 字符串匹配机制仍保留于 `driver_factory.py` 的专用驱动注册表（`_specialized_drivers`）。文中标注"现状核对"处为与代码库对齐的说明，其余保留原提案内容供后续实施参考。
+> **实施状态（2026-10-25 更新）**：**`api_id` 作用域已实施**（C6a / INT-1756，合入 V9.7.31；实现契约见 **§十**），实现与本文 §二/§三 提案的差异：**不建外键**（跨服务 DB 约束违反架构红线，存在性与算法类型一致性改由网关写路径校验）。**`keywords` 绑定仍为设计提案，尚未实施**。经代码核对：`AlgorithmDeviceParam`、`AlgorithmApiParam`、`ParamMapping` 三个模型中均**不存在** keywords 字段（`AlgorithmApiParam` / `ParamMapping` 已有 `api_id`）。当前设备驱动的解析由 `backend/utils/device_driver/registry.py` 按 `(app_type, version, platform)` 三元组完成（AppType/DevicePlatform 枚举驱动），keywords 字符串匹配机制仍保留于 `driver_factory.py` 的专用驱动注册表（`_specialized_drivers`）。文中标注"现状核对"处为与代码库对齐的说明，其余保留原提案内容供后续实施参考。
 
 > **C0 裁定（2026-10-24，INT-1745，方案一致性审计）**：§二/§三 的 `keywords` / `api_id` 字段方案仍为提案；与之相邻的另一条语义——**API 输出字段的声明与取值**——已裁定，见 **§九**：输出字段由 `algorithm_api_params(direction=output)` 声明（补 `field_path`），映射到评估维度参数在执行侧完成，`map_api_results` 废弃。
 
@@ -37,7 +37,7 @@ class AlgorithmApiParam(db.Model):
     api_id = Column(Integer, ForeignKey('apis.id'), comment='关联的API配置ID')
 ```
 
-> 现状核对：AlgorithmApiParam 实际字段为 algorithm_type/param_code/param_name/label/param_type/direction/required/default_value/validation_rules/help_text/ui_order/hidden/deleted，暂无 api_id 字段。API 参数在现有设计中直接归属算法配置（按 algorithm_type 关联），不绑定到具体 API 记录。
+> 现状核对（2026-10-25）：`AlgorithmApiParam` 已有 `api_id = Column(Integer, nullable=True)`（`NULL` = 算法类型级默认，**无 ForeignKey**，见 §十）；其余字段仍为 algorithm_type/param_code/param_name/label/param_type/direction/required/default_value/validation_rules/help_text/ui_order/hidden/deleted（另有 C2 的 `field_path`）。
 
 ### 3. ParamMapping（参数映射表）
 
@@ -55,7 +55,7 @@ class ParamMapping(db.Model):
     api_id = Column(Integer, ForeignKey('apis.id'), comment='API配置ID（用于映射时识别来源API）')
 ```
 
-> 现状核对：ParamMapping 实际字段为 algorithm_type/source/source_param/source_direction/dimension_id/target_param/transform_type/deleted，暂无 keywords/api_id 字段。其中 source 支持 case/reference/device/api/case_config 五类来源，source_direction 区分输入/输出方向，映射按 algorithm_type 关联参数定义，无需 keywords/api_id 即可定位来源参数。
+> 现状核对（2026-10-25）：`ParamMapping` 已有 `api_id = Column(Integer, nullable=True)`（`NULL` = 算法类型级默认，**无 ForeignKey**）；`keywords` 仍不存在。实际字段为 algorithm_type/source/source_param/source_direction/dimension_id/target_param/transform_type/deleted。其中 source 支持 case/reference/device/api/case_config 五类来源，source_direction 区分输入/输出方向；合并读取口径见 §十。
 
 ## 三、字段作用说明
 
@@ -240,5 +240,58 @@ rounds[i].output = {target_param: value}      ← 评估侧唯一读取的口径
 | `field_path` 列 + 声明驱动提取 | C2 INT-1747 | `algorithm_api_params` 加 `field_path VARCHAR(255) NULL`（空 = 按 `param_code`）、DTO / RPC 透传；单轮（`api_task_runner.py:401-472`）、多轮、Realtime 三条链共用一个提取入口 |
 | 去硬编码 | C3 INT-1748 | `VoiceLlmStrategy.get_output_fields` / `process_algorithm_result` 改读配置；**删除** `map_api_results` 实现而非配置化它 |
 | `transform_type` 生效 | C4 INT-1749 | 在 §9.2 第 ② 跳（执行侧映射处）应用一次，评估侧不重复应用；批量取变换而非逐字段 RPC |
-| `api_id` 作用域（同类型多厂商） | C6 INT-1751 | 声明表补 api_id 维度；本轮不做，声明按算法类型作用域 |
+| `api_id` 作用域（同类型多厂商） | C6 INT-1751 | **C6a 已实施（INT-1756，合入 V9.7.31）**：声明表与映射表补 api_id 维度、唯一索引按算法级/API 级拆分、读侧合并入口与 proto/DTO 透传，契约见 §十；**C6b（INT-1757）**负责把执行 / 评估 / 报告调用点接上 api_id，未接线前各消费域仍按算法类型级默认取值 |
+
+## 十、`api_id` 作用域实现契约（C6a / INT-1756）
+
+> **实现演进裁定（2026-10-25，INT-1849 方案一致性审计）**：本节按已合入 V9.7.31 的实现（交付分支 `agent/d/int-1756` @ `766d1a9af`，合入提交 `cb0b73e5d` / 返工 `b30965cf2`）回写。与 §二/§三 提案的差异以本节为准：**不建外键**；`api_id` 语义为「作用域」而不是「来源识别」。
+
+### 10.1 语义与优先级
+
+- `algorithm_api_params.api_id`、`param_mappings.api_id`：`NULL` = **算法类型级默认**（同类型各 API 共享），非空 = **API 实例级**，指向 `api_test_service` 的 `apis.id`（跨服务不建 DB 外键）。
+- 读取优先级：**API 实例级 > 算法类型级**，且是**合并**而非二选一——同键的 API 级行覆盖算法级行，未被覆盖的键继续用算法级行；其它 `api_id` 的行不参与。
+- 不传 `api_id`（存量路径）：只返回算法级行，行为与 C6a 之前一致；行里多一个 `api_id: null` 键。
+
+### 10.2 唯一索引（算法级 / API 级各一条，统一 `NULLS NOT DISTINCT`）
+
+| 索引 | 定义（均含 `WHERE deleted = false`） |
+|---|---|
+| `uq_algorithm_api_param_algo_level` | UNIQUE `(algorithm_type, param_code, direction)` `NULLS NOT DISTINCT` … `AND api_id IS NULL` |
+| `uq_algorithm_api_param_api_level` | UNIQUE `(algorithm_type, api_id, param_code, direction)` `NULLS NOT DISTINCT` … `AND api_id IS NOT NULL` |
+| `uq_param_mapping_algo_level` | UNIQUE `(algorithm_type, source, source_param, dimension_id)` `NULLS NOT DISTINCT` … `AND api_id IS NULL` |
+| `uq_param_mapping_api_level` | UNIQUE `(algorithm_type, api_id, source, source_param, dimension_id)` `NULLS NOT DISTINCT` … `AND api_id IS NOT NULL` |
+| `idx_algorithm_api_params_api_id` / `idx_param_mappings_api_id` | 普通部分索引 `(api_id) WHERE deleted = false` |
+
+- 旧索引 `uq_algorithm_api_param_direction`、`uq_algorithm_source_to_dimension` 由迁移 **DROP**（不保留）。
+- `NULLS NOT DISTINCT` 是必需的：PG 默认 `NULLS DISTINCT` 下 `api_id IS NULL` 的行不参与唯一约束；`param_mappings.dimension_id` 本身可空，不加会把 `(…, NULL)` 的重复插入放过去。
+- 模型 `__table_args__` 仍声明上述两条旧索引（C2 并行期「不改既有索引定义」的约定），**全新库须靠引导链本步纠正**；在只跑 `create_all` 未跑引导链的库上，旧唯一键会拦住 API 级覆盖行。
+
+### 10.3 读侧合并入口
+
+- 合并键 = 唯一键：`algorithm_api_params` 为 `(direction, param_code)`；`param_mappings` 为 `(source, source_param, dimension_id)`——**`target_param` 不是合并键**（API 级换 target 时是同键覆盖，不是两行并存）。
+- 入口：`algorithm_service/infrastructure/persistence/config_cache.py:906` `get_api_params(algorithm_type, api_id=None)`、`:923` `get_param_mapping(algorithm_type, component_type, api_id=None)`、`algorithm_service/application/queries/field_mapping_queries.py:19` `get_field_definitions(algorithm_type, api_id=None)`；`algorithm_config_queries.py:37,55` 为同名透传。
+- 缓存分桶键**不变**，行携带 `api_id`（`_serialize_params` / `_serialize_mappings`）；`evaluation` 桶的四元组去重放在合并**之后**（`_get_evaluation_mappings`）。
+- `get_algorithm_config` / `get_algorithm_params` 按算法级（`api_id=None`）返回，不把某个 API 的行当作算法级配置透出。
+
+### 10.4 写入路径
+
+- proto：`GetApiParamsListRequest.api_id = 2`、`GetParamMappingForComponentRequest.api_id = 3`、`GetFieldMappingsRequest.api_id = 3`，均为 `optional int32`（presence 区分「未传」与「显式传值」；`api_id=0` 与未传可区分）；响应 message 不变（仍是 JSON 字符串，行带 `api_id`）。见 `shared/proto/algorithm_service.proto:497-527`。
+- 网关 DTO：`_algorithm_api_param_schemas.py:20,43`、`_algorithm_dimension_schemas.py:133,144,179,190` 的创建 / 更新 schema 加可选 `api_id`（`ge=1`，snake/camel 均可入参，沿用 `APIModel` 既有约定）。
+- 作用域校验：`api_gateway/application/services/algorithm/algorithm_command_service.py:47` `_validate_api_scope` —— `api_id` 必须为正整数、对应 api 必须存在、其 `algorithm_type` 必须与参数行一致，否则 **400**（DB 无 FK，只能在网关保证）。更新载荷不带 `algorithm_type` 时只校验存在性。
+- `create_param` 必须显式回写 `param_type_source`（`algorithm_command_service.py:226-228`）：schema 是 `extra="ignore"`，否则带 `api_id` 的 API 参数会被建进 `algorithm_device_params`（该表无 `api_id` 列，静默忽略）。
+- 算法定义「整份保存」的 upsert 只管理 `api_id IS NULL` 的行（`_algorithm_full_save.py:105-111,296-300`），API 实例级配置不会被「提交集外软删」误删。
+
+### 10.5 迁移、引导链与部署顺序
+
+- 脚本 `scripts/migrations/202610/add_api_id_scope_int1751.py`：默认 dry-run、`--apply` 执行、`--rollback [--apply]` 回滚；幂等（列/索引存在即 SKIP）；`SET lock_timeout='10s'`，等锁超时抛 `55P03` 原样上抛不吞；执行前统计两个层级的重复组，有重复直接 `[FAIL]` 退出（码 2）。
+- 已接入引导链 `docker/db_bootstrap_entrypoint.py:206`（㊻，带 `--apply`），排在 ㊽ `analyze_stale_statistics_int1741.py` **之前**（ANALYZE 必须保持末位，`tests/unit/test_int1741_analyze_stale_statistics.py` 钉死）。
+- 部署：`db_bootstrap` 是 compose 门控服务（`service_completed_successfully`），重建 db_bootstrap 镜像后随 `docker compose up` 对目标库执行本步；**未跑本步的库上新镜像读参数表会 `UndefinedColumn`**，因此 `db_bootstrap` 必须先于各服务完成。
+- 存量安全（2026-10-25 主库只读实测）：`param_mappings` 未删除 959 行（其中 `dimension_id IS NULL` 1 行）、`algorithm_api_params` 未删除 7 行；按两条新算法级唯一键统计**重复组均为 0**，加索引不会产生重复键失败。主库当前仍是迁移前形态（无 `api_id` 列、旧两条唯一索引），迁移随部署执行。
+- 与相邻卡：INT-1784（冗余索引下线）只 DROP「名字 + 定义双匹配且非 UNIQUE」的 22 条 btree，不涉及本节四条唯一索引与两条 `idx_*_api_id`；其脚本尚未合入 V9.7.31，合入时其引导链步同样须排在 ㊽ 之前（两步互不依赖，无次序要求）。INT-1794 结论为「不需要整体重新设计」，不改这两张表的关系模型，与本迁移不冲突。
+
+### 10.6 未收口事项（跟踪，不是 C6a 的实现偏差）
+
+- **C6b（INT-1757）**：把 `api_id` 接到执行 / 评估 / 报告调用点，并改 `result_field_mapping_queries._output_field_cache` 键为 `(algorithm_type, api_id)`；未接线前所有消费域按算法级默认。
+- `algorithm_service/infrastructure/persistence/_algorithm_dimension_repositories.py:264-303` 的 `sync_for_dimension` 仍按 `dimension_id + source='evaluation'` 做「提交集外软删」与整行改写，**未按 `api_id` 收口**：一旦存在 API 实例级的维度映射，维度参数保存会改写或软删它。已开缺陷卡 **INT-1863**（backlog，父卡 INT-1751）跟踪，建议并入 C6b 一起收口。
+- 前端 C5（INT-1750）映射页签读路径 `GET /algorithm/mappings?algorithm_type=X&source_type=api` 与写路径暂不带 `api_id`，界面只能看/改算法级配置；API 实例级配置目前只能经接口写。
 
