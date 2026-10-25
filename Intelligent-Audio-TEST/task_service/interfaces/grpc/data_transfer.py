@@ -23,6 +23,9 @@ class DataTransferServiceServicer(task_grpc.DataTransferServiceServicer):
             success=result.get('success', False),
             message=result.get('message', ''),
             data=_dumps(data) if data is not None else '',
+            # INT-1759：业务码走 proto 字段（不再只靠 data JSON 折码），
+            # 网关据此映射 HTTP 状态（422 用例一致性拒绝等）
+            code=int(result.get('code') or 0),
         )
 
     def ExportTasks(self, request, context=None):
@@ -39,10 +42,11 @@ class DataTransferServiceServicer(task_grpc.DataTransferServiceServicer):
 
     def PreviewImport(self, request, context=None):
         try:
+            options = _loads(request.data, {}) or {}
             from task_service.application.commands.task_commands import PreviewImportCommand
             from task_service.application.handlers.command_handlers import task_command_handler
             return self._resp(task_command_handler.handle_preview_import(
-                PreviewImportCommand(zip_path=request.zip_path)))
+                PreviewImportCommand(zip_path=request.zip_path, options=options)))
         except Exception as e:
             logger.exception('PreviewImport failed')
             return task_pb.TaskConfigResponse(success=False, message=str(e), data='')
@@ -51,10 +55,11 @@ class DataTransferServiceServicer(task_grpc.DataTransferServiceServicer):
         # 长耗时 RPC：客户端超时需放宽（网关代理 timeout=3600s）；
         # 进度经 Redis 频道 import_progress 推送，不依赖本调用回包
         try:
+            options = _loads(request.data, {}) or {}
             from task_service.application.commands.task_commands import ExecuteImportCommand
             from task_service.application.handlers.command_handlers import task_command_handler
             return self._resp(task_command_handler.handle_execute_import(
-                ExecuteImportCommand(zip_path=request.zip_path)))
+                ExecuteImportCommand(zip_path=request.zip_path, options=options)))
         except Exception as e:
             logger.exception('ExecuteImport failed')
             return task_pb.TaskConfigResponse(success=False, message=str(e), data='')

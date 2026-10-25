@@ -87,11 +87,13 @@ class MappingRepository(IMappingRepository):
         字段映射与 servicers.py CreateMapping 一致：
         - source ← data.source_type（servicer 传参为 source_type，PO 字段为 source）
         - source_param / source_direction / dimension_id / target_param / transform_type
+        - api_id（INT-1756 C6a）：API 实例级作用域，NULL = 算法类型级默认
         """
         session = get_db_session()
         try:
             po = ParamMappingPO(
                 algorithm_type=data.get("algorithm_type"),
+                api_id=data.get("api_id"),
                 source=data.get("source_type"),
                 source_param=data.get("source_param"),
                 source_direction=data.get("source_direction") or "output",
@@ -115,6 +117,7 @@ class MappingRepository(IMappingRepository):
         字段映射与 servicers.py UpdateMapping 一致：
         - 显式处理 source / source_param / source_direction
           / dimension_id / target_param / transform_type
+        - api_id（INT-1756 C6a）：None 表示不改，显式传值才落库
         """
         session = get_db_session()
         try:
@@ -125,6 +128,11 @@ class MappingRepository(IMappingRepository):
                 raise ValueError(
                     f"Param mapping id={mapping_id} 不存在，无法更新"
                 )
+            api_id = fields.get("api_id")
+            if api_id is None:
+                api_id = fields.get("apiId")
+            if api_id is not None:
+                po.api_id = api_id
             if fields.get("source") is not None:
                 po.source = fields["source"]
             if fields.get("source_param") is not None:

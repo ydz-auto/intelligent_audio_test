@@ -123,6 +123,74 @@ def _resolve_actual_source(algo_type: str, source: str, source_param: str) -> st
     return 'case'
 
 
+# ========== api_id 作用域合并（INT-1756 C6a） ==========
+#
+# 规则（父卡 INT-1751 第四节）：缓存分桶键不动，行携带 api_id，读时按唯一键合并——
+# API 级行覆盖同键的算法级行（api_id IS NULL），未覆盖的算法级行继续生效。
+# 合并键必须等于唯一键，不能拿 target_param 之类非唯一键字段当合并键。
+
+def _api_param_merge_key(param: Dict[str, Any]):
+    """algorithm_api_params 的合并键 = 唯一键 (direction, param_code)。"""
+    return (param.get('direction'), param.get('code'))
+
+
+def _mapping_merge_key(mapping: Dict[str, Any]):
+    """param_mappings 的合并键 = 唯一键 (source, source_param, dimension_id)。
+
+    ``target_param`` 不在唯一键里，API 级换 target 时按同键覆盖，而不是两行并存。
+    """
+    return (mapping.get('source'), mapping.get('source_param'),
+            mapping.get('dimension_id'))
+
+
+def _merge_level_rows(rows, api_id: Optional[int], key_fn):
+    """算法级 + API 级行按唯一键合并（api_id 为 None 时只返回算法级行）。
+
+    - 不传 api_id：只保留算法级行（存量行全部 ``api_id IS NULL``，与改动前一致），
+      其它 API 的行不会串进来；
+    - 传 api_id：命中该 API 的行覆盖同键算法级行（覆盖行占据算法级行的位置，
+      保持输出顺序稳定），未被覆盖的算法级行原样保留；API 独有的行按缓存顺序追加。
+    """
+    rows = rows or []
+    level_rows = [r for r in rows if r.get('api_id') is None]
+    if api_id is None:
+        return level_rows
+    scoped_rows = [r for r in rows if r.get('api_id') == api_id]
+    if not scoped_rows:
+        return level_rows
+    overrides = {}
+    for row in scoped_rows:
+        overrides.setdefault(key_fn(row), row)
+    merged = []
+    used_keys = set()
+    for row in level_rows:
+        key = key_fn(row)
+        override = overrides.get(key)
+        if override is not None:
+            merged.append(override)
+            used_keys.add(key)
+        else:
+            merged.append(row)
+    for row in scoped_rows:
+        key = key_fn(row)
+        if key in used_keys:
+            continue
+        used_keys.add(key)
+        merged.append(row)
+    return merged
+
+
+def _merge_mapping_buckets(mappings, api_id: Optional[int]):
+    """对 mappings 的每个来源桶分别做 api_id 作用域合并。"""
+    merged = {}
+    for bucket, rows in (mappings or {}).items():
+        if not isinstance(rows, list):
+            merged[bucket] = rows
+            continue
+        merged[bucket] = _merge_level_rows(rows, api_id, _mapping_merge_key)
+    return merged
+
+
 def _get_redis():
     """获取 Redis 连接（惰性创建 + 复用；连接失败返回 None）"""
     global _redis_client
@@ -584,7 +652,7 @@ class AlgorithmConfigCache:
         for p in params:
             if not isinstance(p, dict):
                 continue
-            result.append({
+            entry = {
                 'id': p.get('id'),
                 'algorithm_type': p.get('algorithm_type'),
                 'code': p.get('param_code') or p.get('code'),
@@ -600,7 +668,16 @@ class AlgorithmConfigCache:
                 'ui_group': p.get('ui_group', 'default'),
                 'hidden': p.get('hidden', False),
                 'param_type': p.get('param_type'),
-            })
+            }
+            # 输出字段取值路径（INT-1747）：只有 API 参数有该列，设备参数不带此键，
+            # 避免把 None 混进 device 字段定义。
+            if p.get('field_path') is not None:
+                entry['field_path'] = p.get('field_path')
+            # INT-1756：只有 algorithm_api_params 有 api_id 列；设备/用例参数
+            # 的 PO 没有该字段，不补键，保持既有序列化结果不变。
+            if 'api_id' in p:
+                entry['api_id'] = p.get('api_id')
+            result.append(entry)
         return result
 
     @staticmethod
@@ -666,37 +743,25 @@ class AlgorithmConfigCache:
                             source,
                             source_param,
                         )
+                # 行携带 api_id（INT-1756 C6a）：缓存分桶键不动，读侧按唯一键
+                # 合并时用它区分算法级（NULL）与 API 实例级。
+                entry = {
+                    'source': source,
+                    'source_param': m.get('source_param') or m.get('source_field'),
+                    'source_direction': m.get('source_direction') or m.get('direction'),
+                    'dimension_id': m.get('dimension_id'),
+                    'dimension_name': m.get('dimension_name'),
+                    'target_param': m.get('target_param') or m.get('target_field'),
+                    'transform_type': m.get('transform_type') or m.get('transform_rule') or 'none',
+                    'api_id': m.get('api_id'),
+                }
                 # 评估维度映射（dimension_id 非空）归入 evaluation 分组
                 if m.get('dimension_id') is not None:
-                    result.setdefault('evaluation', []).append({
-                        'source': source,
-                        'source_param': m.get('source_param') or m.get('source_field'),
-                        'source_direction': m.get('source_direction') or m.get('direction'),
-                        'dimension_id': m.get('dimension_id'),
-                        'dimension_name': m.get('dimension_name'),
-                        'target_param': m.get('target_param') or m.get('target_field'),
-                        'transform_type': m.get('transform_type') or m.get('transform_rule') or 'none',
-                    })
+                    result.setdefault('evaluation', []).append(entry)
                 elif source in result:
-                    result[source].append({
-                        'source': source,
-                        'source_param': m.get('source_param') or m.get('source_field'),
-                        'source_direction': m.get('source_direction') or m.get('direction'),
-                        'dimension_id': m.get('dimension_id'),
-                        'dimension_name': m.get('dimension_name'),
-                        'target_param': m.get('target_param') or m.get('target_field'),
-                        'transform_type': m.get('transform_type') or m.get('transform_rule') or 'none',
-                    })
+                    result[source].append(entry)
                 else:
-                    result.setdefault('evaluation', []).append({
-                        'source': source,
-                        'source_param': m.get('source_param') or m.get('source_field'),
-                        'source_direction': m.get('source_direction') or m.get('direction'),
-                        'dimension_id': m.get('dimension_id'),
-                        'dimension_name': m.get('dimension_name'),
-                        'target_param': m.get('target_param') or m.get('target_field'),
-                        'transform_type': m.get('transform_type') or m.get('transform_rule') or 'none',
-                    })
+                    result.setdefault('evaluation', []).append(entry)
         return result
 
     # ---- 失效调度 ----
@@ -814,25 +879,40 @@ class AlgorithmConfigCache:
         cache = self._config_cache
         if algorithm_type not in cache.get('algorithms', {}):
             return None
+        # INT-1756：本入口没有 api_id（proto 亦不带），按算法级默认口径返回，
+        # 不能把某个 API 实例级行当作算法级配置透出。
         return {
             'definition': cache['algorithms'].get(algorithm_type),
             'device_params': cache['device_params'].get(algorithm_type, []),
-            'api_params': cache['api_params'].get(algorithm_type, []),
+            'api_params': _merge_level_rows(
+                cache['api_params'].get(algorithm_type, []), None,
+                _api_param_merge_key),
             'case_params': cache['case_params'].get(algorithm_type, []),
-            'mappings': cache['mappings'].get(algorithm_type, {}),
+            'mappings': _merge_mapping_buckets(
+                cache['mappings'].get(algorithm_type, {}), None),
         }
 
     def get_algorithm_params(self, algorithm_type: str) -> List[Dict[str, Any]]:
         cache = self._config_cache
         device_params = cache.get('device_params', {}).get(algorithm_type, [])
-        api_params = cache.get('api_params', {}).get(algorithm_type, [])
+        # INT-1756：走 get_api_params 的算法级默认口径（api_id=None），
+        # 避免 API 实例级行混进「算法级合并参数」。
+        api_params = self.get_api_params(algorithm_type)
         return device_params + api_params
 
     def get_device_params(self, algorithm_type: str) -> List[Dict[str, Any]]:
         return self._config_cache.get('device_params', {}).get(algorithm_type, [])
 
-    def get_api_params(self, algorithm_type: str) -> List[Dict[str, Any]]:
-        return self._config_cache.get('api_params', {}).get(algorithm_type, [])
+    def get_api_params(
+        self, algorithm_type: str, api_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """获取 API 参数（api_id 传入时按 API 实例级合并覆盖算法级默认）。
+
+        INT-1756 C6a：不传 api_id 只返回算法级行（api_id IS NULL），与改动前
+        （存量行全部为算法级）结果一致；传 api_id 时该 API 的同键行覆盖算法级行。
+        """
+        rows = self._config_cache.get('api_params', {}).get(algorithm_type, [])
+        return _merge_level_rows(rows, api_id, _api_param_merge_key)
 
     def get_case_params(self, algorithm_type: str) -> List[Dict[str, Any]]:
         return self._config_cache.get('case_params', {}).get(algorithm_type, [])
@@ -840,18 +920,30 @@ class AlgorithmConfigCache:
     def get_reference_params(self, algorithm_type: str) -> List[Dict[str, Any]]:
         return self._config_cache.get('reference_params', {}).get(algorithm_type, [])
 
-    def get_param_mapping(self, algorithm_type: str, component_type: str) -> List[Dict[str, Any]]:
+    def get_param_mapping(
+        self, algorithm_type: str, component_type: str,
+        api_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """获取组件参数映射（api_id 传入时按 API 实例级合并）。
+
+        INT-1756 C6a：合并只做一次，evaluation 桶的去重必须发生在合并之后——
+        低层 ``_get_evaluation_mappings`` 先合并再按既有口径去重。
+        """
         cache = self._config_cache
         mappings = cache.get('mappings', {}).get(algorithm_type, {})
         if component_type == 'evaluation':
-            return self._get_evaluation_mappings(algorithm_type, cache)
-        return mappings.get(component_type, [])
+            return self._get_evaluation_mappings(algorithm_type, cache, api_id)
+        merged = _merge_mapping_buckets(mappings, api_id)
+        return merged.get(component_type, [])
 
     def _get_evaluation_mappings(
-        self, algorithm_type: str, cache: Optional[Dict[str, Any]] = None
+        self, algorithm_type: str, cache: Optional[Dict[str, Any]] = None,
+        api_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         cache = cache if cache is not None else self._config_cache
-        mappings = cache.get('mappings', {}).get(algorithm_type, {})
+        # 先做 api_id 作用域合并，再走原有的四元组去重（INT-1751 硬约束 2）
+        mappings = _merge_mapping_buckets(
+            cache.get('mappings', {}).get(algorithm_type, {}), api_id)
         result = []
         seen = set()
         # 维度级映射（dimension_id 非空）在 _serialize_mappings 中统一归入 evaluation 桶，
@@ -869,6 +961,7 @@ class AlgorithmConfigCache:
                 'dimension_id': m.get('dimension_id'),
                 'dimension_name': m.get('dimension_name'),
                 'transform_type': m.get('transform_type', 'none'),
+                'api_id': m.get('api_id'),
             })
         # 非维度级映射仍分布在各来源桶
         for source in ['device', 'api', 'case', 'case_config', 'reference', 'adjusted_reference']:
@@ -885,6 +978,7 @@ class AlgorithmConfigCache:
                     'dimension_id': m.get('dimension_id'),
                     'dimension_name': m.get('dimension_name'),
                     'transform_type': m.get('transform_type', 'none'),
+                    'api_id': m.get('api_id'),
                 })
         if 'adjusted_reference' not in mappings:
             for source in ['device', 'api', 'case', 'case_config', 'reference']:
@@ -903,6 +997,7 @@ class AlgorithmConfigCache:
                             'dimension_id': m.get('dimension_id'),
                             'dimension_name': m.get('dimension_name'),
                             'transform_type': m.get('transform_type', 'none'),
+                            'api_id': m.get('api_id'),
                         })
         return result
 

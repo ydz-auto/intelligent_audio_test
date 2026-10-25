@@ -15,6 +15,10 @@ from task_service.domain.services.data_transfer.manifest import (
     build_manifest,
     validate_manifest,
 )
+from task_service.domain.services.data_transfer.source_map import (
+    dedupe_entries,
+    plan_source_map_entries,
+)
 
 __all__ = [
     'ImportPlan',
@@ -23,8 +27,10 @@ __all__ = [
     'build_table_mapping',
     'build_manifest',
     'collect_external_references',
+    'dedupe_entries',
     'filter_merge_relations',
     'ManifestError',
+    'plan_source_map_entries',
     'plan_task_segment',
     'rewrite_fk_rows',
     'validate_manifest',

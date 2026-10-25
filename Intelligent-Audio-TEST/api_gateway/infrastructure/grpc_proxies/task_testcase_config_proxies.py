@@ -11,7 +11,7 @@ from shared.clients.grpc_clients import (
     get_testcase_config_service_stub,
 )
 
-from ._common import _grpc_call
+from ._common import _attach_code, _grpc_call
 
 from shared.proto import task_service_pb2 as task_pb
 
@@ -27,14 +27,10 @@ class _TaskConfigProxy:
     """
 
     def _resp(self, resp):
-        """统一解析 TaskConfigResponse 为 dict"""
+        """统一解析 TaskConfigResponse 为 dict（业务码透传，INT-1759 proto code）"""
         data = json.loads(resp.data) if resp.data else None
-        result = {'success': resp.success, 'message': resp.message, 'data': data}
-        # 失败响应的业务码经 data JSON 透传（proto 仅 success/message/data 三字段），
-        # 提升到顶层供 BFF/路由映射 HTTP 状态码（INT-141 F2）
-        if not resp.success and isinstance(data, dict) and isinstance(data.get('code'), int):
-            result['code'] = data['code']
-        return result
+        return _attach_code({'success': resp.success, 'message': resp.message,
+                             'data': data}, resp)
 
     @property
     def stub(self):

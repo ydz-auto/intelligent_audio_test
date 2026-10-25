@@ -22,8 +22,8 @@
     ④ 删除 apis.meta 的 protocol 键（只删该键，其余键保留）
 
 用法：
-    python scripts/migrations/202610/add_api_protocol_streaming_int1799.py          # 预览
-    python scripts/migrations/202610/add_api_protocol_streaming_int1799.py --apply  # 执行
+    python scripts/migrations/202610/add_api_protocol_streaming_int1798.py          # 预览
+    python scripts/migrations/202610/add_api_protocol_streaming_int1798.py --apply  # 执行
 
 幂等：列已存在且已 NOT NULL → ①②③ SKIP；回填按值比对只写有差异的行；
 meta 无 protocol 键 → ④ 跳过；全新库（ORM 建表已含两列）全 SKIP。

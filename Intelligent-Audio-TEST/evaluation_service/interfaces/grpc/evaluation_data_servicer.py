@@ -32,7 +32,11 @@ class EvaluationDataServiceServicer(eval_grpc.EvaluationDataServiceServicer):
         return bool(result), '', None
 
     def GetDimensionResultsByResultIds(self, request, context=None):
-        """按 result_id 列表批量查询维度评估结果（含 dimension_name）。"""
+        """按 result_id 列表批量查询维度评估结果（含 dimension_name）。
+
+        INT-1752：request.include_body 为 true 时一并返回
+        api_request_body / api_raw_response（默认 false 保持既有轻量载荷）。
+        """
         try:
             result_ids = _loads(request.result_ids, [])
             if not isinstance(result_ids, list) or not result_ids:
@@ -42,7 +46,8 @@ class EvaluationDataServiceServicer(eval_grpc.EvaluationDataServiceServicer):
             from evaluation_service.application.queries.evaluation_query_service import (
                 evaluation_query_service,
             )
-            result = evaluation_query_service.get_dimension_results_by_result_ids(result_ids)
+            result = evaluation_query_service.get_dimension_results_by_result_ids(
+                result_ids, include_body=bool(getattr(request, 'include_body', False)))
             return self._resp(*self._from_result(result))
         except Exception as e:
             return self._resp(False, str(e))

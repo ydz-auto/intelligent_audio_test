@@ -14,6 +14,7 @@ from api_gateway.schemas.report import (
     ReportListQuery,
     ReportCaseListQuery,
     ReportSearchCasesRequest,
+    ReportRawResponseQuery,
     ReportExportRequest,
     GetCaseAveragesRequest,
     ReportExportQuery,
@@ -194,6 +195,38 @@ class ReportQueryService:
             return success_response(data)
         except Exception as e:
             return error_response(f'查询报告用例失败: {str(e)}')
+
+    @staticmethod
+    def get_case_dimension_raw_response(report_id, case_id, dimension_id):
+        """按需读取报告某用例某维度的 API 原始响应（INT-1752）。
+
+        GET /reports/{id}/cases/{cid}/dimensions/{dim_id}/raw-response（report:read）。
+        默认关闭：不随报告详情下发，仅显式请求时读取；返回单页切片
+        （offset/limit，默认 20k、上限 200k 字符，has_more/next_offset 翻页）。
+        data.available=False 表示该用例/维度没有可展开的原始响应（非 API 用例等）。
+        """
+        try:
+            query = ReportRawResponseQuery.model_validate(
+                {k: v[0] if isinstance(v, list) else v
+                 for k, v in request.args.to_dict().items()})
+        except Exception as e:
+            return error_response(f'参数错误: {str(e)}', 400)
+
+        try:
+            stub = report_config_service.stub
+            resp = stub.GetCaseDimensionRawResponse(report_pb.GetCaseDimensionRawResponseRequest(
+                report_id=int(report_id),
+                case_id=str(case_id),
+                dimension_id=int(dimension_id),
+                offset=query.offset,
+                limit=query.limit,
+                round_number=query.round_number,
+            ))
+            if not resp.success:
+                return error_response(resp.message or '读取原始响应失败', http_code=resp.code or 400)
+            return success_response(_loads(resp.data, {}) or {})
+        except Exception as e:
+            return error_response(f'读取 API 原始响应失败: {str(e)}')
 
     # ------------------------------------------------------------------
     # 搜索报告用例

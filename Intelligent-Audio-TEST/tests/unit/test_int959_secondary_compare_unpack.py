@@ -110,7 +110,7 @@ class TestCollectAllResourcesNormalPath:
         monkeypatch.setattr(ReportCompareHelpers, '_build_all_dimensions',
                             staticmethod(lambda res_ids: (['dim1'], ['m1'], None)))
         monkeypatch.setattr(ReportDataBuilder, '_get_dimension_results_batch',
-                            staticmethod(lambda res_ids: ({11: []}, {})))
+                            staticmethod(lambda res_ids, include_body=False: ({11: []}, {})))
         monkeypatch.setattr(ReportUtils, 'calculate_core_metrics',
                             staticmethod(lambda **kw: {
                                 'metric_data': {'res-1': []},

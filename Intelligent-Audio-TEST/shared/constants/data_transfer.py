@@ -83,6 +83,28 @@ class FkMappingKey(str, Enum):
     TEST_REPORTS = 'test_reports'
 
 
+class SourceMapEntity(str, Enum):
+    """source_map 登记的实体类型（INT-1760 / D0 A4）
+
+    值与 FkMappingKey 一一对应：登记来源就是导入编排层拿到的四类 old→new
+    主键映射。关联表的自增主键不登记（无可翻译语义）。
+    """
+    TASKS = 'tasks'
+    TEST_RESULTS = 'test_results'
+    TEST_RESULT_DIMENSIONS = 'test_result_dimensions'
+    TEST_REPORTS = 'test_reports'
+
+    @classmethod
+    def values(cls) -> frozenset:
+        return frozenset(item.value for item in cls)
+
+
+# source_map 持久化表（归属 task_service；INT-1760 §5.3 / D0 A3）
+SOURCE_MAP_TABLE = 'data_transfer_source_maps'
+# 失败重放快照在批次登记 HASH 的 task_service 字段内的键名（D0 A3 第 3 条）
+SOURCE_MAP_BATCH_FIELD = 'source_map'
+
+
 @dataclass(frozen=True)
 class FkRule:
     """外键转换规则（设计文档 4.7.2）：子表.外键列 ← 引用哪个映射"""
@@ -129,6 +151,29 @@ class ImportProgressStep(str, Enum):
     UPDATING_PATHS = 'updating_paths'
     DONE = 'done'
     ERROR = 'error'
+
+
+class TransferIntent(str, Enum):
+    """导入意图（INT-1759，D0 裁定 A10-2）
+
+    - migrate：任务迁移，引用用例必须在目标库可用（默认）
+    - restore：历史结果查看 / 备份恢复，无需重新执行 → 默认不做用例硬校验，
+      但预检回执必须写明"未校验用例一致性，导入后无法重新执行"
+    """
+    MIGRATE = 'migrate'
+    RESTORE = 'restore'
+
+
+DEFAULT_TRANSFER_INTENT = TransferIntent.MIGRATE.value
+
+# ===== 用例一致性硬校验（INT-1759，D0 裁定 A10）=====
+# 拒绝导入的业务码（同时作为 HTTP 状态码）
+CASE_CONSISTENCY_FAILED_CODE = 422
+# 回执里缺失用例 ID 列表上限（超出以 truncated=true + missingCount 表达全量条数）
+CASE_CONSISTENCY_LIST_CAP = 500
+CASE_CONSISTENCY_REJECT_MESSAGE = '目标库缺少 {count} 个测试用例，拒绝导入'
+# restore 意图下不校验用例一致性时的固定告警文案
+RESTORE_SKIP_CONSISTENCY_WARNING = 'restore 意图未校验用例一致性，导入后无法重新执行'
 
 
 # ===== ZIP 包结构（设计文档 4.2，文件名用表名）=====

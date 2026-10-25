@@ -7,16 +7,24 @@
   3. gRPC report_service.ImportReports（单事务 + 自登记批次）
   4. 文件经存储抽象回写（放最后：DB 全部成功后才动文件）
   5. 更新 result_data_path（task_id 重映射的行，独立小事务）
+  6. source_map 登记（INT-1760：A 原始 id → 本地 id，一次事务 upsert；
+     失败返回 partial 不补偿——数据是对的，快照留批次登记供重放）
 
 任一段失败：按逆序补偿（清文件 → 报表回滚 → 维度回滚 → task 段回滚）；
 补偿自身失败必须显式报错要求人工介入（批次登记保留 TTL 7 天），不得静默。
 """
 import uuid
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from shared.constants.data_transfer import (
+    CASE_CONSISTENCY_FAILED_CODE,
+    CASE_CONSISTENCY_LIST_CAP,
+    CASE_CONSISTENCY_REJECT_MESSAGE,
+    DEFAULT_TRANSFER_INTENT,
     FkMappingKey,
     ImportProgressStep,
+    RESTORE_SKIP_CONSISTENCY_WARNING,
+    TransferIntent,
     TransferTable,
     fk_rules_of,
 )
@@ -27,6 +35,7 @@ from shared.utils.log_handler import log_not_emit
 from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
 from task_service.domain.services.data_transfer import (
     filter_merge_relations,
+    plan_source_map_entries,
     plan_task_segment,
     rewrite_fk_rows,
 )
@@ -62,6 +71,22 @@ _CONFLICT_PREVIEW_CAP = 500
 # 编排层据此把该段并入人工介入清单，防止孤儿数据静默残留
 _COMMITTED_WITHOUT_REGISTRY_MARKER = '已提交但批次登记失败'
 
+# source_map 批次登记里的服务字段名（与 tables 主键登记同一 HASH 字段，INT-1760）
+_SOURCE_MAP_OWNER = 'task_service'
+
+
+class SourceMapRegistrationError(RuntimeError):
+    """source_map 登记失败（数据段已全部提交）
+
+    按 D0 A3 第 3 条：远端/本地数据都是对的，**不回滚**，返回 partial 状态
+    （code 500 + sourceMapPending），映射快照已写进批次登记供重放。
+    """
+
+    def __init__(self, message: str, entries: List[dict], snapshot_saved: bool):
+        super().__init__(message)
+        self.entries = entries or []
+        self.snapshot_saved = snapshot_saved
+
 
 def _remaps_only(mapping: Dict[int, int]) -> Dict[int, int]:
     """只保留真正的重映射条目（远端 rewrite 语义 mapping.get(old, old) 下，
@@ -74,8 +99,17 @@ class DataTransferImportService:
 
     # ---------- 预检（M3） ----------
 
-    def preview_import(self, zip_path: str) -> dict:
-        """解析 ZIP 并返回预检结果（manifest 摘要 + stats + conflicts + warnings）。"""
+    def preview_import(self, zip_path: str, options: Optional[dict] = None) -> dict:
+        """解析 ZIP 并返回预检结果（manifest 摘要 + stats + conflicts + warnings
+        + caseConsistency）。
+
+        用例一致性在预检阶段**只报告不阻断**（D0 裁定 A10-3）：前端据
+        `data.caseConsistency.complete` 决定是否允许执行导入。
+        """
+        try:
+            required, intent = self._resolve_policy(options)
+        except ValueError as e:
+            return {'success': False, 'message': str(e), 'code': 400, 'data': None}
         manifest = validate_manifest(read_manifest(zip_path))
         rows_by_table = read_db_tables(zip_path)
 
@@ -104,7 +138,7 @@ class DataTransferImportService:
                 'existingName': '',
             })
 
-        warnings = self._build_warnings(rows_by_table)
+        warnings = self._build_warnings(rows_by_table, intent)
         stats = dict(manifest.get('stats') or {})
         stats['tableRows'] = {name: len(rows) for name, rows in rows_by_table.items() if rows}
 
@@ -121,11 +155,62 @@ class DataTransferImportService:
                 },
                 'stats': stats,
                 'conflicts': conflicts,
+                'intent': intent,
+                'caseConsistency': self._case_consistency(rows_by_table, required),
                 'warnings': warnings,
             },
         }
 
-    def _build_warnings(self, rows_by_table: Dict[str, List[dict]]) -> List[str]:
+    @staticmethod
+    def _resolve_policy(options: Optional[dict]) -> Tuple[bool, str]:
+        """解析用例一致性策略 → (required, intent)（D0 裁定 A10-1/2）
+
+        - 全局 `DATA_TRANSFER_CASE_CONSISTENCY_REQUIRED` 是总闸；
+        - 请求级 `require_case_consistency` **只能放宽到 false**，全局 false 时
+          传 true 不得反向收紧（防前端提权）；
+        - `intent='restore'`（历史结果查看/备份恢复）默认不校验，显式传
+          `require_case_consistency=true` 时仍按总闸校验。
+
+        Raises: ValueError 当 intent 非法（调用方映射 400）。
+        """
+        from shared.infrastructure.config import BaseConfig
+        opts = options or {}
+        intent = str(opts.get('intent') or DEFAULT_TRANSFER_INTENT).strip().lower()
+        if intent not in {i.value for i in TransferIntent}:
+            raise ValueError(f'不支持的导入意图 intent={intent}（仅支持 migrate/restore）')
+        required = bool(BaseConfig.DATA_TRANSFER_CASE_CONSISTENCY_REQUIRED)
+        request_flag = opts.get('require_case_consistency')
+        if request_flag is False:
+            required = False
+        elif request_flag is None and intent == TransferIntent.RESTORE.value:
+            required = False
+        return required, intent
+
+    def _case_consistency(self, rows_by_table: Dict[str, List[dict]],
+                          required: bool) -> dict:
+        """用例一致性校验回执（预检与执行共用，INT-1759）
+
+        引用来源只有 `task_case_relations.test_case_id`（`collect_external_references`），
+        结果/报告行不带用例引用，不产生误报。
+
+        `missingCaseIds` = 目标库缺失 ∪ 已软删 ∪ 私有且非 owner（不可用即缺失），
+        另给 `invisibleCaseIds` 供前端区分"真的没有"与"有但无权用"。
+        """
+        from task_service.domain.services.data_transfer import collect_external_references
+        refs = collect_external_references(rows_by_table)
+        availability = transfer_repository.fetch_case_availability(refs['test_case_ids'])
+        unavailable = sorted(availability['missing'] | availability['invisible'])
+        return {
+            'required': required,
+            'complete': not unavailable,
+            'missingCaseIds': unavailable[:CASE_CONSISTENCY_LIST_CAP],
+            'invisibleCaseIds': sorted(availability['invisible'])[:CASE_CONSISTENCY_LIST_CAP],
+            'missingCount': len(unavailable),
+            'truncated': len(unavailable) > CASE_CONSISTENCY_LIST_CAP,
+        }
+
+    def _build_warnings(self, rows_by_table: Dict[str, List[dict]],
+                        intent: str = DEFAULT_TRANSFER_INTENT) -> List[str]:
         """外部配置引用缺失 warning（外部实体不迁移不重映射）"""
         from task_service.domain.services.data_transfer import collect_external_references
         warnings: List[str] = []
@@ -163,18 +248,29 @@ class DataTransferImportService:
             except Exception as e:
                 log_not_emit('WARNING', _MODULE_NAME,
                              f'校验 API 引用失败（跳过该 warning）: {e}', category='system')
+        if intent == TransferIntent.RESTORE.value:
+            warnings.append(RESTORE_SKIP_CONSISTENCY_WARNING)
         return warnings
 
     # ---------- 执行导入（M4 核心） ----------
 
-    def execute_import(self, zip_path: str) -> dict:
-        """执行导入：分段提交 + 失败逆序补偿。返回导入统计（含 remappedIds）。"""
+    def execute_import(self, zip_path: str, options: Optional[dict] = None) -> dict:
+        """执行导入：分段提交 + 失败逆序补偿。返回导入统计（含 remappedIds）。
+
+        用例一致性硬校验在**段 1 任何写库动作之前**执行（INT-1759）：
+        拒绝时直接返回 422 + 缺失清单，不登记批次、不写 DB、不动文件。
+        """
+        try:
+            required, intent = self._resolve_policy(options)
+        except ValueError as e:
+            return {'success': False, 'message': str(e), 'code': 400, 'data': None}
         batch_id = uuid.uuid4().hex
         reporter = ImportProgressReporter(batch_id)
         files_tracker: List[tuple] = []
         mappings: Dict[str, Dict[int, int]] = {}
         inserted_pks: Dict[str, List[int]] = {}
         rows_by_table: Dict[str, List[dict]] = {}
+        source_map_inserted: List[dict] = []
 
         try:
             # ===== 段 0：解析（ZIP 条目已由 zip_io 做路径安全校验，防 zip-slip）=====
@@ -186,6 +282,24 @@ class DataTransferImportService:
             rows_by_table[TransferTable.TASK_MERGE_RELATIONS.value] = filter_merge_relations(
                 rows_by_table.get(TransferTable.TASK_MERGE_RELATIONS.value, []),
                 export_task_ids)
+
+            # ===== 用例一致性硬校验（INT-1759：早于批次登记与段 1 写入）=====
+            if required:
+                consistency = self._case_consistency(rows_by_table, required=True)
+                if not consistency['complete']:
+                    sample = '、'.join(consistency['missingCaseIds'][:10])
+                    more = '…' if consistency['missingCount'] > len(consistency['missingCaseIds']) else ''
+                    message = (CASE_CONSISTENCY_REJECT_MESSAGE.format(
+                        count=consistency['missingCount']) + f'：{sample}{more}')
+                    log_not_emit('WARNING', _MODULE_NAME,
+                                 f'{message} batch={batch_id}', category='system')
+                    reporter.report(ImportProgressStep.ERROR, message)
+                    return {
+                        'success': False,
+                        'message': message,
+                        'code': CASE_CONSISTENCY_FAILED_CODE,
+                        'data': dict(consistency, intent=intent),
+                    }
 
             existing_ids = transfer_repository.fetch_existing_ids()
             plan = plan_task_segment(rows_by_table, existing_ids)
@@ -241,6 +355,11 @@ class DataTransferImportService:
             reporter.report(ImportProgressStep.UPDATING_PATHS, '更新文件路径')
             self._update_result_paths(rows_by_table, mappings, files_tracker, reporter)
 
+            # ===== 段 6：source_map 登记（INT-1760 / D0 A3：编排层唯一写入方，
+            #      放在全部数据段成功之后的一次事务 upsert，失败走 partial 不补偿）=====
+            source_map_inserted = self._register_source_maps(
+                manifest, rows_by_table, mappings, batch_id)
+
             # ===== 完成 =====
             stats = self._build_stats(plan, dims_rows, report_tables_rows,
                                       files_tracker, mappings)
@@ -253,10 +372,33 @@ class DataTransferImportService:
             transfer_batch_registry.delete(batch_id)
             return {'success': True, 'message': '导入成功', 'data': stats}
 
+        except SourceMapRegistrationError as e:
+            # D0 A3 第 3 条：数据段已全部提交，远端数据是对的 —— **不回滚**，
+            # 返回 partial（code 500 + sourceMapPending + batchId），映射快照已
+            # 写进批次登记，失败后可人工/脚本重放登记（禁止静默）
+            log_not_emit('ERROR', _MODULE_NAME,
+                         f'导入完成但 source_map 登记失败 batch={batch_id}: {e}',
+                         category='system', exc_info=True)
+            message = str(e)
+            reporter.report(ImportProgressStep.ERROR, message)
+            return {
+                'success': False,
+                'message': message,
+                'code': 500,
+                'data': {
+                    'partial': True,
+                    'sourceMapPending': True,
+                    'batchId': batch_id,
+                    'entryCount': len(e.entries),
+                    'snapshotSaved': e.snapshot_saved,
+                    'compensationErrors': [],
+                },
+            }
         except Exception as e:
             log_not_emit('ERROR', _MODULE_NAME,
                          f'导入失败 batch={batch_id}: {e}', category='system', exc_info=True)
-            compensation_errors = self._compensate(files_tracker, inserted_pks, batch_id)
+            compensation_errors = self._compensate(
+                files_tracker, inserted_pks, batch_id, source_map_inserted)
             # 远端段"已提交但批次登记失败"：远端存在无登记孤儿行，自动补偿够不着，
             # 必须并入人工介入清单（规格架构决策 3"不得静默"）
             if _COMMITTED_WITHOUT_REGISTRY_MARKER in str(e):
@@ -281,7 +423,8 @@ class DataTransferImportService:
 
     def _compensate(self, files_tracker: List[tuple],
                     inserted_pks: Dict[str, List[int]],
-                    batch_id: str) -> List[str]:
+                    batch_id: str,
+                    source_map_inserted: List[dict] = None) -> List[str]:
         """按逆序回滚已提交段。返回补偿失败清单（非空即需人工介入）。
 
         问题 1 修复：远端段回滚**无条件**调用——批次未登记时远端本就 no-op
@@ -289,8 +432,15 @@ class DataTransferImportService:
         仅当全部回滚成功才销毁批次登记。
         问题 2 修复：task 段直接用编排方内存中的 inserted_pks 回滚，
         不依赖 Redis 读登记（登记恰可能因本次故障不可用）。
+        INT-1760：source_map 只回删**本批次新增**的条目（覆盖的旧行无快照，
+        删掉等于丢历史映射），避免孤儿映射。
         """
         errors: List[str] = []
+        if source_map_inserted:
+            try:
+                transfer_repository.delete_source_maps(source_map_inserted)
+            except Exception as e:
+                errors.append(f'source_map 回删失败: {e}')
         if files_tracker:
             cleanup_failures = delete_written_files(files_tracker)
             errors.extend(f'文件清理失败: {f}' for f in cleanup_failures)
@@ -329,6 +479,15 @@ class DataTransferImportService:
                 deleted['task_service'] = transfer_repository.rollback_task_segment(task_pks)
             except Exception as e:
                 errors.append(f'task_service 回滚失败: {e}')
+        # INT-1760：映射按批次快照回删（任务行删掉后映射即孤儿）
+        source_map_entries = transfer_batch_registry.load_source_map(
+            batch_id, _SOURCE_MAP_OWNER)
+        if source_map_entries:
+            try:
+                deleted['source_map'] = transfer_repository.delete_source_maps(
+                    source_map_entries)
+            except Exception as e:
+                errors.append(f'source_map 回滚失败: {e}')
         try:
             deleted['evaluation_service'] = evaluation_transfer_acl_repository.rollback_dimension_import(batch_id)
         except Exception as e:
@@ -349,6 +508,50 @@ class DataTransferImportService:
                 'data': {'batch_id': batch_id, 'deleted': deleted}}
 
     # ---------- 内部工具 ----------
+
+    def _register_source_maps(self, manifest: dict,
+                              rows_by_table: Dict[str, List[dict]],
+                              mappings: Dict[str, Dict[int, int]],
+                              batch_id: str) -> List[dict]:
+        """登记 A 原始 id → 本地 id 映射（INT-1760 / D0 A3）。
+
+        时序：全部数据段成功后一次事务 upsert；不在各子步骤里分散登记。
+        先写 Redis 快照再写库——登记失败时快照是重放的唯一依据。
+        Returns: 本批次**新增**的条目（补偿只回删这些；覆盖的旧行不动）。
+        Raises: SourceMapRegistrationError（编排层转 partial，不补偿）。
+        """
+        server_info = manifest.get('serverInfo') or {}
+        source_server = str(server_info.get('source') or '')
+        entries, warnings = plan_source_map_entries(source_server, rows_by_table, mappings)
+        for warning in warnings:
+            log_not_emit('WARNING', _MODULE_NAME,
+                         f'source_map 跳行 batch={batch_id}: {warning}', category='system')
+        if not entries:
+            return []
+
+        snapshot_saved = True
+        try:
+            transfer_batch_registry.record_source_map(batch_id, _SOURCE_MAP_OWNER, entries)
+        except Exception as e:
+            snapshot_saved = False
+            log_not_emit('ERROR', _MODULE_NAME,
+                         'source_map 快照写入批次登记失败 '
+                         f'batch={batch_id}（DB 登记继续，人工回滚将缺少快照）: {e}',
+                         category='system', exc_info=True)
+        try:
+            result = transfer_repository.upsert_source_maps(entries)
+        except Exception as e:
+            log_not_emit('ERROR', _MODULE_NAME,
+                         f'source_map 登记失败 batch={batch_id} entries={len(entries)}: {e}',
+                         category='system', exc_info=True)
+            raise SourceMapRegistrationError(
+                f'导入数据已提交，但 source_map 登记失败（{len(entries)} 条映射待重放，'
+                f'batch_id={batch_id}）: {e}', entries, snapshot_saved) from e
+        log_not_emit('INFO', _MODULE_NAME,
+                     f'source_map 登记完成 batch={batch_id} '
+                     f'inserted={result["insertedCount"]} updated={result["updatedCount"]}',
+                     category='system')
+        return result['inserted']
 
     def _update_result_paths(self, rows_by_table: Dict[str, List[dict]],
                              mappings: Dict[str, Dict[int, int]],

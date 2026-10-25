@@ -925,6 +925,36 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             logger.exception("ListCaseLogs failed")
             return self._resp(False, str(e), {})
 
+    def GetCaseDimensionRawResponse(self, request, context=None):
+        """按需读取某用例某维度的 API 原始响应（INT-1752）。
+
+        请求字段（proto GetCaseDimensionRawResponseRequest）：
+            report_id: int    报告 ID
+            case_id: str      用例 ID
+            dimension_id: int 维度 ID
+            offset: int       字符偏移（默认 0）
+            limit: int        单页字符数（0 取默认，超过上限按上限截断）
+            round_number: int 可选，多轮用例指定轮次；0 = 不指定（整体优先）
+
+        默认不随报告详情下发；本端点显式请求才读取，且只返回单页切片。
+        返回 data.available=False 表示没有可展开的原始响应（非 API 用例等）。
+        """
+        try:
+            data = self.query_handler.handle_get_case_dimension_raw_response(
+                int(getattr(request, 'report_id', 0) or 0),
+                {
+                    'case_id': getattr(request, 'case_id', ''),
+                    'dimension_id': getattr(request, 'dimension_id', 0),
+                    'offset': getattr(request, 'offset', 0),
+                    'limit': getattr(request, 'limit', 0),
+                    'round_number': getattr(request, 'round_number', 0),
+                },
+            )
+            return self._resp(True, 'ok', data)
+        except Exception as e:
+            logger.exception("GetCaseDimensionRawResponse failed")
+            return self._resp(False, str(e), {})
+
     def BuildReferenceParams(self, request, context=None):
         """构建参考参数（供 api_gateway task_query_service 调用）。
 

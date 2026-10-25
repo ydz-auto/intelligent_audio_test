@@ -173,6 +173,10 @@ class AlgorithmApiParam(Base):
     )
     id = Column(Integer, primary_key=True, autoincrement=True)
     algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type'), nullable=False, comment='关联算法类型')
+    # INT-1756（C6a）：API 实例级作用域，指向 api_test_service 的 apis.id。
+    # 不建 ForeignKey：apis 归 api_test_service，跨服务 DB 约束违反架构红线；
+    # 存在性与算法类型一致性由网关写路径校验。NULL = 算法类型级默认。
+    api_id = Column(Integer, nullable=True, comment='API 实例ID（NULL=算法类型级默认）')
     param_code = Column(String(50), nullable=False, comment='参数代码')
     param_name = Column(String(100), comment='参数显示名称')
     label = Column(String(100), comment='字段显示名称（用于映射配置中的显示）')
@@ -184,6 +188,7 @@ class AlgorithmApiParam(Base):
     help_text = Column(Text, comment='帮助提示文字')
     ui_order = Column(Integer, default=0, comment='界面排序')
     hidden = Column(Boolean, default=False, comment='是否隐藏')
+    field_path = Column(String(255), comment='输出字段取值路径（点号 + 数组下标，如 data.events[0].text；空 = 按 param_code 取顶层键）')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
@@ -194,6 +199,7 @@ class AlgorithmApiParam(Base):
         return {
             'id': self.id,
             'algorithm_type': self.algorithm_type,
+            'api_id': self.api_id,
             'param_code': self.param_code,
             'param_name': self.param_name,
             'label': self.label,
@@ -204,7 +210,8 @@ class AlgorithmApiParam(Base):
             'validation': parse_json_or_raw(self.validation_rules),
             'help_text': self.help_text,
             'ui_order': self.ui_order,
-            'hidden': self.hidden
+            'hidden': self.hidden,
+            'field_path': self.field_path,
         }
 
 
@@ -306,6 +313,9 @@ class ParamMapping(Base):
     )
     id = Column(Integer, primary_key=True, autoincrement=True)
     algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type'), nullable=False, comment='关联算法类型')
+    # INT-1756（C6a）：API 实例级作用域，指向 api_test_service 的 apis.id（不建跨服务 FK）。
+    # NULL = 算法类型级默认；合并读取时 API 级行覆盖同键算法级行。
+    api_id = Column(Integer, nullable=True, comment='API 实例ID（NULL=算法类型级默认）')
     source = Column(String(20), nullable=False, default='api', comment='参数来源：case=用例参数, reference=参考参数, device=设备输出, api=API输出')
     source_param = Column(String(50), nullable=False, comment='源参数代码')
     source_direction = Column(String(10), default='output', comment='源参数方向：input, output')
@@ -323,6 +333,7 @@ class ParamMapping(Base):
         return {
             'id': self.id,
             'algorithm_type': self.algorithm_type,
+            'api_id': self.api_id,
             'source': self.source,
             'source_param': self.source_param,
             'source_direction': self.source_direction,

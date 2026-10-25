@@ -381,7 +381,9 @@ class TestCoreChainDispatch:
         assert calls['context']['input_text'] == 'hi'
         # _send_direct 消费适配器渲染产物：哨兵头/体到达 HTTP 层
         assert result['success'] is True
-        assert result['output'] == 'pong'
+        # INT-1746：轮次文本落 answer_text，output 为映射后的 dict
+        assert result['answer_text'] == 'pong'
+        assert result['output'] == {}
 
     def test_mock_adapter_end_to_end_via_registry(self, echo_server):
         """mock 厂商适配器经注册表渲染轮次请求，核心链路零改动"""

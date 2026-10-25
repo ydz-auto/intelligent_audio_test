@@ -143,6 +143,7 @@ from shared.clients._grpc_algo_audio import (
     algo_get_evaluation_field_mappings,
     algo_build_api_request_data,
     algo_convert_field_value,
+    algo_convert_field_values,
     algo_get_output_fields,
     algo_get_reference_output_fields,
     algo_extract_result_fields,

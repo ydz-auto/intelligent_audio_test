@@ -458,7 +458,8 @@ class VendorAdapterRegistry:
         """按用例配置解析类型并实例化（执行链标准入口）
 
         类型解析：case_config.vendor_adapter > api_config.meta.vendor_adapter
-        > 默认 API_DRIVER；协议维度由配置显式 protocol > endpoint 前缀推断；
+        > 默认 API_DRIVER；协议维度唯一来源 `api_config.protocol` 列
+        （INT-1799：case 级 / meta.protocol / 端点前缀三处来源已删除）；
         显式配置了未注册/不存在的类型立即报错（拒绝魔法字符串静默降级）。
         """
         protocol, vendor = dimensions_from_config(api_config, case_config)

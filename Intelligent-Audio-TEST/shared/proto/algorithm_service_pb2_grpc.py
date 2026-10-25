@@ -3598,6 +3598,11 @@ class AlgorithmQueryServiceStub:
                 request_serializer=algorithm__service__pb2.ConvertFieldValueRequest.SerializeToString,
                 response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
                 _registered_method=True)
+        self.ConvertFieldValues = channel.unary_unary(
+                '/algorithm.AlgorithmQueryService/ConvertFieldValues',
+                request_serializer=algorithm__service__pb2.ConvertFieldValuesRequest.SerializeToString,
+                response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
+                _registered_method=True)
         self.GetOutputFields = channel.unary_unary(
                 '/algorithm.AlgorithmQueryService/GetOutputFields',
                 request_serializer=algorithm__service__pb2.GetOutputFieldsRequest.SerializeToString,
@@ -3782,6 +3787,17 @@ class AlgorithmQueryServiceServicer:
 
     def ConvertFieldValue(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ConvertFieldValues(self, request, context):
+        """批量字段值转换（INT-1749）：一次请求处理 N 个值，执行侧映射编排不再逐字段跨服务。
+        data JSON: {"items": [{"transform_type": "...", "value": <任意 JSON>}, ...]}
+        响应 data JSON: {"values": [...与 items 同序...],
+        "errors": [{"index","transform_type","error"}, ...]}
+        非法输入策略：保留原值 + errors 回传（服务端 WARNING），不抛异常、不静默吞成空串。
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -3973,6 +3989,11 @@ def add_AlgorithmQueryServiceServicer_to_server(servicer, server):
             'ConvertFieldValue': grpc.unary_unary_rpc_method_handler(
                     servicer.ConvertFieldValue,
                     request_deserializer=algorithm__service__pb2.ConvertFieldValueRequest.FromString,
+                    response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
+            ),
+            'ConvertFieldValues': grpc.unary_unary_rpc_method_handler(
+                    servicer.ConvertFieldValues,
+                    request_deserializer=algorithm__service__pb2.ConvertFieldValuesRequest.FromString,
                     response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
             ),
             'GetOutputFields': grpc.unary_unary_rpc_method_handler(
@@ -4471,6 +4492,33 @@ class AlgorithmQueryService:
             target,
             '/algorithm.AlgorithmQueryService/ConvertFieldValue',
             algorithm__service__pb2.ConvertFieldValueRequest.SerializeToString,
+            algorithm__service__pb2.AlgorithmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ConvertFieldValues(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/algorithm.AlgorithmQueryService/ConvertFieldValues',
+            algorithm__service__pb2.ConvertFieldValuesRequest.SerializeToString,
             algorithm__service__pb2.AlgorithmResponse.FromString,
             options,
             channel_credentials,

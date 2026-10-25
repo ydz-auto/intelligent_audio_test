@@ -188,7 +188,41 @@ BOOTSTRAP_STEPS = [
     #     全新库为全 SKIP。**必须排在 INT-1741 统计兜底之前**（那步是引导链末步，
     #     tests 有守护用例）。默认 dry-run，引导链须带 --apply。
     ('python', 'scripts/migrations/202610/add_api_protocol_streaming_int1798.py', '--apply'),
-    # ㊸ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
+    # ㊸ apis.meta.protocol 存量取值归一化（INT-1770）：前端写真 http/https/ws/wss，
+    #     适配器维度枚举只认 http/websocket/realtime/any，旧值在建任务时抛
+    #     ValueError。代码侧已按映射兜底（只读兼容），本步把存量值回写标准词表；
+    #     只命中 protocol ∈ {https, ws, wss} 的行，脚本幂等（归一后再次执行 0 行），
+    #     全新库为 0 行；默认 dry-run，引导链须 --apply。
+    #     注（INT-1799）：本卡的 ㊸-1 已把 apis.meta.protocol 整键删除，本步对存量库
+    #     恒为空转（命中 0 行），保留只为历史引导链编号稳定、不动 INT-1827 已排定的
+    #     ㊸~㊽ 顺序。
+    ('python', 'scripts/migrations/202610/normalize_api_meta_protocol_int1770.py', '--apply'),
+    # ㊹ pg_stat_statements 扩展（INT-1783 观测基线·档 0）：库侧建扩展是「存量库 /
+    #     全新库都要自愈」的结构对象，create_all 只建表，故进引导链。扩展的共享内存
+    #     依赖服务端启动参数 shared_preload_libraries（本卡落在 docker/docker-compose.yml
+    #     的 postgres 服务），脚本只回读配置、不一致只 WARN 不阻断。幂等（扩展存在即
+    #     SKIP），默认 dry-run，引导链必须带 --apply。
+    ('python', 'scripts/migrations/202610/add_pg_stat_statements_int1783.py', '--apply'),
+    # ㊺ algorithm_api_params 补输出字段取值路径列 field_path（INT-1747 / C2）：
+    #     API 输出字段按 field_path 从厂商原始响应取嵌套值（data.events[0].text），
+    #     为空保持「按 param_code 取顶层键」的存量行为。create_all 只建缺失的表、
+    #     不给存量表补列，存量库（真实库 / 隔离库）缺该列时新镜像读声明表即
+    #     UndefinedColumn。脚本幂等（列存在即 SKIP），全新库为全 SKIP。
+    ('python', 'scripts/migrations/202610/add_api_param_field_path_int1747.py', '--apply'),
+    # ㊻ api_id 作用域（INT-1751 第八节 / INT-1756 C6a）：algorithm_api_params /
+    #     param_mappings 补 api_id 列并把两条旧唯一索引拆成「算法级 / API 级」
+    #     各一条（统一 NULLS NOT DISTINCT）。create_all 只建缺失的表、不给存量表
+    #     补列，存量库缺列时新镜像读参数即 UndefinedColumn；脚本幂等（列/索引存在
+    #     即 SKIP）、默认 dry-run，引导链必须带 --apply（等锁超过 10s 抛 55P03 不吞）。
+    ('python', 'scripts/migrations/202610/add_api_id_scope_int1751.py', '--apply'),
+    # ㊼ data_transfer_source_maps 离线搬运映射表（INT-1760 / D0 A3-A4）：
+    #     create_all 只建缺失的表，建库早于本卡的存量库（真实库 / 隔离库）在引导
+    #     链里建表自愈，否则整包导入段 6 登记即 UndefinedTable。脚本幂等（表 /
+    #     索引 / 唯一约束存在即 SKIP），全新库为全 SKIP。
+    #     注：本步是建表 DDL，必须排在 ㊽ 的 ANALYZE 之前（INT-1741 口径：统计
+    #     兜底在建表之后、且保持引导链末位），不要追加到末尾。
+    ('python', 'scripts/migrations/202610/add_data_transfer_source_maps_int1760.py'),
+    # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
     #     归零后长期不会触发 → 83/95 张表 last_analyze 恒为 NULL、n_live_tup 与真实
@@ -196,6 +230,11 @@ BOOTSTRAP_STEPS = [
     #     行数 ≥ 1000」的表补一次 ANALYZE（只更新统计，不动数据）。
     #     幂等（ANALYZE 写入 last_analyze，重复执行命中 0 张表）；best-effort，
     #     单表失败只 WARN 不阻断部署。默认 dry-run，引导链必须带 --apply。
+    #     必须留在引导链末尾（INT-1741 单测断言）：ANALYZE 之后再有 DDL/写入会
+    #     立刻作废统计，INT-1770 的 apis UPDATE 因此排在它前面。
+    #     必须是引导链最后一步（tests/unit/test_int1741_analyze_stale_statistics.py
+    #     的 test_bootstrap_step_is_last 钉死）：分析完若再跑 DDL，统计又会过期。
+    #     必须保持 BOOTSTRAP_STEPS 末位（新增 DDL 步骤一律插到本步之前）。
     ('python', 'scripts/migrations/202610/analyze_stale_statistics_int1741.py', '--apply'),
 ]
 

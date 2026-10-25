@@ -65,7 +65,7 @@ class DeviceParamDTO:
 
 @dataclass
 class ApiParamDTO:
-    """API 参数 DTO（与 DeviceParamDTO 同构）"""
+    """API 参数 DTO（与 DeviceParamDTO 同构，另加 API 独有的 field_path）"""
     id: Optional[int] = None
     algorithm_type: Optional[str] = None
     param_code: Optional[str] = None
@@ -79,6 +79,8 @@ class ApiParamDTO:
     help_text: Optional[str] = None
     ui_order: Optional[int] = None
     hidden: Optional[bool] = None
+    # INT-1747：输出字段取值路径（仅 algorithm_api_params 有该列，DeviceParamDTO 不加）
+    field_path: Optional[str] = None
 
 
 @dataclass

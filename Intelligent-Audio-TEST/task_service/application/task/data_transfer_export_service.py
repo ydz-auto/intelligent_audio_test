@@ -18,6 +18,7 @@ from shared.constants.data_transfer import (
     TransferTable,
 )
 from shared.infrastructure.config import BaseConfig
+from shared.utils.data_transfer_server import resolve_transfer_server_id
 from shared.utils.log_handler import log_not_emit
 from task_service.domain.services.data_transfer import build_manifest, collect_external_references
 from task_service.infrastructure.acl.evaluation_transfer_acl import evaluation_transfer_acl_repository
@@ -142,6 +143,9 @@ class DataTransferExportService:
                 total_file_size=stats_collector.total_size,
                 include_ref_params=include_ref_params,
                 include_audios=include_audios,
+                # INT-1760 / D0 A4：写稳定服务标识（配置项），导入侧以它作
+                # source_map.source_server；不再依赖会随容器重建变化的 hostname
+                source=resolve_transfer_server_id(),
             )
 
         db_tables = {table.value: rows_by_table.get(table.value, []) for table in TransferTable}

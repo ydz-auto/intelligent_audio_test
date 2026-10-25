@@ -206,6 +206,10 @@ service EvaluationDataService {
 
 message GetDimensionResultsByResultIdsRequest {
   string result_ids = 1;  // JSON: list[int]，TestResult.id 列表
+  // INT-1752：是否携带 api_request_body / api_raw_response 大字段（默认 false）。
+  // 报告侧加权聚合（weighted_sum_ratio / weighted_wer）按分子/分母取数、报告详情
+  // 按需展开原始响应时置 true；其余消费方保持既有轻量载荷不变。
+  bool include_body = 2;
 }
 
 message DeleteDimensionResultsByResultIdsRequest {

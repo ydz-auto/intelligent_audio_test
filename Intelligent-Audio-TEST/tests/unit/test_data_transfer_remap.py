@@ -199,3 +199,133 @@ class TestStorageKeySafety:
         rows = [{'task_id': 1}, {'task_id': 2}]
         out = apply_fk_mapping(rows, 'task_id', {})
         assert [r['task_id'] for r in out] == [1, 2]
+
+
+# ===== INT-1759：用例一致性硬校验（D0 裁定 A10，请求级策略 + 结构化缺口）=====
+
+def _case_ref_rows(*case_ids):
+    """构造只带 task_case_relations 引用的包内行（结果/报告行不带用例引用）"""
+    return {
+        TransferTable.TASK_CASE_RELATIONS.value: [
+            {'id': i, 'task_id': 1, 'test_case_id': cid} for i, cid in enumerate(case_ids)
+        ],
+        TransferTable.TEST_RESULTS.value: [{'id': 100, 'task_id': 1}],
+    }
+
+
+class TestCaseConsistencyPolicy:
+    """全局开关 + 请求级开关/意图：请求只能放宽，不能收紧"""
+
+    @staticmethod
+    def _service():
+        from task_service.application.task.data_transfer_import_service import (
+            DataTransferImportService,
+        )
+        return DataTransferImportService()
+
+    @staticmethod
+    def _set_global(monkeypatch, value):
+        from shared.infrastructure.config import BaseConfig
+        monkeypatch.setattr(BaseConfig, 'DATA_TRANSFER_CASE_CONSISTENCY_REQUIRED', value)
+
+    def test_default_is_required(self, monkeypatch):
+        self._set_global(monkeypatch, True)
+        assert self._service()._resolve_policy(None) == (True, 'migrate')
+
+    def test_request_false_relaxes(self, monkeypatch):
+        self._set_global(monkeypatch, True)
+        assert self._service()._resolve_policy(
+            {'require_case_consistency': False}) == (False, 'migrate')
+
+    def test_global_false_cannot_be_tightened(self, monkeypatch):
+        self._set_global(monkeypatch, False)
+        assert self._service()._resolve_policy(
+            {'require_case_consistency': True}) == (False, 'migrate')
+
+    def test_restore_defaults_off(self, monkeypatch):
+        self._set_global(monkeypatch, True)
+        assert self._service()._resolve_policy({'intent': 'restore'}) == (False, 'restore')
+
+    def test_restore_explicit_true_still_checked(self, monkeypatch):
+        self._set_global(monkeypatch, True)
+        assert self._service()._resolve_policy(
+            {'intent': 'restore', 'require_case_consistency': True}) == (True, 'restore')
+
+    def test_restore_with_global_off_stays_off(self, monkeypatch):
+        self._set_global(monkeypatch, False)
+        assert self._service()._resolve_policy(
+            {'intent': 'restore', 'require_case_consistency': True}) == (False, 'restore')
+
+    def test_invalid_intent_raises(self, monkeypatch):
+        self._set_global(monkeypatch, True)
+        with pytest.raises(ValueError):
+            self._service()._resolve_policy({'intent': 'archive'})
+
+
+class TestCaseConsistencyPayload:
+    """预检/执行共用的回执结构：缺失集 = 差集；不可见单列；超限截断"""
+
+    @staticmethod
+    def _service_with(monkeypatch, availability):
+        from task_service.application.task import data_transfer_import_service as mod
+        monkeypatch.setattr(mod.transfer_repository, 'fetch_case_availability',
+                            lambda case_ids, *a, **k: availability)
+        return mod.DataTransferImportService()
+
+    def test_missing_ids_exactly_the_diff(self, monkeypatch):
+        service = self._service_with(monkeypatch, {
+            'available': {'c1'}, 'missing': {'c2', 'c3'}, 'invisible': set()})
+        result = service._case_consistency(_case_ref_rows('c1', 'c2', 'c3'), required=True)
+        assert result['required'] is True
+        assert result['complete'] is False
+        assert set(result['missingCaseIds']) == {'c2', 'c3'}
+        assert result['missingCount'] == 2
+        assert result['truncated'] is False
+        assert result['invisibleCaseIds'] == []
+
+    def test_referenced_but_unreferenced_ids_not_reported(self, monkeypatch):
+        """只按 task_case_relations 引用判定，结果行的 device/api 不外溢成用例缺口"""
+        service = self._service_with(monkeypatch, {
+            'available': {'c1'}, 'missing': set(), 'invisible': set()})
+        result = service._case_consistency(_case_ref_rows('c1'), required=True)
+        assert result['complete'] is True
+        assert result['missingCaseIds'] == []
+
+    def test_invisible_case_counted_as_missing_but_listed(self, monkeypatch):
+        service = self._service_with(monkeypatch, {
+            'available': {'c1'}, 'missing': set(), 'invisible': {'c9'}})
+        result = service._case_consistency(_case_ref_rows('c1', 'c9'), required=True)
+        assert result['complete'] is False
+        assert result['missingCaseIds'] == ['c9']
+        assert result['invisibleCaseIds'] == ['c9']
+
+    def test_list_capped_with_truncated_flag(self, monkeypatch):
+        missing = {f'c{i}' for i in range(600)}
+        service = self._service_with(monkeypatch, {
+            'available': set(), 'missing': missing, 'invisible': set()})
+        result = service._case_consistency(_case_ref_rows(*missing), required=True)
+        assert len(result['missingCaseIds']) == 500
+        assert result['missingCount'] == 600
+        assert result['truncated'] is True
+
+
+class TestWarningCompatibility:
+    """开关关闭时 warning 文案保持现状（验收 3）；restore 追加固定告警"""
+
+    @staticmethod
+    def _warnings(monkeypatch, intent='migrate'):
+        from task_service.application.task import data_transfer_import_service as mod
+        monkeypatch.setattr(mod.transfer_repository, 'fetch_existing_case_ids',
+                            lambda case_ids, *a, **k: set())
+        return mod.DataTransferImportService()._build_warnings(
+            _case_ref_rows('c1'), intent)
+
+    def test_missing_case_warning_text_unchanged(self, monkeypatch):
+        warnings = self._warnings(monkeypatch)
+        assert warnings == [
+            "目标库缺少 1 个测试用例（['c1']），"
+            "导入后该任务无法重新执行，结果/报告查看不受影响"]
+
+    def test_restore_appends_skip_warning(self, monkeypatch):
+        warnings = self._warnings(monkeypatch, intent='restore')
+        assert warnings[-1] == 'restore 意图未校验用例一致性，导入后无法重新执行'

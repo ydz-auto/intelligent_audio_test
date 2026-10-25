@@ -15,12 +15,20 @@ class DataTransferAclRepository(ABC):
         """导出任务数据为 ZIP（返回 data.zip_path 供 FileResponse 下发）"""
 
     @abstractmethod
-    def preview_import(self, zip_path: str) -> CommandResultDTO:
-        """导入预检（manifest 摘要 + stats + conflicts + warnings）"""
+    def preview_import(self, zip_path: str,
+                       options: Optional[Dict] = None) -> CommandResultDTO:
+        """导入预检（manifest 摘要 + stats + conflicts + warnings + caseConsistency）
+
+        options（INT-1759）: {require_case_consistency?: bool, intent?: migrate/restore}
+        """
 
     @abstractmethod
-    def execute_import(self, zip_path: str) -> CommandResultDTO:
-        """执行导入（分段提交 + 补偿回滚；长耗时）"""
+    def execute_import(self, zip_path: str,
+                       options: Optional[Dict] = None) -> CommandResultDTO:
+        """执行导入（分段提交 + 补偿回滚；长耗时）
+
+        用例一致性不满足时返回 code=422 + data.missingCaseIds（未写任何数据）。
+        """
 
     @abstractmethod
     def get_progress_snapshot(self) -> CommandResultDTO:

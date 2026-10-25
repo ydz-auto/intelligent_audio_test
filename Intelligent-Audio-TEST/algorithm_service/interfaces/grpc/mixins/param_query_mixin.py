@@ -37,19 +37,28 @@ class _ParamQueryMixin(_ParamBaseMixin):
             return _failure(str(e))
 
     def GetParam(self, request, context=None):
-        """按 ID 获取参数详情（设备参数或 API 参数）。"""
+        """按 ID 获取参数详情（设备参数或 API 参数）。
+
+        INT-1747：命中哪张表由本方法决定（先 device 再 api），响应里带出
+        `param_type_source`。调用方（task_service ACL）必须按该字段判类型，
+        不能再用「设备查得到就是设备」推断——设备查不到会回落 api，
+        而 api 行投影成 DeviceParamDTO 同样不报错。
+        """
         try:
             from algorithm_service.application.queries.algorithm_param_queries import (
                 GetParamQuery,
             )
-            query = GetParamQuery(param_id=request.param_id, param_type_source="device")
-            result = self.param_query_handler.handle_get_param(query)
-            if result is None:
-                query = GetParamQuery(param_id=request.param_id, param_type_source="api")
+            for param_type_source in ("device", "api"):
+                query = GetParamQuery(
+                    param_id=request.param_id,
+                    param_type_source=param_type_source,
+                )
                 result = self.param_query_handler.handle_get_param(query)
-            if result is None:
-                return _failure("Parameter not found")
-            return _success(result)
+                if result is not None:
+                    payload = dict(result)
+                    payload["param_type_source"] = param_type_source
+                    return _success(payload)
+            return _failure("Parameter not found")
         except Exception as e:
             return _failure(str(e))
 

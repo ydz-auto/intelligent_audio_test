@@ -30,6 +30,7 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_apis_by_ids,
     _grpc_list_dimensions_all,
     _grpc_algo_get_field_mapping,
+    _dim_statistic_method,
 )
 from report_service.infrastructure.persistence.report_repository import report_repository
 from shared.infrastructure.user_context import capture_identity, run_with_identity
@@ -614,6 +615,16 @@ class ReportTaskGenerator:
         # 否则老任务会得到空指标集并在下方被判定「任务没有关联任何评估维度」
         all_dimensions = ReportDataBuilder._get_result_dimensions(all_dimensions_all, dim_stats)
 
+        # INT-1752：存在加权维度（weighted_sum_ratio / weighted_wer）时二次拉取带
+        # api_raw_response 的维度结果——分子/分母从原始响应提取，不带则策略恒返回 None。
+        # 首次拉取不带 body 是为了先确定维度集合（维度列表由维度结果推导，鸡生蛋）。
+        from report_service.domain.services.aggregation_strategies import needs_raw_response
+        if any(needs_raw_response(_dim_statistic_method(d)) for d in all_dimensions):
+            dim_results_map_with_body, _ = ReportDataBuilder._get_dimension_results_batch(
+                res_ids, include_body=True)
+            if dim_results_map_with_body:
+                dim_results_map = dim_results_map_with_body
+
         test_cases, test_case_ids = ReportDataBuilder._get_task_test_cases(task_ids_for_query)
         devices_list, apis_list, device_ids, api_ids = ReportDataBuilder._get_task_resources(task_ids_for_query)
 
@@ -669,6 +680,11 @@ class ReportTaskGenerator:
             use_time_prefix=False
         )
 
+        # INT-1752：加权维度降级为简单平均时，在 all_metrics 对应指标上打标，
+        # 随报告详情下发（all_metrics 持久化在 ReportSummaryMeta，前端据此标注）。
+        aggregation_degraded = core_metrics.get('aggregation_degraded') or {}
+        ReportTaskGenerator._mark_degraded_metrics(all_metrics, aggregation_degraded)
+
         metric_data = core_metrics['metric_data']
         tag_metric_data = core_metrics['tag_metric_data']
         raw_data = core_metrics['raw_data']
@@ -716,7 +732,30 @@ class ReportTaskGenerator:
             "case_tags_list": case_tags_list,
             "source_task_ids": source_task_ids,
             "field_mappings": field_mappings,
+            "aggregation_degraded": aggregation_degraded,
         }
+
+    @staticmethod
+    def _mark_degraded_metrics(all_metrics: list, aggregation_degraded: dict) -> None:
+        """把加权聚合降级说明打到 all_metrics 对应指标项上（原地修改）。
+
+        INT-1752：报告详情此前对「加权指标算不出来」静默显示简单平均；现在指标项带
+        aggregation_degraded / degradation_reason / degradation_detail，
+        前端与导出据此标注「已降级为简单平均」。
+        """
+        if not aggregation_degraded or not isinstance(all_metrics, list):
+            return
+        for metric in all_metrics:
+            if not isinstance(metric, dict):
+                continue
+            info = aggregation_degraded.get(metric.get('name'))
+            if not info:
+                continue
+            metric['aggregation_degraded'] = True
+            metric['configured_method'] = info.get('configured_method')
+            metric['applied_method'] = info.get('applied_method', 'average')
+            metric['degradation_reason'] = info.get('reason')
+            metric['degradation_detail'] = info.get('detail')
 
     @staticmethod
     def _build_task_summary(task, task_id, results, data_dict):

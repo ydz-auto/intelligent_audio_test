@@ -25,6 +25,7 @@ class PublishedTaskConfigServiceServicer(task_grpc.PublishedTaskConfigServiceSer
             success=result.get('success', False),
             message=result.get('message', ''),
             data=_dumps(result.get('data')) if result.get('data') is not None else "",
+            code=int(result.get('code') or 0),
         )
 
     # ---- 写操作 ----

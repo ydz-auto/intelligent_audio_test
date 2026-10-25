@@ -264,6 +264,8 @@ message TaskConfigResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+  int32 code = 4;   // HTTP 语义业务码（INT-1759：0=未填/成功；网关按 code 映射 HTTP 状态，
+                    // 与 ReportConfigResponse.code 同约定，见 shared/proto/README.md）
 }
 // INT-1306：音频删除引用检查请求（audio_id 列表）
 message CheckAudioReferencesRequest {
@@ -1201,9 +1203,13 @@ message ExportTasksRequest {
 }
 message PreviewImportRequest {
   string zip_path = 1;  // 共享盘上 ZIP 文件的绝对路径（DATA_TRANSFER_TMP_DIR/import/ 下）
+  // JSON: {require_case_consistency?: bool, intent?: 'migrate'|'restore'}（INT-1759 请求级选项）
+  string data = 2;
 }
 message ExecuteImportRequest {
   string zip_path = 1;  // 共享盘上 ZIP 文件的绝对路径
+  // JSON: {require_case_consistency?: bool, intent?: 'migrate'|'restore'}（INT-1759 请求级选项）
+  string data = 2;
 }
 message RollbackImportRequest {
   string batch_id = 1;

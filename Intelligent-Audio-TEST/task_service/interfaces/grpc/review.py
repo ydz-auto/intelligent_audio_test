@@ -16,19 +16,16 @@ class ReviewServiceServicer(task_grpc.ReviewServiceServicer):
 
     @staticmethod
     def _resp(result):
-        """统一包装返回结果为 TaskConfigResponse（含业务码透传，INT-141 F2 口径）。"""
+        """统一包装返回结果为 TaskConfigResponse（业务码走 proto code，INT-1759）"""
         data = result.get('data')
         if (not result.get('success')) and isinstance(data, dict) and isinstance(data.get('code'), int):
             data = dict(data)
             data.pop('code', None)
-            return task_pb.TaskConfigResponse(
-                success=False, message=result.get('message', ''),
-                data=_dumps(data) if data else "",
-            )
         return task_pb.TaskConfigResponse(
             success=result.get('success', False),
             message=result.get('message', ''),
             data=_dumps(data) if data is not None else "",
+            code=int(result.get('code') or 0),
         )
 
     @classmethod

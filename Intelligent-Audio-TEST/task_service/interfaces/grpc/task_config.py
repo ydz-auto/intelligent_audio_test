@@ -43,6 +43,8 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
             success=result.get('success', False),
             message=result.get('message', ''),
             data=_dumps(data) if data is not None else "",
+            # INT-1759：业务码走 proto 字段（data 侧 fold 保留旧网关读取口径）
+            code=int(result.get('code') or 0),
         )
 
     # ---- 写操作 ----

@@ -54,6 +54,93 @@ def normalize_audio_config(raw) -> Optional[Dict]:
     return {k: raw[k] for k in _AUDIO_CONFIG_KEYS if k in raw}
 
 
+# 目标音频格式默认值：列与 meta 都没有配置时的回退口径（UC-0901 / 08 文档 §2.2）
+DEFAULT_AUDIO_CONFIG: Dict[str, Any] = {
+    'sample_rate': 24000,
+    'bit_depth': 's16',
+    'channels': 1,
+}
+
+
+def _field_of(source, key):
+    """统一读取配置对象字段：dict 与属性对象（PO / 聚合根 / MockAPIConfig）同口径"""
+    if source is None:
+        return None
+    if isinstance(source, dict):
+        return source.get(key)
+    return getattr(source, key, None)
+
+
+def _normalized_audio_dict(raw) -> Optional[Dict]:
+    if not isinstance(raw, dict):
+        return None
+    try:
+        normalized = normalize_audio_config(raw)
+    except ValueError:
+        return None
+    return normalized or None
+
+
+def resolve_audio_config(api_config) -> Dict:
+    """目标音频格式的单一取值口径（INT-1771）
+
+    单一事实源为顶层列 `apis.audio_config`（有独立校验与 DTO）：列非空时
+    整份以列为准，不与 meta 逐键合并。列空时才读一次 `meta.audio_config`
+    作为存量兼容；两者都没有返回空 dict，由调用方回退
+    `DEFAULT_AUDIO_CONFIG`（24000/s16/mono）。
+
+    HTTP / Realtime / 轮次渲染三条执行路径共用本函数，禁止各自读源。
+    """
+    column = _normalized_audio_dict(_field_of(api_config, 'audio_config'))
+    if column:
+        return column
+    meta = _field_of(api_config, 'meta')
+    if isinstance(meta, dict):
+        legacy = _normalized_audio_dict(meta.get('audio_config'))
+        if legacy:
+            return legacy
+    return {}
+
+
+def resolve_audio_sample_rate(api_config, default: int = None) -> int:
+    """目标采样率（resolve_audio_config 之上取 sample_rate，非法值回退默认）"""
+    fallback = DEFAULT_AUDIO_CONFIG['sample_rate'] if default is None else default
+    try:
+        return int(resolve_audio_config(api_config).get('sample_rate') or fallback)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def resolve_target_audio_format(api_config, stream: bool = False) -> Dict:
+    """渲染目标格式 dict（sample_rate/bit_depth/channels[/container]）
+
+    stream=True（Realtime WS 推送）强制 s16 单声道：WS 事件协议输入为
+    pcm16 单声道（input_audio_format 默认 pcm16），采样率仍取配置。
+    """
+    audio_cfg = resolve_audio_config(api_config)
+    try:
+        sample_rate = int(audio_cfg.get('sample_rate')
+                          or DEFAULT_AUDIO_CONFIG['sample_rate'])
+    except (TypeError, ValueError):
+        sample_rate = DEFAULT_AUDIO_CONFIG['sample_rate']
+    try:
+        channels = int(audio_cfg.get('channels') or DEFAULT_AUDIO_CONFIG['channels'])
+    except (TypeError, ValueError):
+        channels = DEFAULT_AUDIO_CONFIG['channels']
+    fmt = {
+        'sample_rate': sample_rate,
+        'bit_depth': str(audio_cfg.get('bit_depth')
+                         or DEFAULT_AUDIO_CONFIG['bit_depth']),
+        'channels': channels,
+    }
+    if audio_cfg.get('container'):
+        fmt['container'] = str(audio_cfg['container'])
+    if stream:
+        fmt['bit_depth'] = 's16'
+        fmt['channels'] = 1
+    return fmt
+
+
 def derive_api_keys_summary(raw) -> Optional[Dict]:
     """从 api_keys 原始值派生密钥池非敏感摘要 {count, tails[]}（INT-1177）。
 

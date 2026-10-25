@@ -152,6 +152,12 @@ service AlgorithmQueryService {
   rpc GetEvaluationFieldMappings(GetEvaluationFieldMappingsRequest) returns (AlgorithmResponse);
   rpc BuildApiRequestData(BuildApiRequestDataRequest) returns (AlgorithmResponse);
   rpc ConvertFieldValue(ConvertFieldValueRequest) returns (AlgorithmResponse);
+  // 批量字段值转换（INT-1749）：一次请求处理 N 个值，执行侧映射编排不再逐字段跨服务。
+  //   data JSON: {"items": [{"transform_type": "...", "value": <任意 JSON>}, ...]}
+  //   响应 data JSON: {"values": [...与 items 同序...],
+  //                    "errors": [{"index","transform_type","error"}, ...]}
+  //   非法输入策略：保留原值 + errors 回传（服务端 WARNING），不抛异常、不静默吞成空串。
+  rpc ConvertFieldValues(ConvertFieldValuesRequest) returns (AlgorithmResponse);
 
   // 结果字段映射器（原 algorithm_result_field_mapper）
   rpc GetOutputFields(GetOutputFieldsRequest) returns (AlgorithmResponse);
@@ -496,6 +502,9 @@ message GetDeviceParamsListRequest {
 }
 message GetApiParamsListRequest {
   string algorithm_type = 1;
+  // INT-1756（C6a）：API 实例级作用域。proto3 optional 拿 presence 语义，
+  // 区分「未传」（回落算法级默认）与显式传值；响应仍是 JSON 字符串，行带 api_id。
+  optional int32 api_id = 2;
 }
 message GetCaseParamsListRequest {
   string algorithm_type = 1;
@@ -506,6 +515,7 @@ message GetReferenceParamsListRequest {
 message GetParamMappingForComponentRequest {
   string algorithm_type = 1;
   string component_type = 2;  // device/api/case/reference/evaluation
+  optional int32 api_id = 3;  // INT-1756：API 实例级作用域（未传=算法级默认）
 }
 message GetEvaluationDimensionParamsRequest {
   int32 dimension_id = 1;
@@ -519,6 +529,7 @@ message ReloadConfigRequest {}
 message GetFieldMappingsRequest {
   string algorithm_type = 1;
   string component_type = 2;  // device/api/evaluation
+  optional int32 api_id = 3;  // INT-1756：API 实例级作用域（未传=算法级默认）
 }
 message GetEvaluationFieldMappingsRequest {
   string algorithm_type = 1;
@@ -530,6 +541,10 @@ message BuildApiRequestDataRequest {
 message ConvertFieldValueRequest {
   string transform_type = 1;
   string data = 2;  // JSON: {value, ...}
+}
+// INT-1749 批量变换：items 走 JSON（value 可为任意 JSON 类型，保持与应用内同构）
+message ConvertFieldValuesRequest {
+  string data = 1;  // JSON: {"items": [{"transform_type": "...", "value": ...}, ...]}
 }
 
 // 结果字段映射器请求

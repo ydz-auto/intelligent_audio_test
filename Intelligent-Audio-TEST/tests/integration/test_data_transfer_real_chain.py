@@ -198,6 +198,171 @@ class TestGatewayHttpRealChain:
             session.close()
 
 
+class TestCaseConsistencyHardGate:
+    """INT-1759（D0 裁定 §A10）：缺用例包 → 预检回执结构化缺口，执行 422 且不写任何数据"""
+
+    @staticmethod
+    def _export_task_zip(gateway_client) -> bytes:
+        resp = gateway_client.post('/api/v1/data-transfer/export', json={'task_ids': [1]})
+        return _zip_bytes_from_response(resp)
+
+    @staticmethod
+    def _set_case_deleted(case_id: str, deleted: bool = True) -> None:
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.persistence.models import TestCase
+        session = get_db_session()
+        try:
+            session.query(TestCase).filter(TestCase.id == case_id).update(
+                {'deleted': deleted}, synchronize_session=False)
+            session.commit()
+        finally:
+            session.close()
+
+    @staticmethod
+    def _counts() -> dict:
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.persistence.models import Task, TestResult
+        session = get_db_session()
+        try:
+            return {'tasks': session.query(Task).count(),
+                    'results': session.query(TestResult).count()}
+        finally:
+            session.close()
+
+    @staticmethod
+    def _post(gateway_client, path: str, zip_bytes: bytes, **data):
+        return gateway_client.post(
+            f'/api/v1/data-transfer/{path}',
+            files={'file': ('task_export.zip', zip_bytes, 'application/zip')},
+            data=data or None)
+
+    def test_preview_gap_and_execute_rejects_without_writing(self, gateway_client, db,
+                                                             storage_env, fake_redis,
+                                                             grpc_chain, monkeypatch):
+        _seed(db, storage_env)
+        zip_bytes = self._export_task_zip(gateway_client)
+        self._set_case_deleted('tc_001')
+        before = self._counts()
+
+        import task_service.application.task.data_transfer_import_service as import_mod
+        segment_calls = []
+        original_segment = import_mod.transfer_repository.import_task_segment
+
+        def _spy_segment(*args, **kwargs):
+            segment_calls.append(1)
+            return original_segment(*args, **kwargs)
+
+        monkeypatch.setattr(import_mod.transfer_repository, 'import_task_segment', _spy_segment)
+
+        # ---- 预检：不阻断，返回结构化缺口（D0 §A10-3）----
+        resp = self._post(gateway_client, 'import/preview', zip_bytes)
+        assert resp.status_code == 200, resp.text[:300]
+        body = resp.json()
+        assert body['success'] is True, body.get('message')
+        consistency = body['data']['caseConsistency']
+        assert consistency['required'] is True
+        assert consistency['complete'] is False
+        assert consistency['missingCaseIds'] == ['tc_001']
+        assert consistency['missingCount'] == 1
+        assert body['data']['intent'] == 'migrate'
+        assert any('缺少 1 个测试用例' in w for w in body['data']['warnings'])
+
+        # ---- 执行：422 + 缺失清单，且在段 1 写库之前拒绝 ----
+        resp = self._post(gateway_client, 'import', zip_bytes)
+        assert resp.status_code == 422, resp.text[:400]
+        body = resp.json()
+        assert body['success'] is False
+        assert body['code'] == 422
+        assert body['data']['missingCaseIds'] == ['tc_001']
+        assert body['data']['missingCount'] == 1
+        assert '目标库缺少 1 个测试用例' in body['message']
+
+        assert segment_calls == [], '拒绝时不得进入 import_task_segment'
+        assert [k for k in fake_redis._data if k.startswith('data_transfer:batch:')] == [], \
+            '拒绝时不得留下批次登记'
+        assert self._counts() == before, '拒绝时不得新增任何任务/结果行'
+
+        # ---- 补齐用例后同包导入成功（验收 5）----
+        self._set_case_deleted('tc_001', deleted=False)
+        resp = self._post(gateway_client, 'import', zip_bytes)
+        assert resp.status_code == 200, resp.text[:400]
+        assert resp.json()['success'] is True
+        after = self._counts()
+        assert after['tasks'] == before['tasks'] + 1
+        assert after['results'] == before['results'] + 1
+
+    def test_request_level_relax_keeps_warning_behavior(self, gateway_client, db, storage_env,
+                                                       fake_redis, grpc_chain):
+        """require_case_consistency=false → 与现状一致（仅 warning，不阻断）"""
+        _seed(db, storage_env)
+        zip_bytes = self._export_task_zip(gateway_client)
+        self._set_case_deleted('tc_001')
+
+        resp = self._post(gateway_client, 'import/preview', zip_bytes,
+                          require_case_consistency='false')
+        assert resp.status_code == 200, resp.text[:300]
+        consistency = resp.json()['data']['caseConsistency']
+        assert consistency['required'] is False
+        assert consistency['complete'] is False
+        assert consistency['missingCaseIds'] == ['tc_001']
+
+        resp = self._post(gateway_client, 'import', zip_bytes,
+                          require_case_consistency='false')
+        assert resp.status_code == 200, resp.text[:400]
+        assert resp.json()['success'] is True
+
+    def test_restore_intent_skips_gate_with_warning(self, gateway_client, db, storage_env,
+                                                    fake_redis, grpc_chain):
+        """intent=restore → 默认不校验，预检回执写明无法重新执行"""
+        _seed(db, storage_env)
+        zip_bytes = self._export_task_zip(gateway_client)
+        self._set_case_deleted('tc_001')
+
+        resp = self._post(gateway_client, 'import/preview', zip_bytes, intent='restore')
+        assert resp.status_code == 200, resp.text[:300]
+        body = resp.json()
+        assert body['data']['intent'] == 'restore'
+        assert body['data']['caseConsistency']['required'] is False
+        assert '未校验用例一致性，导入后无法重新执行' in ' '.join(body['data']['warnings'])
+
+        resp = self._post(gateway_client, 'import', zip_bytes, intent='restore')
+        assert resp.status_code == 200, resp.text[:400]
+        assert resp.json()['success'] is True
+
+    def test_invalid_intent_rejected_before_parse(self, gateway_client, db, storage_env,
+                                                  fake_redis, grpc_chain):
+        _seed(db, storage_env)
+        zip_bytes = self._export_task_zip(gateway_client)
+        resp = self._post(gateway_client, 'import', zip_bytes, intent='archive')
+        assert resp.status_code == 400, resp.text[:300]
+        body = resp.json()
+        assert body['success'] is False
+        assert body['code'] == 400
+        assert 'intent' in body['message']
+
+    def test_device_and_api_gaps_stay_warnings(self, gateway_client, db, storage_env,
+                                               fake_redis, grpc_chain, monkeypatch):
+        """回归（验收 6）：设备 / API 引用缺失仍为 warning，不阻断导入"""
+        _seed(db, storage_env)
+        zip_bytes = self._export_task_zip(gateway_client)
+
+        # 外部实体（设备 77）在目标库不存在，用例齐备；设备/API 缺失不阻断导入
+        import task_service.infrastructure.acl.device_acl_repository as device_mod
+        monkeypatch.setattr(device_mod.device_acl_repository, 'get_device_statuses',
+                            lambda ids: [{'id': 999}])
+
+        resp = self._post(gateway_client, 'import/preview', zip_bytes)
+        assert resp.status_code == 200, resp.text[:300]
+        body = resp.json()
+        warnings = body['data']['warnings']
+        assert body['data']['caseConsistency']['complete'] is True
+        assert any('缺少 1 个设备' in w for w in warnings)
+
+        resp = self._post(gateway_client, 'import', zip_bytes)
+        assert resp.status_code == 200, resp.text[:400]
+        assert resp.json()['success'] is True
+
+
 class TestRealAclSignatures:
     """ACL 层直连 gRPC 回归：导入/回滚调用签名（timeout 为调用关键字参数）与链路连通"""
 
