@@ -126,10 +126,31 @@ export interface PickCheckoutResult {
 export interface PickSourceGroup {
   sourceTaskId: number
   sourceTaskName: string
+  /** §11-8 待补：来源任务状态；未落地 → 不渲染、不占位（规范 18 §2.2） */
+  sourceTaskStatus?: string | null
   results: Array<{
     id: number
     resultId: number
     sourceCaseId?: string | null
+    /** 来源设备 / API（后端已返回；INT-1833 组成区设备/API 名 join 键） */
+    sourceDeviceId?: number | null
+    sourceApiId?: number | null
+    /**
+     * §11-8 待补的结果级字段：未落地时 undefined，组成区按降级口径展示（规范 18 §4.6）；
+     * 落地后自动切真实口径，树结构不变。
+     */
+    resultType?: string | null
+    executionStatus?: string | null
+    evaluated?: boolean | null
+    caseName?: string | null
+    deviceName?: string | null
+    apiName?: string | null
+    /**
+     * §11-8 的源结果自身创建时间（result_created_at）。
+     * 注意：响应里的 `createdAt`（created_at）是 task_cherry_pick_relations **关系行**时间
+     * （并入容器的时间，实测与容器 created_at 同值），**不得**当作源结果时间。
+     */
+    resultCreatedAt?: string | null
     missing?: boolean
   }>
 }
