@@ -64,4 +64,60 @@ class ReportTransferAclRepository:
         return _loads(resp.data, {})
 
 
+    def export_report_package(self, task_ids: List[int], report_ids: List[int],
+                              doc_version_scope: str) -> dict:
+        """导出报告包数据段（报告 7 表 + Studio 三表，INT-1764 D6）。
+
+        Returns: {'tables', 'studio', 'reportIds', 'taskIds', 'entities', 'counts'}
+        Raises: 失败抛出 RuntimeError。
+        """
+        stub = get_report_config_service_stub()
+        resp = stub.ExportReportPackage(report_pb.ExportReportPackageRequest(
+            data=json.dumps({'task_ids': task_ids, 'report_ids': report_ids,
+                             'doc_version_scope': doc_version_scope},
+                            ensure_ascii=False, default=str)),
+            timeout=_GRPC_TIMEOUT_SECONDS)
+        if not resp.success:
+            raise RuntimeError(f'导出报告包失败: {resp.message}')
+        return _loads(resp.data, {})
+
+    def import_report_package(self, task_id: int, tables: Dict[str, list],
+                              studio: Dict[str, list], batch_id: str,
+                              doc_version_scope: str,
+                              target_report_id=None) -> dict:
+        """导入报告包（3a 原地替换 + 3b/3c 拓扑序落库）。失败抛 RuntimeError。
+
+        Returns: 回执 {reportId, documentIdMapping, imported, warnings, ...}
+        """
+        stub = get_report_config_service_stub()
+        payload = {
+            'task_id': task_id,
+            'tables': tables or {},
+            'studio': studio or {},
+            'batch_id': batch_id,
+            'doc_version_scope': doc_version_scope,
+        }
+        if target_report_id is not None:
+            payload['target_report_id'] = target_report_id
+        resp = stub.ImportReportPackage(report_pb.ImportReportPackageRequest(
+            data=json.dumps(payload, ensure_ascii=False, default=str)),
+            timeout=_GRPC_TIMEOUT_SECONDS)
+        if not resp.success:
+            data = _loads(resp.data, {}) or {}
+            raise ReportPackageImportError(
+                resp.message or '导入报告包失败',
+                code=int(getattr(resp, 'code', 0) or data.get('code') or 500),
+                data=data)
+        return _loads(resp.data, {}) or {}
+
+
+class ReportPackageImportError(RuntimeError):
+    """报告包导入失败（带业务码与 data 明细，供编排层映射 HTTP 状态）"""
+
+    def __init__(self, message: str, code: int = 500, data: Dict = None):
+        super().__init__(message)
+        self.code = code
+        self.data = data or {}
+
+
 report_transfer_acl_repository = ReportTransferAclRepository()

@@ -75,6 +75,15 @@ service ReportConfigService {
   rpc ReplaceReports(ReplaceReportsRequest) returns (ReportConfigResponse);
   // 回滚一次报告替换批次（INT-1762 D4）：删除本批新行、按快照恢复旧报告 7 表
   rpc RollbackReportReplacement(RollbackReportReplacementRequest) returns (ReportConfigResponse);
+  // 报告包导出（INT-1764 D6，链路 3a + 3b/3c）：按 taskId / reportIds 输出报告 7 表
+  // 与 Report Studio 三表（文档 / 版本快照 / 图表规格）。
+  // 出参 {tables, studio, reportIds, taskIds, docVersionScope, entities, counts}
+  rpc ExportReportPackage(ExportReportPackageRequest) returns (ReportConfigResponse);
+  // 报告包导入（INT-1764 D6）：平台报告按 sourceTask 原地替换（复用 ReplaceReports
+  // 同一实现）→ Studio 文档拓扑序落库；agent_session_id 置空、源缺失降级为空并写
+  // 入回执 warnings，失败按批次快照补偿回滚 3a。
+  // 出参 {sourceTaskId, reportId, documentIdMapping, imported, warnings, batchId}
+  rpc ImportReportPackage(ImportReportPackageRequest) returns (ReportConfigResponse);
 
   // ---- 收藏 / 回收站（INT-141：report 归 report_service，user_id 走 x-user-id metadata）----
   // 收藏 / 取消收藏（幂等：重复收藏返回成功 + already_favorited；未收藏的取消同样成功）
@@ -239,6 +248,18 @@ message ReplaceReportsRequest {
 }
 message RollbackReportReplacementRequest {
   string batch_id = 1;
+}
+// 报告包导出（INT-1764 D6）。data 为 JSON：
+// {task_ids: [int], report_ids: [int], doc_version_scope: 'full'|'latest'}
+message ExportReportPackageRequest {
+  string data = 1;
+}
+// 报告包导入（INT-1764 D6）。data 为 JSON：
+// {task_id: int(包内 sourceTask.id 在 A 的匹配任务), tables: {表名: [行]},
+//  studio: {三张 Studio 表: [行]}, target_report_id: int(可选), batch_id: str,
+//  doc_version_scope: 'full'|'latest'}
+message ImportReportPackageRequest {
+  string data = 1;
 }
 
 // ===== 收藏 / 回收站（INT-141）=====

@@ -390,3 +390,24 @@ class ExecuteImportCommand(Command):
 class RollbackImportCommand(Command):
     """批次回滚命令（人工介入兜底入口）。委托 data_transfer_import_service.rollback_import。"""
     batch_id: str = ''
+
+
+@dataclass(frozen=True)
+class ExportReportPackageCommand(Command):
+    """报告包导出命令（INT-1764 D6：链路 3a + 3b/3c）。
+
+    委托 data_transfer_export_service.export_report_package。
+    """
+    task_ids: List[int] = field(default_factory=list)
+    report_ids: List[int] = field(default_factory=list)
+    doc_version_scope: str = ''
+
+
+@dataclass(frozen=True)
+class ImportReportPackageCommand(Command):
+    """报告包导入命令（INT-1764 D6）。委托 data_transfer_import_service.import_report_package。
+
+    options: {target_report_id?: int, batch_id?: str}
+    """
+    zip_path: str = ''
+    options: Dict[str, Any] = field(default_factory=dict)

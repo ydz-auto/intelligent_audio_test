@@ -8101,6 +8101,16 @@ class DataTransferServiceStub:
                 request_serializer=task__service__pb2.RollbackImportRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
                 _registered_method=True)
+        self.ExportReportPackage = channel.unary_unary(
+                '/task_service.DataTransferService/ExportReportPackage',
+                request_serializer=task__service__pb2.ExportReportPackageRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ImportReportPackage = channel.unary_unary(
+                '/task_service.DataTransferService/ImportReportPackage',
+                request_serializer=task__service__pb2.ImportReportPackageRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
 
 
 class DataTransferServiceServicer:
@@ -8139,6 +8149,23 @@ class DataTransferServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ExportReportPackage(self, request, context):
+        """报告包导出（INT-1764 D6，链路 3a + 3b/3c）：入参 {task_ids, report_ids?,
+        doc_version_scope?}；出参 {zip_path, manifest}（ZIP 落共享盘，网关 FileResponse 下发）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ImportReportPackage(self, request, context):
+        """报告包导入（INT-1764 D6）：入参 {zip_path, data:{target_report_id?, batch_id?}}；
+        平台报告按 sourceTask.id 原地替换，Studio 文档拓扑序落库，出参为导入回执（含 warnings）。
+        长耗时调用，客户端超时需放宽。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DataTransferServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -8160,6 +8187,16 @@ def add_DataTransferServiceServicer_to_server(servicer, server):
             'RollbackImport': grpc.unary_unary_rpc_method_handler(
                     servicer.RollbackImport,
                     request_deserializer=task__service__pb2.RollbackImportRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ExportReportPackage': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExportReportPackage,
+                    request_deserializer=task__service__pb2.ExportReportPackageRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ImportReportPackage': grpc.unary_unary_rpc_method_handler(
+                    servicer.ImportReportPackage,
+                    request_deserializer=task__service__pb2.ImportReportPackageRequest.FromString,
                     response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
             ),
     }
@@ -8273,6 +8310,60 @@ class DataTransferService:
             target,
             '/task_service.DataTransferService/RollbackImport',
             task__service__pb2.RollbackImportRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExportReportPackage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.DataTransferService/ExportReportPackage',
+            task__service__pb2.ExportReportPackageRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ImportReportPackage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.DataTransferService/ImportReportPackage',
+            task__service__pb2.ImportReportPackageRequest.SerializeToString,
             task__service__pb2.TaskConfigResponse.FromString,
             options,
             channel_credentials,

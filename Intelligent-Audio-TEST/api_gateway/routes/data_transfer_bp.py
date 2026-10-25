@@ -15,7 +15,10 @@ from api_gateway.application.services.transfer.data_transfer_service import (
     DataTransferGatewayService,
 )
 from api_gateway.routes._response import to_response
-from api_gateway.schemas.data_transfer import TaskDataExportRequest
+from api_gateway.schemas.data_transfer import (
+    ReportPackageExportRequest,
+    TaskDataExportRequest,
+)
 from shared.constants.data_transfer import DEFAULT_TRANSFER_INTENT
 
 router = APIRouter()
@@ -96,6 +99,45 @@ def execute_import(file: UploadFile,
 def import_progress(_: None = require_permission('task:import')):
     """最近一次导入进度快照（实时进度走 SocketIO，本接口兜底）"""
     result = DataTransferGatewayService.import_progress()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
+
+
+@router.post('/report/export')
+def export_report_package(request: ReportPackageExportRequest,
+                          _: None = require_permission('task:export')):
+    """导出报告包（链路 3a 平台报告 + 3b/3c Studio 文档，INT-1764 D6）
+
+    请求体：`{taskId?, reportIds?, docVersionScope?: 'full'|'latest'}`（camelCase，
+    也接受 snake_case）；返回 ZIP 文件流。
+    """
+    result = DataTransferGatewayService.export_report_package(request)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result  # FileResponse 直接透出
+
+
+@router.post('/report/import')
+def import_report_package(file: UploadFile,
+                          target_report_id: Optional[int] = Form(None),
+                          target_report_id_camel: Optional[int] = Form(
+                              None, alias='targetReportId'),
+                          batch_id: Optional[str] = Form(None),
+                          _: None = require_permission('task:import')):
+    """导入报告包（multipart ZIP，权限 task:import，INT-1764 D6）
+
+    平台报告按 `manifest.sourceTask.id` 匹配 A 原任务原地替换，Studio 文档按
+    拓扑序落库；源缺失 / 图表失联等降级全部写进回执 `warnings`。
+    """
+    options = {}
+    resolved_target = (target_report_id_camel if target_report_id_camel is not None
+                       else target_report_id)
+    if resolved_target:
+        options['target_report_id'] = resolved_target
+    if batch_id:
+        options['batch_id'] = batch_id
+    result = DataTransferGatewayService.import_report_package(file, options)
     if isinstance(result, tuple) and len(result) == 2:
         return to_response(result)
     return result

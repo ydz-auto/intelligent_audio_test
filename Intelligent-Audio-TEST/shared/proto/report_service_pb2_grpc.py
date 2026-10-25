@@ -185,6 +185,16 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.RollbackReportReplacementRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.ExportReportPackage = channel.unary_unary(
+                '/report.ReportConfigService/ExportReportPackage',
+                request_serializer=report__service__pb2.ExportReportPackageRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.ImportReportPackage = channel.unary_unary(
+                '/report.ReportConfigService/ImportReportPackage',
+                request_serializer=report__service__pb2.ImportReportPackageRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
         self.FavoriteReport = channel.unary_unary(
                 '/report.ReportConfigService/FavoriteReport',
                 request_serializer=report__service__pb2.FavoriteReportRequest.SerializeToString,
@@ -475,6 +485,25 @@ class ReportConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ExportReportPackage(self, request, context):
+        """报告包导出（INT-1764 D6，链路 3a + 3b/3c）：按 taskId / reportIds 输出报告 7 表
+        与 Report Studio 三表（文档 / 版本快照 / 图表规格）。
+        出参 {tables, studio, reportIds, taskIds, docVersionScope, entities, counts}
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ImportReportPackage(self, request, context):
+        """报告包导入（INT-1764 D6）：平台报告按 sourceTask 原地替换（复用 ReplaceReports
+        同一实现）→ Studio 文档拓扑序落库；agent_session_id 置空、源缺失降级为空并写
+        入回执 warnings，失败按批次快照补偿回滚 3a。
+        出参 {sourceTaskId, reportId, documentIdMapping, imported, warnings, batchId}
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def FavoriteReport(self, request, context):
         """---- 收藏 / 回收站（INT-141：report 归 report_service，user_id 走 x-user-id metadata）----
         收藏 / 取消收藏（幂等：重复收藏返回成功 + already_favorited；未收藏的取消同样成功）
@@ -724,6 +753,16 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             'RollbackReportReplacement': grpc.unary_unary_rpc_method_handler(
                     servicer.RollbackReportReplacement,
                     request_deserializer=report__service__pb2.RollbackReportReplacementRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'ExportReportPackage': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExportReportPackage,
+                    request_deserializer=report__service__pb2.ExportReportPackageRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'ImportReportPackage': grpc.unary_unary_rpc_method_handler(
+                    servicer.ImportReportPackage,
+                    request_deserializer=report__service__pb2.ImportReportPackageRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
             'FavoriteReport': grpc.unary_unary_rpc_method_handler(
@@ -1602,6 +1641,60 @@ class ReportConfigService:
             target,
             '/report.ReportConfigService/RollbackReportReplacement',
             report__service__pb2.RollbackReportReplacementRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExportReportPackage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ExportReportPackage',
+            report__service__pb2.ExportReportPackageRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ImportReportPackage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ImportReportPackage',
+            report__service__pb2.ImportReportPackageRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,
             channel_credentials,

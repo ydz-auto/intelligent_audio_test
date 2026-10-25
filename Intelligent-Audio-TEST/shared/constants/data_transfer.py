@@ -143,6 +143,51 @@ def fk_rules_of(table: TransferTable) -> Tuple[FkRule, ...]:
     return tuple(rule for rule in FK_RULES if rule.table is table)
 
 
+class DocVersionScope(str, Enum):
+    """报告包内 Report Studio 版本搬运策略（设计文档 §6.3 规则 4）
+
+    - full：默认全带（document + 全部 versions），A 侧版本链可回滚；
+    - latest：只带当前版本（文档可编辑，历史版本留在 B）。
+    """
+    FULL = 'full'
+    LATEST = 'latest'
+
+
+DOC_VERSION_SCOPES = frozenset(item.value for item in DocVersionScope)
+DEFAULT_DOC_VERSION_SCOPE = DocVersionScope.FULL.value
+
+
+class ReportPackageEntity(str, Enum):
+    """报告包实体声明（manifest.entities，设计文档 §6.3）
+
+    - platform_report：3a 平台报告 7 表；
+    - uploaded_file：3b 上传文档（独立文档库）；
+    - agent_summary：3c Agent 分析总结文档。
+    值与 `ReportStudioSourceType` 一致（报告包与 Studio 文档来源共用词表）。
+    """
+    PLATFORM_REPORT = 'platform_report'
+    UPLOADED_FILE = 'uploaded_file'
+    AGENT_SUMMARY = 'agent_summary'
+
+
+REPORT_PACKAGE_ENTITIES = tuple(item.value for item in ReportPackageEntity)
+
+
+class ReportStudioTable(str, Enum):
+    """报告包内 Studio 三表（值 = 表名 = db/ 下 JSON 文件名）"""
+    DOCUMENTS = 'report_studio_documents'
+    DOCUMENT_VERSIONS = 'report_studio_document_versions'
+    CHART_SPECS = 'report_studio_chart_specs'
+
+
+REPORT_STUDIO_TABLES = tuple(item.value for item in ReportStudioTable)
+
+# 报告包 manifest.kind：与任务整包（无 kind 的旧 manifest）区分，导入侧据此路由
+REPORT_PACKAGE_MANIFEST_KIND = 'report_package'
+# 导入回执 warnings 条数上限（超出以 count 汇总，避免回执过大）
+REPORT_PACKAGE_WARNINGS_CAP = 200
+
+
 class ImportProgressStep(str, Enum):
     """导入进度步骤（socket import_progress 事件 payload.step）"""
     PARSING = 'parsing'

@@ -1196,6 +1196,21 @@ service DataTransferService {
   rpc ExecuteImport(ExecuteImportRequest) returns (TaskConfigResponse);
   // 回滚一次导入批次：入参 {batch_id}，按批次登记的主键删除（补偿失败时人工介入的兜底入口）
   rpc RollbackImport(RollbackImportRequest) returns (TaskConfigResponse);
+  // 报告包导出（INT-1764 D6，链路 3a + 3b/3c）：入参 {task_ids, report_ids?,
+  // doc_version_scope?}；出参 {zip_path, manifest}（ZIP 落共享盘，网关 FileResponse 下发）
+  rpc ExportReportPackage(ExportReportPackageRequest) returns (TaskConfigResponse);
+  // 报告包导入（INT-1764 D6）：入参 {zip_path, data:{target_report_id?, batch_id?}}；
+  // 平台报告按 sourceTask.id 原地替换，Studio 文档拓扑序落库，出参为导入回执（含 warnings）。
+  // 长耗时调用，客户端超时需放宽。
+  rpc ImportReportPackage(ImportReportPackageRequest) returns (TaskConfigResponse);
+}
+
+message ExportReportPackageRequest {
+  string data = 1;  // JSON: {task_ids: [int], report_ids: [int], doc_version_scope: 'full'|'latest'}
+}
+message ImportReportPackageRequest {
+  string zip_path = 1;  // 共享盘上报告包 ZIP 的绝对路径
+  string data = 2;  // JSON: {target_report_id?: int, batch_id?: str, doc_version_scope?: 'full'|'latest'}
 }
 
 message ExportTasksRequest {

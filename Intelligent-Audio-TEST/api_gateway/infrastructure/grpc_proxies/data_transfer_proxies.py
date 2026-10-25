@@ -79,6 +79,32 @@ class _DataTransferProxy:
             'success': False, 'message': f'执行导入失败: {e}', 'data': None, 'code': 500},
             error_msg_prefix='执行导入失败')
 
+    def export_report_package(self, data: dict) -> dict:
+        """导出报告包（INT-1764 D6）。data: {task_ids, report_ids, doc_version_scope}"""
+        def _call():
+            stub = get_data_transfer_service_stub()
+            resp = stub.ExportReportPackage(task_pb.ExportReportPackageRequest(
+                data=json.dumps(data or {}, ensure_ascii=False, default=str)),
+                timeout=_DEFAULT_TIMEOUT_SECONDS)
+            return self._resp(resp)
+        return _grpc_call(_call, default_return=lambda e: {
+            'success': False, 'message': f'导出报告包失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='导出报告包失败')
+
+    def import_report_package(self, zip_path: str, options: dict = None) -> dict:
+        """导入报告包（长耗时，timeout=3600s）"""
+        def _call():
+            stub = get_data_transfer_service_stub()
+            resp = stub.ImportReportPackage(
+                task_pb.ImportReportPackageRequest(
+                    zip_path=zip_path,
+                    data=json.dumps(options or {}, ensure_ascii=False, default=str)),
+                timeout=_EXECUTE_TIMEOUT_SECONDS)
+            return self._resp(resp)
+        return _grpc_call(_call, default_return=lambda e: {
+            'success': False, 'message': f'导入报告包失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='导入报告包失败')
+
     def get_progress_snapshot(self) -> dict:
         """最近一次导入进度快照（GET /import/progress 兜底）
 

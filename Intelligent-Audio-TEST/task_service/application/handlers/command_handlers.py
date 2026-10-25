@@ -54,6 +54,8 @@ from task_service.application.commands.task_commands import (
     PreviewImportCommand,
     ExecuteImportCommand,
     RollbackImportCommand,
+    ExportReportPackageCommand,
+    ImportReportPackageCommand,
 )
 from task_service.domain.entities import TaskStatus
 from task_service.infrastructure.persistence.task_repository import task_repository
@@ -374,6 +376,22 @@ class TaskCommandHandler:
             data_transfer_import_service,
         )
         return data_transfer_import_service.rollback_import(cmd.batch_id)
+
+    def handle_export_report_package(self, cmd: ExportReportPackageCommand) -> Dict:
+        """处理报告包导出命令（INT-1764 D6）。"""
+        from task_service.application.task.data_transfer_export_service import (
+            data_transfer_export_service,
+        )
+        return data_transfer_export_service.export_report_package(
+            cmd.task_ids, cmd.report_ids, cmd.doc_version_scope)
+
+    def handle_import_report_package(self, cmd: ImportReportPackageCommand) -> Dict:
+        """处理报告包导入命令（INT-1764 D6）。"""
+        from task_service.application.task.data_transfer_import_service import (
+            data_transfer_import_service,
+        )
+        return data_transfer_import_service.import_report_package(
+            cmd.zip_path, cmd.options)
 
     # ==================================================================
     # task 域生命周期命令（gRPC servicer 入口）

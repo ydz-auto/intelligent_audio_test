@@ -12,8 +12,10 @@ import uuid
 from typing import Dict, List
 
 from shared.constants.data_transfer import (
+    DEFAULT_DOC_VERSION_SCOPE,
     DEFAULT_INCLUDE_AUDIOS,
     DEFAULT_INCLUDE_REF_PARAMS,
+    DOC_VERSION_SCOPES,
     EXPORT_TEMP_MAX_AGE_SECONDS,
     TransferTable,
 )
@@ -21,6 +23,7 @@ from shared.infrastructure.config import BaseConfig
 from shared.utils.data_transfer_server import resolve_transfer_server_id
 from shared.utils.log_handler import log_not_emit
 from task_service.domain.services.data_transfer import build_manifest, collect_external_references
+from task_service.domain.services.data_transfer.manifest import build_report_package_manifest
 from task_service.infrastructure.acl.evaluation_transfer_acl import evaluation_transfer_acl_repository
 from task_service.infrastructure.acl.report_transfer_acl import report_transfer_acl_repository
 from task_service.infrastructure.persistence.transfer_repository import transfer_repository
@@ -172,6 +175,78 @@ class DataTransferExportService:
                 'total_file_size': stats_collector.total_size,
             },
         }
+
+    def export_report_package(self, task_ids: List[int], report_ids: List[int] = None,
+                              doc_version_scope: str = None) -> dict:
+        """导出报告包（链路 3a 平台报告 + 3b/3c Studio 文档）。
+
+        Returns: {'success', 'message', 'data': {'zip_path', 'manifest'}}；失败带 code。
+        """
+        scope = (doc_version_scope or DEFAULT_DOC_VERSION_SCOPE).strip().lower()
+        if scope not in DOC_VERSION_SCOPES:
+            return {'success': False, 'code': 400,
+                    'message': f'docVersionScope 非法: {doc_version_scope!r}'}
+        clean_task_ids = sorted({int(t) for t in (task_ids or [])})
+        clean_report_ids = sorted({int(r) for r in (report_ids or [])})
+        if not clean_task_ids and not clean_report_ids:
+            return {'success': False, 'code': 400, 'message': 'taskId / reportIds 至少提供一个'}
+
+        # INT-423 口径：导出逐行可见性过滤——私有非 owner 任务跳过
+        if clean_task_ids:
+            from shared.infrastructure.user_context import (
+                get_current_user_id, get_current_user_is_admin)
+            from task_service.infrastructure.persistence.task_repository import task_repository
+            clean_task_ids = task_repository.filter_visible_task_ids(
+                clean_task_ids, user_id=get_current_user_id(),
+                is_admin=get_current_user_is_admin())
+            if not clean_task_ids:
+                return {'success': False, 'code': 404, 'message': '没有可导出的任务'}
+
+        package = report_transfer_acl_repository.export_report_package(
+            clean_task_ids, clean_report_ids, scope)
+        tables = package.get('tables') or {}
+        studio = package.get('studio') or {}
+        package_report_ids = [int(rid) for rid in (package.get('reportIds') or [])]
+        all_task_ids = sorted({int(t) for t in (package.get('taskIds') or clean_task_ids)})
+        if not all_task_ids:
+            return {'success': False, 'code': 404, 'message': '报告不存在或已删除'}
+
+        task_names = transfer_repository.fetch_task_names(all_task_ids)
+        # sourceTask.id：A 侧原任务 id（B 导出时经 source_map 反查；无映射视为同一端）
+        local_task_id = all_task_ids[0] if len(all_task_ids) == 1 else None
+        source_ids = {}
+        if local_task_id is not None:
+            source_ids = transfer_repository.fetch_source_ids_by_local_ids(
+                resolve_transfer_server_id(), 'tasks', [local_task_id])
+        source_task_id = source_ids.get(local_task_id, local_task_id)
+        task_name = task_names.get(source_task_id) or task_names.get(local_task_id) or ''
+
+        counts = {}
+        for table, rows in tables.items():
+            counts[table] = len(rows or [])
+        for table, rows in studio.items():
+            counts[table] = len(rows or [])
+        manifest = build_report_package_manifest(
+            source_task_id=source_task_id,
+            local_task_id=local_task_id,
+            task_name=task_name,
+            report_ids=package_report_ids,
+            doc_version_scope=scope,
+            entities=package.get('entities') or [],
+            counts=counts,
+            source=resolve_transfer_server_id())
+
+        _sweep_expired_exports()
+        db_tables = {table: rows for table, rows in tables.items()}
+        db_tables.update({table: rows for table, rows in studio.items()})
+        zip_name = f"report_export_{time.strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}.zip"
+        zip_path = os.path.join(_export_tmp_dir(), zip_name)
+        build_zip(zip_path, db_tables, manifest, iter(()))
+        log_not_emit('INFO', _MODULE_NAME,
+                     f'报告包导出完成: tasks={all_task_ids} reports={package_report_ids} '
+                     f'zip={zip_name}', category='system')
+        return {'success': True, 'message': '导出成功',
+                'data': {'zip_path': zip_path, 'manifest': manifest}}
 
     @staticmethod
     def _collect_audio_infos(case_configs: Dict[str, dict]) -> List[dict]:

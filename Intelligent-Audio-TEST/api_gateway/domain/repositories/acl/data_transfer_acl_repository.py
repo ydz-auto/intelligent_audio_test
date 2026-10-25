@@ -33,3 +33,12 @@ class DataTransferAclRepository(ABC):
     @abstractmethod
     def get_progress_snapshot(self) -> CommandResultDTO:
         """最近一次导入进度快照"""
+
+    @abstractmethod
+    def export_report_package(self, data: Dict) -> CommandResultDTO:
+        """导出报告包（INT-1764 D6：报告 7 表 + Studio 三表，返回 data.zip_path）"""
+
+    @abstractmethod
+    def import_report_package(self, zip_path: str,
+                              options: Optional[Dict] = None) -> CommandResultDTO:
+        """导入报告包（3a 原地替换 + 3b/3c 拓扑序落库；长耗时）"""
