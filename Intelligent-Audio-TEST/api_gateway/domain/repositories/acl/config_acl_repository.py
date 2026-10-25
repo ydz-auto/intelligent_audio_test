@@ -35,6 +35,9 @@ class ApiConfigAclRepository(ABC):
     @abstractmethod
     def stop_test(self, api_id) -> CommandResultDTO: ...
 
+    @abstractmethod
+    def parse_proto(self, filename, content) -> CommandResultDTO: ...
+
 
 class TaskConfigAclRepository(ABC):
     """task_service.TaskConfigService 实体 ACL 接口。"""

@@ -37,6 +37,15 @@ def parse_preview(_: None = require_permission('api_config:read')):
     return to_response(ApiQueryService.parse_preview())
 
 
+# INT-1952 proto 上传与符号解析（A3 / INT-1791 硬前置）：multipart file →
+# 编译 + 内容寻址落存储 + 回吐 service / method / 字段符号表。
+# 静态段，同样先于 /{api_id} 注册；权限与 /import 同为 api_config:create
+@router.post('/proto')
+def parse_proto(_: None = require_permission('api_config:create')):
+    """上传 .proto（multipart 字段 file），返回符号表与存储元信息"""
+    return to_response(ApiCommandService.parse_proto())
+
+
 @router.get('/{api_id}')
 def get_one(api_id: int):
     return to_response(ApiQueryService.get_one(api_id))

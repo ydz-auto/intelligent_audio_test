@@ -28,6 +28,8 @@ service APITestService {
   rpc TestAPIConnection(TestAPIConnectionRequest) returns (TestAPIConnectionResponse);
   // 停止 API 测试连接
   rpc StopAPITestConfig(StopAPITestConfigRequest) returns (StopAPITestConfigResponse);
+  // 解析上传的 .proto：编译 + 内容寻址落存储 + 回吐符号表（INT-1952 / A3 硬前置）
+  rpc ParseProto(ParseProtoRequest) returns (ParseProtoResponse);
 }
 
 // ===== API RMS→SPL 映射配置服务（UC-0902 数字域灵敏度校准，与设备域 SPLConfigService 对称）=====
@@ -175,6 +177,22 @@ message StopAPITestConfigResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+}
+
+// INT-1952 / A3（INT-1791）硬前置：proto 上传与符号解析
+// 内容类错误 code=400，存储不可用 code=503；网关据 code 映射 HTTP 状态（不一律 400）。
+// 客户端 filename 只用于校验 / 报错文案，不进编译临时目录与存储 key（key 用 sha256）。
+
+message ParseProtoRequest {
+  string filename = 1;
+  bytes  content  = 2;
+}
+
+message ParseProtoResponse {
+  bool   success = 1;
+  string message = 2;
+  string data    = 3;  // JSON 序列化的 {object_key, sha256, size, services[]}
+  int32  code    = 4;  // 0=成功，400=内容类错误，503=存储不可用
 }
 
 // ==================== ApiRmsSplConfigService Messages ====================

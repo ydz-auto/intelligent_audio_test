@@ -30,6 +30,9 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
+from shared.models.proto_limits import PROTO_MAX_BYTES  # noqa: F401
+# ↑ 单一来源在 shared/models/proto_limits.py（INT-1952 上移，网关预检与
+#   执行期读取同口径）；此处保留原名字 re-export，既有 import 点不改。
 from shared.utils.error_mapping import (
     ERROR_SOURCE_GRPC,
     ERROR_SOURCE_NETWORK,
@@ -41,7 +44,6 @@ from shared.utils.path_extractor import extract_by_path
 logger = logging.getLogger(__name__)
 
 # ── proto 安全边界（A0 §3.5③）──────────────────────────────────────────
-PROTO_MAX_BYTES = 256 * 1024
 ALLOWED_PROTO_IMPORT_PREFIX = 'google/protobuf/'
 _PROTO_IMPORT_RE = re.compile(
     r'^\s*import\s+(?:public\s+|weak\s+)?"([^"]+)"\s*;', re.MULTILINE)
@@ -52,6 +54,12 @@ METHOD_KINDS = {
     'server_stream': (False, True),
     'bidi': (True, True),
 }
+
+# ── 符号表枚举（INT-1952：上传端点回吐 service / method / 字段，A3 前端消费）──
+#: 字段展开深度：顶层 + 一层嵌套（再深由前端按类型名自行展示）
+SYMBOL_MAX_FIELD_DEPTH = 2
+#: well-known types 只给类型名不展开
+_WELL_KNOWN_TYPE_PREFIX = 'google.protobuf.'
 
 # 归一事件类型（A0 §4.1：只有 4 值，厂商/协议差异不外溢）
 EVENT_MESSAGE = 'message'
@@ -156,6 +164,7 @@ class CompiledProto:
         self.sha = sha
         self._descriptor_set_bytes = descriptor_set_bytes
         self._pool = None
+        self._file_set = None
 
     @property
     def pool(self):
@@ -216,6 +225,131 @@ class CompiledProto:
             input_class=message_factory.GetMessageClass(method_desc.input_type),
             output_class=message_factory.GetMessageClass(method_desc.output_type),
         )
+
+    # ── 符号表枚举（只读；INT-1952 上传端点 / A3 前端下拉与类型预览）──
+
+    @property
+    def file_set(self):
+        """编译产物 FileDescriptorSet（与 pool 同一份字节，只解析一次）。"""
+        if self._file_set is None:
+            from google.protobuf import descriptor_pb2
+
+            file_set = descriptor_pb2.FileDescriptorSet()
+            file_set.ParseFromString(self._descriptor_set_bytes)
+            self._file_set = file_set
+        return self._file_set
+
+    def iter_services(self):
+        """按声明顺序产出 ServiceDescriptor（含 import 进来的文件，通常无 service）。"""
+        for file_proto in self.file_set.file:
+            package = file_proto.package
+            for service_proto in file_proto.service:
+                full_name = (f'{package}.{service_proto.name}'
+                             if package else service_proto.name)
+                try:
+                    yield self.pool.FindServiceByName(full_name)
+                except KeyError:
+                    logger.debug('service 未进 descriptor pool: %s',
+                                 full_name, exc_info=True)
+
+    def enumerate_services(self) -> List[Dict[str, Any]]:
+        """回吐可执行符号表：service → method → 输入 / 输出字段。
+
+        规则（INT-1952 卡面 §5 第 5 条，前端直接消费，不另解析一套）：
+        - **client-streaming-only 方法剔除**：执行期只支持 unary / server_stream /
+          bidi，吐出去前端下拉必然报错；`method_kind` 仍只用 `METHOD_KINDS` 三值。
+        - `input_type` / `output_type` 写 descriptor 全限定名（与
+          `meta.grpc.service` 全名口径一致）。
+        - 字段展开到 `SYMBOL_MAX_FIELD_DEPTH` 层（顶层 + 一层嵌套），`path` 用
+          点号；map 写完整 `map<k, v>`；enum 写枚举全名不展开；
+          `google.protobuf.*` 只给类型名不展开；自引用 / 递归在重复出现处截断。
+        """
+        services: List[Dict[str, Any]] = []
+        for service_desc in self.iter_services():
+            methods: List[Dict[str, Any]] = []
+            for method_desc in service_desc.methods:
+                kind = _method_kind_of(method_desc)
+                if kind is None:  # client-streaming-only：执行期不支持
+                    continue
+                methods.append({
+                    'name': method_desc.name,
+                    'method_kind': kind,
+                    'input_type': method_desc.input_type.full_name,
+                    'output_type': method_desc.output_type.full_name,
+                    'input_fields': describe_message_fields(method_desc.input_type),
+                    'output_fields': describe_message_fields(method_desc.output_type),
+                })
+            services.append({'name': service_desc.full_name, 'methods': methods})
+        return services
+
+
+# ── 符号表枚举的纯函数（CompiledProto 内部复用，也可独立单测）────────────
+
+def _method_kind_of(method_desc) -> Optional[str]:
+    """(client_streaming, server_streaming) → METHOD_KINDS 的键；不支持则 None。"""
+    flags = (method_desc.client_streaming, method_desc.server_streaming)
+    return next((name for name, kinds in METHOD_KINDS.items() if kinds == flags),
+                None)
+
+
+def _is_map_field(field_desc) -> bool:
+    """proto3 map 字段在 descriptor 里是 `map_entry=True` 的合成 message。"""
+    message_desc = field_desc.message_type
+    return message_desc is not None and message_desc.GetOptions().map_entry
+
+
+def _field_type_label(field_desc) -> str:
+    """字段的类型标签：标量 / 全限定消息名 / 全限定枚举名 / map<k, v>。"""
+    if field_desc.message_type is not None:
+        if _is_map_field(field_desc):
+            entry_desc = field_desc.message_type
+            key_label = _field_type_label(entry_desc.fields_by_name['key'])
+            value_label = _field_type_label(entry_desc.fields_by_name['value'])
+            return f'map<{key_label}, {value_label}>'
+        return field_desc.message_type.full_name
+    if field_desc.enum_type is not None:
+        return field_desc.enum_type.full_name
+    from google.protobuf.descriptor_pb2 import FieldDescriptorProto
+
+    return FieldDescriptorProto.Type.Name(field_desc.type) \
+        .replace('TYPE_', '').lower()
+
+
+def _expandable_message(field_desc, ancestors, depth_left):
+    """该字段的嵌套 message 是否继续展开（深度 / well-known / 递归三重限制）。"""
+    if depth_left <= 1:
+        return None
+    message_desc = field_desc.message_type
+    if message_desc is None or _is_map_field(field_desc):
+        return None
+    if message_desc.full_name.startswith(_WELL_KNOWN_TYPE_PREFIX):
+        return None
+    if message_desc.full_name in ancestors:
+        return None
+    return message_desc
+
+
+def _expand_fields(message_desc, prefix, depth_left, ancestors, out) -> None:
+    for field_desc in message_desc.fields:
+        path = f'{prefix}.{field_desc.name}' if prefix else field_desc.name
+        out.append({
+            'path': path,
+            'type': _field_type_label(field_desc),
+            # map 自带键值语义，不算 repeated
+            'repeated': bool(field_desc.is_repeated) and not _is_map_field(field_desc),
+        })
+        nested = _expandable_message(field_desc, ancestors, depth_left)
+        if nested is not None:
+            _expand_fields(nested, path, depth_left - 1,
+                           ancestors | {nested.full_name}, out)
+
+
+def describe_message_fields(message_desc) -> List[Dict[str, Any]]:
+    """展开一个消息的字段为 `[{path, type, repeated}]`（最多两层）。"""
+    out: List[Dict[str, Any]] = []
+    _expand_fields(message_desc, '', SYMBOL_MAX_FIELD_DEPTH,
+                   frozenset({message_desc.full_name}), out)
+    return out
 
 
 def load_compiled_proto(proto_bytes: bytes,

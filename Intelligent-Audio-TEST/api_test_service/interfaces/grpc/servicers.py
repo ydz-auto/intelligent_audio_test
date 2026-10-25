@@ -14,16 +14,24 @@ api_test_service gRPC servicer 实现。
 - 所有方法用 try/except 包裹，异常返回 success=False
 """
 
+import logging
+
 from shared.proto import api_test_service_pb2 as api_pb
 from shared.proto import api_test_service_pb2_grpc as api_grpc
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
+from api_test_service.application.api_proto_service import (
+    CODE_INTERNAL_ERROR,
+    ProtoParseError,
+)
 from api_test_service.application.commands.api_test_commands import (
     CreateAPITestCommand,
     StartAPITestCommand,
     StopAPITestCommand,
 )
 from api_test_service.application.queries.api_test_queries import GetAPITestStatusQuery
+
+logger = logging.getLogger(__name__)
 
 
 class APITestServiceServicer(api_grpc.APITestServiceServicer):
@@ -35,6 +43,7 @@ class APITestServiceServicer(api_grpc.APITestServiceServicer):
         self._start_handler = None
         self._status_handler = None
         self._crud_service = None
+        self._proto_service = None
 
     @staticmethod
     def _bind_worker_context(context):
@@ -274,6 +283,35 @@ class APITestServiceServicer(api_grpc.APITestServiceServicer):
             )
         except Exception as e:
             return api_pb.StopAPITestConfigResponse(success=False, message=str(e), data="")
+
+    @property
+    def proto_service(self):
+        """application 层 — proto 上传解析（编译 + 内容寻址落存储 + 符号表）"""
+        if self._proto_service is None:
+            from api_test_service.application.api_proto_service import (
+                api_proto_service,
+            )
+            self._proto_service = api_proto_service
+        return self._proto_service
+
+    def ParseProto(self, request, context=None):
+        """解析上传的 .proto（INT-1952）：回吐符号表与存储元信息。
+
+        `code`：0 成功 / 400 内容类错误 / 503 存储不可用 / 500 意外内部错误；
+        网关按 code 映射 HTTP 状态（存储不可用不再被压成 400）。
+        """
+        try:
+            result = self.proto_service.parse(request.filename, request.content)
+            return api_pb.ParseProtoResponse(
+                success=True, message='', data=_dumps(result), code=0)
+        except ProtoParseError as exc:
+            return api_pb.ParseProtoResponse(
+                success=False, message=str(exc), data="", code=exc.code)
+        except Exception as exc:  # noqa: BLE001 — 兜底不让异常穿透成 gRPC 500
+            logger.exception("ParseProto 内部错误")
+            return api_pb.ParseProtoResponse(
+                success=False, message=f"proto 解析失败: {exc}", data="",
+                code=CODE_INTERNAL_ERROR)
 
 
 class ApiRmsSplConfigServiceServicer(api_grpc.ApiRmsSplConfigServiceServicer):

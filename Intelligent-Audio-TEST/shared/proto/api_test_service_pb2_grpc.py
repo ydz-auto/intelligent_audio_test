@@ -90,6 +90,11 @@ class APITestServiceStub:
                 request_serializer=api__test__service__pb2.StopAPITestConfigRequest.SerializeToString,
                 response_deserializer=api__test__service__pb2.StopAPITestConfigResponse.FromString,
                 _registered_method=True)
+        self.ParseProto = channel.unary_unary(
+                '/api_test_service.APITestService/ParseProto',
+                request_serializer=api__test__service__pb2.ParseProtoRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.ParseProtoResponse.FromString,
+                _registered_method=True)
 
 
 class APITestServiceServicer:
@@ -174,6 +179,13 @@ class APITestServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ParseProto(self, request, context):
+        """解析上传的 .proto：编译 + 内容寻址落存储 + 回吐符号表（INT-1952 / A3 硬前置）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_APITestServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -231,6 +243,11 @@ def add_APITestServiceServicer_to_server(servicer, server):
                     servicer.StopAPITestConfig,
                     request_deserializer=api__test__service__pb2.StopAPITestConfigRequest.FromString,
                     response_serializer=api__test__service__pb2.StopAPITestConfigResponse.SerializeToString,
+            ),
+            'ParseProto': grpc.unary_unary_rpc_method_handler(
+                    servicer.ParseProto,
+                    request_deserializer=api__test__service__pb2.ParseProtoRequest.FromString,
+                    response_serializer=api__test__service__pb2.ParseProtoResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -531,6 +548,33 @@ class APITestService:
             '/api_test_service.APITestService/StopAPITestConfig',
             api__test__service__pb2.StopAPITestConfigRequest.SerializeToString,
             api__test__service__pb2.StopAPITestConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ParseProto(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.APITestService/ParseProto',
+            api__test__service__pb2.ParseProtoRequest.SerializeToString,
+            api__test__service__pb2.ParseProtoResponse.FromString,
             options,
             channel_credentials,
             insecure,

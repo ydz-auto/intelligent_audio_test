@@ -62,6 +62,10 @@ class ApiConfigAclRepositoryImpl(ApiConfigAclRepository):
         from api_gateway.infrastructure.grpc_proxies import api_config_service
         return _wrap(api_config_service.stop_test(api_id))
 
+    def parse_proto(self, filename, content) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import api_config_service
+        return _wrap(api_config_service.parse_proto(filename, content))
+
 
 class TaskConfigAclRepositoryImpl(TaskConfigAclRepository):
     """task_service.TaskConfigService 实体 ACL 实现。"""

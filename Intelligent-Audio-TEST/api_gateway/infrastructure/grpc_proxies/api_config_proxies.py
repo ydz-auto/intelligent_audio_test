@@ -3,7 +3,7 @@ import json
 
 from shared.clients.grpc_clients import get_api_test_service_stub
 
-from ._common import _grpc_call
+from ._common import _attach_code, _grpc_call
 
 
 class _ApiConfigProxy:
@@ -218,6 +218,37 @@ class _ApiConfigProxy:
             _call,
             default_return=lambda e: {'success': False, 'message': f'停止测试失败: {e}', 'data': None, 'code': 400},
             error_msg_prefix='停止测试失败',
+        )
+
+    def parse_proto(self, filename, content):
+        """解析上传的 .proto（INT-1952）：编译 + 落存储 + 符号表
+
+        业务码由 servicer 的 `ParseProtoResponse.code` 给出（400 内容类 /
+        503 存储不可用），经 `_attach_code` 提升到返回字典供网关映射 HTTP 状态；
+        RPC 本身失败（连不上服务等）按 400 兜底，不吞成「成功」。
+
+        Returns:
+            dict: {success, message, data, code}
+        """
+        from shared.proto import api_test_service_pb2 as api_pb
+
+        def _call():
+            stub = get_api_test_service_stub()
+            resp = stub.ParseProto(api_pb.ParseProtoRequest(
+                filename=filename or '',
+                content=content or b'',
+            ))
+            result = {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+            return _attach_code(result, resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'proto 解析失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='proto 解析失败',
         )
 
 

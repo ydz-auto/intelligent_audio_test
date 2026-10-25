@@ -819,3 +819,125 @@ class TestEmptyRoundsRouting:
         assert captured['rounds'] == [{}]
         assert any(level == 'WARNING' and 'rounds 为空' in content
                    for level, content in logs)
+
+
+# ── INT-1952：CompiledProto 符号表枚举（只读，上传端点 / A3 前端消费）──────
+
+SYMBOL_PROTO = """\
+syntax = "proto3";
+package demo;
+
+import "google/protobuf/timestamp.proto";
+
+enum Color {
+  RED = 0;
+  GREEN = 1;
+}
+
+message Address {
+  string street = 1;
+  string city = 2;
+  Address next = 3;
+}
+
+message User {
+  string id = 1;
+  Address address = 2;
+  User parent = 3;
+  Color color = 4;
+}
+
+message Req {
+  string text = 1;
+  User user = 2;
+  repeated User users = 3;
+  map<string, int32> tags = 4;
+  map<string, Address> addrs = 5;
+  google.protobuf.Timestamp at = 6;
+  Color color = 7;
+  repeated string names = 8;
+}
+
+message Resp {
+  string reply = 1;
+}
+
+service Greeter {
+  rpc Unary (Req) returns (Resp);
+  rpc ServerStream (Req) returns (stream Resp);
+  rpc Bidi (stream Req) returns (stream Resp);
+  rpc ClientStream (stream Req) returns (Resp);
+}
+"""
+
+
+class TestSymbolEnumeration:
+    """INT-1952 §5 第 5 条：service / method_kind / 字段展开规则。"""
+
+    @pytest.fixture()
+    def compiled(self):
+        clear_proto_cache()
+        yield compile_proto(SYMBOL_PROTO.encode('utf-8'), 'symbols.proto')
+        clear_proto_cache()
+
+    @staticmethod
+    def _method(compiled, name):
+        services = {svc['name']: svc for svc in compiled.enumerate_services()}
+        methods = {m['name']: m for m in services['demo.Greeter']['methods']}
+        return methods[name]
+
+    def test_input_output_type_use_full_names(self, compiled):
+        method = self._method(compiled, 'Unary')
+        assert method['input_type'] == 'demo.Req'
+        assert method['output_type'] == 'demo.Resp'
+
+    def test_three_supported_kinds_recognized(self, compiled):
+        services = compiled.enumerate_services()
+        assert [svc['name'] for svc in services] == ['demo.Greeter']
+        kinds = {m['name']: m['method_kind']
+                 for m in services[0]['methods']}
+        assert kinds == {'Unary': 'unary',
+                         'ServerStream': 'server_stream',
+                         'Bidi': 'bidi'}
+
+    def test_client_streaming_only_method_excluded(self, compiled):
+        names = [m['name'] for svc in compiled.enumerate_services()
+                 for m in svc['methods']]
+        assert 'ClientStream' not in names
+
+    def test_nested_message_expanded_to_two_layers_only(self, compiled):
+        paths = [f['path'] for f in self._method(compiled, 'Unary')['input_fields']]
+        assert 'user.id' in paths            # 第 2 层展开
+        assert 'user.address' in paths       # 第 2 层的嵌套 message 只给类型名
+        assert 'user.address.street' not in paths
+
+    def test_repeated_message_marks_repeated_and_expands(self, compiled):
+        fields = {f['path']: f for f in self._method(compiled, 'Unary')['input_fields']}
+        assert fields['users']['repeated'] is True
+        assert fields['users']['type'] == 'demo.User'
+        assert fields['users.id']['path'] == 'users.id'
+
+    def test_repeated_scalar_marks_repeated(self, compiled):
+        fields = {f['path']: f for f in self._method(compiled, 'Unary')['input_fields']}
+        assert fields['names'] == {'path': 'names', 'type': 'string', 'repeated': True}
+
+    def test_map_field_writes_full_type(self, compiled):
+        fields = {f['path']: f for f in self._method(compiled, 'Unary')['input_fields']}
+        assert fields['tags']['type'] == 'map<string, int32>'
+        assert fields['tags']['repeated'] is False
+        assert fields['addrs']['type'] == 'map<string, demo.Address>'
+
+    def test_enum_writes_full_name_without_expanding(self, compiled):
+        fields = {f['path']: f for f in self._method(compiled, 'Unary')['input_fields']}
+        assert fields['color']['type'] == 'demo.Color'
+        assert [p for p in fields if p.startswith('color.')] == []
+
+    def test_well_known_type_not_expanded(self, compiled):
+        paths = [f['path'] for f in self._method(compiled, 'Unary')['input_fields']]
+        assert 'at' in paths
+        assert not any(p.startswith('at.') for p in paths)
+
+    def test_self_reference_truncated(self, compiled):
+        fields = {f['path']: f for f in self._method(compiled, 'Unary')['input_fields']}
+        assert fields['user.parent']['type'] == 'demo.User'
+        assert 'user.parent.id' not in fields

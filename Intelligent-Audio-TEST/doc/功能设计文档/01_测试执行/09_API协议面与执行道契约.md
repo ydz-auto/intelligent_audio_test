@@ -607,3 +607,126 @@ INT-305 与 Realtime 会话同口径**静默收敛**——只记 INFO 日志，�
   都在本卡新增件里），加成员会得到一个无人注册的死值；
 - 音频输入推流与平台 frame/summary 实时流推送（SSE 是「一问多回、客户端只读」）；
 - 前端协议页签（A3 / INT-1791）。
+
+---
+
+## 十二、proto 上传与符号解析端点（INT-1952 实施回写，2026-10-26）
+
+A3（INT-1791，前端 gRPC 协议区块）的硬前置：gRPC 配置面此前只有**读取侧**
+（执行期按 `meta.grpc.proto_object_key` 取 `.proto`），没有任何上传 / 符号解析端点，
+前端拿不到 `proto_object_key` / `sha256` / `size`，也拿不到 service / method / 消息字段
+供下拉。本端点补齐上传与符号解析。**执行期适配器（`grpc_adapter.py`）一行未改**，
+`meta.grpc` 的读取侧键名不变。
+
+| 项 | 位置 | 说明 |
+|----|------|------|
+| HTTP 端点 | `api_gateway/routes/api_bp.py` `POST /api/v1/apis/proto` | multipart 字段 `file`；静态段先于 `/{api_id}` 注册；权限 `api_config:create` |
+| 网关应用层 | `api_gateway/application/services/api/api_command_service.py` `parse_proto()` + `.../proto_upload.py` | 只做预检与错误码映射；上传预检在调 RPC **之前** |
+| 网关代理 / ACL | `grpc_proxies/api_config_proxies.py` `parse_proto`（`_attach_code` 透传业务码） | 不反向 import `api_test_service` |
+| gRPC RPC | `shared/proto/api_test_service.proto` `APITestService.ParseProto` | pb2 / pb2_grpc 同批重生成 |
+| 应用服务 | `api_test_service/application/api_proto_service.py` | 编译预算 + 并发限流 + 内容寻址落存储 + 符号表 |
+| 符号枚举 | `api_test_service/.../transport/grpc_client.py` `CompiledProto.enumerate_services()` | 只读能力，复用 `load_compiled_proto` 的 sha 缓存 |
+| 常量 | `shared/models/proto_limits.py` | `PROTO_MAX_BYTES` 等单一来源，网关与执行期同口径 |
+
+### 12.1 HTTP 契约
+
+```
+POST /api/v1/apis/proto        multipart/form-data: file
+权限：api_config:create（缺失 → 403）
+
+200 data: {
+  object_key: "oss://api-protos/<sha256>.proto" | "local://api-protos/<sha256>.proto",
+  sha256:     "<64 位小写 hex>",          // 服务端对字节计算，客户端声明不参与
+  size:       12345,                      // 同上
+  services: [{ name, methods: [{
+      name, method_kind,                  // unary / server_stream / bidi
+      input_type, output_type,            // descriptor 全限定名，如 demo.Req
+      input_fields, output_fields         // [{path, type, repeated}]
+  }]}]
+}
+```
+
+`object_key` 是 `storage.save_bytes(...)` 的**原样返回值**（带 scheme）。执行期
+`_proto_bytes` → `load_bytes` → `_parse_path` 按 scheme 选介质，因此前端只需把它
+原样写进 `meta.grpc.proto_object_key`。
+
+### 12.2 gRPC 契约
+
+```proto
+rpc ParseProto(ParseProtoRequest) returns (ParseProtoResponse);
+
+message ParseProtoRequest {
+  string filename = 1;   // 只用于校验 / 报错文案，不进编译与存储
+  bytes  content  = 2;
+}
+
+message ParseProtoResponse {
+  bool   success = 1;
+  string message = 2;
+  string data    = 3;    // JSON 序列化上述 data 结构
+  int32  code    = 4;    // 0=成功，400=内容类错误，503=存储不可用，500=意外内部错误
+}
+```
+
+`code` 是**必须存在**的：网关代理异常默认回 `code=400`，没有该字段时「存储不可用」
+会被压成 400，与「503 不被压成 400」的验收冲突。网关用 `_common._attach_code` 口径
+透传（同 `ApiRmsSplConfigService` 各 Response 的先例）。
+
+### 12.3 错误码（HTTP 状态由业务码决定，不是一律 400）
+
+| 场景 | code / HTTP | message 示例 |
+|---|---|---|
+| 缺 `file` 字段 / 空文件 | 400 | `未收到 proto 文件` |
+| 超过 `PROTO_MAX_BYTES` | 400 | `proto 文件超过 262144 字节上限（实际 N）` |
+| 非 UTF-8 | 400 | `proto 文件不是 UTF-8 文本: ...` |
+| 非法 import | 400 | `proto import 不在白名单内: [...]` |
+| protoc 编译失败 / 超时 | 400 | `proto 编译失败（protoc 返回 N）` / `proto 编译超时` |
+| 无 service / 无可用 method | 400 | `proto 中没有可调用的 service` |
+| 权限缺失 | 403 | 网关 `require_permission` 直出 |
+| 存储不可用 | **503** | `存储不可用: ...` |
+| 其他意外异常 | 500 | `proto 解析失败: ...` |
+
+`PROTO_MAX_BYTES` 超限的「实际 N」：网关 Content-Length 预检时是整个 multipart 包体的
+长度上界，分块读取时是读到的字节数（`上限 + 1` 即拒）。
+
+### 12.4 符号表枚举规则（前端直接消费，不另解析一套）
+
+- **client-streaming-only 方法剔除**：执行期只支持 unary / server_stream / bidi
+  （`METHOD_KINDS` 三值不变），吐出去前端下拉必然报错。只有 client-streaming 方法的
+  service 也一并从结果里去掉；全部方法都被剔除时按「没有可调用的 service」报 400。
+- **字段展开**到第 2 层（顶层 + 一层嵌套），`path` 用点号（`user.id`）。
+- `map<k, v>` 把完整类型写进 `type`（如 `map<string, int32>`），`repeated=false`。
+- enum 写枚举全名（`demo.Color`）且不展开。
+- repeated message 记 `repeated=true` 后继续展开一层。
+- `google.protobuf.*`（well-known types）只给类型名不展开。
+- 自引用 / 递归在重复出现处截断（挡在 `ancestors` 集合上，防死循环）。
+- `input_type` / `output_type` 写 descriptor 全限定名，与 `meta.grpc.service` 全名口径一致。
+
+### 12.5 存储、限流与安全
+
+- **内容寻址**：`category='api-protos'`、`key='<sha256>.proto'`。幂等 = 同 key 覆盖写，
+  **不做 `exists()` 预检**（`storage.exists` 会吞异常回退本地副本，OSS 不可达时每次探活
+  约 13s 且给出「看着成功」的假象，INT-1806 教训）。
+- **写入一律 `allow_fallback=False`**（D1 / INT-1805）：OSS 不可用即抛
+  `StorageUnavailableError` → `code=503`，不写本地降级目录、不吞错。
+- **编译**：复用 `compile_proto`（大小 / UTF-8 / import 白名单 / protoc 全链路），端点只加
+  ≤10s 编译预算与进程内并发上限（默认 2），同 sha 命中 `load_compiled_proto` 缓存不重编。
+- **filename 安全**：端点不把客户端 filename 交给编译（`compile_proto` 会把 filename 拼进
+  临时目录）。编译用 sha 派生文件名 `api_<sha256>.proto`（与执行期同口径），存储 key 用
+  sha256；客户端 filename 只做 basename 归一 + ≤200 字符后进报错文案。
+- **网关预检**：网关没有全局 body 上限，有 `Content-Length` 时按「上限 + 64 KiB multipart
+  包体余量」先拒；无该头（chunked）时按块读到 `PROTO_MAX_BYTES + 1` 即拒。两条路都在调
+  RPC 之前，超大文件不进内存、不进 gRPC。
+- 上传内容不写日志明文（只记 `file` / `sha256` / `size` / service 名）。
+
+### 12.6 明确不做 / 限制
+
+- 不做 server reflection（A1 §十既定，`meta.grpc.reflection` 为真执行期直接抛错），
+  端点不放行、不返回该字段。
+- 不做多文件 / 跨包 import 包管理（只接受单文件 + `google/protobuf/*`），多文件 proto 会被
+  白名单拒绝，UI 需在错误文案里提示。
+- 不做 proto 版本历史 / 删除清理 / 灰度。
+- **只保证单桶模式**：`api-protos` 未注册进多桶 `_buckets` 白名单
+  （`shared/clients/oss_client.py`），多桶模式会 `ValueError`；docker compose 是单桶
+  （`OSS_BUCKET_NAME=intelligent-audio-test`），线上不受影响。多桶需求另开卡。
+- 前端接线归 A3（INT-1791），本端点只提供契约。
