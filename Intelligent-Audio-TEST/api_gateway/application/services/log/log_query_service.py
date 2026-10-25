@@ -111,46 +111,11 @@ class LogQueryService:
             if query.task_id:
                 return LogQueryService._get_task_logs_merged(query)
 
-            # INT-100：全部过滤条件（task_id/level 多级别/日期/module/category/
-            # mark/device/api/case/thread/keyword/content/algorithm_type）下推
-            # task_service DB 过滤，服务端分页，不再客户端二次过滤
-            from api_gateway.infrastructure.grpc_proxies import task_data_service
-            resp = task_data_service.list_logs(
-                task_id=query.task_id,
-                level=query.level or None,
-                page=query.page,
-                per_page=query.per_page,
-                start_date=query.start_time,
-                end_date=query.end_time,
-                module=query.module,
-                category=query.category,
-                mark=query.mark,
-                device_id=query.device_id,
-                api_id=query.api_id,
-                test_case_id=query.test_case_id,
-                thread_id=query.thread_id,
-                keyword=query.keyword,
-                content_include=query.content_include,
-                content_exclude=query.content_exclude,
-                algorithm_type=query.algorithm_type,
-                user_id=query.user_id,
-            )
-            logs = resp.get('items') or []
-            total = resp.get('total', 0)
-
-            data = [_to_log_item(log) for log in logs]
-
-            # INT-297：分页信封统一为 {items, page, pages, per_page, total}
-            return success_response(
-                LogListData(
-                    items=data,
-                    total=total,
-                    page=resp.get('page', query.page),
-                    per_page=resp.get('per_page', query.per_page),
-                    pages=resp.get('pages') or (
-                        (total + query.per_page - 1) // query.per_page if query.per_page else 1),
-                )
-            )
+            # INT-1812（契约 §Q2）：全局页（无 task_id）走「审计文件 + logs 表
+            # 历史行」合并视图。审计事件已去库化落文件（logs/audit/{日期}/...），
+            # DB 只剩改造前的历史行，两侧合并后内存分页；无时间筛选时默认近
+            # LOG_AUDIT_QUERY_DEFAULT_DAYS(30) 天（唯一可见语义变化）。
+            return LogQueryService._get_global_logs_merged(query)
         except Exception as e:
             log_not_emit('ERROR', 'log_controller', f'Error in get_logs: {str(e)}', category='system')
             import traceback
@@ -253,6 +218,191 @@ class LogQueryService:
             )
         )
 
+    # ------------------------------------------------------------------
+    # 全局维度日志（INT-1812，契约 §Q2）：审计文件 + DB 历史行合并
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _normalize_filter(value):
+        """module/category/algorithm_type 的 'all' 归一为不过滤（INT-132 口径）。
+
+        文件侧与 DB 侧、列表与统计共用同一份归一结果，缓存键因此可共享。
+        """
+        return None if not value or value == 'all' else value
+
+    @staticmethod
+    def _resolve_window(start_time, end_time):
+        """默认时间窗（契约 §Q2）：既无 start_time 也无 end_time → 近 30 天。
+
+        这是相对「DB 全表」唯一的可见语义变化：不传时间时「共 N 条」是
+        「近 LOG_AUDIT_QUERY_DEFAULT_DAYS 天 N 条」。任一侧给了时间则原样使用。
+        """
+        if start_time or end_time:
+            return start_time, end_time
+        from shared.logging import AuditLogReader
+        return AuditLogReader.default_window_start(), end_time
+
+    @staticmethod
+    def _audit_file_filters(*, level=None, category=None, module=None, keyword=None,
+                            content_include=None, content_exclude=None,
+                            algorithm_type=None, test_case_id=None, thread_id=None,
+                            device_id=None, api_id=None, task_id=None, user_id=None,
+                            mark=None, start_time=None, end_time=None) -> dict:
+        """列表 / 统计 / 导出共用的审计文件过滤参数（键名与读取器同名）。"""
+        return {
+            'level': level,
+            'category': LogQueryService._normalize_filter(category),
+            'module': LogQueryService._normalize_filter(module),
+            'keyword': keyword,
+            'content_include': content_include,
+            'content_exclude': content_exclude,
+            'algorithm_type': LogQueryService._normalize_filter(algorithm_type),
+            'test_case_id': test_case_id,
+            'thread_id': thread_id,
+            'device_id': device_id,
+            'api_id': api_id,
+            'task_id': task_id,
+            'user_id': user_id,
+            'mark': mark,
+            'start_time': start_time,
+            'end_time': end_time,
+        }
+
+    @staticmethod
+    def _query_db_history(*, level=None, module=None, category=None, mark=None,
+                          device_id=None, api_id=None, test_case_id=None,
+                          thread_id=None, keyword=None, content_include=None,
+                          content_exclude=None, algorithm_type=None, user_id=None,
+                          start_time=None, end_time=None,
+                          need_rows=0):
+        """拉取 logs 表历史行（改造前的审计/任务日志，只读不迁移）。
+
+        合并视图两侧各自有序，并集的前 `page*per_page` 条必然落在两侧各自的
+        前 `page*per_page` 条里，因此 DB 侧只取这么多行（上限受
+        LOG_DB_MERGE_MAX_ROWS 约束，0 = 不限），`total` 仍取 DB 的真实计数。
+
+        DB 侧排序沿用 task_service ListLogs 现有口径（id 倒序，与改造前全局页
+        分页同序，故相对基线不丢行）；主库实测 304,948 行里 time 与 id 逆序仅
+        82 处、均为相邻 id 的 ±8h 时区标注差异。文件侧按 (time desc, cursor
+        desc) 全量物化，与 DB 前缀合并后统一排序分页。
+        返回 (条目列表, DB 侧命中总数)。
+        """
+        from api_gateway.infrastructure.grpc_proxies import task_data_service
+        page_size = LogQueryService._db_merge_page_size()
+        limit = page_size if page_size > 0 else _DB_PAGE_UNBOUNDED
+        if need_rows and need_rows < limit:
+            limit = max(1, need_rows)
+        resp = task_data_service.list_logs(
+            task_id=0,
+            level=level or None,
+            page=1,
+            per_page=limit,
+            start_date=start_time,
+            end_date=end_time,
+            module=module,
+            category=category,
+            mark=mark,
+            device_id=device_id,
+            api_id=api_id,
+            test_case_id=test_case_id,
+            thread_id=thread_id,
+            keyword=keyword,
+            content_include=content_include,
+            content_exclude=content_exclude,
+            algorithm_type=algorithm_type,
+            user_id=user_id,
+        )
+        items = [_to_log_item(log) for log in (resp.get('items') or [])]
+        return items, int(resp.get('total', 0) or 0)
+
+    @staticmethod
+    def _merge_sort_key(item):
+        """合并视图排序键（时间倒序、游标/id 次之）。
+
+        文件侧时间格式为 `YYYY-MM-DD HH:MM:SS.ffffff`（写入侧固定 strftime），
+        legacy DB 行是 `datetime.isoformat()`（'T' 分隔）——直接按字符串比较
+        会让同日 DB 行整体排到文件行之前（'T' > ' '），因此统一解析成 epoch
+        再比。不可解析的时间视为最旧，保证不因脏值错序。
+        """
+        moment = None
+        text = item.time or ''
+        if text:
+            try:
+                moment = datetime.fromisoformat(text)
+            except (ValueError, TypeError):
+                moment = None
+        if moment is None:
+            return (float('-inf'), item.id or 0)
+        if moment.tzinfo is not None:
+            moment = moment.replace(tzinfo=None)
+        return (moment.timestamp(), item.id or 0)
+
+    @staticmethod
+    def _get_global_logs_merged(query):
+        from shared.logging import AuditLogReader
+
+        start_time, end_time = LogQueryService._resolve_window(
+            query.start_time, query.end_time)
+        filters = LogQueryService._audit_file_filters(
+            level=query.level,
+            category=query.category,
+            module=query.module,
+            keyword=query.keyword,
+            content_include=query.content_include,
+            content_exclude=query.content_exclude,
+            algorithm_type=query.algorithm_type,
+            test_case_id=query.test_case_id,
+            thread_id=query.thread_id,
+            device_id=query.device_id,
+            api_id=query.api_id,
+            user_id=query.user_id,
+            mark=query.mark,
+            start_time=start_time,
+            end_time=end_time,
+        )
+        file_result = AuditLogReader().read_page(page=1, per_page=0, **filters)
+        file_items = [_to_log_item(entry) for entry in file_result['items']]
+
+        per_page = max(1, int(query.per_page or 20))
+        page = max(1, int(query.page or 1))
+        db_items, db_total = LogQueryService._query_db_history(
+            level=query.level,
+            module=filters['module'],
+            category=filters['category'],
+            mark=query.mark,
+            device_id=query.device_id,
+            api_id=query.api_id,
+            test_case_id=query.test_case_id,
+            thread_id=query.thread_id,
+            keyword=query.keyword,
+            content_include=query.content_include,
+            content_exclude=query.content_exclude,
+            algorithm_type=filters['algorithm_type'],
+            user_id=query.user_id,
+            start_time=start_time,
+            end_time=end_time,
+            need_rows=page * per_page,
+        )
+
+        merged = sorted(
+            file_items + db_items,
+            key=LogQueryService._merge_sort_key,
+            reverse=True,
+        )
+        # DB 侧 total 取自 SQL count（精确）；文件侧触顶
+        # （LOG_AUDIT_MAX_SCAN_ENTRIES）时合并 total 为下界且保留最新
+        total = db_total + file_result['total']
+        start = (page - 1) * per_page
+        return success_response(
+            LogListData(
+                items=merged[start:start + per_page],
+                total=total,
+                page=page,
+                per_page=per_page,
+                pages=(total + per_page - 1) // per_page if per_page else 1,
+            )
+        )
+
     # 获取日志统计
     @staticmethod
     def get_stats():
@@ -266,6 +416,13 @@ class LogQueryService:
             # P0-3: 通过 gRPC 聚合查询日志统计
             from api_gateway.infrastructure.grpc_proxies import task_data_service
             from api_gateway.schemas.log import LogStatsData
+
+            # INT-1812：全局统计与全局列表同源同筛选（默认近 30 天窗口）
+            start_time, end_time = (query.start_time, query.end_time)
+            if not query.task_id:
+                start_time, end_time = LogQueryService._resolve_window(
+                    query.start_time, query.end_time)
+
             stats_dict = task_data_service.get_log_stats(
                 level=query.level,
                 module=query.module if query.module != 'all' else None,
@@ -276,8 +433,8 @@ class LogQueryService:
                 keyword=query.keyword,
                 content_include=query.content_include,
                 content_exclude=query.content_exclude,
-                start_time=query.start_time,
-                end_time=query.end_time,
+                start_time=start_time,
+                end_time=end_time,
                 algorithm_type=query.algorithm_type if query.algorithm_type != 'all' else None,
                 user_id=query.user_id,
             )
@@ -285,8 +442,14 @@ class LogQueryService:
             # INT-81：任务维度统计叠加业务日志文件行（DB 侧只含审计/历史行）。
             # INT-806：「仅自己」时文件侧业务执行日志非用户操作 → 排除，统计口径
             # 与列表一致（徽章数不虚高）。
-            if query.task_id and not query.user_id:
-                stats_dict = LogQueryService._merge_file_stats(query, stats_dict)
+            if query.task_id:
+                if not query.user_id:
+                    stats_dict = LogQueryService._merge_file_stats(query, stats_dict)
+            else:
+                # INT-1812（契约 §Q2）：全局统计叠加审计文件行，与列表共享
+                # 同一次文件扫描（同参 TTL 缓存），徽章数与列表 total 同口径。
+                stats_dict = LogQueryService._merge_audit_stats(
+                    query, stats_dict, start_time, end_time)
 
             log_stats = LogStatsData(
                 total=stats_dict.get('total', 0),
@@ -332,48 +495,79 @@ class LogQueryService:
             merged['total'] = merged.get('total', 0) + 1
         return merged
 
+    @staticmethod
+    def _merge_audit_stats(query, stats_dict, start_time, end_time):
+        """按级别统计审计文件行，叠加到 DB 统计结果上（INT-1812 契约 §Q2）。
+
+        过滤参数与全局列表完全一致 → 读取器同参 TTL 缓存命中，列表与统计
+        共享同一次文件扫描（照 INT-100 口径）；触顶时各项同为下界。
+        """
+        from shared.logging import AuditLogReader
+
+        reader = AuditLogReader()
+        filters = LogQueryService._audit_file_filters(
+            level=query.level,
+            category=query.category,
+            module=query.module,
+            keyword=query.keyword,
+            content_include=query.content_include,
+            content_exclude=query.content_exclude,
+            algorithm_type=query.algorithm_type,
+            device_id=query.device_id,
+            user_id=query.user_id,
+            mark=query.mark,
+            start_time=start_time,
+            end_time=end_time,
+        )
+        file_stats = AuditLogReader.count_by_level(
+            reader.read_entries(**filters))
+        merged = dict(stats_dict or {})
+        for key, value in file_stats.items():
+            merged[key] = merged.get(key, 0) + value
+        return merged
+
     # 刷新日志 (手动同步新日志)
     @staticmethod
     def refresh_logs():
+        """增量刷新（INT-1812 契约 §Q4：游标 = 审计文件 cursor）。
+
+        字段名一个不改（items/count/new_count/last_id/db_max_id/reset_required），
+        `db_max_id` 语义改为 server_max_cursor（审计语料最大游标，无数据 0）。
+        四类情形：last_id=0 只建基准；旧 id 空间（<CURSOR_FLOOR）或超出
+        server_max → 空 + reset_required；正常 → 升序最多 100 条。
+        """
         req = LogRefreshRequest.model_validate(request.get_json() or {})
-        # P0-3: 通过 gRPC 增量查询日志
-        from api_gateway.infrastructure.grpc_proxies import task_data_service
-        resp = task_data_service.list_logs_after_id(last_id=req.last_id, limit=100)
-        new_logs = resp.get('items', [])
-        db_max_id = resp.get('max_id', 0)
+        from shared.logging import CURSOR_FLOOR, AuditLogReader
 
-        data_list = []
-        for log in new_logs:
-            data_list.append(
-                LogItem(
-                    id=log.get('id'),
-                    time=log.get('time') or '',
-                    level=log.get('level') or '',
-                    category=log.get('category') or '',
-                    module=log.get('module') or '',
-                    source=log.get('source') or '',
-                    content=log.get('content') or '',
-                    mark=log.get('mark'),
-                    device_id=log.get('device_id'),
-                    task_id=log.get('task_id'),
-                    api_id=log.get('api_id'),
-                    test_case_id=log.get('test_case_id'),
-                    thread_id=log.get('thread_id'),
-                    algorithm_type=log.get('algorithm_type'),
-                    user_id=log.get('created_by_user_id'),
-                )
-            )
+        reader = AuditLogReader()
+        server_max_cursor = reader.max_cursor()
 
-        # 将 db_max_id / reset_required 放入 data，前端据此判断是否需要重置增量基准
+        entries = []
+        reset_required = False
+        next_last_id = req.last_id
+        if req.last_id == 0:
+            # 尚未建立基准：只回基准游标，不返回条目、不带 reset_required
+            next_last_id = server_max_cursor
+        elif req.last_id < CURSOR_FLOOR or req.last_id > server_max_cursor:
+            # DB 旧 id / 负数 / 超出 server_max（库被清、时钟回拨）：要求重置基准
+            next_last_id = server_max_cursor
+            reset_required = True
+        else:
+            entries = reader.read_after_cursor(req.last_id, limit=100)
+            if entries:
+                next_last_id = entries[-1]['id']
+
+        data_list = [_to_log_item(entry) for entry in entries]
+
         payload = LogRefreshData(
             items=data_list,
             count=len(data_list),
             new_count=len(data_list),
-            last_id=data_list[-1].id if data_list else req.last_id,
+            last_id=next_last_id,
         )
         payload_dict = payload.model_dump(exclude_none=True)
-        payload_dict['db_max_id'] = db_max_id
-        if req.last_id > db_max_id:
+        payload_dict['db_max_id'] = server_max_cursor
+        if reset_required:
             payload_dict['reset_required'] = True
         return success_response(payload_dict)
 
@@ -381,30 +575,66 @@ class LogQueryService:
     @staticmethod
     def export_logs():
         import os
+        from shared.logging import CURSOR_FLOOR, AuditLogReader
         # INT-274：导出条件走 POST body（doc/接口文档 6. 导出日志：log_ids + format），
         # 修复 GET 空 body 下 format 落默认 excel、log_ids 落 None 的静默失真；
         # level/module 从 body 或 query（GET 兼容）均可读取，body 优先。
         req = LogExportRequest.model_validate(request.get_json() or {})
         query = _parse_query_params(LogExportQuery)
+        level = req.level or query.level
+        module = req.module or query.module
 
-        # P0-3: 通过 gRPC 查询日志（按 id 列表或条件）
-        from api_gateway.infrastructure.grpc_proxies import task_data_service
-        resp = task_data_service.get_logs_for_export(
-            log_ids=req.log_ids if req.log_ids else None,
-            level=req.level or query.level,
-            module=req.module or query.module,
-        )
-        logs = resp.get('items', [])
+        # INT-1812（契约 §Q2/§3.3）：导出与列表同源同筛选（审计文件 + legacy
+        # DB 行），不分页、受扫描上界约束。log_ids 里的文件游标按日期目录反查，
+        # legacy id（<CURSOR_FLOOR）仍走 DB 导出。
+        reader = AuditLogReader()
+        log_items = []
+        if req.log_ids:
+            file_cursors = [int(i) for i in req.log_ids
+                            if int(i) >= CURSOR_FLOOR]
+            legacy_ids = [int(i) for i in req.log_ids
+                          if int(i) < CURSOR_FLOOR]
+            if file_cursors:
+                log_items.extend(
+                    _to_log_item(entry)
+                    for entry in reader.read_by_cursors(file_cursors))
+            if legacy_ids:
+                from api_gateway.infrastructure.grpc_proxies import task_data_service
+                resp = task_data_service.get_logs_for_export(
+                    log_ids=legacy_ids, level=level, module=module)
+                log_items.extend(
+                    _to_log_item(log) for log in (resp.get('items') or []))
+        else:
+            # 与全局列表**同一取数路径**：文件侧同过滤参数、DB 侧同 list_logs
+            # （level 大小写不敏感、module 'all' 归一、默认 30 天窗口、扫描上界
+            # 一致），因此「同筛选下导出条数与列表一致」由构造保证。
+            start_time, end_time = LogQueryService._resolve_window(None, None)
+            filters = LogQueryService._audit_file_filters(
+                level=level, module=module,
+                start_time=start_time, end_time=end_time)
+            log_items.extend(
+                _to_log_item(entry)
+                for entry in reader.read_entries(**filters))
+            db_items, _db_total = LogQueryService._query_db_history(
+                level=level,
+                module=filters['module'],
+                start_time=start_time,
+                end_time=end_time,
+                need_rows=0,
+            )
+            log_items.extend(db_items)
+
+        log_items.sort(key=LogQueryService._merge_sort_key, reverse=True)
 
         export_data = []
-        for log in logs:
+        for item in log_items:
             export_data.append({
-                "ID": log.get('id'),
-                "Time": log.get('time') or '',
-                "Level": log.get('level') or '',
-                "Module": log.get('module') or '',
-                "Content": log.get('content') or '',
-                "Mark": log.get('mark') or ""
+                "ID": item.id,
+                "Time": item.time or '',
+                "Level": item.level or '',
+                "Module": item.module or '',
+                "Content": item.content or '',
+                "Mark": item.mark or "",
             })
 
         df = pd.DataFrame(export_data)

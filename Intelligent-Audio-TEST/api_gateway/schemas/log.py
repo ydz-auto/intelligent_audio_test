@@ -29,6 +29,15 @@ class LogListData(PaginatedData[LogItem]):
 
 
 class LogRefreshData(APIModel):
+    """增量刷新响应（字段名与两前端契约不变，INT-1812 契约 §Q4）。
+
+    - `last_id`：请求下发的增量基准。审计文件条目 `id` = cursor（事件时间
+      epoch 微秒），legacy logs 表自增 id 用 CURSOR_FLOOR(10^12) 隔开。
+    - `db_max_id`：保留原字段名，语义为 `server_max_cursor`（审计语料最大
+      游标，无数据 0）——不再是 logs 表 max(id)。
+    - `reset_required`：**可选**字段（仅在越界时出现在响应里，故不声明为模型
+      成员、由服务层按需补进 dict）；React 已有分支清缓冲重建基准，Vue 不读。
+    """
     items: List[LogItem]
     count: int
     new_count: int

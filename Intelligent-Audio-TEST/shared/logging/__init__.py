@@ -15,6 +15,7 @@
     business_writer 业务日志 JSONL 写入器（超限切分、进程独立文件名）
     business_reader 业务日志读取器（按 task/device/evaluation 检索）
     audit_writer    审计 JSONL 写入器（INT-1793：单写者、cursor、H1/H2/H3）
+    audit_reader    审计 JSONL 读取器（INT-1812：日期目录枚举、cursor 即 id）
     retention       保留天数清扫（服务/业务/审计三棵树 + 单清扫者）
 """
 from shared.logging.config import (
@@ -48,6 +49,12 @@ from shared.logging.audit_writer import (
     get_audit_writer,
     reset_audit_writer,
     write_audit_event,
+)
+from shared.logging.audit_reader import (
+    CURSOR_FLOOR,
+    AuditLogReader,
+    cursor_to_date_seg,
+    cursor_to_datetime,
 )
 from shared.logging.retention import (
     audit_cutoff_date,
@@ -83,6 +90,10 @@ __all__ = [
     'get_audit_writer',
     'reset_audit_writer',
     'write_audit_event',
+    'CURSOR_FLOOR',
+    'AuditLogReader',
+    'cursor_to_date_seg',
+    'cursor_to_datetime',
     'audit_cutoff_date',
     'is_sweep_owner',
     'sweep_audit_dates',

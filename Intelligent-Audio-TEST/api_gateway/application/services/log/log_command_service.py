@@ -29,10 +29,25 @@ class LogCommandService:
             return error_response("缺少必要参数: log_ids")
 
         try:
-            # P0-3: 通过 gRPC 批量更新日志标记
-            from api_gateway.infrastructure.grpc_proxies import task_data_service
-            result = task_data_service.update_logs_mark(log_ids=req.log_ids, mark=req.mark)
-            return success_response(None, f"已为 {result.get('updated', 0)} 条日志添加标记: {req.mark}")
+            # INT-1812（契约 §Q3）：审计文件日志只读、不可标记——游标（>=CURSOR_FLOOR）
+            # 不属于 logs 表 id 空间，不送 DB 更新；全部为文件游标时返回 200 + updated=0
+            # 与专用文案（不 400/500、不空态回退，前端只读状态码未受影响）。
+            from shared.logging import CURSOR_FLOOR
+            file_cursors = [int(i) for i in req.log_ids if int(i) >= CURSOR_FLOOR]
+            legacy_ids = [int(i) for i in req.log_ids if int(i) < CURSOR_FLOOR]
+
+            updated = 0
+            if legacy_ids:
+                # P0-3: 通过 gRPC 批量更新日志标记（仅 legacy DB 行）
+                from api_gateway.infrastructure.grpc_proxies import task_data_service
+                result = task_data_service.update_logs_mark(
+                    log_ids=legacy_ids, mark=req.mark)
+                updated = result.get('updated', 0)
+
+            if updated == 0 and file_cursors and not legacy_ids:
+                return success_response(
+                    None, "所选为文件日志，不支持标记（仅历史库行可标记）")
+            return success_response(None, f"已为 {updated} 条日志添加标记: {req.mark}")
         except Exception as e:
             return error_response(str(e))
 
