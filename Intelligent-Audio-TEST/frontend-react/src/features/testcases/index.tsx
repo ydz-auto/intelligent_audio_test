@@ -10,6 +10,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { FileDown, FileSpreadsheet, FileUp, FolderPlus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
@@ -19,7 +20,7 @@ import { CaseRoundsProvider } from '@/application/testcases/case-rounds-registry
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
 import { useCaseTags, useTagCategories } from '@/application/testcases/use-case-tags'
 import { useTagMutations } from '@/application/tags/useTags'
-import { useCaseBatchActions } from '@/application/testcases/use-case-batch-actions'
+import { useCaseBatchActions, clearDeletedGroupFilter } from '@/application/testcases/use-case-batch-actions'
 import {
   useTestCasesList,
   type TestCaseListFilters,
@@ -182,7 +183,16 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   }, [])
 
   /** 批量弹窗状态机（七件套弹窗 + 两确认；INT-1026 共享 host 双挂） */
-  const batch = useCaseBatchActions({ onClearSelection: clearSelection })
+  const batch = useCaseBatchActions({
+    onClearSelection: clearSelection,
+    // INT-1781：删除正在筛选的分组后清空 groupId（按 id 比对，同名分组不误清；与标签域同口径）。
+    // 用 flushSync 立即提交：批量钩子紧接着 invalidate ['testcases']，此刻 active query 已是
+    // 清筛选后的新键，否则会拿已删分组 id 再补取一次列表（实测竞态）。
+    onGroupDeleted: (groupId) =>
+      flushSync(() =>
+        setFilters((prev) => clearDeletedGroupFilter(prev, groupId))
+      ),
+  })
 
   /** 分组新建/编辑弹窗关闭后刷新分组与用例列表（INT-997 接线：提交/取消后均刷新，成本低） */
   useEffect(() => {
