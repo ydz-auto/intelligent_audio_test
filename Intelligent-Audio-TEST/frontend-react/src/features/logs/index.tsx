@@ -260,14 +260,16 @@ export function LogsPage() {
   }
 
   /* ───────── 写操作 ───────── */
-  const handleMark = (log: LogItem, markColor: string) => {
-    mark.mutate({ logIds: [log.id], mark: markColor })
+  /** 行内标记：值已由 MarkAction 按 V9.7.10 开关语义算好（同色二次点击 → ''） */
+  const handleMark = (log: LogItem, markValue: string) => {
+    mark.mutate({ logIds: [log.id], mark: markValue })
   }
 
-  const handleBatchMark = (markColor: string) => {
+  /** 批量标记：值色同上；'' 即清除所选标记（INT-1947） */
+  const handleBatchMark = (markValue: string) => {
     if (selectedIds.size === 0) return
     mark.mutate(
-      { logIds: Array.from(selectedIds), mark: markColor },
+      { logIds: Array.from(selectedIds), mark: markValue },
       { onSuccess: () => setSelectedIds(new Set()) }
     )
   }

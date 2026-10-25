@@ -108,6 +108,19 @@ export type LogMarkInput = {
   mark?: string
 }
 
+/**
+ * 行内标记点击后的目标标记值（V9.7.10 `LogViewLogic/logView.ts:418-428` 同色二次点击
+ * 清除语义）：点当前已持有的同色 → `''`（`PUT /logs/mark {mark:''}` 由后端置空），
+ * 否则 → 该颜色。空串不是 falsy 兜底能覆盖的值——`toLogMarkDto` 用 `??` 而非 `||`，
+ * 不会被默认值 'flagged' 顶掉。
+ */
+export function nextLogMark(
+  current: string | null | undefined,
+  color: string
+): string {
+  return (current ?? '') === color ? '' : color
+}
+
 /** 日志清除入参（POST /logs/clear；对应后端 LogClearRequest） */
 export type LogClearInput = {
   beforeDatetime?: string | null

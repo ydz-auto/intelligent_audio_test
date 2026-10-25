@@ -14,6 +14,7 @@ import {
   LOG_STATS_QUERY_KEY,
   markLogs,
 } from '@/infrastructure/api/logsApi'
+import { formatLogsExportFilename } from '@/application/logs/log-export-filename'
 
 /** 导出 mutation 入参（input + 当前筛选 query，见页面 handleExport/handleExportSelected） */
 export type LogExportMutationInput = {
@@ -21,12 +22,12 @@ export type LogExportMutationInput = {
   query?: LogQuery
 }
 
-/** 触发 Blob 下载（导出文件名 logs_{YYYY-MM-DD}.{format}） */
+/** 触发 Blob 下载（导出文件名 logs_{本地日期}.{format}，见 log-export-filename） */
 function downloadBlob(blob: Blob, format: string) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `logs_${new Date().toISOString().slice(0, 10)}.${format}`
+  anchor.download = formatLogsExportFilename(new Date(), format)
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()
@@ -43,11 +44,13 @@ export function useLogMutations() {
 
   const mark = useMutation({
     mutationFn: (input: LogMarkInput) => markLogs(input),
-    onSuccess: () => {
-      toast.success('日志已标记')
+    // mark:'' 是清除（V9.7.10 同色二次点击 / 批量「清除标记」），文案不能报「已标记」
+    onSuccess: (_data, variables) => {
+      toast.success(variables.mark ? '日志已标记' : '已清除标记')
       invalidateLogs()
     },
-    onError: () => toast.error('标记失败，请稍后重试'),
+    onError: (_error, variables) =>
+      toast.error(variables.mark ? '标记失败，请稍后重试' : '清除标记失败，请稍后重试'),
   })
 
   const clear = useMutation({
