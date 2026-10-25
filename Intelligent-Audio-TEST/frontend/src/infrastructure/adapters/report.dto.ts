@@ -158,6 +158,8 @@ export function toReportListQueryDto(query: Partial<ReportListQuery>): ReportLis
     ...(query.deleted !== undefined ? { deleted: query.deleted } : {}),
     // INT-423/467：可见性过滤
     ...(query.visibility !== undefined ? { visibility: query.visibility } : {}),
+    // INT-1837：按任务过滤（容器详情报告区）
+    ...(query.taskId !== undefined ? { task_id: query.taskId } : {}),
   }
 }
 

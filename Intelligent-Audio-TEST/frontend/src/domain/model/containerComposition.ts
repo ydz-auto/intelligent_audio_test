@@ -78,3 +78,9 @@ export type CompositionExecutionFilter = 'all' | 'completed' | 'failed' | 'stopp
 
 /** 工具行评估状态筛选（全部 / 已评估 / 未评估） */
 export type CompositionEvaluationFilter = 'all' | 'evaluated' | 'unevaluated'
+
+/**
+ * 失效筛选（§7 顶部 Alert 的「只看失效」，与执行 / 评估筛选同一套 `filterCompositionTree` 语义）：
+ * `all` 全部条目；`missing` 只留 `missing = true` 的叶（源结果已删除，仅保留溯源记录）。
+ */
+export type CompositionMissingFilter = 'all' | 'missing'

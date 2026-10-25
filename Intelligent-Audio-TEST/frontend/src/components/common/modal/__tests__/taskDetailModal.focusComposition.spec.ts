@@ -61,6 +61,11 @@ vi.mock('../../../../composables/modal/useNotification', () => ({
   useNotification: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() }),
 }))
 
+// INT-1837：容器详情「报告」区走 GET /reports?task_id=（不打真实网络）
+vi.mock('../../../../composables/report/reportsPort', () => ({
+  reportsPort: { getAll: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, perPage: 1, pages: 1 }) },
+}))
+
 vi.mock('@/infrastructure/api', async (importOriginal) => {
   const actual: any = await importOriginal()
   return {

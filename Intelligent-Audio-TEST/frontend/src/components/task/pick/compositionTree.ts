@@ -22,6 +22,7 @@ import type {
   CompositionEntry,
   CompositionEvaluationFilter,
   CompositionExecutionFilter,
+  CompositionMissingFilter,
   CompositionSummary,
 } from '../../../domain/model/containerComposition';
 import type { PickCaseOrgInfo } from './pickTree';
@@ -351,15 +352,17 @@ export function organizeCompositionCases(
 
 // ===== 筛选（纯客户端；命中叶保留 + 祖先保留 + 分支计数按命中集重算） =====
 
-/** 单条条目筛选命中（执行状态 / 评估状态 facet） */
+/** 单条条目筛选命中（执行状态 / 评估状态 / 失效 facet） */
 export function matchesCompositionFilter(
   entry: CompositionEntry,
   execution: CompositionExecutionFilter = 'all',
   evaluation: CompositionEvaluationFilter = 'all',
+  missing: CompositionMissingFilter = 'all',
 ): boolean {
   if (execution !== 'all' && entry.executionStatus !== execution) return false;
   if (evaluation === 'evaluated' && entry.evaluated !== true) return false;
   if (evaluation === 'unevaluated' && entry.evaluated === true) return false;
+  if (missing === 'missing' && !entry.missing) return false;
   return true;
 }
 
@@ -368,19 +371,22 @@ export function filterCompositionEntries(
   entries: CompositionEntry[],
   execution: CompositionExecutionFilter = 'all',
   evaluation: CompositionEvaluationFilter = 'all',
+  missing: CompositionMissingFilter = 'all',
 ): CompositionEntry[] {
-  return entries.filter((e) => matchesCompositionFilter(e, execution, evaluation));
+  return entries.filter((e) => matchesCompositionFilter(e, execution, evaluation, missing));
 }
 
 /**
- * 组成树筛选（§4.2/§5）：命中叶保留 + 保留全部祖先 + 分支计数按命中集重算；
+ * 组成树筛选（§4.2/§5/§7）：命中叶保留 + 保留全部祖先 + 分支计数按命中集重算；
  * 不改变层级结构（节点 key 不变 → 展开态由调用方按 key 保持）。
+ * `missing` 维度即顶部 Alert 的「只看失效」——与执行 / 评估同一套语义，不另造筛选。
  */
 export function filterCompositionTree(
   roots: CartTreeNode[],
   execution: CompositionExecutionFilter,
   evaluation: CompositionEvaluationFilter,
   entryByResultId: ReadonlyMap<number, CompositionEntry>,
+  missing: CompositionMissingFilter = 'all',
 ): CartTreeNode[] {
   const prune = (node: CartTreeNode): CartTreeNode | null => {
     if (node.children.length === 0) {
@@ -388,7 +394,8 @@ export function filterCompositionTree(
         ...new Set(
           node.itemIds.filter((id) => {
             const entry = entryByResultId.get(id);
-            return entry !== undefined && matchesCompositionFilter(entry, execution, evaluation);
+            return entry !== undefined
+              && matchesCompositionFilter(entry, execution, evaluation, missing);
           }),
         ),
       ];
@@ -415,8 +422,9 @@ export function summarizeComposition(
   entries: CompositionEntry[],
   execution: CompositionExecutionFilter = 'all',
   evaluation: CompositionEvaluationFilter = 'all',
+  missing: CompositionMissingFilter = 'all',
 ): CompositionSummary {
-  return summarizeEntries(filterCompositionEntries(entries, execution, evaluation));
+  return summarizeEntries(filterCompositionEntries(entries, execution, evaluation, missing));
 }
 
 function summarizeEntries(entries: CompositionEntry[]): CompositionSummary {
