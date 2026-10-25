@@ -219,7 +219,7 @@ default_text_search_config = 'pg_catalog.english'
 > - `pg_stat_statements.max=5000`、`pg_stat_statements.track=all`；
 > - `log_min_duration_statement=500`（慢 SQL 阈值，配 json-file 轮转上限 50m×5）。
 >
-> 扩展本身由引导链 `scripts/migrations/202610/add_pg_stat_statements_int1783.py`（㊸）
+> 扩展本身由引导链 `scripts/migrations/202610/add_pg_stat_statements_int1783.py`（㊹）
 > 在库内 `CREATE EXTENSION IF NOT EXISTS`，新库/隔离库自动自愈。**改这些参数必须改
 > compose 并 recreate postgres**，`ALTER SYSTEM` / 手工改容器内数据文件在重建时都会丢。
 > `shared_buffers` / `work_mem` 本卡未改动（随镜像默认，属档 5 范围）。
