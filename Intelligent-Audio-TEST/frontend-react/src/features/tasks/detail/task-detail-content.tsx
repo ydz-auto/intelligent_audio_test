@@ -39,6 +39,7 @@ import { ContainerHeaderBadges } from '@/features/tasks/detail/container-header-
 import { ProgressCard } from '@/features/tasks/detail/progress-card'
 import { RealtimeLogs } from '@/features/tasks/detail/realtime-logs'
 import { TaskInfoCard } from '@/features/tasks/detail/task-info-card'
+import { TaskReportDocuments } from '@/features/tasks/detail/task-report-documents'
 import { ReexecuteScopeDialog } from '@/features/tasks/components/reexecute-scope-dialog'
 import {
   TaskConfirmDialog,
@@ -225,6 +226,9 @@ export function TaskDetailContent({
         ) : (
           <CaseAssociation detail={detail} onCaseSelect={onCaseSelect} />
         )}
+
+        {/* 报告文档（INT-1766 3b：上传独立报告关联本任务后在此可见；快览弹窗态不渲染） */}
+        {!compact && hasPermission('report:read') && <TaskReportDocuments taskId={taskId} />}
 
 
         {!compact && (

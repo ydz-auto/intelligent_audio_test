@@ -22,6 +22,7 @@ import {
   restoreStudioDocumentVersion,
   updateStudioDocument,
 } from '@/infrastructure/api/reportStudioApi'
+import { fetchReportIdByTask } from '@/infrastructure/api/reports-api'
 
 export const studioDocumentKeys = {
   all: ['report-studio'] as const,
@@ -60,6 +61,22 @@ export function useStudioDocumentVersions(docId: string | null) {
     queryFn: () => listStudioDocumentVersions(docId as string),
     enabled: Boolean(docId),
     staleTime: 10_000,
+  })
+}
+
+/**
+ * 任务 → 该任务的报告 id（任务详情页文档区的取数入口）。
+ *
+ * 后端 `import_document` 只把上传时的 task_id 落成「该任务最新未删除报告」的 report_id
+ * （report_service `_report_id_by_task`，无可见报告时 404、不建无主文档），所以任务详情按
+ * 同一个口径先取报告 id，再按 `report_id` 列出关联文档；口径不一致会漏掉上传件。
+ */
+export function useTaskReportId(taskId: number) {
+  return useQuery({
+    queryKey: ['reports', 'by-task', taskId],
+    queryFn: () => fetchReportIdByTask(taskId),
+    enabled: Number.isFinite(taskId) && taskId > 0,
+    staleTime: 30_000,
   })
 }
 
