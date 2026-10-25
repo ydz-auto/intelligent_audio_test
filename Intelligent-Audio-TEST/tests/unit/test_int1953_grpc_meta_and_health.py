@@ -335,9 +335,14 @@ class TestWriteSideValidation:
 # ═══════════════════ 公共常量同源 ═══════════════════
 
 def test_shared_constants_are_single_source():
+    from shared.models import proto_limits
+    from api_test_service.domain.value_objects import grpc_meta
     from api_test_service.infrastructure.adapters.transport import grpc_client
 
-    assert grpc_client.PROTO_MAX_BYTES is PROTO_MAX_BYTES
+    # proto 上限源头在 shared/（网关侧预检也要用，不能反向依赖本服务）
+    assert proto_limits.PROTO_MAX_BYTES is PROTO_MAX_BYTES
+    assert grpc_meta.PROTO_MAX_BYTES is proto_limits.PROTO_MAX_BYTES
+    assert grpc_client.PROTO_MAX_BYTES is proto_limits.PROTO_MAX_BYTES
     assert grpc_client.METHOD_KINDS is METHOD_KINDS
     assert set(METHOD_KINDS) == {'unary', 'server_stream', 'bidi'}
 

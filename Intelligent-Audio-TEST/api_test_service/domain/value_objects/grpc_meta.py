@@ -13,6 +13,10 @@ from __future__ import annotations
 import re
 from typing import Dict, Optional
 
+# proto 单文件体积上限（A0 §3.5③：256 KB）。源头在 shared/：api_gateway 不
+# import api_test_service，网关侧预检（INT-1952）与本域必须同一份字面量。
+from shared.models.proto_limits import PROTO_MAX_BYTES
+
 # method_kind → (client_streaming, server_streaming)。表外取值写侧 400。
 METHOD_KINDS = {
     'unary': (False, False),
@@ -20,9 +24,6 @@ METHOD_KINDS = {
     'bidi': (True, True),
 }
 GRPC_METHOD_KINDS = tuple(METHOD_KINDS)
-
-# proto 单文件体积上限（A0 §3.5③：256 KB），写侧 proto_size 上界同源
-PROTO_MAX_BYTES = 256 * 1024
 
 # proto_sha256 声明格式：64 位小写十六进制
 PROTO_SHA256_RE = re.compile(r'^[0-9a-f]{64}$')

@@ -41,12 +41,10 @@ from shared.utils.error_mapping import (
 )
 from shared.utils.path_extractor import extract_by_path
 
-# INT-1953：proto 体积上限与 method_kind 词表移到 domain 值对象，
-# 写侧（api_crud_service）与执行侧共用同一份常量（这里保留原名供既有导入）。
-from api_test_service.domain.value_objects.grpc_meta import (
-    METHOD_KINDS,
-    PROTO_MAX_BYTES,
-)
+# INT-1953：method_kind 词表归 domain 值对象、proto 上限归 shared（网关侧也要
+# 预检，不能反向依赖本服务）；这里保留原名供既有导入，两处都是同一份定义。
+from shared.models.proto_limits import PROTO_MAX_BYTES
+from api_test_service.domain.value_objects.grpc_meta import METHOD_KINDS
 
 logger = logging.getLogger(__name__)
 
