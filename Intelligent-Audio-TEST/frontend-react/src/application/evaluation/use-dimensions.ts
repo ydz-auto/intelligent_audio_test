@@ -4,6 +4,8 @@
  * 维度增删/权重/启停后 invalidate(['evaluation'])——与用例管理「评估维度」facet
  * （['evaluation','dimensions','options']）同前缀联动刷新（§4.3 三页口径）。
  */
+import { useMemo } from 'react'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type {
@@ -18,6 +20,7 @@ import {
   duplicateDimension,
   exportEvaluationDimensions,
   fetchAlgorithmOptions,
+  fetchDimensionAudioFlags,
   fetchEvaluationCategories,
   fetchEvaluationDimensionDetail,
   fetchEvaluationDimensions,
@@ -29,13 +32,45 @@ import {
   updateDimensionWeight,
 } from '@/infrastructure/api/evaluation-api'
 
-/** 评估维度全量（列表/分组双视图共用；主/子同屏聚合） */
+/**
+ * 把「是否需要音频」标记表按 id 合并进维度列表（INT-1843）。
+ * 标记表取不到（options 端点失败）时原样返回列表——音乐图标退化，不影响选择与保存。
+ */
+export function mergeDimensionRequiresAudio(
+  dimensions: Dimension[],
+  flags: Map<number, boolean> | undefined
+): Dimension[] {
+  if (!flags) return dimensions
+  return dimensions.map((d) => ({
+    ...d,
+    requiresAudio: flags.get(Number(d.id)) ?? d.requiresAudio ?? false,
+  }))
+}
+
+/**
+ * 评估维度全量（列表/分组双视图共用；主/子同屏聚合）。
+ * INT-1843：`requires_audio` 只有 options 端点下发、列表端点没有，这里按 id 合并成
+ * Dimension.requiresAudio（维度云音乐图标的数据源）。
+ */
 export function useEvaluationDimensions() {
-  return useQuery({
+  const listQuery = useQuery({
     queryKey: ['evaluation', 'dimensions'],
     queryFn: fetchEvaluationDimensions,
     staleTime: 30_000,
   })
+  const audioFlagsQuery = useQuery({
+    queryKey: ['evaluation', 'dimensions', 'audio-flags'],
+    queryFn: fetchDimensionAudioFlags,
+    staleTime: 5 * 60_000,
+  })
+  const data = useMemo(
+    () =>
+      listQuery.data
+        ? mergeDimensionRequiresAudio(listQuery.data, audioFlagsQuery.data)
+        : listQuery.data,
+    [listQuery.data, audioFlagsQuery.data]
+  )
+  return { ...listQuery, data }
 }
 
 /** 维度详情（编辑反填用；列表不下发 required_inputs/output_fields，编辑必须走详情） */

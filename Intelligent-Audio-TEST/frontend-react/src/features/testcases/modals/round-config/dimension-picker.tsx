@@ -26,11 +26,18 @@ import type {
 } from '@/domain/models/evaluationDimension'
 
 /**
- * requiresAudio 维度（mock 侧：随多轮音频一起上传，音乐图标 + title 提示）。
- * 注：当前按维度 id 硬编码（审计 P4-1，mock 阶段可接受）；接线后改随维度模型数据驱动——
- * 建议 Dimension 增 requiresAudio 布尔字段，由 d.requiresAudio 判断，不再维护 id 集合。
+ * requiresAudio 维度的音乐图标 + title 提示（判定取 `Dimension.requiresAudio`，
+ * 由 application/evaluation/use-dimensions.ts 从 /evaluation/dimensions/options 合并；
+ * 主维度与子维度都要显示——真实库 30 个 requires_audio 维度全部是主维度，V9.7.10
+ * OverallEvaluationEditor.vue:74/88 主/子两处同款）。
  */
-const REQUIRES_AUDIO_DIMENSION_IDS = new Set<number>([11])
+function AudioRequiredIcon() {
+  return (
+    <span title='该维度需要音频文件，将随多轮音频一起上传'>
+      <Music4 aria-hidden='true' className='size-3.5 shrink-0' />
+    </span>
+  )
+}
 
 const dimId = (d: Dimension) => Number(d.id)
 
@@ -216,6 +223,7 @@ function CloudGroupList({
                       {group.children.length}
                     </span>
                   )}
+                  {main.requiresAudio && <AudioRequiredIcon />}
                 </button>
               )
             })()}
@@ -225,7 +233,6 @@ function CloudGroupList({
                 {group.children.map((child) => {
                   const id = dimId(child)
                   const checked = selected.includes(id)
-                  const requiresAudio = REQUIRES_AUDIO_DIMENSION_IDS.has(id)
                   return (
                     <button
                       key={id}
@@ -246,11 +253,7 @@ function CloudGroupList({
                       <span className='bg-muted text-muted-foreground border-border inline-flex size-3.5 items-center justify-center rounded-[3px] border text-[9px] font-semibold'>
                         子
                       </span>
-                      {requiresAudio && (
-                        <span title='该维度需要音频文件，将随多轮音频一起上传'>
-                          <Music4 aria-hidden='true' className='size-3.5 shrink-0' />
-                        </span>
-                      )}
+                      {child.requiresAudio && <AudioRequiredIcon />}
                     </button>
                   )
                 })}
@@ -263,7 +266,6 @@ function CloudGroupList({
             {group.children.map((child) => {
               const id = dimId(child)
               const checked = selected.includes(id)
-              const requiresAudio = REQUIRES_AUDIO_DIMENSION_IDS.has(id)
               return (
                 <button
                   key={id}
@@ -289,11 +291,7 @@ function CloudGroupList({
                       （{group.orphanParentName}）
                     </span>
                   )}
-                  {requiresAudio && (
-                    <span title='该维度需要音频文件，将随多轮音频一起上传'>
-                      <Music4 aria-hidden='true' className='size-3.5 shrink-0' />
-                    </span>
-                  )}
+                  {child.requiresAudio && <AudioRequiredIcon />}
                 </button>
               )
             })}

@@ -56,6 +56,26 @@ export async function fetchEvaluationDimensions(): Promise<Dimension[]> {
   return (dto?.items ?? []).map(toDimension)
 }
 
+/**
+ * 维度「是否需要音频」标记表（id → requires_audio）。
+ * INT-1843：`GET /evaluation/dimensions` 列表端点不下发 requires_audio（实测 63 条均无该键），
+ * 该派生布尔只在 `GET /evaluation/dimensions/options` 下发（真实库 63 条中 30 条为 true），
+ * 故维度云的音乐图标须由本函数取值后按 id 合并进 Dimension。
+ */
+export async function fetchDimensionAudioFlags(): Promise<Map<number, boolean>> {
+  const dto = await request<DimensionOptionsDataDto>(
+    'GET',
+    '/evaluation/dimensions/options',
+    undefined,
+    { params: { algorithm_type: '' } }
+  )
+  const flags = new Map<number, boolean>()
+  for (const item of dto?.dimensions ?? []) {
+    flags.set(Number(item.id), Boolean(item.requires_audio))
+  }
+  return flags
+}
+
 /** 维度详情（编辑抽屉反填 required_inputs/output_fields——列表接口不下发，恒 []） */
 export async function fetchEvaluationDimensionDetail(
   id: number | string
