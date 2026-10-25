@@ -289,6 +289,52 @@ class TestExecutorWhitelist:
         assert processed[0].streaming is True
 
 
+# ──────────────────────────── 网关列表筛选 query 契约 ────────────────────────────
+
+class TestApiListQuery:
+    @pytest.mark.parametrize('raw,want', [
+        ('', None), ('none', None), ('all', None),
+        ('true', True), ('false', False), ('1', True), ('0', False),
+        (None, None), (True, True), (False, False),
+    ])
+    def test_streaming_tristate(self, raw, want):
+        """前端筛选器「未选中」会传空串：必须当「不过滤」，不能 500。"""
+        from api_gateway.schemas.api import ApiListQuery
+        assert ApiListQuery(page=1, per_page=10, streaming=raw).streaming is want
+
+    def test_blank_protocol_means_no_filter(self):
+        from api_gateway.schemas.api import ApiListQuery
+        q = ApiListQuery(page=1, per_page=10, protocol='  ')
+        assert q.protocol is None
+        assert ApiListQuery(page=1, per_page=10, protocol='websocket').protocol == 'websocket'
+
+
+class TestStreamingStrategy:
+    def test_websocket_strategy_registered(self):
+        from api_test_service.core.api_executor import APIExecutor
+        executor = APIExecutor(_EngineStub())
+        impl, caps = executor.streaming_strategy('websocket')
+        assert impl is executor._realtime_executor
+        assert caps == executor.STREAMING_CAPABILITIES['websocket']
+        assert {'session_rounds', 'pacing', 'barge_in'} <= caps
+
+    @pytest.mark.parametrize('protocol', ['sse', 'grpc', 'http', '', None])
+    def test_unimplemented_protocol_rejected(self, protocol):
+        """SSE / gRPC / http 流式（A1/A2 未上线）→ 显式报错，不静默走非流式"""
+        from api_test_service.core.api_executor import APIExecutor
+        executor = APIExecutor(_EngineStub())
+        with pytest.raises(ValueError, match='实现未上线'):
+            executor.streaming_strategy(protocol)
+
+    def test_declared_capabilities_cover_b0_matrix(self):
+        """能力声明与 B0 §3.1 矩阵一致（websocket 按轮次/带 pacing；sse/grpc 按事件）"""
+        from api_test_service.core.api_executor import APIExecutor
+        caps = APIExecutor.STREAMING_CAPABILITIES
+        assert caps['sse'] == frozenset({'event_rounds'})
+        assert {'event_rounds', 'session_rounds'} <= caps['grpc']
+        assert 'pacing' not in caps['sse'] and 'pacing' not in caps['grpc']
+
+
 # ──────────────────────────── task_service 亲和域令牌 ────────────────────────────
 
 class TestTaskAffinityToken:

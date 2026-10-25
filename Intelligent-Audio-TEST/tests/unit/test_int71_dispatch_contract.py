@@ -325,7 +325,9 @@ class TestAudioInputWiring:
         api_config = SimpleNamespace(id=1, meta={'vendor_adapter': 'mock'},
                                      api_endpoints=[{'endpoint': 'http://api'}],
                                      adapter_class=None, vendor='mock',
-                                     proxy_type=None, proxy_url=None)
+                                     proxy_type=None, proxy_url=None,
+                                     # INT-1799：协议单一来源为 apis.protocol 列
+                                     protocol='http')
         result = ex._send_via_adapter(
             task_id=31, algorithm_type='voice_llm', session=session,
             round_number=1, total_rounds=1,

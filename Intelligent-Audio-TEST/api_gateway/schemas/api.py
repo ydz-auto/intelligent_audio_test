@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
@@ -31,6 +31,31 @@ class ApiListQuery(APIModel):
     # INT-1799：协议 / 流式性两维等值筛选（前端列表按新列筛选）
     protocol: Optional[str] = Field(None)
     streaming: Optional[bool] = Field(None)
+
+    @field_validator('protocol', mode='before')
+    @classmethod
+    def _blank_protocol_means_no_filter(cls, value):
+        """query 形态：协议筛选器未选中时前端传空串，按「不过滤」处理。"""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator('streaming', mode='before')
+    @classmethod
+    def _streaming_query_tristate(cls, value):
+        """query 形态三态：空串 / none / all = 不过滤；true|false|1|0 归一为 bool。
+
+        直接交给 pydantic 会因 '' 不是合法 bool 抛验证错（整页列表 500）。
+        """
+        if isinstance(value, str):
+            key = value.strip().lower()
+            if key in ('', 'none', 'null', 'all'):
+                return None
+            if key in ('true', '1', 'yes'):
+                return True
+            if key in ('false', '0', 'no'):
+                return False
+        return value
 
 
 class ApiItem(APIModel):

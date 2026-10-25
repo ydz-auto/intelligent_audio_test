@@ -94,6 +94,36 @@ class APIExecutor(BaseExecutor):
         """按执行道取执行器；未知 lane 抛 ValueError（不静默回退）。"""
         return self._executor_registry[self._coerce_lane(lane)]
 
+    # ── 流式道内策略（B0 裁定 §3.1 「按能力声明选择，不按协议名写 if/else」）──
+    # 流式道收敛的骨架：B1 只注册已实现的 websocket 会话策略（按轮次 + pacing /
+    # 打断），A1（gRPC server-stream / bidi）与 A2（SSE / http chunked）落地时
+    # 只需在下面两张表各补一行——道本身（streaming / non_streaming）不再变。
+    STREAMING_CAPABILITIES = {
+        APIProtocol.WEBSOCKET.value: frozenset({
+            'session_rounds', 'pacing', 'barge_in', 'client_push', 'session_affinity'}),
+        # A2：SSE 按事件切轮；A1：gRPC server-stream 同理，bidi 另有会话语义
+        APIProtocol.SSE.value: frozenset({'event_rounds'}),
+        APIProtocol.GRPC.value: frozenset({
+            'event_rounds', 'session_rounds', 'client_push', 'session_affinity'}),
+    }
+    # protocol → 承载该策略的执行器属性名（未登记的协议 = 实现未上线）
+    _STREAMING_STRATEGIES = {
+        APIProtocol.WEBSOCKET.value: '_realtime_executor',
+    }
+
+    def streaming_strategy(self, protocol):
+        """取流式道内策略：返回 (executor, capabilities)；未上线协议抛 ValueError。
+
+        未上线 ≠ 静默降级：与写侧可用矩阵同口径，抛错即用例失败并写明原因。
+        """
+        key = str(protocol or '').strip().lower()
+        attr = self._STREAMING_STRATEGIES.get(key)
+        if attr is None:
+            raise ValueError(
+                f"协议 {protocol} 与流式性 streaming=true 的组合实现未上线"
+                f"（当前仅 websocket 流式会话有执行器）")
+        return getattr(self, attr), self.STREAMING_CAPABILITIES.get(key, frozenset())
+
     def _get_result_mapper(self):
         """返回 DeviceResult ACL 仓储，供 ResultsMixin 使用"""
         return DeviceResultAclRepositoryImpl()
@@ -243,15 +273,13 @@ class APIExecutor(BaseExecutor):
 
         lane = lane_of(bool(data.get('streaming')))
         if lane is ExecutionLane.STREAMING:
-            protocol = data.get('protocol') or APIProtocol.WEBSOCKET.value
-            if protocol != APIProtocol.WEBSOCKET.value:
-                raise ValueError(
-                    f"协议 {protocol} 与流式性 streaming=true 的组合实现未上线"
-                    f"（当前仅 websocket 流式会话有执行器）")
+            executor, capabilities = self.streaming_strategy(data.get('protocol'))
             self._log(level='INFO',
-                      content=f"用例 {case_name} streaming=true protocol={protocol}，进入流式道",
+                      content=(f"用例 {case_name} streaming=true "
+                               f"protocol={data.get('protocol')}，进入流式道"
+                               f"（能力声明 {sorted(capabilities)}）"),
                       task_id=task_id, test_case_id=test_case_id)
-            return self.route_executor(lane).execute(task_id, tc_rel_id, data, case_config)
+            return executor.execute(task_id, tc_rel_id, data, case_config)
 
         rounds = case_config.get('rounds', [])
         if rounds and len(rounds) > 1:

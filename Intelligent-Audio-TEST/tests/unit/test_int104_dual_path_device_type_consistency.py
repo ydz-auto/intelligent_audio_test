@@ -30,12 +30,14 @@ _API_CONFIG = {'rounds': [{'audios': [{'audio_id': 12}]}]}
 @pytest.fixture(scope='module')
 def db():
     from task_service.infrastructure.persistence.models import (
-        Task, TaskCase, TestCase,
+        Task, TaskAPI, TaskCase, TestCase,
     )
     init_db(pool_size=2)
     Base.metadata.create_all(
         bind=get_engine(),
-        tables=[Task.__table__, TaskCase.__table__, TestCase.__table__],
+        tables=[Task.__table__, TaskCase.__table__, TestCase.__table__,
+                # INT-1799：PATCH add 派生亲和域时会读任务已关联 API（task_apis）
+                TaskAPI.__table__],
     )
     yield
     remove_db_session()

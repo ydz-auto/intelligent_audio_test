@@ -113,13 +113,19 @@ def _resolve_row(api_id, device_type, meta_raw):
     return (protocol, streaming), None
 
 
-def _backfill(cur, apply):
-    """校验全表 + 回填 NULL 行。返回 (scanned, pending, changed, issues)。"""
+def _backfill(cur, apply, columns_exist=True):
+    """校验全表 + 回填 NULL 行。返回 (scanned, pending, changed, issues)。
+
+    `columns_exist=False`（dry-run 于未迁移库）：两列尚不存在，无法用
+    `IS NULL` 过滤待回填行——此时全表都是待回填行，校验/预览仍覆盖全表，
+    这样 dry-run 也能给出「扫描 N 行 / 冲突 M 行」的迁移前结论。
+    """
     cur.execute(f"SELECT count(*) FROM {TABLE}")
     scanned = cur.fetchone()[0]
+    where = (f"WHERE {PROTOCOL_COL} IS NULL OR {STREAMING_COL} IS NULL"
+             if columns_exist else "")
     cur.execute(
-        f"SELECT id, device_type, meta::text FROM {TABLE} "
-        f"WHERE {PROTOCOL_COL} IS NULL OR {STREAMING_COL} IS NULL ORDER BY id")
+        f"SELECT id, device_type, meta::text FROM {TABLE} {where} ORDER BY id")
     rows = cur.fetchall()
     pending = []
     issues = []
@@ -148,7 +154,8 @@ def _tighten(cur, dry_run):
             (STREAMING_COL, 'BOOLEAN', 'false')):
         exists, is_nullable = _column_state(cur, column)
         if not exists:
-            print(f'[SKIP] 列 {TABLE}.{column} 不存在（预期由步骤①创建）')
+            print(f"[{'DRY' if dry_run else 'SKIP'}] 列 {TABLE}.{column} 不存在"
+                  f"（步骤①建列后由步骤③ SET DEFAULT / SET NOT NULL）")
             continue
         if is_nullable == 'NO':
             print(f'[SKIP] 列 {TABLE}.{column} 已是 NOT NULL')
@@ -187,28 +194,30 @@ def migrate(dry_run=True):
         # ② 校验 + 回填
         protocol_exists, _ = _column_state(cur, PROTOCOL_COL)
         streaming_exists, _ = _column_state(cur, STREAMING_COL)
-        if not (protocol_exists and streaming_exists):
-            # dry-run 下列还没建（正常现象）：无法 SELECT 两列，跳过回填
-            print('[DRY] 两列尚未创建，跳过回填/约束收紧（--apply 一次完成）')
-        else:
-            scanned, pending, changed, issues = _backfill(cur, apply=not dry_run)
-            if issues:
-                conn.rollback()
-                print(f'[ABORT] 校验失败：{len(issues)} 行非法/冲突，未写入任何行')
-                for api_id, reason in issues[:50]:
-                    print(f'  - id={api_id}: {reason}')
-                if len(issues) > 50:
-                    print(f'  ... 其余 {len(issues) - 50} 行省略')
-                sys.exit(1)
-            print(f"[{'DRY' if dry_run else 'APPLY'}] 回填：扫描 {scanned} 行，"
-                  f"待改 {pending} 行，已改 {changed} 行")
+        columns_exist = protocol_exists and streaming_exists
+        if dry_run and not columns_exist:
+            # dry-run 且列还没建：两列没法 SELECT，但校验/预览仍覆盖全表
+            # （迁移前结论：多少行、是否 0 冲突），--apply 时一次完成三步
+            print('[DRY] 两列尚未创建（本次 dry-run 只预览校验结论）')
+        scanned, pending, changed, issues = _backfill(
+            cur, apply=not dry_run, columns_exist=columns_exist)
+        if issues:
+            conn.rollback()
+            print(f'[ABORT] 校验失败：{len(issues)} 行非法/冲突，未写入任何行')
+            for api_id, reason in issues[:50]:
+                print(f'  - id={api_id}: {reason}')
+            if len(issues) > 50:
+                print(f'  ... 其余 {len(issues) - 50} 行省略')
+            sys.exit(1)
+        print(f"[{'DRY' if dry_run else 'APPLY'}] 回填：扫描 {scanned} 行，"
+              f"待改 {pending} 行，已改 {changed} 行")
 
-            if not dry_run:
-                conn.commit()
-            # ③ 收紧约束（回填后无 NULL 才能 SET NOT NULL）
-            _tighten(cur, dry_run)
-            if not dry_run:
-                conn.commit()
+        if not dry_run:
+            conn.commit()
+        # ③ 收紧约束（回填后无 NULL 才能 SET NOT NULL）
+        _tighten(cur, dry_run)
+        if not dry_run:
+            conn.commit()
 
         # ④ 删除 meta.protocol 键
         has_key = _has_meta_protocol_key(cur)
