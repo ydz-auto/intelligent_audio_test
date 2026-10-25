@@ -11,7 +11,7 @@ PRIVATE_RESOURCE_ACCESS 审计事件。
 场景：
 - 场景 A（私有隔离）：owner（tester）建私有用例 → 登出 → 非 owner（另一 tester）登录
   → 用例列表不可见 / 详情 404 / 编辑入口不可见
-- 场景 B（admin 豁免）：admin 登录 → 可见私有用例 → PRIVATE_RESOURCE_ACCESS 审计落库
+- 场景 B（admin 豁免）：admin 登录 → 可见私有用例 → PRIVATE_RESOURCE_ACCESS 审计落审计文件
 - 场景 C（共享回归）：owner 经 PATCH /testcases/{id}/visibility 改共享 → 非 owner 可见
 - 场景 D（列表冒烟）：任务/用例/报告/音频四页可见性筛选 chips + 私有徽标可用
 - 场景 E（核心页遍历）：任务/用例/报告/音频页导航冒烟（可见性控件在列表域均可达）
@@ -19,6 +19,11 @@ PRIVATE_RESOURCE_ACCESS 审计事件。
 数据自建自清：API 造唯一前缀分组/用例/任务/音频，teardown 软删+硬删，库内零残留。
 只读语义补充：仅造数/删数 + 可见性断言，不触发任何真实播放/测试动作。
 """
+import glob
+import json
+import os
+import time
+
 import psycopg2
 
 import pytest
@@ -36,6 +41,52 @@ VIS_FILTER_TITLE = '可见性'
 # 可见性筛选 chips 文案（BadgeFilter 选项）
 VIS_FILTER_SHARED_LABEL = '共享'
 VIS_FILTER_PRIVATE_LABEL = '私有'
+
+# 审计事件名（后端 visibility 审计，INT-1793 起只落审计文件、logs 表零写入）
+_AUDIT_EVENT_PRIVATE_ACCESS = 'PRIVATE_RESOURCE_ACCESS'
+
+
+def _audit_dir() -> str:
+    """UI 隔离栈的审计文件根（口径与 parallel_stack._base_env 的 LOG_ROOT_DIR 一致）。
+
+    默认段 `logs/ui_stack`，非默认段 `logs/ui_stack/shift<shift>`；审计文件由
+    task_service 单写者落盘在 `{LOG_ROOT_DIR}/audit/{YYYY-MM-DD}/...jsonl`。
+    """
+    from tests.ui.utils import parallel_stack
+
+    rel = (os.path.join('logs', 'ui_stack', f'shift{parallel_stack.SHIFT}')
+           if parallel_stack.SHIFT != 1000 else os.path.join('logs', 'ui_stack'))
+    return os.path.join(parallel_stack.BASE_DIR, rel, 'audit')
+
+
+def _count_audit_events(event: str, contains: str, timeout: float = 15.0) -> int:
+    """按审计 JSONL 计数（INT-1793：审计落文件、logs 表零写入）。
+
+    网关侧异步队列冲刷到 task_service 单写者落盘，故有界轮询等待；
+    超时返回 0，由调用方断言失败并打印审计根便于排查。
+    """
+    pattern = os.path.join(_audit_dir(), '*', '*.jsonl')
+    deadline = time.time() + timeout
+    while True:
+        count = 0
+        for path in glob.glob(pattern):
+            try:
+                with open(path, 'r', encoding='utf-8', errors='replace') as fh:
+                    for line in fh:
+                        try:
+                            entry = json.loads(line)
+                        except ValueError:
+                            continue
+                        if entry.get('event') != event:
+                            continue
+                        if contains and contains not in str(entry.get('content') or ''):
+                            continue
+                        count += 1
+            except OSError:
+                continue
+        if count or time.time() >= deadline:
+            return count
+        time.sleep(0.5)
 
 
 def _make_tester() -> ApiClient:
@@ -179,7 +230,7 @@ def test_a_private_isolated_from_non_owner(page, owner_api, other_api, private_c
 
 
 def test_b_admin_exemption_and_audit(page, api_client, private_case):
-    """场景 B：admin 豁免——admin 可见私有用例 + PRIVATE_RESOURCE_ACCESS 审计落库。
+    """场景 B：admin 豁免——admin 可见私有用例 + PRIVATE_RESOURCE_ACCESS 审计落审计文件。
 
     page/api_client 均为 conftest admin（首个注册用户），permissions 含 '*'。
     """
@@ -196,18 +247,11 @@ def test_b_admin_exemption_and_audit(page, api_client, private_case):
         f'admin 列表应展示私有用例 {private_case["name"]}；可见={sorted(admin_names)[:8]}...'
     assert _find_private_badges(page), 'admin 列表应展示私有用例的锁徽标'
 
-    # 审计事件落库：PRIVATE_RESOURCE_ACCESS + 用例 id（后端 423-5 写入 logs 表）
-    url = bootstrap.isolated_db_url()
-    conn = psycopg2.connect(url, connect_timeout=5)
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                'SELECT count(*) FROM logs WHERE content LIKE %s AND content LIKE %s',
-                ('%PRIVATE_RESOURCE_ACCESS%', f'%{private_case["id"]}%'))
-            n = cur.fetchone()[0]
-    finally:
-        conn.close()
-    assert n > 0, 'admin 访问私有用例后应落 PRIVATE_RESOURCE_ACCESS 审计事件（logs 表）'
+    # 审计事件落审计文件：PRIVATE_RESOURCE_ACCESS + 用例 id
+    # （INT-1793 契约：审计落 audit/*.jsonl，logs 表零写入，不再查 DB）
+    n = _count_audit_events(_AUDIT_EVENT_PRIVATE_ACCESS, str(private_case['id']))
+    assert n > 0, ('admin 访问私有用例后应落 PRIVATE_RESOURCE_ACCESS 审计事件'
+                   f'（审计文件根 {_audit_dir()}）')
 
 
 def test_c_share_toggle_makes_case_visible_to_non_owner(page, owner_api, other_api, private_case):
