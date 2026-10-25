@@ -486,7 +486,8 @@ class TestPreview:
         assert preview['success'], preview.get('message')
         d = preview['data']
 
-        assert d['manifest']['version'] == '1.0'
+        from shared.constants.data_transfer import FULL_MANIFEST_VERSION
+        assert d['manifest']['version'] == FULL_MANIFEST_VERSION
         assert d['stats']['tableRows'].get('test_tasks') == 2
         assert d['stats']['taskCount'] == 2
 

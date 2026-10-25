@@ -10,6 +10,8 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Set, Tuple
 
+from sqlalchemy import JSON
+
 from shared.models.database import get_db_session
 from shared.utils.log_handler import log_not_emit
 from evaluation_service.infrastructure.persistence.models import (
@@ -26,6 +28,15 @@ _DATETIME_FIELDS: Set[str] = {
     if getattr(c.type, 'python_type', None) is datetime
 }
 
+# INT-1811：JSON 列（api_raw_response / api_request_body）显式传 Python None 时，
+# Column(JSON) 默认 none_as_null=False 会落成 JSON 字面量 null，`IS NOT NULL` 为真；
+# 于是「本来没有报文」的维度行在导入后被门禁（内联非空而 uri 为空）判成悬空指针。
+# 值为 None 时不放进 INSERT → ORM 缺省该列 → 落 SQL NULL。
+_JSON_FIELDS: Set[str] = {
+    c.name for c in TestResultDimension.__table__.columns
+    if isinstance(c.type, JSON)
+}
+
 
 def _coerce_row(row: dict) -> dict:
     columns = {c.name for c in TestResultDimension.__table__.columns}
@@ -34,6 +45,8 @@ def _coerce_row(row: dict) -> dict:
         if key not in columns:
             log_not_emit('WARNING', _MODULE_NAME,
                          f'test_result_dimensions 未知列 {key}，已丢弃', category='system')
+            continue
+        if value is None and key in _JSON_FIELDS:
             continue
         if (value is not None and key in _DATETIME_FIELDS and isinstance(value, str)):
             try:
