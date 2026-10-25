@@ -24,11 +24,12 @@
 
 <script setup lang="ts">
 /**
- * CartTree —— 购物车树（INT-577 §4.2，购物车抽屉/复核共用）。
+ * CartTree —— 购物车 / 复核树（INT-577 §4.2，INT-1831 四视图基座；购物车抽屉/复核共用）。
  *
- * 按来源任务→用例→设备/API→result_type 分组（与挑选页同构）；叶 = 购物车条目。
+ * 层级由 cartTree.ts 的四视图 builder 产出（任务视图默认：任务 → 用例层组织 → 用例卡 →
+ * 设备/API → result_type → 叶；用例 / 设备 / 结果类型视图任务层在叶前一级）；叶 = 购物车条目。
  * manageable=true 时展示移除钮（§4.3 移除矩阵：单条 X / 节点「移除该组」）；
- * 选中态用于批量移除（selectedItemIds 唯一真相，联动规则与挑选树 R1-R5 同构）。
+ * 选中态用于批量移除（selectedItemIds 唯一真相，四视图共用、切换不丢，联动规则与挑选树 R1-R5 同构）。
  */
 import CartTreeNodeRow from './CartTreeNodeRow.vue';
 import type { CartTreeNode } from './cartTree';

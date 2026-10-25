@@ -37,9 +37,9 @@ export function useEvaluation() {
 
   // ========== 协调逻辑 ==========
 
-  // 判断是否为 LLM Judge 维度
+  // 判断是否为 LLM Judge 维度（INT-1868：按后端派生布尔 llm_judge，不再是结果类型字符串）
   function isLlmJudge(dimension: any) {
-    return dimension.resultType === 'llm_judge';
+    return dimension?.llmJudge === true;
   }
 
   // 生命周期：初始化与清理

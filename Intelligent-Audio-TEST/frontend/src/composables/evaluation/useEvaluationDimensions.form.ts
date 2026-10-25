@@ -9,8 +9,6 @@ import {
   NEW_CATEGORY_FLAG,
   DIMENSION_TYPE_MAIN,
   DIMENSION_TYPE_SUB,
-  DEFAULT_LLM_MAX_TOKENS,
-  DEFAULT_LLM_TEMPERATURE,
   DEFAULT_MAX_PROCESS,
   DEFAULT_MAX_TIMEOUT,
   DEFAULT_MAX_AUDIO_DURATION,
@@ -26,8 +24,6 @@ export function createEvalDimensionForm(state: EvalDimensionState) {
   const CONDITION_SUB = { field: 'dimensionType', value: DIMENSION_TYPE_SUB };
   // 条件显示常量：新建分类时显示
   const CONDITION_NEW_CATEGORY = { field: 'categoryId', value: NEW_CATEGORY_FLAG };
-  // 条件显示常量：LLM Judge 类型时显示
-  const CONDITION_LLM_JUDGE = { field: 'resultType', value: 'llm_judge' };
 
   const evaluationFields = computed(() => [
     { key: 'id', type: 'hidden' },
@@ -68,21 +64,13 @@ export function createEvalDimensionForm(state: EvalDimensionState) {
     { key: 'apiUrl', label: 'Master入口URL', type: 'text', required: false, placeholder: '请输入Master调度节点URL (分布式架构必填)', group: 'API配置',
       conditional: CONDITION_MAIN },
     { key: 'scoreUnit', label: '分数单位', type: 'text', required: false, placeholder: '如: %, 分, 秒等', group: '结果配置' },
+    // INT-1868 裁定 A：结果类型只有数值/布尔/文本（后端 result_type int）；
+    // LLM Judge 由维度自身 task_type_code 表达（后端派生 llm_judge），不是结果类型选项
     { key: 'resultType', label: '结果类型', type: 'select', required: true, options: [
       { value: 1, label: '数值 (1)' },
       { value: 2, label: '布尔 (2)' },
-      { value: 3, label: '文本 (3)' },
-      { value: 'llm_judge', label: 'LLM Judge' }
+      { value: 3, label: '文本 (3)' }
     ], group: '结果配置' },
-    { key: 'llmJudgeConfig', label: 'LLM Judge 配置', type: 'object', required: false, group: '结果配置',
-      conditional: CONDITION_LLM_JUDGE,
-      fields: [
-        { key: 'model', label: '模型', type: 'text', required: true, placeholder: '如: gpt-4, qwen-max' },
-        { key: 'promptTemplate', label: 'Prompt 模板', type: 'textarea', required: true, placeholder: '输入评估 prompt 模板，可使用 {{asr_result}} {{asr_ref}} 等变量' },
-        { key: 'maxTokens', label: '最大 Token 数', type: 'number', required: false, min: 1, max: 8192, default: DEFAULT_LLM_MAX_TOKENS },
-        { key: 'temperature', label: 'Temperature', type: 'number', required: false, min: 0, max: 2, step: 0.1, default: DEFAULT_LLM_TEMPERATURE }
-      ]
-    },
     { key: 'resultMin', label: '结果最小值', type: 'number', required: true, group: '结果配置',
       // P3-1 跨字段校验：结果最小值不能大于结果最大值
       validate: (values: Record<string, any>) => {

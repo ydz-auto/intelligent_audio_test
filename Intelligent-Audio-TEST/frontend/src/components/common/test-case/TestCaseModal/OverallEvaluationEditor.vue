@@ -66,7 +66,13 @@
           >
             <!-- 卡片头 -->
             <div class="eval-card-header">
-              <span class="eval-card-title">{{ dim.name }}</span>
+              <div class="eval-card-title-group">
+                <span class="eval-card-title">{{ dim.name }}</span>
+                <!-- INT-1868：LLM Judge 只读徽章（由维度自身 task_type_code 派生，无模型 / Prompt 配置） -->
+                <span v-if="isLlmJudge(dim)" class="eval-llm-badge">
+                  <i class="fas fa-robot"></i> LLM Judge
+                </span>
+              </div>
               <button
                 type="button"
                 class="eval-card-remove-btn"
@@ -90,7 +96,7 @@
                   @input="emitUpdate"
                 />
               </div>
-              <!-- 阈值（非 llm_judge 类型） -->
+              <!-- 阈值（非 LLM Judge 维度；LLM Judge 由维度任务类型决定，无阈值口径） -->
               <div v-if="!isLlmJudge(dim)" class="eval-field">
                 <label class="eval-field-label">阈值</label>
                 <input
@@ -102,29 +108,6 @@
                   @input="emitUpdate"
                 />
               </div>
-              <!-- llm_judge 扩展字段 -->
-              <template v-if="isLlmJudge(dim)">
-                <div class="eval-field">
-                  <label class="eval-field-label">模型</label>
-                  <select
-                    class="form-control form-control-sm"
-                    :value="getLlmParam(dim, 'model')"
-                    @change="setLlmParam(dim, 'model', ($event.target as HTMLSelectElement).value)"
-                  >
-                    <option v-for="m in llmModelOptions" :key="m" :value="m">{{ m }}</option>
-                  </select>
-                </div>
-                <div class="eval-field">
-                  <label class="eval-field-label">Prompt 模板</label>
-                  <select
-                    class="form-control form-control-sm"
-                    :value="getLlmParam(dim, 'promptTemplate')"
-                    @change="setLlmParam(dim, 'promptTemplate', ($event.target as HTMLSelectElement).value)"
-                  >
-                    <option v-for="p in llmPromptOptions" :key="p" :value="p">{{ p }}</option>
-                  </select>
-                </div>
-              </template>
             </div>
           </div>
         </div>
@@ -160,10 +143,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [value: DimensionConfig[]]
 }>()
-
-// ---- llm_judge 配置选项 ----
-const llmModelOptions = ['gpt-4', 'gpt-4o', 'gpt-3.5-turbo', 'claude-3-opus', 'claude-3-sonnet']
-const llmPromptOptions = ['default', 'accuracy', 'fluency', 'relevance']
 
 // ---- 本地状态 ----
 const enabled = ref(true)
@@ -206,13 +185,13 @@ function toggleDim(dim: Dimension) {
   if (idx >= 0) {
     localDimensions.value.splice(idx, 1)
   } else {
-    const isLlm = isLlmJudgeDim(dim)
+    // INT-1868：新选维度只带权重 / 阈值；LLM Judge 由维度自身 task_type_code 表达，
+    // 不再写 llmJudgeConfig（历史条目上的旧值原样透传，不删不清）
     localDimensions.value.push({
       id: dim.id,
       name: dim.name,
       weight: dim.weight ?? 50,
-      threshold: isLlm ? 0 : 80,
-      ...(isLlm ? { llmJudgeConfig: { model: 'gpt-4', promptTemplate: 'default' } } : {}),
+      threshold: 80,
     } as DimensionConfig)
   }
   emitUpdate()
@@ -223,26 +202,15 @@ function removeDim(index: number) {
   emitUpdate()
 }
 
-// ---- llm_judge 判定 ----
-function isLlmJudgeDim(dim: Dimension): boolean {
-  return (dim as any).resultType === 'llm_judge'
+// ---- LLM Judge 判定（INT-1868：按维度列表里的后端派生 llm_judge 布尔） ----
+/** 从可选维度列表找该参数项对应的维度定义（先按 id、再按名称兜底） */
+function findDimension(dim: DimensionConfig): Dimension | undefined {
+  const dims = props.availableDimensions || []
+  return dims.find((d) => d.id === dim.id) ?? dims.find((d) => d.name === dim.name)
 }
 
 function isLlmJudge(dim: DimensionConfig): boolean {
-  return !!(dim as any).llmJudgeConfig
-}
-
-function getLlmParam(dim: DimensionConfig, key: string): string {
-  const cfg = (dim as any).llmJudgeConfig
-  return cfg?.[key] ?? ''
-}
-
-function setLlmParam(dim: DimensionConfig, key: string, value: string) {
-  if (!(dim as any).llmJudgeConfig) {
-    (dim as any).llmJudgeConfig = {}
-  }
-  (dim as any).llmJudgeConfig[key] = value
-  emitUpdate()
+  return findDimension(dim)?.llmJudge === true
 }
 
 // ---- 发射更新 ----
@@ -481,6 +449,29 @@ watch(enabled, () => {
   font-size: 14px;
   font-weight: 600;
   color: var(--primary);
+}
+/* 卡片标题行（标题 + 只读徽章） */
+.eval-card-title-group{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+/* INT-1868：LLM Judge 只读徽章（与列表页 dimension-table 的 llm-judge 徽章同口径） */
+.eval-llm-badge{
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--info-light, var(--color-blue-50));
+  color: var(--info, var(--secondary));
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.eval-llm-badge i{
+  font-size: 10px;
 }
 .eval-card-remove-btn{
   background: none;

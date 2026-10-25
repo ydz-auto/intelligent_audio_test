@@ -21,6 +21,8 @@ export interface DimensionItemDto {
   score_unit?: string
   type?: string
   result_type?: number
+  /** LLM Judge 派生布尔（后端按维度 task_type_code 判定；不是结果类型，INT-1868） */
+  llm_judge?: boolean
   result_min?: number
   result_max?: number
   decimal_places?: number

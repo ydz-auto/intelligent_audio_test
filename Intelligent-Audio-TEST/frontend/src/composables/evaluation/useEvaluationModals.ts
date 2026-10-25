@@ -127,21 +127,22 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
       const dimensionType = (rawDimensionType === 'main' || rawDimensionType === 'sub') ? rawDimensionType : 'main';
       const parentDimensionId = dimension.parentDimensionId || '';
 
-      // 处理 llmJudgeConfig（Domain 侧 camelCase）
-      const rawLlmJudgeConfig = dimension.llmJudgeConfig;
-      const llmJudgeConfig = rawLlmJudgeConfig
-        ? {
-            model: rawLlmJudgeConfig.model || '',
-            promptTemplate: rawLlmJudgeConfig.promptTemplate || '',
-            maxTokens: rawLlmJudgeConfig.maxTokens || 1024,
-            temperature: rawLlmJudgeConfig.temperature ?? 0.7
-          }
-        : {
-            model: '',
-            promptTemplate: '',
-            maxTokens: 1024,
-            temperature: 0.7
-          };
+      // INT-1868 裁定 A：LLM Judge 是维度属性（后端派生 llm_judge，由 task_type_code 判定），
+      // 不是结果类型选项；编辑时只读展示结果类型，不再提供模型 / Prompt / Token / Temperature。
+      const isLlmJudgeDimension = dimension.llmJudge === true;
+      const formFields = isLlmJudgeDimension
+        ? evaluationFields.value.map((field: any) =>
+            field.key === 'resultType'
+              ? {
+                  ...field,
+                  // 禁用下拉即只读：选项固定为派生口径，提交值仍取维度自身的 result_type(int)
+                  disabled: true,
+                  options: [{ value: dimension.resultType ?? 1, label: 'LLM Judge' }],
+                  hint: '由维度任务类型（task_type_code=llm_judge）决定，不支持在此修改'
+                }
+              : field
+          )
+        : evaluationFields.value;
 
       const rawOutputFields = dimension.outputFields || [];
       const outputFieldsArray = Array.isArray(rawOutputFields) ? rawOutputFields : [];
@@ -167,14 +168,15 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
         dimensionType: dimensionType,
         parentDimensionId: parentDimensionId,
         taskTypeCode: dimension.taskTypeCode || '',
-        llmJudgeConfig: llmJudgeConfig
+        // 结果类型按后端 int 提交（LLM Judge 维度也保留原值，不写 llm_judge 字符串）
+        resultType: dimension.resultType ?? 1
       };
 
       modalManager.open(MODAL_TYPES.CRUD_FORM, {
         mode: 'edit',
         entityName: '评估维度',
         width: '1400px',
-        fields: evaluationFields.value,
+        fields: formFields,
         formData: editingData,
         onSave: async (result: any) => {
           console.log('[Evaluation] openEditModal onSave result:', JSON.stringify(result, null, 2));
@@ -232,13 +234,7 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
       aggDenominator: 'case',
       excludeRounds: [],
       apiEndpoints: [{ url: '', name: '', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60 }],
-      associatedAlgorithms: [],
-      llmJudgeConfig: {
-        model: '',
-        promptTemplate: '',
-        maxTokens: 1024,
-        temperature: 0.7
-      }
+      associatedAlgorithms: []
     };
 
     console.log('[Evaluation] openAddModal formData:', JSON.stringify(formData, null, 2));

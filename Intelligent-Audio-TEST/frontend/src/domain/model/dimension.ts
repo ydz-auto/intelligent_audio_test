@@ -83,8 +83,13 @@ export interface Dimension {
   apiStatus?: string
   /** 评分类型（后端 type 原值） */
   type?: string
-  /** 结果类型（后端原值为 int） */
+  /** 结果类型（后端原值为 int：1 数值 / 2 布尔 / 3 文本） */
   resultType?: number
+  /**
+   * 是否 LLM Judge 维度（后端派生布尔 llm_judge：由维度自身 task_type_code 判定）。
+   * LLM Judge 不是结果类型，结果类型仍是数值/布尔/文本（INT-1868 裁定 A）。
+   */
+  llmJudge?: boolean
   resultMin?: number
   resultMax?: number
   decimalPlaces?: number
@@ -114,7 +119,7 @@ export interface Dimension {
   createdByUserId?: number | null
   /** 评分单位 */
   scoreUnit?: string
-  /** LLM 评审配置（维度附属） */
+  /** 历史 LLM 评审配置残留（后端维度接口不下发；只读兼容，前端不再写入，INT-1868） */
   llmJudgeConfig?: LlmJudgeConfig
   /** 前端本地字段：是否需要音频输入（历史消费方使用） */
   requiresAudio?: boolean
@@ -151,6 +156,8 @@ export interface DimensionOption {
   description?: string
   /** 维度类型（后端原值） */
   type?: string
+  /** 是否 LLM Judge 维度（后端派生布尔 llm_judge，INT-1868） */
+  llmJudge?: boolean
 }
 
 /** 维度选项响应（对应 options 接口 { dimensions: [...] } 包装） */

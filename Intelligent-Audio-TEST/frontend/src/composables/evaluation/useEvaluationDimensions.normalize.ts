@@ -2,7 +2,7 @@
  * useEvaluationDimensions —— 保存前字段规范化处理链
  *
  * 负责维度数据在保存前的逐字段规范化与回填：rule / requiredInputs / outputFields / apiSettings /
- * categoryId（含新建分类回填）/ 子维度继承父维度 / apiEndpoints / associatedAlgorithms / llmJudgeConfig。
+ * categoryId（含新建分类回填）/ 子维度继承父维度 / apiEndpoints / associatedAlgorithms。
  */
 import { evaluationPort } from './evaluationPort';
 import type { EvalDimensionState } from './useEvaluationDimensions.state';
@@ -10,8 +10,6 @@ import {
   NEW_CATEGORY_FLAG,
   DIMENSION_TYPE_SUB,
   DEFAULT_CATEGORY_ICON,
-  DEFAULT_LLM_MAX_TOKENS,
-  DEFAULT_LLM_TEMPERATURE,
   DEFAULT_MAX_PROCESS,
   DEFAULT_MAX_TIMEOUT,
   DEFAULT_MAX_AUDIO_DURATION,
@@ -215,20 +213,8 @@ export function createEvalDimensionNormalizers(state: EvalDimensionState) {
     }
   }
 
-  // 处理 llmJudgeConfig：对象规范化、非对象删除
-  function normalizeLlmJudgeConfig(dimensionData: any) {
-    if (dimensionData.llmJudgeConfig === undefined) return;
-    if (typeof dimensionData.llmJudgeConfig === 'object' && dimensionData.llmJudgeConfig !== null) {
-      dimensionData.llmJudgeConfig = {
-        model: dimensionData.llmJudgeConfig.model || '',
-        promptTemplate: dimensionData.llmJudgeConfig.promptTemplate || '',
-        maxTokens: dimensionData.llmJudgeConfig.maxTokens || DEFAULT_LLM_MAX_TOKENS,
-        temperature: dimensionData.llmJudgeConfig.temperature ?? DEFAULT_LLM_TEMPERATURE
-      };
-    } else {
-      delete dimensionData.llmJudgeConfig;
-    }
-  }
+  // INT-1868 裁定 A：llmJudgeConfig（模型 / Prompt / Token / Temperature）已从后端撤除，
+  // 保存链不再规范化或写入该字段（历史值原样留在原数据里，不删不清）
 
   return {
     normalizeRule,
@@ -240,7 +226,6 @@ export function createEvalDimensionNormalizers(state: EvalDimensionState) {
     inheritFromParentDimension,
     normalizeApiEndpoints,
     normalizeAssociatedAlgorithms,
-    normalizeLlmJudgeConfig,
   };
 }
 

@@ -51,7 +51,6 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
     inheritFromParentDimension,
     normalizeApiEndpoints,
     normalizeAssociatedAlgorithms,
-    normalizeLlmJudgeConfig,
   } = normalizers;
 
   // ========== 维度 CRUD ==========
@@ -85,7 +84,6 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
       inheritFromParentDimension(dimensionData);
       normalizeApiEndpoints(dimensionData);
       normalizeAssociatedAlgorithms(dimensionData);
-      normalizeLlmJudgeConfig(dimensionData);
 
       // 校验必填字段
       const missingFields = validateRequiredFields(dimensionData);

@@ -150,6 +150,8 @@ export function toDimension(dto: DimensionItemDto): Dimension {
     apiStatus: dto?.api_status,
     type: dto?.type,
     resultType: dto?.result_type,
+    // INT-1868：后端派生 llm_judge（由维度自身 task_type_code 判定；不是结果类型）
+    llmJudge: dto?.llm_judge ?? false,
     resultMin: dto?.result_min,
     resultMax: dto?.result_max,
     decimalPlaces: dto?.decimal_places,
@@ -224,6 +226,8 @@ export function toDimensionOptions(dto: DimensionOptionsDto | null | undefined):
       weight: Number(record?.weight ?? 1),
       description: typeof record?.description === 'string' ? record.description : undefined,
       type: typeof record?.type === 'string' ? record.type : undefined,
+      // INT-1868：选项接口同样下发派生 llm_judge（用例参数卡据此显示只读徽章）
+      llmJudge: record?.llm_judge === true,
     }
   })
   return { dimensions: items }
@@ -308,7 +312,8 @@ export function toDimensionDto(data: Partial<Dimension>): Record<string, any> {
   if (data.associatedAlgorithms !== undefined) result.associated_algorithms = data.associatedAlgorithms
   if (data.status !== undefined) result.status = data.status
   if (data.scoreUnit !== undefined) result.score_unit = data.scoreUnit
-  if (data.llmJudgeConfig !== undefined) result.llm_judge_config = data.llmJudgeConfig
+  // INT-1868 裁定 A：LLM Judge 的模型 / Prompt / Token / Temperature 已从后端撤除，
+  // 维度保存不再提交 llm_judge_config（历史值不随维度保存重写、也不主动清理）
   // INT-423/467：可见性（缺省不发，后端回落 shared）
   if (data.visibility !== undefined) result.visibility = data.visibility
   return result

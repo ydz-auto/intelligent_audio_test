@@ -59,6 +59,8 @@ export interface DimensionConfig {
   name: string
   weight: number
   threshold: number
+  /** 历史 LLM Judge 配置残留（旧数据原样透传，前端不再写新值；INT-1868 裁定 A） */
+  llmJudgeConfig?: Record<string, unknown>
 }
 
 /**

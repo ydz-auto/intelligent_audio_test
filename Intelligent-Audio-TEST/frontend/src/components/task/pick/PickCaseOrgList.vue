@@ -1,22 +1,13 @@
 <template>
   <div class="pcol">
     <!-- 组织控件（常显：候选未返分组/标签字段时单兜底桶，控件不隐藏——§3.8.3 兜底口径） -->
-    <div class="pcol-controls">
-      <button type="button" class="pcol-btn" :class="{ active: org === 'group' }" @click="setOrg('group')">
-        <i class="fas fa-folder"></i> 分组视图
-      </button>
-      <button type="button" class="pcol-btn" :class="{ active: org === 'tag' }" @click="setOrg('tag')">
-        <i class="fas fa-tags"></i> 标签视图
-      </button>
-      <span class="pcol-controls-sep"></span>
-      <button type="button" class="pcol-btn" :class="{ active: subView === 'flat' }" @click="setSubView('flat')">
-        平铺
-      </button>
-      <button type="button" class="pcol-btn" :class="{ active: subView !== 'flat' }" @click="setSubView(crossValue)">
-        {{ crossLabel }}
-      </button>
-      <span v-if="showFallbackHint" class="pcol-hint">候选未返分组/标签字段，按「未分组」/「未设置标签」组织（§11-7）</span>
-    </div>
+    <PickCaseOrgControls
+      :org="org"
+      :sub-view="subView"
+      :fallback-only="showFallbackHint"
+      @update:org="(v) => emit('update:org', v)"
+      @update:sub-view="(v) => emit('update:subView', v)"
+    />
 
     <div v-if="roots.length === 0" class="pcol-empty">
       <i class="fas fa-inbox"></i>
@@ -88,6 +79,7 @@ import '../../../assets/styles/layouts/main.css'
  */
 import { computed } from 'vue';
 import PickTree from './PickTree.vue';
+import PickCaseOrgControls from './PickCaseOrgControls.vue';
 import { buildPickCaseOrgBuckets, type PickOrgCaseItem, type PickCaseOrgInfo } from './pickTree';
 import type { PickTreeNode } from './pickTree';
 import type { PickCandidate } from '../../../infrastructure/api/cherryPickApi';
@@ -132,10 +124,6 @@ const emit = defineEmits<{
 /** 组织桶（分组视图=按用例分组聚合，标签视图=按标签聚合；候选无组织字段 → 单一兜底桶） */
 const orgGroups = computed(() => buildPickCaseOrgBuckets(props.roots, props.org, props.caseOrgMap));
 
-/** 交叉子视图当前维度（分组视图 → 按标签；标签视图 → 按用例分组） */
-const crossValue = computed<'byTag' | 'byGroup'>(() => (props.org === 'group' ? 'byTag' : 'byGroup'));
-const crossLabel = computed(() => (props.org === 'group' ? '按标签' : '按用例分组'));
-
 /** 组织项 → 用例级分支（喂给 PickTree 渲染用例卡 + 卡内子树） */
 function branchList(cases: PickOrgCaseItem[]): PickTreeNode[] {
   return cases.map((c) => c.branch);
@@ -156,15 +144,6 @@ const showFallbackHint = computed(() => {
   const gs = orgGroups.value;
   return gs.length === 1 && isFallback(gs[0].key);
 });
-
-/** 切换组织维度：会话态（切视图保持）；org 切换重置子视图为平铺（对齐 React PickCaseView） */
-function setOrg(org: 'group' | 'tag') {
-  emit('update:org', org);
-  emit('update:subView', 'flat');
-}
-function setSubView(subView: 'flat' | 'byTag' | 'byGroup') {
-  emit('update:subView', subView);
-}
 </script>
 
 <style scoped>
@@ -173,49 +152,7 @@ function setSubView(subView: 'flat' | 'byTag' | 'byGroup') {
   flex-direction: column;
   gap: 8px;
 }
-/* 组织控件（常显：候选未返分组/标签字段时单兜底桶，控件不隐藏——§3.8.3 兜底口径） */
-.pcol-controls {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-  padding: 8px 12px;
-  background: var(--color-slate-50, #f8fafc);
-  border-bottom: 1px solid var(--color-slate-200, #e2e8f0);
-}
-.pcol-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: var(--radius-md);
-  background: #fff;
-  color: var(--foreground, #1e293b);
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.pcol-btn:hover {
-  border-color: var(--primary, #ff6a00);
-  color: var(--primary, #ff6a00);
-}
-.pcol-btn.active {
-  border-color: var(--primary, #ff6a00);
-  background: var(--accent, #fff7ed);
-  color: var(--primary, #ff6a00);
-}
-.pcol-controls-sep {
-  width: 1px;
-  height: 16px;
-  background: var(--color-slate-200, #e2e8f0);
-  margin: 0 2px;
-}
-.pcol-hint {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--color-slate-400, #94a3b8);
-}
+/* 组织控件样式见 PickCaseOrgControls.vue（挑选树与购物车四视图共用） */
 .pcol-empty {
   padding: 32px 16px;
   text-align: center;

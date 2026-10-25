@@ -170,20 +170,31 @@
 
       <div v-if="cartLoading" class="cpw-empty"><i class="fas fa-spinner fa-spin"></i> 正在加载购物车…</div>
       <div v-else-if="cartCount === 0" class="cpw-empty"><i class="fas fa-shopping-cart"></i> 购物车为空</div>
-      <div v-else class="cpw-cart-tree">
-        <CartTree
-          :roots="cartTreeRoots"
-          :selected="selectedItemIds"
-          :expanded-keys="cartExpandedKeys"
-          :leaf-meta="cartLeafMeta"
-          :manageable="true"
-          @toggle-node="onToggleCartNode"
-          @toggle-expand="onToggleCartExpand"
-          @toggle-leaf="toggleCartItem"
-          @remove-leaf="onRemoveCartLeaf"
-          @remove-group="onRemoveCartGroupNode"
+      <template v-else>
+        <!-- 用例层组织控件（与复核步骤同一份会话态；条目字段直接组织，刷新/直达也不落「未分组」） -->
+        <PickCaseOrgControls
+          :org="cartOrg"
+          :sub-view="cartSubView"
+          :fallback-only="!cartHasOrgData"
+          hint="购物车条目未带用例分组/标签字段，按「未分组」/「未设置标签」组织（§11-7）"
+          @update:org="cartOrg = $event"
+          @update:sub-view="cartSubView = $event"
         />
-      </div>
+        <div class="cpw-cart-tree">
+          <CartTree
+            :roots="cartTreeRoots"
+            :selected="selectedItemIds"
+            :expanded-keys="cartExpandedKeys"
+            :leaf-meta="cartLeafMeta"
+            :manageable="true"
+            @toggle-node="onToggleCartNode"
+            @toggle-expand="onToggleCartExpand"
+            @toggle-leaf="toggleCartItem"
+            @remove-leaf="onRemoveCartLeaf"
+            @remove-group="onRemoveCartGroupNode"
+          />
+        </div>
+      </template>
 
       <div class="cpw-sets" v-if="sets.length > 0">
         <h4><i class="fas fa-layer-group"></i> 我的挑选集</h4>
@@ -220,9 +231,26 @@
       </div>
 
       <div v-if="cartCount === 0" class="cpw-empty"><i class="fas fa-shopping-cart"></i> 购物车为空</div>
-      <div v-else class="cpw-cart-tree">
+      <template v-else>
+        <!-- 复核工具行（INT-1831 四视图切换器 + 用例层组织控件 + 展开/收起；四视图共享选中集） -->
+        <div class="cpw-toolbar">
+          <CartViewSwitcher :view="reviewView" @update:view="reviewView = $event" />
+          <button class="cpw-btn" @click="expandAllReview"><i class="fas fa-angles-down"></i> 全部展开</button>
+          <button class="cpw-btn" @click="collapseAllReview"><i class="fas fa-angles-up"></i> 全部收起</button>
+          <span class="cpw-toolbar-info">共 {{ cartCount }} 条</span>
+        </div>
+        <PickCaseOrgControls
+          :org="cartOrg"
+          :sub-view="cartSubView"
+          :fallback-only="!cartHasOrgData"
+          hint="购物车条目未带用例分组/标签字段，按「未分组」/「未设置标签」组织（§11-7）"
+          @update:org="cartOrg = $event"
+          @update:sub-view="cartSubView = $event"
+        />
+      </template>
+      <div v-if="cartCount > 0" class="cpw-cart-tree">
         <CartTree
-          :roots="cartTreeRoots"
+          :roots="reviewTreeRoots"
           :selected="selectedItemIds"
           :expanded-keys="cartExpandedKeys"
           :leaf-meta="cartLeafMeta"
@@ -341,15 +369,18 @@ import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { cherryPickApi, tasksApi, devicesApi } from '../../../infrastructure/api';
 import type { PickCandidate, PickPreview, PickCheckoutAction, PickCartItem } from '../../../infrastructure/api/cherryPickApi';
 import { usePickCart } from '../../../composables/task/usePickCart';
+import { rememberCaseOrg, usePickCaseOrgCache } from '../../../composables/task/usePickCaseOrgCache';
 import { useNotification } from '../../../composables/modal/useNotification';
 import { useModalControl } from '../../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../../composables/modal/constants';
 import PickTree from './PickTree.vue';
 import PickCaseOrgList from './PickCaseOrgList.vue';
+import PickCaseOrgControls from './PickCaseOrgControls.vue';
 import CartTree from './CartTree.vue';
+import CartViewSwitcher from './CartViewSwitcher.vue';
 import PickTaskStage, { getTaskStatusOrder, type PickTaskRow } from './PickTaskStage.vue';
 import { buildPickCaseViewTree, buildPickDeviceViewTree, buildPickResultTypeViewTree, toggleNode, selectAll, invertSelection, collectLeafResultIds, type PickTreeNode, type PickCaseOrgInfo } from './pickTree';
-import { buildCartTree, toggleCartNode, type CartTreeNode } from './cartTree';
+import { buildCartTaskView, buildCartView, collectCartNodeKeys, hasCartCaseOrg, resolveCartCaseOrgMap, toggleCartNode, type CartTreeNode, type CartViewMode, type CartOrgDim, type CartOrgSubView } from './cartTree';
 
 const STEPS = [
   { key: 'pick', label: '挑选', icon: 'fas fa-hand-pointer' },
@@ -700,6 +731,8 @@ async function loadCandidates() {
     const meta = new Map(knownMeta.value);
     for (const c of candidates.value) meta.set(c.resultId, c);
     knownMeta.value = meta;
+    // INT-1831：候选行组织字段（tags/group_name）记入会话缓存，供购物车 / 复核四视图用例层组织
+    rememberCaseOrg(candidates.value);
     // 筛选与勾选解耦（§6.2）：筛选变化不清空已选项；仅收起
     collapseAll();
   } catch (error) {
@@ -848,8 +881,35 @@ function resetFilters() {
 
 // ===== 步骤 2/3：购物车 =====
 
-/** 购物车树（§4.2 任务→用例→设备/API→result_type 分组，与挑选页同构） */
-const cartTreeRoots = computed(() => buildCartTree(cart.value.groups));
+/** 复核 / 购物车两步共享的用例层组织维度与会话态（同一条目集两步口径一致） */
+const cartOrg = ref<CartOrgDim>('group');
+const cartSubView = ref<CartOrgSubView>('flat');
+/** 组织字段：条目自身 tags/group_name 为主（购物车契约已随条目返回），挑选侧会话缓存仅补充 */
+const { caseOrgMap: sessionCaseOrgMap } = usePickCaseOrgCache();
+const cartCaseOrgMap = computed(() => resolveCartCaseOrgMap(cart.value.groups, sessionCaseOrgMap.value));
+/** 购物车树（步骤 2：任务视图默认层级——任务 → 用例层组织 → 用例卡 → 设备/API → result_type → 叶） */
+const cartTreeRoots = computed(() => buildCartTaskView(cart.value.groups, {
+  org: cartOrg.value,
+  subView: cartSubView.value,
+  caseOrgMap: cartCaseOrgMap.value,
+}));
+/** 复核步骤四视图（INT-1831 §3.2）：任务视图（默认）｜用例｜设备｜结果类型；
+ *  四视图共享同一 selectedItemIds（切换不丢勾选、下单载荷不变），组织维度会话态共享。 */
+const reviewView = ref<CartViewMode>('task');
+const reviewTreeRoots = computed(() => buildCartView(reviewView.value, cart.value.groups, {
+  org: cartOrg.value,
+  subView: cartSubView.value,
+  caseOrgMap: cartCaseOrgMap.value,
+}));
+/** 组织字段兜底提示（条目与会话缓存均无用例分组/标签字段时说明组织层口径） */
+const cartHasOrgData = computed(() => hasCartCaseOrg(cart.value.groups, cartCaseOrgMap.value));
+/** 全部展开 / 全部收起（复核工具行；与购物车步骤共用展开态集合） */
+function expandAllReview() {
+  cartExpandedKeys.value = new Set(collectCartNodeKeys(reviewTreeRoots.value));
+}
+function collapseAllReview() {
+  cartExpandedKeys.value = new Set();
+}
 const cartLeafMeta = computed(() => {
   const m = new Map<number, PickCartItem>();
   for (const g of cart.value.groups) {
@@ -860,6 +920,12 @@ const cartLeafMeta = computed(() => {
 const cartExpandedKeys = ref<Set<string>>(new Set());
 /** 购物车树节点自动展开（进入步骤即展开一层便于核对） */
 watch(cartTreeRoots, (roots) => {
+  const next = new Set(cartExpandedKeys.value);
+  for (const r of roots) next.add(r.key);
+  cartExpandedKeys.value = next;
+}, { immediate: true });
+/** 复核切换视图 / 组织维度后同样展开首层（四视图层级不同，key 各自独立） */
+watch(reviewTreeRoots, (roots) => {
   const next = new Set(cartExpandedKeys.value);
   for (const r of roots) next.add(r.key);
   cartExpandedKeys.value = next;
@@ -898,7 +964,7 @@ function onRemoveCartLeaf(itemId: number) {
 
 /** 节点「移除该组」（CartTree remove-group；将移除该节点下全部条目，确认后批量） */
 async function onRemoveCartGroupNode(node: CartTreeNode) {
-  const label = node.level === 'task' ? '来源任务' : node.level === 'case' ? '用例' : node.level === 'device' ? (node.kind === 'api' ? 'API' : '设备') : '结果类型';
+  const label = node.level === 'task' ? '来源任务' : node.level === 'case' ? '用例' : node.level === 'device' ? (node.kind === 'api' ? 'API' : '设备') : node.level === 'org' ? (node.org === 'tag' ? '标签组' : '分组') : node.level === 'orgSub' ? (node.org === 'tag' ? '标签' : '分组') : '结果类型';
   let confirmed = false;
   try {
     confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
@@ -1167,9 +1233,9 @@ watch(() => cartRevision.value, () => {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
-  background: var(--color-slate-50, #f8fafc);
+  background: var(--card, #f8fafc);
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-slate-200, #e2e8f0);
+  border: 1px solid var(--border, #e2e8f0);
 }
 .cpw-steps {
   display: flex;
@@ -1220,18 +1286,18 @@ watch(() => cartRevision.value, () => {
   gap: 8px;
   flex-wrap: wrap;
   padding: 12px;
-  background: var(--color-slate-50, #f8fafc);
+  background: var(--card, #f8fafc);
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-slate-200, #e2e8f0);
+  border: 1px solid var(--border, #e2e8f0);
   margin-bottom: 12px;
 }
 .cpw-input {
   height: 34px;
   padding: 0 10px;
-  border: 1px solid var(--color-slate-300, #cbd5e1);
+  border: 1px solid var(--border, #cbd5e1);
   border-radius: var(--radius-md);
   font-size: 13px;
-  background: #fff;
+  background: var(--card, #fff);
   color: var(--foreground, #1e293b);
 }
 .cpw-input:focus {
@@ -1259,7 +1325,7 @@ watch(() => cartRevision.value, () => {
 }
 .cpw-toolbar-info {
   font-size: 13px;
-  color: var(--color-slate-500, #64748b);
+  color: var(--muted-foreground, #64748b);
 }
 /* INT-1034 §3.8：两阶段挑选（阶段 2 任务集摘要条 + 视图切换 + 错误态） */
 .cpw-phase-title {
@@ -1273,8 +1339,8 @@ watch(() => cartRevision.value, () => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--color-slate-50, #f8fafc);
-  border: 1px solid var(--color-slate-200, #e2e8f0);
+  background: var(--card, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
   border-radius: var(--radius-md);
   flex-wrap: wrap;
 }
@@ -1360,7 +1426,7 @@ watch(() => cartRevision.value, () => {
 .cpw-tree {
   max-height: 420px;
   overflow-y: auto;
-  border: 1px solid var(--color-slate-200, #e2e8f0);
+  border: 1px solid var(--border, #e2e8f0);
   border-radius: var(--radius-md);
   padding: 8px 0;
 }
@@ -1395,8 +1461,8 @@ watch(() => cartRevision.value, () => {
   gap: 8px;
   flex-wrap: wrap;
   padding: 10px 12px;
-  background: #fff;
-  border: 1px solid var(--color-slate-200, #e2e8f0);
+  background: var(--card, #fff);
+  border: 1px solid var(--border, #e2e8f0);
   border-radius: var(--radius-md);
   box-shadow: 0 -2px 8px color-mix(in srgb, var(--color-slate-900) 4%, transparent);
   margin-top: 12px;
@@ -1404,7 +1470,7 @@ watch(() => cartRevision.value, () => {
 .cpw-summary-info {
   flex: 1;
   font-size: 13px;
-  color: var(--color-slate-600, #475569);
+  color: var(--muted-foreground, #475569);
 }
 .cpw-cart-groups {
   display: flex;
@@ -1458,7 +1524,7 @@ watch(() => cartRevision.value, () => {
 .cpw-sets {
   margin-top: 16px;
   padding-top: 12px;
-  border-top: 1px solid var(--color-slate-200, #e2e8f0);
+  border-top: 1px solid var(--border, #e2e8f0);
 }
 .cpw-sets h4 {
   font-size: 13px;
@@ -1485,9 +1551,9 @@ watch(() => cartRevision.value, () => {
   flex: 1;
   min-width: 100px;
   padding: 12px;
-  border: 1px solid var(--color-slate-200, #e2e8f0);
+  border: 1px solid var(--border, #e2e8f0);
   border-radius: var(--radius-md);
-  background: var(--color-slate-50, #f8fafc);
+  background: var(--card, #f8fafc);
   text-align: center;
 }
 .cpw-stat-badge b {
@@ -1525,7 +1591,7 @@ watch(() => cartRevision.value, () => {
   gap: 12px;
 }
 .cpw-checkout-card {
-  border: 1px solid var(--color-slate-200, #e2e8f0);
+  border: 1px solid var(--border, #e2e8f0);
   border-radius: var(--radius-xl);
   padding: 12px 16px;
   cursor: pointer;
@@ -1554,7 +1620,7 @@ watch(() => cartRevision.value, () => {
   gap: 8px;
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px dashed var(--color-slate-200, #e2e8f0);
+  border-top: 1px dashed var(--border, #e2e8f0);
 }
 .cpw-preview-row {
   display: flex;
@@ -1584,7 +1650,7 @@ watch(() => cartRevision.value, () => {
   align-items: center;
   gap: 8px;
   padding-top: 12px;
-  border-top: 1px solid var(--color-slate-200, #e2e8f0);
+  border-top: 1px solid var(--border, #e2e8f0);
 }
 .cpw-footer-spacer {
   flex: 1;
