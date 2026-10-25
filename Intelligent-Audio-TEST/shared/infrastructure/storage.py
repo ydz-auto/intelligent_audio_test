@@ -71,11 +71,22 @@ def _warn_oss_throttled(message: str, category: str) -> None:
     log_not_emit('WARNING', _MODULE_NAME, message, category=category)
 
 
+class StorageUnavailableError(RuntimeError):
+    """存储不可用（INT-1805）。
+
+    调用方以 ``allow_fallback=False`` 要求「要么进 OSS，要么报错」时抛出：
+    OSS 不可用、OSS 读写失败、或读取到本地降级路径（local://）都归一为本异常，
+    严禁静默落本地盘 / 从本地降级副本读回。外置对象（如 raw 原始报文）的本地
+    副本随容器重建即丢，故这类调用方必须走本异常而不是降级。
+    """
+
+
 class Storage:
     """统一存储抽象（单例）。
 
     所有方法均幂等，线程安全。
-    OSS 不可用时自动降级到本地磁盘存储（可通过配置关闭）。
+    OSS 不可用时自动降级到本地磁盘存储（可通过配置关闭）；
+    各读写方法另带 allow_fallback 参数，供调用方按需禁止本地降级。
     """
 
     _instance = None
@@ -163,20 +174,32 @@ class Storage:
 
     # ---- 公开 API：保存 ----
 
-    def save_file(self, local_path: str, category: str, key: str) -> str:
+    def save_file(self, local_path: str, category: str, key: str,
+                  allow_fallback: bool = True) -> str:
         """保存本地文件到存储，返回带 scheme 前缀的 path。
 
         OSS 可用 → 上传到 OSS，返回 'oss://{category}/{key}'
         OSS 不可用 → 复制到本地降级目录，返回 'local://{category}/{key}'
+        allow_fallback=False → OSS 不可用 / 上传失败抛 StorageUnavailableError，
+        不写本地降级目录
         """
         try:
             if self._use_oss():
                 self._oss.upload_file(local_path, category, key)
                 return f'{_SCHEME_OSS}{category}/{key}'
+            if not allow_fallback:
+                raise StorageUnavailableError(
+                    f'OSS 不可用，且调用方禁止本地降级: save_file {category}/{key}')
+        except StorageUnavailableError:
+            raise
         except Exception as e:
             _warn_oss_throttled(
                 f'save_file OSS failed, fallback to local: {e}',
                 category=category)
+            if not allow_fallback:
+                raise StorageUnavailableError(
+                    f'OSS 上传失败，且调用方禁止本地降级: '
+                    f'save_file {category}/{key}: {e}') from e
             if not BaseConfig.STORAGE_FALLBACK_ENABLED:
                 raise
         # 降级到本地
@@ -186,17 +209,31 @@ class Storage:
         return f'{_SCHEME_LOCAL}{category}/{key}'
 
     def save_bytes(self, data: bytes, category: str, key: str,
-                   content_type: Optional[str] = None) -> str:
-        """保存字节数据到存储，返回带 scheme 前缀的 path。"""
+                   content_type: Optional[str] = None,
+                   allow_fallback: bool = True) -> str:
+        """保存字节数据到存储，返回带 scheme 前缀的 path。
+
+        allow_fallback=False → OSS 不可用 / 上传失败抛 StorageUnavailableError，
+        不写本地降级目录、不返回 local://
+        """
         try:
             if self._use_oss():
                 self._oss.upload_bytes(data, category, key,
                                        content_type=content_type)
                 return f'{_SCHEME_OSS}{category}/{key}'
+            if not allow_fallback:
+                raise StorageUnavailableError(
+                    f'OSS 不可用，且调用方禁止本地降级: save_bytes {category}/{key}')
+        except StorageUnavailableError:
+            raise
         except Exception as e:
             _warn_oss_throttled(
                 f'save_bytes OSS failed, fallback to local: {e}',
                 category=category)
+            if not allow_fallback:
+                raise StorageUnavailableError(
+                    f'OSS 上传失败，且调用方禁止本地降级: '
+                    f'save_bytes {category}/{key}: {e}') from e
             if not BaseConfig.STORAGE_FALLBACK_ENABLED:
                 raise
         # 降级到本地
@@ -207,17 +244,31 @@ class Storage:
         return f'{_SCHEME_LOCAL}{category}/{key}'
 
     def save_stream(self, stream: BinaryIO, category: str, key: str,
-                    content_type: Optional[str] = None) -> str:
-        """保存文件流到存储，返回带 scheme 前缀的 path。"""
+                    content_type: Optional[str] = None,
+                    allow_fallback: bool = True) -> str:
+        """保存文件流到存储，返回带 scheme 前缀的 path。
+
+        allow_fallback=False → OSS 不可用 / 上传失败抛 StorageUnavailableError，
+        不写本地降级目录
+        """
         try:
             if self._use_oss():
                 self._oss.upload_stream(stream, category, key,
                                         content_type=content_type)
                 return f'{_SCHEME_OSS}{category}/{key}'
+            if not allow_fallback:
+                raise StorageUnavailableError(
+                    f'OSS 不可用，且调用方禁止本地降级: save_stream {category}/{key}')
+        except StorageUnavailableError:
+            raise
         except Exception as e:
             _warn_oss_throttled(
                 f'save_stream OSS failed, fallback to local: {e}',
                 category=category)
+            if not allow_fallback:
+                raise StorageUnavailableError(
+                    f'OSS 上传失败，且调用方禁止本地降级: '
+                    f'save_stream {category}/{key}: {e}') from e
             if not BaseConfig.STORAGE_FALLBACK_ENABLED:
                 raise
         # 降级到本地
@@ -229,11 +280,14 @@ class Storage:
 
     # ---- 公开 API：读取 ----
 
-    def load_file(self, path: str, local_path: Optional[str] = None) -> str:
+    def load_file(self, path: str, local_path: Optional[str] = None,
+                  allow_fallback: bool = True) -> str:
         """从存储下载文件到本地路径。
 
         :param path: 带 scheme 前缀的存储路径
         :param local_path: 本地目标路径，None 则用临时文件
+        :param allow_fallback: False 时 local:// 路径与 OSS 读取失败都抛
+            StorageUnavailableError，不从本地降级副本取（INT-1805）
         :return: 本地文件路径
         """
         scheme, category, key = self._parse_path(path)
@@ -242,6 +296,9 @@ class Storage:
             local_path = tempfile.mktemp(suffix=suffix)
 
         if scheme == 'local':
+            if not allow_fallback:
+                raise StorageUnavailableError(
+                    f'禁止从本地降级副本读取（allow_fallback=False）: {path}')
             src = self._local_path(category, key)
             os.makedirs(os.path.dirname(local_path), exist_ok=True)
             shutil.copy2(src, local_path)
@@ -254,6 +311,9 @@ class Storage:
             _warn_oss_throttled(
                 f'load_file OSS failed, try local: {e}',
                 category=category)
+            if not allow_fallback:
+                raise StorageUnavailableError(
+                    f'OSS 读取失败，且调用方禁止本地降级: {path}: {e}') from e
             # 尝试从本地降级副本读取
             src = self._local_path(category, key)
             if os.path.exists(src):
@@ -262,11 +322,18 @@ class Storage:
                 return local_path
             raise FileNotFoundError(f'文件不存在（OSS 和本地均无）: {path}')
 
-    def load_bytes(self, path: str) -> bytes:
-        """从存储读取文件为字节数据。"""
+    def load_bytes(self, path: str, allow_fallback: bool = True) -> bytes:
+        """从存储读取文件为字节数据。
+
+        allow_fallback=False → path 为 local:// 或 OSS 读取失败都抛
+        StorageUnavailableError，不从本地降级副本读（INT-1805）
+        """
         scheme, category, key = self._parse_path(path)
 
         if scheme == 'local':
+            if not allow_fallback:
+                raise StorageUnavailableError(
+                    f'禁止从本地降级副本读取（allow_fallback=False）: {path}')
             src = self._local_path(category, key)
             with open(src, 'rb') as f:
                 return f.read()
@@ -278,6 +345,9 @@ class Storage:
             _warn_oss_throttled(
                 f'load_bytes OSS failed, try local: {e}',
                 category=category)
+            if not allow_fallback:
+                raise StorageUnavailableError(
+                    f'OSS 读取失败，且调用方禁止本地降级: {path}: {e}') from e
             src = self._local_path(category, key)
             if os.path.exists(src):
                 with open(src, 'rb') as f:
