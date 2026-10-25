@@ -67,6 +67,14 @@ service ReportConfigService {
   rpc ImportReports(ImportReportsRequest) returns (ReportConfigResponse);
   // 回滚一次报告导入批次：按批次登记主键删除（补偿失败时人工介入的兜底入口）
   rpc RollbackReportImport(RollbackReportImportRequest) returns (ReportConfigResponse);
+  // 增量回导报告原地替换（INT-1762 D4，D0-A5 裁定）：保留 A 报告 id / visibility /
+  // created_by_user_id / type / created_at，UPDATE 内容字段并重建 6 子表；
+  // 旧行与本批新行在同一事务内落 report_merge_snapshots 批次快照。
+  // 出参 {replaced_tasks, deleted_counts, inserted_report_ids, batch_id,
+  //       rollback_available, warnings}
+  rpc ReplaceReports(ReplaceReportsRequest) returns (ReportConfigResponse);
+  // 回滚一次报告替换批次（INT-1762 D4）：删除本批新行、按快照恢复旧报告 7 表
+  rpc RollbackReportReplacement(RollbackReportReplacementRequest) returns (ReportConfigResponse);
 
   // ---- 收藏 / 回收站（INT-141：report 归 report_service，user_id 走 x-user-id metadata）----
   // 收藏 / 取消收藏（幂等：重复收藏返回成功 + already_favorited；未收藏的取消同样成功）
@@ -221,6 +229,15 @@ message ImportReportsRequest {
   string data = 1;  // JSON: {tables: {表名: [行]}, task_id_mapping: {old: new}, batch_id: str}
 }
 message RollbackReportImportRequest {
+  string batch_id = 1;
+}
+// 增量回导报告原地替换（INT-1762 D4）。data 为 JSON：
+// {rows_by_table: {表名: [行]}, task_id: int, target_report_id: int(可选),
+//  batch_id: str}
+message ReplaceReportsRequest {
+  string data = 1;
+}
+message RollbackReportReplacementRequest {
   string batch_id = 1;
 }
 
