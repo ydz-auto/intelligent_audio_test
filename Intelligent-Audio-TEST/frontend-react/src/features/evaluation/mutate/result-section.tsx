@@ -69,7 +69,7 @@ export function ResultSection({
                 LLM Judge
               </Badge>
               <span className='text-muted-foreground text-xs'>
-                由维度任务类型（task_type_code=llm_judge）决定，不支持在此修改
+                由维度任务类型决定，不支持在此修改
               </span>
             </div>
           ) : (
