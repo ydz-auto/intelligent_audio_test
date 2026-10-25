@@ -29,6 +29,11 @@ from api_test_service.domain.value_objects.sse_policy import (
     SSE_MAX_RECONNECT_ATTEMPTS as _SSE_MAX_RECONNECT_ATTEMPTS,
     SSE_MAX_RETRY_MS as _SSE_MAX_RETRY_MS,
 )
+from api_test_service.domain.value_objects.grpc_meta import (
+    merge_grpc_metadata_credentials,
+    redact_grpc_meta_credentials,
+    validate_grpc_meta,
+)
 from api_test_service.infrastructure.adapters.proxy_utils import (
     build_proxy_url,
     validate_proxy,
@@ -207,6 +212,16 @@ class APICrudService:
         if params is not None and not isinstance(params, dict):
             return "SSE 请求参数 (meta.sse.params) 必须是一个 JSON 对象"
         return None
+
+    @staticmethod
+    def _validate_grpc_meta(meta, protocol=None) -> str:
+        """校验 meta.grpc（INT-1953 §2.2，create / update 共用）。
+
+        「存在即校验」：不按 protocol 决定是否校验（前端切协议会把旧协议子对象
+        留在 meta 里）；protocol 只承载「protocol=grpc 必须配 meta.grpc」这一条
+        存在性约束。词表与执行侧同一份（domain.value_objects.grpc_meta）。
+        """
+        return validate_grpc_meta(meta, protocol=protocol)
 
     @staticmethod
     def _validate_lane_combo(protocol, streaming):
@@ -404,6 +419,9 @@ class APICrudService:
         meta = raw_meta if isinstance(raw_meta, dict) else {}
         if 'api_keys' in meta:
             meta = {k: v for k, v in meta.items() if k != 'api_keys'}
+        # INT-1953：meta.grpc.metadata 的凭据键（authorization / x-api-key / …）
+        # 掩码输出，非敏感键（x-request-id 等）原样透传；写侧按掩码保留原值。
+        meta = redact_grpc_meta_credentials(meta)
 
         return {
             'id': api.id,
@@ -509,6 +527,17 @@ class APICrudService:
         if error:
             return {'success': False, 'message': error, 'data': None, 'code': 400}
 
+        # INT-1953：meta.grpc 写侧校验（存在即校验；grpc 协议必须配置 meta.grpc）
+        error = cls._validate_grpc_meta(data.get('meta'), protocol)
+        if error:
+            return {'success': False, 'message': error, 'data': None, 'code': 400}
+
+        # INT-1953：新建没有「库里原值」可保留——入参带掩码 **** 的敏感键
+        # （典型来源：导出文件回灌）直接丢弃，不把掩码字面量当凭据落库
+        created_meta = merge_grpc_metadata_credentials(data.get('meta'), None)
+        if created_meta is not data.get('meta'):
+            data = {**data, 'meta': created_meta}
+
         endpoints = data.get('endpoints') or []
         for ep in endpoints:
             error = cls._validate_endpoint_obj(ep)
@@ -604,6 +633,18 @@ class APICrudService:
         if error:
             return {'success': False, 'message': error, 'data': None, 'code': 400}
 
+        # INT-1953：meta.grpc 写侧校验按「入参 meta + 当前 protocol」的合并口径，
+        # 只改 protocol 到 grpc 而不带 meta 时同样拦下（不得留到执行期才发现）
+        try:
+            merged_protocol_value = normalize_protocol(merged_protocol)
+        except ValueError:
+            merged_protocol_value = None
+        merged_meta = (data.get('meta') if data.get('meta') is not None
+                       else getattr(api, 'meta', None))
+        error = cls._validate_grpc_meta(merged_meta, merged_protocol_value)
+        if error:
+            return {'success': False, 'message': error, 'data': None, 'code': 400}
+
         # 代理校验（INT-839）：按「更新字段 + 当前 DB 值」合并口径校验，
         # 单字段更新（只改 proxy_type 或只改 proxy_url）也保证最终状态合法；
         # 显式传 None 表示清空代理
@@ -629,11 +670,20 @@ class APICrudService:
                 # 拿不到池、回传 meta 必无 api_keys——整块覆盖会静默清空池。
                 # 合并语义：入参 meta 未含 api_keys 时保留既有；显式传完整
                 # 数组才覆盖（空数组/清空语义另行明确，D2 口径）。
-                if 'api_keys' not in incoming_meta:
+                # INT-1953：meta.grpc.metadata 的凭据键同一套保留语义
+                # （回传掩码 **** 保留库中原值、空串清空），需要读取原始 meta。
+                has_grpc_block = (isinstance(incoming_meta, dict)
+                                  and isinstance(incoming_meta.get('grpc'), dict))
+                current_meta = None
+                if 'api_keys' not in incoming_meta or has_grpc_block:
                     current_meta = api_test_repository.get_api_meta(api_id)
+                if 'api_keys' not in incoming_meta:
                     if isinstance(current_meta, dict) and current_meta.get('api_keys') is not None:
                         incoming_meta = dict(incoming_meta)
                         incoming_meta['api_keys'] = current_meta['api_keys']
+                if has_grpc_block:
+                    incoming_meta = merge_grpc_metadata_credentials(
+                        incoming_meta, current_meta)
                 update_fields['meta'] = incoming_meta
             if data.get('algorithm_type') is not None:
                 update_fields['algorithm_type'] = data['algorithm_type']
@@ -850,9 +900,99 @@ class APICrudService:
             'code': 200,
         }
 
+    @staticmethod
+    def _grpc_status_name(exc) -> str:
+        """gRPC 探测失败的 status 名；就绪超时（FutureTimeoutError）归 UNAVAILABLE。"""
+        code_fn = getattr(exc, 'code', None)
+        if callable(code_fn):
+            try:
+                name = getattr(code_fn(), 'name', None)
+            except Exception:  # noqa: BLE001 - 取不到 status 时按不可达归类
+                name = None
+            if name:
+                return name
+        return 'UNAVAILABLE'
+
+    @classmethod
+    def _probe_sse(cls, test_url, timeout, proxies):
+        """SSE 端点探测（INT-1953 §2.3）：对端点 URL 直接 GET。
+
+        SSE 端点是流地址，拼 `/health` 会测到不存在的路径；这里 `stream=True`
+        读到头（即状态行）就关闭，不消费事件流，避免把请求挂死。
+
+        Returns:
+            (status_code, error)：2xx/3xx 视为在线（error 为 None），
+            4xx/5xx 回带状态码的具体文案。
+        """
+        response = requests.get(
+            test_url,
+            timeout=timeout,
+            headers={"User-Agent": "Task-Manager-Health-Checker/1.0"},
+            proxies=proxies,
+            stream=True,
+        )
+        try:
+            status_code = response.status_code
+        finally:
+            try:
+                response.close()
+            except Exception:  # noqa: BLE001 - 关闭失败不影响探测结论
+                logger.debug("关闭 SSE 探测响应失败", exc_info=True)
+        if 200 <= status_code < 400:
+            return status_code, None
+        return status_code, f"SSE 端点返回 {status_code}"
+
+    @classmethod
+    def _probe_grpc(cls, target, timeout):
+        """gRPC 目标探测（INT-1953 §2.3）：`channel_ready_future` 限时等待就绪。
+
+        target 取首个端点（`host:port`，无 URL scheme）；`grpcs://` 前缀或
+        端口 443 走安全通道。探测超时用端点 `max_timeout`，保证请求不挂死。
+
+        Returns:
+            (duration_ms, error)：就绪即在线（error 为 None），否则回
+            「gRPC 目标不可达（<status>，<n>ms）」。
+        """
+        import grpc
+
+        address = str(target or '').strip()
+        secure = False
+        lowered = address.lower()
+        if lowered.startswith('grpcs://'):
+            address = address[len('grpcs://'):]
+            secure = True
+        elif lowered.startswith('grpc://'):
+            address = address[len('grpc://'):]
+        try:
+            if urlparse(f'//{address}').port == 443:
+                secure = True
+        except ValueError:
+            pass
+
+        channel = (grpc.secure_channel(address, grpc.ssl_channel_credentials())
+                   if secure else grpc.insecure_channel(address))
+        started = time.time()
+        try:
+            grpc.channel_ready_future(channel).result(timeout=timeout)
+            duration_ms = (time.time() - started) * 1000
+            return duration_ms, None
+        except Exception as e:  # noqa: BLE001 - 任何失败都归不可达
+            duration_ms = (time.time() - started) * 1000
+            return duration_ms, (f"gRPC 目标不可达"
+                                 f"（{cls._grpc_status_name(e)}，{duration_ms:.0f}ms）")
+        finally:
+            try:
+                channel.close()
+            except Exception:  # noqa: BLE001 - 尽力释放
+                logger.debug("关闭 gRPC 探测 channel 失败", exc_info=True)
+
     @classmethod
     def test_connection(cls, api_id: int) -> dict:
-        """测试 API 连接（含 WebSocket/HTTP 健康检查）
+        """测试 API 连接（按 apis.protocol 分流健康检查）
+
+        INT-1953：先读 `apis.protocol`（http / websocket / sse / grpc）决定
+        探测方式；列缺失或异常值回落到端点的 URL scheme 判断（存量行为不改）。
+        http / websocket 的探测方式与文案保持原样。
 
         Args:
             api_id: API ID
@@ -868,6 +1008,16 @@ class APICrudService:
         # 统一经 _api_to_dict（PO/聚合根双兼容）取字段，修复健康检查恒 AttributeError
         info = cls._api_to_dict(api)
 
+        # INT-1953：探测方式按 apis.protocol 列分流。列缺失 / 异常值回落到
+        # 存量 scheme 判断（老数据与未迁移库行为不变）。
+        probe_protocol = None
+        raw_protocol = getattr(api, 'protocol', None)
+        if raw_protocol:
+            try:
+                probe_protocol = normalize_protocol(raw_protocol)
+            except ValueError:
+                probe_protocol = None
+
         # INT-839：代理参数（健康检查双分支共用）——http/https 走 requests.proxies，
         # ws/wss 走 websocket-client 代理参数（http_proxy_host/port/auth + proxy_type）
         ws_proxy_kwargs = websocket_proxy_kwargs(info.get('proxy_type'), info.get('proxy_url'))
@@ -882,7 +1032,9 @@ class APICrudService:
             endpoints_status = False
             endpoint_error = None
             endpoint_response = None
+            endpoint_status_code = None
             endpoint_duration = 0
+            probe_label = probe_protocol or getattr(api, 'protocol', None) or '-'
 
             if not info.get('endpoints'):
                 endpoint_error = "没有配置任何端点"
@@ -897,9 +1049,29 @@ class APICrudService:
                 else:
                     parsed_url = urlparse(test_url)
                     scheme = parsed_url.scheme.lower()
+                    probe_label = probe_protocol or scheme or '-'
 
                     try:
-                        if scheme in ['ws', 'wss']:
+                        if probe_protocol == APIProtocol.GRPC.value:
+                            # gRPC target 无 URL scheme（如 100.70.20.135:5000），
+                            # 不能走 scheme 分支拼 /health 或报「不支持的协议」
+                            endpoint_duration, endpoint_error = cls._probe_grpc(
+                                test_url, endpoint.get('max_timeout', 30))
+                            endpoints_status = endpoint_error is None
+
+                        elif probe_protocol == APIProtocol.SSE.value:
+                            # SSE 端点本身就是流地址，不拼 /health（会测到
+                            # .../stream/health 这个不存在的路径）
+                            endpoint_status_code, endpoint_error = cls._probe_sse(
+                                test_url,
+                                endpoint.get('max_timeout', 30),
+                                requests_proxies,
+                            )
+                            endpoint_duration = (time.time() - start_time) * 1000
+                            endpoints_status = endpoint_error is None
+
+                        elif probe_protocol == APIProtocol.WEBSOCKET.value or (
+                                probe_protocol is None and scheme in ['ws', 'wss']):
                             ws = websocket.WebSocket()
                             ws.settimeout(endpoint.get('max_timeout', 30))
                             ws.connect(test_url, **ws_proxy_kwargs)
@@ -907,7 +1079,8 @@ class APICrudService:
                             ws.close()
                             endpoints_status = True
 
-                        elif scheme in ['http', 'https']:
+                        elif probe_protocol == APIProtocol.HTTP.value or (
+                                probe_protocol is None and scheme in ['http', 'https']):
                             if test_url and not test_url.endswith('/'):
                                 test_url += '/health'
                             elif test_url and test_url.endswith('/'):
@@ -920,6 +1093,7 @@ class APICrudService:
                                 proxies=requests_proxies,
                             )
                             endpoint_duration = (time.time() - start_time) * 1000
+                            endpoint_status_code = endpoint_response.status_code
 
                             if 200 <= endpoint_response.status_code < 400:
                                 endpoints_status = True
@@ -934,16 +1108,18 @@ class APICrudService:
             # 综合判断 API 状态
             overall_status = endpoints_status
 
-            # 记录日志
+            # 记录日志（INT-1953：内容带协议名，避免把一个协议的探测结果
+            # 记到另一个协议上）
             if overall_status:
-                log_content = f"API [{info['name']}] 连接测试成功: 端点在线"
+                log_content = f"API [{info['name']}] 连接测试成功: {probe_label} 端点在线"
                 if not endpoints_status:
                     log_content += f" (端点测试状态: {endpoint_error})"
                 elif endpoint_duration > 0:
                     log_content += f", 端点响应耗时: {endpoint_duration:.2f}ms"
                 log_level = 'INFO'
             else:
-                log_content = f"API [{info['name']}] 连接测试失败: {endpoint_error}"
+                log_content = (f"API [{info['name']}] 连接测试失败"
+                               f"（{probe_label}）: {endpoint_error}")
                 log_level = 'ERROR'
 
             cls._log(
@@ -973,7 +1149,8 @@ class APICrudService:
                     'endpoints_status': str(endpoints_status),
                     'error': endpoint_error if not overall_status else None,
                     'warning': endpoint_error if overall_status and not endpoints_status else None,
-                    'status_code': endpoint_response.status_code if endpoint_response else None,
+                    'status_code': (endpoint_status_code if endpoint_status_code is not None
+                                    else (endpoint_response.status_code if endpoint_response else None)),
                     'response_time': f"{endpoint_duration:.2f}ms" if endpoint_duration > 0 else None,
                 },
                 'code': 200,

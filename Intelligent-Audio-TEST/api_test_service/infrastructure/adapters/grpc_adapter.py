@@ -32,6 +32,7 @@ from shared.utils.error_mapping import ERROR_SOURCE_CONFIG, config_error_fields
 from shared.utils.path_extractor import extract_by_path
 
 from api_test_service.domain.ports import ApiVendorAdapter
+from api_test_service.domain.value_objects.grpc_meta import validate_grpc_meta
 from api_test_service.infrastructure.adapters.registry import register_vendor_adapter
 from api_test_service.infrastructure.adapters.transport.grpc_client import (
     PROTO_MAX_BYTES,
@@ -44,8 +45,6 @@ from api_test_service.infrastructure.adapters.transport.grpc_client import (
 )
 
 logger = logging.getLogger(__name__)
-
-_REQUIRED_CONFIG_KEYS = ('service', 'method', 'method_kind')
 
 
 @register_vendor_adapter
@@ -77,26 +76,16 @@ class GrpcAdapter(ApiVendorAdapter):
         return getattr(api_config, 'endpoint', '') or ''
 
     def grpc_config(self) -> dict:
-        """读取并校验 `meta.grpc`（缺失/未知键不静默兜底）。"""
-        cfg = self.meta.get('grpc')
-        if not isinstance(cfg, dict) or not cfg:
-            raise GrpcProtoError(
-                "缺少 meta.grpc 配置（proto_object_key / service / method / method_kind）")
-        missing = [k for k in _REQUIRED_CONFIG_KEYS if not cfg.get(k)]
-        if missing:
-            raise GrpcProtoError(f"meta.grpc 缺少必填键: {missing}")
-        if cfg.get('reflection'):
-            raise GrpcProtoError(
-                "meta.grpc.reflection 本轮固定 false——server reflection 未实现")
-        if not cfg.get('proto_object_key'):
-            raise GrpcProtoError(
-                "meta.grpc.proto_object_key 必填（本轮只支持上传 .proto，不做反射）")
-        method_kind = str(cfg.get('method_kind')).strip().lower()
-        if method_kind not in ('unary', 'server_stream', 'bidi'):
-            raise GrpcProtoError(
-                f"meta.grpc.method_kind 非法: {cfg.get('method_kind')!r}"
-                f"（合法值: unary / server_stream / bidi）")
-        return cfg
+        """读取并校验 `meta.grpc`（缺失/未知键不静默兜底）。
+
+        INT-1953：校验口径与写侧共用 `domain.value_objects.grpc_meta`——
+        同一份必填键 / method_kind 词表 / proto 上限，执行期配置错误与写侧
+        400 文案同源，不各写一份字面量。
+        """
+        error = validate_grpc_meta(self.meta, protocol='grpc')
+        if error:
+            raise GrpcProtoError(error)
+        return self.meta['grpc']
 
     def _proto_bytes(self, cfg: dict) -> bytes:
         """按 `proto_object_key` 取 .proto 内容，并校验声明的 sha/大小。"""

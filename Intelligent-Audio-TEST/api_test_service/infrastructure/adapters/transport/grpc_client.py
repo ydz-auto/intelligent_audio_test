@@ -41,6 +41,13 @@ from shared.utils.error_mapping import (
 )
 from shared.utils.path_extractor import extract_by_path
 
+# INT-1953：proto 体积上限与 method_kind 词表移到 domain 值对象，
+# 写侧（api_crud_service）与执行侧共用同一份常量（这里保留原名供既有导入）。
+from api_test_service.domain.value_objects.grpc_meta import (
+    METHOD_KINDS,
+    PROTO_MAX_BYTES,
+)
+
 logger = logging.getLogger(__name__)
 
 # ── proto 安全边界（A0 §3.5③）──────────────────────────────────────────
@@ -48,19 +55,11 @@ ALLOWED_PROTO_IMPORT_PREFIX = 'google/protobuf/'
 _PROTO_IMPORT_RE = re.compile(
     r'^\s*import\s+(?:public\s+|weak\s+)?"([^"]+)"\s*;', re.MULTILINE)
 
-# method_kind → (client_streaming, server_streaming)
-METHOD_KINDS = {
-    'unary': (False, False),
-    'server_stream': (False, True),
-    'bidi': (True, True),
-}
-
 # ── 符号表枚举（INT-1952：上传端点回吐 service / method / 字段，A3 前端消费）──
 #: 字段展开深度：顶层 + 一层嵌套（再深由前端按类型名自行展示）
 SYMBOL_MAX_FIELD_DEPTH = 2
 #: well-known types 只给类型名不展开
 _WELL_KNOWN_TYPE_PREFIX = 'google.protobuf.'
-
 # 归一事件类型（A0 §4.1：只有 4 值，厂商/协议差异不外溢）
 EVENT_MESSAGE = 'message'
 EVENT_ERROR = 'error'
