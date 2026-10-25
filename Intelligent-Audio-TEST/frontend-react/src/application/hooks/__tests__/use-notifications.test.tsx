@@ -138,7 +138,7 @@ describe('useNotifications', () => {
     useAuthStore.setState({
       user: makeUser(['sse:read', 'task:read', 'report:read']),
     })
-    const { result } = renderHook(() => useNotifications())
+    renderHook(() => useNotifications())
 
     const handlers = mockSubscribe.mock.calls[0][0]
     act(() => {

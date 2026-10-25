@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import type {
   CartTreeBranch,
+  CartTreeItem,
   CartTreeLeaf,
   CherryPickCandidate,
   PickTreeBranch,
@@ -664,12 +665,12 @@ describe('购物车三视图树构建（§4.2 ②，INT-1128）', () => {
     },
   ]
 
-  const collectCases = (items: CartTreeBranch[]) =>
-    items.filter((n): n is CartTreeBranch => n.level === 'case')
-  const collectDevices = (items: CartTreeBranch[]) =>
-    items.filter((n): n is CartTreeBranch => n.level === 'device')
-  const collectResultTypes = (items: CartTreeBranch[]) =>
-    items.filter((n): n is CartTreeBranch => n.level === 'resultType')
+  const collectCases = (items: CartTreeItem[]) =>
+    items.filter((n): n is CartTreeBranch => n.kind === 'branch' && n.level === 'case')
+  const collectDevices = (items: CartTreeItem[]) =>
+    items.filter((n): n is CartTreeBranch => n.kind === 'branch' && n.level === 'device')
+  const collectResultTypes = (items: CartTreeItem[]) =>
+    items.filter((n): n is CartTreeBranch => n.kind === 'branch' && n.level === 'resultType')
   const collectLeaves = (branch: CartTreeBranch) =>
     branch.children.filter((n): n is CartTreeLeaf => n.kind === 'leaf')
 
