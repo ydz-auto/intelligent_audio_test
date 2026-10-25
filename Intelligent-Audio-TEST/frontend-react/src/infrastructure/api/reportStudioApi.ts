@@ -132,6 +132,22 @@ export async function listStudioDocumentVersions(
 }
 
 /**
+ * 恢复历史版本（乐观锁）：后端按该版本正文生成**新版本**（不覆盖 history），
+ * 返回最新文档；`expected_version` 与 current_version 不一致时 409。
+ */
+export async function restoreStudioDocumentVersion(
+  docId: string,
+  version: number,
+  expectedVersion: number
+): Promise<StudioDocument> {
+  const dto = await apiClient.post<StudioDocumentDto>(
+    `/report-studio/documents/${encodeURIComponent(docId)}/restore`,
+    { version, expected_version: expectedVersion }
+  )
+  return toStudioDocument(dto)
+}
+
+/**
  * 上传件（html/pptx）源文件：鉴权下载为 Blob，前端以沙箱 iframe 或下载使用。
  * 后端统一带 Content-Disposition: attachment + nosniff + 沙箱 CSP（设计 §6.2）。
  */

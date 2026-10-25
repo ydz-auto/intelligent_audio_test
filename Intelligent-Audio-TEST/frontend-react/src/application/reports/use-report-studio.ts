@@ -19,6 +19,7 @@ import {
   importStudioDocument,
   listStudioDocumentVersions,
   listStudioDocuments,
+  restoreStudioDocumentVersion,
   updateStudioDocument,
 } from '@/infrastructure/api/reportStudioApi'
 
@@ -92,6 +93,29 @@ export function useUpdateStudioDocument() {
     mutationFn: (input: StudioDocumentUpdateInput) => updateStudioDocument(input),
     onSuccess: () => {
       invalidate()
+    },
+  })
+}
+
+/**
+ * 3c：切换/恢复历史版本。恢复后后端生成新版本，详情、版本链与列表一起失效，
+ * 避免版本号与正文显示陈旧。
+ */
+export function useRestoreStudioDocumentVersion() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      docId: string
+      version: number
+      expectedVersion: number
+    }) =>
+      restoreStudioDocumentVersion(
+        input.docId,
+        input.version,
+        input.expectedVersion
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: studioDocumentKeys.all })
     },
   })
 }

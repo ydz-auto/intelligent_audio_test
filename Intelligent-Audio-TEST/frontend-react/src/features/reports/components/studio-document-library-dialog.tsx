@@ -37,6 +37,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Markdown } from '@/components/ui/markdown'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import {
+  useRestoreStudioDocumentVersion,
   useStudioDocument,
   useStudioDocumentVersions,
   useStudioDocuments,
@@ -53,6 +54,8 @@ import { fetchStudioSourceBlob } from '@/infrastructure/api/reportStudioApi'
 import { UploadReportDialog } from './modals/upload-report-dialog'
 
 const ALL = '__all__'
+/** 版本下拉的「当前版本」哨兵值（Select 不接受空字符串 as value） */
+const CURRENT = '__current__'
 
 const SOURCE_FILTERS: Array<{ value: string; label: string }> = [
   { value: ALL, label: '全部文档' },
@@ -144,14 +147,33 @@ function DocumentDetail({ docId }: { docId: string }) {
   const docQuery = useStudioDocument(docId)
   const versionsQuery = useStudioDocumentVersions(docId)
   const update = useUpdateStudioDocument()
+  const restore = useRestoreStudioDocumentVersion()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
+  const [viewVersion, setViewVersion] = useState<string>(CURRENT)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setEditing(false)
+    setViewVersion(CURRENT)
     setError(null)
   }, [docId])
+
+  const versions = useMemo(
+    () => [...(versionsQuery.data ?? [])].sort((a, b) => b.version - a.version),
+    [versionsQuery.data]
+  )
+
+  const versionOptions = useMemo(
+    () => [
+      { value: CURRENT, label: `当前版本 v${docQuery.data?.currentVersion ?? ''}` },
+      ...versions.map((item) => ({
+        value: String(item.version),
+        label: `v${item.version} · ${item.snapshotReason || '历史版本'}`,
+      })),
+    ],
+    [versions, docQuery.data?.currentVersion]
+  )
 
   const doc = docQuery.data
   if (docQuery.isLoading) {
@@ -165,8 +187,15 @@ function DocumentDetail({ docId }: { docId: string }) {
     return <p className='text-destructive p-4 text-sm'>文档加载失败或不存在</p>
   }
 
-  const canEdit = hasPermission('report:studio:edit') && doc.sourceType !== StudioSourceType.UPLOADED_FILE
   const isPlainFile = doc.sourceFormat === 'html' || doc.sourceFormat === 'pptx'
+  const canEdit = hasPermission('report:studio:edit') && !isPlainFile
+  const canRestore = hasPermission('report:studio:undo')
+
+  const isHistoric =
+    viewVersion !== CURRENT && Number(viewVersion) !== doc.currentVersion
+  const historicVersion = isHistoric
+    ? versions.find((item) => String(item.version) === viewVersion)
+    : undefined
 
   const startEdit = () => {
     setDraft(doc.markdownContent)
@@ -190,6 +219,28 @@ function DocumentDetail({ docId }: { docId: string }) {
     }
   }
 
+  /** 恢复历史版本：后端按该版本正文生成新版本（不覆盖版本链） */
+  const restoreVersion = async () => {
+    if (!historicVersion) return
+    setError(null)
+    try {
+      await restore.mutateAsync({
+        docId: doc.docId,
+        version: historicVersion.version,
+        expectedVersion: doc.currentVersion,
+      })
+      setViewVersion(CURRENT)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '恢复版本失败，请重新打开文档')
+    }
+  }
+
+  const body = isHistoric
+    ? (historicVersion?.markdownContent ?? '')
+    : editing
+      ? draft
+      : doc.markdownContent
+
   return (
     <div className='flex min-h-0 flex-1 flex-col gap-3'>
       <div className='flex flex-wrap items-center gap-2'>
@@ -205,10 +256,39 @@ function DocumentDetail({ docId }: { docId: string }) {
         )}
         <span className='text-muted-foreground inline-flex items-center gap-1 text-xs'>
           <History className='size-3' />
-          {versionsQuery.data?.length ?? 0} 个历史版本
+          {versions.length} 个历史版本
         </span>
+        {versions.length > 0 && !isPlainFile && (
+          <Select
+            items={versionOptions}
+            value={viewVersion}
+            onValueChange={(value) => setViewVersion(value ?? CURRENT)}
+          >
+            <SelectTrigger aria-label='切换文档版本' className='h-7 w-36 text-xs'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {versionOptions.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <div className='ml-auto flex items-center gap-2'>
-          {!editing && canEdit && !isPlainFile && (
+          {isHistoric && canRestore && (
+            <Button
+              size='sm'
+              variant='outline'
+              disabled={restore.isPending}
+              onClick={() => void restoreVersion()}
+            >
+              <History data-icon='inline-start' />
+              {restore.isPending ? '恢复中…' : `恢复 v${historicVersion?.version ?? ''}`}
+            </Button>
+          )}
+          {!editing && canEdit && !isPlainFile && !isHistoric && (
             <Button size='sm' variant='outline' onClick={startEdit}>
               <Pencil data-icon='inline-start' /> 编辑
             </Button>
@@ -226,6 +306,14 @@ function DocumentDetail({ docId }: { docId: string }) {
           )}
         </div>
       </div>
+
+      {isHistoric && (
+        <p className='text-muted-foreground text-xs'>
+          正在查看历史版本 v{historicVersion?.version ?? ''}（只读）；
+          {compactDate(historicVersion?.createdAt ?? null)} 保存 ·
+          {historicVersion?.snapshotReason || '历史版本'}
+        </p>
+      )}
 
       {error && <p className='text-destructive text-sm'>{error}</p>}
 
@@ -245,8 +333,8 @@ function DocumentDetail({ docId }: { docId: string }) {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
           />
-        ) : doc.markdownContent ? (
-          <Markdown>{doc.markdownContent}</Markdown>
+        ) : body ? (
+          <Markdown>{body}</Markdown>
         ) : (
           <p className='text-muted-foreground text-sm'>文档正文为空</p>
         )}
@@ -301,6 +389,7 @@ export function StudioDocumentLibraryDialog({
 
           <div className='flex items-center gap-2'>
             <Select
+              items={SOURCE_FILTERS}
               value={sourceFilter}
               onValueChange={(value) => {
                 setSourceFilter(value ?? ALL)

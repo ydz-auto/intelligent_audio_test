@@ -91,6 +91,17 @@ export function UploadReportDialog({
     }
   }, [open])
 
+  const taskOptions = useMemo(
+    () => [
+      { value: NO_TASK, label: '不关联任务（独立文档库）' },
+      ...(tasksQuery.data ?? []).map((task) => ({
+        value: String(task.id),
+        label: `${task.name} · #${task.id}`,
+      })),
+    ],
+    [tasksQuery.data]
+  )
+
   const format = useMemo(() => (file ? detectFormat(file.name) : null), [file])
   const sizeMb = file ? file.size / 1024 / 1024 : 0
   const tooLarge = sizeMb > STUDIO_UPLOAD_MAX_MB
@@ -193,15 +204,18 @@ export function UploadReportDialog({
 
           <div className='space-y-2'>
             <span className='text-sm font-medium'>关联任务（可选）</span>
-            <Select value={taskId} onValueChange={(value) => setTaskId(value ?? NO_TASK)}>
+            <Select
+              items={taskOptions}
+              value={taskId}
+              onValueChange={(value) => setTaskId(value ?? NO_TASK)}
+            >
               <SelectTrigger className='w-full justify-between'>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NO_TASK}>不关联任务（独立文档库）</SelectItem>
-                {(tasksQuery.data ?? []).map((task) => (
-                  <SelectItem key={task.id} value={String(task.id)}>
-                    {task.name} · #{task.id}
+                {taskOptions.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
                   </SelectItem>
                 ))}
               </SelectContent>
