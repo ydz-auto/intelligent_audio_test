@@ -6,11 +6,15 @@ import type {
   ApiConfig,
   ApiEndpoint,
   ApiHealthCheckResult,
+  ApiParsePreviewResult,
+  ApiProtoSymbolTable,
 } from '@/domain/models/apiConfig'
 import type {
   ApiEndpointItemDto,
   ApiHealthCheckDataDto,
   ApiItemDto,
+  ApiParsePreviewDataDto,
+  ApiProtoUploadDataDto,
 } from '@/infrastructure/dto/apis.dto'
 import { isApiProtocol } from '@/domain/models/apiProtocol'
 
@@ -81,5 +85,33 @@ export function apiHealthFromDto(dto: ApiHealthCheckDataDto): ApiHealthCheckResu
     responseTime: dto.response_time,
     error: dto.error,
     warning: dto.warning,
+  }
+}
+
+/** proto 上传结果（INT-1952 §4.3）snake_case → 领域符号表；缺字段一律按空，不猜 */
+export function apiProtoSymbolTableFromDto(dto: ApiProtoUploadDataDto): ApiProtoSymbolTable {
+  return {
+    objectKey: dto.object_key ?? '',
+    sha256: dto.sha256 ?? '',
+    size: dto.size ?? 0,
+    services: (dto.services ?? []).map((service) => ({
+      name: service.name ?? '',
+      methods: (service.methods ?? []).map((method) => ({
+        name: method.name ?? '',
+        methodKind: method.method_kind ?? '',
+        inputType: method.input_type ?? '',
+        outputType: method.output_type ?? '',
+        inputFields: method.input_fields ?? [],
+        outputFields: method.output_fields ?? [],
+      })),
+    })),
+  }
+}
+
+/** 解析预览结果（INT-1772）：纯结果透传，字段名已是请求里的配置键 */
+export function apiParsePreviewFromDto(dto: ApiParsePreviewDataDto): ApiParsePreviewResult {
+  return {
+    extracted: dto?.extracted ?? {},
+    unresolved: dto?.unresolved ?? [],
   }
 }

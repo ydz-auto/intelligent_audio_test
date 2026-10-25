@@ -5,10 +5,10 @@
  * - `streaming`：交互形态，true = 流式（= 实时），false = 非流式（= 非实时）；
  * - 两者**独立**：协议不参与执行道判断，执行道（lane）只由 streaming 派生。
  *
- * 可用矩阵（§3.2.3，B1/B2 同批上线时只有两条组合实现已上线）：
- *   http + 非流式        → 已上线
- *   websocket + 流式     → 已上线
- *   其余 6 种组合        → 后端 400「组合实现未上线」，前端下拉置灰并提示
+ * 可用矩阵（A3 / INT-1791：与后端 `AVAILABLE_PROTOCOL_STREAMING` 同一张表）：
+ *   http + 非流式 / http + 流式（chunked） / websocket + 流式 / sse + 流式 /
+ *   grpc + 非流式（unary） / grpc + 流式（server-stream / bidi） → 已上线
+ *   其余 2 种组合                                             → 后端 400「组合实现未上线」，前端置灰并提示
  *
  * 前端不自行推断协议：协议只读 `apis.protocol` 列，流式性只读 `apis.streaming` 列，
  * 不读 `meta.protocol`、不按端点前缀派生（§3.4 裁定五「单一来源」）。
@@ -42,19 +42,27 @@ export interface ApiProtocolCombination {
 }
 
 /**
- * 当前批次**可写**的组合（B0 §3.2.3 可用矩阵；A1 / A2 上线后在此扩表）。
+ * 当前批次**可写**的组合（B0 §3.2.3 可用矩阵）。
+ *
+ * A3（INT-1791）按后端 `shared/models/common_enums.py AVAILABLE_PROTOCOL_STREAMING`
+ * 扩成同一张表（A1 gRPC 两条 + A2 `sse+true` / `http+true`），**不多不少**：
+ * 前端放行后端必拒的组合 = 踩「前端不得自行放宽」红线，反之亦然。
  * 前端与后端各自独立校验：前端置灰 + 提示，后端写侧显式 400。
  */
 const WRITABLE_COMBINATIONS: readonly ApiProtocolCombination[] = [
   { protocol: 'http', streaming: false },
   { protocol: 'websocket', streaming: true },
+  { protocol: 'grpc', streaming: false },
+  { protocol: 'grpc', streaming: true },
+  { protocol: 'sse', streaming: true },
+  { protocol: 'http', streaming: true },
 ]
 
 export function isApiProtocol(value: unknown): value is ApiProtocol {
   return typeof value === 'string' && (API_PROTOCOLS as readonly string[]).includes(value)
 }
 
-/** 该协议是否至少有一种可用组合（sse / grpc 当前为 false → 下拉置灰） */
+/** 该协议是否至少有一种可用组合（A1 / A2 上线后 4 个协议均为 true） */
 export function isProtocolImplemented(protocol: string | null | undefined): boolean {
   if (!isApiProtocol(protocol)) return false
   return WRITABLE_COMBINATIONS.some((combo) => combo.protocol === protocol)
@@ -77,8 +85,9 @@ export function defaultStreamingFor(protocol: string | null | undefined): boolea
 }
 
 /**
- * 该协议的流式开关是否被锁定：当前批次只放行一种流式性时锁定，
- * 避免用户组合出后端必拒的形态（例如 http + 流式）。
+ * 该协议的流式开关是否被锁定：该协议只有一种可写流式性时锁定，
+ * 避免用户组合出后端必拒的形态（websocket / sse 只有流式一条，
+ * http / grpc 两条都有 → 解锁）。
  */
 export function isStreamingLocked(protocol: string | null | undefined): boolean {
   if (!isApiProtocol(protocol)) return true

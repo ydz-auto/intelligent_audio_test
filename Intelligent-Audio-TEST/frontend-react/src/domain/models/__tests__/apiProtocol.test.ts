@@ -1,6 +1,6 @@
 /**
  * INT-1800 / B0《09_API协议面与执行道契约》：协议 × 流式性两维的领域口径单测。
- * 锁定：4 值协议词表、可用矩阵（只有 http+非流式、websocket+流式）、
+ * 锁定：4 值协议词表、可用矩阵（A3 / INT-1791 起 = 后端六组合同一张表）、
  * 流式开关锁定、亲和域令牌只由 streaming 派生。
  */
 import { describe, expect, it } from 'vitest'
@@ -43,16 +43,16 @@ describe('协议值域（B0 §3.2.1：只存规范值 4 个）', () => {
   })
 })
 
-describe('可用矩阵（B0 §3.2.3：B1 上线时只放行两条组合）', () => {
+describe('可用矩阵（A3 / INT-1791：与后端 AVAILABLE_PROTOCOL_STREAMING 同一张六组合表）', () => {
   const expected: Record<string, boolean> = {
     'http:false': true,
-    'http:true': false,
+    'http:true': true,
     'websocket:false': false,
     'websocket:true': true,
     'sse:false': false,
-    'sse:true': false,
-    'grpc:false': false,
-    'grpc:true': false,
+    'sse:true': true,
+    'grpc:false': true,
+    'grpc:true': true,
   }
 
   it('8 种组合逐一对照后端写侧矩阵', () => {
@@ -65,19 +65,18 @@ describe('可用矩阵（B0 §3.2.3：B1 上线时只放行两条组合）', () 
     }
   })
 
-  it('sse / grpc 未上线 → 协议级不可用；http / websocket 至少一条组合可用', () => {
-    expect(isProtocolImplemented('http')).toBe(true)
-    expect(isProtocolImplemented('websocket')).toBe(true)
-    expect(isProtocolImplemented('sse')).toBe(false)
-    expect(isProtocolImplemented('grpc')).toBe(false)
+  it('四个协议都至少有一条可写组合（A1 gRPC + A2 SSE 上线后不再置灰）', () => {
+    for (const protocol of API_PROTOCOLS) {
+      expect(isProtocolImplemented(protocol)).toBe(true)
+    }
     expect(isProtocolImplemented('https')).toBe(false)
   })
 
-  it('流式开关仅在协议有多种可写形态时解锁（当前全部锁定）', () => {
-    expect(isStreamingLocked('http')).toBe(true)
+  it('流式开关仅在协议有多种可写形态时解锁', () => {
+    expect(isStreamingLocked('http')).toBe(false)
+    expect(isStreamingLocked('grpc')).toBe(false)
     expect(isStreamingLocked('websocket')).toBe(true)
     expect(isStreamingLocked('sse')).toBe(true)
-    expect(isStreamingLocked('grpc')).toBe(true)
     expect(isStreamingLocked('https')).toBe(true)
   })
 
@@ -91,11 +90,13 @@ describe('可用矩阵（B0 §3.2.3：B1 上线时只放行两条组合）', () 
 
   it('不可用组合的提示文案与后端 400 口径一致', () => {
     expect(unavailableCombinationReason('http', false)).toBeNull()
+    expect(unavailableCombinationReason('http', true)).toBeNull()
     expect(unavailableCombinationReason('websocket', true)).toBeNull()
-    expect(unavailableCombinationReason('sse', true)).toBe('协议实现未上线')
-    expect(unavailableCombinationReason('grpc', false)).toBe('协议实现未上线')
-    expect(unavailableCombinationReason('http', true)).toBe(
-      '协议 http 与流式性 streaming=true 的组合实现未上线'
+    expect(unavailableCombinationReason('sse', true)).toBeNull()
+    expect(unavailableCombinationReason('grpc', false)).toBeNull()
+    expect(unavailableCombinationReason('grpc', true)).toBeNull()
+    expect(unavailableCombinationReason('sse', false)).toBe(
+      '协议 sse 与流式性 streaming=false 的组合实现未上线'
     )
     expect(unavailableCombinationReason('websocket', false)).toBe(
       '协议 websocket 与流式性 streaming=false 的组合实现未上线'
@@ -103,12 +104,12 @@ describe('可用矩阵（B0 §3.2.3：B1 上线时只放行两条组合）', () 
     expect(unavailableCombinationReason('https', false)).toBe('协议取值非法')
   })
 
-  it('下拉选项：4 项全列，sse / grpc 置灰', () => {
+  it('下拉选项：4 项全列，均不置灰', () => {
     expect(apiProtocolOptions()).toEqual([
       { value: 'http', label: 'HTTP', disabled: false },
       { value: 'websocket', label: 'WebSocket', disabled: false },
-      { value: 'sse', label: 'SSE', disabled: true },
-      { value: 'grpc', label: 'gRPC', disabled: true },
+      { value: 'sse', label: 'SSE', disabled: false },
+      { value: 'grpc', label: 'gRPC', disabled: false },
     ])
   })
 })

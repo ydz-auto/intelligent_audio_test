@@ -16,8 +16,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { ExternalLink, FileText, Plus, X } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { ExternalLink, FileText, Plus, Upload, X } from 'lucide-react'
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -28,7 +28,7 @@ import {
 } from '@/application/test-execution/useApiAlgorithmReadonly'
 import { useApisCrud } from '@/application/test-execution/useApisCrud'
 import { useTestAlgorithmOptions } from '@/application/test-execution/useTestAlgorithmOptions'
-import { fetchApi } from '@/infrastructure/api/test-execution-api'
+import { fetchApi, parseApiResponsePreview, uploadApiProto } from '@/infrastructure/api/test-execution-api'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -69,7 +69,12 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import type { ApiConfig } from '@/domain/models/apiConfig'
+import type {
+  ApiConfig,
+  ApiParsePreviewResult,
+  ApiProtoField,
+  ApiProtoSymbolTable,
+} from '@/domain/models/apiConfig'
 import {
   API_PROTOCOLS,
   API_PROTOCOL_LABEL,
@@ -81,6 +86,7 @@ import {
   isStreamingLocked,
   streamingLabel,
   unavailableCombinationReason,
+  type ApiProtocol,
 } from '@/domain/models/apiProtocol'
 import { cn } from '@/lib/utils'
 
@@ -90,8 +96,12 @@ import {
   AUDIO_CONTAINER_OPTIONS,
   AUDIO_SAMPLE_RATE_OPTIONS,
   ENDPOINT_NUMERIC_RULES,
+  GRPC_METADATA_SECRET_KEYS,
+  GRPC_METHOD_KINDS,
   HTTP_METHOD_OPTIONS,
   RESPONSE_PARSER_PATH_DEFAULTS,
+  SSE_DEFAULTS,
+  SSE_FIELD_LIMITS,
   audioConfigDraftFrom,
   buildAudioConfig,
   emptyAudioConfigDraft,
@@ -154,6 +164,19 @@ const PROTOCOL_OPTIONS = apiProtocolOptions()
 const METHOD_OPTIONS = [
   UNSET_OPTION,
   ...HTTP_METHOD_OPTIONS.map((method) => ({ value: method, label: method })),
+]
+/** gRPC method_kind（`grpc_client.find_method` 只认这三值；与 descriptor 不一致执行期报错） */
+const GRPC_METHOD_KIND_OPTIONS = [
+  UNSET_OPTION,
+  ...GRPC_METHOD_KINDS.map((kind) => ({
+    value: kind,
+    label:
+      kind === 'unary'
+        ? 'unary（一元）'
+        : kind === 'server_stream'
+          ? 'server_stream（服务端流）'
+          : 'bidi（双向流）',
+  })),
 ]
 const SAMPLE_RATE_OPTIONS = [
   UNSET_OPTION,
@@ -272,6 +295,11 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   const [audioDraft, setAudioDraft] = useState<AudioConfigDraft>(emptyAudioConfigDraft)
   const [audioTouched, setAudioTouched] = useState(false)
   const [audioCleared, setAudioCleared] = useState(false)
+  // A3（INT-1791）：gRPC 符号表（仅上传端点返回时才有；端点未部署 → 恒为 null，service/method 走手填）
+  const [protoSymbols, setProtoSymbols] = useState<ApiProtoSymbolTable | null>(null)
+  const [protoUploading, setProtoUploading] = useState(false)
+  const [protoUploadError, setProtoUploadError] = useState<string | null>(null)
+  const protoFileRef = useRef<HTMLInputElement>(null)
 
   // INT-1777：打开弹窗时取一次该 API 的最新读侧快照作 meta / audio_config 合并 base。
   // 列表快照可能早于别的改动（meta 后端整块 replace），拿陈旧 base 合并会静默丢未知键。
@@ -338,6 +366,10 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     setAudioDraft(audioConfigDraftFrom(api?.audioConfig))
     setAudioTouched(false)
     setAudioCleared(false)
+    // A3：符号表只在本次上传端点返回后存在；开合不复用上次结果（否则会拿旧 service 列表配新 API）
+    setProtoSymbols(null)
+    setProtoUploading(false)
+    setProtoUploadError(null)
     // algorithmList / globalAlgorithmId 只作打开瞬间的缺省算法来源，迟到的选项由 values 深比较补齐
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, api])
@@ -383,6 +415,55 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     setMetaDraft((prev) => ({ ...prev, ...patch }))
     setMetaTouched(true)
     setMetaErrors([])
+  }
+
+  // ---- A3 gRPC 符号表联动（上传端点未部署时 protoSymbols 恒为 null → service/method 手填） ----
+  const grpcServiceSymbol =
+    protoSymbols?.services.find((service) => service.name === metaDraft.grpcService) ?? null
+  const grpcMethodSymbol =
+    grpcServiceSymbol?.methods.find((method) => method.name === metaDraft.grpcMethod) ?? null
+  const grpcServiceOptions = (protoSymbols?.services ?? []).map((service) => ({
+    value: service.name,
+    label: service.name,
+  }))
+  const grpcMethodOptions = (grpcServiceSymbol?.methods ?? []).map((method) => ({
+    value: method.name,
+    label: `${method.name}（${method.methodKind}）`,
+  }))
+  /** deadline 缺省 = 端点超时 × 1000（`grpc_adapter.deadline_ms`）；只作 placeholder */
+  const grpcDeadlinePlaceholder = `留空 = 端点超时 ${
+    endpoints[0]?.maxTimeout || '30'
+  }s × 1000 = ${(Number(endpoints[0]?.maxTimeout) || 30) * 1000}`
+  /** SSE idle_timeout 缺省同源（A2：`default_max_timeout × 1000`） */
+  const sseIdlePlaceholder = `留空 = 端点超时 × 1000（${
+    (Number(endpoints[0]?.maxTimeout) || 30) * 1000
+  }）`
+
+  const handleProtoFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    // 清空 input 值：同一文件二次选择也要触发 change
+    event.target.value = ''
+    if (!file) return
+    setProtoUploading(true)
+    setProtoUploadError(null)
+    try {
+      const table = await uploadApiProto(file)
+      setProtoSymbols(table)
+      updateMeta({
+        grpcProtoObjectKey: table.objectKey,
+        grpcProtoSha256: table.sha256,
+        grpcProtoSize: String(table.size),
+      })
+    } catch (error) {
+      // 端点未部署（INT-1952 未部署）→ 404 / 网络错误：如实展示，绝不回填假 object_key
+      setProtoUploadError(
+        error instanceof Error && error.message
+          ? error.message
+          : '协议文件上传失败：接口尚未上线'
+      )
+    } finally {
+      setProtoUploading(false)
+    }
   }
 
   const responseErrorOf = (field: ResponseParserDraftError['field']) =>
@@ -490,11 +571,15 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
 
     // meta 写入（母卡 §3.1）：两个页签都未触碰 → 不下发 meta 键；
     // 触碰 → 以 base 为底按「请求模板 → 响应解析」串行合并，提交合并后的整对象。
-    if (metaTouched || responseTouched) {
+    // A3：gRPC / SSE 的请求模板区块是**协议必填面**（后端执行期缺 meta.grpc 直接报错），
+    // 即使用户没动过任何控件也要走一次合并 + 校验，否则会存下一个执行必失败的配置。
+    const protocolBlockRequired = watchedProtocol === 'grpc' || watchedProtocol === 'sse'
+    if (metaTouched || responseTouched || protocolBlockRequired) {
       let meta: Record<string, unknown> = baseApi?.meta ?? {}
-      const requestResult = metaTouched
-        ? mergeRequestTemplateMeta(meta, metaDraft, requestTarget)
-        : { meta, errors: [] as MetaDraftError[] }
+      const requestResult =
+        metaTouched || protocolBlockRequired
+          ? mergeRequestTemplateMeta(meta, metaDraft, requestTarget)
+          : { meta, errors: [] as MetaDraftError[] }
       meta = requestResult.meta
       const responseResult = responseTouched
         ? mergeResponseParserMeta(meta, responseDraft)
@@ -530,10 +615,11 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        {/* INT-1939：校验统一走 zod（中文内联提示），关掉浏览器原生校验气泡 */}
+        {/* INT-1939 / A3：校验统一走 zod + 各页签字段级校验（中文内联提示，定位到控件），
+            noValidate 关掉浏览器原生校验气泡，不让它盖掉同口径提示 */}
         <form
-          onSubmit={form.handleSubmit(handleSave)}
           noValidate
+          onSubmit={form.handleSubmit(handleSave)}
           className='flex min-h-0 flex-col gap-3'
         >
           <Tabs
@@ -638,8 +724,8 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                     </SelectContent>
                   </Select>
                   <p className='text-muted-foreground text-xs'>
-                    协议只存规范值（http / websocket / sse / grpc）；sse 与 gRPC 的执行实现尚未上线，
-                    对应选项置灰。
+                    协议只存规范值（http / websocket / sse / grpc）；四种协议均已上线，
+                    流式性由下方开关单独决定，不由协议推断。
                   </p>
                 </div>
 
@@ -662,7 +748,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                   </div>
                   {streamingLocked ? (
                     <p className='text-muted-foreground text-xs'>
-                      当前协议只放行一种流式性（{watchedProtocol === 'websocket' ? '流式' : '非流式'}），
+                      当前协议只放行一种流式性（{streamingLabel(defaultStreamingFor(watchedProtocol))}），
                       开关暂锁定；两种形态都可用后开放。
                     </p>
                   ) : (
@@ -913,7 +999,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                   切换协议 / 流式性后旧键保留不删，只隐藏；切回即恢复。
                 </div>
 
-                {isWebSocket ? (
+                {isWebSocket && (
                   <KeyValueEditor
                     label='WS 请求头'
                     addLabel='添加请求头'
@@ -922,7 +1008,9 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                     error={metaErrorOf('wsHeaders')}
                     onChange={(rows) => updateMeta({ wsHeaders: rows })}
                   />
-                ) : (
+                )}
+
+                {watchedProtocol === 'http' && (
                   <>
                     <div className='space-y-1.5'>
                       <Label>请求方法（method）</Label>
@@ -999,8 +1087,464 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                   </>
                 )}
 
-                {/* 轮次 / 会话配置区：只由流式性决定（B0 §3.5；非流式无会话概念） */}
-                {watchedStreaming && (
+                {/* gRPC 组（A3 §4.1）：proto 三元组 + service / method / method_kind +
+                    metadata + deadline。执行侧 grpc_adapter / grpc_client 只读这几组键。 */}
+                {watchedProtocol === 'grpc' && (
+                  <div className='border-border/60 space-y-3 rounded-lg border p-3'>
+                    <div className='flex flex-wrap items-start justify-between gap-2'>
+                      <div>
+                        <Label>gRPC 协议配置（meta.grpc）</Label>
+                        <p className='text-muted-foreground text-xs'>
+                          协议文件上传接口（
+                          <code className='font-mono'>POST /api/v1/apis/proto</code>，INT-1952）
+                          尚未上线（已交付、未部署）：上传暂不可用，下列 proto 键可手填。
+                        </p>
+                      </div>
+                      <div className='flex flex-none items-center gap-1.5'>
+                        <input
+                          ref={protoFileRef}
+                          type='file'
+                          accept='.proto'
+                          className='hidden'
+                          aria-label='选择 .proto 文件'
+                          onChange={handleProtoFile}
+                        />
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          className='h-7 gap-1 text-xs'
+                          disabled={protoUploading}
+                          onClick={() => protoFileRef.current?.click()}
+                        >
+                          <Upload aria-hidden='true' className='size-3.5' />
+                          {protoUploading ? '上传中…' : '上传 .proto'}
+                        </Button>
+                      </div>
+                    </div>
+                    {protoUploadError && (
+                      <p className='text-destructive text-xs'>上传失败：{protoUploadError}</p>
+                    )}
+
+                    <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
+                      <div className='space-y-1'>
+                        <Label className='text-xs'>proto_object_key *</Label>
+                        <Input
+                          value={metaDraft.grpcProtoObjectKey}
+                          onChange={(e) => updateMeta({ grpcProtoObjectKey: e.target.value })}
+                          placeholder={'api-protos/<sha256>.proto'}
+                          className='h-7 font-mono text-xs'
+                          aria-label='proto_object_key'
+                          aria-invalid={Boolean(metaErrorOf('grpcProto'))}
+                        />
+                      </div>
+                      <div className='space-y-1'>
+                        <Label className='text-xs'>proto_sha256</Label>
+                        <Input
+                          value={metaDraft.grpcProtoSha256}
+                          onChange={(e) => updateMeta({ grpcProtoSha256: e.target.value })}
+                          placeholder='64 位小写十六进制'
+                          className='h-7 font-mono text-xs'
+                          aria-label='proto_sha256'
+                          aria-invalid={Boolean(metaErrorOf('grpcProto'))}
+                        />
+                      </div>
+                      <div className='space-y-1'>
+                        <Label className='text-xs'>proto_size（字节）</Label>
+                        <Input
+                          type='number'
+                          min={1}
+                          max={256 * 1024}
+                          value={metaDraft.grpcProtoSize}
+                          onChange={(e) => updateMeta({ grpcProtoSize: e.target.value })}
+                          placeholder='≤ 262144'
+                          className='h-7 font-mono text-xs'
+                          aria-label='proto_size'
+                          aria-invalid={Boolean(metaErrorOf('grpcProto'))}
+                        />
+                      </div>
+                    </div>
+                    {metaErrorOf('grpcProto') && (
+                      <p className='text-destructive text-xs'>{metaErrorOf('grpcProto')}</p>
+                    )}
+
+                    <div className='grid grid-cols-2 gap-2'>
+                      <div className='space-y-1'>
+                        <Label className='text-xs'>service *</Label>
+                        {protoSymbols ? (
+                          <Select
+                            value={metaDraft.grpcService || UNSET}
+                            items={[UNSET_OPTION, ...grpcServiceOptions]}
+                            onValueChange={(value) =>
+                              updateMeta({
+                                grpcService: value && value !== UNSET ? value : '',
+                                // 换 service → method 清空（方法名只在所属 service 内有意义）
+                                grpcMethod: '',
+                                grpcMethodKind: '',
+                              })
+                            }
+                          >
+                            <SelectTrigger className='w-full justify-between' aria-label='service'>
+                              <SelectValue placeholder='请选择 service' />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={UNSET}>未设置</SelectItem>
+                              {grpcServiceOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input
+                            value={metaDraft.grpcService}
+                            onChange={(e) => updateMeta({ grpcService: e.target.value })}
+                            placeholder='手填 proto 里的 service 全名'
+                            className='h-7 font-mono text-xs'
+                            aria-label='service'
+                            aria-invalid={Boolean(metaErrorOf('grpcService'))}
+                          />
+                        )}
+                        {metaErrorOf('grpcService') && (
+                          <p className='text-destructive text-xs'>{metaErrorOf('grpcService')}</p>
+                        )}
+                      </div>
+                      <div className='space-y-1'>
+                        <Label className='text-xs'>method *</Label>
+                        {protoSymbols ? (
+                          <Select
+                            value={metaDraft.grpcMethod || UNSET}
+                            items={[UNSET_OPTION, ...grpcMethodOptions]}
+                            onValueChange={(value) => {
+                              const methodName = value && value !== UNSET ? value : ''
+                              const symbol =
+                                grpcServiceSymbol?.methods.find((m) => m.name === methodName) ?? null
+                              updateMeta({
+                                grpcMethod: methodName,
+                                // method_kind 缺省取符号表推断值（执行期必须与 descriptor 一致）
+                                grpcMethodKind: symbol?.methodKind ?? '',
+                              })
+                            }}
+                          >
+                            <SelectTrigger className='w-full justify-between' aria-label='method'>
+                              <SelectValue placeholder='请选择 method' />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={UNSET}>未设置</SelectItem>
+                              {grpcMethodOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input
+                            value={metaDraft.grpcMethod}
+                            onChange={(e) => updateMeta({ grpcMethod: e.target.value })}
+                            placeholder='手填方法名'
+                            className='h-7 font-mono text-xs'
+                            aria-label='method'
+                            aria-invalid={Boolean(metaErrorOf('grpcMethod'))}
+                          />
+                        )}
+                        {metaErrorOf('grpcMethod') && (
+                          <p className='text-destructive text-xs'>{metaErrorOf('grpcMethod')}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className='space-y-1'>
+                      <Label className='text-xs'>method_kind *</Label>
+                      <Select
+                        value={metaDraft.grpcMethodKind || UNSET}
+                        items={GRPC_METHOD_KIND_OPTIONS}
+                        onValueChange={(value) =>
+                          updateMeta({
+                            grpcMethodKind: value && value !== UNSET ? value : '',
+                          })
+                        }
+                      >
+                        <SelectTrigger className='w-full justify-between' aria-label='method_kind'>
+                          <SelectValue placeholder='unary / server_stream / bidi' />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={UNSET}>未设置</SelectItem>
+                          {GRPC_METHOD_KINDS.map((kind) => (
+                            <SelectItem key={kind} value={kind}>
+                              {kind === 'unary'
+                                ? 'unary（一元）'
+                                : kind === 'server_stream'
+                                  ? 'server_stream（服务端流）'
+                                  : 'bidi（双向流）'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {metaErrorOf('grpcMethodKind') ? (
+                        <p className='text-destructive text-xs'>{metaErrorOf('grpcMethodKind')}</p>
+                      ) : grpcMethodSymbol &&
+                        metaDraft.grpcMethodKind &&
+                        metaDraft.grpcMethodKind !== grpcMethodSymbol.methodKind ? (
+                        <p className='text-xs text-amber-600 dark:text-amber-400'>
+                          与 proto 声明（{grpcMethodSymbol.methodKind}）不一致：执行期会抛
+                          GrpcMethodKindError，请确认后再保存。
+                        </p>
+                      ) : (
+                        <p className='text-muted-foreground text-xs'>
+                          须与 proto descriptor 一致；上传 .proto 后自动取符号表推断值。
+                        </p>
+                      )}
+                    </div>
+
+                    {grpcMethodSymbol && (
+                      <div className='grid grid-cols-2 gap-2'>
+                        <ProtoFieldList
+                          title={`请求消息（${grpcMethodSymbol.inputType}）`}
+                          fields={grpcMethodSymbol.inputFields}
+                        />
+                        <ProtoFieldList
+                          title={`响应消息（${grpcMethodSymbol.outputType}）`}
+                          fields={grpcMethodSymbol.outputFields}
+                        />
+                      </div>
+                    )}
+
+                    <KeyValueEditor
+                      label='metadata（键必须小写）'
+                      addLabel='添加 metadata'
+                      emptyHint='未配置 metadata'
+                      rows={metaDraft.grpcMetadata}
+                      error={metaErrorOf('grpcMetadata')}
+                      secretKeys={GRPC_METADATA_SECRET_KEYS}
+                      onChange={(rows) => updateMeta({ grpcMetadata: rows })}
+                    />
+                    <p className='text-muted-foreground text-xs'>
+                      值支持 <code className='font-mono'>{'{{placeholder}}'}</code> 占位；
+                      鉴权值当前明文存储 / 回显，脱敏待 INT-1953。
+                    </p>
+
+                    <div className='space-y-1'>
+                      <Label htmlFor='grpc-deadline' className='text-xs'>
+                        deadline_ms（毫秒）
+                      </Label>
+                      <Input
+                        id='grpc-deadline'
+                        type='number'
+                        min={1}
+                        value={metaDraft.grpcDeadlineMs}
+                        onChange={(e) => updateMeta({ grpcDeadlineMs: e.target.value })}
+                        placeholder={grpcDeadlinePlaceholder}
+                        className='h-7 text-xs'
+                        aria-invalid={Boolean(metaErrorOf('grpcDeadlineMs'))}
+                      />
+                      {metaErrorOf('grpcDeadlineMs') ? (
+                        <p className='text-destructive text-xs'>{metaErrorOf('grpcDeadlineMs')}</p>
+                      ) : (
+                        <p className='text-muted-foreground text-xs'>
+                          正整数；留空 = 端点超时 × 1000。
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* SSE 组（A3 §4.2 = 01 契约 §11.2）：只显示 method / headers + SSE 键；
+                    请求载荷统一 meta.sse.params，**不显示 body_template**
+                    （A2 执行侧 protocol == 'sse' 时从不读它）。 */}
+                {watchedProtocol === 'sse' && (
+                  <div className='border-border/60 space-y-3 rounded-lg border p-3'>
+                    <div>
+                      <Label>SSE 协议配置（meta.sse）</Label>
+                      <p className='text-muted-foreground text-xs'>
+                        请求载荷统一由 params 决定（GET 走 query string、非 GET 走 JSON body）；
+                        SSE 不使用请求体模板，因此本组不显示 body_template。
+                      </p>
+                    </div>
+
+                    <div className='grid grid-cols-2 gap-2'>
+                      <div className='space-y-1'>
+                        <Label className='text-xs'>请求方法（method，缺省 GET）</Label>
+                        <Select
+                          value={metaDraft.method || UNSET}
+                          items={METHOD_OPTIONS}
+                          onValueChange={(value) =>
+                            updateMeta({ method: value && value !== UNSET ? value : '' })
+                          }
+                        >
+                          <SelectTrigger
+                            className='w-full justify-between'
+                            aria-label='SSE 请求方法'
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={UNSET}>未设置（缺省 GET）</SelectItem>
+                            {HTTP_METHOD_OPTIONS.map((method) => (
+                              <SelectItem key={method} value={method}>
+                                {method}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className='space-y-1'>
+                        <Label htmlFor='sse-event-name-field' className='text-xs'>
+                          事件名字段（event_name_field）
+                        </Label>
+                        <Input
+                          id='sse-event-name-field'
+                          value={metaDraft.sseEventNameField}
+                          onChange={(e) => updateMeta({ sseEventNameField: e.target.value })}
+                          placeholder={`留空 = 缺省 ${SSE_DEFAULTS.eventNameField}`}
+                          className='h-7 font-mono text-xs'
+                          aria-invalid={Boolean(metaErrorOf('sseEventNameField'))}
+                        />
+                        {metaErrorOf('sseEventNameField') && (
+                          <p className='text-destructive text-xs'>
+                            {metaErrorOf('sseEventNameField')}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <KeyValueEditor
+                      label='请求头（与 HTTP 组共用 meta.headers）'
+                      addLabel='添加请求头'
+                      emptyHint='未配置请求头'
+                      rows={metaDraft.headers}
+                      error={metaErrorOf('headers')}
+                      onChange={(rows) => updateMeta({ headers: rows })}
+                    />
+
+                    <KeyValueEditor
+                      label='请求参数（params）'
+                      addLabel='添加参数'
+                      emptyHint='未配置请求参数'
+                      rows={metaDraft.sseParams}
+                      error={metaErrorOf('sseParams')}
+                      onChange={(rows) => updateMeta({ sseParams: rows })}
+                    />
+
+                    <div className='space-y-1.5'>
+                      <div className='flex items-center justify-between gap-2'>
+                        <div>
+                          <Label htmlFor='sse-reconnect'>断流重连（reconnect_enabled）</Label>
+                          <p className='text-muted-foreground text-xs'>
+                            缺省不重连：断流即失败，重连会让轮次数不可复现。
+                          </p>
+                        </div>
+                        <Switch
+                          id='sse-reconnect'
+                          size='sm'
+                          checked={metaDraft.sseReconnectEnabled}
+                          onCheckedChange={(checked) =>
+                            updateMeta({ sseReconnectEnabled: checked })
+                          }
+                          aria-label='SSE 重连开关'
+                        />
+                      </div>
+                      <div className='space-y-1'>
+                        <Label htmlFor='sse-reconnect-attempts' className='text-xs'>
+                          重连次数上限（max_reconnect_attempts）
+                        </Label>
+                        <Input
+                          id='sse-reconnect-attempts'
+                          type='number'
+                          min={SSE_FIELD_LIMITS.maxReconnectAttempts.min}
+                          max={SSE_FIELD_LIMITS.maxReconnectAttempts.max}
+                          disabled={!metaDraft.sseReconnectEnabled}
+                          value={metaDraft.sseMaxReconnectAttempts}
+                          onChange={(e) =>
+                            updateMeta({ sseMaxReconnectAttempts: e.target.value })
+                          }
+                          placeholder={`留空 = 缺省 ${SSE_DEFAULTS.maxReconnectAttempts}（0-10）`}
+                          className='h-7 text-xs'
+                          aria-invalid={Boolean(metaErrorOf('sseMaxReconnectAttempts'))}
+                        />
+                        {metaErrorOf('sseMaxReconnectAttempts') && (
+                          <p className='text-destructive text-xs'>
+                            {metaErrorOf('sseMaxReconnectAttempts')}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className='grid grid-cols-3 gap-2'>
+                      <div className='space-y-1'>
+                        <Label htmlFor='sse-retry' className='text-xs'>
+                          重连退避上限（retry_ms）
+                        </Label>
+                        <Input
+                          id='sse-retry'
+                          type='number'
+                          min={SSE_FIELD_LIMITS.retryMs.min}
+                          max={SSE_FIELD_LIMITS.retryMs.max}
+                          value={metaDraft.sseRetryMs}
+                          onChange={(e) => updateMeta({ sseRetryMs: e.target.value })}
+                          placeholder={`留空 = ${SSE_DEFAULTS.retryMs}（0-60000）`}
+                          className='h-7 text-xs'
+                          aria-invalid={Boolean(metaErrorOf('sseRetryMs'))}
+                        />
+                        {metaErrorOf('sseRetryMs') && (
+                          <p className='text-destructive text-xs'>{metaErrorOf('sseRetryMs')}</p>
+                        )}
+                      </div>
+                      <div className='space-y-1'>
+                        <Label htmlFor='sse-idle' className='text-xs'>
+                          空闲超时（idle_timeout_ms）
+                        </Label>
+                        <Input
+                          id='sse-idle'
+                          type='number'
+                          min={SSE_FIELD_LIMITS.idleTimeoutMs.min}
+                          max={SSE_FIELD_LIMITS.idleTimeoutMs.max}
+                          value={metaDraft.sseIdleTimeoutMs}
+                          onChange={(e) => updateMeta({ sseIdleTimeoutMs: e.target.value })}
+                          placeholder={sseIdlePlaceholder}
+                          className='h-7 text-xs'
+                          aria-invalid={Boolean(metaErrorOf('sseIdleTimeoutMs'))}
+                        />
+                        {metaErrorOf('sseIdleTimeoutMs') && (
+                          <p className='text-destructive text-xs'>
+                            {metaErrorOf('sseIdleTimeoutMs')}
+                          </p>
+                        )}
+                      </div>
+                      <div className='space-y-1'>
+                        <Label htmlFor='sse-duration' className='text-xs'>
+                          整体时长上限（max_duration_ms）
+                        </Label>
+                        <Input
+                          id='sse-duration'
+                          type='number'
+                          min={SSE_FIELD_LIMITS.maxDurationMs.min}
+                          max={SSE_FIELD_LIMITS.maxDurationMs.max}
+                          value={metaDraft.sseMaxDurationMs}
+                          onChange={(e) => updateMeta({ sseMaxDurationMs: e.target.value })}
+                          placeholder='留空 = 不设上限'
+                          className='h-7 text-xs'
+                          aria-invalid={Boolean(metaErrorOf('sseMaxDurationMs'))}
+                        />
+                        {metaErrorOf('sseMaxDurationMs') && (
+                          <p className='text-destructive text-xs'>
+                            {metaErrorOf('sseMaxDurationMs')}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className='text-muted-foreground text-xs'>
+                      句子结束 / 会话结束标记在「响应解析」页签（sentence_end_mapping /
+                      session_end_mapping），本组不重复声明同名键。
+                    </p>
+                  </div>
+                )}
+
+                {/* 轮次 / 会话配置区：只由流式性决定（B0 §3.5；非流式无会话概念），
+                    且只有 HTTP / WS 两条执行道读这组键（SSE / gRPC 各有自己的载荷口径） */}
+                {watchedStreaming && (isWebSocket || watchedProtocol === 'http') && (
                   <>
                     <Separator />
                     <JsonTextarea
@@ -1152,6 +1696,11 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                     仅流式（Realtime WS）响应生效：是 = 只拼接标记为句结束的分片；否 = 保留最后一条分片。
                   </p>
                 </div>
+
+                {/* 测试解析（A3 §二.4）：首次在 React 侧接上 POST /apis/parse-preview（INT-1772），
+                    按当前协议换示例文案；用当前草稿里的解析器 / 映射直接试算。 */}
+                <Separator />
+                <ParsePreviewPanel protocol={watchedProtocol} draft={responseDraft} />
               </TabsContent>
 
               {/* 输出字段页签（INT-1778 §2.4）：只读，算法类型级 */}
@@ -1269,13 +1818,14 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   )
 }
 
-/** 键值表编辑器（headers / ws_headers；空行忽略，键名必填且不重复） */
+/** 键值表编辑器（headers / ws_headers / metadata / params；空行忽略，键名必填且不重复） */
 function KeyValueEditor({
   label,
   addLabel,
   emptyHint,
   rows,
   error,
+  secretKeys,
   onChange,
 }: {
   label: string
@@ -1283,10 +1833,15 @@ function KeyValueEditor({
   emptyHint: string
   rows: KeyValueRow[]
   error?: string
+  /** 这些键名的值用密码控件输入（gRPC metadata 鉴权键；值本身仍明文存储，脱敏待 INT-1953） */
+  secretKeys?: readonly string[]
   onChange: (rows: KeyValueRow[]) => void
 }) {
   const patchRow = (id: string, patch: Partial<KeyValueRow>) =>
     onChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)))
+  const isSecret = (key: string) =>
+    Boolean(secretKeys?.length) &&
+    (secretKeys as readonly string[]).includes(key.trim().toLowerCase())
   return (
     <div className='space-y-1.5'>
       <div className='flex items-center justify-between'>
@@ -1323,6 +1878,8 @@ function KeyValueEditor({
                 onChange={(e) => patchRow(row.id, { value: e.target.value })}
                 placeholder='值'
                 aria-label={`${label}值`}
+                type={isSecret(row.key) ? 'password' : 'text'}
+                autoComplete='off'
                 className='h-7 flex-1 text-xs'
               />
               <Button
@@ -1520,5 +2077,212 @@ function ReadonlyTabUnselected({ tabLabel }: { tabLabel: string }) {
       title='未选择关联算法'
       description={`请先在「基础」页签选择关联算法，再回来查看「${tabLabel}」页签（数据按算法类型汇总，与单个 API 无关）。`}
     />
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* A3（INT-1791）：gRPC 消息字段预览 + 响应解析预览面板               */
+/* ------------------------------------------------------------------ */
+
+/** gRPC 请求 / 响应消息字段预览（符号表来自上传端点；无符号表时整块不渲染） */
+function ProtoFieldList({ title, fields }: { title: string; fields: ApiProtoField[] }) {
+  return (
+    <div className='space-y-1'>
+      <Label className='text-xs'>{title}</Label>
+      {fields.length === 0 ? (
+        <p className='text-muted-foreground border-border/60 rounded-md border border-dashed p-2 text-center text-xs'>
+          无字段
+        </p>
+      ) : (
+        <div className='border-border/60 max-h-32 overflow-y-auto rounded-md border'>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className='h-7 text-xs'>字段</TableHead>
+                <TableHead className='h-7 text-xs'>类型</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {fields.map((field) => (
+                <TableRow key={field.path}>
+                  <TableCell className='font-mono text-xs'>{field.path}</TableCell>
+                  <TableCell className='text-xs'>
+                    {field.type}
+                    {field.repeated ? '（repeated）' : ''}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * 各协议的样例文案（§二.4）：HTTP 贴整个响应体（含标准信封）、WS 贴单事件 payload、
+ * SSE 贴单个事件的 data、gRPC 贴 `MessageToDict` 结果。后端 `parse-preview` 是协议无关的
+ * 纯函数，「归一后的 dict」这一口径由各协议的执行适配器保证。
+ */
+const PARSE_SAMPLE_HINTS: Record<
+  ApiProtocol,
+  { placeholder: string; hint: string }
+> = {
+  http: {
+    placeholder:
+      '{\n  "code": 0,\n  "data": { "asr_result": "你好", "is_sentence_end": true }\n}',
+    hint: 'HTTP：贴完整响应体；标准信封 {"code":0,"data":{…}} 会先解包再按路径取值。',
+  },
+  websocket: {
+    placeholder: '{\n  "asr_result": "你好",\n  "is_sentence_end": true\n}',
+    hint: 'WebSocket：贴单个事件的 payload（归一后的事件体）。',
+  },
+  sse: {
+    placeholder: '{\n  "asr_result": "你好",\n  "is_sentence_end": true\n}',
+    hint: 'SSE：贴单个事件的 data（逐帧 JSON，非整段流）。',
+  },
+  grpc: {
+    placeholder: '{\n  "asrResult": "你好",\n  "isSentenceEnd": true\n}',
+    hint: 'gRPC：贴 MessageToDict 结果（字段名为 proto 原始名，repeated 为数组）。',
+  },
+}
+
+/**
+ * 响应解析预览面板（A3 §二.4；`POST /apis/parse-preview`，INT-1772 纯函数端点）。
+ * 用**当前草稿**里的解析器 / 映射直接试算，不发保存；样例按协议给不同文案与错误提示。
+ */
+function ParsePreviewPanel({
+  protocol,
+  draft,
+}: {
+  protocol: ApiProtocol
+  draft: ResponseParserDraft
+}) {
+  const [sample, setSample] = useState('')
+  const [result, setResult] = useState<ApiParsePreviewResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [running, setRunning] = useState(false)
+  const sampleHint = PARSE_SAMPLE_HINTS[protocol]
+
+  const handleRun = async () => {
+    setError(null)
+    setResult(null)
+    if (!sample.trim()) {
+      setError('请先贴一段样例响应')
+      return
+    }
+    // result_parser 先按保存同口径校验（非法 JSON / 非对象 → 不请求）
+    let parser: Record<string, unknown> | undefined
+    if (draft.resultParser.trim()) {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(draft.resultParser)
+      } catch {
+        setError('响应解析器（result_parser）不是合法 JSON 对象，先修正再测试')
+        return
+      }
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        setError('响应解析器（result_parser）必须是 JSON 对象')
+        return
+      }
+      parser = parsed as Record<string, unknown>
+    }
+    // 能解析成 JSON 就发结构化对象；厂商原始文本按字符串原样交给后端（不报错）
+    let sampleResponse: unknown = sample
+    try {
+      sampleResponse = JSON.parse(sample)
+    } catch {
+      sampleResponse = sample
+    }
+    setRunning(true)
+    try {
+      setResult(
+        await parseApiResponsePreview({
+          sampleResponse,
+          resultParser: parser,
+          asrMapping: draft.asrMapping,
+          transMapping: draft.transMapping,
+          sentenceEndMapping: draft.sentenceEndMapping,
+          sessionEndMapping: draft.sessionEndMapping,
+          errorCodeMapping: draft.errorCodeMapping,
+          errorMsgMapping: draft.errorMsgMapping,
+        })
+      )
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : '解析预览失败')
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const extractedEntries = Object.entries(result?.extracted ?? {})
+
+  return (
+    <div className='border-border/60 space-y-2 rounded-lg border p-3'>
+      <div className='flex flex-wrap items-start justify-between gap-2'>
+        <div>
+          <Label htmlFor='parse-preview-sample'>测试解析（样例响应预览）</Label>
+          <p className='text-muted-foreground text-xs'>
+            用当前填写的解析器 / 映射试算，不保存、不请求厂商接口。{sampleHint.hint}
+          </p>
+        </div>
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          className='h-7 flex-none text-xs'
+          disabled={running}
+          onClick={handleRun}
+        >
+          {running ? '解析中…' : '测试解析'}
+        </Button>
+      </div>
+      <Textarea
+        id='parse-preview-sample'
+        rows={5}
+        value={sample}
+        onChange={(e) => setSample(e.target.value)}
+        placeholder={sampleHint.placeholder}
+        className='font-mono text-xs'
+        aria-label='样例响应'
+      />
+      {error && <p className='text-destructive text-xs'>{error}</p>}
+      {result && (
+        <div className='space-y-1.5'>
+          {extractedEntries.length === 0 ? (
+            <p className='text-muted-foreground text-xs'>
+              没有字段被提取到（检查路径或样例结构）。
+            </p>
+          ) : (
+            <div className='border-border/60 overflow-x-auto rounded-md border'>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className='h-7 text-xs'>解析字段</TableHead>
+                    <TableHead className='h-7 text-xs'>提取值</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {extractedEntries.map(([key, value]) => (
+                    <TableRow key={key}>
+                      <TableCell className='font-mono text-xs'>{key}</TableCell>
+                      <TableCell className='font-mono text-xs'>
+                        {typeof value === 'string' ? value : JSON.stringify(value)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          {result.unresolved.length > 0 && (
+            <p className='text-xs text-amber-600 dark:text-amber-400'>
+              路径未命中：{result.unresolved.join('、')}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

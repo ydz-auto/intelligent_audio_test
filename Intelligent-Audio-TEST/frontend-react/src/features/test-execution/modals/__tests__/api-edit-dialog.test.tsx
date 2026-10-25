@@ -328,7 +328,7 @@ describe('协议 × 流式性两维（INT-1800 / B0 §3.2.3）', () => {
     expect('deviceType' in payload).toBe(false)
   })
 
-  it('协议下拉 4 项：sse / grpc 未上线置灰', async () => {
+  it('协议下拉 4 项：A1 / A2 上线后 sse / grpc 均不置灰', async () => {
     algorithmOptions.list = [{ id: 'voice_llm', name: '小艺语音大模型' }]
     const user = userEvent.setup()
     renderDialog(undefined)
@@ -341,20 +341,20 @@ describe('协议 × 流式性两维（INT-1800 / B0 §3.2.3）', () => {
       expect.stringContaining('SSE'),
       expect.stringContaining('gRPC'),
     ])
-    expect(options[2]).toHaveAttribute('aria-disabled', 'true')
-    expect(options[3]).toHaveAttribute('aria-disabled', 'true')
-    expect(options[0]).not.toHaveAttribute('aria-disabled', 'true')
+    for (const option of options) {
+      expect(option).not.toHaveAttribute('aria-disabled', 'true')
+    }
   })
 
-  it('切到 WebSocket → 流式开关自动打开并锁定；保存下 streaming=true', async () => {
+  it('http 两种流式性都可写 → 开关解锁；切 WebSocket 自动打开并锁定', async () => {
     algorithmOptions.list = [{ id: 'voice_llm', name: '小艺语音大模型' }]
     const user = userEvent.setup()
     renderDialog(API_FIXTURE)
 
     const streamSwitch = screen.getByRole('switch', { name: '流式开关' })
     expect(streamSwitch).toHaveAttribute('aria-checked', 'false')
-    // base-ui Switch 用 span[role=switch] + aria-disabled 表达禁用（非原生 disabled）
-    expect(streamSwitch).toHaveAttribute('aria-disabled', 'true')
+    // A3：http + 流式（chunked）已上线 → http 下开关不再锁定
+    expect(streamSwitch).not.toHaveAttribute('aria-disabled', 'true')
 
     await user.click(screen.getByRole('combobox', { name: '协议' }))
     await user.click(await screen.findByRole('option', { name: /WebSocket/ }))

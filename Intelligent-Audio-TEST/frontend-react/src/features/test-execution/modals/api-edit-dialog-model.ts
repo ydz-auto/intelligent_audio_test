@@ -16,6 +16,68 @@
 export const META_HTTP_KEYS = ['method', 'headers', 'body_template', 'vendor_adapter'] as const
 export const META_WS_KEYS = ['ws_headers', 'session_config', 'pacing', 'vendor_adapter'] as const
 
+/**
+ * gRPC 组声明的 `meta.grpc` 子键（A3 / INT-1791 §4.1）。
+ * 键集 = 后端 `grpc_adapter.py:48,79-100` 的读取侧（`_REQUIRED_CONFIG_KEYS` +
+ * proto/proto_sha256/proto_size/metadata/deadline_ms），一个不多一个不少。
+ */
+export const META_GRPC_KEYS = [
+  'proto_object_key',
+  'proto_sha256',
+  'proto_size',
+  'service',
+  'method',
+  'method_kind',
+  'metadata',
+  'deadline_ms',
+] as const
+
+/** `meta.grpc.method_kind` 值域（`grpc_client` descriptor 必须与之一致，否则 GrpcMethodKindError） */
+export const GRPC_METHOD_KINDS = ['unary', 'server_stream', 'bidi'] as const
+export type GrpcMethodKind = (typeof GRPC_METHOD_KINDS)[number]
+
+export function isGrpcMethodKind(value: unknown): value is GrpcMethodKind {
+  return typeof value === 'string' && (GRPC_METHOD_KINDS as readonly string[]).includes(value)
+}
+
+/**
+ * 鉴权类 metadata 键（§4.1）：值用密码控件输入。
+ * **当前明文存储 / 回显**（后端 `_api_to_dict` 只脱敏 `meta.api_keys`），脱敏归 INT-1953。
+ */
+export const GRPC_METADATA_SECRET_KEYS = ['authorization', 'x-api-key', 'api-key'] as const
+
+/** proto 文件大小上限（`shared` 的 PROTO_MAX_BYTES = 256 KiB，读写两侧同口径） */
+export const PROTO_MAX_BYTES = 256 * 1024
+
+/**
+ * SSE 组声明的 `meta.sse` 子键（A3 / INT-1791 §4.2 = 01 契约 §11.2 权威键表）。
+ * 后端 `api_crud_service._SSE_CONFIG_KEYS` 同集，**未知键一律 400**。
+ */
+export const META_SSE_KEYS = [
+  'event_name_field',
+  'params',
+  'reconnect_enabled',
+  'max_reconnect_attempts',
+  'retry_ms',
+  'idle_timeout_ms',
+  'max_duration_ms',
+] as const
+
+/** SSE 数值键的值域（`sse_policy.py` 常量；前端镜像，不自行放宽） */
+export const SSE_FIELD_LIMITS = {
+  retryMs: { min: 0, max: 60000 },
+  idleTimeoutMs: { min: 1, max: 3600000 },
+  maxDurationMs: { min: 1, max: 3600000 },
+  maxReconnectAttempts: { min: 0, max: 10 },
+} as const
+
+/** SSE 缺省值（只作 placeholder / 展示，不预填、不写库；后端执行侧同值） */
+export const SSE_DEFAULTS = {
+  eventNameField: 'event',
+  retryMs: 1000,
+  maxReconnectAttempts: 2,
+} as const
+
 export const HTTP_METHOD_OPTIONS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const
 
 export interface KeyValueRow {
@@ -35,11 +97,47 @@ export interface RequestTemplateDraft {
   sessionConfig: string
   pacing: string
   vendorAdapter: string
+  /* ---- gRPC 组（meta.grpc；A3 §4.1） ---- */
+  grpcProtoObjectKey: string
+  grpcProtoSha256: string
+  grpcProtoSize: string
+  grpcService: string
+  grpcMethod: string
+  grpcMethodKind: string
+  grpcMetadata: KeyValueRow[]
+  grpcDeadlineMs: string
+  /* ---- SSE 组（meta.sse；A3 §4.2；method / headers 复用上面的 HTTP 组草稿） ---- */
+  sseEventNameField: string
+  sseParams: KeyValueRow[]
+  sseReconnectEnabled: boolean
+  sseMaxReconnectAttempts: string
+  sseRetryMs: string
+  sseIdleTimeoutMs: string
+  sseMaxDurationMs: string
 }
 
 /** 保存前拦截的字段级错误（field 为页签内控件名，dialog 据此定位输入框） */
 export interface MetaDraftError {
-  field: 'method' | 'headers' | 'bodyTemplate' | 'wsHeaders' | 'sessionConfig' | 'pacing'
+  field:
+    | 'method'
+    | 'headers'
+    | 'bodyTemplate'
+    | 'wsHeaders'
+    | 'sessionConfig'
+    | 'pacing'
+    | 'grpcProto'
+    | 'grpcService'
+    | 'grpcMethod'
+    | 'grpcMethodKind'
+    | 'grpcMetadata'
+    | 'grpcDeadlineMs'
+    | 'sseEventNameField'
+    | 'sseParams'
+    | 'sseReconnect'
+    | 'sseMaxReconnectAttempts'
+    | 'sseRetryMs'
+    | 'sseIdleTimeoutMs'
+    | 'sseMaxDurationMs'
   message: string
 }
 
@@ -83,6 +181,21 @@ export function emptyRequestTemplateDraft(): RequestTemplateDraft {
     sessionConfig: '',
     pacing: '',
     vendorAdapter: '',
+    grpcProtoObjectKey: '',
+    grpcProtoSha256: '',
+    grpcProtoSize: '',
+    grpcService: '',
+    grpcMethod: '',
+    grpcMethodKind: '',
+    grpcMetadata: [],
+    grpcDeadlineMs: '',
+    sseEventNameField: '',
+    sseParams: [],
+    sseReconnectEnabled: false,
+    sseMaxReconnectAttempts: '',
+    sseRetryMs: '',
+    sseIdleTimeoutMs: '',
+    sseMaxDurationMs: '',
   }
 }
 
@@ -92,6 +205,9 @@ export function requestTemplateDraftFromMeta(
 ): RequestTemplateDraft {
   const base = isPlainObject(meta) ? meta : {}
   const body = base.body_template
+  // meta.grpc / meta.sse 是嵌套对象（A3 §二.3）：子键逐键回填，缺省留空不预填
+  const grpc = isPlainObject(base.grpc) ? base.grpc : {}
+  const sse = isPlainObject(base.sse) ? base.sse : {}
   return {
     method: typeof base.method === 'string' ? base.method : '',
     headers: rowsFromRecord(base.headers),
@@ -101,6 +217,21 @@ export function requestTemplateDraftFromMeta(
     sessionConfig: valueToText(base.session_config),
     pacing: valueToText(base.pacing),
     vendorAdapter: typeof base.vendor_adapter === 'string' ? base.vendor_adapter : '',
+    grpcProtoObjectKey: valueToText(grpc.proto_object_key),
+    grpcProtoSha256: valueToText(grpc.proto_sha256),
+    grpcProtoSize: valueToText(grpc.proto_size),
+    grpcService: valueToText(grpc.service),
+    grpcMethod: valueToText(grpc.method),
+    grpcMethodKind: valueToText(grpc.method_kind),
+    grpcMetadata: rowsFromRecord(grpc.metadata),
+    grpcDeadlineMs: valueToText(grpc.deadline_ms),
+    sseEventNameField: valueToText(sse.event_name_field),
+    sseParams: rowsFromRecord(sse.params),
+    sseReconnectEnabled: sse.reconnect_enabled === true,
+    sseMaxReconnectAttempts: valueToText(sse.max_reconnect_attempts),
+    sseRetryMs: valueToText(sse.retry_ms),
+    sseIdleTimeoutMs: valueToText(sse.idle_timeout_ms),
+    sseMaxDurationMs: valueToText(sse.max_duration_ms),
   }
 }
 
@@ -173,10 +304,227 @@ function assignOrDelete(
 }
 
 /**
+ * 子对象级合并（A3 §二.3 / 本卡最大技术风险点）：
+ * 后端 `meta` 整块 replace（`api_crud_service.py:531-543`），`meta.grpc` / `meta.sse`
+ * 是嵌套对象 —— 以读侧 base 的同名子对象为底，**只覆盖本组声明的子键**，
+ * 清空即删该子键，子对象清空则删整个键；绝不整块重建，
+ * 否则切协议 / 换页签会把别的键（含未声明的子键）冲掉。
+ */
+function mergeNestedObject(
+  target: Record<string, unknown>,
+  key: string,
+  entries: Record<string, unknown | undefined>
+): void {
+  const baseSub = isPlainObject(target[key])
+    ? { ...(target[key] as Record<string, unknown>) }
+    : {}
+  for (const [subKey, value] of Object.entries(entries)) {
+    if (value === undefined) delete baseSub[subKey]
+    else baseSub[subKey] = value
+  }
+  if (Object.keys(baseSub).length === 0) delete target[key]
+  else target[key] = baseSub
+}
+
+/** 整数输入（空 = 不写该键）；越界 / 非整数 → 字段级错误 */
+function parseIntegerField(
+  text: string,
+  label: string,
+  field: MetaDraftError['field'],
+  limits: { min: number; max: number },
+  errors: MetaDraftError[]
+): number | undefined {
+  const trimmed = text.trim()
+  if (!trimmed) return undefined
+  if (!/^\d+$/.test(trimmed)) {
+    errors.push({ field, message: `${label}必须为整数` })
+    return undefined
+  }
+  const value = Number(trimmed)
+  if (value < limits.min || value > limits.max) {
+    errors.push({ field, message: `${label}必须在 ${limits.min}-${limits.max} 之间` })
+    return undefined
+  }
+  return value
+}
+
+/**
+ * gRPC metadata 键值表 → 对象（镜像 `grpc_client` 的 `validate_metadata`）：
+ * 键必须小写、值不含 CR/LF、支持 `{{placeholder}}`（值不校验占位符）。
+ */
+function grpcMetadataToRecord(
+  rows: ReadonlyArray<KeyValueRow>,
+  errors: MetaDraftError[]
+): Record<string, string> {
+  const record: Record<string, string> = {}
+  for (const row of rows) {
+    const key = row.key.trim()
+    if (!key && !row.value.trim()) continue
+    if (!key) {
+      errors.push({ field: 'grpcMetadata', message: 'metadata 名称不能为空' })
+      continue
+    }
+    if (key !== key.toLowerCase()) {
+      errors.push({ field: 'grpcMetadata', message: `metadata 名称必须为小写：${key}` })
+      continue
+    }
+    if (key in record) {
+      errors.push({ field: 'grpcMetadata', message: `metadata 名称重复：${key}` })
+      continue
+    }
+    if (/[\r\n]/.test(row.value)) {
+      errors.push({ field: 'grpcMetadata', message: `metadata 值不能包含换行：${key}` })
+      continue
+    }
+    record[key] = row.value
+  }
+  return record
+}
+
+/** gRPC 组：必填 / method_kind / deadline / metadata 校验 + `meta.grpc` 子对象合并 */
+function mergeGrpcGroup(
+  next: Record<string, unknown>,
+  draft: RequestTemplateDraft,
+  errors: MetaDraftError[]
+): void {
+  const objectKey = draft.grpcProtoObjectKey.trim()
+  const sha = draft.grpcProtoSha256.trim().toLowerCase()
+  const sizeText = draft.grpcProtoSize.trim()
+  const service = draft.grpcService.trim()
+  const method = draft.grpcMethod.trim()
+  const methodKind = draft.grpcMethodKind.trim()
+
+  // 必填（后端 grpc_config：proto_object_key + service/method/method_kind，
+  // 缺失在执行期才报 GrpcProtoError；前端提交前按同一口径拦截）
+  if (!objectKey) {
+    errors.push({
+      field: 'grpcProto',
+      message: '缺少 proto 文件引用（proto_object_key）：上传 .proto 后自动填入',
+    })
+  }
+  if (sha && !/^[0-9a-f]{64}$/.test(sha)) {
+    errors.push({ field: 'grpcProto', message: 'proto_sha256 必须为 64 位小写十六进制' })
+  }
+  let protoSize: number | undefined
+  if (sizeText) {
+    if (!/^\d+$/.test(sizeText)) {
+      errors.push({ field: 'grpcProto', message: 'proto_size 必须为整数' })
+    } else if (Number(sizeText) > PROTO_MAX_BYTES) {
+      errors.push({
+        field: 'grpcProto',
+        message: `proto 文件超过 ${PROTO_MAX_BYTES} 字节上限`,
+      })
+    } else {
+      protoSize = Number(sizeText)
+    }
+  }
+  if (!service) {
+    errors.push({ field: 'grpcService', message: '请填写或选择 service' })
+  }
+  if (!method) {
+    errors.push({ field: 'grpcMethod', message: '请填写或选择 method' })
+  }
+  if (!methodKind) {
+    errors.push({ field: 'grpcMethodKind', message: '请选择 method_kind' })
+  } else if (!isGrpcMethodKind(methodKind)) {
+    errors.push({
+      field: 'grpcMethodKind',
+      message: `method_kind 非法：${methodKind}（合法值：unary / server_stream / bidi）`,
+    })
+  }
+  // deadline_ms：正整数（后端 `grpc_adapter.deadline_ms` 要求 > 0，没有上限）
+  const deadlineText = draft.grpcDeadlineMs.trim()
+  let deadlineMs: number | undefined
+  if (deadlineText) {
+    if (!/^\d+$/.test(deadlineText)) {
+      errors.push({ field: 'grpcDeadlineMs', message: 'deadline_ms（毫秒）必须为正整数' })
+    } else if (Number(deadlineText) <= 0) {
+      errors.push({ field: 'grpcDeadlineMs', message: 'deadline_ms（毫秒）必须为正数' })
+    } else {
+      deadlineMs = Number(deadlineText)
+    }
+  }
+  const metadata = grpcMetadataToRecord(draft.grpcMetadata, errors)
+
+  mergeNestedObject(next, 'grpc', {
+    proto_object_key: objectKey || undefined,
+    proto_sha256: sha || undefined,
+    proto_size: protoSize,
+    service: service || undefined,
+    method: method || undefined,
+    method_kind: methodKind || undefined,
+    metadata: Object.keys(metadata).length ? metadata : undefined,
+    deadline_ms: deadlineMs,
+  })
+}
+
+/** SSE 组：`meta.method` / `meta.headers`（所有权在 HTTP 组）+ `meta.sse` 子对象 */
+function mergeSseGroup(
+  next: Record<string, unknown>,
+  draft: RequestTemplateDraft,
+  errors: MetaDraftError[]
+): void {
+  // SSE 复用 HTTP 组的 method / headers（缺省 GET / 空）；不写 body_template ——
+  // A2 执行侧 `_render_request_body` 在 protocol == 'sse' 时直接返回 meta.sse.params，
+  // 从不读 body_template，写了也是死键（§4.2）。
+  assignOrDelete(next, 'method', draft.method.trim() || undefined)
+  const headers = rowsToRecord(draft.headers, '请求头', 'headers', errors)
+  assignOrDelete(next, 'headers', Object.keys(headers).length ? headers : undefined)
+
+  const eventNameField = draft.sseEventNameField.trim()
+  if (draft.sseEventNameField && !eventNameField) {
+    errors.push({
+      field: 'sseEventNameField',
+      message: '事件名字段必须为非空字符串（留空 = 使用缺省 event）',
+    })
+  }
+  const params = rowsToRecord(draft.sseParams, 'SSE 请求参数', 'sseParams', errors)
+  const retryMs = parseIntegerField(
+    draft.sseRetryMs,
+    '重连退避上限（retry_ms）',
+    'sseRetryMs',
+    SSE_FIELD_LIMITS.retryMs,
+    errors
+  )
+  const idleTimeoutMs = parseIntegerField(
+    draft.sseIdleTimeoutMs,
+    '空闲超时（idle_timeout_ms）',
+    'sseIdleTimeoutMs',
+    SSE_FIELD_LIMITS.idleTimeoutMs,
+    errors
+  )
+  const maxDurationMs = parseIntegerField(
+    draft.sseMaxDurationMs,
+    '整体时长上限（max_duration_ms）',
+    'sseMaxDurationMs',
+    SSE_FIELD_LIMITS.maxDurationMs,
+    errors
+  )
+  const maxReconnectAttempts = parseIntegerField(
+    draft.sseMaxReconnectAttempts,
+    '重连次数上限（max_reconnect_attempts）',
+    'sseMaxReconnectAttempts',
+    SSE_FIELD_LIMITS.maxReconnectAttempts,
+    errors
+  )
+
+  mergeNestedObject(next, 'sse', {
+    event_name_field: eventNameField || undefined,
+    params: Object.keys(params).length ? params : undefined,
+    reconnect_enabled: draft.sseReconnectEnabled,
+    max_reconnect_attempts: maxReconnectAttempts,
+    retry_ms: retryMs,
+    idle_timeout_ms: idleTimeoutMs,
+    max_duration_ms: maxDurationMs,
+  })
+}
+
+/**
  * 草稿 + base meta → 保存用的完整 meta 对象。
  * - 只覆盖当前协议/流式性那几组声明的键（隐藏组的旧键原样保留在 base 里，不删）；
+ * - `meta.grpc` / `meta.sse` 走子对象级合并（见 mergeNestedObject），不整块重建；
  * - 字段清空 → 删除该键（不写 null）；
- * - 非法 JSON / 空键名 / 键名重复 → 返回 errors，调用方拦截保存、弹窗不关。
+ * - 非法 JSON / 空键名 / 键名重复 / 必填缺失 / 越界 → 返回 errors，调用方拦截保存、弹窗不关。
  */
 export function mergeRequestTemplateMeta(
   baseMeta: Record<string, unknown> | null | undefined,
@@ -203,10 +551,18 @@ export function mergeRequestTemplateMeta(
         parseJsonObject(draft.bodyTemplateText, '请求体模板', 'bodyTemplate', errors)
       )
     }
+  } else if (target.protocol === 'grpc') {
+    mergeGrpcGroup(next, draft, errors)
+  } else if (target.protocol === 'sse') {
+    mergeSseGroup(next, draft, errors)
   }
 
-  // 轮次 / 会话配置区由流式性决定（仅流式有会话概念）
-  if (target.streaming) {
+  // 轮次 / 会话配置区由流式性决定，且只有 HTTP / WS 两条执行道读这组键
+  // （SSE 的请求载荷只有 meta.sse.params，gRPC 走 metadata，见 §4.1 / §4.2）
+  if (
+    target.streaming &&
+    (target.protocol === 'websocket' || target.protocol === 'http')
+  ) {
     assignOrDelete(
       next,
       'session_config',

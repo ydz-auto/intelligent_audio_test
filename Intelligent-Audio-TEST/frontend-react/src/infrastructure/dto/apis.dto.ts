@@ -62,3 +62,48 @@ export interface ApiHealthCheckDataDto {
   error: string | null
   warning: string | null
 }
+
+/* ------------------------------------------------------------------ */
+/* A3（INT-1791）：proto 上传符号表 + 解析预览两个端点的 DTO            */
+/* ------------------------------------------------------------------ */
+
+/** `POST /apis/proto` 的报文字段（INT-1952 §4.3；`input_fields` / `output_fields` 同形） */
+export interface ApiProtoFieldDto {
+  path: string
+  type: string
+  repeated: boolean
+}
+
+/** proto 方法条目（`method_kind` = unary / server_stream / bidi） */
+export interface ApiProtoMethodDto {
+  name: string
+  method_kind: string
+  input_type: string
+  output_type: string
+  input_fields: ApiProtoFieldDto[]
+  output_fields: ApiProtoFieldDto[]
+}
+
+/** proto service 条目 */
+export interface ApiProtoServiceDto {
+  name: string
+  methods: ApiProtoMethodDto[]
+}
+
+/**
+ * `POST /apis/proto` 响应 `data`（INT-1952 契约形状）。
+ * ⚠️ 端点交付在 `agent/d/int-1952`，**尚未合入 origin/V9.7.31、未部署** → 前端按契约先接，
+ * 上传控件在本轮 UI 上明示「尚未上线」，**禁止用假 object_key 冒充成功**。
+ */
+export interface ApiProtoUploadDataDto {
+  object_key: string
+  sha256: string
+  size: number
+  services: ApiProtoServiceDto[]
+}
+
+/** `POST /apis/parse-preview` 结果（`api_gateway/application/services/api/parse_preview.py:build_preview`） */
+export interface ApiParsePreviewDataDto {
+  extracted: Record<string, unknown>
+  unresolved: string[]
+}

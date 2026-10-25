@@ -23,6 +23,12 @@ interface ApiHealthDialogProps {
   result: ApiHealthCheckResult | null
   testing: boolean
   onRetest: () => void
+  /**
+   * 被测 API 的协议（A3 / INT-1791 §二.5）：gRPC / SSE 的正式连接探测归 INT-1953，
+   * 后端现状按端点 URL scheme 分支（gRPC target 无 scheme → 「不支持的协议」），
+   * 所以这里只给提示，不拦截、不伪造成功。缺省 null 时不显示提示（存量调用零变化）。
+   */
+  protocol?: string | null
 }
 
 export function ApiHealthDialog({
@@ -31,8 +37,10 @@ export function ApiHealthDialog({
   result,
   testing,
   onRetest,
+  protocol,
 }: ApiHealthDialogProps) {
   const online = result?.status === 'online'
+  const protocolProbePending = protocol === 'grpc' || protocol === 'sse'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -40,6 +48,13 @@ export function ApiHealthDialog({
         <DialogHeader>
           <DialogTitle>连接测试结果</DialogTitle>
         </DialogHeader>
+
+        {protocolProbePending && (
+          <p className='bg-muted/50 text-muted-foreground rounded-md border p-2.5 text-xs'>
+            {protocol === 'grpc' ? 'gRPC' : 'SSE'} 的正式连接探测尚未上线（INT-1953）：
+            当前结果按端点 URL 判断协议，不代表该 API 可执行；请以执行期结果为准。
+          </p>
+        )}
 
         {!result ? (
           <p className='text-muted-foreground py-4 text-center text-sm'>

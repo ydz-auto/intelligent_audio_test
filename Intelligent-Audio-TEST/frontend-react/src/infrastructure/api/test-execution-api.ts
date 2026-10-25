@@ -20,21 +20,26 @@
  * snake_case 契约只在 infrastructure/dto/ 出现，本层与 domain 只见 camelCase。
  */
 import type { CaseExecutionDetail, TaskLaunchInput } from '@/domain/models/testExecution'
-import type { ApiConfig, ApiHealthCheckResult } from '@/domain/models/apiConfig'
+import type {
+  ApiConfig,
+  ApiHealthCheckResult,
+  ApiParsePreviewResult,
+  ApiProtoSymbolTable,
+} from '@/domain/models/apiConfig'
 import type { Device } from '@/domain/models/device'
 import type { TestCase, EvaluationDimension } from '@/domain/models/testCase'
 import type { TestAlgorithmOption } from '@/domain/models/algorithm'
 import type { ReportDetailData } from '@/domain/models/report'
 import { request } from '@/infrastructure/api/client'
 import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
-import { apiConfigFromDto, apiHealthFromDto } from '@/infrastructure/adapters/apiConfigAdapter'
+import { apiConfigFromDto, apiHealthFromDto, apiParsePreviewFromDto, apiProtoSymbolTableFromDto } from '@/infrastructure/adapters/apiConfigAdapter'
 import { extractEndpointApiKeys } from '@/infrastructure/adapters/api-keys'
 import { deviceFromDto } from '@/infrastructure/adapters/deviceAdapter'
 import { caseDetailFromDto, testCaseFromDto } from '@/infrastructure/adapters/testCaseAdapter'
 import { toCaseResultsForReview } from '@/infrastructure/adapters/reviewAdapter'
 import type { CaseDetailDto, TestCaseListItemDto } from '@/infrastructure/dto/testcase.dto'
 import type { CaseResultsDataDto } from '@/infrastructure/dto/review.dto'
-import type { ApiHealthCheckDataDto, ApiItemDto } from '@/infrastructure/dto/apis.dto'
+import type { ApiHealthCheckDataDto, ApiItemDto, ApiParsePreviewDataDto, ApiProtoUploadDataDto } from '@/infrastructure/dto/apis.dto'
 import type { DeviceItemDto } from '@/infrastructure/dto/device.dto'
 import {
   type GroupListDataDto,
@@ -147,6 +152,58 @@ export async function fetchApi(apiId: number): Promise<ApiConfig> {
 export async function fetchApiHealth(apiId: number): Promise<ApiHealthCheckResult> {
   const dto = await request<ApiHealthCheckDataDto>('POST', `/apis/${apiId}/health`)
   return apiHealthFromDto({ ...(dto ?? {}), id: dto?.id ?? apiId })
+}
+
+/**
+ * 协议文件上传（A3 / INT-1791 §4.3；`POST /apis/proto`，multipart，api_config:create）。
+ *
+ * // 待接线：端点由 INT-1952 交付（`agent/d/int-1952 @ f708e2bd2`），**尚未合入
+ * // origin/V9.7.31、未部署** —— 调用在部署前会 404；UI 侧明示「尚未上线」，
+ * // 且绝不回填假 object_key（§4.3 硬要求）。
+ */
+export async function uploadApiProto(file: File): Promise<ApiProtoSymbolTable> {
+  const form = new FormData()
+  form.append('file', file)
+  const dto = await request<ApiProtoUploadDataDto>('POST', '/apis/proto', form)
+  return apiProtoSymbolTableFromDto(dto ?? ({} as ApiProtoUploadDataDto))
+}
+
+/** 响应解析预览入参（camelCase → 下面的 snake_case 请求体，只在本层转换） */
+export interface ApiParsePreviewInput {
+  /** 样例响应：JSON 对象 / 数组，或厂商原始文本（后端按原样处理） */
+  sampleResponse: unknown
+  /** 与 meta.result_parser 同形；非法 JSON 由调用方先拦截 */
+  resultParser?: Record<string, unknown>
+  asrMapping?: string
+  transMapping?: string
+  sentenceEndMapping?: string
+  sessionEndMapping?: string
+  errorCodeMapping?: string
+  errorMsgMapping?: string
+}
+
+/**
+ * 响应解析预览（INT-1772；`POST /apis/parse-preview`，api_config:read）。
+ * 纯函数端点：不读库、不发外部请求、无副作用；A3 首次在 React 侧接上（§二.4）。
+ */
+export async function parseApiResponsePreview(
+  input: ApiParsePreviewInput
+): Promise<ApiParsePreviewResult> {
+  const body: Record<string, unknown> = { sample_response: input.sampleResponse }
+  if (input.resultParser !== undefined) body.result_parser = input.resultParser
+  const mappingKeys = [
+    ['asr_mapping', input.asrMapping],
+    ['trans_mapping', input.transMapping],
+    ['sentence_end_mapping', input.sentenceEndMapping],
+    ['session_end_mapping', input.sessionEndMapping],
+    ['error_code_mapping', input.errorCodeMapping],
+    ['error_msg_mapping', input.errorMsgMapping],
+  ] as const
+  for (const [key, value] of mappingKeys) {
+    if (value && value.trim()) body[key] = value.trim()
+  }
+  const dto = await request<ApiParsePreviewDataDto>('POST', '/apis/parse-preview', body)
+  return apiParsePreviewFromDto(dto ?? ({} as ApiParsePreviewDataDto))
 }
 
 /** 报告详情（步骤五嵌入式装配；GET /reports/{id}；15_报告域 domain 模型即后端 snake_case 同构） */

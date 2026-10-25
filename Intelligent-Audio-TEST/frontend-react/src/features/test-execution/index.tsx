@@ -335,6 +335,11 @@ export function TestExecutionPage({
         }}
         result={apiHealth.result}
         testing={apiHealth.open && apiHealth.result == null}
+        // A3（INT-1791 §二.5）：按协议给提示——gRPC / SSE 的正式探测归 INT-1953，
+        // 现状后端按 URL scheme 分支，结果不代表该协议可执行
+        protocol={
+          resources.allApis.find((item) => item.id === apiHealth.apiId)?.protocol ?? null
+        }
         onRetest={() => {
           // 重新测试同走真实端点（复用当前被测 apiId；INT-646 代码审计 P1）
           if (apiHealth.apiId != null) void runApiHealthTest(apiHealth.apiId)

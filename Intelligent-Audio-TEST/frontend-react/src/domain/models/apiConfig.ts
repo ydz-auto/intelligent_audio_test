@@ -84,7 +84,9 @@ export type AlgorithmApiParam = DeviceApiParam & { fieldPath: string | null }
  */
 export type AlgorithmApiMapping = ParamMapping
 
-/** API 连接测试结果（api.py ApiHealthCheckData 平移；端点状态取 endpoints_status，INT-1223） */
+/**
+ * API 连接测试结果（api.py ApiHealthCheckData 平移；端点状态取 endpoints_status，INT-1223）
+ */
 export interface ApiHealthCheckResult {
   id: number
   status: string
@@ -94,6 +96,52 @@ export interface ApiHealthCheckResult {
   responseTime: string | null
   error: string | null
   warning: string | null
+}
+
+/* ------------------------------------------------------------------ */
+/* A3（INT-1791）：gRPC 符号表 + 响应解析预览两个读侧模型               */
+/* ------------------------------------------------------------------ */
+
+/** proto 报文的一个字段（`path` 已含嵌套层级，如 `request.text`） */
+export interface ApiProtoField {
+  path: string
+  type: string
+  repeated: boolean
+}
+
+/** proto 方法（`methodKind` 与 `meta.grpc.method_kind` 同值域） */
+export interface ApiProtoMethod {
+  name: string
+  methodKind: string
+  inputType: string
+  outputType: string
+  inputFields: ApiProtoField[]
+  outputFields: ApiProtoField[]
+}
+
+export interface ApiProtoService {
+  name: string
+  methods: ApiProtoMethod[]
+}
+
+/**
+ * `POST /apis/proto` 上传结果 = 内容寻址存储 key + 符号表（INT-1952 §4.3）。
+ * 前端只用它回填 `meta.grpc` 的 proto 三元组与 service / method 下拉。
+ */
+export interface ApiProtoSymbolTable {
+  objectKey: string
+  sha256: string
+  size: number
+  services: ApiProtoService[]
+}
+
+/**
+ * 响应解析预览结果（INT-1772 `POST /apis/parse-preview` 纯函数端点）：
+ * `extracted` 的键 = 请求里的配置字段名，`unresolved` = 路径没命中的字段（不静默丢）。
+ */
+export interface ApiParsePreviewResult {
+  extracted: Record<string, unknown>
+  unresolved: string[]
 }
 
 /**
