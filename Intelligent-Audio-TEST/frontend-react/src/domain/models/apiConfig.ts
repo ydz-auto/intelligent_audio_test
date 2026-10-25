@@ -7,6 +7,7 @@
  * 本卡消费子集（被测 API 表格 + 编辑弹窗），完整配置域模型归设备管理页 API 页签。
  */
 
+import type { DeviceApiParam, ParamMapping } from './algorithmConfig'
 import type { DeviceType } from './device'
 
 export interface ApiEndpoint {
@@ -56,6 +57,22 @@ export interface ApiConfig {
    */
   audioConfig: Record<string, unknown> | null
 }
+
+/**
+ * API 参数声明（INT-1778，输出字段页签只读视图）。
+ * = 算法配置域 DeviceApiParam + C2（INT-1747）新增的 field_path：
+ * 「声明表」的唯一来源是 algorithm_api_params(direction=output)，
+ * field_path 非空按路径取厂商原始响应值，为空按 param_code 取顶层键（`shared/utils/api_output_extractor.py`）。
+ * 未落库（老数据）时 fieldPath 为 null，界面显示「—」。
+ */
+export type AlgorithmApiParam = DeviceApiParam & { fieldPath: string | null }
+
+/**
+ * 参数映射行（INT-1778，映射页签只读视图）。
+ * 复用算法配置域 ParamMapping 全字段；`/algorithm/mappings` 只下发 PO 列（无 dimension_name），
+ * 维度名由读侧按 dimension_id 补齐，取不到时 element 显示「—」。
+ */
+export type AlgorithmApiMapping = ParamMapping
 
 /** API 连接测试结果（api.py ApiHealthCheckData 平移；端点状态取 endpoints_status，INT-1223） */
 export interface ApiHealthCheckResult {

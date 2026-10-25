@@ -1,11 +1,13 @@
 /**
- * API 编辑弹窗「请求模板」页签与 audio_config 的草稿模型（INT-1777，母卡 INT-1750 §2.2 / §3.1）。
+ * API 编辑弹窗的草稿模型：请求模板 / 响应解析两个写 meta 的页签 + audio_config（INT-1777 / INT-1778，
+ * 母卡 INT-1750 §2.2 / §2.3 / §3.1）。
  *
  * meta 保存语义 = 后端整块 replace（api_crud_service.py:474-486），所以前端必须：
  * 1) 打开弹窗以 GET /apis 返回的 api.meta 原对象为 base；
  * 2) 页签只覆盖自己声明的键；
  * 3) 保存提交整个合并后的对象；某键被清空 → 从 base 删除该键（不写 null）；
  * 4) 用户未触碰任何 meta 字段 → 调用方不发 meta 键（由 dialog 的 dirty 标记保证）。
+ * 两个页签都改过时按「base → 请求模板 → 响应解析」顺序串行合并，互不覆盖对方声明的键。
  *
  * 设备类型显隐统一走 domain 的 deriveApiTargetDeviceType（不得用裸 apis.device_type / meta.protocol）。
  * audio_config 写顶层列（apis.audio_config），校验口径对齐 api_crud_service._validate_audio_config。
@@ -119,11 +121,11 @@ export function deriveDraftTargetDeviceType(
   })
 }
 
-function parseJsonObject(
+function parseJsonObject<F extends string>(
   text: string,
   label: string,
-  field: MetaDraftError['field'],
-  errors: MetaDraftError[]
+  field: F,
+  errors: Array<{ field: F; message: string }>
 ): Record<string, unknown> | undefined {
   const trimmed = text.trim()
   if (!trimmed) return undefined
@@ -216,6 +218,133 @@ export function mergeRequestTemplateMeta(
 
   const vendorAdapter = draft.vendorAdapter.trim()
   assignOrDelete(next, 'vendor_adapter', vendorAdapter || undefined)
+
+  return { meta: next, errors }
+}
+
+/* ------------------------------------------------------------------ */
+/* 响应解析页签（INT-1778，母卡 INT-1750 §2.3；写 meta）                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 响应解析页签声明的 8 个 meta 键（消费点 `api_driver_adapter.py:451-521,558`）。
+ * 注意：C0（INT-1745）裁定这些解析器只在该算法类型**零输出字段声明**时逐键兜底，
+ * 判定依据是同一次 GET /algorithm/params?param_type=api 没有 direction=output 行——
+ * 该口径由页签顶部提示表达，代码侧不据此做门禁（`api_driver_adapter` 目前直接读 meta）。
+ */
+export const RESPONSE_PARSER_META_KEYS = [
+  'result_parser',
+  'asr_mapping',
+  'trans_mapping',
+  'sentence_end_mapping',
+  'session_end_mapping',
+  'error_code_mapping',
+  'error_msg_mapping',
+  'append_mode',
+] as const
+
+/** 后端取值缺省（`api_driver_adapter.py:506-512`）；只作输入框 placeholder，不预填、不写库 */
+export const RESPONSE_PARSER_PATH_DEFAULTS = {
+  asrMapping: 'asr_result',
+  transMapping: 'translation_result',
+  sentenceEndMapping: 'is_sentence_end',
+  sessionEndMapping: 'session_finished',
+  errorCodeMapping: 'code',
+  errorMsgMapping: 'msg',
+} as const
+
+/** 三态：'' = 不写该键（沿用缺省），true/false = 显式写入 */
+export type AppendModeValue = '' | 'true' | 'false'
+
+export interface ResponseParserDraft {
+  /** JSON 对象文本（asr_text_path / trans_text_path / session_id_path） */
+  resultParser: string
+  asrMapping: string
+  transMapping: string
+  sentenceEndMapping: string
+  sessionEndMapping: string
+  errorCodeMapping: string
+  errorMsgMapping: string
+  appendMode: AppendModeValue
+}
+
+/** 响应解析页签保存前拦截的字段级错误 */
+export interface ResponseParserDraftError {
+  field: 'resultParser'
+  message: string
+}
+
+export function emptyResponseParserDraft(): ResponseParserDraft {
+  return {
+    resultParser: '',
+    asrMapping: '',
+    transMapping: '',
+    sentenceEndMapping: '',
+    sessionEndMapping: '',
+    errorCodeMapping: '',
+    errorMsgMapping: '',
+    appendMode: '',
+  }
+}
+
+function textOfPath(value: unknown): string {
+  return typeof value === 'string' ? value : valueToText(value)
+}
+
+/** 编辑态回填：base meta → 响应解析草稿（append_mode 三态，缺省为空串） */
+export function responseParserDraftFromMeta(
+  meta: Record<string, unknown> | null | undefined
+): ResponseParserDraft {
+  const base = isPlainObject(meta) ? meta : {}
+  return {
+    resultParser: valueToText(base.result_parser),
+    asrMapping: textOfPath(base.asr_mapping),
+    transMapping: textOfPath(base.trans_mapping),
+    sentenceEndMapping: textOfPath(base.sentence_end_mapping),
+    sessionEndMapping: textOfPath(base.session_end_mapping),
+    errorCodeMapping: textOfPath(base.error_code_mapping),
+    errorMsgMapping: textOfPath(base.error_msg_mapping),
+    appendMode:
+      base.append_mode === true ? 'true' : base.append_mode === false ? 'false' : '',
+  }
+}
+
+/**
+ * 草稿 + base meta → 保存用的完整 meta 对象（与请求模板同一套 base 合并语义）：
+ * - 只覆盖本页签声明的 8 个键，其余键（含请求模板页签的键）原样保留；
+ * - 输入清空 → 删除该键（后端回落到内置缺省，不写 null / 空串）；
+ * - `result_parser` 非法 JSON / 非对象 → 返回 errors，调用方拦截保存。
+ */
+export function mergeResponseParserMeta(
+  baseMeta: Record<string, unknown> | null | undefined,
+  draft: ResponseParserDraft
+): { meta: Record<string, unknown>; errors: ResponseParserDraftError[] } {
+  const next: Record<string, unknown> = isPlainObject(baseMeta) ? { ...baseMeta } : {}
+  const errors: ResponseParserDraftError[] = []
+
+  assignOrDelete(
+    next,
+    'result_parser',
+    parseJsonObject(draft.resultParser, '响应解析器', 'resultParser', errors)
+  )
+
+  const pathKeys = [
+    ['asr_mapping', draft.asrMapping],
+    ['trans_mapping', draft.transMapping],
+    ['sentence_end_mapping', draft.sentenceEndMapping],
+    ['session_end_mapping', draft.sessionEndMapping],
+    ['error_code_mapping', draft.errorCodeMapping],
+    ['error_msg_mapping', draft.errorMsgMapping],
+  ] as const
+  for (const [key, value] of pathKeys) {
+    assignOrDelete(next, key, value.trim() || undefined)
+  }
+
+  assignOrDelete(
+    next,
+    'append_mode',
+    draft.appendMode === '' ? undefined : draft.appendMode === 'true'
+  )
 
   return { meta: next, errors }
 }
