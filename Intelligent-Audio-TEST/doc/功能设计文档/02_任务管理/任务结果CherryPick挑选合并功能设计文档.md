@@ -351,6 +351,62 @@ ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 - 迁移 ㊷ `scripts/migrations/202610/add_test_result_result_type_int1510.py`（幂等、默认 dry-run、不建索引），已登记 `scripts/migrations/README.md` 与 `docker/db_bootstrap_entrypoint.py` 的 `BOOTSTRAP_STEPS` ㊷（`docker/db_bootstrap_entrypoint.py:182`）。**主库该列已存在**（2026-10-24 INT-1742 审计实测 5546 行、值全 NULL；INT-1817 复核：:15000 真实库栈 `tree` / `candidates` 的 `result_type` 全部输出 `default`，按落库列读不报 `UndefinedColumn`——列缺失时聚合 SQL 直接 500）：新环境部署顺序仍是「重建 db_bootstrap 镜像（迁移脚本是 COPY 进镜像的）→ 启动执行 ㊷ `--apply` → 再上 task_service 新镜像」，未执行前按落库列读会 `UndefinedColumn`。
 - 数据事实（2026-10-24 主库只读实测）：可挑范围 3614 行经 ㊷ 回填后**全部落 `default` 桶**，即阶段 2 树的 `result_type` 层在真实库上只有一个节点（UX 18 §3.7.1「结果类型待补充」）。这是数据现状而非契约问题；若后续要求多桶，需另立卡补真实 `result_type` 来源。
 
+#### 8.2.8 meta 缺省口径与数据侧处置（2026-10-25，INT-1824）
+
+> 阶段 2 真库终验（INT-1818）发现候选树 `meta` 存在用例/设备元信息缺口，本节定其**数据侧处置与缺省口径**。**不改端点契约与计数口径**（§8.2.2 的字段与结构不变）。
+
+**实测**（2026-10-25，docker 真实库栈 `:15000`，`/health` → `database=intelligent_audio_test`，`task_ids` = 全部 117 个可挑任务）
+
+| 项 | 结果 |
+| --- | --- |
+| `total` / `task_count` | 3614 / 117（与 §8.2.5 一致） |
+| `meta.cases` | 1057 条，其中 **483 条 `case_name == case_id`**（UUID 形态），其余 574 条元信息正常 |
+| `meta.devices` | 5 条（设备 1/6/7/9/10），其中 **1/6/7 三条 `device_name = null`**，承载 1204/3614 行结果 |
+| `meta.apis` | 0 条（可挑范围无 API 维度结果），无缺口 |
+
+483 的构成：**463** 个 `case_id` 在 `test_cases` 无行（硬缺失），**20** 个已软删（`deleted = true`）。
+
+**结论一：用例目录不回填**（可复原性不足 + 回填会污染共享用例目录）
+
+- `test_results.result_data` 与 `task_case_relations` 都**不存用例名、也不存用例配置**（前者只有 `multi_round` / `raw_results_list` / `evaluation_data` 等结果键，后者只有任务-用例关系与执行状态），无法据此补建用例目录。
+- 名字快照只剩报告侧：`report_cases.name` 能捞到 214/483 的用例名，其中仅 45 个 case_id 能按名字指回现存 `test_cases`——即 438/483 连「指回现有用例」都做不到。
+- 补建要伪造 `test_cases.config`（`NOT NULL`）与 `algorithm_params` / `reference_params`，会把 463 条无音频、0 轮次的空壳用例灌进**共享用例目录**（用例管理页可见、可被选进新任务）。代价远大于「名字可读」的收益，属数据污染，不做。
+- 20 个软删用例按 INT-1693 与 §8.3.1 的既有口径「软删 = 查不到」不进映射，**不为树单独放宽**（否则同一功能内出现第三套用例名口径：候选行显示名 / 溯源返 null / 树再返名）。
+- 来源可追溯性到此为止：`logs` 表最早记录是 2026-10-17（导入之后），本地无法判定是导入未随迁还是源端已删；报告快照的 `created_at`（2026-08-29 等）是**源端时间**，不能当作平台内删除的证据。故「补建/恢复用例目录」在本库无源可依。
+
+**结论二：设备名不是数据缺口，是既有跨域口径**
+
+- 设备 1/6/7 的行仍在 `devices`（`deleted = true`）、名字可得；拿不到是因为 device_service `GetDeviceStatuses` 对显式 ID 也过滤 `deleted = FALSE`（`device_service/infrastructure/persistence/_device_repository_impl.py:152`）。
+- 报告侧同源：`_grpc_get_devices_by_ids` → `get_devices_by_ids` 同样过滤（同文件 `:172`），即**软删设备名在全域都解析不到**，tree 不是特例。本卡不改 device_service（跨域，且动的就是全域口径）；如需显示软删设备的真实名，另立 FEAT（显式 ID 查询加 `include_deleted` 开关，或设备名快照）。
+
+**结论三：缺省口径 = 接口不拼展示文案，前端兜底**
+
+阶段 2 树沿用「查不到 = 缺省」，**接口不返回中文文案**（与 §8.3.1 第 2 条同一原则）：
+
+| 场景 | 接口返回（现状） | 前端兜底（阶段 2 接线卡落实） |
+| --- | --- | --- |
+| 用例目录查不到 / 已软删 | `case_name = case_id` | `case_name === case_id` → 「未知用例」，**不裸显 UUID** |
+| 设备已软删 | `device_name = null` | `device_name === null` → 「未知设备」 |
+
+兜底文案与容器溯源端点（§8.3.1）统一，同一功能不留两套说法。前端落点：React 阶段 2 接线卡（§8.2.6 已登记「另立接线卡」，**尚未建**；建卡时必须带上本条兜底，否则 483 条用例将以 UUID 形态直接展示给用户）。
+
+**复现（主库只读）**
+
+```sql
+-- 483 = 463 无行 + 20 软删
+with ids as (
+  select distinct r.test_case_id from test_results r
+  join test_tasks t on t.id = r.task_id
+  where r.excluded = 0 and t.deleted = false
+    and t.status in ('completed','failed','stopped'))
+select count(*) filter (where c.id is null)                       as hard_missing,
+       count(*) filter (where c.deleted)                          as soft_deleted,
+       count(*) filter (where c.id is not null and not c.deleted)  as healthy
+from ids left join test_cases c on c.id = ids.test_case_id;
+-- hard_missing | soft_deleted | healthy
+--           463 |           20 |     574
+```
+
 ### 8.3 溯源接口契约（INT-1706 裁定，2026-10-24）
 
 > **编号说明（INT-1755 裁定，2026-10-24）**：本节即 INT-1706 的溯源契约，原占 §8.2，因与阶段 2 候选树契约（§8.2，INT-1510）撞号，顺延为 §8.3；INT-1706 / INT-1714 代码注释中写作「§8.2」的溯源口径均指本节。裁定记录见 §13。
@@ -449,6 +505,8 @@ ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 
 ## 13. 实现演进裁定记录
 
+- **2026-10-25（INT-1824 数据缺陷处置，开发工程师A）**：候选树 `meta` 用例/设备元信息缺口（483/1057 用例 `case_name` 回落 UUID、1204/3614 行结果的设备名 null）定处置：**数据侧不回填、缺省口径照旧、前端兜底**，完整口径与取证见新增的 §8.2.8。三条要点：①463 个硬缺失用例在库内无源（`result_data`/`task_case_relations` 不含用例名与配置；`report_cases.name` 只覆盖 214 个、其中 45 个能指回现存用例），补建需伪造 `config`（`NOT NULL`）并污染共享用例目录，故不做；20 个软删用例按 INT-1693「软删=查不到」不进映射，不为树单独放宽；②设备 1/6/7 的 `device_name = null` 不是数据缺口，而是 device_service 显式 ID 查询也过滤 `deleted = FALSE` 的全域口径（报告侧同源），本卡不动 device_service，要真实设备名需另立 FEAT；③接口不拼展示文案，前端阶段 2 接线卡对 `case_name === case_id` / `device_name === null` 出「未知用例」/「未知设备」（与 §8.3.1 溯源端点文案统一）。**待办**：React 阶段 2 接线卡建卡时带上兜底（该卡尚未建）。本卡无代码改动。
+- **2026-10-24（INT-1817 合并后一致性审计：§8.2 / §8.3.1 vs `origin/V9.7.31` @ `d9e024b58`，方案一致性审计员）**：以合入后的 V9.7.31 实现为唯一事实源逐节复核 §8.2.2 接口契约（参数表 / 响应结构 / `total`·`task_count` 语义）、§8.2.3 第 1/3 条、§8.2.4 落位、§8.2.7 五条、§8.3 / §8.3.1 溯源字段表与存活判定，结论：契约与实现一致（tree / candidates 请求路径零对象存储往返；tree 端真实跨服务调用只剩设备名 1 次；proto / `task_service_pb2.py` / `task_service_pb2_grpc.py` 同提交 `ff90b6d00` 入库且方法可调用）。本节登记的四处**文档滞后**已按实现更正（不改代码）：①§8.3.1 网关/服务行号随 INT-1670/1715 合入漂移（路由 `cherry_pick_bp.py:103`→`:110`、`source_trace` `cherry_pick_service.py:951`→`:1246`），§8.2.7 设备名 gRPC 调用点 `:1172`→`:1544`（实际调用 `:1550`），§13 INT-1755 条 `cherry_pick_service.py:1062`→`:1252`；②§8.3.1 `case_name` 原写「用例目录查不到（**含已软删**）为 null」**与实现不符**——`_case_name_map` 只按 `TestCase.id IN` 取名、不过滤 `deleted`，已软删用例仍返回其名，仅整行查不到才 null（`cherry_pick_service.py:1560`），已按实现更正并注明与候选/购物车元信息（过滤 `deleted`）的既有差异；③§8.3.1 `api_name` 与第 5 条原写「api_test ACL 批量 gRPC」，实为共享库窄字段投影（`report_acl_repository.fetch_api_summaries`，INT-1500 起无 api_test gRPC），同步更正；④§8.2.7 迁移 ㊷ 原写「主库尚未执行」，主库该列**已存在且值全 NULL**（INT-1742 实测 5546 行；本次 :15000 `tree`/`candidates` 的 `result_type` 全输出 `default`、无 `UndefinedColumn`），已更正并保留新环境部署顺序说明。另补两条**实现事实口径**：§8.2.2 `meta.cases[].case_name` 用例查不到时回落 `case_id`（前端以 `case_name == case_id` 判缺名展示「未知用例」）；`_tree_case_meta` 同源 `_case_meta_map`，故 `duration` / `rounds` 在用例缺失时为 null（非 0）。运行时佐证（docker `:15000`，`database=intelligent_audio_test`）：`tree?task_ids=338` → 200、`total=149`、四层节点键与 §8.2.2 一致、`result_type` 全 `default`；缺 `task_ids` / 201 个 → 400 + `code:203`；`candidates` 行 `case_name` 同为 UUID 形态（数据侧用例元信息缺失）。未覆盖：全量 117 任务 / 3614 行的完整性重测（属并行【验收·真库】卡；本卡取证期间 docker 引擎退出，未重测）。
 - **2026-10-24（INT-1817 合并后一致性审计：§8.2 / §8.3.1 vs `origin/V9.7.31` @ `d9e024b58`，方案一致性审计员）**：以合入后的 V9.7.31 实现为唯一事实源逐节复核 §8.2.2 接口契约（参数表 / 响应结构 / `total`·`task_count` 语义）、§8.2.3 第 1/3 条、§8.2.4 落位、§8.2.7 五条、§8.3 / §8.3.1 溯源字段表与存活判定，结论：契约与实现一致（tree / candidates 请求路径零对象存储往返；tree 端真实跨服务调用只剩设备名 1 次；proto / `task_service_pb2.py` / `task_service_pb2_grpc.py` 同提交 `ff90b6d00` 入库且方法可调用）。本节登记的四处**文档滞后**已按实现更正（不改代码）：①§8.3.1 网关/服务行号随 INT-1670/1715 合入漂移（路由 `cherry_pick_bp.py:103`→`:110`、`source_trace` `cherry_pick_service.py:951`→`:1246`），§8.2.7 设备名 gRPC 调用点 `:1172`→`:1544`（实际调用 `:1550`），§13 INT-1755 条 `cherry_pick_service.py:1062`→`:1252`；②§8.3.1 `case_name` 原写「用例目录查不到（**含已软删**）为 null」**与实现不符**——`_case_name_map` 只按 `TestCase.id IN` 取名、不过滤 `deleted`，已软删用例仍返回其名，仅整行查不到才 null（`cherry_pick_service.py:1560`），已按实现更正并注明与候选/购物车元信息（过滤 `deleted`）的既有差异；③§8.3.1 `api_name` 与第 5 条原写「api_test ACL 批量 gRPC」，实为共享库窄字段投影（`report_acl_repository.fetch_api_summaries`，INT-1500 起无 api_test gRPC），同步更正；④§8.2.7 迁移 ㊷ 原写「主库尚未执行」，主库该列**已存在且值全 NULL**（INT-1742 实测 5546 行；本次 :15000 `tree`/`candidates` 的 `result_type` 全输出 `default`、无 `UndefinedColumn`），已更正并保留新环境部署顺序说明。另补两条**实现事实口径**：§8.2.2 `meta.cases[].case_name` 用例查不到时回落 `case_id`（前端以 `case_name == case_id` 判缺名展示「未知用例」）；`_tree_case_meta` 同源 `_case_meta_map`，故 `duration` / `rounds` 在用例缺失时为 null（非 0）。运行时佐证（docker `:15000`，`database=intelligent_audio_test`）：`tree?task_ids=338` → 200、`total=149`、四层节点键与 §8.2.2 一致、`result_type` 全 `default`；缺 `task_ids` / 201 个 → 400 + `code:203`；`candidates` 行 `case_name` 同为 UUID 形态（数据侧用例元信息缺失）。未覆盖：全量 117 任务 / 3614 行的完整性重测（属并行【验收·真库】卡；本卡取证期间 docker 引擎退出，未重测）。
 - **2026-10-24（INT-1755 章节编号裁定，方案一致性审计员）**：INT-1733（阶段 2 候选树聚合 · INT-1510 契约）与 INT-1706（溯源接口契约）在同一篇文档抢同一节号 §8.2，导致 INT-1733 的两个 doc 提交无法直接合入 V9.7.31。**裁定方案 A：候选树契约保持 §8.2（含 §8.2.1~§8.2.7 原样不动），溯源契约顺延为 §8.3。** 依据是已合入 V9.7.31 代码的引用面：`INT-1510 §8.2.x` 在代码里已落地 26 处（`api_gateway/schemas/cherry_pick.py:37`、`task_service/application/task/cherry_pick_service.py` 多处、`shared/utils/result_data_store.py:219/226`、`shared/utils/status_constants.py:82`、`task_service/infrastructure/persistence/models/result_models.py:38`、`test_result_repository.py:131/134`、`scripts/migrations/202610/add_test_result_result_type_int1510.py`、`scripts/migrations/README.md`、`docker/db_bootstrap_entrypoint.py:178` 及单测），而 `INT-1706 §8.2` 只有 4 处注释级引用（`task_service/application/task/cherry_pick_service.py:1252`、`tests/unit/test_int1714_cherry_pick_source_fields.py:13/241`、`tests/unit/test_int339_cherry_pick.py:411`）；让引用面大的一侧保持原号，改动面最小，也不会产生代码与文档的第二套编号。同步项：§8 接口表「新任务溯源」行改指 §8.3；INT-1670 卡面、INT-1669 回写（§8.2.7）、UX 18 号规范对「§8.2 = 候选树」的引用全部继续成立，无需改动。遗留：上述 4 处 `INT-1706 §8.2` 的代码注释仍写作 §8.2，按本节说明其指向已变为 §8.3（注释级、不影响行为，下轮改到这些文件时顺带同步，不为它单开代码卡）。
 
