@@ -1,9 +1,11 @@
 /**
- * 试听弹窗总时长口径（INT-1860）：有真实流时只认媒体元数据，元数据未到 / 流不可用显示「—」，
- * 不再回落到 audio_id 派生演示时长（404 时仍显示 0:36 的假时长）；无真实流（mock 播放）保留派生时长。
+ * 试听弹窗总时长口径：有真实流时只认媒体元数据，元数据未到 / 流不可用显示「—」（INT-1860）；
+ * 无可用播放地址时整块换「音频暂不可播放」失败态，不再派生假时长、不做模拟播放（INT-1905 P3-3）。
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+
+import { stream } from '@/infrastructure/api/audios-api'
 
 import { AudioPlayerModal, type AudioItemMeta } from '../audio-player-modal'
 
@@ -67,9 +69,24 @@ describe('AudioPlayerModal 总时长（INT-1860）', () => {
     await waitFor(() => expect(durationText()).toBe('1:27'))
   })
 
-  it('无真实流（mock 播放）仍按 audio_id 派生演示时长，时长位不出现「—」', () => {
+  it('无播放地址（无 url 且无数字 audio_id）时换失败态，不派生演示时长、不出现 mock 文案', () => {
     renderOpened({ audio_id: 'user_wav', audio_name: 'user_wav', audio_type: 'result' })
 
-    expect(durationText()).toBe('0:36')
+    // INT-1905 P3-3：不再按 audio_id 派生 0:36，也不展示假进度
+    expect(screen.getByText('音频暂不可播放')).toBeTruthy()
+    expect(screen.queryByTestId('audio-duration')).toBeNull()
+    expect(screen.queryByText('0:36')).toBeNull()
+    expect(screen.queryByText(/mock/)).toBeNull()
+    expect(screen.queryByRole('slider', { name: '播放进度' })).toBeNull()
+  })
+
+  it('GET /audios/{id}/stream 取不到地址时换失败态，不派生演示时长', async () => {
+    vi.mocked(stream).mockRejectedValueOnce(new Error('no stream'))
+    renderOpened({ audio_id: 402, audio_name: 'user_wav', audio_type: 'result' })
+
+    expect(await screen.findByText('音频播放地址获取失败，请稍后重试')).toBeTruthy()
+    expect(screen.getByText('音频暂不可播放')).toBeTruthy()
+    expect(screen.queryByTestId('audio-duration')).toBeNull()
+    expect(screen.queryByText('0:36')).toBeNull()
   })
 })
