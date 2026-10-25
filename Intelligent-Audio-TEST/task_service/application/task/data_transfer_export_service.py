@@ -76,6 +76,14 @@ def _resolve_include(options: Dict) -> List[str]:
     # 固定按枚举顺序输出，避免请求顺序影响 manifest 内容与缓存判断
     return [item.value for item in IncrementalInclude if item.value in set(requested)]
 
+def _as_int(value):
+    """宽松取整（包内 JSON 可能带字符串 id）；不可解析返回 None"""
+    if value is None or value == '':
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _sweep_expired_exports() -> int:
@@ -388,11 +396,12 @@ class DataTransferExportService:
         if not clean_task_ids and not clean_report_ids:
             return {'success': False, 'code': 400, 'message': 'taskId / reportIds 至少提供一个'}
 
+        from shared.infrastructure.user_context import (
+            get_current_user_id, get_current_user_is_admin)
+        from task_service.infrastructure.persistence.task_repository import task_repository
+
         # INT-423 口径：导出逐行可见性过滤——私有非 owner 任务跳过
         if clean_task_ids:
-            from shared.infrastructure.user_context import (
-                get_current_user_id, get_current_user_is_admin)
-            from task_service.infrastructure.persistence.task_repository import task_repository
             clean_task_ids = task_repository.filter_visible_task_ids(
                 clean_task_ids, user_id=get_current_user_id(),
                 is_admin=get_current_user_is_admin())
@@ -404,17 +413,39 @@ class DataTransferExportService:
         tables = package.get('tables') or {}
         studio = package.get('studio') or {}
         package_report_ids = [int(rid) for rid in (package.get('reportIds') or [])]
-        all_task_ids = sorted({int(t) for t in (package.get('taskIds') or clean_task_ids)})
+
+        # 任务 id 一律按「包内实际报告行 + 请求任务」取并集后再走 INT-423 任务级
+        # 逐行过滤（不能用过滤前的结果写 manifest，否则会带上对方任务名）
+        row_task_ids = {int(row['task_id'])
+                        for row in (tables.get(TransferTable.TEST_REPORTS.value) or [])
+                        if isinstance(row, dict) and _as_int(row.get('task_id')) is not None}
+        all_task_ids = sorted(
+            row_task_ids
+            | set(clean_task_ids)
+            | {int(t) for t in (package.get('taskIds') or []) if _as_int(t) is not None})
         if not all_task_ids:
             return {'success': False, 'code': 404, 'message': '报告不存在或已删除'}
+        visible_task_ids = set(task_repository.filter_visible_task_ids(
+            all_task_ids, user_id=get_current_user_id(),
+            is_admin=get_current_user_is_admin()))
+        if not visible_task_ids:
+            return {'success': False, 'code': 404, 'message': '报告不存在或已删除'}
+        # 导入端只接受单任务报告包（manifest.sourceTask 只能定位一个任务），
+        # 导出端就拒绝跨任务与混入不可见任务的包，不下发不可导入的坏包
+        if len(visible_task_ids) > 1:
+            return {'success': False, 'code': 400,
+                    'message': f'报告包只能包含同一个任务的报告（本次涉及 '
+                               f'{len(visible_task_ids)} 个任务），请按任务分批导出'}
+        if len(visible_task_ids) != len(all_task_ids):
+            return {'success': False, 'code': 400,
+                    'message': '所选报告涉及当前不可导出的任务，请按任务分别导出'}
+        all_task_ids = sorted(visible_task_ids)
 
         task_names = transfer_repository.fetch_task_names(all_task_ids)
         # sourceTask.id：A 侧原任务 id（B 导出时经 source_map 反查；无映射视为同一端）
-        local_task_id = all_task_ids[0] if len(all_task_ids) == 1 else None
-        source_ids = {}
-        if local_task_id is not None:
-            source_ids = transfer_repository.fetch_source_ids_by_local_ids(
-                resolve_transfer_server_id(), 'tasks', [local_task_id])
+        local_task_id = all_task_ids[0]
+        source_ids = transfer_repository.fetch_source_ids_by_local_ids(
+            resolve_transfer_server_id(), 'tasks', [local_task_id])
         source_task_id = source_ids.get(local_task_id, local_task_id)
         task_name = task_names.get(source_task_id) or task_names.get(local_task_id) or ''
 

@@ -16,11 +16,20 @@ from shared.constants.data_transfer import (
     ReportPackageEntity,
     ReportStudioTable,
     REPORT_PACKAGE_WARNINGS_CAP,
+    TransferTable,
 )
+from shared.infrastructure.user_context import (
+    get_current_user_id,
+    get_current_user_is_admin,
+)
+from shared.infrastructure.visibility_filter import filter_visible_owners
 from shared.utils.grpc_json import fold_business_code
 from shared.utils.log_handler import log_not_emit
 from report_service.application.report_replacement_service import (
     report_replacement_service,
+)
+from report_service.infrastructure.persistence.report_repository import (
+    report_repository,
 )
 from report_service.infrastructure.persistence.report_studio_transfer_repository import (
     report_studio_transfer_repository,
@@ -33,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 _MODULE_NAME = 'report_package_service'
 
-_REPORT_TABLE = 'test_reports'
+_REPORT_TABLE = TransferTable.TEST_REPORTS.value
 
 
 def _as_int(value) -> Optional[int]:
@@ -79,6 +88,10 @@ class ReportPackageService:
         if clean_report_ids:
             by_report = report_transfer_repository.export_by_report_ids(clean_report_ids)
             tables = self._merge_tables(tables, by_report)
+        # INT-423 行级可见性：私有非 owner 报告整份跳过（含 6 子表与 Studio 闭包），
+        # 两条入口（taskId / reportIds）同一口径。报告 id 是自增小整数可枚举，
+        # 不能整批放行；全部不可见时包内无报告，由编排层按 404 防探测处理。
+        tables = self._filter_visible_reports(tables)
         if not clean_task_ids:
             # 只按 reportIds 导出时，task_ids 由报告行反推（供编排层写 manifest）
             clean_task_ids = sorted({int(row['task_id'])
@@ -196,6 +209,33 @@ class ReportPackageService:
         return {'success': True, 'message': '', 'data': receipt}
 
     # ---------- 内部 ----------
+
+    @staticmethod
+    def _filter_visible_reports(tables: Dict[str, List[dict]]) -> Dict[str, List[dict]]:
+        """按 INT-423 行级口径过滤报告包：不可见报告整份跳过（主表 + 6 子表）。
+
+        与 `GetReportDetail` / `BatchActionReports` 同一可见性口径（私有仅 owner，
+        共享全员可见，admin 全量）；避免按 reportIds 枚举绕过报告详情防探测。
+        """
+        report_rows = [r for r in (tables.get(_REPORT_TABLE) or [])
+                       if isinstance(r, dict) and _as_int(r.get('id')) is not None]
+        if not report_rows:
+            return tables
+        report_ids = [int(r['id']) for r in report_rows]
+        visible = set(filter_visible_owners(
+            report_repository.list_report_visibility_rows(report_ids),
+            get_current_user_id(), get_current_user_is_admin()))
+        if len(visible) == len(report_ids):
+            return tables
+        filtered: Dict[str, List[dict]] = {}
+        for table, rows in (tables or {}).items():
+            if table == _REPORT_TABLE:
+                filtered[table] = [r for r in report_rows if int(r['id']) in visible]
+            else:
+                filtered[table] = [
+                    r for r in (rows or [])
+                    if isinstance(r, dict) and _as_int(r.get('report_id')) in visible]
+        return filtered
 
     @staticmethod
     def _merge_tables(base: Dict[str, List[dict]],

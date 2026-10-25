@@ -380,6 +380,212 @@ class TestReportPackageImport:
 
 
 # ==================================================================
+# 导出可见性（INT-423）与单任务包校验（审计 P1 / P2 返工）
+# ==================================================================
+
+def _seed_other_report(report_id=42, task_id=22, owner=8, name='他人私有报告'):
+    _add(Report(id=report_id, name=name, type='task', task_id=task_id,
+                status='published', visibility='private', created_by_user_id=owner))
+    _add(ReportSummary(report_id=report_id, total_cases=1, pass_rate=0.0))
+    return report_id
+
+
+def _seed_task(task_id, owner=None, visibility='private', name=None):
+    from task_service.infrastructure.persistence.models import Task
+    _add(Task(id=task_id, name=name or f'任务{task_id}', status='completed',
+              created_by_user_id=owner, visibility=visibility))
+    return task_id
+
+
+class _AsUser:
+    """临时切换操作人上下文（可见性过滤读 get_current_user_id / is_admin）"""
+
+    def __init__(self, user_id, is_admin=False):
+        self.user_id = user_id
+        self.is_admin = is_admin
+
+    def __enter__(self):
+        from shared.infrastructure.user_context import (
+            set_current_user_id, set_current_user_is_admin)
+        set_current_user_id(self.user_id)
+        set_current_user_is_admin(self.is_admin)
+        return self
+
+    def __exit__(self, *exc):
+        from shared.infrastructure.user_context import (
+            set_current_user_id, set_current_user_is_admin)
+        set_current_user_id(None)
+        set_current_user_is_admin(False)
+
+
+class TestExportVisibility:
+    """报告包导出必须与 GetReportDetail 同一行级可见性口径（INT-423）"""
+
+    def test_report_ids_export_skips_others_private_report(self, db):
+        _seed_report()                                # 41 / task 21 / owner 7 / private
+        _seed_other_report()                          # 42 / task 22 / owner 8 / private
+        _seed_studio(41)
+        from report_service.application.report_package_service import report_package_service
+
+        with _AsUser(7):
+            result = report_package_service.export_package([], [41, 42], 'full')
+
+        assert result['success'] is True, result
+        data = result['data']
+        assert [r['id'] for r in data['tables']['test_reports']] == [41]
+        assert {r['report_id'] for r in data['tables']['report_summaries']} == {41}
+        assert data['reportIds'] == [41]
+        assert data['taskIds'] == [21]                # 任务 id 只用过滤后的报告行反推
+        assert data['studio'][_REPORT_STUDIO_DOCS]    # Studio 闭包随报告一起过滤
+
+    def test_task_ids_export_skips_others_private_reports(self, db):
+        _seed_report()                                # 41 / task 21 / owner 7
+        _seed_other_report(report_id=43, task_id=21, owner=8)   # 同任务下他人私有
+        from report_service.application.report_package_service import report_package_service
+
+        with _AsUser(7):
+            result = report_package_service.export_package([21], [], 'full')
+
+        assert [r['id'] for r in result['data']['tables']['test_reports']] == [41]
+        assert result['data']['taskIds'] == [21]
+
+    def test_all_invisible_reports_yield_empty_package(self, db):
+        """全不可见 → 包内无报告；编排层据此返回 404，不回显报告是否存在"""
+        _seed_report()
+        from report_service.application.report_package_service import report_package_service
+
+        with _AsUser(9):
+            result = report_package_service.export_package([], [41], 'full')
+
+        assert result['success'] is True
+        assert result['data']['tables']['test_reports'] == []
+        assert result['data']['reportIds'] == []
+        assert result['data']['taskIds'] == []
+
+    def test_admin_exports_every_report(self, db):
+        _seed_report()
+        _seed_other_report()
+        from report_service.application.report_package_service import report_package_service
+
+        with _AsUser(1, is_admin=True):
+            result = report_package_service.export_package([], [41, 42], 'full')
+
+        assert {r['id'] for r in result['data']['tables']['test_reports']} == {41, 42}
+
+
+class TestExportSingleTaskGuard:
+    """导出端不得下发导入端必然拒绝的跨任务包（审计 P2）"""
+
+    @staticmethod
+    def _patch_package(monkeypatch, tables_rows, task_ids, report_ids=None):
+        from task_service.application.task import data_transfer_export_service as export_mod
+        payload = {
+            'tables': tables_rows,
+            'studio': {},
+            'reportIds': report_ids or [r['id'] for r in tables_rows.get('test_reports') or []],
+            'taskIds': task_ids,
+            'entities': ['platform_report'],
+            'counts': {},
+        }
+        monkeypatch.setattr(export_mod.report_transfer_acl_repository,
+                            'export_report_package',
+                            lambda task_ids_arg, report_ids_arg, scope: payload)
+        return export_mod
+
+    def test_multi_task_report_ids_rejected_400(self, db, storage_env, monkeypatch):
+        _seed_task(21, owner=7)
+        _seed_task(22, owner=7)
+        export_mod = self._patch_package(monkeypatch, {'test_reports': [
+            {'id': 41, 'task_id': 21, 'name': 'a', 'type': 'task'},
+            {'id': 42, 'task_id': 22, 'name': 'b', 'type': 'task'},
+        ]}, [21, 22])
+
+        with _AsUser(7):
+            result = export_mod.data_transfer_export_service.export_report_package(
+                [], [41, 42], 'full')
+
+        assert result['success'] is False
+        assert result['code'] == 400
+        assert '同一个任务' in result['message']
+
+    def test_report_of_invisible_task_rejected_400(self, db, storage_env, monkeypatch):
+        _seed_task(21, owner=7)
+        _seed_task(22, owner=8)                       # 他人私有任务
+        export_mod = self._patch_package(monkeypatch, {'test_reports': [
+            {'id': 41, 'task_id': 21, 'name': 'a', 'type': 'task'},
+            {'id': 42, 'task_id': 22, 'name': 'b', 'type': 'task'},
+        ]}, [21, 22])
+
+        with _AsUser(7):
+            result = export_mod.data_transfer_export_service.export_report_package(
+                [], [41, 42], 'full')
+
+        assert result['success'] is False
+        assert result['code'] == 400
+        assert '不可导出' in result['message']
+
+    def test_empty_package_returns_404(self, db, storage_env, monkeypatch):
+        export_mod = self._patch_package(
+            monkeypatch, {'test_reports': []}, [], report_ids=[])
+
+        with _AsUser(7):
+            result = export_mod.data_transfer_export_service.export_report_package(
+                [], [999], 'full')
+
+        assert result['success'] is False
+        assert result['code'] == 404
+
+    def test_single_task_package_writes_manifest(self, db, storage_env, monkeypatch):
+        import zipfile
+        _seed_task(21, owner=7, name='接线测试_任务21')
+        export_mod = self._patch_package(monkeypatch, {'test_reports': [
+            {'id': 41, 'task_id': 21, 'name': 'a', 'type': 'task',
+             'status': 'published', 'visibility': 'private'},
+        ]}, [21])
+
+        with _AsUser(7):
+            result = export_mod.data_transfer_export_service.export_report_package(
+                [], [41], 'full')
+
+        assert result['success'] is True, result
+        manifest = result['data']['manifest']
+        assert manifest['sourceTask']['id'] == 21
+        assert manifest['sourceTask']['localTaskId'] == 21
+        assert manifest['sourceTask']['name'] == '接线测试_任务21'
+        with zipfile.ZipFile(result['data']['zip_path']) as zf:
+            assert 'manifest.json' in zf.namelist()
+            assert 'db/test_reports.json' in zf.namelist()
+
+
+class TestStudioImportDefaults:
+    def test_missing_created_at_falls_back_to_now(self, db):
+        """包内缺 / 坏 created_at 时不得对 NOT NULL 列写 NULL（审计 P3）"""
+        from report_service.infrastructure.persistence.report_studio_transfer_repository import (
+            report_studio_transfer_repository,
+        )
+        studio = {
+            _REPORT_STUDIO_DOCS: [
+                {'doc_id': 'no-ts', 'report_id': None, 'source_type': 'uploaded_file',
+                 'title': '无时间戳', 'markdown_content': 'm', 'current_version': 1,
+                 'chart_refs': [], 'created_at': 'not-a-date'},
+            ],
+            _REPORT_STUDIO_VERSIONS: [
+                {'doc_id': 'no-ts', 'version': 1, 'markdown_content': 'm',
+                 'chart_specs': {}, 'snapshot_reason': 'manual_edit'},
+            ],
+            _REPORT_STUDIO_CHARTS: [
+                {'chart_id': 'no-ts-chart', 'doc_id': 'no-ts', 'report_id': None,
+                 'metric_params': {}, 'style': {}, 'version': 1},
+            ],
+        }
+        report_studio_transfer_repository.import_studio_rows(studio, {}, 'full')
+
+        assert _all(ReportStudioDocument)[0].created_at is not None
+        assert _all(ReportStudioDocumentVersion)[0].created_at is not None
+        assert _all(ReportStudioChartSpec)[0].created_at is not None
+
+
+# ==================================================================
 # manifest 校验与 task_service 导入侧失败码
 # ==================================================================
 

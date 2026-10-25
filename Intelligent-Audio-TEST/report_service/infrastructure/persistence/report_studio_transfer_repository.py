@@ -21,7 +21,7 @@ from shared.constants.data_transfer import (
     ReportPackageEntity,
     ReportStudioTable,
 )
-from shared.models.database import get_db_session
+from shared.models.database import get_db_session, utc8now
 from shared.models.common_enums import ReportStudioSourceType
 from shared.utils.log_handler import log_not_emit
 from report_service.infrastructure.persistence.models.report_studio_models import (
@@ -210,7 +210,14 @@ class ReportStudioTransferRepository:
             for row in charts:
                 charts_by_doc.setdefault(str(row.get('doc_id')), []).append(row)
 
-            existing_chart_ids = {cid for (cid,) in session.query(ChartSpecPO.chart_id).all()}
+            # 冲突判定只查包内 chart_id（不把全表 chart_id 拉进内存）
+            package_chart_ids = [str(r.get('chart_id')) for r in charts
+                                 if r.get('chart_id')]
+            existing_chart_ids = set()
+            if package_chart_ids:
+                existing_chart_ids = {
+                    cid for (cid,) in session.query(ChartSpecPO.chart_id)
+                    .filter(ChartSpecPO.chart_id.in_(package_chart_ids)).all()}
             # 先为包内全部图表分配 A 侧 chart_id（跨文档引用：Agent 总结的 chart_refs
             # 常指向父上传文档的图表，不能只看本文档自己的图表）
             for row in charts:
@@ -265,7 +272,7 @@ class ReportStudioTransferRepository:
                     current_version=_as_int(source.get('current_version')) or 1,
                     etag_hash=source.get('etag_hash') or '',
                     created_by=created_by,
-                    created_at=_parse_dt(source.get('created_at')) or None,
+                    created_at=_parse_dt(source.get('created_at')) or utc8now(),
                 ))
                 inserted[ReportStudioTable.DOCUMENTS.value] += 1
 
@@ -290,7 +297,7 @@ class ReportStudioTransferRepository:
                         parent_version=_as_int(row.get('parent_version')),
                         snapshot_reason=row.get('snapshot_reason') or 'manual_edit',
                         created_by=created_by,
-                        created_at=_parse_dt(row.get('created_at')) or None,
+                        created_at=_parse_dt(row.get('created_at')) or utc8now(),
                     ))
                     inserted[ReportStudioTable.DOCUMENT_VERSIONS.value] += 1
 
@@ -314,7 +321,7 @@ class ReportStudioTransferRepository:
                         style=row.get('style') or {},
                         version=_as_int(row.get('version')) or 1,
                         created_by=created_by,
-                        created_at=_parse_dt(row.get('created_at')) or None,
+                        created_at=_parse_dt(row.get('created_at')) or utc8now(),
                     ))
                     inserted[ReportStudioTable.CHART_SPECS.value] += 1
 
