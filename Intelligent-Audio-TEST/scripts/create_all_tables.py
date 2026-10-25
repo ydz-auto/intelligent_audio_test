@@ -21,7 +21,7 @@ import sys
 import os
 
 # 模型全集应有的表数（新增表必须同时改这里）
-EXPECTED_TABLE_COUNT = 90
+EXPECTED_TABLE_COUNT = 92
 
 # 确保项目根目录在 sys.path 中
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -41,9 +41,9 @@ def _import_all_models():
         EvaluationStrategy, Log, Favorite, TestResultReview, AiReview,
         DataTransferSourceMap,
     )
-    # evaluation_service: 3 张表
+    # evaluation_service: 4 张表（含 INT-1762 D4 合并批次快照）
     from evaluation_service.infrastructure.persistence.models import (  # noqa: F401
-        Category, Dimension, TestResultDimension,
+        Category, Dimension, TestResultDimension, EvaluationMergeSnapshot,
     )
     # algorithm_service: 10 张表（含 INT-589 algorithm_definition_drafts）
     from algorithm_service.infrastructure.persistence.models import (  # noqa: F401
@@ -65,6 +65,10 @@ def _import_all_models():
     # report_service: Benchmark 排行 4 张表（D1）
     from report_service.infrastructure.persistence.models import (  # noqa: F401
         BenchmarkRanking, BenchmarkMetricMapping, BenchmarkSource, BenchmarkBaseline,
+    )
+    # report_service: 报告替换批次快照 1 张表（INT-1762 D4）
+    from report_service.infrastructure.persistence.models import (  # noqa: F401
+        ReportMergeSnapshot,
     )
     # auth_service: 9 张表
     from auth_service.infrastructure.persistence.models import (  # noqa: F401

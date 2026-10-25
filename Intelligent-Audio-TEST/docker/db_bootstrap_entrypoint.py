@@ -253,6 +253,12 @@ BOOTSTRAP_STEPS = [
     #     盲点：llm_judge 维度种子（202609/seed_llm_judge_dimension.py）不在引导链内，
     #     全新库 / 维度全部软删时 B 段插入 0 条，只补 A 段并提示（既有前置，非本步缺陷）。
     ('python', 'scripts/migrations/202610/seed_api_eval_mapping_int1746.py', '--apply'),
+    # ㊽-5 增量回导合并快照两表（INT-1762 D4）：evaluation_merge_snapshots /
+    #     report_merge_snapshots。create_all 只建缺失的表，建库早于本卡的存量库
+    #     （真实库 / 隔离库）缺这两张表 → 合并 RPC 首次调用即 UndefinedTable。
+    #     脚本幂等（表/索引存在即 SKIP），全新库为全 SKIP；默认 dry-run，引导链
+    #     必须带 --apply。必须排在末步统计兜底（INT-1741 ANALYZE）之前。
+    ('python', 'scripts/migrations/202610/add_merge_snapshots_int1762.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
