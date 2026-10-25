@@ -287,6 +287,8 @@ export interface PickTreeProps {
   onToggleBranch: (branch: PickTreeBranch, select: boolean) => void
   /** 外部「全部展开/全部收起」信号（{ all, tick }，tick 自增触发重放） */
   expandSignal?: { all: boolean; tick: number }
+  /** 算法类型码 → 中文名（真实 /algorithm/options；子树用例卡徽章共用，INT-1687） */
+  algorithmLabels?: Record<string, string>
   className?: string
 }
 
@@ -302,6 +304,7 @@ export function PickTree({
   onToggleLeaf,
   onToggleBranch,
   expandSignal,
+  algorithmLabels,
   className,
 }: PickTreeProps) {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set())
@@ -331,6 +334,7 @@ export function PickTree({
         name={branch.name}
         caseId={branch.caseId}
         algorithmType={branch.algorithmType}
+        algorithmLabels={algorithmLabels}
         tags={branch.tags ?? []}
         totalDuration={branch.totalDuration ?? null}
         rounds={branch.rounds ?? null}
@@ -348,6 +352,7 @@ export function PickTree({
               onToggleLeaf={onToggleLeaf}
               onToggleBranch={onToggleBranch}
               expandSignal={expandSignal}
+              algorithmLabels={algorithmLabels}
             />
           </div>
         ) : undefined}
