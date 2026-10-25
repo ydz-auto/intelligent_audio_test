@@ -5,14 +5,16 @@
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ApiConfig } from '@/domain/models/apiConfig'
 
-const { saveMock, fetchApiMock } = vi.hoisted(() => ({
+const { saveMock, fetchApiMock, algorithmOptions } = vi.hoisted(() => ({
   saveMock: vi.fn(async (_input: Record<string, unknown>) => undefined),
   fetchApiMock: vi.fn(async (_id: number): Promise<unknown> => null),
+  algorithmOptions: { list: [] as Array<{ id: string; name: string }> },
 }))
 
 vi.mock('@/application/test-execution/useApisCrud', () => ({
@@ -24,7 +26,7 @@ vi.mock('@/infrastructure/api/test-execution-api', () => ({
 }))
 
 vi.mock('@/application/test-execution/useTestAlgorithmOptions', () => ({
-  useTestAlgorithmOptions: () => ({ data: [] }),
+  useTestAlgorithmOptions: () => ({ data: algorithmOptions.list }),
 }))
 
 import { ApiEditDialog } from '../api-edit-dialog'
@@ -105,6 +107,7 @@ function cancelAndReopen() {
 beforeEach(() => {
   saveMock.mockClear()
   fetchApiMock.mockClear()
+  algorithmOptions.list = []
 })
 
 describe('五页签骨架（INT-1777）', () => {
@@ -116,14 +119,16 @@ describe('五页签骨架（INT-1777）', () => {
     expect(screen.getByLabelText('API 名称 *')).toHaveValue('接线测试_API')
   })
 
-  it('未选算法时后三个页签显示占位空态', () => {
+  it('未选算法时两个只读页签显示占位空态（响应解析是写 meta 的页签，仍可填）', () => {
     renderDialog(undefined)
     fireEvent.click(screen.getByRole('tab', { name: '响应解析' }))
-    expect(screen.getAllByText('未选择关联算法').length).toBeGreaterThan(0)
+    expect(screen.queryByText('未选择关联算法')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('响应解析器（result_parser）')).toBeInTheDocument()
+    expect(screen.getByText('未选择关联算法，无法判定')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab', { name: '输出字段' }))
     expect(screen.getAllByText('未选择关联算法').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('tab', { name: '映射' }))
-    expect(screen.getAllByText('未选择关联算法').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('未选择关联算法').length).toBeGreaterThan(1)
   })
 
   it('请求模板按目标设备类型显隐：http_api 只显示 method/headers/body_template', () => {
@@ -140,6 +145,22 @@ describe('五页签骨架（INT-1777）', () => {
     expect(screen.getByLabelText('会话配置（session_config）')).toBeInTheDocument()
     expect(screen.getByLabelText('节奏控制（pacing）')).toBeInTheDocument()
     expect(screen.queryByLabelText('请求体模板（body_template）')).not.toBeInTheDocument()
+  })
+})
+
+describe('关联算法存类型码（INT-1778 修：原实现存的是显示名）', () => {
+  it('下拉显示算法名称，提交的 algorithmType 是算法类型码', async () => {
+    const user = userEvent.setup()
+    algorithmOptions.list = [{ id: 'voice_llm', name: '小艺语音大模型' }]
+    renderDialog(undefined)
+    fireEvent.change(screen.getByLabelText('API 名称 *'), { target: { value: '接线测试_算法码' } })
+    // 打开关联算法下拉，选唯一选项（显示名 = 小艺语音大模型）
+    await user.click(screen.getAllByRole('combobox')[0])
+    await user.click(await screen.findByRole('option', { name: '小艺语音大模型' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
+    const payload = saveMock.mock.calls[0][0] as { algorithmType?: string }
+    expect(payload.algorithmType).toBe('voice_llm')
   })
 })
 
