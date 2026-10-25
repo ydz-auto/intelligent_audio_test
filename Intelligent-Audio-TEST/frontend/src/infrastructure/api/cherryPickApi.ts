@@ -22,6 +22,10 @@ export interface PickCartItem {
   /** INT-577 §11-5 可选：来源用例/设备名（缺名容错显示 ID） */
   sourceCaseName?: string | null
   sourceDeviceName?: string | null
+  /** INT-1831：用例级组织字段（购物车四视图分组 / 标签组织数据源；随条目返回，与候选项 §11-7 同口径） */
+  tags?: string[] | null
+  groupId?: string | null
+  groupName?: string | null
   executionStatus?: string | null
   createdAt?: string | null
   /** 下单前校验：源结果已删除时 true（§10） */

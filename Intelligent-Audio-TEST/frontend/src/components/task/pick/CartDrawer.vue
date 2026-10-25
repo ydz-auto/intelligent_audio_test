@@ -23,7 +23,24 @@
           </template>
         </div>
 
-        <!-- 购物车树（任务→用例→设备→result_type 分组；manageable 随 RBAC） -->
+        <!-- 购物车树工具行（INT-1831 四视图切换器 + 用例层组织控件 + 展开/收起） -->
+        <div v-if="cartCount > 0" class="cd-viewbar">
+          <CartViewSwitcher :view="cartView" @update:view="cartView = $event" />
+          <span class="cd-viewbar-spacer"></span>
+          <button class="cd-btn cd-btn-sm" @click="expandAllNodes"><i class="fas fa-angles-down"></i> 全部展开</button>
+          <button class="cd-btn cd-btn-sm" @click="collapseAllNodes"><i class="fas fa-angles-up"></i> 全部收起</button>
+        </div>
+        <PickCaseOrgControls
+          v-if="cartCount > 0"
+          :org="cartOrg"
+          :sub-view="cartSubView"
+          :fallback-only="!cartHasOrgData"
+          hint="购物车条目未带用例分组/标签字段，按「未分组」/「未设置标签」组织（§11-7）"
+          @update:org="cartOrg = $event"
+          @update:sub-view="cartSubView = $event"
+        />
+
+        <!-- 购物车树（四视图：任务→用例层组织→用例卡→设备→result_type→叶 等；manageable 随 RBAC） -->
         <div v-if="cartLoading" class="cd-empty"><i class="fas fa-spinner fa-spin"></i> 正在加载购物车…</div>
         <div v-else-if="cartCount === 0" class="cd-empty">
           <i class="fas fa-shopping-cart"></i>
@@ -87,15 +104,21 @@ import '../../../assets/styles/layouts/main.css'
  * 购物车树（任务分组）+ 移除矩阵（单条/整组/批量/失效/清空）+ 另存挑选集；
  * 数据源 = usePickCart 单例镜像（与挑选页/复核同源，§6.3 非双源）。
  */
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { usePickCart } from '../../../composables/task/usePickCart';
+import { usePickCaseOrgCache } from '../../../composables/task/usePickCaseOrgCache';
 import { useNotification } from '../../../composables/modal/useNotification';
 import { useModalControl } from '../../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../../composables/modal/constants';
 import { useAuthStore } from '../../../store/authStore';
 import { PermissionPoint } from '../../../domain/enums';
 import CartTree from './CartTree.vue';
-import { buildCartTree, toggleCartNode, type CartTreeNode } from './cartTree';
+import CartViewSwitcher from './CartViewSwitcher.vue';
+import PickCaseOrgControls from './PickCaseOrgControls.vue';
+import {
+  buildCartView, collectCartNodeKeys, hasCartCaseOrg, resolveCartCaseOrgMap, toggleCartNode,
+  type CartTreeNode, type CartViewMode, type CartOrgDim, type CartOrgSubView,
+} from './cartTree';
 import type { PickCartItem } from '../../../infrastructure/api/cherryPickApi';
 
 const props = defineProps<{
@@ -120,8 +143,21 @@ const {
 
 const selectedItemIds = ref<Set<number>>(new Set());
 
-/** 购物车树（§4.2 任务→用例→设备/API→result_type 分组，与挑选页同构） */
-const cartTreeRoots = computed(() => buildCartTree(cart.value.groups));
+/** INT-1831 四视图基座：视图 / 用例层组织维度 / 子视图（会话态，四视图共享；切换不丢勾选） */
+const cartView = ref<CartViewMode>('task');
+const cartOrg = ref<CartOrgDim>('group');
+const cartSubView = ref<CartOrgSubView>('flat');
+const { caseOrgMap } = usePickCaseOrgCache();
+
+/** 组织字段：条目自身 tags/group_name 为主（刷新 / 直接开抽屉也按真实分组），会话缓存仅补充 */
+const cartCaseOrgMap = computed(() => resolveCartCaseOrgMap(cart.value.groups, caseOrgMap.value));
+
+/** 购物车树（四视图层级照 UX设计规范-VUE 18 §3.2；叶 = 条目 item_id，选中集跨视图共用） */
+const cartTreeRoots = computed(() => buildCartView(cartView.value, cart.value.groups, {
+  org: cartOrg.value,
+  subView: cartSubView.value,
+  caseOrgMap: cartCaseOrgMap.value,
+}));
 const cartLeafMeta = computed(() => {
   const m = new Map<number, PickCartItem>();
   for (const g of cart.value.groups) {
@@ -130,6 +166,22 @@ const cartLeafMeta = computed(() => {
   return m;
 });
 const cartExpandedKeys = ref<Set<string>>(new Set());
+/** 组织字段兜底提示（条目与会话缓存均无用例分组/标签字段时说明组织层口径） */
+const cartHasOrgData = computed(() => hasCartCaseOrg(cart.value.groups, cartCaseOrgMap.value));
+/** 切换视图/组织维度后展开首层便于核对（与复核步骤同口径） */
+watch(cartTreeRoots, (roots) => {
+  const next = new Set(cartExpandedKeys.value);
+  for (const r of roots) next.add(r.key);
+  cartExpandedKeys.value = next;
+}, { immediate: true });
+
+/** 全部展开 / 全部收起（工具行） */
+function expandAllNodes() {
+  cartExpandedKeys.value = new Set(collectCartNodeKeys(cartTreeRoots.value));
+}
+function collapseAllNodes() {
+  cartExpandedKeys.value = new Set();
+}
 
 function toggleCartItem(itemId: number) {
   const next = new Set(selectedItemIds.value);
@@ -153,7 +205,7 @@ function onRemoveCartLeaf(itemId: number) {
 
 /** 节点「移除该组」（任务/用例/设备/结果类型；将移除该节点下全部条目） */
 async function onRemoveCartGroupNode(node: CartTreeNode) {
-  const label = node.level === 'task' ? '来源任务' : node.level === 'case' ? '用例' : node.level === 'device' ? (node.kind === 'api' ? 'API' : '设备') : '结果类型';
+  const label = node.level === 'task' ? '来源任务' : node.level === 'case' ? '用例' : node.level === 'device' ? (node.kind === 'api' ? 'API' : '设备') : node.level === 'org' ? (node.org === 'tag' ? '标签组' : '分组') : node.level === 'orgSub' ? (node.org === 'tag' ? '标签' : '分组') : '结果类型';
   let confirmed = false;
   try {
     confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
@@ -279,7 +331,8 @@ async function restoreSet(setId: number) {
 .cd-drawer {
   width: min(480px, 92vw);
   height: 100%;
-  background: #fff;
+  background: var(--card, #fff);
+  color: var(--card-foreground, #1e293b);
   box-shadow: -4px 0 24px rgb(0 0 0 / 0.12);
   display: flex;
   flex-direction: column;
@@ -290,7 +343,7 @@ async function restoreSet(setId: number) {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--color-slate-200, #e2e8f0);
+  border-bottom: 1px solid var(--border, #e2e8f0);
 }
 .cd-header h3 {
   font-size: 16px;
@@ -311,7 +364,7 @@ async function restoreSet(setId: number) {
   gap: 6px;
   flex-wrap: wrap;
   padding: 12px 20px;
-  border-bottom: 1px solid var(--color-slate-100, #f1f5f9);
+  border-bottom: 1px solid var(--border, #f1f5f9);
 }
 .cd-toolbar-info {
   flex: 1;
@@ -351,6 +404,19 @@ async function restoreSet(setId: number) {
 }
 .cd-btn-danger:hover { background: #fee2e2; }
 .cd-btn-sm { padding: 3px 8px; font-size: 12px; }
+.cd-viewbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 10px 20px 0;
+}
+.cd-viewbar-spacer { flex: 1; }
+.cd-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 16px;
+}
 .cd-groups {
   flex: 1;
   overflow-y: auto;
@@ -431,7 +497,7 @@ async function restoreSet(setId: number) {
 .cd-row-invalid { color: var(--destructive, #dc2626); font-size: 11px; }
 .cd-sets {
   padding: 12px 16px;
-  border-top: 1px solid var(--color-slate-100, #f1f5f9);
+  border-top: 1px solid var(--border, #f1f5f9);
   max-height: 180px;
   overflow-y: auto;
 }
@@ -449,7 +515,7 @@ async function restoreSet(setId: number) {
   align-items: center;
   gap: 8px;
   padding: 14px 20px;
-  border-top: 1px solid var(--color-slate-200, #e2e8f0);
+  border-top: 1px solid var(--border, #e2e8f0);
 }
 .cd-spacer { flex: 1; }
 </style>
