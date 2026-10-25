@@ -135,8 +135,11 @@ AlgorithmConfigModal.vue
 2. ~~Props 传入 groups~~ → 实际**组件内部加载分组**（见 §4.1 落地记录），调用方无需感知分组数据；
 3. 分组选择、禁用/启用、关联维度标签页均已落地；
 4. 参数配置演进为"设备参数 / API 参数 / 用例参数"三类独立配置，
-   用例参数支持 `scope: 'common' | 'api' | 'e2e'` 执行器作用域（对齐三执行器路由口径：
-   执行方式由被测设备 `device_type` 路由 E2EExecutor / APISessionExecutor / RealtimeSessionExecutor，
+   用例参数支持 `scope: 'common' | 'api' | 'e2e'` 执行器作用域（对齐执行路由口径：
+   API 用例的执行道只有两条，由 `apis.streaming` 派生（`non_streaming` 道 → `APISessionExecutor` 等，
+   `streaming` 道 → `RealtimeSessionExecutor` / `StreamSessionExecutor`），`apis.protocol` 只决定 transport；
+   物理设备 `E2EExecutor` 属 E2E 链路。原「按被测设备类型分派三个执行器」口径作废，
+   见 [01_测试执行/09_API协议面与执行道契约 §3.1](../../../01_测试执行/09_API协议面与执行道契约.md)。
    用例参数的 scope 仅决定该参数在哪个执行器作用域的表单中出现）。
 
 ---
