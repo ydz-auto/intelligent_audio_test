@@ -138,7 +138,7 @@ class DataTransferImportService:
                 'existingName': '',
             })
 
-        warnings = self._build_warnings(rows_by_table, intent)
+        warnings = self._build_warnings(rows_by_table, required)
         stats = dict(manifest.get('stats') or {})
         stats['tableRows'] = {name: len(rows) for name, rows in rows_by_table.items() if rows}
 
@@ -210,8 +210,12 @@ class DataTransferImportService:
         }
 
     def _build_warnings(self, rows_by_table: Dict[str, List[dict]],
-                        intent: str = DEFAULT_TRANSFER_INTENT) -> List[str]:
-        """外部配置引用缺失 warning（外部实体不迁移不重映射）"""
+                        required: bool) -> List[str]:
+        """外部配置引用缺失 warning（外部实体不迁移不重映射）
+
+        「未校验用例一致性」提示按解析后的 `required` 判定（INT-1870）：restore
+        显式要求校验并已执行时不得再写该文案，避免给出与实际校验状态相反的结论。
+        """
         from task_service.domain.services.data_transfer import collect_external_references
         warnings: List[str] = []
         refs = collect_external_references(rows_by_table)
@@ -248,7 +252,7 @@ class DataTransferImportService:
             except Exception as e:
                 log_not_emit('WARNING', _MODULE_NAME,
                              f'校验 API 引用失败（跳过该 warning）: {e}', category='system')
-        if intent == TransferIntent.RESTORE.value:
+        if not required:
             warnings.append(RESTORE_SKIP_CONSISTENCY_WARNING)
         return warnings
 

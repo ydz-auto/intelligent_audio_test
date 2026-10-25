@@ -311,6 +311,26 @@ class TestCaseConsistencyHardGate:
         assert resp.status_code == 200, resp.text[:400]
         assert resp.json()['success'] is True
 
+    def test_contract_camel_case_relax_field_honored(self, gateway_client, db, storage_env,
+                                                     fake_redis, grpc_chain):
+        """D0 §A10-1 契约字段名 requireCaseConsistency=false 必须生效（返工 P2：曾被静默丢弃）"""
+        _seed(db, storage_env)
+        zip_bytes = self._export_task_zip(gateway_client)
+        self._set_case_deleted('tc_001')
+
+        resp = self._post(gateway_client, 'import/preview', zip_bytes,
+                          requireCaseConsistency='false')
+        assert resp.status_code == 200, resp.text[:300]
+        consistency = resp.json()['data']['caseConsistency']
+        assert consistency['required'] is False, 'camelCase 放宽字段被忽略'
+        assert consistency['complete'] is False
+        assert consistency['missingCaseIds'] == ['tc_001']
+
+        resp = self._post(gateway_client, 'import', zip_bytes,
+                          requireCaseConsistency='false')
+        assert resp.status_code == 200, resp.text[:400]
+        assert resp.json()['success'] is True
+
     def test_restore_intent_skips_gate_with_warning(self, gateway_client, db, storage_env,
                                                     fake_redis, grpc_chain):
         """intent=restore → 默认不校验，预检回执写明无法重新执行"""
@@ -328,6 +348,30 @@ class TestCaseConsistencyHardGate:
         resp = self._post(gateway_client, 'import', zip_bytes, intent='restore')
         assert resp.status_code == 200, resp.text[:400]
         assert resp.json()['success'] is True
+
+    def test_restore_explicit_true_checks_gate_without_skip_warning(
+            self, gateway_client, db, storage_env, fake_redis, grpc_chain):
+        """INT-1870：restore + 显式 true → 校验照常执行，回执不得写「未校验」文案"""
+        _seed(db, storage_env)
+        zip_bytes = self._export_task_zip(gateway_client)
+        self._set_case_deleted('tc_001')
+
+        resp = self._post(gateway_client, 'import/preview', zip_bytes,
+                          intent='restore', require_case_consistency='true')
+        assert resp.status_code == 200, resp.text[:300]
+        body = resp.json()
+        assert body['data']['intent'] == 'restore'
+        consistency = body['data']['caseConsistency']
+        assert consistency['required'] is True
+        assert consistency['complete'] is False
+        assert consistency['missingCaseIds'] == ['tc_001']
+        assert '未校验用例一致性' not in ' '.join(body['data']['warnings'])
+
+        # 校验确实执行：缺用例时执行侧仍按硬校验拒绝
+        resp = self._post(gateway_client, 'import', zip_bytes,
+                          intent='restore', require_case_consistency='true')
+        assert resp.status_code == 422, resp.text[:400]
+        assert resp.json()['data']['missingCaseIds'] == ['tc_001']
 
     def test_invalid_intent_rejected_before_parse(self, gateway_client, db, storage_env,
                                                   fake_redis, grpc_chain):

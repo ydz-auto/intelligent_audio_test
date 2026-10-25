@@ -29,6 +29,17 @@ def _import_options(require_case_consistency: Optional[bool], intent: str) -> di
     }
 
 
+def _resolve_require_case_consistency(snake_case: Optional[bool],
+                                     camel_case: Optional[bool]) -> Optional[bool]:
+    """请求级放宽开关的两种拼写归一（INT-1759 返工）
+
+    契约字段名是 `requireCaseConsistency`（D0 §A10-1），既有表单口径是 snake_case；
+    multipart 没有 JSON body 的 alias 合并机制，故双参数取非 None 者——契约拼写优先，
+    避免前端按文档传 camelCase 时被静默丢弃。
+    """
+    return camel_case if camel_case is not None else snake_case
+
+
 @router.post('/export')
 def export_tasks(request: TaskDataExportRequest,
                  _: None = require_permission('task:export')):
@@ -42,14 +53,19 @@ def export_tasks(request: TaskDataExportRequest,
 @router.post('/import/preview')
 def import_preview(file: UploadFile,
                    require_case_consistency: Optional[bool] = Form(None),
+                   require_case_consistency_camel: Optional[bool] = Form(
+                       None, alias='requireCaseConsistency'),
                    intent: str = Form(DEFAULT_TRANSFER_INTENT),
                    _: None = require_permission('task:import')):
     """导入预检：manifest 摘要 + 统计 + ID 冲突 + 缺失引用 warning + 用例一致性回执
 
-    `require_case_consistency` 只能放宽到 false；`intent=restore` 默认不做用例硬校验。
+    `requireCaseConsistency` / `require_case_consistency`（同义）只能放宽到 false；
+    `intent=restore` 默认不做用例硬校验。
     """
     result = DataTransferGatewayService.preview_import(
-        file, _import_options(require_case_consistency, intent))
+        file, _import_options(
+            _resolve_require_case_consistency(require_case_consistency,
+                                              require_case_consistency_camel), intent))
     if isinstance(result, tuple) and len(result) == 2:
         return to_response(result)
     return result
@@ -58,14 +74,19 @@ def import_preview(file: UploadFile,
 @router.post('/import')
 def execute_import(file: UploadFile,
                    require_case_consistency: Optional[bool] = Form(None),
+                   require_case_consistency_camel: Optional[bool] = Form(
+                       None, alias='requireCaseConsistency'),
                    intent: str = Form(DEFAULT_TRANSFER_INTENT),
                    _: None = require_permission('task:import')):
     """执行导入（分段提交 + 补偿回滚；长耗时，实时进度走 SocketIO import_progress）
 
     用例一致性不满足时返回 HTTP 422 + `data.missingCaseIds/missingCount`，不写任何数据。
+    `requireCaseConsistency` / `require_case_consistency`（同义）只能放宽到 false。
     """
     result = DataTransferGatewayService.execute_import(
-        file, _import_options(require_case_consistency, intent))
+        file, _import_options(
+            _resolve_require_case_consistency(require_case_consistency,
+                                              require_case_consistency_camel), intent))
     if isinstance(result, tuple) and len(result) == 2:
         return to_response(result)
     return result

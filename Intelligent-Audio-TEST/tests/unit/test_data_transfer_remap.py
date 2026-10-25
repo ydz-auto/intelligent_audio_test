@@ -310,15 +310,15 @@ class TestCaseConsistencyPayload:
 
 
 class TestWarningCompatibility:
-    """开关关闭时 warning 文案保持现状（验收 3）；restore 追加固定告警"""
+    """开关关闭时 warning 文案保持现状（验收 3）；未校验时追加固定告警"""
 
     @staticmethod
-    def _warnings(monkeypatch, intent='migrate'):
+    def _warnings(monkeypatch, required=True):
         from task_service.application.task import data_transfer_import_service as mod
         monkeypatch.setattr(mod.transfer_repository, 'fetch_existing_case_ids',
                             lambda case_ids, *a, **k: set())
         return mod.DataTransferImportService()._build_warnings(
-            _case_ref_rows('c1'), intent)
+            _case_ref_rows('c1'), required)
 
     def test_missing_case_warning_text_unchanged(self, monkeypatch):
         warnings = self._warnings(monkeypatch)
@@ -326,6 +326,11 @@ class TestWarningCompatibility:
             "目标库缺少 1 个测试用例（['c1']），"
             "导入后该任务无法重新执行，结果/报告查看不受影响"]
 
-    def test_restore_appends_skip_warning(self, monkeypatch):
-        warnings = self._warnings(monkeypatch, intent='restore')
+    def test_unchecked_appends_skip_warning(self, monkeypatch):
+        warnings = self._warnings(monkeypatch, required=False)
         assert warnings[-1] == 'restore 意图未校验用例一致性，导入后无法重新执行'
+
+    def test_required_has_no_skip_warning(self, monkeypatch):
+        """INT-1870：restore + 显式 true 时校验已执行，不得再写「未校验」文案"""
+        warnings = self._warnings(monkeypatch, required=True)
+        assert all('未校验用例一致性' not in w for w in warnings)
