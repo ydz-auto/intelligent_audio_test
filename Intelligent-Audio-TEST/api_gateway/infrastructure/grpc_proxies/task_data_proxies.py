@@ -348,8 +348,14 @@ class _TaskDataProxy:
             return json.loads(resp.data) if resp.data else {}
         return _grpc_call(_call, default_return={}, error_msg_prefix='ListLogsAfterId gRPC 失败')
 
-    def get_logs_for_export(self, log_ids=None, level=None, module=None):
-        """通过 gRPC 按条件查询日志（导出用）"""
+    def get_logs_for_export(self, log_ids=None, level=None, module=None,
+                            reraise=False):
+        """通过 gRPC 按条件查询日志（导出用）
+
+        reraise=True：失败上抛而不是吞成 {}（INT-1812 返工 2）。导出整条链路
+        失败必须显式报错——吞成空结果会把「拿不到数据」伪装成「就这些行」，
+        传 legacy id 的导出会静默只剩文件行 / 只有表头的空 CSV。
+        """
         def _call():
             stub = get_task_data_service_stub()
             resp = stub.GetLogsForExport(task_pb.GetLogsForExportRequest(
@@ -360,7 +366,8 @@ class _TaskDataProxy:
             if not resp.success:
                 raise RuntimeError(f"GetLogsForExport gRPC 失败: {resp.message}")
             return json.loads(resp.data) if resp.data else {}
-        return _grpc_call(_call, default_return={}, error_msg_prefix='GetLogsForExport gRPC 失败')
+        return _grpc_call(_call, default_return={}, error_msg_prefix='GetLogsForExport gRPC 失败',
+                          reraise=reraise)
 
     def get_log_count(self, start_date=None):
         """通过 gRPC 查询日志总数（含按日期范围 hot 日志计数）"""

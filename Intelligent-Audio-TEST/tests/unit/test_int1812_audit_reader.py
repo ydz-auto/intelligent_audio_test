@@ -477,8 +477,9 @@ class _FakeProxy:
         self.stats_kwargs = kwargs
         return dict(self.stats)
 
-    def get_logs_for_export(self, log_ids=None, level=None, module=None):
-        self.export_args = (log_ids, level, module)
+    def get_logs_for_export(self, log_ids=None, level=None, module=None,
+                            reraise=False):
+        self.export_args = (log_ids, level, module, reraise)
         return {'items': list(self.export_items)}
 
     def update_logs_mark(self, log_ids, mark):
@@ -1045,3 +1046,112 @@ class TestDbChunkedFetch:
         LogQueryService.export_logs()
         assert proxy.calls[0]['start_date']
         assert proxy.calls[0]['end_date']
+
+
+# =====================================================================
+# 12. 深页触顶：total/pages 收敛为下界（返工 2）
+# =====================================================================
+
+@pytest.fixture()
+def merge_cap_200(monkeypatch):
+    """把 DB 合并前缀上限压到 200 行（默认 10 万），用少量假数据覆盖触顶。"""
+    from shared.infrastructure.config import BaseConfig
+    monkeypatch.setattr(BaseConfig, 'LOG_DB_MERGE_MAX_ROWS', 200)
+    return 200
+
+
+class TestDeepPageCapConvergence:
+    """need_rows > LOG_DB_MERGE_MAX_ROWS 时，合并视图只能物化 cap 行 DB 前缀：
+    total/pages 必须收敛到该下界，否则越过前缀的深页返回空表而分页器仍承诺
+    更多页（契约 §Q2「触顶时 total 为下界」）。"""
+
+    def test_in_range_deep_page_returns_rows_and_converges(self, log_root, monkeypatch,
+                                                           chunk_100, merge_cap_200):
+        from api_gateway.application.services.log.log_query_service import LogQueryService
+
+        proxy = _use_proxy(monkeypatch, _PagingProxy(_db_rows(500, _days_ago(1))))
+        _set_request({}, {'page': '2', 'per_page': '120'})
+
+        body, code = LogQueryService.get_logs()
+        assert code == 200
+        data = body['data']
+        # DB 侧只物化了 cap=200 行 → total 收敛为下界 200，页数与之一致
+        assert data['total'] == 200
+        assert data['pages'] == 2
+        items = data['items']
+        assert len(items) == 80                      # 末页：200 - 120
+        assert [item['content'] for item in items[:2]] == ['row 120', 'row 121']
+        # 分块请求量仍受单块上限约束
+        assert all(call['per_page'] <= chunk_100 for call in proxy.calls)
+
+    def test_every_converged_page_has_items(self, log_root, monkeypatch,
+                                            chunk_100, merge_cap_200):
+        from api_gateway.application.services.log.log_query_service import LogQueryService
+
+        _use_proxy(monkeypatch, _PagingProxy(_db_rows(500, _days_ago(1))))
+        seen = []
+        for page in (1, 2):
+            _set_request({}, {'page': str(page), 'per_page': '120'})
+            body, code = LogQueryService.get_logs()
+            assert code == 200
+            assert body['data']['total'] == 200
+            assert body['data']['pages'] == 2
+            assert body['data']['items'], f'承诺的第 {page} 页必须有数据'
+            seen.extend(item['id'] for item in body['data']['items'])
+        assert len(seen) == len(set(seen)) == 200    # 页间无重复无空洞
+
+    def test_out_of_range_page_is_empty_without_pulling_prefix(self, log_root,
+                                                               monkeypatch,
+                                                               chunk_100,
+                                                               merge_cap_200):
+        from api_gateway.application.services.log.log_query_service import LogQueryService
+
+        proxy = _use_proxy(monkeypatch, _PagingProxy(_db_rows(500, _days_ago(1))))
+        _set_request({}, {'page': '50', 'per_page': '100'})
+
+        body, code = LogQueryService.get_logs()
+        assert code == 200
+        data = body['data']
+        assert data['items'] == []
+        assert data['total'] == 200
+        assert data['pages'] == 2
+        # 越界页只需一次小请求拿 DB 精确 total，不为它拉满 10 万行前缀
+        assert len(proxy.calls) == 1
+        assert proxy.calls[0]['per_page'] == 1
+
+    def test_file_rows_are_added_on_top_of_converged_total(self, log_root, monkeypatch,
+                                                           chunk_100, merge_cap_200):
+        from api_gateway.application.services.log.log_query_service import LogQueryService
+
+        day = _days_ago(1)
+        cursor = _base_cursor(day, hour=23)
+        _write_audit(log_root, day, [
+            _record(cursor + i, f'{day} 23:00:0{i}.000000') for i in range(3)
+        ])
+        _use_proxy(monkeypatch, _PagingProxy(_db_rows(500, _days_ago(2))))
+        _set_request({}, {'page': '50', 'per_page': '100'})
+
+        body, code = LogQueryService.get_logs()
+        assert code == 200
+        assert body['data']['total'] == 200 + 3      # DB 下界 + 文件命中数
+        assert body['data']['pages'] == 3
+
+    def test_export_log_ids_grpc_failure_is_explicit(self, log_root, monkeypatch,
+                                                     tmp_path, chunk_100):
+        """P2：log_ids 导出不再把 gRPC 失败吞成「只有表头」的空结果。"""
+        from api_gateway.application.services.log.log_query_service import LogQueryService
+
+        class _FailingExportProxy:
+            def get_logs_for_export(self, log_ids=None, level=None, module=None,
+                                    reraise=False):
+                assert reraise is True               # 导出链必须要求失败上抛
+                raise RuntimeError('failed to connect to all addresses')
+
+        _use_proxy(monkeypatch, _FailingExportProxy())
+        monkeypatch.setattr('os.getcwd', lambda: str(tmp_path))
+        _set_request({'format': 'csv', 'log_ids': [7]})
+
+        body, http = LogQueryService.export_logs()
+        assert http == 500
+        assert '导出日志失败' in body['message']
+        assert not list((tmp_path / 'exports').glob('*.csv'))

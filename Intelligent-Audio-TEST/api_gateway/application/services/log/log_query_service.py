@@ -460,7 +460,20 @@ class LogQueryService:
 
         per_page = max(1, int(query.per_page or 20))
         page = max(1, int(query.page or 1))
-        db_items, db_total = LogQueryService._query_db_history(
+        file_total = file_result['total']
+        # INT-1812 返工 2：合并视图 DB 侧最多物化前 LOG_DB_MERGE_MAX_ROWS 行
+        # （cap，0 = 不限）。DB 命中数超过 cap 时，合并结果最多只有
+        # cap + 文件命中数 行——total/pages 必须对**所有页**统一收敛到这个
+        # 下界（契约 §Q2「触顶时 total 为下界」），否则首页承诺的页数永远翻
+        # 不到、越过前缀的深页返回空表（「共 6,108 页、只有前 5,000 页有数据」）。
+        cap = LogQueryService._db_merge_page_size()
+
+        def _view_total(raw_db_total):
+            if cap > 0 and raw_db_total > cap:
+                return cap + file_total
+            return raw_db_total + file_total
+
+        db_kwargs = dict(
             level=query.level,
             module=filters['module'],
             category=filters['category'],
@@ -476,17 +489,35 @@ class LogQueryService:
             user_id=query.user_id,
             start_time=start_time,
             end_time=end_time,
-            need_rows=page * per_page,
         )
+
+        # 页号已越过可物化的合并前缀：一个必然为空的越界页不必把 10 万行前缀
+        # 全拉一遍，只需一次小请求拿 DB 精确 total 来收敛下界。
+        if cap > 0 and (page - 1) * per_page >= cap + file_total:
+            _rows, raw_db_total = LogQueryService._query_db_history(
+                need_rows=1, **db_kwargs)
+            out_total = _view_total(raw_db_total)
+            return success_response(
+                LogListData(
+                    items=[],
+                    total=out_total,
+                    page=page,
+                    per_page=per_page,
+                    pages=(out_total + per_page - 1) // per_page if per_page else 1,
+                )
+            )
+
+        db_items, raw_db_total = LogQueryService._query_db_history(
+            need_rows=page * per_page, **db_kwargs)
+        total = _view_total(raw_db_total)
 
         merged = sorted(
             file_items + db_items,
             key=LogQueryService._merge_sort_key,
             reverse=True,
         )
-        # DB 侧 total 取自 SQL count（精确）；文件侧触顶
-        # （LOG_AUDIT_MAX_SCAN_ENTRIES）时合并 total 为下界且保留最新
-        total = db_total + file_result['total']
+        # 文件侧触顶（LOG_AUDIT_MAX_SCAN_ENTRIES）时 file_total 同样是已物化
+        # 行数：total 与 merged 长度一致，[1, pages] 内每页都有数据。
         start = (page - 1) * per_page
         return success_response(
             LogListData(
@@ -713,7 +744,7 @@ class LogQueryService:
             if legacy_ids:
                 from api_gateway.infrastructure.grpc_proxies import task_data_service
                 resp = task_data_service.get_logs_for_export(
-                    log_ids=legacy_ids, level=level, module=module)
+                    log_ids=legacy_ids, level=level, module=module, reraise=True)
                 rows.extend(_to_export_row(log) for log in (resp.get('items') or []))
             return rows
 

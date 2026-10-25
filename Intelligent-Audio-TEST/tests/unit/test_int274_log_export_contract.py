@@ -40,8 +40,10 @@ def export_env(tmp_path, monkeypatch):
     ]
 
     class _FakeProxy:
-        def get_logs_for_export(self, log_ids=None, level=None, module=None):
+        def get_logs_for_export(self, log_ids=None, level=None, module=None,
+                                reraise=False):
             calls['args'] = (log_ids, level, module)
+            calls['reraise'] = reraise
             return {'items': list(db_rows)}
 
         def list_logs(self, **kwargs):
