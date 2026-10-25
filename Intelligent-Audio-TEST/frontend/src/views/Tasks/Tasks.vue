@@ -371,6 +371,8 @@ import FavoriteTrashBar from '../../components/common/FavoriteTrashBar.vue';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 import { VISIBILITY_FILTER_OPTIONS } from '../../composables/visibility/useVisibility';
 import { canEditResource } from '../../composables/visibility/useVisibility';
+// INT-1835 规范 18 §3.1：下单成功落点（merge 带 ?focus=composition，其余出口不带）
+import { taskDetailLocation } from '../../utils/compositionFocus';
 
 const route = useRoute();
 const router = useRouter();
@@ -754,12 +756,14 @@ function startPick() {
  * - reexecute 跳转重执行任务详情；
  * - reevaluate 跳转首个来源任务详情查看评估进度（无来源则刷新挑选合并列表）。
  * 购物车出清由 usePickCart.refreshCart 同步角标；容器列表 invalidate（页签计数 +1）。
+ * INT-1835 规范 18 §3.1：merge 出口带 `?focus=composition`，详情落组成区并滚动定位 +
+ * 1.2s 高亮；reexecute / reevaluate 出口不加该参数（行为不变）。hash 路由只认 query（G6）。
  */
 async function handlePickCheckedOut(payload: { action: string; taskId?: number }) {
   await pickCart.refreshCart();
   containers.refresh();
   if (payload.taskId) {
-    router.push(`/tasks/${payload.taskId}`);
+    router.push(taskDetailLocation(payload.action, payload.taskId));
     return;
   }
   if (activeTab.value === 'cherryPick') {
