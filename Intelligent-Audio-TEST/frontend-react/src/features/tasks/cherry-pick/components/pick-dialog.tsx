@@ -8,16 +8,16 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import {
-  useCherryPickCandidates,
-  useCherryPickTree,
+  useCherryPickCandidateTree,
+  usePickTrees,
 } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import type { PickTreeBranch, PickTreeLeaf } from '@/domain/models/cherryPick'
 import {
-  computeSelectionStats,
   toggleBranchSelection,
   toggleLeafSelection,
 } from '@/domain/lib/cherry-pick-tree'
+import { computeSelectionStatsFromIndex } from '@/domain/lib/pick-candidate-tree'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -54,15 +54,16 @@ export function PickDialog({
     }),
     [sourceTaskId]
   )
-  const candidatesQuery = useCherryPickCandidates(filters)
-  const tree = useCherryPickTree(candidatesQuery.data)
+  const candidatesQuery = useCherryPickCandidateTree(filters)
+  const trees = usePickTrees(candidatesQuery.data)
+  const tree = trees.taskTree
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const addEntries = usePickCartStore((s) => s.addEntries)
   const [adding, setAdding] = useState(false)
 
   const stats = useMemo(
-    () => computeSelectionStats(tree, selectedIds),
-    [tree, selectedIds]
+    () => computeSelectionStatsFromIndex(trees.index, selectedIds),
+    [trees.index, selectedIds]
   )
 
   const handleToggleLeaf = (leaf: PickTreeLeaf) =>
@@ -107,7 +108,7 @@ export function PickDialog({
 
         {candidatesQuery.isLoading ? (
           candidatesQuery.isSlow ? (
-            <SlowCandidatesNotice onRetry={candidatesQuery.retryCandidates} />
+            <SlowCandidatesNotice onRetry={candidatesQuery.retryTree} />
           ) : (
             <div className='flex flex-col gap-2 py-2'>
               {Array.from({ length: 4 }).map((_, i) => (

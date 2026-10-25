@@ -19,7 +19,9 @@
  */
 import type { PickNameMaps } from '@/infrastructure/adapters/dto/cherry-pick-adapter'
 import {
+  EMPTY_NAME_MAPS,
   fromCandidateDto,
+  fromCandidateTreeDto,
   fromCartGroupDto,
   fromContainerDto,
   fromPickableTaskDto,
@@ -37,6 +39,7 @@ import type {
   PickableTaskSortBy,
   PickableTaskSortOrder,
   PickableTaskStatus,
+  PickCandidateTree,
   PickCartGroup,
   PickPreview,
   PickSet,
@@ -46,6 +49,7 @@ import { ApiError } from './api-error'
 import type {
   CherryPickAddResultDto,
   CherryPickCandidateDto,
+  CherryPickCandidateTreeDto,
   CherryPickCartDto,
   CherryPickMergeResultDto,
   CherryPickPreviewDto,
@@ -54,6 +58,7 @@ import type {
   CherryPickRemoveResultDto,
   CherryPickRestoreResultDto,
   CherryPickSaveSetResultDto,
+  CherryPickSelectAllDto,
   CherryPickSetListItemDto,
   CherryPickSourceTraceDto,
   PickableTaskPageDto,
@@ -61,13 +66,19 @@ import type {
   TaskListPageDto,
 } from '@/infrastructure/dto/cherry-pick.dto'
 
-/** 候选筛选条件（多条件 AND，§3.4；后端不支持的维度由本层客户端过滤降级） */
-export interface CherryPickFilters {
-  search?: string
-  taskIds?: number[]
+/**
+ * 阶段 2 候选查询参数（树骨架与全选共用；`api_ids` / `result_type` 已是服务端
+ * 过滤参数，前端不做客户端过滤——INT-1510 §8.2.4）。
+ */
+export interface CherryPickTreeParams {
+  /** 阶段 1 已选任务集（tree 端点必填 1–200） */
+  taskIds: number[]
   deviceIds?: number[]
   apiIds?: number[]
-  resultType?: string[]
+  /** 用例名/用例 ID 模糊（服务端 `case_keyword`） */
+  caseKeyword?: string
+  /** 结果类型等值过滤；`default` = 缺值桶 */
+  resultType?: string
   executionStatus?: string[]
   evaluationStatus?: string[]
   timeRange?: string
@@ -213,32 +224,105 @@ function timeRangeToDates(
 }
 
 /* ============================================================
- * 候选查询 / 筛选选项
+ * 阶段 2 候选树 / 叶明细分页 / 全量选择（INT-1510 §8.2）
  * ============================================================ */
 
-/** 候选查询（GET /tasks/cherry-picks/candidates；per_page 封顶 200，§11-3 降级已加载页） */
-export async function fetchCherryPickCandidates(
-  filters: CherryPickFilters = {}
-): Promise<CherryPickCandidate[]> {
-  const names = await getFastNameMaps()
-  const params: Record<string, unknown> = { page: 1, per_page: MAX_OPTION_PAGE }
-  if (filters.taskIds && filters.taskIds.length > 0) {
-    params.task_ids = filters.taskIds.join(',')
+/** 树 / 全选共用参数拼装（服务端过滤，多条件 AND） */
+function buildCandidateParams(params: CherryPickTreeParams): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (params.taskIds.length > 0) out.task_ids = params.taskIds.join(',')
+  if (params.deviceIds && params.deviceIds.length > 0) {
+    out.device_ids = params.deviceIds.join(',')
   }
-  if (filters.deviceIds && filters.deviceIds.length > 0) {
-    params.device_ids = filters.deviceIds.join(',')
+  if (params.apiIds && params.apiIds.length > 0) {
+    out.api_ids = params.apiIds.join(',')
   }
-  if (filters.executionStatus && filters.executionStatus.length > 0) {
-    params.execution_status = filters.executionStatus[0]
+  if (params.caseKeyword && params.caseKeyword.trim()) {
+    out.case_keyword = params.caseKeyword.trim()
   }
-  if (filters.evaluationStatus && filters.evaluationStatus.length > 0) {
+  if (params.resultType && params.resultType.trim()) {
+    out.result_type = params.resultType.trim()
+  }
+  if (params.executionStatus && params.executionStatus.length > 0) {
+    out.execution_status = params.executionStatus[0]
+  }
+  if (params.evaluationStatus && params.evaluationStatus.length > 0) {
     // UI 选项 unevaluated ↔ 后端 EvaluationStatus.PENDING 口径（实测）
-    params.evaluation_status =
-      filters.evaluationStatus[0] === 'unevaluated' ? 'pending' : 'evaluated'
+    out.evaluation_status =
+      params.evaluationStatus[0] === 'unevaluated' ? 'pending' : 'evaluated'
   }
-  const { startDate, endDate } = timeRangeToDates(filters.timeRange)
-  if (startDate) params.start_date = startDate
-  if (endDate) params.end_date = endDate
+  const { startDate, endDate } = timeRangeToDates(params.timeRange)
+  if (startDate) out.start_date = startDate
+  if (endDate) out.end_date = endDate
+  return out
+}
+
+/**
+ * 阶段 2 候选树（GET /tasks/cherry-picks/candidates/tree，§8.2.2）。
+ * 树骨架与节点计数的唯一来源：返回 `total` / `task_count` / `meta`（去重表）/
+ * `tree`（任务 → 用例 → 设备/API → result_type，每节点带 `result_ids`）。
+ */
+export async function fetchCherryPickCandidateTree(
+  params: CherryPickTreeParams
+): Promise<PickCandidateTree> {
+  const data = await request<CherryPickCandidateTreeDto>(
+    'GET',
+    '/tasks/cherry-picks/candidates/tree',
+    undefined,
+    { params: buildCandidateParams(params) }
+  )
+  return fromCandidateTreeDto(data)
+}
+
+/** 服务端全量选择（POST /tasks/cherry-picks/candidates/select-all，§8.2.5 第 3 条）：
+ *  与 tree 同一筛选口径，返回命中全部 result_id 集合（跨页语义，不依赖已加载页）。 */
+export async function fetchSelectAllCandidates(
+  params: CherryPickTreeParams
+): Promise<number[]> {
+  const data = await request<CherryPickSelectAllDto>(
+    'POST',
+    '/tasks/cherry-picks/candidates/select-all',
+    buildCandidateParams(params)
+  )
+  return data.result_ids ?? []
+}
+
+/** 叶明细分页入参（展开节点后按 task_ids + case_ids + device_id/api_id + result_type 查） */
+export interface PickLeafQuery {
+  taskIds: number[]
+  caseIds: string[]
+  deviceId: number | null
+  apiId: number | null
+  resultType: string | null
+}
+
+export interface CherryPickCandidatePage {
+  items: CherryPickCandidate[]
+  total: number
+  page: number
+  perPage: number
+}
+
+/**
+ * 叶明细分页（GET /tasks/cherry-picks/candidates，§8.2.3 第 4 条）：
+ * `api_ids` / `result_type` 走服务端过滤（不再客户端过滤），`total` 取响应值。
+ * 缺名由候选行 DTO 自带名称兜底（不另查设备/用例列表旁路）。
+ */
+export async function fetchCherryPickCandidatePage(
+  query: PickLeafQuery,
+  page: number,
+  perPage: number,
+  names: PickNameMaps = EMPTY_NAME_MAPS
+): Promise<CherryPickCandidatePage> {
+  const params: Record<string, unknown> = {
+    task_ids: query.taskIds.join(','),
+    case_ids: query.caseIds.join(','),
+    page,
+    per_page: perPage,
+  }
+  if (query.deviceId != null) params.device_ids = String(query.deviceId)
+  if (query.apiId != null) params.api_ids = String(query.apiId)
+  if (query.resultType) params.result_type = query.resultType
 
   const data = await request<TaskListPageDto<CherryPickCandidateDto>>(
     'GET',
@@ -246,19 +330,12 @@ export async function fetchCherryPickCandidates(
     undefined,
     { params }
   )
-  let items = (data.items ?? []).map((dto) => fromCandidateDto(dto, names))
-
-  // 后端未支持维度 → 客户端过滤（api_ids / result_type；§11-2 候选补字段后落服务端）
-  if (filters.apiIds && filters.apiIds.length > 0) {
-    const idSet = new Set(filters.apiIds)
-    items = items.filter((c) => c.apiId != null && idSet.has(c.apiId))
+  return {
+    items: (data.items ?? []).map((dto) => fromCandidateDto(dto, names)),
+    total: data.total ?? 0,
+    page: data.page ?? page,
+    perPage: data.per_page ?? perPage,
   }
-  if (filters.resultType && filters.resultType.length > 0) {
-    const rtSet = new Set(filters.resultType)
-    items = items.filter((c) => c.resultType != null && rtSet.has(c.resultType))
-  }
-  // search 命中用例名/用例 ID/任务名：用例名依赖慢路径装饰，由 hook 层二次过滤
-  return items
 }
 
 /* ============================================================
@@ -347,38 +424,6 @@ export async function fetchAllPickableTasks(
 export async function fetchPickableTaskOptions(): Promise<{ id: number; name: string }[]> {
   const { items } = await fetchAllPickableTasks({ sortBy: 'name', sortOrder: 'asc' })
   return items.map((t) => ({ id: t.taskId, name: t.taskName }))
-}
-
-/* ============================================================
- * 阶段 2 候选 facet（设备 / 结果类型，仍由 candidates 首页 200 行重建，§11-3 降级不在本卡范围）
- * ============================================================ */
-
-/** 阶段 2 facet 数据源（一次 candidates 查询同时出设备/结果类型选项；会话内由
- *  React Query 缓存与并发去重，不再保留模块级 30s 兜底缓存——阶段 1 已不经过 candidates） */
-export async function fetchCandidateFacets(): Promise<{
-  devices: { id: number; name: string }[]
-  resultTypes: string[]
-}> {
-  const { devices } = await getDeviceApiNameMaps()
-  const items = await fetchCherryPickCandidates({})
-  return {
-    devices: buildDeviceFacet(items, devices),
-    resultTypes: [...new Set(items.map((c) => c.resultType).filter((t): t is string => t != null))],
-  }
-}
-
-/** 设备集合（候选行聚合去重 + 设备表名装饰；§11-2 缺名降级「设备 {id}」） */
-function buildDeviceFacet(
-  items: CherryPickCandidate[],
-  devices: Map<number, string>
-): { id: number; name: string }[] {
-  const map = new Map<number, string>()
-  for (const c of items) {
-    if (c.deviceId != null) {
-      map.set(c.deviceId, devices.get(c.deviceId) ?? `设备 ${c.deviceId}`)
-    }
-  }
-  return [...map].map(([id, name]) => ({ id, name }))
 }
 
 /** 测试用：重置会话缓存（vitest / 走查隔离） */

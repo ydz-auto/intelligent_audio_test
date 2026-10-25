@@ -18,12 +18,11 @@ import { toast } from 'sonner'
 import type { PickFilters } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import {
   EMPTY_PICK_FILTERS,
-  useCherryPickCandidates,
-  useCherryPickCaseView,
-  useCherryPickDeviceView,
-  useCherryPickResultTypeView,
+  useCherryPickCandidateTree,
+  usePickTrees,
   usePickableTasks,
   usePickFilterOptions,
+  useSelectAllCandidates,
 } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import { usePickOrg } from '@/application/tasks/cherry-pick/use-pick-org'
@@ -38,13 +37,13 @@ import type {
 import { ApiError } from '@/infrastructure/api/api-error'
 import {
   clearSelection,
-  computeSelectionStats,
-  hasResultTypeVariety,
-  invertVisibleSelection,
-  selectAllVisible,
   toggleBranchSelection,
   toggleLeafSelection,
 } from '@/domain/lib/cherry-pick-tree'
+import {
+  computeSelectionStatsFromIndex,
+  invertVisibleSelection,
+} from '@/domain/lib/pick-candidate-tree'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PickFilterBar } from '@/features/tasks/cherry-pick/components/pick-filter-bar'
@@ -83,23 +82,23 @@ export function PickStep({
   const [phase, setPhase] = useState<'tasks' | 'results'>(
     presetTaskIds && presetTaskIds.length > 0 ? 'results' : 'tasks'
   )
-  // 阶段 2 候选与筛选选项只在阶段 2 发起：阶段 1 的 Network 只应有 pickable-tasks（INT-1509）
-  const candidatesQuery = useCherryPickCandidates(filters, {
+  // 阶段 2 候选树与筛选选项只在阶段 2 发起：阶段 1 的 Network 只应有 pickable-tasks（INT-1509）
+  const candidatesQuery = useCherryPickCandidateTree(filters, {
     enabled: phase === 'results',
   })
-  const options = usePickFilterOptions(phase === 'results')
+  const options = usePickFilterOptions(phase === 'results', candidatesQuery.data)
   /** §3.8.3 用例层组织（三视图共享：分组/标签 + 平铺/交叉，阶段 2 会话态，usePickOrg） */
   const { org, subView, setOrg, setSubView } = usePickOrg()
-  const caseView = useCherryPickCaseView(candidatesQuery.data)
-  // 设备 / 结果类型视图的组织层纳入树构建（result_type 之下、用例卡之上）
-  const deviceView = useCherryPickDeviceView(candidatesQuery.data, org, subView)
-  const resultTypeView = useCherryPickResultTypeView(candidatesQuery.data, org, subView)
+  // 三视图/任务树全部由服务端候选树重排（INT-1694 口径：任务末级 / 组织层 / 用例卡）
+  const trees = usePickTrees(candidatesQuery.data, org, subView)
+  const caseView = trees.caseView
+  const deviceView = trees.deviceView
+  const resultTypeView = trees.resultTypeView
   /** 结果类型只有 1 种时不渲染「结果类型视图」入口（负责人 2026-10-24T12:39Z 追加口径） */
-  const resultTypeVariety = useMemo(
-    () => hasResultTypeVariety((candidatesQuery.data ?? []).map((c) => c.resultType)),
-    [candidatesQuery.data]
-  )
+  const resultTypeVariety = trees.resultTypeVariety
   const addEntries = usePickCartStore((s) => s.addEntries)
+  /** 全选当前筛选走服务端 select-all（跨页集合；长等待需 loading + 禁重复提交） */
+  const selectAllMutation = useSelectAllCandidates(filters)
 
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(
     () => new Set(presetTaskIds ?? filters.taskIds)
@@ -157,9 +156,24 @@ export function PickStep({
   }, [view, caseView, deviceView, resultTypeView])
 
   const stats = useMemo(
-    () => computeSelectionStats(currentTree, selectedIds),
-    [currentTree, selectedIds]
+    () => computeSelectionStatsFromIndex(trees.index, selectedIds),
+    [trees.index, selectedIds]
   )
+
+  /** 全选当前筛选：服务端 select-all（覆盖 total 全部命中，不受已加载页限制） */
+  const handleSelectAll = async () => {
+    try {
+      const resultIds = await selectAllMutation.mutateAsync()
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        for (const id of resultIds) next.add(id)
+        return next
+      })
+      toast.success(`已全选当前筛选 ${resultIds.length} 条结果`)
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.userMessage : '全选失败，请重试')
+    }
+  }
 
   const handleToggleLeaf = (leaf: PickTreeLeaf) =>
     setSelectedIds((prev) => toggleLeafSelection(leaf, prev))
@@ -331,7 +345,7 @@ export function PickStep({
       <div className='min-h-0 flex-1 overflow-auto rounded-lg border'>
         {candidatesQuery.isLoading ? (
           candidatesQuery.isSlow ? (
-            <SlowCandidatesNotice onRetry={candidatesQuery.retryCandidates} />
+            <SlowCandidatesNotice onRetry={candidatesQuery.retryTree} />
           ) : (
             <div className='flex flex-col gap-2 p-3'>
               {Array.from({ length: 5 }).map((_, i) => (
@@ -374,7 +388,7 @@ export function PickStep({
           />
         ) : (
           // 设备/结果类型视图：顶/二层分支行 + result_type/设备 节点下的**组织层**
-          // （分组/标签组头 → 用例卡，树由 buildPickDeviceView / buildPickResultTypeView 构建）
+          // （分组/标签组头 → 用例卡 → 任务 → 叶，树由 buildPickDeviceView / buildPickResultTypeView 构建）
           <div className='flex min-h-0 flex-col'>
             <div className='border-b py-2'>
               <PickCaseOrgControls
@@ -400,9 +414,8 @@ export function PickStep({
       <SelectedSummaryBar
         stats={stats}
         hasVisibleItems={currentTree.length > 0}
-        onSelectAll={() =>
-          setSelectedIds((prev) => selectAllVisible(currentTree, prev))
-        }
+        onSelectAll={() => void handleSelectAll()}
+        selecting={selectAllMutation.isPending}
         onInvert={() =>
           setSelectedIds((prev) => invertVisibleSelection(currentTree, prev))
         }

@@ -1,8 +1,11 @@
 /**
- * 多级挑选树（18_挑选合并交互重设计.md §3.3/§3.7/§7.1，INT-600/INT-790）。
- * 五级（任务→用例→设备/API→result_type→结果行）；Checkbox 三态联动 R1-R5/R10。
- * §3.7.1 逐级收口：任务名超长 Tooltip、用例级 CaseIdBadge（点击复制）+ 算法徽章、
- * 设备/API 二选一图标；挑选页与购物车（CartTree）共用行呈现形态。
+ * 多级挑选树（18_挑选合并交互重设计.md §3.3/§3.7/§7.1，INT-600/INT-790/INT-1694/INT-1819）。
+ * 层级由调用方树的形状决定（用例卡 / 组织层 / 任务末级由 domain 构建器给出）；
+ * Checkbox 三态联动 R1-R5/R10。§3.7.1 逐级收口：任务名超长 Tooltip、
+ * 用例级 CaseIdBadge（点击复制）+ 算法徽章、设备/API 二选一图标。
+ *
+ * 阶段 2 树骨架来自服务端候选树：**叶的父级**节点携带 `leafFilter`、树上无子节点，
+ * 展开时挂 PickLeafList 按需分页拉结果行（candidates），不随树响应一次性下发。
  */
 import {
   ArrowLeftRight,
@@ -23,6 +26,7 @@ import type {
   PickTreeLeaf,
 } from '@/domain/models/cherryPick'
 import { getBranchSelectionState } from '@/domain/lib/cherry-pick-tree'
+import { isLeafParentBranch } from '@/domain/lib/pick-candidate-tree'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -32,10 +36,9 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
+import { LeafRow } from '@/features/tasks/cherry-pick/components/pick-leaf-row'
+import { PickLeafList } from '@/features/tasks/cherry-pick/components/pick-leaf-list'
 import { PickCaseCard } from '@/features/tasks/cherry-pick/components/pick-case-card'
-import { formatPickDateTime } from '@/features/tasks/cherry-pick/constants'
-import { getEvaluationStatusMeta } from '@/features/tasks/constants'
 import { cn } from '@/lib/utils'
 
 const LEVEL_ICONS = {
@@ -45,13 +48,6 @@ const LEVEL_ICONS = {
   resultType: Tag,
   caseOrg: FolderTree,
 } as const
-
-/** 设备/API 二选一：叶行名称 */
-function leafDeviceName(leaf: PickTreeLeaf): string {
-  if (leaf.deviceName) return leaf.deviceName
-  if (leaf.apiName) return leaf.apiName
-  return '—'
-}
 
 /** 设备/API 分支图标判定：dk 段含 `api:` 前缀 → API 图标（设备分支 key 内嵌 dk） */
 function isApiDeviceBranch(branch: PickTreeBranch): boolean {
@@ -78,71 +74,6 @@ function CaseIdBadge({ caseId }: { caseId: string }) {
   )
 }
 
-function LeafRow({
-  leaf,
-  selected,
-  onToggle,
-}: {
-  leaf: PickTreeLeaf
-  selected: boolean
-  onToggle: (leaf: PickTreeLeaf) => void
-}) {
-  const evalMeta = getEvaluationStatusMeta(leaf.evaluationStatus)
-  return (
-    <div
-      data-testid={`pick-leaf-${leaf.resultId}`}
-      className='hover:bg-muted/40 flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors'
-    >
-      <Checkbox
-        checked={selected}
-        onCheckedChange={() => onToggle(leaf)}
-        aria-label={`结果 ${leaf.resultId}`}
-      />
-      <span className='min-w-0 flex-1 truncate font-medium'>{leaf.caseName}</span>
-      <span className='text-muted-foreground min-w-0 max-w-40 truncate'>
-        {leafDeviceName(leaf)}
-      </span>
-      {leaf.resultType ? (
-        <Badge variant='outline' className='font-mono text-[10px]'>
-          {leaf.resultType}
-        </Badge>
-      ) : (
-        <span
-          className='text-muted-foreground/60 shrink-0 text-[10px]'
-          title='结果类型待后端接口（§11-2）'
-        >
-          待补充
-        </span>
-      )}
-      <StatusBadge
-        label={
-          leaf.executionStatus === 'completed'
-            ? '已完成'
-            : leaf.executionStatus === 'failed'
-              ? '执行失败'
-              : '已停止'
-        }
-        variant={
-          leaf.executionStatus === 'completed'
-            ? 'success'
-            : leaf.executionStatus === 'failed'
-              ? 'danger'
-              : 'neutral'
-        }
-      />
-      <StatusBadge label={evalMeta.label} variant={evalMeta.variant} pulse={evalMeta.pulse} />
-      <span className='text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap tabular-nums'>
-        {formatPickDateTime(leaf.createdAt)}
-      </span>
-      {leaf.added && (
-        <span className='text-muted-foreground/70 shrink-0 text-xs' title='已在购物车'>
-          已加购
-        </span>
-      )}
-    </div>
-  )
-}
-
 function BranchRow({
   branch,
   selectedIds,
@@ -165,7 +96,9 @@ function BranchRow({
 }) {
   const state = getBranchSelectionState(branch, selectedIds)
   const Icon = isApiDeviceBranch(branch) ? ArrowLeftRight : LEVEL_ICONS[branch.level]
-  const hasChildren = branch.children.length > 0
+  // 叶的父级节点：children 由叶明细分页按需加载（candidates），不是树响应的一部分
+  const isLeafParent = isLeafParentBranch(branch)
+  const hasChildren = branch.children.length > 0 || isLeafParent
   const open = openKeys.has(branch.key)
   const indent = depth * 14 + 4
 
@@ -237,28 +170,38 @@ function BranchRow({
       {hasChildren && (
         <CollapsibleContent>
           <div className='flex flex-col'>
-            {branch.children.map((child) =>
-              child.kind === 'leaf' ? (
-                <LeafRow
-                  key={child.key}
-                  leaf={child}
-                  selected={selectedIds.has(child.resultId)}
-                  onToggle={onToggleLeaf}
-                />
-              ) : child.level === 'case' && renderCaseNode ? (
-                <div key={child.key}>{renderCaseNode(child)}</div>
-              ) : (
-                <BranchRow
-                  key={child.key}
-                  branch={child}
-                  selectedIds={selectedIds}
-                  openKeys={openKeys}
-                  depth={depth + 1}
-                  onToggleOpen={onToggleOpen}
-                  onToggleLeaf={onToggleLeaf}
-                  onToggleBranch={onToggleBranch}
-                  renderCaseNode={renderCaseNode}
-                />
+            {isLeafParent ? (
+              <PickLeafList
+                filter={branch.leafFilter!}
+                selectedIds={selectedIds}
+                onToggleLeaf={onToggleLeaf}
+                /* 任务层已渲染（level=task）时叶行不必重复任务名；单任务省略任务层时补上消歧 */
+                showLeafTask={branch.level !== 'task'}
+              />
+            ) : (
+              branch.children.map((child) =>
+                child.kind === 'leaf' ? (
+                  <LeafRow
+                    key={child.key}
+                    leaf={child}
+                    selected={selectedIds.has(child.resultId)}
+                    onToggle={onToggleLeaf}
+                  />
+                ) : child.level === 'case' && renderCaseNode ? (
+                  <div key={child.key}>{renderCaseNode(child)}</div>
+                ) : (
+                  <BranchRow
+                    key={child.key}
+                    branch={child}
+                    selectedIds={selectedIds}
+                    openKeys={openKeys}
+                    depth={depth + 1}
+                    onToggleOpen={onToggleOpen}
+                    onToggleLeaf={onToggleLeaf}
+                    onToggleBranch={onToggleBranch}
+                    renderCaseNode={renderCaseNode}
+                  />
+                )
               )
             )}
           </div>
@@ -268,14 +211,17 @@ function BranchRow({
   )
 }
 
-/** 收集树全部分支 key（「全部展开」用） */
+/** 收集树全部分支 key（「全部展开」用）。
+ * 「全部展开」只展开树骨架（到叶的父级之上）：叶的父级节点的结果行按需分页，
+ * 一并展开会一次性挂载全部 `PickLeafList`（真库 2360 个过滤组合 → 2360 条并发
+ * candidates 请求），故跳过；其结果行仍由用户单击该节点展开时按需拉取（§8.2.3 第 4 条）。 */
 function collectAllKeys(items: PickTreeItem[]): Set<string> {
   const keys = new Set<string>()
   for (const item of items) {
-    if (item.kind === 'branch') {
-      keys.add(item.key)
-      collectAllKeys(item.children).forEach((k) => keys.add(k))
-    }
+    if (item.kind !== 'branch') continue
+    if (isLeafParentBranch(item)) continue
+    keys.add(item.key)
+    collectAllKeys(item.children).forEach((k) => keys.add(k))
   }
   return keys
 }
@@ -328,6 +274,7 @@ export function PickTree({
   /** 用例节点（CaseCard compact，§3.8.4 全站用例显示统一）+ 卡内子树 */
   const renderCaseNode = (branch: PickTreeBranch) => {
     const open = openKeys.has(branch.key)
+    const isLeafParent = isLeafParentBranch(branch)
     return (
       <PickCaseCard
         key={branch.key}
@@ -346,14 +293,24 @@ export function PickTree({
       >
         {open ? (
           <div className='space-y-0.5 px-3 pb-3'>
-            <PickTree
-              items={branch.children}
-              selectedIds={selectedIds}
-              onToggleLeaf={onToggleLeaf}
-              onToggleBranch={onToggleBranch}
-              expandSignal={expandSignal}
-              algorithmLabels={algorithmLabels}
-            />
+            {isLeafParent ? (
+              // 单任务省略任务层：用例卡即叶的父级 → 结果行按需分页
+              <PickLeafList
+                filter={branch.leafFilter!}
+                selectedIds={selectedIds}
+                onToggleLeaf={onToggleLeaf}
+                showLeafTask
+              />
+            ) : (
+              <PickTree
+                items={branch.children}
+                selectedIds={selectedIds}
+                onToggleLeaf={onToggleLeaf}
+                onToggleBranch={onToggleBranch}
+                expandSignal={expandSignal}
+                algorithmLabels={algorithmLabels}
+              />
+            )}
           </div>
         ) : undefined}
       </PickCaseCard>

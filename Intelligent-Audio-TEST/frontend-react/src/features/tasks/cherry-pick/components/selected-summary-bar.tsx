@@ -1,14 +1,16 @@
 /**
- * 已选汇总条（18_挑选合并交互重设计.md §3.3/§7.1，INT-600）。
- * DataTableBulkActions 形态 sticky bottom：已选规模 + 全选当前筛选/反选/清空 + 加入购物车。
+ * 已选汇总条（18_挑选合并交互重设计.md §3.3/§7.1，INT-600/INT-1819）。
+ * DataTableBulkActions 形态 sticky bottom：已选规模 + 全选当前筛选（服务端跨页集合）/
+ * 反选/清空 + 加入购物车。全选需在后端全量计算（真实库实测 7.9s 级），
+ * 提交中显示进度并禁用重复提交。
  */
-import { ShoppingCart, X } from 'lucide-react'
+import { Loader2, ShoppingCart, X } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import type { SelectionStats } from '@/domain/lib/cherry-pick-tree'
+import type { SelectionStats } from '@/domain/lib/pick-candidate-tree'
 
 export interface SelectedSummaryBarProps {
   stats: SelectionStats
@@ -18,6 +20,8 @@ export interface SelectedSummaryBarProps {
   onClear: () => void
   onAddToCart: () => void
   adding?: boolean
+  /** 服务端全选进行中（禁重复提交，§8.2 第 7 条） */
+  selecting?: boolean
 }
 
 /** 已选汇总条（sticky bottom，跨筛选保留已勾选，§6.2） */
@@ -29,6 +33,7 @@ export function SelectedSummaryBar({
   onClear,
   onAddToCart,
   adding,
+  selecting,
 }: SelectedSummaryBarProps) {
   const empty = stats.results === 0
   return (
@@ -58,21 +63,25 @@ export function SelectedSummaryBar({
               <Button
                 size='sm'
                 variant='outline'
-                disabled={!hasVisibleItems}
+                disabled={!hasVisibleItems || selecting}
                 onClick={onSelectAll}
+                className='gap-1.5'
               >
-                全选当前筛选
+                {selecting && (
+                  <Loader2 aria-hidden='true' className='size-3.5 animate-spin' />
+                )}
+                {selecting ? '全选中…' : '全选当前筛选'}
               </Button>
             }
           />
           <TooltipContent>
-            候选按页加载（每页至多 200 条），仅覆盖当前已加载的候选；跨页全选待后端聚合端点（§11-4）落地
+            按当前筛选在后端全量选择（不受分页限制，覆盖全部命中结果）；计算期间请稍候
           </TooltipContent>
         </Tooltip>
         <Button
           size='sm'
           variant='outline'
-          disabled={!hasVisibleItems}
+          disabled={!hasVisibleItems || selecting}
           onClick={onInvert}
         >
           反选
