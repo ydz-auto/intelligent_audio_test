@@ -33,6 +33,9 @@ class ApiQueryService:
             keyword=query.keyword,
             status=query.status,
             algorithm_type=query.algorithm_type,
+            # INT-1799：协议 / 流式性筛选透传给 api_test_service
+            protocol=query.protocol,
+            streaming=query.streaming,
         )
 
         if not result.get('success'):

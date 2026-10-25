@@ -41,7 +41,11 @@ class API(Base):
     api_endpoints = Column(JSON, nullable=False, default=list, comment='API接入点配置列表 (JSON格式)')
     output_types = Column(JSON, nullable=False, default=list, comment='API输出类型列表 (OutputType 枚举值, INT-74)')
     rms_spl_mapping_id = Column(Integer, nullable=True, comment='当前默认 RMS→SPL 映射 ID (api_rms_spl_mappings，INT-61)')
-    device_type = Column(String(20), nullable=False, default='http_api', comment='被测设备类型 (DeviceType 枚举: physical/http_api/websocket_api，UC-0901)')
+    # INT-1799（B0 裁定）：协议 × 流式性正交拆列。device_type 废弃（不再读写，
+    # 列保留到 P3 删列），协议与流式性分别由下面两列承载。
+    protocol = Column(String(20), nullable=False, default='http', server_default='http', comment='被测 API 传输协议 (APIProtocol: http/websocket/sse/grpc，INT-1799)')
+    streaming = Column(Boolean, nullable=False, default=False, server_default='false', comment='流式/非流式 (true=流式=实时，INT-1799)')
+    device_type = Column(String(20), nullable=False, default='http_api', comment='【已废弃，P3 删列】被测设备类型；协议与流式性改由 protocol/streaming 承载（INT-1799）')
     adapter_class = Column(String(100), nullable=True, comment='指定适配器类名（存量值仅 MockDialogAdapter → 内嵌映射 vendor_adapter=mock；未知值报错拒绝静默降级，INT-1169/1176）')
     audio_config = Column(JSON, nullable=True, comment='目标音频格式声明 {"sample_rate","bit_depth","channels","container"} (AudioBitDepth/AudioContainer 枚举，未配置回退 24000/s16/mono/pcm，UC-0901)')
     proxy_type = Column(String(20), nullable=True, comment='代理类型 (http/https/socks5/socks5h，NULL或空=不用代理，INT-839)')

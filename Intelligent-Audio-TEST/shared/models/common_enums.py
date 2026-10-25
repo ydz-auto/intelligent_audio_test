@@ -123,9 +123,77 @@ class DeviceOccupancyStatus(str, Enum):
 
 
 class APIProtocol(str, Enum):
-    """API 传输协议枚举 — Adapter 分型依据（执行域 P0 新增）"""
+    """API 传输协议枚举 — `apis.protocol` 列值域（执行域 P0 新增，INT-1799 扩两值）
+
+    协议与流式性正交：本枚举只管「用什么传输」，流式与否由 `apis.streaming`
+    布尔决定、执行道由 `ExecutionLane` 承载（见 B0 裁定文档 09 §3.1）。
+    只存规范值；`https` / `ws` / `wss` 等别名经 `normalize_protocol` 归一，
+    归一后仍非法即写侧 400。
+    """
     HTTP = 'http'
     WEBSOCKET = 'websocket'
+    SSE = 'sse'
+    GRPC = 'grpc'
+
+
+# 协议词表归一表（迁移回填 + 写侧共用，INT-1799）：历史别名 → 规范值。
+# `apis.meta.protocol` 存量取值只有 http/https（主库 62 行），ws/wss 为其他
+# 环境的保守覆盖；归一后仍无映射的值一律报错，不静默兜底。
+PROTOCOL_ALIASES = {
+    'http': APIProtocol.HTTP.value,
+    'https': APIProtocol.HTTP.value,
+    'ws': APIProtocol.WEBSOCKET.value,
+    'wss': APIProtocol.WEBSOCKET.value,
+    'websocket': APIProtocol.WEBSOCKET.value,
+    'sse': APIProtocol.SSE.value,
+    'grpc': APIProtocol.GRPC.value,
+}
+
+
+def normalize_protocol(raw) -> str:
+    """协议值归一（别名 → 规范值）；未知值抛 ValueError（不静默兜底）。
+
+    空值（None / 空串）视为未提交，由调用方决定默认值——本函数只做词表归一。
+    """
+    key = str(raw).strip().lower() if raw is not None else ''
+    if not key:
+        raise ValueError('protocol 不能为空')
+    normalized = PROTOCOL_ALIASES.get(key)
+    if normalized is None:
+        raise ValueError(
+            f"非法的协议 (protocol): {raw}，仅支持: "
+            f"{', '.join(p.value for p in APIProtocol)}（别名 http/https/ws/wss 可用）")
+    return normalized
+
+
+class ExecutionLane(str, Enum):
+    """执行道枚举 — 由 `apis.streaming` 布尔唯一决定（INT-1799 / B0 裁定）
+
+    两道：streaming（流式 = 实时）/ non_streaming（非流式 = 非实时）。
+    协议不参与道判断；多轮（rounds）只在道内决定「线性 / 会话 / 按事件」策略。
+    `ExecutionMode`（parallel/serial，INT-1115）另有所指，不复用。
+    """
+    STREAMING = 'streaming'
+    NON_STREAMING = 'non_streaming'
+
+
+def lane_of(streaming: bool) -> ExecutionLane:
+    """执行道唯一推导入口：只吃 `streaming`，不接受 protocol / rounds / device_type。"""
+    return ExecutionLane.STREAMING if bool(streaming) else ExecutionLane.NON_STREAMING
+
+
+# B1 上线时可写的协议 × 流式性组合（B0 裁定 §3.2.3）：只有已实现执行器的两种。
+# 其余组合写侧显式 400（「实现未上线」），A1（gRPC）/ A2（SSE / http 流式）
+# 落地后在此扩展，不得在写侧静默降级。
+AVAILABLE_PROTOCOL_STREAMING = frozenset({
+    (APIProtocol.HTTP.value, False),
+    (APIProtocol.WEBSOCKET.value, True),
+})
+
+
+def is_protocol_streaming_available(protocol: str, streaming: bool) -> bool:
+    """组合是否已实现执行器（B1 可用矩阵）。"""
+    return (normalize_protocol(protocol), bool(streaming)) in AVAILABLE_PROTOCOL_STREAMING
 
 
 class TargetType(str, Enum):

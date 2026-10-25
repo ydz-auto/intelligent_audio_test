@@ -105,8 +105,12 @@ class _ApiConfigProxy:
             error_msg_prefix='删除API配置失败',
         )
 
-    def get_all(self, page=1, per_page=10, keyword=None, status=None, algorithm_type=None):
+    def get_all(self, page=1, per_page=10, keyword=None, status=None, algorithm_type=None,
+                protocol=None, streaming=None):
         """分页查询 API 列表
+
+        protocol / streaming 为 INT-1799 新增的协议 / 流式性等值筛选；
+        streaming 三态：None 不过滤，bool 走 'true' / 'false' 字符串透传。
 
         Returns:
             dict: {success, message, data, code}
@@ -115,12 +119,15 @@ class _ApiConfigProxy:
 
         def _call():
             stub = get_api_test_service_stub()
+            streaming_raw = '' if streaming is None else ('true' if streaming else 'false')
             resp = stub.ListAPIConfigs(api_pb.ListAPIConfigsRequest(
                 page=int(page or 1),
                 per_page=int(per_page or 10),
                 keyword=keyword or '',
                 status=status or '',
                 algorithm_type=algorithm_type or '',
+                protocol=protocol or '',
+                streaming=streaming_raw,
             ))
             return {
                 'success': resp.success,

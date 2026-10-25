@@ -165,12 +165,16 @@ def ws_stream_server():
 
 
 def _make_api_config(endpoint, meta=None, max_timeout=5):
-    """最小 api_config 替身（与 APISessionExecutor MockAPIConfig 同形）"""
+    """最小 api_config 替身（与 APISessionExecutor MockAPIConfig 同形）
+
+    INT-1799：协议单一来源为 `apis.protocol` 列，替身必须带 protocol 属性。
+    """
     meta = dict(meta or {})
     return SimpleNamespace(
         endpoint=endpoint, meta=meta, max_timeout=max_timeout,
         api_endpoints=[{'endpoint': endpoint}], id=7,
-        vendor='openai', default_max_process=2)
+        vendor='openai', default_max_process=2,
+        protocol='websocket' if str(endpoint).startswith(('ws://', 'wss://')) else 'http')
 
 
 # ──────────────────────────── HTTP 非流式 ────────────────────────────

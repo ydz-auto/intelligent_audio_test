@@ -180,11 +180,22 @@ BOOTSTRAP_STEPS = [
     #     往返）依赖该列。脚本幂等（列存在即 SKIP、回填按值比对，只读 DB 轻量
     #     JSON 不回源对象存储），全新库为全 SKIP；默认 dry-run，引导链须 --apply。
     ('python', 'scripts/migrations/202610/add_test_result_result_type_int1510.py', '--apply'),
+    # ㊸-1 apis 协议 × 流式性两列（INT-1799 / B0 裁定）：create_all 只建缺失的表、
+    #     不给存量表补列。步骤固定为 加两列 → 按 device_type 回填（http_api→
+    #     http/false，websocket_api→websocket/true，非法或与 meta.protocol 冲突即
+    #     中止并列 id）→ 收紧 NOT NULL/默认 → 删除 apis.meta 的 protocol 键。
+    #     脚本幂等（列已 NOT NULL 即 SKIP、回填按值比对、meta 无键即跳过），
+    #     全新库为全 SKIP。**必须排在 INT-1741 统计兜底之前**（那步是引导链末步，
+    #     tests 有守护用例）。默认 dry-run，引导链须带 --apply。
+    ('python', 'scripts/migrations/202610/add_api_protocol_streaming_int1798.py', '--apply'),
     # ㊸ apis.meta.protocol 存量取值归一化（INT-1770）：前端写真 http/https/ws/wss，
     #     适配器维度枚举只认 http/websocket/realtime/any，旧值在建任务时抛
     #     ValueError。代码侧已按映射兜底（只读兼容），本步把存量值回写标准词表；
     #     只命中 protocol ∈ {https, ws, wss} 的行，脚本幂等（归一后再次执行 0 行），
     #     全新库为 0 行；默认 dry-run，引导链须 --apply。
+    #     注（INT-1799）：本卡的 ㊸-1 已把 apis.meta.protocol 整键删除，本步对存量库
+    #     恒为空转（命中 0 行），保留只为历史引导链编号稳定、不动 INT-1827 已排定的
+    #     ㊸~㊽ 顺序。
     ('python', 'scripts/migrations/202610/normalize_api_meta_protocol_int1770.py', '--apply'),
     # ㊹ pg_stat_statements 扩展（INT-1783 观测基线·档 0）：库侧建扩展是「存量库 /
     #     全新库都要自愈」的结构对象，create_all 只建表，故进引导链。扩展的共享内存

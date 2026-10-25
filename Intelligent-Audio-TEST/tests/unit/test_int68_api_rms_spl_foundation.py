@@ -2,8 +2,9 @@
 """INT-68 数据基座验收测试 — apis 扩展列 + ApiRmsSplMapping 五层（UC-0901/0902）
 
 对应 issue INT-68 验收标准：
-1. UC-0901：apis 新增记录含 device_type/adapter_class/audio_config/output_types；
+1. UC-0901：apis 新增记录含 protocol/streaming/adapter_class/audio_config/output_types；
    CRUD 全 gRPC（servicer 委托）；audio_config 按 AudioBitDepth/AudioContainer/DeviceType 枚举校验
+   （INT-1799 起 device_type 退场，协议与流式性由 protocol / streaming 两列承载）
 2. UC-0902：api_rms_spl_mappings 落库并与 API 关联（仓储写侧）；
    执行期 spl_to_gain(api_id, spl) 与校准点一致（线性插值）；
    并发校准分布式锁互斥（DistributedLock lock:spl:calibration:{api_id}）；
@@ -127,13 +128,35 @@ class TestAPIAggregateNewColumns:
 
 
 class TestAPICrudServiceNewColumns:
-    def test_validate_rejects_illegal_device_type(self):
-        err = APICrudService._validate_api_data({'device_type': 'quantum_device'})
-        assert err and '非法的被测设备类型' in err
+    def test_validate_rejects_any_device_type(self):
+        """INT-1799（B0 §3.4.5）：写侧不再是「值域校验」，非空 device_type 一律拒绝。"""
+        for raw in ('quantum_device', 'physical', 'http_api', 'websocket_api'):
+            err = APICrudService._validate_api_data({'device_type': raw})
+            assert err and 'device_type 已废弃' in err
 
-    def test_validate_accepts_all_device_types(self):
+    def test_validate_rejects_all_device_type_enum_values(self):
         for dt in DeviceType:
-            assert APICrudService._validate_api_data({'device_type': dt.value}) is None
+            err = APICrudService._validate_api_data({'device_type': dt.value})
+            assert err and 'device_type 已废弃' in err
+
+    def test_validate_accepts_empty_device_type(self):
+        """空串 / 缺省等价于未传（前端清空字段场景），其余校验照常。"""
+        assert APICrudService._validate_api_data({'device_type': ''}) is None
+        assert APICrudService._validate_api_data({}) is None
+
+    def test_validate_accepts_protocol_streaming(self):
+        assert APICrudService._validate_api_data(
+            {'protocol': 'http', 'streaming': False}) is None
+        assert APICrudService._validate_api_data(
+            {'protocol': 'websocket', 'streaming': True}) is None
+
+    def test_validate_rejects_unknown_protocol(self):
+        err = APICrudService._validate_api_data({'protocol': 'ftp'})
+        assert err and 'protocol' in err
+
+    def test_validate_rejects_non_bool_streaming(self):
+        err = APICrudService._validate_api_data({'streaming': 'yes'})
+        assert err and '流式性' in err
 
     def test_validate_rejects_illegal_sample_rate(self):
         err = APICrudService._validate_api_data({'audio_config': {'sample_rate': 12345}})
@@ -169,15 +192,26 @@ class TestAPICrudServiceNewColumns:
         monkeypatch.setattr(api_crud_module, 'api_test_repository', _Repo())
         res = APICrudService.create({
             'name': 'ChatGPT Realtime', 'meta': {'api_key': 'sk-x'},
-            'device_type': 'websocket_api',
+            'protocol': 'websocket', 'streaming': True,
             'adapter_class': 'OpenAIRealtimeAdapter',
             'audio_config': {'sample_rate': 24000, 'bit_depth': 16, 'channels': 1, 'container': 'pcm'},
         })
         assert res['code'] == 201
-        assert captured['device_type'] == 'websocket_api'
+        # INT-1799：新契约落库 protocol / streaming；已废弃的 device_type 不再写
+        assert captured['protocol'] == 'websocket'
+        assert captured['streaming'] is True
+        assert 'device_type' not in captured
         assert captured['adapter_class'] == 'OpenAIRealtimeAdapter'
         assert captured['audio_config']['sample_rate'] == 24000
         assert captured['audio_config']['bit_depth'] == 16
+
+    def test_create_rejects_device_type_with_400(self, monkeypatch):
+        """INT-1799：只传 device_type 的写请求显式 400，不做兼容窗口。"""
+        monkeypatch.setattr(api_crud_module, 'api_test_repository', _NeverCalledRepo())
+        res = APICrudService.create({
+            'name': 'legacy', 'meta': {'k': 'v'}, 'device_type': 'websocket_api',
+        })
+        assert res['code'] == 400 and 'device_type 已废弃' in res['message']
 
     def test_create_rejects_illegal_audio_config_with_400(self, monkeypatch):
         monkeypatch.setattr(api_crud_module, 'api_test_repository', _NeverCalledRepo())
@@ -194,7 +228,8 @@ class TestAPICrudServiceNewColumns:
             def _api(api_id):
                 return SimpleNamespace(id=api_id, name='n', status='online',
                                        api_endpoints=[], output_types=[],
-                                       device_type='http_api', adapter_class=None,
+                                       protocol='http', streaming=False,
+                                       adapter_class=None,
                                        audio_config=None)
 
             def get_api(self, api_id):
@@ -215,12 +250,17 @@ class TestAPICrudServiceNewColumns:
             status='online', meta={}, algorithm_type=None,
             default_max_process=5, default_max_timeout=30, default_max_audio_duration=60,
             health_score=100, output_types=['audio', 'text'],
-            device_type='websocket_api', adapter_class='OpenAIRealtimeAdapter',
+            # INT-1799：读侧只出 protocol / streaming；device_type 即便在对象上
+            # 也一律不回显（已废弃列的活值不得泄到响应）
+            protocol='websocket', streaming=True, device_type='websocket_api',
+            adapter_class='OpenAIRealtimeAdapter',
             audio_config={'sample_rate': 24000}, rms_spl_mapping_id=3,
             api_endpoints=[], created_at=None, updated_at=None,
         )
         data = APICrudService._api_to_dict(api)
-        assert data['device_type'] == 'websocket_api'
+        assert 'device_type' not in data
+        assert data['protocol'] == 'websocket'
+        assert data['streaming'] is True
         assert data['adapter_class'] == 'OpenAIRealtimeAdapter'
         assert data['audio_config'] == {'sample_rate': 24000}
         assert data['rms_spl_mapping_id'] == 3

@@ -23,6 +23,48 @@ logger = logging.getLogger(__name__)
 from task_service.infrastructure.persistence._task_converters import _UTC_PLUS_8
 
 
+class ExecutionAffinityError(ValueError):
+    """无法确定执行亲和域（task_case_relations.device_type，INT-1799）。
+
+    建任务派生 / 动态加用例在「取不到被测 API 的 streaming」或「任务内 API
+    流式性不一致」时抛出；应用层转 400，不落猜测值。
+    """
+
+
+def _task_api_ids(session, task_id: int) -> List[int]:
+    """读取任务已关联的 API id（动态加用例派生亲和域用，INT-1799）。"""
+    from task_service.infrastructure.persistence.models import TaskAPI
+    rows = session.query(TaskAPI.api_id).filter(TaskAPI.task_id == task_id).all()
+    return [row.api_id for row in rows if row.api_id]
+
+
+def resolve_api_affinity_token(api_ids) -> str:
+    """按任务关联 API 的 `streaming` 派生执行亲和域令牌（INT-1799）。
+
+    亲和域令牌语义（B0 裁定 §3.3）：
+    - 任一 API streaming=true → `websocket_api`（需要实例亲和的流式会话；
+      SSE 也归此域，保守超集只损失一点负载均衡自由度）
+    - 全部 streaming=false    → `http_api`（无状态请求）
+    - api_ids 为空            → 无 API 可派生（纯 E2E / 历史调用），沿用 http_api
+    - ACL 取不到 / 混道       → 抛 ExecutionAffinityError（应用层 400，不猜）
+    """
+    from shared.models.common_enums import DeviceType
+    from task_service.infrastructure.acl.api_acl_repository import api_acl_repository
+
+    ids = [i for i in (api_ids or []) if i]
+    if not ids:
+        return DeviceType.HTTP_API.value
+    flags = api_acl_repository.get_api_streaming_flags(ids)
+    if flags is None:
+        raise ExecutionAffinityError(
+            '无法确定执行亲和域：取不到被测 API 的 streaming 配置')
+    if len(set(flags.values())) > 1:
+        raise ExecutionAffinityError(
+            '同一任务内 API 流式性不一致（混选流式与非流式），无法确定执行亲和域')
+    return (DeviceType.WEBSOCKET_API.value if any(flags.values())
+            else DeviceType.HTTP_API.value)
+
+
 class TaskCrudMixin:
     """任务创建 / 合并 / 编辑（供 TaskRepository 组合）"""
 
@@ -194,6 +236,15 @@ class TaskCrudMixin:
                 (tc_device_id or ''),
             ))
 
+        # INT-1799：API 上岗的亲和域令牌由任务关联 API 的 streaming 派生
+        # （懒计算 + 任务内只查一次 ACL；取不到/混道即抛 400，不再一律猜 http_api）
+        api_affinity_token: List[str] = []
+
+        def _api_affinity() -> str:
+            if not api_affinity_token:
+                api_affinity_token.append(resolve_api_affinity_token(api_ids))
+            return api_affinity_token[0]
+
         def _derive_device_type(case_id: str, dev: Dict[str, Any]) -> str:
             device_type = dev.get('device_type') or None
             if device_type is None:
@@ -201,8 +252,9 @@ class TaskCrudMixin:
                     case_config_map.get(str(case_id)),
                     case_name=case_name_map.get(str(case_id)),
                 )
+                # 物理设备（E2E）与 API 分域：API 用例的亲和令牌按 streaming 派生
                 device_type = (DeviceType.PHYSICAL.value if derived == 'e2e'
-                               else DeviceType.HTTP_API.value)
+                               else _api_affinity())
             return device_type
 
         def _add_case_row(case_id: str, device_type: str,
@@ -233,13 +285,9 @@ class TaskCrudMixin:
                     device_type = _derive_device_type(str(case_id), dev)
                     _add_case_row(str(case_id), device_type, dev.get('device_id'), dev.get('lab_id'))
             else:
-                # 旧调用（无 case_devices）：按既有派生口径生成单条 TaskCase，零回归
-                derived = derive_case_test_type(
-                    case_config_map.get(str(case_id)),
-                    case_name=case_name_map.get(str(case_id)),
-                )
-                device_type = (DeviceType.PHYSICAL.value if derived == 'e2e'
-                               else DeviceType.HTTP_API.value)
+                # 旧调用（无 case_devices）：按既有派生口径生成单条 TaskCase，零回归；
+                # API 用例的亲和令牌同样按 streaming 派生（INT-1799）
+                device_type = _derive_device_type(str(case_id), {})
                 _add_case_row(str(case_id), device_type, None, None)
 
         # 关联设备
@@ -564,6 +612,18 @@ class TaskCrudMixin:
         if action == 'add':
             from shared.utils.testcase_helpers import derive_case_test_type
             from task_service.infrastructure.persistence.models import TestCase
+
+            # INT-1799：动态加用例的亲和域令牌按任务已关联 API 的 streaming 派生
+            # （懒计算 + 一次 ACL；取不到/混道 → 400「无法确定执行亲和域」，
+            # 不再硬编码 http_api 把流式用例派到非流式亲和域）
+            affinity_cache: List[str] = []
+
+            def _affinity() -> str:
+                if not affinity_cache:
+                    affinity_cache.append(
+                        resolve_api_affinity_token(_task_api_ids(session, task_id)))
+                return affinity_cache[0]
+
             for case_id in case_ids:
                 existing = session.query(TaskCase).filter(
                     TaskCase.task_id == task_id,
@@ -571,20 +631,27 @@ class TaskCrudMixin:
                 ).first()
                 if existing is None:
                     # 差异#2 收尾：用例级 device_type 为执行路由唯一依据，
-                    # 动态加入的用例由配置形态派生（含播放设备音频 → physical）；
+                    # 动态加入的用例由配置形态派生物理/API 分域；
                     # 传入用例名供上传双变体后缀判定（INT-129，与建任务派生同口径）
                     case = session.get(TestCase, case_id)
                     derived = derive_case_test_type(
                         case.config if case else None,
                         case_name=case.name if case else None,
                     )
+                    if derived == 'e2e':
+                        device_type = 'physical'
+                    else:
+                        try:
+                            device_type = _affinity()
+                        except ExecutionAffinityError as e:
+                            return {'error': str(e), 'code': 400}
                     session.add(TaskCase(
                         task_id=task_id,
                         test_case_id=case_id,
                         status=TaskCaseStatus.PENDING,
                         execution_status=ExecutionStatus.PENDING,
                         evaluation_status=EvaluationStatus.PENDING,
-                        device_type='physical' if derived == 'e2e' else 'http_api',
+                        device_type=device_type,
                         created_at=now,
                     ))
         elif action == 'remove':

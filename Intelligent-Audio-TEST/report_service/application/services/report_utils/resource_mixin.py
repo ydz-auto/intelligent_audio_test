@@ -225,6 +225,8 @@ class ResourceMixin:
     def serialize_api(api):
         if api is None:
             return None
+        # INT-1799：报告快照补协议 / 流式性（只增字段，历史快照无该键时读侧
+        # 由 benchmark 排行按旧字段回退派生）
         # 兼容 dict 与 ORM 对象
         if isinstance(api, dict):
             return {
@@ -233,6 +235,8 @@ class ResourceMixin:
                 "vendor": api.get("vendor"),
                 "description": api.get("description"),
                 "status": api.get("status"),
+                "protocol": api.get("protocol"),
+                "streaming": api.get("streaming"),
                 "max_process": api.get("max_process"),
                 "max_timeout": api.get("max_timeout"),
                 "max_audio_duration": api.get("max_audio_duration"),
@@ -246,6 +250,8 @@ class ResourceMixin:
             "vendor": getattr(api, "vendor", None),
             "description": getattr(api, "description", None),
             "status": getattr(api, "status", None),
+            "protocol": getattr(api, "protocol", None),
+            "streaming": getattr(api, "streaming", None),
             "max_process": getattr(api, "max_process", None),
             "max_timeout": getattr(api, "max_timeout", None),
             "max_audio_duration": getattr(api, "max_audio_duration", None),
