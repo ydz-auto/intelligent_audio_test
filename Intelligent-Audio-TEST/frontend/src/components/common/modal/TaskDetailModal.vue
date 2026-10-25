@@ -1,5 +1,5 @@
 <template>
-  <div class="task-detail-modal">
+  <div ref="rootRef" class="task-detail-modal">
     <div v-if="loading" class="loading-state">
       <div class="spinner"></div>
       <p>正在加载任务详情...</p>
@@ -13,13 +13,34 @@
            先留按钮契约（→ /ai-chat?task={id}）；路由未注册前点击落 404 兜底，注册后直达灵犀Agent 工作台 -->
       <div class="task-detail-actions">
         <button
-          class="btn btn-primary"
+          class="btn btn-primary task-detail-actions-report"
           :disabled="!task"
           :title="!task ? '任务信息加载中' : '基于本任务生成 AI 报告（灵犀Agent）'"
           @click="openAiChat"
         >
           <i class="fas fa-robot"></i> 生成 AI 报告
         </button>
+        <!-- INT-1838 规范 18 §6：挑选合并容器的「再次挑选」入口（与「生成 AI 报告」并列）。
+             两入口同需 task:cherry_pick；无权限角色（algo_engineer / guest）整组隐藏，
+             信息头与组成区照常只读可见。非容器任务不渲染。 -->
+        <template v-if="isContainer && canPick">
+          <button
+            class="btn btn-primary"
+            :disabled="reuseAdding"
+            :title="reuseAdding ? '正在加入购物车…' : '把本容器全部源结果重新交给购物车（不复制容器、不新建任务）'"
+            @click="reuseResultsToCart"
+          >
+            <i class="fas" :class="reuseAdding ? 'fa-spinner fa-spin' : 'fa-cart-plus'"></i>
+            复用本次结果重新挑选
+          </button>
+          <button
+            class="btn btn-secondary"
+            title="打开挑选向导阶段 1（不预筛选任何来源任务）"
+            @click="startPicking"
+          >
+            <i class="fas fa-layer-group"></i> 开始挑选
+          </button>
+        </template>
       </div>
 
       <TestExecutionComponent
@@ -111,13 +132,19 @@ import '../../../assets/styles/components/tag.css'
 import '../../../assets/styles/components/log.css'
 
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { tasksPort } from '@/composables/task/tasksPort';
 import { confirmReviewOverwrite } from '@/composables/task/useReviewOverwrite';
 import { logsPort } from '@/composables/task/logsPort';
 import { useTaskProgress } from '../../../composables/task/useTaskProgress';
 // INT-1832：挑选合并容器识别（source 端点，异常归一 null = 非容器静默）
 import { useContainerComposition } from '../../../composables/task/useContainerComposition';
+// INT-1838 规范 18 §6：再次挑选入口（批量加购 + 挑选向导阶段 1）
+import { usePickCart } from '../../../composables/task/usePickCart';
+import { useCartDrawerState } from '../../../composables/task/cartDrawerState';
+import { requestPickWizard } from '../../../composables/task/usePickWizardRequest';
+import { useAuthStore } from '../../../store/authStore';
+import { PermissionPoint } from '../../../domain/enums';
 import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModal';
 import { useNotification } from '../../../composables/modal/useNotification';
 import { isNotFoundOrForbidden, canEditResource } from '@/composables/visibility/useVisibility';
@@ -141,6 +168,10 @@ const props = defineProps({
   taskId: {type: [String, Number], required: true},
   /** 落点聚焦区（INT-1835）：`composition` = 下单成功后落到组成区；null = 常规打开 */
   focusSection: {type: String as () => 'composition' | null, default: null},
+  /** 全局模态栈中的实例 id（GlobalModalContainer 透传；路由页语境为空） */
+  modalId: {type: String, default: ''},
+  /** INT-1838 §6 溯源定位：打开后把该来源用例滚到可视区并高亮（空 = 不定位） */
+  focusCaseId: {type: [String, Number], default: ''}
 });
 
 const emit = defineEmits<{
@@ -159,7 +190,7 @@ const task = ref<TaskDetail | null>(null);
 const activeTab = ref('cases');
 // INT-1832 规范 18 §2.3：容器识别写死——详情接口无 is_cherry_pick / merge_type，
 // 一律由 source 溯源端点判定；4xx（站内普通任务常态）/5xx/网络异常 → null，详情保持现状。
-const { source: containerSource, settled: containerSettled } = useContainerComposition(computed(() => props.taskId));
+const { source: containerSource, settled: containerSettled, isContainer } = useContainerComposition(computed(() => props.taskId));
 
 /**
  * INT-1833 组成条目：source.groups[].results[] ← 详情 cases[]/devices[]/apis[] join
@@ -172,11 +203,15 @@ const compositionEntries = computed(() => toCompositionEntries(
   task.value?.apis ?? [],
 ));
 
-/** 组成区叶行「溯源」：打开源任务详情（模态窗可叠层，不离开当前容器详情） */
+/** 组成区叶行「溯源」：打开源任务详情（模态窗可叠层，不离开当前容器详情）。
+ *  INT-1838 §6：并带上来源用例，详情打开后把该用例定位到可视区（1.2s 描边高亮）。 */
 function openCompositionTrace(resultId: number) {
   const entry = compositionEntries.value.find((e) => e.resultId === resultId);
   if (!entry) return;
-  modalControl.open(MODAL_TYPES.TASK_DETAIL, { taskId: entry.sourceTaskId });
+  modalControl.open(MODAL_TYPES.TASK_DETAIL, {
+    taskId: entry.sourceTaskId,
+    focusCaseId: entry.sourceCaseId ?? '',
+  });
 }
 
 // ===== INT-1835 规范 18 §3.1：下单成功落点（?focus=composition）=====
@@ -726,6 +761,79 @@ function openAiChat() {
   router.push({ path: '/ai-chat', query: { task: String(props.taskId) } });
 }
 
+// ===== INT-1838：挑选合并容器「再次挑选」入口（规范 18 §6） =====
+
+const route = useRoute();
+const pickCart = usePickCart();
+const cartDrawerState = useCartDrawerState();
+const { hasPermission: can } = useAuthStore();
+
+/** 权限门控（§6 权限列）：无 task:cherry_pick 的角色（algo_engineer / guest）两入口整组隐藏 */
+const canPick = computed(() => can(PermissionPoint.TASK_CHERRY_PICK));
+
+/** 容器全部源结果 ID（source.groups[].results[]；失效行一并提交，由后端按 missing 回显） */
+const containerResultIds = computed<number[]>(() => (containerSource.value?.groups ?? [])
+  .flatMap((group) => (group.results ?? []).map((r) => Number(r.resultId)))
+  .filter((id) => Number.isInteger(id) && id > 0));
+
+const reuseAdding = ref(false);
+/** 本模态的遮罩元素（抽屉宿主的取定依据）；非模态语境（路由页打开详情）为 null */
+const drawerLayerHost = ref<HTMLElement | null>(null);
+
+/**
+ * 「复用本次结果重新挑选」：把该容器全部 result_id 批量加购 → toast → 打开购物车抽屉。
+ * 不复制容器、不新建任务；重复点击由后端幂等跳过（toast 回显「重复 k 条已跳过」）。
+ * 模态语境下抽屉挂进本模态遮罩的层叠上下文（与 React 版把 CartDrawer 渲染在详情内同口径），
+ * 否则抽屉（全局层 z-index 1000）会被模态遮罩（13000 档）压住，「去复核」不可点（INT-1838 P2-1）。
+ */
+async function reuseResultsToCart() {
+  if (!canPick.value || reuseAdding.value) return;
+  const resultIds = containerResultIds.value;
+  if (resultIds.length === 0) {
+    notification.warning('该任务没有合并来源记录');
+    return;
+  }
+  reuseAdding.value = true;
+  try {
+    const outcome = await pickCart.addToCart(resultIds);
+    const added = outcome?.added?.length ?? 0;
+    const missing = outcome?.missing?.length ?? 0;
+    const duplicated = outcome?.duplicated?.length ?? 0;
+    if (missing > 0) {
+      notification.warning(`已加入购物车 ${added} 条（${missing} 条源结果已失效未加入）`);
+    } else if (duplicated > 0) {
+      notification.success(`已加入购物车 ${added} 条（重复 ${duplicated} 条已跳过）`);
+    } else {
+      notification.success(`已加入购物车 ${added} 条`);
+    }
+    drawerLayerHost.value = (rootRef.value?.closest('.modal-overlay') as HTMLElement | null) ?? null;
+    cartDrawerState.open({
+      layerHost: drawerLayerHost.value,
+      // 抽屉「去复核」时先收起本详情：复核向导在路由页层，模态不收就会开在它后面
+      dismissHost: () => modalControl.close(props.modalId || undefined),
+    });
+  } catch (error: any) {
+    notification.error(error?.message || '加入购物车失败');
+  } finally {
+    reuseAdding.value = false;
+  }
+}
+
+/**
+ * 「开始挑选」：打开挑选向导阶段 1（CherryPickWizard，step='pick'），不预筛任何来源任务。
+ * 与面板工具栏「开始挑选」/ 购物车「去复核」同一套跨挂载机制：写共享请求 → 切到挑选合并
+ * 页签，CherryPickPanel 挂载后消费请求自开向导。前端为 hash 路由，跳转必须走 router.push。
+ */
+function startPicking() {
+  if (!canPick.value) return;
+  requestPickWizard({ step: 'pick' });
+  // 模态语境：先从全局模态栈移除本详情（路由页语境为空操作，随后导航离开）
+  modalControl.close(props.modalId || undefined);
+  const query: Record<string, string> = { ...route.query, tab: 'cherry-picks' } as Record<string, string>;
+  delete query.wizard;
+  router.push({ path: '/tasks', query });
+}
+
 // ===== INT-305：移除用例（四阶段全允许，按任务阶段说明删除后果） =====
 
 interface RemoveCaseEvent {
@@ -851,6 +959,92 @@ watch(() => task.value?.status, (newStatus) => {
   }
 });
 
+// ===== INT-1838 §6：溯源定位（来源用例滚入可视区 + 1.2s 描边高亮）=====
+
+const rootRef = ref<HTMLElement | null>(null);
+const FOCUS_HIGHLIGHT_MS = 1200;
+/** 长距离定位不做平滑滚动（视口高度倍数）：长列表（138 用例、3.5 万 px）平滑滚动约 1.5s 才到位，
+ *  1.2s 描边会在半路熄灭 —— 改为瞬移，描边从落位起算 */
+const FOCUS_SMOOTH_MAX_VIEWPORTS = 1.5;
+/** 平滑滚动的兜底等待上限（浏览器不支持 scrollend 时按此估算到位时间） */
+const FOCUS_SCROLL_SETTLE_MS = 1200;
+const focusTimers = new Set<number>();
+
+/** 按「用例ID」徽章的 aria-label 精确定位来源用例卡（不改公共组件，仅读 DOM） */
+function findCaseCard(caseId: string): HTMLElement | null {
+  const root = rootRef.value;
+  if (!root) return null;
+  const badges = Array.from(root.querySelectorAll<HTMLElement>('.case-id-badge'));
+  const hit = badges.find((b) => (b.getAttribute('aria-label') || '').includes(caseId));
+  if (!hit) return null;
+  return (hit.closest('.case-card') as HTMLElement | null) ?? hit;
+}
+
+/** 等平滑滚动落位：优先 scrollend（捕获阶段收元素滚动），不支持/无事件时按上限兜底 */
+function waitScrollSettle(behavior: ScrollBehavior): Promise<void> {
+  if (behavior === 'auto' || typeof window === 'undefined' || !('onscrollend' in window)) {
+    return new Promise((resolve) => { window.setTimeout(resolve, behavior === 'auto' ? 0 : FOCUS_SCROLL_SETTLE_MS); });
+  }
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      window.clearTimeout(timer);
+      window.removeEventListener('scrollend', finish, true);
+      resolve();
+    };
+    const timer = window.setTimeout(finish, FOCUS_SCROLL_SETTLE_MS);
+    window.addEventListener('scrollend', finish, true);
+  });
+}
+
+/** 用例清单由详情 + 进度两路异步装配，行可能晚于详情到位 → 限时轮询到命中为止 */
+let focusToken = 0;
+async function applyFocusCaseRow(caseId: string) {
+  const token = ++focusToken;
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    const card = findCaseCard(caseId);
+    if (token !== focusToken) return;
+    if (card) {
+      const reduceMotion = typeof window !== 'undefined'
+        && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      // 高亮从「滚到位」起算：长距离瞬移、近距离平滑等落位后再描边（P3-2）
+      const viewportH = window.innerHeight || 0;
+      const rect = card.getBoundingClientRect();
+      const alreadyVisible = rect.top >= 0 && rect.bottom > 0 && rect.bottom <= viewportH;
+      const distance = Math.abs(rect.top - viewportH / 2);
+      const behavior: ScrollBehavior = reduceMotion || distance > viewportH * FOCUS_SMOOTH_MAX_VIEWPORTS
+        ? 'auto'
+        : 'smooth';
+      const canScroll = typeof card.scrollIntoView === 'function';
+      if (canScroll) card.scrollIntoView({ block: 'center', behavior });
+      if (canScroll && !alreadyVisible) await waitScrollSettle(behavior);
+      if (token !== focusToken) return;
+      card.classList.add('tdm-focus-highlight');
+      const timer = window.setTimeout(() => {
+        focusTimers.delete(timer);
+        card.classList.remove('tdm-focus-highlight');
+      }, FOCUS_HIGHLIGHT_MS);
+      focusTimers.add(timer);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+}
+
+watch(
+  [() => task.value, () => String(props.focusCaseId ?? '')],
+  ([loadedTask, caseId]) => {
+    if (!loadedTask || !caseId) return;
+    // 用例行在「关联用例」页签（容器形态为「用例清单」折叠区）内
+    activeTab.value = 'cases';
+    void nextTick().then(() => applyFocusCaseRow(String(caseId)));
+  },
+  { immediate: true },
+);
+
 onMounted(() => {
   fetchTaskDetails();
 });
@@ -861,6 +1055,13 @@ onUnmounted(() => {
   if (highlightTimer) {
     clearTimeout(highlightTimer);
     highlightTimer = null;
+  }
+  focusToken += 1; // 停止溯源定位轮询
+  focusTimers.forEach((timer) => window.clearTimeout(timer));
+  focusTimers.clear();
+  // 抽屉挂在本模态遮罩内（P2-1）：遮罩随模态卸载前先收起，避免 Teleport 目标消失留下孤儿层
+  if (drawerLayerHost.value && cartDrawerState.layerHost.value === drawerLayerHost.value) {
+    cartDrawerState.close();
   }
 });
 </script>
@@ -914,6 +1115,17 @@ onUnmounted(() => {
 
 .task-detail-actions .btn {
   min-height: 32px;
+}
+
+/* INT-1838：动作区左侧「生成 AI 报告」，右侧容器再次挑选入口（规范 18 §8.2 线框） */
+.task-detail-actions-report {
+  margin-right: auto;
+}
+
+/* INT-1838 §6：溯源定位高亮（用例卡属子组件节点，须 :deep 穿透；1.2s 后由脚本移除类） */
+:deep(.tdm-focus-highlight) {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent);
+  transition: box-shadow 0.3s ease;
 }
 
 /* INT-467：任务可见性徽标 + 分享/设为私有切换（token 化，与 VisibilityBadge 同色系） */

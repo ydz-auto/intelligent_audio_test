@@ -37,8 +37,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  /** 叶行「溯源」：宿主打开源任务详情 */
-  (e: 'trace', payload: { resultId: number; sourceTaskId: number }): void;
+  /** 叶行「溯源」：宿主打开源任务详情并定位来源用例（INT-1838 §6） */
+  (e: 'trace', payload: { resultId: number; sourceTaskId: number; sourceCaseId?: string | null }): void;
 }>();
 
 defineOptions({ name: 'ContainerTraceExpand' });
@@ -56,7 +56,7 @@ const sourceTaskCount = computed(
 function onTrace(resultId: number) {
   const entry = model.value?.entries.find((e) => e.resultId === resultId);
   if (!entry) return;
-  emit('trace', { resultId, sourceTaskId: entry.sourceTaskId });
+  emit('trace', { resultId, sourceTaskId: entry.sourceTaskId, sourceCaseId: entry.sourceCaseId });
 }
 </script>
 

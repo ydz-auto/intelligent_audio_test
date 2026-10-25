@@ -289,9 +289,12 @@ function containerSummary(ct: any) {
   };
 }
 
-/** 组成区叶行「溯源」：打开源任务详情（模态窗可叠层，不离开当前页签） */
-function openSourceTrace(payload: { resultId: number; sourceTaskId: number }) {
-  modalControl.open(MODAL_TYPES.TASK_DETAIL, { taskId: payload.sourceTaskId });
+/** 组成区叶行「溯源」：打开源任务详情并定位该结果（模态窗可叠层，不离开当前页签；INT-1838 §6） */
+function openSourceTrace(payload: { resultId: number; sourceTaskId: number; sourceCaseId?: string | null }) {
+  modalControl.open(MODAL_TYPES.TASK_DETAIL, {
+    taskId: payload.sourceTaskId,
+    focusCaseId: payload.sourceCaseId ?? '',
+  });
 }
 
 /** 整任务合并行：源任务列表取自列表 DTO；source 端点只用于加载 / 出错态（INT-552） */
