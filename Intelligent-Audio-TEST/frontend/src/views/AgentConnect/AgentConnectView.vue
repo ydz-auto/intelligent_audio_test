@@ -111,7 +111,7 @@
               {{ downloading ? '下载中…' : '下载 skill' }}
             </span>
           </button>
-          <span class="download-note">服务端 skill 下载能力上线前为契约示例包，上线后自动切换为真实 skill 包。</span>
+          <span class="download-note">包内为 SKILL.md 与 MCP 配置模板（mcp.json），服务地址按上方配置预填。</span>
         </div>
       </section>
     </div>
@@ -137,7 +137,7 @@ import { toUserErrorMessage } from '../../utils/errorMessage'
  * 内容：使用说明（创建 Access Token / 安装 skill / 配置 MCP）+ skill 服务地址配置
  * （默认取浏览器地址栏、可改、保存后预填进下载包）+ Access Token 指引（跳 /profile）
  * + 炫彩「下载 skill」按钮（--ai-magic 令牌，不硬编码）。
- * 下载经基础设施层 agentSkillApi（// 待接线 契约桩，后端 INT-1150 合栈后切真实请求）。
+ * 下载经基础设施层 agentSkillApi（真实 GET /api/v1/agent/skill，服务地址经 ?base_url= 注入）。
  */
 const router = useRouter()
 const notification = useNotification()

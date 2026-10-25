@@ -1,7 +1,7 @@
 /**
  * INT-1193：「连接你的 agent」入口页验收测试（文案统一；INT-1154 基线）。
  * 覆盖：使用说明 / skill 服务地址配置（默认取地址栏、可改、保存落 localStorage）/
- * Access Token 指引（跳 /profile）/ 炫彩下载按钮 → 下载 skill（基础设施层桩）。
+ * Access Token 指引（跳 /profile）/ 炫彩下载按钮 → 下载 skill（基础设施层真实 GET /api/v1/agent/skill，INT-1897）。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
@@ -94,7 +94,7 @@ describe('AgentConnectView 「连接你的 agent」（INT-1193）', () => {
     expect(localStorage.getItem('iatp:agent-connect:v1')).toBeNull()
   })
 
-  it('下载按钮 → 走基础设施层桩并触发浏览器下载', async () => {
+  it('下载按钮 → 走基础设施层真实请求并触发浏览器下载', async () => {
     const w = await mountPage()
     await findButton(w, '下载 skill').trigger('click')
     await flushPromises()
