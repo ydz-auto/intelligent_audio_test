@@ -809,7 +809,9 @@ export function invertVisibleSelection(
   selectedIds: ReadonlySet<number>
 ): Set<number> {
   const next = new Set(selectedIds)
-  for (const id of collectVisibleResultIds(items)) {
+  // 标签视图下同一用例挂在多个标签组下，同一 resultId 会在树里出现多次；
+  // 按唯一 id 恰好翻转一次，否则偶数次出现先 add 再 delete 自相抵消、反选失效。
+  for (const id of new Set(collectVisibleResultIds(items))) {
     if (next.has(id)) next.delete(id)
     else next.add(id)
   }
@@ -841,6 +843,9 @@ export function computeSelectionStats(
   const taskSet = new Set<string>()
   const deviceSet = new Set<string>()
   const caseSet = new Set<string>()
+  // 标签视图下同一结果挂在多个标签组下（多标签用例在各组各出现一次），
+  // 条数按唯一 resultId 计数（与加购载荷 new Set(selectedIds) 同一口径）。
+  const countedResultIds = new Set<number>()
 
   // 叶携带任务/用例/设备名（§3.8.3 三视图叶行消歧字段），按叶统计与视图无关——
   // 用例/设备/结果类型三视图对同一 selectedResultIds 统计口径一致。
@@ -848,6 +853,8 @@ export function computeSelectionStats(
     for (const node of nodes) {
       if (node.kind === 'leaf') {
         if (!selectedIds.has(node.resultId)) continue
+        if (countedResultIds.has(node.resultId)) continue
+        countedResultIds.add(node.resultId)
         stats.results += 1
         taskSet.add(node.taskName)
         caseSet.add(node.caseName)
@@ -1309,11 +1316,16 @@ export function buildCartTaskView(
 /** 收集购物车树节点全部条目 id（移除矩阵：节点/整组批量移除，§4.3） */
 export function collectEntryIds(items: CartTreeItem[]): string[] {
   const ids: string[] = []
-  for (const item of items) {
-    if (item.kind === 'leaf') ids.push(item.entryId)
-    else ids.push(...collectEntryIds(item.children))
+  const walk = (nodes: CartTreeItem[]) => {
+    for (const item of nodes) {
+      if (item.kind === 'leaf') ids.push(item.entryId)
+      else walk(item.children)
+    }
   }
-  return ids
+  walk(items)
+  // 标签视图下同一用例挂在多个标签组下，同一 entryId 会出现多次；
+  // 移除矩阵按唯一 id 提交（「移除该组」的条数与载荷同一口径，不因视觉重复翻倍）。
+  return [...new Set(ids)]
 }
 
 /** 购物车树三态勾选态（批量移除选择用） */

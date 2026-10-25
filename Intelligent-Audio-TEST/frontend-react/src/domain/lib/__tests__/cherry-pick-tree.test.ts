@@ -718,6 +718,107 @@ describe('已选汇总统计', () => {
   })
 })
 
+describe('标签视图下重复叶的去重口径（INT-1694 终审 P2-1 / P2-2）', () => {
+  // CANDIDATES 的 c1 带 2 个标签（拒识 / 多轮拒识）→ 标签视图下同一用例在各标签组各出现一次，
+  // 同一 resultId 在树里重复出现；真实库 138 个带标签用例里 137 个各带 4 个标签，触发面更大。
+  const pickLeafIds = (items: PickTreeItem[]): number[] => {
+    const ids: number[] = []
+    const walk = (nodes: PickTreeItem[]) => {
+      for (const n of nodes) {
+        if (n.kind === 'leaf') ids.push(n.resultId)
+        else walk(n.children)
+      }
+    }
+    walk(items)
+    return ids
+  }
+  const tagDeviceView = () => buildPickDeviceView(CANDIDATES, new Set(), 'tag', 'flat')
+  const tagRtView = () => buildPickResultTypeView(CANDIDATES, new Set(), 'tag', 'flat')
+  const ALL_IDS = [1, 2, 3, 4, 5, 6]
+
+  it('前提：设备 / 结果类型视图标签视图下叶按标签重复（分组视图不重复）', () => {
+    expect(
+      pickLeafIds(buildPickDeviceView(CANDIDATES, new Set(), 'group', 'flat'))
+    ).toHaveLength(6)
+    for (const leafIds of [pickLeafIds(tagDeviceView()), pickLeafIds(tagRtView())]) {
+      // c1 的 3 条结果在「拒识」「多轮拒识」两个标签组各一次 → 3×2 + c2 2 条 + c3 1 条 = 9
+      expect(leafIds.filter((id) => id === 1)).toHaveLength(2)
+      expect(leafIds).toHaveLength(9)
+      expect(new Set(leafIds).size).toBe(6)
+    }
+  })
+
+  it('computeSelectionStats 按唯一 resultId 计数（多标签用例不再成倍虚高）', () => {
+    const views = [
+      tagDeviceView(),
+      tagRtView(),
+      buildPickDeviceView(CANDIDATES, new Set(), 'tag', 'byGroup'),
+      buildPickResultTypeView(CANDIDATES, new Set(), 'tag', 'byGroup'),
+    ]
+    for (const view of views) {
+      // 叶在树里 2 份，但 2 条结果就是 2 条
+      expect(computeSelectionStats(view, new Set([1, 2]))).toEqual({
+        results: 2,
+        tasks: 1,
+        devices: 1,
+        cases: 1,
+      })
+      expect(computeSelectionStats(view, new Set(ALL_IDS)).results).toBe(6)
+    }
+    // 与分组视图同数据同口径
+    expect(computeSelectionStats(tagDeviceView(), new Set([1, 2]))).toEqual(
+      computeSelectionStats(buildPickDeviceView(CANDIDATES), new Set([1, 2]))
+    )
+  })
+
+  it('invertVisibleSelection 对每个唯一结果恰好翻转一次（不因重复叶抵消）', () => {
+    for (const view of [tagDeviceView(), tagRtView()]) {
+      // 空选反选 = 全部选中（旧口径因偶数次重复先 add 再 delete → 恒空集）
+      const all = invertVisibleSelection(view, new Set())
+      expect(all).toEqual(new Set(ALL_IDS))
+      // 全选再反选 → 清空
+      expect(invertVisibleSelection(view, all).size).toBe(0)
+      // 已选跨页项保留，可见项逐个翻转
+      expect(invertVisibleSelection(view, new Set([1, 9]))).toEqual(
+        new Set([2, 3, 4, 5, 6, 9])
+      )
+      // 与「全选当前筛选」互逆
+      expect(selectAllVisible(view, new Set())).toEqual(new Set(ALL_IDS))
+    }
+  })
+
+  it('购物车任务视图设备 / 结果类型子模式同形：叶按标签重复，移除矩阵按唯一条目 id', () => {
+    const cartGroups = [
+      {
+        taskId: 1042,
+        taskName: '任务A',
+        entries: [
+          { itemId: 'a1', resultId: 1, sourceTaskId: 1042, sourceTaskName: '任务A', sourceCaseId: 'c1', sourceCaseName: '用例001', sourceDeviceId: 1, sourceDeviceName: '设备-01', sourceApiId: null, sourceApiName: null, sourceResultType: 'real-time', sourceTags: ['拒识', '多轮拒识'], executionStatus: 'completed', evaluationStatus: 'completed', invalid: false },
+        ],
+      },
+    ]
+    const cartLeafIds = (items: CartTreeItem[]): string[] => {
+      const ids: string[] = []
+      const walk = (nodes: CartTreeItem[]) => {
+        for (const n of nodes) {
+          if (n.kind === 'leaf') ids.push(n.entryId)
+          else walk(n.children)
+        }
+      }
+      walk(items)
+      return ids
+    }
+    for (const sub of ['device', 'resultType'] as const) {
+      const tag = buildCartTaskView(cartGroups, sub, 'tag', 'flat')
+      expect(cartLeafIds(tag)).toEqual(['a1', 'a1']) // 2 个标签组各挂一次
+      expect(collectEntryIds(tag)).toEqual(['a1']) // 移除矩阵按唯一 id，不翻倍
+      const group = buildCartTaskView(cartGroups, sub, 'group', 'flat')
+      expect(cartLeafIds(group)).toEqual(['a1'])
+      expect(collectEntryIds(group)).toEqual(['a1'])
+    }
+  })
+})
+
 describe('购物车树与移除矩阵（§4.2/§4.3）', () => {
   const cartGroups = [
     {
