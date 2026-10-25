@@ -14,7 +14,8 @@ import { ApiError } from '@/infrastructure/api/api-error'
 
 const { saveMock, fetchApiMock, paramsMock, mappingsMock, navigateMock, dimensionsMock } =
   vi.hoisted(() => ({
-    saveMock: vi.fn(async (_input: Record<string, unknown>) => undefined),
+    // INT-1939：save 返回成否，弹窗据此决定关不关
+    saveMock: vi.fn(async (_input: Record<string, unknown>): Promise<boolean> => true),
     fetchApiMock: vi.fn(async (_id: number): Promise<unknown> => null),
     paramsMock: vi.fn(async (_algorithmType: string): Promise<unknown[]> => []),
     mappingsMock: vi.fn(async (_algorithmType: string): Promise<unknown[]> => []),

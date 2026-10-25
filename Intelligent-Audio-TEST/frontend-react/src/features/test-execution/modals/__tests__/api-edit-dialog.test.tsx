@@ -12,7 +12,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApiConfig } from '@/domain/models/apiConfig'
 
 const { saveMock, fetchApiMock, algorithmOptions } = vi.hoisted(() => ({
-  saveMock: vi.fn(async (_input: Record<string, unknown>) => undefined),
+  // INT-1939：save 返回成否，弹窗据此决定关不关
+  saveMock: vi.fn(async (_input: Record<string, unknown>): Promise<boolean> => true),
   fetchApiMock: vi.fn(async (_id: number): Promise<unknown> => null),
   algorithmOptions: { list: [] as Array<{ id: string; name: string }> },
 }))
@@ -66,12 +67,14 @@ const API_FIXTURE: ApiConfig = {
 
 function renderDialog(api?: ApiConfig, fresh?: ApiConfig) {
   fetchApiMock.mockResolvedValue(fresh ?? null)
+  const onOpenChange = vi.fn()
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
-      <ApiEditDialog open onOpenChange={vi.fn()} api={api} />
+      <ApiEditDialog open onOpenChange={onOpenChange} api={api} />
     </QueryClientProvider>
   )
+  return { ...view, onOpenChange }
 }
 
 function openRequestTab() {
@@ -107,6 +110,7 @@ function cancelAndReopen() {
 
 beforeEach(() => {
   saveMock.mockClear()
+  saveMock.mockResolvedValue(true)
   fetchApiMock.mockClear()
   algorithmOptions.list = []
 })
@@ -382,5 +386,89 @@ describe('协议 × 流式性两维（INT-1800 / B0 §3.2.3）', () => {
       'true'
     )
     expect(screen.getByRole('combobox', { name: '协议' })).toHaveTextContent('WebSocket')
+  })
+})
+
+describe('保存失败不关闭弹窗、草稿保留（INT-1939）', () => {
+  it('保存失败 → 弹窗不关、基础与请求模板草稿都在、可再点保存重试成功才关', async () => {
+    saveMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    const { onOpenChange } = renderDialog(API_FIXTURE)
+
+    fireEvent.change(screen.getByLabelText('API 名称 *'), {
+      target: { value: '接线测试_API_改名' },
+    })
+    openRequestTab()
+    fireEvent.change(screen.getByLabelText('请求体模板（body_template）'), {
+      target: { value: '{"text":"{{text}}"}' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
+
+    // 失败：弹窗保持打开（没有回调关闭），五页签草稿原样保留
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: '基础' }))
+    expect(screen.getByLabelText('API 名称 *')).toHaveValue('接线测试_API_改名')
+    fireEvent.click(screen.getByRole('tab', { name: '请求模板' }))
+    expect(screen.getByLabelText('请求体模板（body_template）')).toHaveValue('{"text":"{{text}}"}')
+    fireEvent.click(screen.getByRole('tab', { name: '基础' }))
+
+    // 弹窗内直接重试：第二次成功才关闭
+    const retry = screen.getByRole('button', { name: '保存' })
+    expect(retry).toBeEnabled()
+    fireEvent.click(retry)
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+  })
+
+  it('保存中「保存」钮禁用并显示「保存中…」，结束后恢复', async () => {
+    let release: (ok: boolean) => void = () => {}
+    saveMock.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          release = resolve
+        })
+    )
+    const { onOpenChange } = renderDialog(API_FIXTURE)
+
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    const saving = await screen.findByRole('button', { name: '保存中…' })
+    expect(saving).toBeDisabled()
+    expect(screen.getByRole('button', { name: '取消' })).toBeEnabled()
+
+    release(true)
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+  })
+})
+
+describe('最大并发校验内联提示（INT-1939）', () => {
+  it('留空 → 中文内联提示、保存请求不发出', async () => {
+    renderDialog(API_FIXTURE)
+    fireEvent.change(screen.getByLabelText('最大并发'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByText('请输入 1~128 的整数')).toBeInTheDocument()
+    expect(screen.getByLabelText('最大并发')).toHaveAttribute('aria-invalid', 'true')
+    expect(saveMock).not.toHaveBeenCalled()
+  })
+
+  it('输入 200（超上限）→ 中文内联提示、保存请求不发出', async () => {
+    renderDialog(API_FIXTURE)
+    fireEvent.change(screen.getByLabelText('最大并发'), { target: { value: '200' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByText('请输入 1~128 的整数')).toBeInTheDocument()
+    expect(saveMock).not.toHaveBeenCalled()
+  })
+
+  it('改回合法值后提示消失、可正常保存', async () => {
+    renderDialog(API_FIXTURE)
+    const input = screen.getByLabelText('最大并发')
+    fireEvent.change(input, { target: { value: '200' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByText('请输入 1~128 的整数')).toBeInTheDocument()
+
+    fireEvent.change(input, { target: { value: '16' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
+    expect(saveMock.mock.calls[0][0].defaultMaxProcess).toBe(16)
   })
 })

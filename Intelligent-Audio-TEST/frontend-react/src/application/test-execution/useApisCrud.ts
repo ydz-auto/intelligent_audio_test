@@ -20,14 +20,20 @@ export function useApisCrud() {
     void queryClient.invalidateQueries({ queryKey: ['test-execution', 'apis'] })
   }, [queryClient])
 
+  /**
+   * 新增/编辑保存。返回成否（INT-1939）：调用方据此决定关不关弹窗——保存失败时
+   * 弹窗保持打开、五页签草稿原样保留，用户可在弹窗内重试。
+   */
   const save = useCallback(
-    async (input: Partial<ApiConfig> & { name: string }) => {
+    async (input: Partial<ApiConfig> & { name: string }): Promise<boolean> => {
       try {
         await saveApi(input)
         toast.success('API 已保存')
         refreshList()
+        return true
       } catch (error) {
         toast.error(`保存失败：${error instanceof Error ? error.message : String(error)}`)
+        return false
       }
     },
     [refreshList]

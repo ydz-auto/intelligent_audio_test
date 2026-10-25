@@ -111,10 +111,17 @@ import {
   type ResponseParserDraftError,
 } from './api-edit-dialog-model'
 
+const MAX_PROCESS_MESSAGE = '请输入 1~128 的整数'
+
 const apiFormSchema = z.object({
   name: z.string().min(1, '请输入必填项'),
   algorithmType: z.string().min(1, '请输入必填项'),
-  maxProcess: z.number().int().min(1).max(128),
+  // INT-1939：留空（valueAsNumber → NaN）/ 越界都要落到中文内联提示，不靠浏览器原生气泡
+  maxProcess: z
+    .number({ message: MAX_PROCESS_MESSAGE })
+    .int(MAX_PROCESS_MESSAGE)
+    .min(1, MAX_PROCESS_MESSAGE)
+    .max(128, MAX_PROCESS_MESSAGE),
   description: z.string().optional(),
   // INT-1800：协议 + 流式开关两个独立维度（不再有 device_type 三选）
   protocol: z.enum(API_PROTOCOLS, { message: '请选择协议' }),
@@ -460,8 +467,9 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
       payload.audioConfig = audioCleared ? {} : buildAudioConfig(baseApi?.audioConfig, audioDraft)
     }
 
-    await save(payload)
-    onOpenChange(false)
+    // INT-1939：只有保存成功才关闭弹窗；失败时 toast 已由 useApisCrud 给出，
+    // 弹窗与五个页签草稿原样保留，保存钮恢复可点，可在弹窗内直接重试。
+    if (await save(payload)) onOpenChange(false)
   }
 
   return (
@@ -474,7 +482,12 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={form.handleSubmit(handleSave)} className='flex min-h-0 flex-col gap-3'>
+        {/* INT-1939：校验统一走 zod（中文内联提示），关掉浏览器原生校验气泡 */}
+        <form
+          onSubmit={form.handleSubmit(handleSave)}
+          noValidate
+          className='flex min-h-0 flex-col gap-3'
+        >
           <Tabs
             value={tab}
             onValueChange={(value) => setTab(value as ApiTab)}
@@ -535,8 +548,14 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                     type='number'
                     min={1}
                     max={128}
+                    aria-invalid={Boolean(form.formState.errors.maxProcess)}
                     {...form.register('maxProcess', { valueAsNumber: true })}
                   />
+                  {form.formState.errors.maxProcess && (
+                    <p className='text-destructive text-xs'>
+                      {form.formState.errors.maxProcess.message}
+                    </p>
+                  )}
                 </div>
 
                 {/* 协议 × 流式性（INT-1800 / B0 §3.2）：两个独立维度，不互相推断。
@@ -1203,7 +1222,9 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
             <Button variant='outline' type='button' onClick={() => onOpenChange(false)}>
               取消
             </Button>
-            <Button type='submit'>{form.formState.isSubmitting ? '保存中…' : '保存'}</Button>
+            <Button type='submit' disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? '保存中…' : '保存'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
