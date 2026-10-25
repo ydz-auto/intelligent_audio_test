@@ -49,12 +49,12 @@ import { ApiCard } from '@/features/test-execution/components/api-card'
 import { ParamCard } from '@/features/test-execution/components/param-card'
 import { SelectionSummary } from '@/features/test-execution/components/selection-summary'
 import { ExecutionDiagram } from '@/features/test-execution/components/execution-diagram'
-import { deriveApiTargetDeviceType } from '@/domain/models/apiConfig'
 import {
   MOCK_RESOURCE_LABS,
   NETWORK_OPTIONS,
   RESOURCE_PROTOCOL_OPTIONS,
   RESOURCE_STATUS_OPTIONS,
+  RESOURCE_STREAMING_OPTIONS,
   RESOURCE_SYSTEM_OPTIONS,
   RESOURCE_VENDOR_OPTIONS,
 } from '@/features/test-execution/constants'
@@ -98,9 +98,10 @@ export function StepResources({
   // INT-486 口径 2026-10-16：实验室/系统类型筛选（INT-487 设备-实验室绑定待接线）
   const [labFilter, setLabFilter] = useState('all')
   const [systemFilter, setSystemFilter] = useState<'all' | 'android' | 'harmony' | 'api'>('all')
-  // INT-486 口径 2026-10-16：API 厂商/协议筛选维度
+  // INT-486 口径 2026-10-16：API 厂商/协议筛选维度；INT-1800：协议 + 流式性两维独立
   const [vendorFilter, setVendorFilter] = useState('all')
-  const [protocolFilter, setProtocolFilter] = useState<'all' | 'http' | 'websocket'>('all')
+  const [protocolFilter, setProtocolFilter] = useState('all')
+  const [streamingFilter, setStreamingFilter] = useState('all')
   const [testingIds, setTestingIds] = useState<Set<number>>(new Set())
 
   const canDeviceControl = hasPermission('device:control')
@@ -147,12 +148,8 @@ export function StepResources({
       // 系统类型 facet：API 均为网关，「仅 API 网关」命中；物理系统筛选对 API 无命中
       if (systemFilter === 'android' || systemFilter === 'harmony') return false
       if (vendorFilter !== 'all' && a.vendor !== vendorFilter) return false
-      if (protocolFilter !== 'all') {
-        // INT-1433：按显式 deviceType 或端点协议派生判定（与建任务 Realtime 路由同口径）
-        const isWs = deriveApiTargetDeviceType(a) === 'websocket_api'
-        if (protocolFilter === 'websocket' && !isWs) return false
-        if (protocolFilter === 'http' && isWs) return false
-      }
+      if (protocolFilter !== 'all' && a.protocol !== protocolFilter) return false
+      if (streamingFilter !== 'all' && a.streaming !== (streamingFilter === 'streaming')) return false
       if (q) {
         // INT-1223：Master URL 移除，搜索 haystack 只含名称与首个端点
         const haystack = `${a.name} ${a.endpoints[0]?.endpoint ?? ''}`.toLowerCase()
@@ -160,7 +157,7 @@ export function StepResources({
       }
       return true
     })
-  }, [resources.apis, keyword, statusFilter, labApiIds, systemFilter, vendorFilter, protocolFilter])
+  }, [resources.apis, keyword, statusFilter, labApiIds, systemFilter, vendorFilter, protocolFilter, streamingFilter])
 
   /** API 并发自动求和（§3.6.3 并发数参数卡；现 apiTest.steps.ts:154-158 口径） */
   const apiConcurrencySum = useMemo(
@@ -305,10 +302,10 @@ export function StepResources({
           </SelectContent>
         </Select>
 
-        {/* 协议 facet（API 筛选维度，INT-486 口径） */}
+        {/* 协议 facet（API 筛选维度，INT-486 口径；INT-1800：4 个规范值） */}
         <Select
           value={protocolFilter}
-          onValueChange={(v) => setProtocolFilter(v as 'all' | 'http' | 'websocket')}
+          onValueChange={(v) => setProtocolFilter(v ?? 'all')}
           items={RESOURCE_PROTOCOL_OPTIONS}
         >
           <SelectTrigger className='h-8 w-32 text-xs'>
@@ -316,6 +313,24 @@ export function StepResources({
           </SelectTrigger>
           <SelectContent>
             {RESOURCE_PROTOCOL_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* 流式性 facet（INT-1800：第二维，与协议独立） */}
+        <Select
+          value={streamingFilter}
+          onValueChange={(v) => setStreamingFilter(v ?? 'all')}
+          items={RESOURCE_STREAMING_OPTIONS}
+        >
+          <SelectTrigger className='h-8 w-32 text-xs' aria-label='流式性筛选'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RESOURCE_STREAMING_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>

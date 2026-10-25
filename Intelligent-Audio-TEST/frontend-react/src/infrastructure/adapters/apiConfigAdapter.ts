@@ -12,6 +12,7 @@ import type {
   ApiHealthCheckDataDto,
   ApiItemDto,
 } from '@/infrastructure/dto/apis.dto'
+import { isApiProtocol } from '@/domain/models/apiProtocol'
 
 export function toApiStatus(status: string | null): string | null {
   if (!status) return null
@@ -59,7 +60,10 @@ export function apiConfigFromDto(dto: ApiItemDto): ApiConfig {
     healthScore: dto.health_score,
     endpoints,
     maxConcurrent,
-    deviceType: dto.device_type,
+    // INT-1800：协议 / 流式性两维只读列（不再有 device_type、不再读 meta.protocol）；
+    // 越界或缺失一律 null，界面显示「—」——前后端同批上线，前端不猜协议。
+    protocol: isApiProtocol(dto.protocol) ? dto.protocol : null,
+    streaming: dto.streaming === true,
     // INT-1777：meta / audio_config 读写通路（meta 整块 replace，前端以读侧为 base 合并；
     // audio_config 是顶层列，不是 meta.audio_config）
     meta: dto.meta ?? {},

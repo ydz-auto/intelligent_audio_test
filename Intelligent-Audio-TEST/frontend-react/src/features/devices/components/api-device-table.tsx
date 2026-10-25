@@ -35,6 +35,7 @@ import { StaticDataTable } from '@/features/system-settings/components/static-da
 import { cn } from '@/lib/utils'
 import type { ApiDevice } from '@/domain/models/apiDevice'
 import { API_ENV_META, API_PROTOCOL_META } from '@/domain/models/apiDevice'
+import { streamingLabel } from '@/domain/models/apiProtocol'
 import { DeviceRowActions } from '@/features/devices/components/device-row-actions'
 
 export interface ApiDeviceTableProps {
@@ -140,6 +141,7 @@ export function ApiDeviceTable(props: ApiDeviceTableProps) {
               <th className='w-[72px] px-3 py-2 text-left font-medium'>ID</th>
               <th className='px-3 py-2 text-left font-medium'>API 名称</th>
               <th className='px-3 py-2 text-left font-medium'>协议</th>
+              <th className='px-3 py-2 text-left font-medium'>流式性</th>
               <th className='px-3 py-2 text-left font-medium'>环境</th>
               <th className='px-3 py-2 text-left font-medium'>状态</th>
               <th className='px-3 py-2 text-left font-medium'>算法</th>
@@ -221,6 +223,15 @@ export function ApiDeviceTable(props: ApiDeviceTableProps) {
                     <td className='px-3 py-2'>
                       <Badge variant='outline' className='rounded-md px-1.5 font-normal'>
                         {protocolLabel}
+                      </Badge>
+                    </td>
+                    {/* INT-1800：流式 / 非流式是一维独立标记，不再由协议推断 */}
+                    <td className='px-3 py-2'>
+                      <Badge
+                        variant={row.streaming ? 'secondary' : 'outline'}
+                        className='rounded-md px-1.5 font-normal'
+                      >
+                        {streamingLabel(row.streaming)}
                       </Badge>
                     </td>
                     <td className='px-3 py-2'>

@@ -72,11 +72,20 @@ export const RESOURCE_VENDOR_OPTIONS: ResourceSelectOption[] = [
   { value: 'TTS 组', label: 'TTS 组' },
 ]
 
-/** 被测 API 协议筛选（INT-486 口径 2026-10-16：按 API 筛选维度含协议） */
+/** 被测 API 协议筛选（INT-486 口径；INT-1800：值域改为 B0 的 4 个规范值） */
 export const RESOURCE_PROTOCOL_OPTIONS: ResourceSelectOption[] = [
   { value: 'all', label: '全部协议' },
   { value: 'http', label: 'HTTP' },
   { value: 'websocket', label: 'WebSocket' },
+  { value: 'sse', label: 'SSE' },
+  { value: 'grpc', label: 'gRPC' },
+]
+
+/** 被测 API 流式性筛选（INT-1800：第二维，与协议独立） */
+export const RESOURCE_STREAMING_OPTIONS: ResourceSelectOption[] = [
+  { value: 'all', label: '全部形态' },
+  { value: 'streaming', label: '流式' },
+  { value: 'non_streaming', label: '非流式' },
 ]
 
 /**

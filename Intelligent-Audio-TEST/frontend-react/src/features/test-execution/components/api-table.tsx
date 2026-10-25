@@ -30,6 +30,7 @@ import {
 } from '@/features/test-execution/components/execution-mode-control'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { cn } from '@/lib/utils'
+import { API_PROTOCOL_LABEL, streamingLabel } from '@/domain/models/apiProtocol'
 import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { ExecutionMode } from '@/domain/models/testExecution'
 
@@ -90,6 +91,9 @@ export function ApiTable({
             <th className='w-28 px-2 py-2.5 font-medium'>执行模式</th>
             <th className='px-2 py-2.5 font-medium'>API 名称</th>
             <th className='px-2 py-2.5 font-medium'>端点</th>
+            {/* INT-1800：协议 / 流式性两维各占一列 */}
+            <th className='px-2 py-2.5 font-medium'>协议</th>
+            <th className='px-2 py-2.5 font-medium'>流式性</th>
             <th className='px-2 py-2.5 font-medium'>算法</th>
             <th className='px-2 py-2.5 font-medium'>状态</th>
             <th className='px-2 py-2.5 font-medium'>最大并发</th>
@@ -163,6 +167,16 @@ export function ApiTable({
                   <span className='text-muted-foreground block max-w-52 truncate font-mono text-xs' title={api.endpoints[0]?.endpoint ?? ''}>
                     {api.endpoints[0]?.endpoint ?? '—'}
                   </span>
+                </td>
+                <td className='px-2 py-2.5'>
+                  <Badge variant='outline' className='text-[11px]'>
+                    {api.protocol ? API_PROTOCOL_LABEL[api.protocol] : '—'}
+                  </Badge>
+                </td>
+                <td className='px-2 py-2.5'>
+                  <Badge variant={api.streaming ? 'secondary' : 'outline'} className='text-[11px]'>
+                    {streamingLabel(api.streaming)}
+                  </Badge>
                 </td>
                 <td className='px-2 py-2.5'>
                   <Badge variant='secondary' className='text-[11px]'>

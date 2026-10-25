@@ -37,7 +37,8 @@ const BASE_API_DTO: ApiItemDto = {
     },
   ],
   output_types: null,
-  device_type: null,
+  protocol: 'http',
+  streaming: false,
   adapter_class: null,
   audio_config: null,
   rms_spl_mapping_id: null,
@@ -73,5 +74,34 @@ describe('apiDeviceFromDto 密钥池摘要映射', () => {
       { count: 3, tails: ['a1b2', 'c3d4', 'e5f6'] },
       null,
     ])
+  })
+})
+
+describe('apiDeviceFromDto 协议来源（INT-1800：只读 protocol 列）', () => {
+  it('协议取 protocol 列，不读 meta.protocol、不按端点前缀推断', () => {
+    const dto: ApiItemDto = {
+      ...BASE_API_DTO,
+      meta: { protocol: 'wss', environment: 'testing' },
+      protocol: 'websocket',
+      streaming: true,
+      endpoints: [{ ...BASE_API_DTO.endpoints[0], endpoint: 'https://ep.example.com/v1/asr' }],
+    }
+    const device = apiDeviceFromDto(dto)
+    expect(device.protocol).toBe('websocket')
+    expect(device.streaming).toBe(true)
+    expect(device.environment).toBe('testing')
+  })
+
+  it('protocol 列缺失 → null（即便 meta.protocol / 端点前缀能给值，也不兜底）', () => {
+    const dto: ApiItemDto = {
+      ...BASE_API_DTO,
+      meta: { protocol: 'wss' },
+      protocol: undefined as unknown as string,
+      streaming: false,
+      endpoints: [{ ...BASE_API_DTO.endpoints[0], endpoint: 'wss://ep.example.com/v1/asr' }],
+    }
+    const device = apiDeviceFromDto(dto)
+    expect(device.protocol).toBeNull()
+    expect(device.streaming).toBe(false)
   })
 })

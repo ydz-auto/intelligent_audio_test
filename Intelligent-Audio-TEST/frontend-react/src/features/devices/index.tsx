@@ -104,6 +104,7 @@ const DEFAULT_API_FILTERS: ApiDeviceFilters = {
   search: '',
   status: null,
   protocol: null,
+  streaming: null,
   environment: null,
 }
 
@@ -308,6 +309,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     }
     if (f.status) rows = rows.filter((row) => row.status === f.status)
     if (f.protocol) rows = rows.filter((row) => row.protocol === f.protocol)
+    // INT-1800：流式性独立筛选（控件值 'true' / 'false'）
+    if (f.streaming) rows = rows.filter((row) => String(row.streaming) === f.streaming)
     if (f.environment) rows = rows.filter((row) => row.environment === f.environment)
     return rows
   }, [tab, algorithmFilteredTestDevices, playbackDevices, apiDevices, testFilters, playbackFilters, apiFilters, groups, groupFilterDetail.data])
@@ -698,6 +701,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
               }
               protocol={apiFilters.protocol}
               onProtocol={(protocol) => setActiveFilters({ ...apiFilters, protocol })}
+              streaming={apiFilters.streaming}
+              onStreaming={(streaming) => setActiveFilters({ ...apiFilters, streaming })}
               environment={apiFilters.environment}
               onEnvironment={(environment) => setActiveFilters({ ...apiFilters, environment })}
               isFiltered={isFiltered}

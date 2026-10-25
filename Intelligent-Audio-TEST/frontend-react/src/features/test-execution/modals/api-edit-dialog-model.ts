@@ -9,13 +9,10 @@
  * 4) 用户未触碰任何 meta 字段 → 调用方不发 meta 键（由 dialog 的 dirty 标记保证）。
  * 两个页签都改过时按「base → 请求模板 → 响应解析」顺序串行合并，互不覆盖对方声明的键。
  *
- * 设备类型显隐统一走 domain 的 deriveApiTargetDeviceType（不得用裸 apis.device_type / meta.protocol）。
+ * 显隐口径统一走 domain 的协议/流式性两维（INT-1800：不得用裸 apis.device_type / meta.protocol）。
  * audio_config 写顶层列（apis.audio_config），校验口径对齐 api_crud_service._validate_audio_config。
  */
-import type { DeviceType } from '@/domain/models/device'
-import { deriveApiTargetDeviceType } from '@/domain/models/apiConfig'
-
-/** 请求模板页签声明的 meta 键（HTTP 组 / WS 组；vendor_adapter 两组都显示） */
+/** 请求模板页签声明的 meta 键（HTTP 组 / WS 组 / 会话组；vendor_adapter 各组都显示） */
 export const META_HTTP_KEYS = ['method', 'headers', 'body_template', 'vendor_adapter'] as const
 export const META_WS_KEYS = ['ws_headers', 'session_config', 'pacing', 'vendor_adapter'] as const
 
@@ -108,17 +105,15 @@ export function requestTemplateDraftFromMeta(
 }
 
 /**
- * 新增态 / 端点草稿派生目标设备类型：直接复用 deriveApiTargetDeviceType
- * （显式 deviceType 优先，auto 时按首个非空端点协议派生，无端点缺省 http_api）。
+ * 请求模板页签的显隐与合并（INT-1800 / B0 §3.5：协议决定请求配置区，流式性决定轮次/会话配置区）：
+ * - `protocol === 'websocket'` → WS 请求头；
+ * - `protocol === 'http'` → 请求方法 / 请求头 / 请求体模板；
+ * - `streaming === true` → 会话配置 / 节奏控制（轮次与会话语义）。
+ * 两组键互不覆盖，未触碰的键原样留在 base 里。
  */
-export function deriveDraftTargetDeviceType(
-  deviceType: 'auto' | 'http_api' | 'websocket_api',
-  endpoints: ReadonlyArray<{ endpoint: string }>
-): DeviceType {
-  return deriveApiTargetDeviceType({
-    deviceType: deviceType === 'auto' ? null : deviceType,
-    endpoints,
-  })
+export interface RequestTemplateTarget {
+  protocol: string | null
+  streaming: boolean
 }
 
 function parseJsonObject<F extends string>(
@@ -179,28 +174,22 @@ function assignOrDelete(
 
 /**
  * 草稿 + base meta → 保存用的完整 meta 对象。
- * - 只覆盖当前设备类型那组声明的键（隐藏组的旧键原样保留在 base 里，不删）；
+ * - 只覆盖当前协议/流式性那几组声明的键（隐藏组的旧键原样保留在 base 里，不删）；
  * - 字段清空 → 删除该键（不写 null）；
  * - 非法 JSON / 空键名 / 键名重复 → 返回 errors，调用方拦截保存、弹窗不关。
  */
 export function mergeRequestTemplateMeta(
   baseMeta: Record<string, unknown> | null | undefined,
   draft: RequestTemplateDraft,
-  targetDeviceType: DeviceType
+  target: RequestTemplateTarget
 ): { meta: Record<string, unknown>; errors: MetaDraftError[] } {
   const next: Record<string, unknown> = isPlainObject(baseMeta) ? { ...baseMeta } : {}
   const errors: MetaDraftError[] = []
 
-  if (targetDeviceType === 'websocket_api') {
+  if (target.protocol === 'websocket') {
     const wsHeaders = rowsToRecord(draft.wsHeaders, 'WS 请求头', 'wsHeaders', errors)
     assignOrDelete(next, 'ws_headers', Object.keys(wsHeaders).length ? wsHeaders : undefined)
-    assignOrDelete(
-      next,
-      'session_config',
-      parseJsonObject(draft.sessionConfig, '会话配置', 'sessionConfig', errors)
-    )
-    assignOrDelete(next, 'pacing', parseJsonObject(draft.pacing, '节奏控制', 'pacing', errors))
-  } else {
+  } else if (target.protocol === 'http') {
     const method = draft.method.trim()
     assignOrDelete(next, 'method', method || undefined)
     const headers = rowsToRecord(draft.headers, '请求头', 'headers', errors)
@@ -214,6 +203,16 @@ export function mergeRequestTemplateMeta(
         parseJsonObject(draft.bodyTemplateText, '请求体模板', 'bodyTemplate', errors)
       )
     }
+  }
+
+  // 轮次 / 会话配置区由流式性决定（仅流式有会话概念）
+  if (target.streaming) {
+    assignOrDelete(
+      next,
+      'session_config',
+      parseJsonObject(draft.sessionConfig, '会话配置', 'sessionConfig', errors)
+    )
+    assignOrDelete(next, 'pacing', parseJsonObject(draft.pacing, '节奏控制', 'pacing', errors))
   }
 
   const vendorAdapter = draft.vendorAdapter.trim()

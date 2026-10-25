@@ -58,8 +58,9 @@ const API_FIXTURE: ApiConfig = {
     },
   ],
   maxConcurrent: 5,
-  deviceType: 'http_api',
-  meta: { protocol: 'https', environment: 'production', appendix_test: 1 },
+  protocol: 'http',
+  streaming: false,
+  meta: { version: 'v1', environment: 'production', appendix_test: 1 },
   audioConfig: { sample_rate: 16000, bit_depth: 's16', channels: 1, container: 'pcm' },
 }
 
@@ -131,7 +132,7 @@ describe('五页签骨架（INT-1777）', () => {
     expect(screen.getAllByText('未选择关联算法').length).toBeGreaterThan(1)
   })
 
-  it('请求模板按目标设备类型显隐：http_api 只显示 method/headers/body_template', () => {
+  it('请求模板按协议显隐：http 只显示 method/headers/body_template', () => {
     renderDialog(API_FIXTURE)
     openRequestTab()
     expect(screen.getByText('请求方法（method）')).toBeInTheDocument()
@@ -139,8 +140,8 @@ describe('五页签骨架（INT-1777）', () => {
     expect(screen.queryByLabelText('会话配置（session_config）')).not.toBeInTheDocument()
   })
 
-  it('请求模板按目标设备类型显隐：websocket_api 只显示 ws_headers/session_config/pacing', () => {
-    renderDialog({ ...API_FIXTURE, deviceType: 'websocket_api' })
+  it('请求模板按协议 + 流式性显隐：websocket 只显示 ws_headers，流式才有 session_config/pacing', () => {
+    renderDialog({ ...API_FIXTURE, protocol: 'websocket', streaming: true })
     openRequestTab()
     expect(screen.getByLabelText('会话配置（session_config）')).toBeInTheDocument()
     expect(screen.getByLabelText('节奏控制（pacing）')).toBeInTheDocument()
@@ -219,7 +220,7 @@ describe('meta / audio_config 保存口径（INT-1777）', () => {
     await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
     const payload = saveMock.mock.calls[0][0]
     expect(payload.meta).toEqual({
-      protocol: 'https',
+      version: 'v1',
       environment: 'production',
       appendix_test: 1,
       body_template: { text: '{{text}}' },
@@ -244,7 +245,7 @@ describe('meta / audio_config 保存口径（INT-1777）', () => {
     await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
     const payload = saveMock.mock.calls[0][0]
     expect(payload.meta).toEqual({
-      protocol: 'https',
+      version: 'v1',
       environment: 'production',
       appendix_test: 1,
       vendor_adapter: 'FreshAdapter',
@@ -271,7 +272,9 @@ describe('meta / audio_config 保存口径（INT-1777）', () => {
     const body = screen.getByLabelText('请求体模板（body_template）') as HTMLTextAreaElement
     expect(JSON.parse(body.value)).toEqual({ text: '{{text}}' })
     const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByText('HTTP API（http_api）')).toBeInTheDocument()
+    // 协议 / 流式性两维各一处（基础页签下拉 + 请求模板横幅；两个面板都挂在 DOM 里）
+    expect(within(dialog).getAllByText('HTTP').length).toBeGreaterThan(0)
+    expect(within(dialog).getAllByText('非流式').length).toBeGreaterThan(0)
   })
 })
 
@@ -305,5 +308,79 @@ describe('取消 / 关闭后重开不残留（INT-1777 复测 P2-1）', () => {
     openRequestTab()
     cancelAndReopen()
     expect(screen.getByRole('tab', { name: '基础' }).getAttribute('aria-selected')).toBe('true')
+  })
+})
+
+describe('协议 × 流式性两维（INT-1800 / B0 §3.2.3）', () => {
+  it('缺省 http + 非流式；保存下发两维且不含 deviceType', async () => {
+    algorithmOptions.list = [{ id: 'voice_llm', name: '小艺语音大模型' }]
+    renderDialog(API_FIXTURE)
+    fireEvent.change(screen.getByLabelText('API 名称 *'), { target: { value: '接线测试_两维' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
+    const payload = saveMock.mock.calls[0][0] as Record<string, unknown>
+    expect(payload.protocol).toBe('http')
+    expect(payload.streaming).toBe(false)
+    expect('deviceType' in payload).toBe(false)
+  })
+
+  it('协议下拉 4 项：sse / grpc 未上线置灰', async () => {
+    algorithmOptions.list = [{ id: 'voice_llm', name: '小艺语音大模型' }]
+    const user = userEvent.setup()
+    renderDialog(undefined)
+    await user.click(screen.getByRole('combobox', { name: '协议' }))
+    const options = await screen.findAllByRole('option')
+    const labels = options.map((option) => option.textContent)
+    expect(labels).toEqual([
+      expect.stringContaining('HTTP'),
+      expect.stringContaining('WebSocket'),
+      expect.stringContaining('SSE'),
+      expect.stringContaining('gRPC'),
+    ])
+    expect(options[2]).toHaveAttribute('aria-disabled', 'true')
+    expect(options[3]).toHaveAttribute('aria-disabled', 'true')
+    expect(options[0]).not.toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('切到 WebSocket → 流式开关自动打开并锁定；保存下 streaming=true', async () => {
+    algorithmOptions.list = [{ id: 'voice_llm', name: '小艺语音大模型' }]
+    const user = userEvent.setup()
+    renderDialog(API_FIXTURE)
+
+    const streamSwitch = screen.getByRole('switch', { name: '流式开关' })
+    expect(streamSwitch).toHaveAttribute('aria-checked', 'false')
+    // base-ui Switch 用 span[role=switch] + aria-disabled 表达禁用（非原生 disabled）
+    expect(streamSwitch).toHaveAttribute('aria-disabled', 'true')
+
+    await user.click(screen.getByRole('combobox', { name: '协议' }))
+    await user.click(await screen.findByRole('option', { name: /WebSocket/ }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: '流式开关' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+    )
+    expect(screen.getByRole('switch', { name: '流式开关' })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
+    const payload = saveMock.mock.calls[0][0] as Record<string, unknown>
+    expect(payload.protocol).toBe('websocket')
+    expect(payload.streaming).toBe(true)
+    expect('deviceType' in payload).toBe(false)
+  })
+
+  it('编辑态按两列回填：websocket + 流式 打开即回填', () => {
+    algorithmOptions.list = [{ id: 'voice_llm', name: '小艺语音大模型' }]
+    renderDialog({ ...API_FIXTURE, protocol: 'websocket', streaming: true })
+    expect(screen.getByRole('switch', { name: '流式开关' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    )
+    expect(screen.getByRole('combobox', { name: '协议' })).toHaveTextContent('WebSocket')
   })
 })

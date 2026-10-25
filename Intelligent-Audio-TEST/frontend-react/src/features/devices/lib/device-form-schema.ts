@@ -5,6 +5,8 @@
  */
 import { z } from 'zod'
 
+import { API_PROTOCOLS } from '@/domain/models/apiProtocol'
+
 /** 测试设备表单（§6.2：名称/型号/设备类型/设备系统/系统版本/应用名称/应用版本/连接方式/序列号必填） */
 export const testDeviceFormSchema = z.object({
   name: z.string().min(1, '请填写设备名称'),
@@ -52,13 +54,15 @@ export const playbackDeviceFormSchema = z.object({
 
 export type PlaybackDeviceForm = z.infer<typeof playbackDeviceFormSchema>
 
-/** 测试 API 表单（§6.2：名称/协议/关联算法必填；INT-1223：Master URL 前后端移除，端点列表为唯一入口） */
+/** 测试 API 表单（§6.2：名称/协议/关联算法必填；INT-1223：Master URL 前后端移除，端点列表为唯一入口；
+ *  INT-1800：协议 + 流式性两个独立维度，协议只收 B0 的 4 个规范值） */
 export const apiDeviceFormSchema = z
   .object({
     name: z.string().min(1, '请填写 API 名称'),
     description: z.string().optional(),
     vendor: z.string().optional(),
-    protocol: z.string().min(1, '请选择协议'),
+    protocol: z.enum(API_PROTOCOLS, { message: '请选择协议' }),
+    streaming: z.boolean(),
     environment: z.string().optional(),
     /** 代理类型（INT-1029：http/https/socks5/socks5h，空=不使用代理；api_test_service PROXY_TYPES 契约） */
     proxyType: z.string().optional(),

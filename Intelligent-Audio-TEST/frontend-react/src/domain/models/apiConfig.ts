@@ -2,13 +2,15 @@
  * API 配置域领域模型（domain 层；10_测试执行.md §9 落位）。
  * 形态对照 api_gateway/schemas/api.py ApiItem/ApiEndpointItem 实测：
  * id/name/vendor/description/status/meta/algorithm_type/default_max_process/
- * default_max_timeout/default_max_audio_duration/health_score/endpoints/device_type
- * （INT-1223：api_url 已前后端全量移除，api_endpoints 为唯一端点配置入口）。
+ * default_max_timeout/default_max_audio_duration/health_score/endpoints/protocol/streaming
+ * （INT-1223：api_url 已前后端全量移除，api_endpoints 为唯一端点配置入口；
+ *  INT-1800：`device_type` 退役，协议与流式性改为两个独立维度）。
  * 本卡消费子集（被测 API 表格 + 编辑弹窗），完整配置域模型归设备管理页 API 页签。
  */
 
 import type { DeviceApiParam, ParamMapping } from './algorithmConfig'
 import type { DeviceType } from './device'
+import type { ApiProtocol } from './apiProtocol'
 
 export interface ApiEndpoint {
   id: string | null
@@ -45,7 +47,15 @@ export interface ApiConfig {
   endpoints: ApiEndpoint[]
   /** 端点级聚合最大并发（端点 max_process 最大值；并发参数卡自动求合用） */
   maxConcurrent: number
-  deviceType: string | null
+  /**
+   * 传输协议（INT-1800 / B0 §3.2）：只读 `apis.protocol` 列，值域 http / websocket / sse / grpc。
+   * 不再读 `meta.protocol`、不再按端点前缀派生、不再有 `deviceType` 三值枚举。
+   * 读侧契约恒有值；后端未升级到含该列的版本时为 null（界面显示「—」，不猜协议），
+   * 因为前后端必须同批上线，猜一个默认值只会掩盖版本不匹配。
+   */
+  protocol: ApiProtocol | null
+  /** 交互形态（INT-1800 / B0 §3.2）：true = 流式（= 实时），false = 非流式；执行道只由它派生 */
+  streaming: boolean
   /**
    * 原始 meta（INT-1777）：后端保存为整块 replace，前端以读侧 meta 为 base 做键级合并，
    * 页签只覆盖自己声明的键，未触碰 meta 时不回传该键（避免 {} 清空全表）。
@@ -86,14 +96,11 @@ export interface ApiHealthCheckResult {
   warning: string | null
 }
 
-/** API 目标设备类型派生（INT-1433）：显式 deviceType（http_api/websocket_api）优先；
- * 未显式时按首个端点协议派生（ws/wss:// → websocket_api，其余 → http_api，缺省 http_api）。
- * 建任务 case_devices 组装与 API 卡徽章/协议筛选同口径——websocket_api Realtime 路由前置。
- * INT-1777：入参放宽到只需要端点 URL，新增态端点草稿也可直接派生（不构造整份 ApiConfig）。 */
-export function deriveApiTargetDeviceType(
-  api: Pick<ApiConfig, 'deviceType'> & { endpoints: ReadonlyArray<Pick<ApiEndpoint, 'endpoint'>> }
-): DeviceType {
-  if (api.deviceType === 'websocket_api' || api.deviceType === 'http_api') return api.deviceType
-  const first = api.endpoints[0]?.endpoint ?? ''
-  return /^wss?:\/\//i.test(first) ? 'websocket_api' : 'http_api'
+/**
+ * API 目标亲和域令牌派生（INT-1433 起、INT-1800 改口径）：B0 §3.3 唯一派生规则 =
+ * 只看 `streaming` —— 流式 → websocket_api（需要实例亲和），非流式 → http_api（无状态）。
+ * 不再看显式 deviceType、不再看端点协议前缀：协议与执行道是两维，协议不参与道判断。
+ */
+export function deriveApiTargetDeviceType(api: Pick<ApiConfig, 'streaming'>): DeviceType {
+  return api.streaming ? 'websocket_api' : 'http_api'
 }

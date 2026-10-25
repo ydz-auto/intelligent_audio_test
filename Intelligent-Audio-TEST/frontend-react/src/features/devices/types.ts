@@ -26,11 +26,13 @@ export interface PlaybackDeviceFilters extends DevicesFilters {
   deviceType: string | null
 }
 
-/** API 页签筛选（协议/环境，§3.6） */
+/** API 页签筛选（协议 / 流式性 / 环境，§3.6；INT-1800：协议与流式性两维独立可筛） */
 export interface ApiDeviceFilters {
   search: string
   status: string | null
   protocol: string | null
+  /** 流式性筛选：'true' / 'false' 字符串（URL/控件口径），null = 不限 */
+  streaming: string | null
   environment: string | null
 }
 

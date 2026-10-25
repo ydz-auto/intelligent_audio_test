@@ -47,11 +47,18 @@ export const CONNECTION_TYPE_FILTER_OPTIONS: ReadonlyArray<{ value: string; labe
 ]
 
 /** API 协议 facet（§9：HTTP/HTTPS/WS/WSS） */
+/** API 协议 facet（INT-1800 / B0 §3.2：值域收敛为 4 个规范值，不再有 https/ws/wss） */
 export const API_PROTOCOL_FILTER_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'http', label: 'HTTP' },
-  { value: 'https', label: 'HTTPS' },
-  { value: 'ws', label: 'WS' },
-  { value: 'wss', label: 'WSS' },
+  { value: 'websocket', label: 'WebSocket' },
+  { value: 'sse', label: 'SSE' },
+  { value: 'grpc', label: 'gRPC' },
+]
+
+/** API 流式性 facet（INT-1800：第二维，与协议独立） */
+export const API_STREAMING_FILTER_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: 'true', label: '流式' },
+  { value: 'false', label: '非流式' },
 ]
 
 /** API 环境 facet（§9：开发/测试/生产） */

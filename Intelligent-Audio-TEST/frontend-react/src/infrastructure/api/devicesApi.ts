@@ -366,6 +366,10 @@ function toApiDeviceUpsertDto(data: Partial<ApiDevice>): Record<string, unknown>
   pick('vendor', 'vendor')
   pick('description', 'description')
   pick('meta', 'meta')
+  // INT-1800：协议 / 流式性两列（`device_type` 已退役，本层永不发送）；
+  // protocol 为空表示调用方没选，不下发该键，由后端写侧缺省 http
+  if (data.protocol != null) dto.protocol = data.protocol
+  if (data.streaming !== undefined) dto.streaming = data.streaming
   pick('algorithmType', 'algorithm_type')
   pick('defaultMaxProcess', 'default_max_process')
   pick('defaultMaxTimeout', 'default_max_timeout')

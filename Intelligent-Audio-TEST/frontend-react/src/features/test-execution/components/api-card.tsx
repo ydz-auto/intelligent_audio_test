@@ -31,19 +31,9 @@ import {
   ExecutionModeControl,
 } from '@/features/test-execution/components/execution-mode-control'
 import { cn } from '@/lib/utils'
-import { deriveApiTargetDeviceType } from '@/domain/models/apiConfig'
+import { API_PROTOCOL_LABEL, streamingLabel } from '@/domain/models/apiProtocol'
 import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { ExecutionMode } from '@/domain/models/testExecution'
-
-const API_TYPE_ICON = {
-  http_api: Server,
-  websocket_api: RadioTower,
-} as const
-
-const API_TYPE_LABEL = {
-  http_api: 'HTTP API',
-  websocket_api: 'Realtime WS',
-} as const
 
 interface ApiCardProps {
   api: ApiConfig
@@ -80,10 +70,7 @@ export function ApiCard({
   // 算法类型码 → 算法名（真实 GET /algorithm/options；INT-1687 同口径）
   const algorithmLabels = useAlgorithmLabels()
   const online = api.status === 'online'
-  // device_type 两值徽章（INT-1433：显式 deviceType 或按端点协议派生，与建任务路由同口径）
-  const isWs = deriveApiTargetDeviceType(api) === 'websocket_api'
-  const TypeIcon = isWs ? API_TYPE_ICON.websocket_api : API_TYPE_ICON.http_api
-  const typeLabel = isWs ? API_TYPE_LABEL.websocket_api : API_TYPE_LABEL.http_api
+  // INT-1800：协议与流式性是两维，卡片直接展示两列，不再由 device_type 推断
   // INT-1223：Master URL 移除，端点只取 api_endpoints 首个
   const endpoint = api.endpoints[0]?.endpoint ?? null
 
@@ -133,11 +120,18 @@ export function ApiCard({
         <dd className='tabular-nums'>{api.maxConcurrent}</dd>
       </dl>
 
-      {/* API 类型徽章（混跑标识） */}
-      <div className='flex items-center gap-1.5'>
-        <TypeIcon aria-hidden='true' className='text-muted-foreground size-3.5' />
-        <Badge variant='secondary' className='text-[11px]'>
-          {typeLabel}
+      {/* 两维标识（INT-1800）：协议徽章 + 流式 / 非流式标记，二者独立显示、互不推断 */}
+      <div className='flex flex-wrap items-center gap-1.5'>
+        {api.streaming ? (
+          <RadioTower aria-hidden='true' className='text-muted-foreground size-3.5' />
+        ) : (
+          <Server aria-hidden='true' className='text-muted-foreground size-3.5' />
+        )}
+        <Badge variant='outline' className='text-[11px]'>
+          {api.protocol ? API_PROTOCOL_LABEL[api.protocol] : '—'}
+        </Badge>
+        <Badge variant={api.streaming ? 'secondary' : 'outline'} className='text-[11px]'>
+          {streamingLabel(api.streaming)}
         </Badge>
       </div>
 

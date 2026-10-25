@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest'
 import {
   audioConfigDraftFrom,
   buildAudioConfig,
-  deriveDraftTargetDeviceType,
   emptyResponseParserDraft,
   mergeRequestTemplateMeta,
   mergeResponseParserMeta,
@@ -60,16 +59,16 @@ describe('requestTemplateDraftFromMeta 编辑态回填', () => {
 
 describe('mergeRequestTemplateMeta（后端整块 replace → 前端合并）', () => {
   it('HTTP 组：只覆盖声明的键，未知键原样保留', () => {
-    const base = { protocol: 'https', environment: 'development', appendix_test: 1, method: 'GET' }
+    const base = { version: 'v1', environment: 'development', appendix_test: 1, method: 'GET' }
     const draft = requestTemplateDraftFromMeta(base)
     draft.method = 'POST'
     draft.bodyTemplateText = '{"text":"{{text}}"}'
     draft.vendorAdapter = 'HttpAdapter'
 
-    const { meta, errors } = mergeRequestTemplateMeta(base, draft, 'http_api')
+    const { meta, errors } = mergeRequestTemplateMeta(base, draft, { protocol: 'http', streaming: false })
     expect(errors).toEqual([])
     expect(meta).toEqual({
-      protocol: 'https',
+      version: 'v1',
       environment: 'development',
       appendix_test: 1,
       method: 'POST',
@@ -85,7 +84,7 @@ describe('mergeRequestTemplateMeta（后端整块 replace → 前端合并）', 
     draft.headers = []
     draft.vendorAdapter = '   '
 
-    const { meta, errors } = mergeRequestTemplateMeta(base, draft, 'http_api')
+    const { meta, errors } = mergeRequestTemplateMeta(base, draft, { protocol: 'http', streaming: false })
     expect(errors).toEqual([])
     expect(meta).toEqual({})
     expect('method' in meta).toBe(false)
@@ -100,7 +99,7 @@ describe('mergeRequestTemplateMeta（后端整块 replace → 前端合并）', 
     draft.sessionConfig = '{"turn_detection": true}'
     draft.pacing = '{"interval_ms": 200}'
 
-    const { meta, errors } = mergeRequestTemplateMeta(base, draft, 'websocket_api')
+    const { meta, errors } = mergeRequestTemplateMeta(base, draft, { protocol: 'websocket', streaming: true })
     expect(errors).toEqual([])
     expect(meta.method).toBe('POST')
     expect(meta.headers).toEqual({ a: 'b' })
@@ -113,12 +112,12 @@ describe('mergeRequestTemplateMeta（后端整块 replace → 前端合并）', 
   it('非法 JSON → 返回字段级错误（调用方拦截保存）', () => {
     const draft = requestTemplateDraftFromMeta({})
     draft.bodyTemplateText = '{bad json'
-    const { errors } = mergeRequestTemplateMeta({}, draft, 'http_api')
+    const { errors } = mergeRequestTemplateMeta({}, draft, { protocol: 'http', streaming: false })
     expect(errors).toEqual([{ field: 'bodyTemplate', message: '请求体模板 JSON 格式不正确' }])
 
     const wsDraft = requestTemplateDraftFromMeta({})
     wsDraft.sessionConfig = '[1,2]'
-    const wsResult = mergeRequestTemplateMeta({}, wsDraft, 'websocket_api')
+    const wsResult = mergeRequestTemplateMeta({}, wsDraft, { protocol: 'websocket', streaming: true })
     expect(wsResult.errors).toEqual([
       { field: 'sessionConfig', message: '会话配置必须是 JSON 对象' },
     ])
@@ -127,7 +126,7 @@ describe('mergeRequestTemplateMeta（后端整块 replace → 前端合并）', 
   it('请求头键名为空 / 重复 → 拦截', () => {
     const draft = requestTemplateDraftFromMeta({})
     draft.headers = [newKeyValueRow('', 'v'), newKeyValueRow('a', '1'), newKeyValueRow('a', '2')]
-    const { errors } = mergeRequestTemplateMeta({}, draft, 'http_api')
+    const { errors } = mergeRequestTemplateMeta({}, draft, { protocol: 'http', streaming: false })
     expect(errors).toEqual([
       { field: 'headers', message: '请求头名称不能为空' },
       { field: 'headers', message: '请求头名称重复：a' },
@@ -236,7 +235,7 @@ describe('响应解析页签（INT-1778 §2.3，写 meta 的 8 个键）', () =>
     const base = { appendix_test: 1 }
     const requestDraft = requestTemplateDraftFromMeta(base)
     requestDraft.method = 'POST'
-    const requestMeta = mergeRequestTemplateMeta(base, requestDraft, 'http_api').meta
+    const requestMeta = mergeRequestTemplateMeta(base, requestDraft, { protocol: 'http', streaming: false }).meta
 
     const responseMeta = mergeResponseParserMeta(requestMeta, {
       ...emptyResponseParserDraft(),
@@ -249,22 +248,6 @@ describe('响应解析页签（INT-1778 §2.3，写 meta 的 8 个键）', () =>
       asr_mapping: 'data.text',
       append_mode: true,
     })
-  })
-})
-
-describe('deriveDraftTargetDeviceType（新增态按端点草稿派生）', () => {
-  it('显式 deviceType 优先', () => {
-    expect(deriveDraftTargetDeviceType('http_api', [{ endpoint: 'ws://x' }])).toBe('http_api')
-  })
-
-  it('auto 按首个非空端点协议派生；无端点缺省 http_api', () => {
-    expect(deriveDraftTargetDeviceType('auto', [{ endpoint: 'wss://api.example.com' }])).toBe(
-      'websocket_api'
-    )
-    expect(deriveDraftTargetDeviceType('auto', [{ endpoint: 'https://api.example.com' }])).toBe(
-      'http_api'
-    )
-    expect(deriveDraftTargetDeviceType('auto', [])).toBe('http_api')
   })
 })
 

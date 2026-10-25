@@ -177,3 +177,51 @@ describe('saveApi 密钥池写侧（INT-1437）', () => {
     expect(body.endpoints[0].api_keys).toEqual(['sk-x1', 'sk-x2'])
   })
 })
+
+describe('saveApi 协议 × 流式性写侧（INT-1800：两维新字段，device_type 永久退场）', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock)
+    fetchMock.mockReset()
+    authTokenStore.clear()
+    setSessionExpiredHandler(null)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    authTokenStore.clear()
+    setSessionExpiredHandler(null)
+  })
+
+  it('POST：请求体带 protocol / streaming，且不含 device_type', async () => {
+    queueResponses(jsonResponse({ success: true, code: 0, data: { id: 11 } }))
+    await saveApi({ name: '接线测试_协议流式', protocol: 'http', streaming: false })
+    const [url, init] = lastCall()
+    expect(url).toBe(`${API_BASE_URL}/apis`)
+    expect(init.method).toBe('POST')
+    const body = JSON.parse(String(init.body))
+    expect(body.protocol).toBe('http')
+    expect(body.streaming).toBe(false)
+    expect('device_type' in body).toBe(false)
+  })
+
+  it('PUT：websocket + 流式 原样下发，streaming 是布尔而不是字符串', async () => {
+    queueResponses(jsonResponse({ success: true, code: 0, data: null }))
+    await saveApi({ id: 12, name: '接线测试_WS', protocol: 'websocket', streaming: true })
+    const [url, init] = lastCall()
+    expect(url).toBe(`${API_BASE_URL}/apis/12`)
+    expect(init.method).toBe('PUT')
+    const body = JSON.parse(String(init.body))
+    expect(body.protocol).toBe('websocket')
+    expect(body.streaming).toBe(true)
+    expect('device_type' in body).toBe(false)
+  })
+
+  it('未传两维 → 请求体不带这两个键（后端写侧缺省 http / 非流式）', async () => {
+    queueResponses(jsonResponse({ success: true, code: 0, data: null }))
+    await saveApi({ id: 13, name: '仅改名' })
+    const body = JSON.parse(String(lastCall()[1].body))
+    expect('protocol' in body).toBe(false)
+    expect('streaming' in body).toBe(false)
+    expect('device_type' in body).toBe(false)
+  })
+})

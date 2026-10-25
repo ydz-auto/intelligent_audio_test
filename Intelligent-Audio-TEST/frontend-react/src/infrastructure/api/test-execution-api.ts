@@ -322,7 +322,10 @@ function toApiInputDto(input: Partial<ApiConfig> & { name: string }): Record<str
       return dto
     })
   }
-  if (input.deviceType !== undefined) result.device_type = input.deviceType
+  // INT-1800：协议 / 流式性两维只下发新字段；`device_type` 已退役——本层永不发送，
+  // 发了后端写侧会 400（B0 §3.2.3 第 4 条，不做兼容窗口）
+  if (input.protocol !== undefined) result.protocol = input.protocol
+  if (input.streaming !== undefined) result.streaming = input.streaming
   // INT-1777：meta 只在调用方标记 dirty 时下发（后端整块 replace，不发即不动）；
   // audio_config 写顶层列，未改动不下发、显式清除传 {}
   if (input.meta !== undefined) result.meta = input.meta

@@ -56,6 +56,16 @@ import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { ApiDevice } from '@/domain/models/apiDevice'
+import {
+  API_PROTOCOL_LABEL,
+  DEFAULT_API_PROTOCOL,
+  DEFAULT_API_STREAMING,
+  apiProtocolOptions,
+  defaultStreamingFor,
+  isApiProtocol,
+  isStreamingLocked,
+  streamingLabel,
+} from '@/domain/models/apiProtocol'
 import type { ApiEndpoint } from '@/domain/models/apiDevice'
 
 export interface DeviceMutateDrawerProps {
@@ -82,7 +92,6 @@ const SYSTEM_OPTIONS = [
 const ANDROID_API_LEVELS = ['26', '28', '30', '32', '33', '34']
 const HARMONY_API_LEVELS = ['3.0', '3.1', '3.2', '4.0', '4.2']
 const FORMAT_OPTIONS = ['WAV', 'MP3', 'FLAC', 'AAC', 'OGG', 'WMA']
-const PROTOCOL_OPTIONS = ['http', 'https', 'ws', 'wss']
 
 /**
  * base-ui Select 闭合态标签解析只认 Root 的 `items`（未传时直接回显原始 value，
@@ -107,9 +116,13 @@ const PRIORITY_OPTIONS = Array.from({ length: 10 }, (_, i) => ({
   value: String(i + 1),
   label: String(i + 1),
 }))
-const PROTOCOL_SELECT_OPTIONS = PROTOCOL_OPTIONS.map((value) => ({
-  value,
-  label: value.toUpperCase(),
+/** 协议下拉（INT-1800 / B0 §3.2）：4 个规范值，sse / grpc 实现未上线 → 置灰并标注 */
+const PROTOCOL_SELECT_OPTIONS = apiProtocolOptions().map((option) => ({
+  value: option.value,
+  label: option.disabled
+    ? `${API_PROTOCOL_LABEL[option.value]}（未上线）`
+    : API_PROTOCOL_LABEL[option.value],
+  disabled: option.disabled,
 }))
 const ENV_OPTIONS = [
   { value: 'development', label: '开发' },
@@ -261,7 +274,9 @@ function buildDefaults(
     name: device?.name ?? '',
     description: device?.description ?? '',
     vendor: device?.vendor ?? '',
-    protocol: device?.protocol ?? 'https',
+    // INT-1800：协议 / 流式性按读侧两列回填（缺省 = 后端写侧缺省 http + 非流式）
+    protocol: isApiProtocol(device?.protocol) ? device.protocol : DEFAULT_API_PROTOCOL,
+    streaming: device?.streaming ?? DEFAULT_API_STREAMING,
     environment: device?.environment ?? 'testing',
     proxyType: device?.proxyType ?? '',
     proxyUrl: device?.proxyUrl ?? '',
@@ -512,15 +527,15 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
           description: values.description?.trim() || null,
           vendor: values.vendor?.trim() || null,
           protocol: values.protocol,
+          streaming: values.streaming,
           environment: values.environment || null,
-          // INT-1621：编辑保存保留表单未识别的 meta 键（version / 旧 apiKey 等），只覆写
-          // protocol/environment；后端按入参整块覆盖 meta，不合并就会静默清空。新建仍只写两键。
+          // INT-1621：编辑保存保留表单未识别的 meta 键（version / 旧 apiKey 等）；
+          // INT-1800：协议已抬为顶层列，meta 不再管理 protocol，只覆写 environment
           meta: isEdit
             ? mergeApiDeviceMeta((editingDevice as ApiDevice).meta, {
-                protocol: values.protocol,
                 environment: values.environment,
               })
-            : { protocol: values.protocol, environment: values.environment },
+            : { environment: values.environment },
           // INT-1029：每 API 代理配置（契约格式 user:pass@host:port；空串归一 null）
           proxyType: values.proxyType?.trim() || null,
           proxyUrl: values.proxyUrl?.trim() || null,
@@ -927,19 +942,45 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                     <Select
                       value={form.watch('protocol')}
                       items={PROTOCOL_SELECT_OPTIONS}
-                      onValueChange={(value) => form.setValue('protocol', value ?? '')}
+                      onValueChange={(value) => {
+                        if (!isApiProtocol(value)) return
+                        form.setValue('protocol', value)
+                        // 切协议即按该协议的缺省流式性联动（可用矩阵内只有一种可写形态）
+                        form.setValue('streaming', defaultStreamingFor(value))
+                      }}
                     >
                       <SelectTrigger size='sm' className='w-full'>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         {PROTOCOL_SELECT_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
+                          <SelectItem
+                            key={option.value}
+                            value={option.value}
+                            disabled={option.disabled}
+                          >
                             {option.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                  </Field>
+                  {/* 流式性（INT-1800 / B0 §3.2）：与协议独立的第二维，执行道只由它派生 */}
+                  <Field label='流式'>
+                    <div className='flex h-8 items-center gap-2'>
+                      <Switch
+                        id='api-device-streaming'
+                        size='sm'
+                        checked={form.watch('streaming')}
+                        disabled={isStreamingLocked(form.watch('protocol'))}
+                        onCheckedChange={(checked) => form.setValue('streaming', checked)}
+                        aria-label='流式开关'
+                      />
+                      <span className='text-muted-foreground text-xs'>
+                        {streamingLabel(form.watch('streaming'))}
+                        {isStreamingLocked(form.watch('protocol')) ? '（当前协议锁定）' : ''}
+                      </span>
+                    </div>
                   </Field>
                   <Field label='环境'>
                     <Select

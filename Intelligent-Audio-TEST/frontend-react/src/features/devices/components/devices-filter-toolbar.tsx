@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import {
   API_ENV_FILTER_OPTIONS,
   API_PROTOCOL_FILTER_OPTIONS,
+  API_STREAMING_FILTER_OPTIONS,
   CONNECTION_TYPE_FILTER_OPTIONS,
   DEVICES_SEARCH_DEBOUNCE_MS,
   DEVICES_SEARCH_PLACEHOLDER,
@@ -52,6 +53,9 @@ export interface DevicesFilterToolbarProps {
   onDeviceType: (value: string | null) => void
   protocol: string | null
   onProtocol: (value: string | null) => void
+  /** 流式性 facet（INT-1800：协议之外的第二维，独立筛选） */
+  streaming: string | null
+  onStreaming: (value: string | null) => void
   environment: string | null
   onEnvironment: (value: string | null) => void
   isFiltered: boolean
@@ -254,6 +258,12 @@ export function DevicesFilterToolbar(props: DevicesFilterToolbarProps) {
               value={props.protocol}
               options={API_PROTOCOL_FILTER_OPTIONS}
               onChange={props.onProtocol}
+            />
+            <SingleFacet
+              label='流式性'
+              value={props.streaming}
+              options={API_STREAMING_FILTER_OPTIONS}
+              onChange={props.onStreaming}
             />
             <SingleFacet
               label='环境'

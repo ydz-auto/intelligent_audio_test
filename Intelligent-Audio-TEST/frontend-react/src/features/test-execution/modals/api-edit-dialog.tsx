@@ -3,17 +3,15 @@
  * interfaces/features/test-execution/modals）。
  *
  * 五个页签：
- * - 基础：现有字段（名称 / 关联算法 / 最大并发 / 设备类型 / 描述 / 端点列表与密钥池）口径不变，
+ * - 基础：现有字段（名称 / 关联算法 / 最大并发 / 协议 + 流式性 / 描述 / 端点列表与密钥池），
  *   新增 audio_config 编辑区（顶层列 apis.audio_config，四项：采样率/位深/通道数/容器）；
- * - 请求模板：写 meta（按目标设备类型显隐 HTTP / WS 两组键）；
+ * - 请求模板：写 meta（协议决定请求/响应配置区，流式性决定轮次/会话配置区）；
  * - 响应解析：写 meta（result_parser 等 8 个解析器键；顶部固定提示 C0 裁定口径）；
  * - 输出字段 / 映射：只读，算法类型作用域（数据源见 application/test-execution/useApiAlgorithmReadonly）。
  *
- * meta 读写口径（母卡 §3.1，后端整块 replace）：打开弹窗以 GET /apis 的 api.meta 为 base；
- * 页签只覆盖自己声明的键；保存提交合并后的整对象；清空的键从 base 删除；**未触碰任何 meta 字段不发 meta**。
- * 请求模板与响应解析都改过时按「base → 请求模板 → 响应解析」串行合并。
- * audio_config 未改动不发该键，显式「清除」传 {}；禁止写 meta.audio_config。
- * 页签显隐用 deriveApiTargetDeviceType（编辑态显式 deviceType 优先，新增态按端点草稿派生）。
+ * 协议 × 流式性（INT-1800 / B0）：两维独立可组合，下拉 4 值、未上线协议置灰并提示；
+ * 流式开关按 B0 §3.2.3 可用矩阵锁定（当前只有 http+非流式、websocket+流式可写）。
+ * 保存只提交 protocol / streaming，永不提交 `device_type`（后端写侧显式 400）。
  */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
@@ -60,6 +58,7 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -71,6 +70,18 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import type { ApiConfig } from '@/domain/models/apiConfig'
+import {
+  API_PROTOCOLS,
+  API_PROTOCOL_LABEL,
+  DEFAULT_API_PROTOCOL,
+  DEFAULT_API_STREAMING,
+  apiProtocolOptions,
+  defaultStreamingFor,
+  isApiProtocol,
+  isStreamingLocked,
+  streamingLabel,
+  unavailableCombinationReason,
+} from '@/domain/models/apiProtocol'
 import { cn } from '@/lib/utils'
 
 import {
@@ -82,7 +93,6 @@ import {
   RESPONSE_PARSER_PATH_DEFAULTS,
   audioConfigDraftFrom,
   buildAudioConfig,
-  deriveDraftTargetDeviceType,
   emptyAudioConfigDraft,
   emptyRequestTemplateDraft,
   emptyResponseParserDraft,
@@ -106,8 +116,9 @@ const apiFormSchema = z.object({
   algorithmType: z.string().min(1, '请输入必填项'),
   maxProcess: z.number().int().min(1).max(128),
   description: z.string().optional(),
-  // INT-1433：设备类型可选（http_api/websocket_api）或 auto 按端点协议派生（缺省 http_api）
-  deviceType: z.enum(['auto', 'http_api', 'websocket_api']),
+  // INT-1800：协议 + 流式开关两个独立维度（不再有 device_type 三选）
+  protocol: z.enum(API_PROTOCOLS, { message: '请选择协议' }),
+  streaming: z.boolean(),
 })
 
 type ApiForm = z.infer<typeof apiFormSchema>
@@ -127,11 +138,8 @@ const UNSET = '__unset__'
 
 // base-ui Select 关闭态用 items 显示 label（否则直接回显 value；INT-1633 同口径）
 const UNSET_OPTION = { value: UNSET, label: '未设置' }
-const DEVICE_TYPE_OPTIONS = [
-  { value: 'auto', label: '自动（按端点协议派生）' },
-  { value: 'http_api', label: 'HTTP API' },
-  { value: 'websocket_api', label: 'Realtime WS' },
-] as const
+/** 协议下拉（INT-1800）：4 值全列，sse / grpc 置灰并提示「协议实现未上线」 */
+const PROTOCOL_OPTIONS = apiProtocolOptions()
 const METHOD_OPTIONS = [
   UNSET_OPTION,
   ...HTTP_METHOD_OPTIONS.map((method) => ({ value: method, label: method })),
@@ -218,10 +226,10 @@ function computeFormValues(
       '',
     maxProcess: api?.defaultMaxProcess ?? 5,
     description: api?.description ?? '',
-    deviceType:
-      api?.deviceType === 'http_api' || api?.deviceType === 'websocket_api'
-        ? api.deviceType
-        : 'auto',
+    // INT-1800：协议 / 流式性按读侧两列回填；缺失（旧后端未升级）时按新建缺省 http / 非流式，
+    // 并保持两维自洽（协议缺省必与其可用组合一致）
+    protocol: isApiProtocol(api?.protocol) ? api.protocol : DEFAULT_API_PROTOCOL,
+    streaming: api?.streaming ?? DEFAULT_API_STREAMING,
   }
 }
 
@@ -251,8 +259,6 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   const [audioDraft, setAudioDraft] = useState<AudioConfigDraft>(emptyAudioConfigDraft)
   const [audioTouched, setAudioTouched] = useState(false)
   const [audioCleared, setAudioCleared] = useState(false)
-  // INT-1433：设备类型派生提示（auto 态展示实际将路由到的类型）
-  const firstEndpoint = endpoints.find((e) => e.endpoint.trim())?.endpoint.trim() ?? ''
 
   // INT-1777：打开弹窗时取一次该 API 的最新读侧快照作 meta / audio_config 合并 base。
   // 列表快照可能早于别的改动（meta 后端整块 replace），拿陈旧 base 合并会静默丢未知键。
@@ -269,7 +275,8 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     values: computeFormValues(api, algorithmList, globalAlgorithmId),
   })
 
-  const watchedDeviceType = form.watch('deviceType')
+  const watchedProtocol = form.watch('protocol')
+  const watchedStreaming = form.watch('streaming')
   const algorithmType = form.watch('algorithmType')
 
   // INT-1778 只读页签数据源（algorithm:read）：切到相关页签才请求，避免每次打开多发两个 GET。
@@ -333,9 +340,12 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     }
   }, [open, detailQuery.data, metaTouched, responseTouched, audioTouched])
 
-  // 页签显隐依据：显式 deviceType 优先，auto 按当前端点草稿派生（编辑态与新增态同口径）
-  const targetDeviceType = deriveDraftTargetDeviceType(watchedDeviceType, endpoints)
-  const isWebSocket = targetDeviceType === 'websocket_api'
+  // 页签显隐依据（INT-1800 / B0 §3.5）：协议决定请求配置区，流式性决定轮次/会话配置区
+  const requestTarget = { protocol: watchedProtocol, streaming: watchedStreaming }
+  const isWebSocket = watchedProtocol === 'websocket'
+  const streamingLocked = isStreamingLocked(watchedProtocol)
+  // 组合不在可用矩阵内（存量脏数据 / 旧后端）→ 明示后端会 400，不静默改写用户的选择
+  const combinationWarning = unavailableCombinationReason(watchedProtocol, watchedStreaming)
 
   // C0（INT-1745）判定结果展示：只说「该算法类型的声明情况」，不描述系统当前行为
   const c0Status = !algorithmType
@@ -401,8 +411,9 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
       algorithmType: values.algorithmType,
       defaultMaxProcess: values.maxProcess,
       description: values.description || null,
-      // INT-1433：auto = 不落显式 deviceType（建任务时按端点协议派生）
-      deviceType: values.deviceType === 'auto' ? null : values.deviceType,
+      // INT-1800：协议 + 流式性两维独立提交；`device_type` 永不出现（后端写了会 400）
+      protocol: values.protocol,
+      streaming: values.streaming,
       endpoints: endpoints
         .filter((row) => row.endpoint.trim())
         .map((row) => ({
@@ -427,7 +438,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     if (metaTouched || responseTouched) {
       let meta: Record<string, unknown> = baseApi?.meta ?? {}
       const requestResult = metaTouched
-        ? mergeRequestTemplateMeta(meta, metaDraft, targetDeviceType)
+        ? mergeRequestTemplateMeta(meta, metaDraft, requestTarget)
         : { meta, errors: [] as MetaDraftError[] }
       meta = requestResult.meta
       const responseResult = responseTouched
@@ -528,33 +539,73 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                   />
                 </div>
 
-                {/* 设备类型（INT-1433：可选 http_api/websocket_api，或 auto 按端点协议派生，缺省 http_api；
-                    Realtime WS（websocket_api）是建任务路由到 Realtime 执行器的前置） */}
+                {/* 协议 × 流式性（INT-1800 / B0 §3.2）：两个独立维度，不互相推断。
+                    协议下拉 4 值，sse / grpc 未上线 → 置灰并提示；流式开关按可用矩阵锁定。 */}
                 <div className='space-y-1.5'>
-                  <Label>设备类型</Label>
+                  <Label>协议 *</Label>
                   <Select
-                    value={form.watch('deviceType')}
-                    items={DEVICE_TYPE_OPTIONS}
-                    onValueChange={(value) =>
-                      form.setValue('deviceType', (value ?? 'auto') as ApiForm['deviceType'])
-                    }
+                    value={watchedProtocol}
+                    items={PROTOCOL_OPTIONS.map((option) => ({
+                      value: option.value,
+                      label: option.disabled ? `${option.label}（未上线）` : option.label,
+                    }))}
+                    onValueChange={(value) => {
+                      if (!isApiProtocol(value)) return
+                      form.setValue('protocol', value)
+                      // 切协议即按该协议的缺省流式性联动（可用矩阵内只有一种可写形态）
+                      form.setValue('streaming', defaultStreamingFor(value))
+                    }}
                   >
-                    <SelectTrigger className='w-full justify-between'>
+                    <SelectTrigger className='w-full justify-between' aria-label='协议'>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value='auto'>自动（按端点协议派生）</SelectItem>
-                      <SelectItem value='http_api'>HTTP API</SelectItem>
-                      <SelectItem value='websocket_api'>Realtime WS</SelectItem>
+                      {PROTOCOL_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value} disabled={option.disabled}>
+                          {API_PROTOCOL_LABEL[option.value]}
+                          {option.disabled && (
+                            <span className='text-muted-foreground ml-1 text-xs'>（未上线）</span>
+                          )}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                  {form.watch('deviceType') === 'auto' && (
+                  <p className='text-muted-foreground text-xs'>
+                    协议只存规范值（http / websocket / sse / grpc）；sse 与 gRPC 的执行实现尚未上线，
+                    对应选项置灰。
+                  </p>
+                </div>
+
+                <div className='space-y-1.5'>
+                  <div className='flex items-center justify-between gap-2'>
+                    <Label htmlFor='api-streaming'>流式</Label>
+                    <div className='flex items-center gap-2'>
+                      <span className='text-muted-foreground text-xs'>
+                        {streamingLabel(watchedStreaming)}
+                      </span>
+                      <Switch
+                        id='api-streaming'
+                        size='sm'
+                        checked={watchedStreaming}
+                        disabled={streamingLocked}
+                        onCheckedChange={(checked) => form.setValue('streaming', checked)}
+                        aria-label='流式开关'
+                      />
+                    </div>
+                  </div>
+                  {streamingLocked ? (
                     <p className='text-muted-foreground text-xs'>
-                      {firstEndpoint
-                        ? `将按端点协议派生为：${
-                            /^wss?:\/\//i.test(firstEndpoint) ? 'Realtime WS' : 'HTTP API'
-                          }`
-                        : '未配置端点时缺省为 HTTP API'}
+                      当前协议只放行一种流式性（{watchedProtocol === 'websocket' ? '流式' : '非流式'}），
+                      开关暂锁定；两种形态都可用后开放。
+                    </p>
+                  ) : (
+                    <p className='text-muted-foreground text-xs'>
+                      流式 = 实时（会话/轮次语义），非流式 = 请求-响应；执行道只由这里决定，与协议无关。
+                    </p>
+                  )}
+                  {combinationWarning && (
+                    <p className='text-destructive text-xs'>
+                      {combinationWarning}：该组合保存会被后端拒绝（400）。
                     </p>
                   )}
                 </div>
@@ -793,43 +844,28 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                 </div>
               </TabsContent>
 
-              {/* 请求模板页签：写 meta，按目标设备类型显隐（旧键保留不删，只隐藏） */}
+              {/* 请求模板页签：写 meta，协议决定请求配置区、流式性决定轮次/会话配置区（旧键保留不删，只隐藏） */}
               <TabsContent value='request' className='space-y-3'>
                 <div className='bg-muted/40 text-muted-foreground rounded-lg border p-2.5 text-xs'>
-                  按目标设备类型显隐，当前：
+                  按协议与流式性显隐，当前：
                   <Badge variant='secondary' className='mx-1'>
-                    {isWebSocket ? 'Realtime WS（websocket_api）' : 'HTTP API（http_api）'}
+                    {watchedProtocol ? API_PROTOCOL_LABEL[watchedProtocol] : '—'}
                   </Badge>
-                  切换设备类型 / 端点协议后旧键保留不删，只隐藏；切回即恢复。
+                  <Badge variant='secondary' className='mr-1'>
+                    {streamingLabel(watchedStreaming)}
+                  </Badge>
+                  切换协议 / 流式性后旧键保留不删，只隐藏；切回即恢复。
                 </div>
 
                 {isWebSocket ? (
-                  <>
-                    <KeyValueEditor
-                      label='WS 请求头'
-                      addLabel='添加请求头'
-                      emptyHint='未配置 WS 请求头'
-                      rows={metaDraft.wsHeaders}
-                      error={metaErrorOf('wsHeaders')}
-                      onChange={(rows) => updateMeta({ wsHeaders: rows })}
-                    />
-                    <JsonTextarea
-                      id='meta-session-config'
-                      label='会话配置（session_config）'
-                      hint='JSON 对象，如 {"turn_detection": true}'
-                      value={metaDraft.sessionConfig}
-                      error={metaErrorOf('sessionConfig')}
-                      onChange={(text) => updateMeta({ sessionConfig: text })}
-                    />
-                    <JsonTextarea
-                      id='meta-pacing'
-                      label='节奏控制（pacing）'
-                      hint='JSON 对象，如 {"interval_ms": 200}'
-                      value={metaDraft.pacing}
-                      error={metaErrorOf('pacing')}
-                      onChange={(text) => updateMeta({ pacing: text })}
-                    />
-                  </>
+                  <KeyValueEditor
+                    label='WS 请求头'
+                    addLabel='添加请求头'
+                    emptyHint='未配置 WS 请求头'
+                    rows={metaDraft.wsHeaders}
+                    error={metaErrorOf('wsHeaders')}
+                    onChange={(rows) => updateMeta({ wsHeaders: rows })}
+                  />
                 ) : (
                   <>
                     <div className='space-y-1.5'>
@@ -904,6 +940,29 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                         </p>
                       )}
                     </div>
+                  </>
+                )}
+
+                {/* 轮次 / 会话配置区：只由流式性决定（B0 §3.5；非流式无会话概念） */}
+                {watchedStreaming && (
+                  <>
+                    <Separator />
+                    <JsonTextarea
+                      id='meta-session-config'
+                      label='会话配置（session_config）'
+                      hint='JSON 对象，如 {"turn_detection": true}'
+                      value={metaDraft.sessionConfig}
+                      error={metaErrorOf('sessionConfig')}
+                      onChange={(text) => updateMeta({ sessionConfig: text })}
+                    />
+                    <JsonTextarea
+                      id='meta-pacing'
+                      label='节奏控制（pacing）'
+                      hint='JSON 对象，如 {"interval_ms": 200}'
+                      value={metaDraft.pacing}
+                      error={metaErrorOf('pacing')}
+                      onChange={(text) => updateMeta({ pacing: text })}
+                    />
                   </>
                 )}
 

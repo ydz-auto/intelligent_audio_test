@@ -1,12 +1,12 @@
 /**
  * 被测 API DTO→Domain 适配器（infrastructure/adapters 层；16_设备域.md §3.6/§10）。
  * 消费 apis.dto.ts ApiItemDto（全字段），产出设备管理页 API 页签全量 ApiDevice 模型。
- * meta.protocol/meta.environment 从 meta JSON 抽取（§3.6 协议/环境列）；未显式标注时按
- * 首个 endpoint 协议前缀兜底（http→http、ws→ws），覆盖有端点但 meta 无 protocol 的存量记录
- * （INT-1223：api_url 已移除，协议推断改 meta.protocol / 端点前缀两来源；
- * 无端点且无 meta.protocol → protocol 为 null，列表显示「—」）。
+ * INT-1800：协议只读 `apis.protocol` 列（B0 §3.4 单一来源）——不再读 `meta.protocol`，
+ * 也不再按端点前缀兜底；流式性读 `apis.streaming` 列。带值的越界协议按 null 处理（显示「—」）。
+ * `meta.environment` 仍从 meta JSON 抽取（环境不是本次抬列的两个属性之一）。
  */
 import type { ApiDevice, ApiEndpoint } from '@/domain/models/apiDevice'
+import { isApiProtocol } from '@/domain/models/apiProtocol'
 import type { ApiItemDto } from '@/infrastructure/dto/apis.dto'
 
 function readMetaString(meta: Record<string, unknown>, key: string): string | null {
@@ -14,17 +14,7 @@ function readMetaString(meta: Record<string, unknown>, key: string): string | nu
   return typeof value === 'string' && value ? value : null
 }
 
-function fallbackProtocol(endpoint: string | null): string | null {
-  if (!endpoint) return null
-  if (/^wss:\/\//i.test(endpoint)) return 'wss'
-  if (/^ws:\/\//i.test(endpoint)) return 'ws'
-  if (/^https:\/\//i.test(endpoint)) return 'https'
-  if (/^http:\/\//i.test(endpoint)) return 'http'
-  return null
-}
-
 export function apiDeviceFromDto(dto: ApiItemDto): ApiDevice {
-  const metaProtocol = readMetaString(dto.meta, 'protocol')
   const metaEnv = readMetaString(dto.meta, 'environment')
   const endpoints: ApiEndpoint[] = dto.endpoints.map((ep) => ({
     id: ep.id,
@@ -47,7 +37,8 @@ export function apiDeviceFromDto(dto: ApiItemDto): ApiDevice {
     description: dto.description,
     status: dto.status,
     meta: dto.meta,
-    protocol: metaProtocol ?? fallbackProtocol(dto.endpoints[0]?.endpoint ?? null),
+    protocol: isApiProtocol(dto.protocol) ? dto.protocol : null,
+    streaming: dto.streaming === true,
     environment: metaEnv,
     proxyType: dto.proxy_type ?? null,
     proxyUrl: dto.proxy_url ?? null,

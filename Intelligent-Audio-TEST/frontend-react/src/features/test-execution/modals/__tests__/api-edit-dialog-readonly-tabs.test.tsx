@@ -77,8 +77,9 @@ const API_FIXTURE: ApiConfig = {
     },
   ],
   maxConcurrent: 5,
-  deviceType: 'http_api',
-  meta: { protocol: 'https', appendix_test: 1 },
+  protocol: 'http',
+  streaming: false,
+  meta: { version: 'v1', appendix_test: 1 },
   audioConfig: null,
 }
 
@@ -203,7 +204,7 @@ describe('响应解析页签（INT-1778 §2.3）', () => {
 
     await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
     expect(saveMock.mock.calls[0][0].meta).toEqual({
-      protocol: 'https',
+      version: 'v1',
       appendix_test: 1,
       asr_mapping: 'data.asr.text',
       append_mode: true,

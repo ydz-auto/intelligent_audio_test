@@ -30,9 +30,12 @@ export interface ApiDevice {
   description: string | null
   /** 在线/离线（§3.6 状态徽章 在线=success/离线=neutral） */
   status: string | null
-  /** meta 协议（http/https/ws/wss）与环境（开发/测试/生产），§3.6 协议/环境列 */
+  /** meta 环境（development/testing/production），§3.6 环境列；协议已抬为顶层列，不再放 meta */
   meta: Record<string, unknown>
+  /** 传输协议（INT-1800：读 `apis.protocol` 列，值域 http/websocket/sse/grpc；缺失为 null → 显示「—」） */
   protocol: string | null
+  /** 交互形态（INT-1800：读 `apis.streaming` 列；true = 流式，false = 非流式） */
+  streaming: boolean
   environment: string | null
   /** 代理类型（http/https/socks5/socks5h；空=不代理），api.py ApiItem proxy_type 实测 */
   proxyType: string | null
@@ -53,12 +56,12 @@ export interface ApiDevice {
   updatedAt: string | null
 }
 
-/** API 协议中文映射（§3.6 协议 Badge） */
+/** API 协议中文映射（§3.6 协议 Badge；INT-1800 值域收敛为 B0 的 4 个规范值） */
 export const API_PROTOCOL_META: Record<string, string> = {
   http: 'HTTP',
-  https: 'HTTPS',
-  ws: 'WS',
-  wss: 'WSS',
+  websocket: 'WebSocket',
+  sse: 'SSE',
+  grpc: 'gRPC',
 }
 
 /** API 环境中文映射（§3.6 环境 Badge） */

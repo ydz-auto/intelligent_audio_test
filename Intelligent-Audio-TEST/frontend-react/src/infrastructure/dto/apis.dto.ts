@@ -37,7 +37,13 @@ export interface ApiItemDto {
   health_score: number | null
   endpoints: ApiEndpointItemDto[]
   output_types: string[] | null
-  device_type: string | null
+  /**
+   * 传输协议（INT-1800 / B0 §3.2）：`apis.protocol` 列，规范值 http / websocket / sse / grpc。
+   * `device_type` 已退役（后端读侧不再返回、写侧显式 400），前端不再有该字段。
+   */
+  protocol: string
+  /** 交互形态：true = 流式，false = 非流式（`apis.streaming` 列） */
+  streaming: boolean
   adapter_class: string | null
   audio_config: Record<string, unknown> | null
   rms_spl_mapping_id: number | null
