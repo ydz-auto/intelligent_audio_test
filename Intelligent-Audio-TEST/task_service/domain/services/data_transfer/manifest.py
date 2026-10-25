@@ -5,8 +5,11 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from shared.constants.data_transfer import (
+    DEFAULT_DOC_VERSION_SCOPE,
     DEFAULT_INCLUDE_AUDIOS,
     DEFAULT_INCLUDE_REF_PARAMS,
+    REPORT_PACKAGE_ENTITIES,
+    REPORT_PACKAGE_MANIFEST_KIND,
     SUPPORTED_MANIFEST_VERSIONS,
     ManifestVersion,
 )
@@ -127,4 +130,59 @@ def validate_manifest(manifest: Optional[dict]) -> dict:
     if not isinstance(options, dict):
         options = {'includeRefParams': DEFAULT_INCLUDE_REF_PARAMS,
                    'includeAudios': DEFAULT_INCLUDE_AUDIOS}
+    return {**manifest, 'options': options}
+
+
+def build_report_package_manifest(source_task_id: int,
+                                  local_task_id: Optional[int],
+                                  task_name: str,
+                                  report_ids: List[int],
+                                  doc_version_scope: str = DEFAULT_DOC_VERSION_SCOPE,
+                                  entities: Optional[List[str]] = None,
+                                  counts: Optional[Dict[str, int]] = None,
+                                  source: Optional[str] = None) -> dict:
+    """构建报告包清单（INT-1764 D6，链路 3a + 3b/3c）。
+
+    `sourceTask.id` 是 A 侧原任务 id（B 导出时经 source_map 反查），导入方据此
+    定位并原地替换报告；`localTaskId` 是导出端本地 id，仅供回溯排查。
+    """
+    return {
+        'version': ManifestVersion.V1_0.value,
+        'kind': REPORT_PACKAGE_MANIFEST_KIND,
+        'exportedAt': datetime.now().astimezone().isoformat(timespec='seconds'),
+        'serverInfo': {'source': source or socket.gethostname()},
+        'sourceTask': {
+            'id': source_task_id,
+            'localTaskId': local_task_id,
+            'name': task_name,
+        },
+        'reports': [{'id': rid} for rid in (report_ids or [])],
+        'entities': list(entities or []),
+        'options': {'docVersionScope': doc_version_scope or DEFAULT_DOC_VERSION_SCOPE},
+        'stats': dict(counts or {}),
+    }
+
+
+def validate_report_package_manifest(manifest: Optional[dict]) -> dict:
+    """校验报告包 manifest：kind / 版本 / sourceTask.id 与 entities 必须齐备。"""
+    if not isinstance(manifest, dict):
+        raise ManifestError('manifest.json 缺失或不是 JSON 对象')
+    if manifest.get('kind') != REPORT_PACKAGE_MANIFEST_KIND:
+        raise ManifestError('上报的不是报告包（manifest.kind 不符）')
+    version = manifest.get('version')
+    if version not in SUPPORTED_MANIFEST_VERSIONS:
+        raise ManifestError(
+            f'导出包版本 {version!r} 不受支持（支持: {sorted(SUPPORTED_MANIFEST_VERSIONS)}），拒绝导入')
+    source_task = manifest.get('sourceTask')
+    if not isinstance(source_task, dict) or source_task.get('id') in (None, ''):
+        raise ManifestError('manifest.sourceTask.id 缺失，无法定位原任务')
+    entities = manifest.get('entities')
+    if not isinstance(entities, list):
+        raise ManifestError('manifest.entities 缺失或格式错误')
+    unknown = [e for e in entities if e not in REPORT_PACKAGE_ENTITIES]
+    if unknown:
+        raise ManifestError(f'manifest.entities 含未知实体: {unknown}')
+    options = manifest.get('options')
+    if not isinstance(options, dict):
+        options = {'docVersionScope': DEFAULT_DOC_VERSION_SCOPE}
     return {**manifest, 'options': options}

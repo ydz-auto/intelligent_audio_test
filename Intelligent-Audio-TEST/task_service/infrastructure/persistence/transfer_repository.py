@@ -335,6 +335,21 @@ class TransferRepository:
         finally:
             session.close()
 
+    def fetch_task_existence(self, task_ids: List[int]) -> Dict[int, bool]:
+        """task id → 是否已软删（INT-1764 报告包导入定位原任务用）。
+
+        不存在于结果里的 id 表示任务行不存在；`True` 表示已软删。
+        """
+        ids = sorted({int(i) for i in (task_ids or [])})
+        if not ids:
+            return {}
+        session = get_db_session()
+        try:
+            rows = session.query(Task.id, Task.deleted).filter(Task.id.in_(ids)).all()
+            return {int(row[0]): bool(row[1]) for row in rows}
+        finally:
+            session.close()
+
     def fetch_existing_ids(self) -> Dict[str, Set[int]]:
         """7 表当前全部主键集合（导入冲突判定 + 预检）"""
         session = get_db_session()

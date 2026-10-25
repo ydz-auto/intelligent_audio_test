@@ -46,3 +46,12 @@ class DataTransferAclRepository(ABC):
     def import_incremental(self, zip_path: str,
                            options: Optional[Dict] = None) -> CommandResultDTO:
         """增量导入（链路 2）：合并回 A 原任务（维度覆盖集 + 报告原地替换）"""
+
+    @abstractmethod
+    def export_report_package(self, data: Dict) -> CommandResultDTO:
+        """导出报告包（INT-1764 D6：报告 7 表 + Studio 三表，返回 data.zip_path）"""
+
+    @abstractmethod
+    def import_report_package(self, zip_path: str,
+                              options: Optional[Dict] = None) -> CommandResultDTO:
+        """导入报告包（3a 原地替换 + 3b/3c 拓扑序落库；长耗时）"""
