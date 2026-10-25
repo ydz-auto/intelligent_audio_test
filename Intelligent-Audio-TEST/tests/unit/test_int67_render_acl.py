@@ -83,8 +83,11 @@ class TestBuildRenderConfig:
 
 class TestRouteRenderMode:
     def test_route_table(self):
-        assert route_render_mode('http_api', stream=False) == 'file'
-        assert route_render_mode('http_api', stream=True) == 'stream'
+        """INT-1799：混音出口只由 streaming 决定（协议不参与）"""
+        assert route_render_mode(False) == 'file'
+        assert route_render_mode(True) == 'stream'
+        # 历史 device_type 调用（确定性映射，仍可用）
+        assert route_render_mode('http_api') == 'file'
         assert route_render_mode('websocket_api') == 'stream'
         with pytest.raises(ValueError):
             route_render_mode('physical')

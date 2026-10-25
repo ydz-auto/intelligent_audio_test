@@ -135,6 +135,10 @@ message ListAPIConfigsRequest {
   string keyword = 3;
   string status = 4;
   string algorithm_type = 5;
+  // INT-1799：协议 / 流式性等值筛选（空串 = 不过滤）。
+  // streaming 用字符串载三态：'' 不过滤 / 'true' / 'false'（proto3 无 bool 存在性）。
+  string protocol = 6;
+  string streaming = 7;
 }
 
 message ListAPIConfigsResponse {

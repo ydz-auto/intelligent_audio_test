@@ -13,7 +13,14 @@
   （https → http、ws/wss → websocket，记 WARNING，不再抛错），本脚本负责把
   存量值一次性回写为标准词表；归一后重复执行命中 0 行。
 
-归一映射（与 registry._LEGACY_PROTOCOL_ALIASES 同源口径）：
+**已被 INT-1799 取代（2026-10-25，B0 裁定 §3.4.5）**：协议唯一来源改为
+`apis.protocol` 列，`infer_protocol` 不再读 `meta.protocol` / 用例级 protocol /
+端点前缀，`_LEGACY_PROTOCOL_ALIASES` 随 INT-1770 的只读兼容层一并删除；
+INT-1799 的 `add_api_protocol_streaming_int1798.py`（引导链排在 ㊸-1）会把
+`apis.meta.protocol` 整键删除。本脚本因此对存量库恒为空转（命中 0 行），
+保留只为历史引导链编号稳定（INT-1827 已排定 ㊸~㊽）。
+
+归一映射（INT-1799 起与 `shared/models/common_enums.PROTOCOL_ALIASES` 同口径）：
     https → http
     ws    → websocket
     wss   → websocket
