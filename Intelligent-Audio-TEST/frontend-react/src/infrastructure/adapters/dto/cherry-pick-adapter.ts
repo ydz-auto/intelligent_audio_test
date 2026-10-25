@@ -17,6 +17,7 @@ import type {
   ContainerSourceResult,
   ContainerSourceTrace,
   PickableTask,
+  PickCandidateTree,
   PickCartEntry,
   PickCartGroup,
   PickDuplicate,
@@ -25,6 +26,7 @@ import type {
 } from '@/domain/models/cherryPick'
 import type {
   CherryPickCandidateDto,
+  CherryPickCandidateTreeDto,
   CherryPickCartGroupDto,
   CherryPickCartItemDto,
   CherryPickPreviewDto,
@@ -84,6 +86,69 @@ export function fromCandidateDto(
     evaluationStatus: dto.evaluated ? 'completed' : 'pending',
     evaluated: dto.evaluated,
     createdAt: dto.created_at,
+  }
+}
+
+/**
+ * 阶段 2 候选树 DTO → Domain（GET /tasks/cherry-picks/candidates/tree，INT-1510 §8.2）。
+ * 缺名口径按 INT-1824 §8.2.8：接口不拼文案——
+ *   `case_name === case_id`（用例目录查不到/已软删）→ caseName = null（前端出「未知用例」）；
+ *   `device_name === null`（设备已软删）→ deviceName = null（前端出「未知设备」）。
+ */
+export function fromCandidateTreeDto(
+  dto: CherryPickCandidateTreeDto
+): PickCandidateTree {
+  return {
+    total: dto.total ?? 0,
+    taskCount: dto.task_count ?? 0,
+    meta: {
+      tasks: (dto.meta?.tasks ?? []).map((t) => ({
+        taskId: t.task_id,
+        taskName: t.task_name,
+        taskStatus: t.task_status,
+      })),
+      cases: (dto.meta?.cases ?? []).map((c) => ({
+        caseId: c.case_id,
+        caseName:
+          c.case_name && c.case_name.trim() && c.case_name !== c.case_id
+            ? c.case_name
+            : null,
+        algorithmType: c.algorithm_type,
+        tags: c.tags ?? [],
+        groupId: c.group_id,
+        groupName: c.group_name,
+        duration: c.duration,
+        rounds: c.rounds,
+      })),
+      devices: (dto.meta?.devices ?? []).map((d) => ({
+        deviceId: d.device_id,
+        deviceName: d.device_name,
+      })),
+      apis: (dto.meta?.apis ?? []).map((a) => ({
+        apiId: a.api_id,
+        apiName: a.api_name,
+      })),
+    },
+    tree: (dto.tree ?? []).map((taskNode) => ({
+      taskId: taskNode.task_id,
+      count: taskNode.count,
+      cases: (taskNode.cases ?? []).map((caseNode) => ({
+        caseId: caseNode.case_id,
+        count: caseNode.count,
+        devices: (caseNode.devices ?? []).map((deviceNode) => ({
+          deviceId: deviceNode.device_id,
+          apiId: deviceNode.api_id,
+          count: deviceNode.count,
+          resultTypes: (deviceNode.result_types ?? []).map((rtNode) => ({
+            // 领域模型恒为 string；后端 result_type 可为 NULL（缺值桶）→ 归一到空串
+            // （`isPendingResultType` 把 '' / 'default' / null 同归「结果类型待补充」）
+            resultType: rtNode.result_type ?? '',
+            count: rtNode.count,
+            resultIds: rtNode.result_ids ?? [],
+          })),
+        })),
+      })),
+    })),
   }
 }
 

@@ -34,6 +34,9 @@ interface FacetOption {
   label: string
 }
 
+/** 结果类型「全部」哨兵值（服务端 result_type 为等值过滤，单值） */
+const RESULT_TYPE_ALL = '__all__'
+
 /** 多选 facet（Popover + Checkbox 列表 + 计数 Badge，Command 搜索留给接线） */
 function MultiFacet({
   label,
@@ -114,7 +117,13 @@ function MultiFacet({
 export interface PickFilterBarProps {
   filters: PickFilters
   onChange: (filters: PickFilters) => void
-  options: { tasks: { id: number; name: string }[]; devices: { id: number; name: string }[]; resultTypes: string[] }
+  /** 筛选项全部来自真实数据源：任务=pickable-tasks，设备/API/结果类型=候选树 meta（§8.2 第 2 条） */
+  options: {
+    tasks: { id: number; name: string }[]
+    devices: { id: number; name: string }[]
+    apis: { id: number; name: string }[]
+    resultTypes: { value: string; label: string }[]
+  }
   onReset: () => void
   /** §3.8.2 阶段 2：任务维度由阶段 1 锁定，隐藏「来源任务」facet */
   hideTaskFacet?: boolean
@@ -139,10 +148,15 @@ export function PickFilterBar({
     () => options.devices.map((d) => ({ value: String(d.id), label: d.name })),
     [options.devices]
   )
+  const apiOptions = useMemo<FacetOption[]>(
+    () => options.apis.map((a) => ({ value: String(a.id), label: a.name })),
+    [options.apis]
+  )
   const resultTypeOptions = useMemo<FacetOption[]>(
-    () => options.resultTypes.map((rt) => ({ value: rt, label: rt })),
+    () => options.resultTypes.map((rt) => ({ value: rt.value, label: rt.label })),
     [options.resultTypes]
   )
+  const resultTypeValue = filters.resultType[0] ?? RESULT_TYPE_ALL
 
   const isFiltered =
     searchDraft.trim() !== '' ||
@@ -194,12 +208,40 @@ export function PickFilterBar({
           onChange({ ...filters, deviceIds: values.map((v) => Number(v)) })
         }
       />
+      {/* API 维度选项来自候选树 meta.apis（可挑范围无 API 结果时为空 → 无选项） */}
       <MultiFacet
-        label='结果类型'
-        options={resultTypeOptions}
-        selected={filters.resultType}
-        onChange={(values) => onChange({ ...filters, resultType: values })}
+        label='API'
+        options={apiOptions}
+        selected={filters.apiIds.map(String)}
+        onChange={(values) =>
+          onChange({ ...filters, apiIds: values.map((v) => Number(v)) })
+        }
       />
+      {/* 结果类型服务端为等值过滤（单值），选项来自当前树内的 result_type 集合 */}
+      <Select
+        value={resultTypeValue}
+        onValueChange={(value) =>
+          onChange({
+            ...filters,
+            resultType: !value || value === RESULT_TYPE_ALL ? [] : [value],
+          })
+        }
+      >
+        <SelectTrigger size='sm' aria-label='结果类型'>
+          <SelectValue placeholder='结果类型'>
+            {resultTypeOptions.find((o) => o.value === filters.resultType[0])?.label ??
+              '结果类型'}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={RESULT_TYPE_ALL}>全部结果类型</SelectItem>
+          {resultTypeOptions.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <Select
         value={filters.executionStatus.length > 0 ? filters.executionStatus[0] : undefined}
         onValueChange={(value) =>

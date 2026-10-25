@@ -69,6 +69,89 @@ export interface PickableTaskPageDto {
   per_page: number
 }
 
+/* ============================================================
+ * 阶段 2 候选树（GET /tasks/cherry-picks/candidates/tree，设计文档 §8.2）
+ * 网关只透传信封；聚合与 result_ids 由 task_service 仓储单条 SQL 完成。
+ * ============================================================ */
+
+/** meta.tasks（去重表，任务节点命名） */
+export interface CherryPickTreeTaskMetaDto {
+  task_id: number
+  task_name: string
+  task_status: string
+}
+
+/** meta.cases（去重表，用例节点命名与用例卡元信息；缺名时 case_name === case_id） */
+export interface CherryPickTreeCaseMetaDto {
+  case_id: string
+  case_name: string | null
+  algorithm_type: string | null
+  tags: string[] | null
+  group_id: string | null
+  group_name: string | null
+  duration: number | null
+  rounds: number | null
+}
+
+/** meta.devices（去重表；设备已软删时 device_name = null） */
+export interface CherryPickTreeDeviceMetaDto {
+  device_id: number
+  device_name: string | null
+}
+
+/** meta.apis（去重表；可挑范围无 API 维度结果时为空） */
+export interface CherryPickTreeApiMetaDto {
+  api_id: number
+  api_name: string | null
+}
+
+/** tree[].cases[].devices[].result_types[]（每个节点带该节点全部 result_id） */
+export interface CherryPickTreeResultTypeNodeDto {
+  result_type: string
+  count: number
+  result_ids: number[]
+}
+
+/** tree[].cases[].devices[]（device_id / api_id 二选一） */
+export interface CherryPickTreeDeviceNodeDto {
+  device_id: number | null
+  api_id: number | null
+  count: number
+  result_types: CherryPickTreeResultTypeNodeDto[]
+}
+
+/** tree[].cases[] */
+export interface CherryPickTreeCaseNodeDto {
+  case_id: string
+  count: number
+  devices: CherryPickTreeDeviceNodeDto[]
+}
+
+/** tree[] */
+export interface CherryPickTreeTaskNodeDto {
+  task_id: number
+  count: number
+  cases: CherryPickTreeCaseNodeDto[]
+}
+
+/** 候选树响应 data */
+export interface CherryPickCandidateTreeDto {
+  total: number
+  task_count: number
+  meta: {
+    tasks: CherryPickTreeTaskMetaDto[]
+    cases: CherryPickTreeCaseMetaDto[]
+    devices: CherryPickTreeDeviceMetaDto[]
+    apis: CherryPickTreeApiMetaDto[]
+  }
+  tree: CherryPickTreeTaskNodeDto[]
+}
+
+/** 服务端全量选择响应（POST /tasks/cherry-picks/candidates/select-all） */
+export interface CherryPickSelectAllDto {
+  result_ids: number[]
+}
+
 /** 购物车条目快照（cherry_pick_repository._cart_item_to_dict + cart_get invalid 标注） */
 export interface CherryPickCartItemDto {
   item_id: number

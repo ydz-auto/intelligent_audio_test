@@ -73,6 +73,25 @@ export interface PickTreeBranch {
   rounds?: number | null
   /** 组织层：当前维度（分组 / 标签；图标与移除文案数据源） */
   orgKind?: PickCaseOrgDimension
+  /**
+   * 叶明细来源（INT-1510 §8.2.3 第 4 条）：阶段 2 树骨架来自
+   * `GET /tasks/cherry-picks/candidates/tree`，响应内不含结果行明细——
+   * 只有「叶的父级」节点携带本口径，用户展开时才按此分页拉 candidates。
+   */
+  leafFilter?: PickLeafFilter
+}
+
+/**
+ * 叶明细查询口径（INT-1510 §8.2.3 第 4 条）：展开节点后按
+ * 「task_ids + case_ids + device_id 或 api_id + result_type」调 candidates 分页。
+ * `resultType='default'` = 缺值桶（服务端唯一取值，不得另立）。
+ */
+export interface PickLeafFilter {
+  taskIds: number[]
+  caseIds: string[]
+  deviceId: number | null
+  apiId: number | null
+  resultType: string | null
 }
 
 /** 挑选树节点——叶（执行结果行） */
@@ -83,7 +102,9 @@ export interface PickTreeLeaf {
   /** §3.8.3 三视图叶行来源任务名消歧（阶段 1 承载任务维度后树内无任务级，叶行补任务名） */
   taskName: string
   caseName: string
+  deviceId: number | null
   deviceName: string | null
+  apiId: number | null
   apiName: string | null
   resultType: string | null
   executionStatus: string
@@ -94,6 +115,85 @@ export interface PickTreeLeaf {
 }
 
 export type PickTreeItem = PickTreeBranch | PickTreeLeaf
+
+/* ============================================================
+ * 阶段 2 候选树（GET /tasks/cherry-picks/candidates/tree，INT-1510 §8.2）
+ * 树骨架与节点计数的唯一来源；`meta` 为去重表，供节点命名与用例卡元信息。
+ * ============================================================ */
+
+/** 用例元信息（meta.cases；`caseName=null` = 用例目录查不到/已软删，前端出「未知用例」） */
+export interface PickCaseMeta {
+  caseId: string
+  caseName: string | null
+  algorithmType: string | null
+  tags: string[]
+  groupId: string | null
+  groupName: string | null
+  duration: number | null
+  rounds: number | null
+}
+
+/** 设备元信息（meta.devices；`deviceName=null` = 设备已软删，前端出「未知设备」） */
+export interface PickDeviceMeta {
+  deviceId: number
+  deviceName: string | null
+}
+
+/** API 元信息（meta.apis；可挑范围无 API 维度结果时为空数组） */
+export interface PickApiMeta {
+  apiId: number
+  apiName: string | null
+}
+
+/** 任务元信息（meta.tasks） */
+export interface PickTaskMeta {
+  taskId: number
+  taskName: string
+  taskStatus: string
+}
+
+/** 树节点：result_type（带该节点下全部结果 id，R1-R10 三态与节点级全选数据源） */
+export interface PickTreeResultTypeNode {
+  /** 原始取值；`default` = 缺值桶（显示「结果类型待补充」） */
+  resultType: string
+  count: number
+  resultIds: number[]
+}
+
+/** 树节点：设备/API（device_id 与 api_id 二选一） */
+export interface PickTreeDeviceNode {
+  deviceId: number | null
+  apiId: number | null
+  count: number
+  resultTypes: PickTreeResultTypeNode[]
+}
+
+/** 树节点：用例 */
+export interface PickTreeCaseNode {
+  caseId: string
+  count: number
+  devices: PickTreeDeviceNode[]
+}
+
+/** 树节点：任务 */
+export interface PickTreeTaskNode {
+  taskId: number
+  count: number
+  cases: PickTreeCaseNode[]
+}
+
+/** 阶段 2 候选树（tree 端点返回的领域形态） */
+export interface PickCandidateTree {
+  total: number
+  taskCount: number
+  meta: {
+    tasks: PickTaskMeta[]
+    cases: PickCaseMeta[]
+    devices: PickDeviceMeta[]
+    apis: PickApiMeta[]
+  }
+  tree: PickTreeTaskNode[]
+}
 
 /** 三态勾选态 */
 export type SelectionState = 'checked' | 'indeterminate' | 'unchecked'

@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import type { SelectionState } from '@/domain/models/cherryPick'
+import { UNKNOWN_CASE_NAME } from '@/domain/lib/pick-candidate-tree'
 import { CaseCard } from '@/features/testcases/components/case-card'
 
 export interface PickCaseCardProps {
@@ -66,7 +67,11 @@ export function PickCaseCard({
   return (
     <CaseCard
       caseItem={{
-        id: caseId ?? name,
+        // INT-1824 §8.2.8：用例查不到/已软删时只出「未知用例」，不裸显 UUID（截断前 8 位）
+        id:
+          caseId && name === UNKNOWN_CASE_NAME
+            ? `${caseId.slice(0, 8)}…`
+            : (caseId ?? name),
         name,
         tags,
         algorithmType: algorithmType ?? null,

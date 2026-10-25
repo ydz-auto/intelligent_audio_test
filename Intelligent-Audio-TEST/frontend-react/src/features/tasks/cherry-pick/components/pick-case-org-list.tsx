@@ -15,6 +15,7 @@ import type {
   PickTreeLeaf,
 } from '@/domain/models/cherryPick'
 import { getBranchSelectionState } from '@/domain/lib/cherry-pick-tree'
+import { isLeafParentBranch } from '@/domain/lib/pick-candidate-tree'
 import {
   groupCasesByCaseGroup,
   groupCasesByTag,
@@ -28,6 +29,7 @@ import {
 } from '@/features/testcases/components/case-sub-view-toggle'
 import { CaseSubGroupHeader } from '@/features/testcases/components/case-sub-group-header'
 import { PickCaseCard } from '@/features/tasks/cherry-pick/components/pick-case-card'
+import { PickLeafList } from '@/features/tasks/cherry-pick/components/pick-leaf-list'
 import { PickTree } from '@/features/tasks/cherry-pick/components/pick-tree'
 
 /** 用例组织聚合入参（用例级分支携带 §11-7 真名；字段缺省才落兜底桶） */
@@ -46,7 +48,7 @@ export function PickCaseOrgControls({
   subView,
   onOrgChange,
   onSubViewChange,
-  hint = '候选未返分组/标签字段，按「未分组」/「未设置标签」组织（§11-7）',
+  hint = null,
 }: {
   org: PickOrgDimension
   subView: PickSubView
@@ -131,7 +133,15 @@ export function PickCaseOrgList({
 
   if (expandSignal && expandSignal !== lastSignal) {
     setLastSignal(expandSignal)
-    setOpenKeys(expandSignal.all ? new Set(branches.map((b) => b.key)) : new Set())
+    // 「全部展开」只展开到叶的父级之上：叶的父级节点展开即挂 PickLeafList →
+    // 全量并发叶明细请求，故跳过，由用户单击展开时按需拉取（§8.2.3 第 4 条）
+    setOpenKeys(
+      expandSignal.all
+        ? new Set(
+            branches.filter((b) => !isLeafParentBranch(b)).map((b) => b.key)
+          )
+        : new Set()
+    )
   }
 
   const caseItems = useMemo<CaseBranchItem[]>(
@@ -181,13 +191,24 @@ export function PickCaseOrgList({
       >
         {openKeys.has(b.key) ? (
           <div className='space-y-0.5 px-3 pb-3'>
-            <PickTree
-              items={b.children as PickTreeItem[]}
-              selectedIds={selectedIds}
-              onToggleLeaf={onToggleLeaf}
-              onToggleBranch={onToggleBranch}
-              expandSignal={expandSignal}
-            />
+            {isLeafParentBranch(b) ? (
+              // 叶的父级用例卡（单任务省略任务层时）→ 结果行按需分页（candidates）
+              <PickLeafList
+                filter={b.leafFilter!}
+                selectedIds={selectedIds}
+                onToggleLeaf={onToggleLeaf}
+                showLeafTask
+              />
+            ) : (
+              <PickTree
+                items={b.children as PickTreeItem[]}
+                selectedIds={selectedIds}
+                onToggleLeaf={onToggleLeaf}
+                onToggleBranch={onToggleBranch}
+                expandSignal={expandSignal}
+                algorithmLabels={algorithmLabels}
+              />
+            )}
           </div>
         ) : undefined}
       </PickCaseCard>

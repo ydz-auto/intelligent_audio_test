@@ -16,15 +16,12 @@ import type {
 
 const fetchAllPickableTasksMock = vi.hoisted(() => vi.fn())
 const fetchPickableTaskOptionsMock = vi.hoisted(() => vi.fn())
-const fetchCandidateFacetsMock = vi.hoisted(() => vi.fn())
-const fetchCherryPickCandidatesMock = vi.hoisted(() => vi.fn())
+const fetchCherryPickCandidateTreeMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/infrastructure/api/cherry-pick-api', () => ({
   fetchAllPickableTasks: fetchAllPickableTasksMock,
   fetchPickableTaskOptions: fetchPickableTaskOptionsMock,
-  fetchCandidateFacets: fetchCandidateFacetsMock,
-  fetchCherryPickCandidates: fetchCherryPickCandidatesMock,
-  fetchPickCaseNames: vi.fn(),
+  fetchCherryPickCandidateTree: fetchCherryPickCandidateTreeMock,
 }))
 
 const { usePickableTasks, usePickFilterOptions } = await import('../use-cherry-pick-candidates')
@@ -113,26 +110,71 @@ describe('usePickableTasks（阶段 1 数据源）', () => {
   })
 })
 
-describe('usePickFilterOptions（来源任务与清单同源）', () => {
+describe('usePickFilterOptions（选项全部来自真实数据源）', () => {
+  const tree = {
+    total: 2,
+    taskCount: 1,
+    meta: {
+      tasks: [{ taskId: 419, taskName: '任务419', taskStatus: 'completed' }],
+      cases: [],
+      devices: [
+        { deviceId: 1, deviceName: null },
+        { deviceId: 9, deviceName: 'pura90小艺' },
+      ],
+      apis: [{ apiId: 7, apiName: 'ASR-API' }],
+    },
+    tree: [
+      {
+        taskId: 419,
+        count: 2,
+        cases: [
+          {
+            caseId: 'c1',
+            count: 2,
+            devices: [
+              {
+                deviceId: 1,
+                apiId: null,
+                count: 2,
+                resultTypes: [
+                  { resultType: 'default', count: 2, resultIds: [1, 2] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
     fetchPickableTaskOptionsMock.mockResolvedValue([{ id: 419, name: '任务419' }])
-    fetchCandidateFacetsMock.mockResolvedValue({
-      devices: [{ id: 7, name: '设备7' }],
-      resultTypes: ['default'],
-    })
   })
 
-  it('来源任务来自 pickable-tasks，设备/结果类型来自候选 facet，阶段 1 不再调 candidates 聚合', async () => {
-    const { result } = renderHook(() => usePickFilterOptions(), {
+  it('来源任务来自 pickable-tasks，设备/API/结果类型从候选树 meta 派生，阶段 1 不再调树端点', async () => {
+    const { result } = renderHook(() => usePickFilterOptions(true, tree), {
       wrapper: createWrapper(),
     })
 
     await waitFor(() => expect(result.current.tasks).toHaveLength(1))
     expect(result.current.tasks).toEqual([{ id: 419, name: '任务419' }])
-    expect(result.current.devices).toEqual([{ id: 7, name: '设备7' }])
-    expect(result.current.resultTypes).toEqual(['default'])
+    expect(result.current.devices).toEqual([
+      { id: 1, name: '设备 1' },
+      { id: 9, name: 'pura90小艺' },
+    ])
+    expect(result.current.apis).toEqual([{ id: 7, name: 'ASR-API' }])
+    // 缺值桶显示「结果类型待补充」，值仍是 default（服务端过滤取值）
+    expect(result.current.resultTypes).toEqual([
+      { value: 'default', label: '结果类型待补充' },
+    ])
     expect(fetchPickableTaskOptionsMock).toHaveBeenCalledTimes(1)
-    expect(fetchCherryPickCandidatesMock).not.toHaveBeenCalled()
+  })
+
+  it('阶段 1（enabled=false）不拉来源任务选项', () => {
+    renderHook(() => usePickFilterOptions(false, undefined), {
+      wrapper: createWrapper(),
+    })
+    expect(fetchPickableTaskOptionsMock).not.toHaveBeenCalled()
   })
 })
