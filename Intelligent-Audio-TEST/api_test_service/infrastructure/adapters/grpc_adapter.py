@@ -164,6 +164,21 @@ class GrpcAdapter(ApiVendorAdapter):
                 text = text.replace(placeholder, '' if value is None else str(value))
         return text
 
+    def _render_value(self, value, context):
+        """模板值递归渲染：dict / list 逐层下钻，标量交给 `_replace_placeholders`。
+
+        真实 proto 普遍把参数放在嵌套 message（config / session / audio），只渲染
+        顶层会让字面量 `{{占位符}}` 直接发给服务端（静默错误数据）。数值 / 布尔等
+        非字符串原样保留，类型转换交给 `ParseDict`（A0 §3.5）。
+        """
+        if isinstance(value, dict):
+            return {key: self._render_value(item, context)
+                    for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            rendered = [self._render_value(item, context) for item in value]
+            return tuple(rendered) if isinstance(value, tuple) else rendered
+        return self._replace_placeholders(value, context)
+
     def _body_template(self) -> dict:
         template = (self.case_config.get('body_template')
                     or self.meta.get('body_template')
@@ -173,9 +188,10 @@ class GrpcAdapter(ApiVendorAdapter):
 
     def _render_body(self, context) -> dict:
         template = self._body_template()
-        rendered = {}
-        for key, value in template.items():
-            rendered[key] = self._replace_placeholders(value, context)
+        rendered = {
+            key: self._render_value(value, context)
+            for key, value in template.items()
+        }
         # 模板未声明的上下文键不自动灌入（gRPC 的 request message 字段由 proto
         # 决定，多塞未知键会 ParseDict 报错）；只合并模板。
         return rendered
@@ -190,13 +206,22 @@ class GrpcAdapter(ApiVendorAdapter):
 
     # ── 调用 ──
     def _client_for(self, metadata: dict) -> GrpcClient:
+        """取（首次创建）客户端，并**每次**刷新 metadata。
+
+        metadata 支持 `{{占位符}}`（按轮次的 trace / 序号 / 时间戳），而 channel
+        与 method 在整个用例内不变：只缓存 channel 侧的 client，metadata 每次调用
+        都按本轮渲染结果覆盖，否则第 2 轮起会沿用首轮值。
+        """
+        pairs = validate_metadata(metadata)
         if self._client is None:
             self._client = GrpcClient(
                 target=self._endpoint,
                 method=self.method(),
-                metadata=validate_metadata(metadata),
+                metadata=pairs,
                 deadline_ms=self.deadline_ms(),
             )
+        else:
+            self._client.metadata = pairs
         return self._client
 
     def _log(self, level='INFO', content=''):

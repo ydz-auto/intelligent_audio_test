@@ -85,6 +85,7 @@ class _EchoServer:
     def __init__(self, proto_bytes: bytes, delay_seconds: float = 0.0):
         self.compiled = load_compiled_proto(proto_bytes)
         self.delay = delay_seconds
+        self.calls = []   # unary 每次调用的 invocation metadata（按调用顺序）
         self.server = grpc.server(
             concurrent.futures.ThreadPoolExecutor(max_workers=4))
         service = self.compiled.pool.FindServiceByName('int1789.EchoService')
@@ -103,6 +104,9 @@ class _EchoServer:
             )
 
         def unary(req, context):
+            # 记录真实送达的 invocation metadata（INT-1789 返工：按轮渲染回归）
+            self.calls.append([tuple(item)[:2]
+                               for item in (context.invocation_metadata() or ())])
             if self.delay:
                 time.sleep(self.delay)
             return _resp(req)
@@ -395,6 +399,84 @@ class TestAdapterConfig:
             adapter._proto_bytes(adapter.grpc_config())
 
 
+# ── 请求渲染 / 错误收口（INT-1789 返工回归）────────────────────────────
+_UNARY_META = {'grpc': {
+    'service': 'int1789.EchoService', 'method': 'Unary',
+    'method_kind': 'unary', 'proto_object_key': 'local://unused'}}
+
+
+class TestRequestRendering:
+
+    def _adapter(self, meta=None, case_config=None):
+        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        return GrpcAdapter(_ApiCfg(meta or _UNARY_META), case_config=case_config or {})
+
+    def test_nested_body_template_placeholders_rendered(self):
+        """嵌套 message / 数组里的 {{占位符}} 递归替换（非字符串原样保留）。"""
+        adapter = self._adapter(case_config={'body_template': {
+            'meta': {'region': '{{region}}',
+                     'nested': {'echo': 'round-{{round_number}}'}},
+            'tags': ['{{region}}', {'lang': '{{target_lang}}'}, 3],
+            'round_number': 2,
+        }})
+        body = adapter.build_body(
+            {'region': 'ap-east', 'round_number': 5, 'target_lang': 'en'})
+        assert body == {
+            'meta': {'region': 'ap-east',
+                     'nested': {'echo': 'round-5'}},
+            'tags': ['ap-east', {'lang': 'en'}, 3],
+            'round_number': 2,
+        }
+
+    def test_nested_body_template_renders_on_the_wire(self, echo_server):
+        """嵌套渲染结果真的进到 request message（端到端取一次 unary 响应）。"""
+        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        adapter = self._adapter(case_config={'body_template': {
+            'session_id': '{{session_id}}',
+            'input_text': '{{input_text}}',
+        }})
+        adapter._endpoint = echo_server.target
+        adapter._method = _method(echo_server, 'Unary', 'unary')
+        result = adapter.execute({'session_id': 'sess-x', 'input_text': 'hi'})
+        assert result['success'] is True
+        assert result['json']['session_id'] == 'sess-x'
+        assert result['json']['text_result'] == 'hi-ok'
+
+    def test_metadata_placeholders_refresh_every_round(self, echo_server):
+        """`meta.grpc.metadata` 的占位符每轮重新渲染（不是只首轮生效）。"""
+        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        meta = {'grpc': {**_UNARY_META['grpc'], 'metadata': {
+            'x-round': '{{round_number}}', 'authorization': 'Bearer static'}}}
+        adapter = self._adapter(meta=meta, case_config={'body_template': {
+            'input_text': '{{input_text}}'}})
+        adapter._endpoint = echo_server.target
+        adapter._method = _method(echo_server, 'Unary', 'unary')
+        echo_server.calls.clear()
+
+        for round_number in (1, 2, 3):
+            result = adapter.execute_voice_llm_chat(
+                session_id='sess-meta', input_type='text', input_data='hi',
+                round_number=round_number, total_rounds=3)
+            assert result['success'] is True
+
+        sent = [dict(pairs) for pairs in echo_server.calls]
+        assert [item.get('x-round') for item in sent] == ['1', '2', '3']
+        assert all(item.get('authorization') == 'Bearer static' for item in sent)
+
+    def test_execute_unknown_body_field_is_config_error(self, echo_server):
+        """body_template 多出 proto 没有的字段 → execute() 归 config/400，不外抛 ParseError。"""
+        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+        adapter = self._adapter(case_config={
+            'body_template': {'no_such_field': 'x'}})
+        adapter._endpoint = echo_server.target
+        adapter._method = _method(echo_server, 'Unary', 'unary')
+
+        result = adapter.execute({})
+        assert result['success'] is False
+        assert result['biz_code'] == 400
+        assert result['error_source'] == 'config'
+
+
 # ── 路由 / 可用矩阵 ────────────────────────────────────────────────────
 class TestRouting:
 
@@ -547,3 +629,36 @@ class TestStreamStrategy:
         assert ok is False
         assert round_results[0]['error_source'] == 'config'
         assert round_results[0]['biz_code'] == 400
+
+    def test_streaming_lane_rejects_unary_method_kind(self, echo_server, monkeypatch):
+        """streaming=true + method_kind=unary → config/400，不静默按 bidi 跑。"""
+        executor = self._executor()
+        from api_test_service.infrastructure.adapters import (
+            vendor_adapter_registry as registry,
+        )
+        from api_test_service.infrastructure.adapters.grpc_adapter import GrpcAdapter
+
+        adapter = GrpcAdapter(_ApiCfg(dict(_UNARY_META)), case_config={})
+        adapter._endpoint = echo_server.target
+        adapter._method = _method(echo_server, 'Unary', 'unary')
+        monkeypatch.setattr(registry, 'create_from_config',
+                            lambda *args, **kwargs: adapter)
+        monkeypatch.setattr(executor, '_attach_api_output_fields',
+                            lambda *args, **kwargs: None)
+        echo_server.calls.clear()
+
+        rounds = [{'round_number': 1}, {'round_number': 2}]
+        round_results = []
+        ok = executor._run_rounds(
+            1, 2, rounds, _ApiCfg({}), {}, _FakeSession(),
+            {}, 'translation', round_results)
+
+        assert ok is False
+        assert [r['round_number'] for r in round_results] == [1, 2]
+        for result in round_results:
+            assert result['success'] is False
+            assert result['biz_code'] == 400
+            assert result['error_source'] == 'config'
+            assert 'unary' in result['error']
+        # 根本没走到 bidi 会话（没发任何请求消息）
+        assert echo_server.calls == []

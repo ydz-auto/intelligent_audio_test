@@ -278,6 +278,21 @@ def parse_request(payload: dict, method: GrpcMethod):
     return message
 
 
+def parse_request_or_config(payload: dict, method: GrpcMethod):
+    """调用侧包装：请求体与 proto 不符 → `GrpcProtoError`（config / 400）。
+
+    `json_format.ParseError` 的 MRO 是 `ParseError → Error → Exception`，不是
+    `ValueError`，直接外抛会被执行器当未捕获异常（用例崩掉而不是判配置错误）。
+    多余字段 / 类型不符都是 `body_template` 与 proto 不一致，属配置类。
+    """
+    from google.protobuf.json_format import ParseError
+
+    try:
+        return parse_request(payload, method)
+    except ParseError as exc:
+        raise GrpcProtoError(f"请求体与 proto 不符: {exc}")
+
+
 def _normalized_event(event_type: str, seq: int, payload: dict) -> dict:
     return {
         'event_type': event_type,
@@ -460,7 +475,7 @@ class GrpcClient:
     def call_unary(self, payload: dict) -> dict:
         """一次请求一条响应：返回归一结果 dict（含归一 payload 与耗时）。"""
         self.ensure_ready()
-        request = parse_request(payload, self.method)
+        request = parse_request_or_config(payload, self.method)
         started = time.time()
         callable_ = self.channel().unary_unary(
             self.method.path,
@@ -489,7 +504,7 @@ class GrpcClient:
     def call_server_stream(self, payload: dict) -> dict:
         """一次请求多条响应：全部消息收到后返回（消息按 seq 排序）。"""
         self.ensure_ready()
-        request = parse_request(payload, self.method)
+        request = parse_request_or_config(payload, self.method)
         started = time.time()
         callable_ = self.channel().unary_stream(
             self.method.path,
@@ -586,7 +601,7 @@ class GrpcBidiSession:
         """发送一条请求消息（JSON dict → ParseDict）。"""
         if self._closed:
             raise GrpcCallError(config_error_fields('bidi 会话已关闭'))
-        self._send_queue.put(parse_request(payload, self._client.method))
+        self._send_queue.put(parse_request_or_config(payload, self._client.method))
 
     def close_send(self):
         """半关闭：请求方向结束（服务端仍可继续推消息）。"""

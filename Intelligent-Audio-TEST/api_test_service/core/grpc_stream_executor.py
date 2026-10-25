@@ -72,6 +72,23 @@ class GrpcStreamExecutor(APISessionExecutor):
             return False
 
         try:
+            if method_kind == 'unary':
+                # unary = 非流式道（A0 / B0：道只由 apis.streaming 决定）。走到这里
+                # 说明 `streaming=true` 与 `meta.grpc.method_kind=unary` 互相矛盾，
+                # 按配置错误判用例失败，不静默当成 bidi 会话跑（否则首轮「成功」、
+                # 后几轮莫名其妙失败，错误归因错）。
+                message = ('gRPC method_kind=unary 属非流式道，与 streaming=true 矛盾'
+                           '（元数据：unary 走非流式道，server_stream / bidi 走流式道）')
+                self._log(level='ERROR', content=message, task_id=task_id,
+                          api_id=getattr(api_config, 'id', None))
+                for index, round_config in enumerate(rounds or [{}]):
+                    round_number = (round_config.get('round_number', index + 1)
+                                    if isinstance(round_config, dict) else index + 1)
+                    round_results.append(self._failure_round(
+                        round_number,
+                        {'biz_code': 400, 'biz_msg': message, 'error_source': 'config'},
+                        message, 0))
+                return False
             if method_kind == 'server_stream':
                 return self._run_event_rounds(
                     task_id, tc_rel_id, rounds, adapter, api_config,
