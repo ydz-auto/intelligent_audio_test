@@ -19,6 +19,8 @@
   未删除，重跑幂等续上；
 - `--vacuum-full` 是显式开关（默认关）：VACUUM FULL 取 ACCESS EXCLUSIVE 锁，
   由执行者确认低峰窗口后再开；
+- 已标记行默认保留（契约 §Q5.1，INT-1903）：归档与删除同一条件只触碰
+  `mark IS NULL OR mark = ''` 的行；确需整类清时显式加 `--include-marked`；
 - `--dry-run` 只统计不写不删。
 
 用法（隔离库/主库均由环境卡执行）：
@@ -68,6 +70,8 @@ def _parse_args(argv=None) -> argparse.Namespace:
                         help='参与清理的分类（逗号分隔）；默认全部非审计类')
     parser.add_argument('--vacuum-full', action='store_true',
                         help='清理完成后执行 VACUUM FULL logs（ACCESS EXCLUSIVE 锁，需低峰）')
+    parser.add_argument('--include-marked', action='store_true',
+                        help='连同已标记行一起清（默认保留，契约 §Q5.1；整类清须显式开）')
     return parser.parse_args(argv)
 
 
@@ -168,6 +172,8 @@ def _execute(args, ctx) -> int:
         batch_size=args.batch_size,
         categories=categories,
         exclude_audit=True,
+        # 契约 §Q5.1（INT-1903）：自动清理默认保留已标记行，整类清须显式 --include-marked
+        keep_marked=not args.include_marked,
         dry_run=args.dry_run,
         on_batch=lambda idx, archived, deleted: print(
             f'  批 {idx}: 归档 {archived} 条 / 删除 {deleted} 条', flush=True),

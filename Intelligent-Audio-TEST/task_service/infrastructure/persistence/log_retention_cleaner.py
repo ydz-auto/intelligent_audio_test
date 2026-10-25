@@ -11,6 +11,8 @@
 
 约定：
 - 审计类（auth / device / benchmark）不参与清扫（合规保留，见 INT-1785 卡片）；
+- 已标记行（`mark` 非空）不参与清扫（契约 §Q5.1，INT-1903：`mark IS NULL OR mark = ''`
+  才算可清，归档与删除同一条件）；
 - 幂等：重跑时已删除行不再出现，未删成的行归档合并按 id 去重；
 - 可观测：每轮打印本轮归档/删除条数；
 - 单日失败不阻断服务，也不退出守护线程（下一轮重试）；
@@ -91,6 +93,8 @@ class LogRetentionCleaner:
                 store=self._store,
                 batch_size=self.batch_size,
                 exclude_audit=True,
+                # INT-1903（契约 §Q5.1）：DB 侧清扫必须保留已标记行，归档与删除同一条件
+                keep_marked=True,
             )
             result = purger.run(cutoff)
         except Exception as e:  # noqa: BLE001 - 单日失败不阻断服务
