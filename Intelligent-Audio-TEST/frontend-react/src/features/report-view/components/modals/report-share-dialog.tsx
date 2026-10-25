@@ -4,8 +4,10 @@
  * 分享权限=访问权限（仅登录/指定人/公开）× 有效期 × 访问密码；
  * 分享统计=访问次数/访问时间；链接管理和撤销。状态由 application/use-report-share 承载
  * （数据经 infrastructure/api/report-share-api.ts 接 INT-971 真实端点：生成/撤销/统计回读）。
+ * INT-1905 P3-2：权限/有效期/密码只在点「生成分享链接」时随 POST /reports/{id}/share 落库，
+ * 本弹窗没有「保存设置」动作——原「保存」是假成功（只关窗 + toast），已移除，底栏仅「关闭」。
  */
-import { Copy, ExternalLink, Share2 } from 'lucide-react'
+import { Copy, ExternalLink } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,7 +27,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { toast } from 'sonner'
 import type {
   ReportShareState,
   ShareAccess,
@@ -243,17 +244,7 @@ export function ReportShareDialog({
           )}
           <div className='flex gap-2'>
             <Button variant='ghost' size='sm' onClick={() => onOpenChange(false)}>
-              取消
-            </Button>
-            <Button
-              size='sm'
-              onClick={() => {
-                onOpenChange(false)
-                toast.success('分享设置已保存')
-              }}
-            >
-              <Share2 data-icon='inline-start' />
-              保存
+              关闭
             </Button>
           </div>
         </DialogFooter>

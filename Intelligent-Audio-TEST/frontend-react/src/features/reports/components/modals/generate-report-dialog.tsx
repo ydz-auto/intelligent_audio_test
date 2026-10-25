@@ -1,6 +1,6 @@
 /**
  * 生成报告 Dialog（规范 §5.1，report:create）：
- * 任务选择器（GET /tasks 已完成只读，mock）+ 名称/描述 + 生成报告 →
+ * 任务选择器（GET /tasks 已完成，只读）+ 名称/描述 + 生成报告 →
  * POST /reports/generate-task 后交页面打开进度 Dialog 并跳转报告查看。
  * INT-935 返工 P2：generate-task 异步快速失败事件竞态——taskId 提交前已知，
  * 先订阅 report_generated、等 SSE open 再 POST（对齐二次对比 onOpen-gate），

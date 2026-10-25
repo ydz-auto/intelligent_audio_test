@@ -103,9 +103,12 @@ import { CaseReportExpanded } from './specific-case-views/case-report-expanded'
 interface LogDownloadViewState {
   /** 所选文件数（正在下载日志（{n} 个文件）） */
   fileCount: number
-  /** 所选文件总大小（bytes；进度分母） */
+  /**
+   * 传输总字节（进度分母；INT-1905 P3-5：取 Content-Length / presigned 信封 size，
+   * 与分子 downloaded 同为压缩后的 zip 字节；未知为 0 → 不确定进度条）
+   */
   totalSize: number
-  /** 已下载字节 */
+  /** 已下载字节（传输层，压缩后的 zip 字节） */
   downloaded: number
   /** 下载速度（bytes/s，500ms 采样） */
   speed: number
@@ -340,11 +343,12 @@ export function SpecificCaseComparison({
     const target = fileSelectCase
     if (!target) return
     setFileSelectCase(undefined)
-    const totalSize = files.reduce((sum, f) => sum + (f.size || 0), 0)
+    // INT-1905 P3-5：所选文件大小是未压缩合计，不能当 zip 传输进度的分母；
+    // 分母等 onProgress 回传的 Content-Length（压缩后），拿不到则为 0 → 不确定进度条。
     setDownloadTarget(target)
     setDownloadState({
       fileCount: files.length,
-      totalSize,
+      totalSize: 0,
       downloaded: 0,
       speed: 0,
       done: false,
@@ -359,6 +363,8 @@ export function SpecificCaseComparison({
               ? {
                   ...prev,
                   downloaded: progress.loaded,
+                  // 只在后端给出传输总量时回写，避免把 0 覆盖成已取得的分母
+                  totalSize: progress.total > 0 ? progress.total : prev.totalSize,
                   speed: progress.speed,
                 }
               : prev
