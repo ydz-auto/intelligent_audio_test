@@ -31,7 +31,7 @@ class _FakeConfigCache:
     def get_device_params(self, algorithm_type):
         return []
 
-    def get_api_params(self, algorithm_type):
+    def get_api_params(self, algorithm_type, api_id=None):
         return self._api_params
 
     def get_reference_params(self, algorithm_type):
@@ -40,7 +40,7 @@ class _FakeConfigCache:
     def get_case_params(self, algorithm_type):
         return []
 
-    def get_param_mapping(self, algorithm_type, source):
+    def get_param_mapping(self, algorithm_type, source, api_id=None):
         return self._evaluation_mappings if source == 'evaluation' else []
 
 

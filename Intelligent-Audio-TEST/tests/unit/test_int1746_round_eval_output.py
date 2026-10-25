@@ -433,9 +433,9 @@ def _stub_field_definition_cache(monkeypatch, *, api_params, mappings):
     from types import SimpleNamespace
     cache = SimpleNamespace(
         get_device_params=lambda algorithm_type: [],
-        get_api_params=lambda algorithm_type: api_params,
+        get_api_params=lambda algorithm_type, api_id=None: api_params,
         get_reference_params=lambda algorithm_type: [],
-        get_param_mapping=lambda algorithm_type, component: (
+        get_param_mapping=lambda algorithm_type, component, api_id=None: (
             mappings if component == 'evaluation' else []),
         get_case_params=lambda algorithm_type: [],
     )
