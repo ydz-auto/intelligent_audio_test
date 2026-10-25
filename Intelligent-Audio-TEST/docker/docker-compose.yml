@@ -1,5 +1,12 @@
 version: '3.8'
 
+# INT-1820：后端镜像共用的构建参数——各 docker/Dockerfile.* 均声明同名 ARG，
+# 缺省值即推荐值（base image 钉 digest + apt 走可达镜像源，不再依赖 deb.debian.org 的可用性）。
+# 在 .env 里设 PY_IMAGE / APT_MIRROR 即可覆盖全部后端镜像的构建（见 docker/.env.compose.example）。
+x-backend-build-args: &backend-build-args
+  PY_IMAGE: ${PY_IMAGE:-python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce}
+  APT_MIRROR: ${APT_MIRROR:-mirrors.tuna.tsinghua.edu.cn}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -58,6 +65,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.db_bootstrap
+      args: *backend-build-args
     environment:
       # 连接串经 POSTGRES_DB 覆盖指向目标库（隔离栈由 docker-compose.iso.yml 置为
       # intelligent_audio_test_test；缺省与历史口径一致）
@@ -114,6 +122,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api_gateway
+      args: *backend-build-args
     ports:
       - "${API_GATEWAY_PORT:-5000}:5000"
     environment:
@@ -184,6 +193,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.task_service
+      args: *backend-build-args
     ports:
       - "${TASK_SERVICE_HTTP_PORT:-5001}:5001"
       - "${TASK_SERVICE_GRPC_PORT:-51061}:51061"
@@ -250,6 +260,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.evaluation_service
+      args: *backend-build-args
     ports:
       - "${EVALUATION_SERVICE_HTTP_PORT:-5004}:5004"
       - "${EVALUATION_SERVICE_GRPC_PORT:-51091}:51091"
@@ -298,6 +309,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.e2e_test_service
+      args: *backend-build-args
     ports:
       - "${E2E_TEST_HTTP_PORT:-5002}:5002"
       - "${E2E_TEST_GRPC_PORT:-50051}:50051"
@@ -349,6 +361,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.report_service
+      args: *backend-build-args
     ports:
       - "${REPORT_SERVICE_HTTP_PORT:-5006}:5006"
       - "${REPORT_SERVICE_GRPC_PORT:-51068}:51068"
@@ -408,6 +421,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.algorithm_service
+      args: *backend-build-args
     ports:
       - "${ALGORITHM_SERVICE_HTTP_PORT:-5007}:5007"
       - "${ALGORITHM_SERVICE_GRPC_PORT:-51067}:51067"
@@ -445,6 +459,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.auth_service
+      args: *backend-build-args
     ports:
       - "${AUTH_SERVICE_HTTP_PORT:-5009}:5009"
       - "${AUTH_SERVICE_GRPC_PORT:-51069}:51069"
@@ -484,6 +499,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api_test_service
+      args: *backend-build-args
     # 不发布宿主端口（UC-1001/INT-69）：服务间经容器网络互访
     # （API_TEST_SERVICE_HOST=api_test_service，多副本由 Docker DNS 轮询），
     # 会话亲和路由按注册表中各副本自解析的 host:grpc_port 精确寻址。
