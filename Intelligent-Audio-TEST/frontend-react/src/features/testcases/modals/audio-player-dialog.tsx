@@ -569,10 +569,13 @@ export function AudioPlayerPanel(props: AudioPlayerPanelProps) {
         <Alert variant='destructive'>
           <TriangleAlert aria-hidden='true' className='size-4 shrink-0' />
           <span className='min-w-0 flex-1'>{error}</span>
+          {/* 关闭钮固定在错误条右上角：包成 Alert 约定动作位（data-slot=alert-action 触发
+              Alert 的 pr-18 预留位），绝对定位脱离 grid 流，错误条保持单行高度（INT-1673 P3-1） */}
           <button
             type='button'
+            data-slot='alert-action'
             aria-label='关闭错误提示'
-            className='text-current'
+            className='text-current absolute top-2 right-2 rounded-sm opacity-70 transition-opacity hover:opacity-100'
             onClick={() => setError(null)}
           >
             <X aria-hidden='true' className='size-4' />

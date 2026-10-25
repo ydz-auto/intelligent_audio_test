@@ -45,11 +45,13 @@ import { CaseMutateDrawer } from '@/features/testcases/modals/case-mutate-drawer
 import { ExportDialog } from '@/features/testcases/modals/export-dialog'
 import { GroupMutateDialog } from '@/features/testcases/modals/group-mutate-dialog'
 import { AudioPreviewConfigDialog } from '@/features/testcases/modals/audio-preview-config-dialog'
+import { downloadBlob } from '@/lib/download-blob'
 import {
   batchTestcaseAction,
 } from '@/infrastructure/api/testcases-batch-api'
 import {
   copyTestCase,
+  downloadTestCaseTemplate,
   fetchAllTestCaseIdsByFilter,
   setTestCaseFavorite,
 } from '@/infrastructure/api/testcases-api'
@@ -78,6 +80,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     selectAfterCreate?: boolean
   }>({ open: false, group: null })
   const [previewCase, setPreviewCase] = useState<TestCaseListItem | null>(null)
+  /** 模板下载进行中（INT-1673：真实 GET /testcases/template/download，防重复点击） */
+  const [templateDownloading, setTemplateDownloading] = useState(false)
 
   /** 生效筛选（全局算法联动合并；INT-1284 分组内懒加载按同一筛选取数） */
   const effectiveFilters = useMemo(
@@ -148,6 +152,34 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   }, [listError, listQuery.errorUpdatedAt, items.length])
 
   const clearSelection = useCallback(() => setSelected(new Set()), [])
+
+  /**
+   * 模板下载（11_用例域.md §5.7.3；INT-1673 去演示 toast）。
+   * 真实 GET /testcases/template/download（testcase:import_export）回 xlsx 附件字节流，
+   * 前端落 Blob 触发浏览器下载；失败透出后端 message，成功提示带文件名。
+   */
+  const handleTemplateDownload = useCallback(async () => {
+    setTemplateDownloading(true)
+    try {
+      const { blob, filename } = await downloadTestCaseTemplate()
+      if (blob.size === 0) {
+        toast.error('模板下载失败：后端返回空文件')
+        return
+      }
+      downloadBlob(
+        blob,
+        filename,
+        blob.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      )
+      toast.success('模板已下载', { description: filename })
+    } catch (error) {
+      toast.error(
+        `模板下载失败：${error instanceof Error ? error.message : '请稍后重试'}`
+      )
+    } finally {
+      setTemplateDownloading(false)
+    }
+  }, [])
 
   /** 批量弹窗状态机（七件套弹窗 + 两确认；INT-1026 共享 host 双挂） */
   const batch = useCaseBatchActions({ onClearSelection: clearSelection })
@@ -460,7 +492,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               size='sm'
               variant='ghost'
               className='h-7 gap-1.5'
-              onClick={() => toast.success('模板已下载（演示：testcase-import-template.json）')}
+              disabled={templateDownloading}
+              onClick={() => void handleTemplateDownload()}
             >
               <FileDown aria-hidden='true' className='size-3.5' />
               模板下载
