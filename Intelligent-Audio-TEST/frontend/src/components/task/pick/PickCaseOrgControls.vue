@@ -13,7 +13,7 @@
     <button type="button" class="pco-btn" data-layout-btn :class="{ active: subView !== 'flat' }" @click="setSubView(crossValue)">
       {{ crossLabel }}
     </button>
-    <span v-if="fallbackOnly" class="pco-hint">{{ hint || DEFAULT_HINT }}</span>
+    <span v-if="fallbackOnly && hint !== null" class="pco-hint">{{ hint || DEFAULT_HINT }}</span>
   </div>
 </template>
 
@@ -37,11 +37,13 @@ const props = withDefaults(defineProps<{
   subView: 'flat' | 'byTag' | 'byGroup';
   /** 全落单兜底桶（候选/条目无组织字段）时显示兜底提示 */
   fallbackOnly?: boolean;
-  /** 兜底提示文案覆盖（组成区显式传 null 表示组织字段有值时不再提示） */
+  /**
+   * 兜底提示文案覆盖（组成区显式传 null 表示组织字段有值时不再提示）。
+   * 缺省（undefined）= 沿用默认提示；null = 不显示提示（§4.2 不得出现与事实相反的文案）。
+   */
   hint?: string | null;
 }>(), {
   fallbackOnly: false,
-  hint: null,
 });
 
 const emit = defineEmits<{

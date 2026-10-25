@@ -8,7 +8,7 @@
     @name-click="handleNameClick"
   >
     <template #leading>
-      <label class="pcc-check" @click.stop>
+      <label v-if="!readonly" class="pcc-check" @click.stop>
         <input
           type="checkbox"
           class="pcc-checkbox"
@@ -78,6 +78,8 @@ const props = defineProps<{
   /** 名称可点击（用例详情弹窗等） */
   onNameClick?: boolean;
   open: boolean;
+  /** 只读（组成区：容器是既成事实，不渲染三态勾选；INT-1833） */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
