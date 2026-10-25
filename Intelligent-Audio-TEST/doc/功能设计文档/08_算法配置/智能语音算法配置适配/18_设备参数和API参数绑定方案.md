@@ -202,7 +202,7 @@ api_params = [p for p in api_params if p.get('api_id') == target_api_id]
 > | 列 | `algorithm_api_params.field_path VARCHAR(255) NULL`——`algorithm_service/infrastructure/persistence/models/algorithm_models.py:191` |
 > | 迁移 | `scripts/migrations/202610/add_api_param_field_path_int1747.py`，进 `docker/db_bootstrap_entrypoint.py` 引导链 ㊺（幂等，列存在即 SKIP，全新库为全 SKIP） |
 > | 三链统一入口 | `shared/utils/api_output_extractor.py`——单轮 `api_task_runner.extract_final_result`、多轮 `api_session_executor._attach_api_output_fields`、Realtime `realtime_session_executor` 共用 `extract_api_output_fields` |
-> | 评估侧字段键并集 | `evaluation_service/infrastructure/evaluation_api/endpoint_worker.py:232-237`（`device ∪ api`，口径见 §9.6） |
+> | 评估侧字段键并集 | `evaluation_service/infrastructure/evaluation_api/endpoint_worker.py:232-237`（`device ∪ api`，口径见 §9.7） |
 > | 落库通路 | 网关 `api_gateway/schemas/_algorithm_api_param_schemas.py:35-37`（create）/`:58`（update）→ `algorithm_service/infrastructure/persistence/_algorithm_full_save.py:144-145`（create）/`:164-165`（update） |
 
 ### 9.1 四条裁定
@@ -374,4 +374,6 @@ rounds[i].output = {target_param: value}      ← 评估侧唯一读取的口径
 - **C6b（INT-1757）**：把 `api_id` 接到执行 / 评估 / 报告调用点，并改 `result_field_mapping_queries._output_field_cache` 键为 `(algorithm_type, api_id)`；未接线前所有消费域按算法级默认。
 - `algorithm_service/infrastructure/persistence/_algorithm_dimension_repositories.py:264-303` 的 `sync_for_dimension` 仍按 `dimension_id + source='evaluation'` 做「提交集外软删」与整行改写，**未按 `api_id` 收口**：一旦存在 API 实例级的维度映射，维度参数保存会改写或软删它。已开缺陷卡 **INT-1863**（backlog，父卡 INT-1751）跟踪，建议并入 C6b 一起收口。
 - 前端 C5（INT-1750）映射页签读路径 `GET /algorithm/mappings?algorithm_type=X&source_type=api` 与写路径暂不带 `api_id`，界面只能看/改算法级配置；API 实例级配置目前只能经接口写。
+
+> **C4 实施核对（2026-10-25，一致性审计 INT-1869）**：三条 API 执行链（HTTP 多轮 / HTTP 单轮 / Realtime）在写 `rounds[i].output` 前经 `api_test_service/domain/services/eval_output_transform_service.py` 批量变换一次，变换实现仍是 algorithm_service 的 `FieldTransformService`，一次 RPC `ConvertFieldValues`（`algorithm_service.proto:154-160`）；评估侧只按 `target_param` 取值，无第二处变换。仅 `source ∈ {api, device}` 的映射由执行侧变换；`case` / `reference` 来源仍在评估入参提取路径应用一次（与执行侧互斥）。E2E 设备链（`convert_device_output`）未接线 `transform_type`，主库该来源映射当前全为 `none`。详见 [14_Evaluation适配方案.md](./14_Evaluation适配方案.md) §6.5 第 4 条。
 
