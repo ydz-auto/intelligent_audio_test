@@ -235,23 +235,49 @@ class DimensionRelationQueryRepository(IDimensionRelationQueryRepository):
             raise
 
 
+def _filter_api_scope(query, po_cls, api_id: Optional[int]):
+    """按 api_id 作用域过滤 param_mappings 查询。
+
+    ``api_id is None``（维度页 / 评估维度同步的默认口径）= 只取算法类型级行
+    （``api_id IS NULL``），API 实例级行不参与；传值时只取该 API 的作用域行
+    （INT-1863：作用域由调用方显式指定，不靠「查全部再按 source_param 合并」）。
+    """
+    if api_id is None:
+        return query.filter(po_cls.api_id.is_(None))
+    return query.filter(po_cls.api_id == int(api_id))
+
+
 class ParamMappingQueryRepository(IParamMappingQueryRepository):
     """参数映射查询仓储（返回 dict，ACL 风格）。
 
     供 servicer 复用，避免直连 ParamMapping PO。
+
+    INT-1863：``param_mappings`` 自 C6a（INT-1756）起带 ``api_id`` 作用域，
+    本类只按调用方给定作用域读写，默认（``api_id=None``）为算法类型级。
     """
 
-    def list_by_dimension(self, dimension_id: int) -> List[dict]:
+    def list_by_dimension(
+        self, dimension_id: int, api_id: Optional[int] = None
+    ) -> List[dict]:
         """ABC 接口 — 委托到 list_for_dimension。"""
-        return self.list_for_dimension(dimension_id)
+        return self.list_for_dimension(dimension_id, api_id=api_id)
 
-    def list_for_dimension(self, dimension_id: int) -> List[dict]:
-        """查询某维度所有 ParamMapping（含软删除项）。"""
+    def list_for_dimension(
+        self, dimension_id: int, api_id: Optional[int] = None
+    ) -> List[dict]:
+        """查询某维度指定作用域下所有 ParamMapping（含软删除项）。
+
+        默认只返回算法级行（``api_id IS NULL``），API 实例级行由 API 作用域
+        自己的写路径管理，不混进维度级结果。
+        """
         from algorithm_service.infrastructure.persistence.models import (
             ParamMapping as ParamMappingPO,
         )
         session = get_db_session()
-        items = session.query(ParamMappingPO).filter_by(
+        query = _filter_api_scope(
+            session.query(ParamMappingPO), ParamMappingPO, api_id
+        )
+        items = query.filter_by(
             dimension_id=int(dimension_id),
             source="evaluation",
         ).all()
@@ -259,17 +285,23 @@ class ParamMappingQueryRepository(IParamMappingQueryRepository):
 
     def sync_for_dimension(
         self, dimension_id: int, params: list, direction: str = "output",
-        algorithm_type: str = "voice_llm",
+        algorithm_type: str = "voice_llm", api_id: Optional[int] = None,
     ) -> bool:
         """同步 ParamMapping：当评估维度的输入/输出字段变更时，
         自动为该维度创建/更新/删除对应的 ParamMapping 记录。
+
+        INT-1863：只管理调用方给定作用域（默认算法级 ``api_id IS NULL``）的行。
+        评估维度保存走默认口径，绝不会改写或软删 API 实例级维度映射；新建行
+        显式落 ``api_id``，与查询口径保持一致。
         """
         from algorithm_service.infrastructure.persistence.models import (
             ParamMapping as ParamMappingPO,
         )
         session = get_db_session()
         try:
-            active_mappings = session.query(ParamMappingPO).filter_by(
+            active_mappings = _filter_api_scope(
+                session.query(ParamMappingPO), ParamMappingPO, api_id
+            ).filter_by(
                 dimension_id=dimension_id,
                 source="evaluation",
                 deleted=False,
@@ -291,6 +323,7 @@ class ParamMappingQueryRepository(IParamMappingQueryRepository):
                 else:
                     new_mapping = ParamMappingPO(
                         algorithm_type=p.get("algorithm_type", algorithm_type),
+                        api_id=api_id,
                         source="evaluation",
                         source_param=param_code,
                         source_direction=direction,
