@@ -95,6 +95,24 @@ class _ProcHost(GroupResultMixin, DimensionResultMixin, ParseDimensionMixin):
         self.logs.append(kwargs)
 
 
+def _memory_payload_store():
+    """INT-1809：内存对象存储（不上传真实 OSS），供写路径单测注入。"""
+    from shared.infrastructure.raw_payload_store import RawPayloadStore
+
+    objects = {}
+
+    def _upload(data, key):
+        objects[key] = data
+        return f'oss://case_result/{key}'
+
+    def _download(uri):
+        return objects[uri.split('case_result/', 1)[1]]
+
+    store = RawPayloadStore(uploader=_upload, downloader=_download)
+    store.objects = objects
+    return store
+
+
 @pytest.fixture()
 def trd_db():
     """真实内存 SQLite 引擎 + 仅建 test_result_dimensions 表。
@@ -216,9 +234,11 @@ def _run_overwrite(env, per_round, is_native, result_id=_RESULT_A, group_items=N
     factory = env['factory']
     session = factory()
     try:
+        # INT-1809（C2）：逐轮报文外置到内存对象存储（不碰真实 OSS）
         n = env['host']._overwrite_round_results(
             result_id, per_round, group_items or env['group_items'], session,
-            is_native=is_native)
+            is_native=is_native,
+            raw_payload_cache=_memory_payload_store().new_group_cache())
         session.commit()
     finally:
         session.close()
@@ -427,6 +447,8 @@ class TestProcessGroupWiring:
         env = clean_env
         host = env['host']
         monkeypatch.setattr(grm_module, 'get_db_session', env['factory'])
+        # INT-1809（C2）：原始报文改为外置对象，测试注入内存存储（不碰真实 OSS）
+        monkeypatch.setattr(grm_module, 'raw_payload_store', _memory_payload_store())
         acl = MagicMock()
         acl.get_test_result_by_id.return_value = None
         monkeypatch.setattr(grm_module, 'task_acl_repository', acl)

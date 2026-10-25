@@ -140,6 +140,7 @@ def _patch_inline_sleep(monkeypatch):
 def test_group_dimension_results_no_cross_service_in_session_window(monkeypatch):
     events = _EventLog()
     _patch_session_factory(monkeypatch, group_mod, events)
+    _patch_memory_payload_store(monkeypatch)
     monkeypatch.setattr(
         task_acl_repository, 'get_test_result_by_id',
         lambda result_id: (events.add('grpc_get_test_result'), _TestResultDTO())[1])
@@ -192,6 +193,26 @@ def test_aggregate_round_results_grpc_writeback_after_session_close(monkeypatch)
 
 # ==================== A3. update_all_dimensions_in_group_failed 容错与收窄 ====================
 
+def _patch_memory_payload_store(monkeypatch):
+    """INT-1809（C2）：原始报文走对象外置，单测注入内存存储（不碰 OSS）。
+
+    组处理与维度写入两个模块各自持有该单例引用，一并替换。
+    """
+    from shared.infrastructure.raw_payload_store import RawPayloadStore
+
+    objects = {}
+
+    def _upload(data, key):
+        objects[key] = data
+        return f'oss://case_result/{key}'
+
+    def _download(uri):
+        return objects[uri.split('case_result/', 1)[1]]
+
+    store = RawPayloadStore(uploader=_upload, downloader=_download)
+    monkeypatch.setattr(dim_mod, 'raw_payload_store', store)
+    monkeypatch.setattr(group_mod, 'raw_payload_store', store)
+
 def test_group_case_failed_not_blocked_by_local_commit_failure(monkeypatch):
     """本地 TRD 落库失败（连接池耗尽）不得跳过 TaskCase 终态推进。
 
@@ -209,6 +230,7 @@ def test_group_case_failed_not_blocked_by_local_commit_failure(monkeypatch):
                            trd=SimpleNamespace(test_result_id=77))
     # 重试退避在单测里跳过
     monkeypatch.setattr(dim_mod.time, 'sleep', lambda s: None)
+    _patch_memory_payload_store(monkeypatch)
 
     obj = _bare(DimensionResultMixin)
     obj._log = lambda *a, **k: None

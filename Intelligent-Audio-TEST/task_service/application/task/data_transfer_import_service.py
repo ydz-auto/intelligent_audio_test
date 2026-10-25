@@ -35,6 +35,7 @@ from shared.constants.data_transfer import (
     TransferIntent,
     TransferTable,
     fk_rules_of,
+    manifest_requires_raw_objects,
 )
 from shared.utils.data_transfer import conflicted_ids as _conflicted_ids
 from shared.utils.data_transfer import parse_storage_path, remap_task_id_in_key
@@ -67,9 +68,14 @@ from task_service.infrastructure.transfer.file_transfer import (
     write_case_result_files,
     write_ref_param_files,
 )
+from task_service.infrastructure.transfer.raw_payload_store import (
+    RawObjectPackageError,
+    import_raw_objects,
+)
 from task_service.infrastructure.transfer.zip_io import (
     audios_entries,
     case_results_entries,
+    raw_objects_entries,
     read_db_tables,
     read_dimensions_snapshot,
     read_manifest,
@@ -308,6 +314,7 @@ class DataTransferImportService:
         inserted_pks: Dict[str, List[int]] = {}
         rows_by_table: Dict[str, List[dict]] = {}
         source_map_inserted: List[dict] = []
+        raw_stats: Dict = {}
 
         try:
             # ===== 段 0：解析（ZIP 条目已由 zip_io 做路径安全校验，防 zip-slip）=====
@@ -346,6 +353,18 @@ class DataTransferImportService:
                                   for t in _REPORT_TABLES}
             # plan 覆盖全部 16 表（含经 gRPC 转交的维度/报告段），总行数一次计足
             reporter.set_total_rows(plan.total_rows())
+
+            # ===== 段 0.5：原始报文对象（INT-1811，先对象后库）=====
+            # 放在任何写库动作之前：包坏 / 存储不可用时直接失败，不留下「已写库
+            # 但对象缺失」的半截状态。维度行上的 uri 在这里被改写成本端路径，
+            # 1.0 旧包的内联 JSON 现场物化（物化后即 uri-only，不再下发 JSON 列，
+            # 也顺带把 ImportDimensions 的 gRPC payload 从「每行一份报文」压成指针）。
+            # 对象是内容寻址的共享资产，后续段失败时**不清理已写对象**（无害孤儿，
+            # 清理反而会打断引用同一对象的其他行）。
+            if dims_rows:
+                raw_stats = import_raw_objects(
+                    raw_objects_entries(zip_path), dims_rows,
+                    require_objects=manifest_requires_raw_objects(manifest.get('version')))
 
             # ===== 段 1：task_service 8 表（单事务，含容器关系表）=====
             reporter.report(ImportProgressStep.WRITING_DB, '开始写入任务数据')
@@ -399,7 +418,7 @@ class DataTransferImportService:
 
             # ===== 完成 =====
             stats = self._build_stats(plan, dims_rows, report_tables_rows,
-                                      files_tracker, mappings)
+                                      files_tracker, mappings, raw_stats)
             reporter.report(ImportProgressStep.DONE,
                             f"导入完成：任务 {stats['importedTasks']} 个，"
                             f"结果 {stats['importedResults']} 条", '')
@@ -431,6 +450,15 @@ class DataTransferImportService:
                     'compensationErrors': [],
                 },
             }
+        except RawObjectPackageError as e:
+            # 包内原始报文对象缺失 / 与 key 的 sha 不符 → 坏包 400。段 0.5 在
+            # 任何写库动作之前，此刻只有可能残留无害的对象孤儿，无需补偿。
+            log_not_emit('WARNING', _MODULE_NAME,
+                         f'导入拒绝（原始报文对象校验失败）batch={batch_id}: {e}',
+                         category='system')
+            reporter.report(ImportProgressStep.ERROR, str(e))
+            return {'success': False, 'message': str(e), 'code': 400,
+                    'data': {'batchId': batch_id, 'rawObjectErrors': [str(e)]}}
         except Exception as e:
             log_not_emit('ERROR', _MODULE_NAME,
                          f'导入失败 batch={batch_id}: {e}', category='system', exc_info=True)
@@ -604,6 +632,21 @@ class DataTransferImportService:
                     f'（共 {len(dim_rows)} 行）')
             dim_rows = kept_rows
 
+        # ===== 段 0.5：原始报文对象（INT-1811）=====
+        # 增量包的维度行同样引用原始报文，只搬行不搬对象 = A 侧一库悬空指针；
+        # 与整包同口径：先对象后库，内容寻址免 id 重映射。
+        raw_stats: Dict = {}
+        if dim_rows:
+            try:
+                raw_stats = import_raw_objects(
+                    raw_objects_entries(zip_path), dim_rows,
+                    require_objects=manifest_requires_raw_objects(manifest.get('version')))
+            except RawObjectPackageError as e:
+                raise IncrementalValidationError(
+                    f'原始报文对象校验失败: {e}', INCREMENTAL_INVALID_PACKAGE_CODE,
+                    {'errors': [str(e)], 'sourceTaskId': task_id})
+            warnings.extend(raw_stats.get('warnings') or [])
+
         # ===== 段 1：维度覆盖集合并（evaluation_service 单事务 + 旧值快照）=====
         dimension_stats: Dict = {}
         if dim_rows:
@@ -640,6 +683,9 @@ class DataTransferImportService:
             'insertedReports': len(report_stats.get('inserted_report_ids') or []),
             'replacedReportId': report_stats.get('report_id'),
             'targetResolvedBy': report_stats.get('target_resolved_by'),
+            # INT-1811：增量包携带的原始报文对象（写入数 / 旧包现场物化数）
+            'importedRawObjects': int(raw_stats.get('written') or 0),
+            'materializedRawObjects': int(raw_stats.get('materialized') or 0),
             'warnings': warnings,
             'batchId': batch_id,
             # 合并段有快照即可回滚（批次登记保留 7 天）
@@ -863,9 +909,11 @@ class DataTransferImportService:
     @staticmethod
     def _build_stats(plan, dims_rows: List[dict], report_tables_rows: Dict[str, List[dict]],
                      files_tracker: List[tuple],
-                     mappings: Dict[str, Dict[int, int]]) -> dict:
+                     mappings: Dict[str, Dict[int, int]],
+                     raw_stats: Optional[Dict] = None) -> dict:
         tasks_mapping = mappings.get('tasks') or {}
         results_mapping = mappings.get('test_results') or {}
+        raw_stats = raw_stats or {}
 
         def _remapped(mapping: Dict[int, int]) -> dict:
             return {str(k): v for k, v in mapping.items() if k != v}
@@ -890,6 +938,10 @@ class DataTransferImportService:
             'importedDimensions': len(dims_rows),
             'importedReports': len(report_tables_rows.get(TransferTable.TEST_REPORTS.value) or []),
             'importedFiles': len(files_tracker),
+            # INT-1811：原始报文对象搬运结果（写入数 / 1.0 旧包现场物化数 / 降级警告）
+            'importedRawObjects': int(raw_stats.get('written') or 0),
+            'materializedRawObjects': int(raw_stats.get('materialized') or 0),
+            'rawObjectWarnings': list(raw_stats.get('warnings') or []),
             'remappedIds': remapped_ids,
         }
 

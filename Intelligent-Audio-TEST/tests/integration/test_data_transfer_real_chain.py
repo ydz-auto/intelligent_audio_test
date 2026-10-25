@@ -142,7 +142,9 @@ class TestGatewayHttpRealChain:
         assert zipfile.is_zipfile(buf)
         with zipfile.ZipFile(buf) as zf:
             manifest = json.loads(zf.read('manifest.json'))
-            assert manifest['version'] == '1.0'
+            # 整包导出版本随 INT-1811 由 1.0 升到 1.2（包内携带原始报文对象段）
+            from shared.constants.data_transfer import FULL_MANIFEST_VERSION
+            assert manifest['version'] == FULL_MANIFEST_VERSION
             assert manifest['stats']['taskCount'] == 2
             assert len([n for n in zf.namelist() if n.startswith('db/')]) == 16  # INT-656：新增容器关系表
 

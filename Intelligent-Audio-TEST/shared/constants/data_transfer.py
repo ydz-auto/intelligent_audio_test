@@ -22,21 +22,46 @@ from typing import Tuple
 class ManifestVersion(str, Enum):
     """导出包 manifest 版本（version 不符直接拒绝导入，不做跨版本迁移）
 
-    - 1.0：整包导出（/export）
+    - 1.0：整包导出（/export），原始报文以内联 JSON 落在 db 行里
     - 1.1：增量包（/export-incremental）与报告包，多 sourceTask / entities 段
       （INT-1761 / D0 裁定 A1：导入侧同时接受 1.0 与 1.1，不因版本号误拒历史包）
+    - 1.2：包内携带原始报文对象（`files/raw/...` + manifest.rawObjects，
+      INT-1811 / A1）。整包与增量包都产出 1.2；导入侧仍接受 1.0 / 1.1
+      （1.0 的内联 JSON 在导入时现场物化，1.1 缺对象时按行降级并在回执里列警告）
     """
     V1_0 = '1.0'
     V1_1 = '1.1'
+    V1_2 = '1.2'
 
 
 SUPPORTED_MANIFEST_VERSIONS = {
     ManifestVersion.V1_0.value,
     ManifestVersion.V1_1.value,
+    ManifestVersion.V1_2.value,
 }
 
-# 增量包 / 报告包产出 1.1（整包导出继续产出 1.0）
-INCREMENTAL_MANIFEST_VERSION = ManifestVersion.V1_1.value
+# 增量包 / 报告包产出 1.2（整包导出同产 1.2：包结构一致，都带原始报文对象）
+INCREMENTAL_MANIFEST_VERSION = ManifestVersion.V1_2.value
+# 整包导出版本（INT-1811 起由 1.0 升到 1.2）
+FULL_MANIFEST_VERSION = ManifestVersion.V1_2.value
+# 包内带原始报文对象的最低版本：>= 该版本的包对象必须齐全（缺对象按坏包拒绝）
+RAW_OBJECTS_MANIFEST_VERSION = ManifestVersion.V1_2.value
+
+
+def _version_tuple(version) -> tuple:
+    """'1.2' → (1, 2)；非法版本返回空元组（由 validate_manifest 统一拒绝）"""
+    parts = str(version or '').split('.')
+    try:
+        return tuple(int(part) for part in parts)
+    except (TypeError, ValueError):
+        return ()
+
+
+def manifest_requires_raw_objects(version) -> bool:
+    """包版本是否声明「原始报文对象齐全」——1.2 起缺对象按坏包拒绝；
+    1.0 / 1.1 历史包没有对象段，导入侧按行降级（见 raw_payload_store）。"""
+    parsed = _version_tuple(version)
+    return bool(parsed) and parsed >= _version_tuple(RAW_OBJECTS_MANIFEST_VERSION)
 
 
 class IncrementalInclude(str, Enum):
@@ -282,6 +307,13 @@ DIMENSIONS_SNAPSHOT_PATH = 'meta/dimensions.json'
 FILES_CASE_RESULTS_DIR = 'files/case_results'   # 前缀为导出时 task_id 的相对路径
 FILES_REF_PARAMS_DIR = 'files/ref_params'       # {test_case_id}/round_{n}.json
 FILES_AUDIOS_DIR = 'files/audios'               # 与 storage audios 类别同 key
+# 原始报文对象（INT-1811）：包内路径 = `FILES_DIR` + 存储 key（key 首段
+# `shared.utils.raw_payload.RAW_KEY_ROOT`），即
+# `files/raw/{resp|req}/{sha[:2]}/{sha}.json.gz`。内容寻址 → 同对象天然只出现一次；
+# 导入侧按 key 原样回写（免 id 重映射）。
+FILES_DIR = 'files'
+# manifest 里的对象清单段（与包内 files/raw/ 条目一一对应）
+RAW_OBJECTS_MANIFEST_KEY = 'rawObjects'
 
 # ===== 存储类别（shared/infrastructure/storage 的 category 标识）=====
 STORAGE_CATEGORY_CASE_RESULT = 'case_result'

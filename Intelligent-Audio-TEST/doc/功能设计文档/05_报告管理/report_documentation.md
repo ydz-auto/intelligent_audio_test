@@ -63,7 +63,9 @@
 | 表名 | 核心字段 | 用途 |
 |------|---------|------|
 | test_results | task_id、test_case_id、device_id、api_id、algorithm_type、execution_status、response_time、algorithm_result(JSON)、execution_steps(JSON) | 测试执行结果（snake_case 存储） |
-| test_result_dimensions | test_result_id、dimension_id、round_number（NULL=整体评估，0-indexed）、dimension_value、score、status(passed/failed)、evaluation_status | 各轮次/整体维度得分，报告指标计算的直接数据源 |
+| test_result_dimensions | test_result_id、dimension_id、round_number（NULL=整体评估，0-indexed）、dimension_value、score、status(passed/failed)、evaluation_status、api_raw_response_uri 等五列指针 | 各轮次/整体维度得分，报告指标计算的直接数据源 |
+
+> **原始报文不在报告侧直读**（INT-1807 / INT-1809）。`api_raw_response` / `api_request_body` 两个 JSON 列自 C2 起不再有代码读写，报文按内容寻址外置在对象存储（`case_result/raw/{resp|req}/{sha[:2]}/{sha}.json.gz`），行上只有 `_uri / _sha256 / _bytes / _content_type / _created_at` 五列指针（口径见 `01_测试执行/09_原始报文外置对象存储.md`）。需要原始报文的两条链路都**按指针读对象并校验 sha256**：报告快照构建吃评估时内存里的 payload（不回读）；报告加权策略 / 报告详情「按需查看原始响应」/ LLM 复检走 `GetDimensionResultsByResultIds(include_body=True)`，由 evaluation_service 读对象后回传（载荷形状不变）。
 
 ### 3.2 报告数据结构
 
@@ -129,6 +131,12 @@ test_reports + report_summaries / report_summary_meta / report_raw_data
 ```
 
 生成进度可通过 `GET /api/v1/reports/<id>/progress` 轮询查询。
+
+**报告只读冻结快照，不读 TRD 原始报文**（INT-1809 / C2 定稿）：
+
+- 报告页 / HTML / Excel / 对比报告读的是 `test_results.result_data.algorithm_results` —— 评估时预提取并冻结的扁平快照，构建时消耗的是**评估进程内存里的 payload**，快照一旦落定就与原始报文解耦；
+- 只有两类链路需要原始报文，且都按指针读对象（sha256 校验，对象缺失/损坏显式报错）：加权聚合策略（`weighted_sum_ratio` / `weighted_wer` 取分子分母）与报告详情「按需查看原始响应」端点，统一走 `GetDimensionResultsByResultIds(include_body=True)`；`include_body=False` 时 evaluation_service 连对象都不碰；
+- 因此 M1 DROP 掉两个 JSON 列不会影响报告生成，也不会出现「读已删列报错」。
 
 #### 4.1.2 对比报告数据查询
 

@@ -81,7 +81,11 @@ class AiReviewChecker:
                 return {'success': False, 'message': 'result_id 必填', 'data': None}
 
             # 1. 聚合维度评估结果（含 api_request_body/api_raw_response 上下文）
-            items = self._aggregate_dimension_results(result_id)
+            #    INT-1809（C2）：报文按对象指针读，读不出来要**显式报错**——
+            #    拿空上下文去判分等于凭空编结论。
+            items, aggregate_error = self._aggregate_dimension_results(result_id)
+            if aggregate_error:
+                return {'success': False, 'message': aggregate_error, 'data': None}
             if not items:
                 return {'success': False, 'message': f'结果 {result_id} 无维度评估记录', 'data': None}
 
@@ -96,6 +100,13 @@ class AiReviewChecker:
                 return {'success': False, 'message': f"维度 {target.get('dimension_id')} 配置不可用", 'data': None}
 
             # 4. 聚合上下文：ASR/参考文本/维度分/LLM 评语
+            #    INT-1809：报文改存对象、指针为空 = 这条记录本来就没有报文，
+            #    不能拿空 prompt 去判分（只有维度分不构成判分上下文）
+            if (target.get('api_request_body') is None
+                    and target.get('api_raw_response') is None):
+                return {'success': False,
+                        'message': f"维度 {target.get('dimension_id')} 无原始报文（对象指针为空），无法复检",
+                        'data': None}
             context = self._build_context(target, dim_config)
 
             # 5. 复用 llm_judge 端点 worker 与维度配置重新判分
@@ -119,19 +130,25 @@ class AiReviewChecker:
 
     # ==================== 上下文聚合 ====================
 
-    def _aggregate_dimension_results(self, result_id: int) -> List[dict]:
-        """经 GetDimensionResultsByResultIds 聚合该结果的维度评估记录。"""
+    def _aggregate_dimension_results(self, result_id: int):
+        """经 GetDimensionResultsByResultIds 聚合该结果的维度评估记录。
+
+        Returns:
+            (items, error)：原始报文读不出来（对象缺失 / sha256 不符 / 存储不可用）
+            时 ``error`` 写明原因、``items`` 为空——调用方必须显式报错，
+            不得把空上下文当「没有记录」继续判分（INT-1809 / C2）。
+        """
         from evaluation_service.application.queries.evaluation_query_service import (
             evaluation_query_service,
         )
         resp = evaluation_query_service.get_dimension_results_by_result_ids(
             [result_id], include_body=True)
         if not resp.get('success'):
-            logger.warning('聚合维度评估结果失败 result_id=%s: %s',
-                           result_id, resp.get('message'))
-            return []
+            message = resp.get('message') or '未知错误'
+            logger.error('聚合维度评估结果失败 result_id=%s: %s', result_id, message)
+            return [], f'读取维度原始报文失败: {message}'
         data = resp.get('data') or {}
-        return data.get('items') or []
+        return data.get('items') or [], None
 
     def _pick_target_dimension(self, items: List[dict],
                                dimension_id: Optional[int]) -> Optional[dict]:

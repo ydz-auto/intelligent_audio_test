@@ -3,20 +3,47 @@
 
 负责 TestResultDimension 的本地 DB 写入（本服务自有 PO）：
 单维度结果更新、成功/失败状态快捷方法、组内批量失败更新。
+
+INT-1809（C2）：原始报文不再写 JSON 列，改为**只写指针**——报文在组级按值去重
+上传成内容寻址对象（``shared.infrastructure.raw_payload_store``），行上落
+uri / sha256 / bytes / content_type / created_at 五列。上传一律
+``allow_fallback=False``：存储不可用即不写 uri（宁可失败，也不留假指针 / local://）。
 """
 import time
 import traceback
 
+from shared.infrastructure.raw_payload_store import (
+    KIND_REQUEST,
+    KIND_RESPONSE,
+    RawPayloadGroupCache,
+    apply_pointer,
+    raw_payload_store,
+)
 from shared.models.database import get_db_session
 from shared.utils.status_constants import EvaluationStatus, TaskCaseStatus
+
+
+def _write_payload_pointer(row, kind, value, payload_cache):
+    """把一行的原始报文落成指针列（并清空 JSON 列）。
+
+    ``payload_cache`` 为组级缓存：同值在上传阶段已经写过对象，这里只是命中复用；
+    存储不可用（cache 已标记 unavailable）→ 只落 NULL，不抛异常。
+    """
+    pointer = payload_cache.pointer_for(kind, value) if value is not None else None
+    apply_pointer(row, kind, pointer)
 
 
 class DimensionResultMixin:
     """维度评估结果 DB 更新方法"""
 
-    def update_dimension_result(self, dimension_result_id, raw_value, score, status, evaluation_status, error_message, api_raw_response=None, api_request_body=None, task_id=None, test_case_id=None, session=None):
+    def update_dimension_result(self, dimension_result_id, raw_value, score, status, evaluation_status, error_message, api_raw_response=None, api_request_body=None, task_id=None, test_case_id=None, session=None, raw_payload_cache=None):
         """
         更新单个维度的评估结果到数据库
+
+        INT-1809（C2）：``api_raw_response`` / ``api_request_body`` 是**待外置的报文
+        入参**，本方法不写 JSON 列，只写对象指针（``raw_payload_cache`` 由组级入口
+        预热，命中即复用，不会重复上传）。对象写失败 → 不写 uri，异常按既有语义
+        吞掉并记 ERROR（组级失败收口由调用方负责）。
         """
         if not dimension_result_id:
             return
@@ -36,8 +63,11 @@ class DimensionResultMixin:
                     test_result_dimension.status = status
                     test_result_dimension.evaluation_status = evaluation_status
                     test_result_dimension.error_message = error_message
-                    test_result_dimension.api_raw_response = api_raw_response
-                    test_result_dimension.api_request_body = api_request_body
+                    payload_cache = raw_payload_cache or raw_payload_store.new_group_cache()
+                    _write_payload_pointer(test_result_dimension, KIND_RESPONSE,
+                                           api_raw_response, payload_cache)
+                    _write_payload_pointer(test_result_dimension, KIND_REQUEST,
+                                           api_request_body, payload_cache)
                     if should_close:
                         local_db_session.commit()
             finally:
@@ -63,7 +93,7 @@ class DimensionResultMixin:
                 return None
         return None
 
-    def update_dimension_result_failed(self, dimension_result_id, error_message, task_id=None, test_case_id=None, api_raw_response=None, api_request_body=None, session=None):
+    def update_dimension_result_failed(self, dimension_result_id, error_message, task_id=None, test_case_id=None, api_raw_response=None, api_request_body=None, session=None, raw_payload_cache=None):
         """
         更新单个维度的评估结果为失败状态
         """
@@ -78,10 +108,11 @@ class DimensionResultMixin:
             api_request_body=api_request_body,
             task_id=task_id,
             test_case_id=test_case_id,
-            session=session
+            session=session,
+            raw_payload_cache=raw_payload_cache,
         )
 
-    def update_dimension_result_completed(self, dimension_result_id, raw_value, score, task_id=None, test_case_id=None, api_raw_response = None, api_request_body=None, session=None):
+    def update_dimension_result_completed(self, dimension_result_id, raw_value, score, task_id=None, test_case_id=None, api_raw_response = None, api_request_body=None, session=None, raw_payload_cache=None):
         """
         weird comment
         """
@@ -96,12 +127,13 @@ class DimensionResultMixin:
             api_request_body=api_request_body,
             task_id=task_id,
             test_case_id=test_case_id,
-            session=session
+            session=session,
+            raw_payload_cache=raw_payload_cache,
         )
 
     def _overwrite_round_results(self, result_id, per_round, group_items, session,
                                  task_id=None, test_case_id=None, api_request_body=None,
-                                 is_native=False):
+                                 is_native=False, raw_payload_cache=None):
         """整体评估返回的 per_round 结果覆盖/创建逐轮 TRD 记录
 
         逐轮评估与整体评估异步并发：若同维度在同轮次已有逐轮评估记录，
@@ -125,6 +157,7 @@ class DimensionResultMixin:
         from evaluation_service.infrastructure.persistence.orm_models import TestResultDimension
         if not result_id or not per_round:
             return 0
+        payload_cache = raw_payload_cache or raw_payload_store.new_group_cache()
         upserted = 0
         # 本次真实产出的 (dim_id, round_idx) 对：native 清理的保留白名单（按维度精确）
         produced_pairs = set()
@@ -160,8 +193,9 @@ class DimensionResultMixin:
                 trd.status = TaskCaseStatus.COMPLETED
                 trd.evaluation_status = EvaluationStatus.COMPLETED
                 trd.error_message = None
-                trd.api_raw_response = per_round_item
-                trd.api_request_body = api_request_body
+                # INT-1809（C2）：逐轮值按值外置（同一轮的多维度行共享同一份对象）
+                _write_payload_pointer(trd, KIND_RESPONSE, per_round_item, payload_cache)
+                _write_payload_pointer(trd, KIND_REQUEST, api_request_body, payload_cache)
                 upserted += 1
                 produced_pairs.add((dim_id, round_idx))
 
@@ -332,7 +366,24 @@ class DimensionResultMixin:
         TRD 永久停留非终态 → 统一收尾的全维终态门控拒绝收敛。此处对整组写库做
         有界重试（连接池释通常在秒级）；仍失败由调用方经 gRPC 侧兜底保证用例
         可达终态。
+
+        INT-1809（C2）：失败行若带原始报文同样外置成对象（组级一次上传，重试复用
+        同一份缓存，不重复上传）；存储不可用 → 不写 uri（行上指针全 NULL），
+        失败状态照常落库。
         """
+        payload_cache = raw_payload_store.new_group_cache()
+        try:
+            payload_cache.warm(KIND_RESPONSE, api_raw_response)
+            payload_cache.warm(KIND_REQUEST, api_request_body)
+        except Exception as e:  # noqa: BLE001 - 对象写失败不阻断失败状态落库
+            payload_cache.mark_unavailable()
+            self._log(
+                level='ERROR',
+                category='storage',
+                content=f'失败维度记录的原始报文外置失败（不写 uri，行上指针保持 NULL）: {e}',
+                task_id=task_id,
+                test_case_id=test_case_id,
+            )
         for attempt in range(1, max_attempts + 1):
             local_db_session = get_db_session()
             try:
@@ -343,6 +394,7 @@ class DimensionResultMixin:
                         api_raw_response=api_raw_response,
                         api_request_body=api_request_body,
                         session=local_db_session,
+                        raw_payload_cache=payload_cache,
                     )
                 local_db_session.commit()
                 return True

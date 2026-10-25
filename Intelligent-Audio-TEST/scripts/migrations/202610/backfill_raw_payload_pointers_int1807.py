@@ -6,7 +6,7 @@
 TOAST 合计约 695MB）。本脚本把报文按**内容寻址**搬到对象存储，只把指针回写到
 ``api_raw_*_uri`` 等列（列由 ``add_raw_payload_pointers_int1807.py`` 建）。
 
-对象口径（与 C2 读写路径共用，改口径先改卡）：
+对象口径（唯一实现在 shared/utils/raw_payload.py，在线读写路径与离线搬运共用，改口径先改卡）：
     key      raw/resp/{sha[:2]}/{sha}.json.gz  /  raw/req/{sha[:2]}/{sha}.json.gz
     category case_result（多桶模式免新增配置；单桶模式自动落
              {OSS_KEY_PREFIX}/case_result/raw/...）
@@ -55,8 +55,6 @@ OSS_SECRET_KEY / OSS_BUCKET_NAME / OSS_KEY_PREFIX 必须与服务侧一致（单
 退出码：0 完成且无失败组；1 存在失败组 / 门禁未归零；2 连续失败超阈值中止。
 """
 import argparse
-import gzip
-import hashlib
 import json
 import os
 import sys
@@ -77,9 +75,6 @@ if not os.environ.get('DATABASE_URL'):
         '@localhost:5432/intelligent_audio_test')
 
 TABLE = 'test_result_dimensions'
-CATEGORY = 'case_result'
-CONTENT_TYPE = 'application/json+gzip'
-GZIP_COMPRESS_LEVEL = 9
 
 DEFAULT_BATCH_GROUPS = 200
 DEFAULT_SLEEP_SECONDS = 0.5
@@ -108,25 +103,17 @@ GATE_SQL = (
 
 
 # ---------------------------------------------------------------- 对象口径
-
-def canonical_bytes(value) -> bytes:
-    """规范化 JSON 字节：键序 / 分隔符固定，否则键序不同会产出重复对象。"""
-    return json.dumps(value, sort_keys=True, separators=(',', ':'),
-                      ensure_ascii=False).encode('utf-8')
-
-
-def sha256_hex(value) -> str:
-    return hashlib.sha256(canonical_bytes(value)).hexdigest()
-
-
-def object_key(kind: str, sha: str) -> str:
-    """内容寻址 key：raw/resp/{sha[:2]}/{sha}.json.gz（req 同理）。"""
-    return f'raw/{kind}/{sha[:2]}/{sha}.json.gz'
-
-
-def compress(raw: bytes) -> bytes:
-    """gzip 压缩；mtime 固定为 0（sha 对未压缩字节算，压缩差异不影响 key）。"""
-    return gzip.compress(raw, compresslevel=GZIP_COMPRESS_LEVEL, mtime=0)
+# 口径唯一实现在 shared/utils/raw_payload.py（INT-1811 归一）：回填脚本、在线读写
+# 路径（shared.infrastructure.raw_payload_store 也从这里导入口径）与离线搬运 1.0 旧包
+# 现场物化共用同一份算法，否则同一报文会算出不同 sha，A→B→A 往返膨胀。
+from shared.utils.raw_payload import (  # noqa: E402  (sys.path 已在上面注入仓库根)
+    RAW_CATEGORY as CATEGORY,
+    RAW_CONTENT_TYPE as CONTENT_TYPE,
+    canonical_bytes,
+    compress,
+    object_key,
+    sha256_hex,
+)
 
 
 def _default_uploader(data: bytes, key: str) -> str:
