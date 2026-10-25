@@ -63,7 +63,8 @@ class _Host(GroupResultMixin):
         self.logs.append({'level': level, 'content': content, **kwargs})
 
     # 本地 DB / gRPC 资源名查询走桩
-    def _load_dim_result_rows(self, result_id):
+    # INT-1809（C2）：签名随生产路径带上内存 payload 缓存，桩一并跟随
+    def _load_dim_result_rows(self, result_id, payload_context=None):
         return []
 
     def _resolve_resource_name(self, result_id, device_id, api_id):
