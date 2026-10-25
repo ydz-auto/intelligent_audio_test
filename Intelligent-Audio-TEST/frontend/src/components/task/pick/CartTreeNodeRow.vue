@@ -211,7 +211,7 @@ function statusText(status?: string | null): string {
   border-radius: var(--radius-md);
 }
 .ctr-row:hover {
-  background: var(--color-slate-50, #f8fafc);
+  background: var(--muted, #f8fafc);
 }
 .ctr-chevron {
   width: 16px;
@@ -257,8 +257,8 @@ function statusText(status?: string | null): string {
   flex-shrink: 0;
   padding: 1px 8px;
   border-radius: var(--radius-full);
-  background: var(--color-slate-100, #f1f5f9);
-  color: var(--color-slate-500, #64748b);
+  background: var(--muted, #f1f5f9);
+  color: var(--muted-foreground, #64748b);
   font-size: 11px;
   font-weight: 500;
 }
@@ -286,9 +286,9 @@ function statusText(status?: string | null): string {
   font-size: 12px;
 }
 .ctr-leaf.invalid { background: #fef2f2; }
-.ctr-leaf:hover { background: var(--color-slate-50, #f8fafc); }
+.ctr-leaf:hover { background: var(--muted, #f8fafc); }
 .ctr-leaf-case { color: var(--foreground, #1e293b); min-width: 80px; }
-.ctr-leaf-dim { color: var(--color-slate-500, #64748b); min-width: 70px; }
+.ctr-leaf-dim { color: var(--muted-foreground, #64748b); min-width: 70px; }
 .ctr-leaf-rt {
   padding: 0 6px;
   border-radius: var(--radius-sm);

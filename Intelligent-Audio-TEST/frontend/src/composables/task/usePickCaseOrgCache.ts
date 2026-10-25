@@ -2,11 +2,11 @@
 /**
  * 购物车 / 复核用例层组织字段会话缓存（INT-1831）。
  *
- * 购物车接口快照（GET /tasks/cherry-picks/cart）只到 source_case_id / 名称级，
- * 不带 tags / group_name；而候选行（/candidates）已返组织字段（INT-1130 §11-7）。
- * 因此在挑选侧载入候选时把 case_id → 组织字段记入本会话缓存，购物车 / 复核四视图
- * 的用例层组织层（分组视图 / 标签视图）据此聚合；缓存未命中（历史购物车条目）走
- * 「未分组」/「未设置标签」兜底桶，不新增后端请求、不改购物车契约。
+ * 购物车条目自身已随接口返回用例级组织字段（GET /tasks/cherry-picks/cart 的
+ * items[] 带 tags / group_id / group_name），四视图组织层以条目字段为主
+ * （cartTree.resolveCartCaseOrgMap）。本缓存只是补充：挑选侧载入候选
+ * （/candidates，INT-1130 §11-7）时把 case_id → 组织字段记入，供条目缺字段的
+ * 历史快照兜底；全缺时仍走「未分组」/「未设置标签」兜底桶，不新增后端请求。
  */
 import { computed, ref } from 'vue';
 import type { PickCaseOrgInfo } from '../../components/task/pick/pickTree';

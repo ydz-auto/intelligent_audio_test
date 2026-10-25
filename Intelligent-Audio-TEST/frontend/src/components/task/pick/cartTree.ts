@@ -11,7 +11,8 @@
  * 叶 = 购物车条目（item_id），节点选中态以叶 item_id 集派生；四视图共用同一份 item_id 集，
  * 切换视图不丢勾选、不改提交载荷。
  * 用例层组织（分组视图 / 标签视图 × 平铺 / 交叉）与挑选侧同口径（INT-1110 §3.8.3）：
- * 组织字段由调用方经 caseOrgMap 注入，缺字段落「未分组」/「未设置标签」兜底桶；空组不下发。
+ * 组织字段优先取购物车条目自身（items[] 随条目返回 tags / group_id / group_name），
+ * 会话缓存仅作补充（resolveCartCaseOrgMap）；缺字段落「未分组」/「未设置标签」兜底桶；空组不下发。
  * 任务层恒渲染（含单来源任务）；组织层在四视图内都存在（INT-1725 口径）。
  */
 import type { PickCartGroup, PickCartItem } from '../../../infrastructure/api/cherryPickApi';
@@ -60,7 +61,8 @@ export interface CartViewOptions {
   org?: CartOrgDim
   /** 子视图（缺省 flat） */
   subView?: CartOrgSubView
-  /** 用例组织字段（case_id → tags/groupId/groupName；缺省全落兜底桶） */
+  /** 用例组织字段（case_id → tags/groupId/groupName；缺省全落兜底桶）。
+   *  调用方通常用 resolveCartCaseOrgMap 由条目字段派生，会话缓存仅作补充。 */
   caseOrgMap?: ReadonlyMap<string | number, PickCaseOrgInfo>
 }
 
@@ -409,24 +411,73 @@ export function buildCartView(
 }
 
 /**
+ * 用例组织字段解析（四视图组织层数据源）。
+ *
+ * 购物车条目自身已带用例级组织字段（GET /tasks/cherry-picks/cart 的 items[] 随条目
+ * 返回 tags / group_id / group_name，与候选项 §11-7 同源）——刷新页面或直接打开抽屉
+ * 也按真实分组 / 标签组织；会话缓存（挑选侧载入候选时记入）仅作补充，供历史条目缺字段时兜底。
+ * 同一用例跨条目的字段取并集（标签去重；分组取首个非空值）。
+ */
+export function resolveCartCaseOrgMap(
+  groups: PickCartGroup[],
+  supplement?: ReadonlyMap<string | number, PickCaseOrgInfo>,
+): Map<string | number, PickCaseOrgInfo> {
+  const map = new Map<string | number, PickCaseOrgInfo>();
+  const upsert = (caseId: string | number, info: PickCaseOrgInfo) => {
+    const prev = map.get(caseId);
+    if (!prev) {
+      map.set(caseId, {
+        tags: [...(info.tags ?? [])],
+        groupId: info.groupId ?? null,
+        groupName: info.groupName ?? null,
+      });
+      return;
+    }
+    map.set(caseId, {
+      tags: [...new Set([...(prev.tags ?? []), ...(info.tags ?? [])])],
+      groupId: prev.groupId ?? info.groupId ?? null,
+      groupName: prev.groupName ?? info.groupName ?? null,
+    });
+  };
+  for (const g of groups) {
+    for (const it of g.items) {
+      if (!it.sourceCaseId) continue;
+      const tags = it.tags ?? [];
+      const groupName = it.groupName ?? null;
+      const groupId = it.groupId != null ? String(it.groupId) : null;
+      if (tags.length === 0 && groupName == null && groupId == null) continue;
+      upsert(it.sourceCaseId, { tags, groupId, groupName });
+    }
+  }
+  if (supplement) {
+    for (const [caseId, info] of supplement) upsert(caseId, info);
+  }
+  return map;
+}
+
+/**
  * 购物车是否有用例组织字段（四视图组织层兜底提示判定）。
- * 购物车快照本身不带 tags / group_name，组织字段来自会话缓存；全缺时组织层只有
- * 单兜底桶，工具行显示兜底提示（与挑选侧 §11-7 同口径）。
+ * 优先看条目自身字段（刷新 / 直接进抽屉），会话缓存补充命中同样算有数据；
+ * 全缺时组织层只有单兜底桶，工具行显示兜底提示（与挑选侧 §11-7 同口径）。
  */
 export function hasCartCaseOrg(
   groups: PickCartGroup[],
   caseOrgMap?: CartViewOptions['caseOrgMap'],
 ): boolean {
+  const has = (info?: PickCaseOrgInfo | null): boolean =>
+    !!info && (!!info.groupName || info.groupId != null || (info.tags?.length ?? 0) > 0);
   for (const g of groups) {
     for (const it of g.items) {
+      if (has({ tags: it.tags ?? [], groupId: it.groupId ?? null, groupName: it.groupName ?? null })) return true;
       const info = it.sourceCaseId ? caseOrgMap?.get(it.sourceCaseId) : undefined;
-      if (info && (info.groupName || info.groupId != null || (info.tags?.length ?? 0) > 0)) return true;
+      if (has(info)) return true;
     }
   }
   return false;
 }
 
-/** 收集可展开节点 key（全部展开 / 全部收起；叶前一层不参与） */export function collectCartNodeKeys(roots: CartTreeNode[]): string[] {
+/** 收集可展开节点 key（全部展开 / 全部收起；叶前一层不参与） */
+export function collectCartNodeKeys(roots: CartTreeNode[]): string[] {
   const out: string[] = [];
   const walk = (nodes: CartTreeNode[]) => {
     for (const node of nodes) {

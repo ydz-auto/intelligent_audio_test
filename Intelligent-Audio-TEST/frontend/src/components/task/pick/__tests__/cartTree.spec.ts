@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildCartTaskView, buildCartCaseView, buildCartDeviceView, buildCartResultTypeView, buildCartView,
-  cartNodeState, toggleCartNode, collectCartNodeKeys,
+  cartNodeState, toggleCartNode, collectCartNodeKeys, hasCartCaseOrg, resolveCartCaseOrgMap,
   type CartTreeNode,
 } from '../cartTree';
 import type { PickCartGroup } from '../../../../infrastructure/api/cherryPickApi';
@@ -179,6 +179,50 @@ describe('用例层组织：分组 / 标签 × 平铺 / 交叉，空组不下发
   it('空条目分组不下发（空购物车 → 空树）', () => {
     expect(buildCartView('task', [], {})).toEqual([]);
     expect(buildCartView('case', [group(9, '空任务', [])], {})).toEqual([]);
+  });
+});
+
+describe('用例层组织字段来源：条目自身为主，会话缓存仅补充（审计 P2-1）', () => {
+  /** 条目自带组织字段（购物车接口随条目返回 tags / group_id / group_name） */
+  const groupsWithOrg: PickCartGroup[] = [
+    group(1, '任务A', [
+      { itemId: 1, resultId: 11, sourceTaskId: 1, sourceTaskName: '任务A', sourceCaseId: 'C1', sourceCaseName: '用例1', sourceDeviceId: 7, sourceDeviceName: '设备7', sourceResultType: 'default', tags: ['标签A'], groupId: 'g1', groupName: '拒识' },
+      { itemId: 2, resultId: 12, sourceTaskId: 1, sourceTaskName: '任务A', sourceCaseId: 'C2', sourceCaseName: '用例2', sourceDeviceId: 7, sourceDeviceName: '设备7', sourceResultType: 'default' },
+    ]),
+  ];
+
+  it('无会话缓存也按条目真实分组组织（刷新 / 直接开抽屉不落「未分组」）', () => {
+    const map = resolveCartCaseOrgMap(groupsWithOrg);
+    expect(map.get('C1')).toEqual({ tags: ['标签A'], groupId: 'g1', groupName: '拒识' });
+    const tree = buildCartTaskView(groupsWithOrg, { caseOrgMap: map });
+    expect(tree[0].children.map((n) => n.name)).toEqual(['拒识', '未分组']);
+    expect(tree[0].children[1].muted).toBe(true);
+    expect(hasCartCaseOrg(groupsWithOrg, map)).toBe(true);
+  });
+
+  it('条目缺字段时由会话缓存补充；条目有值时以条目为准', () => {
+    const supplement = new Map<string | number, PickCaseOrgInfo>([
+      ['C1', { tags: ['旧标签'], groupId: 'g0', groupName: '旧分组' }],
+      ['C2', { tags: ['标签B'], groupId: 'g2', groupName: '其它' }],
+    ]);
+    const map = resolveCartCaseOrgMap(groupsWithOrg, supplement);
+    // C1 条目有值：分组取条目值，标签取并集
+    expect(map.get('C1')).toEqual({ tags: ['标签A', '旧标签'], groupId: 'g1', groupName: '拒识' });
+    // C2 条目无组织字段：由会话缓存补
+    expect(map.get('C2')).toEqual({ tags: ['标签B'], groupId: 'g2', groupName: '其它' });
+  });
+
+  it('条目与会话缓存全缺 → 兜底提示为真（fallback-only 才显示说明文案）', () => {
+    expect(resolveCartCaseOrgMap(groups).size).toBe(0);
+    expect(hasCartCaseOrg(groups, resolveCartCaseOrgMap(groups))).toBe(false);
+    // 会话缓存补充命中同样算有组织数据
+    expect(hasCartCaseOrg(groups, caseOrgMap)).toBe(true);
+  });
+
+  it('标签视图按条目标签分桶（四视图同一组织口径）', () => {
+    const map = resolveCartCaseOrgMap(groupsWithOrg);
+    const tree = buildCartTaskView(groupsWithOrg, { org: 'tag', caseOrgMap: map });
+    expect(tree[0].children.map((n) => `${n.name}:${n.children.length}`)).toEqual(['标签A:1', '未设置标签:1']);
   });
 });
 

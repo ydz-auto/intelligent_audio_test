@@ -1,16 +1,16 @@
 <template>
   <div class="pco-controls">
-    <button type="button" class="pco-btn" :class="{ active: org === 'group' }" @click="setOrg('group')">
+    <button type="button" class="pco-btn" data-layout-btn :class="{ active: org === 'group' }" @click="setOrg('group')">
       <i class="fas fa-folder"></i> 分组视图
     </button>
-    <button type="button" class="pco-btn" :class="{ active: org === 'tag' }" @click="setOrg('tag')">
+    <button type="button" class="pco-btn" data-layout-btn :class="{ active: org === 'tag' }" @click="setOrg('tag')">
       <i class="fas fa-tags"></i> 标签视图
     </button>
     <span class="pco-controls-sep"></span>
-    <button type="button" class="pco-btn" :class="{ active: subView === 'flat' }" @click="setSubView('flat')">
+    <button type="button" class="pco-btn" data-layout-btn :class="{ active: subView === 'flat' }" @click="setSubView('flat')">
       平铺
     </button>
-    <button type="button" class="pco-btn" :class="{ active: subView !== 'flat' }" @click="setSubView(crossValue)">
+    <button type="button" class="pco-btn" data-layout-btn :class="{ active: subView !== 'flat' }" @click="setSubView(crossValue)">
       {{ crossLabel }}
     </button>
     <span v-if="fallbackOnly" class="pco-hint">{{ hint || DEFAULT_HINT }}</span>
@@ -22,6 +22,9 @@
  * PickCaseOrgControls —— 用例层组织控件（分组视图 / 标签视图 × 平铺 / 交叉）。
  * 挑选树（PickCaseOrgList）与购物车四视图（INT-1831）共用同一套控件与口径；
  * 组织只影响用例层视觉分组，勾选联动与共享选中集不变（会话态由调用方持有）。
+ * 按钮带 `data-layout-btn` 退出 legacy button.css catch-all——否则全局 button 规则
+ * 压掉 scoped 的选中态配色/背景，分组视图 / 标签视图看不出当前维度
+ * （同 NotificationPopover 分段控件口径）。
  */
 import { computed } from 'vue';
 
@@ -67,18 +70,19 @@ function setSubView(subView: 'flat' | 'byTag' | 'byGroup') {
   gap: 4px;
   flex-wrap: wrap;
   padding: 8px 12px;
-  background: var(--color-slate-50, #f8fafc);
-  border-bottom: 1px solid var(--color-slate-200, #e2e8f0);
+  background: var(--muted, #f8fafc);
+  border-bottom: 1px solid var(--border, #e2e8f0);
 }
 .pco-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
-  border: 1px solid var(--color-slate-300, #cbd5e1);
+  border: 1px solid var(--border, #cbd5e1);
   border-radius: var(--radius-md);
   background: var(--card, #fff);
   color: var(--foreground, #1e293b);
+  font-family: inherit;
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -95,12 +99,12 @@ function setSubView(subView: 'flat' | 'byTag' | 'byGroup') {
 .pco-controls-sep {
   width: 1px;
   height: 16px;
-  background: var(--color-slate-200, #e2e8f0);
+  background: var(--border, #e2e8f0);
   margin: 0 2px;
 }
 .pco-hint {
   margin-left: auto;
   font-size: 11px;
-  color: var(--color-slate-400, #94a3b8);
+  color: var(--muted-foreground, #94a3b8);
 }
 </style>

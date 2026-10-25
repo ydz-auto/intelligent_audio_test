@@ -35,7 +35,7 @@
           :org="cartOrg"
           :sub-view="cartSubView"
           :fallback-only="!cartHasOrgData"
-          hint="购物车快照未带用例分组/标签字段，按「未分组」/「未设置标签」组织（§11-7）"
+          hint="购物车条目未带用例分组/标签字段，按「未分组」/「未设置标签」组织（§11-7）"
           @update:org="cartOrg = $event"
           @update:sub-view="cartSubView = $event"
         />
@@ -116,7 +116,7 @@ import CartTree from './CartTree.vue';
 import CartViewSwitcher from './CartViewSwitcher.vue';
 import PickCaseOrgControls from './PickCaseOrgControls.vue';
 import {
-  buildCartView, collectCartNodeKeys, hasCartCaseOrg, toggleCartNode,
+  buildCartView, collectCartNodeKeys, hasCartCaseOrg, resolveCartCaseOrgMap, toggleCartNode,
   type CartTreeNode, type CartViewMode, type CartOrgDim, type CartOrgSubView,
 } from './cartTree';
 import type { PickCartItem } from '../../../infrastructure/api/cherryPickApi';
@@ -149,11 +149,14 @@ const cartOrg = ref<CartOrgDim>('group');
 const cartSubView = ref<CartOrgSubView>('flat');
 const { caseOrgMap } = usePickCaseOrgCache();
 
+/** 组织字段：条目自身 tags/group_name 为主（刷新 / 直接开抽屉也按真实分组），会话缓存仅补充 */
+const cartCaseOrgMap = computed(() => resolveCartCaseOrgMap(cart.value.groups, caseOrgMap.value));
+
 /** 购物车树（四视图层级照 UX设计规范-VUE 18 §3.2；叶 = 条目 item_id，选中集跨视图共用） */
 const cartTreeRoots = computed(() => buildCartView(cartView.value, cart.value.groups, {
   org: cartOrg.value,
   subView: cartSubView.value,
-  caseOrgMap: caseOrgMap.value,
+  caseOrgMap: cartCaseOrgMap.value,
 }));
 const cartLeafMeta = computed(() => {
   const m = new Map<number, PickCartItem>();
@@ -163,8 +166,8 @@ const cartLeafMeta = computed(() => {
   return m;
 });
 const cartExpandedKeys = ref<Set<string>>(new Set());
-/** 组织字段兜底提示（购物车快照未带 tags / group_name 时说明组织层口径） */
-const cartHasOrgData = computed(() => hasCartCaseOrg(cart.value.groups, caseOrgMap.value));
+/** 组织字段兜底提示（条目与会话缓存均无用例分组/标签字段时说明组织层口径） */
+const cartHasOrgData = computed(() => hasCartCaseOrg(cart.value.groups, cartCaseOrgMap.value));
 /** 切换视图/组织维度后展开首层便于核对（与复核步骤同口径） */
 watch(cartTreeRoots, (roots) => {
   const next = new Set(cartExpandedKeys.value);
@@ -328,7 +331,8 @@ async function restoreSet(setId: number) {
 .cd-drawer {
   width: min(480px, 92vw);
   height: 100%;
-  background: #fff;
+  background: var(--card, #fff);
+  color: var(--card-foreground, #1e293b);
   box-shadow: -4px 0 24px rgb(0 0 0 / 0.12);
   display: flex;
   flex-direction: column;
@@ -339,7 +343,7 @@ async function restoreSet(setId: number) {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--color-slate-200, #e2e8f0);
+  border-bottom: 1px solid var(--border, #e2e8f0);
 }
 .cd-header h3 {
   font-size: 16px;
@@ -360,7 +364,7 @@ async function restoreSet(setId: number) {
   gap: 6px;
   flex-wrap: wrap;
   padding: 12px 20px;
-  border-bottom: 1px solid var(--color-slate-100, #f1f5f9);
+  border-bottom: 1px solid var(--border, #f1f5f9);
 }
 .cd-toolbar-info {
   flex: 1;
@@ -493,7 +497,7 @@ async function restoreSet(setId: number) {
 .cd-row-invalid { color: var(--destructive, #dc2626); font-size: 11px; }
 .cd-sets {
   padding: 12px 16px;
-  border-top: 1px solid var(--color-slate-100, #f1f5f9);
+  border-top: 1px solid var(--border, #f1f5f9);
   max-height: 180px;
   overflow-y: auto;
 }
@@ -511,7 +515,7 @@ async function restoreSet(setId: number) {
   align-items: center;
   gap: 8px;
   padding: 14px 20px;
-  border-top: 1px solid var(--color-slate-200, #e2e8f0);
+  border-top: 1px solid var(--border, #e2e8f0);
 }
 .cd-spacer { flex: 1; }
 </style>
