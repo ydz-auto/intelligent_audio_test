@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
@@ -50,7 +51,10 @@ export function LogsBulkActions(props: LogsBulkActionsProps) {
               }
             />
             <DropdownMenuContent align='end' className='w-44'>
-              <DropdownMenuLabel>选择标记颜色</DropdownMenuLabel>
+              {/* base-ui 的 GroupLabel 必须挂在 Group 下，否则渲染即抛错（整页错误页） */}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>选择标记颜色</DropdownMenuLabel>
+              </DropdownMenuGroup>
               {LOG_MARK_COLORS.map((color) => (
                 <DropdownMenuItem
                   key={color.value}
