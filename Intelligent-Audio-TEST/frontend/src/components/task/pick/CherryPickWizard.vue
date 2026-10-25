@@ -220,9 +220,26 @@
       </div>
 
       <div v-if="cartCount === 0" class="cpw-empty"><i class="fas fa-shopping-cart"></i> 购物车为空</div>
-      <div v-else class="cpw-cart-tree">
+      <template v-else>
+        <!-- 复核工具行（INT-1831 四视图切换器 + 用例层组织控件 + 展开/收起；四视图共享选中集） -->
+        <div class="cpw-toolbar">
+          <CartViewSwitcher :view="reviewView" @update:view="reviewView = $event" />
+          <button class="cpw-btn" @click="expandAllReview"><i class="fas fa-angles-down"></i> 全部展开</button>
+          <button class="cpw-btn" @click="collapseAllReview"><i class="fas fa-angles-up"></i> 全部收起</button>
+          <span class="cpw-toolbar-info">共 {{ cartCount }} 条</span>
+        </div>
+        <PickCaseOrgControls
+          :org="reviewOrg"
+          :sub-view="reviewSubView"
+          :fallback-only="!cartHasOrgData"
+          hint="购物车快照未带用例分组/标签字段，按「未分组」/「未设置标签」组织（§11-7）"
+          @update:org="reviewOrg = $event"
+          @update:sub-view="reviewSubView = $event"
+        />
+      </template>
+      <div v-if="cartCount > 0" class="cpw-cart-tree">
         <CartTree
-          :roots="cartTreeRoots"
+          :roots="reviewTreeRoots"
           :selected="selectedItemIds"
           :expanded-keys="cartExpandedKeys"
           :leaf-meta="cartLeafMeta"
@@ -341,15 +358,18 @@ import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { cherryPickApi, tasksApi, devicesApi } from '../../../infrastructure/api';
 import type { PickCandidate, PickPreview, PickCheckoutAction, PickCartItem } from '../../../infrastructure/api/cherryPickApi';
 import { usePickCart } from '../../../composables/task/usePickCart';
+import { rememberCaseOrg, usePickCaseOrgCache } from '../../../composables/task/usePickCaseOrgCache';
 import { useNotification } from '../../../composables/modal/useNotification';
 import { useModalControl } from '../../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../../composables/modal/constants';
 import PickTree from './PickTree.vue';
 import PickCaseOrgList from './PickCaseOrgList.vue';
+import PickCaseOrgControls from './PickCaseOrgControls.vue';
 import CartTree from './CartTree.vue';
+import CartViewSwitcher from './CartViewSwitcher.vue';
 import PickTaskStage, { getTaskStatusOrder, type PickTaskRow } from './PickTaskStage.vue';
 import { buildPickCaseViewTree, buildPickDeviceViewTree, buildPickResultTypeViewTree, toggleNode, selectAll, invertSelection, collectLeafResultIds, type PickTreeNode, type PickCaseOrgInfo } from './pickTree';
-import { buildCartTree, toggleCartNode, type CartTreeNode } from './cartTree';
+import { buildCartTaskView, buildCartView, collectCartNodeKeys, hasCartCaseOrg, toggleCartNode, type CartTreeNode, type CartViewMode, type CartOrgDim, type CartOrgSubView } from './cartTree';
 
 const STEPS = [
   { key: 'pick', label: '挑选', icon: 'fas fa-hand-pointer' },
@@ -492,6 +512,8 @@ async function loadAllCandidates() {
       page += 1;
     }
     allCandidates.value = items;
+    // INT-1831：全量候选行的组织字段记入会话缓存（复核四视图组织层数据源）
+    rememberCaseOrg(items);
   } catch (error) {
     console.error('Failed to load pickable task candidates:', error);
     allCandidatesError.value = true;
@@ -666,6 +688,8 @@ async function loadCandidates() {
     const meta = new Map(knownMeta.value);
     for (const c of candidates.value) meta.set(c.resultId, c);
     knownMeta.value = meta;
+    // INT-1831：候选行组织字段（tags/group_name）记入会话缓存，供购物车 / 复核四视图用例层组织
+    rememberCaseOrg(candidates.value);
     // 筛选与勾选解耦（§6.2）：筛选变化不清空已选项；仅收起
     collapseAll();
   } catch (error) {
@@ -822,8 +846,29 @@ function resetFilters() {
 
 // ===== 步骤 2/3：购物车 =====
 
-/** 购物车树（§4.2 任务→用例→设备/API→result_type 分组，与挑选页同构） */
-const cartTreeRoots = computed(() => buildCartTree(cart.value.groups));
+/** 购物车树（步骤 2：任务视图默认层级——任务 → 用例层组织 → 用例卡 → 设备/API → result_type → 叶） */
+const cartTreeRoots = computed(() => buildCartTaskView(cart.value.groups));
+/** 复核步骤四视图（INT-1831 §3.2）：任务视图（默认）｜用例｜设备｜结果类型；
+ *  四视图共享同一 selectedItemIds（切换不丢勾选、下单载荷不变），组织维度会话态共享。 */
+const reviewView = ref<CartViewMode>('task');
+const reviewOrg = ref<CartOrgDim>('group');
+const reviewSubView = ref<CartOrgSubView>('flat');
+/** 用例层组织字段（会话缓存：挑选侧载入候选时记入，跨页/跨步骤保持） */
+const { caseOrgMap: sessionCaseOrgMap } = usePickCaseOrgCache();
+const reviewTreeRoots = computed(() => buildCartView(reviewView.value, cart.value.groups, {
+  org: reviewOrg.value,
+  subView: reviewSubView.value,
+  caseOrgMap: sessionCaseOrgMap.value,
+}));
+/** 组织字段兜底提示（购物车快照未带 tags / group_name 时说明组织层口径） */
+const cartHasOrgData = computed(() => hasCartCaseOrg(cart.value.groups, sessionCaseOrgMap.value));
+/** 全部展开 / 全部收起（复核工具行；与购物车步骤共用展开态集合） */
+function expandAllReview() {
+  cartExpandedKeys.value = new Set(collectCartNodeKeys(reviewTreeRoots.value));
+}
+function collapseAllReview() {
+  cartExpandedKeys.value = new Set();
+}
 const cartLeafMeta = computed(() => {
   const m = new Map<number, PickCartItem>();
   for (const g of cart.value.groups) {
@@ -834,6 +879,12 @@ const cartLeafMeta = computed(() => {
 const cartExpandedKeys = ref<Set<string>>(new Set());
 /** 购物车树节点自动展开（进入步骤即展开一层便于核对） */
 watch(cartTreeRoots, (roots) => {
+  const next = new Set(cartExpandedKeys.value);
+  for (const r of roots) next.add(r.key);
+  cartExpandedKeys.value = next;
+}, { immediate: true });
+/** 复核切换视图 / 组织维度后同样展开首层（四视图层级不同，key 各自独立） */
+watch(reviewTreeRoots, (roots) => {
   const next = new Set(cartExpandedKeys.value);
   for (const r of roots) next.add(r.key);
   cartExpandedKeys.value = next;
@@ -872,7 +923,7 @@ function onRemoveCartLeaf(itemId: number) {
 
 /** 节点「移除该组」（CartTree remove-group；将移除该节点下全部条目，确认后批量） */
 async function onRemoveCartGroupNode(node: CartTreeNode) {
-  const label = node.level === 'task' ? '来源任务' : node.level === 'case' ? '用例' : node.level === 'device' ? (node.kind === 'api' ? 'API' : '设备') : '结果类型';
+  const label = node.level === 'task' ? '来源任务' : node.level === 'case' ? '用例' : node.level === 'device' ? (node.kind === 'api' ? 'API' : '设备') : node.level === 'org' ? (node.org === 'tag' ? '标签组' : '分组') : node.level === 'orgSub' ? (node.org === 'tag' ? '标签' : '分组') : '结果类型';
   let confirmed = false;
   try {
     confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {

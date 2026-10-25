@@ -44,8 +44,8 @@
       </PickCaseCard>
     </template>
 
-    <!-- 普通节点行（非用例节点） -->
-    <div v-else class="ctr-row" :style="{ paddingLeft: `${depth * 16 + 8}px` }">
+    <!-- 普通节点行（非用例节点：任务/用例层组织/组织子组/设备/result_type） -->
+    <div v-else class="ctr-row" :class="{ 'ctr-row--muted': node.muted }" :style="{ paddingLeft: `${depth * 16 + 8}px` }">
       <button
         v-if="node.children.length > 0"
         class="ctr-chevron"
@@ -78,8 +78,9 @@
       </button>
     </div>
 
-    <!-- 叶条目 -->
-    <div v-if="node.level === 'resultType' || node.children.length === 0">
+    <!-- 叶条目：仅在「最深分组节点」渲染（用例视图 result_type 下还有任务层，
+         叶由任务层呈现；与挑选树 INT-1110 同口径，避免同一条目出现两个复选框） -->
+    <div v-if="node.level !== 'case' && node.children.length === 0">
       <div
         v-for="id in node.itemIds"
         :key="id"
@@ -173,6 +174,8 @@ const iconClass = computed(() => ({
   'ctr-icon--device': props.node.level === 'device' && props.node.kind === 'device',
   'ctr-icon--api': props.node.level === 'device' && props.node.kind === 'api',
   'ctr-icon--rt': props.node.level === 'resultType',
+  'ctr-icon--org': props.node.level === 'org',
+  'ctr-icon--org-sub': props.node.level === 'orgSub',
 }));
 const iconName = computed(() => {
   switch (props.node.level) {
@@ -180,6 +183,9 @@ const iconName = computed(() => {
     case 'case': return 'fas fa-list-check';
     case 'device': return props.node.kind === 'api' ? 'fas fa-arrow-right-arrow-left' : 'fas fa-mobile-screen';
     case 'resultType': return 'fas fa-tag';
+    // 用例层组织：分组视图 = 文件夹，标签视图 = 标签；交叉子组用打开态图标区分层级
+    case 'org': return props.node.org === 'tag' ? 'fas fa-tags' : 'fas fa-folder';
+    case 'orgSub': return props.node.org === 'tag' ? 'fas fa-tag' : 'fas fa-folder-open';
     default: return 'fas fa-dot-circle';
   }
 });
@@ -235,6 +241,10 @@ function statusText(status?: string | null): string {
 .ctr-icon--device { color: #10b981; }
 .ctr-icon--api { color: #8b5cf6; }
 .ctr-icon--rt { color: #f59e0b; }
+/* INT-1831 用例层组织节点（分组视图 / 标签视图 + 交叉子组） */
+.ctr-icon--org { color: var(--color-slate-500, #64748b); }
+.ctr-icon--org-sub { color: var(--color-slate-400, #94a3b8); }
+.ctr-row--muted .ctr-name { color: var(--color-slate-400, #94a3b8); }
 .ctr-name {
   flex: 1;
   overflow: hidden;
