@@ -9,6 +9,8 @@
  * （§3.7.1「用例不可用/设备不可用/API不可用 {前 8 位 id}…」），不写兼容层。
  * INT-1497 §11-7 落地后：候选行另返 tags/group_id/group_name/duration/rounds（用例域真名），
  * 用例层组织（分组视图/标签视图）与 compact 用例卡直接消费。
+ * INT-1693 落地后：cart_get 逐行同样补 tags/group_id/group_name（与候选行同名同口径），
+ * 购物车/复核的用例层组织（用例视图顶层、任务视图用例子模式、设备/结果类型视图 caseOrg）出真名。
  */
 import type { TaskReportsDto } from '@/infrastructure/dto/task.dto'
 
@@ -84,6 +86,12 @@ export interface CherryPickCartItemDto {
   source_api_name: string | null
   /** §11-5：购物车快照 source_result_type（历史条目缺省 null → result_type 级折叠「结果类型待补充」） */
   source_result_type: string | null
+  /** INT-1693 §11-7：用例标签名（与候选行同口径；缺省 null/[] → 「未设置标签」兜底桶） */
+  tags?: string[] | null
+  /** INT-1693 §11-7：用例分组 id（缺省 null → 「未分组」兜底桶） */
+  group_id?: string | null
+  /** INT-1693 §11-7：用例分组名（缺名时分组视图以 group_id 兜底） */
+  group_name?: string | null
   execution_status: string
   created_at: string | null
   /** 源结果已删除标注（cart_get 逐行 _results_exist 判定） */
