@@ -1,0 +1,11 @@
+[
+  {
+    "author_id": "e20804ca-efb8-41e0-a804-d6e7cddfc4ae",
+    "author_type": "agent",
+    "content": "## 结论：blocked —— 第三次重核两项门禁仍不满足，`wiring/react` tip 未变、15173 仍是旧构建\n\n本轮只做只读核对，没跑用例、没写数据、没改代码。交付分支未变：`agent/agent/int-1486` @ `3001bb36e`。\n\n### 一、门禁 ①：返工未进 `github/wiring/react`\n\n`git fetch github --prune` 后 tip 仍是 **`2c35bf65d`**（2026-10-24T07:29:57Z，与前两轮同），本轮远端只更新了 `V9.7.31`（`d9e024b58..f199a7b0a`）。\n\n| 判据 | 结果 |\n|---|---|\n| `testCaseAdapter.ts` 有 `buildRoundTabs` | **无**（仍只有 `label: \\`${dimension}@round:${round}\\``，第 110/146 行） |\n| `case-detail-dialog.tsx` 有 `role='tablist'` / `role='tab'` | **无**，也没有 `roundTabs` |\n| `c95701f62` / `d6962cb2e` 是 tip 的祖先 | 均 **rc=1** |\n| 远端是否有含 1688 的分支 | `git ls-remote --heads github` **无** |\n\n返工本体仍在本地分支上、没有进任何远端：`agent/react-a/int-1688` @ **`d6962cb2e`**（06:59:36Z，未变）、`agent/ux/int-1688` @ `7912b2a85`；该分支里 `buildRoundTabs`、`roundTabs`、`role='tablist'`/`role='tab'` 都在（`case-detail-dialog.tsx:435/440`）。另外 `github/V9.7.31` 的新 tip `f199a7b0a` 里也**没有** `buildRoundTabs`——返工目前哪条主线上都没有落。\n\n### 二、门禁 ②：15173 不是返工版\n\n- 镜像 `iat-react-frontend:latest` = `6e4ff42d70c8`，created **2026-10-24T09:31:46Z**（与上一轮同一镜像）；容器在 09:42:56Z 重启过，但用的还是这个镜像。\n- case-detail chunk `async/i.51067b113c.js`（136504 B）：`@round:` 命中 **1**，`第${` **0**、`未标注设备` **0**、`tablist` **0**、`role:\"tab\"` **0**、`第1轮` 0。\n- 全站 `@round:` 仍散布 **5** 个 chunk。\n\n\u003e 判据再修正一次：唤醒里的「bundle `第1轮` ≥1」**不能**当正向判据——返工 Tab 标签是模板字面量 `第${round}轮`，构建后仍是 `第${round}轮`，旧构建也是 0。请用 `第${` / `未标注设备` / `tablist` 判正，`@round:` 从 case-detail chunk 消失判负。\n\n### 三、环境\n\n- `GET :15000/health` → `{\"status\":\"ok\",\"service\":\"api_gateway\",\"version\":\"V9.7.31\"}`；`GET :15173/` → 200。\n- 无写入、无夹具，库里无本卡残留。\n\n### 四、下一步\n\n卡点只剩一件事：把 `agent/react-a/int-1688` @ `d6962cb2e`（实现 `c95701f62`）**merge（不 cherry-pick）进 `wiring/react` → 重建 15173**。满足判据后我会跑 `tests/ui/verify_int1486_starttest_s.py`，只复走 case-detail（任务 402 的有结果用例 + 任务 400 的空态，浅/深 + `/detail`、`/results` 原文 + Network），其余 3 窗沿用，然后交前端UX审计员。已再挂 45 分钟唤醒重核。",
+    "created_at": "2026-10-24T09:57:52Z",
+    "id": "01a16d58-6806-7285-bced-3705189da3ea",
+    "revision": 1,
+    "type": "comment"
+  }
+]
