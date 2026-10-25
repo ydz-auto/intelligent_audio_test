@@ -1,6 +1,6 @@
 <template>
-  <Teleport to="body">
-    <div v-if="visible" class="cd-overlay" @click.self="emit('close')">
+  <Teleport :to="teleportTarget">
+    <div v-if="visible" class="cd-overlay" :class="{ 'cd-overlay--modal-layer': inModalLayer }" @click.self="emit('close')">
       <div class="cd-drawer">
         <!-- 头部 -->
         <div class="cd-header">
@@ -79,7 +79,7 @@
         <div class="cd-footer">
           <button class="cd-btn" @click="emit('close')"><i class="fas fa-arrow-left"></i> 继续挑选</button>
           <span class="cd-spacer"></span>
-          <button v-if="canWrite" class="cd-btn cd-btn-primary" :disabled="cartCount === 0" @click="emit('go-review')">
+          <button v-if="canWrite" class="cd-btn cd-btn-primary" :disabled="cartCount === 0" @click="onGoReview">
             <i class="fas fa-clipboard-check"></i> 去复核（{{ cartCount }}）
           </button>
         </div>
@@ -112,6 +112,7 @@ import { useModalControl } from '../../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../../composables/modal/constants';
 import { useAuthStore } from '../../../store/authStore';
 import { PermissionPoint } from '../../../domain/enums';
+import { useCartDrawerState } from '../../../composables/task/cartDrawerState';
 import CartTree from './CartTree.vue';
 import CartViewSwitcher from './CartViewSwitcher.vue';
 import PickCaseOrgControls from './PickCaseOrgControls.vue';
@@ -129,6 +130,21 @@ const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'go-review'): void;
 }>();
+
+/**
+ * INT-1838 P2-1：抽屉的宿主层。缺省 Teleport 到 body（全局层，导航角标等入口）；
+ * 由模态窗内的入口拉起时（容器详情「复用本次结果重新挑选」），宿主 = 该模态遮罩，
+ * 抽屉因此盖在模态内容之上可直接操作（「去复核」可点），且不越过全局 toast / 后开的模态。
+ */
+const cartDrawerState = useCartDrawerState();
+const inModalLayer = computed(() => Boolean(cartDrawerState.layerHost.value));
+const teleportTarget = computed<HTMLElement | string>(() => cartDrawerState.layerHost.value ?? 'body');
+
+/** 「去复核」：模态语境先收起宿主模态，否则复核向导会开在详情模态之后（看起来没反应） */
+function onGoReview() {
+  cartDrawerState.dismissHost();
+  emit('go-review');
+}
 
 const notification = useNotification();
 const modalControl = useModalControl();
@@ -327,6 +343,12 @@ async function restoreSet(setId: number) {
   background: rgb(0 0 0 / 0.4);
   display: flex;
   justify-content: flex-end;
+}
+/* 模态语境（INT-1838 P2-1）：抽屉 Teleport 进详情模态的遮罩后，与模态内容同处一个层叠上下文。
+   需高于 .modal 内容层（--z-index-modal），否则会被模态白板压住；后开的模态在全局层（更高），
+   仍盖在抽屉之上，modalControl 的确认框照常可点。 */
+.cd-overlay--modal-layer {
+  z-index: calc(var(--z-index-modal, 10000) + 10);
 }
 .cd-drawer {
   width: min(480px, 92vw);

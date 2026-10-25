@@ -776,7 +776,7 @@ async function handlePickCheckedOut(payload: { action: string; taskId?: number }
 
 // INT-577 §2.2 裁定①：旧链接 redirect（?tab=merged → ?tab=cherry-picks；?tab=cherry-picks
 // 归一为内部 cherryPick）；无权限回落日常；?tab=favorite 直达收藏页签（主库恢复独立收藏页签）。
-onMounted(() => {
+function applyTabFromQuery() {
   const tabParam = String(route.query.tab ?? '');
   // ?tab=merged（旧「合并」页签）→ redirect 到挑选合并页签并切换页签态
   if (tabParam === 'merged') {
@@ -794,6 +794,15 @@ onMounted(() => {
       activeTab.value = target;
     }
   }
+}
+
+// 页签随 URL query 同步：布局壳 router-view 无 :key=fullPath 重挂载——仅 query 变化的站内
+// 跳转不会重挂本页，onMounted 不再重跑，故须同时监听 query.tab（INT-1838：容器详情
+// 「开始挑选」、购物车抽屉「去复核」都以 ?tab=cherry-picks 跳转并要求页签切过去）。
+watch(() => String(route.query.tab ?? ''), () => { applyTabFromQuery(); });
+
+onMounted(() => {
+  applyTabFromQuery();
   // INT-401：页面加载即同步购物车角标（usePickCart 模块级单例跨弹窗共享；此前仅
   // 打开挑选向导才 refresh，刷新页面后角标初始为 0 与实际购物车不一致）
   pickCart.refreshCart();
