@@ -517,7 +517,8 @@ def infer_protocol(api_config=None, case_config=None) -> AdapterProtocol:
     - `api_config` 缺省（None）：返回注册表默认维度 HTTP（无 API 对象即无执行
       决策，属注册表默认值，不是业务兜底）。
     - 列值缺失 / 不在 4 值内：抛 ValueError（配置错误，400），不静默降级。
-    - `sse` / `grpc` 的协议级 base 适配器未落地（A1 / A2）：抛 ValueError。
+    - `grpc` 的协议级 base 适配器由 A1（INT-1789）落地；`sse` 待 A2（INT-1790），
+      未上线协议一律抛 ValueError。
     """
     if api_config is None:
         return AdapterProtocol.HTTP
@@ -533,11 +534,12 @@ def infer_protocol(api_config=None, case_config=None) -> AdapterProtocol:
     mapping = {
         APIProtocol.HTTP.value: AdapterProtocol.HTTP,
         APIProtocol.WEBSOCKET.value: AdapterProtocol.WEBSOCKET,
+        APIProtocol.GRPC.value: AdapterProtocol.GRPC,
     }
     adapter_protocol = mapping.get(normalized)
     if adapter_protocol is None:
         raise ValueError(
-            f"协议 {normalized} 的适配器实现未上线（A1 gRPC / A2 SSE），"
+            f"协议 {normalized} 的适配器实现未上线（A2 SSE），"
             f"不接受按其他协议静默执行")
     return adapter_protocol
 

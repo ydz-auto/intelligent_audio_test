@@ -499,3 +499,26 @@ def route_executor(self, lane): ...  # lane 非法 → ValueError
 | 协议实现未上线 | sse/grpc/http 流式/websocket 非流式在 B1 时 400；A1/A2 落地后同步扩可用矩阵与 `AdapterProtocol` | A1/A2 |
 | 动态加用例跨服务读 | 新增 `get_api_streaming_flags` 让 task_service 依赖 api_test_service 可用性；取不到即 400（不静默） | B1 |
 | 文档超前于代码 | `HttpStreamAdapter` / `factory.py` / `base.py` 仍散见 6 份文档，A0 已在 `05_路由与废弃.md §2.4` 补注，其余图文档未重写 | 后续文档卡 |
+
+---
+
+## 十、A1（INT-1789）实施回写（2026-10-25）
+
+gRPC 协议面按本文 A0 条款落地，实现位置与口径：
+
+| 项 | 落地 | 说明 |
+|----|------|------|
+| 传输件 | `api_test_service/infrastructure/adapters/transport/grpc_client.py` | 动态 descriptor（上传 `.proto`，256 KB 上限 + `google/protobuf/*` import 白名单 + 只解析不执行）；unary / server-stream / bidi；`MessageToDict(preserving_proto_field_name=True)` 归一；`NormalizedEvent` 四值事件 |
+| 协议级适配器 | `api_test_service/infrastructure/adapters/grpc_adapter.py` | 注册维度 `(AdapterProtocol.GRPC, AdapterVendor.ANY)`；配置只读 `meta.grpc`（`proto_object_key` / `proto_sha256` / `proto_size` / `service` / `method` / `method_kind` / `metadata` / `deadline_ms`），未新增配置键 |
+| 流式道策略 | `api_test_service/core/grpc_stream_executor.py` | server-stream **按事件**切轮（一条消息 = 一轮）；bidi **按轮次**切轮，轮次字段与 WS realtime 同构；多轮聚合/落库/评估复用 `APISessionExecutor` |
+| 非流式道 | `api_executor._NO_DUT_PROTOCOLS` | gRPC unary 没有 DUT 任务协议（health / create_task / 轮询），按 rounds 逐次调用会话执行器；单轮为该路径的特例 |
+| 错误码 | `shared/utils/error_mapping.py` | gRPC 16 个状态码 → `biz_code` 表（§3.6 原表，补登记 11 OUT_OF_RANGE→400）；连接建立失败（连接拒绝 / DNS / TLS）以连接就绪探测判定，归 `network` / 503 |
+| 可用矩阵 | `shared/models/common_enums.py` `AVAILABLE_PROTOCOL_STREAMING` | 扩 `(grpc, false)`、`(grpc, true)`；`sse` 两种仍 400（A2 未上线） |
+| 枚举 | `AdapterProtocol` 新增 `GRPC` | SSE 值仍待 A2 落地时补 |
+
+本轮明确不做（沿 A0 §四）：TLS / mTLS（insecure + metadata）、server reflection、多文件 proto bundle、
+gRPC 音频帧（二进制不进 `payload`，音频仍走 `rounds[i].output_audio_path` 口径）。
+
+**跨卡后续**：B2（INT-1800）前端「协议下拉 sse/grpc 置灰」是基于 B1 时点写的；A1 落地后
+`grpc` 后端已可写可执行，前端应解除 grpc 置灰（`sse` 继续置灰到 A2），该改动归 A3 / B2 收口，
+不在 A1 范围（A1 不改前端）。

@@ -80,14 +80,19 @@ class TestAvailabilityMatrix:
         ('websocket', False, False),
         ('sse', True, False),
         ('sse', False, False),
-        ('grpc', False, False),
-        ('grpc', True, False),
+        # INT-1789（A1）：gRPC 两种组合随执行器落地同步开放
+        ('grpc', False, True),
+        ('grpc', True, True),
     ])
     def test_matrix(self, protocol, streaming, want):
         assert is_protocol_streaming_available(protocol, streaming) is want
 
     def test_matrix_shape(self):
-        assert AVAILABLE_PROTOCOL_STREAMING == {('http', False), ('websocket', True)}
+        # B1 只放行 http+false / websocket+true；A1 扩 grpc 两种（B0 §3.2.3
+        # 明确「A1/A2 落地后同步扩可用矩阵」）
+        assert AVAILABLE_PROTOCOL_STREAMING == {
+            ('http', False), ('websocket', True),
+            ('grpc', False), ('grpc', True)}
 
 
 # ──────────────────────────── 迁移映射 ────────────────────────────
@@ -150,7 +155,9 @@ class TestCrudValidation:
         ('http', True, False),
         ('websocket', False, False),
         ('sse', True, False),
-        ('grpc', False, False),
+        # INT-1789（A1）：gRPC 执行器落地，两种组合放行
+        ('grpc', False, True),
+        ('grpc', True, True),
     ])
     def test_lane_combo(self, protocol, streaming, want_ok):
         from api_test_service.application.api_crud_service import APICrudService
@@ -192,8 +199,10 @@ class TestCrudValidation:
 
     def test_create_rejects_unavailable_combo(self):
         from api_test_service.application.api_crud_service import APICrudService
+        # A1（INT-1789）落地 gRPC 执行器后 grpc 组合已放行；这里用仍未上线的
+        # sse 组合验证「未上线组合 400」的写侧口径不变。
         result = APICrudService.create({
-            'name': 'demo', 'meta': {}, 'protocol': 'grpc', 'streaming': False})
+            'name': 'demo', 'meta': {}, 'protocol': 'sse', 'streaming': True})
         assert result['code'] == 400
         assert '实现未上线' in result['message']
 
@@ -318,13 +327,25 @@ class TestStreamingStrategy:
         assert caps == executor.STREAMING_CAPABILITIES['websocket']
         assert {'session_rounds', 'pacing', 'barge_in'} <= caps
 
-    @pytest.mark.parametrize('protocol', ['sse', 'grpc', 'http', '', None])
+    @pytest.mark.parametrize('protocol', ['sse', 'http', '', None])
     def test_unimplemented_protocol_rejected(self, protocol):
-        """SSE / gRPC / http 流式（A1/A2 未上线）→ 显式报错，不静默走非流式"""
+        """SSE / http 流式（A2 未上线）→ 显式报错，不静默走非流式。
+
+        A1（INT-1789）落地后 gRPC 已有流式策略，不再在本列（见
+        `test_grpc_strategy_registered`）。
+        """
         from api_test_service.core.api_executor import APIExecutor
         executor = APIExecutor(_EngineStub())
         with pytest.raises(ValueError, match='实现未上线'):
             executor.streaming_strategy(protocol)
+
+    def test_grpc_strategy_registered(self):
+        """A1（INT-1789）：gRPC 流式策略指向 GrpcStreamExecutor。"""
+        from api_test_service.core.api_executor import APIExecutor
+        executor = APIExecutor(_EngineStub())
+        impl, caps = executor.streaming_strategy('grpc')
+        assert impl is executor._grpc_stream_executor
+        assert {'event_rounds', 'session_rounds'} <= caps
 
     def test_declared_capabilities_cover_b0_matrix(self):
         """能力声明与 B0 §3.1 矩阵一致（websocket 按轮次/带 pacing；sse/grpc 按事件）"""
