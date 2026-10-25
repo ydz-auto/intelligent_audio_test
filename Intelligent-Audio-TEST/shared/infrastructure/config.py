@@ -44,6 +44,30 @@ def _get_bool(key: str, default: bool = False) -> bool:
     return os.environ.get(key, str(default)).lower() in ('true', '1', 'yes')
 
 
+# 日志归档阈值默认值（INT-1962）：logs 表行数超过该值才触发冷数据归档。
+LOG_ARCHIVE_THRESHOLD_DEFAULT = 300000
+
+
+def get_log_archive_threshold() -> int:
+    """归档阈值（env ``LOG_ARCHIVE_THRESHOLD`` 优先，缺省 300000；``<= 0`` = 禁用归档）。
+
+    INT-1962：该阈值原先是 ``shared/utils/log_handler/_constants.py`` 里的硬编码
+    常量，发版后无法关停归档。改为每次调用重新读 env（不在导入时冻结），
+    运维在部署前设 ``LOG_ARCHIVE_THRESHOLD=0`` 即可让归档巡检整体静默，
+    与其他批次的发版解耦。
+
+    空值、非整数等非法配置一律回落默认值：日志巡检跑在后台线程，
+    不能因为一个配置笔误抛异常把巡检打断。
+    """
+    raw = (os.environ.get('LOG_ARCHIVE_THRESHOLD') or '').strip()
+    if not raw:
+        return LOG_ARCHIVE_THRESHOLD_DEFAULT
+    try:
+        return int(raw)
+    except ValueError:
+        return LOG_ARCHIVE_THRESHOLD_DEFAULT
+
+
 class BaseConfig:
     """基础设施配置（所有服务共用）"""
 
@@ -229,6 +253,11 @@ class BaseConfig:
     # 聚合缓存条目上限（防过滤条件组合把内存撑爆，超出按最早写入淘汰）
     LOG_DB_AGGREGATE_CACHE_MAX_ENTRIES: int = _get_int(
         'LOG_DB_AGGREGATE_CACHE_MAX_ENTRIES', 256)
+    # 归档阈值（INT-1962）：logs 表行数超过该值才触发 OSS 归档巡检；
+    # <= 0 = 禁用归档（巡检直接返回：不查计数、不上传、不删行、无日志噪音）。
+    # 默认 300000 与改造前写死值一致；运行期判定一律走 get_log_archive_threshold()
+    # （每次重新读 env），本属性只是导入时点的快照。
+    LOG_ARCHIVE_THRESHOLD: int = get_log_archive_threshold()
 
     # --- gRPC 服务发现 ---
     E2E_TEST_SERVICE_HOST: str = _get_env('E2E_TEST_SERVICE_HOST', 'localhost')

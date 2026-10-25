@@ -11,7 +11,7 @@ import json
 from datetime import datetime, timezone, timedelta
 
 from shared.utils.log_handler._constants import (
-    LOG_ARCHIVE_THRESHOLD,
+    get_log_archive_threshold,
     LOG_HOT_DATA_DAYS,
     LOG_ARCHIVE_RETENTION_DAYS,
 )
@@ -22,14 +22,21 @@ class _ArchiveMixin:
 
     def _check_and_archive(self):
         """通过 gRPC 检查日志总量并触发归档"""
+        # INT-1962：阈值取自配置（env LOG_ARCHIVE_THRESHOLD，缺省 300000）。
+        # <= 0 表示运维已关停归档：直接返回，不查计数、不上传、不删行，
+        # 也不打印任何日志噪音——关掉就该安静。
+        threshold = get_log_archive_threshold()
+        if threshold <= 0:
+            return
+
         # INT-1902：归档与过期清理各自 try/except —— 任一环节失败不得阻断另一环节
         try:
             from shared.clients.grpc_clients import get_log_count
             result = get_log_count()
             total_count = result.get('total', 0)
 
-            if total_count > LOG_ARCHIVE_THRESHOLD:
-                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Log count {total_count} exceeds threshold {LOG_ARCHIVE_THRESHOLD}, starting archive...")
+            if total_count > threshold:
+                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Log count {total_count} exceeds threshold {threshold}, starting archive...")
                 self._archive_old_logs()
         except Exception as e:
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - ARCHIVE ERROR - {str(e)}")
@@ -84,7 +91,7 @@ class _ArchiveMixin:
 
         remaining = result.get('remaining_count', 0)
         print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Archived {archived_count} logs to OSS via gRPC. Remaining: {remaining}")
-        if remaining > LOG_ARCHIVE_THRESHOLD:
+        if remaining > get_log_archive_threshold():
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Still {remaining} logs, will continue archiving next cycle.")
 
     def _clean_expired_archives(self):
