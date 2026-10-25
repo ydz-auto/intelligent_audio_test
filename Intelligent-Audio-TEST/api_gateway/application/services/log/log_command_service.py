@@ -44,10 +44,13 @@ class LogCommandService:
                     log_ids=legacy_ids, mark=req.mark)
                 updated = result.get('updated', 0)
 
+            # INT-1903：契约 §Q2 承诺 `updated` = 实际更新行数（文件游标 → 0），
+            # 三条分支都要带在 data 里（此前两处传 None，响应体里连 data 都没有）。
             if updated == 0 and file_cursors and not legacy_ids:
                 return success_response(
-                    None, "所选为文件日志，不支持标记（仅历史库行可标记）")
-            return success_response(None, f"已为 {updated} 条日志添加标记: {req.mark}")
+                    {"updated": updated}, "所选为文件日志，不支持标记（仅历史库行可标记）")
+            return success_response(
+                {"updated": updated}, f"已为 {updated} 条日志添加标记: {req.mark}")
         except Exception as e:
             return error_response(str(e))
 

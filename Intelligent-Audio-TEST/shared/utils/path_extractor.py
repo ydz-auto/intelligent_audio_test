@@ -56,3 +56,16 @@ def extract_by_path(data: dict, path: str, default=None):
             if val is None:
                 return default
     return val
+
+
+def is_valid_path(path) -> bool:
+    """路径**语法**是否合法（与 :func:`extract_by_path` 共用同一份分段规则）。
+
+    只判写法，不判数据能否命中：``a[x]`` / ``a[-1]`` / ``a..b`` / ``a[0]b``
+    / 空串返回 False；``data.events[9].text`` 语法合法（下标越界属于
+    「解析不到」，由调用方按未命中处理）。INT-1772 解析预览用它把非法路径
+    拦成 400，避免与执行期「静默返回默认值」混为一谈。
+    """
+    if not isinstance(path, str) or not path:
+        return False
+    return all(_segment_tokens(part) for part in path.split('.'))
