@@ -39,10 +39,16 @@ from shared.utils.api_key_provider import (
     resolver_from_config,
 )
 from shared.utils.dto_utils import dto_to_dict
-from shared.utils.api_output_extractor import extract_api_output_fields
+from shared.utils.api_output_extractor import (
+    build_eval_output,
+    extract_api_output_fields,
+    get_output_transform_types,
+)
 from api_test_service.application.round_render_service import RoundRenderService
-from api_test_service.domain.entities.api import resolve_audio_sample_rate
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
+from api_test_service.domain.services.eval_output_transform_service import (
+    EvalOutputTransformService,
+)
 from api_test_service.domain.services.realtime_pacing_service import (
     RealtimePacingContext,
     RealtimePacingService,
@@ -165,7 +171,8 @@ class RealtimeSessionExecutor:
 
         client = None
         session_id = f"rt-{task_id}-{api_id}"
-        dst_sample_rate = resolve_audio_sample_rate(api_config)
+        dst_sample_rate = int((getattr(api_config, 'meta', None) or {})
+                              .get('audio_config', {}).get('sample_rate', 24000))
         try:
             url = self._resolve_ws_url(api_config)
             headers = self._resolve_ws_headers(
@@ -393,7 +400,10 @@ class RealtimeSessionExecutor:
             'frame_count': len(output['frame_results']),
             'error': None if complete else 'AI 回复未在超时内完成',
         }
-        result.update(self._collect_eval_fields(round_config, output, algorithm_type))
+        # INT-1746：评估入参统一落轮次 output 子字典（不再平铺到轮次顶层）
+        result['output'] = self._collect_eval_fields(
+            round_config, output, algorithm_type,
+            text_output=result.get('answer_text'))
         return result
 
     def _execute_interruption_round(self, client, api_config, round_config,
@@ -485,7 +495,10 @@ class RealtimeSessionExecutor:
             'answer_text': client.output['text'],
             'error': None if (barge_in_detected and renewed) else '打断未生效或 AI 未重新回复',
         }
-        result.update(self._collect_eval_fields(round_config, client.output, algorithm_type))
+        # INT-1746：评估入参统一落轮次 output 子字典（不再平铺到轮次顶层）
+        result['output'] = self._collect_eval_fields(
+            round_config, client.output, algorithm_type,
+            text_output=result.get('answer_text'))
         return result
 
     # ── 节奏（INT-475：输出调输入）──
@@ -738,67 +751,72 @@ class RealtimeSessionExecutor:
 
     @staticmethod
     def _build_session_config(api_config, session_config) -> dict:
-        """会话配置（session.update 载荷）：VAD/音频格式/voice 全配置化
-
-        采样率经 resolve_audio_sample_rate 取（顶层列优先、meta 存量兼容，
-        INT-1771），与 HTTP / 轮次渲染同一口径。
-        """
+        """会话配置（session.update 载荷）：VAD/音频格式/voice 全配置化"""
         meta = getattr(api_config, 'meta', None) or {}
         merged = dict(meta.get('session_config') or {})
         merged.update(session_config or {})
+        audio_cfg = meta.get('audio_config') or {}
         merged.setdefault('input_audio_format', 'pcm16')
-        merged.setdefault('input_audio_sample_rate',
-                          resolve_audio_sample_rate(api_config))
+        merged.setdefault('input_audio_sample_rate', audio_cfg.get('sample_rate', 24000))
         return merged
 
-    def _collect_eval_fields(self, round_config, output, algorithm_type=None) -> dict:
-        """评估入参字段 — field_mapper 配置透传（对齐 E2E/HTTP 同构，INT-1299）
+    def _collect_eval_fields(self, round_config, output, algorithm_type=None,
+                             text_output=None) -> dict:
+        """轮次评估输出 → ``{target_param: value}``（C0 裁定 1/2，INT-1299 / INT-1746）
 
         评估入参字段名全部来自 algorithm_service FieldMappingQueryHandler 的
         field_mappings 配置，代码内不再硬编码字段名（撤 'query'/'question'/
         'correct_answer'/'answer'/'original_topic' 魔法字符串与兜底链）：
 
-        1. original.evaluation.output 的 param_mapping（source_param → target_param）：
-           source 为 case/reference 时从 round_config 取 source_param，其余
-           （api/device）从轮次输出取，映射 target_param 进 fields；
-        2. original.api.output 字段定义：按 ``field_path`` 从轮次输出取值
+        1. original.api.output 字段定义：按 ``field_path`` 从轮次输出取值
            （为空按 param_code 取顶层键；统一走 shared.utils.api_output_extractor，
-           INT-1747）。
+           INT-1747）；
+        2. ``param_mappings`` 的 api/device 条目把这些 param_code 映射成
+           ``target_param``（shared.utils.api_output_extractor.build_eval_output，
+           INT-1746）；零映射时按全等兜底。
+
+        返回值整体写入 ``rounds[i].output``（**不再平铺到轮次顶层**——评估侧
+        三个消费者只读 output 子字典）。case/reference 来源的维度入参由评估侧
+        按轮自行加载，执行侧不再重复解析。
 
         新增算法只改算法配置即可映射评估入参，本方法零改动；算法服务不可达时
         （ACL 回退空 DTO）返回空 dict，round result 不携带评估字段。
+
+        transform_type（INT-1749）：参数映射上配置的变换在执行侧取值后、写入
+        轮次 output 之前应用一次（评估侧不再变换），一次批量 gRPC 处理全部字段；
+        变换失败或算法服务不可达时按原值保留（WARNING），不丢值、不吞空串。
         """
         algorithm_type = algorithm_type or 'voice_llm'
         field_mappings = dto_to_dict(
             _algo_acl.get_field_mappings(algorithm_type)) or {}
-        original = field_mappings.get('original') or {}
-        fields = {}
-
-        eval_output = (original.get('evaluation') or {}).get('output') or {}
-        for target_param, entry in eval_output.items():
-            if not isinstance(entry, dict):
-                continue
-            source = entry.get('source', 'api')
-            source_param = entry.get('source_param')
-            if not source_param:
-                continue
-            if source in ('case', 'reference'):
-                value = (round_config or {}).get(source_param)
-            else:
-                value = output.get(source_param)
-            if value is not None:
-                fields[target_param] = value
-
-        # ② 输出字段提取（INT-1747 / C2，C0 §9.3）：与单轮 `extract_final_result`、
+        # ① 输出字段提取（INT-1747 / C2，C0 §9.3）：与单轮 `extract_final_result`、
         # 多轮 `_attach_api_output_fields` 共用同一入口，按 field_path 从 WS
         # 聚合输出取嵌套值；为空仍按 param_code 取顶层键（存量行为）。
-        # 本方法产出的是**评估入参字段**，按卡面约束「入参只认 param_mappings、
-        # 不动入参侧」，零声明时不做 meta 解析器兜底（与改前一致返回空）。
-        values, _ = extract_api_output_fields(field_mappings, output)
-        for key, value in values.items():
-            if value is not None:
-                fields[key] = value
-        return fields
+        # 零声明时不做 meta 解析器兜底（入参侧只认声明表，与改前一致返回空）。
+        # text_output：WS 聚合输出的规范文本键是 ``text``，与 HTTP 链的
+        # ``output`` 不同名，由声明表按文本型字段统一兜底（见
+        # extract_declared_output_fields）。
+        # ② 评估映射（INT-1746 / C1）→ ③ transform_type 批量变换（INT-1749）：
+        # 变换在写 rounds[i].output 之前、对映射后的 target_param 值做一次。
+        values, _ = extract_api_output_fields(
+            field_mappings, output, text_output=text_output)
+        extracted = {key: value for key, value in values.items()
+                     if value not in (None, '')}
+        eval_output = build_eval_output(
+            field_mappings, extracted,
+            log=lambda level, msg: self._log_eval_output(level, msg))
+        return EvalOutputTransformService.apply(
+            eval_output, get_output_transform_types(field_mappings), _algo_acl)
+
+    def _log_eval_output(self, level, message):
+        """评估映射兜底日志：走执行器 _log（任务日志可见），替身无执行器时退模块日志。"""
+        executor = getattr(self, '_executor', None)
+        log_fn = getattr(executor, '_log', None)
+        if callable(log_fn):
+            log_fn(level=level, content=message)
+        else:
+            logger.log(logging.getLevelName(level) if isinstance(level, str)
+                       else level, message)
 
     def _refresh_progress(self, task_id):
         """会话收尾：刷新进度（状态回写由 result_processor 统一负责）"""

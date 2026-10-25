@@ -152,6 +152,12 @@ service AlgorithmQueryService {
   rpc GetEvaluationFieldMappings(GetEvaluationFieldMappingsRequest) returns (AlgorithmResponse);
   rpc BuildApiRequestData(BuildApiRequestDataRequest) returns (AlgorithmResponse);
   rpc ConvertFieldValue(ConvertFieldValueRequest) returns (AlgorithmResponse);
+  // 批量字段值转换（INT-1749）：一次请求处理 N 个值，执行侧映射编排不再逐字段跨服务。
+  //   data JSON: {"items": [{"transform_type": "...", "value": <任意 JSON>}, ...]}
+  //   响应 data JSON: {"values": [...与 items 同序...],
+  //                    "errors": [{"index","transform_type","error"}, ...]}
+  //   非法输入策略：保留原值 + errors 回传（服务端 WARNING），不抛异常、不静默吞成空串。
+  rpc ConvertFieldValues(ConvertFieldValuesRequest) returns (AlgorithmResponse);
 
   // 结果字段映射器（原 algorithm_result_field_mapper）
   rpc GetOutputFields(GetOutputFieldsRequest) returns (AlgorithmResponse);
@@ -535,6 +541,10 @@ message BuildApiRequestDataRequest {
 message ConvertFieldValueRequest {
   string transform_type = 1;
   string data = 2;  // JSON: {value, ...}
+}
+// INT-1749 批量变换：items 走 JSON（value 可为任意 JSON 类型，保持与应用内同构）
+message ConvertFieldValuesRequest {
+  string data = 1;  // JSON: {"items": [{"transform_type": "...", "value": ...}, ...]}
 }
 
 // 结果字段映射器请求

@@ -2,7 +2,14 @@
 """字段值转换领域服务
 
 纯逻辑，无 I/O 依赖。迁移自 shared/algorithm/field_mapper/transforms.py
+
+非法输入策略（INT-1749）：保留原值 + 错误描述回传（调用方 WARNING 记日志）。
+不抛异常、不把非法输入静默吞成空串——唯一例外是 ``to_string`` 对 None 的
+既定语义（None → ''，属于该转换类型本身的定义，不是失败）。
 """
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class FieldTransformService:
@@ -30,10 +37,11 @@ class FieldTransformService:
     @staticmethod
     def _json_parse(x):
         import json
-        try:
-            return json.loads(x) if isinstance(x, str) else x
-        except Exception:
+        if not isinstance(x, str):
             return x
+        # 非法 JSON 抛给 apply_transform_with_error 统一收敛为「保留原值 + 错误」，
+        # 不在此静默返回原值（旧实现无日志，INT-1749 要求可观测）
+        return json.loads(x)
 
     @staticmethod
     def _base64_encode(x):
@@ -86,14 +94,30 @@ class FieldTransformService:
         return {'text': text, 'json': segments}
 
     @classmethod
-    def apply_transform(cls, transform_type: str, value):
-        """应用转换"""
+    def apply_transform_with_error(cls, transform_type: str, value):
+        """应用转换并返回 ``(转换后值, 错误描述或 None)``。
+
+        非法输入（未知转换类型 / 转换函数抛异常）统一收敛为「保留原值」，
+        错误描述交给调用方记日志或回传（INT-1749 服务端批量入口按 errors 回传）。
+        """
         transforms = cls._ensure_transforms()
-        fn = transforms.get(transform_type, transforms['none'])
+        transform_type = transform_type or 'none'
+        fn = transforms.get(transform_type)
+        if fn is None:
+            return value, f"未知转换类型: {transform_type}"
         try:
-            return fn(value)
-        except Exception:
-            return value
+            return fn(value), None
+        except Exception as e:
+            return value, f"{type(e).__name__}: {e}"
+
+    @classmethod
+    def apply_transform(cls, transform_type: str, value):
+        """应用转换（非法输入保留原值并 WARNING）"""
+        result, error = cls.apply_transform_with_error(transform_type, value)
+        if error:
+            logger.warning("字段值转换失败，保留原值 (transform_type=%s): %s",
+                           transform_type, error)
+        return result
 
     @classmethod
     def get_available_transforms(cls):

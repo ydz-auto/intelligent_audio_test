@@ -276,6 +276,25 @@ def algo_convert_field_value(transform_type: str, value):
                                data=_json.dumps({'value': value}, ensure_ascii=False))
 
 
+def algo_convert_field_values(items):
+    """批量转换字段值（INT-1749，一次 RPC 处理 N 个值）。
+
+    Args:
+        items: ``[{'transform_type': str, 'value': Any}, ...]``
+
+    Returns:
+        与 items 同序的转换结果列表；服务端不可达 / 异常返回 None
+        （调用方按原值落库，不因变换失败丢数据）。
+    """
+    import json as _json
+    data = _call_algo_query_rpc(
+        'ConvertFieldValues',
+        data=_json.dumps({'items': list(items or [])}, ensure_ascii=False))
+    if not isinstance(data, dict):
+        return None
+    return data.get('values')
+
+
 def algo_get_output_fields(algorithm_type: str, test_type: str = None):
     """获取结果输出字段"""
     return _call_algo_query_rpc('GetOutputFields',

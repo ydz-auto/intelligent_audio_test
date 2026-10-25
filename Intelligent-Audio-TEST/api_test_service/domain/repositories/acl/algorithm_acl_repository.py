@@ -42,3 +42,16 @@ class AlgorithmQueryAclRepository(ABC):
     def get_param_mapping(self, algorithm_type, comp_type) -> List[AlgoParamMappingDTO]:
         """查询参数映射。"""
         ...
+
+    @abstractmethod
+    def convert_field_values(self, items) -> List:
+        """批量字段值转换（一次 gRPC 处理 N 个值）。
+
+        Args:
+            items: ``[{'transform_type': str, 'value': Any}, ...]``
+
+        Returns:
+            与 items 同序的转换结果列表；服务端不可达时返回 None，
+            调用方按原值落库（INT-1749）。
+        """
+        ...

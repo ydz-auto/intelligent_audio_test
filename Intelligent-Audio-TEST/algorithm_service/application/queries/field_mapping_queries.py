@@ -6,10 +6,13 @@ CQRS 读侧 - 迁移自 shared/algorithm/field_mapper 的查询逻辑。
 """
 
 from typing import Dict, List, Any, Optional
+import logging
 
 from algorithm_service.infrastructure.persistence.config_cache import get_config_cache
 from algorithm_service.domain.services.field_transforms import FieldTransformService
 from algorithm_service.application.queries.algorithm_config_queries import AlgorithmConfigQueryHandler
+
+logger = logging.getLogger(__name__)
 
 
 class FieldMappingQueryHandler:
@@ -211,3 +214,37 @@ class FieldMappingQueryHandler:
     def convert_field_value(transform_type: str, value: Any) -> Any:
         """应用转换"""
         return FieldTransformService.apply_transform(transform_type, value)
+
+    @staticmethod
+    def convert_field_values(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """批量应用字段值转换（INT-1749，一次请求 N 个值）。
+
+        Args:
+            items: ``[{'transform_type': str, 'value': Any}, ...]``
+
+        Returns:
+            ``{'values': [...与 items 同序...],
+               'errors': [{'index': int, 'transform_type': str, 'error': str}, ...]}``
+
+        非法输入（未知转换类型 / 转换抛异常）按「保留原值 + errors 回传」
+        处理，同时服务端记 WARNING；不抛异常、不吞成空串。
+        """
+        values: List[Any] = []
+        errors: List[Dict[str, Any]] = []
+        for index, item in enumerate(items or []):
+            if not isinstance(item, dict):
+                errors.append({'index': index, 'transform_type': '',
+                               'error': f'非法 item 类型: {type(item).__name__}'})
+                values.append(item)
+                continue
+            transform_type = item.get('transform_type') or 'none'
+            value, error = FieldTransformService.apply_transform_with_error(
+                transform_type, item.get('value'))
+            if error:
+                logger.warning(
+                    "批量字段值转换失败，保留原值 (index=%s, transform_type=%s): %s",
+                    index, transform_type, error)
+                errors.append({'index': index, 'transform_type': transform_type,
+                               'error': error})
+            values.append(value)
+        return {'values': values, 'errors': errors}
