@@ -54,13 +54,27 @@ def _parse_json_body(default=None):
     return body if isinstance(body, dict) else (default or {})
 
 
+def _grpc_max_message_bytes() -> int:
+    """gRPC 单条消息上限（与共享客户端 channel / report_service 服务端同口径）。"""
+    return max(int(BaseConfig.GRPC_MAX_MESSAGE_MB), 1) * 1024 * 1024
+
+
 def _call(stub_method, payload: dict):
     """统一 gRPC 调用 + 响应映射。
 
     Report Studio 响应带 HTTP 语义业务码（StudioResponse.code：
     404/403/409/400/500，0 = 200），网关据此还原 HTTP 状态。
+
+    序列化后超过 gRPC 单条消息上限先回 413：上传上限按文件字节数把关，契约里
+    还有 OSS 引用只记元数据的小体积路径，但 markdown 正文是整段进的，JSON 转义
+    后可能再膨胀；不预判的话超限请求在传输层被 RESOURCE_EXHAUSTED 拒收，网关
+    无从映射 → HTTP 500（INT-1763 §6.2）。
     """
-    resp = stub_method(report_pb.StudioDocumentRequest(data=_dumps(payload)))
+    serialized = _dumps(payload)
+    if len(serialized.encode('utf-8')) > _grpc_max_message_bytes():
+        return error_response(
+            f'请求体超过网关处理上限 {BaseConfig.GRPC_MAX_MESSAGE_MB}MB', http_code=413)
+    resp = stub_method(report_pb.StudioDocumentRequest(data=serialized))
     data = _loads(resp.data, {}) or {}
     if resp.success:
         return success_response(data)
