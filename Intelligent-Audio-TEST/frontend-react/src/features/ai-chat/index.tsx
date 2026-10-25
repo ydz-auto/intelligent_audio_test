@@ -19,6 +19,7 @@ import {
 
 import { AgentConnectButton } from '@/components/layout/components/agent-connect-button'
 
+import type { ChatConfig } from '@/domain/models/aiChat'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
 import { useChatConversation } from '@/features/ai-chat/hooks/use-chat-conversation'
 import { useChatState } from '@/features/ai-chat/hooks/use-chat-state'
@@ -28,6 +29,51 @@ import { AiChatInput } from '@/features/ai-chat/components/input/ai-chat-input'
 import { ProviderManager } from '@/features/ai-chat/components/input/provider-manager'
 import { DocumentPanel } from '@/features/ai-chat/components/studio/document-panel'
 import { DEMO_COPY } from '@/features/ai-chat/constants'
+import type { AiChatContextStatus } from '@/infrastructure/stores/aiChatSessionStore'
+
+/**
+ * URL 上下文条（INT-1936）：显示 /ai-chat?report={id} / ?task={id} 绑定的上下文。
+ * 名称来自真实接口（报告 / 任务单查），解析失败时保留「报告 #id」/「任务 #id」并标失败态——
+ * 生产路径不显示任何演示名称。无 URL 上下文（裸入口 / 浮窗）时整块不渲染。
+ */
+function ChatContextBadge({
+  config,
+  status,
+}: {
+  config: ChatConfig
+  status: AiChatContextStatus
+}) {
+  if (!config.reportContextId) return null
+  const id = config.reportContextId
+  const isTask = config.reportContextType === 'task_context'
+  const kindLabel = isTask ? '任务' : '报告'
+  const label = config.reportContextLabel ?? `${kindLabel} #${id}`
+  const tooltip =
+    status === 'failed'
+      ? `${kindLabel} #${id} 不存在或加载失败，已用编号占位`
+      : status === 'loading'
+        ? `正在解析${kindLabel}上下文…`
+        : `当前对话绑定的${kindLabel}：${label}`
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge
+            className='max-w-[16rem] cursor-help truncate'
+            data-chat-context-status={status}
+            variant={status === 'failed' ? 'destructive' : 'secondary'}
+          >
+            {label}
+          </Badge>
+        }
+      />
+      <TooltipContent>
+        <p>{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 type AiChatPageProps = {
   /** URL 契约：/ai-chat?report={id} / /ai-chat?task={id} / /ai-chat?reviewTask={id}&reviewCase={caseId}（§3.7） */
@@ -57,6 +103,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
   const {
     config,
     messages,
+    contextStatus,
     initialPrompt,
     isLoadingMessages,
     updateMessages,
@@ -163,6 +210,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                 <p>{DEMO_COPY.tooltip}</p>
               </TooltipContent>
             </Tooltip>
+            <ChatContextBadge config={config} status={contextStatus} />
           </div>
           <p className='text-muted-foreground hidden text-xs sm:block'>
             用自然语言驱动平台全部能力：报告、用例、任务、设备、日志

@@ -44,6 +44,7 @@ function buildInitialPrompt(context?: InitialContext): string | undefined {
 export function useChatState(context?: InitialContext) {
   const config = useAiChatSession((s) => s.config)
   const messages = useAiChatSession((s) => s.messages)
+  const contextStatus = useAiChatSession((s) => s.contextStatus)
   const updateMessages = useAiChatSession((s) => s.updateMessages)
   const updateConfig = useAiChatSession((s) => s.updateConfig)
   const clearMessages = useAiChatSession((s) => s.clearMessages)
@@ -61,6 +62,8 @@ export function useChatState(context?: InitialContext) {
   return {
     config,
     messages,
+    /** URL 上下文名称解析状态（INT-1936：页面据 failed 标降级名失败态） */
+    contextStatus,
     initialPrompt,
     isLoadingMessages,
     updateMessages,
