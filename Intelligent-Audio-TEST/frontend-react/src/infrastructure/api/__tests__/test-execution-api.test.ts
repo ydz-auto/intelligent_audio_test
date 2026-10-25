@@ -30,6 +30,56 @@ function lastCall(index = 0): [string, RequestInit] {
   return fetchMock.mock.calls[index] as [string, RequestInit]
 }
 
+describe('saveApi meta / audio_config 写侧（INT-1777）', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock)
+    fetchMock.mockReset()
+    authTokenStore.clear()
+    setSessionExpiredHandler(null)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    authTokenStore.clear()
+    setSessionExpiredHandler(null)
+  })
+
+  it('dirty meta → 请求体带整块 meta；audioConfig → 顶层 audio_config（不是 meta.audio_config）', async () => {
+    queueResponses(jsonResponse({ success: true, code: 0, data: null }))
+    await saveApi({
+      id: 7,
+      name: '接线测试_API',
+      meta: { protocol: 'https', appendix_test: 1, method: 'POST' },
+      audioConfig: { sample_rate: 16000, bit_depth: 's16', channels: 1, container: 'pcm' },
+    })
+    const [, init] = lastCall()
+    const body = JSON.parse(String(init.body))
+    expect(body.meta).toEqual({ protocol: 'https', appendix_test: 1, method: 'POST' })
+    expect(body.audio_config).toEqual({
+      sample_rate: 16000,
+      bit_depth: 's16',
+      channels: 1,
+      container: 'pcm',
+    })
+    expect(body.meta.audio_config).toBeUndefined()
+  })
+
+  it('未触碰 meta / audio_config → 请求体不带这两个键（避免 {} 清空全表）', async () => {
+    queueResponses(jsonResponse({ success: true, code: 0, data: null }))
+    await saveApi({ id: 8, name: '仅改名' })
+    const body = JSON.parse(String(lastCall()[1].body))
+    expect('meta' in body).toBe(false)
+    expect('audio_config' in body).toBe(false)
+  })
+
+  it('显式清除 audio_config → 顶层 audio_config 传 {}', async () => {
+    queueResponses(jsonResponse({ success: true, code: 0, data: null }))
+    await saveApi({ id: 9, name: '清除音频格式', audioConfig: {} })
+    const body = JSON.parse(String(lastCall()[1].body))
+    expect(body.audio_config).toEqual({})
+  })
+})
+
 describe('saveApi 密钥池写侧（INT-1437）', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock)

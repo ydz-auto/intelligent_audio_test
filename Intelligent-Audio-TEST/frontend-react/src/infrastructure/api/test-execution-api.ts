@@ -133,6 +133,16 @@ export async function fetchApis(): Promise<ApiConfig[]> {
   return (dto?.items ?? []).map(apiConfigFromDto)
 }
 
+/**
+ * 单个被测 API（GET /apis/{id}，无后端门槛）。
+ * INT-1777：API 编辑弹窗打开时以最新读侧 meta / audio_config 作合并 base
+ * （列表快照可能早于别的改动，meta 后端整块 replace，用陈旧快照合并会丢未知键）。
+ */
+export async function fetchApi(apiId: number): Promise<ApiConfig> {
+  const dto = await request<ApiItemDto>('GET', `/apis/${apiId}`)
+  return apiConfigFromDto(dto)
+}
+
 /** API 连接测试（§5.4；POST /apis/{id}/health，api_config:test） */
 export async function fetchApiHealth(apiId: number): Promise<ApiHealthCheckResult> {
   const dto = await request<ApiHealthCheckDataDto>('POST', `/apis/${apiId}/health`)
@@ -313,6 +323,10 @@ function toApiInputDto(input: Partial<ApiConfig> & { name: string }): Record<str
     })
   }
   if (input.deviceType !== undefined) result.device_type = input.deviceType
+  // INT-1777：meta 只在调用方标记 dirty 时下发（后端整块 replace，不发即不动）；
+  // audio_config 写顶层列，未改动不下发、显式清除传 {}
+  if (input.meta !== undefined) result.meta = input.meta
+  if (input.audioConfig !== undefined) result.audio_config = input.audioConfig
   return result
 }
 

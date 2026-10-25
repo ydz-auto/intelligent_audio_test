@@ -60,6 +60,10 @@ export function apiConfigFromDto(dto: ApiItemDto): ApiConfig {
     endpoints,
     maxConcurrent,
     deviceType: dto.device_type,
+    // INT-1777：meta / audio_config 读写通路（meta 整块 replace，前端以读侧为 base 合并；
+    // audio_config 是顶层列，不是 meta.audio_config）
+    meta: dto.meta ?? {},
+    audioConfig: dto.audio_config ?? null,
   }
 }
 

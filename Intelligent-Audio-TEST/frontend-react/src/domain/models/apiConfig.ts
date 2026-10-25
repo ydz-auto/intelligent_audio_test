@@ -45,6 +45,16 @@ export interface ApiConfig {
   /** 端点级聚合最大并发（端点 max_process 最大值；并发参数卡自动求合用） */
   maxConcurrent: number
   deviceType: string | null
+  /**
+   * 原始 meta（INT-1777）：后端保存为整块 replace，前端以读侧 meta 为 base 做键级合并，
+   * 页签只覆盖自己声明的键，未触碰 meta 时不回传该键（避免 {} 清空全表）。
+   */
+  meta: Record<string, unknown>
+  /**
+   * 目标音频格式声明（INT-1777）：顶层列 apis.audio_config（不是 meta.audio_config），
+   * 键 = sample_rate / bit_depth / channels / container（AudioContainer / AudioBitDepth 枚举）。
+   */
+  audioConfig: Record<string, unknown> | null
 }
 
 /** API 连接测试结果（api.py ApiHealthCheckData 平移；端点状态取 endpoints_status，INT-1223） */
@@ -61,9 +71,10 @@ export interface ApiHealthCheckResult {
 
 /** API 目标设备类型派生（INT-1433）：显式 deviceType（http_api/websocket_api）优先；
  * 未显式时按首个端点协议派生（ws/wss:// → websocket_api，其余 → http_api，缺省 http_api）。
- * 建任务 case_devices 组装与 API 卡徽章/协议筛选同口径——websocket_api Realtime 路由前置。 */
+ * 建任务 case_devices 组装与 API 卡徽章/协议筛选同口径——websocket_api Realtime 路由前置。
+ * INT-1777：入参放宽到只需要端点 URL，新增态端点草稿也可直接派生（不构造整份 ApiConfig）。 */
 export function deriveApiTargetDeviceType(
-  api: Pick<ApiConfig, 'deviceType' | 'endpoints'>
+  api: Pick<ApiConfig, 'deviceType'> & { endpoints: ReadonlyArray<Pick<ApiEndpoint, 'endpoint'>> }
 ): DeviceType {
   if (api.deviceType === 'websocket_api' || api.deviceType === 'http_api') return api.deviceType
   const first = api.endpoints[0]?.endpoint ?? ''
