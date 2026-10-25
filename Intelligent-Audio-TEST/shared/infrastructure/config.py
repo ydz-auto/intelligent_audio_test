@@ -211,6 +211,15 @@ class BaseConfig:
     # 任务维度合并视图 DB 侧单次拉取行数上限（0 = 不限，INT-100）：替代
     # per_page=100000 全量拉取，与文件侧 MAX_SCAN_ENTRIES 同为下界语义兜底
     LOG_DB_MERGE_MAX_ROWS: int = _get_int('LOG_DB_MERGE_MAX_ROWS', 100000)
+    # 合并视图 DB 侧单次 gRPC 拉取行数（INT-1812 返工）：ListLogs 响应是单条
+    # JSON 字符串，实测 2~3.5KB/行，5000 行约 12~18MB；一次要 10 万行约 160MB
+    # 必撞 gRPC 单条消息上限（客户端 GRPC_MAX_MESSAGE_MB=64MB / 服务端 send
+    # 64MB）→ RESOURCE_EXHAUSTED 被代理吞成空结果，导出与深分页静默丢行。
+    # 改为按块循环拉取，单块产物必须留在上限内。
+    LOG_DB_FETCH_CHUNK_ROWS: int = _get_int('LOG_DB_FETCH_CHUNK_ROWS', 5000)
+    # 导出（无 log_ids）DB 侧命中行数上限（0 = 不限）：超限显式报错让用户缩小
+    # 范围，绝不静默截断成部分数据（INT-1812 返工；默认不限＝与列表 total 一致）
+    LOG_DB_EXPORT_MAX_ROWS: int = _get_int('LOG_DB_EXPORT_MAX_ROWS', 0)
     # DB 侧计数/统计短 TTL 缓存秒数（0 = 关闭，INT-1468）：logs 表为最大增长
     # 表（30 万行级），列表 total 的 count(*) 与 stats 的 group by 每次请求全表
     # 扫描；TTL 窗口内同过滤条件共享一次聚合结果（只缓存聚合值，不缓存行数据），

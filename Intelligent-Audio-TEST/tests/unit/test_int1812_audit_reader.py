@@ -874,3 +874,174 @@ class TestExportSameSource:
         rows = json.loads(list((tmp_path / 'exports').glob('*.json'))[0]
                           .read_text(encoding='utf-8'))
         assert [row['Content'] for row in rows] == ['file picked', 'db picked']
+
+
+# =====================================================================
+# 11. DB 侧分块拉取（返工：导出静默丢 DB 行 / 深分页 total 塌成文件侧）
+# =====================================================================
+
+class _PagingProxy:
+    """按 page/per_page 正确分页的假代理（模拟 ListLogs：id 倒序 + 精确 total）。
+
+    旧实现的瓶颈是「一次要 page*per_page 或 10 万行」，单条 gRPC 消息越界后
+    被代理吞成空结果；本假代理按页返回，用来校验单块请求量与跨块拼接。
+    """
+
+    def __init__(self, rows, fail_on_page=None):
+        self.rows = list(rows)
+        self.fail_on_page = fail_on_page
+        self.calls = []
+
+    def list_logs(self, page=1, per_page=20, **kwargs):
+        self.calls.append(dict(kwargs, page=page, per_page=per_page))
+        if self.fail_on_page and page == self.fail_on_page:
+            raise RuntimeError(
+                'ListLogs gRPC 失败: RESOURCE_EXHAUSTED Sent message larger than max')
+        start = (page - 1) * per_page
+        return {'items': list(self.rows[start:start + per_page]),
+                'total': len(self.rows)}
+
+
+def _db_rows(count, day):
+    """id 倒序、时间递减的假 DB 行（第 index 条内容为 row {index}）。"""
+    base = datetime.strptime(day, '%Y-%m-%d').replace(hour=12)
+    rows = []
+    for index in range(count):
+        rows.append({'id': count - index,
+                     'time': (base - timedelta(seconds=index)).isoformat(),
+                     'level': 'INFO', 'category': 'auth', 'module': 'm',
+                     'content': f'row {index}', 'mark': ''})
+    return rows
+
+
+@pytest.fixture()
+def chunk_100(monkeypatch):
+    """把单块行数压到 100，用少量假数据就能覆盖跨块拼接（默认 5000）。"""
+    from shared.infrastructure.config import BaseConfig
+    monkeypatch.setattr(BaseConfig, 'LOG_DB_FETCH_CHUNK_ROWS', 100)
+    return 100
+
+
+def _use_proxy(monkeypatch, proxy):
+    monkeypatch.setattr(
+        'api_gateway.infrastructure.grpc_proxies.task_data_service', proxy)
+    return proxy
+
+
+class TestDbChunkedFetch:
+    def test_small_page_requests_only_needed_rows(self, log_root, monkeypatch, chunk_100):
+        """首页只要 page*per_page 行：不因分块把单次请求放大到整块。"""
+        from api_gateway.application.services.log.log_query_service import LogQueryService
+
+        proxy = _use_proxy(monkeypatch, _PagingProxy(_db_rows(500, _days_ago(1))))
+        _set_request({}, {'page': '1', 'per_page': '20'})
+
+        body, _code = LogQueryService.get_logs()
+        assert body['data']['total'] == 500
+        assert len(body['data']['items']) == 20
+        assert [call['per_page'] for call in proxy.calls] == [20]
+
+    def test_deep_page_total_keeps_db_count(self, log_root, monkeypatch, chunk_100):
+        """深分页（need_rows=1000）分块拉取后 total 仍是 DB 精确计数，列表不重不漏。"""
+        from api_gateway.application.services.log.log_query_service import LogQueryService
+
+        proxy = _use_proxy(monkeypatch, _PagingProxy(_db_rows(2000, _days_ago(1))))
+        _set_request({}, {'page': '10', 'per_page': '100'})
+
+        body, code = LogQueryService.get_logs()
+        assert code == 200
+        assert body['data']['total'] == 2000
+        assert body['data']['pages'] == 20
+        items = body['data']['items']
+        assert len(items) == 100
+        assert [item['content'] for item in items[:2]] == ['row 900', 'row 901']
+        # 每块请求量都受单块上限约束（修复前这里一次要 1000 行、真实库上撞 64MB）
+        assert all(call['per_page'] <= chunk_100 for call in proxy.calls)
+        assert len(proxy.calls) == 10
+
+    def test_chunk_failure_returns_error_not_partial_list(self, log_root, monkeypatch,
+                                                         chunk_100):
+        """任一后续块失败 → 整单报错，不把「拿不到」伪装成部分列表。"""
+        from api_gateway.application.services.log.log_query_service import LogQueryService
+
+        _use_proxy(monkeypatch, _PagingProxy(_db_rows(2000, _days_ago(1)), fail_on_page=3))
+        _set_request({}, {'page': '10', 'per_page': '100'})
+
+        body, _http = LogQueryService.get_logs()
+        assert body['code'] == 500
+        assert '获取日志失败' in body['message']
+        assert 'data' not in body
+
+    def test_task_dimension_uses_chunked_fetch(self, log_root, monkeypatch, chunk_100):
+        """任务维度合并视图同一取数路径：过滤下推 + 分块，total 为 DB 精确计数。"""
+        from api_gateway.application.services.log.log_query_service import LogQueryService
+
+        proxy = _use_proxy(monkeypatch, _PagingProxy(_db_rows(250, _days_ago(1))))
+        _set_request({}, {'task_id': '7', 'page': '1', 'per_page': '50'})
+
+        body, code = LogQueryService.get_logs()
+        assert code == 200
+        assert body['data']['total'] == 250
+        assert len(body['data']['items']) == 50
+        assert all(call['task_id'] == 7 for call in proxy.calls)
+        assert all(call['per_page'] <= chunk_100 for call in proxy.calls)
+
+    def test_export_counts_all_matched_rows(self, log_root, monkeypatch, tmp_path,
+                                            chunk_100):
+        """导出无 log_ids：分块拉全部命中行，条数与列表 total 一致（修复前只剩文件行）。"""
+        from api_gateway.application.services.log.log_query_service import LogQueryService
+
+        proxy = _use_proxy(monkeypatch, _PagingProxy(_db_rows(305, _days_ago(1))))
+        monkeypatch.setattr('os.getcwd', lambda: str(tmp_path))
+        _set_request({'format': 'json'})
+
+        LogQueryService.export_logs()
+        rows = json.loads(next((tmp_path / 'exports').glob('*.json'))
+                          .read_text(encoding='utf-8'))
+        assert len(rows) == 305
+        assert [row['Content'] for row in rows[:2]] == ['row 0', 'row 1']
+        assert all(call['per_page'] <= chunk_100 for call in proxy.calls)
+        assert len(proxy.calls) == 4          # 100 + 100 + 100 + 5
+
+    def test_export_failure_returns_error_and_no_file(self, log_root, monkeypatch,
+                                                      tmp_path, chunk_100):
+        from api_gateway.application.services.log.log_query_service import LogQueryService
+
+        _use_proxy(monkeypatch, _PagingProxy(_db_rows(300, _days_ago(1)), fail_on_page=2))
+        monkeypatch.setattr('os.getcwd', lambda: str(tmp_path))
+        _set_request({'format': 'csv'})
+
+        body, http = LogQueryService.export_logs()
+        assert http == 500
+        assert '导出日志失败' in body['message']
+        assert not list((tmp_path / 'exports').glob('*.csv'))
+
+    def test_export_max_rows_guard_is_explicit(self, log_root, monkeypatch,
+                                               tmp_path, chunk_100):
+        """配置了导出上限时超限显式报 400，不静默截断成部分数据。"""
+        from shared.infrastructure.config import BaseConfig
+        from api_gateway.application.services.log.log_query_service import LogQueryService
+
+        monkeypatch.setattr(BaseConfig, 'LOG_DB_EXPORT_MAX_ROWS', 100)
+        _use_proxy(monkeypatch, _PagingProxy(_db_rows(300, _days_ago(1))))
+        monkeypatch.setattr('os.getcwd', lambda: str(tmp_path))
+        _set_request({'format': 'csv'})
+
+        body, http = LogQueryService.export_logs()
+        assert http == 400
+        assert '超过上限 100 行' in body['message']
+        assert not list((tmp_path / 'exports').glob('*.csv'))
+
+
+    def test_export_pins_db_end_time_to_snapshot(self, log_root, monkeypatch,
+                                                 tmp_path, chunk_100):
+        """分块 offset 分页 + 实时库：导出把 DB 结果集钉在起点（不重复、不丢行）。"""
+        from api_gateway.application.services.log.log_query_service import LogQueryService
+
+        proxy = _use_proxy(monkeypatch, _PagingProxy(_db_rows(150, _days_ago(1))))
+        monkeypatch.setattr('os.getcwd', lambda: str(tmp_path))
+        _set_request({'format': 'json'})
+
+        LogQueryService.export_logs()
+        assert proxy.calls[0]['start_date']
+        assert proxy.calls[0]['end_date']

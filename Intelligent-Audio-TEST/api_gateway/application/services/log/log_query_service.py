@@ -3,6 +3,7 @@
 P0-3 DDD 改造：所有 Log 读/聚合统计查询通过 gRPC 调用 task_service，
 不再直连 task_service DB。
 """
+import csv
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -11,6 +12,7 @@ from fastapi.responses import FileResponse
 
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
+from api_gateway.utils.error_codes import ErrorCode
 from shared.infrastructure.config import BaseConfig
 from shared.utils.log_handler import log_not_emit
 from shared.utils.query_utils import now_cst
@@ -67,8 +69,52 @@ def _to_log_item(log: dict) -> LogItem:
     )
 
 
-# LOG_DB_MERGE_MAX_ROWS = 0（不限）时传给 gRPC per_page 的占位值（int32 上限）
-_DB_PAGE_UNBOUNDED = 2 ** 31 - 1
+# 导出产物的列顺序（csv / xlsx 表头与 json 键，两前端导出弹窗口径不变）
+_EXPORT_COLUMNS = ['ID', 'Time', 'Level', 'Module', 'Content', 'Mark']
+
+
+def _to_export_row(log: dict) -> tuple:
+    """导出行（紧凑元组，与 _EXPORT_COLUMNS 一一对应）。
+
+    INT-1812 返工：导出可能命中 30 万级行，用元组而不是 LogItem / 字典列表，
+    避免把整个结果集物化成 pydantic 模型（实测 30 万行 LogItem 峰值 +1GB）。
+    """
+    return (
+        log.get('id'),
+        log.get('time') or '',
+        log.get('level') or '',
+        log.get('module') or '',
+        log.get('content') or '',
+        log.get('mark') or '',
+    )
+
+
+def _parse_log_time(text):
+    """日志时间文本 → epoch 秒；不可解析返回 -inf（视为最旧）。
+
+    文件侧时间格式为 `YYYY-MM-DD HH:MM:SS.ffffff`（写入侧固定 strftime），
+    legacy DB 行是 `datetime.isoformat()`（'T' 分隔）——直接按字符串比较会让
+    同日 DB 行整体排到文件行之前（'T' > ' '），因此统一解析成 epoch 再比。
+    """
+    if not text:
+        return float('-inf')
+    try:
+        moment = datetime.fromisoformat(text)
+    except (ValueError, TypeError):
+        return float('-inf')
+    if moment.tzinfo is not None:
+        moment = moment.replace(tzinfo=None)
+    return moment.timestamp()
+
+
+class _ExportTooManyRows(Exception):
+    """导出命中行数超过 LOG_DB_EXPORT_MAX_ROWS：显式报错，不静默截断成部分数据。"""
+
+    def __init__(self, hit, limit):
+        super().__init__(
+            f'导出命中 {hit} 行，超过上限 {limit} 行，请缩小时间范围或增加筛选条件')
+        self.hit = hit
+        self.limit = limit
 
 
 class LogQueryService:
@@ -88,7 +134,6 @@ class LogQueryService:
         if not user_id:
             return None
         from api_gateway.application.services.auth.management_common import current_operator_id
-        from api_gateway.utils.error_codes import ErrorCode
         operator_id = current_operator_id()
         if operator_id != 0 and user_id != operator_id:
             return error_response('无权限查看他人日志',
@@ -175,15 +220,10 @@ class LogQueryService:
         # DB 历史行（审计事件与改造前任务日志，保留只读不迁移）。
         # INT-100：level 多级别/日期/其余条件全部下推 task_service 过滤，
         # 拉取行数受 LOG_DB_MERGE_MAX_ROWS 上限约束，不再全量物化。
-        from api_gateway.infrastructure.grpc_proxies import task_data_service
-        page_size = LogQueryService._db_merge_page_size()
-        resp = task_data_service.list_logs(
+        # INT-1812 返工：改按块循环拉取，单次响应不再越过 gRPC 64MB 上限。
+        db_items, _db_total = LogQueryService._query_db_history(
             task_id=query.task_id,
-            level=query.level or None,
-            page=1,
-            per_page=page_size if page_size > 0 else _DB_PAGE_UNBOUNDED,
-            start_date=query.start_time,
-            end_date=query.end_time,
+            level=query.level,
             module=module_filter,
             category=query.category,
             mark=query.mark,
@@ -196,8 +236,10 @@ class LogQueryService:
             content_exclude=query.content_exclude,
             algorithm_type=query.algorithm_type,
             user_id=query.user_id,
+            start_time=query.start_time,
+            end_time=query.end_time,
+            need_rows=LogQueryService._db_merge_page_size(),
         )
-        db_items = [_to_log_item(log) for log in (resp.get('items') or [])]
 
         merged = sorted(
             file_items + db_items,
@@ -269,73 +311,126 @@ class LogQueryService:
         }
 
     @staticmethod
-    def _query_db_history(*, level=None, module=None, category=None, mark=None,
-                          device_id=None, api_id=None, test_case_id=None,
+    def _db_fetch_chunk_rows() -> int:
+        """单块 ListLogs 拉取行数（INT-1812 返工）。
+
+        ListLogs 响应是单条 JSON 字符串（实测 2~3.5KB/行），一次要 10 万行约
+        160MB 必撞 gRPC 单条消息上限（客户端 GRPC_MAX_MESSAGE_MB=64MB、服务端
+        send 64MB），代理再把 RESOURCE_EXHAUSTED 吞成空结果 → 导出丢光 DB 行、
+        深分页 total 塌成文件侧。块大小默认 5000 行（约 12~18MB，留 3 倍余量）。
+        """
+        try:
+            return max(1, int(BaseConfig.LOG_DB_FETCH_CHUNK_ROWS))
+        except (TypeError, ValueError):
+            return 5000
+
+    @staticmethod
+    def _db_export_max_rows() -> int:
+        """导出 DB 侧命中行数上限（0 = 不限）。"""
+        try:
+            return max(0, int(BaseConfig.LOG_DB_EXPORT_MAX_ROWS))
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _fetch_db_rows(*, task_id=0, level=None, module=None, category=None,
+                       mark=None, device_id=None, api_id=None, test_case_id=None,
+                       thread_id=None, keyword=None, content_include=None,
+                       content_exclude=None, algorithm_type=None, user_id=None,
+                       start_time=None, end_time=None, need_rows=0,
+                       convert=None, max_total=0):
+        """按块循环拉取 logs 表历史行（只读），返回 (行, DB 侧命中总数)。
+
+        need_rows > 0：最多取 min(need_rows, LOG_DB_MERGE_MAX_ROWS) 行——合并
+        视图两侧各自有序，并集前 N 条必然落在两侧各自的前 N 条里，故 DB 侧只
+        取并集前缀；配置为 0（不限）时取 need_rows。need_rows = 0：全部命中行
+        （导出，与列表 total 同口径）。
+
+        分块：每块 ≤ LOG_DB_FETCH_CHUNK_ROWS 行，page/per_page 按已取行数对齐，
+        单块响应不会越过 gRPC 单条消息上限。
+
+        total 取自首个响应（SQL count，精确），任何一块失败都直接抛出——读侧
+        不得把失败吞成空结果，否则「拿不到数据」会被伪装成「共 0 条」。
+        convert：逐行转换钩子（导出用紧凑行，避免 30 万级 LogItem 物化）。
+        max_total > 0 且命中总数超过它 → 抛 _ExportTooManyRows（显式报错）。
+        """
+        from api_gateway.infrastructure.grpc_proxies import task_data_service
+
+        cap = LogQueryService._db_merge_page_size()
+        if need_rows and need_rows > 0:
+            target = min(need_rows, cap) if cap > 0 else need_rows
+        else:
+            target = None                      # 不限（导出 / 配置为 0）
+
+        chunk = LogQueryService._db_fetch_chunk_rows()
+        # 每页行数按目标取小：小块目标（如首页 page*per_page=20）仍是一次小请求，
+        # 只有真正要大量行时才按块循环；页号与已取行数对齐，不重不漏。
+        per_page = chunk if target is None else min(chunk, target)
+        rows = []
+        total = None
+        while target is None or len(rows) < target:
+            page = len(rows) // per_page + 1
+            resp = task_data_service.list_logs(
+                task_id=task_id,
+                level=level or None,
+                page=page,
+                per_page=per_page,
+                start_date=start_time,
+                end_date=end_time,
+                module=module,
+                category=category,
+                mark=mark,
+                device_id=device_id,
+                api_id=api_id,
+                test_case_id=test_case_id,
+                thread_id=thread_id,
+                keyword=keyword,
+                content_include=content_include,
+                content_exclude=content_exclude,
+                algorithm_type=algorithm_type,
+                user_id=user_id,
+                reraise=True,
+            )
+            raw_items = resp.get('items') or []
+            if total is None:
+                total = int(resp.get('total', 0) or 0)
+                if max_total and total > max_total:
+                    raise _ExportTooManyRows(total, max_total)
+            items = raw_items if target is None else raw_items[:target - len(rows)]
+            rows.extend([convert(item) for item in items] if convert else items)
+            # 本块不足一整页 = 已到末尾；取满命中总数同样结束
+            if len(raw_items) < per_page or len(rows) >= total:
+                break
+        return rows, int(total or 0)
+
+    @staticmethod
+    def _query_db_history(*, task_id=0, level=None, module=None, category=None,
+                          mark=None, device_id=None, api_id=None, test_case_id=None,
                           thread_id=None, keyword=None, content_include=None,
                           content_exclude=None, algorithm_type=None, user_id=None,
-                          start_time=None, end_time=None,
-                          need_rows=0):
-        """拉取 logs 表历史行（改造前的审计/任务日志，只读不迁移）。
-
-        合并视图两侧各自有序，并集的前 `page*per_page` 条必然落在两侧各自的
-        前 `page*per_page` 条里，因此 DB 侧只取这么多行（上限受
-        LOG_DB_MERGE_MAX_ROWS 约束，0 = 不限），`total` 仍取 DB 的真实计数。
+                          start_time=None, end_time=None, need_rows=0):
+        """拉取 logs 表历史行并转成 LogItem（改造前的审计/任务日志，只读不迁移）。
 
         DB 侧排序沿用 task_service ListLogs 现有口径（id 倒序，与改造前全局页
         分页同序，故相对基线不丢行）；主库实测 304,948 行里 time 与 id 逆序仅
         82 处、均为相邻 id 的 ±8h 时区标注差异。文件侧按 (time desc, cursor
         desc) 全量物化，与 DB 前缀合并后统一排序分页。
-        返回 (条目列表, DB 侧命中总数)。
+        返回 (LogItem 列表, DB 侧命中总数)。
         """
-        from api_gateway.infrastructure.grpc_proxies import task_data_service
-        page_size = LogQueryService._db_merge_page_size()
-        limit = page_size if page_size > 0 else _DB_PAGE_UNBOUNDED
-        if need_rows and need_rows < limit:
-            limit = max(1, need_rows)
-        resp = task_data_service.list_logs(
-            task_id=0,
-            level=level or None,
-            page=1,
-            per_page=limit,
-            start_date=start_time,
-            end_date=end_time,
-            module=module,
-            category=category,
-            mark=mark,
-            device_id=device_id,
-            api_id=api_id,
-            test_case_id=test_case_id,
-            thread_id=thread_id,
-            keyword=keyword,
-            content_include=content_include,
-            content_exclude=content_exclude,
-            algorithm_type=algorithm_type,
-            user_id=user_id,
+        return LogQueryService._fetch_db_rows(
+            task_id=task_id, level=level, module=module, category=category,
+            mark=mark, device_id=device_id, api_id=api_id,
+            test_case_id=test_case_id, thread_id=thread_id, keyword=keyword,
+            content_include=content_include, content_exclude=content_exclude,
+            algorithm_type=algorithm_type, user_id=user_id,
+            start_time=start_time, end_time=end_time, need_rows=need_rows,
+            convert=_to_log_item,
         )
-        items = [_to_log_item(log) for log in (resp.get('items') or [])]
-        return items, int(resp.get('total', 0) or 0)
 
     @staticmethod
     def _merge_sort_key(item):
-        """合并视图排序键（时间倒序、游标/id 次之）。
-
-        文件侧时间格式为 `YYYY-MM-DD HH:MM:SS.ffffff`（写入侧固定 strftime），
-        legacy DB 行是 `datetime.isoformat()`（'T' 分隔）——直接按字符串比较
-        会让同日 DB 行整体排到文件行之前（'T' > ' '），因此统一解析成 epoch
-        再比。不可解析的时间视为最旧，保证不因脏值错序。
-        """
-        moment = None
-        text = item.time or ''
-        if text:
-            try:
-                moment = datetime.fromisoformat(text)
-            except (ValueError, TypeError):
-                moment = None
-        if moment is None:
-            return (float('-inf'), item.id or 0)
-        if moment.tzinfo is not None:
-            moment = moment.replace(tzinfo=None)
-        return (moment.timestamp(), item.id or 0)
+        """合并视图排序键（时间倒序、游标/id 次之；时间解析见 _parse_log_time）。"""
+        return (_parse_log_time(item.time), item.id or 0)
 
     @staticmethod
     def _get_global_logs_merged(query):
@@ -574,8 +669,6 @@ class LogQueryService:
     # 导出日志
     @staticmethod
     def export_logs():
-        import os
-        from shared.logging import CURSOR_FLOOR, AuditLogReader
         # INT-274：导出条件走 POST body（doc/接口文档 6. 导出日志：log_ids + format），
         # 修复 GET 空 body 下 format 落默认 excel、log_ids 落 None 的静默失真；
         # level/module 从 body 或 query（GET 兼容）均可读取，body 优先。
@@ -587,80 +680,111 @@ class LogQueryService:
         # INT-1812（契约 §Q2/§3.3）：导出与列表同源同筛选（审计文件 + legacy
         # DB 行），不分页、受扫描上界约束。log_ids 里的文件游标按日期目录反查，
         # legacy id（<CURSOR_FLOOR）仍走 DB 导出。
+        # INT-1812 返工：DB 侧改为分块拉全量（此前一次要 10 万行越 gRPC 单条
+        # 消息上限、异常被吞成空结果 → 导出静默只剩文件行）；整条链路失败一律
+        # 显式报错，绝不产出部分数据当成功。
+        try:
+            rows = LogQueryService._collect_export_rows(req.log_ids, level, module)
+            rows.sort(key=lambda row: (_parse_log_time(row[1]), row[0] or 0),
+                      reverse=True)
+            file_path = LogQueryService._write_export_file(rows, req.format)
+        except _ExportTooManyRows as exc:
+            return error_response(str(exc), code=ErrorCode.INVALID_PARAMS, http_code=400)
+        except Exception as exc:
+            log_not_emit('ERROR', 'log_controller', f'Error in export_logs: {str(exc)}',
+                         category='system')
+            return error_response(f"导出日志失败: {str(exc)}", code=500, http_code=500)
+
+        return FileResponse(file_path, headers={"Content-Disposition": "attachment"})
+
+    @staticmethod
+    def _collect_export_rows(log_ids, level, module):
+        """导出取数：与全局列表同源同筛选，返回紧凑行列表（不分页）。"""
+        from shared.logging import CURSOR_FLOOR, AuditLogReader
+
         reader = AuditLogReader()
-        log_items = []
-        if req.log_ids:
-            file_cursors = [int(i) for i in req.log_ids
-                            if int(i) >= CURSOR_FLOOR]
-            legacy_ids = [int(i) for i in req.log_ids
-                          if int(i) < CURSOR_FLOOR]
+        rows = []
+        if log_ids:
+            file_cursors = [int(i) for i in log_ids if int(i) >= CURSOR_FLOOR]
+            legacy_ids = [int(i) for i in log_ids if int(i) < CURSOR_FLOOR]
             if file_cursors:
-                log_items.extend(
-                    _to_log_item(entry)
-                    for entry in reader.read_by_cursors(file_cursors))
+                rows.extend(_to_export_row(entry)
+                            for entry in reader.read_by_cursors(file_cursors))
             if legacy_ids:
                 from api_gateway.infrastructure.grpc_proxies import task_data_service
                 resp = task_data_service.get_logs_for_export(
                     log_ids=legacy_ids, level=level, module=module)
-                log_items.extend(
-                    _to_log_item(log) for log in (resp.get('items') or []))
-        else:
-            # 与全局列表**同一取数路径**：文件侧同过滤参数、DB 侧同 list_logs
-            # （level 大小写不敏感、module 'all' 归一、默认 30 天窗口、扫描上界
-            # 一致），因此「同筛选下导出条数与列表一致」由构造保证。
-            start_time, end_time = LogQueryService._resolve_window(None, None)
-            filters = LogQueryService._audit_file_filters(
-                level=level, module=module,
-                start_time=start_time, end_time=end_time)
-            log_items.extend(
-                _to_log_item(entry)
-                for entry in reader.read_entries(**filters))
-            db_items, _db_total = LogQueryService._query_db_history(
-                level=level,
-                module=filters['module'],
-                start_time=start_time,
-                end_time=end_time,
-                need_rows=0,
-            )
-            log_items.extend(db_items)
+                rows.extend(_to_export_row(log) for log in (resp.get('items') or []))
+            return rows
 
-        log_items.sort(key=LogQueryService._merge_sort_key, reverse=True)
+        # 与全局列表**同一取数路径**：文件侧同过滤参数、DB 侧同 list_logs
+        # （level 大小写不敏感、module 'all' 归一、默认 30 天窗口、扫描上界
+        # 一致），因此「同筛选下导出条数与列表一致」由构造保证。
+        start_time, end_time = LogQueryService._resolve_window(None, None)
+        filters = LogQueryService._audit_file_filters(
+            level=level, module=module,
+            start_time=start_time, end_time=end_time)
+        rows.extend(_to_export_row(entry) for entry in reader.read_entries(**filters))
+        # 分块拉取是 offset 分页：导出期间新写入的行会把后续块整体下移，造成
+        # 重复/漏行。日志按当前时间落库，用导出起点的上界把 DB 结果集钉住，
+        # 使各块看到同一批行（导出条数 = 首个响应里的精确 count）。
+        snapshot_end = end_time or now_cst().strftime('%Y-%m-%d %H:%M:%S')
+        db_rows, _db_total = LogQueryService._fetch_db_rows(
+            level=level,
+            module=filters['module'],
+            start_time=start_time,
+            end_time=snapshot_end,
+            need_rows=0,
+            convert=_to_export_row,
+            max_total=LogQueryService._db_export_max_rows(),
+        )
+        rows.extend(db_rows)
+        return rows
 
-        export_data = []
-        for item in log_items:
-            export_data.append({
-                "ID": item.id,
-                "Time": item.time or '',
-                "Level": item.level or '',
-                "Module": item.module or '',
-                "Content": item.content or '',
-                "Mark": item.mark or "",
-            })
+    @staticmethod
+    def _write_export_file(rows, fmt):
+        """把导出行写成文件并返回路径（csv/json/txt 流式，xlsx 走 pandas）。"""
+        import os
 
-        df = pd.DataFrame(export_data)
         export_dir = os.path.join(os.getcwd(), 'exports')
         if not os.path.exists(export_dir):
             os.makedirs(export_dir)
 
         filename = f"logs_export_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        file_path = ""
-
-        if req.format == 'csv':
+        if fmt == 'csv':
             file_path = os.path.join(export_dir, f"{filename}.csv")
-            df.to_csv(file_path, index=False)
-        elif req.format == 'json':
+            with open(file_path, 'w', encoding='utf-8', newline='') as handle:
+                writer = csv.writer(handle)
+                writer.writerow(_EXPORT_COLUMNS)
+                writer.writerows(rows)
+        elif fmt == 'json':
             file_path = os.path.join(export_dir, f"{filename}.json")
-            df.to_json(file_path, orient='records', indent=4)
-        elif req.format == 'txt':
+            LogQueryService._write_rows_json(file_path, rows)
+        elif fmt == 'txt':
             file_path = os.path.join(export_dir, f"{filename}.txt")
-            with open(file_path, 'w', encoding='utf-8') as f:
-                for item in export_data:
-                    f.write(f"[{item['Time']}] {item['Level']} {item['Module']}: {item['Content']}\n")
-        else: # Default Excel
+            with open(file_path, 'w', encoding='utf-8') as handle:
+                for row in rows:
+                    handle.write(f"[{row[1]}] {row[2]} {row[3]}: {row[4]}\n")
+        else:  # 默认 Excel
             file_path = os.path.join(export_dir, f"{filename}.xlsx")
+            # xlsx 仍走 pandas/openpyxl：流式 write_only 不接受日志内容里的控制
+            # 字符（ANSI 转义等）会整单失败；30 万行 xlsx 实测约 50s
+            df = pd.DataFrame([dict(zip(_EXPORT_COLUMNS, row)) for row in rows])
             df.to_excel(file_path, index=False)
+        return file_path
 
-        return FileResponse(file_path, headers={"Content-Disposition": "attachment"})
+    @staticmethod
+    def _write_rows_json(file_path, rows):
+        """records 数组（键序同 _EXPORT_COLUMNS，与 df.to_json(indent=4) 同形）。"""
+        with open(file_path, 'w', encoding='utf-8') as handle:
+            handle.write('[')
+            for index, row in enumerate(rows):
+                if index:
+                    handle.write(',')
+                handle.write('\n    ')
+                handle.write(json.dumps(dict(zip(_EXPORT_COLUMNS, row)),
+                                        ensure_ascii=False))
+            handle.write('\n]' if rows else ']')
 
     # 获取归档状态
     @staticmethod

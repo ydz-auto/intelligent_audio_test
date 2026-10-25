@@ -272,8 +272,14 @@ class _TaskDataProxy:
                   start_date=None, end_date=None, module=None, category=None,
                   mark=None, device_id=None, api_id=None, test_case_id=None,
                   thread_id=None, keyword=None, content_include=None,
-                  content_exclude=None, algorithm_type=None, user_id=None):
-        """通过 gRPC 查询 Log 列表（分页 + 过滤；INT-100 过滤下推 task_service）"""
+                  content_exclude=None, algorithm_type=None, user_id=None,
+                  reraise=False):
+        """通过 gRPC 查询 Log 列表（分页 + 过滤；INT-100 过滤下推 task_service）
+
+        reraise=True：失败上抛而不是吞成 {}（INT-1812 返工）。读侧合并视图
+        分块拉取时，任何一块失败都必须让调用方感知——吞成空结果会把
+        「拿不到数据」伪装成「没有数据」，导出与深分页因此静默丢行。
+        """
         def _call():
             stub = get_task_data_service_stub()
             resp = stub.ListLogs(task_pb.ListLogsRequest(
@@ -299,7 +305,8 @@ class _TaskDataProxy:
             if not resp.success:
                 raise RuntimeError(f"ListLogs gRPC 失败: {resp.message}")
             return json.loads(resp.data) if resp.data else {}
-        return _grpc_call(_call, default_return={}, error_msg_prefix='ListLogs gRPC 失败')
+        return _grpc_call(_call, default_return={}, error_msg_prefix='ListLogs gRPC 失败',
+                          reraise=reraise)
 
     def get_log_stats(self, level=None, module=None, category=None, mark=None,
                       device_id=None, task_id=None, keyword=None,
