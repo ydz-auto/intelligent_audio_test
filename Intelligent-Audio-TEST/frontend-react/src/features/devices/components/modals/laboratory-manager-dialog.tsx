@@ -130,12 +130,18 @@ export function LaboratoryManagerDialog(props: LaboratoryManagerDialogProps) {
     }
   }
 
+  /** P2-A 返修：deleteLaboratory 把 404/409/403 等非 2xx 收敛为 success:false 而不抛异常，
+   *  必须按返回值分流，不能无条件提示「已删除」（与同页设备删除同口径）。 */
   const handleDelete = async () => {
     if (!deleteTarget) return
     try {
-      await remove.mutateAsync(deleteTarget.id)
-      toast.success('实验室已删除')
-      setDeleteTarget(null)
+      const result = await remove.mutateAsync(deleteTarget.id)
+      if (result.success) {
+        toast.success('实验室已删除')
+        setDeleteTarget(null)
+      } else {
+        toast.error(result.message ?? '删除失败，请重试')
+      }
     } catch (error) {
       toast.error(error instanceof ApiError ? error.userMessage : '删除失败，请重试')
     }

@@ -213,7 +213,8 @@ export function useDeviceMutations() {
     }) => controlDevice(id, action, params),
   })
 
-  /** 「测试中」占用态本地瞬时态兜底（INT-487：置/清 occupied + 列表失效刷新） */
+  /** 「测试中」占用态本地瞬时态兜底（INT-487：置/清 occupied + 列表失效刷新）
+   *  P3-b：请求失败时 infrastructure 已回滚覆盖，这里再失效一次，把请求期间可能已取到覆盖值的列表拉回真实态 */
   const setOccupied = useMutation({
     mutationFn: ({
       kind,
@@ -225,6 +226,7 @@ export function useDeviceMutations() {
       occupied: boolean
     }) => setDeviceOccupied(kind, id, occupied),
     onSuccess: () => invalidateAll(),
+    onError: () => invalidateAll(),
   })
 
   const batch = useMutation({

@@ -8,7 +8,10 @@
  * - 播放设备：详情/编辑/关联声压映射/播放测试/停止/重启播放设备/重置配置/静音·取消静音/
  *   播放测试结果分析/设备诊断·修复·优化/删除
  * - 测试 API：详情/编辑/健康检查（api_config:read，P2-7）/停止测试/删除（离线端点行禁选）
- * 交互调用方：连接/断开/重启/关机 → onControl(action)（mock 幂等 toast）；装/卸 → 参数弹窗。
+ * 交互调用方：连接/断开/重启/关机 → onControl(action)（真实端点 /test-devices/{id}/{action}）；
+ * 装/卸 → 参数弹窗。
+ * P2-4：后端无端点的动作（播放设备重启/重置配置/静音/取消静音、播放测试结果分析、设备诊断）
+ * 一律禁用 + Tooltip「后端未提供该操作」，不伪造成功（真实端点见 INT-1573）。
  * P3-24 返修：iOS 判定走 normalizeDeviceSystem 归一（小写 harmony/android 不再恒不命中）。
  */
 import { MoreHorizontal } from 'lucide-react'
@@ -46,8 +49,7 @@ export interface DeviceRowActionsProps {
   onDelete: () => void
   onAssociateSpl: () => void
   onPlayTest: () => void
-  onResultAnalysis: () => void
-  onDiagnose: () => void
+  onStop: () => void
   /** 安装/卸载参数小弹窗（§3.4.1：file_path/package_name 输入，P3-31 补口） */
   onInstallApp: () => void
   onUninstallApp: () => void
@@ -70,7 +72,8 @@ export function DeviceRowActions(props: DeviceRowActionsProps) {
   const testingOccupied = isTest && (device as TestDevice).occupied
 
   const offlineTooltip = '设备离线，无法执行操作'
-  const controlDisabled = isOffline
+  /** P2-4：后端未提供端点的动作说明（禁用态 Tooltip） */
+  const unsupportedTooltip = '后端未提供该操作（待 INT-1573）'
 
   const controlItem = (
     action: string,
@@ -140,36 +143,39 @@ export function DeviceRowActions(props: DeviceRowActionsProps) {
             <DropdownMenuItem disabled={isOffline} title={isOffline ? offlineTooltip : undefined} onClick={props.onPlayTest}>
               播放测试
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={isOffline} title={isOffline ? offlineTooltip : undefined} onClick={props.onStopTest}>
+            <DropdownMenuItem disabled={isOffline} title={isOffline ? offlineTooltip : undefined} onClick={props.onStop}>
               停止
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            {/* P2-4：后端无 restart/reset-config/mute/unmute 端点（INT-1573）→ 禁用 + 说明，不假成功 */}
             {controlItem('restart', '重启播放设备', {
-              disabled: controlDisabled,
-              title: isOffline ? offlineTooltip : undefined,
+              disabled: true,
+              title: unsupportedTooltip,
             })}
             {controlItem('reset-config', '重置播放设备配置', {
-              disabled: controlDisabled,
-              title: isOffline ? offlineTooltip : undefined,
+              disabled: true,
+              title: unsupportedTooltip,
             })}
             {controlItem('mute', '静音', {
-              disabled: controlDisabled,
-              title: isOffline ? offlineTooltip : undefined,
+              disabled: true,
+              title: unsupportedTooltip,
             })}
             {controlItem('unmute', '取消静音', {
-              disabled: controlDisabled,
-              title: isOffline ? offlineTooltip : undefined,
+              disabled: true,
+              title: unsupportedTooltip,
             })}
             <DropdownMenuSeparator />
           </>
         )}
         {isPlayback && canRead && (
-          <DropdownMenuItem onClick={props.onResultAnalysis}>
+          <DropdownMenuItem disabled title={unsupportedTooltip}>
             播放测试结果分析
           </DropdownMenuItem>
         )}
         {isPlayback && props.canPlaybackControl && (
-          <DropdownMenuItem onClick={props.onDiagnose}>设备诊断·修复·优化</DropdownMenuItem>
+          <DropdownMenuItem disabled title={unsupportedTooltip}>
+            设备诊断·修复·优化
+          </DropdownMenuItem>
         )}
 
         {isApi && canHealth && (

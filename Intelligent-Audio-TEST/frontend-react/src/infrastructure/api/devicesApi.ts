@@ -498,13 +498,15 @@ function controlActionToPath(action: string): string | null {
 
 /** 设备控制操作（§3.4.1；POST /test-devices/{id}/{action}；health_check 走批量端点）
  *  P2-2：操作参数按 device_command_service.control 契约放 body.params
- *  （install_app: {file_path, package_name}；uninstall_app: {package_name}）。 */
+ *  （install_app: {file_path, package_name}；uninstall_app: {package_name}）。
+ *  P2-4：后端无端点的动作（播放设备 restart/reset-config/mute/unmute 等 UX 视觉稿动作）返回
+ *  success:false + message，不再本地伪造成功；调用方据此提示并禁用入口。 */
 export async function controlDevice(
   id: number,
   action: string,
   params: Record<string, unknown> = {},
   options: ApiRequestOptions = {}
-): Promise<{ success: boolean; action?: string; id?: number }> {
+): Promise<{ success: boolean; action?: string; id?: number; message?: string }> {
   if (action === 'health_check') {
     await request('POST', '/test-devices/health-check', { device_ids: [id] }, options)
     return { success: true, action, id }
@@ -515,16 +517,16 @@ export async function controlDevice(
   }
   const path = controlActionToPath(action)
   if (!path) {
-    // 后端无此操作端点（播放设备 restart/reset-config/mute/unmute 等 UX 视觉稿动作，
-    // 无 Vue 对位/未立项 → 本地幂等成功，不产生真实调用）
-    return { success: true, action, id }
+    // 后端未提供该操作端点：不产生请求、不伪造成功（入口在 device-row-actions 中禁用 + Tooltip）
+    return { success: false, action, id, message: '后端未提供该操作（待 INT-1573）' }
   }
   const body = Object.keys(params).length > 0 ? { params } : undefined
   await request('POST', `/test-devices/${id}/${path}`, body, options)
   return { success: true, action, id }
 }
 
-/** 「测试中」占用态：本地瞬时覆盖 + 真实测试派发端点（INT-487 §3.4 注③：测试/停止测试） */
+/** 「测试中」占用态：本地瞬时覆盖 + 真实测试派发端点（INT-487 §3.4 注③：测试/停止测试）
+ *  P3-b 返修：请求失败回滚本地覆盖（恢复原值），否则设备会一直显示「测试中」直到整页重载。 */
 export async function setDeviceOccupied(
   kind: 'test' | 'playback' | 'api',
   id: number,
@@ -532,10 +534,17 @@ export async function setDeviceOccupied(
   options: ApiRequestOptions = {}
 ): Promise<{ success: boolean }> {
   const overrides = occupiedOverrides.get(kind) ?? new Map<number, boolean>()
+  const previous = overrides.get(id)
   overrides.set(id, occupied)
   occupiedOverrides.set(kind, overrides)
   const base = kind === 'test' ? '/test-devices' : kind === 'playback' ? '/playback-devices' : '/apis'
-  await request('POST', `${base}/${id}/${occupied ? 'test' : 'stop-test'}`, undefined, options)
+  try {
+    await request('POST', `${base}/${id}/${occupied ? 'test' : 'stop-test'}`, undefined, options)
+  } catch (error) {
+    if (previous === undefined) overrides.delete(id)
+    else overrides.set(id, previous)
+    throw error
+  }
   return { success: true }
 }
 
