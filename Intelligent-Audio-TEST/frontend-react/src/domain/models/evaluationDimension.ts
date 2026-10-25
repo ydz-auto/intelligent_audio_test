@@ -137,6 +137,12 @@ export interface Dimension {
    * LLM Judge 不是结果类型，结果类型仍是数值/布尔/文本。
    */
   llmJudge?: boolean
+  /**
+   * 是否需要音频文件（后端派生布尔 requires_audio：执行该维度评估要消费多轮音频）。
+   * INT-1843：列表端点不下发该字段，由 /evaluation/dimensions/options 按 id 合并
+   * （application/evaluation/use-dimensions.ts），维度云据此显示音乐图标。
+   */
+  requiresAudio?: boolean
   resultMin?: number | null
   resultMax?: number | null
   decimalPlaces?: number | null
@@ -204,6 +210,8 @@ export interface EvaluationDimensionItem {
   weight: number | null
   /** 是否默认评估维度（后端 is_default 语义；INT-646 代码审计 P3-3 与 status 解耦） */
   isDefault?: boolean | null
+  /** 是否需要音频文件（requires_audio；维度选项端点下发，INT-1843） */
+  requiresAudio?: boolean
   /** 启用状态（Dimension 全字段子集；options 端点不下发，恒 null） */
   status: boolean | null
   createdAt: string | null

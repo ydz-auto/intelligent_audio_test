@@ -55,6 +55,8 @@ export interface DimensionItemDto {
   result_type: number | null
   /** LLM Judge 派生布尔（后端按维度 task_type_code 判定；不是结果类型） */
   llm_judge?: boolean
+  /** 是否需要音频（派生布尔；列表端点实测不下发，仅 options 端点下发，INT-1843） */
+  requires_audio?: boolean | null
   result_min: number | null
   result_max: number | null
   decimal_places: number | null
@@ -111,6 +113,8 @@ export interface DimensionOptionsDataDto {
     type?: string | null
     /** 主/子维度（main/sub；options 端点实测含此字段，INT-1030 审计打回修正 type 错读） */
     dimension_type?: string | null
+    /** 是否需要音频（evaluation_service 按 audio_dim_ids 派生；INT-1843） */
+    requires_audio?: boolean | null
   }>
 }
 
@@ -291,6 +295,8 @@ export function toDimension(dto: DimensionItemDto): Dimension {
     type: dto.type,
     resultType: dto.result_type,
     llmJudge: dto.llm_judge ?? false,
+    // INT-1843：列表端点不下发 requires_audio（未下发按 false），需要时由 options 端点按 id 合并
+    requiresAudio: dto.requires_audio ?? false,
     resultMin: dto.result_min,
     resultMax: dto.result_max,
     decimalPlaces: dto.decimal_places,
@@ -335,6 +341,8 @@ export function toDimensionOptionsList(
     // INT-646 代码审计 P3-3：is_default 语义为「是否默认评估维度」，独立字段映射，
     // 不再错位映射为 status（启用状态）
     isDefault: item.is_default ?? null,
+    // INT-1843：requires_audio → requiresAudio（options 端点下发；未下发按 false）
+    requiresAudio: item.requires_audio ?? false,
     status: null,
     createdAt: null,
     updatedAt: null,

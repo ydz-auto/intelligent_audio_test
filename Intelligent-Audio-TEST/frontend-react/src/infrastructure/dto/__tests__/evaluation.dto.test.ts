@@ -5,7 +5,11 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { toDimension, type DimensionItemDto } from '@/infrastructure/dto/evaluation.dto'
+import {
+  toDimension,
+  toDimensionOptionsList,
+  type DimensionItemDto,
+} from '@/infrastructure/dto/evaluation.dto'
 
 const dto = (over: Partial<DimensionItemDto>): DimensionItemDto => ({
   id: 1,
@@ -71,5 +75,26 @@ describe('evaluation.dto toDimension（llm_judge_config 读侧）', () => {
     ).llmJudgeConfig
     expect(camel).toEqual({ model: 'voice_llm', promptTemplate: '模板A', maxTokens: 2048, temperature: 0.3 })
     expect(snake).toEqual(camel)
+  })
+})
+
+describe('evaluation.dto requires_audio → requiresAudio（INT-1843）', () => {
+  it('列表端点下发 requires_audio 时映射为 requiresAudio', () => {
+    expect(toDimension(dto({ requires_audio: true })).requiresAudio).toBe(true)
+    expect(toDimension(dto({ requires_audio: false })).requiresAudio).toBe(false)
+  })
+
+  it('列表端点未下发 requires_audio（实测 63 条均无该键）时 requiresAudio=false', () => {
+    expect(toDimension(dto({})).requiresAudio).toBe(false)
+  })
+
+  it('options 端点 requires_audio → EvaluationDimensionItem.requiresAudio', () => {
+    const items = toDimensionOptionsList({
+      dimensions: [
+        { id: 121, name: '拒识成功数量', dimension_type: 'main', requires_audio: true },
+        { id: 1, name: '识别准确率', dimension_type: 'main', requires_audio: false },
+      ],
+    })
+    expect(items.map((d) => d.requiresAudio)).toEqual([true, false])
   })
 })

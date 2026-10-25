@@ -5,13 +5,14 @@
  * 子维度；父维度被算法过滤的子维度作孤儿子维度兜底。负责人 2026-10-19「评估维度已经分组/分类了」
  * 口径：传入 categories 时按分类聚合组头）。
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
   MOCK_CASE_DIMENSIONS,
   MOCK_EVALUATION_CATEGORIES,
 } from '@/infrastructure/mock/testcases-mock'
+import type { Dimension } from '@/domain/models/evaluationDimension'
 import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
 
 const setup = (selected: number[] = [], categories = MOCK_EVALUATION_CATEGORIES) => {
@@ -179,5 +180,90 @@ describe('DimensionPicker 主/子分组云（V9.7.10 口径）', () => {
     // 无关分类组头不渲染
     expect(screen.queryByText('语义理解')).not.toBeInTheDocument()
     expect(screen.queryByText('响应体验')).not.toBeInTheDocument()
+  })
+})
+
+describe('DimensionPicker requiresAudio 音乐图标（数据驱动，INT-1843）', () => {
+  const AUDIO_TIP = '该维度需要音频文件，将随多轮音频一起上传'
+
+  /**
+   * 照真实库形态：requires_audio 由 /evaluation/dimensions/options 下发后合并进 Dimension，
+   * 真实库 30 条 requiring audio 全是主维度（子维度也可能命中，两者都要有图标）。
+   */
+  const AUDIO_DIMENSIONS: Dimension[] = [
+    {
+      id: 121,
+      name: '拒识成功数量',
+      dimensionType: 'main',
+      parentDimensionId: null,
+      requiresAudio: true,
+      status: true,
+    },
+    {
+      id: 1,
+      name: '识别准确率',
+      dimensionType: 'main',
+      parentDimensionId: null,
+      requiresAudio: false,
+      status: true,
+    },
+    {
+      id: 124,
+      name: '静默时拒识恢复行为数量',
+      dimensionType: 'sub',
+      parentDimensionId: 121,
+      requiresAudio: true,
+      status: true,
+    },
+    {
+      id: 125,
+      name: '回复时拒识恢复行为数量',
+      dimensionType: 'sub',
+      parentDimensionId: 121,
+      requiresAudio: false,
+      status: true,
+    },
+  ]
+
+  it('主维度 requiresAudio=true 显示音乐图标 + title（真实库 audio 维度均为主维度）', () => {
+    render(<DimensionPicker dimensions={AUDIO_DIMENSIONS} selected={[]} onToggle={vi.fn()} />)
+    const audioMain = screen.getByRole('button', { name: /拒识成功数量/ })
+    expect(within(audioMain).getByTitle(AUDIO_TIP)).toBeInTheDocument()
+  })
+
+  it('requiresAudio=false 的主维度不显示音乐图标', () => {
+    render(<DimensionPicker dimensions={AUDIO_DIMENSIONS} selected={[]} onToggle={vi.fn()} />)
+    const plainMain = screen.getByRole('button', { name: /识别准确率/ })
+    expect(within(plainMain).queryByTitle(AUDIO_TIP)).not.toBeInTheDocument()
+  })
+
+  it('子维度图标只看自身 requiresAudio（true 显示 / false 不显示）', () => {
+    render(<DimensionPicker dimensions={AUDIO_DIMENSIONS} selected={[]} onToggle={vi.fn()} />)
+    const audioSub = screen.getByRole('button', { name: /静默时拒识恢复行为数量/ })
+    const plainSub = screen.getByRole('button', { name: /回复时拒识恢复行为数量/ })
+    expect(within(audioSub).getByTitle(AUDIO_TIP)).toBeInTheDocument()
+    expect(within(plainSub).queryByTitle(AUDIO_TIP)).not.toBeInTheDocument()
+    // 全云仅两条 requiresAudio 维度出图标
+    expect(screen.getAllByTitle(AUDIO_TIP)).toHaveLength(2)
+  })
+
+  it('不再按 id 硬编码：id=11 但无 requiresAudio 的维度不显示图标', () => {
+    render(
+      <DimensionPicker
+        dimensions={[
+          {
+            id: 11,
+            name: '字准率',
+            dimensionType: 'main',
+            parentDimensionId: null,
+            status: true,
+          },
+        ]}
+        selected={[]}
+        onToggle={vi.fn()}
+      />
+    )
+    expect(screen.getByText('字准率')).toBeInTheDocument()
+    expect(screen.queryByTitle(AUDIO_TIP)).not.toBeInTheDocument()
   })
 })
