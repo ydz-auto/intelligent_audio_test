@@ -20,6 +20,7 @@ from shared.constants.data_transfer import (
     CASE_CONSISTENCY_FAILED_CODE,
     CASE_CONSISTENCY_LIST_CAP,
     CASE_CONSISTENCY_REJECT_MESSAGE,
+    DEFAULT_DOC_VERSION_SCOPE,
     DEFAULT_TRANSFER_INTENT,
     FkMappingKey,
     ImportProgressStep,
@@ -29,6 +30,7 @@ from shared.constants.data_transfer import (
     INCREMENTAL_REPORT_TABLES,
     INCREMENTAL_TASK_FORBIDDEN_CODE,
     INCREMENTAL_TASK_NOT_FOUND_CODE,
+    REPORT_STUDIO_TABLES,
     RESTORE_SKIP_CONSISTENCY_WARNING,
     TransferIntent,
     TransferTable,
@@ -54,6 +56,7 @@ from task_service.infrastructure.acl.evaluation_transfer_acl import (
     evaluation_transfer_acl_repository,
 )
 from task_service.infrastructure.acl.report_transfer_acl import (
+    ReportPackageImportError,
     TransferReplaceError,
     report_transfer_acl_repository,
 )
@@ -73,7 +76,11 @@ from task_service.infrastructure.transfer.zip_io import (
     ref_params_entries,
 )
 from task_service.application.task.import_progress_reporter import ImportProgressReporter
-from task_service.domain.services.data_transfer.manifest import validate_manifest
+from task_service.domain.services.data_transfer.manifest import (
+    ManifestError,
+    validate_manifest,
+    validate_report_package_manifest,
+)
 
 _MODULE_NAME = 'data_transfer_import'
 
@@ -894,6 +901,91 @@ class DataTransferImportService:
                    'imported_tasks': stats.get('importedTasks', 0),
                    'imported_results': stats.get('importedResults', 0)}
         EventBus().publish(EventChannel.TASK_EVENTS, EventType.TASK_IMPORTED, payload)
+
+    # ==================== 报告包导入（INT-1764 D6：链路 3a + 3b/3c） ====================
+
+    def import_report_package(self, zip_path: str,
+                              options: Optional[dict] = None) -> dict:
+        """导入报告包：定位 A 原任务 → report_service 原地替换 + Studio 拓扑序落库。
+
+        Returns:
+            {'success', 'message', 'data': 回执, 'code'}；失败码同 D0 §5.4 口径
+            （400 包非法 / 403 无权写入 / 404 原任务不存在 / 409 报告冲突 / 500 补偿失败）。
+        """
+        options = options or {}
+        try:
+            manifest = read_manifest(zip_path)
+        except ValueError as e:
+            return {'success': False, 'code': 400, 'message': str(e)}
+        try:
+            manifest = validate_report_package_manifest(manifest)
+        except ManifestError as e:
+            return {'success': False, 'code': 400, 'message': str(e)}
+
+        source_task_id = int(manifest['sourceTask']['id'])
+        scope = (manifest.get('options') or {}).get('docVersionScope') \
+            or DEFAULT_DOC_VERSION_SCOPE
+
+        # 包内报告行必须属于同一任务（与 manifest 的 sourceTask.localTaskId 对齐）
+        try:
+            rows_by_table = read_db_tables(zip_path)
+        except ValueError as e:
+            return {'success': False, 'code': 400, 'message': str(e)}
+        package_task_ids = {int(row['task_id'])
+                            for row in (rows_by_table.get(TransferTable.TEST_REPORTS.value) or [])
+                            if row.get('task_id') is not None}
+        if len(package_task_ids) > 1:
+            return {'success': False, 'code': 400,
+                    'message': f'报告包内含多个任务: {sorted(package_task_ids)}',
+                    'data': {'taskIds': sorted(package_task_ids)}}
+        local_task_id = (manifest.get('sourceTask') or {}).get('localTaskId')
+        if package_task_ids and local_task_id is not None \
+                and int(local_task_id) not in package_task_ids:
+            return {'success': False, 'code': 400,
+                    'message': f'包内报告 task_id {sorted(package_task_ids)} '
+                               f'与 manifest.sourceTask.localTaskId {local_task_id} 不一致'}
+
+        # 定位 A 原任务：不存在 / 已软删 → 404；私有且非 owner → 403
+        existence = transfer_repository.fetch_task_existence([source_task_id])
+        if source_task_id not in existence or existence[source_task_id]:
+            return {'success': False, 'code': 404,
+                    'message': f'原任务 {source_task_id} 不存在或已删除',
+                    'data': {'sourceTaskId': source_task_id}}
+        from shared.infrastructure.user_context import (
+            get_current_user_id, get_current_user_is_admin)
+        from task_service.infrastructure.persistence.task_repository import task_repository
+        visible = task_repository.filter_visible_task_ids(
+            [source_task_id], user_id=get_current_user_id(),
+            is_admin=get_current_user_is_admin())
+        if not visible:
+            return {'success': False, 'code': 403,
+                    'message': f'无权写入任务 {source_task_id}',
+                    'data': {'sourceTaskId': source_task_id}}
+
+        batch_id = str(options.get('batch_id') or uuid.uuid4().hex)
+        studio_tables = {table: rows_by_table.get(table) or []
+                         for table in REPORT_STUDIO_TABLES}
+        report_tables = {table.value: rows_by_table.get(table.value) or []
+                         for table in _REPORT_TABLES}
+        try:
+            receipt = report_transfer_acl_repository.import_report_package(
+                source_task_id, report_tables, studio_tables, batch_id, scope,
+                options.get('target_report_id'))
+        except ReportPackageImportError as e:
+            return {'success': False, 'code': e.code or 500,
+                    'message': str(e), 'data': e.data}
+        except Exception as e:
+            log_not_emit('ERROR', _MODULE_NAME,
+                         f'报告包导入失败 task={source_task_id}: {e}',
+                         category='system', exc_info=True)
+            return {'success': False, 'code': 500,
+                    'message': f'报告包导入失败: {e}',
+                    'data': {'batch_id': batch_id, 'sourceTaskId': source_task_id}}
+
+        log_not_emit('INFO', _MODULE_NAME,
+                     f'报告包导入完成 task={source_task_id} report={receipt.get("reportId")} '
+                     f'batch={batch_id}', category='system')
+        return {'success': True, 'message': '导入成功', 'data': receipt}
 
 
 data_transfer_import_service = DataTransferImportService()

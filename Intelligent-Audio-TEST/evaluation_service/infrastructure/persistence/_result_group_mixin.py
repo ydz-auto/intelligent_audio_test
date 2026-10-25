@@ -231,8 +231,19 @@ class GroupResultMixin:
                 return
 
             # 获取 algorithm_type 和 resource
-            algorithm_type = ''
-            # algorithm_type 通过 TestResult 获取（若 DTO 不含则从 Task/TestCase 推断）
+            # INT-1896：取真实算法类型（结果行优先、用例详情兜底）；取不到时保持
+            # 空声明的历史行为，但留 WARNING，不再静默空串。
+            algorithm_type = self._resolve_result_algorithm_type(
+                test_result, test_case_id or getattr(test_result, 'test_case_id', None))
+            if not algorithm_type:
+                self._log(
+                    level='WARNING',
+                    category='execution',
+                    content=(f"预提取 algorithm_results 缺算法类型（结果行与用例均取不到 "
+                             f"algorithm_type），输出声明按空清单处理: result_id={result_id}, "
+                             f"test_case_id={test_case_id}, api_id={test_result.api_id}"),
+                    task_id=task_id, test_case_id=test_case_id,
+                )
             algo_result = deserialize_algorithm_result(test_result.algorithm_result)
 
             task = task_acl_repository.get_task_by_id(task_id) if task_id else None
@@ -402,18 +413,64 @@ class GroupResultMixin:
         return aux_params_map
 
     @staticmethod
+    def _resolve_result_algorithm_type(test_result, test_case_id=None):
+        """解析结果所属的算法类型（INT-1896）。
+
+        优先级：
+        1. ``test_results.algorithm_type`` —— 结果行自带的执行期算法类型
+           （task_service GetTestResultById 已透出，TestResultDTO 本卡补字段）。
+           权威且零额外跨服务调用；主库 5546/5546 行有值。
+        2. 用例详情 ``TestCaseConfigService.GetTestCaseDetail.algorithm_type``
+           —— 与 ``case_evaluation`` / 报告侧 ``report_data_builder_case_mixin``
+           的取法一致，供结果行缺值的历史数据兜底。
+        3. 都取不到 → '' （调用方记 WARNING 并保持空声明的历史行为）。
+
+        第 2 步不可省：算法类型主库现存 13 条 api 结果所引用用例均已软删，
+        GetTestCaseDetail 取不到，只有结果行值能让快照拿到声明。
+
+        Args:
+            test_result: TestResultDTO
+            test_case_id: 调用方已知的用例 ID（优先），为空回落 ``test_result.test_case_id``
+        """
+        row_type = (test_result.get('algorithm_type') if isinstance(test_result, dict)
+                    else getattr(test_result, 'algorithm_type', None))
+        if isinstance(row_type, str) and row_type.strip():
+            return row_type.strip()
+
+        tc_id = test_case_id or (
+            test_result.get('test_case_id') if isinstance(test_result, dict)
+            else getattr(test_result, 'test_case_id', None))
+        if not tc_id:
+            return ''
+        try:
+            tc = task_acl_repository.get_test_case_detail(str(tc_id))
+        except Exception:
+            return ''
+        if not tc:
+            return ''
+        algo_type = (tc.get('algorithm_type') if isinstance(tc, dict)
+                     else getattr(tc, 'algorithm_type', None))
+        if isinstance(algo_type, str):
+            algo_type = algo_type.strip()
+        return algo_type or ''
+
+    @staticmethod
     def _load_output_fields(algorithm_type, api_id=None):
         """查询算法输出字段（通过 gRPC 调 algorithm_service）
 
         INT-1757（C6b）：``api_id`` 为该结果所属 API 实例（test_results.api_id），
         输出声明按 API 级覆盖算法级合并取；None 回落算法级默认。
+
+        INT-1896：改用 ACL 包导出的单例 ``algorithm_acl_repository``（与
+        ``case_evaluation`` / ``reevaluation_executor`` 同口径）。此前按不存在的
+        类名 ``AlgorithmRepository`` 实例化，ImportError 被下面 except 吞掉，
+        即使 ``algorithm_type`` 有值也恒返回 []。
         """
         output_fields = []
         if algorithm_type:
             try:
-                from evaluation_service.infrastructure.acl.algorithm_acl_repository import AlgorithmRepository
-                _algo_repo = AlgorithmRepository()
-                output_fields = _algo_repo.get_output_fields(
+                from evaluation_service.infrastructure.acl import algorithm_acl_repository
+                output_fields = algorithm_acl_repository.get_output_fields(
                     algorithm_type, api_id=api_id) or []
             except Exception:
                 pass

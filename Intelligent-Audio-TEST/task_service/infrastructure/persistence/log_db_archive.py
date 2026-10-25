@@ -278,18 +278,23 @@ class LogArchivePurger:
       batch_size: 单批行数（同时是内存上界）；
       categories: 显式指定参与清理的分类；None = 全部非审计类；
       exclude_audit: categories 为 None 时是否排除审计类（默认 True）；
+      keep_marked: 是否保留已标记行（默认 True，契约 §Q5.1：DB 侧清扫必须保留
+          `mark` 非空的行；判据与 `LogRepository.clear(keep_marked=True)` 一致，
+          归档与删除同一条件）；
       dry_run: 只统计不写不删；
       on_batch: 进度回调 `(batch_index, archived, deleted) -> None`。
     """
 
     def __init__(self, store: Optional[ArchiveStore] = None, batch_size: int = 2000,
                  categories: Optional[Sequence[str]] = None,
-                 exclude_audit: bool = True, dry_run: bool = False,
+                 exclude_audit: bool = True, keep_marked: bool = True,
+                 dry_run: bool = False,
                  on_batch: Optional[Callable[[int, int, int], None]] = None):
         self._store = store
         self.batch_size = max(1, int(batch_size))
         self.categories = [c.strip().lower() for c in (categories or []) if str(c).strip()]
         self.exclude_audit = exclude_audit
+        self.keep_marked = keep_marked
         self.dry_run = dry_run
         self.on_batch = on_batch
 
@@ -303,6 +308,10 @@ class LogArchivePurger:
     # ---- 查询条件 ----
     def _apply_filters(self, query, cutoff: datetime):
         query = query.filter(Log.time < cutoff)
+        if self.keep_marked:
+            # 契约 §Q5.1：已标记行是排查期留痕，不参与清扫（归档与删除同一条件）。
+            # 判据照 `LogRepository.clear(keep_marked=True)`：NULL 与空串都算未标记。
+            query = query.filter(_or(Log.mark.is_(None), Log.mark == ''))
         if self.categories:
             query = query.filter(_func.lower(Log.category).in_(self.categories))
         elif self.exclude_audit:

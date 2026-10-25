@@ -99,3 +99,37 @@ class DataTransferServiceServicer(task_grpc.DataTransferServiceServicer):
         except Exception as e:
             logger.exception('ImportIncremental failed')
             return task_pb.TaskConfigResponse(success=False, message=str(e), data='')
+
+    # ==================== 报告包（INT-1764 D6：链路 3a + 3b/3c） ====================
+
+    def ExportReportPackage(self, request, context=None):
+        """导出报告包（ZIP 落共享盘，网关 FileResponse 下发）。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            from task_service.application.commands.task_commands import (
+                ExportReportPackageCommand,
+            )
+            from task_service.application.handlers.command_handlers import task_command_handler
+            return self._resp(task_command_handler.handle_export_report_package(
+                ExportReportPackageCommand(
+                    task_ids=data.get('task_ids') or data.get('taskIds') or [],
+                    report_ids=data.get('report_ids') or data.get('reportIds') or [],
+                    doc_version_scope=(data.get('doc_version_scope')
+                                       or data.get('docVersionScope') or ''))))
+        except Exception as e:
+            logger.exception('ExportReportPackage failed')
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data='')
+
+    def ImportReportPackage(self, request, context=None):
+        """导入报告包（3a 原地替换 + 3b/3c 拓扑序落库；长耗时调用需放宽超时）。"""
+        try:
+            options = _loads(request.data, {}) or {}
+            from task_service.application.commands.task_commands import (
+                ImportReportPackageCommand,
+            )
+            from task_service.application.handlers.command_handlers import task_command_handler
+            return self._resp(task_command_handler.handle_import_report_package(
+                ImportReportPackageCommand(zip_path=request.zip_path, options=options)))
+        except Exception as e:
+            logger.exception('ImportReportPackage failed')
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data='')

@@ -4,6 +4,10 @@
 按 DDD 原则，网关不再直接操作 DB，而是通过 gRPC 调用 api_test_service。
 保留对路由层的签名不变（静态方法 + success_response/error_response 包装）。
 """
+from api_gateway.application.services.api.parse_preview import (
+    ParsePreviewError,
+    build_preview,
+)
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.infrastructure.acl import ApiConfigAclRepositoryImpl
@@ -78,6 +82,15 @@ class ApiQueryService:
     @staticmethod
     def health_check(api_id):
         return ApiQueryService.test_connection(api_id)
+
+    # 响应解析预览（INT-1772）：纯函数，不读库 / 不调 gRPC / 不发外部请求
+    @staticmethod
+    def parse_preview():
+        try:
+            preview = build_preview(request.get_json())
+        except ParsePreviewError as exc:
+            return error_response(str(exc), http_code=400)
+        return success_response(preview)
 
     # 停止测试 API
     @staticmethod

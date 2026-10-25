@@ -1058,6 +1058,45 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             logger.exception("RollbackReportReplacement failed")
             return self._resp(False, str(e), {}, 500)
 
+    # ==================== 报告包（链路 3a + 3b/3c，INT-1764 D6） ====================
+
+    def ExportReportPackage(self, request, context=None):
+        """导出报告包数据段：报告 7 表 + Studio 文档 / 版本 / 图表规格。"""
+        try:
+            data = _loads(getattr(request, 'data', ''), {}) or {}
+            from report_service.application.report_package_service import (
+                report_package_service,
+            )
+            result = report_package_service.export_package(
+                data.get('task_ids') or data.get('taskIds') or [],
+                data.get('report_ids') or data.get('reportIds') or [],
+                data.get('doc_version_scope') or data.get('docVersionScope'))
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), code=result.get('code', 0))
+        except Exception as e:
+            logger.exception("ExportReportPackage failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def ImportReportPackage(self, request, context=None):
+        """导入报告包：3a 原地替换 → 3b/3c 拓扑序落库（失败按批次快照补偿）。"""
+        try:
+            data = _loads(getattr(request, 'data', ''), {}) or {}
+            from report_service.application.report_package_service import (
+                report_package_service,
+            )
+            result = report_package_service.import_package(
+                data.get('task_id') if 'task_id' in data else data.get('sourceTaskId'),
+                data.get('tables') or {},
+                data.get('studio') or {},
+                data.get('target_report_id') or data.get('targetReportId'),
+                data.get('batch_id') or data.get('batchId') or '',
+                data.get('doc_version_scope') or data.get('docVersionScope'))
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), code=result.get('code', 0))
+        except Exception as e:
+            logger.exception("ImportReportPackage failed")
+            return self._resp(False, str(e), {}, 500)
+
     # ==================== 报告分享（INT-971） ====================
 
     def CreateReportShare(self, request, context=None):

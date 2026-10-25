@@ -19,6 +19,9 @@ class TestResultDTO:
     test_case_id: Optional[str] = None
     device_id: Optional[int] = None
     api_id: Optional[int] = None
+    # INT-1896：结果行自带执行期算法类型（task_service GetTestResultById 已透出），
+    # 快照路径据此取真实 algorithm_type，不再恒为空串
+    algorithm_type: Optional[str] = None
     algorithm_result: Any = None
     result_data: Any = None
     execution_status: Optional[str] = None

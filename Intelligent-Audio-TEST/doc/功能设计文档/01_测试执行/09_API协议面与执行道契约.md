@@ -371,7 +371,7 @@ def route_executor(self, lane): ...  # lane 非法 → ValueError
 |----|------|
 | `meta.protocol` | **【2026-10-24 负责人修订】删除**（协议改为列） |
 | `meta.grpc` / `meta.sse` | 保留 A0 设计（只有这两个新协议开子对象） |
-| `meta.asr_mapping` / `trans_mapping` / `sentence_end_mapping` / `session_end_mapping` / `append_mode` / `error_code_mapping` / `error_msg_mapping` / `result_parser` | 存量通用，不搬家 |
+| `meta.asr_mapping` / `trans_mapping` / `sentence_end_mapping` / `session_end_mapping` / `append_mode` / `error_code_mapping` / `error_msg_mapping` / `result_parser` | 存量通用，不搬家；只读「贴样例响应看提取结果」预览端点见 [20_API响应解析预览端点](../08_算法配置/智能语音算法配置适配/20_API响应解析预览端点.md)（INT-1772，提取走同一份 `path_extractor`） |
 | `meta.session_config` / `pacing` / `vendor_adapter` / `ws_headers` / `adapter_class` / 端点级 `api_keys` | 存量，不动 |
 
 其他协议配置一律仍放 `apis.meta`，**不新增表**；`protocol` / `streaming` 是唯一抬为列的两个属性（负责人 2026-10-24 拍板）。

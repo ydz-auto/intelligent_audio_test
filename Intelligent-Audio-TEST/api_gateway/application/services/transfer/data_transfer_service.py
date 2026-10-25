@@ -95,6 +95,9 @@ def _shared_filename() -> str:
 def _incremental_filename() -> str:
     return f"incremental_{time.strftime('%Y%m%d%H%M%S')}.zip"
 
+def _report_package_filename() -> str:
+    return f"report_export_{time.strftime('%Y%m%d%H%M%S')}.zip"
+
 
 class DataTransferGatewayService:
     """网关侧导出/导入编排"""
@@ -179,6 +182,48 @@ class DataTransferGatewayService:
         except Exception as e:
             log_not_emit('ERROR', _module, f'执行导入异常: {e}', category='system', exc_info=True)
             return error_response(f'执行导入异常: {e}', code=500)
+        finally:
+            if tmp_path:
+                _remove_tmp(tmp_path)
+
+    @staticmethod
+    def export_report_package(request):
+        """导出报告包（INT-1764 D6）：返回 FileResponse（ZIP 下载）"""
+        task_ids = [request.task_id] if request.task_id else []
+        if not task_ids and not request.report_ids:
+            return error_response('taskId / reportIds 至少提供一个', code=400)
+        result = _data_acl.export_report_package({
+            'task_ids': task_ids,
+            'report_ids': list(request.report_ids or []),
+            'doc_version_scope': request.doc_version_scope or '',
+        })
+        if not result.success:
+            return _failure(result, '导出报告包失败')
+        zip_path = (result.data or {}).get('zip_path') or ''
+        if not zip_path or not os.path.isfile(zip_path):
+            log_not_emit('ERROR', _module,
+                         f'报告包 ZIP 不可见: {zip_path}（检查 DATA_TRANSFER_TMP_DIR 共享挂载）',
+                         category='system')
+            return error_response('导出文件不可访问（网关与任务服务未共享临时目录）', code=500)
+        return FileResponse(zip_path, media_type='application/zip',
+                            filename=_report_package_filename())
+
+    @staticmethod
+    def import_report_package(upload_file, options: dict = None):
+        """导入报告包：保存上传 ZIP → 调 task_service（长耗时）→ 删临时文件"""
+        tmp_path = None
+        try:
+            try:
+                tmp_path = _save_upload_to_tmp(upload_file)
+            except ValueError as e:
+                return error_response(str(e), code=400)
+            result = _data_acl.import_report_package(tmp_path, options or {})
+            if not result.success:
+                return _failure(result, '导入报告包失败', default_http=500)
+            return success_response(result.data, message=result.message or '导入成功')
+        except Exception as e:
+            log_not_emit('ERROR', _module, f'导入报告包异常: {e}', category='system', exc_info=True)
+            return error_response(f'导入报告包异常: {e}', code=500)
         finally:
             if tmp_path:
                 _remove_tmp(tmp_path)
