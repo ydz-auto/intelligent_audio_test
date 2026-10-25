@@ -241,9 +241,13 @@ class LogQueryService:
             need_rows=LogQueryService._db_merge_page_size(),
         )
 
+        # INT-1946：与全局视图同用 `_merge_sort_key`（time desc, id desc）。
+        # 原按 time 字符串排序：DB 行是 isoformat（'T' 分隔）、文件行是空格
+        # 分隔，同日行会整体错序；且 DB 侧前缀口径与合并侧不同序会导致
+        # LOG_DB_MERGE_MAX_ROWS 触顶时保留的不是「最近时间」的行。
         merged = sorted(
             file_items + db_items,
-            key=lambda item: item.time or '',
+            key=LogQueryService._merge_sort_key,
             reverse=True,
         )
         total = len(merged)
@@ -346,6 +350,10 @@ class LogQueryService:
         取并集前缀；配置为 0（不限）时取 need_rows。need_rows = 0：全部命中行
         （导出，与列表 total 同口径）。
 
+        前缀语义的前提是 DB 侧与合并侧同全序：task_service ListLogs 现按
+        (time desc, id desc) 返回（INT-1946 前只按 id 倒序，与合并侧 time 倒序
+        不同序，前缀取不到「id 大而 time 早」的行 → 每页尾部重复、页间漏行）。
+
         分块：每块 ≤ LOG_DB_FETCH_CHUNK_ROWS 行，page/per_page 按已取行数对齐，
         单块响应不会越过 gRPC 单条消息上限。
 
@@ -411,10 +419,10 @@ class LogQueryService:
                           start_time=None, end_time=None, need_rows=0):
         """拉取 logs 表历史行并转成 LogItem（改造前的审计/任务日志，只读不迁移）。
 
-        DB 侧排序沿用 task_service ListLogs 现有口径（id 倒序，与改造前全局页
-        分页同序，故相对基线不丢行）；主库实测 304,948 行里 time 与 id 逆序仅
-        82 处、均为相邻 id 的 ±8h 时区标注差异。文件侧按 (time desc, cursor
-        desc) 全量物化，与 DB 前缀合并后统一排序分页。
+        DB 侧排序 = task_service ListLogs 口径 (time desc, id desc)，与合并侧
+        `_merge_sort_key` 同全序（INT-1946 前是仅 id 倒序，两者不同序会让合并
+        视图的前缀取行漏行、页间重复）；文件侧按 (time desc, cursor desc) 全量
+        物化，与 DB 前缀合并后统一排序分页。
         返回 (LogItem 列表, DB 侧命中总数)。
         """
         return LogQueryService._fetch_db_rows(
