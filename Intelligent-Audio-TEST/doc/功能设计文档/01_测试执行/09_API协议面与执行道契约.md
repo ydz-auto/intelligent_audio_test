@@ -522,3 +522,66 @@ gRPC 音频帧（二进制不进 `payload`，音频仍走 `rounds[i].output_audi
 **跨卡后续**：B2（INT-1800）前端「协议下拉 sse/grpc 置灰」是基于 B1 时点写的；A1 落地后
 `grpc` 后端已可写可执行，前端应解除 grpc 置灰（`sse` 继续置灰到 A2），该改动归 A3 / B2 收口，
 不在 A1 范围（A1 不改前端）。
+
+---
+
+## 十一、A3（INT-1791）前端协议区块：控件 ↔ `meta` 键映射与校验口径
+
+> 状态：**文档基线已补（INT-1954，2026-10-26），A3 实施后回写**。本节只钉「前端控件 ↔ `apis.meta` 键」的归属与校验口径，不重开 §三 的裁定；A3 只改 `wiring/react` 前端树，不动本节引用的后端契约。
+> 编号说明：本节取 V9.7.31 工作树当时的末节（§十）之后。A2（INT-1790，分支 `63bc84b95`）把「实施回写」也写成 §十 / §10.1–§10.5；A2 合入时 §十 需拆成 A1 / A2 两节再顺延，**本节随之改号**——引用请用标题锚点「A3 前端协议区块」，不要只写编号。
+
+### 11.1 归属与边界（不新增实体 / 页签）
+
+- 协议区块在**请求模板页签（`request`）内**按 `apis.protocol` 显示；五页签骨架（basic / request / response / output / mapping）不变，不新增页签、菜单、列表分类或独立页面。协议是被测 API 的属性（§一），四协议复用同一编辑弹窗。
+- 切协议时各协议组各自持有草稿，切回不丢；保存时**只写当前协议组声明的键**。
+- `meta` 的写侧是**整块 replace**（`api_test_service/application/api_crud_service.py:531-543`，仅对 `meta.api_keys` 做保留特判），没有子对象级合并。因此前端必须以 GET 回来的 `meta.grpc` / `meta.sse` 为 base，逐子键覆盖，清空即删该子键，**不得整块重建**——否则切协议或换页签会静默冲掉别的键（A3 最大技术风险）。
+- 可用矩阵：前端置灰表必须与后端 `AVAILABLE_PROTOCOL_STREAMING`（`shared/models/common_enums.py:188-194`）**同一张表**，禁止前端自行放宽或收紧。A1 落地后 `grpc+false` / `grpc+true` 已放行；`sse+true` 与 `http+true` 待 A2 合入后放行。
+- 读侧脱敏保持现状：`_api_to_dict` 只剥 `meta.api_keys`（`api_crud_service.py:306-312`），`meta.grpc.metadata` 的鉴权值仍**明文回显**；前端只能提示「尚未脱敏」，不得假定已脱敏（后端补丁归 INT-1953）。
+
+### 11.2 `meta.grpc` 键表与校验
+
+| 键 | 类型 / 约束 | 前端控件 | 校验落点（代码） |
+|---|---|---|---|
+| `proto_object_key` | 必填；storage key，内容寻址 `api-protos/<sha256>.proto` | 上传成功后自动填入，只读 | 执行期必填：`grpc_adapter.py:91-93`；上传端点归 INT-1952 |
+| `proto_sha256` | 64 位小写十六进制 | 上传后自动填入，只读 | 声明与内容不符即报错：`grpc_adapter.py:119-126` |
+| `proto_size` | 整数，≤ 256 KiB | 上传后自动填入，只读 | 声明与实际不符即报错：`grpc_adapter.py:115-118` |
+| `service` | 必填；proto 内 service 全名 | 下拉（来自上传端点返回的符号表） | `_REQUIRED_CONFIG_KEYS`：`grpc_adapter.py:48,84` |
+| `method` | 必填；方法名 | 下拉，随 `service` 联动 | 同上 |
+| `method_kind` | `unary` / `server_stream` / `bidi`，须与 descriptor 一致 | 下拉；默认取符号表推断值，用户改动需二次确认 | 非法值即报错：`grpc_adapter.py:94-97` |
+| `metadata` | 对象；键**必须小写**，值不含 CR/LF，支持 `{{placeholder}}` | 键值表；鉴权键（`authorization` / `x-api-key` / `api-key`）用密码控件 | `validate_metadata`：`adapters/transport/grpc_client.py:305-320` |
+| `deadline_ms` | 正整数；缺省 = `apis.max_timeout × 1000`（列缺省 30 → 30000） | 数字输入，placeholder 显示缺省 | `grpc_adapter.py:143-151` |
+
+- **不做**：server reflection（A1 明确不做）、多文件 / 跨包 proto bundle（沿用 `google/protobuf/` import 白名单）。
+- proto 上传端点（`POST /api/v1/apis/proto`）归子卡 **INT-1952**；端点未上线前控件标 `// 待接线` 并在 UI 明示「协议文件上传接口尚未上线」，**不得用假 `object_key` 冒充成功**。
+- 后端 **`meta.grpc` 写侧校验目前缺失**（`api_crud_service` 无该分支），补丁归子卡 **INT-1953**；A3 的前端校验镜像执行期规则，不因后端未校验而放宽。
+
+### 11.3 `meta.sse` 键表：沿用 A2，不重复抄写
+
+键表以 A2（INT-1790）**§10.2** 为唯一权威，本节不复制。A2 **尚未合入 V9.7.31**（分支 `63bc84b95`），本工作树基线尚无该节 → **A2 合入后复验**；键名或范围若有变化，本节的控件映射同批返工，不得出现双口径。
+
+- 键集合（以 §10.2 为准）：`event_name_field` / `params` / `reconnect_enabled` / `max_reconnect_attempts` / `retry_ms` / `idle_timeout_ms` / `max_duration_ms`；未知键一律 400；显式 `null` 与「键未提交」同义（执行侧回落缺省，禁止「配置能存、执行不可用」）。
+- 前端控件形态：输入框（`event_name_field`）、JSON 键值表（`params`，支持 `{{placeholder}}`）、开关（`reconnect_enabled`）、数字（其余四项，范围与缺省按 §10.2；`reconnect_enabled=false` 时重连相关控件禁用）。
+- **归属裁定一**：句子 / 会话结束标记**不进 SSE 区块**——`sentence_end_mapping` / `session_end_mapping` 的所有权在**响应解析页签**（轮次切分见 §4.1，INT-1778 已声明）；SSE 区块只做只读提示。
+- **归属裁定二**：data 取值路径属 `algorithm_api_params(direction=output).field_path`（C2，见 §4.2），不写进 `meta.sse`（写成键即触发未知键 400）。
+- **归属裁定三**：SSE 复用 HTTP 组的 `method` / `headers` / `body_template`，所有权在 **HTTP 组**；SSE 区块可见但不重复声明同名键。
+
+### 11.4 校验口径（前后端同源，前端不得放宽）
+
+前端逐字段拦截并在控件上报错，拦截项与后端同口径：
+
+1. 必填缺失（`proto_object_key` / `service` / `method` / `method_kind`）；
+2. `method_kind` 不在三值内；
+3. `deadline_ms ≤ 0`；
+4. `metadata` 键含大写、值含 CR/LF；
+5. SSE 的 `retry_ms` / `max_reconnect_attempts` / `idle_timeout_ms` / `max_duration_ms` 越界（范围见 §10.2）；
+6. 写表外键（未知键一律提交前拦截；后端侧为 400）。
+
+### 11.5 声明文件（A3 实施落位）
+
+| 层 | 文件 | 职责 |
+|---|---|---|
+| 前端 Domain | `frontend-react/src/domain/models/apiProtocol.ts` | `WRITABLE_COMBINATIONS` 与后端 `AVAILABLE_PROTOCOL_STREAMING` 同表 |
+| 前端 Application | `frontend-react/src/features/test-execution/modals/api-edit-dialog-model.ts` | 协议组草稿、`meta.grpc` / `meta.sse` 子对象级 merge、字段级校验 |
+| 后端（只读参考，A3 不改） | `api_test_service/infrastructure/adapters/grpc_adapter.py` | `meta.grpc` 唯一读取方与执行期校验（本节键表来源） |
+
+> 前端两文件位于 **`wiring/react` 树**（V9.7.31 本仓库无 `frontend-react/`），A3 交付以该树 HEAD 为准；本节只声明契约归属，不表示实施已完成。
