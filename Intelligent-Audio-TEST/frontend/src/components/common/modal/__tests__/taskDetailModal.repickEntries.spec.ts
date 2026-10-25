@@ -73,6 +73,11 @@ vi.mock('../../../../composables/modal/useNotification', () => ({
   }),
 }))
 
+// INT-1837：容器详情「报告」区走 GET /reports?task_id=（不打真实网络）
+vi.mock('../../../../composables/report/reportsPort', () => ({
+  reportsPort: { getAll: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, perPage: 1, pages: 1 }) },
+}))
+
 // 再次挑选入口的三个协作层（加购 / 抽屉 / 向导请求）
 vi.mock('../../../../composables/task/usePickCart', () => ({
   usePickCart: () => ({ addToCart: mocks.addToCart }),

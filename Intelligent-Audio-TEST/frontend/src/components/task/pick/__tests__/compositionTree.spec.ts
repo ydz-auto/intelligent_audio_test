@@ -373,6 +373,51 @@ describe('筛选（§5：命中叶保留 + 祖先保留 + 计数按命中集重�
   });
 });
 
+describe('失效筛选（§7 顶部 Alert「只看失效」——同一套 filterCompositionTree 语义）', () => {
+  /** 3796 / 5715 两条源结果已删除（missing=true） */
+  const list = entries().map((e) =>
+    e.resultId === 3796 || e.resultId === 5715 ? { ...e, missing: true } : e);
+
+  it('条目级：缺失维度只保留 missing=true 的叶', () => {
+    expect(filterCompositionEntries(list, 'all', 'all', 'missing').map((e) => e.resultId))
+      .toEqual([3796, 5715]);
+    expect(matchesCompositionFilter(list[0], 'all', 'all', 'missing')).toBe(false);
+    const missingEntry = list.find((e) => e.resultId === 3796)!;
+    expect(matchesCompositionFilter(missingEntry, 'all', 'all', 'missing')).toBe(true);
+    // 默认维度 = all（不改变既有调用语义）
+    expect(filterCompositionEntries(list)).toHaveLength(5);
+  });
+
+  it('树筛选：「只看失效」保留祖先并按命中集重算计数，形态不变', () => {
+    const roots = buildCompositionTaskView(list);
+    const map = new Map(list.map((e) => [e.resultId, e] as const));
+    const filtered = filterCompositionTree(roots, 'all', 'all', map, 'missing');
+    expect(levels(filtered)).toEqual(['task', 'task']);
+    expect(filtered[0].count).toBe(1);
+    expect(filtered[0].itemIds).toEqual([3796]);
+    expect(filtered[1].count).toBe(1);
+    expect(filtered[1].itemIds).toEqual([5715]);
+    // 节点 key 与原树一致（展开态可保持）
+    expect(filtered.map((n) => n.key)).toEqual(roots.map((n) => n.key));
+  });
+
+  it('「只看失效」与执行 / 评估筛选叠加（同一套语义，不另造筛选）', () => {
+    const roots = buildCompositionTaskView(list);
+    const map = new Map(list.map((e) => [e.resultId, e] as const));
+    const filtered = filterCompositionTree(roots, 'failed', 'all', map, 'missing');
+    // 失叶片 3796（failed）/ 5715（用例行降级 failed）
+    expect(filtered.flatMap((n) => n.itemIds).sort()).toEqual([3796, 5715]);
+    const completedOnly = filterCompositionTree(roots, 'completed', 'all', map, 'missing');
+    expect(completedOnly).toEqual([]);
+  });
+
+  it('摘要按失效维度统计（顶部 Alert 的 k 与筛选结果同源）', () => {
+    expect(summarizeComposition(list, 'all', 'all', 'missing').missing).toBe(2);
+    expect(summarizeComposition(list).missing).toBe(2);
+    expect(summarizeComposition(list, 'all', 'all', 'missing').total).toBe(2);
+  });
+});
+
 describe('摘要 / 展示辅助', () => {
   it('summarizeComposition：全部 / 失败 / 未评估 / 失效 / 任务数 / 用例数 / 设备数', () => {
     const withMissing = entries().map((e, i) => (i === 1 ? { ...e, missing: true, evaluated: false } : e));
