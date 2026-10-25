@@ -63,12 +63,17 @@ message EchoRequest {
   string input_text = 3;
 }
 
+message Region {
+  string region = 1;
+}
+
 message EchoResponse {
   string session_id = 1;
   string text_result = 2;
   bool is_sentence_end = 3;
   bool session_finished = 4;
   int32 round_number = 5;
+  Region meta = 6;
 }
 
 service EchoService {
@@ -94,14 +99,18 @@ class _EchoServer:
         self.input_cls = input_cls
         self.output_cls = output_cls
 
-        def _resp(req, *, text=None, finished=False, rnd=None):
-            return output_cls(
+        def _resp(req, *, text=None, finished=False, rnd=None, region='cn'):
+            resp = output_cls(
                 session_id=req.session_id,
                 text_result=text if text is not None else (req.input_text + '-ok'),
                 is_sentence_end=True,
                 session_finished=finished,
                 round_number=rnd if rnd is not None else req.round_number,
             )
+            # 嵌套 message：真实 proto 普遍把业务字段放在子 message 里，
+            # 用于覆盖 field_path='meta.region' 的流式提取链路。
+            resp.meta.region = region
+            return resp
 
         def unary(req, context):
             # 记录真实送达的 invocation metadata（INT-1789 返工：按轮渲染回归）
@@ -113,7 +122,8 @@ class _EchoServer:
 
         def server_stream(req, context):
             for index in range(3):
-                yield _resp(req, text=f'msg{index}', rnd=index + 1)
+                yield _resp(req, text=f'msg{index}', rnd=index + 1,
+                            region=f'r{index}')
 
         def bidi(req_iter, context):
             for req in req_iter:
@@ -662,3 +672,147 @@ class TestStreamStrategy:
             assert 'unary' in result['error']
         # 根本没走到 bidi 会话（没发任何请求消息）
         assert echo_server.calls == []
+
+
+# ── 流式轮次 → rounds[i].output 真实提取（审计 P1 回归，不 monkeypatch）──
+# 形状与 algorithm_service/application/queries/field_mapping_queries.py 一致：
+# original.api.output 是声明（field_path），original.evaluation.output 是映射。
+_STREAM_FIELD_MAPPINGS = {
+    'original': {
+        'api': {'output': {
+            'translated_text': {'field_path': 'text_result', 'param_type': 'text'},
+            'region': {'field_path': 'meta.region', 'param_type': 'text'},
+        }},
+        'evaluation': {'output': {
+            'target_trans': {'source': 'api', 'source_param': 'translated_text'},
+            'target_region': {'source': 'api', 'source_param': 'region'},
+        }},
+    },
+}
+
+
+class _FieldMappingAcl:
+    """算法 ACL 替身：返回真实形状的 field_mappings（不连服务）。"""
+
+    def __init__(self, mappings):
+        self._mappings = mappings
+
+    def get_field_mappings(self, *args, **kwargs):
+        return self._mappings
+
+
+class TestStreamOutputExtraction:
+    """流式道轮次输出的真实提取链路（`_attach_api_output_fields` 不替换）。
+
+    `raw_response` 是传输件的归一 payload（无 `json` 包装），必须按直连口径
+    （unwrap=False）提取，否则 `field_path` 在 None 上取值、output 恒空。
+    """
+
+    def _executor(self, mappings=None):
+        from api_test_service.core.grpc_stream_executor import GrpcStreamExecutor
+        executor = GrpcStreamExecutor(_FakeExecutor())
+        executor._algo_acl = lambda: _FieldMappingAcl(
+            _STREAM_FIELD_MAPPINGS if mappings is None else mappings)
+        return executor
+
+    @staticmethod
+    def _api_cfg(server, method, kind):
+        cfg = _ApiCfg({'grpc': {'service': 'int1789.EchoService', 'method': method,
+                                'method_kind': kind,
+                                'proto_object_key': 'local://x/echo.proto'}})
+        cfg.api_endpoints = [{'endpoint': server.target}]
+        return cfg
+
+    @staticmethod
+    def _patch_proto(monkeypatch):
+        from shared.infrastructure import storage as storage_mod
+        monkeypatch.setattr(storage_mod.storage, 'load_bytes',
+                            lambda path, **kw: ECHO_PROTO.encode('utf-8'))
+
+    def test_server_stream_output_uses_real_extraction(self, echo_server, monkeypatch):
+        """server_stream 3 条消息 → output 键为 target_param（含嵌套 field_path）。"""
+        self._patch_proto(monkeypatch)
+        executor = self._executor()
+        round_results = []
+        ok = executor._run_rounds(
+            1, 2, [{'round_number': 1}],
+            self._api_cfg(echo_server, 'ServerStream', 'server_stream'),
+            {}, _FakeSession(), {}, 'translation', round_results)
+
+        assert ok is True
+        assert [r['output'] for r in round_results] == [
+            {'target_trans': 'msg0', 'target_region': 'r0'},
+            {'target_trans': 'msg1', 'target_region': 'r1'},
+            {'target_trans': 'msg2', 'target_region': 'r2'},
+        ]
+        # 源键只留在 output_fields 排障视图，不进 output
+        assert 'translated_text' not in round_results[0]['output']
+
+    def test_bidi_output_uses_real_extraction(self, echo_server, monkeypatch):
+        """bidi 2 轮 → 每轮 output 均由真实提取 + 映射产出。"""
+        self._patch_proto(monkeypatch)
+        executor = self._executor()
+        rounds = [
+            {'round_number': 1, 'algorithm_params': [
+                {'field_code': 'input_text', 'field_value': 'hello'}]},
+            {'round_number': 2, 'algorithm_params': [
+                {'field_code': 'input_text', 'field_value': 'bye'}]},
+        ]
+        round_results = []
+        ok = executor._run_rounds(
+            1, 2, rounds, self._api_cfg(echo_server, 'Bidi', 'bidi'),
+            {'body_template': {'input_text': '{{input_text}}',
+                               'round_number': '{{round_number}}'}},
+            _FakeSession(), {}, 'translation', round_results)
+
+        assert ok is True
+        assert [r['output'] for r in round_results] == [
+            {'target_trans': 'hello-ok', 'target_region': 'cn'},
+            {'target_trans': 'bye-ok', 'target_region': 'cn'},
+        ]
+
+    def test_empty_rounds_bidi_executes_one_round(self, echo_server, monkeypatch):
+        """空 rounds → 按 1 轮执行（不会零请求却判成功）。"""
+        self._patch_proto(monkeypatch)
+        executor = self._executor()
+        round_results = []
+        ok = executor._run_rounds(
+            1, 2, [], self._api_cfg(echo_server, 'Bidi', 'bidi'),
+            {'body_template': {'input_text': '{{input_text}}'}},
+            _FakeSession(), {}, 'translation', round_results)
+
+        assert ok is True
+        assert len(round_results) == 1
+        assert round_results[0]['success'] is True
+        # 真的发过请求并收到消息（frame_count = 收到的事件数）
+        assert round_results[0]['frame_count'] >= 1
+
+
+class TestEmptyRoundsRouting:
+    """非流式 gRPC（unary）空 rounds → 按 1 轮执行（审计 P2 回归）。"""
+
+    def test_grpc_non_streaming_empty_rounds_runs_one_round(self):
+        from api_test_service.core.api_executor import APIExecutor
+
+        executor = object.__new__(APIExecutor)
+        logs = []
+        executor._log = lambda level='INFO', content='', **kw: logs.append((level, content))
+        executor._load_case_config = lambda test_case_id: {}
+        captured = {}
+
+        class _Route:
+            def execute(self, task_id, tc_rel_id, data, case_config):
+                captured['rounds'] = case_config.get('rounds')
+                return True
+
+        executor.route_executor = lambda lane: _Route()
+
+        data = {'test_case_id': 1, 'case_name': 'empty-rounds',
+                'algorithm_type': 'translation', 'streaming': False,
+                'protocol': 'grpc', 'api_configs': [], 'api_specific_config': {},
+                'audio': {}, 'total_audio_duration': 0}
+
+        assert executor._execute_single_or_multi(1, 2, data) is True
+        assert captured['rounds'] == [{}]
+        assert any(level == 'WARNING' and 'rounds 为空' in content
+                   for level, content in logs)

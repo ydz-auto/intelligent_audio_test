@@ -20,6 +20,7 @@ import logging
 import time
 
 from shared.utils.dto_utils import dto_to_dict
+from shared.utils.error_mapping import ERROR_SOURCE_CONFIG, ERROR_SOURCE_GRPC
 from shared.utils.path_extractor import extract_by_path
 
 from api_test_service.core.api_session_executor import APISessionExecutor
@@ -50,6 +51,15 @@ class GrpcStreamExecutor(APISessionExecutor):
     def _run_rounds(self, task_id, tc_rel_id, rounds, api_config, api_specific_config,
                     session, case_algorithm_params, algorithm_type,
                     round_results, case_config=None):
+        if not rounds:
+            # 空 rounds（用例详情取不到等）不能落成「零请求 + 成功」：gRPC 一次
+            # 调用即一轮（server_stream / bidi 的会话至少发一条请求消息），按
+            # 1 轮执行并留痕，与线性道「无多轮配置 = 单轮」同口径。
+            self._log(level='WARNING',
+                      content="用例未配置轮次（rounds 为空），gRPC 流式道按 1 轮执行",
+                      task_id=task_id, api_id=getattr(api_config, 'id', None))
+            rounds = [{}]
+
         field_mappings = dto_to_dict(
             self._algo_acl().get_field_mappings(
                 algorithm_type, api_id=getattr(api_config, 'id', None))) or {}
@@ -67,7 +77,7 @@ class GrpcStreamExecutor(APISessionExecutor):
             round_results.append({
                 'round_number': 1, 'success': False, 'error': f'gRPC 配置错误: {exc}',
                 'output': {}, 'answer_text': '', 'latency': 0,
-                'error_source': 'config', 'biz_code': 400,
+                'error_source': ERROR_SOURCE_CONFIG, 'biz_code': 400,
             })
             return False
 
@@ -86,7 +96,7 @@ class GrpcStreamExecutor(APISessionExecutor):
                                     if isinstance(round_config, dict) else index + 1)
                     round_results.append(self._failure_round(
                         round_number,
-                        {'biz_code': 400, 'biz_msg': message, 'error_source': 'config'},
+                        {'biz_code': 400, 'biz_msg': message, 'error_source': ERROR_SOURCE_CONFIG},
                         message, 0))
                 return False
             if method_kind == 'server_stream':
@@ -130,7 +140,7 @@ class GrpcStreamExecutor(APISessionExecutor):
             return False
         except GrpcProtoError as exc:
             round_results.append(self._failure_round(
-                1, {'biz_code': 400, 'biz_msg': str(exc), 'error_source': 'config'},
+                1, {'biz_code': 400, 'biz_msg': str(exc), 'error_source': ERROR_SOURCE_CONFIG},
                 str(exc), time.time() - started))
             return False
 
@@ -139,7 +149,7 @@ class GrpcStreamExecutor(APISessionExecutor):
         if not events:
             round_results.append(self._failure_round(
                 1, {'biz_code': 500, 'biz_msg': 'server_stream 未返回任何消息',
-                    'error_source': 'grpc'},
+                    'error_source': ERROR_SOURCE_GRPC},
                 'server_stream 未返回任何消息', time.time() - started))
             return False
 
@@ -162,9 +172,13 @@ class GrpcStreamExecutor(APISessionExecutor):
             if index == 0:
                 round_result['latency'] = round(
                     call_result.get('latency_ms', 0) / 1000.0, 3)
+            # `raw_response` 是传输件的归一 payload（`MessageToDict` 结果），
+            # 不是适配器 execute 结果的 `{json: ...}` 形状——按直连口径提取
+            # （unwrap=False 等价 vendor_response=raw_response）。反过来会让
+            # field_path 在 None 上取值，轮次 output 恒空。
             self._attach_api_output_fields(
                 round_result, field_mappings, algorithm_type, task_id,
-                unwrap_execute_result=True)
+                unwrap_execute_result=False)
             round_results.append(round_result)
             self._log(level='INFO',
                       content=f"server_stream 事件 {round_number}/{len(events)} "
@@ -190,13 +204,18 @@ class GrpcStreamExecutor(APISessionExecutor):
             grpc_session = adapter.open_bidi_session(open_context)
         except (GrpcCallError, GrpcProtoError) as exc:
             fields = getattr(exc, 'fields', None) or {
-                'biz_code': 400, 'biz_msg': str(exc), 'error_source': 'config'}
+                'biz_code': 400, 'biz_msg': str(exc), 'error_source': ERROR_SOURCE_CONFIG}
             for index, round_config in enumerate(rounds or [{}]):
                 round_number = (round_config.get('round_number', index + 1)
                                 if isinstance(round_config, dict) else index + 1)
                 round_results.append(self._failure_round(
                     round_number, fields, str(exc), 0))
             return False
+        # bidi 的 deadline 是**会话总预算**：`GrpcBidiSession` 建立 stream 时
+        # 一次性把 `meta.grpc.deadline_ms` 交给 gRPC（协议不支持会话内改）。
+        # 轮内等待因此按剩余预算收敛，避免最后一轮还按完整 deadline 空转、
+        # 到点先被外层流 deadline 掐断。
+        session_deadline_at = time.time() + max(adapter.deadline_ms() / 1000.0, 1.0)
         all_ok = True
         try:
             for round_idx, round_config in enumerate(rounds):
@@ -209,10 +228,13 @@ class GrpcStreamExecutor(APISessionExecutor):
                     total_rounds=len(rounds), api_config=api_config)
                 round_result = self._run_bidi_round(
                     task_id, grpc_session, adapter, context, round_config,
-                    round_number, sentence_end_path, session_end_path)
+                    round_number, sentence_end_path, session_end_path,
+                    session_deadline_at=session_deadline_at)
+                # 同 server_stream：`raw_response` 是归一 payload（无 `json`
+                # 包装），unwrap=True 会让 field_path 提取不到 → output 恒空。
                 self._attach_api_output_fields(
                     round_result, field_mappings, algorithm_type, task_id,
-                    unwrap_execute_result=True)
+                    unwrap_execute_result=False)
                 round_results.append(round_result)
                 if not round_result.get('success'):
                     all_ok = False
@@ -230,8 +252,14 @@ class GrpcStreamExecutor(APISessionExecutor):
         return all_ok
 
     def _run_bidi_round(self, task_id, grpc_session, adapter, context, round_config,
-                        round_number, sentence_end_path, session_end_path) -> dict:
-        """bidi 单轮：发请求消息 → 收到语句/会话结束。"""
+                        round_number, sentence_end_path, session_end_path,
+                        session_deadline_at=None) -> dict:
+        """bidi 单轮：发请求消息 → 收到语句/会话结束。
+
+        `session_deadline_at` 是会话总预算的绝对时间点（由
+        `_run_session_rounds` 传入）：轮内空等上限取「完整 deadline」与
+        「会话剩余预算」的较小者。
+        """
         started = time.time()
         body = adapter.build_body(context)
         try:
@@ -242,7 +270,7 @@ class GrpcStreamExecutor(APISessionExecutor):
         except (GrpcProtoError, ValueError) as exc:
             return self._failure_round(
                 round_number,
-                {'biz_code': 400, 'biz_msg': str(exc), 'error_source': 'config'},
+                {'biz_code': 400, 'biz_msg': str(exc), 'error_source': ERROR_SOURCE_CONFIG},
                 str(exc), time.time() - started)
 
         events = []
@@ -250,15 +278,18 @@ class GrpcStreamExecutor(APISessionExecutor):
         first_event_latency_ms = None
         error_fields = None
         deadline_s = adapter.deadline_ms() / 1000.0
+        round_deadline_at = started + max(deadline_s, 1.0)
+        if session_deadline_at is not None:
+            round_deadline_at = min(round_deadline_at, session_deadline_at)
         while True:
             self._executor._handle_control(task_id)
             event = grpc_session.recv(timeout=self.RECV_TIMEOUT_SECONDS)
             event_type = event.get('event_type')
             if event_type == EVENT_HEARTBEAT:
                 # 空转不算失败：轮次总时长由 meta.grpc.deadline_ms 兜底
-                if time.time() - started > max(deadline_s, 1.0):
+                if time.time() > round_deadline_at:
                     error_fields = {'biz_code': 504, 'biz_msg': 'DEADLINE_EXCEEDED',
-                                    'error_source': 'grpc', 'raw_code': 4}
+                                    'error_source': ERROR_SOURCE_GRPC, 'raw_code': 4}
                     break
                 continue
             events.append(event)
@@ -288,7 +319,7 @@ class GrpcStreamExecutor(APISessionExecutor):
             return self._failure_round(
                 round_number,
                 {'biz_code': 504, 'biz_msg': '无消息即断开（end_stream）',
-                 'error_source': 'grpc', 'raw_code': None},
+                 'error_source': ERROR_SOURCE_GRPC, 'raw_code': None},
                 'bidi 会话在收到任何消息前结束', latency,
                 frame_count=len(events))
 

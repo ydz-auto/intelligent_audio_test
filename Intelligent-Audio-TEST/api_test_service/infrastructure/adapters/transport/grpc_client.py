@@ -454,6 +454,10 @@ class GrpcClient:
         不能只靠调用异常判网络：gRPC 在「连不上」时也可能直接报
         DEADLINE_EXCEEDED，details 只有 "Deadline Exceeded"，与真的慢响应
         无法区分。建立连接前先探一次，判据确定。
+
+        `_ready` 只在首次探测成功后置位（channel 属本客户端、用例内复用）；
+        目标中途重启不会重探，后续调用按 UNAVAILABLE 等 status 分类兜底
+        （只是可观测性略差，不影响错误归类结果）。
         """
         if self._ready:
             return

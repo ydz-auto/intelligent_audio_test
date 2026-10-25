@@ -296,10 +296,21 @@ class APIExecutor(BaseExecutor):
         # 单轮 = 线性）；gRPC unary 没有该任务协议，一次调用即一轮，按轮次
         # 逐次调用（单轮是 rounds=1 的特例，仍走会话执行器）。
         if data.get('protocol') in self._NO_DUT_PROTOCOLS:
+            if not rounds:
+                # 空 rounds（用例详情取不到等）不能落成「零请求 + 成功」：
+                # 非流式道的会话执行器空 rounds 不进循环、直接判成功。gRPC
+                # 一次调用即一轮，按 1 轮执行并留痕，与线性道同口径。
+                self._log(level='WARNING',
+                          content=(f"用例 {case_name} protocol={data.get('protocol')} "
+                                   f"未配置轮次（rounds 为空），一次调用即一轮，"
+                                   f"按 1 轮执行"),
+                          task_id=task_id, test_case_id=test_case_id)
+                case_config = {**(case_config or {}), 'rounds': [{}]}
+                rounds = case_config['rounds']
             self._log(level='INFO',
                       content=(f"用例 {case_name} protocol={data.get('protocol')} "
                                f"streaming=false，非流式道按轮次直调"
-                               f"（rounds={len(rounds) or 1}）"),
+                               f"（rounds={len(rounds)}）"),
                       task_id=task_id, test_case_id=test_case_id)
             return self.route_executor(lane).execute(task_id, tc_rel_id, data, case_config)
 
