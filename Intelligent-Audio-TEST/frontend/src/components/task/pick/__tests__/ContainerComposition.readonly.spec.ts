@@ -9,7 +9,7 @@
  * ③ 组织字段在场时不得显示「候选未返分组/标签字段…」兜底提示；
  * ④ 四视图切换 + 执行状态筛选纯客户端生效。
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 // TestCaseCard 会 loadAlgorithms（走 API），桩掉避免真实网络
@@ -23,6 +23,7 @@ vi.mock('../../../../composables/algorithm/useAlgorithmLabels', () => ({
 }));
 
 import ContainerComposition from '../ContainerComposition.vue';
+import { resetDegradedHintDismissed } from '../compositionTree';
 import type { CompositionEntry } from '../../../../domain/model/containerComposition';
 
 const ENTRIES: CompositionEntry[] = [
@@ -218,5 +219,86 @@ describe('四视图 / 筛选（§3.2/§5）', () => {
     expect(wrapper.find('.cc-hint').text()).toContain('结果级执行 / 评估状态待后端补字段，当前按用例状态显示');
     await wrapper.find('.cc-hint-close').trigger('click');
     expect(wrapper.find('.cc-hint').exists()).toBe(false);
+  });
+});
+
+/**
+ * INT-1836 · 规范 18 §5：部分失败 / 未评估呈现与筛选联动。
+ *
+ * - 分支节点计数「{n} 条 · 失败 {f}」/「· 失效 {k}」，按过滤后叶实时重算
+ * - 用例卡一致性 info 图标 + Tooltip（用例继承状态 ≠ 叶状态）
+ * - 降级期提示会话内一次性关闭（组件重挂不再出现）
+ * - 文案纪律：失败条目是正常业务态，无「异常」「不可合并」
+ */
+describe('部分失败呈现（§5，INT-1836）', () => {
+  beforeEach(() => resetDegradedHintDismissed());
+
+  it('分支节点计数：失败 / 失效按过滤后叶统计', async () => {
+    const wrapper = mountComposition();
+    await expandAll(wrapper);
+    const counts = wrapper.findAll('.ctr-count').map((n) => n.text());
+    // 任务 419（5714 completed + 5715 failed）→ 2 条 · 失败 1
+    expect(counts.some((t) => t.includes('2 条') && t.includes('失败 1'))).toBe(true);
+    // 任务 384（3792 failed + missing）→ 1 条 · 失败 1 · 失效 1
+    expect(counts.some((t) => t.includes('失败 1') && t.includes('失效 1'))).toBe(true);
+  });
+
+  it('分支计数随执行状态筛选实时重算（不改层级）', async () => {
+    const wrapper = mountComposition();
+    await expandAll(wrapper);
+    await wrapper.findAll('select')[0].setValue('completed');
+    const counts = wrapper.findAll('.ctr-count').map((n) => n.text());
+    // 只剩 5714（completed）→ 1 条，无失败后缀
+    expect(counts).toContain('1 条');
+    expect(counts.some((t) => t.includes('· 失败'))).toBe(false);
+  });
+
+  it('用例卡一致性：用例继承状态与叶不一致 → info 图标 + Tooltip', async () => {
+    const conflictEntries: CompositionEntry[] = [
+      {
+        ...ENTRIES[0],
+        resultId: 5715, sourceCaseId: 'dup-case', sourceCaseName: 'JS178 拒识用例',
+        executionStatus: 'completed', statusFromCase: false,
+        caseExecutionStatus: 'failed',
+      },
+      {
+        ...ENTRIES[1],
+        resultId: 5716, sourceCaseId: 'dup-case', sourceCaseName: 'JS178 拒识用例',
+        executionStatus: 'completed', statusFromCase: false,
+        caseExecutionStatus: 'failed',
+      },
+    ];
+    const wrapper = mountComposition(conflictEntries, 1);
+    await expandAll(wrapper);
+    const icon = wrapper.find('.ctr-case-info');
+    expect(icon.exists()).toBe(true);
+    expect(icon.attributes('title')).toBe('用例状态继承自来源任务；结果状态以叶行为准');
+    expect(icon.attributes('aria-label')).toBe('用例状态继承自来源任务；结果状态以叶行为准');
+  });
+
+  it('用例卡一致性：降级期叶状态取自用例行 → 不显示 info 图标', async () => {
+    const wrapper = mountComposition();
+    await expandAll(wrapper);
+    expect(wrapper.find('.ctr-case-info').exists()).toBe(false);
+  });
+
+  it('降级期提示关闭后在同会话重挂组件仍保持关闭', async () => {
+    const first = mountComposition();
+    expect(first.find('.cc-hint').exists()).toBe(true);
+    await first.find('.cc-hint-close').trigger('click');
+    expect(first.find('.cc-hint').exists()).toBe(false);
+    first.unmount();
+
+    const second = mountComposition();
+    expect(second.find('.cc-hint').exists()).toBe(false);
+    second.unmount();
+  });
+
+  it('文案纪律：失败条目解释文案无「异常」「不可合并」等误导表述', () => {
+    const wrapper = mountComposition();
+    const text = wrapper.text();
+    expect(text).toContain('仅执行失败 / 部分失败的任务也可被挑选合并，失败条目按原状态呈现');
+    expect(text).not.toContain('异常');
+    expect(text).not.toContain('不可合并');
   });
 });

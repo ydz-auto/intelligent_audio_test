@@ -30,6 +30,8 @@ vi.mock('../TaskCard', () => ({
     getEvaluationBadgeIcon: vi.fn(() => 'fa-check-circle'),
     getStepStatusText: vi.fn(() => ''),
     calculateCompletionRate: vi.fn(() => 0),
+    // INT-1836：容器混态执行徽章（mock 最小实现：非容器行原样沿用）
+    executionBadge: { status: 'completed', text: '已完成', partial: false },
   }),
 }));
 

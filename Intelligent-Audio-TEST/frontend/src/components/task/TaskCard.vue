@@ -18,10 +18,15 @@
               已删除
             </span>
             <template v-else>
-              <!-- INT-301：双状态徽章——执行徽章（评估推进不落此侧） + 评估徽章（重评只动此侧） -->
-              <span class="task-status exec-status-badge" :class="getExecutionBadgeStatus(task)" :title="'执行状态'">
-                <i class="fas task-indicator" :class="getExecutionBadgeIcon(getExecutionBadgeStatus(task))"></i>
-                {{ getStatusText(getExecutionBadgeStatus(task)) }}
+              <!-- INT-301：双状态徽章——执行徽章（评估推进不落此侧） + 评估徽章（重评只动此侧）
+                   INT-1836：容器混态「部分失败」（warning + 小圆点，§2.1 列表行展示映射） -->
+              <span
+                class="task-status exec-status-badge"
+                :class="[executionBadge.status, { 'exec-status-badge--partial': executionBadge.partial }]"
+                :title="'执行状态'"
+              >
+                <i v-if="!executionBadge.partial" class="fas task-indicator" :class="getExecutionBadgeIcon(executionBadge.status)"></i>
+                {{ executionBadge.text }}
               </span>
               <span
                 v-if="task.evaluationStatus"
@@ -103,9 +108,13 @@
           </span>
           <template v-else>
             <!-- INT-301：双状态徽章——执行徽章（评估推进不落此侧） + 评估徽章（重评只动此侧） -->
-            <span class="task-status exec-status-badge" :class="getExecutionBadgeStatus(task)" :title="'执行状态'">
-              <i class="fas task-indicator" :class="getExecutionBadgeIcon(getExecutionBadgeStatus(task))"></i>
-              {{ getStatusText(getExecutionBadgeStatus(task)) }}
+            <span
+              class="task-status exec-status-badge"
+              :class="[executionBadge.status, { 'exec-status-badge--partial': executionBadge.partial }]"
+              :title="'执行状态'"
+            >
+              <i v-if="!executionBadge.partial" class="fas task-indicator" :class="getExecutionBadgeIcon(executionBadge.status)"></i>
+              {{ executionBadge.text }}
             </span>
             <span
               v-if="task.evaluationStatus"
@@ -261,7 +270,9 @@ const {
   getEvaluationStatusText,
   getEvaluationBadgeIcon,
   getStepStatusText,
-  calculateCompletionRate
+  calculateCompletionRate,
+  // INT-1836 规范 18 §2.1：容器行混态执行徽章（「部分失败」/「已失败」展示映射）
+  executionBadge
 } = useTaskCard(props, emit)
 
 /** INT-215：删除人展示（后端 deletedByUserId；AUTH_MODE=off 时 NULL 显示「—」） */

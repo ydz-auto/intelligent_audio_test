@@ -206,6 +206,25 @@
   color: var(--color-amber-600);
 }
 
+/* ===== INT-1836 规范 18 §2.1：容器混态「部分失败」（--warning + 小圆点） =====
+   复合选择器 `.exec-status-badge.exec-status-badge--partial` 与 `.exec-status-badge.failed`
+   同权重且在后，覆盖全失败红底；纯前端展示映射，后端字符串仍是 failed。 */
+.exec-status-badge.exec-status-badge--partial {
+  background-color: var(--warning-light);
+  color: var(--warning);
+}
+
+.exec-status-badge--partial::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-radius: var(--radius-full);
+  background-color: currentColor;
+  vertical-align: middle;
+}
+
 .task-description {
   font-size: 14px;
   margin-bottom: 8px;

@@ -62,6 +62,8 @@
  * 纯 props，不直连 API（数据由宿主经 useContainerComposition 注入）。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+// INT-1836 规范 18 §2.1：混态判定与列表行同一纯函数源
+import { containerMixState } from '../task/pick/compositionTree';
 
 const props = defineProps({
   /** 容器溯源数据（useContainerComposition 归一后的 PickSource；null 时不渲染） */
@@ -82,22 +84,21 @@ const mergeTypeText = computed(() => (isCherryPick.value ? '结果挑选' : '整
 const sourceTaskCount = computed(() => props.source?.groups?.length ?? 0);
 const sourceResultCount = computed(() => props.source?.total ?? 0);
 
-/** 混合态：0 < failedCases < caseCount → 部分失败 f/c；failedCases === caseCount → 全部失败；= 0 不显示 */
+/** 混合态：0 < failedCases < caseCount → 部分失败 f/c；failedCases === caseCount → 全部失败；= 0 不显示
+ *  INT-1836：混态判定与列表行「部分失败」同一纯函数（containerMixState），不留双口径 */
 const mixedState = computed(() => {
   const total = Number(props.caseCount ?? 0);
   const failed = Number(props.failedCases ?? 0);
-  if (!Number.isFinite(total) || !Number.isFinite(failed) || total <= 0 || failed <= 0) return null;
-  if (failed === total) {
+  const mix = containerMixState(failed, total);
+  if (mix === 'none') return null;
+  if (mix === 'all') {
     return { text: '全部失败', className: 'chb-badge--destructive', title: `${total} 条用例全部失败` };
   }
-  if (failed < total) {
-    return {
-      text: `部分失败 ${failed}/${total}`,
-      className: 'chb-badge--warning',
-      title: `${total} 条用例中 ${failed} 条执行失败`,
-    };
-  }
-  return null;
+  return {
+    text: `部分失败 ${failed}/${total}`,
+    className: 'chb-badge--warning',
+    title: `${total} 条用例中 ${failed} 条执行失败`,
+  };
 });
 
 /** 创建时间 mono `YYYY-MM-DD HH:mm`（本地时区；无法解析时不渲染该位） */

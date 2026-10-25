@@ -73,12 +73,17 @@
         tabindex="0"
         class="cc-hint-close"
         aria-label="关闭提示"
-        @click="degradedDismissed = true"
-        @keydown.enter.prevent="degradedDismissed = true"
+        @click="dismissDegradedHintBar"
+        @keydown.enter.prevent="dismissDegradedHintBar"
       >
         <i class="fas fa-times"></i>
       </div>
     </div>
+
+    <!-- §5 文案纪律：容器内出现失败条目是正常业务态，不得出现「异常」「失败任务不可合并」等误导表述 -->
+    <p v-if="showToolbar && summary.failed > 0" class="cc-note">
+      仅执行失败 / 部分失败的任务也可被挑选合并，失败条目按原状态呈现
+    </p>
 
     <!-- 加载骨架（§10.2：树骨架 3 层） -->
     <div v-if="loading" class="cc-skeleton" data-testid="composition-skeleton" aria-hidden="true">
@@ -153,8 +158,10 @@ import PickCaseOrgControls from './PickCaseOrgControls.vue';
 import { collectCartNodeKeys, type CartOrgDim, type CartOrgSubView, type CartTreeNode, type CartViewMode } from './cartTree';
 import {
   buildCompositionView,
+  dismissDegradedHint,
   filterCompositionTree,
   isCompositionDegraded,
+  isDegradedHintDismissed,
   organizeCompositionCases,
   summarizeComposition,
   type CompositionViewOptions,
@@ -206,7 +213,13 @@ const subView = ref<CartOrgSubView>('flat');
 const execFilter = ref<string>('all');
 const evalFilter = ref<string>('all');
 const expandedKeys = ref<ReadonlySet<string>>(new Set<string>());
-const degradedDismissed = ref(false);
+/** 降级期提示关闭态：会话内一次性（模块级状态，切视图 / 重挂组件不再冒出来） */
+const degradedDismissed = ref(isDegradedHintDismissed());
+
+function dismissDegradedHintBar() {
+  dismissDegradedHint();
+  degradedDismissed.value = true;
+}
 
 const entryMap = computed<ReadonlyMap<number, CompositionEntry>>(
   () => new Map(props.entries.map((e) => [e.resultId, e])),
@@ -417,6 +430,13 @@ function resetFilters() {
   padding: 0 4px;
   cursor: pointer;
   color: inherit;
+}
+
+/* §5 文案：失败条目是正常业务态（不得出现「异常 / 不可合并」） */
+.cc-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
 }
 
 .cc-skeleton {

@@ -58,6 +58,8 @@
         <template #composition>
           <ContainerComposition
             v-if="containerSource"
+            ref="compositionRef"
+            :class="{ [COMPOSITION_FOCUS_HIGHLIGHT_CLASS]: compositionHighlighted }"
             :entries="compositionEntries"
             :source-task-count="containerSource.groups.length"
             @trace="openCompositionTrace"
@@ -108,7 +110,7 @@ import '../../../assets/styles/components/progress.css'
 import '../../../assets/styles/components/tag.css'
 import '../../../assets/styles/components/log.css'
 
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { tasksPort } from '@/composables/task/tasksPort';
 import { confirmReviewOverwrite } from '@/composables/task/useReviewOverwrite';
@@ -127,9 +129,18 @@ import CherryPickDialog from './CherryPickDialog.vue';
 import VisibilityBadge from '../visibility/VisibilityBadge.vue';
 import type { Task, Log } from '../../../domain';
 import { TaskStatus, Visibility, PICKABLE_STATUSES, type TaskStatusType } from '@/domain/enums';
+// INT-1835 规范 18 §3.1：下单成功落点——组成区滚动定位与 1.2s 高亮
+import {
+  COMPOSITION_FOCUS_HIGHLIGHT_CLASS,
+  COMPOSITION_FOCUS_HIGHLIGHT_MS,
+  scrollCompositionIntoView,
+  taskDetailLocation,
+} from '../../../utils/compositionFocus';
 
 const props = defineProps({
-  taskId: {type: [String, Number], required: true}
+  taskId: {type: [String, Number], required: true},
+  /** 落点聚焦区（INT-1835）：`composition` = 下单成功后落到组成区；null = 常规打开 */
+  focusSection: {type: String as () => 'composition' | null, default: null},
 });
 
 const emit = defineEmits<{
@@ -148,7 +159,7 @@ const task = ref<TaskDetail | null>(null);
 const activeTab = ref('cases');
 // INT-1832 规范 18 §2.3：容器识别写死——详情接口无 is_cherry_pick / merge_type，
 // 一律由 source 溯源端点判定；4xx（站内普通任务常态）/5xx/网络异常 → null，详情保持现状。
-const { source: containerSource } = useContainerComposition(computed(() => props.taskId));
+const { source: containerSource, settled: containerSettled } = useContainerComposition(computed(() => props.taskId));
 
 /**
  * INT-1833 组成条目：source.groups[].results[] ← 详情 cases[]/devices[]/apis[] join
@@ -167,6 +178,58 @@ function openCompositionTrace(resultId: number) {
   if (!entry) return;
   modalControl.open(MODAL_TYPES.TASK_DETAIL, { taskId: entry.sourceTaskId });
 }
+
+// ===== INT-1835 规范 18 §3.1：下单成功落点（?focus=composition）=====
+
+const compositionRef = ref<InstanceType<typeof ContainerComposition> | null>(null);
+/** 组成区高亮态（外描边 1.2s 后消退，样式含 reduced-motion 分支） */
+const compositionHighlighted = ref(false);
+let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+/** 每次任务切换只自动定位一次（刷新 / 重新下单可再来一次） */
+let focusApplied = false;
+
+/**
+ * 可定位条件：宿主请求了组成区落点 + 详情加载完成 + 容器判定已结束且确为容器。
+ * 非容器（source 归一 null）时条件永不成立 → 静默忽略，不报错、不滚动、无高亮（§3.1）。
+ */
+const compositionFocusReady = computed(() =>
+  props.focusSection === 'composition'
+  && !focusApplied
+  && !loading.value
+  && containerSettled.value
+  && containerSource.value !== null);
+
+function clearCompositionHighlight() {
+  compositionHighlighted.value = false;
+  if (highlightTimer) {
+    clearTimeout(highlightTimer);
+    highlightTimer = null;
+  }
+}
+
+/** 滚到组成区顶部（滚动容器 = 模态窗内容区 / 布局主内容区，不是 window）并高亮 1.2s */
+async function applyCompositionFocus() {
+  focusApplied = true;
+  await nextTick();
+  const el = compositionRef.value?.$el;
+  if (!(el instanceof HTMLElement)) return;
+  scrollCompositionIntoView(el);
+  compositionHighlighted.value = true;
+  highlightTimer = setTimeout(() => {
+    compositionHighlighted.value = false;
+    highlightTimer = null;
+  }, COMPOSITION_FOCUS_HIGHLIGHT_MS);
+}
+
+watch(compositionFocusReady, (ready) => {
+  if (ready) void applyCompositionFocus();
+}, { flush: 'post' });
+
+// 详情模态窗可连续切任务（同组件复用）：切换后重新允许定位并清掉上一轮高亮
+watch(() => props.taskId, () => {
+  focusApplied = false;
+  clearCompositionHighlight();
+});
 
 const isPaused = ref(false);
 const localLogs = ref<Log[]>([]);
@@ -642,14 +705,16 @@ function openCherryPick() {
  *  merge 跳新任务详情；reexecute 跳重执行任务详情；reevaluate 跳首个来源任务详情
  *  查看评估进度。与 Tasks.vue handlePickCheckedOut 同口径——前端为 hash 路由，
  *  必须走 router.push（裸 path window.open 会把 hash 读空落到首页，INT-401 验收 P1-1）；
- *  无 taskId（如空来源）则仅关闭弹窗停留当前页。） */
+ *  无 taskId（如空来源）则仅关闭弹窗停留当前页。）
+ *  INT-1835 规范 18 §3.1：merge 出口带 `?focus=composition` 落到组成区（与任务列表同一出口口径），
+ *  reexecute / reevaluate 出口不带参数（行为不变）。 */
 function handleCheckedOut(payload: { action: string; taskId?: number }) {
   cherryPickVisible.value = false;
   if (payload.taskId) {
     // INT-1007：下单成功跳转前先关闭父级 TASK_DETAIL 模态（emit close → GlobalModalContainer
     // handleClose(modalId)），否则模态残留覆盖跳转后的页面（顶栏/页面交互被遮罩拦截）。
     emit('close');
-    router.push(`/tasks/${Number(payload.taskId)}`);
+    router.push(taskDetailLocation(payload.action, Number(payload.taskId)));
   }
 }
 
@@ -792,6 +857,11 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopLogPolling();
+  // INT-1835：高亮计时器随组件销毁清理（连续开关详情不残留）
+  if (highlightTimer) {
+    clearTimeout(highlightTimer);
+    highlightTimer = null;
+  }
 });
 </script>
 
@@ -876,5 +946,27 @@ onUnmounted(() => {
 
 .task-visibility-denied i {
   font-size: 12px;
+}
+
+/* INT-1835 规范 18 §3.1/§8.4：落点①组成区外描边高亮（1.2s 渐隐，深浅通用；reduced-motion 无动画）。
+   宿主在 slot 内容里，用 :deep 命中组成区根节点（ContainerComposition 的 section#composition）。 */
+.modal-content-wrapper :deep(.is-composition-focus) {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent);
+  animation: composition-focus-highlight 1.2s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-content-wrapper :deep(.is-composition-focus) {
+    animation: none;
+  }
+}
+
+@keyframes composition-focus-highlight {
+  0% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
 }
 </style>
