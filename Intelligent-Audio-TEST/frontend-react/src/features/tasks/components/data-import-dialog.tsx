@@ -8,7 +8,7 @@
  *   → 确认 → POST /data-transfer/import-incremental（进度 parsing → merging_dimensions
  *   → replacing_reports → done/error，GET /import/progress 3s 兜底轮询）
  *   → 回执（覆盖维度行数、替换报告 id、warnings、批次号、可回滚）或失败回执
- *   （前置校验未写入 / 已逆序回滚 / 补偿失败需人工介入 + 批次号）。
+ *   （预检失败 / 前置校验未写入 / 已逆序回滚 / 补偿失败需人工介入 / 结果未知 + 批次号）。
  *
  * 请求一律经 infrastructure/api/data-transfer-api（client.ts），页面层只见 camelCase Domain。
  */
@@ -50,6 +50,26 @@ import { Progress } from '@/features/tasks/components/ui/progress'
 
 type Phase = 'select' | 'preview' | 'importing' | 'done' | 'error'
 type DataImportMode = 'full' | 'incremental'
+
+/** 增量失败态（返工 F2：三态必须真实可区分，另加「结果未知」防误报） */
+type IncrementalFailureState = 'not_written' | 'rolled_back' | 'manual' | 'unknown'
+
+/** 增量失败回执：预检失败也走同一结构，标题按 stage 区分 */
+interface IncrementalFailure {
+  /** preview=预检阶段（未写数据）；import=导入执行阶段 */
+  stage: 'preview' | 'import'
+  state: IncrementalFailureState
+  message: string
+  guidance: string
+  batchId: string
+}
+
+const FAILURE_TITLE: Record<IncrementalFailureState, string> = {
+  not_written: '增量回导失败：未写入任何数据',
+  rolled_back: '增量回导失败：已回滚至导入前',
+  manual: '增量回导失败：需人工介入',
+  unknown: '增量回导结果未知',
+}
 
 /** 增量包 manifest 版本（整包为 1.0；1.1 = 增量 / 报告包） */
 const INCREMENTAL_MANIFEST_VERSION = '1.1'
@@ -98,20 +118,48 @@ function statsLine(stats: { taskCount: number; resultCount: number; dimensionCou
 }
 
 /**
- * 读取 ApiError 承载的服务端失败明细（增量端点把明细放在响应体 `data`：
- * unmappedResultIds / missingIds / expected+actual / batchId / compensationErrors）。
- * client.ts 当前只透出 detail/errors，data 的透出由基座子卡补齐；此处先兼容读，
- * 未到位时回落到 detail 与文案解析，不阻断回执展示。
+ * 增量导入失败判态（返工 F2）。
+ *
+ * client.ts 的 buildApiError 只透出 code/message/detail/errors，后端把失败明细放在
+ * 响应体 data（data_transfer_service._failure → format_response(data=…) 且 detail 恒 null），
+ * 页面读不到 compensationErrors / batchId，所以判态只用服务端 message + HTTP 状态码：
+ * - 阶段失败（维度合并 / 报告替换 / 未预期异常）后端已按逆序补偿 → 回滚口径；
+ * - 补偿自身失败时后端在 message 追加「补偿回滚部分失败，需人工介入核查」→ 人工介入；
+ * - 4xx 前置校验（400/403/404/409/413/422）未写任何数据 → 未写入；
+ * - 网络层失败（httpStatus 为 null）拿不到回执，写入与否未知 → 既不能说回滚也不能说未写入。
+ *
+ * 不可再用 batchId 推断回滚：进度快照在任何失败（含前置校验）里都会带批次号，
+ * 拿它当依据会把 409/404 误报成「已回滚」（审计 F2 / 测试工程师 P3-3 实测）。
  */
-function readErrorData(error: ApiError): Record<string, unknown> {
-  const withData = (error as ApiError & { data?: unknown }).data
-  if (withData && typeof withData === 'object' && !Array.isArray(withData)) {
-    return withData as Record<string, unknown>
+function classifyIncrementalFailure(
+  message: string,
+  httpStatus: number | null
+): IncrementalFailureState {
+  if (message.includes('需人工介入')) return 'manual'
+  if (/维度合并失败|报告替换失败|补偿|回滚/.test(message)) return 'rolled_back'
+  if (httpStatus == null) return 'unknown'
+  if (httpStatus >= 500) return 'rolled_back'
+  return 'not_written'
+}
+
+/** 失败回执的可操作引导（每种状态只描述该状态下真实的数据口径） */
+function incrementalFailureGuidance(
+  state: IncrementalFailureState,
+  batchId: string
+): string {
+  switch (state) {
+    case 'manual':
+      return `已按逆序回滚（报告 → 维度），但补偿自身失败，数据可能处于不一致状态，需人工介入核查${
+        batchId ? `（批次号 ${batchId}，登记保留 7 天）` : ''
+      }。`
+    case 'rolled_back':
+      return '已回滚至导入前状态，原任务数据未被改动。可重新选择增量包重试。'
+    case 'unknown':
+      return '未收到服务端回执，导入可能已生效。请先刷新任务列表与报告中心核对，再决定是否重试（重试不会新建任务副本）。'
+    case 'not_written':
+    default:
+      return '前置校验未通过，未写入任何数据（无需回滚）。请按上方提示修正增量包或任务状态后重试。'
   }
-  if (error.detail && typeof error.detail === 'object' && !Array.isArray(error.detail)) {
-    return error.detail as Record<string, unknown>
-  }
-  return {}
 }
 
 /** 服务端文案里兜底提取批次号（500 补偿失败文案：batch_id=xxx / batchId=xxx） */
@@ -154,12 +202,8 @@ export function DataImportDialog({
   const [incrementalResult, setIncrementalResult] =
     useState<IncrementalImportResult | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
-  /** 增量失败回执（明确「未写入 / 已回滚 / 需人工介入」+ 批次号） */
-  const [failure, setFailure] = useState<{
-    message: string
-    guidance: string
-    batchId: string
-  } | null>(null)
+  /** 增量失败回执（预检失败 / 未写入 / 已回滚 / 需人工介入 / 结果未知 + 批次号） */
+  const [failure, setFailure] = useState<IncrementalFailure | null>(null)
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   /** progress 最新值镜像（pollProgress 闭包读 ref 而非渲染期快照，避免守卫读旧值） */
   const progressRef = useRef(progress)
@@ -263,6 +307,8 @@ export function DataImportDialog({
       const data = await previewIncrementalImport(file)
       if (data.version !== INCREMENTAL_MANIFEST_VERSION || data.sourceTaskId == null) {
         setFailure({
+          stage: 'preview',
+          state: 'not_written',
           message: `该 ZIP 不是增量包（manifest 版本 ${data.version || '未知'}）`,
           guidance:
             '增量回导只接受「导出增量」产出的 1.1 包；整包请改用「导入数据」。',
@@ -285,11 +331,22 @@ export function DataImportDialog({
       }
       setPhase('preview')
     } catch (error) {
-      setErrorMessage(
-        error instanceof ApiError
-          ? (error.userMessage || error.message || '预检失败：无法解析该增量包')
-          : '预检失败：无法解析该增量包'
-      )
+      // 返工 F1：增量预检失败必须给后端原文 + 可操作引导（此前只写 errorMessage，
+      // 而增量模式的 Alert 只认 failure，导致弹窗一句错误都没有）
+      const apiError = error instanceof ApiError ? error : null
+      setFailure({
+        stage: 'preview',
+        state: 'not_written',
+        message: apiError
+          ? (apiError.userMessage || apiError.message || '预检失败：无法解析该增量包')
+          : '预检失败：无法解析该增量包',
+        guidance: apiError?.isNetworkError
+          ? '网络异常导致预检未完成（未写入任何数据），请检查网络后重试。'
+          : '请确认这是「导出增量」产出的 1.1 增量包；解析失败可重试，或改用「导入数据」走整包导入。',
+        batchId: '',
+      })
+      setIncrementalPreview(null)
+      setTargetTask(null)
       setPhase('error')
     } finally {
       setPreviewing(false)
@@ -353,39 +410,25 @@ export function DataImportDialog({
       const message = apiError
         ? apiError.userMessage || apiError.message || '增量导入失败'
         : '增量导入失败'
-      const data = apiError ? readErrorData(apiError) : {}
-      let batchId = String(data.batchId ?? '') || extractBatchId(message)
+      const httpStatus = apiError?.httpStatus ?? null
+      const state = classifyIncrementalFailure(message, httpStatus)
+      // 批次号：服务端 message 里带 batch_id 时直接取；否则读同一次导入的进度快照
+      // （后端 ImportProgressReporter 在 ERROR 上报里带 batch_id）
+      let batchId = extractBatchId(message)
       if (!batchId) {
-        // 失败明细在响应体 data（client 尚未透出）时，用同一次导入的进度快照补批次号：
-        // 后端的 ImportProgressReporter 在 ERROR 上报里带 batch_id
         try {
           const snapshot = await getImportProgress()
           batchId = snapshot?.batchId ?? ''
         } catch {
-          // 快照不可用则留空，回执只展示回滚口径
+          // 快照不可用则留空，回执只展示判态口径
         }
       }
-      const compensationErrors = Array.isArray(data.compensationErrors)
-        ? data.compensationErrors
-        : []
-      const status = apiError?.httpStatus ?? null
-      // 有段落失败（后端已按逆序补偿）→ 回滚口径；纯前置校验（400/403/404/409）未写数据
-      const rolledBack =
-        compensationErrors.length > 0 ||
-        Boolean(batchId) ||
-        status === 500 ||
-        /替换失败|合并失败|回滚/.test(message)
       setFailure({
+        stage: 'import',
+        state,
         message,
         batchId,
-        guidance:
-          compensationErrors.length > 0
-            ? `已按逆序回滚（报告 → 维度），但补偿部分失败，需人工介入核查${
-                batchId ? `（批次号 ${batchId}，登记保留 7 天）` : ''
-              }。`
-            : rolledBack
-              ? '已回滚至导入前状态，原任务数据未被改动。'
-              : '前置校验未通过，未写入任何数据（无需回滚）。',
+        guidance: incrementalFailureGuidance(state, batchId),
       })
       setPhase('error')
     } finally {
@@ -395,6 +438,12 @@ export function DataImportDialog({
 
   const goDailyList = () => {
     void navigate({ to: '/tasks/$tab', params: { tab: 'daily' } })
+    onOpenChange(false)
+  }
+
+  /** 增量回执「查看任务详情」→ /tasks/:id（$tab 为数字时渲染详情，返工 F4） */
+  const goTaskDetail = (taskId: number) => {
+    void navigate({ to: '/tasks/$tab', params: { tab: String(taskId) } })
     onOpenChange(false)
   }
 
@@ -442,7 +491,7 @@ export function DataImportDialog({
           {previewing && (
             <p className='text-muted-foreground flex items-center gap-2 text-xs'>
               <Spinner size={14} />
-              正在解析导出包…
+              正在解析{incremental ? '增量包' : '导出包'}…
             </p>
           )}
 
@@ -642,11 +691,16 @@ export function DataImportDialog({
                 </ul>
               )}
               <p className='text-muted-foreground text-xs'>
-                任务 id 未变化、未产生新任务副本；任务列表报告数与详情页报告页签已刷新。
+                任务 id 未变化、未产生新任务副本；任务列表与报告中心已刷新（详情页数据同步重取）。
               </p>
               <div className='flex flex-wrap items-center gap-2'>
                 {hasPermission('task:read') && (
-                  <Button size='sm' variant='outline' className='h-7' onClick={goDailyList}>
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    className='h-7'
+                    onClick={() => goTaskDetail(incrementalResult.taskId)}
+                  >
                     查看任务详情
                   </Button>
                 )}
@@ -664,10 +718,14 @@ export function DataImportDialog({
             </Alert>
           )}
 
-          {/* 增量失败回执（未写入 / 已回滚 / 需人工介入 + 批次号） */}
+          {/* 增量失败回执（预检失败 / 未写入 / 已回滚 / 需人工介入 / 结果未知 + 批次号） */}
           {incremental && failure && (
             <Alert variant='destructive'>
-              <AlertTitle>增量回导失败</AlertTitle>
+              <AlertTitle>
+                {failure.stage === 'preview'
+                  ? '增量包预检失败'
+                  : FAILURE_TITLE[failure.state]}
+              </AlertTitle>
               <AlertDescription>
                 <span>{failure.message}</span>
                 <span className='mt-1 block font-medium'>{failure.guidance}</span>

@@ -41,7 +41,8 @@ export interface ExportTaskBrief {
   status: string | null
 }
 
-/** 增量导出失败的可操作引导（按后端失败码/文案区分两条硬闸） */
+/** 增量导出失败的可操作引导（按后端失败码/文案区分两条硬闸；判据不用 HTTP 码，
+ *  否则结构性 400 会被误说成「source_map 缺失」，返工 F4） */
 function incrementalGuidance(error: ApiError): string {
   const message = error.userMessage || error.message || ''
   if (
@@ -51,15 +52,17 @@ function incrementalGuidance(error: ApiError): string {
   ) {
     return '增量回导 v1 只同步「重新评估」产生的数据。请改用整包导出，或先在 B 侧回退本次重新执行的结果后重试。'
   }
+  if (message.includes('多个源服务映射')) {
+    return '该任务在源映射里对应多个源服务器，无法确定 id 翻译基准；请联系管理员清理 source_map 后重试。'
+  }
   if (
     message.includes('未整包导入') ||
     message.includes('source_map') ||
-    message.includes('映射') ||
-    error.httpStatus === 400
+    message.includes('映射')
   ) {
     return '请先在 B 侧对该任务执行「导入数据」（整包导入，链路 1）完成 source_map 登记，再导出增量。'
   }
-  return '请确认该任务由整包导入而来，且源任务仍存在后重试。'
+  return '请确认该任务由整包导入而来、只勾选 1 个任务且源任务仍存在后重试。'
 }
 
 export function DataExportDialog({
