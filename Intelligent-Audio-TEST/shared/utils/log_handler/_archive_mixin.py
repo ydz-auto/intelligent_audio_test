@@ -22,25 +22,33 @@ class _ArchiveMixin:
 
     def _check_and_archive(self):
         """通过 gRPC 检查日志总量并触发归档"""
+        # INT-1902：归档与过期清理各自 try/except —— 任一环节失败不得阻断另一环节
         try:
-            from shared.clients.grpc_clients import get_log_count, archive_logs
+            from shared.clients.grpc_clients import get_log_count
             result = get_log_count()
             total_count = result.get('total', 0)
 
             if total_count > LOG_ARCHIVE_THRESHOLD:
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Log count {total_count} exceeds threshold {LOG_ARCHIVE_THRESHOLD}, starting archive...")
                 self._archive_old_logs()
-
-            # 清理过期归档文件（每次归档检查时都执行）
-            self._clean_expired_archives()
         except Exception as e:
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - ARCHIVE ERROR - {str(e)}")
+
+        # 清理过期归档文件（每次归档检查时都执行，与归档解耦）
+        try:
+            self._clean_expired_archives()
+        except Exception as e:
+            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - ARCHIVE CLEANUP ERROR - {str(e)}")
 
     def _archive_old_logs(self):
         """通过 gRPC 归档冷数据日志到 OSS
 
         调用 task_service.ArchiveLogs 获取冷日志分组，写入 OSS 后由服务端删除。
         """
+        # INT-1902：archive_logs 必须在调用方作用域内导入——此前只在
+        # _check_and_archive 里局部导入，本方法内 NameError 令归档每轮静默失败。
+        # shared.clients.grpc_clients 与日志层存在反向依赖，不能提到模块级。
+        from shared.clients.grpc_clients import archive_logs
         from shared.infrastructure.storage import storage
 
         result = archive_logs(days=LOG_HOT_DATA_DAYS, dry_run=False)
