@@ -13,10 +13,6 @@ export const DIMENSION_TYPE_MAIN = 'main';
 export const DIMENSION_TYPE_SUB = 'sub';
 /** 默认分类图标 */
 export const DEFAULT_CATEGORY_ICON = 'fas fa-tachometer-alt';
-/** 默认 LLM 最大 Token 数 */
-export const DEFAULT_LLM_MAX_TOKENS = 1024;
-/** 默认 LLM 温度 */
-export const DEFAULT_LLM_TEMPERATURE = 0.7;
 /** 默认 API 端点最大并发数 */
 export const DEFAULT_MAX_PROCESS = 5;
 /** 默认 API 端点超时（秒） */
