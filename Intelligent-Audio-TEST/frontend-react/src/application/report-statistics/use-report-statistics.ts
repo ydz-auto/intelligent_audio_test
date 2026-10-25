@@ -8,6 +8,7 @@
  *   snake→camel 转换只在 infrastructure 层（reports-api），本层只见 camelCase 域数据；
  *   异常识别后端无接口 → 空态（不虚构）；统计导出见 use-statistics-export。
  * INT-1297：移除「任务类型」统计维度（负责人 2026-10-22：前端不再区分 API测试/E2E测试）。
+ * INT-1802：统计上下文不再认已删任务的报告（task_name 为空），避免 case-averages 400 整卡空态。
  * 对应报告管理功能设计文档.md §3.6.1/:318-340 + §5.2.4/:570-594。
  */
 import { useQuery } from '@tanstack/react-query'
@@ -300,6 +301,8 @@ export function toReportStatisticsData(input: {
     : 0
   const metricCount = averages?.overallAverages.length ?? 0
   const deviceCount = averages?.resources.length ?? 0
+  /** 任务名（统计上下文；空 = 未选到任务仍在的报告，hint 不拼「任务「」」） */
+  const taskName = (task?.name ?? '').trim()
 
   const summary: StatisticSummaryItem[] = [
     {
@@ -318,7 +321,13 @@ export function toReportStatisticsData(input: {
       key: 'metrics',
       label: '评估指标',
       value: metricCount,
-      hint: averages ? `任务「${task?.name ?? ''}」评估指标` : averagesLoading ? '统计加载中…' : '暂无任务执行数据',
+      hint: averages
+        ? taskName
+          ? `任务「${taskName}」评估指标`
+          : '任务评估指标'
+        : averagesLoading
+          ? '统计加载中…'
+          : '暂无任务执行数据',
     },
     {
       key: 'devices',
@@ -355,6 +364,20 @@ export function toReportStatisticsData(input: {
   }
 }
 
+/**
+ * 统计上下文的候选任务报告（INT-1802）：task_id 有效且任务名非空。
+ * 任务被物理删除后其报告的 task_name 为空（报告读模型口径），用已删任务的 task_id 调
+ * POST /reports/case-averages 会 400「未找到指定任务」，导致评估指标 / 设备性能整卡空态、
+ * 控制台一条 SEVERE；故统计上下文只认任务名非空的最近任务报告。
+ */
+export function isStatisticsTaskCandidate(report: ReportListItem): boolean {
+  return (
+    typeof report.task_id === 'number' &&
+    report.task_id > 0 &&
+    (report.task_name ?? '').trim() !== ''
+  )
+}
+
 /** 统计基础数据（tab-counts + 报告列表；快表，先出页面） */
 async function loadStatisticsBase(): Promise<{
   counts: ReportCounts
@@ -375,7 +398,7 @@ async function loadStatisticsBase(): Promise<{
   const reports = list.items
   // case-averages 需要任务上下文：取最近一份任务报告关联的 task_id（报告统计语义：
   // 统计该报告任务下的用例平均值；对比/二次对比/benchmark 报告无 task_id → 评估维度空态）
-  const taskReport = reports.find((r) => typeof r.task_id === 'number' && r.task_id > 0)
+  const taskReport = reports.find(isStatisticsTaskCandidate)
   return { counts, reports, taskReport }
 }
 
