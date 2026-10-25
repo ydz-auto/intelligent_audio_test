@@ -1,24 +1,27 @@
 /**
- * INT-401 返工：CherryPickPanel 源结果溯源展开回归锁定（验收 P1-2）。
+ * INT-1834：挑选合并页签 picked 行展开 = 组成区树（规范 18 §3 落点③）。
  *
- * 回归：toggleSource 构造新 Set 后从未 add(taskId)，v-if="expanded.has(...)"
- * 永不成立 → 溯源数据已 load（后端 GET 已调用且返回 200）但 UI 永不展开。
- * 锁定「点击展开 → 来源分组 + 引用结果逐条可见（含缺失标注）→ 再点收起」
- * 双向交互，以及多卡同时展开互不覆盖。
+ * 锁定口径：
+ * - 行展开渲染 `ContainerTraceExpand` + 组成区树（任务视图默认），与容器详情同源；
+ * - 首次展开补 1 次 `GET /tasks/{id}`（+ 1 次 source 溯源），收起再展开不重复请求；
+ * - 多行展开互不覆盖，各自按 taskId 补拉一次。
  *
- * INT-577 升级适配：面板 props 由 cherryPick 更名为 containers（统一容器列表），
- * 溯源 DOM 由 merged-* 改 cpp-source-*（按合并方式自适应）。
+ * INT-401 / INT-552 时期的平铺「源结果溯源」已由本卡替换为组成区树；本文件同步改写为
+ * 组成树的展开 / 缓存回归（原文件名的 P1-2 展开回归语义保留：点开必须有内容、再点必须收起）。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
-const api = vi.hoisted(() => ({ getSource: vi.fn() }))
+const api = vi.hoisted(() => ({ getSource: vi.fn(), getOne: vi.fn() }))
 
-vi.mock('../../../infrastructure/api', () => ({
-  cherryPickApi: { getSource: api.getSource },
-  // INT-1110：向导链 PickCaseCard → TestCaseCard → useAlgorithmLabels 依赖算法标签
-  algorithmApi: { getOptions: vi.fn(async () => ({ algorithms: [] })) },
-}))
+vi.mock('../../../infrastructure/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../infrastructure/api')>()
+  return {
+    ...actual,
+    cherryPickApi: { ...actual.cherryPickApi, getSource: api.getSource },
+    tasksApi: { ...actual.tasksApi, getOne: api.getOne },
+  }
+})
 vi.mock('../../../components/task/TaskCard.vue', () => ({
   default: {
     name: 'TaskCard',
@@ -26,8 +29,7 @@ vi.mock('../../../components/task/TaskCard.vue', () => ({
     template: '<div class="task-card-stub"><div class="task-title">{{ task.name }}</div></div>',
   },
 }))
-// INT-1103：TestCaseCard 升级为全站统一组件后经 CherryPickWizard→PickTree 被间接引入；
-// 本测试只验面板溯源展开/收起，不验用例卡，卡组件以 stub 屏蔽其依赖链。
+// 组成区 → CartTree → PickCaseCard → TestCaseCard（会走算法标签 API），桩掉只保留树结构
 vi.mock('../../../components/common/test-case/TestCaseCard.vue', () => ({
   default: { template: '<div class="test-case-card-stub" />' },
 }))
@@ -56,8 +58,18 @@ vi.mock('vue-router', () => ({
 }))
 
 import CherryPickPanel from '../CherryPickPanel.vue'
+import { clearContainerCompositionCache } from '../../../composables/task/useContainerComposition'
 
-const CONTAINER = { id: 501, name: '容器501', status: 'completed', totalCases: 2, completedCases: 2 }
+const CONTAINER = {
+  id: 501,
+  name: '挑选合并容器501',
+  status: 'completed',
+  mergeType: 'picked',
+  sourceTaskCount: 1,
+  sourceResultCount: 2,
+  totalCases: 2,
+  completedCases: 1,
+}
 
 function makeProps(overrides: Record<string, any> = {}) {
   return {
@@ -84,10 +96,11 @@ function makeProps(overrides: Record<string, any> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  clearContainerCompositionCache()
   api.getSource.mockResolvedValue({
     taskId: 501,
     isCherryPick: true,
-    total: 1,
+    total: 2,
     groups: [{
       sourceTaskId: 10,
       sourceTaskName: '来源任务10',
@@ -97,51 +110,83 @@ beforeEach(() => {
       ],
     }],
   })
+  api.getOne.mockImplementation(async (id: number) => ({
+    id,
+    name: '挑选合并容器501',
+    status: 'completed',
+    cases: [
+      { caseId: 'C1', name: 'JS177 拒识用例', groupName: '拒识', tags: ['标签A'], executionStatus: 'completed', evaluationStatus: 'completed' },
+      { caseId: 'C2', name: 'JS062 拒识用例', groupName: '拒识', tags: ['标签A'], executionStatus: 'failed', evaluationStatus: 'completed' },
+    ],
+    devices: [{ id: 9, name: 'pura90小艺' }],
+    apis: [],
+  }))
 })
 
-describe('CherryPickPanel 源结果溯源展开（INT-401 P1-2 回归）', () => {
-  it('点击展开：来源任务分组 + 引用结果逐条展示（含缺失标注）', async () => {
+describe('CherryPickPanel picked 行展开 = 组成区树（INT-1834 落点③）', () => {
+  it('点击展开：渲染组成区树（任务层 + 计数），首次补拉 source + 详情各 1 次', async () => {
     const wrapper = mount(CherryPickPanel, { props: makeProps() })
     await flushPromises()
 
-    // 默认收起：仅标题条（chevron-down），无来源内容
+    // 默认收起：仅标题条，无展开内容
     expect(wrapper.find('.cpp-source-toggle').exists()).toBe(true)
-    expect(wrapper.find('.cpp-source-result').exists()).toBe(false)
-    expect(wrapper.find('.cpp-source-icon').classes()).toContain('fa-chevron-down')
+    expect(wrapper.find('.cpp-source-body').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="container-trace-expand"]').exists()).toBe(false)
 
-    // 点击「源结果溯源」→ 展开（P1-2 修复前 expanded 不含 taskId，内容永不出现）
     await wrapper.find('.cpp-source-toggle').trigger('click')
-    expect(api.getSource).toHaveBeenCalledWith(501)
     await flushPromises()
 
+    expect(api.getSource).toHaveBeenCalledWith(501)
+    expect(api.getOne).toHaveBeenCalledWith(501)
+    expect(api.getOne).toHaveBeenCalledTimes(1)
+
+    // 组成区树 + 计数（任务视图任务层首级）
+    expect(wrapper.find('[data-testid="container-trace-expand"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('组成')
+    expect(wrapper.text()).toContain('来源 1 个任务')
+    expect(wrapper.text()).toContain('结果 2 条')
     expect(wrapper.text()).toContain('来源任务10')
-    const results = wrapper.findAll('.cpp-source-result')
-    expect(results.length).toBe(2)
-    expect(wrapper.find('.missing-badge').text()).toContain('源结果已缺失')
-    // 展开态：chevron-up 提示可收起
-    expect(wrapper.find('.cpp-source-icon').classes()).toContain('fa-chevron-up')
+    // 平铺「源结果溯源」旧结构不再存在
+    expect(wrapper.find('.cpp-source-results').exists()).toBe(false)
   })
 
-  it('再点收起：来源内容消失，回到折叠态', async () => {
+  it('收起再展开：复用缓存，不再请求详情', async () => {
     const wrapper = mount(CherryPickPanel, { props: makeProps() })
     await flushPromises()
 
     await wrapper.find('.cpp-source-toggle').trigger('click')
     await flushPromises()
-    expect(wrapper.find('.cpp-source-result').exists()).toBe(true)
+    expect(api.getOne).toHaveBeenCalledTimes(1)
 
+    // 收起
     await wrapper.find('.cpp-source-toggle').trigger('click')
     await flushPromises()
-    expect(wrapper.find('.cpp-source-result').exists()).toBe(false)
-    expect(wrapper.find('.cpp-source-icon').classes()).toContain('fa-chevron-down')
+    expect(wrapper.find('.cpp-source-body').exists()).toBe(false)
+
+    // 再展开：缓存命中，零新请求
+    await wrapper.find('.cpp-source-toggle').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="container-trace-expand"]').exists()).toBe(true)
+    expect(api.getOne).toHaveBeenCalledTimes(1)
+    expect(api.getSource).toHaveBeenCalledTimes(1)
   })
 
-  it('多卡同时展开互不覆盖：第二张卡展开不丢第一张溯源数据', async () => {
+  it('多卡同时展开互不覆盖：每行各补拉 1 次，各自展示自己的来源任务', async () => {
+    api.getSource.mockImplementation(async (id: number) => ({
+      taskId: id,
+      isCherryPick: true,
+      total: 1,
+      groups: [{
+        sourceTaskId: Number(id) * 10,
+        sourceTaskName: `来源${id}`,
+        results: [{ id: id, resultId: id, sourceCaseId: 'C1', missing: false }],
+      }],
+    }))
     const wrapper = mount(CherryPickPanel, {
       props: makeProps({
         items: [
-          { id: 501, name: '容器501', status: 'completed', totalCases: 1, completedCases: 1 },
-          { id: 502, name: '容器502', status: 'completed', totalCases: 1, completedCases: 1 },
+          { ...CONTAINER, id: 501 },
+          { ...CONTAINER, id: 502, name: '挑选合并容器502' },
         ],
         total: 2,
         pages: 1,
@@ -152,25 +197,14 @@ describe('CherryPickPanel 源结果溯源展开（INT-401 P1-2 回归）', () =>
     const toggles = wrapper.findAll('.cpp-source-toggle')
     expect(toggles.length).toBe(2)
 
-    api.getSource.mockImplementation((id: number) => Promise.resolve({
-      taskId: id,
-      isCherryPick: true,
-      total: 1,
-      groups: [{
-        sourceTaskId: id,
-        sourceTaskName: `来源${id}`,
-        results: [{ id: 1, resultId: 1, sourceCaseId: 'C1', missing: false }],
-      }],
-    }))
-
     await toggles[0].trigger('click')
     await flushPromises()
-    await toggles[1].trigger('click')
+    await wrapper.findAll('.cpp-source-toggle')[1].trigger('click')
     await flushPromises()
 
-    // 两张卡各自展示自己的来源（INT-401 先前单一 sourceGroups 会被覆盖）
-    const wraps = wrapper.findAll('.cpp-card')
-    expect(wraps[0].text()).toContain('来源501')
-    expect(wraps[1].text()).toContain('来源502')
+    expect(api.getOne).toHaveBeenCalledTimes(2)
+    const cards = wrapper.findAll('.cpp-card')
+    expect(cards[0].text()).toContain('来源501')
+    expect(cards[1].text()).toContain('来源502')
   })
 })

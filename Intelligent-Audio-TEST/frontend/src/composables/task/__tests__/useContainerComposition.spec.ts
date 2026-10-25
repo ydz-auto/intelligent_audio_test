@@ -12,13 +12,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ref } from 'vue'
 import { flushPromises } from '@vue/test-utils'
 
-const mocks = vi.hoisted(() => ({ getSource: vi.fn() }))
+const mocks = vi.hoisted(() => ({ getSource: vi.fn(), getOne: vi.fn() }))
 
-vi.mock('@/infrastructure/api', () => ({
-  cherryPickApi: { getSource: mocks.getSource },
-}))
+vi.mock('@/infrastructure/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/infrastructure/api')>()
+  return {
+    ...actual,
+    cherryPickApi: { ...actual.cherryPickApi, getSource: mocks.getSource },
+    tasksApi: { ...actual.tasksApi, getOne: mocks.getOne },
+  }
+})
 
-import { useContainerComposition } from '../useContainerComposition'
+import {
+  clearContainerCompositionCache,
+  useContainerComposition,
+  useContainerTraceComposition,
+} from '../useContainerComposition'
 
 const sourcePayload = (overrides: Record<string, unknown> = {}) => ({
   taskId: 580,
@@ -41,6 +50,7 @@ const sourcePayload = (overrides: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  clearContainerCompositionCache()
 })
 
 describe('useContainerComposition 容器识别（INT-1832）', () => {
@@ -157,5 +167,125 @@ describe('useContainerComposition 容器识别（INT-1832）', () => {
 
     expect(state.sourceTaskCount.value).toBe(1)
     expect(state.sourceResultCount.value).toBe(1)
+  })
+})
+
+// ===== INT-1834 · 落点③ 行展开：组成模型 + 按 taskId 缓存（规范 18 §4.3） =====
+
+const detailPayload = (overrides: Record<string, unknown> = {}) => ({
+  id: 580,
+  name: '容器580',
+  status: 'completed',
+  cases: [
+    { caseId: 'C1', name: 'JS177 拒识用例', groupName: '拒识', tags: ['标签A'], executionStatus: 'completed', evaluationStatus: 'completed' },
+  ],
+  devices: [{ id: 9, name: 'pura90小艺' }],
+  apis: [],
+  ...overrides,
+})
+
+describe('useContainerTraceComposition 行展开补拉与缓存（INT-1834）', () => {
+  it('首次展开：source + 详情各 1 次，条目 join 用例名 / 设备名 / 分组 / 标签', async () => {
+    mocks.getSource.mockResolvedValue({
+      taskId: 580, isCherryPick: true, total: 1,
+      groups: [{ sourceTaskId: 419, sourceTaskName: '来源任务', results: [
+        { id: 5714, resultId: 5714, sourceCaseId: 'C1', sourceDeviceId: 9, missing: false },
+      ] }],
+    })
+    mocks.getOne.mockResolvedValue(detailPayload())
+
+    const state = useContainerTraceComposition(ref(580))
+    await flushPromises()
+
+    expect(mocks.getSource).toHaveBeenCalledWith(580)
+    expect(mocks.getOne).toHaveBeenCalledWith(580)
+    expect(state.error.value).toBe(false)
+    expect(state.loading.value).toBe(false)
+    const model = state.model.value
+    expect(model?.taskCount).toBe(1)
+    expect(model?.resultCount).toBe(1)
+    expect(model?.entries).toHaveLength(1)
+    expect(model?.entries[0].sourceCaseName).toBe('JS177 拒识用例')
+    expect(model?.entries[0].sourceDeviceName).toBe('pura90小艺')
+    expect(model?.entries[0].groupName).toBe('拒识')
+    expect(model?.entries[0].tags).toEqual(['标签A'])
+  })
+
+  it('收起再展开（新实例同 taskId）：命中缓存，零新请求', async () => {
+    mocks.getSource.mockResolvedValue({
+      taskId: 580, isCherryPick: true, total: 1,
+      groups: [{ sourceTaskId: 419, sourceTaskName: '来源任务', results: [{ id: 1, resultId: 1, sourceCaseId: 'C1' }] }],
+    })
+    mocks.getOne.mockResolvedValue(detailPayload())
+
+    useContainerTraceComposition(ref(580))
+    await flushPromises()
+    expect(mocks.getOne).toHaveBeenCalledTimes(1)
+
+    const again = useContainerTraceComposition(ref(580))
+    await flushPromises()
+
+    expect(mocks.getSource).toHaveBeenCalledTimes(1)
+    expect(mocks.getOne).toHaveBeenCalledTimes(1)
+    expect(again.model.value?.entries).toHaveLength(1)
+    expect(again.loading.value).toBe(false)
+  })
+
+  it('换行展开：不同 taskId 各补拉 1 次', async () => {
+    mocks.getSource.mockImplementation(async (id: number) => ({
+      taskId: id, isCherryPick: true, total: 1,
+      groups: [{ sourceTaskId: id, sourceTaskName: `来源${id}`, results: [{ id, resultId: id, sourceCaseId: 'C1' }] }],
+    }))
+    mocks.getOne.mockImplementation(async (id: number) => detailPayload({ id }))
+
+    useContainerTraceComposition(ref(580))
+    await flushPromises()
+    useContainerTraceComposition(ref(581))
+    await flushPromises()
+
+    expect(mocks.getOne).toHaveBeenCalledTimes(2)
+    expect(mocks.getOne).toHaveBeenNthCalledWith(1, 580)
+    expect(mocks.getOne).toHaveBeenNthCalledWith(2, 581)
+  })
+
+  it('补拉失败：error=true 且不写缓存；retry 重新请求成功后落缓存', async () => {
+    mocks.getSource.mockResolvedValue({
+      taskId: 580, isCherryPick: true, total: 1,
+      groups: [{ sourceTaskId: 419, sourceTaskName: '来源任务', results: [{ id: 1, resultId: 1, sourceCaseId: 'C1' }] }],
+    })
+    mocks.getOne
+      .mockRejectedValueOnce(new Error('500'))
+      .mockResolvedValueOnce(detailPayload())
+
+    const state = useContainerTraceComposition(ref(580))
+    await flushPromises()
+
+    expect(state.error.value).toBe(true)
+    expect(state.model.value).toBeNull()
+
+    await state.retry()
+    await flushPromises()
+
+    expect(mocks.getOne).toHaveBeenCalledTimes(2)
+    expect(state.error.value).toBe(false)
+    expect(state.model.value?.entries).toHaveLength(1)
+  })
+
+  it('同一 taskId 并发加载合并为一次请求', async () => {
+    let resolveSource: (v: unknown) => void = () => {}
+    mocks.getSource.mockImplementationOnce(() => new Promise((resolve) => { resolveSource = resolve }))
+    mocks.getOne.mockResolvedValue(detailPayload())
+
+    const a = useContainerTraceComposition(ref(580))
+    const b = useContainerTraceComposition(ref(580))
+    await flushPromises()
+
+    resolveSource({ taskId: 580, isCherryPick: true, total: 0, groups: [] })
+    await flushPromises()
+
+    expect(mocks.getSource).toHaveBeenCalledTimes(1)
+    expect(mocks.getOne).toHaveBeenCalledTimes(1)
+    expect(a.model.value).not.toBeNull()
+    expect(b.model.value).not.toBeNull()
   })
 })

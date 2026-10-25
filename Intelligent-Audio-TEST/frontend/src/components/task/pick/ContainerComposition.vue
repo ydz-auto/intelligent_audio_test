@@ -1,11 +1,16 @@
 <template>
-  <section id="composition" class="cc" aria-labelledby="composition-title">
+  <section
+    id="composition"
+    class="cc"
+    :class="{ 'cc--expand': variant === 'expand' }"
+    aria-labelledby="composition-title"
+  >
     <!-- 标题行：组成 + 只读 + 摘要（§8.2 线框） -->
     <header class="cc-header">
       <h4 id="composition-title" class="cc-title">组成</h4>
       <span class="cc-readonly-badge">只读</span>
       <span class="cc-desc">合并后任务的来源结果结构</span>
-      <div v-if="!loading" class="cc-summary">
+      <div v-if="showToolbar" class="cc-summary">
         <span class="cc-summary-chip">来源 {{ sourceTaskCount }} 个任务</span>
         <span class="cc-summary-chip">结果 {{ summary.total }} 条</span>
         <span v-if="summary.failed > 0" class="cc-summary-chip cc-summary-chip--danger">
@@ -17,8 +22,9 @@
       </div>
     </header>
 
-    <!-- 工具行：四视图 + 用例层组织 + 执行/评估筛选 + 全部展开/收起（§3.2/§4.2） -->
-    <div class="cc-toolbar">
+    <!-- 工具行：四视图 + 用例层组织 + 执行/评估筛选 + 全部展开/收起（§3.2/§4.2）。
+         加载中 / 补拉失败 / 无来源记录时只有骨架或空态，不渲染无数据的工具行（§7）。 -->
+    <div v-if="showToolbar" class="cc-toolbar">
       <ContainerViewSwitcher
         :view="view"
         aria-label="组成视图切换"
@@ -34,7 +40,7 @@
       />
     </div>
 
-    <div class="cc-toolbar cc-toolbar--filters">
+    <div v-if="showToolbar" class="cc-toolbar cc-toolbar--filters">
       <label class="cc-filter">
         <span class="cc-filter-label">执行状态</span>
         <select v-model="execFilter" class="cc-select">
@@ -59,7 +65,7 @@
     </div>
 
     <!-- §4.6 降级期提示：执行 / 评估任一降级即显示，字段落地后不再出现（会话内可关闭） -->
-    <div v-if="degraded && !degradedDismissed" class="cc-hint" role="note">
+    <div v-if="showToolbar && degraded && !degradedDismissed" class="cc-hint" role="note">
       <i class="fas fa-circle-info"></i>
       <span>结果级执行 / 评估状态待后端补字段，当前按用例状态显示</span>
       <div
@@ -168,10 +174,16 @@ const props = withDefaults(defineProps<{
   error?: boolean;
   /** 来源任务数（source.groups.length；0 = 关系行缺失异常态 → 无来源记录空态） */
   sourceTaskCount?: number;
+  /**
+   * 呈现形态：`detail` = 容器详情首屏主区（卡片）；`expand` = 挑选合并页签行展开
+   * （落点③，无卡片外框，树区滚动上限 420px，§8.4）。
+   */
+  variant?: 'detail' | 'expand';
 }>(), {
   loading: false,
   error: false,
   sourceTaskCount: 0,
+  variant: 'detail',
 });
 
 const emit = defineEmits<{
@@ -223,6 +235,11 @@ const degraded = computed(() => isCompositionDegraded(props.entries));
 
 const filtersActive = computed(
   () => execFilter.value !== 'all' || evalFilter.value !== 'all',
+);
+
+/** 工具行 / 摘要徽章只在有数据可操作时出现：加载中 → 骨架；补拉失败 / 无来源记录 → 空态（§7） */
+const showToolbar = computed(
+  () => !props.loading && !props.error && props.sourceTaskCount > 0,
 );
 
 /** 四视图树（同源 P0 builder）→ 纯客户端筛选（祖先保留、计数重算） */
@@ -472,5 +489,23 @@ function resetFilters() {
   max-height: 560px;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+/* 落点③（挑选合并页签行展开，§8.3/§8.4）：外层已由展开区承载卡片背景，这里只保留内容；
+   展开区整体高度上限 420px 内滚动（单一滚动容器，树区不再单独滚动），行本体不撑破列表。 */
+.cc--expand {
+  margin-top: 0;
+  padding: 0;
+  max-height: 420px;
+  overflow-y: auto;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.cc--expand .cc-tree {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
 }
 </style>
