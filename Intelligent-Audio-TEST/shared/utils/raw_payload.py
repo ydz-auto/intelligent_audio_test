@@ -33,6 +33,8 @@ RAW_CATEGORY = 'case_result'
 RAW_CONTENT_TYPE = 'application/json+gzip'
 RAW_GZIP_COMPRESS_LEVEL = 9
 
+# 存储 key 的首段（导出包里落在 files/ 下即 `files/raw/...`）
+RAW_KEY_ROOT = 'raw'
 RAW_KEY_SUFFIX = '.json.gz'
 
 
@@ -92,7 +94,7 @@ def object_key(kind: str, sha: str) -> str:
     sha = str(sha or '').strip().lower()
     if len(sha) != 64:
         raise ValueError(f'非法 sha256: {sha!r}')
-    return f'raw/{kind}/{sha[:2]}/{sha}{RAW_KEY_SUFFIX}'
+    return f'{RAW_KEY_ROOT}/{kind}/{sha[:2]}/{sha}{RAW_KEY_SUFFIX}'
 
 
 def compress(raw: bytes) -> bytes:
@@ -107,7 +109,7 @@ def decompress(data: bytes) -> bytes:
 def parse_object_key(key: str) -> Optional[tuple]:
     """解析内容寻址 key → (kind, sha)；不是 raw 对象 key 时返回 None。"""
     segments = str(key or '').split('/')
-    if len(segments) != 4 or segments[0] != 'raw':
+    if len(segments) != 4 or segments[0] != RAW_KEY_ROOT:
         return None
     kind, fanout, filename = segments[1], segments[2], segments[3]
     if kind not in (RAW_KIND_RESPONSE, RAW_KIND_REQUEST):

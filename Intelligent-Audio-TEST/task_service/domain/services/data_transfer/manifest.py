@@ -4,12 +4,14 @@ import socket
 from datetime import datetime
 from typing import Dict, List, Optional
 
+# ManifestVersion 供合入 V9.7.31 后的报告包 manifest（INT-1764/D6）使用，解冲突时勿删。
 from shared.constants.data_transfer import (
     DEFAULT_INCLUDE_AUDIOS,
     DEFAULT_INCLUDE_REF_PARAMS,
+    SUPPORTED_MANIFEST_VERSIONS,
+    ManifestVersion,
     FULL_MANIFEST_VERSION,
     RAW_OBJECTS_MANIFEST_KEY,
-    SUPPORTED_MANIFEST_VERSIONS,
 )
 
 

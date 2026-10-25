@@ -24,7 +24,7 @@ os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
 from shared.constants.data_transfer import (  # noqa: E402
-    FILES_RAW_OBJECTS_DIR,
+    FILES_DIR,
     ManifestVersion,
     TransferTable,
     manifest_requires_raw_objects,
@@ -32,6 +32,7 @@ from shared.constants.data_transfer import (  # noqa: E402
 from shared.infrastructure.storage import StorageUnavailableError  # noqa: E402
 from shared.utils.raw_payload import (  # noqa: E402
     RAW_CATEGORY,
+    RAW_KEY_ROOT,
     RAW_CONTENT_TYPE,
     RAW_PAYLOAD_SPECS,
     canonical_bytes,
@@ -296,7 +297,7 @@ def test_full_export_packages_each_raw_object_once(export_module, monkeypatch, s
     with zipfile.ZipFile(result['data']['zip_path']) as zf:
         names = set(zf.namelist())
         manifest = json.loads(zf.read('manifest.json').decode('utf-8'))
-        raw_entries = sorted(name for name in names if name.startswith(FILES_RAW_OBJECTS_DIR + '/'))
+        raw_entries = sorted(name for name in names if name.startswith(f'{FILES_DIR}/{RAW_KEY_ROOT}/'))
         blobs = {name: zf.read(name) for name in raw_entries}
         db_rows = json.loads(zf.read('db/test_result_dimensions.json').decode('utf-8'))
 
@@ -352,7 +353,8 @@ def test_incremental_export_packages_raw_objects_and_bumps_version(
     assert f'files/{object_key("resp", resp_sha)}' in names
     # 增量包仍不搬结果 / 音频文件
     assert not [name for name in names
-                if name.startswith('files/') and not name.startswith(FILES_RAW_OBJECTS_DIR)]
+                if name.startswith(f'{FILES_DIR}/')
+                and not name.startswith(f'{FILES_DIR}/{RAW_KEY_ROOT}/')]
 
 
 # ---------- 导入侧 ----------

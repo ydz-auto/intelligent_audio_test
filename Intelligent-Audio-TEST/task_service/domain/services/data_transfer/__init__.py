@@ -28,7 +28,6 @@ from task_service.domain.services.data_transfer.raw_objects import (
     RawObjectRef,
     collect_raw_object_refs,
     raw_pointer_columns,
-    storage_key_of,
     strip_raw_pointer_columns,
 )
 from task_service.domain.services.data_transfer.source_map import (
@@ -56,7 +55,6 @@ __all__ = [
     'raw_pointer_columns',
     'collect_raw_object_refs',
     'rewrite_fk_rows',
-    'storage_key_of',
     'strip_raw_pointer_columns',
     'translate_dimension_rows',
     'translate_report_tables',

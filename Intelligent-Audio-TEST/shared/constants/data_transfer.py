@@ -264,12 +264,11 @@ DIMENSIONS_SNAPSHOT_PATH = 'meta/dimensions.json'
 FILES_CASE_RESULTS_DIR = 'files/case_results'   # 前缀为导出时 task_id 的相对路径
 FILES_REF_PARAMS_DIR = 'files/ref_params'       # {test_case_id}/round_{n}.json
 FILES_AUDIOS_DIR = 'files/audios'               # 与 storage audios 类别同 key
-# 原始报文对象（INT-1811）：包内路径 = `files/` + 存储 key，
-# 即 `files/raw/{resp|req}/{sha[:2]}/{sha}.json.gz`（常量等于 files/ 前缀 +
-# 存储 key 首段 raw/）。内容寻址 → 同对象天然只出现一次；
+# 原始报文对象（INT-1811）：包内路径 = `FILES_DIR` + 存储 key（key 首段
+# `shared.utils.raw_payload.RAW_KEY_ROOT`），即
+# `files/raw/{resp|req}/{sha[:2]}/{sha}.json.gz`。内容寻址 → 同对象天然只出现一次；
 # 导入侧按 key 原样回写（免 id 重映射）。
 FILES_DIR = 'files'
-FILES_RAW_OBJECTS_DIR = 'files/raw'
 # manifest 里的对象清单段（与包内 files/raw/ 条目一一对应）
 RAW_OBJECTS_MANIFEST_KEY = 'rawObjects'
 

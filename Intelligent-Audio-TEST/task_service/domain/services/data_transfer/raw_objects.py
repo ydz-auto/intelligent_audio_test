@@ -15,13 +15,11 @@
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from shared.utils.data_transfer import parse_storage_path
 from shared.utils.raw_payload import (
     RAW_CONTENT_TYPE,
     RAW_PAYLOAD_SPECS,
     RawPayloadSpec,
     object_key,
-    parse_object_key,
     sha_from_uri,
 )
 
@@ -33,12 +31,6 @@ class RawObjectRef:
     sha256: str
     key: str          # 存储 key = 包内相对路径（相对 files/raw/）
     uri: str          # 源端存储路径（导出时按它读对象）
-
-
-def storage_key_of(uri: str) -> Optional[str]:
-    """存储路径 → key；不是 `raw/...` 内容寻址对象时返回 None。"""
-    _category, key = parse_storage_path(uri or '')
-    return key if parse_object_key(key) else None
 
 
 def row_object_key(row: dict, spec: RawPayloadSpec) -> Tuple[Optional[str], Optional[str]]:
