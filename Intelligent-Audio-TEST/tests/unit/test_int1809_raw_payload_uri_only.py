@@ -5,7 +5,9 @@
 1. **组级一次上传**：一组 N 行同一份 resp/req 只上传一次；逐轮值按**值**去重
    （上传次数 = 不同值数，不是行数）——否则线上写操作被放大 6 倍以上；
 2. **uri-only 落库**：五列（uri/sha256/bytes/content_type/created_at）非空、
-   JSON 两列一律 NULL（C2 起没有代码再写它们，为 M1 DROP 扫清障碍）；
+   JSON 两列一律 **SQL NULL**（`IS NULL` 为真、`json_typeof` 为 NULL；C2 起没有
+   代码再写它们，为 M1 DROP 扫清障碍）。判空必须走 SQL 判据：ORM 读回时 JSON
+   字面量 `null` 与 SQL NULL 都是 Python None，判不出区别（INT-1809 返工 P1）；
 3. **内容等价**：对象解压后与评估时 payload deep-equal，sha256 对规范化字节校验通过；
 4. **先对象后库 / 失败方向**：对象写失败（存储不可用 / 拿到 local://）→ 整组不落库、
    不写 uri、不留 local:// 假指针；
@@ -129,7 +131,8 @@ def trd_db(monkeypatch, objects):
     # 不连真实 gRPC（task_service）：TestResult 读取直接返回 None（只需要 api_id/device_id 为空）
     monkeypatch.setattr(grm_mod, 'task_acl_repository',
                         SimpleNamespace(get_test_result_by_id=lambda rid: None))
-    return SimpleNamespace(factory=factory, store=store, objects=objects)
+    return SimpleNamespace(factory=factory, store=store, objects=objects,
+                           engine=engine)
 
 
 class _Host(GroupResultMixin, DimensionResultMixin, ParseDimensionMixin):
@@ -178,6 +181,31 @@ def _row(factory, trd_id):
                 'api_request_body_content_type', 'api_request_body_created_at')})
     finally:
         session.close()
+
+
+def _sql_payload_state(trd_db, trd_id):
+    """SQL 级判空：两个 JSON 列是 SQL NULL 还是 JSON 字面量 ``null``。
+
+    返回 ``{列名: (is_null, json_type)}``。只有 ``is_null is True`` / ``json_type is
+    None`` 才是真 SQL NULL——ORM 读回时两者都是 Python None，判不出区别，
+    而 C1 切换门禁用的是 SQL 判据（``IS NOT NULL``）。
+    """
+    from sqlalchemy import text
+    engine = trd_db.engine
+    fn = 'json_type' if engine.dialect.name == 'sqlite' else 'json_typeof'
+    columns = ('api_raw_response', 'api_request_body')
+    sql = ('SELECT ' + ', '.join(f'{c} IS NULL, {fn}({c})' for c in columns)
+           + ' FROM test_result_dimensions WHERE id = :id')
+    with engine.connect() as conn:
+        row = conn.execute(text(sql), {'id': trd_id}).one()
+    return {c: (bool(row[i * 2]), row[i * 2 + 1]) for i, c in enumerate(columns)}
+
+
+def _assert_sql_null(trd_db, trd_id):
+    state = _sql_payload_state(trd_db, trd_id)
+    for column, (is_null, json_type) in state.items():
+        assert is_null is True, f'{column} 不是 SQL NULL: {state}'
+        assert json_type is None, f'{column} 是 JSON 字面量 {json_type!r}: {state}'
 
 
 def _run_group(host, trd_db, group_items, resp_data, per_round=None, req=None):
@@ -229,7 +257,7 @@ class TestGroupLevelWrite:
             session.close()
 
     def test_rows_are_uri_only(self, trd_db):
-        """整体行：五列指针全非空，JSON 两列 NULL。"""
+        """整体行：五列指针全非空，JSON 两列 **SQL NULL**（不是 JSON 字面量 null）。"""
         trd_id = _insert_trd(trd_db.factory, dimension_id=1, round_number=None,
                              evaluation_status='pending')
         host = _Host()
@@ -237,6 +265,7 @@ class TestGroupLevelWrite:
 
         row = _row(trd_db.factory, trd_id)
         assert row.api_raw_response is None and row.api_request_body is None
+        _assert_sql_null(trd_db, trd_id)
         for prefix in ('api_raw_response', 'api_request_body'):
             assert getattr(row, f'{prefix}_uri').startswith('oss://case_result/raw/')
             assert len(getattr(row, f'{prefix}_sha256')) == 64
@@ -288,6 +317,94 @@ class TestGroupLevelWrite:
         key = object_key(KIND_RESPONSE, row.api_raw_response_sha256)
         assert trd_db.objects.objects[key] == compress(canonical_bytes(resp))
         assert row.api_raw_response_bytes == len(trd_db.objects.objects[key])
+
+
+# ==================== 1b. 置空必须落 SQL NULL（返工 P1） ====================
+
+class TestNullWritesAreSqlNull:
+    """``Column(JSON)`` 默认 ``none_as_null=False`` 会把 None 落成 JSON 字面量
+    ``null``——``IS NOT NULL`` 为真，C1 切换门禁（内联非空而 uri 为空）会把
+    「本来没有报文」的行误判成悬空指针。下面三条是 C2 自己会产生置空的三类写点，
+    必须都在 SQL 级判空（ORM 读回判 None 区分不出来）。"""
+
+    def test_apply_pointer_none_clears_to_sql_null(self, trd_db):
+        """正常写路径：已有内联 JSON 的行被置空 → 五列 + JSON 两列全 SQL NULL。"""
+        from evaluation_service.infrastructure.persistence.orm_models import (
+            TestResultDimension,
+        )
+        # 历史行（切换前写法）：内联 JSON 有值，这样「置空」才真的产生一次 JSON 列 UPDATE
+        trd_id = _insert_trd(trd_db.factory, dimension_id=1, round_number=None,
+                             evaluation_status='completed',
+                             api_raw_response={'legacy': 'inline'},
+                             api_request_body={'legacy': 'inline'})
+        pointer = trd_db.store.store(KIND_RESPONSE, {'a': 1})
+        session = trd_db.factory()
+        try:
+            po = session.get(TestResultDimension, trd_id)
+            apply_pointer(po, KIND_RESPONSE, pointer)
+            session.commit()
+        finally:
+            session.close()
+
+        # 重评清指针（apply_pointer(..., None)）：JSON 列与五列一起置空
+        session = trd_db.factory()
+        try:
+            po = session.get(TestResultDimension, trd_id)
+            apply_pointer(po, KIND_RESPONSE, None)
+            apply_pointer(po, KIND_REQUEST, None)
+            session.commit()
+            assert po.api_raw_response_uri is None
+        finally:
+            session.close()
+
+        _assert_sql_null(trd_db, trd_id)
+
+    def test_group_failed_path_clears_to_sql_null(self, trd_db):
+        """失败行路径（不带报文）→ 置空落 SQL NULL，门禁仍为 0/0。"""
+        trd_id = _insert_trd(trd_db.factory, dimension_id=1, round_number=None,
+                             evaluation_status='completed',
+                             api_raw_response={'legacy': 'inline'},
+                             api_request_body={'legacy': 'inline'})
+
+        _Host().update_all_dimensions_in_group_failed(
+            group_items=[(_dim(1), trd_id)], error_message='厂商接口超时',
+            task_id=1, test_case_id='C-1')
+
+        row = _row(trd_db.factory, trd_id)
+        assert row.evaluation_status == 'failed'
+        assert row.api_raw_response_uri is None
+        _assert_sql_null(trd_db, trd_id)
+
+    def test_reset_score_to_pending_is_sql_null(self, trd_db):
+        """重评重置（Core update）→ 两个 JSON 列落 SQL NULL，指针列一并清空。"""
+        from evaluation_service.infrastructure.persistence.orm_models import (
+            TestResultDimension,
+        )
+        # 模拟切换前的历史行：内联 JSON 有值 + 指针也有值（apply_pointer 会清 JSON，
+        # 所以指纹直接赋在行上，保持「两列都非空」的前置）
+        trd_id = _insert_trd(trd_db.factory, dimension_id=1, round_number=None,
+                             evaluation_status='completed', score=88.0,
+                             api_raw_response={'legacy': 'inline'},
+                             api_request_body={'legacy': 'inline'})
+        session = trd_db.factory()
+        try:
+            po = session.get(TestResultDimension, trd_id)
+            po.api_raw_response_uri = 'oss://case_result/raw/resp/aa/aa.json.gz'
+            po.api_request_body_uri = 'oss://case_result/raw/req/bb/bb.json.gz'
+            session.commit()
+        finally:
+            session.close()
+        # 前置：两个 JSON 列确实非空（否则本用例证明不了「置空」）
+        before = _sql_payload_state(trd_db, trd_id)
+        assert before['api_raw_response'] == (False, 'object'), before
+        assert before['api_request_body'] == (False, 'object'), before
+
+        repo_mod.evaluation_dimension_repository.reset_score_to_pending(trd_id)
+
+        row = _row(trd_db.factory, trd_id)
+        assert row.evaluation_status == 'pending' and row.score is None
+        assert row.api_raw_response_uri is None
+        _assert_sql_null(trd_db, trd_id)
 
 
 # ==================== 2. 失败方向 ====================
