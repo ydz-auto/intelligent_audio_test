@@ -13,10 +13,15 @@ from shared.utils.api_output_extractor import (
     META_FALLBACK_KEYS,
     SOURCE_DECLARED,
     SOURCE_META_FALLBACK,
+    build_eval_output,
     extract_api_output_fields,
     get_api_output_field_defs,
+    get_output_transform_types,
 )
 from shared.utils.audio_path_utils import resolve_audio_local_path
+from api_test_service.domain.services.eval_output_transform_service import (
+    EvalOutputTransformService,
+)
 from api_test_service.infrastructure.acl import AlgorithmQueryAclRepositoryImpl
 from shared.utils.config_manager import config_manager
 
@@ -506,4 +511,25 @@ class APITaskRunner:
             algo_results = dict(values)
 
         latency = final_result_result['latency']
-        return algo_results, latency
+        # 评估映射（INT-1746 / C1，C0 裁定 1）：单轮与多轮/Realtime 共用同一
+        # 映射入口——把 param_code 键换成 param_mappings 的 target_param，
+        # 与 rounds[i].output 同构；零映射按全等兜底（键不变）。
+        # transform_type（INT-1749）：映射后的 target_param 值在落轮次 output
+        # 之前批量变换一次（评估侧不再变换）；单轮结果无轮次时同样落
+        # rounds[0].output，故变换点放在本入口。
+        eval_output = build_eval_output(
+            field_mappings, algo_results,
+            log=lambda level, msg: self._log_eval_output(level, msg, task_id))
+        return EvalOutputTransformService.apply(
+            eval_output, get_output_transform_types(field_mappings),
+            _algo_acl), latency
+
+    def _log_eval_output(self, level, message, task_id=None):
+        """评估映射兜底日志：走执行器 _log（任务日志可见），替身无执行器时退模块日志。"""
+        executor = getattr(self, '_executor', None)
+        log_fn = getattr(executor, '_log', None)
+        if callable(log_fn):
+            log_fn(level, message, task_id=task_id)
+        else:
+            _logger.log(logging.getLevelName(level) if isinstance(level, str)
+                        else level, message)

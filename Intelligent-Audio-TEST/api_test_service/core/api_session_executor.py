@@ -9,7 +9,9 @@ from datetime import timezone, timedelta
 from shared.utils.dto_utils import dto_to_dict
 from shared.utils.api_output_extractor import (
     SOURCE_META_FALLBACK,
+    build_eval_output,
     extract_api_output_fields,
+    get_output_transform_types,
 )
 from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
 from shared.utils.query_utils import now_cst
@@ -18,6 +20,9 @@ from shared.utils.api_key_provider import resolver_from_config
 from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.domain.entities.api import resolve_audio_sample_rate
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
+from api_test_service.domain.services.eval_output_transform_service import (
+    EvalOutputTransformService,
+)
 from api_test_service.infrastructure.acl import (
     TaskDataAclRepositoryImpl,
     AudioConfigAclRepositoryImpl,
@@ -216,7 +221,9 @@ class APISessionExecutor:
 
             if round_result and not round_result.get('error'):
                 input_text = round_result.get('input', '')
-                output_text = round_result.get('output', '')
+                # 会话上下文/历史消费的是轮次规范文本（INT-1746：output 已是
+                # 映射后的 dict，不能再当文本拼接）
+                output_text = round_result.get('answer_text', '')
                 session.add_history(round_number, input_text, output_text)
                 session.add_round_result(round_result)
                 round_results.append(round_result)
@@ -434,18 +441,21 @@ class APISessionExecutor:
         except http_requests.Timeout:
             latency = time.time() - start_time
             self._log('WARNING', f"Round {round_number} timeout ({session.session_timeout}s)", task_id=task_id)
-            return {'round_number': round_number, 'input': input_text, 'output': '',
+            return {'round_number': round_number, 'input': input_text,
+                    'answer_text': '', 'output': {},
                     'latency': round(latency, 3), 'error': 'timeout', 'success': False}
         except Exception as e:
             # gRPC deadline 超时同样归类为 timeout（adapter 路径）
             if type(e).__name__ == 'DeadlineExceeded' or 'DEADLINE_EXCEEDED' in str(e):
                 latency = time.time() - start_time
                 self._log('WARNING', f"Round {round_number} timeout ({session.session_timeout}s)", task_id=task_id)
-                return {'round_number': round_number, 'input': input_text, 'output': '',
+                return {'round_number': round_number, 'input': input_text,
+                        'answer_text': '', 'output': {},
                         'latency': round(latency, 3), 'error': 'timeout', 'success': False}
             latency = time.time() - start_time
             self._log('ERROR', f"Round {round_number} failed: {e}", task_id=task_id)
-            return {'round_number': round_number, 'input': input_text, 'output': '',
+            return {'round_number': round_number, 'input': input_text,
+                    'answer_text': '', 'output': {},
                     'latency': round(latency, 3), 'error': str(e), 'success': False}
 
     def _send_via_adapter(self, task_id, algorithm_type, session, round_number, total_rounds,
@@ -524,7 +534,9 @@ class APISessionExecutor:
         success = execute_result.get('success', True)
         round_result = {
             'round_number': round_number, 'input': input_text, 'input_type': input_type,
-            'output': output_text,
+            # INT-1746：轮次规范文本输出落 answer_text（轮次元字段），
+            # output 由 _attach_api_output_fields 写映射后的 dict
+            'answer_text': output_text,
             'output_audio_path': (execute_result.get('raw_response') or {})
                 .get('output_audio_path'),
             'latency': round(latency, 3),
@@ -567,14 +579,14 @@ class APISessionExecutor:
 
         return {
             'round_number': round_number, 'input': input_text, 'input_type': input_type,
-            'output': output_text, 'latency': round(latency, 3),
+            'answer_text': output_text, 'latency': round(latency, 3),
             'success': True, 'raw_response': task_result
         }
 
     def _attach_api_output_fields(self, round_result, field_mappings,
                                   algorithm_type, task_id,
                                   unwrap_execute_result=False):
-        """轮次输出字段提取（INT-1747 / C2，C0 §9.2 §9.3）。
+        """轮次输出字段提取 + 评估映射（INT-1747 / C2 提取，INT-1746 / C1 映射）。
 
         与单轮 ``api_task_runner.extract_final_result``、Realtime
         ``_collect_eval_fields`` 共用 ``shared.utils.api_output_extractor``：
@@ -582,11 +594,16 @@ class APISessionExecutor:
         在厂商原始响应上按路径取值；零声明时才按 meta 解析器已产出的
         ``asr`` / ``trans`` / ``output`` 逐键兜底。
 
-        提取结果以 ``param_code`` 为键写入 ``round_result['output_fields']``；
-        C1（INT-1746）在同一入口上做 ``target_param`` 映射并落
-        ``rounds[i].output``。适配器路径的 ``raw_response`` 是 execute 结果
-        （``json`` 才是厂商响应，``unwrap_execute_result=True``）；直连路径
-        的 ``raw_response`` 即厂商响应。
+        产出两处（C0 裁定 1/2）：
+
+        - ``round_result['output']``：按 ``param_mappings`` 映射后的
+          ``{target_param: value}``——评估侧唯一取值入口；
+        - ``round_result['output_fields']``：映射前的 ``{param_code: value}``，
+          仅供排障/证据，评估侧不读。
+
+        适配器路径的 ``raw_response`` 是 execute 结果（``json`` 才是厂商响应，
+        ``unwrap_execute_result=True``）；直连路径的 ``raw_response`` 即厂商
+        响应。
         """
         raw = round_result.get('raw_response') if isinstance(round_result, dict) else None
         if unwrap_execute_result and isinstance(raw, dict):
@@ -596,7 +613,8 @@ class APISessionExecutor:
             vendor_response = raw
             fallback_values = raw if isinstance(raw, dict) else {}
         values, source = extract_api_output_fields(
-            field_mappings, vendor_response, fallback_values=fallback_values)
+            field_mappings, vendor_response, fallback_values=fallback_values,
+            text_output=round_result.get('answer_text'))
         if source == SOURCE_META_FALLBACK:
             self._log('WARNING',
                       f"算法类型 {algorithm_type} 无 API 输出声明，"
@@ -606,6 +624,23 @@ class APISessionExecutor:
                      if value not in (None, '')}
         if extracted:
             round_result['output_fields'] = extracted
+        # transform_type（INT-1749）：映射后的 target_param 值写进
+        # rounds[i].output 之前批量变换一次，评估侧不再变换（C0 裁定 1）。
+        round_result['output'] = EvalOutputTransformService.apply(
+            build_eval_output(
+                field_mappings, extracted,
+                log=lambda level, msg: self._log_eval_output(level, msg, task_id)),
+            get_output_transform_types(field_mappings), _algo_acl)
+
+    def _log_eval_output(self, level, message, task_id=None):
+        """评估映射兜底日志：走执行器 _log（任务日志可见），替身无执行器时退模块日志。"""
+        executor = getattr(self, '_executor', None)
+        log_fn = getattr(executor, '_log', None)
+        if callable(log_fn):
+            log_fn(level, message, task_id=task_id)
+        else:
+            logger.log(logging.getLevelName(level) if isinstance(level, str)
+                       else level, message)
 
     def _aggregate_round_results(self, round_results, session, api_config=None,
                                  task_id=None):
@@ -614,7 +649,21 @@ class APISessionExecutor:
         success_count = sum(1 for r in round_results if r.get('success', False))
         total_count = len(round_results)
 
-        all_outputs = [r.get('output', '') for r in round_results if r.get('output')]
+        # INT-1746：rounds[i].output 统一为映射后的 dict（与 E2E 链同构），
+        # 文本输出落轮次同级 answer_text；text_output 由各轮 answer_text 派生
+        # （不再对 output 做字符串拼接——output 已是 dict）。
+        for r in round_results:
+            if not isinstance(r, dict):
+                continue
+            answer_text = r.get('answer_text')
+            if answer_text is None:
+                legacy = r.get('output')
+                answer_text = legacy if isinstance(legacy, str) else ''
+                r['answer_text'] = answer_text
+            if not isinstance(r.get('output'), dict):
+                r['output'] = {}
+        all_outputs = [r.get('answer_text', '') for r in round_results
+                       if isinstance(r, dict) and r.get('answer_text')]
         combined_output = ' '.join(all_outputs)
 
         algorithm_result = {
