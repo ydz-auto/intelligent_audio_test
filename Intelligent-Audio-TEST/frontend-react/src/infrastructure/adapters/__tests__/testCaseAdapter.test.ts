@@ -5,11 +5,10 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import type { CaseResultForReview } from '@/domain/models/review'
+import type { CaseResultDimension, CaseResultForReview } from '@/domain/models/review'
 import {
   caseDetailFromDto,
   testCaseListItemFromDto,
-  testCasePreviewFromDto,
 } from '@/infrastructure/adapters/testCaseAdapter'
 import type { CaseDetailDto, TestCaseListItemDto } from '@/infrastructure/dto/testcase.dto'
 
@@ -180,8 +179,9 @@ describe('caseDetailFromDto', () => {
       executionStatus: null,
       metrics: [],
     })
-    expect(detail.metricColumns).toEqual([])
-    expect(detail.multiRound).toBe(false)
+    expect(detail.roundTabs).toEqual([
+      { key: 'all', label: '指标', round: null, kind: 'all', rows: [] },
+    ])
   })
 
   /**
@@ -270,14 +270,20 @@ describe('caseDetailFromDto', () => {
       expect(detail.devices[0].resultId).toBe(3967)
     })
 
-    it('维度列按 metric_configs 顺序展开（@round:{rn+1} 在前、@overall 在后）', () => {
+    it('轮次 Tab：第1轮 + 整体（整体有评估值才出），不是 @round 后缀宽表', () => {
       const detail = caseDetailFromDto(detailDto, results)
-      expect(detail.multiRound).toBe(true)
-      expect(detail.metricColumns.map((c) => c.key)).toEqual([
-        '逐轮话轮评估@round:1',
-        '逐轮话轮评估@overall',
-        '接管率占比@round:1',
-        '接管率占比@overall',
+      expect(detail.roundTabs.map((t) => [t.key, t.label, t.kind])).toEqual([
+        ['round:1', '第1轮', 'round'],
+        ['overall', '整体', 'overall'],
+      ])
+      // 行=指标（metric_configs 顺序）、列=设备：单轮用例每个 Tab 只有 6 维度里的有值维度行
+      expect(detail.roundTabs[0].rows).toEqual([
+        { dimension: '逐轮话轮评估', values: { pura90小艺: '—' } },
+        { dimension: '接管率占比', values: { pura90小艺: '1' } },
+      ])
+      expect(detail.roundTabs[1].rows).toEqual([
+        { dimension: '逐轮话轮评估', values: { pura90小艺: '—' } },
+        { dimension: '接管率占比', values: { pura90小艺: '1' } },
       ])
       expect(detail.devices[0].metrics).toEqual(
         expect.arrayContaining([
@@ -288,18 +294,42 @@ describe('caseDetailFromDto', () => {
       )
     })
 
-    it('结果音频：algorithm_results 的 audio_file 项转可试听音频（path 供 stream-by-path）', () => {
+    it('无结果行（未完成/秒败）→ 单个「指标」Tab、无结果音频', () => {
+      const detail = caseDetailFromDto(
+        { ...detailDto, algorithm_results: [], audio_list: [] },
+        []
+      )
+      expect(detail.devices.map((d) => d.deviceName)).toEqual(['pura90小艺'])
+      expect(detail.devices[0].executionStatus).toBeNull()
+      expect(detail.roundTabs.map((t) => [t.key, t.rows])).toEqual([['all', []]])
+      expect(detail.resultAudios).toEqual([])
+      expect(detail.resultAudioFields).toEqual([])
+      expect(detail.results).toEqual([])
+    })
+
+    it('结果音频：result_audios 单独成块（按设备分组、无轮次）；audio_file 字段单独成集（带轮次）', () => {
       const detail = caseDetailFromDto(detailDto, results)
-      expect(detail.resultAudios).toEqual([
+      // 本用例 result_audios 为空 → 「结果音频」块无内容
+      expect(detail.resultAudios).toEqual([])
+      // algorithm_results 的 audio_file 项是「执行结果字段」：label 去 @round 内部后缀、带 1 起轮次
+      expect(detail.resultAudioFields).toEqual([
         {
-          audioName: 'user_wav (第1轮)',
-          deviceName: null,
+          paramCode: 'user_wav@round:1',
+          label: 'user_wav',
+          round: 1,
+          overall: false,
+          dimensionName: null,
+          deviceName: 'pura90小艺',
           url: null,
           path: 'case_pcm/402/xxx/r0_in.wav',
         },
         {
-          audioName: 'ai_wav (第1轮)',
-          deviceName: null,
+          paramCode: 'ai_wav@round:1',
+          label: 'ai_wav',
+          round: 1,
+          overall: false,
+          dimensionName: null,
+          deviceName: 'pura90小艺',
           url: null,
           path: 'case_pcm/402/xxx/r0_out.wav',
         },
@@ -309,60 +339,211 @@ describe('caseDetailFromDto', () => {
           audioName: 'JG0006_输入.wav',
           deviceName: null,
           audioId: 1622,
+          round: null,
           url: '/api/v1/audios/1622/stream',
           path: null,
         },
       ])
     })
 
-    it('无结果行（未完成/秒败）→ 设备名保留、无维度列、无结果音频', () => {
+    it('result_audios：设备键还原可读设备名；行名 filename → param_code → 「音频N」', () => {
       const detail = caseDetailFromDto(
-        { ...detailDto, algorithm_results: [], audio_list: [] },
-        []
+        {
+          ...detailDto,
+          result_audios: {
+            '9': [
+              { url: '/a.wav', filename: 'out.wav' },
+              { url: null, param_code: 'ai_wav' },
+              { url: null },
+            ],
+            '9-pura90小艺-1.0.0': [{ url: '/b.wav', filename: 'b.wav' }],
+          },
+        },
+        results
       )
-      expect(detail.devices.map((d) => d.deviceName)).toEqual(['pura90小艺'])
-      expect(detail.devices[0].executionStatus).toBeNull()
-      expect(detail.metricColumns).toEqual([])
-      expect(detail.resultAudios).toEqual([])
-      expect(detail.results).toEqual([])
+      expect(detail.resultAudios).toEqual([
+        { audioName: 'out.wav', deviceName: 'pura90小艺', round: null, url: '/a.wav', path: null },
+        { audioName: 'ai_wav', deviceName: 'pura90小艺', round: null, url: null, path: null },
+        { audioName: '音频3', deviceName: 'pura90小艺', round: null, url: null, path: null },
+        { audioName: 'b.wav', deviceName: 'pura90小艺', round: null, url: '/b.wav', path: null },
+      ])
+    })
+
+    it('audio_file 字段：@overall 后缀 → overall 标记；无后缀时回退 round_number', () => {
+      const detail = caseDetailFromDto(
+        {
+          ...detailDto,
+          algorithm_results: [
+            {
+              param_code: 'summary_wav@overall',
+              param_type: 'audio_file',
+              value: 'p/overall.wav',
+              dimension_name: '接管率占比',
+              device: '9-pura90小艺-1.0.0',
+            },
+            { param_code: 'plain_wav', param_type: 'audio_file', round_number: 2, value: 'p/r2.wav' },
+          ],
+        },
+        results
+      )
+      expect(detail.resultAudioFields).toEqual([
+        {
+          paramCode: 'summary_wav@overall',
+          label: 'summary_wav',
+          round: null,
+          overall: true,
+          dimensionName: '接管率占比',
+          deviceName: 'pura90小艺',
+          url: null,
+          path: 'p/overall.wav',
+        },
+        {
+          paramCode: 'plain_wav',
+          label: 'plain_wav',
+          round: 2,
+          overall: false,
+          dimensionName: null,
+          deviceName: null,
+          url: null,
+          path: 'p/r2.wav',
+        },
+      ])
     })
   })
-})
 
-describe('testCasePreviewFromDto（INT-1534 试听接线）', () => {
-  it('frontend 多轮：audio_stream_urls 优先，单键回退，playback_mode 归一为二值', () => {
-    const preview = testCasePreviewFromDto({
-      test_case_id: 'tc-1',
-      status: 'frontend_preview_ready',
-      message: '前端播放模式，返回音频流URL',
-      duration: 12.5,
-      playback_mode: 'frontend',
-      audio_id: 101,
-      audio_stream_url: '/api/v1/audios/download?path=a.wav',
-      audio_stream_urls: [
-        '/api/v1/audios/download?path=a.wav',
-        '/api/v1/audios/download?path=b.wav',
-      ],
-    })
-    expect(preview).toMatchObject({
-      testCaseId: 'tc-1',
-      playbackMode: 'frontend',
-      duration: 12.5,
-      audioId: 101,
-      audioStreamUrl: '/api/v1/audios/download?path=a.wav',
-    })
-    expect(preview.audioStreamUrls).toHaveLength(2)
-  })
-
-  it('backend 无流地址：audio_stream_urls 空数组，时长可为 null，playback_mode 兜底 backend', () => {
-    const preview = testCasePreviewFromDto({
-      test_case_id: 'tc-2',
-      status: 'preview_started',
+  /**
+   * INT-1688 返工：多轮夹具（真实库任务 402 / 用例 d8bdd5a6（DD139 多次打断）形态，
+   * 7 轮 + 整体；维度逐轮 0..6、整体 null）。验轮次 Tab 装配与按轮出值。
+   */
+  describe('INT-1688 返工：多轮轮次 Tab（7 轮 + 整体）', () => {
+    const multiDto: CaseDetailDto = {
+      test_case_id: 'd8bdd5a6-666d-41ab-a366-6b9f3b27e564',
+      task_id: 402,
+      case_name: '测试用例_DD139_多次打断',
+      execution_status: 'completed',
+      evaluation_status: 'completed',
       duration: null,
-      audio_stream_url: null,
+      score: null,
+      algorithm_type: 'voice_llm',
+      devices: ['pura90小艺'],
+      metric_configs: [
+        { code: '合成成功率', name: '合成成功率' },
+        { code: '打断识别率', name: '打断识别率' },
+      ],
+      algorithm_results: [1, 2, 3, 4, 5, 6, 7].map((round) => ({
+        param_code: `user_wav@round:${round}`,
+        param_type: 'audio_file',
+        label: `user_wav (第${round}轮)`,
+        round_number: round,
+        value: `case_pcm/402/dd/r${round - 1}_in.wav`,
+      })),
+      audio_list: [1, 2, 3, 4, 5, 6, 7].map((round) => ({
+        id: 1700 + round,
+        filename: `DD139_第${round}轮.wav`,
+        roundNumber: round,
+      })),
+    }
+    const dims = (roundNumber: number | null): CaseResultDimension[] => [
+      {
+        dimensionId: 57,
+        name: '合成成功率',
+        value: roundNumber == null ? 5 : (roundNumber + 1) / 10,
+        score: null,
+        status: 'completed',
+        evaluationStatus: 'completed',
+        errorMessage: null,
+        roundNumber,
+      },
+      {
+        dimensionId: 58,
+        name: '打断识别率',
+        value: roundNumber == null ? 0.75 : (roundNumber + 1) / 100,
+        score: null,
+        status: 'completed',
+        evaluationStatus: 'completed',
+        errorMessage: null,
+        roundNumber,
+      },
+    ]
+    const multiResults: CaseResultForReview[] = [
+      {
+        id: 4114,
+        deviceId: 9,
+        deviceName: 'pura90小艺',
+        apiId: null,
+        apiName: null,
+        executionStatus: 'completed',
+        responseTime: 0,
+        errorMessage: null,
+        reviewed: false,
+        reviewedByUserId: null,
+        reviewedAt: null,
+        lastReviewComment: null,
+        lastReviewAction: null,
+        reviewHistory: [],
+        sourceTaskId: 402,
+        sourceTaskName: null,
+        dimensions: [...dims(null), ...[0, 1, 2, 3, 4, 5, 6].flatMap((rn) => dims(rn))],
+      },
+    ]
+
+    it('第1轮…第7轮 + 整体，共 8 个 Tab；每 Tab 行=指标、列=设备、逐轮出值', () => {
+      const detail = caseDetailFromDto(multiDto, multiResults)
+      expect(detail.roundTabs.map((t) => t.label)).toEqual([
+        '第1轮',
+        '第2轮',
+        '第3轮',
+        '第4轮',
+        '第5轮',
+        '第6轮',
+        '第7轮',
+        '整体',
+      ])
+      expect(detail.roundTabs[0].rows).toEqual([
+        { dimension: '合成成功率', values: { pura90小艺: '0.1' } },
+        { dimension: '打断识别率', values: { pura90小艺: '0.01' } },
+      ])
+      expect(detail.roundTabs[6].rows).toEqual([
+        { dimension: '合成成功率', values: { pura90小艺: '0.7' } },
+        { dimension: '打断识别率', values: { pura90小艺: '0.07' } },
+      ])
+      expect(detail.roundTabs[7].rows).toEqual([
+        { dimension: '合成成功率', values: { pura90小艺: '5' } },
+        { dimension: '打断识别率', values: { pura90小艺: '0.75' } },
+      ])
     })
-    expect(preview.playbackMode).toBe('backend')
-    expect(preview.duration).toBeNull()
-    expect(preview.audioStreamUrls).toEqual([])
+
+    it('执行结果音频字段带 1 起轮次（供按 Tab 过滤）；参考音频同样带轮次', () => {
+      const detail = caseDetailFromDto(multiDto, multiResults)
+      expect(detail.resultAudios).toEqual([])
+      expect(detail.resultAudioFields.map((a) => [a.label, a.round])).toEqual([
+        ['user_wav', 1],
+        ['user_wav', 2],
+        ['user_wav', 3],
+        ['user_wav', 4],
+        ['user_wav', 5],
+        ['user_wav', 6],
+        ['user_wav', 7],
+      ])
+      expect(detail.referenceAudios.map((a) => a.round)).toEqual([1, 2, 3, 4, 5, 6, 7])
+    })
+
+    it('整体无评估值 → 不出现「整体」Tab（照 V9.7.10 tabHasMetricData）', () => {
+      const detail = caseDetailFromDto(multiDto, [
+        {
+          ...multiResults[0],
+          dimensions: [0, 1, 2, 3, 4, 5, 6].flatMap((rn) => dims(rn)),
+        },
+      ])
+      expect(detail.roundTabs.map((t) => t.key)).toEqual([
+        'round:1',
+        'round:2',
+        'round:3',
+        'round:4',
+        'round:5',
+        'round:6',
+        'round:7',
+      ])
+    })
   })
 })

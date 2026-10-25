@@ -6,49 +6,18 @@ import type {
   CaseAudioResult,
   CaseDeviceResult,
   CaseExecutionDetail,
-  CaseMetricColumn,
   CaseMetricConfig,
   CaseMetricPoint,
+  CaseMetricRow,
+  CaseResultAudioField,
+  CaseRoundTab,
 } from '@/domain/models/testExecution'
 import type { CaseResultForReview } from '@/domain/models/review'
-import type {
-  TestCase,
-  TestCaseListItem,
-  TestCasePreview,
-} from '@/domain/models/testCase'
+import type { TestCase, TestCaseListItem } from '@/domain/models/testCase'
 import type {
   CaseDetailDto,
   TestCaseListItemDto,
-  TestCasePreviewDto,
 } from '@/infrastructure/dto/testcase.dto'
-
-/**
- * 用例试听 DTO → Domain（§5.2；preview_type/playback_mode 后端默认 backend，这里归一为二值）。
- * audio_stream_urls 多轮时优先使用，单轮回退到 audio_stream_url（后端两键并存）。
- */
-export function testCasePreviewFromDto(dto: TestCasePreviewDto): TestCasePreview {
-  const urls = (dto.audio_stream_urls ?? []).filter(
-    (url): url is string => typeof url === 'string' && url.length > 0
-  )
-  const single =
-    typeof dto.audio_stream_url === 'string' && dto.audio_stream_url.length > 0
-      ? dto.audio_stream_url
-      : null
-  return {
-    testCaseId: dto.test_case_id,
-    previewTaskId: dto.preview_task_id ?? null,
-    status: dto.status,
-    message: dto.message ?? null,
-    duration:
-      dto.duration != null && Number.isFinite(Number(dto.duration))
-        ? Number(dto.duration)
-        : null,
-    playbackMode: dto.playback_mode === 'frontend' ? 'frontend' : 'backend',
-    audioId: dto.audio_id ?? null,
-    audioStreamUrl: single ?? urls[0] ?? null,
-    audioStreamUrls: urls.length > 0 ? urls : single ? [single] : [],
-  }
-}
 
 export function testCaseFromDto(dto: TestCaseListItemDto): TestCase {
   const rounds = dto.config.rounds?.length ?? 1
@@ -104,26 +73,20 @@ export function testCaseListItemFromDto(
   }
 }
 
-/** 维度列键（旧 Vue TestCaseDetailModal metricsMap 同口径）：多轮 `@round:{rn+1}` / `@overall`，单轮裸名 */
-function metricColumnKey(dimension: string, round: number | undefined): string {
-  if (round == null) return dimension
-  return `${dimension}@round:${round}`
-}
-
 /**
- * 维度列（设备×维度表头）：先按 metric_configs 的配置顺序排维度，再补数据里出现但配置外的维度；
- * 每个维度下轮次升序、整体（round_number=null）在后——与旧 Vue TestCaseDetailModal 的
- * preparedComparisonData / metricsMap（`:137-174`）一致，不新造双口径。
+ * 指标行（行=指标、列=设备，V9.7.10 currentRoundTableData 同口径）：
+ * 指标顺序以 metric_configs 为准，再补数据里出现但配置外的维度；只对「本 Tab 有数据」的维度出行。
  */
-function buildMetricColumns(
+function buildMetricRows(
+  devices: CaseDeviceResult[],
   metricConfigs: CaseMetricConfig[],
-  points: CaseMetricPoint[],
-  multiRound: boolean
-): CaseMetricColumn[] {
-  // 只对「数据里真有值」的维度出列（旧 Vue allMetricKeys 取 comparisonData 键，配置只定顺序）
+  accept: (round: number | undefined) => boolean
+): CaseMetricRow[] {
   const present: string[] = []
-  for (const point of points) {
-    if (point.dimension && !present.includes(point.dimension)) present.push(point.dimension)
+  for (const device of devices) {
+    for (const point of device.metrics) {
+      if (accept(point.round) && !present.includes(point.dimension)) present.push(point.dimension)
+    }
   }
   const configured = metricConfigs.map((c) => c.name)
   const dimensionOrder = [
@@ -131,54 +94,152 @@ function buildMetricColumns(
     ...present.filter((name) => !configured.includes(name)),
   ]
 
-  return dimensionOrder.flatMap((dimension) => {
-    const forDim = points.filter((p) => p.dimension === dimension)
-    const rounds = [...new Set(forDim.map((p) => p.round).filter((r): r is number => r != null))]
-      .sort((a, b) => a - b)
-    const hasOverall = forDim.some((p) => p.round == null)
-    if (!multiRound) {
-      return [
-        { key: metricColumnKey(dimension, undefined), label: dimension, dimension },
-      ]
+  return dimensionOrder.map((dimension) => {
+    const values: Record<string, string> = {}
+    for (const device of devices) {
+      const point = device.metrics.find(
+        (m) => m.dimension === dimension && accept(m.round)
+      )
+      if (point) values[device.deviceName] = point.value
     }
-    const columns: CaseMetricColumn[] = rounds.map((round) => ({
-      key: metricColumnKey(dimension, round),
-      label: `${dimension}@round:${round}`,
-      dimension,
-      round,
-    }))
-    if (hasOverall) {
-      columns.push({
-        key: `${dimension}@overall`,
-        label: `${dimension}@overall`,
-        dimension,
-      })
-    }
-    return columns
+    return { dimension, values }
   })
 }
 
-/** 结果音频：result_audios（设备键 → 音频项）+ algorithm_results 里 param_type=audio_file 的项 */
-function buildResultAudios(dto: CaseDetailDto): CaseAudioResult[] {
-  const fromResultAudios = Object.entries(dto.result_audios ?? {}).flatMap(([device, audios]) =>
-    (audios ?? []).map((audio) => ({
-      audioName: audio.filename ?? audio.param_code ?? '音频',
-      deviceName: device || null,
+/**
+ * 轮次 Tab（V9.7.10 TestCaseReportDetail roundTabs:1119-1155 同口径）：
+ * - 有轮次标记 → 「第1轮…第N轮」，轮次由维度 round + 结果音频轮次合并升序；
+ * - 「整体」仅在整体维度有评估值时才出现（照 tabHasMetricData）；
+ * - 无任何轮次标记 → 单个「指标」Tab（不渲染 Tab 栏；旧 Vue 的「单轮」形态）。
+ * `@round:{n}` / `@overall` 只是内部键，不再作为列头（INT-1723 规范回写）。
+ */
+function buildRoundTabs(
+  devices: CaseDeviceResult[],
+  metricConfigs: CaseMetricConfig[],
+  extraRounds: Array<number | null | undefined>
+): CaseRoundTab[] {
+  const allPoints = devices.flatMap((d) => d.metrics)
+  const hasRoundTag = allPoints.some((p) => p.round != null)
+  if (!hasRoundTag) {
+    return [
+      {
+        key: 'all',
+        label: '指标',
+        round: null,
+        kind: 'all',
+        rows: buildMetricRows(devices, metricConfigs, () => true),
+      },
+    ]
+  }
+
+  const rounds = [
+    ...new Set([
+      ...allPoints.filter((p) => p.round != null).map((p) => p.round as number),
+      ...extraRounds.filter((r): r is number => r != null),
+    ]),
+  ].sort((a, b) => a - b)
+
+  const tabs: CaseRoundTab[] = rounds.map((round) => ({
+    key: `round:${round}`,
+    label: `第${round}轮`,
+    round,
+    kind: 'round',
+    rows: buildMetricRows(devices, metricConfigs, (r) => r === round),
+  }))
+
+  // 「整体」无评估数据时不显示（照 V9.7.10 tabHasMetricData）
+  const overallPoints = allPoints.filter((p) => p.round == null)
+  const hasOverallData = overallPoints.some((p) => p.value !== '—')
+  if (hasOverallData) {
+    tabs.push({
+      key: 'overall',
+      label: '整体',
+      round: null,
+      kind: 'overall',
+      rows: buildMetricRows(devices, metricConfigs, (r) => r == null),
+    })
+  }
+  return tabs
+}
+
+/**
+ * 设备标识 → 可读设备名（V9.7.10 getDeviceName:1001-1014 同口径）：
+ * `result_audios` 的键与 `algorithm_results.device` 可能是设备 id（`9`）、
+ * 算法侧内部标识（`9-pura90小艺-1.0.0`）或 `t<id>-<时间戳>-…`。先按 /results 结果行的
+ * deviceId 匹配（最可靠），再退回内部标识 / 时间戳形态，都没有则原样展示。
+ */
+function resolveDeviceName(key: string, rows: CaseResultForReview[]): string {
+  if (!key) return ''
+  for (const row of rows) {
+    if (row.deviceId != null && row.deviceName) {
+      const id = String(row.deviceId)
+      if (key === id || key.startsWith(`${id}-`)) return row.deviceName
+    }
+  }
+  if (/^t\d+-\d{12}-/.test(key)) {
+    const parts = key.split('-')
+    if (parts.length >= 4) return parts.slice(3).join('-')
+  }
+  const internal = key.match(/^\d+-(.+?)-\d+(?:\.\d+)*$/)
+  if (internal) return internal[1]
+  return key
+}
+
+/**
+ * 结果音频（detail `result_audios`：设备键 → 音频项，无轮次信息）。
+ * 10 §5.2 ①（INT-1723 ②）：**不随轮次 Tab 过滤**，按设备分组全量展示
+ * （组标题＝设备名，行＝filename，缺省 param_code，再缺省「音频N」）。
+ */
+function buildResultAudios(
+  dto: CaseDetailDto,
+  rows: CaseResultForReview[]
+): CaseAudioResult[] {
+  return Object.entries(dto.result_audios ?? {}).flatMap(([device, audios]) =>
+    (audios ?? []).map((audio, index) => ({
+      audioName: audio.filename || audio.param_code || `音频${index + 1}`,
+      deviceName: resolveDeviceName(device, rows) || null,
+      round: null,
       url: audio.url ?? null,
       path: null,
     }))
   )
-  const fromAlgorithm = (dto.algorithm_results ?? [])
+}
+
+/**
+ * 执行结果音频字段（detail `algorithm_results` 里 `param_type=audio_file` 的项）。
+ * V9.7.10 把这类项当**结果字段**（TestCaseReportDetail.vue:246/:297 播放钮），轮次标记取自
+ * param_code 的 `@round:N` / `@overall` 后缀，回退 `round_number`；**不能**并进不按轮过滤的
+ * 「结果音频」块（否则 7 轮用例会在每个 Tab 铺满全部音频）。
+ * label 用原始参数名去掉内部后缀，轮次信息只在 chip 上展示一次（不重复）。
+ */
+function buildResultAudioFields(
+  dto: CaseDetailDto,
+  rows: CaseResultForReview[]
+): CaseResultAudioField[] {
+  return (dto.algorithm_results ?? [])
     .filter((r) => r.param_type === 'audio_file' && typeof r.value === 'string' && r.value)
-    .map((r) => ({
-      audioName: r.label ?? r.param_code,
-      // algorithm_results.device 是「{id}-{设备名}-{版本}」内部标识（实测 9-pura90小艺-1.0.0），
-      // 不是可读设备名 → 结果音频行只展示 label，不重复设备标识
-      deviceName: null,
-      url: null,
-      path: r.value as string,
-    }))
-  return [...fromResultAudios, ...fromAlgorithm]
+    .map((r) => {
+      const paramCode = r.param_code ?? ''
+      const roundMatch = paramCode.match(/@round:(\d+)$/i)
+      const overall = /@overall$/i.test(paramCode)
+      const round = roundMatch
+        ? Number(roundMatch[1])
+        : overall
+          ? null
+          : (r.round_number ?? null)
+      const base = paramCode.replace(/@round:\d+$/i, '').replace(/@overall$/i, '').trim()
+      return {
+        paramCode,
+        label: base || r.label || paramCode || '音频',
+        round,
+        overall,
+        dimensionName: r.dimension_name ?? null,
+        // algorithm_results.device 是内部标识（实测 `9-pura90小艺-1.0.0`）→ 还原可读设备名
+        deviceName: r.device ? resolveDeviceName(r.device, rows) || null : null,
+        url: null,
+        path: r.value as string,
+      }
+    })
 }
 
 /** 参考/输入音频（detail audio_list；音频库 id 用于 /audios/{id}/stream 取流） */
@@ -187,6 +248,8 @@ function buildReferenceAudios(dto: CaseDetailDto): CaseAudioResult[] {
     audioName: audio.filename || `音频 ${audio.id}`,
     deviceName: null,
     audioId: audio.id ?? null,
+    // audio_list 项为 camelCase（roundNumber 1 起；旧用例可能缺省）
+    round: audio.roundNumber ?? audio.round_number ?? null,
     url: audio.url ?? null,
     path: null,
   }))
@@ -207,9 +270,6 @@ export function caseDetailFromDto(
     name: c.name,
   }))
   const resultRows = results ?? []
-  const multiRound = resultRows.some((row) =>
-    (row.dimensions ?? []).some((d) => d.roundNumber != null)
-  )
   const rowByDevice = new Map<string, CaseResultForReview>()
   for (const row of resultRows) {
     if (row.deviceName && !rowByDevice.has(row.deviceName)) rowByDevice.set(row.deviceName, row)
@@ -219,11 +279,8 @@ export function caseDetailFromDto(
     const row = rowByDevice.get(deviceName)
     const metrics: CaseMetricPoint[] = (row?.dimensions ?? []).map((d) => ({
       dimension: d.name,
-      round: multiRound
-        ? d.roundNumber == null
-          ? undefined
-          : d.roundNumber + 1
-        : undefined,
+      // round_number 0 起 = 第 n+1 轮；null = 整体评估（无轮次标记）
+      round: d.roundNumber == null ? undefined : d.roundNumber + 1,
       value: d.value == null ? '—' : String(d.value),
     }))
     return {
@@ -237,7 +294,9 @@ export function caseDetailFromDto(
     }
   })
 
-  const allPoints = devices.flatMap((d) => d.metrics)
+  const resultAudios = buildResultAudios(dto, resultRows)
+  const resultAudioFields = buildResultAudioFields(dto, resultRows)
+  const referenceAudios = buildReferenceAudios(dto)
 
   return {
     caseId: dto.test_case_id,
@@ -261,11 +320,16 @@ export function caseDetailFromDto(
       rounds: r.rounds,
     })),
     metricConfigs,
-    metricColumns: buildMetricColumns(metricConfigs, allPoints, multiRound),
-    multiRound,
+    // 轮次 Tab 也吸收结果字段（algorithm_results 的 audio_file 项）/ 参考音频出现的轮次
+    // （照 V9.7.10 roundTabs 从指标 key + 字段提取轮次）
+    roundTabs: buildRoundTabs(devices, metricConfigs, [
+      ...resultAudioFields.map((a) => a.round),
+      ...referenceAudios.map((a) => a.round),
+    ]),
     devices,
-    resultAudios: buildResultAudios(dto),
-    referenceAudios: buildReferenceAudios(dto),
+    resultAudios,
+    resultAudioFields,
+    referenceAudios,
     results: resultRows,
   }
 }
