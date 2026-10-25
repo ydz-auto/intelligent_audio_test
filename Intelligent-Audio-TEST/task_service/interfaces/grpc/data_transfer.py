@@ -73,3 +73,29 @@ class DataTransferServiceServicer(task_grpc.DataTransferServiceServicer):
         except Exception as e:
             logger.exception('RollbackImport failed')
             return task_pb.TaskConfigResponse(success=False, message=str(e), data='')
+
+    # ---------- 增量回导（链路 2，INT-1761）----------
+
+    def ExportIncremental(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            from task_service.application.commands.task_commands import ExportIncrementalCommand
+            from task_service.application.handlers.command_handlers import task_command_handler
+            return self._resp(task_command_handler.handle_export_incremental(
+                ExportIncrementalCommand(task_ids=data.get('task_ids') or [],
+                                         options=data.get('options') or {})))
+        except Exception as e:
+            logger.exception('ExportIncremental failed')
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data='')
+
+    def ImportIncremental(self, request, context=None):
+        # 长耗时 RPC：两段跨服务合并（含旧值快照）；进度经 Redis import_progress 推送
+        try:
+            options = _loads(request.data, {}) or {}
+            from task_service.application.commands.task_commands import ImportIncrementalCommand
+            from task_service.application.handlers.command_handlers import task_command_handler
+            return self._resp(task_command_handler.handle_import_incremental(
+                ImportIncrementalCommand(zip_path=request.zip_path, options=options)))
+        except Exception as e:
+            logger.exception('ImportIncremental failed')
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data='')

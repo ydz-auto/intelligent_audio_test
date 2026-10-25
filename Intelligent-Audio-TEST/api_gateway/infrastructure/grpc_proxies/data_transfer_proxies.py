@@ -79,6 +79,32 @@ class _DataTransferProxy:
             'success': False, 'message': f'执行导入失败: {e}', 'data': None, 'code': 500},
             error_msg_prefix='执行导入失败')
 
+    def export_incremental(self, data: dict) -> dict:
+        """增量导出（链路 2，INT-1761）。data: {task_ids, options:{include}}"""
+        def _call():
+            stub = get_data_transfer_service_stub()
+            resp = stub.ExportIncremental(task_pb.ExportIncrementalRequest(
+                data=json.dumps(data or {}, ensure_ascii=False, default=str)),
+                timeout=_DEFAULT_TIMEOUT_SECONDS)
+            return self._resp(resp)
+        return _grpc_call(_call, default_return=lambda e: {
+            'success': False, 'message': f'增量导出失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='增量导出失败')
+
+    def import_incremental(self, zip_path: str, options: dict = None) -> dict:
+        """增量导入（长耗时，timeout=3600s；进度走 Redis → SocketIO）"""
+        def _call():
+            stub = get_data_transfer_service_stub()
+            resp = stub.ImportIncremental(
+                task_pb.ImportIncrementalRequest(
+                    zip_path=zip_path,
+                    data=json.dumps(options or {}, ensure_ascii=False, default=str)),
+                timeout=_EXECUTE_TIMEOUT_SECONDS)
+            return self._resp(resp)
+        return _grpc_call(_call, default_return=lambda e: {
+            'success': False, 'message': f'增量导入失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='增量导入失败')
+
     def get_progress_snapshot(self) -> dict:
         """最近一次导入进度快照（GET /import/progress 兜底）
 

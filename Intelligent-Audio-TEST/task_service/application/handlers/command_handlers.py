@@ -375,6 +375,20 @@ class TaskCommandHandler:
         )
         return data_transfer_import_service.rollback_import(cmd.batch_id)
 
+    def handle_export_incremental(self, cmd) -> Dict:
+        """处理增量导出命令（链路 2，INT-1761）。委托 export_incremental。"""
+        from task_service.application.task.data_transfer_export_service import (
+            data_transfer_export_service,
+        )
+        return data_transfer_export_service.export_incremental(cmd.task_ids, cmd.options)
+
+    def handle_import_incremental(self, cmd) -> Dict:
+        """处理增量导入命令（链路 2）。委托 import_incremental。"""
+        from task_service.application.task.data_transfer_import_service import (
+            data_transfer_import_service,
+        )
+        return data_transfer_import_service.import_incremental(cmd.zip_path, cmd.options)
+
     # ==================================================================
     # task 域生命周期命令（gRPC servicer 入口）
     # 委托 task_lifecycle_service 旧服务作为过渡，保留状态校验等完整逻辑

@@ -25,7 +25,11 @@ def build_manifest(task_rows: List[dict],
                    include_ref_params: bool = DEFAULT_INCLUDE_REF_PARAMS,
                    include_audios: bool = DEFAULT_INCLUDE_AUDIOS,
                    source: Optional[str] = None) -> dict:
-    """构建导出清单（字段名按设计文档用 camelCase——ZIP 包文件格式，非 HTTP 契约）"""
+    """构建导出清单（字段名按设计文档用 camelCase——ZIP 包文件格式，非 HTTP 契约）
+
+    整包导出继续产出 1.0（D0 A1-2）；1.1 的增量包由
+    `build_incremental_manifest` 构建，不复用本函数的 stats 口径。
+    """
     stats = {
         'taskCount': len(task_rows),
         'resultCount': len(result_rows),
@@ -53,6 +57,59 @@ def build_manifest(task_rows: List[dict],
             'includeAudios': bool(include_audios),
         },
     }
+
+
+def build_incremental_manifest(source_task: dict,
+                               task_rows: List[dict],
+                               dimension_count: int = 0,
+                               report_count: int = 0,
+                               entities: Optional[List[str]] = None,
+                               source: Optional[str] = None,
+                               options: Optional[dict] = None) -> dict:
+    """构建增量包 manifest（版本 1.1，D0 A1-3）。
+
+    Args:
+        source_task: {id, name, caseCount, caseSetHash}——id / caseSetHash 是
+            A 原始 id 与 A 侧指纹（A7），A 侧据此定位原任务并防错配
+        task_rows: 包内 tasks[]（增量包写 [{id: A 原始 id, name, status, resultCount}]）
+        entities: 包内实体段清单（['dimensions', 'reports'] 的子集）
+        source: 稳定服务标识（DATA_TRANSFER_SERVER_ID），写入 serverInfo.source
+        options: 追加的 options 字段（如 include）
+    """
+    from shared.constants.data_transfer import INCREMENTAL_MANIFEST_VERSION
+
+    stats = {
+        'taskCount': len(task_rows),
+        'resultCount': 0,          # 增量包不搬结果本体（A2-1）
+        'dimensionCount': dimension_count,
+        'reportCount': report_count,
+        'fileCount': 0,            # 增量包不搬文件
+        'totalFileSize': 0,
+    }
+    manifest = {
+        'version': INCREMENTAL_MANIFEST_VERSION,
+        'exportedAt': datetime.now().astimezone().isoformat(timespec='seconds'),
+        'serverInfo': {'source': source or socket.gethostname()},
+        'sourceTask': {
+            'id': source_task.get('id'),
+            'name': source_task.get('name'),
+            'caseCount': source_task.get('caseCount', 0),
+            'caseSetHash': source_task.get('caseSetHash', ''),
+        },
+        'entities': list(entities or []),
+        'tasks': [
+            {
+                'id': row.get('id'),
+                'name': row.get('name'),
+                'status': row.get('status'),
+                'resultCount': row.get('resultCount', 0),
+            }
+            for row in task_rows
+        ],
+        'stats': stats,
+        'options': dict(options or {}),
+    }
+    return manifest
 
 
 def validate_manifest(manifest: Optional[dict]) -> dict:

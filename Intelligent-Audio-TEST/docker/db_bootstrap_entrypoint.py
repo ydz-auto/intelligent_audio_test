@@ -263,6 +263,14 @@ BOOTSTRAP_STEPS = [
     #     幂等（列存在即 SKIP，10 列合成一条 ALTER TABLE 只拿一次锁），全新库为全 SKIP；
     #     默认 dry-run，引导链必须带 --apply。须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202610/add_raw_payload_pointers_int1807.py', '--apply'),
+    # ㊽-6 增量回导合并快照两表（INT-1762 D4）：evaluation_merge_snapshots /
+    #     report_merge_snapshots。create_all 只建缺失的表，建库早于本卡的存量库
+    #     （真实库 / 隔离库）缺这两张表 → 合并 RPC 首次调用即 UndefinedTable。
+    #     脚本幂等（表/索引存在即 SKIP），全新库为全 SKIP；默认 dry-run，引导链
+    #     必须带 --apply。序号按 V9.7.31 现状顺延（㊸~㊽ 已由 INT-1827 重排；㊽-5 已被
+    #     INT-1807 指针列占用，本步取 ㊽-6 保持编号唯一），物理位置落在 ㊽ ANALYZE
+    #     之前的末尾追加位（DDL 步骤一律排在 ANALYZE 前）。
+    ('python', 'scripts/migrations/202610/add_merge_snapshots_int1762.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
