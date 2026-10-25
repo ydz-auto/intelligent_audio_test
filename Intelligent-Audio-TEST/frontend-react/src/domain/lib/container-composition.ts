@@ -127,8 +127,6 @@ function toCompositionEntry(
     statusFromCase,
     evaluationFromCase,
     sourceCaseGroupName: caseRow?.group_name ?? null,
-    // 容器详情只有 group_name、无 group_id → 以组名作稳定分组键（用例层组织交叉聚合）
-    sourceCaseGroupId: caseRow?.group_name ?? null,
     sourceCaseTags: caseRow?.tags ?? [],
   }
 }
