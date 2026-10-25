@@ -6,7 +6,7 @@
 """
 from fastapi import APIRouter
 from fastapi.responses import Response
-from api_gateway.routes._response import to_response
+from api_gateway.routes._response import to_response, content_disposition
 from api_gateway.application.services.auth.dependencies import require_permission
 from api_gateway.application.services.report.report_query_sevice import ReportQueryService
 from api_gateway.application.services.report.report_command_sevice import ReportCommandService
@@ -22,7 +22,7 @@ def _handle(result):
         return Response(
             content=result['content'],
             media_type=result.get('mime_type', 'application/octet-stream'),
-            headers={'Content-Disposition': f"attachment; filename=\"{result.get('filename', 'export')}\""})
+            headers={'Content-Disposition': content_disposition(result.get('filename'))})
     if isinstance(result, tuple) and len(result) == 2:
         return to_response(result)
     return result
