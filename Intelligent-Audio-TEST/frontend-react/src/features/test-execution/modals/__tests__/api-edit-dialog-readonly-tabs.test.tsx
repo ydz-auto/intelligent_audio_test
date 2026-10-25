@@ -263,6 +263,9 @@ describe('输出字段页签（INT-1778 §2.4，只读）', () => {
     expect(await screen.findByText('无权查看算法配置')).toBeInTheDocument()
     // 跳转按钮在无权限时隐藏
     expect(screen.queryByRole('button', { name: /去算法配置/ })).not.toBeInTheDocument()
+    // 返工 P3：按钮隐藏后横幅尾句不能再说「维护入口在算法配置页」
+    expect(document.body.textContent).toContain('当前账号不可查看')
+    expect(document.body.textContent).not.toContain('维护入口在算法配置页')
 
     openTab('基础')
     fireEvent.change(screen.getByLabelText('API 名称 *'), { target: { value: '接线测试_可保存' } })

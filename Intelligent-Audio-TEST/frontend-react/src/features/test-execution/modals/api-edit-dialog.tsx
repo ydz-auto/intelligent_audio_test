@@ -497,6 +497,8 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                   <Label>关联算法 *</Label>
                   <Select
                     value={form.watch('algorithmType')}
+                    // 收起态靠 items 取 label（INT-1633 同口径）；漏传会直接回显算法类型码
+                    items={algorithmList.map((algorithm) => ({ value: algorithm.id, label: algorithm.name }))}
                     onValueChange={(value) => form.setValue('algorithmType', value ?? '')}
                   >
                     <SelectTrigger className={cn('w-full justify-between', !form.watch('algorithmType') && 'text-muted-foreground')}>
@@ -1306,7 +1308,8 @@ function AlgorithmTypeBanner({
         <Badge variant='secondary' className='mr-1.5'>
           算法类型级
         </Badge>
-        算法类型级声明，本类型下所有 API 共用；此处只读，维护入口在算法配置页。
+        算法类型级声明，本类型下所有 API 共用；
+        {showJump ? '此处只读，维护入口在算法配置页。' : '当前账号不可查看。'}
       </p>
       {showJump && <AlgorithmConfigJump onBeforeNavigate={onClose} />}
     </div>

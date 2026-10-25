@@ -11,6 +11,7 @@
  */
 import { MoreHorizontal, PlugZap, RadioTower, Server } from 'lucide-react'
 
+import { useAlgorithmLabels } from '@/application/hooks/use-algorithm-options'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -76,6 +77,8 @@ export function ApiCard({
   onEdit,
   onDelete,
 }: ApiCardProps) {
+  // 算法类型码 → 算法名（真实 GET /algorithm/options；INT-1687 同口径）
+  const algorithmLabels = useAlgorithmLabels()
   const online = api.status === 'online'
   // device_type 两值徽章（INT-1433：显式 deviceType 或按端点协议派生，与建任务路由同口径）
   const isWs = deriveApiTargetDeviceType(api) === 'websocket_api'
@@ -116,9 +119,11 @@ export function ApiCard({
         </dd>
         <dt className='text-muted-foreground'>算法</dt>
         <dd>
+          {/* INT-1778 返工 P2-2：algorithm_type 落库是类型码，徽章按 /algorithm/options 的 value→name 显示算法名 */}
           {api.algorithmType ? (
             <Badge variant='secondary' className='text-[11px]'>
-              {api.algorithmType}
+              {/* 选项未加载 / 算法已下线时缺项：显示「—」而不是回落类型码 */}
+              {algorithmLabels[api.algorithmType] ?? '—'}
             </Badge>
           ) : (
             '—'

@@ -162,6 +162,26 @@ describe('关联算法存类型码（INT-1778 修：原实现存的是显示名�
     const payload = saveMock.mock.calls[0][0] as { algorithmType?: string }
     expect(payload.algorithmType).toBe('voice_llm')
   })
+
+  // 返工 P2-1：base-ui Select 收起态靠 items 取 label，漏传会直接回显类型码
+  it('收起态显示算法名：编辑态回填不出现类型码', () => {
+    algorithmOptions.list = [{ id: 'voice_llm', name: '小艺语音大模型' }]
+    renderDialog(API_FIXTURE)
+    const editTrigger = screen.getAllByRole('combobox')[0]
+    expect(editTrigger).toHaveTextContent('小艺语音大模型')
+    expect(editTrigger).not.toHaveTextContent('voice_llm')
+  })
+
+  it('收起态显示算法名：新增态刚选中就显示名称', async () => {
+    const user = userEvent.setup()
+    algorithmOptions.list = [{ id: 'voice_llm', name: '小艺语音大模型' }]
+    renderDialog(undefined)
+    const trigger = screen.getAllByRole('combobox')[0]
+    await user.click(trigger)
+    await user.click(await screen.findByRole('option', { name: '小艺语音大模型' }))
+    expect(trigger).toHaveTextContent('小艺语音大模型')
+    expect(trigger).not.toHaveTextContent('voice_llm')
+  })
 })
 
 describe('meta / audio_config 保存口径（INT-1777）', () => {
