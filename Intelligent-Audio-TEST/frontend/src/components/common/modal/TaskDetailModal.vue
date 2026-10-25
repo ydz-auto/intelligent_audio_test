@@ -718,10 +718,14 @@ const containerResultIds = computed<number[]>(() => (containerSource.value?.grou
   .filter((id) => Number.isInteger(id) && id > 0));
 
 const reuseAdding = ref(false);
+/** 本模态的遮罩元素（抽屉宿主的取定依据）；非模态语境（路由页打开详情）为 null */
+const drawerLayerHost = ref<HTMLElement | null>(null);
 
 /**
  * 「复用本次结果重新挑选」：把该容器全部 result_id 批量加购 → toast → 打开购物车抽屉。
  * 不复制容器、不新建任务；重复点击由后端幂等跳过（toast 回显「重复 k 条已跳过」）。
+ * 模态语境下抽屉挂进本模态遮罩的层叠上下文（与 React 版把 CartDrawer 渲染在详情内同口径），
+ * 否则抽屉（全局层 z-index 1000）会被模态遮罩（13000 档）压住，「去复核」不可点（INT-1838 P2-1）。
  */
 async function reuseResultsToCart() {
   if (!canPick.value || reuseAdding.value) return;
@@ -743,7 +747,12 @@ async function reuseResultsToCart() {
     } else {
       notification.success(`已加入购物车 ${added} 条`);
     }
-    cartDrawerState.open();
+    drawerLayerHost.value = (rootRef.value?.closest('.modal-overlay') as HTMLElement | null) ?? null;
+    cartDrawerState.open({
+      layerHost: drawerLayerHost.value,
+      // 抽屉「去复核」时先收起本详情：复核向导在路由页层，模态不收就会开在它后面
+      dismissHost: () => modalControl.close(props.modalId || undefined),
+    });
   } catch (error: any) {
     notification.error(error?.message || '加入购物车失败');
   } finally {
@@ -896,6 +905,12 @@ watch(() => task.value?.status, (newStatus) => {
 
 const rootRef = ref<HTMLElement | null>(null);
 const FOCUS_HIGHLIGHT_MS = 1200;
+/** 长距离定位不做平滑滚动（视口高度倍数）：长列表（138 用例、3.5 万 px）平滑滚动约 1.5s 才到位，
+ *  1.2s 描边会在半路熄灭 —— 改为瞬移，描边从落位起算 */
+const FOCUS_SMOOTH_MAX_VIEWPORTS = 1.5;
+/** 平滑滚动的兜底等待上限（浏览器不支持 scrollend 时按此估算到位时间） */
+const FOCUS_SCROLL_SETTLE_MS = 1200;
+const focusTimers = new Set<number>();
 
 /** 按「用例ID」徽章的 aria-label 精确定位来源用例卡（不改公共组件，仅读 DOM） */
 function findCaseCard(caseId: string): HTMLElement | null {
@@ -905,6 +920,25 @@ function findCaseCard(caseId: string): HTMLElement | null {
   const hit = badges.find((b) => (b.getAttribute('aria-label') || '').includes(caseId));
   if (!hit) return null;
   return (hit.closest('.case-card') as HTMLElement | null) ?? hit;
+}
+
+/** 等平滑滚动落位：优先 scrollend（捕获阶段收元素滚动），不支持/无事件时按上限兜底 */
+function waitScrollSettle(behavior: ScrollBehavior): Promise<void> {
+  if (behavior === 'auto' || typeof window === 'undefined' || !('onscrollend' in window)) {
+    return new Promise((resolve) => { window.setTimeout(resolve, behavior === 'auto' ? 0 : FOCUS_SCROLL_SETTLE_MS); });
+  }
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      window.clearTimeout(timer);
+      window.removeEventListener('scrollend', finish, true);
+      resolve();
+    };
+    const timer = window.setTimeout(finish, FOCUS_SCROLL_SETTLE_MS);
+    window.addEventListener('scrollend', finish, true);
+  });
 }
 
 /** 用例清单由详情 + 进度两路异步装配，行可能晚于详情到位 → 限时轮询到命中为止 */
@@ -918,9 +952,24 @@ async function applyFocusCaseRow(caseId: string) {
     if (card) {
       const reduceMotion = typeof window !== 'undefined'
         && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      card.scrollIntoView?.({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+      // 高亮从「滚到位」起算：长距离瞬移、近距离平滑等落位后再描边（P3-2）
+      const viewportH = window.innerHeight || 0;
+      const rect = card.getBoundingClientRect();
+      const alreadyVisible = rect.top >= 0 && rect.bottom > 0 && rect.bottom <= viewportH;
+      const distance = Math.abs(rect.top - viewportH / 2);
+      const behavior: ScrollBehavior = reduceMotion || distance > viewportH * FOCUS_SMOOTH_MAX_VIEWPORTS
+        ? 'auto'
+        : 'smooth';
+      const canScroll = typeof card.scrollIntoView === 'function';
+      if (canScroll) card.scrollIntoView({ block: 'center', behavior });
+      if (canScroll && !alreadyVisible) await waitScrollSettle(behavior);
+      if (token !== focusToken) return;
       card.classList.add('tdm-focus-highlight');
-      window.setTimeout(() => card.classList.remove('tdm-focus-highlight'), FOCUS_HIGHLIGHT_MS);
+      const timer = window.setTimeout(() => {
+        focusTimers.delete(timer);
+        card.classList.remove('tdm-focus-highlight');
+      }, FOCUS_HIGHLIGHT_MS);
+      focusTimers.add(timer);
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -945,6 +994,12 @@ onMounted(() => {
 onUnmounted(() => {
   stopLogPolling();
   focusToken += 1; // 停止溯源定位轮询
+  focusTimers.forEach((timer) => window.clearTimeout(timer));
+  focusTimers.clear();
+  // 抽屉挂在本模态遮罩内（P2-1）：遮罩随模态卸载前先收起，避免 Teleport 目标消失留下孤儿层
+  if (drawerLayerHost.value && cartDrawerState.layerHost.value === drawerLayerHost.value) {
+    cartDrawerState.close();
+  }
 });
 </script>
 

@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { defineComponent, h } from 'vue'
 
 const mocks = vi.hoisted(() => ({
   getOne: vi.fn(),
@@ -78,7 +79,13 @@ vi.mock('../../../../composables/task/usePickCart', () => ({
 }))
 
 vi.mock('../../../../composables/task/cartDrawerState', () => ({
-  useCartDrawerState: () => ({ open: mocks.openDrawer, close: vi.fn(), visible: { value: false } }),
+  useCartDrawerState: () => ({
+    open: mocks.openDrawer,
+    close: vi.fn(),
+    dismissHost: vi.fn(),
+    visible: { value: false },
+    layerHost: { value: null },
+  }),
 }))
 
 vi.mock('../../../../composables/task/usePickWizardRequest', () => ({
@@ -243,6 +250,31 @@ describe('TaskDetailModal 再次挑选入口（INT-1838）', () => {
 
     expect(mocks.error).toHaveBeenCalledWith('加入购物车失败')
     expect(mocks.openDrawer).not.toHaveBeenCalled()
+  })
+
+  it('模态语境：抽屉层挂进本模态遮罩（P2-1 —— 抽屉不被遮罩压住，「去复核」可点）', async () => {
+    const Host = defineComponent({
+      render: () => h('div', { class: 'modal-overlay' }, [h(TaskDetailModal, { taskId: 580 })]),
+    })
+    const w = mount(Host)
+    await flushPromises()
+
+    const btn = w.findAll('.task-detail-actions button').find((b) => b.text().includes('复用本次结果重新挑选'))
+    await btn!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.openDrawer).toHaveBeenCalledTimes(1)
+    // 宿主 = 外层模态遮罩元素（CartDrawer 据此 Teleport 进模态层叠上下文）
+    expect(mocks.openDrawer.mock.calls[0][0].layerHost).toBe(w.element)
+  })
+
+  it('非模态语境（路由页打开详情）→ 抽屉仍走全局层（layerHost 为空）', async () => {
+    const w = await mountModal()
+
+    await actionButton(w, '复用本次结果重新挑选')!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.openDrawer).toHaveBeenCalledWith({ layerHost: null, dismissHost: expect.any(Function) })
   })
 
   it('溯源定位：带 focusCaseId 打开时把来源用例卡滚入可视区并高亮（§6 行内溯源）', async () => {
