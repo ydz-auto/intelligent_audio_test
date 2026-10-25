@@ -528,6 +528,7 @@ gRPC 音频帧（二进制不进 `payload`，音频仍走 `rounds[i].output_audi
 ## 十一、A3（INT-1791）前端协议区块：控件 ↔ `meta` 键映射与校验口径
 
 > 状态：**文档基线已补（INT-1954，2026-10-26），A3 实施后回写**。本节只钉「前端控件 ↔ `apis.meta` 键」的归属与校验口径，不重开 §三 的裁定；A3 只改 `wiring/react` 前端树，不动本节引用的后端契约。
+> 修正（INT-1955，2026-10-26）：§11.3 归属裁定三 回收「SSE 复用 `body_template`」的错误口径（按 A2 实现改为 SSE 下不生效）；§11.1 补「A2 合入取并集」的可用矩阵集成口径。其余条款未变。
 > 编号说明：本节取 V9.7.31 工作树当时的末节（§十）之后。A2（INT-1790，分支 `63bc84b95`）把「实施回写」也写成 §十 / §10.1–§10.5；A2 合入时 §十 需拆成 A1 / A2 两节再顺延，**本节随之改号**——引用请用标题锚点「A3 前端协议区块」，不要只写编号。
 
 ### 11.1 归属与边界（不新增实体 / 页签）
@@ -536,6 +537,7 @@ gRPC 音频帧（二进制不进 `payload`，音频仍走 `rounds[i].output_audi
 - 切协议时各协议组各自持有草稿，切回不丢；保存时**只写当前协议组声明的键**。
 - `meta` 的写侧是**整块 replace**（`api_test_service/application/api_crud_service.py:531-543`，仅对 `meta.api_keys` 做保留特判），没有子对象级合并。因此前端必须以 GET 回来的 `meta.grpc` / `meta.sse` 为 base，逐子键覆盖，清空即删该子键，**不得整块重建**——否则切协议或换页签会静默冲掉别的键（A3 最大技术风险）。
 - 可用矩阵：前端置灰表必须与后端 `AVAILABLE_PROTOCOL_STREAMING`（`shared/models/common_enums.py:188-194`）**同一张表**，禁止前端自行放宽或收紧。A1 落地后 `grpc+false` / `grpc+true` 已放行；`sse+true` 与 `http+true` 待 A2 合入后放行。
+- **可用矩阵合入口径（INT-1955 补，2026-10-26）**：A2（`63bc84b95`）该表只有 `{http+false, websocket+true, sse+true, http+true}`，**不含 A1 的 `grpc+false` / `grpc+true`**——A1 的合并提交（`26c1f7beb`）不是 A2 的祖先，A2 侧同一文件是「A1 之前」的版本（`AdapterProtocol.GRPC` 也在该侧被删回）。因此 **A2 合入 V9.7.31 时目标表是六组合并集**（`http+false` / `http+true` / `websocket+true` / `sse+true` / `grpc+false` / `grpc+true`），集成必须**取并集**，不得用 A2 侧整块覆盖：覆盖会静默删掉 gRPC 两种，`is_protocol_streaming_available()` 随即对 grpc 返回 False、写侧 400。前端 `WRITABLE_COMBINATIONS` 同样取该六组合。
 - 读侧脱敏保持现状：`_api_to_dict` 只剥 `meta.api_keys`（`api_crud_service.py:306-312`），`meta.grpc.metadata` 的鉴权值仍**明文回显**；前端只能提示「尚未脱敏」，不得假定已脱敏（后端补丁归 INT-1953）。
 
 ### 11.2 `meta.grpc` 键表与校验
@@ -563,7 +565,8 @@ gRPC 音频帧（二进制不进 `payload`，音频仍走 `rounds[i].output_audi
 - 前端控件形态：输入框（`event_name_field`）、JSON 键值表（`params`，支持 `{{placeholder}}`）、开关（`reconnect_enabled`）、数字（其余四项，范围与缺省按 §10.2；`reconnect_enabled=false` 时重连相关控件禁用）。
 - **归属裁定一**：句子 / 会话结束标记**不进 SSE 区块**——`sentence_end_mapping` / `session_end_mapping` 的所有权在**响应解析页签**（轮次切分见 §4.1，INT-1778 已声明）；SSE 区块只做只读提示。
 - **归属裁定二**：data 取值路径属 `algorithm_api_params(direction=output).field_path`（C2，见 §4.2），不写进 `meta.sse`（写成键即触发未知键 400）。
-- **归属裁定三**：SSE 复用 HTTP 组的 `method` / `headers` / `body_template`，所有权在 **HTTP 组**；SSE 区块可见但不重复声明同名键。
+- **归属裁定三**：SSE 复用 HTTP 组的 `method` / `headers`，所有权在 **HTTP 组**；SSE 区块可见但不重复声明同名键。**`body_template` 在 SSE 下不生效、前端不显示**，请求载荷统一走 `meta.sse.params`（用例 `params` 优先；GET → query，非 GET → JSON body）。
+  - 代码依据（A2 `63bc84b95`，`api_test_service/core/stream_session_executor.py`）：`_render_request_body`（`:446-466`）在 `protocol == 'sse'` 时直接返回 `meta.sse.params`（用例 `params` 优先），**永远不读 `meta.body_template`**；真正复用的只有 `meta.method`（`:111-112`，缺省 GET）与 `meta.headers`（`_resolve_headers` `:417-444`）。查询 / 载荷的分流在传输层：`GET` → `params`（query），非 GET → `json`（`adapters/transport/sse_client.py:179-183`）。
 
 ### 11.4 校验口径（前后端同源，前端不得放宽）
 
