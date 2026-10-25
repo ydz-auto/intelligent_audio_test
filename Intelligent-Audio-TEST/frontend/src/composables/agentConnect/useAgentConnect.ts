@@ -4,8 +4,8 @@
  *
  * - skill 服务地址：默认取浏览器地址栏（window.location.origin），可改；
  *   localStorage `iatp:agent-connect:v1` 持久化，下载 skill 包时预填进包内 MCP 模板。
- * - 下载：经基础设施层 agentSkillApi 取 zip（当前为 // 待接线 契约桩，
- *   后端 INT-1150 合栈后自动切真实请求，本层签名不变）。
+ * - 下载：经基础设施层 agentSkillApi 取 zip（真实 GET /api/v1/agent/skill，
+ *   服务地址经 ?base_url= 注入包内 MCP 模板）。
  */
 import { ref } from 'vue'
 import { downloadSkillPackage } from '../../infrastructure/api/agentSkillApi'
