@@ -1,4 +1,4 @@
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useAlgorithmLabels } from '../../composables/algorithm/useAlgorithmLabels'
 import { TaskStatus, ExecutionStatus } from '@/domain/enums'
 import { getStatusText } from '../../utils/statusUtils'
@@ -10,6 +10,8 @@ import {
   getEvaluationStatusText,
   getEvaluationBadgeIcon,
 } from '../../utils/taskStatusBadge'
+// INT-1836 规范 18 §2.1：容器行混态「部分失败」纯前端展示映射（单一纯函数源）
+import { containerMixState } from './pick/compositionTree'
 
 /** 通用事件参数（DOM 事件） */
 type DomEvent = Event & { stopPropagation: () => void }
@@ -102,6 +104,25 @@ export function useTaskCard(props: any, emit: (event: string, ...args: any[]) =>
 
   // ===== INT-301：任务级执行/评估双徽章（实现见 utils/taskStatusBadge.ts） =====
 
+  /**
+   * INT-1836 规范 18 §2.1/§5：容器行执行徽章展示口径。
+   * - 容器（mergeType 在位）且 0 < failedCases < caseCount → 「部分失败」（warning + 小圆点）
+   * - 容器且 failedCases === caseCount（>0）→ 「已失败」
+   * - 其余（含非容器行）沿用现映射，零变化
+   * 纯前端展示映射，后端字符串仍是 `failed`，不改契约。
+   */
+  const executionBadge = computed<{ status: string; text: string; partial: boolean }>(() => {
+    const status = getExecutionBadgeStatus(props.task)
+    const mix = containerMixState(props.task?.failedCases, props.task?.caseCount)
+    if (props.task?.mergeType && mix === 'partial') {
+      return { status: ExecutionStatus.FAILED, text: '部分失败', partial: true }
+    }
+    if (props.task?.mergeType && mix === 'all') {
+      return { status: ExecutionStatus.FAILED, text: '已失败', partial: false }
+    }
+    return { status, text: getStatusText(status), partial: false }
+  })
+
   const getStepStatusText = (status: string): string => {
     const statusMap: Record<string, string> = {
       [ExecutionStatus.PENDING]: '待执行',
@@ -144,6 +165,7 @@ export function useTaskCard(props: any, emit: (event: string, ...args: any[]) =>
     getEvaluationStatusText,
     getEvaluationBadgeIcon,
     getStepStatusText,
-    calculateCompletionRate
+    calculateCompletionRate,
+    executionBadge
   }
 }

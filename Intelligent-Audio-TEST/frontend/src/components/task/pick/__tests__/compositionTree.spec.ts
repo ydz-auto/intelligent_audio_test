@@ -24,6 +24,13 @@ import {
   summarizeComposition,
   formatCompositionTime,
   compositionStatusText,
+  containerMixState,
+  compositionBranchCounts,
+  hasCaseStatusConflict,
+  isDegradedHintDismissed,
+  dismissDegradedHint,
+  resetDegradedHintDismissed,
+  CASE_STATUS_INHERIT_TIP,
   UNKNOWN_CASE_LABEL,
   UNKNOWN_RESULT_TYPE_LABEL,
   type CompositionCaseRow,
@@ -400,5 +407,122 @@ describe('摘要 / 展示辅助', () => {
     expect(compositionStatusText('failed')).toBe('已失败');
     expect(compositionStatusText('stopped')).toBe('已停止');
     expect(compositionStatusText(null)).toBe('未知状态');
+  });
+});
+
+/**
+ * INT-1836 · 规范 18 §2.1/§5：部分失败 / 未评估呈现映射。
+ *
+ * - `containerMixState`：列表执行状态纯前端展示映射（后端字符串仍是 failed）
+ * - `compositionBranchCounts`：分支计数「{n} 条 · 失败 {f} · 失效 {k}」
+ * - `hasCaseStatusConflict`：用例卡一致性（用例继承状态 vs 叶状态）
+ */
+describe('部分失败呈现（§5，INT-1836）', () => {
+  it('containerMixState：0 < failed < caseCount → partial；== caseCount → all；其余 none', () => {
+    expect(containerMixState(3, 5)).toBe('partial');
+    expect(containerMixState(5, 5)).toBe('all');
+    expect(containerMixState(6, 5)).toBe('all');
+    expect(containerMixState(0, 5)).toBe('none');
+    expect(containerMixState(null, 5)).toBe('none');
+    expect(containerMixState(3, null)).toBe('none');
+    expect(containerMixState(undefined, undefined)).toBe('none');
+    expect(containerMixState(3, 0)).toBe('none');
+  });
+
+  it('compositionBranchCounts：按节点下过滤后叶统计失败 / 失效，去重不重复计', () => {
+    const list = entries();
+    const map = new Map(list.map((e) => [e.resultId, e]));
+    // 全量：3792/3796 执行 failed（降级取用例行），5714/5715/5716 completed
+    expect(compositionBranchCounts([3792, 3796, 5714], map)).toEqual({ failed: 2, missing: 0 });
+    // 多标签同一叶重复出现时只计一次
+    expect(compositionBranchCounts([3792, 3792, 3796], map)).toEqual({ failed: 2, missing: 0 });
+    // 未知 id 跳过
+    expect(compositionBranchCounts([999999], map)).toEqual({ failed: 0, missing: 0 });
+  });
+
+  it('compositionBranchCounts：失效叶计入 missing（§7 失效标记）', () => {
+    const list = entries();
+    list[0] = { ...list[0], missing: true };
+    const map = new Map(list.map((e) => [e.resultId, e]));
+    expect(compositionBranchCounts([3792, 3796], map)).toEqual({ failed: 2, missing: 1 });
+  });
+
+  it('hasCaseStatusConflict：降级期叶状态取自用例行 → 恒等，不误报', () => {
+    const list = entries();
+    const map = new Map(list.map((e) => [e.resultId, e]));
+    // 5715 的用例行 0dc13869 为 failed，降级期叶也取 failed
+    expect(hasCaseStatusConflict([5715], map)).toBe(false);
+  });
+
+  it('hasCaseStatusConflict：§11-8 结果级状态与用例行继承状态不一致 → 冲突（实测 5715）', () => {
+    const list = toCompositionEntries(
+      {
+        ...SOURCE,
+        groups: [{
+          sourceTaskId: 419,
+          sourceTaskName: '小艺拒识E2E测试任务',
+          results: [{
+            id: 4, resultId: 5715, sourceCaseId: '0dc13869-0000', sourceDeviceId: 9,
+            // §11-8 结果级字段落地：源结果为 completed
+            executionStatus: 'completed', evaluated: true,
+          } as any],
+        }],
+      },
+      CASES,
+      DEVICES,
+      APIS,
+    );
+    const map = new Map(list.map((e) => [e.resultId, e]));
+    expect(list[0].caseExecutionStatus).toBe('failed');
+    expect(list[0].executionStatus).toBe('completed');
+    expect(hasCaseStatusConflict([5715], map)).toBe(true);
+    expect(CASE_STATUS_INHERIT_TIP).toBe('用例状态继承自来源任务；结果状态以叶行为准');
+  });
+
+  it('hasCaseStatusConflict：评估侧不一致（用例行已完成评估，所选结果 evaluated=false）→ 冲突', () => {
+    const list = toCompositionEntries(
+      {
+        ...SOURCE,
+        groups: [{
+          sourceTaskId: 384,
+          sourceTaskName: 'E2E测试任务',
+          results: [{
+            id: 1, resultId: 3792, sourceCaseId: 'a03cc920-0000', sourceDeviceId: 9,
+            // 源结果 failed 且未评估；用例行 failed（执行一致）+ 评估 completed（评估冲突）
+            executionStatus: 'failed', evaluated: false,
+          } as any],
+        }],
+      },
+      CASES,
+      DEVICES,
+      APIS,
+    );
+    const map = new Map(list.map((e) => [e.resultId, e]));
+    expect(list[0].caseEvaluationStatus).toBe('completed');
+    expect(list[0].evaluated).toBe(false);
+    expect(hasCaseStatusConflict([3792], map)).toBe(true);
+  });
+
+  it('hasCaseStatusConflict：叶状态未知（null）或无用例行 → 不判定冲突', () => {
+    const list = entries();
+    const noCaseRow = { ...list[0], caseExecutionStatus: null, executionStatus: null };
+    const map = new Map<number, (typeof list)[number]>([[1, noCaseRow]]);
+    expect(hasCaseStatusConflict([1], map)).toBe(false);
+    expect(hasCaseStatusConflict([], map)).toBe(false);
+  });
+
+  it('降级期提示判定：执行降级 / 评估降级 / 都未降级（任一降级即显示，§4.6）', () => {
+    const base = entries()[0];
+    expect(isCompositionDegraded([{ ...base, statusFromCase: true, evaluationFromCase: false }])).toBe(true);
+    expect(isCompositionDegraded([{ ...base, statusFromCase: false, evaluationFromCase: true }])).toBe(true);
+    expect(isCompositionDegraded([{ ...base, statusFromCase: false, evaluationFromCase: false }])).toBe(false);
+  });
+
+  it('降级期提示关闭态是会话级（模块状态，组件重挂仍保持）', () => {
+    expect(isDegradedHintDismissed()).toBe(false);
+    dismissDegradedHint();
+    expect(isDegradedHintDismissed()).toBe(true);
+    resetDegradedHintDismissed();
+    expect(isDegradedHintDismissed()).toBe(false);
   });
 });

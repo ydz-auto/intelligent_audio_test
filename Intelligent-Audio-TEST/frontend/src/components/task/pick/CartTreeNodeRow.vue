@@ -15,9 +15,21 @@
         @toggle="emit('toggle-node', node)"
         @toggle-open="emit('toggle-expand', node.key)"
       >
-        <!-- §4.3 节点「移除该组」走统一卡行内操作插槽（INT-1103 PickCaseCard 口径）；
-             组成区只读（INT-1833）不渲染 -->
+        <!-- §5 分支计数后缀：失败 f / 失效 k（按该节点下过滤后叶统计，随筛选重算） -->
+        <template #badgeLeading>
+          <BranchCountSuffix :counts="branchCounts" />
+        </template>
+        <!-- §5 用例卡一致性：用例继承状态与叶不一致 → 卡右上 info 图标 + Tooltip -->
         <template #actions>
+          <span
+            v-if="caseStatusConflict"
+            class="ctr-case-info"
+            role="img"
+            :title="CASE_STATUS_INHERIT_TIP"
+            :aria-label="CASE_STATUS_INHERIT_TIP"
+          ><i class="fas fa-circle-info"></i></span>
+          <!-- §4.3 节点「移除该组」走统一卡行内操作插槽（INT-1103 PickCaseCard 口径）；
+               组成区只读（INT-1833）不渲染 -->
           <button
             v-if="manageable && !readonly"
             class="ctr-btn ctr-btn-danger"
@@ -73,7 +85,9 @@
 
       <span class="ctr-icon" :class="iconClass"><i :class="iconName"></i></span>
       <span class="ctr-name" :title="node.name">{{ node.name }}</span>
-      <span v-if="node.children.length > 0" class="ctr-count">{{ node.count }} 条</span>
+      <span v-if="node.children.length > 0" class="ctr-count">
+        {{ node.count }} 条<BranchCountSuffix :counts="branchCounts" />
+      </span>
       <button
         v-if="manageable && !readonly && node.children.length > 0"
         class="ctr-btn ctr-btn-danger"
@@ -202,10 +216,14 @@ import { cartNodeState, type CartTreeNode, type CartNodeCheckState } from './car
 import type { PickCartItem } from '../../../infrastructure/api/cherryPickApi';
 import type { CompositionEntry } from '../../../domain/model/containerComposition';
 import {
+  CASE_STATUS_INHERIT_TIP,
+  compositionBranchCounts,
   compositionStatusText,
   formatCompositionTime,
+  hasCaseStatusConflict,
 } from './compositionTree';
 import PickCaseCard from '../../common/test-case/PickCaseCard.vue';
+import BranchCountSuffix from './BranchCountSuffix.vue';
 
 const props = withDefaults(defineProps<{
   node: CartTreeNode;
@@ -237,6 +255,21 @@ defineOptions({ name: 'CartTreeNodeRow' });
 
 const state = computed<CartNodeCheckState>(() => cartNodeState(props.node, props.selected));
 const expanded = computed(() => props.expandedKeys.has(props.node.key));
+
+/** 分支计数后缀（§5）：仅组成区（compositionMeta 在位）按过滤后叶统计失败 / 失效 */
+const branchCounts = computed(() =>
+  props.compositionMeta
+    ? compositionBranchCounts(props.node.itemIds, props.compositionMeta)
+    : null,
+);
+
+/** 用例卡一致性（§5）：容器用例行继承状态与叶不一致 → info 图标 + Tooltip */
+const caseStatusConflict = computed(
+  () =>
+    props.node.level === 'case' &&
+    props.compositionMeta !== undefined &&
+    hasCaseStatusConflict(props.node.itemIds, props.compositionMeta),
+);
 
 const iconClass = computed(() => ({
   'ctr-icon--task': props.node.level === 'task',
@@ -393,6 +426,15 @@ function compositionDeviceLabel(id: number): string {
 /* INT-1110：购物车用例节点统一用例卡 compact（§4.2/§3.8.4） */
 .ctr-case-card {
   margin: 2px 0;
+}
+/* INT-1836 §5：用例卡右上一致性 info 图标（Tooltip 走原生 title，深浅色同一套令牌） */
+.ctr-case-info {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  cursor: help;
 }
 /* INT-1833 深色可读：TestCaseCard 表面用常量 --color-white（共享样式文件，不在本卡范围），
    深色下白底 + 浅色文字读不清 → 组成区 / 购物车树内局部改语义令牌兜底。

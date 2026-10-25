@@ -149,6 +149,9 @@ function toEntry(
     tags: Array.isArray(caseRow?.tags) ? [...(caseRow?.tags as string[])] : [],
     statusFromCase,
     evaluationFromCase,
+    // §5 用例卡一致性判定用：容器用例行自身继承的执行状态（与叶状态可能不一致）
+    caseExecutionStatus: caseRow?.executionStatus ?? null,
+    caseEvaluationStatus: caseRow?.evaluationStatus ?? null,
   };
 }
 
@@ -469,4 +472,110 @@ export function compositionStatusText(status: string | null | undefined): string
 /** 降级期工具行提示（§4.6：执行 / 评估任一降级即显示） */
 export function isCompositionDegraded(entries: CompositionEntry[]): boolean {
   return entries.some((e) => e.statusFromCase || e.evaluationFromCase);
+}
+
+// ===== 部分失败 / 未评估呈现（§5、INT-1836） =====
+
+/** 用例卡一致性提示文案（§5 / §11） */
+export const CASE_STATUS_INHERIT_TIP = '用例状态继承自来源任务；结果状态以叶行为准';
+
+/**
+ * 容器执行状态混态判定（§2.1 列表行 / §5）：**纯前端展示映射**，后端字符串仍是 `failed`。
+ *
+ * - `partial`：0 < failedCases < caseCount → 「部分失败」（warning + 小圆点）
+ * - `all`：failedCases = caseCount（且 > 0）→ 「已失败」
+ * - `none`：failedCases = 0 或计数缺失 → 不映射，沿用原执行状态徽章
+ */
+export type ContainerMixState = 'none' | 'partial' | 'all';
+
+export function containerMixState(
+  failedCases: number | null | undefined,
+  caseCount: number | null | undefined,
+): ContainerMixState {
+  if (typeof failedCases !== 'number' || typeof caseCount !== 'number') return 'none';
+  if (!Number.isFinite(failedCases) || !Number.isFinite(caseCount)) return 'none';
+  if (caseCount <= 0 || failedCases <= 0) return 'none';
+  return failedCases >= caseCount ? 'all' : 'partial';
+}
+
+/** 分支节点计数后缀（§5：失败 f / 失效 k，按该节点下**过滤后**叶统计） */
+export interface CompositionBranchCounts {
+  /** 失叶片数（执行状态 failed） */
+  failed: number
+  /** 失效叶片数（源结果 missing） */
+  missing: number
+}
+
+export function compositionBranchCounts(
+  itemIds: readonly number[],
+  entryByResultId: ReadonlyMap<number, CompositionEntry>,
+): CompositionBranchCounts {
+  let failed = 0;
+  let missing = 0;
+  const seen = new Set<number>();
+  for (const id of itemIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const entry = entryByResultId.get(id);
+    if (!entry) continue;
+    if (entry.executionStatus === 'failed') failed += 1;
+    if (entry.missing) missing += 1;
+  }
+  return { failed, missing };
+}
+
+/**
+ * 用例卡一致性（§5）：容器用例行继承的状态与叶状态不一致 → 卡右上 info 图标。
+ *
+ * §5 节覆盖「部分失败 / **未评估**」两个维度，故执行与评估两处都判定：
+ * - 执行：叶 executionStatus ≠ 用例行继承 executionStatus；
+ * - 评估：叶 evaluated ≠（用例行 evaluationStatus === 'completed'）。
+ * 叶状态未知（null）不计冲突；降级期叶状态取自用例行时两者恒等（不误报），
+ * §11-8 结果级字段落地后按真实源结果状态判定（实测 657：用例行评估已完成后，
+ * 所选结果 evaluated=false，即典型一致性冲突）。
+ */
+export function hasCaseStatusConflict(
+  itemIds: readonly number[],
+  entryByResultId: ReadonlyMap<number, CompositionEntry>,
+): boolean {
+  let inheritedExec: string | null = null;
+  let inheritedEval: string | null = null;
+  const leaves: CompositionEntry[] = [];
+  for (const id of itemIds) {
+    const entry = entryByResultId.get(id);
+    if (!entry) continue;
+    leaves.push(entry);
+    if (inheritedExec === null && entry.caseExecutionStatus) {
+      inheritedExec = entry.caseExecutionStatus;
+    }
+    if (inheritedEval === null && entry.caseEvaluationStatus) {
+      inheritedEval = entry.caseEvaluationStatus;
+    }
+  }
+  const executionConflict = inheritedExec !== null && leaves.some(
+    (e) => e.executionStatus !== null && e.executionStatus !== inheritedExec,
+  );
+  if (executionConflict) return true;
+  if (inheritedEval === null) return false;
+  const inheritedEvaluated = inheritedEval === 'completed';
+  return leaves.some((e) => e.evaluated !== null && e.evaluated !== inheritedEvaluated);
+}
+
+// ===== §4.6 降级期提示：会话内一次性关闭（模块级，组件卸载 / 重挂保持） =====
+
+let degradedHintDismissed = false;
+
+/** 降级期提示是否已在**本次会话**内关闭 */
+export function isDegradedHintDismissed(): boolean {
+  return degradedHintDismissed;
+}
+
+/** 关闭降级期提示（会话内不再出现） */
+export function dismissDegradedHint(): void {
+  degradedHintDismissed = true;
+}
+
+/** 重置关闭态（测试隔离用；正常交互不调用） */
+export function resetDegradedHintDismissed(): void {
+  degradedHintDismissed = false;
 }

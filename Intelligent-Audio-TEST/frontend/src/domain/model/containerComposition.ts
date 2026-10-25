@@ -45,6 +45,14 @@ export interface CompositionEntry {
   statusFromCase: boolean
   /** 评估状态是否降级自容器用例行（§4.6 工具行提示判定） */
   evaluationFromCase: boolean
+  /**
+   * 同 source_case_id 的**容器用例行**继承的执行状态（§5 用例卡一致性判定）。
+   * 用例行状态继承自来源 TaskCase，可能与源结果自身状态不一致（实测 5715）；
+   * 缺用例行 → null（未知，不判定冲突）。
+   */
+  caseExecutionStatus?: string | null
+  /** 同 source_case_id 的容器用例行评估状态（评估侧一致性判定；缺用例行 → null） */
+  caseEvaluationStatus?: string | null
 }
 
 /** 组成摘要（按过滤后条目统计，§4.2 summarizeComposition） */
