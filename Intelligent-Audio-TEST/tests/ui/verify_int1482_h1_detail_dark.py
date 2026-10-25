@@ -41,20 +41,66 @@ def section(name, fn):
 
 
 def set_theme(d, mode):
+    """写 localStorage 主题 key 后整页重载（about:blank 打断 bfcache），等到 html class 与目标一致。"""
     d.execute_script("localStorage.setItem('iatp:theme:v1:mode', '%s')" % mode)
-    d.refresh()
-    end = time.time() + 40
+    url = d.current_url
+    if url in ('about:blank', ''):
+        url = L.BASE + '/report-center'
+    d.get('about:blank')
+    d.get(url)
+    end = time.time() + 45
     while time.time() < end:
-        time.sleep(1.2)
+        time.sleep(1.0)
         try:
-            cls = d.execute_script("return document.documentElement.className")
-            txt = L.body(d)
+            cls = d.execute_script("return document.documentElement.className") or ''
         except Exception:
             continue
-        if (mode == 'dark') == ('dark' in cls) and '报告' in txt:
+        if (mode == 'dark') == ('dark' in cls):
             break
-    return {'html_class': d.execute_script("return document.documentElement.className"),
+    return theme_state(d)
+
+
+def theme_state(d):
+    return {'html_class': d.execute_script("return document.documentElement.className") or '',
             'body_bg': d.execute_script("return getComputedStyle(document.body).backgroundColor")}
+
+
+def assert_theme(d, mode):
+    st = theme_state(d)
+    if mode == 'dark' and 'dark' not in st['html_class']:
+        raise AssertionError('主题未切到 dark: %r' % (st,))
+    if mode == 'light' and 'dark' in st['html_class']:
+        raise AssertionError('主题未切到 light（html 仍带 dark class）: %r' % (st,))
+    return st
+
+
+def image_stats(path):
+    """截图的平均亮度与暗像素占比（用于证明 light/dark 是两张不同主题的图）。"""
+    from PIL import Image
+    im = Image.open(path).convert('RGB')
+    im = im.resize((max(1, im.size[0] // 8), max(1, im.size[1] // 8)))
+    px = im.load()
+    w, h = im.size
+    tot = 0.0
+    dark = 0
+    for y in range(h):
+        for x in range(w):
+            r, g, b = px[x, y]
+            lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+            tot += lum
+            if lum < 60:
+                dark += 1
+    n = float(w * h)
+    return {'avg_lum': round(tot / n, 1), 'dark_pct': round(100.0 * dark / n, 1)}
+
+
+def check_shot_theme(path, mode):
+    st = image_stats(path)
+    if mode == 'light' and not (st['avg_lum'] >= 150 and st['dark_pct'] <= 25):
+        raise AssertionError('浅色截图不亮: %s %r' % (os.path.basename(path), st))
+    if mode == 'dark' and not (st['avg_lum'] <= 90 and st['dark_pct'] >= 70):
+        raise AssertionError('深色截图不暗: %s %r' % (os.path.basename(path), st))
+    return st
 
 
 def open_report(d, rid, timeout=90):
@@ -297,7 +343,13 @@ def pass_logs(d, tag):
 
 
 def drawer_pass(d, tag, rid, case_name):
-    """某用例的复核历史抽屉：人工 Tab + AI Tab 各一张。"""
+    """某用例的复核历史抽屉：人工 Tab + AI Tab 各一张。
+
+    tag 决定主题：**必须在抽屉取证前自己切主题**。旧版把这段跑在主题循环之后，
+    主题停在 dark，导致 light/dark 两遍拍出同一张深色图（审计打回 P1）。
+    """
+    theme = set_theme(d, tag)          # 先切主题并重载页面，再开报告
+    theme_pre = assert_theme(d, tag)
     open_report(d, rid)
     n = filter_by_name(d, case_name)
     if not n:
@@ -322,11 +374,15 @@ def drawer_pass(d, tag, rid, case_name):
         L.js_click(d, hist)
     sheet = wait_sheet(d, timeout=30)
     time.sleep(1.5)
-    state = {'entry': entry, 'head': (sheet.text or '')[:420],
+    theme_sheet = assert_theme(d, tag)   # 抽屉打开后主题仍必须是目标主题
+    state = {'theme': theme_sheet, 'theme_pre': theme_pre, 'entry': entry,
+             'head': (sheet.text or '')[:420],
              'reqs': reqs(d, 'review'),
              'tabs': [t.text for t in sheet.find_elements(By.CSS_SELECTOR, "[role='tab']")],
              'manual_rows': len([x for x in sheet.find_elements(By.CSS_SELECTOR, '.space-y-2 > div') if x.is_displayed()])}
-    L.shot(d, 'drawer_%s_%s_manual' % (tag, rid))
+    p_manual = L.shot(d, 'drawer_%s_%s_manual' % (tag, rid))
+    state['shot_manual'] = os.path.basename(p_manual)
+    state['manual_shot_stats'] = check_shot_theme(p_manual, tag)
     for t in sheet.find_elements(By.CSS_SELECTOR, "[role='tab']"):
         if 'AI' in (t.text or ''):
             L.js_click(d, t)
@@ -336,7 +392,9 @@ def drawer_pass(d, tag, rid, case_name):
     sheet = dls[-1] if dls else sheet
     state['ai_tail'] = (sheet.text or '')[-420:]
     state['ai_rows'] = len([x for x in sheet.find_elements(By.CSS_SELECTOR, '.space-y-2 > div') if x.is_displayed()])
-    L.shot(d, 'drawer_%s_%s_ai' % (tag, rid))
+    p_ai = L.shot(d, 'drawer_%s_%s_ai' % (tag, rid))
+    state['shot_ai'] = os.path.basename(p_ai)
+    state['ai_shot_stats'] = check_shot_theme(p_ai, tag)
     close_top(d, 2)
     return state
 
