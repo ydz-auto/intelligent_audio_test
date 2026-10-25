@@ -12,9 +12,17 @@ from api_gateway.schemas.group import (
     GroupListData,
     GroupListQuery,
     GroupMoveCasesRequest,
+    GroupSummaryItem,
+    GroupSummaryListData,
     GroupUpdateRequest,
 )
 import uuid
+
+
+# INT-1470：分组列表默认页大小。原默认 100 —— 每项约 214B（含 description），
+# 单次响应 21.4KB；默认页取 40 后约 8.9KB，且分页信封（total/page/pages）不变。
+# 现有前端均显式传 per_page（React 200 / 新 Vue 100~1000），不受默认值影响。
+_DEFAULT_PAGE_SIZE = 40
 
 
 def _parse_query_params(model_cls):
@@ -40,8 +48,12 @@ class GroupService:
     @staticmethod
     def get_all():
         query = _parse_query_params(GroupListQuery)
-        page = query.page
-        per_page = query.per_page if query.per_page is not None else 100
+        # 非法分页参数（<=0）按默认口径处理：分页下推要求 page/per_page 为正，
+        # 否则 task_service 会当作「不分页」返回全量，与响应信封不一致
+        page = query.page if query.page and query.page > 0 else 1
+        per_page = (query.per_page if query.per_page and query.per_page > 0
+                    else _DEFAULT_PAGE_SIZE)
+        summary_only = (query.fields or '').strip().lower() == 'summary'
         algorithm_type = query.algorithm_type
         keyword = query.keyword
         test_type = query.type
@@ -50,51 +62,91 @@ class GroupService:
         favorite = query.favorite or False
         only_deleted = query.only_deleted or False
         # 分组列表按"分组下匹配用例数"筛选（V9.7.10 对齐，INT-146）：
-        # 任一用例级筛选存在时，仅返回有匹配用例的分组，计数为匹配用例数
-        has_case_filters = bool(algorithm_type or test_type or keyword or dimension_id)
+        # 用例级筛选（type/keyword/dimension）需先用例聚合确定分组集合，不能下推分页
+        has_case_filters = bool(test_type or keyword or dimension_id)
+        # INT-1470：默认口径与 algorithm_type 筛选口径可直接下推分页——分组集合
+        # 由 SQL 直接确定，列表 RPC 只返回当前页、计数只算当前页；收藏/回收站仍
+        # 需先按用例过滤分组，保持原路径（全量列表 + 内存切片 + 聚合 RPC）
+        pushdown = not has_case_filters and not favorite and not only_deleted
 
         # 通过 gRPC 查询 TestCaseGroup 列表（替代直连 PO）
-        try:
-            from api_gateway.infrastructure.grpc_proxies import task_data_service
-            data = task_data_service.list_testcase_groups(algorithm_type=algorithm_type)
-            all_groups = data.get('items') or []
-        except Exception:
-            all_groups = []
-
-        # 通过 gRPC 聚合统计 TestCase 按 group_id 分组计数（替代直连 PO）
-        from api_gateway.infrastructure.grpc_proxies import task_data_service as _tds
+        from api_gateway.infrastructure.grpc_proxies import task_data_service
 
         case_counts = {}
-        if has_case_filters:
-            # gRPC GetTestCaseStats 支持用例级筛选 + group_by='group_id'
-            # INT-528：收藏/回收站口径随筛选项下推，回收站态 keyword 命中已删用例
-            stats = _tds.get_testcase_stats(
-                algorithm_type=algorithm_type, group_by='group_id',
-                test_type=test_type, keyword=keyword, dimension_id=dimension_id,
-                favorite=favorite, deleted=only_deleted,
-            )
-            items = stats.get('items') or []
-            case_counts = {item.get('key', ''): item.get('count', 0) for item in items}
-            all_groups = [g for g in all_groups if str(g.get('id')) in case_counts]
+        if pushdown:
+            try:
+                data = task_data_service.list_testcase_groups(
+                    algorithm_type=algorithm_type, page=page, per_page=per_page)
+            except Exception:
+                data = {}
+            page_groups = data.get('items') or []
+            total = int(data.get('total') if data.get('total') is not None
+                        else len(page_groups))
+            # 计数随列表一次带回（task_service ListTestCaseGroups，口径同
+            # GetTestCaseStats group_by=group_id），不再发第二次聚合 RPC
+            case_counts = {str(g.get('id')): int(g.get('test_case_count') or 0)
+                           for g in page_groups}
+        else:
+            try:
+                data = task_data_service.list_testcase_groups(
+                    algorithm_type=algorithm_type)
+                all_groups = data.get('items') or []
+            except Exception:
+                all_groups = []
 
-        total = len(all_groups)
-
-        # 客户端分页（gRPC ListTestCaseGroups 不支持分页）
-        start = (page - 1) * per_page
-        end = start + per_page
-        page_groups = all_groups[start:end]
-
-        if not has_case_filters:
-            group_ids = [str(g.get('id')) for g in page_groups]
-            if group_ids:
-                # INT-528：收藏/回收站口径同步作用于无筛选分组计数，
-                # 回收站态分组卡计数为已删用例数（与可见数据一致）
-                stats = _tds.get_testcase_stats(
-                    group_by='group_id', favorite=favorite, deleted=only_deleted)
+            if has_case_filters:
+                # gRPC GetTestCaseStats 支持用例级筛选 + group_by='group_id'
+                # INT-528：收藏/回收站口径随筛选项下推，回收站态 keyword 命中已删用例
+                stats = task_data_service.get_testcase_stats(
+                    algorithm_type=algorithm_type, group_by='group_id',
+                    test_type=test_type, keyword=keyword, dimension_id=dimension_id,
+                    favorite=favorite, deleted=only_deleted,
+                )
                 items = stats.get('items') or []
                 case_counts = {item.get('key', ''): item.get('count', 0) for item in items}
-                # 仅保留当前页分组
-                case_counts = {k: v for k, v in case_counts.items() if k in group_ids}
+                all_groups = [g for g in all_groups if str(g.get('id')) in case_counts]
+                total = len(all_groups)
+            else:
+                total = len(all_groups)
+
+            # 用例级筛选/收藏/回收站口径保持客户端分页（gRPC 侧不分页下推）
+            start = (page - 1) * per_page
+            page_groups = all_groups[start:start + per_page]
+
+            if not has_case_filters and (favorite or only_deleted):
+                # INT-528：收藏/回收站口径需用例级过滤，只能走聚合统计 RPC，
+                # 且只保留当前页分组
+                group_ids = [str(g.get('id')) for g in page_groups]
+                if group_ids:
+                    stats = task_data_service.get_testcase_stats(
+                        group_by='group_id', favorite=favorite, deleted=only_deleted)
+                    items = stats.get('items') or []
+                    case_counts = {item.get('key', ''): item.get('count', 0)
+                                   for item in items}
+                    case_counts = {k: v for k, v in case_counts.items()
+                                   if k in group_ids}
+
+        pages = (total + per_page - 1) // per_page if per_page else 1
+
+        if summary_only:
+            # INT-1470：精简投影——仅 facet/组头行需要的 id/name/test_case_count
+            summary_items = [
+                GroupSummaryItem(
+                    id=group.get('id'),
+                    name=group.get('name'),
+                    test_case_count=case_counts.get(str(group.get('id')), 0),
+                )
+                for group in page_groups
+            ]
+            return success_response(
+                GroupSummaryListData(
+                    items=summary_items,
+                    total=total,
+                    page=page,
+                    per_page=per_page,
+                    pages=pages,
+                )
+            )
 
         data = []
         for group in page_groups:
@@ -119,7 +171,7 @@ class GroupService:
                 total=total,
                 page=page,
                 per_page=per_page,
-                pages=(total + per_page - 1) // per_page if per_page else 1,
+                pages=pages,
             )
         )
 

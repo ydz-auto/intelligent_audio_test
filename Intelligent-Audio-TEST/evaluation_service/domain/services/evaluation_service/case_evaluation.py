@@ -13,7 +13,12 @@ class CaseEvaluationMixin:
     def evaluate_case(self, task_id, result_id, test_case_id, algorithm_result, **kwargs):
         from evaluation_service.infrastructure.acl import algorithm_acl_repository
         algorithm_type = kwargs.get('algorithm_type', 'translation')
-        field_mapper = algorithm_acl_repository.get_field_mappings(algorithm_type)
+        # INT-1757（C6b）：评估侧 api_id 作用域。优先级：调用方显式传入的
+        # eval_params.api_id → test_results.api_id（重评估等不带显式值的路径从库取）。
+        api_id = self._resolve_evaluation_api_id(
+            task_id, test_case_id, result_id, kwargs)
+        field_mapper = algorithm_acl_repository.get_field_mappings(
+            algorithm_type, api_id=api_id)
         test_type = kwargs.get('test_type', 'api')
         round_number = kwargs.get('round_number')  # 多轮评估: 轮次编号 (None=整体评估, 0-indexed)
         reference_params_col = kwargs.pop('reference_params_col', None)
@@ -25,7 +30,8 @@ class CaseEvaluationMixin:
                 algorithm_result, reference_params_col,
                 field_mapper, kwargs.get('algorithm_type', 'translation'),
                 test_type, task_id, test_case_id,
-                algorithm_params_col=algorithm_params_col
+                algorithm_params_col=algorithm_params_col,
+                api_id=api_id,
             )
             if round_number is not None:
                 # 指定轮次：只取对应轮
@@ -53,6 +59,7 @@ class CaseEvaluationMixin:
                     task_id=task_id, result_id=result_id, test_case_id=test_case_id,
                     algorithm_result=algorithm_result, field_mapper=field_mapper,
                     test_type=test_type, rounds_list=rounds_list, kwargs=kwargs,
+                    api_id=api_id,
                 )
                 if fanout_submitted and not has_overall_dims:
                     # 无整体口径维度：逐轮链负责 TRD 落库与用例收尾，整体部分无事可做
@@ -82,8 +89,47 @@ class CaseEvaluationMixin:
 
         return self._dispatch_to_workers(
             task_id, result_id, test_case_id, algorithm_result,
-            prepared, field_mapper, test_type, round_number, kwargs
+            prepared, field_mapper, test_type, round_number, kwargs,
+            api_id=api_id
         )
+
+    def _resolve_evaluation_api_id(self, task_id, test_case_id, result_id, kwargs):
+        """解析本次评估的 API 实例作用域（INT-1757 / C6b）。
+
+        1. 调用方在 eval_params 里显式带了 api_id → 直接用（同时从 kwargs 摘掉，
+           避免它作为普通评估入参注入评估请求 context）；
+        2. 否则读 ``test_results.api_id``（重评估等路径的权威来源，来自库）；
+        3. 读不到（设备链/E2E 链无 api_id、读取失败）→ None，回落算法级默认。
+        """
+        explicit = kwargs.pop('api_id', None)
+        if explicit is not None:
+            try:
+                return int(explicit)
+            except (TypeError, ValueError):
+                return None
+        if not result_id:
+            return None
+        getter = getattr(self._task_acl_repo, 'get_test_result_by_id', None)
+        if not callable(getter):
+            return None
+        try:
+            tr = getter(result_id)
+        except Exception as e:
+            self._log(
+                level='WARNING',
+                content=f"读取 test_results.api_id 失败，按算法级默认评估: result_id={result_id}, error={e}",
+                task_id=task_id, test_case_id=test_case_id
+            )
+            return None
+        if tr is None:
+            return None
+        api_id = tr.get('api_id') if isinstance(tr, dict) else getattr(tr, 'api_id', None)
+        if api_id is None:
+            return None
+        try:
+            return int(api_id)
+        except (TypeError, ValueError):
+            return None
 
     def _mark_rounds_evaluation_skipped(self, task_id, result_id, test_case_id, algorithm_type):
         """多轮结果无法构建评估数据时的显式跳过收尾。
@@ -147,7 +193,7 @@ class CaseEvaluationMixin:
 
     def _fan_out_per_round_evaluations(self, task_id, result_id, test_case_id,
                                         algorithm_result, field_mapper, test_type,
-                                        rounds_list, kwargs):
+                                        rounds_list, kwargs, api_id=None):
         """多轮整体评估入口的逐轮维度补提交（INT-126）。
 
         上传口径把评估维度逐轮注入 rounds[].evaluation.dimensions，整体评估入口
@@ -214,7 +260,8 @@ class CaseEvaluationMixin:
                     continue
                 self._dispatch_to_workers(
                     task_id, result_id, test_case_id, algorithm_result,
-                    prepared, field_mapper, test_type, round_idx, round_kwargs
+                    prepared, field_mapper, test_type, round_idx, round_kwargs,
+                    api_id=api_id
                 )
                 fanout_submitted = True
                 self._log(
@@ -391,7 +438,8 @@ class CaseEvaluationMixin:
             )
 
     def _dispatch_to_workers(self, task_id, result_id, test_case_id, algorithm_result,
-                              prepared, field_mapper, test_type, round_number, kwargs):
+                              prepared, field_mapper, test_type, round_number, kwargs,
+                              api_id=None):
         """创建维度结果记录并分发评估任务到端点 worker"""
         test_case = prepared['test_case']
         algorithm_type = prepared['algorithm_type']
@@ -415,7 +463,7 @@ class CaseEvaluationMixin:
         self._dispatch_evaluation_tasks(
             dimension_data_list, dimension_result_map, result_id, task_id, test_case_id,
             algorithm_result, algorithm_type, test_type, round_number, field_mapper, ref_texts,
-            rounds_list, flat_eval_fields
+            rounds_list, flat_eval_fields, api_id=api_id
         )
 
         self._log(

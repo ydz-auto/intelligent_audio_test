@@ -62,6 +62,9 @@ class AudioRepositoryInterface(ABC):
     def get_audio_by_md5(self, md5: str) -> Optional[AudioAggregate]: ...
 
     @abstractmethod
+    def get_audio_by_file_path(self, file_path: str) -> Optional[AudioAggregate]: ...
+
+    @abstractmethod
     def get_audios_by_md5_list(self, md5_list: List[str]) -> List[AudioAggregate]: ...
 
     @abstractmethod

@@ -136,14 +136,12 @@ def test_candidates_case_meta(db, monkeypatch):
     """§11-7：候选行补 tags/group_id/group_name/duration/rounds（含去重与缺省兜底）。"""
     from task_service.application.task.cherry_pick_service import cherry_pick_service
 
-    # duration 同源 total_duration：audio_service gRPC 批量查询（mock 时长）
+    # duration 同源 total_duration：音频时长批量查询（mock 时长；INT-1625 起为
+    # ACL 共享库窄字段投影 get_audio_durations）
     from task_service.infrastructure.acl import audio_acl_repository as audio_acl_mod
     monkeypatch.setattr(
-        audio_acl_mod.audio_acl_repository, 'list_audios_by_ids',
-        lambda audio_ids: {
-            1001: {'id': 1001, 'duration': 10.5},
-            1002: {'id': 1002, 'duration': 5.25},
-        })
+        audio_acl_mod.audio_acl_repository, 'get_audio_durations',
+        lambda audio_ids, session=None: {1001: 10.5, 1002: 5.25})
 
     _task_id, _results = _seed_source_task()
     resp = cherry_pick_service.list_candidates({'task_ids': [_task_id], 'page': 1, 'per_page': 50})
@@ -182,8 +180,8 @@ def test_candidates_case_meta_container_hit(db, monkeypatch):
 
     from task_service.infrastructure.acl import audio_acl_repository as audio_acl_mod
     monkeypatch.setattr(
-        audio_acl_mod.audio_acl_repository, 'list_audios_by_ids',
-        lambda audio_ids: {2001: {'id': 2001, 'duration': 8.0}})
+        audio_acl_mod.audio_acl_repository, 'get_audio_durations',
+        lambda audio_ids, session=None: {2001: 8.0})
 
     session = get_db_session()
     try:

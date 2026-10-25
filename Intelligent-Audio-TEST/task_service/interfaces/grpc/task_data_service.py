@@ -22,6 +22,7 @@ DDD 分层：本 servicer 仅做 protocol 适配，所有 DB 访问通过 reposi
 - GetTestCaseStats     聚合统计 TestCase（count/group_by，供 stats_cache / home_service 用）
 """
 import logging
+from typing import Any, List
 
 from shared.proto import task_service_pb2 as task_pb
 from shared.proto import task_service_pb2_grpc as task_grpc
@@ -294,13 +295,17 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
         """查询 TestCaseGroup 列表
 
         过滤逻辑删除，支持 algorithm_type / 名称搜索过滤。
+        INT-1470：page/per_page 缺省（0）= 不分页、返回全部（旧调用方行为不变，
+        data.total == len(data.items)）；否则 SQL 侧只返回当前页，计数只算当前页。
         """
         try:
-            items = testcase_repository.list_groups(
+            result = testcase_repository.list_groups_page(
                 algorithm_type=request.algorithm_type or '',
                 search=request.search or '',
+                page=request.page,
+                per_page=request.per_page,
             )
-            return self._resp(True, '', {'items': items})
+            return self._resp(True, '', result)
         except Exception as e:
             logger.exception('ListTestCaseGroups failed')
             return self._resp(False, str(e))
@@ -510,14 +515,35 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
     def BatchCreateLogs(self, request, context=None):
         """批量写入日志（shared/utils/log_handler 后台 worker 调用）
 
-        接收 JSON 日志列表，逐条构造 Log PO 并批量 commit。
-        返回写入后的 id 列表，顺序与请求一致。
+        按条目 `sink` 分流（INT-1793 契约 §3.3）：
+        - `audit_file` → 审计 JSONL 追加（task_service 单写者落盘，H4），
+          返回每条事件的 cursor（= 事件时间 epoch 微秒，H3）
+        - `db`（默认，仅 LOG_AUDIT_DB_ENABLED / LOG_BUSINESS_DB_ENABLED 回滚开关可达）
+          → 原实现：逐条构造 Log PO 并批量 commit
+
+        返回 id 列表（DB 行 id / 审计 cursor），顺序与请求一致。
         """
         try:
             logs = _loads(request.logs_json, [])
             if not logs:
                 return self._resp(True, '', {'ids': []})
-            ids = log_repository.batch_create(logs)
+            ids: List[Any] = [None] * len(logs)
+            db_rows: List[dict] = []
+            db_indexes: List[int] = []
+            audit_writer = None
+            for index, item in enumerate(logs):
+                if (item.get('sink') or 'db') == 'audit_file':
+                    if audit_writer is None:
+                        from shared.logging.audit_writer import get_audit_writer
+                        audit_writer = get_audit_writer()
+                    ids[index] = audit_writer.write(item)
+                else:
+                    db_rows.append(item)
+                    db_indexes.append(index)
+            if db_rows:
+                db_ids = log_repository.batch_create(db_rows)
+                for pos, index in enumerate(db_indexes):
+                    ids[index] = db_ids[pos] if pos < len(db_ids) else None
             return self._resp(True, '', {'ids': ids})
         except Exception as e:
             logger.exception('BatchCreateLogs failed')

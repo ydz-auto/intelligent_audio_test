@@ -133,6 +133,15 @@ def create_app(config_name='default') -> FastAPI:
         lifespan=lifespan,
     )
 
+    # INT-1691：HTTP 请求级 DB session scope。与 algorithm_service（INT-1652）
+    # 同型：本服务原先只注册了 gRPC 侧 ServerDbScopeInterceptor，uvicorn 线程池
+    # 线程落回线程级 session —— 只读路由 SELECT 完不 commit/rollback，请求结束后
+    # 连接滞留在 idle in transaction 并持有 dimensions 的 ACCESS SHARE，把随后的
+    # 迁移 DDL（ALTER TABLE，需 ACCESS EXCLUSIVE）顶进锁队列。中间件在请求收尾
+    # remove 该请求的 session，事务生命周期收敛到单次请求。
+    from shared.infrastructure.db_session_middleware import DbSessionScopeMiddleware
+    app.add_middleware(DbSessionScopeMiddleware)
+
     @app.get('/health')
     def health():
         return {

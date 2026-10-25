@@ -222,11 +222,20 @@ class EndpointWorker(EvaluationLoggerMixin):
 
     def _execute_evaluation(self, task_id, result_id, test_case_id, algorithm_result,
                            representative_dim_data, group_items, algorithm_type='translation',
-                           test_type='api', **kwargs):
-        field_defs = algorithm_acl_repository.get_field_mappings(algorithm_type)
+                           test_type='api', api_id=None, **kwargs):
+        # INT-1757（C6b）：api_id 由 task_data 透传（test_results.api_id），
+        # 字段定义/输出声明按该 API 实例作用域取；None 回落算法级默认。
+        field_defs = algorithm_acl_repository.get_field_mappings(
+            algorithm_type, api_id=api_id)
         # 按维度获取映射字段（多对一映射时不同维度可能映射不同 source）
         dim_id = representative_dim_data.get('id')
-        output_field_keys = field_defs.get_mapped_device_output_field_keys(algorithm_type)
+        # 输出字段键集合 = device ∪ api（INT-1747 / C0 §9.2）：API 独有输出字段
+        # 也要进入输出字段展示/提取。**只**用于输出字段取值，不扩展到评估入参
+        # 映射——入参仍只认 param_mappings。
+        output_field_keys = list(dict.fromkeys(
+            field_defs.get_mapped_device_output_field_keys(algorithm_type)
+            + field_defs.get_mapped_api_output_field_keys(algorithm_type)
+        ))
 
         eval_input_fields = field_defs.get_evaluation_input_fields(algorithm_type)
 
@@ -234,7 +243,7 @@ class EndpointWorker(EvaluationLoggerMixin):
         payload = self._build_evaluation_context(
             task_id, test_case_id, algorithm_result, representative_dim_data,
             algorithm_type, output_field_keys, dim_id, eval_input_fields, kwargs,
-            group_items
+            group_items, api_id=api_id
         )
 
         # 2. 准备API配置（endpoints, method, headers, dim_info, audio_field_names）
@@ -262,7 +271,7 @@ class EndpointWorker(EvaluationLoggerMixin):
 
     def _build_evaluation_context(self, task_id, test_case_id, algorithm_result, representative_dim_data,
                                   algorithm_type, output_field_keys, dim_id, eval_input_fields, kwargs,
-                                  group_items=None):
+                                  group_items=None, api_id=None):
         """构建评估上下文（包括algo_results、context、input_params），返回 payload"""
         self._log(
             level='DEBUG',
@@ -372,7 +381,9 @@ class EndpointWorker(EvaluationLoggerMixin):
             test_case_id=test_case_id
         )
 
-        payload = self.eval_service.api_client.build_payload(body_template, context, task_id=task_id, test_case_id=test_case_id, algorithm_type=algorithm_type)
+        payload = self.eval_service.api_client.build_payload(
+            body_template, context, task_id=task_id, test_case_id=test_case_id,
+            algorithm_type=algorithm_type, api_id=api_id)
 
         # 从 group_items 提取各子维度的 task_type_code，组成 sub_tasks 注入 payload
         # eval_server 的 TurnTakingCalculator 按 sub_tasks 只算选中的子维度

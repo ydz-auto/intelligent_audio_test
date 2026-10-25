@@ -17,6 +17,7 @@ from concurrent import futures
 import grpc
 
 from shared.proto import audio_service_pb2_grpc as audio_grpc
+from shared.infrastructure.config import BaseConfig
 from shared.infrastructure.grpc_interceptors import (
     server_log_interceptor, server_db_scope_interceptor, server_user_context_interceptor,
 )
@@ -46,6 +47,21 @@ def _configure_pydub_ffmpeg():
         AudioSegment.converter = ffmpeg_path
     if ffprobe_path and os.path.isfile(ffprobe_path):
         AudioSegment.ffprobe = ffprobe_path
+
+
+def _server_options() -> list:
+    """gRPC 收发消息上限（与 task_service 服务端、共享客户端 channel 同口径）。
+
+    grpcio 服务端默认收包上限 4MiB：网关 UploadChunk 把分片内容 base64 后经
+    protobuf string 字段转发（×4/3 膨胀），>3MB 的分片即被 RESOURCE_EXHAUSTED
+    拒收（INT-1522）。与客户端 channel 一样按 BaseConfig.GRPC_MAX_MESSAGE_MB
+    显式放大，避免两端上限不一致。
+    """
+    max_bytes = max(int(BaseConfig.GRPC_MAX_MESSAGE_MB), 1) * 1024 * 1024
+    return [
+        ('grpc.max_receive_message_length', max_bytes),
+        ('grpc.max_send_message_length', max_bytes),
+    ]
 
 
 def start_grpc_server(port=AUDIO_SERVICE_GRPC_PORT):
@@ -81,6 +97,7 @@ def start_grpc_server(port=AUDIO_SERVICE_GRPC_PORT):
     _max_workers = config_manager.get_value('grpc', 'audio_service_workers', 5)
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_max_workers),
+        options=_server_options(),
         interceptors=[server_db_scope_interceptor, server_log_interceptor,
                       server_user_context_interceptor],
     )

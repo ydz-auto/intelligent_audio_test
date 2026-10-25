@@ -31,6 +31,7 @@ from shared.models.common_enums import (
     AlarmSeverity,
     AuditEvent,
     AuditLogCategory,
+    DeviceKind,
 )
 from shared.utils.log_handler import log_not_emit
 
@@ -59,11 +60,18 @@ class DeviceMonitorService:
     def record_status_event(self, device_id: int, event_type: str,
                             from_status: str = None, to_status: str = None,
                             source: str = 'monitor', success: bool = True,
-                            detail: dict = None) -> Optional[dict]:
-        """状态事件落库并发布 DEVICE_EVENTS（降级：发布失败只打日志）。"""
+                            detail: dict = None,
+                            device_kind: str = DeviceKind.TEST.value) -> Optional[dict]:
+        """状态事件落库并发布 DEVICE_EVENTS（降级：发布失败只打日志）。
+
+        ``device_kind`` 标明事件属于哪张设备表（test=测试设备 / playback=播放设备，
+        INT-1679）；两张表 id 空间已重叠，查询侧只统计测试设备（契约 §1.2）。
+        默认 test：测试设备的三条写入腿（健康检查 / 监控线程 / 测试设备操作）不传即原行为。
+        """
         try:
             event = self.monitor_repo.record_status_event({
                 'device_id': device_id,
+                'device_kind': device_kind,
                 'event_type': event_type,
                 'from_status': from_status,
                 'to_status': to_status,
@@ -273,6 +281,9 @@ class DeviceMonitorService:
                 json.dumps(payload, ensure_ascii=False, default=str),
                 category=AuditLogCategory.DEVICE.value, source='backend',
                 device_id=alarm.get('device_id'),
+                # INT-1793 H1 + H4：显式审计标记；宿主机进程经 BatchCreateLogs
+                # 交 task_service 落审计文件（本机服务文件对读侧不可见）
+                audit_event=AuditEvent.DEVICE_ALARM_TRIGGERED,
             )
         except Exception:
             logger.debug("告警审计日志写入失败", exc_info=True)

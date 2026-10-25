@@ -72,6 +72,8 @@ service DeviceConfigService {
   rpc BatchDeviceAction(BatchDeviceActionRequest) returns (BatchDeviceActionResponse);
   // 设备状态历史/趋势（INT-80）
   rpc GetDeviceStatusHistory(GetDeviceStatusHistoryRequest) returns (GetDeviceStatusHistoryResponse);
+  // 设备监控统计（INT-1578：历史监控 → 统计分析四图，CQRS 查询侧）
+  rpc GetDeviceMonitorStats(GetDeviceMonitorStatsRequest) returns (GetDeviceMonitorStatsResponse);
   // 告警规则（INT-80）
   rpc CreateAlarmRule(CreateAlarmRuleRequest) returns (CreateAlarmRuleResponse);
   rpc UpdateAlarmRule(UpdateAlarmRuleRequest) returns (UpdateAlarmRuleResponse);
@@ -95,6 +97,11 @@ service PlaybackConfigService {
   rpc AssociateSPL(AssociateSPLRequest) returns (AssociateSPLResponse);
   rpc TestPlaybackDevice(TestPlaybackDeviceRequest) returns (TestPlaybackDeviceResponse);
   rpc StopPlaybackTest(StopPlaybackTestRequest) returns (StopPlaybackTestResponse);
+  // 播放设备控制（INT-1579，设备监控统计与播放设备控制接口契约 §2.1/§2.2/§2.5）
+  rpc RestartPlaybackDevice(RestartPlaybackDeviceRequest) returns (RestartPlaybackDeviceResponse);
+  rpc ResetPlaybackDeviceConfig(ResetPlaybackDeviceConfigRequest) returns (ResetPlaybackDeviceConfigResponse);
+  rpc GetPlaybackDeviceDiagnosis(GetPlaybackDeviceDiagnosisRequest) returns (GetPlaybackDeviceDiagnosisResponse);
+  rpc RepairPlaybackDevice(RepairPlaybackDeviceRequest) returns (RepairPlaybackDeviceResponse);
 }
 
 // ===== SPL 映射 CRUD 服务 =====
@@ -510,6 +517,15 @@ message GetDeviceStatusHistoryResponse {
   string data = 3;  // JSON 分页事件列表（趋势查询）
 }
 
+message GetDeviceMonitorStatsRequest {
+  string data = 1;  // JSON: {device_ids?: [int], lab_id?: int, start_date: 'YYYY-MM-DD', end_date: 'YYYY-MM-DD', granularity: 'day'}
+}
+message GetDeviceMonitorStatsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {granularity, start_date, end_date, device_count, points:[{date, availability, cpu, memory, battery, errors, operations, health_check_samples}]}
+}
+
 message CreateAlarmRuleRequest {
   string data = 1;  // JSON: {name, metric_type, threshold_value, severity?, notify_email?, enabled?}
 }
@@ -676,6 +692,50 @@ message StopPlaybackTestResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+}
+
+// ---- 播放设备控制（INT-1579，契约 §2.1/§2.2/§2.5）----
+// code 为业务码：200=成功；400=参数错误；404=未找到播放设备；409=运行中任务占用 / 物理设备不可枚举
+
+message RestartPlaybackDeviceRequest {
+  int32 device_id = 1;
+}
+message RestartPlaybackDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {id, status, device_index}
+  int32 code = 4;
+}
+
+message ResetPlaybackDeviceConfigRequest {
+  int32 device_id = 1;
+}
+message ResetPlaybackDeviceConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {id, changed:{sample_rate?, channel_index?}, status}
+  int32 code = 4;
+}
+
+message GetPlaybackDeviceDiagnosisRequest {
+  int32 device_id = 1;
+}
+message GetPlaybackDeviceDiagnosisResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {checkedAt, items:[{key,label,status,detail,suggestion}]}
+  int32 code = 4;
+}
+
+message RepairPlaybackDeviceRequest {
+  int32 device_id = 1;
+  string data = 2;  // JSON: {"actions": ["re-enumerate", "reopen-channel"]}
+}
+message RepairPlaybackDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {results:[{action, success, message}]}
+  int32 code = 4;
 }
 
 // ==================== SPLConfigService Messages ====================

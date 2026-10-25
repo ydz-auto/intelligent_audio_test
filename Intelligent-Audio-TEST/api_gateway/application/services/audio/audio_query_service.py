@@ -39,10 +39,41 @@ _AUDIO_EXT_CONTENT_TYPES = {
 }
 
 
-def _parse_query_params(model_cls):
-    """从 request.args 提取查询参数并通过 APIModel 校验"""
-    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+def _parse_query_params(model_cls, multi_keys=()):
+    """从 request.args 提取查询参数并通过 APIModel 校验。
+
+    FastAPI 的 query_params.to_dict() 对同名重复参数只保留一个值，
+    列表型参数（如 tags=a&tags=b）必须用 getlist 取全量，否则会被压成
+    单值字符串，List 校验直接 422（INT-1525）。
+    """
+    args = request.args
+    params = {k: v[0] if isinstance(v, list) else v for k, v in args.to_dict().items()}
+    for key in multi_keys:
+        values = args.getlist(key)
+        if values:
+            params[key] = values
     return model_cls.model_validate(params)
+
+
+def _normalize_tags(tags):
+    """tags 统一归一化为 audio_service 的 [{'name', 'mode'}] 口径（INT-1525）。
+
+    入参兼容 str 与 {'name', 'mode'} dict 两种写法：str 按 and 处理，
+    dict 保留 or/and 语义（mode 缺省按 and）。
+    """
+    normalized = []
+    for tag in tags or []:
+        if isinstance(tag, dict):
+            name = tag.get('name')
+            # audio_service 侧对 name 直接 .strip()，非字符串直接丢弃避免 500
+            if isinstance(name, str) and name.strip():
+                normalized.append({'name': name.strip(),
+                                   'mode': tag.get('mode') or 'and'})
+        elif isinstance(tag, str):
+            name = tag.strip()
+            if name:
+                normalized.append({'name': name, 'mode': 'and'})
+    return normalized
 
 
 class AudioQueryService:
@@ -73,16 +104,9 @@ class AudioQueryService:
             data = request.get_json() or {}
             query = AudioListQuery.model_validate(data)
         else:
-            query = _parse_query_params(AudioListQuery)
+            query = _parse_query_params(AudioListQuery, multi_keys=('tags',))
 
-        # tags 特殊处理：POST 时是 list of dict，GET 时是 list of str
-        tags_data = []
-        if query.tags:
-            if request.method == 'POST' and request.is_json:
-                data = request.get_json() or {}
-                tags_data = data.get('tags', [])
-            else:
-                tags_data = [{'name': t, 'mode': 'and'} for t in query.tags]
+        tags_data = _normalize_tags(query.tags)
 
         return {
             'page': query.page,
@@ -133,6 +157,25 @@ class AudioQueryService:
         if result.get('success'):
             data = result.get('data')
             if data:
+                # INT-564：audio_bp 直连详情端点叠加 owner 校验（数据可见性
+                # 设计文档 §四.4）——私有音频非 owner 按不存在处理（404）。
+                # 宿主语境（用例 preview/playback、用例导出）走宿主端点经
+                # gRPC 直连，不经过本边界，维持宿主优先只读豁免。
+                from shared.infrastructure.visibility_filter import check_visible
+                from api_gateway.application.services.visibility.visibility_service import (
+                    VisibilityService,
+                )
+                uid, is_admin = VisibilityService.get_identity()
+                if isinstance(data, dict):
+                    try:
+                        check_visible(
+                            data.get('created_by_user_id'),
+                            data.get('visibility') or 'shared',
+                            uid,
+                            is_admin,
+                        )
+                    except PermissionError:
+                        return error_response('音频文件不存在', code=404, http_code=404)
                 # INT-466：admin 访问私有音频详情落 PRIVATE_RESOURCE_ACCESS 审计（旁路）
                 from api_gateway.application.services.visibility.visibility_audit import (
                     maybe_audit_private_detail,
@@ -197,16 +240,9 @@ class AudioQueryService:
             data = request.get_json() or {}
             query = AudioIdQuery.model_validate(data)
         else:
-            query = _parse_query_params(AudioIdQuery)
+            query = _parse_query_params(AudioIdQuery, multi_keys=('tags',))
 
-        # tags 特殊处理
-        tags_data = []
-        if query.tags:
-            if request.method == 'POST' and request.is_json:
-                data = request.get_json() or {}
-                tags_data = data.get('tags', [])
-            else:
-                tags_data = [{'name': t, 'mode': 'and'} for t in query.tags]
+        tags_data = _normalize_tags(query.tags)
 
         return {
             'keyword': query.keyword,
@@ -287,6 +323,14 @@ class AudioQueryService:
         # 路径安全：拒绝目录穿越段
         if '..' in oss_key.replace(chr(92), '/').split('/'):
             return error_response("路径不合法", code=403, http_code=403)
+
+        # INT-564：下载为 audio_bp 直连读路径，私有音频非 owner → 404。
+        # 复用 stream-by-path 的路径反查 + 可见性校验（命中私有非 owner 404）；
+        # 本地降级模式仅服务 stream 校验后发出的回退 URL，此处为纵深防御。
+        # gRPC 不可达（code=400）回落原字节流路径，保持既有下载行为。
+        pre = _audio_acl.stream_audio_by_path({'path': oss_key})
+        if not pre.get('success') and pre.get('code') == 404:
+            return error_response("音频文件不存在", code=404, http_code=404)
 
         if os.path.isabs(oss_key):
             # 绝对路径仅允许音频存储目录（上传合并输出）与本地降级存储根目录

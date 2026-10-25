@@ -276,6 +276,12 @@ interface CreateAlgorithmRequest {
 }
 ```
 
+> **status 应用口径（实现演进裁定 2026-10-23，INT-1349）**：create 应用提交的
+> status 落库（online/offline/draft 三态；缺省时网关 schema 补 `online`，HTTP 实际落库
+> online；服务层直连 gRPC 未带 status 时兜底 `draft`）。`draft` 仅作草稿态：草稿正式路径
+> 走 `PUT /algorithm/definitions/draft`（INT-589 快照），create 显式提交 `status=draft`
+> 仅作防御性支持。
+
 ### 4.8 更新算法
 
 ```typescript

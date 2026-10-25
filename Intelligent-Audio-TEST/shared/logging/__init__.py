@@ -14,7 +14,9 @@
     service_handler 服务运行日志处理器（双条件轮转）
     business_writer 业务日志 JSONL 写入器（超限切分、进程独立文件名）
     business_reader 业务日志读取器（按 task/device/evaluation 检索）
-    retention       保留天数清扫
+    audit_writer    审计 JSONL 写入器（INT-1793：单写者、cursor、H1/H2/H3）
+    audit_reader    审计 JSONL 读取器（INT-1812：日期目录枚举、cursor 即 id）
+    retention       保留天数清扫（服务/业务/审计三棵树 + 单清扫者）
 """
 from shared.logging.config import (
     LogSettings,
@@ -23,6 +25,9 @@ from shared.logging.config import (
     resolve_service_name,
 )
 from shared.logging.enums import (
+    AUDIT_DIR,
+    AUDIT_FILE_SUFFIX,
+    AuditLogCategory,
     BusinessLogType,
     LogEnvironment,
     log_type_for_category,
@@ -34,12 +39,30 @@ from shared.logging.context import (
     set_current_evaluation_id,
     set_current_round,
 )
-from shared.logging.path_builder import BusinessLogPathBuilder
+from shared.logging.path_builder import AuditLogPathBuilder, BusinessLogPathBuilder
 from shared.logging.identity import process_identity
 from shared.logging.service_handler import ServiceRotatingFileHandler, setup_service_file_logging
 from shared.logging.business_writer import BusinessLogFileWriter
 from shared.logging.business_reader import BusinessLogReader
-from shared.logging.retention import sweep_expired_files, sweep_log_root
+from shared.logging.audit_writer import (
+    AuditLogFileWriter,
+    get_audit_writer,
+    reset_audit_writer,
+    write_audit_event,
+)
+from shared.logging.audit_reader import (
+    CURSOR_FLOOR,
+    AuditLogReader,
+    cursor_to_date_seg,
+    cursor_to_datetime,
+)
+from shared.logging.retention import (
+    audit_cutoff_date,
+    is_sweep_owner,
+    sweep_audit_dates,
+    sweep_expired_files,
+    sweep_log_root,
+)
 
 __all__ = [
     'LogSettings',
@@ -54,12 +77,26 @@ __all__ = [
     'get_current_evaluation_id',
     'set_current_evaluation_id',
     'log_round',
-    'BusinessLogPathBuilder',
+    'AUDIT_DIR',
+    'AUDIT_FILE_SUFFIX',
+    'AuditLogCategory',
+    'AuditLogPathBuilder',
     'process_identity',
     'ServiceRotatingFileHandler',
     'setup_service_file_logging',
     'BusinessLogFileWriter',
     'BusinessLogReader',
+    'AuditLogFileWriter',
+    'get_audit_writer',
+    'reset_audit_writer',
+    'write_audit_event',
+    'CURSOR_FLOOR',
+    'AuditLogReader',
+    'cursor_to_date_seg',
+    'cursor_to_datetime',
+    'audit_cutoff_date',
+    'is_sweep_owner',
+    'sweep_audit_dates',
     'sweep_expired_files',
     'sweep_log_root',
 ]

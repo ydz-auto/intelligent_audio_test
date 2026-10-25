@@ -130,6 +130,7 @@
      `127.0.0.1:9000`，并保留原 `Host: rustfs:9000` 头（S3 SigV4 签名覆盖
      Host 头，改连接目标不改 Host 则签名仍有效）。
    - 部署建议（后续）：宿主 hosts 加 `127.0.0.1 rustfs`（浏览器/宿主直传可达发布端口），或引入「公网 OSS 端点」配置分离 service-to-service 与 client 直传两种 base URL。
+   - 已实施（INT-1719，2026-10-24）：采用后者。新增 `OSS_PUBLIC_ENDPOINT`（对浏览器/第三方暴露的地址，空串回落 `OSS_ENDPOINT`），`OSSClient` 另建签名客户端，`get_presigned_url` / `get_upload_presigned_url` / `get_part_upload_presigned_url` 三个方法改用它签名；内部读写仍走 `OSS_ENDPOINT`。compose 给 api_gateway / task_service / report_service / api_test_service 加 `${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}`。不采用「生成后替换 URL 前缀」：SigV4 下 Host 参与签名，换 host 会 403。`scripts/compose_stack_smoke.py` 的 netloc 改写仅在新旧容器混跑期仍需（presign 已是宿主地址时命中不到 `rustfs`，逻辑自然跳过）。
 3. **测试栈 infra 复用容器栈后的隔离库预建**
    - compose postgres 占 5432 后，宿主 postgres 不再起（parallel_stack `_ensure_postgres` 探测 5432 已监听即跳过）；parallel_stack 服务连接 127.0.0.1:5432 的隔离库 `intelligent_audio_test_test` 需在容器 postgres 预建（CREATE DATABASE + 建表/迁移），见 §5。
 4. **`PIP_INDEX_URL` 构建参数未接线**

@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+from shared.constants.evaluation_dimension import is_llm_judge_dimension
 from shared.utils.path_extractor import extract_by_path
 from shared.utils.status_constants import EvaluationStatus
 
@@ -25,8 +26,7 @@ VERDICT_PASSED = 'passed'
 VERDICT_FAILED = 'failed'
 VERDICT_UNCERTAIN = 'uncertain'
 
-# LLM 判分维度标记（task_type_code / dimension_type 命中即视为 LLM 判分维度）
-_LLM_JUDGE_MARKERS = ('llm_judge',)
+# LLM 判分维度标记已收敛到 shared 谓词（INT-1671），本模块不再持有本地常量
 
 # 主评分输出参数 code 兜底（output_role=main 的 field_path 缺失时用）
 _MAIN_SCORE_PARAM_CODE = 'llm_judge_score'
@@ -38,10 +38,11 @@ _DEFAULT_SCORE_MAX = 5.0
 
 
 def _is_llm_judge_dimension(dim_config: dict) -> bool:
-    """维度配置是否 LLM 判分维度（task_type_code / dimension_type 含 llm_judge）。"""
-    ttc = str(dim_config.get('task_type_code') or '')
-    dtyp = str(dim_config.get('dimension_type') or '')
-    return any(m in ttc or m in dtyp for m in _LLM_JUDGE_MARKERS)
+    """维度配置是否 LLM 判分维度（口径见 shared.constants.evaluation_dimension）。"""
+    return is_llm_judge_dimension(
+        task_type_code=dim_config.get('task_type_code'),
+        dimension_type=dim_config.get('dimension_type'),
+    )
 
 
 def _pick_main_output(output_params: List[dict]) -> Optional[dict]:

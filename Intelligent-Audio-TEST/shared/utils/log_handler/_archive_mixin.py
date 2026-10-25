@@ -101,7 +101,9 @@ class _ArchiveMixin:
                     last_modified = obj['LastModified'].timestamp()
                     if last_modified < cutoff_time:
                         try:
-                            oss._client.delete_object(Bucket=bucket, Key=obj['Key'])
+                            # INT-1348：删除走管理类短超时客户端，OSS 不可达/响应
+                            # 慢时快速失败，不让归档清理悬挂
+                            oss._admin_client.delete_object(Bucket=bucket, Key=obj['Key'])
                             deleted_count += 1
                         except Exception:
                             pass

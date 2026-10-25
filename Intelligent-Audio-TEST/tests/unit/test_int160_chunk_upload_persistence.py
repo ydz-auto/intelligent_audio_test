@@ -85,6 +85,12 @@ def _b64(data: bytes) -> str:
     return base64.b64encode(data).decode('ascii')
 
 
+def _server_chunk_size() -> int:
+    """register 下发的分片大小（INT-1522 起由配置决定，不再硬编码 10MB）。"""
+    from audio_service.config.config import Config
+    return max(1, int(Config.AUDIO_UPLOAD_CHUNK_SIZE_MB)) * 1024 * 1024
+
+
 class TestChunkUploadPersistence:
     """缺陷 2：文件级计数/状态持久化"""
 
@@ -93,8 +99,8 @@ class TestChunkUploadPersistence:
         monkeypatch.setattr(
             'audio_service.config.config.Config.AUDIO_STORAGE_PATH', str(tmp_path))
         task_id = _init_task(service)
-        # 10MB+1 → total_chunks=2，用小载荷即可驱动多分片计数
-        reg = _register(service, task_id, 10 * 1024 * 1024 + 1)
+        # 1 个满片 + 1 字节 → total_chunks=2，用小载荷即可驱动多分片计数
+        reg = _register(service, task_id, _server_chunk_size() + 1)
         file_id, total = reg['file_id'], reg['total_chunks']
         assert total == 2
 
@@ -144,7 +150,7 @@ class TestChunkUploadPersistence:
         monkeypatch.setattr(
             'audio_service.config.config.Config.AUDIO_STORAGE_PATH', str(tmp_path))
         task_id = _init_task(service)
-        reg = _register(service, task_id, 10 * 1024 * 1024 + 1)
+        reg = _register(service, task_id, 2 * _server_chunk_size() + 1)
         file_id, total = reg['file_id'], reg['total_chunks']
 
         for payload in (b'A' * 1000, b'X' * 800):  # 第二次为重传（体积不同）

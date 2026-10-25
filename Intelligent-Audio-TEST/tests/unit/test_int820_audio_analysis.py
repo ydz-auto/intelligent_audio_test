@@ -374,3 +374,49 @@ class TestAudioAnalysisService:
             1, {'operation': 'trim', 'start_ms': 800, 'end_ms': 500})
         assert result['success'] is False
         assert result['code'] == 400
+
+
+# ── gRPC servicer 路径（INT-1662 回归：Query 缺 @dataclass 导致实例化即 TypeError） ──
+
+class TestAnalyzeAudioFeaturesServicerPath:
+    """servicer 必须能把 request.audio_id 构造成 Query 再进 handler。
+
+    INT-1662：AnalyzeAudioFeaturesQuery 曾漏 @dataclass(frozen=True)，
+    `AnalyzeAudioFeaturesQuery(audio_id=...)` 直接 TypeError，被 servicer 的
+    try/except 吞成 success=false，前端恒 400。此用例只打 servicer → query → handler
+    的装配链路，不依赖真实音频与数据库。
+    """
+
+    def _servicer(self, query_handler):
+        from audio_service.interfaces.grpc.servicers import AudioConfigServiceServicer
+        servicer = AudioConfigServiceServicer()
+        servicer._query_handler = query_handler
+        return servicer
+
+    def test_query_is_frozen_dataclass(self):
+        from dataclasses import is_dataclass
+        from audio_service.application.queries import AnalyzeAudioFeaturesQuery
+
+        assert is_dataclass(AnalyzeAudioFeaturesQuery)
+        assert AnalyzeAudioFeaturesQuery(audio_id=7).audio_id == 7
+        with pytest.raises(Exception):
+            AnalyzeAudioFeaturesQuery(audio_id=7).audio_id = 8  # frozen
+
+    def test_servicer_passes_query_to_handler(self):
+        from shared.proto import audio_service_pb2 as audio_pb
+
+        handler = mock.MagicMock()
+        handler.handle_analyze_audio_features.return_value = {
+            'success': True, 'message': '特征分析成功', 'code': 200,
+            'data': {'audio_id': 7, 'spectral': {}},
+        }
+        servicer = self._servicer(handler)
+
+        resp = servicer.AnalyzeAudioFeatures(
+            audio_pb.AnalyzeAudioFeaturesRequest(audio_id=7))
+
+        assert resp.success is True
+        query = handler.handle_analyze_audio_features.call_args[0][0]
+        from audio_service.application.queries import AnalyzeAudioFeaturesQuery
+        assert isinstance(query, AnalyzeAudioFeaturesQuery)
+        assert query.audio_id == 7

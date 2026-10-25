@@ -25,6 +25,7 @@ import logging
 from typing import Any, Dict
 
 from shared.infrastructure.user_context import get_current_user_id
+from shared.models.database import end_read_transaction
 from shared.utils.query_utils import now_cst
 
 from evaluation_service.domain.repositories.evaluation_repository_abc import (
@@ -125,6 +126,8 @@ class EvaluationCommandService(CategoryCommandsMixin, DimensionOpsMixin):
             err = self._sync_dimension_params(
                 new_dim.id, data, get_default_algorithm_type(raw_associated), update_mode=False)
             if err:
+                # INT-1691：此处已有未提交的新建行，返回前必须回滚，不能留 pending 写
+                self.repo.rollback()
                 return err
 
             self._sync_dimension_body_template(new_dim, data)
@@ -138,6 +141,10 @@ class EvaluationCommandService(CategoryCommandsMixin, DimensionOpsMixin):
             self.repo.rollback()
             logger.error(f"创建评分维度失败: {e}")
             return command_error(str(e))
+        finally:
+            # INT-1691：读后写的复合流程已在 commit/rollback 收口；此处兜底
+            # 提前返回（400/403/404）留下的只读事务（有 pending 写时不回滚）
+            end_read_transaction()
 
     def update_dimension(self, dim_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
         """更新评分维度。"""
@@ -172,6 +179,8 @@ class EvaluationCommandService(CategoryCommandsMixin, DimensionOpsMixin):
 
             err = self._sync_dimension_params(dim.id, data, algo_type, update_mode=True)
             if err:
+                # INT-1691：dim 字段已就地修改（dirty），返回前必须回滚
+                self.repo.rollback()
                 return err
 
             self._sync_update_body_template(dim, data)
@@ -192,6 +201,8 @@ class EvaluationCommandService(CategoryCommandsMixin, DimensionOpsMixin):
             self.repo.rollback()
             logger.error(f"更新评分维度失败: {e}")
             return command_error(str(e))
+        finally:
+            end_read_transaction()
 
     def _sync_update_body_template(self, dim, data: Dict[str, Any]) -> None:
         """更新场景的 body_template 同步：以已解析的 required_inputs 为准。"""

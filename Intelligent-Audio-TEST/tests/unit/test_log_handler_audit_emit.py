@@ -141,18 +141,20 @@ class TestAuditEmitRouting:
         assert all(json.loads(e['content'])['event']
                    == 'AUTH_USER_PERMISSION_GRANTED' for e in captured)
 
-    def test_auth_audit_also_written_to_local_file(self, audit_env, tmp_path):
+    def test_auth_audit_not_written_to_local_service_file(self, audit_env, tmp_path):
+        """INT-1793 契约 Q1：审计事件只落审计文件（一条事件恰好一行），
+
+        不再双写服务文件——服务文件里出现事件行说明审计被重复落盘。
+        """
         from auth_service.application.services.auth_audit import write_auth_audit
         from shared.logging import resolve_service_name
-        _, _ = audit_env
         write_auth_audit(AuditEvent.AUTH_ROLE_DELETED, 'role_management', {
             'operator_id': 3, 'target_id': 4,
         })
-        # INT-81：服务文件日志按 logs/{service_name}/app-{hostname}-{pid}.log 分目录（进程标识互不冲突）
         log_file = (tmp_path / 'logs' / resolve_service_name()
                     / f'app-{socket.gethostname()}-{os.getpid()}.log')
-        assert log_file.exists(), '审计日志本地文件双写丢失'
-        assert 'AUTH_ROLE_DELETED' in log_file.read_text(encoding='utf-8')
+        content = log_file.read_text(encoding='utf-8') if log_file.exists() else ''
+        assert 'AUTH_ROLE_DELETED' not in content, '审计事件不应再写服务文件'
 
     def test_system_log_without_task_context_stays_out_of_db(self, audit_env):
         from shared.utils.log_handler import log_not_emit

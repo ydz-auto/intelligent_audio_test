@@ -51,8 +51,20 @@ def start_grpc_server(port=DEVICE_SERVICE_GRPC_PORT):
         grpc.Server: 已启动的 server 实例，调用方持有引用以防被 GC 回收
     """
     # 初始化数据库连接池（device_service 无 FastAPI lifespan，在此处初始化）
-    from shared.models.database import init_db
-    init_db(pool_size=5)
+    # INT-1467：读侧并发 10 时 5+5（pool_size+max_overflow）连接不足以同时
+    # 服务「请求线程 + 监控线程 + 清理线程」，排队会放大偶发尖峰；池大小
+    # 配置化（db.device_service_pool_size，默认 10，配合 max_overflow=5）。
+    from shared.models import database as _db
+    _pool_size = int(config_manager.get_value('db', 'device_service_pool_size', 10))
+    _db.init_db(pool_size=_pool_size)
+
+    # INT-1467：后台预建连接池（建连实测 500~1500ms，不能卡住服务就绪）；
+    # 消除启动后首批并发请求同时建连导致的秒级尖峰。
+    import threading as _threading
+    _threading.Thread(
+        target=_db.warm_up_pool, kwargs={'size': _pool_size},
+        name='db-pool-warmup', daemon=True,
+    ).start()
 
     # 启动软删除硬清理守护线程（只清理本服务 owned 表 devices/spl_mappings 及子表）
     from device_service.infrastructure.persistence.soft_delete_cleaner import get_cleaner as get_soft_delete_cleaner

@@ -20,11 +20,34 @@ from typing import Tuple
 
 
 class ManifestVersion(str, Enum):
-    """导出包 manifest 版本（version 不符直接拒绝导入，不做跨版本迁移）"""
+    """导出包 manifest 版本（version 不符直接拒绝导入，不做跨版本迁移）
+
+    - 1.0：整包导出（/export）
+    - 1.1：增量包（/export-incremental）与报告包，多 sourceTask / entities 段
+      （INT-1761 / D0 裁定 A1：导入侧同时接受 1.0 与 1.1，不因版本号误拒历史包）
+    """
     V1_0 = '1.0'
+    V1_1 = '1.1'
 
 
-SUPPORTED_MANIFEST_VERSIONS = {ManifestVersion.V1_0.value}
+SUPPORTED_MANIFEST_VERSIONS = {
+    ManifestVersion.V1_0.value,
+    ManifestVersion.V1_1.value,
+}
+
+# 增量包 / 报告包产出 1.1（整包导出继续产出 1.0）
+INCREMENTAL_MANIFEST_VERSION = ManifestVersion.V1_1.value
+
+
+class IncrementalInclude(str, Enum):
+    """增量包可选段（POST /export-incremental 的 include 取值）"""
+    DIMENSIONS = 'dimensions'
+    REPORTS = 'reports'
+
+
+# 增量包默认包含两段（与设计文档 §5.2 请求示例一致）
+DEFAULT_INCREMENTAL_INCLUDE = (IncrementalInclude.DIMENSIONS.value,
+                               IncrementalInclude.REPORTS.value)
 
 
 class TransferTable(str, Enum):
@@ -83,6 +106,28 @@ class FkMappingKey(str, Enum):
     TEST_REPORTS = 'test_reports'
 
 
+class SourceMapEntity(str, Enum):
+    """source_map 登记的实体类型（INT-1760 / D0 A4）
+
+    值与 FkMappingKey 一一对应：登记来源就是导入编排层拿到的四类 old→new
+    主键映射。关联表的自增主键不登记（无可翻译语义）。
+    """
+    TASKS = 'tasks'
+    TEST_RESULTS = 'test_results'
+    TEST_RESULT_DIMENSIONS = 'test_result_dimensions'
+    TEST_REPORTS = 'test_reports'
+
+    @classmethod
+    def values(cls) -> frozenset:
+        return frozenset(item.value for item in cls)
+
+
+# source_map 持久化表（归属 task_service；INT-1760 §5.3 / D0 A3）
+SOURCE_MAP_TABLE = 'data_transfer_source_maps'
+# 失败重放快照在批次登记 HASH 的 task_service 字段内的键名（D0 A3 第 3 条）
+SOURCE_MAP_BATCH_FIELD = 'source_map'
+
+
 @dataclass(frozen=True)
 class FkRule:
     """外键转换规则（设计文档 4.7.2）：子表.外键列 ← 引用哪个映射"""
@@ -121,14 +166,113 @@ def fk_rules_of(table: TransferTable) -> Tuple[FkRule, ...]:
     return tuple(rule for rule in FK_RULES if rule.table is table)
 
 
+# ===== 增量包（链路 2，INT-1761 / D0 裁定 A1-A2）=====
+# 增量包只含维度评分 + 报告 7 表（不含任务 / 结果 / 用例 / 文件本体）：
+# 包内 id 已是 A 原始 id，导入不做重映射（维度 id 除外，按名称链翻译）
+INCREMENTAL_DIMENSION_TABLES = (TransferTable.TEST_RESULT_DIMENSIONS,)
+INCREMENTAL_REPORT_TABLES = (
+    TransferTable.TEST_REPORTS,
+    TransferTable.REPORT_SUMMARIES,
+    TransferTable.REPORT_SUMMARY_META,
+    TransferTable.REPORT_RAW_DATA,
+    TransferTable.REPORT_CASES,
+    TransferTable.REPORT_METRIC_STATS,
+    TransferTable.REPORT_COMPARISON_MATRIX,
+)
+
+# 增量导出 / 导入失败码（同时作为 HTTP 状态码，走 TaskConfigResponse.code）
+INCREMENTAL_UNMAPPED_CODE = 409          # 导出侧存在未映射结果行（B 侧重执行产生）
+INCREMENTAL_ID_MISSING_CODE = 409        # 包内 id 在目标库不存在
+INCREMENTAL_FINGERPRINT_CODE = 409       # 指纹不符（任务与包不匹配）
+INCREMENTAL_INVALID_PACKAGE_CODE = 400   # 包结构 / 多任务 / id 不一致
+INCREMENTAL_TASK_NOT_FOUND_CODE = 404    # A 库任务不存在或已软删
+INCREMENTAL_TASK_FORBIDDEN_CODE = 403    # 私有任务且非 owner
+
+INCREMENTAL_UNMAPPED_RESULT_MESSAGE = (
+    'B 侧存在 A 未登记的结果行（重新执行产生），增量回导 v1 不支持，'
+    '请改用整包导出或先在 B 侧回退')
+INCREMENTAL_NO_SOURCE_MAP_MESSAGE = (
+    'B 未整包导入过 A 的数据，请先走链路 1（整包导入）再导出增量')
+INCREMENTAL_SINGLE_TASK_MESSAGE = '增量包只支持单任务'
+class DocVersionScope(str, Enum):
+    """报告包内 Report Studio 版本搬运策略（设计文档 §6.3 规则 4）
+
+    - full：默认全带（document + 全部 versions），A 侧版本链可回滚；
+    - latest：只带当前版本（文档可编辑，历史版本留在 B）。
+    """
+    FULL = 'full'
+    LATEST = 'latest'
+
+
+DOC_VERSION_SCOPES = frozenset(item.value for item in DocVersionScope)
+DEFAULT_DOC_VERSION_SCOPE = DocVersionScope.FULL.value
+
+
+class ReportPackageEntity(str, Enum):
+    """报告包实体声明（manifest.entities，设计文档 §6.3）
+
+    - platform_report：3a 平台报告 7 表；
+    - uploaded_file：3b 上传文档（独立文档库）；
+    - agent_summary：3c Agent 分析总结文档。
+    值与 `ReportStudioSourceType` 一致（报告包与 Studio 文档来源共用词表）。
+    """
+    PLATFORM_REPORT = 'platform_report'
+    UPLOADED_FILE = 'uploaded_file'
+    AGENT_SUMMARY = 'agent_summary'
+
+
+REPORT_PACKAGE_ENTITIES = tuple(item.value for item in ReportPackageEntity)
+
+
+class ReportStudioTable(str, Enum):
+    """报告包内 Studio 三表（值 = 表名 = db/ 下 JSON 文件名）"""
+    DOCUMENTS = 'report_studio_documents'
+    DOCUMENT_VERSIONS = 'report_studio_document_versions'
+    CHART_SPECS = 'report_studio_chart_specs'
+
+
+REPORT_STUDIO_TABLES = tuple(item.value for item in ReportStudioTable)
+
+# 报告包 manifest.kind：与任务整包（无 kind 的旧 manifest）区分，导入侧据此路由
+REPORT_PACKAGE_MANIFEST_KIND = 'report_package'
+# 导入回执 warnings 条数上限（超出以 count 汇总，避免回执过大）
+REPORT_PACKAGE_WARNINGS_CAP = 200
+
+
 class ImportProgressStep(str, Enum):
     """导入进度步骤（socket import_progress 事件 payload.step）"""
     PARSING = 'parsing'
     WRITING_DB = 'writing_db'
     EXTRACTING_FILES = 'extracting_files'
     UPDATING_PATHS = 'updating_paths'
+    # 增量回导（INT-1761）：两个跨服务合并段
+    MERGING_DIMENSIONS = 'merging_dimensions'
+    REPLACING_REPORTS = 'replacing_reports'
     DONE = 'done'
     ERROR = 'error'
+
+
+class TransferIntent(str, Enum):
+    """导入意图（INT-1759，D0 裁定 A10-2）
+
+    - migrate：任务迁移，引用用例必须在目标库可用（默认）
+    - restore：历史结果查看 / 备份恢复，无需重新执行 → 默认不做用例硬校验，
+      但预检回执必须写明"未校验用例一致性，导入后无法重新执行"
+    """
+    MIGRATE = 'migrate'
+    RESTORE = 'restore'
+
+
+DEFAULT_TRANSFER_INTENT = TransferIntent.MIGRATE.value
+
+# ===== 用例一致性硬校验（INT-1759，D0 裁定 A10）=====
+# 拒绝导入的业务码（同时作为 HTTP 状态码）
+CASE_CONSISTENCY_FAILED_CODE = 422
+# 回执里缺失用例 ID 列表上限（超出以 truncated=true + missingCount 表达全量条数）
+CASE_CONSISTENCY_LIST_CAP = 500
+CASE_CONSISTENCY_REJECT_MESSAGE = '目标库缺少 {count} 个测试用例，拒绝导入'
+# restore 意图下不校验用例一致性时的固定告警文案
+RESTORE_SKIP_CONSISTENCY_WARNING = 'restore 意图未校验用例一致性，导入后无法重新执行'
 
 
 # ===== ZIP 包结构（设计文档 4.2，文件名用表名）=====

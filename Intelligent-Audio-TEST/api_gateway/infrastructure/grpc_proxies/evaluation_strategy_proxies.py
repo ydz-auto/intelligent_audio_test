@@ -10,20 +10,17 @@ import json
 from shared.clients.grpc_clients import get_evaluation_strategy_service_stub
 from shared.proto import task_service_pb2 as task_pb
 
-from ._common import _grpc_call
+from ._common import _attach_code, _grpc_call
 
 
 class _EvaluationStrategyProxy:
     """评估策略 CRUD 代理：把方法调用转发到 gRPC EvaluationStrategyService"""
 
     def _resp(self, resp):
-        """统一解析 TaskConfigResponse 为 dict"""
+        """统一解析 TaskConfigResponse 为 dict（业务码透传，INT-1759 proto code）"""
         data = json.loads(resp.data) if resp.data else None
-        result = {'success': resp.success, 'message': resp.message, 'data': data}
-        # 失败响应的业务码经 data JSON 透传，提升到顶层（同 Task 侧，INT-141 F2）
-        if not resp.success and isinstance(data, dict) and isinstance(data.get('code'), int):
-            result['code'] = data['code']
-        return result
+        return _attach_code({'success': resp.success, 'message': resp.message,
+                             'data': data}, resp)
 
     @property
     def stub(self):

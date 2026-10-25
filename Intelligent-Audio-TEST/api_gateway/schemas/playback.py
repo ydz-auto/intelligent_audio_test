@@ -92,3 +92,12 @@ class PlaybackTestSchema(APIModel):
 
 class PlaybackAssociateSplSchema(APIModel):
     spl_mapping_id: int = Field(...)
+
+
+class PlaybackRepairSchema(APIModel):
+    """修复动作请求体（INT-1579 契约 §2.5）。
+
+    动作白名单由 device_service 校验（单一事实源），网关只做形态校验，
+    未知动作 → device_service 返回 400 并列出合法值。
+    """
+    actions: List[str] = Field(default_factory=list)

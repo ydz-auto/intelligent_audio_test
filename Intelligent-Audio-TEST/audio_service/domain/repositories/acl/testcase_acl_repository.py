@@ -27,7 +27,9 @@ class TestCaseConfigACLRepository(ABC):
     def create_testcase_config(self, data: dict) -> Optional[dict]:
         """创建测试用例（CreateTestCaseConfig）
 
-        返回创建结果 dict（含 id），失败返回 None。
+        返回创建结果 dict（含 id）。创建失败（task_service 返回 success=false
+        或 gRPC 不可用）抛 audio_service.domain.exceptions.TestCaseCreationError，
+        调用方须整体回滚并向上报失败（INT-1668）。
         """
         ...
 

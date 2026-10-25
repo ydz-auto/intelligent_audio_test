@@ -16,8 +16,12 @@ class TaskDispatcherMixin:
     def _dispatch_evaluation_tasks(self, dimension_data_list, dimension_result_map, result_id, task_id,
                                     test_case_id, algorithm_result, algorithm_type, test_type,
                                     round_number, field_mapper, ref_texts, rounds_list=None,
-                                    flat_eval_fields=None):
-        """将维度按端点分组并异步提交评估任务"""
+                                    flat_eval_fields=None, api_id=None):
+        """将维度按端点分组并异步提交评估任务
+
+        INT-1757（C6b）：``api_id`` 为结果所属 API 实例（来源 test_results.api_id，
+        由 evaluate_case 解析），随 task_data 下发给端点 Worker 取该 API 的输出声明。
+        """
         # 评估能力注册表分流：THIRD_PARTY_C 维度走第三方评估链路（8 步流程），LOCAL 维度走原端点链路
         local_list, third_party_list = self._split_by_eval_capability(
             dimension_data_list, task_id, test_case_id)
@@ -25,7 +29,7 @@ class TaskDispatcherMixin:
             self._dispatch_third_party_tasks(
                 third_party_list, dimension_result_map, result_id, task_id, test_case_id,
                 algorithm_result, algorithm_type, test_type, round_number, field_mapper,
-                ref_texts, rounds_list, flat_eval_fields)
+                ref_texts, rounds_list, flat_eval_fields, api_id=api_id)
         dimension_data_list = local_list
 
         endpoint_groups, no_endpoint_groups = self._group_dimensions_by_endpoint(
@@ -71,7 +75,7 @@ class TaskDispatcherMixin:
         self._submit_to_workers(
             endpoint_groups, result_id, task_id, test_case_id, algorithm_result,
             algorithm_type, test_type, round_number, field_mapper, ref_texts,
-            rounds_list, flat_eval_fields
+            rounds_list, flat_eval_fields, api_id=api_id
         )
 
     def _group_dimensions_by_endpoint(self, dimension_data_list, dimension_result_map,
@@ -153,7 +157,8 @@ class TaskDispatcherMixin:
 
     def _submit_to_workers(self, endpoint_groups, result_id, task_id, test_case_id,
                             algorithm_result, algorithm_type, test_type, round_number,
-                            field_mapper, ref_texts, rounds_list, flat_eval_fields):
+                            field_mapper, ref_texts, rounds_list, flat_eval_fields,
+                            api_id=None):
         """遍历端点分组，为每组创建 worker 并提交评估任务
 
         INT-308：提交前核销 case 级取消标记——用例删除/任务停止已取消的
@@ -181,7 +186,8 @@ class TaskDispatcherMixin:
             task_data = self._build_task_data(
                 task_id, result_id, test_case_id, algorithm_result,
                 representative_dim_data, group_items, algorithm_type, test_type,
-                round_number, field_mapper, ref_texts, rounds_list, flat_eval_fields
+                round_number, field_mapper, ref_texts, rounds_list, flat_eval_fields,
+                api_id=api_id
             )
 
             with self.api_client.global_lock:
@@ -199,8 +205,12 @@ class TaskDispatcherMixin:
     def _build_task_data(self, task_id, result_id, test_case_id, algorithm_result,
                          representative_dim_data, group_items, algorithm_type, test_type,
                          round_number, field_mapper, ref_texts, rounds_list=None,
-                         flat_eval_fields=None):
-        """构建提交给端点Worker的任务数据"""
+                         flat_eval_fields=None, api_id=None):
+        """构建提交给端点Worker的任务数据
+
+        INT-1757（C6b）：``api_id`` 随 task_data 透传到端点 Worker（输出声明按
+        API 实例作用域取）；为 None 时不写键，存量路径 task_data 形状不变。
+        """
         task_data = {
             'task_id': task_id,
             'result_id': result_id,
@@ -211,6 +221,12 @@ class TaskDispatcherMixin:
             'algorithm_type': algorithm_type,
             'test_type': test_type
         }
+
+        if api_id is not None:
+            try:
+                task_data['api_id'] = int(api_id)
+            except (TypeError, ValueError):
+                pass
 
         if round_number is not None:
             task_data['round_number'] = round_number

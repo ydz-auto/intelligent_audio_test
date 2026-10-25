@@ -4,9 +4,11 @@
 替代 Flask jsonify 的自动序列化能力。
 """
 import json
+import os
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from enum import Enum
+from urllib.parse import quote
 
 from fastapi.responses import JSONResponse
 
@@ -53,3 +55,19 @@ def to_response(result):
     if isinstance(result, tuple) and len(result) == 2:
         return CustomJSONResponse(content=result[0], status_code=result[1])
     return result
+
+
+def content_disposition(filename, fallback='export'):
+    """构造下载响应头 Content-Disposition 的值（RFC 6266 / RFC 5987）。
+
+    中文等非 ASCII 文件名直接写进响应头时，Starlette 按 latin-1 编码会抛
+    UnicodeEncodeError（HTTP 500），因此同时给出两段：
+    - filename="<ASCII 名>"：本身是 ASCII 时保持原名，否则退化为「兜底名 + 扩展名」；
+    - filename*=UTF-8''<百分号编码>：保留原始文件名，现代浏览器优先采用。
+    """
+    name = filename or fallback
+    ext = os.path.splitext(name)[1]
+    ascii_ext = ''.join(ch for ch in ext if ch.isascii() and (ch.isalnum() or ch == '.'))
+    ascii_name = name.replace('\\', '_').replace('"', '_') if name.isascii() \
+        else f'{fallback}{ascii_ext}'
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name, safe='')}"

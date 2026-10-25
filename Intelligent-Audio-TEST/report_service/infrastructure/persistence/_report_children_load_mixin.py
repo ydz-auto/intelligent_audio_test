@@ -82,6 +82,31 @@ class ReportChildrenLoadMixin:
         return [_summary_po_to_entity(po) for po in rows]
 
     @with_session
+    def load_summaries_batch(self, report_ids: List[int]) -> dict:
+        """按报告 ID 批量加载摘要实体（INT-1463：列表页消除逐条 N+1）。
+
+        Args:
+            report_ids: 报告 ID 列表（空列表直接返回空 dict，不发查询）
+
+        Returns:
+            {report_id: [ReportSummaryEntity, ...]}；无摘要的报告不出现在结果中。
+        """
+        ids = [rid for rid in (report_ids or []) if rid is not None]
+        if not ids:
+            return {}
+        session = get_db_session()
+        rows = (
+            session.query(ReportSummary)
+            .filter(ReportSummary.report_id.in_(ids))
+            .order_by(ReportSummary.id.asc())
+            .all()
+        )
+        grouped: dict = {}
+        for po in rows:
+            grouped.setdefault(po.report_id, []).append(_summary_po_to_entity(po))
+        return grouped
+
+    @with_session
     def load_cases(self, report_id: int) -> List[ReportCaseEntity]:
         """加载报告的用例实体列表。"""
         session = get_db_session()

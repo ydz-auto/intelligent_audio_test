@@ -16,23 +16,29 @@ ServerDbScopeInterceptor 在 RPC 结束 remove_db_session）。
 - `create_db_session()`：创建独立 Session 实例（嵌套调用链专用，close 不影响外层）
 - `get_engine()`：取全局 engine（init_db 后可用）
 - `init_db(pool_size)`：初始化连接池
+- `warm_up_pool(size)`：预建连接池连接（消除首批并发请求的建连尖峰）
 - `remove_db_session()`：清理当前 scope 的 session
+- `end_read_transaction()`：只读查询后结束事务（不碰待提交写），避免
+  idle in transaction 长时间持锁（INT-1652）
 - `bind_request_session_scope()` / `release_request_session_scope(token)`：
   HTTP 请求级 scope 绑定/解绑+清理（DbSessionScopeMiddleware 专用）
 - `Model.query`：描述符，代理到 scoped_session.query(cls)（32 个文件在用）
 - `Query.paginate()`：分页补丁（17 处 repository 在用）
 """
 import contextvars
+import logging
 import threading
 import uuid
 from datetime import datetime, timezone, timedelta
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import declarative_base, scoped_session, sessionmaker, Query
 from sqlalchemy.pool import QueuePool
 
 from shared.infrastructure.config import BaseConfig
+
+logger = logging.getLogger(__name__)
 
 
 def utc8now():
@@ -47,7 +53,9 @@ class _Pagination:
         self.query = query
         self.page = page
         self.per_page = per_page
-        self.total = query.count()
+        # INT-1469：计数不依赖排序——去掉 ORDER BY 再 count，避免数据库对
+        # 全量候选行（含宽 JSON 列）排序后再计数。万级用例下实测 42ms → 4.5ms。
+        self.total = query.order_by(None).count()
         self.items = query.limit(per_page).offset((page - 1) * per_page).all()
 
     @property
@@ -143,6 +151,46 @@ _SessionFactory = sessionmaker(bind=None, autoflush=True, autocommit=False)
 _scoped_session = scoped_session(_SessionFactory, scopefunc=_session_scopefunc)
 
 
+# ---- 未提交写标记（INT-1691）----
+# end_read_transaction 的安全边界原先只看 new / dirty / deleted，但 flush 之后
+# 这三个集合就被清空了：**已 flush 未 commit 的写**（INSERT/UPDATE 已经发出）
+# 在会话上看起来「干净」，此时回滚会把调用链上的写静默丢掉。INT-1691 给
+# evaluation_service 的读路径接只读收口时，读方法里的 autoflush 正好会制造这种
+# 状态（先 add 再读，读时 flush，随后收口）。这里用会话事件记录「本事务已发生
+# DML」，commit / rollback 时清除；end_read_transaction 见到标记即原样返回。
+_UNCOMMITTED_WRITE_KEY = '_int1691_uncommitted_write'
+
+
+@event.listens_for(_SessionFactory.class_, 'after_flush')
+def _mark_uncommitted_write(session, flush_context):
+    """flush 真正发出 DML 后打标（无工作量的空 flush 不会触发本事件）。"""
+    session.info[_UNCOMMITTED_WRITE_KEY] = True
+
+
+@event.listens_for(_SessionFactory.class_, 'after_bulk_update')
+def _mark_uncommitted_bulk_update(update_context):
+    """query.update() 等批量 DML 不经 ORM flush，单独打标。"""
+    update_context.session.info[_UNCOMMITTED_WRITE_KEY] = True
+
+
+@event.listens_for(_SessionFactory.class_, 'after_bulk_delete')
+def _mark_uncommitted_bulk_delete(delete_context):
+    """query.delete() 等批量 DML 不经 ORM flush，单独打标。"""
+    delete_context.session.info[_UNCOMMITTED_WRITE_KEY] = True
+
+
+@event.listens_for(_SessionFactory.class_, 'after_transaction_end')
+def _clear_uncommitted_write_on_tx_end(session, transaction):
+    """根事务结束（commit / rollback / close）即清标。
+
+    用 after_transaction_end 而不是 after_commit / after_rollback：Session.close()
+    只发前者（实测 close 不发 after_rollback），漏清会让已关闭的 session 复用后
+    「永远像有未提交写」，只读收口彻底失效。嵌套事务结束不清（外层可能仍有写）。
+    """
+    if transaction.parent is None:
+        session.info.pop(_UNCOMMITTED_WRITE_KEY, None)
+
+
 def bind_request_session_scope():
     """绑定当前 HTTP 请求的 session scope（DbSessionScopeMiddleware 调用）。
 
@@ -215,6 +263,47 @@ def init_db(pool_size=3):
     return _scoped_session
 
 
+def warm_up_pool(size: int = 0) -> int:
+    """预建连接池连接，消除服务启动后首批并发请求的建连尖峰（INT-1467）。
+
+    QueuePool 懒建连：首个请求到达时才 TCP/认证建连。跨主机/容器（如
+    Docker 端口转发）建连实测 500~1500ms，并发首屏（压测并发 10）会同时
+    触发多条建连 → 单请求被拖到 1s+，表现为「偶发慢查询尖峰」。启动时
+    预建 size 条连接并归还，把这段成本前移到启动阶段。
+
+    - 仅 QueuePool（PostgreSQL/MySQL 等）生效；SQLite 内存库等跳过
+    - 建连失败不抛异常：预热是性能优化，不得阻塞服务启动
+    - 建议在后台线程调用（多连接建连本身耗时，不能卡住服务就绪）
+
+    Args:
+        size: 预建连接数（通常取 pool_size）
+
+    Returns:
+        实际预建成功的连接数
+    """
+    engine = _engine
+    if engine is None or size <= 0:
+        return 0
+    if not isinstance(engine.pool, QueuePool):
+        return 0
+    conns = []
+    try:
+        for _ in range(size):
+            try:
+                conns.append(engine.connect())
+            except Exception:  # noqa: BLE001 - 预热失败降级，不阻塞启动
+                logger.warning('连接池预热第 %s 条失败（降级为懒建连）', len(conns) + 1,
+                               exc_info=True)
+                break
+    finally:
+        for conn in conns:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+    return len(conns)
+
+
 def get_db_session():
     """获取当前 scope 的 DB session（HTTP 请求级 / 线程级 scoped_session）。
 
@@ -249,3 +338,51 @@ def create_db_session():
 def remove_db_session():
     """清理当前 scope 的 DB session（gRPC 拦截器 / 请求中间件 / 后台线程结束时调用）。"""
     _scoped_session.remove()
+
+
+def end_read_transaction(session=None):
+    """只读查询后结束当前事务，把连接从 idle in transaction 释放出来。
+
+    INT-1652 起因：后台线程（如 algorithm_service 的配置缓存加载）与没有请求级
+    scope 的 HTTP 进程，SELECT 之后既没有 commit 也没有 rollback，连接就挂着
+    事务空转；一张 ACCESS SHARE 就足以把随后的 DDL 顶在锁队列里，再把整张表的
+    读写堵死。只读查询结束即回滚是零成本的（无需写 WAL），事务生命周期从
+    「线程/进程存活期」收敛到「单次查询」。
+
+    安全边界：**仅当 session 没有待提交改动**（new / dirty / deleted 皆空且不在
+    嵌套事务里）才回滚；有待提交写时原样返回 False，交给事务所有者显式
+    commit/rollback，绝不吞掉调用链上未提交的写。
+
+    Args:
+        session: 目标 Session；缺省取当前 scope 的 scoped_session。
+
+    Returns:
+        bool：是否实际结束了事务。
+    """
+    from sqlalchemy.orm import Session as _Session
+
+    sess = session if session is not None else _scoped_session
+    try:
+        if isinstance(sess, _Session):
+            # 毒化会话（事务内语句失败后 PendingRollbackError）：rollback 解毒
+            if not sess.is_active:
+                sess.rollback()
+                return True
+            if not sess.in_transaction() or sess.in_nested_transaction():
+                return False
+            if sess.new or sess.dirty or sess.deleted:
+                return False
+            # INT-1691：已 flush 未 commit 的写（new/dirty 已被 flush 清空）同样
+            # 是「待提交改动」——回滚会把它静默丢掉，按有写处理。
+            if sess.info.get(_UNCOMMITTED_WRITE_KEY):
+                return False
+            sess.rollback()
+            return True
+        # scoped_session：先按当前 scope 取到真实 Session（不存在则不新建）
+        real = sess() if sess.registry.has() else None
+        if real is None:
+            return False
+        return end_read_transaction(real)
+    except Exception:  # noqa: BLE001 - 收尾失败不得影响调用方结果
+        logger.debug('结束只读事务失败（保持原状）', exc_info=True)
+        return False

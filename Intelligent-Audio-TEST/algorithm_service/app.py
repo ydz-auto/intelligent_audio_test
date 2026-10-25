@@ -22,6 +22,7 @@ except ImportError:
 from fastapi import FastAPI
 
 from shared.models.database import init_db
+from shared.infrastructure.db_session_middleware import DbSessionScopeMiddleware
 from algorithm_service.config.config import Config
 
 logging.basicConfig(
@@ -71,6 +72,13 @@ def create_app(config_name='default') -> FastAPI:
         title="Intelligent Audio Test - Algorithm Service",
         lifespan=lifespan,
     )
+
+    # INT-1652：HTTP 请求级 DB session scope。原先本服务只注册了 gRPC 侧的
+    # ServerDbScopeInterceptor，uvicorn 线程池线程落回线程级 session —— 只读
+    # 路由 SELECT 完不 commit/rollback，请求结束后连接滞留在 idle in
+    # transaction 持表锁（事故里 algorithm_service 的 8 个等锁 + 12 个空转
+    # 会话即由此类残留叠出）。中间件在请求收尾 remove 该请求的 session。
+    app.add_middleware(DbSessionScopeMiddleware)
 
     @app.get('/health')
     def health():

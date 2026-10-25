@@ -18,6 +18,7 @@ from report_service.domain.dto.report_acl_dto import (
     TaskDeviceDTO,
     TaskMergeRelationDTO,
     TestCaseDTO,
+    TestCaseLookupResult,
     TestResultDTO,
 )
 
@@ -39,5 +40,6 @@ __all__ = [
     'TaskDeviceDTO',
     'TaskMergeRelationDTO',
     'TestCaseDTO',
+    'TestCaseLookupResult',
     'TestResultDTO',
 ]

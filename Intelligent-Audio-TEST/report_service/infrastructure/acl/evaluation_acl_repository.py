@@ -34,7 +34,7 @@ class EvaluationDataAclRepositoryImpl(EvaluationDataAclRepository):
     """evaluation_service.EvaluationDataService 跨域只读查询 gRPC 实现。"""
 
     def get_dimension_results_by_result_ids(
-        self, result_ids,
+        self, result_ids, include_body: bool = False,
     ) -> Dict[int, List[DimensionResultDTO]]:
         if not result_ids:
             return {}
@@ -46,6 +46,7 @@ class EvaluationDataAclRepositoryImpl(EvaluationDataAclRepository):
             resp = stub.GetDimensionResultsByResultIds(
                 eval_pb.GetDimensionResultsByResultIdsRequest(
                     result_ids=_json.dumps(list(result_ids), ensure_ascii=False, default=str),
+                    include_body=bool(include_body),
                 ))
             if not resp.success:
                 return {}

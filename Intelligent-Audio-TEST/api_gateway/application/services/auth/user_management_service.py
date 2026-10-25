@@ -50,6 +50,40 @@ AUTH_PASSWORD_MIN_LENGTH = int(os.environ.get('AUTH_PASSWORD_MIN_LENGTH', '6'))
 REGISTER_ERR_PASSWORD_TOO_SHORT = (
     f'密码长度不能少于 {AUTH_PASSWORD_MIN_LENGTH} 位')
 
+# 用户管理入口（admin 建号 / admin 改资料带密码）密码长度契约（INT-1590）：
+# 非空密码须 8–128 位，边界由 Config 配置化（.env 可覆盖）。与自助注册 /
+# 自助改密的 6 位下限是两个产品面，共用常量才是错的口径。
+ADMIN_PASSWORD_ERR_OUT_OF_RANGE = '密码长度需为 {min_len}–{max_len} 位'
+
+
+def _admin_password_bounds() -> Tuple[int, int]:
+    """用户管理入口密码长度边界（Config 读取，便于 .env 配置与单测覆盖）。"""
+    from api_gateway.config.config import Config
+    return (int(Config.AUTH_USER_ADMIN_PASSWORD_MIN_LENGTH),
+            int(Config.AUTH_PASSWORD_MAX_LENGTH))
+
+
+def _reject_invalid_admin_password(password: str):
+    """admin 入口密码长度校验：非空时须 8–128 位，否则 400 + code 203。
+
+    空密码（OAuth 用户 / 改资料时未带密码）不校验，保持既有语义。
+    返回 None 表示通过，否则返回可直接下发的 (payload, http_code)。
+
+    code 取 203（OPERATION_FAILED）而非 100（INVALID_PARAMS）：本校验与
+    auth_service 侧兜底（AuthErrorCode.INVALID_PARAMS → 网关
+    call_auth_rpc 默认映射 203）必须同码，否则网关层拦下与 gRPC 直连
+    兜底同一非法输入会给出两个不同的 code。
+    """
+    if not password:
+        return None
+    min_len, max_len = _admin_password_bounds()
+    if min_len <= len(password) <= max_len:
+        return None
+    return error_response(
+        ADMIN_PASSWORD_ERR_OUT_OF_RANGE.format(min_len=min_len,
+                                               max_len=max_len),
+        code=ErrorCode.OPERATION_FAILED, http_code=400)
+
 
 class UserManagementService:
     """用户管理服务：注册 / 查询 / 建改删 / 角色分配 / 附加权限授予撤销"""
@@ -173,16 +207,24 @@ class UserManagementService:
 
     @staticmethod
     def create_user() -> Tuple[Dict, int]:
-        """admin 建用户（任意 AUTH_MODE）：username 必填；password/role_id 可选。"""
+        """admin 建用户（任意 AUTH_MODE）：username 必填；password/role_id 可选。
+
+        password 非空时须 8–128 位（INT-1590，防绕过前端直接建短密码账号）；
+        为空保持现状（OAuth 用户可不带密码）。
+        """
         body = _json_body()
         username = (body.get('username') or '').strip()
         if not username:
             return error_response('username 为必填项',
                                   code=ErrorCode.INVALID_PARAMS, http_code=400)
+        password = body.get('password') or ''
+        invalid = _reject_invalid_admin_password(password)
+        if invalid:
+            return invalid
         data, fail = call_auth_rpc('CreateUser', auth_pb.CreateUserRequest(
             username=username,
             email=(body.get('email') or '').strip(),
-            password=body.get('password') or '',
+            password=password,
             role_id=int(body.get('role_id') or 0),
             display_name=(body.get('display_name') or '').strip() or None,
             operator_id=current_operator_id(),
@@ -199,14 +241,21 @@ class UserManagementService:
         display_name（INT-697）：仅当 body 含 display_name 键时赋值——
         缺省键=不修改、空串=清空落 NULL、非空=设置。不得用
         body.get('display_name') or '' 惯用法（会把缺省键误判为空串而清空）。
+
+        password（INT-1590）：带非空 password 时须 8–128 位；不带 / 空串
+        仍是「不修改」（语义不变）。
         """
         body = _json_body()
+        password = body.get('password') or ''
+        invalid = _reject_invalid_admin_password(password)
+        if invalid:
+            return invalid
         request_kwargs = dict(
             user_id=user_id,
             username=body.get('username') or '',
             email=body.get('email') or '',
             status=body.get('status') or '',
-            password=body.get('password') or '',
+            password=password,
             operator_id=current_operator_id(),
         )
         if 'display_name' in body:

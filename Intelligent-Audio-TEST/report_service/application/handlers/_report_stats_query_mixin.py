@@ -102,8 +102,12 @@ class ReportStatsQueryMixin:
         if not task_id and not report_id:
             return {'success': False, 'message': '缺少必要参数: task_id 或 report_id'}
 
+        # 用例查询完整性（INT-1572 返工 P2）：整批截止 / 单条超时后不能再把
+        # 部分用例算出的均值当完整数据返回，须把 partial / 缺失 id 一起带给前端。
+        lookup_status = {}
         query_result = self._query_cases_for_averages(
-            task_id, category, categories, tags, include_untagged, report_id
+            task_id, category, categories, tags, include_untagged, report_id,
+            lookup_status=lookup_status,
         )
         if not isinstance(query_result, tuple):
             return query_result
@@ -114,7 +118,7 @@ class ReportStatsQueryMixin:
             tasks_map=tasks_map, use_time_prefix=use_time_prefix,
         )
 
-        return {
+        response = {
             "total_cases": len(stats['filtered_case_ids']),
             "total_results": len(stats['test_results']),
             "overall_averages": stats['overall_averages'],
@@ -128,8 +132,13 @@ class ReportStatsQueryMixin:
             "filters": {
                 "category": category,
                 "tags": tags
-            }
+            },
+            # 用例查询完整性：partial=True 表示有用例因超时没取到（数值不完整），
+            # missing_case_ids 给出未取到的用例 id（含已软删/不存在）。
+            "partial": bool(lookup_status.get('partial')),
+            "missing_case_ids": list(lookup_status.get('missing_ids') or []),
         }
+        return response
 
     def handle_download_case_logs(self, report_id: int, case_id: str, files=None) -> dict:
         """处理下载用例日志。
@@ -520,7 +529,8 @@ class ReportStatsQueryMixin:
 
     # ---- 平均值统计私有辅助 ----
 
-    def _query_cases_for_averages(self, task_id, category, categories, tags, include_untagged, report_id=None):
+    def _query_cases_for_averages(self, task_id, category, categories, tags, include_untagged,
+                                  report_id=None, lookup_status=None):
         """查询用例和结果（含任务解析、合并/挑选关系处理）。
 
         Args:
@@ -531,6 +541,8 @@ class ReportStatsQueryMixin:
             include_untagged: 是否包含未标记用例
             report_id: 对比/二次对比报告 ID（INT-1059 对齐 0c6b2028a：经对比矩阵/摘要
                 解析源任务集合，无 task_id 时与 taskId 走同一聚合工具）
+            lookup_status: 可选 dict，用于回传用例查询完整性（INT-1572 返工）：
+                写入 missing_ids / incomplete_ids / partial
 
         Returns:
             tuple(task, task_id_filter, filtered_case_ids, test_results,
@@ -603,6 +615,7 @@ class ReportStatsQueryMixin:
             task_id_filter, result_task_filter,
             category, categories, tags, include_untagged,
             cherry_result_ids=cherry_result_ids,
+            lookup_status=lookup_status,
         )
         return task, task_id_filter, filtered_case_ids, test_results, tasks_map, use_time_prefix
 
@@ -642,7 +655,7 @@ class ReportStatsQueryMixin:
 
     def _query_test_cases_and_results(self, task_id_filter, result_task_filter,
                                       category, categories, tags, include_untagged,
-                                      cherry_result_ids=None):
+                                      cherry_result_ids=None, lookup_status=None):
         """查询测试用例和结果，返回 (filtered_case_ids, test_results)。
 
         Args:
@@ -654,6 +667,8 @@ class ReportStatsQueryMixin:
             include_untagged: 是否包含未标记用例
             cherry_result_ids: cherry-pick 容器引用的源结果 id 列表
                 （INT-408；非空时结果按 result_id 直查，忽略 result_task_filter）
+            lookup_status: 可选 dict，回传用例查询完整性（INT-1572 返工）：
+                {missing_ids, incomplete_ids, partial}
 
         Returns:
             tuple(filtered_case_ids, test_results)
@@ -662,7 +677,7 @@ class ReportStatsQueryMixin:
             _grpc_get_task_case_ids,
         )
         from report_service.infrastructure.clients.grpc_clients import (
-            _grpc_list_testcases_by_ids,
+            _grpc_lookup_testcases_by_ids,
             _grpc_get_test_results_by_ids,
             _grpc_get_test_results_by_task_ids,
         )
@@ -687,8 +702,18 @@ class ReportStatsQueryMixin:
         else:
             test_case_ids = _tc_ids(_grpc_get_task_case_ids(task_id_filter))
 
-        # 通过 gRPC 批量查询 TestCase
-        test_cases = _grpc_list_testcases_by_ids(test_case_ids) if test_case_ids else {}
+        # 通过 gRPC 批量查询 TestCase（INT-1572 返工：带完整性口径，partial 时
+        # 上层要把「数据不完整」透出去，不能让调用方拿部分用例当完整数据）
+        lookup = _grpc_lookup_testcases_by_ids(test_case_ids) if test_case_ids else {
+            'items': {}, 'missing_ids': [], 'incomplete_ids': [], 'partial': False,
+        }
+        test_cases = lookup['items']
+        if lookup_status is not None:
+            lookup_status.update({
+                'missing_ids': lookup['missing_ids'],
+                'incomplete_ids': lookup['incomplete_ids'],
+                'partial': lookup['partial'],
+            })
 
         # 客户端按 category / categories / tags 过滤
         filtered_cases = filter_test_cases(test_cases, category, categories, tags, include_untagged)

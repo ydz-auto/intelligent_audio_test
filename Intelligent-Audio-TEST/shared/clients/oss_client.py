@@ -5,6 +5,9 @@ OSS 客户端封装 - S3 兼容（开发环境 RustFS / 生产环境 AWS S3）
   开发：OSS_ENDPOINT=http://localhost:9000  (RustFS)
   生产：OSS_ENDPOINT=https://s3.amazonaws.com (S3)
 
+预签名 URL 的签名 endpoint 取 OSS_PUBLIC_ENDPOINT（INT-1719，空串回落
+OSS_ENDPOINT）：它是对浏览器/第三方暴露的地址，容器部署下与内部读写地址不同。
+
 所有服务通过此客户端上传/下载文件，不直接操作本地磁盘路径。
 """
 import os
@@ -12,6 +15,7 @@ import io
 import logging
 import threading
 from typing import Optional, BinaryIO
+from urllib.parse import urlsplit, urlunsplit
 
 import boto3
 from botocore.config import Config as BotoConfig
@@ -20,6 +24,23 @@ from botocore.exceptions import ClientError
 from shared.infrastructure.config import BaseConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_endpoint(endpoint: str) -> str:
+    """统一 OSS endpoint 宿主地址（INT-1348）。
+
+    localhost 常同时解析到 ::1 与 127.0.0.1；OSS（RustFS）只绑 IPv4 时，
+    boto3 走 ::1 的 SYN 悬挂到超时（delete_object 60s 阻塞的根因之一）。
+    统一改写为 127.0.0.1 消除解析歧义；非 localhost 端点原样返回。
+    """
+    if not endpoint:
+        return endpoint
+    parts = urlsplit(endpoint)
+    if parts.hostname != 'localhost':
+        return endpoint
+    host = '127.0.0.1'
+    netloc = f'{host}:{parts.port}' if parts.port else host
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
 
 class OSSClient:
@@ -56,10 +77,10 @@ class OSSClient:
             self._initialized = True
 
     def is_available(self) -> bool:
-        """探测 OSS 是否可用（head_bucket 探活）。"""
+        """探测 OSS 是否可用（head_bucket 探活，走管理类短超时快速失败）。"""
         try:
             self._ensure_init()
-            self._client.head_bucket(Bucket=self._bucket('audios'))
+            self._admin_client.head_bucket(Bucket=self._bucket('audios'))
             return True
         except Exception:
             return False
@@ -68,17 +89,18 @@ class OSSClient:
         """连通性自检（INT-84）：head_bucket 探活，返回 (是否可用, 失败原因)。
 
         与 is_available 的差异：携带失败原因，供启动自检一次性输出诊断信息
-        （凭据/endpoint 配置错误时指向问题，而非静默 False）。
+        （凭据/endpoint 配置错误时指向问题，而非静默 False）。走管理类短超时。
         """
         try:
             self._ensure_init()
-            self._client.head_bucket(Bucket=self._bucket('audios'))
+            self._admin_client.head_bucket(Bucket=self._bucket('audios'))
             return True, ''
         except Exception as e:
             return False, str(e)
 
     def _init(self):
-        endpoint = BaseConfig.OSS_ENDPOINT
+        # INT-1348：localhost 统一改写 127.0.0.1，避免 ::1/IPv4 解析歧义悬挂
+        endpoint = _normalize_endpoint(BaseConfig.OSS_ENDPOINT)
         access_key = BaseConfig.OSS_ACCESS_KEY
         secret_key = BaseConfig.OSS_SECRET_KEY
         if not access_key or not secret_key:
@@ -93,6 +115,57 @@ class OSSClient:
                 retries={'max_attempts': 3, 'mode': 'standard'},
                 connect_timeout=5,
                 read_timeout=60,
+            ),
+            region_name=BaseConfig.OSS_REGION,
+        )
+
+        # 预签名客户端（INT-1719）：签名用 endpoint 取「对浏览器/第三方暴露」的公共
+        # 地址（OSS_PUBLIC_ENDPOINT），与内部读写 endpoint 解耦。容器里 OSS_ENDPOINT
+        # 是服务名（rustfs:9000），签进 URL 交给宿主浏览器会 ERR_NAME_NOT_RESOLVED。
+        # 按公共 endpoint 独立客户端直接签名，而不是生成后改 URL 前缀：SigV4 下 Host
+        # 参与签名，前缀替换会变成 SignatureDoesNotMatch 403。
+        # 公共值未配置（空串）或归一后与内部一致时直接复用主客户端——宿主/单机部署
+        # 零行为变化，也不多建一条连接池。一致性用去尾斜杠比较，避免仅写法差异重复建。
+        public_endpoint = _normalize_endpoint(BaseConfig.OSS_PUBLIC_ENDPOINT or '')
+        if public_endpoint and public_endpoint.rstrip('/') != endpoint.rstrip('/'):
+            logger.info('OSS 预签名 endpoint=%s（内部读写 endpoint=%s，'
+                        'OSS_PUBLIC_ENDPOINT）', public_endpoint, endpoint)
+            # 参数（key/secret/region/重试超时）与主客户端一致；签名是纯本地计算，
+            # 不访问 OSS，因此**不**对公共客户端重复 _ensure_buckets_exist（公共地址
+            # 未必从本进程可达，如宿主端口）。
+            self._presign_client = boto3.client(
+                's3',
+                endpoint_url=public_endpoint,
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+                config=BotoConfig(
+                    retries={'max_attempts': 3, 'mode': 'standard'},
+                    connect_timeout=5,
+                    read_timeout=60,
+                ),
+                region_name=BaseConfig.OSS_REGION,
+            )
+        else:
+            self._presign_client = self._client
+
+        # 管理类短超时客户端（INT-1348）：delete_object/exists/delete_prefix 等
+        # 管理操作对超时不敏感，复用长 read_timeout（60s）× 3 次重试会在 OSS
+        # 不可达/响应慢时把调用悬挂到网关 gRPC 60s 截止之后（DEADLINE_EXCEEDED
+        # 400，DB 记录已删但响应超时）。独立短超时客户端快速失败，由上层
+        # try/except 兜底保证业务操作照常进行。
+        # retries 用 total_max_attempts（总尝试次数，含首次）：OSS_ADMIN_MAX_ATTEMPTS
+        # 即总尝试次数，默认 2 = 首次 + 1 次重试。不用 max_attempts（botocore 语义为
+        # 重试次数，总尝试 = max_attempts + 1，易误解，INT-1348 验收打回收口）。
+        self._admin_client = boto3.client(
+            's3',
+            endpoint_url=endpoint,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            config=BotoConfig(
+                retries={'total_max_attempts': BaseConfig.OSS_ADMIN_MAX_ATTEMPTS,
+                         'mode': 'standard'},
+                connect_timeout=BaseConfig.OSS_ADMIN_CONNECT_TIMEOUT_SECONDS,
+                read_timeout=BaseConfig.OSS_ADMIN_READ_TIMEOUT_SECONDS,
             ),
             region_name=BaseConfig.OSS_REGION,
         )
@@ -276,22 +349,22 @@ class OSSClient:
     # ---- 管理 ----
 
     def exists(self, category: str, key: str) -> bool:
-        """检查对象是否存在"""
+        """检查对象是否存在（走管理类短超时快速失败）。"""
         self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         try:
-            self._client.head_object(Bucket=bucket, Key=full_key)
+            self._admin_client.head_object(Bucket=bucket, Key=full_key)
             return True
         except ClientError:
             return False
 
     def delete(self, category: str, key: str):
-        """删除对象"""
+        """删除对象（走管理类短超时快速失败，INT-1348）"""
         self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
-        self._client.delete_object(Bucket=bucket, Key=full_key)
+        self._admin_client.delete_object(Bucket=bucket, Key=full_key)
 
     def list_objects(self, category: str, prefix: str = '') -> list:
         """列出对象 key 列表（返回逻辑 key，已去掉前缀）"""
@@ -326,24 +399,27 @@ class OSSClient:
         """
         生成预签名 URL（前端直传/直下）
 
+        签名 endpoint 走 OSS_PUBLIC_ENDPOINT（未配置则回落 OSS_ENDPOINT），
+        保证返回给浏览器/第三方的 URL 可从容器外解析（INT-1719）。
+
         :param expires: 过期秒数（默认 1 小时）
         :return: 预签名 URL
         """
         self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
-        return self._client.generate_presigned_url(
+        return self._presign_client.generate_presigned_url(
             'get_object',
             Params={'Bucket': bucket, 'Key': full_key},
             ExpiresIn=expires,
         )
 
     def get_upload_presigned_url(self, category: str, key: str, expires: int = 3600) -> str:
-        """生成上传预签名 URL（前端直传）"""
+        """生成上传预签名 URL（前端直传，INT-1719 起走公共 endpoint 签名）"""
         self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
-        return self._client.generate_presigned_url(
+        return self._presign_client.generate_presigned_url(
             'put_object',
             Params={'Bucket': bucket, 'Key': full_key},
             ExpiresIn=expires,
@@ -361,11 +437,11 @@ class OSSClient:
 
     def get_part_upload_presigned_url(self, category: str, key: str, upload_id: str,
                                        part_number: int, expires: int = 3600) -> str:
-        """生成单个分片上传的预签名 URL（前端直传分片到 OSS）"""
+        """生成单个分片上传的预签名 URL（前端直传分片到 OSS，INT-1719 起走公共 endpoint 签名）"""
         self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
-        return self._client.generate_presigned_url(
+        return self._presign_client.generate_presigned_url(
             'upload_part',
             Params={
                 'Bucket': bucket,
@@ -418,21 +494,26 @@ class OSSClient:
         return resp.get('Parts', [])
 
     def delete_object(self, category: str, key: str):
-        """删除单个对象"""
+        """删除单个对象。
+
+        INT-1348：走管理类短超时客户端——OSS 不可达/响应慢时数秒内快速失败
+        （主客户端 read_timeout=60×3 次重试会把调用悬挂到网关 gRPC 截止之后）。
+        删除是尽力而为，由上层 try/except 兜底保证业务记录删除照常进行。
+        """
         self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
-        self._client.delete_object(Bucket=bucket, Key=full_key)
+        self._admin_client.delete_object(Bucket=bucket, Key=full_key)
 
     def delete_prefix(self, category: str, prefix: str):
-        """批量删除指定前缀下的所有对象"""
+        """批量删除指定前缀下的所有对象（走管理类短超时快速失败）。"""
         self._ensure_init()
         bucket = self._bucket(category)
         full_prefix = self._full_key(category, prefix)
-        resp = self._client.list_objects_v2(Bucket=bucket, Prefix=full_prefix)
+        resp = self._admin_client.list_objects_v2(Bucket=bucket, Prefix=full_prefix)
         objects = [{'Key': obj['Key']} for obj in resp.get('Contents', [])]
         if objects:
-            self._client.delete_objects(Bucket=bucket, Delete={'Objects': objects})
+            self._admin_client.delete_objects(Bucket=bucket, Delete={'Objects': objects})
 
     # ---- 便捷方法 ----
 

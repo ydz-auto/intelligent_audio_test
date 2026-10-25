@@ -368,17 +368,66 @@ class ExportTasksCommand(Command):
 
 @dataclass(frozen=True)
 class PreviewImportCommand(Command):
-    """导入预检命令。委托 data_transfer_import_service.preview_import。"""
+    """导入预检命令。委托 data_transfer_import_service.preview_import。
+
+    options（INT-1759）：{require_case_consistency?: bool, intent?: migrate/restore}
+    """
     zip_path: str = ''
+    options: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class ExecuteImportCommand(Command):
-    """执行导入命令（分段提交 + 补偿回滚）。委托 data_transfer_import_service.execute_import。"""
+    """执行导入命令（分段提交 + 补偿回滚）。委托 data_transfer_import_service.execute_import。
+
+    options 同 PreviewImportCommand（用例一致性请求级策略）。
+    """
     zip_path: str = ''
+    options: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class RollbackImportCommand(Command):
     """批次回滚命令（人工介入兜底入口）。委托 data_transfer_import_service.rollback_import。"""
     batch_id: str = ''
+
+
+@dataclass(frozen=True)
+class ExportIncrementalCommand(Command):
+    """增量导出命令（链路 2，INT-1761）。委托 export_incremental。
+
+    options（D0 A1/A2）：{include: ['dimensions'|'reports']}
+    """
+    task_ids: List[int] = field(default_factory=list)
+    options: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ImportIncrementalCommand(Command):
+    """增量导入命令（链路 2）。委托 import_incremental。
+
+    增量包暂无请求级选项（用例硬校验不作用于本链路），保留 options 以便演进。
+    """
+    zip_path: str = ''
+    options: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ExportReportPackageCommand(Command):
+    """报告包导出命令（INT-1764 D6：链路 3a + 3b/3c）。
+
+    委托 data_transfer_export_service.export_report_package。
+    """
+    task_ids: List[int] = field(default_factory=list)
+    report_ids: List[int] = field(default_factory=list)
+    doc_version_scope: str = ''
+
+
+@dataclass(frozen=True)
+class ImportReportPackageCommand(Command):
+    """报告包导入命令（INT-1764 D6）。委托 data_transfer_import_service.import_report_package。
+
+    options: {target_report_id?: int, batch_id?: str}
+    """
+    zip_path: str = ''
+    options: Dict[str, Any] = field(default_factory=dict)

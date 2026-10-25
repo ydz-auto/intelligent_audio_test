@@ -333,8 +333,9 @@ class TestUserManagementChain:
     def test_create_assign_role_update_delete(self, servicer):
         svc, pb = servicer
         # admin 建用户（带密码 → bcrypt 哈希落库）
+        # INT-1590：用户管理入口密码须 8–128 位，夹具改用 8 位以上
         resp = svc.CreateUser(pb.CreateUserRequest(
-            username='managed_user', password='s3cret', operator_id=1))
+            username='managed_user', password='s3cret-pass', operator_id=1))
         assert resp.success, resp.message
         user_id = json.loads(resp.data)['user_id']
         session = get_db_session()

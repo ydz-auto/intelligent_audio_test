@@ -312,6 +312,25 @@ class DeviceCommandService:
             'code': 200,
         }
 
+    @staticmethod
+    def _collect_health_metrics(device_data: dict) -> dict:
+        """采集健康检查性能指标（INT-1578）；任何异常都降级为空 dict。
+
+        与监控线程共用同一个采集函数（``collect_device_metrics``），单点实现。
+        """
+        serial_number = device_data.get('serial_number')
+        if not serial_number:
+            return {}
+        try:
+            from device_service.infrastructure.drivers.device_metrics_collector import (
+                collect_device_metrics,
+            )
+            return collect_device_metrics(device_data.get('system'), serial_number)
+        except Exception:
+            logger.debug(
+                "健康检查指标采集失败 device_id=%s", device_data.get('id'), exc_info=True)
+            return {}
+
     def health_check(self, device_ids: list = None) -> dict:
         """批量健康检查（每次结果落状态历史事件并发布 DEVICE_EVENTS，INT-80）"""
         from device_service.infrastructure.drivers.driver_factory import device_driver_factory
@@ -369,6 +388,13 @@ class DeviceCommandService:
             )
 
             # 状态历史事件落库 + DEVICE_EVENTS 发布（INT-80；INT-69 收敛至单一 EventBus 链路）
+            detail = {'serial_number': device_data.get('serial_number')}
+            if is_online:
+                # INT-1578：在线设备补充采集 cpu/memory/battery，写入同一条 health_check 事件的
+                # detail.metrics（采不到就不写该键；采集失败不影响 is_online 与整体成功）
+                metrics = self._collect_health_metrics(device_data)
+                if metrics:
+                    detail['metrics'] = metrics
             device_monitor_service.record_status_event(
                 device_id=device_data['id'],
                 event_type=DeviceStatusEventType.HEALTH_CHECK.value,
@@ -376,7 +402,7 @@ class DeviceCommandService:
                 to_status=new_status,
                 source='health_check',
                 success=is_online,
-                detail={'serial_number': device_data.get('serial_number')},
+                detail=detail,
             )
             if new_status != old_status:
                 device_monitor_service.record_status_event(

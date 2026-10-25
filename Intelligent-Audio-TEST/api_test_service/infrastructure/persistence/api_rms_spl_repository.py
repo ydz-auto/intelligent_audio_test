@@ -47,6 +47,8 @@ def _po_to_entity(po) -> Optional[ApiRmsSplMapping]:
         min_gain_linear=po.min_gain_linear,
         max_gain_linear=po.max_gain_linear,
         deleted=bool(po.deleted),
+        created_at=po.created_at,
+        updated_at=po.updated_at,
     )
 
 

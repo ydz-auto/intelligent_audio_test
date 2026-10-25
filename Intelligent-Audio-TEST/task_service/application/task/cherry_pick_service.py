@@ -27,6 +27,8 @@ from shared.models.common_enums import (
 from shared.utils.status_constants import (
     ExecutionStatus, EvaluationStatus, TaskCaseStatus, TaskStatus,
     FINISHED_TASK_STATUSES,
+    # 结果类型缺值哨兵（INT-1510 §8.2.2）：与写路径落库口径（NULL）配对的过滤值
+    RESULT_TYPE_PENDING,
 )
 
 from task_service.infrastructure.persistence.cherry_pick_repository import cherry_pick_repository
@@ -35,6 +37,40 @@ from task_service.infrastructure.persistence.task_repository import task_reposit
 logger = logging.getLogger(__name__)
 
 _UTC_PLUS_8 = timezone(timedelta(hours=8))
+
+# 可挑选任务清单（INT-1496 §8.1）：入参取值显式枚举，拒绝魔法字符串
+_PICKABLE_TASK_STATUSES = tuple(s.value for s in PickableTaskStatus)
+_PICKABLE_TASK_SORT_KEYS = ('status', 'name', 'created_at')
+_PICKABLE_TASK_SORT_ORDERS = ('asc', 'desc')
+
+# 同用例多条所选结果 → 容器 TaskCase 执行状态的聚合优先级（INT-1715 ②）：
+# 越靠前越「异常」，同一用例被多条结果命中时取最差，避免把失败藏成 completed。
+_CASE_EXEC_PRECEDENCE = (
+    ExecutionStatus.FAILED,
+    ExecutionStatus.STOPPED,
+    ExecutionStatus.RUNNING,
+    ExecutionStatus.QUEUED,
+    ExecutionStatus.SKIPPED,
+    ExecutionStatus.PENDING,
+)
+
+# 所选结果维度行 → 容器 TaskCase 评估状态的聚合优先级（INT-1715 ②）：
+# 与 evaluation_service 收尾口径（_check_all_results_completed）同构——任一维度
+# 失败即失败；仍在评估中的过渡态取最靠后者；全部完成才 completed。
+_CASE_EVAL_PRECEDENCE = (
+    EvaluationStatus.FAILED,
+    EvaluationStatus.STOPPED,
+    EvaluationStatus.CALCULATING,
+    EvaluationStatus.RUNNING,
+    EvaluationStatus.QUEUED,
+    EvaluationStatus.PENDING,
+)
+
+# 溯源/非容器同口径字面量（前端按「非 200 即非容器、静默」判定，改口径须同步前端）
+_NOT_CHERRY_PICK_MESSAGE = '该任务不是挑选合并容器任务'
+
+# 候选树 evaluation_status 取值（§8.2.2：evaluated/pending，与 candidates 同口径）
+_TREE_EVALUATION_STATUSES = ('evaluated', 'pending')
 
 
 class CherryPickService:
@@ -133,6 +169,10 @@ class CherryPickService:
             case_ids = {str(it.get('source_case_id')) for it in items if it.get('source_case_id')}
             device_ids = {int(it['source_device_id']) for it in items if it.get('source_device_id') is not None}
             case_names = self._case_name_map(case_ids) if case_ids else {}
+            # INT-1693 §11-7：购物车用例视图按 分组/标签 组织，行级补 tags/group_id/
+            # group_name（与候选行同源同口径，按响应内全部 source_case_id 一次批量回填）；
+            # with_duration=False——购物车不用时长，不触发 audio gRPC 慢路径。
+            case_meta = self._case_meta_map(case_ids, with_duration=False) if case_ids else {}
             device_names = self._fetch_device_names(list(device_ids)) if device_ids else {}
             grouped: Dict[int, List[Dict[str, Any]]] = {}
             invalid_item_ids: List[int] = []
@@ -146,6 +186,12 @@ class CherryPickService:
                     it['source_case_name'] = case_names.get(it['source_case_id'])
                 if it.get('source_device_id') is not None:
                     it['source_device_name'] = device_names.get(it['source_device_id'])
+                # INT-1693 §11-7：行级用例分组/标签（缺省 []/null/null，用例已软删或
+                # 查不到同落缺省；容器来源行按 source_case_id 取，天然覆盖）
+                meta = case_meta.get(str(it.get('source_case_id'))) if it.get('source_case_id') else None
+                it['tags'] = (meta or {}).get('tags', [])
+                it['group_id'] = (meta or {}).get('group_id')
+                it['group_name'] = (meta or {}).get('group_name')
                 grouped.setdefault(it['source_task_id'], []).append(it)
             groups = [{
                 'source_task_id': task_id,
@@ -284,6 +330,10 @@ class CherryPickService:
           与 case_ids 精确语义区分，前端「按用例搜索」改走此参数）
         - execution_status / evaluation_status: 结果执行/评估状态
         - start_date / end_date: 结果执行时间范围（TestResult.created_at）
+        - api_ids: 结果级 API 维度过滤（INT-1510 §8.2.4；叶明细分页按展开的
+          API 节点过滤，服务端出 total，不靠客户端过滤）
+        - result_type: 结果类型等值过滤（INT-1510 §8.2.4）；取值 `default`
+          命中缺值桶（落库 NULL/空串，与写路径口径一致）
         - excluded=True 时返回被删用例排除行（缺省剔除，对齐 INT-305 口径）
         - select_all=True（INT-577）：不翻页，返回当前筛选命中全部 result_id 集合
           （跨页全选语义 §11-4；与候选行查询同一条件口径）
@@ -291,8 +341,10 @@ class CherryPickService:
         try:
             task_ids = [int(t) for t in (data.get('task_ids') or [])]
             device_ids = [int(d) for d in (data.get('device_ids') or [])]
+            api_ids = [int(a) for a in (data.get('api_ids') or [])]
             case_ids = [str(c) for c in (data.get('case_ids') or [])]
             case_keyword = (data.get('case_keyword') or '').strip() or None
+            result_type = (data.get('result_type') or '').strip() or None
             execution_status = data.get('execution_status') or None
             evaluation_status = data.get('evaluation_status') or None
             start_date = data.get('start_date') or None
@@ -304,8 +356,9 @@ class CherryPickService:
             if select_all:
                 # INT-577 §11-4：跨页全选——不翻页，命中全部 result_id 集合
                 rows = self._query_candidate_results(
-                    task_ids=task_ids, device_ids=device_ids, case_ids=case_ids,
-                    case_keyword=case_keyword,
+                    task_ids=task_ids, device_ids=device_ids, api_ids=api_ids,
+                    case_ids=case_ids, case_keyword=case_keyword,
+                    result_type=result_type,
                     execution_status=execution_status,
                     evaluation_status=evaluation_status,
                     start_date=start_date, end_date=end_date,
@@ -316,8 +369,9 @@ class CherryPickService:
                 }}
 
             rows, total = self._query_candidate_results(
-                task_ids=task_ids, device_ids=device_ids, case_ids=case_ids,
-                case_keyword=case_keyword,
+                task_ids=task_ids, device_ids=device_ids, api_ids=api_ids,
+                case_ids=case_ids, case_keyword=case_keyword,
+                result_type=result_type,
                 execution_status=execution_status,
                 evaluation_status=evaluation_status,
                 start_date=start_date, end_date=end_date,
@@ -333,15 +387,250 @@ class CherryPickService:
             logger.error(f"挑选候选结果查询失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
+    def pickable_tasks(self, data: dict) -> dict:
+        """挑选向导阶段 1 可挑选任务清单（设计文档 §8.1，INT-1496）。
+
+        取代「candidates 首页 200 行客户端聚合」的旧数据源：聚合与分页由仓储
+        单条 SQL 完成，返回体只含任务级字段，不取评估状态 / 用例元信息 /
+        音频时长等结果级装饰（性能硬性 1/3）。
+
+        参数：keyword（任务名模糊）/ status（PickableTaskStatus 枚举值）/
+        sort_by（status|name|created_at）/ sort_order（asc|desc）/ page / per_page。
+        """
+        try:
+            keyword = (data.get('keyword') or '').strip() or None
+            status = data.get('status') or None
+            if status is not None and status not in _PICKABLE_TASK_STATUSES:
+                return {'success': False, 'message': f'不支持的任务状态: {status}',
+                        'data': {'code': 400}, 'code': 400}
+            sort_by = data.get('sort_by') or 'status'
+            if sort_by not in _PICKABLE_TASK_SORT_KEYS:
+                return {'success': False, 'message': f'不支持的排序键: {sort_by}',
+                        'data': {'code': 400}, 'code': 400}
+            sort_order = (data.get('sort_order') or 'asc').lower()
+            if sort_order not in _PICKABLE_TASK_SORT_ORDERS:
+                return {'success': False, 'message': f'不支持的排序方向: {sort_order}',
+                        'data': {'code': 400}, 'code': 400}
+            page = max(1, int(data.get('page') or 1))
+            per_page = min(200, max(1, int(data.get('per_page') or 50)))
+
+            from task_service.infrastructure.visibility_context import visibility_identity
+            user_id, is_admin = visibility_identity()
+            result = self._repo.pickable_tasks(
+                keyword=keyword, status=status, sort_by=sort_by,
+                sort_order=sort_order, page=page, per_page=per_page,
+                user_id=user_id, is_admin=is_admin,
+            )
+            return {'success': True, 'message': 'ok', 'data': {
+                'items': result['items'], 'total': result['total'],
+                'page': page, 'per_page': per_page,
+            }}
+        except (ValueError, TypeError) as e:
+            return {'success': False, 'message': f'查询参数非法: {e}',
+                    'data': {'code': 400}, 'code': 400}
+        except Exception as e:
+            logger.error(f"可挑选任务清单查询失败: {e}", exc_info=True)
+            return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
+    # ==================== 阶段 2 候选树聚合（INT-1510 §8.2） ====================
+
+    def candidate_tree(self, data: dict) -> dict:
+        """阶段 2 候选树聚合（设计文档 §8.2.2，INT-1510）。
+
+        一次请求返回「任务 → 用例 → 设备/API → result_type」的分组计数与每个
+        `result_type` 节点的 `result_id` 集，取代「candidates 首页 200 行由客户端
+        重建树」的降级路径（§8.2.1 缺陷根因）。
+
+        性能硬性（§8.2.3）：
+        - 分组计数与 result_id 集在仓储单条聚合 SQL 内完成（不拉结果行进内存）；
+        - `result_type` 取落库列，请求路径零 OSS 往返；
+        - 跨服务调用只剩设备名 / API 名各 1 次批量（去重集合），与行数无关；
+        - body 体量随命中结果行数增长（真实库 3614 行实测约 1.0MB），本卡不做缓存。
+
+        容器任务（INT-657）经 `task_cherry_pick_relations` 展开，命中行归属容器
+        任务（直查命中优先），与 candidates 同口径。
+        """
+        try:
+            task_ids = [int(t) for t in (data.get('task_ids') or [])]
+            if not task_ids or len(task_ids) > 200:
+                return {'success': False, 'message': 'task_ids 必填且为 1–200 个',
+                        'data': {'code': 400}, 'code': 400}
+            device_ids = [int(d) for d in (data.get('device_ids') or [])]
+            api_ids = [int(a) for a in (data.get('api_ids') or [])]
+            case_ids = [str(c) for c in (data.get('case_ids') or [])]
+            case_keyword = (data.get('case_keyword') or '').strip() or None
+            execution_status = data.get('execution_status') or None
+            evaluation_status = data.get('evaluation_status') or None
+            if evaluation_status is not None and evaluation_status not in _TREE_EVALUATION_STATUSES:
+                return {'success': False, 'message': f'不支持的评估状态: {evaluation_status}',
+                        'data': {'code': 400}, 'code': 400}
+            start_date = self._parse_iso_dt(data.get('start_date'))
+            end_date = self._parse_iso_dt(data.get('end_date'))
+
+            # INT-657：容器任务经引用关系解析（容器自身无 test_results 行）
+            direct_task_ids, container_result_map = self._resolve_container_task_ids(task_ids)
+            if not direct_task_ids and not container_result_map:
+                return {'success': True, 'message': 'ok', 'data': {
+                    'total': 0, 'task_count': 0,
+                    'meta': {'tasks': [], 'cases': [], 'devices': [], 'apis': []},
+                    'tree': [],
+                }}
+
+            from task_service.infrastructure.visibility_context import visibility_identity
+            user_id, is_admin = visibility_identity()
+
+            result = self._repo.candidate_tree(
+                direct_task_ids, container_result_map,
+                device_ids=device_ids, api_ids=api_ids, case_ids=case_ids,
+                case_keyword=case_keyword, execution_status=execution_status,
+                evaluation_status=evaluation_status,
+                start_date=start_date, end_date=end_date,
+                user_id=user_id, is_admin=is_admin,
+            )
+            groups = result['groups']
+
+            tree, total, case_ids_hit, device_ids_hit, api_ids_hit = self._assemble_tree(groups)
+            meta = {
+                'tasks': sorted(result['tasks'], key=lambda t: t['task_id']),
+                'cases': self._tree_case_meta(case_ids_hit),
+                'devices': self._tree_device_meta(device_ids_hit),
+                'apis': self._tree_api_meta(api_ids_hit),
+            }
+            return {'success': True, 'message': 'ok', 'data': {
+                'total': total,
+                'task_count': len(tree),
+                'meta': meta,
+                'tree': tree,
+            }}
+        except (ValueError, TypeError) as e:
+            return {'success': False, 'message': f'查询参数非法: {e}',
+                    'data': {'code': 400}, 'code': 400}
+        except Exception as e:
+            logger.error(f"候选树聚合查询失败: {e}", exc_info=True)
+            return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
+    @staticmethod
+    def _parse_iso_dt(value) -> Optional[datetime]:
+        """ISO 8601 时间串 → datetime（非法值按未传处理，与 candidates 同口径）。"""
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(str(value))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _assemble_tree(groups: List[Dict[str, Any]]) -> tuple:
+        """把仓储的分组行装配为四层树（只在分组行上做字典归并，与行数无关）。
+
+        Returns:
+            (tree, total, case_ids, device_ids, api_ids)——
+            后三者是去重集合（meta 去重表的入参）。
+        """
+        task_map: Dict[int, Dict[str, Any]] = {}
+        case_ids, device_ids, api_ids = set(), set(), set()
+        total = 0
+        for group in groups:
+            count = int(group.get('count') or 0)
+            total += count
+            task_id = group['task_id']
+            case_id = group.get('case_id')
+            if case_id:
+                case_ids.add(case_id)
+            if group.get('device_id') is not None:
+                device_ids.add(group['device_id'])
+            if group.get('api_id') is not None:
+                api_ids.add(group['api_id'])
+
+            task_node = task_map.setdefault(
+                task_id, {'task_id': task_id, 'count': 0, 'cases': {}})
+            task_node['count'] += count
+            case_node = task_node['cases'].setdefault(
+                case_id, {'case_id': case_id, 'count': 0, 'devices': {}})
+            case_node['count'] += count
+            device_key = (group.get('device_id'), group.get('api_id'))
+            device_node = case_node['devices'].setdefault(device_key, {
+                'device_id': group.get('device_id'),
+                'api_id': group.get('api_id'),
+                'count': 0,
+                'result_types': [],
+            })
+            device_node['count'] += count
+            device_node['result_types'].append({
+                'result_type': group.get('result_type'),
+                'count': count,
+                'result_ids': list(group.get('result_ids') or []),
+            })
+
+        tree = []
+        for task_id in sorted(task_map):
+            task_node = task_map[task_id]
+            cases = []
+            for case_id in sorted(task_node['cases'],
+                                  key=lambda c: (c is None, c or '')):
+                case_node = task_node['cases'][case_id]
+                devices = []
+                for key in sorted(case_node['devices'],
+                                  key=lambda k: (k[0] is None, k[0] or 0,
+                                                 k[1] is None, k[1] or 0)):
+                    device_node = case_node['devices'][key]
+                    device_node['result_types'].sort(
+                        key=lambda rt: (rt['result_type'] or ''))
+                    devices.append(device_node)
+                cases.append({'case_id': case_id, 'count': case_node['count'],
+                              'devices': devices})
+            tree.append({'task_id': task_id, 'count': task_node['count'],
+                         'cases': cases})
+        return tree, total, case_ids, device_ids, api_ids
+
+    def _tree_case_meta(self, case_ids) -> List[Dict[str, Any]]:
+        """meta.cases 去重表（字段口径同 §8.1 用例元信息；查不到的用例落缺省）。"""
+        if not case_ids:
+            return []
+        meta_map = self._case_meta_map(case_ids)
+        out = []
+        for case_id in sorted(case_ids):
+            meta = meta_map.get(str(case_id)) or {}
+            out.append({
+                'case_id': case_id,
+                'case_name': meta.get('case_name') or case_id,
+                'algorithm_type': meta.get('algorithm_type'),
+                'tags': meta.get('tags', []),
+                'group_id': meta.get('group_id'),
+                'group_name': meta.get('group_name'),
+                'duration': meta.get('duration'),
+                'rounds': meta.get('rounds'),
+            })
+        return out
+
+    def _tree_device_meta(self, device_ids) -> List[Dict[str, Any]]:
+        """meta.devices 去重表（设备名 1 次批量 gRPC，失败落 None）。"""
+        if not device_ids:
+            return []
+        names = self._fetch_device_names(sorted(device_ids))
+        return [{'device_id': d, 'device_name': names.get(d)}
+                for d in sorted(device_ids)]
+
+    def _tree_api_meta(self, api_ids) -> List[Dict[str, Any]]:
+        """meta.apis 去重表（API 名 1 次批量 gRPC，失败落 None）。"""
+        if not api_ids:
+            return []
+        names = self._fetch_api_names(sorted(api_ids))
+        return [{'api_id': a, 'api_name': names.get(a)}
+                for a in sorted(api_ids)]
+
     def _query_candidate_results(self, task_ids, device_ids, case_ids, case_keyword,
                                  execution_status, evaluation_status,
-                                 start_date, end_date, page, per_page) -> tuple:
+                                 start_date, end_date, page, per_page,
+                                 api_ids=None, result_type=None) -> tuple:
         """挑选候选结果查询核心（只读，CQRS 查询侧无副作用）。
 
         - 默认仅终态任务（§10 显式终态集合 completed/failed/stopped）
         - 默认剔除 excluded=1 行（被删用例排除，INT-305 聚合口径）
         - 评估状态取自 evaluation_service（TestResultDimension 存在性），
-          经 gRPC 批量查询（P1.7 先例），跨服务不直连
+          INT-1625 起走 ACL 共享库只读投影（只取存在性集合，不再回传全部维度行）
+        - INT-1510：api_ids / result_type 服务端过滤（叶明细分页口径；
+          result_type=default 命中落库 NULL/空串的缺值桶）
         - INT-657：task_ids 命中容器任务时经 task_cherry_pick_relations
           解析其引用的源结果参与候选命中（容器自身无 test_results 行，
           引用方案 A §5.1），命中项标注为容器任务（与源任务口径一致）
@@ -381,6 +670,17 @@ class CherryPickService:
                 q = q.filter(conds[0] if len(conds) == 1 else or_(*conds))
             if device_ids:
                 q = q.filter(TestResult.device_id.in_(device_ids))
+            if api_ids:
+                # INT-1510 §8.2.4：结果级 API 维度过滤（与 device_ids 同层 AND）
+                q = q.filter(TestResult.api_id.in_(api_ids))
+            if result_type:
+                # INT-1510 §8.2.4：result_type 等值过滤；default = 缺值桶
+                # （落库口径 NULL/空串，§8.2.2「结果类型待补充」）
+                if result_type == RESULT_TYPE_PENDING:
+                    q = q.filter(or_(TestResult.result_type.is_(None),
+                                     TestResult.result_type == ''))
+                else:
+                    q = q.filter(TestResult.result_type == result_type)
             if case_ids:
                 q = q.filter(TestResult.test_case_id.in_(case_ids))
             if case_keyword:
@@ -418,7 +718,7 @@ class CherryPickService:
                     result_ids_in_scope = [r[0] for r in session.query(TestResult.id).filter(
                         TestResult.task_id.in_(scope_ids),
                         TestResult.excluded == 0).all()] if scope_ids else []
-                evaluated = self._evaluated_result_ids(result_ids_in_scope)
+                evaluated = self._evaluated_result_ids(result_ids_in_scope, session=session)
                 if evaluation_status == EvaluationStatus.PENDING:
                     # 未评估：不在已评估集合（含维度行缺失场景）
                     q = q.filter(~TestResult.id.in_(evaluated))
@@ -441,9 +741,10 @@ class CherryPickService:
             rows = (q.order_by(TestResult.task_id.desc(), TestResult.id)
                     .offset((page - 1) * per_page).limit(per_page).all())
 
-            # 批量取评估状态标注（结果级已评估/未评估，gRPC 范围批量化）
+            # 批量取评估状态标注（结果级已评估/未评估，存在性投影一次 IN 取回）
             row_result_ids = [r.id for r, _t in rows]
-            evaluated_map = self._evaluated_result_ids(row_result_ids) if row_result_ids else {}
+            evaluated_map = (self._evaluated_result_ids(row_result_ids, session=session)
+                             if row_result_ids else {})
 
             # INT-577 §11-2：候选行补展示字段——case_name / device_name / api_name /
             # result_type（多级挑选树节点命名与 result_type 分组/筛选数据源）
@@ -455,6 +756,10 @@ class CherryPickService:
             api_ids_in_page = {r.api_id for r, _t in rows if r.api_id is not None}
             device_names = self._fetch_device_names(list(device_ids_in_page)) if device_ids_in_page else {}
             api_names = self._fetch_api_names(list(api_ids_in_page)) if api_ids_in_page else {}
+
+            # INT-1510 §8.2.3 第 1 条：result_type 直接取落库列（读侧 DB-first，
+            # 请求路径零对象存储往返；原 INT-1625 的文件并发预取已删除，不留开关）
+            # 缺值（落库 NULL）按「结果类型待补充」桶对外输出 default。
 
             # INT-657：容器引用命中的结果标注为容器任务（与源任务口径一致）；
             # 同结果同时被源任务直查命中的保留源任务标注（直查优先，不混淆归属）
@@ -484,8 +789,8 @@ class CherryPickService:
                     # INT-577 §11-2：设备/API 名（TestResult 归属二选一，缺省 None）
                     'device_name': device_names.get(result.device_id),
                     'api_name': api_names.get(result.api_id),
-                    # INT-577 §11-2：result_type（result_data/result_data_path 解析，缺省 default）
-                    'result_type': self._extract_result_type(result.result_data, result.result_data_path),
+                    # INT-1510 §8.2.3：result_type 取落库列，缺值输出 default
+                    'result_type': result.result_type or RESULT_TYPE_PENDING,
                     'algorithm_type': result.algorithm_type,
                     'execution_status': result.execution_status,
                     'evaluated': result.id in evaluated_map,
@@ -537,15 +842,19 @@ class CherryPickService:
                     })
         return direct_ids, result_map
 
-    def _evaluated_result_ids(self, result_ids: Optional[List[int]]) -> set:
-        """经 evaluation_service gRPC 批量查询已评估结果 ID 集合（P1.7 先例口径）。"""
+    def _evaluated_result_ids(self, result_ids: Optional[List[int]], session=None) -> set:
+        """批量查询已评估结果 ID 集合（P1.7 先例口径）。
+
+        INT-1625：改 ACL 的共享库只读投影（只取「有无维度行」的存在性集合，
+        不再经 gRPC 回传全部维度行——候选首页 200 个结果 ID 对应 5592 行维度，
+        宿主实测 5~22s，是 60s 超时的主要来源）。
+        """
         from task_service.infrastructure.acl.evaluation_config_acl_repository import (
             evaluation_config_acl_repository,
         )
         try:
-            grouped = evaluation_config_acl_repository.get_dimension_results_by_result_ids(
-                list(result_ids) if result_ids else [])
-            return {int(rid) for rid, items in (grouped or {}).items() if items}
+            return evaluation_config_acl_repository.get_evaluated_result_ids(
+                list(result_ids) if result_ids else [], session=session)
         except Exception as e:
             logger.warning(f"批量查询评估结果失败（按未评估降级）: {e}")
             return set()
@@ -642,7 +951,7 @@ class CherryPickService:
         """下单 merge：生成 cherry-pick 容器任务 + 结果引用关系（方案 A）。
 
         - 容器任务创建即 completed（§5.3，对齐现有合并容器口径）+ TaskCase
-          状态继承源结果（双状态派生表达式自动生效）
+          执行状态按所选结果派生（INT-1715 ②，双状态派生表达式自动生效）
         - 关系行（result_id + 溯源快照）与容器任务同事务原子创建
         - 任务级配置：算法参数/标签取首个来源任务，创建时允许编辑（§5.2 默认口径）
         - 下单成功已下单条目出清，未下单条目保留（§3 购物车口径）
@@ -720,6 +1029,44 @@ class CherryPickService:
         finally:
             session.close()
 
+    @staticmethod
+    def _aggregate_case_exec_status(statuses) -> str:
+        """所选结果执行状态 → 容器 TaskCase 执行状态（单条即原值，多条取最差）。
+
+        容器 TaskCase 必须跟随**所选结果**（INT-1715 ②）：源 TaskCase 可能因人工
+        复核只改判结果、未回写用例行而陈旧，继承源行会让容器关联用例区与所选
+        结果状态相反。
+        """
+        present = {s for s in statuses if s}
+        for candidate in _CASE_EXEC_PRECEDENCE:
+            if candidate in present:
+                return candidate
+        return ExecutionStatus.COMPLETED
+
+    @staticmethod
+    def _aggregate_case_eval_status(statuses) -> Optional[str]:
+        """所选结果维度行的评估过程状态 → 容器 TaskCase 评估状态（多条取最差）。
+
+        INT-1715 ② 返工：评估侧同样按**所选结果**派生，不再继承可能陈旧的源
+        TaskCase 评估态（实测任务 417/用例 4c42c1d5：结果 5480 维度行全 completed，
+        源用例行却是 failed → 容器用例行被推导成 failed，与所选结果相反）。
+
+        口径与 evaluation_service 收尾（`_check_all_results_completed`）同构：
+        任一维度 evaluation_status=failed 即用例评估失败；仍处评估过渡态
+        （pending/queued/running/calculating）取最靠后者（推导为 evaluating）；
+        全部 completed → completed。
+
+        无维度行（结果从未评估、或投影降级）返回 None，由调用方退回源用例行口径
+        ——此时没有可派生的依据。
+        """
+        present = {s for s in statuses if s}
+        if not present:
+            return None
+        for candidate in _CASE_EVAL_PRECEDENCE:
+            if candidate in present:
+                return candidate
+        return EvaluationStatus.COMPLETED
+
     def _create_container_task(self, name: str, data: dict,
                                rows: Dict[int, tuple],
                                valid_items: List[Dict[str, Any]],
@@ -727,8 +1074,9 @@ class CherryPickService:
         """创建 cherry-pick 容器任务（原子：Task + TaskCase + 关系表同事务）。
 
         - 创建即 completed（§5.3，对齐现有合并容器任务口径）
-        - TaskCase 用例集 = 所选结果的用例集合，状态继承对应源结果
-          （避免容器任务详情全部显示待执行，对齐 merge_tasks 先例）
+        - TaskCase 用例集 = 所选结果的用例集合，执行状态按所选结果派生、
+          评估状态按所选结果维度行派生（INT-1715 ②；避免容器详情全部显示
+          待执行，也避免与所选结果相反）
         - 任务级配置取首个来源任务（§5.2 默认口径），data 覆盖优先
         """
         from task_service.infrastructure.persistence.models import (
@@ -767,7 +1115,7 @@ class CherryPickService:
             session.flush()
             task_id = container.id
 
-            # TaskCase：用例集 = 所选结果用例集合，状态继承对应源结果的 TaskCase
+            # TaskCase：用例集 = 所选结果用例集合，执行状态按所选结果派生（INT-1715 ②）
             case_ids = sorted({r.test_case_id for r, _t in rows.values() if r.test_case_id})
             # 设备/API/标签继承（详情/统计/报告侧设备列表展示依赖）
             device_ids = {r.device_id for r, _t in rows.values() if r.device_id is not None}
@@ -788,14 +1136,44 @@ class CherryPickService:
             for tc in source_case_map.values():
                 case_device_map[tc.test_case_id] = tc
 
+            # 参与状态派生的所选结果（按用例分组）。INT-1715 P3：已被「从任务移除
+            # 用例」排除的结果（excluded=1）不参与派生——购物车若混入源任务已移除
+            # 的结果，不应把容器用例行状态带偏（候选查询本就剔除这类行）。
+            case_rows: Dict[str, List[Any]] = {}
+            for result, _task in rows.values():
+                if (getattr(result, 'excluded', 0) or 0) == 1:
+                    continue
+                if result.test_case_id:
+                    case_rows.setdefault(result.test_case_id, []).append(result)
+
+            # 评估过程状态投影（一次 IN 取回，失败降级为空 dict → 退回源用例行口径）
+            dim_eval_map: Dict[int, List[str]] = {}
+            selected_result_ids = [r.id for rs in case_rows.values() for r in rs]
+            try:
+                from task_service.infrastructure.acl.evaluation_config_acl_repository import (
+                    evaluation_config_acl_repository,
+                )
+                dim_eval_map = evaluation_config_acl_repository.get_dimension_evaluation_statuses(
+                    selected_result_ids, session=session)
+            except Exception as e:
+                logger.warning(f"容器用例评估状态投影失败（退回源用例行口径）: {e}")
+
             for case_id in case_ids:
                 src_tc = case_device_map.get(case_id)
-                # 结果继承：源结果行 execution_status 决定 TaskCase 执行侧状态
-                # （容器任务无执行过程，结果即终态快照）
-                result_rows = [r for r, _t in rows.values() if r.test_case_id == case_id]
-                result_exec = result_rows[0].execution_status if result_rows else ExecutionStatus.COMPLETED
-                case_exec = (src_tc.execution_status if src_tc else result_exec)
-                case_eval = (src_tc.evaluation_status if src_tc else EvaluationStatus.COMPLETED)
+                selected = case_rows.get(case_id) or []
+                # 执行侧按「所选结果」聚合（INT-1715 ②）：源 TaskCase 可能在人工
+                # 复核只改判结果、未回写用例行时陈旧（实测结果 5715 completed /
+                # 源用例行 failed），继续继承源行会让容器关联用例区与结果相反。
+                case_exec = self._aggregate_case_exec_status(
+                    [r.execution_status for r in selected])
+                # 评估侧同样按所选结果派生（INT-1715 ② 返工）：结果行无评估列，
+                # 取该用例所选结果在 test_result_dimensions 的评估过程状态聚合；
+                # 无维度行（源结果从未评估/投影降级）才退回源用例行评估态。
+                case_eval = self._aggregate_case_eval_status(
+                    [s for r in selected for s in dim_eval_map.get(r.id) or []])
+                if case_eval is None:
+                    case_eval = (src_tc.evaluation_status if src_tc
+                                 else EvaluationStatus.COMPLETED)
                 session.add(TaskCase(
                     task_id=task_id,
                     test_case_id=case_id,
@@ -870,17 +1248,70 @@ class CherryPickService:
 
         返回容器任务每条引用结果的来源任务/用例/设备；源结果已删的行
         标注 missing（引用方案 A 的缺失场景，§10）。
+
+        INT-1706 §8.2：「不是容器」是正常查询结果（200 + `groups: []` +
+        `is_cherry_pick: false`），不再用 4xx 表达——任务详情页对每个任务都会
+        探一次本接口，普通任务恒 400 只会制造接口噪音。对齐同域的读探针
+        `review_count` / `review_history`：无数据即空结果，不做任务存在性判定
+        （存在性由任务详情接口负责）。
+
+        INT-1714 §11-8：在既有返回结构上**追加**结果级字段（老字段不改名、
+        不改语义、不删）——叶行状态徽章/result_type 分层/信息头来源任务状态位
+        的数据源。批量实现（一次结果多列投影 + 各自一次 IN），无逐行查询：
+        - `result_type` 取落库列（与候选行同源，INT-1510/INT-1669 口径），
+          缺值输出 `default`；缺失行取不到结果，输出 null
+        - `execution_status`/`result_created_at` 缺失行为 null；
+          `evaluated` 缺失行恒 false
+        - `case_name` 缺名返回 null（「未知用例」是前端文案，不裸显 UUID）
+        - `groups[].source_task_status` 取 `Task.status`（一次 IN）
         """
         try:
+            # INT-1715 ①：容器 Task 已软删（或不存在）→ 与「非容器」同口径返回
+            # （success=false、非 200、不返回容器数据）。关系行不随软删级联
+            # （回收站可恢复，级联删会丢溯源），存活判定放在读侧；否则软删容器
+            # 仍会被前端按「200 即容器」渲染，与 GET /tasks?cherry_pick=true 口径矛盾。
+            if not self._repo.container_task_alive(task_id):
+                return {'success': False, 'message': _NOT_CHERRY_PICK_MESSAGE,
+                        'data': {'code': 404}, 'code': 404}
             relations = self._repo.relations_by_container(task_id)
             if not relations:
-                return {'success': False, 'message': '该任务不是挑选合并容器任务',
-                        'data': {'code': 404}, 'code': 404}
+                return {'success': True, 'message': 'ok', 'data': {
+                    'task_id': task_id,
+                    'is_cherry_pick': False,
+                    'total': 0,
+                    'groups': [],
+                }}
             result_ids = [r['result_id'] for r in relations]
-            existing = self._results_exist(result_ids)
+            snapshots = self._source_result_snapshots(result_ids)
+            existing_ids = [rid for rid in result_ids if rid in snapshots]
+
+            evaluated_ids = (self._evaluated_result_ids(existing_ids)
+                             if existing_ids else set())
+            case_ids = sorted({s['test_case_id'] for s in snapshots.values()
+                               if s.get('test_case_id')})
+            case_names = self._case_name_map(case_ids) if case_ids else {}
+            device_ids = sorted({s['device_id'] for s in snapshots.values()
+                                 if s.get('device_id') is not None})
+            api_ids = sorted({s['api_id'] for s in snapshots.values()
+                              if s.get('api_id') is not None})
+            device_names = self._fetch_device_names(device_ids) if device_ids else {}
+            api_names = self._fetch_api_names(api_ids) if api_ids else {}
+            source_task_status = self._repo.source_task_status_map(
+                sorted({r['source_task_id'] for r in relations}))
+
             grouped: Dict[int, List[Dict[str, Any]]] = {}
             for r in relations:
-                r['missing'] = r['result_id'] not in existing
+                snap = snapshots.get(r['result_id'])
+                r['missing'] = snap is None
+                # 结果级追加字段（缺失行取不到结果 → null / false）
+                r['result_type'] = snap['result_type'] if snap else None
+                r['execution_status'] = snap['execution_status'] if snap else None
+                r['evaluated'] = bool(snap) and r['result_id'] in evaluated_ids
+                r['case_name'] = (case_names.get(snap['test_case_id'])
+                                  if snap and snap.get('test_case_id') else None)
+                r['device_name'] = device_names.get(snap['device_id']) if snap else None
+                r['api_name'] = api_names.get(snap['api_id']) if snap else None
+                r['result_created_at'] = snap['result_created_at'] if snap else None
                 grouped.setdefault(r['source_task_id'], []).append(r)
             return {'success': True, 'message': 'ok', 'data': {
                 'task_id': task_id,
@@ -889,12 +1320,46 @@ class CherryPickService:
                 'groups': [{
                     'source_task_id': src_id,
                     'source_task_name': (rows[0].get('source_task_name') if rows else None) or f'任务 {src_id}',
+                    # INT-1714：来源任务状态（列表 DTO TaskSourceBriefDto 同口径）
+                    'source_task_status': source_task_status.get(src_id),
                     'results': rows,
                 } for src_id, rows in grouped.items()],
             }}
         except Exception as e:
             logger.error(f"挑选溯源查询失败 task_id={task_id}: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
+    @staticmethod
+    def _source_result_snapshots(result_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+        """批量取源结果级字段（INT-1714 §11-8 溯源补字段）。
+
+        一次 IN 多列投影：同时得出 missing 判定与 result_type/execution_status/
+        result_created_at/用例·设备·API 归属，不逐行查、不走对象存储。
+        `result_type` 与候选行同源取落库列，缺值输出 `default`（待补充桶）。
+        结果行缺失（已删）不出现在返回 dict 中，调用侧按 missing 处理。
+        """
+        ids = sorted({int(r) for r in (result_ids or [])})
+        if not ids:
+            return {}
+        from task_service.infrastructure.persistence.models import TestResult
+        from shared.models.database import get_db_session
+        session = get_db_session()
+        try:
+            rows = session.query(
+                TestResult.id, TestResult.result_type, TestResult.execution_status,
+                TestResult.created_at, TestResult.test_case_id,
+                TestResult.device_id, TestResult.api_id,
+            ).filter(TestResult.id.in_(ids)).all()
+            return {int(r[0]): {
+                'result_type': r[1] or RESULT_TYPE_PENDING,
+                'execution_status': r[2],
+                'result_created_at': r[3].isoformat() if r[3] else None,
+                'test_case_id': r[4],
+                'device_id': r[5],
+                'api_id': r[6],
+            } for r in rows}
+        finally:
+            session.close()
 
     # ==================== S4 下单 reexecute ====================
 
@@ -1111,7 +1576,7 @@ class CherryPickService:
             session.close()
 
     @staticmethod
-    def _case_meta_map(case_ids) -> Dict[str, Dict[str, Any]]:
+    def _case_meta_map(case_ids, with_duration: bool = True) -> Dict[str, Dict[str, Any]]:
         """批量查询用例级元信息（INT-1130 §11-7）：tags/group_id/group_name/duration/rounds。
 
         与用例管理列表（TestCaseListItem tags/groupId/groupName/totalDuration）同源口径：
@@ -1120,6 +1585,13 @@ class CherryPickService:
         - duration：collect_audios(config) 逐音频时长累加（同 total_duration 路径，
           audio_service gRPC 批量查询），无音频/无时长返回 None
         - rounds：len(config.get('rounds') or [])（轮次数，不返回 rounds 数组本身）
+
+        INT-1693：with_duration=False 时跳过音频收集与 audio gRPC（购物车只要分组/
+        标签），此时 duration 恒 None，分组/标签口径与候选行完全一致。
+
+        INT-1693 返工：用例软删（deleted=true）与查不到同口径——一律不进 map，
+        调用方落缺省（tags / group_id / group_name = []/null/null），与用例管理页
+        已看不到的用例保持一致；候选侧结果本就由 TestResult.excluded 挡掉，不受影响。
 
         失败（如表异常 / gRPC 失败）返回空 dict，仅日志告警，不阻断候选查询。
         """
@@ -1134,29 +1606,42 @@ class CherryPickService:
         try:
             rows = (session.query(TestCase)
                     .options(joinedload(TestCase.group), joinedload(TestCase.tags))
-                    .filter(TestCase.id.in_(ids)).all())
+                    .filter(TestCase.id.in_(ids),
+                            TestCase.deleted == False)  # noqa: E712
+                    .all())
             # duration 同源 total_duration：批量收集引用音频，经 gRPC 一次性查时长
             audio_ids = set()
-            for tc in rows:
-                for audio_item in common.collect_audios(tc.config or {}):
-                    aid = audio_item.get('audio_id')
-                    if aid is not None:
-                        audio_ids.add(aid)
+            if with_duration:
+                for tc in rows:
+                    for audio_item in common.collect_audios(tc.config or {}):
+                        aid = audio_item.get('audio_id')
+                        if aid is not None:
+                            audio_ids.add(aid)
             audio_map = {}
             if audio_ids:
+                # INT-1625：只取时长窄字段（原 GetAudiosByIds 逐音频查标签+标注，
+                # 真实库 337 个音频实测 22.8s；口径同 RPC 的 audios.deleted 过滤）
                 from task_service.infrastructure.acl.audio_acl_repository import audio_acl_repository
-                audio_map = audio_acl_repository.list_audios_by_ids(audio_ids)
+                durations = audio_acl_repository.get_audio_durations(audio_ids, session=session)
+                audio_map = {aid: {'duration': dur} for aid, dur in durations.items()}
             out: Dict[str, Dict[str, Any]] = {}
             for tc in rows:
                 config = tc.config or {}
                 duration = 0.0
-                for audio_item in common.collect_audios(config):
-                    audio_id = audio_item.get('audio_id')
-                    if audio_id:
-                        audio = audio_map.get(audio_id)
-                        if audio and audio.get('duration'):
-                            duration += float(audio.get('duration'))
+                # INT-1693 返工：with_duration=False 不做音频收集（原来仍逐用例跑
+                # collect_audios 只为算恒为 None 的 duration，纯浪费）
+                if with_duration:
+                    for audio_item in common.collect_audios(config):
+                        audio_id = audio_item.get('audio_id')
+                        if audio_id:
+                            audio = audio_map.get(audio_id)
+                            if audio and audio.get('duration'):
+                                duration += float(audio.get('duration'))
                 out[str(tc.id)] = {
+                    # INT-1510 §8.2.2：候选树 meta.cases 需要用例名与算法类型
+                    # （candidates 只取 tags/group/duration/rounds 四个键，不暴露）
+                    'case_name': tc.name,
+                    'algorithm_type': tc.algorithm_type,
                     'tags': list(dict.fromkeys(t.name for t in tc.tags)),
                     'group_id': tc.group_id,
                     'group_name': tc.group.name if tc.group else None,
@@ -1180,15 +1665,6 @@ class CherryPickService:
         except Exception as e:
             logger.warning(f"批量查询 API 名称失败: {e}")
             return {}
-
-    @staticmethod
-    def _extract_result_type(result_data, result_data_path=None) -> str:
-        """结果级 result_type 解析（口径对齐 report_data_builder_task_mixin._extract_result_type，
-        缺省 'default'）；委托 shared.utils.result_data_store.extract_result_type，
-        与购物车快照（§11-5）共用同一实现。
-        """
-        from shared.utils.result_data_store import extract_result_type
-        return extract_result_type(result_data, result_data_path)
 
 
 def task_lifecycle_start(task_id: int) -> dict:

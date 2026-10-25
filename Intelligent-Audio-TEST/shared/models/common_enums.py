@@ -434,6 +434,10 @@ class AuthErrorCode(str, Enum):
     WILDCARD_FORBIDDEN = 'WILDCARD_FORBIDDEN'
     SELF_OPERATION_FORBIDDEN = 'SELF_OPERATION_FORBIDDEN'
     PERMISSION_NOT_GRANTED = 'PERMISSION_NOT_GRANTED'
+    # 管理入口参数非法（INT-1590：用户管理建号/改密密码长度 8–128）。
+    # 网关未登记的 AuthErrorCode 统一映射 HTTP 400 + code:203（OPERATION_FAILED），
+    # 与网关层前置校验同码，保证网关拦截与 gRPC 直连兜底对同一非法输入一致。
+    INVALID_PARAMS = 'INVALID_PARAMS'
     # 自助改密原密码校验失败（INT-794：网关映射 401 + code:106，与登录链防枚举语义一致）
     AUTH_CREDENTIALS_INVALID = 'AUTH_CREDENTIALS_INVALID'
     # 自定义 OAuth 提供方（INT-51）
@@ -449,11 +453,12 @@ class AuthErrorCode(str, Enum):
 
 
 class AuditLogCategory(str, Enum):
-    """审计类日志 category 枚举 — log_handler emit 分流按此判定入 DB 队列
+    """审计事件 category 枚举 — 审计落文件路径的 category 段（INT-1793 契约五值）
 
-    审计事件（auth/benchmark）无 task_id/test_case_id，emit 分流不得按
-    任务/用例条件降级为只写本地文件：凡 category 属于本枚举的日志必须
-    落 logs 表（INT-30 P1 回归修复）。
+    审计事件的身份由 emit 的 `audit_event` 实参判定（H1），category 只决定
+    文件路径段：`logs/audit/{YYYY-MM-DD}/{category}.{service}.{identity}.jsonl`。
+    category 属于本枚举但不是审计事件（如设备运维日志 category='device'、
+    无 audit_event）只写服务文件，不进审计目录。
     """
     AUTH = 'auth'
     BENCHMARK = 'benchmark'
@@ -461,6 +466,8 @@ class AuditLogCategory(str, Enum):
     DEVICE = 'device'
     # 数据可见性审计（INT-466/573：PRIVATE_RESOURCE_ACCESS / 可见性切换 / admin 访问私有资源）
     VISIBILITY = 'visibility'
+    # task_service 直写仓储的三类系统审计（INT-1793 契约：发布/人工复核/AI 复核）
+    SYSTEM = 'system'
 
 
 AUDIT_LOG_CATEGORIES = frozenset(item.value for item in AuditLogCategory)
@@ -488,6 +495,19 @@ class DeviceGroupType(str, Enum):
     """设备分组类型枚举（INT-80 设备分组，区别于用例分组 group_bp）"""
     TEST = 'test'          # 测试设备组（被测设备）
     PLAYBACK = 'playback'  # 播放设备组
+
+
+class DeviceKind(str, Enum):
+    """设备状态事件的设备类型枚举（INT-1679）
+
+    区分 `device_status_events` 里一条事件属于哪张设备表：`devices`（测试设备）
+    还是 `playback_devices`（播放设备）。两张表的 id 各自自增、真实库里已重叠，
+    只凭 `device_id` 无法判断来源；查询侧只统计测试设备（契约 §1.2）必须靠本列。
+
+    与 `DeviceGroupType` 语义不同（那是设备**分组**类型），不复用、不双口径。
+    """
+    TEST = 'test'          # 测试设备（被测设备，devices 表）
+    PLAYBACK = 'playback'  # 播放设备（playback_devices 表）
 
 
 class LaboratoryStatus(str, Enum):
@@ -526,6 +546,28 @@ class DeviceStatusEventType(str, Enum):
     OFFLINE = 'offline'
     HEALTH_CHECK = 'health_check'
     OPERATION = 'operation'
+
+
+class DeviceStatusEventSource(str, Enum):
+    """设备状态事件来源枚举（INT-1677，契约《设备监控统计与播放设备控制接口契约》§0）
+
+    ``device_status_events`` 被测试设备与播放设备两个 id 空间共用，``source``
+    是事件主体（哪个设备空间）的判别位：读测试设备口径的所有路径统一排除
+    ``PLAYBACK_OPERATION``（排除集合见 device_monitor_repository）。
+
+    - MONITOR            监控线程/状态轮询写入（仓储默认值）
+    - MANUAL             人工操作
+    - HEALTH_CHECK       健康检查
+    - OPERATION          测试设备操作（connect / disconnect / reboot / install_app 等）
+    - PLAYBACK_OPERATION 播放设备控制（restart / reset-config / re-enumerate）
+
+    新增非测试设备写入方必须登记进排除集合，否则其事件会被计入同号测试设备。
+    """
+    MONITOR = 'monitor'
+    MANUAL = 'manual'
+    HEALTH_CHECK = 'health_check'
+    OPERATION = 'operation'
+    PLAYBACK_OPERATION = 'playback_operation'
 
 
 class PkgType(str, Enum):
@@ -615,6 +657,47 @@ class PlaybackQueryCode(int, Enum):
     INTERNAL_ERROR = 500
 
 
+class PlaybackControlAction(str, Enum):
+    """播放设备控制动作枚举（INT-1579，设备监控统计与播放设备控制接口契约 §2.1/§2.2）
+
+    端点级控制动作，写成 device_status_events.operation 事件的 detail.operation 值：
+    - RESTART:       音频通道层重开 + 重新枚举（不是硬件重启）
+    - RESET_CONFIG:  按硬件重新探测采样率与通道索引
+
+    修复动作（re-enumerate / reopen-channel）是 PlaybackRepairAction 的取值，
+    其中 reopen-channel 复用 restart 实现，事件仍记为 RESTART。
+    """
+    RESTART = 'restart'
+    RESET_CONFIG = 'reset-config'
+
+
+class PlaybackRepairAction(str, Enum):
+    """播放设备修复动作白名单（契约 §2.5）——仅两个安全动作，无破坏性修复"""
+    RE_ENUMERATE = 're-enumerate'
+    REOPEN_CHANNEL = 'reopen-channel'
+
+
+class PlaybackDiagnosisKey(str, Enum):
+    """播放设备诊断项 key 枚举（契约 §2.5 固定 6 项，不得臆造后端没有的能力）"""
+    ENUMERABLE = 'enumerable'
+    CHANNEL_INDEX = 'channel_index'
+    SAMPLE_RATE = 'sample_rate'
+    SPL_MAPPING = 'spl_mapping'
+    STATUS = 'status'
+    BUSY = 'busy'
+
+
+class PlaybackDiagnosisStatus(str, Enum):
+    """播放设备诊断项状态枚举（契约 §2.5）
+
+    UNSUPPORTED 专用于「硬件枚举不可用」——此时无法判定，不得记成 ERROR 制造噪声告警。
+    """
+    OK = 'ok'
+    WARN = 'warn'
+    ERROR = 'error'
+    UNSUPPORTED = 'unsupported'
+
+
 class CherryPickCheckoutAction(str, Enum):
     """购物车下单出口枚举（INT-339 挑选合并，设计文档 §3）
 
@@ -662,8 +745,33 @@ class StudioSnapshotReason(str, Enum):
 
     每次编辑在同一数据库事务落不可变历史版本；snapshot_reason 记录
     版本产生方式：ai_edit（AI 结构化编辑）/ manual_edit（人工编辑）/
-    restore（历史版本恢复为新版本）。
+    restore（历史版本恢复为新版本）/ import（文件导入建初始版，INT-1763）。
     """
     AI_EDIT = 'ai_edit'
     MANUAL_EDIT = 'manual_edit'
     RESTORE = 'restore'
+    IMPORT = 'import'
+
+
+class ReportStudioSourceType(str, Enum):
+    """Report Studio 文档来源类型（INT-1763，离线搬运设计文档 §6.4 / D0 A6）
+
+    - platform_report：文档挂在平台报告（test_reports.id）上，存量行为；
+    - uploaded_file：用户上传的 MD / HTML / PPTX 文件型独立报告（3b）；
+    - agent_summary：Agent 分析总结文档（3c），血缘走 report_id 或 parent_doc_id。
+
+    列默认值 platform_report，迁移后存量行全部落该值（语义等价，无需回填）。
+    """
+    PLATFORM_REPORT = 'platform_report'
+    UPLOADED_FILE = 'uploaded_file'
+    AGENT_SUMMARY = 'agent_summary'
+
+
+class StudioUploadFormat(str, Enum):
+    """Report Studio 文件型报告上传格式白名单（INT-1763，设计文档 §6.2）
+
+    扩展名 + Content-Type 双校验；md 入 markdown_content，html/pptx 只落文件。
+    """
+    MD = 'md'
+    HTML = 'html'
+    PPTX = 'pptx'

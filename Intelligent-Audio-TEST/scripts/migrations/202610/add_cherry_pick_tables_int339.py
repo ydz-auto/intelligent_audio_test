@@ -117,7 +117,7 @@ SET_ITEMS_TABLE_SQL = """
 """
 
 INDEXES = (
-    ('idx_cherry_cart_user', 'CREATE INDEX IF NOT EXISTS idx_cherry_cart_user ON cherry_pick_cart_items (user_id)'),
+    # INT-1784：idx_cherry_cart_user 已下线（user_id 是 (user_id, source_task_id) 的前缀）
     ('idx_cherry_cart_user_source', 'CREATE INDEX IF NOT EXISTS idx_cherry_cart_user_source ON cherry_pick_cart_items (user_id, source_task_id)'),
     ('idx_cherry_rel_container', 'CREATE INDEX IF NOT EXISTS idx_cherry_rel_container ON task_cherry_pick_relations (cherry_pick_task_id)'),
     ('idx_cherry_rel_source_task', 'CREATE INDEX IF NOT EXISTS idx_cherry_rel_source_task ON task_cherry_pick_relations (source_task_id)'),

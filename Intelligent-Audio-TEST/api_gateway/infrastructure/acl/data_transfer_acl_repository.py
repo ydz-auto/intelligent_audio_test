@@ -32,14 +32,38 @@ class DataTransferAclRepositoryImpl(DataTransferAclRepository):
             'options': options or {},
         }))
 
-    def preview_import(self, zip_path: str) -> CommandResultDTO:
+    def preview_import(self, zip_path: str,
+                       options: Optional[Dict] = None) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import data_transfer_service
-        return _wrap(data_transfer_service.preview_import(zip_path))
+        return _wrap(data_transfer_service.preview_import(zip_path, options or {}))
 
-    def execute_import(self, zip_path: str) -> CommandResultDTO:
+    def execute_import(self, zip_path: str,
+                       options: Optional[Dict] = None) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import data_transfer_service
-        return _wrap(data_transfer_service.execute_import(zip_path))
+        return _wrap(data_transfer_service.execute_import(zip_path, options or {}))
 
     def get_progress_snapshot(self) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import data_transfer_service
         return _wrap(data_transfer_service.get_progress_snapshot())
+
+    def export_incremental(self, task_ids: List[int],
+                           options: Optional[Dict] = None) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import data_transfer_service
+        return _wrap(data_transfer_service.export_incremental({
+            'task_ids': task_ids,
+            'options': options or {},
+        }))
+
+    def import_incremental(self, zip_path: str,
+                           options: Optional[Dict] = None) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import data_transfer_service
+        return _wrap(data_transfer_service.import_incremental(zip_path, options or {}))
+
+    def export_report_package(self, data: Dict) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import data_transfer_service
+        return _wrap(data_transfer_service.export_report_package(data or {}))
+
+    def import_report_package(self, zip_path: str,
+                              options: Optional[Dict] = None) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import data_transfer_service
+        return _wrap(data_transfer_service.import_report_package(zip_path, options or {}))

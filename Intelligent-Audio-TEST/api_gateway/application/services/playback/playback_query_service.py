@@ -2,6 +2,7 @@ import logging
 
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
+from api_gateway.utils.error_codes import ErrorCode
 from api_gateway.infrastructure.acl import PlaybackConfigAclRepositoryImpl
 from api_gateway.schemas.playback import PlaybackDeviceListQuery
 
@@ -100,3 +101,18 @@ class PlaybackQueryService:
             return error_response(result.get('message', '检查状态失败'))
 
         return success_response(result.get('data'), result.get('message', '设备状态检查完成'))
+
+    # 播放设备诊断（INT-1579 契约 §2.5，权限 playback:read，无副作用）
+    @staticmethod
+    def diagnosis(device_id):
+        result = _playback_acl.diagnosis(device_id)
+
+        if not result.success:
+            code = result.code or 400
+            if code == 404:
+                return error_response(result.message or '未找到播放设备',
+                                      code=ErrorCode.NOT_FOUND, http_code=404)
+            return error_response(result.message or '诊断失败',
+                                  code=ErrorCode.OPERATION_FAILED, http_code=400)
+
+        return success_response(result.data, result.message or '诊断完成')

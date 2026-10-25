@@ -41,6 +41,30 @@ class AudioAclRepository:
             _logger.warning("GetAudio gRPC 异常 (audio_id=%s): %s", audio_id, e)
         return None
 
+    def get_audio_durations(self, audio_ids, session=None) -> Dict[int, float]:
+        """按 ID 集合批量取音频时长（秒），返回 {audio_id: duration}。
+
+        INT-1625：候选/用例列表只需 `duration` 一个标量。`GetAudiosByIds` 在
+        audio_service 内部逐音频查标签 + 标注（N+1），真实库 337 个音频实测
+        22.8s、199 个用例 27.9s，是挑选候选慢聚合的主因之一。改共享库窄字段
+        只读投影（口径同 RPC：`audios.deleted = FALSE`；先例见模块
+        `_read_projection`）。
+
+        失败返回空 dict（仅日志告警），调用方按「无时长」降级。
+        """
+        ids = [int(a) for a in (audio_ids or []) if a is not None]
+        if not ids:
+            return {}
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.acl._read_projection import fetch_rows
+        session = session or get_db_session()
+        rows = fetch_rows(
+            session,
+            'SELECT id, duration FROM audios WHERE id IN :ids AND deleted = FALSE',
+            ids,
+        )
+        return {int(r[0]): r[1] for r in rows if r[1] is not None}
+
     def list_audios_by_ids(self, audio_ids) -> Dict:
         """按 ID 集合批量查询音频，返回 {id: audio_dict} 映射。
 

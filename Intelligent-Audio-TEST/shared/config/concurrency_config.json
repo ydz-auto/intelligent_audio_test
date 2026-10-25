@@ -31,10 +31,13 @@
     "task_service_workers": 10,
     "auth_service_workers": 10,
     "evaluation_service_workers": 10,
-    "device_service_workers": 5,
+    "device_service_workers": 10,
     "audio_service_workers": 5,
     "e2e_test_service_workers": 5,
     "api_test_service_workers": 8
+  },
+  "db": {
+    "device_service_pool_size": 10
   },
   "device_timing": {
     "ui_wait": 0.2,

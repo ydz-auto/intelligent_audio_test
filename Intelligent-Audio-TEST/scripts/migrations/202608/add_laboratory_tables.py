@@ -31,6 +31,33 @@ import sys
 
 from sqlalchemy import create_engine, text
 
+# INT-1652：幂等重跑可跳过的 DDL 错误一律按 SQLSTATE 判定，不按异常文本 ——
+# SQLAlchemy 的异常串里带原 SQL，`IF NOT EXISTS` 让 'exists' 命中**所有**错误，
+# lock_timeout（55P03）会被当成「已存在」吞掉，迁移报 SKIP 却什么都没建成。
+_IGNORABLE_DDL_STATES = {
+    '42701',  # duplicate_column
+    '42P07',  # duplicate_table / relation already exists
+    '42710',  # duplicate_object
+    '42P06',  # duplicate_schema
+    '42703',  # undefined_column
+    '42P01',  # undefined_table
+    '42704',  # undefined_object
+    '42883',  # undefined_function
+    '3F000',  # invalid_schema_name
+}
+
+
+def _ddl_sqlstate(exc):
+    """取 psycopg2 的 SQLSTATE（SQLAlchemy 把原始异常挂在 .orig 上）。"""
+    orig = getattr(exc, 'orig', None)
+    return getattr(orig, 'pgcode', None) or getattr(exc, 'pgcode', None)
+
+
+def _is_ignorable_ddl_error(exc):
+    """幂等重跑的「已就绪 / 不存在」类错误（锁超时等真实失败不算）。"""
+    return _ddl_sqlstate(exc) in _IGNORABLE_DDL_STATES
+
+
 # ========================================================================
 # 配置
 # ========================================================================
@@ -100,12 +127,11 @@ def _exec_ddl(conn, sql, success_msg, skip_msg):
         print(f"  [OK] {success_msg}")
     except Exception as e:
         savepoint.rollback()
-        msg = str(e).lower()
-        if 'already' in msg or 'duplicate' in msg or 'exists' in msg \
-                or 'does not exist' in msg or 'not found' in msg:
+        if _is_ignorable_ddl_error(e):
             print(f"  [SKIP] {skip_msg}")
         else:
-            raise
+            raise RuntimeError(
+                f'DDL 失败（SQLSTATE={_ddl_sqlstate(e)}）: {sql} — {e}') from e
 
 
 # ========================================================================

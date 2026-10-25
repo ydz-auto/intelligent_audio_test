@@ -5,6 +5,22 @@ from typing import Any, Callable
 _logger = logging.getLogger(__name__)
 
 
+def _attach_code(result: dict, resp) -> dict:
+    """把 TaskConfigResponse.code 提升到代理返回字典（INT-1759）
+
+    业务码以 proto 字段为准（网关据此映射 HTTP 状态）；0 = servicer 未填，
+    回退读 data JSON 的 code（INT-566 fold 旧口径，兼容未重发布的 servicer）。
+    """
+    code = int(getattr(resp, 'code', 0) or 0)
+    if not code:
+        data = result.get('data')
+        if isinstance(data, dict) and isinstance(data.get('code'), int):
+            code = data['code']
+    if code:
+        result['code'] = code
+    return result
+
+
 def _grpc_call(
     call_func: Callable[[], Any],
     default_return: Any = None,

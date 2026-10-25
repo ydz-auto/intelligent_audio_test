@@ -116,12 +116,20 @@ class AudioDirectUploadMixin:
         return temp_file, actual_file_size, sample_rate, bits_per_sample, duration
 
     def _attach_direct_upload_tags(self, audio, tags):
-        """为直传音频附加标签"""
+        """为直传音频附加标签
+
+        INT-1533：单个标签解析失败只跳过并告警（上传主体不受影响），
+        不再写入 tag_id=NULL 的关联行。
+        """
         if not tags:
             return
+        from audio_service.domain.exceptions import TagResolutionError
         for tag_name in tags:
-            tag = self.repo.get_or_create_tag(tag_name)
-            self.repo.add_audio_tag(audio.id, tag.id)
+            try:
+                tag = self.repo.get_or_create_tag(tag_name)
+                self.repo.add_audio_tag(audio.id, tag.id)
+            except TagResolutionError as e:
+                logger.warning("直传音频附加标签失败，已跳过: audio_id=%s err=%s", audio.id, e)
 
     def _cleanup_temp_file(self, temp_file):
         """清理临时文件"""

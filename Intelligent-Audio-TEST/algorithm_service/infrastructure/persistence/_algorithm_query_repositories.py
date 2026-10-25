@@ -20,6 +20,9 @@ from algorithm_service.domain.repositories.algorithm_repositories import (
     IAlgorithmDefinitionQueryRepository,
     IAlgorithmGroupQueryRepository,
 )
+from algorithm_service.infrastructure.persistence._algorithm_aggregate_repositories import (
+    _soft_delete_algorithm_children,
+)
 
 
 # ========== 辅助：PO → dict（供 handler/servicer 查询复用） ==========
@@ -69,6 +72,22 @@ class AlgorithmDefinitionQueryRepository(IAlgorithmDefinitionQueryRepository):
         ).order_by(AlgorithmDefinitionPO.display_order).all()
         return [_po_to_dict(po) for po in items]
 
+    def list_by_types(self, algorithm_types: List[str]) -> List[dict]:
+        """按 type 列表批量查询未删除的算法定义（INT-1666 配置缓存切片重载用）。
+
+        一次 IN 查询取回全部定义，供 config_cache 按算法切片刷新时复用，
+        避免逐算法重复查询（原全量重载的 N+1 来源之一）。
+        """
+        types = [t for t in algorithm_types or [] if t]
+        if not types:
+            return []
+        session = get_db_session()
+        items = session.query(AlgorithmDefinitionPO).filter(
+            AlgorithmDefinitionPO.type.in_(types),
+            AlgorithmDefinitionPO.deleted == False,  # noqa: E712
+        ).order_by(AlgorithmDefinitionPO.display_order).all()
+        return [_po_to_dict(po) for po in items]
+
     def find_by_type(self, algorithm_type: str) -> Optional[dict]:
         """按 type 查询未删除的算法定义，返回 dict 或 None。"""
         session = get_db_session()
@@ -94,7 +113,11 @@ class AlgorithmDefinitionQueryRepository(IAlgorithmDefinitionQueryRepository):
         return [_po_to_dict(po) for po in items]
 
     def bulk_soft_delete(self, algorithm_types: list) -> List[str]:
-        """批量软删除算法定义，返回已删除的 type 列表。"""
+        """批量软删除算法定义，返回已删除的 type 列表。
+
+        与单删一致级联软删各算法的子实体行（INT-1382），防批量删除后
+        孤儿参数/映射/维度关联残留于列表查询。
+        """
         session = get_db_session()
         try:
             items = session.query(AlgorithmDefinitionPO).filter(
@@ -103,6 +126,10 @@ class AlgorithmDefinitionQueryRepository(IAlgorithmDefinitionQueryRepository):
             ).all()
             for po in items:
                 po.deleted = True
+            if items:
+                _soft_delete_algorithm_children(
+                    session, [po.type for po in items]
+                )
             session.flush()
             session.commit()
             return [po.type for po in items]

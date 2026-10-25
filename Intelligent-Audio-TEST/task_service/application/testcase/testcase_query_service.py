@@ -476,9 +476,16 @@ class TestCaseQueryService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def get_testcase_ref_params(self, tc_id: str, round_number: int) -> dict:
-        """获取指定用例指定轮的参考参数文件内容。"""
-        from task_service.infrastructure.acl.algorithm_acl_repository import AlgorithmRepository
-        _algo_repo = AlgorithmRepository()
+        """获取指定用例指定轮的参考参数文件内容。
+
+        INT-1645：轮次键 snake/camel 都认、路径以 reference_params 独立列为准
+        （config.rounds[] 兜底）并归一化，读取直连存储抽象；读取失败必须
+        显式 404 带路径，不再退化成「200 + 空列表」。
+        """
+        from task_service.infrastructure.oss.ref_params_store import (
+            RefParamsReadError, normalize_ref_params_path, read_ref_params,
+            resolve_round_ref_path, to_round_number,
+        )
 
         try:
             tc = self.repo.get_testcase(tc_id)
@@ -496,25 +503,26 @@ class TestCaseQueryService:
             except VisibilityDenied:
                 return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
 
-            config = tc.config or {}
-            rounds = config.get('rounds', [])
-
-            target_round = None
-            for r in rounds:
-                if isinstance(r, dict) and r.get('roundNumber') == round_number:
-                    target_round = r
-                    break
-
-            if not target_round:
+            round_number = to_round_number(round_number)
+            round_exists, raw_path = resolve_round_ref_path(tc, round_number)
+            if not round_exists:
                 return {'success': False, 'message': f"未找到第 {round_number} 轮", 'data': None, 'code': 404}
 
-            ref_path = target_round.get('referenceParamsPath')
-            if not ref_path:
-                return {'success': False, 'message': f"第 {round_number} 轮未配置参考参数路径", 'data': None, 'code': 404}
+            if not raw_path:
+                return {'success': False, 'message': f"第 {round_number} 轮未生成参考参数", 'data': None, 'code': 404}
 
-            ref_data = _algo_repo.algo_load_reference_params_file(ref_path)
-            if ref_data is None:
-                return {'success': False, 'message': f"参考参数文件不存在或读取失败: {ref_path}", 'data': None, 'code': 404}
+            ref_path = normalize_ref_params_path(raw_path)
+            try:
+                ref_data = read_ref_params(ref_path)
+            except RefParamsReadError as e:
+                logger.warning(f"[ref_params] 读取失败 case={tc_id} round={round_number}: {e}")
+                detail = raw_path if raw_path == ref_path else f'{raw_path}（归一化: {ref_path}）'
+                return {
+                    'success': False,
+                    'message': f"参考参数文件读取失败: {detail}",
+                    'data': None,
+                    'code': 404,
+                }
 
             return {
                 'success': True,

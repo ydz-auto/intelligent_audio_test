@@ -69,6 +69,14 @@ class CherryPickAclRepositoryImpl(CherryPickAclRepository):
         from api_gateway.infrastructure.grpc_proxies import cherry_pick_service
         return _wrap(cherry_pick_service.list_candidates(query))
 
+    def list_pickable_tasks(self, query) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import cherry_pick_service
+        return _wrap(cherry_pick_service.list_pickable_tasks(query))
+
+    def list_candidate_tree(self, query) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import cherry_pick_service
+        return _wrap(cherry_pick_service.list_candidate_tree(query))
+
     # ---- 下单 ----
 
     def preview(self) -> CommandResultDTO:

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import logging
-from shared.utils.result_data_store import load_full_result_data
+from report_service.application.services.report_utils.result_data_loader import (
+    load_full_result_data_cached,
+)
 from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_device,
     _grpc_get_api,
@@ -14,6 +16,31 @@ logger = logging.getLogger(__name__)
 def _res_get(obj, key, default=None):
     """从测试结果（dict 或 ORM 对象）读取字段，兼容两种形态。"""
     return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
+
+
+def result_type_from_db_payload(result_data):
+    """从测试结果的 DB 轻量载荷里取 result_type，取不到返回 None。
+
+    INT-1572 返工：result_type 是轻量字段，随 test_results.result_data 一起入库
+    （result_data_store.HEAVY_KEYS 只拆 adjusted_reference_params / raw_results /
+    alignment_info）。DB 载荷已有该键时无需再读 OSS 结果文件——缺失对象每个仍要
+    一次 head 请求，大批用例（138 条）叠起来就是几十秒。
+
+    Returns:
+        str：载荷中的 result_type；None：载荷里没有该键（需回落结果文件）。
+    """
+    import json
+
+    if isinstance(result_data, dict):
+        return result_data.get('result_type') if 'result_type' in result_data else None
+    if isinstance(result_data, str) and result_data.strip():
+        try:
+            parsed = json.loads(result_data)
+        except (ValueError, TypeError):
+            return None
+        if isinstance(parsed, dict) and 'result_type' in parsed:
+            return parsed.get('result_type')
+    return None
 
 
 class ResourceMixin:
@@ -56,12 +83,14 @@ class ResourceMixin:
         try:
             result_data_raw = _res_get(result, 'result_data')
             result_data_path = _res_get(result, 'result_data_path')
-            if result_data_raw:
-                full_data = load_full_result_data(result_data_raw, result_data_path)
+            result_type = result_type_from_db_payload(result_data_raw)
+            if result_type is None and result_data_raw:
+                # DB 轻量载荷里没有 result_type（历史数据）才回落到结果文件
+                full_data = load_full_result_data_cached(result_data_raw, result_data_path)
                 if isinstance(full_data, dict):
                     result_type = full_data.get('result_type')
-                    if result_type and result_type != 'default':
-                        result_type_suffix = f"-{result_type}"
+            if result_type and result_type != 'default':
+                result_type_suffix = f"-{result_type}"
         except Exception as _e:
             import logging as _log
             _log.getLogger(__name__).warning(f"Failed to extract result_type: {_e}")
@@ -274,12 +303,13 @@ class ResourceMixin:
                 try:
                     result_data_raw = _res_get(result, 'result_data')
                     result_data_path = _res_get(result, 'result_data_path')
-                    if result_data_raw:
-                        full_data = load_full_result_data(result_data_raw, result_data_path)
+                    result_type = result_type_from_db_payload(result_data_raw)
+                    if result_type is None and result_data_raw:
+                        full_data = load_full_result_data_cached(result_data_raw, result_data_path)
                         if isinstance(full_data, dict):
                             result_type = full_data.get('result_type')
-                            if result_type == 'default':
-                                result_type = None
+                    if result_type == 'default':
+                        result_type = None
                 except Exception:
                     logger.debug("提取结果类型失败 result_id=%s", _res_get(result, 'id', None), exc_info=True)
 

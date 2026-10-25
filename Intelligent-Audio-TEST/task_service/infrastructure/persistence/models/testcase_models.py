@@ -8,9 +8,10 @@ P5 改造：从 shared/models/models/testcase_models.py 真正下沉到本服务
 shared/models/models/testcase_models.py 改为从这里 re-export。
 """
 from shared.models.database import Base, utc8now
+from shared.utils.testcase_helpers import derive_case_test_type
 from sqlalchemy import (
-    func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON,
-    ForeignKey,
+    event, func, Column, Integer, BigInteger, String, Text, DateTime, Boolean,
+    JSON, ForeignKey,
 )
 from sqlalchemy.orm import relationship
 
@@ -94,7 +95,8 @@ class TestCase(Base):
     # 解析结果落库 config.dimensions / config.background_noise，本列另存引用与覆盖源）
     strategy_id = Column(String(50), ForeignKey('evaluation_strategies.id'), nullable=True, index=True, comment='评估策略ID（引用可复用策略，P1 不回灌）')
     strategy_overrides = Column(JSON, nullable=True, comment='评估策略覆盖 JSON（{dimensions, background_noise}，用例级覆盖语义）')
-    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    # INT-1784：(created_by_user_id, visibility) 复合索引覆盖该列，单列索引下线
+    created_by_user_id = Column(BigInteger, nullable=True, comment='创建者用户ID')
     # INT-464 跟随用例同步的最小列（与迁移 add_visibility_columns_int423 对齐）：
     # 用例建/改后 task_service 需按本列做「取最宽松」聚合，把引用音频可见性经 gRPC 同步
     visibility = Column(String(20), nullable=False, default='shared', server_default='shared',
@@ -105,11 +107,33 @@ class TestCase(Base):
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
     deleted_by_user_id = Column(BigInteger, nullable=True, comment='执行删除操作的用户ID（JWT，INT-141）')
+    # INT-1469：执行口径派生列（查询侧冗余，非业务存储类型）。
+    # 用例本身不存储类型（INT-79/差异#2 收尾已删 test_type），执行口径仍由
+    # config 形态（+上传双变体名后缀）派生。列表/统计/取 ID 原先「物化全量
+    # config 后 Python 过滤」在万级用例下每请求 ~500ms，本列由写时物化
+    # （见下方 before_insert/before_update 事件）保存 derive_case_test_type
+    # 的结果，查询侧直接 SQL 等值过滤并走索引。
+    derived_test_type = Column(
+        String(10), nullable=False, default='api', server_default='api',
+        index=True,
+        comment='执行口径派生列（api/e2e，写时物化，INT-1469 查询侧冗余）')
 
     tags = relationship('Tag', secondary='test_case_tags',
         primaryjoin='TestCase.id == TestCaseTag.test_case_id',
         secondaryjoin='Tag.id == TestCaseTag.tag_id',
         backref='test_cases')
+
+
+@event.listens_for(TestCase, 'before_insert')
+@event.listens_for(TestCase, 'before_update')
+def _materialize_derived_test_type(_mapper, _connection, target):
+    """写时物化执行口径派生列（INT-1469）。
+
+    用例创建/更新（含改 config、改名、批量改配置）统一在此刷新，避免各写
+    路径各写一遍导致列值与 derive_case_test_type 口径漂移；派生口径本身仍
+    以 shared.utils.testcase_helpers.derive_case_test_type 为唯一事实源。
+    """
+    target.derived_test_type = derive_case_test_type(target.config, target.name)
 
 
 class TestCaseTag(Base):

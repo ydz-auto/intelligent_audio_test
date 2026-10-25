@@ -25,6 +25,7 @@ class DeviceConfigServiceServicer(e2e_grpc.DeviceConfigServiceServicer):
         self._batch = None
         self._alarm_rule = None
         self._monitor = None
+        self._stats_query = None
 
     @property
     def command(self):
@@ -83,6 +84,13 @@ class DeviceConfigServiceServicer(e2e_grpc.DeviceConfigServiceServicer):
             from device_service.application.services.device_monitor_service import device_monitor_service
             self._monitor = device_monitor_service
         return self._monitor
+
+    @property
+    def stats_query(self):
+        if self._stats_query is None:
+            from device_service.application.queries.device_stats_query_service import device_stats_query_service
+            self._stats_query = device_stats_query_service
+        return self._stats_query
 
     def CreateDevice(self, request, context=None):
         try:
@@ -378,6 +386,18 @@ class DeviceConfigServiceServicer(e2e_grpc.DeviceConfigServiceServicer):
             )
         except Exception as e:
             return e2e_pb.GetDeviceStatusHistoryResponse(success=False, message=str(e), data="")
+
+    def GetDeviceMonitorStats(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            result = self.stats_query.get_monitor_stats(data)
+            return e2e_pb.GetDeviceMonitorStatsResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return e2e_pb.GetDeviceMonitorStatsResponse(success=False, message=str(e), data="")
 
     def CreateAlarmRule(self, request, context=None):
         try:

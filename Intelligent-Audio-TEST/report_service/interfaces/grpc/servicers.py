@@ -11,11 +11,14 @@ GetReportByTask / GenerateReport / UpdateReportStatus）
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 
 from shared.proto import report_service_pb2 as report_pb
 from shared.proto import report_service_pb2_grpc as report_grpc
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps, fold_business_code
+
+from report_service.domain.request_budget import RequestBudget, budget_from_grpc_context
 
 from report_service.application.commands.report_commands import (
     CreateReportCommand,
@@ -50,6 +53,7 @@ from report_service.application.queries.report_queries import (
     GetReportProgressQuery,
     GetReportQuery,
     GetReportSummaryQuery,
+    ListReportBriefsByTaskIdsQuery,
     ListReportsQuery,
     split_report_types,
 )
@@ -58,11 +62,29 @@ from report_service.domain.entities.benchmark import BaselineDraftEntry
 from report_service.application.services.report_share_service import (
     report_share_service,
 )
+from report_service.application.services.report_task_name_enricher import (
+    enrich_task_names,
+)
+from report_service.application.services.report_export_history_service import (
+    report_export_history_service,
+)
 
 logger = logging.getLogger(__name__)
 
 # 批量删除单次上限（对齐旧库 ReportBatchDeleteRequest max_length=100）
 MAX_BATCH_DELETE = 100
+
+
+def _budget_scope(context):
+    """把 gRPC 调用的剩余时限注入请求预算（INT-1572 返工二轮）。
+
+    报告链路由多个阶段共享网关的一次调用截止（默认 60s）：跨域用例取数若按固定
+    整批截止收尾，会把后续的结果聚合顶过截止。这里把剩余时限记进请求上下文，
+    ACL 按「剩余 - 预留」分配（见 domain/request_budget.py）。无 context（单测 /
+    进程内调用）时返回空上下文，各阶段用配置的固定兜底值。
+    """
+    seconds = budget_from_grpc_context(context)
+    return RequestBudget(seconds) if seconds is not None else nullcontext()
 
 
 def _aggregate_to_dict(aggregate: Optional[ReportAggregate]) -> Optional[Dict[str, Any]]:
@@ -387,11 +409,12 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         """生成对比报告。"""
         try:
             data = _loads(getattr(request, 'data', ''), {}) or {}
-            result = self.command_handler.handle_generate_compare_report(
-                task_ids=data.get('task_ids', []),
-                name=data.get('name'),
-                description=data.get('description'),
-            )
+            with _budget_scope(context):
+                result = self.command_handler.handle_generate_compare_report(
+                    task_ids=data.get('task_ids', []),
+                    name=data.get('name'),
+                    description=data.get('description'),
+                )
             return self._resp(
                 result.get('success', False),
                 result.get('message', ''),
@@ -405,10 +428,11 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         """生成二次对比报告。"""
         try:
             data = _loads(getattr(request, 'data', ''), {}) or {}
-            result = self.command_handler.handle_generate_secondary_compare_report(
-                report_ids=data.get('report_ids', []),
-                description=data.get('description'),
-            )
+            with _budget_scope(context):
+                result = self.command_handler.handle_generate_secondary_compare_report(
+                    report_ids=data.get('report_ids', []),
+                    description=data.get('description'),
+                )
             return self._resp(
                 result.get('success', False),
                 result.get('message', ''),
@@ -452,10 +476,14 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 report_id=getattr(request, 'report_id'),
             )
             aggregate = self.query_handler.handle_get(query)
+            data = _aggregate_to_dict(aggregate)
+            # INT-1776：任务名补名（单条一次 RPC；失败 / 超时降级为 ''）
+            if data is not None:
+                enrich_task_names([data])
             return self._resp(
                 aggregate is not None,
                 'ok' if aggregate is not None else 'report not found',
-                _aggregate_to_dict(aggregate),
+                data,
                 # INT-566 P1-5：不存在/私有非 owner → 业务码 404（防探测口径）
                 code=0 if aggregate is not None else 404,
             )
@@ -474,10 +502,14 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 task_id=getattr(request, 'task_id'),
             )
             aggregate = self.query_handler.handle_get_by_task(query)
+            data = _aggregate_to_dict(aggregate)
+            # INT-1776：任务名补名（单条一次 RPC；失败 / 超时降级为 ''）
+            if data is not None:
+                enrich_task_names([data])
             return self._resp(
                 aggregate is not None,
                 'ok' if aggregate is not None else 'report not found',
-                _aggregate_to_dict(aggregate),
+                data,
             )
         except Exception as e:
             logger.exception("GetReportByTask failed")
@@ -501,6 +533,30 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             )
         except Exception as e:
             logger.exception("GetReportProgress failed")
+            return self._resp(False, str(e), None)
+
+    def ListReportsByTaskIds(self, request, context=None):
+        """页级批量列出多个任务的报告摘要（INT-1462：任务列表 N+1 消解）。
+
+        请求字段（proto ListReportsByTaskIdsRequest）：
+            task_ids: repeated int32  页面任务 ID 集合
+            per_task_limit: int32     每个任务最多返回条数（0 = 默认 100）
+
+        响应 data：{'items_by_task': {'<task_id>': [{id,name,status,type,created_at}, ...]}}
+        """
+        try:
+            query = ListReportBriefsByTaskIdsQuery(
+                task_ids=[int(t) for t in getattr(request, 'task_ids', [])],
+                per_task_limit=getattr(request, 'per_task_limit', 0) or 100,
+            )
+            if not query.task_ids:
+                return self._resp(True, 'ok', {'items_by_task': {}})
+            briefs = self.query_handler.handle_list_report_briefs_by_task_ids(query)
+            return self._resp(True, 'ok', {
+                'items_by_task': {str(tid): rows for tid, rows in briefs.items()},
+            })
+        except Exception as e:
+            logger.exception("ListReportsByTaskIds failed")
             return self._resp(False, str(e), None)
 
     def ListReports(self, request, context=None):
@@ -547,6 +603,8 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 if item is not None:
                     item['is_favorite'] = str(item.get('id')) in fav_ids
                     items.append(item)
+            # INT-1776：整页一次批量补任务名（去重后单次 RPC；失败 / 超时降级为 ''）
+            enrich_task_names(items)
             # INT-297：分页信封统一为 {items, page, pages, per_page, total}
             total = self.query_handler.handle_count_reports(query)
             return self._resp(True, 'ok', {
@@ -581,6 +639,20 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         except Exception as e:
             logger.exception("CountReports failed")
             return self._resp(False, str(e), {'total': 0})
+
+    def CountReportsByTabs(self, request, context=None):
+        """四个视图 Tab 一次聚合计数（INT-1463：单条条件聚合 SQL）。
+
+        Tab 口径由服务端持有（all/draft/published/comparison），可见性/软删过滤
+        沿用当前用户上下文与活跃口径；响应 data: {all, draft, published, comparison}。
+        """
+        try:
+            counts = self.query_handler.handle_count_reports_by_tabs()
+            return self._resp(True, 'ok', counts)
+        except Exception as e:
+            logger.exception("CountReportsByTabs failed")
+            return self._resp(False, str(e), {'all': 0, 'draft': 0,
+                                              'published': 0, 'comparison': 0})
 
     # ---- 收藏 / 回收站（INT-141）----
 
@@ -693,22 +765,54 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             return self._resp(False, str(e), {'items': []})
 
     def ExportReports(self, request, context=None):
-        """导出报告（Excel/PDF/CSV）。
+        """导出报告（Excel/PDF/CSV/HTML）。
 
         请求字段（proto ExportReportsRequest）：
             data: str  JSON: {ids: [int], format: str}
+
+        INT-1555：无论成败都登记一条导出历史（report_export_records），
+        供「导出历史」页签回查；登记失败不影响导出结果。
         """
         try:
             data_in = _loads(getattr(request, 'data', ''), {}) or {}
             report_ids = data_in.get('ids') or []
             format_type = data_in.get('format') or 'csv'
-            data = self.query_handler.handle_export_reports(report_ids, format_type)
-            if not data.get('content_base64'):
-                return self._resp(False, data.get('message', 'export failed'), data)
-            return self._resp(True, 'ok', data)
         except Exception as e:
             logger.exception("ExportReports failed")
             return self._resp(False, str(e), {})
+
+        try:
+            data = self.query_handler.handle_export_reports(report_ids, format_type)
+            if not data.get('content_base64'):
+                report_export_history_service.record(
+                    report_ids, format_type,
+                    {**data, 'success': False,
+                     'message': data.get('message') or 'export failed'})
+                return self._resp(False, data.get('message', 'export failed'), data)
+            report_export_history_service.record(
+                report_ids, format_type, {**data, 'success': True})
+            return self._resp(True, 'ok', data)
+        except Exception as e:
+            logger.exception("ExportReports failed")
+            report_export_history_service.record(
+                report_ids, format_type, {'success': False, 'message': str(e)})
+            return self._resp(False, str(e), {})
+
+    def ListExportHistory(self, request, context=None):
+        """查询报告导出历史（INT-1555，按导出时间倒序分页）。
+
+        请求字段（proto ListExportHistoryRequest）：
+            data: str  JSON: {page, per_page}
+        返回：{items: [{id, scope, format, created_at, status, error, report_ids}],
+              total, page, per_page}
+        """
+        try:
+            params_dict = _loads(getattr(request, 'data', ''), {}) or {}
+            data = report_export_history_service.list_history(params_dict)
+            return self._resp(True, 'ok', data)
+        except Exception as e:
+            logger.exception("ListExportHistory failed")
+            return self._resp(False, str(e), {'items': [], 'total': 0})
 
     def GetCaseAverages(self, request, context=None):
         """查询用例平均值（按分组和标签）。
@@ -718,7 +822,8 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         """
         try:
             params_dict = _loads(getattr(request, 'data', ''), {}) or {}
-            data = self.query_handler.handle_get_case_averages(params_dict)
+            with _budget_scope(context):
+                data = self.query_handler.handle_get_case_averages(params_dict)
             if data.get('success') is False:
                 return self._resp(False, data.get('message', 'failed'), data)
             return self._resp(True, 'ok', data)
@@ -820,6 +925,36 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             logger.exception("ListCaseLogs failed")
             return self._resp(False, str(e), {})
 
+    def GetCaseDimensionRawResponse(self, request, context=None):
+        """按需读取某用例某维度的 API 原始响应（INT-1752）。
+
+        请求字段（proto GetCaseDimensionRawResponseRequest）：
+            report_id: int    报告 ID
+            case_id: str      用例 ID
+            dimension_id: int 维度 ID
+            offset: int       字符偏移（默认 0）
+            limit: int        单页字符数（0 取默认，超过上限按上限截断）
+            round_number: int 可选，多轮用例指定轮次；0 = 不指定（整体优先）
+
+        默认不随报告详情下发；本端点显式请求才读取，且只返回单页切片。
+        返回 data.available=False 表示没有可展开的原始响应（非 API 用例等）。
+        """
+        try:
+            data = self.query_handler.handle_get_case_dimension_raw_response(
+                int(getattr(request, 'report_id', 0) or 0),
+                {
+                    'case_id': getattr(request, 'case_id', ''),
+                    'dimension_id': getattr(request, 'dimension_id', 0),
+                    'offset': getattr(request, 'offset', 0),
+                    'limit': getattr(request, 'limit', 0),
+                    'round_number': getattr(request, 'round_number', 0),
+                },
+            )
+            return self._resp(True, 'ok', data)
+        except Exception as e:
+            logger.exception("GetCaseDimensionRawResponse failed")
+            return self._resp(False, str(e), {})
+
     def BuildReferenceParams(self, request, context=None):
         """构建参考参数（供 api_gateway task_query_service 调用）。
 
@@ -885,6 +1020,82 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         except Exception as e:
             logger.exception("RollbackReportImport failed")
             return self._resp(False, str(e), {})
+
+    # ==================== 增量回导报告原地替换（INT-1762 D4） ====================
+
+    def ReplaceReports(self, request, context=None):
+        """按 A 原任务原地替换报告 7 表（保留报告 id / visibility / owner，单事务 + 快照）。
+
+        请求字段（proto ReplaceReportsRequest）：
+            data: str  JSON：{rows_by_table: {表名: [行]}, task_id, target_report_id?, batch_id}
+        """
+        try:
+            data = _loads(getattr(request, 'data', ''), {}) or {}
+            from report_service.application.report_replacement_service import (
+                report_replacement_service,
+            )
+            result = report_replacement_service.replace_reports(
+                data.get('rows_by_table') or {},
+                data.get('task_id'),
+                data.get('target_report_id'),
+                data.get('batch_id') or '')
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), code=result.get('code', 0))
+        except Exception as e:
+            logger.exception("ReplaceReports failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def RollbackReportReplacement(self, request, context=None):
+        """按批次快照回滚报告替换（删除本批新行 + 插回旧报告 7 表行）。"""
+        try:
+            from report_service.application.report_replacement_service import (
+                report_replacement_service,
+            )
+            result = report_replacement_service.rollback_replacement(request.batch_id)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), code=result.get('code', 0))
+        except Exception as e:
+            logger.exception("RollbackReportReplacement failed")
+            return self._resp(False, str(e), {}, 500)
+
+    # ==================== 报告包（链路 3a + 3b/3c，INT-1764 D6） ====================
+
+    def ExportReportPackage(self, request, context=None):
+        """导出报告包数据段：报告 7 表 + Studio 文档 / 版本 / 图表规格。"""
+        try:
+            data = _loads(getattr(request, 'data', ''), {}) or {}
+            from report_service.application.report_package_service import (
+                report_package_service,
+            )
+            result = report_package_service.export_package(
+                data.get('task_ids') or data.get('taskIds') or [],
+                data.get('report_ids') or data.get('reportIds') or [],
+                data.get('doc_version_scope') or data.get('docVersionScope'))
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), code=result.get('code', 0))
+        except Exception as e:
+            logger.exception("ExportReportPackage failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def ImportReportPackage(self, request, context=None):
+        """导入报告包：3a 原地替换 → 3b/3c 拓扑序落库（失败按批次快照补偿）。"""
+        try:
+            data = _loads(getattr(request, 'data', ''), {}) or {}
+            from report_service.application.report_package_service import (
+                report_package_service,
+            )
+            result = report_package_service.import_package(
+                data.get('task_id') if 'task_id' in data else data.get('sourceTaskId'),
+                data.get('tables') or {},
+                data.get('studio') or {},
+                data.get('target_report_id') or data.get('targetReportId'),
+                data.get('batch_id') or data.get('batchId') or '',
+                data.get('doc_version_scope') or data.get('docVersionScope'))
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), code=result.get('code', 0))
+        except Exception as e:
+            logger.exception("ImportReportPackage failed")
+            return self._resp(False, str(e), {}, 500)
 
     # ==================== 报告分享（INT-971） ====================
 
@@ -1274,6 +1485,17 @@ class StudioServicer(report_grpc.ReportStudioServiceServicer):
             logger.exception("CreateStudioDocument failed")
             return self._resp(False, str(e), {}, 500)
 
+    def CreateStudioUploadDocument(self, request, context=None):
+        """文件型独立报告导入建档（INT-1763 §6.2，source_type=uploaded_file）。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.command_handler.handle_create_upload_document(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("CreateStudioUploadDocument failed")
+            return self._resp(False, str(e), {}, 500)
+
     def UpdateStudioDocument(self, request, context=None):
         """人工编辑（expected_version 乐观锁，冲突 409 + 差异）。"""
         try:
@@ -1318,6 +1540,17 @@ class StudioServicer(report_grpc.ReportStudioServiceServicer):
                               result.get('data'), result.get('code', 0))
         except Exception as e:
             logger.exception("GetStudioDocument failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def ListStudioDocuments(self, request, context=None):
+        """文档列表（INT-1763 §6.4）：report_id / source_type / parent_doc_id 过滤。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.query_handler.handle_list_documents(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("ListStudioDocuments failed")
             return self._resp(False, str(e), {}, 500)
 
     def ListStudioDocumentVersions(self, request, context=None):

@@ -9,6 +9,7 @@ import os
 import logging
 
 from audio_service.domain.entities import UploadStatus
+from audio_service.domain.exceptions import TestCaseCreationError
 from audio_service.application.services.audio_convert_service import (
     _get_source_language_from_algorithm_params,
 )
@@ -61,6 +62,12 @@ class AudioMergeMixin:
 
             self.repo.commit()
             return self._build_merge_response(file_id, new_audio, tc_result)
+        except TestCaseCreationError as e:
+            # INT-1668：建用例被 task_service 拒绝不得静默——整体回滚并回 400，
+            # message 带上后端原文，避免前端把「用例没生成」误判为缓存延迟
+            self.repo.rollback()
+            logger.error(f"合并分片失败（测试用例创建被拒）: {e}")
+            return {'success': False, 'message': str(e), 'data': None, 'code': 400}
         except Exception as e:
             self.repo.rollback()
             logger.error(f"合并分片失败: {str(e)}", exc_info=True)
@@ -247,11 +254,18 @@ class AudioMergeMixin:
                 if part and part not in all_tag_names:
                     all_tag_names.append(part)
 
+        from audio_service.domain.exceptions import TagResolutionError
         for tag_name in all_tag_names:
             if not tag_name:
                 continue
-            tag = self.repo.get_or_create_tag(tag_name)
-            self.repo.add_audio_tag(audio_record.id, tag.id)
+            try:
+                tag = self.repo.get_or_create_tag(tag_name)
+                self.repo.add_audio_tag(audio_record.id, tag.id)
+            except TagResolutionError as e:
+                # INT-1533：单标签解析失败只跳过，不写 NULL 关联、也不中断导入
+                logger.warning("分片合并附加标签失败，已跳过: audio_id=%s err=%s",
+                               audio_record.id, e)
+                continue
             audio_tags.append(tag.name)
 
         return audio_tags

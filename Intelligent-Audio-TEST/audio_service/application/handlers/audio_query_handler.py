@@ -31,6 +31,29 @@ from audio_service.application.queries.audio_queries import (
 logger = logging.getLogger(__name__)
 
 
+def _visible_check_fail(audio, denied_code: int = 404):
+    """音频读路径可见性校验（INT-564）：私有非 owner 返回 404，其余返回 None。
+
+    与数据可见性设计文档 §三读路径口径一致：详情/stream 等单资源读对私有
+    非 owner 按不存在处理（防探测）。admin 豁免（check_visible 内部短路）。
+    """
+    from shared.infrastructure.visibility_filter import check_visible
+    from shared.infrastructure.user_context import (
+        get_current_user_id,
+        get_current_user_is_admin,
+    )
+    try:
+        check_visible(
+            getattr(audio, 'created_by_user_id', None),
+            getattr(audio, 'visibility', 'shared') or 'shared',
+            get_current_user_id(),
+            get_current_user_is_admin(),
+        )
+        return None
+    except PermissionError as e:
+        return _fail(str(e), denied_code)
+
+
 def _ok(data: Any = None, message: str = 'Success', code: int = 200) -> Dict[str, Any]:
     return {'success': True, 'message': message, 'data': data, 'code': code}
 
@@ -136,9 +159,16 @@ class AudioQueryHandler:
             return _fail(str(e))
 
     def handle_get_audio(self, query: GetAudioQuery) -> Dict[str, Any]:
+        # INT-564 详情读 owner 校验（数据可见性设计文档 §三）：私有音频非 owner
+        # 按不存在处理（404，防探测），admin 豁免。宿主语境（用例 preview/playback、
+        # 用例导出）在网关宿主边界侧改用批量 permissive 读通道（by-ids，规划师
+        # 宿主优先裁定），不经过本严格详情读，保证「能见宿主即可见其引用音频」。
         audio = self.repo.get_audio(query.audio_id)
         if not audio:
             return _fail('音频文件不存在', 404)
+        denied = _visible_check_fail(audio, 404)
+        if denied:
+            return denied
 
         tags = self.repo.get_audio_tag_names(audio.id)
         annotations = [
@@ -158,6 +188,9 @@ class AudioQueryHandler:
         if not query.ids:
             return _ok(data=[])
 
+        # INT-564：by_ids 为宿主语境批量回填通道（用例编辑模态窗回填音频元数据、
+        # 批量标注匹配），按规划师宿主优先裁定不做二次 owner 过滤；音频列表/
+        # 单条详情（audio_bp 直连端点）才是严格校验边界。
         audio_ids = [int(aid) if str(aid).isdigit() else aid for aid in query.ids]
         audios = self.repo.get_audios_by_ids(audio_ids)
 
@@ -235,6 +268,10 @@ class AudioQueryHandler:
             return _fail(f'查询播放历史失败: {e}')
 
     def handle_stream_audio(self, query: StreamAudioQuery) -> Dict[str, Any]:
+        # INT-564：audio_id 命中音频记录为 audio_bp 直连流式访问 → 严格可见性
+        # 校验（私有非 owner 404）；audio_id 实为 testcase_id（宿主语境用例播放）
+        # 时走用例 config 解析，维持宿主优先只读豁免。
+        host_context = False
         audio = self.repo.get_audio_with_deleted(query.audio_id)
 
         if not audio or audio.deleted:
@@ -251,10 +288,16 @@ class AudioQueryHandler:
                 if target_audio_config:
                     target_audio_id = target_audio_config.get('audio_id')
                     if target_audio_id:
+                        host_context = True
                         audio = self.repo.get_audio_with_deleted(target_audio_id)
 
         if not audio or audio.deleted:
             return _fail('音频不存在', 404)
+
+        if not host_context:
+            denied = _visible_check_fail(audio, 404)
+            if denied:
+                return denied
 
         file_path = audio.file_path
         if not file_path:
@@ -295,6 +338,18 @@ class AudioQueryHandler:
                 if not (normalized_path == real_base or normalized_path.startswith(real_base + os.sep)):
                     return _fail('路径不在允许的目录范围内', 403)
 
+        # INT-564：路径式流访问叠加可见性校验——按存储路径反查音频，命中且
+        # 私有非 owner 返回 404；未命中（派生/缓存路径形态、测试替身仓储未
+        # 实现反查）维持原放行语义
+        audio = None
+        lookup = getattr(self.repo, 'get_audio_by_file_path', None)
+        if lookup is not None:
+            audio = lookup(oss_key)
+        if audio is not None:
+            denied = _visible_check_fail(audio, 404)
+            if denied:
+                return denied
+
         try:
             # 无 scheme 的逻辑 key 默认挂在 audios 分类下（与 handle_stream_audio 一致），
             # 否则 _parse_path 会把 key 首段误判为 category 导致 404
@@ -315,6 +370,9 @@ class AudioQueryHandler:
         audio = self.repo.get_audio(query.audio_id)
         if not audio:
             return _fail('音频不存在', 404)
+        denied = _visible_check_fail(audio, 404)
+        if denied:
+            return denied
 
         relations = self.repo.get_audio_algorithm_relations(query.audio_id)
         result = []

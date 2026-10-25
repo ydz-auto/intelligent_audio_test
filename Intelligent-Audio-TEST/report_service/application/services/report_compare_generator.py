@@ -32,6 +32,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
+from shared.infrastructure.user_context import capture_identity, run_with_identity
 from shared.utils.log_handler import log_and_emit
 from shared.utils.query_utils import now_cst
 
@@ -47,7 +48,9 @@ from report_service.domain.entities.report import GenerationStage
 from report_service.infrastructure.persistence.report_repository import report_repository
 
 
-_secondary_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix='secondary_compare')
+# 异步二次对比报告生成线程池（INT-1505：容量配置化，原硬编码 3 并发时排队饥饿）
+_secondary_executor = ThreadPoolExecutor(
+    max_workers=Config.REPORT_COMPARE_GEN_MAX_WORKERS, thread_name_prefix='secondary_compare')
 _generating_secondary = {}
 _generating_secondary_lock = threading.Lock()
 
@@ -141,7 +144,8 @@ def start_compare_generation_watchdog():
     log_and_emit(
         'INFO', 'report',
         f'[compare_watchdog] 对比报告生成看门狗已启动：扫描周期 {Config.REPORT_GEN_WATCHDOG_INTERVAL_SECONDS}s，'
-        f'超时阈值 {Config.REPORT_GEN_TIMEOUT_SECONDS}s，队列饥饿阈值 {Config.REPORT_GEN_QUEUE_STUCK_SECONDS}s')
+        f'超时阈值 {Config.REPORT_GEN_TIMEOUT_SECONDS}s，队列饥饿阈值 {Config.REPORT_GEN_QUEUE_STUCK_SECONDS}s，'
+        f'线程池容量 {_secondary_executor._max_workers}')
     return _compare_watchdog_thread
 
 
@@ -228,8 +232,12 @@ def _submit_secondary_generation(report_ids, report_key, description):
     track_id = _secondary_track_id(report_key)
     _secondary_generation_tracker.mark_submitted(
         track_id, meta={'chain': 'secondary', 'reportIds': list(report_key)})
+    # INT-1572 返工三轮：同 _submit_generation，操作人身份随任务带进生成线程，
+    # 否则跨域取数按未认证身份过滤可见性，私有用例会被静默丢弃。
+    identity = capture_identity()
     try:
         _secondary_executor.submit(
+            run_with_identity, identity,
             ReportCompareGenerator._secondary_compare_async,
             report_ids, description, report_key
         )

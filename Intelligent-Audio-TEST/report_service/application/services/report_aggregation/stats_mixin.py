@@ -58,8 +58,14 @@ class _AggregationStatsMixin:
         dim_strategy_info = cls._build_dim_strategy_info(all_dimensions)
 
         # 1.6 批量查询维度评估结果（含每轮记录，供按轮次口径/排除轮次聚合）
+        # INT-1752：存在加权维度（weighted_sum_ratio / weighted_wer）时才携带
+        # api_raw_response 大字段——分子/分母从原始响应提取，不带则策略无法计算。
+        from report_service.domain.services.aggregation_strategies import needs_raw_response
+        need_raw_body = any(
+            needs_raw_response(info.get('method')) for info in dim_strategy_info.values()
+        )
         res_ids = [rid for rid in (_r_get(r, 'id') for r in test_results) if rid is not None]
-        dim_results_map = _grpc_get_dim_results(res_ids) if res_ids else {}
+        dim_results_map = _grpc_get_dim_results(res_ids, include_body=need_raw_body) if res_ids else {}
 
         # 1.7 统计前置过滤：用例任一维度评估状态非 completed → 该用例所有结果不参与统计
         # （对齐 V9.7.10 ReportUtils.filter_results_by_case_evaluation；filtered_case_ids
@@ -67,8 +73,12 @@ class _AggregationStatsMixin:
         test_results = filter_results_by_case_evaluation(test_results, dim_results_map)
 
         # 2. 收集维度得分并计算全局加权平均
+        # INT-1752：加权策略算不出来时不再静默丢值——按 item 原始值降级为简单平均，
+        # 并把降级说明记入 aggregation_degraded（随 summary 下发，供报告页标注）。
+        aggregation_degraded = {}
         averages_map, overall_averages = cls._compute_weighted_averages(
-            test_results, all_dimensions, metric_name_to_id, dim_strategy_info, dim_results_map
+            test_results, all_dimensions, metric_name_to_id, dim_strategy_info, dim_results_map,
+            degraded_out=aggregation_degraded,
         )
 
         # 3. 聚合设备/API 资源列表（任务报告：无时间前缀、含版本、含 result_type 后缀；
@@ -98,17 +108,22 @@ class _AggregationStatsMixin:
         )
 
         # 6. 计算分类×资源 / 标签×资源的平均值矩阵
-        metric_data = cls._compute_category_resource_averages(accumulator, dim_strategy_info)
-        tag_metric_data = cls._compute_tag_resource_averages(tag_accumulator, dim_strategy_info)
+        metric_data = cls._compute_category_resource_averages(
+            accumulator, dim_strategy_info, degraded_out=aggregation_degraded)
+        tag_metric_data = cls._compute_tag_resource_averages(
+            tag_accumulator, dim_strategy_info, degraded_out=aggregation_degraded)
 
         # 7. 计算正态分布
         normal_distribution_data = ReportHelpers.calculate_normal_distribution(raw_data)
 
-        return cls._build_summary_result(
+        result = cls._build_summary_result(
             filtered_case_ids, test_results, overall_averages, averages_map,
             metric_data, tag_metric_data, raw_data, normal_distribution_data,
             resources, resource_headers, metric_name_to_id
         )
+        # INT-1752：降级说明（空 dict 表示无降级）
+        result['aggregation_degraded'] = aggregation_degraded
+        return result
 
     # ------------------------------------------------------------------
     # 子方法：维度聚合策略信息
@@ -214,15 +229,21 @@ class _AggregationStatsMixin:
 
     @staticmethod
     def _compute_weighted_averages(test_results: list, all_dimensions: list, metric_name_to_id: dict,
-                                   dim_strategy_info: dict, dim_results_map: dict = None) -> tuple:
+                                   dim_strategy_info: dict, dim_results_map: dict = None,
+                                   degraded_out: dict = None) -> tuple:
         """计算全局加权平均，返回 (averages_map, overall_averages)。
 
         非 average 维度（pass_rate/ratio/weighted_wer）用策略聚合（按 agg_denominator
         取分母口径 + exclude_rounds 排除轮次）；average 维度按口径取样本：
           - case（默认）：每用例 1 个样本（整体值优先）
           - round：每轮 1 个样本（无轮次记录回退整体值）
+
+        INT-1752：加权策略返回 None 时按 item 的 dimension_value 降级为简单平均，
+        并把降级说明写入 degraded_out[dim_name]（不再静默丢值）。
         """
-        from report_service.domain.services.aggregation_strategies import get_strategy
+        from report_service.domain.services.aggregation_strategies import (
+            explain_degradation, get_strategy, simple_average_of_items,
+        )
 
         custom_agg_items = {}   # dim_name -> [item, ...]（策略聚合用）
         average_samples = {}    # dim_name -> [样本, ...]
@@ -260,8 +281,18 @@ class _AggregationStatsMixin:
                 val = get_strategy(info['method']).aggregate(
                     items, output_params=info['output_params'], denominator_mode=info['denominator_mode']
                 )
-                if val is not None:
-                    averages_map[dim_name] = val
+                if val is None:
+                    degradation = explain_degradation(
+                        info['method'], items, output_params=info['output_params'],
+                        denominator_mode=info['denominator_mode'])
+                    if degradation is not None:
+                        if degraded_out is not None:
+                            degraded_out.setdefault(dim_name, degradation)
+                        fallback = simple_average_of_items(items)
+                        if fallback is not None:
+                            averages_map[dim_name] = fallback
+                    continue
+                averages_map[dim_name] = val
             else:
                 samples = average_samples.get(dim_name) or []
                 if samples:
@@ -458,13 +489,18 @@ class _AggregationStatsMixin:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _compute_tag_resource_averages(tag_accumulator: dict, dim_strategy_info: dict = None) -> dict:
+    def _compute_tag_resource_averages(tag_accumulator: dict, dim_strategy_info: dict = None,
+                                       degraded_out: dict = None) -> dict:
         """根据累积器计算标签×资源的平均值矩阵（策略聚合与简单平均，同 metric_data 口径）。
 
         非 average 维度（pass_rate/ratio/weighted_sum_ratio）按策略聚合产出 0~100 百分比，
         避免前端手写平均导致超 100%（INT-1059 对齐 7bb9fd339/e4e5dface）。
+
+        INT-1752：加权策略返回 None 时按 item 原始值降级为简单平均并记入 degraded_out。
         """
-        from report_service.domain.services.aggregation_strategies import get_strategy
+        from report_service.domain.services.aggregation_strategies import (
+            explain_degradation, get_strategy, simple_average_of_items,
+        )
         dim_strategy_info = dim_strategy_info or {}
         tag_metric_data = {}
         for tag_name, res_data in tag_accumulator.items():
@@ -478,9 +514,18 @@ class _AggregationStatsMixin:
                         if not items:
                             tag_metric_data[tag_name][res][dim_name] = None
                             continue
-                        tag_metric_data[tag_name][res][dim_name] = get_strategy(info['method']).aggregate(
+                        val = get_strategy(info['method']).aggregate(
                             items, output_params=info['output_params'], denominator_mode=info['denominator_mode']
                         )
+                        if val is None:
+                            degradation = explain_degradation(
+                                info['method'], items, output_params=info['output_params'],
+                                denominator_mode=info['denominator_mode'])
+                            if degradation is not None:
+                                if degraded_out is not None:
+                                    degraded_out.setdefault(dim_name, degradation)
+                                val = simple_average_of_items(items)
+                        tag_metric_data[tag_name][res][dim_name] = val
                     else:
                         tag_metric_data[tag_name][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
         return tag_metric_data
@@ -490,12 +535,16 @@ class _AggregationStatsMixin:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _compute_category_resource_averages(accumulator: dict, dim_strategy_info: dict = None) -> dict:
+    def _compute_category_resource_averages(accumulator: dict, dim_strategy_info: dict = None,
+                                            degraded_out: dict = None) -> dict:
         """根据累积器计算分类×资源的平均值矩阵。
 
         非 average 维度用策略聚合（按 agg_denominator 取分母口径），average 维度用算术平均。
+        INT-1752：加权策略返回 None 时按 item 原始值降级为简单平均并记入 degraded_out。
         """
-        from report_service.domain.services.aggregation_strategies import get_strategy
+        from report_service.domain.services.aggregation_strategies import (
+            explain_degradation, get_strategy, simple_average_of_items,
+        )
         dim_strategy_info = dim_strategy_info or {}
         metric_data = {}
         for cat_name, res_data in accumulator.items():
@@ -509,9 +558,18 @@ class _AggregationStatsMixin:
                         if not items:
                             metric_data[cat_name][res][dim_name] = None
                             continue
-                        metric_data[cat_name][res][dim_name] = get_strategy(info['method']).aggregate(
+                        val = get_strategy(info['method']).aggregate(
                             items, output_params=info['output_params'], denominator_mode=info['denominator_mode']
                         )
+                        if val is None:
+                            degradation = explain_degradation(
+                                info['method'], items, output_params=info['output_params'],
+                                denominator_mode=info['denominator_mode'])
+                            if degradation is not None:
+                                if degraded_out is not None:
+                                    degraded_out.setdefault(dim_name, degradation)
+                                val = simple_average_of_items(items)
+                        metric_data[cat_name][res][dim_name] = val
                     else:
                         metric_data[cat_name][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
         return metric_data

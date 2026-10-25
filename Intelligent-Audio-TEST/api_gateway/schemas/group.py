@@ -18,6 +18,18 @@ class GroupItem(APIModel):
     created_by_user_id: Optional[int] = Field(None)
 
 
+class GroupSummaryItem(APIModel):
+    """分组列表精简投影（INT-1470：分组 facet / 组头行只需这三项）。
+
+    `GET /groups?fields=summary` 返回此形状。完整 GroupItem 的
+    description / algorithm_type 被编辑弹窗复用（回显后原值保存），
+    故不能作为默认投影，只能由纯 facet 消费方显式选择。
+    """
+    id: str = Field(...)
+    name: str = Field(...)
+    test_case_count: int = Field(...)
+
+
 class GroupCreateRequest(APIModel):
     id: Optional[str] = Field(None)
     name: str = Field(..., validation_alias=AliasChoices('groupName', 'group_name'))
@@ -42,9 +54,16 @@ class GroupListData(PaginatedData[GroupItem]):
     pass
 
 
+class GroupSummaryListData(PaginatedData[GroupSummaryItem]):
+    pass
+
+
 class GroupListQuery(APIModel):
     page: int = Field(1)
     per_page: Optional[int] = Field(None, validation_alias=AliasChoices('per_page', 'perPage', 'page_size', 'pageSize'))
+    # INT-1470：列表投影选择。空/full = 完整 GroupItem（默认，兼容编辑弹窗回显）；
+    # summary = 仅 id/name/test_case_count（纯 facet 消费方，响应体积最小）
+    fields: Optional[str] = Field(None, validation_alias=AliasChoices('fields', 'view'))
     algorithm_type: Optional[str] = Field(None)
     # 分组下用例计数筛选（V9.7.10 对齐）：keyword 模糊匹配用例 id/name/description；
     # type 为用例执行口径（api/e2e，按配置形态派生）；dimension_id 按评估维度 config 匹配

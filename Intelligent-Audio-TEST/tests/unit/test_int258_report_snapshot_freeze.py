@@ -323,14 +323,16 @@ class FakeRepo:
 
 
 class FakeLogRepository:
-    """log_repository 替身：捕获审计写入，隔离真实 DB。"""
+    """审计写入器替身（INT-1793：S4 改调审计文件写入器，隔离真实日志目录）。"""
 
     def __init__(self):
         self.logs = []
 
-    def batch_create(self, logs):
-        self.logs.extend(logs)
-        return logs
+    def write_audit_event(self, **kwargs):
+        self.logs.append({'content': kwargs.get('content'),
+                          'event': kwargs.get('event'),
+                          'category': kwargs.get('category')})
+        return len(self.logs)
 
 
 class TestCreateVersionReportSnapshotSemantics:
@@ -339,7 +341,7 @@ class TestCreateVersionReportSnapshotSemantics:
     def _run(self, monkeypatch, repo, data):
         import task_service.application.services.published_task_service as pts_module
         monkeypatch.setattr(pts_module, 'repo', repo)
-        monkeypatch.setattr(pts_module, 'log_repository', FakeLogRepository())
+        monkeypatch.setattr('shared.logging.audit_writer.write_audit_event', FakeLogRepository().write_audit_event)
         return PublishedTaskService.create_version(1001, data)
 
     def test_new_source_task_freezes_its_report(self, monkeypatch):

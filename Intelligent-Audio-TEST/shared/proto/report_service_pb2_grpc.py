@@ -65,6 +65,16 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.ListReportsRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.ListReportsByTaskIds = channel.unary_unary(
+                '/report.ReportConfigService/ListReportsByTaskIds',
+                request_serializer=report__service__pb2.ListReportsByTaskIdsRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.CountReportsByTabs = channel.unary_unary(
+                '/report.ReportConfigService/CountReportsByTabs',
+                request_serializer=report__service__pb2.CountReportsByTabsRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
         self.GetReportDetail = channel.unary_unary(
                 '/report.ReportConfigService/GetReportDetail',
                 request_serializer=report__service__pb2.GetReportDetailRequest.SerializeToString,
@@ -120,6 +130,11 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.ExportReportsRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.ListExportHistory = channel.unary_unary(
+                '/report.ReportConfigService/ListExportHistory',
+                request_serializer=report__service__pb2.ListExportHistoryRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
         self.GetCaseAverages = channel.unary_unary(
                 '/report.ReportConfigService/GetCaseAverages',
                 request_serializer=report__service__pb2.GetCaseAveragesRequest.SerializeToString,
@@ -133,6 +148,11 @@ class ReportConfigServiceStub:
         self.ListCaseLogs = channel.unary_unary(
                 '/report.ReportConfigService/ListCaseLogs',
                 request_serializer=report__service__pb2.ListCaseLogsRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.GetCaseDimensionRawResponse = channel.unary_unary(
+                '/report.ReportConfigService/GetCaseDimensionRawResponse',
+                request_serializer=report__service__pb2.GetCaseDimensionRawResponseRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
         self.BuildReferenceParams = channel.unary_unary(
@@ -153,6 +173,26 @@ class ReportConfigServiceStub:
         self.RollbackReportImport = channel.unary_unary(
                 '/report.ReportConfigService/RollbackReportImport',
                 request_serializer=report__service__pb2.RollbackReportImportRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.ReplaceReports = channel.unary_unary(
+                '/report.ReportConfigService/ReplaceReports',
+                request_serializer=report__service__pb2.ReplaceReportsRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.RollbackReportReplacement = channel.unary_unary(
+                '/report.ReportConfigService/RollbackReportReplacement',
+                request_serializer=report__service__pb2.RollbackReportReplacementRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.ExportReportPackage = channel.unary_unary(
+                '/report.ReportConfigService/ExportReportPackage',
+                request_serializer=report__service__pb2.ExportReportPackageRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.ImportReportPackage = channel.unary_unary(
+                '/report.ReportConfigService/ImportReportPackage',
+                request_serializer=report__service__pb2.ImportReportPackageRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
         self.FavoriteReport = channel.unary_unary(
@@ -269,6 +309,21 @@ class ReportConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListReportsByTaskIds(self, request, context):
+        """页级批量：一次取回整页任务的报告摘要（INT-1462：任务列表 N+1 串行 RPC 消解）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CountReportsByTabs(self, request, context):
+        """四个视图 Tab 一次聚合计数（INT-1463：all/draft/published/comparison 单条
+        条件聚合 SQL，替代 4 次串行 CountReports；响应 data: {all,draft,published,comparison}）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetReportDetail(self, request, context):
         """查询单个报告详情
         """
@@ -346,6 +401,14 @@ class ReportConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListExportHistory(self, request, context):
+        """查询报告导出历史（INT-1555：报告中心「导出历史」页签数据源，
+        按导出时间倒序分页；已认证普通用户只看本人导出）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetCaseAverages(self, request, context):
         """查询用例平均值
         """
@@ -362,6 +425,14 @@ class ReportConfigServiceServicer:
 
     def ListCaseLogs(self, request, context):
         """查询用例日志文件列表（INT-1062：文件选择 Dialog 取数，name 与下载 ZIP arcname / files= 同一套逻辑名）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCaseDimensionRawResponse(self, request, context):
+        """报告详情按需读取某用例某维度的 API 原始响应（INT-1752：默认不随报告详情下发，
+        显式请求时按 offset/limit 分页返回，单页与总量均有上限）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -391,6 +462,43 @@ class ReportConfigServiceServicer:
 
     def RollbackReportImport(self, request, context):
         """回滚一次报告导入批次：按批次登记主键删除（补偿失败时人工介入的兜底入口）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ReplaceReports(self, request, context):
+        """增量回导报告原地替换（INT-1762 D4，D0-A5 裁定）：保留 A 报告 id / visibility /
+        created_by_user_id / type / created_at，UPDATE 内容字段并重建 6 子表；
+        旧行与本批新行在同一事务内落 report_merge_snapshots 批次快照。
+        出参 {replaced_tasks, deleted_counts, inserted_report_ids, batch_id,
+        rollback_available, warnings}
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RollbackReportReplacement(self, request, context):
+        """回滚一次报告替换批次（INT-1762 D4）：删除本批新行、按快照恢复旧报告 7 表
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ExportReportPackage(self, request, context):
+        """报告包导出（INT-1764 D6，链路 3a + 3b/3c）：按 taskId / reportIds 输出报告 7 表
+        与 Report Studio 三表（文档 / 版本快照 / 图表规格）。
+        出参 {tables, studio, reportIds, taskIds, docVersionScope, entities, counts}
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ImportReportPackage(self, request, context):
+        """报告包导入（INT-1764 D6）：平台报告按 sourceTask 原地替换（复用 ReplaceReports
+        同一实现）→ Studio 文档拓扑序落库；agent_session_id 置空、源缺失降级为空并写
+        入回执 warnings，失败按批次快照补偿回滚 3a。
+        出参 {sourceTaskId, reportId, documentIdMapping, imported, warnings, batchId}
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -527,6 +635,16 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
                     request_deserializer=report__service__pb2.ListReportsRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
+            'ListReportsByTaskIds': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListReportsByTaskIds,
+                    request_deserializer=report__service__pb2.ListReportsByTaskIdsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'CountReportsByTabs': grpc.unary_unary_rpc_method_handler(
+                    servicer.CountReportsByTabs,
+                    request_deserializer=report__service__pb2.CountReportsByTabsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
             'GetReportDetail': grpc.unary_unary_rpc_method_handler(
                     servicer.GetReportDetail,
                     request_deserializer=report__service__pb2.GetReportDetailRequest.FromString,
@@ -582,6 +700,11 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
                     request_deserializer=report__service__pb2.ExportReportsRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
+            'ListExportHistory': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListExportHistory,
+                    request_deserializer=report__service__pb2.ListExportHistoryRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
             'GetCaseAverages': grpc.unary_unary_rpc_method_handler(
                     servicer.GetCaseAverages,
                     request_deserializer=report__service__pb2.GetCaseAveragesRequest.FromString,
@@ -595,6 +718,11 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             'ListCaseLogs': grpc.unary_unary_rpc_method_handler(
                     servicer.ListCaseLogs,
                     request_deserializer=report__service__pb2.ListCaseLogsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'GetCaseDimensionRawResponse': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCaseDimensionRawResponse,
+                    request_deserializer=report__service__pb2.GetCaseDimensionRawResponseRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
             'BuildReferenceParams': grpc.unary_unary_rpc_method_handler(
@@ -615,6 +743,26 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             'RollbackReportImport': grpc.unary_unary_rpc_method_handler(
                     servicer.RollbackReportImport,
                     request_deserializer=report__service__pb2.RollbackReportImportRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'ReplaceReports': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReplaceReports,
+                    request_deserializer=report__service__pb2.ReplaceReportsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'RollbackReportReplacement': grpc.unary_unary_rpc_method_handler(
+                    servicer.RollbackReportReplacement,
+                    request_deserializer=report__service__pb2.RollbackReportReplacementRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'ExportReportPackage': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExportReportPackage,
+                    request_deserializer=report__service__pb2.ExportReportPackageRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'ImportReportPackage': grpc.unary_unary_rpc_method_handler(
+                    servicer.ImportReportPackage,
+                    request_deserializer=report__service__pb2.ImportReportPackageRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
             'FavoriteReport': grpc.unary_unary_rpc_method_handler(
@@ -845,6 +993,60 @@ class ReportConfigService:
             target,
             '/report.ReportConfigService/CountReports',
             report__service__pb2.ListReportsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListReportsByTaskIds(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ListReportsByTaskIds',
+            report__service__pb2.ListReportsByTaskIdsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CountReportsByTabs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/CountReportsByTabs',
+            report__service__pb2.CountReportsByTabsRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,
             channel_credentials,
@@ -1154,6 +1356,33 @@ class ReportConfigService:
             _registered_method=True)
 
     @staticmethod
+    def ListExportHistory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ListExportHistory',
+            report__service__pb2.ListExportHistoryRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def GetCaseAverages(request,
             target,
             options=(),
@@ -1223,6 +1452,33 @@ class ReportConfigService:
             target,
             '/report.ReportConfigService/ListCaseLogs',
             report__service__pb2.ListCaseLogsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCaseDimensionRawResponse(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/GetCaseDimensionRawResponse',
+            report__service__pb2.GetCaseDimensionRawResponseRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,
             channel_credentials,
@@ -1331,6 +1587,114 @@ class ReportConfigService:
             target,
             '/report.ReportConfigService/RollbackReportImport',
             report__service__pb2.RollbackReportImportRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReplaceReports(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ReplaceReports',
+            report__service__pb2.ReplaceReportsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RollbackReportReplacement(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/RollbackReportReplacement',
+            report__service__pb2.RollbackReportReplacementRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExportReportPackage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ExportReportPackage',
+            report__service__pb2.ExportReportPackageRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ImportReportPackage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ImportReportPackage',
+            report__service__pb2.ImportReportPackageRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,
             channel_credentials,
@@ -2316,6 +2680,16 @@ class ReportStudioServiceStub:
                 request_serializer=report__service__pb2.StudioDocumentRequest.SerializeToString,
                 response_deserializer=report__service__pb2.StudioResponse.FromString,
                 _registered_method=True)
+        self.CreateStudioUploadDocument = channel.unary_unary(
+                '/report.ReportStudioService/CreateStudioUploadDocument',
+                request_serializer=report__service__pb2.StudioDocumentRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
+        self.ListStudioDocuments = channel.unary_unary(
+                '/report.ReportStudioService/ListStudioDocuments',
+                request_serializer=report__service__pb2.StudioDocumentRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
         self.GetStudioDocument = channel.unary_unary(
                 '/report.ReportStudioService/GetStudioDocument',
                 request_serializer=report__service__pb2.StudioDocumentRequest.SerializeToString,
@@ -2367,6 +2741,21 @@ class ReportStudioServiceServicer:
 
     def CreateStudioDocument(self, request, context):
         """用现有 reportId 创建草稿（可绑定已有 agentSessionId，可空）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateStudioUploadDocument(self, request, context):
+        """文件型独立报告导入建档（INT-1763 §6.2）：source_type=uploaded_file，
+        report_id / parent_doc_id 可空；文件本体由网关落 OSS，本 RPC 只传元数据
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListStudioDocuments(self, request, context):
+        """文档列表（INT-1763 §6.4）：按 report_id / source_type / parent_doc_id 过滤
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -2433,6 +2822,16 @@ def add_ReportStudioServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'CreateStudioDocument': grpc.unary_unary_rpc_method_handler(
                     servicer.CreateStudioDocument,
+                    request_deserializer=report__service__pb2.StudioDocumentRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+            'CreateStudioUploadDocument': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateStudioUploadDocument,
+                    request_deserializer=report__service__pb2.StudioDocumentRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+            'ListStudioDocuments': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListStudioDocuments,
                     request_deserializer=report__service__pb2.StudioDocumentRequest.FromString,
                     response_serializer=report__service__pb2.StudioResponse.SerializeToString,
             ),
@@ -2506,6 +2905,60 @@ class ReportStudioService:
             request,
             target,
             '/report.ReportStudioService/CreateStudioDocument',
+            report__service__pb2.StudioDocumentRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateStudioUploadDocument(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/CreateStudioUploadDocument',
+            report__service__pb2.StudioDocumentRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListStudioDocuments(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/ListStudioDocuments',
             report__service__pb2.StudioDocumentRequest.SerializeToString,
             report__service__pb2.StudioResponse.FromString,
             options,

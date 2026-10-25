@@ -12,10 +12,13 @@
 P5 改造：PO 定义真正下沉到本包，shared/models/models/* 改为从这里 re-export。
 """
 from .evaluation_models import Category, Dimension
+from .merge_snapshot_models import EvaluationMergeSnapshot
 from .result_models import TestResultDimension
 
 __all__ = [
     'Category',
     'Dimension',
     'TestResultDimension',
+    # 增量回导维度合并批次快照（INT-1762 D4）
+    'EvaluationMergeSnapshot',
 ]

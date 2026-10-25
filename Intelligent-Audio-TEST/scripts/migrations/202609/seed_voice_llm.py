@@ -25,6 +25,34 @@ import sys
 import os
 from sqlalchemy import create_engine, text
 
+# INT-1652：幂等重跑可跳过的 DDL 错误一律按 SQLSTATE 判定，不按异常文本 ——
+# SQLAlchemy 的异常串里带原 SQL，`ADD COLUMN IF NOT EXISTS ...` 让 'exists'
+# 命中**所有**错误：lock_timeout（55P03）会被当成「列已存在」吞掉，随后事务
+# 已中止，下一步才以 InFailedSqlTransaction 报出来（2026-10-23 事故现场）。
+_IGNORABLE_DDL_STATES = {
+    '42701',  # duplicate_column
+    '42P07',  # duplicate_table / relation already exists
+    '42710',  # duplicate_object
+    '42P06',  # duplicate_schema
+    '42703',  # undefined_column
+    '42P01',  # undefined_table
+    '42704',  # undefined_object
+    '42883',  # undefined_function
+    '3F000',  # invalid_schema_name
+}
+
+
+def _ddl_sqlstate(exc):
+    """取 psycopg2 的 SQLSTATE（SQLAlchemy 把原始异常挂在 .orig 上）。"""
+    orig = getattr(exc, 'orig', None)
+    return getattr(orig, 'pgcode', None) or getattr(exc, 'pgcode', None)
+
+
+def _is_ignorable_ddl_error(exc):
+    """幂等重跑的「已就绪 / 不存在」类错误（锁超时等真实失败不算）。"""
+    return _ddl_sqlstate(exc) in _IGNORABLE_DDL_STATES
+
+
 POSTGRES_URI = os.environ.get(
     'DATABASE_URI',
     'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test'
@@ -46,11 +74,12 @@ def seed_voice_llm():
             ))
             print("  + scope 列已就绪")
         except Exception as e:
-            msg = str(e).lower()
-            if 'already' in msg or 'exists' in msg:
+            if _is_ignorable_ddl_error(e):
                 print("  - scope 列已存在")
             else:
-                raise
+                raise RuntimeError(
+                    f'case_algorithm_params.scope 列 DDL 失败'
+                    f'（SQLSTATE={_ddl_sqlstate(e)}）: {e}') from e
 
         for col_name, col_type in [('min_value', 'FLOAT'), ('max_value', 'FLOAT'), ('step', 'FLOAT'), ('unit', 'VARCHAR(20)')]:
             try:
@@ -58,11 +87,12 @@ def seed_voice_llm():
                     f"ALTER TABLE case_algorithm_params ADD COLUMN IF NOT EXISTS {col_name} {col_type}"
                 ))
             except Exception as e:
-                msg = str(e).lower()
-                if 'already' in msg or 'exists' in msg:
+                if _is_ignorable_ddl_error(e):
                     pass
                 else:
-                    raise
+                    raise RuntimeError(
+                        f'case_algorithm_params.{col_name} 列 DDL 失败'
+                        f'（SQLSTATE={_ddl_sqlstate(e)}）: {e}') from e
         print("  + min_value/max_value/step/unit 列已就绪")
 
         # ============================================================

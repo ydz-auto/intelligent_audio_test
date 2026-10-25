@@ -31,6 +31,21 @@ def _failure(message: str, data: Any = None):
     )
 
 
+def _optional_api_id(request: Any):
+    """取 proto3 optional ``api_id`` 的 presence。
+
+    INT-1756：未传（旧调用方 / 旧 stub）返回 None → 回落算法级默认；
+    显式传值（含 0）原样返回。
+    """
+    try:
+        if request.HasField('api_id'):
+            return int(request.api_id)
+    except (ValueError, AttributeError):
+        # 旧 stub 生成的 request 没有该字段
+        return None
+    return None
+
+
 class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
     """算法领域查询 gRPC servicer（CQRS 读侧）。
 
@@ -146,9 +161,10 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
             return _failure(str(e))
 
     def GetApiParamsList(self, request, context=None):
-        """获取 API 参数列表（按 algorithm_type）。"""
+        """获取 API 参数列表（按 algorithm_type；可选 api_id 作用域）。"""
         try:
-            data = self.config_handler.get_api_params(request.algorithm_type)
+            data = self.config_handler.get_api_params(
+                request.algorithm_type, _optional_api_id(request))
             return _success(data)
         except Exception as e:
             return _failure(str(e))
@@ -170,10 +186,11 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
             return _failure(str(e))
 
     def GetParamMappingForComponent(self, request, context=None):
-        """获取组件参数映射（按 algorithm_type + component_type）。"""
+        """获取组件参数映射（按 algorithm_type + component_type；可选 api_id 作用域）。"""
         try:
             data = self.config_handler.get_param_mapping(
-                request.algorithm_type, request.component_type
+                request.algorithm_type, request.component_type,
+                _optional_api_id(request)
             )
             return _success(data)
         except Exception as e:
@@ -211,10 +228,10 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
     # ============================================================
 
     def GetFieldMappings(self, request, context=None):
-        """获取字段映射定义（按 algorithm_type）。"""
+        """获取字段映射定义（按 algorithm_type；可选 api_id 作用域）。"""
         try:
             data = self.field_mapping_handler.get_field_definitions(
-                request.algorithm_type
+                request.algorithm_type, _optional_api_id(request)
             )
             return _success(data)
         except Exception as e:
@@ -265,16 +282,31 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
         except Exception as e:
             return _failure(str(e))
 
+    def ConvertFieldValues(self, request, context=None):
+        """批量字段值转换（INT-1749）。
+
+        解析 request.data 中 items 列表，委托
+        FieldMappingQueryHandler.convert_field_values 一次完成 N 个值的转换；
+        data 返回 {'values': [...], 'errors': [...]}（非法输入保留原值 + 错误回传）。
+        """
+        try:
+            payload = _loads(request.data, {})
+            items = payload.get('items') or []
+            data = self.field_mapping_handler.convert_field_values(items)
+            return _success(data)
+        except Exception as e:
+            return _failure(str(e))
+
     # ============================================================
     # 结果字段映射器（原 algorithm_result_field_mapper）
     # ============================================================
 
     def GetOutputFields(self, request, context=None):
-        """获取输出字段（按 algorithm_type + 可选 test_type）。"""
+        """获取输出字段（按 algorithm_type + 可选 test_type + 可选 api_id 作用域）。"""
         try:
             test_type = request.test_type or None
             data = self.result_field_mapping_handler.get_output_fields(
-                request.algorithm_type, test_type
+                request.algorithm_type, test_type, _optional_api_id(request)
             )
             return _success(data)
         except Exception as e:
@@ -327,17 +359,13 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
             return _failure(str(e))
 
     def MapApiResults(self, request, context=None):
-        """映射 API 结果。
+        """已废弃（C0 裁定 4 / INT-1748），固定返回失败。
 
-        解析 raw_results JSON，调用
-        ResultFieldMappingQueryHandler.map_api_results(...)。
+        映射责任已收口到执行侧（产出轮次即生成 `{target_param: value}`），
+        评估侧只按 target_param 取值，不再保留第二个映射入口。
+        RPC 定义保留仅为不动 proto / pb2（避免 protoc 版本漂移）。
         """
-        try:
-            raw_results = _loads(request.raw_results, {})
-            data = self.result_field_mapping_handler.map_api_results(raw_results)
-            return _success(data)
-        except Exception as e:
-            return _failure(str(e))
+        return _failure('已废弃：映射责任在执行侧，评估侧按 target_param 取值')
 
     def ExtractRoundResults(self, request, context=None):
         """提取单轮结果。

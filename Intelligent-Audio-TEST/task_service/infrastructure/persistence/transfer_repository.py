@@ -6,14 +6,18 @@
 导出需内联被引用源结果并携带专有关系表，导入侧可重建容器及其所选结果）。
 导入（写侧）：单事务写入 task_service 段 8 表，flush 捕获冲突行新 ID 构建映射；
 补偿回滚按批次主键逆依赖删除。显式 ID 插入后同步 Postgres 序列。
+source_map（INT-1760）：整包导入发生重映射时登记 A 原始 id → 本地 id，
+唯一键 (source_server, entity_type, local_id)，upsert 幂等，供增量回导翻译。
 """
 import logging
 from datetime import datetime
-from typing import Callable, Dict, List, Set, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 
+from shared.constants.data_transfer import SourceMapEntity
 from shared.models.database import get_db_session
 from shared.utils.log_handler import log_not_emit
 from task_service.infrastructure.persistence.models import (
+    DataTransferSourceMap,
     Task,
     TaskAPI,
     TaskCase,
@@ -28,6 +32,9 @@ from task_service.infrastructure.persistence.models import (
 logger = logging.getLogger(__name__)
 
 _MODULE_NAME = 'transfer_repository'
+
+# source_map 批量读写分块（避免超长 IN 列表撑爆 SQL）
+_SOURCE_MAP_CHUNK = 500
 
 # 子表写入顺序（依赖序）：关联表 → 结果表 → cherry-pick 关系表（引用结果，
 # 须在结果表 flush 拿到 test_results 映射后重写外键；主表由 import_task_segment 先写）
@@ -97,6 +104,19 @@ def _po_to_row(po) -> dict:
             value = value.isoformat(timespec='seconds')
         row[column.name] = value
     return row
+
+
+def _source_map_to_dict(po) -> dict:
+    """source_map PO → dict（对外只暴露翻译所需的业务字段 + 时间戳）"""
+    return {
+        'source_server': po.source_server,
+        'source_task_id': int(po.source_task_id),
+        'entity_type': po.entity_type,
+        'source_id': int(po.source_id),
+        'local_id': int(po.local_id),
+        'updated_at': po.updated_at.isoformat(timespec='seconds')
+        if isinstance(po.updated_at, datetime) else po.updated_at,
+    }
 
 
 class TransferRepository:
@@ -193,16 +213,62 @@ class TransferRepository:
         finally:
             session.close()
 
-    def fetch_existing_case_ids(self, case_ids: List[str]) -> Set[str]:
-        """目标库中实际存在的用例 ID 集合（预检 warning 用）"""
-        if not case_ids:
-            return set()
+    def fetch_case_availability(self, case_ids: List[str],
+                                user_id: Optional[int] = None,
+                                is_admin: Optional[bool] = None) -> Dict[str, Set[str]]:
+        """目标库中用例的可用性三分（INT-1759 用例一致性硬校验，D0 裁定 A10-4）
+
+        - missing：目标库不存在，或已软删（`test_cases.deleted`）
+        - invisible：存在且未软删，但私有用例且操作人非 owner / 非 admin
+          （可见性口径同 `visible_condition`，厂商私有数据不可当作"已存在"）
+        - available：其余（导入后可重新执行的用例）
+
+        身份缺省取 gRPC metadata 透传的当前操作人（x-user-id / x-user-is-admin）。
+
+        Args:
+            case_ids: 导出包内 task_case_relations 引用的用例 ID（str）
+            user_id: 显式操作人（None 时取上下文）
+            is_admin: 显式管理员标志（None 时取上下文）
+        """
+        ids = {str(cid) for cid in case_ids or [] if cid is not None}
+        if not ids:
+            return {'available': set(), 'missing': set(), 'invisible': set()}
+        from task_service.infrastructure.visibility_context import visibility_identity
+        from shared.infrastructure.visibility_filter import check_visible, VisibilityDenied
+        uid, admin = visibility_identity(user_id)
+        if is_admin is not None:
+            admin = bool(is_admin)
         session = get_db_session()
         try:
-            found = session.query(TestCase.id).filter(TestCase.id.in_(case_ids)).all()
-            return {row[0] for row in found}
+            rows = (session.query(TestCase.id, TestCase.created_by_user_id,
+                                  TestCase.visibility, TestCase.deleted)
+                    .filter(TestCase.id.in_(ids)).all())
         finally:
             session.close()
+        existing = {str(row[0]) for row in rows if not row[3]}
+        invisible: Set[str] = set()
+        for case_id, owner, visibility, deleted in rows:
+            if deleted:
+                continue
+            try:
+                check_visible(owner, visibility or 'shared', uid, admin)
+            except VisibilityDenied:
+                invisible.add(str(case_id))
+        return {
+            'available': existing - invisible,
+            'missing': ids - existing,
+            'invisible': invisible,
+        }
+
+    def fetch_existing_case_ids(self, case_ids: List[str],
+                                user_id: Optional[int] = None,
+                                is_admin: Optional[bool] = None) -> Set[str]:
+        """目标库中**可用**用例 ID 集合（预检 warning / 一致性校验共用）
+
+        可用 = 未软删 且 当前操作人可见（INT-1759：软删用例、私有非 owner 用例
+        都不算"已存在"，否则导入后无法重新执行却通过校验）。
+        """
+        return self.fetch_case_availability(case_ids, user_id, is_admin)['available']
 
     def fetch_task_names(self, task_ids: List[int]) -> Dict[int, str]:
         """按 ID 列表取任务名（预检冲突展示用）"""
@@ -212,6 +278,75 @@ class TransferRepository:
         try:
             found = session.query(Task.id, Task.name).filter(Task.id.in_(task_ids)).all()
             return {row[0]: row[1] for row in found}
+        finally:
+            session.close()
+
+    # ---------- 增量回导（INT-1761：定位原任务 / 指纹 / 反向 id 校验） ----------
+
+    def fetch_task_identity(self, task_id: int) -> Optional[dict]:
+        """任务基础身份（增量导入按 manifest.sourceTask.id 定位 A 原任务用）。
+
+        Returns: {'id', 'name', 'status', 'deleted'}；任务不存在返回 None。
+        软删任务也返回（deleted=True），由调用方按 404 语义拒绝（A7）。
+        """
+        if task_id is None:
+            return None
+        session = get_db_session()
+        try:
+            row = (session.query(Task.id, Task.name, Task.status, Task.deleted)
+                   .filter(Task.id == int(task_id)).first())
+            if row is None:
+                return None
+            return {'id': int(row[0]), 'name': row[1], 'status': row[2],
+                    'deleted': bool(row[3])}
+        finally:
+            session.close()
+
+    def fetch_task_case_ids(self, task_id: int) -> List[str]:
+        """任务当前用例 id 列表（caseSetHash 指纹计算口径，A7）。"""
+        if task_id is None:
+            return []
+        session = get_db_session()
+        try:
+            rows = (session.query(TaskCase.test_case_id)
+                    .filter(TaskCase.task_id == int(task_id)).all())
+            return [str(row[0]) for row in rows if row[0] is not None]
+        finally:
+            session.close()
+
+    def fetch_existing_result_ids(self, result_ids: Iterable[int]) -> Set[int]:
+        """给定结果 id 中在目标库**存在**的集合（A2-3 反向 id 校验用）。
+
+        判定口径是「结果行存在」而不是「已评估」：A 侧执行了但未评估的结果
+        在增量回导时本就没有维度行，B 侧重评出的分数要能插进来（与 D4 合并
+        仓储同口径）。
+        """
+        ids = sorted({int(rid) for rid in (result_ids or []) if rid is not None})
+        if not ids:
+            return set()
+        session = get_db_session()
+        try:
+            found: Set[int] = set()
+            for start in range(0, len(ids), _SOURCE_MAP_CHUNK):
+                chunk = ids[start:start + _SOURCE_MAP_CHUNK]
+                found.update(int(row[0]) for row in
+                             session.query(TestResult.id).filter(TestResult.id.in_(chunk)).all())
+            return found
+        finally:
+            session.close()
+
+    def fetch_task_existence(self, task_ids: List[int]) -> Dict[int, bool]:
+        """task id → 是否已软删（INT-1764 报告包导入定位原任务用）。
+
+        不存在于结果里的 id 表示任务行不存在；`True` 表示已软删。
+        """
+        ids = sorted({int(i) for i in (task_ids or [])})
+        if not ids:
+            return {}
+        session = get_db_session()
+        try:
+            rows = session.query(Task.id, Task.deleted).filter(Task.id.in_(ids)).all()
+            return {int(row[0]): bool(row[1]) for row in rows}
         finally:
             session.close()
 
@@ -379,6 +514,233 @@ class TransferRepository:
             raise
         finally:
             session.close()
+
+    # ---------- 离线搬运 source_map（INT-1760：A 原始 id → 本地 id） ----------
+
+    def upsert_source_maps(self, entries: List[dict]) -> Dict[str, object]:
+        """单事务 upsert 映射登记（D0 A3：编排层唯一写入方，一次事务）。
+
+        唯一键 (source_server, entity_type, local_id)；冲突即覆盖 source_id /
+        source_task_id —— 重复导入 / 失败重放幂等（D0 A4 第 3、4 条）。
+
+        Returns:
+            {'inserted': [本批次新增的条目], 'insertedCount', 'updatedCount',
+             'total'}。inserted 供补偿精确回删：只删本批次新建的行，已存在被
+            覆盖的行不做处理（旧值无快照，删掉等于丢历史映射）。
+        Raises: 写失败回滚并抛出（编排层按「远端已提交、本地登记失败」处理）。
+        """
+        clean = self._clean_source_map_entries(entries)
+        if not clean:
+            return {'inserted': [], 'insertedCount': 0, 'updatedCount': 0, 'total': 0}
+        session = get_db_session()
+        try:
+            existing = self._existing_source_map_keys(session, clean)
+            self._apply_source_map_upsert(session, clean)
+            session.commit()
+            inserted = [e for e in clean
+                        if (e['source_server'], e['entity_type'], e['local_id'])
+                        not in existing]
+            return {'inserted': inserted,
+                    'insertedCount': len(inserted),
+                    'updatedCount': len(clean) - len(inserted),
+                    'total': len(clean)}
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def delete_source_maps(self, entries: List[dict]) -> int:
+        """按唯一键删除映射（本批次补偿 / 批次回滚）。返回删除行数。"""
+        clean = self._clean_source_map_entries(entries)
+        if not clean:
+            return 0
+        session = get_db_session()
+        try:
+            deleted = self._delete_source_map_rows(session, clean)
+            session.commit()
+            return deleted
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def fetch_source_maps(self, source_server: str,
+                          source_task_id: int) -> List[dict]:
+        """按「源服务 + 源任务」取该任务的全部映射行（增量导出翻译用）。
+
+        返回行按 entity_type / source_id 排序；一条查询覆盖四类实体（D0 A4 的
+        索引 idx_transfer_source_map_task 即为此路径建）。
+        """
+        session = get_db_session()
+        try:
+            rows = (session.query(DataTransferSourceMap)
+                    .filter(DataTransferSourceMap.source_server == source_server,
+                            DataTransferSourceMap.source_task_id == source_task_id)
+                    .order_by(DataTransferSourceMap.entity_type,
+                              DataTransferSourceMap.source_id)
+                    .all())
+            return [_source_map_to_dict(row) for row in rows]
+        finally:
+            session.close()
+
+    def fetch_source_maps_grouped(self, source_server: str,
+                                  source_task_id: int) -> Dict[str, List[dict]]:
+        """同 fetch_source_maps，按 entity_type 分组（导出侧按实体取用）。"""
+        grouped: Dict[str, List[dict]] = {}
+        for row in self.fetch_source_maps(source_server, source_task_id):
+            grouped.setdefault(row['entity_type'], []).append(row)
+        return grouped
+
+    def fetch_source_task_refs(self, local_task_ids: Iterable[int]) -> List[dict]:
+        """B 本地任务 → 源任务引用（增量导出反查用，INT-1761）。
+
+        导出侧只拿得到 B 的本地 task_id，需先反查它当初整包导入时的
+        `(source_server, source_id)`，再按「源服务 + 源任务」取四类实体的映射。
+        同一本地任务若被不同源服务导入过，会返回多行——调用方按 source_server
+        去重，多源时拒绝导出（映射不唯一无法确定翻译基准）。
+        """
+        ids = sorted({int(tid) for tid in (local_task_ids or [])})
+        if not ids:
+            return []
+        session = get_db_session()
+        try:
+            rows = (session.query(DataTransferSourceMap)
+                    .filter(DataTransferSourceMap.entity_type == SourceMapEntity.TASKS.value,
+                            DataTransferSourceMap.local_id.in_(ids))
+                    .order_by(DataTransferSourceMap.source_server,
+                              DataTransferSourceMap.local_id)
+                    .all())
+            return [_source_map_to_dict(row) for row in rows]
+        finally:
+            session.close()
+
+    def fetch_source_ids_by_local_ids(self, source_server: str, entity_type: str,
+                                      local_ids: Iterable[int]) -> Dict[int, int]:
+        """local id → 源 id 反查（导出侧把 B 库 id 翻译回 A 原始 id）。
+
+        缺失的 local id 不出现在结果里（调用方自行判定「无映射即无法离线搬运」）。
+        """
+        ids = sorted({int(i) for i in (local_ids or [])})
+        if not ids:
+            return {}
+        mapping: Dict[int, int] = {}
+        session = get_db_session()
+        try:
+            for start in range(0, len(ids), _SOURCE_MAP_CHUNK):
+                chunk = ids[start:start + _SOURCE_MAP_CHUNK]
+                rows = (session.query(DataTransferSourceMap.local_id,
+                                      DataTransferSourceMap.source_id)
+                        .filter(DataTransferSourceMap.source_server == source_server,
+                                DataTransferSourceMap.entity_type == entity_type,
+                                DataTransferSourceMap.local_id.in_(chunk))
+                        .all())
+                for local_id, source_id in rows:
+                    mapping[int(local_id)] = int(source_id)
+            return mapping
+        finally:
+            session.close()
+
+    @staticmethod
+    def _clean_source_map_entries(entries: Iterable[dict]) -> List[dict]:
+        """过滤空条目 + 统一 int 类型（gRPC/JSON 来的 id 可能是字符串）"""
+        clean: List[dict] = []
+        for entry in entries or []:
+            if not isinstance(entry, dict):
+                continue
+            server = entry.get('source_server')
+            entity_type = entry.get('entity_type')
+            if not server or not entity_type:
+                continue
+            try:
+                clean.append({
+                    'source_server': str(server),
+                    'source_task_id': int(entry['source_task_id']),
+                    'entity_type': str(entity_type),
+                    'source_id': int(entry['source_id']),
+                    'local_id': int(entry['local_id']),
+                })
+            except (KeyError, TypeError, ValueError):
+                log_not_emit('WARNING', _MODULE_NAME,
+                             f'source_map 条目字段非法，已跳过: {entry!r}',
+                             category='system')
+        return clean
+
+    @staticmethod
+    def _existing_source_map_keys(session, entries: List[dict]) -> Set[Tuple[str, str, int]]:
+        """本批次涉及的已存在唯一键集合（判定 inserted / updated）"""
+        existing: Set[Tuple[str, str, int]] = set()
+        by_scope: Dict[Tuple[str, str], List[int]] = {}
+        for entry in entries:
+            by_scope.setdefault(
+                (entry['source_server'], entry['entity_type']), []).append(entry['local_id'])
+        for (server, entity_type), local_ids in by_scope.items():
+            for start in range(0, len(local_ids), _SOURCE_MAP_CHUNK):
+                chunk = local_ids[start:start + _SOURCE_MAP_CHUNK]
+                rows = (session.query(DataTransferSourceMap.local_id)
+                        .filter(DataTransferSourceMap.source_server == server,
+                                DataTransferSourceMap.entity_type == entity_type,
+                                DataTransferSourceMap.local_id.in_(chunk))
+                        .all())
+                existing.update((server, entity_type, int(row[0])) for row in rows)
+        return existing
+
+    @staticmethod
+    def _apply_source_map_upsert(session, entries: List[dict]) -> None:
+        """按方言生成 upsert（Postgres / SQLite 均用 ON CONFLICT）"""
+        dialect = session.bind.dialect.name if session.bind is not None else ''
+        if dialect == 'postgresql':
+            from sqlalchemy.dialects.postgresql import insert as _insert
+        elif dialect == 'sqlite':
+            from sqlalchemy.dialects.sqlite import insert as _insert
+        else:  # 兜底：逐条 select-update / insert（无 ON CONFLICT 的方言）
+            TransferRepository._apply_source_map_upsert_fallback(session, entries)
+            return
+        stmt = _insert(DataTransferSourceMap).values(entries)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['source_server', 'entity_type', 'local_id'],
+            set_={
+                'source_task_id': stmt.excluded.source_task_id,
+                'source_id': stmt.excluded.source_id,
+                'updated_at': datetime.now(),
+            })
+        session.execute(stmt)
+
+    @staticmethod
+    def _apply_source_map_upsert_fallback(session, entries: List[dict]) -> None:
+        now = datetime.now()
+        for entry in entries:
+            row = (session.query(DataTransferSourceMap)
+                   .filter(DataTransferSourceMap.source_server == entry['source_server'],
+                           DataTransferSourceMap.entity_type == entry['entity_type'],
+                           DataTransferSourceMap.local_id == entry['local_id'])
+                   .one_or_none())
+            if row is None:
+                session.add(DataTransferSourceMap(**entry))
+            else:
+                row.source_task_id = entry['source_task_id']
+                row.source_id = entry['source_id']
+                row.updated_at = now
+        session.flush()
+
+    @staticmethod
+    def _delete_source_map_rows(session, entries: List[dict]) -> int:
+        """按 (source_server, entity_type, local_id) 分块删除，返回删除行数。"""
+        deleted = 0
+        by_scope: Dict[Tuple[str, str], List[int]] = {}
+        for entry in entries:
+            by_scope.setdefault(
+                (entry['source_server'], entry['entity_type']), []).append(entry['local_id'])
+        for (server, entity_type), local_ids in by_scope.items():
+            for start in range(0, len(local_ids), _SOURCE_MAP_CHUNK):
+                chunk = local_ids[start:start + _SOURCE_MAP_CHUNK]
+                deleted += (session.query(DataTransferSourceMap)
+                            .filter(DataTransferSourceMap.source_server == server,
+                                    DataTransferSourceMap.entity_type == entity_type,
+                                    DataTransferSourceMap.local_id.in_(chunk))
+                            .delete(synchronize_session=False))
+        return deleted
 
     @staticmethod
     def _sync_sequences(session, tables=None) -> None:

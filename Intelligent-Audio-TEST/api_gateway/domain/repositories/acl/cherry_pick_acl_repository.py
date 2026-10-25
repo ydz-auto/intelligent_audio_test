@@ -41,6 +41,14 @@ class CherryPickAclRepository(ABC):
     @abstractmethod
     def list_candidates(self, query) -> CommandResultDTO: ...
 
+    # ---- 可挑选任务清单（INT-1496 §8.1，阶段 1 数据源）----
+    @abstractmethod
+    def list_pickable_tasks(self, query) -> CommandResultDTO: ...
+
+    # ---- 候选树聚合（INT-1510 §8.2，阶段 2 数据源）----
+    @abstractmethod
+    def list_candidate_tree(self, query) -> CommandResultDTO: ...
+
     # ---- 下单（三出口 + 预览）----
     @abstractmethod
     def preview(self) -> CommandResultDTO: ...

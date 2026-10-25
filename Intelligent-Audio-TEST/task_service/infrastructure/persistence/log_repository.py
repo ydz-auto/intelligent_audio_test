@@ -12,12 +12,15 @@
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 from sqlalchemy import func as _func
 from sqlalchemy import or_ as _or
 
+from shared.infrastructure.config import BaseConfig
 from shared.models.database import get_db_session
 from shared.utils.query_utils import now_cst
 from shared.infrastructure.user_context import normalize_user_id, get_current_user_id
@@ -25,6 +28,98 @@ from shared.infrastructure.user_context import normalize_user_id, get_current_us
 logger = logging.getLogger(__name__)
 from task_service.domain.repositories.log_repository import LogRepositoryABC
 from task_service.infrastructure.persistence.models.system_models import Log
+
+
+# ========== 聚合结果短 TTL 缓存（INT-1468）==========
+
+# logs 表量级最大（30 万行级），列表 total 的 count(*) 与 stats 的 group by
+# 每次请求都要全表扫描：并发 40 时是主要耗时与连接占用来源。这里只缓存
+# 「聚合值」（计数 / 分组计数），不缓存行数据，键 = 过滤条件签名；窗口内同
+# 条件请求共享一次聚合。写操作（新增/标记/清除/归档）在同进程内立即失效，
+# 其它服务写入由 TTL 兜底（默认 3s，与文件侧扫描缓存同口径）。
+_AGG_CACHE: Dict[tuple, tuple] = {}
+_AGG_CACHE_LOCK = threading.Lock()
+# 过期瞬间的并发请求单飞：只让一个线程重算聚合并回填，其余等它回填后命中，
+# 否则 40 并发会在 TTL 到期同一刻各跑一次全表 count/group by
+_AGG_REFRESH_LOCK = threading.Lock()
+
+
+def _agg_cache_ttl() -> int:
+    """TTL 秒数（0 = 关闭）；配置缺失/非法按关闭降级。"""
+    try:
+        return max(0, int(BaseConfig.LOG_DB_AGGREGATE_CACHE_TTL_SECONDS or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _agg_cache_max_entries() -> int:
+    try:
+        return max(1, int(BaseConfig.LOG_DB_AGGREGATE_CACHE_MAX_ENTRIES or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _agg_cache_get(key: tuple):
+    """TTL 内命中返回聚合值，否则 None（访问时惰性清理过期条目）。"""
+    ttl = _agg_cache_ttl()
+    if not ttl:
+        return None
+    now = time.monotonic()
+    with _AGG_CACHE_LOCK:
+        expired = [k for k, (stored_at, _v) in _AGG_CACHE.items()
+                   if now - stored_at > ttl]
+        for k in expired:
+            _AGG_CACHE.pop(k, None)
+        entry = _AGG_CACHE.get(key)
+        return entry[1] if entry is not None else None
+
+
+def _agg_cache_put(key: tuple, value) -> None:
+    if not _agg_cache_ttl():
+        return
+    now = time.monotonic()
+    with _AGG_CACHE_LOCK:
+        while len(_AGG_CACHE) >= _agg_cache_max_entries():
+            _AGG_CACHE.pop(min(_AGG_CACHE, key=lambda k: _AGG_CACHE[k][0]))
+        _AGG_CACHE[key] = (now, value)
+
+
+def _agg_cache_clear() -> None:
+    """写操作后整体失效（写少读多，整体清空比按条件精确失效更稳妥）。"""
+    with _AGG_CACHE_LOCK:
+        _AGG_CACHE.clear()
+
+
+def _norm_text(value) -> str:
+    return str(value).strip().lower() if value not in (None, '') else ''
+
+
+def _filter_signature(kind: str, **filters) -> tuple:
+    """过滤条件 → 规范化缓存键。
+
+    只归一化「SQL 语义等价」的写法：空值/0 视为不过滤；level/module/category
+    走 lower() 比较故大小写等价；module/category 的 'all' 在 SQL 层等同不过滤
+    （`!= 'all'` 判断），level 的 'all' 不是——list_logs/get_stats 会把
+    `level='all'` 当字面值过滤（返回空集），因此 level 只做小写归一。
+    keyword 等 LIKE 敏感字段保持原样。
+    """
+    parts = [kind]
+    for name in ('task_id', 'level', 'start_date', 'end_date', 'start_time',
+                 'end_time', 'module', 'category', 'mark', 'device_id',
+                 'api_id', 'test_case_id', 'thread_id', 'keyword',
+                 'content_include', 'content_exclude', 'algorithm_type',
+                 'user_id'):
+        value = filters.get(name)
+        if name == 'level':
+            parts.append(_norm_text(value))
+        elif name in ('module', 'category'):
+            normalized = _norm_text(value)
+            parts.append('' if normalized == 'all' else normalized)
+        elif value in (None, '', 0, '0'):
+            parts.append('')
+        else:
+            parts.append(str(value))
+    return tuple(parts)
 
 
 # ========== PO ↔ dict 转换 ==========
@@ -135,7 +230,24 @@ class LogRepository(LogRepositoryABC):
                 query = query.filter(Log.created_by_user_id == user_id)
             page = page or 1
             per_page = per_page or 20
-            total = query.count()
+            # INT-1468：total 走聚合缓存（同条件 TTL 内复用一个 count(*)），
+            # 分页行本身仍实时查询，只让「总数」有 TTL 级展示时延
+            count_key = _filter_signature(
+                'count', task_id=task_id, level=level, start_date=start_date,
+                end_date=end_date, module=module, category=category, mark=mark,
+                device_id=device_id, api_id=api_id, test_case_id=test_case_id,
+                thread_id=thread_id, keyword=keyword,
+                content_include=content_include,
+                content_exclude=content_exclude,
+                algorithm_type=algorithm_type, user_id=user_id,
+            )
+            total = _agg_cache_get(count_key)
+            if total is None:
+                with _AGG_REFRESH_LOCK:
+                    total = _agg_cache_get(count_key)
+                    if total is None:
+                        total = query.count()
+                        _agg_cache_put(count_key, total)
             rows = (
                 query.order_by(Log.id.desc())
                 .offset((page - 1) * per_page)
@@ -188,6 +300,7 @@ class LogRepository(LogRepositoryABC):
                 session.flush()
                 ids.append(po.id)
             session.commit()
+            _agg_cache_clear()
             return ids
         except Exception:
             session.rollback()
@@ -207,6 +320,18 @@ class LogRepository(LogRepositoryABC):
         """
         session = get_db_session()
         try:
+            # INT-1468：stats 为全表 group by（30 万行级），同条件 TTL 内复用
+            stats_key = _filter_signature(
+                'stats', level=level, module=module, category=category,
+                mark=mark, device_id=device_id, task_id=task_id,
+                keyword=keyword, content_include=content_include,
+                content_exclude=content_exclude, start_time=start_time,
+                end_time=end_time, algorithm_type=algorithm_type,
+                user_id=user_id,
+            )
+            cached_stats = _agg_cache_get(stats_key)
+            if cached_stats is not None:
+                return dict(cached_stats)
             query = session.query(Log.level, _func.count(Log.id))
             if level:
                 if ',' in level:
@@ -244,16 +369,22 @@ class LogRepository(LogRepositoryABC):
                 query = query.filter(Log.algorithm_type == algorithm_type)
             if user_id:
                 query = query.filter(Log.created_by_user_id == user_id)
-            stats = query.group_by(Log.level).all()
-            stats_dict = {lv.lower(): count for lv, count in stats}
-            return {
-                'total': sum(stats_dict.values()) if stats_dict else 0,
-                'debug': stats_dict.get('debug', 0),
-                'info': stats_dict.get('info', 0),
-                'warning': stats_dict.get('warning', 0),
-                'error': stats_dict.get('error', 0),
-                'critical': stats_dict.get('critical', 0),
-            }
+            with _AGG_REFRESH_LOCK:
+                cached_stats = _agg_cache_get(stats_key)
+                if cached_stats is not None:
+                    return dict(cached_stats)
+                stats = query.group_by(Log.level).all()
+                stats_dict = {lv.lower(): count for lv, count in stats}
+                result = {
+                    'total': sum(stats_dict.values()) if stats_dict else 0,
+                    'debug': stats_dict.get('debug', 0),
+                    'info': stats_dict.get('info', 0),
+                    'warning': stats_dict.get('warning', 0),
+                    'error': stats_dict.get('error', 0),
+                    'critical': stats_dict.get('critical', 0),
+                }
+                _agg_cache_put(stats_key, result)
+            return dict(result)
         finally:
             session.close()
 
@@ -325,6 +456,7 @@ class LogRepository(LogRepositoryABC):
                 .update({'mark': mark}, synchronize_session=False)
             )
             session.commit()
+            _agg_cache_clear()
             return count
         except Exception:
             session.rollback()
@@ -343,6 +475,7 @@ class LogRepository(LogRepositoryABC):
                 query = query.filter(_or(Log.mark.is_(None), Log.mark == ''))
             count = query.delete(synchronize_session=False)
             session.commit()
+            _agg_cache_clear()
             return count
         except Exception:
             session.rollback()
@@ -392,6 +525,7 @@ class LogRepository(LogRepositoryABC):
             log_ids = [log.id for log in cold_logs]
             session.query(Log).filter(Log.id.in_(log_ids)).delete(synchronize_session=False)
             session.commit()
+            _agg_cache_clear()
             remaining = session.query(_func.count(Log.id)).scalar() or 0
             return {
                 'archived_count': cold_count,

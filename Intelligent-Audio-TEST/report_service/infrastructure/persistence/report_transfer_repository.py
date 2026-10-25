@@ -102,6 +102,24 @@ class ReportTransferRepository:
         finally:
             session.close()
 
+    def export_by_report_ids(self, report_ids: List[int]) -> Dict[str, List[dict]]:
+        """按报告 id 批量拉取报告 7 表只读行（INT-1764：报告包按 reportIds 导出）"""
+        clean_ids = [int(rid) for rid in (report_ids or [])]
+        session = get_db_session()
+        try:
+            reports = (session.query(Report)
+                       .filter(Report.id.in_(clean_ids)).all()) if clean_ids else []
+            rows: Dict[str, List[dict]] = {'test_reports': [_po_to_row(po) for po in reports]}
+            found_ids = [po.id for po in reports]
+            for table in _CHILD_TABLES:
+                po_cls = _TABLE_PO[table]
+                pos = (session.query(po_cls)
+                       .filter(po_cls.report_id.in_(found_ids)).all()) if found_ids else []
+                rows[table] = [_po_to_row(po) for po in pos]
+            return rows
+        finally:
+            session.close()
+
     def import_reports(self, tables_rows: Dict[str, List[dict]],
                        task_id_mapping: Dict[int, int]) -> Tuple[Dict[int, int], Dict[str, List[int]]]:
         """单事务写入报告 7 表：冲突剥离 + 外键重映射 + 插入。

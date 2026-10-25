@@ -372,7 +372,9 @@ class TestExecutorFullChain:
             case_algorithm_params={}, algorithm_type='voice_llm',
             total_rounds=1)
         assert result['success'] is True
-        assert result['output'] == 'pong'
+        # INT-1746：轮次文本输出落 answer_text，output 为映射后的 dict
+        assert result['answer_text'] == 'pong'
+        assert result['output'] == {}
         assert result['round_number'] == 1
 
         # 聚合 → 落库（result_processor 捕获 algorithm_result）→ 评估提交
@@ -436,7 +438,10 @@ class TestExecutorFullChain:
         aggregated = executor._aggregate_round_results([round_result], session,
                                                        api_config=cfg)
         assert aggregated['algorithm_result']['success_count'] == 1
-        assert aggregated['algorithm_result']['rounds'][0]['output'] == 'chunk3'
+        # INT-1746：历史字符串 output 由聚合归一为 answer_text + 空 output dict
+        round_out = aggregated['algorithm_result']['rounds'][0]
+        assert round_out['output'] == {}
+        assert round_out['answer_text'] == 'chunk3'
 
     def test_multi_round_ws_aggregation(self, ws_stream_server, monkeypatch):
         """多轮 WS：两轮结果聚合（text_output 拼接 / round_count / avg_latency）"""

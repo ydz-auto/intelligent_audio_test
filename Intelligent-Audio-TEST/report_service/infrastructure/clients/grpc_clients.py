@@ -139,13 +139,18 @@ def _grpc_get_test_results_by_task_and_case(test_case_ids, task_ids=None):
 # EvaluationDataService —— 维度评估结果查询
 # ======================================================================
 
-def _grpc_get_dimension_results_by_result_ids(result_ids):
+def _grpc_get_dimension_results_by_result_ids(result_ids, include_body=False):
     """通过 gRPC (evaluation_service.EvaluationDataService) 批量查询维度评估结果。
 
     返回 {result_id: [item_dict, ...]} 映射，item_dict 含
     dimension_id / dimension_name / dimension_value / api_raw_response 等字段。
+
+    Args:
+        include_body: INT-1752 —— 是否携带 api_request_body / api_raw_response。
+            加权聚合（weighted_sum_ratio / weighted_wer）与报告详情按需展开
+            原始响应时为 True；默认 False 保持既有轻量载荷。
     """
-    raw = _eval_data.get_dimension_results_by_result_ids(result_ids)
+    raw = _eval_data.get_dimension_results_by_result_ids(result_ids, include_body=include_body)
     return {rid: [_dto_to_dict(d) for d in items] for rid, items in raw.items()}
 
 
@@ -206,11 +211,32 @@ def _grpc_algo_get_field_mapping(algorithm_type=None):
 def _grpc_list_testcases_by_ids(test_case_ids):
     """通过 gRPC (task_service.TestCaseConfigService) 按 ID 批量查询测试用例。
 
-    返回 {id: dict} 映射。由于 TestCaseConfigService 没有按 ID 批量查询的 RPC，
-    此处通过 ListTestCases 大分页拉取后过滤。
+    返回 {id: dict} 映射。TestCaseConfigService 没有按 ID 批量查询的 RPC，
+    ACL 侧按 id 逐条调 GetTestCaseDetail（受限并发 + 超时容错，INT-1572），
+    不再用 ListTestCases 大分页全表拉取后过滤。
+
+    只需「是否取全」的调用方（报告统计，INT-1572 返工 P2）用
+    ``_grpc_lookup_testcases_by_ids`` 取完整口径。
+    """
+    return _grpc_lookup_testcases_by_ids(test_case_ids)['items']
+
+
+def _grpc_lookup_testcases_by_ids(test_case_ids):
+    """同上，返回完整查询结果（INT-1572 返工）。
+
+    Returns:
+        dict：{items: {id: dict}, missing_ids: [id], incomplete_ids: [id], partial: bool}
+        - missing_ids：请求了但没取到的 id（软删 / 不存在 / 查询未完成）
+        - incomplete_ids：其中因整批截止 / 单条超时 / 失败而未完成查询的 id
+        - partial：是否存在未完成查询（True 时调用方不得把结果当完整数据用）
     """
     raw = _testcase.list_testcases_by_ids(test_case_ids)
-    return {k: _dto_to_dict(v) for k, v in raw.items()}
+    return {
+        'items': {k: _dto_to_dict(v) for k, v in raw.items.items()},
+        'missing_ids': list(raw.missing_ids),
+        'incomplete_ids': list(raw.incomplete_ids),
+        'partial': raw.partial,
+    }
 
 
 # ======================================================================

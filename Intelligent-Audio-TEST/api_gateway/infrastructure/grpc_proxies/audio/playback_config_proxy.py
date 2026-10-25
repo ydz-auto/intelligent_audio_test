@@ -283,6 +283,114 @@ class _PlaybackConfigProxy:
             error_msg_prefix='停止播放设备测试失败',
         )
 
+    # ---- 控制端点（INT-1579，契约 §2.1/§2.2/§2.5）----
+    # 这批响应带 code 业务码（200/400/404/409），网关据此映射 HTTP 状态码
+
+    def restart(self, device_id):
+        """重启播放设备（音频通道层重开 + 重新枚举）
+
+        Returns:
+            dict: {success, message, data, code}
+        """
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_playback_config_service_stub()
+            resp = stub.RestartPlaybackDevice(device_pb.RestartPlaybackDeviceRequest(
+                device_id=int(device_id),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': resp.code or (200 if resp.success else 400),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'重新连接音频通道失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='重新连接音频通道失败',
+        )
+
+    def reset_config(self, device_id):
+        """重置播放设备配置（按硬件重新探测采样率与通道索引）
+
+        Returns:
+            dict: {success, message, data, code}
+        """
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_playback_config_service_stub()
+            resp = stub.ResetPlaybackDeviceConfig(device_pb.ResetPlaybackDeviceConfigRequest(
+                device_id=int(device_id),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': resp.code or (200 if resp.success else 400),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'重置播放设备配置失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='重置播放设备配置失败',
+        )
+
+    def diagnosis(self, device_id):
+        """播放设备诊断（只读）
+
+        Returns:
+            dict: {success, message, data, code}
+        """
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_playback_config_service_stub()
+            resp = stub.GetPlaybackDeviceDiagnosis(device_pb.GetPlaybackDeviceDiagnosisRequest(
+                device_id=int(device_id),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': resp.code or (200 if resp.success else 400),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'播放设备诊断失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='播放设备诊断失败',
+        )
+
+    def repair(self, device_id, actions):
+        """修复播放设备（仅 re-enumerate / reopen-channel 两个安全动作）
+
+        Returns:
+            dict: {success, message, data, code}
+        """
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_playback_config_service_stub()
+            resp = stub.RepairPlaybackDevice(device_pb.RepairPlaybackDeviceRequest(
+                device_id=int(device_id),
+                data=json.dumps({'actions': list(actions or [])}, ensure_ascii=False, default=str),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': resp.code or (200 if resp.success else 400),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'修复播放设备失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='修复播放设备失败',
+        )
+
 
 # Playback 配置 CRUD 模块级单例
 playback_config_service = _PlaybackConfigProxy()

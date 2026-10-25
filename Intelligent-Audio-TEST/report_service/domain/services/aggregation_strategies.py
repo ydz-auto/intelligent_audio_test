@@ -332,3 +332,66 @@ def get_strategy(statistic_method: str) -> AggregationStrategy:
 def get_available_strategies() -> List[str]:
     """返回所有已注册的策略名。"""
     return list(_REGISTRY.keys())
+
+
+# ------------------------------------------------------------------
+#  INT-1752：加权聚合的原始响应依赖与降级说明
+# ------------------------------------------------------------------
+
+#: 需要 api_raw_response 才能取分子/分母的聚合方式。
+#: 维度结果不带原始响应时这些策略返回 None——此前报告侧会静默退回简单平均，
+#: 现由 explain_degradation 产出说明并随报告指标下发，前端据此标注「降级为简单平均」。
+RAW_RESPONSE_METHODS = frozenset({'weighted_sum_ratio', 'weighted_wer'})
+
+
+def needs_raw_response(statistic_method: str) -> bool:
+    """该聚合方式是否需要 api_raw_response（分子/分母来自原始响应）。"""
+    return (statistic_method or 'average') in RAW_RESPONSE_METHODS
+
+
+def explain_degradation(method: str, items: List[Dict[str, Any]],
+                        output_params: List[Dict[str, Any]] = None,
+                        denominator_mode: str = None) -> Optional[Dict[str, Any]]:
+    """策略聚合无法计算时的降级说明；能算出值或不适用时返回 None。
+
+    仅在 method 属于 RAW_RESPONSE_METHODS 时判定，且以重算一次聚合结果为准
+    （调用方在 aggregate() 返回 None 后才调用，成本只在失败路径上）：
+      - missing_api_raw_response：维度结果未携带原始响应（gRPC 未开 include_body、
+        历史数据缺失、或对比链路无维度结果映射）；
+      - numerator_denominator_unavailable：原始响应在，但配置的分子/分母字段取不到
+        或分母合计为 0。
+
+    Args:
+        method: 维度配置的 statistic_method
+        items: 参与该次聚合的 item 列表
+        output_params: 维度 output 参数（分子/分母的 field_path 来源）
+        denominator_mode: 分母口径（透传给策略，保持与调用方口径一致）
+    """
+    if not needs_raw_response(method):
+        return None
+    if not items:
+        return None
+    if get_strategy(method).aggregate(
+            items, output_params=output_params, denominator_mode=denominator_mode) is not None:
+        return None
+    if not any(_parse_raw_response(it.get('api_raw_response')) for it in items):
+        reason = 'missing_api_raw_response'
+        detail = '维度结果未携带 API 原始响应，无法提取分子/分母'
+    else:
+        reason = 'numerator_denominator_unavailable'
+        detail = 'API 原始响应中未取到配置的分子/分母字段，或分母合计为 0'
+    return {
+        'configured_method': method,
+        'applied_method': 'average',
+        'reason': reason,
+        'detail': detail,
+    }
+
+
+def simple_average_of_items(items: List[Dict[str, Any]]) -> Optional[float]:
+    """加权策略无法计算时的降级值：按 item 的 dimension_value 取算术平均。"""
+    vals = [_parse_numeric(it.get('dimension_value')) for it in items or []]
+    vals = [v for v in vals if v is not None]
+    if not vals:
+        return None
+    return sum(vals) / len(vals)

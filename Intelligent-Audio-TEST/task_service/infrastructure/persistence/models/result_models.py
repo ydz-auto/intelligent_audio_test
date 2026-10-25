@@ -35,6 +35,9 @@ class TestResult(Base):
     execution_steps = Column(JSON, default=list, comment='执行步骤详细日志 (JSON)')
     result_data = Column(JSON, nullable=True, comment='轻量结果元数据 (JSON)，大字段存 result_data_path 文件')
     result_data_path = Column(String(500), nullable=True, comment='结果数据文件路径 (大字段存文件，DB仅存轻量元数据)')
+    # INT-1510 §8.2.3：结果类型落库列（写时物化，读侧 DB-first 零 OSS 往返）。
+    # 缺值语义 = UX「结果类型待补充」桶：落库为 NULL，对外统一输出 default。
+    result_type = Column(String(50), nullable=True, comment='结果类型（asr/api/voice/real-time/final 等；NULL=待补充桶）')
     error_message = Column(Text, comment='错误信息描述')
     # INT-305：用例删除排除标记（0=正常 1=excluded；被删用例的结果不物理删，标记剔除保审计）
     excluded = Column(Integer, nullable=False, default=0, server_default='0', comment='结果排除标记 (0=正常 1=被删用例排除，报告/聚合剔除)')

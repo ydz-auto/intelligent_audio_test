@@ -12,10 +12,16 @@ logger = logging.getLogger(__name__)
 
 
 def _decorate_lab_names(items):
-    """为设备/播放设备 item 列表装饰 lab_name（基于 lab_id → name 映射）。"""
+    """为设备/播放设备 item 列表装饰 lab_name（基于 lab_id → name 映射）。
+
+    INT-1467：device_service 已随 item 返回 lab_name（同一张 laboratories 表、
+    同一软删口径），此时网关不再发起 ListLaboratories 全量查询——只有确实
+    缺 lab_name 的 item 才回源，避免每次详情/列表多一次跨服务 RPC。
+    """
     if not items:
         return items
-    lab_ids = {item.get('lab_id') for item in items if item.get('lab_id') is not None}
+    lab_ids = {item.get('lab_id') for item in items
+               if item.get('lab_id') is not None and not item.get('lab_name')}
     if not lab_ids:
         return items
 
@@ -25,6 +31,9 @@ def _decorate_lab_names(items):
 
     for item in items:
         lab_id = item.get('lab_id')
+        # 已由 device_service 解析出 lab_name 的 item 不覆盖
+        if lab_id is not None and item.get('lab_name'):
+            continue
         item['lab_name'] = lab_map.get(lab_id) if lab_id is not None else None
     return items
 

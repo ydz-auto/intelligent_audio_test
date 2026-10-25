@@ -14,15 +14,16 @@ from api_gateway.schemas.report import (
     ReportListQuery,
     ReportCaseListQuery,
     ReportSearchCasesRequest,
+    ReportRawResponseQuery,
     ReportExportRequest,
     GetCaseAveragesRequest,
     ReportExportQuery,
+    ReportExportHistoryQuery,
     ReportStatisticsQuery,
     ReportStatisticsTrendQuery,
     GenerateStatisticsReportRequest,
 )
 from api_gateway.infrastructure.grpc_proxies import report_config_service
-from shared.models.common_enums import ReportStatus, ReportType
 from shared.proto import report_service_pb2 as report_pb
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
@@ -79,38 +80,28 @@ class ReportQueryService:
 
     @staticmethod
     def get_tab_counts():
-        """四个视图 Tab 的全量计数（每 Tab 一次 CountReports RPC，page/per_page 忽略）。
+        """四个视图 Tab 的全量计数（单次 RPC：report_service 一条条件聚合 SQL）。
 
-        Tab → 过滤映射与 report_service ReportStatus/ReportType 枚举一致：
-        - all:         无过滤
-        - draft:       status=draft
-        - published:   status=published
-        - comparison:  report_type=comparison,secondary_comparison
-        单 Tab 失败时该 Tab 计数 0 并降级继续（列表仍可用，计数不阻塞主视图）。
+        Tab → 过滤映射由 report_service 持有（all/draft/published/comparison，
+        与 ReportStatus/ReportType 枚举一致）；本层只做透传，不再逐 Tab 串行
+        CountReports（INT-1463：4 次 RPC 合并为 1 次）。
+        RPC 失败时四个计数全 0 降级（列表仍可用，计数不阻塞主视图）。
         """
-        tab_filters = {
-            'all': {},
-            'draft': {'status': ReportStatus.DRAFT.value},
-            'published': {'status': ReportStatus.PUBLISHED.value},
-            'comparison': {'report_type': ','.join([
-                ReportType.COMPARISON.value,
-                ReportType.SECONDARY_COMPARISON.value,
-            ])},
-        }
-        counts = {}
+        counts = {'all': 0, 'draft': 0, 'published': 0, 'comparison': 0}
         try:
             stub = report_config_service.stub
-            for tab, filters in tab_filters.items():
-                try:
-                    resp = stub.CountReports(report_pb.ListReportsRequest(**filters))
-                    data = _loads(resp.data, {}) or {}
-                    counts[tab] = int(data.get('total', 0)) if resp.success else 0
-                except Exception:
-                    logger.exception('报告 Tab 计数失败: %s', tab)
-                    counts[tab] = 0
+            resp = stub.CountReportsByTabs(report_pb.CountReportsByTabsRequest())
+            if resp.success:
+                data = _loads(resp.data, {}) or {}
+                for tab in counts:
+                    counts[tab] = int(data.get(tab, 0) or 0)
+            else:
+                logger.warning('报告 Tab 计数失败（降级为 0）: %s', resp.message)
             return success_response(counts)
         except Exception as e:
-            return error_response(f'查询报告 Tab 计数失败: {str(e)}')
+            # 计数失败不阻塞主视图：保留 200 + 全 0 降级（INT-280 既有口径）
+            logger.exception('报告 Tab 计数失败（降级为 0）: %s', e)
+            return success_response(counts)
 
     # ------------------------------------------------------------------
     # 报告详情
@@ -205,6 +196,38 @@ class ReportQueryService:
         except Exception as e:
             return error_response(f'查询报告用例失败: {str(e)}')
 
+    @staticmethod
+    def get_case_dimension_raw_response(report_id, case_id, dimension_id):
+        """按需读取报告某用例某维度的 API 原始响应（INT-1752）。
+
+        GET /reports/{id}/cases/{cid}/dimensions/{dim_id}/raw-response（report:read）。
+        默认关闭：不随报告详情下发，仅显式请求时读取；返回单页切片
+        （offset/limit，默认 20k、上限 200k 字符，has_more/next_offset 翻页）。
+        data.available=False 表示该用例/维度没有可展开的原始响应（非 API 用例等）。
+        """
+        try:
+            query = ReportRawResponseQuery.model_validate(
+                {k: v[0] if isinstance(v, list) else v
+                 for k, v in request.args.to_dict().items()})
+        except Exception as e:
+            return error_response(f'参数错误: {str(e)}', 400)
+
+        try:
+            stub = report_config_service.stub
+            resp = stub.GetCaseDimensionRawResponse(report_pb.GetCaseDimensionRawResponseRequest(
+                report_id=int(report_id),
+                case_id=str(case_id),
+                dimension_id=int(dimension_id),
+                offset=query.offset,
+                limit=query.limit,
+                round_number=query.round_number,
+            ))
+            if not resp.success:
+                return error_response(resp.message or '读取原始响应失败', http_code=resp.code or 400)
+            return success_response(_loads(resp.data, {}) or {})
+        except Exception as e:
+            return error_response(f'读取 API 原始响应失败: {str(e)}')
+
     # ------------------------------------------------------------------
     # 搜索报告用例
     # ------------------------------------------------------------------
@@ -284,6 +307,28 @@ class ReportQueryService:
             return success_response(data)
         except Exception as e:
             return error_response(f'导出报告失败: {str(e)}')
+
+    # ------------------------------------------------------------------
+    # 导出历史（INT-1555：报告中心「导出历史」页签）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def get_export_history():
+        try:
+            query = _parse_query_params(ReportExportHistoryQuery)
+        except Exception as e:
+            return error_response(f'参数错误: {str(e)}', 400)
+
+        try:
+            stub = report_config_service.stub
+            resp = stub.ListExportHistory(report_pb.ListExportHistoryRequest(
+                data=_dumps({'page': query.page,
+                             'per_page': query.per_page})))
+            if not resp.success:
+                return error_response(resp.message or '查询导出历史失败')
+            return success_response(_loads(resp.data, {}) or {})
+        except Exception as e:
+            return error_response(f'查询导出历史失败: {str(e)}')
 
     # ------------------------------------------------------------------
     # 用例平均值

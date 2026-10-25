@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List
+from typing import List, Optional
 
 from api_test_service.domain.dto import (
     AlgoFieldMappingsDTO, AlgoParamDTO, AlgoParamMappingDTO, ExtractedCaseParamsDTO,
@@ -60,10 +60,11 @@ class AlgorithmQueryAclRepositoryImpl(AlgorithmQueryAclRepository):
             logger.warning("load_reference_params_file failed: %s", e)
             return []
 
-    def get_field_mappings(self, algorithm_type) -> AlgoFieldMappingsDTO:
+    def get_field_mappings(self, algorithm_type,
+                           api_id: Optional[int] = None) -> AlgoFieldMappingsDTO:
         from shared.clients.grpc_clients import algo_get_field_mappings
         try:
-            data = algo_get_field_mappings(algorithm_type)
+            data = algo_get_field_mappings(algorithm_type, api_id=api_id)
             raw = data._data if hasattr(data, '_data') else data
             return _attach(dict_to_dto(raw, AlgoFieldMappingsDTO), raw)
         except Exception as e:
@@ -80,22 +81,39 @@ class AlgorithmQueryAclRepositoryImpl(AlgorithmQueryAclRepository):
             logger.warning("get_device_params failed: %s", e)
             return []
 
-    def get_api_params(self, algorithm_type) -> List[AlgoParamDTO]:
+    def get_api_params(self, algorithm_type,
+                       api_id: Optional[int] = None) -> List[AlgoParamDTO]:
         from shared.clients.grpc_clients import algo_get_api_params
         try:
-            data = algo_get_api_params(algorithm_type)
+            data = algo_get_api_params(algorithm_type, api_id=api_id)
             return [_attach(dict_to_dto(d, AlgoParamDTO), d)
                     for d in data if isinstance(d, dict)]
         except Exception as e:
             logger.warning("get_api_params failed: %s", e)
             return []
 
-    def get_param_mapping(self, algorithm_type, comp_type) -> List[AlgoParamMappingDTO]:
+    def get_param_mapping(self, algorithm_type, comp_type,
+                          api_id: Optional[int] = None) -> List[AlgoParamMappingDTO]:
         from shared.clients.grpc_clients import algo_get_param_mapping
         try:
-            data = algo_get_param_mapping(algorithm_type, comp_type)
+            data = algo_get_param_mapping(algorithm_type, comp_type, api_id=api_id)
             return [_attach(dict_to_dto(d, AlgoParamMappingDTO), d)
                     for d in data if isinstance(d, dict)]
         except Exception as e:
             logger.warning("get_param_mapping failed: %s", e)
             return []
+
+    def convert_field_values(self, items):
+        """批量字段值转换（INT-1749）：一次 RPC 处理 N 个值。"""
+        from shared.clients.grpc_clients import algo_convert_field_values
+        try:
+            values = algo_convert_field_values(items or [])
+        except Exception as e:
+            logger.warning("convert_field_values failed: %s", e)
+            return None
+        if not isinstance(values, list) or len(values) != len(items or []):
+            logger.warning("convert_field_values 返回长度不匹配（请求 %s / 返回 %s），按原值保留",
+                           len(items or []),
+                           len(values) if isinstance(values, list) else None)
+            return None
+        return values

@@ -37,6 +37,10 @@ from .report_studio_models import (
 )
 # 报告分享（INT-971）
 from .report_share_models import ReportShare
+# 报告导出历史（INT-1555）
+from .report_export_record_models import ReportExportRecord
+# 增量回导报告替换批次快照（INT-1762 D4）
+from .merge_snapshot_models import ReportMergeSnapshot
 
 __all__ = [
     'Report', 'ReportSummary', 'ReportSummaryMeta', 'ReportRawData',
@@ -50,4 +54,8 @@ __all__ = [
     'ReportStudioChartSpec', 'ReportStudioExportJob',
     # 报告分享（INT-971）
     'ReportShare',
+    # 报告导出历史（INT-1555）
+    'ReportExportRecord',
+    # 增量回导报告替换批次快照（INT-1762 D4）
+    'ReportMergeSnapshot',
 ]

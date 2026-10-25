@@ -189,6 +189,49 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
             return None
         return _audio_po_to_entity(po)
 
+    def get_audio_by_file_path(self, file_path: str) -> Optional[AudioAggregate]:
+        """按存储路径查询音频（INT-564 路径式 stream/download 可见性校验）。
+
+        尝试多种形态匹配（精确 / 去 scheme 前缀 / 尾部路径片段），命中任一
+        返回 AudioAggregate，否则 None。仅查询未删除记录。未命中返回 None
+        不抛错——路径可能为派生/缓存形态，调用方按"查不到即放行"处理。
+        """
+        session = get_db_session()
+        if not file_path:
+            return None
+
+        candidates = [file_path]
+        for scheme in ('oss://', 'local://'):
+            if file_path.startswith(scheme):
+                candidates.append(file_path[len(scheme):])
+                break
+        normalized = file_path.replace(chr(92), '/')
+        for scheme in ('oss://', 'local://'):
+            if normalized.startswith(scheme):
+                candidates.append(normalized[len(scheme):])
+                break
+
+        seen = set()
+        for cand in candidates:
+            if cand in seen:
+                continue
+            seen.add(cand)
+            po = session.query(Audio).filter(
+                Audio.file_path == cand, Audio.deleted == False
+            ).first()
+            if po is not None:
+                return _audio_po_to_entity(po)
+
+        # 尾部路径片段匹配（绝对路径 / 带分类前缀形态互转）
+        tail = normalized.rstrip('/').split('/')[-1]
+        if tail and tail != normalized:
+            po = session.query(Audio).filter(
+                Audio.file_path.like('%/' + tail), Audio.deleted == False
+            ).first()
+            if po is not None:
+                return _audio_po_to_entity(po)
+        return None
+
     def get_audios_by_md5_list(self, md5_list: List[str]) -> List[AudioAggregate]:
         """按 MD5 列表批量查询音频，返回 AudioAggregate 列表。"""
         session = get_db_session()

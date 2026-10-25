@@ -25,6 +25,14 @@ class Config(BaseConfig):
     ACCESS_TOKEN_DEFAULT_EXPIRY_DAYS = int(
         os.environ.get('ACCESS_TOKEN_DEFAULT_EXPIRY_DAYS', 30))
 
+    # 用户管理入口（admin 建号 / admin 改资料带密码）密码长度兜底（INT-1590）：
+    # gRPC 直连绕过网关时同样拒绝 <8 或 >128 位。与自助注册 / 自助改密的
+    # 6 位下限是两个产品面，不共用。键名与网关 Config 保持一致，一次 .env 生效。
+    USER_ADMIN_PASSWORD_MIN_LENGTH = int(os.environ.get(
+        'AUTH_USER_ADMIN_PASSWORD_MIN_LENGTH', '8'))
+    PASSWORD_MAX_LENGTH = int(os.environ.get(
+        'AUTH_PASSWORD_MAX_LENGTH', '128'))
+
 
 # 兼容旧代码中的 AuthServiceConfig 引用
 AuthServiceConfig = Config

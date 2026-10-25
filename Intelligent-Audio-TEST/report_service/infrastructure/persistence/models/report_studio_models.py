@@ -13,6 +13,7 @@
 - report_studio_export_jobs 是导出异步作业（状态持久化，进程生命周期不影响作业记录）。
 """
 from shared.models.database import Base, utc8now
+from shared.models.common_enums import ReportStudioSourceType
 from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON,
     Index, UniqueConstraint,
@@ -20,14 +21,28 @@ from sqlalchemy import (
 
 
 class ReportStudioDocument(Base):
-    """Report Studio 文档聚合根（当前版 + 乐观锁基准）。"""
+    """Report Studio 文档聚合根（当前版 + 乐观锁基准）。
+
+    INT-1763（离线搬运设计文档 §6.4）：文档来源分三类，uploaded_file /
+    agent_summary 可没有平台报告行，故 report_id 可空；来源枚举禁止裸字符串。
+    """
     __tablename__ = 'report_studio_documents'
     __table_args__ = (
         Index('idx_rs_doc_report_id', 'report_id'),
         Index('idx_rs_doc_created_by', 'created_by'),
+        Index('idx_rs_doc_source_type', 'source_type'),
+        Index('idx_rs_doc_parent', 'parent_doc_id'),
     )
     doc_id = Column(String(36), primary_key=True, comment='文档 ID（UUID）')
-    report_id = Column(BigInteger, nullable=False, comment='外键 → test_reports.id')
+    report_id = Column(BigInteger, nullable=True, comment='外键 → test_reports.id（可空：上传文档/孤儿 Agent 总结）')
+    source_type = Column(String(20), nullable=False,
+                         default=ReportStudioSourceType.PLATFORM_REPORT.value,
+                         server_default=ReportStudioSourceType.PLATFORM_REPORT.value,
+                         comment='platform_report / uploaded_file / agent_summary')
+    parent_doc_id = Column(String(36), nullable=True, comment='父文档 → report_studio_documents.doc_id（Agent 总结用）')
+    source_file_path = Column(String(512), nullable=True, comment='html/pptx 源文件存储路径（md 为空）')
+    source_format = Column(String(10), nullable=True, comment='源文件格式 md / html / pptx')
+    source_file_size = Column(BigInteger, nullable=True, comment='源文件字节数')
     agent_session_id = Column(String(64), nullable=True, comment='绑定 DSH agent 会话（可空，Agent 后端立项前可不绑）')
     title = Column(String(255), nullable=False, comment='文档标题')
     markdown_content = Column(Text, nullable=False, default='', comment='当前版 Markdown')
@@ -60,7 +75,10 @@ class ReportStudioDocumentVersion(Base):
 
 
 class ReportStudioChartSpec(Base):
-    """Report Studio 图表定义源（受控引用）。"""
+    """Report Studio 图表定义源（受控引用）。
+
+    INT-1763：源为上传文档时没有平台报告行，report_id 可空，待前端重新绑定。
+    """
     __tablename__ = 'report_studio_chart_specs'
     __table_args__ = (
         Index('idx_rs_chart_doc', 'doc_id'),
@@ -68,7 +86,7 @@ class ReportStudioChartSpec(Base):
     )
     chart_id = Column(String(36), primary_key=True, comment='图表 ID（UUID）')
     doc_id = Column(String(36), nullable=False, comment='外键 → report_studio_documents.doc_id')
-    report_id = Column(BigInteger, nullable=False, comment='来源报告 ID（归属校验）')
+    report_id = Column(BigInteger, nullable=True, comment='来源报告 ID（归属校验；可空 = 需重新绑定）')
     metric_params = Column(JSON, nullable=False, default=dict, comment='指标/分组/时间范围参数')
     style = Column(JSON, nullable=False, default=dict, comment='样式定义')
     version = Column(Integer, nullable=False, default=1, comment='ChartSpec 版本')

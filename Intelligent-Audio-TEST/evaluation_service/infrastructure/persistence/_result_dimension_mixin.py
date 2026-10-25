@@ -313,7 +313,6 @@ class DimensionResultMixin:
                         current_result_all_completed=False,
                         task_id=task_id,
                         test_case_id=test_case_id,
-                        test_type=None
                     )
             except Exception as e:
                 self._log(

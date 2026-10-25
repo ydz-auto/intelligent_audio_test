@@ -30,9 +30,10 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_apis_by_ids,
     _grpc_list_dimensions_all,
     _grpc_algo_get_field_mapping,
-    _dim_id,
+    _dim_statistic_method,
 )
 from report_service.infrastructure.persistence.report_repository import report_repository
+from shared.infrastructure.user_context import capture_identity, run_with_identity
 from shared.models.common_enums import TaskStatus
 from shared.utils.log_handler import log_and_emit
 from shared.utils.query_utils import now_cst
@@ -56,8 +57,9 @@ def _emit_report_event(event_name, data):
         _log.getLogger(__name__).warning(f"SSE event emit failed: {_e}")
 
 
-# 异步报告生成线程池
-_report_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix='report_gen')
+# 异步报告生成线程池（INT-1505：容量配置化，原硬编码 3 并发时排队饥饿）
+_report_executor = ThreadPoolExecutor(
+    max_workers=Config.REPORT_GEN_MAX_WORKERS, thread_name_prefix='report_gen')
 # 报告生成去重锁 key 前缀与 TTL（分布式锁，替代原进程内 set+threading.Lock）
 _REPORT_GEN_LOCK_PREFIX = 'report:gen:'
 # 30 分钟兜底 TTL，防止持有者崩溃后死锁；正常路径在 finally 中主动释放
@@ -74,7 +76,8 @@ class GenerationTracker:
 
     记录每次生成的阶段与时间戳，供看门狗线程观测：
     - 卡死可观察：总时长超阈值时输出工作线程当前调用栈（精确定位卡死行）
-    - 队列饥饿可观察：QUEUED 停留过长说明线程池 max_workers=3 被占满
+    - 队列饥饿可观察：QUEUED 停留过长说明线程池工作线程（REPORT_GEN_MAX_WORKERS
+      个，INT-1505 起可配置）被占满，已知饥饿模式见 INT-117 / INT-1505
     工作线程写、看门狗线程读，锁保护。
     """
 
@@ -195,6 +198,47 @@ def _executor_queue_depth():
         return None
 
 
+def _executor_status():
+    """任务报告生成线程池负载快照（INT-1505 队列深度可观测）。
+
+    - max_workers：容量（配置化，见 Config.REPORT_GEN_MAX_WORKERS）
+    - workers：已创建且存活的工作线程数
+    - queued：待执行队列深度（None = 平台取不到私有属性）
+    - in_flight：轨迹注册表中未结束的生成数（含排队与执行中）
+
+    仅供观测（提交日志、看门狗告警、/health），不参与调度决策。
+    """
+    try:
+        max_workers = _report_executor._max_workers
+    except Exception:
+        max_workers = None
+    try:
+        workers = sum(1 for t in list(_report_executor._threads) if t.is_alive())
+    except Exception:
+        workers = None
+    try:
+        in_flight = len(_generation_tracker.snapshot())
+    except Exception:
+        in_flight = None
+    return {
+        'max_workers': max_workers,
+        'workers': workers,
+        'queued': _executor_queue_depth(),
+        'in_flight': in_flight,
+    }
+
+
+def report_generation_status():
+    """报告生成可观测快照（/health 暴露，INT-1505）：容量、负载与在途任务。"""
+    status = _executor_status()
+    try:
+        task_ids = [entry['task_id'] for entry in _generation_tracker.snapshot()]
+    except Exception:
+        task_ids = []
+    status['task_ids'] = task_ids
+    return status
+
+
 _watchdog_thread = None
 _watchdog_stop_event = threading.Event()
 
@@ -217,7 +261,8 @@ def start_generation_watchdog():
     log_and_emit(
         'INFO', 'report',
         f'[watchdog] 报告生成看门狗已启动：扫描周期 {Config.REPORT_GEN_WATCHDOG_INTERVAL_SECONDS}s，'
-        f'超时阈值 {Config.REPORT_GEN_TIMEOUT_SECONDS}s，队列饥饿阈值 {Config.REPORT_GEN_QUEUE_STUCK_SECONDS}s')
+        f'超时阈值 {Config.REPORT_GEN_TIMEOUT_SECONDS}s，队列饥饿阈值 {Config.REPORT_GEN_QUEUE_STUCK_SECONDS}s，'
+        f'线程池容量 {_report_executor._max_workers}')
     return _watchdog_thread
 
 
@@ -248,10 +293,12 @@ def _watchdog_scan_once():
         if stage == GenerationStage.QUEUED.value:
             if queued_elapsed > queue_stuck_seconds and not entry['queue_warned']:
                 _generation_tracker.mark_queue_warned(task_id)
+                pool = _executor_status()
                 log_and_emit(
                     'WARNING', 'report',
                     f'[watchdog] task_id={task_id} 提交后排队 {queued_elapsed:.0f}s 未开始执行'
-                    f'（线程池 max_workers=3 可能被占满，队列深度={_executor_queue_depth()}）',
+                    f'（线程池 max_workers={pool["max_workers"]} 已全部在工作线程上，'
+                    f'队列深度={pool["queued"]}，在途生成={pool["in_flight"]}）',
                     task_id=task_id)
 
         total_elapsed = now - entry['submitted_at']
@@ -289,10 +336,17 @@ def _watchdog_scan_once():
 
 
 def _submit_generation(task_id, lock, name, description, submit_log_message):
-    """登记轨迹并提交线程池；提交失败回收轨迹与锁并上报失败（INT-117 失败可上报）。"""
+    """登记轨迹并提交线程池；提交失败回收轨迹与锁并上报失败（INT-117 失败可上报）。
+
+    INT-1572 返工三轮：把发起请求的操作人身份带进生成线程。生成线程里的跨域
+    用例取数经出站拦截器附加 x-user-id，缺身份时 task_service 会把 PRIVATE 用例
+    按 404 返回——owner 自己的私有用例会在报告里静默消失。
+    """
     _generation_tracker.mark_submitted(task_id)
+    identity = capture_identity()
     try:
         _report_executor.submit(
+            run_with_identity, identity,
             ReportTaskGenerator._generate_task_report_async,
             task_id, name, description, lock
         )
@@ -311,12 +365,18 @@ def _submit_generation(task_id, lock, name, description, submit_log_message):
             'error': f'报告生成任务提交失败: {submit_err}',
         })
         return False
-    depth = _executor_queue_depth()
-    if depth:
+    pool = _executor_status()
+    if pool['queued']:
         log_and_emit(
             'WARNING', 'report',
-            f'{submit_log_message} 已提交，但线程池待执行队列深度={depth}'
-            f'（工作线程可能被占满，本次生成将延迟执行）',
+            f'{submit_log_message} 已提交，但线程池待执行队列深度={pool["queued"]}'
+            f'（max_workers={pool["max_workers"]} 工作线程已占满，本次生成将排队等待）',
+            task_id=task_id)
+    else:
+        log_and_emit(
+            'DEBUG', 'report',
+            f'{submit_log_message} 已提交（线程池 max_workers={pool["max_workers"]}，'
+            f'存活工作线程={pool["workers"]}，队列深度=0）',
             task_id=task_id)
     return True
 
@@ -551,10 +611,19 @@ class ReportTaskGenerator:
         all_dimensions_all = _grpc_list_dimensions_all()
         summary_dim_values = ReportDataBuilder._calculate_summary_dimensions(dim_stats)
 
-        if dim_stats:
-            all_dimensions = [d for d in all_dimensions_all if _dim_id(d) in dim_stats]
-        else:
-            all_dimensions = all_dimensions_all
+        # INT-1571：结果引用的维度可能已停用/软删（不在活跃列表里），按 ID 补全历史维度，
+        # 否则老任务会得到空指标集并在下方被判定「任务没有关联任何评估维度」
+        all_dimensions = ReportDataBuilder._get_result_dimensions(all_dimensions_all, dim_stats)
+
+        # INT-1752：存在加权维度（weighted_sum_ratio / weighted_wer）时二次拉取带
+        # api_raw_response 的维度结果——分子/分母从原始响应提取，不带则策略恒返回 None。
+        # 首次拉取不带 body 是为了先确定维度集合（维度列表由维度结果推导，鸡生蛋）。
+        from report_service.domain.services.aggregation_strategies import needs_raw_response
+        if any(needs_raw_response(_dim_statistic_method(d)) for d in all_dimensions):
+            dim_results_map_with_body, _ = ReportDataBuilder._get_dimension_results_batch(
+                res_ids, include_body=True)
+            if dim_results_map_with_body:
+                dim_results_map = dim_results_map_with_body
 
         test_cases, test_case_ids = ReportDataBuilder._get_task_test_cases(task_ids_for_query)
         devices_list, apis_list, device_ids, api_ids = ReportDataBuilder._get_task_resources(task_ids_for_query)
@@ -611,6 +680,11 @@ class ReportTaskGenerator:
             use_time_prefix=False
         )
 
+        # INT-1752：加权维度降级为简单平均时，在 all_metrics 对应指标上打标，
+        # 随报告详情下发（all_metrics 持久化在 ReportSummaryMeta，前端据此标注）。
+        aggregation_degraded = core_metrics.get('aggregation_degraded') or {}
+        ReportTaskGenerator._mark_degraded_metrics(all_metrics, aggregation_degraded)
+
         metric_data = core_metrics['metric_data']
         tag_metric_data = core_metrics['tag_metric_data']
         raw_data = core_metrics['raw_data']
@@ -658,7 +732,30 @@ class ReportTaskGenerator:
             "case_tags_list": case_tags_list,
             "source_task_ids": source_task_ids,
             "field_mappings": field_mappings,
+            "aggregation_degraded": aggregation_degraded,
         }
+
+    @staticmethod
+    def _mark_degraded_metrics(all_metrics: list, aggregation_degraded: dict) -> None:
+        """把加权聚合降级说明打到 all_metrics 对应指标项上（原地修改）。
+
+        INT-1752：报告详情此前对「加权指标算不出来」静默显示简单平均；现在指标项带
+        aggregation_degraded / degradation_reason / degradation_detail，
+        前端与导出据此标注「已降级为简单平均」。
+        """
+        if not aggregation_degraded or not isinstance(all_metrics, list):
+            return
+        for metric in all_metrics:
+            if not isinstance(metric, dict):
+                continue
+            info = aggregation_degraded.get(metric.get('name'))
+            if not info:
+                continue
+            metric['aggregation_degraded'] = True
+            metric['configured_method'] = info.get('configured_method')
+            metric['applied_method'] = info.get('applied_method', 'average')
+            metric['degradation_reason'] = info.get('reason')
+            metric['degradation_detail'] = info.get('detail')
 
     @staticmethod
     def _build_task_summary(task, task_id, results, data_dict):

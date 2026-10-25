@@ -63,17 +63,37 @@ class MappingRepository(IMappingRepository):
         mappings = query.all()
         return [_po_to_dict(m) for m in mappings]
 
+    def list_by_algorithms(
+        self, algorithm_types: Optional[List[str]]
+    ) -> List[Dict[str, Any]]:
+        """批量查询多个算法的参数映射（INT-1666 配置缓存重载用）。
+
+        algorithm_types 为 None 时取全部未删除映射；传入列表时只取这些算法
+        （空列表 → 空结果）。按 id 稳定排序（原逐算法查询无显式排序）。
+        """
+        session = get_db_session()
+        query = session.query(ParamMappingPO).filter_by(deleted=False)
+        if algorithm_types is not None:
+            types = [t for t in algorithm_types if t]
+            if not types:
+                return []
+            query = query.filter(ParamMappingPO.algorithm_type.in_(types))
+        mappings = query.order_by(ParamMappingPO.id).all()
+        return [_po_to_dict(m) for m in mappings]
+
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """创建参数映射，返回新映射 dict。
 
         字段映射与 servicers.py CreateMapping 一致：
         - source ← data.source_type（servicer 传参为 source_type，PO 字段为 source）
         - source_param / source_direction / dimension_id / target_param / transform_type
+        - api_id（INT-1756 C6a）：API 实例级作用域，NULL = 算法类型级默认
         """
         session = get_db_session()
         try:
             po = ParamMappingPO(
                 algorithm_type=data.get("algorithm_type"),
+                api_id=data.get("api_id"),
                 source=data.get("source_type"),
                 source_param=data.get("source_param"),
                 source_direction=data.get("source_direction") or "output",
@@ -97,6 +117,7 @@ class MappingRepository(IMappingRepository):
         字段映射与 servicers.py UpdateMapping 一致：
         - 显式处理 source / source_param / source_direction
           / dimension_id / target_param / transform_type
+        - api_id（INT-1756 C6a）：None 表示不改，显式传值才落库
         """
         session = get_db_session()
         try:
@@ -107,6 +128,11 @@ class MappingRepository(IMappingRepository):
                 raise ValueError(
                     f"Param mapping id={mapping_id} 不存在，无法更新"
                 )
+            api_id = fields.get("api_id")
+            if api_id is None:
+                api_id = fields.get("apiId")
+            if api_id is not None:
+                po.api_id = api_id
             if fields.get("source") is not None:
                 po.source = fields["source"]
             if fields.get("source_param") is not None:
@@ -182,6 +208,26 @@ class DimensionRelationRepository(IDimensionRelationRepository):
         items = session.query(AlgorithmDimensionRelationPO).filter_by(
             algorithm_type=algorithm_type, deleted=False
         ).all()
+        return [_po_to_dict(po) for po in items]
+
+    def list_by_algorithms(
+        self, algorithm_types: Optional[List[str]]
+    ) -> List[Dict[str, Any]]:
+        """批量查询多个算法的维度关联（INT-1666 配置缓存重载用）。
+
+        algorithm_types 为 None 时取全部未删除关联；传入列表时只取这些算法
+        （空列表 → 空结果）。
+        """
+        session = get_db_session()
+        query = session.query(AlgorithmDimensionRelationPO).filter_by(
+            deleted=False)
+        if algorithm_types is not None:
+            types = [t for t in algorithm_types if t]
+            if not types:
+                return []
+            query = query.filter(
+                AlgorithmDimensionRelationPO.algorithm_type.in_(types))
+        items = query.all()
         return [_po_to_dict(po) for po in items]
 
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:

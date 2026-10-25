@@ -180,15 +180,18 @@ class AlgorithmAclRepository(_AlgorithmAclRepositoryABC):
             logger.exception('find_audio_dimension_ids failed: %s', e)
             return set()
 
-    def get_field_mappings(self, algorithm_type: str):
-        """获取字段定义（original + mapped），返回 FieldMapperWrapper"""
-        from shared.clients.grpc_clients import algo_get_field_mappings
-        return algo_get_field_mappings(algorithm_type)
+    def get_field_mappings(self, algorithm_type: str, api_id=None):
+        """获取字段定义（original + mapped），返回 FieldMapperWrapper
 
-    def get_param_mapping(self, algorithm_type: str, component_type: str):
-        """获取参数映射"""
+        INT-1757（C6b）：api_id 传入时按 API 实例级合并覆盖算法级。
+        """
+        from shared.clients.grpc_clients import algo_get_field_mappings
+        return algo_get_field_mappings(algorithm_type, api_id=api_id)
+
+    def get_param_mapping(self, algorithm_type: str, component_type: str, api_id=None):
+        """获取参数映射（api_id 传入时按 API 实例级合并，INT-1757）"""
         from shared.clients.grpc_clients import algo_get_param_mapping
-        return algo_get_param_mapping(algorithm_type, component_type)
+        return algo_get_param_mapping(algorithm_type, component_type, api_id=api_id)
 
     def get_reference_params_list(self, *args, **kwargs):
         """获取参考参数列表"""
@@ -205,13 +208,14 @@ class AlgorithmAclRepository(_AlgorithmAclRepositoryABC):
         from shared.clients.grpc_clients import algo_extract_case_all_params
         return algo_extract_case_all_params(case_config)
 
-    def get_output_fields(self, algorithm_type: str, test_type: str = None):
+    def get_output_fields(self, algorithm_type: str, test_type: str = None, api_id=None):
         """获取结果输出字段（GetOutputFields）
 
         通过 gRPC 调用 algorithm_service.AlgorithmQueryService.GetOutputFields。
+        INT-1757（C6b）：api_id 传入时取该 API 实例的输出声明（算法级 + API 级合并）。
         """
         from shared.clients.grpc_clients import algo_get_output_fields
-        return algo_get_output_fields(algorithm_type, test_type=test_type)
+        return algo_get_output_fields(algorithm_type, test_type=test_type, api_id=api_id)
 
     # ========== 参数映射同步 ==========
 
