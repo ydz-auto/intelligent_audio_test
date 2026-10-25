@@ -4,7 +4,7 @@
  * 不传 org 时保持旧形状（购物车未接组织控件时不出现组头）。
  */
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import type { PickCartGroup } from '@/domain/models/cherryPick'
 import { CartTree } from '@/features/tasks/cherry-pick/components/cart-tree'
