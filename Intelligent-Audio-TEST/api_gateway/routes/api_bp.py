@@ -28,6 +28,15 @@ def import_apis(_: None = require_permission('api_config:create')):
     return to_response(ResourceImportExportService.import_resource('apis'))
 
 
+# INT-1772 响应解析预览：贴样例响应 → 看 meta 解析器（result_parser /
+# *_mapping）能提取出什么。纯函数实现，不读库、不发外部请求、无副作用
+# （静态段，同样先于 /{api_id} 注册）
+@router.post('/parse-preview')
+def parse_preview(_: None = require_permission('api_config:read')):
+    """解析预览（只读）：路径语义与执行期共用 shared/utils/path_extractor"""
+    return to_response(ApiQueryService.parse_preview())
+
+
 @router.get('/{api_id}')
 def get_one(api_id: int):
     return to_response(ApiQueryService.get_one(api_id))
