@@ -15,7 +15,7 @@
  * 接线：任务详情路由页（09 §4.4 onCaseSelect）与测试执行步骤四共用本组件。
  */
 import { Clipboard, ClipboardCheck, ListChecks, Play, ScrollText, Sparkles } from 'lucide-react'
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -182,6 +182,14 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
   const [page, setPage] = useState(1)
   // 轮次 Tab 选中态绑定 caseId：换用例即失配 → 复位到第一个有数据的 Tab（P3，V9.7.10 :1317-1328）
   const [tabChoice, setTabChoice] = useState<{ caseId: string; tabKey: string } | null>(null)
+  // 同用例关闭重开也要复位（INT-1861）：弹窗由父层常驻挂载，React 不会重挂，
+  // V9.7.10 的详情组件则随每次打开重新初始化（V9.7.10 :1317-1328）。
+  // 只在「打开」边沿清空：关闭动画期间不闪回第一枚 Tab。
+  const wasOpenRef = useRef(open)
+  useLayoutEffect(() => {
+    if (open && !wasOpenRef.current) setTabChoice(null)
+    wasOpenRef.current = open
+  }, [open])
   const [playingAudio, setPlayingAudio] = useState<AudioItemMeta | null>(null)
   const [manualReviewOpen, setManualReviewOpen] = useState(false)
   const [aiReviewOpen, setAiReviewOpen] = useState(false)
