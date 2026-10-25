@@ -45,11 +45,11 @@ export function getFieldBaseName(paramCode?: string, label?: string): string {
   return paramCode || label || ''
 }
 
-/** 轮次标记 → 展示文案（'round:1' → 「第1轮」；'overall' → 「整体」） */
+/** 轮次标记 → 展示文案（'round:1' → 「第 1 轮」；'overall' → 「整体」，全站排版空格化） */
 export function roundTagLabel(roundTag: string): string {
   if (roundTag === 'overall') return '整体'
   const n = roundTag.split(':')[1]
-  return n ? `第${n}轮` : roundTag
+  return n ? `第 ${n} 轮` : roundTag
 }
 
 export interface RoundTab {
@@ -65,29 +65,27 @@ interface RoundSource {
 }
 
 /**
- * 轮次 Tab 装配（照 V9.7.10 roundTabs：指标 key + 结果/参考/用例参数 round 标记）。
- * 轮次按数字升序，「整体」恒在末尾；无任何轮次标记时返回单个「整体」Tab。
+ * 轮次标记集合 → 轮次 Tab（第 1..N 轮按数字升序、「整体」恒末尾；空集合返回空数组）。
+ * 标签格式「第 N 轮 / 整体」（全站排版空格化，§3.3.7）。
  */
-export function buildRoundTabs(
-  metricKeys: string[],
-  sources: RoundSource[]
-): RoundTab[] {
+export function roundTabsFromTags(tags: Iterable<string>): RoundTab[] {
   const tabs: RoundTab[] = []
   const seen = new Set<string>()
-  const push = (roundTag: string | null) => {
-    if (roundTag === null) return
-    if (seen.has(roundTag)) return
+  for (const roundTag of tags) {
+    if (!roundTag || seen.has(roundTag)) continue
     seen.add(roundTag)
     if (roundTag === 'overall') {
       tabs.push({ key: 'overall', label: '整体', roundTag, order: 9999 })
     } else {
       const n = parseInt(roundTag.split(':')[1], 10)
-      tabs.push({ key: roundTag, label: `第${n}轮`, roundTag, order: n })
+      tabs.push({
+        key: roundTag,
+        label: Number.isNaN(n) ? roundTag : `第 ${n} 轮`,
+        roundTag,
+        order: Number.isNaN(n) ? 50 : n,
+      })
     }
   }
-  for (const key of metricKeys) push(parseMetricKey(key).roundTag)
-  for (const source of sources) push(parseFieldRoundTag(source.paramCode, source.roundNumber))
-  if (tabs.length === 0) tabs.push({ key: 'overall', label: '整体', roundTag: 'overall', order: 9999 })
   return tabs.sort((a, b) => a.order - b.order)
 }
 

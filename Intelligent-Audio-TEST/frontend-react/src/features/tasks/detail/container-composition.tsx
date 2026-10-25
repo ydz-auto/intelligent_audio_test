@@ -77,12 +77,24 @@ export function ContainerComposition({
   entries,
   summary,
   loading = false,
+  sectionId = 'composition',
+  scrollable = true,
 }: {
   trace: ContainerSourceTrace | null
   /** 全量组成条目（筛选在其上做纯客户端派生） */
   entries: CompositionEntry[]
   summary: CompositionSummary
   loading?: boolean
+  /**
+   * 区块锚点 id（默认 `composition`，供落点① 详情页 `#composition` 直达）。
+   * 页签行展开（落点③）一个列表可能同时展开多行 → 传 `null` 避免重复 id。
+   */
+  sectionId?: string | null
+  /**
+   * 树干区自身是否滚动（默认 true，详情页口径 `max-h-[560px]`）。
+   * 页签行展开整块已有 `max-h-[420px]` 外层滚动 → 传 false，避免嵌套滚动条。
+   */
+  scrollable?: boolean
 }) {
   const [view, setView] = useState<CartView>('task')
   const [execution, setExecution] = useState<CompositionExecutionFilter>('all')
@@ -214,7 +226,7 @@ export function ContainerComposition({
 
   return (
     <section
-      id='composition'
+      id={sectionId ?? undefined}
       data-testid='container-composition'
       className='bg-card scroll-mt-24 flex flex-col gap-3 rounded-xl border p-4'
     >
@@ -371,7 +383,7 @@ export function ContainerComposition({
           })}
         </div>
       ) : (
-        <div className='max-h-[560px] overflow-y-auto pr-1'>
+        <div className={scrollable ? 'max-h-[560px] overflow-y-auto pr-1' : undefined}>
           {readOnlyTree(filteredGroups, view)}
         </div>
       )}

@@ -20,7 +20,9 @@ export function useTaskDetail(taskId: number, enabled = true) {
     enabled,
     staleTime: 30_000,
     // INT-932 P2-2：无效任务 id（400 code:203 未找到任务）快速落到错误态，
-    // 不重试（默认 retry:1 指数退避会持续请求），错误态由 TaskDetailContent 渲染
+    // 不重试（默认 retry:1 指数退避会持续请求），错误态由 TaskDetailContent 渲染；
+    // INT-1716 落点③：404（任务不存在 / 容器已软删）同样不重试，直接进错误态，
+    // 由展开区给「重试」入口。
     retry: 0,
   })
 }

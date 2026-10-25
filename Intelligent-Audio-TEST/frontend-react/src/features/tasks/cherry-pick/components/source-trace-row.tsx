@@ -1,6 +1,10 @@
 /**
- * 容器溯源展开行（18_挑选合并交互重设计.md §2.2/§7.1，INT-600）。
- * 按合并方式自适应：整任务合并=源任务列表；结果挑选=源任务→结果（§2.2 裁定③）。
+ * 容器溯源展开行（18_挑选合并功能交互重设计.md §2.2/§2.3/§5.5.2 ⑤/§5.5.3 ③，INT-600 / INT-1716）。
+ * 按合并方式自适应：
+ * - **整任务合并**（`merge_type='whole'`）：保持原源任务列表形态 —— `source` 端点只查
+ *   `task_cherry_pick_relations`，解析不到整任务合并容器，本分支不动（§5.5.2 ⑤）；
+ * - **结果挑选**（`picked`）：换 `ContainerTraceExpand` 四视图组成树（落点 ③），
+ *   首次展开只补 1 次容器详情查询。
  */
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
@@ -9,10 +13,20 @@ import type { CherryPickContainer } from '@/domain/models/cherryPick'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
+import { ContainerTraceExpand } from '@/features/tasks/cherry-pick/components/container-trace-expand'
 import { formatPickDateTime } from '@/features/tasks/cherry-pick/constants'
 
 /** 行内溯源展开（renderRow expandable，§2.3） */
 export function SourceTraceRow({ container }: { container: CherryPickContainer }) {
+  // 结果挑选容器 → 组成四视图（§5.5.3 ③）
+  if (container.mergeType !== 'whole') {
+    return <ContainerTraceExpand container={container} />
+  }
+  return <WholeMergeSourceList container={container} />
+}
+
+/** 整任务合并容器：源任务列表（原形态，无逐结果引用，保持不动） */
+function WholeMergeSourceList({ container }: { container: CherryPickContainer }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -30,12 +44,8 @@ export function SourceTraceRow({ container }: { container: CherryPickContainer }
           <ChevronRight aria-hidden='true' className='size-3.5' />
         )}
         {open
-          ? container.mergeType === 'whole'
-            ? `收起源任务列表（${container.sourceTaskCount} 个）`
-            : `收起源结果溯源（${container.sourceResultCount} 条）`
-          : container.mergeType === 'whole'
-            ? `展开源任务列表（${container.sourceTaskCount} 个）`
-            : `展开源结果溯源（${container.sourceResultCount} 条）`}
+          ? `收起源任务列表（${container.sourceTaskCount} 个）`
+          : `展开源任务列表（${container.sourceTaskCount} 个）`}
       </Button>
 
       {open &&
@@ -60,11 +70,9 @@ export function SourceTraceRow({ container }: { container: CherryPickContainer }
                   label={src.status === 'completed' ? '已完成' : '已停止'}
                   variant={src.status === 'completed' ? 'success' : 'neutral'}
                 />
-                {container.mergeType === 'whole' && (
-                  <span className='text-muted-foreground text-[11px]'>
-                    {formatPickDateTime(container.createdAt)}
-                  </span>
-                )}
+                <span className='text-muted-foreground text-[11px]'>
+                  {formatPickDateTime(container.createdAt)}
+                </span>
               </li>
             ))}
           </ul>
@@ -72,4 +80,3 @@ export function SourceTraceRow({ container }: { container: CherryPickContainer }
     </div>
   )
 }
-

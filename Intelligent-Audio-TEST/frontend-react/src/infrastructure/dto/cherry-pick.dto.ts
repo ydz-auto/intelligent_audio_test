@@ -198,11 +198,20 @@ export interface TaskContainerItemDto {
   execution_status: string
   evaluation_status: string
   total_cases: number | null
+  /** 容器用例数（§5.5.4 列表「部分失败」映射的 f/c 分母；tasks list 实测返回） */
+  case_count?: number | null
+  /** 失败用例数（§5.5.4 列表「部分失败」映射的分子；tasks list 实测返回） */
+  failed_cases?: number | null
   created_at: string | null
   is_favorite: boolean
   is_cherry_pick: boolean
   /** 容器报告摘要（tasks list 同 TaskListItemDto.reports；「查看报告」跳转数据源） */
   reports: TaskReportsDto | null
+  /** 后端列表 read model 的容器计数（INT-577）：来源任务数 / 来源结果数（结果挑选容器真实口径） */
+  source_task_count?: number | null
+  source_result_count?: number | null
+  /** 合并方式（whole / picked / both；列表 read model 有，详情接口无） */
+  merge_type?: string | null
   source_tasks: TaskSourceBriefDto[]
   devices: { id: number; name: string; status: string }[]
   apis: { id: number; name: string; status: string }[]

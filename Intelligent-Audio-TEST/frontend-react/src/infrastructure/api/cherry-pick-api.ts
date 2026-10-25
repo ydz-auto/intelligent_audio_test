@@ -611,11 +611,23 @@ export async function fetchContainerSourceTrace(
   }
 }
 
+/** 统一合并容器列表结果（含 picked 容器已拉到的溯源，供页签行展开免二次请求，§5.5.3 ③） */
+export interface CherryPickContainerList {
+  items: CherryPickContainer[]
+  total: number
+  /**
+   * picked 容器溯源（本函数已逐容器拉过的 source 结果，按 taskId 索引）。
+   * 列表 hook 把它写进 react-query 的 `['task', id, 'cherry-pick-source']`，
+   * 于是落点 ③ 首次展开只补 1 次 `GET /tasks/{id}`（列表首屏不新增请求）。
+   */
+  traces: Map<number, ContainerSourceTrace>
+}
+
 /** 统一合并容器列表（GET /tasks?merged=true ∪ GET /tasks?cherry_pick=true 双查询合并；
  *  picked 容器 source_tasks 后端 read model 未填 → 溯源端点逐容器补全） */
 export async function fetchCherryPickContainers(
   filters: ContainerFilters = {}
-): Promise<{ items: CherryPickContainer[]; total: number }> {
+): Promise<CherryPickContainerList> {
   const baseParams: Record<string, unknown> = { page: 1, per_page: MAX_OPTION_PAGE }
   if (filters.search && filters.search.trim()) baseParams.search = filters.search.trim()
 
@@ -635,14 +647,17 @@ export async function fetchCherryPickContainers(
     fromContainerDto({ ...it, mergeType: 'picked' })
   )
   // 溯源补全（仅 picked；接口失败保留空来源，不阻断列表）
+  const traces = new Map<number, ContainerSourceTrace>()
   const traced = await Promise.all(
     pickedItems.map(async (container) => {
       try {
-        const trace = await request<CherryPickSourceTraceDto>(
+        const traceDto = await request<CherryPickSourceTraceDto>(
           'GET',
           `/tasks/cherry-picks/${container.id}/source`
         )
-        const sourceResults = (trace.groups ?? []).map((g) => ({
+        const trace = fromSourceTraceDto(traceDto)
+        traces.set(container.id, trace)
+        const sourceResults = (traceDto.groups ?? []).map((g) => ({
           source_task_id: g.source_task_id,
           source_task_name: g.source_task_name,
           count: (g.results ?? []).length,
@@ -662,5 +677,5 @@ export async function fetchCherryPickContainers(
   if (filters.mergeType && filters.mergeType !== 'all') {
     items = items.filter((c) => c.mergeType === filters.mergeType)
   }
-  return { items, total: items.length }
+  return { items, total: items.length, traces }
 }

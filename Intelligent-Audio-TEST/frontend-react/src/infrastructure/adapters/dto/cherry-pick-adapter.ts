@@ -189,9 +189,13 @@ export function fromContainerDto(
   sourceResults: { source_task_id: number; source_task_name: string | null; count: number }[] = []
 ): CherryPickContainer {
   let sourceTasks = dto.source_tasks.map(fromSourceTaskDto)
-  let sourceTaskCount = sourceTasks.length
-  let sourceResultCount = sourceTasks.reduce((sum, t) => sum + t.resultCount, 0)
-  // 后端 read model 对 cherry-pick 容器未填 source_tasks（§11 FEAT 待补），
+  // 后端容器计数（INT-577 read model）优先：`source_tasks[].total_cases` 是**源任务用例数**，
+  // 不等于本次挑选的结果条数（实测容器 3 源 / 4 结果会算成 139），不能用它代替结果数。
+  let sourceTaskCount = dto.source_task_count ?? sourceTasks.length
+  let sourceResultCount =
+    dto.source_result_count ??
+    sourceTasks.reduce((sum, t) => sum + t.resultCount, 0)
+  // 后端 read model 对 cherry-pick 容器未填 source_tasks 时（旧口径），
   // 客户端经溯源端点聚合补全（source_trace 返回 任务→结果 分组）
   if (dto.mergeType === 'picked' && sourceTasks.length === 0 && sourceResults.length > 0) {
     sourceTasks = sourceResults.map((g) => ({
@@ -200,8 +204,10 @@ export function fromContainerDto(
       resultCount: g.count,
       status: '',
     }))
-    sourceTaskCount = sourceTasks.length
-    sourceResultCount = sourceTasks.reduce((sum, t) => sum + t.resultCount, 0)
+    sourceTaskCount = dto.source_task_count ?? sourceTasks.length
+    sourceResultCount =
+      dto.source_result_count ??
+      sourceTasks.reduce((sum, t) => sum + t.resultCount, 0)
   }
   return {
     id: dto.id,
@@ -210,6 +216,9 @@ export function fromContainerDto(
     executionStatus: dto.execution_status,
     evaluationStatus: dto.evaluation_status,
     totalCases: dto.total_cases,
+    // §5.5.4 列表「部分失败」映射：case_count 优先（= 容器用例数），缺省退回 total_cases
+    caseCount: dto.case_count ?? dto.total_cases ?? null,
+    failedCases: dto.failed_cases ?? null,
     mergeType: dto.mergeType,
     sourceTaskCount,
     sourceResultCount,

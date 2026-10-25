@@ -13,6 +13,10 @@ import type {
   ReportReferenceParam,
 } from '@/domain/models/report'
 import { extractCaseResourceMetrics } from '@/application/report-view/case-matrix'
+import {
+  isExecutionChildVisible,
+  type CaseDisplaySettings,
+} from '@/application/report-view/use-case-display-settings'
 import { cn } from '@/lib/utils'
 
 import {
@@ -73,6 +77,8 @@ interface ExecutionResultsProps {
   activeRoundTab: string
   setActiveRoundTab: (label: string) => void
   activeRoundTag: string | null
+  /** §3.5.10 显示设置（不传 = 全显）；控制执行结果子项与资源 / 维度裁剪 */
+  display?: CaseDisplaySettings
 }
 
 export function ExecutionResults({
@@ -82,6 +88,7 @@ export function ExecutionResults({
   activeRoundTab,
   setActiveRoundTab,
   activeRoundTag,
+  display,
 }: ExecutionResultsProps) {
   const [playingAudio, setPlayingAudio] = useState<AudioItemMeta>()
   const [activeDimTab, setActiveDimTab] = useState(0)
@@ -89,8 +96,14 @@ export function ExecutionResults({
   const fieldMapping = report.summary.field_mappings?.[0]?.algorithmType
   const headers = report.summary.resource_headers ?? []
   const resourceMetrics = useMemo(() => extractCaseResourceMetrics(caseItem), [caseItem])
-  const resources = Object.keys(resourceMetrics)
-  const isComparison = resources.length > 1
+  const allResources = Object.keys(resourceMetrics)
+  const hiddenResources = display?.hiddenResources ?? []
+  const resources = allResources.filter((r) => !hiddenResources.includes(r))
+  const isComparison = allResources.length > 1
+  const hiddenMetrics = display?.hiddenMetrics ?? []
+  const hiddenRounds = display?.hiddenRounds ?? []
+  const show = (key: Parameters<typeof isExecutionChildVisible>[1]) =>
+    display ? isExecutionChildVisible(display, key) : true
 
   // ---- 参考数据字段（referenceParams text + fieldMapping.reference 补充，按轮次排序） ----
   const referenceFields = useMemo(() => {
@@ -253,7 +266,12 @@ export function ExecutionResults({
     return result
   }, [currentResultFields, report.summary.all_metrics])
 
-  const evalGroups = useMemo(() => groupedFields.filter((g) => g.key !== '_general'), [groupedFields])
+  const evalGroups = useMemo(
+    () => groupedFields.filter((g) => g.key !== '_general' && !hiddenMetrics.includes(g.key)),
+    [groupedFields, hiddenMetrics]
+  )
+  /** 可见轮次 Tab（显示设置「轮次」） */
+  const visibleRoundTabs = roundTabs.filter((t) => !t.roundTag || !hiddenRounds.includes(t.roundTag))
   const generalGroup = useMemo(
     () => groupedFields.find((g) => g.key === '_general') ?? { key: '_general', label: '设备/API 执行结果', fields: [] as ResultTextField[] },
     [groupedFields]
@@ -311,9 +329,9 @@ export function ExecutionResults({
       <p className='text-sm font-semibold'>执行结果</p>
 
       {/* 多轮场景：轮次 Tab 控制执行结果与参考数据显示（§3.5.3） */}
-      {isMultiRoundFields && roundTabs.length > 1 && (
+      {isMultiRoundFields && visibleRoundTabs.length > 1 && (
         <div className='flex flex-wrap gap-1' role='tablist' aria-label='轮次切换'>
-          {roundTabs.map((tab) => (
+          {visibleRoundTabs.map((tab) => (
             <button
               key={tab.key}
               type='button'
@@ -334,7 +352,7 @@ export function ExecutionResults({
       )}
 
       {/* 参考数据 */}
-      {currentRefFields.length > 0 && (
+      {show('reference') && currentRefFields.length > 0 && (
         <div>
           <p className='text-muted-foreground mb-1 text-xs font-medium'>参考数据</p>
           <div className='rounded-lg border'>
@@ -346,7 +364,7 @@ export function ExecutionResults({
       )}
 
       {/* 用例参数（块四） */}
-      {currentCaseParamFields.length > 0 && (
+      {show('caseParams') && currentCaseParamFields.length > 0 && (
         <div>
           <p className='text-muted-foreground mb-1 text-xs font-medium'>用例参数</p>
           <div className='rounded-lg border'>
@@ -358,7 +376,7 @@ export function ExecutionResults({
       )}
 
       {/* 评估结果（块五，维度 tab 切换） */}
-      {evalGroups.length > 0 && (
+      {show('evaluation') && evalGroups.length > 0 && (
         <div>
           <p className='text-muted-foreground mb-1 text-xs font-medium'>评估结果</p>
           <div className='rounded-lg border p-2'>
@@ -417,7 +435,7 @@ export function ExecutionResults({
       )}
 
       {/* 设备/API 执行结果（块六：结果文本 + 音频播放 + 执行状态） */}
-      {(generalGroup.fields.length > 0 || caseItem.results.length > 0) && (
+      {show('deviceResults') && (generalGroup.fields.length > 0 || caseItem.results.length > 0) && (
         <div>
           <p className='text-muted-foreground mb-1 text-xs font-medium'>设备/API 执行结果</p>
           {isComparison ? (
@@ -483,13 +501,13 @@ export function ExecutionResults({
       )}
 
       {/* 时间轴对比（§3.3.9） */}
-      {hasTimeline && <TimelineComparison caseItem={caseItem} report={report} />}
+      {show('timeline') && hasTimeline && <TimelineComparison caseItem={caseItem} report={report} />}
 
       {/* 音频时间轴（块七 §3.5.7） */}
-      {hasAudio && <AudioTimeline audioList={caseItem.audios ?? []} />}
+      {show('audio') && hasAudio && <AudioTimeline audioList={caseItem.audios ?? []} />}
 
       {/* 结果音频（块七：按设备分组 + 播放外链/播放器） */}
-      {resultAudioGroups.length > 0 && (
+      {show('audio') && resultAudioGroups.length > 0 && (
         <div>
           <p className='text-muted-foreground mb-1 text-xs font-medium'>结果音频</p>
           <div className='space-y-2'>
@@ -550,10 +568,16 @@ export function ExecutionResults({
 function statusLabel(status?: string) {
   const map: Record<string, string> = {
     completed: '已完成',
+    成功: '成功',
+    success: '成功',
     failed: '执行失败',
+    失败: '失败',
     skipped: '已跳过',
+    跳过: '已跳过',
     pending: '排队中',
     'in-progress': '执行中',
+    warning: '警告',
+    警告: '警告',
   }
   return map[status ?? ''] ?? status ?? '—'
 }

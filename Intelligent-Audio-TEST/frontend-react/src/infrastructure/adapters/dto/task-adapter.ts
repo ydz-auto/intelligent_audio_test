@@ -191,9 +191,13 @@ export function toCherryPickContainer(
     executionStatus: dto.execution_status ?? dto.status,
     evaluationStatus: dto.evaluation_status ?? 'pending',
     totalCases: dto.total_cases,
+    // §5.5.4 列表「部分失败」映射：case_count 优先（= 容器用例数），缺省退回 total_cases
+    caseCount: dto.case_count ?? dto.total_cases ?? null,
+    failedCases: dto.failed_cases ?? null,
     mergeType: dto.is_cherry_pick ? 'picked' : 'whole',
-    sourceTaskCount: sourceTasks.length,
-    sourceResultCount: dto.total_cases ?? 0,
+    sourceTaskCount: dto.source_task_count ?? sourceTasks.length,
+    // 后端容器计数优先：source_tasks[].total_cases 是源任务用例数，不等于挑选结果条数
+    sourceResultCount: dto.source_result_count ?? dto.total_cases ?? 0,
     sourceTaskIds: sourceTasks.map((t) => t.id),
     sourceTasks: sourceTasks.map((t) => ({
       id: t.id,

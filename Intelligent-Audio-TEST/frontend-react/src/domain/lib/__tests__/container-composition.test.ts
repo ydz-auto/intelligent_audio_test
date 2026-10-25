@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  containerMixState,
   filterCompositionEntries,
   filterMissingEntries,
   groupCompositionEntries,
@@ -265,5 +266,29 @@ describe('organizeCompositionCases（用例层组织）', () => {
   it('交叉子视图产生二级分组', () => {
     const groups = organizeCompositionCases(entries, 'group', 'byTag')
     expect(groups[0].subGroups.length).toBeGreaterThan(0)
+  })
+})
+
+
+describe('containerMixState（列表「部分失败」映射，§5.5.4）', () => {
+  it('0 < failed_cases < case_count → partial（部分失败）', () => {
+    expect(containerMixState(2, 5)).toBe('partial')
+    expect(containerMixState(1, 3)).toBe('partial')
+  })
+
+  it('failed_cases = case_count → all（沿用「已失败」，不显示部分失败）', () => {
+    expect(containerMixState(5, 5)).toBe('all')
+    expect(containerMixState(1, 1)).toBe('all')
+  })
+
+  it('无失败 → none（不显徽章）', () => {
+    expect(containerMixState(0, 5)).toBe('none')
+    expect(containerMixState(0, 0)).toBe('none')
+  })
+
+  it('计数缺失 → none（不臆造混态）', () => {
+    expect(containerMixState(null, 5)).toBe('none')
+    expect(containerMixState(2, null)).toBe('none')
+    expect(containerMixState(undefined, undefined)).toBe('none')
   })
 })

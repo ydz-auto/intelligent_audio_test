@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   fromCartEntryDto,
+  fromContainerDto,
   fromSourceTraceDto,
 } from '@/infrastructure/adapters/dto/cherry-pick-adapter'
 import type {
@@ -150,5 +151,57 @@ describe('fromSourceTraceDto（INT-1711 容器溯源；审计 P2-1 回归）', (
     expect(fromSourceTraceDto(withResultTime).groups[0].results[0].resultCreatedAt).toBe(
       '2026-10-14T09:27:22'
     )
+  })
+})
+
+
+describe('fromContainerDto（列表计数口径，INT-1716）', () => {
+  const base = {
+    id: 603,
+    name: '接线测试_INT1716行展开A',
+    description: null,
+    status: 'completed',
+    execution_status: 'failed',
+    evaluation_status: 'completed',
+    total_cases: 4,
+    case_count: 4,
+    failed_cases: 3,
+    created_at: '2026-10-24T09:24:00',
+    is_favorite: false,
+    is_cherry_pick: true,
+    source_task_count: 3,
+    source_result_count: 4,
+    source_tasks: [
+      { id: 419, name: '任务419', status: 'completed', total_cases: 137, completed_cases: 137, failed_cases: 0, created_at: null },
+      { id: 391, name: '任务391', status: 'failed', total_cases: 1, completed_cases: 0, failed_cases: 1, created_at: null },
+      { id: 384, name: '任务384', status: 'failed', total_cases: 2, completed_cases: 0, failed_cases: 2, created_at: null },
+    ],
+    devices: [],
+    apis: [],
+    mergeType: 'picked' as const,
+  }
+
+  it('来源任务数 / 结果条数取后端容器计数，不被 source_tasks[].total_cases 顶替', () => {
+    const container = fromContainerDto(base)
+    expect(container.sourceTaskCount).toBe(3)
+    // source_tasks 的用例数合计是 137，真实挑选结果是 4 条
+    expect(container.sourceResultCount).toBe(4)
+  })
+
+  it('后端计数缺省时回退到 source_tasks 聚合（旧口径不炸）', () => {
+    const container = fromContainerDto({
+      ...base,
+      source_task_count: null,
+      source_result_count: null,
+    })
+    expect(container.sourceTaskCount).toBe(3)
+    // 回退口径 = completed_cases 兜底 total_cases（137 + 0 + 0），仅供后端未返计数时兜底
+    expect(container.sourceResultCount).toBe(137)
+  })
+
+  it('case_count / failed_cases 映射给「部分失败」口径', () => {
+    const container = fromContainerDto(base)
+    expect(container.caseCount).toBe(4)
+    expect(container.failedCases).toBe(3)
   })
 })

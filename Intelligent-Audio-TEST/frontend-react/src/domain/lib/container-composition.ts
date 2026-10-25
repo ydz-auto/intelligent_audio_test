@@ -341,3 +341,25 @@ export function organizeCompositionCases(
 export function orgGroupEntries(group: CompositionCaseOrgGroup): CompositionEntry[] {
   return group.units.flatMap((u) => u.entries)
 }
+
+/* ============================================================
+ * 列表执行状态映射（§5.5.4：混态显示「部分失败」，纯前端展示映射，不改契约）
+ * ============================================================ */
+
+/**
+ * 容器执行状态混态判定（§5.5.4 列表执行状态列 / §5.5.2 ①）：
+ * - `partial`：0 < failed_cases < case_count → 「部分失败」（warning）
+ * - `all`：failed_cases = case_count（且 > 0）→ 「已失败」（沿用后端 failed 映射）
+ * - `none`：failed_cases = 0 或计数缺失 → 不映射，沿用原执行状态徽章
+ * 后端字符串仍为 `failed`，这里只决定展示口径。
+ */
+export type ContainerMixState = 'none' | 'partial' | 'all'
+
+export function containerMixState(
+  failedCases: number | null | undefined,
+  caseCount: number | null | undefined
+): ContainerMixState {
+  if (failedCases == null || caseCount == null) return 'none'
+  if (caseCount <= 0 || failedCases <= 0) return 'none'
+  return failedCases >= caseCount ? 'all' : 'partial'
+}

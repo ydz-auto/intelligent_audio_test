@@ -30,6 +30,12 @@ export interface ContainerCompositionModel {
   summary: CompositionSummary
   /** 任一叶行执行状态 / 评估状态取自降级用例行（工具行一次性提示，§5.5.4） */
   statusDegraded: boolean
+  /** 详情 query 仍在加载（落点 ③ 首次展开补拉的那一次，§5.5.3） */
+  detailLoading: boolean
+  /** 详情 query 失败（§5.5.6「页签行展开补拉详情失败」→ Empty + 重试） */
+  detailError: boolean
+  /** 详情 + 溯源一起重拉（落点 ③ Empty 的「重试」） */
+  retry: () => void
 }
 
 const EMPTY_GROUPS: PickCartGroup[] = []
@@ -49,7 +55,7 @@ export function useContainerComposition(
 ): ContainerCompositionModel {
   const { enabled = true } = options
   // 详情 query（详情页已有同一 key → 与四卡共用，不产生额外请求；行展开落点复用时按需拉一次）
-  const detailQuery = useTaskDetail(taskId)
+  const detailQuery = useTaskDetail(taskId, enabled)
   const sourceQuery = useQuery({
     queryKey: ['task', taskId, 'cherry-pick-source'],
     queryFn: () => fetchContainerSourceTraceDomain(taskId),
@@ -91,5 +97,11 @@ export function useContainerComposition(
     groups,
     summary,
     statusDegraded: entries.some((e) => e.statusFromCase || e.evaluationFromCase),
+    detailLoading: detailQuery.isLoading,
+    detailError: detailQuery.isError,
+    retry: () => {
+      if (detailQuery.isError) void detailQuery.refetch()
+      if (sourceQuery.data == null) void sourceQuery.refetch()
+    },
   }
 }
