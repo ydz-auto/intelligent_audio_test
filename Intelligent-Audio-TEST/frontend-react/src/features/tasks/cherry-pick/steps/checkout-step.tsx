@@ -107,7 +107,13 @@ export function CheckoutStep({
     const id = result.taskId
     if (action === 'merge') {
       toast.success(`挑选合并任务已创建（ID ${id}），可手动生成报告`)
-      void navigate({ to: '/tasks/$tab', params: { tab: String(id) } })
+      // 落点①（18 §5.5.3）：合并成功直达容器详情「组成」锚点，由详情页滚到组成区并高亮，
+      // 不落在空的结果列表 / 关联用例上。
+      void navigate({
+        to: '/tasks/$tab',
+        params: { tab: String(id) },
+        hash: 'composition',
+      })
     } else if (action === 'reexecute') {
       toast.success(`重执行任务已创建并启动（ID ${id}）`)
       void navigate({ to: '/tasks/$tab', params: { tab: String(id) } })

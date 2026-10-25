@@ -9,7 +9,7 @@
  */
 import { Link } from '@tanstack/react-router'
 import { AlertTriangle, ListFilter, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   usePickOrg,
@@ -48,6 +48,7 @@ import { CartTree } from '@/features/tasks/cherry-pick/components/cart-tree'
 import { formatPickDateTime } from '@/features/tasks/cherry-pick/constants'
 import { CaseSubGroupHeader } from '@/features/testcases/components/case-sub-group-header'
 import { ContainerCompositionToolbar } from '@/features/tasks/detail/container-view-switcher'
+import { cn } from '@/lib/utils'
 
 /** 只读树不消费选择态：空集 + 空操作（不渲染复选框，handler 只为满足必填 props） */
 const EMPTY_SELECTION: ReadonlySet<string> = new Set()
@@ -106,6 +107,43 @@ export function ContainerComposition({
   })
   // 用例层组织为容器详情会话态，四视图共享（§5.5.3）
   const { org, subView, setOrg, setSubView } = usePickOrg()
+  /**
+   * 落点①（18 §5.5.3 ①）：下单成功跳 `/tasks/{id}#composition` → 组成区滚到视口顶部，
+   * 外描边 `ring-2 ring-primary/40` 高亮 1.2s 后消退（motion-safe）。只在带锚点的详情页触发，
+   * 页签行展开（`sectionId = null`）不复用。
+   */
+  const sectionRef = useRef<HTMLElement | null>(null)
+  const [landed, setLanded] = useState<'idle' | 'on' | 'fading'>('idle')
+
+  useEffect(() => {
+    if (sectionId == null || loading || !trace) return
+    if (typeof window === 'undefined' || window.location.hash !== '#composition') return
+    const el = sectionRef.current
+    if (!el) return
+    // 组成区顶到滚动容器（SectionPageLayout.Content）的顶部。`scroll-mt-24` 是给普通锚点
+    // 留吸顶间距的，内容区本身已在吸顶头之下，直接 scrollIntoView 会再下移 96px
+    // （实测落点停在 244px）——这里临时归零再滚，滚完还原。
+    // 首帧滚完后再补一次：信息头 / 报告卡的异步内容会让上方高度二次变化（实测偏差 30~60px），
+    // 字体与异步块落定后重新对齐，仍在 1.2s 高亮窗口内。
+    const doScroll = () => {
+      const target = sectionRef.current
+      if (!target) return
+      const prevMargin = target.style.scrollMarginTop
+      target.style.scrollMarginTop = '0px'
+      target.scrollIntoView({ block: 'start' })
+      target.style.scrollMarginTop = prevMargin
+    }
+    doScroll()
+    const settleTimer = window.setTimeout(doScroll, 260)
+    setLanded('on')
+    const fadeTimer = window.setTimeout(() => setLanded('fading'), 700)
+    const endTimer = window.setTimeout(() => setLanded('idle'), 1200)
+    return () => {
+      window.clearTimeout(settleTimer)
+      window.clearTimeout(fadeTimer)
+      window.clearTimeout(endTimer)
+    }
+  }, [sectionId, loading, trace])
 
   const entryByItemId = useMemo(
     () => new Map(entries.map((e) => [e.itemId, e])),
@@ -227,9 +265,22 @@ export function ContainerComposition({
   return (
     <section
       id={sectionId ?? undefined}
+      ref={sectionRef}
       data-testid='container-composition'
-      className='bg-card scroll-mt-24 flex flex-col gap-3 rounded-xl border p-4'
+      className='bg-card scroll-mt-24 relative flex flex-col gap-3 rounded-xl border p-4'
     >
+      {/* 落点①高亮层：ring-2 ring-primary/40，1.2s 渐隐（§5.5.7），不拦截点击 */}
+      {landed !== 'idle' && (
+        <span
+          aria-hidden='true'
+          data-testid='composition-landing-highlight'
+          className={cn(
+            'ring-primary/40 pointer-events-none absolute inset-0 rounded-xl ring-2',
+            'transition-opacity duration-500 motion-reduce:transition-none',
+            landed === 'fading' ? 'opacity-0' : 'opacity-100'
+          )}
+        />
+      )}
       <div className='flex flex-wrap items-center gap-2'>
         <h2 className='text-sm font-medium'>组成</h2>
         <span className='text-muted-foreground text-xs'>

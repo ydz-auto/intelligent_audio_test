@@ -25,6 +25,7 @@ import {
   usePickFilterOptions,
 } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
+import { useCherryPickContainers } from '@/application/tasks/cherry-pick/use-cherry-pick-containers'
 import { usePickOrg } from '@/application/tasks/cherry-pick/use-pick-org'
 import type {
   PickTreeBranch,
@@ -40,6 +41,7 @@ import {
   toggleBranchSelection,
   toggleLeafSelection,
 } from '@/domain/lib/cherry-pick-tree'
+import { excludeContainerTaskRows } from '@/domain/lib/container-composition'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PickFilterBar } from '@/features/tasks/cherry-pick/components/pick-filter-bar'
@@ -82,6 +84,14 @@ export function PickStep({
   const deviceView = useCherryPickDeviceView(candidatesQuery.data)
   const resultTypeView = useCherryPickResultTypeView(candidatesQuery.data)
   const addEntries = usePickCartStore((s) => s.addEntries)
+  // §5.5.5：容器本身不进阶段 1 可挑选清单。后端候选聚合本就不含容器（容器无 test_results），
+  // 这里按既有容器列表再显式过滤一次，保证后端口径变化时清单仍成立；
+  // 与页签计数同一 query key → 向导内零新增请求。
+  const containersQuery = useCherryPickContainers({})
+  const containerTaskIds = useMemo(
+    () => new Set((containersQuery.data?.items ?? []).map((c) => c.id)),
+    [containersQuery.data]
+  )
 
   const [phase, setPhase] = useState<'tasks' | 'results'>(
     presetTaskIds && presetTaskIds.length > 0 ? 'results' : 'tasks'
@@ -118,12 +128,12 @@ export function PickStep({
         })
       }
     }
-    return [...map.values()].sort(
+    return excludeContainerTaskRows([...map.values()], containerTaskIds).sort(
       (a, b) =>
         getTaskStatusOrder(a.executionStatus) - getTaskStatusOrder(b.executionStatus) ||
         a.taskName.localeCompare(b.taskName, 'zh-CN')
     )
-  }, [allCandidatesQuery.data])
+  }, [allCandidatesQuery.data, containerTaskIds])
 
   /** 任务名映射（阶段 2 任务集摘要条；fetchPickableTasks 兜底补未入候选页的任务） */
   const taskNameById = useMemo(() => {

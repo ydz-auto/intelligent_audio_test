@@ -5,7 +5,7 @@
  * 页签路径式 /tasks/$tab（白名单校验在路由层）；「挑选合并」页签由 CherryPickTab 自持
  * （统一容器列表 + 四步向导），旧「合并」页签已收编（§2.2 裁定①）。
  */
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { ChartLine, FileDown, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -58,6 +58,24 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
     setFilters({ page: 1, pageSize: 10 })
     setSelectedTaskIds(new Set())
   }, [tab])
+
+  /**
+   * 跨页打开挑选向导（18 §5.5.5）：容器详情「开始挑选」与购物车「去复核」跳
+   * `/tasks/cherry-picks?wizard=pick|review`，本页消费后立即从 search 清掉，
+   * 避免刷新 / 回退时又弹一次向导（replace 不新增历史记录）。
+   */
+  const search = useSearch({ strict: false }) as { wizard?: WizardStepKey }
+  const wizardParam = search.wizard
+  useEffect(() => {
+    if (tab !== 'cherry-picks' || !wizardParam) return
+    if (hasPermission('task:cherry_pick')) setWizard({ step: wizardParam })
+    void navigate({
+      to: '/tasks/$tab',
+      params: { tab },
+      search: (prev) => ({ ...prev, wizard: undefined }) as unknown as typeof prev,
+      replace: true,
+    })
+  }, [tab, wizardParam, navigate, hasPermission])
 
   // 全局算法不在真实 /algorithm/options 内时视为无效——不继承、按「全部算法」查询
   // （对齐评估页 globalAlgorithmValid 口径；持久化陈旧算法值会让列表带着无效
