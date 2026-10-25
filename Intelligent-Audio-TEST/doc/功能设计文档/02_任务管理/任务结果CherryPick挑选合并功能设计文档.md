@@ -371,13 +371,13 @@ ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 - `test_results.result_data` 与 `task_case_relations` 都**不存用例名、也不存用例配置**（前者只有 `multi_round` / `raw_results_list` / `evaluation_data` 等结果键，后者只有任务-用例关系与执行状态），无法据此补建用例目录。
 - 名字快照只剩报告侧：`report_cases.name` 能捞到 214/483 的用例名，其中仅 45 个 case_id 能按名字指回现存 `test_cases`——即 438/483 连「指回现有用例」都做不到。
 - 补建要伪造 `test_cases.config`（`NOT NULL`）与 `algorithm_params` / `reference_params`，会把 463 条无音频、0 轮次的空壳用例灌进**共享用例目录**（用例管理页可见、可被选进新任务）。代价远大于「名字可读」的收益，属数据污染，不做。
-- 20 个软删用例按 INT-1693 与 §8.3.1 的既有口径「软删 = 查不到」不进映射，**不为树单独放宽**（否则同一功能内出现第三套用例名口径：候选行显示名 / 溯源返 null / 树再返名）。
+- 20 个软删用例按 INT-1693 与 §8.3.1 的既有口径「软删 = 查不到」不进映射，**不为树单独放宽**。现状三处口径并不齐（2026-10-25 审计实测）：候选行显示真实名（`_case_name_map` 不过滤软删，`36f5696f-24a3-4537-9064-e3c84820aadf` 在 `GET /candidates` 返「测试用例_DD075…」）、树 meta 返 UUID、溯源返 null；放宽树只会让树与候选行一致（仍是两套口径，不构成第三套），口径统一属另一套裁定，本卡不动，留作遗留观察。
 - 来源可追溯性到此为止：`logs` 表最早记录是 2026-10-17（导入之后），本地无法判定是导入未随迁还是源端已删；报告快照的 `created_at`（2026-08-29 等）是**源端时间**，不能当作平台内删除的证据。故「补建/恢复用例目录」在本库无源可依。
 
 **结论二：设备名不是数据缺口，是既有跨域口径**
 
 - 设备 1/6/7 的行仍在 `devices`（`deleted = true`）、名字可得；拿不到是因为 device_service `GetDeviceStatuses` 对显式 ID 也过滤 `deleted = FALSE`（`device_service/infrastructure/persistence/_device_repository_impl.py:152`）。
-- 报告侧同源：`_grpc_get_devices_by_ids` → `get_devices_by_ids` 同样过滤（同文件 `:172`），即**软删设备名在全域都解析不到**，tree 不是特例。本卡不改 device_service（跨域，且动的就是全域口径）；如需显示软删设备的真实名，另立 FEAT（显式 ID 查询加 `include_deleted` 开关，或设备名快照）。
+- 报告侧同源：`_grpc_get_devices_by_ids` → 报告服务 ACL 的 `get_devices_by_ids`（逐 ID 调 `get_device`）→ gRPC `GetDevice` → device_service `get_device`（同文件 `:80`，同样过滤 `deleted = FALSE`）；device_service 自身的批量 `get_devices_by_ids`（同文件 `:172`）也带同样过滤，其调用方是进程内的 `device_result_reextractor_service.py:231`。即**软删设备名在全域都解析不到**，tree 不是特例。本卡不改 device_service（跨域，且动的就是全域口径）；如需显示软删设备的真实名，另立 FEAT（显式 ID 查询加 `include_deleted` 开关——device_service 目前无此开关，或设备名快照——`test_results` 无设备名列，均属新增）。
 
 **结论三：缺省口径 = 接口不拼展示文案，前端兜底**
 
@@ -505,7 +505,7 @@ from ids left join test_cases c on c.id = ids.test_case_id;
 
 ## 13. 实现演进裁定记录
 
-- **2026-10-25（INT-1824 数据缺陷处置，开发工程师A）**：候选树 `meta` 用例/设备元信息缺口（483/1057 用例 `case_name` 回落 UUID、1204/3614 行结果的设备名 null）定处置：**数据侧不回填、缺省口径照旧、前端兜底**，完整口径与取证见新增的 §8.2.8。三条要点：①463 个硬缺失用例在库内无源（`result_data`/`task_case_relations` 不含用例名与配置；`report_cases.name` 只覆盖 214 个、其中 45 个能指回现存用例），补建需伪造 `config`（`NOT NULL`）并污染共享用例目录，故不做；20 个软删用例按 INT-1693「软删=查不到」不进映射，不为树单独放宽；②设备 1/6/7 的 `device_name = null` 不是数据缺口，而是 device_service 显式 ID 查询也过滤 `deleted = FALSE` 的全域口径（报告侧同源），本卡不动 device_service，要真实设备名需另立 FEAT；③接口不拼展示文案，前端阶段 2 接线卡对 `case_name === case_id` / `device_name === null` 出「未知用例」/「未知设备」（与 §8.3.1 溯源端点文案统一）。**待办**：React 阶段 2 接线卡建卡时带上兜底（该卡尚未建）。本卡无代码改动。
+- **2026-10-25（INT-1824 数据缺陷处置，开发工程师A）**：候选树 `meta` 用例/设备元信息缺口（483/1057 用例 `case_name` 回落 UUID、1204/3614 行结果的设备名 null）定处置：**数据侧不回填、缺省口径照旧、前端兜底**，完整口径与取证见新增的 §8.2.8。三条要点：①463 个硬缺失用例在库内无源（`result_data`/`task_case_relations` 不含用例名与配置；`report_cases.name` 只覆盖 214 个、其中 45 个能指回现存用例），补建需伪造 `config`（`NOT NULL`）并污染共享用例目录，故不做；20 个软删用例按 INT-1693「软删=查不到」不进映射，不为树单独放宽；②设备 1/6/7 的 `device_name = null` 不是数据缺口，而是 device_service 显式 ID 查询也过滤 `deleted = FALSE` 的全域口径（报告侧同源），本卡不动 device_service，要真实设备名需另立 FEAT；③接口不拼展示文案，前端阶段 2 接线卡对 `case_name === case_id` / `device_name === null` 出「未知用例」/「未知设备」（与 §8.3.1 溯源端点文案统一）。**待办**：React 阶段 2 接线卡建卡时带上兜底（该卡尚未建）。本卡无代码改动。**2026-10-25 方案一致性审计回写**：卡面与 §8.2.8 的全部数字已逐条对主库/端点复核一致（3614/117、1057 − 483 = 574 且 483 = 463 + 20、软删设备承载 1204/3614、`report_cases.name` 覆盖 214/483 且 45 可按名指回、`logs` 最早 2026-10-17、`test_cases.config NOT NULL`、`meta.apis` 0），代码引用 `cherry_pick_service.py:596/1560/1610` 与 `_device_repository_impl.py:152/:80` 亦核对无误；另按代码事实更正两处表述——报告侧设备名链路（是逐 ID `GetDevice` 走 `:80`，非 `:172`）与软删用例名「候选行真名 / 树 UUID / 溯源 null」的现状描述（放宽树只是与候选行一致，不构成第三套）。
 
 - **2026-10-24（INT-1755 章节编号裁定，方案一致性审计员）**：INT-1733（阶段 2 候选树聚合 · INT-1510 契约）与 INT-1706（溯源接口契约）在同一篇文档抢同一节号 §8.2，导致 INT-1733 的两个 doc 提交无法直接合入 V9.7.31。**裁定方案 A：候选树契约保持 §8.2（含 §8.2.1~§8.2.7 原样不动），溯源契约顺延为 §8.3。** 依据是已合入 V9.7.31 代码的引用面：`INT-1510 §8.2.x` 在代码里已落地 26 处（`api_gateway/schemas/cherry_pick.py:37`、`task_service/application/task/cherry_pick_service.py` 多处、`shared/utils/result_data_store.py:219/226`、`shared/utils/status_constants.py:82`、`task_service/infrastructure/persistence/models/result_models.py:38`、`test_result_repository.py:131/134`、`scripts/migrations/202610/add_test_result_result_type_int1510.py`、`scripts/migrations/README.md`、`docker/db_bootstrap_entrypoint.py:178` 及单测），而 `INT-1706 §8.2` 只有 4 处注释级引用（`task_service/application/task/cherry_pick_service.py:1062`、`tests/unit/test_int1714_cherry_pick_source_fields.py:13/241`、`tests/unit/test_int339_cherry_pick.py:411`）；让引用面大的一侧保持原号，改动面最小，也不会产生代码与文档的第二套编号。同步项：§8 接口表「新任务溯源」行改指 §8.3；INT-1670 卡面、INT-1669 回写（§8.2.7）、UX 18 号规范对「§8.2 = 候选树」的引用全部继续成立，无需改动。遗留：上述 4 处 `INT-1706 §8.2` 的代码注释仍写作 §8.2，按本节说明其指向已变为 §8.3（注释级、不影响行为，下轮改到这些文件时顺带同步，不为它单开代码卡）。
 
