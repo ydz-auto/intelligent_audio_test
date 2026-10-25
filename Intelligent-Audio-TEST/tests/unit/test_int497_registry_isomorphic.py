@@ -386,13 +386,25 @@ class TestCreateFromConfigCompat:
             infer_protocol(cfg, {})
 
     def test_unimplemented_protocol_rejected(self):
-        """sse / grpc 的协议级适配器未上线（A1/A2）→ 报错，不静默降级 HTTP"""
+        """sse 的协议级适配器未上线（A2）→ 报错，不静默降级 HTTP。
+
+        A1（INT-1789）落地后 grpc 已映射到 `AdapterProtocol.GRPC`，不再在
+        「未上线」列（见 test_grpc_protocol_mapped）。
+        """
+        cfg = type('Cfg', (), {
+            'endpoint': 'http://h', 'meta': {}, 'max_timeout': 5,
+            'api_endpoints': [{'endpoint': 'http://h'}], 'protocol': 'sse',
+        })()
+        with pytest.raises(ValueError, match='实现未上线'):
+            infer_protocol(cfg, {})
+
+    def test_grpc_protocol_mapped(self):
+        """A1（INT-1789）：grpc → AdapterProtocol.GRPC（协议级适配器已注册）"""
         cfg = type('Cfg', (), {
             'endpoint': 'http://h', 'meta': {}, 'max_timeout': 5,
             'api_endpoints': [{'endpoint': 'http://h'}], 'protocol': 'grpc',
         })()
-        with pytest.raises(ValueError, match='实现未上线'):
-            infer_protocol(cfg, {})
+        assert infer_protocol(cfg, {}) is AdapterProtocol.GRPC
 
     def test_dimensions_from_config(self):
         cfg = _make_api_config('ws://mock', vendor_adapter='mock')
