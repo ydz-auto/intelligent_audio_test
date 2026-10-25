@@ -3,8 +3,9 @@
 
 覆盖 D0 裁定（INT-1758）要求的口径：
 - 维度合并按 `(test_result_id, dimension_id)` 覆盖集（含各 round），同任务其它
-  result 的维度行一字不改；包内 result id 在 A 无维度行 → 409 + 明细、零写入；
-  维度 id 未命中映射的行跳过并计入回执；旧值快照可取回并逐字段恢复。
+  result 的维度行一字不改；包内 result id 在 A 库不存在 → 409 + 明细、零写入；
+  存在但还没有维度行 → 允许插入（deleted=0）；维度 id 未命中映射的行跳过并计入
+  回执；旧值快照可取回并逐字段恢复。
 - 报告替换原地保留 A 报告 id / visibility / created_by_user_id / type / created_at，
   6 子表重建；历史多报告只替换目标那一份；中途失败整事务回滚、旧报告完好；
   批次快照回滚逐字段恢复。
@@ -74,6 +75,26 @@ def _row_dicts(po_cls, **filters):
 # ==================================================================
 # 维度合并（evaluation_service）
 # ==================================================================
+
+@pytest.fixture(autouse=True)
+def acl_result_ids(monkeypatch):
+    """把 task_service ACL 的存在性判定换成内存集合（单测不起 gRPC）。
+
+    P2-1：A2-3 的存在性口径是「test_result 是否存在」，不是「有没有维度行」。
+    测试按需把 id 加进来模拟 A 库里的 result。
+    """
+    from evaluation_service.infrastructure.acl.task_acl_repository import (
+        TaskAclRepository,
+    )
+
+    existing = {101, 102}
+
+    def _fake(self, result_id):
+        return {'id': int(result_id)} if int(result_id) in existing else None
+
+    monkeypatch.setattr(TaskAclRepository, 'get_test_result_by_id', _fake)
+    return existing
+
 
 def _seed_dimensions():
     """result 101：dim1 两轮 + dim2 一轮；result 102：dim1/dim2 各一轮"""
@@ -150,6 +171,37 @@ class TestMergeDimensions:
         assert result['data']['missing_result_ids'] == [999]
         assert _row_dicts(_ResultDimension) == before
         assert _rows(EvaluationMergeSnapshot) == []
+
+    def test_existing_result_without_dimension_rows_is_inserted(self, db,
+                                                                acl_result_ids):
+        """P2-1：result 在 A 库存在但还没有维度行 → 允许插入（增量回导典型场景）"""
+        _seed_dimensions()
+        acl_result_ids.add(103)          # 103 在 A 库存在，库里没有任何维度行
+        before_101 = _row_dicts(_ResultDimension, test_result_id=101)
+        before_102 = _row_dicts(_ResultDimension, test_result_id=102)
+
+        from evaluation_service.application.dimension_merge_service import (
+            dimension_merge_service,
+        )
+        result = dimension_merge_service.merge_dimensions(
+            rows=[{'test_result_id': 103, 'dimension_id': 1, 'round_number': 0,
+                   'score': 66.0, 'status': 'passed',
+                   'evaluation_status': 'completed'}],
+            batch_id='batch-dim-new-result')
+
+        assert result['success'] is True, result
+        assert result['data']['imported'] == 1
+        assert result['data']['deleted'] == 0        # 没有旧行可删，不是失败
+        assert [r.score for r in _rows(_ResultDimension, test_result_id=103)] == [66.0]
+        # 已有 result 的维度行一字不改
+        assert _row_dicts(_ResultDimension, test_result_id=101) == before_101
+        assert _row_dicts(_ResultDimension, test_result_id=102) == before_102
+
+        rollback = dimension_merge_service.rollback_merge('batch-dim-new-result')
+        assert rollback['success'] is True, rollback
+        assert rollback['data']['deleted'] == 1
+        assert rollback['data']['restored'] == 0
+        assert _rows(_ResultDimension, test_result_id=103) == []
 
     def test_unmapped_dimension_is_skipped_not_written(self, db):
         _seed_dimensions()
@@ -351,6 +403,95 @@ class TestReplaceReports:
         assert report.visibility == 'shared'     # B 的私有可见性不带入
         assert report.created_by_user_id is None
         assert _table_counts(new_id)['report_cases'] == 5
+
+    def test_rollback_removes_newly_created_report(self, db):
+        """P2-2：目标报告是新建的 → 回滚必须连父行一起撤销，不留空报告"""
+        from report_service.application.report_replacement_service import (
+            report_replacement_service,
+        )
+        result = report_replacement_service.replace_reports(
+            _package(1001, 13, name='B侧新报告'), task_id=13,
+            batch_id='batch-rep-new-rb')
+        assert result['success'] is True, result
+        new_id = result['data']['inserted_report_ids'][0]
+        assert _rows(Report, id=new_id) != []
+
+        rollback = report_replacement_service.rollback_replacement('batch-rep-new-rb')
+        assert rollback['success'] is True, rollback
+        assert rollback['data']['deleted']['test_reports'] == 1
+        assert _rows(Report, id=new_id) == []
+        for table, po_cls in _CHILD_PO.items():
+            assert _rows(po_cls, report_id=new_id) == [], table
+        assert _rows(ReportMergeSnapshot) == []
+
+    def test_null_package_fields_clear_but_keep_not_null(self, db):
+        """P3-1：B 侧 analysis/description 为空要清空；name/status 是 NOT NULL 保留 A 值"""
+        _seed_report(30, 12, '旧报告-最新')
+        package = _package(999, 12)
+        package['test_reports'][0]['analysis'] = None
+        package['test_reports'][0]['description'] = None
+        package['test_reports'][0]['name'] = None
+
+        from report_service.application.report_replacement_service import (
+            report_replacement_service,
+        )
+        result = report_replacement_service.replace_reports(
+            package, task_id=12, batch_id='batch-rep-null')
+
+        assert result['success'] is True, result
+        report = _rows(Report, id=30)[0]
+        assert report.analysis is None            # 旧分析结论不得残留
+        assert report.description is None
+        assert report.name == '旧报告-最新'         # NOT NULL 列保留 A 值
+
+    def test_target_report_of_other_task_rejected(self, db):
+        """P3-2：target_report_id 指向别的任务的报告 → 409、两边的报告都不动"""
+        _seed_report(30, 12, '任务12的报告')
+        _seed_report(40, 99, '任务99的报告')
+        other_before = _row_dicts(Report, id=40)
+        other_children_before = {table: _row_dicts(po_cls, report_id=40)
+                                 for table, po_cls in _CHILD_PO.items()}
+        own_before = _row_dicts(Report, id=30)
+
+        from report_service.application.report_replacement_service import (
+            report_replacement_service,
+        )
+        result = report_replacement_service.replace_reports(
+            _package(999, 12), task_id=12, target_report_id=40,
+            batch_id='batch-rep-cross-task')
+
+        assert result['success'] is False
+        assert result['data']['code'] == 409
+        assert result['data']['target_report_id'] == 40
+        assert _row_dicts(Report, id=40) == other_before
+        assert {table: _row_dicts(po_cls, report_id=40)
+                for table, po_cls in _CHILD_PO.items()} == other_children_before
+        assert _row_dicts(Report, id=30) == own_before
+        assert _rows(ReportMergeSnapshot) == []
+
+    def test_child_report_id_mismatch_rejected(self, db):
+        """P3-3：包内子表行 report_id 与被选父行不一致 → 400，不能静默清空目标子表"""
+        _seed_report(30, 12, '旧报告-最新')
+        before = {table: _row_dicts(po_cls, report_id=30)
+                  for table, po_cls in _CHILD_PO.items()}
+        package = _package(900002, 12)
+        for table in _CHILD_PO:
+            for row in package[table]:
+                row['report_id'] = 900999        # 编排层 source_map 错位
+
+        from report_service.application.report_replacement_service import (
+            report_replacement_service,
+        )
+        result = report_replacement_service.replace_reports(
+            package, task_id=12, batch_id='batch-rep-mismatch')
+
+        assert result['success'] is False
+        assert result['data']['code'] == 400
+        assert result['data']['package_report_id'] == 900002
+        assert _rows(Report, id=30)[0].name == '旧报告-最新'
+        assert {table: _row_dicts(po_cls, report_id=30)
+                for table, po_cls in _CHILD_PO.items()} == before
+        assert _rows(ReportMergeSnapshot) == []
 
     def test_explicit_target_report_id_wins(self, db):
         _seed_report(30, 12, '旧报告-最新')

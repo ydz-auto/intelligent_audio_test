@@ -10,6 +10,7 @@ D0 裁定（INT-1758 A5）落地口径 —— 与设计文档初稿「先删旧�
 2. **目标报告定位顺序**：① 调用方给的 `target_report_id`（编排层经 source_map
    翻译）→ ② A 原任务下 `type='task' AND deleted=false` 的最新报告（与
    `published_task_repository` 取「该任务最新报告」同口径）→ ③ 都没有则新建。
+   ①命中的报告必须属于 `task_id`，否则 409 拒绝（source_map 错位不得打穿别的任务）。
 3. **单事务先写后删**：父行覆盖 + 子表重建 + 旧值快照全部在同一事务内，失败整
    事务回滚、旧报告完好；不出现「报告没了」的中间态。
 4. **不得复用 `regenerate_report`** 的删旧建新路径（会换新 id，使 studio 文档 /
@@ -67,6 +68,8 @@ _CHILD_TABLES = ('report_summaries', 'report_summary_meta', 'report_raw_data',
 # A5-1：原地替换只覆盖内容字段，其余字段（visibility / created_by_user_id /
 # type / created_at）保留 A 侧值
 _CONTENT_FIELDS = ('name', 'description', 'analysis', 'status')
+# 其中 NOT NULL 的列：B 侧为空时保留 A 侧值，不写 NULL
+_NOT_NULL_CONTENT_FIELDS = ('name', 'status')
 
 # A5-1 表末：引用 test_reports.id 的全部资产（孤儿检查口径）
 _ORPHAN_SOURCES = (
@@ -143,6 +146,7 @@ class ReportReplacementRepository:
         warnings: List[str] = []
         source = self._pick_package_report(package_reports, target_report_id, warnings)
         package_report_id = _as_int(source.get('id'))
+        self._check_package_child_refs(tables, package_report_id)
 
         session = get_db_session()
         try:
@@ -152,6 +156,11 @@ class ReportReplacementRepository:
 
             if target is None:
                 report = self._create_report(session, source, task_id)
+                # A8：新建的父行同样登记快照（old_row=None），回滚按「删本批新行」
+                # 撤销——否则回滚只清子表，留下一条空报告父行。
+                snapshot_rows.append(ReportMergeSnapshot(
+                    batch_id=batch_id, entity_table='test_reports',
+                    entity_pk=report.id, old_row=None))
             else:
                 self._snapshot_report(session, target, batch_id, snapshot_rows)
                 # 子表旧行快照（随后删除重建）
@@ -303,6 +312,35 @@ class ReportReplacementRepository:
     # ---- 内部 ----
 
     @staticmethod
+    def _check_package_child_refs(tables: Dict[str, List[dict]],
+                                  package_report_id: Optional[int]) -> None:
+        """包内子表行必须引用被选中的父行（A5 一致性校验）。
+
+        编排层 source_map 错位时（父行 id=900002、子表行 report_id=900999），
+        `_package_child_rows` 会一行都选不中，替换退化成「静默清空目标子表」。
+        破坏性操作宁可直接拒绝：只要包内子表行带有 report_id 且其中没有选中的
+        父行 id，即按校验失败返回。包内子表整体为空（合法的空子表）不在此列。
+
+        Raises:
+            ReplacementValidationError: 子表行 report_id 与被选父行不一致（code=400）。
+        """
+        if package_report_id is None:
+            return
+        referenced = set()
+        for table in _CHILD_TABLES:
+            for row in tables.get(table) or []:
+                ref = _as_int(row.get('report_id'))
+                if ref is not None:
+                    referenced.add(ref)
+        if referenced and package_report_id not in referenced:
+            raise ReplacementValidationError(
+                f'包内子表行 report_id 与被选父行 {package_report_id} 不一致: '
+                f'{sorted(referenced)[:20]}',
+                code=400,
+                detail={'package_report_id': package_report_id,
+                        'child_report_ids': sorted(referenced)})
+
+    @staticmethod
     def _pick_package_report(package_reports: List[dict],
                              target_report_id: Optional[int],
                              warnings: List[str]) -> dict:
@@ -327,10 +365,22 @@ class ReportReplacementRepository:
     @staticmethod
     def _resolve_target(session: Session, task_id: int,
                         target_report_id: Optional[int]) -> Optional[Report]:
-        """目标报告定位：① 指定 id → ② 任务下最新 task 型报告 → ③ None（新建）"""
+        """目标报告定位：① 指定 id → ② 任务下最新 task 型报告 → ③ None（新建）
+
+        Raises:
+            ReplacementValidationError: 指定 id 存在但属于别的任务（code=409）。
+                替换是破坏性操作，source_map 错位时绝不能打穿别的任务。
+        """
         if target_report_id is not None:
             po = session.query(Report).filter(Report.id == target_report_id).first()
             if po is not None and not po.deleted:
+                if po.task_id != task_id:
+                    raise ReplacementValidationError(
+                        f'target_report_id={target_report_id} 不属于任务 {task_id}',
+                        code=409,
+                        detail={'target_report_id': target_report_id,
+                                'expected_task_id': task_id,
+                                'actual_task_id': po.task_id})
                 return po
         return (session.query(Report)
                 .filter(Report.task_id == task_id,
@@ -348,10 +398,19 @@ class ReportReplacementRepository:
 
     @staticmethod
     def _apply_content(session: Session, report: Report, source: dict) -> None:
-        """A5-1：只覆盖内容字段，保留 visibility / created_by_user_id / type / created_at"""
+        """A5-1：只覆盖内容字段，保留 visibility / created_by_user_id / type / created_at
+
+        A5-1 的语义是「换成 B 的内容」：B 侧字段为空就应清空（`analysis=None`
+        必须覆盖，否则报告页会显示 A 侧旧结论配新数据）。`name` / `status` 是
+        NOT NULL 列，B 侧为空时保留 A 侧值，不写 NULL 破坏约束。
+        """
         for field in _CONTENT_FIELDS:
-            if field in source and source[field] is not None:
-                setattr(report, field, source[field])
+            if field not in source:
+                continue
+            value = source[field]
+            if value is None and field in _NOT_NULL_CONTENT_FIELDS:
+                continue
+            setattr(report, field, value)
 
     @staticmethod
     def _create_report(session: Session, source: dict, task_id: int) -> Report:

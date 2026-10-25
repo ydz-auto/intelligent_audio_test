@@ -5,8 +5,10 @@ D0 裁定（INT-1758）落地口径：
 - A2-5 合并语义是 **`(test_result_id, dimension_id)` 覆盖集**，不是整行 upsert：
   先删 A 侧该结果在这些维度下的旧行（含各 `round_number`），再插包内行；包内未
   出现的维度保持不动。纯 upsert 会把「B 少评了某轮」留成脏数据。
-- A2-2/A2-3 只覆盖已存在的 result：包内 `test_result_id` 在 A 侧无任何维度行 →
-  整体拒绝（`409` + 明细），零写入，不静默跳过。
+- A2-2/A2-3 只覆盖已存在的 result：包内 `test_result_id` 在 A 库（task_service）不存在
+  → 整体拒绝（`409` + 明细），零写入，不静默跳过。**判定口径是「result 存在」，
+  不是「已有维度行」**：A 侧执行了但未评估/评估失败的结果在增量回导时本就没有维度
+  行，B 侧重评出的分数要能插进来（与 `ImportDimensions` 整包导入同口径）。
 - A2-4 维度 id 翻译：包内若仍是 B 的 `dimension_id`，由编排层按
   (name, 父链, task_type_code) 映射成 A 的 id 后传入 `dimension_id_mapping`；
   映射不到的维度行**跳过并计入回执**，绝不直写 B 的 dimension_id。
@@ -67,6 +69,18 @@ def _as_int(value) -> Optional[int]:
         return None
 
 
+def _result_exists(result_id: int) -> bool:
+    """A2-3 存在性校验：走 task_service ACL（DDD 红线，不直读它域表）。
+
+    ACL 返回 None 既覆盖「不存在」也覆盖「调用失败」——两种情况都按不可写处理，
+    宁可整批拒绝也不半写。映射/过滤已在 `merge_rows` 内完成，这里只看最终 A id。
+    """
+    from evaluation_service.infrastructure.acl.task_acl_repository import (
+        task_acl_repository,
+    )
+    return task_acl_repository.get_test_result_by_id(result_id) is not None
+
+
 class DimensionMergeRepository:
     """维度评分覆盖集合并 + 批次快照回滚"""
 
@@ -86,7 +100,8 @@ class DimensionMergeRepository:
             batch_id: 编排方批次 ID（快照按它回滚）
 
         Raises:
-            MergeValidationError: 包内 result id 在 A 侧无维度行（code=409）。
+            MergeValidationError: 包内 result id 在 A 库不存在（code=409）；已有维度行
+                与否不影响成败（无维度行时 deleted=0，直接插入）。
         """
         if not batch_id:
             raise MergeValidationError('batch_id 不能为空', code=400)
@@ -134,19 +149,22 @@ class DimensionMergeRepository:
                     'skipped_dimensions': sorted(set(skipped_dims)),
                     'batch_id': batch_id, 'rollback_available': True}
 
+        # A2-3：包内 result id 必须在 A 库存在。判定的对象是 result 本身，不是它
+        # 有没有维度行——A 侧执行了但未评估的结果（增量回导典型场景）没有维度行
+        # 也要允许插入，此时 deleted=0。校验放在开事务前：跨服务 ACL 调用期间
+        # 不占数据库连接。任何未命中（含 ACL 调用失败）一律整批拒绝，零写入。
+        missing = [rid for rid in result_ids if not _result_exists(rid)]
+        if missing:
+            # A2-3：禁止把 B 的本地 id 当 A id 写入
+            raise MergeValidationError(
+                f'包内 {len(missing)} 个 test_result_id 在目标库不存在: {missing[:20]}',
+                code=409, detail={'missing_result_ids': missing})
+
         session = get_db_session()
         try:
             existing_pos = (session.query(TestResultDimension)
                             .filter(TestResultDimension.test_result_id.in_(result_ids))
                             .all())
-            existing_result_ids = {po.test_result_id for po in existing_pos}
-            missing = [rid for rid in result_ids if rid not in existing_result_ids]
-            if missing:
-                # A2-3：禁止把 B 的本地 id 当 A id 写入——整体拒绝，零写入
-                raise MergeValidationError(
-                    f'包内 {len(missing)} 个 test_result_id 在目标库无维度评分行: {missing[:20]}',
-                    code=409, detail={'missing_result_ids': missing})
-
             pairs: Set[Tuple[int, int]] = {
                 (row['test_result_id'], row['dimension_id']) for row in prepared}
             old_pos = [po for po in existing_pos
