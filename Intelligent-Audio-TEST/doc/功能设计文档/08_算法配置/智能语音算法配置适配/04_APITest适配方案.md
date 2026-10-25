@@ -16,7 +16,7 @@ APITest 是 API 测试的核心页面，用于执行 API 接口测试。算法�
 - 算法参数随用例（algorithm_params 独立列）进入执行链路，页面不设参数配置步骤
 
 ### 1.4 分层与命名口径
-后端响应经 `success_response` 统一转 camelCase；前端 DDD 分层——Presentation（APITest.vue + 公共组件）只消费 composables 与 camelCase Domain；`utils/api.ts`（Infrastructure）唯一感知 snake_case。用例执行的执行方式由被测设备 `device_type` 路由三执行器（物理设备→E2EExecutor、HTTP API→APISessionExecutor、WebSocket API→RealtimeSessionExecutor）；"api/e2e 为独立用例记录的 test_type 决定执行方式"属废弃口径，本页任务的 `type: 'api'` 仅是任务分类标识，任务关联的被测 API 通过 `apiIds` 字段传递。
+后端响应经 `success_response` 统一转 camelCase；前端 DDD 分层——Presentation（APITest.vue + 公共组件）只消费 composables 与 camelCase Domain；`utils/api.ts`（Infrastructure）唯一感知 snake_case。用例执行的执行方式由**执行道**决定，而执行道只有两条、由 `apis.streaming` 唯一派生（`false` → `non_streaming` 道，`true` → `streaming` 道）；`apis.protocol`（`http` / `websocket` / `sse` / `grpc`）只决定 transport 适配器，不参与道判断。"api/e2e 为独立用例记录的 test_type 决定执行方式"属废弃口径；原「按被测设备类型分派 E2E / HTTP API / WebSocket API 三个执行器」口径同属废弃（2026-10-26 回收，INT-1954：`apis.device_type` 已废弃，物理设备走 E2E 链路与本页两条道无关）。本页任务的 `type: 'api'` 仅是任务分类标识，任务关联的被测 API 通过 `apiIds` 字段传递。裁定见 [01_测试执行/09_API协议面与执行道契约 §3.1](../../../01_测试执行/09_API协议面与执行道契约.md)。
 
 ---
 
@@ -201,7 +201,7 @@ interface APIConfig {
   description: '通过API测试任务',
   type: 'api',                         // 任务分类标识（非执行路由依据）
   caseIds: (string|number)[],          // 关联用例；算法参数随用例 algorithm_params 独立列下发
-  apiIds: number[],                    // 关联被测 API；执行方式由设备/API 的 device_type 路由
+  apiIds: number[],                    // 关联被测 API；执行道由 api.streaming 派生（protocol 只决定 transport）
   tags: []
 }
 // 随后 POST /api/v1/tasks/:id/start 启动，返回 { startTime, expectedTotalTime, expectedCompleteTime }
@@ -411,7 +411,7 @@ class TaskCreateRequest(APIModel):
     algorithm_params: Optional[Dict[str, Any]] = Field(None, alias='algorithmParams', validation_alias='algorithmParams')
 ```
 
-链路：`POST /api/v1/tasks` 创建任务（blueprints/task_bp.py，写入用例/API 关联）→ `POST /api/v1/tasks/:id/start` 启动 → ExecutionEngine 按被测对象 `device_type` 路由执行器（HTTP API→APISessionExecutor、WebSocket API→RealtimeSessionExecutor；物理设备→E2EExecutor 属 E2E 页面场景），执行时从用例 `algorithm_params` 独立列取参数注入 API 请求，参考值取 `reference_params`（scope=api）。响应经 `success_response` 统一转 camelCase。
+链路：`POST /api/v1/tasks` 创建任务（blueprints/task_bp.py，写入用例/API 关联）→ `POST /api/v1/tasks/:id/start` 启动 → ExecutionEngine 按任务内被测 API 的 `apis.streaming` 选执行道（`false` → `non_streaming` 道：`rounds≤1` 线性、`rounds>1` → `APISessionExecutor`；`true` → `streaming` 道：WS / gRPC bidi → `RealtimeSessionExecutor` 按轮次，SSE / gRPC server-stream → `StreamSessionExecutor` 按事件），`apis.protocol` 只决定 transport 适配器；任务创建时按 `streaming` 派生 `task_case_relations.device_type` 亲和令牌（物理设备 E2E 链路不在本页范围）。执行时从用例 `algorithm_params` 独立列取参数注入 API 请求，参考值取 `reference_params`（scope=api）。响应经 `success_response` 统一转 camelCase。
 
 ---
 

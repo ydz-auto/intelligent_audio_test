@@ -6,7 +6,11 @@
 
 ### 1.1 页面定位
 
-API管理页面用于管理测试API接口，位于设备管理页面的"测试API管理"Tab中，承载智能语音算法配置化方案中的 **API 与算法类型关联**：声明每个被测 API 所属的算法类型（`algorithmType`），供测试执行时按被测设备 `device_type` 路由三执行器（物理设备→E2EExecutor、HTTP API→APISessionExecutor、WebSocket API→RealtimeSessionExecutor）场景下选择匹配算法的 API 使用。
+API管理页面用于管理测试API接口，位于设备管理页面的"测试API管理"Tab中，承载智能语音算法配置化方案中的 **API 与算法类型关联**：声明每个被测 API 所属的算法类型（`algorithmType`），供测试执行时按算法类型选择匹配算法的 API 使用。
+
+> **执行路由口径（2026-10-26 回收 B0 两道，INT-1954）**：被测 API 的执行道只有**两条**，由 `apis.streaming` 唯一派生——`streaming=false` → `non_streaming` 道，`streaming=true` → `streaming` 道。`apis.protocol`（`http` / `websocket` / `sse` / `grpc`）只是 API 的属性，**只决定 transport 适配器**，不参与执行道判断。原「按被测设备类型分派 E2E / HTTP API / WebSocket API 三个执行器」口径作废：`apis.device_type` 已废弃；物理设备仍走 `E2EExecutor`，但那是 E2E 链路，与 API 的两条道无关。裁定、组合矩阵与道内策略见 [01_测试执行/09_API协议面与执行道契约 §3.1](../../../01_测试执行/09_API协议面与执行道契约.md)。
+
+> **`device_type` 残留口径（保留，勿当被测 API 字段）**：`task_case_relations.device_type` 仍存在，语义是**调度亲和域令牌**，由 `apis.streaming` 派生（`false` → `http_api`、`true` → `websocket_api`；物理设备 `physical` 不进 `apis` 表）。前端建任务时按 `api.streaming` 派生该令牌，不再按协议名或端点 `ws://` 前缀推断。
 
 ### 1.2 页面路由
 - 路由路径：`/Device`（设备管理页面 > 测试API管理 Tab）
