@@ -182,7 +182,7 @@ api_params = [p for p in api_params if p.get('api_id') == target_api_id]
 
 ## 九、API 输出字段声明与取值口径（C0 裁定，2026-10-24）
 
-> **状态：已裁定，未实施。** 本节由方案一致性审计员在 INT-1745（C0）出具，配套实施卡 C1（INT-1746）/ C2（INT-1747）/ C3（INT-1748）/ C4（INT-1749）。落地前代码行为仍以 §一~§八 各段「现状核对」为准。
+> **状态：已落地（C1/C2/C4/C6 已合入 V9.7.31，C3 已 done 待合入）。** 本节由方案一致性审计员在 INT-1745（C0）出具，配套实施卡 C1（INT-1746）/ C2（INT-1747）/ C3（INT-1748）/ C4（INT-1749）；落地后的实际代码口径见 §9.6（INT-1851 回写）。
 
 ### 9.1 四条裁定
 
@@ -232,15 +232,46 @@ rounds[i].output = {target_param: value}      ← 评估侧唯一读取的口径
 | E2E 设备链 | 不动：仍由 `convert_device_output` + `_map_round_output` 产出 `{target_param: value}`（`device_service/infrastructure/acl/algorithm_query_acl_repository.py:187-196`、`e2e_calculation_service.py:216-244`） |
 | 主库现状（2026-10-24 实测） | `param_mappings` 无 `source='api'` 行（仅有 case / case_config / device / evaluation / reference）；`algorithm_api_params` 中 voice_llm 仅 `response_audio` 一条 output 声明 → **今天 API 用例没有任何路径能出评估值**，须按 §9.5 补声明与种子 |
 
-### 9.5 实施边界（未实施）
+### 9.5 实施边界与落地状态
 
-| 项 | 卡 | 边界 |
-|---|----|------|
-| 执行侧映射 + `rounds[i].output` 子字典 | C1 INT-1746 | 三条 API 链产出 `target_param` 视图；HTTP 轮次补 `answer_text`（与 Realtime 对齐），`algorithm_result.text_output` 由其拼接，不再对 `output` 做字符串拼接（`api_session_executor.py:568`）；**不动** `evaluation_service` 的取值代码 |
-| `field_path` 列 + 声明驱动提取 | C2 INT-1747 | `algorithm_api_params` 加 `field_path VARCHAR(255) NULL`（空 = 按 `param_code`）、DTO / RPC 透传；单轮（`api_task_runner.py:401-472`）、多轮、Realtime 三条链共用一个提取入口 |
-| 去硬编码 | C3 INT-1748 | `VoiceLlmStrategy.get_output_fields` / `process_algorithm_result` 改读配置；**删除** `map_api_results` 实现而非配置化它 |
-| `transform_type` 生效 | C4 INT-1749 | 在 §9.2 第 ② 跳（执行侧映射处）应用一次，评估侧不重复应用；批量取变换而非逐字段 RPC |
+| 项 | 卡 | 边界 | 状态 |
+|---|----|------|------|
+| 执行侧映射 + `rounds[i].output` 子字典 | C1 INT-1746 | 三条 API 链产出 `target_param` 视图；HTTP 轮次补 `answer_text`（与 Realtime 对齐），`algorithm_result.text_output` 由其拼接，不再对 `output` 做字符串拼接（`api_session_executor.py:568`）；**不动** `evaluation_service` 的取值代码 | 已合入 V9.7.31 |
+| `field_path` 列 + 声明驱动提取 | C2 INT-1747 | `algorithm_api_params` 加 `field_path VARCHAR(255) NULL`（空 = 按 `param_code`）、DTO / RPC 透传；单轮（`api_task_runner.py:401-472`）、多轮、Realtime 三条链共用一个提取入口 | 已合入 V9.7.31 |
+| 去硬编码 | C3 INT-1748 | `VoiceLlmStrategy.get_output_fields` / `process_algorithm_result` 改读配置；**删除** `map_api_results` 实现而非配置化它 | 已 done，代码待合入 |
+| `transform_type` 生效 | C4 INT-1749 | 在 §9.2 第 ② 跳（执行侧映射处）应用一次，评估侧不重复应用；批量取变换而非逐字段 RPC | 已合入 V9.7.31 |
+
 | `api_id` 作用域（同类型多厂商） | C6 INT-1751 | **C6a 已实施（INT-1756，合入 V9.7.31）**：声明表与映射表补 api_id 维度、唯一索引按算法级/API 级拆分、读侧合并入口与 proto/DTO 透传，契约见 §十；**C6b（INT-1757）**负责把执行 / 评估 / 报告调用点接上 api_id，未接线前各消费域仍按算法类型级默认取值 |
+### 9.6 展示侧口径与降级行为（C3 落地，INT-1851 回写）
+
+> 本节由方案一致性审计员在 INT-1851（INT-1748 一致性审计）出具，记录上述各卡落地后 `GetOutputFields` / 结果展示链路的**实际**代码口径，作为「实现演进裁定」。代码基线 `agent/d/int-1748` @ `1535ec52d`。
+
+**一、字段清单来源（API 声明唯一）**
+
+- 字段清单与类型 = `algorithm_api_params(direction=output)`，按 `(ui_order, id)` 排序；映射目标键取 `param_mappings(source='api', source_direction='output')`，无映射按恒等。
+  实现：`algorithm_service/application/queries/result_field_mapping_queries.py:36-117`。
+- `rounds` 轮内子键的类型/展示名取 `algorithm_device_params(direction=output)`（经既有 `GetDeviceParamsList` RPC 的 ACL 封装 `shared/clients/_grpc_algo_audio.py::algo_get_device_output_fields`，不新增 RPC），API 声明覆盖设备声明；**未声明的轮内键不输出**。设备声明不进入展示字段清单（本节裁定 3 优先且唯一）。
+  实现：`shared/domain/algorithm_result_strategy.py:70-153`、`shared/domain/algorithm_result_builder.py:196-205`。
+- 轮内展示名 = `{声明展示名} (第N轮)`（需求规划师 2026-10-24 裁定 E）。
+- `VoiceLlmStrategy` 不再持有任何算法类型字段表；`AlgorithmStrategyFactory` 只登记 `voice_llm` 的结构语义（`rounds` 按轮展开、跳过 `evaluation` 子字典），其余算法类型落 `DefaultStrategy`。
+
+**二、降级行为（明确但不抛错）**
+
+| 场景 | 行为 |
+|---|---|
+| 该算法类型一条 output 声明都没有 | 返回 `[]` + `WARNING`（含 `algorithm_type`）；**该结果不缓存**，补齐声明后无需重启 |
+| 有 output 声明但缺 `rounds`（仅对含 rounds 结构语义的类型） | `WARNING` 提示轮次展开缺失，其余字段照常返回 |
+| 读取声明/映射异常 | `ERROR` 日志 + 返回 `[]` |
+
+**三、种子与引导链**
+
+- 设备侧声明种子 `scripts/migrations/202610/seed_voice_llm_device_output_int1748.py`（幂等、默认 dry-run；C3 分支引导链 ㊸，须排在 INT-1741 `ANALYZE` 之前，随本卡合入生效）。
+- API 声明与 `source='api'` 映射种子 `scripts/migrations/202610/seed_api_eval_mapping_int1746.py`（C1 交付，同一张表不设第二份种子；其引导链步骤在 INT-1746 集成合入 V9.7.31 时丢失，待补）。
+- 两份种子都未落地时，voice_llm 的展示字段只剩主库既有的 `response_audio`（`rounds` 缺失告警），属 §9.4「主库现状」的预期降级，不是静默错值。
+
+**四、`map_api_results`**
+
+全链路已删除（策略基类与三个实现、`ResultFieldMappingQueryHandler.map_api_results`、`algo_map_api_results` 客户端封装与 `grpc_clients` 导出）；RPC 定义与 `pb2` 保留不重生成，服务端 `MapApiResults` 改为桩，固定返回 `success=False` + 「已废弃」。
 
 ## 十、`api_id` 作用域实现契约（C6a / INT-1756）
 
