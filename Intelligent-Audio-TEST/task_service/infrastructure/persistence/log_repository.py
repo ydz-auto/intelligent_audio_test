@@ -248,8 +248,13 @@ class LogRepository(LogRepositoryABC):
                     if total is None:
                         total = query.count()
                         _agg_cache_put(count_key, total)
+            # INT-1946：排序口径 = (time desc, id desc)，与网关合并视图的
+            # `_merge_sort_key` 全序一致。此前只按 id 倒序，与合并侧按 time
+            # 倒序不同序，导致合并视图「每页尾部重复、页间漏行」（库里存在
+            # id 大而 time 早的行时，DB 前缀取不到本该进页的行）。
+            # logs.time 已有 idx_time / (task_id, time) 复合索引可服务该序。
             rows = (
-                query.order_by(Log.id.desc())
+                query.order_by(Log.time.desc(), Log.id.desc())
                 .offset((page - 1) * per_page)
                 .limit(per_page)
                 .all()

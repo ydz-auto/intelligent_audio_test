@@ -263,7 +263,9 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
 
         支持 task_id / level（逗号分隔多级别）/ 日期范围及 module/category/
         mark/device_id/api_id/test_case_id/thread_id/keyword/content_*/
-        algorithm_type 下推过滤（INT-100），按 id 倒序分页。
+        algorithm_type 下推过滤（INT-100），按 (time desc, id desc) 分页
+        （INT-1946：与网关合并视图的排序口径同全序，此前只按 id 倒序会让
+        合并视图的分页前缀漏行）。
         """
         try:
             result = log_repository.list_logs(

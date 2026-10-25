@@ -292,7 +292,11 @@ def _build_logs_from_business_files(task_id_int) -> Optional[list]:
 
 
 def _build_logs_via_grpc(task_id_int) -> list:
-    """通过 gRPC 查询最近日志并转为 ProgressLogItem 列表（历史任务回退路径）。"""
+    """通过 gRPC 查询最近日志并转为 ProgressLogItem 列表（历史任务回退路径）。
+
+    ListLogs 按 (time desc, id desc) 返回（INT-1946），首页 RECENT_LOG_LIMIT 行
+    即「最近 N 条」，下方 reverse 后按时间正序展示，与业务文件路径一致。
+    """
     try:
         from shared.clients.grpc_clients import list_logs
         log_resp = list_logs(task_id=task_id_int, page=1, per_page=RECENT_LOG_LIMIT)
