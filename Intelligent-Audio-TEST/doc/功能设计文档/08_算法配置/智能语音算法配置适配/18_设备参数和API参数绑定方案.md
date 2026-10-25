@@ -1,8 +1,8 @@
 # 设备参数和API参数绑定方案
 
-> **实施状态（2026-10-25 更新）**：**`api_id` 作用域已实施**（C6a / INT-1756，合入 V9.7.31；实现契约见 **§十**），实现与本文 §二/§三 提案的差异：**不建外键**（跨服务 DB 约束违反架构红线，存在性与算法类型一致性改由网关写路径校验）。**`keywords` 绑定仍为设计提案，尚未实施**。经代码核对：`AlgorithmDeviceParam`、`AlgorithmApiParam`、`ParamMapping` 三个模型中均**不存在** keywords 字段（`AlgorithmApiParam` / `ParamMapping` 已有 `api_id`）。当前设备驱动的解析由 `backend/utils/device_driver/registry.py` 按 `(app_type, version, platform)` 三元组完成（AppType/DevicePlatform 枚举驱动），keywords 字符串匹配机制仍保留于 `driver_factory.py` 的专用驱动注册表（`_specialized_drivers`）。文中标注"现状核对"处为与代码库对齐的说明，其余保留原提案内容供后续实施参考。
+> **实施状态（2026-10-25 按实现更新）**：本文档 §一~§八 描述的 **keywords 驱动绑定方案为设计提案，尚未实施**（`AlgorithmDeviceParam`、`ParamMapping` 均无 `keywords` 列）；`api_id` 已部分落地——**C6a（INT-1756）已实施**（`AlgorithmApiParam.api_id`、`ParamMapping.api_id` 列存在，NULL = 算法类型级默认），**C6b（INT-1757）未实施**（执行 / 评估 / 报告消费域接线，声明与映射仍按算法类型作用域）。C0（INT-1745）裁定的 **API 输出字段声明与取值已实施**（C2 / INT-1747），见 §九。当前设备驱动的解析由 `backend/utils/device_driver/registry.py` 按 `(app_type, version, platform)` 三元组完成（AppType/DevicePlatform 枚举驱动），keywords 字符串匹配机制仍保留于 `driver_factory.py` 的专用驱动注册表（`_specialized_drivers`）。文中标注"现状核对"处为与代码库对齐的说明，其余保留原提案内容供后续实施参考。
 
-> **C0 裁定（2026-10-24，INT-1745，方案一致性审计）**：§二/§三 的 `keywords` / `api_id` 字段方案仍为提案；与之相邻的另一条语义——**API 输出字段的声明与取值**——已裁定，见 **§九**：输出字段由 `algorithm_api_params(direction=output)` 声明（补 `field_path`），映射到评估维度参数在执行侧完成，`map_api_results` 废弃。
+> **C0 裁定（2026-10-24，INT-1745，方案一致性审计）**：§二/§三 的 `keywords` 驱动绑定方案仍为提案（`api_id` 已按 C6a / INT-1756 落地，消费域 C6b / INT-1757 未实施）；与之相邻的另一条语义——**API 输出字段的声明与取值**——已裁定并实施，见 **§九**：输出字段由 `algorithm_api_params(direction=output)` 声明（补 `field_path`），映射到评估维度参数在执行侧完成，`map_api_results` 废弃。
 
 ## 一、需求背景
 
@@ -27,24 +27,31 @@
 
 | 字段 | 说明 | 变更 |
 |------|------|------|
-| api_id | 关联的API配置ID | 新增字段 |
+| api_id | 关联的API配置ID | 新增字段（已实施：C6a INT-1756） |
+| field_path | 输出字段在厂商原始响应中的取值路径 | 新增字段（已实施：C2 INT-1747） |
 
 ```python
 class AlgorithmApiParam(db.Model):
     # 现有字段...
 
-    # 新增字段
-    api_id = Column(Integer, ForeignKey('apis.id'), comment='关联的API配置ID')
+    # 新增字段（均已落库，INT-1747 / INT-1756）
+    api_id = Column(Integer, nullable=True, comment='API 实例ID（NULL=算法类型级默认）')
+    field_path = Column(String(255), comment='输出字段取值路径（点号 + 数组下标，如 data.events[0].text；空 = 按 param_code 取顶层键）')
 ```
 
-> 现状核对（2026-10-25）：`AlgorithmApiParam` 已有 `api_id = Column(Integer, nullable=True)`（`NULL` = 算法类型级默认，**无 ForeignKey**，见 §十）；其余字段仍为 algorithm_type/param_code/param_name/label/param_type/direction/required/default_value/validation_rules/help_text/ui_order/hidden/deleted（另有 C2 的 `field_path`）。
+> **现状核对（2026-10-25 按实现重写）**：两列均已落库。真实模型见 `algorithm_service/infrastructure/persistence/models/algorithm_models.py:167-215`（`AlgorithmApiParam`，`to_dict` 见 `:198-215`）。
+>
+> - `api_id`（`:179`）：`Integer NULL`，NULL = 算法类型级默认。**不建 ForeignKey**——`apis` 归 `api_test_service`，跨服务 DB 约束违反架构红线；存在性与算法类型一致性由网关写路径校验。与上文代码块原提案的 `ForeignKey('apis.id')` 不同，以本条为准。
+> - `field_path`（`:191`）：`VARCHAR(255) NULL`，无默认值、无索引。取值为点号 + 数组下标（`data.events[0].text`，`a.b.0.c` 与 `a.b[0].c` 等价），空 = 按 `param_code` 取顶层键；只有 `direction=output` 的 API 参数使用它，取值口径见 §九。迁移见 `scripts/migrations/202610/add_api_param_field_path_int1747.py`（`docker/db_bootstrap_entrypoint.py` 引导链 ㊺；列存在即 SKIP）。
+> - 其余字段与 §二.1「现状核对」所列重复项一致，唯一性按 `(algorithm_type, param_code, direction)`、仅在 `deleted = false` 条件下生效。
+> - `api_id` 的实施拆成两段，见 §9.5：C6a（模型 / 迁移 / 唯一索引 / 合并入口）已实施，C6b（执行 / 评估 / 报告消费域接线）未实施。
 
 ### 3. ParamMapping（参数映射表）
 
 | 字段 | 说明 | 变更 |
 |------|------|------|
-| keywords | 设备驱动关键字 | 新增字段 |
-| api_id | API配置ID | 新增字段 |
+| keywords | 设备驱动关键字 | 新增字段（未实施） |
+| api_id | API配置ID | 新增字段（已实施：C6a INT-1756） |
 
 ```python
 class ParamMapping(db.Model):
@@ -52,10 +59,14 @@ class ParamMapping(db.Model):
 
     # 新增字段
     keywords = Column(String(200), comment='设备驱动关键字（用于映射时识别来源驱动）')
-    api_id = Column(Integer, ForeignKey('apis.id'), comment='API配置ID（用于映射时识别来源API）')
+    api_id = Column(Integer, nullable=True, comment='API 实例ID（NULL=算法类型级默认）')
 ```
 
-> 现状核对（2026-10-25）：`ParamMapping` 已有 `api_id = Column(Integer, nullable=True)`（`NULL` = 算法类型级默认，**无 ForeignKey**）；`keywords` 仍不存在。实际字段为 algorithm_type/source/source_param/source_direction/dimension_id/target_param/transform_type/deleted。其中 source 支持 case/reference/device/api/case_config 五类来源，source_direction 区分输入/输出方向；合并读取口径见 §十。
+> **现状核对（2026-10-25 按实现更新）**：ParamMapping 实际字段为 algorithm_type/**api_id**/source/source_param/source_direction/dimension_id/target_param/transform_type/deleted（`algorithm_service/infrastructure/persistence/models/algorithm_models.py:307-329`，`api_id` 见 `:317`）。
+>
+> - `api_id Integer NULL`（C6a / INT-1756）：API 实例级作用域，NULL = 算法类型级默认；**不建跨服务 ForeignKey**（与上文代码块原提案不同，以本条为准）；合并读取时 API 级行覆盖同键算法级行。消费域接线（C6b / INT-1757）未实施，当前读取仍按算法类型作用域。
+> - `keywords`：**仍不存在**，驱动绑定方案未实施。
+> - `source` 支持 case/reference/device/api/case_config 五类来源，`source_direction` 区分输入/输出方向；映射按 algorithm_type（叠加 `api_id` 后按 API 实例）关联参数定义，不依赖 keywords。
 
 ## 三、字段作用说明
 
@@ -126,7 +137,7 @@ def _serialize_params(self, params: List) -> List[Dict[str, Any]]:
     ]
 ```
 
-> 现状核对：由于模型中尚无 keywords/api_id 字段，当前 `_serialize_params` 并不返回这两个键，上述代码仅在方案实施后生效。
+> **现状核对（2026-10-25 按实现更新）**：序列化实现已迁到 `algorithm_service/infrastructure/persistence/config_cache.py` 的 `_serialize_params`（`:650-681`），按「键存在才带」的方式输出：`keywords` 不返回（列不存在）；`api_id` 由 `:678-679` 的 `if 'api_id' in p` 输出（仅 `algorithm_api_params` / `param_mappings` 的 PO 带该字段）；`field_path` 由 `:674-675` 的 `if p.get('field_path') is not None` 输出（C2 / INT-1747）。上述 `algorithm_config_loader.py` 代码块仅为原提案示意，实际实现以上述位置为准。
 
 ### 3. field_mapper.py（可选增强）
 
@@ -142,13 +153,13 @@ api_params = [p for p in api_params if p.get('api_id') == target_api_id]
 
 ## 七、改动清单
 
-以下为方案实施时所需的改动清单（均未实施）：
+以下为方案实施时所需的改动清单（除标注「已实施」外均未实施）：
 
 | 序号 | 模块 | 文件 | 改动内容 |
 |------|------|------|---------|
-| 1 | 后端 | algorithm_models.py | AlgorithmApiParam 新增 api_id 字段 |
-| 2 | 后端 | algorithm_models.py | ParamMapping 新增 keywords 和 api_id 字段 |
-| 3 | 后端 | algorithm_config_loader.py | 序列化时返回 keywords 和 api_id |
+| 1 | 后端 | algorithm_models.py | AlgorithmApiParam 新增 api_id 字段（**已实施 C6a INT-1756**；同表另有 C2 的 field_path） |
+| 2 | 后端 | algorithm_models.py | ParamMapping 新增 keywords 和 api_id 字段（api_id **已实施 C6a INT-1756**，keywords 未实施） |
+| 3 | 后端 | algorithm_config_loader.py | 序列化时返回 keywords 和 api_id（api_id **已实施**，实现位置 `config_cache._serialize_params`；keywords 未实施） |
 | 4 | 后端 | 算法Controller | API接口支持 keywords 和 api_id 字段 |
 | 5 | 前端 | AlgorithmConfigModal.vue | 设备参数增加驱动选择（复用 keywords） |
 | 6 | 前端 | AlgorithmConfigModal.vue | API参数增加API选择（新增 api_id） |
@@ -156,7 +167,7 @@ api_params = [p for p in api_params if p.get('api_id') == target_api_id]
 
 ## 八、数据示例
 
-> 以下示例为方案实施后的目标状态（含 keywords/api_id 列），与当前数据库实际表结构不符，仅供实施参考。
+> 以下示例为方案实施后的目标状态（含 keywords / api_id 列），与当前数据库实际表结构**部分**不符：`api_id` 列已存在（C6a / INT-1756），`keywords` 列尚未实施——带 keywords 值的行今天仍不可落库，api_id 值可落库但消费域未接线前不生效。
 
 ### AlgorithmDeviceParam 示例
 
@@ -180,9 +191,19 @@ api_params = [p for p in api_params if p.get('api_id') == target_api_id]
 | 2 | translation | device | translation | candidate | face2face,面对面 | NULL |
 | 3 | translation | api | result | candidate | NULL | 1 |
 
-## 九、API 输出字段声明与取值口径（C0 裁定，2026-10-24）
+## 九、API 输出字段声明与取值口径（C0 裁定 2026-10-24；C1~C4 / C6a 已实施）
 
-> **状态：已落地（C1/C2/C4/C6 已合入 V9.7.31，C3 已 done 待合入）。** 本节由方案一致性审计员在 INT-1745（C0）出具，配套实施卡 C1（INT-1746）/ C2（INT-1747）/ C3（INT-1748）/ C4（INT-1749）；落地后的实际代码口径见 §9.6（INT-1851 回写）。
+> **状态：C2 已实施（2026-10-24，交付提交 `ccf482002`，集成合并 `abeba6d80`）**。本节由方案一致性审计员在 INT-1745（C0）出具，配套实施卡 C1（INT-1746）/ C2（INT-1747）/ C3（INT-1748）/ C4（INT-1749）/ C6a（INT-1756）均已 done；C6b（INT-1757，消费域接线）未实施（§9.5）。
+>
+> C2 的落地落点（本节所有「已实施」判断以此为准）：
+>
+> | 落点 | 位置 |
+> |------|------|
+> | 列 | `algorithm_api_params.field_path VARCHAR(255) NULL`——`algorithm_service/infrastructure/persistence/models/algorithm_models.py:191` |
+> | 迁移 | `scripts/migrations/202610/add_api_param_field_path_int1747.py`，进 `docker/db_bootstrap_entrypoint.py` 引导链 ㊺（幂等，列存在即 SKIP，全新库为全 SKIP） |
+> | 三链统一入口 | `shared/utils/api_output_extractor.py`——单轮 `api_task_runner.extract_final_result`、多轮 `api_session_executor._attach_api_output_fields`、Realtime `realtime_session_executor` 共用 `extract_api_output_fields` |
+> | 评估侧字段键并集 | `evaluation_service/infrastructure/evaluation_api/endpoint_worker.py:232-237`（`device ∪ api`，口径见 §9.6） |
+> | 落库通路 | 网关 `api_gateway/schemas/_algorithm_api_param_schemas.py:35-37`（create）/`:58`（update）→ `algorithm_service/infrastructure/persistence/_algorithm_full_save.py:144-145`（create）/`:164-165`（update） |
 
 ### 9.1 四条裁定
 
@@ -210,18 +231,23 @@ rounds[i].output = {target_param: value}      ← 评估侧唯一读取的口径
 - **字段全集**：`rounds[i].output` 覆盖该算法类型**全部** `direction=output` 的 api 参数，而不只是被映射过的参数——与设备链 `get_mapped_device_output_fields` 的「未映射恒等保留」语义对齐（`algorithm_service/application/queries/field_mapping_queries.py:88-103`）。
 - **方向过滤**：只取 `source_direction='output'`。`algorithm_service/infrastructure/persistence/config_cache.py:843-907` 的 `_get_evaluation_mappings` 目前把 `direction` 硬编码为 `output`，实施时不得据此把 input 映射混进输出。
 
-### 9.3 声明优先级与兜底（逐键）
+### 9.3 声明优先级与零声明兜底（已实施：C2）
 
 | 优先级 | 来源 | 触发条件 | 行为 |
 |-------|------|---------|------|
-| 1 | `algorithm_api_params(direction=output).field_path` | 该键已声明且 `field_path` 非空 | 按路径从原始响应提取；语法为点号 + 数字下标，`a.b.0.c` 与 `a.b[0].c` 等价 |
-| 2 | `algorithm_api_params(direction=output).param_code` | 已声明、`field_path` 为空 | 按 `param_code` 在响应顶层取值（= 现状行为，存量零改动） |
-| 3 | `apis.meta.result_parser`（voice_llm）/ `asr_mapping` + `trans_mapping`（translation） | **该算法类型一条 output 声明都没有** | 走既有解析器，其产出的 `asr` / `trans` / `output` 键进入第 ② 跳；必须打 WARNING 列出兜底键 |
+| 1 | `algorithm_api_params(direction=output).field_path` | 该键已声明且 `field_path` 非空 | 在**厂商原始响应**上按路径提取；语法为点号 + 数字下标，`a.b.0.c` 与 `a.b[0].c` 等价（`shared/utils/path_extractor.py:9-57`） |
+| 2 | `algorithm_api_params(direction=output).param_code` | 已声明、`field_path` 为空 | 按 `param_code` 在「响应顶层」取值（= 存量行为，存量零改动；「顶层」按链路落点不同，见下） |
+| 3 | `apis.meta.result_parser`（voice_llm）/ `asr_mapping` + `trans_mapping`（translation） | **该算法类型一条 output 声明都没有**（零声明） | 走既有解析器，其产出的 `asr` / `trans` / `output` 键进入第 ② 跳；单轮 / 多轮链必须打 WARNING 列出兜底键（Realtime 不兜底，见下） |
 | — | 无 | 键既未声明、兜底也没有 | 不写入 `output`，不报错 |
 
-- 优先级是**逐键**的：声明优先，`meta` 只补未声明的键，不做合并冲突裁决。
-- 同一算法类型下不允许「声明一套 + meta 再覆盖一次」并存；补齐声明后兜底分支即为死代码，应在 C3 / 清理卡删除。
-- 提取函数复用 `shared/utils/path_extractor.py:extract_by_path`（现支持 `a.b.0.c`），**只扩展该函数兼容 `[n]` 写法，不新增第二个提取器**。
+- **不做逐键合并**：声明表与 `meta` 解析器是**互斥**的两条路——该算法类型只要有任意一条 `direction=output` 声明（`defs` 非空），就只按声明提取，`meta` 完全不参与；只有零声明才整体走 `meta` 兜底。不存在「声明补 meta 未覆盖的键」这种混合，也没有合并冲突裁决可做（`shared/utils/api_output_extractor.py:69-86`，判据在 `:78`）。
+- **「响应顶层」按链路落点不同**（存量行为，C1 / C2 均未改变）：
+  - 单轮（HTTP）：业务数据包在 `json.data` 里，第 2 级取 **`json.data` 的顶层键**——`api_test_service/core/api_task_runner.py:452-455,471-500`（`extract_final_result` 的 `flat_source=final_data`）。
+  - 多轮 / Realtime：厂商响应没有这层包装，第 2 级取**整份厂商响应的顶层键**——`api_test_service/core/api_session_executor.py:592-608`、`api_test_service/core/realtime_session_executor.py:797`。
+  - 第 1 级（`field_path` 非空）三链一律作用于**厂商原始响应**（单轮是 `json`；多轮适配器路径是 `execute` 结果的 `json`；Realtime 是 WS 聚合输出），不受上述包装差异影响。
+- **Realtime 零声明不兜底、也不打 WARNING**：`api_test_service/core/realtime_session_executor.py:790-797` 调 `extract_api_output_fields` 时不传 `fallback_values`，零声明即 `SOURCE_NONE`（返回空，与改前一致）。上表第 3 行的 WARNING **只适用于单轮与多轮**两条链——`api_task_runner.py:501-504`、`api_session_executor.py:598-603`。Realtime 这一段产出的是评估**入参**字段，入参口径见 §9.6。
+- **`meta` 兜底分支保留**：零声明的算法类型仍要走它，不是「补齐声明后即删除」的死代码；C3（INT-1748）只做 `VoiceLlmStrategy` 去硬编码，未删除该分支。
+- 提取函数复用 `shared/utils/path_extractor.py:extract_by_path`，C2 只扩展该函数兼容 `[n]` 写法（`shared/utils/path_extractor.py:9-57`），**没有新增第二个提取器**。
 
 ### 9.4 存量兼容（不回归路径）
 
@@ -230,18 +256,21 @@ rounds[i].output = {target_param: value}      ← 评估侧唯一读取的口径
 | 历史 `rounds[].output` 为字符串 | 只读兼容：`shared/utils/round_data_utils.py:17-28` 的 `normalize_round_output` 继续归一为 `{'text': ...}`；新数据不再产生字符串 output |
 | 未配 `source='api'` 映射、也未声明 output 字段的老 API | 走 §9.3 兜底解析，轮次 output 只含 `asr`/`trans`/`output` 键；评估侧按 `target_param` 取不到值时沿用现有「无值不覆盖维度默认值」语义（`round_data_builder.py:204-205`）并留 ERROR 日志，不报错、不阻断执行 |
 | E2E 设备链 | 不动：仍由 `convert_device_output` + `_map_round_output` 产出 `{target_param: value}`（`device_service/infrastructure/acl/algorithm_query_acl_repository.py:187-196`、`e2e_calculation_service.py:216-244`） |
-| 主库现状（2026-10-24 实测） | `param_mappings` 无 `source='api'` 行（仅有 case / case_config / device / evaluation / reference）；`algorithm_api_params` 中 voice_llm 仅 `response_audio` 一条 output 声明 → **今天 API 用例没有任何路径能出评估值**，须按 §9.5 补声明与种子 |
+| 主库现状（2026-10-24 实测） | `param_mappings` 无 `source='api'` 行（仅有 case / case_config / device / evaluation / reference）；`algorithm_api_params` 中 voice_llm 仅 `response_audio` 一条 output 声明 → **今天 API 用例没有任何路径能出评估值**，须补声明与种子数据（数据梳理，不在 C1~C6 实施范围内） |
 
-### 9.5 实施边界与落地状态
+### 9.5 实施边界与实际状态（C1~C4 / C6a 已实施，C6b 未实施）
 
-| 项 | 卡 | 边界 | 状态 |
+| 项 | 卡 | 状态 | 边界 |
 |---|----|------|------|
-| 执行侧映射 + `rounds[i].output` 子字典 | C1 INT-1746 | 三条 API 链产出 `target_param` 视图；HTTP 轮次补 `answer_text`（与 Realtime 对齐），`algorithm_result.text_output` 由其拼接，不再对 `output` 做字符串拼接（`api_session_executor.py:568`）；**不动** `evaluation_service` 的取值代码 | 已合入 V9.7.31 |
-| `field_path` 列 + 声明驱动提取 | C2 INT-1747 | `algorithm_api_params` 加 `field_path VARCHAR(255) NULL`（空 = 按 `param_code`）、DTO / RPC 透传；单轮（`api_task_runner.py:401-472`）、多轮、Realtime 三条链共用一个提取入口 | 已合入 V9.7.31 |
-| 去硬编码 | C3 INT-1748 | `VoiceLlmStrategy.get_output_fields` / `process_algorithm_result` 改读配置；**删除** `map_api_results` 实现而非配置化它 | 已 done，代码待合入 |
-| `transform_type` 生效 | C4 INT-1749 | 在 §9.2 第 ② 跳（执行侧映射处）应用一次，评估侧不重复应用；批量取变换而非逐字段 RPC | 已合入 V9.7.31 |
+| 执行侧映射 + `rounds[i].output` 子字典 | C1 INT-1746 | 已实施 | 三条 API 链产出 `target_param` 视图；HTTP 轮次补 `answer_text`（与 Realtime 对齐），`algorithm_result.text_output` 由其拼接，不再对 `output` 做字符串拼接（`api_session_executor.py:568`）；**不动** `evaluation_service` 的取值代码 |
+| `field_path` 列 + 声明驱动提取 | C2 INT-1747 | 已实施 | `algorithm_api_params` 加 `field_path VARCHAR(255) NULL`（空 = 按 `param_code`）、DTO / RPC 透传；单轮（`api_task_runner.py:408-472`）、多轮（`api_session_executor.py:592-608`）、Realtime（`realtime_session_executor.py:797`）三条链共用一个提取入口 `shared/utils/api_output_extractor.py` |
+| 去硬编码 | C3 INT-1748 | 已实施 | `VoiceLlmStrategy.get_output_fields` / `process_algorithm_result` 改读配置；**删除** `map_api_results` 实现而非配置化它（`meta` 兜底分支按 §9.3 保留） |
+| `transform_type` 生效 | C4 INT-1749 | 已实施 | 在 §9.2 第 ② 跳（执行侧映射处）应用一次，评估侧不重复应用；批量取变换而非逐字段 RPC |
+| `api_id` 作用域·模型侧（同类型多厂商） | C6a INT-1756 | 已实施 | `algorithm_api_params` / `param_mappings` 补 `api_id`（NULL = 算法类型级默认）、模型 + 迁移（引导链 ㊻ `add_api_id_scope_int1751.py`）+ 唯一索引 + proto / DTO + `algorithm_service` 合并入口；**不建 ForeignKey**（跨服务 DB 约束违反架构红线，存在性由网关写路径校验） |
+| `api_id` 作用域·消费域接线 | C6b INT-1757 | 未实施（backlog） | 执行 / 评估 / 报告调用点接线 + 输出声明缓存改键。在 C6b 落地前，声明与映射**仍按算法类型作用域**——`api_id` 已落库但无人读，同一算法类型下的多厂商 API 共用同一套声明 |
 
-| `api_id` 作用域（同类型多厂商） | C6 INT-1751 | **C6a 已实施（INT-1756，合入 V9.7.31）**：声明表与映射表补 api_id 维度、唯一索引按算法级/API 级拆分、读侧合并入口与 proto/DTO 透传，契约见 §十；**C6b（INT-1757）**负责把执行 / 评估 / 报告调用点接上 api_id，未接线前各消费域仍按算法类型级默认取值 |
+> §一~§八 描述的 `keywords` / `api_id` 绑定提案本身仍为提案（§二.1 的 `keywords` 未实施）；本节只覆盖 **API 输出字段声明与取值** 这一条已实施的语义。§9.2 两跳取值链路与 §9.4 存量兼容两张表已按实现逐条核对，无需改写。
+
 ### 9.6 展示侧口径与降级行为（C3 落地，INT-1851 回写）
 
 > 本节由方案一致性审计员在 INT-1851（INT-1748 一致性审计）出具，记录上述各卡落地后 `GetOutputFields` / 结果展示链路的**实际**代码口径，作为「实现演进裁定」。代码基线 `agent/d/int-1748` @ `1535ec52d`。
@@ -272,6 +301,26 @@ rounds[i].output = {target_param: value}      ← 评估侧唯一读取的口径
 **四、`map_api_results`**
 
 全链路已删除（策略基类与三个实现、`ResultFieldMappingQueryHandler.map_api_results`、`algo_map_api_results` 客户端封装与 `grpc_clients` 导出）；RPC 定义与 `pb2` 保留不重生成，服务端 `MapApiResults` 改为桩，固定返回 `success=False` + 「已废弃」。
+
+### 9.7 评估侧输出字段键 = device ∪ api（已实施：C2）
+
+评估服务构建评估上下文时，输出字段键集合取**设备侧与 API 侧映射后输出字段的并集**：
+
+- 实现：`evaluation_service/infrastructure/evaluation_api/endpoint_worker.py:232-237`——`output_field_keys = list(dict.fromkeys(device_keys + api_keys))`。
+- 两侧键来源：
+  - 设备侧 `get_mapped_device_output_field_keys`——`shared/utils/field_mapper_wrapper.py:36-41`（`mapped.device` 的键，即 `target_param`）。
+  - API 侧 `get_mapped_api_output_field_keys`——`shared/utils/field_mapper_wrapper.py:43-53`（`mapped.api` 的键，`target_param`；与设备侧同构）。
+- **顺序与冲突裁决**：`device` 先、`api` 追加，`dict.fromkeys` 保序去重——同键保留**先出现（device 位）**。两侧同为 `target_param` 视图，同键即同一评估维度参数，取值一致，不产生二义。
+- **适用范围只有输出字段的展示 / 提取**（评估 API 请求上下文里的 `output` / `algo_results` 键集合）。**不扩到评估入参映射**——入参仍只认 `param_mappings`（`eval_input_fields` 走 `get_evaluation_input_fields`，与 `output_field_keys` 是两套口径）。
+
+### 9.8 未配置 / 未落库显示「—」的约定
+
+前端只读展示 `field_path` 的列（例如 React API 编辑弹窗「输出字段」页签，见 C5 / INT-1750）遵循：
+
+- `field_path` 为空（NULL 或空串）→ 该列显示 **「—」**，不显示空白、不隐藏该行。
+- **空串与 NULL 在提取侧同义**：提取器用 `if field_path:` 判真值（`shared/utils/api_output_extractor.py:62-65`），空串与 NULL 都走「按 `param_code` 取顶层键」。
+- **序列化侧只有非 `None` 才带键**：`algorithm_service/infrastructure/persistence/config_cache.py:674-675` 的判据是 `is not None`，所以空串会以 `field_path: ''` 出现在字段定义里（NULL 则完全不带该键）。前端两种形态都要按「未配置」处理，不要用 `!== undefined` 之类别扭判据区分。
+- 该约定只影响展示，不改变任何提取与映射行为。
 
 ## 十、`api_id` 作用域实现契约（C6a / INT-1756）
 

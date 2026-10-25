@@ -17,7 +17,7 @@
 | **执行道（lane）** | 由 `streaming` 唯一决定的执行语义，**派生值，不落库** | `ExecutionLane`：`streaming` / `non_streaming` |
 | **归一事件（NormalizedEvent）** | 传输层吐出的唯一原始产物，见 §五 | transport 的 `recv()` |
 | **wire payload** | 一条被测 API 业务消息的可 JSON 化 dict | `NormalizedEvent.payload` |
-| **field_path** | 在 wire payload 内取值的点号路径 | 语义归 C2（INT-1747） |
+| **field_path** | 在 wire payload 内取值的点号路径 | 已实施：C2（INT-1747），落 `algorithm_api_params(direction=output).field_path`（§4.2） |
 
 一句话：**一个被测 API 实体，四个协议值 × 两个流式值，两条执行道；道只由 `streaming` 决定，协议不参与执行道判断。**
 
@@ -359,7 +359,7 @@ def route_executor(self, lane): ...  # lane 非法 → ValueError
 | `sse` | `event.data` 解析后的 dict |
 | `grpc` | `MessageToDict(msg, preserving_proto_field_name=True)`（snake_case） |
 
-禁止协议特有语法进 `field_path`（`$.` / `[?()]` / `//` / `header:` / `event:`）；语法只有 `shared/utils/path_extractor.py:4-25` 的点号 + 数字下标。存储位置与优先级归 C2（`algorithm_api_params(direction=output).field_path`，`meta.result_parser` 仅零声明兜底）。
+禁止协议特有语法进 `field_path`（`$.` / `[?()]` / `//` / `header:` / `event:`）；语法只有点号 + 数字下标，数字下标可写点号（`a.b.0.c`）或方括号（`a.b[0].c`），两种写法等价——`shared/utils/path_extractor.py:1-68`（C2 / INT-1747 已在原函数上扩展 `[n]`，未新增第二个提取器；非法写法如 `a[x]` / `a[-1]` 整体返回 `None`）。存储位置与优先级按 C2 已实施：`algorithm_api_params(direction=output).field_path`，为空则按 `param_code` 取顶层键；`meta.result_parser` / `asr_mapping` / `trans_mapping` 仅在该算法类型**零输出声明**时整体兜底（不做逐键合并），口径见 [18_设备参数和API参数绑定方案 §9.3](../08_算法配置/智能语音算法配置适配/18_设备参数和API参数绑定方案.md)。
 
 ### 4.3 错误码映射
 
@@ -473,7 +473,7 @@ def route_executor(self, lane): ...  # lane 非法 → ValueError
 | A0（INT-1788）：三道、协议在 `meta`、`device_type` 派生不废弃、数据零迁移 | **2026-10-24 负责人修订**：三道 → 两道；`protocol`/`streaming` 抬为列；`apis.device_type` 废弃；破坏性迁移 |
 | C0（INT-1745）：`rounds[i].output = {target_param: value}` | 不重开 |
 | C1（INT-1746）：三条链轮次结构统一 | 依赖；本文不另定 `output` 结构 |
-| C2（INT-1747）：`field_path` 存储与优先级 | 依赖；本文只钉作用对象 |
+| C2（INT-1747）：`field_path` 存储与优先级 | 依赖；已实施；本文只钉作用对象 |
 | INT-1770：`meta.protocol` 词表归一、`AdapterProtocol` 不改本体 | 承接归一词表；本卡把来源改为列并删除该键；`AdapterProtocol` 仍不改 |
 | INT-1115 / INT-604：`ExecutionMode = parallel/serial` | 避让；执行道用 `ExecutionLane` |
 | 负责人 2026-10-24：不新增 `DeviceType` 成员 | 遵守；不加枚举值 |
