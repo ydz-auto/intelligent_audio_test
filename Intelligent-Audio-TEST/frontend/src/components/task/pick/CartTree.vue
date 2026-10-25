@@ -12,12 +12,15 @@
       :expanded-keys="expandedKeys"
       :leaf-meta="leafMeta"
       :manageable="manageable"
+      :readonly="readonly"
+      :composition-meta="compositionMeta"
       :depth="0"
       @toggle-node="(n) => emit('toggle-node', n)"
       @toggle-expand="(k) => emit('toggle-expand', k)"
       @toggle-leaf="(id) => emit('toggle-leaf', id)"
       @remove-leaf="(id) => emit('remove-leaf', id)"
       @remove-group="(n) => emit('remove-group', n)"
+      @trace="(id) => emit('trace', id)"
     />
   </div>
 </template>
@@ -30,21 +33,35 @@
  * 设备/API → result_type → 叶；用例 / 设备 / 结果类型视图任务层在叶前一级）；叶 = 购物车条目。
  * manageable=true 时展示移除钮（§4.3 移除矩阵：单条 X / 节点「移除该组」）；
  * 选中态用于批量移除（selectedItemIds 唯一真相，四视图共用、切换不丢，联动规则与挑选树 R1-R5 同构）。
+ *
+ * INT-1833：组成区复用同一棵树——
+ * - `readonly` 透传：隐藏三态复选框与全部移除钮，保留展开 / 收起（容器是既成事实）；
+ * - `compositionMeta`：叶行改按组成口径渲染（源结果 #id / 用例名 / 设备 API 名 /
+ *   result_type 徽章 / 执行·评估状态 / 源结果时间 / 溯源），并上抛 `trace`。
  */
 import CartTreeNodeRow from './CartTreeNodeRow.vue';
 import type { CartTreeNode } from './cartTree';
 import type { PickCartItem } from '../../../infrastructure/api/cherryPickApi';
+import type { CompositionEntry } from '../../../domain/model/containerComposition';
 
-const props = defineProps<{
+withDefaults(defineProps<{
   roots: CartTreeNode[];
   /** 选中叶 item_id 集（批量移除选择） */
   selected: ReadonlySet<number>;
   expandedKeys: ReadonlySet<string>;
   /** 叶元数据（item_id → 购物车条目） */
-  leafMeta: Map<number, PickCartItem>;
+  leafMeta?: Map<number, PickCartItem>;
   /** 是否可管理（移除钮显隐；algo_engineer 只读 false） */
   manageable?: boolean;
-}>();
+  /** 只读（组成区）：无复选框、无移除钮，展开 / 收起照常 */
+  readonly?: boolean;
+  /** 组成条目元数据（提供时叶行按组成口径渲染） */
+  compositionMeta?: ReadonlyMap<number, CompositionEntry>;
+}>(), {
+  leafMeta: () => new Map<number, PickCartItem>(),
+  manageable: false,
+  readonly: false,
+});
 
 const emit = defineEmits<{
   (e: 'toggle-node', node: CartTreeNode): void;
@@ -52,6 +69,8 @@ const emit = defineEmits<{
   (e: 'toggle-leaf', itemId: number): void;
   (e: 'remove-leaf', itemId: number): void;
   (e: 'remove-group', node: CartTreeNode): void;
+  /** 组成区叶行「溯源」：跳源任务详情 */
+  (e: 'trace', resultId: number): void;
 }>();
 
 defineOptions({ name: 'CartTree' });

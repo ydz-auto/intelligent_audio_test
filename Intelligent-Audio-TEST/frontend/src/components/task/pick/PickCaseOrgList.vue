@@ -5,6 +5,7 @@
       :org="org"
       :sub-view="subView"
       :fallback-only="showFallbackHint"
+      :hint="hint"
       @update:org="(v) => emit('update:org', v)"
       @update:sub-view="(v) => emit('update:subView', v)"
     />
@@ -108,6 +109,11 @@ const props = withDefaults(defineProps<{
   subView: 'flat' | 'byTag' | 'byGroup';
   /** §11-7 组织字段映射（caseId → tags/groupId/groupName；缺省全落「未分组」/「未设置标签」兜底桶） */
   caseOrgMap?: Map<string | number, PickCaseOrgInfo>;
+  /**
+   * 兜底提示文案覆盖（INT-1833 §4.2）：缺省（undefined）= 沿用现提示；
+   * 显式传 null = 组织字段确实在场时不得显示与事实相反的提示。
+   */
+  hint?: string | null;
 }>(), {
   alreadyAdded: () => new Set<number>(),
   leafMeta: () => new Map<number, PickCandidate>(),

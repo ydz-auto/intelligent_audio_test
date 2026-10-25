@@ -52,7 +52,18 @@
         @remove-case="removeCase"
         @load-more-logs="loadMoreLogs"
         @refresh-review="fetchTaskDetails"
-      />
+      >
+        <!-- INT-1833 规范 18 §2.4：容器形态「组成」首屏主区（紧跟任务信息卡、位于关联折叠区之前）。
+             四视图只读树由 ContainerComposition 承载，条目由 source + 本详情组装（零额外请求）。 -->
+        <template #composition>
+          <ContainerComposition
+            v-if="containerSource"
+            :entries="compositionEntries"
+            :source-task-count="containerSource.groups.length"
+            @trace="openCompositionTrace"
+          />
+        </template>
+      </TestExecutionComponent>
 
       <!-- INT-467：任务可见性徽标 + 分享/设为私有切换（owner/admin 可切换；
            非 owner 私有任务 403 提示；切换成功 emit save → 列表即时刷新徽标） -->
@@ -110,6 +121,8 @@ import { useNotification } from '../../../composables/modal/useNotification';
 import { isNotFoundOrForbidden, canEditResource } from '@/composables/visibility/useVisibility';
 import { summarizeCaseStatuses } from '../../../utils/caseStatusSummary';
 import TestExecutionComponent from '../../layout/TestExecutionComponent.vue';
+import ContainerComposition from '../../task/pick/ContainerComposition.vue';
+import { toCompositionEntries } from '../../task/pick/compositionTree';
 import CherryPickDialog from './CherryPickDialog.vue';
 import VisibilityBadge from '../visibility/VisibilityBadge.vue';
 import type { Task, Log } from '../../../domain';
@@ -134,6 +147,25 @@ const activeTab = ref('cases');
 // INT-1832 规范 18 §2.3：容器识别写死——详情接口无 is_cherry_pick / merge_type，
 // 一律由 source 溯源端点判定；4xx（站内普通任务常态）/5xx/网络异常 → null，详情保持现状。
 const { source: containerSource } = useContainerComposition(computed(() => props.taskId));
+
+/**
+ * INT-1833 组成条目：source.groups[].results[] ← 详情 cases[]/devices[]/apis[] join
+ * （用例名 / 设备 API 名 / 分组 / 标签；状态按 §4.6 降级口径，零额外请求）。
+ */
+const compositionEntries = computed(() => toCompositionEntries(
+  containerSource.value,
+  task.value?.cases ?? [],
+  task.value?.devices ?? [],
+  task.value?.apis ?? [],
+));
+
+/** 组成区叶行「溯源」：打开源任务详情（模态窗可叠层，不离开当前容器详情） */
+function openCompositionTrace(resultId: number) {
+  const entry = compositionEntries.value.find((e) => e.resultId === resultId);
+  if (!entry) return;
+  modalControl.open(MODAL_TYPES.TASK_DETAIL, { taskId: entry.sourceTaskId });
+}
+
 const isPaused = ref(false);
 const localLogs = ref<Log[]>([]);
 
