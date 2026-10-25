@@ -1,7 +1,7 @@
 /**
  * 评估维度表单「结果配置」分节（11_用例域.md §5.5 结果配置）。
  * 分数单位 · 结果类型*（数值/布尔/文本；LLM Judge 由维度 task_type_code 表达，
- * 编辑 LLM Judge 维度时按后端派生 llm_judge 显示只读徽章，INT-1681）·
+ * 编辑 LLM Judge 维度时按后端派生 llm_judge 显示只读徽章，INT-1681 / INT-1671 裁定 A）·
  * 结果最小值* · 结果最大值* · 小数位数*（0-4）· 权重*（1-10）· 预计执行时间(s)*（≥1）·
  * 评分规则（规则编辑器：行=「如果结果 {≥/>/=/</≤} {值} → {得分} 分」+ 添加/删除）。
  */
@@ -39,7 +39,7 @@ export function ResultSection({
   isLlmJudge = false,
 }: {
   form: UseFormReturn<DimensionFormValues>
-  /** 后端派生 llm_judge：LLM Judge 维度只读显示，结果类型不可改（INT-1681） */
+  /** 后端派生 llm_judge：LLM Judge 维度只读显示，结果类型不可改（INT-1681 / INT-1671 裁定 A） */
   isLlmJudge?: boolean
 }) {
   const { register, watch, setValue, formState, control } = form
@@ -69,7 +69,7 @@ export function ResultSection({
                 LLM Judge
               </Badge>
               <span className='text-muted-foreground text-xs'>
-                由维度任务类型决定，不支持在此修改
+                由维度任务类型（task_type_code=llm_judge）决定，不支持在此修改
               </span>
             </div>
           ) : (

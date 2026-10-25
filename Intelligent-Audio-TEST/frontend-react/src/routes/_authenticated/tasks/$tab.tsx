@@ -31,6 +31,8 @@ const tasksSearchSchema = z.object({
   timeRange: z.string().optional().catch(undefined),
   favorite: z.boolean().optional().catch(undefined),
   trash: z.boolean().optional().catch(undefined),
+  /** 跨页打开挑选向导（容器详情「开始挑选」/ 购物车「去复核」→ 18 §5.5.5）；任务页消费后清空 */
+  wizard: z.enum(['pick', 'review']).optional().catch(undefined),
 })
 
 const NUMERIC_ID = /^\d+$/

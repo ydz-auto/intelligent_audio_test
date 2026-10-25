@@ -363,3 +363,22 @@ export function containerMixState(
   if (caseCount <= 0 || failedCases <= 0) return 'none'
   return failedCases >= caseCount ? 'all' : 'partial'
 }
+
+/* ============================================================
+ * 阶段 1 可挑选清单（§5.5.5：容器本身不进阶段 1 任务清单）
+ * ============================================================ */
+
+/**
+ * 从阶段 1 任务行里剔除挑选合并容器（§5.5.5）。
+ * 容器无 `test_results`，本就不该出现在候选聚合里（2026-10-24 实测 `pickable-tasks` 117 条
+ * 不含容器）；后端候选口径一旦变化，这里按容器 id 集再显式过滤一次，保证
+ * 「容器不出现在阶段 1 清单」这条前端口径独立成立。纯函数，id 集来自既有容器列表
+ * （不新增端点）；为空集时原样返回。
+ */
+export function excludeContainerTaskRows<T extends { taskId: number }>(
+  rows: T[],
+  containerTaskIds: ReadonlySet<number>
+): T[] {
+  if (containerTaskIds.size === 0) return rows
+  return rows.filter((row) => !containerTaskIds.has(row.taskId))
+}

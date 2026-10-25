@@ -7,7 +7,7 @@
  * 模态窗群：任务类型/发布/快速查看 + §5.7 重新执行·重新评估范围 + §5.12 导出/导入数据
  * + 链路 2 增量导出 / 增量导入（INT-1765：单任务两段子集导出、合并回原任务不回灌副本）。
  */
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChartLine, FileDown, FileUp, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -86,6 +86,24 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
     setFilters({ page: 1, pageSize: 10 })
     setSelectedTaskIds(new Set())
   }, [tab])
+
+  /**
+   * 跨页打开挑选向导（18 §5.5.5）：容器详情「开始挑选」与购物车「去复核」跳
+   * `/tasks/cherry-picks?wizard=pick|review`，本页消费后立即从 search 清掉，
+   * 避免刷新 / 回退时又弹一次向导（replace 不新增历史记录）。
+   */
+  const search = useSearch({ strict: false }) as { wizard?: WizardStepKey }
+  const wizardParam = search.wizard
+  useEffect(() => {
+    if (tab !== 'cherry-picks' || !wizardParam) return
+    if (hasPermission('task:cherry_pick')) setWizard({ step: wizardParam })
+    void navigate({
+      to: '/tasks/$tab',
+      params: { tab },
+      search: (prev) => ({ ...prev, wizard: undefined }) as unknown as typeof prev,
+      replace: true,
+    })
+  }, [tab, wizardParam, navigate, hasPermission])
 
   // 全局算法不在真实 /algorithm/options 内时视为无效——不继承、按「全部算法」查询
   // （对齐评估页 globalAlgorithmValid 口径；持久化陈旧算法值会让列表带着无效

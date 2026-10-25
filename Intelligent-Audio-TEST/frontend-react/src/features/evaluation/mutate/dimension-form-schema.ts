@@ -133,7 +133,7 @@ export const dimensionFormSchema = z
     keywords: z.string(),
     scoreUnit: z.string(),
     // 结果类型只有整数口径（网关 schemas/evaluation.py 是 int）；LLM Judge 由维度
-    // 自身 task_type_code 表达，不再是结果类型选项（INT-1681 裁定 A）
+    // 自身 task_type_code 表达，不再是结果类型选项（INT-1681 / INT-1671 裁定 A）
     resultType: z.enum(['0', '1', '2', '3']),
     // valueAsNumber 下清空输入得 NaN，默认文案是英文（Invalid input: expected number…）；
     // 给中文文案，行内错误/页脚摘要才可读（INT-1551）
@@ -336,6 +336,7 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
       dimension.parentDimensionId != null ? String(dimension.parentDimensionId) : '',
     keywords: dimension.keywords ?? '',
     scoreUnit: dimension.scoreUnit ?? '',
+    // INT-1671 裁定 A：LLM Judge 由后端派生布尔表达，结果类型仍是数值/布尔/文本的整数
     resultType: String(dimension.resultType ?? 1) as DimensionFormValues['resultType'],
     resultMin: dimension.resultMin ?? 0,
     resultMax: dimension.resultMax ?? 100,
@@ -425,7 +426,7 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
       : null,
     keywords: isSub ? null : values.keywords || null,
     scoreUnit: values.scoreUnit || null,
-    // 只发整数（后端 result_type 是 int）；LLM Judge 是维度属性，不写结果类型（INT-1681）
+    // 只发整数（后端 result_type 是 int）；LLM Judge 是维度属性，不写结果类型（INT-1681 / INT-1671 裁定 A）
     resultType: Number(values.resultType),
     resultMin: values.resultMin,
     resultMax: values.resultMax,
@@ -500,6 +501,7 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
             ? parseJsonValue(values.apiBodyTemplate)
             : undefined,
         },
+    // INT-1671 裁定 A：不再写 llmJudgeConfig（历史数据后端保持原值，前端不删不清）
   }
 }
 

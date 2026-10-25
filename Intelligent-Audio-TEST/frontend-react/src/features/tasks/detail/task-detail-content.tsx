@@ -36,6 +36,8 @@ import { cn } from '@/lib/utils'
 import { CaseAssociation } from '@/features/tasks/detail/case-association'
 import { ContainerComposition } from '@/features/tasks/detail/container-composition'
 import { ContainerHeaderBadges } from '@/features/tasks/detail/container-header-badges'
+import { ContainerRePickActions } from '@/features/tasks/detail/container-repick-actions'
+import { ContainerReportCard } from '@/features/tasks/detail/container-report-card'
 import { ProgressCard } from '@/features/tasks/detail/progress-card'
 import { RealtimeLogs } from '@/features/tasks/detail/realtime-logs'
 import { TaskInfoCard } from '@/features/tasks/detail/task-info-card'
@@ -226,6 +228,8 @@ export function TaskDetailContent({
           <CaseAssociation detail={detail} onCaseSelect={onCaseSelect} />
         )}
 
+        {/* §5.5.2 ④ 报告区：容器不自动生成报告 → 空态引导手动生成（§5.5.6，INT-1717） */}
+        {isContainer && <ContainerReportCard taskId={taskId} />}
 
         {!compact && (
           <div className='flex flex-wrap items-center gap-2'>
@@ -289,6 +293,12 @@ export function TaskDetailContent({
               >
                 重新评估
               </Button>
+            )}
+            {/* §5.5.5 再次挑选入口（容器详情操作组；权限 task:cherry_pick，INT-1717） */}
+            {isContainer && hasPermission('task:cherry_pick') && (
+              <ContainerRePickActions
+                resultIds={composition.entries.map((entry) => entry.resultId)}
+              />
             )}
             {pending && (
               <Badge variant='secondary' className='rounded-md px-1.5 text-[11px]'>

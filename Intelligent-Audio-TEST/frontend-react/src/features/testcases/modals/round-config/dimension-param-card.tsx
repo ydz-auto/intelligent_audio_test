@@ -2,8 +2,10 @@
  * 已选维度参数卡（用例编辑抽屉 §5.1 / §5.1.2 共用）。
  * 每维度：名称 + LLM Judge 只读徽章 + 移除钮；权重 number 0-100 默认 50 + 阈值 number 0-100 默认 80
  * （非 LLM Judge）。LLM Judge 由维度自身 task_type_code 表达（后端派生 llm_judge），
- * 不是结果类型、也没有模型 / Prompt 模板可选项（INT-1681 裁定 A 撤除）。
- * 数据契约 config.dimensions 项 = { id, name, weight, threshold, (llmJudgeConfig: 历史值原样透传) }
+ * 不是结果类型、也没有模型 / Prompt 模板可选项（INT-1681 / INT-1671 裁定 A 撤除）。
+ * 数据契约 config.dimensions 项 = { id, name, weight, threshold, (llmJudgeConfig: 历史值原样透传) }。
+ * 提交时按字段覆盖（EvaluationStrategyMergeService 只覆盖 weight / threshold / llmJudgeConfig），
+ * 因此历史条目上已有的 llmJudgeConfig 不会被这两个字段的提交清掉，原样透传。
  */
 import { SlidersHorizontal } from 'lucide-react'
 

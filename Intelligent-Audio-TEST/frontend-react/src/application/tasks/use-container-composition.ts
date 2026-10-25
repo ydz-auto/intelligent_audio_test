@@ -1,6 +1,9 @@
 /**
  * 容器组成数据装配（18_挑选合并功能交互重设计.md §5.5.3 / §5.5.8，INT-1711）。
- * `useQuery(['task', id, 'cherry-pick-source'])` 拉 source 端点（非容器 / 5xx / 网络均归一 null）；
+ * `useQuery(['task', id, 'cherry-pick-source'])` 拉 source 端点：
+ * - 非容器判定（§5.5.2 ⑤，2026-10-25 实测更新）：`200 + is_cherry_pick=false`（`groups=[]`）
+ *   或 4xx / 5xx / 网络异常（归一 null）→ 非容器，静默不渲染组成区；
+ * - `200 + is_cherry_pick=true`（`groups` 可空）→ 挑选合并容器。
  * 与详情 query（`['tasks','detail',id]`，详情页四卡本来就在）join 后 `useMemo` 派生组成条目与摘要。
  * 同一 hook 供落点 ② 容器详情组成区与落点 ③ 页签行展开复用：react-query 以 taskId 为 key
  * 天然按任务缓存，再次展开命中缓存、收起不释放、不重复请求。
@@ -20,7 +23,7 @@ import type { ContainerSourceTrace, PickCartGroup } from '@/domain/models/cherry
 import { fetchContainerSourceTraceDomain } from '@/infrastructure/api/cherry-pick-api'
 
 export interface ContainerCompositionModel {
-  /** 200（groups 可为空）→ 挑选合并容器；null（任意 ApiError）→ 非容器，静默不渲染 */
+  /** 200 + `is_cherry_pick`（`groups` 非空兜底）→ 挑选合并容器；否则非容器，静默不渲染 */
   isContainer: boolean
   isLoading: boolean
   trace: ContainerSourceTrace | null
@@ -90,7 +93,11 @@ export function useContainerComposition(
   )
 
   return {
-    isContainer: trace != null,
+    // 容器判定（§5.5.2 ⑤）：以端点 200 + `is_cherry_pick` 为准，`groups` 非空兜底。
+    // 2026-10-25 docker 网关实测：非容器（任务 419）已改为 `200 + is_cherry_pick=false + groups=[]`
+    // （不再是规范写作时的 400/code:203），若仍按 `trace != null` 判容器，普通任务详情会误渲染
+    // 「组成」区/报告卡/再次挑选入口。400 或网络异常仍被 `fetchContainerSourceTrace` 归一 null → 非容器。
+    isContainer: trace != null && (trace.isCherryPick || trace.groups.length > 0),
     isLoading: sourceQuery.isLoading,
     trace,
     entries,
