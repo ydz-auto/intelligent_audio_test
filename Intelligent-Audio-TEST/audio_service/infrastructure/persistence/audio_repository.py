@@ -16,9 +16,10 @@ AudioRepository（音频聚合根仓储，实现 AudioRepositoryInterface + Uplo
 import logging
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import case, func
+from sqlalchemy.orm import load_only
 
-from shared.models.database import get_db_session
+from shared.models.database import build_pagination, get_db_session
 from shared.infrastructure.user_context import (
     get_current_user_id,
     get_current_user_is_admin,
@@ -43,6 +44,35 @@ from audio_service.infrastructure.persistence._audio_relation_mixin import (
 from audio_service.infrastructure.persistence.upload_repository import UploadRepository
 
 logger = logging.getLogger(__name__)
+
+
+# INT-2001 C4：列表路径取列白名单。列表 DTO（`_audio_to_dict`）与实体转换
+# （`_audio_po_to_entity`）只读下列列；`deleted_at` / `deleted_by_user_id` /
+# `updated_by_user_id` 在列表路径无下游使用（全仓 grep 确认），不取可省行宽
+# 与水合开销。`deleted` 必须保留——`_audio_po_to_entity` 会读它，裁掉会让
+# 每行触发一次惰性加载，反而变成 N+1。
+AUDIO_LIST_COLUMNS = (
+    Audio.id,
+    Audio.name,
+    Audio.original_filename,
+    Audio.file_path,
+    Audio.size,
+    Audio.duration,
+    Audio.sample_rate,
+    Audio.channels,
+    Audio.bitrate,
+    Audio.format,
+    Audio.audio_type,
+    Audio.asr_text,
+    Audio.description,
+    Audio.md5,
+    Audio.deleted,
+    Audio.source_language,
+    Audio.created_by_user_id,
+    Audio.visibility,
+    Audio.created_at,
+    Audio.updated_at,
+)
 
 
 class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadRepository):
@@ -154,7 +184,21 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
 
         INT-423 行级可见性：admin 全量 / 共享全可见 / 私有仅 owner
         （user_id/is_admin 取 x-user-id / x-user-is-admin context）。
-        返回 SQLAlchemy Pagination 对象，其中 items 已转换为 AudioAggregate。
+
+        INT-2001（C3 + C4，逐项可回退）：
+        - **C3**：`count` 与分页合并为一条 SQL。计数用**标量子查询**
+          （未关联外层 → PG 作 InitPlan 求值一次）。实测这一形态的客户端墙钟
+          与改成两条独立 SQL 时持平甚至更低（page1: 3.67 vs 4.64 ms；page90:
+          4.77 vs 5.28 ms，n=40 交错），而往返少一次。**没有**用
+          `count(*) OVER ()`：窗口函数要求先把过滤后的整行集物化，EXPLAIN
+          实测 page1 服务器执行 6.75 ms / 1640 buffers，而改前「count 子查询
+          + 分页」合计 1.93 ms / 162+238 buffers——省下一次往返抵不过这份代价。
+          标量子查询随空结果集一起消失（空页时读不到 total），空页分支回退
+          单独 count。
+        - **C4**：`load_only` 只取列表需要的列（`AUDIO_LIST_COLUMNS`），跳过
+          deleted_at / deleted_by_user_id / updated_by_user_id 三列。
+        - 返回 `_Pagination` 兼容对象（pages/has_next 等派生属性口径不变），
+          items 已转换为 AudioAggregate。
         """
         session = get_db_session()
         query = session.query(Audio).filter_by(deleted=False)
@@ -165,11 +209,35 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
 
         page = params.get('page', 1)
         per_page = params.get('per_page', 10)
-        pagination = query.order_by(Audio.created_at.desc()).paginate(
-            page=page, per_page=per_page, error_out=False)
-        # PO → AudioAggregate 转换
-        pagination.items = [_audio_po_to_entity(po) for po in pagination.items]
-        return pagination
+
+        # per_page<=0：保住旧语义（items 为空、total 仍是过滤后总数）
+        if not per_page or per_page <= 0:
+            return build_pagination(
+                query, page, per_page, query.order_by(None).count(), [])
+
+        total_subquery = (
+            query.order_by(None)
+            .with_entities(func.count())
+            .scalar_subquery()
+        )
+        rows = (
+            query.order_by(Audio.created_at.desc())
+            .options(load_only(*AUDIO_LIST_COLUMNS))
+            .add_columns(total_subquery.label('_filtered_total'))
+            .limit(per_page)
+            .offset((page - 1) * per_page)
+            .all()
+        )
+        if rows:
+            total = int(rows[0][1])
+        elif page > 1:
+            # 空页：标量子查询随空结果一起消失，回退单独 count 拿真实总数
+            total = query.order_by(None).count()
+        else:
+            total = 0
+
+        items = [_audio_po_to_entity(row[0]) for row in rows]
+        return build_pagination(query, page, per_page, total, items)
 
     def get_audios_by_ids(self, audio_ids: List[int]) -> List[AudioAggregate]:
         """按 ID 列表批量查询音频，返回 AudioAggregate 列表。"""
@@ -276,31 +344,32 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
         return audios
 
     def get_audio_stats(self) -> dict:
-        """获取音频统计信息（INT-423：与 list_audios 同一可见性口径，统计只含可见行）"""
+        """获取音频统计信息（INT-423：与 list_audios 同一可见性口径，统计只含可见行）
+
+        INT-2001 C2：`sum(size)` / `sum(duration)` 与「今日上传数」由两条 SQL
+        合并成一条（省 1 次往返）。今日计数用 `CASE` 聚合而不是 `FILTER
+        (WHERE ...)`：语义等价（同一过滤集内 created_at >= 今日零点的行数），
+        但不依赖 PG 专有语法，sqlite 单测同样可跑。
+        """
         session = get_db_session()
         visible_cond = visible_condition(
             Audio.created_by_user_id, Audio.visibility,
             get_current_user_id(), get_current_user_is_admin())
-        stats_result = session.query(
-            func.sum(Audio.size),
-            func.sum(Audio.duration)
-        ).filter(Audio.deleted == False, visible_cond).first()  # noqa: E712
-
-        total_size = stats_result[0] or 0
-        total_duration = stats_result[1] or 0
 
         from shared.utils.query_utils import now_cst
         today_start = now_cst().replace(hour=0, minute=0, second=0, microsecond=0)
-        today_uploads = session.query(func.count(Audio.id)).filter(
-            Audio.created_at >= today_start,
-            Audio.deleted == False,  # noqa: E712
-            visible_cond,
-        ).scalar() or 0
+        today_flag = case((Audio.created_at >= today_start, 1), else_=0)
+
+        row = session.query(
+            func.sum(Audio.size),
+            func.sum(Audio.duration),
+            func.sum(today_flag),
+        ).filter(Audio.deleted == False, visible_cond).first()  # noqa: E712
 
         return {
-            'total_size': total_size,
-            'total_duration': total_duration,
-            'today_uploads': today_uploads,
+            'total_size': row[0] or 0,
+            'total_duration': row[1] or 0,
+            'today_uploads': int(row[2] or 0),
         }
 
     def update_audio_visibility(self, audio_id: int, visibility: str) -> bool:
