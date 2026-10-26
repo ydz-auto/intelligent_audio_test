@@ -749,6 +749,12 @@
 "version",
 "visibility"
 ],
+"report_case_snapshots": [
+"created_at",
+"payload_bytes",
+"payload_gz",
+"sha256"
+],
 "report_cases": [
 "algorithm_results",
 "algorithm_type",
@@ -764,6 +770,10 @@
 "reference_params",
 "report_id",
 "results",
+"snapshot_bytes",
+"snapshot_created_at",
+"snapshot_sha256",
+"snapshot_uri",
 "tags",
 "test_case_id",
 "updated_at",

@@ -39,6 +39,8 @@ from .report_studio_models import (
 from .report_share_models import ReportShare
 # 报告导出历史（INT-1555）
 from .report_export_record_models import ReportExportRecord
+# 报告用例配置内容寻址快照（INT-1994 / 档4 R1）
+from .report_case_snapshot_models import ReportCaseSnapshot
 # 增量回导报告替换批次快照（INT-1762 D4）
 from .merge_snapshot_models import ReportMergeSnapshot
 
@@ -56,6 +58,8 @@ __all__ = [
     'ReportShare',
     # 报告导出历史（INT-1555）
     'ReportExportRecord',
+    # 报告用例配置内容寻址快照（INT-1994 / 档4 R1）
+    'ReportCaseSnapshot',
     # 增量回导报告替换批次快照（INT-1762 D4）
     'ReportMergeSnapshot',
 ]

@@ -108,14 +108,24 @@ class ReportChildrenLoadMixin:
 
     @with_session
     def load_cases(self, report_id: int) -> List[ReportCaseEntity]:
-        """加载报告的用例实体列表。"""
+        """加载报告的用例实体列表。
+
+        INT-1994（档4 R1）：先取 ``report_cases`` 行，再**一次**批量取回
+        ``report_case_snapshots.payload_gz`` 解引用（属性名不变），
+        ``REPORT_CASE_SNAPSHOT_SOURCE=column`` 时原样读行上内容列（回滚通道）。
+        """
+        from report_service.infrastructure.persistence.report_case_snapshot_store import (
+            resolve_rows,
+        )
+
         session = get_db_session()
         rows = (
             session.query(ReportCase)
             .filter(ReportCase.report_id == report_id)
             .all()
         )
-        return [_case_po_to_entity(po) for po in rows]
+        resolved = resolve_rows(session, rows, report_id=report_id)
+        return [_case_po_to_entity(po) for po in resolved]
 
     @with_session
     def load_metric_stats(self, report_id: int) -> List[ReportMetricStatsEntity]:

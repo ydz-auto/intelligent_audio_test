@@ -2,7 +2,7 @@
 """
 数据库表重建脚本
 
-通过 ``Base.metadata.create_all()`` 重建全部 90 张表。
+通过 ``Base.metadata.create_all()`` 重建全部 93 张表。
 
 使用方式：
     python scripts/create_all_tables.py          # 使用 .env 中的 DATABASE_URL
@@ -21,7 +21,7 @@ import sys
 import os
 
 # 模型全集应有的表数（新增表必须同时改这里）
-EXPECTED_TABLE_COUNT = 92
+EXPECTED_TABLE_COUNT = 93
 
 # 确保项目根目录在 sys.path 中
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -57,6 +57,11 @@ def _import_all_models():
         Report, ReportSummary, ReportSummaryMeta, ReportRawData,
         ReportCase, ReportMetricStats, ReportComparisonMatrix,
         ReportFavorite, ReportShare,
+    )
+    # report_service: 报告用例配置内容寻址快照 1 张表（INT-1994 / 档4 R1
+    #                 report_case_snapshots）
+    from report_service.infrastructure.persistence.models import (  # noqa: F401
+        ReportCaseSnapshot,
     )
     # report_service: 导出历史 1 张表（INT-1555 report_export_records）
     from report_service.infrastructure.persistence.models import (  # noqa: F401

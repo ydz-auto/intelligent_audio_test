@@ -282,6 +282,16 @@ BOOTSTRAP_STEPS = [
     #     INT-1807 指针列占用，本步取 ㊽-6 保持编号唯一），物理位置落在 ㊽ ANALYZE
     #     之前的末尾追加位（DDL 步骤一律排在 ANALYZE 前）。
     ('python', 'scripts/migrations/202610/add_merge_snapshots_int1762.py', '--apply'),
+    # ㊽-7 report_case_snapshots 表 + report_cases 4 个指针列（INT-1994 / 档4 R1）：
+    #     create_all 只建缺失的表、不给存量表补列，建库早于本卡的存量库（真实库 /
+    #     隔离库）缺表缺列 → 快照外置的写路径（算 sha → 写快照 → 写指针）即
+    #     UndefinedTable / UndefinedColumn。**只建表加列**：应用双写路径随镜像上线，
+    #     回填与门禁是独立运维脚本（backfill_report_case_snapshots_int1994.py，
+    #     按设计不进引导链——33,925 行写 + 主库要解压 258MB 表，需限流分次执行）。
+    #     幂等（表/列存在即 SKIP，4 列合成一条 ALTER TABLE 只拿一次锁，payload_gz 的
+    #     STORAGE EXTERNAL 可重复执行），全新库为全 SKIP；默认 dry-run，引导链必须
+    #     带 --apply。须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202610/add_report_case_snapshots_int1994.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
