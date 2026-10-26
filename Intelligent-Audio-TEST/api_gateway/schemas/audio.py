@@ -7,6 +7,7 @@ from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 from api_gateway.schemas.testcase import AlgorithmParamItem, RoundConfigItem
 from shared.constants.audio_tag import AudioTagSource
+from shared.models.common_enums import Visibility
 
 
 class TagListData(PaginatedData[str]):
@@ -361,6 +362,25 @@ TagsFilter = Annotated[
     BeforeValidator(_normalize_tags_param),
 ]
 
+# 可见性筛选白名单（枚举化，拒绝魔法字符串）
+_VISIBILITY_FILTER_VALUES = (Visibility.SHARED.value, Visibility.PRIVATE.value)
+
+
+def _normalize_visibility_filter(value):
+    """可见性筛选入参归一化（INT-2043）。
+
+    筛选 UI 的「全部」以空值表达：GET `?visibility=` 与 POST 空串统一按 None
+    （不过滤）处理。非空取值限 shared/private——拼错的值不再被服务端静默
+    忽略成「返回全量」，而是 422 直接暴露给调用方。
+    """
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+        if value not in _VISIBILITY_FILTER_VALUES:
+            raise ValueError('visibility 仅支持 shared/private')
+    return value
+
 
 class AudioListQuery(APIModel):
     page: int = Field(1)
@@ -374,6 +394,12 @@ class AudioListQuery(APIModel):
     tags: TagsFilter = Field(default_factory=list)
     direction: Optional[str] = Field(None)
     algorithm_type: Optional[str] = Field(None)
+    # INT-2043：可见性筛选（shared/private；None/空串 = 全部）
+    visibility: Optional[str] = Field(None)
+
+    @field_validator('visibility', mode='before')
+    def _check_visibility(cls, v):
+        return _normalize_visibility_filter(v)
 
 
 class AudioIdQuery(APIModel):
@@ -385,6 +411,12 @@ class AudioIdQuery(APIModel):
     tags: TagsFilter = Field(default_factory=list)
     direction: Optional[str] = Field(None)
     algorithm_type: Optional[str] = Field(None)
+    # INT-2043：全选跨页与列表同口径（可见性筛选一致）
+    visibility: Optional[str] = Field(None)
+
+    @field_validator('visibility', mode='before')
+    def _check_visibility(cls, v):
+        return _normalize_visibility_filter(v)
 
 
 class AudioStreamByPathQuery(APIModel):

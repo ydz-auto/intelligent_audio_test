@@ -119,6 +119,8 @@ class AudioQueryService:
             'tags_data': tags_data,
             'direction': query.direction,
             'algorithm_type': query.algorithm_type,
+            # INT-2043：可见性筛选透传到 audio_service 过滤器（列表 / 全选 ID 同口径）
+            'visibility': query.visibility,
         }
 
     @staticmethod
@@ -252,6 +254,8 @@ class AudioQueryService:
             'tags_data': tags_data,
             'direction': query.direction,
             'algorithm_type': query.algorithm_type,
+            # INT-2043：可见性筛选透传到 audio_service 过滤器（列表 / 全选 ID 同口径）
+            'visibility': query.visibility,
         }
 
     @staticmethod

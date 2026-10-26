@@ -113,7 +113,8 @@ def apply_audio_list_filters(query, session, params: dict,
     """list_audios / get_all_audio_ids 的通用过滤逻辑。
 
     支持：keyword / format_ / audio_type / sample_rate / duration /
-    direction（语向）/ tags_data（标签 or/and 组合）/ algorithm_type。
+    direction（语向）/ tags_data（标签 or/and 组合）/ algorithm_type /
+    visibility（可见性筛选，INT-2043）。
     """
     keyword = params.get('keyword')
     format_ = params.get('format_')
@@ -121,6 +122,7 @@ def apply_audio_list_filters(query, session, params: dict,
     sample_rate = params.get('sample_rate')
     duration = params.get('duration')
     direction = params.get('direction')
+    visibility = params.get('visibility')
 
     if keyword:
         query = query.filter(
@@ -155,6 +157,11 @@ def apply_audio_list_filters(query, session, params: dict,
 
     if params.get('algorithm_type'):
         query = _apply_algorithm_type_filter(query, session, params['algorithm_type'])
+
+    # INT-2043：可见性筛选（shared/private；None = 不过滤）。
+    # 与上方 visible_condition 的行级过滤叠加：筛选只在调用方本来可见的行内生效。
+    if visibility:
+        query = query.filter(Audio.visibility == visibility)
 
     return query
 
