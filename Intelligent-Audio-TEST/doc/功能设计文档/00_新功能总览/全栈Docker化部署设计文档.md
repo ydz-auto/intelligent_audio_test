@@ -2,7 +2,7 @@
 
 > **状态**：容器化部署落地（2026-10-16，INT-472：compose 全栈 up + 健康验证 + 四步冒烟 + 双栈过渡验证通过；落地缺陷修复见 §7）。
 > **裁定来源**：成员裁定 2026-10-13/14，根治方案 C——全栈服务 Docker 化（INT-220 需求入口）；负责人 2026-10-16 拍板「新的测试服务容器化部署」——宿主直起切换到 docker compose 容器形态。
-> **回写说明**：本章节由 INT-333 后向一致性审计于 2026-10-14 回写，基线为 `docker/docker-compose.yml` 实态（实现演进裁定，文档跟代码库走）；2026-10-16 由 INT-472 补充落地实施结果。
+> **回写说明**：本章节由 INT-333 后向一致性审计于 2026-10-14 回写，基线为 `docker/docker-compose.yml` 实态（实现演进裁定，文档跟代码库走）；2026-10-16 由 INT-472 补充落地实施结果；2026-10-26 由 INT-1236 一致性审计补 §8（演示前端托管与传输优化，实现演进裁定）。
 > **部署手册**（操作指南）：代码库 `docs/docker-compose.md`；本文为设计契约与运行纪律基线。
 
 ## 0. 容器化落地拍板与实施结果（2026-10-16，INT-472）
@@ -116,7 +116,7 @@
 
 ## 6. 实现锚点
 
-`docker/docker-compose.yml`（编排，`*_PORT`/`POSTGRES_DB` 参数化 + `db_bootstrap` 门控）· `docker/run_stack.py`（薄封装）· `docker/run_stack_iso.py` + `docker/docker-compose.iso.yml` + `docker/Dockerfile.mock_eval`（多栈并行测试隔离，§5.1）· `tools/iso_stack_smoke.py`（隔离栈验收冒烟）· `docker/Dockerfile.service`（12 后端统一镜像，单镜像多 CMD，含 ffmpeg/adb/portaudio）· `docker/Dockerfile.frontend` · `docker/Dockerfile.db_bootstrap` · `docker/db_bootstrap_entrypoint.py`（引导链）· `docker/nginx-frontend.conf`（反代契约）· `docker/.env.compose.example`（变量清单）· `run_all.py:524`（只读端口检查）· `shared/config/service_ports.py`（端口注册表）
+`docker/docker-compose.yml`（编排，`*_PORT`/`POSTGRES_DB` 参数化 + `db_bootstrap` 门控）· `docker/run_stack.py`（薄封装）· `docker/run_stack_iso.py` + `docker/docker-compose.iso.yml` + `docker/Dockerfile.mock_eval`（多栈并行测试隔离，§5.1）· `tools/iso_stack_smoke.py`（隔离栈验收冒烟）· `docker/Dockerfile.service`（12 后端统一镜像，单镜像多 CMD，含 ffmpeg/adb/portaudio）· `docker/Dockerfile.frontend` · `docker/Dockerfile.db_bootstrap` · `docker/db_bootstrap_entrypoint.py`（引导链）· `docker/nginx-frontend.conf`（反代契约 + gzip / 分级缓存，§8.2）· `docker/deploy_demo_frontends.ps1`（演示双址 15173 / 16173 幂等部署，§8.1）· `docker/.env.compose.example`（变量清单）· `run_all.py:524`（只读端口检查）· `shared/config/service_ports.py`（端口注册表）
 
 ## 7. 落地缺陷与修复（2026-10-16，INT-472 实测发现）
 
@@ -139,3 +139,31 @@
 5. **requirements.txt 残留 `hypium` 阻断容器 pip 解析**
    - 2026-10-15 已拍板把 `hypium` 拆出主 requirements（`requirements-device.txt`，device_service 鸿蒙链路专属），但主 requirements.txt 未实际移除（line 63 仍在）——容器内全新 pip 解析触发 hypium→xdevice 依赖与主 requirements 的 `ResolutionImpossible` 冲突（宿主 env 无 hypium，代码懒加载兜底不受影响）。
    - 修复：主 requirements.txt 移除 `hypium>=6.0.0`（注释标明已拆至 requirements-device.txt），容器构建恢复。
+
+## 8. 演示/走查前端托管与传输优化（INT-1236 一致性审计回写 / INT-1276 实施，2026-10-26）
+
+> **实现演进裁定**：本节按 INT-1276 落地后的实态回写（此前文档只登记 `docker/nginx-frontend.conf` 为「反代契约」，未记演示双址的托管形态、压缩与缓存口径）。INT-1236（前端包体积与首屏测量卡）拆出的 E1~E4 里，E1 交付的就是本节内容。
+
+### 8.1 托管形态（取代 dev server）
+
+- **两个演示/走查地址**：React `:15173`、新 Vue `:16173`（容器 `iat-react-frontend` / `iat-uxvue-frontend`，`nginx:alpine`），**托管 build 产物**，不再是 `rsbuild dev` / `vite dev`（旧的 5273 / 5601 已停用）。
+- 旧形态的病灶（INT-1236 实测）：React dev 首屏 3 个 JS 共 ≈32.6 MB 未压缩未 minify、无 `Content-Encoding`；新 Vue dev 在 400 ms RTT 下首屏 544 个请求（Vite dev 每模块一请求）。切 build 产物后同一口径下首屏请求数降到 30 / 26。
+- **部署脚本**：`docker/deploy_demo_frontends.ps1`（幂等：重建镜像 + 重建容器，固定容器名 / 端口 / 网络）。默认产物目录为设计分支的 dist（React `D:\00_code\V9.7.31-UX\Intelligent-Audio-TEST\frontend-react\dist`、新 Vue `D:\00_code\V9.7.31-WIRING-UXVUE\Intelligent-Audio-TEST\frontend\dist`），可用 `-ReactDist` / `-VueDist` 指向别的产物目录，`-SkipReact` / `-SkipVue` 只刷一边。
+- **纪律**：从 `docker/` 目录操作，一次只部署一次，不重复重启（同 §4.1 运行纪律）。
+
+### 8.2 压缩与缓存分级（`docker/nginx-frontend.conf`）
+
+- **压缩**：`gzip on` + `gzip_vary on` + `gzip_comp_level 6` + `gzip_min_length 1024`，类型含 `text/html text/css application/javascript application/json image/svg+xml font/ttf font/otf` 等。镜像内 nginx 无 brotli 模块，**只用 gzip**，不为 brotli 另装模块（没有就退回 gzip，不引额外依赖）。小于 1 KB 的响应不压（如新 Vue 的 641 字节 `index.html`）。
+- **缓存分级**：
+  - 带 hash 的构建产物 `/static/`（React）、`/assets/`（新 Vue）→ `Cache-Control: public, max-age=31536000, immutable`；
+  - 入口 `index.html` → `no-cache, must-revalidate`（发版即生效，避免长缓存锁死旧壳）；
+  - SPA 兜底 `location /` → `no-cache`。
+- **接口 JSON 压缩只在网关侧做一次**：`api_gateway/app.py` 的 Starlette `GZipMiddleware(minimum_size=1024, compresslevel=6)`，最后添加（包在最外层），401 短接与异常响应同样带 `Content-Encoding`；`text/event-stream`（SSE）、`audio/*`、图片 / 字体在库的排除表里，不会被缓冲或二次压缩。前端 nginx 的 `/api/` 代理显式 `gzip_proxied off`，**不重复压**——`15000` 直连端口 nginx 覆盖不到，压缩归网关才能两条路径一致。
+- **验收判据**（`curl -sI -H 'Accept-Encoding: gzip, br'`）：`/static/js/*`、`/static/css/*`、`/assets/*`、`/index.html`、`/api/v1/*` 均有 `Content-Encoding: gzip`；静态产物有 `immutable`，`index.html` 为 `no-cache`。
+- **不属于本节的**：主 compose 的前端 `frontend` 服务（`Dockerfile.frontend`，宿主 5173）仍是旧 Vue 生产形态，与演示双址无关（旧 Vue 已废弃，§1.1）。
+
+### 8.3 重发演示时的注意
+
+- **产物必须来自当前 build**：用 `-ReactDist` / `-VueDist` 指向「线上容器里冻结的旧产物」重发，只换托管方式、不更新内容，结果是**演示仍展示旧包**（首屏请求数 / 压缩上去了，但包体优化、图表与字体改造看不到）。发版要指向设计 / 接线分支**最新 dist**。
+- 演示地址与仓库分支是两条线：`design/ux-redesign`、`design/ux-vue` 的优化要经集成进 `wiring/react`、`wiring/ux-vue`（§4.6）后，重发演示才有意义。
+
