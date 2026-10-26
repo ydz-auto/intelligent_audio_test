@@ -47,6 +47,7 @@ from report_service.infrastructure.persistence.models import (
 from report_service.infrastructure.persistence.report_transfer_repository import (
     _coerce_row,
     _sync_sequences,
+    apply_snapshot_to_row,
 )
 
 logger = logging.getLogger(__name__)
@@ -191,6 +192,10 @@ class ReportReplacementRepository:
                                                 report_id)
                 new_pos = []
                 for row in rows:
+                    if table == 'report_cases':
+                        # INT-1994：快照行不随包迁移 → 按内容列重算并覆盖指针
+                        #（先写快照行，再插用例行，避免悬空指针）
+                        row = apply_snapshot_to_row(session, row)
                     po = po_cls(**_coerce_row(po_cls, row))
                     session.add(po)
                     new_pos.append(po)

@@ -44,6 +44,19 @@ _ROLLBACK_ORDER = ('report_cases', 'report_metric_stats', 'report_raw_data',
 _DATETIME_FIELDS: Dict[str, Set[str]] = {}
 
 
+def apply_snapshot_to_row(session, row: dict) -> dict:
+    """导入 / 搬运链路：按行上九字段内容列重算用例配置快照并覆盖 4 个指针列。
+
+    INT-1994（档4 R1）：``report_case_snapshots`` 不随导出包迁移（R1 不改包形态），
+    包里带过来的 ``snapshot_sha256`` 在目标库是悬空指针 —— 不重算就会让
+    ``REPORT_CASE_SNAPSHOT_SOURCE=snapshot`` 的报告详情直接报错。
+    """
+    from report_service.infrastructure.persistence.report_case_snapshot_store import (
+        apply_to_row,
+    )
+    return apply_to_row(session, row)
+
+
 def _datetime_fields(po_cls) -> Set[str]:
     name = po_cls.__tablename__
     if name not in _DATETIME_FIELDS:
@@ -174,6 +187,10 @@ class ReportTransferRepository:
                     if old_report_id is not None:
                         rewritten['report_id'] = report_mapping.get(
                             old_report_id, old_report_id)
+                    if table == 'report_cases':
+                        # INT-1994：快照表不随包迁移，按行上内容列重算并覆盖指针，
+                        # 避免把源环境的 sha 导成悬空指针（先写入快照行再插用例行）。
+                        rewritten = apply_snapshot_to_row(session, rewritten)
                     prepared_rows.append(rewritten)
                 pairs = _insert_two_pass(session, po_cls, table,
                                          prepared_rows, conflicts)

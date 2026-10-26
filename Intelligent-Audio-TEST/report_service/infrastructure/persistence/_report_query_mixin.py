@@ -400,18 +400,25 @@ class ReportQueryMixin:
 
     @with_session
     def get_cases_by_report_id(self, report_id: int) -> list:
-        """按 report_id 查询原始 ReportCase PO 列表。
+        """按 report_id 查询 ReportCase 行列表（对比 / 挑选合并 / 导出复用）。
 
-        供报告生成引擎读取已存用例数据使用，返回 PO 列表。
+        供报告生成引擎读取已存用例数据使用，返回行对象列表（属性名与 PO 一致）。
+
+        INT-1994（档4 R1）：默认按快照解引用（一次批量取 ``payload_gz``）；
+        ``REPORT_CASE_SNAPSHOT_SOURCE=column`` 时原样返回行上内容列（回滚通道）。
         """
         from report_service.infrastructure.persistence.models import ReportCase
+        from report_service.infrastructure.persistence.report_case_snapshot_store import (
+            resolve_rows,
+        )
 
         session = get_db_session()
-        return (
+        rows = (
             session.query(ReportCase)
             .filter(ReportCase.report_id == report_id)
             .all()
         )
+        return resolve_rows(session, rows, report_id=report_id)
 
     @with_session
     def get_trend_data(

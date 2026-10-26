@@ -105,7 +105,12 @@ class ReportChildrenWriteMixin:
         return self._add_po(po)
 
     def add_case(self, report_id: int, case_data: dict) -> int:
-        """创建报告用例记录。
+        """创建报告用例记录（INT-1994：九字段 payload 双写外置快照）。
+
+        写序固定为「算 sha → 快照表 INSERT … ON CONFLICT DO NOTHING → 行上写
+        指针 → 插入用例行」：反序会出现「行上有指针、表里没内容」的悬空指针；
+        同值并发插入靠内容寻址主键天然收敛。R1 期间**同时照旧写原内容列**
+        （``REPORT_CASE_SNAPSHOT_SOURCE=column`` 回滚要能读）。
 
         Args:
             report_id: 报告 ID
@@ -131,7 +136,30 @@ class ReportChildrenWriteMixin:
             algorithm_type=case_data.get('algorithm_type'),
             logs=case_data.get('logs'),
         )
-        return self._add_po(po)
+        return self._add_po_with_case_snapshot(po, case_data)
+
+    @staticmethod
+    def _add_po_with_case_snapshot(po, case_data: dict) -> int:
+        """先写快照行、再写用例行（同一事务；任一步失败整体回滚）。"""
+        from report_service.infrastructure.persistence.report_case_snapshot_store import (
+            apply_pointer, build_payload, put,
+        )
+
+        session = get_db_session()
+        try:
+            # payload 从**原始入参值**构造（不经过响应装配层，见快照文档 §2）
+            pointer = put(session, build_payload(case_data))
+            apply_pointer(po, pointer)
+            session.add(po)
+            session.flush()
+            new_id = po.id
+            session.commit()
+            return new_id
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
     def add_metric_stats(self, report_id: int, stats_data: dict) -> int:
         """创建报告指标统计记录。
