@@ -24,6 +24,8 @@ ServerDbScopeInterceptor 在 RPC 结束 remove_db_session）。
   HTTP 请求级 scope 绑定/解绑+清理（DbSessionScopeMiddleware 专用）
 - `Model.query`：描述符，代理到 scoped_session.query(cls)（32 个文件在用）
 - `Query.paginate()`：分页补丁（17 处 repository 在用）
+- `build_pagination()`：用已算好的 total/items 构造分页对象（count 并入分页
+  SQL 时使用，INT-2001）
 """
 import contextvars
 import logging
@@ -99,6 +101,23 @@ def _query_paginate(self, page=None, per_page=None, error_out=True, max_per_page
     if max_per_page is not None:
         per_page = min(per_page, max_per_page)
     return _Pagination(self, page, per_page, error_out=error_out)
+
+
+def build_pagination(query, page, per_page, total, items):
+    """按「已算好的 total + items」构造 _Pagination，不再执行 count 查询。
+
+    INT-2001：列表路径把 count 并入分页 SQL（标量子查询，PG 作 InitPlan）后，
+    调用方已经拿到过滤后总行数与当前页行，无需 `_Pagination.__init__` 里那条
+    独立的 count。派生属性（pages / has_prev / has_next / iter_pages）
+    与 `Query.paginate()` 的结果完全一致。仅新增构造入口，不改既有行为。
+    """
+    pagination = _Pagination.__new__(_Pagination)
+    pagination.query = query
+    pagination.page = page
+    pagination.per_page = per_page
+    pagination.total = total
+    pagination.items = items
+    return pagination
 
 
 # 给原生 Query 打补丁，添加 paginate 方法（被下游 repository 大量使用）
