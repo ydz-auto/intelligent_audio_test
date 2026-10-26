@@ -13,6 +13,7 @@ import type {
   LogExportInput,
   LogItem,
   LogMarkInput,
+  LogMarkResult,
   LogPage,
   LogQuery,
   LogRefreshResult,
@@ -23,12 +24,14 @@ import {
   toLogClearDto,
   toLogExportRequestDto,
   toLogMarkDto,
+  toLogMarkResult,
   toLogPage,
   toLogQueryDto,
   toLogRefreshRequestDto,
   toLogRefreshResult,
   toLogStats,
   type LogListDto,
+  type LogMarkResultDto,
   type LogRefreshDto,
   type LogStatsDto,
 } from '@/infrastructure/dto/log.dto'
@@ -52,9 +55,18 @@ export async function getLogStats(query: LogQuery = {}): Promise<LogStats> {
   return toLogStats(data)
 }
 
-/** 标记日志（log:manage；PUT /logs/mark，mark 默认 'flagged'） */
-export async function markLogs(input: LogMarkInput): Promise<void> {
-  await apiClient.put('/logs/mark', toLogMarkDto(input))
+/**
+ * 标记日志（log:manage；PUT /logs/mark → data.updated = 实际更新行数）。
+ * 文件游标行（id ≥ LOG_FILE_CURSOR_FLOOR）只读：纯文件游标批次后端 200 +
+ * updated=0 + 文案「所选为文件日志，不支持标记（仅历史库行可标记）」(INT-1812/1903)，
+ * 调用方按 updated 判断，不得把 200 当成功（INT-1945）。
+ */
+export async function markLogs(input: LogMarkInput): Promise<LogMarkResult> {
+  const data = await apiClient.put<LogMarkResultDto | null>(
+    '/logs/mark',
+    toLogMarkDto(input)
+  )
+  return toLogMarkResult(data)
 }
 
 /** 清除日志（log:manage；POST /logs/clear → {deletedCount}） */
@@ -100,8 +112,8 @@ export async function exportLogs(
 export async function batchMarkLogs(
   logIds: Array<string | number>,
   mark: string
-): Promise<void> {
-  await markLogs({ logIds, mark })
+): Promise<LogMarkResult> {
+  return markLogs({ logIds, mark })
 }
 
 export type { LogItem }

@@ -12,6 +12,7 @@ import type {
   LogExportInput,
   LogItem,
   LogMarkInput,
+  LogMarkResult,
   LogPage,
   LogQuery,
   LogRefreshResult,
@@ -78,6 +79,11 @@ export interface LogClearDto {
 
 export interface LogRefreshRequestDto {
   last_id: number
+}
+
+export interface LogMarkResultDto {
+  /** 实际更新行数（文件游标行不计；纯文件游标时 0） */
+  updated?: number
 }
 
 export interface LogExportRequestDto {
@@ -181,6 +187,20 @@ export function toLogStats(dto: LogStatsDto | null | undefined): LogStats {
     warning: toNumber(dto?.warning),
     error: toNumber(dto?.error),
     critical: toNumber(dto?.critical),
+  }
+}
+
+/**
+ * 日志标记结果 → LogMarkResult（INT-1945）。
+ * 后端带 data.updated 时取实数；未返 data / 字段非法时置 null（旧包语义），
+ * 由 application 层按请求行推定，避免把「没有 data」误判成标记失败。
+ */
+export function toLogMarkResult(
+  dto: LogMarkResultDto | null | undefined
+): LogMarkResult {
+  const updated = dto?.updated
+  return {
+    updated: typeof updated === 'number' && Number.isFinite(updated) ? updated : null,
   }
 }
 

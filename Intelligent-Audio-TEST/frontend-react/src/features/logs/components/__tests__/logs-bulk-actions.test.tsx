@@ -12,11 +12,12 @@ import { LogsBulkActions } from '@/features/logs/components/logs-bulk-actions'
 
 const noop = () => {}
 
-function renderBar() {
+function renderBar(markableCount = 2) {
   return render(
     <LogsBulkActions
       count={2}
       canManage
+      markableCount={markableCount}
       onBatchMark={noop}
       onCopySelected={noop}
       onExportSelected={noop}
@@ -44,6 +45,7 @@ describe('LogsBulkActions 标记颜色菜单', () => {
       <LogsBulkActions
         count={2}
         canManage
+        markableCount={2}
         onBatchMark={(mark) => marks.push(mark)}
         onCopySelected={noop}
         onExportSelected={noop}
