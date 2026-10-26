@@ -30,7 +30,6 @@ import { useTagMutations } from '@/application/tags/useTags'
 import { useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
 import { useCaseBatchActions } from '@/application/testcases/use-case-batch-actions'
 import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-store'
-import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
 import {
   copyTestCase,
   deleteTestCase,
@@ -48,6 +47,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagDraft } from '@/domain/models/testTag'
+import type { CaseSelectionFilter } from '@/domain/models/testExecution'
 
 import {
   TEST_CASES_TABS,
@@ -180,33 +180,36 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   )
 
   /**
+   * POST /testcases/ids 圈定条件（「全选结果」「反选」「列表头全选结果」与 store 筛选同步共用
+   * 同一份，键与后端 fetch_case_ids 契约一致；分组按名，收藏/回收站是列表视图开关不进条件）。
+   */
+  const selectionFilter = useMemo<CaseSelectionFilter>(
+    () => ({
+      search: filters.search?.trim() || undefined,
+      group: groupName ?? null,
+      tag: filters.tag ?? null,
+      dimensionId: filters.dimensionId ?? null,
+      algorithmType: filters.algorithmType ?? algorithmType ?? null,
+    }),
+    [
+      filters.search,
+      filters.tag,
+      filters.dimensionId,
+      filters.algorithmType,
+      groupName,
+      algorithmType,
+    ]
+  )
+
+  /**
    * INT-1544：页面筛选持续同步进 case-selection store（缺陷根因——此前 store.filter 恒为 {}，
    * filter-all 圈定忽略筛选条件，界面「全部 1 条」却按全部用例建任务）。
    * 本组件在离开步骤一时卸载，筛选态必须落到 store 才能随启动流程传入 createTask；
-   * 键与 POST /testcases/ids 契约一致（search / group 名 / tag / dimension_id / algorithm_type，
-   * 与「全选结果」同一口径）。收藏/回收站是列表视图开关，不进圈定条件。
+   * 与「全选结果」同一口径。
    */
   useEffect(() => {
-    store.getState().setFilter(
-      {
-        search: filters.search?.trim() || undefined,
-        group: groupName ?? null,
-        tag: filters.tag ?? null,
-        dimensionId: filters.dimensionId ?? null,
-        algorithmType: filters.algorithmType ?? algorithmType ?? null,
-      },
-      total
-    )
-  }, [
-    store,
-    filters.search,
-    filters.tag,
-    filters.dimensionId,
-    filters.algorithmType,
-    groupName,
-    algorithmType,
-    total,
-  ])
+    store.getState().setFilter(selectionFilter, total)
+  }, [store, selectionFilter, total])
 
   const handleToggleSelect = (id: string, checked: boolean) => {
     if (canSelect && checked !== selectedSet.has(id)) store.getState().toggleCase(id)
@@ -218,19 +221,34 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
     else store.getState().removeMany(ids)
   }
 
-  /** 全选结果（真实 POST /testcases/ids 按当前筛选圈定；分组筛选传分组名，INT-1267 契约对齐） */
+  /**
+   * 列表头「全选用例」（INT-1970）：与「全选结果」同口径按当前筛选条件经 POST /testcases/ids
+   * 全量圈定/移除，不再只圈定已加载的 100 条。勾选态见 allFilteredSelected。
+   */
+  const handleToggleAllFiltered = async (checked: boolean) => {
+    if (!canSelect) return
+    try {
+      await selection.toggleAllFiltered(selectionFilter, checked)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '全选用例失败，请重试')
+    }
+  }
+
+  /** 列表头勾选态：筛选结果已全部选中（已选数 ≥ 筛选总数，且当前已加载项均已勾选） */
+  const allFilteredSelected = useMemo(
+    () =>
+      total > 0 &&
+      items.length > 0 &&
+      items.every((c) => selectedSet.has(c.id)) &&
+      selection.selectedCount >= total,
+    [items, selectedSet, selection.selectedCount, total]
+  )
+
+  /** 全选结果（真实 POST /testcases/ids 按当前筛选圈定；与列表头全选同一口径） */
   const handleSelectAllFiltered = async () => {
     setPendingSelectAll(true)
     try {
-      const { ids, total: count } = await fetchCaseIdsByFilter({
-        search: filters.search,
-        group: groupName,
-        tag: filters.tag,
-        dimensionId: filters.dimensionId,
-        algorithmType: filters.algorithmType ?? algorithmType,
-      })
-      store.getState().selectMany(ids)
-      toast.success(`已全选 ${count} 条用例`)
+      await selection.selectAllFiltered(selectionFilter)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '全选用例失败，请重试')
     } finally {
@@ -241,14 +259,7 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   /** 反选（对称差；分组筛选传分组名，INT-1267 契约对齐） */
   const handleInvert = async () => {
     try {
-      const { ids } = await fetchCaseIdsByFilter({
-        search: filters.search,
-        group: groupName,
-        tag: filters.tag,
-        dimensionId: filters.dimensionId,
-        algorithmType: filters.algorithmType ?? algorithmType,
-      })
-      store.getState().invertWith(ids)
+      await selection.invertSelection(selectionFilter)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '反选用例失败，请重试')
     }
@@ -586,6 +597,8 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
               actionCallbacks={canManage ? groupCallbacks : undefined}
               onToggleSelect={canManage ? handleToggleSelect : undefined}
               onToggleAll={canManage ? handleToggleAll : undefined}
+              onToggleAllFiltered={canManage ? handleToggleAllFiltered : undefined}
+              allFilteredSelected={allFilteredSelected}
             />
           ) : (
             <TagCaseList
@@ -597,6 +610,8 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
               callbacks={canManage ? rowCallbacks : undefined}
               onToggleSelect={canManage ? handleToggleSelect : undefined}
               onToggleAll={canManage ? handleToggleAll : undefined}
+              onToggleAllFiltered={canManage ? handleToggleAllFiltered : undefined}
+              allFilteredSelected={allFilteredSelected}
               onCreate={canManage ? () => openCreateCase(null) : undefined}
             />
           )}

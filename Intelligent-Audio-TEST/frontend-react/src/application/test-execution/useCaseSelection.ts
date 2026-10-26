@@ -40,14 +40,19 @@ export function useCaseSelection(list: TestCase[]) {
 
   const toggleCase = (id: string) => store.getState().toggleCase(id)
 
-  /** 表头全选=正选当前页（勾选态点按=取消当前页勾选） */
-  const toggleAllVisible = () => {
-    const visibleIds = new Set(list.map((c) => c.id))
-    if (allVisibleSelected) {
-      store.getState().selectMany(manualCaseIds.filter((id) => !visibleIds.has(id)))
-    } else {
-      store.getState().selectMany(list.map((c) => c.id))
+  /**
+   * 列表头「全选用例」（INT-1970）：与「全选结果」同口径——始终按当前筛选条件经
+   * POST /testcases/ids 取全量 ID（不按已加载分页圈定）；取消勾选时移除同一全量集合。
+   * 勾选态由调用方按「筛选总数」判定（selectedCount >= total），不在本函数内推断。
+   */
+  const toggleAllFiltered = async (filter: CaseSelectionFilter, checked: boolean) => {
+    const { ids, total } = await fetchCaseIdsByFilter(filter)
+    if (checked) {
+      store.getState().selectMany(ids)
+      toast.success(`已全选 ${total} 条用例`)
+      return
     }
+    store.getState().removeMany(ids)
   }
 
   /** 汇总口径：手动勾选 a · 反选补齐 b */
@@ -67,7 +72,7 @@ export function useCaseSelection(list: TestCase[]) {
     allVisibleSelected,
     summary,
     toggleCase,
-    toggleAllVisible,
+    toggleAllFiltered,
     selectAllFiltered,
     invertSelection,
     clearSelection,

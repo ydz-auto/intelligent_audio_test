@@ -75,6 +75,8 @@ export function TagCaseList({
   callbacks,
   onToggleSelect,
   onToggleAll,
+  onToggleAllFiltered,
+  allFilteredSelected,
   onCreate,
 }: {
   cases: TestCaseListItem[]
@@ -92,6 +94,13 @@ export function TagCaseList({
   /** 勾选切换；不传（readOnly 观察态）→ 卡片/标签头勾选框隐藏 */
   onToggleSelect?: (id: string, checked: boolean) => void
   onToggleAll?: (ids: string[], checked: boolean) => void
+  /**
+   * 列表头「全选用例」（INT-1970）：按当前筛选条件全量圈定（POST /testcases/ids），与
+   * 「全选结果」同口径；不传 → 沿用已加载用例口径（开始测试步骤一传入，用例管理页保持原行为）。
+   */
+  onToggleAllFiltered?: (checked: boolean) => void | Promise<void>
+  /** 列表头勾选态（已选数 = 筛选总数）；仅 onToggleAllFiltered 生效时使用 */
+  allFilteredSelected?: boolean
   /** 空态「新增用例」；不传（readOnly 观察态）→ 隐藏 */
   onCreate?: () => void
 }) {
@@ -213,11 +222,19 @@ export function TagCaseList({
       {/* 列表头：全选 + 已选择计数 + 标签排序 */}
       <div className='flex items-center justify-between gap-2'>
         <div className='flex items-center gap-2'>
-          {onToggleAll != null && (
+          {(onToggleAll != null || onToggleAllFiltered != null) && (
             <Checkbox
-              checked={cases.length > 0 && cases.every((c) => selected.has(c.id))}
+              checked={
+                onToggleAllFiltered != null
+                  ? allFilteredSelected === true
+                  : cases.length > 0 && cases.every((c) => selected.has(c.id))
+              }
               aria-label='全选用例'
-              onCheckedChange={(c) => onToggleAll(cases.map((x) => x.id), c)}
+              onCheckedChange={(c) =>
+                onToggleAllFiltered != null
+                  ? void onToggleAllFiltered(c)
+                  : onToggleAll?.(cases.map((x) => x.id), c)
+              }
             />
           )}
           <p className='text-muted-foreground text-xs'>
