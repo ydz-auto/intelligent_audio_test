@@ -13,6 +13,7 @@ from audio_service.domain.exceptions import TestCaseCreationError
 from audio_service.application.services.audio_convert_service import (
     _get_source_language_from_algorithm_params,
 )
+from shared.constants.audio_tag import should_resolve_path_tags
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,12 @@ class AudioMergeMixin:
         return self._handle_instant_upload(upload_file, data, params)
 
     def _handle_instant_upload(self, upload_file, data, params):
-        """处理秒传：查找已有音频并按是否创建测试用例分支"""
+        """处理秒传：查找已有音频并按是否创建测试用例分支
+
+        INT-1978：秒传不新建音频记录，标签直接沿用已存在音频的标签
+        （get_audio_tag_names），因此 tag_source 在秒传路径不生效——不解析
+        relative_path、也不会把请求 tags 写回已有音频。
+        """
         if not upload_file.md5:
             return None
 
@@ -228,7 +234,8 @@ class AudioMergeMixin:
             'description': params['description'],
         })
 
-        audio_tags = self._process_audio_tags(audio_record, params['user_tags'], upload_file)
+        audio_tags = self._process_audio_tags(
+            audio_record, params['user_tags'], upload_file, params.get('tag_source'))
 
         raw_annotations_data = self._annotation_service.persist_annotations_and_raw(
             audio_record.id,
@@ -241,18 +248,25 @@ class AudioMergeMixin:
 
         return audio_record, audio_tags, raw_annotations_data
 
-    def _process_audio_tags(self, audio_record, user_tags, upload_file):
-        """处理音频标签关联"""
+    def _process_audio_tags(self, audio_record, user_tags, upload_file, tag_source=None):
+        """处理音频标签关联
+
+        :param tag_source: INT-1978 标签来源（json / path / both，缺省与未知值按 both）。
+            json 模式跳过 relative_path 目录段解析，只关联请求 tags；
+            path / both 照常解析目录段（both = 改动前的历史行为）。
+            请求 tags（手填 + 前端解析的 JSON tags）在任何模式下都生效。
+        """
         audio_tags = []
         all_tag_names = list(user_tags)
 
-        relative_path = upload_file.relative_path
-        if relative_path:
-            path_parts = relative_path.split('/')
-            directory_parts = path_parts[:-1]
-            for part in directory_parts:
-                if part and part not in all_tag_names:
-                    all_tag_names.append(part)
+        if should_resolve_path_tags(tag_source):
+            relative_path = upload_file.relative_path
+            if relative_path:
+                path_parts = relative_path.split('/')
+                directory_parts = path_parts[:-1]
+                for part in directory_parts:
+                    if part and part not in all_tag_names:
+                        all_tag_names.append(part)
 
         from audio_service.domain.exceptions import TagResolutionError
         for tag_name in all_tag_names:

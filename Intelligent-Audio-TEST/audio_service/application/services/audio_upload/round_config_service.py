@@ -8,6 +8,8 @@
 """
 import logging
 
+from shared.constants.audio_tag import resolve_tag_source
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,6 +45,9 @@ class AudioRoundConfigService:
             'algorithm_params_dict': algorithm_params_dict,
             'description': data.get('description', ''),
             'user_tags': data.get('tags', []),
+            # INT-1978：标签来源，缺失/未知/空值降级 both（= 历史行为）
+            'tag_source': resolve_tag_source(
+                data.get('tag_source') or data.get('tagSource')),
             'rounds_config': rounds_config,
             'tc_inherit_tags': tc_inherit_tags,
             'case_background_noise': tc_case_background_noise,

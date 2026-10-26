@@ -2,6 +2,7 @@ import logging
 from pydantic import ValidationError
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
+from api_gateway.utils.error_codes import ErrorCode
 from api_gateway.schemas.audio import (
     AudioPresignPartQuery,
     AudioUploadProgressQuery,
@@ -179,7 +180,9 @@ class AudioUploadService:
             try:
                 validated = MergeChunksRequest.model_validate(data)
             except ValidationError as e:
-                return error_response(f"参数验证失败: {e}")
+                # INT-1978：合并请求体校验失败（如 tag_source 非法枚举）统一 422 结构化错误
+                return error_response(
+                    f"参数验证失败: {e}", code=ErrorCode.INVALID_PARAMS, http_code=422)
 
             result = _audio_acl.merge_chunks(data)
             if result.get('success'):

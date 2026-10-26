@@ -6,6 +6,7 @@ from pydantic import BeforeValidator, Field, field_validator
 from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 from api_gateway.schemas.testcase import AlgorithmParamItem, RoundConfigItem
+from shared.constants.audio_tag import AudioTagSource
 
 
 class TagListData(PaginatedData[str]):
@@ -147,6 +148,9 @@ class MergeChunksRequest(APIModel):
     algorithm_relations: Optional[List[AudioAlgorithmRelationItem]] = Field(None)
     description: Optional[str] = Field('')
     tags: Optional[List[str]] = Field(default_factory=list)
+    # INT-1978：标签来源。json=只用手填+JSON tags（跳过路径目录解析）；
+    # path=手填+路径目录标签；both=全部（默认，等于历史行为）
+    tag_source: Optional[AudioTagSource] = Field(AudioTagSource.BOTH)
     prompt_device_id: Optional[int] = Field(None)
     prompt_source_language: Optional[str] = Field(None)
     prompt_target_language: Optional[str] = Field(None)
