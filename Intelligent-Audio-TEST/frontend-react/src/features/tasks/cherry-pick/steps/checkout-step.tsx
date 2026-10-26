@@ -18,7 +18,6 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import type { CheckoutAction } from '@/domain/models/cherryPick'
 import { CHECKOUT_ACTIONS } from '@/features/tasks/cherry-pick/constants'
 import { cn } from '@/lib/utils'
@@ -163,7 +162,7 @@ export function CheckoutStep({
       {(data?.invalidResultIds.length ?? 0) > 0 && (
         <Alert variant='destructive' className='border-warning/40'>
           <AlertTitle className='text-warning'>
-            {data?.invalidResultIds.length} 条失效条目下单时将跳过，可返回复核移除
+            {data?.invalidResultIds.length} 条失效条目下单时将跳过，可返回购物车移除
           </AlertTitle>
           <AlertDescription>失效条目（源结果已删除）在出清时保留展示。</AlertDescription>
         </Alert>
@@ -171,12 +170,7 @@ export function CheckoutStep({
 
       {isMerge && (
         <div className='flex flex-col gap-3'>
-          <div className='flex flex-wrap gap-3'>
-            <StatusBadge variant='success' label={`结果 ${data?.totalResults ?? total} 条`} />
-            <StatusBadge variant='info' label={`来源任务 ${data?.sourceTaskCount ?? '—'} 个`} />
-            <StatusBadge variant='neutral' label={`设备 ${data?.deviceIds.length ?? '—'} 台 / 用例 ${data?.caseCount ?? '—'} 个`} />
-          </div>
-
+          {/* §5.3 去重（INT-2003）：三枚统计徽章只在 Step 3 预览页出现一次，这里不再重复 */}
           <div className='flex flex-col gap-2'>
             <Label htmlFor='checkout-name'>新任务名称（必填）</Label>
             <Input
@@ -265,7 +259,7 @@ export function CheckoutStep({
 
       <div className='flex items-center justify-between border-t pt-3'>
         <Button variant='ghost' size='sm' onClick={onGoReview}>
-          返回复核
+          返回预览
         </Button>
         <Button
           size='sm'

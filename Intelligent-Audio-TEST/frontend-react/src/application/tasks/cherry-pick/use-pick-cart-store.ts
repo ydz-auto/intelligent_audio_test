@@ -33,7 +33,7 @@ type PickCartState = {
   invalidItemIds: string[]
   /** R10 已加购标记数据源（result_id 集，挑选树/购物车共用） */
   resultIdSet: Set<number>
-  /** 购物车 revision（增删后自增；复核预览 queryKey 失效用） */
+  /** 购物车 revision（增删后自增；预览摘要 queryKey 失效用） */
   revision: number
   /** 挑选集 */
   pickSets: PickSet[]

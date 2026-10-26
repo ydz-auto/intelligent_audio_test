@@ -14,8 +14,9 @@ import {
   organizeCompositionCases,
   summarizeComposition,
   toCompositionEntries,
+  toPreviewCompositionEntries,
 } from '@/domain/lib/container-composition'
-import type { ContainerSourceTrace } from '@/domain/models/cherryPick'
+import type { ContainerSourceTrace, PickCartEntry, PickPreview } from '@/domain/models/cherryPick'
 import type { TaskApiBrief, TaskCaseBrief, TaskDeviceBrief } from '@/domain/models/task'
 
 const CASE_A = '11111111-1111-1111-1111-111111111111'
@@ -311,5 +312,114 @@ describe('excludeContainerTaskRows（§5.5.5 容器不进阶段 1 清单）', ()
 
   it('全部是容器 → 空清单（前端仍给空态，不臆造任务）', () => {
     expect(excludeContainerTaskRows(rows, new Set([391, 419, 652]))).toEqual([])
+  })
+})
+
+describe('toPreviewCompositionEntries（§5.2 ⑤ 预览映射契约，INT-2003）', () => {
+  const cartEntry = (over: Partial<PickCartEntry> = {}): PickCartEntry => ({
+    itemId: 'item-3838',
+    resultId: 3838,
+    sourceTaskId: 402,
+    sourceTaskName: '话轮接管_打断_小艺E2E测试任务',
+    sourceCaseId: CASE_A,
+    sourceCaseName: '用例 A',
+    sourceDeviceId: 9,
+    sourceDeviceName: 'pura90小艺',
+    sourceApiId: null,
+    sourceApiName: null,
+    sourceResultType: 'default',
+    executionStatus: 'completed',
+    evaluationStatus: null,
+    invalid: false,
+    ...over,
+  })
+
+  const preview = (over: Partial<PickPreview> = {}): PickPreview => ({
+    totalResults: 1,
+    invalidResultIds: [],
+    sourceTaskCount: 1,
+    deviceIds: [9],
+    caseCount: 1,
+    executionStatusCounts: { completed: 1 },
+    duplicates: [],
+    ...over,
+  })
+
+  it('继承 PickCartEntry 字段快照直取，6 个扩展字段补默认值（只作类型占位）', () => {
+    const [e] = toPreviewCompositionEntries([cartEntry()], preview())
+    expect(e).toMatchObject({
+      itemId: 'item-3838',
+      resultId: 3838,
+      sourceTaskId: 402,
+      sourceTaskName: '话轮接管_打断_小艺E2E测试任务',
+      sourceCaseId: CASE_A,
+      sourceCaseName: '用例 A',
+      sourceDeviceId: 9,
+      sourceDeviceName: 'pura90小艺',
+      sourceResultType: 'default',
+      executionStatus: 'completed',
+      invalid: false,
+    })
+    // §5.2 ⑤ 六个扩展字段默认值
+    expect(e.resultCreatedAt).toBeNull()
+    expect(e.evaluated).toBe(false)
+    expect(e.statusFromCase).toBe(false)
+    expect(e.evaluationFromCase).toBe(false)
+    expect(e.sourceCaseGroupName).toBeNull()
+    expect(e.sourceCaseTags).toEqual([])
+  })
+
+  it('失效以 preview.invalidResultIds 为准（服务端判定优先），条目不重复计数', () => {
+    const entries = toPreviewCompositionEntries(
+      [cartEntry({ resultId: 3838 }), cartEntry({ resultId: 2857, itemId: 'item-2857' })],
+      preview({ invalidResultIds: [2857] })
+    )
+    expect(entries.map((e) => e.invalid)).toEqual([false, true])
+  })
+
+  it('条目自身 invalid 兜底 / 取并集（本地快照滞后于服务端也标失效）', () => {
+    const entries = toPreviewCompositionEntries(
+      [
+        cartEntry({ resultId: 3838, invalid: true }),
+        cartEntry({ resultId: 2857, itemId: 'item-2857', invalid: false }),
+      ],
+      preview({ invalidResultIds: [2857] })
+    )
+    expect(entries.map((e) => e.invalid)).toEqual([true, true])
+  })
+
+  it('preview 未返回（加载中 / 失败）时按条目 invalid 兜底，不抛错也不臆造', () => {
+    const entries = toPreviewCompositionEntries(
+      [cartEntry({ resultId: 1, invalid: false }), cartEntry({ resultId: 2, itemId: 'i2', invalid: true })],
+      undefined
+    )
+    expect(entries.map((e) => e.invalid)).toEqual([false, true])
+    expect(entries).toHaveLength(2)
+  })
+
+  it('用例分组 / 标签取快照可选字段（INT-1693 未落地时恒缺省）', () => {
+    const entries = toPreviewCompositionEntries(
+      [
+        cartEntry({ sourceCaseGroupName: '分组一', sourceCaseTags: ['标签一'] }),
+        cartEntry({ resultId: 2, itemId: 'i2' }),
+      ],
+      preview()
+    )
+    expect(entries[0].sourceCaseGroupName).toBe('分组一')
+    expect(entries[0].sourceCaseTags).toEqual(['标签一'])
+    expect(entries[1].sourceCaseGroupName).toBeNull()
+    expect(entries[1].sourceCaseTags).toEqual([])
+  })
+
+  it('与容器组成共用摘要 / 分组纯函数：预览条目数 = 购物车条目数（含失效，树内叶数）', () => {
+    const entries = toPreviewCompositionEntries(
+      [cartEntry({ resultId: 1 }), cartEntry({ resultId: 2, itemId: 'i2', invalid: true })],
+      preview({ invalidResultIds: [2], totalResults: 1 })
+    )
+    const summary = summarizeComposition(entries)
+    expect(summary.total).toBe(2)
+    expect(summary.missing).toBe(1)
+    expect(summary.taskCount).toBe(1)
+    expect(groupCompositionEntries(entries)).toHaveLength(1)
   })
 })

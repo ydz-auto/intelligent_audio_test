@@ -2,7 +2,7 @@
  * 购物车抽屉（18_挑选合并交互重设计.md §4.4/§7.1，INT-600）。
  * Sheet sm:max-w-lg 全局入口（导航栏角标落位 INT-344，本卡页内同步）；
  * 内容复用 CartPanel（购物车树 + 移除矩阵全量）。
- * 底部：继续挑选（关抽屉回挑选）｜主钮「去复核（{n}）」（外部跳向导 Step 3）。
+ * 底部：继续挑选（关抽屉回挑选）｜主钮「去预览（{n}）」（外部跳向导 Step 3 预览）。
  */
 import { ShoppingCart } from 'lucide-react'
 
@@ -25,7 +25,7 @@ export function CartDrawer({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** 去复核（外部打开向导 Step 3；未开向导时先开向导跳复核） */
+  /** 去预览（外部打开向导 Step 3；未开向导时先开向导跳预览步骤） */
   onGoReview?: () => void
 }) {
   const { hasPermission } = usePermissions()
@@ -75,7 +75,7 @@ export function CartDrawer({
                   onGoReview?.()
                 }}
               >
-                去复核（{total}）
+                去预览（{total}）
               </Button>
             </div>
           </SheetFooter>

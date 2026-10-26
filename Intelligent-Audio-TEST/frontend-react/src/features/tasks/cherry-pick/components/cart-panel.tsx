@@ -1,6 +1,6 @@
 /**
  * 购物车管理面板（18_挑选合并交互重设计.md §4.2/§4.3，INT-600）。
- * 购物车抽屉与复核步骤（编辑态）共用的购物车树 + 移除矩阵全量：
+ * 购物车抽屉与购物车步骤（编辑态）共用的购物车树 + 移除矩阵全量：
  * 单条 X / 节点「移除该组」/ 整组「移除整组」/ 批量勾选移除 / 一键移除失效 / 清空 / 另存挑选集。
  */
 import { Save, Trash2 } from 'lucide-react'
@@ -28,13 +28,13 @@ interface ConfirmState {
 
 /**
  * 购物车树 + 移除矩阵 + 清空/另存挑选集。onGoReview/onGoContinuePick 由外层注入
- * （抽屉「去复核（n）」/「继续挑选」，复核步骤「返回挑选」）。
+ * （抽屉「去预览（n）」/「继续挑选」，购物车步骤「继续挑选」）。
  */
 export function CartPanel({
   onGoReview,
   onGoContinuePick,
   continueLabel = '继续挑选',
-  reviewLabel = '去复核',
+  reviewLabel = '去预览',
   showFooter = true,
   readOnly = false,
 }: {
@@ -126,7 +126,7 @@ export function CartPanel({
           </div>
         ) : (
           <>
-            {/* §4.2 三视图切换器（任务分组默认 + 用例/设备/结果类型；购物车抽屉与复核步骤共用） */}
+            {/* §4.2 三视图切换器（任务分组默认 + 用例/设备/结果类型；购物车抽屉与购物车步骤共用） */}
             <CartViewSwitcher
               view={view}
               onChange={setView}

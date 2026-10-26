@@ -1,6 +1,8 @@
 /**
  * 挑选合并四步向导壳（18_挑选合并交互重设计.md §5.1/§7.1，INT-600）。
- * 页内状态机：挑选→购物车→复核→下单；Stepper 步进；筛选条件会话级记忆（§6.4，不持久化）。
+ * 页内状态机：挑选→购物车→预览→下单；Stepper 步进；筛选条件会话级记忆（§6.4，不持久化）。
+ * 第 3 步 key 仍为 `review`（`?wizard=` 路由枚举与 `wizard-step-*` testid 属跨卡契约，INT-2003 只改
+ * 用户可见文案「复核」→「预览」，不动状态键）。
  * 批量浮条「加入挑选」预选任务进入时 presetTaskIds 生效。
  */
 import { ArrowLeft } from 'lucide-react'
@@ -15,7 +17,7 @@ import type { WizardStepKey } from '@/features/tasks/cherry-pick/constants'
 import { WIZARD_STEPS } from '@/features/tasks/cherry-pick/constants'
 import { PickStep } from '@/features/tasks/cherry-pick/steps/pick-step'
 import { CartStep } from '@/features/tasks/cherry-pick/steps/cart-step'
-import { ReviewStep } from '@/features/tasks/cherry-pick/steps/review-step'
+import { PreviewStep } from '@/features/tasks/cherry-pick/steps/preview-step'
 import { CheckoutStep } from '@/features/tasks/cherry-pick/steps/checkout-step'
 
 function Stepper({
@@ -130,7 +132,10 @@ export function CherryPickWizard({
           <CartStep onGoPick={() => onStepChange('pick')} onGoReview={() => onStepChange('review')} />
         )}
         {step === 'review' && (
-          <ReviewStep onGoPick={() => onStepChange('pick')} onGoCheckout={() => onStepChange('checkout')} />
+          <PreviewStep
+            onGoCart={() => onStepChange('cart')}
+            onGoCheckout={() => onStepChange('checkout')}
+          />
         )}
         {step === 'checkout' && <CheckoutStep onGoReview={() => onStepChange('review')} onDone={onClose} />}
       </div>

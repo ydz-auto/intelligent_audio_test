@@ -6,7 +6,7 @@
  * 三视图树内不设任务级分支，任务维度以 叶行来源任务名 + 顶层组头「来自 {m} 个任务」保留。
  * 管理态：勾选批量移除（R1-R5 同构）+ 单条 X + 节点「移除该组」+ 整组「移除整组」（跨任务）+ 失效标记。
  * §3.8.4 全站用例显示统一：用例节点改走 CaseCard（pick-case-card.tsx compact 变体）。
- * 购物车抽屉与复核步骤两处共用（§4.4）。
+ * 购物车抽屉与购物车步骤两处共用（§4.4）；预览步骤只读复用同一棵树。
  */
 import { ChevronDown, ChevronRight, Trash2, X } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
