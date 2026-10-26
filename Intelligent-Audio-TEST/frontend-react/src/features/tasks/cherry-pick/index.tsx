@@ -203,7 +203,7 @@ export function CherryPickTab({
             <EmptyHeader>
               <EmptyTitle>暂无挑选合并任务</EmptyTitle>
               <EmptyDescription>
-                点击「开始挑选」，从任务/用例/设备/结果类型任一层级勾选执行结果，加入购物车后复核合并
+                点击「开始挑选」，从任务/用例/设备/结果类型任一层级勾选执行结果，加入购物车后预览合并
               </EmptyDescription>
             </EmptyHeader>
             {canWrite && (

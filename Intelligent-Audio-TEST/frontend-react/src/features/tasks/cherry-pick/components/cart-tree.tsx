@@ -9,7 +9,7 @@
  * 所有分支节点（含任务节点）统一：名称 + 计数「{n} 条」+ 三态 Checkbox + 展开/收起 +
  * 「移除该组」（= 本节点下全部条目，不跨节点）。叶行不再显示来源任务名。
  * §3.8.4 全站用例显示统一：用例节点走 CaseCard（pick-case-card.tsx compact 变体）。
- * 购物车抽屉与复核步骤两处共用（§4.4）。
+ * 购物车抽屉与复核步骤两处共用（§4.4）；预览步骤只读复用同一棵树。
  */
 import { ChevronDown, ChevronRight, Trash2, X } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'

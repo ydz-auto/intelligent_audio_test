@@ -9,7 +9,7 @@
  */
 import { Link } from '@tanstack/react-router'
 import { AlertTriangle, ListFilter, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import {
   usePickOrg,
@@ -73,15 +73,20 @@ function CompositionSkeleton() {
   )
 }
 
+/** 组成区模式：容器详情（既成事实）/ 预览步骤（下单前预测，只读快照） */
+export type CompositionMode = 'container' | 'preview'
+
 export function ContainerComposition({
-  trace,
+  trace = null,
   entries,
   summary,
   loading = false,
   sectionId = 'composition',
   scrollable = true,
+  mode = 'container',
+  footer,
 }: {
-  trace: ContainerSourceTrace | null
+  trace?: ContainerSourceTrace | null
   /** 全量组成条目（筛选在其上做纯客户端派生） */
   entries: CompositionEntry[]
   summary: CompositionSummary
@@ -96,7 +101,19 @@ export function ContainerComposition({
    * 页签行展开整块已有 `max-h-[420px]` 外层滚动 → 传 false，避免嵌套滚动条。
    */
   scrollable?: boolean
+  /**
+   * `'container'`：容器详情 / 页签行展开（§5.5）——评估状态、溯源、用例层组织全部渲染。
+   * `'preview'`：预览步骤（§5.2 ⑥，INT-2003）——同一套四视图，但条目来自购物车快照：
+   * 关掉 (甲) 评估状态筛选 / 评估徽章 / 源结果时间 / 溯源钮 / `#composition` 高亮与
+   * (乙) 用例层组织整层（不取 `usePickOrg`、不 `organizeCompositionCases`、不向 `CartTree` 传
+   * `org` / `subView`、工具行不渲染 `PickCaseOrgControls`）——快照无 tags / group_name，
+   * 组织只会整屏落一个「未分组」桶。
+   */
+  mode?: CompositionMode
+  /** 区块尾部内容（预览步骤把「返回购物车修改 / 确认下单」放在同一张卡内） */
+  footer?: ReactNode
 }) {
+  const isPreview = mode === 'preview'
   const [view, setView] = useState<CartView>('task')
   const [execution, setExecution] = useState<CompositionExecutionFilter>('all')
   const [evaluation, setEvaluation] = useState<CompositionEvaluationFilter>('all')
@@ -116,6 +133,7 @@ export function ContainerComposition({
   const [landed, setLanded] = useState<'idle' | 'on' | 'fading'>('idle')
 
   useEffect(() => {
+    if (isPreview) return
     if (sectionId == null || loading || !trace) return
     if (typeof window === 'undefined' || window.location.hash !== '#composition') return
     const el = sectionRef.current
@@ -143,7 +161,7 @@ export function ContainerComposition({
       window.clearTimeout(fadeTimer)
       window.clearTimeout(endTimer)
     }
-  }, [sectionId, loading, trace])
+  }, [isPreview, sectionId, loading, trace])
 
   const entryByItemId = useMemo(
     () => new Map(entries.map((e) => [e.itemId, e])),
@@ -161,24 +179,32 @@ export function ContainerComposition({
     [filtered]
   )
 
-  /** 用例视图用例层组织（分组 / 标签 × 平铺 / 交叉） */
+  /** 用例视图用例层组织（分组 / 标签 × 平铺 / 交叉）；预览模式整层跳过（§5.2 ⑥） */
   const caseBuckets = useMemo(
-    () => (view === 'case' ? organizeCompositionCases(filtered, org, subView) : []),
-    [view, filtered, org, subView]
+    () =>
+      !isPreview && view === 'case'
+        ? organizeCompositionCases(filtered, org, subView)
+        : [],
+    [isPreview, view, filtered, org, subView]
   )
 
-  /** 叶行尾部：源结果 #id + 评估状态 + 源结果时间 + 溯源（§5.5.3 叶行内容） */
+  /** 叶行尾部：源结果 #id + 评估状态 + 源结果时间 + 溯源（§5.5.3 叶行内容；预览只留 #id） */
   const renderLeafTrailing = (leaf: CartTreeLeaf) => {
     const entry = entryByItemId.get(leaf.entryId)
     if (!entry) return null
+    const resultIdLabel = (
+      <span
+        className='text-muted-foreground/70 shrink-0 font-mono text-[10px] tabular-nums'
+        title={`源结果 ID ${entry.resultId}`}
+      >
+        #{entry.resultId}
+      </span>
+    )
+    // 预览：快照无评估状态 / 源结果时间，且溯源会离开向导丢步骤态（§5.2 ⑥）→ 只留源结果 id
+    if (isPreview) return resultIdLabel
     return (
       <>
-        <span
-          className='text-muted-foreground/70 shrink-0 font-mono text-[10px] tabular-nums'
-          title={`源结果 ID ${entry.resultId}`}
-        >
-          #{entry.resultId}
-        </span>
+        {resultIdLabel}
         {entry.evaluated ? (
           <Badge variant='secondary' className='shrink-0 text-[10px]'>
             已评估
@@ -251,8 +277,9 @@ export function ContainerComposition({
       renderLeafTrailing={renderLeafTrailing}
       renderBranchExtra={renderBranchExtra}
       // §3.8.3 A 组第 3 层：设备 / 结果类型视图在 result_type 之下、用例卡之上插入用例层组织
-      org={org}
-      subView={subView}
+      // 预览模式（§5.2 ⑥ 乙）：快照无 tags / group_name → 不传，整层组织不存在
+      org={isPreview ? undefined : org}
+      subView={isPreview ? undefined : subView}
     />
   )
 
@@ -285,36 +312,51 @@ export function ContainerComposition({
         />
       )}
       <div className='flex flex-wrap items-center gap-2'>
-        <h2 className='text-sm font-medium'>组成</h2>
-        <span className='text-muted-foreground text-xs'>
-          合并后任务的来源结果结构（只读）
-        </span>
-        {!loading && summary.total > 0 && (
-          <div className='ml-auto flex flex-wrap items-center gap-1.5'>
-            <Badge variant='secondary' className='rounded-md px-1.5 text-[11px] tabular-nums'>
-              {summary.total} 条结果
-            </Badge>
-            <Badge variant='outline' className='rounded-md px-1.5 text-[11px] tabular-nums'>
-              {summary.caseCount} 个用例
-            </Badge>
-            <Badge variant='outline' className='rounded-md px-1.5 text-[11px] tabular-nums'>
-              {summary.deviceCount} 台设备
-            </Badge>
-            {summary.failed > 0 && (
-              <Badge variant='warning' className='rounded-md px-1.5 text-[11px] tabular-nums'>
-                失败 {summary.failed}
+        <h2 className='text-sm font-medium'>{isPreview ? '组成预览' : '组成'}</h2>
+        {isPreview ? (
+          <Badge variant='outline' className='rounded-md px-1.5 text-[11px]'>
+            四视图 · 只读
+          </Badge>
+        ) : (
+          <span className='text-muted-foreground text-xs'>
+            合并后任务的来源结果结构（只读）
+          </span>
+        )}
+        {isPreview ? (
+          // §5.2 ⑥「降级提示」：预览条目取购物车快照，评估状态 / 分组标签下单后才有
+          <span className='text-muted-foreground/70 ml-auto shrink-0 text-[11px]'>
+            按购物车快照展示，评估状态与分组标签在下单后可见
+          </span>
+        ) : (
+          !loading &&
+          summary.total > 0 && (
+            <div className='ml-auto flex flex-wrap items-center gap-1.5'>
+              <Badge variant='secondary' className='rounded-md px-1.5 text-[11px] tabular-nums'>
+                {summary.total} 条结果
               </Badge>
-            )}
-            {summary.unevaluated > 0 && (
-              <Badge variant='outline' className='text-muted-foreground rounded-md px-1.5 text-[11px] tabular-nums'>
-                未评估 {summary.unevaluated}
+              <Badge variant='outline' className='rounded-md px-1.5 text-[11px] tabular-nums'>
+                {summary.caseCount} 个用例
               </Badge>
-            )}
-          </div>
+              <Badge variant='outline' className='rounded-md px-1.5 text-[11px] tabular-nums'>
+                {summary.deviceCount} 台设备
+              </Badge>
+              {summary.failed > 0 && (
+                <Badge variant='warning' className='rounded-md px-1.5 text-[11px] tabular-nums'>
+                  失败 {summary.failed}
+                </Badge>
+              )}
+              {summary.unevaluated > 0 && (
+                <Badge variant='outline' className='text-muted-foreground rounded-md px-1.5 text-[11px] tabular-nums'>
+                  未评估 {summary.unevaluated}
+                </Badge>
+              )}
+            </div>
+          )
         )}
       </div>
 
-      {!loading && summary.missing > 0 && (
+      {/* 失效 Alert / 「只看失效」是容器详情口径；预览的失效提示在步骤头部（含「本次将合并 {m} 条」与「返回购物车移除」） */}
+      {!isPreview && !loading && summary.missing > 0 && (
         <Alert variant='default' className='border-warning/40 bg-warning/10'>
           <AlertTriangle aria-hidden='true' />
           <AlertTitle>
@@ -333,7 +375,7 @@ export function ContainerComposition({
         </Alert>
       )}
 
-      {onlyMissing && summary.missing === 0 && (
+      {!isPreview && onlyMissing && summary.missing === 0 && (
         <div className='flex items-center gap-2'>
           <Badge variant='outline' className='gap-1 rounded-md px-1.5 text-[11px]'>
             只看失效
@@ -354,6 +396,7 @@ export function ContainerComposition({
         onExpandAll={() => setExpandSignal((s) => ({ all: true, tick: s.tick + 1 }))}
         onCollapseAll={() => setExpandSignal((s) => ({ all: false, tick: s.tick + 1 }))}
         degraded={entries.some((e) => e.statusFromCase || e.evaluationFromCase)}
+        mode={mode}
         org={org}
         subView={subView}
         onOrgChange={setOrg}
@@ -362,7 +405,7 @@ export function ContainerComposition({
 
       {loading ? (
         <CompositionSkeleton />
-      ) : !trace || trace.groups.length === 0 ? (
+      ) : !isPreview && (!trace || trace.groups.length === 0) ? (
         <Empty className='rounded-xl border border-dashed py-10'>
           <EmptyHeader>
             <EmptyMedia variant='icon'>
@@ -390,7 +433,7 @@ export function ContainerComposition({
             </EmptyContent>
           )}
         </Empty>
-      ) : view === 'case' ? (
+      ) : !isPreview && view === 'case' ? (
         <div className='flex flex-col gap-3'>
           {caseBuckets.map((bucket) => {
             const bucketGroup = {
@@ -442,12 +485,15 @@ export function ContainerComposition({
         </div>
       )}
 
-      {/* 组成区内出现失败条目是正常业务态（可挑选任务里失败/停止任务均可合并，§5.5.4 解释文案） */}
-      {!loading && summary.failed > 0 && (
+      {/* 组成区内出现失败条目是正常业务态（可挑选任务里失败/停止任务均可合并，§5.5.4 解释文案）
+          预览步骤由步骤头部「{f} 条结果执行失败，合并后按原状态保留」承接，不重复 */}
+      {!isPreview && !loading && summary.failed > 0 && (
         <p className='text-muted-foreground/70 text-[11px]'>
           失败条目为正常业务态：执行失败 / 部分失败的任务本身即可被挑选合并。
         </p>
       )}
+
+      {footer}
     </section>
   )
 }

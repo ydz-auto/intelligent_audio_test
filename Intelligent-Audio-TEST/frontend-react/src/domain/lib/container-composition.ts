@@ -14,6 +14,7 @@ import type {
   ContainerSourceTrace,
   PickCartEntry,
   PickCartGroup,
+  PickPreview,
 } from '@/domain/models/cherryPick'
 import type {
   TaskApiBrief,
@@ -152,6 +153,31 @@ export function toCompositionEntries(
     }
   }
   return entries
+}
+
+/**
+ * 购物车快照 + 预览摘要 → 组成条目（§5.2 ⑤ 映射契约，INT-2003）。
+ * 预览阶段容器尚不存在（无 id、无关系行），条目一律取购物车快照直取；
+ * `CompositionEntry` 在 `PickCartEntry` 之上另有 6 个必填扩展字段，这里逐个补默认值：
+ * 源结果时间 / 评估状态 / 降级标记 / 分组标签快照都没有，按 §5.2 ⑥「不渲染」只作类型占位
+ * （`evaluated=false` 会让全部条目误落「未评估」，故预览模式也不渲染评估筛选与徽章）。
+ * 失效以 `preview.invalidResultIds` 为准（服务端判定优先，本地快照可能滞后），条目 `invalid` 兜底。
+ */
+export function toPreviewCompositionEntries(
+  entries: PickCartEntry[],
+  preview: PickPreview | null | undefined
+): CompositionEntry[] {
+  const invalidIds = new Set(preview?.invalidResultIds ?? [])
+  return entries.map((entry) => ({
+    ...entry,
+    invalid: invalidIds.has(entry.resultId) || entry.invalid,
+    resultCreatedAt: null,
+    evaluated: false,
+    statusFromCase: false,
+    evaluationFromCase: false,
+    sourceCaseGroupName: entry.sourceCaseGroupName ?? null,
+    sourceCaseTags: entry.sourceCaseTags ?? [],
+  }))
 }
 
 /** 组成条目 → 按来源任务分组（购物车同构，CartTree / 三视图纯函数入参） */
