@@ -430,6 +430,34 @@
   min-height: 24px;
 }
 
+/* INT-2044：ID 列（对齐 React 版列表「#id」；窄屏按 secondary-col 折叠） */
+.data-table th.id-col,
+.data-table td.id-col {
+  width: 72px;
+  white-space: nowrap;
+}
+
+/* INT-2044：新增 ID / 创建时间两列后 12 列，给文件名一个下限宽度，
+   避免自动列宽把文件名挤成逐字换行（整体列宽重构见 INT-2029） */
+.audio-details {
+  min-width: 150px;
+}
+
+.data-table td.id-col .audio-id {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+/* INT-2044：创建时间列（对齐 React 版「YYYY/MM/DD HH:mm」；窄屏按 tertiary-col 折叠） */
+.data-table td.created-col {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
 .tags-container {
   display: flex;
   flex-wrap: wrap;
@@ -1034,12 +1062,14 @@
 }
 
 .skeleton-checkbox { width: 16px; height: 16px; border-radius: var(--radius-tag); }
+.skeleton-id { width: 40px; }
 .skeleton-name { flex: 2; max-width: 220px; }
 .skeleton-format { width: 48px; }
 .skeleton-size { width: 60px; }
 .skeleton-duration { width: 48px; }
 .skeleton-type { width: 56px; }
 .skeleton-tags { flex: 1; max-width: 120px; }
+.skeleton-created { width: 88px; }
 .skeleton-actions { width: 120px; }
 
 .folder-tree-loading {

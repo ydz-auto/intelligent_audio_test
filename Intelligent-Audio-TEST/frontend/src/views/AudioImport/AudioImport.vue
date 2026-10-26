@@ -97,7 +97,7 @@
           @toggleSelectAll="toggleSelectAll"
           @selectCurrentPage="selectCurrentPage"
           @selectAllPages="selectAllPages"
-          @preview="previewAudio"
+          @preview="openPreviewConfig"
           @edit="editMetadata"
           @download="downloadAudio"
           @delete="deleteAudio"
@@ -120,6 +120,19 @@
     />
 
     
+    <!-- INT-2044：试听配置（播放模式 / 播放设备 / 声压级 / 偏移量），对齐 React 版试听弹窗 -->
+    <AudioPreviewConfigModal
+      :visible="showPreviewConfig"
+      :audio-title="previewConfigAudioTitle"
+      :playback-devices="playbackDevices"
+      :initial-playback-mode="previewConfig.playbackMode"
+      :initial-device-id="previewConfig.deviceId"
+      :initial-spl="previewConfig.spl"
+      :initial-offset="previewConfig.offset"
+      @close="showPreviewConfig = false"
+      @confirm="handlePreviewConfigConfirm"
+    />
+
     <!-- 音频播放器模态窗 -->
     <AudioPlayerModal
       :visible="showAudioPlayerModal"
@@ -127,7 +140,11 @@
       :audio-id="currentPreviewAudioId"
       :audio-title="audioTitle"
       :audio-type="currentPreviewAudioType"
-      :selected-devices="[]"
+      :playback-mode="previewConfig.playbackMode"
+      :playback-devices="playbackDevices"
+      :selected-devices="previewSelectedDevices"
+      :spl="previewConfig.spl"
+      :offset="previewConfig.offset"
       @close="showAudioPlayerModal = false"
     />
 
@@ -200,6 +217,8 @@ const handleGlobalKeyDown = (event: KeyboardEvent) => {
 import AudioListComponent from '../../components/common/audio/AudioListComponent.vue';
 import UploadProgressCard from '../../components/common/misc/UploadProgressCard.vue';
 import AudioPlayerModal from '../../components/common/audio/AudioPlayerModal.vue';
+import AudioPreviewConfigModal from './AudioPreviewConfigModal.vue';
+import { DEFAULT_PREVIEW_SPL, type AudioPreviewConfig } from './AudioPreviewConfigModal';
 import BatchAnnotationModal from '../../components/common/modal/BatchAnnotationModal.vue';
 import ConvertModal from './ConvertModal.vue';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
@@ -207,6 +226,7 @@ import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import { VISIBILITY_FILTER_OPTIONS } from '../../composables/visibility/useVisibility';
 import { useAudioImport } from './audioImport';
 import type { AudioUploadTask } from '@/domain/model/audio';
+import type { PlaybackDevice } from '../../domain';
 import { useUploadState } from '../../composables/upload/useUploadState';
 import { AUDIO_IMPORT_QUERY, AUDIO_IMPORT_AUTO_OPEN_VALUE } from '@/domain';
 
@@ -433,13 +453,53 @@ const handleAnnotationSuccess = (_result: { updatedCount: number; failedCount: n
   fetchAudios();
 };
 
-// 播放设备选择模态窗状态
+// ===== INT-2044：试听配置（播放模式 / 播放设备 / 声压级 / 偏移量） =====
 
-// 音频播放器模态窗状态
+const showPreviewConfig = ref(false);
+const previewConfigAudioTitle = ref('');
+const pendingPreviewAudioId = ref<string | number | null>(null);
+const previewConfig = ref<{
+  playbackMode: 'frontend' | 'backend';
+  deviceId: string;
+  spl: number;
+  offset: number;
+}>({
+  playbackMode: 'frontend',
+  deviceId: '',
+  spl: DEFAULT_PREVIEW_SPL,
+  offset: 0
+});
 
-// 修改预览音频函数，直接打开音频播放器模态窗
+/** 播放器消费的播放设备（与 AudioPlayerModal 的 playbackDevices/selectedDevices 契约一致） */
+const previewSelectedDevices = computed<PlaybackDevice[]>(() => {
+  if (previewConfig.value.playbackMode !== 'backend' || !previewConfig.value.deviceId) return [];
+  const device = (playbackDevices.value || []).find(
+    d => String(d.id) === previewConfig.value.deviceId
+  );
+  return device ? [device] : [];
+});
 
-// 处理设备选择
+/** 列表「预览」入口：先打开试听配置，确认后再起播（React 版试听弹窗同口径） */
+const openPreviewConfig = (audioId: string | number) => {
+  const audio = (filteredAudios.value || []).find(
+    a => String(a.id) === String(audioId)
+  );
+  pendingPreviewAudioId.value = audioId;
+  previewConfigAudioTitle.value = audio?.name || '';
+  showPreviewConfig.value = true;
+};
+
+/** 试听配置确认：记录模式/设备/声压级/偏移量，交给既有播放器编排起播 */
+const handlePreviewConfigConfirm = (config: AudioPreviewConfig) => {
+  previewConfig.value = {
+    playbackMode: config.playbackMode,
+    deviceId: config.device ? String(config.device.id) : '',
+    spl: config.spl,
+    offset: config.offset
+  };
+  if (pendingPreviewAudioId.value === null) return;
+  previewAudio(pendingPreviewAudioId.value);
+};
 </script>
 
 <style scoped>

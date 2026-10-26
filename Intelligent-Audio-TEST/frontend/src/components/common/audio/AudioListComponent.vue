@@ -160,12 +160,14 @@
       <div v-if="props.loading && filteredAudios.length === 0" class="audio-list-skeleton">
         <div v-for="n in SKELETON_ROWS" :key="n" class="skeleton-row">
           <div v-if="enableSelection" class="skeleton-cell skeleton-checkbox"></div>
+          <div class="skeleton-cell skeleton-id"></div>
           <div class="skeleton-cell skeleton-name"></div>
           <div class="skeleton-cell skeleton-format"></div>
           <div class="skeleton-cell skeleton-size"></div>
           <div class="skeleton-cell skeleton-duration"></div>
           <div class="skeleton-cell skeleton-type"></div>
           <div class="skeleton-cell skeleton-tags"></div>
+          <div class="skeleton-cell skeleton-created"></div>
           <div class="skeleton-cell skeleton-actions"></div>
         </div>
       </div>
@@ -182,6 +184,7 @@
                   @click.stop="handleCheckboxClick"
                 >
               </th>
+              <th class="secondary-col id-col">ID</th>
               <th class="sortable file-name-col core-col">文件名</th>
               <th class="sortable core-col">格式</th>
               <th class="sortable secondary-col">大小</th>
@@ -189,6 +192,7 @@
               <th class="sortable secondary-col">音频类型</th>
               <th class="sortable tertiary-col">源语言</th>
               <th class="tertiary-col">标签</th>
+              <th class="tertiary-col created-col">创建时间</th>
               <th v-if="showStatus" class="secondary-col">状态</th>
               <th class="action-col">操作</th>
             </tr>
@@ -211,6 +215,7 @@
                   @click.stop
                 >
               </td>
+              <td class="secondary-col id-col"><span class="audio-id">#{{ audio.id }}</span></td>
               <td class="core-col">
                 <div class="audio-info">
                   <div class="audio-icon">
@@ -258,6 +263,7 @@
                   <span v-else class="no-tags">-</span>
                 </div>
               </td>
+              <td class="tertiary-col created-col">{{ formatDateTime(audio.createdAt) }}</td>
               <td v-if="showStatus" class="secondary-col"><span class="status-badge active">{{ audio.status }}</span></td>
               <td class="action-col">
                 <div class="action-buttons">
@@ -517,6 +523,7 @@ const {
   convertAudio,
   downloadAudio,
   getProblemIcon,
+  formatDateTime,
 } = useAudioListComponent(props, emit)
 </script>
 

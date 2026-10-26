@@ -412,6 +412,18 @@ export function useAudioListComponent(props: AudioListProps, emit: any) {
     return icons[type] || 'fas fa-exclamation-circle';
   };
 
+  /**
+   * INT-2044：创建时间展示（对齐 React 版列表「创建时间」列格式 YYYY/MM/DD HH:mm）。
+   * 后端 createdAt 为 ISO 时间串，按浏览器本地时区展示；空值 / 非法值显示「—」。
+   */
+  const formatDateTime = (value?: string | null): string => {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+
   const handleClickOutside = (event: MouseEvent) => {
   };
 
@@ -474,5 +486,6 @@ export function useAudioListComponent(props: AudioListProps, emit: any) {
     convertAudio,
     downloadAudio,
     getProblemIcon,
+    formatDateTime,
   }
 }
