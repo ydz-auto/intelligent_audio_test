@@ -553,11 +553,18 @@ def clear_logs(before_datetime=None, keep_marked=False):
 
 
 def archive_logs(days=30, dry_run=False):
-    """通过 gRPC 归档日志（按天数）
+    """通过 gRPC 归档日志（按天数，每次推进一个批次）
 
-    供 api_gateway log_command_service.archive_logs 调用，替代直连 DB。
-    返回 dict：{'archived_count': N, 'deleted_count': N, 'remaining_count': N, 'groups': {...}}
-    dry_run 时返回 {'cold_logs_count': N, 'cutoff_date': str}
+    供 api_gateway log_command_service.archive_logs 与 log_worker 归档巡检调用，
+    替代直连 DB。INT-1963 起服务端每次只处理一个批次（取批 → 写归档存储 →
+    成功才删该批），响应只含计数：
+
+    - dry_run=True：{'cold_logs_count': N, 'cutoff_date': str}
+    - dry_run=False：{'archived_count', 'deleted_count', 'remaining_count',
+      'has_more', 'batch_rows', 'batch_bytes', 'group_counts', 'response_bytes'}
+
+    调用方应按 ``has_more`` 继续下一批；任一批抛错即停，服务端该批一行未删，
+    下一轮可安全重试。
     """
     import json as _json
     from shared.proto import task_service_pb2 as task_pb

@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List
 
 from sqlalchemy import func as _func
@@ -482,62 +482,6 @@ class LogRepository(LogRepositoryABC):
             session.commit()
             _agg_cache_clear()
             return count
-        except Exception:
-            session.rollback()
-            raise
-        finally:
-            session.close()
-
-    def archive(self, days: int = 30, dry_run: bool = False) -> Dict[str, Any]:
-        """归档日志（按天数），返回分组结果。
-
-        读取冷日志并按 (task_id, test_case_id, date) 分组返回，
-        然后删除已归档的记录。调用方（api_gateway）负责将分组写入 OSS。
-
-        dry_run=True 时仅返回冷日志数量与截止日期。
-        """
-        session = get_db_session()
-        try:
-            cutoff = now_cst() - timedelta(days=days or 30)
-            cold_query = session.query(Log).filter(Log.time < cutoff)
-            cold_count = cold_query.count()
-            if dry_run:
-                return {
-                    'cold_logs_count': cold_count,
-                    'cutoff_date': cutoff.isoformat(),
-                }
-            if cold_count == 0:
-                remaining = session.query(_func.count(Log.id)).scalar() or 0
-                return {
-                    'archived_count': 0,
-                    'deleted_count': 0,
-                    'remaining_count': remaining,
-                }
-            # 读取冷日志并按 task/case/other 分组
-            cold_logs = cold_query.order_by(Log.time.asc()).all()
-            groups: Dict[str, List[Dict[str, Any]]] = {}
-            for log in cold_logs:
-                log_date = (log.time or datetime.now()).strftime('%Y-%m-%d')
-                if log.task_id and log.test_case_id:
-                    key = f'tasks/{log.task_id}/{log.test_case_id}/{log_date}'
-                elif log.task_id:
-                    key = f'tasks/{log.task_id}/{log_date}'
-                elif log.test_case_id:
-                    key = f'cases/{log.test_case_id}/{log_date}'
-                else:
-                    key = f'other/{log_date}'
-                groups.setdefault(key, []).append(_log_po_to_dict(log))
-            log_ids = [log.id for log in cold_logs]
-            session.query(Log).filter(Log.id.in_(log_ids)).delete(synchronize_session=False)
-            session.commit()
-            _agg_cache_clear()
-            remaining = session.query(_func.count(Log.id)).scalar() or 0
-            return {
-                'archived_count': cold_count,
-                'deleted_count': len(log_ids),
-                'remaining_count': remaining,
-                'groups': groups,
-            }
         except Exception:
             session.rollback()
             raise

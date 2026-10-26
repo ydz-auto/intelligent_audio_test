@@ -105,64 +105,20 @@ def _insert_logs(session, Log, rows):
     session.commit()
 
 
-def test_archive_group_keys_canonical_prefixes():
-    """task_service 分组 key 与读侧 tasks/cases/other 前缀口径一致。"""
-    from shared.models.database import get_db_session
-    from shared.models.database import utc8now
-    from task_service.infrastructure.persistence.models.system_models import Log
-
-    session = get_db_session()
-    try:
-        cold = utc8now() - timedelta(days=40)
-        _insert_logs(session, Log, [
-            {'time': cold, 'task_id': _TASK_ID, 'test_case_id': 'case-1'},     # both → tasks/
-            {'time': cold, 'task_id': _TASK_ID, 'test_case_id': None},          # task only → tasks/
-            {'time': cold, 'task_id': None, 'test_case_id': 'case-2'},          # case only → cases/
-            {'time': cold, 'task_id': None, 'test_case_id': None},              # neither → other/
-        ])
-        # 热日志（近 1 天）不应被归档
-        hot = utc8now() - timedelta(days=1)
-        _insert_logs(session, Log, [
-            {'time': hot, 'task_id': _TASK_ID, 'test_case_id': 'case-hot'},
-        ])
-    finally:
-        session.close()
-
-    result = LogRepository().archive(days=30, dry_run=False)
-    groups = result.get('groups', {})
-    keys = set(groups.keys())
-    assert keys == {
-        f'tasks/{_TASK_ID}/case-1/{(cold).strftime("%Y-%m-%d")}',
-        f'tasks/{_TASK_ID}/{(cold).strftime("%Y-%m-%d")}',
-        f'cases/case-2/{(cold).strftime("%Y-%m-%d")}',
-        f'other/{(cold).strftime("%Y-%m-%d")}',
-    }, f'分组 key 应为 tasks/cases/other 口径，实际: {sorted(keys)}'
-    assert result['archived_count'] == 4
-    assert result['deleted_count'] == 4
-
-    # 热日志仍保留
-    from shared.models.database import get_db_session as _s
-    from task_service.infrastructure.persistence.models.system_models import Log as _Log
-    session = _s()
-    try:
-        remaining = session.query(_Log).filter(_Log.task_id == _TASK_ID).count()
-    finally:
-        session.close()
-    assert remaining == 1
+# ============================================================
+# 1) 写路径前缀：INT-1963 起归档改为「服务端分批取批 → 上传 → 删批」，分组
+#    key 口径的断言随写路径一起搬到
+#    tests/unit/test_int1963_log_archive_batching.py::test_group_keys_canonical_prefixes
+#    （本文件保留读侧前缀 / 下载 / 清单等仍是 gateway 职责的部分）。
+# ============================================================
 
 
 # ============================================================
-# 2) 写盘单前缀：log_command_service.save_archive（缺陷 1）
+# 2) 网关归档接口：INT-1963 起网关不再自己上传分组（上传随「取批 → 上传 →
+#    删批」一起下沉到 task_service），只按 has_more 聚合多批计数。
+#    单前缀 / 合并去重的写入断言见
+#    tests/unit/test_int1963_log_archive_batching.py。
 # ============================================================
-
-def _make_archive_result(groups):
-    return {
-        'archived_count': sum(len(v) for v in groups.values()),
-        'deleted_count': sum(len(v) for v in groups.values()),
-        'remaining_count': 0,
-        'groups': groups,
-    }
-
 
 def _patch_task_data(monkeypatch, result):
     from api_gateway.infrastructure.grpc_proxies import task_data_service
@@ -171,62 +127,22 @@ def _patch_task_data(monkeypatch, result):
     return task_data_service
 
 
-def test_command_save_archive_single_prefix(monkeypatch):
-    """save_archive 落盘 key 为 archives 类目内单前缀；exists/load 用完整路径。"""
-    groups = {
-        'tasks/123/2026-09-06': [{'id': 1, 'time': '2026-09-06T10:00:00'}],
-        'cases/555/2026-09-06': [{'id': 2, 'time': '2026-09-06T11:00:00'}],
-    }
-    _patch_task_data(monkeypatch, _make_archive_result(groups))
-
-    exists_calls = []
-    saved = []
-    monkeypatch.setattr(storage, 'exists', lambda path: (exists_calls.append(path) or False))
-    monkeypatch.setattr(storage, 'load_bytes',
-                        lambda path: (_ for _ in ()).throw(AssertionError('首次归档不应读取已存在文件')))
+def test_command_archive_no_local_upload(monkeypatch):
+    """网关归档只调 gRPC 聚合计数，自己不碰存储（上传归 task_service）。"""
+    _patch_task_data(monkeypatch, {
+        'archived_count': 2,
+        'deleted_count': 2,
+        'remaining_count': 10,
+        'has_more': False,
+    })
     monkeypatch.setattr(storage, 'save_bytes',
-                        lambda data, category, key, content_type=None: (
-                            saved.append((category, key, data)) or f'oss://{category}/{key}'))
+                        lambda *a, **kw: (_ for _ in ()).throw(
+                            AssertionError('网关不得再自己上传归档分组')))
 
     payload, http_code = LogCommandService.archive_logs()
     assert http_code == 200
     assert payload['success'] is True
-
-    # exists 检查用完整路径（category + key），不得是裸 key
-    assert exists_calls == [
-        'archives/tasks/123/2026-09-06.json',
-        'archives/cases/555/2026-09-06.json',
-    ]
-    # save_bytes key 不含重复 archives/ 前缀
-    assert [(c, k) for c, k, _ in saved] == [
-        ('archives', 'tasks/123/2026-09-06.json'),
-        ('archives', 'cases/555/2026-09-06.json'),
-    ]
-    assert '任务: 1' in payload['message'] and '用例: 1' in payload['message']
-
-
-def test_command_save_archive_merge_existing(monkeypatch):
-    """归档同一 key 已存在时合并读取（完整路径读取）后落盘。"""
-    groups = {
-        'tasks/123/2026-09-06': [{'id': 2, 'time': '2026-09-06T12:00:00'}],
-    }
-    _patch_task_data(monkeypatch, _make_archive_result(groups))
-
-    existing = [{'id': 1, 'time': '2026-09-06T09:00:00'}]
-    monkeypatch.setattr(storage, 'exists', lambda path: True)
-    monkeypatch.setattr(storage, 'load_bytes', lambda path: json.dumps(existing).encode('utf-8'))
-
-    saved = []
-    monkeypatch.setattr(storage, 'save_bytes',
-                        lambda data, category, key, content_type=None: (
-                            saved.append((category, key, data)) or f'oss://{category}/{key}'))
-
-    payload, http_code = LogCommandService.archive_logs()
-    assert http_code == 200
-    _, key, data = saved[0]
-    assert key == 'tasks/123/2026-09-06.json'
-    merged = json.loads(data)
-    assert [m['id'] for m in merged] == [1, 2]  # 已存在 + 新，按 time 升序
+    assert '成功归档 2 条日志' in payload['message'], payload['message']
 
 
 # ============================================================

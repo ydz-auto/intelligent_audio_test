@@ -143,6 +143,20 @@ class ArchiveStore:
         return f'{category}/{key}'
 
 
+# 单行归档 JSON 除 content 之外的固定开销估计（键名 + 标量字段 + 标点）。
+# 用于 INT-1963 单批字节上限的保守估算，宁大勿小。
+_ROW_JSON_OVERHEAD_BYTES = 320
+
+
+def _estimate_entry_bytes(po: Log) -> int:
+    """保守估算一行日志在归档 JSON 里占用的字节数。
+
+    content 按 UTF-8 实际长度计，其余字段按固定开销估——归档落盘时该行的
+    实际体积不会超过本估算（content 是唯一非固定长度字段）。
+    """
+    return len((po.content or '').encode('utf-8')) + _ROW_JSON_OVERHEAD_BYTES
+
+
 def is_audit_category(category: Any) -> bool:
     """分类是否属于仍在落库的审计类（大小写不敏感）。"""
     return str(category or '').strip().lower() in AUDIT_LOG_CATEGORIES
@@ -268,6 +282,8 @@ class PurgeResult:
     elapsed_seconds: float = 0.0
     # 每批完成后的进度快照（失败时用于打印「已完成批次」）
     completed_batches: List[Dict[str, int]] = field(default_factory=list)
+    # 本批写过的归档逻辑 key（去重后），供调用方按 tasks/cases/other 前缀统计
+    archived_keys: List[str] = field(default_factory=list)
 
 
 class LogArchivePurger:
@@ -289,7 +305,8 @@ class LogArchivePurger:
                  categories: Optional[Sequence[str]] = None,
                  exclude_audit: bool = True, keep_marked: bool = True,
                  dry_run: bool = False,
-                 on_batch: Optional[Callable[[int, int, int], None]] = None):
+                 on_batch: Optional[Callable[[int, int, int], None]] = None,
+                 max_batch_bytes: int = 0):
         self._store = store
         self.batch_size = max(1, int(batch_size))
         self.categories = [c.strip().lower() for c in (categories or []) if str(c).strip()]
@@ -297,6 +314,9 @@ class LogArchivePurger:
         self.keep_marked = keep_marked
         self.dry_run = dry_run
         self.on_batch = on_batch
+        # 单批字节上限（INT-1963）：>0 时按 _estimate_entry_bytes 的保守估算再截断，
+        # 至少保留 1 行。用于把单次上传的归档对象控制在可预期区间。
+        self.max_batch_bytes = max(0, int(max_batch_bytes or 0))
 
     # ---- 存储端口延迟解析（脚本/服务都不必显式依赖 OSS）----
     @property
@@ -335,6 +355,61 @@ class LogArchivePurger:
         session = get_db_session()
         try:
             return session.query(_func.count(Log.id)).scalar() or 0
+        finally:
+            session.close()
+
+    # ---- 单批推进（INT-1963：gRPC ArchiveLogs 按批调用）----
+
+    def run_one_batch(self, cutoff: datetime) -> PurgeResult:
+        """推进**一个**批次的「取批 → 归档写 → 删除」，异常向上抛。
+
+        与 `run()` 的差异：`run()` 是一次性清理全量、失败只记在结果里；本方法
+        供 ArchiveLogs RPC 使用——每调一次只处理一批，失败必须让调用方看到
+        （转成 RPC 失败），因为 RPC 客户端要据此停止后续批次、留待下一轮重试。
+
+        安全不变量不变：归档写成功之后才删该批；写失败时该批一行不删。
+        """
+        started = time.monotonic()
+        result = PurgeResult()
+        try:
+            if self.dry_run:
+                result.archived_count = self.count(cutoff)
+                result.remaining_count = self.remaining()
+                return result
+
+            batch = self._fetch_batch(cutoff, 0)
+            if not batch:
+                result.remaining_count = self.remaining()
+                return result
+
+            written_keys = self._archive_batch(batch)  # 抛错 = 本批一行不删
+            deleted = self._delete_batch([po.id for po in batch])
+
+            result.batch_count = 1
+            result.archived_count = len(batch)
+            result.deleted_count = deleted
+            result.archive_write_count = len(written_keys)
+            result.archived_file_count = len(set(written_keys))
+            result.archived_keys = sorted(set(written_keys))
+            result.completed_batches.append({
+                'batch': 1,
+                'archived': len(batch),
+                'deleted': deleted,
+            })
+            result.remaining_count = self.remaining()
+            return result
+        finally:
+            result.elapsed_seconds = time.monotonic() - started
+
+    def has_remaining(self, cutoff: datetime) -> bool:
+        """是否还有符合归档条件的行（分批推进的 has_more 判定，LIMIT 1）。"""
+        session = get_db_session()
+        try:
+            row = (self._apply_filters(session.query(Log.id), cutoff)
+                   .order_by(Log.id.asc())
+                   .limit(1)
+                   .first())
+            return row is not None
         finally:
             session.close()
 
@@ -420,13 +495,25 @@ class LogArchivePurger:
         """keyset 分页（按自增 id）：删除不影响游标，也不会 OFFSET 漂移。"""
         session = get_db_session()
         try:
-            return (self._apply_filters(session.query(Log), cutoff)
+            rows = (self._apply_filters(session.query(Log), cutoff)
                     .filter(Log.id > last_id)
                     .order_by(Log.id.asc())
                     .limit(self.batch_size)
                     .all())
         finally:
             session.close()
+        if not self.max_batch_bytes or not rows:
+            return rows
+        # 字节上限（INT-1963）：保守估算截断，但至少保留 1 行，保证每批都有进展
+        taken: List[Log] = []
+        used = 0
+        for po in rows:
+            cost = _estimate_entry_bytes(po)
+            if taken and used + cost > self.max_batch_bytes:
+                break
+            taken.append(po)
+            used += cost
+        return taken
 
     def _archive_batch(self, batch: Sequence[Log]) -> List[str]:
         """把一批行按归档 key 分组、与已有文件合并后写回；返回本批写过的 key 列表。

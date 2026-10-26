@@ -67,7 +67,7 @@ class LogRepositoryABC(ABC):
         """批量清除日志，返回删除数。"""
         ...
 
-    @abstractmethod
-    def archive(self, days: int = 30, dry_run: bool = False) -> Dict[str, Any]:
-        """归档日志（按天数），返回分组结果。"""
-        ...
+    # INT-1963：原 archive()（先删库再把全量分组塞进一条 gRPC 响应）已删除。
+    # 归档改为「取批 → 上传 → 删除」的流式实现，见
+    # task_service/infrastructure/persistence/log_db_archive.py:LogArchivePurger
+    # 与 task_service/application/services/log_archive_service.py。
