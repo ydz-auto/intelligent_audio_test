@@ -1,0 +1,28 @@
+{
+ "create_group": {
+  "status": 201,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"分组创建成功\",\"data\":{\"id\":\"d809fffe-7ea4-4df5-bd77-b077f59d1c65\"}}"
+ },
+ "base_case": "92b93231-1f37-4f89-ae6b-cd2a2b945fb9",
+ "create_case": {
+  "status": 201,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"测试用例创建成功\",\"data\":{\"id\":\"1b22ea9e-4f2c-453a-bd94-e56d03e95744\"}}"
+ },
+ "cid": "1b22ea9e-4f2c-453a-bd94-e56d03e95744",
+ "preview_backend": {
+  "status": 200,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"test_case_id\":\"1b22ea9e-4f2c-453a-bd94-e56d03e95744\",\"preview_task_id\":\"PREVIEW_1b22ea9e-4f2c-453a-bd94-e56d03e95744\",\"status\":\"preview_started\",\"message\":\"已启动用例预览放音\",\"duration\":0.0,\"playback_mode\":\"backend\",\"audio_id\":2358}}"
+ },
+ "t_preview": "11:59:59",
+ "stop_preview": {
+  "status": 200,
+  "body": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"test_case_id\":\"1b22ea9e-4f2c-453a-bd94-e56d03e95744\",\"status\":\"preview_stopped\",\"message\":\"预览已停止\"}}",
+  "t": "12:00:01"
+ },
+ "cleanup_case_delete": 200,
+ "cleanup_case_purge": {
+  "status": 200,
+  "body": "{\"success\":true,\"message\":\"ok\",\"data\":{\"purged_count\":1}}"
+ },
+ "cleanup_group": 200
+}

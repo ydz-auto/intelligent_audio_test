@@ -1,0 +1,109 @@
+{
+ "audio_id": 2358,
+ "devices": [
+  {
+   "id": 1,
+   "name": "音箱0°",
+   "status": "online",
+   "unique": "Analog (3+4) (3- RME Fireface UCX II) [Ch 1]",
+   "preview": {
+    "status": 200,
+    "message": "已在 1 个设备上开始试听",
+    "data": {
+     "audio": "url_src_A.wav",
+     "duration": 4.0,
+     "device": "音箱0°",
+     "gain": 1.0,
+     "devices": [
+      "音箱0°"
+     ],
+     "gains": [
+      1.0
+     ]
+    }
+   },
+   "stop": {
+    "status": 200,
+    "message": "音频试听已停止，共停止了 1 个任务"
+   }
+  },
+  {
+   "id": 2,
+   "name": "音箱90°",
+   "status": "online",
+   "unique": "Analog (3+4) (3- RME Fireface UCX II) [Ch 2]",
+   "preview": {
+    "status": 200,
+    "message": "已在 1 个设备上开始试听",
+    "data": {
+     "audio": "url_src_A.wav",
+     "duration": 4.0,
+     "device": "音箱90°",
+     "gain": 1.0,
+     "devices": [
+      "音箱90°"
+     ],
+     "gains": [
+      1.0
+     ]
+    }
+   },
+   "stop": {
+    "status": 200,
+    "message": "音频试听已停止，共停止了 1 个任务"
+   }
+  },
+  {
+   "id": 11,
+   "name": "音箱180°",
+   "status": "online",
+   "unique": "Analog (5+6) (3- RME Fireface UCX II) [Ch 2]",
+   "preview": {
+    "status": 200,
+    "message": "已在 1 个设备上开始试听",
+    "data": {
+     "audio": "url_src_A.wav",
+     "duration": 4.0,
+     "device": "音箱180°",
+     "gain": 1.0,
+     "devices": [
+      "音箱180°"
+     ],
+     "gains": [
+      1.0
+     ]
+    }
+   },
+   "stop": {
+    "status": 200,
+    "message": "音频试听已停止，共停止了 1 个任务"
+   }
+  },
+  {
+   "id": 12,
+   "name": "音箱-90°",
+   "status": "online",
+   "unique": "Analog (5+6) (3- RME Fireface UCX II) [Ch 1]",
+   "preview": {
+    "status": 200,
+    "message": "已在 1 个设备上开始试听",
+    "data": {
+     "audio": "url_src_A.wav",
+     "duration": 4.0,
+     "device": "音箱-90°",
+     "gain": 1.0,
+     "devices": [
+      "音箱-90°"
+     ],
+     "gains": [
+      1.0
+     ]
+    }
+   },
+   "stop": {
+    "status": 200,
+    "message": "音频试听已停止，共停止了 1 个任务"
+   }
+  }
+ ]
+}

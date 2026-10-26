@@ -1,0 +1,43 @@
+{
+ "tag": "1026121259",
+ "group": "接线测试_INT1538_R8S组_1026121259",
+ "case": "接线测试_INT1538_R8S用例_1026121259",
+ "fixture": {
+  "group": "3e759286-5ba2-4b48-a165-d179e7cac471",
+  "case": "74110a49-2af3-462c-8487-db9627e2ebac",
+  "status": 201
+ },
+ "player_before_stop": "00:00 / 00:04",
+ "player_text_before_stop": "测试用例预览｜url_src_A.wav 音频\n浏览器播放或实验室扬声器试听中\nurl_src_A.wav\n00:00 / 00:04\n暂停\n停止\n播放设备（实验室播放）\n✓\n音箱0° (通道 0) [干声]\n返回试听配置\nClose",
+ "player_at_click": "00:01 / 00:04",
+ "t_click_ms": 1792988038172,
+ "click_to_log_s": 2.54,
+ "player_after_stop": "00:00 / 00:04",
+ "player_text_after_stop": "测试用例预览｜url_src_A.wav 音频\n浏览器播放或实验室扬声器试听中\nurl_src_A.wav\n00:00 / 00:04\n播放\n停止\n播放设备（实验室播放）\n✓\n音箱0° (通道 0) [干声]\n返回试听配置\nClose",
+ "audios_fetch_all": [
+  {
+   "method": "POST",
+   "url": "/api/v1/audios/2358/preview",
+   "status": 200,
+   "t": 1792988036871,
+   "reqBody": "{\"playback_device_id\":1,\"playback_device_ids\":[1],\"device_unique_ids\":[\"Analog (3+4) (3- RME Fireface UCX II) [Ch 1]\"],\"spl\":65,\"offset\":0}",
+   "resBody": "{\"success\":true,\"code\":0,\"message\":\"已在 1 个设备上开始试听\",\"data\":{\"audio\":\"url_src_A.wav\",\"duration\":4.0,\"device\":\"音箱0°\",\"gain\":1.0,\"devices\":[\"音箱0°\"],\"gains\":[1.0]}}"
+  },
+  {
+   "method": "POST",
+   "url": "/api/v1/audios/2358/stop-preview",
+   "status": 200,
+   "t": 1792988038237,
+   "reqBody": "",
+   "resBody": "{\"success\":true,\"code\":0,\"message\":\"音频试听已停止，共停止了 1 个任务\"}"
+  }
+ ],
+ "console_severe": [],
+ "cleanup_case": {
+  "delete": 200,
+  "purge": 200,
+  "body": "{\"success\":true,\"message\":\"ok\",\"data\":{\"purged_count\":1}}"
+ },
+ "cleanup_group": 200,
+ "alive_after": []
+}

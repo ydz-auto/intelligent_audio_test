@@ -1,0 +1,244 @@
+{
+ "tag": "1026120441",
+ "group": "接线测试_INT1538_R8组_1026120441",
+ "cases": [
+  "接线测试_INT1538_R8用例A_1026120441",
+  "接线测试_INT1538_R8用例B_1026120441"
+ ],
+ "audio_id": 2358,
+ "bundle": "http://localhost:15173/static/js/lib-react.5c68ee069a.js,http://localhost:15173/static/js/17.035a5c574a.js,http://localhost:15173/static/js/index.93b2c5bda1.js",
+ "health": {
+  "body": "{\"status\":\"ok\",\"service\":\"api_gateway\",\"version\":\"V9.7.31\",\"database\":\"intelligent_audio_test\"}",
+  "status": 200
+ },
+ "devices": [
+  {
+   "id": 12,
+   "name": "音箱-90°",
+   "status": "offline",
+   "unique": "Analog (5+6) (3- RME Fireface UCX II) [Ch 1]"
+  },
+  {
+   "id": 1,
+   "name": "音箱0°",
+   "status": "offline",
+   "unique": "Analog (3+4) (3- RME Fireface UCX II) [Ch 1]"
+  },
+  {
+   "id": 2,
+   "name": "音箱90°",
+   "status": "offline",
+   "unique": "Analog (3+4) (3- RME Fireface UCX II) [Ch 2]"
+  },
+  {
+   "id": 11,
+   "name": "音箱180°",
+   "status": "offline",
+   "unique": "Analog (5+6) (3- RME Fireface UCX II) [Ch 2]"
+  }
+ ],
+ "audio": {
+  "status": 200,
+  "name": "url_src_A.wav",
+  "duration": 4.0,
+  "audio_type": "dry",
+  "file_path": "oss://audios/direct/url_src_A_6.wav"
+ },
+ "create_group": {
+  "status": 201,
+  "id": "31649be7-8284-4efc-9870-91a37210dca8"
+ },
+ "create_cases": {
+  "A": {
+   "status": 201,
+   "id": "75dac3b0-4c80-4f0e-82e1-72cd85103a03",
+   "devices": [
+    1,
+    2
+   ]
+  },
+  "B": {
+   "status": 201,
+   "id": "95d6a8e9-c1fc-4c20-a55c-e8184253d9a1",
+   "devices": [
+    11,
+    12
+   ]
+  }
+ },
+ "A_config_text": "音频试听配置\n用例「接线测试_INT1538_R8用例A_1026120441」\n播放模式\n浏览器播放\n音频将通过浏览器前端直接播放\n实验室播放\n音频将通过用例配置中的播放设备在实验室播放\n偏移量（秒）\n取消\n开始试听\nClose",
+ "A_radio_checked": [
+  false,
+  true
+ ],
+ "A_fetch_start": [
+  {
+   "method": "POST",
+   "url": "/api/v1/testcases/75dac3b0-4c80-4f0e-82e1-72cd85103a03/preview",
+   "status": 200,
+   "reqBody": "{\"offset\":0,\"preview_type\":\"backend\",\"playback_mode\":\"backend\"}",
+   "resBody": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"test_case_id\":\"75dac3b0-4c80-4f0e-82e1-72cd85103a03\",\"preview_task_id\":\"PREVIEW_75dac3b0-4c80-4f0e-82e1-72cd85103a03\",\"status\":\"preview_started\",\"message\":\"已启动用例预览放音\",\"duration\":0.0,\"playback_mode\":\"backend\",\"audio_id\":2358}}"
+  }
+ ],
+ "A_player_text_initial": "测试用例预览｜接线测试_INT1538_R8用例A_1026120441 音频\n实验室扬声器试听中\n00:00 / --:--\n暂停\n停止\n播放设备（实验室播放）\n✓\n音箱0°\n✓\n音箱90°\n返回试听配置\nClose",
+ "A_samples": [
+  {
+   "t": 1792987539.88,
+   "ui": "00:00 / --:--"
+  },
+  {
+   "t": 1792987540.3,
+   "ui": "00:00 / --:--"
+  },
+  {
+   "t": 1792987540.71,
+   "ui": "00:01 / --:--"
+  },
+  {
+   "t": 1792987541.12,
+   "ui": "00:02 / --:--"
+  },
+  {
+   "t": 1792987541.89,
+   "ui": "00:02 / --:--"
+  },
+  {
+   "t": 1792987542.3,
+   "ui": "00:02 / --:--"
+  },
+  {
+   "t": 1792987542.73,
+   "ui": "00:03 / --:--"
+  }
+ ],
+ "A_dark": {
+  "html": "dark",
+  "bg": "rgb(19, 29, 46)"
+ },
+ "A_fetch_stop": [
+  {
+   "method": "POST",
+   "url": "/api/v1/testcases/75dac3b0-4c80-4f0e-82e1-72cd85103a03/stop_preview",
+   "status": 200,
+   "reqBody": "",
+   "resBody": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"test_case_id\":\"75dac3b0-4c80-4f0e-82e1-72cd85103a03\",\"status\":\"preview_stopped\",\"message\":\"预览已停止\"}}"
+  }
+ ],
+ "A_after_stop_text": "测试用例预览｜接线测试_INT1538_R8用例A_1026120441 音频\n实验室扬声器试听中\n00:00 / --:--\n播放\n停止\n播放设备（实验室播放）\n✓\n音箱0°\n✓\n音箱90°\n返回试听配置\nClose",
+ "A_elapsed_to_stop": 10.6,
+ "A_dialogs_after_close": 0,
+ "B_step": "编辑测试用例\n正在编辑「接线测试_INT1538_R8用例A_1026120441」，配置分组、标签与关联算法\n用例名称 *\n自动生成\n所属分组\n接线测试_INT1538_R8组_1026120441\n标签\n描述\nINT-1538 R8 实验室播放夹具\n关联算法\n请选择算法\n算法类型决定「算法参数/评估维度」步骤的可用字段与维度过滤。\n轮次配置\n第 1 轮\n1 音频·0 维度\n第 2 轮\n1 音频·3 维度\n添加轮次\n复制当前轮次\n算法参数\n音频列表\n噪声与干扰\n评估维度\n参考参数\n升序\n降序\n随机排序\n标签交错\n标签设备\n批量设备\n设备交叉\n批量声压\n清空\n音频 1\nurl_src_A.wav\n4s\n音频文件 *\nurl_src_A.wav\n更换\n播放设备\n音箱0° (通道 0) [干声]\n声压级 dB\n设备：音箱0° (通道 0) [干声]\n从音频库选择\n整体评估维度\n所有轮次\n整体评估在所有轮次执行完成后触发，将多轮结果汇总后统一送给评估端点。与单轮评估 （每轮独立打分）不同，整体评估关注的是跨轮次的综合指标，例如多轮平均 WER、对话连贯性、 上下文一致性等。若评估端点支持逐轮计算，整体评估会随结果返回各轮得分并覆盖单轮评估的 对应轮次记录，保证整体与逐轮口径一致。\n启用整体评估\n已选 0 项\n话轮接管\n7 项\n逐轮话轮评估\n主\n6\n└\n逐轮三分类评估\n子\n└\n接管率占比\n子\n└\n未接管率占比\n子\n└\n误接管率占比\n子\n└\n接管时延平均值\n子\n└\n接管内容平均分\n子\n拒识\n13 项\n拒识成功数量\n主\n2\n└\n静默时拒识恢复行为数量\n子\n└\n回复时拒识恢复行为数量\n子\n拒识询问数量\n主\n2\n└\n静默时拒识询问行为数量\n子\n└\n回复时拒识询问行为数量\n子\n拒识失败数量\n主\n5\n└\n静默时拒识回应行为数量\n子\n└\n回复时拒识回应行为数量\n子\n└\n静默时拒识无关行为数量\n子",
+ "B_config_text": "音频试听配置\n音频「url_src_A.wav」\n播放模式\n浏览器播放\n音频将通过浏览器前端直接播放\n实验室播放\n音频将通过用例配置中的播放设备在实验室播放\n偏移量（秒）\n取消\n开始试听\nClose",
+ "B_radio_checked": [
+  false,
+  true
+ ],
+ "B_fetch_start": [
+  {
+   "method": "POST",
+   "url": "/api/v1/audios/2358/preview",
+   "status": 200,
+   "reqBody": "{\"playback_device_id\":1,\"playback_device_ids\":[1],\"device_unique_ids\":[\"Analog (3+4) (3- RME Fireface UCX II) [Ch 1]\"],\"spl\":65,\"offset\":0}",
+   "resBody": "{\"success\":true,\"code\":0,\"message\":\"已在 1 个设备上开始试听\",\"data\":{\"audio\":\"url_src_A.wav\",\"duration\":4.0,\"device\":\"音箱0°\",\"gain\":1.0,\"devices\":[\"音箱0°\"],\"gains\":[1.0]}}"
+  }
+ ],
+ "B_player_text_initial": "测试用例预览｜url_src_A.wav 音频\n浏览器播放或实验室扬声器试听中\nurl_src_A.wav\n00:02 / 00:04\n暂停\n停止\n播放设备（实验室播放）\n✓\n音箱0° (通道 0) [干声]\n返回试听配置\nClose",
+ "B_samples": [
+  {
+   "t": 1792987563.0,
+   "ui": "00:02 / 00:04"
+  },
+  {
+   "t": 1792987563.42,
+   "ui": "00:02 / 00:04"
+  },
+  {
+   "t": 1792987563.85,
+   "ui": "00:03 / 00:04"
+  },
+  {
+   "t": 1792987564.27,
+   "ui": "00:03 / 00:04"
+  },
+  {
+   "t": 1792987564.69,
+   "ui": "00:04 / 00:04"
+  },
+  {
+   "t": 1792987565.12,
+   "ui": "00:04 / 00:04"
+  },
+  {
+   "t": 1792987565.54,
+   "ui": "00:04 / 00:04"
+  }
+ ],
+ "B_fetch_stop": [],
+ "B_after_stop_text": "测试用例预览｜url_src_A.wav 音频\n浏览器播放或实验室扬声器试听中\nurl_src_A.wav\n00:00 / 00:04\n播放\n停止\n播放设备（实验室播放）\n✓\n音箱0° (通道 0) [干声]\n返回试听配置\nClose",
+ "B_dialogs_after_close": 0,
+ "C_fetch_start": [
+  {
+   "method": "POST",
+   "url": "/api/v1/testcases/95d6a8e9-c1fc-4c20-a55c-e8184253d9a1/preview",
+   "status": 200,
+   "reqBody": "{\"offset\":0,\"preview_type\":\"backend\",\"playback_mode\":\"backend\"}",
+   "resBody": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"test_case_id\":\"95d6a8e9-c1fc-4c20-a55c-e8184253d9a1\",\"preview_task_id\":\"PREVIEW_95d6a8e9-c1fc-4c20-a55c-e8184253d9a1\",\"status\":\"preview_started\",\"message\":\"已启动用例预览放音\",\"duration\":0.0,\"playback_mode\":\"backend\",\"audio_id\":2358}}"
+  }
+ ],
+ "C_player_text": "00:00 / --:--",
+ "C_samples": [
+  {
+   "t": 1792987613.7,
+   "ui": "00:00 / --:--"
+  },
+  {
+   "t": 1792987614.13,
+   "ui": "00:00 / --:--"
+  },
+  {
+   "t": 1792987614.55,
+   "ui": "00:01 / --:--"
+  },
+  {
+   "t": 1792987614.97,
+   "ui": "00:01 / --:--"
+  },
+  {
+   "t": 1792987615.4,
+   "ui": "00:02 / --:--"
+  },
+  {
+   "t": 1792987615.82,
+   "ui": "00:02 / --:--"
+  }
+ ],
+ "C_fetch_stop": [
+  {
+   "method": "POST",
+   "url": "/api/v1/testcases/95d6a8e9-c1fc-4c20-a55c-e8184253d9a1/stop_preview",
+   "status": 200,
+   "reqBody": "",
+   "resBody": "{\"success\":true,\"code\":0,\"message\":\"Success\",\"data\":{\"test_case_id\":\"95d6a8e9-c1fc-4c20-a55c-e8184253d9a1\",\"status\":\"preview_stopped\",\"message\":\"预览已停止\"}}"
+  }
+ ],
+ "console_severe": [],
+ "console_total": 0,
+ "alerts": [],
+ "cleanup_cases": [
+  {
+   "id": "75dac3b0-4c80-4f0e-82e1-72cd85103a03",
+   "delete": 200,
+   "purge": 200,
+   "purge_body": "{\"success\":true,\"message\":\"ok\",\"data\":{\"purged_count\":1}}"
+  },
+  {
+   "id": "95d6a8e9-c1fc-4c20-a55c-e8184253d9a1",
+   "delete": 200,
+   "purge": 200,
+   "purge_body": "{\"success\":true,\"message\":\"ok\",\"data\":{\"purged_count\":1}}"
+  }
+ ],
+ "cleanup_group": 200,
+ "alive_after": [],
+ "group_deleted_after": []
+}
