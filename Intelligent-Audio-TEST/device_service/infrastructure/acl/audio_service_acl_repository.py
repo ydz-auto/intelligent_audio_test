@@ -14,6 +14,45 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _parse_physical_devices_payload(raw):
+    """解析 audio_service.GetPhysicalDevices 的 data 载荷（INT-1974）
+
+    现行契约是**裸数组**（audio_service servicer 直接 `_dumps(devices)`，
+    api_gateway 代理也按裸数组 `json.loads` 使用），此处一并兼容早期
+    `{"devices": [...]}` 形状，避免任一形态变化把整域设备判成离线。
+
+    Args:
+        raw: gRPC 响应的 data（JSON 文本，通常为 str）
+
+    Returns:
+        list | None: 设备列表（可能为空）；JSON 解码失败返回 None，
+        由调用方据此判定「枚举不可用」，不要与「没有设备」混同。
+    """
+    if not raw:
+        return []
+    if isinstance(raw, bytes):
+        raw = raw.decode('utf-8', errors='replace')
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        logger.warning(
+            "GetPhysicalDevices 载荷非 JSON，按枚举解析失败处理: %.200s", raw)
+        return None
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        devices = data.get('devices')
+        if isinstance(devices, list):
+            return devices
+        logger.warning(
+            "GetPhysicalDevices 载荷 dict 无 devices 列表，按空列表处理: %.200s", raw)
+        return []
+    logger.warning(
+        "GetPhysicalDevices 载荷形状不可识别(%s)，按空列表处理: %.200s",
+        type(data).__name__, raw)
+    return []
+
+
 class AudioServiceACLRepository:
     """audio_service 防腐层仓储
 
@@ -27,21 +66,31 @@ class AudioServiceACLRepository:
         契约 §2.5 要求：诊断在枚举不可用时返回 unsupported 而不是 error，
         因此调用方必须能分辨 gRPC 失败（available=False）与空列表。
 
+        载荷解析兼容裸数组与 `{"devices": [...]}` 两种形状（见
+        `_parse_physical_devices_payload`）。`available` 语义：`resp.success`
+        为真且载荷可解析即 True —— 空列表表示「没有设备」，不等于枚举不可用。
+
         Returns:
             (devices: list, available: bool)
         """
         from shared.clients.grpc_clients import get_audio_service_stub
         from shared.proto import audio_service_pb2 as _audio_pb
-        from shared.utils.grpc_json import loads as _grpc_loads
         try:
             stub = get_audio_service_stub()
             resp = stub.GetPhysicalDevices(_audio_pb.GetPhysicalDevicesRequest())
-            if resp.success:
-                data = _grpc_loads(resp.data, {}) or {}
-                return list(data.get('devices', []) or []), True
+            if not resp.success:
+                logger.warning(
+                    "gRPC GetPhysicalDevices 返回失败 message=%s", resp.message)
+                return [], False
+            raw_data = resp.data
         except Exception:
-            logger.debug("gRPC 获取物理设备列表失败", exc_info=True)
-        return [], False
+            logger.warning("gRPC 获取物理设备列表失败", exc_info=True)
+            return [], False
+        # 解析放在 try 之外：载荷形状异常不再被 except Exception 静默吞掉（INT-1974）
+        devices = _parse_physical_devices_payload(raw_data)
+        if devices is None:
+            return [], False
+        return devices, True
 
     def get_physical_devices(self) -> list:
         """获取物理设备列表
