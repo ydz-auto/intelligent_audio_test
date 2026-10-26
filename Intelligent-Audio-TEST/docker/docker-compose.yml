@@ -139,6 +139,13 @@ services:
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=api_gateway
       - SERVICE_NAME=api_gateway
+      # INT-1962：日志归档阈值（logs 表行数超过它才触发 OSS 归档巡检）。
+      # 缺省 300000，与改造前写死的常量一致；置 0 = 禁用归档（巡检直接返回：
+      # 不查计数、不上传、不删行）。发版应急开关——姊妹修复（归档先删后传）
+      # 落地前用它把归档关掉，后端栈刷新就不必等归档链路。
+      # 注意：每个挂了 DB 日志 handler 的后端容器都要透传，否则只关网关，
+      # 别的服务 flush 批次时仍会按默认阈值触发归档（auth_service 实测会触发）。
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=51061
       - E2E_TEST_SERVICE_HOST=e2e_test_service
@@ -211,6 +218,8 @@ services:
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=task_service
       - SERVICE_NAME=task_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
       - GRPC_PORT=51061
       - E2E_TEST_SERVICE_HOST=e2e_test_service
       - E2E_TEST_SERVICE_GRPC_PORT=50051
@@ -274,6 +283,8 @@ services:
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=evaluation_service
       - SERVICE_NAME=evaluation_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
       - GRPC_PORT=51091
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=51061
@@ -325,6 +336,8 @@ services:
       - LAB_NAME=lab-a
       - SERVICE_HOST=e2e_test_service
       - SERVICE_NAME=e2e_test_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=51061
       - EVALUATION_SERVICE_HOST=evaluation_service
@@ -379,6 +392,8 @@ services:
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=report_service
       - SERVICE_NAME=report_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
       - GRPC_PORT=51068
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=51061
@@ -435,6 +450,8 @@ services:
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=algorithm_service
       - SERVICE_NAME=algorithm_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
       - GRPC_PORT=51067
     volumes:
       # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
@@ -473,6 +490,8 @@ services:
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=auth_service
       - SERVICE_NAME=auth_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
       - GRPC_PORT=51069
       # INT-180：/api/auth/mode 自检端点数据源，与 api_gateway 注入同一变量
       - AUTH_MODE=${AUTH_MODE:-off}
@@ -518,6 +537,8 @@ services:
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=api_test_service
       - SERVICE_NAME=api_test_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
       - GRPC_PORT=51071
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=51061

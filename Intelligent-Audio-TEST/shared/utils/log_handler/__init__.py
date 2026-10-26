@@ -26,7 +26,7 @@ from . import _state
 
 # 常量
 from shared.utils.log_handler._constants import (
-    LOG_ARCHIVE_THRESHOLD,
+    get_log_archive_threshold,
     LOG_HOT_DATA_DAYS,
     LOG_ARCHIVE_RETENTION_DAYS,
     CONSOLE_LOG_MAX_LENGTH,
@@ -46,8 +46,8 @@ from shared.utils.log_handler._api import (
 
 # 不可变全局的公开符号，__all__ 列出用于 `from log_handler import *`
 __all__ = [
-    # 常量
-    'LOG_ARCHIVE_THRESHOLD',
+    # 常量 / 配置读取器
+    'get_log_archive_threshold',
     'LOG_HOT_DATA_DAYS',
     'LOG_ARCHIVE_RETENTION_DAYS',
     'CONSOLE_LOG_MAX_LENGTH',
