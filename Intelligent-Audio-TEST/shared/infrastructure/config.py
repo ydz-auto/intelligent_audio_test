@@ -85,6 +85,21 @@ class BaseConfig:
     # LOCAL_STORAGE_ROOT 下同相对路径（存储根迁移后救活旧记录，INT-106）
     AUDIO_LEGACY_STATIC_ROOTS: str = _get_env('AUDIO_LEGACY_STATIC_ROOTS', '')
 
+    # --- 音频标签 id→name 进程内快照缓存（INT-2000）---
+    # 列表/详情解析 tag_id → name 原先每请求跨服务拉一次全量标签表
+    # （INT-1992 分段实测 21.2ms/请求，占 ListAudios 单请求 33.7%）。改为
+    # 进程内快照 + TTL：TTL 内零跨服务调用，到期才刷新一次（并发单飞）。
+    # 0 = 关闭缓存（退回每请求打上游的旧行为，留作线上紧急开关）。
+    # 陈旧窗口：标签重命名/删除最长 TTL 秒后才可见（本服务不主动失效）。
+    AUDIO_TAG_ACL_CACHE_TTL_SECONDS: int = _get_int(
+        'AUDIO_TAG_ACL_CACHE_TTL_SECONDS', 60)
+    # 「查不到」负缓存秒数（默认 0 = 关闭）：上游成功、快照里没有该 id 时
+    # 记住该 id，窗口内重复出现只记账不重复解析。「查不了」（上游异常/
+    # 超时）一律不进负缓存 —— 否则一次上游故障会被固化成一个 TTL 的「标签
+    # 不存在」，把所有标签名降级成数字 id。
+    AUDIO_TAG_ACL_NEGATIVE_CACHE_SECONDS: int = _get_int(
+        'AUDIO_TAG_ACL_NEGATIVE_CACHE_SECONDS', 0)
+
     DATABASE_URL: str = _get_env('DATABASE_URL', required=True)
 
     # --- Redis ---
