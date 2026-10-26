@@ -81,7 +81,7 @@ class ConfigManager:
                     "auth_service_workers": 10,
                     "evaluation_service_workers": 10,
                     "device_service_workers": 10,
-                    "audio_service_workers": 5,
+                    "audio_service_workers": 20,
                     "e2e_test_service_workers": 5,
                     "api_test_service_workers": 8
                 },
@@ -135,7 +135,7 @@ class ConfigManager:
                     "auth_service_workers": 10,
                     "evaluation_service_workers": 10,
                     "device_service_workers": 10,
-                    "audio_service_workers": 5,
+                    "audio_service_workers": 20,
                     "e2e_test_service_workers": 5,
                     "api_test_service_workers": 8
                 },

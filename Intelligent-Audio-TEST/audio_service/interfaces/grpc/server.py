@@ -33,6 +33,13 @@ from audio_service.interfaces.grpc.servicers import (
 
 logger = logging.getLogger(__name__)
 
+# INT-1973 音频域并发扩容（原值 5）：gRPC 线程池与 DB 连接池同口径 20。
+# 依据 INT-1471 压测，conc40 下直连 ListAudios 时延主要被 5 线程池串行化放大，
+# 池内连接 5+max_overflow(5)=10 条同时成为读路径的排队点。连接上限随之为
+# 20+5=25 条，仍远低于 docker PG 的 max_connections=100。
+AUDIO_GRPC_WORKERS_DEFAULT = 20
+AUDIO_DB_POOL_SIZE = 20
+
 
 def _configure_pydub_ffmpeg():
     """根据 Config 中已解析的路径配置 pydub 的 ffmpeg/ffprobe 可执行文件路径。
@@ -78,7 +85,8 @@ def start_grpc_server(port=AUDIO_SERVICE_GRPC_PORT):
 
     # 初始化数据库连接池（audio_service 无 FastAPI lifespan，在此处初始化）
     from shared.models.database import init_db
-    init_db(pool_size=5)
+    init_db(pool_size=AUDIO_DB_POOL_SIZE)
+    logger.info("数据库连接池已初始化 (pool_size=%s)", AUDIO_DB_POOL_SIZE)
 
     # 启动软删除硬清理守护线程（只清理本服务 owned 表 audios 及子表）
     from audio_service.infrastructure.persistence.soft_delete_cleaner import get_cleaner as get_soft_delete_cleaner
@@ -94,7 +102,8 @@ def start_grpc_server(port=AUDIO_SERVICE_GRPC_PORT):
         logger.warning(f"PyAudio 驱动预初始化失败（音频功能可能不可用）: {e}")
 
     # gRPC 线程池大小配置化：优先读取 concurrency_config.json 中的 grpc.audio_service_workers
-    _max_workers = config_manager.get_value('grpc', 'audio_service_workers', 5)
+    _max_workers = config_manager.get_value('grpc', 'audio_service_workers', AUDIO_GRPC_WORKERS_DEFAULT)
+    logger.info("gRPC 线程池大小: %s", _max_workers)
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_max_workers),
         options=_server_options(),
