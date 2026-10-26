@@ -1,87 +1,56 @@
 /**
- * ChartComponent 对位（15_报告域.md §3.7：Chart.js v4 + chartjs-plugin-zoom）。
- * props: title/data(labels+datasets)/type(bar|line|radar|distribution)/showHeader/showActions/
- *         loading/stats/enableZoom/height；chartReady/export 事件。
- * distribution 模式：x 轴「不同区间的{title}」（linear）、y 轴「区间内用例数量」（stepSize:1）、
+ * ChartComponent 对位（15_报告域.md §3.7：报告图表 + 缩放）。
+ * props: title/data(labels+datasets)/type(bar|line|radar|distribution|scatter|heatmap|pie/doughnut/polarArea)/
+ *         showHeader/showActions/loading/stats/enableZoom/height；chartReady/export 事件。
+ * distribution 模式：x 轴「不同区间的{title}」、y 轴「区间内用例数量」、
  * 折线图/直方图子类型切换（chartSubType）+ zoom/pan 后固定 20 区间按可见范围重分箱
- * （rebinDistributionData）+ 固定 x min/max + resetZoom 恢复原始。
- * 深浅色/多主题走语义 token（图例/网格/tooltip 色，canvas 色板为 chartConfig 等价 hex）。
+ * （rebinDistributionData）+ resetZoom 恢复原始。
+ * INT-1273：图表引擎由 chart.js v4（+ matrix / zoom 插件）换成 Visactor VChart 一套，
+ * 与 dashboard / devices / rankings / spl-mapping 同库；spec 装配见 ./report-chart-spec。
+ * 深浅色/多主题走 ThemeManager + CSS 语义 token（轴色/网格色/--chart-1..8 色板）。
  * INT-430 前置条件：本组件为共享平台件，驻留 components/common/report-chart（dashboard/benchmark 复用）。
  */
-import {
-  ArcElement,
-  BarController,
-  BarElement,
-  CategoryScale,
-  Chart as ChartJS,
-  DoughnutController,
-  Legend,
-  LinearScale,
-  LineController,
-  LineElement,
-  PieController,
-  PointElement,
-  PolarAreaController,
-  RadialLinearScale,
-  RadarController,
-  ScatterController,
-  Tooltip,
-  Filler,
-  type ChartDataset,
-  type ChartOptions,
-} from 'chart.js'
-import { MatrixController } from 'chartjs-chart-matrix'
-import zoomPlugin from 'chartjs-plugin-zoom'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { VChart } from '@visactor/react-vchart'
+import type { ISpec, IVChart } from '@visactor/vchart'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import type {
   ChartSeriesData,
   DistributionChartData,
 } from '@/application/report-view/use-report-charts'
+import { getChartAxisColors } from '@/application/report-view/use-report-charts'
 import {
-  CHART_COLORS,
-  getDefaultChartConfig,
-  rebinDistributionData,
-} from '@/application/report-view/use-report-charts'
+  useChartTheme,
+  useThemePresetKey,
+  useThemeRadiusPx,
+  VCHART_OPTION,
+} from '@/features/dashboard/lib/vchart'
 import { cn } from '@/lib/utils'
 
 import { ChartActions } from './chart-actions'
 import { ChartStatsCard } from './chart-stats-card'
+import {
+  buildEmptySpec,
+  buildReportChartSpec,
+  getDistributionRange,
+  resolveChartPalette,
+  type DistributionRange,
+  type ReportChartKind,
+  type ReportChartSubKind,
+  type ReportChartVisualTheme,
+} from './report-chart-spec'
 
-ChartJS.register(
-  ArcElement,
-  BarController,
-  BarElement,
-  LineController,
-  LineElement,
-  PointElement,
-  ScatterController,
-  PieController,
-  DoughnutController,
-  PolarAreaController,
-  CategoryScale,
-  LinearScale,
-  RadialLinearScale,
-  RadarController,
-  MatrixController,
-  Legend,
-  Tooltip,
-  Filler,
-  zoomPlugin
-)
+export type ChartKind = ReportChartKind
+export type ChartSubKind = ReportChartSubKind
 
-export type ChartKind =
-  | 'bar'
-  | 'line'
-  | 'pie'
-  | 'doughnut'
-  | 'polarArea'
-  | 'radar'
-  | 'distribution'
-  | 'scatter'
-  | 'heatmap'
-export type ChartSubKind = 'bar' | 'line'
+/**
+ * 重分箱判定阈值：可见窗口与当前值域的差小于该比例时不再重算（避免机械抖动）。
+ * 与 §3.7 的「按可见范围重分箱」同口径，纯交互节流参数。
+ */
+const REBIN_EPSILON = 0.01
+/** 缩放停止后多久重分箱（对位 chartjs-plugin-zoom 的 onZoomComplete 时点） */
+const REBIN_DELAY_MS = 260
 
 interface ReportChartProps {
   title: string
@@ -109,17 +78,29 @@ export function ReportChart({
   className,
   xAxisTitle,
 }: ReportChartProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const chartRef = useRef<ChartJS | null>(null)
+  const chartRef = useRef<IVChart | null>(null)
+  const { themeReady, themeKey, resolvedTheme } = useChartTheme()
+  const presetKey = useThemePresetKey()
+  const chartRadius = useThemeRadiusPx()
   // 分布图子类型：折线图/直方图（§3.7 chartSubType）
   const [chartSubType, setChartSubType] = useState<ChartSubKind>('bar')
-  // zoom 回调需读最新子类型（useEffect 内闭包滞后，用 ref 透传）
-  const chartSubTypeRef = useRef<ChartSubKind>(chartSubType)
-  chartSubTypeRef.current = chartSubType
+  // 缩放后重分箱的值域；null = 原始全量区间
+  const [distributionRange, setDistributionRange] = useState<DistributionRange | null>(null)
+  // 重置缩放：换 key 整图重建（与 dashboard 图表同款重建机制，dataZoom 状态随之归零）
+  const [resetNonce, setResetNonce] = useState(0)
+  const rebinTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const isDark = typeof document !== 'undefined'
-    ? (document.documentElement.classList.contains('dark') ?? false)
-    : false
+  const isDark = resolvedTheme === 'dark'
+
+  const theme = useMemo<ReportChartVisualTheme>(() => {
+    const axisColors = getChartAxisColors(isDark)
+    return {
+      axisLabelColor: axisColors.tickColor,
+      gridColor: axisColors.gridColor,
+      palette: resolveChartPalette(),
+    }
+    // 预设切换会改写 --chart-* token，需随 presetKey 重算
+  }, [isDark, presetKey])
 
   /** 空数据态（§3.7「暂无数据」：distribution 看 rawData，其余看 datasets 是否有数据） */
   const hasData = useMemo(() => {
@@ -129,263 +110,89 @@ export function ReportChart({
     return series.datasets.some((d) => d.data.length > 0)
   }, [type, series, distribution])
 
+  // 数据/类型变化回到全量区间（重分箱窗口属于上一次数据，不跨数据复用）
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const base = getDefaultChartConfig(isDark) as ChartOptions
+    setDistributionRange(null)
+  }, [type, distribution, series, chartSubType])
 
-    /** zoom/pan 后按可见范围重分箱 + 固定 x min/max（§3.7） */
-    const rebinToVisible = (chart: ChartJS) => {
-      if (type !== 'distribution' || !distribution) return
-      const xScale = chart.scales.x
-      if (!xScale || !Number.isFinite(xScale.min) || !Number.isFinite(xScale.max)) return
-      const min = xScale.min
-      const max = xScale.max
-      if (max <= min) return
-      const rebinned = rebinDistributionData(
-        distribution.rawData,
-        distribution.labels,
-        min,
-        max,
-        20
-      )
-      const isLine = chartSubTypeRef.current === 'line'
-      chart.data.datasets = rebinned.datasets.map((d) => ({
-        ...d,
-        type: isLine ? 'line' : 'bar',
-        borderRadius: isLine ? 0 : 4,
-        barPercentage: 0.9,
-        categoryPercentage: 0.85,
-        fill: isLine ? false : undefined,
-        tension: isLine ? 0.3 : undefined,
-      }))
-      chart.data.labels = rebinned.labels
-      if (chart.options.scales) {
-        chart.options.scales.x = {
-          ...(chart.options.scales.x ?? {}),
-          min,
-          max,
-        }
-      }
-      chart.update()
-    }
+  const fullRange = useMemo(() => getDistributionRange(distribution), [distribution])
+  const activeRange = distributionRange ?? fullRange
 
-    const zoomOptions = enableZoom
-      ? {
-          pan: { enabled: true, mode: 'x' },
-          zoom: {
-            wheel: { enabled: true },
-            pinch: { enabled: true },
-            mode: 'x' as const,
-            onZoomComplete: ({ chart }: { chart: ChartJS }) => rebinToVisible(chart),
-            onPanComplete: ({ chart }: { chart: ChartJS }) => rebinToVisible(chart),
-          },
-        }
-      : { pan: { enabled: false }, zoom: { wheel: { enabled: false }, pinch: { enabled: false } } }
-
-    const buildOptions = (): ChartOptions => {
-      const isDistribution = type === 'distribution'
-      if (isDistribution && distribution) {
-        return {
-          ...base,
-          indexAxis: 'x',
-          scales: {
-            x: {
-              ...(base.scales?.x ?? {}),
-              type: 'linear',
-              title: { display: true, text: xAxisTitle ?? `不同区间的${title}`, color: (base.scales?.x?.ticks as { color?: string } | undefined)?.color },
-              min: distribution.stats?.min,
-              max: distribution.stats?.max,
-            },
-            y: {
-              ...(base.scales?.y ?? {}),
-              title: { display: true, text: '区间内用例数量', color: (base.scales?.y?.ticks as { color?: string } | undefined)?.color },
-              ticks: { ...((base.scales?.y?.ticks ?? {}) as Record<string, unknown>), stepSize: 1 },
-            },
-          },
-          plugins: {
-            ...base.plugins,
-            // 分布图 tooltip：显 [start, end) 区间 +「N 个」（§3.7）
-            tooltip: {
-              ...(base.plugins?.tooltip ?? {}),
-              callbacks: {
-                title: (items: { label?: unknown }[]) => {
-                  const label = typeof items[0]?.label === 'string' ? items[0].label : ''
-                  const [start, end] = label.split('~')
-                  return start !== undefined && end !== undefined ? `[${start}, ${end})` : label
-                },
-                label: (ctx: { dataset?: { label?: string }; formattedValue?: string }) => {
-                  const count = ctx.formattedValue ?? '0'
-                  return ctx.dataset?.label ? `${ctx.dataset.label}：${count} 个` : `${count} 个`
-                },
-              },
-            },
-            zoom: zoomOptions,
-          },
-        } as ChartOptions
-      }
-      // 散点（§3.7）：两变量关系线性轴点图，zoom 可用
-      if (type === 'scatter') {
-        return {
-          ...base,
-          scales: {
-            x: { ...(base.scales?.x ?? {}), type: 'linear' },
-            y: { ...(base.scales?.y ?? {}), type: 'linear' },
-          },
-          plugins: { ...base.plugins, zoom: zoomOptions },
-        } as ChartOptions
-      }
-      // 热力（§3.7）：矩阵密度图，x=labels 列、y=yLabels 行；无 zoom（格子语义）
-      if (type === 'heatmap') {
-        const yLabels = series.yLabels ?? series.labels
-        const tickColor = (base.scales?.y?.ticks as { color?: string } | undefined)?.color
-        const gridColor = (base.scales?.y?.grid as { color?: string } | undefined)?.color
-        return {
-          ...base,
-          scales: {
-            x: {
-              type: 'linear',
-              offset: true,
-              ticks: { color: tickColor, stepSize: 1, callback: (value) => series.labels[Number(value)] ?? '' },
-              grid: { color: gridColor },
-            },
-            y: {
-              type: 'linear',
-              offset: true,
-              ticks: { color: tickColor, stepSize: 1, callback: (value) => yLabels[Number(value)] ?? '' },
-              grid: { color: gridColor },
-            },
-          },
-          plugins: {
-            ...base.plugins,
-            tooltip: {
-              ...(base.plugins?.tooltip ?? {}),
-              callbacks: {
-                label: (ctx: { raw?: unknown }) => {
-                  const raw = (ctx.raw ?? {}) as { x?: number; y?: number; v?: number }
-                  return `${series.labels[raw.x ?? 0] ?? ''} · ${yLabels[raw.y ?? 0] ?? ''}：${raw.v ?? 0}`
-                },
-              },
-            },
-            zoom: { pan: { enabled: false }, zoom: { wheel: { enabled: false }, pinch: { enabled: false } } },
-          },
-        } as ChartOptions
-      }
-      // 饼/环形/极区（§3.7 全类型）：图例右置、无缩放
-      if (type === 'pie' || type === 'doughnut' || type === 'polarArea') {
-        return {
-          ...base,
-          plugins: {
-            ...base.plugins,
-            legend: { ...(base.plugins?.legend ?? {}), position: 'right' },
-            zoom: { pan: { enabled: false }, zoom: { wheel: { enabled: false }, pinch: { enabled: false } } },
-          },
-        } as ChartOptions
-      }
-      return {
-        ...base,
-        plugins: { ...base.plugins, zoom: zoomOptions },
-      } as ChartOptions
-    }
-
-    // 热力图色阶：v 值归一化到 chart 色板 alpha 分级（§3.7 色阶 --chart-1..5 alpha，token 化）
-    const hexToRgba = (hex: string, alpha: number): string => {
-      const value = hex.replace('#', '')
-      const r = parseInt(value.slice(0, 2), 16)
-      const g = parseInt(value.slice(2, 4), 16)
-      const b = parseInt(value.slice(4, 6), 16)
-      return `rgba(${r},${g},${b},${alpha})`
-    }
-    const heatmapColor = (v: number, min: number, max: number): string => {
-      const range = max - min || 1
-      const t = Math.min(1, Math.max(0, (v - min) / range))
-      const stops = [
-        hexToRgba(CHART_COLORS.primary, 0.18),
-        hexToRgba(CHART_COLORS.success, 0.35),
-        hexToRgba(CHART_COLORS.warning, 0.6),
-        hexToRgba(CHART_COLORS.purple, 0.85),
-      ]
-      return stops[Math.min(stops.length - 1, Math.floor(t * stops.length))]
-    }
-
-    // 装配 datasets（distribution 用重分箱直方图；heatmap 补 width/height 与色阶）
-    const isLine = chartSubType === 'line'
-    const datasets = distribution && type === 'distribution'
-      ? rebinDistributionData(
-          distribution.rawData,
-          distribution.labels,
-          distribution.stats?.min ?? 0,
-          distribution.stats?.max ?? 1
-        ).datasets.map((d) => ({
-          ...d,
-          type: isLine ? 'line' : 'bar',
-          borderRadius: isLine ? 0 : 4,
-          barPercentage: 0.9,
-          categoryPercentage: 0.85,
-          fill: isLine ? false : undefined,
-          tension: isLine ? 0.3 : undefined,
-        }))
-      : type === 'heatmap'
-        ? series.datasets.map((d) => {
-            const cells = (d.data ?? []).filter((c): c is { x: number; y: number; v: number } =>
-              typeof c === 'object' && c !== null && 'v' in c)
-            const values = cells.map((c) => c.v)
-            const min = values.length ? Math.min(...values) : 0
-            const max = values.length ? Math.max(...values) : 1
-            return {
-              ...d,
-              data: cells,
-              backgroundColor:
-                typeof d.backgroundColor === 'function'
-                  ? d.backgroundColor
-                  : (ctx: { raw?: { v?: number } }) =>
-                      heatmapColor((ctx.raw?.v ?? 0), min, max),
-              width: 30,
-              height: 30,
-            }
-          })
-        : series.datasets
-
-    // scatter 数据集：显式 showLine=false（点图）
-    const scatterDatasets = type === 'scatter'
-      ? datasets.map((d) => ({ ...d, showLine: (d as { showLine?: boolean }).showLine ?? false }))
-      : datasets
-
-    chartRef.current = new ChartJS(canvas, {
-      type: type === 'distribution'
-        ? 'bar'
-        : type === 'radar'
-          ? 'radar'
-          : type === 'heatmap'
-            ? 'matrix'
-            : type,
-      data: {
-        labels: type === 'distribution' ? undefined : series.labels,
-        datasets: scatterDatasets as ChartDataset[],
-      },
-      options: buildOptions(),
+  const spec = useMemo(() => {
+    if (!hasData) return buildEmptySpec(type)
+    return buildReportChartSpec({
+      kind: type,
+      title,
+      series,
+      distribution,
+      chartSubType,
+      xAxisTitle,
+      enableZoom,
+      theme,
+      chartRadius,
+      distributionRange: activeRange,
     })
+  }, [
+    hasData,
+    type,
+    title,
+    series,
+    distribution,
+    chartSubType,
+    xAxisTitle,
+    enableZoom,
+    theme,
+    chartRadius,
+    activeRange,
+  ])
 
-    return () => {
-      chartRef.current?.destroy()
-      chartRef.current = null
-    }
-  }, [title, type, series, distribution, enableZoom, isDark, chartSubType, xAxisTitle])
+  useEffect(() => () => {
+    if (rebinTimer.current) clearTimeout(rebinTimer.current)
+  }, [])
+
+  /**
+   * zoom/pan 后按可见范围重分箱（§3.7）：dataZoom 的百分比区间映射回值域，
+   * 固定 20 区间重算后以新值域整图重建（x 域即当前可见窗口）。
+   */
+  const handleDataZoomChange = useCallback(
+    (event: { value?: { start?: number; end?: number } }) => {
+      if (type !== 'distribution' || !distribution) return
+      const start = event?.value?.start
+      const end = event?.value?.end
+      if (typeof start !== 'number' || typeof end !== 'number') return
+      if (end - start <= 0) return
+      const span = activeRange.max - activeRange.min
+      if (!Number.isFinite(span) || span <= 0) return
+      const nextMin = activeRange.min + start * span
+      const nextMax = activeRange.min + end * span
+      const windowRatio = (nextMax - nextMin) / span
+      if (windowRatio >= 1 - REBIN_EPSILON) return
+      if (rebinTimer.current) clearTimeout(rebinTimer.current)
+      rebinTimer.current = setTimeout(() => {
+        setDistributionRange({ min: nextMin, max: nextMax })
+      }, REBIN_DELAY_MS)
+    },
+    [type, distribution, activeRange]
+  )
 
   const handleResetZoom = () => {
-    chartRef.current?.resetZoom()
+    setDistributionRange(null)
+    setResetNonce((value) => value + 1)
   }
 
-  const handleExportPng = () => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+  const handleExportPng = async () => {
+    const chart = chartRef.current
+    if (!chart) return
+    const dataUrl = await chart.getDataURL()
+    if (!dataUrl) return
     const link = document.createElement('a')
     link.download = `${title}.png`
-    link.href = canvas.toDataURL('image/png')
+    link.href = dataUrl
     link.click()
   }
 
   const isDistribution = type === 'distribution'
+  const rangeKey = `${activeRange.min.toFixed(3)}~${activeRange.max.toFixed(3)}`
 
   return (
     <div className={cn('bg-card rounded-2xl border shadow-xs p-4', className)}>
@@ -421,7 +228,7 @@ export function ReportChart({
               </button>
             </div>
           )}
-          <ChartActions onResetZoom={handleResetZoom} onExportPng={handleExportPng} />
+          <ChartActions onResetZoom={handleResetZoom} onExportPng={() => void handleExportPng()} />
         </div>
       </div>
 
@@ -439,8 +246,19 @@ export function ReportChart({
           <div className='text-muted-foreground flex h-full items-center justify-center text-sm'>
             暂无数据
           </div>
+        ) : !themeReady ? (
+          <Skeleton className='h-full w-full' />
         ) : (
-          <canvas ref={canvasRef} />
+          <VChart
+            // 主题/预设/子类型/缩放重置/重分箱窗口变化 → 整图重建（newAPI 同款机制）
+            key={[type, chartSubType, themeKey, presetKey, resetNonce, isDistribution ? rangeKey : 'full'].join('|')}
+            spec={{ ...spec, theme: themeKey, background: 'transparent' } as unknown as ISpec}
+            options={VCHART_OPTION}
+            onReady={(chart) => {
+              chartRef.current = chart
+            }}
+            onDataZoomChange={handleDataZoomChange}
+          />
         )}
       </div>
     </div>

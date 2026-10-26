@@ -1,8 +1,8 @@
 /**
  * ChartActions 对位（15_报告域.md §3.7：重置缩放 / 图表导出 图片·SVG·PDF）。
  * 共享平台件（INT-430 前置条件：报告域/工作台/benchmark 排行图表统一）。
- * PNG 走 canvas.toBase64Image → {title}.png 下载；SVG/PDF 走打印导出（§3.7 实测口径：
- * 「SVG/PDF 走序列化/打印导出，实施卡按 chart.js v4 生态确认插件选型」——现状打印导出承载）。
+ * PNG 走 VChart getDataURL → {title}.png 下载；SVG/PDF 走打印导出（§3.7 实测口径：
+ * 「SVG/PDF 走序列化/打印导出」——现状打印导出承载；INT-1273 起图表引擎为 Visactor VChart）。
  */
 import { Download, RotateCcw } from 'lucide-react'
 

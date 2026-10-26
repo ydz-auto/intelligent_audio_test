@@ -1,10 +1,12 @@
 /**
- * Chart.js v4 配置适配（infrastructure/adapters 层，INT-439 报告域图表引擎裁定）。
- * 照现前端 frontend/src/chart/utils/chartConfig.ts 平移：chartConfig.colors 用与 tokens.css
- * 等价的 hex 常量（canvas 不能引用 CSS var）；calculateDistributionStats/rebinDistributionData
+ * 图表数据适配（infrastructure/adapters 层，INT-439 报告域图表引擎裁定；INT-1273 收敛到 VChart）。
+ * 照现前端 frontend/src/chart/utils/chartConfig.ts 平移：CHART_COLORS 用与 tokens.css
+ * 等价的 hex 常量（token 解析失败时的回落值）；calculateDistributionStats/rebinDistributionData
  * 照 shared/useReportShared.ts generateDistributionChartData 平移（15_报告域.md §3.7）。
+ * INT-1273：chart.js 四件套（chart.js / chartjs-chart-matrix / chartjs-plugin-zoom）移除，
+ * 本文件只保留与图表引擎无关的数据口径（色板、分布统计、重分箱、轴色）；渲染 spec 见
+ * components/common/report-chart/report-chart-spec.ts。
  */
-import type { ChartConfiguration, ChartDataset, ChartOptions } from 'chart.js'
 
 /** 图表语义色常量（照现前端 chartConfig.ts:11-18 实测值；与 tokens.css --chart-1..5 等价映射） */
 export const CHART_COLORS = {
@@ -157,39 +159,10 @@ export function rebinDistributionData(
   }
 }
 
-/** 图表轴色/网格色（深浅两套；INT-596 P3：与 getDefaultChartConfig 同源，供 ECharts 等独立模块复用，消除 rgba 魔数重复） */
+/** 图表轴色/网格色（深浅两套；INT-596 P3 起集中在此，供报告图表 / 排行区块等共用，消除 rgba 魔数重复） */
 export function getChartAxisColors(isDark: boolean): { gridColor: string; tickColor: string } {
   return {
     gridColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
     tickColor: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)',
-  }
-}
-
-/** Chart.js 默认配置（深浅两套：图例/网格/tooltip 色随主题；实施按基座语义 token 常量） */
-export function getDefaultChartConfig(isDark: boolean): ChartOptions<'bar'> {
-  const { gridColor, tickColor } = getChartAxisColors(isDark)
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { labels: { color: tickColor } },
-      tooltip: { backgroundColor: isDark ? 'rgba(17,24,39,0.9)' : 'rgba(255,255,255,0.95)', titleColor: tickColor, bodyColor: tickColor },
-    },
-    scales: {
-      x: { ticks: { color: tickColor }, grid: { color: gridColor } },
-      y: { ticks: { color: tickColor }, grid: { color: gridColor } },
-    },
-  }
-}
-
-/** 装配单一数据集配置（bar/line/radar 通用） */
-export function prepareChartData(
-  labels: string[],
-  datasets: ChartDataset<'bar', (number | null)[]>[]
-): ChartConfiguration<'bar', (number | null)[]> {
-  return {
-    type: 'bar',
-    data: { labels, datasets },
-    options: getDefaultChartConfig(false),
   }
 }

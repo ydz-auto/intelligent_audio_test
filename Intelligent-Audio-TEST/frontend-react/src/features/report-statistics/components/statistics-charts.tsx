@@ -1,7 +1,7 @@
 /**
  * 统计图表（15_报告域.md §2.2/§3.7：散点图（两个变量关系）/ 热力图（密度分布））。
- * 复用共享 ReportChart（chart.js v4）：scatter 原生点图；heatmap 走 chartjs-chart-matrix
- * 色阶 alpha 分级。图表导出 PNG/SVG/PDF 由 ChartActions 承载（§3.7 图一）。
+ * 复用共享 ReportChart（INT-1273 起为 Visactor VChart）：scatter 散点图；heatmap 热力矩阵
+ * 走 VChart heatmap + 线性 alpha 色阶。图表导出 PNG/SVG/PDF 由 ChartActions 承载（§3.7 图一）。
  */
 import { useState } from 'react'
 
