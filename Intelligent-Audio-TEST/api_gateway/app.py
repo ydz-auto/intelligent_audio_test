@@ -110,6 +110,13 @@ def create_app(config_name='default') -> FastAPI:
     from shared.infrastructure.db_session_middleware import DbSessionScopeMiddleware
     app.add_middleware(DbSessionScopeMiddleware)
 
+    # INT-1276：响应压缩在网关侧统一开（前端 nginx 只压静态产物，/api/ 代理不重复压）。
+    # Starlette 的 GZipMiddleware 自带排除表：text/event-stream（SSE 事件流）、
+    # audio/*（音频下载）、图片/字体等已排除，不会被缓冲或二次压缩。
+    # 放在最后添加 = 包在最外层，401 短接与异常响应也能带上 Content-Encoding。
+    from fastapi.middleware.gzip import GZipMiddleware
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+
     # 注册 API 路由
     from api_gateway.routes.auth_bp import router as auth_router
     from api_gateway.routes.testcase_bp import router as testcase_router
