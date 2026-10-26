@@ -17,11 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import DOMPurify from 'dompurify'
-import * as katex from 'katex'
-
-import 'katex/dist/katex.min.css'
 import { Marked, Renderer, type MarkedExtension, type Tokens } from 'marked'
 import {
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -30,6 +28,12 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 
+import {
+  getKatex,
+  hasMathSyntax,
+  isKatexLoaded,
+  loadKatex,
+} from '@/lib/katex-loader'
 import { cn } from '@/lib/utils'
 
 interface MarkdownProps {
@@ -193,7 +197,16 @@ function normalizeMathSource(source: string): string {
 }
 
 function renderMath(source: string, displayMode: boolean): string {
-  return katex.renderToString(normalizeMathSource(source), {
+  const normalized = normalizeMathSource(source)
+  // INT-1274：katex 未加载（正文出现公式后的首帧）先按纯文本占位，
+  // 加载完成由 Markdown 组件重渲染，不会静默丢掉公式。
+  const katex = getKatex()
+
+  if (!katex) {
+    return `<span class="markdown-math-pending">${escapeHtml(normalized)}</span>`
+  }
+
+  return katex.renderToString(normalized, {
     displayMode,
     output: 'htmlAndMathml',
     throwOnError: false,
@@ -807,6 +820,26 @@ export function Markdown(props: MarkdownProps) {
   const [codeTargets, setCodeTargets] = useState<
     Array<{ code: string; language: string; target: Element }>
   >([])
+  // INT-1274：katex 只在正文含数学定界符时按需加载；已加载（模块级单例）则首帧即可同步渲染
+  const [mathReady, setMathReady] = useState(isKatexLoaded)
+
+  useEffect(() => {
+    if (mathReady || !hasMathSyntax(props.children)) {
+      return
+    }
+
+    let cancelled = false
+    void loadKatex().then((module) => {
+      if (!cancelled && module) {
+        setMathReady(true)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [mathReady, props.children])
+
   const html = useMemo(
     () =>
       renderMarkdown(
@@ -815,7 +848,8 @@ export function Markdown(props: MarkdownProps) {
         props.baseUrl,
         props.headingAnchors
       ),
-    [props.breaks, props.children, props.baseUrl, props.headingAnchors]
+    // mathReady 进依赖：katex 加载完成后用同一份正文重渲染公式
+    [props.breaks, props.children, props.baseUrl, props.headingAnchors, mathReady]
   )
 
   const rendered = useMemo(() => {
@@ -902,6 +936,7 @@ export function Markdown(props: MarkdownProps) {
           '[&_thead]:bg-muted [&_th]:border [&_td]:border [&_th]:px-3 [&_td]:px-3 [&_th]:py-2 [&_td]:py-2 [&_th]:text-left',
           '[&_hr]:my-6 [&_img]:my-4 [&_img]:max-w-full [&_img]:rounded-lg',
           '[&_.katex-display]:my-4 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden',
+          '[&_.markdown-math-pending]:font-mono [&_.markdown-math-pending]:text-muted-foreground [&_.markdown-math-pending]:italic',
           '[&_.markdown-page-break]:my-6 [&_.markdown-page-break]:border-dashed',
           '[&_.markdown-diagram]:my-4 [&_.markdown-diagram]:overflow-x-auto [&_.markdown-diagram]:rounded-md [&_.markdown-diagram]:border [&_.markdown-diagram]:bg-background [&_.markdown-diagram]:p-4',
           '[&_.markdown-diagram_svg]:mx-auto [&_.markdown-diagram_svg]:max-w-full',

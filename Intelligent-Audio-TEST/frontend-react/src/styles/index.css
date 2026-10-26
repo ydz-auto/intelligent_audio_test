@@ -19,13 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-@import '@fontsource-variable/public-sans';
-/* Editorial serif (Lora) backing the `serif` font axis and the Anthropic
- * preset's default typography. See `--font-serif` in theme.css for the
- * full Latin + CJK fallback stack and `theme-presets.css` for the cascade
- * that activates it. Loaded globally so font-switching is instantaneous
- * with no FOUT once the variable is fetched. */
-@import '@fontsource-variable/lora';
+/* 字体子集（INT-1274）：Public Sans + Lora 只留 Latin / Latin-Ext（Lora 另留
+ * math / symbols），中文走 theme.css 的系统 CJK 字体栈。原先整包 import
+ * `@fontsource-variable/*` 会带出 cyrillic / vietnamese 等从不下载的子集文件。 */
+@import './fonts.css';
 
 @import './theme.css';
 @import './theme-presets.css';

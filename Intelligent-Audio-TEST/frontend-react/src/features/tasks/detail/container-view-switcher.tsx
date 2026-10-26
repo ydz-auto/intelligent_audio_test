@@ -62,6 +62,11 @@ export interface ContainerCompositionToolbarProps {
   onCollapseAll: () => void
   /** 结果级状态未返、叶行状态取自容器用例行（§5.5.4 降级口径；执行与评估任一降级即 true） */
   degraded: boolean
+  /**
+   * 组成区模式：`'container'`（容器详情，评估筛选 + 用例层组织常显）/
+   * `'preview'`（预览步骤 §5.2 ⑥：快照无评估状态与分组标签 → 两者整层不渲染）
+   */
+  mode?: 'container' | 'preview'
   /** 用例层组织（用例视图生效；四视图共享同一会话态） */
   org: PickOrgDimension
   subView: PickSubView
@@ -79,11 +84,13 @@ export function ContainerCompositionToolbar({
   onExpandAll,
   onCollapseAll,
   degraded,
+  mode = 'container',
   org,
   subView,
   onOrgChange,
   onSubViewChange,
 }: ContainerCompositionToolbarProps) {
+  const isPreview = mode === 'preview'
   return (
     <div className='flex flex-col gap-2'>
       <div className='flex flex-wrap items-center gap-1.5'>
@@ -107,23 +114,26 @@ export function ContainerCompositionToolbar({
           </SelectContent>
         </Select>
 
-        <Select
-          value={evaluation}
-          onValueChange={(value) => onEvaluationChange(value as CompositionEvaluationFilter)}
-        >
-          <SelectTrigger size='sm' className='h-7 gap-1.5 px-2.5' aria-label='评估状态筛选'>
-            <SelectValue>
-              {EVALUATION_OPTIONS.find((o) => o.value === evaluation)?.label}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent align='start'>
-            {EVALUATION_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* 预览：购物车快照无评估状态（`evaluated` 恒 false），评估筛选无意义且会把全部条目筛没（§5.2 ⑥ 甲） */}
+        {!isPreview && (
+          <Select
+            value={evaluation}
+            onValueChange={(value) => onEvaluationChange(value as CompositionEvaluationFilter)}
+          >
+            <SelectTrigger size='sm' className='h-7 gap-1.5 px-2.5' aria-label='评估状态筛选'>
+              <SelectValue>
+                {EVALUATION_OPTIONS.find((o) => o.value === evaluation)?.label}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent align='start'>
+              {EVALUATION_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         <Button variant='ghost' size='sm' className='h-7 gap-1 px-2 text-xs' onClick={onExpandAll}>
           <ChevronsUpDown aria-hidden='true' className='size-3.5' />
@@ -134,7 +144,7 @@ export function ContainerCompositionToolbar({
           全部收起
         </Button>
 
-        {degraded && (
+        {!isPreview && degraded && (
           <span
             className='text-muted-foreground/70 ml-auto shrink-0 text-[11px]'
             data-testid='composition-degraded-hint'
@@ -144,7 +154,8 @@ export function ContainerCompositionToolbar({
         )}
       </div>
 
-      {view !== 'task' && (
+      {/* 用例层组织：预览整层不渲染（快照无 tags / group_name，只会整屏落一个「未分组」桶，§5.2 ⑥ 乙） */}
+      {!isPreview && view !== 'task' && (
         <PickCaseOrgControls
           org={org}
           subView={subView}

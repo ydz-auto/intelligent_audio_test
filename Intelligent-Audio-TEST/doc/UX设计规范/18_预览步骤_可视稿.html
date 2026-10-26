@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>18 挑选合并 · §5.2 预览步骤（Step 3）设计图 · INT-1988</title>
+<style>
+  :root{
+    --font-sans:'Public Sans','Microsoft YaHei','PingFang SC',sans-serif;
+    --background:#f7f9fc; --foreground:#172033; --card:#ffffff; --card-foreground:#172033;
+    --primary:oklch(0.765 0.177 163.22); --primary-fg:#000;
+    --secondary:#eef2f8; --secondary-fg:#284ba0; --muted:#eef2f7; --muted-fg:#5e6c82;
+    --border:#dce3ee; --input:#cbd5e1; --destructive:oklch(0.577 0.245 27.325);
+    --success:oklch(0.596 0.145 163.225); --warning:oklch(0.681 0.162 75.834);
+    --info:oklch(0.588 0.158 241.966); --radius:0.75rem; --table-header:#f1f5fa;
+  }
+  .dark{
+    --background:#101827; --foreground:#eef3fa; --card:#182235; --card-foreground:#eef3fa;
+    --secondary:#233249; --secondary-fg:#c4d7ff; --muted:#213047; --muted-fg:#a7b5ca;
+    --border:#2c3b52; --input:#3b4e6b; --destructive:oklch(0.704 0.191 22.216);
+    --success:oklch(0.696 0.17 162.48); --warning:oklch(0.769 0.188 70.08);
+    --info:oklch(0.613 0.14 239.919); --table-header:#1d293d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#eef2f7;color:#172033;font-family:var(--font-sans);font-size:13px}
+  .wrap{width:1300px;margin:0 auto;padding:24px}
+  .doc-title{font-size:12.5px;color:#5e6c82;line-height:1.7;margin:0 0 12px;background:#fff;border:1px solid #dce3ee;border-radius:10px;padding:10px 14px}
+  .app{background:var(--background);color:var(--foreground);border:1px solid var(--border);border-radius:16px;padding:18px 20px 22px;margin-bottom:18px}
+  .panel-tag{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--secondary-fg);background:var(--secondary);border-radius:6px;padding:2px 8px;margin-bottom:12px}
+  .card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px}
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .between{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .name{font-size:15px;font-weight:600}
+  .sub{font-size:12px;color:var(--muted-fg);font-variant-numeric:tabular-nums}
+  .badge{display:inline-flex;align-items:center;gap:4px;border-radius:6px;padding:2px 7px;font-size:11px;line-height:16px;white-space:nowrap}
+  .b-outline{border:1px solid var(--border);color:var(--foreground);background:transparent}
+  .b-secondary{background:var(--secondary);color:var(--secondary-fg)}
+  .b-muted{background:var(--muted);color:var(--muted-fg)}
+  .b-success{background:color-mix(in oklch,var(--success) 16%,transparent);color:var(--success);border:1px solid color-mix(in oklch,var(--success) 35%,transparent)}
+  .b-danger{background:color-mix(in oklch,var(--destructive) 16%,transparent);color:var(--destructive);border:1px solid color-mix(in oklch,var(--destructive) 35%,transparent)}
+  .b-warn{background:color-mix(in oklch,var(--warning) 20%,transparent);color:var(--warning);border:1px solid color-mix(in oklch,var(--warning) 40%,transparent)}
+  .b-info{background:color-mix(in oklch,var(--info) 14%,transparent);color:var(--info);border:1px solid color-mix(in oklch,var(--info) 35%,transparent)}
+  .b-neutral{background:var(--muted);color:var(--muted-fg);border:1px solid var(--border)}
+  .mono{font-family:'JetBrains Mono',Consolas,monospace;font-variant-numeric:tabular-nums}
+  .btn{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:6px 11px;font-size:12px;border:1px solid var(--border);background:var(--card);color:var(--foreground);cursor:default}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:var(--primary-fg);font-weight:600}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--muted-fg)}
+  .btn.sm{padding:4px 9px;font-size:11.5px}
+  .btn[disabled]{opacity:.55}
+  .stepper{display:flex;align-items:center;gap:6px;font-size:12.5px}
+  .step{display:flex;align-items:center;gap:6px;color:var(--muted-fg)}
+  .step .num{width:20px;height:20px;border-radius:50%;background:var(--muted);color:var(--muted-fg);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600}
+  .step.done .num,.step.active .num{background:var(--primary);color:var(--primary-fg)}
+  .step.active{color:var(--foreground);font-weight:600}
+  .sep{color:var(--muted-fg);opacity:.5}
+  .toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 0 10px;border-bottom:1px solid var(--border);margin-bottom:6px}
+  .seg{display:inline-flex;background:var(--muted);border-radius:8px;padding:2px}
+  .seg span{padding:4px 10px;font-size:12px;border-radius:6px;color:var(--muted-fg)}
+  .seg span.on{background:var(--card);color:var(--foreground);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .pill{font-size:11.5px;border-radius:7px;padding:3px 9px;border:1px solid var(--border);color:var(--muted-fg)}
+  .tree{padding-top:4px}
+  .node{display:flex;align-items:center;gap:7px;height:32px;border-radius:8px;padding:0 8px}
+  .node:hover{background:color-mix(in oklch,var(--muted) 60%,transparent)}
+  .chev{color:var(--muted-fg);font-size:10px;width:10px}
+  .ico{width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted-fg);font-size:11px}
+  .count{font-size:10px;color:var(--muted-fg);background:var(--muted);border-radius:5px;padding:1px 5px;font-variant-numeric:tabular-nums}
+  .count.neg{color:var(--destructive);background:color-mix(in oklch,var(--destructive) 12%,transparent)}
+  .case-card{border:1px solid var(--border);border-radius:8px;padding:6px 9px;background:color-mix(in oklch,var(--card) 92%,var(--muted));display:inline-flex;align-items:center;gap:8px;max-width:760px}
+  .case-name{font-size:12px;font-weight:500;max-width:660px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .leaf{display:flex;align-items:center;gap:8px;height:30px;font-size:12px}
+  .leaf .id{font-size:11px;color:var(--muted-fg)}
+  .indent1{margin-left:18px}.indent2{margin-left:36px}.indent3{margin-left:54px}.indent4{margin-left:72px}
+  .alert{display:flex;gap:8px;align-items:flex-start;border:1px solid color-mix(in oklch,var(--warning) 40%,transparent);background:color-mix(in oklch,var(--warning) 12%,transparent);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:8px;line-height:1.6}
+  .alert.info{border-color:color-mix(in oklch,var(--info) 35%,transparent);background:color-mix(in oklch,var(--info) 10%,transparent)}
+  .alert .act{margin-left:8px}
+  .empty{border:1px dashed var(--border);border-radius:10px;padding:26px;text-align:center;color:var(--muted-fg)}
+  .empty .t{color:var(--foreground);font-weight:600;margin-bottom:5px;font-size:13px}
+  .skeleton{background:var(--muted);border-radius:6px;height:14px}
+  .footer{display:flex;align-items:center;gap:8px;border-top:1px solid var(--border);padding-top:12px;margin-top:10px}
+  .hint{font-size:11px;color:var(--muted-fg)}
+  .input{height:32px;border:1px solid var(--input);border-radius:8px;padding:0 10px;display:flex;align-items:center;color:var(--muted-fg);font-size:12px;background:var(--card)}
+  .textarea{height:52px;border:1px solid var(--input);border-radius:8px;padding:8px 10px;color:var(--muted-fg);font-size:12px;background:var(--card)}
+  .label{font-size:12px;font-weight:500;margin-bottom:6px}
+  .exit{border:1px solid var(--border);border-radius:10px;padding:10px 12px;flex:1}
+  .exit.on{border-color:var(--primary);background:color-mix(in oklch,var(--primary) 7%,transparent)}
+  .exit .h{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600}
+  .radio{width:14px;height:14px;border-radius:50%;border:1px solid var(--muted-fg);display:inline-flex;align-items:center;justify-content:center}
+  .exit.on .radio{border-color:var(--primary);background:var(--primary)}
+  .exit.on .radio i{width:5px;height:5px;border-radius:50%;background:var(--primary-fg);display:block}
+  .exit .d{font-size:11.5px;color:var(--muted-fg);margin-top:5px;line-height:1.55}
+  .caption{font-size:11.5px;color:#5e6c82;line-height:1.7;margin:4px 2px 14px}
+  .dark .caption{color:#a7b5ca}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .divider{height:1px;background:var(--border);margin:10px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="doc-title">
+    <b>18 挑选合并功能交互重设计 · §5.2 预览步骤（Step 3）· INT-1988</b><br/>
+    真实数据：主库 <span class="mono">intelligent_audio_test</span>（docker 网关 15000，2026-10-26 实测）。购物车放入来源任务 3 个 —— 312「E2E测试任务_2026/8/27 16:06:11」（2 条执行失败）、402「话轮接管_打断_小艺E2E测试任务」（4 条已完成）、407「豆包-话轮接管-打断E2E测试任务」（3 条已完成）；<span class="mono">POST /tasks/cherry-picks/preview</span> 返回 <span class="mono">total_results=9 / source_task_count=3 / device_ids=[9,10] / case_count=9 / execution_status_counts={completed:7, failed:2} / duplicates=[] / config_inconsistent=false</span>。取数前购物车为空，取完已清空。
+  </div>
+
+  <!-- ==================== LIGHT ==================== -->
+  <div class="app" id="light">
+    <span class="panel-tag">① 预览步骤（Step 3）· 浅色 · 真实数据</span>
+
+    <div class="between" style="margin-bottom:14px">
+      <div class="stepper">
+        <span class="step done"><span class="num">1</span>挑选</span><span class="sep">›</span>
+        <span class="step done"><span class="num">2</span>购物车</span><span class="sep">›</span>
+        <span class="step active"><span class="num">3</span>预览</span><span class="sep">›</span>
+        <span class="step"><span class="num">4</span>下单</span>
+      </div>
+      <button class="btn ghost sm">← 返回列表</button>
+    </div>
+
+    <div class="card">
+      <div class="row" style="gap:10px">
+        <span class="name">合并预览</span>
+        <span class="badge b-outline">只读</span>
+        <span class="hint">下单后将生成的容器组成</span>
+      </div>
+      <div class="row" style="margin-top:12px;gap:8px">
+        <span class="badge b-success">结果 9 条</span>
+        <span class="badge b-info">来源任务 3 个</span>
+        <span class="badge b-neutral">设备 2 台 / 用例 9 个</span>
+      </div>
+
+      <div class="alert info" style="margin-top:12px;margin-bottom:0">
+        <span style="color:var(--info)">ⓘ</span>
+        <div>2 条结果执行失败，合并后按原状态保留（执行失败 / 部分失败的任务本身即可被挑选合并）。</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="between">
+        <div class="row" style="gap:8px">
+          <span class="name" style="font-size:14px">组成预览</span>
+          <span class="badge b-muted">四视图 · 只读</span>
+        </div>
+        <span class="hint">按购物车快照展示，评估状态与分组标签在下单后可见</span>
+      </div>
+
+      <div class="toolbar">
+        <div class="seg"><span class="on">任务视图</span><span>用例视图</span><span>设备视图</span><span>结果类型视图</span></div>
+        <span class="pill">全部执行状态 ▾</span>
+        <span class="pill">全部展开</span>
+        <span class="pill">全部收起</span>
+      </div>
+
+      <div class="tree">
+        <!-- 来源任务 402 -->
+        <div class="node"><span class="chev">▾</span><span class="ico">▤</span><span>话轮接管_打断_小艺E2E测试任务_2026/9/22 20:34:14</span><span class="count">4 条</span></div>
+
+        <div class="node indent1"><span class="chev">▾</span><span class="ico">☰</span>
+          <span class="case-card"><span class="case-name">测试用例_JG0242_多轮接管-上下文_流利表达_娱乐文化_女_韩剧推荐多轮_silence_1.wav</span></span>
+          <span class="count">1 条</span></div>
+        <div class="node indent2"><span class="chev">▾</span><span class="ico">▣</span><span>pura90小艺</span><span class="count">1 条</span></div>
+        <div class="node indent3"><span class="chev">▾</span><span class="ico">◇</span><span class="mono">default</span><span class="count">1 条</span></div>
+        <div class="leaf indent4"><span class="ico">•</span><span class="mono id">源结果 #3838</span><span class="badge b-success">已完成</span></div>
+
+        <div class="node indent1"><span class="chev">▸</span><span class="ico">☰</span>
+          <span class="case-card"><span class="case-name">测试用例_JG0084_单轮接管-长句接管_流利表达_日常生活_女_倒霉一天吐槽_silence.wav</span></span>
+          <span class="count">1 条</span></div>
+        <div class="node indent1"><span class="chev">▸</span><span class="ico">☰</span>
+          <span class="case-card"><span class="case-name">测试用例_JG0090_单轮接管-长句接管_列举_娱乐文化_女_云南旅游推荐_silence.wav</span></span>
+          <span class="count">1 条</span></div>
+        <div class="node indent1"><span class="chev">▸</span><span class="ico">☰</span>
+          <span class="case-card"><span class="case-name">测试用例_JG0093_单轮接管-长句接管_递进_法律事务_女_签合同注意项_silence.wav</span></span>
+          <span class="count">1 条</span></div>
+
+        <!-- 来源任务 312（失败） -->
+        <div class="node" style="margin-top:4px"><span class="chev">▾</span><span class="ico">▤</span><span>E2E测试任务_2026/8/27 16:06:11</span><span class="count neg">2 条 · 失败 2</span></div>
+        <div class="node indent1"><span class="chev">▾</span><span class="ico">☰</span>
+          <span class="case-card"><span class="case-name">用例不可用 781c79a1…</span></span>
+          <span class="count neg">1 条 · 失败 1</span></div>
+        <div class="node indent2"><span class="chev">▾</span><span class="ico">▣</span><span>pura90小艺</span><span class="count neg">1 条 · 失败 1</span></div>
+        <div class="node indent3"><span class="chev">▾</span><span class="ico">◇</span><span class="mono">default</span><span class="count neg">1 条 · 失败 1</span></div>
+        <div class="leaf indent4"><span class="ico">•</span><span class="mono id">源结果 #2857</span><span class="badge b-danger">已失败</span></div>
+        <div class="node indent1"><span class="chev">▸</span><span class="ico">☰</span>
+          <span class="case-card"><span class="case-name">用例不可用 50221156…</span></span>
+          <span class="count neg">1 条 · 失败 1</span></div>
+
+        <!-- 来源任务 407 -->
+        <div class="node" style="margin-top:4px"><span class="chev">▸</span><span class="ico">▤</span><span>豆包-话轮接管-打断E2E测试任务_2026/9/23 17:33:29</span><span class="count">3 条</span></div>
+      </div>
+
+      <div class="footer">
+        <button class="btn ghost sm">← 返回购物车修改</button>
+        <span class="hint" style="margin-left:4px">预览为只读：勾选 / 移除 / 批量移除 / 一键移除失效只在购物车进行</span>
+        <span style="flex:1"></span>
+        <button class="btn primary">确认下单（9）</button>
+      </div>
+    </div>
+
+    <div class="caption">① 预览步骤：3 枚摘要徽章（结果 / 来源任务 / 设备·用例）只在本步出现一次；主体是「合并后会生成的容器组成」只读四视图（任务视图默认，任务 → 用例卡 → 设备/API → result_type → 叶）；无复选框、无移除钮、无批量浮条、无清空 / 另存挑选集。任务 312 的用例名为 UUID，按降级文案「用例不可用 前 8 位…」显示（真实数据里就有这种缺名用例），不裸显 UUID。</div>
+
+    <!-- ② 下单 -->
+    <span class="panel-tag">② 下单步骤（Step 4）· 浅色 · 已去掉重复三徽章</span>
+    <div class="between" style="margin-bottom:14px">
+      <div class="stepper">
+        <span class="step done"><span class="num">1</span>挑选</span><span class="sep">›</span>
+        <span class="step done"><span class="num">2</span>购物车</span><span class="sep">›</span>
+        <span class="step done"><span class="num">3</span>预览</span><span class="sep">›</span>
+        <span class="step active"><span class="num">4</span>下单</span>
+      </div>
+      <button class="btn ghost sm">← 返回列表</button>
+    </div>
+
+    <div class="card">
+      <div class="row" style="gap:10px">
+        <div class="exit on"><div class="h"><span class="radio"><i></i></span>合并生成新任务</div><div class="d">挑选结果合并为新任务与报告，源任务保持原样</div></div>
+        <div class="exit"><div class="h"><span class="radio"></span>重新执行</div><div class="d">按所选结果的用例×设备集合创建重执行任务并启动</div></div>
+        <div class="exit"><div class="h"><span class="radio"></span>重新评估</div><div class="d">对所选结果按来源任务逐个发起重新评估（不重跑执行）</div></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="label">新任务名称（必填）</div>
+      <div class="input">例如：远场高置信度结果合并验证</div>
+
+      <div class="label" style="margin-top:12px">新任务描述（可选）</div>
+      <div class="textarea">描述挑选合并的背景与目的</div>
+
+      <div class="divider"></div>
+      <div class="row"><span style="color:var(--primary);font-size:12.5px">▸ 任务级配置（可选，默认取首个来源任务）</span></div>
+
+      <div class="footer">
+        <button class="btn ghost sm">← 返回预览</button>
+        <span class="hint" style="margin-left:4px">失效条目：{i} 条将在下单时跳过，可返回购物车移除</span>
+        <span style="flex:1"></span>
+        <button class="btn primary">确认下单</button>
+      </div>
+    </div>
+    <div class="caption">② 下单步骤：<b>不再渲染</b>「结果 / 来源任务 / 设备·用例」三枚 StatBadge（§5.3 去重），统计只在预览页给一次；保留三出口、失效 Alert、新任务字段、任务级配置折叠区与配置不一致强制确认。</div>
+  </div>
+
+  <!-- ==================== DARK ==================== -->
+  <div class="app dark" id="dark">
+    <span class="panel-tag">③ 预览步骤 · 深色（同一份真实数据）</span>
+
+    <div class="between" style="margin-bottom:14px">
+      <div class="stepper">
+        <span class="step done"><span class="num">1</span>挑选</span><span class="sep">›</span>
+        <span class="step done"><span class="num">2</span>购物车</span><span class="sep">›</span>
+        <span class="step active"><span class="num">3</span>预览</span><span class="sep">›</span>
+        <span class="step"><span class="num">4</span>下单</span>
+      </div>
+      <button class="btn ghost sm">← 返回列表</button>
+    </div>
+
+    <div class="card">
+      <div class="row" style="gap:10px">
+        <span class="name">合并预览</span>
+        <span class="badge b-outline">只读</span>
+        <span class="hint">下单后将生成的容器组成</span>
+      </div>
+      <div class="row" style="margin-top:12px;gap:8px">
+        <span class="badge b-success">结果 9 条</span>
+        <span class="badge b-info">来源任务 3 个</span>
+        <span class="badge b-neutral">设备 2 台 / 用例 9 个</span>
+      </div>
+      <div class="alert info" style="margin-top:12px;margin-bottom:0">
+        <span style="color:var(--info)">ⓘ</span>
+        <div>2 条结果执行失败，合并后按原状态保留（执行失败 / 部分失败的任务本身即可被挑选合并）。</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="between">
+        <div class="row" style="gap:8px">
+          <span class="name" style="font-size:14px">组成预览</span>
+          <span class="badge b-muted">四视图 · 只读</span>
+        </div>
+        <span class="hint">按购物车快照展示，评估状态与分组标签在下单后可见</span>
+      </div>
+
+      <div class="toolbar">
+        <div class="seg"><span class="on">任务视图</span><span>用例视图</span><span>设备视图</span><span>结果类型视图</span></div>
+        <span class="pill">全部执行状态 ▾</span>
+        <span class="pill">全部展开</span>
+        <span class="pill">全部收起</span>
+      </div>
+
+      <div class="tree">
+        <div class="node"><span class="chev">▾</span><span class="ico">▤</span><span>话轮接管_打断_小艺E2E测试任务_2026/9/22 20:34:14</span><span class="count">4 条</span></div>
+        <div class="node indent1"><span class="chev">▾</span><span class="ico">☰</span>
+          <span class="case-card"><span class="case-name">测试用例_JG0242_多轮接管-上下文_流利表达_娱乐文化_女_韩剧推荐多轮_silence_1.wav</span></span>
+          <span class="count">1 条</span></div>
+        <div class="node indent2"><span class="chev">▾</span><span class="ico">▣</span><span>pura90小艺</span><span class="count">1 条</span></div>
+        <div class="node indent3"><span class="chev">▾</span><span class="ico">◇</span><span class="mono">default</span><span class="count">1 条</span></div>
+        <div class="leaf indent4"><span class="ico">•</span><span class="mono id">源结果 #3838</span><span class="badge b-success">已完成</span></div>
+        <div class="node indent1"><span class="chev">▸</span><span class="ico">☰</span>
+          <span class="case-card"><span class="case-name">测试用例_JG0084_单轮接管-长句接管_流利表达_日常生活_女_倒霉一天吐槽_silence.wav</span></span>
+          <span class="count">1 条</span></div>
+        <div class="node indent1"><span class="chev">▸</span><span class="ico">☰</span>
+          <span class="case-card"><span class="case-name">测试用例_JG0090_单轮接管-长句接管_列举_娱乐文化_女_云南旅游推荐_silence.wav</span></span>
+          <span class="count">1 条</span></div>
+        <div class="node indent1"><span class="chev">▸</span><span class="ico">☰</span>
+          <span class="case-card"><span class="case-name">测试用例_JG0093_单轮接管-长句接管_递进_法律事务_女_签合同注意项_silence.wav</span></span>
+          <span class="count">1 条</span></div>
+
+        <div class="node" style="margin-top:4px"><span class="chev">▾</span><span class="ico">▤</span><span>E2E测试任务_2026/8/27 16:06:11</span><span class="count neg">2 条 · 失败 2</span></div>
+        <div class="node indent1"><span class="chev">▾</span><span class="ico">☰</span>
+          <span class="case-card"><span class="case-name">用例不可用 781c79a1…</span></span>
+          <span class="count neg">1 条 · 失败 1</span></div>
+        <div class="node indent2"><span class="chev">▾</span><span class="ico">▣</span><span>pura90小艺</span><span class="count neg">1 条 · 失败 1</span></div>
+        <div class="node indent3"><span class="chev">▾</span><span class="ico">◇</span><span class="mono">default</span><span class="count neg">1 条 · 失败 1</span></div>
+        <div class="leaf indent4"><span class="ico">•</span><span class="mono id">源结果 #2857</span><span class="badge b-danger">已失败</span></div>
+        <div class="node indent1"><span class="chev">▸</span><span class="ico">☰</span>
+          <span class="case-card"><span class="case-name">用例不可用 50221156…</span></span>
+          <span class="count neg">1 条 · 失败 1</span></div>
+
+        <div class="node" style="margin-top:4px"><span class="chev">▸</span><span class="ico">▤</span><span>豆包-话轮接管-打断E2E测试任务_2026/9/23 17:33:29</span><span class="count">3 条</span></div>
+      </div>
+
+      <div class="footer">
+        <button class="btn ghost sm">← 返回购物车修改</button>
+        <span class="hint" style="margin-left:4px">预览为只读：勾选 / 移除 / 批量移除 / 一键移除失效只在购物车进行</span>
+        <span style="flex:1"></span>
+        <button class="btn primary">确认下单（9）</button>
+      </div>
+    </div>
+
+    <div class="caption">③ 深色：<span class="mono">--card:#182235</span> / <span class="mono">--border:#2c3b52</span> / <span class="mono">--muted-foreground:#a7b5ca</span>；主色 <span class="mono">--primary</span> 与浅色同值，失败 / 警告 / 失效沿用 §5.5.7 口径。</div>
+  </div>
+
+  <!-- ==================== STATES ==================== -->
+  <div class="app" id="states">
+    <span class="panel-tag">④ 状态组件（按 §5.2 文案设计；{i}/{k}/组合为占位，非实测数据）</span>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="label">失效 Alert（<span class="mono">invalid_result_ids.length &gt; 0</span>）—— 操作指回购物车</div>
+        <div class="alert" style="margin-bottom:8px">
+          <span style="color:var(--warning)">⚠</span>
+          <div>3 条购物车条目已失效（源结果被删除），下单时将跳过，<b>本次将合并 6 条</b>。
+            <span class="act"><button class="btn sm">返回购物车移除</button></span>
+          </div>
+        </div>
+        <div class="node" style="opacity:.65"><span class="chev">▾</span><span class="ico">▤</span><span>E2E测试任务_旧样本</span><span class="count">1 条 · 失效 1</span></div>
+        <div class="leaf indent1" style="text-decoration:line-through;opacity:.6">
+          <span class="ico">•</span><span class="mono id">源结果 #2711</span><span class="badge b-success">已完成</span>
+        </div>
+        <div class="leaf indent1"><span class="ico">•</span><span class="mono id">源结果 #2712</span><span class="badge b-warn">已失效</span></div>
+        <div class="footer" style="margin-top:10px">
+          <span class="hint">购物车 9 条 · 失效 3 条 · 有效 6 条</span>
+          <span style="flex:1"></span>
+          <button class="btn primary">确认下单（6）</button>
+        </div>
+        <div class="caption" style="margin:8px 2px 0">叶行 muted + 删除线 +「已失效」；分支计数追加「· 失效 {k}」。<b>预览不提供「一键移除失效」</b>（只读），动作回 Step 2。<b>主钮数字 = 有效条数</b>（<span class="mono">preview.totalResults</span>，已剔除失效，与徽章「结果 6 条」同口径），不取购物车 <span class="mono">total</span>（9）。</div>
+      </div>
+
+      <div class="card">
+        <div class="label">重复 / 配置不一致 Alert（预校验，说明性）</div>
+        <div class="alert info" style="margin-bottom:8px">
+          <span style="color:var(--info)">≡</span>
+          <div>同设备同用例存在多来源结果 {k} 组，合并将全部保留并标注来源。</div>
+        </div>
+        <div class="alert" style="margin-bottom:0">
+          <span style="color:var(--warning)">⚠</span>
+          <div>{p} 个来源任务的任务级配置（{配置项}）不一致，新任务默认取首个来源任务配置，可展开「任务级配置」覆盖。</div>
+        </div>
+        <div class="caption" style="margin:10px 2px 0">两条只在命中时出现；配置不一致仍由 Step 4 的 ConfirmDialog 强制确认承接（§5.3）。</div>
+      </div>
+
+      <div class="card">
+        <div class="label">空态 · 购物车为空</div>
+        <div class="empty">
+          <div class="t">购物车为空，暂无可预览的合并组成</div>
+          <div style="font-size:12px">先从任务 / 用例 / 设备 / 结果类型任一层级勾选执行结果加入购物车</div>
+          <div style="margin-top:10px"><button class="btn sm">返回购物车</button></div>
+        </div>
+        <div class="caption" style="margin:8px 2px 0">主钮「确认下单（0）」禁用。</div>
+      </div>
+
+      <div class="card">
+        <div class="label">加载 / 失败</div>
+        <div class="row" style="gap:8px;margin-bottom:10px">
+          <div class="skeleton" style="width:96px"></div><div class="skeleton" style="width:112px"></div><div class="skeleton" style="width:150px"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
+          <div class="row" style="gap:8px"><div class="skeleton" style="width:14px;height:14px"></div><div class="skeleton" style="width:300px"></div><div class="skeleton" style="width:48px"></div></div>
+          <div class="row" style="gap:8px;padding-left:18px"><div class="skeleton" style="width:14px;height:14px"></div><div class="skeleton" style="width:360px"></div><div class="skeleton" style="width:48px"></div></div>
+          <div class="row" style="gap:8px;padding-left:36px"><div class="skeleton" style="width:14px;height:14px"></div><div class="skeleton" style="width:240px"></div><div class="skeleton" style="width:48px"></div></div>
+        </div>
+        <div class="empty" style="padding:18px">
+          <div class="t">合并预览失败</div>
+          <div style="font-size:12px">预览摘要未取到，可重试</div>
+          <div style="margin-top:8px"><button class="btn sm">重试</button></div>
+        </div>
+        <div class="caption" style="margin:8px 2px 0">加载：徽章骨架 + 树骨架 3 层（文案「正在生成合并预览…」）；失败：树区 Empty + 重试，徽章不做假数字；<b>不弹 toast</b>（预览进入即自动取数，失败由页内错误态承担，§5.2 ⑦）。</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

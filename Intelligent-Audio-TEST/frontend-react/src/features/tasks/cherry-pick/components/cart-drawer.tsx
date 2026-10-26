@@ -2,15 +2,17 @@
  * 购物车抽屉（18_挑选合并交互重设计.md §4.4/§7.1，INT-600）。
  * Sheet sm:max-w-lg 全局入口（导航栏角标落位 INT-344，本卡页内同步）；
  * 内容复用 CartPanel（购物车树 + 移除矩阵全量）。
- * 底部：继续挑选（关抽屉回挑选）｜主钮「去复核（{n}）」（外部跳向导 Step 3）。
+ * 底部：继续挑选（关抽屉回挑选）｜主钮「去预览（{n}）」（外部跳向导 Step 3 预览）。
  */
 import { ShoppingCart } from 'lucide-react'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
+import { Button } from '@/components/ui/button'
 import {
   Sheet,
   SheetContent,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -23,7 +25,7 @@ export function CartDrawer({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** 去复核（外部打开向导 Step 3；未开向导时先开向导跳复核） */
+  /** 去预览（外部打开向导 Step 3；未开向导时先开向导跳预览步骤） */
   onGoReview?: () => void
 }) {
   const { hasPermission } = usePermissions()
@@ -42,18 +44,33 @@ export function CartDrawer({
           </SheetTitle>
         </SheetHeader>
 
-        <CartPanel
-          readOnly={!canWrite}
-          onGoContinuePick={() => onOpenChange(false)}
-          onGoReview={
-            canWrite
-              ? () => {
+        {/* 导航钮交给下方 SheetFooter（INT-2003 底部操作栏）；此处只保留清空 / 另存为挑选集。
+            CartPanel 的 onGoContinuePick/onGoReview 不注入，避免与 SheetFooter 出现两套同名按钮。 */}
+        <CartPanel readOnly={!canWrite} />
+
+        {canWrite && (
+          <SheetFooter className='border-t pt-3'>
+            <div className='flex gap-2'>
+              <Button
+                variant='outline'
+                className='flex-1'
+                onClick={() => onOpenChange(false)}
+              >
+                继续挑选
+              </Button>
+              <Button
+                className='flex-1'
+                disabled={total === 0}
+                onClick={() => {
                   onOpenChange(false)
                   onGoReview?.()
-                }
-              : undefined
-          }
-        />
+                }}
+              >
+                去预览（{total}）
+              </Button>
+            </div>
+          </SheetFooter>
+        )}
       </SheetContent>
     </Sheet>
   )

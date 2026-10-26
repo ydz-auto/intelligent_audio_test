@@ -1,6 +1,8 @@
 /**
  * 挑选合并功能域常量（features/tasks/cherry-pick，18_挑选合并交互重设计.md §9 中文文案，INT-600）。
- * 文案红线：站内一律「挑选合并/挑选/加入购物车/购物车/复核/下单/挑选集」，不出现 Cherry-Pick。
+ * 文案红线：站内一律「挑选合并/挑选/加入购物车/购物车/预览/下单/挑选集」，不出现 Cherry-Pick。
+ * **「复核」不再指向导步骤**（INT-2003）：该词保留给结果侧的人工复核 / AI 复核
+ * （`task.result.review` / `task.result.ai_review` 与人工复核对话框等），向导第 3 步统一叫「预览」。
  */
 import type { CheckoutAction, PickLevel } from '@/domain/models/cherryPick'
 
@@ -8,7 +10,8 @@ import type { CheckoutAction, PickLevel } from '@/domain/models/cherryPick'
 export const WIZARD_STEPS = [
   { key: 'pick', label: '挑选', subtitle: '多级勾选执行结果' },
   { key: 'cart', label: '购物车', subtitle: '可继续挑选/移除/另存挑选集' },
-  { key: 'review', label: '复核', subtitle: '清单核对 + 可编辑' },
+  // key 保持 'review'：`?wizard=` 路由枚举与 `wizard-step-*` testid 是跨卡契约，本卡只改文案
+  { key: 'review', label: '预览', subtitle: '合并后容器组成（只读）' },
   { key: 'checkout', label: '下单', subtitle: '合并/重新执行/重新评估' },
 ] as const
 
