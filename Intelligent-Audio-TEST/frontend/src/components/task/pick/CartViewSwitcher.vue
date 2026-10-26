@@ -8,7 +8,7 @@
 
 <script setup lang="ts">
 /**
- * CartViewSwitcher —— 购物车 / 复核四视图切换器（INT-1831，UX设计规范-VUE 18 §3.2）。
+ * CartViewSwitcher —— 购物车 / 预览四视图切换器（INT-1831，UX设计规范-VUE 18 §3.2）。
  * 任务视图（默认）｜用例视图｜设备视图｜结果类型视图：四视图共享同一购物车条目集与
  * 选中 item_id 集（切换不丢勾选、不改提交载荷），与 React §4.2 `cart-view-switcher` 同口径。
  *

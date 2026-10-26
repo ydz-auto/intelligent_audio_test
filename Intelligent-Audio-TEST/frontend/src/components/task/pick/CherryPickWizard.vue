@@ -1,6 +1,6 @@
 <template>
   <div class="cpw">
-    <!-- 头部：流程指示（挑选 → 购物车 → 复核 → 下单）+ 返回列表 -->
+    <!-- 头部：流程指示（挑选 → 购物车 → 预览 → 下单）+ 返回列表 -->
     <div class="cpw-header">
       <div class="cpw-steps">
         <span
@@ -171,7 +171,7 @@
       <div v-if="cartLoading" class="cpw-empty"><i class="fas fa-spinner fa-spin"></i> 正在加载购物车…</div>
       <div v-else-if="cartCount === 0" class="cpw-empty"><i class="fas fa-shopping-cart"></i> 购物车为空</div>
       <template v-else>
-        <!-- 用例层组织控件（与复核步骤同一份会话态；条目字段直接组织，刷新/直达也不落「未分组」） -->
+        <!-- 用例层组织控件（与预览步骤同一份会话态；条目字段直接组织，刷新/直达也不落「未分组」） -->
         <PickCaseOrgControls
           :org="cartOrg"
           :sub-view="cartSubView"
@@ -207,9 +207,9 @@
       </div>
     </div>
 
-    <!-- 步骤 3：复核 -->
-    <div v-else-if="step === 'review'" class="cpw-body">
-      <div class="cpw-review-summary">
+    <!-- 步骤 3：预览（INT-2033：步骤名由「复核」改为「预览」；只读组成预览由后续卡落地） -->
+    <div v-else-if="step === 'preview'" class="cpw-body">
+      <div class="cpw-preview-summary">
         <div class="cpw-stat-badge"><b>{{ preview?.totalResults ?? 0 }}</b><span>结果（条）</span></div>
         <div class="cpw-stat-badge"><b>{{ preview?.sourceTaskCount ?? 0 }}</b><span>来源任务</span></div>
         <div class="cpw-stat-badge"><b>{{ preview?.deviceIds?.length ?? 0 }}</b><span>设备（台）</span></div>
@@ -232,11 +232,11 @@
 
       <div v-if="cartCount === 0" class="cpw-empty"><i class="fas fa-shopping-cart"></i> 购物车为空</div>
       <template v-else>
-        <!-- 复核工具行（INT-1831 四视图切换器 + 用例层组织控件 + 展开/收起；四视图共享选中集） -->
+        <!-- 预览工具行（INT-1831 四视图切换器 + 用例层组织控件 + 展开/收起；四视图共享选中集） -->
         <div class="cpw-toolbar">
-          <CartViewSwitcher :view="reviewView" @update:view="reviewView = $event" />
-          <button class="cpw-btn" @click="expandAllReview"><i class="fas fa-angles-down"></i> 全部展开</button>
-          <button class="cpw-btn" @click="collapseAllReview"><i class="fas fa-angles-up"></i> 全部收起</button>
+          <CartViewSwitcher :view="previewView" @update:view="previewView = $event" />
+          <button class="cpw-btn" @click="expandAllPreview"><i class="fas fa-angles-down"></i> 全部展开</button>
+          <button class="cpw-btn" @click="collapseAllPreview"><i class="fas fa-angles-up"></i> 全部收起</button>
           <span class="cpw-toolbar-info">共 {{ cartCount }} 条</span>
         </div>
         <PickCaseOrgControls
@@ -250,7 +250,7 @@
       </template>
       <div v-if="cartCount > 0" class="cpw-cart-tree">
         <CartTree
-          :roots="reviewTreeRoots"
+          :roots="previewTreeRoots"
           :selected="selectedItemIds"
           :expanded-keys="cartExpandedKeys"
           :leaf-meta="cartLeafMeta"
@@ -273,21 +273,11 @@
             <span class="cpw-checkout-desc">挑选结果合并为新任务与报告，源任务保持原样</span>
           </div>
           <div v-if="action === 'merge'" class="cpw-checkout-form" @click.stop>
-            <div class="cpw-preview" v-if="preview">
-              <div class="cpw-preview-row"><span>结果总数</span><b>{{ preview.totalResults }}</b></div>
-              <div class="cpw-preview-row"><span>来源任务</span><b>{{ preview.sourceTaskCount }} 个</b></div>
-              <div class="cpw-preview-row"><span>设备</span><b>{{ preview.deviceNames.join('、') || '-' }}</b></div>
-              <div class="cpw-preview-row"><span>用例数</span><b>{{ preview.caseCount }}</b></div>
-              <div class="cpw-preview-row" v-if="preview.duplicates.length > 0">
-                <span>重复提示</span>
-                <b>{{ preview.duplicates.length }} 组同设备同用例多来源结果（默认全保留并标注来源）</b>
-              </div>
-              <div class="cpw-preview-row warn" v-if="invalidCount > 0">
-                <span>失效条目</span><b>{{ invalidCount }} 条（下单时自动跳过）</b>
-              </div>
-              <div class="cpw-preview-row warn" v-if="preview.configInconsistent">
-                <span>配置差异</span>
-                <b>{{ preview.sourceTaskCount }} 个来源任务的任务级配置（{{ (preview.configFields || []).join('、') || '算法参数' }}）不一致，默认取首个来源任务，提交需确认</b>
+            <!-- INT-2033 去重（规范 §16.5 ⑤）：统计 / 重复 / 配置差异三处口径统一由 Step 3 承担，
+                 下单步只保留失效去向提示（配置不一致仍由提交前强制确认兜住） -->
+            <div class="cpw-preview" v-if="invalidCount > 0">
+              <div class="cpw-preview-row warn">
+                <b>{{ invalidCount }} 条失效条目下单时将跳过，可返回购物车移除</b>
               </div>
             </div>
             <input v-model="mergeName" class="cpw-input" placeholder="新任务名称（必填）" />
@@ -325,15 +315,17 @@
 
     <!-- 底部操作 -->
     <div class="cpw-footer">
-      <button v-if="step !== 'pick'" class="cpw-btn" @click="prevStep"><i class="fas fa-arrow-left"></i> 上一步</button>
+      <button v-if="step !== 'pick'" class="cpw-btn" @click="prevStep">
+        <i class="fas fa-arrow-left"></i> {{ step === 'checkout' ? '返回预览' : '上一步' }}
+      </button>
       <span class="cpw-footer-spacer"></span>
       <button v-if="step === 'pick'" class="cpw-btn cpw-btn-primary" :disabled="selectedResultIds.size === 0" @click="commitPick">
         <i class="fas fa-cart-plus"></i> 加入购物车（{{ selectedResultIds.size }}）
       </button>
-      <button v-else-if="step === 'cart'" class="cpw-btn cpw-btn-primary" :disabled="cartCount === 0" @click="goStep('review')">
-        <i class="fas fa-clipboard-check"></i> 去复核（{{ cartCount }}）
+      <button v-else-if="step === 'cart'" class="cpw-btn cpw-btn-primary" :disabled="cartCount === 0" @click="goStep('preview')">
+        <i class="fas fa-clipboard-check"></i> 去预览（{{ cartCount }}）
       </button>
-      <button v-else-if="step === 'review'" class="cpw-btn cpw-btn-primary" :disabled="cartCount === 0" @click="goStep('checkout')">
+      <button v-else-if="step === 'preview'" class="cpw-btn cpw-btn-primary" :disabled="cartCount === 0" @click="goStep('checkout')">
         <i class="fas fa-flag-checkered"></i> 确认下单（{{ cartCount }}）
       </button>
       <button v-else class="cpw-btn cpw-btn-primary" :disabled="!action || submitting || cartCount === 0" @click="submitCheckout">
@@ -358,11 +350,11 @@ import '../../../assets/styles/components/log.css'
 import '../../../assets/styles/layouts/main.css'
 
 /**
- * CherryPickWizard —— 挑选合并四步向导（INT-577 §5：挑选 → 购物车 → 复核 → 下单）。
+ * CherryPickWizard —— 挑选合并四步向导（INT-577 §5：挑选 → 购物车 → 预览 → 下单）。
  *
  * 挑选：多级树勾选（R1-R10 由 pickTree.ts 承载）+ 筛选器 + 树形/平铺切换；
- * 购物车：树形分组 + 移除矩阵（单条/整组/批量/失效/清空）+ 另存挑选集；
- * 复核：preview 摘要 + 失效/重复/配置不一致 Alert + 可编辑；
+ * 购物车：树形分组 + 移除矩阵（单条/整组/批量/失效/清空）+ 另存挑选集（唯一编辑面）；
+ * 预览：preview 摘要 + 失效/重复/配置不一致 Alert + 可编辑（只读组成预览由后续卡落地）；
  * 下单：三出口（合并生成新任务[默认]/重新执行/重新评估）+ 任务级配置覆盖 + 强制确认。
  */
 import { ref, reactive, computed, onMounted, watch } from 'vue';
@@ -385,7 +377,7 @@ import { buildCartTaskView, buildCartView, collectCartNodeKeys, hasCartCaseOrg, 
 const STEPS = [
   { key: 'pick', label: '挑选', icon: 'fas fa-hand-pointer' },
   { key: 'cart', label: '购物车', icon: 'fas fa-cart-shopping' },
-  { key: 'review', label: '复核', icon: 'fas fa-clipboard-check' },
+  { key: 'preview', label: '预览', icon: 'fas fa-clipboard-check' },
   { key: 'checkout', label: '下单', icon: 'fas fa-paper-plane' },
 ] as const;
 type StepKey = (typeof STEPS)[number]['key'];
@@ -393,7 +385,7 @@ type StepKey = (typeof STEPS)[number]['key'];
 const props = defineProps<{
   /** INT-577 §2.2：批量「加入挑选」预选任务（任务级粒度整任务加购，等价旧合并任务入口） */
   presetTaskIds?: (number | string)[];
-  /** 直达步骤（购物车抽屉「去复核」→ review；缺省 pick） */
+  /** 直达步骤（购物车抽屉「去预览」→ preview；缺省 pick） */
   initialStep?: StepKey;
 }>();
 
@@ -416,11 +408,11 @@ const stepIndex = computed(() => STEPS.findIndex((s) => s.key === step.value));
 function goStep(key: StepKey) {
   step.value = key;
   if (key === 'cart') refreshCart();
-  if (key === 'review' || key === 'checkout') loadPreview();
+  if (key === 'preview' || key === 'checkout') loadPreview();
 }
 function prevStep() {
-  if (step.value === 'checkout') step.value = 'review';
-  else if (step.value === 'review') step.value = 'cart';
+  if (step.value === 'checkout') step.value = 'preview';
+  else if (step.value === 'preview') step.value = 'cart';
   else if (step.value === 'cart') step.value = 'pick';
 }
 
@@ -523,7 +515,7 @@ async function loadAllCandidates() {
       page += 1;
     }
     allCandidates.value = items;
-    // INT-1831：全量候选行的组织字段记入会话缓存（复核四视图组织层数据源）
+    // INT-1831：全量候选行的组织字段记入会话缓存（预览四视图组织层数据源）
     rememberCaseOrg(items);
   } catch (error) {
     console.error('Failed to load pickable task candidates:', error);
@@ -699,7 +691,7 @@ async function loadCandidates() {
     const meta = new Map(knownMeta.value);
     for (const c of candidates.value) meta.set(c.resultId, c);
     knownMeta.value = meta;
-    // INT-1831：候选行组织字段（tags/group_name）记入会话缓存，供购物车 / 复核四视图用例层组织
+    // INT-1831：候选行组织字段（tags/group_name）记入会话缓存，供购物车 / 预览四视图用例层组织
     rememberCaseOrg(candidates.value);
     // 筛选与勾选解耦（§6.2）：筛选变化不清空已选项；仅收起
     collapseAll();
@@ -857,7 +849,7 @@ function resetFilters() {
 
 // ===== 步骤 2/3：购物车 =====
 
-/** 复核 / 购物车两步共享的用例层组织维度与会话态（同一条目集两步口径一致） */
+/** 预览 / 购物车两步共享的用例层组织维度与会话态（同一条目集两步口径一致） */
 const cartOrg = ref<CartOrgDim>('group');
 const cartSubView = ref<CartOrgSubView>('flat');
 /** 组织字段：条目自身 tags/group_name 为主（购物车契约已随条目返回），挑选侧会话缓存仅补充 */
@@ -869,21 +861,21 @@ const cartTreeRoots = computed(() => buildCartTaskView(cart.value.groups, {
   subView: cartSubView.value,
   caseOrgMap: cartCaseOrgMap.value,
 }));
-/** 复核步骤四视图（INT-1831 §3.2）：任务视图（默认）｜用例｜设备｜结果类型；
+/** 预览步骤四视图（INT-1831 §3.2）：任务视图（默认）｜用例｜设备｜结果类型；
  *  四视图共享同一 selectedItemIds（切换不丢勾选、下单载荷不变），组织维度会话态共享。 */
-const reviewView = ref<CartViewMode>('task');
-const reviewTreeRoots = computed(() => buildCartView(reviewView.value, cart.value.groups, {
+const previewView = ref<CartViewMode>('task');
+const previewTreeRoots = computed(() => buildCartView(previewView.value, cart.value.groups, {
   org: cartOrg.value,
   subView: cartSubView.value,
   caseOrgMap: cartCaseOrgMap.value,
 }));
 /** 组织字段兜底提示（条目与会话缓存均无用例分组/标签字段时说明组织层口径） */
 const cartHasOrgData = computed(() => hasCartCaseOrg(cart.value.groups, cartCaseOrgMap.value));
-/** 全部展开 / 全部收起（复核工具行；与购物车步骤共用展开态集合） */
-function expandAllReview() {
-  cartExpandedKeys.value = new Set(collectCartNodeKeys(reviewTreeRoots.value));
+/** 全部展开 / 全部收起（预览工具行；与购物车步骤共用展开态集合） */
+function expandAllPreview() {
+  cartExpandedKeys.value = new Set(collectCartNodeKeys(previewTreeRoots.value));
 }
-function collapseAllReview() {
+function collapseAllPreview() {
   cartExpandedKeys.value = new Set();
 }
 const cartLeafMeta = computed(() => {
@@ -900,8 +892,8 @@ watch(cartTreeRoots, (roots) => {
   for (const r of roots) next.add(r.key);
   cartExpandedKeys.value = next;
 }, { immediate: true });
-/** 复核切换视图 / 组织维度后同样展开首层（四视图层级不同，key 各自独立） */
-watch(reviewTreeRoots, (roots) => {
+/** 预览切换视图 / 组织维度后同样展开首层（四视图层级不同，key 各自独立） */
+watch(previewTreeRoots, (roots) => {
   const next = new Set(cartExpandedKeys.value);
   for (const r of roots) next.add(r.key);
   cartExpandedKeys.value = next;
@@ -1046,7 +1038,7 @@ async function restoreSet(setId: number) {
   }
 }
 
-// ===== 步骤 3/4：复核 + 下单 =====
+// ===== 步骤 3/4：预览 + 下单 =====
 
 const preview = ref<PickPreview | null>(null);
 const action = ref<PickCheckoutAction>('merge');
@@ -1179,9 +1171,9 @@ watch(
   },
 );
 
-// 购物车变化（加购/移除/清空/下单）→ 复核摘要重拉（§6.3 复核摘要实时刷新）
+// 购物车变化（加购/移除/清空/下单）→ 预览摘要重拉（§6.3 预览摘要实时刷新）
 watch(() => cartRevision.value, () => {
-  if (step.value === 'review' || step.value === 'checkout') loadPreview();
+  if (step.value === 'preview' || step.value === 'checkout') loadPreview();
 });
 </script>
 
@@ -1506,7 +1498,7 @@ watch(() => cartRevision.value, () => {
 .cpw-set-name {
   flex: 1;
 }
-.cpw-review-summary {
+.cpw-preview-summary {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
@@ -1595,13 +1587,13 @@ watch(() => cartRevision.value, () => {
   padding: 3px 0;
 }
 .cpw-preview-row span { color: var(--color-slate-500, #64748b); }
-.cpw-preview-row.warn b { color: #92400e; }
+.cpw-preview-row.warn b { color: var(--warning-dark, #92400e); }
 .cpw-config-toggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: var(--color-slate-600, #475569);
+  color: var(--muted-foreground, #475569);
   cursor: pointer;
   user-select: none;
 }

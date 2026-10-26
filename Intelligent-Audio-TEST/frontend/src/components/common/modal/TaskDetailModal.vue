@@ -796,7 +796,7 @@ const drawerLayerHost = ref<HTMLElement | null>(null);
  * 「复用本次结果重新挑选」：把该容器全部 result_id 批量加购 → toast → 打开购物车抽屉。
  * 不复制容器、不新建任务；重复点击由后端幂等跳过（toast 回显「重复 k 条已跳过」）。
  * 模态语境下抽屉挂进本模态遮罩的层叠上下文（与 React 版把 CartDrawer 渲染在详情内同口径），
- * 否则抽屉（全局层 z-index 1000）会被模态遮罩（13000 档）压住，「去复核」不可点（INT-1838 P2-1）。
+ * 否则抽屉（全局层 z-index 1000）会被模态遮罩（13000 档）压住，「去预览」不可点（INT-1838 P2-1）。
  */
 async function reuseResultsToCart() {
   if (!canPick.value || reuseAdding.value) return;
@@ -821,7 +821,7 @@ async function reuseResultsToCart() {
     drawerLayerHost.value = (rootRef.value?.closest('.modal-overlay') as HTMLElement | null) ?? null;
     cartDrawerState.open({
       layerHost: drawerLayerHost.value,
-      // 抽屉「去复核」时先收起本详情：复核向导在路由页层，模态不收就会开在它后面
+      // 抽屉「去预览」时先收起本详情：预览向导在路由页层，模态不收就会开在它后面
       dismissHost: () => modalControl.close(props.modalId || undefined),
     });
   } catch (error: any) {
@@ -833,7 +833,7 @@ async function reuseResultsToCart() {
 
 /**
  * 「开始挑选」：打开挑选向导阶段 1（CherryPickWizard，step='pick'），不预筛任何来源任务。
- * 与面板工具栏「开始挑选」/ 购物车「去复核」同一套跨挂载机制：写共享请求 → 切到挑选合并
+ * 与面板工具栏「开始挑选」/ 购物车「去预览」同一套跨挂载机制：写共享请求 → 切到挑选合并
  * 页签，CherryPickPanel 挂载后消费请求自开向导。前端为 hash 路由，跳转必须走 router.push。
  */
 function startPicking() {

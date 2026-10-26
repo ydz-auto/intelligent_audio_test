@@ -45,7 +45,7 @@
         <div v-else-if="cartCount === 0" class="cd-empty">
           <i class="fas fa-shopping-cart"></i>
           <p>购物车为空</p>
-          <p class="cd-empty-hint">在任务详情或挑选合并页勾选执行结果，加入购物车后复核合并</p>
+          <p class="cd-empty-hint">在任务详情或挑选合并页勾选执行结果，加入购物车后预览、合并</p>
         </div>
         <div v-else class="cd-tree">
           <CartTree
@@ -79,8 +79,8 @@
         <div class="cd-footer">
           <button class="cd-btn" @click="emit('close')"><i class="fas fa-arrow-left"></i> 继续挑选</button>
           <span class="cd-spacer"></span>
-          <button v-if="canWrite" class="cd-btn cd-btn-primary" :disabled="cartCount === 0" @click="onGoReview">
-            <i class="fas fa-clipboard-check"></i> 去复核（{{ cartCount }}）
+          <button v-if="canWrite" class="cd-btn cd-btn-primary" :disabled="cartCount === 0" @click="onGoPreview">
+            <i class="fas fa-clipboard-check"></i> 去预览（{{ cartCount }}）
           </button>
         </div>
       </div>
@@ -102,7 +102,7 @@ import '../../../assets/styles/layouts/main.css'
  * CartDrawer —— 全局购物车抽屉（INT-577 §4.4；导航栏角标入口，任意页面可达）。
  *
  * 购物车树（任务分组）+ 移除矩阵（单条/整组/批量/失效/清空）+ 另存挑选集；
- * 数据源 = usePickCart 单例镜像（与挑选页/复核同源，§6.3 非双源）。
+ * 数据源 = usePickCart 单例镜像（与挑选页/预览同源，§6.3 非双源）。
  */
 import { ref, computed, watch } from 'vue';
 import { usePickCart } from '../../../composables/task/usePickCart';
@@ -128,28 +128,28 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void;
-  (e: 'go-review'): void;
+  (e: 'go-preview'): void;
 }>();
 
 /**
  * INT-1838 P2-1：抽屉的宿主层。缺省 Teleport 到 body（全局层，导航角标等入口）；
  * 由模态窗内的入口拉起时（容器详情「复用本次结果重新挑选」），宿主 = 该模态遮罩，
- * 抽屉因此盖在模态内容之上可直接操作（「去复核」可点），且不越过全局 toast / 后开的模态。
+ * 抽屉因此盖在模态内容之上可直接操作（「去预览」可点），且不越过全局 toast / 后开的模态。
  */
 const cartDrawerState = useCartDrawerState();
 const inModalLayer = computed(() => Boolean(cartDrawerState.layerHost.value));
 const teleportTarget = computed<HTMLElement | string>(() => cartDrawerState.layerHost.value ?? 'body');
 
-/** 「去复核」：模态语境先收起宿主模态，否则复核向导会开在详情模态之后（看起来没反应） */
-function onGoReview() {
+/** 「去预览」：模态语境先收起宿主模态，否则预览向导会开在详情模态之后（看起来没反应） */
+function onGoPreview() {
   cartDrawerState.dismissHost();
-  emit('go-review');
+  emit('go-preview');
 }
 
 const notification = useNotification();
 const modalControl = useModalControl();
 const { hasPermission: can } = useAuthStore();
-/** §8：增删/另存/复核整链 task:cherry_pick；algo_engineer（仅 task:read）只读可见 */
+/** §8：增删/另存/预览整链 task:cherry_pick；algo_engineer（仅 task:read）只读可见 */
 const canWrite = computed(() => can(PermissionPoint.TASK_CHERRY_PICK));
 const {
   cart, cartLoading, cartCount, invalidCount, sets,
@@ -184,7 +184,7 @@ const cartLeafMeta = computed(() => {
 const cartExpandedKeys = ref<Set<string>>(new Set());
 /** 组织字段兜底提示（条目与会话缓存均无用例分组/标签字段时说明组织层口径） */
 const cartHasOrgData = computed(() => hasCartCaseOrg(cart.value.groups, cartCaseOrgMap.value));
-/** 切换视图/组织维度后展开首层便于核对（与复核步骤同口径） */
+/** 切换视图/组织维度后展开首层便于核对（与预览步骤同口径） */
 watch(cartTreeRoots, (roots) => {
   const next = new Set(cartExpandedKeys.value);
   for (const r of roots) next.add(r.key);

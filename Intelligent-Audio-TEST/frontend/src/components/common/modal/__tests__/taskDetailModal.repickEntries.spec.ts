@@ -257,7 +257,7 @@ describe('TaskDetailModal 再次挑选入口（INT-1838）', () => {
     expect(mocks.openDrawer).not.toHaveBeenCalled()
   })
 
-  it('模态语境：抽屉层挂进本模态遮罩（P2-1 —— 抽屉不被遮罩压住，「去复核」可点）', async () => {
+  it('模态语境：抽屉层挂进本模态遮罩（P2-1 —— 抽屉不被遮罩压住，「去预览」可点）', async () => {
     const Host = defineComponent({
       render: () => h('div', { class: 'modal-overlay' }, [h(TaskDetailModal, { taskId: 580 })]),
     })

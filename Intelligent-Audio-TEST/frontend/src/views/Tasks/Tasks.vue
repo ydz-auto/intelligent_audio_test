@@ -798,7 +798,7 @@ function applyTabFromQuery() {
 
 // 页签随 URL query 同步：布局壳 router-view 无 :key=fullPath 重挂载——仅 query 变化的站内
 // 跳转不会重挂本页，onMounted 不再重跑，故须同时监听 query.tab（INT-1838：容器详情
-// 「开始挑选」、购物车抽屉「去复核」都以 ?tab=cherry-picks 跳转并要求页签切过去）。
+// 「开始挑选」、购物车抽屉「去预览」都以 ?tab=cherry-picks 跳转并要求页签切过去）。
 watch(() => String(route.query.tab ?? ''), () => { applyTabFromQuery(); });
 
 onMounted(() => {
