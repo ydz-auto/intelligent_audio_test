@@ -120,8 +120,11 @@ class TestTagSourceDegrade:
 
     @pytest.mark.parametrize('raw,expected', [
         ('json', AudioTagSource.JSON),
-        ('JSON', AudioTagSource.JSON),
-        (' json ', AudioTagSource.JSON),
+        # INT-1991 F3：改为精确匹配后，大小写 / 首尾空白变体在 service 侧同为未知值 → both
+        # （网关对同输入本就 422，两侧口径收敛）
+        ('JSON', AudioTagSource.BOTH),
+        (' json ', AudioTagSource.BOTH),
+        ('JSoN', AudioTagSource.BOTH),
         ('path', AudioTagSource.PATH),
         ('both', AudioTagSource.BOTH),
         (AudioTagSource.JSON, AudioTagSource.JSON),
@@ -154,6 +157,15 @@ class TestExtractMergeParamsTagSource:
     def test_empty_and_unknown_degrade(self):
         assert self._params({'tag_source': ''})['tag_source'] is AudioTagSource.BOTH
         assert self._params({'tagSource': 'nope'})['tag_source'] is AudioTagSource.BOTH
+
+    def test_camel_case_wins_when_both_keys_present(self):
+        """INT-1991 F4：两键同时出现时 camelCase 优先，与网关 alias 优先级一致
+
+        网关 pydantic alias=tagSource 优先，{'tag_source': 'folder', 'tagSource': 'json'}
+        按 'json' 放行 200；service 侧若 snake 优先会取到 'folder' 并降级 both，形成绕过校验门的双口径。
+        """
+        params = self._params({'tag_source': 'folder', 'tagSource': 'json'})
+        assert params['tag_source'] is AudioTagSource.JSON
 
 
 # ==================== 秒传：tag_source 不生效 ====================
@@ -353,6 +365,58 @@ class TestMergeEndpoint:
             '/api/v1/audios/upload/merge', json={**MERGE_BODY, 'tag_source': 'folder'})
         assert r.status_code == 422
         assert calls == [], '校验失败不得调到 audio_service'
+
+    def test_body_validation_failure_is_422_invalid_params(self, monkeypatch):
+        """INT-1991 F2：端点级契约——请求体校验失败统一 422 + code=INVALID_PARAMS(100)
+
+        此前为 400 / code=203；响应体形如 {success:false, code:100, message:"参数验证失败: ..."}。
+        """
+        monkeypatch.setattr(
+            _audio_upload_service, '_audio_acl',
+            SimpleNamespace(merge_chunks=lambda data: {
+                'success': True, 'data': {}, 'message': 'ok', 'code': 200}))
+        r = TestClient(_make_app()).post(
+            '/api/v1/audios/upload/merge', json={**MERGE_BODY, 'tag_source': 'folder'})
+        assert r.status_code == 422
+        body = r.json()
+        assert body['success'] is False
+        assert body['code'] == 100
+        assert body['message'].startswith('参数验证失败')
+
+    def test_tag_source_four_cases(self, monkeypatch):
+        """INT-1991 F2 实测四例：缺失/null → 200 + both；空串/非法枚举 → 422"""
+        seen = []
+        monkeypatch.setattr(
+            _audio_upload_service, '_audio_acl',
+            SimpleNamespace(merge_chunks=lambda data: (seen.append(data), {
+                'success': True, 'data': {}, 'message': 'ok', 'code': 200})[1]))
+        client = TestClient(_make_app())
+
+        # 1) 字段缺失（不传）→ 200，service 侧降级 both
+        r = client.post('/api/v1/audios/upload/merge', json=dict(MERGE_BODY))
+        assert r.status_code == 200
+        assert AudioRoundConfigService().extract_merge_params(
+            seen[-1])['tag_source'] is AudioTagSource.BOTH
+
+        # 2) 显式 null → 200 + both
+        r = client.post('/api/v1/audios/upload/merge',
+                        json={**MERGE_BODY, 'tag_source': None})
+        assert r.status_code == 200
+        assert AudioRoundConfigService().extract_merge_params(
+            seen[-1])['tag_source'] is AudioTagSource.BOTH
+
+        # 3) 空串 → 422，且不落到 audio_service
+        before = len(seen)
+        r = client.post('/api/v1/audios/upload/merge',
+                        json={**MERGE_BODY, 'tag_source': ''})
+        assert r.status_code == 422
+        assert len(seen) == before
+
+        # 4) 非法枚举值 → 422，且不落到 audio_service
+        r = client.post('/api/v1/audios/upload/merge',
+                        json={**MERGE_BODY, 'tag_source': 'folder'})
+        assert r.status_code == 422
+        assert len(seen) == before
 
     def test_camel_case_passed_through_raw(self, monkeypatch):
         """网关校验后仍原样透传 data（tagSource 不被改名/丢弃）"""

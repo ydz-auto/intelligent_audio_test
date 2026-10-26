@@ -46,8 +46,10 @@ class AudioRoundConfigService:
             'description': data.get('description', ''),
             'user_tags': data.get('tags', []),
             # INT-1978：标签来源，缺失/未知/空值降级 both（= 历史行为）
+            # INT-1991：两键同时出现时 camelCase 优先——与网关 pydantic alias_generator
+            # （alias=tagSource 优先于 snake_case 字段名）保持同一优先级，避免非法值绕过校验门
             'tag_source': resolve_tag_source(
-                data.get('tag_source') or data.get('tagSource')),
+                data.get('tagSource') or data.get('tag_source')),
             'rounds_config': rounds_config,
             'tc_inherit_tags': tc_inherit_tags,
             'case_background_noise': tc_case_background_noise,

@@ -29,13 +29,15 @@ def resolve_tag_source(value) -> AudioTagSource:
 
     网关层已用 AudioTagSource 校验并拒绝非法值；audio_service 侧拿到的 gRPC data
     JSON 不经网关校验（直连 / 旧客户端），故此处必须防御降级而不是抛错。
+
+    INT-1991：只做**精确**匹配（'json' / 'path' / 'both'），不做 strip / lower 归一。
+    大小写或首尾空白变体（'JSON' / ' json '）在网关侧本就是 422，service 侧同样按未知值
+    降级 both，避免两侧对同一输入给出不同结论（不留双口径）。
     """
     if isinstance(value, AudioTagSource):
         return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in AUDIO_TAG_SOURCE_VALUES:
-            return AudioTagSource(normalized)
+    if isinstance(value, str) and value in AUDIO_TAG_SOURCE_VALUES:
+        return AudioTagSource(value)
     return AudioTagSource.BOTH
 
 
