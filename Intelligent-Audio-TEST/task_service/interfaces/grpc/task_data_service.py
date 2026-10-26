@@ -28,6 +28,7 @@ from shared.proto import task_service_pb2 as task_pb
 from shared.proto import task_service_pb2_grpc as task_grpc
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
+from task_service.application.services.log_archive_service import LogArchiveService
 from task_service.infrastructure.persistence.task_repository import task_repository
 from task_service.infrastructure.persistence.testcase_repository import testcase_repository
 from task_service.infrastructure.persistence.log_repository import log_repository
@@ -630,13 +631,16 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
             return self._resp(False, str(e))
 
     def ArchiveLogs(self, request, context=None):
-        """归档日志（按天数，dry_run 预检）
+        """归档日志（按批次，dry_run 预检）
 
-        读取冷日志并按 (task_id, test_case_id, date) 分组返回，
-        然后删除已归档的记录。调用方（api_gateway）负责将分组写入 OSS。
+        INT-1963：本接口每次只推进**一个批次**——取一批冷日志 → 写入归档
+        存储（OSS 写失败直接报错）→ 成功后按 id 删除该批；响应只含计数
+        （``archived_count`` / ``deleted_count`` / ``has_more`` 等），不再
+        携带全量分组内容，因此单条响应与批大小无关。调用方按 ``has_more``
+        继续下一批，失败即停、下一轮重试。
         """
         try:
-            result = log_repository.archive(
+            result = LogArchiveService.archive_batch(
                 days=request.days or 30,
                 dry_run=request.dry_run,
             )

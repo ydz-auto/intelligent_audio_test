@@ -7,7 +7,6 @@ P0-3 DDD 改造：归档逻辑改为通过 gRPC 调用 task_service.ArchiveLogs�
 """
 
 import time
-import json
 from datetime import datetime, timezone, timedelta
 
 from shared.utils.log_handler._constants import (
@@ -48,51 +47,62 @@ class _ArchiveMixin:
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - ARCHIVE CLEANUP ERROR - {str(e)}")
 
     def _archive_old_logs(self):
-        """通过 gRPC 归档冷数据日志到 OSS
+        """通过 gRPC 分批归档冷数据日志到 OSS
 
-        调用 task_service.ArchiveLogs 获取冷日志分组，写入 OSS 后由服务端删除。
+        INT-1963：一批 = 服务端「取一批冷日志 → 写归档存储 → 成功才按 id
+        删该批」，响应只含计数。本方法按 ``has_more`` 推进下一批：
+        任一批失败即停（异常向上抛，外层打 ARCHIVE ERROR），已上传成功的
+        批次不受影响、服务端一行都没多删，下一轮巡检从剩余冷日志继续。
+        单轮批数受 ``LOG_ARCHIVE_MAX_BATCHES_PER_RUN`` 限制，避免一次巡检
+        无界占用；超出的批次留给下一轮。
         """
         # INT-1902：archive_logs 必须在调用方作用域内导入——此前只在
         # _check_and_archive 里局部导入，本方法内 NameError 令归档每轮静默失败。
         # shared.clients.grpc_clients 与日志层存在反向依赖，不能提到模块级。
         from shared.clients.grpc_clients import archive_logs
-        from shared.infrastructure.storage import storage
+        from shared.infrastructure.config import BaseConfig
 
-        result = archive_logs(days=LOG_HOT_DATA_DAYS, dry_run=False)
-        groups = result.get('groups', {})
-        if not groups:
-            return
-
-        def _save_archive(stored_path, logs):
-            """上传归档到存储（合并已存在文件，按时间排序）"""
-            # stored_path 是 archives 类目内的逻辑 key，不重复携带 category；
-            # 完整存储路径 = category('archives') + key（INT-554 单前缀一致）
-            archive_path = f'archives/{stored_path}'
-            existing_logs = []
-            if storage.exists(archive_path):
-                try:
-                    data = storage.load_bytes(archive_path)
-                    existing_logs = json.loads(data)
-                except Exception:
-                    existing_logs = []
-            existing_logs.extend(logs)
-            existing_logs.sort(key=lambda x: x.get('time', '') or '')
-            storage.save_bytes(
-                json.dumps(existing_logs, ensure_ascii=False, indent=2).encode('utf-8'),
-                'archives', stored_path, content_type='application/json'
-            )
+        try:
+            max_batches = max(1, int(
+                getattr(BaseConfig, 'LOG_ARCHIVE_MAX_BATCHES_PER_RUN', 50) or 50))
+        except (TypeError, ValueError):
+            max_batches = 50
 
         archived_count = 0
-        # groups key 格式: 'tasks/{task_id}/{case_id}/{date}'、'tasks/{task_id}/{date}'、
-        # 'cases/{case_id}/{date}'、'other/{date}'（与读侧前缀口径一致）
-        for group_key, logs in groups.items():
-            archived_count += len(logs)
-            _save_archive(f'{group_key}.json', logs)
+        deleted_count = 0
+        remaining = 0
+        batches = 0
 
-        remaining = result.get('remaining_count', 0)
-        print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Archived {archived_count} logs to OSS via gRPC. Remaining: {remaining}")
+        def _stamp():
+            return datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')
+
+        while True:
+            result = archive_logs(days=LOG_HOT_DATA_DAYS, dry_run=False)
+            batches += 1
+            batch_rows = int(result.get('archived_count', 0) or 0)
+            archived_count += batch_rows
+            deleted_count += int(result.get('deleted_count', 0) or 0)
+            remaining = int(result.get('remaining_count', 0) or 0)
+            if batch_rows:
+                # 单批响应字节数（验收口径：远低于 GRPC_MAX_MESSAGE_MB）
+                print(f"[{_stamp()}] - log_worker - INFO - Archive batch {batches}: "
+                      f"rows={batch_rows}, deleted={result.get('deleted_count', 0)}, "
+                      f"response_bytes={result.get('response_bytes', 0)}, "
+                      f"has_more={result.get('has_more', False)}")
+            if not result.get('has_more'):
+                break
+            if batches >= max_batches:
+                print(f"[{_stamp()}] - log_worker - INFO - Archive reached {max_batches} batches "
+                      f"this run, will continue archiving next cycle.")
+                break
+
+        if archived_count == 0:
+            return
+
+        print(f"[{_stamp()}] - log_worker - INFO - Archived {archived_count} logs to OSS via gRPC "
+              f"(deleted {deleted_count}). Remaining: {remaining}")
         if remaining > get_log_archive_threshold():
-            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Still {remaining} logs, will continue archiving next cycle.")
+            print(f"[{_stamp()}] - log_worker - INFO - Still {remaining} logs, will continue archiving next cycle.")
 
     def _clean_expired_archives(self):
         """清理 OSS 上过期的归档对象（LastModified 超过 LOG_ARCHIVE_RETENTION_DAYS 天）"""

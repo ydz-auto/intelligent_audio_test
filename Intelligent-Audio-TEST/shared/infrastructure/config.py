@@ -339,6 +339,18 @@ class BaseConfig:
     SMTP_FROM: str = _get_env('SMTP_FROM', '')  # 发件人，空则回退 SMTP_USER
     ALERT_EMAIL_RECIPIENTS: str = _get_env('ALERT_EMAIL_RECIPIENTS', '')  # 逗号分隔收件人列表
 
+    # --- 日志归档分批（INT-1963）---
+    # 归档从「先删库后上传」改为「分批取 → 上传成功 → 才删该批」。单批两道上限：
+    # 行数硬上限，以及按 content 长度估算的字节上限（估算取 3 字节/字符的上界，
+    # 实际 UTF-8 体积不会超过它）。默认 1000 行 / 8MiB：主库冷日志单行均值约
+    # 1.2KB（237MB / 200,124 行），1000 行约 1.2MB，远低于 GRPC_MAX_MESSAGE_MB(64)
+    # 与 OSS 单次 PUT 的舒适区间；响应体只含计数（约 200 字节），与批大小无关。
+    LOG_ARCHIVE_BATCH_ROWS: int = _get_int('LOG_ARCHIVE_BATCH_ROWS', 1000)
+    LOG_ARCHIVE_BATCH_MAX_BYTES: int = _get_int('LOG_ARCHIVE_BATCH_MAX_BYTES', 8 * 1024 * 1024)
+    # 单轮归档最多推进的批数：调用方（log_worker 巡检 / 手动归档接口）按此上限
+    # 分批推进，超出的冷数据留待下一轮，避免单次调用无界占用连接与请求时长。
+    LOG_ARCHIVE_MAX_BATCHES_PER_RUN: int = _get_int('LOG_ARCHIVE_MAX_BATCHES_PER_RUN', 50)
+
     @classmethod
     def validate(cls):
         """启动时调用，校验必填项"""

@@ -3,11 +3,11 @@
 P0-3 DDD 改造：所有 Log 写操作（标记/清除/归档）通过 gRPC 调用 task_service，
 不再直连 task_service DB。
 """
-import json
 from datetime import datetime, timedelta
 
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
+from shared.infrastructure.config import BaseConfig
 from shared.utils.query_utils import now_cst
 from shared.infrastructure.storage import storage
 from api_gateway.schemas.log import (
@@ -79,62 +79,60 @@ class LogCommandService:
         try:
             # P0-3: 通过 gRPC 归档日志
             from api_gateway.infrastructure.grpc_proxies import task_data_service
-            result = task_data_service.archive_logs(days=req.days, dry_run=req.dry_run)
 
             if req.dry_run:
+                result = task_data_service.archive_logs(days=req.days, dry_run=True)
                 return success_response({
                     "message": f"将归档 {result.get('cold_logs_count', 0)} 条日志（{req.days}天前的数据）",
                     "cold_logs_count": result.get('cold_logs_count', 0),
                     "cutoff_date": result.get('cutoff_date', '')
                 })
 
-            archived_count = result.get('archived_count', 0)
+            # INT-1963：task_service 每次只推进一批（取批 → 写归档 → 成功才删该批），
+            # 响应只含计数；这里按 has_more 循环推进，单轮批数受
+            # LOG_ARCHIVE_MAX_BATCHES_PER_RUN 限制，剩余冷日志由 log_worker 巡检继续。
+            try:
+                max_batches = max(1, int(
+                    getattr(BaseConfig, 'LOG_ARCHIVE_MAX_BATCHES_PER_RUN', 50) or 50))
+            except (TypeError, ValueError):
+                max_batches = 50
+
+            archived_count = 0
+            deleted_count = 0
+            remaining_count = 0
+            batches = 0
+            capped = False
+            while True:
+                result = task_data_service.archive_logs(days=req.days, dry_run=False)
+                batches += 1
+                batch_archived = int(result.get('archived_count', 0) or 0)
+                archived_count += batch_archived
+                deleted_count += int(result.get('deleted_count', 0) or 0)
+                remaining_count = int(result.get('remaining_count', 0) or 0)
+                # 无进展立即停（防空转）；has_more=False 表示冷日志已归档完
+                if batch_archived == 0 or not result.get('has_more'):
+                    break
+                if batches >= max_batches:
+                    capped = True
+                    break
+
             if archived_count == 0:
                 return success_response(LogArchiveResult(
                     archived_count=0,
                     deleted_count=0,
                     archive_file=None,
-                    remaining_count=result.get('remaining_count', 0)
+                    remaining_count=remaining_count
                 ), "没有需要归档的日志")
 
-            # 将 gRPC 返回的分组写入 OSS
-            groups = result.get('groups', {})
-
-            def save_archive(stored_path, logs):
-                """上传归档到存储（合并已存在的）"""
-                # stored_path 是 archives 类目内的逻辑 key，不重复携带 category；
-                # 完整存储路径 = category('archives') + key（INT-554 单前缀修复）
-                archive_path = f'archives/{stored_path}'
-                existing_logs = []
-                if storage.exists(archive_path):
-                    try:
-                        data = storage.load_bytes(archive_path)
-                        existing_logs = json.loads(data)
-                    except Exception:
-                        existing_logs = []
-                existing_logs.extend(logs)
-                existing_logs.sort(key=lambda x: x.get('time', '') or '')
-                storage.save_bytes(
-                    json.dumps(existing_logs, ensure_ascii=False, indent=2).encode('utf-8'),
-                    'archives', stored_path, content_type='application/json'
-                )
-
-            # groups key 格式: 'tasks/{task_id}/{case_id}/{date}'、'tasks/{task_id}/{date}'、
-            # 'cases/{case_id}/{date}'、'other/{date}'——与读侧 get_archive_status /
-            # get_archived_logs 的 tasks/ cases/ other/ 前缀口径一致（INT-554）
-            group_counts = {'tasks': 0, 'cases': 0, 'other': 0}
-            for group_key, logs in groups.items():
-                stored_path = f'{group_key}.json'
-                save_archive(stored_path, logs)
-                prefix = group_key.split('/')[0]
-                group_counts[prefix] = group_counts.get(prefix, 0) + 1
-
+            message = f"成功归档 {archived_count} 条日志（{batches} 批）"
+            if capped:
+                message += "，剩余冷日志将随后台巡检继续归档"
             return success_response(LogArchiveResult(
                 archived_count=archived_count,
-                deleted_count=result.get('deleted_count', 0),
+                deleted_count=deleted_count,
                 archive_file=None,
-                remaining_count=result.get('remaining_count', 0)
-            ), f"成功归档 {archived_count} 条日志 (任务: {group_counts.get('tasks', 0)}, 用例: {group_counts.get('cases', 0)}, 其他: {group_counts.get('other', 0)})")
+                remaining_count=remaining_count
+            ), message)
 
         except Exception as e:
             return error_response(f"归档失败: {str(e)}", code=500)
