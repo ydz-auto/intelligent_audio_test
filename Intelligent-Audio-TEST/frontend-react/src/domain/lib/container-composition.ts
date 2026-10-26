@@ -175,8 +175,9 @@ export function toPreviewCompositionEntries(
     evaluated: false,
     statusFromCase: false,
     evaluationFromCase: false,
-    sourceCaseGroupName: entry.sourceCaseGroupName ?? null,
-    sourceCaseTags: entry.sourceCaseTags ?? [],
+    // 购物车条目的用例组织字段接线侧命名为 sourceGroupName / sourceTags（INT-1693）
+    sourceCaseGroupName: entry.sourceGroupName ?? null,
+    sourceCaseTags: entry.sourceTags ?? [],
   }))
 }
 

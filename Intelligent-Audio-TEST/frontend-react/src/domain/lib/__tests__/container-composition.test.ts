@@ -400,7 +400,7 @@ describe('toPreviewCompositionEntries（§5.2 ⑤ 预览映射契约，INT-2003�
   it('用例分组 / 标签取快照可选字段（INT-1693 未落地时恒缺省）', () => {
     const entries = toPreviewCompositionEntries(
       [
-        cartEntry({ sourceCaseGroupName: '分组一', sourceCaseTags: ['标签一'] }),
+        cartEntry({ sourceGroupName: '分组一', sourceTags: ['标签一'] }),
         cartEntry({ resultId: 2, itemId: 'i2' }),
       ],
       preview()
