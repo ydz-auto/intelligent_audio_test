@@ -44,6 +44,17 @@ def _get_bool(key: str, default: bool = False) -> bool:
     return os.environ.get(key, str(default)).lower() in ('true', '1', 'yes')
 
 
+def _get_float(key: str, default: float = 0.0) -> float:
+    """读取浮点环境变量；缺省按默认值，非法值回落默认值（不抛异常）。"""
+    raw = os.environ.get(key)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 # 日志归档阈值默认值（INT-1962）：logs 表行数超过该值才触发冷数据归档。
 LOG_ARCHIVE_THRESHOLD_DEFAULT = 300000
 
@@ -99,6 +110,25 @@ class BaseConfig:
     # 不存在」，把所有标签名降级成数字 id。
     AUDIO_TAG_ACL_NEGATIVE_CACHE_SECONDS: int = _get_int(
         'AUDIO_TAG_ACL_NEGATIVE_CACHE_SECONDS', 0)
+
+    # --- 标签快照刷新取证与节奏（INT-2047）---
+    # TTL 到期原先由第一个到达的请求线程自己打上游，且 ListTags 没有显式
+    # deadline（落共享 channel 的 60 s 默认），上游一抖就把整段跨服务时延
+    # 转嫁给用户请求（实测 refresh 281 ms – 29.5 s、列表 max 7958 ms）。
+    # 现改为请求线程只读快照、刷新交给后台线程，刷新调用显式带下面的 deadline。
+    AUDIO_TAG_ACL_REFRESH_TIMEOUT_SECONDS: float = _get_float(
+        'AUDIO_TAG_ACL_REFRESH_TIMEOUT_SECONDS', 2.0)
+    # refresh-ahead 比例（默认 0.7）：快照活到 TTL 的该比例时顺带排期一次
+    # 后台刷新，TTL 真正到期时通常已命中新快照。<=0 或 >=1 = 关闭预热。
+    AUDIO_TAG_ACL_REFRESH_AHEAD_RATIO: float = _get_float(
+        'AUDIO_TAG_ACL_REFRESH_AHEAD_RATIO', 0.7)
+    # 刷新失败后的重试退避（秒，默认 1）：上游挂掉时避免每个过期请求都排一次。
+    AUDIO_TAG_ACL_REFRESH_BACKOFF_SECONDS: float = _get_float(
+        'AUDIO_TAG_ACL_REFRESH_BACKOFF_SECONDS', 1.0)
+    # 起服预热开关（默认开）：audio_service 启动时同步拉一次快照，避免首轮
+    # 列表请求降级成数字 id。
+    AUDIO_TAG_ACL_WARMUP_ENABLED: bool = _get_bool(
+        'AUDIO_TAG_ACL_WARMUP_ENABLED', True)
 
     DATABASE_URL: str = _get_env('DATABASE_URL', required=True)
 

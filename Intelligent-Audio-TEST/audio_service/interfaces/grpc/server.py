@@ -101,6 +101,14 @@ def start_grpc_server(port=AUDIO_SERVICE_GRPC_PORT):
     except Exception as e:
         logger.warning(f"PyAudio 驱动预初始化失败（音频功能可能不可用）: {e}")
 
+    # INT-2047：起服预热标签 id→name 快照。请求线程不再承担刷新（TTL 过期
+    # 只排期后台刷新），没有预热时冷启动的头几个列表请求会降级成数字 id。
+    # 放后台 daemon：宿主机 → docker task_service 首连可到 10 s 以上，预热
+    # 自带 deadline（AUDIO_TAG_ACL_REFRESH_TIMEOUT_SECONDS，默认 2 s）与
+    # 重试退避，不拿服务启动时间去赌建连；失败只告警。
+    from audio_service.infrastructure.acl.tag_acl_repository import start_tag_acl_warmup
+    start_tag_acl_warmup()
+
     # gRPC 线程池大小配置化：优先读取 concurrency_config.json 中的 grpc.audio_service_workers
     _max_workers = config_manager.get_value('grpc', 'audio_service_workers', AUDIO_GRPC_WORKERS_DEFAULT)
     logger.info("gRPC 线程池大小: %s", _max_workers)
