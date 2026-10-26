@@ -51,6 +51,19 @@
             >{{ row.dimension }}</span>
           </template>
 
+          <!-- 自定义资源列表头：名称 + 类型/系统等结构化字段（不再直出资源对象原文） -->
+          <template
+            v-for="column in resourceColumns"
+            :key="`header-${column.key}`"
+            #[`header-${column.key}`]
+          >
+            <span class="resource-header">
+              <span class="resource-header-name">{{ column.label }}</span>
+              <span v-if="column.subLabel" class="resource-header-meta">{{ column.subLabel }}</span>
+            </span>
+            <span v-if="column.resize !== false" class="resize-handle"></span>
+          </template>
+
           <!-- 空状态 -->
           <template #empty>
             <div class="empty-state">
@@ -181,7 +194,33 @@ const resourceHeaderMap = computed(() => {
   return map
 })
 
+/** 资源表头附加信息（类型/系统）：冻结报告反推的表头携带 deviceType/system，缺省不展示 */
+const resourceHeaderMetaMap = computed(() => {
+  const data = props.reportData || {}
+  const headers =
+    readCamel(data, 'resourceHeaders') ||
+    readCamel(readCamel(data, 'summary'), 'resourceHeaders') ||
+    []
+
+  const map = {}
+  if (Array.isArray(headers)) {
+    headers.forEach(h => {
+      if (!h) return
+      const key = h.key || h.resource
+      if (!key) return
+      const parts = [h.deviceType, h.system].filter(Boolean).map(String)
+      if (parts.length > 0) map[String(key)] = parts.join(' · ')
+    })
+  }
+  return map
+})
+
 const getResourceLabel = (resourceKey) => {
+  // 旧快照 devices/apis 以完整对象冻结：取名称，避免对象原文被渲染成 JSON
+  if (resourceKey && typeof resourceKey === 'object') {
+    return String(resourceKey.name ?? resourceKey.deviceName ?? resourceKey.apiName ?? '')
+  }
+
   const key = String(resourceKey ?? '')
   const mapped = resourceHeaderMap.value?.[key]
   if (mapped) return mapped
@@ -287,6 +326,7 @@ const tableColumns = computed(() => {
     columns.push({
       key: `device-${index}`,
       label: device,
+      subLabel: resourceHeaderMetaMap.value?.[String(devices.value[index] ?? '')] ?? '',
       resize: true,
       class: 'device-column',
       color: 'var(--secondary)'
@@ -295,6 +335,11 @@ const tableColumns = computed(() => {
 
   return columns
 })
+
+/** 资源列（走自定义表头 slot：名称 + 类型/系统） */
+const resourceColumns = computed(() =>
+  tableColumns.value.filter(column => String(column.key).startsWith('device-'))
+)
 
 const tableData = computed(() => {
   // 按主维度分组，子维度归入父维度组
@@ -375,35 +420,31 @@ const getAverageValue = (metricName, device) => {
   const metricData = getNormalizedMetricData()
   if (!metricData || typeof metricData !== 'object') return null
 
-  const findValue = (resourceKey) => {
-    if (resourceKey && metricData[resourceKey]) {
-      const v = metricData[resourceKey][metricName]
-      if (typeof v === 'number') return v
-    }
-    return null
+  const isObjectDevice = typeof device === 'object' && device !== null
+  const deviceName = isObjectDevice
+    ? String(device.name ?? device.deviceName ?? '')
+    : String(device ?? '')
+  const deviceId = isObjectDevice ? device.id : undefined
+
+  // 1. 精确键命中（live 报告 summary.resources 即资源键）
+  if (deviceName && metricData[deviceName] && typeof metricData[deviceName][metricName] === 'number') {
+    return metricData[deviceName][metricName]
   }
 
-  // 1. 直接用 device 字符串查找
-  if (typeof device === 'string') {
-    const v = findValue(device)
-    if (v !== null) return v
-  }
-
-  // 2. 如果 device 是对象，构建 key 查找
-  if (typeof device === 'object' && device !== null) {
-    const resourceKey = `${device.id}-${device.name}`
-    const v = findValue(resourceKey)
-    if (v !== null) return v
-  }
-
-  // 3. 兜底：按名称匹配（去掉ID前缀）
-  const deviceName = typeof device === 'object' ? (device.name || device.deviceName) :
-                    (typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device)
-  for (const [key, metrics] of Object.entries(metricData)) {
-    if (!metrics || typeof metrics !== 'object') continue
-    const currentResourceName = key.includes('-') ? key.split('-').slice(1).join('-') : key
-    if (currentResourceName === deviceName && typeof metrics[metricName] === 'number') {
-      return metrics[metricName]
+  // 2. 资源键形如 {id}-{name}[-{version}]：按 id 前缀 / 去 id 后的名称前缀匹配
+  if (deviceName.trim()) {
+    for (const [key, metrics] of Object.entries(metricData)) {
+      if (!metrics || typeof metrics !== 'object') continue
+      const resourceKey = String(key)
+      const nameWithoutId = resourceKey.replace(/^\d+-/, '')
+      const versionSuffix = nameWithoutId.slice(deviceName.length + 1)
+      const matched =
+        (deviceId !== undefined && deviceId !== null && resourceKey.startsWith(`${deviceId}-`) && nameWithoutId.startsWith(deviceName)) ||
+        nameWithoutId === deviceName ||
+        (nameWithoutId.startsWith(`${deviceName}-`) && /^\d+(?:\.\d+)*$/.test(versionSuffix))
+      if (matched && typeof metrics[metricName] === 'number') {
+        return metrics[metricName]
+      }
     }
   }
 
@@ -523,5 +564,19 @@ const getAverageValue = (metricName, device) => {
   color: var(--primary, var(--secondary));
   display: inline-block;
   padding: 2px 0;
+}
+
+/* 资源表头：名称 + 类型/系统结构化字段 */
+.resource-header {
+  display: inline-flex;
+  flex-direction: column;
+  white-space: normal;
+  vertical-align: middle;
+}
+
+.resource-header-meta {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-slate-500);
 }
 </style>
