@@ -335,7 +335,7 @@
         <div class="label">失效 Alert（<span class="mono">invalid_result_ids.length &gt; 0</span>）—— 操作指回购物车</div>
         <div class="alert" style="margin-bottom:8px">
           <span style="color:var(--warning)">⚠</span>
-          <div>3 条购物车条目已失效（源结果被删除），下单时将跳过。
+          <div>3 条购物车条目已失效（源结果被删除），下单时将跳过，<b>本次将合并 6 条</b>。
             <span class="act"><button class="btn sm">返回购物车移除</button></span>
           </div>
         </div>
@@ -344,7 +344,12 @@
           <span class="ico">•</span><span class="mono id">源结果 #2711</span><span class="badge b-success">已完成</span>
         </div>
         <div class="leaf indent1"><span class="ico">•</span><span class="mono id">源结果 #2712</span><span class="badge b-warn">已失效</span></div>
-        <div class="caption" style="margin:8px 2px 0">叶行 muted + 删除线 +「已失效」；分支计数追加「· 失效 {k}」。<b>预览不提供「一键移除失效」</b>（只读），动作回 Step 2。</div>
+        <div class="footer" style="margin-top:10px">
+          <span class="hint">购物车 9 条 · 失效 3 条 · 有效 6 条</span>
+          <span style="flex:1"></span>
+          <button class="btn primary">确认下单（6）</button>
+        </div>
+        <div class="caption" style="margin:8px 2px 0">叶行 muted + 删除线 +「已失效」；分支计数追加「· 失效 {k}」。<b>预览不提供「一键移除失效」</b>（只读），动作回 Step 2。<b>主钮数字 = 有效条数</b>（<span class="mono">preview.totalResults</span>，已剔除失效，与徽章「结果 6 条」同口径），不取购物车 <span class="mono">total</span>（9）。</div>
       </div>
 
       <div class="card">
@@ -385,7 +390,7 @@
           <div style="font-size:12px">预览摘要未取到，可重试</div>
           <div style="margin-top:8px"><button class="btn sm">重试</button></div>
         </div>
-        <div class="caption" style="margin:8px 2px 0">加载：徽章骨架 + 树骨架 3 层（文案「正在生成合并预览…」）；失败：树区 Empty + 重试，徽章不做假数字。</div>
+        <div class="caption" style="margin:8px 2px 0">加载：徽章骨架 + 树骨架 3 层（文案「正在生成合并预览…」）；失败：树区 Empty + 重试，徽章不做假数字；<b>不弹 toast</b>（预览进入即自动取数，失败由页内错误态承担，§5.2 ⑦）。</div>
       </div>
     </div>
   </div>
