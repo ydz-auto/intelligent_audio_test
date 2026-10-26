@@ -102,6 +102,21 @@ export type LogQuery = {
   userId?: number | string
 }
 
+/**
+ * 审计文件日志游标下界（后端 shared/logging/audit_reader.py `CURSOR_FLOOR = 10 ** 12`）。
+ * id ≥ 该值的行来自审计 JSONL 文件，不属于 logs 表自增 id 空间（实测 max 6.9e6）：
+ * 后端只读、不可标记——PUT /logs/mark 对纯文件游标返回 200 + data.updated=0
+ * 与专用文案（契约 INT-1812 / INT-1903）。前端据此不给文件日志行标记入口，
+ * 并按 updated 区分「假成功」（INT-1945）。
+ */
+export const LOG_FILE_CURSOR_FLOOR = 10 ** 12
+
+/** 是否文件日志行（id 落在审计游标空间；不可标记） */
+export function isFileLogId(id: number | string): boolean {
+  const value = typeof id === 'number' ? id : Number(id)
+  return Number.isFinite(value) && value >= LOG_FILE_CURSOR_FLOOR
+}
+
 /** 日志标记入参（PUT /logs/mark；mark 默认 'flagged' 与后端 LogMarkRequest 一致） */
 export type LogMarkInput = {
   logIds: Array<string | number>
@@ -119,6 +134,16 @@ export function nextLogMark(
   color: string
 ): string {
   return (current ?? '') === color ? '' : color
+}
+
+/**
+ * 日志标记结果（PUT /logs/mark → data.updated = 实际更新行数）。
+ * 文件游标行不落库 → 0（INT-1903 起后端恒带 data.updated）；混合批次按 legacy 行计数。
+ * updated 为 null 表示后端未返 data（INT-1903 部署前的旧包），调用方按请求行里的
+ * 历史库行数推定——不能把「没有 data」当成标记失败。
+ */
+export type LogMarkResult = {
+  updated: number | null
 }
 
 /** 日志清除入参（POST /logs/clear；对应后端 LogClearRequest） */

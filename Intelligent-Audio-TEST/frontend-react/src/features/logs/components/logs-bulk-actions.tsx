@@ -2,7 +2,8 @@
  * 日志批量操作浮条（interfaces 层；17_配置运维.md §4.5 logs-bulk-actions）。
  * 勾选≥1 浮起（floating bottom + backdrop-blur）；计数「已选择 {n} 条日志」+
  * 「标记颜色」DropdownMenu（黄/红/绿/蓝 → PUT /logs/mark，log:manage；末项「清除标记」
- * → mark:'' 清空所选，INT-1947 补齐「能打不能撤」）+
+ * → mark:'' 清空所选，INT-1947 补齐「能打不能撤」；所选全是文件日志游标行时不给入口，
+ * 改为「所选为文件日志，不支持标记」说明，INT-1945）+
  * 「复制内容」（log:read，拼接复制）+「导出选中」（POST /logs/export{log_ids}，
  * log:read）+「清除选中」（§12-5 后端 clear 无按 log_ids 批量删除缺口 → disabled
  * + Tooltip「按条件清除」）。
@@ -30,6 +31,8 @@ import { LOG_MARK_COLORS } from '@/features/logs/constants'
 export type LogsBulkActionsProps = {
   count: number
   canManage: boolean
+  /** 所选行中可标记的历史库行数（文件日志游标行只读，INT-1945） */
+  markableCount: number
   onBatchMark: (mark: string) => void
   onCopySelected: () => void
   onExportSelected: () => void
@@ -42,7 +45,7 @@ export function LogsBulkActions(props: LogsBulkActionsProps) {
         已选择 {props.count} 条日志
       </span>
       <div className='flex flex-wrap items-center gap-1.5'>
-        {props.canManage && (
+        {props.canManage && props.markableCount > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -54,7 +57,8 @@ export function LogsBulkActions(props: LogsBulkActionsProps) {
             />
             <DropdownMenuContent align='end' className='w-44'>
               {/* base-ui：Menu.Label 必须落在 Menu.Group 内，否则「MenuGroupContext is missing」
-                  直接抛错、整页落到 500 错误边界（INT-1947 走查实测，同 nav-group/top-nav 写法） */}
+                  直接抛错、整页落到 500 错误边界（INT-1947 / INT-1945 两卡实测，15173 旧包同崩，
+                  同 nav-group/top-nav 写法） */}
               <DropdownMenuGroup>
                 <DropdownMenuLabel>选择标记颜色</DropdownMenuLabel>
                 {LOG_MARK_COLORS.map((color) => (
@@ -81,6 +85,13 @@ export function LogsBulkActions(props: LogsBulkActionsProps) {
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
+        )}
+
+        {/* 所选全是文件日志（审计游标行只读）：不给标记入口，直接说明原因（INT-1945） */}
+        {props.canManage && props.markableCount === 0 && (
+          <span className='text-muted-foreground px-1.5 text-xs'>
+            所选为文件日志，不支持标记
+          </span>
         )}
 
         <Button

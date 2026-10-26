@@ -3,9 +3,9 @@
  * 列=勾选/展开/时间/级别/模块/算法/来源/内容/操作；ERROR·CRITICAL 行染浅色 tint；
  * 时间/级别/模块/来源列头可点击排序（§4.4「时间=排序列」，客户端排序对齐 V9.7.10
  * sortLogs 语义，后端 LogListQuery 无 sort 参数）；行点击展开详情行（LogRowDetails）；
- * 行内操作「标记」（颜色 Popover，log:manage；选色即收，同色二次点击清除 / 已标记行
- * 另有「清除标记」，对齐 V9.7.10 开关语义）/「复制」（CopyButton，[时间] [级别]
- * [模块] 内容）。
+ * 行内操作「标记」（颜色 Popover，log:manage；仅历史库行——文件日志游标行后端只读
+ * 不可标记，不给入口，INT-1945；选色即收，同色二次点击清除 / 已标记行另有「清除标记」，
+ * 对齐 V9.7.10 开关语义，INT-1947）/「复制」（CopyButton，[时间] [级别] [模块] 内容）。
  * 空态：「暂无日志」/ 搜索空「未找到匹配日志」；加载 TableSkeleton；首载失败 ErrorState
  * + 重试（INT-607 错误态区分先例，错误态不渲染空态文案）。
  */
@@ -31,8 +31,7 @@ import {
 } from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import type { LogItem } from '@/domain/models/log'
-import { nextLogMark } from '@/domain/models/log'
+import { isFileLogId, nextLogMark, type LogItem } from '@/domain/models/log'
 import {
   LOG_LEVEL_BADGE_VARIANT,
   LOG_LEVEL_ROW_TINT,
@@ -120,7 +119,8 @@ function MarkAction({
 }) {
   /** 选色即收（§4.4 行内标记 Popover；INT-1947 修复「选完弹层不关」） */
   const [open, setOpen] = useState(false)
-  if (!canManage) return null
+  // 文件日志行（审计 JSONL 游标）后端只读、不可标记，不给入口（INT-1945）
+  if (!canManage || isFileLogId(log.id)) return null
 
   const current = log.mark ?? ''
   const selectMark = (mark: string) => {

@@ -34,9 +34,10 @@ import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useLogListQuery, useLogStatsQuery } from '@/application/logs/useLogList'
 import { useLogRealtime } from '@/application/logs/useLogRealtime'
-import { useLogMutations } from '@/application/logs/useLogMutations'
+import { useLogMutations, resolveMarkedCount } from '@/application/logs/useLogMutations'
 import type { LogWsFilter } from '@/infrastructure/realtime/useLogRealtimeWs'
 import type { LogExportInput, LogItem, LogQuery } from '@/domain/models/log'
+import { isFileLogId } from '@/domain/models/log'
 import {
   DEFAULT_REALTIME_CONFIG,
   LOG_CATEGORY_OPTIONS,
@@ -246,6 +247,14 @@ export function LogsPage() {
     [rows, selectedIds]
   )
 
+  /** 所选行中可标记的历史库行数（文件日志游标行只读；INT-1945）
+   *  按 selectedIds 全量判定而非当前页 rows 推导：翻页后 rows 只含新一页，
+   *  跨页勾选的历史库行不在其中，用 rows 计数会把「还有可标记行」误报成 0（INT-1945 返工）。 */
+  const markableSelectedCount = useMemo(
+    () => Array.from(selectedIds).filter((id) => !isFileLogId(id)).length,
+    [selectedIds]
+  )
+
   /* ───────── 实时开关（§4.6：log:websocket 判定；WS 主通道 + refresh 兜底需 log:manage） ───────── */
   const handleRealtimeToggle = (value: boolean) => {
     if (value && !canRealtime) {
@@ -268,9 +277,15 @@ export function LogsPage() {
   /** 批量标记：值色同上；'' 即清除所选标记（INT-1947） */
   const handleBatchMark = (markValue: string) => {
     if (selectedIds.size === 0) return
+    const logIds = Array.from(selectedIds)
     mark.mutate(
-      { logIds: Array.from(selectedIds), mark: markValue },
-      { onSuccess: () => setSelectedIds(new Set()) }
+      { logIds, mark: markValue },
+      {
+        // 未落库（文件日志，updated=0）保留勾选：提示不可标记，但不清空选择（INT-1945）
+        onSuccess: (data) => {
+          if (resolveMarkedCount(data, logIds) > 0) setSelectedIds(new Set())
+        },
+      }
     )
   }
 
@@ -548,6 +563,7 @@ export function LogsPage() {
               <LogsBulkActions
                 count={selectedIds.size}
                 canManage={canManage}
+                markableCount={markableSelectedCount}
                 onBatchMark={handleBatchMark}
                 onCopySelected={handleCopySelected}
                 onExportSelected={handleExportSelected}
