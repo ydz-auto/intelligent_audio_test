@@ -4,7 +4,12 @@
  * INT-188：加密初始化/加密失败不回退明文，收敛为 PasswordEncryptionUnavailableError
  * 引导刷新重试；后端加密未启用（encryption-key 返回 enabled=false）抛
  * PasswordEncryptionDisabledError，由调用方决定是否走明文字段路径。
- * jsencrypt PKCS1v15 降级公钥路径（http+LAN-IP 非安全上下文）随【接线·认证】卡补装。
+ * INT-1990 双 padding 降级（对照旧 Vue INT-245）：WebCrypto subtle 仅存在于
+ * 安全上下文（https / localhost）；http+IP 访问时 subtle 为 undefined →
+ * 动态 import jsencrypt（纯 JS，不依赖 secure context）走 RSA-PKCS1v15 +
+ * 降级公钥（服务端 /auth/login/encryption-key 下发 fallback 字段）。安全上下文
+ * 恒走 OAEP 主路径不回退；降级路径失败同样收敛为 UnavailableError，明文兜底
+ * 保持禁止（INT-188）。
  */
 
 export interface PasswordEncryptionKey {
@@ -43,8 +48,10 @@ export class PasswordEncryptionUnavailableError extends Error {
  * 加密密码（先取公钥——调用方注入取钥函数）。
  * 公钥获取失败先重试一次（网络抖动容错），仍失败收敛为
  * PasswordEncryptionUnavailableError；加密未启用抛 DisabledError 由调用方
- * 决定是否走明文路径。非安全上下文（WebCrypto subtle 不可用）当前收敛为
- * 不可用（降级路径待认证卡补装），均不回退明文（INT-188）。
+ * 决定是否走明文路径。
+ * INT-1990：路径按上下文二选一——subtle 可用 → WebCrypto OAEP（主 kid）；
+ * 不可用（http+IP 等非安全上下文）→ jsencrypt PKCS1v15（降级 kid，须服务端
+ * 下发 fallback），两者失败均收敛为不可用、不回退明文（INT-188）。
  */
 export async function encryptPassword(
   password: string,
@@ -62,13 +69,21 @@ export async function encryptPassword(
     }
   }
   try {
-    if (!hasWebCryptoSubtle()) {
-      throw new Error('非安全上下文暂不支持加密登录')
+    if (hasWebCryptoSubtle()) {
+      const ciphertext = await rsaOaepEncrypt(password, key.publicKey)
+      return {
+        passwordEncrypted: ciphertext,
+        encryptionKeyId: key.kid,
+      }
     }
-    const ciphertext = await rsaOaepEncrypt(password, key.publicKey)
+    const fallback = key.fallback
+    if (!fallback?.kid || !fallback.publicKey) {
+      throw new Error('服务端未下发降级加密公钥')
+    }
+    const ciphertext = await rsaPkcs1v15Encrypt(password, fallback.publicKey)
     return {
       passwordEncrypted: ciphertext,
-      encryptionKeyId: key.kid,
+      encryptionKeyId: fallback.kid,
     }
   } catch {
     throw new PasswordEncryptionUnavailableError()
@@ -94,6 +109,25 @@ async function rsaOaepEncrypt(password: string, publicKeyPEM: string): Promise<s
     new TextEncoder().encode(password)
   )
   return arrayBufferToBase64(ciphertext)
+}
+
+/**
+ * 非安全上下文降级：jsencrypt RSA-PKCS1v15（密文 256 字节，与服务端下发
+ * fallback.kid 一一绑定）。动态 import 保证 jsencrypt 只进降级 chunk，
+ * 安全上下文主路径不加载。
+ */
+async function rsaPkcs1v15Encrypt(
+  password: string,
+  publicKeyPEM: string
+): Promise<string> {
+  const { JSEncrypt } = await import('jsencrypt')
+  const jsencrypt = new JSEncrypt()
+  jsencrypt.setPublicKey(publicKeyPEM)
+  const ciphertext = jsencrypt.encrypt(password)
+  if (!ciphertext) {
+    throw new Error('jsencrypt 加密失败')
+  }
+  return ciphertext
 }
 
 function pemToDER(pem: string): ArrayBuffer {
