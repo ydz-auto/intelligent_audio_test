@@ -148,7 +148,8 @@
 
 - **两个演示/走查地址**：React `:15173`、新 Vue `:16173`（容器 `iat-react-frontend` / `iat-uxvue-frontend`，`nginx:alpine`），**托管 build 产物**，不再是 `rsbuild dev` / `vite dev`（旧的 5273 / 5601 已停用）。
 - 旧形态的病灶（INT-1236 实测）：React dev 首屏 3 个 JS 共 ≈32.6 MB 未压缩未 minify、无 `Content-Encoding`；新 Vue dev 在 400 ms RTT 下首屏 544 个请求（Vite dev 每模块一请求）。切 build 产物后同一口径下首屏请求数降到 30 / 26。
-- **部署脚本**：`docker/deploy_demo_frontends.ps1`（幂等：重建镜像 + 重建容器，固定容器名 / 端口 / 网络）。默认产物目录为设计分支的 dist（React `D:\00_code\V9.7.31-UX\Intelligent-Audio-TEST\frontend-react\dist`、新 Vue `D:\00_code\V9.7.31-WIRING-UXVUE\Intelligent-Audio-TEST\frontend\dist`），可用 `-ReactDist` / `-VueDist` 指向别的产物目录，`-SkipReact` / `-SkipVue` 只刷一边。
+- **部署脚本**：`docker/deploy_demo_frontends.ps1`（幂等：重建镜像 + 重建容器，固定容器名 / 端口 / 网络）。默认产物目录**按地址各归一条分支**（INT-2012 方案 A，2026-10-26）：React `:15173` = `wiring/react` 产品演示（`D:\00_code\V9.7.31-WIRING-REACT\Intelligent-Audio-TEST\frontend-react\dist`），新 Vue `:16173` = `wiring/ux-vue`（`D:\00_code\V9.7.31-WIRING-UXVUE\Intelligent-Audio-TEST\frontend\dist`）；可用 `-ReactDist` / `-VueDist` 指向别的产物目录，`-SkipReact` / `-SkipVue` 只刷一边。
+- **来源唯一（INT-2012）**：`design/ux-redesign` 是视觉稿分支，任务域导入导出等只有占位实现、落后接线分支数百个提交，**不得刷 `:15173`**（否则负责人的功能验收会「功能消失」）。设计 / 性能观感（E1/E2/E4 图表收敛、字体瘦身）另址或本地 build 取数，不再占用演示地址。脚本内置三道护栏：产物来源硬门禁（React dist 必须命中 `连接你的 agent`、不得命中占位串 `导出流程见导出数据弹窗`，否则拒绝部署，`-AllowAnyDist` 可显式绕过但打告警并记录 dist 路径与构建时间）；部署锁 `docker/.deploy.lock`（并发第二个进程立即失败并打印持锁 PID / 开始时间，不排队不覆盖）；部署后自检 + 回滚（先给 `latest` 打回滚 tag，起容器后自检 200 / index.html 引用 chunk 与 dist 一致 / 每个 chunk 在容器内存在 / 容器 async 数 == dist 数，失败自动回滚旧镜像并退出非 0）。两侧产物**先都校验通过再一起部署**。
 - **纪律**：从 `docker/` 目录操作，一次只部署一次，不重复重启（同 §4.1 运行纪律）。
 
 ### 8.2 压缩与缓存分级（`docker/nginx-frontend.conf`）
@@ -164,6 +165,8 @@
 
 ### 8.3 重发演示时的注意
 
-- **产物必须来自当前 build**：用 `-ReactDist` / `-VueDist` 指向「线上容器里冻结的旧产物」重发，只换托管方式、不更新内容，结果是**演示仍展示旧包**（首屏请求数 / 压缩上去了，但包体优化、图表与字体改造看不到）。发版要指向设计 / 接线分支**最新 dist**。
+- **产物必须来自当前 build**：用 `-ReactDist` / `-VueDist` 指向「线上容器里冻结的旧产物」重发，只换托管方式、不更新内容，结果是**演示仍展示旧包**（首屏请求数 / 压缩上去了，但包体优化、图表与字体改造看不到）。发版要指向接线分支**最新 dist**。
+- **产物必须来自对应演示分支**（INT-2012 2026-10-26）：`:15173` 唯一来源 `wiring/react`、`:16173` 唯一来源 `wiring/ux-vue`。用 `design/ux-redesign` 的 dist 刷 `:15173` 会让任务域导入导出等退回占位实现——脚本的来源门禁会直接拒绝（疑似 design/ux-redesign 产物）；确需临时比对设计稿请另起地址或本地 build，不要盖演示地址。
 - 演示地址与仓库分支是两条线：`design/ux-redesign`、`design/ux-vue` 的优化要经集成进 `wiring/react`、`wiring/ux-vue`（§4.6）后，重发演示才有意义。
+- **重发前先确认 dist 构建时间**（脚本会打印），别把几小时前的残留 dist 当最新；部署后看脚本的自检输出（chunk 一致 / async 数量合格），自检失败会自动回滚，此时不要手工再重试，先查 dist 是不是缺文件。
 
