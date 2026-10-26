@@ -5,6 +5,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 export function createResourceLabelGetter(resourceHeaderMap: any) {
   const getResourceLabel = (resourceKey: any) => {
+    // 旧快照 devices/apis 以完整对象冻结：取名称，避免对象原文被渲染成 JSON
+    if (resourceKey && typeof resourceKey === 'object') {
+      return String(resourceKey.name ?? resourceKey.deviceName ?? resourceKey.apiName ?? '')
+    }
+
     const key = String(resourceKey ?? '')
     const mapped = resourceHeaderMap.value?.[key]
     if (mapped) return mapped

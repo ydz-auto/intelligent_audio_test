@@ -213,7 +213,7 @@ const historyCaseNameMap = computed(() => {
   return Object.keys(map).length > 0 ? map : undefined
 })
 
-const confirmDisabled = computed(() => !comment.value.trim() || submitting.value)
+const confirmDisabled = computed(() => submitting.value)
 
 function execLabel(status?: string | null): string {
   switch (status) {
@@ -238,12 +238,15 @@ function evalLabel(status?: string | null): string {
 }
 
 function handleConfirm() {
-  if (!comment.value.trim()) {
-    errorText.value = '复核备注必填'
-    return
-  }
-  if (!executionStatus.value && !evaluationStatus.value) {
-    errorText.value = '执行状态/评估状态至少设置一项'
+  // INT-2023：空备注提交不再静默——按钮保持可点，点击后给出明确提示
+  const missingComment = !comment.value.trim()
+  const missingStatus = !executionStatus.value && !evaluationStatus.value
+  if (missingComment || missingStatus) {
+    errorText.value = missingComment && missingStatus
+      ? '请填写复核备注并至少设置一项执行/评估状态'
+      : missingComment
+        ? '请填写复核备注'
+        : '请至少设置一项执行状态或评估状态'
     return
   }
   submitting.value = true

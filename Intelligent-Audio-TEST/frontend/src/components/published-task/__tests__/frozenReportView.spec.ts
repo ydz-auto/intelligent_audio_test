@@ -70,3 +70,69 @@ describe('buildFrozenReportView', () => {
     expect(view.type).toBe('task');
   });
 });
+
+describe('buildFrozenReportView · INT-2023 旧快照 summary 归一化', () => {
+  /** 旧版冻结快照：分组/标签为对象数组、deviceStats 为 snake_case、无 resources/resourceHeaders */
+  function makeLegacySnapshot(): ReportSnapshot {
+    const base = makeSnapshot();
+    return {
+      ...base,
+      summary: {
+        ...base.summary,
+        caseCategories: [{ id: 'cat-1', name: '拒识' }, { id: 'cat-2', name: '环境理解' }],
+        allCaseTags: [{ id: 97, name: '拒识' }],
+        devices: [
+          { id: 10, name: 'pura90豆包', type: 'phone', system: 'HarmonyOS', app_version: '1.0.0' },
+        ],
+        apis: [],
+        deviceStats: [
+          { id: 10, name: 'pura90豆包', status: 'online', metrics: { 环境理解评分: 3.21 }, total_cases: 188, completed_cases: 188, failed_cases: 0, success_rate: 100 },
+        ],
+        metricData: [
+          { resource: '10-pura90豆包-1.0.0', metrics: [{ metric: '环境理解评分', value: 3.21 }] },
+        ],
+      },
+    } as ReportSnapshot;
+  }
+
+  it('分组/标签对象数组归一为名称字符串（下拉与图表不再渲染 [object Object]）', () => {
+    const view = buildFrozenReportView(makeLegacySnapshot());
+    expect(view.summary.caseCategories).toEqual(['拒识', '环境理解']);
+    expect(view.summary.allCaseTags).toEqual(['拒识']);
+  });
+
+  it('缺 resources/resourceHeaders 时按 metricData 资源键 + 冻结设备反推（名称 + 类型/系统）', () => {
+    const view = buildFrozenReportView(makeLegacySnapshot());
+    expect(view.summary.resources).toEqual(['10-pura90豆包-1.0.0']);
+    expect(view.summary.resourceHeaders).toEqual([
+      expect.objectContaining({
+        key: '10-pura90豆包-1.0.0',
+        label: 'pura90豆包',
+        type: 'device',
+        deviceType: 'phone',
+        system: 'HarmonyOS',
+      }),
+    ]);
+  });
+
+  it('deviceStats snake_case 归一为 camelCase（总用例数/完成数/成功率不再是 0）', () => {
+    const view = buildFrozenReportView(makeLegacySnapshot());
+    expect(view.summary.deviceStats).toEqual([
+      expect.objectContaining({ totalCases: 188, completedCases: 188, failedCases: 0, successRate: 100 }),
+    ]);
+  });
+
+  it('已冻结 resources/resourceHeaders 时原样保留（不做二次反推）', () => {
+    const base = makeSnapshot();
+    const view = buildFrozenReportView({
+      ...base,
+      summary: {
+        ...base.summary,
+        resources: ['res-a'],
+        resourceHeaders: [{ key: 'res-a', label: '资源 A' }],
+      },
+    } as ReportSnapshot);
+    expect(view.summary.resources).toEqual(['res-a']);
+    expect(view.summary.resourceHeaders).toEqual([{ key: 'res-a', label: '资源 A' }]);
+  });
+});
