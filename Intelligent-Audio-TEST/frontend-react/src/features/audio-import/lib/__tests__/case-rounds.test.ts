@@ -3,6 +3,7 @@
  * 覆盖：rounds 多轮 JSON → 升序连续 1..N + 每轮 audios；flat / txt 数组单轮；
  * 按 JSON 引用分组 + 未引用音频回退；无 JSON 时按文件夹推断（1 音频 1 轮 / 多音频 1 轮多音频）；
  * merge 后 audio_id 回填。
+ * INT-1979：三种 JSON 形态的顶层 `tags` 解析 + 畸形 tags 的宽容降级。
  */
 import { describe, expect, it } from 'vitest'
 
@@ -160,6 +161,70 @@ describe('buildAudioImportGroups', () => {
     const loose = groups.find((g) => g.groupKey === 'loose')
     expect(loose?.files).toHaveLength(1)
     expect(loose?.rounds).toHaveLength(1)
+  })
+})
+
+describe('parseCaseJson（顶层 tags，INT-1979）', () => {
+  it('rounds 多轮形态读取顶层 tags', () => {
+    const group = parseCaseJson(
+      JSON.stringify({ rounds: [{ segments: [{ audio: 'a.wav' }] }], tags: ['A', 'B'] }),
+      'root/多轮.json'
+    )
+    expect(group?.tags).toEqual(['A', 'B'])
+    expect(group?.rounds).toHaveLength(1)
+  })
+
+  it('flat 单轮形态读取顶层 tags', () => {
+    const group = parseCaseJson(
+      JSON.stringify({ audio: 'a.wav', tags: ['A', 'B'] }),
+      'root/flat.json'
+    )
+    expect(group?.tags).toEqual(['A', 'B'])
+    expect(group?.rounds).toHaveLength(1)
+  })
+
+  it('txt 数组单轮形态读取顶层 tags', () => {
+    const group = parseCaseJson(
+      JSON.stringify({ txt: [{ audio: 'a.wav' }], tags: ['A', 'B'] }),
+      'root/txt.json'
+    )
+    expect(group?.tags).toEqual(['A', 'B'])
+    expect(group?.rounds).toHaveLength(1)
+  })
+
+  it('无 tags / 非数组 / 含非字符串项 → tags 为空数组，分组与轮次照常解析', () => {
+    const cases = [
+      { rounds: [{ segments: [{ audio: 'a.wav' }] }] },
+      { rounds: [{ segments: [{ audio: 'a.wav' }] }], tags: '不是数组' },
+      { rounds: [{ segments: [{ audio: 'a.wav' }] }], tags: { a: 1 } },
+      { rounds: [{ segments: [{ audio: 'a.wav' }] }], tags: ['A', 2] },
+      { rounds: [{ segments: [{ audio: 'a.wav' }] }], tags: [null] },
+    ]
+    for (const raw of cases) {
+      const group = parseCaseJson(JSON.stringify(raw), 'root/x.json')
+      expect(group).not.toBeNull()
+      expect(group?.tags).toEqual([])
+      expect(group?.rounds).toHaveLength(1)
+      expect(group?.rounds[0].audios.map((a) => a.audio_name)).toEqual(['a.wav'])
+    }
+  })
+})
+
+describe('buildAudioImportGroups（分组 tags 透传，INT-1979）', () => {
+  it('JSON 分组的顶层 tags 挂到该组；无 JSON 分组的 tags 为空数组', () => {
+    const group = parseCaseJson(
+      JSON.stringify({ rounds: [{ segments: [{ audio: 'a.wav' }] }], tags: ['组标签'] }),
+      'root/case.json'
+    )
+    const groups = buildAudioImportGroups(
+      [
+        makeFile('a.wav', 'root/case/a.wav'),
+        makeFile('loose.wav', 'root/散文件/loose.wav'),
+      ],
+      groupsOf([['case', group!]])
+    )
+    expect(groups.find((g) => g.groupKey === 'case')?.tags).toEqual(['组标签'])
+    expect(groups.find((g) => g.groupKey === 'loose')?.tags).toEqual([])
   })
 })
 

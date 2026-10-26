@@ -12,10 +12,14 @@ import {
   mergeChunks,
   registerUploadFiles,
   uploadChunk,
+  type AudioTagSource,
   type UploadRoundConfig,
   type UploadTestCaseConfig,
 } from '@/infrastructure/api/audio-upload-api'
-import { applyMergedAudioId } from '@/features/audio-import/lib/case-rounds'
+import {
+  applyMergedAudioId,
+  relativePathOf,
+} from '@/features/audio-import/lib/case-rounds'
 
 export interface UploadBatchResult {
   successCount: number
@@ -40,8 +44,23 @@ export interface PerFileUploadConfig {
   annotations?: unknown[]
   /** 所属分组整组轮次（文件夹导入；组内文件共享同一引用，merge 后回填 audio_id） */
   rounds?: UploadRoundConfig[]
+  /** 所属分组 JSON 顶层 tags（INT-1979；按 tagSource 与手填标签组装成 merge 载荷 tags） */
+  tags?: string[]
   /** 是否该分组最后一个待处理文件（§5.7.6 建用例单位：仅它 merge 时 create_test_case=true） */
   isGroupFinalMerge?: boolean
+}
+
+/**
+ * 单文件提交标签（INT-1979）：手填标签在任何档位都保留；JSON 顶层 tags 只在「仅路径解析」
+ * 档不并入（path 档下请求 tags = 手填，JSON 标签交给后端路径解析之外的来源）。
+ */
+function resolveSubmitTags(
+  manualTags: string[],
+  groupJsonTags: string[] | undefined,
+  tagSource: AudioTagSource
+): string[] {
+  if (tagSource === 'path') return [...manualTags]
+  return Array.from(new Set([...manualTags, ...(groupJsonTags ?? [])]))
 }
 
 /** 分片阶段在总进度中的占比：init/register 起于 2%，分片累计到 90%，合并 95%，完成 100% */
@@ -101,7 +120,9 @@ export async function runAudioUpload(
     try {
       // 注册 → 分片上传 → 合并（生成测试用例由 merge 载荷 create_test_case 控制，test_types 不传）
       const [registered] = await registerUploadFiles(taskId, [
-        { name: file.name, size: file.size },
+        // 相对路径（INT-1979）：文件夹导入 = 含子目录的相对路径，单文件 = 文件名；
+        // 后端据此解析路径标签（此前一直漏传，路径标签恒为空）
+        { name: file.name, size: file.size, relativePath: relativePathOf(file) },
       ])
       if (!registered?.fileId) throw new Error('注册文件失败')
       const chunkSize = registered.chunkSize > 0 ? registered.chunkSize : 5 * 1024 * 1024
@@ -121,6 +142,8 @@ export async function runAudioUpload(
         // 每文件覆盖：分组名 / 标注（perFile 与 files 平行，缺省用 config 全局值）
         groupName: fileConfig?.groupName ?? config.groupName,
         annotations: fileConfig?.annotations ?? config.annotations ?? [],
+        // 标签（INT-1979）：手填标签任何档位都保留，JSON 顶层 tags 按 tagSource 决定是否并入
+        tags: resolveSubmitTags(config.tags, fileConfig?.tags, config.tagSource),
         // 整组轮次：末文件 merge 时一次提交（前序文件已回填的 audio_id 一并带出）
         rounds: fileConfig?.rounds,
       })

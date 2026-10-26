@@ -31,7 +31,8 @@ import { cn } from '@/lib/utils'
 import { UploadOptions } from '@/features/audio-import/components/modals/upload-options'
 import { startRealAudioUpload, type PerFileUploadConfig } from '@/application/audio/useAudioUploadProcess'
 import { useUploadRoundScope } from '@/application/audio/useUploadRoundScope'
-import { DEFAULT_SPL } from '@/features/audio-import/constants'
+import type { AudioTagSource } from '@/infrastructure/api/audio-upload-api'
+import { DEFAULT_SPL, DEFAULT_TAG_SOURCE } from '@/features/audio-import/constants'
 import { parseAnnotationsForAudios } from '@/features/audio-import/lib/annotation'
 import { formatFileSize } from '@/features/audio-import/lib/format'
 
@@ -72,6 +73,7 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
   const [caseGroup, setCaseGroup] = useState('folder')
   const [customGroupName, setCustomGroupName] = useState('')
   const [tags, setTags] = useState('')
+  const [tagSource, setTagSource] = useState<AudioTagSource>(DEFAULT_TAG_SOURCE)
   const [inheritTags, setInheritTags] = useState(true)
   const [folderConfig, setFolderConfig] = useState('select')
   const [naming, setNaming] = useState('keep')
@@ -95,6 +97,14 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
   const handleFiles = (incoming: FileList | null) => {
     if (!incoming) return
     setFiles((prev) => [...prev, ...Array.from(incoming)])
+  }
+
+  /** 关闭统一出口：标签来源复位为默认「两者都要」（重开不残留上次选择，§B.1）。
+   *  取消 / 成功后自动关闭 / Esc / 点遮罩 都走这里——页脚「取消」直连 props.onOpenChange
+   *  会绕过 Dialog 的 onOpenChange，故单列此函数。 */
+  const closeDialog = () => {
+    setTagSource(DEFAULT_TAG_SOURCE)
+    props.onOpenChange(false)
   }
 
   const handleStartUpload = async () => {
@@ -145,6 +155,8 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
           .split(',')
           .map((t) => t.trim())
           .filter(Boolean),
+        // 标签来源（INT-1979）：手填 tags 始终提交，JSON tags / 路径解析按此档取舍
+        tagSource,
         audioType,
       }, perFile)
       if (result.testCaseCount > 0) {
@@ -160,7 +172,7 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
         result.failed.forEach((f) => toast.error(`${f.name}：${f.error}`))
       }
       setFiles([])
-      props.onOpenChange(false)
+      closeDialog()
     } catch (err) {
       toast.error(`上传失败：${err instanceof Error ? err.message : String(err)}`)
     } finally {
@@ -172,11 +184,14 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
     <Dialog
       open={props.open}
       onOpenChange={(open) => {
-        props.onOpenChange(open)
-        if (!open) {
-          setFiles([])
-          setDragging(false)
+        if (open) {
+          props.onOpenChange(true)
+          return
         }
+        setFiles([])
+        setDragging(false)
+        // 关闭即复位标签来源（重开回到默认「两者都要」，§B.1 不残留上次选择）
+        closeDialog()
       }}
     >
       <DialogContent className='sm:max-w-2xl'>
@@ -346,11 +361,13 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
             onInheritTagsChange={setInheritTags}
             tags={tags}
             onTagsChange={setTags}
+            tagSource={tagSource}
+            onTagSourceChange={setTagSource}
           />
         </div>
 
         <DialogFooter>
-          <Button variant='outline' size='sm' onClick={() => props.onOpenChange(false)}>
+          <Button variant='outline' size='sm' onClick={closeDialog}>
             取消
           </Button>
           <Button size='sm' onClick={handleStartUpload} disabled={uploading}>

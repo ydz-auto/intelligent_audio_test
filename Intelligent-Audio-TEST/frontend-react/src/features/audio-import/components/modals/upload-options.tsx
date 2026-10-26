@@ -3,7 +3,8 @@
  * 音频类型 radio + 生成测试用例 boolean + 算法类型 select（真实 /algorithm/options）
  * + 评估维度（§5.7 轮次范围三档 + DimensionPicker 云 + 多轮整体评估维度节；INT-1614）
  * + 播放设备（§5.7 轮次范围三档 + Select + 重新扫描；真实 /playback-devices）
- * + 默认声压级 + 用例分组 radio + 继承音频标签 boolean。
+ * + 默认声压级 + 用例分组 radio + 继承音频标签 boolean
+ * + 标签来源三选一（INT-1979：仅 JSON tags / 仅路径解析 / 两者都要，默认两者都要）。
  * 轮次基数 N 由调用方按 §5.7.2 传入：上传窗 N=1（指定轮次 / 逐轮设置禁用 + Tooltip），
  * 文件夹导入 N = JSON rounds 最大轮数（三档全可用）。
  */
@@ -46,7 +47,10 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { usePlaybackDevices } from '@/application/audio/usePlaybackDevices'
-import type { PlaybackDeviceOption } from '@/infrastructure/api/audio-upload-api'
+import type {
+  AudioTagSource,
+  PlaybackDeviceOption,
+} from '@/infrastructure/api/audio-upload-api'
 import { scanRealPlaybackDevices } from '@/infrastructure/api/playback-api'
 import { cn } from '@/lib/utils'
 import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
@@ -56,6 +60,7 @@ import {
 } from '@/features/testcases/modals/batch-shared'
 import {
   CASE_GROUP_OPTIONS,
+  TAG_SOURCE_OPTIONS,
   UPLOAD_AUDIO_TYPE_OPTIONS,
 } from '@/features/audio-import/constants'
 
@@ -77,6 +82,9 @@ export type UploadOptionsProps = {
   /** 音频标签（V9.7.10 UploadOptions tags 输入对位；生成测试用例时显示） */
   tags: string
   onTagsChange: (value: string) => void
+  /** 标签来源（INT-1979；两个导入弹窗共用本组件与默认值 both） */
+  tagSource: AudioTagSource
+  onTagSourceChange: (value: AudioTagSource) => void
   /** 轮次基数 N（§5.7.2：上传窗 1、文件夹导入 = JSON rounds 最大轮数） */
   roundCount: number
   /** 轮次范围编排（useUploadRoundScope 返回值） */
@@ -406,6 +414,22 @@ export function UploadOptions(props: UploadOptionsProps) {
             />
             <p className='text-muted-foreground text-xs'>
               上传完成后作为音频标签，留空自动生成
+            </p>
+          </div>
+
+          {/* 标签来源（INT-1979：手填标签三档都提交，JSON 顶层 tags 与路径解析按档取舍） */}
+          <div className='space-y-2'>
+            <Label>标签来源</Label>
+            <OptionRadio
+              value={props.tagSource}
+              options={TAG_SOURCE_OPTIONS}
+              onChange={(value) => {
+                const next = TAG_SOURCE_OPTIONS.find((option) => option.value === value)
+                if (next) props.onTagSourceChange(next.value)
+              }}
+            />
+            <p className='text-muted-foreground text-xs'>
+              {TAG_SOURCE_OPTIONS.find((option) => option.value === props.tagSource)?.desc ?? ''}
             </p>
           </div>
 

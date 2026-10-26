@@ -29,6 +29,7 @@ function baseConfig(overrides: Partial<UploadTestCaseConfig> = {}): UploadTestCa
     inheritTags: true,
     groupName: undefined,
     tags: [],
+    tagSource: 'both',
     audioType: 'dry',
     ...overrides,
   }
@@ -94,6 +95,19 @@ describe('mergeChunks（上传合并载荷）', () => {
       testCaseId: 'tc1',
       testCaseCount: 1,
     })
+  })
+
+  it('标签来源走 merge 载荷 tag_source（INT-1979；默认档 both）', async () => {
+    for (const tagSource of ['both', 'path', 'json'] as const) {
+      postMock.mockClear()
+      await mergeChunks('task-1', 'file-1', 'a.wav', baseConfig({ tagSource, tags: ['手填A'] }))
+      const payload = postMock.mock.calls[0][1]
+      expect(payload.tag_source).toBe(tagSource)
+      expect(payload.tags).toEqual(['手填A'])
+    }
+    postMock.mockClear()
+    await mergeChunks('task-1', 'file-1', 'a.wav', baseConfig())
+    expect(postMock.mock.calls[0][1].tag_source).toBe('both')
   })
 })
 

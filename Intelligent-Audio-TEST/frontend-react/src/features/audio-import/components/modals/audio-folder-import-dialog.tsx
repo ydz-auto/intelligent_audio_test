@@ -36,8 +36,8 @@ import { Switch } from '@/components/ui/switch'
 import { UploadOptions } from '@/features/audio-import/components/modals/upload-options'
 import { startRealAudioUpload, type PerFileUploadConfig } from '@/application/audio/useAudioUploadProcess'
 import { useUploadRoundScope } from '@/application/audio/useUploadRoundScope'
-import type { UploadRoundConfig } from '@/infrastructure/api/audio-upload-api'
-import { DEFAULT_SPL } from '@/features/audio-import/constants'
+import type { AudioTagSource, UploadRoundConfig } from '@/infrastructure/api/audio-upload-api'
+import { DEFAULT_SPL, DEFAULT_TAG_SOURCE } from '@/features/audio-import/constants'
 import { parseAnnotationsForAudios } from '@/features/audio-import/lib/annotation'
 import {
   buildAudioImportGroups,
@@ -84,6 +84,7 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
   const [caseGroup, setCaseGroup] = useState('folder')
   const [customGroupName, setCustomGroupName] = useState('')
   const [tags, setTags] = useState('')
+  const [tagSource, setTagSource] = useState<AudioTagSource>(DEFAULT_TAG_SOURCE)
   const [inheritTags, setInheritTags] = useState(true)
   const [importing, setImporting] = useState(false)
   const [caseGroups, setCaseGroups] = useState<Map<string, CaseGroup>>(new Map())
@@ -165,6 +166,14 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
     resetKey: `${fileSignature}#${generateTestCase}`,
   })
 
+  /** 关闭统一出口：标签来源复位为默认「两者都要」（重开不残留上次选择，§B.1）。
+   *  取消 / 成功后自动关闭 / Esc / 点遮罩 都走这里——页脚「取消」直连 props.onOpenChange
+   *  会绕过 Dialog 的 onOpenChange，故单列此函数。 */
+  const closeDialog = () => {
+    setTagSource(DEFAULT_TAG_SOURCE)
+    props.onOpenChange(false)
+  }
+
   const handleStartImport = async () => {
     if (audioFiles.length === 0) {
       toast.info('未选择任何音频文件，请先选择文件夹')
@@ -189,12 +198,14 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
       const importGroups = buildAudioImportGroups(audioFiles, caseGroups)
       const groupOfFile = new Map<
         File,
-        { rounds: UploadRoundConfig[]; isGroupFinalMerge: boolean }
+        { rounds: UploadRoundConfig[]; tags: string[]; isGroupFinalMerge: boolean }
       >()
       for (const group of importGroups) {
         group.files.forEach((file, index) => {
           groupOfFile.set(file, {
             rounds: group.rounds,
+            // 分组 JSON 顶层 tags（INT-1979；按标签来源档位与手填标签组装后随 merge 落库）
+            tags: group.tags,
             // 组内最后一个待处理文件才建用例（前序文件只入库）
             isGroupFinalMerge: index === group.files.length - 1,
           })
@@ -226,6 +237,7 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
                 : undefined,
           annotations: perFileAnnotations[idx],
           rounds: group?.rounds,
+          tags: group?.tags,
           isGroupFinalMerge: group?.isGroupFinalMerge,
         }
       })
@@ -247,6 +259,8 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
           .split(',')
           .map((t) => t.trim())
           .filter(Boolean),
+        // 标签来源（INT-1979）：手填 tags 始终提交，分组 JSON tags 与路径解析按此档取舍
+        tagSource,
         audioType,
       }, perFile)
       if (result.testCaseCount > 0) {
@@ -260,7 +274,7 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
       }
       result.failed.forEach((f) => toast.error(`${f.name}：${f.error}`))
       setFiles([])
-      props.onOpenChange(false)
+      closeDialog()
     } catch (err) {
       toast.error(`导入失败：${err instanceof Error ? err.message : String(err)}`)
     } finally {
@@ -272,8 +286,13 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
     <Dialog
       open={props.open}
       onOpenChange={(open) => {
-        props.onOpenChange(open)
-        if (!open) setFiles([])
+        if (open) {
+          props.onOpenChange(true)
+          return
+        }
+        setFiles([])
+        // 关闭即复位标签来源（重开回到默认「两者都要」，§B.1 不残留上次选择）
+        closeDialog()
       }}
     >
       <DialogContent className='sm:max-w-2xl'>
@@ -407,6 +426,8 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
             onInheritTagsChange={setInheritTags}
             tags={tags}
             onTagsChange={setTags}
+            tagSource={tagSource}
+            onTagSourceChange={setTagSource}
           />
         </div>
 
@@ -415,7 +436,7 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
             variant='outline'
             size='sm'
             disabled={importing}
-            onClick={() => props.onOpenChange(false)}
+            onClick={closeDialog}
           >
             取消
           </Button>
