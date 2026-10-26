@@ -453,6 +453,11 @@ services:
       # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
       - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
       - GRPC_PORT=51067
+      # INT-2038：audio 按环境铁律跑宿主机（gRPC 50052），容器内经 host.docker.internal 访问；
+      # 缺这两组变量时回落 localhost（容器内为 127.0.0.1）连接被拒 → get_audios_by_ids 恒失败
+      # → 用例参考参数（reference_params）逐参数生成为 0，前端「参考参数」恒为空
+      - AUDIO_SERVICE_HOST=host.docker.internal
+      - AUDIO_SERVICE_GRPC_PORT=50052
     volumes:
       # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
       - service_logs:/app/logs
