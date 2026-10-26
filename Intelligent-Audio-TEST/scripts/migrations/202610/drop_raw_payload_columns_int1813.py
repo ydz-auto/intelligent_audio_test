@@ -48,6 +48,11 @@ PG 16 的关键事实（**不按此执行会白干**）：
     # 执行（门禁全绿 + 操作人确认 C2/A1 已部署并跑过一轮）
     python scripts/migrations/202610/drop_raw_payload_columns_int1813.py --apply \
         --confirm-deployed-round --confirm-read-path --strict-24h
+    # VACUUM FULL 被超时 / 锁顶掉之后的续跑（列已删，只重试压缩）
+    python scripts/migrations/202610/drop_raw_payload_columns_int1813.py --apply --force-vacuum \
+        --confirm-deployed-round --confirm-read-path --strict-24h
+    # 删列后的复查（只读；照样打印门禁 N/A 与指针分布）
+    python scripts/migrations/202610/drop_raw_payload_columns_int1813.py --gate
     # 窗口内回滚：从对象按 uri 解压写回两列
     python scripts/migrations/202610/drop_raw_payload_columns_int1813.py --restore --apply
 
@@ -55,10 +60,15 @@ PG 16 的关键事实（**不按此执行会白干**）：
 与在线服务一致的 ``OSS_*``（单桶模式必须带 ``OSS_BUCKET_NAME`` / ``OSS_KEY_PREFIX``，
 否则会传到别的桶、服务侧读不到——见 INT-1645）；纯 DROP 路径不需要 OSS。
 
-退出码：0 完成；1 门禁未通过；2 未拿到锁；3 执行后校验失败；4 前置确认缺失。
+退出码：0 完成；1 门禁未通过；2 未拿到锁；3 执行后校验失败（含列已删但 TOAST
+未回收）；4 前置确认缺失。
 
-幂等性：列已不存在即 ``[SKIP]``，不重复 DROP、也不再 VACUUM FULL（``--force-vacuum``
-可强制重跑一次压缩）；``--restore`` 只回填 ``json IS NULL AND uri IS NOT NULL`` 的行。
+幂等性：列已不存在即 ``[SKIP]``，不重复 DROP；此时 ``--apply`` 会按 TOAST 体积判断
+上次 ``VACUUM FULL`` 是否真的跑完——TOAST 仍偏大（被 ``statement_timeout`` /
+``lock_timeout`` 顶掉，或上次用了 ``--no-vacuum``）就 **exit 3 并明确要求
+``--force-vacuum`` 重跑**，绝不静默成功；``--gate`` 在列已删时仍打印门禁（N/A）与
+指针分布，是删列后唯一可复现的复查命令。``--restore`` 只回填
+``json IS NULL AND uri IS NOT NULL`` 的行。
 """
 import argparse
 import os
@@ -88,6 +98,10 @@ DEFAULT_STATEMENT_TIMEOUT_MS = 30000
 DEFAULT_VACUUM_TIMEOUT_MS = 900000
 DEFAULT_BATCH_SIZE = 500
 DEFAULT_RECENT_HOURS = 24
+# 列已删后 TOAST 残留判据（P2-1）：两列删掉后这张表的 TOAST 只剩 error_message 之类
+# 小字段，副本 VACUUM FULL 后实测 8KB；残留超过 16MB 不可能是正常形态（删列前的量级
+# 是 230MB），只能是 VACUUM FULL 没跑完 / 上次用了 --no-vacuum。
+DEFAULT_VACUUM_RESIDUAL_BYTES = 16 * 1024 * 1024
 
 
 # ------------------------------------------------------------------ 连接 / 元数据
@@ -152,6 +166,17 @@ def _sizes(cur) -> dict:
 
 def _mb(value: int) -> str:
     return f'{value / 1024.0 / 1024.0:.2f} MB'
+
+
+def vacuum_still_pending(sizes: dict,
+                         threshold_bytes: int = DEFAULT_VACUUM_RESIDUAL_BYTES) -> bool:
+    """列已删但 TOAST 仍偏大 → 上次 VACUUM FULL 没跑成功（P2-1 的判据）。
+
+    ``DROP COLUMN`` 只改目录，磁盘回收全靠 VACUUM FULL；如果它被
+    ``statement_timeout`` / ``lock_timeout`` 顶掉，或者上次是 ``--no-vacuum`` 跑的，
+    重跑必须能识别出来——否则环境操作卡会记「执行成功」而磁盘一个字节没退。
+    """
+    return int(sizes.get('toast_size') or 0) > int(threshold_bytes)
 
 
 def print_delta(before: dict, after: dict) -> None:
@@ -291,8 +316,12 @@ def verify_objects(cur, columns: dict, samples: int) -> list:
     return failures
 
 
-def run_gates(cur, columns: dict, args) -> list:
-    """跑全部可机器校验的门禁，返回失败项（空 = 全绿）。"""
+def run_gates(cur, columns: dict, args, require_read_path: bool = True) -> list:
+    """跑全部可机器校验的门禁，返回失败项（空 = 全绿）。
+
+    ``require_read_path=False``：只读复查（``--gate``）用——读路径门禁照常打印提示，
+    但不计入失败（复查的人可能没有 OSS 凭据，门禁别的项才是复查目标）。
+    """
     failures = []
 
     gate = gate_counts(cur, columns)
@@ -307,7 +336,12 @@ def run_gates(cur, columns: dict, args) -> list:
             failures.append(f'回填门禁未归零：{label} missing={missing}')
 
     recent = recent_write_violations(cur, columns)
-    if recent['rows'] == 0:
+    inline_left = [spec for spec in RAW_PAYLOAD_SPECS if spec.json_column in columns]
+    if not inline_left:
+        # 列已删：内联报文形态不可能再写入，窗口内有无流量都不影响这条门禁。
+        print(f'[GATE-3] 两列已删 → N/A（窗口内 {recent["rows"]} 行；'
+              f'内联报文形态已不存在）')
+    elif recent['rows'] == 0:
         print(f'[GATE-3] 近 {recent["window"]}h 无维度行 → 无法证明「新写入都是 uri-only」')
         if getattr(args, 'strict_24h', False) and not getattr(args, 'ack_no_recent_traffic', False):
             failures.append(
@@ -347,7 +381,8 @@ def run_gates(cur, columns: dict, args) -> list:
     elif not getattr(args, 'confirm_read_path', False):
         print('[GATE-4] 未抽样对象：报告读路径须由操作人确认（--confirm-read-path）'
               '或用 --verify-objects N 在本脚本内抽样')
-        failures.append('未确认报告读路径已走对象（--confirm-read-path / --verify-objects N）')
+        if require_read_path:
+            failures.append('未确认报告读路径已走对象（--confirm-read-path / --verify-objects N）')
     else:
         print('[GATE-4] 报告读路径已由操作人确认（--confirm-read-path）')
 
@@ -383,9 +418,15 @@ def _waiting_lock_pids(cur):
     return [row[0] for row in cur.fetchall()]
 
 
-def _run_ddl(cur, ddl, lock_timeout_ms):
-    """执行 DDL；拿不到锁抛 SystemExit(2)，绝不排队。"""
+def _run_ddl(cur, ddl, lock_timeout_ms, statement_timeout_ms=None):
+    """执行 DDL；拿不到锁抛 SystemExit(2)，绝不排队。
+
+    ``statement_timeout_ms`` 只罩住 DDL 本身（拿到锁后卡住也会被取消），跑完立刻
+    复位成 0，避免把 VACUUM FULL / 回填的预算一起改掉（P3-3：这个开关以前算了不用）。
+    """
     cur.execute(f'SET lock_timeout = {int(lock_timeout_ms)}')
+    if statement_timeout_ms:
+        cur.execute(f'SET statement_timeout = {int(statement_timeout_ms)}')
     started = time.monotonic()
     try:
         cur.execute(ddl)
@@ -393,14 +434,24 @@ def _run_ddl(cur, ddl, lock_timeout_ms):
         print(f'[FAIL] {lock_timeout_ms}ms 内未拿到 ACCESS EXCLUSIVE 锁；'
               f'持锁者 pid={_blocking_pids(cur)} 等锁者 pid={_waiting_lock_pids(cur)}')
         raise SystemExit(2)
+    except psycopg2.errors.QueryCanceled:
+        print(f'[FAIL] DDL 超过 statement_timeout={statement_timeout_ms}ms 未完成'
+              f'（列可能已改了一半——DROP 幂等，重跑会继续）')
+        raise SystemExit(3)
+    finally:
+        if statement_timeout_ms:
+            try:
+                cur.execute('SET statement_timeout = 0')
+            except Exception:  # noqa: BLE001  连接已坏时别再掩盖原始错误
+                pass
     elapsed_ms = int((time.monotonic() - started) * 1000)
     print(f'[APPLY] {ddl} → 完成，耗时 {elapsed_ms}ms'
           f'（lock_timeout={lock_timeout_ms}ms 未触发 = 等锁低于预算）')
 
 
-def drop_columns(conn, pending, lock_timeout_ms) -> None:
+def drop_columns(conn, pending, lock_timeout_ms, statement_timeout_ms=None) -> None:
     cur = conn.cursor()
-    _run_ddl(cur, build_drop_ddl(pending), lock_timeout_ms)
+    _run_ddl(cur, build_drop_ddl(pending), lock_timeout_ms, statement_timeout_ms)
     cur.close()
 
 
@@ -416,8 +467,8 @@ def vacuum_full(conn, vacuum_timeout_ms) -> int:
         raise SystemExit(2)
     except psycopg2.errors.QueryCanceled:
         print(f'[FAIL] VACUUM FULL 超过 statement_timeout={vacuum_timeout_ms}ms 未完成；'
-              f'表已重写一部分，磁盘不会退回去——请在窗口内重跑 --apply '
-              f'（列已删，只会重试 VACUUM FULL）')
+              f'表已重写一部分，磁盘不会退回去——请在窗口内重跑 '
+              f'`--apply --force-vacuum`（列已删，只会重试 VACUUM FULL）')
         raise SystemExit(3)
     elapsed_ms = int((time.monotonic() - started) * 1000)
     cur.close()
@@ -433,7 +484,8 @@ def analyze(conn) -> None:
     cur.close()
 
 
-def restore_columns(conn, pending, batch_size, lock_timeout_ms, limit_rows=0) -> dict:
+def restore_columns(conn, pending, batch_size, lock_timeout_ms, limit_rows=0,
+                    statement_timeout_ms=None) -> dict:
     """反向回填：加回两列并按行上 uri + sha256 从对象写回 JSON（窗口内回滚路径）。
 
     单趟按 id 扫描「有待回填指针」的行（两组任一为空即算一条），一行一次 UPDATE 同时
@@ -446,7 +498,7 @@ def restore_columns(conn, pending, batch_size, lock_timeout_ms, limit_rows=0) ->
 
     if pending:
         cur = conn.cursor()
-        _run_ddl(cur, build_add_ddl(pending), lock_timeout_ms)
+        _run_ddl(cur, build_add_ddl(pending), lock_timeout_ms, statement_timeout_ms)
         cur.close()
 
     pending_sql = ' OR '.join(
@@ -497,6 +549,71 @@ def restore_columns(conn, pending, batch_size, lock_timeout_ms, limit_rows=0) ->
     return restored
 
 
+# ------------------------------------------------------------------ 列已删后的重跑 / 复查
+def _after_drop(conn, cur, columns, args, before_sizes, vacuum_timeout_ms) -> int:
+    """DROP 已完成时的路径（幂等重跑 + 删列后复查，P2-1 / P3-1）。
+
+    - ``--gate``（只读）：照常打印门禁（列已删 → N/A）与指针分布——这是删列后唯一
+      可复现的复查命令；不查锁风险、不把「未确认读路径」判成失败（只读复查不该被
+      idle in transaction 或一张 OSS 凭据挡下）。
+    - ``--apply``：门禁按 ``--apply`` 口径全量判定；TOAST 仍偏大说明上次 VACUUM FULL
+      没跑成功 → exit 3 并明确要求 ``--force-vacuum``（绝不静默 exit 0）。
+    - ``--apply --force-vacuum``：补跑一次 VACUUM FULL + ANALYZE，打印前后体积与差值。
+    """
+    read_only = not args.apply
+    failures = run_gates(cur, columns, args, require_read_path=not read_only)
+    if failures:
+        print(f'[FAIL] 门禁未通过（{len(failures)} 项），不做任何改动：')
+        for item in failures:
+            print(f'  - {item}')
+        return 1
+
+    if read_only:
+        print('[SKIP] 只读复查：列已删，不重复 DROP / 不重复 VACUUM；'
+              '磁盘回收看上面的体积口径（AFTER / DELTA 在 --apply 日志里）')
+        return 0
+
+    residual = int(before_sizes.get('toast_size') or 0)
+    if args.no_vacuum:
+        print('[SKIP] --no-vacuum：不重复 VACUUM FULL（磁盘一个字节都不会少）')
+        return 0
+    if not args.force_vacuum:
+        if vacuum_still_pending(before_sizes):
+            print(f'[FAIL] 列已删但 TOAST 未回收（{_mb(residual)}；VACUUM FULL 后应接近 0）'
+                  f'——上次 VACUUM FULL 可能被 statement_timeout / lock_timeout 顶掉，'
+                  f'或用了 --no-vacuum。请加 --force-vacuum 在窗口内重跑')
+            return 3
+        print(f'[SKIP] TOAST 已回收（{_mb(residual)}），无需重跑 VACUUM FULL'
+              f'（--force-vacuum 可强制再压一次）')
+        return 0
+
+    risks = lock_risks(cur)
+    if risks:
+        print(f'[LOCK] 发现 {len(risks)} 个高锁风险会话：')
+        for pid, state, wait_type, query in risks:
+            print(f'  pid={pid} state={state} wait={wait_type} query={query}')
+        if not args.ignore_lock_risks:
+            print('[FAIL] 先清掉 idle in transaction / 等锁会话再执行（卡面风险项）；'
+                  '确认无关加 --ignore-lock-risks')
+            return 1
+    else:
+        print('[LOCK] 无 idle in transaction / 等锁会话 → OK')
+
+    print(f'[APPLY] --force-vacuum：列已删，重跑一次 VACUUM FULL'
+          f'（statement_timeout={vacuum_timeout_ms}ms）')
+    vacuum_full(conn, vacuum_timeout_ms)
+    analyze(conn)
+    after = _sizes(cur)
+    print_sizes('AFTER', after)
+    print_delta(before_sizes, after)
+    if vacuum_still_pending(after):
+        print(f'[FAIL] VACUUM FULL 之后 TOAST 仍有 {_mb(after["toast_size"])}，'
+              f'磁盘回收未达预期')
+        return 3
+    print('[VERIFY] 磁盘已回收（AFTER / DELTA 为准）')
+    return 0
+
+
 # ------------------------------------------------------------------ 主流程
 def migrate(args):
     lock_timeout_ms = args.lock_timeout_ms or _int_env(
@@ -521,18 +638,13 @@ def migrate(args):
         print_sizes('BEFORE', before_sizes)
 
         if args.restore:
-            return _do_restore(conn, args, lock_timeout_ms)
+            return _do_restore(conn, args, lock_timeout_ms, statement_timeout_ms)
 
         if not pending:
-            print(f'[SKIP] 两列均已不存在（{", ".join(_target_columns())}）——M1 已完成')
-            if args.force_vacuum and args.apply and not args.no_vacuum:
-                print('[APPLY] --force-vacuum：列已删，仍重跑一次 VACUUM FULL')
-                vacuum_full(conn, vacuum_timeout_ms)
-                analyze(conn)
-                print_sizes('AFTER', _sizes(cur))
-            else:
-                print('[SKIP] 不重复 DROP / 不重复 VACUUM（--force-vacuum 可强制压缩一次）')
-            return 0
+            print(f'[SKIP] 两列均已不存在（{", ".join(_target_columns())}）'
+                  f'——M1 的 DROP 已完成')
+            return _after_drop(conn, cur, columns, args, before_sizes,
+                               vacuum_timeout_ms)
 
         print(f'[PLAN] 待删列：{", ".join(pending)}（json 列，TOAST 需 VACUUM FULL 才释放）')
 
@@ -541,14 +653,19 @@ def migrate(args):
             print(f'[LOCK] 发现 {len(risks)} 个高锁风险会话：')
             for pid, state, wait_type, query in risks:
                 print(f'  pid={pid} state={state} wait={wait_type} query={query}')
-            if not args.ignore_lock_risks:
+            if args.apply and not args.ignore_lock_risks:
                 print('[FAIL] 先清掉 idle in transaction / 等锁会话再执行（卡面风险项）；'
                       '确认无关加 --ignore-lock-risks')
                 return 1
+            if not args.apply:
+                print('[WARN] 本次只读（--gate / dry-run），不取 ACCESS EXCLUSIVE、继续')
         else:
             print('[LOCK] 无 idle in transaction / 等锁会话 → OK')
 
-        failures = run_gates(cur, columns, args)
+        # 只读（--gate / dry-run）不把「未确认读路径」判成失败：这是给人看的门禁报告，
+        # 真正动手（--apply）时才硬拦。
+        failures = run_gates(cur, columns, args,
+                             require_read_path=bool(getattr(args, 'apply', False)))
         if failures:
             print(f'[FAIL] 门禁未通过（{len(failures)} 项），不做任何改动：')
             for item in failures:
@@ -573,7 +690,7 @@ def migrate(args):
             print('[DRY] 未执行；--apply 时按上述步骤落地')
             return 0
 
-        drop_columns(conn, pending, lock_timeout_ms)
+        drop_columns(conn, pending, lock_timeout_ms, statement_timeout_ms)
         columns = _existing_columns(cur)
         if _pending_columns(columns):
             print('[FAIL] DROP 后仍有列存在 → 校验失败')
@@ -590,13 +707,17 @@ def migrate(args):
         print(f'[VERIFY] 删列后回填门禁：{gate_counts(cur, columns)}'
               f'（"resp"/"req" 为 None = 列已删，M1 完成）')
         print(f'[VERIFY] 指针分布：{pointer_stats(cur, columns)}')
+        if not args.no_vacuum and vacuum_still_pending(after):
+            print(f'[FAIL] VACUUM FULL 完成后 TOAST 仍有 {_mb(after["toast_size"])}，'
+                  f'磁盘回收未达预期（列已删、可 --force-vacuum 重跑）')
+            return 3
         print('[VERIFY] 磁盘回收以上面 AFTER / DELTA 为准')
         return 0
     finally:
         conn.close()
 
 
-def _do_restore(conn, args, lock_timeout_ms) -> int:
+def _do_restore(conn, args, lock_timeout_ms, statement_timeout_ms=None) -> int:
     """--restore 分支：先补齐列，再按对象回填。"""
     cur = conn.cursor()
     columns = _existing_columns(cur)
@@ -607,7 +728,8 @@ def _do_restore(conn, args, lock_timeout_ms) -> int:
         else:
             print('[RESTORE] 两列已存在，只回填空值行（幂等）')
         restored = restore_columns(conn, missing, args.batch_size, lock_timeout_ms,
-                                   limit_rows=args.limit_rows)
+                                   limit_rows=args.limit_rows,
+                                   statement_timeout_ms=statement_timeout_ms)
         columns = _existing_columns(cur)
         still_empty = 0
         for spec in RAW_PAYLOAD_SPECS:
@@ -626,14 +748,15 @@ def _do_restore(conn, args, lock_timeout_ms) -> int:
     return 0
 
 
-def main():
+def build_parser() -> argparse.ArgumentParser:
+    """命令行开关（``main`` 与单测共用一处，防开关名漂移）。"""
     ap = argparse.ArgumentParser(
         description='DROP test_result_dimensions 原始报文 JSON 两列 + VACUUM FULL + ANALYZE'
                     '（INT-1813 / M1）')
     ap.add_argument('--apply', action='store_true',
                     help='执行（默认 dry-run：只打印门禁、DDL 与体积口径）')
     ap.add_argument('--gate', action='store_true',
-                    help='只跑门禁与体积查询（只读）')
+                    help='只跑门禁与体积查询（只读；列已删时仍打印门禁与指针分布）')
     ap.add_argument('--restore', action='store_true',
                     help='反向回填：加回两列并从对象写回 JSON（窗口内回滚路径）')
     ap.add_argument('--confirm-deployed-round', action='store_true',
@@ -649,16 +772,22 @@ def main():
     ap.add_argument('--no-vacuum', action='store_true',
                     help='只删列不 VACUUM FULL（不回收磁盘，不建议）')
     ap.add_argument('--force-vacuum', action='store_true',
-                    help='列已删除时也重跑一次 VACUUM FULL（幂等场景可选）')
+                    help='列已删除时重跑一次 VACUUM FULL（VACUUM FULL 失败后的续跑路径）')
     ap.add_argument('--ignore-lock-risks', action='store_true',
                     help='忽略 idle in transaction / 等锁会话告警（确认无关时用）')
     ap.add_argument('--lock-timeout-ms', type=int, default=0)
-    ap.add_argument('--statement-timeout-ms', type=int, default=0)
+    ap.add_argument('--statement-timeout-ms', type=int, default=0,
+                    help='DDL 语句超时（默认 %d ms / DB_MIGRATION_STATEMENT_TIMEOUT_MS）'
+                         % DEFAULT_STATEMENT_TIMEOUT_MS)
     ap.add_argument('--vacuum-timeout-ms', type=int, default=0)
     ap.add_argument('--batch-size', type=int, default=DEFAULT_BATCH_SIZE)
     ap.add_argument('--limit-rows', type=int, default=0,
                     help='--restore 单次最多处理的行数（0 = 全量；分批跑时分段验证用）')
-    args = ap.parse_args()
+    return ap
+
+
+def main():
+    args = build_parser().parse_args()
 
     if args.gate:
         args.apply = False
