@@ -39,7 +39,9 @@ export function toAPIConfig(dto: APIConfigDto): APIConfig {
     defaultMaxAudioDuration: dto.default_max_audio_duration,
     endpoints: dto.endpoints?.map(toEndpoint),
     outputTypes: dto.output_types,
-    deviceType: dto.device_type,
+    // INT-2025：协议 / 流式性两列（后端已废弃 device_type，读侧不再返回）
+    protocol: dto.protocol ?? undefined,
+    streaming: dto.streaming ?? undefined,
     adapterClass: dto.adapter_class,
     proxyType: dto.proxy_type,
     proxyUrl: dto.proxy_url,
@@ -103,7 +105,10 @@ export function toApiUpsertDto(config: Partial<APIConfig>): ApiUpsertDto {
     default_max_audio_duration: config.defaultMaxAudioDuration,
     endpoints: config.endpoints?.map(toEndpointDto),
     output_types: config.outputTypes,
-    device_type: config.deviceType,
+    // INT-2025：按后端新契约提交 protocol + streaming 两维；
+    // device_type 已废弃（写侧携带非空值一律 400），这里不再出现该键。
+    protocol: config.protocol,
+    streaming: config.streaming,
     adapter_class: config.adapterClass,
     proxy_type: config.proxyType,
     proxy_url: config.proxyUrl,

@@ -48,7 +48,8 @@ export function useFormField(props: FormFieldProps, emit: FormFieldEmit) {
       case 'switch':
         return val !== undefined && val !== null ? val : false;
       case 'apiMeta':
-        return val !== undefined && val !== null && typeof val === 'object' ? val : {protocol: 'https', environment: 'development', version: 'v1', apiKey: ''};
+        // INT-2025：协议已抬为顶层 protocol 列，meta 只保留环境 / 版本 / API Key
+        return val !== undefined && val !== null && typeof val === 'object' ? val : {environment: 'development', version: 'v1', apiKey: ''};
       case 'algorithmMultiSelect':
         return Array.isArray(val) ? val : [];
       case 'algorithmSelect':

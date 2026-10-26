@@ -100,16 +100,19 @@ export interface BuildCaseDeviceAssignmentsOptions {
   deviceIds: (string | number)[]
   apis: Array<{
     id: string | number
+    /** 【历史遗留】显式 device_type（后端读侧已不再返回；仅旧数据兜底） */
     deviceType?: string | null
+    /** INT-2025：流式性——执行亲和域的唯一判据（true → websocket_api，false → http_api） */
+    streaming?: boolean | null
     endpointUrl?: string
   }>
 }
 
 /**
- * 组装用例级被测设备选择（INT-1434）：按「所选用例 × 选中目标」生成笛卡尔积。
+ * 组装用例级被测设备选择（INT-1434 / INT-2025）：按「所选用例 × 选中目标」生成笛卡尔积。
  * - 物理设备目标 → { device_type: physical, device_id: 设备 id }
- * - API 目标 → device_type 取 API 显式 device_type；未显式时按端点协议派生
- *   （ws/wss → websocket_api，其余 → http_api，同 report_service._resolve_subject 口径）
+ * - API 目标 → 亲和域只由流式性派生（INT-2025 / 后端 B0 裁定：流式 → websocket_api，
+ *   非流式 → http_api）；旧数据缺 streaming 时回退「显式 device_type → 端点协议」口径。
  */
 export function buildCaseDeviceAssignments(options: BuildCaseDeviceAssignmentsOptions): TaskCaseDeviceAssignment[] {
   const { caseIds, deviceIds, apis } = options
@@ -120,7 +123,14 @@ export function buildCaseDeviceAssignments(options: BuildCaseDeviceAssignmentsOp
       assignments.push({ caseId, deviceType: DeviceType.PHYSICAL, deviceId })
     }
     for (const api of apis) {
-      const deviceType = (api.deviceType || resolveApiDeviceType(api.endpointUrl)) as DeviceTypeType
+      let deviceType: DeviceTypeType
+      if (api.streaming === true) {
+        deviceType = DeviceType.WEBSOCKET_API
+      } else if (api.streaming === false) {
+        deviceType = DeviceType.HTTP_API
+      } else {
+        deviceType = (api.deviceType || resolveApiDeviceType(api.endpointUrl)) as DeviceTypeType
+      }
       assignments.push({ caseId, deviceType, deviceId: api.id })
     }
   }

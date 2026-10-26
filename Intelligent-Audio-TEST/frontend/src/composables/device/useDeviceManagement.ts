@@ -45,7 +45,7 @@ import { generateDeviceFields } from '../../utils/utils';
 import { APP_CONFIG } from '../../utils/config';
 
 // 设备管理组合式函数
-export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabType.TEST, onDevicesChanged?: () => Promise<void>) {
+export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabType.TEST, onDevicesChanged?: (type?: DeviceTabTypeType) => Promise<void>) {
   // 状态定义
   const devices = ref<DeviceUnion[]>([]);
   const deviceSearchQuery = ref('');
@@ -62,10 +62,10 @@ export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabTyp
   const modalManager = useModalControl();
   const notification = useNotification();
 
-  // 通知外部设备列表已变更
-  const notifyDevicesChanged = async () => {
+  // 通知外部设备列表已变更（携带变更页签，供外部按 API/设备分别刷新）
+  const notifyDevicesChanged = async (type?: DeviceTabTypeType) => {
     if (onDevicesChanged) {
-      await onDevicesChanged();
+      await onDevicesChanged(type);
     }
   };
 
@@ -251,9 +251,10 @@ export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabTyp
       mode: 'create',
       fields: generateDeviceFields(targetType),
       formData: initialData || {},
-      onConfirm: async (result: any) => {
+      // INT-2025：异步提交处理器由弹窗 await —— 写接口失败时抛错，弹窗保留已填内容并就地报错
+      submitHandler: async (result: any) => {
+        const { data } = result;
         try {
-          const { data } = result;
           if (targetType === DeviceTabType.TEST) {
             await devicesPort.create(data);
           } else if (targetType === DeviceTabType.PLAYBACK) {
@@ -261,14 +262,12 @@ export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabTyp
           } else if (targetType === DeviceTabType.API) {
             await apisPort.create(data);
           }
-          await fetchDevices();
-          await notifyDevicesChanged();
         } catch (error) {
           console.error('添加设备失败:', error);
-          // 向用户显示错误提示
-          const errorMessage = error instanceof Error ? error.message : '添加设备失败，请重试';
-          notification.error(errorMessage);
+          throw error;
         }
+        await fetchDevices();
+        await notifyDevicesChanged(targetType as DeviceTabTypeType);
       }
     });
   };
@@ -290,24 +289,23 @@ export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabTyp
         mode: 'edit',
         fields: generateDeviceFields(targetType),
         formData: deviceData,
-        onConfirm: async (result: any) => {
-          try {
+        // INT-2025：异步提交处理器由弹窗 await —— 更新失败保留弹窗与输入，就地报错
+        submitHandler: async (result: any) => {
           const { data } = result;
-          if (targetType === DeviceTabType.TEST) {
-            await devicesPort.update(id, data);
-          } else if (targetType === DeviceTabType.PLAYBACK) {
-            await playbackPort.update(id, data);
-          } else if (targetType === DeviceTabType.API) {
-            await apisPort.update(id, data);
+          try {
+            if (targetType === DeviceTabType.TEST) {
+              await devicesPort.update(id, data);
+            } else if (targetType === DeviceTabType.PLAYBACK) {
+              await playbackPort.update(id, data);
+            } else if (targetType === DeviceTabType.API) {
+              await apisPort.update(id, data);
+            }
+          } catch (error) {
+            console.error('编辑设备失败:', error);
+            throw error;
           }
           await fetchDevices();
-          await notifyDevicesChanged();
-        } catch (error) {
-          console.error('编辑设备失败:', error);
-          // 向用户显示错误提示
-          const errorMessage = error instanceof Error ? error.message : '编辑设备失败，请重试';
-          notification.error(errorMessage);
-        }
+          await notifyDevicesChanged(targetType as DeviceTabTypeType);
         }
       });
     } catch (error) {
