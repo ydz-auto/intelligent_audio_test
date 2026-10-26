@@ -33,7 +33,7 @@ describe('INT-1434：buildCaseDeviceAssignments', () => {
     ])
   })
 
-  it('API 显式 device_type 优先于端点协议派生', () => {
+  it('API 显式 device_type 优先于端点协议派生（旧数据兜底）', () => {
     const assignments = buildCaseDeviceAssignments({
       caseIds: ['c1'],
       deviceIds: [],
@@ -41,6 +41,28 @@ describe('INT-1434：buildCaseDeviceAssignments', () => {
     })
     expect(assignments).toEqual([
       { caseId: 'c1', deviceType: 'websocket_api', deviceId: 8 },
+    ])
+  })
+
+  it('INT-2025：流式性优先于 device_type / 端点协议（流式 → websocket_api）', () => {
+    const assignments = buildCaseDeviceAssignments({
+      caseIds: ['c1'],
+      deviceIds: [],
+      apis: [{ id: 10, streaming: true, deviceType: 'http_api', endpointUrl: 'https://api.example.com/asr' }],
+    })
+    expect(assignments).toEqual([
+      { caseId: 'c1', deviceType: 'websocket_api', deviceId: 10 },
+    ])
+  })
+
+  it('INT-2025：非流式 → http_api（即使端点是 ws://）', () => {
+    const assignments = buildCaseDeviceAssignments({
+      caseIds: ['c1'],
+      deviceIds: [],
+      apis: [{ id: 11, streaming: false, endpointUrl: 'ws://rt.example.com/stream' }],
+    })
+    expect(assignments).toEqual([
+      { caseId: 'c1', deviceType: 'http_api', deviceId: 11 },
     ])
   })
 

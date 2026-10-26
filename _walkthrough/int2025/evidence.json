@@ -1,0 +1,158 @@
+{
+  "base": "http://127.0.0.1:5600",
+  "loginInfo": {
+    "hash": "#/dashboard",
+    "token": "eyJhbGciOiJI",
+    "user": null
+  },
+  "fieldKeys": [
+    "field-description",
+    "field-name",
+    "field-protocol",
+    "field-streaming-true",
+    "field-streaming-false",
+    "field-vendor",
+    "field-apiUrl",
+    "field-algorithmType",
+    "field-meta-environment",
+    "field-meta-version",
+    "field-meta-apiKey",
+    "field-defaultMaxProcess",
+    "field-defaultMaxTimeout",
+    "field-defaultMaxAudioDuration",
+    "field-proxyType",
+    "field-proxyUrl",
+    "field-endpoints-0-url",
+    "field-endpoints-0-name",
+    "field-endpoints-0-priority",
+    "field-endpoints-0-max-process",
+    "field-endpoints-0-max-timeout",
+    "field-endpoints-0-max-duration"
+  ],
+  "hasDeviceTypeField": false,
+  "protocolOptions": [
+    "http",
+    "websocket",
+    "sse",
+    "grpc"
+  ],
+  "wsLink": {
+    "checked": "true",
+    "allDisabled": true
+  },
+  "httpLink": {
+    "checked": "false",
+    "allDisabled": false
+  },
+  "beforeCount": 1,
+  "beforeTotal": "no-pagination",
+  "failed": {
+    "modalOpen": true,
+    "nameKept": "接线测试_INT2025_API",
+    "endpointKept": "abc",
+    "toast": [
+      "提交失败详细信息",
+      "提交失败",
+      "详细信息",
+      "详细信息"
+    ]
+  },
+  "afterCreate": {
+    "modalOpen": false,
+    "hash": "#/start-test"
+  },
+  "modalClosedMs": 771,
+  "gridReadyMs": 771,
+  "afterCount": 2,
+  "afterTotal": "no-pagination",
+  "gridNames": [
+    "接线测试_INT2025_API",
+    "1"
+  ],
+  "readBack": {
+    "status": 200,
+    "total": 2,
+    "hit": {
+      "id": 375,
+      "protocol": "http",
+      "streaming": false
+    }
+  },
+  "requests": [
+    {
+      "url": "http://127.0.0.1:5600/api/v1/apis",
+      "status": 400,
+      "postData": {
+        "name": "接线测试_INT2025_API",
+        "vendor": null,
+        "api_url": null,
+        "description": null,
+        "meta": {
+          "environment": "development",
+          "version": "v1",
+          "apiKey": ""
+        },
+        "algorithm_type": null,
+        "default_max_process": 5,
+        "default_max_timeout": 30,
+        "default_max_audio_duration": 60,
+        "endpoints": [
+          {
+            "endpoint": "abc",
+            "name": "",
+            "max_process": 5,
+            "max_timeout": 30,
+            "max_audio_duration": 60,
+            "priority": 1
+          }
+        ],
+        "protocol": "http",
+        "streaming": false,
+        "proxy_type": null,
+        "proxy_url": null,
+        "rms_spl_mapping_id": null
+      },
+      "responseBody": "{\"success\":false,\"code\":400,\"message\":\"无效的接口地址 (endpoint)，必须包含协议 (http/https/ws/wss)\"}"
+    },
+    {
+      "url": "http://127.0.0.1:5600/api/v1/apis",
+      "status": 201,
+      "postData": {
+        "name": "接线测试_INT2025_API",
+        "vendor": null,
+        "api_url": null,
+        "description": null,
+        "meta": {
+          "environment": "development",
+          "version": "v1",
+          "apiKey": ""
+        },
+        "algorithm_type": null,
+        "default_max_process": 5,
+        "default_max_timeout": 30,
+        "default_max_audio_duration": 60,
+        "endpoints": [
+          {
+            "endpoint": "http://127.0.0.1:15000/health",
+            "name": "",
+            "max_process": 5,
+            "max_timeout": 30,
+            "max_audio_duration": 60,
+            "priority": 1
+          }
+        ],
+        "protocol": "http",
+        "streaming": false,
+        "proxy_type": null,
+        "proxy_url": null,
+        "rms_spl_mapping_id": null
+      },
+      "responseBody": "{\"success\":true,\"code\":0,\"message\":\"API配置创建成功\",\"data\":{\"id\":375}}"
+    }
+  ],
+  "cleanup": {
+    "deleted": true,
+    "status": 200,
+    "id": 375
+  }
+}

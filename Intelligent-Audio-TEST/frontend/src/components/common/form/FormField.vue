@@ -179,20 +179,6 @@
     
     <div v-else-if="field.type === 'apiMeta'" class="api-meta-field">
       <div class="api-meta-row">
-        <div class="api-protocol-wrapper">
-          <label :for="`${fieldId}-protocol`" class="sub-label">协议</label>
-          <select
-              :id="`${fieldId}-protocol`"
-              v-model="localValue.protocol"
-              :disabled="field.disabled || false"
-              @change="handleInput"
-            >
-            <option value="http">HTTP</option>
-            <option value="https">HTTPS</option>
-            <option value="ws">WebSocket (ws)</option>
-            <option value="wss">WebSocket (wss)</option>
-          </select>
-        </div>
         <div class="api-environment-wrapper">
           <label :for="`${fieldId}-environment`" class="sub-label">环境</label>
           <select
