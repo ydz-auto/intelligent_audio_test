@@ -26,6 +26,13 @@
 
 回滚开关 ``REPORT_CASE_SNAPSHOT_SOURCE=column|snapshot``（默认 ``snapshot``）：
 切 ``column`` 时读侧照旧读行上的内容列（R1 双写期间二者等价）。
+
+读侧键序（INT-2041）：payload 冻结时用的是 ``canonical_bytes`` 的字典序，而
+``column`` 读源是 PG jsonb 键序（先比键字节长度、再字节 memcmp）。两者只差在
+"同样遍历字典"的消费方（``output.items()`` 展开 ``@round:N``），差异会以
+**列表条目顺序**的形式出现。故 :func:`fetch_batch` 返回前用
+:func:`normalize_jsonb_order` 递归还原键序——只动键序、值一个不动，写侧
+（sha / 快照表 / 指针 / 回填）一字不改。
 """
 from __future__ import annotations
 
@@ -217,12 +224,59 @@ def _to_bytes(value) -> bytes:
     return bytes(value or b'')
 
 
+# ------------------------------------------------------------------ 键序还原
+
+def _jsonb_key_sort_key(key: str):
+    """jsonb 对象键的排序键：先比 UTF-8 字节长度，再按字节 memcmp。
+
+    这是 PG ``jsonb`` 的存储序（``lengthCompareJsonbString``）：等长键按
+    原始字节比，多字节 UTF-8 键同样按字节而非码点比。python ``sorted(bytes)``
+    即字节 memcmp 序，两者一致。
+    """
+    raw = str(key).encode('utf-8')
+    return (len(raw), raw)
+
+
+def normalize_jsonb_order(value: Any) -> Any:
+    """把解引用出来的 JSON 值递归还原成 PG jsonb 的键序口径（INT-2041）。
+
+    为什么需要：快照 payload 是按 ``canonical_bytes()``（``sort_keys=True``，
+    字典序）冻结的，而 ``REPORT_CASE_SNAPSHOT_SOURCE=column`` 读行上 jsonb 列
+    时 PG 给的是 jsonb 键序。两种键序一旦被同样遍历（如
+    ``stats_mixin._expand_rounds()`` 按 ``output.items()`` 展开 ``@round:N``
+    条目），列表内条目顺序就会不同 → 四类读路径不再逐字节等价。
+
+    口径（只动键序，**值一个不动**）：
+
+    - dict：按 ``(键 UTF-8 字节长度, 键字节 memcmp)`` 重排后递归；
+    - list：元素顺序原样保留（jsonb 数组是保序的），逐项递归；
+    - 标量：原样返回。
+
+    写侧不受影响：sha256 仍按 ``canonical_bytes(sort_keys=True)`` 计算，快照表 /
+    指针 / 回填脚本一字不改（改 canonical 口径会让 sha 全变、A→B→A 往返崩）。
+    """
+    if isinstance(value, dict):
+        return {
+            key: normalize_jsonb_order(value[key])
+            for key in sorted(value, key=_jsonb_key_sort_key)
+        }
+    if isinstance(value, list):
+        return [normalize_jsonb_order(item) for item in value]
+    return value
+
+
 def fetch_batch(session, shas: Sequence[str], report_id: Optional[int] = None
                 ) -> Dict[str, Dict[str, Any]]:
     """一次批量取回多份 payload：``{sha256: payload}``。
 
     解压后校验 sha256，不符即抛 :class:`ReportCaseSnapshotCorruptError`
     （message 带 report_id / sha256）；快照行不存在同样由调用方据此显式报错。
+
+    INT-2041：解出的 dict 是 ``canonical_bytes`` 的字典序，返回前用
+    :func:`normalize_jsonb_order` 递归还原成 jsonb 键序，使 snapshot 读源与
+    column 读源（PG jsonb）逐字节等价。本函数是全仓快照解引用唯一入口，
+    详情 / 导出（``load_cases``）与对比 / 挑选合并（``get_cases_by_report_id``）
+    都经此还原，不在上层按字段名打补丁。
     """
     from report_service.infrastructure.persistence.models import ReportCaseSnapshot
 
@@ -249,7 +303,7 @@ def fetch_batch(session, shas: Sequence[str], report_id: Optional[int] = None
         except (UnicodeDecodeError, ValueError) as exc:
             raise ReportCaseSnapshotCorruptError(
                 f'报告 {report_id} 的快照 {key} JSON 解析失败: {exc}') from exc
-        payloads[key] = value
+        payloads[key] = normalize_jsonb_order(value)
     return payloads
 
 

@@ -113,6 +113,10 @@ class ReportChildrenLoadMixin:
         INT-1994（档4 R1）：先取 ``report_cases`` 行，再**一次**批量取回
         ``report_case_snapshots.payload_gz`` 解引用（属性名不变），
         ``REPORT_CASE_SNAPSHOT_SOURCE=column`` 时原样读行上内容列（回滚通道）。
+
+        INT-2041：显式 ``ORDER BY report_cases.id``——不写 ORDER BY 时行序跟堆
+        物理序，一次 UPDATE 回填就能整体换序，详情 / 导出据此分页或对比会漂。
+        补 ORDER BY 后用例顺序 = id 序（≈插入序），是确定化而非回归。
         """
         from report_service.infrastructure.persistence.report_case_snapshot_store import (
             resolve_rows,
@@ -122,6 +126,7 @@ class ReportChildrenLoadMixin:
         rows = (
             session.query(ReportCase)
             .filter(ReportCase.report_id == report_id)
+            .order_by(ReportCase.id.asc())
             .all()
         )
         resolved = resolve_rows(session, rows, report_id=report_id)

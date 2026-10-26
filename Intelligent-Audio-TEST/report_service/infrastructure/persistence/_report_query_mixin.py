@@ -406,6 +406,10 @@ class ReportQueryMixin:
 
         INT-1994（档4 R1）：默认按快照解引用（一次批量取 ``payload_gz``）；
         ``REPORT_CASE_SNAPSHOT_SOURCE=column`` 时原样返回行上内容列（回滚通道）。
+
+        INT-2041：显式 ``ORDER BY report_cases.id``——无 ORDER BY 时行序跟堆物理
+        序，回填 UPDATE 即可整体换序，对比 / 挑选合并的用例顺序会跟着漂。补
+        ORDER BY 后顺序 = id 序（≈插入序），是确定化而非回归。
         """
         from report_service.infrastructure.persistence.models import ReportCase
         from report_service.infrastructure.persistence.report_case_snapshot_store import (
@@ -416,6 +420,7 @@ class ReportQueryMixin:
         rows = (
             session.query(ReportCase)
             .filter(ReportCase.report_id == report_id)
+            .order_by(ReportCase.id.asc())
             .all()
         )
         return resolve_rows(session, rows, report_id=report_id)
