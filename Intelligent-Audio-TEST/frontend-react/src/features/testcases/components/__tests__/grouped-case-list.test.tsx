@@ -500,4 +500,77 @@ describe('GroupedCaseList', () => {
     expect(screen.getByText('尝试清空「分组」「标签」等筛选条件')).toBeInTheDocument()
     expect(screen.queryByText('回收站为空')).not.toBeInTheDocument()
   })
+
+  it('INT-1970：列表头「全选用例」传 filtered 回调时按筛选全量圈定（不按已加载用例）', async () => {
+    const user = setupUser()
+    const onToggleAll = vi.fn()
+    const onToggleAllFiltered = vi.fn()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <GroupedCaseList
+          groups={GROUPS}
+          cases={CASES}
+          loading={false}
+          trash={false}
+          hasQueryFilters={false}
+          filters={{}}
+          selected={new Set()}
+          tagRegistry={MOCK_TAGS as TagItem[]}
+          callbacks={noopCallbacks}
+          onBatchAction={vi.fn()}
+          onToggleAll={onToggleAll}
+          onToggleAllFiltered={onToggleAllFiltered}
+          allFilteredSelected={false}
+        />
+      </QueryClientProvider>
+    )
+    await user.click(screen.getByLabelText('全选用例'))
+    // filtered 口径：交给页级按 POST /testcases/ids 全量圈定，不再把已加载 cases 传下去
+    expect(onToggleAllFiltered).toHaveBeenCalledWith(true)
+    expect(onToggleAll).not.toHaveBeenCalled()
+  })
+
+  it('INT-1970：勾选态取 allFilteredSelected（已选数=筛选总数），不再看已加载页是否全选', () => {
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <GroupedCaseList
+          groups={GROUPS}
+          cases={CASES}
+          loading={false}
+          trash={false}
+          hasQueryFilters={false}
+          filters={{}}
+          selected={new Set(CASES.map((c) => c.id))}
+          tagRegistry={MOCK_TAGS as TagItem[]}
+          callbacks={noopCallbacks}
+          onBatchAction={vi.fn()}
+          onToggleAll={vi.fn()}
+          onToggleAllFiltered={vi.fn()}
+          allFilteredSelected={false}
+        />
+      </QueryClientProvider>
+    )
+    // 已加载用例全选但筛选总数更大（真实库 580 vs 已加载 100）→ 不得显示为全选
+    expect(screen.getByLabelText('全选用例')).toHaveAttribute('aria-checked', 'false')
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <GroupedCaseList
+          groups={GROUPS}
+          cases={CASES}
+          loading={false}
+          trash={false}
+          hasQueryFilters={false}
+          filters={{}}
+          selected={new Set(CASES.map((c) => c.id))}
+          tagRegistry={MOCK_TAGS as TagItem[]}
+          callbacks={noopCallbacks}
+          onBatchAction={vi.fn()}
+          onToggleAll={vi.fn()}
+          onToggleAllFiltered={vi.fn()}
+          allFilteredSelected
+        />
+      </QueryClientProvider>
+    )
+    expect(screen.getByLabelText('全选用例')).toHaveAttribute('aria-checked', 'true')
+  })
 })

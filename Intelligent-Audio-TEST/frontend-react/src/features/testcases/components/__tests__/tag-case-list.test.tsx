@@ -124,4 +124,63 @@ describe('TagCaseList', () => {
       restoreMatchMedia()
     }
   })
+
+  it('INT-1970：列表头「全选用例」传 filtered 回调时按筛选全量圈定（按标签视图同口径）', async () => {
+    const user = userEvent.setup()
+    const onToggleAll = vi.fn()
+    const onToggleAllFiltered = vi.fn()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TagCaseList
+          cases={CASES}
+          loading={false}
+          selected={new Set()}
+          tagRegistry={MOCK_TAGS as TagItem[]}
+          callbacks={noopCallbacks}
+          onCreate={vi.fn()}
+          onToggleAll={onToggleAll}
+          onToggleAllFiltered={onToggleAllFiltered}
+          allFilteredSelected={false}
+        />
+      </QueryClientProvider>
+    )
+    await user.click(screen.getByLabelText('全选用例'))
+    expect(onToggleAllFiltered).toHaveBeenCalledWith(true)
+    expect(onToggleAll).not.toHaveBeenCalled()
+  })
+
+  it('INT-1970：勾选态取 allFilteredSelected，已加载页全选但筛选总数更大时不显示全选', () => {
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <TagCaseList
+          cases={CASES}
+          loading={false}
+          selected={new Set(CASES.map((c) => c.id))}
+          tagRegistry={MOCK_TAGS as TagItem[]}
+          callbacks={noopCallbacks}
+          onCreate={vi.fn()}
+          onToggleAll={vi.fn()}
+          onToggleAllFiltered={vi.fn()}
+          allFilteredSelected={false}
+        />
+      </QueryClientProvider>
+    )
+    expect(screen.getByLabelText('全选用例')).toHaveAttribute('aria-checked', 'false')
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <TagCaseList
+          cases={CASES}
+          loading={false}
+          selected={new Set(CASES.map((c) => c.id))}
+          tagRegistry={MOCK_TAGS as TagItem[]}
+          callbacks={noopCallbacks}
+          onCreate={vi.fn()}
+          onToggleAll={vi.fn()}
+          onToggleAllFiltered={vi.fn()}
+          allFilteredSelected
+        />
+      </QueryClientProvider>
+    )
+    expect(screen.getByLabelText('全选用例')).toHaveAttribute('aria-checked', 'true')
+  })
 })
