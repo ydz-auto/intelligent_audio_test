@@ -28,6 +28,16 @@
     python tools/perf/audio_domain_baseline.py grpc --target 127.0.0.1:50052 \
         --concurrency 1 10 40 --audio-id <id>
 
+鉴权（只影响 http 子命令）：docker 栈 :15000 的 AUTH_MODE=dev 下，无鉴权头
+的请求一律 401（整轮 ok=0），必须带下面其一；不带时请求头与原先完全一致：
+
+    # 自签 JWT（dev secret 只从命令行传，不写死、不落盘）
+    python tools/perf/audio_domain_baseline.py http \
+        --token "$JWT" --concurrency 1 10 40 --requests 300
+    # 其它鉴权模式：任意请求头，可重复
+    python tools/perf/audio_domain_baseline.py http \
+        --header "Authorization: Bearer <jwt>" --header "X-Tenant: demo"
+
 只读约束：本脚本不发任何写请求；库名由 /health 打印，跑完核对是
 intelligent_audio_test_test。
 """
@@ -106,9 +116,29 @@ def _sql_audit() -> int:
 # ==================== HTTP 并发基线 ====================
 
 
-def _health(base: str) -> Dict:
+def _header_arg(raw: str) -> str:
+    """校验 --header 的 "K: V" 形状，值里允许再出现冒号。"""
+    key, sep, value = raw.partition(':')
+    if not sep or not key.strip() or not value.strip():
+        raise argparse.ArgumentTypeError(f'请求头格式应为 "K: V"，实际为 {raw!r}')
+    return raw
+
+
+def _auth_headers(args) -> Dict[str, str]:
+    """命令行鉴权头：--token 先给出 Authorization，--header 按给出顺序覆盖。"""
+    headers: Dict[str, str] = {}
+    token = getattr(args, 'token', None)
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
+    for raw in getattr(args, 'header', None) or []:
+        key, _, value = raw.partition(':')
+        headers[key.strip()] = value.strip()
+    return headers
+
+
+def _health(base: str, headers: Dict[str, str] | None = None) -> Dict:
     import requests
-    resp = requests.get(f'{base}/health', timeout=10)
+    resp = requests.get(f'{base}/health', timeout=10, headers=headers or {})
     return resp.json()
 
 
@@ -121,7 +151,7 @@ def _percentile(values: List[float], pct: float) -> float:
 
 
 def _bench(base: str, path: str, concurrency: int, total: int,
-           health_floor: bool = False) -> Dict:
+           health_floor: bool = False, headers: Dict[str, str] | None = None) -> Dict:
     """复用同一 Session（keep-alive 连接池）跑 total 个请求。
 
     预热线：Windows 上并发新建 40 条 TCP 连接本身要 ~2s（SYN/accept 排队），
@@ -131,6 +161,8 @@ def _bench(base: str, path: str, concurrency: int, total: int,
     import requests
 
     session = requests.Session()
+    if headers:
+        session.headers.update(headers)
     adapter = requests.adapters.HTTPAdapter(
         pool_connections=concurrency, pool_maxsize=concurrency, max_retries=0)
     session.mount('http://', adapter)
@@ -196,9 +228,19 @@ def _bench(base: str, path: str, concurrency: int, total: int,
     }
 
 
+def _num(value, width: int) -> str:
+    """时延字段右对齐；ok=0（如整轮 401）时 avg/max 为 None，用 n/a 占位。"""
+    if value is None:
+        return f'{"n/a":>{width}}'
+    return f'{value:>{width}}'
+
+
 def _http_baseline(args) -> int:
-    health = _health(args.base)
+    headers = _auth_headers(args)
+    health = _health(args.base, headers)
     print(f'# /health: {health}')
+    if headers:
+        print(f'# 鉴权头: {", ".join(headers)}')
     db = health.get('database')
     if args.expect_db and db != args.expect_db:
         print(f'!! 库名不符：期望 {args.expect_db}，实际 {db}，拒绝继续', file=sys.stderr)
@@ -207,8 +249,17 @@ def _http_baseline(args) -> int:
     import requests
     audio_id = args.audio_id
     if audio_id is None:
-        resp = requests.get(f'{args.base}/api/v1/audios?page=1&per_page=1', timeout=30).json()
-        items = ((resp.get('data') or {}).get('items')) or []
+        resp = requests.get(f'{args.base}/api/v1/audios?page=1&per_page=1',
+                            timeout=30, headers=headers)
+        if resp.status_code != 200:
+            print(f'!! 取音频 id 失败 HTTP {resp.status_code}: {resp.text[:160]}',
+                  file=sys.stderr)
+            if resp.status_code == 401:
+                print('!! :15000 的 AUTH_MODE=dev 下无鉴权头一律 401，'
+                      '请带 --token <jwt> 或 --header "K: V"', file=sys.stderr)
+            return 2
+        resp_json = resp.json() or {}
+        items = ((resp_json.get('data') or {}).get('items')) or []
         if not items:
             print('!! 音频库为空，无法测详情', file=sys.stderr)
             return 2
@@ -224,18 +275,24 @@ def _http_baseline(args) -> int:
     for conc in args.concurrency:
         # 每档并发前先测同栈 /health 地板（排除机器整体负载漂移）
         floor = _bench(args.base, '/health', conc, min(args.requests, 60),
-                       health_floor=True)
+                       health_floor=True, headers=headers)
         print(f'\n## concurrency={conc}  /health 地板 avg={floor["avg_ms"]} ms '
               f'p50={floor["p50_ms"]} ms p95={floor["p95_ms"]} ms')
         for path, count in targets:
-            row = _bench(args.base, path, conc, count)
+            row = _bench(args.base, path, conc, count, headers=headers)
             results.append(row)
-            print(f'  {path:38s} avg={row["avg_ms"]:>7} ms  p50={row["p50_ms"]:>7} ms  '
-                  f'p95={row["p95_ms"]:>7} ms  p99={row["p99_ms"]:>7} ms  '
-                  f'max={row["max_ms"]:>7} ms  cold={row["cold_ms"]:>7} ms  '
+            print(f'  {path:38s} avg={_num(row["avg_ms"], 7)} ms  p50={_num(row["p50_ms"], 7)} ms  '
+                  f'p95={_num(row["p95_ms"], 7)} ms  p99={_num(row["p99_ms"], 7)} ms  '
+                  f'max={_num(row["max_ms"], 7)} ms  cold={_num(row["cold_ms"], 7)} ms  '
                   f'qps={row["qps"]}  ok={row["ok"]}/{row["requests"]}')
             if row['errors']:
                 print(f'    errors: {row["errors"]}')
+
+    if results and all(row['ok'] == 0 for row in results) and not headers:
+        first = results[0]['errors'][0] if results[0]['errors'] else ''
+        if '401' in first:
+            print('!! 整轮 401：:15000 的 AUTH_MODE=dev 下必须带 --token <jwt> 或 '
+                  '--header "K: V"，否则以上数字全部无效', file=sys.stderr)
 
     print('\n# JSON 汇总')
     print(json.dumps({'health': health, 'audio_id': audio_id, 'results': results},
@@ -296,7 +353,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='INT-1471 音频域性能基线')
     sub = parser.add_subparsers(dest='cmd', required=True)
     sub.add_parser('sql', help='本地进程内统计读路径 SQL 条数（只读）')
-    http = sub.add_parser('http', help='对运行中的栈打并发（只读）')
+    http = sub.add_parser('http', help='对运行中的栈打并发（只读）',
+                          description='对运行中的网关打并发（只读）。docker 栈 :15000 的 '
+                                      'AUTH_MODE=dev 下必须带 --token <jwt> 或 '
+                                      '--header "K: V"，否则整轮 401、数字无效。')
     http.add_argument('--base', default='http://127.0.0.1:15000',
                       help='默认 docker 栈 :15000（环境铁律）；5000 段开发栈传 '
                            'http://127.0.0.1:5000。必须用 127.0.0.1：本机 localhost '
@@ -306,6 +366,15 @@ def main() -> int:
     http.add_argument('--audio-id', type=int, default=None)
     http.add_argument('--expect-db', default=None,
                       help='给出时校验 /health 的 database，不符即拒绝压测')
+    http.add_argument('--token', default=None, metavar='<jwt>',
+                      help='注入 Authorization: Bearer <jwt>。docker 栈 :15000 的 '
+                           'AUTH_MODE=dev 下不带鉴权头会整轮 401，必须给 --token 或 '
+                           '--header；dev secret 只从命令行传，不写死、不落盘')
+    http.add_argument('--header', action='append', default=None, type=_header_arg,
+                      metavar='"K: V"',
+                      help='注入任意请求头，可重复；用于 --token 之外的其它鉴权模式。'
+                           '与 --token 同给时按给出顺序覆盖同名头（含 Authorization）。'
+                           '仅 http 子命令生效，grpc 不吃 HTTP 头')
     grpc_p = sub.add_parser('grpc', help='直连 audio_service gRPC 打并发（只读）')
     grpc_p.add_argument('--target', default='127.0.0.1:50052')
     grpc_p.add_argument('--concurrency', type=int, nargs='+', default=[10, 40])
