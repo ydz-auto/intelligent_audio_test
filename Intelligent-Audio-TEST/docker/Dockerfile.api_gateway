@@ -1,15 +1,28 @@
+# INT-1276：apt 走镜像源（compose 的 x-backend-build-args 已传 APT_MIRROR，
+# 本文件此前没接——deb.debian.org 多次 502 导致 api_gateway 镜像重建失败）。
+# 与 docker/Dockerfile.service 同一套约定：默认 tsinghua，可用 APT_MIRROR 覆盖。
 FROM python:3.11-slim
+
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
 
 WORKDIR /app
 
 # 系统依赖：音频处理（ffmpeg）、设备通信（adb、串口）
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN set -eux; \
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
+        [ -f "$f" ] && sed -i "s|deb.debian.org|${APT_MIRROR}|g" "$f"; \
+    done; \
+    apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     adb \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./requirements.txt
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN set -eux; \
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
+        [ -f "$f" ] && sed -i "s|deb.debian.org|${APT_MIRROR}|g" "$f"; \
+    done; \
+    apt-get update && apt-get install -y --no-install-recommends \
         gcc libc6-dev libffi-dev portaudio19-dev \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir -r requirements.txt
