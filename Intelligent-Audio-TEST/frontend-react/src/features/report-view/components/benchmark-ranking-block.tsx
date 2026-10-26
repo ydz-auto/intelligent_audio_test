@@ -1,14 +1,16 @@
 /**
  * Benchmark 排行区块（15_报告域.md §3.8 + 14_benchmark排行.md §10.3 组件规格）。
- * 独立模块：内嵌 ECharts 参考线图（横向柱状图 + 中位数/最佳参考线），与域图表 Chart.js v4 互不干扰
- * （INT-500 实施卡注意：排行区块专用 ECharts，独立引入 echarts，不混入 report-chart）。
+ * 内嵌参考线图（横向柱状图 + 中位数/最佳参考线）。
+ * INT-1273：图表引擎由 echarts 换成 Visactor VChart（全站一套，与 report-chart 同库）；
+ * 排序/柱宽/圆角/数值标签/参考线口径保持不变。
  * 数据经 infrastructure 获取（后端 GET /benchmarks/reports/{id} 待立项 → benchmarkApi 桩）+ 来源筛选
  * （仅实测/仅导入/全部/仅看有差异的）+ 版本标注 + 发布 Benchmark 报告。
  * 报告详情页内嵌于总览分区前（§3.1 type=benchmark 分发）。
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { VChart } from '@visactor/react-vchart'
+import type { IBarChartSpec, ISpec } from '@visactor/vchart'
+import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import * as echarts from 'echarts'
 
 import { ApiError } from '@/infrastructure/api/api-error'
 import { Badge } from '@/components/ui/badge'
@@ -17,6 +19,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { useBenchmarkRanking, type BenchmarkSourceFilter } from '@/application/report-view/use-benchmark-ranking'
 import { CHART_COLORS, getChartAxisColors } from '@/application/report-view/use-report-charts'
+import {
+  useChartTheme,
+  useThemePresetKey,
+  VCHART_OPTION,
+} from '@/features/dashboard/lib/vchart'
 import { cn } from '@/lib/utils'
 
 const SOURCE_FILTERS: { value: BenchmarkSourceFilter; label: string }[] = [
@@ -43,105 +50,98 @@ export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRanking
   } = useBenchmarkRanking(reportId)
 
   const rows = data ? filteredRows(data.rows) : []
-  const chartRef = useRef<HTMLDivElement>(null)
-  const echartsRef = useRef<echarts.ECharts | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
+  const { themeReady, themeKey, resolvedTheme } = useChartTheme()
+  const presetKey = useThemePresetKey()
 
-  // ECharts 横向柱状图 + 中位数/最佳参考线（排行区块独立模块；深浅色随主题 token 近似）
-  useEffect(() => {
-    const dom = chartRef.current
-    if (!dom || !data) return
-    if (!echartsRef.current) echartsRef.current = echarts.init(dom)
-    const chart = echartsRef.current
-    const isDark = document.documentElement.classList.contains('dark')
-    // 轴色/网格色与域图表 chartConfig 同源（P3：rgba 魔数经 application 再导出复用）
+  // 横向柱状图 + 中位数/最佳参考线（排行区块独立模块；深浅色轴色随主题 token）
+  const chartSpec = useMemo(() => {
+    if (!data) return null
+    const isDark = resolvedTheme === 'dark'
     const axisColors = getChartAxisColors(isDark)
     const textColor = axisColors.tickColor
     const gridColor = axisColors.gridColor
-
     const list = rows
-      .map((r) => ({ name: r.subjectName, value: r.metricValue }))
-      .sort((a, b) => a.value - b.value)
+      .map((row) => ({ 被测主体: row.subjectName, 指标值: row.metricValue }))
+      .sort((a, b) => a.指标值 - b.指标值)
 
-    chart.setOption({
-      animationDuration: 400,
-      grid: { left: 8, right: 24, top: 8, bottom: 8, containLabel: true },
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        formatter: (params: unknown) => {
-          const items = Array.isArray(params) ? params : [params]
-          const head = items[0] as { name: string; value: number } | undefined
-          return head ? `${head.name}<br/>${data.metricName}：${head.value}${data.unit}` : ''
-        },
+    return {
+      type: 'bar',
+      direction: 'horizontal',
+      data: [{ id: 'benchmark-ranking', values: list }],
+      xField: '指标值',
+      yField: '被测主体',
+      color: [CHART_COLORS.primary],
+      legends: { visible: false },
+      barMaxWidth: 18,
+      bar: { style: { cornerRadius: [0, 4, 4, 0] } },
+      label: {
+        visible: true,
+        position: 'right',
+        formatMethod: (value: unknown) => `${String(value)}${data.unit}`,
+        style: { fill: textColor, fontSize: 11 },
       },
-      xAxis: {
-        type: 'value',
-        axisLabel: { color: textColor },
-        splitLine: { lineStyle: { color: gridColor } },
-      },
-      yAxis: {
-        type: 'category',
-        data: list.map((r) => r.name),
-        axisLabel: { color: textColor },
-        axisLine: { lineStyle: { color: gridColor } },
-      },
-      series: [
+      axes: [
         {
-          type: 'bar',
-          data: list,
-          barWidth: 18,
-          itemStyle: {
-            color: CHART_COLORS.primary,
-            borderRadius: [0, 4, 4, 0],
-          },
+          orient: 'left',
+          type: 'band',
           label: {
-            show: true,
-            position: 'right',
-            formatter: `{c}${data.unit}`,
-            color: textColor,
-            fontSize: 11,
+            style: { fill: textColor, fontSize: 12, textAlign: 'right' },
+            autoHide: true,
+            autoLimit: true,
           },
-          // 中位数与最佳参考线（§3.8 实测：中位数 dashed warning + 最佳 dashed success）
-          markLine: {
-            silent: true,
-            symbol: 'none',
-            lineStyle: { type: 'dashed', width: 1.5 },
-            label: { fontSize: 10 },
-            data: [
-              {
-                xAxis: data.median,
-                lineStyle: { color: CHART_COLORS.warning },
-                label: { formatter: '中位数 {c}', color: CHART_COLORS.warning },
-              },
-              {
-                xAxis: data.best,
-                lineStyle: { color: CHART_COLORS.success },
-                label: { formatter: '最佳 {c}', color: CHART_COLORS.success },
-              },
-            ],
+          grid: { visible: false },
+          domainLine: { visible: true, style: { stroke: gridColor } },
+          tick: { visible: false },
+        },
+        {
+          orient: 'bottom',
+          type: 'linear',
+          label: { style: { fill: textColor, fontSize: 11 } },
+          grid: { visible: true, style: { stroke: gridColor, lineDash: [3, 3] } },
+          domainLine: { visible: false },
+          tick: { visible: false },
+        },
+      ],
+      // 中位数与最佳参考线（§3.8 实测：中位数 dashed warning + 最佳 dashed success）
+      markLine: [
+        {
+          x: data.median,
+          line: { style: { stroke: CHART_COLORS.warning, lineDash: [4, 4], lineWidth: 1.5 } },
+          label: {
+            visible: true,
+            text: `中位数 ${data.median}`,
+            style: { fill: CHART_COLORS.warning, fontSize: 10 },
+          },
+        },
+        {
+          x: data.best,
+          line: { style: { stroke: CHART_COLORS.success, lineDash: [4, 4], lineWidth: 1.5 } },
+          label: {
+            visible: true,
+            text: `最佳 ${data.best}`,
+            style: { fill: CHART_COLORS.success, fontSize: 10 },
           },
         },
       ],
-    })
-    return () => {
-      // chart 实例复用，组件卸载时销毁
-    }
-  }, [data, rows, source])
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: (datum?: Record<string, unknown>) => String(datum?.['被测主体'] ?? ''),
+              value: (datum?: Record<string, unknown>) =>
+                `${data.metricName}：${String(datum?.['指标值'] ?? '')}${data.unit}`,
+            },
+          ],
+        },
+      },
+      background: 'transparent',
+      animation: true,
+    } satisfies IBarChartSpec
+  }, [data, rows, resolvedTheme])
 
-  useEffect(() => {
-    return () => {
-      echartsRef.current?.dispose()
-      echartsRef.current = null
-    }
-  }, [])
-
-  // 窗口 resize 跟随容器
-  useEffect(() => {
-    const handleResize = () => echartsRef.current?.resize()
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  // benchmarks 排行图高度随行数增长（沿用改造前 34px/行、最小 240px）
+  const chartHeight = Math.max(240, rows.length * 34)
 
   const handlePublish = useCallback(async () => {
     setPublishOpen(false)
@@ -286,10 +286,24 @@ export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRanking
         )}
       </div>
 
-      {/* ECharts 参考线图（独立模块） */}
+      {/* VChart 参考线图（独立模块） */}
       <div className='mt-4'>
         <p className='text-muted-foreground mb-2 text-xs font-medium'>指标值参考线（中位数 / 最佳）</p>
-        <div ref={chartRef} style={{ height: Math.max(240, rows.length * 34) }} className='w-full' />
+        {chartSpec && themeReady && rows.length > 0 ? (
+          <VChart
+            key={['benchmark-ranking', themeKey, presetKey].join('|')}
+            spec={{ ...chartSpec, theme: themeKey, background: 'transparent' } as unknown as ISpec}
+            options={VCHART_OPTION}
+            style={{ height: chartHeight, width: '100%' }}
+          />
+        ) : (
+          <div
+            className='text-muted-foreground flex items-center justify-center text-sm'
+            style={{ height: chartHeight }}
+          >
+            {rows.length === 0 ? '暂无匹配的排行数据' : '图表加载中...'}
+          </div>
+        )}
       </div>
 
       <p className='text-muted-foreground mt-3 text-xs leading-5'>
