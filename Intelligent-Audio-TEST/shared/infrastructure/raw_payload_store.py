@@ -97,13 +97,12 @@ def column_names(kind: str) -> Tuple[str, ...]:
 
 
 def apply_pointer(target, kind: str, pointer: Optional[RawPayloadPointer]) -> None:
-    """把指针写到目标行（ORM 对象）的五列，并**清空 JSON 列**。
+    """把指针写到目标行（ORM 对象）的五列；无报文时五列一并置空。
 
-    C2 起 ``api_raw_response`` / ``api_request_body`` 不再有代码写入：指针为 None
-    （无报文）时五列一并置空，JSON 列同样置空，保证「行上要么有指针、要么都没有」。
+    M1（INT-1813）起 ``api_raw_response`` / ``api_request_body`` 两列已在库与 ORM 里
+    删除（报文只存在于对象里），因此这里不再置空 JSON 列——不变量变成「行上要么有
+    完整指针、要么五列全空」。
     """
-    prefix = COLUMN_PREFIX[kind]
-    setattr(target, prefix, None)
     values = (None, None, None, None, None) if pointer is None else (
         pointer.uri, pointer.sha256, pointer.size_bytes,
         pointer.content_type, pointer.created_at)

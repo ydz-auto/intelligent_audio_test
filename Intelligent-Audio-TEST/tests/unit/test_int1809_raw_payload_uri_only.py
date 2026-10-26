@@ -171,8 +171,6 @@ def _row(factory, trd_id):
         return SimpleNamespace(
             dimension_value=po.dimension_value, score=po.score,
             evaluation_status=po.evaluation_status,
-            api_raw_response=po.api_raw_response,
-            api_request_body=po.api_request_body,
             **{col: getattr(po, col) for col in (
                 'api_raw_response_uri', 'api_raw_response_sha256',
                 'api_raw_response_bytes', 'api_raw_response_content_type',
@@ -183,29 +181,23 @@ def _row(factory, trd_id):
         session.close()
 
 
-def _sql_payload_state(trd_db, trd_id):
-    """SQL 级判空：两个 JSON 列是 SQL NULL 还是 JSON 字面量 ``null``。
+def _assert_json_columns_removed(trd_db):
+    """M1（INT-1813）：两个 JSON 列已在库与 ORM 里删除，报文只存在于对象里。
 
-    返回 ``{列名: (is_null, json_type)}``。只有 ``is_null is True`` / ``json_type is
-    None`` 才是真 SQL NULL——ORM 读回时两者都是 Python None，判不出区别，
-    而 C1 切换门禁用的是 SQL 判据（``IS NOT NULL``）。
+    删列前本文件用 SQL 级判空（``IS NULL`` / ``json_typeof``）证明「置空落 SQL NULL」；
+    M1 之后该契约消失——不变量变成「列不存在 + 指针五列完整（或缺整齐空）」。
     """
-    from sqlalchemy import text
-    engine = trd_db.engine
-    fn = 'json_type' if engine.dialect.name == 'sqlite' else 'json_typeof'
-    columns = ('api_raw_response', 'api_request_body')
-    sql = ('SELECT ' + ', '.join(f'{c} IS NULL, {fn}({c})' for c in columns)
-           + ' FROM test_result_dimensions WHERE id = :id')
-    with engine.connect() as conn:
-        row = conn.execute(text(sql), {'id': trd_id}).one()
-    return {c: (bool(row[i * 2]), row[i * 2 + 1]) for i, c in enumerate(columns)}
-
-
-def _assert_sql_null(trd_db, trd_id):
-    state = _sql_payload_state(trd_db, trd_id)
-    for column, (is_null, json_type) in state.items():
-        assert is_null is True, f'{column} 不是 SQL NULL: {state}'
-        assert json_type is None, f'{column} 是 JSON 字面量 {json_type!r}: {state}'
+    from sqlalchemy import inspect
+    from evaluation_service.infrastructure.persistence.orm_models import (
+        TestResultDimension,
+    )
+    model_columns = {c.name for c in TestResultDimension.__table__.columns}
+    for column in ('api_raw_response', 'api_request_body'):
+        assert column not in model_columns, f'ORM 仍映射已删列 {column}'
+    db_columns = {c['name'] for c in inspect(trd_db.engine).get_columns(
+        'test_result_dimensions')}
+    for column in ('api_raw_response', 'api_request_body'):
+        assert column not in db_columns, f'表里仍有已删列 {column}'
 
 
 def _run_group(host, trd_db, group_items, resp_data, per_round=None, req=None):
@@ -264,8 +256,7 @@ class TestGroupLevelWrite:
         _run_group(host, trd_db, [(_dim(1), trd_id)], {'name': 'resp'})
 
         row = _row(trd_db.factory, trd_id)
-        assert row.api_raw_response is None and row.api_request_body is None
-        _assert_sql_null(trd_db, trd_id)
+        _assert_json_columns_removed(trd_db)
         for prefix in ('api_raw_response', 'api_request_body'):
             assert getattr(row, f'{prefix}_uri').startswith('oss://case_result/raw/')
             assert len(getattr(row, f'{prefix}_sha256')) == 64
@@ -322,10 +313,10 @@ class TestGroupLevelWrite:
 # ==================== 1b. 置空必须落 SQL NULL（返工 P1） ====================
 
 class TestNullWritesAreSqlNull:
-    """``Column(JSON)`` 默认 ``none_as_null=False`` 会把 None 落成 JSON 字面量
-    ``null``——``IS NOT NULL`` 为真，C1 切换门禁（内联非空而 uri 为空）会把
-    「本来没有报文」的行误判成悬空指针。下面三条是 C2 自己会产生置空的三类写点，
-    必须都在 SQL 级判空（ORM 读回判 None 区分不出来）。"""
+    """C2 时代这三条证明「置空落 SQL NULL」（C1 门禁判 ``IS NOT NULL``）。
+
+    M1（INT-1813）删掉两个 JSON 列之后，「置空」的落点只剩指针五列：本类改为验证
+    三类置空写点都只清指针、不再触碰已删列（列不存在，ORM 也不映射）。"""
 
     def test_apply_pointer_none_clears_to_sql_null(self, trd_db):
         """正常写路径：已有内联 JSON 的行被置空 → 五列 + JSON 两列全 SQL NULL。"""
@@ -334,9 +325,7 @@ class TestNullWritesAreSqlNull:
         )
         # 历史行（切换前写法）：内联 JSON 有值，这样「置空」才真的产生一次 JSON 列 UPDATE
         trd_id = _insert_trd(trd_db.factory, dimension_id=1, round_number=None,
-                             evaluation_status='completed',
-                             api_raw_response={'legacy': 'inline'},
-                             api_request_body={'legacy': 'inline'})
+                             evaluation_status='completed')
         pointer = trd_db.store.store(KIND_RESPONSE, {'a': 1})
         session = trd_db.factory()
         try:
@@ -357,14 +346,12 @@ class TestNullWritesAreSqlNull:
         finally:
             session.close()
 
-        _assert_sql_null(trd_db, trd_id)
+        _assert_json_columns_removed(trd_db)
 
     def test_group_failed_path_clears_to_sql_null(self, trd_db):
         """失败行路径（不带报文）→ 置空落 SQL NULL，门禁仍为 0/0。"""
         trd_id = _insert_trd(trd_db.factory, dimension_id=1, round_number=None,
-                             evaluation_status='completed',
-                             api_raw_response={'legacy': 'inline'},
-                             api_request_body={'legacy': 'inline'})
+                             evaluation_status='completed')
 
         _Host().update_all_dimensions_in_group_failed(
             group_items=[(_dim(1), trd_id)], error_message='厂商接口超时',
@@ -373,7 +360,7 @@ class TestNullWritesAreSqlNull:
         row = _row(trd_db.factory, trd_id)
         assert row.evaluation_status == 'failed'
         assert row.api_raw_response_uri is None
-        _assert_sql_null(trd_db, trd_id)
+        _assert_json_columns_removed(trd_db)
 
     def test_reset_score_to_pending_is_sql_null(self, trd_db):
         """重评重置（Core update）→ 两个 JSON 列落 SQL NULL，指针列一并清空。"""
@@ -383,9 +370,7 @@ class TestNullWritesAreSqlNull:
         # 模拟切换前的历史行：内联 JSON 有值 + 指针也有值（apply_pointer 会清 JSON，
         # 所以指纹直接赋在行上，保持「两列都非空」的前置）
         trd_id = _insert_trd(trd_db.factory, dimension_id=1, round_number=None,
-                             evaluation_status='completed', score=88.0,
-                             api_raw_response={'legacy': 'inline'},
-                             api_request_body={'legacy': 'inline'})
+                             evaluation_status='completed', score=88.0)
         session = trd_db.factory()
         try:
             po = session.get(TestResultDimension, trd_id)
@@ -394,17 +379,12 @@ class TestNullWritesAreSqlNull:
             session.commit()
         finally:
             session.close()
-        # 前置：两个 JSON 列确实非空（否则本用例证明不了「置空」）
-        before = _sql_payload_state(trd_db, trd_id)
-        assert before['api_raw_response'] == (False, 'object'), before
-        assert before['api_request_body'] == (False, 'object'), before
-
         repo_mod.evaluation_dimension_repository.reset_score_to_pending(trd_id)
 
         row = _row(trd_db.factory, trd_id)
         assert row.evaluation_status == 'pending' and row.score is None
         assert row.api_raw_response_uri is None
-        _assert_sql_null(trd_db, trd_id)
+        _assert_json_columns_removed(trd_db)
 
 
 # ==================== 2. 失败方向 ====================

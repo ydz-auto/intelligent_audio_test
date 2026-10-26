@@ -28,20 +28,28 @@ _DATETIME_FIELDS: Set[str] = {
     if getattr(c.type, 'python_type', None) is datetime
 }
 
-# INT-1811：JSON 列（api_raw_response / api_request_body）显式传 Python None 时，
-# Column(JSON) 默认 none_as_null=False 会落成 JSON 字面量 null，`IS NOT NULL` 为真；
-# 于是「本来没有报文」的维度行在导入后被门禁（内联非空而 uri 为空）判成悬空指针。
+# INT-1811：JSON 列显式传 Python None 时 Column(JSON) 会落成 JSON 字面量 null、
+# `IS NOT NULL` 为真，于是「本来没有报文」的维度行在导入后被门禁判成悬空指针；
 # 值为 None 时不放进 INSERT → ORM 缺省该列 → 落 SQL NULL。
+# M1（INT-1813）起 test_result_dimensions 已无 JSON 列（_JSON_FIELDS 为空集），
+# 这段判据保留为通用规则：将来新增 JSON 列仍按「None → 不写」处理；旧导出包里
+# 残留的 api_raw_response / api_request_body 键会走上面的「未知列丢弃」分支。
 _JSON_FIELDS: Set[str] = {
     c.name for c in TestResultDimension.__table__.columns
     if isinstance(c.type, JSON)
 }
+
+# M1（INT-1813）删掉的两列：1.0/1.1 旧导出包的维度行仍带这两个键（搬运侧会把它们
+# 置 None），导入时静默丢弃即可——按「未知列」报警会在一次回导里刷出十几万条 WARNING。
+_RETIRED_COLUMNS: Set[str] = {'api_raw_response', 'api_request_body'}
 
 
 def _coerce_row(row: dict) -> dict:
     columns = {c.name for c in TestResultDimension.__table__.columns}
     coerced = {}
     for key, value in row.items():
+        if key in _RETIRED_COLUMNS:
+            continue  # 旧包里的已删列：报文已在对象里（回填时物化），行上无需该值
         if key not in columns:
             log_not_emit('WARNING', _MODULE_NAME,
                          f'test_result_dimensions 未知列 {key}，已丢弃', category='system')

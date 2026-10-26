@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
-"""INT-1811 返工：维度导入的 JSON 列必须落 SQL NULL，不能落 JSON 字面量 null
+"""维度导入的原始报文口径：从「JSON 列落 SQL NULL」到「列已删、只留指针」（M1）
 
-门禁（C2 读写切换的验收口径，卡面验收 #2）::
+INT-1811 返工时代的契约：``Column(JSON)`` 默认 ``none_as_null=False`` 会把 Python
+``None`` 落成 JSON 字面量 ``null``，``IS NOT NULL`` 为真，于是「本来就没有报文」的行
+导入后被 C1 门禁（内联非空而 uri 为空）判成悬空指针；修法是 ``_coerce_row`` 对值为
+None 的 JSON 列不放进 INSERT。
 
-    api_raw_response IS NOT NULL AND api_raw_response_uri IS NULL   → 0
-    api_request_body  IS NOT NULL AND api_request_body_uri IS NULL  → 0
+M1（INT-1813）删掉两列后，这套 SQL NULL 判据随列一起消失，本文件改为守住**新**契约：
 
-`Column(JSON)` 默认 ``none_as_null=False``：显式传 Python ``None`` 会被序列化成
-JSON 字面量 ``null``（``api_raw_response::text = 'null'``），``IS NOT NULL`` 为真；
-于是「本来就没有报文」的行（整体评估行，源库两列都是 SQL NULL）导入后被门禁
-判成悬空指针。修法：``_coerce_row`` 对值为 None 的 JSON 列不放进 INSERT，
-由 ORM 缺省该列 → 落 SQL NULL。
+1. 两列既不在 ORM 映射里、也不在库里（``_JSON_FIELDS`` 为空集，旧包里的这两个键
+   走 ``_RETIRED_COLUMNS`` 静默丢弃——不按「未知列」报警）；
+2. 导入只写指针五列，报文本身在对象里；
+3. 整包 ``import_rows`` 与增量 ``merge`` 仍共用同一个 ``_coerce_row``。
 
-不连真库：SQLite 临时库 + 真实 ORM / 仓储（整包 ``import_rows`` 与增量
-``merge`` 共用同一个 ``_coerce_row``）。
+不连真库：SQLite 临时库 + 真实 ORM / 仓储。
 """
 import os
 import tempfile
@@ -57,27 +57,27 @@ def db():
         os.remove(path)
 
 
-_GATE_SQL = (
-    "SELECT count(*) FROM test_result_dimensions "
-    "WHERE {json_col} IS NOT NULL AND {uri_col} IS NULL")
-
-
-def _gate(db, json_col: str, uri_col: str) -> int:
+def session_gate(db, uri_col: str, sha_col: str) -> int:
+    """M1 后的等价门禁：有指针却没 sha（断链）的行数。"""
     session = db.get_db_session()
     try:
         return session.execute(text(
-            _GATE_SQL.format(json_col=json_col, uri_col=uri_col))).scalar()
+            f"SELECT count(*) FROM test_result_dimensions "
+            f"WHERE {uri_col} IS NOT NULL AND {sha_col} IS NULL")).scalar()
     finally:
         session.close()
 
 
-def test_coerce_row_drops_none_json_columns():
+def test_coerce_row_drops_retired_json_columns():
+    """M1：两列已删——旧包带来的这两个键（有值或 None）一律不进 INSERT。"""
     from evaluation_service.infrastructure.persistence.dimension_transfer_repository import (
-        _coerce_row,
+        _RETIRED_COLUMNS,
         _JSON_FIELDS,
+        _coerce_row,
     )
 
-    assert {'api_raw_response', 'api_request_body'} <= _JSON_FIELDS
+    assert {'api_raw_response', 'api_request_body'} == _RETIRED_COLUMNS
+    assert not ({'api_raw_response', 'api_request_body'} & _JSON_FIELDS)
 
     row = _coerce_row({
         'api_raw_response': None,
@@ -85,16 +85,15 @@ def test_coerce_row_drops_none_json_columns():
         'api_raw_response_uri': 'oss://case_result/raw/resp/aa/aa.json.gz',
         'round_number': None,
     })
-    # JSON 列置空 = 不放进 INSERT（ORM 缺省 → SQL NULL）
     assert 'api_raw_response' not in row
     assert 'api_request_body' not in row
     # 非 JSON 列仍显式写 None（round_number NULL = 整体评估行，语义依赖它）
     assert 'round_number' in row and row['round_number'] is None
     assert row['api_raw_response_uri'].startswith('oss://')
 
-    # 有内容时原样保留（1.0 旧包物化前 / 正常报文）
-    kept = _coerce_row({'api_raw_response': {'reasoning': 'x'}})
-    assert kept['api_raw_response'] == {'reasoning': 'x'}
+    # 1.0 旧包里的内联报文在搬运侧已物化成对象（写指针），行上不再带该值
+    retired = _coerce_row({'api_raw_response': {'reasoning': 'x'}})
+    assert 'api_raw_response' not in retired
 
 
 def test_merge_repository_shares_the_same_coercion():
@@ -107,14 +106,14 @@ def test_merge_repository_shares_the_same_coercion():
             is dimension_transfer_repository._coerce_row)
 
 
-def test_import_rows_lands_sql_null_and_gate_is_zero(db):
+def test_import_rows_lands_pointers_without_retired_columns(db):
     from evaluation_service.infrastructure.persistence.dimension_transfer_repository import (
         DimensionTransferRepository,
     )
 
     repo = DimensionTransferRepository()
     rows = [
-        # 无报文行（整体评估行）：指针有值、内联两列 None —— 返工前落成 JSON null
+        # 1.0 旧包行：带着已删列（None），搬运侧已写好指针 —— 导入只认指针
         {
             'id': 1, 'test_result_id': 1, 'dimension_id': 1,
             'round_number': None, 'score': 0.9,
@@ -131,17 +130,19 @@ def test_import_rows_lands_sql_null_and_gate_is_zero(db):
             'api_raw_response': None, 'api_request_body': None,
             'api_raw_response_uri': 'oss://case_result/raw/resp/cc/cc.json.gz',
             'api_request_body_uri': 'oss://case_result/raw/req/dd/dd.json.gz',
+            'api_raw_response_sha256': 'c' * 64,
+            'api_request_body_sha256': 'd' * 64,
         },
     ]
     repo.import_rows(rows, {})
 
     session = db.get_db_session()
     try:
-        # 无报文行：两列必须是 SQL NULL（门禁的「内联非空」不能命中它）
-        raw_null = session.execute(text(
-            "SELECT api_raw_response IS NULL, api_request_body IS NULL "
-            "FROM test_result_dimensions WHERE id = 1")).one()
-        assert tuple(raw_null) == (1, 1)
+        # 已删列不在表里（导入不会尝试写它们）
+        columns = {row[0] for row in session.execute(text(
+            "SELECT name FROM pragma_table_info('test_result_dimensions')"))}
+        assert 'api_raw_response' not in columns
+        assert 'api_request_body' not in columns
         # 非报文列不受影响
         round_number = session.execute(text(
             "SELECT round_number FROM test_result_dimensions WHERE id = 1")).scalar()
@@ -156,5 +157,8 @@ def test_import_rows_lands_sql_null_and_gate_is_zero(db):
     finally:
         session.close()
 
-    assert _gate(db, 'api_raw_response', 'api_raw_response_uri') == 0
-    assert _gate(db, 'api_request_body', 'api_request_body_uri') == 0
+    # M1 后 C1 门禁不适用（列已删）；等价的不变量是「有 uri 必有 sha256」
+    for uri_col, sha_col in (('api_raw_response_uri', 'api_raw_response_sha256'),
+                             ('api_request_body_uri', 'api_request_body_sha256')):
+        broken = session_gate(db, uri_col, sha_col)
+        assert broken == 0, (uri_col, broken)

@@ -38,6 +38,10 @@ request 6,259 个不同值），打包成一份会丢掉跨值去重。
       FROM test_result_dimensions;
     两项都为 0 才算可以切换读写路径（C2）。``--gate`` 在有缺口时退出码 1。
 
+M1（INT-1813）之后本脚本**退役**：两列已删，这里的 `--gate` 会
+UndefinedColumn——切换/收尾口径改由
+``scripts/migrations/202610/drop_raw_payload_columns_int1813.py``（`--gate` / `--restore`）负责。
+
 用法：
     # 只看门禁（可重复执行、只读）
     python scripts/migrations/202610/backfill_raw_payload_pointers_int1807.py --gate

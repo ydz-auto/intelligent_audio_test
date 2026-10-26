@@ -358,8 +358,9 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
     def reset_score_to_pending(self, score_id: int) -> None:
         """重置维度评分记录为 pending（含 commit）。
 
-        清空 score/error_message/api_request_body/api_raw_response 与对应的对象指针列，
-        evaluation_status 置为 pending，供重新评估复用。
+        清空 score/error_message 与原始报文的对象指针五列（两组），evaluation_status
+        置为 pending，供重新评估复用。M1（INT-1813）起 JSON 两列已在库中删除，报文
+        只存在于对象里，重置只需清指针。
         """
         session = get_db_session()
         # INT-1809（C2）：重评前把旧报文指针一并清掉——否则重评失败时行上会留着
@@ -368,8 +369,6 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
             'evaluation_status': EvaluationStatus.PENDING,
             'score': None,
             'error_message': None,
-            'api_request_body': None,
-            'api_raw_response': None,
             'api_request_body_uri': None,
             'api_request_body_sha256': None,
             'api_request_body_bytes': None,

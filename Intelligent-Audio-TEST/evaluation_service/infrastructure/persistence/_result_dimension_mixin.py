@@ -24,7 +24,7 @@ from shared.utils.status_constants import EvaluationStatus, TaskCaseStatus
 
 
 def _write_payload_pointer(row, kind, value, payload_cache):
-    """把一行的原始报文落成指针列（并清空 JSON 列）。
+    """把一行的原始报文落成指针列（M1 起两列 JSON 已删，报文只在对象里）。
 
     ``payload_cache`` 为组级缓存：同值在上传阶段已经写过对象，这里只是命中复用；
     存储不可用（cache 已标记 unavailable）→ 只落 NULL，不抛异常。
