@@ -48,6 +48,16 @@ ACCESS EXCLUSIVE 锁；lock_timeout 默认 5s（DB_MIGRATION_LOCK_TIMEOUT_MS 可
 
 幂等性：表 / 列已存在即 SKIP；列注释每次重写（catalog 级、幂等）；重复执行不产生
 任何表重写。
+
+引导链安全（INT-2006 修复）：本步排在全新建表之后，**不是**「全新库全 SKIP」那么简单：
+
+- 引导链 ① ``create_all_tables.py`` 会先按模型建出 ``report_case_snapshots``（旧模型
+  是裸 ``DateTime`` → ``timestamp without time zone``），所以到本步时
+  ``need_table=False``、``missing=4`` → 走 apply 分支，``_verify`` 曾在 ``created_at``
+  上 FAIL → 退出码 3 → 整条 ``db_bootstrap`` 失败（部署打不出去）。
+- 修复后 ``_verify`` 的期望与模型一致（timestamptz）；表已存在但类型仍是 no-tz 的
+  历史库用 ``TYPE_FIX_SQL`` 幂等自愈。
+- ``[SKIP]`` 早退分支不再跳过 ``STORAGE_SQL`` 与 ``_verify``，且校验失败即非 0 退出。
 """
 import argparse
 import os
@@ -84,6 +94,12 @@ CREATE TABLE IF NOT EXISTS {SNAPSHOT_TABLE} (
 #: payload_gz 已经是 gzip 体，关掉 TOAST 二次压缩（幂等，可重复执行）
 STORAGE_SQL = (f'ALTER TABLE {SNAPSHOT_TABLE} '
                f'ALTER COLUMN payload_gz SET STORAGE EXTERNAL')
+
+#: INT-2006：旧版模型是裸 ``DateTime``（无 timezone），create_all 会建成
+#: ``timestamp without time zone``；上一次失败的部署已经把表建出来了，不自愈就会
+#: 永久与设计文档 §3.2 的 timestamptz 偏离（表还是空的，落库值不存在时区歧义）。
+TYPE_FIX_SQL = (f'ALTER TABLE {SNAPSHOT_TABLE} '
+                f'ALTER COLUMN created_at TYPE timestamptz')
 
 COMMENT_SQL = (
     (f"COMMENT ON TABLE {SNAPSHOT_TABLE} IS "
@@ -150,6 +166,14 @@ def _existing_columns(cur, table) -> dict:
 def _missing_columns(existing: dict):
     return [(name, ddl_type) for name, ddl_type, _expected, _comment in COLUMNS
             if name not in existing]
+
+
+def _created_at_type_drift(cur) -> bool:
+    """表已存在但 ``created_at`` 不是 timestamptz（旧版 create_all 的 no-tz 形态）。"""
+    if not _table_exists(cur, SNAPSHOT_TABLE):
+        return False
+    info = _existing_columns(cur, SNAPSHOT_TABLE).get('created_at')
+    return bool(info) and info[0] != 'timestamp with time zone'
 
 
 def build_add_column_ddl(missing) -> str:
@@ -265,15 +289,38 @@ def migrate(dry_run=True):
 
         need_table = not _table_exists(cur, SNAPSHOT_TABLE)
         missing = _missing_columns(_existing_columns(cur, CASES_TABLE))
+        type_drift = _created_at_type_drift(cur)
 
-        if not need_table and not missing:
+        if not need_table and not missing and not type_drift:
+            # INT-2006：早退**不能**连 STORAGE 与校验一起跳过。全新库（引导链 ①
+            # create_all 已建表建列）与失败部署的重试都走这条分支，早退曾把
+            # attstorage=x 与 no-tz 的 created_at 静默留下，_verify 的 FAIL 又不影响
+            # 退出码。现在：STORAGE 照做（幂等），且 _verify 的结果决定退出码。
             print(f'[SKIP] 表 {SNAPSHOT_TABLE} 与 {len(COLUMNS)} 列均已存在')
-            _verify(cur)
+            if dry_run:
+                return
+            if 'payload_gz' in _existing_columns(cur, SNAPSHOT_TABLE):
+                try:
+                    cur.execute(STORAGE_SQL)
+                    conn.commit()
+                except psycopg2.errors.LockNotAvailable:
+                    conn.rollback()
+                    print(f'[FAIL] {lock_timeout_ms}ms 内未拿到 {SNAPSHOT_TABLE} 的 '
+                          f'ACCESS EXCLUSIVE 锁；持锁者 pid='
+                          f'{_blocking_pids(cur, SNAPSHOT_TABLE)}')
+                    raise SystemExit(2)
+            ok = _verify(cur)
+            cur.close()
+            if not ok:
+                raise SystemExit(3)
             return
 
         tag = 'DRY' if dry_run else 'APPLY'
         if need_table:
             print(f'[{tag}] CREATE TABLE IF NOT EXISTS {SNAPSHOT_TABLE} (...)')
+        if type_drift:
+            print(f'[{tag}] 类型漂移 {SNAPSHOT_TABLE}.created_at 不是 timestamptz')
+            print(f'[{tag}] {TYPE_FIX_SQL}')
         if missing:
             print(f'[{tag}] 缺失 {len(missing)} 列：'
                   f'{", ".join(name for name, _ in missing)}')
@@ -294,6 +341,9 @@ def migrate(dry_run=True):
                 cur.execute(CREATE_TABLE_SQL)
                 print(f'[APPLY] 建表 {SNAPSHOT_TABLE} 完成')
             cur.execute(STORAGE_SQL)
+            if type_drift:
+                cur.execute(TYPE_FIX_SQL)
+                print(f'[APPLY] 类型自愈 {SNAPSHOT_TABLE}.created_at -> timestamptz')
             if missing:
                 cur.execute(build_add_column_ddl(missing))
             conn.commit()
@@ -304,7 +354,8 @@ def migrate(dry_run=True):
                   f'等锁者 pid={_waiting_lock_pids(cur, CASES_TABLE) + _waiting_lock_pids(cur, SNAPSHOT_TABLE)}')
             raise SystemExit(2)
         elapsed_ms = int((time.monotonic() - started) * 1000)
-        print(f'[APPLY] DDL 完成（表={need_table}，列={len(missing)}），耗时 {elapsed_ms}ms'
+        print(f'[APPLY] DDL 完成（表={need_table}，列={len(missing)}，'
+              f'类型自愈={type_drift}），耗时 {elapsed_ms}ms'
               f'（lock_timeout={lock_timeout_ms}ms，未触发=等锁低于预算）')
 
         for sql in COMMENT_SQL:

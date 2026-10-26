@@ -154,7 +154,10 @@ class ReportCase(Base):
     snapshot_uri = Column(String(128), comment='快照载体路径 db://report_case_snapshots/{sha256}')
     snapshot_sha256 = Column(CHAR(64), comment='快照内容主键（解引用 / 回填判据 / 门禁 / sweep 的一等键）')
     snapshot_bytes = Column(BigInteger, comment='快照压缩后字节数（gzip）')
-    snapshot_created_at = Column(DateTime, comment='该快照对应内容的生成时间（在线=写入时刻，回填=源行 created_at）')
+    # INT-2006：文档 §3 定的是 timestamptz；裸 DateTime 会让全新库 create_all 建成
+    # timestamp without time zone，与迁移脚本 _verify 的期望冲突。
+    # 注意：本表既有的 created_at / updated_at 是全库统一的 no-tz，本卡不动。
+    snapshot_created_at = Column(DateTime(timezone=True), comment='该快照对应内容的生成时间（在线=写入时刻，回填=源行 created_at）')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')

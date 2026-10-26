@@ -39,5 +39,9 @@ class ReportCaseSnapshot(Base):
     payload_gz = Column(LargeBinary, nullable=False,
                         comment='九字段规范化 JSON 的 gzip 体（STORAGE EXTERNAL）')
     payload_bytes = Column(Integer, nullable=True, comment='压缩后字节数（gzip）')
-    created_at = Column(DateTime, default=utc8now, server_default=func.now(),
-                        nullable=False, comment='快照行写入时间（不是冻结时间）')
+    # INT-2006：必须与设计文档 §3.2 和迁移脚本的 timestamptz / _verify 一致。
+    # 写成裸 DateTime 会让 create_all 在引导链 ① 就建成 timestamp without time zone，
+    # 而 ㊽-7 迁移的 _verify 期望 timestamptz → 整链退出码 3。
+    created_at = Column(DateTime(timezone=True), default=utc8now,
+                        server_default=func.now(), nullable=False,
+                        comment='快照行写入时间（不是冻结时间）')
