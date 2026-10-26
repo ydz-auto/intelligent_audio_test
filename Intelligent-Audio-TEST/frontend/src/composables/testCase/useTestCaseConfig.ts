@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import { useDimensions } from '../shared/useDimensions'
-import { TestType, RoundMode } from '@/domain/enums'
+import { TestType, RoundMode, AudioTagSource, type AudioTagSourceType } from '@/domain/enums'
 import type { DimensionConfigData } from '@/domain/model/audio'
 
 export interface SelectedDimension {
@@ -156,6 +156,8 @@ export function createDefaultUploadConfig() {
     noiseAudioName: '',
     groupNameType: 'root' as 'root' | 'folder' | 'custom',
     inheritTags: true,
+    /** 标签来源三选一（两个上传弹窗的共同默认值来源；INT-1983） */
+    tagSource: AudioTagSource.BOTH as AudioTagSourceType,
     createTestCase: false,
     customGroupName: '',
     audioType: 'dry' as string,

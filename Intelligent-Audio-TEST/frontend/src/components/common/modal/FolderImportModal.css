@@ -181,7 +181,8 @@ h3 {
 
 /* 上传选项 */
 .upload-options {
-  background-color: var(--color-slate-50);
+  /* INT-1983：原 --color-slate-50 为定值浅色，深色下与主题文字色叠加不可读，改用 surface token */
+  background-color: var(--muted);
   padding: 16px;
   border-radius: var(--radius-control);
 }
@@ -190,7 +191,7 @@ h3 {
   margin: 0 0 16px 0;
   font-size: 14px;
   font-weight: 600;
-  color: var(--color-slate-700);
+  color: var(--foreground);
 }
 
 .options-grid {

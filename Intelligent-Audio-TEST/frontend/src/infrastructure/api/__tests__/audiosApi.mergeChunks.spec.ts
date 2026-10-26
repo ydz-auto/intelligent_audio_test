@@ -87,4 +87,22 @@ describe('audiosApi.mergeChunks 载荷归一', () => {
     expect(body.annotations).toEqual([{ source_language: 'zh', target_language: 'en' }]);
     expect(body.dimensions).toEqual([{ test_type: 'api', round_scope: 'single' }]);
   });
+
+  // INT-1983：标签来源领域值 tagSource → 后端 wire key tag_source（三枚举之一）
+  it.each(['both', 'path', 'json'])('tagSource=%s 归一为 tag_source，且不保留 camelCase 双口径', async (tagSource) => {
+    await audiosApi.mergeChunks(104, 204, { tags: ['手填A'], tagSource });
+
+    const body = mockedRequest.mock.calls[0][2] as Record<string, unknown>;
+    expect(body.tag_source).toBe(tagSource);
+    expect(body.tagSource).toBeUndefined();
+    expect(body.tags).toEqual(['手填A']);
+  });
+
+  it('未选标签来源时按默认 both 下发 tag_source', async () => {
+    await audiosApi.mergeChunks(105, 205, { tags: [] });
+
+    const body = mockedRequest.mock.calls[0][2] as Record<string, unknown>;
+    expect(body.tag_source).toBe('both');
+    expect(body.tagSource).toBeUndefined();
+  });
 });

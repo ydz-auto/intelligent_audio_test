@@ -6,7 +6,7 @@ import type {
   AudioUploadOptions,
 } from '../../domain';
 import type { useAlgorithmParams } from '../algorithm/useAlgorithmParams';
-import { TestType } from '@/domain/enums';
+import { TestType, AudioTagSource } from '@/domain/enums';
 import { calculateMd5 } from './md5Utils';
 import { getLocalTasks, saveLocalTask, pathBasename } from './taskPersistence';
 import {
@@ -76,6 +76,7 @@ export function useAudioUpload(algorithmApi: AlgorithmParamsApi) {
     description: '',
     testTypes: [TestType.E2E],
     inheritTags: true,
+    tagSource: AudioTagSource.BOTH,
     dimensions: [],
     algorithmType: '',
     algorithmRelations: [],

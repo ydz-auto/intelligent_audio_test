@@ -5,7 +5,7 @@
  *
  * 枚举值保持后端原值（如 'dry' / 'noise' / 'prompt'），只转字段名。
  */
-import { UploadStatus, TestType, RoundMode, type RoundModeType } from '@/domain/enums'
+import { UploadStatus, TestType, RoundMode, type RoundModeType, type AudioTagSourceType } from '@/domain/enums'
 
 export type AudioAssetType = 'dry' | 'noise' | 'prompt' | 'mixed' | (string & {})
 
@@ -92,6 +92,8 @@ export interface AudioUploadFile {
   errorMessage?: string
   /** 最子级文件夹名（无文件夹结构时为去扩展名的文件名），用于按分组独立创建测试用例 */
   groupKey?: string
+  /** 该文件所属分组的标注 JSON 顶层 tags（INT-1983；无 JSON / 无 tags 时为空数组） */
+  groupTags?: string[]
   asrText?: string
   translations?: AudioTranslation[]
   tags?: string[]
@@ -152,6 +154,8 @@ export interface AudioUploadOptions {
   /** @deprecated 已移到 CaseForm 的 RoundConfigEditor 里配置 */
   noiseSpl?: number
   inheritTags?: boolean
+  /** 标签来源（域枚举 AudioTagSource 原值；缺省按 both 处理，wire key tag_source 在 Infrastructure 归一） */
+  tagSource?: AudioTagSourceType
   /** 评估维度数组，每条可带 testType 标记属于 api/e2e（由 DimensionConfigData 展开而来） */
   dimensions?: SelectedEvaluationDimension[]
   /** API 维度设置（DimensionConfigPanel 结构：统一/指定轮次/逐轮 + 多轮整体评估维度） */
