@@ -14,8 +14,8 @@ import { ref } from 'vue';
 export interface PickWizardRequest {
   /** 批量「加入挑选」任务级预选（R7 整任务加购，等价旧「合并任务」入口） */
   presetTaskIds?: (number | string)[];
-  /** 直达步骤（购物车抽屉「去复核」→ review；缺省 pick） */
-  step?: 'pick' | 'cart' | 'review' | 'checkout';
+  /** 直达步骤（购物车抽屉「去预览」→ preview；缺省 pick） */
+  step?: 'pick' | 'cart' | 'preview' | 'checkout';
 }
 
 const pendingRequest = ref<PickWizardRequest | null>(null);

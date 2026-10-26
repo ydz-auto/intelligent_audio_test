@@ -22,14 +22,14 @@ const cartCount = computed(() => cart.value.total);
 const invalidCount = computed(() => cart.value.invalidItemIds.length);
 /** INT-577：购物车 result_id 集合（R10 已加购标记 / 重复加购幂等判断；移除后同步消失） */
 const resultIdSet = computed(() => new Set(cart.value.groups.flatMap((g: PickCartGroup) => g.items.map((it: PickCartItem) => it.resultId))));
-/** INT-577：购物车版本号（加购/移除/清空/下单后递增；复核摘要 preview 依赖 cart revision 失效重拉） */
+/** INT-577：购物车版本号（加购/移除/清空/下单后递增；预览摘要 preview 依赖 cart revision 失效重拉） */
 const cartRevision = ref(0);
 
 async function refreshCart() {
   cartLoading.value = true;
   try {
     cart.value = await cherryPickApi.getCart();
-    // INT-577：购物车版本号递增（复核摘要等依赖 cart revision 的 query 失效重拉）
+    // INT-577：购物车版本号递增（预览摘要等依赖 cart revision 的 query 失效重拉）
     cartRevision.value += 1;
   } catch (error) {
     console.error('Failed to load pick cart:', error);

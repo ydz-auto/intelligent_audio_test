@@ -65,7 +65,7 @@
       <div v-else-if="containers.items.length === 0" class="cpp-empty">
         <i class="fas fa-cart-shopping"></i>
         <p>暂无挑选合并任务</p>
-        <p class="cpp-empty-hint">点击「开始挑选」，从任务/用例/设备/结果类型任一层级勾选执行结果，加入购物车后复核合并</p>
+        <p class="cpp-empty-hint">点击「开始挑选」，从任务/用例/设备/结果类型任一层级勾选执行结果，加入购物车后预览、合并</p>
         <button v-if="canPick" class="cpp-btn cpp-btn-primary" @click="startWizard()">
           <i class="fas fa-plus"></i> 开始挑选
         </button>
@@ -159,7 +159,7 @@ import '../../assets/styles/layouts/main.css'
  * **组成区树**（INT-1834 · 规范 18 §3 落点③，与容器详情同源四视图，首次展开补拉 1 次
  * `GET /tasks/{id}` 并按 taskId 缓存）；whole（整任务合并）行展开仍是源任务列表。
  * 页内四步向导（§10 #4）：替换列表区，含批量「加入挑选」预选入口。
- * RBAC（§8）：列表/购物车角标 task:read 只读可见；写链（开始挑选/增删/复核/下单）task:cherry_pick。
+ * RBAC（§8）：列表/购物车角标 task:read 只读可见；写链（开始挑选/增删/预览/下单）task:cherry_pick。
  */
 import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -211,8 +211,8 @@ const MERGE_FACET_OPTIONS = [
 
 const wizardOpen = ref(false);
 const wizardPresetTaskIds = ref<(number | string)[]>([]);
-/** 直达步骤（「去复核」→ review；缺省 pick） */
-const wizardInitialStep = ref<'pick' | 'cart' | 'review' | 'checkout'>('pick');
+/** 直达步骤（「去预览」→ preview；缺省 pick） */
+const wizardInitialStep = ref<'pick' | 'cart' | 'preview' | 'checkout'>('pick');
 const setsPopoverOpen = ref(false);
 
 /** 溯源展开状态（默认收起；picked 行的组成模型由 ContainerTraceExpand 按 taskId 缓存） */
@@ -249,7 +249,7 @@ function closeWizard() {
   clearPickWizardRequest();
 }
 
-// P0 修复：批量「加入挑选」/「去复核」经 usePickWizardRequest 共享请求跨导航重挂载存活。
+// P0 修复：批量「加入挑选」/「去预览」经 usePickWizardRequest 共享请求跨导航重挂载存活。
 // immediate watch：新面板挂载（含 :key=fullPath 重挂载后的最终实例）即消费请求自开向导；
 // 请求在向导关闭/下单前保持置位，避免重挂载中途清掉导致最终实例不自开。
 const { pendingRequest } = usePickWizardRequest();
@@ -342,14 +342,14 @@ async function onDeleteSet(setId: number) {
   }
 }
 
-// URL 态：wizard=review 直达复核步骤（购物车抽屉「去复核」）；merge_type 随 URL 恢复 facet
+// URL 态：wizard=preview 直达预览步骤（购物车抽屉「去预览」）；merge_type 随 URL 恢复 facet
 watch(
   () => route.query,
   () => {
-    if (route.query.wizard === 'review') {
-      // 旧书签/链接兼容：转共享请求自开复核向导（:key=fullPath 重挂载下 URL 清参
+    if (route.query.wizard === 'preview') {
+      // 转共享请求自开预览向导（:key=fullPath 重挂载下 URL 清参
       // 会再触发重挂载，向导态经 usePickWizardRequest 存活）
-      requestPickWizard({ step: 'review' });
+      requestPickWizard({ step: 'preview' });
       const query = { ...route.query };
       delete query.wizard;
       router.replace({ query });
