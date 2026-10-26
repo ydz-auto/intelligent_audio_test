@@ -2,6 +2,7 @@
  * 音频管理页常量（features/audio-import；16_设备域.md §9 中文文案源）。
  * 枚举/状态 + 展示文案直接存中文，组件直接渲染（AGENTS.md §3.1 全中文硬编码）。
  */
+import type { AudioTagSource } from '@/infrastructure/api/audio-upload-api'
 
 /** 格式 facet 选项（§5.3.2 FORMAT_OPTIONS 实测；后端 format 存小写，value 用小写匹配、label 大写展示） */
 export const FORMAT_OPTIONS = [
@@ -121,3 +122,28 @@ export const CASE_GROUP_OPTIONS = [
   { value: 'folder', label: '文件夹名' },
   { value: 'custom', label: '自定义' },
 ] as const
+
+/**
+ * 导入标签来源三档（INT-1979；上传窗与文件夹导入窗共用，默认「两者都要」）。
+ * value 与 infrastructure 的 AudioTagSource 一一对应，desc 是弹窗内逐档说明文案。
+ */
+export const TAG_SOURCE_OPTIONS = [
+  {
+    value: 'both',
+    label: '两者都要',
+    desc: '手填标签 + JSON 顶层 tags 一并提交，并按文件夹路径解析标签（默认）',
+  },
+  {
+    value: 'json',
+    label: '仅 JSON tags',
+    desc: '手填标签 + JSON 顶层 tags 一并提交，不做路径解析',
+  },
+  {
+    value: 'path',
+    label: '仅路径解析',
+    desc: '只提交手填标签，JSON 顶层 tags 不并入，按文件夹路径解析标签',
+  },
+] as const
+
+/** 标签来源默认档（= 现状口径：JSON tags + 路径解析都做；弹窗重开回到此值） */
+export const DEFAULT_TAG_SOURCE: AudioTagSource = 'both'

@@ -139,6 +139,14 @@ export interface UploadDimensionItem {
   round_scope: 'single' | 'multi'
 }
 
+/**
+ * 导入标签来源三档（INT-1979，前端领域值唯一出处；组件只引用这里的常量/类型，不散写字符串）。
+ * - `both`（默认）：请求 tags = 手填 + JSON 顶层 tags，后端做路径解析；
+ * - `path`：请求 tags = 只含手填标签（不并入 JSON tags），后端做路径解析；
+ * - `json`：请求 tags = 手填 + JSON 顶层 tags，后端不做路径解析。
+ */
+export type AudioTagSource = 'json' | 'path' | 'both'
+
 /** 生成测试用例配置（merge 载荷 test_case_config；照 TestCaseUploadConfig/RoundConfigItem 实测） */
 export interface UploadTestCaseConfig {
   /** 是否生成测试用例（原 test_types.length>0 语义；用例类型由后端默认落库） */
@@ -162,7 +170,10 @@ export interface UploadTestCaseConfig {
   noiseSpl: number
   inheritTags: boolean
   groupName: string | undefined
+  /** 手填 + JSON 顶层 tags 按 tagSource 组装后的标签集（merge 载荷 tags） */
   tags: string[]
+  /** 标签来源（INT-1979：json / path / both，默认 both；载荷字段 tag_source） */
+  tagSource: AudioTagSource
   audioType: string
   /** 标注文件解析结果（{format, code, data, source_language, target_language}；merge 载荷 annotations 落库） */
   annotations?: unknown[]
@@ -307,6 +318,8 @@ export async function mergeChunks(
     // 顶层 dimensions：所有轮次档 = single + multi；逐轮/指定轮档 = 只放 multi（§5.7.7）
     dimensions: buildTopLevelDimensions(config),
     tags: config.tags,
+    // 标签来源（INT-1979）：snake_case 转换只在这一层（Domain 值 camelCase，协议字段 bottom snake_case）
+    tag_source: config.tagSource,
     inherit_tags: config.inheritTags,
     spl: config.spl,
     noise_audio_id: config.noiseAudioId,

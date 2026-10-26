@@ -9,6 +9,8 @@
  * - 未被任何 JSON 引用的音频回退按最子级文件夹分组；无 JSON 时全部按文件夹分组，
  *   rounds 按 §5.7.6 推断：1 个音频 = 1 轮；多个音频 = 1 轮多音频。
  * - 组内轮次共用同一对象引用（merge 后回填 audio_id，末文件提交时整组 rounds 一次带出）。
+ * - INT-1979：三种形态都读取 JSON 顶层 `tags` 作为该分组的用例标签（宽容解析，
+ *   畸形 tags 只丢标签不丢分组）。
  */
 import type {
   UploadRoundAudioConfig,
@@ -24,6 +26,11 @@ export interface CaseGroup {
   rounds: UploadRoundConfig[]
   /** JSON 引用的音频文件名（用于把音频归到本分组） */
   audioNames: string[]
+  /**
+   * JSON 顶层 `tags`（INT-1979；三种形态都读顶层）。无 `tags` 字段 / 非数组 / 含非字符串项
+   * 时为空数组——宽容解析，畸形 tags 不丢整组。
+   */
+  tags: string[]
   /** case 级背景噪声（rounds 外层） */
   backgroundNoise?: unknown
 }
@@ -34,6 +41,8 @@ export interface AudioImportGroup {
   files: File[]
   /** 整组轮次（组内所有文件共享同一引用） */
   rounds: UploadRoundConfig[]
+  /** 该分组 JSON 顶层 tags（无 JSON 分组时为空数组；per-file 覆盖用，INT-1979） */
+  tags: string[]
 }
 
 /** 文件相对路径（文件夹选择时含子目录） */
@@ -76,6 +85,16 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 /** segment 里的音频名（V9.7.10 三键兼容：audio / audio_name / audioName） */
 function audioNameOf(item: Record<string, unknown>): string {
   return String(item.audio ?? item.audio_name ?? item.audioName ?? '')
+}
+
+/**
+ * JSON 顶层 `tags` 的宽容解析（INT-1979）：只接受全字符串数组，其余（缺字段 / 非数组 /
+ * 含非字符串项）一律降级为空数组，绝不因 tags 畸形让整组解析失败。
+ */
+function parseTopLevelTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  if (!value.every((item) => typeof item === 'string')) return []
+  return value as string[]
 }
 
 /** 收集一项里引用到的音频名（主音频 + 背景噪声 + 干扰人；用于把音频文件归到该 JSON 分组） */
@@ -230,6 +249,8 @@ export function parseCaseJson(content: string, fileName: string): CaseGroup | nu
     fileName,
     rounds,
     audioNames,
+    // 顶层 tags 三种形态（rounds / flat / txt）同位置，此处统一读取
+    tags: parseTopLevelTags(raw.tags),
   }
   if (raw.background_noise) group.backgroundNoise = raw.background_noise
   return group
@@ -306,6 +327,8 @@ export function buildAudioImportGroups(
       bucket.group && bucket.group.rounds.length > 0
         ? bucket.group.rounds
         : inferRounds(bucket.files),
+    // 该分组 JSON 顶层 tags（未归入 JSON 分组 / 无 JSON 时为 []，per-file 标签覆盖用）
+    tags: bucket.group?.tags ?? [],
   }))
 }
 
