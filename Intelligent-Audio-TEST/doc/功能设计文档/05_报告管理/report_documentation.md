@@ -65,7 +65,7 @@
 | test_results | task_id、test_case_id、device_id、api_id、algorithm_type、execution_status、response_time、algorithm_result(JSON)、execution_steps(JSON) | 测试执行结果（snake_case 存储） |
 | test_result_dimensions | test_result_id、dimension_id、round_number（NULL=整体评估，0-indexed）、dimension_value、score、status(passed/failed)、evaluation_status、api_raw_response_uri 等五列指针 | 各轮次/整体维度得分，报告指标计算的直接数据源 |
 
-> **原始报文不在报告侧直读**（INT-1807 / INT-1809）。`api_raw_response` / `api_request_body` 两个 JSON 列自 C2 起不再有代码读写，报文按内容寻址外置在对象存储（`case_result/raw/{resp|req}/{sha[:2]}/{sha}.json.gz`），行上只有 `_uri / _sha256 / _bytes / _content_type / _created_at` 五列指针（口径见 `01_测试执行/09_原始报文外置对象存储.md`）。需要原始报文的两条链路都**按指针读对象并校验 sha256**：报告快照构建吃评估时内存里的 payload（不回读）；报告加权策略 / 报告详情「按需查看原始响应」/ LLM 复检走 `GetDimensionResultsByResultIds(include_body=True)`，由 evaluation_service 读对象后回传（载荷形状不变）。
+> **原始报文不在报告侧直读**（INT-1807 / INT-1809）。`api_raw_response` / `api_request_body` 两个 JSON 列自 C2 起不再有代码读写，并已由 M1（INT-1813）**从库中 DROP**；报文按内容寻址外置在对象存储（`case_result/raw/{resp|req}/{sha[:2]}/{sha}.json.gz`），行上只有 `_uri / _sha256 / _bytes / _content_type / _created_at` 五列指针（口径见 `01_测试执行/09_原始报文外置对象存储.md`）。需要原始报文的两条链路都**按指针读对象并校验 sha256**：报告快照构建吃评估时内存里的 payload（不回读）；报告加权策略 / 报告详情「按需查看原始响应」/ LLM 复检走 `GetDimensionResultsByResultIds(include_body=True)`，由 evaluation_service 读对象后回传（载荷形状不变）。
 
 ### 3.2 报告数据结构
 
