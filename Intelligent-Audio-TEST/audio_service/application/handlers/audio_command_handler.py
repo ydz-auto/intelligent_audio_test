@@ -15,6 +15,7 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from shared.utils.log_handler import log_and_emit
 from shared.infrastructure.storage import storage
+from shared.infrastructure.user_context import capture_identity
 
 from audio_service.domain.repositories import AudioRepositoryInterface
 from audio_service.domain.exceptions import TagResolutionError
@@ -410,7 +411,6 @@ class AudioCommandHandler:
         updated_audio_ids = []
         updated_count = 0
         failed_count = 0
-        refreshed_tc_ids = []
 
         try:
             for item in items:
@@ -433,21 +433,10 @@ class AudioCommandHandler:
                 updated_count += 1
 
             self.repo.flush()
-
-            if refresh_test_cases and updated_audio_ids:
-                refreshed_tc_ids = self.testcase_creation_service.refresh_test_cases_for_audios(
-                    updated_audio_ids, algorithm_type
-                )
-
+            # INT-2042：标注先落库提交，刷新关联用例不再占住本次 RPC —— 原先
+            # 刷新串在命令里，全表扫描 + 逐用例重算实测 >60s，必然撞上网关
+            # gRPC 客户端 deadline，标注已写库却回 400 DEADLINE_EXCEEDED。
             self.repo.commit()
-            return _ok(
-                data={
-                    'updated_count': updated_count,
-                    'failed_count': failed_count,
-                    'refreshed_test_case_ids': refreshed_tc_ids,
-                },
-                message=f'批量更新标注成功，更新 {updated_count} 个音频，刷新 {len(refreshed_tc_ids)} 个用例',
-            )
         except Exception as e:
             self.repo.rollback()
             log_and_emit(
@@ -456,6 +445,41 @@ class AudioCommandHandler:
                 category='audio',
             )
             return _fail(str(e))
+
+        # 标注已提交；用例参数刷新改后台执行（INT-2042），不影响本次响应
+        refresh_scheduled = False
+        if refresh_test_cases and updated_audio_ids:
+            refresh_scheduled = self._schedule_testcase_refresh(
+                updated_audio_ids, algorithm_type)
+
+        data = {
+            'updated_count': updated_count,
+            'failed_count': failed_count,
+            # 异步刷新后不再能同步返回命中用例；保留字段避免调用方解析失败
+            'refreshed_test_case_ids': [],
+            'refresh_scheduled': refresh_scheduled,
+        }
+        if refresh_scheduled:
+            message = (f'批量更新标注成功，更新 {updated_count} 个音频，'
+                       f'关联用例参考参数刷新已在后台执行')
+        else:
+            message = f'批量更新标注成功，更新 {updated_count} 个音频'
+        return _ok(data=data, message=message)
+
+    def _schedule_testcase_refresh(self, audio_ids, algorithm_type) -> bool:
+        """把关联用例参考参数刷新交给后台调度器（INT-2042）。
+
+        刷新失败不影响标注结果（标注已是提交态），异常只记录日志并回 False。
+        """
+        try:
+            from audio_service.application.services.testcase_refresh_scheduler import (
+                get_testcase_refresh_scheduler,
+            )
+            return get_testcase_refresh_scheduler().enqueue(
+                audio_ids, algorithm_type, capture_identity())
+        except Exception as e:
+            logger.warning("提交关联用例刷新任务失败: %s", e, exc_info=True)
+            return False
 
     def handle_batch_action(self, cmd: BatchActionAudiosCommand) -> Dict[str, Any]:
         if not cmd.data:
