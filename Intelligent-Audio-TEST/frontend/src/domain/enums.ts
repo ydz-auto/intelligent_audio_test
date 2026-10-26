@@ -129,6 +129,21 @@ export const ViewMode = {
   TAG: 'tag',
 } as const
 
+/**
+ * 音频导入「标签来源」枚举（值 = 后端 tag_source 原值，禁止改动值；INT-1983）
+ * - both：请求 tags = 手填标签 + 各分组 JSON 顶层 tags，后端同时按目录路径解析
+ * - path：请求 tags 只含手填标签（不并入 JSON tags），后端按目录路径解析
+ * - json：请求 tags = 手填标签 + 各分组 JSON 顶层 tags，后端不做路径解析
+ */
+export const AudioTagSource = {
+  BOTH: 'both',
+  PATH: 'path',
+  JSON: 'json',
+} as const
+
+/** 音频导入「标签来源」类型 */
+export type AudioTagSourceType = typeof AudioTagSource[keyof typeof AudioTagSource]
+
 /** 上传状态枚举 */
 export const UploadStatus = {
   IDLE: 'idle',

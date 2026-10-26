@@ -5,6 +5,7 @@ import { request, type RequestOptions } from '../http/client';
 import type { AudioItemDto, AudioListDto } from '../dto/audioDto';
 import { toAudioInfo, toAudioInfoList, toAudioPage, toFolderNode, toAudioAlgorithmRelationDto } from '../adapters/audioAdapter';
 import type { AudioInfo } from '../../domain/model/audio';
+import { AudioTagSource } from '../../domain/enums';
 import { camelizeKeys } from '../../utils/keyTransform';
 
 /**
@@ -247,7 +248,13 @@ export const audiosApi = {
     if (Array.isArray(normalizedData.algorithmRelations)) {
       normalizedData.algorithmRelations = normalizedData.algorithmRelations.map(toAudioAlgorithmRelationDto);
     }
-    return camelizeUploadResult(await request('POST', '/audios/upload/merge', { fileId: fileId, taskId: taskId, ...normalizedData }, options));
+    // 标签来源上行归一（INT-1983）：Domain 侧 camelCase（tagSource）→ 后端 wire key tag_source；
+    // 未选时按默认 both 下发，不保留 camelCase 双口径。
+    const body: Record<string, any> = { fileId: fileId, taskId: taskId, ...normalizedData };
+    const tagSource = body.tagSource;
+    delete body.tagSource;
+    body.tag_source = tagSource ?? AudioTagSource.BOTH;
+    return camelizeUploadResult(await request('POST', '/audios/upload/merge', body, options));
   },
 
   async getUploadProgress(taskId: string | number, options: RequestOptions = {}) {

@@ -138,6 +138,8 @@ export function updateUploadOptionsFromModal(
   if (options?.groupNameType !== undefined) uploadOptions.groupNameType = options.groupNameType;
   if (options?.customGroupName !== undefined) uploadOptions.customGroupName = options.customGroupName;
   if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
+  // 标签来源（INT-1983）：弹窗选择随 config/options 进入上传选项，缺省不改（保留 store 默认 both）
+  if (options?.tagSource !== undefined) uploadOptions.tagSource = options.tagSource;
   expandDimensions(uploadOptions, options);
   if (options?.noiseAudioId !== undefined) uploadOptions.noiseAudioId = options.noiseAudioId;
   if (options?.noiseSpl !== undefined) uploadOptions.noiseSpl = options.noiseSpl;

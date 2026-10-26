@@ -26,6 +26,8 @@ export interface TestCaseGroupStrategy {
   backgroundNoise?: any;
   /** 该 JSON 引用的所有音频文件名（用于音频匹配） */
   audioNames: string[];
+  /** 标注 JSON 顶层 tags（INT-1983；非数组/无该字段 → 空数组，不因畸形丢分组） */
+  tags: string[];
 }
 
 // 策略接口
@@ -34,6 +36,26 @@ interface TestCaseStrategy {
   matches(rawJson: any): boolean;
   /** 构建 TestCaseGroupStrategy */
   build(rawJson: any, annFileBaseKey: string): TestCaseGroupStrategy;
+}
+
+/**
+ * 宽容解析标注 JSON 顶层 tags（INT-1983）：
+ * 非数组 / 无该字段 → 空数组；数组内只保留字符串，逐项 trim、去空、去重（保序）。
+ * tags 畸形不得让整组或轮次解析失败。
+ */
+function parseTopLevelTags(rawJson: any): string[] {
+  const rawTags = rawJson && typeof rawJson === 'object' ? rawJson.tags : undefined;
+  if (!Array.isArray(rawTags)) return [];
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const item of rawTags) {
+    if (typeof item !== 'string') continue;
+    const tag = item.trim();
+    if (!tag || seen.has(tag)) continue;
+    seen.add(tag);
+    result.push(tag);
+  }
+  return result;
 }
 
 // ──────────────────────────────────────────────
@@ -117,6 +139,7 @@ class RoundsJsonStrategy implements TestCaseStrategy {
       rounds,
       backgroundNoise: rawJson.backgroundNoise,
       audioNames,
+      tags: parseTopLevelTags(rawJson),
     };
   }
 }
@@ -174,6 +197,7 @@ class FlatJsonStrategy implements TestCaseStrategy {
       rounds: [roundObj],
       backgroundNoise: undefined,
       audioNames,
+      tags: parseTopLevelTags(rawJson),
     };
   }
 }
@@ -244,6 +268,7 @@ class TxtArrayJsonStrategy implements TestCaseStrategy {
       rounds: [roundObj],
       backgroundNoise: rawJson.backgroundNoise,
       audioNames,
+      tags: parseTopLevelTags(rawJson),
     };
   }
 }

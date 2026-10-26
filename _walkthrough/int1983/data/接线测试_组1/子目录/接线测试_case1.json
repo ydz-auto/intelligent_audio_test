@@ -1,0 +1,17 @@
+{
+  "rounds": [
+    {
+      "roundNumber": 1,
+      "segments": [
+        {
+          "audioName": "接线测试_c1.wav",
+          "query": "组1查询"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    "JSON标签1",
+    "共同标签"
+  ]
+}

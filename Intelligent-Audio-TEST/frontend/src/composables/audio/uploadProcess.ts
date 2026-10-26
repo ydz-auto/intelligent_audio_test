@@ -12,7 +12,7 @@ import type { UploadStatus } from '../upload/useUploadState';
 import { calculateMd5 } from './md5Utils';
 import { saveLocalTask } from './taskPersistence';
 // 引入上传状态与 HTTP 状态码枚举，消除魔法字符串与魔法数字
-import { UploadStatus as UploadStatusEnum, HttpStatus } from '../../domain/enums';
+import { UploadStatus as UploadStatusEnum, HttpStatus, AudioTagSource, type AudioTagSourceType } from '../../domain/enums';
 
 /**
  * mergeChunks 响应 data 局部契约（Infrastructure 已归一为 camelCase 出口）
@@ -51,6 +51,38 @@ export function updateOverallProgress(ctx: UploadProcessContext): void {
   const uploadedSize = currentTask.value.files.reduce((sum, f) => sum + (f.uploadedSize || 0), 0);
   uploadProgress.value = totalSize > 0 ? Math.round((uploadedSize / totalSize) * 100) : 0;
   currentTask.value.uploadedSize = uploadedSize;
+}
+
+/**
+ * 组装请求 tags（INT-1983，三处装配点统一口径）：
+ * - 手填标签：文件级 tags 优先，为空时回退 options.tags（既有行为，不得回归）
+ * - 分组 JSON tags：仅 both / json 模式并入；path 模式只下发手填标签（后端按目录路径解析）
+ * - 去重保序（手填在前）；请求 tags 在任何模式下都包含手填标签
+ * 未选择（undefined）按默认 both 处理。
+ */
+export function resolveRequestTags(
+  fileTask: Pick<AudioUploadFile, 'tags' | 'groupTags'>,
+  options: any,
+  tagSource: AudioTagSourceType | string | undefined | null,
+  groupTags?: string[]
+): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  const push = (tag: unknown) => {
+    if (typeof tag !== 'string') return;
+    const value = tag.trim();
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    result.push(value);
+  };
+
+  const handTags = fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : (options?.tags || []);
+  handTags.forEach(push);
+
+  if (tagSource !== AudioTagSource.PATH) {
+    (groupTags || fileTask.groupTags || []).forEach(push);
+  }
+  return result;
 }
 
 export async function startUploadProcess(
@@ -186,6 +218,8 @@ export async function startUploadProcess(
         uploadedSize: 0,
         folderGroupName: folderGroupName,
         groupKey: groupKey,
+        // 该分组标注 JSON 顶层 tags（登记在文件上，供三处 merge 载荷按标签来源组装）
+        groupTags: testCaseGroups.get(groupKey)?.tags || [],
         asrText: asrText,
         translations,
         annotations: item.annotations || [],
@@ -379,7 +413,9 @@ export async function processMergeForExistingFile(
   const mergeResponse = await audiosPort.mergeChunks(fileTask.fileId, taskId, {
     audioType: options.audioType,
     createTestCase: options.createTestCase,
-    tags: fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : options.tags,
+    tags: resolveRequestTags(fileTask, options, options.tagSource, fileTask.groupTags),
+    // 标签来源随 merge 下发（both / path / json；未选按默认 both）
+    tagSource: options.tagSource ?? AudioTagSource.BOTH,
     description: options.description,
     testTypes: options.testTypes,
     playbackDeviceId: options.playbackDeviceId,
@@ -441,7 +477,9 @@ function buildMergePayload(
   return {
     audioType: options.audioType,
     createTestCase: options.createTestCase,
-    tags: fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : options.tags,
+    tags: resolveRequestTags(fileTask, options, options.tagSource, fileTask.groupTags),
+    // 标签来源随 merge 下发（both / path / json；未选按默认 both）
+    tagSource: options.tagSource ?? AudioTagSource.BOTH,
     description: options.description,
     testTypes: options.testTypes,
     playbackDeviceId: options.playbackDeviceId,
@@ -591,7 +629,8 @@ async function uploadFileChunksViaPresign(
       filename: fileTask.name,
       md5: fileTask.md5,
       fileSize: fileTask.size,
-      tags: fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : options.tags,
+      // 直传完成只下发组装后的 tags：后端 complete 不做路径解析，不带 tag_source（INT-1983）
+      tags: resolveRequestTags(fileTask, options, options.tagSource, fileTask.groupTags),
       audioType: options.audioType,
       asrText: fileTask.asrText || '',
     }, {

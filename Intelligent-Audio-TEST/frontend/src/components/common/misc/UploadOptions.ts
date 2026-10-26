@@ -2,7 +2,7 @@ import { ref, computed, watch } from 'vue'
 import { useTestCaseConfig } from '../../../composables/testCase/useTestCaseConfig'
 import type { AudioItem } from '../../../composables/audio/useAudioList'
 import type { AudioAlgorithmRelation, DimensionConfigData } from '../../../domain/model/audio'
-import { TestType, RoundMode } from '../../../domain/enums'
+import { TestType, RoundMode, AudioTagSource } from '../../../domain/enums'
 
 // 音频-算法关联：归集到 Domain 的 AudioAlgorithmRelation（params 值类型 any → unknown 兼容），
 // AlgorithmRelationItem 仅作兼容别名 re-export（UploadOptions.vue 引用）
@@ -15,6 +15,28 @@ const EMPTY_DIMENSION_CONFIG: DimensionConfigData = {
   roundNumbers: [],
   multiDimensions: []
 }
+
+/**
+ * 标签来源三选一（INT-1983，值 = 后端 tag_source 原值）：
+ * 上传音频与批量从文件夹导入两个弹窗共用这一处实现，文案写清三档差异。
+ */
+const TAG_SOURCE_OPTIONS: Array<{ value: string; label: string; hint: string }> = [
+  {
+    value: AudioTagSource.BOTH,
+    label: '两者都要',
+    hint: '请求标签 = 手填标签 + 标注 JSON 顶层 tags；后端同时按目录路径解析标签'
+  },
+  {
+    value: AudioTagSource.JSON,
+    label: '仅 JSON tags',
+    hint: '请求标签 = 手填标签 + 标注 JSON 顶层 tags；后端不再按目录路径解析'
+  },
+  {
+    value: AudioTagSource.PATH,
+    label: '仅路径解析',
+    hint: '请求标签只用填写的标签，不并入标注 JSON tags；后端按目录路径解析'
+  }
+]
 
 /** 按算法关联维度过滤维度配置（dimensions/roundDimensions/multiDimensions 同步过滤） */
 function filterDimensionConfig(
@@ -99,6 +121,12 @@ export function useUploadOptions(props: any, emit: any) {
 
   const showTestCaseConfig = computed(() => uploadConfig.value.createTestCase)
 
+  // 标签来源：当前选中项说明（未选按默认 both 展示，实际下发口径由 uploadProcess 统一按默认 both 处理）
+  const tagSourceHint = computed(() => {
+    const current = uploadConfig.value.tagSource ?? AudioTagSource.BOTH
+    return (TAG_SOURCE_OPTIONS.find(o => o.value === current) || TAG_SOURCE_OPTIONS[0]).hint
+  })
+
   watch(showTestCaseConfig, (show) => {
     if (show) {
       ensureDimensionsLoaded()
@@ -171,6 +199,8 @@ export function useUploadOptions(props: any, emit: any) {
     dimensionSearchQuery,
     updateDimensionFilter,
     showTestCaseConfig,
+    tagSourceOptions: TAG_SOURCE_OPTIONS,
+    tagSourceHint,
     noiseSelectModalVisible,
     algorithmParams,
     associatedDimensionIds,

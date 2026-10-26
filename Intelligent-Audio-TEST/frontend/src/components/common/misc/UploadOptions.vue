@@ -26,6 +26,8 @@ interface Props {
     noiseAudioName?: string
     noiseSpl?: number
     inheritTags?: boolean
+    /** 标签来源三选一（AudioTagSource 原值；默认 both） */
+    tagSource?: string
     /** API 维度配置（DimensionConfigPanel 结构：统一/指定轮次/逐轮 + 多轮整体评估） */
     apiDimensionConfig?: DimensionConfigData
     /** E2E 维度配置（DimensionConfigPanel 结构：统一/指定轮次/逐轮 + 多轮整体评估） */
@@ -72,6 +74,8 @@ const {
   dimensionSearchQuery,
   updateDimensionFilter,
   showTestCaseConfig,
+  tagSourceOptions,
+  tagSourceHint,
   noiseSelectModalVisible,
   algorithmParams,
   associatedDimensionIds,
@@ -146,13 +150,35 @@ const {
       <!-- 标签输入 -->
       <div class="option-item full-width" v-if="showTagsInput">
         <label>标签</label>
-        <input 
-          type="text" 
-          class="form-input" 
-          placeholder="留空将自动生成；多个标签用逗号分隔" 
+        <input
+          type="text"
+          class="form-input"
+          placeholder="留空将自动生成；多个标签用逗号分隔"
           v-model="localTags"
         >
         <p class="option-hint">留空将自动生成标签</p>
+      </div>
+
+      <!-- 标签来源三选一（INT-1983：两个导入弹窗共用本处实现，默认两者都要） -->
+      <div class="option-item full-width" v-if="showTagsInput" data-field="tagSource">
+        <label>标签来源</label>
+        <div class="radio-group">
+          <label
+            v-for="opt in tagSourceOptions"
+            :key="opt.value"
+            class="radio-label"
+            :data-tag-source="opt.value"
+          >
+            <input
+              type="radio"
+              name="tagSource"
+              :value="opt.value"
+              v-model="uploadConfig.tagSource"
+            >
+            <span class="radio-text">{{ opt.label }}</span>
+          </label>
+        </div>
+        <p class="option-hint">{{ tagSourceHint }}</p>
       </div>
     </div>
 
