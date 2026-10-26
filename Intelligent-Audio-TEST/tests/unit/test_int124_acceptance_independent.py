@@ -353,20 +353,29 @@ class TestRealChain:
         assert ctx['duration_map'][2235] == 3.2
         assert ctx['annotation_map'][2235][0]['data']['text'] == '你好世界'
         assert ctx['annotation_map'][718] == []
+        # INT-2040：ACL 出口把对端 code / format 归一成领域口径
+        # annotation_code / annotation_format，domain 只读归一后的键
+        ann = ctx['annotation_map'][2235][0]
+        assert ann['annotation_code'] == 'asr'
+        assert ann['annotation_format'] == 'txt'
+        assert 'code' not in ann and 'format' not in ann
         # 无任何告警（正常路径不触发 0/N / failed）
         assert capture_logs.warnings == []
 
     def test_generate_for_round_real_chain_generates_params(self, patch_client_stub, capture_logs,
                                                             monkeypatch):
-        """裸数组契约下参考参数真实生成非空（原缺陷场景：恒为空）。"""
-        anns = [{'code': 'asr', 'format': 'txt',
-                 'data': {'text': '你好世界', 'segments': [{'text': '你好世界'}]}}]
+        """裸数组契约 + 真实标注形状（code / format）+ 真实定义过滤（voice_llm / json）
+        下参考参数真实生成非空（原缺陷场景：恒为空）。"""
+        anns = [{'code': 'voice_llm', 'format': 'json',
+                 'data': {'segments': [{'query': '刚才是什么声音？'}]},
+                 'source_language': '', 'target_language': ''}]
         patch_client_stub(_stub_response([_audio_payload(2235, annotations=anns)]))
         monkeypatch.setattr(
             reference_param_repository, 'list_by_algorithm',
             lambda algorithm_type: [
-                {'code': 'asr_ref', 'param_type': 'text',
-                 'field_path': 'segments[].text', 'merge_mode': 'join'},
+                {'code': 'query', 'param_type': 'text',
+                 'annotation_code': 'voice_llm', 'annotation_format': 'json',
+                 'field_path': 'segments[].query', 'merge_mode': 'join'},
             ])
 
         test_case_config = {
@@ -380,9 +389,9 @@ class TestRealChain:
 
         assert len(result) == 1
         param = result[0]
-        assert param['code'] == 'asr_ref'
+        assert param['code'] == 'query'
         assert param['type'] == 'text'
-        assert param['value'] == '你好世界'
+        assert param['value'] == '刚才是什么声音？'
         # 正常路径零告警
         assert capture_logs.warnings == []
 

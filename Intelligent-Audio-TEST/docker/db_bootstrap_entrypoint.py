@@ -292,6 +292,16 @@ BOOTSTRAP_STEPS = [
     #     STORAGE EXTERNAL 可重复执行），全新库为全 SKIP；默认 dry-run，引导链必须
     #     带 --apply。须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202610/add_report_case_snapshots_int1994.py', '--apply'),
+    # ㊽-8 voice_llm 参考参数定义口径订正（INT-2040）：algorithm_reference_params 里
+    #     voice_llm 的 7 行把「segment 字段名」当 annotation_code、把「segment 字段值
+    #     类型」当 annotation_format，与 audio_service 实返（code=voice_llm /
+    #     format=json）对不上 → GenerateReferenceParams 恒生成 0 条。本步按
+    #     (algorithm_type, code) 定位这 7 行，只订正 annotation_code / annotation_format /
+    #     field_path 三列（param_type / merge_mode 保留现值），不新增行、不改其他列。
+    #     ⑪ seed_voice_llm 的「已存在即 SKIP」对老库无效，故老库必须由本步订正。
+    #     幂等（取值已一致的行不进 UPDATE，重复执行命中 0 行），默认 dry-run，
+    #     引导链必须带 --apply。纯数据 UPDATE、无 DDL；须排在 ⑪ 之后、㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202610/fix_voice_llm_reference_params_definitions.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器

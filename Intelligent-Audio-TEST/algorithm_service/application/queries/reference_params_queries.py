@@ -108,6 +108,15 @@ class ReferenceParamsQueryHandler:
                 all_params.extend(round_params)
         return all_params
 
+    @staticmethod
+    def _is_empty_value(value) -> bool:
+        """空值判定：只把 None / '' / [] 视作没取到值。
+
+        `not value` 会把合法的 `False` / `0`（boolean、数值类参考参数）当空丢掉，
+        boolean 类参数因此永远进不来（INT-2040）。
+        """
+        return value is None or value == '' or value == []
+
     @classmethod
     def _generate_single_param(cls, config: Dict, ref_param) -> Dict:
         """根据参考参数配置生成单个参数"""
@@ -147,7 +156,7 @@ class ReferenceParamsQueryHandler:
 
         value = values.get(record_test_type)
 
-        if not value:
+        if cls._is_empty_value(value):
             return None
 
         param = {

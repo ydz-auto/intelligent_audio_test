@@ -12,9 +12,35 @@ from algorithm_service.domain.dto import AudioDTO
 from shared.utils.dto_utils import dict_to_dto
 from shared.utils.log_handler import log_not_emit
 
+# 对端（audio_service.GetAudiosByIds / GetAudio）标注载荷只有
+# format / code / data / source_language / target_language
+# （audio_service/application/handlers/audio_query_handler.py）。
+# 领域口径（《参考参数生成器设计文档》AlgorithmReferenceParam / AudioAnnotation 字段表）：
+# annotation_code = AudioAnnotation.code，annotation_format = AudioAnnotation.format。
+# 归一在本 ACL 出口完成，domain / application 只读归一后的键。
+_ANNOTATION_KEY_MAP = (
+    ('code', 'annotation_code'),
+    ('format', 'annotation_format'),
+)
+_ANNOTATION_PASSTHROUGH_KEYS = ('data', 'source_language', 'target_language')
+
 
 class AudioACLRepository:
     """音频 ACL 仓储 - 通过 gRPC 调用 audio_service"""
+
+    @staticmethod
+    def _normalize_annotation(ann: Any) -> Any:
+        """把 audio_service 实返标注 dict 归一成领域口径键。"""
+        if not isinstance(ann, dict):
+            return ann
+        normalized = {target: ann.get(source) for source, target in _ANNOTATION_KEY_MAP}
+        for key in _ANNOTATION_PASSTHROUGH_KEYS:
+            normalized[key] = ann.get(key)
+        return normalized
+
+    @classmethod
+    def _normalize_annotations(cls, anns: List[Any]) -> List[Any]:
+        return [cls._normalize_annotation(ann) for ann in (anns or [])]
 
     @staticmethod
     def fetch_audio_by_id(audio_id: int) -> Optional[AudioDTO]:
@@ -43,10 +69,10 @@ class AudioACLRepository:
 
     @staticmethod
     def fetch_annotations_by_audio_id(audio_id: int) -> List[Dict[str, Any]]:
-        """通过 gRPC 获取音频的标注列表"""
+        """通过 gRPC 获取音频的标注列表（已归一成领域口径键）"""
         audio = AudioACLRepository.fetch_audio_by_id(audio_id)
         if audio:
-            return audio.annotations or []
+            return AudioACLRepository._normalize_annotations(audio.annotations or [])
         return []
 
     @staticmethod
@@ -56,7 +82,7 @@ class AudioACLRepository:
         Returns:
             {
                 'audio_map': {audio_id: {...}},
-                'annotation_map': {audio_id: [annotations]},
+                'annotation_map': {audio_id: [annotations]},  # 标注已归一成领域口径键
                 'duration_map': {audio_id: duration},
             }
         """
@@ -73,7 +99,8 @@ class AudioACLRepository:
                 audio_map[aid] = item
                 duration_map[aid] = item.duration or 0.0
                 anns = item.annotations or []
-                annotation_map[aid] = anns if anns else []
+                annotation_map[aid] = (
+                    AudioACLRepository._normalize_annotations(anns) if anns else [])
         except Exception as e:
             log_not_emit('ERROR', 'audio_acl_repository', f'preload_audio_data failed: {e}', category='algorithm')
 

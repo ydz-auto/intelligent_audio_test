@@ -80,7 +80,7 @@ class AudioAnalysisService:
         if annotation_map and audio_id in annotation_map:
             for ann in annotation_map[audio_id]:
                 if isinstance(ann, dict):
-                    ann_type = ann.get('annotation_code') or ann.get('type', '')
+                    ann_type = ann.get('annotation_code', '')
                     if ann_type == 'diarization':
                         data = ann.get('data', {})
                         segments = data.get('segments', []) if isinstance(data, dict) else []

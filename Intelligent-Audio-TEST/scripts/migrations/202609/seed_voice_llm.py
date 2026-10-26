@@ -251,24 +251,34 @@ def seed_voice_llm():
         # ============================================================
         print("\n=== Step 6: 注册 voice_llm 参考参数定义 (algorithm_reference_params) ===")
 
+        # 口径（《参考参数生成器设计文档》AlgorithmReferenceParam 字段表，INT-2040）：
+        # annotation_code = 标注整体 code → AudioAnnotation.code（主库 voice_llm）
+        # annotation_format = 标注载荷格式 → AudioAnnotation.format（主库 json）
+        # segment 内取哪个字段由 field_path（segments[].<字段>）承担，与 param_type 无关。
         ref_params = [
-            ('voice_llm', 'correct_answer', '参考答案', 'text',
-             'correct_answer', 'text', 'correct_answer', 'join',
-             'LLM Judge 评估的标准答案，从音频标注提取或手动填写'),
             ('voice_llm', 'query', '用户提问', 'text',
-             'query', 'text', 'query', 'join',
-             '用户提问文本，从音频标注提取或手动填写'),
+             'voice_llm', 'json', 'segments[].query', 'first',
+             '用户提问文本，从音频标注 segments[].query 提取'),
+            ('voice_llm', 'is_reject', '是否拒识', 'text',
+             'voice_llm', 'json', 'segments[].is_reject', 'first',
+             '该轮是否拒识，从音频标注 segments[].is_reject 提取'),
+            ('voice_llm', 'env_type', '环境类型', 'text',
+             'voice_llm', 'json', 'segments[].env_type', 'join',
+             '环境类型，从音频标注 segments[].env_type 提取'),
+            ('voice_llm', 'correct_answer', '参考答案', 'text',
+             'voice_llm', 'json', 'segments[].correct_answer', 'join',
+             'LLM Judge 评估的标准答案，从音频标注提取或手动填写'),
             ('voice_llm', 'pause', '停顿点', 'json',
-             'pause', 'json', 'pause', 'first',
+             'voice_llm', 'json', 'segments[].pause', 'first',
              '停顿点'),
             ('voice_llm', 'input_lastword', '输入末尾词时间戳', 'json',
-             'input_lastword', 'json', 'input_lastword', 'first',
+             'voice_llm', 'json', 'segments[].input_lastword', 'first',
              '输入末尾词时间戳'),
             # 打断评估（interruption_metrics 维度）参考参数
             # is_return_to_topic: 每轮标注"是否回到原话题"，从音频标注 segments[].is_return_to_topic 派生
             # 经 source='reference' 映射按轮传给 eval（_build_rounds_list 读取）
             ('voice_llm', 'is_return_to_topic', '是否回到原话题', 'boolean',
-             'is_return_to_topic', 'boolean', 'segments[].is_return_to_topic', 'first',
+             'voice_llm', 'json', 'segments[].is_return_to_topic', 'first',
              '标注该轮是否回到原话题（用户打断后模型是否拉回原话题），在音频标注编辑器按轮标记，供 interruption_metrics 评估'),
         ]
 
