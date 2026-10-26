@@ -6,9 +6,10 @@
  * 本文件对拆分模块做 re-export，保持既有消费方 import 路径不变。
  */
 
-// 拆分模块 re-export：设备字段 / 用例配置
+// 拆分模块 re-export：设备字段 / 用例配置 / API 协议两维
 export * from './deviceFields';
 export * from './testCaseConfig';
+export * from './apiProtocol';
 
 export function formatDate(date: string | Date | null | undefined, format: string = 'YYYY-MM-DD HH:mm:ss'): string {
   if (!date) return '';

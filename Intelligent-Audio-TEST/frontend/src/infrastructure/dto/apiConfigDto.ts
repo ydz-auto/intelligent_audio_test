@@ -34,7 +34,10 @@ export interface APIConfigDto {
   health_score?: number
   endpoints?: ApiEndpointDto[]
   output_types?: string[]
-  device_type?: string
+  /** 传输协议（INT-2025：apis.protocol 列，http/websocket/sse/grpc；读侧不再返回 device_type） */
+  protocol?: string
+  /** 流式性（INT-2025：apis.streaming 列；true = 流式） */
+  streaming?: boolean
   adapter_class?: string
   /** 网络代理类型（INT-839：http/https/socks5/socks5h；NULL 或空 = 不用代理） */
   proxy_type?: ApiProxyType
@@ -65,7 +68,10 @@ export interface ApiUpsertDto {
   default_max_audio_duration?: number
   endpoints?: ApiEndpointDto[]
   output_types?: string[]
-  device_type?: string
+  /** 传输协议（INT-2025：写侧顶层列；不再提交已废弃的 device_type） */
+  protocol?: string
+  /** 流式性（INT-2025：写侧顶层布尔列） */
+  streaming?: boolean
   adapter_class?: string
   /** 网络代理类型（INT-839：http/https/socks5/socks5h；NULL 或空 = 不用代理） */
   proxy_type?: ApiProxyType

@@ -29,6 +29,7 @@ export interface ApiEndpoint {
  * 该对象为整块透传的 JSON blob，后端按 Dict[str, Any] 原样存储）
  */
 export interface ApiMeta {
+  /** 【历史遗留，只读】协议已抬为顶层 `protocol` 列（INT-1799）；新写入不再写 meta.protocol */
   protocol?: string
   environment?: string
   version?: string
@@ -70,8 +71,13 @@ export interface APIConfig {
   endpoints?: ApiEndpoint[]
   /** API 输出类型（值 = OutputType 枚举原值） */
   outputTypes?: string[]
-  /** 被测设备类型（值 = DeviceType 枚举原值，决定执行路由） */
-  deviceType?: string
+  /**
+   * 传输协议（INT-2025：读 `apis.protocol` 列，值域 http / websocket / sse / grpc；
+   * 后端已废弃 `device_type`，执行道不再由它决定）
+   */
+  protocol?: string
+  /** 流式性（INT-2025：读 `apis.streaming` 列；true = 流式/实时，执行道唯一判据） */
+  streaming?: boolean
   /** 指定适配器类名（未指定时按 protocol+vendor 自动匹配） */
   adapterClass?: string
   /** 网络代理类型（http/https/socks5/socks5h；未配置 = 不用代理） */

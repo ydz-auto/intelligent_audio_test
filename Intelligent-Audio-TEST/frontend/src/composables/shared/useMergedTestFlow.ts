@@ -156,7 +156,12 @@ export function useMergedTestFlow() {
   })
 
   // ============ 设备（被测设备 TEST 页签） ============
-  const deviceManagement = useDeviceManagement(DeviceTabType.TEST)
+  // INT-2025：新增/编辑 API 走 deviceManagement 的弹窗，成功后按页签回调这里刷新「被测 API」网格；
+  // loadAPIs 定义在下方，用 late-bound 引用避开 TDZ。
+  let refreshApisRef: () => Promise<void> = async () => {}
+  const deviceManagement = useDeviceManagement(DeviceTabType.TEST, async (type) => {
+    if (type === DeviceTabType.API) await refreshApisRef()
+  })
 
   /** 设备算法过滤（supportedAlgorithms 命中全局算法；无全局算法时全量） */
   const algorithmFilteredDevices = computed(() => {
@@ -365,6 +370,8 @@ export function useMergedTestFlow() {
       apis.value = []
     }
   }
+  // INT-2025：deviceManagement 的 API 增改成功回调 → 即时刷新网格（无需整页刷新）
+  refreshApisRef = loadAPIs
 
   // ============ 底部双道示意图（INT-1268/INT-1115 §5.2.4：随选中目标 + 每卡模式实时更新） ============
   const deviceNameById = computed(() => {
@@ -487,8 +494,8 @@ export function useMergedTestFlow() {
           .filter((a): a is APIConfig => !!a)
           .map(a => ({
             id: a.id,
-            deviceType: a.deviceType,
-            // 端点 URL（对齐 deviceFetching 口径：endpoints[0] 优先，兜底 apiUrl）
+            // INT-2025：亲和域由流式性派生（device_type 已废弃）；endpointUrl 仅旧数据兜底
+            streaming: a.streaming,
             endpointUrl: a.endpoints?.[0]?.endpoint || a.apiUrl || '',
           })),
       })

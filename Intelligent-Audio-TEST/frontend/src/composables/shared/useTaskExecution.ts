@@ -41,14 +41,14 @@ interface UseTaskExecutionOptions {
  * 不包含步骤导航逻辑，仅负责任务的创建和启动
  */
 
-/** INT-1434：选中 API 的用例级目标——device_type 取显式值，未显式时传端点 URL 供派生（ws/wss → websocket_api） */
-function toCaseDeviceApiTargets(apiIds: (string | number)[], apis: APIConfig[]): Array<{ id: string | number; deviceType?: string | null; endpointUrl?: string }> {
+/** INT-1434 / INT-2025：选中 API 的用例级目标——亲和域由 streaming 派生，旧数据回退端点 URL 派生 */
+function toCaseDeviceApiTargets(apiIds: (string | number)[], apis: APIConfig[]): Array<{ id: string | number; streaming?: boolean | null; deviceType?: string | null; endpointUrl?: string }> {
   return apiIds
     .map(id => apis.find(a => String(a?.id) === String(id)))
     .filter((a): a is APIConfig => !!a)
     .map(a => ({
       id: a.id,
-      deviceType: a.deviceType,
+      streaming: a.streaming,
       // 端点 URL（对齐 deviceFetching 口径：endpoints[0] 优先，兜底 apiUrl）
       endpointUrl: a.endpoints?.[0]?.endpoint || a.apiUrl || '',
     }))

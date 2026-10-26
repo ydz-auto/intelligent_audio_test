@@ -1,5 +1,11 @@
 /** 动态表单字段（key/label 体系，原 FormField 改名）：
  * 区别于 domain/model/algorithm.ts 的算法参数 FormField（fieldCode 体系） */
+import {
+  apiProtocolOptions,
+  DEFAULT_API_PROTOCOL,
+  DEFAULT_API_STREAMING,
+} from './apiProtocol'
+
 export interface DynamicFormField {
   key: string;
   label: string;
@@ -18,8 +24,6 @@ export interface DynamicFormField {
   arrayItemType?: string;
   arrayItemTemplate?: any;
   disabled?: boolean;
-  /** INT-1434：按端点协议自动派生（如 deviceType ← apiUrl/endpoints[0].endpoint 的 ws/http 判定） */
-  autoDerive?: boolean;
 }
 
 // 兼容 re-export：保持既有 FormField 消费方 import 路径不变
@@ -198,17 +202,25 @@ export function generateDeviceFields(deviceType: string): DynamicFormField[] {
         required: true,
         placeholder: '请输入API名称'
       }, {
-        // INT-1434：被测设备类型（决定执行路由；留空按端点协议自动派生，后端缺省 http_api）
-        key: 'deviceType',
-        label: '被测设备类型',
+        // INT-2025：协议（顶层列，替代已废弃的 device_type）；流式性见下一字段，两维正交汇交
+        key: 'protocol',
+        label: '协议',
         type: 'select',
+        required: true,
+        hint: '传输协议：http / websocket / sse / grpc。执行道只由「流式性」决定，与协议无关',
+        defaultValue: DEFAULT_API_PROTOCOL,
+        options: apiProtocolOptions()
+      }, {
+        // INT-2025：流式性（顶层列 streaming）——流式=实时；websocket / sse 固定流式，切换协议时自动联动
+        key: 'streaming',
+        label: '流式性',
+        type: 'radio',
         required: false,
-        hint: '决定执行路由：websocket_api（Realtime）或 http_api（HTTP）。留空时按端点协议自动派生（ws/wss → websocket_api，其余 → http_api）',
-        autoDerive: true,
-        defaultValue: '',
+        hint: '流式=实时（流式执行道）；非流式=非实时。websocket / sse 协议固定为流式',
+        defaultValue: DEFAULT_API_STREAMING,
         options: [
-          { value: 'http_api', label: 'HTTP API' },
-          { value: 'websocket_api', label: 'WebSocket API' }
+          { value: true, label: '流式（实时）' },
+          { value: false, label: '非流式' }
         ]
       }, {
         key: 'vendor',
@@ -238,7 +250,7 @@ export function generateDeviceFields(deviceType: string): DynamicFormField[] {
         label: 'API元数据',
         type: 'apiMeta',
         required: true,
-        hint: '配置API的协议、环境、版本等信息'
+        hint: '配置API的环境、版本与 API Key'
       }, {
         key: 'defaultMaxProcess',
         label: '默认最大进程数',

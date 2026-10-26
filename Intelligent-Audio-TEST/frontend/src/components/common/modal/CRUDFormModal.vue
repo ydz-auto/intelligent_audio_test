@@ -33,9 +33,10 @@
                   />
                   <FormField
                     v-else
-                    :field="field"
+                    :field="fieldForRender(field)"
                     v-model="formValues[field.key]"
                     :error="validationErrors[field.key]"
+                    @update:model-value="handleFieldModelUpdate(field, $event)"
                     @file-upload="handleFileUpload"
                     @button-action="handleButtonAction"
                   />
@@ -78,7 +79,9 @@ const props = defineProps({
   title: { type: String, default: '' },
   fields: { type: Array, default: () => [] },
   formData: { type: Object, default: () => ({}) },
-  mode: { type: String, default: 'create', validator: (value) => ['create', 'edit'].includes(value) }
+  mode: { type: String, default: 'create', validator: (value) => ['create', 'edit'].includes(value) },
+  /** INT-2025：异步提交处理器（await 成功后才 confirm 关闭；失败保留弹窗） */
+  submitHandler: { type: Function, default: null }
 })
 
 const emit = defineEmits(['close', 'confirm', 'cancel', 'update:props', 'action', 'test-spl-complete'])
@@ -100,7 +103,9 @@ const {
   handleStopSPL,
   handleTestSPLComplete,
   handleButtonAction,
-  handleSubmit
+  handleSubmit,
+  fieldForRender,
+  handleFieldModelUpdate
 } = useCRUDFormModal(props, emit)
 </script>
 
