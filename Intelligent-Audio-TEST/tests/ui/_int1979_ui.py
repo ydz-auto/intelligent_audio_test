@@ -5,8 +5,11 @@
 产出 artifacts/int1979/*.png + result.json（断言明细 + 捕获的请求载荷）。
 """
 import json
+import math
 import os
+import struct
 import time
+import wave
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -19,6 +22,37 @@ FIX = os.path.join(ART, 'fixtures', '导入根')
 BASE = 'http://localhost:5362'
 DRIVER = r'D:/00_user_data/.cache/selenium/chromedriver/win64/155.0.8059.84/chromedriver.exe'
 os.makedirs(ART, exist_ok=True)
+
+
+def ensure_fixtures():
+    """夹具自建（不依赖运行前落盘）：导入根/组1/子目录 下 3 个 WAV + 2 个带顶层 tags 的用例 JSON。"""
+    sub = os.path.join(FIX, '组1', '子目录')
+    os.makedirs(sub, exist_ok=True)
+    for name, freq in (('甲1.wav', 440), ('乙1.wav', 660), ('单独.wav', 880)):
+        path = os.path.join(sub, name)
+        if os.path.exists(path):
+            continue
+        rate, secs = 16000, 0.3
+        frames = b''.join(struct.pack('<h', int(3000 * math.sin(2 * math.pi * freq * i / rate)))
+                          for i in range(int(rate * secs)))
+        with wave.open(path, 'wb') as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes(frames)
+    cases = {
+        '甲用例.json': {'audio': '甲1.wav', 'tags': ['甲标签']},
+        '乙用例.json': {'txt': [{'audio': '乙1.wav'}], 'tags': ['乙标签']},
+    }
+    for name, body in cases.items():
+        path = os.path.join(FIX, name)
+        if os.path.exists(path):
+            continue
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump(body, fh, ensure_ascii=False, indent=2)
+
+
+ensure_fixtures()
 
 RESULT = {'steps': [], 'requests': [], 'cases': {}, 'errors': []}
 
