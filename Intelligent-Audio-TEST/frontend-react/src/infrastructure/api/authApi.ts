@@ -3,8 +3,9 @@
  * 对照旧 Vue infrastructure/api/authApi.ts 平移：login / register / getMe /
  * logout / getAuthMode / listPublicOAuthProviders / getOAuthAuthorizeUrl /
  * fetchEncryptionKey；skipAuthRedirect 白名单与 INT-188 禁明文回退、INT-245
- * 降级公钥语义逐字保留。jsencrypt PKCS1v15 降级公钥路径（http+LAN-IP 非安全
- * 上下文）见 password-encryption.ts：非安全上下文当前收敛为不可用，不回退明文。
+ * 降级公钥语义逐字保留。jsencrypt PKCS1v15 降级公钥路径见
+ * password-encryption.ts（INT-1990：非安全上下文走降级 kid，安全上下文恒走
+ * WebCrypto OAEP 主路径，均不回退明文）。
  */
 import type { OAuthProvider } from '@/domain/models/auth'
 import type { AuthUser } from '@/domain/models/user'
