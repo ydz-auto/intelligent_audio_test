@@ -75,7 +75,7 @@
           @preview-audio="(audioId: string) => emit('previewAudio', audioId, 'noise')"
         />
 
-        <!-- ===== 步骤 4: 评估维度 ===== -->
+        <!-- ===== 评估维度 ===== -->
         <div class="rce-step" id="step-eval" v-if="currentRound">
           <div class="rce-step-header">
             <i class="fas fa-chart-bar rce-step-icon"></i>
@@ -90,7 +90,7 @@
           />
         </div>
 
-        <!-- ===== 步骤 5: 参考参数（查看/编辑，新增态只读路径） ===== -->
+        <!-- ===== 参考参数（查看/编辑，新增态只读路径） ===== -->
         <ReferencePathStep
           v-if="currentRound"
           :round="currentRound"
@@ -207,15 +207,17 @@ function handleAlgoParamsUpdate(params: AlgorithmParamItem[]) {
 // ---- 步骤定义 ----
 const steps = computed(() => {
   const base = [
-    { id: 'algo', num: 1, label: '算法参数', icon: 'fas fa-sliders-h' },
-    { id: 'audio', num: 2, label: '音频列表', icon: 'fas fa-music' },
+    { id: 'algo', label: '算法参数', icon: 'fas fa-sliders-h' },
+    { id: 'audio', label: '音频列表', icon: 'fas fa-music' },
   ]
   if (effectiveTestType.value === 'e2e') {
-    base.push({ id: 'noise', num: 3, label: '噪声 & 干扰', icon: 'fas fa-volume-up' })
+    base.push({ id: 'noise', label: '噪声 & 干扰', icon: 'fas fa-volume-up' })
   }
-  base.push({ id: 'eval', num: base.length + 1, label: '评估维度', icon: 'fas fa-chart-bar' })
-  base.push({ id: 'ref', num: base.length + 2, label: '参考参数', icon: 'fas fa-file-alt' })
-  return base
+  base.push({ id: 'eval', label: '评估维度', icon: 'fas fa-chart-bar' })
+  base.push({ id: 'ref', label: '参考参数', icon: 'fas fa-file-alt' })
+  // INT-2026：编号统一按顺序生成。原先 eval 用 base.length + 1 入栈后，ref 再取 base.length + 2，
+  // 等于「正确编号 + 1」，导致「参考参数」恒跳一号（API 缺 4、端到端缺 5）。
+  return base.map((step, index) => ({ ...step, num: index + 1 }))
 })
 
 // ---- 参数过滤 ----
