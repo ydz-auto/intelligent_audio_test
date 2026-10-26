@@ -13,7 +13,12 @@ import type {
   ChartSeriesData,
   DistributionChartData,
 } from '@/application/report-view/use-report-charts'
-import { CHART_COLORS, colorArray, rebinDistributionData } from '@/infrastructure/adapters/chartConfig'
+// P2-20：interfaces/呈现层不直 import infrastructure，经 application 层再导出
+import {
+  CHART_COLORS,
+  colorArray,
+  rebinDistributionData,
+} from '@/application/report-view/use-report-charts'
 
 export type VChartSpec = Record<string, unknown>
 
@@ -229,10 +234,13 @@ function buildCartesianSpec(
   radius: number
 ): VChartSpec {
   const rows = toSeriesRows(series, '分类', '数值', '系列')
+  // VChart 的分组柱靠「多字段 band 轴」判定：xField 同时带类目与系列字段时，
+  // 同一类目下的各系列才并排；只关 stack 不够（会画在同一 x 上互相覆盖）。
+  const grouped = type === 'bar' && series.datasets.length > 1
   const spec: VChartSpec = {
     type,
     data: [{ id: 'report-series', values: rows }],
-    xField: '分类',
+    xField: grouped ? ['分类', '系列'] : '分类',
     yField: '数值',
     seriesField: '系列',
     // 改造前 chart.js 多数据集为并排分组柱，VChart bar 默认堆叠，显式关闭
@@ -308,7 +316,8 @@ function buildDistributionSpec(
   const spec: VChartSpec = {
     type: isLine ? 'line' : 'bar',
     data: [{ id: 'report-distribution', values: rows }],
-    xField: '区间',
+    // 直方图同样靠多字段 band 轴分组（每资源并排）；折线子类型仍按单字段
+    xField: !isLine && binned.datasets.length > 1 ? ['区间', '系列'] : '区间',
     yField: '数量',
     seriesField: '系列',
     // 每资源独立系列并排（同改造前 chart.js 分组柱，不堆叠）
