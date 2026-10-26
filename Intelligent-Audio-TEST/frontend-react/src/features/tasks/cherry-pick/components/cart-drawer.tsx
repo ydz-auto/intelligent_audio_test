@@ -44,18 +44,9 @@ export function CartDrawer({
           </SheetTitle>
         </SheetHeader>
 
-        <CartPanel
-          readOnly={!canWrite}
-          onGoContinuePick={() => onOpenChange(false)}
-          onGoReview={
-            canWrite
-              ? () => {
-                  onOpenChange(false)
-                  onGoReview?.()
-                }
-              : undefined
-          }
-        />
+        {/* 导航钮交给下方 SheetFooter（INT-2003 底部操作栏）；此处只保留清空 / 另存为挑选集。
+            CartPanel 的 onGoContinuePick/onGoReview 不注入，避免与 SheetFooter 出现两套同名按钮。 */}
+        <CartPanel readOnly={!canWrite} />
 
         {canWrite && (
           <SheetFooter className='border-t pt-3'>
