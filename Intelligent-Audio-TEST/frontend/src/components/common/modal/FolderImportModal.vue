@@ -86,6 +86,21 @@
         :show-tags-input="true"
       />
 
+      <!-- 标签来源选择 -->
+      <div class="tag-source-config" v-if="selectedFiles.length > 0">
+        <div class="form-row">
+          <label>标签来源：</label>
+          <select v-model="tagSource" class="form-input">
+            <option value="path">路径解析（目录名作为标签）</option>
+            <option value="json">JSON 标签（标注 JSON 顶层 tags 字段）</option>
+            <option value="both">两者都要</option>
+          </select>
+        </div>
+        <div class="form-hint">
+          选择「路径解析」时标签来自文件夹目录结构；选择「JSON 标签」时标签来自标注 JSON 顶层的 tags 字段；「两者都要」会合并去重。
+        </div>
+      </div>
+
       <!-- 标注 Code 选择 -->
       <div class="annotation-code-config" v-if="selectedFiles.length > 0 && referenceParamOptions.length > 0">
         <div class="form-row">
@@ -223,6 +238,8 @@ const isDragActive = ref(false)
 const importProgress = ref(0)
 const selectedFiles = ref<File[]>([])
 const tags = ref('')
+// 标签来源：path（路径目录解析）/ json（标注 JSON 顶层 tags 字段）/ both（两者都要，合并去重）
+const tagSource = ref<'path' | 'json' | 'both'>('path')
 const annotationCode = ref('')
 const referenceParamOptions = ref<Array<{label: string; value: string}>>([])
 
@@ -799,6 +816,7 @@ const handleImport = async () => {
       config: uploadConfig,
       files: filesWithTags,
       tags: tags.value.split(',').map(t => t.trim()).filter(t => t),
+      tagSource: tagSource.value,
       folderGroupMappings: Object.fromEntries(folderGroupNames.value),
       selectedFolders: selectedFolders.value,
       algorithmParams: algorithmParams.value,
@@ -903,6 +921,17 @@ const extractSpeakersFromAnnotation = (annotationData: any): { speakerCount: num
 
 <style scoped>
 .upload-file-modal {
+}
+
+/* 标签来源选择 */
+.tag-source-config {
+  margin-bottom: 16px;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 4px;
 }
 
 h3 {

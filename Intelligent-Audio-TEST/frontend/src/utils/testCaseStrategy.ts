@@ -23,6 +23,24 @@ export interface TestCaseGroup {
   backgroundNoise?: any;
   /** 该 JSON 引用的所有音频文件名（用于音频匹配） */
   audioNames: string[];
+  /** JSON 顶层 tags 字段解析出的标签（用户可选作标签来源） */
+  tags?: string[];
+}
+
+/**
+ * 提取 JSON 顶层 tags 字段：过滤非字符串、去空白、去重。
+ * 三种 JSON 结构（rounds / flat / txt）的顶层都支持 `tags: [...]`。
+ */
+function extractJsonTags(rawJson: any): string[] {
+  if (!rawJson || !Array.isArray(rawJson.tags)) return [];
+  const result: string[] = [];
+  for (const t of rawJson.tags) {
+    if (typeof t === 'string') {
+      const trimmed = t.trim();
+      if (trimmed) result.push(trimmed);
+    }
+  }
+  return Array.from(new Set(result));
 }
 
 // 策略接口
@@ -114,6 +132,7 @@ class RoundsJsonStrategy implements TestCaseStrategy {
       rounds,
       backgroundNoise: rawJson.background_noise,
       audioNames,
+      tags: extractJsonTags(rawJson),
     };
   }
 }
@@ -171,6 +190,7 @@ class FlatJsonStrategy implements TestCaseStrategy {
       rounds: [roundObj],
       backgroundNoise: undefined,
       audioNames,
+      tags: extractJsonTags(rawJson),
     };
   }
 }
@@ -241,6 +261,7 @@ class TxtArrayJsonStrategy implements TestCaseStrategy {
       rounds: [roundObj],
       backgroundNoise: rawJson.background_noise,
       audioNames,
+      tags: extractJsonTags(rawJson),
     };
   }
 }

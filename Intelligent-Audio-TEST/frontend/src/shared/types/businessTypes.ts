@@ -108,6 +108,8 @@ export interface AudioUploadOptions {
     /** @deprecated 已移到 CaseForm 的 RoundConfigEditor 里配置 */
     noiseSpl?: number;
     inheritTags?: boolean;
+    /** 标签来源策略：path（路径目录解析）/ json（标注 JSON 顶层 tags）/ both（两者都要） */
+    tagSource?: 'path' | 'json' | 'both';
     /** 评估维度数组，每条可带 test_type 标记属于 api/e2e */
     dimensions?: SelectedEvaluationDimension[];
     algorithmType?: string;

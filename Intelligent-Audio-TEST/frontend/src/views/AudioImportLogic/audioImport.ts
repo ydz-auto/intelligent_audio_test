@@ -200,6 +200,8 @@ export function useAudioImport() {
     testTypes: ['e2e'],
     // playbackDeviceId / spl / noiseAudioId / noiseSpl 已移到 CaseForm 的 RoundConfigEditor
     inheritTags: true,
+    // 标签来源：path（路径目录解析）/ json（标注 JSON 顶层 tags）/ both（两者都要）
+    tagSource: 'path' as 'path' | 'json' | 'both',
     dimensions: [],
     algorithmType: '',
     algorithmRelations: [],
@@ -1155,6 +1157,7 @@ export function useAudioImport() {
           if (options?.groupNameType !== undefined) uploadOptions.groupNameType = options.groupNameType;
           if (options?.customGroupName !== undefined) uploadOptions.customGroupName = options.customGroupName;
           if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
+          if (data?.tagSource !== undefined) uploadOptions.tagSource = data.tagSource;
           // 合并 API/E2E/通用维度，给每条加 test_type 标记来源
           // 不去重：API 和 E2E 选同一维度是合理的，后端按 test_type 分发到对应用例
           // 新结构：apiDimensionConfig / e2eDimensionConfig 包含 roundMode/roundNumbers/roundDimensions/multiDimensions
@@ -1220,7 +1223,7 @@ export function useAudioImport() {
           if (data?.algorithmRelations !== undefined) uploadOptions.algorithmRelations = data.algorithmRelations;
           
           selectedFilesForUpload.value = data.files;
-          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRoundsByGroup, data.testCaseGroups);
+          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRoundsByGroup, data.testCaseGroups, data.tagSource);
         }
       }
     });
@@ -1261,7 +1264,7 @@ export function useAudioImport() {
     }
   }
 
-  async function startUploadProcess(files: any[], folderGroupMappings?: Record<string, string>, unifiedRoundsByGroup?: Record<string, any>, testCaseGroupsData?: Record<string, any>) {
+  async function startUploadProcess(files: any[], folderGroupMappings?: Record<string, string>, unifiedRoundsByGroup?: Record<string, any>, testCaseGroupsData?: Record<string, any>, tagSource: 'path' | 'json' | 'both' = 'path') {
     if (files.length === 0) return;
 
     uploadStatus.value = 'preparing';
@@ -1386,7 +1389,8 @@ export function useAudioImport() {
           asrText: asrText,
           translations,
           annotations: item.annotations || [],
-          tags: item.tags || []
+          // 按标签来源策略组装：json / both 模式附加该分组标注 JSON 顶层 tags
+          tags: resolveUploadTags(item.tags, tagSource, groupKey, testCaseGroups)
         });
         fileData.push({
           name: file.name,
@@ -1542,6 +1546,27 @@ export function useAudioImport() {
     }
   }
 
+  /**
+   * 按标签来源策略组装文件标签：
+   * - path：保持现状（用户输入 + speaker 等已有标签），不附加 JSON 顶层 tags
+   * - json / both：附加该文件所属分组的标注 JSON 顶层 tags（去重）
+   */
+  function resolveUploadTags(
+    itemTags: string[] | undefined,
+    tagSource: string,
+    groupKey: string,
+    testCaseGroups: Map<string, TestCaseGroup>
+  ): string[] {
+    const result = Array.isArray(itemTags) ? [...itemTags] : []
+    if (tagSource === 'json' || tagSource === 'both') {
+      const groupTags = testCaseGroups.get(groupKey)?.tags || []
+      for (const t of groupTags) {
+        if (t && !result.includes(t)) result.push(t)
+      }
+    }
+    return result
+  }
+
   async function processMergeForExistingFile(taskId: string, fileTask: AudioUploadFile, options: any = uploadOptions, tcConfig?: TestCaseConfig) {
     // 多轮模式：把当前文件标注解析参数分发到 tcConfig.rounds 匹配的 round
     await dispatchParamsToRounds(tcConfig, options.algorithmType, fileTask, options);
@@ -1555,6 +1580,7 @@ export function useAudioImport() {
       audioType: options.audioType,
       createTestCase: options.createTestCase,
       tags: fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : options.tags,
+      tagSource: options.tagSource,
       description: options.description,
       testTypes: options.testTypes,
       playbackDeviceId: options.playbackDeviceId,
@@ -1641,6 +1667,7 @@ export function useAudioImport() {
       audioType: options.audioType,
       createTestCase: options.createTestCase,
       tags: fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : options.tags,
+      tagSource: options.tagSource,
       description: options.description,
       testTypes: options.testTypes,
       playbackDeviceId: options.playbackDeviceId,
@@ -2330,6 +2357,7 @@ export function useAudioImport() {
           if (options?.groupNameType !== undefined) uploadOptions.groupNameType = options.groupNameType;
           if (options?.customGroupName !== undefined) uploadOptions.customGroupName = options.customGroupName;
           if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
+          if (data?.tagSource !== undefined) uploadOptions.tagSource = data.tagSource;
           // 合并 API/E2E/通用维度，给每条加 test_type 标记来源
           // 不去重：API 和 E2E 选同一维度是合理的，后端按 test_type 分发到对应用例
           // 新结构：apiDimensionConfig / e2eDimensionConfig 包含 roundMode/roundNumbers/roundDimensions/multiDimensions
@@ -2394,7 +2422,7 @@ export function useAudioImport() {
           if (data?.algorithmRelations !== undefined) uploadOptions.algorithmRelations = data.algorithmRelations;
           
           selectedFilesForUpload.value = data.files;
-          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRoundsByGroup, data.testCaseGroups);
+          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRoundsByGroup, data.testCaseGroups, data.tagSource);
         }
       }
     });
