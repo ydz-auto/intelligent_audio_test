@@ -162,7 +162,8 @@ export interface TaskCreateDto {
 export interface TaskCaseDeviceAssignmentDto {
   case_id: string
   device_type?: string
-  device_id?: string | number
+  /** 后端 TaskCaseDeviceAssignment.device_id 为 Optional[str]：number 一律字符串化后提交（INT-2024） */
+  device_id?: string
   lab_id?: number
 }
 

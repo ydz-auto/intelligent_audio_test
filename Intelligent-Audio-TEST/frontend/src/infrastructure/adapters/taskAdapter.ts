@@ -198,10 +198,12 @@ export function toTaskCreateDto(draft: TaskCreateDraft): TaskCreateDto {
     device_ids: draft.deviceIds,
     api_ids: draft.apiIds,
     // INT-1434：用例级被测设备选择（caseId/deviceType/deviceId/labId → snake_case 契约）
+    // INT-2024：device_id 后端 TaskCaseDeviceAssignment 为 Optional[str]（网关 422 强校验），
+    // 域模型里的 API/设备 id 可能是 number，统一字符串化再提交。
     case_devices: draft.caseDevices?.map(a => ({
       case_id: a.caseId,
       device_type: a.deviceType,
-      device_id: a.deviceId,
+      device_id: a.deviceId !== undefined && a.deviceId !== null ? String(a.deviceId) : undefined,
       lab_id: a.labId,
     })),
     // INT-1115：逐目标执行模式（列表顺序 = 选中顺序 = 串行链顺序；缺省/空数组 = 全目标并行）

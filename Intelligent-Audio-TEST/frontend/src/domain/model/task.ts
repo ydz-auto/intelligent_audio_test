@@ -88,7 +88,8 @@ export interface TaskCaseDeviceAssignment {
   caseId: string
   /** 被测设备类型（physical / http_api / websocket_api，DeviceType 枚举原值） */
   deviceType?: DeviceTypeType
-  /** 目标 ID：physical=设备 ID，http_api/websocket_api=API ID（后端 TaskCase.device_id 字符串契约） */
+  /** 目标 ID：physical=设备 ID，http_api/websocket_api=API ID（后端 TaskCase.device_id 字符串契约；
+   * 域内允许 number，落 DTO 时由 toTaskCreateDto 统一字符串化，见 INT-2024） */
   deviceId?: string | number
   /** 所属实验室 ID（可选，多实验室扩展） */
   labId?: number
