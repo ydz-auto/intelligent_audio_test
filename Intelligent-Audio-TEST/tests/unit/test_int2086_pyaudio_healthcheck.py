@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import types
 
 os.environ.setdefault('DATABASE_URL',
                       'sqlite:///' + tempfile.mkdtemp(prefix='int2086_') + '/guard.db')
@@ -199,6 +200,88 @@ def test_main_stop_fallback_taskkill_when_unimplemented(monkeypatch):
     monkeypatch.setattr(stop, 'cooldown',
                         lambda s: events.append(('cooldown', s)))
 
+    taskkill_calls = []
+
+    def fake_taskkill(*a, **k):
+        taskkill_calls.append(a[0] if a else [])
+        class _R:
+            returncode = 0
+            stdout = ''
+            stderr = ''
+        return _R()
+
+    monkeypatch.setattr(subprocess, 'run', fake_taskkill)
+
+    rc = stop.main(['--port', '50052', '--cooldown', '8'])
+    assert rc == 0
+    assert any('taskkill' in ' '.join(c) for c in taskkill_calls)
+    assert events == [('cooldown', 8.0)]
+
+
+# ---- graceful_stop：gRPC 报错不得崩溃（INT-2086 打回 P1 修复） ----
+
+class _FakeInactiveRpcError(Exception):
+    """模拟 grpc>=1.5x 的 _InactiveRpcError：_state.code 是 StatusCode 枚举值（不可调用）。
+
+    旧实现 `getattr(getattr(e, '_state', None), 'code', lambda: None)()` 会把它当函数
+    硬调 → TypeError，优雅停止失败路径崩溃、taskkill 兜底不可达。必须走 e.code() API。
+    """
+
+    def __init__(self, status_code):
+        super().__init__()
+        self._state = types.SimpleNamespace(code=status_code)
+
+    def code(self):
+        return self._state.code
+
+
+def _fake_pb_grpc_shutdown_raising(err):
+    """返回 (pb, pb_grpc, None)：AudioServiceStub.Shutdown 抛 err（无需真实 server）。"""
+
+    class _FakeStub:
+        def Shutdown(self, request, timeout=None):
+            raise err
+
+    class _FakePbGrpc:
+        def AudioServiceStub(self, channel):
+            return _FakeStub()
+
+    pb = types.SimpleNamespace(ShutdownRequest=lambda: None)
+    return pb, _FakePbGrpc(), None
+
+
+def test_graceful_stop_unimplemented_returns_fallback_not_crash():
+    """Shutdown RPC 抛 UNIMPLEMENTED（枚举值 _state.code）→ 返回回退强停消息，不崩溃。"""
+    import grpc
+    pb, pb_grpc, _ = _fake_pb_grpc_shutdown_raising(
+        _FakeInactiveRpcError(grpc.StatusCode.UNIMPLEMENTED))
+    ok, msg = stop.graceful_stop(50052, timeout=1.0, _stubs=(pb, pb_grpc, None))
+    assert ok is False
+    assert '不支持 Shutdown RPC' in msg
+
+
+def test_graceful_stop_generic_rpc_error_returns_fallback_not_crash():
+    """任意 RPC 错误（UNAVAILABLE/超时）→ 返回失败消息，不崩溃，taskkill 兜底可达。"""
+    import grpc
+    pb, pb_grpc, _ = _fake_pb_grpc_shutdown_raising(
+        _FakeInactiveRpcError(grpc.StatusCode.UNAVAILABLE))
+    ok, msg = stop.graceful_stop(50052, timeout=1.0, _stubs=(pb, pb_grpc, None))
+    assert ok is False
+    assert 'gRPC Shutdown 调用失败' in msg
+
+
+def test_main_stop_real_unimplemented_reaches_taskkill(monkeypatch):
+    """真实 graceful_stop 命中 UNIMPLEMENTED → 不崩溃，main() 走 taskkill 兜底 + 释放 + 冷却。"""
+    import grpc
+    pb, pb_grpc, _ = _fake_pb_grpc_shutdown_raising(
+        _FakeInactiveRpcError(grpc.StatusCode.UNIMPLEMENTED))
+    monkeypatch.setattr(stop, '_import_grpc_stubs', lambda: (pb, pb_grpc, None))
+    monkeypatch.setattr(stop, 'find_listener_pid', lambda port: '1234')
+    monkeypatch.setattr(stop, 'wait_port_released',
+                        lambda port, timeout: (True, 0.3))
+
+    events = []
+    monkeypatch.setattr(stop, 'cooldown', lambda s: events.append(('cooldown', s)))
     taskkill_calls = []
 
     def fake_taskkill(*a, **k):

@@ -117,8 +117,12 @@ def graceful_stop(port, timeout=GRACEFUL_TIMEOUT_DEFAULT,
         resp = stub.Shutdown(pb.ShutdownRequest(), timeout=timeout)
         return resp.success, resp.message
     except Exception as e:
-        code = getattr(getattr(e, '_state', None), 'code', lambda: None)()
-        if str(code) == 'StatusCode.UNIMPLEMENTED':
+        # 注意：grpc>=1.5x 的 _InactiveRpcError._state.code 是 StatusCode 枚举值
+        # （不可调用），更早版本是 lambda。必须走标准 e.code() API（两者兼容），
+        # 绝不能 getattr(..., 'code')(...) 把枚举当函数硬调（INT-2086 打回 P1）。
+        code = getattr(e, 'code', None)
+        code = code() if callable(code) else None
+        if code == grpc.StatusCode.UNIMPLEMENTED:
             return False, "服务端不支持 Shutdown RPC（旧代码未含 INT-2086），回退强停"
         return False, f"gRPC Shutdown 调用失败: {e}"
 
