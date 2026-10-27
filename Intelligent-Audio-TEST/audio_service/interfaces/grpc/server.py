@@ -13,6 +13,7 @@
 import os
 import logging
 from concurrent import futures
+from typing import Optional
 
 import grpc
 
@@ -39,6 +40,15 @@ logger = logging.getLogger(__name__)
 # 20+5=25 条，仍远低于 docker PG 的 max_connections=100。
 AUDIO_GRPC_WORKERS_DEFAULT = 20
 AUDIO_DB_POOL_SIZE = 20
+
+# INT-2086 优雅停止：Shutdown RPC 触发后给在途 RPC 的宽限秒数。audio_service.shutdown()
+# 默认等播放线程最多 10s，宽限必须覆盖它，否则在途 Shutdown 调用会被 stop() 强断。
+GRACEFUL_STOP_GRACE_SECONDS = 15
+GRACEFUL_STOP_PLAYER_WAIT_SECONDS = 10
+
+# 运行中 server 引用：Shutdown RPC（servicer 线程）经 initiate_graceful_shutdown() 停它。
+_server: Optional[grpc.Server] = None
+_shutdown_started = False
 
 
 def _configure_pydub_ffmpeg():
@@ -125,7 +135,36 @@ def start_grpc_server(port=AUDIO_SERVICE_GRPC_PORT):
     server.add_insecure_port(f'[::]:{port}')
     server.start()
     logger.info("audio_service gRPC server started on port %s", port)
+    global _server
+    _server = server
     return server
+
+
+def initiate_graceful_shutdown():
+    """优雅停止入口（INT-2086）：停播放 → 等流关闭 → pa.terminate → 停 gRPC server。
+
+    由 AudioServiceServicer.Shutdown RPC 触发。整个流程同步执行：
+    - audio_service.shutdown()：set 全部 stop_event → 等播放线程结束（流在
+      play_multi finally 中 stop_stream + close）→ driver.terminate()（pa.terminate）。
+    - server.stop(GRACEFUL_STOP_GRACE_SECONDS)：停接收新调用，给在途 RPC 宽限；
+      __main__ 的 wait_for_termination() 随即返回，进程自然退出。
+
+    幂等：重复触发直接返回，避免并发 Shutdown 二次 pa.terminate。
+    """
+    global _server, _shutdown_started
+    if _shutdown_started:
+        logger.info("graceful shutdown already in progress, skip duplicate trigger")
+        return
+    _shutdown_started = True
+    logger.info("graceful shutdown initiated (INT-2086)")
+    from audio_service.infrastructure.audio.audio_engine import audio_service
+    audio_service.shutdown(wait_seconds=GRACEFUL_STOP_PLAYER_WAIT_SECONDS)
+    server = _server
+    if server is not None:
+        server.stop(GRACEFUL_STOP_GRACE_SECONDS)
+        logger.info("gRPC server stop requested, grace=%ss", GRACEFUL_STOP_GRACE_SECONDS)
+    else:
+        logger.warning("no active gRPC server reference to stop")
 
 
 if __name__ == '__main__':
@@ -137,4 +176,7 @@ if __name__ == '__main__':
     try:
         _server.wait_for_termination()
     except KeyboardInterrupt:
+        # INT-2086：Ctrl+C 也走优雅停止（停播放 → 等流关闭 → pa.terminate），
+        # 避免强停把 WASAPI 会话锁在驱动里导致下次 Pa_Initialize 楔死。
+        initiate_graceful_shutdown()
         _server.stop(0)

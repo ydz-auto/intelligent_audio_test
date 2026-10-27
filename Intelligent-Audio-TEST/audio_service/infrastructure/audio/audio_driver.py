@@ -185,7 +185,7 @@ class PyAudioDriver(AudioDriver):
 
     def get_devices(self):
         devices = []
-        
+
         for i in range(self.pa.get_device_count()):
             dev_info = self.pa.get_device_info_by_index(i)
             host_api_info = self.pa.get_host_api_info_by_index(dev_info.get('hostApi'))
@@ -198,6 +198,33 @@ class PyAudioDriver(AudioDriver):
                     "host_api": host_api_info.get('name')
                 })
         return devices
+
+    def terminate(self):
+        """终止 PortAudio 会话（INT-2086 优雅停止入口）。
+
+        强停带流的 audio_service 会把 WASAPI 会话锁在 RME Fireface 等驱动里，
+        下一个进程 Pa_Initialize 撞锁挂死（越重启越死）。退出前必须先停止全部
+        播放、等流在 play_multi finally 中 stop_stream + close，再调本方法
+        pa.terminate()（Pa_Terminate）释放端点会话。
+
+        调用后 self.pa 置 None：_get_driver 再次触发会重新 Pa_Initialize，
+        但正常退出路径不会走到（进程即将结束）。
+        """
+        pa = getattr(self, 'pa', None)
+        if pa is None:
+            log_and_emit('INFO', 'audio_engine',
+                         "PyAudio terminate skipped (pa 已为 None)", category='audio')
+            return
+        try:
+            pa.terminate()
+            self.pa = None
+            log_and_emit('INFO', 'audio_engine',
+                         "PyAudio PortAudio 会话已终止 (pa.terminate) — WASAPI 端点已释放",
+                         category='audio')
+        except Exception as e:
+            log_and_emit('WARNING', 'audio_engine',
+                         f"pa.terminate() 失败: {e}（进程退出时由解释器回收）",
+                         category='audio')
 
     # ------------------------------------------------------------------ #
     #                    play_multi 子方法                                #

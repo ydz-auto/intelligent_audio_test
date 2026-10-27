@@ -80,5 +80,56 @@ class AudioService(EngineDeviceCommMixin,
         queue = getattr(self._audio_pool, '_work_queue', None)
         return queue.qsize() if queue is not None else 0
 
+    def shutdown(self, wait_seconds=10.0):
+        """优雅停止服务（INT-2086 防楔死）。
+
+        强停带流的 audio_service 会把 WASAPI 会话锁在声卡驱动里，下一个进程
+        Pa_Initialize 撞锁挂死。退出前必须按顺序：
+        1. 停止全部播放（逐个 set stop_event）；
+        2. 等待播放线程结束——stream 在 play_multi finally 中 stop_stream + close；
+        3. driver.terminate() 调 pa.terminate()（Pa_Terminate）释放端点会话。
+
+        Args:
+            wait_seconds: 等待播放线程结束的上限（秒），超时告警不阻塞。
+        """
+        import concurrent.futures as cf
+        futures = []
+        players = getattr(self, 'active_players', {}) or {}
+        for task_id_key in list(players.keys()):
+            for p_type in list(players[task_id_key].keys()):
+                entry = players[task_id_key][p_type]
+                stop_event = entry.get("stop_event")
+                if stop_event is not None:
+                    stop_event.set()
+                fut = entry.get("future")
+                if fut is not None:
+                    futures.append(fut)
+            players.pop(task_id_key, None)
+
+        if futures:
+            done, _ = cf.wait(futures, timeout=wait_seconds)
+            if len(done) < len(futures):
+                log_and_emit('WARNING', 'audio_engine',
+                             f"优雅停止超时：{len(futures) - len(done)} 个播放线程未在 "
+                             f"{wait_seconds}s 内结束，流可能未全部释放",
+                             category='audio')
+            else:
+                log_and_emit('INFO', 'audio_engine',
+                             f"全部 {len(futures)} 个播放线程已结束，流已关闭",
+                             category='audio')
+
+        driver = getattr(self, 'driver', None)
+        if driver is not None:
+            try:
+                driver.terminate()
+            except Exception as e:
+                log_and_emit('WARNING', 'audio_engine',
+                             f"driver.terminate() 异常: {e}", category='audio')
+            self.driver = None
+
+        log_and_emit('INFO', 'audio_engine',
+                     "audio_service 优雅停止完成（播放已停 / 流已释放 / PortAudio 已终止）",
+                     category='audio')
+
 
 audio_service = AudioService()
