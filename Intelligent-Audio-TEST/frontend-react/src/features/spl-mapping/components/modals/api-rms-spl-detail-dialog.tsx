@@ -1,7 +1,8 @@
 /**
  * 数字域 RMS-SPL 映射详情（§6.11；Dialog sm:max-w-3xl）。
  * DetailSection：基本信息（名称/API名/协议/供应商/参考声压级/参考线性增益/增益限幅/校准状态/
- * 是否默认/校准点数）；校准点明细（StaticDataTable：目标SPL→线性增益(→dB)→实测RMS dBFS，升序）。
+ * 是否默认/校准点数）；校准点明细（StaticDataTable：目标SPL→实测RMS(dBFS)→线性增益(→dB)，升序，
+ * INT-2081 列口径与点集主输入一致）。
  */
 import { Star } from 'lucide-react'
 
@@ -19,6 +20,7 @@ import { DIGITAL_PROTOCOL_OPTIONS } from '@/features/spl-mapping/constants'
 import {
   formatDateTime,
   formatGainClamp,
+  formatLinearGain,
   formatReferenceBase,
   gainToDb,
 } from '@/features/spl-mapping/lib/format'
@@ -118,9 +120,9 @@ export function ApiRmsSplDetailDialog(props: ApiRmsSplDetailDialogProps) {
                         <thead>
                           <tr className='bg-[var(--table-header)] text-xs'>
                             <th className='px-3 py-2 text-right font-medium'>目标 SPL</th>
+                            <th className='px-3 py-2 text-right font-medium'>实测 RMS</th>
                             <th className='px-3 py-2 text-right font-medium'>线性增益</th>
                             <th className='px-3 py-2 text-right font-medium'>增益（dB）</th>
-                            <th className='px-3 py-2 text-right font-medium'>实测 RMS</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -130,13 +132,13 @@ export function ApiRmsSplDetailDialog(props: ApiRmsSplDetailDialogProps) {
                                 {point.targetSpl} dB
                               </td>
                               <td className='px-3 py-2 text-right font-mono text-xs tabular-nums'>
-                                {point.gainLinear}
+                                {point.rmsDbfs != null ? `${point.rmsDbfs} dBFS` : '—'}
+                              </td>
+                              <td className='px-3 py-2 text-right font-mono text-xs tabular-nums'>
+                                {formatLinearGain(point.gainLinear)}
                               </td>
                               <td className='px-3 py-2 text-right font-mono text-xs tabular-nums'>
                                 {gainToDb(point.gainLinear)}
-                              </td>
-                              <td className='px-3 py-2 text-right font-mono text-xs tabular-nums'>
-                                {point.rmsDbfs != null ? `${point.rmsDbfs} dBFS` : '—'}
                               </td>
                             </tr>
                           ))}

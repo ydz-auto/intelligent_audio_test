@@ -1,8 +1,9 @@
 /**
  * 数字域 RMS-SPL 校准弹窗（§6.10；Dialog sm:max-w-3xl）。
- * 标题「RMS-SPL 数字校准」+ 顶部说明 info + 参考基准四格 + 校准点集表（目标SPL/线性增益/
- * 增益(dB 只读 gainToDb)/实测RMS/删除；行级校验：SPL 范围/增益正数/限幅/重复 x）+「按参考生成」
- * 钮（已有非空点集两步确认）+ 增益曲线预览（vChart，SPL→gain，≥2 点）+ 互斥提示 info +
+ * 标题「RMS-SPL 数字校准」+ 顶部说明 info + 参考基准四格 + 校准点集表（目标SPL/实测RMS
+ * (dBFS 必填主输入)/线性增益(只读推导 10^((dBFS+30)/20))/增益(dB 只读 gainToDb)/删除；
+ * 行级校验：SPL 范围/dBFS 必填与范围/重复 x 拦截；推导增益超 min~max 限幅显示警告）+「按参考生成」
+ * 钮（按 dBFS 口径生成；已有非空点集两步确认）+ 增益曲线预览（vChart，SPL→gain，≥2 点，用推导值）+ 互斥提示 info +
  * 底栏「取消｜提交校准」（disabled 无有效点；提交中「校准中...」）。
  * POST /digital-spl/{id}/calibrate（digital_spl:create）；成功 toast 逐字保留；409 互斥提示。
  */
@@ -43,6 +44,8 @@ import {
   buildCalibrationPayload,
   countValidCalibrationRows,
   detectDuplicateIndexes,
+  deriveGainLinear,
+  generateCalibrationPointsByReference,
   validatePoint,
   type CalibrationPointDraft,
 } from '@/features/spl-mapping/lib/calibration'
@@ -62,19 +65,6 @@ export type ApiRmsSplCalibrationDialogProps = {
 
 type PointDraft = CalibrationPointDraft
 
-/** 按参考生成点集（§6.10：以 refSpl 为中心 ±20dB 每 10dB 一点=5 点） */
-function generateByReference(refSpl: number, refGain: number): PointDraft[] {
-  return [-20, -10, 0, 10, 20].map((offset) => {
-    const target = Math.round((refSpl + offset) * 10) / 10
-    const gain = refGain * Math.pow(10, offset / 20)
-    return {
-      targetSpl: String(target),
-      gainLinear: gain.toFixed(4),
-      rmsDbfs: '',
-    }
-  })
-}
-
 export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProps) {
   const mapping = props.mapping
   const { calibrate } = useDigitalSplMutations()
@@ -92,7 +82,6 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
       mapping.calibrationPoints.length
         ? mapping.calibrationPoints.map((point) => ({
             targetSpl: String(point.targetSpl),
-            gainLinear: String(point.gainLinear),
             rmsDbfs: point.rmsDbfs != null ? String(point.rmsDbfs) : '',
           }))
         : []
@@ -114,12 +103,16 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
 
   const curveSpec = useMemo(() => {
     const curvePoints = points
-      .map((point) => ({
-        x: Number(point.targetSpl),
-        y: Number(point.gainLinear),
-      }))
-      .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y) && point.y > 0)
-      .map((point) => ({ x: point.x, y: Number(20 * Math.log10(point.y)) }))
+      .map((point) => {
+        const x = Number(point.targetSpl)
+        const gain = deriveGainLinear(point.rmsDbfs)
+        return { x, gain }
+      })
+      .filter(
+        (point): point is { x: number; gain: number } =>
+          Number.isFinite(point.x) && point.gain != null && point.gain > 0
+      )
+      .map((point) => ({ x: point.x, y: 20 * Math.log10(point.gain) }))
     return buildDigitalGainCurveSpec(curvePoints)
   }, [points])
 
@@ -128,18 +121,18 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
   const minGain = mapping.minGainLinear ?? 0.001
   const maxGain = mapping.maxGainLinear ?? 10.0
 
-  const errors = points.map((point) => validatePoint(point, minGain, maxGain))
+  const errors = points.map((point) => validatePoint(point))
 
   const validCount = countValidCalibrationRows(points, errors, duplicateIndexes)
 
-  const addPoint = () => setPoints((prev) => [...prev, { targetSpl: '', gainLinear: '', rmsDbfs: '' }])
+  const addPoint = () => setPoints((prev) => [...prev, { targetSpl: '', rmsDbfs: '' }])
   const removePoint = (index: number) =>
     setPoints((prev) => prev.filter((_, i) => i !== index))
   const patchPoint = (index: number, patch: Partial<PointDraft>) =>
     setPoints((prev) => prev.map((point, i) => (i === index ? { ...point, ...patch } : point)))
 
   const handleGenerate = () => {
-    const nonEmpty = points.filter((point) => point.targetSpl.trim() || point.gainLinear.trim()).length
+    const nonEmpty = points.filter((point) => point.targetSpl.trim() || point.rmsDbfs.trim()).length
     if (nonEmpty > 0) {
       setGenerateConfirmOpen(true)
       return
@@ -150,7 +143,7 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
   const applyGenerated = () => {
     const refSpl = mapping.referenceSpl ?? 65
     const refGain = mapping.referenceGainLinear ?? 1.0
-    setPoints(generateByReference(refSpl, refGain))
+    setPoints(generateCalibrationPointsByReference(refSpl, refGain))
     setGenerateConfirmOpen(false)
   }
 
@@ -255,9 +248,9 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
                     <thead>
                       <tr className='bg-[var(--table-header)]'>
                         <th className='px-3 py-2 text-left font-medium'>目标 SPL（dB）</th>
+                        <th className='px-3 py-2 text-left font-medium'>实测 RMS（dBFS）</th>
                         <th className='px-3 py-2 text-left font-medium'>线性增益</th>
                         <th className='px-3 py-2 text-left font-medium'>增益（dB）</th>
-                        <th className='px-3 py-2 text-left font-medium'>实测 RMS（dBFS）</th>
                         <th className='w-10 px-3 py-2' />
                       </tr>
                     </thead>
@@ -265,7 +258,8 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
                       {points.map((point, index) => {
                         const error = errors[index]
                         const isDuplicate = duplicateIndexes.has(index)
-                        const gain = Number(point.gainLinear)
+                        const gain = deriveGainLinear(point.rmsDbfs)
+                        const clamped = gain != null && (gain < minGain || gain > maxGain)
                         return (
                           <tr key={index} className='border-border/50 border-b last:border-b-0'>
                             <td className='px-3 py-1.5'>
@@ -295,33 +289,32 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
                             <td className='px-3 py-1.5'>
                               <Input
                                 type='number'
-                                step='0.001'
-                                value={point.gainLinear}
-                                onChange={(e) => patchPoint(index, { gainLinear: e.target.value })}
-                                aria-label={`第 ${index + 1} 行线性增益`}
-                                className='h-7 w-24'
-                              />
-                              {error?.gainLinear && (
-                                <p className='text-destructive mt-0.5 text-[10px]'>
-                                  {error.gainLinear}
-                                </p>
-                              )}
-                            </td>
-                            <td className='px-3 py-1.5 font-mono text-xs tabular-nums text-muted-foreground'>
-                              {gain > 0 && Number.isFinite(gain) ? gainToDb(gain) : '-'}
-                            </td>
-                            <td className='px-3 py-1.5'>
-                              <Input
-                                type='number'
                                 step='0.5'
                                 min={CALIBRATION_RMS_MIN}
                                 max={CALIBRATION_RMS_MAX}
                                 value={point.rmsDbfs}
                                 onChange={(e) => patchPoint(index, { rmsDbfs: e.target.value })}
                                 aria-label={`第 ${index + 1} 行实测 RMS`}
-                                placeholder='选填'
-                                className='h-7 w-24'
+                                className='h-7 w-24 aria-[invalid=true]:border-destructive'
                               />
+                              {error?.rmsDbfs && (
+                                <p className='text-destructive mt-0.5 text-[10px]'>
+                                  {error.rmsDbfs}
+                                </p>
+                              )}
+                            </td>
+                            <td className='px-3 py-1.5 font-mono text-xs tabular-nums'>
+                              <span className={clamped ? 'text-destructive' : undefined}>
+                                {gain != null ? formatLinearGain(gain) : '-'}
+                              </span>
+                              {clamped && (
+                                <p className='text-destructive mt-0.5 text-[10px]'>
+                                  超限幅 {formatGainClamp(minGain, maxGain)}
+                                </p>
+                              )}
+                            </td>
+                            <td className='px-3 py-1.5 font-mono text-xs tabular-nums text-muted-foreground'>
+                              {gain != null && gain > 0 ? gainToDb(gain) : '-'}
                             </td>
                             <td className='px-3 py-1.5'>
                               <Button
@@ -343,8 +336,8 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
             )}
           </section>
 
-          {/* 增益曲线预览（§6.10；≥2 点显） */}
-          {points.filter((point) => point.targetSpl.trim() && point.gainLinear.trim()).length >= 2 && (
+          {/* 增益曲线预览（§6.10；≥2 点显，用 dBFS 推导增益） */}
+          {points.filter((point) => point.targetSpl.trim() && point.rmsDbfs.trim()).length >= 2 && (
             <section aria-labelledby='digital-curve-preview-title'>
               <h3 id='digital-curve-preview-title' className='mb-2 text-sm font-medium'>
                 增益曲线预览（SPL→gain，dB）
@@ -387,7 +380,7 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
         open={generateConfirmOpen}
         onOpenChange={setGenerateConfirmOpen}
         title='按参考生成校准点'
-        desc={`再点一次确认覆盖当前 ${points.filter((point) => point.targetSpl.trim() || point.gainLinear.trim()).length} 个校准点？`}
+        desc={`再点一次确认覆盖当前 ${points.filter((point) => point.targetSpl.trim() || point.rmsDbfs.trim()).length} 个校准点？`}
         confirmText='确认覆盖'
         handleConfirm={applyGenerated}
       />
