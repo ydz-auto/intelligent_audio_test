@@ -171,6 +171,22 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
         except Exception as e:
             return e2e_pb.PrepareAudiosResponse(success=False, message=str(e), data="")
 
+    def Shutdown(self, request, context=None):
+        """优雅停止服务（INT-2086）。
+
+        入口语义：停全部播放 → 等流关闭 → pa.terminate() → 停 gRPC server → 进程退出。
+        停止脚本 stop_audio_service.cmd 先调本 RPC；服务端不支持（旧代码）或超时
+        才回退 taskkill /F。此处只触发，不等待——shutdown 逻辑在 server 线程内执行，
+        进程会在 wait_for_termination() 返回后自然退出。
+        """
+        try:
+            from audio_service.interfaces.grpc.server import initiate_graceful_shutdown
+            initiate_graceful_shutdown()
+            return e2e_pb.ShutdownResponse(
+                success=True, message="graceful shutdown initiated", data="")
+        except Exception as e:
+            return e2e_pb.ShutdownResponse(success=False, message=str(e), data="")
+
     def MeasureSPL(self, request, context=None):
         """声压级测量"""
         try:

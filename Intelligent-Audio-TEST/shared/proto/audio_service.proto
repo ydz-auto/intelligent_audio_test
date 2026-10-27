@@ -26,6 +26,8 @@ service AudioService {
   rpc StopAudioByPattern(StopAudioByPatternRequest) returns (StopAudioByPatternResponse);
   // 预下载并按设备目标采样率重采样音频
   rpc PrepareAudios(PrepareAudiosRequest) returns (PrepareAudiosResponse);
+  // 优雅停止服务（INT-2086：停全部播放 → 等流关闭 → pa.terminate → 停 gRPC server）
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
 }
 
 // ===== 渲染服务（INT-67 混音下沉：双出口）=====
@@ -208,6 +210,15 @@ message PrepareAudiosResponse {
   bool success = 1;
   string message = 2;
   string data = 3;  // JSON: {audio_id: {target_rate: local_path, "original": local_path}}
+}
+
+message ShutdownRequest {
+}
+
+message ShutdownResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
 }
 
 // ===== RenderService Messages（INT-67 混音下沉） =====
