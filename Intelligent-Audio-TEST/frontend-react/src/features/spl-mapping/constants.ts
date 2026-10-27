@@ -40,7 +40,7 @@ export const SPL_SEARCH_DEBOUNCE_MS = 500
 export const CALIBRATION_TARGET_SPL_MIN = 0
 export const CALIBRATION_TARGET_SPL_MAX = 120
 
-/** 数字域校准：实测 RMS 范围（§6.10 -120~0 dBFS 选填） */
+/** 数字域校准：实测 RMS 范围（§6.10 -120~0 dBFS；INT-2081 起为必填主输入） */
 export const CALIBRATION_RMS_MIN = -120
 export const CALIBRATION_RMS_MAX = 0
 
@@ -54,9 +54,9 @@ export const DEFAULT_MAX_GAIN_LINEAR = 10.0
 export const SPL_SYMMETRY_ALERT_TEXT =
   '三口径对称：E2E 物理映射挂播放设备（spl_mappings）；API/Realtime 数字 RMS 映射挂被测 API（api_rms_spl_mappings）；用例轮次级声压级独立配置——三者共同构成平台声压级标定体系。'
 
-/** 数字域校准弹窗顶部说明（§6.10，逐字保留） */
+/** 数字域校准弹窗顶部说明（§6.10，INT-2081 口径：目标声压级↔实测 dBFS，逐字保留） */
 export const DIGITAL_CALIBRATION_INFO_TEXT =
-  '数字域校准（API/Realtime 口径）：为被测 API 配置「目标声压级↔线性增益↔实测RMS」点集，提交后全量替换既有校准点并置为已校准。与设备 SPL 校准（物理域）对称；未校准时按参考基准线性近似 gain = {refGain} × 10^((target - {refSpl}) / 20)。'
+  '数字域校准（API/Realtime 口径）：为被测 API 配置「目标声压级↔实测 dBFS」点集，线性增益由 dBFS 与基础电平 -30 dBFS 推导，提交后全量替换既有校准点并置为已校准。与设备 SPL 校准（物理域）对称；未校准时按参考基准线性近似 gain = {refGain} × 10^((target - {refSpl}) / 20)。'
 
 /** 数字域校准互斥提示（§6.10） */
 export const DIGITAL_CALIBRATION_LOCK_TEXT =

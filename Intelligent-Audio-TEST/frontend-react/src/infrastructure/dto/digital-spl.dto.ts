@@ -4,7 +4,7 @@
  * 字段映射统一在 adapters/digitalSplAdapter.ts。
  */
 
-/** 数字域校准点（§6.10：target_spl ↔ gain_linear ↔ rms_dbfs） */
+/** 数字域校准点（INT-2081：target_spl ↔ rms_dbfs，gain_linear 由 dBFS 推导） */
 export interface ApiCalibrationPointDto {
   target_spl: number
   gain_linear: number
