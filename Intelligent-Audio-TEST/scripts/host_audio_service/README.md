@@ -43,6 +43,7 @@ start_audio_service_noshim.cmd
 
 - proto：`shared/proto/audio_service.proto` 的 `AudioService` 新增 `Shutdown(ShutdownRequest) returns (ShutdownResponse)`。
 - 实现：`audio_service/interfaces/grpc/servicers.py::AudioServiceServicer.Shutdown` → `server.py::initiate_graceful_shutdown()` → `audio_service.shutdown()`（`audio_engine.py`，停播放/等流/`pa.terminate()`）→ `server.stop(grace)` → `__main__` 的 `wait_for_termination()` 返回，进程自然退出。
+  - 注意（INT-2086 审计 P1）：生产启动走 `runpy.run_module(..., run_name='__main__')`，`server.py` 只登记为 `__main__`，servicer 惰性按真实模块名 import 会拿到第二份拷贝（模块全局 `_server=None`）。因此 `start_grpc_server` 把 server 引用挂到 `AudioServiceServicer._grpc_server` 实例属性上，`Shutdown` 经实例引用停服，不依赖模块全局。
 - Ctrl+C 同样走优雅停止（`server.py` `__main__`）。
 
 ## 注意

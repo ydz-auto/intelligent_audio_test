@@ -121,10 +121,12 @@ def _run_start_server(monkeypatch, get_value):
     import audio_service.infrastructure.persistence.soft_delete_cleaner as cleaner_mod
     monkeypatch.setattr(cleaner_mod, 'get_cleaner', lambda: _FakeCleaner())
 
-    # servicer 构造与 proto 注册不影响本次观测，替换为无副作用桩
+    # servicer 构造与 proto 注册不影响本次观测，替换为无副作用桩。
+    # INT-2086：start_grpc_server 会给 AudioServiceServicer 实例挂 _grpc_server
+    # 属性，桩必须允许赋值（object() 无 __dict__ 会 AttributeError）。
     for name in ('AudioServiceServicer', 'PlaybackServiceServicer',
                  'AudioConfigServiceServicer', 'RenderServiceServicer'):
-        monkeypatch.setattr(srv, name, lambda: object())
+        monkeypatch.setattr(srv, name, lambda: types.SimpleNamespace())
     for name in ('add_AudioServiceServicer_to_server', 'add_PlaybackServiceServicer_to_server',
                  'add_AudioConfigServiceServicer_to_server', 'add_RenderServiceServicer_to_server'):
         monkeypatch.setattr(srv.audio_grpc, name, lambda servicer, server: None)

@@ -178,10 +178,15 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
         停止脚本 stop_audio_service.cmd 先调本 RPC；服务端不支持（旧代码）或超时
         才回退 taskkill /F。此处只触发，不等待——shutdown 逻辑在 server 线程内执行，
         进程会在 wait_for_termination() 返回后自然退出。
+
+        注意（INT-2086 审计 P1）：server 引用必须经实例 _grpc_server 传
+        （start_grpc_server 挂到本实例上），不能靠 server.py 模块全局——生产
+        runpy-as-`__main__` 启动下惰性 import server.py 拿到的是第二份拷贝，
+        其模块全局 _server=None，仅读它会假成功不真停（停服被 taskkill 兜底架空）。
         """
         try:
             from audio_service.interfaces.grpc.server import initiate_graceful_shutdown
-            initiate_graceful_shutdown()
+            initiate_graceful_shutdown(server=getattr(self, '_grpc_server', None))
             return e2e_pb.ShutdownResponse(
                 success=True, message="graceful shutdown initiated", data="")
         except Exception as e:

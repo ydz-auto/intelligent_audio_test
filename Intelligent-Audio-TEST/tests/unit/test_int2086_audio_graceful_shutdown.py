@@ -8,8 +8,11 @@
 - server.initiate_graceful_shutdown() 调 audio_service.shutdown() + server.stop(grace)，幂等
 """
 import os
+import runpy
+import socket
 import sys
 import tempfile
+import time
 import types
 import threading
 from concurrent.futures import Future
@@ -109,22 +112,45 @@ def test_engine_shutdown_wait_timeout_warns_but_still_terminates():
 # ---- servicer Shutdown handler ----
 
 def test_servicer_shutdown_triggers_initiate_graceful_shutdown(monkeypatch):
-    """Shutdown handler 调用 server.initiate_graceful_shutdown() 并返回 success。"""
+    """Shutdown handler 经实例 _grpc_server 触发 initiate_graceful_shutdown(server=...)。
+
+    INT-2086 审计 P1：server 引用必须经实例传（start_grpc_server 挂的 _grpc_server），
+    不能只靠 server.py 模块全局——runpy-as-__main__ 生产启动下惰性 import 拿到的是
+    第二份拷贝、模块全局 _server=None，会假成功不真停。
+    """
     called = {}
 
-    def fake_initiate():
+    def fake_initiate(server=None):
         called['initiated'] = True
+        called['server'] = server
+
+    monkeypatch.setattr(srv, 'initiate_graceful_shutdown', fake_initiate)
+    servicer = AudioServiceServicer()
+    fake_server = object()
+    servicer._grpc_server = fake_server
+    resp = servicer.Shutdown(pb.ShutdownRequest())
+    assert called.get('initiated') is True
+    assert called.get('server') is fake_server
+    assert resp.success is True
+
+
+def test_servicer_shutdown_without_attached_server_passes_none(monkeypatch):
+    """实例未挂 _grpc_server（直接 new 出来未起服）时传 None，不抛。"""
+    called = {}
+
+    def fake_initiate(server=None):
+        called['server'] = server
 
     monkeypatch.setattr(srv, 'initiate_graceful_shutdown', fake_initiate)
     servicer = AudioServiceServicer()
     resp = servicer.Shutdown(pb.ShutdownRequest())
-    assert called.get('initiated') is True
+    assert called.get('server') is None
     assert resp.success is True
 
 
 def test_servicer_shutdown_error_returns_failure(monkeypatch):
     """initiate_graceful_shutdown 抛异常时返回 success=False（协议不裸抛）。"""
-    def boom():
+    def boom(server=None):
         raise RuntimeError('shutdown failed')
 
     monkeypatch.setattr(srv, 'initiate_graceful_shutdown', boom)
@@ -188,3 +214,127 @@ def test_initiate_graceful_shutdown_idempotent(monkeypatch):
 
     assert fake_engine.shutdown_called is True  # 只调一次
     assert fake_server.stopped == srv.GRACEFUL_STOP_GRACE_SECONDS
+
+
+def test_initiate_graceful_shutdown_with_explicit_server(monkeypatch):
+    """显式传 server（servicer._grpc_server 路径）时停显式引用，不读模块全局。
+
+    模拟 runpy-as-__main__ 第二份拷贝：模块全局 _server 未设置（None），
+    只要显式引用给了 server，仍真停（审计 P1 修复核心）。
+    """
+    fake_engine = _FakeEngine()
+    fake_server = _FakeGrpcServer()
+    _patch_server_state(monkeypatch, fake_engine, None)  # 模块全局 _server 置 None
+
+    srv.initiate_graceful_shutdown(server=fake_server)
+
+    assert fake_engine.shutdown_called is True
+    assert fake_engine.wait_seconds == srv.GRACEFUL_STOP_PLAYER_WAIT_SECONDS
+    assert fake_server.stopped == srv.GRACEFUL_STOP_GRACE_SECONDS
+
+
+def test_initiate_graceful_shutdown_explicit_none_falls_back_to_global(monkeypatch):
+    """server=None（Ctrl+C 路径）时回退模块全局 _server。"""
+    fake_engine = _FakeEngine()
+    fake_server = _FakeGrpcServer()
+    _patch_server_state(monkeypatch, fake_engine, fake_server)
+
+    srv.initiate_graceful_shutdown(server=None)
+
+    assert fake_engine.shutdown_called is True
+    assert fake_server.stopped == srv.GRACEFUL_STOP_GRACE_SECONDS
+
+
+# ---- 生产启动路径：runpy-as-__main__（审计 P1 复现链） ----
+
+def _pick_free_port():
+    """挑空闲高位端口，避开 50052 与 Windows 已知排除/并行段。"""
+    while True:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('127.0.0.1', 0))
+            port = s.getsockname()[1]
+        if (port in (50052,) or 50060 <= port <= 50159
+                or 53500 <= port <= 53699 or 55900 <= port <= 56100):
+            continue
+        return port
+
+
+def _tcp_port_listening(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.3)
+        try:
+            s.connect(('127.0.0.1', port))
+            return True
+        except OSError:
+            return False
+
+
+def test_shutdown_rpc_stops_runpy_started_server(monkeypatch):
+    """runpy-as-__main__ 生产启动路径：真实 Shutdown RPC 停 gRPC 服务。
+
+    审计 P1 复现链：runpy.run_module(..., run_name='__main__') 只登记 __main__、
+    不登记真实模块名 → servicer 惰性 import server.py 拿到非 __main__ 拷贝
+    （模块全局 _server=None）。修复后 server 引用挂在 servicer 实例 _grpc_server
+    上，Shutdown 真停 gRPC 服务；未修复时只告警不 stop，wait_for_termination
+    不返回、本用例超时失败。
+    """
+    import grpc
+    from shared.infrastructure.config import BaseConfig
+    from audio_service.infrastructure.audio.audio_engine import audio_service
+    from audio_service.infrastructure.persistence import soft_delete_cleaner
+    import shared.config.service_ports as service_ports
+    from shared.proto import audio_service_pb2 as pb
+    from shared.proto import audio_service_pb2_grpc as pb_grpc
+
+    port = _pick_free_port()
+    monkeypatch.setattr(service_ports, 'AUDIO_SERVICE_GRPC_PORT', port)
+    # 测试不开上游预热 / 真 pyaudio / 真清理线程；起服只验证优雅停止通道
+    monkeypatch.setattr(BaseConfig, 'AUDIO_TAG_ACL_WARMUP_ENABLED', False)
+    monkeypatch.setattr(audio_service, 'init_driver', lambda: None)
+
+    class _FakeCleaner:
+        def start(self):
+            pass
+
+    monkeypatch.setattr(soft_delete_cleaner, 'get_cleaner', lambda: _FakeCleaner())
+
+    errors = []
+
+    def _run_module():
+        try:
+            runpy.run_module('audio_service.interfaces.grpc.server',
+                             run_name='__main__', alter_sys=True)
+        except BaseException as e:  # noqa: BLE001 - 抓进 errors 供断言
+            errors.append(e)
+
+    t = threading.Thread(target=_run_module, daemon=True)
+    t.start()
+    channel = None
+    try:
+        deadline = time.monotonic() + 20.0
+        while time.monotonic() < deadline:
+            if _tcp_port_listening(port):
+                break
+            if errors:
+                raise AssertionError(f"runpy 起服线程异常: {errors[0]}")
+            time.sleep(0.1)
+        else:
+            raise AssertionError(f"runpy 起的服务 {port} 在 20s 内未监听")
+
+        channel = grpc.insecure_channel(f'127.0.0.1:{port}')
+        stub = pb_grpc.AudioServiceStub(channel)
+        resp = stub.Shutdown(pb.ShutdownRequest(), timeout=10.0)
+        assert resp.success is True, resp.message
+
+        # wait_for_termination 应返回、runpy 线程退出、端口释放
+        t.join(timeout=30.0)
+        assert not errors, f"runpy 线程异常: {errors[0]}"
+        assert not t.is_alive(), \
+            "Shutdown RPC 后 runpy 起的服务未退出（wait_for_termination 未返回）"
+        assert not _tcp_port_listening(port), f"端口 {port} 在 Shutdown 后仍监听"
+    finally:
+        if channel is not None:
+            channel.close()
+        if t.is_alive():
+            # 兜底：测试失败时避免残留监听进程
+            t.join(timeout=5.0)
