@@ -278,6 +278,30 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     [effectiveFilters, groups, items]
   )
 
+  /**
+   * 列表头「全选用例」（INT-1970 返工收尾）：与「全选结果」/导出同口径——复用 resolveFilteredIds
+   * （收藏/未分组态走列表端点逐页翻完，其余走 POST /testcases/ids），全量圈定/移除，
+   * 不再只圈定已加载页 100 条；失败 toast 透出。
+   */
+  const handleToggleAllFiltered = async (checked: boolean) => {
+    try {
+      const ids = await resolveFilteredIds()
+      toggleAll(ids, checked)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '全选用例失败，请重试')
+    }
+  }
+
+  /** 列表头勾选态：筛选结果已全部选中（已选数 ≥ 筛选总数，且已加载项均已勾选；INT-1970 返工） */
+  const allFilteredSelected = useMemo(
+    () =>
+      (listQuery.data?.total ?? 0) > 0 &&
+      items.length > 0 &&
+      items.every((c) => selected.has(c.id)) &&
+      selected.size >= (listQuery.data?.total ?? 0),
+    [items, selected, listQuery.data?.total]
+  )
+
   /** 视图页签切换：重置筛选与勾选集（URL 态回归：接线后 page/search/… 进 search） */
   const handleViewChange = (next: string) => {
     setFilters({})
@@ -579,6 +603,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
                   actionCallbacks={groupCallbacks}
                   onToggleSelect={toggleSelect}
                   onToggleAll={toggleAll}
+                  onToggleAllFiltered={handleToggleAllFiltered}
+                  allFilteredSelected={allFilteredSelected}
                 />
               ) : (
                 <TagCaseList
@@ -592,6 +618,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
                   callbacks={rowCallbacks}
                   onToggleSelect={toggleSelect}
                   onToggleAll={toggleAll}
+                  onToggleAllFiltered={handleToggleAllFiltered}
+                  allFilteredSelected={allFilteredSelected}
                   onCreate={openCreate}
                 />
               )}

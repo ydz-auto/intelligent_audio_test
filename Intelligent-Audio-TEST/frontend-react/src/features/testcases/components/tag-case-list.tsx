@@ -96,7 +96,8 @@ export function TagCaseList({
   onToggleAll?: (ids: string[], checked: boolean) => void
   /**
    * 列表头「全选用例」（INT-1970）：按当前筛选条件全量圈定（POST /testcases/ids），与
-   * 「全选结果」同口径；不传 → 沿用已加载用例口径（开始测试步骤一传入，用例管理页保持原行为）。
+   * 「全选结果」同口径；开始测试步骤一与用例管理页均传入，readOnly/观察态不传 →
+   * 沿用已加载用例口径。
    */
   onToggleAllFiltered?: (checked: boolean) => void | Promise<void>
   /** 列表头勾选态（已选数 = 筛选总数）；仅 onToggleAllFiltered 生效时使用 */
