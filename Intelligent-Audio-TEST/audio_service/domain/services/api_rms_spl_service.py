@@ -6,7 +6,8 @@
 执行，映射数据由消费端随 render_config 传入（api 1:N ApiRmsSplMapping 归属
 api_test_service，audio_service 不反向依赖）：
 
-- 有校准点 → target_spl↔gain_linear 线性插值（np.interp，边界行为配置化）
+- 有校准点 → target_spl↔dBFS 线性插值（新数据全点含 rms_dbfs，插值后 10^((rms+30)/20) 转增益；
+  旧数据任一点 rms_dbfs=null 回退 gain_linear 插值；np.interp，边界行为配置化）
 - 无校准点 → 参考基准 × 10^(diff/20)
 - 无映射   → 线性近似 gain = 10^((target - SPL_LINEAR_APPROX_BASE_DB) / 20)
 - 未配 SPL → gain = 1.0，原始 RMS 不变（格式适配仍执行，设计 §6.4）
@@ -54,8 +55,9 @@ class ApiRmsSplService:
         """按被测 API 映射计算增益；无映射时线性近似。
 
         mapping 为 render_config 传入的映射数据 dict：
-        {calibration_status, calibration_points: [{target_spl, gain_linear}],
+        {calibration_status, calibration_points: [{target_spl, gain_linear, rms_dbfs?}],
          reference_spl, reference_gain_linear, min_gain_linear, max_gain_linear}
+        rms_dbfs 可选：全点含则 dBFS 口径插值（INT-2082 口径），否则回退 gain_linear。
         """
         if target_spl is None:
             return 1.0
@@ -71,7 +73,7 @@ class ApiRmsSplService:
 
     @staticmethod
     def _calculate_gain(mapping: dict, target_spl: float) -> float:
-        """有校准点 → np.interp 线性插值（边界行为配置化）；否则参考基准平移"""
+        """有校准点 → np.interp 插值（新数据 dBFS 口径，旧数据 gain_linear；边界行为配置化）；否则参考基准平移"""
         status = str(mapping.get('calibration_status', ''))
         points = mapping.get('calibration_points') or []
         if status == 'calibrated' and points:
@@ -81,6 +83,11 @@ class ApiRmsSplService:
             if valid:
                 ordered = sorted(valid, key=lambda p: p['target_spl'])
                 xs = [float(p['target_spl']) for p in ordered]
+                if all(p.get('rms_dbfs') is not None for p in valid):
+                    # 新数据（INT-2082 口径）：dBFS 域插值再转增益，等价对数增益域线性插值
+                    ys = [float(p['rms_dbfs']) for p in ordered]
+                    rms = ApiRmsSplService._interp_with_boundary(xs, ys, float(target_spl))
+                    return 10.0 ** ((rms - GLOBAL_BASE_LEVEL_DB) / 20.0)
                 ys = [float(p['gain_linear']) for p in ordered]
                 return ApiRmsSplService._interp_with_boundary(xs, ys, float(target_spl))
         reference_spl = float(mapping.get('reference_spl', 65.0) or 65.0)

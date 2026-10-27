@@ -4,6 +4,8 @@
 覆盖：
 - 线性近似：gain = 10^((target - SPL_LINEAR_APPROX_BASE_DB)/20)，基准配置化
 - 校准点插值：np.interp 多点单调插值
+- 校准点插值口径（INT-2085）：新数据全点含 rms_dbfs → dBFS 插值转增益（对数增益域线性插值）；
+  任一点 rms_dbfs 缺失 → 回退 gain_linear 插值，边界行为不变
 - 插值边界配置化：clamp（默认，端点钳制）/ extrapolate（低于最小点线性外推）
 - 未配 SPL：gain=1.0 原始不动（不做 RMS 补偿，设计 §6.4）
 - 无映射回退：线性近似
@@ -105,6 +107,85 @@ class TestSplToGain:
             ],
         }
         assert ApiRmsSplService.spl_to_gain_by_mapping(negative_mapping, 35.0) == pytest.approx(0.3)
+
+
+class TestDbfsCaliberInterp:
+    """INT-2085：新数据（全点含 rms_dbfs）按 dBFS 口径插值，旧数据回退 gain_linear"""
+
+    def test_dbfs_caliber_used_when_all_points_have_rms_dbfs(self):
+        # gain_linear 与 rms_dbfs 不一致：若误走 gain_linear 插值 60 dB 会是 (9.0+0.5)/2 = 4.75
+        mapping = {
+            'calibration_status': 'calibrated',
+            'calibration_points': [
+                {'target_spl': 50, 'gain_linear': 9.0, 'rms_dbfs': -40.0},
+                {'target_spl': 70, 'gain_linear': 0.5, 'rms_dbfs': -20.0},
+            ],
+        }
+        # dBFS 插值：55 dB → rms -35 → gain 10^((-35+30)/20)
+        assert ApiRmsSplService.spl_to_gain_by_mapping(mapping, 55.0) == pytest.approx(10 ** -0.25, rel=1e-6)
+        # 端点直接换算：70 dB → rms -20 → gain 10^((-20+30)/20)
+        assert ApiRmsSplService.spl_to_gain_by_mapping(mapping, 70.0) == pytest.approx(10 ** 0.5, rel=1e-6)
+
+    def test_dbfs_middle_point_matches_log_gain_domain_interp(self):
+        mapping = {
+            'calibration_status': 'calibrated',
+            'calibration_points': [
+                {'target_spl': 45, 'gain_linear': 0.1, 'rms_dbfs': -40.0},
+                {'target_spl': 65, 'gain_linear': 1.0, 'rms_dbfs': -30.0},
+                {'target_spl': 85, 'gain_linear': 10.0, 'rms_dbfs': -20.0},
+            ],
+        }
+        # 中间点按 dBFS 线性插值（= 对数增益域线性插值）：55→rms -35→10^-0.25；75→rms -25→10^0.25
+        assert ApiRmsSplService.spl_to_gain_by_mapping(mapping, 55.0) == pytest.approx(10 ** -0.25, rel=1e-6)
+        assert ApiRmsSplService.spl_to_gain_by_mapping(mapping, 75.0) == pytest.approx(10 ** 0.25, rel=1e-6)
+
+    def test_gain_linear_fallback_when_any_point_rms_dbfs_null(self):
+        mapping = {
+            'calibration_status': 'calibrated',
+            'calibration_points': [
+                {'target_spl': 50, 'gain_linear': 9.0, 'rms_dbfs': -40.0},
+                {'target_spl': 70, 'gain_linear': 0.5, 'rms_dbfs': None},
+            ],
+        }
+        # 任一点 rms_dbfs=null → 回退 gain_linear 插值：60 dB → (9.0+0.5)/2 = 4.75
+        assert ApiRmsSplService.spl_to_gain_by_mapping(mapping, 60.0) == pytest.approx(4.75, rel=1e-6)
+
+    def test_gain_linear_fallback_when_rms_dbfs_key_absent(self):
+        # 旧数据无 rms_dbfs 字段 → 行为与改造前一致（gain_linear 插值）
+        mapping = {
+            'calibration_status': 'calibrated',
+            'calibration_points': [
+                {'target_spl': 45, 'gain_linear': 0.1},
+                {'target_spl': 65, 'gain_linear': 1.0},
+                {'target_spl': 85, 'gain_linear': 10.0},
+            ],
+        }
+        assert ApiRmsSplService.spl_to_gain_by_mapping(mapping, 55.0) == pytest.approx(0.55)
+        assert ApiRmsSplService.spl_to_gain_by_mapping(mapping, 65.0) == pytest.approx(1.0)
+
+    def test_dbfs_path_clamp_boundary_default(self):
+        mapping = {
+            'calibration_status': 'calibrated',
+            'calibration_points': [
+                {'target_spl': 55, 'gain_linear': 9.0, 'rms_dbfs': -20.0},
+                {'target_spl': 75, 'gain_linear': 0.5, 'rms_dbfs': -10.0},
+            ],
+        }
+        # clamp：低于/高于端点取端点 rms 换算增益
+        assert ApiRmsSplService.spl_to_gain_by_mapping(mapping, 40.0) == pytest.approx(10 ** 0.5, rel=1e-6)
+        assert ApiRmsSplService.spl_to_gain_by_mapping(mapping, 90.0) == pytest.approx(10.0, rel=1e-6)
+
+    def test_dbfs_path_still_applies_gain_limit(self):
+        mapping = {
+            'calibration_status': 'calibrated',
+            'min_gain_linear': 5.0, 'max_gain_linear': 5.0,
+            'calibration_points': [
+                {'target_spl': 50, 'gain_linear': 9.0, 'rms_dbfs': -40.0},
+                {'target_spl': 70, 'gain_linear': 0.5, 'rms_dbfs': -20.0},
+            ],
+        }
+        # 50 dB → dBFS 端点增益 10^((-40+30)/20)≈0.316，被映射级下限钳到 5.0
+        assert ApiRmsSplService.spl_to_gain_by_mapping(mapping, 50.0) == pytest.approx(5.0)
 
 
 class TestGainLimit:
