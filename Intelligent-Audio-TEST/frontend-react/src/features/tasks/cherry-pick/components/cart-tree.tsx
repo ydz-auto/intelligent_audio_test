@@ -93,8 +93,8 @@ function LeafRow({
           aria-label={`条目 ${leaf.entryId}`}
         />
       )}
-      <span className='min-w-0 flex-1 truncate font-medium'>{leaf.caseName}</span>
-      <span className='text-muted-foreground min-w-0 max-w-40 truncate'>
+      {/* INT-2098：叶行不重复显示用例名（用例卡已展示），设备/API 名升为主列 */}
+      <span className='min-w-0 flex-1 truncate font-medium'>
         {leaf.deviceName ?? leaf.apiName ?? '—'}
       </span>
       {leaf.resultType ? (

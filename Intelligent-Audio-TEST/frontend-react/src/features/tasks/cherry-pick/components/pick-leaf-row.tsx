@@ -1,8 +1,8 @@
 /**
  * 结果行叶（18_挑选合并交互重设计.md §3.7.1 末级）。
- * 阶段 2 叶明细按需分页加载（candidates），叶行自带名称/状态；缺名由候选行
- * 缺省口径兜底（INT-1824 §8.2.8：用例目录查不到 → 「未知用例」，设备软删 → 「未知设备」，
- * 均不裸显 UUID）。
+ * 阶段 2 叶明细按需分页加载（candidates），叶行自带设备/API 名 + 结果类型 + 执行/评估状态；
+ * 用例名只保留在用例卡（INT-2098），叶行不再重复显示；缺名由候选行缺省口径兜底
+ * （INT-1824 §8.2.8：设备软删 → 「未知设备」，不裸显 UUID）。
  */
 import type { PickTreeLeaf } from '@/domain/models/cherryPick'
 import { resultTypeLabel } from '@/domain/lib/pick-candidate-tree'
@@ -55,10 +55,8 @@ export function LeafRow({
           {leaf.taskName}
         </span>
       )}
-      <span className='min-w-0 flex-1 truncate font-medium'>{leaf.caseName}</span>
-      <span className='text-muted-foreground min-w-0 max-w-40 truncate'>
-        {leafDeviceName(leaf)}
-      </span>
+      {/* INT-2098：叶行不重复显示用例名（用例卡已展示），设备/API 名升为主列 */}
+      <span className='min-w-0 flex-1 truncate font-medium'>{leafDeviceName(leaf)}</span>
       <Badge variant='outline' className='font-mono text-[10px]'>
         {leafResultTypeLabel(leaf)}
       </Badge>

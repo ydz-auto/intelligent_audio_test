@@ -93,7 +93,7 @@ describe('PickLeafList（叶明细分页）', () => {
     expect(await screen.findByText('2 / 3')).toBeInTheDocument()
   })
 
-  it('缺名用例渲染「未知用例」、设备软删渲染「未知设备」，不裸显 UUID', async () => {
+  it('设备软删渲染「未知设备」、缺 result_type 渲染「结果类型待补充」，不裸显 UUID；叶行不渲染用例名', async () => {
     fetchPageMock.mockResolvedValue({
       items: [row(7)],
       total: 1,
@@ -108,8 +108,9 @@ describe('PickLeafList（叶明细分页）', () => {
       />,
       { wrapper: wrapper() }
     )
-    expect(await screen.findByText('未知用例')).toBeInTheDocument()
-    expect(screen.getByText('未知设备')).toBeInTheDocument()
+    expect(await screen.findByText('未知设备')).toBeInTheDocument()
     expect(screen.getByText('结果类型待补充')).toBeInTheDocument()
+    // INT-2098：叶行不再重复显示用例名（用例名只保留在用例卡）
+    expect(screen.queryByText('未知用例')).not.toBeInTheDocument()
   })
 })
