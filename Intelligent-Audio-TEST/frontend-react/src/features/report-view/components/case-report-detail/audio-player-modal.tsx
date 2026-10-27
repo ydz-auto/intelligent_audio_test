@@ -219,7 +219,10 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
           <DialogTitle>{audioTypeLabel(audio?.audio_type)}</DialogTitle>
         </DialogHeader>
         {audio ? (
-          <div className='space-y-4'>
+          /* INT-2090 P3：DialogContent 是 grid 容器，直接子级 grid item 的自动最小宽度=min-content，
+             超长无断点 audio_name 会把内容区撑到完整宽度、truncate 失效并横向溢出；
+             min-w-0 让 grid item 收缩回弹窗宽度，标题才能真正截断。 */
+          <div className='min-w-0 space-y-4'>
             {/* 真实 <audio>：playUrl（外链或预签名地址）就绪即挂载，preload 取媒体时长/元数据。
                 事件用 JSX props 而非 ref + useEffect 注册：弹窗内容经 Portal 异步挂载，
                 用 effect 注册会在「打开时元素才出现」的 commit 里错过绑定（INT-1860）。 */}
@@ -263,14 +266,24 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
               </div>
             )}
 
-            {/* 音频标题 + 类型徽标 */}
+            {/* 音频标题 + 类型徽标（INT-2090：truncate 单行截断 + title 悬停显示完整名，
+                超长音频名不换行撑爆弹窗、不把控制组挤出） */}
             <div className='text-center'>
-              <p className='truncate text-base font-semibold'>
+              <p
+                className='truncate text-base font-semibold'
+                title={audio.audio_name ?? `音频 ${audio.audio_id}`}
+              >
                 {audio.audio_name ?? `音频 ${audio.audio_id}`}
               </p>
-              <div className='mt-1.5 flex flex-wrap justify-center gap-1.5'>
+              <div className='mt-1.5 flex min-w-0 flex-wrap justify-center gap-1.5'>
                 {audio.audio_type && <Badge variant='outline'>{audio.audio_type}</Badge>}
-                {audio.device_name && <Badge variant='secondary'>{audio.device_name}</Badge>}
+                {audio.device_name && (
+                  <Badge variant='secondary' className='max-w-full'>
+                    <span className='truncate' title={audio.device_name}>
+                      {audio.device_name}
+                    </span>
+                  </Badge>
+                )}
               </div>
             </div>
 
@@ -358,15 +371,20 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
                 <p className='text-muted-foreground mb-1 text-xs font-medium'>播放设备</p>
                 <ul className='space-y-0.5'>
                   {devices.map((device, index) => (
-                    <li key={`${device.name ?? index}`} className='flex items-center gap-2 text-sm'>
+                    <li
+                      key={`${device.name ?? index}`}
+                      className='flex min-w-0 items-center gap-2 text-sm'
+                    >
                       <span
                         aria-hidden='true'
                         className={cn(
-                          'size-1.5 rounded-full',
+                          'size-1.5 shrink-0 rounded-full',
                           device.status === 'offline' ? 'bg-destructive' : 'bg-success'
                         )}
                       />
-                      <span className='font-medium'>{device.name ?? '未知设备'}</span>
+                      <span className='min-w-0 truncate font-medium' title={device.name}>
+                        {device.name ?? '未知设备'}
+                      </span>
                     </li>
                   ))}
                 </ul>

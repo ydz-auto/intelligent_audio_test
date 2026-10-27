@@ -514,10 +514,21 @@ export function ExecutionResults({
             {resultAudioGroups.map(([device, audios]) => (
               <div key={device}>
                 <p className='text-muted-foreground text-xs font-medium'>{device}</p>
-                <div className='mt-1 flex flex-wrap gap-1.5'>
+                <div className='mt-1 flex min-w-0 flex-wrap gap-1.5'>
                   {audios.map((audio, idx) => (
-                    <Badge key={String(audio.audio_id)} variant='outline' className='gap-1'>
-                      {audio.audio_name ?? `音频 ${idx + 1}`}
+                    /* INT-2090 P3：结果音频 Badge 的音频名超长时截断（Badge 基座 whitespace-nowrap +
+                       w-fit，不加 max-w-full/truncate 会撑出容器横向溢出），title 悬停显完整名 */
+                    <Badge
+                      key={String(audio.audio_id)}
+                      variant='outline'
+                      className='max-w-full gap-1'
+                    >
+                      <span
+                        className='min-w-0 truncate'
+                        title={audio.audio_name ?? `音频 ${idx + 1}`}
+                      >
+                        {audio.audio_name ?? `音频 ${idx + 1}`}
+                      </span>
                       {isSafeHttpUrl(audio.url) ? (
                         <a href={audio.url} target='_blank' rel='noreferrer' className='text-primary underline-offset-2 hover:underline'>
                           播放
