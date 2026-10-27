@@ -59,16 +59,21 @@ export function MultiRoundResult({ caseItem }: { caseItem: ReportCaseItem }) {
     const algoResults = caseItem.algorithmResults ?? []
     if (algoResults.length === 0) return null
     type Holder = { rounds?: unknown; aggregated?: Record<string, number> }
-    // 直接挂在 item.rounds（mock 形态）或 item.value.rounds（快照嵌套形态）
+    // 直接挂在 item.rounds（mock 形态）/ item.value.rounds（快照嵌套形态）/
+    // item.value 即 rounds 数组（真实库 param_code=rounds 的 json 项，INT-2088 实测）
     const holder = (algoResults as (ReportAlgorithmResult & Holder)[]).find((item) => {
       if (Array.isArray(item.rounds)) return true
-      const v = item.value as { rounds?: unknown } | undefined
-      return v && typeof v === 'object' && Array.isArray(v.rounds)
+      const v = item.value as { rounds?: unknown } | unknown[] | undefined
+      if (Array.isArray(v)) return true
+      return v && typeof v === 'object' && Array.isArray((v as { rounds?: unknown }).rounds)
     })
     if (!holder) return null
+    const value = holder.value as Holder | unknown[] | undefined
     const source = Array.isArray(holder.rounds)
       ? holder
-      : ((holder.value as Holder) ?? {})
+      : Array.isArray(value)
+        ? ({ rounds: value } as Holder)
+        : ((holder.value as Holder) ?? {})
     const rounds = (source.rounds ?? []) as RoundData[]
     if (!Array.isArray(rounds) || rounds.length === 0) return null
     return {
@@ -119,7 +124,7 @@ export function MultiRoundResult({ caseItem }: { caseItem: ReportCaseItem }) {
                 onClick={() => setExpanded(open ? undefined : index)}
               >
                 <span className='font-medium'>第 {roundNum} 轮</span>
-                {latency !== undefined && (
+                {latency != null && (
                   <span className='text-muted-foreground text-xs'>
                     延迟 {latency.toFixed(0)}ms
                   </span>
@@ -133,7 +138,7 @@ export function MultiRoundResult({ caseItem }: { caseItem: ReportCaseItem }) {
                   <InfoRow label='输入音频' value={round.input?.audio_name ?? '—'} />
                   <InfoRow label='ASR 输出' value={round.output?.asr_text ?? '—'} mono />
                   <InfoRow label='参考文本' value={refText} />
-                  <InfoRow label='延迟' value={latency !== undefined ? `${latency}ms` : '—'} />
+                  <InfoRow label='延迟' value={latency != null ? `${latency}ms` : '—'} />
                   <InfoRow
                     label='打断'
                     value={det ? (round.interruption?.timestamp !== undefined ? `${round.interruption.timestamp}s` : '检测到打断') : '未检测到'}

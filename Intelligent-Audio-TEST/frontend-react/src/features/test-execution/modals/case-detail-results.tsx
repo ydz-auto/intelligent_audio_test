@@ -42,13 +42,16 @@ import type { RoundTab } from '@/features/report-view/components/case-report-det
 import { cn } from '@/lib/utils'
 
 /** ExecutionResults 子项裁剪：音频时间轴/结果音频与时间轴对比由本弹窗自行渲染
- *  （report 块内置 TimelineComparison/AudioTimeline 不重复渲染） */
+ *  （report 块内置 TimelineComparison/AudioTimeline 不重复渲染）；轮次 Tab 也由弹窗层
+ *  RoundTabBar 单一轴驱动（ExecutionResults 内部轮次 Tab 条隐藏，避免双 Tab 条） */
 const HIDE_AUDIO_DISPLAY: CaseDisplaySettings = {
   hiddenBlocks: [],
   hiddenExecution: ['audio', 'timeline'],
   hiddenMetrics: [],
   hiddenRounds: [],
   hiddenResources: [],
+  hiddenResultTypes: [],
+  includeSubDimensions: false,
 }
 
 interface CaseDetailExecutionResultsProps {
@@ -400,6 +403,7 @@ function toReportDetailData(detail: CaseExecutionDetail): ReportDetailData {
     type: 'task',
     task_name: detail.name,
     status: 'published',
+    created_at: '',
     summary: {
       total_cases: 0,
       completed_cases: 0,
@@ -474,6 +478,15 @@ export function CaseDetailExecutionResults({
           ? `round:${currentTab.round}`
           : null
 
+  /** 弹窗层 RoundTabBar 是唯一轮次轴 → ExecutionResults 内部轮次 Tab 条隐藏
+   *  （hiddenRounds 覆盖全部 roundTag，visibleRoundTabs 为空；轮次过滤仍走 activeRoundTag） */
+  const display = useMemo(() => {
+    const hiddenRounds = reportRoundTabs
+      .map((t) => t.roundTag)
+      .filter((t): t is string => t != null)
+    return { ...HIDE_AUDIO_DISPLAY, hiddenRounds }
+  }, [reportRoundTabs])
+
   const hasTimeline = useMemo(() => hasTimelineEvidence(detail), [detail])
   const hasInputAudio = (detail.referenceAudios ?? []).length > 0
 
@@ -505,7 +518,7 @@ export function CaseDetailExecutionResults({
           activeRoundTab={activeRoundTab}
           setActiveRoundTab={onRoundTabLabelSelect}
           activeRoundTag={activeRoundTag}
-          display={HIDE_AUDIO_DISPLAY}
+          display={display}
         />
 
         {/* 用例参数（INT-2088：后端 /detail、/results 现无 case_params → 块内「暂无数据」空态；

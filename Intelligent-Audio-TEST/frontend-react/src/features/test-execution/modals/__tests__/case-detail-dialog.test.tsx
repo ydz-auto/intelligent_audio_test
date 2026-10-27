@@ -632,6 +632,30 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     expect(screen.getByText('第 1 轮')).toBeInTheDocument()
   })
 
+  it('INT-2088：多轮对话结果——rounds 值为数组形态（真实库 param_code=rounds json 项）+ latency null 不崩溃', async () => {
+    fetchDetailMock.mockResolvedValue({
+      ...detail,
+      algorithmResults: [
+        {
+          paramCode: 'rounds',
+          paramType: 'json',
+          label: 'round results',
+          value: [
+            { round: 0, input: { audio_name: 'r0.wav' }, output: {}, latency: null, evaluation: {}, is_interruption: true },
+            { round: 1, input: { audio_name: 'r1.wav' }, output: {}, latency: null, evaluation: {}, is_interruption: false },
+          ],
+        },
+      ],
+    })
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    renderDialog()
+    // value 数组形态 → 检测通过，渲染聚合卡与每轮头；latency null 只渲染「第 N 轮」不崩溃
+    expect(await screen.findByText('多轮对话结果 (2 轮)')).toBeInTheDocument()
+    expect(screen.getByText('第 1 轮')).toBeInTheDocument()
+    expect(screen.getByText('第 2 轮')).toBeInTheDocument()
+    expect(screen.queryByText(/延迟 null/)).not.toBeInTheDocument()
+  })
+
   it('INT-2088：时间轴对比（stm 结果字段）+ 音频时间轴（用例输入音频）', async () => {
     fetchDetailMock.mockResolvedValue({
       ...detail,
