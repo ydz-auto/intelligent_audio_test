@@ -100,6 +100,8 @@
 
 字段命名约定：数据库与后端 API 均为 **snake_case**；前端遵循 DDD 分层，仅 Infrastructure 层（api/adapters/dto）感知 snake_case，并在 DTO→Domain 映射时转换为 **camelCase**，Presentation 层（views/components）只见 camelCase Domain 模型。
 
+`summary_meta.all_case_tags` 为报告快照的用例标签条目列表，条目结构 `{id, name, category_id, category_name}`（无分类 tag 的 `category_id`/`category_name` 为 null），详见 §4.2.7。
+
 ### 3.3 数据存储方式
 
 1. **关系型存储** - 核心数据（测试任务、用例、结果、报告）存储在PostgreSql数据库中
@@ -191,6 +193,26 @@ test_reports + report_summaries / report_summary_meta / report_raw_data
 - **百分比口径**：非 `average` 维度（pass_rate / ratio / weighted_sum_ratio）按维度 `statistic_method` 策略聚合，产出 0~100；**逐轮失败值 0 是合法数据点**，计入分子/分母（失败轮不会从分母消失，pass_rate 不误报 100%，INT-1059 对齐 a9c4adc56）；`average` 维度按轮次口径取算术平均。
 - **分组筛选口径（INT-1059 返工裁定 2026-10-21）**：`task_service TestCaseConfigService.ListTestCases` 透传 `group_name`/`group_id` 顶层字段（无 `group` 对象），`_report_case_filters.tc_group_name`、聚合侧 `_get_case_category_name`、报告摘要 `extract_case_categories_and_tags` 均回退 `group_name`，保证按真实分组名筛选命中且分类/摘要不落「未分类」；无分组用例归类「未分类」，`categories=['未分类']`（或 `category='未分类'`）命中未分组用例。前端分组对比组件 `applyFilters` 加空结果守卫（与标签组件一致），API 返回空矩阵时保留默认值不清空为 0.00。
 - **前端**：旧 Vue 分组/标签对比组件筛选一律走后端聚合，移除 `searchCases` + 前端手写平均（避免按用例简单平均导致超 100%，INT-1059 对齐 7bb9fd339/e4e5dface/0c6b2028a）。
+
+#### 4.2.7 报告快照标签条目携带分类（all_case_tags / case_tags_list）
+
+`report_summary_meta.all_case_tags`（快照列）由 `ReportQueryBuilder.extract_case_categories_and_tags`（`report_service/application/services/report_query_builder.py`）在报告生成时构建，条目结构：
+
+```json
+{
+  "id": "<tag_id>",
+  "name": "<tag_name>",
+  "category_id": "<category_id 或 null>",
+  "category_name": "<category_name 或 null>"
+}
+```
+
+- **字段对齐（INT-2100）**：`id / name / category_id / category_name` 与 `task_service/application/testcase/tag_crud_service.py` `_tag_to_dict` 对应字段一致（`_tag_to_dict` 另有 description/color/created_at 等页面 DTO 字段，报告快照只透传这 4 个）；
+- **透传规则**：读取 `_tc_get_tags(test_case)` 返回的 tag 对象（dict / ORM）中的 `category_id` / `category_name` 一并写入条目；**无分类 tag 保持 `category_id` / `category_name` 为 null**，前端报告筛选 taxonomy 按分类展示时走「未分类」兜底尾组；
+- **空标签回落**：无标签时 `case_tags_list` 回落 `{id: "default_tag", name: "无标签", category_id: null, category_name: null}`；主报告 / 对比 / 二次对比三条生成链缺省结构一致；
+- **不回溯**：历史报告快照不回填分类（前端「未分类」兜底展示），仅新生成报告透传。
+
+> 实现说明：真实 task_service 契约当前把用例 tags 序列化为**字符串名列表**（`task_service/application/testcase/testcase_query_service.py` ListTestCases / GetTestCaseDetail），字符串 tag 需按名解析分类后才能透传 `category_id`/`category_name`——修复路线（task_service 交付 tag dict vs report_service 按名经 TagConfigService 解析）待负责人拍板（INT-2100 审计 P2）。
 
 ## 5. 报告生成流程
 
