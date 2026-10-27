@@ -2,7 +2,8 @@
  * 用例标签两级树（15_报告域.md §3.3.7，INT-1738）。
  *
  * 「标签筛选也是照着分类 标签 俩级显示」——分类组头（分类名 + 组内计数，标签带色点）→ 标签行；
- * 「未分类」固定尾组弱化。分类来源见 `useReportFilterTaxonomy`（快照 → 字典 → 未分类）。
+ * 「未分类」固定尾组弱化。分类来源见 `useReportFilterTaxonomy`（快照 → by-category 兜底 → 未分类）。
+ * 分页整节同页：「未分类」尾组不跨页截断（单节超过 pageSize 时仍跨页，INT-2101）。
  * **筛选请求不变**：仍只传标签名数组，分类仅影响展示。
  */
 import { Folder, Search } from 'lucide-react'
@@ -32,6 +33,41 @@ interface FlatTag {
   name: string
 }
 
+/**
+ * 分页：整节不跨页——「未分类」尾组保证可见（分页不截断，INT-2101）。
+ * 一节整体放得进下一页时才翻页（单节 > pageSize 时自然跨页）；搜索过滤后的稀疏节同样整节保留。
+ */
+export function paginateSections(flat: FlatTag[], pageSize: number): FlatTag[][] {
+  if (pageSize <= 0) return [flat]
+  const pages: FlatTag[][] = []
+  let current: FlatTag[] = []
+  let i = 0
+  while (i < flat.length) {
+    const sectionKey = flat[i].sectionKey
+    let sectionEnd = i
+    while (sectionEnd < flat.length && flat[sectionEnd].sectionKey === sectionKey) {
+      sectionEnd += 1
+    }
+    const sectionSize = sectionEnd - i
+    const remaining = pageSize - current.length
+    // 本节放不下当前页剩余位、但整节能放进新一页 → 先翻页，避免节跨页
+    if (current.length > 0 && sectionSize > remaining && sectionSize <= pageSize) {
+      pages.push(current)
+      current = []
+    }
+    while (i < sectionEnd) {
+      current.push(flat[i])
+      i += 1
+      if (current.length === pageSize) {
+        pages.push(current)
+        current = []
+      }
+    }
+  }
+  if (current.length > 0) pages.push(current)
+  return pages
+}
+
 export function FilterTagTree({
   sections,
   selected,
@@ -56,11 +92,14 @@ export function FilterTagTree({
     return out
   }, [sections, keyword])
 
-  const pages = pageSize ? Math.max(1, Math.ceil(flat.length / pageSize)) : 1
+  const paginated = useMemo(
+    () => (pageSize ? paginateSections(flat, pageSize) : [flat]),
+    [flat, pageSize]
+  )
   useEffect(() => {
     setPage(1)
-  }, [keyword])
-  const visible = pageSize ? flat.slice((page - 1) * pageSize, page * pageSize) : flat
+  }, [keyword, sections])
+  const visible = pageSize ? paginated[page - 1] ?? [] : flat
   const selectedSet = new Set(selected)
   const counts = useMemo(() => {
     const map = new Map<string, { picked: number; total: number }>()
@@ -142,10 +181,10 @@ export function FilterTagTree({
         </div>
       )}
 
-      {pages > 1 && (
+      {paginated.length > 1 && (
         <div className='flex items-center justify-between text-xs'>
           <span className='text-muted-foreground tabular-nums'>
-            第 {page} / {pages} 页
+            第 {page} / {paginated.length} 页
           </span>
           <div className='flex items-center gap-1'>
             <button
@@ -159,7 +198,7 @@ export function FilterTagTree({
             <button
               type='button'
               className='hover:bg-muted text-muted-foreground rounded px-2 py-0.5 disabled:opacity-40'
-              disabled={page >= pages}
+              disabled={page >= paginated.length}
               onClick={() => setPage((p) => p + 1)}
             >
               下一页

@@ -17,14 +17,17 @@ import { apiClient } from './client'
 import type {
   TagCategory,
   TagCategoryDraft,
+  TagCategoryGroup,
   TagDraft,
   TagItem,
 } from '@/domain/models/testTag'
 import {
   toTagCategory,
+  toTagCategoryGroup,
   toTagCategoryUpsertDto,
   toTagItem,
   toTagUpsertDto,
+  type TagByCategoryListDataDto,
   type TagCategoryDto,
   type TagCategoryListDataDto,
   type TagDetailListDataDto,
@@ -41,6 +44,13 @@ export async function fetchTags(): Promise<TagItem[]> {
     params: { page: 1, per_page: TAG_LIST_PAGE_SIZE },
   })
   return (dto.items ?? []).map(toTagItem)
+}
+
+/** 标签按分类分组（GET /tags/by-category；INT-487 口径——报告筛选 taxonomy 阶梯② 兜底数据源，
+ *  返回分类→标签组，category=null 组即「未分类」） */
+export async function fetchTagsByCategory(): Promise<TagCategoryGroup[]> {
+  const dto = await apiClient.get<TagByCategoryListDataDto>('/tags/by-category')
+  return (dto.items ?? []).map(toTagCategoryGroup)
 }
 
 /**

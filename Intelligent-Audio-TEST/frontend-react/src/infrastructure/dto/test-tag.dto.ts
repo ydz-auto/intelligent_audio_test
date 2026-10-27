@@ -7,6 +7,7 @@
 import type {
   TagCategory,
   TagCategoryDraft,
+  TagCategoryGroup,
   TagDraft,
   TagItem,
 } from '@/domain/models/testTag'
@@ -65,6 +66,21 @@ export interface TagNameListDataDto {
   pages: number
 }
 
+/** GET /tags/by-category 分组项（tag_query_service.get_tags_by_category；category 为 null 即「未分类」组） */
+export interface TagByCategoryItemDto {
+  category: TagCategoryDto | null
+  tags: TagItemDto[]
+}
+
+/** GET /tags/by-category 列表响应（与 TagDetailListDataDto 同信封；items 为分类→标签分组） */
+export interface TagByCategoryListDataDto {
+  items: TagByCategoryItemDto[]
+  total: number
+  page: number
+  per_page: number
+  pages: number
+}
+
 /** 分类创建/更新请求体（testcase.py TagCategoryCreate/UpdateSchema；null 字段省略） */
 export interface TagCategoryUpsertDto {
   name?: string
@@ -106,6 +122,14 @@ export function toTagItem(dto: TagItemDto): TagItem {
     categoryName: dto.category_name ?? null,
     createdAt: dto.created_at ?? null,
     updatedAt: dto.updated_at ?? null,
+  }
+}
+
+/** TagByCategoryItemDto → Domain TagCategoryGroup（逐组映射；category=null 保留未分类组） */
+export function toTagCategoryGroup(dto: TagByCategoryItemDto): TagCategoryGroup {
+  return {
+    category: dto.category ? toTagCategory(dto.category) : null,
+    tags: (dto.tags ?? []).map(toTagItem),
   }
 }
 

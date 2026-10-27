@@ -1,13 +1,13 @@
 /**
- * 报告筛选分类归属（application 层，15_报告域.md §3.3.7 / §3.5.10，INT-1738）。
+ * 报告筛选分类归属（application 层，15_报告域.md §3.3.7 / §3.5.10，INT-1738 / INT-2101）。
  *
  * 「整份报告的筛选都得」按「分类 → 主维度 → 子维度」三级、「分类 → 标签」两级展示：
  * - **评估维度**：① 报告快照 `summary.all_metrics[]` 的主/子层级（`dimension_type` /
  *   `parent_dimension_name`）→ ② 用户持有 `evaluation:read` 时用维度字典（`id → categoryId`）+
  *   分类字典（`categoryId → 名称`）补分类 → ③ 仍无 → 「未分类」单组。
  * - **用例标签**：① 报告快照 `all_case_tags[].category_id / category_name`（真实快照多数只存
- *   `{id,name}`）→ ② 无 `GET /tags/by-category` 消费点（本 checkout 未落地，见 §3.3.7 阶梯）→
- *   ③ 「未分类」单组。
+ *   `{id,name}`）→ ② 用户持有 `tag:read` 时用 `GET /tags/by-category`（INT-487 口径，INT-2101
+ *   落地）按标签名补分类 → ③ 仍无 → 「未分类」单组。
  *
  * **只产出展示树，不改报告数据、不改筛选请求**（请求仍传维度名 / 标签名数组）。
  */
@@ -19,6 +19,7 @@ import {
   fetchEvaluationCategories,
   fetchEvaluationDimensions,
 } from '@/infrastructure/api/evaluation-api'
+import { fetchTagsByCategory } from '@/infrastructure/api/tags-api'
 import type { ReportMetricConfig, ReportTag } from '@/domain/models/report'
 
 export const UNCATEGORIZED_SECTION_KEY = '__uncategorized__'
@@ -43,14 +44,20 @@ export interface TagTreeSection {
   tags: string[]
 }
 
-/** 标签分类归属（从 all_case_tags / all_tags 快照取，缺省「未分类」） */
-function buildTagSections(tagNames: string[], tags: ReportTag[]): TagTreeSection[] {
+/** 标签分类归属（从 all_case_tags / all_tags 快照取，缺省「未分类」；阶梯② by-category 兜底） */
+export function buildTagSections(
+  tagNames: string[],
+  tags: ReportTag[],
+  categoryByName: ReadonlyMap<string, string> = new Map()
+): TagTreeSection[] {
   const byName = new Map<string, ReportTag>()
   for (const tag of tags) if (tag.tag_name) byName.set(tag.tag_name, tag)
   const buckets = new Map<string, { name: string; tags: string[] }>()
   for (const name of tagNames) {
     const tag = byName.get(name)
-    const categoryName = tag?.category_name?.trim()
+    // 阶梯① 快照分类优先；缺失时阶梯② 用 by-category 按标签名兜底
+    let categoryName = tag?.category_name?.trim() ?? ''
+    if (!categoryName) categoryName = categoryByName.get(name)?.trim() ?? ''
     const key = categoryName || UNCATEGORIZED_SECTION_KEY
     if (!buckets.has(key)) {
       buckets.set(key, { name: categoryName || UNCATEGORIZED_SECTION_NAME, tags: [] })
@@ -186,6 +193,7 @@ export function useReportFilterTaxonomy(
 ): ReportFilterTaxonomy {
   const { hasPermission } = usePermissions()
   const canReadEvaluation = hasPermission('evaluation:read')
+  const canReadTag = hasPermission('tag:read')
 
   const dictionaryQuery = useQuery({
     queryKey: ['reports', 'filter-taxonomy', 'evaluation'],
@@ -215,7 +223,50 @@ export function useReportFilterTaxonomy(
     [baseDimensions, configs, dictionary]
   )
 
-  const tagSections = useMemo(() => buildTagSections(tagNames, tags), [tagNames, tags])
+  /** 阶梯① 快照分类（all_case_tags/all_tags 自带 category_name 时优先） */
+  const snapshotTagCategory = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const tag of tags) {
+      if (!tag.tag_name) continue
+      const cat = tag.category_name?.trim()
+      if (cat) m.set(tag.tag_name, cat)
+    }
+    return m
+  }, [tags])
+
+  /** 任一可用标签在快照里缺分类 → 才需要阶梯② by-category 兜底 */
+  const needsTagByCategory = useMemo(
+    () => tagNames.some((name) => !snapshotTagCategory.get(name)),
+    [tagNames, snapshotTagCategory]
+  )
+
+  /**
+   * 阶梯② by-category 兜底：`GET /tags/by-category` 分组数据 → 标签名→分类名映射。
+   * 快照分类优先，仅补缺；无 `tag:read` 权限或快照已全分类时不发请求。
+   */
+  const tagByCategoryQuery = useQuery({
+    queryKey: ['reports', 'filter-taxonomy', 'tags-by-category'],
+    queryFn: async () => {
+      const groups = await fetchTagsByCategory()
+      const m = new Map<string, string>()
+      for (const group of groups) {
+        const categoryName = group.category?.name?.trim()
+        if (!categoryName) continue
+        for (const tag of group.tags) {
+          if (tag.name) m.set(tag.name, categoryName)
+        }
+      }
+      return m
+    },
+    enabled: canReadTag && needsTagByCategory,
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+
+  const tagSections = useMemo(
+    () => buildTagSections(tagNames, tags, tagByCategoryQuery.data ?? new Map()),
+    [tagNames, tags, tagByCategoryQuery.data]
+  )
 
   const { mainDimensions, subDimensions } = useMemo(() => {
     const subs = new Set<string>()

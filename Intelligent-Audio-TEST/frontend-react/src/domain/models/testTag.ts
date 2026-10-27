@@ -28,6 +28,12 @@ export interface TagItem {
   updatedAt: string | null
 }
 
+/** 标签按分类分组（GET /tags/by-category；category=null 即「未分类」组，INT-487/INT-2101） */
+export interface TagCategoryGroup {
+  category: TagCategory | null
+  tags: TagItem[]
+}
+
 /** 标签分类创建/更新入参（Domain，camelCase；infrastructure 层转 snake_case 请求体） */
 export interface TagCategoryDraft {
   name: string
