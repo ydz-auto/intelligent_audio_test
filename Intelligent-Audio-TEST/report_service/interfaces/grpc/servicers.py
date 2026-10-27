@@ -748,6 +748,26 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             logger.exception("GetReportCases failed")
             return self._resp(False, str(e), {'items': []})
 
+    def GetReportCasesRawPayload(self, request, context=None):
+        """按 report_id 取报告用例**原始九字段 payload**（INT-1996）。
+
+        与 GetReportCases 的区别：不经响应装配层（build_case_dict_from_entity /
+        build_case_item 的 null/[] 归一与 algorithmResults/referenceParams 展开），
+        直接由快照解引用出口给出原始列值，供 task_service 发布冻结改造前后
+        逐字节一致。快照指针悬空 / sha 不符时经 resolve_rows 显式抛错（不返回
+        空 cases、不回退内容列）。
+
+        请求字段（proto GetReportCasesRequest）：
+            report_id: int   报告 ID
+        """
+        try:
+            report_id = getattr(request, 'report_id', 0)
+            data = self.query_handler.handle_get_report_cases_raw_payload(report_id)
+            return self._resp(True, 'ok', data)
+        except Exception as e:
+            logger.exception("GetReportCasesRawPayload failed")
+            return self._resp(False, str(e), {})
+
     def SearchReportCases(self, request, context=None):
         """搜索报告用例。
 

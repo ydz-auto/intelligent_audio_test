@@ -88,6 +88,39 @@ class ReportAclRepository:
         from shared.clients.grpc_clients import get_report_config_service_stub
         return get_report_config_service_stub()
 
+    def get_report_cases_raw_payload(self, report_id: int) -> list:
+        """按 report_id 取报告用例**原始九字段 payload**（INT-1996：发布冻结 M1 前置）。
+
+        封装 report_service.ReportConfigService.GetReportCasesRawPayload RPC——
+        不经响应装配层（build_case_item 的 null/[] 归一与 algorithmResults /
+        referenceParams 展开），直接由 report_case_snapshots 解引用出口返回
+        原始列值，供 freeze_report_snapshot 改造前后逐字节一致。
+
+        Raises:
+            RuntimeError: gRPC 失败 / 快照指针悬空 / sha 不符时显式抛错——
+            禁止返回空 cases 静默产出缺内容的发布快照（对齐档4 §8.4 失败语义）。
+        """
+        from shared.clients.grpc_clients import get_report_config_service_stub
+        from shared.proto import report_service_pb2 as report_pb
+        try:
+            stub = get_report_config_service_stub()
+            resp = stub.GetReportCasesRawPayload(report_pb.GetReportCasesRequest(
+                report_id=int(report_id),
+                data='',
+            ))
+            if not resp.success:
+                raise RuntimeError(
+                    f'report_service 取报告用例原始 payload 失败 (report_id={report_id}): '
+                    f'{resp.message}')
+            payload = _loads(resp.data, {}) or {}
+            return payload.get('cases') or []
+        except RuntimeError:
+            raise
+        except Exception as e:
+            _logger.warning("GetReportCasesRawPayload gRPC 异常 report_id=%s: %s", report_id, e)
+            raise RuntimeError(
+                f'report_service 取报告用例原始 payload 异常 (report_id={report_id}): {e}') from e
+
     def recalculate_task_report(self, task_id: int) -> bool:
         """触发任务报告重算（INT-305：终态任务删除用例后重建报告）。
 

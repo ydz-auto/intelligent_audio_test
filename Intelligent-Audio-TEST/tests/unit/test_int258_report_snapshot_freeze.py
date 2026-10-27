@@ -112,6 +112,55 @@ def _seed_report_with_full_tables(factory, *, deleted=False, analysis='整体通
     return 391
 
 
+def _raw_cases_from_db(factory, report_id):
+    """从 sqlite 行读原始列值（等价 report_service 解引用出口的返回）。
+
+    INT-1996：freeze_report_snapshot 改走 report_service 解引用出口（gRPC +
+    ACL）。R1 双写期间快照 payload 与行上列值同源同值，本替身按行上内容列
+    构造出口返回的原始九字段 dict，模拟 report_service 侧返回（不经
+    build_case_item 的 falsy 归一，metrics==[] 原样保留）。
+    """
+    from report_service.infrastructure.persistence.models import ReportCase
+
+    session = factory()
+    try:
+        rows = (
+            session.query(ReportCase)
+            .filter(ReportCase.report_id == report_id)
+            .order_by(ReportCase.id.asc())
+            .all()
+        )
+        return [
+            {
+                'id': c.id,
+                'test_case_id': c.test_case_id,
+                'name': c.name,
+                'description': c.description,
+                'category': c.category,
+                'tags': c.tags,
+                'metrics': c.metrics,
+                'results': c.results,
+                'audios': c.audios,
+                'reference_params': c.reference_params,
+                'algorithm_results': c.algorithm_results,
+                'algorithm_type': c.algorithm_type,
+                'logs': c.logs,
+            }
+            for c in rows
+        ]
+    finally:
+        session.close()
+
+
+def _monkeypatch_raw_cases(monkeypatch, factory):
+    """freeze_report_snapshot 经 gRPC+ACL 取用例后，用行读替身喂回原始 payload。"""
+    monkeypatch.setattr(
+        ptr_module.report_acl_repository,
+        'get_report_cases_raw_payload',
+        lambda report_id: _raw_cases_from_db(factory, report_id),
+    )
+
+
 class TestFreezeReportSnapshotDualTrack:
     """freeze_report_snapshot：引用 + 冻结双轨（7 表完整冻结）。"""
 
@@ -132,6 +181,7 @@ class TestFreezeReportSnapshotDualTrack:
     def test_freeze_v2_dual_track_structure(self, monkeypatch):
         factory = _build_session_factory(monkeypatch, self._tables())
         report_id = _seed_report_with_full_tables(factory)
+        _monkeypatch_raw_cases(monkeypatch, factory)
 
         snapshot = ptr_module.published_task_repository.freeze_report_snapshot(123)
 
@@ -195,6 +245,7 @@ class TestFreezeReportSnapshotDualTrack:
                 'name': '任务报告_20261013', 'description': None,
                 'conclusion': '本轮整体通过，WER 达标',
             }))
+        _monkeypatch_raw_cases(monkeypatch, factory)
 
         snapshot = ptr_module.published_task_repository.freeze_report_snapshot(123)
 

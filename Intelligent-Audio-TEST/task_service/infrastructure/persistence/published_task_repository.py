@@ -8,10 +8,11 @@
 - 快照数据读取（供应用服务组装快照/冻结报告/校验/执行建新任务）
 
 DDD 分层：本仓储只操作 task_service 自有表（published_tasks / test_tasks 及其关联表）。
-报告冻结所需的报告数据（test_reports / report_summaries / report_summary_meta /
-report_metric_stats / report_cases）归属 report_service，为保持冻结快照契约与
-V9.7.10 完全等价，本仓储直接读取 report_service 的 PO（同一 DB），
-后续如需严格跨服务隔离可改为 gRPC 调用 ReportConfigService。
+报告冻结所需的报告主表与摘要表（test_reports / report_summaries / report_summary_meta /
+report_metric_stats / report_raw_data）与 report_service 同库直读；**report_cases 的
+九字段用例 payload 归属 report_service**（M1 把 9 列 DROP 后直读必崩），改走
+report_service 解引用出口（gRPC + ACL，INT-1996），不经响应装配层，冻结产物与
+改造前直读列值逐字节一致。
 """
 import copy
 import json
@@ -38,6 +39,7 @@ from task_service.infrastructure.persistence.models.testcase_models import (
 from report_service.infrastructure.persistence.models import (
     Report, ReportSummary, ReportSummaryMeta, ReportMetricStats, ReportCase, ReportRawData,
 )
+from task_service.infrastructure.acl.report_acl_repository import report_acl_repository
 
 logger = logging.getLogger(__name__)
 
@@ -1019,12 +1021,10 @@ class PublishedTaskRepository:
             raw_data = (
                 session.query(ReportRawData).filter_by(report_id=report.id).first()
             )
-            cases = (
-                session.query(ReportCase)
-                .filter(ReportCase.report_id == report.id)
-                .order_by(ReportCase.id.asc())
-                .all()
-            )
+            # 报告用例九字段 payload 归属 report_service（M1 把 9 个 payload 列
+            # DROP 后直读必崩）：改走 report_service 解引用出口（gRPC + ACL），
+            # 返回原始九字段值（不经响应装配层），冻结契约逐字节不变（INT-1996）。
+            cases = report_acl_repository.get_report_cases_raw_payload(report.id)
 
             # Report.analysis 兼容双形态：纯文本结论 或 JSON config 序列化串
             # （name/description/conclusion 存于 config，报告页 _aggregate_to_dict
@@ -1087,19 +1087,19 @@ class PublishedTaskRepository:
                 },
                 'cases': [
                     {
-                        'id': c.id,
-                        'testCaseId': c.test_case_id,
-                        'name': c.name,
-                        'description': c.description,
-                        'category': c.category,
-                        'tags': self._to_json(c.tags),
-                        'metrics': self._to_json_obj(c.metrics),
-                        'results': self._to_json(c.results),
-                        'audios': self._to_json(c.audios),
-                        'referenceParams': self._to_json_obj(c.reference_params),
-                        'algorithmResults': self._to_json_obj(c.algorithm_results),
-                        'algorithmType': c.algorithm_type,
-                        'logs': c.logs,
+                        'id': c['id'],
+                        'testCaseId': c['test_case_id'],
+                        'name': c['name'],
+                        'description': c['description'],
+                        'category': c['category'],
+                        'tags': self._to_json(c['tags']),
+                        'metrics': self._to_json_obj(c['metrics']),
+                        'results': self._to_json(c['results']),
+                        'audios': self._to_json(c['audios']),
+                        'referenceParams': self._to_json_obj(c['reference_params']),
+                        'algorithmResults': self._to_json_obj(c['algorithm_results']),
+                        'algorithmType': c['algorithm_type'],
+                        'logs': c['logs'],
                     }
                     for c in cases
                 ],

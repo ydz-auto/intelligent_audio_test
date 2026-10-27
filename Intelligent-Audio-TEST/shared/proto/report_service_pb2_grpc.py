@@ -120,6 +120,11 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.GetReportCasesRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.GetReportCasesRawPayload = channel.unary_unary(
+                '/report.ReportConfigService/GetReportCasesRawPayload',
+                request_serializer=report__service__pb2.GetReportCasesRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
         self.SearchReportCases = channel.unary_unary(
                 '/report.ReportConfigService/SearchReportCases',
                 request_serializer=report__service__pb2.SearchReportCasesRequest.SerializeToString,
@@ -382,6 +387,16 @@ class ReportConfigServiceServicer:
 
     def GetReportCases(self, request, context):
         """查询报告用例列表
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetReportCasesRawPayload(self, request, context):
+        """报告用例原始九字段 payload 只读出口（INT-1996：task_service 发布任务冻结
+        M1 前置）。解引用 report_case_snapshots 返回**原始列值**，不经响应装配层
+        （build_case_item 的 null/[] 归一与 algorithmResults/referenceParams 展开），
+        供发布冻结改造前后逐字节一致。不改变 GetReportCases 的对外形状。
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -687,6 +702,11 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             ),
             'GetReportCases': grpc.unary_unary_rpc_method_handler(
                     servicer.GetReportCases,
+                    request_deserializer=report__service__pb2.GetReportCasesRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'GetReportCasesRawPayload': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetReportCasesRawPayload,
                     request_deserializer=report__service__pb2.GetReportCasesRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
@@ -1289,6 +1309,33 @@ class ReportConfigService:
             request,
             target,
             '/report.ReportConfigService/GetReportCases',
+            report__service__pb2.GetReportCasesRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetReportCasesRawPayload(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/GetReportCasesRawPayload',
             report__service__pb2.GetReportCasesRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,

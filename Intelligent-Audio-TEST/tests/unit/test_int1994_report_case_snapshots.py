@@ -329,7 +329,128 @@ class TestFailureSemantics:
         assert 'sha256 校验失败' in str(excinfo.value)
 
 
-# ------------------------------------------------------------------ 5. 导入 / 替换不悬空
+# ------------------------------------------------------------------ 6. 原始 payload 只读出口（INT-1996）
+
+class TestRawPayloadExport:
+    """INT-1996：报告用例原始九字段 payload 只读出口（task_service 发布冻结 M1 前置）。
+
+    与 handle_get_report_cases 的区别：不经响应装配层（build_case_dict_from_entity /
+    build_case_item 的 null/[] 归一与 algorithmResults/referenceParams 展开），
+    直接由快照解引用出口给出原始列值。
+    """
+
+    def _handler(self, repository):
+        from report_service.application.handlers.report_handlers import ReportQueryHandler
+        return ReportQueryHandler(repository=repository)
+
+    def test_handler_returns_raw_values_without_assembly(self, session_factory,
+                                                         repository, monkeypatch):
+        repository.add_case(REPORT_ID, _case_payload(
+            test_case_id='CASE-RAW', metrics=[], results=[], algorithm_results=[],
+            tags=None, reference_params={}))
+        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_SNAPSHOT)
+
+        cases = self._handler(repository).handle_get_report_cases_raw_payload(REPORT_ID)['cases']
+        assert len(cases) == 1
+        c = cases[0]
+        # 原始值：[]/None/{} 原样保留，不被 build_case_item 折成 {} / [] / 展开
+        assert c['metrics'] == []
+        assert c['results'] == []
+        assert c['algorithm_results'] == []
+        assert c['tags'] is None
+        assert c['reference_params'] == {}
+        # 行上字段透传
+        assert c['test_case_id'] == 'CASE-RAW'
+        assert c['algorithm_type'] == 'asr'
+        assert c['logs'] == 'ok'
+
+    def test_handler_returns_values_byte_identical_between_read_sources(self,
+                                                                        session_factory,
+                                                                        repository,
+                                                                        monkeypatch):
+        """快照读源与列读源解出值逐项相等（R1 双写，发布冻结逐字节的前提）。"""
+        repository.add_case(REPORT_ID, _case_payload())
+        repository.add_case(REPORT_ID, _case_payload(
+            test_case_id='CASE-2', metrics=[], results=[], algorithm_results=[], tags=[]))
+
+        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_SNAPSHOT)
+        snap = self._handler(repository).handle_get_report_cases_raw_payload(REPORT_ID)['cases']
+        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_COLUMN)
+        col = self._handler(repository).handle_get_report_cases_raw_payload(REPORT_ID)['cases']
+
+        assert snap == col
+
+    def test_handler_propagates_corrupt_snapshot_error(self, session_factory,
+                                                       repository, monkeypatch):
+        from report_service.infrastructure.persistence.models import ReportCaseSnapshot
+
+        repository.add_case(REPORT_ID, _case_payload())
+        session = session_factory()
+        try:
+            snap = session.query(ReportCaseSnapshot).one()
+            snap.payload_gz = store.compress(b'{"tampered":true}')
+            session.commit()
+        finally:
+            session.close()
+        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_SNAPSHOT)
+
+        with pytest.raises(store.ReportCaseSnapshotCorruptError):
+            self._handler(repository).handle_get_report_cases_raw_payload(REPORT_ID)
+
+
+class TestRawPayloadGrpcLoopback:
+    """INT-1996：GetReportCasesRawPayload 回环 gRPC 验证（真实 server + 真实 channel）。
+
+    不启本地栈：进程内起 report_service gRPC server（同 test_int141 先例），
+    把 task_service ACL 的 stub 工厂指向它，验证 proto 再生成后的全链路——
+    序列化 / 反序列化 / servicer 分发 / JSON 载荷往返。
+    """
+
+    def test_acl_roundtrips_raw_payload_via_grpc(self, session_factory, repository,
+                                                 monkeypatch):
+        from concurrent import futures
+
+        import grpc
+
+        from shared.proto import report_service_pb2 as report_pb
+        from shared.proto import report_service_pb2_grpc as report_grpc
+        from report_service.interfaces.grpc.servicers import ReportServicer
+        from task_service.infrastructure.acl.report_acl_repository import (
+            report_acl_repository,
+        )
+
+        repository.add_case(REPORT_ID, _case_payload(
+            test_case_id='CASE-RPC', metrics=[], results=[], algorithm_results=[],
+            tags=None, reference_params={}))
+        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_SNAPSHOT)
+
+        server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
+        report_grpc.add_ReportConfigServiceServicer_to_server(ReportServicer(), server)
+        port = server.add_insecure_port('127.0.0.1:0')
+        server.start()
+        try:
+            with grpc.insecure_channel(f'127.0.0.1:{port}') as channel:
+                monkeypatch.setattr(
+                    'shared.clients.grpc_clients.get_report_config_service_stub',
+                    lambda: report_grpc.ReportConfigServiceStub(channel),
+                )
+                cases = report_acl_repository.get_report_cases_raw_payload(REPORT_ID)
+        finally:
+            server.stop(0)
+
+        assert len(cases) == 1
+        c = cases[0]
+        assert c['test_case_id'] == 'CASE-RPC'
+        # 原始值跨 gRPC JSON 往返后原样保留（不经 build_case_item 归一）
+        assert c['metrics'] == []
+        assert c['results'] == []
+        assert c['algorithm_results'] == []
+        assert c['tags'] is None
+        assert c['reference_params'] == {}
+        assert c['logs'] == 'ok'
+
+
+# ------------------------------------------------------------------ 7. 导入 / 替换不悬空
 
 class TestImportRecompute:
     def test_apply_to_row_overwrites_dangling_pointer(self, session_factory):
@@ -413,7 +534,7 @@ class TestImportRecompute:
             session.close()
 
 
-# ------------------------------------------------------------------ 6. 回填脚本口径
+# ------------------------------------------------------------------ 8. 回填脚本口径
 
 class TestBackfillScript:
     @staticmethod
@@ -456,7 +577,7 @@ class TestBackfillScript:
         assert 'snapshot_created_at = %s' in source
 
 
-# ------------------------------------------------------------------ 7. 登记
+# ------------------------------------------------------------------ 9. 登记
 
 class TestRegistration:
     def test_new_table_and_columns_in_schema_baseline(self):

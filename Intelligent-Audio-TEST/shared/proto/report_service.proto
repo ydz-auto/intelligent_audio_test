@@ -42,6 +42,11 @@ service ReportConfigService {
   rpc GenerateSecondaryCompareReport(GenerateSecondaryCompareReportRequest) returns (ReportConfigResponse);
   // 查询报告用例列表
   rpc GetReportCases(GetReportCasesRequest) returns (ReportConfigResponse);
+  // 报告用例原始九字段 payload 只读出口（INT-1996：task_service 发布任务冻结
+  // M1 前置）。解引用 report_case_snapshots 返回**原始列值**，不经响应装配层
+  // （build_case_item 的 null/[] 归一与 algorithmResults/referenceParams 展开），
+  // 供发布冻结改造前后逐字节一致。不改变 GetReportCases 的对外形状。
+  rpc GetReportCasesRawPayload(GetReportCasesRequest) returns (ReportConfigResponse);
   // 搜索报告用例
   rpc SearchReportCases(SearchReportCasesRequest) returns (ReportConfigResponse);
   // 导出报告
