@@ -248,6 +248,16 @@ def _grpc_get_tag_category(category_id):
     return _dto_to_dict(_tag.get_tag_category(category_id))
 
 
+def _grpc_get_tags_by_category():
+    """通过 gRPC (task_service.TagConfigService) 查询按分类分组的标签全量。
+
+    INT-2100 路线 A：返回 GetTagsByCategory 的 data 信封
+    （{items: [{category, tags}, ...], total, ...}），供报告生成侧按名解析
+    字符串 tag 的分类；查询失败返回 None（调用方按「无分类」兜底，不丢标签）。
+    """
+    return _dto_to_dict(_tag.get_tags_by_category())
+
+
 # ======================================================================
 # DeviceConfigService —— 设备查询
 # ======================================================================

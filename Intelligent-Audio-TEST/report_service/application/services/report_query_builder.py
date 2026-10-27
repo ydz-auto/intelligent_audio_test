@@ -22,6 +22,7 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_task_apis,
     _grpc_get_devices_by_ids,
     _grpc_get_apis_by_ids,
+    _grpc_get_tags_by_category,
 )
 
 
@@ -230,6 +231,9 @@ class ReportQueryBuilder:
         case_tags_list = []
         seen_categories = set()
         seen_tags = set()
+        seen_unresolved_tag_names = set()
+        # 字符串 tag 按名解析用：name → {id, category_id, category_name}，惰性单次调用
+        tag_name_to_meta = None
 
         for test_case in test_cases:
             group = _tc_get_group(test_case)
@@ -245,28 +249,60 @@ class ReportQueryBuilder:
 
             tc_tags = _tc_get_tags(test_case)
             for tag in tc_tags:
-                tag_id = tag.get('id') if isinstance(tag, dict) else getattr(tag, 'id', None)
-                tag_name = tag.get('name') if isinstance(tag, dict) else getattr(tag, 'name', None)
-                # INT-2100：透传标签分类。tag 对象（dict/ORM）里的 category_id /
-                # category_name 一并写入快照条目，供前端报告筛选 taxonomy 按分类展示；
-                # 无分类 tag 保持 null（前端「未分类」兜底）。字段与
-                # task_service tag_crud_service._tag_to_dict 对齐。
-                tag_category_id = (
-                    tag.get('category_id') if isinstance(tag, dict)
-                    else getattr(tag, 'category_id', None)
-                )
-                tag_category_name = (
-                    tag.get('category_name') if isinstance(tag, dict)
-                    else getattr(tag, 'category_name', None)
-                )
-                if tag_id is not None and tag_id not in seen_tags:
+                if isinstance(tag, str):
+                    # INT-2100 路线 A：真实 task_service 契约把用例 tags 序列化为
+                    # 字符串名列表（testcase_query_service.py:123/:389），按名经
+                    # GetTagsByCategory 单次调用解析分类；解析不到保持 category 为
+                    # null、不丢标签（前端「未分类」兜底），与「task_service 交付
+                    # tag dict」路线 B 前向兼容（契约变更后字符串路径自然退化兜底）。
+                    if tag_name_to_meta is None:
+                        tag_name_to_meta = _build_tag_name_meta_map()
+                    meta = (tag_name_to_meta or {}).get(tag)
+                    if meta:
+                        tag_id = meta.get('id')
+                        tag_name = meta.get('name') or tag
+                        tag_category_id = meta.get('category_id')
+                        tag_category_name = meta.get('category_name')
+                    else:
+                        tag_id = None
+                        tag_name = tag
+                        tag_category_id = None
+                        tag_category_name = None
+                else:
+                    tag_id = tag.get('id') if isinstance(tag, dict) else getattr(tag, 'id', None)
+                    tag_name = tag.get('name') if isinstance(tag, dict) else getattr(tag, 'name', None)
+                    # INT-2100：透传标签分类。tag 对象（dict/ORM）里的 category_id /
+                    # category_name 一并写入快照条目，供前端报告筛选 taxonomy 按分类展示；
+                    # 无分类 tag 保持 null（前端「未分类」兜底）。字段与
+                    # task_service tag_crud_service._tag_to_dict 对齐。
+                    tag_category_id = (
+                        tag.get('category_id') if isinstance(tag, dict)
+                        else getattr(tag, 'category_id', None)
+                    )
+                    tag_category_name = (
+                        tag.get('category_name') if isinstance(tag, dict)
+                        else getattr(tag, 'category_name', None)
+                    )
+                if tag_id is not None:
+                    if tag_id in seen_tags:
+                        continue
                     seen_tags.add(tag_id)
-                    case_tags_list.append({
-                        "id": tag_id,
-                        "name": tag_name or "未命名标签",
-                        "category_id": tag_category_id,
-                        "category_name": tag_category_name,
-                    })
+                elif isinstance(tag, str):
+                    # 解析不到 id 的字符串 tag：按名去重，仍输出不丢标签
+                    # （前端「未分类」兜底展示；与路线 B 前向兼容）
+                    if tag_name in seen_unresolved_tag_names:
+                        continue
+                    seen_unresolved_tag_names.add(tag_name)
+                else:
+                    # 非字符串且无 id 的 tag 保持既有行为跳过
+                    # （真实契约 tags 只出现字符串名列表 / dict / ORM 对象两种形态）
+                    continue
+                case_tags_list.append({
+                    "id": tag_id,
+                    "name": tag_name or "未命名标签",
+                    "category_id": tag_category_id,
+                    "category_name": tag_category_name,
+                })
 
         if not case_categories_list:
             case_categories_list.append({"id": "default_group", "name": "未分类"})
@@ -343,3 +379,33 @@ def _tc_has_any_tag(tc, tag_set):
         if tag_name and tag_name in tag_set:
             return True
     return False
+
+
+def _build_tag_name_meta_map():
+    """单次调用 GetTagsByCategory，构建 tag 名 → {id, category_id, category_name} 映射。
+
+    INT-2100 路线 A：task_service 契约把用例 tags 序列化为字符串名列表
+    （testcase_query_service.py:123/:389），报告域按名解析分类。查询失败返回空
+    dict —— 字符串 tag 全部走「解析不到」兜底：不丢标签、category_id/category_name
+    为 null（前端「未分类」尾组兜底），与路线 B（task_service 交付 tag dict）前向兼容。
+    """
+    payload = _grpc_get_tags_by_category()
+    if not isinstance(payload, dict):
+        return {}
+    meta_map = {}
+    for group in payload.get('items') or []:
+        if not isinstance(group, dict):
+            continue
+        for tag in group.get('tags') or []:
+            if not isinstance(tag, dict):
+                continue
+            tag_name = tag.get('name')
+            if not tag_name:
+                continue
+            meta_map[tag_name] = {
+                'id': tag.get('id'),
+                'name': tag_name,
+                'category_id': tag.get('category_id'),
+                'category_name': tag.get('category_name'),
+            }
+    return meta_map

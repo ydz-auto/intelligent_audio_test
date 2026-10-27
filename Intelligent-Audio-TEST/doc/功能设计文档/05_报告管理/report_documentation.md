@@ -212,7 +212,7 @@ test_reports + report_summaries / report_summary_meta / report_raw_data
 - **空标签回落**：无标签时 `case_tags_list` 回落 `{id: "default_tag", name: "无标签", category_id: null, category_name: null}`；主报告 / 对比 / 二次对比三条生成链缺省结构一致；
 - **不回溯**：历史报告快照不回填分类（前端「未分类」兜底展示），仅新生成报告透传。
 
-> 实现说明：真实 task_service 契约当前把用例 tags 序列化为**字符串名列表**（`task_service/application/testcase/testcase_query_service.py` ListTestCases / GetTestCaseDetail），字符串 tag 需按名解析分类后才能透传 `category_id`/`category_name`——修复路线（task_service 交付 tag dict vs report_service 按名经 TagConfigService 解析）待负责人拍板（INT-2100 审计 P2）。
+> 实现说明（INT-2100 返工裁定 2026-10-27，数据源契约路线 A）：真实 task_service 契约当前把用例 tags 序列化为**字符串名列表**（`task_service/application/testcase/testcase_query_service.py` ListTestCases / GetTestCaseDetail），报告域按名经 `TagConfigService.GetTagsByCategory` **单次调用**建 `name → {id, category_id, category_name}` 映射解析分类（真实库 ~115 活跃标签，载荷小）；**解析不到的字符串 tag 不丢标签**，`id` 为 null、`category_id`/`category_name` 保持 null（前端「未分类」兜底）；task_service 契约不变（tags 仍为 string[]），前端 DTO 与其他服务不受影响；与「task_service 交付 tag dict」路线 B **前向兼容**——若后续契约变更，字符串路径自然退化为兜底。
 
 ## 5. 报告生成流程
 
