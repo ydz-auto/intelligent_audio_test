@@ -621,4 +621,88 @@ describe('GroupedCaseList', () => {
       )
     })
   })
+
+  it('INT-1970 返工 P2-2：折叠分组组头全选后批量菜单按整组全量下发（不再按已加载页 20 条）', async () => {
+    const user = setupUser()
+    const onBatchAction = vi.fn()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <GroupedCaseList
+          groups={GROUPS}
+          cases={CASES}
+          loading={false}
+          trash={false}
+          hasQueryFilters={false}
+          filters={{}}
+          selected={new Set()}
+          tagRegistry={MOCK_TAGS as TagItem[]}
+          callbacks={noopCallbacks}
+          actionCallbacks={actionCallbacks}
+          onBatchAction={onBatchAction}
+          onToggleAll={vi.fn()}
+        />
+      </QueryClientProvider>
+    )
+    // 默认折叠点组头「全选分组」→ 组内全量 ID 缓存（g1 整组 6 条）
+    await user.click(screen.getByLabelText('全选分组 智能音箱功能测试'))
+    await waitFor(() => {
+      expect(fetchCaseIdsByFilter).toHaveBeenCalledWith(
+        expect.objectContaining({ group: '智能音箱功能测试' })
+      )
+    })
+    // 折叠态（组内 list 未加载）打开该组批量菜单 → 批量范围 = 整组全量，非已加载页
+    await user.click(screen.getByRole('button', { name: '智能音箱功能测试 批量修改' }))
+    await user.click(await screen.findByText('评价维度'))
+    await waitFor(() => {
+      expect(onBatchAction).toHaveBeenCalledWith('dimensions', [
+        'tc-001',
+        'tc-002',
+        'tc-003',
+        'tc-004',
+        'tc-005',
+        'tc-006',
+      ])
+    })
+  })
+
+  it('INT-1970 返工 P2-2：折叠分组未触发组头全选时批量菜单补取整组全量一次', async () => {
+    const user = setupUser()
+    const onBatchAction = vi.fn()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <GroupedCaseList
+          groups={GROUPS}
+          cases={CASES}
+          loading={false}
+          trash={false}
+          hasQueryFilters={false}
+          filters={{}}
+          selected={new Set()}
+          tagRegistry={MOCK_TAGS as TagItem[]}
+          callbacks={noopCallbacks}
+          actionCallbacks={actionCallbacks}
+          onBatchAction={onBatchAction}
+          onToggleAll={vi.fn()}
+        />
+      </QueryClientProvider>
+    )
+    // 折叠态（未展开、未触发组头全选）直接打开批量菜单 → 点菜单项时补取整组 /ids
+    await user.click(screen.getByRole('button', { name: '智能音箱功能测试 批量修改' }))
+    await user.click(await screen.findByText('噪声'))
+    await waitFor(() => {
+      expect(onBatchAction).toHaveBeenCalledWith('noise', [
+        'tc-001',
+        'tc-002',
+        'tc-003',
+        'tc-004',
+        'tc-005',
+        'tc-006',
+      ])
+    })
+    // 未触发过组头全选 → 菜单项点击时补取整组 /ids 一次（此后组内全量已缓存）
+    expect(fetchCaseIdsByFilter).toHaveBeenCalledWith(
+      expect.objectContaining({ group: '智能音箱功能测试' })
+    )
+    expect(fetchCaseIdsByFilter).toHaveBeenCalledTimes(1)
+  })
 })

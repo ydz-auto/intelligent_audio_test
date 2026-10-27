@@ -3,7 +3,7 @@
  * 噪声音频（选择器卡「点击选择噪声音频」→ 打开音频选择弹窗，真实 GET /audios audio_type=noise；
  * 已选显名 + 重新选择/清除）+ 噪声声压级 dB（number 0-140，提示「建议值：94 dB（1kHz 校准点）」）
  * + 播放设备（多选选择器卡，真实 GET /playback-devices）+ 轮次范围三档 + 应用层级多选
- * （默认勾选 case级/segment级背景噪声）。
+ * （默认勾选 全局/轮次背景噪声）。
  * 提交走 POST /testcases/batch（update_noise）：noise_audio_id/noise_spl/noise_device_ids
  * + targets + round_mode/round_numbers。
  */
@@ -386,12 +386,12 @@ export function BatchNoiseDialog({
             unknownRoundCount={unknownRoundCount}
           />
 
-          {/* 应用层级（默认勾选 case级/segment级背景噪声） */}
+          {/* 应用层级（默认勾选 全局/轮次背景噪声） */}
           <ApplyLayerField
             defaultChecked={['case-bg', 'segment-bg']}
             value={layers}
             onChange={setLayers}
-            hint='可多选；留空时默认应用到 case级/segment级背景噪声'
+            hint='可多选；留空时默认应用到 全局背景噪声/轮次背景噪声'
           />
         </div>
 

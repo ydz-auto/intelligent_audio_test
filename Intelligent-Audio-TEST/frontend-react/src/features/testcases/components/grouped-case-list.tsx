@@ -15,7 +15,7 @@
  * 用户点组头展开后会话内保持展开态——INT-490 P2 默认全展开口径废弃）。
  */
 import { ArrowUpDown, ChevronDown, Clock3, FolderOpen, SearchX, Tags, Trash2 } from 'lucide-react'
-import { useMemo, useState, useEffect } from 'react'
+import { useCallback, useMemo, useState, useEffect } from 'react'
 import { useIsFetching } from '@tanstack/react-query'
 
 import { useCaseRoundsRegistry } from '@/application/testcases/case-rounds-registry'
@@ -211,6 +211,30 @@ function GroupCard({
     }
   }
 
+  /**
+   * 组头批量菜单全量补取（INT-1970 返工 P2-2）：复用组头全选 guard（trash/收藏/未分组虚拟组
+   * 回退已加载 list，/testcases/ids 不认 favorite），取整组 /testcases/ids 并回填 groupAllIds 缓存
+   * （组头勾选态同步生效）；失败同样回退已加载 list。
+   */
+  const resolveGroupIds = useCallback(async (): Promise<string[]> => {
+    if (trash || filters.favorite || group.id === UNGROUPED_GROUP_ID) {
+      return list.map((x) => x.id)
+    }
+    try {
+      const { ids } = await fetchCaseIdsByFilter({
+        search: filters.search,
+        tag: filters.tag,
+        dimensionId: filters.dimensionId,
+        algorithmType: filters.algorithmType,
+        group: group.name,
+      })
+      setGroupAllIds(ids)
+      return ids
+    } catch {
+      return list.map((x) => x.id)
+    }
+  }, [trash, filters, group.id, group.name, list])
+
   const renderCaseCard = (c: TestCaseListItem) => (
     <CaseCard
       key={c.id}
@@ -305,6 +329,9 @@ function GroupCard({
               name={group.name}
               caseIds={list.map((x) => x.id)}
               selectedIds={list.filter((x) => selected.has(x.id)).map((x) => x.id)}
+              groupAllIds={groupAllIds}
+              selected={selected}
+              resolveGroupIds={resolveGroupIds}
               trash={trash}
               onEditGroup={actions.onEditGroup}
               onDeleteGroup={actions.onDeleteGroup}

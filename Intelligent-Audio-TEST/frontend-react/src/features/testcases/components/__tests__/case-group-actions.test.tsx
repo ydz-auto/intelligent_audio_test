@@ -3,7 +3,7 @@
  * 编辑/删除/新增用例/复制四钮 + 「批量修改」下拉九项；回收站态整组隐藏；
  * 批量动作按「有勾选用勾选，否则组内全量」resolveCaseIds。
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -103,6 +103,80 @@ describe('CaseGroupActions', () => {
     await user.click(screen.getByRole('button', { name: /批量修改/ }))
     await user.click(await screen.findByText('调整分组'))
     expect(onBatchAction).toHaveBeenCalledWith('group', [])
+  })
+
+  it('INT-1970 返工 P2-2：已知组内全量（groupAllIds）→ 无勾选用整组，有勾选按 全量∩selected', async () => {
+    const user = setupUser()
+    const fullGroup = ['tc-001', 'tc-002', 'tc-003', 'tc-004', 'tc-005', 'tc-006']
+    const onBatchAction = vi.fn()
+    const { rerender } = render(
+      <CaseGroupActions
+        {...baseProps}
+        groupAllIds={fullGroup}
+        selected={new Set()}
+        onBatchAction={onBatchAction}
+      />
+    )
+    // 未勾选任何用例 → 批量范围 = 整组（不再只取已加载页）
+    await user.click(screen.getByRole('button', { name: /批量修改/ }))
+    await user.click(await screen.findByText('评价维度'))
+    expect(onBatchAction).toHaveBeenCalledWith('dimensions', fullGroup)
+
+    // 已勾选 3 条（跨已加载/未加载）→ 批量范围 = 全量 ∩ selected，不再按已加载页截断
+    onBatchAction.mockClear()
+    rerender(
+      <CaseGroupActions
+        {...baseProps}
+        groupAllIds={fullGroup}
+        selected={new Set(['tc-002', 'tc-004', 'tc-006'])}
+        onBatchAction={onBatchAction}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /批量修改/ }))
+    await user.click(await screen.findByText('播放设备'))
+    expect(onBatchAction).toHaveBeenCalledWith('device', ['tc-002', 'tc-004', 'tc-006'])
+  })
+
+  it('INT-1970 返工 P2-2：全量未知且有补取器 → 菜单项点击补取整组一次（含已勾选交集）', async () => {
+    const user = setupUser()
+    const fullGroup = ['tc-001', 'tc-002', 'tc-003', 'tc-004', 'tc-005', 'tc-006']
+    const resolveGroupIds = vi.fn(async () => fullGroup)
+    const onBatchAction = vi.fn()
+    render(
+      <CaseGroupActions
+        {...baseProps}
+        resolveGroupIds={resolveGroupIds}
+        selected={new Set(['tc-001', 'tc-005'])}
+        onBatchAction={onBatchAction}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /批量修改/ }))
+    await user.click(await screen.findByText('噪声'))
+    await waitFor(() => {
+      expect(resolveGroupIds).toHaveBeenCalledTimes(1)
+      expect(onBatchAction).toHaveBeenCalledWith('noise', ['tc-001', 'tc-005'])
+    })
+  })
+
+  it('INT-1970 返工 P2-2：全量补取失败 → 回退已加载 ids，不阻塞批量动作', async () => {
+    const user = setupUser()
+    const resolveGroupIds = vi.fn(async () => {
+      throw new Error('ids 查询失败')
+    })
+    const onBatchAction = vi.fn()
+    render(
+      <CaseGroupActions
+        {...baseProps}
+        resolveGroupIds={resolveGroupIds}
+        selected={new Set(['tc-001'])}
+        onBatchAction={onBatchAction}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /批量修改/ }))
+    await user.click(await screen.findByText('管理标签'))
+    await waitFor(() => {
+      expect(onBatchAction).toHaveBeenCalledWith('tags', ['tc-001', 'tc-002', 'tc-003'])
+    })
   })
 
   it('回收站态整组操作面板隐藏（INT-215 口径）', () => {

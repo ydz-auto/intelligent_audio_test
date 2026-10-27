@@ -1,7 +1,7 @@
 /**
  * 批量弹窗共享片段（11_用例域.md §5.3 九件套统一口径）。
  * 轮次范围（RadioGroup「所有轮次/指定轮次」→ 指定轮次展开轮次号 Checkbox 组「第{n}轮」）
- * + 应用层级多选（目标人音频/case级背景噪声/segment级背景噪声/干扰人/声纹，§5.3.2~5.3.4 同口径）。
+ * + 应用层级多选（目标人音频/全局背景噪声/轮次背景噪声/干扰人/声纹，§5.3.2~5.3.4 同口径）。
  * RoundScopeThreeField 为三档轮次范围（所有轮次统一/指定轮次统一/逐轮设置每轮可不同，§5.3.5 口径），
  * 供 §5.3.1~5.3.5 全部轮次级批量弹窗共用（负责人反馈「其他批量操作也是三档轮次范围逐项可用」）。
  * 内部受控状态随弹窗重新挂载即重置；数据契约 roundMode/rounds/appliedLayers 留接线批次。
@@ -300,11 +300,12 @@ export function usePerRoundValue<V>(initial: V, scope: RoundScopeThreeValue) {
   return { current, setCurrent, resetValue, perRound }
 }
 
-/** 应用层级五项（§5.3.2~5.3.4；noise 弹窗默认勾选 case级/segment级背景噪声） */
+/** 应用层级五项（§5.3.2~5.3.4；noise 弹窗默认勾选 全局/轮次背景噪声；INT-1970 返工 P3 改名：
+ *  case级→全局、segment级→轮次，仅展示文案，wire targets 不变） */
 export const APPLY_LAYERS = [
   { id: 'target', label: '目标人音频' },
-  { id: 'case-bg', label: 'case级背景噪声' },
-  { id: 'segment-bg', label: 'segment级背景噪声' },
+  { id: 'case-bg', label: '全局背景噪声' },
+  { id: 'segment-bg', label: '轮次背景噪声' },
   { id: 'interferer', label: '干扰人' },
   { id: 'voiceprint', label: '声纹' },
 ] as const
@@ -332,12 +333,12 @@ export function ApplyLayerField({
   onChange,
   hint = '可多选；留空表示不应用任何层级',
 }: {
-  /** 默认勾选的层级 id（§5.3.4 默认 case级/segment级背景噪声） */
+  /** 默认勾选的层级 id（§5.3.4 默认 全局/轮次背景噪声） */
   defaultChecked?: ApplyLayerId[]
   /** 受控模式（INT-710 接线：提交时读取勾选层级） */
   value?: ApplyLayerId[]
   onChange?: (next: ApplyLayerId[]) => void
-  /** 提示文案（各批量操作留空回退口径不同：声压/设备→目标人音频，噪声→case级/segment级） */
+  /** 提示文案（各批量操作留空回退口径不同：声压/设备→目标人音频，噪声→全局/轮次背景噪声） */
   hint?: string
 }) {
   const [internal, setInternal] = useState<Set<string>>(

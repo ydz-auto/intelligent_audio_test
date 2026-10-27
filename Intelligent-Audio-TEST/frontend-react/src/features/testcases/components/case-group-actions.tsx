@@ -4,8 +4,10 @@
  * （用例专属参数/播放设备/声压/调整分组/评价维度/噪声/标签生成名称/管理标签/用例参考更新，
  * 与 §3.7 批量浮条同源载荷，两通道同源）。
  * 批量九项触发 onBatchAction(action, ids)——ids=组内已勾选否则组内全量（resolveCaseIds 语义）。
- * 组内用例懒加载（分组收起时 caseIds 为空），空 ids 由 useCaseBatchActions.openBatch 统一拦截
- * 并提示「请先展开分组或勾选用例」（INT-1780，不再按 0 条提交并提示成功）。
+ * INT-1970 返工 P2-2：ids 优先按「该组全量」取——组头「全选分组」已缓存的 groupAllIds（整组
+ * /testcases/ids 结果）或 resolveGroupIds 补取的整组；已知全量时「组内已勾选」按 全量 ∩ selected
+ * 判定（不再只取已加载页）。未展开且未触发过组头全选 → 补取失败时回退已加载 caseIds/selectedIds，
+ * 空 ids 由 useCaseBatchActions.openBatch 统一拦截并提示「请先展开分组或勾选用例」（INT-1780）。
  * 末项「删除用例」走 onBatchAction('delete') → 批量删除确认 → 真实 POST /testcases/batch（INT-1780）。
  * 回收站态整组操作面板隐藏（INT-215 口径：trashMode 下组头无批量/编辑/删除）。
  */
@@ -47,10 +49,22 @@ export const GROUP_BATCH_ITEMS: Array<{ key: BatchActionKey; label: string }> = 
 export interface CaseGroupActionsProps {
   /** 组名/标签名（批量九项 toast 回显用） */
   name: string
-  /** 组内用例 ID 全量（批量 resolveCaseIds 兜底） */
+  /** 组内用例 ID 全量（批量 resolveCaseIds 兜底；已加载 list——全量未知时用） */
   caseIds: string[]
   /** 组内已勾选 ID（有勾选用勾选，否则用全量） */
   selectedIds: string[]
+  /**
+   * 组内全量 ID 集（INT-1970 返工 P2-2：组头「全选分组」经 /testcases/ids 圈定后缓存的整组 id；
+   * 传入时批量范围优先按它，不再只看已加载页）。
+   */
+  groupAllIds?: string[] | null
+  /**
+   * 组内全量 ID 补取（INT-1970 返工 P2-2：未触发过组头全选、全量未知时菜单项点击时补取一次；
+   * 应沿用组头全选 guard——trash/收藏/未分组虚拟组回退已加载 list；失败同样回退）。
+   */
+  resolveGroupIds?: () => Promise<string[]>
+  /** 页面级已勾选集合（已知全量时「组内已勾选」= 全量 ∩ selected，缺省回退 selectedIds） */
+  selected?: ReadonlySet<string>
   trash: boolean
   onEditGroup?: () => void
   onDeleteGroup?: () => void
@@ -69,6 +83,9 @@ export function CaseGroupActions({
   name,
   caseIds,
   selectedIds,
+  groupAllIds,
+  resolveGroupIds,
+  selected,
   trash,
   onEditGroup,
   onDeleteGroup,
@@ -80,7 +97,49 @@ export function CaseGroupActions({
   const [open, setOpen] = useState(false)
   if (trash) return null
 
-  const resolveIds = () => (selectedIds.length > 0 ? selectedIds : caseIds)
+  /**
+   * 批量范围（INT-1970 返工 P2-2）：已知组内全量 → 「全量 ∩ 已勾选」否则整组；
+   * 全量未知且有补取器 → 补取整组（trash/收藏/未分组由调用方 guard 回退已加载）；
+   * 否则回退原已加载 list 口径（未展开且未触发过组头全选 → 空 ids，openBatch 拦截提示）。
+   */
+  const resolveIds = (): string[] | Promise<string[]> => {
+    if (groupAllIds != null && groupAllIds.length > 0) {
+      if (selected != null) {
+        const inFull = groupAllIds.filter((id) => selected.has(id))
+        return inFull.length > 0 ? inFull : groupAllIds
+      }
+      return groupAllIds
+    }
+    if (resolveGroupIds != null) {
+      return resolveGroupIds()
+        .then((full) => {
+          if (full != null && full.length > 0) {
+            if (selected != null) {
+              const inFull = full.filter((id) => selected.has(id))
+              return inFull.length > 0 ? inFull : full
+            }
+            return full
+          }
+          return selectedIds.length > 0 ? selectedIds : caseIds
+        })
+        .catch(() => (selectedIds.length > 0 ? selectedIds : caseIds))
+    }
+    return selectedIds.length > 0 ? selectedIds : caseIds
+  }
+
+  /** 菜单项选中：同步范围直接回调；补取全量的异步范围等 resolve 后回调（弹窗计数/提交范围即整组） */
+  const dispatchBatch = (action: BatchActionKey) => {
+    const ids = resolveIds()
+    if (ids instanceof Promise) {
+      void ids.then((resolved) => {
+        onBatchAction?.(action, resolved)
+        setOpen(false)
+      })
+      return
+    }
+    onBatchAction?.(action, ids)
+    setOpen(false)
+  }
 
   const btn = (
     label: string,
@@ -159,10 +218,7 @@ export function CaseGroupActions({
             {GROUP_BATCH_ITEMS.map((item) => (
               <DropdownMenuItem
                 key={item.key}
-                onSelect={() => {
-                  onBatchAction(item.key, resolveIds())
-                  setOpen(false)
-                }}
+                onSelect={() => dispatchBatch(item.key)}
               >
                 {item.label}
               </DropdownMenuItem>
@@ -173,10 +229,7 @@ export function CaseGroupActions({
                 V9.7.10 组头菜单无此项（React 侧新增），保留入口但必须真实生效。 */}
             <DropdownMenuItem
               data-variant='destructive'
-              onSelect={() => {
-                onBatchAction('delete', resolveIds())
-                setOpen(false)
-              }}
+              onSelect={() => dispatchBatch('delete')}
             >
               删除用例
             </DropdownMenuItem>
