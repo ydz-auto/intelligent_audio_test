@@ -63,9 +63,39 @@ def _seed_report(task_id=21, report_id=41, name='A 原报告'):
     _add(Report(id=report_id, name=name, type='task', task_id=task_id,
                 status='published', visibility='private', created_by_user_id=7))
     _add(ReportSummary(report_id=report_id, total_cases=3, pass_rate=0.5))
-    _add(ReportCase(report_id=report_id, test_case_id='case-a', name='原用例A'))
-    _add(ReportCase(report_id=report_id, test_case_id='case-b', name='原用例B'))
+    _add(ReportCase(report_id=report_id, test_case_id='case-a'))
+    _add(ReportCase(report_id=report_id, test_case_id='case-b'))
     return report_id
+
+
+def _seed_report_with_snapshot_cases(report_id, task_id, owner, shas):
+    """写带快照指针的用例行 + 快照行（M1 形态），供可见性过滤验证。"""
+    import base64
+
+    from report_service.infrastructure.persistence import report_case_snapshot_store as store
+    from report_service.infrastructure.persistence.models import (
+        ReportCaseSnapshot, ReportCase,
+    )
+    from report_service.infrastructure.persistence.models import Report as _Report
+
+    session = _session()
+    try:
+        session.add(_Report(id=report_id, name=f'报告{report_id}', type='task',
+                            task_id=task_id, status='published',
+                            visibility='private', created_by_user_id=owner))
+        session.flush()
+        for i, sha in enumerate(shas):
+            gz = store.compress(('{"name":"case%d"}' % i).encode('utf-8'))
+            session.add(ReportCaseSnapshot(sha256=sha, payload_gz=gz,
+                                           payload_bytes=len(gz)))
+            po = ReportCase(report_id=report_id, test_case_id=f'case-{report_id}-{i}',
+                            snapshot_sha256=sha,
+                            snapshot_uri=f'db://report_case_snapshots/{sha}',
+                            snapshot_bytes=len(gz))
+            session.add(po)
+        session.commit()
+    finally:
+        session.close()
 
 
 def _seed_studio(report_id=41):
@@ -437,6 +467,26 @@ class TestExportVisibility:
         assert data['reportIds'] == [41]
         assert data['taskIds'] == [21]                # 任务 id 只用过滤后的报告行反推
         assert data['studio'][_REPORT_STUDIO_DOCS]    # Studio 闭包随报告一起过滤
+
+    def test_visibility_filter_narrows_snapshots_to_kept_cases(self, db):
+        """INT-1995：可见性过滤后 report_case_snapshots 按保留用例行的引用 sha 收窄。
+
+        不可见报告的共享快照不得多带（泄漏其 payload），可见报告的引用 sha 不能少带
+        （否则解引用悬空）。
+        """
+        _seed_report_with_snapshot_cases(41, 21, owner=7, shas=['a' * 64])
+        _seed_report_with_snapshot_cases(42, 22, owner=8, shas=['b' * 64])
+        from report_service.application.report_package_service import report_package_service
+
+        with _AsUser(7):
+            result = report_package_service.export_package([], [41, 42], 'full')
+
+        assert result['success'] is True, result
+        tables = result['data']['tables']
+        assert [r['id'] for r in tables['test_reports']] == [41]
+        # 不可见报告（42）的用例行与快照行都被收窄掉
+        assert {r['report_id'] for r in tables['report_cases']} == {41}
+        assert [r['sha256'] for r in tables['report_case_snapshots']] == ['a' * 64]
 
     def test_task_ids_export_skips_others_private_reports(self, db):
         _seed_report()                                # 41 / task 21 / owner 7

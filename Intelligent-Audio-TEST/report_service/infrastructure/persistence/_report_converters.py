@@ -257,18 +257,14 @@ def _apply_summary_entity_to_po(entity: ReportSummaryEntity, po: ReportSummary) 
 
 
 def _apply_case_entity_to_po(entity: ReportCaseEntity, po: ReportCase) -> None:
-    """将 ReportCaseEntity 可写字段映射回 ReportCase PO。"""
+    """将 ReportCaseEntity 可写字段映射回 ReportCase PO。
+
+    INT-1995（档4 M1）：9 个 payload 内容列已 DROP，PO 上只剩五列 + 4 个快照
+    指针列。payload 内容（result_summary 的 name/description/...）**不是 PO 属性**，
+    写用例行应走 ``add_case``（快照外置写指针），本函数只写行上保留字段。
+    """
     rs = entity.result_summary or {}
     po.test_case_id = entity.test_case_id
-    po.name = rs.get('name')
-    po.description = rs.get('description')
-    po.category = rs.get('category')
-    po.tags = rs.get('tags')
-    po.metrics = rs.get('metrics')
-    po.results = rs.get('results')
-    po.audios = rs.get('audios')
-    po.reference_params = rs.get('reference_params')
-    po.algorithm_results = rs.get('algorithm_results')
     po.algorithm_type = rs.get('algorithm_type')
     po.logs = rs.get('logs')
 

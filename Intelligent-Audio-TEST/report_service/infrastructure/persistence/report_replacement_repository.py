@@ -33,6 +33,7 @@ from report_service.infrastructure.persistence.models import (
     BenchmarkReport,
     Report,
     ReportCase,
+    ReportCaseSnapshot,
     ReportComparisonMatrix,
     ReportFavorite,
     ReportMergeSnapshot,
@@ -46,6 +47,7 @@ from report_service.infrastructure.persistence.models import (
 )
 from report_service.infrastructure.persistence.report_transfer_repository import (
     _coerce_row,
+    _insert_snapshots,
     _sync_sequences,
     apply_snapshot_to_row,
 )
@@ -62,6 +64,9 @@ _TABLE_PO = {
     'report_cases': ReportCase,
     'report_metric_stats': ReportMetricStats,
     'report_comparison_matrix': ReportComparisonMatrix,
+    # INT-1995（档4 M1）：快照表进 _TABLE_PO 只为让 _clean_tables 保留包内快照行；
+    # 它不在 _CHILD_TABLES 里（无 report_id），replace_reports 单独先行写入。
+    'report_case_snapshots': ReportCaseSnapshot,
 }
 _CHILD_TABLES = ('report_summaries', 'report_summary_meta', 'report_raw_data',
                  'report_cases', 'report_metric_stats', 'report_comparison_matrix')
@@ -184,6 +189,10 @@ class ReportReplacementRepository:
             session.flush()
             report_id = report.id
 
+            # INT-1995（档4 M1）：快照行先行写入（内容寻址 ON CONFLICT 幂等），
+            # 再建用例行——先快照后用例，避免「行上有指针、表里没内容」悬空。
+            _insert_snapshots(session, tables.get('report_case_snapshots') or [])
+
             # 子表重建：id 由 A 重新分配，report_id 固定为目标报告 id
             inserted_pks: Dict[str, List[int]] = {}
             for table in _CHILD_TABLES:
@@ -193,8 +202,8 @@ class ReportReplacementRepository:
                 new_pos = []
                 for row in rows:
                     if table == 'report_cases':
-                        # INT-1994：快照行不随包迁移 → 按内容列重算并覆盖指针
-                        #（先写快照行，再插用例行，避免悬空指针）
+                        # INT-1994/1995：快照行已先行写入（或 R1 旧包按内容列重算，
+                        # 见 apply_snapshot_to_row）——先写快照再插用例行，不悬空。
                         row = apply_snapshot_to_row(session, row)
                     po = po_cls(**_coerce_row(po_cls, row))
                     session.add(po)

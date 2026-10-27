@@ -24,8 +24,10 @@
 ``shared/infrastructure/raw_payload_store.py``（绑死 api 两张表的列），但照抄它的
 读侧纪律：**解压后校验 sha256，不符抛显式错误，绝不静默回退内容列、绝不返回空**。
 
-回滚开关 ``REPORT_CASE_SNAPSHOT_SOURCE=column|snapshot``（默认 ``snapshot``）：
-切 ``column`` 时读侧照旧读行上的内容列（R1 双写期间二者等价）。
+回滚开关 ``REPORT_CASE_SNAPSHOT_SOURCE=column|snapshot`` 是 **R1 专用**的回滚通道：
+切 ``column`` 时读侧照旧读行上的内容列（R1 双写期间二者等价）。**M1（INT-1995）
+把 9 个内容列 DROP 之后列读源不复存在**，``read_source()`` 恒返回 ``snapshot``，
+env 里的 ``column`` 取值不再生效——M1 的回滚通道是「按备份恢复」，不再是翻开关。
 
 读侧键序（INT-2041）：payload 冻结时用的是 ``canonical_bytes`` 的字典序，而
 ``column`` 读源是 PG jsonb 键序（先比键字节长度、再字节 memcmp）。两者只差在
@@ -37,7 +39,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence
@@ -63,7 +64,8 @@ POINTER_COLUMNS = (
 
 URI_SCHEME = 'db://report_case_snapshots/'
 
-#: 读源开关：snapshot（默认，解引用）| column（R1 回滚：读行上内容列）
+#: 读源开关：snapshot（恒为解引用）。``column`` 取值是 R1 历史回滚通道，M1 已删列，
+#: 保留常量仅作历史标记 / 兼容旧 env，``read_source`` 不再返回它。
 SOURCE_ENV = 'REPORT_CASE_SNAPSHOT_SOURCE'
 SOURCE_SNAPSHOT = 'snapshot'
 SOURCE_COLUMN = 'column'
@@ -97,13 +99,14 @@ class SnapshotPointer:
 # ------------------------------------------------------------------ 读源开关
 
 def read_source() -> str:
-    """当前读源：``snapshot``（默认）或 ``column``。
+    """当前读源：恒为 ``snapshot``（解引用）。
 
-    开关是回滚通道，取值非法时按默认 ``snapshot`` 处理（宁可按新口径读并在
-    数据缺失时显式报错，也不静默退回旧口径掩盖回填缺口）。
+    R1 的 ``column`` 回滚通道随 M1（INT-1995）DROP 9 个内容列而失效：列都没了，
+    不可能再按列读。旧 env 里残留 ``REPORT_CASE_SNAPSHOT_SOURCE=column`` 一律
+    按 ``snapshot`` 处理（宁可按新口径读并在数据缺失时显式报错，也不制造
+    AttributeError 让上层读不到 payload 字段）。
     """
-    raw = (os.environ.get(SOURCE_ENV) or '').strip().lower()
-    return SOURCE_COLUMN if raw == SOURCE_COLUMN else SOURCE_SNAPSHOT
+    return SOURCE_SNAPSHOT
 
 
 # ------------------------------------------------------------------ payload 构造
@@ -198,8 +201,10 @@ def apply_to_row(session, row: Dict[str, Any]) -> Dict[str, Any]:
     拷贝：加了指针列之后，导出会把 ``snapshot_sha256`` 一起带走，而
     ``report_case_snapshots`` 并不同行迁移 → 导进目标库就是**悬空指针**。
 
-    口径：**内容列与指针同时存在时以内容列为准重算并覆盖指针**（避免导入了别的
-    环境的 sha）。纯指针行（九字段内容列一个都没有，M1 之后才会出现）原样保留。
+    口径：**内容列与指针同时存在时以内容列为准重算并覆盖指针**（兼容 R1 时代
+    的旧包：带 12 列内容的包导进 M1 库，重算后指针指向本库快照行，不悬空）。
+    **纯指针行（九字段内容列一个都没有，M1 之后的包形态）原样保留**——包内快照
+    行由导入侧先行写入（先快照后用例），指针直接指向包内 sha。
     ``snapshot_created_at`` 优先沿用源行的值 / 源行 ``created_at``，保持「内容生成
     时间」语义，不回退成导入时刻。
     """
@@ -337,18 +342,16 @@ class ResolvedReportCase:
 
 
 def resolve_rows(session, rows: Iterable, report_id: Optional[int] = None) -> List:
-    """按读源开关解引用一批 ``report_cases`` 行。
+    """解引用一批 ``report_cases`` 行（M1 起恒走快照）。
 
-    - ``REPORT_CASE_SNAPSHOT_SOURCE=column``：原样返回行（R1 回滚通道）。
-    - 默认 ``snapshot``：一次批量取回 ``payload_gz``，解压 + 校验后返回
-      :class:`ResolvedReportCase`（属性名不变）。
+    一次批量取回 ``payload_gz``，解压 + 校验后返回 :class:`ResolvedReportCase`
+    （属性名与 ``ReportCase`` PO 一致，上层一行不用改）。
 
     失败语义（硬约束）：行上没有指针、或指针指向的快照行不存在、或 sha 不符，
-    一律**显式抛错**——禁止返回空 ``cases``，禁止回退内容列（否则兼容层会一直
-    活到 M1 之后）。R1 期间列还在，更要守住这一条。
+    一律**显式抛错**——禁止返回空 ``cases``（M1 已删内容列，也没有可回退的列）。
     """
     rows = list(rows or [])
-    if not rows or read_source() == SOURCE_COLUMN:
+    if not rows:
         return rows
 
     shas = []
@@ -358,7 +361,7 @@ def resolve_rows(session, rows: Iterable, report_id: Optional[int] = None) -> Li
             raise ReportCaseSnapshotMissingError(
                 f'报告 {report_id} 的用例行 id={getattr(row, "id", None)} 没有快照指针'
                 f'（snapshot_sha256 IS NULL）：回填门禁未归零，不能切快照读源；'
-                f'确认 `--gate` 为 0 或临时设 {SOURCE_ENV}={SOURCE_COLUMN}')
+                f'先确认 `--gate` 为 0（M1 后无内容列可回退）')
         shas.append(sha)
 
     payloads = fetch_batch(session, shas, report_id=report_id)

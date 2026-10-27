@@ -105,18 +105,20 @@ class ReportChildrenWriteMixin:
         return self._add_po(po)
 
     def add_case(self, report_id: int, case_data: dict) -> int:
-        """创建报告用例记录（INT-1994：九字段 payload 双写外置快照）。
+        """创建报告用例记录（INT-1994/1995：九字段 payload 外置快照）。
 
         写序固定为「算 sha → 快照表 INSERT … ON CONFLICT DO NOTHING → 行上写
         指针 → 插入用例行」：反序会出现「行上有指针、表里没内容」的悬空指针；
-        同值并发插入靠内容寻址主键天然收敛。R1 期间**同时照旧写原内容列**
-        （``REPORT_CASE_SNAPSHOT_SOURCE=column`` 回滚要能读）。
+        同值并发插入靠内容寻址主键天然收敛。
+
+        INT-1995（档4 M1）：9 个内容列已 DROP，用例行只写五列 + 4 个指针列；
+        payload 内容全部进快照表，读侧经解引用还原（属性名不变）。
 
         Args:
             report_id: 报告 ID
             case_data: 用例数据字典，含 test_case_id/name/description/category/tags/
                        metrics/results/audios/reference_params/algorithm_results/
-                       algorithm_type/logs 等字段
+                       algorithm_type/logs 等字段（内容字段仅用于构造快照 payload）
 
         Returns:
             新创建的用例记录 ID
@@ -124,15 +126,6 @@ class ReportChildrenWriteMixin:
         po = ReportCase(
             report_id=report_id,
             test_case_id=case_data.get('test_case_id'),
-            name=case_data.get('name'),
-            description=case_data.get('description'),
-            category=case_data.get('category'),
-            tags=case_data.get('tags'),
-            metrics=case_data.get('metrics'),
-            results=case_data.get('results'),
-            audios=case_data.get('audios'),
-            reference_params=case_data.get('reference_params'),
-            algorithm_results=case_data.get('algorithm_results'),
             algorithm_type=case_data.get('algorithm_type'),
             logs=case_data.get('logs'),
         )

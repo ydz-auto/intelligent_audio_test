@@ -128,29 +128,25 @@ class ReportRawData(Base):
 class ReportCase(Base):
     """报告用例数据模型 (Report Case Model)
     存储报告的单个用例详情，一个 case 一行记录。与 Report 多对一关联。
+
+    INT-1995（档4 M1）：九字段 payload 内容列已 DROP，行上只留五列 + 4 个
+    快照指针列。payload 内容（name / description / category / tags / metrics /
+    results / audios / reference_params / algorithm_results）经解引用出口
+    ``ResolvedReportCase`` 从 ``report_case_snapshots`` 还原，属性名不变。
+    ``idx_report_cases_category`` 随 ``category`` 列一并删除（该索引无其它用途）。
     """
     __tablename__ = 'report_cases'
     __table_args__ = (
         Index('idx_report_cases_report_id', 'report_id'),
         Index('idx_report_cases_test_case_id', 'test_case_id'),
-        Index('idx_report_cases_category', 'category'),
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='用例数据唯一ID')
     report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, comment='关联报告ID')
     test_case_id = Column(String(50), comment='关联测试用例ID')
-    name = Column(String(500), comment='用例名称')
-    description = Column(Text, comment='用例描述')
-    category = Column(String(255), comment='用例分组')
-    tags = Column(JSON, comment='用例标签列表')
-    metrics = Column(JSON, comment='指标数据 {resource: {dim_name: value}}')
-    results = Column(JSON, comment='执行结果列表')
-    audios = Column(JSON, comment='音频列表')
-    reference_params = Column(JSON, comment='参考参数')
-    algorithm_results = Column(JSON, comment='算法结果')
     algorithm_type = Column(String(100), comment='算法类型')
     logs = Column(Text, comment='日志')
     # INT-1994（档4 R1）：九字段 payload 外置到 report_case_snapshots 的指针列。
-    # 全部可空 / 无默认值 / 无索引；R1 期间原内容列照旧双写（供 REPORT_CASE_SNAPSHOT_SOURCE=column 回滚）。
+    # 全部可空 / 无默认值 / 无索引。
     snapshot_uri = Column(String(128), comment='快照载体路径 db://report_case_snapshots/{sha256}')
     snapshot_sha256 = Column(CHAR(64), comment='快照内容主键（解引用 / 回填判据 / 门禁 / sweep 的一等键）')
     snapshot_bytes = Column(BigInteger, comment='快照压缩后字节数（gzip）')

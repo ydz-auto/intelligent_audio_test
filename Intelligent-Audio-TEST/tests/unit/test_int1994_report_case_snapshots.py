@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
-"""INT-1994（档4 R1）：report_cases 九字段 payload 内容寻址外置。
+"""INT-1994/1995（档4 R1/M1）：report_cases 九字段 payload 内容寻址外置。
 
 覆盖口径（设计文档 ``10_报告用例快照外置.md`` §2 / §5 / §6 / §8）：
 
 1. 规范化 / sha256 / gzip **纯函数复用** ``shared/utils/raw_payload.py``（不另写
    第二套算法）；
-2. 双写：快照行 + 行上 4 指针列，同一事务、先快照后行；同值只产生一行快照；
-3. 解引用等价：``load_cases`` / ``get_cases_by_report_id`` 属性名不变、值与原列
-   逐项相等，且 ``metrics == []`` 不被折成 ``{}``（逐字节冻结的前提）；
-4. 失败语义：指针为 NULL / 快照行缺失 / sha 不符，一律**显式抛错**（不返回空，
-   不回退内容列）；
-5. 回滚开关 ``REPORT_CASE_SNAPSHOT_SOURCE=column|snapshot`` 两侧可切；
-6. 导入 / 替换链路不悬空：按行上内容列重算并覆盖指针，``snapshot_created_at``
-   沿用源行时间；
-7. 登记：新表进 ``tests/data/schema_baseline.json``、进 ``create_all_tables``
-   模型全集（``EXPECTED_TABLE_COUNT``）与引导链。
+2. 写路径：快照行 + 行上 4 指针列，同一事务、先快照后行；同值只产生一行快照；
+   M1（INT-1995）之后内容列已 DROP，行上只留五列 + 指针列；
+3. 解引用：``load_cases`` / ``get_cases_by_report_id`` 属性名不变、值从快照还原，
+   且 ``metrics == []`` 不被折成 ``{}``（逐字节冻结的前提）；M1 起恒走快照读源，
+   ``REPORT_CASE_SNAPSHOT_SOURCE=column`` 不再生效；
+4. 失败语义：指针为 NULL / 快照行缺失 / sha 不符，一律**显式抛错**（不返回空）；
+5. 导入 / 替换链路不悬空：R1 旧包按行上内容列重算并覆盖指针，M1 包（快照行 +
+   纯指针用例行）先建快照再建用例行，``snapshot_created_at`` 沿用源行时间；
+6. 登记：新表进 ``tests/data/schema_baseline.json``、进 ``create_all_tables``
+   模型全集（``EXPECTED_TABLE_COUNT``）与引导链；M1 后九字段内容列从基线移除。
 
 隔离方式：sqlite 内存库建 test_reports / report_cases / report_case_snapshots
 三表 + monkeypatch 三个 mixin 模块的 ``get_db_session``（同
@@ -158,9 +158,12 @@ class TestDualWrite:
         session = session_factory()
         try:
             po = session.query(ReportCase).filter(ReportCase.id == case_id).one()
-            # 双写：内容列照旧在（回滚通道）
-            assert po.name == data['name']
-            assert po.metrics == data['metrics']
+            # INT-1995（M1）：内容列已 DROP，行上只有五列 + 指针列
+            assert po.test_case_id == data['test_case_id']
+            assert po.algorithm_type == data['algorithm_type']
+            assert po.logs == data['logs']
+            for field in store.PAYLOAD_FIELDS:
+                assert not hasattr(po, field), f'内容列 {field} 不应还在行上'
             # 指针四列齐全
             payload = store.build_payload(data)
             sha = store.payload_sha(payload)
@@ -206,67 +209,55 @@ class TestDualWrite:
         assert _snapshot_count(session_factory) == 1
 
 
-# ------------------------------------------------------------------ 3. 解引用等价 / 开关
+# ------------------------------------------------------------------ 3. 解引用（恒走快照）
 
 class TestDereference:
-    def test_load_cases_and_get_cases_match_column_read(self, session_factory,
-                                                        repository, monkeypatch):
+    def test_load_cases_and_get_cases_resolve_snapshot_payload(self, session_factory,
+                                                               repository):
+        """M1：内容列已 DROP，读侧必须经快照解引用出九字段 payload。"""
         repository.add_case(REPORT_ID, _case_payload())
         repository.add_case(REPORT_ID, _case_payload(
             test_case_id='CASE-2', name='空指标用例', metrics=[], results=[],
             algorithm_results=[], tags=[]))
 
-        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_SNAPSHOT)
-        snapshot_entities = repository.load_cases(REPORT_ID)
-        snapshot_rows = repository.get_cases_by_report_id(REPORT_ID)
+        entities = repository.load_cases(REPORT_ID)
+        rows = repository.get_cases_by_report_id(REPORT_ID)
 
-        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_COLUMN)
-        column_entities = repository.load_cases(REPORT_ID)
-        column_rows = repository.get_cases_by_report_id(REPORT_ID)
-
-        assert len(snapshot_entities) == len(column_entities) == 2
-        assert [e.result_summary for e in snapshot_entities] == \
-               [e.result_summary for e in column_entities]
-        for snap, col in zip(snapshot_rows, column_rows):
+        assert len(entities) == len(rows) == 2
+        expected = {c['test_case_id']: c for c in [_case_payload(),
+                                                   _case_payload(
+                                                       test_case_id='CASE-2',
+                                                       name='空指标用例',
+                                                       metrics=[], results=[],
+                                                       algorithm_results=[],
+                                                       tags=[])]}
+        for entity, row in zip(entities, rows):
+            summary = entity.result_summary
             for field in store.PAYLOAD_FIELDS:
-                assert getattr(snap, field) == getattr(col, field), field
+                assert summary[field] == expected[row.test_case_id][field], field
+                assert getattr(row, field) == expected[row.test_case_id][field], field
+            # 行上保留字段透传
+            assert summary['algorithm_type'] == 'asr'
+            assert row.logs == 'ok'
 
-    def test_empty_list_payload_survives_roundtrip(self, session_factory, repository,
-                                                   monkeypatch):
+    def test_empty_list_payload_survives_roundtrip(self, session_factory, repository):
         repository.add_case(REPORT_ID, _case_payload(
             test_case_id='CASE-E', metrics=[], results=[], algorithm_results=[]))
-        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_SNAPSHOT)
         entity = repository.load_cases(REPORT_ID)[0]
         assert entity.result_summary['metrics'] == []
         assert entity.result_summary['results'] == []
         assert entity.result_summary['algorithm_results'] == []
 
-    def test_column_switch_reads_row_columns_not_snapshot(self, session_factory,
-                                                          repository, monkeypatch):
-        """开关切 column 后必须读行上列值（快照内容故意改成另一份）。"""
-        from report_service.infrastructure.persistence.models import ReportCase
-
-        repository.add_case(REPORT_ID, _case_payload())
-        other_payload = store.build_payload(_case_payload(name='快照里的名字'))
-        session = session_factory()
-        try:
-            other = store.put(session, other_payload)
-            row = session.query(ReportCase).one()
-            row.snapshot_sha256 = other.sha256
-            session.commit()
-        finally:
-            session.close()
-
-        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_SNAPSHOT)
-        assert repository.load_cases(REPORT_ID)[0].result_summary['name'] == '快照里的名字'
-        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_COLUMN)
-        assert repository.load_cases(REPORT_ID)[0].result_summary['name'] == '播放在线音乐'
+    def test_column_env_ignored_after_m1(self, monkeypatch):
+        """M1：内容列已删，REPORT_CASE_SNAPSHOT_SOURCE=column 不再生效，恒走快照。"""
+        monkeypatch.setenv(store.SOURCE_ENV, 'column')
+        assert store.read_source() == store.SOURCE_SNAPSHOT
 
     def test_default_source_is_snapshot(self, monkeypatch):
         monkeypatch.delenv(store.SOURCE_ENV, raising=False)
         assert store.read_source() == store.SOURCE_SNAPSHOT
-        monkeypatch.setenv(store.SOURCE_ENV, 'COLUMN')  # 大小写不敏感
-        assert store.read_source() == store.SOURCE_COLUMN
+        monkeypatch.setenv(store.SOURCE_ENV, 'COLUMN')  # 大小写不敏感也不生效
+        assert store.read_source() == store.SOURCE_SNAPSHOT
         monkeypatch.setenv(store.SOURCE_ENV, 'nonsense')
         assert store.read_source() == store.SOURCE_SNAPSHOT
 
@@ -309,7 +300,8 @@ class TestFailureSemantics:
 
         with pytest.raises(store.ReportCaseSnapshotMissingError) as excinfo:
             repository.load_cases(REPORT_ID)
-        assert store.SOURCE_ENV in str(excinfo.value)
+        # M1：无内容列可回退，提示回到 --gate 归零
+        assert '`--gate`' in str(excinfo.value)
 
     def test_sha_mismatch_raises_corrupt(self, session_factory, repository):
         from report_service.infrastructure.persistence.models import ReportCaseSnapshot
@@ -364,21 +356,25 @@ class TestRawPayloadExport:
         assert c['algorithm_type'] == 'asr'
         assert c['logs'] == 'ok'
 
-    def test_handler_returns_values_byte_identical_between_read_sources(self,
-                                                                        session_factory,
-                                                                        repository,
-                                                                        monkeypatch):
-        """快照读源与列读源解出值逐项相等（R1 双写，发布冻结逐字节的前提）。"""
+    def test_handler_resolves_payload_from_snapshot_source(self, session_factory,
+                                                           repository, monkeypatch):
+        """M1：快照读源解出原始九字段值，与写入入参逐项相等（发布冻结的前提）。"""
         repository.add_case(REPORT_ID, _case_payload())
         repository.add_case(REPORT_ID, _case_payload(
             test_case_id='CASE-2', metrics=[], results=[], algorithm_results=[], tags=[]))
 
-        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_SNAPSHOT)
-        snap = self._handler(repository).handle_get_report_cases_raw_payload(REPORT_ID)['cases']
-        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_COLUMN)
-        col = self._handler(repository).handle_get_report_cases_raw_payload(REPORT_ID)['cases']
-
-        assert snap == col
+        cases = self._handler(repository).handle_get_report_cases_raw_payload(REPORT_ID)['cases']
+        by_id = {c['test_case_id']: c for c in cases}
+        assert set(by_id) == {'CASE-1', 'CASE-2'}
+        for test_case_id, c in by_id.items():
+            payload = store.build_payload(_case_payload(
+                test_case_id=test_case_id,
+                **(dict(metrics=[], results=[], algorithm_results=[], tags=[])
+                   if test_case_id == 'CASE-2' else {})))
+            for field in store.PAYLOAD_FIELDS:
+                assert c[field] == payload[field], f'{test_case_id}.{field}'
+            assert c['algorithm_type'] == 'asr'
+            assert c['logs'] == 'ok'
 
     def test_handler_propagates_corrupt_snapshot_error(self, session_factory,
                                                        repository, monkeypatch):
@@ -499,7 +495,7 @@ class TestImportRecompute:
         assert _snapshot_count(session_factory) == 0
 
     def test_report_transfer_import_recomputes_case_pointers(self, session_factory):
-        """导出→导入：包里带过来的指针必须按内容列重算，导入后门禁为 0。"""
+        """R1 旧包（带内容列）导入 M1 库：按内容列重算指针，内容列不落库。"""
         from report_service.infrastructure.persistence.report_transfer_repository import (
             ReportTransferRepository,
         )
@@ -528,8 +524,96 @@ class TestImportRecompute:
             assert imported.snapshot_sha256 == expected
             assert session.query(ReportCaseSnapshot).filter(
                 ReportCaseSnapshot.sha256 == expected).count() == 1
-            # 内容列照旧落库
-            assert imported.metrics == _case_payload()['metrics']
+            # M1 库：内容列不落库，行上只剩保留字段 + 指针
+            for field in store.PAYLOAD_FIELDS:
+                assert not hasattr(imported, field), f'内容列 {field} 不应还在行上'
+            assert imported.test_case_id == 'CASE-1'
+            assert imported.algorithm_type == 'asr'
+            assert imported.logs == 'ok'
+        finally:
+            session.close()
+
+    def test_report_transfer_export_includes_base64_snapshots(self, session_factory,
+                                                              repository):
+        """导出：快照行随包携带（只带被引用 sha），payload_gz 按 base64 进 JSON。"""
+        import base64
+
+        from report_service.infrastructure.persistence.models import Report
+        from report_service.infrastructure.persistence.report_transfer_repository import (
+            ReportTransferRepository,
+        )
+
+        session = session_factory()
+        try:
+            session.add(Report(id=700, name='R', type='task', status='published',
+                               task_id=42))
+            session.commit()
+        finally:
+            session.close()
+
+        payload = store.build_payload(_case_payload())
+        gz = store.compress(store.canonical_bytes(payload))
+        repository.add_case(700, _case_payload())
+        repository.add_case(700, _case_payload(test_case_id='C2'))
+
+        exported = ReportTransferRepository().export_by_report_ids([700])
+        case_rows = exported['report_cases']
+        snap_rows = exported['report_case_snapshots']
+        # 两个用例同 payload → 1 个快照行；payload_gz 是 base64 串（非 bytes）
+        assert len(snap_rows) == 1
+        assert isinstance(snap_rows[0]['payload_gz'], str)
+        assert base64.b64decode(snap_rows[0]['payload_gz']) == gz
+        assert snap_rows[0]['payload_bytes'] == len(gz)
+        shas = {r['snapshot_sha256'] for r in case_rows}
+        assert {r['sha256'] for r in snap_rows} == shas
+
+    def test_report_transfer_import_m1_package_carries_snapshots(self, session_factory):
+        """M1 包（快照行 + 纯指针用例行）：先建快照行再建用例行，导入后门禁为 0。"""
+        import base64
+
+        from report_service.infrastructure.persistence.report_transfer_repository import (
+            ReportTransferRepository,
+        )
+
+        repo = ReportTransferRepository()
+        payload = store.build_payload(_case_payload())
+        raw = store.canonical_bytes(payload)
+        sha = store.sha256_of_bytes(raw)
+        gz = store.compress(raw)
+        case_row = {'id': 501, 'report_id': 700, 'test_case_id': 'CASE-1',
+                    'algorithm_type': 'asr', 'logs': 'ok',
+                    'snapshot_sha256': sha,
+                    'snapshot_uri': f'db://report_case_snapshots/{sha}',
+                    'snapshot_bytes': len(gz),
+                    'snapshot_created_at': '2026-02-03T04:05:06+08:00'}
+        snapshot_row = {'sha256': sha,
+                        'payload_gz': base64.b64encode(gz).decode('ascii'),
+                        'payload_bytes': len(gz),
+                        'created_at': '2026-02-03T04:05:06+08:00'}
+        tables_rows = {
+            'test_reports': [{'id': 700, 'name': 'R', 'type': 'task',
+                              'status': 'published', 'task_id': 42,
+                              'created_at': '2026-02-03T04:00:00+08:00'}],
+            'report_cases': [case_row],
+            'report_case_snapshots': [snapshot_row],
+        }
+        mapping, _pks = repo.import_reports(tables_rows, {})
+
+        from report_service.infrastructure.persistence.models import (
+            ReportCase, ReportCaseSnapshot,
+        )
+        session = session_factory()
+        try:
+            imported = session.query(ReportCase).one()
+            assert imported.report_id == mapping[700]
+            assert imported.snapshot_sha256 == sha
+            snap = session.query(ReportCaseSnapshot).filter(
+                ReportCaseSnapshot.sha256 == sha).one()
+            assert snap.payload_bytes == len(gz)
+            assert store.decompress(bytes(snap.payload_gz)) == raw
+            # 幂等：同包再导一次，快照不重复、指针不变
+            repo.import_reports(tables_rows, {})
+            assert session.query(ReportCaseSnapshot).count() == 1
         finally:
             session.close()
 
@@ -589,6 +673,8 @@ class TestRegistration:
             'sha256', 'payload_gz', 'payload_bytes', 'created_at'}
         assert set(store.POINTER_COLUMNS) <= set(baseline['report_cases'])
         assert not {'deleted', 'report_id'} & set(baseline['report_case_snapshots'])
+        # INT-1995（M1）：九字段内容列已 DROP，基线不再含它们
+        assert not set(store.PAYLOAD_FIELDS) & set(baseline['report_cases'])
 
     def test_create_all_registers_snapshot_table_and_bootstrap_runs_migration(self):
         root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

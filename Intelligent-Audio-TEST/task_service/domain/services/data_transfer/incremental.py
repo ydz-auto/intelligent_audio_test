@@ -18,9 +18,12 @@ from shared.constants.data_transfer import (
     TransferTable,
 )
 
-# 报告 7 表的表名集合（子表 6 张）
+# 报告 8 表的表名集合。子表 6 张按 report_id 归属父行翻译；
+# report_case_snapshots 是内容寻址共享表（无 report_id），单独原样透传（INT-1995）。
 _REPORT_TABLE_NAMES = tuple(table.value for table in INCREMENTAL_REPORT_TABLES)
-_CHILD_REPORT_TABLES = _REPORT_TABLE_NAMES[1:]
+_CHILD_REPORT_TABLES = tuple(
+    name for name in _REPORT_TABLE_NAMES[1:]
+    if name != TransferTable.REPORT_CASE_SNAPSHOTS.value)
 
 
 def _int_or_none(value) -> Optional[int]:
@@ -126,6 +129,13 @@ def translate_report_tables(tables: Dict[str, List[dict]],
             else:
                 rewritten.pop('report_id', None)  # 无 id 父行 → 子行同样不带 id
             result[table].append(rewritten)
+
+    # INT-1995（档4 M1）：快照行内容寻址、无 task_id / report_id 需翻译，
+    # 原样透传（先快照后用例的导入顺序在 report_service 段保证）。
+    result[TransferTable.REPORT_CASE_SNAPSHOTS.value] = [
+        row for row in (tables.get(TransferTable.REPORT_CASE_SNAPSHOTS.value) or [])
+        if isinstance(row, dict)
+    ]
 
     return result, sorted(unmapped_task_ids)
 

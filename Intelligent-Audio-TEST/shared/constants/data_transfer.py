@@ -11,8 +11,10 @@ V9.7.31 微服务适配规格（INT-25）。
   / task_cherry_pick_relations（INT-656：cherry-pick 容器任务导出内联——容器自身
   无 test_results 行，导出需内联所选结果并携带专有关系表，导入侧可重建容器）
 - evaluation_service（1 张）：test_result_dimensions
-- report_service（7 张）：test_reports / report_summaries / report_summary_meta /
+- report_service（8 张）：test_reports / report_summaries / report_summary_meta /
   report_raw_data / report_cases / report_metric_stats / report_comparison_matrix
+  / report_case_snapshots（INT-1995 / 档4 M1：报告用例快照外置表纳入 transfer 表集；
+  内容寻址、无 report_id、先建快照行再建用例行）
 """
 from dataclasses import dataclass
 from enum import Enum
@@ -76,7 +78,7 @@ DEFAULT_INCREMENTAL_INCLUDE = (IncrementalInclude.DIMENSIONS.value,
 
 
 class TransferTable(str, Enum):
-    """导出包内的 16 张表（值 = 表名 = db/ 目录下的 JSON 文件名）"""
+    """导出包内的 17 张表（值 = 表名 = db/ 目录下的 JSON 文件名）"""
     TEST_TASKS = 'test_tasks'
     TASK_CASE_RELATIONS = 'task_case_relations'
     TASK_DEVICE_RELATIONS = 'task_device_relations'
@@ -93,6 +95,9 @@ class TransferTable(str, Enum):
     REPORT_CASES = 'report_cases'
     REPORT_METRIC_STATS = 'report_metric_stats'
     REPORT_COMPARISON_MATRIX = 'report_comparison_matrix'
+    # INT-1995（档4 M1）：报告用例内容寻址快照表。无自增 id、无 report_id，
+    # 纯内容寻址（sha256 主键），导出按被引用 sha 携带、导入先建快照再建用例行。
+    REPORT_CASE_SNAPSHOTS = 'report_case_snapshots'
 
 
 class TransferOwner(str, Enum):
@@ -120,6 +125,7 @@ TABLE_OWNERS = {
     TransferTable.REPORT_CASES: TransferOwner.REPORT_SERVICE,
     TransferTable.REPORT_METRIC_STATS: TransferOwner.REPORT_SERVICE,
     TransferTable.REPORT_COMPARISON_MATRIX: TransferOwner.REPORT_SERVICE,
+    TransferTable.REPORT_CASE_SNAPSHOTS: TransferOwner.REPORT_SERVICE,
 }
 
 
@@ -192,7 +198,7 @@ def fk_rules_of(table: TransferTable) -> Tuple[FkRule, ...]:
 
 
 # ===== 增量包（链路 2，INT-1761 / D0 裁定 A1-A2）=====
-# 增量包只含维度评分 + 报告 7 表（不含任务 / 结果 / 用例 / 文件本体）：
+# 增量包只含维度评分 + 报告 8 表（不含任务 / 结果 / 用例 / 文件本体）：
 # 包内 id 已是 A 原始 id，导入不做重映射（维度 id 除外，按名称链翻译）
 INCREMENTAL_DIMENSION_TABLES = (TransferTable.TEST_RESULT_DIMENSIONS,)
 INCREMENTAL_REPORT_TABLES = (
@@ -203,6 +209,9 @@ INCREMENTAL_REPORT_TABLES = (
     TransferTable.REPORT_CASES,
     TransferTable.REPORT_METRIC_STATS,
     TransferTable.REPORT_COMPARISON_MATRIX,
+    # INT-1995（档4 M1）：快照表纳入增量报告段。内容寻址、无 report_id 需翻译，
+    # 导出随被引用 sha 携带、导入先建快照再建用例行（避免悬空指针）。
+    TransferTable.REPORT_CASE_SNAPSHOTS,
 )
 
 # 增量导出 / 导入失败码（同时作为 HTTP 状态码，走 TaskConfigResponse.code）

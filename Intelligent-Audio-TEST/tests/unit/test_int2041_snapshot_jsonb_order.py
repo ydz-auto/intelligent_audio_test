@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """INT-2041（P1 缺陷）：snapshot 读源保持 jsonb 键序 + 用例行序确定化。
 
-背景（父卡 INT-2008 解阻窗口实测）：``REPORT_CASE_SNAPSHOT_SOURCE=column`` 读
-行上 jsonb 列拿到的是 PG jsonb 键序（先比键 UTF-8 字节长度、再字节 memcmp）；
+背景（父卡 INT-2008 解阻窗口实测）：R1 期间 ``REPORT_CASE_SNAPSHOT_SOURCE=column``
+读行上 jsonb 列拿到的是 PG jsonb 键序（先比键 UTF-8 字节长度、再字节 memcmp）；
 ``snapshot`` 读源解出来的 payload 是 ``canonical_bytes(sort_keys=True)`` 的
 **字典序**。两者取值完全相同，但只要消费方按 ``dict.items()`` 遍历（
 ``stats_mixin._expand_rounds()`` 展开 ``@round:N``），差别就会以**列表条目
 顺序**的形式浮到 ``algorithmResults`` 上 → 22 份报告里 7 份（3,686 例）不
-逐字节等价。
+逐字节等价。M1（INT-1995）删列后恒走快照读源，``normalize_jsonb_order``
+递归还原 jsonb 键序，@round 展开顺序即差异现场本身。
 
 覆盖口径：
 
@@ -16,7 +17,7 @@
 2. ``fetch_batch`` 返回的就是 jsonb 键序，且 **sha 校验口径没变**（写侧仍按
    ``canonical_bytes`` 算，A→B→A 往返不崩）；
 3. 详情链路（``load_cases`` → ``build_case_dict_from_entity`` → ``build_case_item``）
-   在两种读源下产出逐字节相同（含 ``algorithmResults`` 条目顺序）；
+   M1 后恒走快照读源，产出 jsonb 键序（含 ``algorithmResults`` 条目顺序）；
 4. ``load_cases`` / ``get_cases_by_report_id`` 的查询带 ``ORDER BY report_cases.id``
    （结构断言：抓到实际 SQL），返回行按 id 升序。
 
@@ -252,48 +253,45 @@ class TestFetchBatchReturnsJsonbOrder:
 # ------------------------------------------------------------------ 3. 详情链路等价
 
 class TestDetailPathEquivalence:
-    def test_snapshot_and_column_sources_build_identical_case_items(
-            self, session_factory, repository, monkeypatch):
-        """两读源在详情链路产出逐字节相同（含 algorithmResults 条目顺序）。
+    def test_snapshot_source_builds_case_items_with_jsonb_round_order(
+            self, session_factory, repository):
+        """M1 起恒走快照读源：详情链路产出 jsonb 键序（含 algorithmResults 条目顺序）。
 
-        sqlite 的 JSON 列按写入时的键序原样存回，所以这里把用例按 **jsonb
-        键序** 写进去 = 模拟 PG ``column`` 读源；snapshot 读源走快照 + 键序还原。
+        R1 用 ``column`` 读源模拟 PG jsonb 键序做逐字节对拍；M1（INT-1995）删列后
+        只有快照读源，其 ``normalize_jsonb_order`` 还原的正是 jsonb 键序，@round
+        展开顺序即差异现场本身。
         """
         repository.add_case(REPORT_ID, _rounds_case())
 
-        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_COLUMN)
-        column_items = [_detail_item(c) for c in repository.load_cases(REPORT_ID)]
-
-        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_SNAPSHOT)
         snapshot_items = [_detail_item(c) for c in repository.load_cases(REPORT_ID)]
 
-        assert len(column_items) == len(snapshot_items) == 1
-        assert canonical_bytes(snapshot_items) == canonical_bytes(column_items)
-
-        # 差异现场本身被覆盖到了：@round 条目顺序 = jsonb 的 output 键序
+        assert len(snapshot_items) == 1
+        # @round 条目顺序 = jsonb 的 output 键序（快照读源键序还原后）
         codes = [x.get('paramCode') for x in snapshot_items[0]['algorithmResults']]
         assert [c for c in codes if c and c.endswith('@round:1')] == [
             'ai_wav@round:1', 'end_ms@round:1', 'start_ms@round:1',
             'user_wav@round:1', 'record_file@round:1', 'first_frame_ms@round:1',
         ]
 
-    def test_compare_path_identical_across_sources(self, session_factory,
-                                                   repository, monkeypatch):
+    def test_compare_path_resolves_snapshot_payload(self, session_factory, repository):
+        """对比 / 挑选合并读路径（get_cases_by_report_id）M1 后从快照还原九字段。"""
         repository.add_case(REPORT_ID, _rounds_case())
         repository.add_case(REPORT_ID, _rounds_case(test_case_id='CASE-2042',
                                                     name='第二条'))
 
-        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_COLUMN)
-        column_rows = [
-            {f: getattr(r, f) for f in store.PAYLOAD_FIELDS}
+        rows = [
+            (getattr(r, 'test_case_id'),
+             {f: getattr(r, f) for f in store.PAYLOAD_FIELDS})
             for r in repository.get_cases_by_report_id(REPORT_ID)
         ]
-        monkeypatch.setenv(store.SOURCE_ENV, store.SOURCE_SNAPSHOT)
-        snapshot_rows = [
-            {f: getattr(r, f) for f in store.PAYLOAD_FIELDS}
-            for r in repository.get_cases_by_report_id(REPORT_ID)
-        ]
-        assert canonical_bytes(snapshot_rows) == canonical_bytes(column_rows)
+        assert len(rows) == 2
+        expected = {
+            'CASE-2041': _rounds_case(),
+            'CASE-2042': _rounds_case(test_case_id='CASE-2042', name='第二条'),
+        }
+        for test_case_id, payload in rows:
+            for field in store.PAYLOAD_FIELDS:
+                assert payload[field] == expected[test_case_id][field], field
 
 
 # ------------------------------------------------------------------ 4. 行序

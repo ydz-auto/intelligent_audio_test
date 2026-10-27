@@ -93,7 +93,9 @@ _MODULE_NAME = 'data_transfer_import'
 _REPORT_TABLES = (TransferTable.TEST_REPORTS, TransferTable.REPORT_SUMMARIES,
                   TransferTable.REPORT_SUMMARY_META, TransferTable.REPORT_RAW_DATA,
                   TransferTable.REPORT_CASES, TransferTable.REPORT_METRIC_STATS,
-                  TransferTable.REPORT_COMPARISON_MATRIX)
+                  TransferTable.REPORT_COMPARISON_MATRIX,
+                  # INT-1995（档4 M1）：快照表纳入报告段（先建快照再建用例行）
+                  TransferTable.REPORT_CASE_SNAPSHOTS)
 
 _CONFLICT_PREVIEW_CAP = 500
 

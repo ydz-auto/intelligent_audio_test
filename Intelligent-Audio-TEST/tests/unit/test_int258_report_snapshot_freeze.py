@@ -53,9 +53,15 @@ def _seed_report_with_full_tables(factory, *, deleted=False, analysis='整体通
     JSON 列直接传 Python 对象（与生产 psycopg2 序列化口径一致）；
     BigInteger 主键表在 sqlite 无自增，显式指定 id。
     analysis 支持 JSON config 形态（name/description/conclusion 存于其中）。
+
+    INT-1995（档4 M1）：用例行只写五列 + 快照指针，九字段 payload 走
+    report_case_snapshots（与生产写路径 add_case 同口径）。
     """
     import json as _json
 
+    from report_service.infrastructure.persistence import (
+        report_case_snapshot_store as store,
+    )
     from report_service.infrastructure.persistence.models import (
         Report, ReportSummary, ReportSummaryMeta, ReportMetricStats,
         ReportCase, ReportRawData,
@@ -94,32 +100,50 @@ def _seed_report_with_full_tables(factory, *, deleted=False, analysis='整体通
     session.add(ReportRawData(
         id=1, report_id=391,
         raw_data=[{'resource': 'res-a', 'dimension': 'WER', 'values': [7.1, 7.3]}]))
-    session.add(ReportCase(
-        report_id=391, id=9001, test_case_id='tc-1', name='登录用例',
-        category='登录功能', tags=['回归'],
-        metrics={'res-a': {'WER': 7.2}},
-        results=[{'resource': 'res-a', 'text': '你好'}],
-        audios=[], reference_params={},
-        algorithm_results={}, algorithm_type='asr', logs='round1 log'))
-    session.add(ReportCase(
-        report_id=391, id=9002, test_case_id='tc-2', name='播放用例',
-        category='播放功能', tags=[],
-        metrics={}, results=[],
-        audios=[], reference_params={},
-        algorithm_results={}, algorithm_type='asr', logs='round2 log'))
+    _seed_cases(session, (
+        dict(test_case_id='tc-1', name='登录用例', category='登录功能',
+             tags=['回归'], metrics={'res-a': {'WER': 7.2}},
+             results=[{'resource': 'res-a', 'text': '你好'}], audios=[],
+             reference_params={}, algorithm_results={}, algorithm_type='asr',
+             logs='round1 log', id=9001),
+        dict(test_case_id='tc-2', name='播放用例', category='播放功能', tags=[],
+             metrics={}, results=[], audios=[], reference_params={},
+             algorithm_results={}, algorithm_type='asr', logs='round2 log',
+             id=9002),
+    ))
     session.commit()
     session.close()
     return 391
 
 
+def _seed_cases(session, case_payloads):
+    """写用例行（五列 + 快照指针）+ 快照行（先快照后行，与 add_case 同口径）。"""
+    from report_service.infrastructure.persistence import (
+        report_case_snapshot_store as store,
+    )
+    from report_service.infrastructure.persistence.models import ReportCase
+
+    for data in case_payloads:
+        payload = store.build_payload(data)
+        pointer = store.put(session, payload)
+        po = ReportCase(
+            report_id=391, id=data['id'], test_case_id=data['test_case_id'],
+            algorithm_type=data['algorithm_type'], logs=data['logs'])
+        store.apply_pointer(po, pointer)
+        session.add(po)
+
+
 def _raw_cases_from_db(factory, report_id):
-    """从 sqlite 行读原始列值（等价 report_service 解引用出口的返回）。
+    """从 sqlite 行读原始 payload（等价 report_service 解引用出口的返回）。
 
     INT-1996：freeze_report_snapshot 改走 report_service 解引用出口（gRPC +
-    ACL）。R1 双写期间快照 payload 与行上列值同源同值，本替身按行上内容列
-    构造出口返回的原始九字段 dict，模拟 report_service 侧返回（不经
+    ACL）。INT-1995（M1）后行上无内容列，payload 从 report_case_snapshots 解引用
+    （store.resolve_rows），本替身模拟出口返回的原始九字段 dict（不经
     build_case_item 的 falsy 归一，metrics==[] 原样保留）。
     """
+    from report_service.infrastructure.persistence import (
+        report_case_snapshot_store as store,
+    )
     from report_service.infrastructure.persistence.models import ReportCase
 
     session = factory()
@@ -130,23 +154,16 @@ def _raw_cases_from_db(factory, report_id):
             .order_by(ReportCase.id.asc())
             .all()
         )
+        resolved = store.resolve_rows(session, rows, report_id=report_id)
         return [
             {
                 'id': c.id,
                 'test_case_id': c.test_case_id,
-                'name': c.name,
-                'description': c.description,
-                'category': c.category,
-                'tags': c.tags,
-                'metrics': c.metrics,
-                'results': c.results,
-                'audios': c.audios,
-                'reference_params': c.reference_params,
-                'algorithm_results': c.algorithm_results,
+                **{f: getattr(c, f) for f in store.PAYLOAD_FIELDS},
                 'algorithm_type': c.algorithm_type,
                 'logs': c.logs,
             }
-            for c in rows
+            for c in resolved
         ]
     finally:
         session.close()
@@ -171,11 +188,12 @@ class TestFreezeReportSnapshotDualTrack:
         if cls.TABLES is None:
             from report_service.infrastructure.persistence.models import (
                 Report, ReportSummary, ReportSummaryMeta, ReportMetricStats,
-                ReportCase, ReportRawData,
+                ReportCase, ReportCaseSnapshot, ReportRawData,
             )
             cls.TABLES = [Report.__table__, ReportSummary.__table__,
                           ReportSummaryMeta.__table__, ReportMetricStats.__table__,
-                          ReportCase.__table__, ReportRawData.__table__]
+                          ReportCase.__table__, ReportCaseSnapshot.__table__,
+                          ReportRawData.__table__]
         return cls.TABLES
 
     def test_freeze_v2_dual_track_structure(self, monkeypatch):

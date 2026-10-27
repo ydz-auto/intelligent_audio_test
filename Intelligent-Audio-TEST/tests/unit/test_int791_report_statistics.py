@@ -89,7 +89,7 @@ def _make_report(name, created_at=None, status='published', algorithm_type=None,
 
         if algorithm_type:
             session.add(ReportCase(id=po.id * 100, report_id=po.id, test_case_id='c1',
-                                   name=name, algorithm_type=algorithm_type))
+                                   algorithm_type=algorithm_type))
 
         session.commit()
         return po.id

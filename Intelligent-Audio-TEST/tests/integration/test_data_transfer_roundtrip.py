@@ -7,7 +7,7 @@
 - 跨服务 gRPC 段以「进程内直调真实应用服务」的假 ACL 替身接入
 - Redis 以内存假 RedisStore 替身（批次登记语义不变）
 
-覆盖：导出包结构 → 同库导入（全量 ID 冲突 → 自动重映射）→ 16 表外键一致性 →
+覆盖：导出包结构 → 同库导入（全量 ID 冲突 → 自动重映射）→ 17 表外键一致性 →
 文件路径重映射 → 维度导入段失败注入 → 全量补偿回滚。
 """
 import json
@@ -275,7 +275,7 @@ def _seed(db, storage_env):
             Report(id=300, name='报告一', type='standard', task_id=1, status='completed',
                    deleted=False, created_at=now, updated_at=now),
             ReportSummary(id=301, report_id=300, task_ids=[1], created_at=now, updated_at=now),
-            ReportCase(id=302, report_id=300, test_case_id='tc_001', name='用例一',
+            ReportCase(id=302, report_id=300, test_case_id='tc_001',
                        created_at=now, updated_at=now),
         ])
         session.commit()
@@ -308,7 +308,9 @@ class TestRoundtrip:
         with zipfile.ZipFile(zip_path) as zf:
             names = zf.namelist()
             db_files = {n for n in names if n.startswith('db/')}
-            assert len(db_files) == 16  # INT-656：新增 task_cherry_pick_relations 表（无容器任务时为空数组）
+            # INT-656：新增 task_cherry_pick_relations 表（无容器任务时为空数组）；
+            # INT-1995（M1）：新增 report_case_snapshots 表（随包携带被引用快照行）
+            assert len(db_files) == 17
             manifest = json.loads(zf.read('manifest.json'))
             # 整包导出版本随 INT-1811 由 1.0 升到 1.2（包内携带原始报文对象段）
             from shared.constants.data_transfer import FULL_MANIFEST_VERSION
@@ -458,7 +460,7 @@ class TestRoundtrip:
         且自增新 ID 不与本批次显式 ID 撞 UNIQUE。"""
         _seed(db, storage_env)
         data = _export_zip(storage_env, patched_acl, fake_redis)
-        _hard_delete_all_16_tables()
+        _hard_delete_all_17_tables()
 
         # 目标库放置与包内冲突的维度/报告/摘要占位行（悬空外键，无 FK 约束可插入）
         from datetime import datetime
@@ -637,13 +639,14 @@ class TestRoundtrip:
             session.close()
 
 
-def _hard_delete_all_16_tables():
-    """清空目标库 16 张迁移表（模拟"另一套部署"或已清空的目标库；INT-656 新增容器关系表）"""
+def _hard_delete_all_17_tables():
+    """清空目标库 17 张迁移表（模拟"另一套部署"或已清空的目标库；INT-656 新增
+    容器关系表、INT-1995 新增 report_case_snapshots）"""
     from shared.models.database import get_db_session
     from evaluation_service.infrastructure.persistence.models import TestResultDimension
     from report_service.infrastructure.persistence.models import (
-        Report, ReportCase, ReportComparisonMatrix, ReportMetricStats,
-        ReportRawData, ReportSummary, ReportSummaryMeta,
+        Report, ReportCase, ReportCaseSnapshot, ReportComparisonMatrix,
+        ReportMetricStats, ReportRawData, ReportSummary, ReportSummaryMeta,
     )
     from task_service.infrastructure.persistence.models import (
         Task, TaskAPI, TaskCase, TaskCherryPickRelation, TaskDevice,
@@ -654,7 +657,8 @@ def _hard_delete_all_16_tables():
         for model in (TaskCase, TaskDevice, TaskAPI, TaskTag, TaskMergeRelation,
                       TaskCherryPickRelation, TestResultDimension, ReportSummary,
                       ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats,
-                      ReportComparisonMatrix, Report, TestResult, Task):
+                      ReportComparisonMatrix, ReportCaseSnapshot, Report, TestResult,
+                      Task):
             session.query(model).delete()
         session.commit()
     finally:

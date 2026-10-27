@@ -302,8 +302,7 @@ def _seed_report(report_id, task_id, name, visibility='shared',
                                   raw_data={'old': True}))
         for index in range(case_count):
             session.add(ReportCase(id=report_id * 100 + index, report_id=report_id,
-                                   test_case_id=f'case-{report_id}-{index}',
-                                   name=f'用例{index}'))
+                                   test_case_id=f'case-{report_id}-{index}'))
         session.add(ReportMetricStats(id=report_id * 10 + 4, report_id=report_id,
                                       metric_data={'old': 1}))
         session.add(ReportComparisonMatrix(id=report_id * 10 + 5, report_id=report_id,

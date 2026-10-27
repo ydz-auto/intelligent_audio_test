@@ -404,8 +404,8 @@ class ReportQueryMixin:
 
         供报告生成引擎读取已存用例数据使用，返回行对象列表（属性名与 PO 一致）。
 
-        INT-1994（档4 R1）：默认按快照解引用（一次批量取 ``payload_gz``）；
-        ``REPORT_CASE_SNAPSHOT_SOURCE=column`` 时原样返回行上内容列（回滚通道）。
+        INT-1994（档4 R1）：默认按快照解引用（一次批量取 ``payload_gz``）。
+        INT-1995（档4 M1）：9 个内容列已 DROP，恒走快照解引用。
 
         INT-2041：显式 ``ORDER BY report_cases.id``——无 ORDER BY 时行序跟堆物理
         序，回填 UPDATE 即可整体换序，对比 / 挑选合并的用例顺序会跟着漂。补

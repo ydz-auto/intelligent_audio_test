@@ -216,6 +216,10 @@ class ReportPackageService:
 
         与 `GetReportDetail` / `BatchActionReports` 同一可见性口径（私有仅 owner，
         共享全员可见，admin 全量）；避免按 reportIds 枚举绕过报告详情防探测。
+
+        INT-1995（M1）：`report_case_snapshots` 是内容寻址共享资产、无 report_id，
+        按可见报告保留下来的 report_cases 引用 sha 收窄（多带会泄漏不可见报告的
+        共享 payload，少带会让可见报告解引用悬空）。
         """
         report_rows = [r for r in (tables.get(_REPORT_TABLE) or [])
                        if isinstance(r, dict) and _as_int(r.get('id')) is not None]
@@ -231,10 +235,19 @@ class ReportPackageService:
         for table, rows in (tables or {}).items():
             if table == _REPORT_TABLE:
                 filtered[table] = [r for r in report_rows if int(r['id']) in visible]
+            elif table == TransferTable.REPORT_CASE_SNAPSHOTS.value:
+                continue  # 最后按保留用例行的引用 sha 收窄
             else:
                 filtered[table] = [
                     r for r in (rows or [])
                     if isinstance(r, dict) and _as_int(r.get('report_id')) in visible]
+        kept_case_shas = {
+            str(r.get('snapshot_sha256') or '').strip()
+            for r in (filtered.get(TransferTable.REPORT_CASES.value) or [])
+            if isinstance(r, dict) and str(r.get('snapshot_sha256') or '').strip()}
+        filtered[TransferTable.REPORT_CASE_SNAPSHOTS.value] = [
+            r for r in (tables.get(TransferTable.REPORT_CASE_SNAPSHOTS.value) or [])
+            if isinstance(r, dict) and str(r.get('sha256') or '').strip() in kept_case_shas]
         return filtered
 
     @staticmethod
@@ -244,13 +257,20 @@ class ReportPackageService:
         merged: Dict[str, List[dict]] = {k: list(v or []) for k, v in base.items()}
         for table, rows in (extra or {}).items():
             current = merged.setdefault(table, [])
-            seen = {row.get('id') for row in current if isinstance(row, dict)}
+            # INT-1995：快照表主键是 sha256（内容寻址、无 id），去重键按表切换
+            key_field = ('sha256'
+                         if table == TransferTable.REPORT_CASE_SNAPSHOTS.value
+                         else 'id')
+            seen = {row.get(key_field) for row in current if isinstance(row, dict)}
             for row in rows or []:
                 if not isinstance(row, dict):
                     continue
-                if row.get('id') is not None and row.get('id') in seen:
+                key = row.get(key_field)
+                if key is not None and key in seen:
                     continue
                 current.append(row)
+                if key is not None:
+                    seen.add(key)
         return merged
 
     @staticmethod

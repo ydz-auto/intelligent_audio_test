@@ -111,8 +111,8 @@ class ReportChildrenLoadMixin:
         """加载报告的用例实体列表。
 
         INT-1994（档4 R1）：先取 ``report_cases`` 行，再**一次**批量取回
-        ``report_case_snapshots.payload_gz`` 解引用（属性名不变），
-        ``REPORT_CASE_SNAPSHOT_SOURCE=column`` 时原样读行上内容列（回滚通道）。
+        ``report_case_snapshots.payload_gz`` 解引用（属性名不变）。
+        INT-1995（档4 M1）：9 个内容列已 DROP，读侧恒走快照解引用。
 
         INT-2041：显式 ``ORDER BY report_cases.id``——不写 ORDER BY 时行序跟堆
         物理序，一次 UPDATE 回填就能整体换序，详情 / 导出据此分页或对比会漂。

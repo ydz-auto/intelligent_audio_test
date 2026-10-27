@@ -107,6 +107,26 @@ def test_translate_report_tables_drops_orphan_child_rows():
     assert [row['id'] for row in translated[TransferTable.REPORT_CASES.value]] == [1]
 
 
+def test_translate_report_tables_passes_snapshot_rows_verbatim():
+    """INT-1995：report_case_snapshots 内容寻址、无 task_id/report_id 需翻译，
+    原样透传（先快照后用例的导入顺序在 report_service 段保证）。"""
+    tables = {
+        'test_reports': [{'id': 900, 'task_id': 25}],
+        'report_case_snapshots': [
+            {'sha256': 'a' * 64, 'payload_gz': 'eJxL...', 'payload_bytes': 201,
+             'created_at': '2026-10-01T00:00:00+00:00'},
+            {'sha256': 'b' * 64, 'payload_gz': 'eJxL...', 'payload_bytes': 150,
+             'created_at': '2026-10-01T00:00:00+00:00'},
+        ],
+    }
+    translated, _ = translate_report_tables(tables, {25: 12}, {900: 77})
+    snapshots = translated[TransferTable.REPORT_CASE_SNAPSHOTS.value]
+    assert [row['sha256'] for row in snapshots] == ['a' * 64, 'b' * 64]
+    # 原样透传：不碰 payload_gz / created_at（无 id 翻译语义）
+    assert snapshots[0]['payload_gz'] == 'eJxL...'
+    assert snapshots[0]['created_at'] == '2026-10-01T00:00:00+00:00'
+
+
 # ---------- 纯函数：维度定义链翻译 ----------
 
 def _pkg_defs():
