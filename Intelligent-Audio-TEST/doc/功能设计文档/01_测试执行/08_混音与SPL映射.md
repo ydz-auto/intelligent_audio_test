@@ -576,6 +576,8 @@ class ApiRmsSplMapping(Base):
 
 > **【实现演进裁定 2026-10-14，INT-323 代码核验】本段两条路径与实现的对应关系**：①ACL 取数路径（`ApiTestAclRepositoryImpl` + `GetApiRmsSplMappings` gRPC + TTL 缓存）**未实现**——audio_service 无 api_test ACL，`api_test_service.proto` 的 `ApiRmsSplConfigService` 仅 CRUD/校准 RPC；②预载随请求传入路径**已实现但载体不同**——api_test_service `round_render_service.py:_load_spl_mapping_dict` 预载映射 dict，随每轮 `RenderAudioStream/File` 的 `render_config` 传入（`shared/proto/audio_service.proto` 字段注释含「SPL 映射」），非 `StartAPITestRequest`（该请求仅 task_id/device_type/device_id/case_ids 四字段，无映射/增益字段）。计算落位 audio_service（§3.3）经核验正确：`audio_stream_orchestrator.py:167` 在混音管线内调 `ApiRmsSplService.compute_source_gain`，插值/限幅/RMS 补偿全在 audio_service 进程；写路径（校准/CRUD）仍在 api_test_service。
 
+> **【实现演进裁定 2026-10-27，INT-2082】校准点集口径定为「目标 SPL ↔ 该 SPL 对应 dBFS」**（`calibration_data.points[{target_spl, gain_linear, rms_dbfs}]` 三元组不变）：写侧（create/update 带 points、`POST /digital-spl/{id}/calibrate`）每个点 `rms_dbfs` **必填主输入**；`gain_linear` 由后端按 `10^((rms_dbfs+30)/20)`（-30 dBFS 基准）**推导覆盖**，提交值不参与存储（前端按同一公式推导提交，与后端一致）。点级校验统一在 api_test_service 应用层（`_validate_mapping_data`/`calibrate` 共用规则表，`api_gateway` schema `calibration_data` 保持 Dict 仅 docstring，不做逐点语义校验避免双校验路径）：`target_spl` 有限 ∈[0,120]、`rms_dbfs` 必填有限 ∈[-120,0]、重复 `target_spl` 数值相等即判重（`65`/`65.0` 同值）任一重复整单 400、落库前按 `target_spl` 升序（稳定）；错误码 400、报错信息定位点下标「校准点[i]」。读侧容忍旧数据 `rms_dbfs=null`（不迁移）。
+
 ### 6.3 增益计算链路
 
 ```
@@ -595,6 +597,8 @@ API 链路（非实时/流式/Realtime 通用，V9.7.31 跨服务版）:
     → RenderAudioStream/RenderAudioFile 输出
       → 非实时: 整文件 POST | 流式: SSE chunk | Realtime: WS chunk
 ```
+
+> **【实现演进裁定 2026-10-27，INT-2084/2085】`_calculate_gain` 插值双路径**（api_test_service 与 audio_service 同口径）：新数据（`calibration_points` 全点含 `rms_dbfs`）按 dBFS 口径插值——`np.interp(xs=target_spl, ys=rms_dbfs)` 求中间点 rms 再 `gain = 10^((rms+30)/20)`（对数增益域线性插值，与输出侧 `rms_dbfs_to_spl` 同一 -30 dBFS 基准）；旧数据（任一点 `rms_dbfs=null`）回退 `gain_linear` 插值，存量兼容。结果均经 `_apply_gain_limit` 限幅；audio_service 的 `spl_interp_boundary`（clamp/extrapolate）边界行为不变。输出侧 `rms_dbfs_to_spl = reference_spl + (rms_dbfs + 30)` 锚定 -30 dBFS 基准，不改。
 
 ### 6.4 SPL 未配置时的行为
 

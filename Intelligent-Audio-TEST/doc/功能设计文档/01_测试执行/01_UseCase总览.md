@@ -431,6 +431,9 @@ Main Flow:
      ├── reference_spl: 65.0
      ├── reference_gain_linear: 1.0
      └── calibration_data: {points: [{target_spl, gain_linear, rms_dbfs}, ...]}
+         # INT-2082 口径：rms_dbfs 必填主输入（目标 SPL ↔ 该 SPL 对应 dBFS）；
+         # gain_linear 后端按 10^((rms_dbfs+30)/20) 推导覆盖、提交值不落库；
+         # 落库前按 target_spl 升序（稳定）
   4. 执行校准（可选）
      ├── 获取 DistributedLock("spl_calibration:{api_id}")  ← 分布式互斥（新增）
      ├── 发送已知 RMS 的音频到 API
@@ -455,6 +458,8 @@ Main Flow:
 
 Postcondition: api_rms_spl_mappings 表新增记录，与 API 关联
 ```
+
+> **【实现演进裁定 2026-10-27，INT-2082】校准点集口径**：写侧每个点 `rms_dbfs` 必填主输入；`gain_linear` 由后端按 `10^((rms_dbfs+30)/20)`（-30 dBFS 基准）推导覆盖落库，提交值不落库；点级校验（`target_spl` ∈[0,120] 有限 / `rms_dbfs` ∈[-120,0] 必填有限 / 重复 `target_spl` 数值相等即判重 / 落库升序）统一在 api_test_service 应用层，错误码 400 报错定位「校准点[i]」；读侧容忍旧数据 `rms_dbfs=null`（不迁移）。执行期插值双路径见《08_混音与SPL映射.md》§6.2/6.3。
 
 ### UC-0903：创建任务时关联被测设备
 
