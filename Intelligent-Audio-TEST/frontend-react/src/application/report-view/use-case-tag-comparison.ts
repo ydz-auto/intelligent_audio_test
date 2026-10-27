@@ -39,19 +39,21 @@ export function useCaseTagComparison(report: ReportDetailData) {
   /** 标签来源合并（updateData 平移：allTags + allCaseTags + tag_metric_data + cases.tags） */
   const allTags = useMemo(() => {
     const map = new Map<string, ReportTag>()
-    for (const tag of [...(summary.all_tags ?? []), ...summary.all_case_tags]) {
+    const put = (tag: ReportTag) => {
+      // 真实库存在 tag_name 为空的聚合行（报告 395 tag_metric_data 实测）：空名标签跳过
+      if (!tag.tag_name || !String(tag.tag_name).trim()) return
       const id = tag.tag_id ?? tag.id ?? tag.tag_name
-      map.set(id, tag)
+      map.set(String(id), tag)
     }
+    for (const tag of [...(summary.all_tags ?? []), ...summary.all_case_tags]) put(tag)
     for (const group of summary.tag_metric_data) {
       for (const tag of group.tags) {
-        const id = tag.tag_id ?? tag.tag_name
-        map.set(id, { tag_id: id, tag_name: tag.tag_name, category_id: tag.category_id, category_name: tag.category_name })
+        put({ tag_id: tag.tag_id ?? tag.tag_name, tag_name: tag.tag_name, category_id: tag.category_id, category_name: tag.category_name })
       }
     }
     for (const item of summary.cases ?? []) {
       for (const tagName of item.tags) {
-        if (![...map.values()].some((t) => t.tag_name === tagName)) {
+        if (tagName && ![...map.values()].some((t) => t.tag_name === tagName)) {
           map.set(tagName, { tag_name: tagName })
         }
       }

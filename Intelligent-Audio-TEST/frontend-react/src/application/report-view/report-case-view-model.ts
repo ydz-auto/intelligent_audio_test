@@ -492,3 +492,92 @@ export function formatMetricCell(
   if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
   return value.toFixed(decimalPlaces)
 }
+
+/** 转置后「结果对比」叶表指标行（照 V9.7.10 currentRoundTableData：主维度自身一组、子维度归父维度组） */
+export interface TransposedMetricRow {
+  key: string
+  name: string
+  isGroupHeader: boolean
+  isSubDim: boolean
+  /** 数值取值键（= 基础维度 + 当前激活轮次后缀；分组标题行为空） */
+  metricKey: string
+}
+
+/**
+ * 由叶表指标列（已选主维度 / 含子维度）构建层级分组行（INT-2089 转置行集）：
+ * 子维度按 `parent_dimension_name` 归入父维度组，组内有子维度且主维度名 ≠ 组名时插分组标题行；
+ * 主维度名与组名相同时主维度行兼作分组标题（V9.7.10 `currentRoundTableData` 同算法）。
+ */
+export function buildTransposedMetricRows(
+  columns: LeafMetricColumn[],
+  allMetrics: ReportMetricConfig[]
+): TransposedMetricRow[] {
+  type Group = {
+    groupLabel: string
+    mainItem: LeafMetricColumn | null
+    subItems: LeafMetricColumn[]
+  }
+  const groupMap = new Map<string, Group>()
+  for (const col of columns) {
+    const config = allMetrics.find((m) => m.name === col.base)
+    let groupKey: string
+    let isSub: boolean
+    if (config?.dimension_type === 'sub' && config.parent_dimension_name) {
+      groupKey = config.parent_dimension_name
+      isSub = true
+    } else {
+      groupKey = col.base
+      isSub = false
+    }
+    let group = groupMap.get(groupKey)
+    if (!group) {
+      group = { groupLabel: groupKey, mainItem: null, subItems: [] }
+      groupMap.set(groupKey, group)
+    }
+    if (isSub) {
+      group.subItems.push(col)
+    } else if (group.mainItem) {
+      // 主维度已存在（同名/空名子维度提升为独立主维度）→ 追加为子维度
+      group.subItems.push(col)
+    } else {
+      group.mainItem = col
+    }
+  }
+
+  const rows: TransposedMetricRow[] = []
+  let seq = 0
+  for (const group of groupMap.values()) {
+    // 组内子维度按中文名排序（V9.7.10 口径）
+    group.subItems.sort((a, b) => a.base.localeCompare(b.base, 'zh-CN'))
+    const mainIsHeader = group.mainItem !== null && group.mainItem.base === group.groupLabel
+    // 仅组内有子维度且主维度名与组名不同时，插入独立分组标题行
+    if (group.subItems.length > 0 && !mainIsHeader) {
+      rows.push({
+        key: `hdr-${seq++}`,
+        name: group.groupLabel,
+        isGroupHeader: true,
+        isSubDim: false,
+        metricKey: '',
+      })
+    }
+    if (group.mainItem) {
+      rows.push({
+        key: `main-${seq++}`,
+        name: group.mainItem.base,
+        isGroupHeader: mainIsHeader,
+        isSubDim: false,
+        metricKey: group.mainItem.metricKey,
+      })
+    }
+    for (const sub of group.subItems) {
+      rows.push({
+        key: `sub-${seq++}`,
+        name: sub.base,
+        isGroupHeader: false,
+        isSubDim: true,
+        metricKey: sub.metricKey,
+      })
+    }
+  }
+  return rows
+}

@@ -39,7 +39,7 @@ export interface CaseReportExpandedProps {
   selectedBaseDimensions: string[]
   /** 显示设置「叶表包含子维度」（默认关） */
   includeSubDimensions: boolean
-  /** 子维度名集合（叶表默认不出子维度列） */
+  /** 子维度名集合（叶表默认不出子维度行） */
   subDimensionNames: string[]
   /** 显示设置「轮次」已选（= 可用轮次集，叶表 Tab 候选与评分指标块轮次范围）；无轮次 chip 时为 undefined */
   selectedRounds?: string[]
@@ -72,7 +72,7 @@ export function CaseReportExpanded({
   // 一张用例卡一个轮次轴（叶表 / 评分指标 / 执行结果共用）
   const roundState = useCaseRoundTabs(caseItem, selectedRounds, roundsAllCleared)
 
-  /** 叶表指标列 = 已选主维度（一维一列；取值键按当前激活轮次后缀，列头不带轮次） */
+  /** 叶表指标行 = 已选主维度（一维一行；取值键按当前激活轮次后缀，行名不带轮次） */
   const leafColumns = useMemo(() => {
     if (roundState.noRoundSelected) return []
     return buildLeafMetricColumns(

@@ -114,7 +114,11 @@ export function buildTagMatrixFromSummary(
     const resource = group.resource
     const rawValues = rawDataForResource(summary, resource)
     for (const tag of group.tags) {
-      const row = matrix[tag.tag_name] ?? (matrix[tag.tag_name] = {})
+      // 真实库存在 tag_name 为空的聚合行（INT-2089 实测报告 395 tag_metric_data 46 行全空）：
+      // 空名标签无法展示，跳过避免矩阵出现 `null` / `undefined` 假行与 React key 冲突
+      const name = tag.tag_name
+      if (!name || !String(name).trim()) continue
+      const row = matrix[name] ?? (matrix[name] = {})
       const col = row[resource] ?? (row[resource] = {})
       for (const m of tag.metrics) {
         col[m.metric] = m.value

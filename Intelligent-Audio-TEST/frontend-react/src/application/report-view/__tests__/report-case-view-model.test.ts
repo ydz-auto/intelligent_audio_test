@@ -10,6 +10,7 @@ import type { ReportCaseItem, ReportResourceHeader } from '@/domain/models/repor
 import {
   buildLeafMetricColumns,
   buildResultComparisonRows,
+  buildTransposedMetricRows,
   collectRounds,
   groupCasesByResource,
   groupCasesByResultType,
@@ -243,6 +244,62 @@ describe('叶表行集 / 列集', () => {
   it('本用例没有的维度不出列（不产整列「—」）', () => {
     const columns = buildLeafMetricColumns(['A@overall'], ['A', 'B'], 'overall', false)
     expect(columns.map((c) => c.base)).toEqual(['A'])
+  })
+})
+
+describe('转置后叶表指标行（INT-2089）', () => {
+  const metricConfigs = [
+    { name: '接管率占比', dimension_type: 'main' as const, decimal_places: 2 },
+    { name: 'WER', dimension_type: 'main' as const, decimal_places: 2 },
+    { name: '主观评分', dimension_type: 'sub' as const, parent_dimension_name: 'WER' },
+    { name: '平均延迟', dimension_type: 'sub' as const, parent_dimension_name: 'WER' },
+  ]
+
+  const columns = buildLeafMetricColumns(
+    ['接管率占比@overall', 'WER@overall', '主观评分@overall', '平均延迟@overall'],
+    ['接管率占比', 'WER', '主观评分', '平均延迟'],
+    'overall',
+    true,
+    ['主观评分', '平均延迟']
+  )
+
+  it('主维度一行、子维度归父维度组缩进、组内子维度中文排序', () => {
+    const rows = buildTransposedMetricRows(columns, metricConfigs)
+    // 接管率占比：独立主维度行
+    expect(rows[0]).toMatchObject({ name: '接管率占比', isSubDim: false, metricKey: '接管率占比@overall' })
+    // WER 组：主维度行兼组头 + 两个子维度（中文排序：平均延迟 < 主观评分）
+    const wer = rows.slice(1)
+    expect(wer[0]).toMatchObject({ name: 'WER', isGroupHeader: true, isSubDim: false })
+    expect(wer[1]).toMatchObject({ name: '平均延迟', isSubDim: true, metricKey: '平均延迟@overall' })
+    expect(wer[2]).toMatchObject({ name: '主观评分', isSubDim: true, metricKey: '主观评分@overall' })
+  })
+
+  it('组内只有子维度（父维度未选）时插独立分组标题行', () => {
+    const subOnly = buildLeafMetricColumns(
+      ['主观评分@overall', '平均延迟@overall'],
+      ['主观评分', '平均延迟'],
+      'overall',
+      true,
+      ['主观评分', '平均延迟']
+    )
+    const rows = buildTransposedMetricRows(subOnly, metricConfigs)
+    expect(rows[0]).toMatchObject({ name: 'WER', isGroupHeader: true, isSubDim: false, metricKey: '' })
+    expect(rows[1]).toMatchObject({ name: '平均延迟', isSubDim: true })
+    expect(rows[2]).toMatchObject({ name: '主观评分', isSubDim: true })
+  })
+
+  it('无子维度时无独立分组标题行（主维度行兼作分组标题）', () => {
+    const mainOnly = buildLeafMetricColumns(
+      ['接管率占比@overall', 'WER@overall'],
+      ['接管率占比', 'WER'],
+      'overall',
+      false
+    )
+    const rows = buildTransposedMetricRows(mainOnly, metricConfigs)
+    expect(rows).toHaveLength(2)
+    // 主维度名 = 组名 → 主维度行兼作分组标题（V9.7.10 口径），无独立 hdr 行
+    expect(rows.every((r) => r.metricKey !== '')).toBe(true)
+    expect(rows.every((r) => !r.isSubDim)).toBe(true)
   })
 })
 

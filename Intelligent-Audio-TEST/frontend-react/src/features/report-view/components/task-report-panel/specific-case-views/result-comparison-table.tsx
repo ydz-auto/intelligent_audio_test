@@ -1,18 +1,22 @@
 /**
- * 叶表「结果对比」（15_报告域.md §3.3.7，INT-1738 / INT-1774）。
+ * 叶表「结果对比」（15_报告域.md §3.3.7，INT-1738 / INT-1774 / INT-2089）。
  *
- * 三视图共用一张组件，仅行列维度不同：
- * - 行集：用例视图 = 设备/API × result_type（设备名只在首行显示，result_type 作次级 mono 徽章）；
+ * 三视图共用一张组件，仅行列维度不同。**INT-2089 转置**（负责人 2026-10-27 反馈「报告里的结果对比
+ * 应该行列转置下，现在横向表格太长了」）：由原「行=设备/API × result_type、列=指标」转置为
+ * **行 = 评估指标（主维度 + 子维度层级分组）、列 = 资源/设备**——照 V9.7.10
+ * `TestCaseReportDetail.vue` `currentRoundTableData` / `comparisonTableColumns` 口径：
+ * 首列「指标名称」，其后每资源/设备一列，横向宽度收敛（不再 3 基础列 + 12+ 指标列）。
+ * - 列集（资源列）= `buildResultComparisonRows` 行集转置：用例视图 = 设备/API × result_type；
  *   设备视图 = 当前资源的 result_type；结果类型视图 = 当前 result_type 下的设备/API。
- * - 列（依次）：资源（设备视图改「结果类型」、结果类型视图改「设备/API」）｜执行状态｜执行时间｜
- *   **每个已选主维度一列，列头只用基础维度名**（不带「（整体）/（第 N 轮）」后缀）。
+ * - **执行状态 / 执行时间不丢**：并入资源列头（列头第二行 = 状态徽章 + 时间）。
  * - **轮次轴 = Tab**（INT-1774）：标题行右侧，一个轮次一个 Tab；Tab 集合与激活项由上层
  *   （`case-report-expanded`）注入，本组件不持有轮次状态；可用轮次 ≤ 1 时整条 Tab 栏不渲染。
- * - 排序：按资源名升序稳定；「失败」不置顶，以状态徽章区分（§3.3.7）。
+ * - 排序：资源列按资源名升序稳定；「失败」不置顶，以状态徽章区分（§3.3.7）。
  * - 兜底：无结果「该用例暂无执行结果」；有结果无指标「暂无可对比指标」；资源为空「未知设备/未知 API」；
- *   轮次全清「未选择轮次」+「显示设置」入口（状态 / 时间两列照常）。
+ *   轮次全清「未选择轮次」+「显示设置」入口（资源列头状态 / 时间照常）。
  */
 import { ArrowLeftRight, Smartphone } from 'lucide-react'
+import { useMemo } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -26,6 +30,7 @@ import type {
 import {
   DEFAULT_RESULT_TYPE,
   buildResultComparisonRows,
+  buildTransposedMetricRows,
   formatMetricCell,
   metricDecimalPlaces,
   resultTypeText,
@@ -43,7 +48,7 @@ export interface ResultComparisonTableProps {
   resultType?: string
   headers: ReportResourceHeader[]
   allMetrics: ReportMetricConfig[]
-  /** 叶表指标列（已选主维度，一维一列；由上层按当前激活轮次装配） */
+  /** 叶表指标行集（已选主维度，一维一行；由上层按当前激活轮次装配） */
   columns: LeafMetricColumn[]
   /** 显示设置已选资源 / 结果类型（已解析的最终集合；空数组 = 全部取消，见口径 A） */
   selectedResources: string[]
@@ -121,6 +126,12 @@ function resourceLabel(key: string, headers: ReportResourceHeader[]): string {
   return header?.type === 'api' ? '未知 API' : '未知设备'
 }
 
+function resourceKind(key: string | undefined, headers: ReportResourceHeader[]): 'device' | 'api' {
+  const header = headers.find((h) => String(h.key) === String(key ?? ''))
+  if (header?.type === 'api') return 'api'
+  return 'device'
+}
+
 export function ResultComparisonTable({
   caseItem,
   view,
@@ -138,27 +149,80 @@ export function ResultComparisonTable({
   onOpenDisplaySettings,
   className,
 }: ResultComparisonTableProps) {
-  const rows = buildResultComparisonRows(caseItem, {
-    view,
-    resourceKey,
-    resultType,
-    // 当维由视图决定（口径 A）：设备视图行恒为本节点、结果类型视图行恒为本类型，不受显示设置影响
-    selectedResources: view === 'case' || view === 'resultType' ? selectedResources : undefined,
-    selectedResultTypes: view === 'case' || view === 'resource' ? selectedResultTypes : undefined,
-    headers,
-  }).sort((a, b) =>
-    resourceLabel(String(a.resource ?? ''), headers).localeCompare(
-      resourceLabel(String(b.resource ?? ''), headers),
-      'zh-CN'
-    )
+  /** 资源列（转置后每行 → 一列）：列集口径与转置前一致，仅轴对调 */
+  const resourceColumns = useMemo(
+    () =>
+      buildResultComparisonRows(caseItem, {
+        view,
+        resourceKey,
+        resultType,
+        // 当维由视图决定（口径 A）：设备视图行恒为本节点、结果类型视图行恒为本类型，不受显示设置影响
+        selectedResources: view === 'case' || view === 'resultType' ? selectedResources : undefined,
+        selectedResultTypes: view === 'case' || view === 'resource' ? selectedResultTypes : undefined,
+        headers,
+      }).sort((a, b) =>
+        resourceLabel(String(a.resource ?? ''), headers).localeCompare(
+          resourceLabel(String(b.resource ?? ''), headers),
+          'zh-CN'
+        )
+      ),
+    [caseItem, view, resourceKey, resultType, headers, selectedResources, selectedResultTypes]
   )
 
-  const firstColumnLabel =
-    view === 'resource' ? '结果类型' : view === 'resultType' ? '设备/API' : '资源'
+  /** 转置：行 = 评估指标（主维度 + 子维度层级分组） */
+  const metricRows = useMemo(
+    () => buildTransposedMetricRows(columns, allMetrics),
+    [columns, allMetrics]
+  )
+
   /** 行区全清（资源 / 结果类型全不选）时给专门兜底文案（§3.5.10 兜底） */
   const noSelection =
     (view === 'resultType' && selectedResources.length === 0) ||
     (view === 'resource' && selectedResultTypes.length === 0)
+
+  /** 资源列头（首行：资源 / 结果类型标识；次行：状态徽章 + 执行时间） */
+  const renderColumnHeader = (col: (typeof resourceColumns)[number]) => {
+    const status = statusMeta(col.status)
+    return (
+      <th
+        key={col.key}
+        className='px-3 py-2 text-left font-medium align-top whitespace-nowrap'
+      >
+        <div className='flex items-center gap-1.5'>
+          {view === 'resource' ? (
+            <Badge variant='outline' className='font-mono text-[10px]'>
+              {resultTypeText(col.resultType ?? DEFAULT_RESULT_TYPE)}
+            </Badge>
+          ) : (
+            <>
+              {resourceKind(col.resource, headers) === 'api' ? (
+                <ArrowLeftRight aria-hidden='true' className='text-muted-foreground size-3.5 shrink-0' />
+              ) : (
+                <Smartphone aria-hidden='true' className='text-muted-foreground size-3.5 shrink-0' />
+              )}
+              <span className='truncate'>
+                {resourceLabel(String(col.resource ?? ''), headers)}
+              </span>
+              {view === 'case' && col.resultType !== DEFAULT_RESULT_TYPE && (
+                <span className='text-muted-foreground font-mono text-[10px]'>
+                  {resultTypeText(col.resultType)}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        {/* 执行状态 / 执行时间并入列头（INT-2089 转置不丢） */}
+        <div className='mt-1 flex items-center gap-1'>
+          <Badge variant={status.variant} className={cn('text-[10px]', status.className)}>
+            {status.label}
+          </Badge>
+          <span className='text-muted-foreground font-mono text-[10px] tabular-nums'>
+            {formatStartTime(col.startTime)}
+          </span>
+        </div>
+      </th>
+    )
+  }
 
   return (
     <div className={cn('space-y-1.5', className)}>
@@ -173,8 +237,8 @@ export function ResultComparisonTable({
               {resultTypeText(resultType ?? DEFAULT_RESULT_TYPE)}
             </Badge>
           )}
-          {!noRoundSelected && columns.length > 12 && (
-            <span className='text-warning text-[11px]'>列较多（{columns.length}），可在显示设置中收窄维度</span>
+          {!noRoundSelected && resourceColumns.length > 12 && (
+            <span className='text-warning text-[11px]'>列较多（{resourceColumns.length}），可在显示设置中收窄资源</span>
           )}
         </div>
 
@@ -213,99 +277,64 @@ export function ResultComparisonTable({
         </div>
       )}
 
-      {rows.length === 0 ? (
+      {resourceColumns.length === 0 ? (
         <div className='text-muted-foreground flex h-16 items-center justify-center rounded-lg border text-xs'>
           {noSelection ? '未选择资源 / 结果类型' : '该用例暂无执行结果'}
         </div>
       ) : (
-        <>
-          <div className='overflow-x-auto rounded-lg border'>
-            <table className='w-full text-sm'>
-              <thead>
-                <tr className='text-muted-foreground border-b bg-muted/30'>
-                  <th className='px-3 py-2 text-left font-medium'>{firstColumnLabel}</th>
-                  <th className='px-3 py-2 text-left font-medium'>执行状态</th>
-                  <th className='px-3 py-2 text-left font-medium'>执行时间</th>
-                  {columns.map((column) => (
-                    <th key={column.key} className='px-3 py-2 text-left font-medium whitespace-nowrap'>
-                      {column.label}
-                    </th>
-                  ))}
+        <div className='overflow-x-auto rounded-lg border'>
+          <table className='w-full text-sm'>
+            <thead>
+              <tr className='text-muted-foreground border-b bg-muted/30'>
+                <th className='px-3 py-2 text-left font-medium'>指标名称</th>
+                {resourceColumns.map((col) => renderColumnHeader(col))}
+              </tr>
+            </thead>
+            <tbody>
+              {metricRows.length === 0 ? (
+                <tr>
+                  <td colSpan={resourceColumns.length + 1} className='text-muted-foreground p-4 text-center text-sm'>
+                    {noRoundSelected ? '未选择轮次' : '暂无可对比指标'}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, index) => {
-                  const status = statusMeta(row.status)
-                  const showResource =
-                    index === 0 || rows[index - 1].resource !== row.resource
-                  return (
-                    <tr key={row.key} className='hover:bg-muted/30 border-b last:border-0'>
-                      <td className='px-3 py-2 text-sm'>
-                        <div className='flex items-center gap-1.5'>
-                          {view === 'resource' ? (
-                            <Badge variant='outline' className='font-mono text-[10px]'>
-                              {resultTypeText(row.resultType ?? DEFAULT_RESULT_TYPE)}
-                            </Badge>
-                          ) : (
-                            <>
-                              {showResource && (
-                                <>
-                                  {resourceKind(row.resource, headers) === 'api' ? (
-                                    <ArrowLeftRight aria-hidden='true' className='text-muted-foreground size-3.5 shrink-0' />
-                                  ) : (
-                                    <Smartphone aria-hidden='true' className='text-muted-foreground size-3.5 shrink-0' />
-                                  )}
-                                  <span className='truncate'>
-                                    {resourceLabel(String(row.resource ?? ''), headers)}
-                                  </span>
-                                </>
-                              )}
-                              {view === 'case' && row.resultType !== DEFAULT_RESULT_TYPE && (
-                                <span className='text-muted-foreground font-mono text-[10px]'>
-                                  {resultTypeText(row.resultType)}
-                                </span>
-                              )}
-                            </>
+              ) : (
+                metricRows.map((row) => (
+                  <tr
+                    key={row.key}
+                    className={
+                      row.isGroupHeader
+                        ? 'bg-muted/40 border-b font-semibold'
+                        : 'hover:bg-muted/30 border-b last:border-0'
+                    }
+                  >
+                    <td
+                      className={
+                        row.isSubDim
+                          ? 'text-muted-foreground px-3 py-2 ps-8 text-sm'
+                          : 'px-3 py-2 text-sm'
+                      }
+                    >
+                      {row.name}
+                    </td>
+                    {resourceColumns.map((col) => {
+                      // 值取当前激活 Tab 的轮次后缀键（不回退基础维度键，§3.3.7）；缺值「—」
+                      const value = row.metricKey ? col.metrics[row.metricKey] : undefined
+                      return (
+                        <td key={col.key} className='px-3 py-2 font-mono text-xs tabular-nums'>
+                          {formatMetricCell(
+                            value,
+                            row.metricKey ? metricDecimalPlaces(row.metricKey, allMetrics) : 2
                           )}
-                        </div>
-                      </td>
-                      <td className='px-3 py-2'>
-                        <Badge variant={status.variant} className={cn('text-[11px]', status.className)}>
-                          {status.label}
-                        </Badge>
-                      </td>
-                      <td className='text-muted-foreground px-3 py-2 font-mono text-xs tabular-nums'>
-                        {formatStartTime(row.startTime)}
-                      </td>
-                      {columns.map((column) => {
-                        // 值取当前激活 Tab 的轮次后缀键（不回退基础维度键，§3.3.7）；缺值「—」
-                        const value = row.metrics[column.metricKey]
-                        return (
-                          <td key={column.key} className='px-3 py-2 font-mono text-xs tabular-nums'>
-                            {formatMetricCell(
-                              value,
-                              column.metricKey ? metricDecimalPlaces(column.metricKey, allMetrics) : 2
-                            )}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-          {!noRoundSelected && columns.length === 0 && (
-            <p className='text-muted-foreground text-xs'>暂无可对比指标</p>
-          )}
-        </>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
-}
-
-function resourceKind(key: string | undefined, headers: ReportResourceHeader[]): 'device' | 'api' {
-  const header = headers.find((h) => String(h.key) === String(key ?? ''))
-  if (header?.type === 'api') return 'api'
-  return 'device'
 }
