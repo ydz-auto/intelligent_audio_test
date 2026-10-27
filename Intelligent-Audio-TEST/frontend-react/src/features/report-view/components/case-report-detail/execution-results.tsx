@@ -363,14 +363,18 @@ export function ExecutionResults({
         </div>
       )}
 
-      {/* 用例参数（块四） */}
-      {show('caseParams') && currentCaseParamFields.length > 0 && (
+      {/* 用例参数（块四；caseParams 缺数据源时块内空态「暂无数据」，INT-2089 交付标注缺口） */}
+      {show('caseParams') && (
         <div>
           <p className='text-muted-foreground mb-1 text-xs font-medium'>用例参数</p>
           <div className='rounded-lg border'>
-            {currentCaseParamFields.map((field) => (
-              <ResultField key={`case_${field.paramCode}`} label={field.label} value={field.value} type={field.paramType} />
-            ))}
+            {currentCaseParamFields.length === 0 ? (
+              <p className='text-muted-foreground px-3 py-2 text-xs'>暂无数据</p>
+            ) : (
+              currentCaseParamFields.map((field) => (
+                <ResultField key={`case_${field.paramCode}`} label={field.label} value={field.value} type={field.paramType} />
+              ))
+            )}
           </div>
         </div>
       )}

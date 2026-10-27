@@ -194,8 +194,11 @@ def main():
             # 数据驱动块显隐
             check('参考数据块与接口一致', has_ref == ('参考数据' in body2),
                   'ref=%s' % has_ref)
-            check('用例参数块与接口一致', has_caseparams == ('用例参数' in body2) or (not has_caseparams and '暂无数据' in body2),
-                  'caseParams=%s' % has_caseparams)
+            # caseParams 缺数据源 → 块内空态「暂无数据」（INT-2089 交付标注缺口）
+            check('用例参数块与接口一致', '用例参数' in body2,
+                  'caseParams=%s 暂无数据=%s' % (has_caseparams, '暂无数据' in body2))
+            if not has_caseparams:
+                check('用例参数块缺数据源显示「暂无数据」', '暂无数据' in body2)
             check('音频时间轴块与接口一致', has_audio == ('音频时间轴' in body2), 'audio=%s' % has_audio)
             check('时间轴对比块与接口一致', has_timeline == ('时间轴对比' in body2), 'timeline=%s' % has_timeline)
 
