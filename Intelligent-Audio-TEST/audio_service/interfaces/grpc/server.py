@@ -47,6 +47,11 @@ GRACEFUL_STOP_GRACE_SECONDS = 15
 GRACEFUL_STOP_PLAYER_WAIT_SECONDS = 10
 
 # 运行中 server 引用：Shutdown RPC（servicer 线程）经 initiate_graceful_shutdown() 停它。
+# 注意（INT-2086 审计 P1）：生产用 runpy.run_module(..., run_name='__main__') 启动时，
+# 本模块只登记为 sys.modules['__main__']、不登记真实模块名；servicer 惰性按真实名
+# import 会拿到第二份拷贝，读不到这份模块全局 `_server`。因此 start_grpc_server 还会
+# 把 server 引用挂到 AudioServiceServicer 实例的 _grpc_server 属性上，Shutdown 经实例
+# 引用停服，不依赖本模块全局（见 servicers.py::Shutdown）。
 _server: Optional[grpc.Server] = None
 _shutdown_started = False
 
@@ -128,7 +133,12 @@ def start_grpc_server(port=AUDIO_SERVICE_GRPC_PORT):
         interceptors=[server_db_scope_interceptor, server_log_interceptor,
                       server_user_context_interceptor],
     )
-    audio_grpc.add_AudioServiceServicer_to_server(AudioServiceServicer(), server)
+    # INT-2086 审计 P1：server 引用挂到 AudioServiceServicer 实例上。生产启动
+    # （runpy-as-__main__）下 servicer 惰性 import server.py 会拿到第二份拷贝、
+    # 模块全局 _server 读不到；实例引用被运行中的 server 共享，无模块身份问题。
+    audio_servicer = AudioServiceServicer()
+    audio_servicer._grpc_server = server
+    audio_grpc.add_AudioServiceServicer_to_server(audio_servicer, server)
     audio_grpc.add_PlaybackServiceServicer_to_server(PlaybackServiceServicer(), server)
     audio_grpc.add_AudioConfigServiceServicer_to_server(AudioConfigServiceServicer(), server)
     audio_grpc.add_RenderServiceServicer_to_server(RenderServiceServicer(), server)
@@ -140,10 +150,12 @@ def start_grpc_server(port=AUDIO_SERVICE_GRPC_PORT):
     return server
 
 
-def initiate_graceful_shutdown():
+def initiate_graceful_shutdown(server: Optional[grpc.Server] = None):
     """优雅停止入口（INT-2086）：停播放 → 等流关闭 → pa.terminate → 停 gRPC server。
 
-    由 AudioServiceServicer.Shutdown RPC 触发。整个流程同步执行：
+    由 AudioServiceServicer.Shutdown RPC 触发。server 引用经 servicer 实例的
+    _grpc_server 显式传入（规避 runpy-as-__main__ 的模块身份分裂——见模块 docstring）；
+    Ctrl+C / 直接调用路径不传参时回退本模块全局 _server。整个流程同步执行：
     - audio_service.shutdown()：set 全部 stop_event → 等播放线程结束（流在
       play_multi finally 中 stop_stream + close）→ driver.terminate()（pa.terminate）。
     - server.stop(GRACEFUL_STOP_GRACE_SECONDS)：停接收新调用，给在途 RPC 宽限；
@@ -159,9 +171,9 @@ def initiate_graceful_shutdown():
     logger.info("graceful shutdown initiated (INT-2086)")
     from audio_service.infrastructure.audio.audio_engine import audio_service
     audio_service.shutdown(wait_seconds=GRACEFUL_STOP_PLAYER_WAIT_SECONDS)
-    server = _server
-    if server is not None:
-        server.stop(GRACEFUL_STOP_GRACE_SECONDS)
+    target = server if server is not None else _server
+    if target is not None:
+        target.stop(GRACEFUL_STOP_GRACE_SECONDS)
         logger.info("gRPC server stop requested, grace=%ss", GRACEFUL_STOP_GRACE_SECONDS)
     else:
         logger.warning("no active gRPC server reference to stop")
