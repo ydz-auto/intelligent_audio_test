@@ -573,4 +573,52 @@ describe('GroupedCaseList', () => {
     )
     expect(screen.getByLabelText('全选用例')).toHaveAttribute('aria-checked', 'true')
   })
+
+  it('INT-1970 返工：allFilteredSelected 生效时全部折叠分组卡组头勾选态同步已勾选', () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <GroupedCaseList
+          groups={GROUPS}
+          cases={CASES}
+          loading={false}
+          trash={false}
+          hasQueryFilters={false}
+          filters={{}}
+          selected={new Set(CASES.map((c) => c.id))}
+          tagRegistry={MOCK_TAGS as TagItem[]}
+          callbacks={noopCallbacks}
+          onBatchAction={vi.fn()}
+          onToggleAll={vi.fn()}
+          onToggleAllFiltered={vi.fn()}
+          allFilteredSelected
+        />
+      </QueryClientProvider>
+    )
+    // 表头「全选用例」已生效（已选数=筛选总数）→ 各分组卡（默认折叠、组内 list 未加载）勾选态显示已勾选
+    for (const g of GROUPS) {
+      expect(screen.getByLabelText(`全选分组 ${g.name}`)).toHaveAttribute('aria-checked', 'true')
+    }
+    expect(screen.getByLabelText('全选用例')).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('INT-1970 返工：折叠分组组头勾选后勾选态立即翻转（按该组全量判定，不依赖展开加载 list）', async () => {
+    const user = setupUser()
+    render(<Harness />)
+    // 默认折叠点组头勾选 → 经 /testcases/ids 圈定整组 → 组头勾选态翻转（原先折叠时恒未勾选）
+    await user.click(screen.getByLabelText('全选分组 智能音箱功能测试'))
+    await waitFor(() => {
+      expect(screen.getByLabelText('全选分组 智能音箱功能测试')).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+    })
+    // 再点一次取消 → 组头勾选态同步复位
+    await user.click(screen.getByLabelText('全选分组 智能音箱功能测试'))
+    await waitFor(() => {
+      expect(screen.getByLabelText('全选分组 智能音箱功能测试')).toHaveAttribute(
+        'aria-checked',
+        'false'
+      )
+    })
+  })
 })

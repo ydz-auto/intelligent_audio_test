@@ -281,6 +281,11 @@ export function TagCaseList({
       {paginatedTags.map((group) => {
         const isExpanded = expanded.has(group.name)
         const groupSelected = group.cases.filter((c) => selected.has(c.id)).length
+        /** 标签卡勾选态（INT-1970 返工）：表头「全选用例」已生效（allFilteredSelected）→ 本标签全量已选；
+         *  否则按本标签已加载用例判定（标签视图无按标签 /ids 圈定，标签内懒加载即全量页）。 */
+        const groupFullySelected =
+          allFilteredSelected === true ||
+          (group.cases.length > 0 && groupSelected === group.cases.length)
         const subView = tagSubView[group.name] ?? 'flat'
         return (
           <div key={group.name} className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
@@ -291,7 +296,7 @@ export function TagCaseList({
               <div className='flex min-w-0 items-center gap-2'>
                 {onToggleAll != null && (
                   <Checkbox
-                    checked={group.cases.length > 0 && groupSelected === group.cases.length}
+                    checked={groupFullySelected}
                     aria-label={`全选标签 ${group.name}`}
                     onCheckedChange={(c) => onToggleAll(group.cases.map((x) => x.id), c)}
                   />

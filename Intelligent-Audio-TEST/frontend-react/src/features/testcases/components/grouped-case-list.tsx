@@ -108,6 +108,11 @@ interface GroupCardProps {
   /** 勾选切换；不传（readOnly 观察态）→ 卡片/组头勾选框隐藏 */
   onToggleSelect?: (id: string, checked: boolean) => void
   onToggleAll?: (ids: string[], checked: boolean) => void
+  /**
+   * 列表头「全选用例」已生效（已选数 = 筛选总数，INT-1970 返工）：全量圈定下所有分组
+   * 卡均视为已勾选——折叠分组不再因组内 list 未加载而显示未勾选。
+   */
+  allFilteredSelected?: boolean
 }
 
 function GroupCard({
@@ -124,6 +129,7 @@ function GroupCard({
   onBatchAction,
   onToggleSelect,
   onToggleAll,
+  allFilteredSelected,
 }: GroupCardProps) {
   /** §3.5 移动端（≤640px）子视图切换收进 CaseGroupActions 下拉首项「显示方式」 */
   const isMobile = useMediaQuery('(max-width: 640px)')
@@ -151,9 +157,30 @@ function GroupCard({
     registerCaseRounds(list)
   }, [list, registerCaseRounds])
 
+  /**
+   * 组内全量 ID 集（按当前筛选；INT-1970 返工）：组头勾选动作经 /testcases/ids 取全量后缓存，
+   * 折叠时组头勾选态也按「该组全量是否已选」判定——原先只看已加载 list，展开前恒为未勾选，
+   * 全选用例后 5 张分组卡全部灰勾、界面误以为分组没被选中。
+   */
+  const [groupAllIds, setGroupAllIds] = useState<string[] | null>(null)
+  /** 筛选/分组变化后组内全量集失效（不同筛选 → 不同 /ids 结果），清空待下次勾选动作刷新 */
+  const filtersKey = JSON.stringify(filters)
+  useEffect(() => {
+    setGroupAllIds(null)
+  }, [filtersKey, group.id])
+
   const subView = (groupSubView[group.id] ?? 'flat') as GroupSubView
   const groupDuration = list.reduce((sum, c) => sum + (c.totalDuration ?? 0), 0)
   const groupSelected = list.filter((c) => selected.has(c.id)).length
+  /**
+   * 组头勾选态（INT-1970 返工）：表头「全选用例」已生效（allFilteredSelected）→ 该组全量已选；
+   * 或组头勾选动作取到的该组全量 ID 均在选中集（折叠态组头勾选后立即翻转）；或（展开态）
+   * 已加载用例全选。折叠且未触发过组头全选 → 仍回退为未勾选（无从得知全量）。
+   */
+  const groupFullySelected =
+    allFilteredSelected === true ||
+    (groupAllIds != null && groupAllIds.length > 0 && groupAllIds.every((id) => selected.has(id))) ||
+    (list.length > 0 && groupSelected === list.length)
 
   /**
    * 组头「全选分组」：真实分组经 POST /testcases/ids 按当前筛选圈定全组 ID（Vue toggleGroupSelection
@@ -176,6 +203,7 @@ function GroupCard({
         algorithmType: filters.algorithmType,
         group: group.name,
       })
+      setGroupAllIds(ids)
       onToggleAll(ids, checked)
     } catch {
       // 全量 ID 圈定失败降级为已加载用例（组内仍可逐卡勾选）
@@ -235,7 +263,7 @@ function GroupCard({
         <div className='flex min-w-0 items-center gap-2'>
           {onToggleAll != null && (
             <Checkbox
-              checked={list.length > 0 && groupSelected === list.length}
+              checked={groupFullySelected}
               aria-label={`全选分组 ${group.name}`}
               onCheckedChange={(c) => void handleGroupToggleAll(c)}
             />
@@ -660,6 +688,7 @@ export function GroupedCaseList({
           onBatchAction={onBatchAction}
           onToggleSelect={onToggleSelect}
           onToggleAll={onToggleAll}
+          allFilteredSelected={allFilteredSelected}
         />
       ))}
 
@@ -684,6 +713,7 @@ export function GroupedCaseList({
           onBatchAction={onBatchAction}
           onToggleSelect={onToggleSelect}
           onToggleAll={onToggleAll}
+          allFilteredSelected={allFilteredSelected}
         />
       )}
 

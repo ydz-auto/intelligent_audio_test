@@ -183,4 +183,26 @@ describe('TagCaseList', () => {
     )
     expect(screen.getByLabelText('全选用例')).toHaveAttribute('aria-checked', 'true')
   })
+
+  it('INT-1970 返工：allFilteredSelected 生效时标签卡组头勾选态同步已勾选（按标签视图同缺陷面）', () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TagCaseList
+          cases={CASES}
+          loading={false}
+          selected={new Set(CASES.map((c) => c.id))}
+          tagRegistry={MOCK_TAGS as TagItem[]}
+          callbacks={noopCallbacks}
+          onCreate={vi.fn()}
+          onToggleAll={vi.fn()}
+          onToggleAllFiltered={vi.fn()}
+          allFilteredSelected
+        />
+      </QueryClientProvider>
+    )
+    // 表头「全选用例」已生效 → 各标签卡（音箱 2 条 / 中文 1 条）勾选态显示已勾选
+    expect(screen.getByLabelText('全选标签 音箱')).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByLabelText('全选标签 中文')).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByLabelText('全选用例')).toHaveAttribute('aria-checked', 'true')
+  })
 })
