@@ -155,4 +155,4 @@ class TestCollectAllResourcesNormalPath:
         assert data['all_metrics'] == ['m1']
         assert data['source_cases'] == [{'id': 'c1', 'name': 'case-1'}]
         assert data['case_categories_list'] == [{'id': 'default_group', 'name': '无分组'}]
-        assert data['case_tags_list'] == [{'id': 'default_tag', 'name': '无标签'}]
+        assert data['case_tags_list'] == [{'id': 'default_tag', 'name': '无标签', 'category_id': None, 'category_name': None}]

@@ -245,3 +245,112 @@ class TestPrepareReportDataAllCaseTags:
         assert data['case_tags_list'] == [
             {'id': 't2', 'name': '无分类标签',
              'category_id': None, 'category_name': None}]
+
+
+# ======================================================================
+# 二次对比链：_prepare_secondary_data 的 case_tags_list（透传 + 空回落 4 字段）
+# ======================================================================
+
+class TestSecondaryCompareChainTagCategory:
+    """二次对比链（_prepare_secondary_data）快照透传分类 + 空 test_cases 回落。
+
+    INT-2100 返工项（打回 P2）：`report_compare_generator_secondary_mixin.py`
+    `if not case_tags_list:` 缺省 `default_tag` 条目此前为 2 字段
+    （缺 `category_id`/`category_name` 键），与卡面「条目结构
+    {id, name, category_id, category_name}」及「无分类 tag 保持 null」不符；
+    本次修复为 4 字段（category 为 null），与 `report_query_builder.py` 内部兜底一致。
+    """
+
+    def _run_prepare_secondary(self, monkeypatch, task_cases):
+        import report_service.application.services.report_compare_helpers as rch_mod
+        import report_service.application.services.report_data_builder as rdb_mod
+        import report_service.application.services.report_helpers as rh_mod
+        import report_service.application.services.report_task_generator as gen_mod
+        import report_service.application.services.report_utils as utils_mod
+
+        results = [{'id': 11, 'task_id': 1, 'test_case_id': 'TC-1',
+                    'execution_status': 'completed'}]
+        monkeypatch.setattr(rch_mod, '_grpc_get_test_results_by_task_ids',
+                            lambda task_ids: results)
+        monkeypatch.setattr(rh_mod.ReportHelpers, 'get_resource_name',
+                            staticmethod(lambda res, task=None,
+                                         use_time_prefix=False: 'res-1'))
+        monkeypatch.setattr(rch_mod.ReportCompareHelpers, '_get_task_type',
+                            staticmethod(lambda tasks: 'secondary_compare'))
+        monkeypatch.setattr(rch_mod.ReportCompareHelpers, '_build_all_dimensions',
+                            staticmethod(lambda res_ids: (['dim1'], ['m1'], None)))
+        monkeypatch.setattr(rch_mod.ReportCompareHelpers,
+                            '_get_source_cases_from_reports',
+                            staticmethod(lambda reports: []))
+        monkeypatch.setattr(rch_mod.ReportCompareHelpers,
+                            '_build_comparison_matrix_secondary',
+                            staticmethod(lambda task_ids, reports,
+                                         all_dimensions: {}))
+        monkeypatch.setattr(rdb_mod.ReportDataBuilder, '_get_task_resources',
+                            staticmethod(lambda task_ids:
+                                         (['dev1'], ['api1'], [1], [2])))
+        monkeypatch.setattr(rdb_mod.ReportDataBuilder,
+                            '_get_dimension_results_batch',
+                            staticmethod(lambda res_ids, include_body=False:
+                                         ({11: []}, {})))
+        # INT-2100：_get_task_test_cases 由各用例提供；extract_case_categories_and_tags
+        # 保留真实实现，验证分类透传进入二次对比链 case_tags_list
+        monkeypatch.setattr(rdb_mod.ReportDataBuilder, '_get_task_test_cases',
+                            staticmethod(lambda task_ids:
+                                         (task_cases, ['TC-1'])))
+        monkeypatch.setattr(rdb_mod.ReportDataBuilder, '_build_case_data',
+                            staticmethod(lambda *a, **k: []))
+        monkeypatch.setattr(gen_mod.ReportTaskGenerator, '_mark_degraded_metrics',
+                            staticmethod(lambda *a, **k: None))
+        monkeypatch.setattr(utils_mod.ReportUtils, 'calculate_core_metrics',
+                            staticmethod(lambda **kw: {
+                                'metric_data': {'res-1': []},
+                                'tag_metric_data': {},
+                                'raw_data': {'res-1': {'dim1': []}},
+                                'case_type_stats': [],
+                                'resources': ['res-1'],
+                                'aggregation_degraded': {},
+                            }))
+        monkeypatch.setattr(utils_mod.ReportUtils, 'build_resource_headers',
+                            staticmethod(lambda **kw: ['res-1']))
+        monkeypatch.setattr(utils_mod.ReportUtils, 'calculate_device_api_stats',
+                            staticmethod(lambda **kw: ({}, {})))
+
+        from report_service.application.services.report_compare_generator_secondary_mixin import (
+            ReportSecondaryDataMixin,
+        )
+        return ReportSecondaryDataMixin._prepare_secondary_data(
+            [7, 8], [{'id': 7}, {'id': 8}], [{'id': 1, 'config': {}}], [1])
+
+    def test_secondary_compare_categorized_tags_pass_category(self, monkeypatch):
+        case = {'id': 'TC-1', 'name': '二次对比带分类用例', 'config': {},
+                'group': {'id': 'g1', 'name': '分组1'},
+                'tags': [{'id': 't1', 'name': '标签1', 'category_id': 5,
+                          'category_name': '标签分类X'}]}
+        data, error = self._run_prepare_secondary(monkeypatch, [case])
+        assert error is None
+        assert data is not None
+        assert data['case_tags_list'] == [
+            {'id': 't1', 'name': '标签1', 'category_id': 5,
+             'category_name': '标签分类X'}]
+        assert data['case_categories_list'] == [{'id': 'g1', 'name': '分组1'}]
+
+    def test_secondary_compare_uncategorized_tag_falls_back_null(self, monkeypatch):
+        case = {'id': 'TC-1', 'name': '二次对比无分类用例', 'config': {},
+                'group': {'id': 'g1', 'name': '分组1'},
+                'tags': [{'id': 't2', 'name': '无分类标签'}]}
+        data, error = self._run_prepare_secondary(monkeypatch, [case])
+        assert error is None
+        assert data is not None
+        assert data['case_tags_list'] == [
+            {'id': 't2', 'name': '无分类标签',
+             'category_id': None, 'category_name': None}]
+
+    def test_secondary_compare_empty_test_cases_default_four_fields(self, monkeypatch):
+        """返工项：test_cases 为空时缺省 default_tag 为 4 字段（category 为 null）。"""
+        data, error = self._run_prepare_secondary(monkeypatch, [])
+        assert error is None
+        assert data is not None
+        assert data['case_tags_list'] == [
+            {'id': 'default_tag', 'name': '无标签',
+             'category_id': None, 'category_name': None}]

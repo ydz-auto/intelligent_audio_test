@@ -86,7 +86,7 @@ class ReportSecondaryDataMixin:
         if not case_categories_list:
             case_categories_list = [{"id": "default_group", "name": "无分组"}]
         if not case_tags_list:
-            case_tags_list = [{"id": "default_tag", "name": "无标签"}]
+            case_tags_list = [{"id": "default_tag", "name": "无标签", "category_id": None, "category_name": None}]
 
         source_cases = ReportCompareHelpers._get_source_cases_from_reports(reports)
         if not source_cases:
