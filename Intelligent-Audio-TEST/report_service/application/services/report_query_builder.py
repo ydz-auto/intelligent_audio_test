@@ -247,18 +247,37 @@ class ReportQueryBuilder:
             for tag in tc_tags:
                 tag_id = tag.get('id') if isinstance(tag, dict) else getattr(tag, 'id', None)
                 tag_name = tag.get('name') if isinstance(tag, dict) else getattr(tag, 'name', None)
+                # INT-2100：透传标签分类。tag 对象（dict/ORM）里的 category_id /
+                # category_name 一并写入快照条目，供前端报告筛选 taxonomy 按分类展示；
+                # 无分类 tag 保持 null（前端「未分类」兜底）。字段与
+                # task_service tag_crud_service._tag_to_dict 对齐。
+                tag_category_id = (
+                    tag.get('category_id') if isinstance(tag, dict)
+                    else getattr(tag, 'category_id', None)
+                )
+                tag_category_name = (
+                    tag.get('category_name') if isinstance(tag, dict)
+                    else getattr(tag, 'category_name', None)
+                )
                 if tag_id is not None and tag_id not in seen_tags:
                     seen_tags.add(tag_id)
                     case_tags_list.append({
                         "id": tag_id,
-                        "name": tag_name or "未命名标签"
+                        "name": tag_name or "未命名标签",
+                        "category_id": tag_category_id,
+                        "category_name": tag_category_name,
                     })
 
         if not case_categories_list:
             case_categories_list.append({"id": "default_group", "name": "未分类"})
 
         if not case_tags_list:
-            case_tags_list.append({"id": "default_tag", "name": "无标签"})
+            case_tags_list.append({
+                "id": "default_tag",
+                "name": "无标签",
+                "category_id": None,
+                "category_name": None,
+            })
 
         return case_categories_list, case_tags_list
 

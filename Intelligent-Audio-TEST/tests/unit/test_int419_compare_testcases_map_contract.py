@@ -53,7 +53,8 @@ RESULTS = [
 # _grpc_list_testcases_by_ids 的真实返回契约：{id: dict} 映射
 TESTCASE_MAP = {
     'TC-1': {'id': 'TC-1', 'name': '对比用例', 'config': {},
-             'group': {'id': 'g1', 'name': '分组1'}, 'tags': [{'id': 't1', 'name': '标签1'}]},
+             'group': {'id': 'g1', 'name': '分组1'},
+             'tags': [{'id': 't1', 'name': '标签1', 'category_id': 5, 'category_name': '标签分类X'}]},
 }
 DIMENSIONS = [{'id': 1, 'name': 'ASR得分', 'weight': 1.0,
                'score_unit': '%', 'decimal_places': 2}]
@@ -111,11 +112,12 @@ class TestComparePrepareDataContract:
         assert all(isinstance(tc, dict) for tc in data_dict["test_cases"])
         assert {tc['id'] for tc in data_dict["test_cases"]} == {'TC-1'}
 
-        # extract_case_categories_and_tags 拿到 dict 值列表：分组/标签不再静默丢失
+        # extract_case_categories_and_tags 拿到 dict 值列表：分组/标签不再静默丢失，
+        # 且 INT-2100 透传标签分类（category_id/category_name）
         assert data_dict["case_categories_list"] == [
             {'id': 'g1', 'name': '分组1'}]
         assert data_dict["case_tags_list"] == [
-            {'id': 't1', 'name': '标签1'}]
+            {'id': 't1', 'name': '标签1', 'category_id': 5, 'category_name': '标签分类X'}]
 
         # 用例数据正确构建（results_by_case 命中、资源列/维度值落位）
         assert len(data_dict["source_cases"]) == 1
