@@ -477,6 +477,78 @@ class TestRmsSplMappingCrud:
         assert service.get_one(created['data']['id'])['code'] == 404
 
 
+class TestCreateUpdatePointValidation:
+    """INT-2084：create/update 写侧与 calibrate 同一套点级校验 + 增益推导覆盖 + 排序"""
+
+    def test_validate_rejects_missing_rms_dbfs(self):
+        err = ApiRmsSplConfigService._validate_mapping_data({
+            'api_id': 1, 'calibration_data': {'points': [{'target_spl': 65, 'gain_linear': 1.0}]}})
+        assert err and '校准点[0]' in err and 'rms_dbfs' in err
+
+    def test_validate_rejects_out_of_range_target_spl(self):
+        err = ApiRmsSplConfigService._validate_mapping_data({
+            'api_id': 1, 'calibration_data': {'points': [{'target_spl': 500, 'rms_dbfs': -30.0}]}})
+        assert err and 'target_spl' in err
+
+    def test_validate_rejects_out_of_range_rms_dbfs(self):
+        err = ApiRmsSplConfigService._validate_mapping_data({
+            'api_id': 1, 'calibration_data': {'points': [{'target_spl': 65, 'rms_dbfs': 5.0}]}})
+        assert err and 'rms_dbfs' in err
+
+    def test_validate_rejects_duplicate_target_spl(self):
+        err = ApiRmsSplConfigService._validate_mapping_data({
+            'api_id': 1,
+            'calibration_data': {'points': [
+                {'target_spl': 65, 'rms_dbfs': -30.0},
+                {'target_spl': 65.0, 'rms_dbfs': -20.0},
+            ]}})
+        assert err and '重复' in err
+
+    def test_create_derives_gain_and_sorts_points(self, monkeypatch):
+        captured = {}
+
+        class _Repo(_FakeRmsSplRepo):
+            def create_mapping(self, data):
+                captured.update(data)
+                return _FakeRmsSplRepo.create_mapping(self, data)
+
+        service = ApiRmsSplConfigService(repository=_Repo())
+        res = service.create({
+            'api_id': 5,
+            'calibration_data': {'points': [
+                {'target_spl': 75, 'rms_dbfs': -24.0, 'gain_linear': 99.9},
+                {'target_spl': 65, 'rms_dbfs': -30.0},
+            ]},
+        })
+        assert res['code'] == 201
+        pts = captured['calibration_data']['points']
+        assert [p['target_spl'] for p in pts] == [65.0, 75.0]  # 落库前按 target_spl 升序
+        for p in pts:
+            assert abs(p['gain_linear'] - 10.0 ** ((p['rms_dbfs'] + 30.0) / 20.0)) < 1e-9
+
+    def test_update_derives_gain_and_sorts_points(self, monkeypatch):
+        captured = {}
+
+        class _Repo(_FakeRmsSplRepo):
+            def update_mapping(self, mapping_id, data):
+                captured.update(data)
+                return _FakeRmsSplRepo.update_mapping(self, mapping_id, data)
+
+        service = ApiRmsSplConfigService(repository=_Repo())
+        created = service.create({'api_id': 5})
+        res = service.update(created['data']['id'], {
+            'calibration_data': {'points': [
+                {'target_spl': 85, 'rms_dbfs': -20.0},
+                {'target_spl': 65, 'rms_dbfs': -30.0},
+            ]},
+        })
+        assert res['code'] == 200
+        pts = captured['calibration_data']['points']
+        assert [p['target_spl'] for p in pts] == [65.0, 85.0]
+        for p in pts:
+            assert abs(p['gain_linear'] - 10.0 ** ((p['rms_dbfs'] + 30.0) / 20.0)) < 1e-9
+
+
 class TestCalibrationMutex:
     def test_calibrate_writes_points_and_marks_calibrated(self, monkeypatch):
         published = []
@@ -491,16 +563,24 @@ class TestCalibrationMutex:
 
         res = service.calibrate(created['data']['id'], {
             'points': [
-                {'target_spl': 55.0, 'gain_linear': 0.5},
-                {'target_spl': 65.0, 'gain_linear': 1.0},
-                {'target_spl': 75.0, 'gain_linear': 2.0},
+                {'target_spl': 75.0, 'rms_dbfs': -24.0, 'gain_linear': 99.9},
+                {'target_spl': 55.0, 'rms_dbfs': -36.0, 'gain_linear': 99.9},
+                {'target_spl': 65.0, 'rms_dbfs': -30.0, 'gain_linear': 99.9},
             ],
         })
         assert res['code'] == 200
         data = res['data']
         assert data['calibration_status'] == CalibrationStatus.CALIBRATED.value
-        assert len(data['calibration_points']) == 3
         assert data['is_calibrated'] is True
+        # INT-2084：回读按 target_spl 升序（提交乱序 75/55/65 → 55/65/75），
+        # 每个点 gain_linear 由 rms_dbfs 推导覆盖（提交值 99.9 不参与存储）
+        pts = [(p['target_spl'], p['gain_linear'], p['rms_dbfs']) for p in data['calibration_points']]
+        assert len(pts) == 3
+        assert [t for t, _, _ in pts] == [55.0, 65.0, 75.0]
+        for t, g, r in pts:
+            assert abs(g - 10.0 ** ((r + 30.0) / 20.0)) < 1e-9
+        # create 已发布 created 事件；本次校准发布 calibrated 事件
+        assert published[-1][2]['action'] == 'calibrated'
 
     def test_calibrate_rejects_empty_points(self):
         service = ApiRmsSplConfigService(repository=_FakeRmsSplRepo())
@@ -526,7 +606,7 @@ class TestCalibrationMutex:
                 pass
 
         monkeypatch.setattr(rms_spl_module, 'DistributedLock', _HeldLock)
-        res = service.calibrate(mapping_id, {'points': [{'target_spl': 65, 'gain_linear': 1.0}]})
+        res = service.calibrate(mapping_id, {'points': [{'target_spl': 65, 'rms_dbfs': -30.0}]})
         assert res['code'] == 409
         assert service.get_one(mapping_id)['data']['calibration_points'] == []
 
@@ -547,7 +627,7 @@ class TestCalibrationMutex:
                 released.append(True)
 
         monkeypatch.setattr(rms_spl_module, 'DistributedLock', _OkLock)
-        res = service.calibrate(created['data']['id'], {'points': [{'target_spl': 65, 'gain_linear': 1.0}]})
+        res = service.calibrate(created['data']['id'], {'points': [{'target_spl': 65, 'rms_dbfs': -30.0}]})
         assert res['code'] == 200
         assert released == [True]
 
@@ -576,7 +656,7 @@ class TestCalibrationMutex:
         boom = _BoomRepo()
         boom._store = service._repository._store  # 继承已落库数据，仅让写路径炸
         service._repository = boom
-        res = service.calibrate(created['data']['id'], {'points': [{'target_spl': 65, 'gain_linear': 1.0}]})
+        res = service.calibrate(created['data']['id'], {'points': [{'target_spl': 65, 'rms_dbfs': -30.0}]})
         assert res['code'] == 400
         assert released == [True]
 
@@ -625,16 +705,19 @@ class TestSetDefaultMapping:
 
 
 class TestSplGainConsistency:
-    """执行期 spl_to_gain(api_id, spl) 与校准点一致（UC-0902 验收）"""
+    """执行期 spl_to_gain(api_id, spl) 与校准点一致（UC-0902 验收）
+
+    INT-2084：校准点按新口径（rms_dbfs 主输入）提交，执行期走 dBFS 插值。
+    """
 
     def _calibrated_service(self):
         service = ApiRmsSplConfigService(repository=_FakeRmsSplRepo())
         created = service.create({'api_id': 5, 'name': '校准映射'})
         service.calibrate(created['data']['id'], {
             'points': [
-                {'target_spl': 55.0, 'gain_linear': 0.5},
-                {'target_spl': 65.0, 'gain_linear': 1.0},
-                {'target_spl': 75.0, 'gain_linear': 2.0},
+                {'target_spl': 55.0, 'rms_dbfs': -36.0206},   # gain 0.5
+                {'target_spl': 65.0, 'rms_dbfs': -30.0},      # gain 1.0
+                {'target_spl': 75.0, 'rms_dbfs': -23.9794},   # gain 2.0
             ],
         })
         return service, created['data']['id']
@@ -649,9 +732,10 @@ class TestSplGainConsistency:
         assert gain == pytest.approx(2.0)
 
     def test_gain_interpolates_between_points(self):
+        """70 中点：dBFS 插值 rms=-30+10·log10(2)/2 → gain=√2（对数增益域线性插值）"""
         service, _ = self._calibrated_service()
         gain = service.get_spl_gain(5, 70.0)['data']['gain_linear']
-        assert gain == pytest.approx(1.5)  # 65↔75 线性插值中点
+        assert gain == pytest.approx(2 ** 0.5)
 
     def test_unmapped_api_falls_back_to_linear_approx(self):
         service = ApiRmsSplConfigService(repository=_FakeRmsSplRepo())
@@ -721,37 +805,76 @@ class TestEnumLiterals:
 # ========== 5. 审计返修补充：校准数值校验 / 全量替换语义 / update 路径越权校验 ==========
 
 class TestCalibratePointValidation:
-    """审计问题5：calibrate 校准点复用正数校验并加 math.isfinite（NaN 穿透插值）"""
+    """INT-2084 点级校验规则表（与 _validate_mapping_data 同一套）：
+
+    target_spl 有限数值 ∈[0,120]；rms_dbfs 必填有限数值 ∈[-120,0]；重复 target_spl 整单 400。
+    gain_linear 不再是用户入参（后端推导覆盖），不再校验提交值。
+    """
 
     def _service_with_mapping(self):
         service = ApiRmsSplConfigService(repository=_FakeRmsSplRepo())
         mapping_id = service.create({'api_id': 5})['data']['id']
         return service, mapping_id
 
-    def test_rejects_nan_gain_400(self):
+    def test_rejects_missing_rms_dbfs_400(self):
         service, mapping_id = self._service_with_mapping()
         res = service.calibrate(mapping_id, {
-            'points': [{'target_spl': 65, 'gain_linear': float('nan')}]})
-        assert res['code'] == 400 and 'gain_linear' in res['message']
+            'points': [{'target_spl': 65, 'gain_linear': 1.0}]})
+        assert res['code'] == 400 and '校准点[0]' in res['message'] and 'rms_dbfs' in res['message']
+        assert service.get_one(mapping_id)['data']['calibration_points'] == []
+
+    def test_rejects_nan_rms_dbfs_400(self):
+        service, mapping_id = self._service_with_mapping()
+        res = service.calibrate(mapping_id, {
+            'points': [{'target_spl': 65, 'rms_dbfs': float('nan')}]})
+        assert res['code'] == 400 and 'rms_dbfs' in res['message']
         assert service.get_one(mapping_id)['data']['calibration_points'] == []
 
     def test_rejects_inf_target_spl_400(self):
         service, mapping_id = self._service_with_mapping()
         res = service.calibrate(mapping_id, {
-            'points': [{'target_spl': float('inf'), 'gain_linear': 1.0}]})
+            'points': [{'target_spl': float('inf'), 'rms_dbfs': -30.0}]})
         assert res['code'] == 400 and 'target_spl' in res['message']
 
-    def test_rejects_negative_gain_400(self):
+    def test_rejects_out_of_range_target_spl_400(self):
         service, mapping_id = self._service_with_mapping()
         res = service.calibrate(mapping_id, {
-            'points': [{'target_spl': 65, 'gain_linear': -0.5}]})
-        assert res['code'] == 400 and 'gain_linear' in res['message']
+            'points': [{'target_spl': 500, 'rms_dbfs': -30.0}]})
+        assert res['code'] == 400 and 'target_spl' in res['message']
 
-    def test_rejects_non_numeric_gain_400(self):
+    def test_rejects_out_of_range_rms_dbfs_400(self):
         service, mapping_id = self._service_with_mapping()
         res = service.calibrate(mapping_id, {
-            'points': [{'target_spl': 65, 'gain_linear': 'loud'}]})
-        assert res['code'] == 400 and 'gain_linear' in res['message']
+            'points': [{'target_spl': 65, 'rms_dbfs': 5.0}]})
+        assert res['code'] == 400 and 'rms_dbfs' in res['message']
+
+    def test_rejects_non_numeric_rms_dbfs_400(self):
+        service, mapping_id = self._service_with_mapping()
+        res = service.calibrate(mapping_id, {
+            'points': [{'target_spl': 65, 'rms_dbfs': 'quiet'}]})
+        assert res['code'] == 400 and 'rms_dbfs' in res['message']
+
+    def test_rejects_duplicate_target_spl_400(self):
+        """数值相等即判重：'65' 与 '65.0' 同值 → 整单 400（不落库）"""
+        service, mapping_id = self._service_with_mapping()
+        res = service.calibrate(mapping_id, {
+            'points': [
+                {'target_spl': 65, 'rms_dbfs': -30.0},
+                {'target_spl': 65.0, 'rms_dbfs': -20.0},
+            ]})
+        assert res['code'] == 400 and '重复' in res['message']
+        assert service.get_one(mapping_id)['data']['calibration_points'] == []
+
+    def test_submitted_gain_linear_is_overwritten_by_derivation(self):
+        """提交的 gain_linear 不参与存储：落库值 = 10^((rms_dbfs+30)/20)"""
+        service, mapping_id = self._service_with_mapping()
+        res = service.calibrate(mapping_id, {
+            'points': [{'target_spl': 65, 'rms_dbfs': -30.0, 'gain_linear': 99.9}]})
+        assert res['code'] == 200
+        pts = res['data']['calibration_points']
+        assert len(pts) == 1
+        assert abs(pts[0]['gain_linear'] - 1.0) < 1e-9
+        assert pts[0]['rms_dbfs'] == pytest.approx(-30.0)
 
 
 class TestCalibrateReplaceSemantics:
@@ -762,15 +885,15 @@ class TestCalibrateReplaceSemantics:
         service = ApiRmsSplConfigService(repository=_FakeRmsSplRepo())
         mapping_id = service.create({'api_id': 5})['data']['id']
         service.calibrate(mapping_id, {'points': [
-            {'target_spl': 55, 'gain_linear': 0.5},
-            {'target_spl': 65, 'gain_linear': 1.0},
+            {'target_spl': 55, 'rms_dbfs': -36.0},
+            {'target_spl': 65, 'rms_dbfs': -30.0},
         ]})
         res = service.calibrate(mapping_id, {'points': [
-            {'target_spl': 65, 'gain_linear': 2.0},
+            {'target_spl': 65, 'rms_dbfs': -24.0},
         ]})
         assert res['code'] == 200
         pts = res['data']['calibration_points']
-        assert [(p['target_spl'], p['gain_linear']) for p in pts] == [(65.0, 2.0)]
+        assert [(p['target_spl'], p['gain_linear']) for p in pts] == [(65.0, 10.0 ** 0.3)]
 
     def test_stale_concurrent_commit_not_merged_into_write(self):
         """抢锁前快照陈旧（并发校准已提交）时，写入仍只含本次请求点集"""
@@ -790,11 +913,11 @@ class TestCalibrateReplaceSemantics:
             return real_get(mapping_id)
 
         repo.get_mapping = _get_with_concurrent_commit
-        res = service.calibrate(mapping_id, {'points': [{'target_spl': 65, 'gain_linear': 1.5}]})
+        res = service.calibrate(mapping_id, {'points': [{'target_spl': 65, 'rms_dbfs': -30.0}]})
         assert res['code'] == 200
         pts = res['data']['calibration_points']
         # A 提交的 (90, 9.0) 不被合并进 B 的写入
-        assert [(p['target_spl'], p['gain_linear']) for p in pts] == [(65.0, 1.5)]
+        assert [(p['target_spl'], p['gain_linear']) for p in pts] == [(65.0, 1.0)]
 
     def test_returns_404_when_mapping_deleted_before_lock(self):
         """首读后、抢锁前映射被并发删除：锁内重读命中 None，返回 404 而非异常"""
@@ -812,7 +935,7 @@ class TestCalibrateReplaceSemantics:
             return real_get(mapping_id)
 
         repo.get_mapping = _get_then_delete
-        res = service.calibrate(mapping_id, {'points': [{'target_spl': 65, 'gain_linear': 1.0}]})
+        res = service.calibrate(mapping_id, {'points': [{'target_spl': 65, 'rms_dbfs': -30.0}]})
         assert res['code'] == 404
 
 

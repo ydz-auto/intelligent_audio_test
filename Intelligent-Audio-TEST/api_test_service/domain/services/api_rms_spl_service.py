@@ -53,10 +53,21 @@ class ApiRmsSplService:
 
     @staticmethod
     def _calculate_gain(mapping: ApiRmsSplMapping, target_spl: float) -> float:
-        """有校准点 → np.interp 线性插值；否则参考增益 × 10^(diff/20)"""
+        """有校准点 → 插值；否则参考增益 × 10^(diff/20)。
+
+        INT-2084 口径对齐：点集全含 rms_dbfs（新数据）按 dBFS 口径插值——
+        np.interp 的 xs=target_spl、ys=rms_dbfs 求中间点 rms，再
+        gain = 10^((rms - BASE_LEVEL_DB)/20)（对数增益域线性插值，与输出侧
+        rms_dbfs_to_spl 同一 -30 dBFS 基准）；任一点 rms_dbfs=null（旧数据）
+        回退既有 gain_linear 插值，保证存量校准数据兼容。
+        """
         if mapping.is_calibrated():
             points = sorted(mapping.calibration_points, key=lambda p: p.target_spl)
             xs = [p.target_spl for p in points]
+            if all(p.rms_dbfs is not None for p in points):
+                ys = [p.rms_dbfs for p in points]
+                rms = float(np.interp(target_spl, xs, ys))
+                return 10.0 ** ((rms - ApiRmsSplService.BASE_LEVEL_DB) / 20.0)
             ys = [p.gain_linear for p in points]
             return float(np.interp(target_spl, xs, ys))
         diff = target_spl - mapping.reference_spl

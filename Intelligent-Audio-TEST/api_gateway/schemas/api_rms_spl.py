@@ -20,7 +20,12 @@ class RmsSplMappingCreateRequest(APIModel):
     reference_spl: Optional[float] = Field(None)
     reference_gain_linear: Optional[float] = Field(None)
     calibration_status: Optional[str] = Field(None)
-    calibration_data: Optional[Dict[str, Any]] = Field(None)
+    calibration_data: Optional[Dict[str, Any]] = Field(
+        None,
+        description='{"points": [{target_spl, gain_linear, rms_dbfs}, ...]}：'
+                    'rms_dbfs 必填主输入（目标 SPL ↔ 该 SPL 对应 dBFS），'
+                    'gain_linear 由后端按 10^((rms_dbfs+30)/20) 推导覆盖，提交值不参与存储',
+    )
     min_gain_linear: Optional[float] = Field(None)
     max_gain_linear: Optional[float] = Field(None)
 
@@ -33,13 +38,23 @@ class RmsSplMappingUpdateRequest(APIModel):
     reference_spl: Optional[float] = Field(None)
     reference_gain_linear: Optional[float] = Field(None)
     calibration_status: Optional[str] = Field(None)
-    calibration_data: Optional[Dict[str, Any]] = Field(None)
+    calibration_data: Optional[Dict[str, Any]] = Field(
+        None,
+        description='{"points": [{target_spl, gain_linear, rms_dbfs}, ...]}：'
+                    'rms_dbfs 必填主输入（目标 SPL ↔ 该 SPL 对应 dBFS），'
+                    'gain_linear 由后端按 10^((rms_dbfs+30)/20) 推导覆盖，提交值不参与存储',
+    )
     min_gain_linear: Optional[float] = Field(None)
     max_gain_linear: Optional[float] = Field(None)
 
 
 class RmsSplCalibrateRequest(APIModel):
-    calibration_data: Dict[str, Any] = Field(..., description='{"points": [{target_spl, gain_linear, rms_dbfs}, ...]}')
+    calibration_data: Dict[str, Any] = Field(
+        ...,
+        description='{"points": [{target_spl, gain_linear, rms_dbfs}, ...]}：'
+                    'rms_dbfs 必填主输入（目标 SPL ↔ 该 SPL 对应 dBFS），'
+                    'gain_linear 由后端按 10^((rms_dbfs+30)/20) 推导覆盖，提交值不参与存储',
+    )
 
 
 class RmsSplSetDefaultRequest(APIModel):

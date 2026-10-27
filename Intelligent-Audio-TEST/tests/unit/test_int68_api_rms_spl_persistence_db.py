@@ -135,6 +135,11 @@ class TestRmsSplMappingPersistence:
         assert b.id in ids6 and a.id not in ids6
 
     def test_calibration_points_roundtrip(self, db):
+        """仓储层直写直读（绕过应用层校验）：INT-2084 读侧容忍 rms_dbfs=null 的存量数据。
+
+        新契约写侧（应用层）拒绝 null rms_dbfs，但仓储本身不校验——本用例锁定
+        已有旧数据（rms_dbfs=null）读侧照常返回、执行期可回退 gain 插值。
+        """
         from api_test_service.infrastructure.persistence.api_rms_spl_repository import (
             ApiRmsSplRepositoryImpl,
         )
@@ -214,9 +219,9 @@ class TestSplGainRealDbChain:
     """真实仓储 + 真实 DistributedLock（无 Redis 降级放行）+ 应用服务"""
 
     POINTS = {'points': [
-        {'target_spl': 55.0, 'gain_linear': 0.5},
-        {'target_spl': 65.0, 'gain_linear': 1.0},
-        {'target_spl': 75.0, 'gain_linear': 2.0},
+        {'target_spl': 55.0, 'rms_dbfs': -36.0206},   # gain 0.5
+        {'target_spl': 65.0, 'rms_dbfs': -30.0},      # gain 1.0
+        {'target_spl': 75.0, 'rms_dbfs': -23.9794},   # gain 2.0
     ]}
 
     def test_calibrate_then_gain_matches_points(self, db):
@@ -233,12 +238,12 @@ class TestSplGainRealDbChain:
         assert res['data']['calibration_status'] == CalibrationStatus.CALIBRATED.value
         assert res['data']['is_calibrated'] is True
 
-        # 真库回读 + 校准点精确命中
+        # 真库回读 + 校准点精确命中（INT-2084：增益由 rms_dbfs 推导）
         assert service.get_spl_gain(5, 55.0)['data']['gain_linear'] == pytest.approx(0.5)
         assert service.get_spl_gain(5, 65.0)['data']['gain_linear'] == pytest.approx(1.0)
         assert service.get_spl_gain(5, 75.0)['data']['gain_linear'] == pytest.approx(2.0)
-        # 点间线性插值
-        assert service.get_spl_gain(5, 70.0)['data']['gain_linear'] == pytest.approx(1.5)
+        # 点间 dBFS 插值：65↔75 中点 → √2（对数增益域线性插值）
+        assert service.get_spl_gain(5, 70.0)['data']['gain_linear'] == pytest.approx(2 ** 0.5)
 
     def test_default_pointer_mapping_used_for_gain(self, db):
         """默认项指针生效：执行链路读 apis.rms_spl_mapping_id 指定映射的校准点"""
@@ -250,7 +255,7 @@ class TestSplGainRealDbChain:
         m_used = service.create({'api_id': 7, 'name': '指针指向的映射'})
         m_other = service.create({'api_id': 7, 'name': '更新的未校准映射'})
         service.calibrate(m_used['data']['id'],
-                          {'points': [{'target_spl': 65.0, 'gain_linear': 2.5}]})
+                          {'points': [{'target_spl': 65.0, 'rms_dbfs': -22.0412}]})  # gain 2.5
 
         session = db.get_db_session()
         try:
@@ -346,8 +351,8 @@ class TestServicerDelegationAllRpcs:
         r = servicer.GetRmsSplMappingsByApi(SimpleNamespace(api_id=5))
         assert r.success
         r = servicer.CalibrateRmsSplMapping(SimpleNamespace(
-            mapping_id=3, calibration_data='{"points": [{"target_spl": 65, "gain_linear": 1.0}]}'))
-        assert r.success
+            mapping_id=3, calibration_data='{"points": [{"target_spl": 65, "rms_dbfs": -30.0}]}'))
+        assert r.success  # calibration_data 原样透传（逐点校验在 api_test_service 应用层）
         r = servicer.SetDefaultRmsSplMapping(SimpleNamespace(api_id=5, mapping_id=0))
         assert r.success  # mapping_id=0 → None（清除默认项）
 
@@ -359,7 +364,7 @@ class TestServicerDelegationAllRpcs:
                          'calibration_status': 'calibrated'}),
             ('get_one', 3),
             ('get_by_api', 5),
-            ('calibrate', 3, {'points': [{'target_spl': 65, 'gain_linear': 1.0}]}),
+            ('calibrate', 3, {'points': [{'target_spl': 65, 'rms_dbfs': -30.0}]}),
             ('set_default', 5, None),
         ]
 
@@ -516,7 +521,7 @@ class TestDigitalSplRoutes:
         client, fake = digital_spl_client
         fake.script['calibrate'] = (False, 'API 5 正在执行校准，请稍后再试', None, 409)
         resp = client.post('/api/v1/digital-spl/3/calibrate', json={
-            'calibration_data': {'points': [{'target_spl': 65, 'gain_linear': 1.0}]},
+            'calibration_data': {'points': [{'target_spl': 65, 'rms_dbfs': -30.0}]},
         }, headers={'x-test-perms': 'digital_spl:create'})
         assert resp.status_code == 409, resp.text
         body = resp.json()
@@ -594,17 +599,19 @@ class TestEnvelopeCodeEndToEnd:
         mapping_id = created['data']['id']
 
         res = proxy.calibrate(mapping_id, {'points': [
-            {'target_spl': 55, 'gain_linear': 0.5},
-            {'target_spl': 75, 'gain_linear': 2.0},
+            {'target_spl': 55, 'rms_dbfs': -36.0206},
+            {'target_spl': 75, 'rms_dbfs': -23.9794},
         ]})
         assert res['success'] is True
         assert res['code'] == 200
 
-        # 真库写读回：点集与请求一致（全量替换语义经真实链路生效）
+        # 真库写读回：点集与请求一致（全量替换语义经真实链路生效），
+        # gain 由后端按 10^((rms_dbfs+30)/20) 推导（0.5 / 2.0）
         by_api = proxy.get_by_api(5)
         assert by_api['code'] == 200
         pts = by_api['data']['items'][0]['calibration_points']
-        assert [(p['target_spl'], p['gain_linear']) for p in pts] == [(55.0, 0.5), (75.0, 2.0)]
+        assert [(p['target_spl'], p['gain_linear']) for p in pts] == [
+            (55.0, pytest.approx(0.5)), (75.0, pytest.approx(2.0))]
 
     def test_calibrate_conflict_409_end_to_end(self, live_grpc_channel, monkeypatch):
         """并发校准互斥 409 经真实 servicer→proxy 链透传（不再降级 400）"""
@@ -625,7 +632,7 @@ class TestEnvelopeCodeEndToEnd:
                 pass
 
         monkeypatch.setattr(app_mod, 'DistributedLock', _HeldLock)
-        res = proxy.calibrate(mapping_id, {'points': [{'target_spl': 65, 'gain_linear': 1.0}]})
+        res = proxy.calibrate(mapping_id, {'points': [{'target_spl': 65, 'rms_dbfs': -30.0}]})
         assert res['success'] is False
         assert res['code'] == 409
         assert '正在执行校准' in res['message']
@@ -647,3 +654,88 @@ class TestEnvelopeCodeEndToEnd:
         assert legacy_ok['code'] == 200
         legacy_fail = _envelope(SimpleNamespace(success=False, message='x', data='', code=0))
         assert legacy_fail['code'] == 400
+
+
+# ==================== 5. INT-2084：真实 HTTP 全链路（新口径） ====================
+
+class TestCalibrateHttpRealChain:
+    """INT-2084 真实 HTTP 全链路：router → 真实 ACL → gRPC proxy → 进程内 servicer
+    → 应用服务 → sqlite 真库。
+
+    :15000 只跑 V9.7.31 分支（不含本卡代码），按 devloop §4.3 / INT-1578 口径用
+    进程内真 gRPC + 真仓储做等价链路验证；docker 15000 验收待集成进 V9.7.31 后刷镜像。
+    """
+
+    def _http_client(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from starlette.middleware.base import BaseHTTPMiddleware
+
+        from api_gateway.middleware import RequestAdapterMiddleware
+        from api_gateway.routes.digital_spl_bp import router as digital_spl_router
+
+        app = FastAPI()
+        app.include_router(digital_spl_router, prefix='/api/v1/digital-spl')
+
+        class _TestPermMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                perms = request.headers.get('x-test-perms', '')
+                request.state.permissions = [p for p in perms.split(',') if p]
+                return await call_next(request)
+
+        # add_middleware 后加的在外层：权限注入 → JSON 预解析+ContextVar → 路由
+        app.add_middleware(RequestAdapterMiddleware)
+        app.add_middleware(_TestPermMiddleware)
+        return TestClient(app, raise_server_exceptions=False)
+
+    def test_calibrate_new_contract_http_e2e(self, db, live_grpc_channel):
+        """缺 rms_dbfs → 400「校准点[0]」；重复 target_spl → 400；合法乱序点集
+        → 200 且回读升序、gain 由后端推导覆盖（提交值 99.9 不落库）。"""
+        from api_gateway.infrastructure.grpc_proxies import api_rms_spl_config_service as proxy
+
+        created = proxy.create({'api_id': 5, 'name': '接线测试_INT2084_映射'})
+        assert created['success'] is True
+        mapping_id = created['data']['id']
+
+        client = self._http_client()
+        headers = {'x-test-perms': 'digital_spl:create,digital_spl:read'}
+
+        # 1. 点缺 rms_dbfs → 400，报错含「校准点[0]」
+        resp = client.post(f'/api/v1/digital-spl/{mapping_id}/calibrate', json={
+            'calibration_data': {'points': [{'target_spl': 65, 'gain_linear': 1.0}]},
+        }, headers=headers)
+        assert resp.status_code == 400, resp.text
+        assert '校准点[0]' in resp.json()['message']
+
+        # 2. 重复 target_spl（65 / 65.0 同值）→ 整单 400
+        resp = client.post(f'/api/v1/digital-spl/{mapping_id}/calibrate', json={
+            'calibration_data': {'points': [
+                {'target_spl': 65, 'rms_dbfs': -30.0},
+                {'target_spl': 65.0, 'rms_dbfs': -20.0},
+            ]},
+        }, headers=headers)
+        assert resp.status_code == 400, resp.text
+        assert '重复' in resp.json()['message']
+
+        # 3. 合法乱序点集 → 200；回读按 target_spl 升序，gain 推导覆盖提交值
+        resp = client.post(f'/api/v1/digital-spl/{mapping_id}/calibrate', json={
+            'calibration_data': {'points': [
+                {'target_spl': 75, 'rms_dbfs': -24.0, 'gain_linear': 99.9},
+                {'target_spl': 65, 'rms_dbfs': -30.0},
+            ]},
+        }, headers=headers)
+        assert resp.status_code == 200, resp.text
+        pts = resp.json()['data']['calibration_points']
+        assert [(p['target_spl'], p['gain_linear']) for p in pts] == [
+            (65.0, pytest.approx(1.0)),
+            (75.0, pytest.approx(10.0 ** 0.3)),
+        ]
+
+        # 4. 真库回读（proxy 读侧）：点集与 HTTP 写入一致
+        by_api = proxy.get_by_api(5)
+        assert by_api['code'] == 200
+        stored = by_api['data']['items'][0]['calibration_points']
+        assert [(p['target_spl'], p['gain_linear']) for p in stored] == [
+            (65.0, pytest.approx(1.0)),
+            (75.0, pytest.approx(10.0 ** 0.3)),
+        ]

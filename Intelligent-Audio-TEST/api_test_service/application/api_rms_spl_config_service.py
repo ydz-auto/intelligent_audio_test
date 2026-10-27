@@ -78,6 +78,54 @@ class ApiRmsSplConfigService:
     # ========== 校验 ==========
 
     @staticmethod
+    def _validate_points(points: list) -> Optional[str]:
+        """点级校验规则表（`_validate_mapping_data` 与 `calibrate` 共用，INT-2084）。
+
+        每个点：target_spl 有限数值且 ∈[0,120]；rms_dbfs 必填有限数值且 ∈[-120,0]
+        （0=满幅上限、-120=数字静音界）；重复 target_spl（数值相等即判重，
+        '65'/'65.0' 同值）整单拒绝。错误消息定位点下标（「校准点[i]」格式）。
+        """
+        seen_targets = set()
+        for i, p in enumerate(points):
+            if not isinstance(p, dict) or 'target_spl' not in p or 'rms_dbfs' not in p:
+                return f"校准点[{i}] 缺少 target_spl/rms_dbfs 字段"
+            target_spl = p['target_spl']
+            rms_dbfs = p['rms_dbfs']
+            if not isinstance(target_spl, (int, float)) or not math.isfinite(target_spl):
+                return f"校准点[{i}] target_spl 必须为有限数值"
+            if not (0.0 <= float(target_spl) <= 120.0):
+                return f"校准点[{i}] target_spl 必须在 0-120 之间"
+            if not isinstance(rms_dbfs, (int, float)) or not math.isfinite(rms_dbfs):
+                return f"校准点[{i}] rms_dbfs 必须为有限数值"
+            if not (-120.0 <= float(rms_dbfs) <= 0.0):
+                return f"校准点[{i}] rms_dbfs 必须在 -120-0 之间"
+            t = float(target_spl)
+            if t in seen_targets:
+                return f"校准点[{i}] target_spl 与之前的点重复"
+            seen_targets.add(t)
+        return None
+
+    @staticmethod
+    def _derive_and_sort_points(points: list) -> list:
+        """增益推导覆盖 + 按 target_spl 升序（稳定）落库。
+
+        gain_linear = 10^((rms_dbfs - BASE_LEVEL_DB)/20)（BASE_LEVEL_DB=-30 dBFS），
+        提交的 gain_linear 不参与存储（INT-2082 裁定：后端为唯一权威）。
+        """
+        derived = [
+            {
+                'target_spl': float(p['target_spl']),
+                'gain_linear': 10.0 ** (
+                    (float(p['rms_dbfs']) - ApiRmsSplService.BASE_LEVEL_DB) / 20.0
+                ),
+                'rms_dbfs': float(p['rms_dbfs']),
+            }
+            for p in points
+        ]
+        derived.sort(key=lambda q: q['target_spl'])
+        return derived
+
+    @staticmethod
     def _validate_mapping_data(data: dict, require_api_id: bool = True) -> Optional[str]:
         """校验映射配置数据，返回错误消息或 None"""
         if require_api_id and not data.get('api_id'):
@@ -108,9 +156,9 @@ class ApiRmsSplConfigService:
         if points is not None:
             if not isinstance(points, list):
                 return "校准数据 (calibration_data.points) 必须是数组"
-            for i, p in enumerate(points):
-                if not isinstance(p, dict) or 'target_spl' not in p or 'gain_linear' not in p:
-                    return (f"校准点[{i}] 缺少 target_spl/gain_linear 字段")
+            error = ApiRmsSplConfigService._validate_points(points)
+            if error:
+                return error
 
         return None
 
@@ -139,6 +187,12 @@ class ApiRmsSplConfigService:
         error = self._validate_mapping_data(data)
         if error:
             return {'success': False, 'message': error, 'data': None, 'code': 400}
+        cd = data.get('calibration_data')
+        if isinstance(cd, dict) and isinstance(cd.get('points'), list):
+            data['calibration_data'] = {
+                **cd,
+                'points': self._derive_and_sort_points(cd['points']),
+            }
 
         try:
             mapping = self.repository.create_mapping(data)
@@ -157,6 +211,12 @@ class ApiRmsSplConfigService:
         error = self._validate_mapping_data(data, require_api_id=False)
         if error:
             return {'success': False, 'message': error, 'data': None, 'code': 400}
+        cd = data.get('calibration_data')
+        if isinstance(cd, dict) and isinstance(cd.get('points'), list):
+            data['calibration_data'] = {
+                **cd,
+                'points': self._derive_and_sort_points(cd['points']),
+            }
 
         try:
             mapping = self.repository.update_mapping(mapping_id, data)
@@ -201,18 +261,10 @@ class ApiRmsSplConfigService:
             points = (calibration_data or {}).get('points')
             if not isinstance(points, list) or not points:
                 return {'success': False, 'message': '校准数据必须包含非空 points 数组', 'data': None, 'code': 400}
-            for i, p in enumerate(points):
-                if not isinstance(p, dict) or 'target_spl' not in p or 'gain_linear' not in p:
-                    return {'success': False, 'message': f'校准点[{i}] 缺少 target_spl/gain_linear 字段',
-                            'data': None, 'code': 400}
-                target_spl = p['target_spl']
-                gain_linear = p['gain_linear']
-                if not isinstance(target_spl, (int, float)) or not math.isfinite(target_spl):
-                    return {'success': False, 'message': f'校准点[{i}] target_spl 必须为有限数值',
-                            'data': None, 'code': 400}
-                if not isinstance(gain_linear, (int, float)) or not math.isfinite(gain_linear) or gain_linear <= 0:
-                    return {'success': False, 'message': f'校准点[{i}] gain_linear 必须为正的有限数值',
-                            'data': None, 'code': 400}
+            error = self._validate_points(points)
+            if error:
+                return {'success': False, 'message': error, 'data': None, 'code': 400}
+            derived_points = self._derive_and_sort_points(points)
 
             lock = DistributedLock(
                 f"{RedisKeyPrefix.SPL_CALIBRATION_LOCK.value}:{mapping.api_id}"
@@ -230,10 +282,10 @@ class ApiRmsSplConfigService:
                 if mapping is None:
                     return {'success': False, 'message': '未找到映射记录', 'data': None, 'code': 404}
                 mapping.replace_calibration_points(CalibrationPoint(
-                    target_spl=float(p['target_spl']),
-                    gain_linear=float(p['gain_linear']),
-                    rms_dbfs=p.get('rms_dbfs'),
-                ) for p in points)
+                    target_spl=q['target_spl'],
+                    gain_linear=q['gain_linear'],
+                    rms_dbfs=q['rms_dbfs'],
+                ) for q in derived_points)
                 updated = self.repository.update_mapping(mapping.id, {
                     'calibration_status': CalibrationStatus.CALIBRATED.value,
                     'calibration_data': {

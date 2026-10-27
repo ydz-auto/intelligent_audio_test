@@ -34,6 +34,7 @@ def _uncalibrated_mapping(**kw):
 
 
 def _calibrated_mapping():
+    """旧数据：点集 rms_dbfs=None（INT-2084 前口径，读侧容忍 + 执行期回退 gain 插值）"""
     return ApiRmsSplMapping(
         id=2, api_id=7,
         calibration_status='calibrated',
@@ -41,6 +42,25 @@ def _calibrated_mapping():
             CalibrationPoint(target_spl=45, gain_linear=0.1),
             CalibrationPoint(target_spl=65, gain_linear=1.0),
             CalibrationPoint(target_spl=85, gain_linear=10.0),
+        ],
+    )
+
+
+def _calibrated_mapping_newdata():
+    """新数据：点集全含 rms_dbfs（INT-2084 主输入口径），gain 按 10^((rms+30)/20) 推导。
+
+    45/-36 → 10^(-0.3)≈0.501；65/-30 → 1.0；85/-5 → 10^0.5≈3.162（未限幅前 17.78 被 max 截断）。
+    """
+    return ApiRmsSplMapping(
+        id=3, api_id=7,
+        calibration_status='calibrated',
+        calibration_points=[
+            CalibrationPoint(target_spl=45, rms_dbfs=-36.0,
+                             gain_linear=10.0 ** ((-36.0 + 30.0) / 20.0)),
+            CalibrationPoint(target_spl=65, rms_dbfs=-30.0,
+                             gain_linear=10.0 ** ((-30.0 + 30.0) / 20.0)),
+            CalibrationPoint(target_spl=85, rms_dbfs=-5.0,
+                             gain_linear=10.0 ** ((-5.0 + 30.0) / 20.0)),
         ],
     )
 
@@ -80,6 +100,33 @@ class TestCalibratedInterp:
         service = ApiRmsSplService()
         gain = service.spl_to_gain_by_mapping(_calibrated_mapping(), 120.0)
         assert gain == pytest_approx(10.0)  # max_gain_linear
+
+
+class TestCalculateGainRmsDbfsInterp:
+    """INT-2084：新数据（全点含 rms_dbfs）按 dBFS 口径插值；旧数据回退 gain 插值"""
+
+    def test_new_data_interpolates_in_dbfs_domain(self):
+        """55：rms 在 (45,-36) 与 (65,-30) 中点 → -33 → gain=10^(-0.15)"""
+        mapping = _calibrated_mapping_newdata()
+        gain = ApiRmsSplService.spl_to_gain_by_mapping(mapping, 55.0)
+        assert abs(gain - 10.0 ** (-0.15)) < 1e-9
+
+    def test_new_data_exact_point(self):
+        mapping = _calibrated_mapping_newdata()
+        gain = ApiRmsSplService.spl_to_gain_by_mapping(mapping, 65.0)
+        assert abs(gain - 1.0) < 1e-9
+
+    def test_new_data_out_of_range_clamped_by_gain_limit(self):
+        """120 > 85 → np.interp 端点 rms=-5 → gain=10^0.5≈17.8，经 max_gain_linear=10 限幅"""
+        mapping = _calibrated_mapping_newdata()
+        gain = ApiRmsSplService.spl_to_gain_by_mapping(mapping, 120.0)
+        assert gain == pytest_approx(10.0)
+
+    def test_legacy_data_falls_back_to_gain_linear_interp(self):
+        """旧数据（rms_dbfs=None）：gain 插值 55→0.55，与 dBFS 口径 10^(-0.15)≈0.708 不同"""
+        mapping = _calibrated_mapping()  # rms_dbfs=None
+        gain = ApiRmsSplService.spl_to_gain_by_mapping(mapping, 55.0)
+        assert abs(gain - 0.55) < 1e-9
 
 
 class TestGainLimit:

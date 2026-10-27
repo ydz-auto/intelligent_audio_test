@@ -50,7 +50,11 @@ def _create_api(api_client, suffix):
 
 
 def _create_mapping(api_client, api_id, name, points=None):
-    """造 1 条 API/RMS-SPL 映射；points 为空列表=未校准，非空=已校准。"""
+    """造 1 条 API/RMS-SPL 映射；points 为空列表=未校准，非空=已校准。
+
+    INT-2084 新口径：点以 rms_dbfs 为主输入（必填），gain_linear 由后端按
+    10^((rms_dbfs+30)/20) 推导覆盖，提交值不参与存储。
+    """
     data = api_client.request('POST', '/digital-spl', {
         'api_id': int(api_id),
         'name': name,
@@ -178,14 +182,19 @@ def test_out_of_range_target_spl_blocks_submit(page, api_client, int330_data):
 
 
 def test_existing_bad_point_blocks_submit_on_mount(page, api_client, int330_data):
-    """已校准映射带坏点（targetSpl=500）→ 打开弹窗即亮红字、提交禁用（未触碰也阻塞）。"""
+    """已校准映射带坏点 → 打开弹窗即亮红字、提交禁用（未触碰也阻塞）。
+
+    INT-2084 起后端写侧拒绝 target_spl 越界点（整单 400），「既有坏点」改用
+    rms_dbfs=-120（数字静音界，后端接受但推导增益 10^(-4.5) 低于 min_gain_linear
+    0.001）构造：打开弹窗即亮增益红字并阻塞提交。
+    """
     suffix = unique_suffix()
     api_id = _create_api(api_client, suffix)
     int330_data['apis'].append(api_id)
     map_name = f'ui330_map_existingbad_{suffix}'
     int330_data['mappings'].append(_create_mapping(api_client, api_id, map_name, points=[
-        {'target_spl': 500, 'gain_linear': 1.0, 'rms_dbfs': None},
-        {'target_spl': 65, 'gain_linear': 1.0, 'rms_dbfs': None},
+        {'target_spl': 30, 'rms_dbfs': -120.0},
+        {'target_spl': 65, 'rms_dbfs': -30.0},
     ]))
 
     modal = _open_calibration_modal(page, map_name)
@@ -193,13 +202,13 @@ def test_existing_bad_point_blocks_submit_on_mount(page, api_client, int330_data
     assert len(rows) == 2, '既有 2 点应原样渲染'
 
     errors = modal.find_elements(By.CSS_SELECTOR, POINT_ERROR)
-    assert any('目标 SPL' in (e.text or '') for e in errors), \
-        '既有坏点挂载即应亮红字（未触碰也要校验）'
+    assert any('增益' in (e.text or '') for e in errors), \
+        f'既有坏点挂载即应亮红字（未触碰也要校验）：实际={[e.text for e in errors]}'
     assert 'has-error' in rows[0].get_attribute('class'), '坏点行应有 has-error 样式'
     assert not _modal_submit(page).is_enabled(), '既有坏点存在时提交应禁用（不得静默放行落库）'
 
-    # 修正坏点 → 解禁
-    _set_row_input(rows[0], 0, '80')
+    # 修正坏点（线性增益改回限幅内）→ 解禁
+    _set_row_input(rows[0], 1, '1')
     page.settle(0.3)
     assert not modal.find_elements(By.CSS_SELECTOR, POINT_ERROR), '修正后红字应消失'
     assert _modal_submit(page).is_enabled(), '修正后提交应可用'
@@ -236,7 +245,10 @@ def test_remove_point_keeps_error_on_remaining_row(page, api_client, int330_data
 
 
 def test_valid_submit_closes_modal(page, api_client, int330_data):
-    """合法点集提交：走 onConfirm（单次校准），成功后弹窗关闭（重复 POST 回归）。"""
+    """合法点集提交：走 onConfirm（单次校准），成功后弹窗关闭（重复 POST 回归）。
+
+    INT-2084 新口径：rms_dbfs 必填（第 3 个输入框），提交 {target_spl, gain_linear, rms_dbfs}。
+    """
     suffix = unique_suffix()
     api_id = _create_api(api_client, suffix)
     int330_data['apis'].append(api_id)
@@ -248,6 +260,7 @@ def test_valid_submit_closes_modal(page, api_client, int330_data):
     rows = _data_rows(modal)
     _set_row_input(rows[0], 0, '65')
     _set_row_input(rows[0], 1, '1.0')
+    _set_row_input(rows[0], 2, '-30')
     page.settle(0.3)
 
     submit = _modal_submit(page)
@@ -270,8 +283,8 @@ def test_regenerate_visible_with_existing_points_and_two_step_confirm(page, api_
     int330_data['apis'].append(api_id)
     map_name = f'ui330_map_regen_{suffix}'
     int330_data['mappings'].append(_create_mapping(api_client, api_id, map_name, points=[
-        {'target_spl': 30, 'gain_linear': 0.5, 'rms_dbfs': None},
-        {'target_spl': 90, 'gain_linear': 2.0, 'rms_dbfs': None},
+        {'target_spl': 30, 'rms_dbfs': -36.0},
+        {'target_spl': 90, 'rms_dbfs': -24.0},
     ]))
 
     modal = _open_calibration_modal(page, map_name)
