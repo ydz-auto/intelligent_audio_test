@@ -106,6 +106,43 @@ class ReportCasesQueryMixin:
         """空分页响应（统一契约）。"""
         return {'items': [], 'total': 0, 'page': 1, 'per_page': 20, 'pages': 1}
 
+    def handle_get_report_cases_raw_payload(self, report_id: int) -> dict:
+        """返回报告用例**原始九字段 payload**（INT-1996：task_service 发布冻结 M1 前置）。
+
+        与 ``handle_get_report_cases`` 的区别：不经响应装配层
+        （``build_case_dict_from_entity`` / ``build_case_item`` 的 null/[] 归一
+        与 algorithmResults/referenceParams 展开），直接经
+        ``report_case_snapshot_store`` 解引用出口给出**原始列值**——null/[] 原样
+        保留。task_service 冻结侧按已发布任务契约自行 ``_to_json``/``_to_json_obj``
+        归一，保证改造前后 ``canonical_bytes`` 逐字节一致。
+
+        Returns:
+            dict: ``{'cases': [{id, test_case_id, name, description, category,
+                   tags, metrics, results, audios, reference_params,
+                   algorithm_results, algorithm_type, logs}, ...]}``
+        """
+        rows = self.repository.get_cases_by_report_id(report_id)
+        return {
+            'cases': [
+                {
+                    'id': getattr(c, 'id', None),
+                    'test_case_id': getattr(c, 'test_case_id', None),
+                    'name': getattr(c, 'name', None),
+                    'description': getattr(c, 'description', None),
+                    'category': getattr(c, 'category', None),
+                    'tags': getattr(c, 'tags', None),
+                    'metrics': getattr(c, 'metrics', None),
+                    'results': getattr(c, 'results', None),
+                    'audios': getattr(c, 'audios', None),
+                    'reference_params': getattr(c, 'reference_params', None),
+                    'algorithm_results': getattr(c, 'algorithm_results', None),
+                    'algorithm_type': getattr(c, 'algorithm_type', None),
+                    'logs': getattr(c, 'logs', None),
+                }
+                for c in rows
+            ],
+        }
+
     # ---- API 原始响应按需展开（INT-1752）----
 
     #: 未指定 limit 时的单页字符数
