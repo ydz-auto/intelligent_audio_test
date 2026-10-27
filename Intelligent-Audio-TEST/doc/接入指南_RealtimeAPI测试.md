@@ -138,7 +138,7 @@ _FLAT_KEY_DIMENSIONS = { ..., VendorAdapterType.MY_VENDOR: (AdapterProtocol.REAL
 > **时序口径（负责人 2026-10-23 拍板）**：
 > - **正常轮完成判定**：事件驱动——`ai_audio_delta` 起始窗口判「已开口」、`ai_audio_done` 收尾窗口判「完成」，**超时仅兜底**（不改变成败语义；`success = bool(complete and output['ai_complete'])`）。
 > - **打断点**：模式化——`fixed_delay` 按固定延时（`interruption_delay_ms`）或 `output_duration` 按已返回 AI 音频流长度（`interrupt_after_ms`）判定打断时机（INT-2080，见 6）。
-> - **时延指标**：帧时间戳实测（`frame_results` 逐帧 `ts` / `offset_ms`：首帧 `first_frame_latency_ms`、打断 `barge_in_latency_ms`），**与超时无关**。
+> - **时延指标**：帧时间戳实测（帧记录 `ts`；设计 schema 另含 `offset_ms`——当前实现逐帧 `{ts,type,payload}`，INT-263 已记录；首帧 `first_frame_latency_ms`、打断 `barge_in_latency_ms`），**与超时无关**。
 
 ### 4.3 超时与节奏配置
 
