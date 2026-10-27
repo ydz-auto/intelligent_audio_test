@@ -7,7 +7,8 @@ voice_llm 算法种子数据
 
 功能：
 1. 注册 voice_llm 算法定义（algorithm_definitions）
-2. 注册 voice_llm 用例专属参数（case_algorithm_params），含 scope 字段
+2. 用例专属参数（case_algorithm_params）说明——INT-2095 起不再软删；定义由
+   scripts/migrations/202610/seed_voice_llm_case_params_int2095.py 幂等维护
 3. 注册 voice_llm 设备输出字段（algorithm_device_params）
 4. 注册 voice_llm API 输入/输出字段（algorithm_api_params）
 5. 注册 voice_llm 参考参数定义（algorithm_reference_params）
@@ -115,20 +116,21 @@ def seed_voice_llm():
             print("  + voice_llm 算法定义已插入")
 
         # ============================================================
-        # Step 3: 清理用例专属参数（case_algorithm_params）
+        # Step 3: 用例专属参数（case_algorithm_params）——不再软删
         # ============================================================
-        print("\n=== Step 3: 清理 voice_llm 用例参数 (case_algorithm_params) ===")
+        print("\n=== Step 3: voice_llm 用例参数 (case_algorithm_params) 说明 ===")
 
-        # 数据库中 voice_llm 的 case_algorithm_params 全部已软删除
-        # 用例参数已迁移到其他表管理，这里仅做清理
-        deleted_count = conn.execute(text(
-            "UPDATE case_algorithm_params SET deleted = true, updated_at = NOW() "
+        # INT-2095 根因修复：此前本步把 voice_llm 的 case_algorithm_params 全部软删
+        # （注释称「用例参数已迁移到其他表管理」，实际未迁移），而 form-schema 的
+        # 数据源恒为 case_algorithm_params(deleted=false) 定义表 → 软删后批量设置
+        # 算法参数弹窗恒空态。现改为不再软删；定义由
+        # scripts/migrations/202610/seed_voice_llm_case_params_int2095.py 幂等维护。
+        active_count = conn.execute(text(
+            "SELECT count(*) FROM case_algorithm_params "
             "WHERE algorithm_type = 'voice_llm' AND deleted = false"
-        )).rowcount
-        if deleted_count:
-            print(f"  清理 {deleted_count} 条残留用例参数（已迁移到其他表管理）")
-        else:
-            print("  无残留用例参数需要清理")
+        )).fetchone()[0]
+        print(f"  voice_llm 未删除用例参数 {active_count} 条"
+              f"（定义由 seed_voice_llm_case_params_int2095.py 维护，本步不再软删）")
 
         # ============================================================
         # Step 4: 注册设备输出字段（algorithm_device_params）
@@ -382,7 +384,7 @@ if __name__ == '__main__':
     print()
     print("此脚本将注册：")
     print("1. voice_llm 算法定义")
-    print("2. 清理用例参数（case_algorithm_params，已迁移到其他表管理）")
+    print("2. 用例参数说明（case_algorithm_params 不再软删，定义由 INT-2095 种子维护）")
     print("3. 7 个设备输出字段（start_ms/end_ms/first_frame_ms/wav_path/input_text/question/answer）")
     print("4. 3 个 API 输入/输出字段（会话协议字段由执行引擎管理）")
     print("5. 4 个参考参数定义（correct_answer/query/pause/input_lastword，从音频标注提取）")
