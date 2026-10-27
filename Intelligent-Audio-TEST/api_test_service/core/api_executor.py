@@ -139,7 +139,12 @@ class APIExecutor(BaseExecutor):
 
     # 非流式道里没有「DUT 任务协议」（health/create_task/轮询/取结果）的协议：
     # 这些协议一次调用即一轮，直接按 rounds 逐次调用会话执行器（INT-1789）。
-    _NO_DUT_PROTOCOLS = frozenset({APIProtocol.GRPC.value})
+    # A4（INT-2079）：websocket 请求-响应式同样无该任务协议——一轮 = 一次
+    # WS 请求-响应（发请求消息 → 等响应），多轮 = 按轮次逐次往返。
+    _NO_DUT_PROTOCOLS = frozenset({
+        APIProtocol.GRPC.value,
+        APIProtocol.WEBSOCKET.value,
+    })
 
     def _get_result_mapper(self):
         """返回 DeviceResult ACL 仓储，供 ResultsMixin 使用"""
@@ -281,7 +286,9 @@ class APIExecutor(BaseExecutor):
           gRPC server-stream / bidi 走 GrpcStreamExecutor（A1）；
           注册表外的协议显式报错，不静默降级。
         - streaming=false → 非流式道：rounds>1 走 APISessionExecutor，否则线性
-          （rounds 只是道内策略，不再用于推断流式性）。
+          （rounds 只是道内策略，不再用于推断流式性）；gRPC unary 与 WS
+          请求-响应式（A4，INT-2079）无 DUT 任务协议，一次调用即一轮，
+          直接按轮次直调会话执行器。
         """
         test_case_id = data['test_case_id']
         case_name = data['case_name']

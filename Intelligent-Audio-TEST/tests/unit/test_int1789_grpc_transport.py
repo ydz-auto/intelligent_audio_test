@@ -499,11 +499,11 @@ class TestRouting:
         assert ('grpc', True) in AVAILABLE_PROTOCOL_STREAMING
         assert is_protocol_streaming_available('grpc', False)
         assert is_protocol_streaming_available('grpc', True)
-        # A2（INT-1790）落地后 sse+true 也放行；仍未上线的是 sse / websocket 的
-        # 非流式组合（无对应执行器）
+        # A2（INT-1790）落地后 sse+true 也放行；A4（INT-2079）落地 websocket+false
+        # （WS 请求-响应式），仍未上线的是 sse 的非流式组合（无对应执行器）
         assert is_protocol_streaming_available('sse', True)
         assert not is_protocol_streaming_available('sse', False)
-        assert not is_protocol_streaming_available('websocket', False)
+        assert is_protocol_streaming_available('websocket', False)
 
     def test_lane_only_by_streaming(self):
         assert lane_of(False) is ExecutionLane.NON_STREAMING

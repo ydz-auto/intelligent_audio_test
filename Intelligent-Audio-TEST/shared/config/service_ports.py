@@ -34,6 +34,8 @@ MOCK_EVAL_SERVER_HTTP_PORT = 5097
 # 实现 /health + /api/create_task + /api/get_status + /api/get_final_result +
 # /api/delete_task + /chat（voice_llm 多轮会话）
 MOCK_DUT_API_HTTP_PORT = 5096
+# INT-2079（A4）：被测 API WS 请求-响应式 mock（websocket + streaming=false 冒烟）
+MOCK_WS_REQUEST_RESPONSE_API_PORT = 5095
 
 # 基础设施端口
 REDIS_PORT = 6379

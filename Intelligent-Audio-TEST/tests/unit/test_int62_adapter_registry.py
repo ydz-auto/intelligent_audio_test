@@ -280,12 +280,14 @@ class TestApiDriverAdapterBehavior:
 
 class TestExtensibility:
     def test_mock_adapter_selected_by_config(self):
-        cfg = _make_api_config('ws://mock', vendor_adapter='mock')
+        # INT-2079（A4）：websocket 协议经 (WEBSOCKET, ANY) 解析为 WebSocketAdapter
+        # （请求-响应式），mock 扁平 key 的协议无关选型用 http 端点验证
+        cfg = _make_api_config('http://mock', vendor_adapter='mock')
         adapter = vendor_adapter_registry.create_from_config(cfg)
         assert isinstance(adapter, MockVendorAdapter)
 
     def test_mock_adapter_execute_echo(self):
-        cfg = _make_api_config('ws://mock', vendor_adapter='mock')
+        cfg = _make_api_config('http://mock', vendor_adapter='mock')
         adapter = vendor_adapter_registry.create_from_config(
             cfg, {'mock_latency': 0})
         result = adapter.execute({'input_text': '你好'})

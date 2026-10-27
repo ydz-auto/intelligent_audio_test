@@ -77,7 +77,7 @@ def lane_of(streaming: bool) -> ExecutionLane
 |----------|-----------|------|-------------------|--------------|
 | `http` | `false` | `non_streaming` | `rounds≤1` → `APITaskRunner` / `_execute_linear`；`rounds>1` → `APISessionExecutor` | ✅ 已实现 |
 | `http` | `true` | `streaming` | `StreamSessionExecutor`（A2，chunked 流式） | ❌ 400，A2 未上线 |
-| `websocket` | `false` | `non_streaming` | 无执行器（当前适配器只有会话形态） | ❌ 400，实现未上线 |
+| `websocket` | `false` | `non_streaming` | `APISessionExecutor` + `WebSocketAdapter`（请求-响应式：发请求消息 → 等响应，一轮=一次往返；无 DUT 任务协议） | ✅ 已实现（A4，INT-2079） |
 | `websocket` | `true` | `streaming` | `RealtimeSessionExecutor`（存量） | ✅ 已实现 |
 | `sse` | `false` | `non_streaming` | 无执行器 | ❌ 400，A2 未上线 |
 | `sse` | `true` | `streaming` | `StreamSessionExecutor`（A2） | ❌ 400，A2 未上线 |
@@ -103,6 +103,7 @@ def lane_of(streaming: bool) -> ExecutionLane
 capabilities = {session_rounds, event_rounds, pacing, barge_in, client_push, session_affinity}
 http+non-streaming        → {}
 websocket+streaming       → {session_rounds, pacing, barge_in, client_push, session_affinity}
+websocket+non-streaming   → {}   （A4，INT-2079：请求-响应式，无会话能力）
 sse+streaming             → {event_rounds}
 grpc unary (non-streaming)→ {}
 grpc server-stream        → {event_rounds}
@@ -796,3 +797,35 @@ message ParseProtoResponse {
 | 后端（只读参考，A3 不改） | `api_test_service/infrastructure/adapters/grpc_adapter.py` | `meta.grpc` 唯一读取方与执行期校验（本节键表来源） |
 
 > 前端两文件位于 **`wiring/react` 树**（V9.7.31 本仓库无 `frontend-react/`），A3 交付以该树 HEAD 为准；本节只声明契约归属，不表示实施已完成。
+## 十四、A4（INT-2079）实施回写：WS 非实时执行器（websocket + non_streaming）
+
+### 14.1 落地结论（2026-10-27）
+
+`(websocket, false)` 组合已有落地执行器，写侧放行（不再 400「实现未上线」）。
+执行语义为 **WS 请求-响应式**：发请求消息 → 等响应；非会话式，无打断 /
+推流中打断 / 拒识语义（这些是实时（streaming）能力）。正常轮 / 多轮按
+非流式道内策略（一轮 = 一次 WS 请求-响应往返）。
+
+| 层 | 落位 | 说明 |
+|---|---|---|
+| 可用矩阵 | `shared/models/common_enums.py` `AVAILABLE_PROTOCOL_STREAMING` | 补 `(websocket, False)`；与 §3.2.3 同表，组合校验 / CRUD 零额外改动 |
+| 执行道路由 | `api_test_service/core/api_executor.py` `_NO_DUT_PROTOCOLS` | 补 `websocket`：无 DUT 任务协议（health/create_task/轮询/取结果），一次调用即一轮，按轮次直调非流式道会话执行器（对齐 gRPC unary） |
+| 传输适配器 | `api_test_service/infrastructure/adapters/websocket_adapter.py` | 新增 `WebSocketAdapter`（`(WEBSOCKET, ANY)` 协议级 base）：连接 → 发请求 → 收响应 → 断开；`execute_voice_llm_chat` / `execute` 同形结果，`field_path` 与评估映射在上层统一入口处理（C0/C1/C2 不重开） |
+| 能力声明 | 非流式道不消费能力声明 | `websocket+non-streaming → {}`（无会话能力） |
+
+### 14.2 写侧 / 读侧
+
+- 缺省 `http+false` 不变；`websocket+false` 与其余组合共用同一
+  `_validate_lane_combo` → `is_protocol_streaming_available`，无特判。
+- 任务执行亲和域令牌仍由 `streaming` 派生（`websocket+false` → `http_api`，
+  无实例亲和需求），`task_case_relations.device_type` 语义不变。
+- 前端 `WRITABLE_COMBINATIONS`（§13.5，wiring/react 与 wiring/ux-vue 两棵树）
+  随对应前端接线卡同步放开 `(websocket, false)`；本卡只交付后端就绪。
+
+### 14.3 冒烟
+
+- mock 服务：`mock_services/mock_ws_request_response_api.py`（WS 请求-响应式
+  替身，`:5095`，`MOCK_WS_REQUEST_RESPONSE_API_PORT`），请求-响应语义
+  （发一条 JSON → 回一条 JSON → 关闭；行为可配置）。
+- 单测：`tests/unit/test_int2079_ws_non_streaming.py`（矩阵 / CRUD / 路由 /
+  注册表分发 / 请求-响应全链 / 失败收敛）。

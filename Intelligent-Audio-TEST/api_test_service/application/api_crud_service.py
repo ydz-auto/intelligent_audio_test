@@ -227,8 +227,10 @@ class APICrudService:
     def _validate_lane_combo(protocol, streaming):
         """协议 × 流式性可用矩阵校验（INT-1799 / B0 裁定 §3.2.3）。
 
-        只放行已实现执行器的组合（A2 后为 http+非流式、websocket+流式、
-        sse+流式、http+流式）；其余组合显式拒绝，文案固定，不静默降级。
+        只放行已实现执行器的组合（A1 起 grpc 两种、A2 起 sse / http 流式、
+        A4（INT-2079）起 websocket+false 请求-响应式；矩阵见
+        `shared.models.common_enums.AVAILABLE_PROTOCOL_STREAMING`）；
+        其余组合显式拒绝，文案固定，不静默降级。
         protocol 需已归一为规范值。
         """
         try:

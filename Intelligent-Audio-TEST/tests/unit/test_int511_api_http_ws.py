@@ -398,15 +398,22 @@ class TestExecutorFullChain:
         assert eval_calls[0]['eval_params']['test_type'] == 'api'
 
     def test_ws_round_via_in_process_adapter(self, ws_stream_server, monkeypatch):
-        """WS 全链（进程内适配器分发）：executor → vendor_adapter_registry →
-        ApiDriverAdapter(WS 流式) → 响应聚合 → 轮次结果"""
+        """WS 流式传输全链（进程内适配器直构）：executor → ApiDriverAdapter(WS 流式) →
+        响应聚合 → 轮次结果
+
+        INT-2079（A4）后 `vendor_adapter_registry.create_from_config` 对 websocket
+        协议解析为 WebSocketAdapter（请求-响应式），不再回落 ApiDriverAdapter；
+        本用例保留对 ApiDriverAdapter WS 流式传输（`_call_websocket` 聚合）的
+        直构回归覆盖，注册表分发见 test_int2079_ws_non_streaming.py。
+        """
         from api_test_service.core.api_session_executor import APISessionExecutor
         from api_test_service.core.session_context import SessionContext
-        from api_test_service.infrastructure.adapters import vendor_adapter_registry
+        from api_test_service.infrastructure.adapters.api_driver_adapter import (
+            ApiDriverAdapter,
+        )
         import api_test_service.core.api_session_executor as se_mod
 
         executor = APISessionExecutor(_ExecutorStub())
-        # create_from_config 返回 ApiDriverAdapter（默认 API_DRIVER），executor 直接消费其 execute 产物
         monkeypatch.setattr(se_mod, '_evaluation_acl',
                             SimpleNamespace(submit_evaluate_case=lambda **k: None))
         monkeypatch.setattr(se_mod, 'dto_to_dict',
@@ -421,9 +428,8 @@ class TestExecutorFullChain:
         })
         session = SessionContext(session_id='s-int511-ws', config={'session_timeout': 5})
 
-        # 注册表 create_from_config → ApiDriverAdapter；其 execute 由 executor 直调（不走 gRPC）
-        adapter = vendor_adapter_registry.create_from_config(
-            cfg, {}, task_id=1)
+        # 直构 ApiDriverAdapter（WS 流式传输），其 execute 由 executor 直调（不走 gRPC）
+        adapter = ApiDriverAdapter(cfg, {}, task_id=1)
         from api_test_service.domain.ports import ApiVendorAdapter
         assert isinstance(adapter, ApiVendorAdapter)
         context = {'input_text': '你好', 'round_number': 1, 'total_rounds': 1,

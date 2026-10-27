@@ -79,7 +79,8 @@ class TestAvailabilityMatrix:
         # A2（INT-1790）：SSE 与 http chunked 流式上线
         ('http', True, True),
         ('sse', True, True),
-        ('websocket', False, False),
+        # A4（INT-2079）：WS 请求-响应式（websocket + 非流式）执行器落地
+        ('websocket', False, True),
         ('sse', False, False),
         # INT-1789（A1）：gRPC 两种组合随执行器落地同步开放
         ('grpc', False, True),
@@ -90,11 +91,13 @@ class TestAvailabilityMatrix:
 
     def test_matrix_shape(self):
         # B0 §3.2.3 明确「A1 / A2 落地后同步扩可用矩阵」：
-        # A1（INT-1789）补 grpc 两种，A2（INT-1790）补 sse / http 流式两种
+        # A1（INT-1789）补 grpc 两种，A2（INT-1790）补 sse / http 流式两种，
+        # A4（INT-2079）补 websocket+false（WS 请求-响应式）
         assert AVAILABLE_PROTOCOL_STREAMING == {
             ('http', False), ('websocket', True),
             ('grpc', False), ('grpc', True),
-            ('http', True), ('sse', True)}
+            ('http', True), ('sse', True),
+            ('websocket', False)}
 
 
 # ──────────────────────────── 迁移映射 ────────────────────────────
@@ -157,7 +160,8 @@ class TestCrudValidation:
         # A2（INT-1790）：SSE 与 http chunked 流式上线
         ('http', True, True),
         ('sse', True, True),
-        ('websocket', False, False),
+        # A4（INT-2079）：WS 请求-响应式执行器落地，websocket+false 放行
+        ('websocket', False, True),
         ('sse', False, False),
         # INT-1789（A1）：gRPC 执行器落地，两种组合放行
         ('grpc', False, True),
@@ -203,9 +207,9 @@ class TestCrudValidation:
 
     def test_create_rejects_unavailable_combo(self):
         from api_test_service.application.api_crud_service import APICrudService
-        # A1（INT-1789）落地 gRPC、A2（INT-1790）落地 sse / http 流式后，
-        # 仍未上线的组合只剩 sse+false / websocket+false；这里用 sse+false
-        # 验证「未上线组合 400」的写侧口径不变。
+        # A1（INT-1789）落地 gRPC、A2（INT-1790）落地 sse / http 流式、
+        # A4（INT-2079）落地 websocket+false 后，仍未上线的组合只剩 sse+false；
+        # 这里用 sse+false 验证「未上线组合 400」的写侧口径不变。
         result = APICrudService.create({
             'name': 'demo', 'meta': {}, 'protocol': 'sse', 'streaming': False})
         assert result['code'] == 400

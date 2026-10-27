@@ -49,6 +49,7 @@ from shared.config.service_ports import (
     MOCK_REALTIME_API_WS_PORT,
     MOCK_EVAL_SERVER_HTTP_PORT,
     MOCK_DUT_API_HTTP_PORT,
+    MOCK_WS_REQUEST_RESPONSE_API_PORT,
 )
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,8 @@ mock_services = [
      'script': os.path.join('mock_services', 'mock_eval_server_judge.py')},
     {'name': 'mock_dut_api', 'port': MOCK_DUT_API_HTTP_PORT,
      'script': os.path.join('mock_services', 'mock_dut_api.py')},
+    {'name': 'mock_ws_request_response_api', 'port': MOCK_WS_REQUEST_RESPONSE_API_PORT,
+     'script': os.path.join('mock_services', 'mock_ws_request_response_api.py')},
 ]
 
 # 前端 Vite dev server

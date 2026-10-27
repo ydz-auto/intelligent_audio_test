@@ -7,6 +7,8 @@
 - mock_realtime_api      Realtime 被测产品替身（WebSocket，:5098）
 - mock_eval_server_judge eval_server 裁判端点替身（HTTP，:5097，INT-182）
 - mock_dut_api          被测 API DUT 替身（HTTP，:5096，INT-1176）
+- mock_ws_request_response_api  被测 API WS 请求-响应式替身（WebSocket，:5095，
+  INT-2079/A4：websocket + streaming=false 冒烟）
 
 红线：生产路径零引用 —— 任何生产服务不得 import 本包；不进生产 docker-compose
 编排与镜像；由 run_all.py 按 MOCK_SERVICES_ENABLED=true 可选启动。
