@@ -24,6 +24,7 @@ for p in (PROJECT_ROOT, SCRIPTS_DIR):
         sys.path.insert(0, p)
 
 import check_pyaudio_health as chk
+import run_audio_service_noshim as noshim
 import stop_audio_service as stop
 
 
@@ -309,3 +310,58 @@ def test_main_stop_port_not_released_is_fatal(monkeypatch):
     monkeypatch.setattr(stop, 'cooldown', lambda s: None)
     rc = stop.main(['--port', '50052', '--cooldown', '8'])
     assert rc == 1
+
+
+# ---- 裸调用路径解析（审计 P2-1/P2-2 打回修复） ----
+
+def test_resolve_repo_repo_layout_without_env(monkeypatch):
+    """仓库规范版裸调用（无 AUDIO_SERVICE_REPO）：scripts/host_audio_service/../.. = 仓库根。"""
+    monkeypatch.delenv('AUDIO_SERVICE_REPO', raising=False)
+    monkeypatch.setattr(stop, '__file__', os.path.join(
+        PROJECT_ROOT, 'scripts', 'host_audio_service', 'stop_audio_service.py'))
+    repo = stop._resolve_repo()
+    # 不能多退一层到仓库根父级（那会解析出 No module named 'shared'）
+    assert os.path.basename(repo) == 'Intelligent-Audio-TEST'
+    assert os.path.isdir(os.path.join(repo, 'shared', 'proto'))
+    assert os.path.isdir(os.path.join(repo, 'audio_service'))
+
+
+def test_resolve_repo_host_copy_fallback_without_env(monkeypatch):
+    """宿主运行副本裸调用（无 AUDIO_SERVICE_REPO、不在 scripts/ 布局）→ 主 clone 兜底。"""
+    monkeypatch.delenv('AUDIO_SERVICE_REPO', raising=False)
+    monkeypatch.setattr(stop, '__file__',
+                        r'D:\00_env\host_audio_service\stop_audio_service.py')
+    assert stop._resolve_repo() == r'D:\00_code\V9.7.31\Intelligent-Audio-TEST'
+
+
+def test_resolve_repo_env_override_wins(monkeypatch):
+    """AUDIO_SERVICE_REPO 显式传入时优先（cmd 部署路径）。"""
+    monkeypatch.setenv('AUDIO_SERVICE_REPO', r'C:\repo_a')
+    assert stop._resolve_repo() == r'C:\repo_a'
+
+
+def test_import_grpc_stubs_bare_invocation_succeeds(monkeypatch):
+    """审计 P2-1：裸调用（无 AUDIO_SERVICE_REPO）桩导入成功 → 优雅停止不被静默降级为 taskkill。"""
+    monkeypatch.delenv('AUDIO_SERVICE_REPO', raising=False)
+    pb, pb_grpc, err = stop._import_grpc_stubs()
+    assert err is None, f"裸调用 gRPC 桩导入失败: {err}"
+    assert pb is not None and pb_grpc is not None
+
+
+def test_noshim_resolve_repo_repo_layout(monkeypatch):
+    """审计 P2-2：noshim 仓库规范版裸调用解析到仓库根，audio_service 模块可达。"""
+    monkeypatch.delenv('AUDIO_SERVICE_REPO', raising=False)
+    monkeypatch.setattr(noshim, '__file__', os.path.join(
+        PROJECT_ROOT, 'scripts', 'host_audio_service',
+        'run_audio_service_noshim.py'))
+    repo = noshim._resolve_repo()
+    assert os.path.basename(repo) == 'Intelligent-Audio-TEST'
+    assert os.path.isdir(os.path.join(repo, 'audio_service'))
+
+
+def test_noshim_resolve_repo_host_copy_fallback(monkeypatch):
+    """noshim 宿主运行副本裸调用（不在 scripts/ 布局）→ 主 clone 兜底。"""
+    monkeypatch.delenv('AUDIO_SERVICE_REPO', raising=False)
+    monkeypatch.setattr(noshim, '__file__',
+                        r'D:\00_env\host_audio_service\run_audio_service_noshim.py')
+    assert noshim._resolve_repo() == r'D:\00_code\V9.7.31\Intelligent-Audio-TEST'

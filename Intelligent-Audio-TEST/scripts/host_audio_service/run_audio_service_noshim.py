@@ -18,25 +18,38 @@ D:\\00_env\\host_audio_service\\run_audio_service_noshim.py，两者内容一致
 import os
 import runpy
 
-# 部署时由启动脚本经 AUDIO_SERVICE_REPO 传入；否则按脚本所在位置反推。
-REPO = os.environ.get('AUDIO_SERVICE_REPO')
-if not REPO:
+
+def _resolve_repo():
+    """解析仓库根（shared/audio_service/scripts 所在层）。
+
+    仓库规范版（scripts/host_audio_service/../.. = 仓库根）与宿主运行副本
+    （AUDIO_SERVICE_REPO 由启动器 cmd 传入；裸调用回退主 clone 部署路径）
+    都能解析到同一 repo。多退一层（'..','..','..'）会解析到仓库根父级，
+    audio_service 模块找不到、noshim 服务起不来（INT-2086 审计 P2-2）。
+    """
+    repo = os.environ.get('AUDIO_SERVICE_REPO')
+    if repo:
+        return repo
     _here = os.path.dirname(os.path.abspath(__file__))
     if (os.path.basename(_here) == 'host_audio_service'
             and os.path.basename(os.path.dirname(_here)) == 'scripts'):
         # 仓库内：<repo>/scripts/host_audio_service/run_audio_service_noshim.py
-        REPO = os.path.abspath(os.path.join(_here, '..', '..', '..'))
-    else:
-        # 宿主运行副本兜底：主 clone 部署路径（与启动器 cmd 的 REPO 同源）。
-        REPO = r'D:\00_code\V9.7.31\Intelligent-Audio-TEST'
+        return os.path.abspath(os.path.join(_here, '..', '..'))
+    # 宿主运行副本兜底：主 clone 部署路径（与启动器 cmd 的 REPO 同源）。
+    return r'D:\00_code\V9.7.31\Intelligent-Audio-TEST'
 
-os.chdir(REPO)
 
-from dotenv import load_dotenv
+REPO = _resolve_repo()
 
-load_dotenv(os.path.join(REPO, '.env'))
-os.environ.setdefault('PYTHONUTF8', '1')
-os.environ.setdefault('SERVICE_NAME', 'audio_service')
-os.environ.setdefault('GRPC_PORT', '50052')
+if __name__ == '__main__':
+    os.chdir(REPO)
 
-runpy.run_module('audio_service.interfaces.grpc.server', run_name='__main__', alter_sys=True)
+    from dotenv import load_dotenv
+
+    load_dotenv(os.path.join(REPO, '.env'))
+    os.environ.setdefault('PYTHONUTF8', '1')
+    os.environ.setdefault('SERVICE_NAME', 'audio_service')
+    os.environ.setdefault('GRPC_PORT', '50052')
+
+    runpy.run_module('audio_service.interfaces.grpc.server',
+                     run_name='__main__', alter_sys=True)
