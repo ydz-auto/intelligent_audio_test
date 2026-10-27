@@ -108,13 +108,20 @@ class TestFkRules:
         assert len(fk_rules_of(TransferTable.TASK_CHERRY_PICK_RELATIONS)) == 3
         assert {r.column for r in fk_rules_of(TransferTable.TASK_CHERRY_PICK_RELATIONS)} == {
             'cherry_pick_task_id', 'result_id', 'source_task_id'}
-        # report 子表 6 张都是 report_id → TEST_REPORTS
+        # report 子表 6 张都是 report_id → TEST_REPORTS；INT-1995（档4 M1）
+        # report_case_snapshots 为内容寻址快照表（sha256 主键、无 report_id），
+        # 不参与 report_id 外键规则，单独断言其 FK 规则为空。
         report_children = [t for t in TransferTable if t.value.startswith('report_')]
-        assert len(report_children) == 6
-        for table in report_children:
+        snapshot_table = next(
+            (t for t in report_children if t.value == 'report_case_snapshots'), None)
+        fk_report_children = [t for t in report_children if t is not snapshot_table]
+        assert len(fk_report_children) == 6
+        for table in fk_report_children:
             rule = fk_rules_of(table)[0]
             assert rule.column == 'report_id'
             assert rule.mapping is FkMappingKey.TEST_REPORTS
+        if snapshot_table is not None:
+            assert fk_rules_of(snapshot_table) == ()
 
 
 class TestRewriteFkRows:
