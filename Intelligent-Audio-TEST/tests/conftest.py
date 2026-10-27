@@ -132,6 +132,26 @@ if os.path.isdir(PROTO_DIR) and PROTO_DIR not in sys.path:
     sys.path.insert(0, PROTO_DIR)
 
 
+# ── 单测超时兜底（2026-10-27）─────────────────────────────
+# 全量 tests/unit 已到 6665 例。2026-10-26 INT-2007 回归实测：进度到 99%
+# 后一个 worker 阻塞 20 多分钟无输出，其余 7 个 worker 空转，11.6GB 内存
+# 一直不释放，只能人工发现并重启——没有超时保护时单例阻塞就拖垮整轮回归。
+# pytest-timeout 已在 requirements 中；这里给每个用例兜底 300s：
+#   - 挂住的用例到点指名失败，xdist 继续跑其余用例，不再无限期占住 worker；
+#   - 显式传 --timeout=N 时尊重命令行（默认值不覆盖）；
+#   - --timeout=0 关闭兜底（确有需要长跑的用例时用）。
+# Windows 上 pytest-timeout 只支持 thread 方式：超时会终止该 worker 进程，
+# xdist 将其记为超时失败并补起新 worker。
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config):
+    if not config.pluginmanager.hasplugin('timeout'):
+        return
+    if getattr(config.option, 'timeout', None) is None:
+        config.option.timeout = 300
+    if getattr(config.option, 'timeout', 0) and not config.option.timeout_method:
+        config.option.timeout_method = 'thread'
+
+
 # ── INT-96 xdist loadgroup 分组 ─────────────────────────────
 # 配合 `--dist loadgroup` 使用：同组用例固定调度到同一 worker 并保持相对
 # 顺序，禁止被拆分。

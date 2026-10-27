@@ -7,9 +7,19 @@ int120 族），本规范固化其根因结论与收敛手段。
 ## 回归口径
 
 ```
+# 机器空闲 / 集成回归日
 python -m pytest tests -q -n 8 --dist loadgroup
+
+# 共享机器（同时有别的 agent 会话、Docker 栈，或内存吃紧）
+python -m pytest tests -q -n 4 --dist loadgroup
 ```
 
+- `-n` 是分片数，不是重复执行：xdist 按组把用例分给 worker，每个 nodeid 只跑
+  一次。`-n 8` 内存峰值约 11.6GB（每 worker 常驻 0.9~1.6GB），`-n 4` 约减半；
+  套件耗时大头是轮询等待，降 worker 的实际变慢通常明显小于 2 倍。
+- **单测超时兜底**：`tests/conftest.py` 默认每例 300s（pytest-timeout，Windows
+  走 thread）。挂住的用例到点指名失败、不拖住整轮；`--timeout=600` 放宽，
+  `--timeout=0` 关闭。
 - **默认离线**：不含实机栈用例（tests/api 默认 skip，见下）。栈恰好在跑
   也不再改变结果——同一条命令在同一代码状态下必须产出同一结论。
 - 实机验收（直击运行中的 V9.7.31 栈）：`RUN_LIVE_STACK=1` 显式纳入
