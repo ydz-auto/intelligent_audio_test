@@ -63,7 +63,9 @@
     "bind_ttl_seconds": 3600,
     "pacing_strategy": "fixed",
     "turn_end_wait_timeout_s": 60,
-    "pacing_fallback_timeout_s": 30
+    "pacing_fallback_timeout_s": 30,
+    "interrupt_mode": "fixed_delay",
+    "interrupt_after_ms": 3000
   },
   "audio_render": {
     "chunk_duration_ms": 100,

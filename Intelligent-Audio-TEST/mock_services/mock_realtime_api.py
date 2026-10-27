@@ -81,6 +81,12 @@ class MockRealtimeBehavior:
     speak_during_stream_after: int = 1
     speak_during_stream_barge_in: bool = False
     speak_during_stream_complete: bool = True
+    # INT-2080：AI 输出 audio.delta 载荷大小（大块回复场景 / output_duration
+    # 打断点按已返回长度触发验证；默认 80 保持既有契约）
+    delta_bytes: int = 80
+    # INT-2080：barge_in 预置「AI 正在说话」前奏的 delta 块数与块间隔
+    barge_in_audio_chunks: int = 1
+    barge_in_chunk_interval_ms: int = 0
 
     def validate(self) -> None:
         if self.response_chunks < 0 or self.response_chunks > 1000:
@@ -93,6 +99,15 @@ class MockRealtimeBehavior:
                 f'非法 disconnect_after_events: {self.disconnect_after_events}（允许 0=关闭）')
         if self.chunk_interval_ms < 0 or self.chunk_interval_ms > 1000:
             raise ValueError(f'非法 chunk_interval_ms: {self.chunk_interval_ms}（允许 0~1000）')
+        if self.delta_bytes < 0 or self.delta_bytes > 2000000:
+            raise ValueError(f'非法 delta_bytes: {self.delta_bytes}（允许 0~2000000）')
+        if self.barge_in_audio_chunks < 1 or self.barge_in_audio_chunks > 100000:
+            raise ValueError(
+                f'非法 barge_in_audio_chunks: {self.barge_in_audio_chunks}（允许 1~100000）')
+        if self.barge_in_chunk_interval_ms < 0 or self.barge_in_chunk_interval_ms > 1000:
+            raise ValueError(
+                f'非法 barge_in_chunk_interval_ms: {self.barge_in_chunk_interval_ms}'
+                '（允许 0~1000）')
         if self.speak_during_stream_after < 1 or self.speak_during_stream_after > 100000:
             raise ValueError(
                 f'非法 speak_during_stream_after: {self.speak_during_stream_after}'
@@ -105,7 +120,9 @@ class MockRealtimeBehavior:
                    'answer_text', 'barge_in', 'disconnect_after_events',
                    'protocol_error_on_event',
                    'speak_during_stream', 'speak_during_stream_after',
-                   'speak_during_stream_barge_in', 'speak_during_stream_complete'}
+                   'speak_during_stream_barge_in', 'speak_during_stream_complete',
+                   'delta_bytes', 'barge_in_audio_chunks',
+                   'barge_in_chunk_interval_ms'}
         unknown = set(changes) - allowed
         if unknown:
             raise ValueError(f'未知行为字段: {sorted(unknown)}（允许 {sorted(allowed)}）')
@@ -126,6 +143,8 @@ class MockRealtimeBehavior:
             'speak_during_stream': _env_bool, 'speak_during_stream_after': int,
             'speak_during_stream_barge_in': _env_bool,
             'speak_during_stream_complete': _env_bool,
+            'delta_bytes': int, 'barge_in_audio_chunks': int,
+            'barge_in_chunk_interval_ms': int,
         }
         kwargs = {}
         for key, cast in mapping.items():
@@ -284,9 +303,15 @@ class MockRealtimeService:
         if self.behavior.barge_in and not session.barge_in_prequeued:
             # 预置"AI 正在说话 + 打断"事件序列（对齐既有集成测试伪厂商模式，
             # 供下一轮打断轮 wait_ai_speaking / barge-in 窗口消费）
+            # INT-2080：前奏 delta 块数 / 载荷大小 / 块间隔可配置，预置大块
+            # 回复场景供 output_duration 打断点按已返回长度触发验证
             session.barge_in_prequeued = True
-            await self._send(ws, {'type': 'response.audio.delta',
-                                  'delta': _pcm_delta_b64()})
+            for index in range(self.behavior.barge_in_audio_chunks):
+                await self._send(ws, {'type': 'response.audio.delta',
+                                      'delta': _pcm_delta_b64(self.behavior.delta_bytes)})
+                if (index < self.behavior.barge_in_audio_chunks - 1
+                        and self.behavior.barge_in_chunk_interval_ms > 0):
+                    await asyncio.sleep(self.behavior.barge_in_chunk_interval_ms / 1000.0)
             await self._send(ws, {'type': 'input_audio_buffer.speech_started'})
             await self._send(ws, {'type': 'response.cancelled'})
 
@@ -306,7 +331,8 @@ class MockRealtimeService:
             await self._send(ws, {'type': 'response.cancelled'})
         await self._send(ws, {'type': 'response.text.delta', 'delta': behavior.answer_text})
         for index in range(behavior.response_chunks):
-            await self._send(ws, {'type': 'response.audio.delta', 'delta': _pcm_delta_b64()})
+            await self._send(ws, {'type': 'response.audio.delta',
+                                  'delta': _pcm_delta_b64(behavior.delta_bytes)})
             if index < behavior.response_chunks - 1 and behavior.chunk_interval_ms > 0:
                 await asyncio.sleep(behavior.chunk_interval_ms / 1000.0)
         if (not during_stream) or behavior.speak_during_stream_complete:
@@ -352,9 +378,12 @@ class MockRealtimeService:
         return {'behavior': asdict(self.behavior), 'state': self.state.snapshot()}
 
 
-def _pcm_delta_b64() -> str:
-    """一小段方波 PCM（s16，80 字节）的 base64 —— 仅做流量载荷，无音频语义。"""
-    return base64.b64encode(b'\x01\x02' * 40).decode('ascii')
+def _pcm_delta_b64(size: int = 80) -> str:
+    """一小段方波 PCM（s16，默认 80 字节）的 base64 —— 仅做流量载荷，无音频语义。
+
+    INT-2080：size 可配置（大块回复场景），默认 80 保持既有契约。
+    """
+    return base64.b64encode(b'\x01\x02' * (size // 2)).decode('ascii')
 
 
 class MockRealtimeServer:
@@ -458,6 +487,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--speak-during-stream-after', type=int)
     parser.add_argument('--speak-during-stream-barge-in', action='store_true')
     parser.add_argument('--no-speak-during-stream-complete', action='store_true')
+    parser.add_argument('--delta-bytes', type=int)
+    parser.add_argument('--barge-in-audio-chunks', type=int)
+    parser.add_argument('--barge-in-chunk-interval-ms', type=int)
     return parser
 
 
@@ -494,6 +526,12 @@ def main(argv=None) -> int:
         cli_changes['speak_during_stream_barge_in'] = True
     if args.no_speak_during_stream_complete:
         cli_changes['speak_during_stream_complete'] = False
+    if args.delta_bytes is not None:
+        cli_changes['delta_bytes'] = args.delta_bytes
+    if args.barge_in_audio_chunks is not None:
+        cli_changes['barge_in_audio_chunks'] = args.barge_in_audio_chunks
+    if args.barge_in_chunk_interval_ms is not None:
+        cli_changes['barge_in_chunk_interval_ms'] = args.barge_in_chunk_interval_ms
     if cli_changes:
         behavior.update(cli_changes)
 

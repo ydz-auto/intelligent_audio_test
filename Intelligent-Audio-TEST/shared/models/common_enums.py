@@ -354,6 +354,18 @@ class RealtimeRoundMode(str, Enum):
     INTERRUPTION = 'interruption'
 
 
+class RealtimeInterruptMode(str, Enum):
+    """Realtime 打断轮打断点模式枚举（INT-2080 新增）
+
+    打断点模式化：fixed_delay 为现状默认（AI 开口后按固定延时
+    interruption_delay_ms 推打断音频，零回归）；output_duration 基于已返回
+    AI 音频流长度（轮询 client.output['audio'] 累计时长达 interrupt_after_ms，
+    按采样率换算 ms）触发，适配变长/大块回复的精确打断点。
+    """
+    FIXED_DELAY = 'fixed_delay'
+    OUTPUT_DURATION = 'output_duration'
+
+
 class RealtimePacingStrategy(str, Enum):
     """Realtime 输入节奏策略枚举（INT-475 新增）
 

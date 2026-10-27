@@ -30,6 +30,7 @@ from typing import Optional
 from shared.models.common_enums import (
     AdapterProtocol,
     RealtimeFrameType,
+    RealtimeInterruptMode,
     RealtimePacingStrategy,
     RealtimeRoundMode,
 )
@@ -65,6 +66,19 @@ from api_test_service.infrastructure.persistence.api_rms_spl_repository import (
 from shared.utils.realtime_session_registry import RealtimeSessionRegistry
 
 logger = logging.getLogger(__name__)
+
+
+def audio_bytes_to_ms(audio_bytes: int, sample_rate: int,
+                     bytes_per_sample: int = 2) -> float:
+    """PCM 音频字节数 → 毫秒（s16 单声道：每样本 2 字节，与 session 契约一致）。
+
+    INT-2080 output_duration 打断点的换算基础：基于已返回 AI 音频流长度
+    判定打断时机（client.output['audio'] 累计字节 → ms）。0 长度 / 非法
+    采样率收敛为 0，不做除零。
+    """
+    if sample_rate <= 0 or audio_bytes <= 0:
+        return 0.0
+    return audio_bytes / (sample_rate * bytes_per_sample) * 1000.0
 
 # 算法字段映射 / 评估入队 ACL 由 core/eval_output_collector 与
 # core/evaluation_submitter 统一持有（INT-1790 提库）。本模块保留同名引用作为
@@ -102,6 +116,27 @@ class RealtimeSessionExecutor:
     # ── 配置化参数（无魔法数字）──
     def _cfg(self, key, default):
         return config_manager.get_value('realtime_session', key, default)
+
+    def _resolve_interrupt_cfg(self, round_config, api_config, case_config,
+                               key, default):
+        """打断轮打断点配置兜底链（INT-2080）：round_config → api.meta → 用例 → 全局 → 默认。
+
+        与既有 interruption_delay_ms 取值语义一致（round 级 0/空值回退下一级），
+        fixed_delay 缺省行为不变（零回归）。interrupt_mode / interrupt_after_ms /
+        interruption_delay_ms 三个键共用本链。
+        """
+        value = None
+        if isinstance(round_config, dict):
+            value = round_config.get(key)
+        if not value:
+            meta = getattr(api_config, 'meta', None) or {}
+            if isinstance(meta, dict):
+                value = meta.get(key)
+        if not value and isinstance(case_config, dict):
+            value = case_config.get(key)
+        if not value:
+            value = self._cfg(key, default)
+        return default if value is None else value
 
     def _stop_check(self, task_id):
         """INT-308 停止检测回调工厂（INT-316 向后兼容）：执行器带 ControlMixin
@@ -413,9 +448,20 @@ class RealtimeSessionExecutor:
         ai_start_timeout = float(self._cfg('ai_start_timeout_seconds', 25))
         ai_complete_timeout = float(self._cfg('ai_complete_timeout_seconds', 60))
         barge_in_window = float(self._cfg('barge_in_window_seconds', 5))
-        interrupt_delay_ms = float(
-            round_config.get('interruption_delay_ms')
-            or self._cfg('interruption_delay_ms', 1000))
+        # INT-2080 打断点模式化：interrupt_mode ∈ {fixed_delay（现状默认，零回归）,
+        # output_duration（轮询已返回音频长度达 interrupt_after_ms）}
+        interrupt_mode = self._resolve_interrupt_cfg(
+            round_config, api_config, case_config,
+            'interrupt_mode', RealtimeInterruptMode.FIXED_DELAY.value)
+        try:
+            interrupt_mode = RealtimeInterruptMode(interrupt_mode).value
+        except ValueError:
+            logger.warning('未知 interrupt_mode=%r，回退 fixed_delay', interrupt_mode)
+            interrupt_mode = RealtimeInterruptMode.FIXED_DELAY.value
+        interrupt_delay_ms = float(self._resolve_interrupt_cfg(
+            round_config, api_config, case_config, 'interruption_delay_ms', 1000))
+        interrupt_after_ms = float(self._resolve_interrupt_cfg(
+            round_config, api_config, case_config, 'interrupt_after_ms', 3000))
         pacing = self._resolve_pacing(api_config, case_config)
 
         # ① 等 AI 开始说话（INT-308：等待期间检查任务停止）
@@ -426,11 +472,20 @@ class RealtimeSessionExecutor:
         if not ai_started:
             return {'round_number': round_number,
                     'mode': RealtimeRoundMode.INTERRUPTION.value,
+                    'interrupt_mode': interrupt_mode,
                     'success': False, 'error': 'AI 未开始说话，无法打断',
                     'latency': round(time.time() - start_time, 3)}
 
-        # ② 等 AI 说一会儿再打断
-        time.sleep(interrupt_delay_ms / 1000.0)
+        # ② 等打断点（INT-2080）：fixed_delay 保持现状 sleep；output_duration
+        #    轮询已返回 AI 音频长度（按采样率换算 ms）达 interrupt_after_ms
+        sample_rate = resolve_audio_sample_rate(api_config)
+        if interrupt_mode == RealtimeInterruptMode.OUTPUT_DURATION.value:
+            interrupt_trigger_ms = self._wait_output_duration(
+                client, interrupt_after_ms, sample_rate, task_id,
+                timeout=ai_complete_timeout)
+        else:
+            time.sleep(interrupt_delay_ms / 1000.0)
+            interrupt_trigger_ms = interrupt_delay_ms
 
         # ③ 流式推送打断音频（RenderAudioStream 消费链路）+ commit
         chunks = self._render_service.stream_round_chunks(
@@ -440,6 +495,8 @@ class RealtimeSessionExecutor:
             if chunk.sequence < 0 and chunk.message:
                 return {'round_number': round_number,
                         'mode': RealtimeRoundMode.INTERRUPTION.value,
+                        'interrupt_mode': interrupt_mode,
+                        'interrupt_trigger_ms': interrupt_trigger_ms,
                         'success': False,
                         'error': f'混音渲染失败: {chunk.message}',
                         'latency': round(time.time() - start_time, 3)}
@@ -477,6 +534,11 @@ class RealtimeSessionExecutor:
         result = {
             'round_number': round_number,
             'mode': RealtimeRoundMode.INTERRUPTION.value,
+            # INT-2080 打断点依据：模式 + 触发点时长（fixed_delay=延时；
+            # output_duration=已返回音频实际时长）+ output_duration 阈值
+            'interrupt_mode': interrupt_mode,
+            'interrupt_trigger_ms': interrupt_trigger_ms,
+            'interrupt_after_ms': interrupt_after_ms,
             'success': bool(barge_in_detected and renewed),
             'latency': latency,
             'barge_in_detected': barge_in_detected,
@@ -494,6 +556,34 @@ class RealtimeSessionExecutor:
             text_output=result.get('answer_text'),
             api_id=getattr(api_config, 'id', None))
         return result
+
+    def _wait_output_duration(self, client, interrupt_after_ms, sample_rate,
+                              task_id, timeout=60.0) -> float:
+        """output_duration 打断点等待：轮询已返回 AI 音频长度达阈值，返回触发时长 ms。
+
+        复用 before_size 累计机制（client.output['audio']），每次 recv() 后按
+        采样率换算已返回音频毫秒数，≥ interrupt_after_ms 即返回。AI 输出 turn
+        结束（ai_audio_done / ai_text_done）、打断信号已到（speech_started /
+        cancelled）、连接收敛或任务停止时提前返回（不无限等待）。
+        """
+        stop_check = self._stop_check(task_id)
+        deadline = time.time() + max(float(timeout), 0)
+        while time.time() < deadline:
+            audio_ms = audio_bytes_to_ms(len(client.output['audio']), sample_rate)
+            if audio_ms >= interrupt_after_ms:
+                return round(audio_ms, 3)
+            event = client.recv(timeout=0.2)
+            etype = event.get('type')
+            if etype in (RealtimeFrameType.AI_AUDIO_DONE.value,
+                         RealtimeFrameType.AI_TEXT_DONE.value,
+                         RealtimeFrameType.USER_SPEECH_STARTED.value,
+                         RealtimeFrameType.RESPONSE_CANCELLED.value,
+                         RealtimeFrameType.CONNECTION_CLOSED.value,
+                         RealtimeFrameType.ERROR.value):
+                break
+            if stop_check is not None and stop_check():
+                break
+        return round(audio_bytes_to_ms(len(client.output['audio']), sample_rate), 3)
 
     # ── 节奏（INT-475：输出调输入）──
     def _resolve_pacing(self, api_config, case_config) -> RealtimePacingContext:
