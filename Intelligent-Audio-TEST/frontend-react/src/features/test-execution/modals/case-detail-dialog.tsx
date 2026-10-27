@@ -571,11 +571,17 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                           key={`${group.deviceName}-${audio.audioName}-${index}`}
                           className='flex items-center gap-2 rounded-lg border px-3 py-2 text-sm'
                         >
-                          <span className='font-mono text-xs'>{audio.audioName}</span>
+                          {/* INT-2090 P3：音频名超长时截断不撑破行宽，title 悬停显完整名 */}
+                          <span
+                            className='min-w-0 flex-1 truncate font-mono text-xs'
+                            title={audio.audioName}
+                          >
+                            {audio.audioName}
+                          </span>
                           <Button
                             variant='ghost'
                             size='sm'
-                            className='ml-auto h-6 gap-1 text-xs'
+                            className='ml-auto h-6 shrink-0 gap-1 text-xs'
                             onClick={() => void playAudio(audio, 'result')}
                           >
                             <Play aria-hidden='true' className='size-3' />
@@ -598,24 +604,32 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                       key={`${field.paramCode}-${index}`}
                       className='flex items-center gap-2 rounded-lg border px-3 py-2 text-sm'
                     >
-                      <span className='font-mono text-xs'>{field.label}</span>
+                      {/* INT-2090 P3：字段名（音频 label）超长时截断不撑破行宽，title 悬停显完整名 */}
+                      <span
+                        className='min-w-0 truncate font-mono text-xs'
+                        title={field.label}
+                      >
+                        {field.label}
+                      </span>
                       {field.round != null && (
-                        <span className='bg-muted text-muted-foreground rounded px-1 text-[10px]'>
+                        <span className='bg-muted text-muted-foreground shrink-0 rounded px-1 text-[10px]'>
                           第{field.round}轮
                         </span>
                       )}
                       {field.overall && (
-                        <span className='bg-muted text-muted-foreground rounded px-1 text-[10px]'>
+                        <span className='bg-muted text-muted-foreground shrink-0 rounded px-1 text-[10px]'>
                           整体
                         </span>
                       )}
                       {field.deviceName && (
-                        <span className='text-muted-foreground text-xs'>{field.deviceName}</span>
+                        <span className='text-muted-foreground shrink-0 text-xs'>
+                          {field.deviceName}
+                        </span>
                       )}
                       <Button
                         variant='ghost'
                         size='sm'
-                        className='ml-auto h-6 gap-1 text-xs'
+                        className='ml-auto h-6 shrink-0 gap-1 text-xs'
                         onClick={() =>
                           void playAudio(
                             { url: field.url, path: field.path, audioName: field.label },
@@ -640,16 +654,22 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                       key={`${audio.audioName}-${index}`}
                       className='flex items-center gap-2 rounded-lg border px-3 py-2 text-sm'
                     >
-                      <span className='font-mono text-xs'>{audio.audioName}</span>
+                      {/* INT-2090 P3：音频名超长时截断不撑破行宽，title 悬停显完整名 */}
+                      <span
+                        className='min-w-0 truncate font-mono text-xs'
+                        title={audio.audioName}
+                      >
+                        {audio.audioName}
+                      </span>
                       {audio.round != null && (
-                        <span className='bg-muted text-muted-foreground rounded px-1 text-[10px]'>
+                        <span className='bg-muted text-muted-foreground shrink-0 rounded px-1 text-[10px]'>
                           第{audio.round}轮
                         </span>
                       )}
                       <Button
                         variant='ghost'
                         size='sm'
-                        className='ml-auto h-6 gap-1 text-xs'
+                        className='ml-auto h-6 shrink-0 gap-1 text-xs'
                         onClick={() => void playAudio(audio, 'reference')}
                       >
                         <Play aria-hidden='true' className='size-3' />

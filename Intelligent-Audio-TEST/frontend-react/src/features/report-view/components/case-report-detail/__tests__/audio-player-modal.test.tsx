@@ -90,3 +90,30 @@ describe('AudioPlayerModal 总时长（INT-1860）', () => {
     expect(screen.queryByText('0:36')).toBeNull()
   })
 })
+
+describe('AudioPlayerModal 超长音频名渲染（INT-2090）', () => {
+  it('超长音频名：标题单行截断（truncate）+ title 提示完整名，控制组不丢、内容容器可收缩', () => {
+    const longName = `超长音频名_${'这是一段非常长的音频名称用于验证超长音频名渲染问题'.repeat(10)}`
+    renderOpened({
+      audio_id: 402,
+      audio_name: longName,
+      audio_type: 'result',
+      device_name: `设备_${'非常长的设备名称'.repeat(8)}`,
+      url: PRESIGNED_URL,
+    })
+
+    const titleEl = screen.getByText(longName)
+    // 单行截断由 truncate（overflow hidden + nowrap + ellipsis）承担；title 悬停展示完整名
+    expect(titleEl.className).toContain('truncate')
+    expect(titleEl.getAttribute('title')).toBe(longName)
+
+    // 弹窗内容容器 grid item 可收缩（min-w-0），超长名不把弹窗撑到完整宽度
+    const contentBox = titleEl.closest('[data-slot="dialog-content"]')?.querySelector('.space-y-4')
+    expect(contentBox?.className).toContain('min-w-0')
+
+    // 控制组（播放/停止）仍完整渲染
+    expect(screen.getByRole('button', { name: '播放' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '停止' })).toBeTruthy()
+    expect(screen.getByRole('slider', { name: '播放进度' })).toBeTruthy()
+  })
+})

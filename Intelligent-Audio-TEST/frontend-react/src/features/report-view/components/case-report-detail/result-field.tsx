@@ -37,11 +37,14 @@ export function ResultField({
   if (type === 'audio_file' && onPlayAudio) {
     return (
       <div className='flex items-center justify-between gap-2 border-b px-3 py-1.5 text-xs last:border-0'>
-        <span className='text-muted-foreground'>{label}</span>
+        {/* INT-2090 P3：音频字段名（label）超长时截断，不撑破行宽；title 悬停显完整名 */}
+        <span className='text-muted-foreground min-w-0 flex-1 truncate' title={label}>
+          {label}
+        </span>
         <Button
           variant='outline'
           size='sm'
-          className='h-6 gap-1 px-2 text-xs'
+          className='h-6 shrink-0 gap-1 px-2 text-xs'
           onClick={() => onPlayAudio(value)}
         >
           <Play aria-hidden='true' className='size-3' />
