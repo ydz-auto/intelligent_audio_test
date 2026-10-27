@@ -69,16 +69,34 @@ def find_listener_pid(port, netstat_cmd='netstat'):
     return None
 
 
+def _resolve_repo():
+    """解析仓库根（shared/audio_service/scripts 所在层）。
+
+    仓库规范版（scripts/host_audio_service/../.. = 仓库根）与宿主运行副本
+    （AUDIO_SERVICE_REPO 由 stop_audio_service.cmd 传入；裸调用回退主 clone
+    部署路径）都能解析到同一 repo。多退一层（'..','..','..'）会解析到仓库根
+    父级，shared 导入失败 → 优雅停止被静默降级为 taskkill（INT-2086 审计 P2-1）。
+    """
+    repo = os.environ.get('AUDIO_SERVICE_REPO')
+    if repo:
+        return repo
+    _here = os.path.dirname(os.path.abspath(__file__))
+    if (os.path.basename(_here) == 'host_audio_service'
+            and os.path.basename(os.path.dirname(_here)) == 'scripts'):
+        # 仓库内规范版：<repo>/scripts/host_audio_service/stop_audio_service.py
+        return os.path.abspath(os.path.join(_here, '..', '..'))
+    # 宿主运行副本兜底：主 clone 部署路径（与启动器 cmd 的 REPO 同源）。
+    return r'D:\00_code\V9.7.31\Intelligent-Audio-TEST'
+
+
 def _import_grpc_stubs():
     """按需导入 shared.proto 的 audio_service 桩；失败返回 (None, 原因)。
 
-    仓库规范版（scripts/host_audio_service/../../.. = 仓库根）与宿主运行副本
-    （AUDIO_SERVICE_REPO 由 stop_audio_service.cmd 传入）都能解析到 repo。
+    _resolve_repo() 负责把仓库规范版（scripts/host_audio_service/../.. = 仓库根）
+    与宿主运行副本（AUDIO_SERVICE_REPO / 主 clone 兜底）解析到同一 repo。
     """
     try:
-        repo = os.environ.get('AUDIO_SERVICE_REPO')
-        if not repo:
-            repo = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+        repo = _resolve_repo()
         for p in (repo, os.path.join(repo, 'shared', 'proto')):
             if p not in sys.path:
                 sys.path.insert(0, p)
