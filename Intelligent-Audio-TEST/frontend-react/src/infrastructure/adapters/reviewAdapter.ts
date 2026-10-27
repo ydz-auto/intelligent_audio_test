@@ -71,6 +71,10 @@ export function toCaseResultForReview(dto: CaseResultForReviewDto): CaseResultFo
       evaluationStatus: d.evaluation_status ?? null,
       errorMessage: d.error_message ?? null,
       roundNumber: d.round_number ?? null,
+      // INT-2088：主/子层级（后端 ACL 现不下发；下发即透传，V9.7.10 comparisonData 同口径）
+      dimensionType: d.dimension_type ?? null,
+      parentDimensionId: d.parent_dimension_id ?? null,
+      parentDimensionName: d.parent_dimension_name ?? null,
     })),
     asrResult: dto.asr_result ?? null,
     translationResult: dto.translation_result ?? null,

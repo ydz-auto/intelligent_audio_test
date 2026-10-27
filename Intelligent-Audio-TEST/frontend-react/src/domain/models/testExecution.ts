@@ -140,12 +140,37 @@ export interface CaseMetricPoint {
   /** 轮次（1 起）；整体评估（round_number null）为 undefined */
   round?: number
   value: string
+  /** 维度得分（0-5；/results dimensions.score；INT-2088 评分指标「得分」列数据源） */
+  score?: number | null
+  /** 维度错误文本（/results dimensions.error_message；详情·错误列） */
+  error?: string | null
 }
 
 /** 评估维度配置（detail metric_configs；指标行顺序权威源） */
 export interface CaseMetricConfig {
   code: string
   name: string
+  /** 主/子维度（后端 task_service ACL 现不下发；下发即用于评分指标层级分组，V9.7.10 同口径） */
+  dimensionType?: 'main' | 'sub'
+  parentDimensionName?: string
+  /** 数值精度（后端 metric_configs 现无；下发即用于评分指标数值显示） */
+  decimalPlaces?: number
+  unit?: string
+}
+
+/**
+ * 参考/用例参数项（detail reference_params 值形态平移；report 域 ReportReferenceParam 同构）。
+ * 键 = param_code（含 `@round:N` 等多轮展开），值含 type/value/text/json；label/round_number 后端可选。
+ */
+export interface CaseReferenceParam {
+  code?: string
+  type?: string
+  label?: string
+  value?: unknown
+  segments?: unknown
+  text?: string
+  json?: unknown
+  round_number?: number
 }
 
 /** 指标行（行=指标、列=设备；V9.7.10 currentRoundTableData 同口径） */
@@ -259,4 +284,20 @@ export interface CaseExecutionDetail {
   referenceAudios: CaseAudioResult[]
   /** 执行结果行（/results；复核入口准入与人工复核弹窗消费） */
   results: CaseResultForReview[]
+  /**
+   * 参考参数（detail reference_params；INT-2088 接线：参考数据块 + 时间轴参考段）。
+   * 键 = param_code（含 `@round:N`），值 = {type, value, text, json, ...}。
+   */
+  referenceParams: Record<string, CaseReferenceParam>
+  /**
+   * 字段映射（detail field_mapping；param_code 数组）。参考/结果文本字段与时间轴判据
+   * （INT-2088；report 域 field_mappings 同口径：只取 param_code 清单）。
+   */
+  fieldMapping: { result: string[]; reference: string[] }
+  /**
+   * 用例参数（算法输入参数，按轮次展示；INT-2088）。
+   * 后端 /detail、/results 现无 case_params（INT-1723）→ 恒空，块内「暂无数据」空态；
+   * 数据源补齐后由适配器填充。
+   */
+  caseParams: Record<string, CaseReferenceParam>
 }

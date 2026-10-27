@@ -288,9 +288,9 @@ describe('caseDetailFromDto', () => {
       ])
       expect(detail.devices[0].metrics).toEqual(
         expect.arrayContaining([
-          { dimension: '接管率占比', round: 1, value: '1' },
-          { dimension: '接管率占比', round: undefined, value: '1' },
-          { dimension: '逐轮话轮评估', round: 1, value: '—' },
+          { dimension: '接管率占比', round: 1, value: '1', score: 1, error: null },
+          { dimension: '接管率占比', round: undefined, value: '1', score: 1, error: null },
+          { dimension: '逐轮话轮评估', round: 1, value: '—', score: 0, error: null },
         ])
       )
     })

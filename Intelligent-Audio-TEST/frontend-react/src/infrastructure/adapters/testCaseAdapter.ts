@@ -9,6 +9,7 @@ import type {
   CaseMetricConfig,
   CaseMetricPoint,
   CaseMetricRow,
+  CaseReferenceParam,
   CaseResultAudioField,
   CaseRoundTab,
 } from '@/domain/models/testExecution'
@@ -298,11 +299,24 @@ export function caseDetailFromDto(
   dto: CaseDetailDto,
   results: CaseResultForReview[] = []
 ): CaseExecutionDetail {
+  const resultRows = results ?? []
+  /** 维度名 → 主/子层级信息（results dimensions；后端 ACL 现不下发 → 缺省按主维度平铺，V9.7.10 同口径） */
+  const dimTypeByName = new Map<string, Pick<CaseMetricConfig, 'dimensionType' | 'parentDimensionName'>>()
+  for (const row of resultRows) {
+    for (const d of row.dimensions ?? []) {
+      if (!dimTypeByName.has(d.name)) {
+        dimTypeByName.set(d.name, {
+          dimensionType: (d.dimensionType === 'sub' ? 'sub' : 'main') as 'main' | 'sub',
+          parentDimensionName: d.parentDimensionName ?? undefined,
+        })
+      }
+    }
+  }
   const metricConfigs: CaseMetricConfig[] = (dto.metric_configs ?? []).map((c) => ({
     code: c.code,
     name: c.name,
+    ...(dimTypeByName.get(c.name) ?? {}),
   }))
-  const resultRows = results ?? []
   const rowByDevice = new Map<string, CaseResultForReview>()
   for (const row of resultRows) {
     if (row.deviceName && !rowByDevice.has(row.deviceName)) rowByDevice.set(row.deviceName, row)
@@ -315,6 +329,9 @@ export function caseDetailFromDto(
       // round_number 0 起 = 第 n+1 轮；null = 整体评估（无轮次标记）
       round: d.roundNumber == null ? undefined : d.roundNumber + 1,
       value: d.value == null ? '—' : String(d.value),
+      // INT-2088：得分/错误（评分指标「得分 / 详情·错误」数据源）
+      score: d.score ?? null,
+      error: d.errorMessage ?? null,
     }))
     return {
       resultId: row?.id ?? null,
@@ -364,5 +381,35 @@ export function caseDetailFromDto(
     resultAudioFields,
     referenceAudios,
     results: resultRows,
+    // INT-2088：参考参数 / 字段映射（网关 detail 实测已下发；用例参数缺数据源 → 恒空）
+    referenceParams: normalizeReferenceParams(dto),
+    fieldMapping: {
+      result: toFieldParamCodes(dto.field_mapping?.result),
+      reference: toFieldParamCodes(dto.field_mapping?.reference),
+    },
+    caseParams: {},
   }
+}
+
+/** 参考参数 DTO → Domain（{code: {type,value,segments,text,json,...}} → 补 code 键，透传其余） */
+function normalizeReferenceParams(dto: CaseDetailDto): Record<string, CaseReferenceParam> {
+  const result: Record<string, CaseReferenceParam> = {}
+  for (const [code, value] of Object.entries(dto.reference_params ?? {})) {
+    if (!value || typeof value !== 'object') continue
+    result[code] = { code, ...(value as Record<string, unknown>) }
+  }
+  return result
+}
+
+/** 字段映射项（param_code / source_param）→ param_code 清单（report 域 field_mappings 同口径） */
+function toFieldParamCodes(items?: Array<Record<string, unknown>>): string[] {
+  return (items ?? [])
+    .map((f) =>
+      typeof f?.param_code === 'string'
+        ? f.param_code
+        : typeof f?.source_param === 'string'
+          ? f.source_param
+          : ''
+    )
+    .filter(Boolean)
 }

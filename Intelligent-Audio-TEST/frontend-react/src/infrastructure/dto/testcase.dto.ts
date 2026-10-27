@@ -125,6 +125,16 @@ export interface CaseDetailDto {
   devices: string[]
   /** 评估维度配置（维度列顺序权威源；实测 6 项） */
   metric_configs?: CaseMetricConfigDto[]
+  /**
+   * 参考参数（网关侧经 report_service BuildReferenceParams 构建；INT-2088 接线）。
+   * `{code: {code, type, value, segments, text, json}}`，键含 `answer@round:N` 等多轮展开。
+   */
+  reference_params?: Record<string, unknown>
+  /**
+   * 字段映射（算法 GetFullFieldMapping；`{result:[...], reference:[...]}`，
+   * 项含 `param_code`/`param_type`/`label`；INT-2088 接线——参考/结果文本字段与时间轴判据）。
+   */
+  field_mapping?: { result?: Array<Record<string, unknown>>; reference?: Array<Record<string, unknown>> }
   /** 结果音频（设备键 → 音频项；多数用例为空，音频在 algorithm_results 的 audio_file 项里） */
   result_audios?: Record<string, CaseResultAudioDto[]>
   /** 参考/输入音频（用例音频列表；旧 Vue 走「音频时间轴」，不在结果音频区） */

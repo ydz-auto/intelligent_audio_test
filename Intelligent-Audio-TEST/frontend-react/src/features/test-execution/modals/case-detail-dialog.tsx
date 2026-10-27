@@ -49,6 +49,7 @@ import {
 import { formatResultValue } from '@/features/report-view/components/case-report-detail/case-report-utils'
 import { AiReviewSessionDialog } from '@/features/ai-review/ai-review-session-dialog'
 import { ManualReviewDialog } from '@/features/tasks/components/manual-review-dialog'
+import { CaseDetailExecutionResults, RoundTabBar } from './case-detail-results'
 import { cn } from '@/lib/utils'
 
 interface CaseDetailDialogProps {
@@ -297,6 +298,12 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
       : firstTabWithDataKey
   const currentTab = roundTabs.find((tab) => tab.key === activeTabKey) ?? null
 
+  /** 执行结果块（report 域组件）轮次 Tab 选择：label → 弹窗 tabChoice（与顶部 Tab 条同轴） */
+  const handleRoundLabelSelect = (label: string) => {
+    const tab = roundTabs.find((t) => t.label === label)
+    if (tab) setTabChoice({ caseId, tabKey: tab.key })
+  }
+
   /**
    * 参考音频（audio_list，带 roundNumber）按当前 Tab 轮次过滤（现状保留，10 §5.2 本次返工未改口径）：
    * 「整体」Tab 与单轮「指标」Tab 展示全部；轮次 Tab 只留本轮与无轮次信息的音频。
@@ -439,91 +446,18 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
               {hasDeviceTable ? (
                 <div className='space-y-2'>
                   {/* 轮次 Tab（第1轮…第N轮 + 整体）；单轮「指标」Tab 不渲染 Tab 栏 */}
-                  {roundTabs.length > 1 && (
-                    <div className='flex flex-wrap gap-1' role='tablist' aria-label='轮次切换'>
-                      {roundTabs.map((tab) => (
-                        <button
-                          key={tab.key}
-                          type='button'
-                          role='tab'
-                          aria-selected={currentTab?.key === tab.key}
-                          className={cn(
-                            'rounded-md px-2.5 py-1 text-xs transition-colors',
-                            currentTab?.key === tab.key
-                              ? 'bg-primary text-primary-foreground'
-                              : 'text-muted-foreground hover:bg-muted'
-                          )}
-                          onClick={() => setTabChoice({ caseId, tabKey: tab.key })}
-                        >
-                          {tab.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {/* 指标×设备表：行=指标、列=设备（V9.7.10 currentRoundTableData 同口径） */}
-                  <div className='overflow-x-auto rounded-lg border'>
-                    <table className='w-full text-left text-sm'>
-                      <thead className='bg-muted/50 border-b'>
-                        <tr className='text-muted-foreground text-xs'>
-                          <th className='px-3 py-2 font-medium whitespace-nowrap'>指标</th>
-                          {detail.devices.map((device) => (
-                            <th
-                              key={device.deviceName}
-                              className='px-3 py-2 font-medium whitespace-nowrap'
-                            >
-                              <span className='flex items-center gap-1.5'>
-                                {device.deviceName}
-                                <StatusBadge
-                                  label={
-                                    device.executionStatus
-                                      ? executionStatusLabel(device.executionStatus)
-                                      : '—'
-                                  }
-                                  variant={
-                                    device.executionStatus === 'completed'
-                                      ? 'success'
-                                      : device.executionStatus === 'failed'
-                                        ? 'danger'
-                                        : device.executionStatus
-                                          ? 'warning'
-                                          : 'neutral'
-                                  }
-                                />
-                              </span>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(currentTab?.rows ?? []).map((row) => (
-                          <tr
-                            key={row.dimension}
-                            className='border-b last:border-0 hover:bg-muted/30'
-                          >
-                            <td className='px-3 py-2 whitespace-nowrap'>{row.dimension}</td>
-                            {detail.devices.map((device) => (
-                              <td
-                                key={device.deviceName}
-                                className='px-3 py-2 font-mono text-xs tabular-nums'
-                              >
-                                {row.values[device.deviceName] ?? '—'}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                        {(currentTab?.rows.length ?? 0) === 0 && (
-                          <tr>
-                            <td
-                              colSpan={detail.devices.length + 1}
-                              className='text-muted-foreground p-4 text-center text-sm'
-                            >
-                              暂无指标数据
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                  <RoundTabBar
+                    roundTabs={roundTabs}
+                    activeTabKey={activeTabKey}
+                    onTabKeySelect={(tabKey) => setTabChoice({ caseId, tabKey })}
+                  />
+                  {/* 评分指标 / 多轮对话结果 / 执行结果（参考数据、用例参数、评估结果、
+                      设备·API 执行结果、时间轴对比、音频时间轴）——V9.7.10 全块（INT-2088） */}
+                  <CaseDetailExecutionResults
+                    detail={detail}
+                    currentTab={currentTab}
+                    onRoundTabLabelSelect={handleRoundLabelSelect}
+                  />
                 </div>
               ) : (
                 <ApiCaseResultSummary

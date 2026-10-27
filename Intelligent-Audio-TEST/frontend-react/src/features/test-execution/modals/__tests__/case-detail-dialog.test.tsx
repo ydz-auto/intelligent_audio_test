@@ -348,8 +348,8 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     expect(screen.getByRole('tab', { name: '整体' })).toHaveAttribute('aria-selected', 'false')
     expect(screen.queryByText(/@round:/)).not.toBeInTheDocument()
     expect(screen.queryByText(/@overall/)).not.toBeInTheDocument()
-    // 行=指标、列=设备（表头设备名 + 头部徽章）
-    expect(screen.getByText('指标')).toBeInTheDocument()
+    // 行=指标、列=设备（表头设备名 + 头部徽章）；V9.7.10 评分指标表头「指标名称」
+    expect(screen.getByText('指标名称')).toBeInTheDocument()
     expect(screen.getAllByText('pura90豆包').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('接管率占比')).toBeInTheDocument()
     // 执行结果音频字段：label 用原始参数名（轮次只在 chip 上出现一次）
@@ -550,5 +550,108 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     await waitFor(() => {
       expect(screen.queryByText(/耗时/)).not.toBeInTheDocument()
     })
+  })
+
+  // ---- INT-2088：任务用例执行详情模态窗补齐 V9.7.10 全块 ----
+  it('INT-2088：评分指标 / 参考数据 / 用例参数空态 / 执行结果块渲染', async () => {
+    fetchDetailMock.mockResolvedValue({
+      ...detail,
+      referenceParams: {
+        'answer@round:1': { code: 'answer@round:1', type: 'text', text: '第1轮参考答案', round_number: 1 },
+        'question@round:1': { code: 'question@round:1', type: 'text', text: '第1轮提问', round_number: 1 },
+      },
+      fieldMapping: { result: ['session_id'], reference: ['answer@round:1'] },
+      algorithmResults: [
+        { paramCode: 'session_id', paramType: 'text', label: 'session ID', value: 'abc123' },
+      ],
+    })
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    renderDialog()
+    // 块标题：评分指标 + 执行结果
+    expect(await screen.findByText('评分指标')).toBeInTheDocument()
+    expect(screen.getByText('执行结果')).toBeInTheDocument()
+    // 参考数据：referenceParams text kv 按轮展示（label 带轮次，值 = text）
+    expect(screen.getByText('参考数据')).toBeInTheDocument()
+    expect(screen.getByText('answer (第1轮)')).toBeInTheDocument()
+    expect(screen.getByText('第1轮参考答案')).toBeInTheDocument()
+    expect(screen.getByText('question (第1轮)')).toBeInTheDocument()
+    // 用例参数：后端无 case_params 数据源 → 块内「暂无数据」空态
+    expect(screen.getByText('用例参数')).toBeInTheDocument()
+    expect(screen.getByText('暂无数据')).toBeInTheDocument()
+  })
+
+  it('INT-2088：评估结果（维度 tab）+ 设备/API 执行结果（无维度字段 + 状态行）', async () => {
+    fetchDetailMock.mockResolvedValue({
+      ...detail,
+      algorithmResults: [
+        { paramCode: 'wer', paramType: 'number', label: 'WER', dimensionName: '清晰度', value: 0.5 },
+        { paramCode: 'llm_score', paramType: 'number', label: 'LLM 评分', dimensionName: '清晰度', value: 4 },
+        { paramCode: 'device_result', paramType: 'text', label: '设备结果', value: 'ok' },
+      ],
+    })
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    renderDialog()
+    expect(await screen.findByText('评估结果')).toBeInTheDocument()
+    // 维度 tab 切换（主维度「清晰度」）+ 该维度 kv
+    expect(screen.getByRole('tab', { name: '清晰度' })).toBeInTheDocument()
+    expect(screen.getByText('WER')).toBeInTheDocument()
+    expect(screen.getByText('LLM 评分')).toBeInTheDocument()
+    // 设备/API 执行结果：无维度归属字段 + 结果行状态
+    expect(screen.getByText('设备/API 执行结果')).toBeInTheDocument()
+    expect(screen.getByText('设备结果')).toBeInTheDocument()
+    // 执行状态（评分指标表设备徽章 + 结果行状态行均渲染「已完成」）
+    expect(screen.getAllByText('已完成').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('INT-2088：多轮对话结果（algorithmResults.rounds 检测）聚合卡 + 每轮展开', async () => {
+    fetchDetailMock.mockResolvedValue({
+      ...detail,
+      algorithmResults: [
+        {
+          paramCode: 'multi_round',
+          paramType: 'json',
+          label: '多轮结果',
+          value: {
+            rounds: [
+              { evaluation: { wer: 0.2, llm_judge: 4, latency: 100 } },
+              { evaluation: { wer: 0.3, llm_judge: 3, latency: 200 } },
+            ],
+            aggregated: { avg_wer: 0.25, avg_llm_judge: 3.5, avg_latency: 150, interruption_count: 0 },
+          },
+        },
+      ],
+    })
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    renderDialog()
+    expect(await screen.findByText('多轮对话结果 (2 轮)')).toBeInTheDocument()
+    expect(screen.getByText('平均 WER')).toBeInTheDocument()
+    expect(screen.getByText('平均 LLM 评分')).toBeInTheDocument()
+    expect(screen.getByText('第 1 轮')).toBeInTheDocument()
+  })
+
+  it('INT-2088：时间轴对比（stm 结果字段）+ 音频时间轴（用例输入音频）', async () => {
+    fetchDetailMock.mockResolvedValue({
+      ...detail,
+      algorithmResults: [
+        {
+          paramCode: 'stm',
+          paramType: 'stm',
+          label: 'stm',
+          value: '说话人1 X 0 2 你好内容\n说话人1 X 2 1 再见内容',
+          device: 'pura90豆包',
+        },
+      ],
+      referenceAudios: [
+        { audioName: 'JG0006_输入.wav', deviceName: null, audioId: 1622, round: null, url: null, path: null },
+      ],
+    })
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    renderDialog()
+    // 时间轴对比：stm 结果字段触发 + 段文本渲染
+    expect(await screen.findByText('时间轴对比')).toBeInTheDocument()
+    expect(screen.getByText('你好内容')).toBeInTheDocument()
+    // 音频时间轴：用例输入音频（audio_list；名字在段 title 上）
+    expect(screen.getByText('音频时间轴')).toBeInTheDocument()
+    expect(screen.getByTitle(/JG0006_输入\.wav/)).toBeInTheDocument()
   })
 })

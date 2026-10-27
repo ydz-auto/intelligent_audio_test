@@ -40,6 +40,8 @@ export interface ReviewSubmitResponseDto {
 /**
  * 结果行评估维度（GET /tasks/{task_id}/cases/{case_id}/results results[].dimensions 实测）：
  * round_number NULL=整体评估、0 起=该轮；value 为原始指标值（null 表示本次未产出）。
+ * dimension_type / parent_dimension_*（评分指标主/子层级；INT-2088）为可选字段——task_service
+ * ACL 现不下发，前端读到即用（V9.7.10 comparisonData 同口径），读不到按主维度平铺。
  */
 export interface CaseResultDimensionDto {
   dimension_id: number | null
@@ -50,6 +52,10 @@ export interface CaseResultDimensionDto {
   evaluation_status: string | null
   error_message: string | null
   round_number: number | null
+  /** 主/子维度（缺省前端按 main 处理；当前后端 ACL 不下发） */
+  dimension_type?: string | null
+  parent_dimension_id?: number | null
+  parent_dimension_name?: string | null
 }
 
 /** 用例执行结果行（GET /tasks/{task_id}/cases/{case_id}/results，INT-340 复核字段实测） */

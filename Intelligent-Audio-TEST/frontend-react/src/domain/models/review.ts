@@ -229,6 +229,8 @@ export function aiConfidenceLabel(confidence?: number | null): string {
  * 结果行评估维度（GET /tasks/{taskId}/cases/{caseId}/results results[].dimensions）。
  * roundNumber：null=整体评估，0 起=第 (roundNumber+1) 轮（旧 Vue TestCaseDetailModal
  * metricsMap 同口径：`{name}@round:{rn+1}` / `{name}@overall`）。
+ * dimensionType / parentDimension*（评分指标主/子层级，INT-2088）：后端 ACL 现不下发，
+ * 适配器读到即透传（V9.7.10 comparisonData 同口径），读不到按主维度平铺。
  */
 export interface CaseResultDimension {
   dimensionId: number | null
@@ -239,6 +241,10 @@ export interface CaseResultDimension {
   evaluationStatus: string | null
   errorMessage: string | null
   roundNumber: number | null
+  /** 主/子维度（缺省按 main 处理） */
+  dimensionType?: string | null
+  parentDimensionId?: number | null
+  parentDimensionName?: string | null
 }
 
 export interface CaseResultForReview {
