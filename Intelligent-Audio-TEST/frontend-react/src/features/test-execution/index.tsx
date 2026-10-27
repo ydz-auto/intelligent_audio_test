@@ -41,6 +41,8 @@ import { CaseDetailDialog } from '@/features/test-execution/modals/case-detail-d
 import { ApiEditDialog } from '@/features/test-execution/modals/api-edit-dialog'
 import { ApiHealthDialog } from '@/features/test-execution/modals/api-health-dialog'
 import { ResetFlowConfirm } from '@/features/test-execution/modals/reset-flow-confirm'
+import { ScanDevicesDialog } from '@/features/devices/components/modals/scan-devices-dialog'
+import type { DeviceScanSelection } from '@/domain/models/deviceScan'
 import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { ApiHealthCheckResult } from '@/domain/models/apiConfig'
 
@@ -93,6 +95,8 @@ export function TestExecutionPage({
   const [newTestOpen, setNewTestOpen] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
   const [savingReport, setSavingReport] = useState(false)
+  // INT-2074：扫描设备弹窗（selectMode 双扫 test + playback）
+  const [scanOpen, setScanOpen] = useState(false)
 
   const canPublishReport = hasPermission('report:publish')
   const canSaveReport = hasPermission('report:update')
@@ -123,9 +127,28 @@ export function TestExecutionPage({
     navigateWithSearch(navigate, { step: 0 })
   }
 
+  /** 扫描设备入口（INT-2074：接真实 ScanDevicesDialog selectMode，双扫 test + playback） */
+  const handleScanDevices = () => {
+    setScanOpen(true)
+  }
+
+  /** 新增设备入口（归设备域卡 INT-361；本卡只接扫描入口，新增仍留入口提示） */
   const handleDeviceEntry = () => {
-    // 扫描/新增设备弹窗归 INT-361（设备域卡）；本卡留入口
-    toast.info('设备管理弹窗随设备域卡 INT-361 落地')
+    toast.info('新增设备请前往设备管理页')
+  }
+
+  /** INT-2074：扫描勾选结果 → 合并进资源选择（未注册设备登记 + 勾选 + 网格刷新） */
+  const handleScanSelection = async (selection: DeviceScanSelection) => {
+    try {
+      const result = await resources.mergeScannedDevices(selection)
+      if (result.test > 0 || result.playback > 0) {
+        toast.success(
+          `已加入 ${result.test} 台设备${result.playback > 0 ? `、登记 ${result.playback} 个播放通道` : ''}`
+        )
+      }
+    } catch (error) {
+      toast.error(`加入设备失败：${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
   /** 连接测试（§5.4；INT-646 代码审计 P1：经 useApisCrud.testConnection → 真实
@@ -240,7 +263,7 @@ export function TestExecutionPage({
               readOnly={readOnly}
               onOpenApiEdit={(api) => setApiEdit({ open: true, api })}
               onOpenApiHealth={(api) => runApiHealthTest(api.id)}
-              onScanDevices={handleDeviceEntry}
+              onScanDevices={handleScanDevices}
               onAddDevice={handleDeviceEntry}
             />
           )}
@@ -320,6 +343,14 @@ export function TestExecutionPage({
         }}
         taskId={taskId ?? 0}
         caseId={caseDetail?.caseId ?? ''}
+      />
+
+      {/* INT-2074：扫描设备（selectMode 双扫 test + playback，勾选结果合并进资源选择） */}
+      <ScanDevicesDialog
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        selectMode
+        onConfirmSelection={(selection) => void handleScanSelection(selection)}
       />
 
       <ApiEditDialog

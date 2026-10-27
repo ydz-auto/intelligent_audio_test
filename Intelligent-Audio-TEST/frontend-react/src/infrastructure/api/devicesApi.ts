@@ -396,13 +396,13 @@ async function deleteGuard(action: () => Promise<unknown>): Promise<{ success: b
   }
 }
 
-/** 新增测试设备（§6.2；POST /test-devices） */
+/** 新增测试设备（§6.2；POST /test-devices —— 201 + data.id；INT-2074 扫描登记透出新 id 供勾选） */
 export async function createTestDevice(
-  input: Omit<TestDevice, 'id' | 'createdAt' | 'updatedAt'>,
+  input: Partial<TestDevice>,
   options: ApiRequestOptions = {}
-): Promise<{ success: boolean }> {
-  await request('POST', '/test-devices', toTestDeviceUpsertDto(input), options)
-  return { success: true }
+): Promise<{ success: boolean; id?: number | null }> {
+  const dto = await request<{ id?: number | null }>('POST', '/test-devices', toTestDeviceUpsertDto(input), options)
+  return { success: true, id: dto?.id ?? null }
 }
 
 /** 编辑测试设备（§6.2；PUT /test-devices/{id}） */
@@ -423,13 +423,13 @@ export async function deleteTestDevice(
   return deleteGuard(() => request('DELETE', `/test-devices/${id}`, undefined, options))
 }
 
-/** 新增播放设备（§6.2；POST /playback-devices） */
+/** 新增播放设备（§6.2；POST /playback-devices —— 201 + data.id；INT-2074 扫描登记透出新 id） */
 export async function createPlaybackDevice(
-  input: Omit<PlaybackDevice, 'id' | 'createdAt' | 'updatedAt'>,
+  input: Partial<PlaybackDevice>,
   options: ApiRequestOptions = {}
-): Promise<{ success: boolean }> {
-  await request('POST', '/playback-devices', toPlaybackDeviceUpsertDto(input), options)
-  return { success: true }
+): Promise<{ success: boolean; id?: number | null }> {
+  const dto = await request<{ id?: number | null }>('POST', '/playback-devices', toPlaybackDeviceUpsertDto(input), options)
+  return { success: true, id: dto?.id ?? null }
 }
 
 /** 编辑播放设备（§6.2；PUT /playback-devices/{id}） */
