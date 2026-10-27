@@ -11,13 +11,13 @@ import type { CalibrationStatus } from '@/domain/models/splMapping'
 /** 数字域协议（protocol 默认 websocket） */
 export type DigitalSplProtocol = 'websocket' | 'http'
 
-/** 数字域校准点（§6.10：目标SPL ↔ 线性增益 ↔ 实测RMS） */
+/** 数字域校准点（INT-2081：目标SPL ↔ 实测 dBFS，线性增益为推导值） */
 export interface ApiCalibrationPoint {
   /** 目标声压级（dB SPL，0~120） */
   targetSpl: number
-  /** 线性增益（>0，min~max） */
+  /** 线性增益（>0，由 dBFS 与基础电平 -30 dBFS 推导） */
   gainLinear: number
-  /** 实测 RMS（dBFS，选填 -120~0） */
+  /** 实测 RMS（dBFS，必填 -120~0；主输入） */
   rmsDbfs: number | null
 }
 
