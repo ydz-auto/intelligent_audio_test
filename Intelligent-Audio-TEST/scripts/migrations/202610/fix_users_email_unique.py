@@ -21,6 +21,10 @@
     python scripts/migrations/202610/fix_users_email_unique.py           # 预览
     python scripts/migrations/202610/fix_users_email_unique.py --apply   # 实际执行
 
+环境：``DATABASE_URL`` 优先、``DATABASE_URI`` 兜底；两者都缺即报错退出，
+**不静默连本地默认库**（INT-2078 评审发现：只设 ``DATABASE_URL`` 手动执行时
+旧代码静默连 ``localhost:5432``，对错库执行 ALTER / 建索引造成跨库破坏）。
+
 ⚠️ 先停服务再执行（README 执行须知：ALTER TABLE 需 ACCESS EXCLUSIVE 锁）。
 """
 import os
@@ -28,11 +32,19 @@ import sys
 
 from sqlalchemy import create_engine, text
 
-POSTGRES_URI = os.environ.get(
-    'DATABASE_URI',
-    'postgresql://intelligent_audio_test:intelligent_audio_test666'
-    '@localhost:5432/intelligent_audio_test'
-)
+
+def resolve_database_url():
+    """连接串解析：DATABASE_URL 优先、DATABASE_URI 兜底；两者都缺即报错退出。
+
+    对齐 ``drop_raw_payload_columns_int1813.py`` / ``drop_report_cases_payload_columns_int1995.py``
+    的 ``DATABASE_URL`` 优先口径，但**去掉静默 localhost 默认**——连错库比报错更糟。
+    """
+    url = os.environ.get('DATABASE_URL') or os.environ.get('DATABASE_URI')
+    if not url:
+        print('错误：未设置 DATABASE_URL / DATABASE_URI，拒绝连默认库——'
+              '对错库执行 ALTER TABLE / CREATE INDEX 会造成跨库破坏。', file=sys.stderr)
+        sys.exit(1)
+    return url
 
 OLD_CONSTRAINT = 'users_email_key'
 NEW_INDEX = 'uq_users_email'
@@ -41,12 +53,13 @@ NEW_INDEX = 'uq_users_email'
 def main():
     apply = '--apply' in sys.argv
 
+    # 连接串缺失在此报错退出，先于 banner——不打印误导性的「预览」再死
+    engine = create_engine(resolve_database_url())
+
     print("=" * 60)
     print("users_email 唯一约束修复（空邮箱归一化 + 部分唯一索引）")
     print(f"模式: {'实际执行 (--apply)' if apply else '预览 (dry-run)'}")
     print("=" * 60)
-
-    engine = create_engine(POSTGRES_URI)
 
     with engine.connect() as conn:
         # ---- ① 存量空邮箱数据兜底 ----
