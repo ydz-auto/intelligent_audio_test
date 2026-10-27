@@ -68,6 +68,12 @@ class TestGrpcMessageLimitTaskServer:
     def test_server_options_raised(self, monkeypatch):
         import task_service.interfaces.grpc.server as server_mod
 
+        # INT-2047：本用例考的是 gRPC 收发上限放大，不是标签快照预热。
+        # start_grpc_server 会起一条后台预热线程去连 task_service；用例跑完
+        # 它还在重试，会把 ListTags 调用带进后续音频域用例（上游调用计数
+        # 1 → 2）。这里显式关掉预热，让「起服」用例不依赖真实上游。
+        monkeypatch.setattr(BaseConfig, 'AUDIO_TAG_ACL_WARMUP_ENABLED', False)
+
         captured = {}
 
         class _FakeServer:

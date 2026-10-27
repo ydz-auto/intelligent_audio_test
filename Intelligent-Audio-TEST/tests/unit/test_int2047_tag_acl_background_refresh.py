@@ -363,3 +363,66 @@ def test_reset_discards_inflight_refresh_result():
         assert acl._SNAPSHOT == {}
         assert acl._SNAPSHOT_AT is None
     assert get_tag_acl_cache_stats()['refresh_ok'] == 0
+
+
+# ---------------- 返工 P2：后台线程可等待 / 可回收 ----------------
+
+def test_reset_stops_leaked_warmup_thread():
+    """返工 P2：起服预热的遗留线程在 reset 后立即中止，不再打上游。
+
+    缺陷现场：起服类用例留下一条第 5 次重试的预热线程，用例结束后它继续
+    尝试调用上游，命中下一个用例装上的假 stub，把 list_calls 从 1 顶成 2。
+    """
+    bad = _FakeStub(exc=RuntimeError('upstream pending'))
+    with mock.patch.object(BaseConfig, 'AUDIO_TAG_ACL_REFRESH_BACKOFF_SECONDS', 0.2):
+        with _patch_stub(bad):
+            assert acl.start_tag_acl_warmup() is True
+            deadline = time.monotonic() + 5
+            while bad.list_calls == 0 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert bad.list_calls >= 1, '预热线程没有开始尝试上游'
+
+            reset_tag_acl_cache()          # 换代 + join：线程必须在这里退出
+            calls_after_reset = bad.list_calls
+            assert acl.wait_tag_acl_refresh_idle(timeout=1) is True
+            # 线程若还活着，这 0.5 s 足够它做完一次退避再打一次上游
+            time.sleep(0.5)
+            assert bad.list_calls == calls_after_reset, 'prewarm 线程未被回收'
+    assert acl.wait_tag_acl_refresh_idle(timeout=1) is True
+
+
+def test_wait_idle_joins_background_threads():
+    """wait_tag_acl_refresh_idle 返回时后台线程确实已退出（不是只把标志位清掉）。"""
+    slow = _FakeStub(delay=0.2)
+    with _patch_stub(slow):
+        assert acl.start_tag_acl_warmup() is True
+        assert acl.wait_tag_acl_refresh_idle(timeout=10) is True
+        current = threading.current_thread()
+        with acl._THREADS_LOCK:
+            left = [t for t in acl._THREADS if t is not current]
+        assert left == []
+
+
+# ---------------- 返工 P3：退避从刷新结束起算 ----------------
+
+def test_failed_refresh_backoff_starts_from_completion():
+    """返工 P3：刷新的上游耗时超过退避窗口时，退避仍要生效。
+
+    缺陷现场：``_LAST_ATTEMPT_AT`` 在排期时写入，刷新本身就要跑满 deadline
+    （默认 2 s > backoff 默认 1 s），失败回到锁里时退避窗口早已过去，下一个
+    过期请求立刻再打一次上游。
+    """
+    with mock.patch.object(BaseConfig, 'AUDIO_TAG_ACL_REFRESH_BACKOFF_SECONDS', 1.5):
+        _warm(_FakeStub())
+        _expire()
+        bad = _FakeStub(exc=RuntimeError('unavailable'), delay=2.0)
+        with _patch_stub(bad):
+            TagAclRepository().get_tag_id_to_name_map([74])
+            assert acl.wait_tag_acl_refresh_idle(timeout=15) is True
+            assert bad.list_calls == 1
+
+            _expire()
+            # 失败刚刚结束（退避从此刻起算）：紧接着的过期请求不得再打上游
+            TagAclRepository().get_tag_id_to_name_map([74])
+            assert acl.wait_tag_acl_refresh_idle(timeout=15) is True
+        assert bad.list_calls == 1

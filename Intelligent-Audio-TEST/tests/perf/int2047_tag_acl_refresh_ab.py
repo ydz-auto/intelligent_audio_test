@@ -15,7 +15,11 @@
     python tests/perf/int2047_tag_acl_refresh_ab.py --delay 3 --old-path <其他 clone>
 
 ``--delay`` 给上游 ListTags 注入固定时延，用来复现线上刷新 281 ms – 29.5 s
-的尾部分布；不传则量真实 docker task_service。
+的尾部分布；不传则量真实 docker task_service。``--timeout`` 是刷新调用的
+显式 deadline（秒）：注入的时延晚于 deadline 时，后台刷新会在到期时按
+「查不了」降级（请求侧仍立即返回旧快照），这是本卡要验证的行为；因此
+``--delay`` 可以任意大于等于 ``--timeout``，脚本先用真实上游预热拿全量快照、
+再装时延，冷启动不会撞上慢上游（INT-2047 返工 P3）。
 """
 import argparse
 import importlib.util
@@ -80,12 +84,20 @@ def _warm(module, repo, ids, is_new):
         repo.get_tag_id_to_name_map(ids)     # 旧实现首轮就同步拉一次
 
 
-def _run_sequence(module, repo, ids, is_new, n, ttl, expire_at, delay, label):
+def _run_sequence(module, repo, ids, is_new, n, ttl, expire_at, delay, label,
+                  seed=None):
     """连续 n 次请求，在指定下标前把快照推到 TTL 之外（模拟跨 TTL 周期）。"""
     module.reset_tag_acl_cache()
-    _warm(module, repo, ids, is_new)
-    if is_new:
-        module.wait_tag_acl_refresh_idle(timeout=30)
+    if is_new and seed is not None:
+        # 上游已注入时延、网络预热必然 DEADLINE_EXCEEDED：直接恢复预热好的
+        # 快照，模拟「进程已热、上游变慢」的稳态，而不是冷启动去撞慢上游。
+        with module._COND:
+            module._SNAPSHOT = dict(seed['snapshot'])
+            module._SNAPSHOT_AT = time.monotonic()
+    else:
+        _warm(module, repo, ids, is_new)
+        if is_new:
+            module.wait_tag_acl_refresh_idle(timeout=30)
 
     samples = []
     expiry_samples = []
@@ -111,11 +123,17 @@ def _run_sequence(module, repo, ids, is_new, n, ttl, expire_at, delay, label):
     }
 
 
-def _burst(module, repo, ids, threads, delay):
+def _burst(module, repo, ids, threads, delay, seed=None):
     """上游慢 delay 秒时，并发 threads 个请求侧解析：量请求侧耗时。"""
     module.reset_tag_acl_cache()
-    _warm(module, repo, ids, True)
-    module.wait_tag_acl_refresh_idle(timeout=30)
+    if seed is not None:
+        # 与 _run_sequence 同口径：已注入时延，直接恢复预热好的快照。
+        with module._COND:
+            module._SNAPSHOT = dict(seed['snapshot'])
+            module._SNAPSHOT_AT = time.monotonic()
+    else:
+        _warm(module, repo, ids, True)
+        module.wait_tag_acl_refresh_idle(timeout=30)
     _expire(module, module.tag_cache_ttl_seconds())
 
     barrier = threading.Barrier(threads)
@@ -149,6 +167,9 @@ def main():
     parser.add_argument('--old-path', default=DEFAULT_OLD_PATH)
     parser.add_argument('--delay', type=float, default=0.0,
                         help='给上游 ListTags 注入固定时延（秒），0 = 真实上游')
+    parser.add_argument('--timeout', type=float, default=2.0,
+                        help='刷新调用显式 deadline（秒），默认 2.0；'
+                             '--delay 晚于该值时后台刷新按「查不了」降级')
     parser.add_argument('--requests', type=int, default=40)
     parser.add_argument('--ttl', type=int, default=3)
     parser.add_argument('--threads', type=int, default=20)
@@ -164,7 +185,7 @@ def main():
     from shared.infrastructure.config import BaseConfig
     BaseConfig.AUDIO_TAG_ACL_CACHE_TTL_SECONDS = args.ttl
     BaseConfig.AUDIO_TAG_ACL_NEGATIVE_CACHE_SECONDS = 0
-    BaseConfig.AUDIO_TAG_ACL_REFRESH_TIMEOUT_SECONDS = 2.0
+    BaseConfig.AUDIO_TAG_ACL_REFRESH_TIMEOUT_SECONDS = args.timeout
     BaseConfig.AUDIO_TAG_ACL_REFRESH_AHEAD_RATIO = 1.0    # 先关预热，让过期边界可复现
     BaseConfig.AUDIO_TAG_ACL_REFRESH_BACKOFF_SECONDS = 1.0
     BaseConfig.AUDIO_TAG_ACL_WARMUP_ENABLED = True
@@ -177,14 +198,12 @@ def main():
 
     import shared.clients.grpc_clients as grpc_clients
     real_factory = grpc_clients.get_tag_config_service_stub
-    if args.delay > 0:
-        grpc_clients.get_tag_config_service_stub = (
-            lambda: _DelayStub(real_factory(), args.delay))
 
     new_repo = new_mod.TagAclRepository()
     old_repo = old_mod.TagAclRepository()
 
-    # 真实标签表：用新实现预热一次拿全量 id
+    # 真实标签表：先用真实上游预热拿全量 id（验证连通性）。预热完成、拿到
+    # 快照之后才装时延 —— 否则 --delay >= --timeout 时冷启动预热必全挂。
     new_mod.start_tag_acl_warmup()
     new_mod.wait_tag_acl_refresh_idle(timeout=180)
     with new_mod._COND:
@@ -193,15 +212,24 @@ def main():
         print('FATAL: 上游没有返回任何标签（检查 task_service gRPC 端口/连通性）')
         return 1
     ids = all_ids[:20]
+    with new_mod._COND:
+        warm_seed = {'snapshot': dict(new_mod._SNAPSHOT)}
+    seed = warm_seed if args.delay > 0 else None
+
+    if args.delay > 0:
+        grpc_clients.get_tag_config_service_stub = (
+            lambda: _DelayStub(real_factory(), args.delay))
 
     expire_at = {args.requests // 3, (2 * args.requests) // 3}
     common = dict(ids=ids, n=args.requests, ttl=args.ttl,
                   expire_at=expire_at, delay=args.delay)
 
-    print(f'# INT-2047 A/B  delay={args.delay}s ttl={args.ttl}s '
-          f'requests={args.requests} tags={len(all_ids)} sample_ids={len(ids)}')
+    print(f'# INT-2047 A/B  delay={args.delay}s timeout={args.timeout}s '
+          f'ttl={args.ttl}s requests={args.requests} tags={len(all_ids)} '
+          f'sample_ids={len(ids)}')
     old_res = _run_sequence(old_mod, old_repo, is_new=False, label='old', **common)
-    new_res = _run_sequence(new_mod, new_repo, is_new=True, label='new', **common)
+    new_res = _run_sequence(new_mod, new_repo, is_new=True, label='new',
+                            seed=seed, **common)
 
     def _line(name, res):
         s = res['samples']
@@ -223,7 +251,8 @@ def main():
     same = old_res['resolved'] == new_res['resolved']
     print(f'resolve_equal={same} items={len(new_res["resolved"])}')
 
-    costs, errors = _burst(new_mod, new_repo, ids, args.threads, args.delay)
+    costs, errors = _burst(new_mod, new_repo, ids, args.threads, args.delay,
+                           seed=seed)
     if errors:
         print(f'burst_errors={errors[:3]}')
     print(f'new burst threads={args.threads} '

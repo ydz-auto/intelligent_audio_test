@@ -37,9 +37,15 @@ logger = logging.getLogger(__name__)
 # - **refresh-ahead**：快照活到 TTL 的 ratio（默认 0.7）时顺带排期一次后台
 #   刷新，使过期瞬间通常已命中新快照；刷新同一时刻最多一个线程。
 # - **失败退避**：刷新失败后 backoff 秒内不再排期，避免上游挂掉时每个过期
-#   请求都排一次刷新。
-# - **起服预热**：进程启动时同步拉一次快照（见 ``warm_tag_acl_snapshot``），
-#   避免首轮请求降级成数字 id。
+#   请求都排一次刷新；退避从「刷新结束」起算，而不是从排期时刻起算（返工 P3：
+#   deadline 默认 2 s > backoff 默认 1 s，按排期时刻算等于退避恒不生效）。
+# - **起服预热**：进程启动时起一条后台线程拉一次快照（见
+#   ``start_tag_acl_warmup``），避免首轮请求降级成数字 id。
+# - **后台线程可等待/可回收**：所有后台刷新/预热线程登记在 ``_THREADS``，
+#   ``wait_tag_acl_refresh_idle`` 与 ``reset_tag_acl_cache`` 会 join 它们；
+#   预热线程的每次尝试/退避都检查代际，``reset`` 换代后立即中止（返工 P2：
+#   原先预热线程不可停止、不可 drain，起服类用例结束后遗留线程会把上游调用
+#   带进下一个用例，把上游调用次数顶成 2）。
 #
 # 两条语义红线（卡面「范围与不做」第 2 条）：
 # - 「查不到」= 上游成功、快照里确实没有该 id → 可短 TTL 负缓存（默认关），
@@ -61,6 +67,12 @@ TAG_CACHE_DEFAULT_WARMUP_ENABLED = True
 # 起服预热的尝试次数：宿主机 → docker task_service 首连实测可到 10 s 以上
 # （首调 DEADLINE_EXCEEDED、稳定后 ~1 s），单次尝试经常赶不上建连。
 TAG_CACHE_DEFAULT_WARMUP_ATTEMPTS = 5
+# reset 时等待旧代后台线程退出的上限（秒）。旧代线程下一次尝试前就会看到
+# 代际变化并中止，正常情况下 join 在「当前这一次上游调用」内结束（≤ deadline）。
+TAG_CACHE_DEFAULT_RESET_JOIN_TIMEOUT_SECONDS = 5.0
+# 后台线程检查代际的粒度（秒）：退避等待切成小片，reset 换代后能立刻中止，
+# 不用等完整退避窗口。
+TAG_CACHE_EPOCH_POLL_SECONDS = 0.05
 
 _SNAPSHOT: Dict[int, str] = {}          # 只整体替换，不原地改（读侧拿引用即用）
 _SNAPSHOT_AT: Optional[float] = None    # 最近一次成功加载的 monotonic 时刻
@@ -68,6 +80,8 @@ _NEGATIVE: Dict[int, float] = {}        # 查不到 的 tag_id → 负缓存过�
 _MISS_LOGGED = set()                    # 本快照代已 INFO 记过的查不到 id（防刷屏）
 _REFRESHING = False                     # 后台刷新线程是否在跑（同一时刻最多一个）
 _REFRESH_THREAD: Optional[threading.Thread] = None
+_THREADS = set()                        # 存活的后台刷新/预热线程（等待与 reset 时 join）
+_THREADS_LOCK = threading.Lock()        # 保护 _THREADS（与 _COND 分开，避免 join 持锁）
 _LAST_ATTEMPT_AT: Optional[float] = None   # 最近一次排期刷新的 monotonic 时刻
 _LAST_ATTEMPT_FAILED = False            # 最近一次刷新是否失败（退避判据）
 _EPOCH = 0                              # reset 代际：旧代后台线程的结果一律丢弃
@@ -195,25 +209,94 @@ def get_tag_acl_cache_stats() -> Dict[str, int]:
         return dict(_STATS)
 
 
+def _spawn_background_thread(target, args, name: str) -> threading.Thread:
+    """起一条登记在册的后台 daemon 线程，线程结束（或中止）时自动注销。
+
+    INT-2047 返工（P2）：后台线程必须可等待、可回收 —— 起服预热原先不可停止、
+    不可 drain，进程/用例结束后它还会继续尝试调用上游，单测里会命中下一个
+    用例装上的假 stub（上游调用次数 1 → 2）。登记后 ``reset_tag_acl_cache``
+    与 ``wait_tag_acl_refresh_idle`` 都能 join 到它真正退出。
+    """
+    holder = {}
+
+    def _runner():
+        try:
+            target(*args)
+        finally:
+            with _THREADS_LOCK:
+                _THREADS.discard(holder.get('thread'))
+
+    thread = threading.Thread(target=_runner, name=name, daemon=True)
+    holder['thread'] = thread
+    with _THREADS_LOCK:
+        _THREADS.add(thread)
+    thread.start()
+    return thread
+
+
+def _live_threads() -> List[threading.Thread]:
+    """当前存活的后台刷新/预热线程快照（不含调用线程自身）。"""
+    current = threading.current_thread()
+    with _THREADS_LOCK:
+        return [t for t in _THREADS if t is not current]
+
+
+def _join_background_threads(deadline: float) -> bool:
+    """join 全部存活的后台线程到 ``deadline``（monotonic）；返回是否已全部结束。"""
+    while True:
+        pending = _live_threads()
+        if not pending:
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        pending[0].join(timeout=remaining)
+
+
+def _epoch_superseded(epoch: int) -> bool:
+    """代际是否已被 reset 换代（旧代的后台任务应立即中止，结果一律丢弃）。"""
+    with _COND:
+        return epoch != _EPOCH
+
+
+def _sleep_backoff(seconds: float, epoch: int) -> bool:
+    """可中断的退避等待；返回 True 表示代际已换代、调用方应立即中止。"""
+    deadline = time.monotonic() + max(0.0, seconds)
+    while True:
+        if _epoch_superseded(epoch):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return _epoch_superseded(epoch)
+        time.sleep(min(remaining, TAG_CACHE_EPOCH_POLL_SECONDS))
+
+
 def wait_tag_acl_refresh_idle(timeout: float = 5.0) -> bool:
-    """等待后台刷新线程结束（起服编排与单测用）；返回是否已空闲。"""
+    """等待后台刷新/预热线程真正退出（起服编排与单测用）；返回是否已空闲。"""
     deadline = time.monotonic() + max(0.0, timeout)
     with _COND:
         while _REFRESHING:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return False
-            _COND.wait(timeout=min(remaining, 0.05))
-        return True
+            _COND.wait(timeout=min(remaining, TAG_CACHE_EPOCH_POLL_SECONDS))
+    return _join_background_threads(deadline)
 
 
-def reset_tag_acl_cache() -> None:
-    """清空快照/负缓存/计数（测试与本地排障用）。"""
+def reset_tag_acl_cache(
+        timeout: float = TAG_CACHE_DEFAULT_RESET_JOIN_TIMEOUT_SECONDS) -> None:
+    """清空快照/负缓存/计数（测试与本地排障用），并回收旧代后台线程。
+
+    返工 P2：只把 ``_REFRESHING`` 置 False 不够 —— 旧代线程仍在跑，它会继续
+    尝试调用上游，在单测里把调用带进下一个用例。这里先换代（让旧代线程中止），
+    再在锁外 join 它们到 ``timeout``：join 必须放在锁外，否则旧代线程回填结果
+    时拿不到 ``_COND``，join 会一直等到超时。
+    """
     global _SNAPSHOT, _SNAPSHOT_AT, _REFRESHING, _REFRESH_THREAD
     global _LAST_ATTEMPT_AT, _LAST_ATTEMPT_FAILED, _EPOCH
     with _COND:
         # 代际 +1：清理前已在跑的后台刷新线程回来时按旧代丢弃，不会把它的
-        # 结果写进新一轮的缓存。
+        # 结果写进新一轮的缓存；预热线程的退避/尝试也会看到换代而中止。
         _EPOCH += 1
         _SNAPSHOT = {}
         _SNAPSHOT_AT = None
@@ -226,6 +309,7 @@ def reset_tag_acl_cache() -> None:
         for key in _STATS:
             _STATS[key] = 0
         _COND.notify_all()
+    _join_background_threads(time.monotonic() + max(0.0, timeout))
 
 
 def invalidate_tag_snapshot(reason: str = '') -> None:
@@ -269,14 +353,10 @@ def _schedule_refresh_locked(loader, reason: str) -> bool:
     _REFRESHING = True
     _LAST_ATTEMPT_AT = now
     _STATS['refresh_scheduled'] += 1
-    thread = threading.Thread(
-        target=_refresh_worker,
-        args=(loader, _EPOCH, reason),
-        name='audio-tag-acl-refresh',
-        daemon=True,       # 进程退出时不拖住关机（长驻服务由解释器回收）
-    )
+    # daemon：进程退出时不拖住关机（长驻服务由解释器回收）；登记在册便于 join。
+    thread = _spawn_background_thread(
+        _refresh_worker, (loader, _EPOCH, reason), 'audio-tag-acl-refresh')
     _REFRESH_THREAD = thread
-    thread.start()
     logger.info(
         "audio_tag_acl_cache refresh_scheduled reason=%s ttl_s=%d "
         "deadline_s=%.2f in_request_thread=false",
@@ -287,7 +367,7 @@ def _schedule_refresh_locked(loader, reason: str) -> bool:
 
 def _refresh_worker(loader, epoch: int, reason: str) -> None:
     """后台刷新线程：拉上游并回填快照；失败只降级，绝不清空快照。"""
-    global _SNAPSHOT, _SNAPSHOT_AT, _REFRESHING, _LAST_ATTEMPT_FAILED
+    global _SNAPSHOT, _SNAPSHOT_AT, _REFRESHING, _LAST_ATTEMPT_AT, _LAST_ATTEMPT_FAILED
 
     started = time.monotonic()
     try:
@@ -298,6 +378,10 @@ def _refresh_worker(loader, epoch: int, reason: str) -> None:
             if epoch == _EPOCH:
                 _REFRESHING = False
                 _LAST_ATTEMPT_FAILED = True
+                # 退避从「刷新结束」起算（返工 P3）：从排期时刻起算时，一次
+                # 失败的刷新本身就要跑满 deadline（默认 2 s > backoff 1 s），
+                # 回到锁里时退避窗口早已过去 → 下一个过期请求立刻再打上游。
+                _LAST_ATTEMPT_AT = time.monotonic()
                 _STATS['refresh_fail'] += 1
                 _STATS['degraded'] += 1
             stale_items = len(_SNAPSHOT)
@@ -348,8 +432,9 @@ def _warmup_attempt(loader, epoch: int, attempt: int, attempts: int) -> bool:
     except Exception as exc:
         cost_ms = (time.monotonic() - started) * 1000.0
         with _COND:
-            _LAST_ATTEMPT_AT = time.monotonic()
-            _LAST_ATTEMPT_FAILED = True
+            if epoch == _EPOCH:   # 旧代线程（reset 换代后）不得再写退避/失败状态
+                _LAST_ATTEMPT_AT = time.monotonic()
+                _LAST_ATTEMPT_FAILED = True
             stale_items = len(_SNAPSHOT)
         logger.warning(
             "audio_tag_acl_cache warmup_fail attempt=%d/%d cost_ms=%.1f "
@@ -397,15 +482,29 @@ def warm_tag_acl_snapshot(loader=None, attempts: Optional[int] = None,
     backoff = tag_cache_refresh_backoff_seconds()
     target_epoch = _EPOCH if epoch is None else epoch
     for attempt in range(1, total + 1):
+        # 每次尝试前先看代际：reset 换代后立即中止，既不写缓存也不再打上游
+        # （返工 P2：预热线程不可停止时，遗留尝试会把调用带进下一个用例）。
+        if _epoch_superseded(target_epoch):
+            logger.info(
+                "audio_tag_acl_cache warmup_aborted reason=reset attempt=%d/%d",
+                attempt, total,
+            )
+            return False
         if _warmup_attempt(loader, target_epoch, attempt, total):
             return True
         if attempt < total and backoff > 0:
-            time.sleep(backoff)
+            if _sleep_backoff(backoff, target_epoch):
+                logger.info(
+                    "audio_tag_acl_cache warmup_aborted reason=reset attempt=%d/%d",
+                    attempt, total,
+                )
+                return False
     with _COND:
-        _LAST_ATTEMPT_AT = time.monotonic()
-        _LAST_ATTEMPT_FAILED = True
-        _STATS['refresh_fail'] += 1
-        _STATS['degraded'] += 1
+        if target_epoch == _EPOCH:   # 旧代线程（reset 换代后）的失败不得污染新一轮退避状态
+            _LAST_ATTEMPT_AT = time.monotonic()
+            _LAST_ATTEMPT_FAILED = True
+            _STATS['refresh_fail'] += 1
+            _STATS['degraded'] += 1
     return False
 
 
@@ -422,7 +521,7 @@ def _warmup_worker(loader, epoch: int) -> None:
 
 
 def start_tag_acl_warmup(loader=None) -> bool:
-    """起服预热（后台 daemon）：不占用启动时间，失败按退避重试。"""
+    """起服预热（后台 daemon，登记在册可 join）：不占启动时间，失败按退避重试。"""
     global _REFRESHING, _REFRESH_THREAD, _LAST_ATTEMPT_AT
 
     if not _warmup_allowed():
@@ -435,14 +534,9 @@ def start_tag_acl_warmup(loader=None) -> bool:
         _REFRESHING = True
         _LAST_ATTEMPT_AT = time.monotonic()
         _STATS['refresh_scheduled'] += 1
-        thread = threading.Thread(
-            target=_warmup_worker,
-            args=(loader, _EPOCH),
-            name='audio-tag-acl-warmup',
-            daemon=True,
-        )
+        thread = _spawn_background_thread(
+            _warmup_worker, (loader, _EPOCH), 'audio-tag-acl-warmup')
         _REFRESH_THREAD = thread
-        thread.start()
     logger.info(
         "audio_tag_acl_cache warmup_scheduled attempts=%d deadline_s=%.2f "
         "backoff_s=%.2f",

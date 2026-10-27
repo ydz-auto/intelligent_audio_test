@@ -83,6 +83,13 @@ def _run_start_server(monkeypatch, get_value):
     seen = {}
 
     from shared.models import database as dbmod
+    from shared.infrastructure.config import BaseConfig
+
+    # INT-2047：本文件考的是 gRPC 线程池/配置读取，不是标签快照预热。
+    # start_grpc_server 会起一条后台预热线程去连 task_service；用例跑完它还在
+    # 重试，会把 ListTags 调用带进后续音频域用例（上游调用计数 1 → 2）。
+    # 这里显式关掉预热，让「起服」用例不依赖真实上游。
+    monkeypatch.setattr(BaseConfig, 'AUDIO_TAG_ACL_WARMUP_ENABLED', False)
 
     def fake_init_db(pool_size=3):
         seen['pool_size'] = pool_size
