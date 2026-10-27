@@ -418,24 +418,36 @@ class Smoke(object):
         return out
 
     def report_count_check(self, drv, task_id):
-        """任务详情「报告」区与 /reports/by_task/{id} 对照。"""
+        """任务详情报告区与 /reports/by_task/{id} 对照。
+
+        INT-2116 校正：当前 React 任务详情不再内联报告名/空态提示——任务无报告时
+        TaskReportDocuments 取到 null 不渲染报告区；有报告时渲染「报告文档」区
+        （无 Studio 文档则显示空态文案「该任务的报告暂无关联文档」）。按新口径：
+          - 404（无报告）：详情页正常渲染（未进入「任务详情加载失败」错误态）即接受；
+            页面空态文案仅作信息记录。
+          - 200（有报告）：报告名或「报告文档」区任一可见即接受。
+        """
         rec = {'task_id': task_id}
         st, resp = http_json('/reports/by_task/%s' % task_id, timeout=90)
         rec['api_status'] = st
+        txt = body_text(drv)
         if st == 200:
             data = resp.get('data') or {}
             name = data.get('name') or ''
             rec['api_has_report'] = True
             rec['api_report_name'] = name[:40]
-            rec['ui_has_report'] = (name[:20] in body_text(drv)) if name else None
-            rec['match'] = bool(name and name[:20] in body_text(drv))
+            rec['ui_has_report'] = bool(name and name[:20] in txt)
+            rec['ui_has_doc_section'] = '报告文档' in txt
+            rec['ui_empty_doc_hints'] = [h for h in ('暂无关联文档', '该任务的报告暂无关联文档')
+                                         if h in txt]
+            rec['match'] = bool((name and name[:20] in txt) or '报告文档' in txt)
         elif st == 404:
             rec['api_has_report'] = False
-            txt = body_text(drv)
             hints = [h for h in ('暂无报告', '无报告', '没有报告', '暂未生成', '不适用', '未生成')
                      if h in txt]
             rec['ui_empty_hints'] = hints
-            rec['match'] = bool(hints)
+            rec['detail_ok'] = '任务详情加载失败' not in txt
+            rec['match'] = rec['detail_ok']
         else:
             rec['match'] = None
         return rec

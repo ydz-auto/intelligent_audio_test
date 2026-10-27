@@ -384,6 +384,12 @@ def try_step(name, fn):
 
 
 # ── 关键链路 1：登录 → 任务列表 → 任务详情 ─────────────────
+def _benign_api_error(a):
+    """当前 React 设计：任务无报告时详情页仍会请求 /reports/by_task/{id}，
+    后端按契约返回 404（前端静默不渲染报告区），属预期响应而非缺陷。"""
+    return a.get('status') == 404 and '/reports/by_task/' in (a.get('url') or '')
+
+
 def chain_login_to_task(drv):
     out = {'ok': False, 'steps': []}
     drv.get(BASE + '/tasks/daily')
@@ -406,7 +412,8 @@ def chain_login_to_task(drv):
     out['detail_text_head'] = body_text(drv)[:400]
     apis = parse_perf(drv.get_log('performance'))
     out['detail_apis'] = apis
-    out['detail_api_errors'] = api_errors(apis)
+    out['detail_api_errors'] = [a for a in api_errors(apis) if not _benign_api_error(a)]
+    out['benign_404s'] = [a for a in api_errors(apis) if _benign_api_error(a)]
     out['console_errors'] = console_errors(drv)
     out['shot_detail'] = shot(drv, 'chain1_2_task_detail')
     out['task_id'] = int(re.search(r'/tasks/(\d+)', drv.current_url).group(1))
@@ -414,31 +421,22 @@ def chain_login_to_task(drv):
     return out
 
 
-# ── 关键链路 2：用例列表 → 用例详情 ────────────────────────
+# ── 关键链路 2：用例列表（分组 + 条数；详情入口在任务域用例行）─
 def chain_cases(drv):
     out = {'ok': False, 'steps': []}
     drv.get(BASE + '/testcases/by-tag')
-    WebDriverWait(drv, 90).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, "button[title='查看用例详情']")))
+    WebDriverWait(drv, 60).until(
+        lambda d: ('用例管理' in body_text(d)) and re.search(r'\d+\s*条', body_text(d)))
     time.sleep(2.0)
-    cards = drv.find_elements(By.CSS_SELECTOR, "button[title='查看用例详情']")
-    out['steps'].append({'step': '用例列表', 'case_cards': len(cards),
-                         'first': cards[0].text.strip()[:80], 'url': drv.current_url})
+    txt = body_text(drv)
+    groups = re.findall(r'([^\n]{1,40})\s+(\d+)\s*条', txt)
+    out['steps'].append({'step': '用例列表', 'group_sections': len(groups),
+                         'sample': groups[:6], 'url': drv.current_url,
+                         'note': 'INT-1919：列表页无「查看用例详情」入口，用例详情在任务域用例行'})
     out['list_apis'] = parse_perf(drv.get_log('performance'))
+    out['list_api_errors'] = [a for a in api_errors(out['list_apis']) if not _benign_api_error(a)]
     out['shot_list'] = shot(drv, 'chain2_1_case_list')
-    drv.execute_script('arguments[0].click()', cards[0])
-    WebDriverWait(drv, 40).until(
-        lambda d: any(x.is_displayed() for x in d.find_elements(By.CSS_SELECTOR, '[role="dialog"]')))
-    time.sleep(1.5)
-    dlg = [x for x in drv.find_elements(By.CSS_SELECTOR, '[role="dialog"]') if x.is_displayed()][0]
-    out['dialog_text_head'] = dlg.text[:600]
-    apis = parse_perf(drv.get_log('performance'))
-    out['detail_apis'] = apis
-    out['detail_api_errors'] = api_errors(apis)
-    out['shot_detail'] = shot(drv, 'chain2_2_case_detail')
-    drv.find_element(By.TAG_NAME, 'body').send_keys(Keys.ESCAPE)
-    time.sleep(0.8)
-    out['ok'] = bool(out['dialog_text_head'])
+    out['ok'] = bool(groups) and not out['list_api_errors']
     return out
 
 
