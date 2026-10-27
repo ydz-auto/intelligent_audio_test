@@ -160,6 +160,7 @@
   - 入口 `index.html` → `no-cache, must-revalidate`（发版即生效，避免长缓存锁死旧壳）；
   - SPA 兜底 `location /` → `no-cache`。
 - **接口 JSON 压缩只在网关侧做一次**：`api_gateway/app.py` 的 Starlette `GZipMiddleware(minimum_size=1024, compresslevel=6)`，最后添加（包在最外层），401 短接与异常响应同样带 `Content-Encoding`；`text/event-stream`（SSE）、`audio/*`、图片 / 字体在库的排除表里，不会被缓冲或二次压缩。前端 nginx 的 `/api/` 代理显式 `gzip_proxied off`，**不重复压**——`15000` 直连端口 nginx 覆盖不到，压缩归网关才能两条路径一致。
+- **上游网关动态解析（INT-2067，2026-10-27 缺陷修复）**：`api_gateway` 容器被 recreate 后 IP 漂移，nginx 启动期缓存 upstream IP 会让 15173/16173 全 `/api` 502。`nginx-frontend.conf` 在 server 级加 `resolver 127.0.0.11 valid=30s ipv6=off` + `set $api_gateway http://api_gateway:5000;`，四个反代 location（`/api/`、`/health`、`/socket.io/`、`/ws`）改用 `proxy_pass $api_gateway;`——Docker 内嵌 DNS 每 30s 重解析，网关重建后 ≤30s 自动恢复。重新部署演示前端（`deploy_demo_frontends.ps1`）后生效；立即恢复手段 `docker restart iat-react-frontend iat-uxvue-frontend` 见部署手册 `docs/docker-compose.md`。
 - **验收判据**（`curl -sI -H 'Accept-Encoding: gzip, br'`）：`/static/js/*`、`/static/css/*`、`/assets/*`、`/index.html`、`/api/v1/*` 均有 `Content-Encoding: gzip`；静态产物有 `immutable`，`index.html` 为 `no-cache`。
 - **不属于本节的**：主 compose 的前端 `frontend` 服务（`Dockerfile.frontend`，宿主 5173）仍是旧 Vue 生产形态，与演示双址无关（旧 Vue 已废弃，§1.1）。
 

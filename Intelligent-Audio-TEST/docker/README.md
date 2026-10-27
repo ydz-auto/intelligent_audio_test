@@ -308,3 +308,15 @@ pwsh -File deploy_demo_frontends.ps1 -SkipVue -ReactDist D:\00_code\V9.7.31-UX\I
 
 > 一次发版只做一次部署（环境铁律）：不要为了「再确认一下」重复执行；自检失败会自己回滚，
 > 先查 dist 是不是缺文件，别手工连推。
+
+### 9.1 上游网关 IP 漂移兜底（INT-2067）
+
+`nginx-frontend.conf` 对 `api_gateway:5000` 的 `proxy_pass` 原本在 nginx **启动期解析一次并缓存
+IP**。`api_gateway` 容器被 recreate（重刷 15000 栈 / 重建网关）后 IP 变化，演示双址仍连旧 IP →
+15173/16173 全 `/api` 502（2026-10-27 日巡实证）。已改 Docker 内嵌 DNS 动态解析：
+
+- `resolver 127.0.0.11 valid=30s ipv6=off;` + `set $api_gateway http://api_gateway:5000;`，
+  四个反代 location（`/api/`、`/health`、`/socket.io/`、`/ws`）改用 `proxy_pass $api_gateway;`。
+- 效果：网关重建后 nginx 每 30s 重解析一次，≤30s 自动恢复，不再依赖手工重启演示前端。
+- 注意：该配置要随 `deploy_demo_frontends.ps1` 重新部署演示前端才生效（旧镜像仍是静态解析）；
+  等不及自动恢复时，立即恢复手段仍是 `docker restart iat-react-frontend iat-uxvue-frontend`。

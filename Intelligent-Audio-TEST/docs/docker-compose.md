@@ -105,6 +105,15 @@ python docker/run_stack.py down -v --yes
   把 netloc 改写为 `127.0.0.1:9000` 并保留原 `Host: rustfs:9000` 头（S3 SigV4 签名
   覆盖 Host 头，改连接目标不改 Host 则签名仍有效）。部署建议：宿主 hosts 加
   `127.0.0.1 rustfs`（需管理员），或引入「公网 OSS 端点」配置分离两种 base URL。
+- **演示前端 nginx 反代上游 IP 漂移（INT-2067，2026-10-27）**：演示双址
+  `iat-react-frontend` / `iat-uxvue-frontend` 的 nginx 对 `api_gateway:5000` 启动期只解析
+  一次并缓存 IP；`api_gateway` 容器被 recreate（重刷 15000 栈 / 重建网关）后 IP 变化，
+  前端仍连旧 IP → 15173/16173 全 `/api` 502，需重启演示前端才恢复。
+  `docker/nginx-frontend.conf` 已改 Docker 内嵌 DNS 动态解析（`resolver 127.0.0.11
+  valid=30s` + 变量 `proxy_pass`，INT-2067 修复）：网关重建后 ≤30s 自动恢复，不再依赖
+  手工重启。**部署流程建议**：重刷 15000 栈 / 重建网关后，顺带
+  `docker restart iat-react-frontend iat-uxvue-frontend` 一次，让演示立即恢复（也适用于
+  前端容器仍是旧镜像、尚未带动态解析配置的情况）。
 - **测试栈 infra 复用容器栈后的隔离库预建**：compose postgres 占 5432 后宿主
   postgres 不再起（parallel_stack `_ensure_postgres` 探测到 5432 已监听即跳过）；
   并行隔离栈（服务仍宿主形态，端口 +1000）连接 127.0.0.1:5432 的隔离库
