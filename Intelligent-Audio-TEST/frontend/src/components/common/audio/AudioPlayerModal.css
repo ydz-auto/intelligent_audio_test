@@ -255,7 +255,7 @@
 .device-info {
   margin-top: 24px;
   padding: 16px;
-  background-color: var(--color-white);
+  background-color: var(--card);
   border: 1px solid var(--muted);
   border-radius: var(--radius-control);
 }
