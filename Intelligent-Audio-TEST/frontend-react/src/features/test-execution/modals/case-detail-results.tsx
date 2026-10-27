@@ -479,15 +479,18 @@ export function CaseDetailExecutionResults({
 
   return (
     <div className='space-y-3'>
-      {/* 评分指标（轮次 Tab 在弹窗层渲染；单轮「指标」Tab 不渲染 Tab 栏） */}
-      <div className='space-y-2'>
-        <p className='text-sm font-semibold'>评分指标</p>
-        <ScoreMetricTable
-          tab={currentTab}
-          devices={detail.devices}
-          metricConfigs={detail.metricConfigs ?? []}
-        />
-      </div>
+      {/* 评分指标（主/子维度层级分组表；轮次 Tab 在弹窗层渲染）。无设备列（API/voice_llm 用例
+          devices 空）时隐藏——V9.7.10 comparisonData 无资源列不渲染 hasMetrics 块 */}
+      {detail.devices.length > 0 && (
+        <div className='space-y-2'>
+          <p className='text-sm font-semibold'>评分指标</p>
+          <ScoreMetricTable
+            tab={currentTab}
+            devices={detail.devices}
+            metricConfigs={detail.metricConfigs ?? []}
+          />
+        </div>
+      )}
 
       {/* 多轮对话结果（algorithmResults.rounds 检测；无多轮数据返回 null 不渲染） */}
       <MultiRoundResult caseItem={reportCaseItem} />

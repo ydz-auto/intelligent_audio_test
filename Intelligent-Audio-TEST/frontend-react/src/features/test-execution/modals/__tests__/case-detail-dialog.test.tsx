@@ -285,15 +285,18 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
   })
 
   // ---- INT-1066 返工 P2：API/voice_llm 用例（devices 空）分节①结果摘要 ----
-  it('API 用例（devices 空）有执行结果 → 分节①展示结果摘要而非「暂无执行结果」，复核钮可用', async () => {
+  it('API 用例（devices 空）有执行结果 → 分节①渲染 V9.7.10 执行结果全块（设备/API执行结果 kv）而非「暂无执行结果」', async () => {
     fetchDetailMock.mockResolvedValue(apiDetail)
     fetchTaskMock.mockResolvedValue({ ...taskTerminal, status: 'completed' })
     renderDialog()
-    // 结果行摘要渲染（执行完成 + 响应时间 + 算法结果指标），不再出现「暂无执行结果」
-    const summary = await screen.findByText('16544ms')
-    expect(summary).toBeInTheDocument()
+    // 结果行 + 算法结果指标（INT-2088 起走全块：设备/API执行结果 kv 字段 + 结果行状态；
+    // session_id 属 META 字段被过滤，round_count/total_latency 展示）
+    await waitFor(() => {
+      expect(screen.getByText('round count')).toBeInTheDocument()
+    })
+    expect(screen.getByText('total latency(ms)')).toBeInTheDocument()
+    expect(screen.getAllByText('已完成').length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('暂无执行结果')).not.toBeInTheDocument()
-    expect(screen.getByText('round count')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: '人工复核' })).toBeInTheDocument()
   })
 

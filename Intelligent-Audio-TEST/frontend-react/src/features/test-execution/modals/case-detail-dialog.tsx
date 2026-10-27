@@ -337,6 +337,20 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
   const hasDeviceTable =
     (detail?.devices.length ?? 0) > 0 &&
     (caseResults.length > 0 || (detail?.devices ?? []).some((d) => d.metrics.length > 0))
+  /**
+   * 有任意执行数据 → 渲染 V9.7.10 全块（评分指标/多轮对话/执行结果——参考数据、用例参数、
+   * 评估结果、设备·API 执行结果、时间轴对比、音频时间轴）。API/voice_llm 用例（devices 空）
+   * 有 algorithm_results/results/reference_params 时同样走全块（V9.7.10 hasAnyResultData 口径），
+   * 仅评分指标表在无设备列时隐藏；真无数据才回退结果摘要空态。
+   */
+  const hasExecutionData =
+    detail != null &&
+    (hasDeviceTable ||
+      caseResults.length > 0 ||
+      (detail.algorithmResults?.length ?? 0) > 0 ||
+      detail.referenceAudios.length > 0 ||
+      detail.resultAudios.length > 0 ||
+      Object.keys(detail.referenceParams ?? {}).length > 0)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -443,14 +457,16 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                   </Button>
                 )}
               </div>
-              {hasDeviceTable ? (
+              {hasExecutionData ? (
                 <div className='space-y-2'>
-                  {/* 轮次 Tab（第1轮…第N轮 + 整体）；单轮「指标」Tab 不渲染 Tab 栏 */}
-                  <RoundTabBar
-                    roundTabs={roundTabs}
-                    activeTabKey={activeTabKey}
-                    onTabKeySelect={(tabKey) => setTabChoice({ caseId, tabKey })}
-                  />
+                  {/* 轮次 Tab（第1轮…第N轮 + 整体）；单轮「指标」Tab 不渲染 Tab 栏；仅设备列场景 */}
+                  {hasDeviceTable && (
+                    <RoundTabBar
+                      roundTabs={roundTabs}
+                      activeTabKey={activeTabKey}
+                      onTabKeySelect={(tabKey) => setTabChoice({ caseId, tabKey })}
+                    />
+                  )}
                   {/* 评分指标 / 多轮对话结果 / 执行结果（参考数据、用例参数、评估结果、
                       设备·API 执行结果、时间轴对比、音频时间轴）——V9.7.10 全块（INT-2088） */}
                   <CaseDetailExecutionResults
