@@ -29,6 +29,8 @@ type ResourceSelectionState = {
   selectAllApis: (ids: number[]) => void
   removeDevice: (id: number) => void
   removeApi: (id: number) => void
+  /** 设备列表刷新后按「仍在线」的 id 剪除已离线/失效的勾选（负责人 2026-10-28） */
+  pruneDevices: (validIds: number[]) => void
   clearResources: () => void
   setTemporaryShowAll: (value: boolean) => void
 }
@@ -108,6 +110,21 @@ export const useResourceSelectionStore = create<ResourceSelectionState>((set) =>
       return {
         apiIds: s.apiIds.filter((x) => x !== id),
         selectionOrder: removeOrderEntry(s.selectionOrder, 'api', id),
+      }
+    }),
+
+  // 设备离线/失效自动取消勾选：切页面/持久化残留的离线设备不再留在选择里
+  pruneDevices: (validIds) =>
+    set((s) => {
+      const valid = new Set(validIds)
+      const removed = s.deviceIds.filter((x) => !valid.has(x))
+      if (removed.length === 0) return s
+      removed.forEach((x) => useExecutionStore.getState().removeTargetMode('device', x))
+      return {
+        deviceIds: s.deviceIds.filter((x) => valid.has(x)),
+        selectionOrder: s.selectionOrder.filter(
+          (entry) => entry.targetType !== 'device' || valid.has(entry.targetId)
+        ),
       }
     }),
 

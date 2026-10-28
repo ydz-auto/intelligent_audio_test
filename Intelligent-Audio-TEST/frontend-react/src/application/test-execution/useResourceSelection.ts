@@ -8,7 +8,7 @@
  * 未注册测试设备经真实 POST /test-devices 登记、未注册播放通道经 POST /playback-devices
  * 登记（按 device_unique_id 去重），刷新设备网格后勾选新设备 id（在线态、可直接进入下一步）。
  */
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -81,6 +81,17 @@ export function useResourceSelection(algorithmType?: string) {
     queryFn: fetchApis,
     staleTime: 30_000,
   })
+
+  // 设备离线/失效自动取消勾选（负责人 2026-10-28）：设备列表刷新后，把已离线/已不存在的
+  // 设备从选择集（含 selectionOrder / target_modes）剪除，避免切页面后仍带着离线设备去启动。
+  useEffect(() => {
+    const all = devicesQuery.data
+    if (!all) return
+    const onlineIds = all
+      .filter((d) => (d.status ?? 'offline') === 'online')
+      .map((d) => d.id)
+    useResourceSelectionStore.getState().pruneDevices(onlineIds)
+  }, [devicesQuery.data])
 
   /** 算法过滤（设备按 supportedAlgorithms / API 按 algorithmType；解除态显示全部） */
   const filteredDevices = useMemo(() => {
