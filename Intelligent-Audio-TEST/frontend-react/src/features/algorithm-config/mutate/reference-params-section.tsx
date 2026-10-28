@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select'
 import type { AlgorithmFormValues } from '@/features/algorithm-config/types'
 import { AnnotationCodeSelect, type AlgorithmOption } from './annotation-code-select'
+import { CONTAINED_TABLE_CLASS } from './table-containment'
 import {
   REFERENCE_PARAMS_DESCRIPTION,
   REFERENCE_PARAM_MERGE_OPTIONS,
@@ -147,7 +148,7 @@ export function ReferenceParamsSection({
 
       <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
         <div className='overflow-x-auto'>
-          <table className='w-full min-w-[1000px] text-[13px]'>
+          <table className={`w-full min-w-[1000px] text-[13px] ${CONTAINED_TABLE_CLASS}`}>
             <thead>
               <tr className='bg-[var(--table-header)] text-xs'>
                 <th className='px-3 py-2 text-left font-medium'>参数代码</th>

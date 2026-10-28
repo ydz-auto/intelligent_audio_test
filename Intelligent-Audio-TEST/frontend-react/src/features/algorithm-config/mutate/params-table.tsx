@@ -46,6 +46,7 @@ import {
   PARAM_DIRECTION_OPTIONS,
 } from '@/features/algorithm-config/constants'
 import { ParamScopeChips, type FeatureBundleItem } from './param-scope-chips'
+import { CONTAINED_TABLE_CLASS } from './table-containment'
 import { AnnotationCodeSelect, type AlgorithmOption } from './annotation-code-select'
 import { RANGE_MESSAGES, isRangeInvalid } from './algorithm-form-schema'
 
@@ -356,7 +357,7 @@ export function ParamsTable({
       {/* 统一参数表（桌面 min-w-[1100px] 横向滚动） */}
       <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
         <div className='overflow-x-auto'>
-          <table className='w-full min-w-[1100px] text-[13px]'>
+          <table className={`w-full min-w-[1100px] text-[13px] ${CONTAINED_TABLE_CLASS}`}>
             <thead>
               <tr className='bg-[var(--table-header)] text-xs'>
                 <th className='px-3 py-2 text-left font-medium'>作用域</th>

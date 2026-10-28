@@ -15,6 +15,7 @@ import type { AlgorithmFormValues } from '@/features/algorithm-config/types'
 import { DIMENSIONS_DESCRIPTION } from '@/features/algorithm-config/constants'
 import type { Dimension, EvaluationCategory } from '@/domain/models/evaluationDimension'
 import { DimensionSelect } from './dimension-select'
+import { CONTAINED_TABLE_CLASS } from './table-containment'
 
 export function DimensionsSection({
   form,
@@ -114,7 +115,7 @@ export function DimensionsSection({
 
       <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
         <div className='overflow-x-auto'>
-          <table className='w-full min-w-0 text-[13px]'>
+          <table className={`w-full min-w-0 text-[13px] ${CONTAINED_TABLE_CLASS}`}>
             <thead>
               <tr className='bg-[var(--table-header)] text-xs'>
                 <th className='px-3 py-2 text-left font-medium'>评估维度</th>

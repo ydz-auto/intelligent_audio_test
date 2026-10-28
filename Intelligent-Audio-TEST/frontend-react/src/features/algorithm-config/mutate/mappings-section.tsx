@@ -43,6 +43,7 @@ import type { DimensionParam } from '@/domain/models/algorithmConfig'
 import type { AlgorithmFormValues, MappingRow } from '@/features/algorithm-config/types'
 import { fetchDimensionParams } from '@/infrastructure/api/algorithm-config-api'
 import { DimensionSelect } from './dimension-select'
+import { CONTAINED_TABLE_CLASS } from './table-containment'
 import {
   API_TRANSFORM_TYPE_OPTIONS,
   TRANSFORM_TYPE_OPTIONS,
@@ -625,7 +626,7 @@ function DeviceApiMappingSection({
 
       <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
         <div className='overflow-x-auto'>
-          <table className='w-full min-w-0 text-[13px]'>
+          <table className={`w-full min-w-0 text-[13px] ${CONTAINED_TABLE_CLASS}`}>
             <thead>
               <tr className='bg-[var(--table-header)] text-xs'>
                 <th className='px-3 py-2 text-left font-medium'>源参数代码</th>
@@ -1133,7 +1134,7 @@ function EvaluationMappingSection({
 
       <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
         <div className='overflow-x-auto'>
-          <table className='w-full min-w-0 text-[13px]'>
+          <table className={`w-full min-w-0 text-[13px] ${CONTAINED_TABLE_CLASS}`}>
             <thead>
               <tr className='bg-[var(--table-header)] text-xs'>
                 <th className='px-3 py-2 text-left font-medium'>来源</th>

@@ -1,0 +1,16 @@
+/*
+ * INT-2121：算法编辑 Sheet 大表的 paint/layout containment。
+ *
+ * 编辑 Sheet 是单页滚动容器（form.overflow-y-auto），展开「高级配置 → 评估参数映射」后
+ * 整片内容约 8900 节点、783 个 Select 触发器、滚动高度 10860px。滚动时合成器每帧都要
+ * 为滚动容器内全部后代重算 draw properties（trace 里 LayerTreeHostImpl::CalculateRenderPasses
+ * / LayerTreeImpl::UpdateDrawProperties::CalculateDrawProperties 占 70%+），实测帧时长
+ * 平均 103~111ms、P95 478~524ms、长任务 491~564ms。
+ *
+ * 让每张大表成为独立的布局/绘制单元后，同机同数据量级实测平均 17.6ms、P95 20.2ms、
+ * 长任务 0。只做 containment（不用 content-visibility），不引入尺寸估算，
+ * 滚动条、分组展开/折叠、分页与行内下拉行为均不变。
+ */
+.alg-table-contain {
+  contain: layout paint;
+}
