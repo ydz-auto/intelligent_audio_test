@@ -32,7 +32,7 @@
           <div class="setup-api-card__glow"></div>
           <h3 class="setup-api-title">通过 API 驱动测试</h3>
           <p class="setup-api-desc">
-            平台全部能力开放为 REST 与 SSE 接口：创建任务、订阅进度、拉取报告，脚本化集成与页面操作同样简单。
+            平台能力以 Skill / MCP 形式开放：下载 skill 包、配置服务地址与 Access Token 即可接入 Claude Code、Codex 等外部 agent；Access Token 授权、按 scopes 收权，205 个工具覆盖任务、用例、音频、设备、评估、报告、算法等 13 个业务域，创建任务、查询进度、拉取报告全程可用。
           </p>
           <button
             v-if="can('task:execute')"
