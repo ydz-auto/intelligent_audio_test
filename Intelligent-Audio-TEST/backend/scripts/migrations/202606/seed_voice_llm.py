@@ -5,7 +5,7 @@ voice_llm 算法种子数据
 功能：
 1. 注册 voice_llm 算法定义（algorithm_definitions）
 2. 注册 voice_llm 用例专属参数（case_algorithm_params），含 scope 字段
-   （与库当前非软删状态一致：仅 10 个活跃参数）
+   （与库当前非软删状态一致：仅 11 个活跃参数）
 3. 注册 voice_llm 设备输出字段（algorithm_device_params）
    （与库当前非软删状态一致：仅 6 个活跃字段）
 4. 注册 voice_llm API 输入/输出字段（algorithm_api_params）
@@ -125,6 +125,11 @@ def seed_voice_llm():
             # 环境理解族（env_judge）用例参数
             ('correctAnswer', '参考答案', '参考答案', 'text', 'common', False, None,
              '环境理解评估的标准答案（如"开关门"），从用例配置读取', 9, False, None, None, None, None, None, None),
+            # 安卓豆包 E2E：用户通道来源。默认保持旧行为，测试用例显式改成 synth_played
+            ('user_audio_source', '用户音频来源', '用户音频来源', 'text', 'e2e', False, 'voice-call-uplink',
+             'E2E 用户通道来源：synth_played=按播放时间戳用播放文件合成 user_wav（安卓豆包推荐）；'
+             'voice-call-uplink=旧通话音轨抓取', 10, False, None, None, None, None,
+             None, None),
         ]
 
         inserted_count = 0

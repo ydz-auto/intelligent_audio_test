@@ -162,3 +162,12 @@ Intelligent-Audio-TEST/ux_*.pid
 eval_server/_run_real_xiaoyi.py
 eval_server/_show_result.py
 eval_server/_real_xiaoyi_result.json
+
+# scrcpy 音频抓取用的第三方二进制（约 16.75MB，按需拷入，不清空 git 历史）
+# 说明与拷入脚本仍入库：见 bin/scrcpy/README.md、bin/scrcpy/vendor_scrcpy.ps1
+Intelligent-Audio-TEST/backend/utils/device_driver/bin/scrcpy/*.exe
+Intelligent-Audio-TEST/backend/utils/device_driver/bin/scrcpy/*.dll
+Intelligent-Audio-TEST/backend/utils/device_driver/bin/scrcpy/scrcpy-server
+
+# Agent/probe scratch (reports, screenshots, temp audio) - not part of the repo
+.tmp_probe/

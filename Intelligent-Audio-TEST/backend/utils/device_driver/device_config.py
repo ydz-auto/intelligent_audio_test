@@ -8,6 +8,10 @@ DEVICE_CONFIGS = {
     'android': {
         'app_name': 'com.larus.nova',
         'unlock_password': '000000',
+        # 按设备序列号覆盖锁屏密码（多台 Android 测试机密码不一致时用）
+        'unlock_passwords': {
+            '324462534283': '0000',   # nubia NX888J（NaviX Ultra）
+        },
         'close_buttons': ['取消', '确定', '关闭', 'OK', 'Done', 'Allow', 'Deny', '允许', '拒绝'],
         'popup_keywords': ['权限', 'Permission', '授权', '允许', 'Allow', '提示', 'Notice', '下一步','知道了'],
         'exclude_list': [

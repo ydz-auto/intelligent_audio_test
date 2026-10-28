@@ -4,6 +4,7 @@ from .base_driver import BaseDeviceDriver
 from .android_driver import AndroidDriver
 from .android_plaud import PlaudDriver
 from .android_doubao_asr_driver import DouBaoAndroidAsrDriver
+from .android_doubaochat import DoubaoAndroidChat
 from .driver_factory import DeviceDriverFactory
 from .driver_types import DevicePlatform, DriverStatus
 from .registry import DriverRegistry, DriverNotFoundError, driver_registry, register_driver
@@ -34,6 +35,7 @@ device_driver_factory = DeviceDriverFactory()
 __all__ = [
     'register_task_events', 'get_task_events', 'unregister_task_events', 'check_stop',
     'BaseDeviceDriver', 'AndroidDriver', 'PlaudDriver', 'DouBaoAndroidAsrDriver',
+    'DoubaoAndroidChat',
     'HarmonyDriver', 'HarmonyXiaoyiTranslationDriver', 'XiaoyiFace2FaceDriver',
     'XiaoyiSimultaneousInterpretationDriver', 'HarmonyHardenXiaoyiHuiJiDriver',
     'Xiaoyilivechat', 'ChatGptVoiceChat', 'DoubaoChat',

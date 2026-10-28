@@ -391,6 +391,9 @@ class E2EExecutor(BaseExecutor):
                     }
                     for p in detail
                 ]
+            played_audios = playback_ts.get('current_round_played_audios')
+            if played_audios:
+                post_extra_params['played_audios'] = played_audios
 
         post_ok = self._device_manager.post_process_devices(
             device_info_list, task_id, test_case_id=test_case_id,
@@ -597,6 +600,7 @@ class E2EExecutor(BaseExecutor):
         audio_timelines = play_result.get('audio_timelines', []) if play_result else []
         round_start_ms = None
         round_end_ms = None
+        played_audios = []
         for timeline in audio_timelines:
             audio_config = timeline.get('config', {})
             audio_obj = timeline.get('audio')
@@ -607,6 +611,8 @@ class E2EExecutor(BaseExecutor):
             if not audio_id:
                 continue
             audio_type = timeline.get('audio_type') or ('noise' if timeline.get('is_noise') else 'dry')
+            file_path = (timeline.get('file') or timeline.get('file_path')
+                         or audio_config.get('file') or audio_config.get('file_path'))
 
             if task_id not in self._playback_timestamps:
                 self._playback_timestamps[task_id] = {
@@ -629,14 +635,25 @@ class E2EExecutor(BaseExecutor):
                 'playback_start_time_ms': start_ms,
                 'playback_end_time_ms': end_ms,
                 'actual_start_offset': timeline.get('start', 0),
+                'file_path': file_path or '',
                 'is_overlap': bool(overlap_rate and overlap_rate > 0),
                 'overlap_rate': overlap_rate,
                 'overlap_time': overlap_time,
             })
+            if file_path and start_ms is not None:
+                played_audios.append({
+                    'audio_id': audio_id,
+                    'audio_type': audio_type,
+                    'file_path': file_path,
+                    'start_ms': start_ms,
+                    'end_ms': end_ms,
+                })
         # 记录本轮播放起止时间戳（毫秒），供 collect_results 传递给设备驱动
         if round_start_ms is not None and round_end_ms is not None:
             self._playback_timestamps[task_id]['current_round_start_ms'] = round_start_ms
             self._playback_timestamps[task_id]['current_round_end_ms'] = round_end_ms
+        if task_id in self._playback_timestamps:
+            self._playback_timestamps[task_id]['current_round_played_audios'] = played_audios
 
     # ──────────────────────────────────────────────────
     #  阶段三：循环后聚合 + 评估

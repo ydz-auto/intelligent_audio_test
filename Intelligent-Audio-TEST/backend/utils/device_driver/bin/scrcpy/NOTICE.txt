@@ -1,0 +1,2 @@
+占位说明：本目录用于存放 scrcpy 4.1 的 9 个运行文件（.exe/.dll/scrcpy-server 已被 .gitignore 忽略）。
+拷入方法见同目录 README.md 或执行 vendor_scrcpy.ps1。

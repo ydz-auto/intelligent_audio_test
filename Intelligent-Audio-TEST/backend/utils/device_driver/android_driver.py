@@ -23,6 +23,7 @@ class AndroidDriver(BaseDeviceDriver):
         self._config = get_device_config('android')
         self.app_name = self._config.get('app_name', 'com.larus.nova')
         self._unlock_password = self._config.get('unlock_password', '000000')
+        self._unlock_passwords = self._config.get('unlock_passwords', {}) or {}
         self._close_buttons = self._config.get('close_buttons', [])
         self._popup_keywords = self._config.get('popup_keywords', [])
         self._exclude_list = self._config.get('exclude_list', [])
@@ -169,7 +170,7 @@ class AndroidDriver(BaseDeviceDriver):
             if self._check_stop("unlock"):
                 return
             self._log(level='DEBUG', content="Entering password digits...")
-            password = self._unlock_password
+            password = self._unlock_passwords.get(device_sn, self._unlock_password)
             coords_cache = {}
 
             for i, digit in enumerate(password):

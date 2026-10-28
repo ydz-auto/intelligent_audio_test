@@ -23,6 +23,10 @@ class E2ECollector:
 
         playback_timestamps = self._executor._playback_timestamps.get(task_id)
         if playback_timestamps:
+            # 合成音频方案依赖播放文件+时间戳，不能因为 offset 参考参数缺失而丢掉
+            played_audios = playback_timestamps.get('current_round_played_audios')
+            if played_audios:
+                extra_params['played_audios'] = played_audios
             audio_offsets = self._calculate_actual_offset(task_id, playback_timestamps)
             case_ref_params = kwargs.get('case_reference_params')
             self._log(

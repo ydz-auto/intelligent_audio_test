@@ -7,6 +7,7 @@ from .utils import (
 from .base_driver import BaseDeviceDriver
 from .android_driver import AndroidDriver
 from .android_doubao_asr_driver import DouBaoAndroidAsrDriver
+from .android_doubaochat import DoubaoAndroidChat
 
 # 鸿蒙驱动依赖 hypium（华为内部测试框架，非 PyPI 包）
 # hypium 不可用时跳过这些驱动，不影响其他功能
@@ -45,6 +46,7 @@ __all__ = [
     'BaseDeviceDriver',
     'AndroidDriver',
     'DouBaoAndroidAsrDriver',
+    'DoubaoAndroidChat',
     'HarmonyDriver',
     'HarmonyXiaoyiTranslationDriver',
     'XiaoyiFace2FaceDriver',
