@@ -8,11 +8,11 @@
     <GlobalModalContainer />
     <Notification ref="notificationRef" />
     <RequireLoginDialog />
-    <!-- INT-577 §4.4：全局购物车抽屉（Tasks/CherryPickPanel 入口；「去复核」跳到挑选合并页签复核步骤） -->
+    <!-- INT-577 §4.4：全局购物车抽屉（Tasks/CherryPickPanel 入口；「去预览」跳到挑选合并页签预览步骤） -->
     <CartDrawer
       :visible="cartDrawerState.visible.value"
       @close="cartDrawerState.close()"
-      @go-review="goCartReview"
+      @go-preview="goCartPreview"
     />
   </div>
 </template>
@@ -54,12 +54,12 @@ const layoutComponent = computed(() => {
   }
 })
 
-/** INT-577：购物车抽屉「去复核」→ 挑选合并页签复核步骤 */
-function goCartReview() {
+/** INT-577：购物车抽屉「去预览」→ 挑选合并页签预览步骤 */
+function goCartPreview() {
   cartDrawerState.close()
-  // P0 修复同款机制：经共享请求自开复核向导（:key=fullPath 重挂载下 URL 参数方案
+  // P0 修复同款机制：经共享请求自开预览向导（:key=fullPath 重挂载下 URL 参数方案
   // 会在清参时再次重挂载丢向导态）；query 保留现有参数只归一 tab
-  requestPickWizard({ step: 'review' })
+  requestPickWizard({ step: 'preview' })
   const query: Record<string, string> = { ...route.query, tab: 'cherry-picks' } as Record<string, string>
   delete query.wizard
   router.push({ path: '/tasks', query })

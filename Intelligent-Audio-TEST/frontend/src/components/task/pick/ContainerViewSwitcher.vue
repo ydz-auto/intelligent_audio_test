@@ -20,7 +20,7 @@
 <script setup lang="ts">
 /**
  * ContainerViewSwitcher —— 四视图切换器（INT-1833 · 规范 18 §3.2/§10.5）。
- * 任务视图（默认）｜用例视图｜设备视图｜结果类型视图；组成区与购物车 / 复核共用同一套视图枚举。
+ * 任务视图（默认）｜用例视图｜设备视图｜结果类型视图；组成区与购物车 / 预览共用同一套视图枚举。
  *
  * 无障碍：role=tablist / tab + aria-selected，左右方向键切换（§10.5）。
  * 按钮带 `data-layout-btn` 退出 legacy button.css catch-all（该规则配色/背景优先级更高，

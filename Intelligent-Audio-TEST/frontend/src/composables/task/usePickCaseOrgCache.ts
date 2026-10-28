@@ -1,6 +1,6 @@
 // -*- coding: utf-8 -*-
 /**
- * 购物车 / 复核用例层组织字段会话缓存（INT-1831）。
+ * 购物车 / 预览用例层组织字段会话缓存（INT-1831）。
  *
  * 购物车条目自身已随接口返回用例级组织字段（GET /tasks/cherry-picks/cart 的
  * items[] 带 tags / group_id / group_name），四视图组织层以条目字段为主

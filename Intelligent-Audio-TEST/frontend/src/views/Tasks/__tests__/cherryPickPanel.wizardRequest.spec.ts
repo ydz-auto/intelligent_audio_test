@@ -110,13 +110,13 @@ describe('CherryPickPanel 向导开启请求（INT-577 P0 回归）', () => {
     expect(wrapper.find('.cpw-step').text()).toBe('pick')
   })
 
-  it('「去复核」请求 → 向导直达复核步骤（initialStep=review 透传）', async () => {
-    requestPickWizard({ step: 'review' })
+  it('「去预览」请求 → 向导直达预览步骤（initialStep=preview 透传）', async () => {
+    requestPickWizard({ step: 'preview' })
     const wrapper = mount(CherryPickPanel, { props: makeProps() })
     await flushPromises()
 
     expect(wrapper.find('.cpw-stub').exists()).toBe(true)
-    expect(wrapper.find('.cpw-step').text()).toBe('review')
+    expect(wrapper.find('.cpw-step').text()).toBe('preview')
   })
 
   it('无请求 → 面板列表态（向导不自开）', async () => {
