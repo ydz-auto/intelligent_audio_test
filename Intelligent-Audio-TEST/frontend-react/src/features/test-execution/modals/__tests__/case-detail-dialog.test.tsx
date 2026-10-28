@@ -704,6 +704,9 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     expect(screen.getByText('你好内容')).toBeInTheDocument()
     // 音频时间轴：用例输入音频（audio_list；名字在段 title 上）
     expect(screen.getByText('音频时间轴')).toBeInTheDocument()
-    expect(screen.getByTitle(/JG0006_输入\.wav/)).toBeInTheDocument()
+    // 同名音频在两处合法 UI 各出现一次：①「参考音频（用例输入）」列表项 title=文件名；
+    // ②音频时间轴分段 title=`<文件名> · SPL …dB`。分别按各自形态断言，不用全局宽匹配。
+    expect(screen.getByTitle(/JG0006_输入\.wav · SPL/)).toBeInTheDocument()
+    expect(screen.getByTitle('JG0006_输入.wav')).toBeInTheDocument()
   })
 })

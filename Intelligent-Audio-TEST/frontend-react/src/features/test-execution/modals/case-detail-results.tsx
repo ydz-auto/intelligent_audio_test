@@ -521,16 +521,8 @@ export function CaseDetailExecutionResults({
           display={display}
         />
 
-        {/* 用例参数（INT-2088：后端 /detail、/results 现无 case_params → 块内「暂无数据」空态；
-            数据源补齐后 ExecutionResults 渲染非空块，此空态随之隐藏） */}
-        {Object.keys(detail.caseParams ?? {}).length === 0 && (
-          <div className='space-y-1'>
-            <p className='text-muted-foreground text-xs font-medium'>用例参数</p>
-            <div className='rounded-lg border'>
-              <p className='text-muted-foreground px-3 py-2 text-xs'>暂无数据</p>
-            </div>
-          </div>
-        )}
+        {/* 用例参数块由上方 ExecutionResults 独占渲染（含无数据时的块内「暂无数据」空态，
+            INT-2089）；弹窗侧不再补一份兜底空态，V9.7.10 该弹窗只有一处「用例参数」。 */}
 
         {/* 时间轴对比（§3.3.9） */}
         {hasTimeline && <TimelineCompare detail={detail} />}

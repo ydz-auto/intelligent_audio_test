@@ -33,7 +33,11 @@ describe('fetchHomeStatsDetails', () => {
       updated_at: '2026-10-18T11:05:08',
     })
     const stats = await fetchHomeStatsDetails()
-    expect(requestMock).toHaveBeenCalledWith('GET', '/home/stats/details')
+    // INT-1225：首页门户公开页匿名 401 不跳登录 → details 请求带第 4 参数
+    // { skipAuthRedirect: true }（第 3 参数 params 为 undefined）。断言按实现全参数对齐。
+    expect(requestMock).toHaveBeenCalledWith('GET', '/home/stats/details', undefined, {
+      skipAuthRedirect: true,
+    })
     expect(stats.testCases.total).toBe(44)
     expect(stats.testCases.groups).toBe(6)
     expect(stats.tasks).toEqual({ total: 46, completed: 30, running: 2, failed: 4 })
