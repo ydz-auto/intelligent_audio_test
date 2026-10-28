@@ -9,7 +9,7 @@
  * - 评估维度关联：主维度与其子维度成组相邻、子维度带「子」徽章 + 父维度名；
  *   已删除维度统一排末尾按 id 升序，仍显示「已删除维度 #id」。
  */
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, memo, useCallback, useMemo, useState } from 'react'
 import { ChevronDown, Folder } from 'lucide-react'
 
 import {
@@ -57,6 +57,13 @@ function labelOf(
   return options.find((o) => o.value === value)?.label ?? value
 }
 
+/** 维度 id → 维度索引（INT-2119：一次建表，替代每行 `dimensions.find` 线性扫描） */
+export type DimensionIndex = Map<string, Dimension>
+
+export function buildDimensionIndex(dimensions: Dimension[]): DimensionIndex {
+  return new Map(dimensions.map((d) => [String(d.id), d]))
+}
+
 /**
  * 维度 id → 名称解析（INT-1558）：
  * 后端 associated_dimensions 只回 dimension_id 不回 dimension_name，名称由前端
@@ -68,9 +75,22 @@ export function resolveDimensionName(
   dimensionId: number | string | null | undefined,
   dimensionName?: string | null
 ): string {
+  return resolveDimensionNameByIndex(
+    buildDimensionIndex(dimensions),
+    dimensionId,
+    dimensionName
+  )
+}
+
+/** 索引版解析（渲染热路径用，避免逐行建索引） */
+export function resolveDimensionNameByIndex(
+  index: DimensionIndex,
+  dimensionId: number | string | null | undefined,
+  dimensionName?: string | null
+): string {
   if (dimensionName) return dimensionName
   if (dimensionId == null || dimensionId === '') return '—'
-  const name = dimensions.find((d) => String(d.id) === String(dimensionId))?.name
+  const name = index.get(String(dimensionId))?.name
   return name || `已删除维度 #${dimensionId}`
 }
 
@@ -84,10 +104,22 @@ export function resolveMappingDimensionName(
   dimensionId: number | string | null | undefined,
   dimensionName?: string | null
 ): string {
+  return resolveMappingDimensionNameByIndex(
+    buildDimensionIndex(dimensions),
+    dimensionId,
+    dimensionName
+  )
+}
+
+export function resolveMappingDimensionNameByIndex(
+  index: DimensionIndex,
+  dimensionId: number | string | null | undefined,
+  dimensionName?: string | null
+): string {
   if (dimensionId == null || dimensionId === '') return ''
-  const name = dimensions.find((d) => String(d.id) === String(dimensionId))?.name
+  const name = index.get(String(dimensionId))?.name
   if (name) return name
-  if (dimensions.length === 0 && dimensionName) return dimensionName
+  if (index.size === 0 && dimensionName) return dimensionName
   return `已删除维度 #${dimensionId}`
 }
 
@@ -153,7 +185,7 @@ export function groupEvaluationMappings(
   mappings: ParamMapping[],
   dimensions: Dimension[]
 ): EvaluationMappingGroup[] {
-  const dimById = new Map(dimensions.map((d) => [String(d.id), d]))
+  const dimById = buildDimensionIndex(dimensions)
   const map = new Map<string, ParamMapping[]>()
   for (const mapping of mappings) {
     const key =
@@ -169,7 +201,7 @@ export function groupEvaluationMappings(
       name:
         key === '__none__'
           ? '未指定维度'
-          : resolveMappingDimensionName(dimensions, key, rows[0]?.dimensionName),
+          : resolveMappingDimensionNameByIndex(dimById, key, rows[0]?.dimensionName),
       dimension: dimById.get(key),
       rows,
     }))
@@ -297,6 +329,7 @@ function DeviceParamRows({ params }: { params: DeviceApiParam[] }) {
 
 export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
   const algorithm = props.algorithm
+  const dimensions = props.dimensions
 
   const paramTotal = useMemo(
     () =>
@@ -306,6 +339,21 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
           algorithm.caseParams.length
         : 0,
     [algorithm]
+  )
+
+  /** INT-2119：维度索引与关联行排序结果 memo 化，避免每次渲染重建 / 逐行线性扫描 */
+  const dimensionIndex = useMemo(
+    () => buildDimensionIndex(dimensions ?? []),
+    [dimensions]
+  )
+
+  const associatedDimensions = algorithm?.associatedDimensions
+  const orderedRelations = useMemo(
+    () =>
+      associatedDimensions && associatedDimensions.length > 0
+        ? orderAssociatedDimensions(associatedDimensions, dimensions ?? [])
+        : [],
+    [associatedDimensions, dimensions]
   )
 
   return (
@@ -421,31 +469,27 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
                   <TabsContent value='evaluation' className='pt-2'>
                     <EvaluationMappingRows
                       mappings={algorithm.mappings.evaluation}
-                      dimensions={props.dimensions ?? []}
+                      dimensions={dimensions}
                     />
                   </TabsContent>
                 </Tabs>
               </section>
 
-              {algorithm.associatedDimensions.length > 0 && (
+              {orderedRelations.length > 0 && (
                 <section aria-labelledby='algorithm-dimensions-title'>
                   <h3 id='algorithm-dimensions-title' className='mb-2 text-sm font-medium'>
                     评估维度关联
                   </h3>
                   <StaticTable headers={['评估维度', '权重', '默认']}>
-                    {orderAssociatedDimensions(
-                      algorithm.associatedDimensions,
-                      props.dimensions ?? []
-                    ).map(({ relation, dimension }) => {
-                      const dimensions = props.dimensions ?? []
+                    {orderedRelations.map(({ relation, dimension }) => {
                       const isSub = dimension?.parentDimensionId != null
                       return (
                         <tr key={relation.id} className='border-border/50 border-b last:border-b-0'>
                           <td className='px-3 py-2'>
                             <span className='inline-flex flex-wrap items-center gap-1.5'>
                               <span>
-                                {resolveDimensionName(
-                                  dimensions,
+                                {resolveDimensionNameByIndex(
+                                  dimensionIndex,
                                   relation.dimensionId,
                                   relation.dimensionName
                                 )}
@@ -456,8 +500,8 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
                                     <span className={subBadge}>子</span>
                                     <span className='text-muted-foreground/70 text-[11px]'>
                                       （
-                                      {resolveDimensionName(
-                                        dimensions,
+                                      {resolveDimensionNameByIndex(
+                                        dimensionIndex,
                                         dimension.parentDimensionId
                                       )}
                                       ）
@@ -539,19 +583,34 @@ const EVALUATION_SOURCE_LABELS = [
 /**
  * 评估参数映射（INT-1644 A）：只读「评估维度分组视图」，照编辑模态窗
  * EvaluationMappingSection 评估维度视图。组头可折叠，默认全部展开。
+ *
+ * INT-2119：分组结果、维度索引 useMemo 化；每组（组头 + 组内行）单独 memo，
+ * 折叠/展开只重渲染被点的组，不再整表 reconcile（实测见交付评论）。
  */
 function EvaluationMappingRows({
   mappings,
   dimensions,
 }: {
   mappings: ParamMapping[]
-  dimensions: Dimension[]
+  dimensions?: Dimension[]
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const dimensionIndex = useMemo(
+    () => buildDimensionIndex(dimensions ?? []),
+    [dimensions]
+  )
   const groups = useMemo(
-    () => groupEvaluationMappings(mappings, dimensions),
+    () => groupEvaluationMappings(mappings, dimensions ?? []),
     [mappings, dimensions]
   )
+  const toggleCollapsed = useCallback((key: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
 
   if (mappings.length === 0) {
     return (
@@ -561,66 +620,79 @@ function EvaluationMappingRows({
     )
   }
 
-  const toggleCollapsed = (key: string) => {
-    const next = new Set(collapsed)
-    if (next.has(key)) next.delete(key)
-    else next.add(key)
-    setCollapsed(next)
-  }
-
   return (
     <StaticTable
       headers={['来源', '源参数代码', '源参数名称', '目标评估维度', '目标参数', '转换']}
     >
-      {groups.map((group) => {
-        const isCollapsed = collapsed.has(group.key)
-        const isSub = group.dimension?.parentDimensionId != null
-        const parentName = isSub
-          ? resolveDimensionName(dimensions, group.dimension?.parentDimensionId)
-          : ''
-        return (
-          <Fragment key={group.key}>
-            <tr className='bg-muted/40 border-border/50 border-b'>
-              <td colSpan={6} className='px-0 py-0'>
-                <GroupHeaderButton
-                  name={group.name}
-                  count={group.rows.length}
-                  collapsed={isCollapsed}
-                  onToggle={() => toggleCollapsed(group.key)}
-                  badge={
-                    group.dimension ? (
-                      isSub ? (
-                        <span className={subBadge}>子</span>
-                      ) : (
-                        <span className={mainBadge}>主</span>
-                      )
-                    ) : undefined
-                  }
-                  hint={parentName ? `（${parentName}）` : undefined}
-                />
-              </td>
-            </tr>
-            {!isCollapsed &&
-              group.rows.map((mapping) => (
-                <tr
-                  key={mapping.id || `${mapping.source}-${mapping.sourceParam}-${mapping.targetParam}-${mapping.dimensionId ?? ''}`}
-                  className='border-border/50 border-b last:border-b-0'
-                >
-                  <td className='px-3 py-2 text-xs'>
-                    {labelOf(EVALUATION_SOURCE_LABELS, mapping.source ?? 'case')}
-                  </td>
-                  <td className='px-3 py-2 font-mono text-xs'>{mapping.sourceParam || '—'}</td>
-                  <td className='px-3 py-2 text-xs'>{mapping.paramName || '—'}</td>
-                  <td className='px-3 py-2 text-xs'>{group.name || '—'}</td>
-                  <td className='px-3 py-2 font-mono text-xs'>{mapping.targetParam || '—'}</td>
-                  <td className='px-3 py-2 text-xs'>
-                    {labelOf(TRANSFORM_TYPE_OPTIONS, mapping.transformType)}
-                  </td>
-                </tr>
-              ))}
-          </Fragment>
-        )
-      })}
+      {groups.map((group) => (
+        <EvaluationMappingGroupRows
+          key={group.key}
+          group={group}
+          collapsed={collapsed.has(group.key)}
+          dimensionIndex={dimensionIndex}
+          onToggle={toggleCollapsed}
+        />
+      ))}
     </StaticTable>
   )
 }
+
+/** 单个维度分组（组头 + 组内行）；props 稳定时折叠别的组不触发本组重渲染 */
+const EvaluationMappingGroupRows = memo(function EvaluationMappingGroupRows({
+  group,
+  collapsed,
+  dimensionIndex,
+  onToggle,
+}: {
+  group: EvaluationMappingGroup
+  collapsed: boolean
+  dimensionIndex: DimensionIndex
+  onToggle: (key: string) => void
+}) {
+  const isSub = group.dimension?.parentDimensionId != null
+  const parentName = isSub
+    ? resolveDimensionNameByIndex(dimensionIndex, group.dimension?.parentDimensionId)
+    : ''
+  return (
+    <Fragment>
+      <tr className='bg-muted/40 border-border/50 border-b'>
+        <td colSpan={6} className='px-0 py-0'>
+          <GroupHeaderButton
+            name={group.name}
+            count={group.rows.length}
+            collapsed={collapsed}
+            onToggle={() => onToggle(group.key)}
+            badge={
+              group.dimension ? (
+                isSub ? (
+                  <span className={subBadge}>子</span>
+                ) : (
+                  <span className={mainBadge}>主</span>
+                )
+              ) : undefined
+            }
+            hint={parentName ? `（${parentName}）` : undefined}
+          />
+        </td>
+      </tr>
+      {!collapsed &&
+        group.rows.map((mapping) => (
+          <tr
+            key={mapping.id || `${mapping.source}-${mapping.sourceParam}-${mapping.targetParam}-${mapping.dimensionId ?? ''}`}
+            className='border-border/50 border-b last:border-b-0'
+          >
+            <td className='px-3 py-2 text-xs'>
+              {labelOf(EVALUATION_SOURCE_LABELS, mapping.source ?? 'case')}
+            </td>
+            <td className='px-3 py-2 font-mono text-xs'>{mapping.sourceParam || '—'}</td>
+            <td className='px-3 py-2 text-xs'>{mapping.paramName || '—'}</td>
+            <td className='px-3 py-2 text-xs'>{group.name || '—'}</td>
+            <td className='px-3 py-2 font-mono text-xs'>{mapping.targetParam || '—'}</td>
+            <td className='px-3 py-2 text-xs'>
+              {labelOf(TRANSFORM_TYPE_OPTIONS, mapping.transformType)}
+            </td>
+          </tr>
+        ))}
+    </Fragment>
+  )
+})
