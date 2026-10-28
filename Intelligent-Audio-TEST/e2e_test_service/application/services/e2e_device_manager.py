@@ -137,7 +137,8 @@ class E2EDeviceManager:
 
         failed = [r for r in results if not r['success']]
         if failed:
-            raise RuntimeError(f"设备初始化失败: {'; '.join([f'{r.get('device_name')}: {r.get('error')}' for r in failed])}")
+            detail = '; '.join([f"{r.get('device_name')}: {r.get('error')}" for r in failed])
+            raise RuntimeError(f"设备初始化失败: {detail}")
 
         # INT-296：UI 抓取层降级留痕（explicit_degrade 模式下 initialize 成功但
         # ui_capture_available=false）。结构化字段透传到任务/轮次记录，严禁无痕跳过。
