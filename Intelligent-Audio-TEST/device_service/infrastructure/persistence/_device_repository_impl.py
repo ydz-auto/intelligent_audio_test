@@ -207,9 +207,14 @@ class DeviceRepository(DeviceRepositoryInterface):
         return count
 
     def get_all_device_serials(self) -> List[str]:
-        """获取所有未删除设备的 name 列表（用于扫描时判断是否已注册）"""
+        """获取所有未删除设备的 serial 列表（用于扫描时判断是否已注册）。
+
+        方法名语义即 serials；曾误返回 name 导致扫描 is_registered 判定错乱
+        （serial/model 拿去和 name 比永不命中）。返回 serial_number（过滤空值）。
+        """
         session = get_db_session()
-        return [d.name for d in session.query(Device).filter_by(deleted=False).all()]
+        return [d.serial_number for d in session.query(Device).filter_by(deleted=False).all()
+                if d.serial_number]
 
     # ========== Session 管理 ==========
 

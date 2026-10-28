@@ -73,7 +73,7 @@ class ApiRmsSplService:
 
     @staticmethod
     def _calculate_gain(mapping: dict, target_spl: float) -> float:
-        """有校准点 → np.interp 插值（新数据 dBFS 口径，旧数据 gain_linear；边界行为配置化）；否则参考基准平移"""
+        """有校准点 → np.interp 插值（新数据 dBFS 口径，旧数据 gain_linear；边界行为配置化）；无校准点 → 原音频电平 1.0"""
         status = str(mapping.get('calibration_status', ''))
         points = mapping.get('calibration_points') or []
         if status == 'calibrated' and points:
@@ -90,9 +90,9 @@ class ApiRmsSplService:
                     return 10.0 ** ((rms - GLOBAL_BASE_LEVEL_DB) / 20.0)
                 ys = [float(p['gain_linear']) for p in ordered]
                 return ApiRmsSplService._interp_with_boundary(xs, ys, float(target_spl))
-        reference_spl = float(mapping.get('reference_spl', 65.0) or 65.0)
-        reference_gain = float(mapping.get('reference_gain_linear', 1.0) or 1.0)
-        return reference_gain * (10.0 ** ((float(target_spl) - reference_spl) / 20.0))
+        # 必须有校准点；无校准点 → 原音频电平（gain=1.0，不补偿，§6.4 未配 SPL 口径）。
+        # V9.7.10 的 spl_mappings 并无参考声压级/参考线性增益字段，参考基准系 V9.7.31 误加。
+        return 1.0
 
     @staticmethod
     def _interp_with_boundary(xs, ys, target_spl: float) -> float:

@@ -40,6 +40,11 @@ class RmsSplCommandService:
         except Exception as e:
             return error_response(f"请求数据验证失败: {str(e)}", code=ErrorCode.INVALID_PARAMS)
 
+        # 必须有校准点：至少 1 个点，否则拒绝创建（§6.4 无校准点=原音频，映射无校准点没有意义）
+        _points = (req_data.calibration_data or {}).get('points') or []
+        if not _points:
+            return error_response('必须至少配置 1 个校准点', code=ErrorCode.INVALID_PARAMS)
+
         result = _rms_spl_acl.create(req_data.model_dump(by_alias=False, exclude_none=True))
         if not result.success:
             return _error(result, '创建映射记录失败')
@@ -53,6 +58,12 @@ class RmsSplCommandService:
             req_data = RmsSplMappingUpdateRequest.model_validate(request.get_json())
         except Exception as e:
             return error_response(f"请求数据验证失败: {str(e)}", code=ErrorCode.INVALID_PARAMS)
+
+        # 显式提交校准点时必须至少 1 个（未提交 calibration_data 的局部更新不受限）
+        if req_data.calibration_data is not None:
+            _points = req_data.calibration_data.get('points') or []
+            if not _points:
+                return error_response('必须至少配置 1 个校准点', code=ErrorCode.INVALID_PARAMS)
 
         result = _rms_spl_acl.update(mapping_id, req_data.model_dump(by_alias=False, exclude_none=True))
         if not result.success:

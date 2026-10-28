@@ -181,7 +181,7 @@ class DeviceCommandService:
 
         registered_serials = self.repo.get_all_device_serials()
         for device in all_devices:
-            device['is_registered'] = device['serial'] in registered_serials or device['model'] in registered_serials
+            device['is_registered'] = bool(device.get('serial')) and device['serial'] in registered_serials
             device['id'] = device.get('serial')
             device['name'] = f"{device['system']} {device['model']}"
             device['type'] = 'phone'
