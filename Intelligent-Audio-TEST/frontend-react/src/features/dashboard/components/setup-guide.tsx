@@ -83,8 +83,7 @@ function buildCurlCommand(taskId: number | null): string {
   const idPath = taskId != null ? String(taskId) : '{taskId}'
   return [
     `curl "${origin}/api/v1/tasks/${idPath}/progress" \\`,
-    '  -H "Accept: text/event-stream" \\',
-    '  -H "Authorization: Bearer <token>"',
+    '  -H "Authorization: Bearer <ACCESS_TOKEN>"',
   ].join('\n')
 }
 
@@ -92,7 +91,7 @@ function buildCurlCommand(taskId: number | null): string {
 function ApiPreviewCard(props: { signals: HeroSignal[]; latestTaskId?: number }) {
   const shouldReduceMotion = useReducedMotion()
   const [isCopying, setIsCopying] = useState(false)
-  // 示例任务 id 取真实最近任务（summary recent_tasks[0]，INT-728 接线）；progress 为 SSE 订阅端点
+  // 示例任务 id 取真实最近任务（summary recent_tasks[0]，INT-728 接线）；progress 为 JSON 轮询查询端点（非 SSE 长连接）
   const previewLines = useMemo(
     () => buildCurlCommand(props.latestTaskId ?? null).split('\n'),
     [props.latestTaskId]
@@ -130,8 +129,10 @@ function ApiPreviewCard(props: { signals: HeroSignal[]; latestTaskId?: number })
       <div className='space-y-3 border-b pb-4'>
         <h3 className='text-base font-semibold'>通过 API 驱动测试</h3>
         <p className='text-muted-foreground text-sm leading-relaxed'>
-          平台全部能力开放为 REST 与 SSE
-          接口：创建任务、订阅进度、拉取报告，脚本化集成与页面操作同样简单。
+          平台能力以 Skill / MCP 形式开放：下载 skill 包、配置服务地址与 Access Token
+          即可接入 Claude Code、Codex 等外部 agent；Access Token 授权、按 scopes
+          收权，205 个工具覆盖任务、用例、音频、设备、评估、报告、算法等 13
+          个业务域，创建任务、查询进度、拉取报告全程可用。
         </p>
         <Button render={<Link to='/start-test' />}>开始测试</Button>
       </div>
@@ -157,7 +158,7 @@ function ApiPreviewCard(props: { signals: HeroSignal[]; latestTaskId?: number })
               <div className='min-w-0'>
                 <div className='truncate text-sm font-medium'>首个 API 请求</div>
                 <div className='text-muted-foreground truncate text-xs'>
-                  订阅任务执行进度（SSE）
+                  查询任务执行进度
                 </div>
               </div>
             </div>
