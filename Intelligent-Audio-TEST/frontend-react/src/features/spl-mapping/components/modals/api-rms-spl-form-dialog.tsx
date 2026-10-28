@@ -158,6 +158,10 @@ export function ApiRmsSplFormDialog(props: ApiRmsSplFormDialogProps) {
     try {
       // INT-2081：提交真实校准点集（有效行过滤，增益由 dBFS 推导）
       const calibrationPoints = buildCalibrationPayload(points, errors, duplicateIndexes)
+      if (calibrationPoints.length === 0) {
+        toast.error('必须至少添加 1 个有效校准点（目标 SPL + 实测 dBFS）')
+        return
+      }
       const base = {
         name: name.trim(),
         description: null,
@@ -194,7 +198,7 @@ export function ApiRmsSplFormDialog(props: ApiRmsSplFormDialogProps) {
         <DialogHeader>
           <DialogTitle>{isEdit ? '编辑 RMS-SPL 映射' : '添加 RMS-SPL 映射'}</DialogTitle>
           <DialogDescription>
-            数字域 RMS→SPL 灵敏度映射：为被测 API 配置参考基准与增益限幅（未校准时按参考基准线性近似）
+            数字域 RMS→SPL 灵敏度映射：配置目标SPL↔实测dBFS 校准点与增益限幅（增益由 dBFS 推导；无校准点时原音频电平不动）
           </DialogDescription>
         </DialogHeader>
 
@@ -223,31 +227,6 @@ export function ApiRmsSplFormDialog(props: ApiRmsSplFormDialogProps) {
           <div className='space-y-2'>
             <Label required>映射名称</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder='请输入映射名称' aria-label='映射名称' />
-          </div>
-          <div className='space-y-2'>
-            <Label>参考声压级（dB SPL）</Label>
-            <Input
-              type='number'
-              min={30}
-              max={120}
-              step='0.1'
-              value={referenceSpl}
-              onChange={(e) => setReferenceSpl(e.target.value)}
-              aria-label='参考声压级'
-            />
-            <p className='text-muted-foreground text-xs'>未校准时的参考基准（30-120 dB）</p>
-          </div>
-          <div className='space-y-2'>
-            <Label>参考线性增益</Label>
-            <Input
-              type='number'
-              min={0.001}
-              step='0.001'
-              value={referenceGainLinear}
-              onChange={(e) => setReferenceGainLinear(e.target.value)}
-              aria-label='参考线性增益'
-            />
-            <p className='text-muted-foreground text-xs'>未校准时的参考增益（正数）</p>
           </div>
           <div className='space-y-2'>
             <Label>增益下限</Label>

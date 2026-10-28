@@ -180,23 +180,6 @@ export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
           </SelectContent>
         </Select>
 
-        <Select
-          value={props.algorithmType}
-          onValueChange={(v) => props.onAlgorithmType(v ?? 'all')}
-          items={algorithmItems}
-        >
-          <SelectTrigger size='sm' className='w-36' aria-label='算法类型'>
-            <SelectValue placeholder='全部算法' />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value='all'>全部算法</SelectItem>
-            {props.algorithmOptions.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       {/* 第二行：时间范围 + 级别 tag + 操作 */}

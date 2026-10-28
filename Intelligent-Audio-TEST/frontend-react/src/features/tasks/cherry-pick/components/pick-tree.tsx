@@ -186,6 +186,8 @@ function BranchRow({
                     leaf={child}
                     selected={selectedIds.has(child.resultId)}
                     onToggle={onToggleLeaf}
+                    hideDevice
+                    hideResultType
                   />
                 ) : child.level === 'case' && renderCaseNode ? (
                   <div key={child.key}>{renderCaseNode(child)}</div>
@@ -326,6 +328,8 @@ export function PickTree({
             leaf={item}
             selected={selectedIds.has(item.resultId)}
             onToggle={onToggleLeaf}
+            hideDevice
+            hideResultType
           />
         ) : item.level === 'case' ? (
           <div key={item.key}>{renderCaseNode(item)}</div>

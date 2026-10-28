@@ -268,8 +268,6 @@ export function AudioFilterToolbar(props: AudioFilterToolbarProps) {
           onModeChange={(mode) => update({ tagMode: mode })}
         />
 
-        <AudioAlgorithmChip />
-
         {props.isFiltered && (
           <Button
             variant='ghost'

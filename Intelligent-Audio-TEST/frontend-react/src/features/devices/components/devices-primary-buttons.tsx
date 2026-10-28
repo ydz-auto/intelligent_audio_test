@@ -128,17 +128,22 @@ export function DevicesPrimaryButtons(props: DevicesPrimaryButtonsProps) {
         />
       </span>
 
-      {/* 主按钮（§3.3：文案随页签；无权限 disabled + Tooltip） */}
+      {/* 主按钮（§3.3）：合并「新建 + 扫描设备」为一个「添加设备」——先扫描再添加；
+          API 页签无扫描，走空表登记。 */}
       {canCreate ? (
-        <Button size='sm' className='gap-1.5' onClick={props.onAdd}>
+        <Button
+          size='sm'
+          className='gap-1.5'
+          onClick={tab === 'api' ? props.onAdd : props.onScan}
+        >
           <Plus aria-hidden='true' className='size-3.5' />
-          {DEVICES_ADD_BUTTON_LABEL[tab]}
+          {tab === 'api' ? DEVICES_ADD_BUTTON_LABEL[tab] : '添加设备'}
         </Button>
       ) : (
         <Tooltip>
           <TooltipTrigger render={<Button size='sm' className='gap-1.5' disabled />}>
             <Plus aria-hidden='true' className='size-3.5' />
-            {DEVICES_ADD_BUTTON_LABEL[tab]}
+            {tab === 'api' ? DEVICES_ADD_BUTTON_LABEL[tab] : '添加设备'}
           </TooltipTrigger>
           <TooltipContent>无权限执行此操作</TooltipContent>
         </Tooltip>
@@ -180,12 +185,6 @@ export function DevicesPrimaryButtons(props: DevicesPrimaryButtonsProps) {
             <DropdownMenuSeparator />
           </div>
 
-          {props.canControl && tab !== 'api' && (
-            <DropdownMenuItem onClick={props.onScan}>
-              <ScanLine aria-hidden='true' />
-              扫描设备
-            </DropdownMenuItem>
-          )}
           {props.canGroupManage && tab === 'test' && (
             <DropdownMenuItem onClick={props.onGroupManage}>
               <Boxes aria-hidden='true' />

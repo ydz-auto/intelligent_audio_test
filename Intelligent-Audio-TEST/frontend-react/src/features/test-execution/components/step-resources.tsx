@@ -341,14 +341,9 @@ export function StepResources({
         {/* 右端操作（权限显隐；readOnly 隐藏） */}
         {!readOnly && (
           <div className='ml-auto flex items-center gap-2'>
-            {canDeviceControl && (
-              <Button variant='outline' size='sm' onClick={onScanDevices}>
-                扫描设备
-              </Button>
-            )}
             {canDeviceCreate && (
               <Button variant='outline' size='sm' onClick={onAddDevice}>
-                新增设备
+                添加设备
               </Button>
             )}
             {canApiCreate && (

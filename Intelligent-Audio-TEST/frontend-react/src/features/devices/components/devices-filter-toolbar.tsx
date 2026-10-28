@@ -212,8 +212,6 @@ export function DevicesFilterToolbar(props: DevicesFilterToolbarProps) {
   return (
     <div className='bg-card/50 rounded-lg border p-2.5 sm:p-3'>
       <div className='flex flex-wrap items-center gap-2'>
-        {/* 全局算法联动 chip（§2.2：仅测试页签显；播放/API 隐藏） */}
-        {props.showAlgorithmChip && <DeviceAlgorithmChip />}
         <div className='relative'>
           <Search
             aria-hidden='true'

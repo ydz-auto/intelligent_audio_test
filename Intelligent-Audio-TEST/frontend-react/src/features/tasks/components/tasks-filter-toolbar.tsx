@@ -316,7 +316,6 @@ export function TasksFilterToolbar({
             onChange={(v) => update({ ptStatus: v })}
           />
         )}
-        {hasPermission('task:read') && <GlobalAlgorithmChip />}
         {isDaily && hasPermission('task:read') && (
           <FavoriteTrashToggle
             value={{ favorite: filters.favorite ?? false, trash: filters.trash ?? false }}

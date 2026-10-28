@@ -693,7 +693,6 @@ export function TestCasesFilterToolbar({
           triggerClassName='h-8 gap-1.5 rounded-lg px-2.5 font-normal'
         />
 
-        <TestCasesAlgorithmChip />
         {!readOnly && (
           <FavoriteTrashToggle
             value={{

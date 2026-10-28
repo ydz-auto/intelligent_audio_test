@@ -96,39 +96,6 @@ export function EvaluationToolbar({
         disabled={!canFilter}
       />
 
-      <FacetFilter
-        title='关联算法'
-        allLabel={ALGORITHM_FILTER_ALL_LABEL}
-        options={algorithmOptions}
-        value={algorithmFacetValue}
-        onValueChange={onAlgorithmFilter}
-        disabled={!canFilter}
-      />
-
-      {/* 全局算法联动 chip（§4.1：facet 值=全局值时显示只读 chip，× 清空回到页内自由筛选） */}
-      {globalAlgorithmLabel != null && algorithmFilter === 'all' && (
-        <span className='bg-muted text-muted-foreground inline-flex h-7 items-center gap-1 rounded-md px-2 text-sm'>
-          算法：{globalAlgorithmLabel}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type='button'
-                  aria-label='清除全局算法'
-                  onClick={onClearGlobalAlgorithm}
-                  className='hover:text-foreground rounded p-0.5'
-                >
-                  <X aria-hidden='true' className='size-3.5' />
-                </button>
-              }
-            />
-            <TooltipContent>
-              当前按全局算法筛选，点击 × 清除后显示全部算法的维度
-            </TooltipContent>
-          </Tooltip>
-        </span>
-      )}
-
       {isFiltered && (
         <Button
           variant='ghost'

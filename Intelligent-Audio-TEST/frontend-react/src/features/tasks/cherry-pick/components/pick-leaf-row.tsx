@@ -29,12 +29,18 @@ export function LeafRow({
   selected,
   onToggle,
   showLeafTask,
+  hideDevice,
+  hideResultType,
 }: {
   leaf: PickTreeLeaf
   selected: boolean
   onToggle: (leaf: PickTreeLeaf) => void
   /** §3.8.3 三视图叶行携带来源任务名消歧（设备/结果类型/用例视图内树） */
   showLeafTask?: boolean
+  /** 树内叶行：设备/API 名由上级「设备/API」层已显示，叶行不再重复 */
+  hideDevice?: boolean
+  /** 树内叶行：结果类型由上级「result_type」层已显示，叶行不再重复 */
+  hideResultType?: boolean
 }) {
   const evalMeta = getEvaluationStatusMeta(leaf.evaluationStatus)
   return (
@@ -55,11 +61,18 @@ export function LeafRow({
           {leaf.taskName}
         </span>
       )}
-      {/* INT-2098：叶行不重复显示用例名（用例卡已展示），设备/API 名升为主列 */}
-      <span className='min-w-0 flex-1 truncate font-medium'>{leafDeviceName(leaf)}</span>
-      <Badge variant='outline' className='font-mono text-[10px]'>
-        {leafResultTypeLabel(leaf)}
-      </Badge>
+      {/* INT-2098：叶行不重复显示用例名（用例卡已展示），设备/API 名升为主列；
+          树内（hideDevice）该信息归上级「设备/API」层，叶行留空占位不重复 */}
+      {hideDevice ? (
+        <span className='flex-1' />
+      ) : (
+        <span className='min-w-0 flex-1 truncate font-medium'>{leafDeviceName(leaf)}</span>
+      )}
+      {!hideResultType && (
+        <Badge variant='outline' className='font-mono text-[10px]'>
+          {leafResultTypeLabel(leaf)}
+        </Badge>
+      )}
       <StatusBadge
         label={
           leaf.executionStatus === 'completed'
