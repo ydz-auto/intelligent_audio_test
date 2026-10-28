@@ -124,4 +124,14 @@ describe('一张卡一个轮次轴（useCaseRoundTabs）', () => {
     const { result } = renderHook(() => useCaseRoundTabs(item))
     expect(result.current.activeRoundTag).toBeNull()
   })
+
+  it('首个轮次只有执行结果、没有指标数据时，默认激活首个有指标数据的轮次（V9.7.10 tabHasMetricData）', () => {
+    // 报告 417 真实形态：指标只落在 @round:2，@round:1 只出现在结果字段
+    const item = caseWith(['A@round:2'])
+    item.algorithmResults = [{ paramCode: 'query@round:1', roundNumber: 1 }]
+    const { result } = renderHook(() => useCaseRoundTabs(item))
+    expect(result.current.roundTabs.map((t) => t.label)).toEqual(['第 1 轮', '第 2 轮'])
+    expect(result.current.activeRoundTag).toBe('round:2')
+    expect(result.current.currentRoundMetricKeys).toEqual(['A@round:2'])
+  })
 })

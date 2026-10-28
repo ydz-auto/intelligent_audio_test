@@ -1,17 +1,29 @@
 /**
- * 块二：多轮对话结果（15_报告域.md §3.5.2，parseMultiRoundResult 对位）。
- * 判定：algorithmResults 中首个含 rounds 数组的对象（兼容 round 0 基 / roundNumber 1 基）；
- * 聚合卡优先后端 aggregated（avg_wer/avg_llm_judge/avg_latency/interruption_count），兜底前端自算；
- * 每轮展开：输入音频/ASR 输出/参考文本/延迟/打断/维度评分徽章/LLM 评语（reasoning → raw_response 解析）。
+ * 块二：多轮对话结果（15_报告域.md §3.5.2，TestCaseReportDetail 块二对位）。
+ *
+ * **判定（INT-2120，对齐 V9.7.10 `parseMultiRoundResult`）**：只认真正的 rounds 源
+ * （项自身 `rounds` 数组 / `value` 对象内含 `rounds` 数组 / `param_code` 以 `rounds`
+ * 开头且 value 即数组）。`round_details@round:N` 这类按轮展开的 json 数组**不是**
+ * rounds 源 → 整块不渲染（含标题），不再出现「多轮对话结果 (1 轮)」假块。
+ *
+ * **字段渲染（对齐 V9.7.10 模板 `v-if` 语义）**：聚合卡只渲染有值字段；每轮展开的
+ * 输入音频 / ASR 输出 / 参考文本 / 延迟 / 打断 / 维度评分 / LLM 评语都按「有值才渲染」，
+ * 不再出现「—」占位卡片与占位行。
  */
 import { ChevronDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
-import type { ReportAlgorithmResult, ReportCaseItem } from '@/domain/models/report'
+import type { ReportCaseItem } from '@/domain/models/report'
 import { cn } from '@/lib/utils'
 
-import { extractLlmReasoning, getReferenceTextValue } from './case-report-utils'
+import {
+  extractLlmReasoning,
+  findMultiRoundSource,
+  getReferenceTextValue,
+  type MultiRoundAggregated,
+  type MultiRoundSource,
+} from './case-report-utils'
 
 interface RoundEvaluation {
   wer?: number
@@ -23,21 +35,12 @@ interface RoundEvaluation {
 }
 
 interface RoundData {
-  round?: number
-  roundNumber?: number
+  latency?: number
+  interruption?: { detected?: boolean; timestamp?: number }
   input?: { audio_name?: string }
   output?: { asr_text?: string }
   evaluation?: RoundEvaluation
   round_evaluation?: RoundEvaluation
-  latency?: number
-  interruption?: { detected?: boolean; timestamp?: number }
-}
-
-interface MultiRoundResultData {
-  isMultiRound: boolean
-  rounds: RoundData[]
-  aggregated?: Record<string, number>
-  totalRounds: number
 }
 
 const metricLabel = (key: string): string => {
@@ -54,57 +57,52 @@ const metricLabel = (key: string): string => {
   return labels[key] ?? key
 }
 
-export function MultiRoundResult({ caseItem }: { caseItem: ReportCaseItem }) {
-  const multiRound = useMemo<MultiRoundResultData | null>(() => {
-    const algoResults = caseItem.algorithmResults ?? []
-    if (algoResults.length === 0) return null
-    type Holder = { rounds?: unknown; aggregated?: Record<string, number> }
-    // 直接挂在 item.rounds（mock 形态）/ item.value.rounds（快照嵌套形态）/
-    // item.value 即 rounds 数组（真实库 param_code=rounds 的 json 项，INT-2088 实测）
-    const holder = (algoResults as (ReportAlgorithmResult & Holder)[]).find((item) => {
-      if (Array.isArray(item.rounds)) return true
-      const v = item.value as { rounds?: unknown } | unknown[] | undefined
-      if (Array.isArray(v)) return true
-      return v && typeof v === 'object' && Array.isArray((v as { rounds?: unknown }).rounds)
-    })
-    if (!holder) return null
-    const value = holder.value as Holder | unknown[] | undefined
-    const source = Array.isArray(holder.rounds)
-      ? holder
-      : Array.isArray(value)
-        ? ({ rounds: value } as Holder)
-        : ((holder.value as Holder) ?? {})
-    const rounds = (source.rounds ?? []) as RoundData[]
-    if (!Array.isArray(rounds) || rounds.length === 0) return null
-    return {
-      isMultiRound: true,
-      rounds,
-      aggregated: source.aggregated,
-      totalRounds: rounds.length,
-    }
-  }, [caseItem.algorithmResults])
+const asNumber = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? v : undefined
 
-  // 聚合卡：优先后端 aggregated，兜底前端自算
-  // P2-6：hooks 置于早退 return 之前（遵守 Rules-of-Hooks），useAggregated 内部对 null 兜底
+export function MultiRoundResult({ caseItem }: { caseItem: ReportCaseItem }) {
+  const multiRound = useMemo<MultiRoundSource | null>(
+    () => findMultiRoundSource(caseItem.algorithmResults),
+    [caseItem.algorithmResults]
+  )
   const aggregated = useAggregated(multiRound)
   const [expanded, setExpanded] = useState<number>()
 
+  // hooks 已全部调用完毕：无真实 rounds 源 → 整块不渲染
   if (!multiRound || multiRound.rounds.length === 0) return null
 
-  const rounds = multiRound.rounds
-  const totalRounds = rounds.length
+  const rounds = multiRound.rounds as unknown as RoundData[]
+  const aggregateCards = [
+    {
+      label: '平均 WER',
+      value: aggregated.avg_wer == null ? '' : `${aggregated.avg_wer.toFixed(2)}%`,
+    },
+    {
+      label: '平均 LLM 评分',
+      value: aggregated.avg_llm_judge == null ? '' : aggregated.avg_llm_judge.toFixed(1),
+    },
+    {
+      label: '平均延迟',
+      value: aggregated.avg_latency == null ? '' : `${aggregated.avg_latency.toFixed(0)}ms`,
+    },
+    {
+      label: '打断次数',
+      value: aggregated.interruption_count == null ? '' : String(aggregated.interruption_count),
+    },
+  ].filter((card) => card.value !== '')
 
   return (
     <div className='space-y-2'>
-      <p className='text-sm font-semibold'>多轮对话结果 ({totalRounds} 轮)</p>
+      <p className='text-sm font-semibold'>多轮对话结果 ({rounds.length} 轮)</p>
 
-      {/* 聚合卡 */}
-      <div className='grid grid-cols-2 gap-2 sm:grid-cols-4'>
-        <AggregateStat label='平均 WER' value={aggregated.avg_wer === undefined ? '—' : `${aggregated.avg_wer.toFixed(2)}%`} />
-        <AggregateStat label='平均 LLM 评分' value={aggregated.avg_llm_judge === undefined ? '—' : aggregated.avg_llm_judge.toFixed(1)} />
-        <AggregateStat label='平均延迟' value={aggregated.avg_latency === undefined ? '—' : `${aggregated.avg_latency.toFixed(0)}ms`} />
-        <AggregateStat label='打断次数' value={String(aggregated.interruption_count ?? 0)} />
-      </div>
+      {/* 聚合卡：只渲染有值字段（V9.7.10 `v-if="aggregatedMetrics.xxx != null"`） */}
+      {aggregateCards.length > 0 && (
+        <div className='grid grid-cols-2 gap-2 sm:grid-cols-4'>
+          {aggregateCards.map((card) => (
+            <AggregateStat key={card.label} label={card.label} value={card.value} />
+          ))}
+        </div>
+      )}
 
       {/* 每轮展开 */}
       <div className='space-y-1.5'>
@@ -112,10 +110,15 @@ export function MultiRoundResult({ caseItem }: { caseItem: ReportCaseItem }) {
           const roundNum = index + 1
           const open = expanded === index
           const evalData = round.evaluation || round.round_evaluation || null
-          const latency = evalData?.latency ?? round.latency
-          const det = round.interruption?.detected
+          const latency = asNumber(evalData?.latency) ?? asNumber(round.latency)
+          const det = round.interruption?.detected === true
           const refText = getRoundReferenceText(caseItem, roundNum)
           const reasoning = extractLlmReasoning(evalData as Record<string, unknown> | undefined)
+          const evalBadges: { key: 'wer' | 'llm_judge' | 'latency'; value: number }[] = evalData
+            ? (['wer', 'llm_judge', 'latency'] as const)
+                .map((key) => ({ key, value: asNumber(evalData[key]) }))
+                .filter((entry): entry is { key: 'wer' | 'llm_judge' | 'latency'; value: number } => entry.value !== undefined)
+            : []
           return (
             <div key={index} className='rounded-lg border'>
               <button
@@ -135,41 +138,34 @@ export function MultiRoundResult({ caseItem }: { caseItem: ReportCaseItem }) {
               </button>
               {open && (
                 <div className='grid gap-x-4 gap-y-1 border-t p-3 text-xs sm:grid-cols-2'>
-                  <InfoRow label='输入音频' value={round.input?.audio_name ?? '—'} />
-                  <InfoRow label='ASR 输出' value={round.output?.asr_text ?? '—'} mono />
-                  <InfoRow label='参考文本' value={refText} />
-                  <InfoRow label='延迟' value={latency != null ? `${latency}ms` : '—'} />
-                  <InfoRow
-                    label='打断'
-                    value={det ? (round.interruption?.timestamp !== undefined ? `${round.interruption.timestamp}s` : '检测到打断') : '未检测到'}
-                  />
-                  <div className='flex flex-wrap items-start gap-1.5'>
-                    <span className='text-muted-foreground shrink-0'>维度评分：</span>
-                    {evalData && Object.keys(evalData).length > 0 ? (
+                  {round.input?.audio_name && <InfoRow label='输入音频' value={round.input.audio_name} />}
+                  {round.output?.asr_text && <InfoRow label='ASR 输出' value={round.output.asr_text} mono />}
+                  {refText && <InfoRow label='参考文本' value={refText} />}
+                  {latency != null && <InfoRow label='延迟' value={`${latency}ms`} />}
+                  {det && (
+                    <InfoRow
+                      label='打断'
+                      value={round.interruption?.timestamp !== undefined ? `${round.interruption.timestamp}s` : '检测到打断'}
+                    />
+                  )}
+                  {evalBadges.length > 0 && (
+                    <div className='flex flex-wrap items-start gap-1.5'>
+                      <span className='text-muted-foreground shrink-0'>维度评分：</span>
                       <div className='flex flex-wrap gap-1'>
-                        {Object.entries(evalData)
-                          .filter(([key]) => ['wer', 'llm_judge', 'latency'].includes(key))
-                          .map(([key, value]) => {
-                            if (typeof value !== 'number') return null
-                            const label = metricLabel(key)
-                            const text =
-                              key === 'wer'
-                                ? `${value.toFixed(2)}%`
-                                : key === 'latency'
-                                  ? `${value.toFixed(0)}ms`
-                                  : value.toFixed(1)
-                            return (
-                              <Badge key={key} variant='outline'>
-                                {label} {text}
-                              </Badge>
-                            )
-                          })}
+                        {evalBadges.map(({ key, value }) => (
+                          <Badge key={key} variant='outline'>
+                            {metricLabel(key)}{' '}
+                            {key === 'wer'
+                              ? `${value.toFixed(2)}%`
+                              : key === 'latency'
+                                ? `${value.toFixed(0)}ms`
+                                : value.toFixed(1)}
+                          </Badge>
+                        ))}
                       </div>
-                    ) : (
-                      <span>—</span>
-                    )}
-                  </div>
-                  <InfoRow label='LLM 评语' value={reasoning || '—'} full />
+                    </div>
+                  )}
+                  {reasoning && <InfoRow label='LLM 评语' value={reasoning} full />}
                 </div>
               )}
             </div>
@@ -180,7 +176,7 @@ export function MultiRoundResult({ caseItem }: { caseItem: ReportCaseItem }) {
   )
 }
 
-/** 参考文本按轮读取（referenceParams.answer@round:N → 参考文本字段兜底） */
+/** 参考文本按轮读取（referenceParams.answer@round:N → 参考文本字段兜底；无值返回空串） */
 function getRoundReferenceText(caseItem: ReportCaseItem, roundNum: number): string {
   const refs = caseItem.referenceParams ?? {}
   const direct = getReferenceTextValue(`answer@round:${roundNum}`, refs)
@@ -194,22 +190,19 @@ function getRoundReferenceText(caseItem: ReportCaseItem, roundNum: number): stri
       }
     }
   }
-  // 兜底：参考文本首条（照 V9.7.10 getReferenceTextForRound）
+  // 兜底：参考文本首条（照 V9.7.10 getReferenceTextForRound；无值不渲染该行）
   const first = Object.values(refs).find((p) => p.type === 'text')
-  return ((first?.text ?? first?.value ?? '') as string) || '—'
+  return ((first?.text ?? first?.value ?? '') as string) || ''
 }
 
-/** 聚合卡计算（优先后端 aggregated；兜底由各轮 evaluation/latency/interruption 自算） */
-function useAggregated(data: MultiRoundResultData | null) {
+/**
+ * 聚合卡计算（照 V9.7.10 `aggregatedMetrics`）：
+ * 优先后端 aggregated；兜底由各轮 evaluation / latency / interruption 自算。
+ * 无值字段保持 undefined（模板侧不渲染，不出现「—」占位）。
+ */
+function useAggregated(data: MultiRoundSource | null): MultiRoundAggregated {
   return useMemo(() => {
-    if (!data) {
-      return {
-        avg_wer: undefined,
-        avg_llm_judge: undefined,
-        avg_latency: undefined,
-        interruption_count: undefined,
-      }
-    }
+    if (!data) return {}
     if (data.aggregated && Object.keys(data.aggregated).length > 0) {
       return {
         avg_wer: data.aggregated.avg_wer,
@@ -218,25 +211,31 @@ function useAggregated(data: MultiRoundResultData | null) {
         interruption_count: data.aggregated.interruption_count,
       }
     }
-    const rounds = data.rounds ?? []
+    const rounds = data.rounds as unknown as RoundData[]
+    if (rounds.length === 0) return {}
+    const result: MultiRoundAggregated = {}
     const evals = rounds
       .map((r) => r.evaluation || r.round_evaluation)
       .filter((e): e is RoundEvaluation => Boolean(e))
-    const avg = (key: (e: RoundEvaluation) => number | undefined) => {
-      const vals = evals.map(key).filter((v): v is number => v !== undefined && v > 0)
-      if (vals.length === 0) return undefined
-      return vals.reduce((s, v) => s + v, 0) / vals.length
+    // 只统计**真有数值**的轮次：空 evaluation（{}）不算 0 分，避免凭空出现 0.00% 聚合卡
+    const werValues = evals.map((e) => asNumber(e.wer)).filter((v): v is number => v !== undefined)
+    if (werValues.length > 0) {
+      result.avg_wer = werValues.reduce((sum, v) => sum + v, 0) / werValues.length
     }
-    const avgWER = avg((e) => e.wer)
-    const llmVals = evals.map((e) => e.llm_judge).filter((v): v is number => v !== undefined && v > 0)
-    const latencies = rounds.map((r) => r.evaluation?.latency ?? r.latency).filter((v): v is number => v !== undefined)
-    const interruptions = rounds.filter((r) => r.interruption?.detected).length
-    return {
-      avg_wer: avgWER,
-      avg_llm_judge: llmVals.length > 0 ? llmVals.reduce((s, v) => s + v, 0) / llmVals.length : undefined,
-      avg_latency: latencies.length > 0 ? latencies.reduce((s, v) => s + v, 0) / latencies.length : undefined,
-      interruption_count: interruptions > 0 ? interruptions : undefined,
+    const llmVals = evals.map((e) => asNumber(e.llm_judge)).filter((v): v is number => v !== undefined)
+    const llmSum = llmVals.reduce((sum, v) => sum + v, 0)
+    if (llmVals.length > 0 && llmSum > 0) {
+      result.avg_llm_judge = llmSum / llmVals.length
     }
+    const latencies = rounds
+      .map((r) => asNumber((r.evaluation || r.round_evaluation)?.latency) ?? asNumber(r.latency))
+      .filter((v): v is number => v !== undefined)
+    if (latencies.length > 0) {
+      result.avg_latency = latencies.reduce((sum, v) => sum + v, 0) / latencies.length
+    }
+    const interruptionCount = rounds.filter((r) => r.interruption?.detected === true).length
+    if (interruptionCount > 0) result.interruption_count = interruptionCount
+    return result
   }, [data])
 }
 

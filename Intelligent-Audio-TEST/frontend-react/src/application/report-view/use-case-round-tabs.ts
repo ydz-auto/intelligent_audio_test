@@ -154,10 +154,32 @@ export function useCaseRoundTabs(
 
   const [activeLabel, setActiveLabel] = useState<string | null>(null)
 
+  /**
+   * 轮次标记是否有评估数据（照 V9.7.10 `tabHasMetricData`：至少一个资源在该轮次下
+   * 有有限数值）。用于默认激活：避免落在只有执行结果、没有指标数据的轮次上
+   * （如报告 417 用例仅 `@round:2` 有指标，`@round:1` 只有参考/结果字段）。
+   */
+  const tagHasMetricData = (roundTag: string): boolean => {
+    const keys = metricKeys.filter((key) => parseMetricKey(key).roundTag === roundTag)
+    if (keys.length === 0) return false
+    return Object.values(resourceMetrics).some((metrics) =>
+      keys.some((key) => {
+        const value = metrics[key]
+        return typeof value === 'number' && Number.isFinite(value)
+      })
+    )
+  }
+
   const fallbackLabel = useMemo(() => {
     const tag = defaultActiveRoundTag(roundTabs)
+    if (tag && tag !== 'overall' && !tagHasMetricData(tag)) {
+      const withData = roundTabs.find(
+        (tab) => tab.roundTag && tab.roundTag !== 'overall' && tagHasMetricData(tab.roundTag)
+      )
+      if (withData) return withData.label
+    }
     return roundTabs.find((tab) => tab.roundTag === tag)?.label ?? roundTabs[0]?.label ?? ''
-  }, [roundTabs])
+  }, [roundTabs, metricKeys, resourceMetrics])
 
   // 激活项被 chips 取消（不在当前 Tab 集合）→ 回落默认轮次
   const activeRoundTab = useMemo(() => {

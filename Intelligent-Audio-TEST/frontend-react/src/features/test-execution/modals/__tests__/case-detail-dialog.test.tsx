@@ -632,7 +632,7 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     expect(screen.getByText('第 1 轮')).toBeInTheDocument()
   })
 
-  it('INT-2088：多轮对话结果——rounds 值为数组形态（真实库 param_code=rounds json 项）+ latency null 不崩溃', async () => {
+  it('INT-2120：param_code=rounds 的数组 value 不是 rounds 源 → 任务用例执行详情不渲染多轮块', async () => {
     fetchDetailMock.mockResolvedValue({
       ...detail,
       algorithmResults: [
@@ -649,10 +649,35 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     })
     fetchTaskMock.mockResolvedValue(taskTerminal)
     renderDialog()
-    // value 数组形态 → 检测通过，渲染聚合卡与每轮头；latency null 只渲染「第 N 轮」不崩溃
+    // 真实库扁平 rounds 项（value 即数组）按 V9.7.10 口径不算多轮源：不渲染、不崩溃
+    expect(await screen.findByText('评分指标')).toBeInTheDocument()
+    expect(screen.queryByText(/多轮对话结果/)).not.toBeInTheDocument()
+  })
+
+  it('INT-2088：真 rounds 源（value.rounds）+ latency null 只渲染轮次头、不出现聚合卡占位', async () => {
+    fetchDetailMock.mockResolvedValue({
+      ...detail,
+      algorithmResults: [
+        {
+          paramCode: 'multi_round_result',
+          paramType: 'json',
+          value: {
+            rounds: [
+              { round: 0, input: { audio_name: 'r0.wav' }, output: {}, latency: null, evaluation: {} },
+              { round: 1, input: { audio_name: 'r1.wav' }, output: {}, latency: null, evaluation: {} },
+            ],
+          },
+        },
+      ],
+    })
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    renderDialog()
     expect(await screen.findByText('多轮对话结果 (2 轮)')).toBeInTheDocument()
     expect(screen.getByText('第 1 轮')).toBeInTheDocument()
     expect(screen.getByText('第 2 轮')).toBeInTheDocument()
+    // 空 evaluation + latency null → 聚合卡一张都不渲染（不出现 0.00% / — 占位）
+    expect(screen.queryByText('平均 WER')).not.toBeInTheDocument()
+    expect(screen.queryByText('平均延迟')).not.toBeInTheDocument()
     expect(screen.queryByText(/延迟 null/)).not.toBeInTheDocument()
   })
 

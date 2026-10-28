@@ -198,6 +198,62 @@ export function formatJson(text: unknown): string {
   }
 }
 
+/** 多轮聚合字段（后端 aggregated 原样；前端兜底自算同形） */
+export interface MultiRoundAggregated {
+  avg_wer?: number
+  avg_llm_judge?: number
+  avg_latency?: number
+  interruption_count?: number
+  [key: string]: number | undefined
+}
+
+/** 真实多轮数据源（rounds 数组 + 可选后端聚合） */
+export interface MultiRoundSource {
+  rounds: Record<string, unknown>[]
+  aggregated?: MultiRoundAggregated
+}
+
+/**
+ * 多轮对话结果的 rounds 源判定（照 V9.7.10 `reportService.ts parseMultiRoundResult` +
+ * `TestCaseReportDetail.vue:412-418`，INT-2120）。**只有真正的 rounds 源**才判多轮：
+ *
+ * ① 项自身 `rounds` 为数组（V9.7.10 主口径 / mock 形态）；
+ * ② `value` 为对象且内含 `rounds` 数组（快照嵌套形态，V9.7.10 第二口径）。
+ *
+ * 关键反例（report 420 / 用例 DD001 真实库实测）：`round_details@round:N`、
+ * `llm_round_evaluations@round:N` 这类按轮展开的 json 项 `value` 也是数组，但不是
+ * rounds 源；即便 `param_code=rounds` 的扁平项 `value` 就是轮次数组，V9.7.10 也只认
+ * 「项自身 / value 对象上的 rounds 字段」，不认数组 value → 该用例**整块不渲染**
+ * （INT-2120 验收首条）。不合成、不从数组 value 反推 rounds。
+ */
+export function findMultiRoundSource(
+  algorithmResults: ReportAlgorithmResult[] | undefined
+): MultiRoundSource | null {
+  for (const item of algorithmResults ?? []) {
+    const direct = (item as { rounds?: unknown }).rounds
+    if (Array.isArray(direct)) {
+      if (direct.length > 0) {
+        return {
+          rounds: direct as Record<string, unknown>[],
+          aggregated: (item as { aggregated?: MultiRoundAggregated }).aggregated,
+        }
+      }
+      continue
+    }
+    const value = item.value
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const nested = (value as { rounds?: unknown }).rounds
+      if (Array.isArray(nested) && nested.length > 0) {
+        return {
+          rounds: nested as Record<string, unknown>[],
+          aggregated: (value as { aggregated?: MultiRoundAggregated }).aggregated,
+        }
+      }
+    }
+  }
+  return null
+}
+
 /** 归一化 algorithmResults（camel/snake 双字段兼容） */
 export function normalizeAlgorithmResult(
   item: ReportAlgorithmResult

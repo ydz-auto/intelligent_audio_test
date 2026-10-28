@@ -20,6 +20,7 @@ import type {
   ReportCaseItem,
   ReportCaseMetrics,
   ReportCaseResult,
+  ReportMetricConfig,
   ReportMetricDataGroup,
   ReportResourceHeader,
 } from '@/domain/models/report'
