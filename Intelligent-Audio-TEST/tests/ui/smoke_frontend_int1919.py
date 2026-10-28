@@ -220,10 +220,34 @@ class Smoke1919(B.Smoke):
         out['shot_list_dark'] = B.shot(d, '05_%s_case_list_dark' % self.kind)
         self.set_theme(False)
         # 用例详情弹窗（任务域用例行入口，两前端同一分道）
-        out['detail'] = self.open_case_detail_from_task(658)
+        # INT-2136：原先写死任务 658，当前库已无该 id（404 任务不存在）→
+        # 前端渲染「任务详情加载失败」，链路恒假失败。改为按 API 现查一条有
+        # 用例结果的任务（/tasks/{id}/stats 的 total>0）。
+        task_id = self._pick_task_with_cases()
+        out['detail_task_id'] = task_id
+        if task_id:
+            out['detail'] = self.open_case_detail_from_task(task_id)
+        else:
+            out['detail'] = {'ok': False, 'error': '未找到有用例结果的任务'}
         out['ok'] = bool(out['expanded'] and out['rounds_visible'] and out['cases_visible']
                          and out['detail'].get('ok'))
         return out
+
+    def _pick_task_with_cases(self):
+        """现查一条有真实用例结果的任务 id（只读；取不到返回 None）。"""
+        try:
+            st, tj = B.http_json('/tasks?page=1&per_page=20&sort_by=created_at&order=desc')
+            items = (tj.get('data') or {}).get('items') or []
+            for item in items[:10]:
+                tid = item.get('id')
+                if not tid:
+                    continue
+                st2, stj = B.http_json('/tasks/%s/stats' % tid)
+                if st2 == 200 and ((stj.get('data') or {}).get('total') or 0) > 0:
+                    return tid
+        except Exception as exc:
+            B.log('pick task failed: %s' % exc)
+        return None
 
     # ── 4 报告中心 → 报告详情 / 导出 ────────────────────────
     def chain_reports(self):

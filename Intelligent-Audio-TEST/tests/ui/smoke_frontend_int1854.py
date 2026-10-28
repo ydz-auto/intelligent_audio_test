@@ -63,9 +63,34 @@ def log(msg):
 
 
 # ── HTTP（只读）────────────────────────────────────────────
+# AUTH_MODE=dev 时 /api/v1 受保护端点无 token 一律 401，脚本的交叉核对
+# （api_total / 报告计数 / 分组数）会全部失真成 None → 假失败。按 UI 登录
+# 同一账号走 RSA-OAEP 取 token 后带上；取不到时退回匿名（off 模式仍可用）。
+_AUTH = {'token': None}
+
+
+def _auth_headers():
+    if _AUTH['token'] is None:
+        _AUTH['token'] = ''
+        try:
+            if PROJECT_ROOT not in sys.path:
+                sys.path.insert(0, PROJECT_ROOT)
+            from tests.ui.utils.api_client import ApiClient
+            client = ApiClient(API)
+            client.login(USERNAME, PASSWORD)
+            _AUTH['token'] = client.token
+            log('API token acquired for %s' % USERNAME)
+        except Exception as exc:
+            log('API login failed (continue anonymous): %s' % exc)
+    headers = {'Accept': 'application/json'}
+    if _AUTH['token']:
+        headers['Authorization'] = 'Bearer ' + _AUTH['token']
+    return headers
+
+
 def http_json(path, timeout=60):
     url = API + '/api/v1' + path
-    req = urllib.request.Request(url, headers={'Accept': 'application/json'})
+    req = urllib.request.Request(url, headers=_auth_headers())
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status, json.loads(resp.read().decode('utf-8') or '{}')

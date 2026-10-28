@@ -95,8 +95,10 @@ def parse_network_entries(raw_logs):
 
 
 class SmokeRunner:
-    def __init__(self, frontend_base: str, username: str, password: str):
+    def __init__(self, frontend_base: str, username: str, password: str,
+                 api_base: str = 'http://127.0.0.1:5000'):
         self.base = frontend_base.rstrip('/')
+        self.api = api_base.rstrip('/')
         self.username = username
         self.password = password
         self.results = {}
@@ -234,15 +236,15 @@ class SmokeRunner:
         try:
             import httpx
             from tests.ui.utils.api_client import ApiClient
-            api = ApiClient('http://127.0.0.1:5000')
+            api = ApiClient(self.api)
             api.login(self.username, self.password)
             h = {'Authorization': f'Bearer {api.token}'}
-            r = httpx.get('http://127.0.0.1:5000/api/v1/tasks?page=1&per_page=1',
+            r = httpx.get(f'{self.api}/api/v1/tasks?page=1&per_page=1',
                           headers=h, timeout=15, trust_env=False)
             items = r.json().get('data', {}).get('items', [])
             if items:
                 ids['task'] = items[0].get('id')
-            r = httpx.get('http://127.0.0.1:5000/api/v1/reports?page=1&per_page=1',
+            r = httpx.get(f'{self.api}/api/v1/reports?page=1&per_page=1',
                           headers=h, timeout=15, trust_env=False)
             items = r.json().get('data', {}).get('items', [])
             if items:
@@ -276,10 +278,13 @@ def main():
     ap.add_argument('--frontend', default='http://127.0.0.1:5400')
     ap.add_argument('--username', default='admin')
     ap.add_argument('--password', default='admin123')
+    # docker 环境（后端网关 :15000）口径：API_BASE 默认 5000 是本地栈，
+    # 冒烟走 docker 栈时用 --api / API_BASE 指向 :15000，明细页 id 现查才不会落空。
+    ap.add_argument('--api', default=os.environ.get('API_BASE', 'http://127.0.0.1:5000'))
     args = ap.parse_args()
 
     sys.path.insert(0, PROJECT_ROOT)
-    runner = SmokeRunner(args.frontend, args.username, args.password)
+    runner = SmokeRunner(args.frontend, args.username, args.password, args.api)
     try:
         runner.start()
         runner.run()
