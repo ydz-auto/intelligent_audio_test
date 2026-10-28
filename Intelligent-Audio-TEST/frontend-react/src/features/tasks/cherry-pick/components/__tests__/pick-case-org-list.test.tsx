@@ -4,10 +4,15 @@
  * INT-1497 §11-7：分支携真实分组/标签/时长 → 按真名聚合；字段缺省才落「未分组」/「未设置标签」兜底桶；
  * 组织控件可视图级单渲（showControls）。
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { PickTreeBranch, PickTreeLeaf } from '@/domain/models/cherryPick'
+import type {
+  PickCandidateTree,
+  PickTreeBranch,
+  PickTreeLeaf,
+} from '@/domain/models/cherryPick'
+import { buildPickCaseView } from '@/domain/lib/pick-candidate-tree'
 import {
   PickCaseOrgControls,
   PickCaseOrgList,
@@ -17,6 +22,20 @@ const LEAVES: PickTreeLeaf[] = [
   { kind: 'leaf', key: 'leaf:1', resultId: 1, taskName: '任务A', caseName: '用例001', deviceId: 1, deviceName: '设备-01', apiId: null, apiName: null, resultType: 'real-time', executionStatus: 'completed', evaluationStatus: 'completed', createdAt: '2026-10-15T09:00:00', added: false },
   { kind: 'leaf', key: 'leaf:2', resultId: 2, taskName: '任务A', caseName: '用例001', deviceId: 1, deviceName: '设备-01', apiId: null, apiName: null, resultType: 'real-time', executionStatus: 'completed', evaluationStatus: 'completed', createdAt: '2026-10-15T09:01:00', added: false },
 ]
+
+/** 设备/API 层（buildPickCaseView 树形：用例卡 → 设备/API → result_type/任务 → 叶）。
+ *  设备/API 名在这一级分支行渲染，叶行不再重复（INT-2132 核对 a231d8477 叶行去重前提）。 */
+function deviceBranch(caseKey: string, leaves: PickTreeLeaf[]): PickTreeBranch {
+  return {
+    kind: 'branch',
+    key: `pcv-device:${caseKey}:device:1`,
+    level: 'device',
+    name: '设备-01',
+    count: leaves.length,
+    resultIds: leaves.map((leaf) => leaf.resultId),
+    children: leaves,
+  }
+}
 
 const CASE_BRANCHES: PickTreeBranch[] = [
   {
@@ -28,7 +47,8 @@ const CASE_BRANCHES: PickTreeBranch[] = [
     algorithmType: 'asr-v3',
     count: 2,
     resultIds: [1, 2],
-    children: LEAVES,
+    // 叶直挂设备层：避开叶明细分页（candidates）请求，层级语义与 buildPickCaseView 一致
+    children: [deviceBranch('c1', LEAVES)],
   },
   {
     kind: 'branch',
@@ -39,9 +59,7 @@ const CASE_BRANCHES: PickTreeBranch[] = [
     algorithmType: null,
     count: 1,
     resultIds: [3],
-    children: [
-      { ...LEAVES[0], key: 'leaf:3', resultId: 3 },
-    ],
+    children: [deviceBranch('c2', [{ ...LEAVES[0], key: 'leaf:3', resultId: 3 }])],
   },
 ]
 
@@ -82,6 +100,51 @@ const REAL_BRANCHES: PickTreeBranch[] = [
 /** 真实 GET /algorithm/options 派生的 value→name 替身（页面级 useAlgorithmLabels 下传） */
 const ALGORITHM_LABELS: Record<string, string> = {
   'asr-v3': '通用识别引擎',
+}
+
+/** 真实候选树（两任务同一用例/设备/result_type）：验证 buildPickCaseView 输出的
+ *  用例卡 → 设备/API 层在 UI 上确实显示设备名（INT-2132 前提核对，非合成树形） */
+const CANDIDATE_TREE: PickCandidateTree = {
+  total: 2,
+  taskCount: 2,
+  meta: {
+    tasks: [
+      { taskId: 1, taskName: '任务A', taskStatus: 'completed' },
+      { taskId: 2, taskName: '任务B', taskStatus: 'completed' },
+    ],
+    cases: [
+      {
+        caseId: 'c1',
+        caseName: '用例001',
+        algorithmType: null,
+        tags: [],
+        groupId: null,
+        groupName: null,
+        duration: null,
+        rounds: null,
+      },
+    ],
+    devices: [{ deviceId: 1, deviceName: '设备-01' }],
+    apis: [],
+  },
+  tree: [1, 2].map((taskId) => ({
+    taskId,
+    count: 1,
+    cases: [
+      {
+        caseId: 'c1',
+        count: 1,
+        devices: [
+          {
+            deviceId: 1,
+            apiId: null,
+            count: 1,
+            resultTypes: [{ resultType: 'real-time', count: 1, resultIds: [taskId] }],
+          },
+        ],
+      },
+    ],
+  })),
 }
 
 function setup(
@@ -169,11 +232,37 @@ describe('PickCaseOrgList（§3.8.3 用例层组织，INT-1125）', () => {
     expect(screen.getByText('未分组')).toBeInTheDocument()
   })
 
-  it('用例卡展开 → 结果行叶（设备/结果类型视图用例下叶直挂，复用 PickTree 层级行）', () => {
+  it('用例卡展开 → 设备/API 层 → 结果行叶：设备名在上级层，叶行不重复', () => {
     setup({ expandSignal: { all: true, tick: 1 } })
-    // 叶行不再显示来源任务名（INT-1694：任务已是树内节点）
-    expect(screen.getAllByText('设备-01').length).toBeGreaterThan(0)
+    // 设备/API 名的落点 = 上级设备层分支行（buildPickCaseView：用例卡 → 设备/API → …）
+    const deviceRow = screen.getByTestId('pick-branch-pcv-device:c1:device:1')
+    expect(within(deviceRow).getByText('设备-01')).toBeInTheDocument()
+    // a231d8477 叶行去重：树内叶行不再重复设备/API 名与结果类型
+    const leafRow = screen.getByTestId('pick-leaf-1')
+    expect(within(leafRow).queryByText('设备-01')).not.toBeInTheDocument()
+    expect(within(leafRow).queryByText('real-time')).not.toBeInTheDocument()
     expect(screen.getByLabelText('结果 1')).toBeInTheDocument()
+  })
+
+  it('真实候选树（buildPickCaseView）：用例卡内设备/API 层显示设备名（叶行的设备名落点）', () => {
+    render(
+      <PickCaseOrgList
+        branches={buildPickCaseView(CANDIDATE_TREE)}
+        selectedIds={new Set()}
+        onToggleLeaf={vi.fn()}
+        onToggleBranch={vi.fn()}
+        org='group'
+        subView='flat'
+        onOrgChange={vi.fn()}
+        onSubViewChange={vi.fn()}
+        expandSignal={{ all: true, tick: 1 }}
+      />
+    )
+    // 设备名落在设备/API 层分支行（pick-tree.tsx 的行 data-testid = pick-branch-<key>）
+    const deviceRow = screen.getByTestId('pick-branch-pcv-device:c1:device:1')
+    expect(within(deviceRow).getByText('设备-01')).toBeInTheDocument()
+    // 其下任务层分支行可见（叶明细按需分页，未单击展开不挂载）
+    expect(screen.getByTestId('pick-branch-pcv-device:c1:device:1-task:1')).toBeInTheDocument()
   })
 
   it('勾选用例卡触发 onToggleBranch（R6 用例级 = 其下全部结果）', () => {
