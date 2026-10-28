@@ -133,7 +133,8 @@ export function useTestLaunch() {
         const { id } = await createTask(input)
         await startTask(id)
         useExecutionStore.getState().setTask(id, name, opts.deviceTypes)
-        navigateWithSearch(navigate, { step: 3 })
+        // 负责人 2026-10-28：启动成功跳「执行测试」步（step=2）看实时进度/日志，不再直接跳到结果步
+        navigateWithSearch(navigate, { step: 2 })
       } catch (error) {
         toast.error(`创建或启动测试任务失败：${error instanceof Error ? error.message : String(error)}`)
       }

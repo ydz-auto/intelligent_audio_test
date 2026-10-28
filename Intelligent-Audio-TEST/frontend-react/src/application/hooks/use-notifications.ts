@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import {
   resolveNotificationNames,
@@ -72,6 +73,8 @@ export function useNotifications() {
         const seq = eventSeqRef.current
         const item: AppNotification = { ...raw, id: `${seq}:${raw.id}` }
         setNotice((prev) => [item, ...prev].slice(0, MAX_NOTICE_ITEMS))
+        // 负责人 2026-10-28：新通知自动弹 toast（不必再点铃铛才看到）
+        toast(item.title || '新通知', { description: item.content })
         // 名称解析不阻塞行渲染：先以 id 占位，解析完成局部更新；
         // 无 task:read / report:read 时按权限跳过对应快照请求（INT-1289）
         void resolveNotificationNames(item, {

@@ -9,7 +9,8 @@
  * INT-1241：任务类型概念已移除——API 资源区按真实 apis 数据无条件渲染（不再按任务类型推导显隐）。
  */
 import { ChevronRight, Pause, Play, RefreshCw, RotateCcw, Square } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useContainerComposition } from '@/application/tasks/use-container-composition'
@@ -128,6 +129,22 @@ export function TaskDetailContent({
   }
 
   const detail = detailQuery.data
+  // 负责人 2026-10-28：任务执行失败时弹通知说明原因（不再静默/直接跳结果步）
+  const failedNotifiedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!detail || detail.execution_status !== 'failed') return
+    const key = `${taskId}:failed`
+    if (failedNotifiedRef.current === key) return
+    failedNotifiedRef.current = key
+    const firstFail = (detail.cases ?? []).find(
+      (c) => c.execution_status === 'failed' && c.error_message
+    )
+    toast.error('测试任务执行失败', {
+      description:
+        firstFail?.error_message ?? `失败用例 ${detail.failed_cases ?? 0} 个，详见关联用例`,
+      duration: 10000,
+    })
+  }, [detail, taskId])
   if (detailQuery.isPending) {
     // 首次加载骨架屏（路由页恒渲染本组件，loading 内聚；避免观察者卸载/重挂载 refetch 循环）
     return (
