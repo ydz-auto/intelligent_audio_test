@@ -20,7 +20,6 @@ import { useMemo } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { ReportMetricConfig, ReportResourceHeader } from '@/domain/models/report'
 import type {
   LeafMetricColumn,
@@ -226,40 +225,44 @@ export function ResultComparisonTable({
 
   return (
     <div className={cn('space-y-1.5', className)}>
-      <div className='flex flex-wrap items-center justify-between gap-2'>
-        <div className='flex flex-wrap items-center gap-2'>
-          <p className='text-sm font-semibold'>结果对比</p>
-          {view === 'resource' && resourceKey && (
-            <span className='text-muted-foreground text-xs'>{resourceLabel(resourceKey, headers)}</span>
-          )}
-          {view === 'resultType' && (
-            <Badge variant='outline' className='font-mono text-[10px]'>
-              {resultTypeText(resultType ?? DEFAULT_RESULT_TYPE)}
-            </Badge>
-          )}
-          {!noRoundSelected && resourceColumns.length > 12 && (
-            <span className='text-warning text-[11px]'>列较多（{resourceColumns.length}），可在显示设置中收窄资源</span>
-          )}
-        </div>
-
-        {/* 轮次轴 = Tab（§3.3.7 INT-1774）：一个轮次一个 Tab；可用轮次 ≤ 1 → 整条不渲染 */}
-        {roundTabs.length > 0 && (
-          <Tabs
-            value={activeRoundTab}
-            onValueChange={onActiveRoundTabChange}
-            aria-label='轮次切换'
-            className='max-w-full'
-          >
-            <TabsList className='h-7 gap-0.5 overflow-x-auto p-0.5'>
-              {roundTabs.map((tab) => (
-                <TabsTrigger key={tab.key} value={tab.label} className='px-2 text-xs'>
-                  {tab.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+      <div className='flex flex-wrap items-center gap-2'>
+        <p className='text-sm font-semibold'>结果对比</p>
+        {view === 'resource' && resourceKey && (
+          <span className='text-muted-foreground text-xs'>{resourceLabel(resourceKey, headers)}</span>
+        )}
+        {view === 'resultType' && (
+          <Badge variant='outline' className='font-mono text-[10px]'>
+            {resultTypeText(resultType ?? DEFAULT_RESULT_TYPE)}
+          </Badge>
+        )}
+        {!noRoundSelected && resourceColumns.length > 12 && (
+          <span className='text-warning text-[11px]'>列较多（{resourceColumns.length}），可在显示设置中收窄资源</span>
         )}
       </div>
+
+      {/* 轮次轴 = Tab（§3.3.7 INT-1774）：与「评分指标」口径一致——纯按钮组、标题下方左对齐；
+          一个轮次一个 Tab；可用轮次 ≤ 1 → 整条不渲染 */}
+      {roundTabs.length > 0 && (
+        <div className='flex flex-wrap gap-1' role='tablist' aria-label='轮次切换'>
+          {roundTabs.map((tab) => (
+            <button
+              key={tab.key}
+              type='button'
+              role='tab'
+              aria-selected={activeRoundTab === tab.label}
+              className={cn(
+                'rounded-md px-2.5 py-1 text-xs transition-colors',
+                activeRoundTab === tab.label
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted'
+              )}
+              onClick={() => onActiveRoundTabChange(tab.label)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {noRoundSelected && (
         <div className='text-muted-foreground flex flex-wrap items-center gap-2 text-xs'>

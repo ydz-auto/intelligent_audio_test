@@ -25,8 +25,8 @@ export function ReportReadingNav({
   onNavigate,
 }: ReportReadingNavProps) {
   return (
-    <nav aria-label='本页目录' className='hidden lg:block'>
-      <div className='sticky top-20'>
+    <nav aria-label='本页目录' className='hidden lg:block sticky top-20'>
+      <div>
         <div className='bg-muted/20 h-px overflow-hidden rounded-full'>
           <div
             className='bg-primary/40 h-full transition-all duration-150'
