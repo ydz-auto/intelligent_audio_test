@@ -34,6 +34,7 @@
 """
 
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -167,6 +168,10 @@ class Storage:
             key = parts[1] if len(parts) > 1 else ''
             return 'local', category, key
         # 无前缀的历史数据：默认 OSS，category 从 key 首段推断
+        # Windows 绝对路径（盘符:/...）：整路径作 key、类目固定 audios
+        # （模拟生产库热备恢复后 file_path 存的是绝对路径；OSS 对象键为 {prefix}/audios/{绝对路径}）
+        if re.match(r'^[A-Za-z]:[/\\]', path):
+            return 'oss', 'audios', path
         parts = path.split('/', 1)
         category = parts[0] if parts else ''
         key = parts[1] if len(parts) > 1 else ''

@@ -453,17 +453,22 @@ def get_audio_configs_for_offset(audio_timelines, global_offset, playback_device
             continue  
         
         device_obj = device_info.get('device_obj')
-        log_and_emit('DEBUG', 'audio_engine', f"[get_audio_configs_for_offset] device_id={playback_dev_id}, device_obj={device_obj}, current_spl_mapping_id={device_obj.current_spl_mapping_id if device_obj else 'N/A'}", category='audio')
-        
-        if device_obj and device_obj.current_spl_mapping_id:
+        # 兼容：任务路径传 ORM 对象，preview 路径传 dict（负责人 2026-10-28 修）
+        spl_mapping_id = (
+            device_obj.get('current_spl_mapping_id') if isinstance(device_obj, dict)
+            else getattr(device_obj, 'current_spl_mapping_id', None)
+        )
+        log_and_emit('DEBUG', 'audio_engine', f"[get_audio_configs_for_offset] device_id={playback_dev_id}, device_obj={device_obj}, current_spl_mapping_id={spl_mapping_id if device_obj else 'N/A'}", category='audio')
+
+        if device_obj and spl_mapping_id:
             try:
                 from audio_service.infrastructure.audio.spl_service import spl_service
                 target_spl = audio_config.get('spl', 65.0)
-                gain = spl_service.spl_to_gain(device_obj.current_spl_mapping_id, target_spl, app=app)
+                gain = spl_service.spl_to_gain(spl_mapping_id, target_spl, app=app)
                 gain_db = 20 * np.log10(gain) if gain > 0 else -999
-                log_and_emit('DEBUG', 'audio_engine', f"[get_audio_configs_for_offset] mapping_id={device_obj.current_spl_mapping_id}, target_spl={target_spl}, SPL gain={gain:.4f} ({gain_db:.2f} dB)", category='audio')
+                log_and_emit('DEBUG', 'audio_engine', f"[get_audio_configs_for_offset] mapping_id={spl_mapping_id}, target_spl={target_spl}, SPL gain={gain:.4f} ({gain_db:.2f} dB)", category='audio')
             except Exception as e:
-                log_and_emit('ERROR', 'audio_engine', f"[get_audio_configs_for_offset] SPL mapping failed: mapping_id={device_obj.current_spl_mapping_id}, error={e}", category='audio')
+                log_and_emit('ERROR', 'audio_engine', f"[get_audio_configs_for_offset] SPL mapping failed: mapping_id={spl_mapping_id}, error={e}", category='audio')
                 gain = device_info.get('gain', 1.0)
         else:
             gain = device_info.get('gain', 1.0)
