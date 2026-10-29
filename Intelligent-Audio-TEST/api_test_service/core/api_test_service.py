@@ -74,7 +74,7 @@ class APITestService:
         self._engine = _APIEngineAdapter()
         self._executor = None
         self._executor_lock = threading.Lock()
-        self._running_tasks = set()
+        self._running_tasks = set()  # 执行中用例占位：{(task_id, tc_rel_id)}
         self._running_tasks_lock = threading.Lock()
         # 会话亲和注册表（双副本同会话粘同实例，§5.2）：TTL 与执行器同源配置
         from shared.utils.config_manager import config_manager
@@ -120,18 +120,32 @@ class APITestService:
         if forwarded is not None:
             return forwarded
 
-        # 标记任务运行中
-        with self._running_tasks_lock:
-            if task_id in self._running_tasks:
-                return {'success': False, 'task_id': task_id, 'message': '任务已在运行中'}
-            self._running_tasks.add(task_id)
-
         executor = self.api_executor
 
-        # 引用计数：全部用例完成后才将任务标记为 idle，
-        # 避免首个用例完成即置 idle 导致状态误报与任务重复启动
-        pending_count = [0]
-        pending_lock = threading.Lock()
+        # 查询待执行的 TaskCase ID（如果调用方未提供 case_ids，
+        # 则通过 gRPC 从 task_service 按 pending/queued 状态读取）
+        target_case_ids = list(case_ids) if case_ids else []
+        if not target_case_ids:
+            try:
+                tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
+                target_case_ids = [
+                    tc.get('id') for tc in tcs
+                    if tc.get('execution_status') in [ExecutionStatus.PENDING, ExecutionStatus.QUEUED]
+                ]
+            except Exception as e:
+                self._log(task_id, 'WARNING', f"查询待执行 TaskCase 失败: {e}")
+
+        if not target_case_ids:
+            return {'success': True, 'task_id': task_id, 'message': '无可执行的用例'}
+
+        # 互斥粒度 = (task_id, tc_rel_id)：调度侧对同一任务按 (用例, API)
+        # 逐条派发 StartAPITest，task 级互斥会把第 2 条起的派发误判为重复启动
+        accepted_case_ids = self._claim_cases(task_id, target_case_ids)
+        if not accepted_case_ids:
+            return {'success': False, 'task_id': task_id, 'message': '用例已在运行中'}
+        if len(accepted_case_ids) < len(target_case_ids):
+            self._log(task_id, 'WARNING',
+                      f"跳过已在执行中的用例 {len(target_case_ids) - len(accepted_case_ids)} 条")
 
         def _run_case(tc_rel_id):
             try:
@@ -143,35 +157,13 @@ class APITestService:
                 import traceback
                 self._log(task_id, 'ERROR', f"API 用例 {tc_rel_id} 执行异常: {str(e)}\n{traceback.format_exc()}")
             finally:
-                with pending_lock:
-                    pending_count[0] -= 1
-                    is_last = pending_count[0] <= 0
-                if is_last:
-                    self._mark_task_idle(task_id)
+                self._release_case(task_id, tc_rel_id)
 
         try:
-            # 查询待执行的 TaskCase ID（如果调用方未提供 case_ids，
-            # 则通过 gRPC 从 task_service 按 pending/queued 状态读取）
-            target_case_ids = list(case_ids) if case_ids else []
-            if not target_case_ids:
-                try:
-                    tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
-                    target_case_ids = [
-                        tc.get('id') for tc in tcs
-                        if tc.get('execution_status') in [ExecutionStatus.PENDING, ExecutionStatus.QUEUED]
-                    ]
-                except Exception as e:
-                    self._log(task_id, 'WARNING', f"查询待执行 TaskCase 失败: {e}")
-
-            if not target_case_ids:
-                self._mark_task_idle(task_id)
-                return {'success': True, 'task_id': task_id, 'message': '无可执行的用例'}
-
-            # 提交到固定线程池，全部用例完成后在 _run_case 的 finally 中自动清理。
+            # 提交到固定线程池，每用例完成后在 _run_case 的 finally 中释放占位。
             # 每用例独立 copy_context：把 servicer 绑定的 worker_instance_id
             # 传播进池线程（UC-1001 事件 payload 贯通），各 Context 互不共享写。
-            pending_count[0] = len(target_case_ids)
-            for tc_rel_id in target_case_ids:
+            for tc_rel_id in accepted_case_ids:
                 case_ctx = contextvars.copy_context()
                 self._task_pool.submit(case_ctx.run, _run_case, tc_rel_id)
 
@@ -179,11 +171,34 @@ class APITestService:
                 'success': True,
                 'task_id': task_id,
                 'message': 'API test task started',
-                'case_count': len(target_case_ids),
+                'case_count': len(accepted_case_ids),
             }
         except Exception as e:
-            self._mark_task_idle(task_id)
+            for tc_rel_id in accepted_case_ids:
+                self._release_case(task_id, tc_rel_id)
             return {'success': False, 'task_id': task_id, 'message': f'启动失败: {str(e)}'}
+
+    def _claim_cases(self, task_id, case_ids):
+        """占位执行中的用例（互斥粒度 task_id × tc_rel_id）
+
+        Returns:
+            成功占位的 tc_rel_id 列表；已被占位的用例跳过
+        """
+        task_key = str(task_id)
+        accepted = []
+        with self._running_tasks_lock:
+            for tc_rel_id in case_ids:
+                key = (task_key, tc_rel_id)
+                if key in self._running_tasks:
+                    continue
+                self._running_tasks.add(key)
+                accepted.append(tc_rel_id)
+        return accepted
+
+    def _release_case(self, task_id, tc_rel_id):
+        """释放单条用例的执行占位"""
+        with self._running_tasks_lock:
+            self._running_tasks.discard((str(task_id), tc_rel_id))
 
     def _affinity_forward_start(self, task_id, case_ids, api_ids):
         """启动请求的会话亲和门禁（§5.2 亲和路由）
@@ -210,8 +225,8 @@ class APITestService:
 
     def stop_task(self, task_id):
         """停止 API 测试任务"""
-        with self._running_tasks_lock:
-            self._running_tasks.discard(task_id)
+        # 释放该任务下全部用例占位（跨实例 stop 需清理所有 key）
+        self._mark_task_idle(task_id)
 
         # 设置 stop_event，让执行器内部 _handle_control 检测到停止信号
         stop_event = self._engine.stop_flags.get(task_id)
@@ -224,8 +239,9 @@ class APITestService:
 
     def get_task_status(self, task_id):
         """获取任务状态"""
+        task_key = str(task_id)
         with self._running_tasks_lock:
-            running = task_id in self._running_tasks
+            running = any(key[0] == task_key for key in self._running_tasks)
 
         # round_progress_cache 的 key 是 tc_rel_id（TaskCase.id），与写入侧 update_case_round_progress 一致。
         # 任务级查询无法仅凭 task_id 精确匹配：单用例任务时命中该条目，多用例任务返回 None（避免误报）。
@@ -244,8 +260,12 @@ class APITestService:
         }
 
     def _mark_task_idle(self, task_id):
+        """释放该任务下全部执行中的用例占位"""
+        task_key = str(task_id)
         with self._running_tasks_lock:
-            self._running_tasks.discard(task_id)
+            stale = [key for key in self._running_tasks if key[0] == task_key]
+            for key in stale:
+                self._running_tasks.discard(key)
 
     def _log(self, task_id, level, content):
         """简易日志"""

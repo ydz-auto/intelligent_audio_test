@@ -480,9 +480,10 @@ class APITestRepository(APITestRepositoryABC):
             running_tasks = []
 
             # 从 APITestService 单例获取正在运行的任务 ID
+            # （_running_tasks 为 (task_id, tc_rel_id) 占位集合，需去重成任务 ID）
             try:
                 from api_test_service.core.api_test_service import api_test_service
-                running_task_ids = list(api_test_service._running_tasks)
+                running_task_ids = sorted({key[0] for key in api_test_service._running_tasks})
             except Exception:
                 running_task_ids = []
 

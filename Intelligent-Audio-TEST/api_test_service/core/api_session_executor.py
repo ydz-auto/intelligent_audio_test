@@ -131,7 +131,8 @@ class APISessionExecutor:
                     round_results, session, api_config=api_config, task_id=task_id)
                 result_id = self._executor._result_processor.create_multi_round_test_result(
                     task_id=task_id, test_case_id=test_case_id, api_config_id=api_id,
-                    algorithm_type=algorithm_type, aggregated=aggregated, success=all_rounds_success
+                    algorithm_type=algorithm_type, aggregated=aggregated, success=all_rounds_success,
+                    tc_rel_id=tc_rel_id
                 )
 
                 if result_id and all_rounds_success:
@@ -145,7 +146,7 @@ class APISessionExecutor:
                                                algorithm_type, aggregated, api_id)
                     except Exception as eval_err:
                         self._finalize_evaluation_submit_failure(
-                            task_id, test_case_id, api_id, eval_err)
+                            task_id, test_case_id, api_id, eval_err, tc_rel_id)
 
             except Exception as e:
                 import traceback
@@ -163,7 +164,8 @@ class APISessionExecutor:
 
         return True
 
-    def _finalize_evaluation_submit_failure(self, task_id, test_case_id, api_id, eval_err):
+    def _finalize_evaluation_submit_failure(self, task_id, test_case_id, api_id, eval_err,
+                                            tc_rel_id=None):
         """评估提交失败收口（INT-123）：不动 execution_status，仅补评估终态
 
         execution_status 已由 create_multi_round_test_result 写为 COMPLETED，
@@ -181,6 +183,8 @@ class APISessionExecutor:
                 case_id=str(test_case_id),
                 evaluation_status=EvaluationStatus.FAILED,
                 error_message=error_msg,
+                # INT-604：多路由下按路由行精确命中
+                tc_rel_id=tc_rel_id,
             )
         except Exception as status_err:
             self._log(level='WARNING',
@@ -308,6 +312,8 @@ class APISessionExecutor:
                 case_id=str(test_case_id),
                 execution_status=ExecutionStatus.RUNNING,
                 started_at=now_cst().isoformat(),
+                # INT-604：多路由下按路由行精确命中
+                tc_rel_id=tc_rel_id,
             )
             self._executor.execution_engine._emit_progress(task_id, force=True)
         except Exception as e:

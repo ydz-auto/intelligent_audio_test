@@ -198,11 +198,15 @@ class APIResultProcessor:
         return True
 
     def create_multi_round_test_result(self, task_id, test_case_id, api_config_id,
-                                       algorithm_type, aggregated, success):
+                                       algorithm_type, aggregated, success,
+                                       tc_rel_id=None):
         """为多轮会话创建单条测试结果记录，并回写 TaskCase 终态、通知执行引擎
 
         状态回写由 result_processor 统一负责（RealtimeSessionExecutor._refresh_progress
         契约）；评估提交仍由各执行器按「result_id 且全轮成功」条件发起。
+
+        INT-604：tc_rel_id 传入时按路由行（TaskCase.id）精确回写，避免多
+        路由任务（同用例 × 多 API）把终态写到兄弟行。
         """
         total_latency = aggregated.get('total_latency', 0)
         response_data = {
@@ -267,10 +271,11 @@ class APIResultProcessor:
         self._finalize_task_case_status(
             task_id=task_id, test_case_id=test_case_id,
             success=bool(result_id) and bool(success),
-            error_msg=error_msg, result_id=result_id)
+            error_msg=error_msg, result_id=result_id, tc_rel_id=tc_rel_id)
         return result_id
 
-    def _finalize_task_case_status(self, task_id, test_case_id, success, error_msg, result_id):
+    def _finalize_task_case_status(self, task_id, test_case_id, success, error_msg,
+                                   result_id, tc_rel_id=None):
         """多轮会话终态回写：查 TaskCase → update_task_case_status → 引擎通知 → CASE_EVENTS
 
         stopped 保护：任务停止后不回写状态、不广播事件，避免覆盖停止态。
@@ -278,13 +283,16 @@ class APIResultProcessor:
         tc_rel = None
         try:
             tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
-            tc_rel = next((tc for tc in tcs if str(tc.get('test_case_id')) == str(test_case_id)), None)
+            if tc_rel_id:
+                tc_rel = next((tc for tc in tcs if tc.get('id') == tc_rel_id), None)
+            if tc_rel is None:
+                tc_rel = next((tc for tc in tcs if str(tc.get('test_case_id')) == str(test_case_id)), None)
         except Exception as e:
             self._log(level='WARNING', category='database',
                       content=f"查询 TaskCase 失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
 
-        tc_rel_id = tc_rel.get('id') if tc_rel else None
+        tc_rel_id = tc_rel.get('id') if tc_rel else tc_rel_id
         if tc_rel and tc_rel.get('execution_status') in [ExecutionStatus.STOPPED]:
             self._log(level='INFO', category='database',
                       content=f"任务已停止，跳过 TaskCase 状态回写: task_id={task_id}, test_case_id={test_case_id}",

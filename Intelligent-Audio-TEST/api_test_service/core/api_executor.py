@@ -207,7 +207,7 @@ class APIExecutor(BaseExecutor):
                     self._handle_validation_failure(task_id, tc_rel_id, data)
                     return False
 
-                return self._execute_single_or_multi(task_id, tc_rel_id, data)
+                return self._execute_per_api_lane(task_id, tc_rel_id, data)
 
         except Exception as e:
             import traceback
@@ -277,6 +277,30 @@ class APIExecutor(BaseExecutor):
             self._log(level='WARNING', content=f"查询任务统计失败: {str(e)}", task_id=task_id)
         finally:
             self.execution_engine._emit_progress(task_id, force=True)
+
+    def _execute_per_api_lane(self, task_id, tc_rel_id, data):
+        """按每个 API 自身的 streaming 归道执行（支持任务内混选流式/非流式）
+
+        单道任务（全部流式或全部非流式）保持原有整条分发不变；混选时把
+        api_configs 拆成单 API 子集，分别交给流式/非流式执行道，互不影响。
+        这样「任务统一、用例统一」的模型下，具体执行道由每个被测 API 决定。
+        """
+        configs = data.get('api_configs') or []
+        flags = {bool(getattr(c, 'streaming', False)) for c in configs}
+        if len(flags) <= 1:
+            return self._execute_single_or_multi(task_id, tc_rel_id, data)
+        self._log(level='INFO',
+                  content=(f"用例 {data.get('case_name')} 混选流式/非流式 API"
+                           f"（共 {len(configs)} 个），按各自 streaming 逐 API 归道执行"),
+                  task_id=task_id, test_case_id=data.get('test_case_id'))
+        ok = True
+        for cfg in configs:
+            per = dict(data)
+            per['api_configs'] = [cfg]
+            per['streaming'] = bool(getattr(cfg, 'streaming', False))
+            per['protocol'] = getattr(cfg, 'protocol', None) or data.get('protocol')
+            ok = self._execute_single_or_multi(task_id, tc_rel_id, per) and ok
+        return ok
 
     def _execute_single_or_multi(self, task_id, tc_rel_id, data):
         """按执行道分发执行器（INT-1799：道只由 streaming 决定）
@@ -408,6 +432,8 @@ class APIExecutor(BaseExecutor):
                             case_id=str(tc_rel.get('test_case_id', test_case_id)),
                             execution_status=ExecutionStatus.FAILED,
                             completed_at=now_cst().isoformat(),
+                            # INT-604：多路由下按路由行精确命中
+                            tc_rel_id=tc_rel_id,
                         )
                     eval_status = tc_rel.get('evaluation_status') if tc_rel else None
                     if eval_status and eval_status in [EvaluationStatus.QUEUED, EvaluationStatus.PENDING]:
@@ -417,6 +443,8 @@ class APIExecutor(BaseExecutor):
                             status=TaskCaseStatus.FAILED,
                             evaluation_status=EvaluationStatus.COMPLETED,
                             completed_at=now_cst().isoformat(),
+                            # INT-604：多路由下按路由行精确命中
+                            tc_rel_id=tc_rel_id,
                         )
                 except Exception as ue:
                     self._log(level='WARNING', content=f"更新 TaskCase 失败状态失败: {ue}", task_id=task_id)
@@ -684,9 +712,6 @@ class APIExecutor(BaseExecutor):
         self._thread_ctx.current_test_case_id = case.get('id')
         self._log('INFO', f"开始执行API用例: {case.get('name')}", task_id)
 
-        api_configs = self._get_api_configs(task_id)
-        processed_api_configs = self._process_api_configs(api_configs)
-
         tc_rel_id_local = tc_rel.get('id')
         test_case_id = case.get('id')
         case_name = case.get('name')
@@ -694,6 +719,16 @@ class APIExecutor(BaseExecutor):
         # device_type 仍是调度侧亲和域令牌（physical / http_api / websocket_api），
         # 这里只用于音频渲染出口与失败文案兜底。
         case_device_type = device_type or tc_rel.get('device_type') or DeviceType.HTTP_API.value
+        case_device_id = str(device_id or tc_rel.get('device_id') or '')
+
+        # 调度侧按 (用例, API) 逐条派发（TaskCase.device_id = apis.id），
+        # 本次执行只取该行绑定的 API；行未绑定时回退任务全量关联 API
+        api_configs = self._get_api_configs(
+            task_id,
+            api_id=case_device_id if case_device_type in (
+                DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value) else None)
+        processed_api_configs = self._process_api_configs(api_configs)
+
         case_config = case.get('config', {}) or {}
         algorithm_type = self._get_algorithm_type(case, case_config)
 
@@ -703,16 +738,10 @@ class APIExecutor(BaseExecutor):
             self._log('ERROR', f"API 用例 {case_name} 执行失败: {error_msg}", task_id)
             return False, None
 
-        # INT-1799 单执行单元单道断言：一个任务内所有被测 API 的 streaming 必须
-        # 一致（任务只用一个执行器跑全部 api_configs）。不一致即用例失败并写明
-        # 原因（防历史脏数据绕过建任务校验后静默跑错道）。
+        # 混选（流式 + 非流式）任务允许存在：执行侧逐 API 归道
+        # （见 _execute_per_api_lane），这里只取保守超集供单值字段兜底。
         lane_flags = {bool(getattr(cfg, 'streaming', False)) for cfg in processed_api_configs}
-        if len(lane_flags) > 1:
-            error_msg = "同一任务内 API 流式性不一致（混选流式与非流式），无法确定执行道"
-            self._fail_tc_rel(tc_rel_id_local, error_msg, task_id=task_id)
-            self._log('ERROR', f"API 用例 {case_name} 执行失败: {error_msg}", task_id)
-            return False, None
-        case_streaming = lane_flags.pop()
+        case_streaming = any(lane_flags)
         case_protocol = getattr(processed_api_configs[0], 'protocol', None) or APIProtocol.HTTP.value
 
         audio_data, total_audio_duration, error_msg = self._get_audio_data(
@@ -745,7 +774,7 @@ class APIExecutor(BaseExecutor):
             'streaming': case_streaming,
             'protocol': case_protocol,
             'device_type': case_device_type,
-            'device_id': device_id or tc_rel.get('device_id') or '',
+            'device_id': case_device_id,
             'api_configs': processed_api_configs,
             'audio': audio_data,
             'api_specific_config': api_specific_config,
@@ -753,11 +782,16 @@ class APIExecutor(BaseExecutor):
             'case_algorithm_params': algorithm_params
         }
 
-    def _get_api_configs(self, task_id):
-        """获取任务关联的所有 API 配置
+    def _get_api_configs(self, task_id, api_id=None):
+        """获取本次执行关联的 API 配置
 
         通过 gRPC GetTaskApis 获取 task_id 关联的 api_id 列表，
         再通过本地 DB 查询 API（本服务 PO）配置。
+
+        Args:
+            api_id: 本次执行的 TaskCase 行绑定的 API ID（API 道 device_id）。
+                调度侧按 (用例, API) 逐条派发，取单 API 可避免同任务其它
+                API 被重复执行；为空时回退任务全量关联 API（历史单行任务）。
         """
         # 通过 ACL 仓储获取 TaskAPI 关联
         api_ids = []
@@ -766,6 +800,14 @@ class APIExecutor(BaseExecutor):
         except Exception as e:
             self._log(level='WARNING', content=f"查询 TaskApis 失败: {e}", task_id=task_id)
             return []
+
+        if api_id:
+            try:
+                scoped = int(api_id)
+            except (TypeError, ValueError):
+                scoped = None
+            if scoped is not None and scoped in api_ids:
+                api_ids = [scoped]
 
         if not api_ids:
             return []

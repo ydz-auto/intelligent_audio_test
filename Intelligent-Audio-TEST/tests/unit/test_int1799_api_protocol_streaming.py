@@ -397,13 +397,17 @@ class TestTaskAffinityToken:
                             lambda ids: {int(i): True for i in ids})
         assert mixin.resolve_api_affinity_token([1, 2]) == 'websocket_api'
 
-    def test_mixed_lanes_rejected(self, monkeypatch):
+    def test_mixed_lanes_allowed_as_superset(self, monkeypatch):
+        """混选（流式 + 非流式）允许：任务级令牌取保守超集 websocket_api
+
+        执行侧按每个 API 自身的 streaming 逐条归道
+        （APIExecutor._execute_per_api_lane），不再在建任务阶段拒绝。
+        """
         from task_service.infrastructure.persistence import _task_crud_mixin as mixin
         from task_service.infrastructure.acl import api_acl_repository as acl_mod
         monkeypatch.setattr(acl_mod.api_acl_repository, 'get_api_streaming_flags',
                             lambda ids: {1: False, 2: True})
-        with pytest.raises(mixin.ExecutionAffinityError, match='流式性不一致'):
-            mixin.resolve_api_affinity_token([1, 2])
+        assert mixin.resolve_api_affinity_token([1, 2]) == 'websocket_api'
 
     def test_acl_unavailable_rejected(self, monkeypatch):
         from task_service.infrastructure.persistence import _task_crud_mixin as mixin
@@ -412,3 +416,43 @@ class TestTaskAffinityToken:
                             lambda ids: None)
         with pytest.raises(mixin.ExecutionAffinityError, match='取不到'):
             mixin.resolve_api_affinity_token([1])
+
+
+class TestPerApiLaneDispatch:
+    """混选任务：执行道按每个 API 自身的 streaming 逐条归道"""
+
+    def _executor(self):
+        from api_test_service.core.api_executor import APIExecutor
+        ex = APIExecutor.__new__(APIExecutor)
+        ex.logs = []
+        ex._log = lambda level='INFO', content='', **kw: ex.logs.append(content)
+
+        def _fake(task_id, tc_rel_id, data):
+            ex.calls.append((data['streaming'],
+                             [c.id for c in data['api_configs']]))
+            return True
+
+        ex.calls = []
+        ex._execute_single_or_multi = _fake
+        return ex
+
+    def test_mixed_configs_split_by_streaming(self):
+        ex = self._executor()
+        configs = [SimpleNamespace(id=1, streaming=False, protocol='http'),
+                   SimpleNamespace(id=2, streaming=True, protocol='websocket')]
+        data = {'api_configs': configs, 'streaming': True,
+                'protocol': 'websocket', 'case_name': 'c1'}
+        assert ex._execute_per_api_lane('9', 1, data) is True
+        # 非流式 API 走非流式道，流式 API 走流式道，各自独立成批
+        assert ex.calls == [(False, [1]), (True, [2])]
+        assert any('逐 API 归道执行' in c for c in ex.logs)
+
+    def test_single_lane_passthrough(self):
+        ex = self._executor()
+        configs = [SimpleNamespace(id=1, streaming=False, protocol='http'),
+                   SimpleNamespace(id=3, streaming=False, protocol='websocket')]
+        data = {'api_configs': configs, 'streaming': False,
+                'protocol': 'http', 'case_name': 'c2'}
+        assert ex._execute_per_api_lane('9', 1, data) is True
+        # 单道不拆分：原样整批一次分发
+        assert ex.calls == [(False, [1, 3])]

@@ -227,7 +227,7 @@ class TestStartTaskRoutesByDeviceType:
         assert result['success'] is True
 
         for _ in range(200):
-            if 31 not in api_test_service._running_tasks:
+            if not any(key[0] == '31' for key in api_test_service._running_tasks):
                 break
             import time
             time.sleep(0.02)
@@ -276,7 +276,7 @@ class TestStartTaskRoutesByDeviceType:
         monkeypatch.setattr(executor, '_log', lambda *a, **k: None)
         monkeypatch.setattr(executor, '_handle_control', lambda task_id: None)
         monkeypatch.setattr(executor, '_get_api_configs',
-                            lambda task_id: [_FakeApiConfig()])
+                            lambda task_id, api_id=None: [_FakeApiConfig()])
         monkeypatch.setattr(executor, '_get_audio_data',
                             lambda *a, **k: (b'', 0, ''))
 

@@ -61,8 +61,9 @@ class TaskCrudService:
                 ExecutionAffinityError, resolve_api_affinity_token,
             )
 
-            # INT-1799 单执行单元单道：任务内所有被测 API 的 streaming 必须一致
-            # （一个执行器跑全部 api_configs）。混选 → 400，不落猜测值。
+            # INT-1799 亲和域令牌：由任务关联 API 的 streaming 派生（混选取
+            # websocket_api 保守超集，具体执行道由执行侧按每条 TaskCase 的
+            # 绑定 API 决定）。ACL 取不到 → 400，不落猜测值。
             api_ids = data.get('api_ids') or []
             if api_ids:
                 try:

@@ -147,7 +147,7 @@ class TestApiCaseConfigFallback:
             vendor = None
 
         monkeypatch.setattr(executor, '_get_api_configs',
-                            lambda task_id: [_FakeApiConfig()])
+                            lambda task_id, api_id=None: [_FakeApiConfig()])
         monkeypatch.setattr(executor, '_get_audio_data',
                             lambda *a, **k: (b'', 0, ''))
 

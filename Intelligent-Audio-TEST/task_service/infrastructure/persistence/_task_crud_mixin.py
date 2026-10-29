@@ -58,9 +58,10 @@ def resolve_api_affinity_token(api_ids) -> str:
     if flags is None:
         raise ExecutionAffinityError(
             '无法确定执行亲和域：取不到被测 API 的 streaming 配置')
-    if len(set(flags.values())) > 1:
-        raise ExecutionAffinityError(
-            '同一任务内 API 流式性不一致（混选流式与非流式），无法确定执行亲和域')
+    # 混选（流式 + 非流式）允许存在于同一任务：执行侧按「每个 API 自身的
+    # streaming」逐条归道（流式走 RealtimeSessionExecutor、非流式走
+    # APISessionExecutor），任务级令牌只作保守超集（任一流式 → websocket_api），
+    # 供音频渲染出口/失败文案兜底，不再据此拒绝建任务。
     return (DeviceType.WEBSOCKET_API.value if any(flags.values())
             else DeviceType.HTTP_API.value)
 
