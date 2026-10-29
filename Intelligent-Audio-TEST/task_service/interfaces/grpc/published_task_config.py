@@ -82,7 +82,6 @@ class PublishedTaskConfigServiceServicer(task_grpc.PublishedTaskConfigServiceSer
                 per_page=request.per_page or 10,
                 status=request.status or '',
                 keyword=request.keyword or '',
-                task_type=request.type or '',
                 algorithm_type=request.algorithm_type or '',
                 benchmark=request.benchmark or '',
                 start_date=request.start_date or '',

@@ -56,11 +56,10 @@ class _TaskDataProxy:
                           reraise=True)
 
     def get_testcase_stats(self, algorithm_type=None, group_id=None, group_by=None,
-                           test_type=None, keyword=None, dimension_id=None,
+                           keyword=None, dimension_id=None,
                            favorite=None, deleted=None, reraise=False):
         """通过 gRPC 聚合统计 TestCase（group_by 可选 algorithm_type/group_id）
 
-        test_type 为执行口径（api/e2e，task_service 侧按配置形态派生）；
         keyword/dimension_id 供分组列表筛选（INT-146）。
         group_id 为 TestCaseGroup ID（UUID 字符串），必须字符串透传——
         int 强转会击穿删除守卫（INT-468）。
@@ -75,7 +74,6 @@ class _TaskDataProxy:
                 algorithm_type=algorithm_type or '',
                 group_id=str(group_id) if group_id else '',
                 group_by=group_by or '',
-                test_type=test_type or '',
                 keyword=keyword or '',
                 dimension_id=int(dimension_id) if dimension_id else 0,
                 favorite=bool(favorite) if favorite is not None else False,

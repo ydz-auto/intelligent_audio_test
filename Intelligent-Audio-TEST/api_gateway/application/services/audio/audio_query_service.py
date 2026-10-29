@@ -12,7 +12,6 @@ from api_gateway.schemas.audio import (
     TagListData as AudioTagListData,
     AudioListQuery,
     AudioIdQuery,
-    AudioStreamQuery,
     AudioStreamByPathQuery,
     AudioDownloadQuery,
     PlaybackHistoryItem,
@@ -269,9 +268,8 @@ class AudioQueryService:
     # 音频流式播放 (支持 Range 请求)
     @staticmethod
     def stream(audio_id):
-        
-        query = _parse_query_params(AudioStreamQuery)
-        result = _audio_acl.stream_audio(audio_id, {'task_type': query.task_type})
+
+        result = _audio_acl.stream_audio(audio_id, {})
         if result.get('success'):
             data = result.get('data') or {}
             url = data.get('url')

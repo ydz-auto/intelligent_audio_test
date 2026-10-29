@@ -609,7 +609,6 @@ def _patch_compare_helpers():
     import report_service.application.services.report_helpers as report_helpers_mod
 
     return [
-        patch.object(ReportCompareHelpers, '_get_task_type', return_value='device'),
         patch.object(ReportCompareHelpers, '_calculate_task_weighted_values', return_value={}),
         patch.object(ReportCompareHelpers, '_collect_resources_batch',
                      return_value=({'DevA'}, [{'id': 1, 'name': 'DevA'}], [])),

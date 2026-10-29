@@ -552,7 +552,7 @@ class TestCompareSummaryCarriesCaseCounts:
             ReportCompareDataMixin,
         )
 
-        data_dict = {'report_task_type': 'api', 'task_weighted_values': {},
+        data_dict = {'task_weighted_values': {},
                      'total_cases': 3, 'completed_cases': 2, 'failed_cases': 1,
                      'success_rate': 66.67, 'case_categories_list': [],
                      'case_tags_list': [], 'device_list': [], 'api_list': [],

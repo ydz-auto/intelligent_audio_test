@@ -73,8 +73,6 @@ class TaskQueryService:
         stats = bool(query.stats)
         # INT-301 F1：执行状态过滤（复用派生口径，徽章与筛选一致）
         execution_status = query.execution_status
-        # INT-273：派生任务类型过滤（api/e2e/mixed）
-        task_type = query.task_type
         # INT-466：可见性筛选（shared/private；空=全部）
         visibility = query.visibility
 
@@ -94,7 +92,6 @@ class TaskQueryService:
             execution_status=execution_status,
             merge_type=merge_type,
             stats=stats,
-            task_type=task_type,
             visibility=visibility,
         )
 
@@ -446,7 +443,6 @@ class TaskQueryService:
         from api_gateway.infrastructure.grpc_proxies import task_data_service
         try:
             status_grouped = task_data_service.get_task_stats(group_by='status')
-            type_grouped = task_data_service.get_task_stats(group_by='type')
             trend_grouped = task_data_service.get_task_stats(
                 group_by='trend', granularity=granularity)
             deleted_total = task_data_service.get_task_stats(deleted=True)
@@ -465,7 +461,6 @@ class TaskQueryService:
             total=sum(status_counts.values()),
             deleted_total=int(deleted_total.get('total', 0)),
             status_counts=status_counts,
-            type_counts=_counts(type_grouped),
             trend=[
                 {'key': str(item.get('key', '')), 'count': int(item.get('count', 0))}
                 for item in (trend_grouped.get('items') or [])

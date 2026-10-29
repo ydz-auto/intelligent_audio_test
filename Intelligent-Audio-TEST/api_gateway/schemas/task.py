@@ -429,8 +429,6 @@ class TaskListQuery(APIModel):
     # INT-301 F1：执行状态过滤（pending/queued/running/paused/completed/failed/
     # stopped/merged；复用派生表达式，徽章展示与筛选命中同口径）
     execution_status: Optional[str] = Field(None)
-    # INT-273：按派生任务类型过滤（api/e2e/mixed；口径与 /tasks/stats type_counts 一致）
-    task_type: Optional[str] = Field(None)
     # INT-466：可见性筛选（shared/private；空=全部，走服务端行级过滤）
     visibility: Optional[str] = Field(None)
 
@@ -446,7 +444,6 @@ class TaskDomainStatsData(APIModel):
     total: int = Field(..., description='未删除任务总数')
     deleted_total: int = Field(..., description='回收站（软删除）任务总数')
     status_counts: Dict[str, int] = Field(default_factory=dict, description='未删除任务按状态计数')
-    type_counts: Dict[str, int] = Field(default_factory=dict, description='类型派生分布 api/e2e/mixed')
     trend: List[Dict[str, Any]] = Field(default_factory=list, description='完成任务按 created_at 分桶 [{key, count}]')
     granularity: str = Field('day', description='trend 分桶粒度 day/week/month/year')
 

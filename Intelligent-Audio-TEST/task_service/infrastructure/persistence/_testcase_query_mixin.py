@@ -6,7 +6,6 @@
 from typing import List
 
 from shared.models.database import get_db_session
-from shared.models.common_enums import TestType
 from shared.infrastructure.visibility_filter import visible_condition
 from task_service.infrastructure.visibility_context import visibility_identity
 from task_service.infrastructure.persistence.models import Tag, TestCase, TestCaseGroup
@@ -34,7 +33,6 @@ class TestCaseQueryMixin:
         tag: str = None,
         group_id: str = None,
         algorithm_type: str = None,
-        test_type: str = None,
         include_deleted: bool = False,
         dimension_id: int = None,
         favorite: bool = False,
@@ -46,8 +44,6 @@ class TestCaseQueryMixin:
         """分页查询测试用例（带 group/tags 预加载）。
 
         favorite（INT-141）：仅当前用户收藏；only_deleted（INT-141）：仅回收站。
-        test_type（INT-193）：执行口径 api/e2e，按写时物化的 derived_test_type
-        列做 SQL 过滤（INT-1469）。
         lab_ids（INT-539）：按实验室过滤（含通用用例；None/空 = 不过滤）。
         visibility（INT-466）：可见性筛选（shared/private；None 不追加）。
         """
@@ -113,13 +109,6 @@ class TestCaseQueryMixin:
                                  .correlate(TestCase)
                                  .exists())
 
-        # INT-193/INT-1469：test_type 执行口径过滤（api/e2e）。用例本身不存
-        # 类型，口径由 config 形态（+上传双变体名后缀）派生，写时物化到
-        # derived_test_type 列，此处 SQL 等值过滤——不再物化全量候选行到内存
-        # 再 Python 过滤（万级用例下每请求数百毫秒）。
-        if test_type in (TestType.API.value, TestType.E2E.value):
-            query = query.filter(TestCase.derived_test_type == test_type)
-
         return query.paginate(page=page, per_page=per_page, error_out=False)
 
     def query_testcases_by_tag_ids(
@@ -127,7 +116,6 @@ class TestCaseQueryMixin:
         tag_ids: List[str],
         keyword: str = None,
         algorithm_type: str = None,
-        test_type: str = None,
         include_deleted: bool = False,
         dimension_id: int = None,
         favorite: bool = False,
@@ -140,8 +128,6 @@ class TestCaseQueryMixin:
 
         favorite/only_deleted（INT-215）：标签视图回收站/收藏过滤，
         口径与 query_testcases 一致（user_id 来自 x-user-id metadata）。
-        test_type（INT-193）：执行口径 api/e2e，按 derived_test_type 列过滤
-        （INT-1469，标签视图分页在标签维度）。
         lab_ids（INT-539）：按实验室过滤（含通用用例；None/空 = 不过滤）。
         visibility（INT-466）：可见性筛选（shared/private；None 不追加）。
         """
@@ -194,24 +180,17 @@ class TestCaseQueryMixin:
                                        .correlate(TestCase)
                                        .exists())
 
-        # INT-193/INT-1469：执行口径过滤下推 SQL（derived_test_type 写时物化）
-        if test_type in (TestType.API.value, TestType.E2E.value):
-            tc_query = tc_query.filter(TestCase.derived_test_type == test_type)
-
         items = tc_query.all()
 
         return items
 
-    def fetch_case_ids(self, group=None, test_type=None, search=None, tag=None,
+    def fetch_case_ids(self, group=None, search=None, tag=None,
                        include_deleted: bool = False, algorithm_type: str = None,
                        dimension_id: int = None, only_deleted: bool = False) -> List[str]:
         """按筛选条件查询全量用例ID（不分页）。
 
         Args:
             group: 分组名（通过 group_name 查 group_id）
-            test_type: 执行口径（api/e2e）——差异#2 收尾后用例不存储类型，
-                按写时物化的 derived_test_type 列过滤（INT-1469；E2E 起跑流程
-                圈定含播放设备音频的可物理执行用例）
             search: 名称/ID 模糊搜索
             tag: 标签名
             algorithm_type: 算法类型
@@ -258,11 +237,6 @@ class TestCaseQueryMixin:
             # 按标签筛选
             query = query.join(TestCase.tags).filter(Tag.name == tag)
 
-        # INT-1469：执行口径过滤下推 SQL（derived_test_type 写时物化），
-        # 不再取回全量 config 后逐行派生
-        if test_type in (TestType.API.value, TestType.E2E.value):
-            query = query.filter(TestCase.derived_test_type == test_type)
-
         return [cid for (cid,) in query.all()]
 
     def count_testcases(self) -> int:
@@ -308,13 +282,11 @@ class TestCaseQueryMixin:
 
     def get_testcase_stats(self, algorithm_type: str = '', group_id: str = '',
                            group_by: str = '', dimension_id: int = None,
-                           keyword: str = '', test_type: str = '',
-                           favorite: bool = False, deleted: bool = False,
-                           user_id: int = None) -> dict:
+                           keyword: str = '', favorite: bool = False,
+                           deleted: bool = False, user_id: int = None) -> dict:
         """聚合统计 TestCase — count / group_by。
 
-        多维筛选：algorithm_type / dimension_id / group_id / keyword /
-        test_type（执行口径，按写时物化的 derived_test_type 列过滤，INT-1469）；
+        多维筛选：algorithm_type / dimension_id / group_id / keyword；
         favorite（INT-528）：仅当前用户收藏（user_id 来自 x-user-id metadata，
         与 query_testcases 同口径）；deleted（INT-528）：True 统计回收站
         （软删除）用例，默认统计未删除用例（镜像 get_task_stats 的 deleted）。
@@ -325,12 +297,12 @@ class TestCaseQueryMixin:
         try:
             return self._get_testcase_stats_impl(
                 session, _func, algorithm_type, group_id, group_by,
-                dimension_id, keyword, test_type, favorite, deleted, user_id)
+                dimension_id, keyword, favorite, deleted, user_id)
         finally:
             session.close()
 
     def _get_testcase_stats_impl(self, session, _func, algorithm_type, group_id,
-                                 group_by, dimension_id, keyword, test_type,
+                                 group_by, dimension_id, keyword,
                                  favorite=False, deleted=False, user_id=None) -> dict:
         """get_testcase_stats 的实现（拆分大函数，INT-423 私有用例不计数）。"""
         from task_service.infrastructure.visibility_context import visibility_identity
@@ -371,11 +343,6 @@ class TestCaseQueryMixin:
                                         Favorite.entity_id == TestCase.id)
                                  .correlate(TestCase)
                                  .exists())
-
-        # INT-1469：执行口径过滤下推 SQL（derived_test_type 写时物化），
-        # 分区/分组统计走同一条 SQL 路径，不再物化全量 config 后 Python 汇总
-        if test_type in (TestType.API.value, TestType.E2E.value):
-            query = query.filter(TestCase.derived_test_type == test_type)
 
         if group_by:
             return self._get_testcase_stats_grouped(query, _func, group_by)

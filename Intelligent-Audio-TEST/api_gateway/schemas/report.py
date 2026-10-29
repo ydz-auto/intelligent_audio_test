@@ -202,7 +202,6 @@ class ReportDetailData(APIModel):
     name: str = Field(...)
     type: str = Field(...)
     task_id: Optional[int] = Field(None)
-    task_type: Optional[str] = Field(None)
     task_name: str = Field(...)
     algorithm_type: Optional[str] = Field(None)
     summary: ReportSummarySimplified = Field(...)
@@ -361,7 +360,7 @@ class ReportExportHistoryQuery(APIModel):
 
 class ReportStatisticsQuery(APIModel):
     """GET /reports/statistics 查询参数。"""
-    # 统计维度：time | task_type | device_type | evaluation_metric
+    # 统计维度：time | device_type | evaluation_metric
     dimension: str = Field('time')
     start_time: Optional[str] = Field(None)
     end_time: Optional[str] = Field(None)

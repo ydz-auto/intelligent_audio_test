@@ -88,10 +88,6 @@ class ReportCompareDataMixin:
                 return r.get(key, default)
             return getattr(r, key, default)
 
-        # 差异#2 收尾：task.type 已废弃，对比口径由任务关联用例配置形态派生
-        # （与二次对比路径 _get_task_type 同源，读模型 DTO 无 type 键）
-        report_task_type = ReportCompareHelpers._get_task_type(tasks)
-
         res_ids_all = [_r_get(r, 'id') for r in results]
         all_dimensions = ReportCompareHelpers._get_all_dimensions_with_results(res_ids_all)
 
@@ -188,7 +184,7 @@ class ReportCompareDataMixin:
         )
 
         cases = ReportCompareHelpers._build_case_data_compare(
-            test_cases, results, all_dimensions, tasks_map, report_task_type
+            test_cases, results, all_dimensions, tasks_map
         )
 
         source_cases = ReportCompareHelpers._get_source_cases(tasks)
@@ -210,7 +206,6 @@ class ReportCompareDataMixin:
         }
 
         return {
-            "report_task_type": report_task_type,
             "task_weighted_values": task_weighted_values,
             "total_cases": total_cases,
             "completed_cases": completed_cases,
@@ -255,7 +250,6 @@ class ReportCompareDataMixin:
 
         summary = {
             "task_count": len(tasks),
-            "task_type": data_dict["report_task_type"],
             "total_cases": data_dict["total_cases"],
             "completed_cases": data_dict.get("completed_cases", 0),
             "failed_cases": data_dict.get("failed_cases", 0),

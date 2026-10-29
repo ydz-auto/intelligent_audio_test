@@ -86,6 +86,21 @@ def has_overlap_param_changed(old_params: list, new_params: list) -> bool:
     return old_overlap != new_overlap
 
 
+def iter_dict_rounds(config: dict) -> list:
+    """按轮次遍历 config.rounds，只保留 dict 轮次项。
+
+    rounds 由外部 JSON 载入：历史/脏数据可能把 rounds 写成轮数（int）
+    等非列表形态，此时等同「无轮次配置」，返回空列表而不是迭代 int 抛
+    TypeError: 'int' object is not iterable。
+    """
+    if not isinstance(config, dict):
+        return []
+    rounds = config.get('rounds')
+    if not isinstance(rounds, list):
+        return []
+    return [r for r in rounds if isinstance(r, dict)]
+
+
 def get_algo_params_list_from_config(config: dict) -> list:
     """从 config 中提取 algorithm_params 列表格式（兼容旧数据）
 
@@ -94,9 +109,9 @@ def get_algo_params_list_from_config(config: dict) -> list:
     """
     if not config:
         return []
-    rounds = config.get('rounds', [])
+    rounds = iter_dict_rounds(config)
     if rounds:
-        first_round = rounds[0] if rounds else {}
+        first_round = rounds[0]
         if isinstance(first_round, dict):
             ap_dict = first_round.get('algorithmParams', {})
             if isinstance(ap_dict, dict):
@@ -168,11 +183,10 @@ def collect_audios(config: dict) -> list:
     if not config:
         return []
     all_audios = []
-    for round_item in config.get('rounds', []):
-        if isinstance(round_item, dict):
-            round_audios = round_item.get('audios', [])
-            if isinstance(round_audios, list):
-                all_audios.extend(round_audios)
+    for round_item in iter_dict_rounds(config):
+        round_audios = round_item.get('audios', [])
+        if isinstance(round_audios, list):
+            all_audios.extend(round_audios)
     return all_audios
 
 
@@ -182,7 +196,8 @@ def has_playback_audio(config: dict) -> bool:
         if isinstance(audio_item, dict) and audio_item.get('playback_device_id'):
             return True
     # 兼容未轮次化的平面 audios 配置
-    for audio_item in (config or {}).get('audios', []) or []:
+    flat_audios = (config or {}).get('audios') if isinstance(config, dict) else None
+    for audio_item in flat_audios if isinstance(flat_audios, list) else []:
         if isinstance(audio_item, dict) and audio_item.get('playback_device_id'):
             return True
     return False
@@ -223,19 +238,17 @@ def collect_dimensions(config: dict) -> list:
         return []
     result = []
     seen_ids = set()
-    rounds = config.get('rounds', [])
-    if rounds:
-        for round_item in rounds:
-            if isinstance(round_item, dict):
-                evaluation = round_item.get('evaluation', {})
-                if isinstance(evaluation, dict):
-                    for d in evaluation.get('dimensions', []):
-                        dim_id = d.get('id') if isinstance(d, dict) else d
-                        if dim_id and dim_id not in seen_ids:
-                            seen_ids.add(dim_id)
-                            result.append(d)
+    for round_item in iter_dict_rounds(config):
+        evaluation = round_item.get('evaluation', {})
+        if isinstance(evaluation, dict):
+            for d in evaluation.get('dimensions', []):
+                dim_id = d.get('id') if isinstance(d, dict) else d
+                if dim_id and dim_id not in seen_ids:
+                    seen_ids.add(dim_id)
+                    result.append(d)
     # 合并顶层 config.dimensions（多轮聚合维度）
-    for d in config.get('dimensions', []):
+    top_dimensions = config.get('dimensions')
+    for d in top_dimensions if isinstance(top_dimensions, list) else []:
         dim_id = d.get('id') if isinstance(d, dict) else d
         if dim_id and dim_id not in seen_ids:
             seen_ids.add(dim_id)
@@ -260,9 +273,7 @@ def get_algorithm_params_dict_for_executor(config: dict) -> dict:
     """
     if not config:
         return {}
-    rounds = config.get('rounds', [])
+    rounds = iter_dict_rounds(config)
     if rounds:
-        first_round = rounds[0] if rounds else {}
-        if isinstance(first_round, dict):
-            return first_round.get('algorithmParams', {}) or {}
+        return rounds[0].get('algorithmParams', {}) or {}
     return {}

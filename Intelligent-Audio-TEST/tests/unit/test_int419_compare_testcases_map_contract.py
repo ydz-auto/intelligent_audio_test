@@ -137,7 +137,7 @@ class TestComparePrepareDataContract:
         """防御分支：_build_case_data_compare 直接收 {id: dict} 映射也不崩溃。"""
         tasks_map = {t['id']: t for t in TASKS}
         cases = ReportCompareHelpers._build_case_data_compare(
-            TESTCASE_MAP, RESULTS, DIMENSIONS, tasks_map, 'api')
+            TESTCASE_MAP, RESULTS, DIMENSIONS, tasks_map)
 
         assert len(cases) == 1
         assert cases[0]['id'] == 'TC-1'

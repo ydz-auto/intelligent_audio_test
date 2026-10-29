@@ -28,14 +28,13 @@ class TestCaseQueryService:
     # ==================== 读操作 ====================
 
     def list_testcases(self, page=1, per_page=10, keyword=None, tag=None,
-                       group_id=None, algorithm_type=None, test_type=None,
+                       group_id=None, algorithm_type=None,
                        view=None, include_deleted=False, dimension_id=None,
                        favorite=False, only_deleted=False, user_id=None,
                        lab_ids=None, visibility=None) -> dict:
         """查询测试用例列表。
 
         favorite（INT-141）：仅当前用户收藏；only_deleted（INT-141）：仅回收站。
-        test_type（INT-193）：执行口径 api/e2e，按配置形态派生过滤。
         lab_ids（INT-539）：按实验室过滤（含通用用例；None/空 = 不过滤），
         列表项透出 lab_id/lab_name（config JSONB 解析 + laboratories join）。
         visibility（INT-466）：可见性筛选（shared/private；None=全部）。
@@ -47,7 +46,6 @@ class TestCaseQueryService:
             if view == 'tag':
                 return self._get_tag_view(page, per_page, keyword,
                                           algorithm_type, include_deleted, common,
-                                          test_type=test_type,
                                           dimension_id=dimension_id,
                                           favorite=favorite, only_deleted=only_deleted,
                                           user_id=user_id, lab_ids=lab_ids,
@@ -56,7 +54,7 @@ class TestCaseQueryService:
             pagination = self.repo.query_testcases(
                 page=page, per_page=per_page, keyword=keyword, tag=tag,
                 group_id=group_id,
-                algorithm_type=algorithm_type, test_type=test_type,
+                algorithm_type=algorithm_type,
                 include_deleted=include_deleted,
                 dimension_id=dimension_id,
                 favorite=favorite, only_deleted=only_deleted, user_id=user_id,
@@ -174,7 +172,7 @@ class TestCaseQueryService:
         return self.repo.list_laboratories_by_ids(lab_ids)
 
     def _get_tag_view(self, page, per_page, keyword,
-                      algorithm_type, include_deleted, common, test_type=None,
+                      algorithm_type, include_deleted, common,
                       dimension_id=None,
                       favorite=False, only_deleted=False, user_id=None,
                       lab_ids=None, visibility=None):
@@ -199,7 +197,7 @@ class TestCaseQueryService:
         tag_ids = [t.id for t in page_tags]
         test_cases = self.repo.query_testcases_by_tag_ids(
             tag_ids, keyword=keyword,
-            algorithm_type=algorithm_type, test_type=test_type,
+            algorithm_type=algorithm_type,
             include_deleted=include_deleted,
             dimension_id=dimension_id,
             favorite=favorite, only_deleted=only_deleted, user_id=user_id,
@@ -446,27 +444,23 @@ class TestCaseQueryService:
         """按筛选条件返回全量用例ID（不分页）。
 
         Args:
-            data: {group, search, tag, algorithm_type, dimension_id,
-                   test_type/type, only_deleted}
+            data: {group, search, tag, algorithm_type, dimension_id, only_deleted}
         Returns:
             {success, message, data: {'ids': [...]}}
         """
         try:
             group = data.get('group')
-            # 兼容 'test_type' / 'type' 两种键（前端批量圈定传 type）
-            test_type = data.get('test_type') or data.get('type')
             search = data.get('search')
             tag = data.get('tag')
             # INT-215：回收站全部恢复按已删集合圈定（snake_case 由前端 QUERY_PARAM_MAP 转换）
             only_deleted = bool(data.get('only_deleted'))
             # INT-215/P2-R1：算法/维度过滤透传——原被本层丢弃（仓储已支持），
-            # 回收站「全部恢复」在算法/维度筛选下恢复超集、确认数与可见列表不符；
-            # E2E/API 起跑圈定同链路传 algorithmType 亦被静默忽略
+            # 回收站「全部恢复」在算法/维度筛选下恢复超集、确认数与可见列表不符
             algorithm_type = data.get('algorithm_type')
             dimension_id = data.get('dimension_id')
 
             ids = self.repo.fetch_case_ids(
-                group=group, test_type=test_type, search=search, tag=tag,
+                group=group, search=search, tag=tag,
                 only_deleted=only_deleted,
                 algorithm_type=algorithm_type, dimension_id=dimension_id,
             )

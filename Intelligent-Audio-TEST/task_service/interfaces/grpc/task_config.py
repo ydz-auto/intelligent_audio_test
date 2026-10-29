@@ -126,8 +126,6 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
                 merged=request.merged,
                 # INT-339：仅挑选合并容器任务（专有关系表存在性判定，§5.4）
                 cherry_pick=getattr(request, 'cherry_pick', False),
-                # INT-273：按派生任务类型过滤（api/e2e/mixed）
-                task_type=getattr(request, 'task_type', '') or None,
                 # INT-577：仅「挑选合并」页签计算合并容器统计块（stats=true 才执行
                 # 3 次 COUNT；日常/已发布/收藏页签恒 None——审计 P2 门控全链透传）
                 stats=getattr(request, 'stats', False),

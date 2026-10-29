@@ -387,10 +387,6 @@ class AudioIdQuery(APIModel):
     algorithm_type: Optional[str] = Field(None)
 
 
-class AudioStreamQuery(APIModel):
-    task_type: str = Field('api')
-
-
 class AudioStreamByPathQuery(APIModel):
     path: str = Field(...)
 

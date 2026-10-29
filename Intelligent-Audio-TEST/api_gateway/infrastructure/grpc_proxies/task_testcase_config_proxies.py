@@ -143,7 +143,7 @@ class _TaskConfigProxy:
                    algorithm_type=None, search=None, start_date=None, end_date=None,
                    favorite=False, deleted=False, evaluation_status=None, merged=False,
                    cherry_pick=False, execution_status=None, merge_type=None,
-                   stats=False, task_type=None, visibility=None):
+                   stats=False, visibility=None):
         """任务列表（device_type 经 proto type 字段承载：按用例级被测设备类型过滤）
 
         favorite/deleted（INT-141）：收藏/回收站过滤；操作人 user_id 经
@@ -157,8 +157,6 @@ class _TaskConfigProxy:
         merged/cherry_pick 布尔，此处仅透传（供兼容/审计），实际过滤由布尔承载。
         stats（INT-577）：页签计数统计（merged ∪ cherry_pick 并集），task_service
         恒返回 stats 块，此处保留签名占位。
-        task_type（INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
-        /tasks/stats type_counts 一致——用例级 device_type 派生）。
         visibility（INT-466）：可见性筛选（shared/private；空=全部）。
         """
         from shared.proto import task_service_pb2 as task_pb
@@ -180,7 +178,6 @@ class _TaskConfigProxy:
                 merged=bool(merged),
                 cherry_pick=bool(cherry_pick),
                 execution_status=execution_status or '',
-                task_type=task_type or '',
                 visibility=visibility or '',
             ))
             return self._resp(resp)
@@ -609,7 +606,7 @@ class _TestCaseConfigProxy:
     # ---- 读操作 ----
 
     def list_testcases(self, page=1, per_page=10, keyword=None, tag=None,
-                       group_id=None, algorithm_type=None, test_type=None,
+                       group_id=None, algorithm_type=None,
                        view=None, include_deleted=False, dimension_id=None,
                        favorite=False, only_deleted=False, lab_ids=None,
                        visibility=None):
@@ -623,9 +620,6 @@ class _TestCaseConfigProxy:
                 keyword=keyword or '',
                 tag=tag or '',
                 group_id=group_id or '',
-                # INT-193：type/dimension_id proto 字段此前未接线（extra="ignore"
-                # 在网关 schema 层静默丢弃），现贯通下推 task_service 过滤
-                type=test_type or '',
                 algorithm_type=algorithm_type or '',
                 view=view or '',
                 include_deleted=bool(include_deleted),

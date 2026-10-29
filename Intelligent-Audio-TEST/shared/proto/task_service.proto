@@ -214,7 +214,8 @@ message ListTasksRequest {
   bool merged = 12;   // INT-298：仅合并容器任务（存在 TaskMergeRelation 的任务；对齐 V9.7.10 合并页签数据源）
   string execution_status = 13;  // INT-301 F1：按任务级执行状态过滤（pending/queued/running/paused/completed/failed/stopped/merged）
   bool cherry_pick = 14;  // INT-339：仅挑选合并容器任务（task_cherry_pick_relations 存在性判定，§5.4）
-  string task_type = 15;  // INT-273：按派生任务类型过滤（api/e2e/mixed；用例级 device_type 派生口径，与 /tasks/stats type_counts 一致）
+  // task_type 已废除（任务类型 api/e2e/mixed 概念不再存在，执行方式只看用例级 device_type）
+  reserved 15;
   bool stats = 16;  // INT-577：仅「挑选合并」页签（stats=true）计算合并容器统计块（merged ∪ cherry_pick 并集，total/whole/picked），否则 None
   string visibility = 17;  // INT-466：可见性筛选（shared/private；空=全部）
 }
@@ -438,7 +439,8 @@ message ListPublishedTasksRequest {
   int32 per_page = 2;
   string status = 3;
   string keyword = 4;
-  string type = 5;
+  // 原 type（api/e2e 任务类型）已废除：发布任务不再区分任务类型，筛选只看用例级 device_type
+  reserved 5;
   string start_date = 6;
   string end_date = 7;
   // benchmark 筛选（三态字符串）：""=不过滤，"true"/"false"=按 Benchmark 标记过滤
@@ -506,7 +508,8 @@ message ListTestCasesRequest {
   string keyword = 3;
   string tag = 4;
   string group_id = 5;
-  string type = 6;       // api / e2e
+  // 原 type（用例 api/e2e 类型）已废除：用例纯数据化，执行方式只看任务侧 device_type
+  reserved 6;
   string algorithm_type = 7;
   string view = 8;       // 'tag' or none
   bool include_deleted = 9;
@@ -528,7 +531,7 @@ message GetTestCaseRefParamsRequest {
   int32 round_number = 2;
 }
 message FetchCaseIdsRequest {
-  string data = 1;  // JSON: {group, test_type, search, tag}
+  string data = 1;  // JSON: {group, search, tag}
 }
 message TestCaseConfigResponse {
   bool success = 1;
@@ -1107,7 +1110,7 @@ message DeleteTestCaseGroupRequest {
 message TaskAggStatsRequest {
   string status = 1;          // 可选，按状态过滤
   string algorithm_type = 2;  // 可选
-  string group_by = 3;        // 可选，分组字段（status / algorithm_type / type 派生分布 / trend 完成趋势）
+  string group_by = 3;        // 可选，分组字段（status / algorithm_type / trend 完成趋势）
   bool deleted = 4;           // 可选，true 统计回收站（软删除）任务；默认统计未删除任务（INT-200）
   string granularity = 5;     // group_by='trend' 时分桶粒度：day/week/month/year（INT-200）
 }
@@ -1115,7 +1118,8 @@ message TestCaseAggStatsRequest {
   string algorithm_type = 1;  // 可选
   string group_id = 2;        // 可选，TestCaseGroup ID（UUID 字符串，INT-468：不得 int 强转）
   string group_by = 3;        // 可选，分组字段（如 algorithm_type / group_id）
-  string test_type = 4;       // 可选，按用例类型过滤（api / e2e；test_type 列已废弃，按配置形态派生）
+  // 原 test_type（用例 api/e2e 类型过滤）已废除：用例纯数据化，执行方式只看任务侧 device_type
+  reserved 4;
   string keyword = 5;         // 可选，按用例 id/name/description 模糊匹配（分组列表筛选）
   int32 dimension_id = 6;     // 可选，按评估维度过滤（config JSON 匹配，分组列表筛选）
   bool favorite = 7;          // 可选，true 仅当前用户收藏（INT-528：分组列表收藏口径）

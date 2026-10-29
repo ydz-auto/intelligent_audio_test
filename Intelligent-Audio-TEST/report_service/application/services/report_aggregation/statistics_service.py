@@ -3,7 +3,7 @@
 
 实现 G04 报告统计分析页所需的三类统计：
 
-- get_statistics：按维度（time|task_type|device_type|evaluation_metric）
+- get_statistics：按维度（time|device_type|evaluation_metric）
   聚合，结果含 overview / detail / chart / anomaly（异常统计识别）四形态
 - get_trend：趋势时间序列（trend_type=time|dimension；只返回序列数据，
   预测呈现归前端，不引入后端 ML 预测）
@@ -12,8 +12,6 @@
 
 数据来源：report 7 表只读（test_reports / report_summaries /
 report_summary_meta / report_metric_stats），不引入 DB 迁移。
-task_type 维度按报告级设备/API 参与形态派生（api=无物理设备、e2e=含
-物理设备且无 API、mixed=物理+API 兼有；对照任务级 INT-273 派生口径）。
 algorithm_type 可选过滤按 report_cases.algorithm_type 存在性匹配
 （报告主表无该列，以用例级算法类型归属）。
 
@@ -36,7 +34,7 @@ logger = logging.getLogger(__name__)
 # 中国标准时区 UTC+8（对齐 shared.utils.query_utils.now_cst）
 _CST = timezone(timedelta(hours=8))
 
-_DIMENSIONS = ('time', 'task_type', 'device_type', 'evaluation_metric')
+_DIMENSIONS = ('time', 'device_type', 'evaluation_metric')
 _TREND_TYPES = ('time', 'dimension')
 _REPORT_TYPES = ('report_count', 'case_execution', 'evaluation_metric', 'device_performance')
 _FORMATS = ('csv', 'excel', 'pdf', 'html')
@@ -149,17 +147,6 @@ def _weighted_pass_rate(rows: List[Tuple[Any, Any, Any]]) -> float:
     return _round(passed / total * 100, 2) if total > 0 else 0.0
 
 
-def _derive_task_type(meta) -> str:
-    """报告级任务类型派生（api/e2e/mixed，对照任务级 INT-273 口径）。"""
-    has_physical = bool(_meta_list(meta, 'devices'))
-    has_api = bool(_meta_list(meta, 'apis'))
-    if has_physical and has_api:
-        return 'mixed'
-    if has_physical:
-        return 'e2e'
-    return 'api'
-
-
 def _date_key(created_at) -> str:
     """报告 created_at → 日期分组键（YYYY-MM-DD）。"""
     if created_at is None:
@@ -180,8 +167,6 @@ def _group_rows(rows: List[Tuple[Any, Any, Any]], dimension: str) -> Dict[str, L
         keys = []
         if dimension == 'time':
             keys = [_date_key(r.created_at)]
-        elif dimension == 'task_type':
-            keys = [_derive_task_type(meta)]
         elif dimension == 'device_type':
             devices = _meta_list(meta, 'devices')
             # 按报告对设备类型去重：同报告多台同型设备计为该类型一次，

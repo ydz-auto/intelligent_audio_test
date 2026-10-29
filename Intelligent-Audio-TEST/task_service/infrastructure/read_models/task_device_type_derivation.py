@@ -5,8 +5,7 @@
 改为由 `task_case_relations.device_type` 派生。真实库（INT-1158 导入的生产数据
 副本）存在大量**无 task_case_relations 行**的历史任务——仅剩
 `task_device_relations` / `task_api_relations`（如任务 187/191/198 等 E2E 任务，
-名字含 E2E、关联物理设备、有 test_results），导致任务级 `device_types` 恒为空、
-`task_type` 筛选全部落入 api。
+名字含 E2E、关联物理设备、有 test_results），导致任务级 `device_types` 恒为空。
 
 本模块提供「用例级优先、任务级关系回退」的统一派生口径，供 read_model /
 stats 分布共用：

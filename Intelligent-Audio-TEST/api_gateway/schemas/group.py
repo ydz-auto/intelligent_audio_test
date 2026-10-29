@@ -66,9 +66,8 @@ class GroupListQuery(APIModel):
     fields: Optional[str] = Field(None, validation_alias=AliasChoices('fields', 'view'))
     algorithm_type: Optional[str] = Field(None)
     # 分组下用例计数筛选（V9.7.10 对齐）：keyword 模糊匹配用例 id/name/description；
-    # type 为用例执行口径（api/e2e，按配置形态派生）；dimension_id 按评估维度 config 匹配
+    # dimension_id 按评估维度 config 匹配
     keyword: Optional[str] = Field(None)
-    type: Optional[str] = Field(None, validation_alias=AliasChoices('type', 'test_type', 'testType'))
     dimension_id: Optional[int] = Field(None, validation_alias=AliasChoices('dimension_id', 'dimensionId'))
     # INT-528：收藏 / 回收站口径（与 TestCaseListQuery 一致，双视图贯通）——
     # favorite=true 仅当前用户收藏；only_deleted=true 仅回收站软删除项

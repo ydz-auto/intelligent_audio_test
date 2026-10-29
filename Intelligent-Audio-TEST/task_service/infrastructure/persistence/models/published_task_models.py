@@ -14,11 +14,6 @@ from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON, Index,
 )
 
-# 已发布任务类型取值（对齐 V9.7.10 published_tasks.type：api/e2e）
-# 新架构 task.type 已废弃，发布时由快照用例级 device_type 派生
-PUBLISHED_TASK_TYPE_API = 'api'
-PUBLISHED_TASK_TYPE_E2E = 'e2e'
-
 
 class PublishedTask(Base):
     """已发布任务模型 (Published Task Model)
@@ -42,7 +37,6 @@ class PublishedTask(Base):
     visibility = Column(String(20), nullable=False, default='shared', server_default='shared', comment='数据可见性 (shared/private，INT-423)')
     name = Column(String(255), nullable=False, comment='已发布任务名称')
     description = Column(Text, comment='说明')
-    type = Column(String(50), comment='任务类型 (api/e2e)，发布时由快照用例级 device_type 派生（对齐 V9.7.10）')
     algorithm_type = Column(String(50), comment='关联算法类型（冗余：发布时从快照冻结，列表筛选直查本列，对齐 V9.7.10）')
     status = Column(String(20), nullable=False, default='published', comment='状态 (published/archived)')
     benchmark = Column(Boolean, nullable=False, default=False, comment='是否参与 Benchmark 排行（实测轨数据源标记）')

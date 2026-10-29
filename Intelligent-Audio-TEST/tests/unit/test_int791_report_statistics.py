@@ -193,32 +193,6 @@ class TestStatisticsService:
         assert result.get('success') is False
         assert 'dimension' in result.get('message', '')
 
-    def test_statistics_task_type_dimension(self):
-        """task_type 维度：api/e2e/mixed 派生。"""
-        from datetime import datetime
-        from report_service.application.services.report_aggregation.statistics_service import (
-            statistics_service,
-        )
-        from report_service.infrastructure.persistence.report_repository import (
-            report_repository,
-        )
-
-        _make_report('api_only', created_at=datetime(2026, 10, 1),
-                     apis=[{'id': 1, 'name': 'api1'}], total=10)
-        _make_report('e2e_only', created_at=datetime(2026, 10, 1),
-                     devices=[{'id': 1, 'name': 'dev1', 'type': 'phone'}], total=20)
-        _make_report('mixed', created_at=datetime(2026, 10, 1),
-                     devices=[{'id': 2, 'name': 'dev2', 'type': 'phone'}],
-                     apis=[{'id': 3, 'name': 'api3'}], total=30)
-
-        result = statistics_service.get_statistics(
-            {'dimension': 'task_type'}, report_repository)
-        groups = {d['group']: d for d in result['detail']}
-        assert set(groups.keys()) == {'api', 'e2e', 'mixed'}
-        assert groups['api']['report_count'] == 1
-        assert groups['e2e']['report_count'] == 1
-        assert groups['mixed']['report_count'] == 1
-
     def test_statistics_device_type_dimension(self):
         """device_type 维度：按设备类型分组并统计设备数。"""
         from datetime import datetime

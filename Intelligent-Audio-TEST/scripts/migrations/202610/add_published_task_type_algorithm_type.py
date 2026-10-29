@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
-"""迁移脚本：published_tasks 补 type / algorithm_type 两列并回填历史数据（INT-148）
+"""迁移脚本：published_tasks 补 algorithm_type 列并回填历史数据（INT-148）
 
 背景（V9.7.10 对齐缺陷包，已发布任务列表筛选端到端缺失）：
-- published_tasks.type：任务类型 (api/e2e)。新架构 task.type 已废弃（用例级
-  device_type 路由），发布时由快照派生：caseDevices 任一 device_type 为
-  http_api/websocket_api → 'api'，否则 'e2e'（无 caseDevices 的历史快照
-  回退 apiIds 判断）。
 - published_tasks.algorithm_type：发布时从快照 algorithmType 冻结的冗余列，
   列表按算法筛选直查本列（对齐 V9.7.10 add_published_task_algorithm_type 迁移）。
+- published_tasks.type（任务类型 api/e2e）随任务类型概念废除一并删除
+  （见 drop_published_task_type_and_case_derived_test_type.py），本脚本不再补该列。
 
 用法:
     python scripts/migrations/202610/add_published_task_type_algorithm_type.py [--dry-run]
@@ -35,27 +33,8 @@ DB_PASS = parsed.password if parsed else None
 TABLE = 'published_tasks'
 
 COLUMNS = [
-    ('type', 'VARCHAR(50)'),
     ('algorithm_type', 'VARCHAR(50)'),
 ]
-
-API_DEVICE_TYPES = ('http_api', 'websocket_api')
-
-
-def derive_task_type(snapshot):
-    """快照 → 任务类型（与发布链路派生规则一致）。"""
-    if not isinstance(snapshot, dict):
-        return 'e2e'
-    case_devices = snapshot.get('caseDevices') or []
-    for item in case_devices:
-        if isinstance(item, dict) and (item.get('device_type') or '') in API_DEVICE_TYPES:
-            return 'api'
-    if case_devices:
-        return 'e2e'
-    # 历史快照兜底：无 caseDevices 时按 apiIds 判断
-    if snapshot.get('apiIds'):
-        return 'api'
-    return 'e2e'
 
 
 def _column_exists(cur, table, column):
@@ -92,10 +71,10 @@ def migrate(dry_run=False):
             CREATE INDEX IF NOT EXISTS idx_published_task_algorithm_type
             ON published_tasks(algorithm_type)
         """)
-        # 回填：仅处理两列为 NULL 的历史行
+        # 回填：仅处理 algorithm_type 为 NULL 的历史行
         cur.execute(f"""
             SELECT id, snapshot_config FROM {TABLE}
-            WHERE type IS NULL OR algorithm_type IS NULL
+            WHERE algorithm_type IS NULL
         """)
         rows = cur.fetchall()
         updated = 0
@@ -105,13 +84,12 @@ def migrate(dry_run=False):
                     json.loads(snapshot_raw) if snapshot_raw else {})
             except (TypeError, ValueError):
                 snapshot = {}
-            task_type = derive_task_type(snapshot)
             algorithm_type = snapshot.get('algorithmType') if isinstance(snapshot, dict) else None
             cur.execute(f"""
                 UPDATE {TABLE}
-                SET type = %s, algorithm_type = %s
+                SET algorithm_type = %s
                 WHERE id = %s
-            """, (task_type, algorithm_type, row_id))
+            """, (algorithm_type, row_id))
             updated += 1
         print(f"[DONE] 历史数据回填 {updated} 行")
 

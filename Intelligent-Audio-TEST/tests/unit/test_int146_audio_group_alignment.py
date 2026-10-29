@@ -198,22 +198,6 @@ class TestTestCaseStatsFilters:
         assert counts.get(testcase_db['g1']) == 2
         assert counts.get(testcase_db['g2']) == 1
 
-    def test_test_type_derived_from_config_form(self, testcase_db):
-        """test_type 列已废弃：按 config 形态派生（含播放设备音频 → e2e）。"""
-        from task_service.infrastructure.persistence._testcase_query_mixin import TestCaseQueryMixin
-        repo = TestCaseQueryMixin()
-        assert repo.get_testcase_stats(test_type='e2e')['total'] == 1
-        assert repo.get_testcase_stats(test_type='api')['total'] == 2
-
-    def test_test_type_grouped_by_group(self, testcase_db):
-        from task_service.infrastructure.persistence._testcase_query_mixin import TestCaseQueryMixin
-        repo = TestCaseQueryMixin()
-        items = repo.get_testcase_stats(
-            test_type='api', group_by='group_id')['items']
-        counts = {i['key']: i['count'] for i in items}
-        assert counts.get(testcase_db['g1']) == 1  # c1（c2 为 e2e 口径，c4 已删）
-        assert counts.get(testcase_db['g2']) == 1
-
     def test_dimension_id_filter(self, testcase_db):
         from task_service.infrastructure.persistence._testcase_query_mixin import TestCaseQueryMixin
         repo = TestCaseQueryMixin()
@@ -292,11 +276,10 @@ class TestGroupServiceFilters:
     def test_filters_forwarded_and_groups_converged(self, monkeypatch):
         payload, http_code, captured = self._run(
             monkeypatch,
-            query={'keyword': '登录', 'type': 'api', 'dimension_id': '7'},
+            query={'keyword': '登录', 'dimension_id': '7'},
             stats_items=[{'key': 'g1', 'count': 2}])
 
         assert captured['stats_kwargs']['keyword'] == '登录'
-        assert captured['stats_kwargs']['test_type'] == 'api'
         assert captured['stats_kwargs']['dimension_id'] == 7
         assert captured['stats_kwargs']['group_by'] == 'group_id'
 

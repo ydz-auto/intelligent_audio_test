@@ -2,18 +2,15 @@
 """INT-228 专项：testcases 列表排序补 id 次级键 + 网关 page>=1 边界校验。
 
 缺陷（INT-193 审计问题2）：
-- 列表 ORDER BY 仅 created_at DESC（SQL 路径 query_testcases 与 INT-193
-  派生路径；后者 INT-1469 起改为 derived_test_type 列 SQL 过滤，本用例
-  仍锁定其分页平局序），同事务/一次 flush 批量创建
-  的用例 created_at 全同（生产 Postgres now() 为事务级时间戳），平局序由
-  引擎平局行为决定——跨页边界条目重复或漏行，分页正确性无保证。
-- 网关 TestCaseListQuery.page 无 ge=1：page=0 时 task_service 派生路径
-  start=(page-1)*per_page 负切片返回移位内容。
+- 列表 ORDER BY 仅 created_at DESC（SQL 路径 query_testcases），同事务/一次
+  flush 批量创建的用例 created_at 全同（生产 Postgres now() 为事务级时间戳），
+  平局序由引擎平局行为决定——跨页边界条目重复或漏行，分页正确性无保证。
+- 网关 TestCaseListQuery.page 无 ge=1：page=0 时 start=(page-1)*per_page 负切片
+  返回移位内容。
 
 覆盖：
 - SQL 路径：同 created_at 批量插入 >1 页，逐页拉取无重复、无遗漏，
   拼接顺序 = created_at DESC + id ASC 确定序且跨调用稳定
-- test_type 过滤路径（INT-1469 前为内存分页，现为 SQL 过滤）：同上
 - 主键 created_at 仍占优：次级键只在平局内生效，不改变新旧先序
 - 网关 schema：page=0/-1 校验失败，缺省 page=1 与合法值不受影响
 - 网关服务层 get_all：ValidationError → 422 结构化错误，校验失败不触达 ACL
@@ -136,28 +133,6 @@ class TestRepoTiePagination:
         # 跨调用页间拼接顺序稳定
         walk2 = _walk_pages(
             lambda p: testcase_repository.query_testcases(page=p, per_page=per_page),
-            total=12, per_page=per_page)
-        assert walk1 == walk2
-
-    def test_derived_path_tie_pagination_no_dup_no_miss_stable(self):
-        """test_type 过滤路径（INT-1469 起由 derived_test_type 列 SQL 过滤）：同上口径。"""
-        from task_service.infrastructure.persistence.testcase_repository import (
-            testcase_repository,
-        )
-
-        ids = _tie_ids(12)
-        _add_batch([(cid, f'用例{cid}', dict(_E2E_CONFIG)) for cid in ids])
-
-        per_page = 5
-        walk1 = _walk_pages(
-            lambda p: testcase_repository.query_testcases(
-                page=p, per_page=per_page, test_type='e2e'),
-            total=12, per_page=per_page)
-        assert len(walk1) == 12 and set(walk1) == set(ids)
-        assert walk1 == sorted(ids)
-        walk2 = _walk_pages(
-            lambda p: testcase_repository.query_testcases(
-                page=p, per_page=per_page, test_type='e2e'),
             total=12, per_page=per_page)
         assert walk1 == walk2
 

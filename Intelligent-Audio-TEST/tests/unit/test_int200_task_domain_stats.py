@@ -5,14 +5,13 @@
 统计数字与真实总量不符。
 
 修复契约：
-1. task_service GetTaskStats 扩展 — group_by='type' 返回用例级 device_type
-   派生分布（physical→e2e；http_api/websocket_api→api；兼有→mixed；无用例行
-   计入 api，与前端 chartUtils 口径一致）；group_by='trend' 返回完成任务按
+1. task_service GetTaskStats 扩展 — group_by='trend' 返回完成任务按
    created_at 分桶（granularity=day/week/month/year，键格式与前端一致：周键为
-   日历年-W ISO 周数不补零）；deleted=True 统计回收站软删除任务。
+   日历年-W ISO 周数不补零）；deleted=True 统计回收站软删除任务
+   （任务类型 api/e2e/mixed 概念已废除，不再有 group_by='type'）。
 2. servicer 透传 deleted/granularity。
 3. 网关 TaskQueryService.domain_stats 聚合组合（status 求和 = 未删除总数、
-   deleted_total、type/trend 透传；聚合失败整体 400 不以 0 兜底）。
+   deleted_total、trend 透传；聚合失败整体 400 不以 0 兜底）。
 """
 import os
 import tempfile
@@ -61,7 +60,6 @@ def db():
     repo = _repo()
     baseline = {
         'status': _count_map(repo.get_task_stats(group_by='status')),
-        'type': _count_map(repo.get_task_stats(group_by='type')),
         'trend_day': _count_map(repo.get_task_stats(group_by='trend', granularity='day')),
         'trend_week': _count_map(repo.get_task_stats(group_by='trend', granularity='week')),
         'trend_month': _count_map(repo.get_task_stats(group_by='trend', granularity='month')),
@@ -110,24 +108,7 @@ def _delta(counts, baseline, key):
     return counts.get(key, 0) - baseline.get(key, 0)
 
 
-# ===== 1) 仓储层：type 派生分布 =====
-
-def test_group_by_type_derived_distribution(db):
-    """按任务去重 device_type 集合分桶：仅 physical→e2e、仅 api→api、兼有→mixed。"""
-    baseline = db['baseline']['type']
-    counts = _count_map(_repo().get_task_stats(group_by='type'))
-    assert _delta(counts, baseline, 'e2e') == 1    # A
-    assert _delta(counts, baseline, 'api') == 4    # B + D/F(无用例行) + E
-    assert _delta(counts, baseline, 'mixed') == 1  # C
-
-
-def test_group_by_type_excludes_deleted(db):
-    """软删除任务（G，physical）不参与类型分布（e2e 增量仅来自 A）。"""
-    counts = _count_map(_repo().get_task_stats(group_by='type'))
-    assert _delta(counts, db['baseline']['type'], 'e2e') == 1
-
-
-# ===== 2) 仓储层：deleted 统计范围 =====
+# ===== 1) 仓储层：deleted 统计范围 =====
 
 def test_deleted_scope_counts_only_soft_deleted(db):
     """默认统计（deleted=False）不含软删除任务；deleted=True 只含软删除任务。"""
@@ -239,10 +220,6 @@ def test_gateway_domain_stats_composition(monkeypatch):
         if group_by == 'status':
             return {'items': [{'key': 'completed', 'count': 3},
                               {'key': 'running', 'count': 2}]}
-        if group_by == 'type':
-            return {'items': [{'key': 'api', 'count': 4},
-                              {'key': 'e2e', 'count': 1},
-                              {'key': 'mixed', 'count': 0}]}
         if group_by == 'trend':
             return {'items': [{'key': '2026-03-15', 'count': 2}]}
         if deleted:
@@ -256,11 +233,10 @@ def test_gateway_domain_stats_composition(monkeypatch):
     assert data['total'] == 5                      # status 分组求和
     assert data['deleted_total'] == 9
     assert data['status_counts'] == {'completed': 3, 'running': 2}
-    assert data['type_counts'] == {'api': 4, 'e2e': 1, 'mixed': 0}
     assert data['trend'] == [{'key': '2026-03-15', 'count': 2}]
     assert data['granularity'] == 'day'            # 无请求上下文时缺省 day
-    # 四次聚合调用齐全；granularity 仅用于 trend、deleted 仅用于回收站计数
-    assert {c['group_by'] for c in calls} == {'status', 'type', 'trend', None}
+    # 三次聚合调用齐全；granularity 仅用于 trend、deleted 仅用于回收站计数
+    assert {c['group_by'] for c in calls} == {'status', 'trend', None}
     assert [c for c in calls if c['group_by'] == 'trend'][0]['granularity'] == 'day'
     assert [c for c in calls if c['group_by'] is None][0]['deleted'] is True
 
@@ -277,8 +253,6 @@ def test_gateway_domain_stats_granularity_param(monkeypatch):
             captured['granularity'] = granularity
         if group_by == 'status':
             return {'items': [{'key': 'completed', 'count': 1}]}
-        if group_by == 'type':
-            return {'items': [{'key': 'api', 'count': 1}]}
         if deleted:
             return {'total': 0}
         return {'total': 0}

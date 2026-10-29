@@ -56,14 +56,13 @@ class GroupService:
         summary_only = (query.fields or '').strip().lower() == 'summary'
         algorithm_type = query.algorithm_type
         keyword = query.keyword
-        test_type = query.type
         dimension_id = query.dimension_id
         # INT-528：收藏 / 回收站口径（与 TestCaseListQuery 一致，双视图贯通）
         favorite = query.favorite or False
         only_deleted = query.only_deleted or False
         # 分组列表按"分组下匹配用例数"筛选（V9.7.10 对齐，INT-146）：
-        # 用例级筛选（type/keyword/dimension）需先用例聚合确定分组集合，不能下推分页
-        has_case_filters = bool(test_type or keyword or dimension_id)
+        # 用例级筛选（keyword/dimension）需先用例聚合确定分组集合，不能下推分页
+        has_case_filters = bool(keyword or dimension_id)
         # INT-1470：默认口径与 algorithm_type 筛选口径可直接下推分页——分组集合
         # 由 SQL 直接确定，列表 RPC 只返回当前页、计数只算当前页；收藏/回收站仍
         # 需先按用例过滤分组，保持原路径（全量列表 + 内存切片 + 聚合 RPC）
@@ -99,7 +98,7 @@ class GroupService:
                 # INT-528：收藏/回收站口径随筛选项下推，回收站态 keyword 命中已删用例
                 stats = task_data_service.get_testcase_stats(
                     algorithm_type=algorithm_type, group_by='group_id',
-                    test_type=test_type, keyword=keyword, dimension_id=dimension_id,
+                    keyword=keyword, dimension_id=dimension_id,
                     favorite=favorite, deleted=only_deleted,
                 )
                 items = stats.get('items') or []

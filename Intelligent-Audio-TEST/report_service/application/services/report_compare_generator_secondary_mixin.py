@@ -21,8 +21,6 @@ class ReportSecondaryDataMixin:
     @staticmethod
     def _prepare_secondary_data(report_ids, reports, tasks, task_ids):
         """准备二次对比数据。返回 (data_dict, None) 或 (None, error)。"""
-        report_task_type = ReportCompareHelpers._get_task_type(tasks)
-
         results, resources, devices_list, apis_list, device_ids, api_ids, error = \
             ReportCompareHelpers._collect_all_resources(task_ids, tasks)
         if error:
@@ -101,7 +99,6 @@ class ReportSecondaryDataMixin:
         )
 
         return {
-            "report_task_type": report_task_type,
             "results": results,
             "resources": resources,
             "devices_list": devices_list,

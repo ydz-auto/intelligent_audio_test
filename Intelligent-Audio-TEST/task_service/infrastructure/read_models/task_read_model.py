@@ -214,7 +214,6 @@ class TaskReadModel(
                      execution_status: Optional[str] = None,
                      merge_type: Optional[str] = None,
                      stats: bool = False,
-                     task_type: Optional[str] = None,
                      visibility: Optional[str] = None) -> Dict[str, Any]:
         """网关 get_all 使用的查询逻辑：含 Report 关联。
 
@@ -233,9 +232,6 @@ class TaskReadModel(
             映射为 merged/cherry_pick 布尔，此处透传（供兼容/审计）。
         stats（可选，INT-577）：恒返回合并容器统计块（merged ∪ cherry_pick 并集，
             供「挑选合并」页签计数/facet）。合并容器计数独立于列表分页。
-        task_type（可选，INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
-            /tasks/stats type_counts 一致——api=无物理设备用例、e2e=含物理且无
-            API 设备用例、mixed=物理与 API 设备用例兼有）。
         visibility（可选，INT-466）：可见性筛选（shared/private；None=全部）。
         """
         from datetime import datetime
@@ -293,49 +289,6 @@ class TaskReadModel(
                                             TaskCase.device_type == device_type)
                                      .correlate(Task)
                                      .exists())
-            if task_type:
-                # INT-273：按派生任务类型过滤（口径与 /tasks/stats type_counts 一致）：
-                #   api   = 无物理设备用例（含无 device_type 行与未知类型行）
-                #   e2e   = 含物理设备用例且无 API 设备用例
-                #   mixed = 物理设备用例与 API 设备用例兼有
-                # INT-1233：历史任务无 task_case_relations 行（仅剩设备/API 关系）
-                # 时按任务级关系回退派生——有 task_device_relations → physical、
-                # 有 task_api_relations → http_api（与 read model device_types 输出
-                # 口径一致，避免无用例任务全部落入 api）。
-                from shared.models.common_enums import DeviceType
-                from task_service.infrastructure.persistence.models import TaskCase, TaskDevice, TaskAPI
-                physical_exists = sa_select(TaskCase.id).where(
-                    TaskCase.task_id == Task.id,
-                    TaskCase.device_type == DeviceType.PHYSICAL.value,
-                ).correlate(Task).exists()
-                api_exists = sa_select(TaskCase.id).where(
-                    TaskCase.task_id == Task.id,
-                    TaskCase.device_type.in_([
-                        DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value,
-                    ]),
-                ).correlate(Task).exists()
-                # INT-1233：任务级关系回退（无用例级 device_type 行时）
-                case_type_exists = sa_select(TaskCase.id).where(
-                    TaskCase.task_id == Task.id,
-                    TaskCase.device_type.isnot(None),
-                    TaskCase.device_type != '',
-                ).correlate(Task).exists()
-                dev_rel_exists = sa_select(TaskDevice.id).where(
-                    TaskDevice.task_id == Task.id,
-                ).correlate(Task).exists()
-                api_rel_exists = sa_select(TaskAPI.id).where(
-                    TaskAPI.task_id == Task.id,
-                ).correlate(Task).exists()
-                physical_exists = or_(physical_exists, and_(~case_type_exists, dev_rel_exists))
-                api_exists = or_(api_exists, and_(~case_type_exists, api_rel_exists))
-                if task_type == 'mixed':
-                    query = query.filter(physical_exists, api_exists)
-                elif task_type == 'e2e':
-                    query = query.filter(physical_exists, ~api_exists)
-                elif task_type == 'api':
-                    query = query.filter(~physical_exists)
-                else:
-                    logger.debug("task_type 非法值已忽略: %r", task_type)
             if favorite:
                 from shared.models.common_enums import EntityType
                 from task_service.infrastructure.persistence.models import Favorite
@@ -473,7 +426,7 @@ class TaskReadModel(
                     logger.debug("挑选合并容器批量判定降级（表可能未建）: %s", cp_err)
             # 批量取页面任务的用例级被测设备类型集合（差异#2 收尾：取代 task.type 输出）。
             # INT-1233：无用例级 device_type 行（含无 task_case_relations 的历史任务）
-            # 按任务级设备/API 关系回退派生（与 task_type 筛选、stats type_counts 同口径）。
+            # 按任务级设备/API 关系回退派生（与 read model device_types 输出同口径）。
             device_types_map = fetch_task_device_types(session, page_task_ids) if page_task_ids else {}
             # INT-141：当前用户对本页任务的收藏集合（is_favorite 标记）
             favorite_ids = set()

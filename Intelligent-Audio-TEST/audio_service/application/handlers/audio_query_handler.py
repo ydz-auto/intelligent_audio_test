@@ -276,15 +276,13 @@ class AudioQueryHandler:
 
         if not audio or audio.deleted:
             # audio_id 实为 testcase_id：从用例 config 解析真实 audio_id
-            # 差异#2 收尾：用例口径（test_type 列已废弃）由配置形态派生，
-            # 与请求携带的 task_type 口径值比对，一致才允许借用用例音频
-            from shared.utils.testcase_helpers import derive_case_test_type
-            task_type = (query.data or {}).get('task_type', 'api')
+            # （用例纯数据化：音频取 config.rounds[].audios，不再区分 api/e2e 口径）
+            from shared.utils.testcase_helpers import collect_audios
             tc = self._task_acl.get_testcase_by_id(query.audio_id)
             tc_config = (tc.config or {}) if tc else {}
-            if tc and derive_case_test_type(tc_config) == task_type:
-                audios_config = tc_config.get('audios', []) if isinstance(tc_config, dict) else []
-                target_audio_config = next((c for c in audios_config if c.get('audio_id')), None)
+            if tc:
+                target_audio_config = next(
+                    (c for c in collect_audios(tc_config) if c.get('audio_id')), None)
                 if target_audio_config:
                     target_audio_id = target_audio_config.get('audio_id')
                     if target_audio_id:

@@ -10,7 +10,7 @@
 - _get_report_helpers 延迟导入指向 report_service.application.services.report_helpers
 """
 
-from shared.models.common_enums import ReportStatus, ReportType, TaskStatus, TestType
+from shared.models.common_enums import ReportStatus, ReportType, TaskStatus
 from shared.utils.log_handler import log_not_emit, log_and_emit
 from shared.utils.query_utils import (
     escape_like_pattern, sanitize_keyword, normalize_sort_field,
@@ -210,7 +210,7 @@ class ReportCompareHelpers:
         return resource_names, device_list, api_list
 
     @staticmethod
-    def _build_case_data_compare(test_cases, results, all_dimensions, tasks_map, report_task_type):
+    def _build_case_data_compare(test_cases, results, all_dimensions, tasks_map):
         ReportHelpers = _get_report_helpers()
         # INT-419：兼容 {id: dict} 映射入参（_grpc_list_testcases_by_ids 契约），
         # 归一为 dict 值列表再迭代，避免 str 键被当用例访问触发 AttributeError
@@ -490,20 +490,6 @@ class ReportCompareHelpers:
             return None, None, None, "未找到关联的任务数据"
 
         return reports, tasks, task_ids, None
-
-    @staticmethod
-    def _get_task_type(tasks):
-        # 差异#2 收尾：task.type 已废弃，对比报告口径由任务关联用例配置形态派生
-        from shared.utils.testcase_helpers import derive_case_test_type
-        included = set()
-        for t in tasks:
-            config = (t.get('config') if isinstance(t, dict) else getattr(t, 'config', None)) or {}
-            included.add(derive_case_test_type(config))
-        if included == {TestType.API.value}:
-            return TestType.API.value
-        elif included == {TestType.E2E.value}:
-            return TestType.E2E.value
-        return "all"
 
     @staticmethod
     def _collect_all_resources(task_ids, tasks):

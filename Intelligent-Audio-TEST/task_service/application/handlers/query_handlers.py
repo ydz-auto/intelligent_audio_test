@@ -185,7 +185,6 @@ class TaskQueryHandler:
             merged=query.merged,
             cherry_pick=query.cherry_pick,
             execution_status=query.execution_status,
-            task_type=query.task_type,
             stats=query.stats,
             visibility=query.visibility,
         )
@@ -232,7 +231,6 @@ class TaskQueryHandler:
             tag=query.tag,
             group_id=query.group_id,
             algorithm_type=query.algorithm_type,
-            test_type=query.test_type,
             view=query.view,
             include_deleted=query.include_deleted,
             dimension_id=query.dimension_id,

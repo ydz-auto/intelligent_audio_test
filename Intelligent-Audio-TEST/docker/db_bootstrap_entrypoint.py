@@ -153,11 +153,6 @@ BOOTSTRAP_STEPS = [
     ('python', 'scripts/migrations/202610/seed_custom_oauth_providers.py'),
     # ㉘ task_case_relations (task, case, 路由) 唯一索引（INT-604；建索引前先查重）
     ('python', 'scripts/migrations/202610/add_uq_task_case_route_int604.py'),
-    # ㊳ test_cases 执行口径派生列（INT-1469/INT-1565）：create_all 只建缺失的表、
-    #    不给存量表补列，存量库（真实库 / 隔离库）缺 derived_test_type 时新镜像
-    #    建用例/列表即 UndefinedColumn 400。脚本幂等（列/索引存在即 SKIP、回填按
-    #    值比对），全新库为全 SKIP；默认 dry-run，引导链必须带 --apply。
-    ('python', 'scripts/migrations/202610/add_derived_test_type_int1469.py', '--apply'),
     # ㊴ report_export_records 报告导出历史表（INT-1555；INT-1609 补迁移守卫）：
     #     create_all 只建缺失的表，建库早于 INT-1555 的存量库在引导链里建表自愈；
     #     脚本幂等（表/索引存在即 SKIP），全新库为全 SKIP。
@@ -180,6 +175,10 @@ BOOTSTRAP_STEPS = [
     #     往返）依赖该列。脚本幂等（列存在即 SKIP、回填按值比对，只读 DB 轻量
     #     JSON 不回源对象存储），全新库为全 SKIP；默认 dry-run，引导链须 --apply。
     ('python', 'scripts/migrations/202610/add_test_result_result_type_int1510.py', '--apply'),
+    # ㊷-2 test_results.result_type 按执行通道回填（api / e2e）：写入链路此前未透传
+    #     结果类型导致存量全 NULL（全部落「结果类型待补充」桶）。幂等（只写 NULL/空串），
+    #     全新库为全 SKIP；默认 dry-run，引导链须 --apply。
+    ('python', 'scripts/migrations/202610/backfill_result_type_channel_20261029.py', '--apply'),
     # ㊸-1 apis 协议 × 流式性两列（INT-1799 / B0 裁定）：create_all 只建缺失的表、
     #     不给存量表补列。步骤固定为 加两列 → 按 device_type 回填（http_api→
     #     http/false，websocket_api→websocket/true，非法或与 meta.protocol 冲突即
@@ -302,6 +301,11 @@ BOOTSTRAP_STEPS = [
     #     幂等（取值已一致的行不进 UPDATE，重复执行命中 0 行），默认 dry-run，
     #     引导链必须带 --apply。纯数据 UPDATE、无 DDL；须排在 ⑪ 之后、㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202610/fix_voice_llm_reference_params_definitions.py', '--apply'),
+    # ㊾ 任务类型 / 用例执行口径列下线：published_tasks.type（api/e2e 任务类型）
+    #     与 test_cases.derived_test_type（INT-1469 为列表 test_type 过滤物化的
+    #     冗余列）随概念废除删除，列存在即 DROP，全新库为全 SKIP。
+    #     须排在 ㊽ ANALYZE 之前（ANALYZE 固定为引导链末步）。
+    ('python', 'scripts/migrations/202610/drop_published_task_type_and_case_derived_test_type.py'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器

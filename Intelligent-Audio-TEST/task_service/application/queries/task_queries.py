@@ -65,8 +65,6 @@ class ListTasksConfigQuery(Query):
     evaluation_status（可选，INT-301）：按任务级评估状态过滤（与执行状态并列）。
     merged（可选，INT-298）：仅合并容器任务（对齐 V9.7.10 合并页签数据源）。
     cherry_pick（可选，INT-339）：仅挑选合并容器任务（专有关系表存在性判定）。
-    task_type（可选，INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
-        /tasks/stats type_counts 一致——用例级 device_type 派生）。
     stats（可选，INT-577）：仅「挑选合并」页签（stats=true）计算合并容器统计块
         （merged ∪ cherry_pick 并集，total/whole/picked），否则 None。
     """
@@ -85,7 +83,6 @@ class ListTasksConfigQuery(Query):
     merged: bool = False
     cherry_pick: bool = False
     execution_status: Optional[str] = None
-    task_type: Optional[str] = None
     stats: bool = False
     # INT-466：可见性筛选（shared/private；None=全部）
     visibility: Optional[str] = None
@@ -155,8 +152,7 @@ class ListTestCasesQuery(Query):
 
     favorite（可选，INT-141）：仅当前用户收藏（user_id 来自 x-user-id metadata）。
     only_deleted（可选，INT-141）：仅回收站软删除项（含删除人/删除时间）。
-    test_type（可选，INT-193）：执行口径 api/e2e（proto ListTestCasesRequest.type，
-    task_service 侧按配置形态派生过滤）；dimension_id：评估维度过滤。
+    dimension_id：评估维度过滤。
     lab_ids（可选，INT-539）：按实验室过滤（含通用用例）。config JSONB 无
     lab_id 的用例视为通用用例，任意实验室下可见；有值则须属于本集合。
     """
@@ -166,7 +162,6 @@ class ListTestCasesQuery(Query):
     tag: Optional[str] = None
     group_id: Optional[str] = None
     algorithm_type: Optional[str] = None
-    test_type: Optional[str] = None
     view: Optional[str] = None
     include_deleted: bool = False
     dimension_id: Optional[int] = None

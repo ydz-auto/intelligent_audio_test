@@ -8,7 +8,7 @@
          （device_type 口径）+ 失败文案标签与兜底同源
 - 自查1  _progress gRPC 进度路径 device_types 含 API 类被测设备才收集 api_resources
          （原 task_type != 'api' 门禁恒真 → 运行中任务 API 资源状态恒空）
-- 自查2  对比报告 report_task_type 由配置形态派生；tasks_info 不再输出恒 None type 键
+- 自查2  对比报告不再输出任务类型/占位键；tasks_info 不含恒 None type 键
 - 顺手项 CreateTask 占位端点不再回显 type 键
 """
 import json
@@ -264,22 +264,10 @@ class TestProgressApiResourcesGate:
         assert len(out) == 1
 
 
-# ==================== 自查2：对比报告口径派生与占位键清理 ====================
+# ==================== 自查2：对比报告占位键清理 ====================
 
 class TestCompareSummaryDerivation:
-    """report_task_type 由配置形态派生；tasks_info 不再含恒 None type 键。"""
-
-    def test_get_task_type_by_config_shape(self):
-        from report_service.application.services.report_compare_helpers import (
-            ReportCompareHelpers,
-        )
-
-        api_task = {'id': 1, 'config': {'api': {}}}
-        e2e_task = {'id': 2, 'config': {'audios': [{'audio_id': 'a',
-                                                    'playback_device_id': 'd1'}]}}
-        assert ReportCompareHelpers._get_task_type([api_task]) == 'api'
-        assert ReportCompareHelpers._get_task_type([e2e_task]) == 'e2e'
-        assert ReportCompareHelpers._get_task_type([api_task, e2e_task]) == 'all'
+    """对比报告 summary 不再输出任务类型；tasks_info 不再含恒 None type 键。"""
 
     def test_tasks_info_has_no_type_key(self):
         from report_service.application.services.report_compare_generator_data_mixin import (
@@ -288,7 +276,6 @@ class TestCompareSummaryDerivation:
 
         tasks = [{'id': 1, 'name': 't1', 'status': 'completed'}]
         data_dict = {
-            'report_task_type': 'api',
             'total_cases': 10,
             'completed_cases': 8,
             'failed_cases': 1,
@@ -311,7 +298,7 @@ class TestCompareSummaryDerivation:
         }
         summary = ReportCompareDataMixin._build_compare_summary(
             tasks, [1], [], data_dict)
-        assert summary['task_type'] == 'api'
+        assert 'task_type' not in summary
         for info in summary['tasks_info']:
             assert 'type' not in info
             assert info['weighted_value'] == 90.0

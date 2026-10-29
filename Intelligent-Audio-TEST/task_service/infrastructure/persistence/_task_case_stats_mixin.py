@@ -256,14 +256,10 @@ class TaskCaseStatsMixin:
                                 granularity: str = '') -> dict:
         """按字段分组统计分支。
 
-        差异#2 收尾：task.type 列已废弃删除，group_by='type' 改为按用例级
-        device_type 派生分布（physical→e2e；http_api/websocket_api→api；兼有
-        →mixed，INT-200）。group_by='trend' 返回已完成任务按 created_at 的
-        时间分桶计数（granularity=day/week/month/year，INT-200）。
+        group_by='trend' 返回已完成任务按 created_at 的时间分桶计数
+        （granularity=day/week/month/year，INT-200）。
+        任务类型（api/e2e/mixed）概念已废除，不再提供按类型分组。
         """
-        if group_by == 'type':
-            return TaskCaseStatsMixin._get_task_type_distribution(
-                session, status, algorithm_type, deleted)
         if group_by == 'trend':
             return TaskCaseStatsMixin._get_task_trend_buckets(
                 session, status, algorithm_type, granularity)
@@ -283,59 +279,7 @@ class TaskCaseStatsMixin:
         items = [{'key': str(k) if k is not None else '', 'count': int(c)} for k, c in rows]
         return {'items': items}
 
-    # 派生类型桶（与前端 chartUtils 口径一致：无 device_type 行回退 api）
-    _TYPE_API_DEVICE_TYPES = frozenset({
-        DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value,
-    })
     _TREND_GRANULARITIES = frozenset({'day', 'week', 'month', 'year'})
-
-    @staticmethod
-    def _get_task_type_distribution(session, status: str,
-                                    algorithm_type: str, deleted: bool) -> dict:
-        """任务类型分布（派生）：按任务的去重 device_type 集合分桶 api/e2e/mixed。
-
-        无任何 device_type 的任务与前端既有派生口径一致计入 api（INT-200）。
-        """
-        task_q = session.query(Task.id).filter(Task.deleted == bool(deleted))
-        if status:
-            task_q = task_q.filter(Task.status == status)
-        if algorithm_type:
-            task_q = task_q.filter(Task.algorithm_type == algorithm_type)
-        rows = (session.query(TaskCase.task_id, TaskCase.device_type)
-                .filter(TaskCase.task_id.in_(task_q.statement))
-                .filter(TaskCase.device_type.isnot(None),
-                        TaskCase.device_type != '')
-                .distinct().all())
-        per_task: dict = {}
-        for tid, dt in rows:
-            per_task.setdefault(tid, set()).add(dt)
-        # INT-1233：无用例级 device_type 行的任务按任务级设备/API 关系回退派生
-        # （历史任务无 task_case_relations，仅剩 task_device_relations/
-        # task_api_relations——与列表 device_types、task_type 筛选同口径）
-        covered_ids = set(per_task)
-        all_ids = {t[0] for t in task_q.all()}
-        missing_ids = all_ids - covered_ids
-        if missing_ids:
-            from task_service.infrastructure.read_models.task_device_type_derivation import (
-                fetch_task_device_types,
-            )
-            rel_map = fetch_task_device_types(session, list(missing_ids))
-            for tid, dts in rel_map.items():
-                per_task.setdefault(tid, set()).update(dts)
-        counts = {'api': 0, 'e2e': 0, 'mixed': 0}
-        for dts in per_task.values():
-            has_physical = DeviceType.PHYSICAL.value in dts
-            has_api = bool(dts & TaskCaseStatsMixin._TYPE_API_DEVICE_TYPES)
-            if has_physical and has_api:
-                counts['mixed'] += 1
-            elif has_physical:
-                counts['e2e'] += 1
-            else:
-                counts['api'] += 1
-        # 无用例级 device_type 且无关系的任务按前端口径计入 api
-        no_case = len(all_ids) - len(per_task)
-        counts['api'] += int(no_case) if no_case > 0 else 0
-        return {'items': [{'key': k, 'count': int(v)} for k, v in counts.items()]}
 
     @staticmethod
     def _get_task_trend_buckets(session, status: str,

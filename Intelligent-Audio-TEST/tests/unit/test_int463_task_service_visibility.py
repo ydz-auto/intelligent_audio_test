@@ -491,7 +491,7 @@ class TestPublishedTaskVisibility:
         from task_service.infrastructure.persistence.models import PublishedTask
         _set_user(500)
         pt = published_task_repository.create(
-            name='pt1', source_task_id=1, task_type='e2e', algorithm_type='translation',
+            name='pt1', source_task_id=1, algorithm_type='translation',
         )
         session = get_db_session()
         try:
@@ -507,7 +507,7 @@ class TestPublishedTaskVisibility:
         from task_service.infrastructure.persistence.models import PublishedTask
         _set_user(500)
         pt = published_task_repository.create(
-            name='pt2', source_task_id=2, task_type='e2e', algorithm_type='translation',
+            name='pt2', source_task_id=2, algorithm_type='translation',
         )
         _set_visibility(PublishedTask, pt.id, 'shared', owner=None)  # 存量 NULL owner
         _set_user(999)
@@ -520,7 +520,7 @@ class TestPublishedTaskVisibility:
         from task_service.infrastructure.persistence.models import PublishedTask
         _set_user(500)
         pt = published_task_repository.create(
-            name='pt3', source_task_id=3, task_type='e2e', algorithm_type='translation',
+            name='pt3', source_task_id=3, algorithm_type='translation',
         )
         _set_visibility(PublishedTask, pt.id, 'private')
         _set_user(999)

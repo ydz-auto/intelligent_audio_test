@@ -436,8 +436,6 @@ class TestSecondaryCompareChainTagCategory:
         monkeypatch.setattr(rh_mod.ReportHelpers, 'get_resource_name',
                             staticmethod(lambda res, task=None,
                                          use_time_prefix=False: 'res-1'))
-        monkeypatch.setattr(rch_mod.ReportCompareHelpers, '_get_task_type',
-                            staticmethod(lambda tasks: 'secondary_compare'))
         monkeypatch.setattr(rch_mod.ReportCompareHelpers, '_build_all_dimensions',
                             staticmethod(lambda res_ids: (['dim1'], ['m1'], None)))
         monkeypatch.setattr(rch_mod.ReportCompareHelpers,

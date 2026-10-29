@@ -110,8 +110,6 @@ class TestCaseConfigServiceServicer(task_grpc.TestCaseConfigServiceServicer):
                 tag=request.tag or None,
                 group_id=request.group_id or None,
                 algorithm_type=request.algorithm_type or None,
-                # INT-193：执行口径（api/e2e，配置形态派生）与评估维度过滤
-                test_type=request.type or None,
                 view=request.view or None,
                 include_deleted=request.include_deleted,
                 dimension_id=request.dimension_id or None,
