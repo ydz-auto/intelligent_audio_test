@@ -107,14 +107,21 @@ class TaskDispatchMixin:
         return exec_status in (ExecutionStatus.STOPPED, ExecutionStatus.SKIPPED)
 
     def _get_next_pending_case_target_gated(self, task_id, session):
-        """目标级门控选行（INT-1115 双道语义）。
+        """目标级门控选行（INT-1115 双道语义；用例维度推进）。
 
-        双道：设备道（target_type=device）与 API 道（target_type=api）始终并发、
-        互不等待。并行目标行不受任何目标门控（任务启动即并发派发，现行为）；
-        串行目标 t_k（类型 T）仅当其同类型道内全部前序目标（类型 T 内位置 < k，
-        含同类型前序并行目标）的用例行全部到达终态后才派发；两个同类型串行目标
-        不重叠（后者在前者全终态后启动）。不可解析目标的行视为 parallel 可派发。
-        目标内部门控放行后仍按现有逐用例并发分发（physical 由设备锁天然串行）。
+        调度粒度是「用例」而不是「目标」：同一用例在各串行目标上的路由行先
+        依次派发，整个用例的全部路由行到达执行终态后才进入下一个用例。
+        目标维度会让一台设备上的所有用例跑完之后才轮到另一台设备
+        （实测 task 450：device10 用例1/2 先跑完 → device9 才启动），
+        不符合按用例推进的预期。
+
+        规则（双道独立与并行语义保持不变）：
+        - 并行目标行 / 不可解析目标行不受门控，任务启动即可派发；
+        - 串行目标行（类型道 T）仅当「同 T 道内、用例顺序早于本用例的全部
+          路由行」均已到达执行终态后才派发；同一用例内不同目标不再互相等待
+          （不同 SN 由物理锁并行、同 SN 由 SN 锁与步骤锁串行）；
+        - 类型道之间（设备道 vs API 道）仍独立、互不等待。
+        执行终态口径见 _is_case_row_terminal（评估异步行，防互相死锁）。
         """
         from shared.models.common_enums import ExecutionMode
 
@@ -122,7 +129,7 @@ class TaskDispatchMixin:
         rows = session.query(TaskCase).filter(
             TaskCase.task_id == task_id,
             task_case_not_removed(TaskCase),
-        ).order_by(TaskCase.created_at.asc()).all()
+        ).order_by(TaskCase.created_at.asc(), TaskCase.id.asc()).all()
         if not rows:
             return None
         pending = [r for r in rows if r.execution_status == ExecutionStatus.PENDING]
@@ -135,34 +142,46 @@ class TaskDispatchMixin:
             key = (item.get('target_type'), str(item.get('target_id')))
             position.setdefault(key, idx)
 
-        gate_ok_cache = {}
-
-        def _gate_ok(key):
-            if key in gate_ok_cache:
-                return gate_ok_cache[key]
-            item_mode = next(
+        def _mode_of(key):
+            return next(
                 (item.get('mode') for item in target_modes
                  if (item.get('target_type'), str(item.get('target_id'))) == key),
                 ExecutionMode.PARALLEL.value,
             )
-            ok = True
-            if item_mode == ExecutionMode.SERIAL.value:
-                my_pos = position.get(key, len(target_modes))
-                my_type = key[0]
-                # 同类型道内全部前序目标（含同类型前序并行目标）用例行全部终态；
-                # 跨类型目标（另一条道）不影响本目标派发
-                for prior_key, p in position.items():
-                    if p < my_pos and prior_key[0] == my_type:
-                        prior_rows = [r for r in rows if self._row_target_key(r) == prior_key]
-                        if prior_rows and not all(self._is_case_row_terminal(r) for r in prior_rows):
-                            ok = False
-                            break
-            gate_ok_cache[key] = ok
-            return ok
+
+        # 用例推进顺序：按行创建顺序首次出现（同一用例的多条路由行归一为一个位置）
+        case_order = []
+        for row in rows:
+            if row.test_case_id not in case_order:
+                case_order.append(row.test_case_id)
+        case_pos = {cid: idx for idx, cid in enumerate(case_order)}
+
+        def _lane_of(row):
+            """路由行所属类型道（device / api）；不可解析返回 None"""
+            key = self._row_target_key(row)
+            return key[0] if key else None
+
+        def _prior_cases_finished(row, lane):
+            """同类型道内、用例顺序早于本用例的路由行是否全部执行终态"""
+            my_pos = case_pos.get(row.test_case_id, len(case_order))
+            for prior in rows:
+                if prior.test_case_id == row.test_case_id:
+                    continue
+                if case_pos.get(prior.test_case_id, len(case_order)) >= my_pos:
+                    continue
+                if _lane_of(prior) != lane:
+                    continue
+                if not self._is_case_row_terminal(prior):
+                    return False
+            return True
 
         for row in pending:
             key = self._row_target_key(row)
-            if key is None or key not in position or _gate_ok(key):
+            if key is None or key not in position:
+                return row
+            if _mode_of(key) != ExecutionMode.SERIAL.value:
+                return row
+            if _prior_cases_finished(row, key[0]):
                 return row
         return None
 

@@ -276,6 +276,70 @@ class TestNoSerialDefaultsParallel:
         assert got.device_type == 'http_api'
 
 
+class TestCaseLevelProgression:
+    """用例维度推进：两台设备的同一用例先执行，而不是一台设备跑完所有用例。
+
+    回归 task 450 实测：串行链按目标维度门控时，device10 的用例1/2 全部跑完
+    才派发 device9 用例1（时间线上表现为「同设备所有用例先执行完」）。
+    正确语义是同一用例在各设备的行先依次派发，整个用例执行终态后再进下一个。
+    """
+
+    CFG = {'target_modes': [
+        {'target_type': 'device', 'target_id': 1, 'mode': 'serial'},
+        {'target_type': 'device', 'target_id': 2, 'mode': 'serial'},
+    ]}
+
+    def _rows(self):
+        # 行按设备分组创建（与任务实际写库顺序一致）
+        return [
+            _case_row('c1', 'physical', '1'),
+            _case_row('c2', 'physical', '1'),
+            _case_row('c1', 'physical', '2'),
+            _case_row('c2', 'physical', '2'),
+        ]
+
+    def test_same_case_on_second_device_dispatches_first(self):
+        rows = self._rows()
+        eng = _Engine()
+        # 首轮：用例1 在 device1 上的行
+        got = _pick(eng, self.CFG, rows)
+        assert got is not None and got.test_case_id == 'c1' and got.device_id == '1'
+        # 该行在途时：应派发「同一用例」的 device2 行，而不是同设备的用例2
+        rows[0].execution_status = ExecutionStatus.RUNNING
+        rows[0].status = TaskCaseStatus.RUNNING
+        got = _pick(eng, self.CFG, rows)
+        assert got is not None and got.test_case_id == 'c1' and got.device_id == '2', \
+            '同一用例跨设备应先行派发，不被同设备的后续用例抢占'
+        # 用例1 两行都执行终态后，才轮到用例2
+        _completed(rows[0])
+        _completed(rows[2])
+        got = _pick(eng, self.CFG, rows)
+        assert got is not None and got.test_case_id == 'c2'
+
+    def test_next_case_blocked_while_same_case_other_device_in_flight(self):
+        """用例1 在 device1 终态、device2 仍在途 → 用例2 不得提前派发"""
+        rows = self._rows()
+        eng = _Engine()
+        _completed(rows[0])
+        rows[2].execution_status = ExecutionStatus.RUNNING
+        rows[2].status = TaskCaseStatus.RUNNING
+        got = _pick(eng, self.CFG, rows)
+        assert got is None, '同用例在另一台设备上未执行完，下一用例不得派发'
+
+    def test_single_device_task_keeps_case_order(self):
+        """单设备多用例（每用例一行）：用例间仍严格串行，等价旧目标级语义"""
+        rows = [_case_row('c1', 'physical', '1'), _case_row('c2', 'physical', '1')]
+        eng = _Engine()
+        got = _pick(eng, self.CFG, rows)
+        assert got is not None and got.test_case_id == 'c1'
+        rows[0].execution_status = ExecutionStatus.RUNNING
+        rows[0].status = TaskCaseStatus.RUNNING
+        assert _pick(eng, self.CFG, rows) is None
+        _completed(rows[0])
+        got = _pick(eng, self.CFG, rows)
+        assert got is not None and got.test_case_id == 'c2'
+
+
 class TestSerialKeepAliveDecision:
     """主循环 keep-alive：target_modes 含任一 serial 时 _is_serial_task 为真。"""
 
