@@ -62,6 +62,8 @@ export function useNotifications() {
   /** 会话内事件序号（未读比对：最新事件键；初始以持久已读序号为基线，
    *  P3-1：跨会话单调递增，刷新后新事件 seq 才不会被旧持久值吞掉） */
   const eventSeqRef = useRef(lastReadEventSeq)
+  /** 会话内已弹 toast 的业务 key 集合（同 key 只弹一次，防高频进度/重复错误刷屏） */
+  const toastKeysRef = useRef<Set<string>>(new Set())
 
   // ===== 通知页签：SSE 事件流 =====
   useEffect(() => {
@@ -81,8 +83,12 @@ export function useNotifications() {
           }
           return [item, ...prev].slice(0, MAX_NOTICE_ITEMS)
         })
-        // 负责人 2026-10-28：新通知自动弹 toast（不必再点铃铛才看到）
-        toast(item.title || '新通知', { description: item.content })
+        // 负责人 2026-10-28：新通知自动弹 toast（不必再点铃铛才看到）。
+        // 去重：进度类（kind=task）高频静默不弹；其余按 dedupeKey 同 key 只弹一次
+        if (item.kind !== 'task' && item.dedupeKey && !toastKeysRef.current.has(item.dedupeKey)) {
+          toastKeysRef.current.add(item.dedupeKey)
+          toast(item.title || '新通知', { description: item.content })
+        }
         // 名称解析不阻塞行渲染：先以 id 占位，解析完成局部更新；
         // 无 task:read / report:read 时按权限跳过对应快照请求（INT-1289）
         void resolveNotificationNames(item, {
