@@ -54,13 +54,14 @@ class RoundAggregator(EvaluationLoggerMixin):
             local_db_session.close()
 
     def aggregate_round_results(self, result_id, task_id, test_case_id):
-        """
-        Aggregate multi-round evaluation results into per-dimension averages.
+        """Aggregate multi-round evaluation results into per-dimension averages.
 
         Queries all TestResultDimension records (round_number IS NOT NULL) for the given result_id,
         groups them by dimension name, computes arithmetic mean scores,
         writes the aggregated data to TestResult.algorithm_result['aggregated'],
         and creates round_number=NULL TestResultDimension records for the overall scores.
+
+        同时把逐轮分数回填到 algorithm_result.rounds[].evaluation（API / E2E 统一字段）。
 
         Returns:
             dict with keys like avg_{dim_name}, round_count, completed_rounds
@@ -78,6 +79,8 @@ class RoundAggregator(EvaluationLoggerMixin):
             # Group by dimension_id
             dim_groups = {}
             dim_info = {}
+            # 逐轮评估分数：{round_number: {维度键: 分数}}，回填 rounds[].evaluation
+            round_evals = {}
             for dr in dim_results:
                 dim_obj = local_db_session.get(Dimension, dr.dimension_id) if dr.dimension_id else None
                 key = dim_obj.name if dim_obj else str(dr.dimension_id)
@@ -93,6 +96,11 @@ class RoundAggregator(EvaluationLoggerMixin):
                     'raw_value': dr.dimension_value,
                     'evaluation_status': dr.evaluation_status,
                 })
+                if (dr.round_number is not None
+                        and dr.evaluation_status == EvaluationStatus.COMPLETED
+                        and dr.score is not None):
+                    round_evals.setdefault(int(dr.round_number), {})[
+                        self._round_eval_key(key)] = dr.score
 
             aggregated = {}
             for dim_name, results in dim_groups.items():
@@ -164,7 +172,8 @@ class RoundAggregator(EvaluationLoggerMixin):
             local_db_session.close()
 
         # gRPC 读 TestResult + 合并 aggregated + gRPC 写回（会话外执行）
-        self._update_algorithm_result_aggregated(result_id, aggregated)
+        self._update_algorithm_result_aggregated(
+            result_id, aggregated, round_evals=round_evals)
 
         self._log(
             level='INFO',
@@ -176,9 +185,17 @@ class RoundAggregator(EvaluationLoggerMixin):
 
         return aggregated
 
-    def _update_algorithm_result_aggregated(self, result_id, aggregated):
+    @staticmethod
+    def _round_eval_key(dim_name) -> str:
+        """维度名 → 逐轮评估字典键（小写、空格/短横线转下划线，与 E2E 聚合口径一致）"""
+        return str(dim_name).lower().replace(' ', '_').replace('-', '_')
+
+    def _update_algorithm_result_aggregated(self, result_id, aggregated, round_evals=None):
         """
         Write aggregated results into TestResult.algorithm_result['aggregated'].
+
+        同时把逐轮分数回填 rounds[].evaluation（API / E2E 统一字段，重评/详情/报告均读它）。
+
         P1.4: 通过 gRPC 调 task_service.UpdateTestResultAlgorithmResult
         INT-116: 在 DB 会话释放后调用，不持有本地连接
         """
@@ -196,6 +213,15 @@ class RoundAggregator(EvaluationLoggerMixin):
             existing_aggregated = {}
         existing_aggregated.update(aggregated)
         result_data['aggregated'] = existing_aggregated
+
+        # 逐轮评估分数回填 rounds[].evaluation（统一字段；无逐轮数据的轮次置空对象）
+        if round_evals:
+            rounds_list = result_data.get('rounds')
+            if isinstance(rounds_list, list):
+                for idx, round_item in enumerate(rounds_list):
+                    if isinstance(round_item, dict):
+                        round_item['evaluation'] = round_evals.get(idx, {})
+                result_data['rounds'] = rounds_list
 
         # P1.4: 通过 gRPC 写回 task_service
         task_acl_repository.update_test_result_algorithm_result(

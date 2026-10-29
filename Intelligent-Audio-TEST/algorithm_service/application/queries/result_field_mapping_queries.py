@@ -322,7 +322,7 @@ class ResultFieldMappingQueryHandler:
                     'llm_response': r.get('output', ''),
                     'latency': r.get('latency', 0),
                     'response_metrics': r.get('response_metrics', {}),
-                    'round_evaluation': r.get('round_evaluation', {}),
+                    'evaluation': r.get('evaluation', {}),
                 }
                 for idx, r in enumerate(rounds)
             ]

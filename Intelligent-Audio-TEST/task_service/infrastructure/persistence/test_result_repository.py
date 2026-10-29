@@ -90,8 +90,19 @@ class TestResultRepository(TestResultRepositoryABC):
         """
         session = get_db_session()
         try:
+            # INT-339：cherry-pick 容器任务自身无 test_results 行，按关系表解析
+            # 引用的源结果（与详情读模型同口径），使容器任务在重新评估/报告等
+            # 读结果链路里与日常任务等价
+            from task_service.infrastructure.read_models.task_read_model_case_results import (
+                resolve_container_result_ids,
+            )
+            container_result_ids = resolve_container_result_ids(task_id)
+            task_filter = (
+                TestResult.id.in_(container_result_ids) if container_result_ids
+                else TestResult.task_id == task_id
+            )
             q = session.query(TestResult).filter(
-                TestResult.task_id == task_id,
+                task_filter,
                 # INT-305：被删用例的 excluded 结果不计入下游（报告/聚合/重评）
                 TestResult.excluded == 0,
             )

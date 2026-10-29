@@ -70,6 +70,11 @@ class ReevaluationExecutor:
         if (options.get('mode') == REEVALUATE_SCOPE_SELECTED
                 and not [str(c) for c in (options.get('case_ids') or [])]):
             return False, "选择用例重评估时 case_ids 不能为空"
+        # 执行未成功的用例不参与重评：范围内没有任何执行成功的用例时直接拒绝，
+        # 避免任务被改成 reevaluate_queued/revaluating 后零提交悬挂
+        reject_reason = self._executed_case_gate(task_id, options.get('case_ids'))
+        if reject_reason:
+            return False, reject_reason
         with self.reevaluation_lock:
             if task_id == self.running_task_id:
                 return False, "任务正在重新评估中"
@@ -106,6 +111,29 @@ class ReevaluationExecutor:
         self._check_queue()
 
         return True, "重新评估任务已提交"
+
+    def _executed_case_gate(self, task_id, case_ids=None):
+        """执行未成功的用例不参与重评：范围内无执行成功用例时返回拒绝原因。
+
+        重评只修正评估结论、不重跑执行，执行失败的用例没有可修正的有效产出。
+        用例状态查询失败时放行（收集阶段同样按用例执行状态过滤，最终仍不会提交）。
+        """
+        try:
+            task_cases = task_acl_repository.get_task_case_by_ids(task_id=task_id)
+        except Exception as e:
+            log_and_emit('WARNING', 'reevaluator',
+                         f"重评前置校验读取用例失败，跳过校验: task_id={task_id}, err={e}",
+                         task_id=task_id)
+            return None
+        if not task_cases:
+            return None
+        wanted = {str(c) for c in (case_ids or [])}
+        scoped = [tc for tc in task_cases if not wanted or str(tc.test_case_id) in wanted]
+        if not scoped:
+            return None
+        if any(tc.execution_status == ExecutionStatus.COMPLETED for tc in scoped):
+            return None
+        return "没有执行成功的用例，无法重新评估"
 
     def _cancel_previous_evaluations(self, task_id):
         """取消该任务此前已提交、仍在途的评估任务（方案A+B）。
@@ -593,14 +621,32 @@ class ReevaluationExecutor:
     def _reevaluate_e2e_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
                                      reference_params_col, rounds, test_case, failed_dims_by_round=None,
                                      selection_dims=None):
-        """E2E多轮逐轮 + 整体评估
+        """E2E 多轮重评（与 API 共用 _submit_multi_round_evaluations 统一口径）。
 
-        对齐正常执行链（e2e_executor：逐轮 round_number=round_idx + 整体 round_number=None）
-        与评估维度隔离设计文档 §3.3：
+        保留方法名兼容既有调用方；逐轮 + 整体的提交口径见统一实现。
+        """
+        return self._submit_multi_round_evaluations(
+            task_id=task_id, result=result, test_case_id=test_case_id,
+            algorithm_result=algorithm_result, test_type=test_type,
+            algorithm_type=algorithm_type, reference_params_col=reference_params_col,
+            rounds=rounds, test_case=test_case,
+            failed_dims_by_round=failed_dims_by_round,
+            selection_dims=selection_dims,
+            compute_api_aggregated=False,
+        )
+
+    def _submit_multi_round_evaluations(self, task_id, result, test_case_id, algorithm_result,
+                                        test_type, algorithm_type, reference_params_col,
+                                        rounds, test_case, failed_dims_by_round=None,
+                                        selection_dims=None, compute_api_aggregated=False):
+        """多轮重评统一实现（API / E2E 同一套口径）
+
+        对齐正常执行链（逐轮 round_number=round_idx + 整体 round_number=None）：
         - 逐轮：config.rounds[n].evaluation.enabled 非 False 且 dimensions 非空才提交，
           算法参数按轮取（algorithm_params_col 第 n 轮 / config.rounds[n].algorithm_params）
-        - 整体：仅当顶层 config.dimensions 非空时提交（整体评估只取顶层维度），
+        - 整体：顶层 config.dimensions 或轮次注入的 round_scope=multi 维度非空才提交，
           算法参数取第 1 轮
+        - 逐轮评估数据统一存/读 algorithm_result.rounds[].evaluation（API / E2E 同字段）
 
         INT-174：failed_dims_by_round 非 None（只重评失败维度）时，逐轮无失败维度的
         轮跳过、整体无失败维度跳过，并将失败维度作为 dimension_filter_ids 传入评估
@@ -615,8 +661,10 @@ class ReevaluationExecutor:
         algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
         submitted_rounds = set()
 
-        # 逐轮评估：每轮各自的 dimensions
+        # 逐轮评估：每轮各自的 dimensions（轮次口径 API / E2E 一致：rounds 数组下标）
         for round_idx in range(len(rounds)):
+            round_number = round_idx
+
             _round_eval_enabled = True
             if config_rounds and round_idx < len(config_rounds) and isinstance(config_rounds[round_idx], dict):
                 _round_eval = config_rounds[round_idx].get('evaluation', {})
@@ -635,7 +683,7 @@ class ReevaluationExecutor:
             # 返回 False 自然排除出 submitted_rounds）
             dimension_filter = None
             if failed_dims_by_round is not None:
-                round_failed = failed_dims_by_round.get(round_idx)
+                round_failed = failed_dims_by_round.get(round_number)
                 if not round_failed:
                     continue
                 dimension_filter = list(round_failed)
@@ -677,108 +725,145 @@ class ReevaluationExecutor:
                         result_id=result,
                         test_case_id=test_case_id,
                         algorithm_result=algorithm_result,
-                        round_number=round_idx,
+                        round_number=round_number,
                         **eval_params,
                     )
                     if round_submitted is not False:
-                        submitted_rounds.add(round_idx)
+                        submitted_rounds.add(round_number)
 
                     log_and_emit('INFO', 'reevaluator',
-                                f"已提交 E2E 轮次评估: test_case_id={test_case_id}, round={round_idx}",
+                                f"已提交多轮轮次评估: test_case_id={test_case_id}, round={round_number}",
                                 task_id=task_id, test_case_id=test_case_id)
             except Exception as e:
                 import traceback
                 log_and_emit('ERROR', 'reevaluator',
-                            f"E2E 轮次重新评估失败: round={round_idx}, error={str(e)}, traceback={traceback.format_exc()}",
+                            f"多轮轮次重新评估失败: round={round_number}, error={str(e)}, traceback={traceback.format_exc()}",
                             task_id=task_id, test_case_id=test_case_id)
 
-        # 整体评估：仅当顶层 config.dimensions 非空时提交
-        _has_overall_dims = bool(case_config.get('dimensions')) if isinstance(case_config, dict) else False
-        if _has_overall_dims:
-            # 只重评失败维度：整体（round_number=None）无失败维度则跳过整体提交；
-            # INT-302 按维度选择：整体按选中集过滤（无交集由评估入口收敛）
-            dimension_filter = None
-            if failed_dims_by_round is not None:
-                overall_failed = failed_dims_by_round.get(None)
-                if overall_failed:
-                    dimension_filter = list(overall_failed)
-                elif not submitted_rounds:
-                    # 兜底（INT-364 对齐 V9.7.10 f02ba75e，仅 failed 型——
-                    # failed_dims_by_round 非 None 即 failed 型重评）：失败维度只
-                    # 存在于逐轮 TRD（整体评估 per_round 投影写回所致）、逐轮分支
-                    # 又全部未提交（每轮未配置逐轮维度 continue）时，整体
-                    # （round_number=None）无失败维度若直接跳过，用例已被置回
-                    # queued 却无人提交评估，永久卡 queued 并阻塞后续重新评估。
-                    # 取所有轮次失败维度的并集走整体重评（经 dimension_filter_ids
-                    # 传给评估入口过滤）。
-                    round_failed_dims = set()
-                    for _rn, _dims in failed_dims_by_round.items():
-                        if _rn is not None:
-                            round_failed_dims |= _dims
-                    dimension_filter = list(round_failed_dims) if round_failed_dims else []
-                    if dimension_filter:
-                        log_and_emit('INFO', 'reevaluator',
-                                     f"逐轮失败兜底走整体重评: test_case_id={test_case_id}, "
-                                     f"dims={sorted(round_failed_dims)}",
-                                     task_id=task_id, test_case_id=test_case_id)
-                else:
-                    dimension_filter = []  # 明确跳过整体提交
-            elif selection_dims is not None:
-                dimension_filter = list(selection_dims)
+        # 整体评估：顶层维度（含轮次注入的 round_scope=multi 维度）存在时提交
+        self._submit_overall_multi_round(
+            task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
+            reference_params_col, rounds, case_config, config_rounds, algorithm_params_col,
+            failed_dims_by_round, selection_dims, submitted_rounds)
 
-            if dimension_filter == []:
-                pass  # 无整体口径失败维度，跳过
-            else:
-                algo_params = {}
-                if algorithm_params_col:
-                    from algorithm_service.domain.services.param_normalizer import ParamNormalizerService
-                    algo_params = ParamNormalizerService.normalize_algorithm_params(
-                        ParamNormalizerService.get_round_algo_params(algorithm_params_col, 1))
-                elif config_rounds and isinstance(config_rounds[0], dict):
-                    algo_params = config_rounds[0].get('algorithm_params', {})
-
-                full_case_params = {
-                    'algorithm_type': algorithm_type,
-                    'algorithm_params': algo_params,
-                    'reference_params': rounds[0].get('reference_params', []) if rounds else [],
-                    'reference_params_col': reference_params_col,
-                }
-
-                try:
-                    all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
-                    eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
-                    eval_params['algorithm_type'] = algorithm_type
-                    eval_params['test_type'] = test_type
-                    if reference_params_col is not None:
-                        eval_params['reference_params_col'] = reference_params_col
-                    if algorithm_params_col is not None:
-                        eval_params['algorithm_params_col'] = algorithm_params_col
-                    if dimension_filter is not None:
-                        eval_params['dimension_filter_ids'] = dimension_filter
-
-                    overall_submitted = evaluation_service.evaluate_case(
-                        task_id=task_id,
-                        result_id=result,
-                        test_case_id=test_case_id,
-                        algorithm_result=algorithm_result,
-                        **eval_params,
-                    )
-                    if overall_submitted is not False:
-                        submitted_rounds.add(None)
-
-                    log_and_emit('INFO', 'reevaluator',
-                                f"已提交 E2E 整体评估: test_case_id={test_case_id}, rounds={len(rounds)}",
-                                task_id=task_id, test_case_id=test_case_id)
-                except Exception as e:
-                    import traceback
-                    log_and_emit('ERROR', 'reevaluator',
-                                f"E2E 整体重新评估失败: error={str(e)}, traceback={traceback.format_exc()}",
-                                task_id=task_id, test_case_id=test_case_id)
+        # API 结果无顶层 aggregated：按 rounds[].evaluation 重算（E2E 由执行链聚合）
+        if compute_api_aggregated and not algorithm_result.get('aggregated'):
+            self._compute_and_store_api_aggregated(result, algorithm_result)
 
         if not submitted_rounds:
             self._finalize_skipped_reevaluation(
                 task_id, result, test_case_id, failed_dims_by_round)
         return submitted_rounds
+
+    # 多轮整体评估口径的 round_scope 取值（与读侧 case_loader.OVERALL_ROUND_SCOPE 一致）
+    OVERALL_ROUND_SCOPE = 'multi'
+
+    def _has_overall_dimension_config(self, case_config, config_rounds):
+        """整体评估是否配置了可评维度（与 case_loader 整体口径合并规则一致）。
+
+        顶层 config.dimensions 与轮次注入的 round_scope=multi 维度任一非空即可。
+        """
+        if not isinstance(case_config, dict):
+            return False
+        if case_config.get('dimensions'):
+            return True
+        for round_item in config_rounds or []:
+            if not isinstance(round_item, dict):
+                continue
+            evaluation = round_item.get('evaluation', {})
+            if not isinstance(evaluation, dict):
+                continue
+            for dim in evaluation.get('dimensions') or []:
+                if isinstance(dim, dict) and dim.get('round_scope') == self.OVERALL_ROUND_SCOPE:
+                    return True
+        return False
+
+    def _submit_overall_multi_round(self, task_id, result, test_case_id, algorithm_result,
+                                    test_type, algorithm_type, reference_params_col,
+                                    rounds, case_config, config_rounds, algorithm_params_col,
+                                    failed_dims_by_round, selection_dims, submitted_rounds):
+        """多轮整体评估提交（round_number=None），E2E / API 共用同一口径。
+
+        INT-174：failed 型重评时整体无失败维度则跳过；逐轮全未提交但存在逐轮失败
+        维度时，按失败维度并集走整体重评兜底（防 TaskCase 悬挂 queued）。
+        INT-302：整体按用户选中维度过滤（无交集由评估入口收敛）。
+        """
+        if not self._has_overall_dimension_config(case_config, config_rounds):
+            return
+
+        dimension_filter = None
+        if failed_dims_by_round is not None:
+            overall_failed = failed_dims_by_round.get(None)
+            if overall_failed:
+                dimension_filter = list(overall_failed)
+            elif not submitted_rounds:
+                # 失败维度只存在于逐轮 TRD（整体评估 per_round 投影写回所致）、
+                # 逐轮分支又全部未提交时，取所有轮次失败维度的并集走整体重评
+                round_failed_dims = set()
+                for _rn, _dims in failed_dims_by_round.items():
+                    if _rn is not None:
+                        round_failed_dims |= _dims
+                dimension_filter = list(round_failed_dims) if round_failed_dims else []
+                if dimension_filter:
+                    log_and_emit('INFO', 'reevaluator',
+                                 f"逐轮失败兜底走整体重评: test_case_id={test_case_id}, "
+                                 f"dims={sorted(round_failed_dims)}",
+                                 task_id=task_id, test_case_id=test_case_id)
+            else:
+                dimension_filter = []  # 明确跳过整体提交
+        elif selection_dims is not None:
+            dimension_filter = list(selection_dims)
+
+        if dimension_filter == []:
+            return  # 无整体口径失败维度，跳过
+
+        from evaluation_service.infrastructure.acl import algorithm_acl_repository
+
+        algo_params = {}
+        if algorithm_params_col:
+            from algorithm_service.domain.services.param_normalizer import ParamNormalizerService
+            algo_params = ParamNormalizerService.normalize_algorithm_params(
+                ParamNormalizerService.get_round_algo_params(algorithm_params_col, 1))
+        elif config_rounds and isinstance(config_rounds[0], dict):
+            algo_params = config_rounds[0].get('algorithm_params', {})
+
+        full_case_params = {
+            'algorithm_type': algorithm_type,
+            'algorithm_params': algo_params,
+            'reference_params': rounds[0].get('reference_params', []) if rounds else [],
+            'reference_params_col': reference_params_col,
+        }
+
+        try:
+            all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
+            eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
+            eval_params['algorithm_type'] = algorithm_type
+            eval_params['test_type'] = test_type
+            if reference_params_col is not None:
+                eval_params['reference_params_col'] = reference_params_col
+            if algorithm_params_col is not None:
+                eval_params['algorithm_params_col'] = algorithm_params_col
+            if dimension_filter is not None:
+                eval_params['dimension_filter_ids'] = dimension_filter
+
+            overall_submitted = evaluation_service.evaluate_case(
+                task_id=task_id,
+                result_id=result,
+                test_case_id=test_case_id,
+                algorithm_result=algorithm_result,
+                **eval_params,
+            )
+            if overall_submitted is not False:
+                submitted_rounds.add(None)
+
+            log_and_emit('INFO', 'reevaluator',
+                         f"已提交多轮整体评估: test_case_id={test_case_id}, rounds={len(rounds)}",
+                         task_id=task_id, test_case_id=test_case_id)
+        except Exception as e:
+            import traceback
+            log_and_emit('ERROR', 'reevaluator',
+                         f"多轮整体重新评估失败: error={str(e)}, traceback={traceback.format_exc()}",
+                         task_id=task_id, test_case_id=test_case_id)
 
     def _finalize_skipped_reevaluation(self, task_id, result, test_case_id, failed_dims_by_round):
         """全部轮次被跳过、无任何评估提交时的用例收尾（防 TaskCase 悬挂 queued）。
@@ -853,102 +938,19 @@ class ReevaluationExecutor:
     def _reevaluate_api_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
                                      reference_params_col, rounds, test_case, failed_dims_by_round=None,
                                      selection_dims=None):
-        """API多轮逐轮评估
+        """API 多轮重评（与 E2E 共用 _submit_multi_round_evaluations 统一口径）。
 
-        INT-174：failed_dims_by_round 非 None（只重评失败维度）时，本轮无失败维度
-        则跳过，并按失败维度过滤评估；全部轮次被跳过时走到统一收尾
-        （防 TaskCase 悬挂 queued）。
-
-        P1.4: test_case 为 TestCaseDetailDTO（来自 gRPC）
+        差异仅保留 API 特有收尾：结果无顶层 aggregated 时按 rounds[].evaluation 重算。
         """
-        from evaluation_service.infrastructure.acl import algorithm_acl_repository
-
-        submitted_rounds = set()
-
-        # API: 逐轮评估
-        for round_idx, round_data in enumerate(rounds):
-            evaluation = round_data.get('round_evaluation', {})
-            round_number = round_data.get('round_number', round_idx + 1) - 1
-
-            if not evaluation:
-                continue
-
-            # 只重评失败维度：本轮无失败维度则跳过；
-            # INT-302 按维度选择：本轮取选中集（交集收敛交给评估入口）
-            dimension_filter = None
-            if failed_dims_by_round is not None:
-                round_failed = failed_dims_by_round.get(round_number)
-                if not round_failed:
-                    continue
-                dimension_filter = list(round_failed)
-            elif selection_dims is not None:
-                dimension_filter = list(selection_dims)
-
-            algo_params = {}
-            algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
-            if algorithm_params_col:
-                from algorithm_service.domain.services.param_normalizer import ParamNormalizerService
-                algo_params = ParamNormalizerService.normalize_algorithm_params(
-                    ParamNormalizerService.get_round_algo_params(algorithm_params_col, round_idx + 1))
-            elif test_case and test_case.config:
-                config = test_case.config
-                config_rounds = config.get('rounds', [])
-                if round_idx < len(config_rounds) and isinstance(config_rounds[round_idx], dict):
-                    algo_params = config_rounds[round_idx].get('algorithm_params', {})
-
-            full_case_params = {
-                'algorithm_type': algorithm_type,
-                'algorithm_params': algo_params,
-                'reference_params': round_data.get('reference_params', []),
-                'reference_params_col': reference_params_col,
-            }
-
-            try:
-                all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
-                eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
-                eval_params['algorithm_type'] = algorithm_type
-                eval_params['test_type'] = test_type
-                if reference_params_col is not None:
-                    eval_params['reference_params_col'] = reference_params_col
-                if algorithm_params_col is not None:
-                    eval_params['algorithm_params_col'] = algorithm_params_col
-                if dimension_filter is not None:
-                    eval_params['dimension_filter_ids'] = dimension_filter
-
-                round_submitted = evaluation_service.evaluate_case(
-                    task_id=task_id,
-                    result_id=result,
-                    test_case_id=test_case_id,
-                    algorithm_result=algorithm_result,
-                    round_number=round_number,
-                    **eval_params,
-                )
-                if round_submitted is not False:
-                    submitted_rounds.add(round_number)
-
-                # INT-81：轮次上下文仅影响本线程日志的落盘目录
-                from shared.logging import set_current_round
-                set_current_round(round_number)
-                try:
-                    log_and_emit('INFO', 'reevaluator',
-                                f"已提交轮次评估: test_case_id={test_case_id}, round={round_number}",
-                                task_id=task_id, test_case_id=test_case_id)
-                finally:
-                    set_current_round(None)
-            except Exception as e:
-                import traceback
-                log_and_emit('ERROR', 'reevaluator',
-                            f"轮次重新评估失败: round={round_number}, error={str(e)}, traceback={traceback.format_exc()}",
-                            task_id=task_id, test_case_id=test_case_id)
-
-        # API 结果没有顶层 aggregated，需从 rounds 中计算
-        if not algorithm_result.get('aggregated'):
-            self._compute_and_store_api_aggregated(result, algorithm_result)
-
-        if not submitted_rounds:
-            self._finalize_skipped_reevaluation(
-                task_id, result, test_case_id, failed_dims_by_round)
-        return submitted_rounds
+        return self._submit_multi_round_evaluations(
+            task_id=task_id, result=result, test_case_id=test_case_id,
+            algorithm_result=algorithm_result, test_type=test_type,
+            algorithm_type=algorithm_type, reference_params_col=reference_params_col,
+            rounds=rounds, test_case=test_case,
+            failed_dims_by_round=failed_dims_by_round,
+            selection_dims=selection_dims,
+            compute_api_aggregated=True,
+        )
 
     def _reevaluate_single(self, task_id, result_id, test_case_id, algorithm_result, reference_params, test_type, algorithm_type,
                            reference_params_col=None, reevaluate_type=None, dimension_filter_ids=None):
@@ -1258,12 +1260,19 @@ class ReevaluationExecutor:
             # 是提交前旧状态的假象，不能据此提前收敛
             return False
 
-        if task.status != TaskStatus.COMPLETED:
+        # 重评只修正评估结论、不改写执行结论：终态按用例执行结果推导
+        # （与执行引擎 task_finalize 同口径：有用例执行失败 → failed，否则 completed）
+        new_status = (
+            TaskStatus.FAILED
+            if any(tc.execution_status == ExecutionStatus.FAILED for tc in all_tcs)
+            else TaskStatus.COMPLETED
+        )
+        if task.status != new_status:
             from evaluation_service.infrastructure.evaluation_mixin import update_task_status_with_retry
-            update_task_status_with_retry(task_id, TaskStatus.COMPLETED)
+            update_task_status_with_retry(task_id, new_status)
 
         log_and_emit('INFO', 'reevaluator',
-                     f"重新评估完成: task_id={task_id}，任务状态更新为 completed",
+                     f"重新评估完成: task_id={task_id}，任务状态更新为 {new_status}",
                      task_id=task_id)
 
         # 释放重新评估队列，启动下一个排队任务（仅当自己仍是当前处理任务时）

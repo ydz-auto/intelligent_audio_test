@@ -7,8 +7,9 @@ E2E 执行链（finalization_mixin._finalize_rounds）整体评估提交条件�
 - _has_round_dims（任一轮 evaluation.dimensions 非 False 且非空）→ 聚合各轮分数
 - 任务停止 / 执行失败 → 不提交整体评估；停止时聚合也跳过，结果落库收尾不变
 
-API 重评分支（_reevaluate_api_multi_round）为既有逐轮行为（本卡维持不变），
-此处锁定防退化：按轮提交 evaluate_case(round_number=...)（0 基），无 round_evaluation 的轮跳过。
+API 重评分支（_reevaluate_api_multi_round）与 E2E 共用 _submit_multi_round_evaluations：
+逐轮提交 evaluate_case(round_number=...)（0 基），可评性只看用例 config；
+顶层整体口径维度存在时补提交 round_number=None 整体评估。
 """
 import os
 from types import SimpleNamespace
@@ -140,7 +141,8 @@ def _api_rounds(n=3, with_eval_from=0):
     for i in range(n):
         rd = {'round_number': i + 1, 'reference_params': [{'code': f'r{i}'}]}
         if i >= with_eval_from:
-            rd['round_evaluation'] = {'dimensions': [{'id': i}]}
+            # API / E2E 统一逐轮评估字段：rounds[].evaluation
+            rd['evaluation'] = {'dimensions': [{'id': i}]}
         rounds.append(rd)
     return rounds
 
@@ -213,17 +215,37 @@ class TestApiReevalPerRoundGuard:
             assert c['test_type'] == 'api'
             assert c['result_id'] == 99
 
-    def test_round_without_round_evaluation_skipped(self):
-        """无 round_evaluation 的轮不提交评估。"""
+    def test_round_gate_follows_case_config(self):
+        """与 E2E 同口径：轮次是否提交由用例 config.rounds[n].evaluation 决定。"""
+        config = {'rounds': [
+            {'evaluation': {'enabled': False, 'dimensions': [{'id': 1}]}},
+            {'evaluation': {'dimensions': [{'id': 2}]}},
+            {'evaluation': {'dimensions': [{'id': 3}]}},
+        ]}
         with _ApiHarness() as h:
-            calls = h.run(_api_rounds(3, with_eval_from=1))
+            calls = h.run(_api_rounds(3), config=config)
         assert [c.get('round_number') for c in calls] == [1, 2]
+
+    def test_round_without_evaluation_data_still_submitted(self):
+        """逐轮评估字段缺失不再作为准入门槛（可评性只看用例配置）。"""
+        with _ApiHarness() as h:
+            calls = h.run(_api_rounds(3, with_eval_from=3))
+        assert [c.get('round_number') for c in calls] == [0, 1, 2]
+
+    def test_overall_submitted_when_top_dims_present(self):
+        """顶层整体口径维度存在时，API 多轮同样补提交 round_number=None 整体评估。"""
+        config = {'dimensions': [{'id': 9, 'round_scope': 'multi'}]}
+        with _ApiHarness() as h:
+            calls = h.run(_api_rounds(2), config=config)
+        assert [c.get('round_number') for c in calls] == [0, 1, None]
 
     def test_algo_params_from_config_round(self):
         """无 algorithm_params_col 时按 config.rounds[n].algorithm_params 取轮参数。"""
         config = {'rounds': [
-            {'round_number': 1, 'algorithm_params': {'round': 0, 'from': 'config'}},
-            {'round_number': 2, 'algorithm_params': {'round': 1, 'from': 'config'}},
+            {'round_number': 1, 'evaluation': {'dimensions': [{'id': 7}]},
+             'algorithm_params': {'round': 0, 'from': 'config'}},
+            {'round_number': 2, 'evaluation': {'dimensions': [{'id': 8}]},
+             'algorithm_params': {'round': 1, 'from': 'config'}},
         ]}
         with _ApiHarness() as h:
             calls = h.run(_api_rounds(2), config=config)

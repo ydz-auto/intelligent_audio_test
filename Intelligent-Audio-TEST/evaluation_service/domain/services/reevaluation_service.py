@@ -35,6 +35,9 @@ class ReevaluationService:
         纯业务逻辑：根据 execution_status 过滤，构建 case_info。
         不直接访问 ACL — 由 Application 层预先准备好 test_results、full_data_map、task_case_map。
 
+        执行未成功的用例（TaskCase.execution_status != completed）不参与重评：
+        重评只修正评估结论，不重跑执行，执行失败的用例没有可修正的有效产出。
+
         Args:
             test_results: TestResultDTO 列表
             full_data_map: {test_case_id: full_data} 预加载的结果数据
@@ -48,7 +51,7 @@ class ReevaluationService:
 
             test_case_id = result.test_case_id
             tc_rel = task_case_map.get(str(test_case_id))
-            if not tc_rel:
+            if not tc_rel or tc_rel.execution_status != ExecutionStatus.COMPLETED:
                 continue
 
             algo_result = ReevaluationService.deserialize_algorithm_result(
@@ -72,6 +75,7 @@ class ReevaluationService:
         """收集评估失败的用例（failed 类型）。
 
         纯业务逻辑：execution_status == completed 且 evaluation_status == failed。
+        执行未成功的用例同样不参与重评（口径同 collect_cases_all）。
         """
         cases = []
         for result in test_results:
@@ -80,7 +84,9 @@ class ReevaluationService:
 
             test_case_id = result.test_case_id
             tc_rel = task_case_map.get(str(test_case_id))
-            if not tc_rel or tc_rel.evaluation_status != EvaluationStatus.FAILED:
+            if (not tc_rel
+                    or tc_rel.execution_status != ExecutionStatus.COMPLETED
+                    or tc_rel.evaluation_status != EvaluationStatus.FAILED):
                 continue
 
             algo_result = ReevaluationService.deserialize_algorithm_result(
@@ -127,10 +133,10 @@ class ReevaluationService:
 
     @staticmethod
     def compute_api_aggregated(rounds: List[dict]) -> Optional[dict]:
-        """从 rounds 的 round_evaluation 中计算聚合结果（纯业务逻辑）。"""
+        """从 rounds 的 evaluation 中计算聚合结果（纯业务逻辑，与 E2E 同字段）。"""
         if not rounds:
             return None
-        evals = [r.get('round_evaluation', {}) for r in rounds if r.get('round_evaluation')]
+        evals = [r.get('evaluation', {}) for r in rounds if r.get('evaluation')]
         if not evals:
             return None
         return {

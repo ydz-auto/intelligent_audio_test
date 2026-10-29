@@ -479,8 +479,8 @@ class TestReevaluateFailedDims:
             ok = ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [
-                    {'output': 'x', 'round_evaluation': {'wer': 0.1}},
-                    {'output': 'y', 'round_evaluation': {'wer': 0.2}},
+                    {'output': 'x', 'evaluation': {'wer': 0.1}},
+                    {'output': 'y', 'evaluation': {'wer': 0.2}},
                 ]},
                 test_type='api', algorithm_type='translation',
                 reevaluate_type='failed',
@@ -688,6 +688,16 @@ class TestMaybeFinalize:
 
         assert done is False
         upd.assert_not_called()
+
+    def test_derives_failed_when_any_case_execution_failed(self):
+        """终态按用例执行结果推导：存在执行失败用例 → failed（重评不改写执行结论）"""
+        cases = [_tc(), _tc(exec_st=ExecutionStatus.FAILED)]
+        ex, task = self._setup(cases, TaskStatus.RUNNING, running_task_id=1)
+
+        done, upd = self._run(ex, task, cases)
+
+        assert done is True
+        upd.assert_called_once_with(1, TaskStatus.FAILED)
 
 
 # ==================== 6. _on_complete：提交成功 ≠ 完成 ====================
@@ -1137,3 +1147,102 @@ class TestProcessEvaluationResultSecondCancelCheck:
                                          5, 'c1', 11, {}, 'api')
 
         w.eval_service.result_processor.process_group_dimension_results.assert_called_once()
+
+
+# ==================== 12. 执行未成功的用例不参与重评 ====================
+
+class TestExecutedCaseGate:
+    """重评只修正评估结论、不重跑执行：范围内无执行成功用例 → 直接拒绝。"""
+
+    @staticmethod
+    def _tc(case_id, exec_st):
+        return SimpleNamespace(test_case_id=case_id, execution_status=exec_st)
+
+    @staticmethod
+    def _submit(ex, cases, **kwargs):
+        with patch.object(task_acl_repository, 'get_task_case_by_ids',
+                          MagicMock(return_value=cases)), \
+             patch.object(task_acl_repository, 'update_task_status') as upd_status, \
+             patch.object(ex, '_cancel_previous_evaluations'), \
+             patch.object(ex, '_check_queue') as check_queue:
+            ok, message = ex.submit(7, reextract_device_output=False,
+                                    reevaluate_type='all', **kwargs)
+        return ok, message, upd_status, check_queue
+
+    def test_all_cases_execution_failed_rejected(self):
+        """全部用例执行失败 → 拒绝，不入队、不改任务状态、不启动队列"""
+        ex = ReevaluationExecutor()
+        ok, message, upd_status, check_queue = self._submit(
+            ex, [self._tc('c1', ExecutionStatus.FAILED)])
+
+        assert ok is False
+        assert '没有执行成功的用例' in message
+        assert ex.reevaluation_queue == []
+        upd_status.assert_not_called()
+        check_queue.assert_not_called()
+
+    def test_any_executed_case_passes(self):
+        """存在执行成功的用例 → 放行"""
+        ex = ReevaluationExecutor()
+        ok, _, upd_status, _ = self._submit(
+            ex, [self._tc('c1', ExecutionStatus.COMPLETED),
+                 self._tc('c2', ExecutionStatus.FAILED)])
+
+        assert ok is True
+        upd_status.assert_called_once()
+
+    def test_selected_scope_only_failed_cases_rejected(self):
+        """选中范围只含执行失败用例 → 拒绝（不按任务内其它成功用例放行）"""
+        ex = ReevaluationExecutor()
+        ok, message, _, _ = self._submit(
+            ex, [self._tc('c1', ExecutionStatus.COMPLETED),
+                 self._tc('c2', ExecutionStatus.FAILED)],
+            options={'case_ids': ['c2'], 'mode': 'selected'})
+
+        assert ok is False
+        assert '没有执行成功的用例' in message
+
+    def test_query_failure_does_not_block(self):
+        """用例状态查询失败 → 放行（收集阶段同样按用例执行状态过滤兜底）"""
+        ex = ReevaluationExecutor()
+        with patch.object(task_acl_repository, 'get_task_case_by_ids',
+                          MagicMock(side_effect=RuntimeError('grpc down'))), \
+             patch.object(task_acl_repository, 'update_task_status'), \
+             patch.object(ex, '_cancel_previous_evaluations'), \
+             patch.object(ex, '_check_queue'):
+            ok, _ = ex.submit(7, reextract_device_output=False, reevaluate_type='all')
+
+        assert ok is True
+
+
+class TestCollectSkipsUnexecutedCase:
+    """收集阶段过滤：TaskCase.execution_status != completed 的用例不进入重评"""
+
+    @staticmethod
+    def _result(case_id):
+        return SimpleNamespace(test_case_id=case_id, execution_status=ExecutionStatus.COMPLETED,
+                               algorithm_result={})
+
+    def _collect(self, collect_fn, cases):
+        from evaluation_service.domain.services.reevaluation_service import ReevaluationService
+        results = [self._result(cid) for cid in cases]
+        task_case_map = {cid: SimpleNamespace(test_case_id=cid, execution_status=st,
+                                              evaluation_status=EvaluationStatus.FAILED)
+                         for cid, st in cases.items()}
+        with patch.object(ReevaluationService, '_build_case_info',
+                          MagicMock(return_value={'test_case_id': 'x'})):
+            return collect_fn(results, {}, task_case_map, False)
+
+    def test_collect_all_skips_failed_execution(self):
+        from evaluation_service.domain.services.reevaluation_service import ReevaluationService
+        cases = self._collect(ReevaluationService.collect_cases_all,
+                              {'c1': ExecutionStatus.FAILED,
+                               'c2': ExecutionStatus.COMPLETED})
+        assert len(cases) == 1
+
+    def test_collect_failed_skips_failed_execution(self):
+        from evaluation_service.domain.services.reevaluation_service import ReevaluationService
+        cases = self._collect(ReevaluationService.collect_cases_failed,
+                              {'c1': ExecutionStatus.FAILED,
+                               'c2': ExecutionStatus.COMPLETED})
+        assert len(cases) == 1
