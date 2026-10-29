@@ -11,7 +11,8 @@
  * ③ 状态筛选补「执行失败」「评估失败」两项（基线 execution_failed / evaluation_failed 口径：
  *   执行失败 = execution_status=failed；评估失败 = evaluation_status=failed 且执行未失败），
  *   执行/评估两列徽章分别显示「执行失败」「评估失败」，不再合并成「已失败」。
- * （轮次列：TaskCaseBrief 无 rounds 字段，沿用 INT-932 起的派生口径「有耗时为第 2/2 轮」）
+ * （轮次列：分母取 TaskCaseBrief.rounds_count（用例 config.rounds 长度），
+ *   已执行（有耗时）视作跑满全部轮次，未执行从第 1 轮起）
  * 19_人工审核与AI复核交互设计.md §3 落位（INT-795）：
  * - 已复核用例行执行/评估徽章旁叠加「人工复核」Badge（TaskCaseBrief.reviewed 驱动）；
  * - 行尾「人工复核」钮（终态任务 + task.result.review）→ §3.2 单条复核弹窗（取该用例结果行）；
@@ -212,8 +213,10 @@ function TaskCaseRow({
 }) {
   /** 耗时：任务侧 ms → 秒（features/testcases 口径格式化，null 落「—」） */
   const durationSeconds = c.duration != null ? Math.round(c.duration / 1000) : null
-  /** 轮次：TaskCaseBrief 无 rounds 字段，沿用 INT-932 起的派生口径（有耗时为第 2/2 轮） */
-  const roundCurrent = c.duration != null ? 2 : 1
+  /** 轮次：分母 = 用例真实轮次数（rounds_count，后端取 config.rounds 长度，缺省 1） */
+  const roundTotal = c.rounds_count != null && c.rounds_count > 0 ? c.rounds_count : 1
+  const roundCurrent = c.duration != null ? roundTotal : 1
+  const roundPercent = Math.round((roundCurrent / roundTotal) * 100)
 
   return (
     <div
@@ -288,12 +291,12 @@ function TaskCaseRow({
         {formatCaseDuration(durationSeconds)}
       </div>
 
-      {/* 轮次（第 x/y 轮 + Progress h-1，§4.4） */}
+      {/* 轮次（第 x/y 轮 + Progress h-1，§4.4；y = 用例真实轮次数） */}
       <div role='cell' data-column='rounds' className='flex items-center gap-1.5'>
         <span className='text-muted-foreground font-mono text-xs whitespace-nowrap tabular-nums'>
-          第 {roundCurrent}/2 轮
+          第 {roundCurrent}/{roundTotal} 轮
         </span>
-        <Progress value={roundCurrent === 2 ? 50 : 0} size='xs' className='w-6 shrink-0' />
+        <Progress value={roundPercent} size='xs' className='w-6 shrink-0' />
       </div>
 
       {/* 操作：人工复核 / AI 复核 / 快速复核（终态任务）+ 移除用例 */}
