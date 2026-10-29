@@ -197,6 +197,9 @@ class E2EDeviceManager:
                 [{
                     'action': 'pre_process',
                     'device_sn': info.get('device_sn'),
+                    # 同 SN 多 App（小艺/豆包）时仅凭 SN 无法定位驱动，随行带元数据
+                    'system': info.get('system'),
+                    'keywords': info.get('keywords'),
                     'test_case_id': test_case_id,
                     'kwargs': extra_params,
                 }],
@@ -231,6 +234,8 @@ class E2EDeviceManager:
                 [{
                     'action': 'post_process',
                     'device_sn': info.get('device_sn'),
+                    'system': info.get('system'),
+                    'keywords': info.get('keywords'),
                     'test_case_id': test_case_id,
                     'kwargs': extra_params,
                 }],
@@ -264,6 +269,8 @@ class E2EDeviceManager:
                 [{
                     'action': 'teardown',
                     'device_sn': info.get('device_sn'),
+                    'system': info.get('system'),
+                    'keywords': info.get('keywords'),
                     'test_case_id': test_case_id,
                     'kwargs': extra_params,
                 }],

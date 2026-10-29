@@ -559,3 +559,46 @@ class TestBaseDriverLifecycleContract:
     def test_default_teardown_without_app_name_noop(self):
         d = BaseDeviceDriver()
         assert d.teardown('SN-1') is True
+
+# ──────────────────────────── 同 SN 多 App 驱动定位（resolve_driver） ────────────────────────────
+
+class TestResolveDriverSameSn:
+    """同一 SN 上多个被测 App（小艺/豆包）时必须按 system+keywords 精确定位。
+
+    回归：仅按 SN 查找会命中同机另一 App 的驱动（豆包 pre_process 落到小艺
+    驱动，报 SymbolGlyph 组件找不到）。
+    """
+
+    def test_metadata_wins_over_sn_lookup(self, monkeypatch):
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
+        precise, ambiguous = object(), object()
+        monkeypatch.setattr(device_driver_factory, 'get_driver_for_device',
+                            lambda *a, **k: precise)
+        monkeypatch.setattr(device_driver_factory, 'get_driver_by_sn',
+                            lambda *a, **k: ambiguous)
+        got = device_driver_factory.resolve_driver(
+            system='HarmonyOS', keywords='harmony.doubao.v1',
+            device_sn='SN1', task_id=1)
+        assert got is precise
+
+    def test_missing_metadata_falls_back_to_sn(self, monkeypatch):
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
+        ambiguous = object()
+        monkeypatch.setattr(device_driver_factory, 'get_driver_by_sn',
+                            lambda *a, **k: ambiguous)
+        got = device_driver_factory.resolve_driver(device_sn='SN1', task_id=1)
+        assert got is ambiguous
+
+    def test_unknown_keywords_falls_back_to_sn(self, monkeypatch):
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
+        ambiguous = object()
+
+        def _raise(*a, **k):
+            raise ValueError('未注册驱动 keywords')
+
+        monkeypatch.setattr(device_driver_factory, 'get_driver_for_device', _raise)
+        monkeypatch.setattr(device_driver_factory, 'get_driver_by_sn',
+                            lambda *a, **k: ambiguous)
+        got = device_driver_factory.resolve_driver(
+            system='HarmonyOS', keywords='no.such', device_sn='SN1', task_id=1)
+        assert got is ambiguous

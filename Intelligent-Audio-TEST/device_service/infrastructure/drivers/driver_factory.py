@@ -199,6 +199,21 @@ class DeviceDriverFactory:
                 return driver
         return None
 
+    def resolve_driver(self, system=None, keywords=None, device_sn=None, task_id=None):
+        """按驱动元数据精确定位驱动；元数据缺失时回落 SN 查找。
+
+        同一 SN 上有多个被测 App（小艺/豆包）时 SN 不唯一——按 SN 查找会
+        命中另一 App 的驱动（实测：豆包 pre_process 落到小艺驱动，报
+        SymbolGlyph 找不到）。调用方带 system+keywords 时必须走精确定位。
+        """
+        if system and keywords:
+            try:
+                return self.get_driver_for_device(system, keywords=keywords,
+                                                  device_sn=device_sn)
+            except ValueError:
+                pass
+        return self.get_driver_by_sn(device_sn, task_id)
+
     def get_driver_by_sn(self, device_sn, task_id=None):
         """根据设备 SN 查找已注册的 driver 实例
 

@@ -56,6 +56,9 @@ class DeviceResultAclRepositoryImpl(DeviceResultAclRepository):
                     'device_id': info.get('device_id'),
                     'device_sn': info.get('device_sn'),
                     'device_name': info.get('device_name'),
+                    # 同 SN 多 App 时驱动定位依赖元数据，不得只靠 SN
+                    'system': info.get('system'),
+                    'keywords': info.get('keywords'),
                     'needs_prompt_audio': info.get('needs_prompt_audio'),
                     'prompt_audio_path': info.get('prompt_audio_path'),
                     'prompt_audio_name': info.get('prompt_audio_name'),

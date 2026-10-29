@@ -197,8 +197,12 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
                     message=message,
                     data=_dumps(driver_info))
 
-            # 根据设备 SN 查找已注册的 driver
-            driver = self.factory.get_driver_by_sn(device_sn, task_id)
+            # 优先按驱动元数据（system+keywords）精确定位；同 SN 多 App 时
+            # 仅按 SN 查找会命中另一 App 的驱动（豆包 pre_process 跑到小艺）
+            driver = self.factory.resolve_driver(
+                system=device_config.get('system'),
+                keywords=device_config.get('keywords'),
+                device_sn=device_sn, task_id=task_id)
 
             if action == 'pre_process':
                 result = None
@@ -477,7 +481,10 @@ class DeviceResultServiceServicer(e2e_grpc.DeviceResultServiceServicer):
             if isinstance(info, dict) and 'driver' not in info:
                 device_sn = info.get('device_sn')
                 if device_sn:
-                    driver = device_driver_factory.get_driver_by_sn(device_sn, task_id)
+                    # 同 SN 多 App 时必须用 system+keywords 精确定位
+                    driver = device_driver_factory.resolve_driver(
+                        system=info.get('system'), keywords=info.get('keywords'),
+                        device_sn=device_sn, task_id=task_id)
                     if driver:
                         info['driver'] = driver
 

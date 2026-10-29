@@ -176,6 +176,9 @@ class FinalizationMixin:
             device_config = {
                 'action': 'get_final_results',
                 'device_sn': device_sn,
+                # 同 SN 多 App 时驱动定位依赖元数据，不得只靠 SN
+                'system': info.get('system'),
+                'keywords': info.get('keywords'),
                 'kwargs': {
                     'round_count': len(rounds),
                     'all_round_results': all_round_results,
