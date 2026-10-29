@@ -18,6 +18,7 @@ from shared.utils.status_utils import (
 from shared.utils.status_constants import (
     TaskCaseStatus, ExecutionStatus, EvaluationStatus,
     ACTIVE_EXECUTION_STATUSES, ACTIVE_EVALUATION_STATUSES,
+    FINISHED_EXECUTION_STATUSES,
 )
 
 import logging
@@ -90,13 +91,20 @@ class TaskDispatchMixin:
 
     @staticmethod
     def _is_case_row_terminal(tc_rel):
-        """用例行是否全终态（exec + eval 均终态，status ∈ FINISHED_CASE_STATUSES）。
+        """用例行是否可放行下一串行目标：以「执行终态」为准。
 
-        停止/移除留痕行分别由 stop_event 与 task_case_not_removed 兜底，
-        这里以推导 status 判定（derive(stopped, stopped)=failed → 终态）。
+        串行目标只解决设备/端点资源占用，前序目标执行完即应放行后序，评估异步收口。
+
+        不能用复合 status（含评估完成）判定：评估收口要求同用例全部路由行都执行完，
+        而被门控的后序行此时还没执行 → 前序行永远停在 evaluating → 互相死锁
+        （实测 task 448：device10 执行完待评估 → device9 永不派发，任务卡 running）。
+
+        停止/移除留痕行分别由 stop_event 与 task_case_not_removed 兜底。
         """
-        from shared.utils.status_constants import FINISHED_CASE_STATUSES
-        return (tc_rel.status or '') in FINISHED_CASE_STATUSES
+        exec_status = getattr(tc_rel, 'execution_status', None) or ''
+        if exec_status in FINISHED_EXECUTION_STATUSES:
+            return True
+        return exec_status in (ExecutionStatus.STOPPED, ExecutionStatus.SKIPPED)
 
     def _get_next_pending_case_target_gated(self, task_id, session):
         """目标级门控选行（INT-1115 双道语义）。

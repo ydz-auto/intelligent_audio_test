@@ -123,6 +123,28 @@ class TestSameTypeSerialChain:
         got = _pick(eng, cfg, rows)
         assert got is not None and got.device_id == '2'
 
+    def test_serial_gate_uses_execution_terminal_not_evaluation(self):
+        """门控按执行终态放行：前序行执行完成但评估中（evaluating）即派发后序。
+
+        回归 task 448 死锁：评估收口要求同用例全部路由行都执行完，若门控还要等
+        前序行评估完成，则被门控行永远不派发、前序行永远停在 evaluating。
+        """
+        rows = [
+            _case_row('c1', 'physical', '1',
+                      exec_status=ExecutionStatus.COMPLETED,
+                      eval_status=EvaluationStatus.CALCULATING),
+            _case_row('c2', 'physical', '2'),
+        ]
+        assert rows[0].status == TaskCaseStatus.EVALUATING
+        eng = _Engine()
+        cfg = {'target_modes': [
+            {'target_type': 'device', 'target_id': 1, 'mode': 'serial'},
+            {'target_type': 'device', 'target_id': 2, 'mode': 'serial'},
+        ]}
+        got = _pick(eng, cfg, rows)
+        assert got is not None and got.device_id == '2', \
+            '前序行执行完成即可放行后序（评估异步收口，不得互相等待）'
+
     def test_serial_waits_prior_same_type_parallel(self):
         """串行目标等前序同类型并行目标全终态（含并行目标也计入门控）。"""
         rows = [_case_row('c1', 'physical', '1'), _case_row('c2', 'physical', '2')]
