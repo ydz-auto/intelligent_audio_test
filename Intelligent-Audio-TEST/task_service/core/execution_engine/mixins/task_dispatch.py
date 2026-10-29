@@ -241,19 +241,11 @@ class TaskDispatchMixin:
         tc_rel.error_message = error_msg
         session.commit()
 
-        task.completed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.COMPLETED)
-        task.failed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.FAILED, use_filter_by=True)
-        session.commit()
+        # 用例级统计（一个用例 × 多 API 只计一次），口径集中在 task_case_stats
+        self.refresh_task_counts_atomic(task_id)
+        session.refresh(task)
         self._emit_alert(task_id, error_msg)
         self._emit_progress(task)
-
-    def _count_cases_by_status(self, task_id, session, status, use_filter_by=False):
-        """按状态统计用例数"""
-        if use_filter_by:
-            return session.query(TaskCase).filter_by(task_id=task_id, status=status).count()
-        return session.query(TaskCase).filter(
-            TaskCase.task_id == task_id, TaskCase.status == status
-        ).count()
 
     def _dispatch_case_by_type(self, task_id, task, tc_rel, session):
         """根据用例级 device_type 分发用例执行
@@ -362,8 +354,9 @@ class TaskDispatchMixin:
                           task_id=task_id)
                 return
 
-            task.completed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.COMPLETED)
-            task.failed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.FAILED, use_filter_by=True)
+            # 用例级统计（一个用例 × 多 API 只计一次）
+            self.refresh_task_counts_atomic(task_id)
+            session.refresh(task)
 
             if not success:
                 self._handle_e2e_failure(task_id, tc_rel)

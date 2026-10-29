@@ -120,15 +120,11 @@ class CaseExecutionMixin:
                     tc_rel.error_message = error_msg
                     local_db_session.commit()
 
-                    # 更新任务统计信息
+                    # 更新任务统计信息（用例级口径）
                     task = local_db_session.get(Task, task_id)
                     if task:
-                        task.completed_cases = local_db_session.query(TaskCase).filter(
-                            TaskCase.task_id == task_id,
-                            TaskCase.status == TaskCaseStatus.COMPLETED
-                        ).count()
-                        task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.FAILED).count()
-                        local_db_session.commit()
+                        self.refresh_task_counts_atomic(task_id)
+                        local_db_session.refresh(task)
                         self._emit_progress(task)
             finally:
                 local_db_session.close()

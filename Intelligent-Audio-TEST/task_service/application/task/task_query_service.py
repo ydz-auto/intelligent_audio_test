@@ -555,6 +555,8 @@ class TaskQueryService:
                 "metric_configs": metric_configs,
                 "field_mapping": field_mapping,
                 "result_audios": result_audios,
+                # 用例级执行目标（API/设备）：详情内逐目标对比
+                "targets": raw.get('targets', []),
             }
 
             return {'success': True, 'message': '', 'data': response_data}

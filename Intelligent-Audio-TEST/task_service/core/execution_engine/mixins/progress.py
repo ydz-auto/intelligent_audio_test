@@ -38,30 +38,14 @@ class ProgressMixin:
     def refresh_task_counts_atomic(task_id):
         """原子刷新任务的 completed/failed/total_cases 计数（多实例安全）
 
-        用 SQL 子查询一次性 UPDATE，避免读-改-写的丢失更新问题。
+        用例级口径：一个用例关联多个 API/设备时有多行执行记录，统计按
+        `test_case_id` 去重计数（口径集中在 task_case_stats）。
         所有需要更新任务统计的地方都应调用此方法，而非直接赋值。
         """
-        from sqlalchemy import text
-        from shared.models.database import get_engine
-        sql = text("""
-            UPDATE test_tasks SET
-                completed_cases = (
-                    SELECT COUNT(*) FROM task_case_relations
-                    WHERE task_id = :task_id AND status = 'completed'
-                ),
-                failed_cases = (
-                    SELECT COUNT(*) FROM task_case_relations
-                    WHERE task_id = :task_id AND status = 'failed'
-                )
-            WHERE id = :task_id
-        """)
-        try:
-            with get_engine().connect() as conn:
-                conn.execute(sql, {'task_id': task_id})
-                conn.commit()
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"原子刷新任务 {task_id} 计数失败: {e}")
+        from task_service.domain.services.task_case_stats import (
+            refresh_task_counts_atomic as _refresh,
+        )
+        _refresh(task_id)
 
     def update_case_round_progress(self, task_id, tc_rel_id, current_round, total_rounds):
         """

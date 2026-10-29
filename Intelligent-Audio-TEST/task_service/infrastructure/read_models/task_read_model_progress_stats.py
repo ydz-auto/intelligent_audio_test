@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 from shared.models.database import get_db_session
 from shared.utils.status_utils import task_case_not_removed
 from shared.utils.query_utils import now_cst
+from task_service.domain.services.task_case_stats import aggregate_case_rows
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.utils.status_constants import (
     ExecutionStatus, EvaluationStatus, TaskCaseStatus, ACTIVE_EXECUTION_STATUSES,
@@ -131,40 +132,35 @@ class TaskProgressStatsMixin:
                 task_case_not_removed(TaskCase),
             ).all()
             test_cases_data = []
-            pending_count = 0
-            running_count = 0
-            completed_count = 0
-            failed_count = 0
+            # 用例级视图：一行 = 一个用例，执行行（用例 × API/设备）收进 targets
+            rows_by_case: Dict[str, list] = {}
+            for tc in all_task_cases:
+                rows_by_case.setdefault(str(tc.test_case_id), []).append(tc)
             from datetime import timezone, timedelta
             utc_plus_8 = timezone(timedelta(hours=8))
-            for tc in all_task_cases:
+            for case_id, rows in rows_by_case.items():
+                agg = aggregate_case_rows(rows)
                 duration = 0
-                if tc.started_at and tc.completed_at:
-                    started_at = tc.started_at
-                    completed_at = tc.completed_at
-                    if started_at.tzinfo is None:
-                        started_at = started_at.replace(tzinfo=utc_plus_8)
-                    if completed_at.tzinfo is None:
-                        completed_at = completed_at.replace(tzinfo=utc_plus_8)
-                    duration = int((completed_at - started_at).total_seconds())
+                for r in rows:
+                    if r.started_at and r.completed_at:
+                        started_at = r.started_at
+                        completed_at = r.completed_at
+                        if started_at.tzinfo is None:
+                            started_at = started_at.replace(tzinfo=utc_plus_8)
+                        if completed_at.tzinfo is None:
+                            completed_at = completed_at.replace(tzinfo=utc_plus_8)
+                        duration += int((completed_at - started_at).total_seconds())
 
                 test_cases_data.append({
-                    'id': str(tc.test_case_id),
-                    'status': tc.status,
-                    'execution_status': tc.execution_status,
-                    'evaluation_status': tc.evaluation_status,
+                    'id': case_id,
+                    'status': agg['status'],
+                    'execution_status': agg['execution_status'],
+                    'evaluation_status': agg['evaluation_status'],
                     'duration': duration,
-                    'error_message': tc.error_message,
+                    'error_message': agg['error_message'],
+                    'target_count': agg['target_count'],
+                    'targets': agg['targets'],
                 })
-
-                if tc.execution_status in [ExecutionStatus.PENDING, ExecutionStatus.QUEUED]:
-                    pending_count += 1
-                elif tc.execution_status == ExecutionStatus.RUNNING:
-                    running_count += 1
-                elif tc.execution_status == ExecutionStatus.COMPLETED:
-                    completed_count += 1
-                elif tc.execution_status == ExecutionStatus.FAILED:
-                    failed_count += 1
 
             in_progress_count = session.query(TaskCase).filter(
                 TaskCase.task_id == task_id,
@@ -173,13 +169,9 @@ class TaskProgressStatsMixin:
                 (TaskCase.evaluation_status == EvaluationStatus.CALCULATING)
             ).count()
 
-            actual_total_cases = len(all_task_cases)
-            actual_completed_cases = session.query(TaskCase).filter(
-                TaskCase.task_id == task_id,
-                task_case_not_removed(TaskCase),
-                TaskCase.execution_status == ExecutionStatus.COMPLETED,
-                TaskCase.status == TaskCaseStatus.COMPLETED,
-            ).count()
+            actual_total_cases = len(rows_by_case)
+            actual_completed_cases = sum(
+                1 for tc in test_cases_data if tc['status'] == TaskCaseStatus.COMPLETED)
 
             # API 资源状态
             api_resource_status = self._collect_api_resource_status(session, task, task_id)
@@ -187,9 +179,11 @@ class TaskProgressStatsMixin:
             total = task.total_cases or 0
             completed = task.completed_cases or 0
 
-            # 如果实际总数与记录值不同，返回实际值
+            # 实际值与记录值不一致时以实际（用例级）为准
             if actual_total_cases != total:
                 total = actual_total_cases
+            if actual_completed_cases != completed:
+                completed = actual_completed_cases
 
             return {
                 'task_id': str(task.id),
@@ -203,7 +197,8 @@ class TaskProgressStatsMixin:
                                  .distinct().all()] or self._fallback_task_device_types(session, task.id),
                 'total_cases': total,
                 'completed_cases': completed,
-                'failed_cases': task.failed_cases or 0,
+                'failed_cases': sum(
+                    1 for tc in test_cases_data if tc['status'] == TaskCaseStatus.FAILED),
                 'progress': round(actual_completed_cases / total * 100, 2) if total > 0 else 0,
                 'current_case': current_case_data,
                 'test_cases': test_cases_data,

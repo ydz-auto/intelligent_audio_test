@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 from shared.models.database import get_db_session
 from shared.utils.status_utils import task_case_not_removed
 from shared.utils.json_utils import deserialize_algorithm_result  # noqa: F401
+from task_service.domain.services.task_case_stats import aggregate_case_rows
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.models.common_enums import TestType
 
@@ -96,21 +97,23 @@ class TaskCaseResultsMixin:
         try:
             if not self._task_visible(session, task_id):
                 return None
-            tc = session.query(TaskCase).filter_by(
+            tc_rows = session.query(TaskCase).filter_by(
                 task_id=task_id, test_case_id=case_id
-            ).first()
-            if tc is None:
+            ).all()
+            if not tc_rows:
                 return None
+            tc = tc_rows[0]
+            # 用例级聚合：同一用例 × 多 API/设备有多行，详情头部状态按用例聚合
+            case_agg = aggregate_case_rows(tc_rows)
 
             case_info = session.get(TestCase, case_id)
             # 评估/报告兼容口径值：由用例级 device_type 派生
             # （差异#2 收尾：task.type 已废弃；gRPC 契约字段 test_type 保留）
             from shared.models.common_enums import DeviceType
-            test_type = (
-                TestType.E2E.value
-                if (tc.device_type or DeviceType.PHYSICAL.value) == DeviceType.PHYSICAL.value
-                else TestType.API.value
-            )
+            has_physical = any(
+                (r.device_type or DeviceType.PHYSICAL.value) == DeviceType.PHYSICAL.value
+                for r in tc_rows)
+            test_type = TestType.E2E.value if has_physical else TestType.API.value
 
             results = self._query_results(session, task_id, case_id)
 
@@ -181,7 +184,9 @@ class TaskCaseResultsMixin:
                     "config": case_info.config if case_info else {},
                 } if case_info else None,
                 "test_type": test_type,
-                "tc": self._case_to_dto(tc),
+                "tc": self._case_to_dto(tc, case_agg),
+                # 用例级执行目标（API/设备）：详情内逐目标对比与结果归属
+                "targets": case_agg['targets'],
                 "results": processed_results,
             }
         finally:
@@ -368,8 +373,8 @@ class TaskCaseResultsMixin:
         return out
 
     @staticmethod
-    def _case_to_dto(tc: TaskCase) -> Dict[str, Any]:
-        return {
+    def _case_to_dto(tc: TaskCase, agg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        dto = {
             'id': tc.id,
             'task_id': tc.task_id,
             'test_case_id': tc.test_case_id,
@@ -381,3 +386,10 @@ class TaskCaseResultsMixin:
             'duration': tc.duration,
             'error_message': tc.error_message,
         }
+        if agg:
+            # 多目标用例：以用例级聚合状态覆盖单行值
+            for key in ('status', 'execution_status', 'evaluation_status', 'started_at',
+                        'completed_at', 'duration', 'error_message'):
+                dto[key] = agg[key]
+            dto['target_count'] = agg['target_count']
+        return dto

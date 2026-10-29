@@ -90,12 +90,12 @@ class TaskFinalizeMixin:
                                 task.started_at = task.started_at.replace(tzinfo=self.utc_plus_8)
                             # 计算实际执行时长（秒）
                             task.actual_duration = int((task.completed_at - task.started_at).total_seconds())
-                    # 更新任务的已完成用例数和失败用例数
-                    task.completed_cases = completed_cases
-                    task.failed_cases = failed_cases
+                    # 更新任务的已完成/失败用例数（用例级口径，口径集中在 task_case_stats）
                     from shared.infrastructure.user_context import get_current_user_id
                     task.updated_by_user_id = get_current_user_id()
                     local_db_session.commit()
+                    self.refresh_task_counts_atomic(task_id)
+                    local_db_session.refresh(task)
                     # 发送最终进度更新
                     self._emit_progress(task)
         finally:
@@ -293,12 +293,11 @@ class TaskFinalizeMixin:
         ).count() > 0
 
     def _update_final_case_counts(self, session, task_id, counts):
-        """更新任务用例统计"""
+        """更新任务用例统计（用例级口径）"""
         task_obj = session.query(Task).filter_by(id=task_id).first()
         if task_obj:
-            task_obj.completed_cases = counts['passed']
-            task_obj.failed_cases = counts['failed']
-            session.commit()
+            self.refresh_task_counts_atomic(task_id)
+            session.refresh(task_obj)
 
     def _fix_stale_case_statuses(self, task_id, session):
         """修复状态未更新的用例"""
@@ -395,11 +394,13 @@ class TaskFinalizeMixin:
                     return
 
                 # 根据停止事件和执行结果更新任务状态
+                # INT-305：移除留痕行不参与收敛判定/统计——统一在分支前取条件，
+                # 停止分支（stop_event 已置位）同样要用到，留在 else 内会 UnboundLocalError
+                not_removed = task_case_not_removed(TaskCase)
                 if stop_event.is_set():
                     task.status = TaskStatus.STOPPED
                 else:
                     # 检查是否所有测试用例都失败（INT-305：移除留痕行不计数）
-                    not_removed = task_case_not_removed(TaskCase)
                     all_cases = local_db_session.query(TaskCase).filter(
                         TaskCase.task_id == task.id, not_removed).count()
                     failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task.id, status=TaskCaseStatus.FAILED).count()
@@ -409,8 +410,8 @@ class TaskFinalizeMixin:
                         TaskCase.status.in_(FINISHED_CASE_STATUSES)
                     ).count()
 
-                    # 动态更新任务的total_cases字段，确保进度计算准确
-                    task.total_cases = all_cases
+                    # total_cases/completed/failed 由 refresh_task_counts_atomic
+                    # 按用例级口径统一刷新（此处不再直接按行数赋值）
 
                     # 确保所有测试用例都已处理完成
                     if all_processed_cases == all_cases:
@@ -444,22 +445,13 @@ class TaskFinalizeMixin:
                     # 计算实际执行时长（秒）
                     task.actual_duration = int((task.completed_at - task.started_at).total_seconds())
 
-                # 更新任务的已完成用例数和失败用例数（INT-305：移除留痕行不计数）
-                success_count = local_db_session.query(TaskCase).filter(
-                    TaskCase.task_id == task_id,
-                    not_removed,
-                    TaskCase.status == TaskCaseStatus.COMPLETED
-                ).count()
-                task.completed_cases = success_count
-                task.failed_cases = local_db_session.query(TaskCase).filter(
-                    TaskCase.task_id == task_id,
-                    not_removed,
-                    TaskCase.status == TaskCaseStatus.FAILED,
-                ).count()
+                # 更新任务的已完成/失败用例数（用例级口径）
                 from shared.infrastructure.user_context import get_current_user_id
                 task.updated_by_user_id = get_current_user_id()
 
                 local_db_session.commit()
+                self.refresh_task_counts_atomic(task_id)
+                local_db_session.refresh(task)
                 # 在关闭会话前发送任务完成进度更新
                 self._emit_progress(task)
             finally:
@@ -523,17 +515,13 @@ class TaskFinalizeMixin:
                 # 计算实际执行时长
                 task.actual_duration = int((completed_at_with_tz - started_at_with_tz).total_seconds())
 
-            # 更新任务统计信息
-            task.completed_cases = local_db_session.query(TaskCase).filter(
-                TaskCase.task_id == task_id,
-                TaskCase.status == TaskCaseStatus.COMPLETED
-            ).count()
-            task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.FAILED).count()
-
+            # 更新任务统计信息（用例级口径，口径集中在 task_case_stats）
             from shared.infrastructure.user_context import get_current_user_id
             task.updated_by_user_id = get_current_user_id()
 
             local_db_session.commit()
+            self.refresh_task_counts_atomic(task_id)
+            local_db_session.refresh(task)
 
             # 记录详细错误日志
             self._log(

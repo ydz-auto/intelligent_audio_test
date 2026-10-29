@@ -130,10 +130,9 @@ class TaskCrudMixin:
             self._add_task_relations(session, task_id, case_ids, device_ids, api_ids, now, case_devices)
             self._add_task_laboratory_relations(session, task_id, lab_ids, now)
 
-            # INT-604：total_cases 以 task_case_relations 行数为准（混选多路由下
-            # 按「用例×路由」行数统计，与进度/报告口径一致）
-            task.total_cases = session.query(TaskCase).filter(
-                TaskCase.task_id == task_id).count()
+            # 用例级口径：total_cases 按去重用例数（一个用例 × 多 API 只算一条）
+            task.total_cases = session.query(TaskCase.test_case_id).filter(
+                TaskCase.task_id == task_id).distinct().count()
 
             session.commit()
             return task_id

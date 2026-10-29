@@ -13,6 +13,10 @@ from typing import Any, Dict, Optional
 
 from shared.models.database import get_db_session
 from shared.utils.status_utils import task_case_not_removed
+from task_service.domain.services.task_case_stats import (
+    aggregate_case_rows,
+    case_level_counts,
+)
 from task_service.infrastructure.persistence.models import Task, TaskCase
 
 
@@ -157,36 +161,46 @@ class TaskDetailReadModelMixin:
             TaskCase.task_id == task.id,
             task_case_not_removed(TaskCase),
         ).all()
+        # 用例级聚合：一行 = 一个用例；同一用例的多个执行行（用例 × API/设备）
+        # 收进 targets，避免混选任务在详情里重复出条
+        rows_by_case: Dict[str, list] = {}
+        for tc in task_cases:
+            rows_by_case.setdefault(str(tc.test_case_id), []).append(tc)
         # 预取分组名映射，避免逐条查询
-        group_ids = {tc.test_case_id for tc in task_cases}
+        group_ids = set(rows_by_case)
         case_infos = {c.id: c for c in session.query(TestCase).filter(TestCase.id.in_(list(group_ids))).all()} if group_ids else {}
         group_name_map = {}
         for ci in case_infos.values():
             if ci.group_id and ci.group_id not in group_name_map:
                 g = session.get(TestCaseGroup, ci.group_id)
                 group_name_map[ci.group_id] = g.name if g else None
-        for tc in task_cases:
-            case_info = case_infos.get(tc.test_case_id)
+        for case_id, rows in rows_by_case.items():
+            case_info = case_infos.get(case_id)
+            agg = aggregate_case_rows(rows)
             cases.append({
-                'case_id': tc.test_case_id,
+                'case_id': case_id,
                 'name': case_info.name if case_info else "未知用例",
-                'status': tc.status,
-                'execution_status': tc.execution_status,
-                'evaluation_status': tc.evaluation_status,
-                'started_at': tc.started_at.isoformat() if tc.started_at else None,
-                'completed_at': tc.completed_at.isoformat() if tc.completed_at else None,
-                'duration': tc.duration,
+                'status': agg['status'],
+                'execution_status': agg['execution_status'],
+                'evaluation_status': agg['evaluation_status'],
+                'started_at': agg['started_at'],
+                'completed_at': agg['completed_at'],
+                'duration': agg['duration'],
                 # 用例真实轮次数（config.rounds 长度）——任务详情「轮次」列分母
                 'rounds_count': self.extract_case_rounds_count(case_info.config if case_info else None),
-                'error_message': tc.error_message,
+                'error_message': agg['error_message'],
                 'group_name': group_name_map.get(case_info.group_id) if case_info else None,
                 'tags': [t.name for t in case_info.tags] if case_info and case_info.tags else [],
                 # INT-302/F3：本任务用例聚合的评估维度（重评估维度勾选候选集）
                 'evaluation_dimensions': self.extract_case_evaluation_dimensions(
                     case_info.config if case_info else None),
                 # INT-340：该用例下是否存在人工复核结果（任务详情「人工复核」标记）
-                'reviewed': bool(case_reviewed.get(tc.test_case_id)),
+                'reviewed': bool(case_reviewed.get(case_id)),
+                # 用例级执行目标（API/设备）明细：详情内可逐目标对比
+                'target_count': agg['target_count'],
+                'targets': agg['targets'],
             })
+        case_counts = case_level_counts(task_cases)
 
         # P3 改造：task.devices / task.apis 关系已移除，
         # 通过 TaskDevice/TaskAPI 关联表 + gRPC 查询设备/API 信息
@@ -197,6 +211,16 @@ class TaskDetailReadModelMixin:
         devices = self._fetch_device_list(task_device_ids)
         apis = self._fetch_api_list(task_api_ids)
         tag_names = [tag.name for tag in task.tags]
+
+        # 目标名回填：报告侧按「设备/API 资源」对比，详情 targets 需同名可比
+        name_map = {}
+        for a in apis:
+            name_map[('api', str(a.get('id')))] = a.get('name')
+        for d in devices:
+            name_map[('device', str(d.get('id')))] = d.get('name')
+        for c in cases:
+            for t in c['targets']:
+                t['target_name'] = name_map.get((t['target_type'], str(t['device_id'])))
 
         # 用例级被测设备类型集合（差异#2 收尾：取代 task.type 输出）
         # INT-1233：无用例级 device_type 行（含无 task_case_relations 的历史任务）
@@ -225,11 +249,12 @@ class TaskDetailReadModelMixin:
             'algorithm_params': task.algorithm_params,
             'started_at': task.started_at.isoformat() if task.started_at else None,
             'completed_at': task.completed_at.isoformat() if task.completed_at else None,
-            'total_cases': task.total_cases,
-            'case_count': task.total_cases,
+            # 用例级口径：total_cases/completed/failed 按去重用例数（目标多行不重复计）
+            'total_cases': case_counts['total'],
+            'case_count': case_counts['total'],
             'device_count': len(devices),
-            'completed_cases': task.completed_cases,
-            'failed_cases': task.failed_cases,
+            'completed_cases': case_counts['completed'],
+            'failed_cases': case_counts['failed'],
             'review_count': review_count,
             'tags': tag_names,
             'cases': cases,

@@ -127,6 +127,12 @@ class TaskCaseBrief(APIModel):
     # INT-755：历史任务（reviewed 字段落地前创建）上游可能缺省该键 → None，
     # pydantic v2 显式拒绝 None 会 422，容错为 Optional（网关构造时归一 False）
     reviewed: Optional[bool] = Field(False)
+    # 用例级执行目标数（同一用例 × 多 API/设备时，执行行收进 targets，不再重复出条）
+    target_count: Optional[int] = Field(None)
+    # 执行目标明细 [{task_case_id, device_type, device_id, api_id, status,
+    # execution_status, evaluation_status, started_at, completed_at,
+    # duration, error_message}]，供详情内逐目标对比
+    targets: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class TaskDetailData(APIModel):

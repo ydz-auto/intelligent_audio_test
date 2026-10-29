@@ -227,6 +227,9 @@ class TaskQueryService:
                     # INT-734：上游缺省/null 容错为 False（未复核）
                     # INT-755：历史任务上游可能缺省该键 → None，归一 False 保持 bool 契约
                     reviewed=bool(c.get('reviewed')),
+                    # 用例级执行目标（一个用例 × 多 API/设备）：详情内逐目标对比
+                    target_count=c.get('target_count'),
+                    targets=c.get('targets') or [],
                 )
                 for c in item.get('cases', [])
             ]
@@ -364,6 +367,8 @@ class TaskQueryService:
             "metric_configs": data.get('metric_configs', []),
             "field_mapping": data.get('field_mapping', {'result': [], 'reference': []}),
             "result_audios": data.get('result_audios', {}),
+            # 用例级执行目标（API/设备）：详情内逐目标对比（多目标时状态按用例聚合）
+            "targets": data.get('targets', []),
         }
 
         return success_response(response_data)
