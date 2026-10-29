@@ -6,13 +6,15 @@ ARG PIP_INDEX_URL=https://pypi.org/simple
 WORKDIR /app
 
 # 系统依赖：报告生成（libffi）、音频处理（ffmpeg）
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./requirements.txt
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
         gcc libc6-dev libffi-dev portaudio19-dev \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r requirements.txt
