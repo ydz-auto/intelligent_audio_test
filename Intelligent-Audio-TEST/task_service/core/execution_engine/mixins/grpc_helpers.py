@@ -99,11 +99,15 @@ def _register_task_events_via_grpc(task_id, stop_event, pause_event):
         logger.debug("gRPC 注册任务事件失败 task_id=%s", task_id, exc_info=True)
 
 
-def _execute_e2e_case_via_grpc(task_id, tc_rel_id):
+def _execute_e2e_case_via_grpc(task_id, tc_rel_id, device_id=None):
     """通过 gRPC 调用 e2e_test_service 的 ExecutionService.StartE2ETask
 
     原 `self.e2e_executor.execute_e2e_case(task_id, tc_rel_id)` 已替换为跨服务
     gRPC 调用，E2E 业务逻辑已下沉到 e2e_test_service 进程。
+
+    device_id：当前派发的物理路由行绑定的被测设备（task_case_relations.device_id）。
+    E2E 用例按物理设备行逐行执行，执行器只准备/驱动该设备——同机多 App 的
+    多条设备记录各跑各的，串行/并行语义才能落到真实设备上。
     """
     import json as _json
     from shared.proto import e2e_test_service_pb2
@@ -120,6 +124,7 @@ def _execute_e2e_case_via_grpc(task_id, tc_rel_id):
                 task_id=str(task_id),
                 tc_rel_id=str(tc_rel_id),
                 e2e_config='',
+                device_id=int(device_id) if device_id else 0,
             ),
             timeout=BaseConfig.GRPC_E2E_SYNC_TIMEOUT_SECONDS,
         )

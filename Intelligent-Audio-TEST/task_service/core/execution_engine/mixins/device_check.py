@@ -29,8 +29,10 @@ class DeviceCheckMixin:
 
         self._log(level='DEBUG', content=f"开始检查设备状态: 任务ID={task_id}, 用例ID={tc_rel.id}", task_id=task_id)
 
-        # 检查被测设备
-        device_ids = self._get_task_device_ids(task_id, local_db_session)
+        # 检查被测设备：物理用例按路由行绑定的设备检查（一用例一设备执行）；
+        # 历史无 device_id 的行回落任务全部设备
+        device_ids = ([int(tc_rel.device_id)] if tc_rel.device_id
+                      else self._get_task_device_ids(task_id, local_db_session))
         passed, error_msg = self._check_recording_devices(task_id, device_ids, local_db_session)
         if not passed:
             return False, error_msg

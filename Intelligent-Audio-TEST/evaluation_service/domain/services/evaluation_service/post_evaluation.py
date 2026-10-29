@@ -48,10 +48,11 @@ class PostEvaluationMixin:
         if not tc_rels:
             return None
 
-        # 2. 更新 queued/pending 状态的 TaskCase 为 completed
+        # 2. 更新 queued/pending/calculating 状态的 TaskCase 为 completed
         any_updated = False
         for tc in tc_rels:
-            if (tc.evaluation_status in [EvaluationStatus.QUEUED, EvaluationStatus.PENDING]
+            if (tc.evaluation_status in [EvaluationStatus.QUEUED, EvaluationStatus.PENDING,
+                                         EvaluationStatus.CALCULATING]
                     and tc.execution_status in FINISHED_EXECUTION_STATUSES):
                 # INT-632：评估收口为 completed 时 status 必须按 execution+evaluation
                 # 重新推导。原实现保留 tc.status（无维度收尾/重评跳过路径下停留在
@@ -63,6 +64,7 @@ class PostEvaluationMixin:
                     case_id=str(tc.test_case_id),
                     status=new_status or tc.status or TaskCaseStatus.COMPLETED,
                     evaluation_status=EvaluationStatus.COMPLETED,
+                    tc_rel_id=tc.id,
                 )
                 if ok:
                     tc.status = new_status or tc.status or TaskCaseStatus.COMPLETED
@@ -77,6 +79,7 @@ class PostEvaluationMixin:
                     task_id=task_id,
                     case_id=str(tc.test_case_id),
                     status=new_status,
+                    tc_rel_id=tc.id,
                 )
                 if ok:
                     tc.status = new_status

@@ -5,6 +5,7 @@
 - DeviceResultServiceServicer：设备结果采集，委托给 device_result_collector
 - EnvDeviceServiceServicer：环境设备控制，委托给 EnvDeviceFactory
 """
+import functools
 import logging
 import threading
 
@@ -14,6 +15,60 @@ from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 from shared.utils.status_constants import ExecutionStatus
 
 logger = logging.getLogger(__name__)
+
+# ==================== 同 SN 步骤互斥 ====================
+# 同一台设备上的多个被测 App（如同一 SN 的小艺/豆包两条设备记录）并发执行
+# initialize/pre_process/post_process/get_results 时会互相打断设备端 uitest
+# 守护（实测两个驱动同时 pkill/start-daemon → 双双初始化失败）。步骤统一按
+# 设备 SN 串行；不同 SN 不受影响，仍可并行。
+_SERIALIZED_ACTIONS = frozenset({
+    'initialize', 'pre_process', 'post_process', 'get_results',
+    'extract_results_from_archive', 'get_final_results', 'teardown',
+})
+_device_step_locks = {}
+_device_step_locks_lock = threading.Lock()
+
+
+def _device_step_lock(device_sn):
+    with _device_step_locks_lock:
+        return _device_step_locks.setdefault(device_sn, threading.RLock())
+
+
+def _peek_action_and_device_sn(request):
+    """轻量解析 device_config，仅取 action / device_sn 用于加锁判定。"""
+    try:
+        config = _loads(request.device_config, {})
+    except Exception:
+        return None, None
+    if isinstance(config, list):
+        first = config[0] if config and isinstance(config[0], dict) else {}
+        return first.get('action', 'register'), first.get('device_sn')
+    if isinstance(config, dict):
+        return config.get('action', 'initialize'), config.get('device_sn')
+    return None, None
+
+
+def serialized_device_step(func):
+    """设备步骤按 SN 串行执行（仅对触摸设备硬件的 action 生效）。"""
+    @functools.wraps(func)
+    def wrapper(self, request, context=None):
+        action, device_sn = _peek_action_and_device_sn(request)
+        if not device_sn or action not in _SERIALIZED_ACTIONS:
+            return func(self, request, context)
+        from shared.infrastructure.config import BaseConfig
+        wait_seconds = int(getattr(BaseConfig, 'DEVICE_SN_STEP_LOCK_WAIT_SECONDS', 60))
+        lock = _device_step_lock(device_sn)
+        if not lock.acquire(timeout=wait_seconds):
+            logger.warning("设备 %s 步骤 %s 等待同 SN 串行锁超时(%ss)", device_sn, action, wait_seconds)
+            return e2e_pb.CreateDriverResponse(
+                success=False,
+                message=f"设备 {device_sn} 正在执行其他操作（同 SN 步骤串行），等待 {wait_seconds}s 超时",
+                data="")
+        try:
+            return func(self, request, context)
+        finally:
+            lock.release()
+    return wrapper
 
 
 # ==================== DeviceServiceServicer ====================
@@ -31,6 +86,7 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
             self._factory = device_driver_factory
         return self._factory
 
+    @serialized_device_step
     def CreateDriver(self, request, context=None):
         """创建设备驱动 / 分发设备操作
 

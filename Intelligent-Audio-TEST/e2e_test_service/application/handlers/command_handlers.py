@@ -44,9 +44,10 @@ class StartE2ETestHandler:
         )
         E2EOrchestrator.start(session)
 
-        # 委托给已有的 core 模块执行实际 IO
+        # 委托给已有的 core 模块执行实际 IO（指定设备时只执行该设备）
+        device_id = command.device_ids[0] if command.device_ids else None
         result = self.e2e_service.start_e2e_case(
-            command.task_id, command.tc_rel_id
+            command.task_id, command.tc_rel_id, device_id=device_id
         )
 
         E2EOrchestrator.finish(

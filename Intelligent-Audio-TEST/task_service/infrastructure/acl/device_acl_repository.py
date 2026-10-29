@@ -46,6 +46,28 @@ class DeviceAclRepository:
             _logger.warning("GetDeviceStatuses gRPC 异常: %s", e)
             return []
 
+    def get_device(self, device_id: int) -> dict:
+        """查询单个设备详情（含 serial_number）。
+
+        封装 device_service.DeviceConfigService.GetDevice RPC；
+        失败返回空 dict。供物理设备互斥按 SN 加锁等需要设备身份的调用方使用。
+        """
+        if not device_id:
+            return {}
+        from shared.clients.grpc_clients import get_device_config_service_stub
+        from shared.proto import device_service_pb2 as e2e_pb
+        try:
+            stub = get_device_config_service_stub()
+            resp = stub.GetDevice(e2e_pb.GetDeviceRequest(device_id=int(device_id)))
+            if not resp.success:
+                _logger.warning("GetDevice gRPC 失败: device_id=%s, %s", device_id, resp.message)
+                return {}
+            payload = _loads(resp.data, {}) or {}
+            return payload if isinstance(payload, dict) else {}
+        except Exception as e:
+            _logger.warning("GetDevice gRPC 异常: device_id=%s, %s", device_id, e)
+            return {}
+
     def list_devices(self, page: int = 1, per_page: int = 1) -> dict:
         """查询设备列表（分页）。
 

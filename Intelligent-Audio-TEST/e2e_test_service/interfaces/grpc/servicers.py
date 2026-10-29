@@ -45,7 +45,9 @@ class ExecutionServiceServicer(e2e_grpc.ExecutionServiceServicer):
             set_worker_instance_id(worker_instance_id_from_context(context))
             task_id = request.task_id
             tc_rel_id = request.tc_rel_id
-            result = self.e2e_service.start_e2e_case(task_id, tc_rel_id)
+            # 物理路由行绑定的被测设备（0/未设置 → 历史调用方，按任务全部设备处理）
+            device_id = request.device_id or None
+            result = self.e2e_service.start_e2e_case(task_id, tc_rel_id, device_id=device_id)
             return e2e_pb.StartE2ETaskResponse(
                 success=result.get('success', False),
                 message=result.get('message', ''),

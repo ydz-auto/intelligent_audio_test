@@ -237,9 +237,11 @@ class TestDeviceCheckFailedEvaluationConvergence:
         # 复用 _finalize_dispatch_failure 兜底口径，防混合任务死等
         engine = TaskDispatchMixin.__new__(TaskDispatchMixin)
         engine.utc_plus_8 = timezone(timedelta(hours=8))
+        engine._log = MagicMock()
         engine._emit_alert = MagicMock()
         engine._emit_progress = MagicMock()
         engine._count_cases_by_status = MagicMock(return_value=0)
+        engine.refresh_task_counts_atomic = MagicMock()
         tc_rel = SimpleNamespace(id=201, execution_status='pending', evaluation_status='pending',
                                  status='pending', completed_at=None, duration=None,
                                  error_message=None, test_case_id='tc-1')

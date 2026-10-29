@@ -7,17 +7,22 @@ from e2e_test_service.infrastructure.acl import (
     DeviceAclRepositoryImpl,
     PlaybackAclRepositoryImpl,
 )
-from shared.utils.status_constants import ExecutionStatus, TaskCaseStatus
+from shared.utils.status_constants import (
+    RESULT_TYPE_E2E,
+    RESULT_TYPE_FINAL,
+    ExecutionStatus,
+    TaskCaseStatus,
+)
 
 
 class PreparationMixin:
     """阶段一：循环前准备 —— 设备准备 + 音频预下载 + 声纹注册 + 预创建 TestResult"""
 
     def _prepare_rounds(self, task_id, tc_rel_id, data, case_config, algorithm_type,
-                        case_field_values, rounds, test_case_id):
+                        case_field_values, rounds, test_case_id, device_id=None):
         """设备准备 + 声纹注册 + 预创建 TestResult，返回 (device_info_list, result_id)"""
-        # 设备准备
-        device_result = self._device_manager.get_device_info(task_id, case_config)
+        # 设备准备：只准备当前路由行绑定的设备（device_id=None 时按任务全部设备）
+        device_result = self._device_manager.get_device_info(task_id, case_config, device_id=device_id)
         if not device_result['success']:
             error_msg = f"设备信息获取失败: {device_result.get('error')}"
             self._log(level='ERROR', content=error_msg, task_id=task_id, test_case_id=test_case_id)
@@ -64,6 +69,15 @@ class PreparationMixin:
         degraded = self._device_manager.get_ui_capture_degraded()
         if degraded:
             result_data['ui_capture_degraded'] = degraded
+        # 结果类型（INT-1510 列口径）：多轮 + 多轮评估维度 → 最终聚合结果 final，否则设备 E2E 结果 e2e
+        has_final_results = (
+            len(rounds) > 1
+            and any(
+                isinstance(d, dict) and d.get('round_scope') == 'multi'
+                for d in ((case_config or {}).get('dimensions') or [])
+            )
+        )
+        result_type = RESULT_TYPE_FINAL if has_final_results else RESULT_TYPE_E2E
         result_id = self._save_result(
             task_id=task_id,
             test_case_id=test_case_id,
@@ -74,7 +88,8 @@ class PreparationMixin:
             api_id=None,
             execution_status=ExecutionStatus.RUNNING,
             response_time=0,
-            error_message=None
+            error_message=None,
+            result_type=result_type,
         )
         self._log(
             level='DEBUG',

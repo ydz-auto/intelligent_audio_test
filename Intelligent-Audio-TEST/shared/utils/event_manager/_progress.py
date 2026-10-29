@@ -17,7 +17,7 @@ import logging
 from datetime import datetime
 from typing import Optional, Tuple
 
-from shared.models.database import get_db_session
+from shared.models.database import create_db_session
 from shared.models.common_enums import DeviceType
 from shared.schemas.socket_payloads import (
     ProgressApiResource,
@@ -393,7 +393,10 @@ class ProgressMixin:
                 db_task, progress = self._build_progress_from_grpc(task_id, task_id_int, grpc_progress)
             else:
                 # PO 回退路径：gRPC 不可用时直连 DB
-                local_db_session = get_db_session()
+                # 独立 Session：进度/时间预估在任务执行线程内被调用，若复用
+                # get_db_session() 线程级 scoped session，本处 close() 会把调用方
+                # 仍持有的 ORM 对象 expunge 成脱管态（INT-40 同类缺陷）
+                local_db_session = create_db_session()
                 db_task, progress = self._build_progress_from_po(local_db_session, task_id, task_id_int)
                 if db_task is None:
                     self._note_missing_task(task_id)

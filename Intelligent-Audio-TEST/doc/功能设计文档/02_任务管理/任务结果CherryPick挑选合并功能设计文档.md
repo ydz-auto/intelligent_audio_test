@@ -299,6 +299,13 @@ ORDER BY <排序键>, t.id ASC                          -- id 兜底稳定次序
 }
 ```
 
+> 每个节点（任务/用例/设备/API/result_type）另带**状态汇总**字段（同一分组 SQL 条件聚合、逐层滚加）：
+> `execution_status_counts: {completed, failed, stopped, skipped}`、`evaluated_count`、
+> `last_result_at`（该节点末条结果时间，ISO 8601）。前端据此直接渲染父行状态：
+> `count = 1` 即该条结果的状态（无需再逐节点调 `candidates` 探测）；`count > 1` 显示
+> 「已完成 n / 部分失败 x/n / 执行失败 n」等分布，避免前端 N 次叶明细请求。
+> 字段为加法契约，旧前端不消费也可运行。
+
 字段口径：
 
 - `total` = 命中**结果行**总数，必须与同口径 SQL 一致；等于全部 `tree[*].cases[*].devices[*].result_types[*].count` 之和；`task_count` = 命中任务数。

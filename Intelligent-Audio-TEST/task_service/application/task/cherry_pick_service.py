@@ -519,9 +519,36 @@ class CherryPickService:
         except ValueError:
             return None
 
-    @staticmethod
-    def _assemble_tree(groups: List[Dict[str, Any]]) -> tuple:
+    _STATUS_KEYS = ('completed', 'failed', 'stopped', 'skipped')
+
+    @classmethod
+    def _blank_node_summary(cls) -> Dict[str, Any]:
+        """节点状态汇总初值（执行状态分布 + 已评估数 + 末条结果时间）。"""
+        return {
+            'execution_status_counts': {k: 0 for k in cls._STATUS_KEYS},
+            'evaluated_count': 0,
+            'last_result_at': None,
+        }
+
+    @classmethod
+    def _merge_node_summary(cls, node: Dict[str, Any], group: Dict[str, Any]) -> None:
+        """把分组行的状态汇总滚加到树节点（任务/用例/设备/result_type 逐层）。"""
+        counts = group.get('execution_status_counts') or {}
+        target = node['execution_status_counts']
+        for key in cls._STATUS_KEYS:
+            target[key] += int(counts.get(key) or 0)
+        node['evaluated_count'] += int(group.get('evaluated_count') or 0)
+        last = group.get('last_result_at')
+        if last and (node['last_result_at'] is None or last > node['last_result_at']):
+            node['last_result_at'] = last
+
+    @classmethod
+    def _assemble_tree(cls, groups: List[Dict[str, Any]]) -> tuple:
         """把仓储的分组行装配为四层树（只在分组行上做字典归并，与行数无关）。
+
+        每个节点都带状态汇总（`execution_status_counts` / `evaluated_count` /
+        `last_result_at`，叶子→任务逐层滚加），前端按 count 直接渲染父行状态，
+        不再逐节点探测叶明细。
 
         Returns:
             (tree, total, case_ids, device_ids, api_ids)——
@@ -543,24 +570,35 @@ class CherryPickService:
                 api_ids.add(group['api_id'])
 
             task_node = task_map.setdefault(
-                task_id, {'task_id': task_id, 'count': 0, 'cases': {}})
+                task_id,
+                {'task_id': task_id, 'count': 0, 'cases': {},
+                 **cls._blank_node_summary()})
             task_node['count'] += count
+            cls._merge_node_summary(task_node, group)
             case_node = task_node['cases'].setdefault(
-                case_id, {'case_id': case_id, 'count': 0, 'devices': {}})
+                case_id,
+                {'case_id': case_id, 'count': 0, 'devices': {},
+                 **cls._blank_node_summary()})
             case_node['count'] += count
+            cls._merge_node_summary(case_node, group)
             device_key = (group.get('device_id'), group.get('api_id'))
             device_node = case_node['devices'].setdefault(device_key, {
                 'device_id': group.get('device_id'),
                 'api_id': group.get('api_id'),
                 'count': 0,
                 'result_types': [],
+                **cls._blank_node_summary(),
             })
             device_node['count'] += count
-            device_node['result_types'].append({
+            cls._merge_node_summary(device_node, group)
+            rt_node = {
                 'result_type': group.get('result_type'),
                 'count': count,
                 'result_ids': list(group.get('result_ids') or []),
-            })
+                **cls._blank_node_summary(),
+            }
+            cls._merge_node_summary(rt_node, group)
+            device_node['result_types'].append(rt_node)
 
         tree = []
         for task_id in sorted(task_map):
@@ -578,9 +616,15 @@ class CherryPickService:
                         key=lambda rt: (rt['result_type'] or ''))
                     devices.append(device_node)
                 cases.append({'case_id': case_id, 'count': case_node['count'],
-                              'devices': devices})
+                              'devices': devices,
+                              'execution_status_counts': case_node['execution_status_counts'],
+                              'evaluated_count': case_node['evaluated_count'],
+                              'last_result_at': case_node['last_result_at']})
             tree.append({'task_id': task_id, 'count': task_node['count'],
-                         'cases': cases})
+                         'cases': cases,
+                         'execution_status_counts': task_node['execution_status_counts'],
+                         'evaluated_count': task_node['evaluated_count'],
+                         'last_result_at': task_node['last_result_at']})
         return tree, total, case_ids, device_ids, api_ids
 
     def _tree_case_meta(self, case_ids) -> List[Dict[str, Any]]:

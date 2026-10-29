@@ -634,6 +634,13 @@ class CherryPickRepository:
         id_agg = (sa_func.group_concat(TestResult.id) if dialect == 'sqlite'
                   else sa_func.array_agg(TestResult.id))
 
+        # 节点状态汇总（INT-xxx 返工）：条件聚合与主聚合同一条 SQL，避免前端逐节点探测。
+        # 评估口径 = 评估域存在性（与 evaluation_status 过滤同一 ACK select）。
+        from task_service.infrastructure.acl.evaluation_config_acl_repository import (
+            evaluation_config_acl_repository,
+        )
+        evaluated_select = evaluation_config_acl_repository.evaluated_result_id_select()
+
         rows = (session.query(
                     effective_task.label('task_id'),
                     TestResult.test_case_id.label('case_id'),
@@ -641,6 +648,17 @@ class CherryPickRepository:
                     TestResult.api_id.label('api_id'),
                     result_type_expr.label('result_type'),
                     id_agg.label('result_ids'),
+                    sa_func.count(case((TestResult.execution_status == 'completed', 1)))
+                    .label('completed_count'),
+                    sa_func.count(case((TestResult.execution_status == 'failed', 1)))
+                    .label('failed_count'),
+                    sa_func.count(case((TestResult.execution_status == 'stopped', 1)))
+                    .label('stopped_count'),
+                    sa_func.count(case((TestResult.execution_status == 'skipped', 1)))
+                    .label('skipped_count'),
+                    sa_func.count(case((TestResult.id.in_(evaluated_select), 1)))
+                    .label('evaluated_count'),
+                    sa_func.max(TestResult.created_at).label('last_result_at'),
                 )
                 .join(Task, TestResult.task_id == Task.id)
                 .filter(*filters)
@@ -656,6 +674,15 @@ class CherryPickRepository:
             'api_id': row.api_id,
             'result_type': row.result_type,
             'result_ids': self._decode_result_ids(row.result_ids),
+            'execution_status_counts': {
+                'completed': int(row.completed_count or 0),
+                'failed': int(row.failed_count or 0),
+                'stopped': int(row.stopped_count or 0),
+                'skipped': int(row.skipped_count or 0),
+            },
+            'evaluated_count': int(row.evaluated_count or 0),
+            'last_result_at': (row.last_result_at.isoformat()
+                               if row.last_result_at else None),
         } for row in rows]
         for group in groups:
             group['count'] = len(group['result_ids'])

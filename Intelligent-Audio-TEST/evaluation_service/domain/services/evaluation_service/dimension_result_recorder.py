@@ -9,23 +9,65 @@ from shared.utils.status_constants import EvaluationStatus
 class DimensionResultRecorderMixin:
     """创建维度结果记录与评估状态管理"""
 
-    def _mark_evaluation_queued(self, task_id, test_case_id):
+    def _resolve_tc_rel_id(self, task_id, test_case_id, result_id=None):
+        """按结果归属解析 task_case_relations.id（多路由下精确命中路由行）。
+
+        同一用例可能有设备侧/API 侧多行；评估状态写回必须命中结果所属的那一行，
+        否则会把同用例的其它路由行（如已失败的物理行）一起改写。
+        单行场景直接命中，多行按 result.device_id / result.api_id 匹配。
+        """
+        try:
+            rows = self._task_acl_repo.get_task_case_by_ids(
+                task_id=task_id, case_ids=[str(test_case_id)]
+            )
+        except Exception as e:
+            self._log(level='WARNING',
+                      content=f"解析 TaskCase 路由行失败: {str(e)}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
+        if not rows:
+            return None
+        if len(rows) == 1:
+            return rows[0].id
+
+        device_id = api_id = None
+        if result_id:
+            try:
+                result = self._task_acl_repo.get_test_result_by_id(result_id)
+            except Exception:
+                result = None
+            if result is not None:
+                device_id = getattr(result, 'device_id', None)
+                api_id = getattr(result, 'api_id', None)
+
+        for row in rows:
+            row_bind = getattr(row, 'device_id', None)
+            row_type = getattr(row, 'device_type', '') or ''
+            if device_id and row_type == 'physical' and str(row_bind) == str(device_id):
+                return row.id
+            if api_id and row_type in ('http_api', 'websocket_api') and str(row_bind) == str(api_id):
+                return row.id
+        return None
+
+    def _mark_evaluation_queued(self, task_id, test_case_id, result_id=None):
         """标记评估状态为 queued（P1.4: 通过 gRPC 调 task_service.UpdateTaskCaseStatus）"""
         # P0-1: 通过依赖注入的 ABC 访问 ACL，domain 层不 import infrastructure
         try:
+            tc_rel_id = self._resolve_tc_rel_id(task_id, test_case_id, result_id)
             # 先读取当前 TaskCase 状态，避免覆盖 running/stopped/queued
             tc_rels = self._task_acl_repo.get_task_case_by_ids(
                 task_id=task_id, case_ids=[str(test_case_id)]
             )
             if not tc_rels:
                 return
-            tc = tc_rels[0]
+            tc = next((r for r in tc_rels if r.id == tc_rel_id), tc_rels[0]) if tc_rel_id else tc_rels[0]
             if tc.evaluation_status in [EvaluationStatus.RUNNING, EvaluationStatus.STOPPED, EvaluationStatus.QUEUED]:
                 return
             self._task_acl_repo.update_task_case_status(
                 task_id=task_id,
                 case_id=str(test_case_id),
                 evaluation_status=EvaluationStatus.QUEUED,
+                tc_rel_id=tc_rel_id,
             )
         except Exception as e:
             self._log(level='WARNING', content=f"更新评估状态失败: {str(e)}", task_id=task_id, test_case_id=test_case_id)

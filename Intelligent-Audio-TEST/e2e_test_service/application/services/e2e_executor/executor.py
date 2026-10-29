@@ -141,11 +141,14 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
         except Exception as close_err:
             self._log(level='ERROR', content=f"收口失败轮 TestResult 异常: {close_err}", task_id=task_id)
 
-    def execute_e2e_case(self, task_id, tc_rel_id):
-        """执行E2E测试用例"""
+    def execute_e2e_case(self, task_id, tc_rel_id, device_id=None):
+        """执行E2E测试用例
+
+        device_id：当前路由行绑定的被测设备；只准备/驱动该设备。
+        """
         self._log(
             level='DEBUG',
-            content=f"E2E用例执行方法开始: task_id={task_id}, tc_rel_id={tc_rel_id}",
+            content=f"E2E用例执行方法开始: task_id={task_id}, tc_rel_id={tc_rel_id}, device_id={device_id}",
             task_id=task_id
         )
 
@@ -163,9 +166,9 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
             return False
 
         data = data_result['data']
-        return self._execute_e2e_with_rounds(task_id, tc_rel_id, data)
+        return self._execute_e2e_with_rounds(task_id, tc_rel_id, data, device_id=device_id)
 
-    def _execute_e2e_with_rounds(self, task_id, tc_rel_id, data):
+    def _execute_e2e_with_rounds(self, task_id, tc_rel_id, data, device_id=None):
         """新格式执行：支持多轮（rounds）的 E2E 执行"""
         case_name = data['case_name']
         case_config = data['case_config']
@@ -209,7 +212,7 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
             # ── 阶段一：循环前准备 ──
             device_info_list, result_id = self._prepare_rounds(
                 task_id, tc_rel_id, data, case_config, algorithm_type,
-                case_field_values, rounds, test_case_id
+                case_field_values, rounds, test_case_id, device_id=device_id
             )
 
             # 启动全局背景噪声（跨轮次持续播放，在轮次循环前启动）

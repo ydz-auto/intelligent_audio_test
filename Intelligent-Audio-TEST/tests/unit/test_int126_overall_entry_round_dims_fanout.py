@@ -152,7 +152,7 @@ class _EvalHost(CaseEvaluationMixin, CaseLoaderMixin):
                                     test_type, round_number, *args, **kwargs):
         self.dispatched.append((round_number, [d['id'] for d in dimension_data_list]))
 
-    def _mark_evaluation_queued(self, task_id, test_case_id):
+    def _mark_evaluation_queued(self, task_id, test_case_id, result_id=None):
         pass
 
     def _post_evaluate_updates(self, task_id, test_case_id):

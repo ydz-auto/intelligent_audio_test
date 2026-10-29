@@ -233,7 +233,8 @@ class DbMixin:
 
     def _save_result(self, task_id, test_case_id, result_data, algo_result, algorithm_type,
                      device_id=None, api_id=None, execution_status='completed', response_time=0,
-                     error_message=None, extra_data=None, result_data_path=None):
+                     error_message=None, extra_data=None, result_data_path=None,
+                     result_type=None):
         """保存测试结果到数据库（通过 ACL 仓储调用 task_service.TaskDataService.SubmitResult）"""
         result_payload = {
             'test_case_id': test_case_id,
@@ -248,6 +249,8 @@ class DbMixin:
             'result_data': json.dumps(result_data) if result_data else None,
             'result_data_path': result_data_path or None,
             'error_message': error_message,
+            # 结果类型（api / e2e / final；缺值由写入侧物化为 NULL → 读侧 default）
+            'result_type': result_type,
         }
         try:
             return self._get_task_data_acl().submit_result(task_id, result_payload)

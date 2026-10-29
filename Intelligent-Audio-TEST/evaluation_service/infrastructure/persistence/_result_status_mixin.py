@@ -34,35 +34,47 @@ class ResultStatusMixin:
             test_case_id: 用例ID
         """
         try:
-            # 1. 获取任务信息以确定预期结果数量（P1.4: gRPC）
+            # 1. 获取任务信息（P1.4: gRPC）
             task = task_acl_repository.get_task_by_id(task_id)
             if not task:
                 return
 
-            # 2. 获取预期结果数量（P1.4: gRPC）
+            # 2. 读取该用例的路由行（多路由下逐行判定/逐行回写）
+            tc_rels = task_acl_repository.get_task_case_by_ids(task_id, [str(test_case_id)])
+
+            # 3. 获取预期结果数量（仅用于 legacy 未绑定行口径）
             expected_count = self._get_expected_result_count(task_id, task, test_case_id)
 
-            # 3. 获取该用例目前已生成的所有测试结果（P1.4: gRPC）
+            # 4. 获取该用例目前已生成的所有测试结果（P1.4: gRPC）
             all_results = task_acl_repository.get_test_results_by_task_and_case(
                 task_id=task_id, test_case_id=str(test_case_id)
             )
 
-            # 4. 获取用例配置中预期的评估维度总数（P1.4: gRPC）
+            # 5. 获取用例配置中预期的评估维度总数（P1.4: gRPC）
             expected_dim_count = self._get_expected_dim_count(test_case_id)
 
-            # 5. 检查是否所有预期结果都已采集并完成评估
-            case_all_finished, case_any_failed, failed_reasons = self._check_all_results_completed(
-                task_id, test_case_id, expected_count, expected_dim_count, all_results
+            # 6. 逐行检查是否全部到达终态（执行失败/停止的行本身即终态）
+            case_all_finished, failed_row_ids, failed_reasons = self._check_all_results_completed(
+                task_id, test_case_id, tc_rels, expected_dim_count, all_results, expected_count
             )
 
             if not case_all_finished:
                 return
 
-            # 6. 只有当维度结果搜集全且都评估完成了，才更新最终状态
-            new_evaluation_status = EvaluationStatus.FAILED if case_any_failed else EvaluationStatus.COMPLETED
-            new_status = derive_task_case_status(ExecutionStatus.COMPLETED, new_evaluation_status)
-            self._apply_final_status(task_id, test_case_id, new_status, new_evaluation_status, task,
-                                     failed_reasons=failed_reasons)
+            if tc_rels and not any(not getattr(r, 'device_id', None) for r in tc_rels):
+                # 7. 逐行写终态：成功行 completed、维度失败行 failed，失败/停止行保持原终态
+                self._apply_final_status(task_id, test_case_id, None, None, task,
+                                         failed_reasons=failed_reasons,
+                                         tc_rels=tc_rels, failed_row_ids=failed_row_ids)
+            else:
+                # legacy 未绑定行 / 无用例行：按整体结论收口
+                new_evaluation_status = (EvaluationStatus.FAILED if failed_row_ids
+                                         else EvaluationStatus.COMPLETED)
+                new_status = derive_task_case_status(
+                    ExecutionStatus.COMPLETED, new_evaluation_status)
+                self._apply_final_status(task_id, test_case_id, new_status,
+                                         new_evaluation_status, task,
+                                         failed_reasons=failed_reasons)
         except Exception as e:
             self._log(
                 level='ERROR',
@@ -93,6 +105,10 @@ class ResultStatusMixin:
         devices = task_acl_repository.get_task_devices(task_id=task_id)
         apis = task_acl_repository.get_task_apis(task_id=task_id)
         for tc in tc_dtos:
+            # 执行已失败/停止的行不会再有结果，不参与预期数（避免期望数永远差一条）
+            if (getattr(tc, 'execution_status', None) or '') in (
+                    ExecutionStatus.FAILED, ExecutionStatus.STOPPED):
+                continue
             device_type = getattr(tc, 'device_type', None) or DeviceType.PHYSICAL.value
             tc_device_id = getattr(tc, 'device_id', None)
             if tc_device_id:
@@ -170,12 +186,111 @@ class ResultStatusMixin:
         finally:
             local_db_session.close()
 
-    def _check_all_results_completed(self, task_id, test_case_id, expected_count, expected_dim_count, all_results):
-        """检查所有结果是否完成评估，返回 (case_all_finished, case_any_failed, failed_reasons)
+    def _check_all_results_completed(self, task_id, test_case_id, tc_rels, expected_dim_count,
+                                     all_results, expected_count=0):
+        """检查用例是否全部路由行到达终态。
 
-        P1.4: all_results 是 dict 列表（来自 gRPC），TestResultDimension 仍本地查询（自有 PO）
-        failed_reasons: 失败维度的原因列表（INT-107: 供用例级 error_message 聚合）
+        Returns:
+            (case_all_finished, failed_row_ids, failed_reasons)
+
+        现代多路由场景（每行绑定 device_id/api_id）逐行判定：
+        - 执行已失败/停止的行本身即终态，不会再产结果，直接跳过；
+        - 其余行必须有归属自己的结果，且该结果的全部维度评估完成。
+        历史未绑定行（device_id 为空）沿用「结果数 vs 预期数」口径，零回归。
         """
+        from shared.models.common_enums import DeviceType
+        has_legacy_row = any(not getattr(r, 'device_id', None) for r in (tc_rels or []))
+        if has_legacy_row or not tc_rels:
+            case_all_finished, case_any_failed, failed_reasons = \
+                self._check_all_results_completed_by_count(
+                    task_id, test_case_id, expected_count, expected_dim_count, all_results)
+            # legacy 口径只产出整体结论，sentinel 供调用方走整体收口
+            failed_row_ids = {'__legacy__'} if case_any_failed else set()
+            return case_all_finished, failed_row_ids, failed_reasons
+
+        results_by_device = {}
+        results_by_api = {}
+        for res in all_results:
+            device_id = getattr(res, 'device_id', None)
+            api_id = getattr(res, 'api_id', None)
+            if device_id:
+                results_by_device[str(device_id)] = res
+            if api_id:
+                results_by_api[str(api_id)] = res
+
+        case_all_finished = True
+        failed_row_ids = set()
+        failed_reasons = []
+
+        from shared.models.database import get_db_session
+        from evaluation_service.infrastructure.persistence.orm_models import TestResultDimension
+        local_db_session = get_db_session()
+        try:
+            for row in tc_rels:
+                exec_status = getattr(row, 'execution_status', None) or ''
+                if exec_status in (ExecutionStatus.FAILED, ExecutionStatus.STOPPED):
+                    # 执行已失败/停止：无结果，终态已由执行侧写入，不参与评估等待
+                    continue
+                if exec_status != ExecutionStatus.COMPLETED:
+                    case_all_finished = False
+                    break
+
+                row_type = getattr(row, 'device_type', '') or DeviceType.PHYSICAL.value
+                row_bind = str(getattr(row, 'device_id', '') or '')
+                if row_type == DeviceType.PHYSICAL.value:
+                    res = results_by_device.get(row_bind)
+                else:
+                    res = results_by_api.get(row_bind)
+                if res is None:
+                    self._log(
+                        level='DEBUG',
+                        category='database',
+                        content=f"用例 {test_case_id} 路由行 {row.id} 结果未采集，暂不更新状态",
+                        task_id=task_id,
+                        test_case_id=test_case_id
+                    )
+                    case_all_finished = False
+                    break
+
+                dims = local_db_session.query(TestResultDimension).filter_by(
+                    test_result_id=res.id).all()
+                if len(dims) < expected_dim_count:
+                    self._log(
+                        level='DEBUG',
+                        module='evaluation',
+                        category='database',
+                        content=(f"用例 {test_case_id} 结果 {res.id} 维度未全 "
+                                 f"({len(dims)}/{expected_dim_count})，继续等待"),
+                        task_id=task_id,
+                        test_case_id=test_case_id
+                    )
+                    case_all_finished = False
+                    break
+
+                res_finished = True
+                res_failed = False
+                for dim in dims:
+                    if dim.evaluation_status in ACTIVE_EVALUATION_STATUSES:
+                        res_finished = False
+                        break
+                    if dim.evaluation_status == EvaluationStatus.FAILED:
+                        res_failed = True
+                        if dim.error_message:
+                            failed_reasons.append(f"{dim.error_message}")
+
+                if not res_finished:
+                    case_all_finished = False
+                    break
+                if res_failed:
+                    failed_row_ids.add(row.id)
+        finally:
+            local_db_session.close()
+
+        return case_all_finished, failed_row_ids, failed_reasons
+
+    def _check_all_results_completed_by_count(self, task_id, test_case_id, expected_count,
+                                              expected_dim_count, all_results):
+        """legacy 未绑定行口径：结果数达到预期且所有维度评估完成。"""
         if len(all_results) < expected_count:
             self._log(
                 level='DEBUG',
@@ -238,13 +353,17 @@ class ResultStatusMixin:
         return case_all_finished, case_any_failed, failed_reasons
 
     def _apply_final_status(self, task_id, test_case_id, new_status, new_evaluation_status, task,
-                            failed_reasons=None):
+                            failed_reasons=None, tc_rels=None, failed_row_ids=None):
         """应用最终状态
 
         P1.4: 通过 gRPC 更新 TaskCase 和 Task
         事件驱动改造: 同时发布 CaseEvaluated 事件到 Redis 事件总线，
         消费方（task_service）订阅后更新状态，替代 gRPC 同步回传的强依赖。
         gRPC 调用保留作为同步路径，事件作为异步通知补充。
+
+        tc_rels 传入时按路由行分别回写（tc_rel_id 精确命中）：成功行 completed、
+        维度失败行 failed、执行已失败/停止行保持原终态——避免一行失败把同用例
+        成功路由一起改写，也避免评估进度把物理失败行刷回 calculating。
         """
         # 更新TaskCase状态（P1.4: 通过 gRPC）
         # INT-107: 失败时把维度失败原因聚合写入 task_case_relations.error_message
@@ -252,14 +371,45 @@ class ResultStatusMixin:
         # 兄弟路由可能仍在执行中，复合 status 由 task_service 按行自身 exec 推导
         from evaluation_service.infrastructure.evaluation_mixin import update_task_case_status_in_db
         from evaluation_service.domain.services.evaluation_utils import compose_case_error_message
-        error_message = ''
-        if new_evaluation_status == EvaluationStatus.FAILED:
-            error_message = compose_case_error_message(failed_reasons)
-        update_count = update_task_case_status_in_db(
-            None, task_id, test_case_id, new_status, new_evaluation_status,
-            execution_status=None,
-            error_message=error_message,
-        )
+
+        if tc_rels:
+            failed_row_ids = failed_row_ids or set()
+            update_count = 0
+            # 用例级结论：任一执行失败/停止行或维度失败行 → 用例失败
+            case_failed = False
+            for row in tc_rels:
+                exec_status = getattr(row, 'execution_status', None) or ''
+                if exec_status in (ExecutionStatus.FAILED, ExecutionStatus.STOPPED):
+                    # 执行侧已写终态（含真实失败原因），评估侧不再覆盖
+                    case_failed = True
+                    continue
+                row_eval = (EvaluationStatus.FAILED if row.id in failed_row_ids
+                            else EvaluationStatus.COMPLETED)
+                if row_eval == EvaluationStatus.FAILED:
+                    case_failed = True
+                row_status = derive_task_case_status(
+                    exec_status or ExecutionStatus.COMPLETED, row_eval)
+                row_error = (compose_case_error_message(failed_reasons)
+                             if row_eval == EvaluationStatus.FAILED else '')
+                update_count += update_task_case_status_in_db(
+                    None, task_id, test_case_id, row_status, row_eval,
+                    execution_status=None,
+                    error_message=row_error,
+                    tc_rel_id=row.id,
+                )
+            new_evaluation_status = (EvaluationStatus.FAILED if case_failed
+                                     else EvaluationStatus.COMPLETED)
+            new_status = derive_task_case_status(
+                ExecutionStatus.COMPLETED, new_evaluation_status)
+        else:
+            error_message = ''
+            if new_evaluation_status == EvaluationStatus.FAILED:
+                error_message = compose_case_error_message(failed_reasons)
+            update_count = update_task_case_status_in_db(
+                None, task_id, test_case_id, new_status, new_evaluation_status,
+                execution_status=None,
+                error_message=error_message,
+            )
 
         self._log(
             level='INFO',

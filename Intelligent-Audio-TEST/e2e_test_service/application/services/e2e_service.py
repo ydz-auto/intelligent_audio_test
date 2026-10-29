@@ -56,11 +56,14 @@ class E2EService:
         """获取任务状态"""
         return {'task_id': task_id, 'status': 'idle'}
 
-    def start_e2e_case(self, task_id, tc_rel_id):
+    def start_e2e_case(self, task_id, tc_rel_id, device_id=None):
         """启动单个 E2E 用例执行（gRPC StartE2ETask 调用入口）
 
         同步执行 E2EExecutor.execute_e2e_case，返回执行结果。
         DB session 由 gRPC 线程的 scoped_session 提供，无需 app context。
+
+        device_id：当前路由行绑定的被测设备；执行器只准备/驱动该设备，
+        未指定时按任务全部设备处理（历史调用方）。
         """
         if not self._initialized:
             return {'success': False, 'message': 'E2EService 未初始化'}
@@ -71,7 +74,7 @@ class E2EService:
             with self._task_lock:
                 self._task_status[task_id] = {'status': TaskStatus.RUNNING, 'tc_rel_id': tc_rel_id}
 
-            success = self.executor.execute_e2e_case(task_id, tc_rel_id)
+            success = self.executor.execute_e2e_case(task_id, tc_rel_id, device_id=device_id)
 
             with self._task_lock:
                 self._task_status[task_id] = {

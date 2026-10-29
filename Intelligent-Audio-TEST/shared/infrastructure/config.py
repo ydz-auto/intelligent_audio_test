@@ -363,6 +363,20 @@ class BaseConfig:
     E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS: int = _get_int(
         'E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS', 300)
 
+    # 物理设备占用锁等待上限（秒）：同一 SN 的多个设备记录（如同一台手机上的
+    # 小艺/豆包两个被测 App）必须串行执行，后到的路由行在此时间内排队等待，
+    # 超时才按设备占用失败收敛。取值需覆盖单用例同步执行上限（即
+    # GRPC_E2E_SYNC_TIMEOUT_SECONDS），否则正常排队会被误判为失败。
+    TASK_PHYSICAL_LOCK_WAIT_SECONDS: int = _get_int(
+        'TASK_PHYSICAL_LOCK_WAIT_SECONDS', 900)
+
+    # device_service 同 SN 步骤互斥等待上限（秒）：同一台设备上的多个被测 App
+    # （小艺/豆包）并发初始化/采集会互相打断设备端 uitest 守护，步骤必须串行。
+    # 必须小于调用方 gRPC 超时（GRPC_DEVICE_OP_DEADLINE_SECONDS），否则调用方
+    # 先超时放弃、服务端仍在排队。
+    DEVICE_SN_STEP_LOCK_WAIT_SECONDS: int = _get_int(
+        'DEVICE_SN_STEP_LOCK_WAIT_SECONDS', 60)
+
     # --- gRPC 客户端收发消息上限（MB，INT-1292）---
     # grpcio 客户端默认收包上限 4MiB：大响应 RPC（任务导出 23MB 包、报告/评估
     # 只读导出）在客户端收不下 → RESOURCE_EXHAUSTED。统一放大到

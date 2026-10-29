@@ -331,7 +331,8 @@ class TaskDispatchMixin:
         # 先取设备号：执行期间用例行可能被删（INT-305），finally 日志不再触实例属性
         e2e_device_id = tc_rel.device_id
         try:
-            success = self._execute_e2e_case(task_id, tc_rel.id)
+            # 按路由行设备执行：e2e 只准备/驱动该设备，多设备记录各自串行/并行
+            success = self._execute_e2e_case(task_id, tc_rel.id, device_id=e2e_device_id)
             # INT-308 复验打回：同步执行期间执行器可经 gRPC 写入 TaskCase 终态
             # （停止分支 execution_status=stopped / error_message='任务被手动停止'），
             # 而 tc_rel 仍持有派发/抢锁时的 identity map 快照——session.get 命中
@@ -373,6 +374,10 @@ class TaskDispatchMixin:
 
         TTL 覆盖单用例同步执行上限（StartE2ETask 同步执行整个 E2E 用例），
         持有者崩溃后由 TTL 兜底自愈。
+
+        锁键按设备 SN 归一：同一台手机上的多个被测 App（如同一 SN 的
+        小艺/豆包两条设备记录）必须串行执行，按 device_id 加锁会让它们
+        各拿一把锁而并发驱动同一台设备；不同 SN 的设备互不影响，仍可并行。
         """
         from shared.models.common_enums import RedisKeyPrefix
         from shared.utils.distributed_coordinator import DistributedLock
@@ -386,14 +391,43 @@ class TaskDispatchMixin:
                     pass
             return _NoOpLock()
 
+        lock_key = self._resolve_physical_lock_key(task_id, device_id)
         ttl = int(getattr(BaseConfig, 'GRPC_E2E_SYNC_TIMEOUT_SECONDS', 600)) + 60
+        # 同 SN 排队等待（覆盖单用例执行上限），超时才按设备占用失败收敛
+        wait_seconds = int(getattr(BaseConfig, 'TASK_PHYSICAL_LOCK_WAIT_SECONDS', 900))
         lock = DistributedLock(
-            f'{RedisKeyPrefix.TASK_PHYSICAL_LOCK.value}:{device_id}',
-            ttl=ttl, retry_timeout=10,
+            f'{RedisKeyPrefix.TASK_PHYSICAL_LOCK.value}:{lock_key}',
+            ttl=ttl, retry_timeout=wait_seconds,
         )
         if not lock.acquire(blocking=True):
             return None
         return lock
+
+    def _resolve_physical_lock_key(self, task_id, device_id):
+        """物理互斥键：优先设备 SN（同机多 App 共用），取不到回落 device_id。
+
+        结果按 device_id 缓存：同一任务的多个用例行反复派发时不重复查设备。
+        """
+        cache = getattr(self, '_physical_lock_key_cache', None)
+        if cache is None:
+            cache = {}
+            self._physical_lock_key_cache = cache
+        device_id_str = str(device_id)
+        if device_id_str in cache:
+            return cache[device_id_str]
+
+        from task_service.infrastructure.acl.device_acl_repository import device_acl_repository
+        device = device_acl_repository.get_device(int(device_id))
+        serial_number = (device or {}).get('serial_number') or ''
+        if serial_number:
+            lock_key = serial_number
+        else:
+            lock_key = device_id_str
+            self._log(level='WARNING',
+                      content=f"设备 {device_id} 未取到 SN，物理互斥退化为按 device_id 加锁",
+                      task_id=task_id, device_id=device_id)
+        cache[device_id_str] = lock_key
+        return lock_key
 
     def _handle_physical_lock_busy(self, task_id, tc_rel):
         """物理设备被占用：用例置失败收敛，避免主循环死等活跃用例

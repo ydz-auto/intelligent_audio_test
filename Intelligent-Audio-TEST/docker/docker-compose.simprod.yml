@@ -1,0 +1,28 @@
+# Simulated-production deployment overlay for Intelligent-Audio-TEST.
+# Loaded AFTER docker-compose.yml and docker-compose.override.yml:
+#   docker compose -p intelligent-audio-test -f docker-compose.yml \
+#     -f docker-compose.override.yml -f docker-compose.simprod.yml up -d
+#
+# Intent (INT-2076 sim-prod go-live):
+#   - postgres: the deployed stack OWNS the migrated sim-prod data
+#     (volume prod_sim_pgdata, host 15435). Replaces the base project volume
+#     on the same container path /var/lib/postgresql/data.
+#   - db_bootstrap: no-op. The 57-step chain + 20 gap DDL were already run on
+#     prod_sim_pgdata by the migration runner; re-running as the app user would
+#     fail on step 45 (pg_stat_statements needs superuser; app user is not
+#     superuser in the restored cluster). command ["true"] exits 0 so
+#     depends_on condition service_completed_successfully still passes.
+#   - frontend: disabled in compose. React is deployed separately at 15173 via
+#     docker/deploy_demo_frontends.ps1 (compose build context has no frontend/).
+services:
+  postgres:
+    volumes:
+      - prod_sim_pgdata:/var/lib/postgresql/data
+  db_bootstrap:
+    command: ["true"]
+  frontend:
+    profiles: ["off"]
+
+volumes:
+  prod_sim_pgdata:
+    external: true

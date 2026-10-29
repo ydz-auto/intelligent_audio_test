@@ -86,6 +86,14 @@ FINISHED_TASK_STATUSES = frozenset({TaskStatus.COMPLETED, TaskStatus.FAILED, Tas
 # 定义在本模块（零依赖）以免读侧为拿一个常量而 import 对象存储基础设施。
 RESULT_TYPE_PENDING = 'default'
 
+# 结果类型取值（执行通道/产出形态；落库列 test_results.result_type）
+# - api：API 通道执行结果
+# - e2e：设备 E2E 执行结果
+# - final：多轮用例的最终聚合结果（e2e get_final_results）
+RESULT_TYPE_API = 'api'
+RESULT_TYPE_E2E = 'e2e'
+RESULT_TYPE_FINAL = 'final'
+
 # 执行终态状态集合（completed/failed；ExecutionStatus 无 SKIPPED）
 FINISHED_EXECUTION_STATUSES = frozenset({ExecutionStatus.COMPLETED, ExecutionStatus.FAILED})
 

@@ -26,6 +26,9 @@ def _engine(device_id=5, tc_rel_id=101):
     engine = TaskDispatchMixin.__new__(TaskDispatchMixin)
     engine.task_id = 9
     engine._log = MagicMock()  # _log 定义在 ProgressMixin，独立实例测试中打桩
+    # 锁键解析单测由 TestPhysicalLockKeyBySn 覆盖，这里固定为 device_id
+    engine._resolve_physical_lock_key = lambda task_id, device_id: str(device_id)
+    engine.refresh_task_counts_atomic = MagicMock()
     engine.tc_rel = SimpleNamespace(
         id=tc_rel_id, device_id=device_id, execution_status='queued',
         evaluation_status='pending', error_message=None,
@@ -72,6 +75,43 @@ class TestAcquirePhysicalLock:
         lock_cls.return_value = FakeLock('k', acquired=False)
         engine = _engine(device_id=5)
         assert engine._acquire_physical_device_lock(9, engine.tc_rel) is None
+
+
+class TestPhysicalLockKeyBySn:
+    """锁键按 SN 归一：同机多 App 的多条设备记录共用一把锁，不同 SN 互不影响。"""
+
+    @patch('shared.utils.distributed_coordinator.DistributedLock')
+    def test_same_sn_devices_share_lock_key(self, lock_cls, monkeypatch):
+        from task_service.infrastructure.acl import device_acl_repository as acl_mod
+        from shared.infrastructure.config import BaseConfig
+        lock_cls.return_value = FakeLock('k')
+        monkeypatch.setattr(acl_mod.device_acl_repository, 'get_device',
+                            lambda device_id: {'serial_number': 'SN-SHARED'})
+
+        for device_id in (9, 10):
+            engine = TaskDispatchMixin.__new__(TaskDispatchMixin)
+            engine._log = MagicMock()
+            engine._acquire_physical_device_lock(
+                9, SimpleNamespace(id=device_id, device_id=device_id))
+
+        keys = [call.args[0] for call in lock_cls.call_args_list]
+        expected = f'{RedisKeyPrefix.TASK_PHYSICAL_LOCK.value}:SN-SHARED'
+        assert keys == [expected, expected]
+        # 同 SN 排队等待覆盖单用例执行上限
+        assert lock_cls.call_args_list[0].kwargs['retry_timeout'] >= int(
+            getattr(BaseConfig, 'GRPC_E2E_SYNC_TIMEOUT_SECONDS', 600))
+
+    @patch('shared.utils.distributed_coordinator.DistributedLock')
+    def test_missing_serial_falls_back_to_device_id(self, lock_cls, monkeypatch):
+        from task_service.infrastructure.acl import device_acl_repository as acl_mod
+        lock_cls.return_value = FakeLock('k')
+        monkeypatch.setattr(acl_mod.device_acl_repository, 'get_device', lambda device_id: {})
+
+        engine = TaskDispatchMixin.__new__(TaskDispatchMixin)
+        engine._log = MagicMock()
+        engine._acquire_physical_device_lock(9, SimpleNamespace(id=1, device_id=7))
+
+        assert lock_cls.call_args.args[0] == f'{RedisKeyPrefix.TASK_PHYSICAL_LOCK.value}:7'
 
 
 class TestBusyConvergence:

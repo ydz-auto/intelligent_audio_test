@@ -955,20 +955,23 @@ class TestDispatchE2EFailureTerminalPreservation:
         from sqlalchemy import create_engine
         from sqlalchemy.pool import StaticPool
         from sqlalchemy.orm import sessionmaker
-        from task_service.infrastructure.persistence.models import TaskCase
+        from task_service.infrastructure.persistence.models import Task, TaskCase
 
         engine = create_engine(
             'sqlite:///:memory:',
             connect_args={'check_same_thread': False},
             poolclass=StaticPool,
         )
+        Task.__table__.create(engine)
         TaskCase.__table__.create(engine)
         return sessionmaker(bind=engine)
 
     @staticmethod
     def _make_case(factory):
-        from task_service.infrastructure.persistence.models import TaskCase
+        from task_service.infrastructure.persistence.models import Task, TaskCase
         s = factory()
+        s.add(Task(id=9, name='t', status='running',
+                   total_cases=1, completed_cases=0, failed_cases=0))
         row = TaskCase(task_id=9, test_case_id='case-1', status='running',
                        execution_status=ExecutionStatus.RUNNING,
                        evaluation_status='pending', error_message=None)
@@ -998,23 +1001,24 @@ class TestDispatchE2EFailureTerminalPreservation:
 
         eng._acquire_physical_device_lock = MagicMock(side_effect=_acquire)
 
-        def _execute(task_id_, tc_rel_id_):
+        def _execute(task_id_, tc_rel_id_, device_id=None):
             if during_execution is not None:
                 during_execution()
             return False
 
         eng._execute_e2e_case = MagicMock(side_effect=_execute)
+        eng.refresh_task_counts_atomic = MagicMock()
         eng._count_cases_by_status = MagicMock(return_value=0)
         return eng, lock
 
     @staticmethod
     def _run_dispatch(factory, row_id, during_execution=None):
         eng, lock = TestDispatchE2EFailureTerminalPreservation._engine(during_execution)
-        from task_service.infrastructure.persistence.models import TaskCase
+        from task_service.infrastructure.persistence.models import Task, TaskCase
         s1 = factory()
         tc_rel = s1.get(TaskCase, row_id)  # identity map 快照（执行前态）
         assert tc_rel.error_message is None and tc_rel.execution_status == ExecutionStatus.RUNNING
-        task = SimpleNamespace(completed_cases=0, failed_cases=0)
+        task = s1.get(Task, 9)
         eng._dispatch_e2e_case(9, task, tc_rel, s1)
         s1.commit()  # 主循环派发后提交（task_lifecycle.py:245 同语义）
         s1.close()

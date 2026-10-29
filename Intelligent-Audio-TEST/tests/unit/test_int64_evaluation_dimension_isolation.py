@@ -188,7 +188,7 @@ class _EvalHost(CaseEvaluationMixin, CaseLoaderMixin):
     def _dispatch_evaluation_tasks(self, *args, **kwargs):
         self.dispatched = (args, kwargs)
 
-    def _mark_evaluation_queued(self, task_id, test_case_id):
+    def _mark_evaluation_queued(self, task_id, test_case_id, result_id=None):
         self.marked_queued.append((task_id, test_case_id))
 
     def _post_evaluate_updates(self, task_id, test_case_id):

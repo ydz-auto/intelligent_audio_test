@@ -1,7 +1,11 @@
 import logging
 from shared.utils.log_handler import log_and_emit
 from shared.utils.result_data_store import load_full_result_data
-from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
+from shared.utils.status_constants import (
+    RESULT_TYPE_E2E,
+    ExecutionStatus,
+    EvaluationStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -409,7 +413,8 @@ class DeviceResultReextractor:
 
             new_result_id = self._create_test_result(
                 task_id=task_id, test_case_id=test_case_id, device_id=device_id,
-                algorithm_type=algorithm_type, algo_result=converted_result, result_data=result_data_to_save
+                algorithm_type=algorithm_type, algo_result=converted_result,
+                result_data=result_data_to_save, result_type=result_type
             )
             new_result_ids.append(new_result_id)
         return new_result_ids
@@ -439,7 +444,8 @@ class DeviceResultReextractor:
         )
 
     def _create_test_result(self, task_id, test_case_id, device_id, algorithm_type,
-                            algo_result, result_data, execution_status=ExecutionStatus.COMPLETED, response_time=0):
+                            algo_result, result_data, execution_status=ExecutionStatus.COMPLETED,
+                            response_time=0, result_type=None):
         """创建新的 TestResult 记录"""
         from device_service.infrastructure.acl.task_data_acl_repository import task_data_acl_repository
         from shared.utils.result_data_store import write_result_data_file, split_result_data
@@ -460,6 +466,8 @@ class DeviceResultReextractor:
             'result_data': json.dumps(lightweight_data) if lightweight_data else None,
             'result_data_path': result_data_path or None,
             'error_message': None,
+            # 设备通道结果；重提时沿用原结果类型，缺省 e2e
+            'result_type': result_type or RESULT_TYPE_E2E,
         }
 
         result_id = task_data_acl_repository.submit_result(task_id, result_data_payload)

@@ -163,14 +163,19 @@ class EndpointWorker(EvaluationLoggerMixin):
                         )
                         # 从 queued 改为 running，反映真实执行状态（P1.4: 通过 gRPC）
                         try:
+                            tc_rel_id = self.eval_service._resolve_tc_rel_id(
+                                task_id, task_data.get('test_case_id'), task_data.get('result_id'))
                             tc_rels = task_acl_repository.get_task_case_by_ids(
                                 task_id=task_id, case_ids=[str(task_data.get('test_case_id'))]
                             )
-                            if tc_rels and tc_rels[0].evaluation_status == EvaluationStatus.QUEUED:
+                            target = (next((r for r in tc_rels if r.id == tc_rel_id), tc_rels[0])
+                                      if tc_rel_id else (tc_rels[0] if tc_rels else None))
+                            if target is not None and target.evaluation_status == EvaluationStatus.QUEUED:
                                 task_acl_repository.update_task_case_status(
                                     task_id=task_id,
                                     case_id=str(task_data.get('test_case_id')),
                                     evaluation_status=EvaluationStatus.RUNNING,
+                                    tc_rel_id=tc_rel_id,
                                 )
                         except Exception as e:
                             self._log(level='WARNING', content=f"更新评估状态为running失败: {str(e)}", task_id=task_id)
@@ -263,7 +268,8 @@ class EndpointWorker(EvaluationLoggerMixin):
         # 3. 调用评估API
         resp_data = self._call_evaluation_api(
             task_id, test_case_id, endpoints, method, headers, payload,
-            representative_dim_data, dim_names, dim_info, audio_field_names
+            representative_dim_data, dim_names, dim_info, audio_field_names,
+            result_id=result_id
         )
 
         # 4. 处理评估结果（成功/失败）
@@ -443,19 +449,24 @@ class EndpointWorker(EvaluationLoggerMixin):
         return endpoints, method, headers, dim_info, audio_field_names
 
     def _call_evaluation_api(self, task_id, test_case_id, endpoints, method, headers, payload,
-                            representative_dim_data, dim_names, dim_info, audio_field_names):
+                            representative_dim_data, dim_names, dim_info, audio_field_names,
+                            result_id=None):
         """调用评估API，返回 resp_data"""
         try:
             # 标记为calculating：payload已构建完成，即将提交给eval_server计算（P1.4: 通过 gRPC）
             try:
+                tc_rel_id = self.eval_service._resolve_tc_rel_id(task_id, test_case_id, result_id)
                 tc_rels = task_acl_repository.get_task_case_by_ids(
                     task_id=task_id, case_ids=[str(test_case_id)]
                 )
-                if tc_rels and tc_rels[0].evaluation_status == EvaluationStatus.RUNNING:
+                target = (next((r for r in tc_rels if r.id == tc_rel_id), tc_rels[0])
+                          if tc_rel_id else (tc_rels[0] if tc_rels else None))
+                if target is not None and target.evaluation_status == EvaluationStatus.RUNNING:
                     task_acl_repository.update_task_case_status(
                         task_id=task_id,
                         case_id=str(test_case_id),
                         evaluation_status=EvaluationStatus.CALCULATING,
+                        tc_rel_id=tc_rel_id,
                     )
             except Exception as e:
                 self._log(level='WARNING', content=f"更新评估状态为calculating失败: {str(e)}", task_id=task_id)

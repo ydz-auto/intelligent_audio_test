@@ -484,12 +484,16 @@ def test_leaf_detail_pagination_no_overlap(db):
     task_id, result_ids = _seed_task('叶分页任务', results=results)
 
     data = _tree(task_ids=[task_id])['data']
-    # 叶节点只含 result_type/count/result_ids，不下发结果行明细
+    # 叶节点含 result_type/count/result_ids + 状态汇总（执行分布/已评估数/末条时间），不下发结果行明细
     for task_node in data['tree']:
         for case_node in task_node['cases']:
             for device_node in case_node['devices']:
                 for rt_node in device_node['result_types']:
-                    assert set(rt_node) == {'result_type', 'count', 'result_ids'}
+                    assert set(rt_node) == {
+                        'result_type', 'count', 'result_ids',
+                        'execution_status_counts', 'evaluated_count', 'last_result_at',
+                    }
+                    assert rt_node['execution_status_counts']['completed'] == rt_node['count']
 
     seen = []
     page = 1

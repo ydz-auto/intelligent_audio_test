@@ -398,8 +398,8 @@ class CaseEvaluationMixin:
 
         self._log(level='INFO', content=f"开始评估 {len(dimension_data_list)} 个维度，分发到端点队列", task_id=task_id, test_case_id=test_case_id)
 
-        # 标记评估状态为 queued
-        self._mark_evaluation_queued(task_id, test_case_id)
+        # 标记评估状态为 queued（按结果归属路由行精确命中）
+        self._mark_evaluation_queued(task_id, test_case_id, result_id=result_id)
 
         return {
             'test_case': test_case,

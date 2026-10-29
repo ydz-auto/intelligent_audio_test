@@ -453,9 +453,15 @@ class DeviceDriverFactory:
                 device_sns.append(device_sn)
 
         if device_sns:
-            self._task_device_map[task_id] = device_sns
+            # 按行执行时同一任务会多次注册不同设备，累加去重而非覆盖，
+            # 否则任务结束时只清理最后一次注册的设备（其余驱动连接残留）
+            existing = self._task_device_map.get(task_id, [])
+            for sn in device_sns:
+                if sn not in existing:
+                    existing.append(sn)
+            self._task_device_map[task_id] = existing
             log_and_emit(level='DEBUG', module='DeviceDriverFactory',
-                         content=f"Registered devices for task {task_id}: {device_sns}",
+                         content=f"Registered devices for task {task_id}: {existing}",
                          task_id=task_id)
 
     def cleanup_devices(self, task_id):

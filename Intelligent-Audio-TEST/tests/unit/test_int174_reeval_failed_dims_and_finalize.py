@@ -212,7 +212,7 @@ class _FilterHost(CaseEvaluationMixin):
         wanted = {int(d) for d in unique_dimension_ids}
         return [{'id': d} for d in (121, 122) if d in wanted]
 
-    def _mark_evaluation_queued(self, task_id, test_case_id):
+    def _mark_evaluation_queued(self, task_id, test_case_id, result_id=None):
         pass
 
     def _post_evaluate_updates(self, task_id, test_case_id=None):

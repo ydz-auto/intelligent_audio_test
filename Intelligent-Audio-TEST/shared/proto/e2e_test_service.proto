@@ -18,6 +18,10 @@ message StartE2ETaskRequest {
   string task_id = 1;
   string tc_rel_id = 2;  // 任务用例关联ID
   string e2e_config = 3;  // JSON 序列化的 E2E 配置（预留）
+  // 当前派发的路由行绑定的物理设备ID（task_case_relations.device_id）。
+  // 一条 E2E 用例按物理设备行逐行执行，执行器只准备/驱动该设备；
+  // 0 表示未指定（历史调用方），执行器按任务全部设备处理。
+  int32 device_id = 4;
 }
 
 message StartE2ETaskResponse {

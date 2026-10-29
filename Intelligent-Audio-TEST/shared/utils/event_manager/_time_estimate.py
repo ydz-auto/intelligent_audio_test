@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 import logging
-from shared.models.database import get_db_session
+from shared.models.database import create_db_session
 from shared.utils.status_constants import TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -80,9 +80,13 @@ class TimeEstimateMixin:
 
         # 计算预计总时长（秒）
         estimated_total_seconds = 0
+        local_db_session = None
 
         try:
-            local_db_session = get_db_session()
+            # 独立 Session：本方法在任务执行线程内被 emit_progress 高频调用，
+            # 复用 get_db_session() 的线程级 scoped session 后 close() 会把调用方
+            # 仍持有的 ORM 对象 expunge 成脱管态（INT-40 同类缺陷）
+            local_db_session = create_db_session()
             # 优先通过 gRPC 缓存获取进度数据（含 actual_total_cases 和 test_cases 列表）
             from shared.utils.task_data_cache import get_task_progress_via_grpc
             grpc_progress = get_task_progress_via_grpc(task.id)
@@ -305,7 +309,8 @@ class TimeEstimateMixin:
                 "expected_complete_time": (now + timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
             }
         finally:
-            try:
-                local_db_session.close()
-            except Exception:
-                logger.warning("关闭数据库会话失败", exc_info=True)
+            if local_db_session is not None:
+                try:
+                    local_db_session.close()
+                except Exception:
+                    logger.warning("关闭数据库会话失败", exc_info=True)

@@ -5,7 +5,12 @@ from datetime import datetime, timezone, timedelta
 
 from shared.utils.dto_utils import dto_to_dict
 from shared.utils.result_data_store import write_result_data_file, split_result_data
-from shared.utils.status_constants import ExecutionStatus, TaskCaseStatus, EvaluationStatus
+from shared.utils.status_constants import (
+    RESULT_TYPE_API,
+    ExecutionStatus,
+    TaskCaseStatus,
+    EvaluationStatus,
+)
 from shared.utils.query_utils import now_cst
 from api_test_service.infrastructure.acl import (
     TaskDataAclRepositoryImpl,
@@ -75,6 +80,7 @@ class APIResultProcessor:
             'result_data': json.dumps(lightweight_data, ensure_ascii=False),
             'result_data_path': result_data_path or None,
             'error_message': error_msg,
+            'result_type': RESULT_TYPE_API,
         }
 
         result_id = None
@@ -252,6 +258,7 @@ class APIResultProcessor:
             'result_data': json.dumps(lightweight_data, ensure_ascii=False),
             'result_data_path': result_data_path or None,
             'error_message': error_msg,
+            'result_type': RESULT_TYPE_API,
         }
 
         result_id = None
