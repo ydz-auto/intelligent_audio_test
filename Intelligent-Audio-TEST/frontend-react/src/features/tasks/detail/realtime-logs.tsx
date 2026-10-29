@@ -24,7 +24,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Progress } from '@/features/tasks/components/ui/progress'
 import { cn } from '@/lib/utils'
 import {
   exportTaskLogs,
@@ -43,6 +42,15 @@ const LEVEL_DOT: Record<TaskLogEntry['level'], string> = {
 }
 
 type LogLevelFilter = 'all' | TaskLogEntry['level']
+
+const BYTES_PER_KB = 1024
+
+/** 音频分片累计字节数 → 展示文本（<1KB 显示 B，否则 KB 保留一位小数） */
+function formatBytes(bytes: number): string {
+  return bytes >= BYTES_PER_KB
+    ? `${(bytes / BYTES_PER_KB).toFixed(1)} KB`
+    : `${bytes} B`
+}
 
 /** 触发 Blob 下载（导出文件名 task_{id}_logs_{日期}.log） */
 function downloadBlob(blob: Blob, taskId: number) {
@@ -74,7 +82,7 @@ export function RealtimeLogs({
   const scrollRef = useRef<HTMLDivElement>(null)
   const [levelFilter, setLevelFilter] = useState<LogLevelFilter>('all')
   const [keyword, setKeyword] = useState('')
-  const frames = useRealtimeFrameStream(executionMode && hasRealtimeDevice)
+  const frames = useRealtimeFrameStream(executionMode && hasRealtimeDevice && active, taskId)
 
   /** 分页态：logs 为旧→新展示序（后端新→老，首页反转 + 更早页 prepend）；page+1=更老 */
   const [logs, setLogs] = useState<TaskLogEntry[]>([])
@@ -208,8 +216,8 @@ export function RealtimeLogs({
     )
   }
 
-  /** Realtime frame 增量内容条（§3.7：文字流逐段 append + 音频进度条） */
-  const latestAudio = frames.find((f) => f.kind === 'audio_delta' && f.audioProgress != null)
+  /** Realtime frame 增量内容条（§3.7：文字流逐段 append + 音频分片累计） */
+  const audioChunkBytes = frames.reduce((sum, f) => sum + (f.audioChunkBytes ?? 0), 0)
   const latestText = frames
     .filter((f) => f.kind === 'text_delta' && f.textDelta)
     .map((f) => f.textDelta)
@@ -275,8 +283,8 @@ export function RealtimeLogs({
         </div>
       </CardHeader>
       <CardContent className='px-4 pb-1'>
-        {/* Realtime frame 增量内容条（websocket_api 设备时渲染） */}
-        {executionMode && hasRealtimeDevice && (
+        {/* Realtime frame 增量内容条（仅 websocket_api 设备且任务运行中渲染） */}
+        {executionMode && hasRealtimeDevice && active && (
           <div className='border-border/70 bg-background/95 ring-foreground/5 mb-3 rounded-lg border p-3 ring-1'>
             <div className='mb-1 flex items-center gap-1.5 text-xs font-medium'>
               <span className='bg-info/15 text-info size-1.5 rounded-full' />
@@ -293,14 +301,13 @@ export function RealtimeLogs({
                 <span className='bg-primary/40 ml-0.5 inline-block h-4 w-0.5 animate-pulse align-middle' />
               </p>
             ) : (
-              <p className='text-muted-foreground min-h-5 text-sm'>等待音频输入…</p>
+              <p className='text-muted-foreground min-h-5 text-sm'>等待 AI 实时输出…</p>
             )}
-            {latestAudio && (
+            {audioChunkBytes > 0 && (
               <div className='mt-2 flex items-center gap-2'>
-                <span className='text-muted-foreground text-xs'>音频播放</span>
-                <Progress value={latestAudio.audioProgress ?? 0} size='sm' className='h-1.5 flex-1' />
+                <span className='text-muted-foreground text-xs'>音频流</span>
                 <span className='text-muted-foreground font-mono text-xs tabular-nums'>
-                  {latestAudio.audioProgress ?? 0}%
+                  {formatBytes(audioChunkBytes)}
                 </span>
               </div>
             )}

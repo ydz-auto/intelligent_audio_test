@@ -33,13 +33,15 @@ export interface FrameEventDto {
   /** 归一化事件类型 */
   type: FrameEventTypeDto
   payload?: {
-    /** 文字流增量（ai_text_delta） */
-    text_delta?: string
     /**
-     * ai_audio_delta 载荷实测仅推分片字节数（size），后端不推 0-100 百分比；
-     * contract 缺口：前端音频进度条暂缺该值，见 frameEventAdapter 注释（不动后端口径）。
+     * 文字流增量（ai_text_delta）：后端 realtime_ws_client._parse_event 推
+     * `{'delta': 文本增量}`，不是 text_delta。
      */
+    delta?: string
+    /** 音频分片字节数（ai_audio_delta）：后端只推分片大小，无 0-100 百分比 */
     size?: number
+    /** 错误帧信息（error） */
+    message?: string
     [key: string]: unknown
   }
   ts: string

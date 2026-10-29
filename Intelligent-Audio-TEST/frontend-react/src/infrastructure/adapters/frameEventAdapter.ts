@@ -1,10 +1,9 @@
 /**
  * Realtime frame 事件 DTO→Domain 适配器（infrastructure/adapters 层；10_测试执行.md §9）。
  * INT-646 返修：按后端 EventBus 载荷（realtime_stream_publisher.py）映射——
- * test_case_id → caseId、type → kind 枚举、payload.text_delta → textDelta、round_number → round。
+ * test_case_id → caseId、type → kind 枚举、payload.delta → textDelta、round_number → round。
  * 注：ai_audio_delta 后端仅推 payload.size（分片字节数），无 0-100 百分比——
- * audioProgress 暂缺（contract 缺口，留证据，不造假兜底）；音频进度条仅在 payload
- * 提供 audio_progress 时渲染（现后端不推）。
+ * 音频按 audioChunkBytes 累积展示，不做百分比换算（后端不提供总时长）。
  */
 import type { RealtimeFrame, RealtimeFrameKind } from '@/domain/models/testExecution'
 import type { FrameEventDto } from '@/infrastructure/dto/frame.dto'
@@ -23,12 +22,9 @@ export function frameFromDto(dto: FrameEventDto): RealtimeFrame {
   return {
     caseId: dto.test_case_id,
     kind,
-    textDelta:
-      typeof dto.payload?.text_delta === 'string' ? dto.payload.text_delta : undefined,
-    audioProgress:
-      typeof dto.payload?.audio_progress === 'number'
-        ? dto.payload.audio_progress
-        : undefined,
+    textDelta: typeof dto.payload?.delta === 'string' ? dto.payload.delta : undefined,
+    audioChunkBytes:
+      typeof dto.payload?.size === 'number' ? dto.payload.size : undefined,
     round: dto.round_number ?? undefined,
     timestamp: dto.ts,
   }

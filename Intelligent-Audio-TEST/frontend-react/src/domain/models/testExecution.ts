@@ -128,8 +128,8 @@ export interface RealtimeFrame {
   kind: RealtimeFrameKind
   /** 文字流增量（ai_text_delta） */
   textDelta?: string
-  /** 音频进度 0-100（ai_audio_delta 累积） */
-  audioProgress?: number
+  /** 音频分片字节数（ai_audio_delta）：后端只推分片大小，无总时长/百分比 */
+  audioChunkBytes?: number
   round?: number
   timestamp: string
 }

@@ -15,24 +15,24 @@ import { SSE_EVENT_CHANNELS, subscribeSse } from '@/infrastructure/realtime/sse'
 
 /**
  * 订阅 Realtime frame 增量（websocket_api 设备选中时启用）。
- * 流开启即挂 SSE 订阅；到达任一事件即 append 一帧。
+ * SSE 为全局广播：按 taskId 过滤本任务的帧，任务切换时清空已收帧，
+ * 避免多任务/切换详情时串数据。
  */
-export function useRealtimeFrameStream(enabled: boolean): RealtimeFrame[] {
+export function useRealtimeFrameStream(enabled: boolean, taskId: number): RealtimeFrame[] {
   const [frames, setFrames] = useState<RealtimeFrame[]>([])
   const seenRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    if (!enabled) {
-      setFrames([])
-      seenRef.current.clear()
-      return
-    }
+    setFrames([])
+    seenRef.current.clear()
+    if (!enabled) return
     const unsubscribe = subscribeSse({
       channels: [SSE_EVENT_CHANNELS.REPORT_EVENTS],
       onEvent: (event) => {
         if (event.eventType !== 'realtime_frame') return
         const dto = event.data as FrameEventDto | null
         if (!dto || typeof dto !== 'object' || !dto.type) return
+        if (dto.task_id !== String(taskId)) return
         const key = `${dto.test_case_id}:${dto.seq ?? ''}`
         if (seenRef.current.has(key)) return
         seenRef.current.add(key)
@@ -40,7 +40,7 @@ export function useRealtimeFrameStream(enabled: boolean): RealtimeFrame[] {
       },
     })
     return unsubscribe
-  }, [enabled])
+  }, [enabled, taskId])
 
   return frames
 }
