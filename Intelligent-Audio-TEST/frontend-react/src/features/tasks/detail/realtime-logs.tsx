@@ -32,6 +32,8 @@ import {
 } from '@/application/tasks/use-task-detail'
 import { fetchTaskLogs, TASK_LOG_PAGE_SIZE } from '@/infrastructure/api/tasks-list-api'
 import { useRealtimeFrameStream } from '@/infrastructure/realtime/frame-channel'
+import { useLogRealtimeWs } from '@/infrastructure/realtime/useLogRealtimeWs'
+import type { LogItem } from '@/domain/models/log'
 import type { TaskLogEntry } from '@/domain/models/task'
 
 const LEVEL_DOT: Record<TaskLogEntry['level'], string> = {
@@ -58,11 +60,14 @@ export function RealtimeLogs({
   taskId,
   executionMode = false,
   hasRealtimeDevice = false,
+  active = false,
 }: {
   taskId: number
   /** execution 模式：注入级别过滤/关键词搜索/导出 + Realtime frame 增量条（10_测试执行.md §3.7） */
   executionMode?: boolean
   hasRealtimeDevice?: boolean
+  /** 任务运行中：开启 /ws/logs 实时订阅，task_log 增量插入日志卡（INT-1906） */
+  active?: boolean
 }) {
   const logsQuery = useTaskLogs(taskId)
   const [manual, setManual] = useState(false)
@@ -87,6 +92,36 @@ export function RealtimeLogs({
       setTotal(logsQuery.data.total)
     }
   }, [logsQuery.data])
+
+  /** WS /ws/logs 实时增量：task_log → TaskLogEntry，去重后按旧→新追加（新日志在尾部） */
+  const wsFilter = useMemo(() => ({ taskId }), [taskId])
+  useLogRealtimeWs({
+    enabled: active,
+    filter: wsFilter,
+    onLog: (log: LogItem) => {
+      const level = (
+        log.level === 'error' || log.level === 'warn' ? log.level : 'info'
+      ) as TaskLogEntry['level']
+      setLogs((prev) => {
+        // 按 id 去重；id 缺失（负数合成 id 场景）按 time+content 去重兜底
+        const dup = prev.some(
+          (l) =>
+            l.id === log.id ||
+            (l.message === log.content && l.timestamp === log.time)
+        )
+        if (dup) return prev
+        return [
+          ...prev,
+          {
+            id: log.id,
+            timestamp: log.time || '',
+            level,
+            message: log.content || '',
+          },
+        ]
+      })
+    },
+  })
 
   const scrollToBottom = () => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight

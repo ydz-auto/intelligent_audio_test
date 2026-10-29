@@ -182,6 +182,7 @@ export function TaskDetailContent({
           taskId={taskId}
           executionMode={mode === 'execution'}
           hasRealtimeDevice={false}
+          active={true}
         />
       </div>
     )
@@ -334,6 +335,7 @@ export function TaskDetailContent({
             taskId={taskId}
             executionMode={mode === 'execution'}
             hasRealtimeDevice={hasRealtimeDevice}
+            active={!isTerminal}
           />
         )}
       </div>
