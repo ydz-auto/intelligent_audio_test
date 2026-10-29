@@ -31,12 +31,21 @@ class RoundsLoopMixin:
 
     def _run_rounds_loop(self, task_id, tc_rel_id, data, case_config, case_name,
                          algorithm_type, test_case_id, rounds,
-                         device_info_list, result_id, case_reference_params):
-        """执行多轮循环，返回 (all_round_results, rounds_data, execution_success, last_adjusted_ref_params)"""
+                         device_info_list, result_ids, case_reference_params,
+                         tc_rel_ids=None):
+        """执行多轮循环
+
+        Returns:
+            (all_round_results, rounds_data_by_device, execution_success,
+             last_adjusted_ref_params)
+            rounds_data_by_device: {device_id: [round_data, ...]}——组执行时每台设备
+            各一份累积轮次数据（评估按路由行逐行收敛）。
+        """
         all_round_results = []
         last_adjusted_ref_params = None
         execution_success = True
-        rounds_data = []
+        rounds_data_by_device = {}
+        tc_rel_ids = tc_rel_ids or {}
 
         for round_idx, round_config in enumerate(rounds):
             if not isinstance(round_config, dict):
@@ -49,7 +58,7 @@ class RoundsLoopMixin:
             if getattr(self, '_is_case_removed', None) and self._is_case_removed(task_id, test_case_id):
                 self._log(level='INFO', content=f"用例 {case_name} 已被移除，中断本轮执行",
                           task_id=task_id, test_case_id=test_case_id)
-                return all_round_results, rounds_data, False, last_adjusted_ref_params
+                return all_round_results, rounds_data_by_device, False, last_adjusted_ref_params
 
             round_number = round_config.get('round_number', round_idx + 1)
             self.execution_engine.update_case_round_progress(task_id, tc_rel_id, round_idx, len(rounds))
@@ -60,15 +69,16 @@ class RoundsLoopMixin:
                 round_result = self._execute_single_round(
                     task_id, tc_rel_id, data, case_config, case_name,
                     algorithm_type, test_case_id, rounds,
-                    device_info_list, result_id, case_reference_params,
-                    round_idx, round_config, round_number, rounds_data
+                    device_info_list, result_ids, case_reference_params,
+                    round_idx, round_config, round_number, rounds_data_by_device,
+                    tc_rel_ids=tc_rel_ids,
                 )
 
                 # 累积结果
                 tagged_results = round_result.get('tagged_results', [])
                 all_round_results.extend(tagged_results)
-                if round_result.get('round_data'):
-                    rounds_data.append(round_result['round_data'])
+                for device_key, round_data in round_result.get('rounds_data_by_device', {}).items():
+                    rounds_data_by_device.setdefault(device_key, []).append(round_data)
                 if round_result.get('adjusted_ref_params'):
                     last_adjusted_ref_params = round_result['adjusted_ref_params']
 
@@ -80,7 +90,7 @@ class RoundsLoopMixin:
                               task_id=task_id, test_case_id=test_case_id)
                     break
 
-        return all_round_results, rounds_data, execution_success, last_adjusted_ref_params
+        return all_round_results, rounds_data_by_device, execution_success, last_adjusted_ref_params
 
     # 轮次级执行控制字段：前端将 segment 级控制字段提升到 round 级结构字段，
     # 经 RoundConfigItem(extra='allow') 保留在 config.rounds[] 中；
@@ -106,9 +116,16 @@ class RoundsLoopMixin:
 
     def _execute_single_round(self, task_id, tc_rel_id, data, case_config, case_name,
                               algorithm_type, test_case_id, rounds,
-                              device_info_list, result_id, case_reference_params,
-                              round_idx, round_config, round_number, rounds_data):
-        """执行单轮：环境设置 → 声纹注册 → 预处理 → 播放 → 后处理 → 采集 → 评估，返回轮次结果 dict"""
+                              device_info_list, result_ids, case_reference_params,
+                              round_idx, round_config, round_number,
+                              rounds_data_by_device, tc_rel_ids=None):
+        """执行单轮：环境设置 → 声纹注册 → 预处理 → 播放 → 后处理 → 采集 → 评估
+
+        组执行时一次播放驱动组内全部设备，采集结果按设备分组，各自更新
+        自己的 TestResult 并提交单轮评估（评估按路由行逐行收敛）。
+        """
+        rounds_data_by_device = rounds_data_by_device or {}
+        tc_rel_ids = tc_rel_ids or {}
         round_algo_params = AlgorithmAclRepositoryImpl.normalize_algorithm_params(round_config.get('algorithm_params', []))
 
         env_states = self._device_manager.setup_env_devices_for_round(round_algo_params, task_id)
@@ -127,7 +144,7 @@ class RoundsLoopMixin:
             return {
                 'success': False,
                 'tagged_results': [],
-                'round_data': {'round': round_idx, 'input': {}, 'output': {}, 'latency': None, 'evaluation': {}},
+                'rounds_data_by_device': self._failed_round_data(round_idx, result_ids),
                 'adjusted_ref_params': None,
             }
 
@@ -147,7 +164,7 @@ class RoundsLoopMixin:
             return {
                 'success': False,
                 'tagged_results': [],
-                'round_data': {'round': round_idx, 'input': {}, 'output': {}, 'latency': None, 'evaluation': {}},
+                'rounds_data_by_device': self._failed_round_data(round_idx, result_ids),
                 'adjusted_ref_params': None,
             }
 
@@ -193,7 +210,7 @@ class RoundsLoopMixin:
             return {
                 'success': False,
                 'tagged_results': [],
-                'round_data': {'round': round_idx, 'input': {}, 'output': {}, 'latency': None, 'evaluation': {}},
+                'rounds_data_by_device': self._failed_round_data(round_idx, result_ids),
                 'adjusted_ref_params': None,
             }
 
@@ -222,22 +239,38 @@ class RoundsLoopMixin:
         # 转换 DTO 为 dict 供下游处理
         tagged_results = [dto_to_dict(r) for r in tagged_results]
 
-        # 轮次内评估
-        primary = tagged_results[0] if tagged_results else {}
-        round_data = None
+        # 轮次内评估（按设备分组：每台设备更新自己的 TestResult 并提交单轮评估）
+        sn_map = {info.get('device_sn'): int(info.get('device_id'))
+                  for info in (device_info_list or [])
+                  if info.get('device_sn') and info.get('device_id') is not None}
+        grouped_results = self._group_tagged_results(tagged_results, result_ids, sn_map)
         round_success = True
-
-        if primary:
-            round_success = primary.get('success')
-            if round_success is None:
-                raw_results = primary.get('raw_results', {})
-                round_success = raw_results.get('success', False)
-            round_data = self._build_and_submit_round_data(
-                task_id, tc_rel_id, data, case_config, case_name,
+        round_data_by_device = {}
+        for device_index, (device_key, device_results) in enumerate(grouped_results.items()):
+            primary = device_results[0] if device_results else {}
+            if not primary:
+                continue
+            device_result_id = result_ids.get(device_key)
+            if device_result_id is None:
+                # 结果归属设备没有预创建结果行（异常数据）：不写结果，仅告警
+                self._log(
+                    level='WARNING',
+                    content=f"第 {round_number} 轮设备 {device_key} 缺少预创建结果行，跳过结果写入",
+                    task_id=task_id, test_case_id=test_case_id,
+                )
+                continue
+            device_success = primary.get('success')
+            if device_success is None:
+                device_success = (primary.get('raw_results') or {}).get('success', False)
+            round_success = round_success and bool(device_success)
+            round_data_by_device[device_key] = self._build_and_submit_round_data(
+                task_id, tc_rel_ids.get(device_key, tc_rel_id), data, case_config, case_name,
                 algorithm_type, test_case_id, rounds,
-                result_id, case_reference_params,
-                round_idx, primary, tagged_results, rounds_data,
-                round_algo_params
+                device_result_id, case_reference_params,
+                round_idx, primary, device_results,
+                rounds_data_by_device.get(device_key, []),
+                round_algo_params,
+                log_case_result=(device_index == 0),
             )
 
         self._device_manager.teardown_env_devices_for_round(env_states, task_id)
@@ -245,27 +278,73 @@ class RoundsLoopMixin:
         return {
             'success': round_success,
             'tagged_results': tagged_results,
-            'round_data': round_data,
+            'rounds_data_by_device': round_data_by_device,
             'adjusted_ref_params': adjusted_case_ref_params,
         }
+
+    @staticmethod
+    def _result_device_key(result, result_ids, sn_map=None):
+        """结果归属设备键：device_id 优先 → device_sn 映射 → 单设备回落唯一键。"""
+        raw_device_id = result.get('device_id')
+        device_key = None
+        if raw_device_id not in (None, ''):
+            try:
+                device_key = int(raw_device_id)
+            except (TypeError, ValueError):
+                device_key = None
+        if device_key in result_ids:
+            return device_key
+        raw_sn = str(result.get('device_sn') or '')
+        mapped = (sn_map or {}).get(raw_sn)
+        if mapped in result_ids:
+            return mapped
+        if len(result_ids) == 1:
+            return next(iter(result_ids))
+        return None
+
+    def _group_tagged_results(self, tagged_results, result_ids, sn_map=None):
+        """按设备分组本轮采集结果；无法归属设备的结果丢弃并告警。"""
+        grouped = {}
+        for result in tagged_results:
+            device_key = self._result_device_key(result, result_ids, sn_map)
+            if device_key is None:
+                self._log(
+                    level='WARNING',
+                    content=(f"本轮结果无法归属设备（device_id={result.get('device_id')}, "
+                             f"device_sn={result.get('device_sn')}），已跳过"),
+                    task_id=None,
+                )
+                continue
+            grouped.setdefault(device_key, []).append(result)
+        return grouped
+
+    @staticmethod
+    def _failed_round_data(round_idx, result_ids):
+        """轮次失败占位 round_data：每台设备各一份，保留失败轮在结果时序中的位置。"""
+        if not isinstance(result_ids, dict) or not result_ids:
+            return {}
+        placeholder = {'round': round_idx, 'input': {}, 'output': {}, 'latency': None, 'evaluation': {}}
+        return {device_key: dict(placeholder) for device_key in result_ids}
 
     def _build_and_submit_round_data(self, task_id, tc_rel_id, data, case_config, case_name,
                                      algorithm_type, test_case_id, rounds,
                                      result_id, case_reference_params,
                                      round_idx, primary, tagged_results, rounds_data,
-                                     round_algo_params=None):
+                                     round_algo_params=None, log_case_result=True):
         """构建本轮 round_data，增量更新 TestResult，提交单轮评估，返回 round_data
 
         Args:
-            rounds_data: 已执行轮次的 round_data 列表（累积），用于构建含全部轮次的 algo_result
+            rounds_data: 该设备已执行轮次的 round_data 列表（累积），用于构建含全部轮次的 algo_result
             round_algo_params: 本轮算法参数（已扁平化为 dict）
+            log_case_result: 是否输出用例级结果日志（组执行时仅首台设备输出，避免重复）
         """
         ref_fields = E2ECalculationService.build_ref_fields(round_algo_params or {})
 
-        self._aggregator.log_case_result(
-            task_id, case_name, primary, ref_fields,
-            algorithm_type=algorithm_type, test_case_id=test_case_id
-        )
+        if log_case_result:
+            self._aggregator.log_case_result(
+                task_id, case_name, primary, ref_fields,
+                algorithm_type=algorithm_type, test_case_id=test_case_id
+            )
 
         case_rounds = case_config.get('rounds', [])
         round_cfg = case_rounds[round_idx] if round_idx < len(case_rounds) else {}

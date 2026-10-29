@@ -904,8 +904,8 @@ class TestE2EExecutorStopBranchTerminalStatus:
         ex._handle_control = MagicMock(side_effect=TaskStopSignal('任务已停止'))
         ex._update_tc_rel_status = MagicMock()
         ex._get_control_events = MagicMock(return_value=(None, None))
-        ex._prepare_rounds = MagicMock(return_value=([{'device_id': 1}], 99))
-        ex._run_rounds_loop = MagicMock(return_value=([], [], True, None))
+        ex._prepare_rounds = MagicMock(return_value=([{'device_id': 1}], {1: 99}))
+        ex._run_rounds_loop = MagicMock(return_value=([], {}, True, None))
         return ex
 
     def test_stop_branch_writes_terminal_without_attributeerror(self):

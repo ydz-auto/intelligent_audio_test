@@ -130,7 +130,7 @@ class CaseExecutionMixin:
                 local_db_session.close()
             return False
 
-    def _execute_e2e_case(self, task_id, tc_rel_id, device_id=None):
+    def _execute_e2e_case(self, task_id, tc_rel_id, device_id=None, device_ids=None):
         """执行端到端测试用例
 
         通过 gRPC 调用 e2e_test_service 的 ExecutionService.StartE2ETask，
@@ -140,8 +140,12 @@ class CaseExecutionMixin:
             task_id: 任务ID
             tc_rel_id: 任务用例关联ID
             device_id: 当前物理路由行绑定的被测设备ID；执行器只准备/驱动该设备
+            device_ids: 组执行设备列表（同实验室、同用例、不同 SN）；非空时
+                优先，一次执行驱动组内全部设备、每轮音频只播一次
 
         Returns:
             执行结果（成功返回True，失败返回False）
         """
-        return _execute_e2e_case_via_grpc(task_id, tc_rel_id, device_id=device_id)
+        return _execute_e2e_case_via_grpc(
+            task_id, tc_rel_id, device_id=device_id, device_ids=device_ids,
+        )

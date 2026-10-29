@@ -463,7 +463,7 @@ class TestFinalizationMergeMarker:
 
     _FIN_ARGS = dict(
         task_id='t1', tc_rel_id='tc1', data={}, case_name='case-x',
-        algorithm_type='voice_llm', test_case_id='c1', result_id=99,
+        algorithm_type='voice_llm', test_case_id='c1', result_ids={1: 99},
         all_round_results=[{'response_time': 100}],
         case_reference_params=None, last_adjusted_ref_params=None,
         device_info_list=None,
@@ -537,8 +537,8 @@ class TestPreparationTaskLevelTrace:
 
     def test_result_data_clean_without_degrade(self):
         ex = self._prepare_host()
-        device_info_list, result_id = ex._prepare_rounds(**self._PREP_ARGS)
-        assert result_id == 99
+        device_info_list, result_ids = ex._prepare_rounds(**self._PREP_ARGS)
+        assert result_ids == {1: 99}
         kwargs = ex._save_result.call_args.kwargs
         assert kwargs['result_data'] == {'multi_round': True, 'total_rounds': 1}
 

@@ -54,7 +54,8 @@ def _patch_host(ex, loop_result=None, loop_exc=None, result_id=99):
     ex._update_tc_rel_status = MagicMock(
         side_effect=lambda *a, **k: ex._tc_rel_calls.append((a, k)))
     ex._get_control_events = MagicMock(return_value=(None, None))
-    ex._prepare_rounds = MagicMock(return_value=([{'device_id': 1}], result_id))
+    ex._prepare_rounds = MagicMock(
+        return_value=([{'device_id': 1}], {1: result_id} if result_id else {}))
     if loop_exc is not None:
         ex._run_rounds_loop = MagicMock(side_effect=loop_exc)
     else:
@@ -66,7 +67,7 @@ class TestFailedRoundResultClosure:
     def test_round_failure_closes_result_row_with_rounds(self):
         """轮次失败：结果行收口为 FAILED 且带已累积轮次数据。"""
         ex = _host()
-        _patch_host(ex, loop_result=([], _ROUNDS_DATA, False, None))
+        _patch_host(ex, loop_result=([], {1: _ROUNDS_DATA}, False, None))
         ok = ex._execute_e2e_with_rounds('t1', 'tc1', dict(_DATA))
         assert ok is False
         ex._aggregator.update_test_result.assert_called_once()
@@ -83,7 +84,7 @@ class TestFailedRoundResultClosure:
     def test_no_valid_results_closes_result_row(self):
         """所有轮次均未产生有效结果：结果行同样收口为 FAILED。"""
         ex = _host()
-        _patch_host(ex, loop_result=([], [], True, None))
+        _patch_host(ex, loop_result=([], {}, True, None))
         ok = ex._execute_e2e_with_rounds('t1', 'tc1', dict(_DATA))
         assert ok is False
         ex._aggregator.update_test_result.assert_called_once()

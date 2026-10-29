@@ -56,7 +56,7 @@ class E2EService:
         """获取任务状态"""
         return {'task_id': task_id, 'status': 'idle'}
 
-    def start_e2e_case(self, task_id, tc_rel_id, device_id=None):
+    def start_e2e_case(self, task_id, tc_rel_id, device_id=None, device_ids=None):
         """启动单个 E2E 用例执行（gRPC StartE2ETask 调用入口）
 
         同步执行 E2EExecutor.execute_e2e_case，返回执行结果。
@@ -64,6 +64,8 @@ class E2EService:
 
         device_id：当前路由行绑定的被测设备；执行器只准备/驱动该设备，
         未指定时按任务全部设备处理（历史调用方）。
+        device_ids：组执行（同实验室、同用例、不同 SN）——非空时优先，一次
+        执行驱动组内全部设备、每轮音频只播一次，结果按设备分别落库。
         """
         if not self._initialized:
             return {'success': False, 'message': 'E2EService 未初始化'}
@@ -74,7 +76,8 @@ class E2EService:
             with self._task_lock:
                 self._task_status[task_id] = {'status': TaskStatus.RUNNING, 'tc_rel_id': tc_rel_id}
 
-            success = self.executor.execute_e2e_case(task_id, tc_rel_id, device_id=device_id)
+            success = self.executor.execute_e2e_case(
+                task_id, tc_rel_id, device_id=device_id, device_ids=device_ids)
 
             with self._task_lock:
                 self._task_status[task_id] = {

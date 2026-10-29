@@ -19,10 +19,18 @@ class PreparationMixin:
     """阶段一：循环前准备 —— 设备准备 + 音频预下载 + 声纹注册 + 预创建 TestResult"""
 
     def _prepare_rounds(self, task_id, tc_rel_id, data, case_config, algorithm_type,
-                        case_field_values, rounds, test_case_id, device_id=None):
-        """设备准备 + 声纹注册 + 预创建 TestResult，返回 (device_info_list, result_id)"""
-        # 设备准备：只准备当前路由行绑定的设备（device_id=None 时按任务全部设备）
-        device_result = self._device_manager.get_device_info(task_id, case_config, device_id=device_id)
+                        case_field_values, rounds, test_case_id, device_id=None,
+                        device_ids=None):
+        """设备准备 + 声纹注册 + 预创建 TestResult。
+
+        返回 (device_info_list, result_ids)；result_ids 为 {device_id: result_id}。
+        组执行时每台设备预创建一条 TestResult——评估侧按路由行
+        （results_by_device[row.device_id]）逐行取结果，缺行会卡住评估收口。
+        """
+        # 设备准备：只准备当前路由行绑定的设备（device_id=None 时按任务全部设备）；
+        # 组执行时按 device_ids 准备组内全部设备（一次播放驱动全部设备）
+        device_result = self._device_manager.get_device_info(
+            task_id, case_config, device_id=device_id, device_ids=device_ids)
         if not device_result['success']:
             error_msg = f"设备信息获取失败: {device_result.get('error')}"
             self._log(level='ERROR', content=error_msg, task_id=task_id, test_case_id=test_case_id)
@@ -62,13 +70,10 @@ class PreparationMixin:
         # 音频预下载完成后检查停止/暂停信号（预下载+重采样耗时较长）
         self._handle_control(task_id)
 
-        # 预创建 TestResult
-        first_device_id = device_info_list[0].get('device_id') if device_info_list else None
+        # 预创建 TestResult（组执行：每台设备一条，评估按路由行逐行取结果）
         # INT-296：任务级 UI 抓取层降级留痕（explicit_degrade 模式，initialize 阶段写入）
-        result_data = {'multi_round': True, 'total_rounds': len(rounds)}
-        degraded = self._device_manager.get_ui_capture_degraded()
-        if degraded:
-            result_data['ui_capture_degraded'] = degraded
+        base_result_data = {'multi_round': True, 'total_rounds': len(rounds)}
+        degraded = self._device_manager.get_ui_capture_degraded() or []
         # 结果类型（INT-1510 列口径）：多轮 + 多轮评估维度 → 最终聚合结果 final，否则设备 E2E 结果 e2e
         has_final_results = (
             len(rounds) > 1
@@ -78,26 +83,38 @@ class PreparationMixin:
             )
         )
         result_type = RESULT_TYPE_FINAL if has_final_results else RESULT_TYPE_E2E
-        result_id = self._save_result(
-            task_id=task_id,
-            test_case_id=test_case_id,
-            result_data=result_data,
-            algo_result={'test_type': 'e2e', 'algorithm_type': algorithm_type, 'total_rounds': len(rounds), 'rounds': [], 'aggregated': {}},
-            algorithm_type=algorithm_type,
-            device_id=first_device_id,
-            api_id=None,
-            execution_status=ExecutionStatus.RUNNING,
-            response_time=0,
-            error_message=None,
-            result_type=result_type,
-        )
-        self._log(
-            level='DEBUG',
-            content=f"预先创建多轮 TestResult: result_id={result_id}, total_rounds={len(rounds)}",
-            task_id=task_id, test_case_id=test_case_id,
-        )
+        result_ids = {}
+        for info in device_info_list:
+            result_data = dict(base_result_data)
+            # 降级留痕按设备过滤，避免把别的设备的降级原因写进本条结果
+            degraded_for_device = [
+                item for item in degraded
+                if not info.get('device_name')
+                or item.get('device_name') == info.get('device_name')
+            ]
+            if degraded_for_device:
+                result_data['ui_capture_degraded'] = degraded_for_device
+            result_ids[info.get('device_id')] = self._save_result(
+                task_id=task_id,
+                test_case_id=test_case_id,
+                result_data=result_data,
+                algo_result={'test_type': 'e2e', 'algorithm_type': algorithm_type, 'total_rounds': len(rounds), 'rounds': [], 'aggregated': {}},
+                algorithm_type=algorithm_type,
+                device_id=info.get('device_id'),
+                api_id=None,
+                execution_status=ExecutionStatus.RUNNING,
+                response_time=0,
+                error_message=None,
+                result_type=result_type,
+            )
+            self._log(
+                level='DEBUG',
+                content=(f"预先创建多轮 TestResult: device_id={info.get('device_id')}, "
+                         f"result_id={result_ids[info.get('device_id')]}, total_rounds={len(rounds)}"),
+                task_id=task_id, test_case_id=test_case_id,
+            )
 
-        return device_info_list, result_id
+        return device_info_list, result_ids
 
     def _prepare_audio_files(self, task_id, rounds, test_case_id, case_config=None):
         """遍历所有 rounds，批量预下载并按设备采样率重采样，建立嵌套映射。

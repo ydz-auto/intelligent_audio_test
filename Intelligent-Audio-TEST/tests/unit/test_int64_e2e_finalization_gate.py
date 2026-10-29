@@ -73,7 +73,7 @@ class _Host(FinalizationMixin):
 
 _RUN_ARGS = dict(
     task_id='t1', tc_rel_id='tc1', data={}, case_name='case-x',
-    algorithm_type='translation', test_case_id='c1', result_id=99,
+    algorithm_type='translation', test_case_id='c1', result_ids={1: 99},
     all_round_results=[{'response_time': 100}],
     case_reference_params=None, last_adjusted_ref_params=None,
     device_info_list=None,

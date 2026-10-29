@@ -377,6 +377,15 @@ class BaseConfig:
     DEVICE_SN_STEP_LOCK_WAIT_SECONDS: int = _get_int(
         'DEVICE_SN_STEP_LOCK_WAIT_SECONDS', 60)
 
+    # --- E2E 组执行（同实验室多设备并行，音频每轮只播一次）---
+    # 同实验室、同用例、不同 SN 的物理路由行合并为一次 StartE2ETask 执行：
+    # 一次播放驱动组内全部设备，结果按设备分别落库与评估。
+    # 关闭即回退为逐行派发（每台设备各播一遍），用于一键回滚。
+    E2E_GROUP_EXECUTION_ENABLED: bool = _get_bool(
+        'E2E_GROUP_EXECUTION_ENABLED', True)
+    # 单组设备上限：超出按行创建顺序截断，剩余行下一轮再成组。
+    E2E_GROUP_MAX_DEVICES: int = _get_int('E2E_GROUP_MAX_DEVICES', 8)
+
     # --- gRPC 客户端收发消息上限（MB，INT-1292）---
     # grpcio 客户端默认收包上限 4MiB：大响应 RPC（任务导出 23MB 包、报告/评估
     # 只读导出）在客户端收不下 → RESOURCE_EXHAUSTED。统一放大到

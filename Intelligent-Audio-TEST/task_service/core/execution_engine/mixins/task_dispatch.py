@@ -69,6 +69,19 @@ class TaskDispatchMixin:
         )
 
     @staticmethod
+    def _mode_from_modes(target_modes, key):
+        """从已加载的 target_modes 取目标执行模式；未配置按 parallel（零回归）。"""
+        from shared.models.common_enums import ExecutionMode
+        for item in target_modes:
+            if (item.get('target_type'), str(item.get('target_id'))) == key:
+                return item.get('mode') or ExecutionMode.PARALLEL.value
+        return ExecutionMode.PARALLEL.value
+
+    def _target_mode(self, task_id, session, key):
+        """单个目标的执行模式（按 task_id 现读配置）。"""
+        return self._mode_from_modes(self._target_modes(task_id, session), key)
+
+    @staticmethod
     def _row_target_key(tc_rel):
         """用例行归属目标键 (target_type, str(target_id))；不可解析返回 None。
 
@@ -143,11 +156,7 @@ class TaskDispatchMixin:
             position.setdefault(key, idx)
 
         def _mode_of(key):
-            return next(
-                (item.get('mode') for item in target_modes
-                 if (item.get('target_type'), str(item.get('target_id'))) == key),
-                ExecutionMode.PARALLEL.value,
-            )
+            return self._mode_from_modes(target_modes, key)
 
         # 用例推进顺序：按行创建顺序首次出现（同一用例的多条路由行归一为一个位置）
         case_order = []
@@ -335,6 +344,218 @@ class TaskDispatchMixin:
                       task_id=task_id)
             return None
 
+    # ---- 同实验室多设备组执行（一次播放驱动组内全部设备）----
+
+    def _device_fingerprint(self, device_id):
+        """设备指纹 {lab_id, serial_number}（按 device_id 缓存，组选择复用）。
+
+        lab_id 缺失（设备未绑定实验室）时不参与组执行：无法确认物理隔离，
+        并行一次播放可能有一台设备收不到音频（保守处理，见 spec §5.3）。
+        """
+        cache = getattr(self, '_device_fingerprint_cache', None)
+        if cache is None:
+            cache = {}
+            self._device_fingerprint_cache = cache
+        device_id_str = str(device_id)
+        if device_id_str in cache:
+            return cache[device_id_str]
+
+        try:
+            from task_service.infrastructure.acl.device_acl_repository import device_acl_repository
+            device = device_acl_repository.get_device(int(device_id)) or {}
+        except Exception as e:
+            # 查询失败不缓存：下次重试，且本次按「无实验室」不参与组执行
+            self._log(level='WARNING',
+                      content=f"设备 {device_id} 指纹查询失败，本次不参与组执行: {e}",
+                      task_id=None)
+            return {'lab_id': None, 'serial_number': ''}
+        fingerprint = {
+            'lab_id': device.get('lab_id'),
+            'serial_number': device.get('serial_number') or '',
+        }
+        cache[device_id_str] = fingerprint
+        return fingerprint
+
+    @staticmethod
+    def _sn_group_key(fingerprint, device_id):
+        """组内 SN 去重键：有 SN 用 SN，否则退化为 device_id（不同记录不合组）。"""
+        return fingerprint.get('serial_number') or f'device:{device_id}'
+
+    def _build_e2e_execution_group(self, task_id, session, tc_rel):
+        """同用例 + 同实验室 + 不同 SN 的物理行合并为执行组。
+
+        组执行 = 一次 StartE2ETask 驱动组内全部设备、每轮音频只播一次。
+        不满足条件的行返回 [tc_rel]，退回逐行路径（零回归）：
+        - 组执行开关关闭；
+        - 非 physical 行 / 未绑定设备；
+        - 本行目标 mode=serial（串行语义就是每台设备各播一遍）；
+        - 本行设备未绑定实验室（无法确认物理隔离）；
+        - 组内行数 < 2。
+
+        组内 SN 去重：同一台手机上的多条设备记录（同 SN 多 App）必须串行，
+        只保留创建最早的一条，其余留给后续轮次（由 SN 物理锁与步骤锁串行）。
+        """
+        from shared.infrastructure.config import BaseConfig
+        from shared.models.common_enums import DeviceType, ExecutionMode
+        from sqlalchemy import or_
+
+        if not getattr(BaseConfig, 'E2E_GROUP_EXECUTION_ENABLED', True):
+            return [tc_rel]
+        if (tc_rel.device_type or DeviceType.PHYSICAL.value) != DeviceType.PHYSICAL.value:
+            return [tc_rel]
+        if not tc_rel.device_id:
+            return [tc_rel]
+        target_key = self._row_target_key(tc_rel)
+        if (target_key is not None
+                and self._target_mode(task_id, session, target_key) == ExecutionMode.SERIAL.value):
+            return [tc_rel]
+
+        my_fp = self._device_fingerprint(tc_rel.device_id)
+        lab_id = my_fp.get('lab_id')
+        if lab_id is None or lab_id == '':
+            return [tc_rel]
+
+        candidates = session.query(TaskCase).filter(
+            TaskCase.task_id == task_id,
+            TaskCase.test_case_id == tc_rel.test_case_id,
+            # 历史 NULL 行按物理流程处理（_dispatch_case_by_type 同口径）
+            or_(TaskCase.device_type == DeviceType.PHYSICAL.value,
+                TaskCase.device_type.is_(None)),
+            TaskCase.execution_status == ExecutionStatus.PENDING,
+            task_case_not_removed(TaskCase),
+        ).order_by(TaskCase.created_at.asc(), TaskCase.id.asc()).all()
+
+        max_devices = int(getattr(BaseConfig, 'E2E_GROUP_MAX_DEVICES', 8))
+        group = [tc_rel]
+        used_sn = {self._sn_group_key(my_fp, tc_rel.device_id)}
+        for row in candidates:
+            if row.id == tc_rel.id or not row.device_id:
+                continue
+            row_key = self._row_target_key(row)
+            if (row_key is not None
+                    and self._target_mode(task_id, session, row_key) == ExecutionMode.SERIAL.value):
+                continue
+            fingerprint = self._device_fingerprint(row.device_id)
+            if fingerprint.get('lab_id') != lab_id:
+                continue
+            sn_key = self._sn_group_key(fingerprint, row.device_id)
+            if sn_key in used_sn:
+                continue
+            used_sn.add(sn_key)
+            group.append(row)
+            if len(group) >= max_devices:
+                break
+        return group if len(group) > 1 else [tc_rel]
+
+    def _claim_case_group(self, task_id, tc_rel_ids, session):
+        """批量原子占用组内全部行；返回实际占用行数（调用方要求等于组大小）。"""
+        if not tc_rel_ids:
+            return 0
+        return session.query(TaskCase).filter(
+            TaskCase.id.in_(tc_rel_ids),
+            TaskCase.task_id == task_id,
+            TaskCase.execution_status == ExecutionStatus.PENDING,
+            task_case_not_removed(TaskCase),
+        ).update({
+            TaskCase.execution_status: ExecutionStatus.QUEUED,
+            TaskCase.status: derive_task_case_status(ExecutionStatus.QUEUED, EvaluationStatus.PENDING)
+        }, synchronize_session=False)
+
+    def _dispatch_e2e_group(self, task_id, task, group_rows, session):
+        """组派发：一次 StartE2ETask(device_ids) + 组内逐行收敛。
+
+        抢锁按 SN 排序（多组交叉加锁也不死锁），全成或全退：只要一台设备被
+        占用就整组不执行（一次播放缺一台设备，该设备数据无法补播），组内行
+        按「物理设备被占用」逐行收敛失败。
+        """
+        prepared = []
+        for row in group_rows:
+            device_ok, error_msg = self._check_e2e_devices(task_id, task, row, session)
+            if device_ok:
+                prepared.append(row)
+            else:
+                self._handle_device_check_failed(task_id, task, row, error_msg, session)
+        if len(prepared) < 2:
+            # 设备检查失败致组不足：退回单行路径，避免重复认领
+            if prepared:
+                self._dispatch_e2e_case(task_id, task, prepared[0], session)
+            return
+
+        claimed = self._claim_case_group(task_id, [r.id for r in prepared], session)
+        if claimed != len(prepared):
+            # 并发派发下组内有行已被他方认领：回滚，退回单行路径避免重复执行
+            session.rollback()
+            self._dispatch_e2e_case(task_id, task, prepared[0], session)
+            return
+        session.commit()
+
+        row_ids = [r.id for r in prepared]
+        device_ids = [r.device_id for r in prepared]
+        lock_keys = []
+        for row in prepared:
+            lock_key = self._resolve_physical_lock_key(task_id, row.device_id)
+            if lock_key and lock_key not in lock_keys:
+                lock_keys.append(lock_key)
+        lock_keys.sort()
+
+        locks = []
+        try:
+            for lock_key in lock_keys:
+                lock = self._acquire_physical_lock_by_sn(lock_key)
+                if lock is None:
+                    for held in locks:
+                        try:
+                            held.release()
+                        except Exception:
+                            pass
+                    locks = []
+                    for row in prepared:
+                        self._handle_physical_lock_busy(task_id, row)
+                    return
+                locks.append(lock)
+
+            self._log(
+                level='INFO',
+                content=(f"组执行派发: 用例 {prepared[0].test_case_id} "
+                         f"设备 {device_ids}（一次播放驱动组内全部设备）"),
+                task_id=task_id,
+            )
+
+            success = self._execute_e2e_case(task_id, row_ids[0], device_ids=device_ids)
+
+            # INT-308：执行期间执行器可经 gRPC 写入终态，收敛一律以 refresh 后的落库值为准
+            for row_id in row_ids:
+                row = session.get(TaskCase, row_id)
+                if row is None:
+                    continue
+                try:
+                    session.refresh(row)
+                except InvalidRequestError:
+                    if session.query(TaskCase.id).filter(
+                            TaskCase.id == row_id).first() is None:
+                        self._log(
+                            level='INFO',
+                            content=f"用例 {row_id} 执行期间已被删除，跳过终态收敛",
+                            task_id=task_id,
+                        )
+                        continue
+                    raise
+                if not success:
+                    # 已写终态的行（成功设备 completed / 停止 stopped）不被兜底覆盖
+                    self._handle_e2e_failure(task_id, row)
+
+            self.refresh_task_counts_atomic(task_id)
+            session.refresh(task)
+            self._emit_progress(task)
+        finally:
+            for lock in locks:
+                try:
+                    lock.release()
+                except Exception:
+                    self._log(level='WARNING',
+                              content=f"释放组执行物理设备互斥锁失败 (devices={device_ids})",
+                              task_id=task_id)
+
     def _dispatch_e2e_case(self, task_id, task, tc_rel, session):
         """E2E 任务用例执行
 
@@ -343,7 +564,16 @@ class TaskDispatchMixin:
         抢占物理设备，同一设备同一时刻仅允许一个用例执行；
         抢占失败按分发失败收敛（设备被其他任务/用例占用）。
         Redis 不可用时 DistributedLock 降级放行，不阻塞执行链。
+
+        同实验室多设备组执行（spec group-execution）：同用例、同实验室、
+        不同 SN 的多条物理行合并为一次 StartE2ETask，音频每轮只播一次。
+        组内仅 1 行时保持原有逐行路径（零回归）。
         """
+        group_rows = self._build_e2e_execution_group(task_id, session, tc_rel)
+        if len(group_rows) > 1:
+            self._dispatch_e2e_group(task_id, task, group_rows, session)
+            return
+
         claimed = self._claim_case(task_id, tc_rel.id, session)
         if claimed != 1:
             session.rollback()
@@ -406,10 +636,6 @@ class TaskDispatchMixin:
         小艺/豆包两条设备记录）必须串行执行，按 device_id 加锁会让它们
         各拿一把锁而并发驱动同一台设备；不同 SN 的设备互不影响，仍可并行。
         """
-        from shared.models.common_enums import RedisKeyPrefix
-        from shared.utils.distributed_coordinator import DistributedLock
-        from shared.infrastructure.config import BaseConfig
-
         device_id = tc_rel.device_id
         if not device_id:
             # 用例未绑定具体物理设备：无可锁资源，直接放行（保持原行为）
@@ -419,8 +645,20 @@ class TaskDispatchMixin:
             return _NoOpLock()
 
         lock_key = self._resolve_physical_lock_key(task_id, device_id)
+        return self._acquire_physical_lock_by_sn(lock_key)
+
+    def _acquire_physical_lock_by_sn(self, lock_key):
+        """按物理互斥键（通常为设备 SN）抢占互斥锁；被占用超时返回 None。
+
+        TTL 覆盖单用例同步执行上限（StartE2ETask 同步执行整个 E2E 用例），
+        持有者崩溃后由 TTL 兜底自愈；同 SN 排队等待覆盖单用例执行上限，
+        超时才按设备占用失败收敛。
+        """
+        from shared.models.common_enums import RedisKeyPrefix
+        from shared.utils.distributed_coordinator import DistributedLock
+        from shared.infrastructure.config import BaseConfig
+
         ttl = int(getattr(BaseConfig, 'GRPC_E2E_SYNC_TIMEOUT_SECONDS', 600)) + 60
-        # 同 SN 排队等待（覆盖单用例执行上限），超时才按设备占用失败收敛
         wait_seconds = int(getattr(BaseConfig, 'TASK_PHYSICAL_LOCK_WAIT_SECONDS', 900))
         lock = DistributedLock(
             f'{RedisKeyPrefix.TASK_PHYSICAL_LOCK.value}:{lock_key}',

@@ -141,14 +141,79 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
         except Exception as close_err:
             self._log(level='ERROR', content=f"收口失败轮 TestResult 异常: {close_err}", task_id=task_id)
 
-    def execute_e2e_case(self, task_id, tc_rel_id, device_id=None):
+    def _resolve_group_rows(self, task_id, test_case_id, device_ids):
+        """组内设备 → 路由行 ID 映射（device_ids 少于 2 个时返回空，退回单行）
+
+        组执行一次驱动多台设备、每台设备一条 TestResult，但状态必须按各自
+        路由行收敛（INT-604），因此需要 device_id → tc_rel_id 映射。
+        """
+        wanted = [int(item) for item in (device_ids or []) if item]
+        if len(wanted) <= 1:
+            return {}
+        try:
+            rows = self._task_data_repo.get_task_case_by_ids(task_id, [str(test_case_id)]) or []
+        except Exception as row_err:
+            self._log(
+                level='WARNING',
+                content=f"组执行路由行解析失败，退回单行收敛: {row_err}",
+                task_id=task_id, test_case_id=test_case_id,
+            )
+            return {}
+        mapping = {}
+        for row in rows:
+            try:
+                device_key = int(getattr(row, 'device_id', None))
+            except (TypeError, ValueError):
+                continue
+            if device_key in wanted:
+                mapping[device_key] = int(row.id)
+        missing = [item for item in wanted if item not in mapping]
+        if missing:
+            self._log(
+                level='WARNING',
+                content=f"组内设备未匹配到路由行，将跳过其状态收敛: {missing}",
+                task_id=task_id, test_case_id=test_case_id,
+            )
+        return mapping
+
+    def _mark_rows_status(self, row_ids, task_id, **kwargs):
+        """逐路由行回写状态（组执行逐行收敛；单行时等价原 _update_tc_rel_status）"""
+        for row_id in row_ids or ():
+            try:
+                self._update_tc_rel_status(row_id, task_id=task_id, **kwargs)
+            except Exception as status_err:
+                self._log(
+                    level='WARNING',
+                    content=f"路由行状态回写失败（忽略）: tc_rel_id={row_id}, error={status_err}",
+                    task_id=task_id,
+                )
+
+    def _close_failed_results(self, result_ids, algorithm_type, total_rounds,
+                              rounds_data_by_device, error_message, task_id):
+        """失败早退路径逐设备收口预创建结果行（每台设备一条 TestResult）"""
+        if not result_ids:
+            return
+        for device_key, result_id in result_ids.items():
+            # rounds_data_by_device 为 None 表示异常路径拿不到已累积轮次（仅收口状态）；
+            # 为空 dict 表示该设备未累积到轮次数据（写空轮次，与正常失败路径口径一致）
+            rounds_data = None
+            if rounds_data_by_device is not None:
+                rounds_data = rounds_data_by_device.get(device_key, [])
+            self._close_failed_test_result(
+                result_id, algorithm_type, total_rounds, rounds_data, error_message, task_id
+            )
+
+    def execute_e2e_case(self, task_id, tc_rel_id, device_id=None, device_ids=None):
         """执行E2E测试用例
 
         device_id：当前路由行绑定的被测设备；只准备/驱动该设备。
+        device_ids：组执行（同实验室、同用例、不同 SN）——非空时优先，
+        一次执行驱动组内全部设备、每轮音频只播一次，结果按设备分别落库。
         """
         self._log(
             level='DEBUG',
-            content=f"E2E用例执行方法开始: task_id={task_id}, tc_rel_id={tc_rel_id}, device_id={device_id}",
+            content=(f"E2E用例执行方法开始: task_id={task_id}, tc_rel_id={tc_rel_id}, "
+                     f"device_id={device_id}, device_ids={device_ids}"),
             task_id=task_id
         )
 
@@ -166,10 +231,15 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
             return False
 
         data = data_result['data']
-        return self._execute_e2e_with_rounds(task_id, tc_rel_id, data, device_id=device_id)
+        return self._execute_e2e_with_rounds(
+            task_id, tc_rel_id, data, device_id=device_id, device_ids=device_ids)
 
-    def _execute_e2e_with_rounds(self, task_id, tc_rel_id, data, device_id=None):
-        """新格式执行：支持多轮（rounds）的 E2E 执行"""
+    def _execute_e2e_with_rounds(self, task_id, tc_rel_id, data, device_id=None, device_ids=None):
+        """新格式执行：支持多轮（rounds）的 E2E 执行
+
+        组执行（device_ids 非空）时：一次执行驱动组内全部设备、每轮音频只播
+        一次，每台设备各自一条 TestResult 并按各自的路由行收敛状态。
+        """
         case_name = data['case_name']
         case_config = data['case_config']
         case_reference_params = data.get('case_reference_params', [])
@@ -186,11 +256,18 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
 
         rounds = case_config.get('rounds', [])
 
+        # 组执行：设备 → 路由行映射（逐行收敛状态），主路由行始终纳入
+        group_device_ids = [int(item) for item in (device_ids or []) if item]
+        tc_rel_ids = self._resolve_group_rows(task_id, test_case_id, group_device_ids)
+        # 去重且保序：主路由行可能与组内映射重叠
+        status_row_ids = list(dict.fromkeys(
+            [str(tc_rel_id)] + [str(row_id) for row_id in tc_rel_ids.values()]))
+
         # INT-296：用例开始前清空 UI 抓取层降级标记（executor 为单例，防跨用例残留）
         self.reset_ui_capture_degraded()
 
         device_info_list = None
-        result_id = None
+        result_ids = {}
         # INT-169: 评估提交失败留痕（每用例重置），收尾时统一收口
         self._eval_submit_failures = []
         try:
@@ -201,7 +278,8 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
             )
 
             self._handle_control(task_id)
-            self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.RUNNING)
+            self._mark_rows_status(status_row_ids, task_id,
+                                   execution_status=ExecutionStatus.RUNNING)
             stop_event, pause_event = self._get_control_events(task_id)
             # 通过 ACL 仓储注册任务事件
             self._device_repo.register_task_events(
@@ -209,10 +287,11 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
                 pause_event.is_set() if pause_event else True,
             )
 
-            # ── 阶段一：循环前准备 ──
-            device_info_list, result_id = self._prepare_rounds(
+            # ── 阶段一：循环前准备（组执行时准备组内全部设备、每设备一条结果）──
+            device_info_list, result_ids = self._prepare_rounds(
                 task_id, tc_rel_id, data, case_config, algorithm_type,
-                case_field_values, rounds, test_case_id, device_id=device_id
+                case_field_values, rounds, test_case_id,
+                device_id=device_id, device_ids=group_device_ids,
             )
 
             # 启动全局背景噪声（跨轮次持续播放，在轮次循环前启动）
@@ -224,38 +303,46 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
                 book['global_noise_start_ms'] = bg_ts.get('start_ms')
 
             # ── 阶段二：多轮循环 ──
-            all_round_results, rounds_data, execution_success, last_adjusted_ref_params = \
+            all_round_results, rounds_data_by_device, execution_success, last_adjusted_ref_params = \
                 self._run_rounds_loop(
                     task_id, tc_rel_id, data, case_config, case_name,
                     algorithm_type, test_case_id, rounds,
-                    device_info_list, result_id, case_reference_params
+                    device_info_list, result_ids, case_reference_params,
+                    tc_rel_ids=tc_rel_ids,
                 )
 
             if not execution_success:
                 error_msg = "执行失败，跳过评估" if not all_round_results else "执行过程中部分轮次失败"
-                self._close_failed_test_result(result_id, algorithm_type, len(rounds),
-                                               rounds_data, error_msg, task_id)
-                self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
+                self._close_failed_results(result_ids, algorithm_type, len(rounds),
+                                           rounds_data_by_device, error_msg, task_id)
+                self._mark_rows_status(status_row_ids, task_id,
+                                       execution_status=ExecutionStatus.FAILED,
+                                       status=TaskCaseStatus.FAILED,
+                                       error_message=error_msg)
                 return False
 
             if not all_round_results:
                 error_msg = "所有轮次均未产生有效结果"
-                self._close_failed_test_result(result_id, algorithm_type, len(rounds),
-                                               rounds_data, error_msg, task_id)
-                self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
+                self._close_failed_results(result_ids, algorithm_type, len(rounds),
+                                           rounds_data_by_device, error_msg, task_id)
+                self._mark_rows_status(status_row_ids, task_id,
+                                       execution_status=ExecutionStatus.FAILED,
+                                       status=TaskCaseStatus.FAILED,
+                                       error_message=error_msg)
                 return False
 
-            # ── 阶段三：循环后聚合 + 评估 ──
+            # ── 阶段三：循环后聚合 + 评估（逐设备收口、逐路由行回写）──
             success = self._finalize_rounds(
                 task_id, tc_rel_id, data, case_config, case_name,
-                algorithm_type, test_case_id, result_id,
+                algorithm_type, test_case_id, result_ids,
                 all_round_results, execution_success,
                 case_reference_params, last_adjusted_ref_params,
-                device_info_list
+                device_info_list, tc_rel_ids,
             )
 
             # INT-169: 评估提交失败以 evaluation_status 终态收口，不动执行口径
-            self._finalize_eval_submit_failures(task_id, test_case_id, tc_rel_id)
+            for row_id in status_row_ids:
+                self._finalize_eval_submit_failures(task_id, test_case_id, row_id)
 
             return success
         except TaskStopSignal:
@@ -265,18 +352,21 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
             # 此处必抛 AttributeError 走异常路径——INT-308 审计#6 修复）
             self._log(level='INFO', content=f"用例 {case_name} 因任务停止而中断",
                       task_id=task_id, test_case_id=test_case_id)
-            self._update_tc_rel_status(tc_rel_id, task_id=task_id,
-                                       execution_status=ExecutionStatus.STOPPED,
-                                       error_message='任务被手动停止')
+            self._mark_rows_status(status_row_ids, task_id,
+                                   execution_status=ExecutionStatus.STOPPED,
+                                   error_message='任务被手动停止')
             return False
         except Exception as e:
             import traceback
             error_msg = f"用例执行异常: {str(e)}"
             self._log(level='ERROR', content=f"用例 {case_name} 执行异常: {str(e)}\n{traceback.format_exc()}",
                       task_id=task_id, test_case_id=getattr(self, 'current_test_case_id', None))
-            self._close_failed_test_result(result_id, algorithm_type, len(rounds),
-                                           None, error_msg, task_id)
-            self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
+            self._close_failed_results(result_ids, algorithm_type, len(rounds),
+                                       None, error_msg, task_id)
+            self._mark_rows_status(status_row_ids, task_id,
+                                   execution_status=ExecutionStatus.FAILED,
+                                   status=TaskCaseStatus.FAILED,
+                                   error_message=error_msg)
             return False
         finally:
             # 停止全局背景噪声（与 start_background_noise 对称）
