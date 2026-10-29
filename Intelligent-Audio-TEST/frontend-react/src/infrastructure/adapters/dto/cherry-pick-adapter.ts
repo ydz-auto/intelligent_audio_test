@@ -21,6 +21,7 @@ import type {
   PickCartEntry,
   PickCartGroup,
   PickDuplicate,
+  PickNodeSummary,
   PickPreview,
   PickSet,
 } from '@/domain/models/cherryPick'
@@ -32,10 +33,29 @@ import type {
   CherryPickPreviewDto,
   CherryPickSetListItemDto,
   CherryPickSourceTraceDto,
+  CherryPickTreeSummaryFieldsDto,
   PickableTaskDto,
   TaskContainerItemDto,
   TaskSourceBriefDto,
 } from '@/infrastructure/dto/cherry-pick.dto'
+
+/** 节点状态汇总（后端 tree 聚合字段；旧后端缺字段 → undefined，前端按旧口径降级） */
+function toNodeSummary(
+  fields: CherryPickTreeSummaryFieldsDto
+): PickNodeSummary | undefined {
+  const counts = fields.execution_status_counts
+  if (!counts) return undefined
+  return {
+    executionStatusCounts: {
+      completed: counts.completed ?? 0,
+      failed: counts.failed ?? 0,
+      stopped: counts.stopped ?? 0,
+      skipped: counts.skipped ?? 0,
+    },
+    evaluatedCount: fields.evaluated_count ?? 0,
+    lastResultAt: fields.last_result_at ?? null,
+  }
+}
 
 /** 名称装饰 map（api 层预取的设备/API/用例名，缺省 null → 降级显示 ID） */
 export interface PickNameMaps {
@@ -132,19 +152,23 @@ export function fromCandidateTreeDto(
     tree: (dto.tree ?? []).map((taskNode) => ({
       taskId: taskNode.task_id,
       count: taskNode.count,
+      summary: toNodeSummary(taskNode),
       cases: (taskNode.cases ?? []).map((caseNode) => ({
         caseId: caseNode.case_id,
         count: caseNode.count,
+        summary: toNodeSummary(caseNode),
         devices: (caseNode.devices ?? []).map((deviceNode) => ({
           deviceId: deviceNode.device_id,
           apiId: deviceNode.api_id,
           count: deviceNode.count,
+          summary: toNodeSummary(deviceNode),
           resultTypes: (deviceNode.result_types ?? []).map((rtNode) => ({
             // 领域模型恒为 string；后端 result_type 可为 NULL（缺值桶）→ 归一到空串
             // （`isPendingResultType` 把 '' / 'default' / null 同归「结果类型待补充」）
             resultType: rtNode.result_type ?? '',
             count: rtNode.count,
             resultIds: rtNode.result_ids ?? [],
+            summary: toNodeSummary(rtNode),
           })),
         })),
       })),

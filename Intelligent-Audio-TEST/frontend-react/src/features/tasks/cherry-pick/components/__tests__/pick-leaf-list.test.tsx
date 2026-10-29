@@ -113,4 +113,26 @@ describe('PickLeafList（叶明细分页）', () => {
     // INT-2098：叶行不再重复显示用例名（用例名只保留在用例卡）
     expect(screen.queryByText('未知用例')).not.toBeInTheDocument()
   })
+
+  it('树内叶行（hideDevice/hideResultType）不再重复上级设备/API 名与结果类型', async () => {
+    fetchPageMock.mockResolvedValue({
+      items: [row(8)],
+      total: 1,
+      page: 1,
+      perPage: 20,
+    })
+    render(
+      <PickLeafList
+        filter={TREE_FILTER}
+        selectedIds={new Set()}
+        onToggleLeaf={() => {}}
+        hideDevice
+        hideResultType
+      />,
+      { wrapper: wrapper() }
+    )
+    await screen.findByTestId('pick-leaf-8')
+    expect(screen.queryByText('未知设备')).not.toBeInTheDocument()
+    expect(screen.queryByText('结果类型待补充')).not.toBeInTheDocument()
+  })
 })

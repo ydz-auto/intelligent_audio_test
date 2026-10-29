@@ -27,12 +27,14 @@ import {
   buildPickDeviceView,
   buildPickResultTypeView,
   buildPickTaskTree,
+  buildPickTaskView,
   buildResultIndex,
   buildLeafFilterKey,
   isPendingResultType,
   PENDING_RESULT_TYPE_VALUE,
   resultTypeLabel,
   treeResultTypeVariety,
+  type PickTaskSubView,
 } from '@/domain/lib/pick-candidate-tree'
 import type { CherryPickTreeParams } from '@/infrastructure/api/cherry-pick-api'
 import type {
@@ -160,7 +162,8 @@ export function useCherryPickCandidateTree(
 export function usePickTrees(
   data: PickCandidateTree | undefined,
   org: PickOrgDimension = 'group',
-  subView: PickSubView = 'flat'
+  subView: PickSubView = 'flat',
+  taskSubView: PickTaskSubView = 'case'
 ) {
   return useMemo(
     () => ({
@@ -170,10 +173,12 @@ export function usePickTrees(
       caseView: buildPickCaseView(data),
       deviceView: buildPickDeviceView(data, org, subView),
       resultTypeView: buildPickResultTypeView(data, org, subView),
+      /** 任务视图（B 组：任务首级 + 三子模式） */
+      taskView: buildPickTaskView(data, taskSubView, org, subView),
       resultTypeVariety: treeResultTypeVariety(data),
       index: buildResultIndex(data),
     }),
-    [data, org, subView]
+    [data, org, subView, taskSubView]
   )
 }
 

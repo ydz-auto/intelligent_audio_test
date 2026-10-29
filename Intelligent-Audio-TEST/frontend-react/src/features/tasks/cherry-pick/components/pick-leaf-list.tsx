@@ -22,7 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { LeafRow } from '@/features/tasks/cherry-pick/components/pick-leaf-row'
 
 /** 候选行 → 叶行（缺名兜底：用例查不到 → 「未知用例」，不裸显 UUID） */
-function toLeaf(
+export function candidateRowToLeaf(
   row: {
     resultId: number
     taskName: string
@@ -61,6 +61,10 @@ export interface PickLeafListProps {
   selectedIds: ReadonlySet<number>
   onToggleLeaf: (leaf: PickTreeLeaf) => void
   showLeafTask?: boolean
+  /** 树内叶行：设备/API 名由上级「设备/API」层已显示，叶行不重复 */
+  hideDevice?: boolean
+  /** 树内叶行：结果类型由上级「result_type」层已显示，叶行不重复 */
+  hideResultType?: boolean
 }
 
 /** 节点下的结果行分页列表（每节点独立翻页状态；切节点回到第 1 页） */
@@ -69,6 +73,8 @@ export function PickLeafList({
   selectedIds,
   onToggleLeaf,
   showLeafTask,
+  hideDevice = false,
+  hideResultType = false,
 }: PickLeafListProps) {
   const filterKey = buildLeafFilterKey(filter)
   const [page, setPage] = useState(1)
@@ -79,7 +85,7 @@ export function PickLeafList({
   const query = usePickLeafPage(filter, page)
   const addedResultIds = usePickCartStore((s) => s.resultIdSet)
   const leaves = useMemo(
-    () => (query.data?.items ?? []).map((row) => toLeaf(row, addedResultIds)),
+    () => (query.data?.items ?? []).map((row) => candidateRowToLeaf(row, addedResultIds)),
     [query.data, addedResultIds]
   )
 
@@ -123,6 +129,8 @@ export function PickLeafList({
           selected={selectedIds.has(leaf.resultId)}
           onToggle={onToggleLeaf}
           showLeafTask={showLeafTask}
+          hideDevice={hideDevice}
+          hideResultType={hideResultType}
         />
       ))}
       {total > LEAF_PAGE_SIZE && (

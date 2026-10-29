@@ -71,6 +71,8 @@ function LeafRow({
   onRemoveSingle,
   readOnly,
   renderTrailing,
+  hideDevice = false,
+  hideResultType = false,
 }: {
   leaf: CartTreeLeaf
   selected: boolean
@@ -80,6 +82,10 @@ function LeafRow({
   readOnly: boolean
   /** 叶行尾部附加内容（容器组成区：源结果 id / 评估状态 / 时间 / 溯源钮，§5.5.3） */
   renderTrailing?: (leaf: CartTreeLeaf) => ReactNode
+  /** 树内叶行：设备/API 名由上级「设备/API」层已显示，叶行不重复 */
+  hideDevice?: boolean
+  /** 树内叶行：结果类型由上级「result_type」层已显示，叶行不重复 */
+  hideResultType?: boolean
 }) {
   return (
     <div
@@ -93,22 +99,27 @@ function LeafRow({
           aria-label={`条目 ${leaf.entryId}`}
         />
       )}
-      {/* INT-2098：叶行不重复显示用例名（用例卡已展示），设备/API 名升为主列 */}
-      <span className='min-w-0 flex-1 truncate font-medium'>
-        {leaf.deviceName ?? leaf.apiName ?? '—'}
-      </span>
-      {leaf.resultType ? (
-        <Badge variant='outline' className='font-mono text-[10px]'>
-          {leaf.resultType}
-        </Badge>
+      {/* INT-2098：叶行不重复显示用例名（用例卡已展示）；树内设备/API 名归上级层，叶行留空占位 */}
+      {hideDevice ? (
+        <span className='flex-1' />
       ) : (
-        <span
-          className='text-muted-foreground/60 shrink-0 text-[10px]'
-          title='结果类型待后端接口（§11-5）'
-        >
-          结果类型待补充
+        <span className='min-w-0 flex-1 truncate font-medium'>
+          {leaf.deviceName ?? leaf.apiName ?? '—'}
         </span>
       )}
+      {!hideResultType &&
+        (leaf.resultType ? (
+          <Badge variant='outline' className='font-mono text-[10px]'>
+            {leaf.resultType}
+          </Badge>
+        ) : (
+          <span
+            className='text-muted-foreground/60 shrink-0 text-[10px]'
+            title='结果类型待后端接口（§11-5）'
+          >
+            结果类型待补充
+          </span>
+        ))}
       <StatusBadge
         label={executionLabel(leaf.executionStatus)}
         variant={executionVariant(leaf.executionStatus)}
@@ -155,13 +166,31 @@ interface BranchRowProps {
   onRemoveEntry: (entryId: string) => void
   readOnly: boolean
   /** 用例层组织：children 全为用例级分支时改由组织列表渲染（用例视图 / 任务视图用例子模式） */
-  renderCaseLayer?: (branches: CartTreeBranch[]) => ReactNode
+  renderCaseLayer?: (branches: CartTreeBranch[], hasResultTypeAbove: boolean) => ReactNode
   /** 用例卡节点渲染（CaseCard） */
-  renderCaseNode: (branch: CartTreeBranch) => ReactNode
+  renderCaseNode: (branch: CartTreeBranch, hasResultTypeAbove: boolean) => ReactNode
   /** 叶行尾部附加内容（容器组成区，§5.5.3） */
   renderTrailing?: (leaf: CartTreeLeaf) => ReactNode
   /** 分支节点计数后缀（容器组成区：失败计数「· 失败 {f}」，§5.5.4） */
   renderBranchExtra?: (branch: CartTreeBranch) => ReactNode
+  /** 上级链路是否已渲染「result_type」层（叶行不再重复结果类型） */
+  ancestorHasResultType?: boolean
+}
+
+/** 叶层统计（children 全为叶时的状态分布；单条时直接上收父行） */
+function leafLayerStats(branch: CartTreeBranch) {
+  if (branch.children.length === 0) return null
+  if (!branch.children.every((c) => c.kind === 'leaf')) return null
+  const leaves = branch.children as CartTreeLeaf[]
+  const completed = leaves.filter((l) => l.executionStatus === 'completed').length
+  const failed = leaves.filter((l) => l.executionStatus === 'failed').length
+  return {
+    total: leaves.length,
+    completed,
+    failed,
+    stopped: leaves.length - completed - failed,
+    single: leaves.length === 1 ? leaves[0] : null,
+  }
 }
 
 function BranchRow({
@@ -179,11 +208,39 @@ function BranchRow({
   renderCaseNode,
   renderTrailing,
   renderBranchExtra,
+  ancestorHasResultType = false,
 }: BranchRowProps) {
   const state = getCartBranchSelectionState(branch, selectedEntryIds)
   const hasChildren = branch.children.length > 0
   const open = openKeys.has(branch.key)
   const indent = depth * 14 + 4
+  /** 当前节点及其上级是否已显示 result_type（叶行按此决定是否重复该层信息） */
+  const hasResultTypeAbove = ancestorHasResultType || branch.level === 'resultType'
+  /** 叶层状态汇总（叶子已在快照里，本地统计即可；容器组成区同样适用） */
+  const stats = leafLayerStats(branch)
+  /** 单条叶上收本行：本行即完整信息，不再展开（勾选/移除由本行承担） */
+  const mergedSingle = stats?.single ?? null
+  const expand = hasChildren && mergedSingle == null
+  /** 叶层状态徽章（单条=该条状态；多条=分布/部分失败。容器已有「· 失败 f」后缀时不重复） */
+  const summaryBadge = stats
+    ? stats.single
+      ? {
+          label: executionLabel(stats.single.executionStatus),
+          variant: executionVariant(stats.single.executionStatus),
+        }
+      : renderBranchExtra
+        ? null
+        : stats.completed === stats.total
+          ? { label: `已完成 ${stats.total}`, variant: 'success' as const }
+          : stats.failed === stats.total
+            ? { label: `执行失败 ${stats.total}`, variant: 'danger' as const }
+            : stats.stopped === stats.total
+              ? { label: `已停止 ${stats.total}`, variant: 'neutral' as const }
+              : {
+                  label: `部分失败 ${stats.failed + stats.stopped}/${stats.total}`,
+                  variant: 'warning' as const,
+                }
+    : null
 
   /** 用例层（children 全为用例级分支 → 走组织列表，替代内联文本行） */
   const caseLayerChildren =
@@ -204,12 +261,12 @@ function BranchRow({
               variant='ghost'
               size='icon-xs'
               aria-label={open ? '收起' : '展开'}
-              disabled={!hasChildren}
+              disabled={!expand}
               className='text-muted-foreground shrink-0'
             />
           }
         >
-          {hasChildren ? (
+          {expand ? (
             open ? (
               <ChevronDown aria-hidden='true' className='size-3.5' />
             ) : (
@@ -249,6 +306,16 @@ function BranchRow({
         <Badge variant='secondary' className='shrink-0 font-mono text-[10px]'>
           {branch.count} 条
         </Badge>
+        {summaryBadge && (
+          <StatusBadge label={summaryBadge.label} variant={summaryBadge.variant} />
+        )}
+        {mergedSingle?.invalid && (
+          <span className='text-destructive shrink-0 text-[11px]' title='源结果已删除'>
+            已失效
+          </span>
+        )}
+        {/* 单条上收：叶行尾部信息（源结果 #id / 评估 / 溯源）跟到本行 */}
+        {mergedSingle && renderTrailing?.(mergedSingle)}
         {renderBranchExtra?.(branch)}
         {!readOnly && (
           <Button
@@ -262,11 +329,11 @@ function BranchRow({
           </Button>
         )}
       </div>
-      {hasChildren && (
+      {expand && (
         <CollapsibleContent>
           <div className='flex flex-col'>
             {caseLayerChildren ? (
-              renderCaseLayer?.(caseLayerChildren)
+              renderCaseLayer?.(caseLayerChildren, hasResultTypeAbove)
             ) : (
               branch.children.map((child) =>
                 child.kind === 'leaf' ? (
@@ -278,9 +345,14 @@ function BranchRow({
                     onRemoveSingle={onRemoveEntry}
                     readOnly={readOnly}
                     renderTrailing={renderTrailing}
+                    /* 购物车树各视图的设备/API 层恒在叶之上；结果类型仅在树上有该层时不重复 */
+                    hideDevice
+                    hideResultType={hasResultTypeAbove}
                   />
                 ) : child.level === 'case' ? (
-                  <div key={child.key}>{renderCaseNode(child)}</div>
+                  <div key={child.key}>
+                    {renderCaseNode(child, hasResultTypeAbove)}
+                  </div>
                 ) : (
                   <BranchRow
                     key={child.key}
@@ -298,6 +370,7 @@ function BranchRow({
                     renderCaseNode={renderCaseNode}
                     renderTrailing={renderTrailing}
                     renderBranchExtra={renderBranchExtra}
+                    ancestorHasResultType={hasResultTypeAbove}
                   />
                 )
               )
@@ -421,7 +494,7 @@ export function CartTree({
   }
 
   /** 用例节点（CaseCard compact，§4.2/§3.8.4）+ 卡内子树 */
-  const renderCaseNode = (branch: CartTreeBranch) => {
+  const renderCaseNode = (branch: CartTreeBranch, hasResultTypeAbove: boolean) => {
     const open = openKeys.has(branch.key)
     return (
       <PickCaseCard
@@ -462,6 +535,8 @@ export function CartTree({
                   onRemoveSingle={onRemoveEntry}
                   readOnly={readOnly}
                   renderTrailing={renderLeafTrailing}
+                  hideDevice
+                  hideResultType={hasResultTypeAbove}
                 />
               ) : (
                 <BranchRow
@@ -479,6 +554,7 @@ export function CartTree({
                   renderCaseNode={renderCaseNode}
                   renderTrailing={renderLeafTrailing}
                   renderBranchExtra={renderBranchExtra}
+                  ancestorHasResultType={hasResultTypeAbove}
                 />
               )
             )}
@@ -489,7 +565,7 @@ export function CartTree({
   }
 
   /** 用例层组织列表（分组/标签 + 平铺/交叉）：用例卡片流，勾选/移除矩阵不变 */
-  const renderCaseOrgLayer = (branches: CartTreeBranch[]) => {
+  const renderCaseOrgLayer = (branches: CartTreeBranch[], hasResultTypeAbove: boolean) => {
     const caseItems: CartCaseOrgItem[] = branches.map((b) => ({
       branch: b,
       tags: b.tags ?? [],
@@ -502,7 +578,11 @@ export function CartTree({
 
     const renderGroupBody = (cases: CartCaseOrgItem[], groupKey: string) => {
       if (subView === 'flat') {
-        return <div className='space-y-2'>{cases.map((c) => renderCaseNode(c.branch))}</div>
+        return (
+          <div className='space-y-2'>
+            {cases.map((c) => renderCaseNode(c.branch, hasResultTypeAbove))}
+          </div>
+        )
       }
       const subGroups =
         org === 'group' ? groupCasesByTag(cases, []) : groupCasesByCaseGroup(cases)
@@ -514,7 +594,9 @@ export function CartTree({
                 group={g}
                 muted={g.key === '__untagged__' || g.key === '__ungrouped__'}
               />
-              <div className='space-y-2'>{g.cases.map((c) => renderCaseNode(c.branch))}</div>
+              <div className='space-y-2'>
+                {g.cases.map((c) => renderCaseNode(c.branch, hasResultTypeAbove))}
+              </div>
             </div>
           ))}
         </div>
@@ -548,7 +630,11 @@ export function CartTree({
   }
 
   /** 子项统一渲染（所有视图共用；depth 从顶向下递增） */
-  const renderCartItem = (item: CartTreeItem, depth: number) => {
+  const renderCartItem = (
+    item: CartTreeItem,
+    depth: number,
+    ancestorHasResultType = false
+  ) => {
     if (item.kind === 'leaf') {
       return (
         <LeafRow
@@ -559,11 +645,14 @@ export function CartTree({
           onRemoveSingle={onRemoveEntry}
           readOnly={readOnly}
           renderTrailing={renderLeafTrailing}
+          hideResultType={ancestorHasResultType}
         />
       )
     }
     if (item.level === 'case') {
-      return <div key={item.key}>{renderCaseNode(item)}</div>
+      return (
+        <div key={item.key}>{renderCaseNode(item, ancestorHasResultType)}</div>
+      )
     }
     return (
       <BranchRow
@@ -582,6 +671,7 @@ export function CartTree({
         renderCaseNode={renderCaseNode}
         renderTrailing={renderLeafTrailing}
         renderBranchExtra={renderBranchExtra}
+        ancestorHasResultType={ancestorHasResultType}
       />
     )
   }
@@ -595,7 +685,7 @@ export function CartTree({
   return (
     <div className={cn('flex flex-col', className)}>
       {rootIsCaseLayer
-        ? renderCaseOrgLayer(items as CartTreeBranch[])
+        ? renderCaseOrgLayer(items as CartTreeBranch[], false)
         : items.map((item) => renderCartItem(item, 0))}
     </div>
   )

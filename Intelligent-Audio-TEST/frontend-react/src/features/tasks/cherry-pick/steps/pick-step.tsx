@@ -7,6 +7,7 @@
 import {
   ChevronsDownUp,
   ChevronsUpDown,
+  ClipboardList,
   ListChecks,
   Smartphone,
   Tag,
@@ -44,6 +45,7 @@ import {
 import {
   computeSelectionStatsFromIndex,
   invertVisibleSelection,
+  type PickTaskSubView,
 } from '@/domain/lib/pick-candidate-tree'
 import { excludeContainerTaskRows } from '@/domain/lib/container-composition'
 import { Button } from '@/components/ui/button'
@@ -58,8 +60,8 @@ import {
 import { PickTree } from '@/features/tasks/cherry-pick/components/pick-tree'
 import { SelectedSummaryBar } from '@/features/tasks/cherry-pick/components/selected-summary-bar'
 
-/** 阶段 2 三视图（§3.8.3：用例/设备/结果类型，任务维度由阶段 1 承载） */
-export type PickResultView = 'case' | 'device' | 'resultType'
+/** 阶段 2 视图（§3.8.3：任务视图 任务首级 + 用例/设备/结果类型 三视图任务末级） */
+export type PickResultView = 'task' | 'case' | 'device' | 'resultType'
 
 export function PickStep({
   filters,
@@ -76,9 +78,9 @@ export function PickStep({
   /** 批量「加入挑选」预选任务：非空 → 跳过阶段 1 直达阶段 2（§3.8.2/§6.1） */
   presetTaskIds?: number[]
 }) {
-  /** 阶段 1 服务端排序（INT-1496 sort_by/sort_order；取代原客户端状态权重排序） */
-  const [sortBy, setSortBy] = useState<PickableTaskSortBy>('status')
-  const [sortOrder, setSortOrder] = useState<PickableTaskSortOrder>('asc')
+  /** 阶段 1 服务端排序（INT-1496 sort_by/sort_order；默认「创建时间 + 倒序」，新跑任务排在前面） */
+  const [sortBy, setSortBy] = useState<PickableTaskSortBy>('created_at')
+  const [sortOrder, setSortOrder] = useState<PickableTaskSortOrder>('desc')
   // 阶段 1 任务清单（pickable-tasks 任务级聚合 + 服务端分页排序，不受阶段 2 任务筛选影响）
   const pickableTasksQuery = usePickableTasks({ sortBy, sortOrder })
   // §5.5.5（INT-1717）：容器本身不进阶段 1 可挑选清单。后端 pickable-tasks 任务级聚合
@@ -97,13 +99,16 @@ export function PickStep({
     enabled: phase === 'results',
   })
   const options = usePickFilterOptions(phase === 'results', candidatesQuery.data)
-  /** §3.8.3 用例层组织（三视图共享：分组/标签 + 平铺/交叉，阶段 2 会话态，usePickOrg） */
+  /** §3.8.3 用例层组织（三视图 + 任务视图三子模式共享：分组/标签 + 平铺/交叉，阶段 2 会话态，usePickOrg） */
   const { org, subView, setOrg, setSubView } = usePickOrg()
+  /** 任务视图子模式（任务首级，下分 用例 / 设备 / 结果类型） */
+  const [taskSubView, setTaskSubView] = useState<PickTaskSubView>('case')
   // 三视图/任务树全部由服务端候选树重排（INT-1694 口径：任务末级 / 组织层 / 用例卡）
-  const trees = usePickTrees(candidatesQuery.data, org, subView)
+  const trees = usePickTrees(candidatesQuery.data, org, subView, taskSubView)
   const caseView = trees.caseView
   const deviceView = trees.deviceView
   const resultTypeView = trees.resultTypeView
+  const taskView = trees.taskView
   /** 结果类型只有 1 种时不渲染「结果类型视图」入口（负责人 2026-10-24T12:39Z 追加口径） */
   const resultTypeVariety = trees.resultTypeVariety
   const addEntries = usePickCartStore((s) => s.addEntries)
@@ -161,12 +166,13 @@ export function PickStep({
     [selectedTaskIds, taskNameById]
   )
 
-  /** 当前视图树（用例/设备/结果类型，三视图共享同一 selectedResultIds） */
+  /** 当前视图树（任务 / 用例 / 设备 / 结果类型，四视图共享同一 selectedResultIds） */
   const currentTree = useMemo<PickTreeItem[]>(() => {
+    if (view === 'task') return taskView
     if (view === 'case') return caseView
     if (view === 'device') return deviceView
     return resultTypeView
-  }, [view, caseView, deviceView, resultTypeView])
+  }, [view, taskView, caseView, deviceView, resultTypeView])
 
   const stats = useMemo(
     () => computeSelectionStatsFromIndex(trees.index, selectedIds),
@@ -303,6 +309,15 @@ export function PickStep({
       <div className='flex flex-wrap items-center gap-2'>
         <div className='bg-muted/60 flex items-center gap-0.5 rounded-lg p-0.5'>
           <Button
+            variant={view === 'task' ? 'default' : 'ghost'}
+            size='sm'
+            className='h-6 gap-1 px-2 text-xs'
+            onClick={() => setView('task')}
+          >
+            <ClipboardList aria-hidden='true' className='size-3.5' />
+            任务视图
+          </Button>
+          <Button
             variant={view === 'case' ? 'default' : 'ghost'}
             size='sm'
             className='h-6 gap-1 px-2 text-xs'
@@ -332,6 +347,40 @@ export function PickStep({
             </Button>
           )}
         </div>
+        {/* 任务视图子模式（任务首级，下分 用例 / 设备 / 结果类型，§3.8.3 B 组） */}
+        {view === 'task' && (
+          <div className='bg-muted/60 flex items-center gap-0.5 rounded-lg p-0.5'>
+            <Button
+              variant={taskSubView === 'case' ? 'default' : 'ghost'}
+              size='sm'
+              className='h-6 gap-1 px-2 text-xs'
+              onClick={() => setTaskSubView('case')}
+            >
+              <ListChecks aria-hidden='true' className='size-3.5' />
+              用例
+            </Button>
+            <Button
+              variant={taskSubView === 'device' ? 'default' : 'ghost'}
+              size='sm'
+              className='h-6 gap-1 px-2 text-xs'
+              onClick={() => setTaskSubView('device')}
+            >
+              <Smartphone aria-hidden='true' className='size-3.5' />
+              设备
+            </Button>
+            {resultTypeVariety && (
+              <Button
+                variant={taskSubView === 'resultType' ? 'default' : 'ghost'}
+                size='sm'
+                className='h-6 gap-1 px-2 text-xs'
+                onClick={() => setTaskSubView('resultType')}
+              >
+                <Tag aria-hidden='true' className='size-3.5' />
+                结果类型
+              </Button>
+            )}
+          </div>
+        )}
         <Button
           variant='ghost'
           size='sm'
@@ -400,8 +449,8 @@ export function PickStep({
             algorithmLabels={algorithmLabels}
           />
         ) : (
-          // 设备/结果类型视图：顶/二层分支行 + result_type/设备 节点下的**组织层**
-          // （分组/标签组头 → 用例卡 → 任务 → 叶，树由 buildPickDeviceView / buildPickResultTypeView 构建）
+          // 任务/设备/结果类型视图：分支行 + 组织层（分组/标签组头 → 用例卡 → 叶，
+          // 树由 buildPickTaskView / buildPickDeviceView / buildPickResultTypeView 构建）
           <div className='flex min-h-0 flex-col'>
             <div className='border-b py-2'>
               <PickCaseOrgControls
@@ -413,7 +462,7 @@ export function PickStep({
             </div>
             <PickTree
               className='p-2'
-              items={view === 'device' ? deviceView : resultTypeView}
+              items={currentTree}
               selectedIds={selectedIds}
               onToggleLeaf={handleToggleLeaf}
               onToggleBranch={handleToggleBranch}

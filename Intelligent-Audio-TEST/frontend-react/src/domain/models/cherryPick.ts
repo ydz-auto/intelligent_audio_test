@@ -49,6 +49,21 @@ export interface CherryPickCandidate {
   createdAt: string | null
 }
 
+/** 结果级执行状态分布（后端 candidates/tree 聚合下发，节点行状态汇总数据源） */
+export interface PickStatusCounts {
+  completed: number
+  failed: number
+  stopped: number
+  skipped: number
+}
+
+/** 节点状态汇总：执行状态分布 + 已评估数 + 末条结果时间（count=1 时即那一条的状态） */
+export interface PickNodeSummary {
+  executionStatusCounts: PickStatusCounts
+  evaluatedCount: number
+  lastResultAt: string | null
+}
+
 /** 挑选树节点——分支（分组级） */
 export interface PickTreeBranch {
   kind: 'branch'
@@ -59,6 +74,8 @@ export interface PickTreeBranch {
   /** 本节点全部子孙结果 id 快照（勾选/取消整组用） */
   resultIds: number[]
   children: PickTreeItem[]
+  /** 节点状态汇总（叶父级行直接渲染，不再逐节点探测叶明细） */
+  summary?: PickNodeSummary
   /** 用例级：case_id（CaseIdBadge 复制展示，§3.7.1） */
   caseId?: string
   /** 用例级：算法类型（§3.7.1 算法徽章） */
@@ -158,6 +175,7 @@ export interface PickTreeResultTypeNode {
   resultType: string
   count: number
   resultIds: number[]
+  summary?: PickNodeSummary
 }
 
 /** 树节点：设备/API（device_id 与 api_id 二选一） */
@@ -166,6 +184,7 @@ export interface PickTreeDeviceNode {
   apiId: number | null
   count: number
   resultTypes: PickTreeResultTypeNode[]
+  summary?: PickNodeSummary
 }
 
 /** 树节点：用例 */
@@ -173,6 +192,7 @@ export interface PickTreeCaseNode {
   caseId: string
   count: number
   devices: PickTreeDeviceNode[]
+  summary?: PickNodeSummary
 }
 
 /** 树节点：任务 */
@@ -180,6 +200,7 @@ export interface PickTreeTaskNode {
   taskId: number
   count: number
   cases: PickTreeCaseNode[]
+  summary?: PickNodeSummary
 }
 
 /** 阶段 2 候选树（tree 端点返回的领域形态） */

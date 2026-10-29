@@ -21,12 +21,13 @@ import { useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 
 import type {
+  PickNodeSummary,
   PickTreeBranch,
   PickTreeItem,
   PickTreeLeaf,
 } from '@/domain/models/cherryPick'
 import { getBranchSelectionState } from '@/domain/lib/cherry-pick-tree'
-import { isLeafParentBranch } from '@/domain/lib/pick-candidate-tree'
+import { isLeafParentBranch, resultTypeLabel } from '@/domain/lib/pick-candidate-tree'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -36,6 +37,8 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
+import { formatPickDateTime } from '@/features/tasks/cherry-pick/constants'
 import { LeafRow } from '@/features/tasks/cherry-pick/components/pick-leaf-row'
 import { PickLeafList } from '@/features/tasks/cherry-pick/components/pick-leaf-list'
 import { PickCaseCard } from '@/features/tasks/cherry-pick/components/pick-case-card'
@@ -74,6 +77,62 @@ function CaseIdBadge({ caseId }: { caseId: string }) {
   )
 }
 
+/** 节点状态汇总（后端 tree 聚合下发）：count=1 → 该条结果状态；count>1 → 分布/部分失败 */
+function NodeSummaryMeta({
+  summary,
+  count,
+}: {
+  summary: PickNodeSummary
+  count: number
+}) {
+  const counts = summary.executionStatusCounts
+  const failed = counts.failed + counts.stopped
+  const pending = Math.max(0, count - summary.evaluatedCount)
+
+  if (count === 1) {
+    const status = counts.completed === 1
+      ? { label: '已完成', variant: 'success' as const }
+      : counts.failed === 1
+        ? { label: '执行失败', variant: 'danger' as const }
+        : counts.stopped === 1
+          ? { label: '已停止', variant: 'neutral' as const }
+          : { label: '已跳过', variant: 'neutral' as const }
+    return (
+      <>
+        <StatusBadge label={status.label} variant={status.variant} />
+        <StatusBadge
+          label={pending > 0 ? '待评估' : '已评估完成'}
+          variant={pending > 0 ? 'neutral' : 'success'}
+        />
+        {summary.lastResultAt && (
+          <span className='text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap tabular-nums'>
+            {formatPickDateTime(summary.lastResultAt)}
+          </span>
+        )}
+      </>
+    )
+  }
+
+  const overall =
+    counts.completed === count
+      ? { label: `已完成 ${count}`, variant: 'success' as const }
+      : counts.failed === count
+        ? { label: `执行失败 ${count}`, variant: 'danger' as const }
+        : counts.stopped === count
+          ? { label: `已停止 ${count}`, variant: 'neutral' as const }
+          : { label: `部分失败 ${failed}/${count}`, variant: 'warning' as const }
+  return (
+    <>
+      <StatusBadge label={overall.label} variant={overall.variant} />
+      {pending > 0 ? (
+        <StatusBadge label={`待评估 ${pending}`} variant='neutral' />
+      ) : (
+        <StatusBadge label='已评估完成' variant='success' />
+      )}
+    </>
+  )
+}
+
 function BranchRow({
   branch,
   selectedIds,
@@ -83,6 +142,7 @@ function BranchRow({
   onToggleLeaf,
   onToggleBranch,
   renderCaseNode,
+  ancestorHasResultType = false,
 }: {
   branch: PickTreeBranch
   selectedIds: ReadonlySet<number>
@@ -92,7 +152,12 @@ function BranchRow({
   onToggleLeaf: (leaf: PickTreeLeaf) => void
   onToggleBranch: (branch: PickTreeBranch, select: boolean) => void
   /** 用例卡渲染（INT-1694：用例节点 = CaseCard compact，组织层组头下挂用例卡） */
-  renderCaseNode?: (branch: PickTreeBranch) => ReactNode
+  renderCaseNode?: (
+    branch: PickTreeBranch,
+    ancestorHasResultType: boolean
+  ) => ReactNode
+  /** 上级链路是否已渲染「result_type」层（叶行不再重复结果类型） */
+  ancestorHasResultType?: boolean
 }) {
   const state = getBranchSelectionState(branch, selectedIds)
   const Icon = isApiDeviceBranch(branch) ? ArrowLeftRight : LEVEL_ICONS[branch.level]
@@ -101,6 +166,11 @@ function BranchRow({
   const hasChildren = branch.children.length > 0 || isLeafParent
   const open = openKeys.has(branch.key)
   const indent = depth * 14 + 4
+  /** 当前节点及其上级是否已显示 result_type（叶行按此决定是否重复该层信息） */
+  const hasResultTypeAbove = ancestorHasResultType || branch.level === 'resultType'
+  /** 叶父级已有后端状态汇总：count=1 时本行即完整信息，不再展开（无需预取/探测） */
+  const hasLeafSummary = isLeafParent && branch.summary != null
+  const expandable = hasChildren && !(hasLeafSummary && branch.count === 1)
 
   return (
     <Collapsible open={open} onOpenChange={() => onToggleOpen(branch.key)}>
@@ -115,12 +185,12 @@ function BranchRow({
               variant='ghost'
               size='icon-xs'
               aria-label={open ? '收起' : '展开'}
-              disabled={!hasChildren}
+              disabled={!expandable}
               className='text-muted-foreground shrink-0'
             />
           }
         >
-          {hasChildren ? (
+          {expandable ? (
             open ? (
               <ChevronDown aria-hidden='true' className='size-3.5' />
             ) : (
@@ -166,8 +236,17 @@ function BranchRow({
         <Badge variant='secondary' className='shrink-0 font-mono text-[10px]'>
           {branch.count} 条
         </Badge>
+        {/* 单结果 / 多结果：节点状态汇总直接渲染（后端 tree 聚合，不再逐节点探测） */}
+        {hasLeafSummary && !hasResultTypeAbove && branch.leafFilter?.resultType && (
+          <Badge variant='outline' className='shrink-0 font-mono text-[10px]'>
+            {resultTypeLabel(branch.leafFilter.resultType)}
+          </Badge>
+        )}
+        {hasLeafSummary && (
+          <NodeSummaryMeta summary={branch.summary!} count={branch.count} />
+        )}
       </div>
-      {hasChildren && (
+      {expandable && (
         <CollapsibleContent>
           <div className='flex flex-col'>
             {isLeafParent ? (
@@ -177,6 +256,9 @@ function BranchRow({
                 onToggleLeaf={onToggleLeaf}
                 /* 任务层已渲染（level=task）时叶行不必重复任务名；单任务省略任务层时补上消歧 */
                 showLeafTask={branch.level !== 'task'}
+                /* 设备/API 层恒在叶之上；结果类型仅在树上有该层时不重复 */
+                hideDevice
+                hideResultType={hasResultTypeAbove}
               />
             ) : (
               branch.children.map((child) =>
@@ -190,7 +272,9 @@ function BranchRow({
                     hideResultType
                   />
                 ) : child.level === 'case' && renderCaseNode ? (
-                  <div key={child.key}>{renderCaseNode(child)}</div>
+                  <div key={child.key}>
+                    {renderCaseNode(child, hasResultTypeAbove)}
+                  </div>
                 ) : (
                   <BranchRow
                     key={child.key}
@@ -202,6 +286,7 @@ function BranchRow({
                     onToggleLeaf={onToggleLeaf}
                     onToggleBranch={onToggleBranch}
                     renderCaseNode={renderCaseNode}
+                    ancestorHasResultType={hasResultTypeAbove}
                   />
                 )
               )
@@ -238,6 +323,8 @@ export interface PickTreeProps {
   /** 算法类型码 → 中文名（真实 /algorithm/options；子树用例卡徽章共用，INT-1687） */
   algorithmLabels?: Record<string, string>
   className?: string
+  /** 上层已渲染「result_type」层（嵌套下传；叶行不再重复该层信息） */
+  ancestorHasResultType?: boolean
 }
 
 /**
@@ -254,6 +341,7 @@ export function PickTree({
   expandSignal,
   algorithmLabels,
   className,
+  ancestorHasResultType = false,
 }: PickTreeProps) {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set())
   const [lastSignal, setLastSignal] = useState<{ all: boolean; tick: number } | null>(
@@ -274,7 +362,10 @@ export function PickTree({
     })
 
   /** 用例节点（CaseCard compact，§3.8.4 全站用例显示统一）+ 卡内子树 */
-  const renderCaseNode = (branch: PickTreeBranch) => {
+  const renderCaseNode = (
+    branch: PickTreeBranch,
+    hasResultTypeAbove: boolean
+  ) => {
     const open = openKeys.has(branch.key)
     const isLeafParent = isLeafParentBranch(branch)
     return (
@@ -302,6 +393,8 @@ export function PickTree({
                 selectedIds={selectedIds}
                 onToggleLeaf={onToggleLeaf}
                 showLeafTask
+                hideDevice
+                hideResultType={hasResultTypeAbove}
               />
             ) : (
               <PickTree
@@ -311,6 +404,7 @@ export function PickTree({
                 onToggleBranch={onToggleBranch}
                 expandSignal={expandSignal}
                 algorithmLabels={algorithmLabels}
+                ancestorHasResultType={hasResultTypeAbove}
               />
             )}
           </div>
@@ -332,7 +426,7 @@ export function PickTree({
             hideResultType
           />
         ) : item.level === 'case' ? (
-          <div key={item.key}>{renderCaseNode(item)}</div>
+          <div key={item.key}>{renderCaseNode(item, ancestorHasResultType)}</div>
         ) : (
           <BranchRow
             key={item.key}
@@ -344,6 +438,7 @@ export function PickTree({
             onToggleLeaf={onToggleLeaf}
             onToggleBranch={onToggleBranch}
             renderCaseNode={renderCaseNode}
+            ancestorHasResultType={ancestorHasResultType}
           />
         )
       )}

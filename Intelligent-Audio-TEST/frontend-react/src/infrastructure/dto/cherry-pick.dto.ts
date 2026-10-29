@@ -105,15 +105,30 @@ export interface CherryPickTreeApiMetaDto {
   api_name: string | null
 }
 
+/** 节点状态汇总（tree 各节点下发；count=1 即该条结果的状态） */
+export interface CherryPickTreeSummaryFieldsDto {
+  /** 结果级执行状态分布（completed/failed/stopped/skipped） */
+  execution_status_counts?: {
+    completed: number
+    failed: number
+    stopped: number
+    skipped: number
+  }
+  /** 已评估结果数（评估域存在性口径） */
+  evaluated_count?: number
+  /** 该节点末条结果时间（ISO 8601） */
+  last_result_at?: string | null
+}
+
 /** tree[].cases[].devices[].result_types[]（每个节点带该节点全部 result_id） */
-export interface CherryPickTreeResultTypeNodeDto {
+export interface CherryPickTreeResultTypeNodeDto extends CherryPickTreeSummaryFieldsDto {
   result_type: string
   count: number
   result_ids: number[]
 }
 
 /** tree[].cases[].devices[]（device_id / api_id 二选一） */
-export interface CherryPickTreeDeviceNodeDto {
+export interface CherryPickTreeDeviceNodeDto extends CherryPickTreeSummaryFieldsDto {
   device_id: number | null
   api_id: number | null
   count: number
@@ -121,14 +136,14 @@ export interface CherryPickTreeDeviceNodeDto {
 }
 
 /** tree[].cases[] */
-export interface CherryPickTreeCaseNodeDto {
+export interface CherryPickTreeCaseNodeDto extends CherryPickTreeSummaryFieldsDto {
   case_id: string
   count: number
   devices: CherryPickTreeDeviceNodeDto[]
 }
 
 /** tree[] */
-export interface CherryPickTreeTaskNodeDto {
+export interface CherryPickTreeTaskNodeDto extends CherryPickTreeSummaryFieldsDto {
   task_id: number
   count: number
   cases: CherryPickTreeCaseNodeDto[]

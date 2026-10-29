@@ -19,6 +19,7 @@ import {
   buildPickDeviceView,
   buildPickResultTypeView,
   buildPickTaskTree,
+  buildPickTaskView,
   buildResultIndex,
   computeSelectionStatsFromIndex,
   displayCaseName,
@@ -530,5 +531,60 @@ describe('结果类型种类判定（<2 种隐藏结果类型视图入口）', (
     expect(treeResultTypeVariety(TREE)).toBe(true)
     expect(treeResultTypeVariety(SINGLE_TYPE_TREE)).toBe(false)
     expect(treeResultTypeVariety(undefined)).toBe(false)
+  })
+})
+
+describe('buildPickTaskView（B 组任务视图：任务首级 + 三子模式）', () => {
+  it('任务在第 1 级，子树只含该任务条目（key 带 taskId 命名空间）', () => {
+    const branches = buildPickTaskView(TREE)
+    expect(branches.map((b) => b.level)).toEqual(['task', 'task'])
+    expect(branches[0].key).toBe('ptv-task:1042')
+    expect(branches[0].name).toBe('任务A')
+    expect(branches[0].count).toBe(5)
+    expect(branches[1].resultIds).toEqual([6])
+  })
+
+  it('用例子模式：任务 → 用例层组织 → 用例卡 → 设备 → result_type（叶过滤收窄到该任务）', () => {
+    const taskA = buildPickTaskView(TREE, 'case')[0]
+    const org = taskA.children[0] as PickTreeBranch
+    expect(org.level).toBe('caseOrg')
+    const caseC1 = org.children.find(
+      (c) => c.kind === 'branch' && c.caseId === 'c1'
+    ) as PickTreeBranch
+    expect(caseC1.level).toBe('case')
+    const device = caseC1.children[0] as PickTreeBranch
+    expect(device.level).toBe('device')
+    expect(device.name).toBe('设备-01')
+    const rt = device.children[0] as PickTreeBranch
+    expect(rt.level).toBe('resultType')
+    expect(rt.name).toBe('real-time')
+    expect(rt.leafFilter?.taskIds).toEqual([1042])
+    expect(rt.leafFilter?.caseIds).toEqual(['c1'])
+  })
+
+  it('设备子模式：任务 → 设备/API → result_type → 组织 → 用例卡（叶父级按任务收窄）', () => {
+    const taskA = buildPickTaskView(TREE, 'device')[0]
+    const device = taskA.children[0] as PickTreeBranch
+    expect(device.level).toBe('device')
+    const rt = device.children[0] as PickTreeBranch
+    expect(rt.level).toBe('resultType')
+    expect(rt.name).toBe('real-time')
+    const org = rt.children[0] as PickTreeBranch
+    expect(org.level).toBe('caseOrg')
+    const caseC1 = org.children[0] as PickTreeBranch
+    expect(caseC1.level).toBe('case')
+    expect(isLeafParentBranch(caseC1)).toBe(true)
+    expect(caseC1.leafFilter?.taskIds).toEqual([1042])
+  })
+
+  it('结果类型子模式：任务 → result_type → 设备/API → 组织 → 用例卡', () => {
+    const taskA = buildPickTaskView(TREE, 'resultType')[0]
+    const rt = taskA.children.find(
+      (c) => c.kind === 'branch' && c.level === 'resultType'
+    ) as PickTreeBranch
+    expect(rt.name).toBe('real-time')
+    const device = rt.children[0] as PickTreeBranch
+    expect(device.level).toBe('device')
+    expect((device.children[0] as PickTreeBranch).level).toBe('caseOrg')
   })
 })

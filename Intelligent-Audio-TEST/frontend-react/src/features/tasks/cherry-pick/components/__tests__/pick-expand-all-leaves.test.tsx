@@ -8,7 +8,7 @@
  * ③ 骨架节点（用例卡 / 设备 / result_type）该展开的仍然展开，不因跳过叶父级而漏展开。
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -243,6 +243,58 @@ describe('「全部展开」不触发叶明细请求（INT-1819 P1 守卫）', (
     fireEvent.click(screen.getByRole('button', { name: '展开' }))
     await waitFor(() => expect(fetchPageMock).toHaveBeenCalledTimes(1))
     expect(fetchPageMock).toHaveBeenCalledWith(CASE_LEAF_PARENT.leafFilter, 1, 20)
+  })
+
+  it('count=1 且带后端汇总：状态直接渲染本行，无需展开也不再探测叶明细', () => {
+    const AUTO_PARENT = {
+      ...RT_LEAF_PARENT,
+      key: 'cv-rt:auto',
+      count: 1,
+      summary: {
+        executionStatusCounts: { completed: 1, failed: 0, stopped: 0, skipped: 0 },
+        evaluatedCount: 1,
+        lastResultAt: '2026-10-29T14:17:00',
+      },
+    }
+    render(
+      <PickTree
+        items={[AUTO_PARENT] as PickTreeItem[]}
+        selectedIds={new Set()}
+        onToggleLeaf={() => {}}
+        onToggleBranch={() => {}}
+      />,
+      { wrapper }
+    )
+    const row = screen.getByTestId('pick-branch-cv-rt:auto')
+    expect(within(row).getByText('已完成')).toBeInTheDocument()
+    expect(within(row).getByText('已评估完成')).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: '展开' })).toBeDisabled()
+    expect(fetchPageMock).not.toHaveBeenCalled()
+  })
+
+  it('count>1 且带后端汇总：本行显示分布（部分失败 x/n），仍可展开看明细', () => {
+    const MULTI = {
+      ...RT_LEAF_PARENT,
+      key: 'cv-rt:multi',
+      summary: {
+        executionStatusCounts: { completed: 5, failed: 1, stopped: 0, skipped: 0 },
+        evaluatedCount: 4,
+        lastResultAt: '2026-10-29T14:20:00',
+      },
+    }
+    render(
+      <PickTree
+        items={[MULTI] as PickTreeItem[]}
+        selectedIds={new Set()}
+        onToggleLeaf={() => {}}
+        onToggleBranch={() => {}}
+      />,
+      { wrapper }
+    )
+    const row = screen.getByTestId('pick-branch-cv-rt:multi')
+    expect(within(row).getByText('部分失败 1/6')).toBeInTheDocument()
+    expect(within(row).getByText('待评估 2')).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: '展开' })).not.toBeDisabled()
   })
 
   it('叶父级判定：携带 leafFilter 且无子节点（CollectAllKeys 跳过口径同源）', () => {

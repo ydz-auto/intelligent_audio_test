@@ -24,6 +24,47 @@ function leafResultTypeLabel(leaf: PickTreeLeaf): string {
   return resultTypeLabel(leaf.resultType)
 }
 
+/** 叶行尾部信息（结果类型 + 执行/评估状态 + 时间）——独立叶行与「单结果上收父级行」共用 */
+export function LeafTrailingMeta({
+  leaf,
+  hideResultType = false,
+}: {
+  leaf: PickTreeLeaf
+  /** 树内：结果类型由上级 result_type 层已显示，不再重复 */
+  hideResultType?: boolean
+}) {
+  const evalMeta = getEvaluationStatusMeta(leaf.evaluationStatus)
+  return (
+    <>
+      {!hideResultType && (
+        <Badge variant='outline' className='shrink-0 font-mono text-[10px]'>
+          {leafResultTypeLabel(leaf)}
+        </Badge>
+      )}
+      <StatusBadge
+        label={
+          leaf.executionStatus === 'completed'
+            ? '已完成'
+            : leaf.executionStatus === 'failed'
+              ? '执行失败'
+              : '已停止'
+        }
+        variant={
+          leaf.executionStatus === 'completed'
+            ? 'success'
+            : leaf.executionStatus === 'failed'
+              ? 'danger'
+              : 'neutral'
+        }
+      />
+      <StatusBadge label={evalMeta.label} variant={evalMeta.variant} pulse={evalMeta.pulse} />
+      <span className='text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap tabular-nums'>
+        {formatPickDateTime(leaf.createdAt)}
+      </span>
+    </>
+  )
+}
+
 export function LeafRow({
   leaf,
   selected,
@@ -42,7 +83,6 @@ export function LeafRow({
   /** 树内叶行：结果类型由上级「result_type」层已显示，叶行不再重复 */
   hideResultType?: boolean
 }) {
-  const evalMeta = getEvaluationStatusMeta(leaf.evaluationStatus)
   return (
     <div
       data-testid={`pick-leaf-${leaf.resultId}`}
@@ -68,31 +108,7 @@ export function LeafRow({
       ) : (
         <span className='min-w-0 flex-1 truncate font-medium'>{leafDeviceName(leaf)}</span>
       )}
-      {!hideResultType && (
-        <Badge variant='outline' className='font-mono text-[10px]'>
-          {leafResultTypeLabel(leaf)}
-        </Badge>
-      )}
-      <StatusBadge
-        label={
-          leaf.executionStatus === 'completed'
-            ? '已完成'
-            : leaf.executionStatus === 'failed'
-              ? '执行失败'
-              : '已停止'
-        }
-        variant={
-          leaf.executionStatus === 'completed'
-            ? 'success'
-            : leaf.executionStatus === 'failed'
-              ? 'danger'
-              : 'neutral'
-        }
-      />
-      <StatusBadge label={evalMeta.label} variant={evalMeta.variant} pulse={evalMeta.pulse} />
-      <span className='text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap tabular-nums'>
-        {formatPickDateTime(leaf.createdAt)}
-      </span>
+      <LeafTrailingMeta leaf={leaf} hideResultType={hideResultType} />
       {leaf.added && (
         <span className='text-muted-foreground/70 shrink-0 text-xs' title='已在购物车'>
           已加购

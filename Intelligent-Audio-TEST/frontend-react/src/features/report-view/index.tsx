@@ -67,6 +67,9 @@ const NAV: Record<'task' | 'comparison' | 'benchmark', ReadingNavSection[]> = {
   ],
 }
 
+/** 动态区块：仅当 summary.tables 非空时 TaskReportPanel 才渲染（§3.3.4），目录须同条件 */
+const COMPARISON_TABLES_SECTION_ID = 'report-comparison-tables'
+
 /**
  * 报告不存在的错误判定（INT-934）：后端 GET /reports/{id} 对不存在报告返回
  * HTTP 400 + envelope {code:404, message:"report not found"}（report_service
@@ -142,11 +145,15 @@ export function ReportViewPage() {
       isComparison ? [...NAV.comparison]
       : report?.type === 'benchmark' ? [...NAV.benchmark]
       : [...NAV.task]
+    // 对比表格是动态区块：summary.tables 为空时面板不渲染，目录不得出现死锚点
+    const visible = (report?.summary.tables?.length ?? 0) > 0
+      ? base
+      : base.filter((section) => section.id !== COMPARISON_TABLES_SECTION_ID)
     if (isComparison && report?.type === 'secondary_comparison') {
-      base.push({ id: 'report-compare-diff', label: '对比差异' })
+      visible.push({ id: 'report-compare-diff', label: '对比差异' })
     }
-    return base
-  }, [report?.type])
+    return visible
+  }, [report?.type, report?.summary.tables])
 
   // scrollspy + 阅读进度条（P2-1：容器内滚动，scroll 事件与坐标系绑定 report-view-container；
   // SidebarInset overflow-hidden 下 window 永不起滚，进度/激活分节全部用容器坐标系判。

@@ -4,7 +4,9 @@
  * INT-1497 §11-7：分支携真实分组/标签/时长 → 按真名聚合；字段缺省才落「未分组」/「未设置标签」兜底桶；
  * 组织控件可视图级单渲（showControls）。
  */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type {
@@ -17,6 +19,19 @@ import {
   PickCaseOrgControls,
   PickCaseOrgList,
 } from '@/features/tasks/cherry-pick/components/pick-case-org-list'
+
+/** count=1 叶父级渲染时探测那一条结果（SingleLeafProbe）→ 需要 QueryClient */
+const fetchPageMock = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, perPage: 20 })
+)
+vi.mock('@/infrastructure/api/cherry-pick-api', () => ({
+  fetchCherryPickCandidatePage: fetchPageMock,
+}))
+
+function withQueryClient(children: ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+}
 
 const LEAVES: PickTreeLeaf[] = [
   { kind: 'leaf', key: 'leaf:1', resultId: 1, taskName: '任务A', caseName: '用例001', deviceId: 1, deviceName: '设备-01', apiId: null, apiName: null, resultType: 'real-time', executionStatus: 'completed', evaluationStatus: 'completed', createdAt: '2026-10-15T09:00:00', added: false },
@@ -246,17 +261,19 @@ describe('PickCaseOrgList（§3.8.3 用例层组织，INT-1125）', () => {
 
   it('真实候选树（buildPickCaseView）：用例卡内设备/API 层显示设备名（叶行的设备名落点）', () => {
     render(
-      <PickCaseOrgList
-        branches={buildPickCaseView(CANDIDATE_TREE)}
-        selectedIds={new Set()}
-        onToggleLeaf={vi.fn()}
-        onToggleBranch={vi.fn()}
-        org='group'
-        subView='flat'
-        onOrgChange={vi.fn()}
-        onSubViewChange={vi.fn()}
-        expandSignal={{ all: true, tick: 1 }}
-      />
+      withQueryClient(
+        <PickCaseOrgList
+          branches={buildPickCaseView(CANDIDATE_TREE)}
+          selectedIds={new Set()}
+          onToggleLeaf={vi.fn()}
+          onToggleBranch={vi.fn()}
+          org='group'
+          subView='flat'
+          onOrgChange={vi.fn()}
+          onSubViewChange={vi.fn()}
+          expandSignal={{ all: true, tick: 1 }}
+        />
+      )
     )
     // 设备名落在设备/API 层分支行（pick-tree.tsx 的行 data-testid = pick-branch-<key>）
     const deviceRow = screen.getByTestId('pick-branch-pcv-device:c1:device:1')

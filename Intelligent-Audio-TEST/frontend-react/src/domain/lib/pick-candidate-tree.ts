@@ -21,6 +21,7 @@ import type {
   PickCaseMeta,
   PickDeviceMeta,
   PickLeafFilter,
+  PickNodeSummary,
   PickTaskMeta,
   PickTreeBranch,
   PickTreeItem,
@@ -166,6 +167,8 @@ function caseBranchMeta(meta: PickCaseMeta | undefined) {
 interface TaskBucket {
   taskId: number
   resultIds: number[]
+  /** 该任务在本组合下的状态汇总（后端 tree 逐组下发，任务层直接消费） */
+  summary?: PickNodeSummary
 }
 
 /** 一个（用例 × 设备/API × result_type）组合 */
@@ -178,6 +181,8 @@ interface ResultNodeAgg {
   resultType: string
   resultTypeKey: string
   resultIds: number[]
+  /** 组合级状态汇总（跨任务相加） */
+  summary?: PickNodeSummary
   /** taskId → 该任务在本组合下的结果集（A 组任务末级数据源） */
   tasks: Map<number, TaskBucket>
 }
@@ -223,11 +228,13 @@ function aggregateTree(tree: PickCandidateTree): TreeAggregate {
             nodes.set(key, agg)
           }
           agg.resultIds.push(...rtNode.resultIds)
+          agg.summary = mergePickSummaries(agg.summary, rtNode.summary)
           const bucket = agg.tasks.get(taskNode.taskId) ?? {
             taskId: taskNode.taskId,
             resultIds: [],
           }
           bucket.resultIds.push(...rtNode.resultIds)
+          bucket.summary = mergePickSummaries(bucket.summary, rtNode.summary)
           agg.tasks.set(taskNode.taskId, bucket)
         }
       }
@@ -273,6 +280,37 @@ function unionResultIds(nodes: ResultNodeAgg[]): number[] {
   return ids
 }
 
+/** 节点状态汇总相加（末条时间取较晚者；缺项按 0/null 处理） */
+export function mergePickSummaries(
+  a: PickNodeSummary | undefined,
+  b: PickNodeSummary | undefined
+): PickNodeSummary | undefined {
+  if (!a) return b
+  if (!b) return a
+  const pickLater = (x: string | null, y: string | null) =>
+    x && y ? (x > y ? x : y) : (x ?? y)
+  return {
+    executionStatusCounts: {
+      completed: a.executionStatusCounts.completed + b.executionStatusCounts.completed,
+      failed: a.executionStatusCounts.failed + b.executionStatusCounts.failed,
+      stopped: a.executionStatusCounts.stopped + b.executionStatusCounts.stopped,
+      skipped: a.executionStatusCounts.skipped + b.executionStatusCounts.skipped,
+    },
+    evaluatedCount: a.evaluatedCount + b.evaluatedCount,
+    lastResultAt: pickLater(a.lastResultAt, b.lastResultAt),
+  }
+}
+
+/** 一组节点的汇总相加 */
+export function sumPickSummaries(
+  items: Array<{ summary?: PickNodeSummary }>
+): PickNodeSummary | undefined {
+  return items.reduce<PickNodeSummary | undefined>(
+    (acc, item) => mergePickSummaries(acc, item.summary),
+    undefined
+  )
+}
+
 /** 任务名（meta 缺省落「任务 {id}」） */
 function taskNameOf(meta: TreeMetaIndex, taskId: number): string {
   return meta.tasks.get(taskId)?.taskName?.trim() || `任务 ${taskId}`
@@ -289,17 +327,18 @@ function taskLeafBranches(
   scope: { caseId: string; deviceId: number | null; apiId: number | null }
 ): PickTreeItem[] {
   if (agg.omitTaskLayer) return []
-  const buckets = new Map<number, number[]>()
+  const buckets = new Map<number, { ids: number[]; summary?: PickNodeSummary }>()
   for (const node of nodes) {
     for (const [taskId, bucket] of node.tasks) {
-      const ids = buckets.get(taskId) ?? []
-      ids.push(...bucket.resultIds)
-      buckets.set(taskId, ids)
+      const entry = buckets.get(taskId) ?? { ids: [] }
+      entry.ids.push(...bucket.resultIds)
+      entry.summary = mergePickSummaries(entry.summary, bucket.summary)
+      buckets.set(taskId, entry)
     }
   }
   const branches: PickTreeBranch[] = []
-  for (const [taskId, rawIds] of buckets) {
-    const resultIds = [...new Set(rawIds)]
+  for (const [taskId, entry] of buckets) {
+    const resultIds = [...new Set(entry.ids)]
     branches.push({
       kind: 'branch',
       key: `${keyPrefix}-task:${taskId}`,
@@ -307,6 +346,7 @@ function taskLeafBranches(
       name: taskNameOf(agg.meta, taskId),
       count: resultIds.length,
       resultIds,
+      summary: entry.summary,
       children: [],
       leafFilter: makeLeafFilter(
         [taskId],
@@ -352,7 +392,8 @@ function buildCaseNode(
   resultIds: number[],
   children: PickTreeItem[],
   keyPrefix: string,
-  leafFilter?: PickLeafFilter
+  leafFilter?: PickLeafFilter,
+  summary?: PickNodeSummary
 ): PickTreeBranch {
   const meta = agg.meta.cases.get(caseId)
   return {
@@ -364,6 +405,7 @@ function buildCaseNode(
     ...caseBranchMeta(meta),
     count,
     resultIds,
+    ...(summary ? { summary } : {}),
     children,
     ...(leafFilter ? { leafFilter } : {}),
   }
@@ -388,6 +430,7 @@ function buildDeviceNode(
     name,
     count: unionResultIds(nodes).length,
     resultIds: unionResultIds(nodes),
+    summary: sumPickSummaries(nodes),
     children,
   }
 }
@@ -412,6 +455,7 @@ function buildTaskNode(
         name: resultTypeLabel(rtNode.resultType),
         count: rtNode.resultIds.length,
         resultIds: rtNode.resultIds,
+        summary: rtNode.summary,
         children: [],
         leafFilter: makeLeafFilter(
           [taskNode.taskId],
@@ -520,7 +564,7 @@ export function buildPickCaseView(
           level: 'resultType',
           name: resultTypeLabel(rtNodes[0].resultType),
           count: unionResultIds(rtNodes).length,
-          resultIds: unionResultIds(rtNodes),
+          resultIds: unionResultIds(rtNodes), summary: sumPickSummaries(rtNodes),
           children: taskLeafBranches(rtNodes, agg, rtKey, scope),
           ...(agg.omitTaskLayer
             ? { leafFilter: leafFilterOf(rtNodes, agg, scope) }
@@ -531,7 +575,8 @@ export function buildPickCaseView(
     }
     const caseResultIds = unionResultIds(caseNodes)
     cases.push(
-      buildCaseNode(agg, caseId, caseResultIds.length, caseResultIds, devices, 'pcv')
+      buildCaseNode(agg, caseId, caseResultIds.length, caseResultIds, devices, 'pcv',
+        undefined, sumPickSummaries(caseNodes))
     )
   }
   return cases
@@ -574,7 +619,8 @@ export function buildPickDeviceView(
           resultIds,
           children,
           `${prefix}:${dk}`,
-          agg.omitTaskLayer ? leafFilterOf(caseGroup, agg, scope) : undefined
+          agg.omitTaskLayer ? leafFilterOf(caseGroup, agg, scope) : undefined,
+          sumPickSummaries(caseGroup)
         )
       )
     }
@@ -657,7 +703,8 @@ export function buildPickResultTypeView(
             resultIds,
             taskLeafBranches(caseGroup, agg, caseKey, scope),
             casePrefix,
-            agg.omitTaskLayer ? leafFilterOf(caseGroup, agg, scope) : undefined
+            agg.omitTaskLayer ? leafFilterOf(caseGroup, agg, scope) : undefined,
+            sumPickSummaries(caseGroup)
           )
         )
       }
@@ -674,6 +721,232 @@ export function buildPickResultTypeView(
     resultTypes.push({
       kind: 'branch',
       key: `rtv-resultType:${rk}`,
+      level: 'resultType',
+      name: resultTypeLabel(rtNodes[0].resultType),
+      count: unionResultIds(rtNodes).length,
+      resultIds: unionResultIds(rtNodes),
+      children: devices,
+    })
+  }
+  return resultTypes
+}
+
+/* ============================================================
+ * 任务视图（B 组：任务在第 1 级，任务下再分 用例 / 设备 / 结果类型 三子模式）
+ * ============================================================ */
+
+/** 任务视图子模式（任务下再分 用例 / 设备 / 结果类型，18 §3.8.3 B 组） */
+export type PickTaskSubView = 'case' | 'device' | 'resultType'
+
+/** 按任务拆组合节点（resultIds 收窄到该任务；任务按首次出现顺序） */
+function groupNodesByTask(nodes: ResultNodeAgg[]): Map<number, ResultNodeAgg[]> {
+  const out = new Map<number, ResultNodeAgg[]>()
+  for (const node of nodes) {
+    for (const [taskId, bucket] of node.tasks) {
+      const list = out.get(taskId) ?? []
+      list.push({
+        ...node,
+        resultIds: bucket.resultIds,
+        summary: bucket.summary,
+        tasks: new Map([[taskId, bucket]]),
+      })
+      out.set(taskId, list)
+    }
+  }
+  return out
+}
+
+/**
+ * 任务视图（B 组，仅任务首级）：任务 → 子模式维度 → 组织层 → 用例卡 → 叶。
+ * 子树只含该任务条目（不跨任务共享），key 带 taskId 命名空间；
+ * 用法与三视图一致（`PickTree` 直接渲染，勾选仍走共享 selectedResultIds）。
+ */
+export function buildPickTaskView(
+  tree: PickCandidateTree | undefined,
+  subMode: PickTaskSubView = 'case',
+  org: PickCaseOrgDimension = 'group',
+  subView: PickCaseOrgSubView = 'flat'
+): PickTreeBranch[] {
+  if (!tree) return []
+  const agg = aggregateTree(tree)
+  const branches: PickTreeBranch[] = []
+  for (const [taskId, nodes] of groupNodesByTask(agg.nodes)) {
+    const taskKey = `ptv-task:${taskId}`
+    const resultIds = unionResultIds(nodes)
+    branches.push({
+      kind: 'branch',
+      key: taskKey,
+      level: 'task',
+      name: taskNameOf(agg.meta, taskId),
+      count: resultIds.length,
+      resultIds,
+      summary: sumPickSummaries(nodes),
+      children: buildTaskSubTree(agg, taskId, nodes, subMode, org, subView, taskKey),
+    })
+  }
+  return branches
+}
+
+/** 单个任务的子模式子树（叶明细恒按该任务收窄 leafFilter） */
+function buildTaskSubTree(
+  agg: TreeAggregate,
+  taskId: number,
+  nodes: ResultNodeAgg[],
+  subMode: PickTaskSubView,
+  org: PickCaseOrgDimension,
+  subView: PickCaseOrgSubView,
+  taskKey: string
+): PickTreeItem[] {
+  const taskIds = [taskId]
+  const omitResultTypeLayer = !hasResultTypeVariety(nodes.map((n) => n.resultType))
+  const leafFilterOfRows = (
+    rows: ResultNodeAgg[],
+    caseId: string,
+    deviceId: number | null,
+    apiId: number | null
+  ) =>
+    makeLeafFilter(
+      taskIds,
+      caseId,
+      deviceId,
+      apiId,
+      singleResultTypeOf(rows)
+    )
+
+  /** 用例卡（设备/结果类型子模式：用例卡即叶父级，挂 leafFilter 按需分页） */
+  const caseCards = (rows: ResultNodeAgg[], prefix: string): PickTreeBranch[] => {
+    const cases: PickTreeBranch[] = []
+    for (const [caseId, caseGroup] of groupNodes(rows, (n) => n.caseId)) {
+      const ids = unionResultIds(caseGroup)
+      const first = caseGroup[0]
+      cases.push(
+        buildCaseNode(
+          agg,
+          caseId,
+          ids.length,
+          ids,
+          [],
+          `${prefix}-case`,
+          leafFilterOfRows(caseGroup, caseId, first.deviceId, first.apiId),
+          sumPickSummaries(caseGroup)
+        )
+      )
+    }
+    return cases
+  }
+
+  /** 用例子模式：任务 → 组织 → 用例卡 → 设备/API → [result_type] → 叶 */
+  if (subMode === 'case') {
+    const cases: PickTreeBranch[] = []
+    for (const [caseId, caseGroup] of groupNodes(nodes, (n) => n.caseId)) {
+      const devices: PickTreeItem[] = []
+      for (const [dk, deviceNodes] of groupNodes(caseGroup, (n) => n.deviceKey)) {
+        const deviceKey = `${taskKey}-case:${caseId}-device:${dk}`
+        if (omitResultTypeLayer) {
+          const device = buildDeviceNode(agg, deviceNodes, [], deviceKey)
+          device.leafFilter = leafFilterOfRows(
+            deviceNodes,
+            caseId,
+            deviceNodes[0].deviceId,
+            deviceNodes[0].apiId
+          )
+          devices.push(device)
+          continue
+        }
+        const resultTypes: PickTreeItem[] = []
+        for (const [rk, rtNodes] of groupNodes(deviceNodes, (n) => n.resultTypeKey)) {
+          resultTypes.push({
+            kind: 'branch',
+            key: `${deviceKey}-resultType:${rk}`,
+            level: 'resultType',
+            name: resultTypeLabel(rtNodes[0].resultType),
+            count: unionResultIds(rtNodes).length,
+            resultIds: unionResultIds(rtNodes), summary: sumPickSummaries(rtNodes),
+            children: [],
+            leafFilter: leafFilterOfRows(
+              rtNodes,
+              caseId,
+              deviceNodes[0].deviceId,
+              deviceNodes[0].apiId
+            ),
+          })
+        }
+        devices.push(buildDeviceNode(agg, deviceNodes, resultTypes, deviceKey))
+      }
+      const ids = unionResultIds(caseGroup)
+      cases.push(buildCaseNode(agg, caseId, ids.length, ids, devices, `${taskKey}-case`,
+        undefined, sumPickSummaries(caseGroup)))
+    }
+    return buildCaseOrgBranches(cases, org, subView, `${taskKey}-org`)
+  }
+
+  /** 设备子模式：任务 → 设备/API → [result_type] → 组织 → 用例卡 → 叶 */
+  if (subMode === 'device') {
+    const devices: PickTreeItem[] = []
+    for (const [dk, deviceNodes] of groupNodes(nodes, (n) => n.deviceKey)) {
+      const deviceKey = `${taskKey}-device:${dk}`
+      if (omitResultTypeLayer) {
+        devices.push(
+          buildDeviceNode(
+            agg,
+            deviceNodes,
+            buildCaseOrgBranches(
+              caseCards(deviceNodes, deviceKey),
+              org,
+              subView,
+              `${deviceKey}-org`
+            ),
+            deviceKey
+          )
+        )
+        continue
+      }
+      const resultTypes: PickTreeItem[] = []
+      for (const [rk, rtNodes] of groupNodes(deviceNodes, (n) => n.resultTypeKey)) {
+        resultTypes.push({
+          kind: 'branch',
+          key: `${deviceKey}-resultType:${rk}`,
+          level: 'resultType',
+          name: resultTypeLabel(rtNodes[0].resultType),
+          count: unionResultIds(rtNodes).length,
+          resultIds: unionResultIds(rtNodes), summary: sumPickSummaries(rtNodes),
+          children: buildCaseOrgBranches(
+            caseCards(rtNodes, `${deviceKey}-${rk}`),
+            org,
+            subView,
+            `${deviceKey}-${rk}-org`
+          ),
+        })
+      }
+      devices.push(buildDeviceNode(agg, deviceNodes, resultTypes, deviceKey))
+    }
+    return devices
+  }
+
+  /** 结果类型子模式：任务 → result_type → 设备/API → 组织 → 用例卡 → 叶 */
+  const resultTypes: PickTreeItem[] = []
+  for (const [rk, rtNodes] of groupNodes(nodes, (n) => n.resultTypeKey)) {
+    const rtKey = `${taskKey}-resultType:${rk}`
+    const devices: PickTreeItem[] = []
+    for (const [dk, deviceNodes] of groupNodes(rtNodes, (n) => n.deviceKey)) {
+      const deviceKey = `${rtKey}-device:${dk}`
+      devices.push(
+        buildDeviceNode(
+          agg,
+          deviceNodes,
+          buildCaseOrgBranches(
+            caseCards(deviceNodes, deviceKey),
+            org,
+            subView,
+            `${deviceKey}-org`
+          ),
+          deviceKey
+        )
+      )
+    }
+    resultTypes.push({
+      kind: 'branch',
+      key: rtKey,
       level: 'resultType',
       name: resultTypeLabel(rtNodes[0].resultType),
       count: unionResultIds(rtNodes).length,
