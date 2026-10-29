@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """服务运行日志文件处理器（INT-81）。
 
-各微服务运行日志统一落 logs/{service_name}/，按天 + 按大小双条件轮转：
-- 每天午夜轮转一次
-- 单文件超过 max_bytes 即刻轮转
-- 轮转文件命名 {base_name}-{YYYYMMDD}-{NNN}.log（同日多次超限切分序号递增，
+各微服务运行日志统一落 logs/{service_name}/{YYYY-MM-DD}/，按天目录 + 按大小
+双条件轮转：
+- 跨天：写入目录切到新日期目录（旧目录内活跃文件自然留档，无 rename）
+- 单文件超过 max_bytes 即刻轮转：活跃文件改名留档，轮转名
+  {base_name} → {stem}-{YYYYMMDD}-{NNN}.log（同日多次超限切分序号递增，
   不再复用 TimedRotatingFileHandler 默认的纯日期后缀，避免同日覆盖）
 - 保留 N 天由 retention 清扫器按 mtime 清理（backupCount 仅作兜底）
 
@@ -12,8 +13,8 @@
 （app-{hostname}-{pid}.log，见 shared.logging.identity）——同宿主多进程
 靠 PID 区分；容器多副本（compose 共享日志卷 + deploy.replicas）各副本
 PID namespace 独立、入口进程 PID 恒为 1，靠 Docker 注入的短容器 ID
-（主机名）区分，两者合取后各写入方持有独立活跃文件，轮转 os.replace
-只触碰本进程文件：跨天/超限同时轮转也不会 rename 他副本正写入的文件、
+（主机名）区分，两者合取后各写入方持有独立活跃文件，轮转/切目录只触碰
+本进程文件：跨天/超限同时轮转也不会 rename 他副本正写入的文件、
 不会以同序号互相覆盖。进程标识复用（容器重启）时同名活跃文件追加续写，
 切分序号扫描接续不丢行。
 """
@@ -29,6 +30,8 @@ from shared.utils.secret_mask import mask_text
 _DAY_FORMAT = '%Y%m%d'
 _DATE_SUFFIX_LEN = len('YYYYMMDD') + len('-')
 _SEQ_SUFFIX_LEN = len('-001')
+# 日期目录段（与审计树 logs/audit/{YYYY-MM-DD}/ 同口径，读侧/清扫按目录日期收敛）
+_DAY_DIR_FORMAT = '%Y-%m-%d'
 
 
 def default_service_base_name() -> str:
@@ -41,10 +44,12 @@ def default_service_base_name() -> str:
 
 
 class ServiceRotatingFileHandler(logging.Handler):
-    """按天 + 按大小双条件轮转的服务日志处理器。
+    """按天目录 + 按大小双条件轮转的服务日志处理器。
 
     相比 logging.handlers.TimedRotatingFileHandler 的组合改造点：
-    - 轮转目标名带同日序号（app-20261010-001.log），同日多次超限不互相覆盖
+    - 跨天切日期目录（logs/{service}/{YYYY-MM-DD}/，旧文件留档在旧目录）
+    - 同日超限切分目标名带同日序号（app-{hostname}-{pid}-YYYYMMDD-NNN.log），
+      同日多次超限不互相覆盖
     - Windows 下目标文件被占用时重试后放弃本条轮转（不中断日志写入）
     """
 
@@ -65,9 +70,11 @@ class ServiceRotatingFileHandler(logging.Handler):
     # ---- 流管理 ----
 
     def _stream_path(self) -> str:
-        return os.path.join(self._dir_path, self._base_name)
+        return os.path.join(self._dir_path, self._current_day, self._base_name)
 
     def _open_stream(self):
+        # 跨天切换后/首次启动：确保日期目录存在（makedirs 幂等）
+        os.makedirs(os.path.join(self._dir_path, self._current_day), exist_ok=True)
         self._current_path = self._stream_path()
         self._stream = open(self._current_path, 'a', encoding='utf-8')
 
@@ -81,7 +88,7 @@ class ServiceRotatingFileHandler(logging.Handler):
 
     @staticmethod
     def _today() -> str:
-        return datetime.now().strftime(_DAY_FORMAT)
+        return datetime.now().strftime(_DAY_DIR_FORMAT)
 
     # ---- 轮转判定与执行 ----
 
@@ -98,11 +105,11 @@ class ServiceRotatingFileHandler(logging.Handler):
 
     def _next_rollover_target(self) -> str:
         stem = self._base_name[:-len('.log')]
-        day = self._current_day
+        day = self._current_day.replace('-', '')
         max_seq = 0
         prefix = f'{stem}-{day}-'
         try:
-            names = os.listdir(self._dir_path)
+            names = os.listdir(os.path.join(self._dir_path, self._current_day))
         except OSError:
             names = []
         for name in names:
@@ -110,23 +117,28 @@ class ServiceRotatingFileHandler(logging.Handler):
                 seq_part = name[len(prefix):-len('.log')]
                 if seq_part.isdigit():
                     max_seq = max(max_seq, int(seq_part))
-        return os.path.join(self._dir_path, f'{stem}-{day}-{max_seq + 1:03d}.log')
+        return os.path.join(self._dir_path, self._current_day,
+                            f'{stem}-{day}-{max_seq + 1:03d}.log')
 
     def _rollover(self):
+        day_changed = self._today() != self._current_day
         self._close_stream()
-        target = self._next_rollover_target()
-        current = self._stream_path()
-        try:
-            if os.path.exists(current):
-                os.replace(current, target)
-        except OSError:
-            # Windows 文件被占用：短暂等待重试一次，仍失败则放弃该轮转文件
-            time.sleep(0.1)
+        if not day_changed:
+            # 同日超限切分：活跃文件改名留档（同日期目录，同日序号递增）
+            target = self._next_rollover_target()
+            current = self._stream_path()
             try:
                 if os.path.exists(current):
                     os.replace(current, target)
             except OSError:
-                pass
+                # Windows 文件被占用：短暂等待重试一次，仍失败则放弃该轮转文件
+                time.sleep(0.1)
+                try:
+                    if os.path.exists(current):
+                        os.replace(current, target)
+                except OSError:
+                    pass
+        # 跨天：写入目录切到新日期目录，旧目录内活跃文件自然留档（无 rename）
         self._current_day = self._today()
         self._open_stream()
 
@@ -155,11 +167,12 @@ class ServiceRotatingFileHandler(logging.Handler):
 def setup_service_file_logging(settings: LogSettings = None,
                                service_name: str = None,
                                base_name: str = None) -> logging.Handler:
-    """构建当前服务的运行日志文件处理器（logs/{service_name}/app-{hostname}-{pid}.log）。
+    """构建当前服务的运行日志文件处理器（logs/{service_name}/{YYYY-MM-DD}/app-{hostname}-{pid}.log）。
 
     活跃文件名默认含 hostname+pid 进程标识（多副本共享日志卷互不冲突）；
-    base_name 显式传入时按传入名轮转（仅测试/单进程场景使用）。由
-    shared.utils.log_handler 统一调用，各服务禁止自造文件 handler。
+    跨天写入目录自动切到新日期目录（旧目录留档）；base_name 显式传入时按
+    传入名轮转（仅测试/单进程场景使用）。由 shared.utils.log_handler 统一调用，
+    各服务禁止自造文件 handler。
     """
     resolved_settings = settings or get_log_settings()
     name = service_name or resolve_service_name()

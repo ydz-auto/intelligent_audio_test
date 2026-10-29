@@ -14,6 +14,7 @@
 import logging
 import os
 import tempfile
+from datetime import datetime
 
 import pytest
 
@@ -773,7 +774,7 @@ def test_service_file_handler_outlet_masked(tmp_path):
     handler.emit(record)
     handler.close()
 
-    content = (tmp_path / 'app-test.log').read_text(encoding='utf-8')
+    content = (tmp_path / datetime.now().strftime('%Y-%m-%d') / 'app-test.log').read_text(encoding='utf-8')
     assert 'sk-SECRETVALUE1234567890' not in content
     assert 'api_key=****' in content
 
@@ -814,7 +815,7 @@ def test_emit_no_task_file_outlet_masked(monkeypatch, tmp_path):
         handler.worker_thread.join(timeout=1.0)
         file_handler.close()
 
-    content = (tmp_path / 'app-test.log').read_text(encoding='utf-8')
+    content = (tmp_path / datetime.now().strftime('%Y-%m-%d') / 'app-test.log').read_text(encoding='utf-8')
     assert 'sk-SECRETVALUE1234567890' not in content
     assert 'sk-AUDITTOKEN123456789' not in content
     assert '****' in content

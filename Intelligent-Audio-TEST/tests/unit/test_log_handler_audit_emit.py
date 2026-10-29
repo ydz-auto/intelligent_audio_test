@@ -11,7 +11,7 @@ monkeypatch 掉，只验证了调用发生、验证不了落库发生，故自�
   经 worker 批量发往 gRPC batch_create_logs（真实 write_*_audit 全链路）
 - 审计日志不参与 TTL 去重（相同负载连续两条都必须落库）
 - 审计日志保持本地文件双写（修复前审计只进文件，行为不回退；
-  INT-81 后文件路径为 logs/{service_name}/app-{hostname}-{pid}.log）
+  INT-81 后文件路径为 logs/{service_name}/{YYYY-MM-DD}/app-{hostname}-{pid}.log）
 - 非审计系统日志（无任务上下文）保持只写文件、不入库
 - 业务日志（有 task_id）去库化：落业务文件（INT-81），
   LOG_BUSINESS_DB_ENABLED=True 时兼容性双写入库（回滚开关）
@@ -22,6 +22,7 @@ test_auth_servicer_sqlite_e2e.py 用真实仓储验证。
 import json
 import os
 import socket
+from datetime import datetime
 import tempfile
 import time
 
@@ -152,6 +153,7 @@ class TestAuditEmitRouting:
             'operator_id': 3, 'target_id': 4,
         })
         log_file = (tmp_path / 'logs' / resolve_service_name()
+                    / datetime.now().strftime('%Y-%m-%d')
                     / f'app-{socket.gethostname()}-{os.getpid()}.log')
         content = log_file.read_text(encoding='utf-8') if log_file.exists() else ''
         assert 'AUTH_ROLE_DELETED' not in content, '审计事件不应再写服务文件'

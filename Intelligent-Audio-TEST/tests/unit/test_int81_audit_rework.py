@@ -161,9 +161,11 @@ class TestTwoProcessConcurrency:
         pids, _ = _run_two_workers(log_dir, 'service', count)
 
         lines = []
-        for name in os.listdir(log_dir):
-            with open(os.path.join(log_dir, name), 'rb') as handle:
-                lines.extend(handle.read().decode('utf-8').splitlines())
+        # 服务日志现按天目录组织：递归收集各日期目录下活跃/切分文件
+        for root, _, names in os.walk(log_dir):
+            for name in names:
+                with open(os.path.join(root, name), 'rb') as handle:
+                    lines.extend(handle.read().decode('utf-8').splitlines())
         expected = {f'worker-{pid}-line-{i:04d}' for pid in pids for i in range(count)}
         assert sorted(lines) == sorted(expected), (
             '两副本并发轮转丢行/重复行：共享活跃文件名或轮转目标冲突')
@@ -209,9 +211,19 @@ class TestCrossLineageRotationIsolation:
         try:
             logger_a.info('a-yesterday')
             logger_b.info('b-yesterday')
-            first._current_day = '20200101'
-            second._current_day = '20200101'
-            # 两线同一时刻跨天轮转：各自 rename 各自的活跃文件
+            today_dir = datetime.now().strftime('%Y-%m-%d')
+            # 模拟午夜跨越：先关活跃流，昨日活跃文件移入昨日目录，活跃日戳拨到昨日
+            yesterday_dir = os.path.join(dir_path, '2020-01-01')
+            os.makedirs(yesterday_dir, exist_ok=True)
+            first._close_stream()
+            second._close_stream()
+            os.replace(os.path.join(dir_path, today_dir, 'app-111.log'),
+                       os.path.join(yesterday_dir, 'app-111.log'))
+            os.replace(os.path.join(dir_path, today_dir, 'app-222.log'),
+                       os.path.join(yesterday_dir, 'app-222.log'))
+            first._current_day = '2020-01-01'
+            second._current_day = '2020-01-01'
+            # 两线同一时刻跨天：各自切到新日期目录（无 rename，天然互不干扰）
             logger_a.info('a-line')
             logger_b.info('b-line')
         finally:
@@ -219,14 +231,14 @@ class TestCrossLineageRotationIsolation:
                 logger.removeHandler(handler)
             first.close()
             second.close()
-        rotated_a = os.path.join(dir_path, 'app-111-20200101-001.log')
-        rotated_b = os.path.join(dir_path, 'app-222-20200101-001.log')
-        assert os.path.exists(rotated_a)
-        assert os.path.exists(rotated_b)
-        assert 'a-yesterday' in open(rotated_a, encoding='utf-8').read()
-        assert 'b-yesterday' in open(rotated_b, encoding='utf-8').read()
-        active_a = os.path.join(dir_path, 'app-111.log')
-        active_b = os.path.join(dir_path, 'app-222.log')
+        yesterday_a = os.path.join(yesterday_dir, 'app-111.log')
+        yesterday_b = os.path.join(yesterday_dir, 'app-222.log')
+        active_a = os.path.join(dir_path, today_dir, 'app-111.log')
+        active_b = os.path.join(dir_path, today_dir, 'app-222.log')
+        assert os.path.exists(yesterday_a)
+        assert os.path.exists(yesterday_b)
+        assert 'a-yesterday' in open(yesterday_a, encoding='utf-8').read()
+        assert 'b-yesterday' in open(yesterday_b, encoding='utf-8').read()
         assert 'a-line' in open(active_a, encoding='utf-8').read()
         assert 'b-line' in open(active_b, encoding='utf-8').read()
 
@@ -600,14 +612,18 @@ print('OK')
         count = 60
         self._run_two_replicas(log_dir, 'service', count)
 
-        names = os.listdir(log_dir)
+        files = []
+        for root, _, fnames in os.walk(log_dir):
+            for name in fnames:
+                files.append(os.path.join(root, name))
+        names = [os.path.basename(n) for n in files]
         family_a = [n for n in names if n.startswith(f'app-{self._REPLICA_A}-1')]
         family_b = [n for n in names if n.startswith(f'app-{self._REPLICA_B}-1')]
         assert family_a and family_b, (
             f'同 PID 两副本默认名应互异（hostname 生效），实际: {names[:8]}...')
         lines = []
-        for name in names:
-            with open(os.path.join(log_dir, name), 'rb') as handle:
+        for path in files:
+            with open(path, 'rb') as handle:
                 lines.extend(handle.read().decode('utf-8').splitlines())
         expected = {f'replica-{host}-line-{i:04d}'
                     for host in (self._REPLICA_A, self._REPLICA_B)

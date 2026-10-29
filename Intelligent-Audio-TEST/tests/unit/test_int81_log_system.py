@@ -13,6 +13,7 @@ gRPC/DB 边界不触达（本文件不涉及 emit 分流，分流见 test_log_ha
 import logging
 import os
 import time
+from datetime import datetime
 
 import pytest
 
@@ -370,7 +371,7 @@ class TestServiceRotation:
         finally:
             logger.removeHandler(handler)
             handler.close()
-        log_file = tmp_path / 'svc_logs' / 'app.log'
+        log_file = tmp_path / 'svc_logs' / datetime.now().strftime('%Y-%m-%d') / 'app.log'
         assert log_file.exists()
         assert 'hello service log' in log_file.read_text(encoding='utf-8')
 
@@ -395,14 +396,15 @@ class TestServiceRotation:
         finally:
             logger.removeHandler(handler)
             handler.close()
-        names = os.listdir(tmp_path / 'svc_logs')
+        day_dir = tmp_path / 'svc_logs' / datetime.now().strftime('%Y-%m-%d')
+        names = os.listdir(day_dir)
         rotated = [n for n in names if n != 'app.log']
-        # 轮转名带日期与序号：app-YYYYMMDD-001.log
+        # 轮转名带日期与序号：app-YYYYMMDD-001.log（同日期目录内切分）
         assert rotated, 'size rollover 未产生轮转文件'
         assert all(n.startswith('app-') and n.endswith('.log') for n in rotated)
         assert any('-001.log' in n for n in rotated)
-        # 活跃文件已重建
-        assert (tmp_path / 'svc_logs' / 'app.log').exists()
+        # 活跃文件已重建（同日期目录）
+        assert (day_dir / 'app.log').exists()
 
 
 # ---------- 保留清扫 ----------

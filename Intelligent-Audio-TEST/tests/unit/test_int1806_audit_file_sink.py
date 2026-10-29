@@ -280,8 +280,9 @@ class TestEmitThreeBranches:
         assert item['event'] == 'AUTH_USER_CREATED'
         assert item['service'], '审计条目必须携带产生进程名（H4 路径段）'
         assert item['content']  # 原 content 字符串原样透传
-        # 不写服务文件（一条事件恰好一行）
-        service_file = logs_root / 'unknown' / f"app-{_process_identity()}.log"
+        # 不写服务文件（一条事件恰好一行）；服务日志现按天目录组织
+        service_file = (logs_root / 'unknown' / datetime.now().strftime('%Y-%m-%d')
+                        / f"app-{_process_identity()}.log")
         if service_file.exists():
             assert 'AUTH_USER_CREATED' not in service_file.read_text(encoding='utf-8')
 

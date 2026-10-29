@@ -67,53 +67,68 @@ def _detach(logger, handler):
 class TestDayRollover:
 
     def test_day_change_rotates_before_write(self, tmp_path, log_root):
-        """跨天：日期变化后下一条日志先轮转再写入，旧文件保留昨日内容。"""
+        """跨天：日期变化后下一条日志先切日期目录再写入，昨日文件留档在旧目录。"""
         handler = ServiceRotatingFileHandler(str(tmp_path / 'svc'),
                                              base_name='app.log', max_bytes=0)
         logger = _attach(handler, 'int81_day_test')
         try:
             logger.info('yesterday line')
-            # 模拟午夜跨越：活跃日戳停留在过期日期
-            handler._current_day = '20200101'
+            today_dir = datetime.now().strftime('%Y-%m-%d')
+            # 模拟午夜跨越：先关活跃流，昨日活跃文件移入昨日目录，活跃日戳拨到昨日
+            yesterday_dir = tmp_path / 'svc' / '2020-01-01'
+            yesterday_dir.mkdir()
+            handler._close_stream()
+            os.replace(tmp_path / 'svc' / today_dir / 'app.log',
+                       yesterday_dir / 'app.log')
+            handler._current_day = '2020-01-01'
             logger.info('today line')
         finally:
             _detach(logger, handler)
 
-        rotated = tmp_path / 'svc' / 'app-20200101-001.log'
-        active = tmp_path / 'svc' / 'app.log'
-        assert rotated.exists(), '跨天未产生轮转文件'
-        rotated_text = rotated.read_text(encoding='utf-8')
-        assert 'yesterday line' in rotated_text
-        assert 'today line' not in rotated_text
+        # 跨天：写入目录切到新日期目录，昨日活跃文件留档在旧目录（无 rename）
+        yesterday = yesterday_dir / 'app.log'
+        active = tmp_path / 'svc' / datetime.now().strftime('%Y-%m-%d') / 'app.log'
+        assert yesterday.exists(), '跨天未切换日期目录'
+        assert active.exists(), '跨天未创建新日期目录活跃文件'
+        assert 'yesterday line' in yesterday.read_text(encoding='utf-8')
+        assert 'today line' not in yesterday.read_text(encoding='utf-8')
         active_text = active.read_text(encoding='utf-8')
         assert 'today line' in active_text
         assert 'yesterday line' not in active_text
-        assert handler._current_day == datetime.now().strftime('%Y%m%d')
+        assert handler._current_day == datetime.now().strftime('%Y-%m-%d')
 
     def test_day_rollover_after_size_split_no_overwrite(self, tmp_path, log_root):
-        """跨天与超限切分叠加：轮转名按天前缀命名，同日切分文件不被覆盖。"""
+        """跨天与超限切分叠加：切分文件留档在当日日期目录，跨天切新目录互不覆盖。"""
         handler = ServiceRotatingFileHandler(str(tmp_path / 'svc'),
                                              base_name='app.log', max_bytes=50)
         logger = _attach(handler, 'int81_day_size_test')
         try:
+            today_dir = datetime.now().strftime('%Y-%m-%d')
             today = datetime.now().strftime('%Y%m%d')
             for i in range(8):
                 logger.info(f'line {i:02d} padding padding padding')
             # 至少一次超限切分发生（同日 -001）
-            assert (tmp_path / 'svc' / f'app-{today}-001.log').exists()
-            size_split_before = (tmp_path / 'svc' / f'app-{today}-001.log').read_bytes()
-            # 跨天再写一条
-            handler._current_day = '20200101'
+            assert (tmp_path / 'svc' / today_dir / f'app-{today}-001.log').exists()
+            size_split_before = (tmp_path / 'svc' / today_dir / f'app-{today}-001.log').read_bytes()
+            # 模拟午夜跨越：先关活跃流，昨日活跃文件移入昨日目录，活跃日戳拨到昨日
+            yesterday_dir = tmp_path / 'svc' / '2020-01-01'
+            yesterday_dir.mkdir()
+            handler._close_stream()
+            os.replace(tmp_path / 'svc' / today_dir / 'app.log',
+                       yesterday_dir / 'app.log')
+            handler._current_day = '2020-01-01'
             logger.info('next day line')
         finally:
             _detach(logger, handler)
 
-        # 跨天轮转目标带新日期前缀，不与同日切分文件同名
-        day_file = tmp_path / 'svc' / 'app-20200101-001.log'
-        assert day_file.exists(), '跨天轮转文件缺失'
+        # 跨天写入切到新日期目录，昨日切分文件留档在原日期目录
+        day_file = yesterday_dir / 'app.log'
+        assert day_file.exists(), '跨天未切换到新日期目录'
         assert 'next day line' not in day_file.read_text(encoding='utf-8')
+        active = tmp_path / 'svc' / today_dir / 'app.log'
+        assert 'next day line' in active.read_text(encoding='utf-8')
         # 同日超限切分文件内容未被覆盖
-        assert (tmp_path / 'svc' / f'app-{today}-001.log').read_bytes() == size_split_before
+        assert (tmp_path / 'svc' / today_dir / f'app-{today}-001.log').read_bytes() == size_split_before
 
 
 class TestThreadRoundContext:

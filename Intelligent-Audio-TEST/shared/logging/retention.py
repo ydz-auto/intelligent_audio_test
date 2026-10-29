@@ -4,7 +4,7 @@
 三棵树各自按期清扫，保留天数统一继承 `LOG_FILE_RETENTION_DAYS`（负责人
 2026-10-24 裁定：全部日志文件 30 天，细分类别只能显式覆盖）：
 
-- 服务运行日志：`logs/{service}/`，排除 business/ 与 audit/ 子树，
+- 服务运行日志：`logs/{service}/{YYYY-MM-DD}/`，排除 business/ 与 audit/ 子树，
   否则业务/审计日志实际保留 = min(三者)，配置大于默认时失效
 - 业务日志：`logs/business/`，按 mtime
 - 审计日志：`logs/audit/{YYYY-MM-DD}/`，按**目录日期**判定（进程重启后追加写
