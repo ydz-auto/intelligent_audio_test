@@ -69,7 +69,7 @@ export function RealtimeLogs({
   /** 任务运行中：开启 /ws/logs 实时订阅，task_log 增量插入日志卡（INT-1906） */
   active?: boolean
 }) {
-  const logsQuery = useTaskLogs(taskId)
+  const logsQuery = useTaskLogs(taskId, true, active ? 10_000 : undefined)
   const [manual, setManual] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [levelFilter, setLevelFilter] = useState<LogLevelFilter>('all')
@@ -84,13 +84,21 @@ export function RealtimeLogs({
   const [exporting, setExporting] = useState(false)
   const hasMore = logs.length < total
 
-  // 首页数据到达/任务切换时重置展示序（后端倒序 → 反转成旧→新）
+  // 首页/轮询数据到达：与现有列表增量合并（REST 与 WS 增量并存，按 id / time+content 去重，
+  // 不清空已有更早日志与 WS 增量；任务运行中轮询只拿最新页，追加新行）
   useEffect(() => {
-    if (logsQuery.data) {
-      setLogs([...logsQuery.data.items].reverse())
-      setPage(logsQuery.data.page)
-      setTotal(logsQuery.data.total)
-    }
+    if (!logsQuery.data) return
+    const incoming = [...logsQuery.data.items].reverse()
+    setLogs((prev) => {
+      if (prev.length === 0) return incoming
+      const seen = new Set(prev.map((l) => `${l.id}:${l.timestamp}:${l.message}`))
+      const fresh = incoming.filter(
+        (l) => !seen.has(`${l.id}:${l.timestamp}:${l.message}`)
+      )
+      return fresh.length === 0 ? prev : [...prev, ...fresh]
+    })
+    setPage(logsQuery.data.page)
+    setTotal(logsQuery.data.total)
   }, [logsQuery.data])
 
   /** WS /ws/logs 实时增量：task_log → TaskLogEntry，去重后按旧→新追加（新日志在尾部） */

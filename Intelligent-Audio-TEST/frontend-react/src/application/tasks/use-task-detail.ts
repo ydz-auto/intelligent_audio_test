@@ -27,16 +27,15 @@ export function useTaskDetail(taskId: number, enabled = true) {
   })
 }
 
-export function useTaskLogs(taskId: number, enabled = true) {
+export function useTaskLogs(taskId: number, enabled = true, pollMs?: number) {
   return useQuery({
     queryKey: ['tasks', 'logs', taskId],
     queryFn: () => fetchTaskLogs(taskId, 1, TASK_LOG_PAGE_SIZE),
     enabled,
     staleTime: 10_000,
-    refetchInterval: (query) => {
-      // 任务运行中每 10s 轮询增量 append（§4.6 现口径保留；mock 态数据无增量，返回 false）
-      return query.state.data ? false : false
-    },
+    // 任务运行中（调用方传 pollMs）每 10s 轮询增量拉取，作为 WS /ws/logs 实时订阅的兜底；
+    // 任务终态/未传 pollMs 不轮询（mock 态数据无增量）
+    refetchInterval: pollMs ?? false,
   })
 }
 
