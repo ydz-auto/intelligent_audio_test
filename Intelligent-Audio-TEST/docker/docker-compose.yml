@@ -6,6 +6,8 @@ version: '3.8'
 x-backend-build-args: &backend-build-args
   PY_IMAGE: ${PY_IMAGE:-python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce}
   APT_MIRROR: ${APT_MIRROR:-mirrors.tuna.tsinghua.edu.cn}
+  # pip 源可覆盖：pypi.org 在部分网络不可达，构建前设 PIP_INDEX_URL 指向可达镜像
+  PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
 
 services:
   postgres:
