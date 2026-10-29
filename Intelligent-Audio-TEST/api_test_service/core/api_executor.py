@@ -199,15 +199,17 @@ class APIExecutor(BaseExecutor):
             if not self._claim_tc_rel_running(task_id, tc_rel_id):
                 return True
 
-            task_lock = self._get_task_lock(task_id)
-            with task_lock:
-                validate_result, data = self._validate_and_get_data(
-                    task_id, tc_rel_id, device_type=device_type, device_id=device_id)
-                if not validate_result:
-                    self._handle_validation_failure(task_id, tc_rel_id, data)
-                    return False
+            # 同任务用例可并发：调度侧按 (用例, API) 逐行派发，target_modes
+            # 的 parallel 语义由此落地；真正的并发上限由 per-API 分布式
+            # 信号量（APIConcurrencyManager）与线程池共同约束。
+            # 历史任务级锁会把同任务全部用例串行化（选并行却实际串行）。
+            validate_result, data = self._validate_and_get_data(
+                task_id, tc_rel_id, device_type=device_type, device_id=device_id)
+            if not validate_result:
+                self._handle_validation_failure(task_id, tc_rel_id, data)
+                return False
 
-                return self._execute_per_api_lane(task_id, tc_rel_id, data)
+            return self._execute_per_api_lane(task_id, tc_rel_id, data)
 
         except Exception as e:
             import traceback

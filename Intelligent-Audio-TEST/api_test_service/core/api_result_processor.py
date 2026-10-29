@@ -115,6 +115,8 @@ class APIResultProcessor:
                         task_id=task_id,
                         case_id=test_case_id,
                         execution_status=ExecutionStatus.COMPLETED,
+                        # 用例行耗时/轮次展示依赖 completed_at（多目标合并后按行汇总）
+                        completed_at=now_cst().isoformat(),
                         tc_rel_id=tc_rel_id,
                     )
                 else:
@@ -305,6 +307,7 @@ class APIResultProcessor:
                     task_id=task_id,
                     case_id=test_case_id,
                     execution_status=ExecutionStatus.COMPLETED,
+                    completed_at=now_cst().isoformat(),
                     tc_rel_id=tc_rel_id,
                 )
             else:
