@@ -63,6 +63,8 @@ export function toTaskCaseBrief(raw: TaskCaseBriefDto): TaskCaseBrief {
     startedAt: raw.started_at ?? undefined,
     completedAt: raw.completed_at ?? undefined,
     duration: raw.duration ?? undefined,
+    // 用例真实轮次数（任务详情「轮次」列分母；后端取 config.rounds 长度）
+    roundsCount: raw.rounds_count ?? undefined,
     errorMessage: raw.error_message ?? undefined,
     groupName: raw.group_name ?? undefined,
     tags: raw.tags ?? [],

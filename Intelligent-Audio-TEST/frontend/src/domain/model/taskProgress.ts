@@ -105,6 +105,8 @@ export interface AssociatedCase {
   executionStatus: string
   evaluationStatus: string
   duration?: string
+  /** 用例真实轮次数（后端取 config.rounds 长度）——无实时 roundProgress 时的轮次分母 */
+  roundsCount?: number
   roundProgress?: { current: number; total: number }
   /** 用例分组名，用于"用例分组视图" */
   groupName?: string

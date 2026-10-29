@@ -1058,9 +1058,9 @@ const caseCardItem = (testCase) => ({
 
 /**
  * INT-1103 返工 F1：任务关联用例卡轮次进度（对齐 React TaskCaseCard 恒渲染口径）。
- * 实时 round_progress（task_progress WS 事件）优先；任务详情 cases[] 无轮次字段时
- * 按 React 纯 duration 判据派生——已执行（有耗时）→ 第 2/2 轮 50%，未执行 → 第 1/2 轮 0%
- * （React case-association.tsx：`第 {duration!=null?2:1}/2 轮` + `Progress value={duration!=null?50:0}`）。
+ * 实时 round_progress（task_progress WS 事件）优先；无实时进度时按用例真实轮次数
+ * （roundsCount，后端取 config.rounds 长度）派生——已执行（有耗时）视作跑满 → 第 y/y 轮，
+ * 未执行 → 第 1/y 轮；roundsCount 缺失回退单轮。
  * 恒返回非空结构，保证 meta 插槽恒有内容、不触发 TestCaseCard 默认「最后编辑时间」回退。
  */
 const caseRoundMeta = (testCase) => {
@@ -1069,10 +1069,9 @@ const caseRoundMeta = (testCase) => {
     const percent = Math.min(100, Math.max(0, Math.round((rp.current / rp.total) * 100)));
     return { current: rp.current, total: rp.total, percent };
   }
-  const executed = testCase.duration != null && testCase.duration !== '';
-  return executed
-    ? { current: 2, total: 2, percent: 50 }
-    : { current: 1, total: 2, percent: 0 };
+  const total = testCase.roundsCount > 0 ? testCase.roundsCount : 1;
+  const current = testCase.duration != null && testCase.duration !== '' ? total : 1;
+  return { current, total, percent: Math.round((current / total) * 100) };
 };
 
 // 视图模式：'flat' 平铺 | 'tag' 标签视图 | 'group' 用例分组视图
