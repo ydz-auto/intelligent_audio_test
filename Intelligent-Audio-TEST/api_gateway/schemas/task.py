@@ -115,6 +115,8 @@ class TaskCaseBrief(APIModel):
     started_at: Optional[str] = Field(None)
     completed_at: Optional[str] = Field(None)
     duration: Optional[float] = Field(None)
+    # 用例真实轮次数（read model 取 config.rounds 长度）；任务详情「轮次」列分母
+    rounds_count: Optional[int] = Field(None)
     error_message: Optional[str] = Field(None)
     group_name: Optional[str] = Field(None)
     tags: List[str] = Field(default_factory=list)

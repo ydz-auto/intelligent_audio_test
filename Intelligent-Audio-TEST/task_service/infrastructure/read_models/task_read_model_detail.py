@@ -49,6 +49,20 @@ class TaskDetailReadModelMixin:
                     _collect(ev.get('dimensions'))
         return list(seen.values())
 
+    @staticmethod
+    def extract_case_rounds_count(config) -> int:
+        """用例实际轮次数（len(config.rounds)），供任务详情「轮次」列展示分母。
+
+        旧扁平配置（无 rounds）在执行侧仍按单轮跑，故缺省计 1 轮；
+        非 dict 轮次条目（脏数据）不计入。
+        """
+        if not isinstance(config, dict):
+            return 1
+        rounds = config.get('rounds')
+        if not isinstance(rounds, list):
+            return 1
+        return max(1, len([r for r in rounds if isinstance(r, dict)]))
+
     def find_by_id_with_relations(self, task_id: int) -> Optional[Dict[str, Any]]:
         """按 ID 查询单个任务，含关联用例/设备/API/标签详情。
 
@@ -162,6 +176,8 @@ class TaskDetailReadModelMixin:
                 'started_at': tc.started_at.isoformat() if tc.started_at else None,
                 'completed_at': tc.completed_at.isoformat() if tc.completed_at else None,
                 'duration': tc.duration,
+                # 用例真实轮次数（config.rounds 长度）——任务详情「轮次」列分母
+                'rounds_count': self.extract_case_rounds_count(case_info.config if case_info else None),
                 'error_message': tc.error_message,
                 'group_name': group_name_map.get(case_info.group_id) if case_info else None,
                 'tags': [t.name for t in case_info.tags] if case_info and case_info.tags else [],

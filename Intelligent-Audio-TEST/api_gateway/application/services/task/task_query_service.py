@@ -218,6 +218,7 @@ class TaskQueryService:
                     started_at=c.get('started_at'),
                     completed_at=c.get('completed_at'),
                     duration=c.get('duration'),
+                    rounds_count=c.get('rounds_count'),
                     error_message=c.get('error_message'),
                     group_name=c.get('group_name'),
                     tags=c.get('tags', []),
