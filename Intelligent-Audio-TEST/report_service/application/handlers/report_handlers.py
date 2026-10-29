@@ -46,6 +46,7 @@ from report_service.application.handlers._report_cases_query_mixin import (
 from report_service.application.handlers._report_stats_query_mixin import (
     ReportStatsQueryMixin,
 )
+from report_service.application.services.normalize import normalize_summary_metric_dicts
 
 logger = logging.getLogger(__name__)
 
@@ -334,7 +335,12 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         aggregate.summaries = self.repository.load_summaries(query.report_id)
         # 详情接口补充完整摘要视图（all_metrics/case_categories/all_case_tags/
         # metric_data/tag_metric_data 等），序列化层优先输出到 summary 字段
-        aggregate.full_summary = self.repository.load_full_report_data(query.report_id)
+        full_summary = self.repository.load_full_report_data(query.report_id)
+        # 历史二次对比报告落库为 dict 形态，读侧统一归一为契约数组（报告 424）
+        aggregate.full_summary = (
+            normalize_summary_metric_dicts(full_summary)
+            if full_summary is not None else None
+        )
         return aggregate
 
     def handle_get_shared(self, report_id: int) -> Optional[ReportAggregate]:
@@ -351,7 +357,11 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         # 加载摘要统计，供序列化层派生出对外契约 summary 字段
         aggregate.summaries = self.repository.load_summaries(report_id)
         # 详情接口补充完整摘要视图（同 handle_get 口径）
-        aggregate.full_summary = self.repository.load_full_report_data(report_id)
+        full_summary = self.repository.load_full_report_data(report_id)
+        aggregate.full_summary = (
+            normalize_summary_metric_dicts(full_summary)
+            if full_summary is not None else None
+        )
         return aggregate
 
     def handle_get_by_task(self, query: GetReportByTaskQuery) -> Optional[ReportAggregate]:

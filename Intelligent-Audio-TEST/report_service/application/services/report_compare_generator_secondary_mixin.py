@@ -6,6 +6,7 @@
 - _build_secondary_summary: 二次对比 summary dict 构建
 """
 from report_service.application.services.report_utils import ReportUtils
+from report_service.application.services.normalize import normalize_summary_metric_dicts
 from report_service.application.services.report_query_builder import ReportQueryBuilder
 from report_service.application.services.report_compare_helpers import ReportCompareHelpers
 from report_service.application.services.report_data_builder import ReportDataBuilder
@@ -125,8 +126,13 @@ class ReportSecondaryDataMixin:
 
     @staticmethod
     def _build_secondary_summary(tasks, task_ids, reports, data_dict):
-        """构建二次对比 summary。"""
-        return {
+        """构建二次对比 summary。
+
+        metric_data/tag_metric_data/case_type_stats/raw_data 在 core_metrics 中是
+        历史 dict 形态，落库前统一归一为对外契约数组（对齐 _build_compare_summary
+        的 normalize 口径；否则前端详情页 metric_data.map 直接渲染异常）。
+        """
+        return normalize_summary_metric_dicts({
             "case_categories_list": data_dict["case_categories_list"],
             "case_tags_list": data_dict["case_tags_list"],
             "devices_list": data_dict["devices_list"],
@@ -142,4 +148,4 @@ class ReportSecondaryDataMixin:
             "api_stats": data_dict["api_stats"],
             "source_cases": data_dict["source_cases"],
             "comparison_matrix_data": data_dict["comparison_matrix_data"],
-        }
+        })

@@ -15,6 +15,59 @@ from typing import Callable, Dict, Optional
 from shared.models.common_enums import TestType
 
 
+def normalize_summary_metric_dicts(summary: dict) -> dict:
+    """把历史 dict 形态的统计字段归一为对外契约的数组形态。
+
+    背景：任务报告/对比报告在生成时已经过 normalize_summary_metrics 落库为数组，
+    但二次对比报告（secondary_comparison）历史数据仍有 dict 形态：
+      - metric_data:        {resource: {metric: value}}
+      - tag_metric_data:    {tag: {resource: {metric: value}}}
+      - case_type_stats:    {group_id: {metric: value}}
+      - raw_data:           {resource: {metric: [values]}}
+    前端详情页按数组消费（metric_data.map），dict 会直接渲染异常（报告 424）。
+
+    只处理 dict 形态，已是数组的字段原样返回，避免对既有数组二次归一出错。
+
+    Args:
+        summary: 报告摘要 dict（snake_case）
+
+    Returns:
+        归一后的新 dict（不修改入参）
+    """
+    from report_service.application.services.report_utils import ReportUtils
+
+    if not isinstance(summary, dict):
+        return {}
+    normalized = dict(summary)
+    category_items = (
+        summary.get('case_categories')
+        or summary.get('case_categories_list')
+        or []
+    )
+    tag_items = (
+        summary.get('all_case_tags')
+        or summary.get('case_tags_list')
+        or summary.get('all_tags')
+        or []
+    )
+    category_id_to_name = ReportUtils._build_id_name_map(category_items)
+    tag_id_to_name = ReportUtils._build_id_name_map(tag_items)
+    metric_name_to_id = ReportUtils._build_metric_name_id_map(summary.get('all_metrics') or [])
+
+    if isinstance(normalized.get('raw_data'), dict):
+        normalized['raw_data'] = ReportUtils.flatten_raw_data(normalized['raw_data'])
+    if isinstance(normalized.get('metric_data'), dict):
+        normalized['metric_data'] = ReportUtils.flatten_metric_data(
+            normalized['metric_data'], category_id_to_name, metric_name_to_id)
+    if isinstance(normalized.get('tag_metric_data'), dict):
+        normalized['tag_metric_data'] = ReportUtils.flatten_tag_metric_data(
+            normalized['tag_metric_data'], tag_id_to_name, metric_name_to_id)
+    if isinstance(normalized.get('case_type_stats'), dict):
+        normalized['case_type_stats'] = ReportUtils.flatten_case_type_stats(
+            normalized['case_type_stats'], category_id_to_name, metric_name_to_id)
+    return normalized
+
+
 def normalize_summary_metrics(summary: dict, dimension_lookup: Optional[Callable] = None) -> dict:
     """归一化报告摘要数据。
 
