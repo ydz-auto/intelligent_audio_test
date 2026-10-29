@@ -6,6 +6,7 @@ import time
 import threading
 
 from shared.constants.ui_capture import UiCaptureDegradeReason
+from shared.infrastructure.config import BaseConfig
 from e2e_test_service.infrastructure.acl import (
     AudioAclRepositoryImpl,
     DeviceAclRepositoryImpl,
@@ -131,7 +132,7 @@ class E2EDeviceManager:
 
         for future in futures:
             try:
-                future.result(timeout=60)
+                future.result(timeout=BaseConfig.E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS)
             except Exception as e:
                 self._log(level='ERROR', content=f"设备初始化超时或失败: {e}", task_id=task_id, test_case_id=test_case_id)
 
@@ -194,7 +195,7 @@ class E2EDeviceManager:
         for future in futures:
             try:
                 # 驱动返回 False（如预处理失败）需落为轮次失败，不能只看 gRPC 异常
-                if future.result(timeout=60) is False:
+                if future.result(timeout=BaseConfig.E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS) is False:
                     success = False
                     self._log(level='ERROR', content="设备预处理返回失败",
                               task_id=task_id, test_case_id=test_case_id)
@@ -227,7 +228,7 @@ class E2EDeviceManager:
         success = True
         for future in futures:
             try:
-                if future.result(timeout=300) is False:
+                if future.result(timeout=BaseConfig.E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS) is False:
                     success = False
                     self._log(level='ERROR', content="设备后处理返回失败",
                               task_id=task_id, test_case_id=test_case_id)
@@ -260,7 +261,7 @@ class E2EDeviceManager:
         success = True
         for future in futures:
             try:
-                future.result(timeout=60)
+                future.result(timeout=BaseConfig.E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS)
             except Exception as e:
                 success = False
                 self._log(level='ERROR', content=f"设备 teardown 失败: {e}", task_id=task_id, test_case_id=test_case_id)

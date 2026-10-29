@@ -7,7 +7,10 @@ from .harmony_collection_mixin import HarmonyCollectionMixin
 from .device_config import get_device_config
 from .driver_types import DevicePlatform
 from .registry import register_driver
-from .utils import check_stop, UiDriver, By, MatchPattern, with_rpc_retry
+from .utils import (
+    check_stop, UiDriver, By, MatchPattern, with_rpc_retry,
+    is_rpc_not_running_error, restart_uitest_daemon,
+)
 from .driver_constants import *
 from shared.constants.ui_capture import (
     UiCaptureDegradeReason, UiCaptureMode, normalize_ui_capture_mode,
@@ -60,12 +63,19 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
             return UiCaptureDegradeReason.HYPIUM_MISSING
         return None
 
-    def _connect_ui_driver(self, device_sn):
-        """建立 UiDriver 连接并缓存；失败返回 None（不判断降级模式，由调用方分流）"""
+    def _connect_ui_driver(self, device_sn, raise_rpc_error=True):
+        """建立 UiDriver 连接并缓存；失败返回 None（不判断降级模式，由调用方分流）
+
+        RPC 类错误（设备端 uitest 守护不可达）默认向上抛出（V9.7.10 语义）：
+        只有冒泡到 @with_rpc_retry 才能触发「重启守护 + 重连」自愈；若在此吞掉，
+        装饰器永远收不到异常，守护一死就只能降级/失败。
+        """
         if device_sn not in self._drivers:
             try:
                 self._drivers[device_sn] = UiDriver.connect(device_sn=device_sn)
             except Exception as e:
+                if raise_rpc_error and is_rpc_not_running_error(e):
+                    raise
                 self._log(level='ERROR', content=f"Failed to connect to Harmony device {device_sn}: {e}")
                 return None
         return self._drivers[device_sn]
@@ -292,21 +302,53 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
                     # 启动应用后再次检查弹窗
                     self.close_popups(device_sn)
                 else:
-                    self._log(level='WARNING', content="App icon not found, trying aa start...")
-                    subprocess.run(['hdc', '-t', device_sn, 'shell', 'aa', 'start', '-b', self.app_name], check=False)
-                    time.sleep(APP_LAUNCH_WAIT)
-                    # 启动应用后再次检查弹窗
-                    self.close_popups(device_sn)
+                    # 小艺只能通过桌面图标启动（aa start 实测无效：ability 不产生
+                    # 前台界面，且旧实现的 aa start -b 缺 ability 参数必然失败）。
+                    # 图标找不到说明设备环境异常（未解锁/桌面未就绪），显式失败，
+                    # 不再静默吞掉，避免问题延迟到 pre_process 才以"找不到组件"暴露。
+                    self._log(level='ERROR',
+                              content=(f"App 图标未找到，无法启动 {self.app_name}："
+                                       f"请确认设备已解锁且桌面已加载完成"),
+                              task_id=task_id, test_case_id=test_case_id)
+                    return False
 
                 if self._check_stop("initialize"):
                     return False
             return True
         except Exception as e:
+            # 守护在 UI 步骤中途死亡（设备内存压力下反复发生）时必须向上抛出：
+            # 吞掉会绕过 @with_rpc_retry 的自愈重试，initialize 只能干等几百秒后
+            # 失败（真机实测 248~363s 后报 UI RPC listening port is not found）。
+            if is_rpc_not_running_error(e):
+                raise
             self._log(level='ERROR', content=f"Failed to initialize via settings path: {e}")
             return False
 
+    def _recover_ui_rpc(self, device_sn):
+        """守护不可达时重启设备端 uitest 守护并重连（V9.7.10 自愈语义）
+
+        Returns:
+            UiDriver 实例（恢复成功）；None（恢复失败）
+        """
+        try:
+            if not restart_uitest_daemon(device_sn):
+                return None
+            self._reconnect_driver(device_sn)
+            driver = self._drivers.get(device_sn)
+            if driver is not None:
+                self._log(level='INFO',
+                          content=f"UI RPC 自愈成功（uitest 守护已重启并重连）: {device_sn}")
+            return driver
+        except Exception as e:
+            self._log(level='WARNING', content=f"UI RPC 自愈失败: {device_sn}（{e}）")
+            return None
+
     def _get_driver_for_initialize(self, device_sn):
         """initialize 专用取驱动：区分「环境缺 hypium」与「连接失败」两种不可用形态
+
+        守护不可达时先尝试自愈（重启设备端 uitest 守护 + 重连，恢复 V9.7.10
+        的自愈语义），自愈仍失败才返回结构化不可用原因，由调用方按
+        UI_CAPTURE_MODE 分流（strict 显式失败 / explicit_degrade 降级留痕）。
 
         Returns:
             (UiDriver 实例, None)（可用）；
@@ -315,7 +357,14 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
         reason = self._ui_unavailable_reason()
         if reason is not None:
             return None, reason.value
-        driver = self._connect_ui_driver(device_sn)
+        try:
+            driver = self._connect_ui_driver(device_sn)
+        except Exception as e:
+            if not is_rpc_not_running_error(e):
+                raise
+            self._log(level='WARNING',
+                      content=f"UI RPC 守护不可达，尝试自动恢复: {device_sn}（{e}）")
+            driver = self._recover_ui_rpc(device_sn)
         if driver is None:
             return None, UiCaptureDegradeReason.UITEST_DAEMON_UNAVAILABLE.value
         return driver, None

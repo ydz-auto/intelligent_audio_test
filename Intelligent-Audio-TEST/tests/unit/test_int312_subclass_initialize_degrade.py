@@ -242,6 +242,25 @@ class TestChainedInitializeDrivers:
         assert d.get_ui_capabilities() == {'ui_capture_available': True, 'degrade_reason': None}
         d._enable_dsp_audio_dump.assert_not_called()
 
+    def test_v1_pre_process_degade_explicit_fail(self):
+        """UI 层降级时 pre_process 显式失败（通话 live 态 UI 控制步骤不可跳过）
+
+        降级路径 driver=None 时 pre_process 不得崩溃（AttributeError），须在 UI 控制
+        步骤前显式失败并留痕降级原因；hdc 采集链步骤（清闹钟/清 pcm/清 audio_hook）
+        不随 UI 层降级，照常执行。
+        """
+        d = _make_v1()
+        d._get_driver = lambda sn: None
+        d.ui_capture_available = False
+        d.ui_degrade_reason = UiCaptureDegradeReason.UITEST_DAEMON_UNAVAILABLE.value
+        assert d.pre_process(SN, task_id='500') is False
+        err = [c for lv, c in d.logs if lv == 'ERROR' and '显式失败' in c]
+        assert err and 'uitest_daemon_unavailable' in err[0]
+        # hdc 采集链不随 UI 层降级
+        d._clear_alarms.assert_called_once()
+        d._clear_pcm.assert_called_once()
+        d._clear_dsp_audio_hook.assert_called_once()
+
     # ---- XiaoyilivechatV2 ----
 
     def test_v2_degrade_succeeds_with_markers(self):
@@ -322,7 +341,8 @@ class TestResumePathNoRegression:
         """UI 层可用：resume 返回真实 driver，子类照常执行全部步骤且不降级"""
         d = _make_v1()
         fake_ui = MagicMock()
-        fake_ui.find_component.return_value = None
+        # 图标存在（桌面已就绪）：小艺只能靠点图标启动
+        fake_ui.find_component.return_value = MagicMock()
         d._get_driver_for_initialize = lambda sn: (fake_ui, None)
         d._get_driver = MagicMock(return_value=fake_ui)
         d.app_name = 'x'

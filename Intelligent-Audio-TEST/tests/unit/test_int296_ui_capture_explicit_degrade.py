@@ -193,6 +193,84 @@ class TestDriverInitializeMatrix:
 
 
 # --------------------------------------------------------------------------- #
+#  RPC 守护自愈（V9.7.10 语义回归）                                             #
+# --------------------------------------------------------------------------- #
+
+class TestRpcSelfHealOnInitialize:
+    """RPC 守护不可达时先自愈（重启守护+重连），自愈失败才按模式分流
+
+    回归背景：V9.7.31 重构把 _connect_ui_driver 的 RPC 异常吞成 None，导致
+    @with_rpc_retry 永远收不到异常、守护自愈能力丢失（V9.7.10 会 pkill +
+    start-daemon + 重连后重试）。本类锁定恢复后的行为契约。
+    """
+
+    def _drv(self):
+        d = _DegradableDriver.__new__(_DegradableDriver)
+        _DegradableDriver.__init__(d)
+        return d
+
+    def test_connect_reraises_rpc_error(self):
+        """RPC 类错误必须向上抛出，否则 with_rpc_retry 无法触发自愈"""
+        d = self._drv()
+        with patch(f'{HD}.UiDriver') as m:
+            m.connect.side_effect = RuntimeError('UI RPC listening port is not found')
+            with pytest.raises(RuntimeError):
+                d._connect_ui_driver(SN)
+
+    def test_connect_swallows_non_rpc_error(self):
+        """非 RPC 异常仍按原语义返回 None（不改变既有容错口径）"""
+        d = self._drv()
+        with patch(f'{HD}.UiDriver') as m:
+            m.connect.side_effect = ValueError('bad parameter')
+            assert d._connect_ui_driver(SN) is None
+
+    def test_initialize_recovers_rpc_then_returns_driver(self):
+        """自愈成功：重启守护 + 重连后拿到驱动，不降级"""
+        d = self._drv()
+        fake = MagicMock()
+        with patch(f'{HD}.UiDriver') as m, \
+                patch(f'{HD}.restart_uitest_daemon', return_value=True) as restart:
+            m.connect.side_effect = [
+                RuntimeError('UI RPC listening port is not found'), fake,
+            ]
+            driver, reason = d._get_driver_for_initialize(SN)
+        assert driver is fake
+        assert reason is None
+        restart.assert_called_once_with(SN)
+
+    def test_initialize_downgrades_when_recovery_fails(self):
+        """自愈失败：返回结构化降级原因，由 UI_CAPTURE_MODE 分流"""
+        d = self._drv()
+        with patch(f'{HD}.UiDriver') as m, \
+                patch(f'{HD}.restart_uitest_daemon', return_value=False):
+            m.connect.side_effect = RuntimeError('UI RPC listening port is not found')
+            driver, reason = d._get_driver_for_initialize(SN)
+        assert driver is None
+        assert reason == UiCaptureDegradeReason.UITEST_DAEMON_UNAVAILABLE.value
+
+    def test_initialize_self_heal_keeps_strict_success(self):
+        """strict 模式下自愈成功 → initialize 显式成功（不再因守护抖动失败）"""
+        d = self._drv()
+        fake = MagicMock()
+        # 图标存在（桌面已就绪）：小艺只能靠点图标启动
+        fake.find_component.return_value = MagicMock()
+        d.unlock = MagicMock()
+        d.close_popups = MagicMock()
+        with patch(f'{HD}.UiDriver') as m, \
+                patch(f'{HD}.restart_uitest_daemon', return_value=True), \
+                patch(f'{HD}.normalize_ui_capture_mode', return_value='strict'), \
+                patch(f'{HD}.subprocess.run'), \
+                patch(f'{HD}.time.sleep'), \
+                patch(f'{HD}.By', MagicMock()):
+            m.connect.side_effect = [
+                RuntimeError('UI RPC listening port is not found'), fake,
+            ]
+            assert d.initialize(SN, task_id='500') is True
+        assert d.get_ui_capabilities() == {'ui_capture_available': True,
+                                           'degrade_reason': None}
+
+
+# --------------------------------------------------------------------------- #
 #  servicer：ui_capabilities 结构化透传                                          #
 # --------------------------------------------------------------------------- #
 

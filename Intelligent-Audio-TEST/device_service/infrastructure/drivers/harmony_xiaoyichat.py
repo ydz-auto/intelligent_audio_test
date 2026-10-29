@@ -1387,6 +1387,16 @@ class Xiaoyilivechat(HarmonyDriver):
                       task_id=task_id, test_case_id=test_case_id)
             return True
 
+        # 通话 live 态 UI 控制步骤是通话场景前置，不可跳过：UI 抓取层不可用（driver=None）
+        # 时 pre_process 显式失败（INT-296 语义兜底），避免 driver=None 的 AttributeError 崩溃
+        if driver is None:
+            self._log(level='ERROR',
+                      content=(f"通话 live 态无法启动: UI 抓取层不可用"
+                               f"（degrade_reason={self.ui_degrade_reason or 'unknown'}），"
+                               f"UI 控制步骤不可跳过, pre_process 显式失败"),
+                      task_id=task_id, test_case_id=test_case_id)
+            return False
+
         # 开启通话聊天（首轮）
         # 根据条件点击控件
         driver.touch(By.isAfter(By.key('ChatTitleMenu')).isBefore(By.key('title_bar.broadcastType.icon')).type('SymbolGlyph'))

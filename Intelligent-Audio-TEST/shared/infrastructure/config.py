@@ -354,7 +354,14 @@ class BaseConfig:
     # deadline（60s），默认 deadline 与之相等会竞态击杀合法慢轮次（真机走查实测
     # post_process 60,016ms 被 DEADLINE_EXCEEDED 掐断）。已知长耗时设备操作调用点
     # 显式传本值；其余调用维持默认 deadline（INT-54 防假死悬挂的失败收敛路径不变）。
-    GRPC_DEVICE_OP_DEADLINE_SECONDS: int = _get_int('GRPC_DEVICE_OP_DEADLINE_SECONDS', 180)
+    GRPC_DEVICE_OP_DEADLINE_SECONDS: int = _get_int('GRPC_DEVICE_OP_DEADLINE_SECONDS', 300)
+
+    # E2E 侧设备操作线程等待上限（秒）：必须 >= gRPC deadline，否则 e2e 先放弃
+    # 等待、底层 RPC 仍在跑，形成「e2e 报超时但设备仍在操作」的错位（真机实测
+    # initialize 在守护自愈 + UI RPC 抖动时可超 200s，旧硬编码 60s 必然误杀，
+    # 且后续 pre_process 会在半初始化的设备上找组件而失败）。
+    E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS: int = _get_int(
+        'E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS', 300)
 
     # --- gRPC 客户端收发消息上限（MB，INT-1292）---
     # grpcio 客户端默认收包上限 4MiB：大响应 RPC（任务导出 23MB 包、报告/评估

@@ -55,32 +55,66 @@ def restart_uitest_daemon(device_sn):
         return False
 
 
+def _ui_rpc_listening(device_sn):
+    """探测设备端 uitest RPC 是否在监听（TCP 8012 或 unix abstract socket）
+
+    新固件（uitest 7.x）默认走 unix abstract socket（`@uitest_socket`），
+    TCP 8012 根本不会监听；只按 8012 判断会把健康守护误判为已死。
+
+    Returns:
+        True / False：明确结论；None：hdc 探测失败，无法判断
+    """
+    try:
+        r = subprocess.run(['hdc', '-t', device_sn, 'shell', 'netstat', '-atn'],
+                           capture_output=True, text=True, timeout=5)
+        out = r.stdout or ''
+        if ':8012' in out and 'LISTEN' in out:
+            return True
+    except Exception:
+        return None
+    try:
+        u = subprocess.run(['hdc', '-t', device_sn, 'shell', 'cat', '/proc/net/unix'],
+                           capture_output=True, text=True, timeout=5)
+        if 'uitest_socket' in (u.stdout or ''):
+            return True
+    except Exception:
+        return None
+    return False
+
+
 def ensure_uitest_rpc_healthy(device_sn):
-    """确保设备端 uitest RPC(端口 8012)存活；已死则 ui restart 恢复。
+    """确保设备端 uitest RPC 存活；已死则 ui restart 恢复。
 
     背景: find_component 等 UI 调用失败时, hypium 内部的 MultiModeComponentFinder 会把
     RPC 异常吞掉并走 dumpLayout 兜底(返回 None 而不是抛异常), 后端拿不到 RPC 异常,
     with_rpc_retry 无法触发重启。因此在进入 with_rpc_retry 且有缓存驱动时,
     先主动探测 RPC 端口, 已死直接重启, 避免 hypium 自身每步 7-8s 的无效重连。
 
+    探测口径（修复慢初始化）：守护进程存活即视为健康，TCP 8012 / unix
+    abstract socket 任一在监听也可判定健康；只有确认守护进程不存在才重启。
+    旧实现只认 TCP 8012，新固件走 unix socket 时恒判"未监听"，导致每次进入
+    with_rpc_retry 都白重启一次守护（pkill + start-daemon + 重连），
+    真机实测把 initialize 拖到 50~360s。
+
     Returns:
         True: RPC 存活, 或状态未知(hdc 自身失败, 不擅自重启)
         False: 已尝试重启, 调用方需重连 driver
     """
+    listening = _ui_rpc_listening(device_sn)
+    if listening is None:
+        return True
+    if listening:
+        return True
+    # 端口/socket 均未见：再确认守护进程是否存活（避免对健康守护重复重启）
     try:
-        r = subprocess.run(
-            ['hdc', '-t', device_sn, 'shell', 'netstat', '-atn', '|', 'grep', ':8012'],
-            capture_output=True, text=True, timeout=5)
-        out = r.stdout or ''
-        if 'LISTEN' in out and ':8012' in out:
-            return True
-        if r.returncode != 0 and not out.strip():
-            # hdc 自身失败(设备断线等), 无法判断, 不擅自重启
+        p = subprocess.run(['hdc', '-t', device_sn, 'shell', 'ps', '-ef'],
+                           capture_output=True, text=True, timeout=5)
+        if 'uitest start-daemon' in (p.stdout or ''):
             return True
     except Exception:
         return True
     log_and_emit(level='WARNING', module='DeviceDriver',
-                 content=f"uitest RPC 端口 8012 未监听, 执行 ui restart 恢复: {device_sn}")
+                 content=f"uitest 守护进程/RPC 均不可用, 执行重启恢复: {device_sn}")
     return restart_uitest_daemon(device_sn)
 
 
