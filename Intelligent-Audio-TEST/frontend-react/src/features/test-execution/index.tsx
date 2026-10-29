@@ -29,7 +29,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { cn } from '@/lib/utils'
 import { navigateWithSearch } from '@/features/test-execution/lib/navigate-search'
 
-import { TEST_FLOW_CONFIG } from '@/features/test-execution/constants'
+import { TEST_FLOW_CONFIG, VOICE_LLM_ALGORITHM_TYPE } from '@/features/test-execution/constants'
 import { FlowSteps } from '@/features/test-execution/components/flow-steps'
 import { FlowFooter } from '@/features/test-execution/components/flow-footer'
 import { StepCases } from '@/features/test-execution/components/step-cases'
@@ -113,8 +113,8 @@ export function TestExecutionPage({
 
   /** 步骤 0-1 上下文提示（voice_llm 场景 / 校验错误摘要） */
   const footerHint = useMemo(() => {
-    if (step === 0 && algorithmType === 'tts_eval') return config.voiceLlmAlert
-    if (step === 1 && algorithmType === 'tts_eval')
+    if (step === 0 && algorithmType === VOICE_LLM_ALGORITHM_TYPE) return config.voiceLlmAlert
+    if (step === 1 && algorithmType === VOICE_LLM_ALGORITHM_TYPE)
       return 'voice_llm 多轮对话测试建议并发数为 2（默认 4），以获得更稳定的结果。'
     return undefined
   }, [step, algorithmType, config.voiceLlmAlert])

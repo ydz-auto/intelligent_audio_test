@@ -46,6 +46,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 import { DeviceCard } from '@/features/test-execution/components/device-card'
 import { ApiCard } from '@/features/test-execution/components/api-card'
+import { VOICE_LLM_ALGORITHM_TYPE } from '@/features/test-execution/constants'
 import { ParamCard } from '@/features/test-execution/components/param-card'
 import { SelectionSummary } from '@/features/test-execution/components/selection-summary'
 import { ExecutionDiagram } from '@/features/test-execution/components/execution-diagram'
@@ -177,7 +178,7 @@ export function StepResources({
     visibleOnlineApis.length > 0 &&
     visibleOnlineApis.every((a) => resources.apiIds.includes(a.id))
 
-  const isVoiceLlm = algorithmType === 'tts_eval'
+  const isVoiceLlm = algorithmType === VOICE_LLM_ALGORITHM_TYPE
 
   const handleTestConnection = async (device: Device) => {
     setTestingIds((prev) => new Set(prev).add(device.id))

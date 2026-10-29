@@ -2,7 +2,8 @@
  * 全局算法通道（application 层；10_测试执行.md §3.3 本卡关键裁定）。
  * 挂载读全局 store——非空时预选；页内选择即写回 setAlgorithmId（Toast
  * 「已切换全局算法为 {名}」）；页内不提供「取消选择」（清空唯一入口=导航栏切换器）。
- * 步骤一/二列表过滤自动附 algorithm_type（toReportAlgorithmType 映射，与报告域同源）。
+ * 步骤一/二列表过滤与任务落库均用算法真实类型码（GET /algorithm/options 的 value，
+ * 如 voice_llm）；报告域的 asr_streaming/tts_eval 快照枚举由报告域自行映射，不在本层转换。
  * 接线（INT-646 返修）：选项来自真实 GET /algorithm/options；全局算法不在真实选项内时
  * 视为「未选择」——chip 显示「未选择」且不附加算法过滤（避免把真实数据筛成空态，
  * 与 Vue 端「facet 未显式选择且全局算法无效时按全部展示」口径一致）。
@@ -10,7 +11,6 @@
 import { useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 
-import { toReportAlgorithmType } from '@/features/reports/lib/algorithm'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import { useTestAlgorithmOptions } from '@/application/test-execution/useTestAlgorithmOptions'
 import type { TestAlgorithmOption } from '@/domain/models/algorithm'
@@ -40,11 +40,8 @@ export function useAlgorithmChannel() {
     [enabledOptions, setAlgorithmId]
   )
 
-  /** 列表过滤用 algorithm_type：仅当全局算法存在于真实选项内时取值，否则 undefined（不筛选） */
-  const algorithmType = useMemo(
-    () => (current ? toReportAlgorithmType(algorithmId) : undefined),
-    [current, algorithmId]
-  )
+  /** 列表过滤/任务落库用 algorithm_type：仅当全局算法存在于真实选项内时取真实类型码，否则 undefined（不筛选） */
+  const algorithmType = useMemo(() => current?.id, [current])
 
   return {
     algorithmId,

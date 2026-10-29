@@ -26,6 +26,9 @@ export interface TestFlowConfig {
   voiceLlmConcurrency: number
 }
 
+/** 算法类型码：语音大模型（GET /algorithm/options 的 value 口径；多轮/打断/拒识语义） */
+export const VOICE_LLM_ALGORITHM_TYPE = 'voice_llm'
+
 export const TEST_FLOW_CONFIG: TestFlowConfig = {
   title: '开始测试',
   subtitle: '选择用例与设备/API，在同一流程内完成语音测试与报告生成',
