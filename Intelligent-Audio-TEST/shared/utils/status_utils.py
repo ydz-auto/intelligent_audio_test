@@ -65,8 +65,9 @@ def derive_task_dual_status(task_status: str, *,
       > completed（全部用例执行终态） > pending；评估过渡态（evaluating/
       reevaluate_queued/reevaluating）不落入执行侧——评估推进不改执行徽章。
     - 评估侧优先级：evaluating（评估过渡态或存在进行中评估） > failed
-      （执行未失败而评估失败） > skipped（手动停止中断评估） > completed
-      （存在评估完成用例，不要求任务已收敛——评估完成即评估完成） >
+      （执行未失败而评估失败） > skipped（手动停止中断评估 / 执行失败评估
+      未发生，失败路径补写的 completed 是收敛占位而非真实评估） >
+      completed（存在评估完成用例，不要求任务已收敛——评估完成即评估完成） >
       pending（尚未进入评估）。
     """
     # ---- 执行侧（纯执行域）----
@@ -93,7 +94,10 @@ def derive_task_dual_status(task_status: str, *,
         evaluation = EvaluationStatus.FAILED
     elif task_status == TaskStatus.STOPPED:
         # 停止中断评估（即使部分评估已完成，整体评估被截断）
-        evaluation = 'skipped'
+        evaluation = EvaluationStatus.SKIPPED
+    elif execution == ExecutionStatus.FAILED:
+        # 执行失败：评估不会提交，失败路径补写的 completed 仅为收敛占位
+        evaluation = EvaluationStatus.SKIPPED
     elif has_eval_completed:
         evaluation = EvaluationStatus.COMPLETED
     else:

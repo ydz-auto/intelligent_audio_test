@@ -84,12 +84,13 @@ def test_all_done_but_task_still_running_converges_both():
 
 def test_eval_failed_and_exec_failed_boundaries():
     """执行失败优先承载失败；评估失败仅执行未失败用例上的评估失败才落评估侧。"""
-    # 执行失败任务（评估未启动收口 completed）：执行 failed、评估 completed
+    # 执行失败任务（评估未启动，失败路径补写的 completed 只是收敛占位）：
+    # 执行 failed、评估 skipped
     exec_s, eval_s = derive_task_dual_status('completed',
         has_exec_active=False, has_exec_failed=True, has_exec_stopped=False,
         exec_all_terminal=False, has_eval_in_progress=False, has_eval_failed=False,
         has_eval_completed=True)
-    assert (exec_s, eval_s) == ('failed', 'completed')
+    assert (exec_s, eval_s) == ('failed', 'skipped')
     # 执行成功而评估失败：执行 completed、评估 failed
     exec_s, eval_s = derive_task_dual_status('completed',
         has_exec_active=False, has_exec_failed=False, has_exec_stopped=False,
@@ -205,7 +206,7 @@ def test_sql_expr_matches_python_deriver(db):
         # D: 并行模式（执行 running、已完成用例评估 running）
         (Task(name='int301-d', status='running', total_cases=2),
          [('completed', 'running'), ('running', 'pending')]),
-        # E: 执行失败（评估未启动收口 completed）
+        # E: 执行失败（评估未启动，失败路径补写的 completed 只是收敛占位）
         (Task(name='int301-e', status='completed', total_cases=1),
          [('failed', 'completed')]),
         # F: 执行成功而评估失败
@@ -224,7 +225,7 @@ def test_sql_expr_matches_python_deriver(db):
         'int301-b': ('completed', 'evaluating'),
         'int301-c': ('completed', 'evaluating'),
         'int301-d': ('running', 'evaluating'),
-        'int301-e': ('failed', 'completed'),
+        'int301-e': ('failed', 'skipped'),
         'int301-f': ('completed', 'failed'),
         'int301-g': ('stopped', 'skipped'),
         'int301-h': ('pending', 'pending'),

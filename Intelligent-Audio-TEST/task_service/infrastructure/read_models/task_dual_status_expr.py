@@ -14,9 +14,10 @@ reevaluate_queued/reevaluating 表达评估侧），本模块用例级 TaskCase 
 （优先级序一致），两侧由单元测试互锁（tests/unit/test_int301_task_dual_status.py）。
 
 评估侧优先级：evaluating（评估过渡态或存在进行中评估） > failed（执行
-未失败而评估失败） > skipped（手动停止中断评估） > completed（存在评估
-完成用例） > pending。执行侧：paused > running > failed > stopped >
-queued > completed > pending；评估过渡态不落入执行侧。
+未失败而评估失败） > skipped（手动停止中断评估 / 执行失败评估未发生——
+失败路径补写的 completed 只是收敛占位） > completed（存在评估完成用例） > pending。
+执行侧：paused > running > failed > stopped > queued > completed > pending；
+评估过渡态不落入执行侧。
 """
 from sqlalchemy import and_, case, exists, or_, select
 
@@ -78,7 +79,8 @@ EXECUTION_STATUS_EXPR = case(
 EVALUATION_STATUS_EXPR = case(
     (or_(Task.status.in_(_EVAL_TRANSITION_STATUSES), HAS_EVAL_IN_PROGRESS), 'evaluating'),
     (HAS_EVAL_FAILED, EvaluationStatus.FAILED),
-    (Task.status == 'stopped', 'skipped'),
+    (Task.status == 'stopped', EvaluationStatus.SKIPPED),
+    (HAS_EXEC_FAILED, EvaluationStatus.SKIPPED),
     (HAS_EVAL_COMPLETED, EvaluationStatus.COMPLETED),
     else_=EvaluationStatus.PENDING,
 ).label('evaluation_status')
@@ -86,7 +88,7 @@ EVALUATION_STATUS_EXPR = case(
 # 评估状态筛选合法取值（前端 BadgeFilter 选项）
 EVALUATION_FILTER_VALUES = (
     EvaluationStatus.PENDING, 'evaluating', EvaluationStatus.COMPLETED,
-    EvaluationStatus.FAILED, 'skipped',
+    EvaluationStatus.FAILED, EvaluationStatus.SKIPPED,
 )
 
 # 执行状态筛选合法取值（前端 BadgeFilter 选项，纯执行域；INT-301 F1 打回补齐）

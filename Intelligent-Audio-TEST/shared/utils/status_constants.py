@@ -61,6 +61,8 @@ class EvaluationStatus(str):
     COMPLETED = 'completed'
     STOPPED = 'stopped'
     FAILED = 'failed'
+    # 任务级派生徽章专用：评估未实际发生（执行失败/手动停止中断），非落库值
+    SKIPPED = 'skipped'
 
 
 class ResultExcludeStatus(str):
