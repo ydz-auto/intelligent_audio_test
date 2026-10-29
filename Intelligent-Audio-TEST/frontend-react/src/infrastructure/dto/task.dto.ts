@@ -139,6 +139,9 @@ export interface TaskCaseBriefDto {
   evaluation_dimensions: Array<{ id: number | string; name: string }>
   /** INT-734/755：该用例下是否存在人工复核结果（上游可缺省 → 容错 false） */
   reviewed?: boolean | null
+  /** 用例级执行目标数 + 目标明细（后端按用例合并，执行行不再重复出条） */
+  target_count?: number | null
+  targets?: Array<Record<string, unknown>>
 }
 
 /** 任务域统计 DTO（task.py TaskDomainStatsData；与 domain TaskDomainStats 同构） */

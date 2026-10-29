@@ -49,7 +49,11 @@ import {
 import { formatResultValue } from '@/features/report-view/components/case-report-detail/case-report-utils'
 import { AiReviewSessionDialog } from '@/features/ai-review/ai-review-session-dialog'
 import { ManualReviewDialog } from '@/features/tasks/components/manual-review-dialog'
-import { CaseDetailExecutionResults, RoundTabBar } from './case-detail-results'
+import {
+  ALL_TARGETS,
+  CaseDetailExecutionResults,
+  RoundTabBar,
+} from './case-detail-results'
 import { cn } from '@/lib/utils'
 
 interface CaseDetailDialogProps {
@@ -183,6 +187,8 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
   const [page, setPage] = useState(1)
   // 轮次 Tab 选中态绑定 caseId：换用例即失配 → 复位到第一个有数据的 Tab（P3，V9.7.10 :1317-1328）
   const [tabChoice, setTabChoice] = useState<{ caseId: string; tabKey: string } | null>(null)
+  /** 目标（被测设备/API）切换：ALL_TARGETS = 全部对比（现状）；其余只作用该目标 */
+  const [targetChoice, setTargetChoice] = useState<{ caseId: string; target: string } | null>(null)
   // 同用例关闭重开也要复位（INT-1861）：弹窗由父层常驻挂载，React 不会重挂，
   // V9.7.10 的详情组件则随每次打开重新初始化（V9.7.10 :1317-1328）。
   // 只在「打开」边沿清空：关闭动画期间不闪回第一枚 Tab。
@@ -217,9 +223,29 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
   })
 
   const detail = detailQuery.data
+  const targetNames = (detail?.devices ?? []).map((d) => d.deviceName)
+  const activeTarget =
+    targetChoice && targetChoice.caseId === caseId ? targetChoice.target : ALL_TARGETS
+  /**
+   * 目标切换后的作用域：评分指标表列 / 执行结果行 / 参考文本 / 结果音频一起收窄；
+   * 选「全部对比」时保持原对象（现状不变）。
+   */
+  const scopedDetail = (() => {
+    if (!detail || activeTarget === ALL_TARGETS) return detail
+    const match = (name: string | null | undefined) => (name ?? '') === activeTarget
+    return {
+      ...detail,
+      devices: detail.devices.filter((d) => d.deviceName === activeTarget),
+      results: detail.results.filter((r) => match(r.deviceName) || match(r.apiName)),
+      resultAudios: detail.resultAudios.filter((a) => match(a.deviceName || '未标注设备')),
+      resultAudioFields: detail.resultAudioFields.filter((f) => match(f.deviceName)),
+    }
+  })()
   const logs = logsQuery.data
   // INT-1688：执行结果行随详情一并取回（/results），不再单独查询
   const caseResults: CaseResultForReview[] = detail?.results ?? []
+  /** 目标切换后的结果行（全部对比时与 caseResults 相同） */
+  const scopedCaseResults: CaseResultForReview[] = scopedDetail?.results ?? []
   const taskTerminal = ['completed', 'failed', 'stopped', 'skipped'].includes(
     taskQuery.data?.status ?? ''
   )
@@ -314,12 +340,11 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
   }
   const currentReferenceAudios = detail ? audiosForCurrentTab(detail.referenceAudios) : []
 
-  /**
-   * 结果音频（result_audios）不随轮次 Tab 过滤（10 §5.2 ① INT-1723 ⑤）：按设备分组全量展示。
-   */
+  /** 结果音频（result_audios）不随轮次 Tab 过滤（10 §5.2 ① INT-1723 ⑤）：按设备分组全量展示。
+   *  随目标切换收窄（选中 API/设备后只留该目标）。 */
   const resultAudioGroups = (() => {
     const groups: Array<{ deviceName: string; audios: CaseAudioResult[] }> = []
-    for (const audio of detail?.resultAudios ?? []) {
+    for (const audio of scopedDetail?.resultAudios ?? []) {
       const deviceName = audio.deviceName || '未标注设备'
       const group = groups.find((g) => g.deviceName === deviceName)
       if (group) group.audios.push(audio)
@@ -328,12 +353,13 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
     return groups
   })()
 
-  /** 执行结果音频字段（algorithm_results 的 audio_file 项）按当前 Tab 过滤 */
-  const visibleResultAudioFields = (detail?.resultAudioFields ?? []).filter((field) =>
+  /** 执行结果音频字段（algorithm_results 的 audio_file 项）按当前 Tab + 目标过滤 */
+  const visibleResultAudioFields = (scopedDetail?.resultAudioFields ?? []).filter((field) =>
     isAudioFieldVisible(field, currentTab)
   )
 
-  /** 有真实执行数据才渲染指标×设备表；无结果用例退回结果摘要（空态不回归） */
+  /** 有真实执行数据才渲染指标×设备表；无结果用例退回结果摘要（空态不回归）。
+   *  以全量 detail 判定（评分指标恒全量，轮次 Tab 是全局二级轴，不随目标收窄）。 */
   const hasDeviceTable =
     (detail?.devices.length ?? 0) > 0 &&
     (caseResults.length > 0 || (detail?.devices ?? []).some((d) => d.metrics.length > 0))
@@ -468,24 +494,34 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                     />
                   )}
                   {/* 评分指标 / 多轮对话结果 / 执行结果（参考数据、用例参数、评估结果、
-                      设备·API 执行结果、时间轴对比、音频时间轴）——V9.7.10 全块（INT-2088） */}
-                  <CaseDetailExecutionResults
-                    detail={detail}
-                    currentTab={currentTab}
-                    onRoundTabLabelSelect={handleRoundLabelSelect}
-                  />
+                      设备·API 执行结果、时间轴对比、音频时间轴）——V9.7.10 全块（INT-2088）；
+                      评分指标恒按全量设备/API 列对比；设备/API Tab 在执行结果块之上渲染，
+                      targetDetail 收窄其下模块 */}
+                  {scopedDetail && (
+                    <CaseDetailExecutionResults
+                      detail={detail}
+                      targetDetail={scopedDetail}
+                      targetTab={{
+                        names: targetNames,
+                        active: activeTarget,
+                        onSelect: (target) => setTargetChoice({ caseId, target }),
+                      }}
+                      currentTab={currentTab}
+                      onRoundTabLabelSelect={handleRoundLabelSelect}
+                    />
+                  )}
                 </div>
               ) : (
                 <ApiCaseResultSummary
-                  results={caseResults}
+                  results={scopedCaseResults}
                   algorithmResults={detail.algorithmResults}
                 />
               )}
 
-              {/* ASR / 翻译参考文本 */}
-              {detail.devices.some((d) => d.asrReference) && (
+              {/* ASR / 翻译参考文本（随目标切换收窄） */}
+              {(scopedDetail?.devices ?? []).some((d) => d.asrReference) && (
                 <div className='mt-3 grid gap-3 sm:grid-cols-2'>
-                  {detail.devices.map((device) => (
+                  {(scopedDetail?.devices ?? []).map((device) => (
                     <div key={`ref-${device.deviceName}`} className='space-y-2'>
                       {device.asrReference && (
                         <div className='space-y-1'>

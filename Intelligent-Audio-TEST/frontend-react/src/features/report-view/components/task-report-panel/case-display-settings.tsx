@@ -200,13 +200,6 @@ export function CaseDisplaySettings({
       >
         <div className='space-y-0.5'>
           <OptionRow
-            checked={!settings.hiddenBlocks.includes('resultComparison')}
-            label={CONTENT_BLOCK_LABELS.resultComparison}
-            onChange={(checked) =>
-              onChange({ hiddenBlocks: toggleIn(settings.hiddenBlocks, 'resultComparison', checked) })
-            }
-          />
-          <OptionRow
             checked={!settings.hiddenBlocks.includes('metricTable')}
             label={CONTENT_BLOCK_LABELS.metricTable}
             onChange={(checked) =>

@@ -134,6 +134,27 @@ export interface TaskCaseBrief {
   evaluation_dimensions: Array<{ id: number | string; name: string }>
   /** INT-734：该用例下是否存在人工复核结果（驱动「人工复核」Badge 显隐，19 规范 §3.5） */
   reviewed: boolean
+  /** 用例级执行目标数（一个用例 × 多 API/设备；执行行已合并进 targets） */
+  target_count?: number | null
+  /** 执行目标明细（API/设备维度，供详情内逐目标对比） */
+  targets?: TaskCaseTarget[]
+}
+
+/** 用例执行目标（TaskCase 行级：API 行 device_id 即 apis.id） */
+export interface TaskCaseTarget {
+  task_case_id: number
+  target_type?: 'api' | 'device' | null
+  device_type: string | null
+  device_id: string | null
+  api_id: number | null
+  target_name?: string | null
+  status: string | null
+  execution_status: string | null
+  evaluation_status: string | null
+  started_at: string | null
+  completed_at: string | null
+  duration: number | null
+  error_message: string | null
 }
 
 /** 任务详情（task.py TaskDetailData） */

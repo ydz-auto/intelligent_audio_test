@@ -18,6 +18,7 @@ import {
   type CaseDisplaySettings,
 } from '@/application/report-view/use-case-display-settings'
 import { cn } from '@/lib/utils'
+import { TargetTabBar } from './target-tab-bar'
 
 import {
   fieldHasRoundTag,
@@ -79,6 +80,12 @@ interface ExecutionResultsProps {
   activeRoundTag: string | null
   /** §3.5.10 显示设置（不传 = 全显）；控制执行结果子项与资源 / 维度裁剪 */
   display?: CaseDisplaySettings
+  /** 设备/API 一级 Tab（渲染在「执行结果」标题之上；不传 = 不渲染） */
+  targetTab?: {
+    names: string[]
+    active: string
+    onSelect: (target: string) => void
+  }
 }
 
 export function ExecutionResults({
@@ -89,6 +96,7 @@ export function ExecutionResults({
   setActiveRoundTab,
   activeRoundTag,
   display,
+  targetTab,
 }: ExecutionResultsProps) {
   const [playingAudio, setPlayingAudio] = useState<AudioItemMeta>()
   const [activeDimTab, setActiveDimTab] = useState(0)
@@ -326,6 +334,14 @@ export function ExecutionResults({
 
   return (
     <div className='space-y-3'>
+      {/* 设备/API 一级 Tab：定位于「执行结果」块之上（评分指标不受其影响） */}
+      {targetTab && (
+        <TargetTabBar
+          targetNames={targetTab.names}
+          activeTarget={targetTab.active}
+          onSelect={targetTab.onSelect}
+        />
+      )}
       <p className='text-sm font-semibold'>执行结果</p>
 
       {/* 多轮场景：轮次 Tab 控制执行结果与参考数据显示（§3.5.3） */}

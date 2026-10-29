@@ -56,6 +56,18 @@ const HIDE_AUDIO_DISPLAY: CaseDisplaySettings = {
 
 interface CaseDetailExecutionResultsProps {
   detail: CaseExecutionDetail
+  /**
+   * 目标切换后的作用域（被测设备/API）：只作用于「评分指标以下」的模块
+   * （多轮结果 / 执行结果 / 时间轴 / 音频），评分指标恒按全量目标列对比。
+   * 不传 = 全量（现状）。
+   */
+  targetDetail?: CaseExecutionDetail
+  /** 设备/API 一级 Tab（透传给执行结果块，渲染在「执行结果」之上） */
+  targetTab?: {
+    names: string[]
+    active: string
+    onSelect: (target: string) => void
+  }
   /** 当前轮次 Tab（弹窗既有状态；null = 数据未就绪） */
   currentTab: CaseRoundTab | null
   /** 轮次 Tab 选择（label → 弹窗 tabChoice 更新；INT-1861 复位语义在弹窗层） */
@@ -451,11 +463,15 @@ function toTimelineAudioItems(detail: CaseExecutionDetail) {
 
 export function CaseDetailExecutionResults({
   detail,
+  targetDetail,
+  targetTab,
   currentTab,
   onRoundTabLabelSelect,
 }: CaseDetailExecutionResultsProps) {
-  const reportCaseItem = useMemo(() => toReportCaseItem(detail), [detail])
-  const reportDetail = useMemo(() => toReportDetailData(detail), [detail])
+  /** 评分指标以下模块的取数作用域（目标切换）；评分指标本身恒用全量 detail */
+  const scoped = targetDetail ?? detail
+  const reportCaseItem = useMemo(() => toReportCaseItem(scoped), [scoped])
+  const reportDetail = useMemo(() => toReportDetailData(scoped), [scoped])
 
   /** 弹窗既有轮次 Tab → report 域 RoundTab（key/label/roundTag/order） */
   const reportRoundTabs = useMemo<RoundTab[]>(
@@ -487,8 +503,8 @@ export function CaseDetailExecutionResults({
     return { ...HIDE_AUDIO_DISPLAY, hiddenRounds }
   }, [reportRoundTabs])
 
-  const hasTimeline = useMemo(() => hasTimelineEvidence(detail), [detail])
-  const hasInputAudio = (detail.referenceAudios ?? []).length > 0
+  const hasTimeline = useMemo(() => hasTimelineEvidence(scoped), [scoped])
+  const hasInputAudio = (scoped.referenceAudios ?? []).length > 0
 
   return (
     <div className='space-y-3'>
@@ -519,16 +535,17 @@ export function CaseDetailExecutionResults({
           setActiveRoundTab={onRoundTabLabelSelect}
           activeRoundTag={activeRoundTag}
           display={display}
+          targetTab={targetTab}
         />
 
         {/* 用例参数块由上方 ExecutionResults 独占渲染（含无数据时的块内「暂无数据」空态，
             INT-2089）；弹窗侧不再补一份兜底空态，V9.7.10 该弹窗只有一处「用例参数」。 */}
 
-        {/* 时间轴对比（§3.3.9） */}
-        {hasTimeline && <TimelineCompare detail={detail} />}
+        {/* 时间轴对比（§3.3.9；随目标切换收窄） */}
+        {hasTimeline && <TimelineCompare detail={scoped} />}
 
-        {/* 音频时间轴（§3.5.7；用例输入音频） */}
-        {hasInputAudio && <AudioTimeline audioList={toTimelineAudioItems(detail)} />}
+        {/* 音频时间轴（§3.5.7；用例输入音频；随目标切换收窄） */}
+        {hasInputAudio && <AudioTimeline audioList={toTimelineAudioItems(scoped)} />}
       </div>
     </div>
   )
@@ -565,3 +582,6 @@ export function RoundTabBar({
     </div>
   )
 }
+
+/** 目标切换「全部对比」哨兵值（与弹窗层约定一致） */
+export { ALL_TARGETS, TargetTabBar } from '@/features/report-view/components/case-report-detail/target-tab-bar'

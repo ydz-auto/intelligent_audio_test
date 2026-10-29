@@ -466,13 +466,10 @@ export function SpecificCaseComparison({
     setCaseViewLimit(NODE_PAGE_SIZE)
   }, [effectiveView])
 
-  // ---- 显示设置派生：叶表行集 / 轮次 chips / 维度（列集按每卡激活轮次在展开区容器内装配） ----
+  // ---- 显示设置派生：轮次 chips（列集按每卡激活轮次在展开区容器内装配） ----
   const settings = display.settings
-  const selectedBaseDimensions = views.baseDimensions.filter(
-    (d) => !settings.hiddenMetrics.includes(d)
-  )
   /**
-   * 已选轮次 = 可用轮次集（叶表 Tab 候选 + 评分指标块 / 执行结果块轮次范围，§3.3.7 / §3.5.10）。
+   * 已选轮次 = 可用轮次集（评分指标块 / 执行结果块轮次范围，§3.3.7 / §3.5.10）。
    * 报告里没有任何轮次 chip（单轮报告）时传 `undefined`——空数组只表示「用户把 chips 全清了」，
    * 两种语义不能混（否则单轮用例会误显示「未选择轮次」）。
    */
@@ -482,12 +479,6 @@ export function SpecificCaseComparison({
     : undefined
   /** chips 被全清（显式标志，见上） */
   const roundsAllCleared = hasRoundChips && selectedRounds!.length === 0
-  const selectedResources = views.resourceKeys.filter(
-    (k) => !settings.hiddenResources.includes(k)
-  )
-  const selectedResultTypes = views.resultTypes.filter(
-    (k) => !settings.hiddenResultTypes.includes(k)
-  )
 
   /** 用例卡渲染（平铺 / 组内共用同一条 CaseCard 口径） */
   const renderCaseCard = (c: ReportCaseItem, leafCtx: LeafContext) => {
@@ -607,20 +598,11 @@ export function SpecificCaseComparison({
           expanded ? (
             <CaseReportExpanded
               caseItem={c}
-              view={leafCtx.view}
-              resourceKey={leafCtx.resourceKey}
-              resultType={leafCtx.resultType}
               report={report}
               display={isExporting ? undefined : settings}
               onRestoreDisplay={display.reset}
-              selectedBaseDimensions={selectedBaseDimensions}
-              includeSubDimensions={settings.includeSubDimensions}
-              subDimensionNames={taxonomy.subDimensions}
               selectedRounds={selectedRounds}
               roundsAllCleared={roundsAllCleared}
-              selectedResources={selectedResources}
-              selectedResultTypes={selectedResultTypes}
-              onOpenDisplaySettings={isExporting ? undefined : () => setDisplaySettingsOpen(true)}
             />
           ) : undefined
         }

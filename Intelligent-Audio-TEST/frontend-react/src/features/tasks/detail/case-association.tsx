@@ -62,7 +62,7 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { CaseResultForReview } from '@/domain/models/review'
 import { toAiReviewDimensionIds } from '@/domain/models/review'
-import type { TaskCaseBrief, TaskDetailData } from '@/domain/models/task'
+import type { TaskCaseBrief, TaskCaseTarget, TaskDetailData } from '@/domain/models/task'
 import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { Progress } from '@/features/tasks/components/ui/progress'
@@ -171,9 +171,15 @@ interface ReviewTarget {
   dimensionIds?: number[]
 }
 
-/** 行式列表列网格（平铺表头与行、标签/分组组内行共用；列：名称/执行状态/评估状态/耗时/轮次/操作） */
+/** 行式列表列网格（平铺表头与行、标签/分组组内行共用；列：名称/执行状态/评估状态/耗时/轮次/目标/操作） */
 const CASE_ROW_GRID =
-  'grid grid-cols-[minmax(0,1fr)_5.75rem_5.75rem_4.25rem_5.25rem_7rem] items-center gap-2 px-2'
+  'grid grid-cols-[minmax(0,1fr)_5.75rem_5.75rem_4.25rem_5.25rem_7.5rem_7rem] items-center gap-2 px-2'
+
+/** 目标展示名：API 名/设备名，缺失时按类型 + id 兜底 */
+function targetLabel(t: TaskCaseTarget): string {
+  if (t.target_name) return t.target_name
+  return t.target_type === 'api' ? `API ${t.api_id ?? t.device_id ?? '—'}` : `设备 ${t.device_id ?? '—'}`
+}
 
 /**
  * 关联用例行（INT-1492 对照 V9.7.10 `progress-item-small`：一行放下
@@ -297,6 +303,32 @@ function TaskCaseRow({
           {roundsExecuted ? `第 ${roundTotal}/${roundTotal} 轮` : '—'}
         </span>
         <Progress value={roundPercent} size='xs' className='w-6 shrink-0' />
+      </div>
+
+      {/* 设备/API：合并后按执行行统计「已完成/总数」，hover 看每个设备/API 明细 */}
+      <div role='cell' data-column='targets' className='min-w-0'>
+        {(() => {
+          const targets = c.targets ?? []
+          if (targets.length === 0) {
+            return <span className='text-muted-foreground text-xs'>—</span>
+          }
+          const done = targets.filter((t) => t.execution_status === 'completed').length
+          const failed = targets.some((t) => t.execution_status === 'failed')
+          const finished = done === targets.length
+          return (
+            <span
+              className={cn(
+                'font-mono text-xs tabular-nums',
+                failed ? 'text-destructive' : finished ? 'text-emerald-600' : 'text-muted-foreground'
+              )}
+              title={targets
+                .map((t) => `${targetLabel(t)}：执行 ${t.execution_status ?? '—'} / 评估 ${t.evaluation_status ?? '—'}`)
+                .join('\n')}
+            >
+              {done}/{targets.length}
+            </span>
+          )
+        })()}
       </div>
 
       {/* 操作：人工复核 / AI 复核 / 快速复核（终态任务）+ 移除用例 */}
@@ -837,6 +869,7 @@ export function CaseAssociation({
               <div role='columnheader'>评估状态</div>
               <div role='columnheader'>耗时</div>
               <div role='columnheader'>轮次</div>
+              <div role='columnheader'>设备/API</div>
               <div role='columnheader' className='text-right'>
                 操作
               </div>

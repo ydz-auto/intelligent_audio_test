@@ -15,7 +15,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 /** 卡片内容块（一级开关；执行结果带 5 个子项） */
 export const CONTENT_BLOCK_KEYS = [
-  'resultComparison',
   'metricTable',
   'multiRound',
   'execution',
@@ -36,7 +35,6 @@ export const EXECUTION_CHILD_KEYS = [
 export type ExecutionChildKey = (typeof EXECUTION_CHILD_KEYS)[number]
 
 export const CONTENT_BLOCK_LABELS: Record<ContentBlockKey, string> = {
-  resultComparison: '结果对比',
   metricTable: '评分指标',
   multiRound: '多轮对话结果',
   execution: '执行结果',
