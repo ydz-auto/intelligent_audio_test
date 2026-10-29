@@ -11,7 +11,7 @@
 | # | 故障 | 现象原文 | 影响面 |
 |---|---|---|---|
 | A | apt 源不可用 | `deb.debian.org` 返回 502 / `Temporary failure resolving 'deb.debian.org'` | 单次 build 失败 |
-| B | 构建期引擎崩溃 | `error reading from server: EOF`，WSL VM 重启，**全部容器 `Exited (255)`** | **正在跑的 :15000 / :15173 / :16173 真实栈一起被打掉**，且 `/dev/bus/usb` 消失导致 e2e 容器起不来 |
+| B | 构建期引擎崩溃 | `error reading from server: EOF`，WSL VM 重启，**全部容器 `Exited (255)`** | **正在跑的 :15000 / :15173 / :16173 真实栈一起被打掉** |
 
 故障 A 已由 Dockerfile 侧修掉（§3）；故障 B 无法从 Dockerfile 侧根治（属 Docker Desktop /
 WSL2 稳定性），只能靠「构建前体检 + 串行单服务 + 崩溃后按清单恢复」把它的代价压到最低（§4/§5）。
@@ -174,43 +174,29 @@ python docker/build_stack.py --check
 ```powershell
 # 2) 引擎回来后：容器由 restart 策略自行拉起，确认集合与状态
 docker ps --format "table {{.Names}}\t{{.Status}}"
-
-# 3) VM 重启会打掉 /dev/bus/usb → e2e 容器起不来（网关侧表现为 500），用脚本补回
-powershell -ExecutionPolicy Bypass -File docker/restore_usb_device_node.ps1 -Check
-powershell -ExecutionPolicy Bypass -File docker/restore_usb_device_node.ps1 -RestartE2E
 ```
 
 `db_bootstrap` 容器在引擎重启后会重跑整条引导链（幂等），看退出码判结果：
 `docker inspect -f '{{.State.ExitCode}}' intelligent-audio-test-db_bootstrap-1`，**不要**用
 `docker compose run` 手喂 stdin。
 
-## 6. VM 重启后 `/dev/bus/usb` 恢复
+## 6. 为什么不给 e2e 挂 `/dev/bus/usb`
 
-e2e_test_service 在 compose 里映射 `devices: /dev/bus/usb:/dev/bus/usb`（`docker-compose.yml:313`）。
-WSL VM 重启后该路径在 VM 内不存在，容器起不来：
+e2e_test_service 曾映射 `devices: /dev/bus/usb:/dev/bus/usb`。WSL VM 重启后该路径在 VM 内
+不存在，容器直接起不来（`error gathering device information while adding custom device`），
+建空目录也不行（`not a device node`），历史上只能手敲 `mknod c 189 0` 造假节点兜底，
+**每次 VM/引擎重启都要重做一次**。
 
-```
-error gathering device information while adding custom device "/dev/bus/usb":
-no such file or directory
-```
+2026-10-29 核实后确认这条映射纯属冗余，已从 `docker-compose.yml` 删除：
 
-把它建成普通空目录也不行（`not a device node`），必须是一个字符设备节点。本机不需要真 USB
-（usbipd 里设备全是 Not shared），一个 `major 189, minor 0` 的占位节点即可让映射成立。
+- `e2e_test_service/` 源码零 `usb` / `adb` / `hdc` / `/dev/` 引用；
+- 设备操作全部经 gRPC 委托 `device_service`（`device_acl_repository_impl.py`、
+  `e2e_device_manager.py` → `DeviceService.CreateDriver`），容器内不需要设备节点；
+- `device_service` 不在 compose 编排内（物理设备链路必须宿主形态，见
+  `docs/docker-compose.md`），e2e 经 `DEVICE_SERVICE_HOST=host.docker.internal` 连宿主实例。
 
-```powershell
-# 只检查：节点存在退出 0，缺失退出 3，进不去 VM（Docker Desktop 没跑）退出 2
-powershell -ExecutionPolicy Bypass -File docker/restore_usb_device_node.ps1 -Check
-
-# 补齐节点（幂等：已存在就不动）
-powershell -ExecutionPolicy Bypass -File docker/restore_usb_device_node.ps1
-
-# 补齐节点并把 Exited 的 e2e 容器拉起来（已在运行则不动）
-powershell -ExecutionPolicy Bypass -File docker/restore_usb_device_node.ps1 -RestartE2E
-```
-
-脚本实际执行的是 `wsl -d docker-desktop -u root` 里的
-`mkdir -p /dev/bus/usb/001 && mknod /dev/bus/usb/001/001 c 189 0 && chmod 666`。
-**每次 VM/引擎重启后都要重做一次**——这是运行期兜底，不是修复。
+因此 VM/引擎重启后不再需要任何 USB 恢复动作，VM 里的占位节点也可以删掉。仅当未来有人把
+device_service 容器化、并让 e2e 绕过 gRPC 直读 USB 时，才需要重新评估这条映射。
 
 ## 7. 可重复执行的验证清单
 

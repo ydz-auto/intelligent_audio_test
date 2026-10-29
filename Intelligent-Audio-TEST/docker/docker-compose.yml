@@ -361,8 +361,9 @@ services:
         condition: service_healthy
       db_bootstrap:
         condition: service_completed_successfully
-    devices:
-      - /dev/bus/usb:/dev/bus/usb
+    # 刻意不挂 devices: /dev/bus/usb：e2e 零硬件调用，设备操作全部经 gRPC 委托宿主
+    # device_service（见上方 DEVICE_SERVICE_HOST）；挂了反而让 WSL VM 重启后容器起不来
+    # （error gathering device information），且不带来任何能力。详见 docker/README.md §6。
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5002/health', timeout=3)"]
       interval: 10s

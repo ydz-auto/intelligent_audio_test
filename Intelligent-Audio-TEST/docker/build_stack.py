@@ -3,9 +3,8 @@
 
 背景（INT-1754 发版受阻，2026-10-24）：两次常规 `docker compose build` 失败——
 ① deb.debian.org 返回 502，apt 层直接打红；② 构建期 Docker 引擎崩溃（WSL VM 重启 /
-Docker Desktop 进程消失），**全部容器 Exited 255**，且 `/dev/bus/usb` 随之消失导致
-e2e_test_service 起不来。Dockerfile 侧已改（镜像源 + digest 钉版 + 层内重试，见各
-`docker/Dockerfile.*` 顶部注释）；本脚本负责「构建这件事本身」的可重复与可观测：
+Docker Desktop 进程消失），**全部容器 Exited 255**。Dockerfile 侧已改（镜像源 + digest
+钉版 + 层内重试，见各 `docker/Dockerfile.*` 顶部注释）；本脚本负责「构建这件事本身」的可重复与可观测：
 
   - 构建前体检：引擎是否真的可用（区分「没连上」与「连上了但 500」）；
   - 目标项目对齐：构建写进哪个 compose 项目决定镜像 tag（`<project>-<svc>:latest`），

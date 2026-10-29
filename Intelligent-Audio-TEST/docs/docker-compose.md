@@ -84,7 +84,7 @@ python docker/run_stack.py down -v --yes
 `docker-compose.yml` 顶部的 `x-backend-build-args` 注入，缺省已钉 digest + 走清华镜像源）。
 
 **构建链路（INT-1820）**：构建入口是 `python docker/build_stack.py`，带引擎体检、容器身份
-对照与失败判定；deb 源 502、构建期引擎崩溃、VM 重启后 `/dev/bus/usb` 恢复的可重复命令清单见
+对照与失败判定；deb 源 502、构建期引擎崩溃的可重复命令清单见
 `docker/README.md`。
 
 ## 数据持久化（volumes）
@@ -128,8 +128,9 @@ python docker/run_stack.py down -v --yes
     5.3.0 经 `bind --force` + `attach --wsl` 已打通「宿主 USB → WSL2 VM →
     Docker 容器」链路，容器内可见 `/dev/bus/usb` 设备节点（一次性容器
     `--device /dev/bus/usb:/dev/bus/usb` 验证通过）。仍有两个缺口：
-    ① 运行栈必须以 `devices: /dev/bus/usb:/dev/bus/usb` 启动（主 compose
-    已带，run 隔离 override 栈缺此映射）；② 统一镜像仅装 adb、缺 hdc
+    ① 主 compose 的 e2e 服务曾挂 `devices: /dev/bus/usb:/dev/bus/usb`，2026-10-29 核实
+    e2e 零硬件调用（设备操作 gRPC 委托宿主 device_service）后已删除，容器侧不再需要
+    USB 直通；② 统一镜像仅装 adb、缺 hdc
     二进制（`Dockerfile.service` 运行阶段只装 adb），鸿蒙链路
     （harmony_driver 调 `hdc`）容器内不可用——需补 Linux 版 hdc 进
     device_service 镜像，或鸿蒙真机链路保留宿主形态。
