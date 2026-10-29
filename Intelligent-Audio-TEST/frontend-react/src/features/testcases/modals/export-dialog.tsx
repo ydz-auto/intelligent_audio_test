@@ -1,20 +1,22 @@
 /**
  * 导出用例弹窗（11_用例域.md §5.7.2，Dialog sm:max-w-md）。
  * 导出范围 RadioGroup「按当前筛选条件导出（导出全部筛选结果）/仅导出已选 {n} 个用例」
- * + 格式 Select（JSON / Excel）+ 主钮「开始导出」。
+ * + 格式 Select（ZIP 数据包 / Excel / JSON）+ ZIP 选项「包含参考参数文件」+ 主钮「开始导出」。
+ * 与任务数据导出同型：ZIP 为完整用例数据包（manifest + testcases.json + 参考参数文件），
+ * 可直接用于「导入用例」做跨环境搬运。
  * INT-1642 接线：真实 POST /testcases/export（testcase_export_service）——
  * - 已选范围直接用勾选 id；筛选范围由页面解析器（POST /testcases/ids 全量圈定，非仅当前页）；
- * - Excel 后端回 xlsx 字节流直落下载；JSON 后端回数据信封，前端序列化为 .json 文件下载；
+ * - ZIP/Excel 后端回字节流直落下载；JSON 后端回数据信封，前端序列化为 .json 文件下载；
  * - 失败（空 ids 400「未指定要导出的用例ID」等）toast 透出后端 message。
- * 注：页头「导入用例」按负责人 2026-10-17 口径收敛为**单入口——只走音频导入页生成**
- * （照 V9.7.10 TestCaseManager「导入用例」按钮跳 /AudioImport 语义），原「导入用例文件」
- * 文件导入弹窗（§5.7.1）不再从用例管理页暴露；本弹窗仅保留导出。
+ * 注：页头「导入用例」为文件/用例包导入（ImportDialog：JSON/CSV/Excel/ZIP + 重复策略）；
+ * 「导入音频生成用例」留在音频管理页（/AudioImport）上传并勾选生成，两个入口互不替代。
  */
 import { FileSpreadsheet } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -39,6 +41,16 @@ import {
 
 type ExportScope = 'filter' | 'selected'
 
+const FORMAT_OPTIONS: Array<{ value: TestCaseExportFormat; label: string }> = [
+  { value: 'zip', label: 'ZIP 数据包（推荐）' },
+  { value: 'xlsx', label: 'Excel' },
+  { value: 'json', label: 'JSON' },
+]
+
+function formatLabel(format: TestCaseExportFormat): string {
+  return FORMAT_OPTIONS.find((option) => option.value === format)?.label ?? format
+}
+
 export function ExportDialog({
   open,
   onOpenChange,
@@ -57,7 +69,8 @@ export function ExportDialog({
    */
   resolveFilteredIds?: () => Promise<string[]>
 }) {
-  const [format, setFormat] = useState<TestCaseExportFormat>('json')
+  const [format, setFormat] = useState<TestCaseExportFormat>('zip')
+  const [includeReferenceParams, setIncludeReferenceParams] = useState(true)
   const [scope, setScope] = useState<ExportScope>('filter')
   const [submitting, setSubmitting] = useState(false)
 
@@ -91,7 +104,9 @@ export function ExportDialog({
         )
         return
       }
-      const { blob, filename } = await exportTestCases(ids, format)
+      const { blob, filename } = await exportTestCases(ids, format, {
+        includeReferenceParams,
+      })
       if (blob.size === 0) {
         toast.error('导出失败：后端返回空文件')
         return
@@ -114,7 +129,7 @@ export function ExportDialog({
         <DialogHeader>
           <DialogTitle>导出用例</DialogTitle>
           <DialogDescription>
-            按当前筛选条件或已选用例导出，JSON / Excel 两种格式
+            按当前筛选条件或已选用例导出；ZIP 数据包可直接用于「导入用例」跨环境搬运
           </DialogDescription>
         </DialogHeader>
 
@@ -151,21 +166,30 @@ export function ExportDialog({
             <span className='text-muted-foreground text-sm'>格式</span>
             <Select
               value={format}
-              onValueChange={(v) => setFormat(v === 'xlsx' ? 'xlsx' : 'json')}
-              items={[
-                { value: 'json', label: 'JSON' },
-                { value: 'xlsx', label: 'Excel' },
-              ]}
+              onValueChange={(v) => setFormat(v as TestCaseExportFormat)}
+              items={FORMAT_OPTIONS}
             >
-              <SelectTrigger size='sm' className='h-8 w-40'>
-                <SelectValue>{format === 'json' ? 'JSON' : 'Excel'}</SelectValue>
+              <SelectTrigger size='sm' className='h-8 w-44'>
+                <SelectValue>{formatLabel(format)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value='json'>JSON</SelectItem>
-                <SelectItem value='xlsx'>Excel</SelectItem>
+                {FORMAT_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
+          {format === 'zip' && (
+            <label className='flex cursor-pointer items-center gap-2 text-sm'>
+              <Checkbox
+                checked={includeReferenceParams}
+                onCheckedChange={(v) => setIncludeReferenceParams(!!v)}
+              />
+              包含参考参数文件
+            </label>
+          )}
         </div>
 
         <DialogFooter>

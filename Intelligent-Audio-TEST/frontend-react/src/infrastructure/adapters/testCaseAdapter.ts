@@ -16,11 +16,16 @@ import type {
 import type { CaseResultForReview } from '@/domain/models/review'
 import type {
   TestCase,
+  TestCaseImportDuplicate,
+  TestCaseImportPreview,
+  TestCaseImportResult,
   TestCaseListItem,
   TestCasePreview,
 } from '@/domain/models/testCase'
 import type {
   CaseDetailDto,
+  TestCaseImportPreviewDto,
+  TestCaseImportResultDto,
   TestCaseListItemDto,
   TestCasePreviewDto,
 } from '@/infrastructure/dto/testcase.dto'
@@ -317,13 +322,27 @@ export function caseDetailFromDto(
     name: c.name,
     ...(dimTypeByName.get(c.name) ?? {}),
   }))
-  const rowByDevice = new Map<string, CaseResultForReview>()
+  // 目标列：物理用例取 detail.devices（设备名数组）；API 用例 devices 为空，
+  // 以结果行的 api_name/device_name 派生 API 维度列，保证「指标 × 目标」对比可渲染
+  // （与报告侧按设备/API 资源合并对比同口径）
+  const targetNames: string[] =
+    dto.devices && dto.devices.length > 0
+      ? dto.devices
+      : Array.from(
+          new Set(
+            resultRows
+              .map((r) => r.apiName ?? r.deviceName)
+              .filter((n): n is string => !!n)
+          )
+        )
+  const rowByTarget = new Map<string, CaseResultForReview>()
   for (const row of resultRows) {
-    if (row.deviceName && !rowByDevice.has(row.deviceName)) rowByDevice.set(row.deviceName, row)
+    const key = row.deviceName ?? row.apiName
+    if (key && !rowByTarget.has(key)) rowByTarget.set(key, row)
   }
 
-  const devices: CaseDeviceResult[] = (dto.devices ?? []).map((deviceName) => {
-    const row = rowByDevice.get(deviceName)
+  const devices: CaseDeviceResult[] = targetNames.map((targetName) => {
+    const row = rowByTarget.get(targetName)
     const metrics: CaseMetricPoint[] = (row?.dimensions ?? []).map((d) => ({
       dimension: d.name,
       // round_number 0 起 = 第 n+1 轮；null = 整体评估（无轮次标记）
@@ -336,7 +355,7 @@ export function caseDetailFromDto(
     return {
       resultId: row?.id ?? null,
       deviceId: row?.deviceId ?? null,
-      deviceName,
+      deviceName: targetName,
       executionStatus: row?.executionStatus ?? null,
       metrics,
       asrReference: row?.asrResult ?? null,
@@ -412,4 +431,45 @@ function toFieldParamCodes(items?: Array<Record<string, unknown>>): string[] {
           : ''
     )
     .filter(Boolean)
+}
+
+/** 用例 ID（后端不同来源可能为字符串或数字）→ Domain 统一字符串 */
+function toCaseId(value?: string | number | null): string | null {
+  return value == null || value === '' ? null : String(value)
+}
+
+/** 导入预览 DTO → Domain（duplicates 的 existingId 统一字符串，缺失计数按清单长度兜底） */
+export function testCaseImportPreviewFromDto(
+  dto: TestCaseImportPreviewDto | null | undefined
+): TestCaseImportPreview {
+  const duplicates: TestCaseImportDuplicate[] = (dto?.duplicates ?? []).map(
+    (item) => ({
+      row: item.row ?? 0,
+      name: item.name ?? null,
+      id: toCaseId(item.id),
+      existingId: toCaseId(item.existingId),
+      existingName: item.existingName ?? null,
+      matchedBy: item.matchedBy ?? null,
+    })
+  )
+  return {
+    totalRows: dto?.totalRows ?? 0,
+    duplicates,
+    duplicateCount: dto?.duplicateCount ?? duplicates.length,
+    duplicateScanTruncated: dto?.duplicateScanTruncated ?? false,
+    errors: (dto?.errors ?? []).map((e) => String(e)),
+  }
+}
+
+/** 导入回执 DTO → Domain（snake_case 计数 → camelCase） */
+export function testCaseImportResultFromDto(
+  dto: TestCaseImportResultDto | null | undefined
+): TestCaseImportResult {
+  return {
+    importedCount: dto?.imported_count ?? 0,
+    updatedCount: dto?.updated_count ?? 0,
+    skippedCount: dto?.skipped_count ?? 0,
+    copiedCount: dto?.copied_count ?? 0,
+    errors: (dto?.errors ?? []).map((e) => String(e)),
+  }
 }

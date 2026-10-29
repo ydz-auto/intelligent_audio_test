@@ -11,14 +11,21 @@
 import { apiClient } from './client'
 import type {
   PreviewPlaybackMode,
+  TestCaseDuplicateStrategy,
+  TestCaseImportPreview,
+  TestCaseImportResult,
   TestCaseListItem,
   TestCasePreview,
 } from '@/domain/models/testCase'
 import {
+  testCaseImportPreviewFromDto,
+  testCaseImportResultFromDto,
   testCaseListItemFromDto,
   testCasePreviewFromDto,
 } from '@/infrastructure/adapters/testCaseAdapter'
 import type {
+  TestCaseImportPreviewDto,
+  TestCaseImportResultDto,
   TestCaseListDataDto,
   TestCasePreviewDto,
 } from '@/infrastructure/dto/testcase.dto'
@@ -366,8 +373,18 @@ export async function updateRoundRefParams(
   return toRoundRefParams(dto, roundNumber)
 }
 
-/** 导出格式：JSON（后端返回 JSON 数据，前端落文件）/ Excel（后端直接回 xlsx 字节流） */
-export type TestCaseExportFormat = 'json' | 'xlsx'
+/**
+ * 导出格式：
+ * - zip：后端打包（manifest + testcases.json + 可选参考参数文件），与任务数据导出口径一致；
+ * - xlsx：后端直接回 xlsx 字节流；
+ * - json：后端返回 JSON 数据信封，前端序列化为 .json 文件下载。
+ */
+export type TestCaseExportFormat = 'zip' | 'json' | 'xlsx'
+
+export interface TestCaseExportOptions {
+  /** ZIP 数据包是否包含参考参数文件（默认包含） */
+  includeReferenceParams?: boolean
+}
 
 export interface TestCaseExportResult {
   blob: Blob
@@ -383,22 +400,26 @@ function exportTimestamp(): string {
 
 /**
  * 导出用例（POST /testcases/export，testcase:import_export）。
- * 后端 testcase_export_service：format=json 走 success_response（数据在信封 data，
- * 结构 {test_cases, exported_at, total_count} 为止与导入端往返一致），
- * format=xlsx 走 Response 字节流（Content-Disposition 附件）。
- * 前端按格式落 Blob 供下载；空 ids 后端 400「未指定要导出的用例ID」由 client 抛 ApiError。
+ * format=zip 走 ZIP 数据包（含参考参数文件开关）；format=xlsx 走 xlsx 字节流；
+ * format=json 走 success_response（数据在信封 data，结构 {test_cases, exported_at,
+ * total_count}，与导入端往返一致），前端序列化落文件。
+ * 空 ids 后端 400「未指定要导出的用例ID」由 client 抛 ApiError。
  */
 export async function exportTestCases(
   ids: string[],
-  format: TestCaseExportFormat
+  format: TestCaseExportFormat,
+  options: TestCaseExportOptions = {}
 ): Promise<TestCaseExportResult> {
-  const filename = `testcases_export_${exportTimestamp()}.${format === 'json' ? 'json' : 'xlsx'}`
-  if (format === 'xlsx') {
-    const blob = await apiClient.post<Blob>(
-      '/testcases/export',
-      { ids, format },
-      { responseType: 'blob' }
-    )
+  const extension = format === 'json' ? 'json' : format
+  const filename = `testcases_export_${exportTimestamp()}.${extension}`
+  if (format === 'zip' || format === 'xlsx') {
+    const body: Record<string, unknown> = { ids, format }
+    if (format === 'zip') {
+      body.include_reference_params = options.includeReferenceParams ?? true
+    }
+    const blob = await apiClient.post<Blob>('/testcases/export', body, {
+      responseType: 'blob',
+    })
     return { blob, filename }
   }
   const data = await apiClient.post<unknown>('/testcases/export', { ids, format: 'json' })
@@ -408,6 +429,41 @@ export async function exportTestCases(
     }),
     filename,
   }
+}
+
+/**
+ * 用例导入预览（POST /testcases/import/preview，multipart，testcase:import_export）。
+ * 支持 JSON/CSV/Excel/ZIP 用例包；返回总行数 + 重复用例清单（ID 或同分组同名命中），
+ * 供导入弹窗展示并选择覆盖/跳过/另存副本。
+ */
+export async function previewTestCasesImport(
+  file: File
+): Promise<TestCaseImportPreview> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const dto = await apiClient.post<TestCaseImportPreviewDto>(
+    '/testcases/import/preview',
+    formData
+  )
+  return testCaseImportPreviewFromDto(dto)
+}
+
+/**
+ * 执行用例导入（POST /testcases/import，multipart，testcase:import_export）。
+ * `on_duplicate`：skip（默认）/ overwrite / copy；回执含新增/覆盖/跳过/副本计数与逐行错误。
+ */
+export async function importTestCases(
+  file: File,
+  onDuplicate: TestCaseDuplicateStrategy
+): Promise<TestCaseImportResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('on_duplicate', onDuplicate)
+  const dto = await apiClient.post<TestCaseImportResultDto>(
+    '/testcases/import',
+    formData
+  )
+  return testCaseImportResultFromDto(dto)
 }
 
 /** 模板下载文件名（与后端 Content-Disposition 同名口径：testcase_template_YYYYmmdd_HHMMSS.xlsx） */

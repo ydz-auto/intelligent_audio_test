@@ -1,7 +1,7 @@
 /**
  * 导出用例弹窗（11_用例域.md §5.7.2；INT-1642 接线）。
- * 导出范围（当前筛选 / 已选）+ 格式（JSON / Excel）→ 真实 POST /testcases/export，
- * 文件非空后触发下载；失败透出后端 message；空 id 集不发请求。
+ * 导出范围（当前筛选 / 已选）+ 格式（ZIP 数据包 / Excel / JSON）→ 真实 POST /testcases/export，
+ * 文件非空后触发下载；ZIP 支持「包含参考参数文件」开关；失败透出后端 message；空 id 集不发请求。
  */
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -38,19 +38,19 @@ const renderDialog = (props: Partial<Parameters<typeof ExportDialog>[0]> = {}) =
     />
   )
 
-const JSON_RESULT = {
-  blob: new Blob(['{"test_cases":[]}'], { type: 'application/json' }),
-  filename: 'testcases_export_20261024_120000.json',
+const ZIP_RESULT = {
+  blob: new Blob(['zip-bytes'], { type: 'application/zip' }),
+  filename: 'testcases_export_20261024_120000.zip',
 }
 
 describe('ExportDialog 导出接线（INT-1642）', () => {
   beforeEach(() => {
     mockedExport.mockReset()
     mockedDownload.mockReset()
-    mockedExport.mockResolvedValue(JSON_RESULT)
+    mockedExport.mockResolvedValue(ZIP_RESULT)
   })
 
-  it('按当前筛选导出：调 POST /testcases/export 并下载非空文件', async () => {
+  it('按当前筛选导出：默认 ZIP 数据包（含参考参数）并下载非空文件', async () => {
     const user = userEvent.setup()
     const resolveFilteredIds = vi.fn().mockResolvedValue(['tc-1', 'tc-2'])
     renderDialog({ resolveFilteredIds })
@@ -58,16 +58,32 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
     await user.click(screen.getByRole('button', { name: /开始导出/ }))
 
     await waitFor(() =>
-      expect(mockedExport).toHaveBeenCalledWith(['tc-1', 'tc-2'], 'json')
+      expect(mockedExport).toHaveBeenCalledWith(['tc-1', 'tc-2'], 'zip', {
+        includeReferenceParams: true,
+      })
     )
     expect(mockedDownload).toHaveBeenCalledWith(
-      JSON_RESULT.blob,
-      JSON_RESULT.filename,
-      'application/json'
+      ZIP_RESULT.blob,
+      ZIP_RESULT.filename,
+      'application/zip'
     )
     expect(toast.success).toHaveBeenCalledWith(
       '已导出 2 个用例',
-      expect.objectContaining({ description: JSON_RESULT.filename })
+      expect.objectContaining({ description: ZIP_RESULT.filename })
+    )
+  })
+
+  it('关闭「包含参考参数文件」后仍以 zip 导出且 includeReferenceParams=false', async () => {
+    const user = userEvent.setup()
+    renderDialog({ resolveFilteredIds: vi.fn().mockResolvedValue(['tc-1']) })
+
+    await user.click(screen.getByRole('checkbox', { name: /包含参考参数文件/ }))
+    await user.click(screen.getByRole('button', { name: /开始导出/ }))
+
+    await waitFor(() =>
+      expect(mockedExport).toHaveBeenCalledWith(['tc-1'], 'zip', {
+        includeReferenceParams: false,
+      })
     )
   })
 
@@ -84,7 +100,9 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
     await user.click(screen.getByRole('button', { name: /开始导出/ }))
 
     await waitFor(() =>
-      expect(mockedExport).toHaveBeenCalledWith(['tc-8', 'tc-9'], 'json')
+      expect(mockedExport).toHaveBeenCalledWith(['tc-8', 'tc-9'], 'zip', {
+        includeReferenceParams: true,
+      })
     )
     expect(resolveFilteredIds).not.toHaveBeenCalled()
   })
@@ -98,7 +116,32 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
     await user.click(screen.getByRole('button', { name: /开始导出/ }))
 
     await waitFor(() =>
-      expect(mockedExport).toHaveBeenCalledWith(['tc-1'], 'xlsx')
+      expect(mockedExport).toHaveBeenCalledWith(['tc-1'], 'xlsx', {
+        includeReferenceParams: true,
+      })
+    )
+    // Excel 格式不展示参考参数选项
+    expect(
+      screen.queryByRole('checkbox', { name: /包含参考参数文件/ })
+    ).not.toBeInTheDocument()
+  })
+
+  it('JSON 格式：format=json 且前端序列化信封落文件', async () => {
+    mockedExport.mockResolvedValue({
+      blob: new Blob(['{"test_cases":[]}'], { type: 'application/json' }),
+      filename: 'testcases_export_20261024_120000.json',
+    })
+    const user = userEvent.setup()
+    renderDialog({ resolveFilteredIds: vi.fn().mockResolvedValue(['tc-1']) })
+
+    await user.click(screen.getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: 'JSON' }))
+    await user.click(screen.getByRole('button', { name: /开始导出/ }))
+
+    await waitFor(() =>
+      expect(mockedExport).toHaveBeenCalledWith(['tc-1'], 'json', {
+        includeReferenceParams: true,
+      })
     )
   })
 
@@ -187,7 +230,9 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
     )
     await user.click(screen.getByRole('button', { name: /开始导出/ }))
     await waitFor(() =>
-      expect(mockedExport).toHaveBeenCalledWith(['tc-1'], 'json')
+      expect(mockedExport).toHaveBeenCalledWith(['tc-1'], 'zip', {
+        includeReferenceParams: true,
+      })
     )
   })
 })

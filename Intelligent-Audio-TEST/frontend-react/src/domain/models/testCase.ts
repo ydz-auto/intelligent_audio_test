@@ -102,3 +102,39 @@ export interface CasePlaybackDevice {
   id: string | null
   name: string
 }
+
+/**
+ * 用例导入重复策略（POST /testcases/import 表单 on_duplicate）。
+ * skip=跳过（默认）/ overwrite=覆盖 / copy=另存副本。
+ */
+export type TestCaseDuplicateStrategy = 'skip' | 'overwrite' | 'copy'
+
+/** 导入预览中的重复用例（后端按 ID 或同分组同名命中） */
+export interface TestCaseImportDuplicate {
+  row: number
+  name: string | null
+  id: string | null
+  existingId: string | null
+  existingName: string | null
+  matchedBy: 'id' | 'name' | null
+}
+
+/** 导入预览（POST /testcases/import/preview） */
+export interface TestCaseImportPreview {
+  /** 文件内用例总行数 */
+  totalRows: number
+  duplicates: TestCaseImportDuplicate[]
+  duplicateCount: number
+  /** 超过扫描上限时重复清单未覆盖全部行 */
+  duplicateScanTruncated: boolean
+  errors: string[]
+}
+
+/** 导入回执（POST /testcases/import） */
+export interface TestCaseImportResult {
+  importedCount: number
+  updatedCount: number
+  skippedCount: number
+  copiedCount: number
+  errors: string[]
+}

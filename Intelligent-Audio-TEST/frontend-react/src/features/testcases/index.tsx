@@ -2,7 +2,7 @@
  * 用例管理页（11_用例域.md §3.1 页面总骨架，SectionPageLayout fixedContent + 双视图表格）。
  * 装配：Breadcrumb 工作台/用例管理｜Title「用例管理」｜Actions（+新增用例/新建分组/导入用例/导出/模板下载）｜
  * Content（视图页签 line → 筛选工具栏 → 分组/平铺表格 → 批量浮条）/ Footer（分页 Portal）。
- * 「导入用例」为单入口（负责人 2026-10-17 口径：只走音频导入页生成，照 V9.7.10 跳 /AudioImport）。
+ * 「导入用例」为文件/用例包导入（JSON/CSV/Excel/ZIP，含重复策略）；「导入音频生成用例」留在音频管理页。
  * 路由 /testcases/$view（by-group/by-tag 白名单在路由层）；mock 态全部弹窗/toast 演示，
  * 接线后替换为 application/testcases mutations + URL 态 useTableUrlState。
  */
@@ -44,6 +44,7 @@ import { CaseBatchActionsHost } from '@/features/testcases/components/case-batch
 import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import { CaseMutateDrawer } from '@/features/testcases/modals/case-mutate-drawer'
 import { ExportDialog } from '@/features/testcases/modals/export-dialog'
+import { ImportDialog } from '@/features/testcases/modals/import-dialog'
 import { GroupMutateDialog } from '@/features/testcases/modals/group-mutate-dialog'
 import { AudioPreviewConfigDialog } from '@/features/testcases/modals/audio-preview-config-dialog'
 import { downloadBlob } from '@/lib/download-blob'
@@ -74,6 +75,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const [mutateOpen, setMutateOpen] = useState(false)
   const [presetGroupId, setPresetGroupId] = useState<string | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [groupDialog, setGroupDialog] = useState<{
     open: boolean
     group: TestCaseGroup | null
@@ -181,6 +183,13 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
       setTemplateDownloading(false)
     }
   }, [])
+
+  /** 用例导入完成：刷新列表 / 分组 / 标签（导入可能按名称新建分组与标签） */
+  const handleImported = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['testcases'] })
+    void queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
+    void queryClient.invalidateQueries({ queryKey: ['tags'] })
+  }, [queryClient])
 
   /** 批量弹窗状态机（七件套弹窗 + 两确认；INT-1026 共享 host 双挂） */
   const batch = useCaseBatchActions({
@@ -504,7 +513,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               size='sm'
               variant='outline'
               className='h-7 gap-1.5'
-              onClick={() => void navigate({ to: '/audio-import' })}
+              onClick={() => setImportOpen(true)}
             >
               <FileUp aria-hidden='true' className='size-3.5' />
               导入用例
@@ -650,6 +659,11 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         selectedCount={selected.size}
         selectedIds={[...selected]}
         resolveFilteredIds={resolveFilteredIds}
+      />
+      <ImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={handleImported}
       />
       <GroupMutateDialog
         open={groupDialog.open}

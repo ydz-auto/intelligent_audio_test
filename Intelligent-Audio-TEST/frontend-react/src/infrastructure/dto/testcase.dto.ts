@@ -68,6 +68,37 @@ export interface TestCaseStopPreviewDto {
   message?: string | null
 }
 
+/** POST /testcases/import 响应 data（TestCaseImportResult，snake_case 回执） */
+export interface TestCaseImportResultDto {
+  imported_count?: number
+  updated_count?: number
+  skipped_count?: number
+  copied_count?: number
+  errors?: unknown[]
+}
+
+/** 导入预览重复项（POST /testcases/import/preview 的 duplicates[]） */
+export interface TestCaseImportDuplicateDto {
+  row?: number
+  name?: string | null
+  id?: string | number | null
+  existingId?: string | number | null
+  existingName?: string | null
+  matchedBy?: 'id' | 'name' | null
+}
+
+/**
+ * POST /testcases/import/preview 响应 data。
+ * 后端 preview_result 使用 camelCase 键（totalRows/duplicates/duplicateCount…），按实测契约声明。
+ */
+export interface TestCaseImportPreviewDto {
+  totalRows?: number
+  duplicates?: TestCaseImportDuplicateDto[]
+  duplicateCount?: number
+  duplicateScanTruncated?: boolean
+  errors?: unknown[]
+}
+
 /** 用例执行详情·算法结果扁平项（task_bp.py get_case_detail algorithm_results 实测；API/voice_llm 用例分节①结果摘要消费） */
 export interface CaseAlgorithmResultDto {
   param_code: string
