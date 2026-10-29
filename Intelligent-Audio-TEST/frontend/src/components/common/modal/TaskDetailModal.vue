@@ -569,6 +569,8 @@ async function fetchTaskDetails() {
         name: tc.name,
         status: tc.status || '',
         duration: tc.duration ?? '',
+        // 用例真实轮次数（任务详情「轮次」列分母；缺失回退单轮）
+        roundsCount: tc.roundsCount,
         executionStatus: tc.executionStatus || '',
         evaluationStatus: tc.evaluationStatus || '',
         groupName: tc.groupName,
