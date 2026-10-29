@@ -131,6 +131,11 @@ function TaskCaseCard({
   onAiReview: () => void
   onQuickReview: () => void
 }) {
+  /** 轮次：分母 = 用例真实轮次数（rounds_count，后端取 config.rounds 长度，缺省 1） */
+  const roundTotal = c.rounds_count != null && c.rounds_count > 0 ? c.rounds_count : 1
+  const roundCurrent = c.duration != null ? roundTotal : 1
+  const roundPercent = Math.round((roundCurrent / roundTotal) * 100)
+
   return (
     <CaseCard
       caseItem={{
@@ -148,10 +153,10 @@ function TaskCaseCard({
           {c.group_name && (
             <p className='text-muted-foreground text-xs truncate'>{c.group_name}</p>
           )}
-          {/* 轮次进度（09_任务域 §4.4：第 x/y 轮 + Progress h-1） */}
+          {/* 轮次进度（09_任务域 §4.4：第 x/y 轮 + Progress h-1；y = 用例真实轮次数） */}
           <div className='text-muted-foreground mt-1 flex items-center gap-2 text-xs'>
-            <span className='font-mono tabular-nums'>第 {c.duration != null ? 2 : 1}/2 轮</span>
-            <Progress value={c.duration != null ? 50 : 0} size='xs' className='min-w-0 flex-1' />
+            <span className='font-mono tabular-nums'>第 {roundCurrent}/{roundTotal} 轮</span>
+            <Progress value={roundPercent} size='xs' className='min-w-0 flex-1' />
           </div>
         </>
       }

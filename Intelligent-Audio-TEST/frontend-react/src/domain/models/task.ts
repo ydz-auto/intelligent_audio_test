@@ -115,6 +115,8 @@ export interface TaskCaseBrief {
   started_at: string | null
   completed_at: string | null
   duration: number | null
+  /** 用例真实轮次数（后端取 test_cases.config.rounds 长度，缺省 1） */
+  rounds_count?: number | null
   error_message: string | null
   group_name: string | null
   tags: string[]
