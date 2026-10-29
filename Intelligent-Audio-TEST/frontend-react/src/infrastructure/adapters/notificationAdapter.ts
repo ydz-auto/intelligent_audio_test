@@ -62,9 +62,9 @@ function asNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
-/** 生成稳定的通知 id（同任务/报告多次事件去重，名称解析后按 id 局部更新） */
-function makeNoticeId(prefix: string, ref: string, updatedAt: string): string {
-  return `${prefix}:${ref}:${updatedAt || nowIso()}`
+/** 生成稳定去重 id（同任务/报告多次事件按业务 key 合并，最新事件覆盖旧行） */
+function makeNoticeId(prefix: string, ref: string): string {
+  return `${prefix}:${ref}`
 }
 
 /**
@@ -80,7 +80,8 @@ export function mapSseEventToNotification(event: SseEvent): AppNotification | nu
       const updatedAt = asString(data?.updated_at) || nowIso()
       if (!taskId) return null
       return {
-        id: makeNoticeId('task', taskId, updatedAt),
+        id: makeNoticeId('task', taskId),
+        dedupeKey: makeNoticeId('task', taskId),
         tab: 'notice',
         kind: 'task',
         title: `任务 #${taskId}`,
@@ -96,8 +97,10 @@ export function mapSseEventToNotification(event: SseEvent): AppNotification | nu
       const success = data?.success !== false
       const updatedAt = nowIso()
       if (!reportId && !data?.taskId) return null
+      const key = makeNoticeId('report', reportId || asString(data?.taskId))
       return {
-        id: makeNoticeId('report', reportId || asString(data?.taskId), updatedAt),
+        id: key,
+        dedupeKey: key,
         tab: 'notice',
         kind: success ? 'report' : 'error',
         title: reportId ? `报告 #${reportId}` : '报告生成',
@@ -111,8 +114,10 @@ export function mapSseEventToNotification(event: SseEvent): AppNotification | nu
       const data = event.data as ImportProgressEventData | undefined
       const percentage = Math.round(asNumber(data?.percentage))
       const updatedAt = nowIso()
+      const key = makeNoticeId('import', asString(data?.current_table) || 'batch')
       return {
-        id: makeNoticeId('import', asString(data?.current_table) || 'batch', updatedAt),
+        id: key,
+        dedupeKey: key,
         tab: 'notice',
         kind: 'import',
         title: percentage >= 100 ? '数据导入完成' : '数据导入',
@@ -127,8 +132,13 @@ export function mapSseEventToNotification(event: SseEvent): AppNotification | nu
       const level = (asString(payload?.level) || '').toUpperCase()
       if (!payload || !TASK_LOG_LEVELS.has(level)) return null
       const updatedAt = asString(payload.time) || nowIso()
+      // 按日志 id 去重；无 id（负数合成 id 场景）按任务 + 内容去重，避免同一错误刷屏
+      const logRef =
+        asString(payload.id) || `${asString(data?.task_id)}:${asString(payload.content)}`
+      const key = makeNoticeId('log', logRef)
       return {
-        id: makeNoticeId('log', asString(payload.id) || asString(data?.task_id), updatedAt),
+        id: key,
+        dedupeKey: key,
         tab: 'notice',
         kind: 'error',
         title: `[${level}] ${asString(payload.module) || '任务日志'}`,

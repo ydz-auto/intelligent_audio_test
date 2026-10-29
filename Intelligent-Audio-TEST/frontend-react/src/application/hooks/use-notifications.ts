@@ -72,7 +72,15 @@ export function useNotifications() {
         eventSeqRef.current += 1
         const seq = eventSeqRef.current
         const item: AppNotification = { ...raw, id: `${seq}:${raw.id}` }
-        setNotice((prev) => [item, ...prev].slice(0, MAX_NOTICE_ITEMS))
+        // 按业务去重 key 替换旧行（同任务进度/同日志只保留最新一条，避免刷屏）；
+        // 无 dedupeKey 的事件按原追加语义插入
+        setNotice((prev) => {
+          if (raw.dedupeKey) {
+            const rest = prev.filter((n) => n.dedupeKey !== raw.dedupeKey)
+            return [item, ...rest].slice(0, MAX_NOTICE_ITEMS)
+          }
+          return [item, ...prev].slice(0, MAX_NOTICE_ITEMS)
+        })
         // 负责人 2026-10-28：新通知自动弹 toast（不必再点铃铛才看到）
         toast(item.title || '新通知', { description: item.content })
         // 名称解析不阻塞行渲染：先以 id 占位，解析完成局部更新；

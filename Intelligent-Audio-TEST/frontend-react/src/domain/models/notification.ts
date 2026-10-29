@@ -23,4 +23,6 @@ export type AppNotification = {
   /** 关联任务/报告 id（名称解析与跳转用） */
   taskId?: string
   reportId?: string
+  /** 业务去重 key（同 key 事件只保留最新一条；use-notifications 按此替换旧行） */
+  dedupeKey?: string
 }
