@@ -75,11 +75,15 @@ class TestCaseImportExportService:
         return TestCaseImportService._validate_import_data(test_cases_data)
 
     @staticmethod
-    def _create_cases_from_rows(test_cases_data):
+    def _create_cases_from_rows(test_cases_data, on_duplicate=None):
         """从行数据创建用例"""
-        return TestCaseImportService._create_cases_from_rows(test_cases_data)
+        from shared.constants.testcase_transfer import DEFAULT_DUPLICATE_STRATEGY
+        return TestCaseImportService._create_cases_from_rows(
+            test_cases_data, on_duplicate or DEFAULT_DUPLICATE_STRATEGY)
 
     @staticmethod
-    def _generate_import_report(imported_count, updated_count, errors):
+    def _generate_import_report(imported_count, updated_count, skipped_count,
+                                copied_count, errors):
         """生成导入结果报告"""
-        return TestCaseImportService._generate_import_report(imported_count, updated_count, errors)
+        return TestCaseImportService._generate_import_report(
+            imported_count, updated_count, skipped_count, copied_count, errors)

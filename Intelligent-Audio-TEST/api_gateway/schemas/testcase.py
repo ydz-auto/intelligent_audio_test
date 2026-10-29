@@ -5,6 +5,7 @@ from pydantic import Field, field_validator, AliasChoices, model_validator, Conf
 
 from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
+from shared.constants.testcase_transfer import TestCaseExportFormat
 
 
 class ReportAudioItem(APIModel):
@@ -317,7 +318,15 @@ class TestCaseExportJsonData(APIModel):
 
 
 class TestCaseImportResult(APIModel):
+    """导入回执（ZIP/Excel/CSV/JSON 共用）。
+
+    imported_count=新建；updated_count=覆盖；skipped_count=跳过重复；
+    copied_count=另存副本；errors=逐行失败/警告明细。
+    """
     imported_count: int = Field(...)
+    updated_count: int = Field(0)
+    skipped_count: int = Field(0)
+    copied_count: int = Field(0)
     errors: List[Any] = Field(default_factory=list)
 
 
@@ -341,6 +350,7 @@ class TestCaseExportItem(APIModel):
     description: Optional[str] = Field(None)
     group: Optional[str] = Field(None)
     group_id: Optional[str] = Field(None)
+    test_type: Optional[str] = Field(None)
     tags: List[str] = Field(default_factory=list)
     tag_items: List[TestCaseExportTagItem] = Field(default_factory=list)
     dimensions: List[str] = Field(default_factory=list)
@@ -352,6 +362,11 @@ class TestCaseExportItem(APIModel):
     noise_spl: Optional[Any] = Field(None)
     noise_audio_id: Optional[int] = Field(None)
     config: Dict[str, Any] = Field(default_factory=dict)
+    algorithm_params: Optional[Any] = Field(None)
+    reference_params: Optional[Any] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
+    strategy_id: Optional[str] = Field(None)
+    strategy_overrides: Optional[Any] = Field(None)
     raw_config: Optional[str] = Field(None)
 
 
@@ -571,8 +586,10 @@ class TestCaseBatchActionRequest(APIModel):
 
 class TestCaseExportRequest(APIModel):
     ids: List[str] = Field(default_factory=list)
-    format: Optional[str] = Field('json')
+    format: Optional[str] = Field(TestCaseExportFormat.JSON.value)
     include_deleted: Optional[bool] = Field(False)
+    # ZIP 数据包导出选项：是否把参考参数文件一并打包（默认包含，对齐任务数据导出）
+    include_reference_params: Optional[bool] = Field(True)
 
 
 class TestCaseImportRequest(APIModel):

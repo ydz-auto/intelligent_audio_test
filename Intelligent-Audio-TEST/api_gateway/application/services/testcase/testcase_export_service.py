@@ -2,12 +2,14 @@
 
 从 TestCaseImportExportService 拆分，负责所有导出相关逻辑：
 - 查询导出数据
-- 构建 Excel/CSV/JSON 导出文件
+- 构建 Excel/CSV/JSON/ZIP 导出文件
 - 列定义、单元格格式化、Sheet 创建等辅助方法
+- ZIP 数据包（manifest + testcases.json + 可选参考参数文件），与任务数据导出口径对齐
 """
 import json
 import io
 import logging
+import zipfile
 import pandas as pd
 from datetime import datetime
 
@@ -29,6 +31,14 @@ from api_gateway.schemas.testcase import (
     TestCaseExportJsonData,
     TestCaseExportRequest,
 )
+from shared.constants.testcase_transfer import (
+    MANIFEST_FILENAME,
+    PACKAGE_FORMAT,
+    PACKAGE_VERSION,
+    REFERENCE_PARAMS_DIR,
+    TESTCASES_FILENAME,
+    TestCaseExportFormat,
+)
 from shared.utils import testcase_helpers as common
 
 logger = logging.getLogger(__name__)
@@ -48,21 +58,22 @@ class TestCaseExportService:
     # ------------------------------------------------------------------
     @staticmethod
     def _query_cases_for_export():
-        """查询要导出的用例数据"""
+        """查询要导出的用例数据，返回 (test_cases, format, include_ref_params, err)"""
         req_data = TestCaseExportRequest.model_validate(request.get_json() or {})
 
         ids = req_data.ids
-        format_type = req_data.format
+        format_type = (req_data.format or TestCaseExportFormat.JSON.value).strip().lower()
         include_deleted = req_data.include_deleted
+        include_reference_params = req_data.include_reference_params is not False
 
         if not ids:
-            return None, None, error_response("未指定要导出的用例ID")
+            return None, None, None, error_response("未指定要导出的用例ID")
 
         test_cases = TestCaseExportService._fetch_testcases_by_ids(ids, include_deleted)
         if not test_cases:
-            return None, None, error_response("未找到指定的测试用例")
+            return None, None, None, error_response("未找到指定的测试用例")
 
-        return test_cases, format_type, None
+        return test_cases, format_type, include_reference_params, None
 
     @staticmethod
     def _fetch_testcases_by_ids(ids, include_deleted):
@@ -136,7 +147,11 @@ class TestCaseExportService:
             "noise_spl": noise_spl,
             "noise_audio_id": noise_audio_id,
             "config": config,
+            "algorithm_params": tc.get('algorithm_params'),
             "reference_params": tc.get('reference_params'),
+            "algorithm_type": tc.get('algorithm_type'),
+            "strategy_id": tc.get('strategy_id'),
+            "strategy_overrides": tc.get('strategy_overrides'),
             "raw_config": json.dumps(config, ensure_ascii=False),
         }
 
@@ -577,23 +592,137 @@ class TestCaseExportService:
         )
 
     # ------------------------------------------------------------------
+    # ZIP 数据包导出（对齐任务数据导出）
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _generate_zip_export(export_data, include_reference_params=True):
+        """生成 ZIP 数据包：manifest + testcases.json + 可选参考参数文件"""
+        exported_at = now_cst().isoformat()
+        output = io.BytesIO()
+
+        with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as zf:
+            ref_file_count = 0
+            if include_reference_params:
+                ref_files = TestCaseExportService._collect_reference_param_files(export_data)
+                for zip_path, content in ref_files:
+                    zf.writestr(zip_path, content)
+                ref_file_count = len(ref_files)
+
+            manifest = {
+                "format": PACKAGE_FORMAT,
+                "version": PACKAGE_VERSION,
+                "exported_at": exported_at,
+                "total_count": len(export_data),
+                "options": {
+                    "include_reference_params": bool(include_reference_params),
+                },
+                "reference_param_file_count": ref_file_count,
+            }
+            zf.writestr(
+                MANIFEST_FILENAME,
+                json.dumps(manifest, ensure_ascii=False, indent=2),
+            )
+
+            package_doc = {
+                "version": PACKAGE_VERSION,
+                "exported_at": exported_at,
+                "total_count": len(export_data),
+                "test_cases": export_data,
+            }
+            zf.writestr(
+                TESTCASES_FILENAME,
+                json.dumps(package_doc, ensure_ascii=False, indent=2, default=str),
+            )
+
+        download_name = f"testcases_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        return Response(
+            content=output.getvalue(),
+            media_type='application/zip',
+            headers={"Content-Disposition": f"attachment; filename={download_name}"},
+        )
+
+    @staticmethod
+    def _collect_reference_param_files(export_data):
+        """读取参考参数文件内容并回填包内相对路径，返回 [(zip_path, bytes)]。
+
+        路径以 `reference_params` 独立列为准，缺失时回落到
+        `config.rounds[].referenceParamsPath`（兼容老用例）；读取失败仅告警跳过，
+        不阻断整个导出。回填的 `reference_param_files` 供导入端按相对路径取内容。
+        """
+        ref_files = []
+        for item in export_data:
+            round_paths = TestCaseExportService._collect_round_ref_paths(item)
+            packaged = []
+            for round_number, ref_path in sorted(round_paths.items()):
+                content = TestCaseExportService._load_reference_param_bytes(ref_path)
+                if content is None:
+                    continue
+                zip_path = f"{REFERENCE_PARAMS_DIR}/{item['id']}/round_{int(round_number)}.json"
+                ref_files.append((zip_path, content))
+                packaged.append({
+                    "round_number": int(round_number),
+                    "path": zip_path,
+                })
+            if packaged:
+                item['reference_param_files'] = packaged
+        return ref_files
+
+    @staticmethod
+    def _collect_round_ref_paths(item):
+        """汇总用例各轮参考参数路径：独立列优先，config.rounds 兜底"""
+        round_paths = {}
+        refs = item.get('reference_params')
+        if isinstance(refs, list):
+            for ref in refs:
+                if not isinstance(ref, dict):
+                    continue
+                round_number = ref.get('round_number') or ref.get('roundNumber')
+                ref_path = ref.get('reference_params_path') or ref.get('referenceParamsPath')
+                if round_number is not None and ref_path:
+                    round_paths[int(round_number)] = ref_path
+
+        config = item.get('config') or {}
+        for idx, round_item in enumerate(config.get('rounds') or [], 1):
+            if not isinstance(round_item, dict):
+                continue
+            round_number = round_item.get('round_number') or idx
+            ref_path = round_item.get('referenceParamsPath') or round_item.get('reference_params_path')
+            if ref_path:
+                round_paths.setdefault(int(round_number), ref_path)
+        return round_paths
+
+    @staticmethod
+    def _load_reference_param_bytes(ref_path):
+        """按存储路径读取参考参数文件字节流（失败返回 None）"""
+        try:
+            from shared.infrastructure.storage import storage_load_bytes
+            return storage_load_bytes(ref_path)
+        except Exception:
+            logger.warning("导出参考参数文件失败，path=%s", ref_path, exc_info=True)
+            return None
+
+    # ------------------------------------------------------------------
     # 导出入口
     # ------------------------------------------------------------------
     @staticmethod
     def export_cases():
         """导出测试用例（薄编排层）"""
         try:
-            test_cases, format_type, err = TestCaseExportService._query_cases_for_export()
+            test_cases, format_type, include_reference_params, err = \
+                TestCaseExportService._query_cases_for_export()
             if err is not None:
                 return err
 
             export_data = TestCaseExportService._build_export_rows(test_cases)
 
-            if format_type == 'json':
+            if format_type == TestCaseExportFormat.ZIP.value:
+                return TestCaseExportService._generate_zip_export(
+                    export_data, include_reference_params)
+            elif format_type == TestCaseExportFormat.JSON.value:
                 return TestCaseExportService._export_as_json(export_data)
-            elif format_type == 'csv':
+            elif format_type == TestCaseExportFormat.CSV.value:
                 return TestCaseExportService._generate_csv_export(export_data)
-            elif format_type == 'xlsx':
+            elif format_type == TestCaseExportFormat.XLSX.value:
                 return TestCaseExportService._generate_excel_export(export_data)
             else:
                 return error_response(f"不支持的导出格式: {format_type}")

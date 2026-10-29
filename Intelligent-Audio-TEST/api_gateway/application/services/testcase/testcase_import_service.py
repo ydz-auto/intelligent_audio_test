@@ -1,13 +1,15 @@
 """测试用例导入 Service。
 
 从 TestCaseImportExportService 拆分，负责所有导入相关逻辑：
-- 解析上传文件（JSON / CSV / Excel）
+- 解析上传文件（JSON / CSV / Excel / ZIP 数据包）
 - 验证导入数据
-- 从行数据创建/更新用例
+- 按重复策略（覆盖 / 跳过 / 另存副本）创建或更新用例
+- 恢复 ZIP 包内的参考参数文件
 """
 import json
 import io
 import logging
+import zipfile
 import pandas as pd
 from datetime import datetime
 
@@ -19,6 +21,19 @@ from api_gateway.infrastructure.acl import (
 )
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.schemas.testcase import TestCaseImportResult
+from shared.constants.testcase_transfer import (
+    COPY_NAME_MAX_ATTEMPTS,
+    COPY_NAME_SUFFIX,
+    DEFAULT_DUPLICATE_STRATEGY,
+    DUPLICATE_MATCH_ID,
+    DUPLICATE_MATCH_NAME,
+    DUPLICATE_STRATEGY_ALIASES,
+    MAX_REFERENCE_PARAM_BYTES,
+    NAME_LOOKUP_PAGE_SIZE,
+    PREVIEW_DUPLICATE_SCAN_LIMIT,
+    TESTCASES_FILENAME,
+    TestCaseDuplicateStrategy,
+)
 from shared.utils import testcase_helpers as common
 
 logger = logging.getLogger(__name__)
@@ -35,12 +50,14 @@ class TestCaseImportService:
     # ------------------------------------------------------------------
     @staticmethod
     def _detect_import_format(filename):
-        """检测文件类型（返回 'json' / 'csv' / 'xlsx' / 'xls' / None）"""
+        """检测文件类型（返回 'json' / 'csv' / 'xlsx' / 'xls' / 'zip' / None）"""
         file_extension = filename.split('.')[-1].lower()
         if file_extension == 'json':
             return 'json'
         elif file_extension in ('csv', 'xlsx', 'xls'):
             return file_extension
+        elif file_extension == 'zip':
+            return 'zip'
         return None
 
     # ------------------------------------------------------------------
@@ -48,15 +65,20 @@ class TestCaseImportService:
     # ------------------------------------------------------------------
     @staticmethod
     def _parse_import_file(file):
-        """解析上传文件（CSV/Excel/JSON），薄编排层"""
+        """解析上传文件（CSV/Excel/JSON/ZIP），薄编排层"""
         fmt = TestCaseImportService._detect_import_format(file.filename)
         if fmt is None:
-            return None, error_response("仅支持 JSON, CSV 或 Excel 格式的导入")
+            return None, error_response("仅支持 JSON, CSV, Excel 或 ZIP 格式的导入")
 
         if fmt == 'json':
             return TestCaseImportService._parse_json_file(file), None
         elif fmt == 'csv':
             return TestCaseImportService._parse_csv_rows(file), None
+        elif fmt == 'zip':
+            try:
+                return TestCaseImportService._parse_zip_rows(file), None
+            except ValueError as e:
+                return None, error_response(str(e))
         else:
             return TestCaseImportService._parse_excel_rows(file), None
 
@@ -66,6 +88,66 @@ class TestCaseImportService:
         file_content = file.read().decode('utf-8')
         data = json.loads(file_content)
         return data.get('test_cases', [])
+
+    @staticmethod
+    def _parse_zip_rows(file):
+        """解析 ZIP 数据包（manifest + testcases.json + 可选参考参数文件）。
+
+        参考参数文件内容落到各用例的 `reference_params_content`
+        （{round_number: 内容}），导入成功后回写。
+        包结构非法时抛 ValueError。
+        """
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(file.read()))
+        except zipfile.BadZipFile:
+            raise ValueError("上传文件不是合法的 ZIP 包")
+
+        with zf:
+            names = set(zf.namelist())
+            if TESTCASES_FILENAME not in names:
+                raise ValueError(f"ZIP 包缺少 {TESTCASES_FILENAME}，不是用例数据包")
+
+            try:
+                data = json.loads(zf.read(TESTCASES_FILENAME).decode('utf-8'))
+            except Exception as e:
+                raise ValueError(f"{TESTCASES_FILENAME} 解析失败: {e}")
+
+            if isinstance(data, dict):
+                test_cases = data.get('test_cases') or []
+            elif isinstance(data, list):
+                test_cases = data
+            else:
+                raise ValueError(f"{TESTCASES_FILENAME} 格式不正确")
+
+            for case in test_cases:
+                if isinstance(case, dict):
+                    TestCaseImportService._attach_reference_param_content(case, zf, names)
+        return test_cases
+
+    @staticmethod
+    def _attach_reference_param_content(case, zf, names):
+        """把包内参考参数文件内容读入 case['reference_params_content']"""
+        files = case.pop('reference_param_files', None)
+        if not isinstance(files, list):
+            return
+        contents = {}
+        for file_item in files:
+            if not isinstance(file_item, dict):
+                continue
+            zip_path = file_item.get('path')
+            round_number = file_item.get('round_number') or file_item.get('roundNumber')
+            if not zip_path or round_number is None or zip_path not in names:
+                continue
+            try:
+                info = zf.getinfo(zip_path)
+                if info.file_size > MAX_REFERENCE_PARAM_BYTES:
+                    logger.warning("参考参数文件过大，跳过恢复: %s", zip_path)
+                    continue
+                contents[int(round_number)] = json.loads(zf.read(zip_path).decode('utf-8'))
+            except Exception:
+                logger.warning("读取包内参考参数文件失败: %s", zip_path, exc_info=True)
+        if contents:
+            case['reference_params_content'] = contents
 
     @staticmethod
     def _parse_csv_rows(file):
@@ -313,13 +395,38 @@ class TestCaseImportService:
         return None
 
     # ------------------------------------------------------------------
+    # 重复处理策略
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _read_duplicate_strategy():
+        """读取导入重复策略（表单 on_duplicate / onDuplicate），默认跳过。
+
+        兼容旧表单开关 `overwrite=true`（既有 TestCaseImportRequest 字段）。
+        """
+        raw = request.form.get('on_duplicate') or request.form.get('onDuplicate')
+        if raw is not None and str(raw).strip():
+            return DUPLICATE_STRATEGY_ALIASES.get(
+                str(raw).strip().lower(), DEFAULT_DUPLICATE_STRATEGY)
+
+        overwrite = request.form.get('overwrite')
+        if overwrite is not None and str(overwrite).strip().lower() in ('true', '1', 'yes'):
+            return TestCaseDuplicateStrategy.OVERWRITE
+        return DEFAULT_DUPLICATE_STRATEGY
+
+    # ------------------------------------------------------------------
     # 从行数据创建用例（薄编排层）
     # ------------------------------------------------------------------
     @staticmethod
-    def _create_cases_from_rows(test_cases_data):
-        """从行数据创建/更新用例（薄编排层）"""
+    def _create_cases_from_rows(test_cases_data,
+                                on_duplicate=DEFAULT_DUPLICATE_STRATEGY):
+        """从行数据创建/覆盖/跳过/另存副本用例。
+
+        Returns: (imported, updated, skipped, copied, errors)
+        """
         imported_count = 0
         updated_count = 0
+        skipped_count = 0
+        copied_count = 0
         errors = []
 
         for idx, case_data in enumerate(test_cases_data):
@@ -330,26 +437,61 @@ class TestCaseImportService:
                     continue
 
                 group = TestCaseImportService._resolve_or_create_group(case_data)
-                existing_tc = TestCaseImportService._find_existing_case(case_data)
+                existing_tc, _ = TestCaseImportService._find_existing_case(case_data, group)
+
+                if existing_tc and on_duplicate == TestCaseDuplicateStrategy.SKIP:
+                    skipped_count += 1
+                    continue
 
                 tc_payload = TestCaseImportService._build_case_payload(case_data, group)
-                collected_tags = TestCaseImportService._collect_tags(case_data)
+                case_id = TestCaseImportService._persist_case(
+                    tc_payload, existing_tc, on_duplicate, group)
 
-                if existing_tc:
-                    res = _testcase_acl.update(case_data.get('id'), tc_payload)
-                    if not res.get('success'):
-                        raise Exception(f"更新用例失败: {res.get('message')}")
+                if existing_tc and on_duplicate == TestCaseDuplicateStrategy.OVERWRITE:
                     updated_count += 1
+                elif existing_tc:
+                    copied_count += 1
                 else:
-                    res = _testcase_acl.create(tc_payload)
-                    if not res.get('success'):
-                        raise Exception(f"创建用例失败: {res.get('message')}")
                     imported_count += 1
+
+                TestCaseImportService._restore_reference_params(
+                    case_id, case_data, errors, idx)
 
             except Exception as e:
                 errors.append(f"第{idx + 1}行: {str(e)}")
 
-        return imported_count, updated_count, errors
+        return imported_count, updated_count, skipped_count, copied_count, errors
+
+    @staticmethod
+    def _persist_case(tc_payload, existing_tc, on_duplicate, group):
+        """按重复策略落库，返回用例 id（覆盖=更新；副本=改名新建）"""
+        if existing_tc and on_duplicate == TestCaseDuplicateStrategy.OVERWRITE:
+            case_id = existing_tc.get('id')
+            res = _testcase_acl.update(case_id, tc_payload)
+            if not res.get('success'):
+                raise Exception(f"覆盖用例失败: {res.get('message')}")
+            return case_id
+
+        if existing_tc:
+            # 另存副本：同分组内名称唯一
+            tc_payload['name'] = TestCaseImportService._build_copy_name(
+                tc_payload['name'], group)
+
+        res = _testcase_acl.create(tc_payload)
+        if not res.get('success'):
+            raise Exception(f"创建用例失败: {res.get('message')}")
+        return (res.get('data') or {}).get('id')
+
+    @staticmethod
+    def _build_copy_name(base_name, group):
+        """生成同分组内唯一的副本名称（name_copy / name_copy2 …）"""
+        group_id = group.get('id') if group else None
+        candidate = f"{base_name}{COPY_NAME_SUFFIX}"
+        for i in range(2, COPY_NAME_MAX_ATTEMPTS + 1):
+            if not TestCaseImportService._find_case_by_name(candidate, group_id):
+                return candidate
+            candidate = f"{base_name}{COPY_NAME_SUFFIX}{i}"
+        return f"{base_name}{COPY_NAME_SUFFIX}{datetime.now().strftime('%H%M%S')}"
 
     @staticmethod
     def _resolve_or_create_group(case_data):
@@ -374,39 +516,115 @@ class TestCaseImportService:
         return group
 
     @staticmethod
-    def _find_existing_case(case_data):
-        """检查是更新还是创建，返回已存在的用例或 None"""
+    def _lookup_group(case_data):
+        """只查不建分组（预览重复项用，避免预览产生副作用）"""
+        group = None
+        group_id = case_data.get('group_id')
+        group_name = case_data.get('group', '未分类')
+
+        try:
+            from api_gateway.infrastructure.grpc_proxies import task_data_service
+            if group_id:
+                group = task_data_service.get_testcase_group_by_id(group_id)
+            if not group and group_name:
+                group = task_data_service.get_testcase_group_by_name(group_name)
+        except Exception:
+            group = None
+        return group
+
+    @staticmethod
+    def _find_existing_case(case_data, group=None):
+        """检测重复用例：ID 命中优先，其次同分组同名。
+
+        Returns: (existing_case_or_None, 'id' | 'name' | None)
+        """
         tc_id = case_data.get('id')
-        if not tc_id:
+        if tc_id:
+            res = _testcase_acl.get_testcase_detail(tc_id)
+            if res.get('success') and res.get('data'):
+                return res.get('data'), DUPLICATE_MATCH_ID
+
+        name = (case_data.get('name') or '').strip()
+        group_id = group.get('id') if group else None
+        if not name or not group_id:
+            # 分组尚不存在（导入时会新建）→ 组内不可能已有同名用例
+            return None, None
+
+        existing = TestCaseImportService._find_case_by_name(name, group_id)
+        if existing:
+            return existing, DUPLICATE_MATCH_NAME
+        return None, None
+
+    @staticmethod
+    def _find_case_by_name(name, group_id):
+        """同分组内按名称精确查找用例（关键字模糊查询后本地精确比对）"""
+        if not name or not group_id:
+            return None
+        try:
+            res = _testcase_acl.list_testcases(
+                page=1, per_page=NAME_LOOKUP_PAGE_SIZE,
+                keyword=name, group_id=group_id)
+        except Exception:
+            logger.debug("导入重复检测查询失败，name=%s", name, exc_info=True)
+            return None
+        if not res.get('success'):
             return None
 
-        res = _testcase_acl.get_testcase_detail(tc_id)
-        if res.get('success'):
-            existing_tc = res.get('data')
-            if not existing_tc:
-                raise Exception(f"UPDATE失败：未找到ID对应的用例: {tc_id}")
-            return existing_tc
+        for item in (res.get('data') or {}).get('items', []) or []:
+            if (str(item.get('name') or '').strip() == name
+                    and str(item.get('group_id')) == str(group_id)):
+                return item
         return None
+
+    @staticmethod
+    def _restore_reference_params(case_id, case_data, errors, idx):
+        """把 ZIP 包内参考参数文件内容回写到新用例（逐轮）"""
+        contents = case_data.get('reference_params_content') or {}
+        if not case_id or not contents:
+            return
+        for round_number, content in contents.items():
+            try:
+                res = _testcase_acl.update_ref_params(
+                    case_id, int(round_number), {'referenceParams': content})
+                if not res.get('success'):
+                    errors.append(
+                        f"第{idx + 1}行: 第{round_number}轮参考参数恢复失败: "
+                        f"{res.get('message')}")
+            except Exception as e:
+                errors.append(
+                    f"第{idx + 1}行: 第{round_number}轮参考参数恢复异常: {e}")
 
     @staticmethod
     def _build_case_payload(case_data, group):
         """构建用例创建/更新的 payload"""
-        config = case_data.get('config', {})
-        merged_config = config.copy() if config else {}
+        config = case_data.get('config') or {}
+        merged_config = config.copy() if isinstance(config, dict) else {}
 
-        TestCaseImportService._merge_noise_config(merged_config, case_data)
-        TestCaseImportService._merge_audios_config(merged_config, case_data)
-        TestCaseImportService._merge_dimensions_config(merged_config, case_data)
-
+        # 扁平格式（Excel/CSV 老格式）才需要把音频/维度/噪声合并进 config；
+        # ZIP/JSON 的 config 已含 rounds 结构，直接原样使用，避免把轮次音频打平。
         if not common.has_rounds(merged_config):
+            TestCaseImportService._merge_noise_config(merged_config, case_data)
+            TestCaseImportService._merge_audios_config(merged_config, case_data)
+            TestCaseImportService._merge_dimensions_config(merged_config, case_data)
             merged_config = common.convert_flat_config_to_rounds(merged_config)
 
-        return {
+        payload = {
             'name': case_data['name'],
             'description': case_data.get('description'),
             'group_id': group.get('id') if group else None,
             'config': merged_config,
         }
+
+        tag_names = TestCaseImportService._collect_tag_names(case_data)
+        if tag_names:
+            payload['tags'] = tag_names
+        if case_data.get('algorithm_params'):
+            payload['algorithm_params'] = case_data['algorithm_params']
+        if case_data.get('algorithm_type'):
+            payload['algorithm_type'] = case_data['algorithm_type']
+        # 评估策略引用（strategy_id/overrides）不随包迁移：跨环境策略 id 不存在
+        # 会导致写入失败，config 中已带物化后的维度/噪声结果。
+        return payload
 
     @staticmethod
     def _merge_noise_config(merged_config, case_data):
@@ -456,34 +674,44 @@ class TestCaseImportService:
             merged_config['dimensions'] = dimension_ids
 
     @staticmethod
-    def _collect_tags(case_data):
-        """收集标签数据"""
-        collected_tags = []
-        tag_links = case_data.get('tag_links') or []
-        if tag_links:
-            for tag_link in tag_links:
-                tag_id = tag_link.get('tag_id')
-                tag_name = (tag_link.get('tag_name') or '').strip()
-                collected_tags.append({'tag_id': tag_id, 'tag_name': tag_name})
-        else:
-            for tag_name in case_data.get('tags', []):
-                collected_tags.append({'tag_id': None, 'tag_name': tag_name})
-        return collected_tags
+    def _collect_tag_names(case_data):
+        """收集标签名（CaseTags 关联优先，其次 TAGS 列），去重保序"""
+        names = []
+        for tag_link in case_data.get('tag_links') or []:
+            name = (tag_link.get('tag_name') or '').strip()
+            if name and name not in names:
+                names.append(name)
+        for tag in case_data.get('tags') or []:
+            name = tag.get('name') if isinstance(tag, dict) else str(tag)
+            name = (name or '').strip()
+            if name and name not in names:
+                names.append(name)
+        return names
 
     # ------------------------------------------------------------------
     # 生成导入结果报告
     # ------------------------------------------------------------------
     @staticmethod
-    def _generate_import_report(imported_count, updated_count, errors):
+    def _generate_import_report(imported_count, updated_count, skipped_count,
+                                copied_count, errors):
         """生成导入结果报告"""
-        message = f"成功导入 {imported_count} 个用例，更新 {updated_count} 个用例"
+        message = (
+            f"成功导入 {imported_count} 个用例，覆盖 {updated_count} 个，"
+            f"跳过重复 {skipped_count} 个，另存副本 {copied_count} 个"
+        )
         if errors:
-            message += f"，{len(errors)} 个失败: {'; '.join(errors[:5])}"
+            message += f"，{len(errors)} 个失败: {'; '.join(str(e) for e in errors[:5])}"
             if len(errors) > 5:
                 message += f" ... (共{len(errors)}个错误)"
 
         return success_response(
-            TestCaseImportResult(imported_count=imported_count, errors=errors),
+            TestCaseImportResult(
+                imported_count=imported_count,
+                updated_count=updated_count,
+                skipped_count=skipped_count,
+                copied_count=copied_count,
+                errors=errors,
+            ),
             message,
         )
 
@@ -509,8 +737,11 @@ class TestCaseImportService:
             if err is not None:
                 return err
 
-            imported_count, updated_count, errors = TestCaseImportService._create_cases_from_rows(test_cases_data)
-            return TestCaseImportService._generate_import_report(imported_count, updated_count, errors)
+            on_duplicate = TestCaseImportService._read_duplicate_strategy()
+            imported_count, updated_count, skipped_count, copied_count, errors = \
+                TestCaseImportService._create_cases_from_rows(test_cases_data, on_duplicate)
+            return TestCaseImportService._generate_import_report(
+                imported_count, updated_count, skipped_count, copied_count, errors)
 
         except json.JSONDecodeError as e:
             return error_response(f"JSON解析错误: {str(e)}")
@@ -533,7 +764,7 @@ class TestCaseImportService:
 
             fmt = TestCaseImportService._detect_import_format(file.filename)
             if fmt is None:
-                return error_response("仅支持 JSON, CSV 或 Excel 格式")
+                return error_response("仅支持 JSON, CSV, Excel 或 ZIP 格式")
 
             preview_result = TestCaseImportService._build_preview_result(file, fmt)
             return success_response(data=preview_result)
@@ -543,7 +774,7 @@ class TestCaseImportService:
 
     @staticmethod
     def _build_preview_result(file, fmt):
-        """构建预览结果"""
+        """构建预览结果（含重复用例检测，便于前端选择覆盖/跳过）"""
         preview_result = {
             'totalRows': 0,
             'testCases': [],
@@ -552,6 +783,9 @@ class TestCaseImportService:
             'tags': [],
             'groups': [],
             'errors': [],
+            'duplicates': [],
+            'duplicateCount': 0,
+            'duplicateStrategyDefault': DEFAULT_DUPLICATE_STRATEGY.value,
         }
 
         if fmt in ('xlsx', 'xls'):
@@ -560,8 +794,81 @@ class TestCaseImportService:
             TestCaseImportService._fill_json_preview(file, preview_result)
         elif fmt == 'csv':
             TestCaseImportService._fill_csv_preview(file, preview_result)
+        elif fmt == 'zip':
+            TestCaseImportService._fill_zip_preview(file, preview_result)
 
+        TestCaseImportService._detect_preview_duplicates(preview_result)
         return preview_result
+
+    @staticmethod
+    def _detect_preview_duplicates(preview_result):
+        """逐行检测重复用例并回填 duplicates/duplicateCount（只读，不建分组）。"""
+        duplicates = []
+        rows = preview_result.get('testCases') or []
+        scan_rows = rows[:PREVIEW_DUPLICATE_SCAN_LIMIT]
+        for idx, row in enumerate(scan_rows):
+            case_data = TestCaseImportService._normalize_preview_case(row)
+            if not case_data.get('id') and not case_data.get('name'):
+                continue
+            try:
+                group = TestCaseImportService._lookup_group(case_data)
+                existing, matched_by = TestCaseImportService._find_existing_case(
+                    case_data, group)
+            except Exception:
+                logger.debug("预览重复检测失败，row=%s", idx + 1, exc_info=True)
+                continue
+            if not existing:
+                continue
+            duplicates.append({
+                'row': idx + 1,
+                'name': case_data.get('name'),
+                'id': case_data.get('id'),
+                'existingId': existing.get('id'),
+                'existingName': existing.get('name'),
+                'matchedBy': matched_by,
+            })
+        preview_result['duplicates'] = duplicates
+        preview_result['duplicateCount'] = len(duplicates)
+        preview_result['duplicateScanTruncated'] = len(rows) > len(scan_rows)
+
+    @staticmethod
+    def _normalize_preview_case(row):
+        """把各格式预览行归一为 {id,name,group,group_id}（Excel 列名大写）"""
+        if not isinstance(row, dict):
+            return {}
+
+        def pick(*keys):
+            for key in keys:
+                value = row.get(key)
+                if value is None:
+                    continue
+                try:
+                    if pd.isna(value):
+                        continue
+                except (TypeError, ValueError):
+                    pass
+                if str(value).strip():
+                    return value
+            return None
+
+        return {
+            'id': pick('id', 'ID'),
+            'name': pick('name', 'NAME', '用例名称'),
+            'group': pick('group', 'GROUP_NAME', '分组'),
+            'group_id': pick('group_id', 'GROUP_ID', '分组ID'),
+        }
+
+    @staticmethod
+    def _fill_zip_preview(file, preview_result):
+        """填充 ZIP 数据包预览结果（不把包内参考参数内容透给前端）"""
+        test_cases = TestCaseImportService._parse_zip_rows(file)
+        preview_cases = [
+            {k: v for k, v in case.items() if k != 'reference_params_content'}
+            if isinstance(case, dict) else case
+            for case in test_cases
+        ]
+        preview_result['testCases'] = preview_cases
+        preview_result['totalRows'] = len(preview_cases)
 
     @staticmethod
     def _fill_excel_preview(file, preview_result):

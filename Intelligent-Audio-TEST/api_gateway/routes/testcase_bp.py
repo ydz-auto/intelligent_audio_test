@@ -26,6 +26,30 @@ def get_tags(_: None = require_permission('testcase:read')):
     return to_response(TestCaseQueryService.get_tags())
 
 
+# ---- 静态路径导入导出（必须早于 /{tc_id}/preview 等动态路由注册，
+# 否则 POST /testcases/import/preview 会被 /{tc_id}/preview 以 tc_id=import 抢先匹配）----
+@router.post('/export')
+def export_cases():
+    """导出用例：format=zip 返回数据包（manifest+testcases.json+参考参数），对齐任务数据导出"""
+    return to_response(TestCaseImportExportService.export_cases())
+
+
+@router.post('/import')
+def import_cases(_: None = require_permission('testcase:import_export')):
+    """导入用例：支持 JSON/CSV/Excel/ZIP；表单 on_duplicate=skip|overwrite|copy（默认 skip）"""
+    return to_response(TestCaseImportExportService.import_cases())
+
+
+@router.get('/template/download')
+def download_template(_: None = require_permission('testcase:import_export')):
+    return to_response(TestCaseImportExportService.download_template())
+
+
+@router.post('/import/preview')
+def preview_import(_: None = require_permission('testcase:import_export')):
+    return to_response(TestCaseImportExportService.preview_import())
+
+
 @router.get('/{tc_id}')
 def get_one(tc_id: str):
     return to_response(TestCaseQueryService.get_one(tc_id))
@@ -81,26 +105,6 @@ def batch_action(_: None = require_permission('testcase:read')):
 def fetch_case_ids(_: None = require_permission('testcase:read')):
     """按筛选条件返回全量用例ID（不分页）"""
     return to_response(TestCaseQueryService.fetch_case_ids())
-
-
-@router.post('/export')
-def export_cases():
-    return to_response(TestCaseImportExportService.export_cases())
-
-
-@router.post('/import')
-def import_cases(_: None = require_permission('testcase:import_export')):
-    return to_response(TestCaseImportExportService.import_cases())
-
-
-@router.get('/template/download')
-def download_template(_: None = require_permission('testcase:import_export')):
-    return to_response(TestCaseImportExportService.download_template())
-
-
-@router.post('/import/preview')
-def preview_import(_: None = require_permission('testcase:import_export')):
-    return to_response(TestCaseImportExportService.preview_import())
 
 
 @router.get('/refresh_task/{task_id}')
