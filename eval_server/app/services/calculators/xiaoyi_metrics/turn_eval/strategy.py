@@ -37,6 +37,61 @@ logger = logging.getLogger(__name__)
 ALIGN_NCC_MIN = 0.2
 
 
+def _build_dimension_reasons(turns, normal, no_takeover, false_takeover,
+                             false_then_normal, false_then_no,
+                             latency_values, score_values):
+    """Build user-facing reasons for each turn_eval sub-dimension."""
+    total = len(turns)
+
+    def rate_reason(label, count):
+        rate = count / total if total else 0
+        matched = [
+            f"第{t.get('turn_index')}轮"
+            for t in turns if t.get('classification') == label
+        ]
+        where = '、'.join(matched) if matched else '无'
+        return f"{label}{count}轮 / 总轮数{total}轮 = {rate:.2%}；对应轮次：{where}。"
+
+    details = []
+    for t in turns:
+        reason = str((t.get('false_takeover') or {}).get('reason') or '').strip()
+        trigger_count = t.get('false_takeover_trigger_count')
+        details.append(
+            f"第{t.get('turn_index')}轮={t.get('classification')}"
+            + (f"；误接管次数{trigger_count}" if trigger_count is not None else '')
+            + (f"：{reason}" if reason else '')
+        )
+
+    if latency_values:
+        latency_reason = (
+            f"有效接管时延{len(latency_values)}轮，均值"
+            f"{round(sum(latency_values) / len(latency_values), 1)}ms；"
+            f"各轮时延：{'、'.join(f'{v}ms' for v in latency_values)}。"
+        )
+    else:
+        latency_reason = "没有可用的接管轮时延数据。"
+
+    if score_values:
+        quality_reason = (
+            f"有效回复质量{len(score_values)}轮，均分"
+            f"{round(sum(score_values) / len(score_values), 2)}；"
+            f"各轮得分：{'、'.join(str(v) for v in score_values)}。"
+        )
+    else:
+        quality_reason = "没有可用的接管轮回复质量评分。"
+
+    return {
+        'classification': '；'.join(details),
+        'takeover_rate': rate_reason('接管', normal),
+        'no_takeover_rate': rate_reason('未接管', no_takeover),
+        'false_takeover_rate': rate_reason('误接管', false_takeover),
+        'false_then_normal_takeover_rate': rate_reason('误接管-正常接管', false_then_normal),
+        'false_then_no_takeover_rate': rate_reason('误接管-未接管', false_then_no),
+        'takeover_latency_avg': latency_reason,
+        'reply_quality_avg': quality_reason,
+    }
+
+
 class TurnEvalCalculator(BaseCalculator):
     """逐轮三分类主维度：轮次切分 → 三分类 → 接管时延 → 回复质量
 
@@ -493,6 +548,8 @@ class TurnEvalCalculator(BaseCalculator):
         total_normal = 0
         total_no_takeover = 0
         total_false_takeover = 0
+        total_false_then_normal = 0
+        total_false_then_no_takeover = 0
         turn_idx_offset = 0
 
         # 确定处理模式
@@ -563,6 +620,11 @@ class TurnEvalCalculator(BaseCalculator):
                     '（请检查音频内容与ASR识别结果）')
             logger.error(f"[turn_eval] {_msg}")
             return {'message': _msg}
+        # 新增误接管子口径单独计数；旧三分类口径保持不变。
+        total_false_then_normal = sum(
+            1 for t in all_turn_results if t.get('classification') == '误接管-正常接管')
+        total_false_then_no_takeover = sum(
+            1 for t in all_turn_results if t.get('classification') == '误接管-未接管')
 
         # ════════════════════════════════════════════
         # 汇总输出
@@ -574,6 +636,10 @@ class TurnEvalCalculator(BaseCalculator):
             'normal_takeover_count': total_normal,
             'no_takeover_count': total_no_takeover,
             'false_takeover_count': total_false_takeover,
+            'false_then_normal_takeover_count': total_false_then_normal,
+            'false_then_no_takeover_count': total_false_then_no_takeover,
+            'false_takeover_trigger_count': sum(
+                int(t.get('false_takeover_trigger_count') or 0) for t in all_turn_results),
             'total_turns': len(all_turn_results),
             'turns': all_turn_results,
         }
@@ -583,6 +649,8 @@ class TurnEvalCalculator(BaseCalculator):
             'takeover_rate': round(total_normal / total_turns_n, 4) if total_turns_n else 0,
             'no_takeover_rate': round(total_no_takeover / total_turns_n, 4) if total_turns_n else 0,
             'false_takeover_rate': round(total_false_takeover / total_turns_n, 4) if total_turns_n else 0,
+            'false_then_normal_takeover_rate': round(total_false_then_normal / total_turns_n, 4) if total_turns_n else 0,
+            'false_then_no_takeover_rate': round(total_false_then_no_takeover / total_turns_n, 4) if total_turns_n else 0,
         })
 
         # 兼容旧字段：tor / false_takeover / takeover_latency / reply_quality 取最后一轮的结果
@@ -687,6 +755,8 @@ class TurnEvalCalculator(BaseCalculator):
             normal = sum(1 for t in rt if t.get('classification') == TurnClassification.TAKEOVER)
             no_takeover = sum(1 for t in rt if t.get('classification') == TurnClassification.NO_TAKEOVER)
             false_takeover = sum(1 for t in rt if t.get('classification') == TurnClassification.MISUNDERSTAND)
+            false_then_normal = sum(1 for t in rt if t.get('classification') == '误接管-正常接管')
+            false_then_no_takeover = sum(1 for t in rt if t.get('classification') == '误接管-未接管')
 
             item = {
                 'round_number': i,
@@ -695,10 +765,14 @@ class TurnEvalCalculator(BaseCalculator):
                     'normal_takeover_count': normal,
                     'no_takeover_count': no_takeover,
                     'false_takeover_count': false_takeover,
+                    'false_then_normal_takeover_count': false_then_normal,
+                    'false_then_no_takeover_count': false_then_no_takeover,
                     'total_turns': len(rt),
                     'takeover_rate': round(normal / len(rt), 4) if rt else 0,
                     'no_takeover_rate': round(no_takeover / len(rt), 4) if rt else 0,
                     'false_takeover_rate': round(false_takeover / len(rt), 4) if rt else 0,
+                    'false_then_normal_takeover_rate': round(false_then_normal / len(rt), 4) if rt else 0,
+                    'false_then_no_takeover_rate': round(false_then_no_takeover / len(rt), 4) if rt else 0,
                     'turns': rt,
                 },
                 # 该轮未计算 TOR（如「误接管」轮本就不算 TOR，tor=None 是合法的）：
@@ -743,6 +817,11 @@ class TurnEvalCalculator(BaseCalculator):
             ]
             item['reply_quality']['reply_quality_avg_score'] = (
                 round(sum(_score_vals) / len(_score_vals), 2) if _score_vals else None
+            )
+            item['reasons'] = _build_dimension_reasons(
+                rt, normal, no_takeover, false_takeover,
+                false_then_normal, false_then_no_takeover,
+                _lat_vals, _score_vals,
             )
             per_round.append(item)
         return per_round
