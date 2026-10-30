@@ -34,6 +34,7 @@ import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagDraft } from '@/domain/models/testTag'
 import {
   TEST_CASES_TABS,
+  UNGROUPED_GROUP_ID,
   type TestCasesViewKey,
 } from '@/features/testcases/constants'
 import { TestCasesFilterToolbar } from '@/features/testcases/components/testcases-filter-toolbar'
@@ -288,6 +289,30 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
       }),
     [effectiveFilters, groups, items]
   )
+
+  /**
+   * 导出范围文案（INT-2154）：弹窗里「将导出 N 条用例」要说清是按哪些条件圈的，
+   * 否则用户无法判断一次导出几百条是从哪来的。
+   */
+  const filterSummary = useMemo(() => {
+    const parts: string[] = []
+    const keyword = filters.search?.trim()
+    if (keyword) parts.push(`搜索：${keyword}`)
+    if (filters.groupId) {
+      parts.push(
+        `分组：${
+          filters.groupId === UNGROUPED_GROUP_ID
+            ? '未分组'
+            : (groups.find((g) => g.id === filters.groupId)?.name ?? '已选分组')
+        }`
+      )
+    }
+    if (filters.tag) parts.push(`标签：${filters.tag}`)
+    if (filters.dimensionId != null) parts.push('评估维度筛选')
+    if (filters.favorite) parts.push('仅收藏')
+    if (filters.trash) parts.push('回收站')
+    return parts.join(' · ')
+  }, [filters, groups])
 
   /**
    * 列表头「全选用例」（INT-1970 返工收尾）：与「全选结果」/导出同口径——复用 resolveFilteredIds
@@ -656,6 +681,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         selectedCount={selected.size}
         selectedIds={[...selected]}
         resolveFilteredIds={resolveFilteredIds}
+        filterSummary={filterSummary || undefined}
       />
       <ImportDialog
         open={importOpen}

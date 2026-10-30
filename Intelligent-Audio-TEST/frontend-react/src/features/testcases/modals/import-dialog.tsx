@@ -8,7 +8,7 @@
  *
  * 请求一律经 infrastructure/api/testcases-api（client.ts），页面层只见 camelCase Domain。
  */
-import { Upload } from 'lucide-react'
+import { FileDown, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -28,7 +28,9 @@ import type {
   TestCaseImportPreview,
   TestCaseImportResult,
 } from '@/domain/models/testCase'
+import { downloadBlob } from '@/lib/download-blob'
 import {
+  downloadTestCaseTemplate,
   importTestCases,
   previewTestCasesImport,
 } from '@/infrastructure/api/testcases-api'
@@ -86,6 +88,37 @@ export function ImportDialog({
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<TestCaseImportResult | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
+  /** 模板下载进行中（INT-2154：弹窗内直达入口，与页头「模板下载」同一 GET /testcases/template/download） */
+  const [templateDownloading, setTemplateDownloading] = useState(false)
+
+  /**
+   * 下载 Excel 导入模板（INT-2154 P3）：格式口径在弹窗内一处说清——导入接受
+   * xlsx/xls/csv/json/zip，模板只提供 Excel 一种，其余格式无模板、按导出的文件结构填。
+   */
+  const handleTemplateDownload = async () => {
+    setTemplateDownloading(true)
+    try {
+      const { blob, filename } = await downloadTestCaseTemplate()
+      if (blob.size === 0) {
+        toast.error('模板下载失败：后端返回空文件')
+        return
+      }
+      downloadBlob(
+        blob,
+        filename,
+        blob.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      )
+      toast.success('模板已下载', {
+        description: `${filename}（仅 Excel；CSV/JSON/ZIP 无模板，直接按导出结构填写）`,
+      })
+    } catch (error) {
+      toast.error(
+        `模板下载失败：${error instanceof Error ? error.message : '请稍后重试'}`
+      )
+    } finally {
+      setTemplateDownloading(false)
+    }
+  }
 
   // 常驻挂载：关闭即复位，重开从选文件重新走
   useEffect(() => {
@@ -210,8 +243,19 @@ export function ImportDialog({
                 <span className='truncate'>{file ? file.name : '点击选择文件'}</span>
               </Button>
               <p className='text-muted-foreground text-xs'>
-                支持 .json / .csv / .xlsx / .xls / .zip
+                支持 .xlsx / .xls / .csv / .json / .zip；ZIP 可直接用「导出」生成的用例包。
+                模板仅提供 Excel（.xlsx），CSV/JSON 无模板、按同样字段填写即可。
               </p>
+              <Button
+                variant='link'
+                size='sm'
+                className='text-muted-foreground hover:text-foreground h-auto gap-1 px-0 text-xs'
+                disabled={templateDownloading || importing}
+                onClick={() => void handleTemplateDownload()}
+              >
+                <FileDown aria-hidden='true' className='size-3.5' />
+                {templateDownloading ? '模板下载中…' : '下载 Excel 模板（.xlsx）'}
+              </Button>
             </div>
 
             {previewing && (

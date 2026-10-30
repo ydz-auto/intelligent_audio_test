@@ -21,7 +21,7 @@ vi.mock('@/lib/download-blob', () => ({
 }))
 
 vi.mock('sonner', () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }))
 
 const mockedExport = vi.mocked(exportTestCases)
@@ -87,7 +87,7 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
     )
   })
 
-  it('仅导出已选：用勾选 id 且不再解析筛选 id', async () => {
+  it('仅导出已选：用勾选 id，且切换后不再重新解析筛选 id', async () => {
     const user = userEvent.setup()
     const resolveFilteredIds = vi.fn().mockResolvedValue([])
     renderDialog({
@@ -95,6 +95,9 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
       selectedIds: ['tc-8', 'tc-9'],
       resolveFilteredIds,
     })
+
+    // INT-2154：开窗即按「按当前筛选」统计一次范围预览
+    await waitFor(() => expect(resolveFilteredIds).toHaveBeenCalledTimes(1))
 
     await user.click(screen.getByRole('radio', { name: /仅导出已选 2 个用例/ }))
     await user.click(screen.getByRole('button', { name: /开始导出/ }))
@@ -104,7 +107,8 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
         includeReferenceParams: true,
       })
     )
-    expect(resolveFilteredIds).not.toHaveBeenCalled()
+    // 已选范围不依赖筛选解析
+    expect(resolveFilteredIds).toHaveBeenCalledTimes(1)
   })
 
   it('Excel 格式：format=xlsx', async () => {
@@ -234,5 +238,67 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
         includeReferenceParams: true,
       })
     )
+  })
+
+  // INT-2154：导出范围必须可见——否则用户以为导出的是搜到的几条，实际导出全部筛选结果
+  it('INT-2154：开窗即展示「将导出 N 条用例」与筛选摘要', async () => {
+    renderDialog({
+      resolveFilteredIds: vi.fn().mockResolvedValue(['tc-1', 'tc-2', 'tc-3']),
+      filterSummary: '搜索：matrix',
+    })
+
+    await waitFor(() => expect(screen.getByText('3')).toBeInTheDocument())
+    expect(screen.getByText(/将导出/)).toBeInTheDocument()
+    expect(screen.getByText(/搜索：matrix/)).toBeInTheDocument()
+  })
+
+  it('INT-2154：未勾选用例时提示先去列表勾选', () => {
+    renderDialog({ resolveFilteredIds: vi.fn().mockResolvedValue(['tc-1']) })
+
+    expect(screen.getByText(/未选用例：先在列表勾选用例/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('radio', { name: /仅导出已选 0 个用例/ })
+    ).toBeDisabled()
+  })
+
+  it('INT-2154：范围统计失败时提示且导出仍按当前筛选执行', async () => {
+    const user = userEvent.setup()
+    const resolveFilteredIds = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('ids 接口超时'))
+      .mockResolvedValue(['tc-1'])
+    renderDialog({ resolveFilteredIds })
+
+    await waitFor(() =>
+      expect(screen.getByText(/无法预先统计导出条数/)).toBeInTheDocument()
+    )
+
+    await user.click(screen.getByRole('button', { name: /开始导出/ }))
+    await waitFor(() =>
+      expect(mockedExport).toHaveBeenCalledWith(['tc-1'], 'zip', {
+        includeReferenceParams: true,
+      })
+    )
+  })
+
+  it('INT-2154：JSON 实际导出行数与范围不一致时告警', async () => {
+    mockedExport.mockResolvedValue({
+      blob: new Blob(['{"test_cases":[]}'], { type: 'application/json' }),
+      filename: 'testcases_export_20261024_120000.json',
+      exportedCount: 1,
+    })
+    const user = userEvent.setup()
+    renderDialog({ resolveFilteredIds: vi.fn().mockResolvedValue(['tc-1', 'tc-2']) })
+
+    await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /开始导出/ }))
+
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        '导出条数与筛选范围不一致：请求 2 条，实际 1 条',
+        expect.objectContaining({ description: 'testcases_export_20261024_120000.json' })
+      )
+    )
+    expect(mockedDownload).toHaveBeenCalled()
   })
 })

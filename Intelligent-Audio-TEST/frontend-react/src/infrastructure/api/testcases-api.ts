@@ -166,6 +166,31 @@ export async function fetchAllTestCaseIdsByFilter(
 }
 
 /**
+ * 「当前筛选」全量用例（INT-2154 分组视图搜索命中聚合；与列表同端点同口径）。
+ * 分组卡计数（/groups testCaseCount）是分组全量、不随筛选变化，分组视图要在搜索态下
+ * 显示「每组分命中数」并隐藏零命中分组，故需把命中用例全量拿到按 groupId 聚合。
+ * 与 fetchAllTestCaseIdsByFilter 同分页口径（逐页翻完直到 pages），只是保留行数据。
+ */
+export async function fetchAllTestCasesByFilter(
+  query: TestCaseListQuery
+): Promise<TestCaseListItem[]> {
+  const items: TestCaseListItem[] = []
+  for (let page = 1; page <= ID_SCAN_MAX_PAGES; page += 1) {
+    const result = await fetchTestCases({
+      ...query,
+      page,
+      perPage: ID_SCAN_PAGE_SIZE,
+    })
+    items.push(...result.items)
+    const totalPages =
+      result.pages ??
+      Math.max(1, Math.ceil((result.total || 0) / ID_SCAN_PAGE_SIZE))
+    if (page >= totalPages) return items
+  }
+  throw new Error('用例数量超出统计上限，请缩小筛选条件后重试')
+}
+
+/**
  * 用例保存载荷（camelCase Domain 写侧；对照 api_gateway/schemas/testcase.py
  * TestCaseCreateSchema/TestCaseUpdateSchema，Vue testcasesApi.create/update 口径）。
  * config/algorithmParams/referenceParams 值内动态结构原样透传（snake_case 契约，
@@ -392,6 +417,11 @@ export interface TestCaseExportOptions {
 export interface TestCaseExportResult {
   blob: Blob
   filename: string
+  /**
+   * 后端口径的实际导出条数（INT-2154：JSON 导出信封带 total_count / test_cases，
+   * 可与请求 id 数核对；ZIP/Excel 为字节流，无法在不解析包体的前提下取到，留空）
+   */
+  exportedCount?: number
 }
 
 /** 导出文件名时间戳（yyyyMMdd_HHmmss，与后端 download_name 同口径） */
@@ -431,7 +461,21 @@ export async function exportTestCases(
       type: 'application/json',
     }),
     filename,
+    exportedCount: jsonExportCount(data),
   }
+}
+
+/**
+ * JSON 导出信封的实际条数（INT-2154 导出后核对）：
+ * 后端 data 形如 { test_cases: [...], total_count, exported_at }；取不到时返回 undefined，
+ * 由调用方回落到请求 id 数（不编造 0）。
+ */
+function jsonExportCount(data: unknown): number | undefined {
+  if (data == null || typeof data !== 'object') return undefined
+  const record = data as { test_cases?: unknown; total_count?: unknown }
+  if (Array.isArray(record.test_cases)) return record.test_cases.length
+  if (typeof record.total_count === 'number') return record.total_count
+  return undefined
 }
 
 /**
