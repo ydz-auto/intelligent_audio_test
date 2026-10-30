@@ -33,6 +33,17 @@ SHIM_DIR = REPO / 'tests' / 'fixtures' / 'pyaudio_shim'
 AUDIO_PORT = 50052
 DEVICE_PORT = 50053
 
+ENTRY = Path(__file__).with_name('service_entry.py')
+
+# WMI 拉起的进程父级是 WmiPrvSE（系统服务），不在 agent run 的 job 对象里；
+# 否则 run 结束会整树回收，宿主服务刚起来就被杀掉。
+_WMI_SCRIPT = (
+    '$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create '
+    '-Arguments @{CommandLine=$env:STACK_LAUNCH_CMD; '
+    'CurrentDirectory=$env:STACK_LAUNCH_CWD}; '
+    'Write-Output $r.ProcessId; exit $r.ReturnValue'
+)
+
 # 容器内 gRPC 端口 → 宿主服务作为客户端要读的环境变量（BaseConfig）。
 # 宿主端口值从 compose config 解析，避免与 docker/.env 各处手抄漂移。
 _GRPC_ENV_BY_CONTAINER_PORT = {
@@ -170,32 +181,48 @@ def wait_port(port: int, want_open: bool, timeout: float) -> bool:
 
 # ---------------------------------------------------------------- 进程拉起
 
-def _spawn(args: list[str], env: dict, log_name: str) -> subprocess.Popen:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    log = open(LOG_DIR / log_name, 'a', encoding='utf-8', errors='replace')
-    kwargs = dict(
-        cwd=str(REPO), env=env, stdin=subprocess.DEVNULL,
-        stdout=log, stderr=subprocess.STDOUT,
+def _wmi_create(command_line: str, cwd: Path) -> int:
+    """经 WMI 拉起进程，返回 PID；失败抛 RuntimeError。"""
+    env = {**os.environ,
+           'STACK_LAUNCH_CMD': command_line,
+           'STACK_LAUNCH_CWD': str(cwd)}
+    result = subprocess.run(
+        ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+         '-Command', _WMI_SCRIPT],
+        capture_output=True, text=True, encoding='utf-8', errors='replace', env=env,
     )
-    if os.name == 'nt':
-        kwargs['creationflags'] = (
-            DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB)
-    try:
-        return subprocess.Popen([PY, *args], **kwargs)
-    except OSError:
-        # CREATE_BREAKAWAY_FROM_JOB 在部分作业对象下不被允许，去掉后重试
-        if os.name == 'nt':
-            kwargs['creationflags'] = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-        return subprocess.Popen([PY, *args], **kwargs)
+    lines = [line.strip() for line in (result.stdout or '').splitlines() if line.strip()]
+    pid = int(lines[-1]) if lines and lines[-1].isdigit() else None
+    if result.returncode != 0 or not pid:
+        detail = (result.stderr or result.stdout or '').strip()
+        raise RuntimeError(f'WMI 拉起失败 rc={result.returncode}: {detail}')
+    return pid
 
 
-def _start(name: str, args: list[str], port: int, env: dict,
-           log_name: str, timeout: float) -> tuple[bool, str]:
+def _launch(service: str, mode: str) -> int:
+    """把完整环境落成 JSON（WMI 进程不继承调用方环境），再 WMI 拉起入口。"""
+    env = host_env()
+    if service == 'audio' and mode == 'shim':
+        env['PYTHONPATH'] = os.pathsep.join(
+            [str(SHIM_DIR), str(REPO), str(REPO / 'shared' / 'proto')])
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    env_file = LOG_DIR / f'{service}.env.json'
+    env_file.write_text(json.dumps(env, ensure_ascii=False), encoding='utf-8')
+    command_line = (
+        f'"{PY}" "{ENTRY}" --service {service} --mode {mode} --env-file "{env_file}"')
+    return _wmi_create(command_line, REPO)
+
+
+def _start(name: str, service: str, mode: str, port: int,
+           timeout: float, log_name: str) -> tuple[bool, str]:
     if port_listening(port):
         return True, f'[skip] {name} 已在 :{port} 监听'
-    proc = _spawn(args, env, log_name)
+    try:
+        pid = _launch(service, mode)
+    except RuntimeError as exc:
+        return False, f'[fail] {name} 拉起失败: {exc}'
     if wait_port(port, True, timeout):
-        return True, f'[ok] {name} 已启动 pid={proc.pid} :{port}'
+        return True, f'[ok] {name} 已启动 pid={pid} :{port}（WMI 脱离 run 树）'
     tail = _log_tail(log_name)
     return False, (f'[fail] {name} 在 {timeout:.0f}s 内未监听 :{port}，'
                    f'日志: {LOG_DIR / log_name}\n{tail}')
