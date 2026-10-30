@@ -36,11 +36,18 @@ export interface ApiDeviceFilters {
   environment: string | null
 }
 
-/** 新增/编辑抽屉分派（§6.2：随页签三分叉；device 编辑态必填，新建态可空） */
+/**
+ * 设备抽屉可承载的资源（INT-2153）：测试 API 的新增/编辑统一走 §5.3 API 编辑弹窗
+ * （`test-execution/modals/api-edit-dialog`），抽屉只剩测试设备 / 播放设备两类；
+ * 抽屉里原先的 API 分支（无请求模板 / 响应解析 / 参数配置）已移除，避免两套表单。
+ */
+export type DeviceMutateKind = 'test' | 'playback'
+
+/** 新增/编辑抽屉分派（§6.2：随页签二分叉；device 编辑态必填，新建态可空） */
 export interface DeviceMutateState {
   open: boolean
   mode: 'create' | 'edit'
-  kind: DevicesTabKey
+  kind: DeviceMutateKind
   device?: TestDevice | PlaybackDevice | ApiDevice | null
 }
 

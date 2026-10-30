@@ -5,13 +5,15 @@
  *   设备序列号/IP(conditional remote)/驱动关键字（V9.7.10 keywords select）/是否需要提示词/算法类型/
  *   高级设置（备注/标签/自定义属性/优先级）
  * - 播放设备：型号/设备类型/系统唯一标识/通道索引/支持的通道数/支持的格式/采样率/声压映射
- * - 测试 API：API名称/供应商/API端点/关联算法（默认全局算法）/协议/环境/最大进程数/超时/音频时长/
- *   端点列表（ArrayField，编辑回显）
+ *
+ * INT-2153：**测试 API 不再走本抽屉**。新增与编辑统一开 §5.3 API 编辑弹窗
+ * （`features/test-execution/modals/api-edit-dialog`，基础/请求模板/响应解析/参数配置四页签），
+ * 否则创建时看不到 meta 配置、且同一资源存在两套字段不一致的表单。
  * 表单按 AGENTS §3.7 落 RHF+zod（schema 见 lib/device-form-schema.ts）。
  * P2-1 返修：编辑提交 patch 只携带表单可编辑字段，不重置 status/occupied/labId/labName/
  * driverName/lastOnlineAt/createdAt 等非表单字段。
  */
-import { ChevronDown, Plus, ScanLine, X } from 'lucide-react'
+import { ChevronDown, ScanLine } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -38,35 +40,20 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import type { DevicesTabKey } from '@/features/devices/constants'
 import type { DeviceMutateState } from '@/features/devices/types'
 import {
-  apiDeviceFormSchema,
   playbackDeviceFormSchema,
   testDeviceFormSchema,
 } from '@/features/devices/lib/device-form-schema'
 import { normalizeDeviceSystem } from '@/features/devices/lib/device-system'
-import { mergeApiDeviceMeta } from '@/features/devices/lib/api-device-meta'
 import { useDeviceMutations, useDriverKeywords } from '@/application/devices/use-devices'
 import { useSplMappingsByDevice } from '@/application/spl/useSplMappings'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
-import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { ApiDevice } from '@/domain/models/apiDevice'
-import {
-  API_PROTOCOL_LABEL,
-  DEFAULT_API_PROTOCOL,
-  DEFAULT_API_STREAMING,
-  apiProtocolOptions,
-  defaultStreamingFor,
-  isApiProtocol,
-  isStreamingLocked,
-  streamingLabel,
-} from '@/domain/models/apiProtocol'
-import type { ApiEndpoint } from '@/domain/models/apiDevice'
 
 export interface DeviceMutateDrawerProps {
   state: DeviceMutateState
@@ -116,58 +103,6 @@ const PRIORITY_OPTIONS = Array.from({ length: 10 }, (_, i) => ({
   value: String(i + 1),
   label: String(i + 1),
 }))
-/** 协议下拉（INT-1800 / B0 §3.2）：4 个规范值，sse / grpc 实现未上线 → 置灰并标注 */
-const PROTOCOL_SELECT_OPTIONS = apiProtocolOptions().map((option) => ({
-  value: option.value,
-  label: option.disabled
-    ? `${API_PROTOCOL_LABEL[option.value]}（未上线）`
-    : API_PROTOCOL_LABEL[option.value],
-  disabled: option.disabled,
-}))
-const ENV_OPTIONS = [
-  { value: 'development', label: '开发' },
-  { value: 'testing', label: '测试' },
-  { value: 'production', label: '生产' },
-]
-/** 代理类型选项（api_test_service PROXY_TYPES 契约 http/https/socks5/socks5h；空=不使用代理） */
-const PROXY_TYPE_OPTIONS = [
-  { value: '', label: '不使用代理' },
-  { value: 'http', label: 'HTTP' },
-  { value: 'https', label: 'HTTPS' },
-  { value: 'socks5', label: 'SOCKS5' },
-  { value: 'socks5h', label: 'SOCKS5H' },
-]
-
-/** API 端点编辑行（§6.2 apiEndpoint ArrayField；INT-355 §5.3 口径子集） */
-interface EndpointFormRow {
-  key: string
-  endpoint: string
-  name: string
-  priority: string
-  maxProcess: string
-  maxTimeout: string
-  maxAudioDuration: string
-  /** INT-1437 密钥池：textarea 草稿（瞬态，保存时 adapter 拆行转 api_keys） */
-  apiKeysText: string
-  /** 密钥池摘要（编辑回显「已配置 N 个密钥 / 尾号…」，完整密钥不回显） */
-  apiKeysSummary: { count: number; tails: string[] } | null
-}
-
-const ENDPOINT_EMPTY: EndpointFormRow = {
-  key: '',
-  endpoint: '',
-  name: '',
-  priority: '1',
-  maxProcess: '1',
-  maxTimeout: '30',
-  maxAudioDuration: '60',
-  apiKeysText: '',
-  apiKeysSummary: null,
-}
-
-function endpointKey(): string {
-  return Math.random().toString(36).slice(2, 9)
-}
 
 /**
  * INT-1029 扫描结果回填当前表单（对齐 V9.7.10 useDeviceSelection.selectDevice 口径）：
@@ -208,20 +143,19 @@ export function mergeScanPrefill(
   }
 }
 
-/** 三页签表单 schema（§6.2 分叉；z.discriminatedUnion 单 useForm 承载）。
- * 用 extend 而非展开 shape：保留各页签 schema 的 superRefine（如 API 代理跨字段校验）。 */
+/** 两页签表单 schema（§6.2 分叉；z.discriminatedUnion 单 useForm 承载）。
+ * 用 extend 而非展开 shape：保留各页签 schema 的 superRefine（如代理跨字段校验）。
+ * INT-2153：API 分支已移出抽屉（走 §5.3 API 编辑弹窗），此处只剩测试设备 / 播放设备。 */
 const deviceFormSchema = z.discriminatedUnion('kind', [
   testDeviceFormSchema.extend({ kind: z.literal('test') }),
   playbackDeviceFormSchema.extend({ kind: z.literal('playback') }),
-  apiDeviceFormSchema.extend({ kind: z.literal('api') }),
 ])
 
 type DeviceForm = z.infer<typeof deviceFormSchema>
 
 function buildDefaults(
   state: DeviceMutateState,
-  prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> | null | undefined,
-  globalAlgorithmId: string
+  prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> | null | undefined
 ): DeviceForm {
   if (state.kind === 'test') {
     const device = state.mode === 'edit' ? (state.device as TestDevice | null) : null
@@ -249,41 +183,22 @@ function buildDefaults(
       priority: String(device?.priority ?? 5),
     }
   }
-  if (state.kind === 'playback') {
-    const device = state.mode === 'edit' ? (state.device as PlaybackDevice | null) : null
-    // P2-2 返修：播放扫描「添加」预填透传（§6.1 playback: name/model/deviceUniqueId/channelIndex/
-    // sampleRate/deviceType；对齐 test 分支 scanPrefill 口径）
-    const scanPrefill = prefill as Partial<PlaybackDevice> | null
-    return {
-      kind: 'playback',
-      name: device?.name ?? scanPrefill?.name ?? '',
-      description: device?.description ?? '',
-      model: device?.model ?? scanPrefill?.model ?? '',
-      deviceType: device?.deviceType ?? scanPrefill?.deviceType ?? 'dry',
-      deviceUniqueId: device?.deviceUniqueId ?? scanPrefill?.deviceUniqueId ?? '',
-      channelIndex: String(device?.channelIndex ?? scanPrefill?.channelIndex ?? 0),
-      supportedChannels: device?.supportedChannels != null ? String(device.supportedChannels) : '',
-      supportedFormats: device?.supportedFormats ?? [],
-      sampleRate: String(device?.sampleRate ?? scanPrefill?.sampleRate ?? 48000),
-      splMappingId: device?.currentSplMappingId != null ? String(device.currentSplMappingId) : '',
-    }
-  }
-  const device = state.mode === 'edit' ? (state.device as ApiDevice | null) : null
+  const device = state.mode === 'edit' ? (state.device as PlaybackDevice | null) : null
+  // P2-2 返修：播放扫描「添加」预填透传（§6.1 playback: name/model/deviceUniqueId/channelIndex/
+  // sampleRate/deviceType；对齐 test 分支 scanPrefill 口径）
+  const scanPrefill = prefill as Partial<PlaybackDevice> | null
   return {
-    kind: 'api',
-    name: device?.name ?? '',
+    kind: 'playback',
+    name: device?.name ?? scanPrefill?.name ?? '',
     description: device?.description ?? '',
-    vendor: device?.vendor ?? '',
-    // INT-1800：协议 / 流式性按读侧两列回填（缺省 = 后端写侧缺省 http + 非流式）
-    protocol: isApiProtocol(device?.protocol) ? device.protocol : DEFAULT_API_PROTOCOL,
-    streaming: device?.streaming ?? DEFAULT_API_STREAMING,
-    environment: device?.environment ?? 'testing',
-    proxyType: device?.proxyType ?? '',
-    proxyUrl: device?.proxyUrl ?? '',
-    algorithmType: device?.algorithmType ?? globalAlgorithmId ?? '',
-    maxProcess: String(device?.defaultMaxProcess ?? 5),
-    maxTimeout: String(device?.defaultMaxTimeout ?? 30),
-    maxAudioDuration: String(device?.defaultMaxAudioDuration ?? 60),
+    model: device?.model ?? scanPrefill?.model ?? '',
+    deviceType: device?.deviceType ?? scanPrefill?.deviceType ?? 'dry',
+    deviceUniqueId: device?.deviceUniqueId ?? scanPrefill?.deviceUniqueId ?? '',
+    channelIndex: String(device?.channelIndex ?? scanPrefill?.channelIndex ?? 0),
+    supportedChannels: device?.supportedChannels != null ? String(device.supportedChannels) : '',
+    supportedFormats: device?.supportedFormats ?? [],
+    sampleRate: String(device?.sampleRate ?? scanPrefill?.sampleRate ?? 48000),
+    splMappingId: device?.currentSplMappingId != null ? String(device.currentSplMappingId) : '',
   }
 }
 
@@ -361,8 +276,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
   const kind = state.kind
   const isEdit = state.mode === 'edit' && state.device != null
   const editingDevice = isEdit ? state.device : null
-  const { createTest, updateTest, createPlayback, updatePlayback, createApi, updateApi } =
-    useDeviceMutations()
+  const { createTest, updateTest, createPlayback, updatePlayback } = useDeviceMutations()
   const driverKeywordsQuery = useDriverKeywords()
   // 声压映射选项仅编辑态（设备已存在）加载该设备映射（V9.7.10 loadSplMappings 同源 GET /spl/by-device/{id}）；
   // 新增态 deviceId 为空 → 无选项（设备创建后再经行操作关联）
@@ -373,21 +287,14 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
   // 算法类型选项（INT-1213：真实 GET /algorithm/options，显示中文名；V9.7.10 algorithmSelect 口径）
   // INT-1239：改壳层门控版（['shell','algorithm','options']，enabled: algorithm:read）——device_admin
   // 无 algorithm:read 不下发请求（后端 RBAC 403）；选项为 {value,name}，抽屉统一映射 {value,label}。
-  const {
-    options: algorithmRawOptions,
-    isLoading: algorithmOptionsLoading,
-    canRead: canReadAlgorithm,
-  } = useAlgorithmOptions()
+  const { options: algorithmRawOptions, canRead: canReadAlgorithm } = useAlgorithmOptions()
   const algorithmOptions = useMemo(
     () => algorithmRawOptions.map((o) => ({ value: o.value, label: o.name })),
     [algorithmRawOptions]
   )
-  // 关联算法新增态默认全局算法（16_设备域.md §6.2「默认全局算法」）
-  const { algorithmId: globalAlgorithmId } = useGlobalAlgorithm()
-
   const form = useForm<DeviceForm>({
     resolver: zodResolver(deviceFormSchema),
-    values: buildDefaults(state, prefill, globalAlgorithmId),
+    values: buildDefaults(state, prefill),
   })
 
   // INT-1029 抽屉内扫描「选择」→ 回填当前表单（编辑/新增态均可用；nonce 递增触发）
@@ -398,31 +305,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanFill?.nonce])
 
-  // API 端点数组（§6.2 apiEndpoint ArrayField；受控于本地 state，编辑回显）
-  const [endpoints, setEndpoints] = useState<EndpointFormRow[]>([])
   const [saving, setSaving] = useState(false)
-
-  // 打开 API 编辑时回显端点列表；关闭/切换页签时清空
-  useEffect(() => {
-    if (kind === 'api' && state.open && state.mode === 'edit' && state.device) {
-      const api = state.device as ApiDevice
-      setEndpoints(
-        (api.endpoints ?? []).map((ep) => ({
-          key: endpointKey(),
-          endpoint: ep.endpoint,
-          name: ep.name ?? '',
-          priority: String(ep.priority ?? 1),
-          maxProcess: String(ep.maxProcess ?? 1),
-          maxTimeout: String(ep.maxTimeout ?? 30),
-          maxAudioDuration: String(ep.maxAudioDuration ?? 60),
-          apiKeysText: '',
-          apiKeysSummary: ep.apiKeysSummary ?? null,
-        }))
-      )
-    } else if (!state.open) {
-      setEndpoints([])
-    }
-  }, [kind, state.open, state.mode, state.device])
 
   const handleOpenChange = (next: boolean) => {
     props.onOpenChange(next)
@@ -434,18 +317,6 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
       ? current.filter((item) => item !== value)
       : [...current, value]
     form.setValue(field, next)
-  }
-
-  const updateEndpoint = (key: string, patch: Partial<EndpointFormRow>) => {
-    setEndpoints((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)))
-  }
-
-  const addEndpoint = () => {
-    setEndpoints((prev) => [...prev, { ...ENDPOINT_EMPTY, key: endpointKey() }])
-  }
-
-  const removeEndpoint = (key: string) => {
-    setEndpoints((prev) => prev.filter((row) => row.key !== key))
   }
 
   const handleSave = async (values: DeviceForm) => {
@@ -521,66 +392,8 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
             labName: null,
           })
         }
-      } else {
-        const editable = {
-          name: values.name.trim(),
-          description: values.description?.trim() || null,
-          vendor: values.vendor?.trim() || null,
-          protocol: values.protocol,
-          streaming: values.streaming,
-          environment: values.environment || null,
-          // INT-1621：编辑保存保留表单未识别的 meta 键（version / 旧 apiKey 等）；
-          // INT-1800：协议已抬为顶层列，meta 不再管理 protocol，只覆写 environment
-          meta: isEdit
-            ? mergeApiDeviceMeta((editingDevice as ApiDevice).meta, {
-                environment: values.environment,
-              })
-            : { environment: values.environment },
-          // INT-1029：每 API 代理配置（契约格式 user:pass@host:port；空串归一 null）
-          proxyType: values.proxyType?.trim() || null,
-          proxyUrl: values.proxyUrl?.trim() || null,
-          algorithmType: values.algorithmType,
-          defaultMaxProcess: Number(values.maxProcess) || 5,
-          defaultMaxTimeout: Number(values.maxTimeout) || 30,
-          defaultMaxAudioDuration: Number(values.maxAudioDuration) || 60,
-          endpoints: endpoints
-            .filter((row) => row.endpoint.trim())
-            .map(
-              (row): ApiEndpoint => ({
-                id: null,
-                endpoint: row.endpoint.trim(),
-                name: row.name.trim() || null,
-                priority: Number(row.priority) || 1,
-                maxProcess: Number(row.maxProcess) || 1,
-                maxTimeout: Number(row.maxTimeout) || 30,
-                maxAudioDuration: Number(row.maxAudioDuration) || 60,
-                status: 'online',
-                healthScore: null,
-                description: null,
-                apiKeysSummary: row.apiKeysSummary,
-                // INT-1437 密钥池：textarea 草稿瞬态透传，adapter 拆行转 api_keys 落库
-                apiKeysText: row.apiKeysText,
-              })
-            ),
-        }
-        if (isEdit) {
-          await updateApi.mutateAsync({ id: editingDevice!.id, patch: editable })
-        } else {
-          await createApi.mutateAsync({
-            ...editable,
-            status: 'offline',
-            healthScore: null,
-            rmsSplMappingId: null,
-            rmsSplMappingName: null,
-            occupied: false,
-            // INT-1938：该列只读进「测试 API」模型（供 §5.3 编辑弹窗回显），新增抽屉不写
-            audioConfig: null,
-          })
-        }
       }
-      toast.success(
-        kind === 'test' ? '测试设备已保存' : kind === 'playback' ? '播放设备已保存' : '测试 API 已保存'
-      )
+      toast.success(kind === 'test' ? '测试设备已保存' : '播放设备已保存')
       handleOpenChange(false)
     } catch {
       toast.error('保存失败，请重试')
@@ -600,7 +413,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
           <SheetDescription>
-            登记或修改{kind === 'test' ? '测试设备' : kind === 'playback' ? '播放设备' : '测试 API'}信息。
+            登记或修改{kind === 'test' ? '测试设备' : '播放设备'}信息。
           </SheetDescription>
         </SheetHeader>
 
@@ -613,7 +426,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                 <Input
                   {...form.register('name')}
                   aria-invalid={Boolean(errors.name)}
-                  placeholder='如：音箱-客厅位'
+                  placeholder={kind === 'test' ? '如：测试机-1号位' : '如：音箱-客厅位'}
                   className='h-8'
                 />
               </Field>
@@ -932,257 +745,6 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                 />
               </section>
             )}
-
-            {kind === 'api' && (
-              <section className='flex flex-col gap-2'>
-                <h3 className='text-sm font-medium'>API 信息</h3>
-                <div className='grid grid-cols-2 gap-2.5'>
-                  <Field label='供应商'>
-                    <Input {...form.register('vendor')} className='h-8' />
-                  </Field>
-                  <Field label='协议' required error={errors.protocol?.message}>
-                    <Select
-                      value={form.watch('protocol')}
-                      items={PROTOCOL_SELECT_OPTIONS}
-                      onValueChange={(value) => {
-                        if (!isApiProtocol(value)) return
-                        form.setValue('protocol', value)
-                        // 切协议即按该协议的缺省流式性联动（可用矩阵内只有一种可写形态）
-                        form.setValue('streaming', defaultStreamingFor(value))
-                      }}
-                    >
-                      <SelectTrigger size='sm' className='w-full'>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PROTOCOL_SELECT_OPTIONS.map((option) => (
-                          <SelectItem
-                            key={option.value}
-                            value={option.value}
-                            disabled={option.disabled}
-                          >
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  {/* 流式性（INT-1800 / B0 §3.2）：与协议独立的第二维，执行道只由它派生 */}
-                  <Field label='流式'>
-                    <div className='flex h-8 items-center gap-2'>
-                      <Switch
-                        id='api-device-streaming'
-                        size='sm'
-                        checked={form.watch('streaming')}
-                        disabled={isStreamingLocked(form.watch('protocol'))}
-                        onCheckedChange={(checked) => form.setValue('streaming', checked)}
-                        aria-label='流式开关'
-                      />
-                      <span className='text-muted-foreground text-xs'>
-                        {streamingLabel(form.watch('streaming'))}
-                        {isStreamingLocked(form.watch('protocol')) ? '（当前协议锁定）' : ''}
-                      </span>
-                    </div>
-                  </Field>
-                  <Field label='环境'>
-                    <Select
-                      value={form.watch('environment')}
-                      items={ENV_OPTIONS}
-                      onValueChange={(value) => form.setValue('environment', value ?? '')}
-                    >
-                      <SelectTrigger size='sm' className='w-full'>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ENV_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  {/* 代理配置（INT-1029：每 API 可配代理；proxy_url 契约格式 user:pass@host:port 不含 scheme） */}
-                  <Field label='代理类型'>
-                    <Select
-                      value={form.watch('proxyType') ?? ''}
-                      items={PROXY_TYPE_OPTIONS}
-                      onValueChange={(value) => form.setValue('proxyType', value ?? '')}
-                    >
-                      <SelectTrigger size='sm' className='w-full'>
-                        <SelectValue placeholder='不使用代理'>
-                          {PROXY_TYPE_OPTIONS.find((o) => o.value === form.watch('proxyType'))
-                            ?.label ?? '不使用代理'}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PROXY_TYPE_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field label='代理地址' error={errors.proxyUrl?.message}>
-                    <Input
-                      {...form.register('proxyUrl')}
-                      placeholder='user:pass@host:port'
-                      aria-invalid={Boolean(errors.proxyUrl)}
-                      className='h-8'
-                    />
-                  </Field>
-                  <Field label='关联算法' required error={errors.algorithmType?.message}>
-                    <Select
-                      value={form.watch('algorithmType')}
-                      items={algorithmOptions}
-                      onValueChange={(value) => form.setValue('algorithmType', value ?? '')}
-                      disabled={!canReadAlgorithm}
-                    >
-                      <SelectTrigger size='sm' className='w-full'>
-                        <SelectValue
-                          placeholder={
-                            !canReadAlgorithm
-                              ? '无权限'
-                              : algorithmOptionsLoading
-                                ? '加载中…'
-                                : '请选择算法'
-                          }
-                        >
-                          {canReadAlgorithm &&
-                            (algorithmOptions.find((o) => o.value === form.watch('algorithmType'))?.label ?? '')}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {canReadAlgorithm &&
-                          algorithmOptions.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field label='默认最大进程数'>
-                    <Input {...form.register('maxProcess')} type='number' className='h-8' />
-                  </Field>
-                  <Field label='默认最大超时（秒）'>
-                    <Input {...form.register('maxTimeout')} type='number' className='h-8' />
-                  </Field>
-                  <Field label='默认最大音频时长（秒）'>
-                    <Input {...form.register('maxAudioDuration')} type='number' className='h-8' />
-                  </Field>
-                </div>
-                <p className='text-muted-foreground text-xs'>
-                  代理地址格式：user:pass@host:port（不含 http:// 前缀）；选择代理类型后必填。
-                </p>
-                {/* 端点列表（§6.2 apiEndpoint ArrayField：URL / 名称 / 优先级 / 最大进程 / 超时 / 音频时长；INT-1223：Master URL 移除，端点列表为唯一入口） */}
-                <div className='flex flex-col gap-2'>
-                  <div className='flex items-center justify-between'>
-                    <Label className='text-xs'>端点列表</Label>
-                    <Button type='button' variant='outline' size='sm' className='h-7 gap-1 text-xs' onClick={addEndpoint}>
-                      <Plus aria-hidden='true' className='size-3.5' />
-                      添加端点
-                    </Button>
-                  </div>
-                  {endpoints.length === 0 ? (
-                    <p className='text-muted-foreground border-border/60 rounded-lg border border-dashed p-3 text-center text-xs'>
-                      暂无端点，点击「添加端点」配置（优先级/最大进程/超时/音频时长）
-                    </p>
-                  ) : (
-                    <div className='flex flex-col gap-2'>
-                      {endpoints.map((row) => (
-                        <div key={row.key} className='border-border/60 flex flex-col gap-1.5 rounded-lg border p-2'>
-                          <div className='flex items-center gap-1.5'>
-                            <Input
-                              value={row.endpoint}
-                              onChange={(e) => updateEndpoint(row.key, { endpoint: e.target.value })}
-                              placeholder='/v1/asr/stream'
-                              className='h-7 flex-1 font-mono text-xs'
-                              aria-label='端点 URL'
-                            />
-                            <Button
-                              type='button'
-                              variant='ghost'
-                              size='icon-sm'
-                              className='size-6 text-destructive'
-                              aria-label='删除端点'
-                              onClick={() => removeEndpoint(row.key)}
-                            >
-                              <X aria-hidden='true' className='size-3.5' />
-                            </Button>
-                          </div>
-                          <div className='grid grid-cols-5 gap-1.5'>
-                            <Input
-                              value={row.name}
-                              onChange={(e) => updateEndpoint(row.key, { name: e.target.value })}
-                              placeholder='名称'
-                              className='h-7 text-xs'
-                            />
-                            <Input
-                              value={row.priority}
-                              type='number'
-                              min={1}
-                              max={10}
-                              onChange={(e) => updateEndpoint(row.key, { priority: e.target.value })}
-                              placeholder='优先级'
-                              className='h-7 text-xs'
-                            />
-                            <Input
-                              value={row.maxProcess}
-                              type='number'
-                              min={1}
-                              max={100}
-                              onChange={(e) => updateEndpoint(row.key, { maxProcess: e.target.value })}
-                              placeholder='最大进程'
-                              className='h-7 text-xs'
-                            />
-                            <Input
-                              value={row.maxTimeout}
-                              type='number'
-                              min={1}
-                              max={300}
-                              onChange={(e) => updateEndpoint(row.key, { maxTimeout: e.target.value })}
-                              placeholder='超时(s)'
-                              className='h-7 text-xs'
-                            />
-                            <Input
-                              value={row.maxAudioDuration}
-                              type='number'
-                              min={1}
-                              onChange={(e) => updateEndpoint(row.key, { maxAudioDuration: e.target.value })}
-                              placeholder='音频时长(s)'
-                              className='h-7 text-xs'
-                            />
-                          </div>
-                          {/* INT-1437 密钥池：端点行内多行 textarea（每行一个 key，整段粘贴自动拆行）；
-                              编辑回显只显示摘要（count + 尾号），完整密钥不出现 */}
-                          <div className='space-y-1'>
-                            <Label className='text-xs'>密钥池（多密钥轮换）</Label>
-                            {row.apiKeysSummary && row.apiKeysSummary.count > 0 && (
-                              <p className='text-muted-foreground text-xs'>
-                                已配置 {row.apiKeysSummary.count} 个密钥
-                                {row.apiKeysSummary.tails.length > 0 && (
-                                  <>（尾号：{row.apiKeysSummary.tails.join('、')}）</>
-                                )}
-                                ，如需修改请重新输入完整密钥列表。
-                              </p>
-                            )}
-                            <Textarea
-                              rows={2}
-                              value={row.apiKeysText}
-                              onChange={(e) => updateEndpoint(row.key, { apiKeysText: e.target.value })}
-                              placeholder='每行一个密钥，可整段粘贴自动拆行；留空则保留已配置密钥'
-                              className='h-12 font-mono text-xs'
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
           </div>
 
           <SheetFooter>
@@ -1199,8 +761,8 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
   )
 }
 
-const DEVICE_ADD_TITLE: Record<DevicesTabKey, string> = {
+/** 抽屉标题（INT-2153：测试 API 不在本抽屉，标题映射只剩两类设备） */
+const DEVICE_ADD_TITLE: Record<'test' | 'playback', string> = {
   test: '添加测试设备',
   playback: '添加播放设备',
-  api: '添加测试API',
 }
