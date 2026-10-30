@@ -148,6 +148,8 @@ export function TestExecutionPage({
     kind: DevicesTabKey,
     prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice>
   ) => {
+    // INT-2153：设备抽屉只承载测试设备 / 播放设备（API 登记走 §5.3 API 编辑弹窗，不属于启动页流程）
+    if (kind === 'api') return
     if (scanInvoker === 'drawer' && mutateState.open) {
       setMutateScanFill({ nonce: Date.now(), kind, prefill })
       setScanOpen(false)

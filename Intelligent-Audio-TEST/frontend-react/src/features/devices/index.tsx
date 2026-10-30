@@ -68,7 +68,7 @@ import { DevicesPrimaryButtons } from '@/features/devices/components/devices-pri
 import { findDeviceGroup } from '@/features/devices/lib/device-group-tree'
 import { filterTestDevicesByAlgorithm } from '@/features/devices/lib/device-algorithm-filter'
 import { apiConfigFromApiDevice } from '@/features/devices/lib/api-device-to-api-config'
-// INT-1938：API 编辑复用 §5.3 五页签弹窗（与「开始测试」同件，16_设备域.md:157）
+// INT-1938：API 编辑复用 §5.3 四页签弹窗（与「开始测试」同件，16_设备域.md:157；INT-2153 新增同件）
 import { ApiEditDialog } from '@/features/test-execution/modals/api-edit-dialog'
 import { DevicesFilterToolbar } from '@/features/devices/components/devices-filter-toolbar'
 import { DevicesStatsRow } from '@/features/devices/components/devices-stats-row'
@@ -204,8 +204,9 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     kind: 'test',
     device: null,
   })
-  /** INT-1938：「测试 API」页签的编辑复用 §5.3 API 编辑弹窗（与「开始测试」同件，五页签），
-   *  设备抽屉只留新增（扫描预填 / 端点数组）——UX 16_设备域.md:157/561 */
+  /** INT-1938 / INT-2153：「测试 API」页签的新增与编辑复用 §5.3 API 编辑弹窗（四页签，
+   *  api = null 即新增态）；设备抽屉不再承载 API——UX 16_设备域.md:157/561、
+   *  INT-2153 走查：创建时应能直接配请求模板 / 响应解析 / 参数配置 */
   const [apiEditState, setApiEditState] = useState<{ open: boolean; api: ApiConfig | null }>({
     open: false,
     api: null,
@@ -430,8 +431,15 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     setMutateState(state)
   }
 
+  /**
+   * INT-2153：「添加测试API」与「编辑 API」同件——新增态开 §5.3 API 编辑弹窗
+   * （基础 / 请求模板 / 响应解析 / 参数配置四页签）。设备抽屉对 API 只有基本信息 + 端点，
+   * 创建时看不到 meta 配置，用户必须先建再进编辑，两套表单口径不一致。
+   */
+  const openApiCreate = () => setApiEditState({ open: true, api: null })
+
   const handleDetailEdit = (kind: DevicesTabKey, device: TestDevice | PlaybackDevice | ApiDevice) => {
-    // INT-1938：API 与行菜单「编辑」同口径，开 §5.3 五页签弹窗（两个入口不出现两套表单）
+    // INT-1938 / INT-2153：API 新增、详情「编辑」、行菜单「编辑」同口径，开 §5.3 四页签弹窗
     if (kind === 'api') {
       setApiEditState({ open: true, api: apiConfigFromApiDevice(device as ApiDevice) })
       return
@@ -519,6 +527,12 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     kind: DevicesTabKey,
     prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice>
   ) => {
+    // INT-2153：设备抽屉不再承载 API（无扫描源，正常也扫不出 API 行）——兜底直接开 API 编辑弹窗
+    if (kind === 'api') {
+      setScanOpen(false)
+      openApiCreate()
+      return
+    }
     // INT-1029：抽屉内扫描「选择」→ 回填当前抽屉表单（编辑/新增态均保持打开）；头部扫描 → 开新增抽屉
     if (scanInvoker === 'drawer' && mutateState.open) {
       setMutateScanFill({ nonce: Date.now(), kind, prefill })
@@ -588,7 +602,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       canHealth,
       onDetail: (device: ApiDevice) => setDetailState({ open: true, kind: 'api', device }),
       onEdit: (device: ApiDevice) =>
-        // INT-1938：改开 §5.3 五页签弹窗（设备抽屉不含 meta 请求模板 / 响应解析 / 输出字段 / 映射）
+        // INT-1938：改开 §5.3 四页签弹窗（设备抽屉不含 meta 请求模板 / 响应解析 / 输出字段 / 映射）
         setApiEditState({ open: true, api: apiConfigFromApiDevice(device) }),
       onHealth: (device: ApiDevice) => {
         // 接线 INT-644：API 健康检查走 POST /apis/{id}/health（区别于测试设备 /test-devices/health-check）
@@ -603,7 +617,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
           .catch(() => toast.error('停止测试失败，请稍后重试'))
       },
       onDelete: (device: ApiDevice) => setDeleteTarget({ kind: 'api', device }),
-      onEmptyAdd: () => openMutate({ open: true, mode: 'create', kind: 'api' }),
+      // INT-2153：空态「添加测试API」与页头主按钮同口径，开 §5.3 API 编辑弹窗新增态
+      onEmptyAdd: () => openApiCreate(),
     },
   }
 
@@ -639,7 +654,12 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
             canBatchHealth={canBatchHealth}
             canGroupManage={canGroupManage}
             canLabManage={canLabManage}
-            onAdd={() => openMutate({ open: true, mode: 'create', kind: tab })}
+            onAdd={() =>
+              // INT-2153：测试 API 与编辑同件（§5.3 四页签弹窗）；设备仍开 §6.2 抽屉
+              tab === 'api'
+                ? openApiCreate()
+                : openMutate({ open: true, mode: 'create', kind: tab })
+            }
             onScan={() => {
               setScanInvoker('header')
               setScanOpen(true)
@@ -865,7 +885,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
         canUpdate={canUpdate}
         algorithmNameMap={algorithmNameMap}
       />
-      {/* INT-1938：「测试 API」页签编辑入口（行菜单「编辑」/ 详情「编辑」）复用的 §5.3 五页签弹窗 */}
+      {/* INT-1938 / INT-2153：「测试 API」页签新增与编辑共用的 §5.3 四页签弹窗 */}
       <ApiEditDialog
         open={apiEditState.open}
         onOpenChange={(open) => {

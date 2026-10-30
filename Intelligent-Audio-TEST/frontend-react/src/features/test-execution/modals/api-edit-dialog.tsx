@@ -1,5 +1,7 @@
 /**
  * 新增/编辑 API 弹窗（INT-1777 骨架 + T4.2 参数配置页签）。
+ * INT-2153：设备管理「测试 API」页签的「添加测试API」也开本弹窗（新增态 = 不传 api），
+ * 与行内「编辑」同一套表单——设备抽屉不再承载 API，创建时即可配 meta。
  *
  * 四个页签：
  * - 基础：现有字段（名称 / 关联算法 / 最大并发 / 协议 + 流式性 / 描述 / 端点列表与密钥池），
@@ -919,17 +921,28 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                               <X aria-hidden='true' className='size-3.5' />
                             </Button>
                           </div>
+                          {/* INT-2153：端点行常驻标签（原实现只有 placeholder，填值后看不出这列是什么）；
+                              标签与后端四整数校验项一一对应，错误提示仍逐字段落在输入框下方 */}
                           <div className='grid grid-cols-5 items-start gap-1.5'>
-                            <Input
-                              value={row.name}
-                              onChange={(e) => updateEndpoint(row.key, { name: e.target.value })}
-                              placeholder='名称'
-                              className='h-7 text-xs'
-                            />
+                            <div className='space-y-0.5'>
+                              <Label className='text-muted-foreground text-[11px] font-normal'>
+                                名称
+                              </Label>
+                              <Input
+                                value={row.name}
+                                onChange={(e) => updateEndpoint(row.key, { name: e.target.value })}
+                                placeholder='可选'
+                                aria-label='端点名称'
+                                className='h-7 text-xs'
+                              />
+                            </div>
                             {/* INT-1939 返工：四项整数改由 validateEndpointNumbers 自查并给中文内联提示
                                 （表单 noValidate 后原生 min/max 只是展示，不再拦截提交） */}
                             {ENDPOINT_NUMERIC_RULES.map((rule) => (
                               <div key={rule.field} className='space-y-0.5'>
+                                <Label className='text-muted-foreground text-[11px] font-normal'>
+                                  {rule.label}
+                                </Label>
                                 <Input
                                   value={row[rule.field]}
                                   type='number'
@@ -940,7 +953,9 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                                   onChange={(e) =>
                                     setEndpointNumber(row.key, rule.field, e.target.value)
                                   }
-                                  placeholder={rule.label}
+                                  placeholder={
+                                    rule.max == null ? `≥${rule.min}` : `${rule.min}~${rule.max}`
+                                  }
                                   className='h-7 text-xs'
                                 />
                                 {endpointErrorOf(row.key, rule.field) && (
