@@ -13,11 +13,15 @@
  * 条目时不重复渲染；收藏/回收站态不挂载）。
  * 展开态持久化：本会话内存；默认收起（INT-1027 走查裁定：进入页面/筛选变化后分组默认 collapsed，
  * 用户点组头展开后会话内保持展开态——INT-490 P2 默认全展开口径废弃）。
+ * INT-2154 搜索可感知：分组卡计数是 /groups 全量、不随搜索变，命中分组若排在分页第一屏外就
+ * 「看着没筛选」——搜索态下组头改显「命中 N 条」、零命中分组隐藏、默认排序按命中数，
+ * 列表头给出命中总量/命中分组数汇总（见 application/testcases/use-case-group-hits.ts）。
  */
 import { ArrowUpDown, ChevronDown, Clock3, FolderOpen, SearchX, Tags, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useState, useEffect } from 'react'
 import { useIsFetching } from '@tanstack/react-query'
 
+import { useCaseGroupHits } from '@/application/testcases/use-case-group-hits'
 import { useCaseRoundsRegistry } from '@/application/testcases/case-rounds-registry'
 import { useSessionMap, type GroupSubView } from '@/application/testcases/use-session-map'
 import { useGroupCases } from '@/application/testcases/use-group-cases'
@@ -93,6 +97,11 @@ interface GroupCardActions {
 interface GroupCardProps {
   group: TestCaseGroup
   filters: TestCaseListFilters
+  /**
+   * 搜索态下本组命中用例数（INT-2154）：非 null 时组头计数显示「命中 N 条」，
+   * 与「共 M 条」并列；null（未搜索/命中统计未就绪）时维持分组全量计数。
+   */
+  hitCount?: number | null
   expanded: boolean
   onToggleExpanded: () => void
   selected: Set<string>
@@ -118,6 +127,7 @@ interface GroupCardProps {
 function GroupCard({
   group,
   filters,
+  hitCount = null,
   expanded,
   onToggleExpanded,
   selected,
@@ -298,8 +308,13 @@ function GroupCard({
           />
           <span className='font-medium truncate'>{group.name}</span>
           <Badge variant='secondary' className='rounded-md px-1.5 font-mono text-[11px] tabular-nums'>
-            {group.testCaseCount} 条
+            {hitCount != null ? `命中 ${hitCount} 条` : `${group.testCaseCount} 条`}
           </Badge>
+          {hitCount != null && hitCount !== group.testCaseCount && (
+            <span className='text-muted-foreground font-mono text-[11px] tabular-nums'>
+              共 {group.testCaseCount} 条
+            </span>
+          )}
           {groupDuration > 0 && (
             <Badge variant='outline' className='gap-1 rounded-md px-1.5 font-mono text-[11px] tabular-nums'>
               <Clock3 aria-hidden='true' className='size-3' />
@@ -461,6 +476,13 @@ export function GroupedCaseList({
   const fetching = useIsFetching({ queryKey: ['testcases'] })
   const dimmed = fetching > 0 && !loading
 
+  /**
+   * 搜索态命中聚合（INT-2154）：分组卡计数与分组集合随搜索收窄——命中 0 的分组隐藏、
+   * 组头显示「命中 N 条」、默认排序改为按命中数。统计失败/未就绪时回落分组全量展示。
+   */
+  const hits = useCaseGroupHits(filters)
+  const hitCounts = hits.active ? hits.counts : null
+
   const groupCases = useMemo(() => {
     const map = new Map<string, TestCaseListItem[]>()
     for (const c of cases) {
@@ -473,9 +495,11 @@ export function GroupedCaseList({
   const ungroupedCases = groupCases.get(UNGROUPED_GROUP_ID) ?? []
   /** /groups 已含「未分组」真实条目时不重复渲染虚拟组（INT-1267 空组也渲染） */
   const hasNamedUngrouped = useMemo(() => groups.some((g) => g.name === '未分组'), [groups])
+  /** 搜索态未分组命中数（INT-2154；未分组不在 /groups 里，计数只能取命中聚合） */
+  const ungroupedHits = hitCounts?.get(UNGROUPED_GROUP_ID) ?? null
   const ungroupedGroup = useMemo<TestCaseGroup | null>(
     () =>
-      ungroupedCases.length > 0 &&
+      (hitCounts != null ? (ungroupedHits ?? 0) > 0 : ungroupedCases.length > 0) &&
       !hasNamedUngrouped &&
       (filters.groupId == null || filters.groupId === UNGROUPED_GROUP_ID)
         ? {
@@ -485,19 +509,21 @@ export function GroupedCaseList({
             algorithmType: null,
             createdAt: '',
             updatedAt: '',
-            testCaseCount: ungroupedCases.length,
+            testCaseCount: hitCounts != null ? (ungroupedHits ?? 0) : ungroupedCases.length,
           }
         : null,
-    [ungroupedCases.length, hasNamedUngrouped, filters.groupId]
+    [hitCounts, ungroupedHits, ungroupedCases.length, hasNamedUngrouped, filters.groupId]
   )
 
   /** 工具栏「分组」筛选激活时只渲染该分组卡（Vue groupFilter 口径；未筛选时全量分组卡）。
    *  未分组哨兵（__ungrouped__）时无真实分组命中 → 空数组，由下方虚拟未分组卡承接
-   *  （INT-1267 审计 P3：原先真实分组被滤空、虚拟卡又被 !filters.groupId 守卫抑制 → 空白） */
-  const visibleGroups = useMemo(
-    () => (filters.groupId ? groups.filter((g) => g.id === filters.groupId) : groups),
-    [groups, filters.groupId]
-  )
+   *  （INT-1267 审计 P3：原先真实分组被滤空、虚拟卡又被 !filters.groupId 守卫抑制 → 空白）。
+   *  INT-2154：搜索态下只保留有命中的分组（分组集合与计数一起变）。 */
+  const visibleGroups = useMemo(() => {
+    const base = filters.groupId ? groups.filter((g) => g.id === filters.groupId) : groups
+    if (hitCounts == null) return base
+    return base.filter((g) => (hitCounts.get(g.id) ?? 0) > 0)
+  }, [groups, filters.groupId, hitCounts])
 
   const sortedGroups = useMemo(() => {
     const list = [...visibleGroups]
@@ -510,10 +536,16 @@ export function GroupedCaseList({
         list.sort((a, b) => dir * (a.createdAt ?? '').localeCompare(b.createdAt ?? ''))
         break
       default:
-        list.sort((a, b) => dir * (a.testCaseCount - b.testCaseCount))
+        // 搜索态「按用例数量」= 按命中数（分组全量计数此时不作为排序依据）
+        list.sort((a, b) =>
+          dir *
+          (hitCounts != null
+            ? (hitCounts.get(a.id) ?? 0) - (hitCounts.get(b.id) ?? 0)
+            : a.testCaseCount - b.testCaseCount)
+        )
     }
     return list
-  }, [visibleGroups, sortKey, sortOrder])
+  }, [visibleGroups, sortKey, sortOrder, hitCounts])
 
   const paginatedGroups = sortedGroups.slice(0, groupPage * GROUP_LIST_PAGE)
 
@@ -607,7 +639,9 @@ export function GroupedCaseList({
                   : '回收站中的用例已被恢复或彻底删除'
                 : groups.length === 0
                   ? '请调整筛选条件或点击右上角「新增用例」创建第一条用例'
-                  : '尝试清空「分组」「标签」筛选'}
+                  : hits.active
+                    ? '当前搜索没有命中用例，可清空搜索词或切换到「按标签」视图'
+                    : '尝试清空「分组」「标签」筛选'}
             </EmptyDescription>
           </EmptyHeader>
           {!trash && actionCallbacks != null && (
@@ -637,6 +671,36 @@ export function GroupedCaseList({
         <div role='status' className='text-muted-foreground flex items-center gap-2 text-xs'>
           <Spinner className='size-3.5' />
           用例列表加载中…
+        </div>
+      )}
+      {/* 搜索命中汇总（INT-2154）：分组视图下搜索会按命中收窄分组集合与组头计数，
+          这里明示命中总量与命中分组数，避免「看起来没筛选」 */}
+      {hits.active && (
+        <div
+          role='status'
+          className='bg-muted/40 text-muted-foreground flex flex-wrap items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs'
+        >
+          {hits.isLoading || hits.counts == null ? (
+            <>
+              <Spinner className='size-3.5' />
+              正在统计搜索命中…
+            </>
+          ) : (
+            <>
+              <SearchX aria-hidden='true' className='size-3.5' />
+              搜索「{filters.search?.trim()}」命中{' '}
+              <span className='text-foreground font-medium tabular-nums'>{hits.total}</span>{' '}
+              条用例，分布在{' '}
+              <span className='text-foreground font-medium tabular-nums'>{hits.groupCount}</span>{' '}
+              个分组（组内「已显示 x / y 条」同为命中数）
+            </>
+          )}
+        </div>
+      )}
+      {/* 命中统计失败：分组集合回落到全量，不静默假装已筛选 */}
+      {hits.isError && (
+        <div role='alert' className='text-destructive text-xs'>
+          搜索命中统计失败，分组计数仍为分组全量；展开分组后组内用例仍按搜索过滤。
         </div>
       )}
       {/* 列表头：全选 + 已选择计数 + 排序 */}
@@ -703,6 +767,7 @@ export function GroupedCaseList({
         <GroupCard
           key={group.id}
           group={group}
+          hitCount={hitCounts?.get(group.id) ?? null}
           filters={filters}
           expanded={expanded.has(group.id)}
           onToggleExpanded={() => toggleGroupExpanded(group.id)}
@@ -724,6 +789,7 @@ export function GroupedCaseList({
       {ungroupedGroup != null && (
         <GroupCard
           group={ungroupedGroup}
+          hitCount={ungroupedHits}
           filters={filters}
           expanded={expanded.has(UNGROUPED_GROUP_ID)}
           onToggleExpanded={() => toggleGroupExpanded(UNGROUPED_GROUP_ID)}

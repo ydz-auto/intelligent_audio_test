@@ -8,11 +8,13 @@
  * - 已选范围直接用勾选 id；筛选范围由页面解析器（POST /testcases/ids 全量圈定，非仅当前页）；
  * - ZIP/Excel 后端回字节流直落下载；JSON 后端回数据信封，前端序列化为 .json 文件下载；
  * - 失败（空 ids 400「未指定要导出的用例ID」等）toast 透出后端 message。
+ * INT-2154：弹窗给出「将导出 N 条用例」范围预览（开窗即按当前筛选解析全量 id，与真正导出
+ * 同一份），未勾选时提示怎么去选，JSON 导出后按信封条数核对并提示不一致。
  * 注：页头「导入用例」为文件/用例包导入（ImportDialog：JSON/CSV/Excel/ZIP + 重复策略）；
  * 「导入音频生成用例」留在音频管理页（/AudioImport）上传并勾选生成，两个入口互不替代。
  */
 import { FileSpreadsheet } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -57,6 +59,7 @@ export function ExportDialog({
   selectedCount = 0,
   selectedIds = [],
   resolveFilteredIds,
+  filterSummary,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -68,11 +71,28 @@ export function ExportDialog({
    * 非仅当前页；失败抛错由本弹窗 toast 透出）
    */
   resolveFilteredIds?: () => Promise<string[]>
+  /** 当前筛选摘要（如「搜索：matrix」「标签：拒识」），用于弹窗内说明导出范围从何而来 */
+  filterSummary?: string
 }) {
   const [format, setFormat] = useState<TestCaseExportFormat>('zip')
   const [includeReferenceParams, setIncludeReferenceParams] = useState(true)
   const [scope, setScope] = useState<ExportScope>('filter')
   const [submitting, setSubmitting] = useState(false)
+  /**
+   * 「按当前筛选」全量 id 预览（INT-2154）：开窗即解析一次，弹窗直接展示「将导出 N 条用例」，
+   * 与实际导出用同一份 id，避免用户以为导出的是眼前搜到的几条、实际导出全库。
+   */
+  const [filterIds, setFilterIds] = useState<string[] | null>(null)
+  const [resolving, setResolving] = useState(false)
+  const [resolveFailed, setResolveFailed] = useState(false)
+  /** 解析器身份会随列表刷新变化，用 ref 取值避免预览 effect 被无意义地反复触发 */
+  const resolveRef = useRef(resolveFilteredIds)
+  useEffect(() => {
+    resolveRef.current = resolveFilteredIds
+  }, [resolveFilteredIds])
+  /** 手动重试计数（解析失败时的「重试」只重新统计，不改筛选） */
+  const [resolveAttempt, setResolveAttempt] = useState(0)
+  const hasResolver = resolveFilteredIds != null
 
   /**
    * 导出范围复位（INT-1642 代码审计 P3-2）：弹窗常驻挂载，上次选「仅导出已选」→ 取消 →
@@ -87,15 +107,50 @@ export function ExportDialog({
     if (selectedCount === 0 && scope === 'selected') setScope('filter')
   }, [selectedCount, scope])
 
+  /** 关窗清空预览，重开重新统计（列表可能已变） */
+  useEffect(() => {
+    if (open) return
+    setFilterIds(null)
+    setResolving(false)
+    setResolveFailed(false)
+  }, [open])
+
+  /** 按当前筛选统计导出范围（仅此范围需要；「仅已选」直接取勾选项） */
+  useEffect(() => {
+    if (!open || scope !== 'filter' || !hasResolver) return
+    const resolve = resolveRef.current
+    if (resolve == null) return
+    let cancelled = false
+    setResolving(true)
+    setResolveFailed(false)
+    resolve()
+      .then((ids) => {
+        if (cancelled) return
+        setFilterIds(ids)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setFilterIds(null)
+        setResolveFailed(true)
+      })
+      .finally(() => {
+        if (!cancelled) setResolving(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, scope, hasResolver, resolveAttempt])
+
+  /** 导出范围预览条数（仅已选=勾选数；按筛选=解析到的全量 id 数） */
+  const previewCount = scope === 'selected' ? selectedCount : (filterIds?.length ?? null)
+
   const handleExport = async () => {
     setSubmitting(true)
     try {
       const ids =
         scope === 'selected'
           ? selectedIds
-          : resolveFilteredIds
-            ? await resolveFilteredIds()
-            : []
+          : (filterIds ?? (await resolveRef.current?.()) ?? [])
       if (ids.length === 0) {
         toast.error(
           scope === 'selected'
@@ -104,7 +159,7 @@ export function ExportDialog({
         )
         return
       }
-      const { blob, filename } = await exportTestCases(ids, format, {
+      const { blob, filename, exportedCount } = await exportTestCases(ids, format, {
         includeReferenceParams,
       })
       if (blob.size === 0) {
@@ -112,7 +167,15 @@ export function ExportDialog({
         return
       }
       downloadBlob(blob, filename, blob.type || 'application/octet-stream')
-      toast.success(`已导出 ${ids.length} 个用例`, { description: filename })
+      // 导出后核对实际条数（JSON 信封可数；ZIP/Excel 为字节流，以请求 id 数为准）
+      if (exportedCount != null && exportedCount !== ids.length) {
+        toast.warning(
+          `导出条数与筛选范围不一致：请求 ${ids.length} 条，实际 ${exportedCount} 条`,
+          { description: filename }
+        )
+      } else {
+        toast.success(`已导出 ${ids.length} 个用例`, { description: filename })
+      }
       onOpenChange(false)
     } catch (error) {
       toast.error(
@@ -161,7 +224,55 @@ export function ExportDialog({
               />
               仅导出已选 {selectedCount} 个用例
             </label>
+            {selectedCount === 0 && (
+              <p className='text-muted-foreground ps-2 text-xs'>
+                未选用例：先在列表勾选用例（或点列表头「全选用例」），再选此项；
+                「按当前筛选条件导出」不受勾选影响。
+              </p>
+            )}
           </fieldset>
+
+          {/* 导出范围预览（INT-2154）：说清这次到底导出多少条，避免把「搜到的几条」误当全部 */}
+          <div className='bg-muted/40 rounded-lg px-3 py-2 text-xs'>
+            {scope === 'selected' ? (
+              <span>
+                将导出{' '}
+                <strong className='font-medium tabular-nums'>{selectedCount}</strong>{' '}
+                条已选用例
+              </span>
+            ) : resolving ? (
+              <span className='text-muted-foreground flex items-center gap-1.5'>
+                <Spinner className='size-3.5' />
+                正在统计当前筛选的导出条数…
+              </span>
+            ) : resolveFailed ? (
+              <span className='flex flex-wrap items-center gap-1.5'>
+                <span className='text-destructive'>无法预先统计导出条数</span>
+                <span className='text-muted-foreground'>
+                  导出时仍按当前筛选执行，失败会提示原因。
+                </span>
+                <Button
+                  variant='link'
+                  size='sm'
+                  className='h-auto px-0 text-xs'
+                  disabled={submitting}
+                  onClick={() => setResolveAttempt((n) => n + 1)}
+                >
+                  重新统计
+                </Button>
+              </span>
+            ) : previewCount === 0 ? (
+              <span className='text-destructive'>当前筛选条件下没有可导出的用例</span>
+            ) : (
+              <span>
+                将导出{' '}
+                <strong className='font-medium tabular-nums'>{previewCount ?? 0}</strong>{' '}
+                条用例
+                {filterSummary ? `（${filterSummary}）` : ''}
+              </span>
+            )}
+          </div>
+
           <div className='flex items-center gap-2'>
             <span className='text-muted-foreground text-sm'>格式</span>
             <Select

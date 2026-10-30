@@ -81,6 +81,14 @@ vi.mock('@/infrastructure/api/testcases-api', async (importOriginal) => {
         }
       }
     ),
+    /** INT-2154：搜索命中全量（服务端同样按名称/描述匹配），分组视图据此聚合每组分命中数 */
+    fetchAllTestCasesByFilter: vi.fn(async (query: { search?: string }) => {
+      const keyword = query.search?.trim() ?? ''
+      if (!keyword) return CASES
+      return CASES.filter(
+        (c) => c.name.includes(keyword) || (c.description ?? '').includes(keyword)
+      )
+    }),
   }
 })
 
@@ -704,5 +712,35 @@ describe('GroupedCaseList', () => {
       expect.objectContaining({ group: '智能音箱功能测试' })
     )
     expect(fetchCaseIdsByFilter).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * INT-2154：分组卡计数取自 /groups 全量、不随搜索变化，命中分组若排在分页第一屏外，
+   * 用户会以为「搜索没生效」。搜索态须按命中收窄分组集合、组头改显命中数并给汇总。
+   */
+  it('INT-2154：搜索态只渲染命中分组，组头显示「命中 N 条」并给命中汇总', async () => {
+    const hitCases = CASES.filter((c) => c.name.includes('闹钟'))
+    render(<Harness cases={hitCases} filters={{ search: '闹钟' }} />)
+
+    // 等命中聚合到位（组头从「6 条」切成「命中 2 条」）后再断言分组集合收窄
+    expect(await screen.findByText('命中 2 条')).toBeInTheDocument()
+    expect(screen.getByText('智能音箱功能测试')).toBeInTheDocument()
+    expect(screen.queryByText('车载语音交互')).not.toBeInTheDocument()
+    expect(screen.queryByText('待归档分组')).not.toBeInTheDocument()
+    // 组头保留分组全量作对照
+    expect(screen.getByText('共 6 条')).toBeInTheDocument()
+    // 汇总行：命中总量 + 命中分组数（数字节点被 <span> 包裹，按 status 容器整体取文本）
+    expect(screen.getByRole('status').textContent).toContain(
+      '命中 2 条用例，分布在 1 个分组'
+    )
+  })
+
+  it('INT-2154：搜索无命中时空态说明是搜索没命中（不再只说清空分组/标签）', () => {
+    render(<Harness cases={[]} filters={{ search: 'zzz_no_such_case' }} />)
+
+    expect(screen.getByText('没有找到符合条件的测试用例')).toBeInTheDocument()
+    expect(
+      screen.getByText('当前搜索没有命中用例，可清空搜索词或切换到「按标签」视图')
+    ).toBeInTheDocument()
   })
 })
