@@ -78,10 +78,6 @@ DEFAULT_DB_USER = 'intelligent_audio_test'
 DEFAULT_DB_PASSWORD = 'intelligent_audio_test666'
 DEFAULT_DB_NAME = 'intelligent_audio_test'
 
-DETACHED_PROCESS = 0x00000008
-CREATE_NEW_PROCESS_GROUP = 0x00000200
-CREATE_BREAKAWAY_FROM_JOB = 0x01000000
-
 READY_TIMEOUT_DEFAULT = 90.0
 DEVICE_STOP_TIMEOUT = 15.0
 
@@ -246,27 +242,20 @@ def start_audio(mode: str = 'real', timeout: float = READY_TIMEOUT_DEFAULT,
     """启动宿主 audio_service。mode=real 走真实 pyaudio；shim 走影子模块。"""
     if port_listening(AUDIO_PORT):
         return True, f'[skip] audio_service 已在 :{AUDIO_PORT} 监听'
-    env = host_env()
+    if mode not in ('real', 'shim'):
+        return False, f'[fail] 未知 --audio-mode: {mode}（real|shim）'
     if mode == 'real':
         check = subprocess.run(
             [PY, str(AUDIO_DIR / 'check_pyaudio_health.py'),
              '--timeout', str(int(check_timeout)), '--python', PY],
-            cwd=str(REPO), env=env, capture_output=True, text=True,
+            cwd=str(REPO), env=host_env(), capture_output=True, text=True,
             encoding='utf-8', errors='replace',
         )
         if check.returncode != 0:
             output = (check.stdout or '') + (check.stderr or '')
             return False, f'[fail] real pyaudio 自检未通过（不重试）:\n{output.strip()}'
-        entry = [str(AUDIO_DIR / 'run_audio_service_noshim.py')]
-        log_name = 'audio_service.log'
-    elif mode == 'shim':
-        env['PYTHONPATH'] = os.pathsep.join(
-            [str(SHIM_DIR), str(REPO), str(REPO / 'shared' / 'proto')])
-        entry = [str(SHIM_DIR / '_run_audio_service_shimmed.py')]
-        log_name = 'audio_service_shim.log'
-    else:
-        return False, f'[fail] 未知 --audio-mode: {mode}（real|shim）'
-    return _start('audio_service', entry, AUDIO_PORT, env, log_name, timeout)
+    log_name = 'audio_service.log' if mode == 'real' else 'audio_service_shim.log'
+    return _start('audio_service', 'audio', mode, AUDIO_PORT, timeout, log_name)
 
 
 def stop_audio(cooldown: float = 8.0, timeout: float = 90.0) -> tuple[bool, str]:
@@ -288,10 +277,8 @@ def stop_audio(cooldown: float = 8.0, timeout: float = 90.0) -> tuple[bool, str]
 # ---------------------------------------------------------------- device
 
 def start_device(timeout: float = READY_TIMEOUT_DEFAULT) -> tuple[bool, str]:
-    env = host_env()
-    return _start('device_service',
-                  ['-m', 'device_service.interfaces.grpc.server'],
-                  DEVICE_PORT, env, 'device_service.log', timeout)
+    return _start('device_service', 'device', 'real', DEVICE_PORT, timeout,
+                  'device_service.log')
 
 
 def stop_device() -> tuple[bool, str]:
