@@ -134,7 +134,7 @@ def gateway_get_detail_body(tc):
     audios = [
         TestCaseAudioConfigItem(
             id=a.get('id'), audio_id=a.get('audio_id'), audio_name=a.get('audio_name'),
-            test_type=a.get('test_type'), spl=a.get('spl'),
+            spl=a.get('spl'),
             playback_device_id=common.normalize_optional_int(a.get('playback_device_id')),
             play_order=a.get('play_order'),
         )
@@ -147,7 +147,7 @@ def gateway_get_detail_body(tc):
     detail = TestCaseDetailData(
         id=item.get('id'), name=item.get('name'), description=item.get('description'),
         group_id=item.get('group_id'), group_name=item.get('group_name'),
-        group=item.get('group'), type=item.get('type'),
+        group=item.get('group'),
         config=item.get('config') or {},
         algorithm_params=item.get('algorithm_params'),
         reference_params=item.get('reference_params'),

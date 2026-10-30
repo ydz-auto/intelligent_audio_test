@@ -21,7 +21,7 @@ RealtimeSessionExecutor（真实执行器 + 真实路由）
 2. 流式执行（append chunk × N + commit，SPL 校准增益生效）
 3. frame 通道逐帧推送（ai_audio_delta / ai_audio_done / user_speech_started）
 4. summary 落库（algorithm_result.rounds + barge-in 统计 + SPL 口径字段）
-5. 评估完成（evaluation ACL 收到 algorithm_result，test_type='api' 入队）
+5. 评估完成（evaluation ACL 收到 algorithm_result，device_type='websocket_api' 入队）
 """
 import base64
 import json
@@ -148,11 +148,12 @@ class ExecutorStub:
             self._outer = outer
 
         def create_multi_round_test_result(self, task_id, test_case_id, api_config_id,
-                                           algorithm_type, aggregated, success):
+                                           algorithm_type, aggregated, success,
+                                           tc_rel_id=None):
             self._outer.result_calls.append({
                 'task_id': task_id, 'test_case_id': test_case_id,
                 'api_config_id': api_config_id, 'aggregated': aggregated,
-                'success': success})
+                'success': success, 'tc_rel_id': tc_rel_id})
             return 555
 
         def update_task_case_failure(self, task_id, tc_rel_id, error_msg,
@@ -188,10 +189,10 @@ class EvaluationAclStub:
         self.calls = []
 
     def submit_evaluate_case(self, task_id, result_id, test_case_id,
-                             algorithm_result, eval_params):
+                             algorithm_result, eval_params, device_type=None):
         self.calls.append({
             'task_id': task_id, 'result_id': result_id,
-            'test_case_id': test_case_id,
+            'test_case_id': test_case_id, 'device_type': device_type,
             'algorithm_result': algorithm_result, 'eval_params': eval_params})
         return True
 
@@ -381,7 +382,7 @@ class TestRealtimeEndToEnd:
         assert eval_call['result_id'] == 555
         assert eval_call['algorithm_result']['round_count'] == 2
         assert eval_call['algorithm_result']['ai_output_rms_dbfs'] is not None
-        assert eval_call['eval_params']['test_type'] == 'api'
+        assert eval_call['eval_params']['device_type'] == 'websocket_api'
 
     def test_frame_channel_payloads_are_lightweight(self, harness):
         """frame 载荷轻量（不含原始音频字节）"""

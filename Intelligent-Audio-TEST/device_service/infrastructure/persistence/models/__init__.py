@@ -19,10 +19,16 @@ from device_service.infrastructure.persistence.models.spl_models import (
     CalibrationHistory,
     SPLMapping,
 )
+from device_service.infrastructure.persistence.models.playback_speaker_models import (
+    PlaybackSpeakerGroup,
+    PlaybackSpeakerGroupItem,
+)
 
 __all__ = [
     "Device",
     "PlaybackDevice",
+    "PlaybackSpeakerGroup",
+    "PlaybackSpeakerGroupItem",
     "DeviceTag",
     "DeviceGroup",
     "DeviceGroupMember",

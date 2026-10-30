@@ -26,7 +26,7 @@ message EvaluateCaseRequest {
   string result_id = 2;
   string test_case_id = 3;
   string algorithm_result = 4;  // JSON 序列化的算法结果
-  string eval_params = 5;  // JSON 序列化的评估参数 (algorithm_type, test_type, round_number 等)
+  string eval_params = 5;  // JSON 序列化的评估参数 (algorithm_type, device_type, round_number 等)
   // 执行域 P0 新增：多模态评估入参（E2E / API / Realtime 统一口径）
   string device_type = 6;      // physical / http_api / websocket_api（用例级路由）
   string user_wav = 7;         // 用户语音文件路径（E2E 采集）
@@ -63,7 +63,7 @@ message ReevaluateMultiRoundRequest {
   string result_json = 2;       // JSON 序列化的结果对象
   string test_case_id = 3;
   string algorithm_result = 4;  // JSON 序列化的算法结果
-  string test_type = 5;
+  string device_type = 5;       // physical / http_api / websocket_api（用例级路由）
   string algorithm_type = 6;
 }
 
@@ -79,7 +79,7 @@ message ReevaluateSingleRequest {
   string test_case_id = 3;
   string algorithm_result = 4;    // JSON 序列化的算法结果
   string reference_params = 5;    // JSON 序列化的参考参数
-  string test_type = 6;
+  string device_type = 6;         // physical / http_api / websocket_api（用例级路由）
   string algorithm_type = 7;
 }
 

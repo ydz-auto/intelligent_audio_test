@@ -893,7 +893,7 @@ class AudioCommandHandler:
         try:
             tc_ids = self.testcase_creation_service.create_test_case_from_audio(
                 cmd.audio_id,
-                cmd.test_types,
+                cmd.device_type,
                 cmd.tags,
                 cmd.default_playback_device_id,
                 cmd.default_spl,

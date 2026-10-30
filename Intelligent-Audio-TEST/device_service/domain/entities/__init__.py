@@ -16,6 +16,10 @@ from device_service.domain.entities.playback_device import (
     PlaybackDeviceAggregate,
     PlaybackDeviceSnapshot,
 )
+from device_service.domain.entities.playback_speaker_group import (
+    PlaybackSpeakerGroupAggregate,
+    PlaybackSpeakerGroupItemEntity,
+)
 from device_service.domain.entities.device_group import (
     DeviceGroupEntity,
 )
@@ -35,6 +39,9 @@ __all__ = [
     # 播放设备聚合
     "PlaybackDeviceAggregate",
     "PlaybackDeviceSnapshot",
+    # 播放设备跨实验室映射
+    "PlaybackSpeakerGroupAggregate",
+    "PlaybackSpeakerGroupItemEntity",
     # 设备分组（INT-80）
     "DeviceGroupEntity",
     # 实验室（INT-655）

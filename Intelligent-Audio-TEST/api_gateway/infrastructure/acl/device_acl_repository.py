@@ -227,3 +227,34 @@ class PlaybackConfigAclRepositoryImpl(PlaybackConfigAclRepository):
     def check_status(self) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import playback_config_service
         return _wrap(playback_config_service.check_status())
+
+    # ---- 逻辑音箱组 ----
+
+    def list_speaker_groups(self, keyword=None) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.list_speaker_groups(keyword=keyword))
+
+    def create_speaker_group(self, data) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.create_speaker_group(data))
+
+    def update_speaker_group(self, group_id, data) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.update_speaker_group(group_id, data))
+
+    def delete_speaker_group(self, group_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.delete_speaker_group(group_id))
+
+    def set_speaker_group_item(self, group_id, lab_id, playback_device_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.set_speaker_group_item(
+            group_id, lab_id, playback_device_id))
+
+    def delete_speaker_group_item(self, group_id, lab_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.delete_speaker_group_item(group_id, lab_id))
+
+    def resolve_speaker_group_device(self, group_id, lab_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.resolve_speaker_group_device(group_id, lab_id))

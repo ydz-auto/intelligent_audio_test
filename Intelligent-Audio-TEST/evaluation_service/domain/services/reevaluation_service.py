@@ -120,6 +120,8 @@ class ReevaluationService:
             'device_id': result.device_id,
             'task_id': result.task_id,
             'reextracted': reextract_device_output,
+            # API 实例作用域：重评时评估映射按该实例的策略 + 覆盖解析
+            'api_id': getattr(result, 'api_id', None),
         }
         if result_type is not None:
             case_info['result_type'] = result_type

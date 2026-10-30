@@ -5,6 +5,7 @@ from api_gateway.application.services.auth.dependencies import require_permissio
 from api_gateway.application.services.algorithm.algorithm_query_service import AlgorithmQueryService
 from api_gateway.application.services.algorithm.algorithm_command_service import AlgorithmCommandService
 from api_gateway.application.services.algorithm.algorithm_group_service import AlgorithmGroupService
+from api_gateway.application.services.algorithm.algorithm_profile_service import AlgorithmProfileService
 from api_gateway.routes._response import to_response
 
 router = APIRouter()
@@ -104,6 +105,48 @@ def put_param(param_id: int, _: None = require_permission('algorithm:param_manag
 @router.delete('/params/{param_id}')
 def delete_param_by_id(param_id: int, _: None = require_permission('algorithm:param_manage')):
     return to_response(AlgorithmCommandService.delete_param(param_id))
+
+
+# ========== 参数策略（API 参数/映射的可复用声明） ==========
+@router.get('/param-profiles')
+def get_param_profiles(_: None = require_permission('algorithm:read')):
+    return to_response(AlgorithmProfileService.list_profiles())
+
+
+@router.post('/param-profiles')
+def post_param_profile(_: None = require_permission('algorithm:param_manage')):
+    return to_response(AlgorithmProfileService.create_profile())
+
+
+@router.get('/param-profiles/{profile_id}')
+def get_param_profile(profile_id: int, _: None = require_permission('algorithm:read')):
+    return to_response(AlgorithmProfileService.get_profile(profile_id))
+
+
+@router.put('/param-profiles/{profile_id}')
+def put_param_profile(profile_id: int, _: None = require_permission('algorithm:param_manage')):
+    return to_response(AlgorithmProfileService.update_profile(profile_id))
+
+
+@router.delete('/param-profiles/{profile_id}')
+def delete_param_profile(profile_id: int, _: None = require_permission('algorithm:param_manage')):
+    return to_response(AlgorithmProfileService.delete_profile(profile_id))
+
+
+@router.post('/param-profiles/{profile_id}/clone')
+def clone_param_profile(profile_id: int, _: None = require_permission('algorithm:param_manage')):
+    return to_response(AlgorithmProfileService.clone_profile(profile_id))
+
+
+# ========== API 实例作用域：策略绑定 / 参数覆盖 ==========
+@router.put('/api-scope/{api_id}/binding')
+def put_api_scope_binding(api_id: int, _: None = require_permission('algorithm:param_manage')):
+    return to_response(AlgorithmProfileService.bind_api(api_id))
+
+
+@router.put('/api-scope/{api_id}/overrides')
+def put_api_scope_overrides(api_id: int, _: None = require_permission('algorithm:param_manage')):
+    return to_response(AlgorithmProfileService.save_api_overrides(api_id))
 
 
 # 用例专属参数相关路由

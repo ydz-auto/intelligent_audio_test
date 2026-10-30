@@ -112,6 +112,38 @@ class PlaybackRepositoryInterface(ABC):
     @abstractmethod
     def clear_playback_spl_refs(self, mapping_id: int) -> int: ...
 
+    # ---- 逻辑音箱组（N 个实验室里位置相同的音箱互相对应）----
+
+    @abstractmethod
+    def list_playback_speaker_groups(self, keyword: str = None) -> List[Any]: ...
+
+    @abstractmethod
+    def get_playback_speaker_group(self, group_id: int) -> Optional[Any]: ...
+
+    @abstractmethod
+    def create_playback_speaker_group(self, name: str, description: str = None) -> Any: ...
+
+    @abstractmethod
+    def update_playback_speaker_group(self, group_id: int, data: dict) -> Optional[Any]: ...
+
+    @abstractmethod
+    def delete_playback_speaker_group(self, group_id: int) -> bool: ...
+
+    @abstractmethod
+    def upsert_playback_speaker_group_item(self, group_id: int, lab_id: int,
+                                           playback_device_id: int) -> Any: ...
+
+    @abstractmethod
+    def delete_playback_speaker_group_item(self, group_id: int, lab_id: int) -> bool: ...
+
+    @abstractmethod
+    def resolve_playback_speaker_device(self, source_device_id: int,
+                                        target_lab_id: int) -> Optional[int]: ...
+
+    @abstractmethod
+    def resolve_playback_speaker_group_device(self, group_id: int,
+                                              target_lab_id: int) -> Optional[int]: ...
+
 
 class SPLRepositoryInterface(ABC):
     """SPL 映射仓储接口。"""

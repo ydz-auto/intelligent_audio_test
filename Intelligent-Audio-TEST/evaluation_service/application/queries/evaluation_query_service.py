@@ -246,6 +246,9 @@ class EvaluationQueryService:
                             'description': d.description,
                             'type': d.type,
                             'dimension_type': d.dimension_type,
+                            # 主/子层级随选项下发（前端维度云直接以 options 为唯一数据源，
+                            # 不再回查列表端点补 parent）；列表端点仍不下发关联算法，避免 N+1
+                            'parent_dimension_id': d.parent_dimension_id,
                             'category_id': d.category_id,
                             'task_type_code': d.task_type_code,
                             'requires_audio': d.id in audio_dim_ids,

@@ -76,13 +76,13 @@ def _live_stack_gate():
         pytest.fail(
             'INT-246 测试隔离门禁：实机栈 /health 显示 database='
             f"'{db_name}'（共享业务库），写入型验收禁止执行。请用 "
-            '`python run_all.py --test-db` 把整栈切到隔离测试库后重跑。')
+            '`python stack.py up --test-db` 把整栈切到隔离测试库后重跑。')
     if db_name != ISOLATED_TEST_DB_NAME:
         pytest.fail(
             'INT-246 测试隔离门禁：实机栈 /health 未报告隔离测试库 '
             f"'{ISOLATED_TEST_DB_NAME}'（实际 database={db_name!r}；字段缺失"
             '多为旧版栈），拒绝执行。请以本仓库代码经 '
-            '`python run_all.py --test-db` 重启栈。')
+            '`python stack.py up --test-db` 重启栈。')
 
 
 @pytest.fixture(scope='session')

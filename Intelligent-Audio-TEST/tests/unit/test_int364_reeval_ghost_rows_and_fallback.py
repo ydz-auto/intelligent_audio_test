@@ -108,7 +108,7 @@ class TestGhostRoundRowCleanup:
             ok = ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [{'output': {}}, {'output': {}}]},
-                test_type='e2e', algorithm_type='translation',
+                device_type='physical', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 
@@ -135,7 +135,7 @@ class TestGhostRoundRowCleanup:
             ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [{'output': {}}]},
-                test_type='e2e', algorithm_type='translation',
+                device_type='physical', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 
@@ -152,7 +152,7 @@ class TestGhostRoundRowCleanup:
             ok = ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [{'output': {}}]},
-                test_type='e2e', algorithm_type='translation',
+                device_type='physical', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 
@@ -168,7 +168,7 @@ class TestGhostRoundRowCleanup:
             ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [{'output': {}}]},
-                test_type='e2e', algorithm_type='translation',
+                device_type='physical', algorithm_type='translation',
                 reevaluate_type='all',
             )
 
@@ -189,7 +189,7 @@ class TestGhostRoundRowCleanup:
             ok = ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [{'output': {}}]},
-                test_type='e2e', algorithm_type='translation',
+                device_type='physical', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 
@@ -219,7 +219,7 @@ class TestPerRoundFailureOverallFallback:
                 ok = ex._reevaluate_multi_round(
                     task_id=1, result=11, test_case_id='c1',
                     algorithm_result={'rounds': [{'output': {}}, {'output': {}}]},
-                    test_type='e2e', algorithm_type='translation',
+                    device_type='physical', algorithm_type='translation',
                     reevaluate_type='failed',
                 )
 
@@ -248,7 +248,7 @@ class TestPerRoundFailureOverallFallback:
                 ok = ex._reevaluate_multi_round(
                     task_id=1, result=11, test_case_id='c1',
                     algorithm_result={'rounds': [{'output': {}}]},
-                    test_type='e2e', algorithm_type='translation',
+                    device_type='physical', algorithm_type='translation',
                     reevaluate_type='failed',
                 )
 
@@ -276,7 +276,7 @@ class TestPerRoundFailureOverallFallback:
                 ok = ex._reevaluate_multi_round(
                     task_id=1, result=11, test_case_id='c1',
                     algorithm_result={'rounds': [{'output': {}}, {'output': {}}]},
-                    test_type='e2e', algorithm_type='translation',
+                    device_type='physical', algorithm_type='translation',
                     reevaluate_type='failed',
                 )
 
@@ -297,7 +297,7 @@ class TestPerRoundFailureOverallFallback:
                 ok = ex._reevaluate_multi_round(
                     task_id=1, result=11, test_case_id='c1',
                     algorithm_result={'rounds': [{'output': {}}]},
-                    test_type='e2e', algorithm_type='translation',
+                    device_type='physical', algorithm_type='translation',
                     reevaluate_type='all',
                     dimension_filter_ids=[12],
                 )
@@ -387,7 +387,7 @@ class TestRollbackCaseIfStuckQueued:
             submitted = ex._reevaluate_single(
                 task_id=1, result_id=11, test_case_id='c1',
                 algorithm_result={'output': {}}, reference_params=[],
-                test_type='api', algorithm_type='translation',
+                device_type='http_api', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 
@@ -408,7 +408,7 @@ class TestRollbackCaseIfStuckQueued:
             submitted = ex._reevaluate_single(
                 task_id=1, result_id=11, test_case_id='c1',
                 algorithm_result={'output': {}}, reference_params=[],
-                test_type='api', algorithm_type='translation',
+                device_type='http_api', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 

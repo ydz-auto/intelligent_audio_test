@@ -6,8 +6,15 @@
 
 from typing import Dict, List, Any
 
+from shared.models.common_enums import DeviceType
+
 _REF_PARAMS_BUCKET = 'ref_params'
 _KNOWN_DATA_KEYS = {'segments', 'text', 'annotations', 'timestamps', 'timestamps_global'}
+
+
+def _legacy_ref_key(device_type: str) -> str:
+    """device_type → 历史参考参数 api/e2e 键（兼容存量 JSON）。"""
+    return 'e2e' if device_type == DeviceType.PHYSICAL.value else 'api'
 
 
 class ReferenceHelpersService:
@@ -21,7 +28,9 @@ class ReferenceHelpersService:
         return f'{case_id}/round_{round_number}.json'
 
     @staticmethod
-    def normalize_reference_params(params, test_type: str = 'api') -> List[Dict[str, Any]]:
+    def normalize_reference_params(
+        params, device_type: str = DeviceType.HTTP_API.value
+    ) -> List[Dict[str, Any]]:
         """规范化参考参数列表"""
         if not params:
             return []
@@ -30,8 +39,10 @@ class ReferenceHelpersService:
                 params = params['params']
             elif 'default' in params:
                 params = params['default']
-            elif test_type in params:
-                params = params[test_type]
+            elif device_type in params:
+                params = params[device_type]
+            elif _legacy_ref_key(device_type) in params:
+                params = params[_legacy_ref_key(device_type)]
             else:
                 params = [params]
         if not isinstance(params, list):
@@ -41,13 +52,15 @@ class ReferenceHelpersService:
         for param in params:
             if not isinstance(param, dict):
                 continue
-            normalized = ReferenceHelpersService._normalize_single_ref_param(param, test_type)
+            normalized = ReferenceHelpersService._normalize_single_ref_param(param, device_type)
             if normalized:
                 result.append(normalized)
         return result
 
     @staticmethod
-    def _normalize_single_ref_param(param: Dict, test_type: str = 'api') -> Dict:
+    def _normalize_single_ref_param(
+        param: Dict, device_type: str = DeviceType.HTTP_API.value
+    ) -> Dict:
         """单条规范化"""
         code = param.get('code')
         if not code:
@@ -56,8 +69,10 @@ class ReferenceHelpersService:
         value = param.get('value')
 
         if value is None:
-            if test_type in param:
-                value = param[test_type]
+            if device_type in param:
+                value = param[device_type]
+            elif _legacy_ref_key(device_type) in param:
+                value = param[_legacy_ref_key(device_type)]
             elif 'api' in param:
                 value = param['api']
             elif 'e2e' in param:
@@ -120,7 +135,7 @@ class ReferenceHelpersService:
     @staticmethod
     def get_reference_value(
         param: Dict[str, Any],
-        test_type: str,
+        device_type: str,
         ref_type: str = None,
         algorithm_type: str = None,
         case_config: Dict[str, Any] = None,

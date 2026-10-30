@@ -1,7 +1,12 @@
 # docker/ 构建与栈操作手册（INT-1820）
 
 本目录的 Dockerfile / compose / 脚本怎么构建、构建红了怎么判、引擎被构建打崩了怎么恢复。
-**入口只有一个：`python docker/build_stack.py`**（下文所有命令都在仓库根执行）。
+
+> **全栈启停唯一入口：仓库根 `python stack.py up/down/status/health`**（compose 栈 + 宿主机
+> audio/device 服务）。本目录的 `run_stack.py` 只做 docker-only 操作、`build_stack.py` 只构建镜像，
+> 均被 `stack.py` 委托调用。
+
+**构建入口：`python docker/build_stack.py`**（下文所有命令都在仓库根执行）。
 
 ## 1. 为什么有这份文档
 

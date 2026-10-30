@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """INT-246 隔离测试库清库（冒烟后）：scripts/reset_test_db.py
 
-用途：`python run_all.py --test-db` 起栈做实机链路回归 / 集成冒烟 / 验收后，
+用途：`python stack.py up --test-db` 起栈做实机链路回归 / 集成冒烟 / 验收后，
 把隔离测试库 intelligent_audio_test_test 全量清空（TRUNCATE 全部业务表 +
 RESTART IDENTITY，回收冒烟产生的任务/用例/结果/音频等残留），下次冒烟从
 干净库开始。种子数据（维度/裁判/用户）需要时用 scripts/migrations 下

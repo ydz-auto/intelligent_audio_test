@@ -6,7 +6,7 @@
 - tests/conftest.py 会话级守卫：pytest 生效 DATABASE_URL 指向共享业务库即
   拒绝启动（宁可拒绝，绝不静默写业务库）
 - api_gateway /health 暴露 database 字段供 tests/api 实机门禁校验
-- run_all.py --test-db 一键把整栈切到隔离库
+- stack.py --test-db 一键把整栈切到隔离库
 - scripts/reset_test_db.py 冒烟后清库（仅清隔离库，硬拒共享库）
 
 本模块不读任何环境变量、零依赖，可在 conftest 顶层与任何进程安全导入。

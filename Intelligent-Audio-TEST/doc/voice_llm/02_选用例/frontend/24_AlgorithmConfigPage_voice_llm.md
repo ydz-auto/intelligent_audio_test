@@ -84,7 +84,7 @@ voice_llm 的 E2E 公共能力（导轨/音量/声纹/打断等）已迁出到 `
 
 ### 4. scope 字段展示
 
-voice_llm 的参数（CaseAlgorithmParam）新增了 `scope` 字段（common/api/e2e）。AlgorithmConfigPage 的参数定义列表中应展示 scope 列：
+voice_llm 的参数（CaseAlgorithmParam）新增了 `scope` 字段（common/physical/http_api/websocket_api）。AlgorithmConfigPage 的参数定义列表中应展示 scope 列：
 
 ```vue
 <el-table-column prop="scope" label="适用范围" width="100">

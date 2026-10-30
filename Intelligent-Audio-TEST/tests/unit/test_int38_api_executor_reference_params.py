@@ -97,7 +97,7 @@ class TestInt38RunSingleApiEvaluateParams:
         assert kwargs['result_id'] == 'result-1'
         assert kwargs['test_case_id'] == 'case-1'
         assert kwargs['algorithm_result'] == {'answer': '今天天气怎么样'}
-        assert kwargs['test_type'] == 'api'
+        assert kwargs['device_type'] == 'http_api'
 
         # extract_case_all_params 共被调两次：#1 来自真实 _evaluate_result
         # （list 已在基类入口转为 {code: value}），#2 来自 _log_single_api_result
@@ -115,7 +115,7 @@ class TestInt38RunSingleApiEvaluateParams:
         kwargs = task_acl.submit_evaluate_case.call_args.kwargs
         assert kwargs['task_id'] == 'task-1'
         assert kwargs['result_id'] == 'result-1'
-        assert kwargs['test_type'] == 'api'
+        assert kwargs['device_type'] == 'http_api'
 
         full_case_params = algo_acl.extract_case_all_params.call_args[0][0]
         assert full_case_params['reference_params'] == {}

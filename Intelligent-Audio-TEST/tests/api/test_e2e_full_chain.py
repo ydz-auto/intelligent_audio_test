@@ -150,13 +150,13 @@ class TestE2EFullChain:
                         if a.get('audio_name') == audio_file['name']:
                             a['audio_id'] = audio_id
 
-                # merge — 关键：testTypes=['e2e']
+                # merge — 关键：deviceType='physical'
                 merge_body = {
                     'fileId': file_id,
                     'taskId': upload_task_id,
                     'audioType': 'dry',
                     'createTestCase': is_final,
-                    'testTypes': ['e2e'],
+                    'deviceType': 'physical',
                     'groupNameType': 'custom',
                     'customGroupName': 'E2E全链路测试',
                     'inheritTags': True,
@@ -216,6 +216,10 @@ class TestE2EFullChain:
             r = api_client.patch(f'/tasks/{task_id}/cases', json={
                 'action': 'add',
                 'caseIds': created_tc_ids,
+                'caseDevices': [
+                    {'caseId': case_id, 'deviceType': 'physical'}
+                    for case_id in created_tc_ids
+                ],
             })
             uc_data = _resp_data(r)
             assert uc_data.get('taskId') or uc_data.get('task_id'), \

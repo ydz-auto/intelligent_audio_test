@@ -46,7 +46,7 @@ LAST_RESORT_WARNING = (
     "       强停带流的 audio_service 有楔死 Windows 音频栈的风险：旧进程 WASAPI 会话"
     "可能锁在驱动里，重启后新进程 Pa_Initialize 会撞锁挂死。\n"
     "       若本机音频栈已被楔死，需管理员重启 Audiosrv（net stop Audiosrv && "
-    "net start Audiosrv）或重启机器后再 start_audio_service_noshim.cmd。"
+    "net start Audiosrv）或重启机器后再 `python stack.py up --audio-mode real`。"
 )
 
 

@@ -121,11 +121,11 @@ class TestMixedSelectionCreate:
             (_E2E_CASE_ID, 'http_api', '202'),
             (_E2E_CASE_ID, 'physical', '101'),
         ]
-        # total_cases 以路由行为准（用例×路由）
-        assert _read_task_total_cases(task_id) == 2
+        # total_cases 按去重用例数（一个用例 × 多路由只算一条）
+        assert _read_task_total_cases(task_id) == 1
 
     def test_mixed_task_multiple_cases_each_route(self, db):
-        """多用例任务：各用例按自己的 case_devices 路由落行，未指定者派生兜底。"""
+        """多用例任务：各用例按自己的 case_devices 路由落行，未指定者按任务目标兜底。"""
         _seed_cases()
         task_id = _create_task(
             [_E2E_CASE_ID, _API_CASE_ID],
@@ -137,18 +137,18 @@ class TestMixedSelectionCreate:
         rows = _read_task_cases(task_id)
         # 排序键 (case_id, device_type, device_id)：'int604-case-api' 字典序在 e2e 前
         assert rows == [
-            (_API_CASE_ID, 'http_api', None),  # 未指定 → 派生 http_api
+            (_API_CASE_ID, 'physical', None),  # 未指定且任务无目标 → 物理域兜底
             (_E2E_CASE_ID, 'http_api', '202'),
             (_E2E_CASE_ID, 'physical', '101'),
         ]
 
-    def test_legacy_without_case_devices_derives_single_row(self, db):
-        """无 case_devices 旧调用：单条 TaskCase + 配置形态派生，零回归。"""
+    def test_legacy_without_case_devices_routes_by_task_targets(self, db):
+        """无 case_devices 旧调用：按任务目标展开（无目标 → 物理域兜底，不读配置）。"""
         _seed_cases()
         task_id = _create_task([_E2E_CASE_ID, _API_CASE_ID])
         rows = _read_task_cases(task_id)
         assert rows == [
-            (_API_CASE_ID, 'http_api', None),
+            (_API_CASE_ID, 'physical', None),
             (_E2E_CASE_ID, 'physical', None),
         ]
 

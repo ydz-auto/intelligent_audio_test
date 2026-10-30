@@ -22,6 +22,10 @@ message StartE2ETaskRequest {
   // 一条 E2E 用例按物理设备行逐行执行，执行器只准备/驱动该设备；
   // 0 表示未指定（历史调用方），执行器按任务全部设备处理。
   int32 device_id = 4;
+  // 组执行：同实验室、同用例、不同 SN 的多台设备合并为一次执行，
+  // 音频每轮只播一次，结果按设备分别落库。非空时优先于 device_id；
+  // 与 device_id 同时为空时按任务全部设备处理（历史行为）。
+  repeated int32 device_ids = 5;
 }
 
 message StartE2ETaskResponse {

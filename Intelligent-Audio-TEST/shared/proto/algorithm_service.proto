@@ -57,6 +57,18 @@ service AlgorithmDefinitionService {
   rpc DeleteMapping(DeleteMappingRequest) returns (AlgorithmResponse);
   rpc GetMapping(GetMappingRequest) returns (AlgorithmResponse);
 
+  // 参数策略（API 参数/映射的可复用声明）
+  //   - SaveParamProfile：整份保存策略（基础字段 + 字段声明 + 映射），data 为 JSON
+  //   - CloneParamProfile：从既有策略克隆一份新策略（cloned_from 记血缘）
+  //   - DeleteParamProfile：软删策略（仍被 API 引用时由调用方先解绑）
+  //   - BindApiParamProfile：API 实例绑定/解绑策略（profile_id 缺省或 0 = 解绑）
+  //   - SaveApiScopeOverrides：按 api_id 原子保存实例覆盖行（差集 upsert + 软删）
+  rpc SaveParamProfile(SaveParamProfileRequest) returns (AlgorithmResponse);
+  rpc CloneParamProfile(CloneParamProfileRequest) returns (AlgorithmResponse);
+  rpc DeleteParamProfile(DeleteParamProfileRequest) returns (AlgorithmResponse);
+  rpc BindApiParamProfile(BindApiParamProfileRequest) returns (AlgorithmResponse);
+  rpc SaveApiScopeOverrides(SaveApiScopeOverridesRequest) returns (AlgorithmResponse);
+
   // 维度关系
   rpc CreateDimensionRelation(CreateDimensionRelationRequest) returns (AlgorithmResponse);
   rpc UpdateDimensionRelation(UpdateDimensionRelationRequest) returns (AlgorithmResponse);
@@ -140,6 +152,9 @@ service AlgorithmQueryService {
   rpc GetAlgorithmParamsMerged(GetAlgorithmParamsMergedRequest) returns (AlgorithmResponse);
   rpc GetDeviceParamsList(GetDeviceParamsListRequest) returns (AlgorithmResponse);
   rpc GetApiParamsList(GetApiParamsListRequest) returns (AlgorithmResponse);
+  // 参数策略读侧：策略列表 / 策略详情（含字段声明与映射）
+  rpc ListParamProfiles(ListParamProfilesRequest) returns (AlgorithmResponse);
+  rpc GetParamProfile(GetParamProfileRequest) returns (AlgorithmResponse);
   rpc GetCaseParamsList(GetCaseParamsListRequest) returns (AlgorithmResponse);
   rpc GetReferenceParamsList(GetReferenceParamsListRequest) returns (AlgorithmResponse);
   rpc GetParamMappingForComponent(GetParamMappingForComponentRequest) returns (AlgorithmResponse);
@@ -537,6 +552,8 @@ message GetEvaluationFieldMappingsRequest {
 message BuildApiRequestDataRequest {
   string algorithm_type = 1;
   string data = 2;  // JSON: 设备参数 + API 参数
+  // API 实例级作用域（输入声明按「策略 + 实例覆盖」解析）；未传=算法级口径。
+  optional int32 api_id = 3;
 }
 message ConvertFieldValueRequest {
   string transform_type = 1;
@@ -550,7 +567,7 @@ message ConvertFieldValuesRequest {
 // 结果字段映射器请求
 message GetOutputFieldsRequest {
   string algorithm_type = 1;
-  string test_type = 2;  // 可选，voice_llm 区分 api/e2e
+  string device_type = 2;  // 可选，physical / http_api / websocket_api
   // INT-1757（C6b）：输出声明按 API 实例级作用域取（未传=算法级默认）。
   optional int32 api_id = 3;
 }
@@ -561,21 +578,27 @@ message ExtractResultFieldsRequest {
   string algorithm_type = 1;
   string algorithm_result = 2;  // JSON: 算法执行结果
   string result_data = 3;        // JSON: 结果数据
+  // API 实例级作用域（输出声明按「策略 + 实例覆盖」解析）；未传=算法级口径。
+  optional int32 api_id = 4;
 }
 message GetTimelineFieldsRequest {
   string algorithm_type = 1;
+  // API 实例级作用域（时间轴字段按「策略 + 实例覆盖」解析）；未传=算法级口径。
+  optional int32 api_id = 2;
 }
 message GetFullFieldMappingRequest {
   string algorithm_type = 1;
+  // API 实例级作用域（「策略 + 实例覆盖」解析）；未传=算法级（物理侧）口径。
+  optional int32 api_id = 2;
 }
 message MapApiResultsRequest {
   string algorithm_type = 1;
   string raw_results = 2;  // JSON: 原始结果
-  string test_type = 3;     // voice_llm 时使用
+  string device_type = 3;  // physical / http_api / websocket_api
 }
 message ExtractRoundResultsRequest {
   string algorithm_result = 1;  // JSON
-  string test_type = 2;
+  string device_type = 2;       // physical / http_api / websocket_api
 }
 
 // 用例参数提取器请求
@@ -616,4 +639,40 @@ message GetAllReferenceParamsRequest {
 }
 message GetReferenceParamsForReportRequest {
   string reference_params_col = 1;  // JSON
+}
+
+// ===== 参数策略请求（API 参数/映射的可复用声明）=====
+// 语义：策略是算法类型下可复用的「字段声明 + 映射」模板，API 实例经
+// api_param_bindings 引用；实例级差异写在 algorithm_api_params / param_mappings
+// 的 api_id 行（实例覆盖），解析顺序 = 实例覆盖 > 策略 > 空（显式告警）。
+message ListParamProfilesRequest {
+  string algorithm_type = 1;  // 可选；空 = 全部
+  string scope = 2;           // 可选：api / device；空 = 全部
+}
+message GetParamProfileRequest {
+  int32 profile_id = 1;
+}
+message SaveParamProfileRequest {
+  // JSON: {id?, scope, algorithm_type, name, description, status,
+  //        params: [{param_code, direction, param_type, required, default_value,
+  //                  validation_rules, field_path, label, help_text, ui_order, hidden}],
+  //        mappings: [{source, source_param, source_direction, dimension_id,
+  //                    target_param, transform_type}]}
+  string data = 1;
+}
+message CloneParamProfileRequest {
+  // JSON: {source_profile_id, name, description?}
+  string data = 1;
+}
+message DeleteParamProfileRequest {
+  int32 profile_id = 1;
+}
+message BindApiParamProfileRequest {
+  // JSON: {api_id, profile_id}；profile_id 缺省或 0 = 解绑
+  string data = 1;
+}
+message SaveApiScopeOverridesRequest {
+  // JSON: {api_id, algorithm_type, api_params: [...], mappings: [...]}
+  // 原子保存：同 api_id 作用域内差集 upsert + 提交集外软删，不动策略行。
+  string data = 1;
 }

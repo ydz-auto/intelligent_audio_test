@@ -10,6 +10,6 @@ class EvaluationAclRepository(ABC):
 
     @abstractmethod
     def submit_evaluate_case(self, task_id, result_id, test_case_id,
-                             algorithm_result, eval_params) -> bool:
+                             algorithm_result, eval_params, device_type=None) -> bool:
         """提交单条用例评估请求（EvaluateCase）。"""
         ...

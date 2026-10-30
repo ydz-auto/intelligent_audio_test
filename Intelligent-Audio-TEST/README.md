@@ -89,17 +89,15 @@
 | audio_service | - | 50052 | 音频播放（gRPC-only） |
 | device_service | - | 50053 | 播放 / 环境设备驱动（gRPC-only） |
 
-基础设施：PostgreSQL `5432`、Redis `6379`、RustFS `9000`（控制台 `9001`）、前端 `5173`。
+基础设施：PostgreSQL `5432`、Redis `6379`、RustFS `9000`（控制台 `9001`）；前端 React 独立部署 `15173`。
 
 ## 快速开始
 
 ### 环境要求
 
 - Python 3.10+
-- Node.js 18+
-- PostgreSQL 16 / Redis 7+ / RustFS（也可由 `run_all.py` 自动拉起本地实例）
-- FFmpeg（音频处理依赖，需加入 PATH）
-- Android Platform Tools（`adb`，端到端测试用）
+- Docker Desktop（11 个后端微服务 + PostgreSQL / Redis / RustFS 全部由 compose 托管）
+- 宿主机声卡 + FFmpeg（`audio_service` 真实放音）、Android Platform Tools（E2E 用）
 
 ### 安装与启动
 
@@ -109,34 +107,42 @@ cd Intelligent-Audio-TEST
 # 1. 后端依赖
 pip install -r requirements.txt
 
-# 2. 前端依赖
-cd frontend && npm install && cd ..
+# 2. 配置环境变量（数据库/认证模式等）
+cp .env.example .env
 
-# 3. 配置环境变量
-cp .env.example .env   # 按需修改数据库/Redis/RustFS 地址、认证模式
-
-# 4. 初始化数据库表（详见下方「数据库初始化与迁移」）
+# 3. 初始化数据库表（详见下方「数据库初始化与迁移」）
 python scripts/create_all_tables.py
 
-# 5. 一键启动：3 基础设施 + 11 后端微服务 + 前端
-python run_all.py
+# 4. 唯一启动入口：Docker 栈 + 宿主机 audio/device 服务
+python stack.py up
 ```
 
-启动后各服务地址：
+`stack.py` 是唯一启停入口，旧脚本（`stack_ctl.ps1`、`_stack_start.cmd`、
+`run_all.py`、`scripts/host_audio_service/*.cmd`）已删除：
 
-| 服务 | 地址 |
-|------|------|
-| 前端 | http://localhost:5173 |
-| API Gateway | http://localhost:5000 |
-| RustFS Console | http://localhost:9001 |
-| 各微服务 | 见上方「微服务清单」 |
+| 命令 | 说明 |
+|---|---|
+| `python stack.py up` | compose 起栈（分离模式）+ 宿主机 device/audio |
+| `python stack.py up --build` | 先重建镜像再起 |
+| `python stack.py up --audio-mode shim` | Windows 音频栈楔死时用影子 pyaudio（硬件放音不可用） |
+| `python stack.py status` | 容器 + 宿主服务状态 |
+| `python stack.py health` | HTTP `/health` + gRPC / 基础设施 TCP 探测 |
+| `python stack.py down` | 优雅停宿主服务 → compose down（保留数据卷） |
+| `python stack.py restart host` | 只重启宿主 audio/device |
+| `python stack.py logs api_gateway -f` | 容器日志；`logs audio` 看宿主音频日志 |
+| `python stack.py build api_gateway` | 只构建指定镜像（委托 `docker/build_stack.py`） |
 
 说明：
 
-- `run_all.py` 启动前会自动清理被占用的服务端口，并探测端口就绪后再启动下一个；`Ctrl+C` 优雅停止全部。
-- 前端请求经 Vite proxy 转发到 API Gateway（`run_all.py` 已注入 `VITE_API_TARGET=http://localhost:5000`）。
-- 单独启动前端：`cd frontend && VITE_API_TARGET=http://localhost:5000 npm run dev -- --port 5173 --strictPort`。
-- 本地 infra 已被占用（如已装 PG 服务）时会直接复用，不重复拉起。
+- 端口口径不在脚本里硬编码：`stack.py` 与 `docker/run_stack.py` 都按
+  `docker compose config` 的解析结果取宿主端口（`docker/.env`），宿主服务环境由
+  `scripts/host_services/control.py` 统一注入。
+- 前端 React 独立部署（`docker/deploy_demo_frontends.ps1` → `:15173`），不在 compose 内。
+- `real_stack.py` 是另一套连真实业务库、端口整体 +700 的独立栈（multica loop 使用），
+  与主入口无关，不随 `stack.py` 启停。
+
+启动后地址（以 `python stack.py status` 为准）：API Gateway `http://localhost:15000`、
+RustFS Console `http://localhost:9001`、前端 `http://localhost:15173`。
 
 ## 数据库初始化与迁移
 

@@ -456,7 +456,7 @@ def s2_create_case(token: str, created: dict) -> dict:
         r = httpx.post(f'{API_BASE}/audios/upload/merge', headers=h, **CK,
                        json={'fileId': fid, 'taskId': upload_task_id,
                              'audioType': 'dry', 'createTestCase': False,
-                             'testTypes': ['api'], 'inheritTags': True, 'dimensions': {}})
+                             'inheritTags': True, 'dimensions': {}})
         md = resp_data(r)
         if md.get('status') != 'completed' and not md.get('audioId'):
             raise GateFail(f'merge 未完成: {json.dumps(md, ensure_ascii=False)[:300]}')
@@ -507,7 +507,10 @@ def s3_execute(token: str, created: dict) -> int:
     created['task_id'] = task_id
 
     r = httpx.patch(f'{API_BASE}/tasks/{task_id}/cases', headers=h, **CK,
-                    json={'action': 'add', 'caseIds': [tc_id]})
+                    json={'action': 'add', 'caseIds': [tc_id],
+                          'caseDevices': [{'caseId': tc_id,
+                                           'deviceType': 'http_api',
+                                           'deviceId': str(created['api_cfg_id'])}]})
     resp_data(r)
 
     r = httpx.post(f'{API_BASE}/tasks/{task_id}/start', headers=h, **CK)

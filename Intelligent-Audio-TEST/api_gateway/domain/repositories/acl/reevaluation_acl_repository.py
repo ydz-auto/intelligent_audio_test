@@ -21,12 +21,12 @@ class ReevaluationAclRepository(ABC):
 
     @abstractmethod
     def reevaluate_multi_round(self, task_id, result, test_case_id,
-                               algorithm_result, test_type,
+                               algorithm_result, device_type,
                                algorithm_type) -> ReevaluationResultDTO:
         ...
 
     @abstractmethod
     def reevaluate_single(self, task_id, result_id, test_case_id,
-                          algorithm_result, reference_params, test_type,
+                          algorithm_result, reference_params, device_type,
                           algorithm_type) -> ReevaluationResultDTO:
         ...

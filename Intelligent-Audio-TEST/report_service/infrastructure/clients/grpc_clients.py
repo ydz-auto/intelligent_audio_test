@@ -199,9 +199,12 @@ def _grpc_algo_get_reference_params_for_report(reference_params_col=None):
     return _dto_to_dict(_algo.get_reference_params_for_report(reference_params_col))
 
 
-def _grpc_algo_get_field_mapping(algorithm_type=None):
-    """通过 gRPC (algorithm_service.AlgorithmQueryService) 获取算法字段映射快照。"""
-    return _dto_to_dict(_algo.get_full_field_mapping(algorithm_type or ''))
+def _grpc_algo_get_field_mapping(algorithm_type=None, api_id=None):
+    """通过 gRPC (algorithm_service.AlgorithmQueryService) 获取算法字段映射快照。
+
+    ``api_id`` 非空时按该 API 的「策略 + 实例覆盖」解析声明（算法类型级默认层已废弃）。
+    """
+    return _dto_to_dict(_algo.get_full_field_mapping(algorithm_type or '', api_id=api_id))
 
 
 # ======================================================================

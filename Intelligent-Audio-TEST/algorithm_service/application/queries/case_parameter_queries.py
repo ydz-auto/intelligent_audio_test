@@ -12,14 +12,29 @@ from algorithm_service.infrastructure.persistence.config_cache import get_config
 from algorithm_service.application.queries.field_mapping_queries import FieldMappingQueryHandler
 from algorithm_service.application.queries.reference_params_queries import ReferenceParamsQueryHandler
 from shared.utils.log_handler import log_not_emit
+from shared.models.common_enums import DeviceType
 
 
 class CaseParameterQueryHandler:
-    """用例参数提取查询处理器"""
+    """用例参数提取查询处理器
+
+    ``case_config`` 里的保留键 ``api_id``（可选）表示本用例所属 API 实例：
+    评估映射与 API 输入声明都按「策略 + 实例覆盖」解析（API 类型级默认层已废弃）。
+    调用方在已知实例时把它塞进 ``case_config``（与既有的 ``algorithm_type`` 同口径）。
+    """
 
     @staticmethod
     def get_algorithm_type(case_config: Dict) -> str:
         return case_config.get('algorithm_type', 'unknown')
+
+    @staticmethod
+    def get_api_id(case_config: Dict) -> Optional[int]:
+        """用例所属 API 实例（缺省 None = 物理/未指定，API 作用域解析不适用）"""
+        api_id = case_config.get('api_id')
+        try:
+            return int(api_id) if api_id is not None else None
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def get_algorithm_params(case_config: Dict) -> Dict[str, Any]:
@@ -71,8 +86,12 @@ class CaseParameterQueryHandler:
     def get_api_params(case_config: Dict) -> Dict[str, Any]:
         algorithm_type = CaseParameterQueryHandler.get_algorithm_type(case_config)
         algorithm_params = CaseParameterQueryHandler.get_algorithm_params(case_config)
+        api_id = CaseParameterQueryHandler.get_api_id(case_config)
+        if api_id is None:
+            # API 输入声明已下沉到实例作用域：没有 api_id 就没有声明可套（不是错误）
+            return {}
         cache = get_config_cache()
-        api_params_config = cache.get_api_params(algorithm_type)
+        api_params_config = cache.get_api_params(algorithm_type, api_id)
 
         result = {}
         for p in api_params_config:
@@ -92,7 +111,7 @@ class CaseParameterQueryHandler:
         case_config: Dict,
         dimension_ids: List[int] = None,
         algorithm_result: Dict[str, Any] = None,
-        test_type: str = 'api',
+        device_type: str = DeviceType.HTTP_API.value,
         round_number: int = None,
     ) -> Dict[str, Any]:
         """获取评估参数
@@ -101,12 +120,14 @@ class CaseParameterQueryHandler:
             case_config: 用例配置
             dimension_ids: 评估维度ID列表
             algorithm_result: 算法执行结果（可选，用于从device/api来源获取值）
-            test_type: 测试类型 ('api' 或 'e2e')
+            device_type: 用例级执行路由（physical / http_api / websocket_api）
             round_number: 轮次编号（单轮评估时为0-indexed，多轮整体评估时为None）
         """
         algorithm_type = CaseParameterQueryHandler.get_algorithm_type(case_config)
         cache = get_config_cache()
-        mappings = cache.get_param_mapping(algorithm_type, 'evaluation')
+        mappings = cache.get_param_mapping(
+            algorithm_type, 'evaluation',
+            CaseParameterQueryHandler.get_api_id(case_config))
 
         result = {}
         for m in mappings:
@@ -124,7 +145,7 @@ class CaseParameterQueryHandler:
                 value = None
                 for p in ref_params:
                     if p.get('code') == source_param:
-                        value = ReferenceHelpersService.get_reference_value(p, test_type, target_param)
+                        value = ReferenceHelpersService.get_reference_value(p, device_type, target_param)
                         break
             elif source in ('device', 'api'):
                 if algorithm_result and source in algorithm_result:
@@ -148,7 +169,7 @@ class CaseParameterQueryHandler:
                 value = None
                 for p in ref_params:
                     if p.get('code') == source_param:
-                        value = ReferenceHelpersService.get_reference_value(p, test_type, source_param)
+                        value = ReferenceHelpersService.get_reference_value(p, device_type, source_param)
                         break
             else:
                 value = None

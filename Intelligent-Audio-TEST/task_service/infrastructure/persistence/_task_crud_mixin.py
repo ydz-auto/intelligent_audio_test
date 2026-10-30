@@ -31,11 +31,12 @@ class ExecutionAffinityError(ValueError):
     """
 
 
-def _task_api_ids(session, task_id: int) -> List[int]:
-    """读取任务已关联的 API id（动态加用例派生亲和域用，INT-1799）。"""
-    from task_service.infrastructure.persistence.models import TaskAPI
-    rows = session.query(TaskAPI.api_id).filter(TaskAPI.task_id == task_id).all()
-    return [row.api_id for row in rows if row.api_id]
+class MissingDeviceTypeError(ValueError):
+    """用例未携带执行路由 device_type（设备/API 分域唯一依据）。
+
+    device_type 不允许空：建任务由 case_devices 显式给出，动态加用例必须
+    随请求传入；应用层转 400，不回落到用例配置形态猜测。
+    """
 
 
 def resolve_api_affinity_token(api_ids) -> str:
@@ -187,12 +188,11 @@ class TaskCrudMixin:
                 按 (case_id, device_type, device_id) 归一化后写入 TaskCase——同一用例可落
                 多条 TaskCase（设备侧 + API 侧），使「同个用例在设备与 API 间执行」成立。
 
-        说明（INT-104）：未显式指定 device_type 的用例由配置形态派生，
-        与 PATCH 用例路径 _apply_case_action 口径一致——device_type 是
-        执行路由唯一依据（task_dispatch），NULL 会兜底 physical 把
-        API 任务误路由到 E2E 执行器。
-        派生时传入用例名（INT-129）：上传双变体配置形态相同，仅
-        用例名 _api/_e2e 后缀可区分变体（见 derive_case_test_type）。
+        说明：device_type 是执行路由唯一依据，不允许为空——建任务由前端按目标
+        展开 case_devices 显式传入（INT-1433），不再按用例配置形态派生。
+        旧调用未传 case_devices 时按任务目标展开路由：每个 device_id 落一条
+        physical 路由；api_ids 非空时追加一条 API 亲和域路由（流式性见
+        resolve_api_affinity_token）。
 
         INT-604 幂等：应用层拒绝同一 (task, case, route) 重复提交——
         路由键按 (case_id, device_type 归一, device_id 归一)，NULL device_type
@@ -200,8 +200,6 @@ class TaskCrudMixin:
         uq_task_case_route 口径一致（见 202611 迁移）。
         """
         from shared.models.common_enums import DeviceType
-        from shared.utils.testcase_helpers import derive_case_test_type
-        from task_service.infrastructure.persistence.models import TestCase
 
         # 归一化用例级设备选择: {case_id: [item, ...]}（INT-604：同一用例可多条路由）
         device_map: Dict[str, List[Dict[str, Any]]] = {}
@@ -210,20 +208,30 @@ class TaskCrudMixin:
             if case_id is not None:
                 device_map.setdefault(str(case_id), []).append(item)
 
-        # 派生兜底：未显式指定 device_type 的用例由配置形态派生（INT-104）
-        missing_type_ids = [
-            str(c) for c in case_ids
-            if not any(dev.get('device_type') for dev in device_map.get(str(c), []))
+        # 旧调用（无 case_devices）：按任务目标展开路由，不读用例配置
+        legacy_entries: List[Dict[str, Any]] = [
+            {'device_type': DeviceType.PHYSICAL.value, 'device_id': str(device_id)}
+            for device_id in device_ids
         ]
-        case_config_map: Dict[str, Any] = {}
-        case_name_map: Dict[str, Any] = {}
-        if missing_type_ids:
-            for cid, cfg, name in (
-                session.query(TestCase.id, TestCase.config, TestCase.name)
-                .filter(TestCase.id.in_(missing_type_ids)).all()
-            ):
-                case_config_map[str(cid)] = cfg
-                case_name_map[str(cid)] = name
+        if api_ids:
+            legacy_entries.append({
+                'device_type': resolve_api_affinity_token(api_ids),
+                'device_id': None,
+            })
+        if not legacy_entries:
+            # 无任何执行目标的历史调用：物理域兜底（device_type 仍非空）
+            legacy_entries.append({
+                'device_type': DeviceType.PHYSICAL.value,
+                'device_id': None,
+            })
+
+        def _entries_for(case_id: str) -> List[Dict[str, Any]]:
+            entries = device_map.get(str(case_id)) or legacy_entries
+            for entry in entries:
+                if not entry.get('device_type'):
+                    raise MissingDeviceTypeError(
+                        f'用例 {case_id} 缺少 device_type 路由（请通过 case_devices 指定）')
+            return entries
 
         # 应用层幂等（INT-604）：任务内已存在的 (case, route) 不再重复提交
         existing_routes = set()
@@ -235,27 +243,6 @@ class TaskCrudMixin:
                 (tc_device_type or DeviceType.PHYSICAL.value),
                 (tc_device_id or ''),
             ))
-
-        # INT-1799：API 上岗的亲和域令牌由任务关联 API 的 streaming 派生
-        # （懒计算 + 任务内只查一次 ACL；取不到/混道即抛 400，不再一律猜 http_api）
-        api_affinity_token: List[str] = []
-
-        def _api_affinity() -> str:
-            if not api_affinity_token:
-                api_affinity_token.append(resolve_api_affinity_token(api_ids))
-            return api_affinity_token[0]
-
-        def _derive_device_type(case_id: str, dev: Dict[str, Any]) -> str:
-            device_type = dev.get('device_type') or None
-            if device_type is None:
-                derived = derive_case_test_type(
-                    case_config_map.get(str(case_id)),
-                    case_name=case_name_map.get(str(case_id)),
-                )
-                # 物理设备（E2E）与 API 分域：API 用例的亲和令牌按 streaming 派生
-                device_type = (DeviceType.PHYSICAL.value if derived == 'e2e'
-                               else _api_affinity())
-            return device_type
 
         def _add_case_row(case_id: str, device_type: str,
                           device_id: Optional[str], lab_id: Optional[int]) -> None:
@@ -279,16 +266,9 @@ class TaskCrudMixin:
 
         # 关联用例（INT-604：按 (case_id, device_type, device_id) 多维度落行）
         for case_id in case_ids:
-            entries = device_map.get(str(case_id), [])
-            if entries:
-                for dev in entries:
-                    device_type = _derive_device_type(str(case_id), dev)
-                    _add_case_row(str(case_id), device_type, dev.get('device_id'), dev.get('lab_id'))
-            else:
-                # 旧调用（无 case_devices）：按既有派生口径生成单条 TaskCase，零回归；
-                # API 用例的亲和令牌同样按 streaming 派生（INT-1799）
-                device_type = _derive_device_type(str(case_id), {})
-                _add_case_row(str(case_id), device_type, None, None)
+            for dev in _entries_for(str(case_id)):
+                _add_case_row(str(case_id), dev['device_type'],
+                              dev.get('device_id'), dev.get('lab_id'))
 
         # 关联设备
         for device_id in device_ids:
@@ -567,13 +547,16 @@ class TaskCrudMixin:
             session.close()
 
     def update_cases(self, task_id: int, action: str,
-                     case_ids: List[str]) -> Optional[Dict[str, Any]]:
+                     case_ids: List[str],
+                     case_devices: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
         """动态添加/移除用例。
 
         Args:
             task_id: 任务 ID
             action: 'add' 或 'remove'
             case_ids: 用例 ID 列表
+            case_devices: add 时的执行路由（device_type 必填）：
+                [{"case_id": str, "device_type": str, "device_id": str|None, "lab_id": int|None}]
 
         Returns:
             {'task_id': task_id, 'total_count': N} 或 None（任务不存在）
@@ -587,7 +570,7 @@ class TaskCrudMixin:
 
             now = datetime.now(_UTC_PLUS_8)
 
-            err = self._apply_case_action(session, task_id, action, case_ids, now)
+            err = self._apply_case_action(session, task_id, action, case_ids, now, case_devices)
             if err:
                 return err
 
@@ -607,44 +590,31 @@ class TaskCrudMixin:
 
     @staticmethod
     def _apply_case_action(session, task_id: int, action: str,
-                           case_ids: List[str], now: datetime) -> Optional[Dict[str, Any]]:
+                           case_ids: List[str], now: datetime,
+                           case_devices: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
         """执行用例动态增/删动作。返回错误 dict 或 None。"""
         if action == 'add':
-            from shared.utils.testcase_helpers import derive_case_test_type
-            from task_service.infrastructure.persistence.models import TestCase
-
-            # INT-1799：动态加用例的亲和域令牌按任务已关联 API 的 streaming 派生
-            # （懒计算 + 一次 ACL；取不到/混道 → 400「无法确定执行亲和域」，
-            # 不再硬编码 http_api 把流式用例派到非流式亲和域）
-            affinity_cache: List[str] = []
-
-            def _affinity() -> str:
-                if not affinity_cache:
-                    affinity_cache.append(
-                        resolve_api_affinity_token(_task_api_ids(session, task_id)))
-                return affinity_cache[0]
+            # device_type 是执行路由唯一依据，add 时必须由调用方显式给出
+            device_map: Dict[str, Dict[str, Any]] = {}
+            for item in case_devices or []:
+                case_id = item.get('case_id')
+                if case_id is not None:
+                    device_map[str(case_id)] = item
 
             for case_id in case_ids:
+                entry = device_map.get(str(case_id)) or {}
+                device_type = entry.get('device_type')
+                if not device_type:
+                    return {
+                        'error': f'用例 {case_id} 缺少 device_type 路由（请通过 case_devices 指定）',
+                        'code': 400,
+                    }
                 existing = session.query(TaskCase).filter(
                     TaskCase.task_id == task_id,
                     TaskCase.test_case_id == case_id,
                 ).first()
                 if existing is None:
-                    # 差异#2 收尾：用例级 device_type 为执行路由唯一依据，
-                    # 动态加入的用例由配置形态派生物理/API 分域；
-                    # 传入用例名供上传双变体后缀判定（INT-129，与建任务派生同口径）
-                    case = session.get(TestCase, case_id)
-                    derived = derive_case_test_type(
-                        case.config if case else None,
-                        case_name=case.name if case else None,
-                    )
-                    if derived == 'e2e':
-                        device_type = 'physical'
-                    else:
-                        try:
-                            device_type = _affinity()
-                        except ExecutionAffinityError as e:
-                            return {'error': str(e), 'code': 400}
+                    device_id = entry.get('device_id')
                     session.add(TaskCase(
                         task_id=task_id,
                         test_case_id=case_id,
@@ -652,6 +622,8 @@ class TaskCrudMixin:
                         execution_status=ExecutionStatus.PENDING,
                         evaluation_status=EvaluationStatus.PENDING,
                         device_type=device_type,
+                        device_id=str(device_id) if device_id is not None else None,
+                        lab_id=entry.get('lab_id') or None,
                         created_at=now,
                     ))
         elif action == 'remove':

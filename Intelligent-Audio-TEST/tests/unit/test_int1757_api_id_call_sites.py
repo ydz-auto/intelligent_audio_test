@@ -5,8 +5,10 @@
 
 - algorithm_service 进程内输出声明缓存改键 ``(algorithm_type, api_id)``：同
   ``algorithm_type`` 下两家 API 不再互相命中缓存；
-- 输出声明加载按唯一键合并（API 级覆盖算法级、未覆盖键回落），不传 ``api_id``
-  只取算法级行（存量行为不变）；
+- 输出声明按 API 实例作用域解析：策略（param_profiles，经 api_param_bindings
+  绑定）+ 实例覆盖（api_id=X 的行，同键覆盖策略、独有键追加、未覆盖键回落
+  策略）；算法类型级默认层已废弃，不传 ``api_id`` 只取算法级仓储行
+  （物理侧 / 历史视图）；
 - 执行 / 评估 / 报告侧调用点把 ``api_id`` 带到 ACL：执行链（单轮 / 多轮 /
   Realtime）、评估 ``task_data`` 透传与 ``test_results.api_id`` 回源、报告侧
   输出声明读取。
@@ -15,10 +17,18 @@ import os
 
 import pytest
 
+os.environ.setdefault('DATABASE_URL', 'sqlite:///:memory:')
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
-ALGO_TYPE = 'translation'  # 该类型无硬编码策略，走仓库加载分支
+from algorithm_service.infrastructure.persistence.config_cache import (  # noqa: E402
+    AlgorithmConfigCache,
+)
+
+ALGO_TYPE = 'translation'  # 该类型无硬编码策略，走「策略 + 实例覆盖」解析
+PROFILE_ID = 7
+API_A = 201
+API_B = 202
 
 
 # ------------------------------------------------------------------ 假仓库
@@ -36,17 +46,69 @@ def _mapping_row(source_param, target_param, api_id=None, transform_type='none')
     }
 
 
+# 策略层（param_profiles / param_profile_mappings）：profile 7 的声明与映射
+_PROFILE_PARAMS = [
+    {'id': 11, 'algorithm_type': ALGO_TYPE, 'api_id': None,
+     'param_code': 'asr_text', 'param_name': '识别文本', 'param_type': 'text',
+     'direction': 'output', 'ui_order': 1},
+    {'id': 12, 'algorithm_type': ALGO_TYPE, 'api_id': None,
+     'param_code': 'vendor_conf', 'param_name': '置信度', 'param_type': 'json',
+     'direction': 'output', 'ui_order': 2},
+]
+_PROFILE_MAPPINGS = [
+    _mapping_row('asr_text', 'asr'),
+    _mapping_row('vendor_conf', 'confidence'),
+]
+
+# 实例覆盖层（algorithm_api_params / param_mappings 的 api_id=X 行）
+_OVERRIDE_PARAMS = [
+    {'id': 21, 'algorithm_type': ALGO_TYPE, 'api_id': API_A,
+     'param_code': 'vendor_conf', 'param_name': '覆盖置信度',
+     'param_type': 'number', 'direction': 'output', 'ui_order': 2},
+]
+_OVERRIDE_MAPPINGS = [
+    _mapping_row('vendor_conf', 'conf_201', api_id=API_A),
+    _mapping_row('asr_text', 'asr_202', api_id=API_B),
+]
+
+
+def _bare_cache(snapshot):
+    """绕过单例加载，直接安装快照（与 test_int1756 同构造手法）。"""
+    cache = object.__new__(AlgorithmConfigCache)
+    cache._config_cache = snapshot
+    return cache
+
+
+def _snapshot():
+    """策略 + 实例覆盖的完整快照；映射与参数均经缓存自身的序列化方法构造。"""
+    return {
+        'algorithms': {},
+        'device_params': {ALGO_TYPE: []},
+        'api_params': {
+            ALGO_TYPE: AlgorithmConfigCache._serialize_params(_OVERRIDE_PARAMS)},
+        'profile_params': {
+            PROFILE_ID: AlgorithmConfigCache._serialize_params(_PROFILE_PARAMS)},
+        'profile_mappings': {
+            PROFILE_ID: AlgorithmConfigCache._serialize_mappings(
+                _PROFILE_MAPPINGS, None, ALGO_TYPE)},
+        'api_bindings': {API_A: PROFILE_ID, API_B: PROFILE_ID},
+        'case_params': {ALGO_TYPE: []},
+        'reference_params': {ALGO_TYPE: []},
+        'mappings': {
+            ALGO_TYPE: AlgorithmConfigCache._serialize_mappings(
+                _OVERRIDE_MAPPINGS, None, ALGO_TYPE)},
+        'evaluation_dimension_params': {},
+    }
+
+
 class _FakeMappingRepo:
-    """param_mappings 行：算法级 2 行 + API 201 各配 1 覆盖 + 1 独有。"""
+    """仅服务 api_id=None 的算法级仓储口径（API 实例行由配置缓存提供）。"""
 
     def __init__(self):
         self.calls = []
         self.rows = [
             _mapping_row('asr_text', 'asr'),
             _mapping_row('vendor_conf', 'confidence'),
-            _mapping_row('asr_text', 'asr_201', api_id=201),
-            _mapping_row('vendor_conf', 'conf_201', api_id=201),
-            _mapping_row('asr_text', 'asr_202', api_id=202),
         ]
 
     def list_by_algorithm(self, algorithm_type, *args, **kwargs):
@@ -55,15 +117,13 @@ class _FakeMappingRepo:
 
 
 class _FakeParamRepo:
-    # 现基线（INT-1748）输出字段清单来源 = algorithm_api_params(direction=output)
-    # 声明，故替身行必须带 direction='output'（与真实表同形）。
+    """仅服务 api_id=None 的算法级仓储口径（照真实表带 direction='output'）。"""
+
     def __init__(self):
         self.rows = [
             {'param_code': 'asr_text', 'param_type': 'text', 'api_id': None,
              'direction': 'output'},
             {'param_code': 'vendor_conf', 'param_type': 'json', 'api_id': None,
-             'direction': 'output'},
-            {'param_code': 'vendor_conf', 'param_type': 'number', 'api_id': 201,
              'direction': 'output'},
         ]
 
@@ -77,8 +137,10 @@ def field_query(monkeypatch):
 
     mapping_repo = _FakeMappingRepo()
     param_repo = _FakeParamRepo()
+    cache = _bare_cache(_snapshot())
     monkeypatch.setattr(q, 'mapping_repository', mapping_repo)
     monkeypatch.setattr(q, 'algorithm_param_repository', param_repo)
+    monkeypatch.setattr(q, 'get_config_cache', lambda: cache)
     q.ResultFieldMappingQueryHandler._output_field_cache.clear()
     yield q, mapping_repo
     q.ResultFieldMappingQueryHandler._output_field_cache.clear()
@@ -87,16 +149,18 @@ def field_query(monkeypatch):
 # ------------------------------------------------- 验收 2：缓存按 (type, api_id)
 
 def test_output_field_cache_keyed_by_algorithm_type_and_api_id(field_query):
-    q, _ = field_query
+    q, mapping_repo = field_query
     handler = q.ResultFieldMappingQueryHandler
 
     level_fields = handler.get_output_fields(ALGO_TYPE)
-    api201_fields = handler.get_output_fields(ALGO_TYPE, api_id=201)
-    api202_fields = handler.get_output_fields(ALGO_TYPE, api_id=202)
+    api201_fields = handler.get_output_fields(ALGO_TYPE, api_id=API_A)
+    api202_fields = handler.get_output_fields(ALGO_TYPE, api_id=API_B)
 
-    # 三家各自的结果都正确（不是命中上一家的缓存）
+    # 三家各自的结果都正确（不是命中上一家的缓存）：
+    # - 算法级视图取仓储行；
+    # - API 视图 = 策略 + 实例覆盖（同键覆盖、未覆盖回落策略）
     assert [f['target_param'] for f in level_fields] == ['asr', 'confidence']
-    assert [f['target_param'] for f in api201_fields] == ['asr_201', 'conf_201']
+    assert [f['target_param'] for f in api201_fields] == ['asr', 'conf_201']
     assert [f['target_param'] for f in api202_fields] == ['asr_202', 'confidence']
 
     # 缓存按 (algorithm_type, api_id) 分桶
@@ -104,10 +168,10 @@ def test_output_field_cache_keyed_by_algorithm_type_and_api_id(field_query):
         (ALGO_TYPE, None), (ALGO_TYPE, 201), (ALGO_TYPE, 202),
     }
 
-    # 再取不触发仓库查询（命中各自分桶）
-    mapping_repo_calls = len(field_query[1].calls)
-    assert handler.get_output_fields(ALGO_TYPE, api_id=201) == api201_fields
-    assert len(field_query[1].calls) == mapping_repo_calls
+    # 再取 201 不触发假仓储查询（API 视图走配置缓存 + 命中分桶）
+    mapping_repo_calls = len(mapping_repo.calls)
+    assert handler.get_output_fields(ALGO_TYPE, api_id=API_A) == api201_fields
+    assert len(mapping_repo.calls) == mapping_repo_calls
 
 
 # ------------------------------------------------- 验收 4：不传 api_id 行为不变
@@ -121,9 +185,9 @@ def test_level_rows_only_without_api_id(field_query):
 
 def test_api_param_type_overrides_level(field_query):
     q, _ = field_query
-    fields = q.ResultFieldMappingQueryHandler.get_output_fields(ALGO_TYPE, api_id=201)
+    fields = q.ResultFieldMappingQueryHandler.get_output_fields(ALGO_TYPE, api_id=API_A)
     by_source = {f['source_param']: f for f in fields}
-    # 参数类型取 API 级行（number），不是算法级（json）
+    # 参数类型取实例覆盖行（number），不是策略行（json）
     assert by_source['vendor_conf']['param_type'] == 'number'
 
 
@@ -244,7 +308,7 @@ def test_report_output_fields_scoped_by_result_api_id(monkeypatch):
 
     seen = []
 
-    def _fake_output_fields(algorithm_type, test_type=None, api_id=None):
+    def _fake_output_fields(algorithm_type, device_type=None, api_id=None):
         seen.append(api_id)
         return []
 

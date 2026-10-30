@@ -71,7 +71,7 @@ def seed_voice_llm():
         try:
             conn.execute(text(
                 "ALTER TABLE case_algorithm_params "
-                "ADD COLUMN IF NOT EXISTS scope VARCHAR(10) NOT NULL DEFAULT 'common'"
+                "ADD COLUMN IF NOT EXISTS scope VARCHAR(20) NOT NULL DEFAULT 'common'"
             ))
             print("  + scope 列已就绪")
         except Exception as e:

@@ -12,7 +12,8 @@ from shared.clients._grpc_stubs import (
 )
 
 
-def submit_evaluate_case(task_id, result_id, test_case_id, algorithm_result, eval_params):
+def submit_evaluate_case(task_id, result_id, test_case_id, algorithm_result, eval_params,
+                         device_type=None):
     """通过 gRPC 调用 evaluation_service 的 EvaluationService.EvaluateCase
 
     供 api_test_service / e2e_test_service 等执行器跨服务提交评估请求。
@@ -23,7 +24,8 @@ def submit_evaluate_case(task_id, result_id, test_case_id, algorithm_result, eva
         result_id: 测试结果ID
         test_case_id: 测试用例ID
         algorithm_result: 算法结果字典
-        eval_params: 评估参数字典 (algorithm_type, test_type, round_number, ...)
+        eval_params: 评估参数字典 (algorithm_type, round_number, ...)
+        device_type: 用例级执行路由（physical / http_api / websocket_api）
     """
     import json as _json
     from shared.proto import evaluation_service_pb2 as eval_pb
@@ -34,6 +36,7 @@ def submit_evaluate_case(task_id, result_id, test_case_id, algorithm_result, eva
         test_case_id=str(test_case_id),
         algorithm_result=_json.dumps(algorithm_result or {}, ensure_ascii=False, default=str),
         eval_params=_json.dumps(eval_params or {}, ensure_ascii=False, default=str),
+        device_type=device_type or '',
     )
     resp = stub.EvaluateCase(req)
     if not resp.success:

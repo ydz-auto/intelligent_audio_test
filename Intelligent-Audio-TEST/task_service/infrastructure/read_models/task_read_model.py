@@ -22,7 +22,6 @@ from shared.utils.query_utils import now_cst
 from shared.utils.status_constants import (
     TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus, ACTIVE_EXECUTION_STATUSES,
 )
-from shared.models.common_enums import TestType
 from sqlalchemy import and_, or_, String  # String: search_tasks 中 Task.id.cast(String) 需要
 from sqlalchemy.orm import selectinload
 from shared.infrastructure.visibility_filter import VisibilityDenied, check_visible, visible_condition

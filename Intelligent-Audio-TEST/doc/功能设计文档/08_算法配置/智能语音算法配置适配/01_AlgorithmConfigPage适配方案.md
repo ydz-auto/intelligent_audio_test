@@ -372,7 +372,7 @@ interface FormField {
   helpText?: string;
   hidden: boolean;
   uiOrder: number;   // 界面排序（后端 ui_order）
-  scope: string;     // 参数适用范围：common/api/e2e
+  scope: string;     // 参数适用范围：common/physical/http_api/websocket_api
 }
 
 // fieldType -> component 默认映射（后端 _get_default_component）

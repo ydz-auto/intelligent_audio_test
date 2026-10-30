@@ -979,15 +979,14 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         """构建参考参数（供 api_gateway task_query_service 调用）。
 
         请求字段（proto BuildReferenceParamsRequest）：
-            data: str  JSON: {case_info: dict, case_results: list, test_type: str}
+            data: str  JSON: {case_info: dict, case_results: list}
         """
         try:
             params = _loads(request.data, {}) or {}
             case_info = params.get('case_info', {})
             case_results = params.get('case_results', [])
-            test_type = params.get('test_type', 'api')
             ref_params = self.query_handler.handle_build_reference_params(
-                case_info, case_results, test_type
+                case_info, case_results
             )
             return self._resp(True, 'ok', ref_params)
         except Exception as e:

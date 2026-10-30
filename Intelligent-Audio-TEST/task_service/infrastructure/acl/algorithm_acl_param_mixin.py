@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional
 
+from shared.models.common_enums import CaseParamScope
 from shared.proto import algorithm_service_pb2 as _pb
 from shared.utils.dto_utils import dict_to_dto
 from shared.utils.grpc_json import loads as _loads
@@ -238,7 +239,7 @@ class AlgorithmParamMixin:
         ))
         items = _items(resp, dto_cls=CaseParamDTO)
         if scope:
-            items = [it for it in items if it.scope == "common"
+            items = [it for it in items if it.scope == CaseParamScope.COMMON.value
                       or it.scope == scope]
         return items
 

@@ -92,7 +92,7 @@ class ListCaseParamsQuery:
     """查询用例专属参数列表。
 
     - algorithm_type: 算法类型代码（空值返回全部）
-    - scope: 参数适用范围（common/api/e2e，空值不过滤）
+    - scope: 参数适用范围（common/physical/http_api/websocket_api，空值不过滤）
     """
 
     algorithm_type: str = ""

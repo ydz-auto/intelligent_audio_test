@@ -3,6 +3,7 @@ import json
 
 from shared.utils.status_constants import EvaluationStatus, ExecutionStatus, TaskCaseStatus
 from shared.utils.status_utils import derive_task_case_status
+from shared.models.common_enums import DeviceType
 
 # domain 层通过 ACL 仓储获取字段映射数据（延迟 import 避免循环依赖）
 
@@ -19,7 +20,7 @@ class CaseEvaluationMixin:
             task_id, test_case_id, result_id, kwargs)
         field_mapper = algorithm_acl_repository.get_field_mappings(
             algorithm_type, api_id=api_id)
-        test_type = kwargs.get('test_type', 'api')
+        device_type = kwargs.get('device_type') or DeviceType.HTTP_API.value
         round_number = kwargs.get('round_number')  # 多轮评估: 轮次编号 (None=整体评估, 0-indexed)
         reference_params_col = kwargs.pop('reference_params_col', None)
         algorithm_params_col = kwargs.pop('algorithm_params_col', None)
@@ -29,7 +30,7 @@ class CaseEvaluationMixin:
             rounds_list = self._build_rounds_list(
                 algorithm_result, reference_params_col,
                 field_mapper, kwargs.get('algorithm_type', 'translation'),
-                test_type, task_id, test_case_id,
+                device_type, task_id, test_case_id,
                 algorithm_params_col=algorithm_params_col,
                 api_id=api_id,
             )
@@ -58,7 +59,7 @@ class CaseEvaluationMixin:
                 fanout_submitted, has_overall_dims = self._fan_out_per_round_evaluations(
                     task_id=task_id, result_id=result_id, test_case_id=test_case_id,
                     algorithm_result=algorithm_result, field_mapper=field_mapper,
-                    test_type=test_type, rounds_list=rounds_list, kwargs=kwargs,
+                    device_type=device_type, rounds_list=rounds_list, kwargs=kwargs,
                     api_id=api_id,
                 )
                 if fanout_submitted and not has_overall_dims:
@@ -67,14 +68,14 @@ class CaseEvaluationMixin:
 
         self._log(
             level='DEBUG',
-            content=f"[DEBUG evaluate_case] 传入参数: task_id={task_id}, result_id={result_id}, result_id_type={type(result_id)}, test_case_id={test_case_id}, test_type={test_type}, round_number={round_number}",
+            content=f"[DEBUG evaluate_case] 传入参数: task_id={task_id}, result_id={result_id}, result_id_type={type(result_id)}, test_case_id={test_case_id}, device_type={device_type}, round_number={round_number}",
             task_id=task_id,
             test_case_id=test_case_id
         )
 
         self._log(
             level='INFO',
-            content=f"用例评估请求: TaskID={task_id}, TestCaseID={test_case_id}, ResultID={result_id}, TestType={test_type}",
+            content=f"用例评估请求: TaskID={task_id}, TestCaseID={test_case_id}, ResultID={result_id}, DeviceType={device_type}",
             task_id=task_id,
             test_case_id=test_case_id
         )
@@ -82,14 +83,14 @@ class CaseEvaluationMixin:
         # 准备评估数据(加载用例/参考文本/维度配置/维度数据)
         prepared = self._prepare_evaluation_data(
             task_id, result_id, test_case_id, algorithm_result,
-            field_mapper, kwargs, test_type, round_number
+            field_mapper, kwargs, device_type, round_number
         )
         if prepared is None or prepared is False:
             return prepared if prepared is False else False
 
         return self._dispatch_to_workers(
             task_id, result_id, test_case_id, algorithm_result,
-            prepared, field_mapper, test_type, round_number, kwargs,
+            prepared, field_mapper, device_type, round_number, kwargs,
             api_id=api_id
         )
 
@@ -192,7 +193,7 @@ class CaseEvaluationMixin:
             )
 
     def _fan_out_per_round_evaluations(self, task_id, result_id, test_case_id,
-                                        algorithm_result, field_mapper, test_type,
+                                        algorithm_result, field_mapper, device_type,
                                         rounds_list, kwargs, api_id=None):
         """多轮整体评估入口的逐轮维度补提交（INT-126）。
 
@@ -254,13 +255,13 @@ class CaseEvaluationMixin:
             try:
                 prepared = self._prepare_evaluation_data(
                     task_id, result_id, test_case_id, algorithm_result,
-                    field_mapper, round_kwargs, test_type, round_idx
+                    field_mapper, round_kwargs, device_type, round_idx
                 )
                 if prepared is None or prepared is False:
                     continue
                 self._dispatch_to_workers(
                     task_id, result_id, test_case_id, algorithm_result,
-                    prepared, field_mapper, test_type, round_idx, round_kwargs,
+                    prepared, field_mapper, device_type, round_idx, round_kwargs,
                     api_id=api_id
                 )
                 fanout_submitted = True
@@ -280,7 +281,7 @@ class CaseEvaluationMixin:
         return fanout_submitted, has_overall_dims
 
     def _prepare_evaluation_data(self, task_id, result_id, test_case_id, algorithm_result,
-                                  field_mapper, kwargs, test_type, round_number=None):
+                                  field_mapper, kwargs, device_type, round_number=None):
         """准备评估数据：加载测试用例、参考文本、维度配置、维度数据
 
         round_number 传导到维度配置加载：单轮评估只取该轮维度，整体评估只取顶层维度。
@@ -438,7 +439,7 @@ class CaseEvaluationMixin:
             )
 
     def _dispatch_to_workers(self, task_id, result_id, test_case_id, algorithm_result,
-                              prepared, field_mapper, test_type, round_number, kwargs,
+                              prepared, field_mapper, device_type, round_number, kwargs,
                               api_id=None):
         """创建维度结果记录并分发评估任务到端点 worker"""
         test_case = prepared['test_case']
@@ -457,12 +458,12 @@ class CaseEvaluationMixin:
         flat_eval_fields = {}
         if isinstance(algorithm_result, dict) and algorithm_result.get('rounds'):
             for k, v in kwargs.items():
-                if k not in ('test_type', 'round_number', 'algorithm_type',
+                if k not in ('device_type', 'round_number', 'algorithm_type',
                              'reference_params_col', 'rounds', 'dimension_filter_ids'):
                     flat_eval_fields[k] = v
         self._dispatch_evaluation_tasks(
             dimension_data_list, dimension_result_map, result_id, task_id, test_case_id,
-            algorithm_result, algorithm_type, test_type, round_number, field_mapper, ref_texts,
+            algorithm_result, algorithm_type, device_type, round_number, field_mapper, ref_texts,
             rounds_list, flat_eval_fields, api_id=api_id
         )
 

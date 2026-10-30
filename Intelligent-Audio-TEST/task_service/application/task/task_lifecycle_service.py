@@ -26,7 +26,6 @@ from datetime import datetime
 from shared.utils.result_data_store import load_full_result_data
 from shared.utils.json_utils import deserialize_algorithm_result
 from shared.utils.status_utils import derive_task_case_status
-from shared.models.common_enums import TestType
 # INT-302 重执行范围模式（枚举化，拒绝魔法字符串）：缺省 all 保持整任务语义
 from shared.models.common_enums import RetryScopeMode
 from shared.utils.status_constants import (
@@ -560,13 +559,8 @@ class TaskLifecycleService:
             for tc in completed_cases:
                 test_case_id = tc.test_case_id
                 try:
-                    # 评估口径值由用例级 device_type 派生（差异#2 收尾：
-                    # task.type 已废弃；gRPC 契约字段 test_type 保留）
-                    test_type = (
-                        TestType.E2E.value
-                        if (tc.device_type or DeviceType.PHYSICAL.value) == DeviceType.PHYSICAL.value
-                        else TestType.API.value
-                    )
+                    # 评估口径由用例级执行路由 device_type 直接承载
+                    device_type = tc.device_type or DeviceType.PHYSICAL.value
 
                     # 跨域查询 TestResult（后续 gRPC 改造）
                     result = task_repository.get_test_result_for_reevaluate(task_id, test_case_id)
@@ -604,7 +598,7 @@ class TaskLifecycleService:
                             result_id=result.id,
                             test_case_id=test_case_id,
                             algorithm_result=algo_result,
-                            test_type=test_type or 'api',
+                            device_type=device_type or 'api',
                             algorithm_type=algorithm_type or 'translation',
                         )
                         if not resp.success:
@@ -616,7 +610,7 @@ class TaskLifecycleService:
                             test_case_id=test_case_id,
                             algorithm_result=algo_result,
                             reference_params=reference_params,
-                            test_type=test_type or 'api',
+                            device_type=device_type or 'api',
                             algorithm_type=algorithm_type or 'translation',
                         )
                         if not resp.success:

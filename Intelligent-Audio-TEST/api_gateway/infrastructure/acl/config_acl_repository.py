@@ -383,6 +383,21 @@ class AlgorithmConfigAclRepositoryImpl(AlgorithmConfigAclRepository):
         from api_gateway.infrastructure.grpc_proxies import algorithm_config_service
         return _wrap(algorithm_config_service.list_params(**kwargs))
 
+    def get_api_params(self, algorithm_type=None, api_id=None) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import algorithm_config_service
+        return _wrap(algorithm_config_service.get_api_params(
+            algorithm_type=algorithm_type, api_id=api_id))
+
+    def get_param_mapping_for_component(
+        self, algorithm_type=None, component_type=None, api_id=None
+    ) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import algorithm_config_service
+        return _wrap(algorithm_config_service.get_param_mapping_for_component(
+            algorithm_type=algorithm_type,
+            component_type=component_type,
+            api_id=api_id,
+        ))
+
     def get_param(self, param_id) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import algorithm_config_service
         return _wrap(algorithm_config_service.get_param(param_id))

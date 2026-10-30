@@ -147,6 +147,22 @@ class TestCaseConfigUpdateMixin:
         return payload
 
     @staticmethod
+    def _extract_speaker_group_id(payload):
+        """从 dict{speakerGroupId} 提取逻辑音箱组 ID（用例只关联逻辑音箱时使用）。"""
+        if isinstance(payload, dict):
+            return payload.get('speakerGroupId') or payload.get('speaker_group_id')
+        return None
+
+    @staticmethod
+    def _extract_speaker_group_ids(payload):
+        """从 list 或 dict{speakerGroupIds} 提取逻辑音箱组 ID 列表（背景噪声多选）。"""
+        if isinstance(payload, dict):
+            payload = payload.get('speakerGroupIds') or payload.get('speaker_group_ids')
+        if not isinstance(payload, list):
+            return None
+        return payload
+
+    @staticmethod
     def _extract_value(payload):
         """从数字或 dict{value} 提取声压值。"""
         if isinstance(payload, bool):
@@ -220,6 +236,55 @@ class TestCaseConfigUpdateMixin:
             else:
                 cbn['playback_device_id'] = device_id
 
+    def _apply_speaker_group_to_round(self, round_item, group_id, targets):
+        """把逻辑音箱组写入单轮各目标（用例只关联逻辑音箱，执行时按实验室换绑）。
+
+        写 `playback_speaker_group_id(s)` 并清掉实体设备键，避免设备 id 与组引用并存。
+        """
+        targets = self._normalize_targets(targets)
+        if group_id is None:
+            return
+        audios = round_item.get('audios', [])
+        if 'audio' in targets:
+            for audio_config in audios:
+                audio_config['playback_speaker_group_id'] = group_id
+                audio_config.pop('playback_device_id', None)
+                audio_config.pop('playback_device_name', None)
+        for audio_config in audios:
+            if 'segmentBackgroundNoise' in targets:
+                bn = audio_config.get('background_noise') or audio_config.get('backgroundNoise')
+                if isinstance(bn, dict):
+                    bn['playback_speaker_group_ids'] = [group_id]
+                    bn.pop('device_ids', None)
+                    bn.pop('playback_device_ids', None)
+            if 'interferers' in targets:
+                for inf in audio_config.get('interferers', []):
+                    if isinstance(inf, dict):
+                        inf['playback_speaker_group_id'] = group_id
+                        inf.pop('playback_device_id', None)
+            if 'voiceprint' in targets:
+                vp = audio_config.get('voiceprint')
+                if isinstance(vp, dict):
+                    vp['playback_speaker_group_id'] = group_id
+                    vp.pop('playback_device_id', None)
+        if 'caseBackgroundNoise' in targets:
+            rbn = round_item.get('background_noise') or round_item.get('backgroundNoise')
+            if isinstance(rbn, dict):
+                rbn['playback_speaker_group_ids'] = [group_id]
+                rbn.pop('device_ids', None)
+                rbn.pop('playback_device_ids', None)
+
+    @staticmethod
+    def _apply_speaker_group_to_case_bn(config, group_id):
+        """写入 config 级（整体）背景噪声的逻辑音箱组引用。"""
+        if group_id is None:
+            return
+        cbn = config.get('background_noise')
+        if isinstance(cbn, dict):
+            cbn['playback_speaker_group_ids'] = [group_id]
+            cbn.pop('device_ids', None)
+            cbn.pop('playback_device_ids', None)
+
     def _apply_spl_to_round(self, round_item, spl_value, targets):
         """把声压值写入单轮内各目标。"""
         targets = self._normalize_targets(targets)
@@ -255,9 +320,23 @@ class TestCaseConfigUpdateMixin:
         if cbn and isinstance(cbn, dict):
             cbn['spl'] = spl_value
 
-    def _apply_noise_to_round(self, round_item, audio_id, spl, device_ids, targets):
-        """把背景噪声写入单轮：轮次级 backgroundNoise + segment 级 background_noise + 干扰人。"""
+    def _apply_noise_to_round(self, round_item, audio_id, spl, device_ids, targets,
+                              speaker_group_ids=None):
+        """把背景噪声写入单轮：轮次级 backgroundNoise + segment 级 background_noise + 干扰人。
+
+        用例只关联逻辑音箱：传 speaker_group_ids 时写 `playback_speaker_group_ids`
+        并清掉实体设备键（执行时按实验室换绑）。
+        """
         targets = self._normalize_targets(targets)
+
+        def _apply_target_speaker(target):
+            if speaker_group_ids is None:
+                return False
+            target['playback_speaker_group_ids'] = speaker_group_ids
+            target.pop('device_ids', None)
+            target.pop('playback_device_ids', None)
+            return True
+
         if 'caseBackgroundNoise' in targets:
             rbn = round_item.get('backgroundNoise')
             if not isinstance(rbn, dict):
@@ -267,7 +346,7 @@ class TestCaseConfigUpdateMixin:
                 rbn['audio_id'] = audio_id
             if spl is not None:
                 rbn['spl'] = spl
-            if device_ids is not None:
+            if not _apply_target_speaker(rbn) and device_ids is not None:
                 rbn['device_ids'] = device_ids
 
         if 'segmentBackgroundNoise' in targets or 'interferers' in targets:
@@ -281,7 +360,7 @@ class TestCaseConfigUpdateMixin:
                         bn['audio_id'] = audio_id
                     if spl is not None:
                         bn['spl'] = spl
-                    if device_ids is not None:
+                    if not _apply_target_speaker(bn) and device_ids is not None:
                         bn['device_ids'] = device_ids
                 if 'interferers' in targets:
                     for inf in audio_config.get('interferers', []):
@@ -290,12 +369,15 @@ class TestCaseConfigUpdateMixin:
                                 inf['audio_id'] = audio_id
                             if spl is not None:
                                 inf['spl'] = spl
-                            if device_ids is not None:
+                            if speaker_group_ids:
+                                inf['playback_speaker_group_id'] = speaker_group_ids[0]
+                                inf.pop('playback_device_id', None)
+                            elif device_ids is not None:
                                 inf['playback_device_id'] = device_ids[0] if device_ids else ''
 
     @staticmethod
-    def _apply_noise_to_case_bn(config, audio_id, spl, device_ids):
-        """写入 config 级（整体）背景噪声：audio_id / spl / device_ids。"""
+    def _apply_noise_to_case_bn(config, audio_id, spl, device_ids, speaker_group_ids=None):
+        """写入 config 级（整体）背景噪声：audio_id / spl / 逻辑音箱组或 device_ids。"""
         cbn = config.get('background_noise')
         if not isinstance(cbn, dict):
             cbn = {}
@@ -304,7 +386,11 @@ class TestCaseConfigUpdateMixin:
             cbn['audio_id'] = audio_id
         if spl is not None:
             cbn['spl'] = spl
-        if device_ids is not None:
+        if speaker_group_ids is not None:
+            cbn['playback_speaker_group_ids'] = speaker_group_ids
+            cbn.pop('device_ids', None)
+            cbn.pop('playback_device_ids', None)
+        elif device_ids is not None:
             cbn['device_ids'] = device_ids
 
     # ---------- 各批量配置更新动作 ----------
@@ -402,6 +488,7 @@ class TestCaseConfigUpdateMixin:
         round_values = data.get('round_values') or {}
         # 整体（case 级）：只写 config.background_noise
         case_level = data.get('case_level')
+        group_id = self._extract_speaker_group_id(playback_devices)
         if playback_devices is None and not round_values and not case_level:
             return ("更新播放设备需要 'playback_devices' 或 'round_values'", True)
 
@@ -411,6 +498,8 @@ class TestCaseConfigUpdateMixin:
         targets = self._normalize_targets(data.get('targets')) or ['audio']
 
         device_id = self._extract_device_id(playback_devices)
+        if device_id is None and group_id is None:
+            return ("更新播放设备需要 'deviceId' 或 'speakerGroupId'", True)
 
         test_cases = _filter_visible_testcases(self.repo.list_testcases_by_ids(ids))
         updated_count = 0
@@ -432,17 +521,30 @@ class TestCaseConfigUpdateMixin:
                         rv = self._get_round_value(round_values, rn, last_rn)
                         if not rv:
                             continue
-                        r_device = self._extract_device_id(rv)
+                        r_group_id = self._extract_speaker_group_id(rv)
                         r_targets = self._round_targets(rv, targets)
-                        self._apply_device_to_round(round_item, r_device, r_targets)
+                        if r_group_id is not None:
+                            self._apply_speaker_group_to_round(round_item, r_group_id, r_targets)
+                        else:
+                            self._apply_device_to_round(
+                                round_item, self._extract_device_id(rv), r_targets)
                 else:
                     for round_item in self._iter_selected_rounds(config, round_mode, round_numbers):
-                        self._apply_device_to_round(round_item, device_id, targets)
+                        if group_id is not None:
+                            self._apply_speaker_group_to_round(round_item, group_id, targets)
+                        else:
+                            self._apply_device_to_round(round_item, device_id, targets)
 
-                # config 级（整体）背景噪声设备：case_level 优先，回退全局设备
+                # config 级（整体）背景噪声设备：case_level 优先，回退全局设备/组
                 if 'caseBackgroundNoise' in targets:
-                    cfg_device_id = self._extract_device_id(case_level) or device_id
-                    self._apply_device_to_case_bn(config, cfg_device_id)
+                    cfg_group_id = self._extract_speaker_group_id(case_level)
+                    if cfg_group_id is None and self._extract_device_id(case_level) is None:
+                        cfg_group_id = group_id
+                    if cfg_group_id is not None:
+                        self._apply_speaker_group_to_case_bn(config, cfg_group_id)
+                    else:
+                        cfg_device_id = self._extract_device_id(case_level) or device_id
+                        self._apply_device_to_case_bn(config, cfg_device_id)
 
                 self._update_config_flagged(tc, config)
             tc.updated_at = now_cst()
@@ -625,6 +727,7 @@ class TestCaseConfigUpdateMixin:
         audio_id = data.get('noise_audio_id')
         spl = data.get('noise_spl')
         device_ids = data.get('noise_device_ids') or []
+        group_ids = self._extract_speaker_group_ids(data.get('noise_speaker_group_ids'))
 
         # 获取轮次范围和层级目标
         round_mode = data.get('round_mode') or 'all'
@@ -655,21 +758,35 @@ class TestCaseConfigUpdateMixin:
                     if not rv or not isinstance(rv, dict):
                         continue
                     r_audio_id, r_spl, r_device_ids = self._extract_noise(rv)
+                    r_group_ids = self._extract_speaker_group_ids(
+                        rv.get('speakerGroupIds') or rv.get('speaker_group_ids'))
                     r_targets = rv.get('targets') or targets
-                    self._apply_noise_to_round(round_item, r_audio_id, r_spl, r_device_ids, r_targets)
+                    self._apply_noise_to_round(
+                        round_item, r_audio_id, r_spl, r_device_ids, r_targets,
+                        speaker_group_ids=r_group_ids)
             else:
                 for round_item in self._iter_selected_rounds(config, round_mode, round_numbers):
-                    self._apply_noise_to_round(round_item, audio_id, spl, device_ids, targets)
+                    self._apply_noise_to_round(
+                        round_item, audio_id, spl, device_ids, targets,
+                        speaker_group_ids=group_ids)
 
             # 整体（case 级）背景噪声：case_level 优先，回退全局噪声字段。
             # per_round 模式下整体噪声已由 case_level 承载，不回退全局字段
             # （避免把逐轮 mode 下的全局残留值误写进整体背景噪声）。
             cl_audio_id, cl_spl, cl_device_ids = self._extract_noise(case_level)
-            cl_provided = any(v is not None for v in (cl_audio_id, cl_spl, cl_device_ids))
+            cl_group_ids = self._extract_speaker_group_ids(
+                (case_level or {}).get('speakerGroupIds')
+                or (case_level or {}).get('speaker_group_ids'))
+            cl_provided = any(
+                v is not None
+                for v in (cl_audio_id, cl_spl, cl_device_ids, cl_group_ids))
             if cl_provided:
-                self._apply_noise_to_case_bn(config, cl_audio_id, cl_spl, cl_device_ids)
+                self._apply_noise_to_case_bn(
+                    config, cl_audio_id, cl_spl, cl_device_ids,
+                    speaker_group_ids=cl_group_ids)
             elif 'caseBackgroundNoise' in targets and not (round_mode == 'per_round' and round_values):
-                self._apply_noise_to_case_bn(config, audio_id, spl, device_ids)
+                self._apply_noise_to_case_bn(
+                    config, audio_id, spl, device_ids, speaker_group_ids=group_ids)
 
             self._update_config_flagged(tc, config)
             updated_count += 1

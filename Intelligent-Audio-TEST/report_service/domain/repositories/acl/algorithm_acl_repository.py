@@ -32,6 +32,7 @@ class AlgorithmConfigAclRepository(ABC):
         ...
 
     @abstractmethod
-    def get_full_field_mapping(self, algorithm_type) -> Optional[AlgoFieldMappingDTO]:
-        """获取算法字段映射快照。"""
+    def get_full_field_mapping(self, algorithm_type,
+                               api_id: Optional[int] = None) -> Optional[AlgoFieldMappingDTO]:
+        """获取算法字段映射快照（api_id 非空时按其「策略 + 覆盖」解析）。"""
         ...

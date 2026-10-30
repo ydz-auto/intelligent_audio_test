@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
+from shared.models.common_enums import DeviceType
+
 
 @dataclass(frozen=True)
 class UpdateAudioMetadataCommand:
@@ -85,7 +87,7 @@ class ProcessAudioCommand:
 @dataclass(frozen=True)
 class CreateTestCaseFromAudioCommand:
     audio_id: int
-    test_types: List[str] = field(default_factory=lambda: ['api'])
+    device_type: str = DeviceType.HTTP_API.value
     tags: List[str] = field(default_factory=list)
     default_playback_device_id: Any = None
     default_spl: float = 65.0

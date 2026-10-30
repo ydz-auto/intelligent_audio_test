@@ -226,7 +226,7 @@ class TestDimensionFilterMatrix:
         host = _FilterHost()
         prepared = host._prepare_evaluation_data(
             task_id=1, result_id=11, test_case_id='c1', algorithm_result={},
-            field_mapper=None, kwargs=kwargs, test_type='api', round_number=None,
+            field_mapper=None, kwargs=kwargs, device_type='http_api', round_number=None,
         )
         return host, prepared
 
@@ -281,7 +281,7 @@ class TestDimensionFilterMatrix:
         prepared = host._prepare_evaluation_data(
             task_id=1, result_id=11, test_case_id='c1', algorithm_result={},
             field_mapper=None, kwargs={'dimension_filter_ids': [121, 177]},
-            test_type='api', round_number=None,
+            device_type='http_api', round_number=None,
         )
 
         assert prepared is not False
@@ -349,7 +349,7 @@ class TestReevaluateFailedDims:
             ok = ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [{'output': {}}, {'output': {}}]},
-                test_type='e2e', algorithm_type='translation',
+                device_type='physical', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 
@@ -380,7 +380,7 @@ class TestReevaluateFailedDims:
                 ok = ex._reevaluate_multi_round(
                     task_id=1, result=11, test_case_id='c1',
                     algorithm_result={'rounds': [{'output': {}}]},
-                    test_type='e2e', algorithm_type='translation',
+                    device_type='physical', algorithm_type='translation',
                     reevaluate_type='failed',
                 )
 
@@ -405,7 +405,7 @@ class TestReevaluateFailedDims:
                 ok = ex._reevaluate_multi_round(
                     task_id=1, result=11, test_case_id='c1',
                     algorithm_result={'rounds': [{'output': {}}]},
-                    test_type='e2e', algorithm_type='translation',
+                    device_type='physical', algorithm_type='translation',
                     reevaluate_type='failed',
                 )
 
@@ -423,7 +423,7 @@ class TestReevaluateFailedDims:
             ok = ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [{'output': {}}]},
-                test_type='e2e', algorithm_type='translation',
+                device_type='physical', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 
@@ -451,7 +451,7 @@ class TestReevaluateFailedDims:
                 ok = ex._reevaluate_multi_round(
                     task_id=1, result=11, test_case_id='c1',
                     algorithm_result={'rounds': [{'output': {}}]},
-                    test_type='e2e', algorithm_type='translation',
+                    device_type='physical', algorithm_type='translation',
                     reevaluate_type='failed',
                 )
 
@@ -482,7 +482,7 @@ class TestReevaluateFailedDims:
                     {'output': 'x', 'evaluation': {'wer': 0.1}},
                     {'output': 'y', 'evaluation': {'wer': 0.2}},
                 ]},
-                test_type='api', algorithm_type='translation',
+                device_type='http_api', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 
@@ -500,7 +500,7 @@ class TestReevaluateFailedDims:
             ok = ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [{'output': {}}]},
-                test_type='e2e', algorithm_type='translation',
+                device_type='physical', algorithm_type='translation',
                 reevaluate_type='all',
             )
 
@@ -522,7 +522,7 @@ class TestReevaluateFailedDims:
             ok = ex._reevaluate_single(
                 task_id=1, result_id=11, test_case_id='c1',
                 algorithm_result={'output': {}}, reference_params=[],
-                test_type='api', algorithm_type='translation',
+                device_type='http_api', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 
@@ -542,7 +542,7 @@ class _GroupHost(DimensionResultMixin):
     def _log(self, **kwargs):
         self.logs.append(kwargs)
 
-    def update_task_case_status(self, result_id, current_result_all_completed, task_id, test_case_id, test_type=None):
+    def update_task_case_status(self, result_id, current_result_all_completed, task_id, test_case_id, device_type=None):
         self.unified_calls.append({
             'result_id': result_id,
             'current_result_all_completed': current_result_all_completed,
@@ -800,7 +800,7 @@ class TestPendingDimCollection:
             ok = ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [{'output': {}}, {'output': {}}]},
-                test_type='e2e', algorithm_type='translation',
+                device_type='physical', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 
@@ -819,7 +819,7 @@ class TestPendingDimCollection:
             ok = ex._reevaluate_single(
                 task_id=1, result_id=11, test_case_id='c1',
                 algorithm_result={'output': {}}, reference_params=[],
-                test_type='api', algorithm_type='translation',
+                device_type='http_api', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 
@@ -852,7 +852,7 @@ class TestSweepOutOfScopeActiveScores:
                 ex._reevaluate_multi_round(
                     task_id=1, result=11, test_case_id='c1',
                     algorithm_result={'rounds': [{'output': {}}, {'output': {}}]},
-                    test_type='e2e', algorithm_type='translation',
+                    device_type='physical', algorithm_type='translation',
                     reevaluate_type='failed',
                 )
 
@@ -873,7 +873,7 @@ class TestSweepOutOfScopeActiveScores:
             ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [{'output': {}}]},
-                test_type='e2e', algorithm_type='translation',
+                device_type='physical', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 
@@ -897,7 +897,7 @@ class TestSweepOutOfScopeActiveScores:
                 ex._reevaluate_multi_round(
                     task_id=1, result=11, test_case_id='c1',
                     algorithm_result={'rounds': [{'output': {}}]},
-                    test_type='e2e', algorithm_type='translation',
+                    device_type='physical', algorithm_type='translation',
                     reevaluate_type='failed',
                 )
 
@@ -916,7 +916,7 @@ class TestSweepOutOfScopeActiveScores:
             ex._reevaluate_single(
                 task_id=1, result_id=11, test_case_id='c1',
                 algorithm_result={'output': {}}, reference_params=[],
-                test_type='api', algorithm_type='translation',
+                device_type='http_api', algorithm_type='translation',
                 reevaluate_type='failed',
             )
 
@@ -933,7 +933,7 @@ class TestSweepOutOfScopeActiveScores:
             ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [{'output': {}}]},
-                test_type='e2e', algorithm_type='translation',
+                device_type='physical', algorithm_type='translation',
                 reevaluate_type='all',
             )
 
@@ -1090,7 +1090,7 @@ class TestFilterNonNumericConfigDimId:
         prepared = host._prepare_evaluation_data(
             task_id=1, result_id=11, test_case_id='c1', algorithm_result={},
             field_mapper=None, kwargs={'dimension_filter_ids': [121]},
-            test_type='api', round_number=None,
+            device_type='http_api', round_number=None,
         )
 
         assert prepared is not False

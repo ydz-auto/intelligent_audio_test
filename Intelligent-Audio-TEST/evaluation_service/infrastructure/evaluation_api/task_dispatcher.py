@@ -14,7 +14,7 @@ class TaskDispatcherMixin:
     """按端点分组维度并异步提交评估任务到端点 Worker"""
 
     def _dispatch_evaluation_tasks(self, dimension_data_list, dimension_result_map, result_id, task_id,
-                                    test_case_id, algorithm_result, algorithm_type, test_type,
+                                    test_case_id, algorithm_result, algorithm_type, device_type,
                                     round_number, field_mapper, ref_texts, rounds_list=None,
                                     flat_eval_fields=None, api_id=None):
         """将维度按端点分组并异步提交评估任务
@@ -28,7 +28,7 @@ class TaskDispatcherMixin:
         if third_party_list:
             self._dispatch_third_party_tasks(
                 third_party_list, dimension_result_map, result_id, task_id, test_case_id,
-                algorithm_result, algorithm_type, test_type, round_number, field_mapper,
+                algorithm_result, algorithm_type, device_type, round_number, field_mapper,
                 ref_texts, rounds_list, flat_eval_fields, api_id=api_id)
         dimension_data_list = local_list
 
@@ -74,7 +74,7 @@ class TaskDispatcherMixin:
 
         self._submit_to_workers(
             endpoint_groups, result_id, task_id, test_case_id, algorithm_result,
-            algorithm_type, test_type, round_number, field_mapper, ref_texts,
+            algorithm_type, device_type, round_number, field_mapper, ref_texts,
             rounds_list, flat_eval_fields, api_id=api_id
         )
 
@@ -156,7 +156,7 @@ class TaskDispatcherMixin:
         return merged_groups
 
     def _submit_to_workers(self, endpoint_groups, result_id, task_id, test_case_id,
-                            algorithm_result, algorithm_type, test_type, round_number,
+                            algorithm_result, algorithm_type, device_type, round_number,
                             field_mapper, ref_texts, rounds_list, flat_eval_fields,
                             api_id=None):
         """遍历端点分组，为每组创建 worker 并提交评估任务
@@ -185,7 +185,7 @@ class TaskDispatcherMixin:
 
             task_data = self._build_task_data(
                 task_id, result_id, test_case_id, algorithm_result,
-                representative_dim_data, group_items, algorithm_type, test_type,
+                representative_dim_data, group_items, algorithm_type, device_type,
                 round_number, field_mapper, ref_texts, rounds_list, flat_eval_fields,
                 api_id=api_id
             )
@@ -203,7 +203,7 @@ class TaskDispatcherMixin:
                 self._log(level='ERROR', content=f"提交评估任务失败: {str(e)}", task_id=task_id, test_case_id=test_case_id)
 
     def _build_task_data(self, task_id, result_id, test_case_id, algorithm_result,
-                         representative_dim_data, group_items, algorithm_type, test_type,
+                         representative_dim_data, group_items, algorithm_type, device_type,
                          round_number, field_mapper, ref_texts, rounds_list=None,
                          flat_eval_fields=None, api_id=None):
         """构建提交给端点Worker的任务数据
@@ -219,7 +219,7 @@ class TaskDispatcherMixin:
             'representative_dim_data': representative_dim_data,
             'group_items': group_items,
             'algorithm_type': algorithm_type,
-            'test_type': test_type
+            'device_type': device_type
         }
 
         if api_id is not None:

@@ -59,12 +59,6 @@ class ReportType(str, Enum):
     BENCHMARK = 'benchmark'  # INT-481：Benchmark 报告（发布记录见 benchmark_reports 第五表）
 
 
-class TestType(str, Enum):
-    """测试类型枚举（api 接口测试 / e2e 端到端测试）"""
-    API = 'api'
-    E2E = 'e2e'
-
-
 class RetryScopeMode(str, Enum):
     """重执行/重评估范围模式（INT-302：任务卡片按用例+按维度选择）
 
@@ -108,6 +102,26 @@ class DeviceType(str, Enum):
     PHYSICAL = 'physical'
     HTTP_API = 'http_api'
     WEBSOCKET_API = 'websocket_api'
+
+
+class CaseParamScope(str, Enum):
+    """用例参数适用范围枚举 — `case_algorithm_params.scope` 列值域
+
+    - COMMON  所有设备类型通用的参数（缺省）
+    - 其余三个值直接复用 DeviceType 值：参数只在对应设备类型的用例里生效
+
+    取代旧的 common/api/e2e 词表（用例不再区分 api/e2e，执行方式只看
+    task_case_relations.device_type）。
+    """
+    COMMON = 'common'
+    PHYSICAL = DeviceType.PHYSICAL.value
+    HTTP_API = DeviceType.HTTP_API.value
+    WEBSOCKET_API = DeviceType.WEBSOCKET_API.value
+
+
+# 写侧校验正则（网关 pydantic pattern 与共享常量同源，避免魔法字符串）
+CASE_PARAM_SCOPE_PATTERN = '^(' + '|'.join(s.value for s in CaseParamScope) + ')$'
+CASE_PARAM_SCOPE_MAX_LENGTH = max(len(s.value) for s in CaseParamScope)
 
 
 class DeviceOccupancyStatus(str, Enum):
@@ -431,6 +445,9 @@ class RedisKeyPrefix(str, Enum):
     EVAL_CASE_CANCELLED = 'eval:case_cancelled'
     # physical 设备互斥锁前缀: lock:task:physical:{device_id}
     TASK_PHYSICAL_LOCK = 'lock:task:physical'
+    # 播放设备互斥锁前缀: lock:playback:device:{playback_device_id}
+    # （同实验室并行用例共用一只音箱时串行播放；不同实验室不同音箱仍并行）
+    PLAYBACK_DEVICE_LOCK = 'lock:playback:device'
     # API 数字 SPL 校准互斥锁前缀: lock:spl:calibration:{api_id}（UC-0902）
     SPL_CALIBRATION_LOCK = 'lock:spl:calibration'
     # 同 endpoint 并发信号量前缀: sem:api:endpoint:{host}
@@ -638,6 +655,12 @@ class DeviceStatusEventType(str, Enum):
     OFFLINE = 'offline'
     HEALTH_CHECK = 'health_check'
     OPERATION = 'operation'
+
+
+class PlaybackDeviceStatus(str, Enum):
+    """播放设备状态（playback_devices.status，实验室换绑时优先选在线设备）"""
+    ONLINE = 'online'
+    OFFLINE = 'offline'
 
 
 class DeviceStatusEventSource(str, Enum):

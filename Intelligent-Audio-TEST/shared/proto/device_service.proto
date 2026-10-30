@@ -102,6 +102,15 @@ service PlaybackConfigService {
   rpc ResetPlaybackDeviceConfig(ResetPlaybackDeviceConfigRequest) returns (ResetPlaybackDeviceConfigResponse);
   rpc GetPlaybackDeviceDiagnosis(GetPlaybackDeviceDiagnosisRequest) returns (GetPlaybackDeviceDiagnosisResponse);
   rpc RepairPlaybackDevice(RepairPlaybackDeviceRequest) returns (RepairPlaybackDeviceResponse);
+  // 逻辑音箱组（N 个实验室里位置相同的音箱互相对应，用例内播放设备只属于一个实验室）
+  rpc ListPlaybackSpeakerGroups(ListPlaybackSpeakerGroupsRequest) returns (ListPlaybackSpeakerGroupsResponse);
+  rpc CreatePlaybackSpeakerGroup(CreatePlaybackSpeakerGroupRequest) returns (CreatePlaybackSpeakerGroupResponse);
+  rpc UpdatePlaybackSpeakerGroup(UpdatePlaybackSpeakerGroupRequest) returns (UpdatePlaybackSpeakerGroupResponse);
+  rpc DeletePlaybackSpeakerGroup(DeletePlaybackSpeakerGroupRequest) returns (DeletePlaybackSpeakerGroupResponse);
+  rpc SetPlaybackSpeakerGroupItem(SetPlaybackSpeakerGroupItemRequest) returns (SetPlaybackSpeakerGroupItemResponse);
+  rpc DeletePlaybackSpeakerGroupItem(DeletePlaybackSpeakerGroupItemRequest) returns (DeletePlaybackSpeakerGroupItemResponse);
+  rpc ResolvePlaybackSpeakerDevice(ResolvePlaybackSpeakerDeviceRequest) returns (ResolvePlaybackSpeakerDeviceResponse);
+  rpc ResolvePlaybackSpeakerGroupDevice(ResolvePlaybackSpeakerGroupDeviceRequest) returns (ResolvePlaybackSpeakerGroupDeviceResponse);
 }
 
 // ===== SPL 映射 CRUD 服务 =====
@@ -735,6 +744,96 @@ message RepairPlaybackDeviceResponse {
   bool success = 1;
   string message = 2;
   string data = 3;  // JSON: {results:[{action, success, message}]}
+  int32 code = 4;
+}
+
+// ---- 逻辑音箱组（N 个实验室里位置相同的音箱互相对应）----
+// 一个组 = 一个「音箱位置」；组内每个实验室挂一台实体播放设备。
+// 执行时解析：源音箱 → 所属组 → 目标实验室在该组的设备。
+
+message ListPlaybackSpeakerGroupsRequest {
+  string keyword = 1;
+}
+message ListPlaybackSpeakerGroupsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 数组: [{id, name, description, items:[{lab_id, playback_device_id}]}]
+  int32 code = 4;
+}
+
+message CreatePlaybackSpeakerGroupRequest {
+  string data = 1;  // JSON: {name, description}
+}
+message CreatePlaybackSpeakerGroupResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+  int32 code = 4;
+}
+
+message UpdatePlaybackSpeakerGroupRequest {
+  int32 group_id = 1;
+  string data = 2;  // JSON: {name?, description?}
+}
+message UpdatePlaybackSpeakerGroupResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+  int32 code = 4;
+}
+
+message DeletePlaybackSpeakerGroupRequest {
+  int32 group_id = 1;
+}
+message DeletePlaybackSpeakerGroupResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+  int32 code = 4;
+}
+
+message SetPlaybackSpeakerGroupItemRequest {
+  int32 group_id = 1;
+  int32 lab_id = 2;
+  int32 playback_device_id = 3;
+}
+message SetPlaybackSpeakerGroupItemResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {group_id, lab_id, playback_device_id}
+  int32 code = 4;
+}
+
+message DeletePlaybackSpeakerGroupItemRequest {
+  int32 group_id = 1;
+  int32 lab_id = 2;
+}
+message DeletePlaybackSpeakerGroupItemResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+  int32 code = 4;
+}
+
+message ResolvePlaybackSpeakerDeviceRequest {
+  int32 source_device_id = 1;
+  int32 target_lab_id = 2;
+}
+message ResolvePlaybackSpeakerDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {target_device_id: int|null}
+  int32 code = 4;
+}
+
+message ResolvePlaybackSpeakerGroupDeviceRequest {
+  int32 group_id = 1;
+  int32 target_lab_id = 2;
+}
+message ResolvePlaybackSpeakerGroupDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {group_name, target_device_id: int|null}
   int32 code = 4;
 }
 

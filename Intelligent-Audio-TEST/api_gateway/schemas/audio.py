@@ -1,13 +1,25 @@
 from __future__ import annotations
 
 from typing import Annotated, Any, Dict, List, Optional, Union
-from pydantic import BeforeValidator, Field, field_validator
+from pydantic import AliasChoices, BeforeValidator, Field, field_validator
 
 from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 from api_gateway.schemas.testcase import AlgorithmParamItem, RoundConfigItem
 from shared.constants.audio_tag import AudioTagSource
-from shared.models.common_enums import Visibility
+from shared.models.common_enums import DeviceType, Visibility
+
+
+def _validate_device_type(value):
+    """上传生成用例的目标设备类型校验（DeviceType 词表）。"""
+    if value in (None, ''):
+        return DeviceType.HTTP_API.value
+    normalized = str(value).strip()
+    if normalized not in {dt.value for dt in DeviceType}:
+        raise ValueError(
+            f'非法的设备类型 (device_type): {value}，仅支持: '
+            f"{', '.join(dt.value for dt in DeviceType)}")
+    return normalized
 
 
 class TagListData(PaginatedData[str]):
@@ -131,6 +143,10 @@ class MergeChunksRequest(APIModel):
     file_id: str = Field(...)
     task_id: str = Field(...)
     create_test_case: Optional[bool] = Field(False)
+    # 上传生成用例的目标设备类型（physical/http_api/websocket_api，缺省 http_api），
+    # 仅用于按维度/参数作用域筛选与物理设备回填；用例本身不承载执行口径
+    device_type: Annotated[str, BeforeValidator(_validate_device_type)] = Field(
+        DeviceType.HTTP_API.value, validation_alias=AliasChoices('device_type', 'deviceType'))
     # 前端直传 OSS 模式：非 WAV 文件分片直传 raw-chunks bucket 后，merge 从 OSS 拉取
     oss_upload_id: Optional[str] = Field(None)
     oss_key: Optional[str] = Field(None)
@@ -139,6 +155,8 @@ class MergeChunksRequest(APIModel):
     # dimensions 接受 dict 或 list，由 _create_test_case_from_audio 统一处理
     dimensions: Optional[Any] = Field(default_factory=dict)
     default_playback_device_id: Optional[int] = Field(None)
+    # 用例只关联逻辑音箱：上传生成用例时写入 playback_speaker_group_id（优先于实体设备）
+    default_playback_speaker_group_id: Optional[int] = Field(None)
     default_spl: Optional[float] = Field(65.0)
     noise_spl: Optional[float] = Field(60.0)
     noise_audio_id: Optional[int] = Field(None)

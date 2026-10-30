@@ -98,9 +98,8 @@ def _preload_context(annotations=None):
 def _config(**overrides):
     config = {
         'algorithm_type': 'voice_llm',
-        'test_type': 'api',
+        'device_type': 'http_api',
         'audios': [{'audio_id': 2100}],
-        '_record_test_type': 'api',
         '_preload_context': _preload_context(),
     }
     config.update(overrides)

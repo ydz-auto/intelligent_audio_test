@@ -283,6 +283,8 @@ class StreamSessionExecutor:
                 case_algorithm_params=(data or {}).get('case_algorithm_params'),
                 reference_params=(case_config or {}).get('reference_params', {}),
                 algorithm_type=algorithm_type,
+                device_type=(data or {}).get('device_type'),
+                api_id=getattr(api_config, 'id', None),
                 log=lambda level, msg: self._log(level=level, content=msg,
                                                  task_id=task_id,
                                                  api_id=getattr(api_config, 'id', None)))

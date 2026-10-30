@@ -9,6 +9,7 @@
 import logging
 
 from shared.constants.audio_tag import resolve_tag_source
+from shared.models.common_enums import DeviceType
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class AudioRoundConfigService:
         """从 data 中提取合并参数
 
         :param data: 上传请求 data
-        :return: dict，包含 create_test_case/test_types/dimensions_data 等键
+        :return: dict，包含 create_test_case/device_type/dimensions_data 等键
         """
         tc_config = data.get('test_case_config') or data.get('testCaseConfig')
         rounds_config, tc_group_name, tc_inherit_tags, tc_case_background_noise = (
@@ -32,9 +33,14 @@ class AudioRoundConfigService:
 
         return {
             'create_test_case': data.get('create_test_case', data.get('createTestCase', False)),
-            'test_types': data.get('test_types', data.get('testTypes', ['api'])),
+            'device_type': data.get('device_type') or data.get('deviceType')
+            or DeviceType.HTTP_API.value,
             'dimensions_data': dimensions_data,
             'default_playback_device_id': data.get('default_playback_device_id') or data.get('defaultPlaybackDeviceId'),
+            'default_playback_speaker_group_id': (
+                data.get('default_playback_speaker_group_id')
+                or data.get('defaultPlaybackSpeakerGroupId')
+            ),
             'default_spl': data.get('default_spl', data.get('defaultSpl', 65.0)),
             'noise_spl': data.get('noise_spl', data.get('noiseSpl', 60.0)),
             'noise_audio_id': data.get('noise_audio_id') or data.get('noiseAudioId'),

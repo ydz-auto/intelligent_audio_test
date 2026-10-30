@@ -11,6 +11,8 @@ from api_gateway.schemas.playback import (
     PlaybackTestSchema,
     PlaybackAssociateSplSchema,
     PlaybackRepairSchema,
+    PlaybackSpeakerGroupSchema,
+    PlaybackSpeakerGroupItemSchema,
 )
 
 logger = logging.getLogger(__name__)
@@ -208,3 +210,72 @@ class PlaybackCommandService:
         if not result.success:
             return PlaybackCommandService._control_error(result, '修复失败')
         return success_response(result.data, result.message or '修复完成')
+
+    # ---- 逻辑音箱组（N 个实验室里位置相同的音箱互相对应）----
+
+    @staticmethod
+    def create_speaker_group():
+        """新建逻辑音箱（组内后续为每个实验室设置对应设备）"""
+        json_data = request.get_json(silent=True)
+        if json_data is None:
+            return error_response("请求正文必须是有效的 JSON 格式且不能为空",
+                                  code=ErrorCode.OPERATION_FAILED, http_code=400)
+        try:
+            validated = PlaybackSpeakerGroupSchema.model_validate(json_data)
+        except Exception as e:
+            return error_response(f"请求数据验证失败: {str(e)}",
+                                  code=ErrorCode.OPERATION_FAILED, http_code=400)
+
+        result = _playback_acl.create_speaker_group(
+            validated.model_dump(by_alias=False))
+        if not result.success:
+            return PlaybackCommandService._control_error(result, '创建逻辑音箱失败')
+        return success_response(result.data, result.message or '逻辑音箱已创建')
+
+    @staticmethod
+    def update_speaker_group(group_id):
+        json_data = request.get_json(silent=True) or {}
+        try:
+            validated = PlaybackSpeakerGroupSchema.model_validate(json_data)
+        except Exception as e:
+            return error_response(f"请求数据验证失败: {str(e)}",
+                                  code=ErrorCode.OPERATION_FAILED, http_code=400)
+
+        result = _playback_acl.update_speaker_group(
+            group_id, validated.model_dump(by_alias=False))
+        if not result.success:
+            return PlaybackCommandService._control_error(result, '更新逻辑音箱失败')
+        return success_response(result.data, result.message or '逻辑音箱已更新')
+
+    @staticmethod
+    def delete_speaker_group(group_id):
+        result = _playback_acl.delete_speaker_group(group_id)
+        if not result.success:
+            return PlaybackCommandService._control_error(result, '删除逻辑音箱失败')
+        return success_response(None, result.message or '逻辑音箱已删除')
+
+    @staticmethod
+    def set_speaker_group_item(group_id):
+        """设置逻辑音箱在指定实验室对应的播放设备"""
+        json_data = request.get_json(silent=True)
+        if json_data is None:
+            return error_response("请求正文必须是有效的 JSON 格式且不能为空",
+                                  code=ErrorCode.OPERATION_FAILED, http_code=400)
+        try:
+            validated = PlaybackSpeakerGroupItemSchema.model_validate(json_data)
+        except Exception as e:
+            return error_response(f"请求数据验证失败: {str(e)}",
+                                  code=ErrorCode.OPERATION_FAILED, http_code=400)
+
+        result = _playback_acl.set_speaker_group_item(
+            group_id, validated.lab_id, validated.playback_device_id)
+        if not result.success:
+            return PlaybackCommandService._control_error(result, '保存对应设备失败')
+        return success_response(result.data, result.message or '对应设备已保存')
+
+    @staticmethod
+    def delete_speaker_group_item(group_id, lab_id):
+        result = _playback_acl.delete_speaker_group_item(group_id, lab_id)
+        if not result.success:
+            return PlaybackCommandService._control_error(result, '移除对应设备失败')
+        return success_response(None, result.message or '对应设备已移除')

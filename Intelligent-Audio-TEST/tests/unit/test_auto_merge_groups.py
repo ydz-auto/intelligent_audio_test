@@ -58,7 +58,7 @@ def _dispatch(dims):
     host._dispatch_evaluation_tasks(
         dims, {d['id']: d['id'] * 10 for d in dims},
         result_id=1, task_id=1, test_case_id=1, algorithm_result={},
-        algorithm_type='voice_llm', test_type='e2e', round_number=None,
+        algorithm_type='voice_llm', device_type='physical', round_number=None,
         field_mapper=None, ref_texts={})
     return host.captured_groups
 
@@ -133,7 +133,7 @@ def test_merge_preserves_dimension_result_pairing():
     host._dispatch_evaluation_tasks(
         dims, {121: 1210, 122: 1220},
         result_id=1, task_id=1, test_case_id=1, algorithm_result={},
-        algorithm_type='voice_llm', test_type='e2e', round_number=None,
+        algorithm_type='voice_llm', device_type='physical', round_number=None,
         field_mapper=None, ref_texts={})
     assert [(d['id'], rid) for d, rid in captured_items] == [(121, 1210), (122, 1220)]
 
@@ -177,7 +177,7 @@ def test_real_submit_chain_accepts_merged_group_key():
     host._dispatch_evaluation_tasks(
         dims, {d['id']: d['id'] * 10 for d in dims},
         result_id=1, task_id=1, test_case_id=1, algorithm_result={},
-        algorithm_type='voice_llm', test_type='e2e', round_number=None,
+        algorithm_type='voice_llm', device_type='physical', round_number=None,
         field_mapper=None, ref_texts={})
 
     # 3 个 parent 组合并为 1 组 → 只构建/提交一次任务，组内 3 个维度

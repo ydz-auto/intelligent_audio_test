@@ -135,7 +135,6 @@ class TestCaseDTO:
     """测试用例 DTO（TestCaseConfigService.GetTestCaseDetail 载荷，INT-1572）"""
     id: Optional[int] = None
     name: Optional[str] = None
-    test_type: Optional[str] = None
     algorithm_type: Optional[str] = None
     config: Any = None
     result_data: Any = None

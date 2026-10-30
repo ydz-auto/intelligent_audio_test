@@ -9,8 +9,8 @@
 - Delete: 点击「删除」→ 确认 → 删除           → DELETE /api/v1/evaluation/dimensions/{id}
 
 运行环境：
-- 前端: http://localhost:5173   (run_all.py 启动)
-- 网关: http://localhost:5000   (AUTH_MODE=off 后端放行)
+- 前端: http://localhost:15173   (见 `python stack.py status`)
+- 网关: http://localhost:15000   (AUTH_MODE=off 后端放行)
 - 依赖: pip install selenium    (Chrome, Selenium Manager 自动匹配 driver)
 
 运行: python test_evaluation_crud.py

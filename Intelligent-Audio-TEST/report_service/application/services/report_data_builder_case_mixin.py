@@ -28,10 +28,9 @@ class ReportDataCaseMixin:
     def _build_case_basic_info(tc, results, task, aux_params_map=None, dim_results_map=None):
         """构建用例基本信息。"""
         case_results = results
-        test_type = 'api' if case_results and (case_results[0].get('api_id') if isinstance(case_results[0], dict) else case_results[0].api_id) else 'e2e'
 
         audios_list = ReportHelpers._build_audios_list(tc, mode='task')
-        reference_params_dict = ReportDataCaseMixin._get_reference_params(tc, case_results, test_type)
+        reference_params_dict = ReportDataCaseMixin._get_reference_params(tc, case_results)
 
         tc_id = tc.get('id') if isinstance(tc, dict) else tc.id
         tc_name = tc.get('name') if isinstance(tc, dict) else tc.name
@@ -363,7 +362,7 @@ class ReportDataCaseMixin:
         return cases
 
     @staticmethod
-    def _get_reference_params(test_case, case_results, test_type):
+    def _get_reference_params(test_case, case_results):
         adjusted_reference_params = None
         for result in case_results:
             result_data_raw = result.get('result_data') if isinstance(result, dict) else result.result_data

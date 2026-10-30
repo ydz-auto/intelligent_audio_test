@@ -432,6 +432,31 @@ class AlgorithmDefinitionServiceStub:
                 request_serializer=algorithm__service__pb2.GetMappingRequest.SerializeToString,
                 response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
                 _registered_method=True)
+        self.SaveParamProfile = channel.unary_unary(
+                '/algorithm.AlgorithmDefinitionService/SaveParamProfile',
+                request_serializer=algorithm__service__pb2.SaveParamProfileRequest.SerializeToString,
+                response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
+                _registered_method=True)
+        self.CloneParamProfile = channel.unary_unary(
+                '/algorithm.AlgorithmDefinitionService/CloneParamProfile',
+                request_serializer=algorithm__service__pb2.CloneParamProfileRequest.SerializeToString,
+                response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
+                _registered_method=True)
+        self.DeleteParamProfile = channel.unary_unary(
+                '/algorithm.AlgorithmDefinitionService/DeleteParamProfile',
+                request_serializer=algorithm__service__pb2.DeleteParamProfileRequest.SerializeToString,
+                response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
+                _registered_method=True)
+        self.BindApiParamProfile = channel.unary_unary(
+                '/algorithm.AlgorithmDefinitionService/BindApiParamProfile',
+                request_serializer=algorithm__service__pb2.BindApiParamProfileRequest.SerializeToString,
+                response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
+                _registered_method=True)
+        self.SaveApiScopeOverrides = channel.unary_unary(
+                '/algorithm.AlgorithmDefinitionService/SaveApiScopeOverrides',
+                request_serializer=algorithm__service__pb2.SaveApiScopeOverridesRequest.SerializeToString,
+                response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
+                _registered_method=True)
         self.CreateDimensionRelation = channel.unary_unary(
                 '/algorithm.AlgorithmDefinitionService/CreateDimensionRelation',
                 request_serializer=algorithm__service__pb2.CreateDimensionRelationRequest.SerializeToString,
@@ -840,6 +865,42 @@ class AlgorithmDefinitionServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def GetMapping(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SaveParamProfile(self, request, context):
+        """参数策略（API 参数/映射的可复用声明）
+        - SaveParamProfile：整份保存策略（基础字段 + 字段声明 + 映射），data 为 JSON
+        - CloneParamProfile：从既有策略克隆一份新策略（cloned_from 记血缘）
+        - DeleteParamProfile：软删策略（仍被 API 引用时由调用方先解绑）
+        - BindApiParamProfile：API 实例绑定/解绑策略（profile_id 缺省或 0 = 解绑）
+        - SaveApiScopeOverrides：按 api_id 原子保存实例覆盖行（差集 upsert + 软删）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CloneParamProfile(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteParamProfile(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BindApiParamProfile(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SaveApiScopeOverrides(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -1280,6 +1341,31 @@ def add_AlgorithmDefinitionServiceServicer_to_server(servicer, server):
             'GetMapping': grpc.unary_unary_rpc_method_handler(
                     servicer.GetMapping,
                     request_deserializer=algorithm__service__pb2.GetMappingRequest.FromString,
+                    response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
+            ),
+            'SaveParamProfile': grpc.unary_unary_rpc_method_handler(
+                    servicer.SaveParamProfile,
+                    request_deserializer=algorithm__service__pb2.SaveParamProfileRequest.FromString,
+                    response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
+            ),
+            'CloneParamProfile': grpc.unary_unary_rpc_method_handler(
+                    servicer.CloneParamProfile,
+                    request_deserializer=algorithm__service__pb2.CloneParamProfileRequest.FromString,
+                    response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
+            ),
+            'DeleteParamProfile': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteParamProfile,
+                    request_deserializer=algorithm__service__pb2.DeleteParamProfileRequest.FromString,
+                    response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
+            ),
+            'BindApiParamProfile': grpc.unary_unary_rpc_method_handler(
+                    servicer.BindApiParamProfile,
+                    request_deserializer=algorithm__service__pb2.BindApiParamProfileRequest.FromString,
+                    response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
+            ),
+            'SaveApiScopeOverrides': grpc.unary_unary_rpc_method_handler(
+                    servicer.SaveApiScopeOverrides,
+                    request_deserializer=algorithm__service__pb2.SaveApiScopeOverridesRequest.FromString,
                     response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
             ),
             'CreateDimensionRelation': grpc.unary_unary_rpc_method_handler(
@@ -2313,6 +2399,141 @@ class AlgorithmDefinitionService:
             target,
             '/algorithm.AlgorithmDefinitionService/GetMapping',
             algorithm__service__pb2.GetMappingRequest.SerializeToString,
+            algorithm__service__pb2.AlgorithmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SaveParamProfile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/algorithm.AlgorithmDefinitionService/SaveParamProfile',
+            algorithm__service__pb2.SaveParamProfileRequest.SerializeToString,
+            algorithm__service__pb2.AlgorithmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CloneParamProfile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/algorithm.AlgorithmDefinitionService/CloneParamProfile',
+            algorithm__service__pb2.CloneParamProfileRequest.SerializeToString,
+            algorithm__service__pb2.AlgorithmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteParamProfile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/algorithm.AlgorithmDefinitionService/DeleteParamProfile',
+            algorithm__service__pb2.DeleteParamProfileRequest.SerializeToString,
+            algorithm__service__pb2.AlgorithmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BindApiParamProfile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/algorithm.AlgorithmDefinitionService/BindApiParamProfile',
+            algorithm__service__pb2.BindApiParamProfileRequest.SerializeToString,
+            algorithm__service__pb2.AlgorithmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SaveApiScopeOverrides(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/algorithm.AlgorithmDefinitionService/SaveApiScopeOverrides',
+            algorithm__service__pb2.SaveApiScopeOverridesRequest.SerializeToString,
             algorithm__service__pb2.AlgorithmResponse.FromString,
             options,
             channel_credentials,
@@ -3548,6 +3769,16 @@ class AlgorithmQueryServiceStub:
                 request_serializer=algorithm__service__pb2.GetApiParamsListRequest.SerializeToString,
                 response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
                 _registered_method=True)
+        self.ListParamProfiles = channel.unary_unary(
+                '/algorithm.AlgorithmQueryService/ListParamProfiles',
+                request_serializer=algorithm__service__pb2.ListParamProfilesRequest.SerializeToString,
+                response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
+                _registered_method=True)
+        self.GetParamProfile = channel.unary_unary(
+                '/algorithm.AlgorithmQueryService/GetParamProfile',
+                request_serializer=algorithm__service__pb2.GetParamProfileRequest.SerializeToString,
+                response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
+                _registered_method=True)
         self.GetCaseParamsList = channel.unary_unary(
                 '/algorithm.AlgorithmQueryService/GetCaseParamsList',
                 request_serializer=algorithm__service__pb2.GetCaseParamsListRequest.SerializeToString,
@@ -3725,6 +3956,19 @@ class AlgorithmQueryServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def GetApiParamsList(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListParamProfiles(self, request, context):
+        """参数策略读侧：策略列表 / 策略详情（含字段声明与映射）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetParamProfile(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -3939,6 +4183,16 @@ def add_AlgorithmQueryServiceServicer_to_server(servicer, server):
             'GetApiParamsList': grpc.unary_unary_rpc_method_handler(
                     servicer.GetApiParamsList,
                     request_deserializer=algorithm__service__pb2.GetApiParamsListRequest.FromString,
+                    response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
+            ),
+            'ListParamProfiles': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListParamProfiles,
+                    request_deserializer=algorithm__service__pb2.ListParamProfilesRequest.FromString,
+                    response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
+            ),
+            'GetParamProfile': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetParamProfile,
+                    request_deserializer=algorithm__service__pb2.GetParamProfileRequest.FromString,
                     response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
             ),
             'GetCaseParamsList': grpc.unary_unary_rpc_method_handler(
@@ -4222,6 +4476,60 @@ class AlgorithmQueryService:
             target,
             '/algorithm.AlgorithmQueryService/GetApiParamsList',
             algorithm__service__pb2.GetApiParamsListRequest.SerializeToString,
+            algorithm__service__pb2.AlgorithmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListParamProfiles(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/algorithm.AlgorithmQueryService/ListParamProfiles',
+            algorithm__service__pb2.ListParamProfilesRequest.SerializeToString,
+            algorithm__service__pb2.AlgorithmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetParamProfile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/algorithm.AlgorithmQueryService/GetParamProfile',
+            algorithm__service__pb2.GetParamProfileRequest.SerializeToString,
             algorithm__service__pb2.AlgorithmResponse.FromString,
             options,
             channel_credentials,

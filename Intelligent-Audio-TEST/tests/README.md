@@ -78,7 +78,7 @@ worker 各自重跑 module fixture（全新种子库），凡测试间存在序�
   字段）：`RUN_LIVE_STACK=1` 时栈必须已切隔离测试库（database ==
   intelligent_audio_test_test），指向共享库或缺字段（旧栈）一律 fail。
 - **实机冒烟标准流程**：
-  1. `python run_all.py --test-db` —— 整栈切隔离库起栈（库不存在自动建）
+  1. `python stack.py up --test-db` —— 整栈切隔离库起栈
   2. 需要种子时以 `DATABASE_URI` 指向隔离库重播 `scripts/migrations` 下
      seed_*.py
   3. `RUN_LIVE_STACK=1 python -m pytest tests/api -q`（或手动冒烟）

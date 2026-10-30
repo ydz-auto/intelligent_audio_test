@@ -23,6 +23,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from shared.infrastructure.user_context import get_current_user_id
+from shared.models.common_enums import CaseParamScope
 from algorithm_service.infrastructure.persistence.models import (
     AlgorithmDefinition as AlgorithmDefinitionPO,
     AlgorithmDeviceParam as AlgorithmDeviceParamPO,
@@ -197,7 +198,7 @@ def _upsert_case_params(session, algorithm_type: str, items: List[Dict[str, Any]
                 help_text=item.get('help_text'),
                 ui_order=item.get('ui_order') or 0,
                 hidden=bool(item.get('hidden')) or False,
-                scope=item.get('scope') or 'common',
+                scope=item.get('scope') or CaseParamScope.COMMON.value,
                 min_value=item.get('min_value'),
                 max_value=item.get('max_value'),
                 step=item.get('step'),

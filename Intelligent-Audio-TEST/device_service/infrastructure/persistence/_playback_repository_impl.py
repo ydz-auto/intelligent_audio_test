@@ -7,12 +7,22 @@ P5+DOMAIN: 通过 PO ↔ Entity 显式转换，仓储方法返回 domain entitie
 from typing import Dict, List, Optional
 
 from shared.models.database import get_db_session
-from device_service.infrastructure.persistence.models import PlaybackDevice
-from device_service.domain.entities import PlaybackDeviceAggregate
+from device_service.infrastructure.persistence.models import (
+    PlaybackDevice,
+    PlaybackSpeakerGroup,
+    PlaybackSpeakerGroupItem,
+)
+from device_service.domain.entities import (
+    PlaybackDeviceAggregate,
+    PlaybackSpeakerGroupAggregate,
+    PlaybackSpeakerGroupItemEntity,
+)
 from device_service.domain.repositories import PlaybackRepositoryInterface
 from device_service.infrastructure.persistence._device_converters import (
     _now,
     _playback_po_to_entity,
+    _speaker_group_po_to_entity,
+    _speaker_item_po_to_entity,
 )
 from device_service.infrastructure.persistence._device_serializers import (
     _playback_to_dict,
@@ -271,3 +281,113 @@ class PlaybackRepository(PlaybackRepositoryInterface):
         })
         session.commit()
         return count
+
+    # ---- 逻辑音箱组（N 个实验室里位置相同的音箱互相对应）----
+
+    @staticmethod
+    def _group_with_items(session, group_po):
+        items = session.query(PlaybackSpeakerGroupItem).filter_by(
+            group_id=group_po.id).order_by(PlaybackSpeakerGroupItem.lab_id.asc()).all()
+        return _speaker_group_po_to_entity(group_po, items)
+
+    def list_playback_speaker_groups(self, keyword: str = None) -> List[PlaybackSpeakerGroupAggregate]:
+        """逻辑音箱组列表（含组内各实验室对应设备）"""
+        session = get_db_session()
+        query = session.query(PlaybackSpeakerGroup)
+        if keyword:
+            query = query.filter(PlaybackSpeakerGroup.name.like(f'%{keyword}%'))
+        return [self._group_with_items(session, po)
+                for po in query.order_by(PlaybackSpeakerGroup.id.asc()).all()]
+
+    def get_playback_speaker_group(self, group_id: int) -> Optional[PlaybackSpeakerGroupAggregate]:
+        session = get_db_session()
+        po = session.get(PlaybackSpeakerGroup, int(group_id))
+        return self._group_with_items(session, po) if po else None
+
+    def create_playback_speaker_group(self, name: str, description: str = None) -> PlaybackSpeakerGroupAggregate:
+        from shared.infrastructure.user_context import get_current_user_id
+        session = get_db_session()
+        po = PlaybackSpeakerGroup(
+            name=name,
+            description=description,
+            created_by_user_id=get_current_user_id(),
+        )
+        session.add(po)
+        session.commit()
+        return _speaker_group_po_to_entity(po)
+
+    def update_playback_speaker_group(self, group_id: int,
+                                      data: dict) -> Optional[PlaybackSpeakerGroupAggregate]:
+        from shared.infrastructure.user_context import get_current_user_id
+        session = get_db_session()
+        po = session.get(PlaybackSpeakerGroup, int(group_id))
+        if po is None:
+            return None
+        if data.get('name'):
+            po.name = data['name']
+        if 'description' in data:
+            po.description = data.get('description')
+        po.updated_by_user_id = get_current_user_id()
+        po.updated_at = _now()
+        session.commit()
+        return self._group_with_items(session, po)
+
+    def delete_playback_speaker_group(self, group_id: int) -> bool:
+        """删除逻辑音箱组（连同组内条目；组是纯映射配置）"""
+        session = get_db_session()
+        po = session.get(PlaybackSpeakerGroup, int(group_id))
+        if po is None:
+            return False
+        session.query(PlaybackSpeakerGroupItem).filter_by(group_id=po.id).delete()
+        session.delete(po)
+        session.commit()
+        return True
+
+    def upsert_playback_speaker_group_item(self, group_id: int, lab_id: int,
+                                           playback_device_id: int) -> PlaybackSpeakerGroupItemEntity:
+        """设置逻辑音箱在指定实验室对应的设备（同组同实验室唯一）"""
+        from shared.infrastructure.user_context import get_current_user_id
+        session = get_db_session()
+        po = session.query(PlaybackSpeakerGroupItem).filter_by(
+            group_id=int(group_id), lab_id=int(lab_id)).first()
+        if po is None:
+            po = PlaybackSpeakerGroupItem(
+                group_id=int(group_id),
+                lab_id=int(lab_id),
+                playback_device_id=int(playback_device_id),
+                created_by_user_id=get_current_user_id(),
+            )
+            session.add(po)
+        else:
+            po.playback_device_id = int(playback_device_id)
+            po.updated_by_user_id = get_current_user_id()
+            po.updated_at = _now()
+        session.commit()
+        return _speaker_item_po_to_entity(po)
+
+    def delete_playback_speaker_group_item(self, group_id: int, lab_id: int) -> bool:
+        session = get_db_session()
+        deleted = session.query(PlaybackSpeakerGroupItem).filter_by(
+            group_id=int(group_id), lab_id=int(lab_id)).delete()
+        session.commit()
+        return deleted > 0
+
+    def resolve_playback_speaker_device(self, source_device_id: int,
+                                        target_lab_id: int) -> Optional[int]:
+        """解析：源音箱 → 所属逻辑组 → 目标实验室在该组的设备（执行链热路径）"""
+        session = get_db_session()
+        source = session.query(PlaybackSpeakerGroupItem).filter_by(
+            playback_device_id=int(source_device_id)).first()
+        if source is None:
+            return None
+        target = session.query(PlaybackSpeakerGroupItem).filter_by(
+            group_id=source.group_id, lab_id=int(target_lab_id)).first()
+        return target.playback_device_id if target else None
+
+    def resolve_playback_speaker_group_device(self, group_id: int,
+                                              target_lab_id: int) -> Optional[int]:
+        """解析：逻辑音箱组 → 目标实验室在该组的设备（用例直接关联逻辑音箱）"""
+        session = get_db_session()
+        item = session.query(PlaybackSpeakerGroupItem).filter_by(
+            group_id=int(group_id), lab_id=int(target_lab_id)).first()
+        return item.playback_device_id if item else None

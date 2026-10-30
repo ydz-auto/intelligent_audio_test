@@ -103,11 +103,13 @@ class TaskCrudService:
             return {'success': True, 'message': '任务创建成功', 'data': {'id': task_id}, 'code': 201}
         except Exception as e:
             # INT-1799：仓储派生亲和域时取不到 API streaming / 混道 → 400（非 500）
+            # device_type 缺失同属调用方契约错误 → 400
             from task_service.infrastructure.persistence._task_crud_mixin import (
                 ExecutionAffinityError,
+                MissingDeviceTypeError,
             )
-            if isinstance(e, ExecutionAffinityError):
-                logger.warning(f"任务执行亲和域无法确定: {e}")
+            if isinstance(e, (ExecutionAffinityError, MissingDeviceTypeError)):
+                logger.warning(f"任务创建的路由参数无效: {e}")
                 return {'success': False, 'message': str(e), 'data': None, 'code': 400}
             logger.error(f"创建任务失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
@@ -227,7 +229,8 @@ class TaskCrudService:
             except PermissionError as e:
                 return {'success': False, 'message': str(e), 'data': None, 'code': 403}
 
-            result = task_repository.update_cases(task_id, action, case_ids)
+            result = task_repository.update_cases(
+                task_id, action, case_ids, data.get('case_devices'))
             if result is None:
                 return {'success': False, 'message': '任务 ID 不存在', 'data': None, 'code': 404}
             if 'error' in result:

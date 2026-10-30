@@ -12,7 +12,7 @@ from shared.utils.status_constants import (
     TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus, ACTIVE_EVALUATION_STATUSES,
 )
 from shared.utils.id_normalizer import to_int_id
-from shared.models.common_enums import TestType
+from shared.models.common_enums import DeviceType
 from sqlalchemy import and_
 
 # 重新评估类型判别符（非任务/用例状态，与 task_service 下发的 reevaluate_type 参数对应）
@@ -426,18 +426,14 @@ class ReevaluationExecutor:
             algorithm_result = case_info['algorithm_result']
             reference_params = case_info.get('reference_params', [])
             device_id = case_info['device_id']
+            # API 实例作用域（test_results.api_id；物理用例为 None）
+            api_id = case_info.get('api_id')
 
             try:
-                # 差异#2 收尾：评估口径值由用例级 device_type 派生
-                # （task.type 已废弃；gRPC 契约字段 test_type 保留）
-                from shared.models.common_enums import DeviceType
+                # 评估口径由用例级执行路由 device_type 承载
                 tc_dtos = task_acl_repository.get_task_case_by_ids(task_id, [str(test_case_id)])
-                device_type = tc_dtos[0].device_type if tc_dtos else None
-                test_type = (
-                    TestType.E2E.value
-                    if (device_type or DeviceType.PHYSICAL.value) == DeviceType.PHYSICAL.value
-                    else TestType.API.value
-                )
+                device_type = (tc_dtos[0].device_type if tc_dtos else None) \
+                    or DeviceType.PHYSICAL.value
 
                 # P1.4: 通过 gRPC 读 TestCase
                 test_case = task_acl_repository.get_test_case_detail(str(test_case_id))
@@ -452,11 +448,12 @@ class ReevaluationExecutor:
                         result=result_id,
                         test_case_id=test_case_id,
                         algorithm_result=algorithm_result,
-                        test_type=test_type,
+                        device_type=device_type,
                         algorithm_type=algorithm_type,
                         reference_params_col=reference_params_col,
                         reevaluate_type=reevaluate_type,
                         dimension_filter_ids=dimension_ids,
+                        api_id=api_id,
                     )
                 else:
                     submitted = self._reevaluate_single(
@@ -465,11 +462,12 @@ class ReevaluationExecutor:
                         test_case_id=test_case_id,
                         algorithm_result=algorithm_result,
                         reference_params=reference_params,
-                        test_type=test_type,
+                        device_type=device_type,
                         algorithm_type=algorithm_type,
                         reference_params_col=reference_params_col,
                         reevaluate_type=reevaluate_type,
                         dimension_filter_ids=dimension_ids,
+                        api_id=api_id,
                     )
 
                 if submitted is not False:
@@ -489,8 +487,9 @@ class ReevaluationExecutor:
                              task_id=task_id, test_case_id=test_case_id)
         return submitted_count
 
-    def _reevaluate_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
-                               reference_params_col=None, reevaluate_type=None, dimension_filter_ids=None):
+    def _reevaluate_multi_round(self, task_id, result, test_case_id, algorithm_result, device_type, algorithm_type,
+                               reference_params_col=None, reevaluate_type=None, dimension_filter_ids=None,
+                               api_id=None):
         """重新评估多轮结果 — Application 层编排。
 
         P0-2 DDD: 反序列化委托 Domain Service。
@@ -512,7 +511,7 @@ class ReevaluationExecutor:
         """
         algorithm_result = reevaluation_service.deserialize_algorithm_result(algorithm_result)
         rounds = algorithm_result.get('rounds', [])
-        is_e2e = test_type == TestType.E2E.value
+        is_e2e = device_type == DeviceType.PHYSICAL.value
 
         # 只重评失败维度：按 (round_number -> {dim_id}) 收集失败维度。
         # INT-174 缺陷1：除 failed 外同时收集非终态（pending 等 ACTIVE）TRD——
@@ -592,16 +591,17 @@ class ReevaluationExecutor:
         if is_e2e:
             submitted_rounds = self._reevaluate_e2e_multi_round(
                 task_id, result, test_case_id, algorithm_result,
-                test_type, algorithm_type, reference_params_col, rounds, test_case,
+                device_type, algorithm_type, reference_params_col, rounds, test_case,
                 failed_dims_by_round=failed_dims_by_round,
                 selection_dims=selection_dims,
             )
         else:
             submitted_rounds = self._reevaluate_api_multi_round(
                 task_id, result, test_case_id, algorithm_result,
-                test_type, algorithm_type, reference_params_col, rounds, test_case,
+                device_type, algorithm_type, reference_params_col, rounds, test_case,
                 failed_dims_by_round=failed_dims_by_round,
                 selection_dims=selection_dims,
+                api_id=api_id,
             )
 
         # INT-174 缺陷1：收口「不在本次提交范围」的遗留非终态 TRD——被配置排除
@@ -618,7 +618,7 @@ class ReevaluationExecutor:
         # 「提交成功才返回非 False」语义（已收尾的用例由零提交分支主动收敛）。
         return bool(submitted_rounds)
 
-    def _reevaluate_e2e_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
+    def _reevaluate_e2e_multi_round(self, task_id, result, test_case_id, algorithm_result, device_type, algorithm_type,
                                      reference_params_col, rounds, test_case, failed_dims_by_round=None,
                                      selection_dims=None):
         """E2E 多轮重评（与 API 共用 _submit_multi_round_evaluations 统一口径）。
@@ -627,7 +627,7 @@ class ReevaluationExecutor:
         """
         return self._submit_multi_round_evaluations(
             task_id=task_id, result=result, test_case_id=test_case_id,
-            algorithm_result=algorithm_result, test_type=test_type,
+            algorithm_result=algorithm_result, device_type=device_type,
             algorithm_type=algorithm_type, reference_params_col=reference_params_col,
             rounds=rounds, test_case=test_case,
             failed_dims_by_round=failed_dims_by_round,
@@ -636,9 +636,10 @@ class ReevaluationExecutor:
         )
 
     def _submit_multi_round_evaluations(self, task_id, result, test_case_id, algorithm_result,
-                                        test_type, algorithm_type, reference_params_col,
+                                        device_type, algorithm_type, reference_params_col,
                                         rounds, test_case, failed_dims_by_round=None,
-                                        selection_dims=None, compute_api_aggregated=False):
+                                        selection_dims=None, compute_api_aggregated=False,
+                                        api_id=None):
         """多轮重评统一实现（API / E2E 同一套口径）
 
         对齐正常执行链（逐轮 round_number=round_idx + 整体 round_number=None）：
@@ -703,13 +704,14 @@ class ReevaluationExecutor:
                 'algorithm_params': algo_params,
                 'reference_params': rounds[round_idx].get('reference_params', []),
                 'reference_params_col': reference_params_col,
+                'api_id': api_id,
             }
 
             try:
                 all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
                 eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
                 eval_params['algorithm_type'] = algorithm_type
-                eval_params['test_type'] = test_type
+                eval_params['device_type'] = device_type
                 if reference_params_col is not None:
                     eval_params['reference_params_col'] = reference_params_col
                 if algorithm_params_col is not None:
@@ -742,9 +744,9 @@ class ReevaluationExecutor:
 
         # 整体评估：顶层维度（含轮次注入的 round_scope=multi 维度）存在时提交
         self._submit_overall_multi_round(
-            task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
+            task_id, result, test_case_id, algorithm_result, device_type, algorithm_type,
             reference_params_col, rounds, case_config, config_rounds, algorithm_params_col,
-            failed_dims_by_round, selection_dims, submitted_rounds)
+            failed_dims_by_round, selection_dims, submitted_rounds, api_id=api_id)
 
         # API 结果无顶层 aggregated：按 rounds[].evaluation 重算（E2E 由执行链聚合）
         if compute_api_aggregated and not algorithm_result.get('aggregated'):
@@ -779,9 +781,10 @@ class ReevaluationExecutor:
         return False
 
     def _submit_overall_multi_round(self, task_id, result, test_case_id, algorithm_result,
-                                    test_type, algorithm_type, reference_params_col,
+                                    device_type, algorithm_type, reference_params_col,
                                     rounds, case_config, config_rounds, algorithm_params_col,
-                                    failed_dims_by_round, selection_dims, submitted_rounds):
+                                    failed_dims_by_round, selection_dims, submitted_rounds,
+                                    api_id=None):
         """多轮整体评估提交（round_number=None），E2E / API 共用同一口径。
 
         INT-174：failed 型重评时整体无失败维度则跳过；逐轮全未提交但存在逐轮失败
@@ -832,13 +835,14 @@ class ReevaluationExecutor:
             'algorithm_params': algo_params,
             'reference_params': rounds[0].get('reference_params', []) if rounds else [],
             'reference_params_col': reference_params_col,
+            'api_id': api_id,
         }
 
         try:
             all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
             eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
             eval_params['algorithm_type'] = algorithm_type
-            eval_params['test_type'] = test_type
+            eval_params['device_type'] = device_type
             if reference_params_col is not None:
                 eval_params['reference_params_col'] = reference_params_col
             if algorithm_params_col is not None:
@@ -935,25 +939,27 @@ class ReevaluationExecutor:
                          f"收口重评范围外遗留非终态维度失败: result_id={result_id}, error={e}",
                          task_id=task_id, test_case_id=test_case_id)
 
-    def _reevaluate_api_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
+    def _reevaluate_api_multi_round(self, task_id, result, test_case_id, algorithm_result, device_type, algorithm_type,
                                      reference_params_col, rounds, test_case, failed_dims_by_round=None,
-                                     selection_dims=None):
+                                     selection_dims=None, api_id=None):
         """API 多轮重评（与 E2E 共用 _submit_multi_round_evaluations 统一口径）。
 
         差异仅保留 API 特有收尾：结果无顶层 aggregated 时按 rounds[].evaluation 重算。
         """
         return self._submit_multi_round_evaluations(
             task_id=task_id, result=result, test_case_id=test_case_id,
-            algorithm_result=algorithm_result, test_type=test_type,
+            algorithm_result=algorithm_result, device_type=device_type,
             algorithm_type=algorithm_type, reference_params_col=reference_params_col,
             rounds=rounds, test_case=test_case,
             failed_dims_by_round=failed_dims_by_round,
             selection_dims=selection_dims,
             compute_api_aggregated=True,
+            api_id=api_id,
         )
 
-    def _reevaluate_single(self, task_id, result_id, test_case_id, algorithm_result, reference_params, test_type, algorithm_type,
-                           reference_params_col=None, reevaluate_type=None, dimension_filter_ids=None):
+    def _reevaluate_single(self, task_id, result_id, test_case_id, algorithm_result, reference_params, device_type, algorithm_type,
+                           reference_params_col=None, reevaluate_type=None, dimension_filter_ids=None,
+                           api_id=None):
         """重新评估单轮结果 — Application 层编排。
 
         P0-2 DDD: 反序列化委托 Domain Service。
@@ -1029,13 +1035,14 @@ class ReevaluationExecutor:
             'algorithm_params': algo_params,
             'reference_params': reference_params,
             'reference_params_col': reference_params_col,
+            'api_id': api_id,
         }
 
         from evaluation_service.infrastructure.acl import algorithm_acl_repository
         all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
         eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
         eval_params['algorithm_type'] = algorithm_type
-        eval_params['test_type'] = test_type
+        eval_params['device_type'] = device_type
         if reference_params_col is not None:
             eval_params['reference_params_col'] = reference_params_col
         if algorithm_params_col is not None:

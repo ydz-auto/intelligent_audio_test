@@ -12,7 +12,7 @@
 """
 from typing import Callable, Dict, Optional
 
-from shared.models.common_enums import TestType
+from shared.models.common_enums import DeviceType
 
 
 def normalize_summary_metric_dicts(summary: dict) -> dict:
@@ -289,18 +289,18 @@ def normalize_summary_metrics(summary: dict, dimension_lookup: Optional[Callable
                 old_audio = case.get('audio')
 
                 if api_audio and isinstance(api_audio, dict):
-                    api_audio['audio_type'] = TestType.API.value
+                    api_audio['audio_type'] = DeviceType.HTTP_API.value
                     old_audios.append(api_audio)
                 if e2e_audio and isinstance(e2e_audio, dict):
-                    e2e_audio['audio_type'] = TestType.E2E.value
+                    e2e_audio['audio_type'] = DeviceType.PHYSICAL.value
                     old_audios.append(e2e_audio)
                 if isinstance(e2e_audios, list):
                     for audio in e2e_audios:
                         if isinstance(audio, dict) and audio not in old_audios:
-                            audio['audio_type'] = TestType.E2E.value
+                            audio['audio_type'] = DeviceType.PHYSICAL.value
                             old_audios.append(audio)
                 if old_audio and isinstance(old_audio, dict) and old_audio not in old_audios:
-                    old_audio['audio_type'] = old_audio.get('audio_type', TestType.API.value)
+                    old_audio['audio_type'] = old_audio.get('audio_type', DeviceType.HTTP_API.value)
                     old_audios.append(old_audio)
                 if old_audios:
                     new_case['audios'] = old_audios

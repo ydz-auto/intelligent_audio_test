@@ -582,7 +582,7 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
 
     # ---- 参考参数构建（供 api_gateway task_query_service 通过 gRPC 调用）----
 
-    def handle_build_reference_params(self, case_info: dict, case_results: list, test_type: str = 'api') -> dict:
+    def handle_build_reference_params(self, case_info: dict, case_results: list) -> dict:
         """构建参考参数和音频列表。
 
         从 case_results 中提取 adjusted_reference_params，或回退到 case_info.reference_params / config，
@@ -592,7 +592,6 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         Args:
             case_info: TestCase 信息 dict
             case_results: 测试结果列表
-            test_type: 测试类型
 
         Returns:
             dict: {reference_params, audios_list}
@@ -604,7 +603,7 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         case = SimpleNamespace(**case_info) if isinstance(case_info, dict) else case_info
         results = case_results or []
 
-        ref_params = ReportDataBuilder._get_reference_params(case, results, test_type)
+        ref_params = ReportDataBuilder._get_reference_params(case, results)
         audios_list = ReportHelpers._build_audios_list(case)
 
         return {'reference_params': ref_params, 'audios_list': audios_list}

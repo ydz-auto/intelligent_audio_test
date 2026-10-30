@@ -53,7 +53,7 @@ TARGET_CASE_PARAMS = [
         'help_text': '干扰人配置列表',
         'ui_order': 0,
         'hidden': False,
-        'scope': 'e2e',
+        'scope': 'physical',
         'min_value': None,
         'max_value': None,
         'step': None,

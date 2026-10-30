@@ -101,3 +101,36 @@ class PlaybackRepairSchema(APIModel):
     未知动作 → device_service 返回 400 并列出合法值。
     """
     actions: List[str] = Field(default_factory=list)
+
+
+class PlaybackSpeakerGroupItem(APIModel):
+    """逻辑音箱在某实验室对应的实体播放设备"""
+    id: Optional[int] = Field(None)
+    group_id: Optional[int] = Field(None)
+    lab_id: int = Field(...)
+    playback_device_id: int = Field(...)
+
+
+class PlaybackSpeakerGroupItemSchema(APIModel):
+    """设置逻辑音箱在指定实验室对应的播放设备"""
+    lab_id: int = Field(...)
+    playback_device_id: int = Field(...)
+
+
+class PlaybackSpeakerGroupSchema(APIModel):
+    """逻辑音箱组（N 个实验室里位置相同的音箱互相对应）"""
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+
+
+class PlaybackSpeakerGroupData(APIModel):
+    id: int = Field(...)
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    items: List[PlaybackSpeakerGroupItem] = Field(default_factory=list)
+    created_at: Optional[str] = Field(None)
+    updated_at: Optional[str] = Field(None)
+
+
+class PlaybackSpeakerGroupListQuery(APIModel):
+    keyword: Optional[str] = Field(None)

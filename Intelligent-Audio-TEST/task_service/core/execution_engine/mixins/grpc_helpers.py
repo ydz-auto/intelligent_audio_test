@@ -99,7 +99,7 @@ def _register_task_events_via_grpc(task_id, stop_event, pause_event):
         logger.debug("gRPC 注册任务事件失败 task_id=%s", task_id, exc_info=True)
 
 
-def _execute_e2e_case_via_grpc(task_id, tc_rel_id, device_id=None):
+def _execute_e2e_case_via_grpc(task_id, tc_rel_id, device_id=None, device_ids=None):
     """通过 gRPC 调用 e2e_test_service 的 ExecutionService.StartE2ETask
 
     原 `self.e2e_executor.execute_e2e_case(task_id, tc_rel_id)` 已替换为跨服务
@@ -108,6 +108,9 @@ def _execute_e2e_case_via_grpc(task_id, tc_rel_id, device_id=None):
     device_id：当前派发的物理路由行绑定的被测设备（task_case_relations.device_id）。
     E2E 用例按物理设备行逐行执行，执行器只准备/驱动该设备——同机多 App 的
     多条设备记录各跑各的，串行/并行语义才能落到真实设备上。
+
+    device_ids：组执行（同实验室、同用例、不同 SN 的多台设备）——非空时优先，
+    执行器一次驱动组内全部设备、每轮音频只播一次，结果按设备分别落库。
     """
     import json as _json
     from shared.proto import e2e_test_service_pb2
@@ -116,6 +119,7 @@ def _execute_e2e_case_via_grpc(task_id, tc_rel_id, device_id=None):
     from shared.infrastructure.config import BaseConfig
     try:
         stub = get_e2e_execution_service_stub()
+        normalized_device_ids = [int(item) for item in (device_ids or []) if item]
         # 显式放宽 deadline（INT-54 P1-1）：StartE2ETask 在 e2e_test_service
         # 处理器内同步执行整个多轮 E2E 用例（设备准备/播放/采集/评估），
         # 总时长结构性可超默认 60s deadline；不放宽则合法慢用例被误杀标 FAILED。
@@ -125,6 +129,7 @@ def _execute_e2e_case_via_grpc(task_id, tc_rel_id, device_id=None):
                 tc_rel_id=str(tc_rel_id),
                 e2e_config='',
                 device_id=int(device_id) if device_id else 0,
+                device_ids=normalized_device_ids,
             ),
             timeout=BaseConfig.GRPC_E2E_SYNC_TIMEOUT_SECONDS,
         )

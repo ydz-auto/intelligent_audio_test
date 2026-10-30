@@ -391,6 +391,165 @@ class _PlaybackConfigProxy:
             error_msg_prefix='修复播放设备失败',
         )
 
+    # ---- 逻辑音箱组（N 个实验室里位置相同的音箱互相对应）----
+
+    def list_speaker_groups(self, keyword=None):
+        """逻辑音箱组列表（含各实验室对应设备）"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_playback_config_service_stub()
+            resp = stub.ListPlaybackSpeakerGroups(
+                device_pb.ListPlaybackSpeakerGroupsRequest(keyword=keyword or ''))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else [],
+                'code': resp.code or (200 if resp.success else 400),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询逻辑音箱失败: {e}',
+                                      'data': None, 'code': 400},
+            error_msg_prefix='查询逻辑音箱失败',
+        )
+
+    def create_speaker_group(self, data):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_playback_config_service_stub()
+            resp = stub.CreatePlaybackSpeakerGroup(
+                device_pb.CreatePlaybackSpeakerGroupRequest(
+                    data=json.dumps(data or {}, ensure_ascii=False, default=str)))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': resp.code or (200 if resp.success else 400),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'创建逻辑音箱失败: {e}',
+                                      'data': None, 'code': 400},
+            error_msg_prefix='创建逻辑音箱失败',
+        )
+
+    def update_speaker_group(self, group_id, data):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_playback_config_service_stub()
+            resp = stub.UpdatePlaybackSpeakerGroup(
+                device_pb.UpdatePlaybackSpeakerGroupRequest(
+                    group_id=int(group_id),
+                    data=json.dumps(data or {}, ensure_ascii=False, default=str)))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': resp.code or (200 if resp.success else 400),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'更新逻辑音箱失败: {e}',
+                                      'data': None, 'code': 400},
+            error_msg_prefix='更新逻辑音箱失败',
+        )
+
+    def delete_speaker_group(self, group_id):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_playback_config_service_stub()
+            resp = stub.DeletePlaybackSpeakerGroup(
+                device_pb.DeletePlaybackSpeakerGroupRequest(group_id=int(group_id)))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': None,
+                'code': resp.code or (200 if resp.success else 400),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'删除逻辑音箱失败: {e}',
+                                      'data': None, 'code': 400},
+            error_msg_prefix='删除逻辑音箱失败',
+        )
+
+    def set_speaker_group_item(self, group_id, lab_id, playback_device_id):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_playback_config_service_stub()
+            resp = stub.SetPlaybackSpeakerGroupItem(
+                device_pb.SetPlaybackSpeakerGroupItemRequest(
+                    group_id=int(group_id), lab_id=int(lab_id),
+                    playback_device_id=int(playback_device_id)))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': resp.code or (200 if resp.success else 400),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'保存对应设备失败: {e}',
+                                      'data': None, 'code': 400},
+            error_msg_prefix='保存对应设备失败',
+        )
+
+    def delete_speaker_group_item(self, group_id, lab_id):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_playback_config_service_stub()
+            resp = stub.DeletePlaybackSpeakerGroupItem(
+                device_pb.DeletePlaybackSpeakerGroupItemRequest(
+                    group_id=int(group_id), lab_id=int(lab_id)))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': None,
+                'code': resp.code or (200 if resp.success else 400),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'移除对应设备失败: {e}',
+                                      'data': None, 'code': 400},
+            error_msg_prefix='移除对应设备失败',
+        )
+
+
+    def resolve_speaker_group_device(self, group_id, lab_id):
+        """逻辑音箱 + 实验室 → 该实验室的实体播放设备 id（试听/预览解析用）"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_playback_config_service_stub()
+            resp = stub.ResolvePlaybackSpeakerGroupDevice(
+                device_pb.ResolvePlaybackSpeakerGroupDeviceRequest(
+                    group_id=int(group_id), target_lab_id=int(lab_id)))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': resp.code or (200 if resp.success else 400),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'解析逻辑音箱失败: {e}',
+                                      'data': None, 'code': 400},
+            error_msg_prefix='解析逻辑音箱失败',
+        )
+
 
 # Playback 配置 CRUD 模块级单例
 playback_config_service = _PlaybackConfigProxy()

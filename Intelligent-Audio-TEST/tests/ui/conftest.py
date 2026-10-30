@@ -120,7 +120,7 @@ def _isolated_db_guard(_live_stack_gate):
         r = httpx.get(f'{API_ROOT}/health', **_HTTPOPTS)
     except Exception as exc:
         pytest.fail(f'UI 门禁：网关不可达（{API_ROOT}/health: {exc}）。'
-                    '请先以隔离库起栈：python run_all.py --test-db', pytrace=False)
+                    '请先以隔离库起栈：python stack.py up --test-db', pytrace=False)
     if r.status_code != 200:
         pytest.fail(f'UI 门禁：/health 返回 {r.status_code}，栈未就绪。', pytrace=False)
     body = r.json() if 'json' in r.headers.get('content-type', '') else {}
@@ -133,7 +133,7 @@ def _isolated_db_guard(_live_stack_gate):
             'UI 门禁（INT-260 隔离库口径）：当前栈 database='
             f"{db_name or '(未上报)'}，不是隔离测试库 '{ISOLATED_TEST_DB_NAME}'。"
             'UI 用例含写操作，禁止对共享业务库执行；请以 '
-            '`python run_all.py --test-db` 重启栈后再跑。', pytrace=False)
+            '`python stack.py up --test-db` 重启栈后再跑。', pytrace=False)
     return db_name
 
 

@@ -11,6 +11,7 @@ from shared.utils.json_utils import deserialize_algorithm_result
 from shared.utils.status_utils import derive_task_case_status
 from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
 from shared.utils.query_utils import now_cst
+from shared.models.common_enums import DeviceType
 from e2e_test_service.domain.services import E2ECalculationService
 from e2e_test_service.infrastructure.acl import TaskDataAclRepositoryImpl
 
@@ -169,11 +170,15 @@ class E2EAggregator:
 
     def process_results(self, task_id, case_name, tc_rel_id, test_case_id, all_results, case_config=None,
                         case_reference_params=None, case_algorithm_params=None,
-                        adjusted_case_reference_params=None, **kwargs):
+                        adjusted_case_reference_params=None, publish_event=True, **kwargs):
         """处理 E2E 测试结果 — 更新 TaskCase 状态，提交非多轮场景的评估
 
         事件驱动改造: 完成后发布 CaseExecutionCompleted 事件到 Redis 事件总线，
         task_service 订阅后唤醒等待线程，替代 gRPC 同步通知的强依赖。
+
+        publish_event：组执行时一次执行驱动多台设备、逐设备回写路由行；
+        事件体不含 tc_rel_id，重复发布会让 task_service 消费侧重复唤醒/统计，
+        因此只有组内最后一台设备回写时才发布（其余传 False）。
         """
         algorithm_type = kwargs.get('algorithm_type', 'translation')
         precreated_result_id = kwargs.get('precreated_result_id')
@@ -270,7 +275,8 @@ class E2EAggregator:
                         tc_rel_id=tc_rel_id,
                     )
 
-                _publish_case_event(execution_success)
+                if publish_event:
+                    _publish_case_event(execution_success)
                 return execution_success
             else:
                 result = self._executor._process_results_base(
@@ -328,12 +334,13 @@ class E2EAggregator:
                             case_config=case_params,
                             case_reference_params=case_reference_params,
                             algorithm_type=algorithm_type,
-                            test_type='e2e',
+                            device_type=DeviceType.PHYSICAL.value,
                             case_algorithm_params=case_algorithm_params,
                             round_number=item.get('round_number')
                         )
 
-                _publish_case_event(execution_success)
+                if publish_event:
+                    _publish_case_event(execution_success)
                 return execution_success
         except Exception as e:
             self._log(

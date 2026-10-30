@@ -44,22 +44,23 @@ class AlgorithmAclRepositoryImpl:
         return algo_get_device_params(algorithm_type)
 
     @staticmethod
-    def get_api_params(algorithm_type: str) -> List[Dict]:
-        """获取 API 参数列表"""
+    def get_api_params(algorithm_type: str, api_id: Optional[int] = None) -> List[Dict]:
+        """获取 API 参数列表（api_id 非空时按其「策略 + 覆盖」解析）"""
         from shared.clients.grpc_clients import algo_get_api_params
-        return algo_get_api_params(algorithm_type)
+        return algo_get_api_params(algorithm_type, api_id=api_id)
 
     @staticmethod
-    def get_param_mapping(algorithm_type: str, component_type: str) -> List[Dict]:
-        """获取参数映射"""
+    def get_param_mapping(algorithm_type: str, component_type: str,
+                          api_id: Optional[int] = None) -> List[Dict]:
+        """获取参数映射（api_id 非空时按其「策略 + 覆盖」解析）"""
         from shared.clients.grpc_clients import algo_get_param_mapping
-        return algo_get_param_mapping(algorithm_type, component_type)
+        return algo_get_param_mapping(algorithm_type, component_type, api_id=api_id)
 
     @staticmethod
-    def get_field_mappings(algorithm_type: str):
+    def get_field_mappings(algorithm_type: str, api_id: Optional[int] = None):
         """获取字段定义（original + mapped），返回 FieldMapperWrapper"""
         from shared.clients.grpc_clients import algo_get_field_mappings
-        return algo_get_field_mappings(algorithm_type)
+        return algo_get_field_mappings(algorithm_type, api_id=api_id)
 
     @staticmethod
     def extract_case_all_params(case_config=None) -> Dict[str, Any]:

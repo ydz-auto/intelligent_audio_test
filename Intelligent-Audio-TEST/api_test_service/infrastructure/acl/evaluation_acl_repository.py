@@ -11,7 +11,7 @@ class EvaluationAclRepositoryImpl(EvaluationAclRepository):
     """evaluation_service.EvaluationService 跨域调用 gRPC 实现。"""
 
     def submit_evaluate_case(self, task_id, result_id, test_case_id,
-                             algorithm_result, eval_params) -> bool:
+                             algorithm_result, eval_params, device_type=None) -> bool:
         from shared.clients.grpc_clients import submit_evaluate_case as _submit
         _submit(
             task_id=task_id,
@@ -19,5 +19,6 @@ class EvaluationAclRepositoryImpl(EvaluationAclRepository):
             test_case_id=test_case_id,
             algorithm_result=algorithm_result,
             eval_params=eval_params,
+            device_type=device_type,
         )
         return True

@@ -22,7 +22,7 @@ from shared.infrastructure.raw_payload_store import (
 from shared.models.database import get_db_session
 from shared.utils.status_constants import ExecutionStatus
 from shared.utils.json_utils import deserialize_algorithm_result
-from shared.models.common_enums import TestType
+from shared.models.common_enums import DeviceType
 from evaluation_service.infrastructure.acl import task_acl_repository
 
 
@@ -62,7 +62,7 @@ class GroupResultMixin:
                     content=f"预提取 algorithm_results 失败: {e}",
                 )
 
-    def process_group_dimension_results(self, resp_data, group_items, task_id, test_case_id, result_id, api_request_body, test_type=TestType.API.value, payload_store=None):
+    def process_group_dimension_results(self, resp_data, group_items, task_id, test_case_id, result_id, api_request_body, device_type=DeviceType.HTTP_API.value, payload_store=None):
         """
         处理一组维度的评估结果
 
@@ -84,7 +84,7 @@ class GroupResultMixin:
             test_case_id: 用例ID
             result_id: 结果ID
             api_request_body: API请求体
-            test_type: 测试类型 (api 或 e2e)
+            device_type: 用例级执行路由 (physical / http_api / websocket_api)
             payload_store: 原始报文对象存储（默认进程级单例；测试可注入）
 
         Raises:
@@ -176,7 +176,7 @@ class GroupResultMixin:
         # 会话外：预提取 algorithm_results 快照，存入 result_data['algorithm_results']
         # INT-1809（C2）：快照构建吃本组内存 payload，不回读对象（见 _load_dim_result_rows）
         self._build_and_store_algorithm_results(
-            result_id, task_id, test_case_id, test_type, payload_context=payload_cache
+            result_id, task_id, test_case_id, device_type, payload_context=payload_cache
         )
 
         # 检查是否所有维度都已完成评估，如果是，更新TaskCase状态
@@ -214,7 +214,7 @@ class GroupResultMixin:
         """
         return cls._unwrap_calc_result(resp_data).get('per_round_native') is True
 
-    def _build_and_store_algorithm_results(self, result_id, task_id, test_case_id, test_type=TestType.API.value, payload_context=None):
+    def _build_and_store_algorithm_results(self, result_id, task_id, test_case_id, device_type=DeviceType.HTTP_API.value, payload_context=None):
         """预提取 algorithm_results 扁平列表并存入 result_data['algorithm_results']。
 
         在评估完成后调用，报告页和详情页可直接读取，无需重复提取。

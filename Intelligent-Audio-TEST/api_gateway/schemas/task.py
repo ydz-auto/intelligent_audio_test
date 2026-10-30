@@ -393,6 +393,8 @@ class TaskControlRequest(APIModel):
 class TaskUpdateCasesRequest(APIModel):
     action: str = Field(...)
     case_ids: List[str] = Field(default_factory=list)
+    # 动态加用例的执行路由（device_type 必填；见 TaskCaseDeviceAssignment）
+    case_devices: Optional[List[TaskCaseDeviceAssignment]] = Field(None)
 
 
 class TaskBatchActionRequest(APIModel):

@@ -6,6 +6,7 @@
 """
 from shared.proto import evaluation_service_pb2 as eval_pb
 from shared.proto import evaluation_service_pb2_grpc as eval_grpc
+from shared.models.common_enums import DeviceType
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 from shared.utils.id_normalizer import to_int_id
 
@@ -21,6 +22,9 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
             test_case_id = request.test_case_id
             algorithm_result = _loads(request.algorithm_result, {})
             eval_params = _loads(request.eval_params, {})
+            device_type = request.device_type or eval_params.get('device_type') \
+                or DeviceType.HTTP_API.value
+            eval_params['device_type'] = device_type
 
             from evaluation_service.infrastructure.evaluation_service_host import evaluation_service
             evaluation_service.evaluate_case(
@@ -73,7 +77,7 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
             result = _loads(request.result_json, {})
             test_case_id = request.test_case_id
             algorithm_result = _loads(request.algorithm_result, {})
-            test_type = request.test_type or 'api'
+            device_type = request.device_type or DeviceType.HTTP_API.value
             algorithm_type = request.algorithm_type or 'translation'
 
             from evaluation_service.application.handlers.reevaluation_executor import ReevaluationExecutor
@@ -83,7 +87,7 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
                 result=result,
                 test_case_id=test_case_id,
                 algorithm_result=algorithm_result,
-                test_type=test_type,
+                device_type=device_type,
                 algorithm_type=algorithm_type,
             )
             return eval_pb.ReevaluateMultiRoundResponse(
@@ -101,7 +105,7 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
             test_case_id = request.test_case_id
             algorithm_result = _loads(request.algorithm_result, {})
             reference_params = _loads(request.reference_params, {})
-            test_type = request.test_type or 'api'
+            device_type = request.device_type or DeviceType.HTTP_API.value
             algorithm_type = request.algorithm_type or 'translation'
 
             from evaluation_service.application.handlers.reevaluation_executor import ReevaluationExecutor
@@ -112,7 +116,7 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
                 test_case_id=test_case_id,
                 algorithm_result=algorithm_result,
                 reference_params=reference_params,
-                test_type=test_type,
+                device_type=device_type,
                 algorithm_type=algorithm_type,
             )
             return eval_pb.ReevaluateSingleResponse(

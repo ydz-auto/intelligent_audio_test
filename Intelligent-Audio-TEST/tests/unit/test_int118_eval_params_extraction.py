@@ -44,15 +44,17 @@ class _FakeConfigCache:
 
     def __init__(self, evaluation_mappings):
         self._evaluation_mappings = evaluation_mappings
+        self.seen_api_ids = []
 
-    def get_param_mapping(self, algorithm_type, component_type):
+    def get_param_mapping(self, algorithm_type, component_type, api_id=None):
         assert component_type == 'evaluation'
+        self.seen_api_ids.append(api_id)
         return self._evaluation_mappings
 
     def get_device_params(self, algorithm_type):
         return []
 
-    def get_api_params(self, algorithm_type):
+    def get_api_params(self, algorithm_type, api_id=None):
         return []
 
 
@@ -105,7 +107,7 @@ def test_get_evaluation_params_reference_source_extracts_value(voice_llm_cache):
     """reference 分支：修复前此调用抛
     AttributeError('...no attribute get_all_reference_params')。"""
     params = CaseParameterQueryHandler.get_evaluation_params(
-        VOICE_LLM_CASE_CONFIG, test_type='api')
+        VOICE_LLM_CASE_CONFIG, device_type='http_api')
     assert params.get('reference_text') == '今天天气怎么样'
 
 
@@ -113,14 +115,14 @@ def test_get_evaluation_params_adjusted_reference_source_extracts_value(
         voice_llm_cache):
     """adjusted_reference 分支：同型崩溃点（case_parameter_queries.py:147）。"""
     params = CaseParameterQueryHandler.get_evaluation_params(
-        VOICE_LLM_CASE_CONFIG, test_type='api')
+        VOICE_LLM_CASE_CONFIG, device_type='http_api')
     assert params.get('adjusted_reference_text') == '拒识话术标准文本'
 
 
 def test_get_evaluation_params_case_source_extracts_value(voice_llm_cache):
     """case 分支回归：算法参数 [{field_code, field_value}] 归一后取值。"""
     params = CaseParameterQueryHandler.get_evaluation_params(
-        VOICE_LLM_CASE_CONFIG, test_type='api')
+        VOICE_LLM_CASE_CONFIG, device_type='http_api')
     assert params.get('scene_name') == 'narrative'
 
 
@@ -131,7 +133,7 @@ def test_get_evaluation_params_missing_ref_param_yields_no_key(
     config['reference_params'] = [
         {'code': 'other_ref', 'type': 'text', 'value': 'x'}]
     params = CaseParameterQueryHandler.get_evaluation_params(
-        config, test_type='api')
+        config, device_type='http_api')
     assert 'reference_text' not in params
     assert 'adjusted_reference_text' not in params
     assert params.get('scene_name') == 'narrative'

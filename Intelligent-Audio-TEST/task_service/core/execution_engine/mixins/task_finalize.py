@@ -573,6 +573,10 @@ class TaskFinalizeMixin:
             local_db_session.close()
 
         if should_cleanup:
+            # 异步派发线程收敛：等在途派发结束（有界）再释放单飞槽位，
+            # 防止下一任务与仍在执行的设备/音频并发占用同一物理资源
+            self._drain_e2e_dispatch(task_id)
+
             # 清理运行状态（按执行画像释放 e2e 单飞槽位与 API 并发占用）
             self._release_running_slot(task_id)
 

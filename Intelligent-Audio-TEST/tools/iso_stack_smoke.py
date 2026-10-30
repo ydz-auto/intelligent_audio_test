@@ -180,7 +180,7 @@ def _upload_audio_and_create_case(client, base, headers, audio_path, dim_id, dim
     # merge 归档（不自动建用例，用例下方显式创建以便绑定维度）
     r = client.post(f'{base}/audios/upload/merge', json={
         'fileId': file_id, 'taskId': upload_task_id, 'audioType': 'dry',
-        'createTestCase': False, 'testTypes': ['api'], 'inheritTags': True,
+        'createTestCase': False, 'inheritTags': True,
         'dimensions': {}}, headers=headers, **CK)
     md = _resp_data(r)
     if md.get('status') != 'completed' and not md.get('audioId'):
@@ -224,7 +224,9 @@ def _create_task_and_run(client, base, headers, tc_id, api_id):
     assert task_id, f'任务创建未返回 id: {r.text[:400]}'
 
     r = client.patch(f'{base}/tasks/{task_id}/cases', json={
-        'action': 'add', 'caseIds': [tc_id]}, headers=headers, **CK)
+        'action': 'add', 'caseIds': [tc_id],
+        'caseDevices': [{'caseId': tc_id, 'deviceType': 'http_api', 'deviceId': str(api_id)}]},
+        headers=headers, **CK)
     _resp_data(r)
 
     r = client.post(f'{base}/tasks/{task_id}/start', headers=headers, **CK)

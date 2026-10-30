@@ -94,6 +94,13 @@ class ExecutionEngine(SchedulerMixin, ProgressMixin, TaskControlMixin, CaseExecu
                 # 任务完成事件，{task_id: threading.Event}，用于替代忙等待
                 cls._instance.task_completion_events = {}
 
+                # E2E 异步派发（spec group-execution §9）：任务级线程池、在途计数、
+                # 派发线程操作人快照（不同实验室并行，同 SN 仍由物理锁串行）
+                cls._instance.e2e_dispatch_pools = {}
+                cls._instance.e2e_dispatch_inflight = {}
+                cls._instance.e2e_dispatch_user_ids = {}
+                cls._instance.e2e_dispatch_lock = threading.Lock()
+
                 # 调度器相关初始化（在 _log 方法定义后启动）
                 cls._instance.scheduler_thread = None
                 cls._instance.scheduler_stop_event = None

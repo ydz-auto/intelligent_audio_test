@@ -261,10 +261,13 @@ class TestDeviceCheckFailedEvaluationConvergence:
 
 class TestDeviceMutexSingleEntryPoint:
     def test_dispatch_lock_uses_physical_prefix(self):
-        # 设备占用互斥唯一入口：task_dispatch 派发层
-        # DistributedLock(RedisKeyPrefix.TASK_PHYSICAL_LOCK:{device_id})
+        # 设备占用互斥唯一入口：task_dispatch 派发层。派发入口按 SN 归一后
+        # 由 _acquire_physical_lock_by_sn 统一构造
+        # DistributedLock(RedisKeyPrefix.TASK_PHYSICAL_LOCK:{SN})
         import inspect
-        source = inspect.getsource(TaskDispatchMixin._acquire_physical_device_lock)
-        assert 'RedisKeyPrefix.TASK_PHYSICAL_LOCK' in source
-        assert 'DistributedLock' in source
-        assert 'ttl=' in source
+        entry_source = inspect.getsource(TaskDispatchMixin._acquire_physical_device_lock)
+        assert '_acquire_physical_lock_by_sn' in entry_source
+        lock_source = inspect.getsource(TaskDispatchMixin._acquire_physical_lock_by_sn)
+        assert 'RedisKeyPrefix.TASK_PHYSICAL_LOCK' in lock_source
+        assert 'DistributedLock' in lock_source
+        assert 'ttl=' in lock_source

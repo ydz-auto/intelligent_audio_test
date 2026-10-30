@@ -206,3 +206,131 @@ class PlaybackConfigServiceServicer(e2e_grpc.PlaybackConfigServiceServicer):
             )
         except Exception as e:
             return e2e_pb.RepairPlaybackDeviceResponse(success=False, message=str(e), data="", code=500)
+
+    # ---- 逻辑音箱组（N 个实验室里位置相同的音箱互相对应）----
+
+    @property
+    def speaker_command(self):
+        if getattr(self, '_speaker_command', None) is None:
+            from device_service.application.commands.playback_speaker_command_service import (
+                playback_speaker_command_service,
+            )
+            self._speaker_command = playback_speaker_command_service
+        return self._speaker_command
+
+    @property
+    def speaker_query(self):
+        if getattr(self, '_speaker_query', None) is None:
+            from device_service.application.queries.playback_speaker_query_service import (
+                playback_speaker_query_service,
+            )
+            self._speaker_query = playback_speaker_query_service
+        return self._speaker_query
+
+    def ListPlaybackSpeakerGroups(self, request, context=None):
+        try:
+            result = self.speaker_query.list_groups(request.keyword or None)
+            return e2e_pb.ListPlaybackSpeakerGroupsResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.ListPlaybackSpeakerGroupsResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def CreatePlaybackSpeakerGroup(self, request, context=None):
+        try:
+            result = self.speaker_command.create_group(_loads(request.data, {}))
+            return e2e_pb.CreatePlaybackSpeakerGroupResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.CreatePlaybackSpeakerGroupResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def UpdatePlaybackSpeakerGroup(self, request, context=None):
+        try:
+            result = self.speaker_command.update_group(
+                request.group_id, _loads(request.data, {}))
+            return e2e_pb.UpdatePlaybackSpeakerGroupResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.UpdatePlaybackSpeakerGroupResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def DeletePlaybackSpeakerGroup(self, request, context=None):
+        try:
+            result = self.speaker_command.delete_group(request.group_id)
+            return e2e_pb.DeletePlaybackSpeakerGroupResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.DeletePlaybackSpeakerGroupResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def SetPlaybackSpeakerGroupItem(self, request, context=None):
+        try:
+            result = self.speaker_command.set_item(
+                request.group_id, request.lab_id, request.playback_device_id)
+            return e2e_pb.SetPlaybackSpeakerGroupItemResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.SetPlaybackSpeakerGroupItemResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def DeletePlaybackSpeakerGroupItem(self, request, context=None):
+        try:
+            result = self.speaker_command.delete_item(request.group_id, request.lab_id)
+            return e2e_pb.DeletePlaybackSpeakerGroupItemResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.DeletePlaybackSpeakerGroupItemResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def ResolvePlaybackSpeakerDevice(self, request, context=None):
+        try:
+            result = self.speaker_query.resolve(
+                request.source_device_id, request.target_lab_id)
+            return e2e_pb.ResolvePlaybackSpeakerDeviceResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.ResolvePlaybackSpeakerDeviceResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def ResolvePlaybackSpeakerGroupDevice(self, request, context=None):
+        try:
+            result = self.speaker_query.resolve_group(
+                request.group_id, request.target_lab_id)
+            return e2e_pb.ResolvePlaybackSpeakerGroupDeviceResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.ResolvePlaybackSpeakerGroupDeviceResponse(
+                success=False, message=str(e), data="", code=500)

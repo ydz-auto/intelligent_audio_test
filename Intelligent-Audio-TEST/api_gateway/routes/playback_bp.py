@@ -33,6 +33,46 @@ def import_playback_devices(_: None = require_permission('playback:create')):
     return to_response(ResourceImportExportService.import_resource('playback-devices'))
 
 
+# ==================== 逻辑音箱组（静态段，须先于 /{device_id}） ====================
+
+
+@router.get('/speaker-groups')
+def list_speaker_groups(_: None = require_permission('playback:read')):
+    """逻辑音箱组：N 个实验室里位置相同的音箱互相对应（含各实验室对应设备）"""
+    return to_response(PlaybackQueryService.list_speaker_groups())
+
+
+@router.post('/speaker-groups')
+def create_speaker_group(_: None = require_permission('playback:update')):
+    """新建逻辑音箱（body: {name, description?}）"""
+    return to_response(PlaybackCommandService.create_speaker_group())
+
+
+@router.put('/speaker-groups/{group_id}')
+def update_speaker_group(group_id: int, _: None = require_permission('playback:update')):
+    """重命名/改描述逻辑音箱"""
+    return to_response(PlaybackCommandService.update_speaker_group(group_id))
+
+
+@router.delete('/speaker-groups/{group_id}')
+def delete_speaker_group(group_id: int, _: None = require_permission('playback:update')):
+    """删除逻辑音箱（连同组内各实验室对应关系）"""
+    return to_response(PlaybackCommandService.delete_speaker_group(group_id))
+
+
+@router.put('/speaker-groups/{group_id}/items')
+def set_speaker_group_item(group_id: int, _: None = require_permission('playback:update')):
+    """设置逻辑音箱在指定实验室对应的播放设备（body: {lab_id, playback_device_id}）"""
+    return to_response(PlaybackCommandService.set_speaker_group_item(group_id))
+
+
+@router.delete('/speaker-groups/{group_id}/items/{lab_id}')
+def delete_speaker_group_item(group_id: int, lab_id: int,
+                              _: None = require_permission('playback:update')):
+    """移除逻辑音箱在指定实验室的对应设备"""
+    return to_response(PlaybackCommandService.delete_speaker_group_item(group_id, lab_id))
+
+
 @router.get('/{device_id}')
 def get_one(device_id: int, _: None = require_permission('playback:read')):
     return to_response(PlaybackQueryService.get_one(device_id))

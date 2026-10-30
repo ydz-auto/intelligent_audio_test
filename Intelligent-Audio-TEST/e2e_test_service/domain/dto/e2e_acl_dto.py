@@ -58,6 +58,8 @@ class DeviceDTO:
     keywords: Optional[str] = None
     serial_number: Optional[str] = None
     ip: Optional[str] = None
+    # 实验室归属（播放设备按实验室换绑的执行域依据）
+    lab_id: Optional[int] = None
     needs_prompt_audio: Optional[bool] = None
     prompt_config: Any = None
 

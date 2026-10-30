@@ -45,7 +45,6 @@ class ReferenceParamsQueryHandler:
             config['algorithm_params'] = ap
 
         config['audios'] = round_data.get('audios', [])
-        config['_record_test_type'] = test_case_config.get('test_type', 'api') or 'api'
 
         round_audios = config['audios']
         audio_ids = [item.get('audio_id') for item in round_audios if item.get('audio_id')]
@@ -126,7 +125,6 @@ class ReferenceParamsQueryHandler:
         annotation_format = ref_param.get('annotation_format')
         field_path = ref_param.get('field_path')
         merge_mode = ref_param.get('merge_mode') or 'join'
-        record_test_type = config.get('_record_test_type', 'api')
 
         if not field_path and code and param_type == 'text':
             field_path = f'segments[].{code}'
@@ -154,7 +152,7 @@ class ReferenceParamsQueryHandler:
                 annotation_format=annotation_format,
             )
 
-        value = values.get(record_test_type)
+        value = values
 
         if cls._is_empty_value(value):
             return None
@@ -176,7 +174,7 @@ class ReferenceParamsQueryHandler:
     def _extract_field_from_audios(
         cls, config: Dict, field_path: str, merge_mode: str = 'join',
         annotation_code: str = None, annotation_format: str = None,
-    ) -> Dict[str, Any]:
+    ) -> Any:
         """按字段路径从音频标注 segments 提取值"""
         if not field_path.startswith('segments[].'):
             field_path = f'segments[].{field_path}'
@@ -187,8 +185,7 @@ class ReferenceParamsQueryHandler:
         annotation_map = preload.get('annotation_map', {})
         audios = config.get('audios', [])
 
-        api_values = []
-        e2e_values = []
+        values = []
 
         for audio_item in audios:
             audio_id = audio_item.get('audio_id')
@@ -202,35 +199,27 @@ class ReferenceParamsQueryHandler:
                 segments = data.get('segments', []) if isinstance(data, dict) else []
                 for seg in segments:
                     if isinstance(seg, dict) and field_name in seg:
-                        api_values.append(seg[field_name])
-                        e2e_values.append(seg[field_name])
+                        values.append(seg[field_name])
 
-        def _merge(vals, mode):
-            if not vals:
-                return ''
-            if mode == 'first':
-                return vals[0]
-            if mode == 'collect':
-                return vals
-            return '\n'.join(str(v) for v in vals)
-
-        return {
-            'api': _merge(api_values, merge_mode),
-            'e2e': _merge(e2e_values, merge_mode),
-        }
+        if not values:
+            return ''
+        if merge_mode == 'first':
+            return values[0]
+        if merge_mode == 'collect':
+            return values
+        return '\n'.join(str(v) for v in values)
 
     @classmethod
     def _extract_text_from_audios(
         cls, config: Dict, text_field: str = None,
         annotation_code: str = None, annotation_format: str = None,
-    ) -> Dict[str, str]:
+    ) -> str:
         """从标注提取文本"""
         preload = config.get('_preload_context', {})
         annotation_map = preload.get('annotation_map', {})
         audios = config.get('audios', [])
 
-        api_values = []
-        e2e_values = []
+        values = []
 
         for audio_item in audios:
             audio_id = audio_item.get('audio_id')
@@ -244,24 +233,19 @@ class ReferenceParamsQueryHandler:
                 if isinstance(data, dict):
                     text = data.get('text', '')
                     if text:
-                        api_values.append(text)
-                        e2e_values.append(text)
+                        values.append(text)
                     segments = data.get('segments', [])
                     for seg in segments:
                         if isinstance(seg, dict) and seg.get('text'):
-                            api_values.append(seg['text'])
-                            e2e_values.append(seg['text'])
+                            values.append(seg['text'])
 
-        return {
-            'api': '\n'.join(api_values),
-            'e2e': '\n'.join(e2e_values),
-        }
+        return '\n'.join(values)
 
     @classmethod
     def _extract_annotation_with_overlap(
         cls, config: Dict, format_type: str = 'rttm',
         annotation_code: str = None, annotation_format: str = None,
-    ) -> Dict[str, Any]:
+    ) -> Any:
         """提取标注数据支持重叠播放时间戳调整"""
         preload = config.get('_preload_context', {})
         audio_map = preload.get('audio_map', {})
@@ -310,10 +294,10 @@ class ReferenceParamsQueryHandler:
             text = json.dumps(merged, ensure_ascii=False)
 
         result = {'text': text, 'json': merged, 'segments': merged}
-        return {'api': result, 'e2e': result}
+        return result
 
     @classmethod
-    def _extract_translation_from_audios(cls, config: Dict) -> Dict[str, Any]:
+    def _extract_translation_from_audios(cls, config: Dict) -> str:
         """提取翻译参考文本"""
         preload = config.get('_preload_context', {})
         annotation_map = preload.get('annotation_map', {})
@@ -334,7 +318,7 @@ class ReferenceParamsQueryHandler:
                             translations.append('\n'.join(text_parts))
 
         result = '\n'.join(translations)
-        return {'api': result, 'e2e': result}
+        return result
 
     @classmethod
     def load_from_file(cls, filepath: str) -> list:

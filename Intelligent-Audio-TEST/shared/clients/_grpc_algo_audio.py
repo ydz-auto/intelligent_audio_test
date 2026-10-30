@@ -275,8 +275,9 @@ def algo_get_evaluation_field_mappings(algorithm_type: str):
     return _call_algo_query_rpc('GetEvaluationFieldMappings', algorithm_type=algorithm_type or '') or {}
 
 
-def algo_build_api_request_data(algorithm_type: str, device_params=None, api_params=None, case_config=None, **kwargs):
-    """构建 API 请求参数"""
+def algo_build_api_request_data(algorithm_type: str, device_params=None, api_params=None,
+                                case_config=None, api_id=None, **kwargs):
+    """构建 API 请求参数（api_id 非空时输入声明按该 API 的策略 + 覆盖解析）"""
     import json as _json
     data = _json.dumps({
         'device_params': device_params or {},
@@ -284,7 +285,10 @@ def algo_build_api_request_data(algorithm_type: str, device_params=None, api_par
         'case_config': case_config or {},
         'kwargs': kwargs,
     }, ensure_ascii=False)
-    return _call_algo_query_rpc('BuildApiRequestData', algorithm_type=algorithm_type or '', data=data) or {}
+    return _call_algo_query_rpc(
+        'BuildApiRequestData',
+        **_with_api_scope({'algorithm_type': algorithm_type or '', 'data': data}, api_id),
+    ) or {}
 
 
 def algo_convert_field_value(transform_type: str, value):
@@ -314,11 +318,11 @@ def algo_convert_field_values(items):
     return data.get('values')
 
 
-def algo_get_output_fields(algorithm_type: str, test_type: str = None, api_id=None):
+def algo_get_output_fields(algorithm_type: str, device_type: str = None, api_id=None):
     """获取结果输出字段（api_id 传入时取该 API 实例的输出声明，INT-1757 / C6b）"""
     return _call_algo_query_rpc('GetOutputFields', **_with_api_scope(
         {'algorithm_type': algorithm_type or '',
-         'test_type': test_type or ''}, api_id)) or []
+         'device_type': device_type or ''}, api_id)) or []
 
 
 def algo_get_device_output_fields(algorithm_type: str):
@@ -352,31 +356,42 @@ def algo_get_reference_output_fields(algorithm_type: str):
     return _call_algo_query_rpc('GetReferenceOutputFields', algorithm_type=algorithm_type or '') or []
 
 
-def algo_extract_result_fields(algorithm_type: str, algorithm_result=None, result_data=None):
-    """从算法结果中提取字段"""
+def algo_extract_result_fields(algorithm_type: str, algorithm_result=None, result_data=None,
+                               api_id=None):
+    """从算法结果中提取字段（api_id 非空时输出声明按该 API 的策略 + 覆盖解析）"""
     import json as _json
-    return _call_algo_query_rpc('ExtractResultFields',
-                               algorithm_type=algorithm_type or '',
-                               algorithm_result=_json.dumps(algorithm_result or {}, ensure_ascii=False),
-                               result_data=_json.dumps(result_data or {}, ensure_ascii=False)) or {}
+    return _call_algo_query_rpc(
+        'ExtractResultFields',
+        **_with_api_scope({
+            'algorithm_type': algorithm_type or '',
+            'algorithm_result': _json.dumps(algorithm_result or {}, ensure_ascii=False),
+            'result_data': _json.dumps(result_data or {}, ensure_ascii=False),
+        }, api_id),
+    ) or {}
 
 
-def algo_get_timeline_fields(algorithm_type: str):
-    """获取时间线字段"""
-    return _call_algo_query_rpc('GetTimelineFields', algorithm_type=algorithm_type or '') or []
+def algo_get_timeline_fields(algorithm_type: str, api_id=None):
+    """获取时间线字段（api_id 非空时输出声明按该 API 的策略 + 覆盖解析）"""
+    return _call_algo_query_rpc(
+        'GetTimelineFields',
+        **_with_api_scope({'algorithm_type': algorithm_type or ''}, api_id),
+    ) or []
 
 
-def algo_get_full_field_mapping(algorithm_type: str):
-    """获取完整字段映射"""
-    return _call_algo_query_rpc('GetFullFieldMapping', algorithm_type=algorithm_type or '') or {}
+def algo_get_full_field_mapping(algorithm_type: str, api_id=None):
+    """获取完整字段映射（api_id 非空时按该 API 的策略 + 覆盖解析）。"""
+    return _call_algo_query_rpc(
+        'GetFullFieldMapping',
+        **_with_api_scope({'algorithm_type': algorithm_type or ''}, api_id),
+    ) or {}
 
 
-def algo_extract_round_results(algorithm_result=None, test_type: str = None):
+def algo_extract_round_results(algorithm_result=None, device_type: str = None):
     """提取轮次结果"""
     import json as _json
     return _call_algo_query_rpc('ExtractRoundResults',
                                algorithm_result=_json.dumps(algorithm_result or {}, ensure_ascii=False),
-                               test_type=test_type or '') or []
+                               device_type=device_type or '') or []
 
 
 def algo_extract_case_all_params(case_config=None):

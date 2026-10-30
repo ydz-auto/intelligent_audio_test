@@ -8,6 +8,8 @@
 import copy
 import logging
 
+from shared.models.common_enums import DeviceType
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,7 +21,7 @@ class CreationRoundConfigMixin:
     # 一律按逐轮口径处理
     OVERALL_ROUND_SCOPE = 'multi'
 
-    def _resolve_rounds_and_strip_params(self, tt, audio_id, audio, spl,
+    def _resolve_rounds_and_strip_params(self, device_type, audio_id, audio, spl,
                                           effective_playback_device_id, rounds_config, algorithm_params,
                                           upload_task_id=None):
         """构建 rounds_resolved，剥离 algorithm_params 到独立列
@@ -37,7 +39,7 @@ class CreationRoundConfigMixin:
                 'spl': spl if spl else 65.0,
                 'play_order': 0,
             }
-            if tt == 'e2e':
+            if device_type == DeviceType.PHYSICAL.value:
                 audio_config['playback_device_id'] = effective_playback_device_id
             rounds_resolved = [{'round_number': 1, 'audios': [audio_config]}]
 
@@ -175,19 +177,20 @@ class CreationRoundConfigMixin:
                     task_name_to_id.setdefault(key, audio_id)
         return task_name_to_id, task_file_names
 
-    def _build_config_and_apply_dimensions(self, audio, rounds_resolved, dimensions_data, tt,
+    def _build_config_and_apply_dimensions(self, audio, rounds_resolved, dimensions_data, device_type,
                                             noise_spl, noise_audio_id, noise_device_ids=None,
                                             case_background_noise=None):
         """构建 config 字典，应用噪声配置和评估维度
 
         维度写侧规则（INT-1606 / INT-1607 评审裁定）：
         - 任一轮自带 `evaluation.dimensions`（list，显式 [] 也算）→ 整体以载荷为准：
-          自带轮写「归一化 → test_type 过滤 → 去重保序」后的逐轮维度；未自带轮写 []；
+          自带轮写「归一化 → device_type 作用域过滤 → 去重保序」后的逐轮维度；未自带轮写 []；
           顶层维度只保留 multi 口径（并入 `config.dimensions`），逐轮口径忽略并告警。
         - 所有轮都未自带 → 顶层维度回填每一轮（改动前口径），multi 写 `config.dimensions`。
         - 既无顶层有效维度也无轮自带 → 只给缺失维度的轮补 []。
-        轮内 `round_scope='multi'` 一律归并进 `config.dimensions` 并从轮内移除：E2E 整体
-        评估只认顶层 config.dimensions（finalization_mixin.py:84），仅留轮内会永不出整体分。
+        轮内 `round_scope='multi'` 一律归并进 `config.dimensions` 并从轮内移除：物理设备
+        （physical）整体评估只认顶层 config.dimensions（finalization_mixin.py:84），
+        仅留轮内会永不出整体分。
         """
         config = {
             'source_audio': audio.name,
@@ -208,10 +211,10 @@ class CreationRoundConfigMixin:
         round_items = [r for r in rounds_resolved if isinstance(r, dict)]
         if any(self._round_self_provides_dimensions(r) for r in round_items):
             # R1：任一轮自带维度 → 整体以载荷为准，不拿顶层维度回填未自带轮
-            self._apply_payload_round_dimensions(round_items, top_dims, tt, config, audio)
+            self._apply_payload_round_dimensions(round_items, top_dims, device_type, config, audio)
         elif top_dims is not None:
             # R2：所有轮都未自带 → 顶层维度回填每一轮（旧调用方行为零变化）
-            self._apply_top_level_dimensions(round_items, top_dims, tt, config)
+            self._apply_top_level_dimensions(round_items, top_dims, device_type, config)
         else:
             # R4：无顶层维度且无轮自带 → 维持现状，只给缺失轮补 []
             self._ensure_round_dimension_placeholders(round_items)
@@ -257,9 +260,9 @@ class CreationRoundConfigMixin:
         return normalized
 
     @staticmethod
-    def _filter_dimension_by_test_type(dims, tt):
-        """按用例类型过滤：未标注 test_type 的条目对两类用例都生效。"""
-        return [d for d in dims if not d.get('test_type') or d.get('test_type') == tt]
+    def _filter_dimension_by_device_type(dims, device_type):
+        """按设备类型作用域过滤：未标注 device_type 的条目对所有目标设备都生效。"""
+        return [d for d in dims if not d.get('device_type') or d.get('device_type') == device_type]
 
     @classmethod
     def _is_overall_scope_dimension(cls, dim):
@@ -288,7 +291,7 @@ class CreationRoundConfigMixin:
         """该轮是否自带评估维度。
 
         `evaluation` 为 dict 且含 `dimensions` 键、值为 list 才算自带（显式 `[]` 算自带）；
-        判定在任何 test_type 过滤之前（评审 S5）。
+        判定在任何 device_type 作用域过滤之前（评审 S5）。
         """
         if not isinstance(round_item, dict):
             return False
@@ -297,27 +300,27 @@ class CreationRoundConfigMixin:
                 and 'dimensions' in evaluation
                 and isinstance(evaluation['dimensions'], list))
 
-    def _resolve_round_dimensions(self, raw_dims, tt):
-        """轮内维度：归一化 → test_type 过滤 → 去重保序，再分逐轮 / 整体两桶。"""
+    def _resolve_round_dimensions(self, raw_dims, device_type):
+        """轮内维度：归一化 → device_type 作用域过滤 → 去重保序，再分逐轮 / 整体两桶。"""
         dims = self._dedupe_dimensions(
-            self._filter_dimension_by_test_type(self._normalize_dimensions(raw_dims), tt))
+            self._filter_dimension_by_device_type(self._normalize_dimensions(raw_dims), device_type))
         round_scoped = [d for d in dims if not self._is_overall_scope_dimension(d)]
         overall_scoped = [d for d in dims if self._is_overall_scope_dimension(d)]
         return round_scoped, overall_scoped
 
-    def _apply_payload_round_dimensions(self, round_items, top_dims, tt, config, audio):
+    def _apply_payload_round_dimensions(self, round_items, top_dims, device_type, config, audio):
         """R1：整体以载荷为准写入各轮维度，并按 R3 归并整体维度。"""
         top_normalized = self._normalize_dimensions(top_dims)
         ignored_top_dims = [d for d in self._dedupe_dimensions(top_normalized)
                             if not self._is_overall_scope_dimension(d)]
-        # R3：归一化 → test_type 过滤 → 按 (id, round_scope) 去重保序（与 R2 回填分支同口径）
-        overall_dims = self._dedupe_dimensions(self._filter_dimension_by_test_type(
-            [d for d in top_normalized if self._is_overall_scope_dimension(d)], tt))
+        # R3：归一化 → device_type 作用域过滤 → 按 (id, round_scope) 去重保序（与 R2 回填分支同口径）
+        overall_dims = self._dedupe_dimensions(self._filter_dimension_by_device_type(
+            [d for d in top_normalized if self._is_overall_scope_dimension(d)], device_type))
         if ignored_top_dims:
             logger.warning(
                 "上传生成用例时轮内已自带评估维度，忽略顶层逐轮维度: audio=%s, audio_id=%s, "
-                "test_type=%s, ignored_dim_ids=%s",
-                getattr(audio, 'name', None), getattr(audio, 'id', None), tt,
+                "device_type=%s, ignored_dim_ids=%s",
+                getattr(audio, 'name', None), getattr(audio, 'id', None), device_type,
                 [d.get('id') for d in ignored_top_dims],
             )
         for round_item in round_items:
@@ -328,17 +331,17 @@ class CreationRoundConfigMixin:
                 round_item['evaluation']['dimensions'] = []
                 continue
             round_scoped, round_overall = self._resolve_round_dimensions(
-                round_item['evaluation']['dimensions'], tt)
+                round_item['evaluation']['dimensions'], device_type)
             round_item['evaluation']['dimensions'] = list(round_scoped)
             overall_dims.extend(round_overall)
         overall_dims = self._dedupe_dimensions(overall_dims)
         if overall_dims:
             config['dimensions'] = overall_dims
 
-    def _apply_top_level_dimensions(self, round_items, top_dims, tt, config):
+    def _apply_top_level_dimensions(self, round_items, top_dims, device_type, config):
         """R2：所有轮都未自带维度时，顶层维度回填每一轮（改动前口径）。"""
         dims = self._dedupe_dimensions(
-            self._filter_dimension_by_test_type(self._normalize_dimensions(top_dims), tt))
+            self._filter_dimension_by_device_type(self._normalize_dimensions(top_dims), device_type))
         round_scoped = [d for d in dims if not self._is_overall_scope_dimension(d)]
         overall_scoped = [d for d in dims if self._is_overall_scope_dimension(d)]
         for round_item in round_items:

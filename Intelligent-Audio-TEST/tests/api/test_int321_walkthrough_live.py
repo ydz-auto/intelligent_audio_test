@@ -101,7 +101,7 @@ def _put_to_oss(presigned_url, file_path):
 
 
 def _upload_audio_and_create_case(api_client, sample_audio_files, unified_rounds,
-                                  test_types, group_name, extra_merge=None,
+                                  device_type, group_name, extra_merge=None,
                                   round_eval=None):
     """上传 3 个样例 WAV 并在末尾 merge 生成测试用例（R11 主链模式）。
 
@@ -173,7 +173,7 @@ def _upload_audio_and_create_case(api_client, sample_audio_files, unified_rounds
 
         merge_body = {
             'fileId': file_id, 'taskId': upload_task_id, 'audioType': 'dry',
-            'createTestCase': is_final, 'testTypes': test_types,
+            'createTestCase': is_final, 'deviceType': device_type,
             'groupNameType': 'custom', 'customGroupName': group_name,
             'inheritTags': True, 'dimensions': {},
         }
@@ -413,7 +413,7 @@ class TestInt321Walkthrough:
         # 兜底 'translation'（_db_mixin.py），而评估字段映射仅 voice_llm 有
         # 内置定义 → 评估轮次数据构建为空、用例评估恒 skipped（实测验证）。
         audio_ids, tc_id = _upload_audio_and_create_case(
-            api_client, sample_audio_files, unified_rounds, ['e2e'],
+            api_client, sample_audio_files, unified_rounds, 'physical',
             'INT321_E2E', extra_merge={'defaultPlaybackDeviceId': pb_id,
                                        'algorithmType': 'voice_llm'},
             round_eval={'dimensions': [{'id': 2, 'name': '逐轮话轮评估'}]})
@@ -675,7 +675,7 @@ class TestInt321Walkthrough:
             rnd['evaluation'] = {'dimensions': [{'id': 2, 'name': '逐轮话轮评估'}]}
 
         audio_ids, tc_id = _upload_audio_and_create_case(
-            api_client, sample_audio_files, rounds_with_dims, ['api'],
+            api_client, sample_audio_files, rounds_with_dims, 'http_api',
             'INT321_API', extra_merge={'algorithmType': 'voice_llm'})
         type(self).api_audio_ids = audio_ids
         type(self).api_case_ids = [tc_id] if tc_id else []

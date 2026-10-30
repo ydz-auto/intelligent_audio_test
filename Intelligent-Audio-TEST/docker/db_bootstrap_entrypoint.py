@@ -306,6 +306,20 @@ BOOTSTRAP_STEPS = [
     #     冗余列）随概念废除删除，列存在即 DROP，全新库为全 SKIP。
     #     须排在 ㊽ ANALYZE 之前（ANALYZE 固定为引导链末步）。
     ('python', 'scripts/migrations/202610/drop_published_task_type_and_case_derived_test_type.py'),
+    # ㊿-1 参数策略三表 + API 策略绑定表（API 参数下沉）：param_profiles /
+    #     param_profile_params / param_profile_mappings / api_param_bindings 建表，
+    #     按 algorithm_type 生成 default 策略并把算法级默认行（api_id IS NULL）搬进
+    #     策略，回填 API 绑定，再软删默认行；实例级行（api_id 非空）保留为覆盖。
+    #     幂等（建表/加列 IF NOT EXISTS、复制 ON CONFLICT 跳过）；默认 dry-run，引导链
+    #     必须带 --apply。读侧按「策略 + 实例覆盖」解析必须与本次部署同版本上线，
+    #     否则默认行搬走后读成空。须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202610/add_param_profiles_scope.py', '--apply'),
+    # ㊿-2 用例参数作用域词表改 device_type：case_algorithm_params.scope 由
+    #     common/api/e2e 改为 common/physical/http_api/websocket_api。列宽
+    #     VARCHAR(10) → VARCHAR(20)（'websocket_api' 13 字符，不改宽写入必失败），
+    #     存量值映射 e2e→physical、api→http_api。幂等（列宽达标即 SKIP、值映射命中
+    #     0 行）；纯 DDL + 值 UPDATE，须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202610/widen_case_param_scope_to_device_type.py'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器

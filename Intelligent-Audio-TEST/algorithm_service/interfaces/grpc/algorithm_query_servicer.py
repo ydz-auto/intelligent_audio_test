@@ -169,6 +169,36 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
         except Exception as e:
             return _failure(str(e))
 
+    def ListParamProfiles(self, request, context=None):
+        """参数策略列表（按 algorithm_type / scope 过滤）。"""
+        try:
+            from algorithm_service.application.handlers.param_profile_handlers import (
+                ParamProfileHandler,
+            )
+            data = ParamProfileHandler.list_profiles(
+                request.algorithm_type or None, request.scope or None)
+            profile_ids = [int(item['id']) for item in data if item.get('id') is not None]
+            return _success({
+                'profiles': data,
+                'total': len(data),
+                'bindings': ParamProfileHandler.list_bindings(profile_ids),
+            })
+        except Exception as e:
+            return _failure(str(e))
+
+    def GetParamProfile(self, request, context=None):
+        """参数策略详情（含字段声明与映射）；不存在返回 success=False。"""
+        try:
+            from algorithm_service.application.handlers.param_profile_handlers import (
+                ParamProfileHandler,
+            )
+            data = ParamProfileHandler.get_profile(int(request.profile_id))
+            if data is None:
+                return _failure('策略不存在或已删除')
+            return _success(data)
+        except Exception as e:
+            return _failure(str(e))
+
     def GetCaseParamsList(self, request, context=None):
         """获取用例参数列表（按 algorithm_type）。"""
         try:
@@ -260,7 +290,8 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
             case_config = payload.get("case_config")
             kwargs = payload.get("kwargs") or {}
             data = self.field_mapping_handler.build_api_request_data(
-                device_params, api_params, case_config, **kwargs
+                request.algorithm_type, device_params, api_params, case_config,
+                api_id=_optional_api_id(request), **kwargs
             )
             return _success(data)
         except Exception as e:
@@ -302,11 +333,11 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
     # ============================================================
 
     def GetOutputFields(self, request, context=None):
-        """获取输出字段（按 algorithm_type + 可选 test_type + 可选 api_id 作用域）。"""
+        """获取输出字段（按 algorithm_type + 可选 device_type + 可选 api_id 作用域）。"""
         try:
-            test_type = request.test_type or None
+            device_type = request.device_type or None
             data = self.result_field_mapping_handler.get_output_fields(
-                request.algorithm_type, test_type, _optional_api_id(request)
+                request.algorithm_type, device_type, _optional_api_id(request)
             )
             return _success(data)
         except Exception as e:
@@ -332,7 +363,8 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
             algorithm_result = _loads(request.algorithm_result, {})
             result_data = _loads(request.result_data, {})
             data = self.result_field_mapping_handler.extract_all_result_fields(
-                algorithm_result, result_data
+                request.algorithm_type, algorithm_result, result_data,
+                api_id=_optional_api_id(request)
             )
             return _success(data)
         except Exception as e:
@@ -342,17 +374,17 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
         """获取时间线字段（按 algorithm_type）。"""
         try:
             data = self.result_field_mapping_handler.get_timeline_fields(
-                request.algorithm_type
+                request.algorithm_type, api_id=_optional_api_id(request)
             )
             return _success(data)
         except Exception as e:
             return _failure(str(e))
 
     def GetFullFieldMapping(self, request, context=None):
-        """获取完整字段映射（按 algorithm_type）。"""
+        """获取完整字段映射（按 algorithm_type，可选 api_id 作用域）。"""
         try:
             data = self.result_field_mapping_handler.get_field_mapping(
-                request.algorithm_type
+                request.algorithm_type, api_id=_optional_api_id(request)
             )
             return _success(data)
         except Exception as e:
@@ -376,7 +408,7 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
         try:
             algorithm_result = _loads(request.algorithm_result, {})
             data = self.result_field_mapping_handler.extract_round_results(
-                algorithm_result
+                algorithm_result, request.device_type or None
             )
             return _success(data)
         except Exception as e:

@@ -22,6 +22,7 @@ RMS→SPL 映射），与 E2E/API 结果对称可比。
 评估异步：summary 落库后提交 evaluation_service 评估队列，不阻塞会话收尾。
 """
 import io
+import json
 import logging
 import time
 import wave
@@ -66,6 +67,18 @@ from api_test_service.infrastructure.persistence.api_rms_spl_repository import (
 from shared.utils.realtime_session_registry import RealtimeSessionRegistry
 
 logger = logging.getLogger(__name__)
+
+
+def _render_placeholders(value, context):
+    """把模板中的 ``{{key}}`` 替换为 context 里的值（支持嵌套 dict / list）。"""
+    if isinstance(value, dict):
+        return {k: _render_placeholders(v, context) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_render_placeholders(v, context) for v in value]
+    if isinstance(value, str):
+        for key, item in (context or {}).items():
+            value = value.replace('{{' + str(key) + '}}', str(item))
+    return value
 
 
 def audio_bytes_to_ms(audio_bytes: int, sample_rate: int,
@@ -217,7 +230,8 @@ class RealtimeSessionExecutor:
                 raise ConnectionError(f"Realtime WS 连接失败: {url}")
 
             session_cfg = self._build_session_config(api_config, session_config)
-            if not client.pre_process(session_cfg):
+            first_frame = self._build_first_frame(api_config, session_cfg)
+            if not client.pre_process(session_cfg, first_frame=first_frame):
                 raise ConnectionError("Realtime 会话配置未确认（session.updated 超时）")
 
             round_results = []
@@ -746,7 +760,7 @@ class RealtimeSessionExecutor:
     # ── 评估提交（异步入队，不阻塞会话）──
     def _submit_evaluation(self, task_id, result_id, test_case_id, case_config,
                            data, algorithm_type, aggregated, api_id):
-        """提交评估：复用多轮会话评估入参链路，test_type 沿用 api（评估引擎不动）
+        """提交评估：复用多轮会话评估入参链路，device_type 由用例级路由透传
 
         实现见 `core/evaluation_submitter.submit_case_evaluation`：INT-1790（A2）
         提库后与按事件切的流式策略共用同一入参口径。
@@ -757,6 +771,8 @@ class RealtimeSessionExecutor:
             case_algorithm_params=data.get('case_algorithm_params'),
             reference_params=case_config.get('reference_params', {}),
             algorithm_type=algorithm_type, acl=_evaluation_acl,
+            device_type=(data.get('device_type') or 'websocket_api'),
+            api_id=api_id,
             log=lambda level, msg: self._log(level=level, category='evaluation',
                                              content=f"API {api_id} Realtime 会话完成，"
                                                      f"{msg}",
@@ -836,6 +852,34 @@ class RealtimeSessionExecutor:
         merged.setdefault('input_audio_sample_rate',
                           resolve_audio_sample_rate(api_config))
         return merged
+
+    @staticmethod
+    def _build_first_frame(api_config, session_cfg) -> Optional[dict]:
+        """首帧模板（``apis.meta.first_frame``）：未配置返回 None，回落 session.update。
+
+        各协议首帧载荷格式不一（WS 建连 / session.update 声明），因此把首帧做成
+        可配置模板：``{"enabled": bool, "template": {...} 或 "json 字符串"}``，
+        ``{{placeholder}}`` 取自 meta.session_config 与用例级 session 配置。
+        """
+        meta = getattr(api_config, 'meta', None) or {}
+        cfg = meta.get('first_frame')
+        if not isinstance(cfg, dict) or not cfg.get('enabled'):
+            return None
+        template = cfg.get('template')
+        if not template:
+            return None
+        context = dict(meta.get('session_config') or {})
+        context.update(session_cfg or {})
+        if isinstance(template, dict):
+            return _render_placeholders(template, context)
+        if isinstance(template, str):
+            rendered = _render_placeholders(template, context)
+            try:
+                payload = json.loads(rendered)
+            except (TypeError, ValueError):
+                return None
+            return payload if isinstance(payload, dict) else None
+        return None
 
     def _collect_eval_fields(self, round_config, output, algorithm_type=None,
                              text_output=None, api_id=None) -> dict:

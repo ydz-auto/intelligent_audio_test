@@ -3,24 +3,26 @@
 
 从 audio_testcase_creation_service.py 拆分出的职责：
 - _inject_spl_and_device_from_annotations：从标注 JSON 提取 spl 和 playback_device_name；
-  缺省播放设备对全部 test_type 回填，缺省 spl 仍只对 e2e 回填
+  缺省播放设备对全部 device_type 回填，缺省 spl 仍只对 physical 回填
 - _extract_case_params_from_annotations：从原始标注提取用例参数
 """
 import re
+
+from shared.models.common_enums import CaseParamScope, DeviceType
 
 
 class CreationAnnotationMixin:
     """原始标注（raw_annotations）数据注入与参数提取职责"""
 
     def _inject_spl_and_device_from_annotations(self, rounds_resolved, raw_annotations,
-                                                  tt, effective_playback_device_id, spl):
+                                                  device_type, effective_playback_device_id, spl):
         """从标注 JSON 提取 spl 和 playback_device_name，并对缺设备音频回填缺省播放设备
 
-        回填口径（INT-1668）：effective_playback_device_id 非空时对**所有 test_type**
+        回填口径（INT-1668）：effective_playback_device_id 非空时对**所有 device_type**
         的每一轮缺设备音频回填该值。前端「指定轮次 / 逐轮设置」按设计 §5.7.4 只给
         勾中的轮回设备，未勾中轮不写（保留 JSON 标注值），顶层 default_playback_device_id
         是兜底；task_service 对 rounds 内设备是「全或无」校验，不补齐必被整体拒绝。
-        缺省 spl 回填仍只对 e2e 生效（非本卡范围，不外扩）。
+        缺省 spl 回填仍只对 physical 生效（非本卡范围，不外扩）。
 
         通过 ACL 仓储 ListPlaybackDevices 获取设备 name→id 映射，避免直接 import PO。
         """
@@ -86,7 +88,7 @@ class CreationAnnotationMixin:
                         if not need_spl and not need_dev:
                             break
 
-        # 缺省回填：播放设备对所有 test_type 生效（INT-1668），spl 仍只对 e2e 生效。
+        # 缺省回填：播放设备对所有 device_type 生效（INT-1668），spl 仍只对 physical 生效。
         # 标注 / rounds 自带名解析出的设备在上方已写入，这里只补「仍缺设备」的条目，
         # 因此不会覆盖逐轮显式指定的设备。
         for round_item in rounds_resolved:
@@ -97,13 +99,13 @@ class CreationAnnotationMixin:
                     continue
                 if effective_playback_device_id and not audio_item.get('playback_device_id'):
                     audio_item['playback_device_id'] = effective_playback_device_id
-                if tt == 'e2e' and audio_item.get('spl') is None:
-                    # task_service 契约：e2e 用例逐音频必须指定 playback_device_id，
+                if device_type == DeviceType.PHYSICAL.value and audio_item.get('spl') is None:
+                    # task_service 契约：physical 用例逐音频必须指定 playback_device_id，
                     # 标注未命中的条目回填自动选中的 dry 设备与默认 spl
                     audio_item['spl'] = spl if spl else 65.0
 
     def _extract_case_params_from_annotations(self, rounds_resolved, raw_annotations,
-                                               algorithm_type, tt, algo_params_col):
+                                               algorithm_type, device_type, algo_params_col):
         """从原始标注提取用例参数
 
         通过 ACL 仓储调用 algorithm_service.ListCaseParams 获取参数，避免直接 import PO。
@@ -113,7 +115,9 @@ class CreationAnnotationMixin:
 
         case_params_list = self._algorithm_acl.list_case_params(algorithm_type)
 
-        scoped_params = [p for p in case_params_list if p.get('scope') == 'common' or p.get('scope') == tt]
+        scoped_params = [p for p in case_params_list
+                         if p.get('scope') == CaseParamScope.COMMON.value
+                         or p.get('scope') == device_type]
         if not scoped_params:
             return
 

@@ -176,11 +176,18 @@ class FieldMappingQueryHandler:
         device_params: Dict[str, Any],
         api_params: Dict[str, Any] = None,
         case_config: Dict[str, Any] = None,
+        api_id: Optional[int] = None,
         **kwargs,
     ) -> Dict[str, Any]:
-        """构建 API 请求数据"""
+        """构建 API 请求数据。
+
+        ``api_id`` 非空时输入声明按「策略 + 实例覆盖」解析；缺省则没有可套的声明
+        （算法类型级默认层已废弃），返回空 dict。
+        """
+        if api_id is None:
+            return {}
         cache = get_config_cache()
-        api_input_fields = cache.get_api_params(algorithm_type)
+        api_input_fields = cache.get_api_params(algorithm_type, api_id)
         result = {}
         case_config = case_config or {}
 

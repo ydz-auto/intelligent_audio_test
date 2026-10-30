@@ -70,7 +70,9 @@ def test_target_matches_int2095_spec_table():
         'correctAnswer',
     ]
     assert {s['param_type'] for s in _seed.TARGET_CASE_PARAMS} == {'text', 'json', 'switch'}
-    assert {s['param_code']: s['scope'] for s in _seed.TARGET_CASE_PARAMS}['interferers'] == 'e2e'
+    # scope 用后端 CaseParamScope 现行词表（common + DeviceType 三值）；
+    # 旧词表 e2e 已废弃，物理侧统一为 physical
+    assert {s['param_code']: s['scope'] for s in _seed.TARGET_CASE_PARAMS}['interferers'] == 'physical'
 
 
 def test_restores_all_soft_deleted_rows():

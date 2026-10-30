@@ -377,6 +377,38 @@ class BaseConfig:
     DEVICE_SN_STEP_LOCK_WAIT_SECONDS: int = _get_int(
         'DEVICE_SN_STEP_LOCK_WAIT_SECONDS', 60)
 
+    # --- E2E 组执行（同实验室多设备并行，音频每轮只播一次）---
+    # 同实验室、同用例、不同 SN 的物理路由行合并为一次 StartE2ETask 执行：
+    # 一次播放驱动组内全部设备，结果按设备分别落库与评估。
+    # 关闭即回退为逐行派发（每台设备各播一遍），用于一键回滚。
+    E2E_GROUP_EXECUTION_ENABLED: bool = _get_bool(
+        'E2E_GROUP_EXECUTION_ENABLED', True)
+    # 单组设备上限：超出按行创建顺序截断，剩余行下一轮再成组。
+    E2E_GROUP_MAX_DEVICES: int = _get_int('E2E_GROUP_MAX_DEVICES', 8)
+
+    # --- E2E 异步派发（不同实验室并行，spec §9 阶段 B）---
+    # 开启后 E2E 物理用例的「按 SN 抢锁 + StartE2ETask + 逐行收敛」提交到
+    # 任务级线程池，主循环认领即返回继续派发下一行：不同实验室（不同 SN）
+    # 自然并行；同 SN 仍由物理锁串行；串行目标（mode=serial）与未绑定实验室
+    # 的行保持同步就地执行（不并发）。关闭即回退同步派发（一键回滚）。
+    TASK_E2E_ASYNC_DISPATCH: bool = _get_bool('TASK_E2E_ASYNC_DISPATCH', True)
+    # 单任务并发派发上限：同时在途的 E2E 执行数（含等 SN 锁的派发）
+    TASK_E2E_DISPATCH_WORKERS: int = _get_int('TASK_E2E_DISPATCH_WORKERS', 4)
+
+    # --- 播放设备按实验室（用例内播放设备只属于一个实验室）---
+    # 执行时按被测设备所属实验室换绑播放设备：同名优先 → 该实验室在线设备
+    # → 该实验室任一设备；实验室无可用播放设备则用例直接失败。
+    # 关闭即回退用例内配置的播放设备（一键回滚）。
+    PLAYBACK_LAB_BINDING_ENABLED: bool = _get_bool(
+        'PLAYBACK_LAB_BINDING_ENABLED', True)
+    # 播放设备互斥锁：同一只音箱同一时刻只允许一轮播放（同实验室并行用例
+    # 串行出音；不同实验室不同音箱仍并行）。TTL 覆盖单轮播放上限，
+    # 等待上限覆盖排队场景（同实验室多用例）。
+    PLAYBACK_DEVICE_LOCK_TTL_SECONDS: int = _get_int(
+        'PLAYBACK_DEVICE_LOCK_TTL_SECONDS', 1800)
+    PLAYBACK_DEVICE_LOCK_WAIT_SECONDS: int = _get_int(
+        'PLAYBACK_DEVICE_LOCK_WAIT_SECONDS', 900)
+
     # --- gRPC 客户端收发消息上限（MB，INT-1292）---
     # grpcio 客户端默认收包上限 4MiB：大响应 RPC（任务导出 23MB 包、报告/评估
     # 只读导出）在客户端收不下 → RESOURCE_EXHAUSTED。统一放大到

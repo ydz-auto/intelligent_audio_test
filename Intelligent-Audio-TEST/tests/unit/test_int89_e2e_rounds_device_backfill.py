@@ -79,7 +79,7 @@ class TestE2EDefaultDeviceBackfill:
         rounds = [{'roundNumber': 1,
                    'audios': [{'audio_name': 'a.wav', 'play_order': 0}]}]
         tc_ids = svc.create_test_case_from_audio(
-            1, ['e2e'], [], playback_device_id=None, spl=65.0,
+            1, 'physical', [], playback_device_id=None, spl=65.0,
             rounds_config=rounds, raw_annotations=None,
         )
         assert tc_ids == [100]
@@ -98,7 +98,7 @@ class TestE2EDefaultDeviceBackfill:
             {'roundNumber': 2, 'audios': [{'audio_name': 'b.wav', 'play_order': 1}]},
         ]
         svc.create_test_case_from_audio(
-            1, ['e2e'], [], rounds_config=rounds, raw_annotations=None,
+            1, 'physical', [], rounds_config=rounds, raw_annotations=None,
         )
         rounds_out = captured[0]['config']['rounds']
         assert len(rounds_out) == 2
@@ -115,7 +115,7 @@ class TestE2EDefaultDeviceBackfill:
                    'audios': [{'audio_name': 'a.wav', 'play_order': 0,
                                'playback_device_name': 'Named Dry Dev'}]}]
         svc.create_test_case_from_audio(
-            1, ['e2e'], [], rounds_config=rounds, raw_annotations=None,
+            1, 'physical', [], rounds_config=rounds, raw_annotations=None,
         )
         audio_cfg = captured[0]['config']['rounds'][0]['audios'][0]
         assert audio_cfg['playback_device_id'] == 9
@@ -130,7 +130,7 @@ class TestE2EDefaultDeviceBackfill:
             {'audio': 'a.wav', 'spl': 78.5, 'playback_device_name': 'Named Dry Dev'},
         ]}}]
         svc.create_test_case_from_audio(
-            1, ['e2e'], [], rounds_config=rounds, raw_annotations=raw_annotations,
+            1, 'physical', [], rounds_config=rounds, raw_annotations=raw_annotations,
         )
         audio_cfg = captured[0]['config']['rounds'][0]['audios'][0]
         assert audio_cfg['spl'] == 78.5
@@ -146,7 +146,7 @@ class TestE2EDefaultDeviceBackfill:
             {'audio': 'a.wav', 'spl': 78.5},
         ]}}]
         svc.create_test_case_from_audio(
-            1, ['e2e'], [], rounds_config=rounds, raw_annotations=raw_annotations,
+            1, 'physical', [], rounds_config=rounds, raw_annotations=raw_annotations,
         )
         audio_cfg = captured[0]['config']['rounds'][0]['audios'][0]
         assert audio_cfg['spl'] == 78.5
@@ -161,7 +161,7 @@ class TestE2EDefaultDeviceBackfill:
             {'roundNumber': 2, 'audios': [{'audio_name': 'b.wav', 'play_order': 1}]},
         ]
         svc.create_test_case_from_audio(
-            1, ['e2e'], [], playback_device_id=55, rounds_config=rounds,
+            1, 'physical', [], playback_device_id=55, rounds_config=rounds,
             raw_annotations=None,
         )
         for rnd in captured[0]['config']['rounds']:
@@ -179,7 +179,7 @@ class TestE2EDefaultDeviceBackfill:
         rounds = [{'roundNumber': 1,
                    'audios': [{'audio_name': 'a.wav', 'play_order': 0}]}]
         svc.create_test_case_from_audio(
-            1, ['api'], [], rounds_config=rounds, raw_annotations=None,
+            1, 'http_api', [], rounds_config=rounds, raw_annotations=None,
         )
         audio_cfg = captured[0]['config']['rounds'][0]['audios'][0]
         assert 'playback_device_id' not in audio_cfg
@@ -200,7 +200,7 @@ class TestE2EDefaultDeviceBackfill:
             {'roundNumber': 3, 'audios': [{'audio_name': 'c.wav', 'play_order': 2}]},
         ]
         tc_ids = svc.create_test_case_from_audio(
-            1, ['api'], [], playback_device_id=8, rounds_config=rounds,
+            1, 'http_api', [], playback_device_id=8, rounds_config=rounds,
             raw_annotations=None,
         )
         assert tc_ids == [100]
@@ -223,7 +223,7 @@ class TestE2EDefaultDeviceBackfill:
                                            'playback_device_id': 9}]},
         ]
         svc.create_test_case_from_audio(
-            1, ['api'], [], playback_device_id=55, rounds_config=rounds,
+            1, 'http_api', [], playback_device_id=55, rounds_config=rounds,
             raw_annotations=None,
         )
         rounds_out = captured[0]['config']['rounds']
@@ -237,7 +237,7 @@ class TestE2EDefaultDeviceBackfill:
         rounds = [{'roundNumber': 1,
                    'audios': [{'audio_name': 'a.wav', 'play_order': 0}]}]
         svc.create_test_case_from_audio(
-            1, ['api'], [], playback_device_id=55, rounds_config=rounds,
+            1, 'http_api', [], playback_device_id=55, rounds_config=rounds,
             raw_annotations=None,
         )
         audio_cfg = captured[0]['config']['rounds'][0]['audios'][0]
@@ -255,7 +255,7 @@ class TestE2EDefaultDeviceBackfill:
         rounds = [{'roundNumber': 1,
                    'audios': [{'audio_name': 'a.wav', 'play_order': 0}]}]
         svc.create_test_case_from_audio(
-            1, ['e2e'], [], rounds_config=rounds, raw_annotations=None,
+            1, 'physical', [], rounds_config=rounds, raw_annotations=None,
         )
         audio_cfg = captured[0]['config']['rounds'][0]['audios'][0]
         assert audio_cfg['playback_device_id'] == 7

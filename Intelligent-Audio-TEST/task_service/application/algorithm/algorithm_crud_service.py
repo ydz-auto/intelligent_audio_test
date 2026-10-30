@@ -25,6 +25,7 @@ import logging
 from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
+from shared.models.common_enums import CaseParamScope
 from task_service.application.algorithm.algorithm_group_crud_service import (
     AlgorithmGroupCrudService,
 )
@@ -342,7 +343,7 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
         self, algo_type: str, params: List[Dict]
     ) -> None:
         """更新用例专属参数"""
-        valid_scopes = {'common', 'api', 'e2e'}
+        valid_scopes = {scope.value for scope in CaseParamScope}
         existing_params = self.repo.list_case_params(algo_type)
         existing_ids = {p.id for p in existing_params}
         submitted_ids = set()
@@ -368,8 +369,8 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
                             update_fields[field] = param_data[field]
                     self.repo.update_case_param_attrs(param, update_fields)
             else:
-                raw_scope = param_data.get('scope', 'common')
-                scope_value = raw_scope if raw_scope in valid_scopes else 'common'
+                raw_scope = param_data.get('scope', CaseParamScope.COMMON.value)
+                scope_value = raw_scope if raw_scope in valid_scopes else CaseParamScope.COMMON.value
                 pc = param_data.get('param_code')
                 if not pc:
                     continue

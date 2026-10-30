@@ -156,10 +156,16 @@ class RealtimeWSClient:
 
     # ── 推送方向（executor → 厂商）──
     def pre_process(self, session_config: Optional[dict] = None,
-                    wait_confirm_timeout: float = 10.0) -> bool:
-        """发送 session.update 配置会话，等待 session.updated 确认"""
+                    wait_confirm_timeout: float = 10.0,
+                    first_frame: Optional[dict] = None) -> bool:
+        """发送首帧配置会话，等待 session.updated 确认。
+
+        首帧默认是 ``session.update``（session 配置）；``apis.meta.first_frame``
+        配置了模板时由 executor 渲染成完整载荷后经 ``first_frame`` 传入，
+        不同协议（如仅建连 payload）可各不相同。
+        """
         config = session_config or {}
-        self._send_json({
+        self._send_json(first_frame if isinstance(first_frame, dict) else {
             'type': 'session.update',
             'session': config,
         })

@@ -19,6 +19,7 @@ shared/models/algorithm_models.py 改为从这里 re-export。
 import json
 from datetime import datetime
 
+from shared.models.common_enums import CaseParamScope
 from shared.models.database import Base
 from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, Boolean, Float,
@@ -390,7 +391,8 @@ class CaseAlgorithmParam(Base):
     help_text = Column(Text, comment='帮助提示文字')
     ui_order = Column(Integer, default=0, comment='界面排序')
     hidden = Column(Boolean, default=False, comment='是否隐藏')
-    scope = Column(String(10), nullable=False, default='common', comment='参数适用范围 (common/api/e2e)')
+    scope = Column(String(20), nullable=False, default=CaseParamScope.COMMON.value,
+                   comment='参数适用范围 (common/physical/http_api/websocket_api)')
     min_value = Column(Float, nullable=True, comment='最小值 (slider/number)')
     max_value = Column(Float, nullable=True, comment='最大值 (slider/number)')
     step = Column(Float, nullable=True, comment='步长 (slider/number)')
@@ -458,4 +460,153 @@ class AlgorithmDefinitionDraft(Base):
             'snapshot': parse_json_or_raw(self.snapshot),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class ParamProfile(Base):
+    """参数策略（可复用的字段声明 + 映射模板）。
+
+    API 参数与映射从「算法类型级默认（api_id IS NULL）」改为「显式命名策略」：
+    - ``scope='api'``：由 API 实例经 ``api_param_bindings`` 引用（绑定点归本服务，
+      运行时解析不必跨服务查 ``apis``）；
+    - ``scope='device'``：预留（物理侧按驱动标识 ``(system, keywords)`` 绑定，
+      本轮不接线）。
+    多个实例引用同一策略即共享同一份声明，差异只在实例覆盖行里表达。
+
+    ``cloned_from`` 记录来源策略 id，仅作血缘展示，不参与任何解析。
+    """
+    __tablename__ = 'param_profiles'
+    __table_args__ = (
+        Index('uq_param_profile_scope_type_name', 'scope', 'algorithm_type', 'name',
+              unique=True, postgresql_where=text('deleted = false')),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scope = Column(String(10), nullable=False, default='api', comment='作用域：api / device')
+    algorithm_type = Column(String(50), nullable=False, comment='关联算法类型')
+    name = Column(String(100), nullable=False, comment='策略名称（同作用域+算法类型内唯一）')
+    description = Column(Text, comment='策略描述')
+    status = Column(String(20), nullable=False, default='online', comment='状态：online / offline / draft')
+    cloned_from = Column(Integer, nullable=True, comment='来源策略ID（仅血缘记录）')
+    deleted = Column(Boolean, default=False, comment='逻辑删除标志')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
+
+    # 子表按 profile_id 显式查询（跨表无 FK，DTO 不暴露关系），不建 ORM relationship
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'scope': self.scope,
+            'algorithm_type': self.algorithm_type,
+            'name': self.name,
+            'description': self.description,
+            'status': self.status,
+            'cloned_from': self.cloned_from,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class ParamProfileParam(Base):
+    """策略字段声明（与 algorithm_api_params 字段同构）。"""
+    __tablename__ = 'param_profile_params'
+    __table_args__ = (
+        Index('uq_param_profile_param_key', 'profile_id', 'param_code', 'direction',
+              unique=True, postgresql_where=text('deleted = false')),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    profile_id = Column(Integer, nullable=False, comment='关联策略ID')
+    param_code = Column(String(50), nullable=False, comment='参数代码')
+    param_name = Column(String(100), comment='参数显示名称')
+    label = Column(String(100), comment='字段显示名称')
+    param_type = Column(String(30), nullable=False, comment='参数类型：text, audio_stream, audio_file, text_file, rttm, stm, json')
+    direction = Column(String(10), default='input', comment='方向：input, output')
+    required = Column(Boolean, default=False, comment='是否必填')
+    default_value = Column(Text, comment='默认值（JSON 或纯文本）')
+    validation_rules = Column(Text, comment='验证规则（JSON格式）')
+    help_text = Column(Text, comment='帮助提示文字')
+    ui_order = Column(Integer, default=0, comment='界面排序')
+    hidden = Column(Boolean, default=False, comment='是否隐藏')
+    field_path = Column(String(255), comment='输出字段取值路径（空 = 按 param_code 取顶层键）')
+    deleted = Column(Boolean, default=False, comment='逻辑删除标志')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'profile_id': self.profile_id,
+            'param_code': self.param_code,
+            'param_name': self.param_name,
+            'label': self.label,
+            'param_type': self.param_type,
+            'direction': self.direction,
+            'required': self.required,
+            'default_value': parse_json_or_raw(self.default_value),
+            'validation': parse_json_or_raw(self.validation_rules),
+            'help_text': self.help_text,
+            'ui_order': self.ui_order,
+            'hidden': self.hidden,
+            'field_path': self.field_path,
+        }
+
+
+class ParamProfileMapping(Base):
+    """策略参数映射（API 输出 → 评估维度参数），与 param_mappings 同构。"""
+    __tablename__ = 'param_profile_mappings'
+    __table_args__ = (
+        Index('uq_param_profile_mapping_key', 'profile_id', 'source', 'source_param',
+              'dimension_id', unique=True, postgresql_where=text('deleted = false')),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    profile_id = Column(Integer, nullable=False, comment='关联策略ID')
+    source = Column(String(20), nullable=False, default='api', comment='参数来源：case / reference / device / api / case_config')
+    source_param = Column(String(50), nullable=False, comment='源参数代码')
+    source_direction = Column(String(10), default='output', comment='源参数方向：input, output')
+    dimension_id = Column(Integer, nullable=True, comment='目标评估维度ID')
+    target_param = Column(String(50), nullable=False, comment='目标评估维度参数代码')
+    transform_type = Column(String(20), default='none', comment='转换类型：none, uppercase, lowercase, json_parse, base64')
+    deleted = Column(Boolean, default=False, comment='逻辑删除标志')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'profile_id': self.profile_id,
+            'source': self.source,
+            'source_param': self.source_param,
+            'source_direction': self.source_direction,
+            'dimension_id': self.dimension_id,
+            'target_param': self.target_param,
+            'transform_type': self.transform_type,
+        }
+
+
+class ApiParamBinding(Base):
+    """API 实例 → 参数策略绑定。
+
+    绑定归 algorithm_service 所有：运行时按 ``api_id`` 解析策略不需要跨服务读
+    ``apis``，也避免 ``apis.param_profile_id`` 列与本表形成双写。
+
+    ``api_id`` 指向 api_test_service 的 ``apis.id``，跨服务不建 DB 外键；
+    存在性与算法类型一致性由网关写路径校验。
+    """
+    __tablename__ = 'api_param_bindings'
+    __table_args__ = (
+        Index('uq_api_param_binding_api', 'api_id',
+              unique=True, postgresql_where=text('deleted = false')),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    api_id = Column(Integer, nullable=False, comment='API 实例ID（apis.id）')
+    profile_id = Column(Integer, nullable=False, comment='关联策略ID')
+    deleted = Column(Boolean, default=False, comment='逻辑删除标志')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'api_id': self.api_id,
+            'profile_id': self.profile_id,
         }

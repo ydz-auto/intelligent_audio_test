@@ -200,3 +200,6 @@ class AlgorithmMappingListQuery(APIModel):
     algorithm_type: Optional[str] = Field(None)
     source_type: Optional[str] = Field(None)
     dimension_id: Optional[int] = Field(None)
+    # 映射随 API 参数一起下沉到 API 实例作用域：source_type=api 时按 api_id 读取
+    # 该 API 的映射行（算法类型级默认层废弃）。
+    api_id: Optional[int] = Field(None, ge=1, description='API 实例ID（source_type=api 时使用）')

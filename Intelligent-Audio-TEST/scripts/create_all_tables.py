@@ -21,7 +21,7 @@ import sys
 import os
 
 # 模型全集应有的表数（新增表必须同时改这里）
-EXPECTED_TABLE_COUNT = 93
+EXPECTED_TABLE_COUNT = 95
 
 # 确保项目根目录在 sys.path 中
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -82,12 +82,13 @@ def _import_all_models():
         Audio, AudioAnnotation, AudioTag, AudioAlgorithmRelation,
         UploadTask, UploadFile, UploadChunk,
     )
-    # device_service: 10 张表（INT-80 新增 device_groups/device_group_members/
-    #                 device_status_events/device_alarm_rules/device_alarms）
+    # device_service: 12 张表（INT-80 新增 device_groups/device_group_members/
+    #                 device_status_events/device_alarm_rules/device_alarms；
+    #                 逻辑音箱组 playback_speaker_groups / playback_speaker_group_items）
     from device_service.infrastructure.persistence.models import (  # noqa: F401
-        Device, DeviceTag, PlaybackDevice, SPLMapping, CalibrationHistory,
-        DeviceGroup, DeviceGroupMember, DeviceStatusEvent,
-        DeviceAlarmRule, DeviceAlarm,
+        Device, DeviceTag, PlaybackDevice, PlaybackSpeakerGroup,
+        PlaybackSpeakerGroupItem, SPLMapping, CalibrationHistory, DeviceGroup,
+        DeviceGroupMember, DeviceStatusEvent, DeviceAlarmRule, DeviceAlarm,
     )
     # api_test_service: 1 张表
     from api_test_service.infrastructure.persistence.models import API  # noqa: F401

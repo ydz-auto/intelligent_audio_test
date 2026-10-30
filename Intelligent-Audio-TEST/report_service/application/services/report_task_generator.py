@@ -14,6 +14,7 @@ import json
 import time
 import traceback
 import threading
+from typing import Dict, List
 from concurrent.futures import ThreadPoolExecutor
 
 from report_service.application.services.report_utils import ReportUtils
@@ -547,26 +548,62 @@ class ReportTaskGenerator:
         """收集报告内涉及的所有算法类型，获取字段映射快照。
 
         返回 {algorithm_type: {result: [...], reference: [...]}} 映射。
+
+        声明按 API 实例解析（算法类型级默认层已废弃）：同一算法类型下可能涉及
+        多个 ``api_id``，快照键保持 ``algorithm_type``（不破坏渲染契约），值取
+        这些 ``api_id`` 的并集；无 ``api_id`` 时退回算法级口径。
         """
-        algorithm_types = set()
+        api_ids: Dict[str, set] = {}
+
+        def _register(item):
+            algo_type = item.get('algorithm_type') if isinstance(item, dict) else getattr(item, 'algorithm_type', None)
+            if not algo_type:
+                return
+            api_ids.setdefault(algo_type, set())
+            raw_api_id = item.get('api_id') if isinstance(item, dict) else getattr(item, 'api_id', None)
+            if raw_api_id:
+                api_ids[algo_type].add(raw_api_id)
+
         for tc in test_cases:
-            algo_type = tc.get('algorithm_type') if isinstance(tc, dict) else getattr(tc, 'algorithm_type', None)
-            if algo_type:
-                algorithm_types.add(algo_type)
+            _register(tc)
         for r in results:
-            algo_type = r.get('algorithm_type') if isinstance(r, dict) else getattr(r, 'algorithm_type', None)
-            if algo_type:
-                algorithm_types.add(algo_type)
+            _register(r)
 
         field_mappings = {}
-        for algo_type in algorithm_types:
+        for algo_type, scopes in api_ids.items():
             try:
-                mapping = _grpc_algo_get_field_mapping(algo_type)
+                if scopes:
+                    mapping = ReportTaskGenerator._merge_field_mappings([
+                        _grpc_algo_get_field_mapping(algo_type, api_id=api_id)
+                        for api_id in sorted(scopes)
+                    ])
+                else:
+                    mapping = _grpc_algo_get_field_mapping(algo_type)
                 if mapping:
                     field_mappings[algo_type] = mapping
             except Exception as e:
                 log_and_emit('WARNING', 'report', f'[_collect_field_mappings] Failed to get field mapping for {algo_type}: {e}')
         return field_mappings
+
+    @staticmethod
+    def _merge_field_mappings(mappings) -> Dict[str, List[Dict]]:
+        """多个 api_id 的字段映射取并集（按 param_code 去重，先到先得）。"""
+        merged: Dict[str, List[Dict]] = {}
+        seen: Dict[str, set] = {}
+        for mapping in mappings:
+            if not isinstance(mapping, dict):
+                continue
+            for section in ('result', 'reference'):
+                rows = mapping.get(section) or []
+                bucket = merged.setdefault(section, [])
+                keys = seen.setdefault(section, set())
+                for row in rows:
+                    code = row.get('param_code') if isinstance(row, dict) else None
+                    if code is None or code in keys:
+                        continue
+                    keys.add(code)
+                    bucket.append(row)
+        return {section: rows for section, rows in merged.items() if rows}
 
     @staticmethod
     def _prepare_report_data(task, task_id, results):

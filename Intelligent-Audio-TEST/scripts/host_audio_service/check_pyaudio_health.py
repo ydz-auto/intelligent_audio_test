@@ -35,7 +35,7 @@ RECOVERY_GUIDANCE = (
     "real pyaudio unavailable - Windows 音频栈可能仍楔死（Audiosrv 未完全释放 / "
     "旧进程 WASAPI 会话锁在驱动里）。\n"
     "恢复步骤（管理员）: 重启 Windows Audio 服务 (net stop Audiosrv && net start Audiosrv) "
-    "或重启机器，然后重跑 start_audio_service_noshim.cmd。\n"
+    "或重启机器，然后重跑 `python stack.py up --audio-mode real`。\n"
     "禁止连续重试：每次挂死的 Pa_Initialize 都会在全局音频锁上排队，越重试越死。"
 )
 

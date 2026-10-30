@@ -85,7 +85,7 @@ class ThirdPartyDispatcherMixin:
 
     def _dispatch_third_party_tasks(self, third_party_list, dimension_result_map, result_id,
                                     task_id, test_case_id, algorithm_result, algorithm_type,
-                                    test_type, round_number, field_mapper, ref_texts,
+                                    device_type, round_number, field_mapper, ref_texts,
                                     rounds_list=None, flat_eval_fields=None, api_id=None):
         """第三方维度按（适配形态, 父维度）分组，复用任务数据构建与线程池提交。"""
         groups = {}
@@ -105,7 +105,7 @@ class ThirdPartyDispatcherMixin:
             worker = self._get_or_create_third_party_worker(adapter_kind, representative_dim_data)
             task_data = self._build_task_data(
                 task_id, result_id, test_case_id, algorithm_result,
-                representative_dim_data, group_items, algorithm_type, test_type,
+                representative_dim_data, group_items, algorithm_type, device_type,
                 round_number, field_mapper, ref_texts, rounds_list, flat_eval_fields,
                 api_id=api_id)
             with self.api_client.global_lock:

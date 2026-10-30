@@ -17,6 +17,8 @@ from device_service.infrastructure.persistence.models import (
     Device,
     DeviceTag,
     PlaybackDevice,
+    PlaybackSpeakerGroup,
+    PlaybackSpeakerGroupItem,
     SPLMapping,
     CalibrationHistory,
     Laboratory,
@@ -25,6 +27,8 @@ from device_service.domain.entities import (
     DeviceAggregate,
     DeviceTagEntity,
     PlaybackDeviceAggregate,
+    PlaybackSpeakerGroupAggregate,
+    PlaybackSpeakerGroupItemEntity,
     SPLMappingEntity,
     CalibrationHistoryEntity,
     LaboratoryAggregate,
@@ -175,6 +179,33 @@ def _playback_po_to_entity(po: PlaybackDevice, lab_name: str = None) -> Playback
         status=po.status or "online",
         current_spl_mapping_id=po.current_spl_mapping_id,
         lab_id=getattr(po, 'lab_id', None),
+        created_at=po.created_at,
+        updated_at=po.updated_at,
+    )
+
+
+def _speaker_item_po_to_entity(po: PlaybackSpeakerGroupItem) -> PlaybackSpeakerGroupItemEntity:
+    """PlaybackSpeakerGroupItem PO → 实体"""
+    return PlaybackSpeakerGroupItemEntity(
+        id=po.id,
+        group_id=po.group_id,
+        lab_id=po.lab_id,
+        playback_device_id=po.playback_device_id,
+        created_at=po.created_at,
+        updated_at=po.updated_at,
+    )
+
+
+def _speaker_group_po_to_entity(
+        po: PlaybackSpeakerGroup,
+        items: Optional[List[PlaybackSpeakerGroupItem]] = None,
+) -> PlaybackSpeakerGroupAggregate:
+    """PlaybackSpeakerGroup PO（+ 组内条目）→ 聚合根"""
+    return PlaybackSpeakerGroupAggregate(
+        id=po.id,
+        name=po.name or "",
+        description=po.description,
+        items=[_speaker_item_po_to_entity(item) for item in (items or [])],
         created_at=po.created_at,
         updated_at=po.updated_at,
     )

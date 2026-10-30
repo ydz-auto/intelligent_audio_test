@@ -166,6 +166,28 @@ class PlaybackConfigAclRepository(ABC):
     @abstractmethod
     def diagnosis(self, device_id) -> CommandResultDTO: ...
 
+    # ---- 逻辑音箱组（N 个实验室里位置相同的音箱互相对应）----
+    @abstractmethod
+    def list_speaker_groups(self, keyword=None) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def create_speaker_group(self, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def update_speaker_group(self, group_id, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def delete_speaker_group(self, group_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def set_speaker_group_item(self, group_id, lab_id, playback_device_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def delete_speaker_group_item(self, group_id, lab_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def resolve_speaker_group_device(self, group_id, lab_id) -> CommandResultDTO: ...
+
 
 class LaboratoryAclRepository(ABC):
     """laboratory 实体 ACL 接口（INT-655 实验室管理）。"""

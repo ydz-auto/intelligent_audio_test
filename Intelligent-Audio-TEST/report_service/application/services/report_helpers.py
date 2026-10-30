@@ -15,7 +15,6 @@ import logging
 
 from shared.models.common_enums import FieldType, TaskStatus
 from shared.utils.log_handler import log_not_emit
-from shared.utils.testcase_helpers import derive_case_test_type
 from report_service.application.services.report_utils import ReportUtils
 from report_service.application.services.report_query_builder import ReportQueryBuilder
 
@@ -76,7 +75,7 @@ class ReportHelpers:
     def _build_audios_list(test_case, mode='task'):
         """
         构建 audios_list，支持两种字段命名模式：
-        - mode='task':  使用 playback_device_id / playbackDeviceName / testType
+        - mode='task':  使用 playback_device_id / playbackDeviceName
         - mode='compare': 使用 device_id / device_name / audio_type
         """
         from report_service.infrastructure.clients.grpc_clients import _grpc_algo_normalize_algorithm_params
@@ -93,13 +92,11 @@ class ReportHelpers:
         if is_compare:
             dev_id_key = 'device_id'
             dev_name_key = 'device_name'
-            type_key = 'audio_type'
             noise_spl_key = 'noise_spl'
             play_order_key = 'play_order'
         else:
             dev_id_key = 'playback_device_id'
             dev_name_key = 'playbackDeviceName'
-            type_key = 'testType'
             noise_spl_key = 'spl'
             play_order_key = 'play_order'
 
@@ -128,12 +125,6 @@ class ReportHelpers:
                 dev_map = _grpc_get_playback_devices_by_ids(list(all_device_ids))
                 devices = {k: v.get('name') for k, v in dev_map.items()}
 
-        # 差异#2 收尾：用例不再存储 test_type（数据源仅携带派生 type 键，
-        # SimpleNamespace 调用方更无该键），音频口径改由配置形态派生；
-        # 传用例名兼容 INT-129 上传双变体（两变体配置形态相同，靠 _api/_e2e 后缀区分）
-        tc_name = test_case.get('name') if isinstance(test_case, dict) else getattr(test_case, 'name', None)
-        tc_test_type = derive_case_test_type(config, tc_name)
-
         per_round_dry = []
         noise_audios = []
         for round_item in rounds:
@@ -151,7 +142,6 @@ class ReportHelpers:
                         if dev_id == '':
                             dev_id = None
                         audio_item = {
-                            type_key: tc_test_type,
                             "id": audio.get('id'),
                             "filename": audio.get('original_filename') or audio.get('name'),
                             "duration": audio.get('duration'),
@@ -175,7 +165,6 @@ class ReportHelpers:
                 noise_audio = _grpc_get_audio(background_noise['audio_id'])
                 if noise_audio:
                     noise_item = {
-                        type_key: "noise",
                         "id": noise_audio.get('id'),
                         "filename": noise_audio.get('name'),
                         "duration": noise_audio.get('duration'),

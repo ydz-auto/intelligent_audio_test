@@ -73,10 +73,11 @@ class AlgorithmConfigAclRepositoryImpl(AlgorithmConfigAclRepository):
             logger.warning("get_reference_params_for_report gRPC failed: %s", e)
             return None
 
-    def get_full_field_mapping(self, algorithm_type) -> Optional[AlgoFieldMappingDTO]:
+    def get_full_field_mapping(self, algorithm_type,
+                               api_id: Optional[int] = None) -> Optional[AlgoFieldMappingDTO]:
         from shared.clients.grpc_clients import algo_get_full_field_mapping
         try:
-            data = algo_get_full_field_mapping(algorithm_type)
+            data = algo_get_full_field_mapping(algorithm_type, api_id=api_id)
             if not isinstance(data, dict):
                 return None
             return _attach(dict_to_dto(data, AlgoFieldMappingDTO), data)

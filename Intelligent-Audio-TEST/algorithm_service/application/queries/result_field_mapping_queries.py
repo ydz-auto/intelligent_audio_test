@@ -6,6 +6,8 @@ CQRS 读侧 - 迁移自 shared/algorithm/algorithm_result_field_mapper.py
 
 from typing import Dict, List, Any, Optional
 
+from shared.models.common_enums import DeviceType
+
 from algorithm_service.infrastructure.persistence.config_cache import (
     get_config_cache,
     _api_param_merge_key,
@@ -40,7 +42,7 @@ class ResultFieldMappingQueryHandler:
         return 'text'
 
     @classmethod
-    def get_output_fields(cls, algorithm_type: str, test_type: Optional[str] = None,
+    def get_output_fields(cls, algorithm_type: str, device_type: Optional[str] = None,
                           api_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """读取算法输出字段声明（配置驱动，C0 裁定 3）。
 
@@ -63,7 +65,7 @@ class ResultFieldMappingQueryHandler:
 
         Args:
             algorithm_type: 算法类型
-            test_type: 仅为 RPC 契约保留，输出字段不再按 test_type 分支
+            device_type: 仅为 RPC 契约保留，输出字段不再按 device_type 分支
             api_id: API 实例 id；None 表示算法级默认视图
         """
         if not algorithm_type:
@@ -95,9 +97,16 @@ class ResultFieldMappingQueryHandler:
                     category='algorithm', algorithm_type=algorithm_type,
                 )
 
-            mappings = _merge_level_rows(
-                mapping_repository.list_by_algorithm(algorithm_type, source_type='api'),
-                api_id, _mapping_merge_key)
+            # 传 api_id 时由配置缓存做「策略 + 实例覆盖」解析（算法级默认层已废弃）；
+            # 不传 api_id 保留算法级仓储口径（物理侧 / 历史视图）。
+            if api_id is not None:
+                mappings = get_config_cache().get_source_mappings(
+                    algorithm_type, 'api', api_id)
+            else:
+                mappings = _merge_level_rows(
+                    mapping_repository.list_by_algorithm(
+                        algorithm_type, source_type='api'),
+                    None, _mapping_merge_key)
             mapping_by_source: Dict[str, Dict[str, Any]] = {}
             for m in mappings:
                 if not isinstance(m, dict) or m.get('source') != 'api':
@@ -150,28 +159,59 @@ class ResultFieldMappingQueryHandler:
             AlgorithmStrategyFactory.get_strategy(algorithm_type), VoiceLlmStrategy
         )
 
-    @staticmethod
-    def _output_declarations(algorithm_type: str, param_type: str,
+    @classmethod
+    def _output_declarations(cls, algorithm_type: str, param_type: str,
                              api_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """按来源（api / device）读取 direction=output 的声明，按 ui_order / id 排序。
 
-        INT-1757（C6b）：api 来源按 ``api_id`` 合并算法级行（API 级覆盖同键算法级，
-        未覆盖回落；不传 api_id 只取算法级行）。设备声明保持算法级口径。
+        API 来源（INT-1756/1757，本轮更新）：传 ``api_id`` 时由配置缓存做
+        「策略（param_profiles）+ 实例覆盖」解析——算法类型级默认层已废弃，
+        仓储里不再有 api_id IS NULL 的声明行；不传 ``api_id`` 时保留算法级
+        仓储口径（物理侧 / 历史视图）。设备声明保持算法级口径。
         """
-        params = algorithm_param_repository.list_by_algorithm(algorithm_type, param_type)
-        if param_type == 'api':
-            # 仓储返回的 dict 用 param_code（`_api_param_merge_key` 是 config_cache
-            # 内存 dict 的 code 口径，直接套会让所有行同键、互相顶掉），唯一键取
-            # (direction, param_code)。
-            params = _merge_level_rows(
-                params, api_id,
-                lambda p: ((p.get('direction') or 'output'), p.get('param_code')),
-            )
+        if param_type == 'api' and api_id is not None:
+            params = cls._cache_api_declarations(algorithm_type, api_id)
+        else:
+            params = algorithm_param_repository.list_by_algorithm(
+                algorithm_type, param_type)
+            if param_type == 'api':
+                # 仓储返回的 dict 用 param_code（`_api_param_merge_key` 是 config_cache
+                # 内存 dict 的 code 口径，直接套会让所有行同键、互相顶掉），唯一键取
+                # (direction, param_code)。
+                params = _merge_level_rows(
+                    params, api_id,
+                    lambda p: ((p.get('direction') or 'output'), p.get('param_code')),
+                )
         declared = [
             p for p in params
             if isinstance(p, dict) and (p.get('direction') or '') == 'output'
         ]
         return sorted(declared, key=lambda item: (item.get('ui_order') or 0, item.get('id') or 0))
+
+    @staticmethod
+    def _cache_api_declarations(algorithm_type: str,
+                                api_id: int) -> List[Dict[str, Any]]:
+        """缓存行的键名（code/name/type）归一为仓储口径（param_code/param_name/…）。
+
+        ``_serialize_params`` 产出 ``code``，下游按 `param_code` 取值，因此在这一处
+        做一次适配，避免把两套键名混进下游组装逻辑。
+        """
+        rows = get_config_cache().get_api_params(algorithm_type, api_id)
+        normalized: List[Dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            normalized.append({
+                'id': row.get('id'),
+                'param_code': row.get('code'),
+                'param_name': row.get('name'),
+                'param_type': row.get('type'),
+                'direction': row.get('direction') or 'output',
+                'label': row.get('label'),
+                'field_path': row.get('field_path'),
+                'ui_order': row.get('ui_order'),
+            })
+        return normalized
 
     @classmethod
     def get_reference_output_fields(cls, algorithm_type: str) -> List[Dict[str, Any]]:
@@ -235,8 +275,9 @@ class ResultFieldMappingQueryHandler:
         algorithm_type: str,
         algorithm_result: Optional[Dict[str, Any]],
         result_data: Optional[Dict[str, Any]],
+        api_id: Optional[int] = None,
     ) -> Dict[str, Any]:
-        output_fields = cls.get_output_fields(algorithm_type)
+        output_fields = cls.get_output_fields(algorithm_type, api_id=api_id)
         result = {}
 
         if algorithm_result:
@@ -252,8 +293,10 @@ class ResultFieldMappingQueryHandler:
         return result
 
     @classmethod
-    def get_timeline_fields(cls, algorithm_type: str) -> List[Dict[str, Any]]:
-        output_fields = cls.get_output_fields(algorithm_type)
+    def get_timeline_fields(
+        cls, algorithm_type: str, api_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        output_fields = cls.get_output_fields(algorithm_type, api_id=api_id)
         timeline_fields = []
         for field in output_fields:
             source_param = field.get('source_param', '').lower()
@@ -262,11 +305,12 @@ class ResultFieldMappingQueryHandler:
         return timeline_fields
 
     @classmethod
-    def get_field_mapping(cls, algorithm_type: str) -> Dict[str, List[Dict[str, Any]]]:
+    def get_field_mapping(cls, algorithm_type: str,
+                          api_id: Optional[int] = None) -> Dict[str, List[Dict[str, Any]]]:
         if not algorithm_type:
             return {'result': [], 'reference': []}
 
-        output_fields = cls.get_output_fields(algorithm_type)
+        output_fields = cls.get_output_fields(algorithm_type, api_id=api_id)
         result_fields = []
         for f in output_fields:
             param_code = f.get('target_param') or f.get('source_param')
@@ -291,12 +335,13 @@ class ResultFieldMappingQueryHandler:
         return {'result': result_fields, 'reference': reference_fields}
 
     @classmethod
-    def extract_round_results(cls, algorithm_result, test_type=None):
+    def extract_round_results(cls, algorithm_result, device_type=None):
         if not algorithm_result:
             return []
 
         rounds = algorithm_result.get('rounds', [])
-        is_e2e = test_type == 'e2e' or algorithm_result.get('test_type') == 'e2e'
+        is_e2e = (device_type == DeviceType.PHYSICAL.value
+                  or algorithm_result.get('device_type') == DeviceType.PHYSICAL.value)
 
         if is_e2e:
             return [

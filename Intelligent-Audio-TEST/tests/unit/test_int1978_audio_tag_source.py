@@ -282,7 +282,7 @@ class TestInheritTagsFollowsMode:
         captured = []
         svc = _creation_service(captured)
         svc.create_test_case_from_audio(
-            1, ['api'], audio_tags, raw_annotations=None,
+            1, 'http_api', audio_tags, raw_annotations=None,
             inherit_tags=inherit_tags, upload_task_id='task-1978')
         assert len(captured) == 1
         return captured[0].get('tags'), audio_tags

@@ -125,7 +125,7 @@ class TestTaskScopedRoundResolution:
             for i in range(3)
         ]
         tc_ids = svc.create_test_case_from_audio(
-            2237, ['e2e'], [], rounds_config=rounds, raw_annotations=None,
+            2237, 'physical', [], rounds_config=rounds, raw_annotations=None,
             upload_task_id='task-113',
         )
         assert tc_ids == [100]
@@ -156,7 +156,7 @@ class TestTaskScopedRoundResolution:
             {'round_number': 2, 'audios': [{'audio_name': names[1], 'play_order': 1}]},
         ]
         svc.create_test_case_from_audio(
-            2235, ['api'], [], rounds_config=rounds, raw_annotations=None,
+            2235, 'http_api', [], rounds_config=rounds, raw_annotations=None,
             upload_task_id='task-113',
         )
         rounds_out = captured[0]['config']['rounds']
@@ -176,7 +176,7 @@ class TestTaskScopedRoundResolution:
         rounds = [{'round_number': 1,
                    'audios': [{'audio_name': '待办事项.wav', 'play_order': 0}]}]
         svc.create_test_case_from_audio(
-            2237, ['api'], [], rounds_config=rounds, raw_annotations=None,
+            2237, 'http_api', [], rounds_config=rounds, raw_annotations=None,
         )
         audio_cfg = captured[0]['config']['rounds'][0]['audios'][0]
         assert 'audio_id' not in audio_cfg

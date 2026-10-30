@@ -151,7 +151,7 @@ class E2ECalculationService:
         }
 
         return {
-            'test_type': 'e2e',
+            'device_type': 'physical',
             'algorithm_type': algorithm_type,
             'total_rounds': len(rounds_list),
             'rounds': rounds_list,

@@ -190,11 +190,17 @@ class RealtimeAdapterBase(ApiVendorAdapter):
             f"{last_error or self.endpoint or ''}")
 
     def pre_process(self, session_config: Optional[dict] = None,
-                    wait_confirm_timeout: float = 10.0) -> bool:
-        """session.update → 确认 session.updated（executor 入口）"""
+                    wait_confirm_timeout: float = 10.0,
+                    first_frame: Optional[dict] = None) -> bool:
+        """首帧 → 确认 session.updated（executor 入口）。
+
+        ``first_frame`` 为 ``apis.meta.first_frame`` 渲染后的完整载荷；为空时
+        由传输层回落默认 ``session.update``。
+        """
         if self._client is None:
             return False
-        return self._client.pre_process(session_config, wait_confirm_timeout)
+        return self._client.pre_process(
+            session_config, wait_confirm_timeout, first_frame=first_frame)
 
     def send(self, chunk_b64: str) -> None:
         """推送一个音频 chunk（input_audio_buffer.append，单帧粒度）"""

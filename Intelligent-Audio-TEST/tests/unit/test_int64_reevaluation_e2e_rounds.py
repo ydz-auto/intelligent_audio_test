@@ -105,12 +105,12 @@ class _ReevalHarness:
             setattr(target, name, original)
         return False
 
-    def run(self, config, n_rounds=3, test_type='e2e'):
+    def run(self, config, n_rounds=3, device_type='physical'):
         test_case = _test_case(config)
         self.executor._reevaluate_e2e_multi_round(
             task_id='t1', result=99, test_case_id='c1',
             algorithm_result={'rounds': _algo_rounds(n_rounds)},
-            test_type=test_type, algorithm_type='translation',
+            device_type=device_type, algorithm_type='translation',
             reference_params_col=None, rounds=_algo_rounds(n_rounds),
             test_case=test_case,
         )
@@ -198,5 +198,5 @@ class TestReevaluateE2EPerRound:
             calls = h.run(config, n_rounds=2)
         for c in calls:
             assert len(c['algorithm_result']['rounds']) == 2
-            assert c['test_type'] == 'e2e'
+            assert c['device_type'] == 'physical'
             assert c['result_id'] == 99

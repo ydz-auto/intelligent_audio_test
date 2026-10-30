@@ -84,7 +84,7 @@ def _patch_env(monkeypatch, result, test_case, *, output_calls, device_calls):
     monkeypatch.setattr(group_mod.task_acl_repository, 'get_task_by_id',
                         lambda task_id: None)
 
-    def _fake_get_output_fields(self, algorithm_type, test_type=None, api_id=None):
+    def _fake_get_output_fields(self, algorithm_type, device_type=None, api_id=None):
         output_calls.append({'algorithm_type': algorithm_type, 'api_id': api_id})
         if api_id is None:
             return list(ALGO_OUTPUT_DECLS)

@@ -160,7 +160,7 @@ class TestCaseDTO:
     """测试用例 DTO（testcase_config_service.list_testcases / get_testcase_detail）"""
     id: Optional[int] = None
     name: Optional[str] = None
-    test_type: Optional[str] = None
+    device_type: Optional[str] = None
     algorithm_type: Optional[str] = None
     config: Any = None
     result_data: Any = None

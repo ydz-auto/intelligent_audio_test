@@ -124,20 +124,20 @@ def test_task_mode_multiround_multiaudio_each_once():
 
 
 def test_field_shape_per_mode_preserved():
-    """修复后 task / compare 字段口径仍各自正确（type 键、label 有无、设备键名）。"""
+    """修复后 task / compare 字段口径仍各自正确（label 有无、设备键名）。"""
     config = {'rounds': [_round(1, [11], noise_audio_id=15)]}
 
     compare_items = ReportHelpers._build_audios_list(_case(config), mode='compare')
     task_items = ReportHelpers._build_audios_list(_case(config), mode='task')
 
     cmp_audio = next(a for a in compare_items if a['id'] == 11)
-    assert cmp_audio['audio_type'] == 'e2e'
+    assert 'audio_type' not in cmp_audio
     assert 'label' not in cmp_audio
     assert 'device_id' in cmp_audio and 'device_name' in cmp_audio
     assert 'play_order' in cmp_audio
 
     tsk_audio = next(a for a in task_items if a['id'] == 11)
-    assert tsk_audio['testType'] == 'e2e'
+    assert 'testType' not in tsk_audio
     assert 'playOrder' in tsk_audio and 'playbackDeviceId' in tsk_audio
 
     cmp_noise = compare_items[-1]

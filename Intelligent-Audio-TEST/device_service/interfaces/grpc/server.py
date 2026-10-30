@@ -14,7 +14,21 @@
 """
 
 import logging
+import os
 from concurrent import futures
+
+# 加载 .env 环境变量（须先于 shared.infrastructure.config 导入）：
+# gRPC-only 服务不经 api_gateway/app.py，手工启动时无人加载 .env，
+# LOCAL_STORAGE_ROOT/AUDIO_STORAGE_PATH 会退回默认 ./storage，
+# 导致播放测试读取 <cwd>/storage/audios/test.wav 失败（INT-1502 同源）。
+try:
+    from dotenv import load_dotenv
+
+    _PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))))
+    load_dotenv(os.path.join(_PROJECT_DIR, '.env'))
+except ImportError:
+    logging.getLogger(__name__).debug("python-dotenv 未安装，跳过 .env 加载")
 
 import grpc
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Dict, Any, List, Optional
 
+from shared.models.common_enums import CaseParamScope
 from shared.models.database import get_db_session
 from algorithm_service.infrastructure.persistence.models import (
     AlgorithmReferenceParam as AlgorithmReferenceParamPO,
@@ -120,7 +121,7 @@ class CaseParamRepository(ICaseParamRepository):
                 help_text=data.get("help_text"),
                 ui_order=data.get("ui_order") or 0,
                 hidden=data.get("hidden") or False,
-                scope=data.get("scope") or "common",
+                scope=data.get("scope") or CaseParamScope.COMMON.value,
                 min_value=data.get("min_value"),
                 max_value=data.get("max_value"),
                 step=data.get("step"),

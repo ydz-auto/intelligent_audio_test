@@ -112,7 +112,6 @@ class TestCaseQueryService:
                     description=item.get('description'),
                     group_id=item.get('group_id'),
                     group_name=item.get('group_name'),
-                    type=item.get('type'),
                     tags=item.get('tags', []),
                     config=item.get('config') or {},
                     algorithm_params=item.get('algorithm_params'),
@@ -172,7 +171,6 @@ class TestCaseQueryService:
                 id=a.get('id'),
                 audio_id=a.get('audio_id'),
                 audio_name=a.get('audio_name'),
-                test_type=a.get('test_type'),
                 spl=a.get('spl'),
                 playback_device_id=common.normalize_optional_int(a.get('playback_device_id')),
                 play_order=a.get('play_order'),
@@ -197,7 +195,6 @@ class TestCaseQueryService:
                 group_id=item.get('group_id'),
                 group_name=item.get('group_name'),
                 group=item.get('group'),
-                type=item.get('type'),
                 config=item.get('config') or {},
                 algorithm_params=item.get('algorithm_params'),
                 reference_params=item.get('reference_params'),
@@ -374,6 +371,15 @@ class TestCaseQueryService:
         if _has_running_e2e_tasks():
             return error_response("当前有待执行的E2E测试任务，不允许使用后端扬声器播放", 403)
 
+        # 用例只关联逻辑音箱：实验室播放必须先选实验室，再解析成该实验室的实体播放设备
+        lab_id = req_data.lab_id
+        if lab_id is None:
+            return error_response("实验室播放请先选择实验室")
+        resolve_error = TestCaseQueryService._resolve_preview_speaker_groups(
+            preview_audios, config, int(lab_id))
+        if resolve_error:
+            return error_response(resolve_error)
+
         # 通过 ACL 调用音频引擎
         preview_task_id = f"PREVIEW_{tc_id}"
 
@@ -426,6 +432,60 @@ class TestCaseQueryService:
             )
         except Exception as e:
             return error_response(f"预览失败: {str(e)}")
+
+    @staticmethod
+    def _resolve_preview_speaker_groups(audio_configs, case_config, lab_id):
+        """逻辑音箱 → 该实验室实体播放设备（就地写入 playback_device_id / device_ids）
+
+        Returns:
+            None 成功；否则返回中文错误信息（逻辑音箱未配置该实验室设备）
+        """
+        from api_gateway.infrastructure.acl import PlaybackConfigAclRepositoryImpl
+
+        if not isinstance(case_config, dict):
+            case_config = {}
+        acl = PlaybackConfigAclRepositoryImpl()
+        cache = {}
+
+        def _resolve(group_id):
+            key = int(group_id)
+            if key not in cache:
+                result = acl.resolve_speaker_group_device(key, lab_id)
+                data = result.data if result.success else None
+                cache[key] = data.get('target_device_id') if isinstance(data, dict) else None
+            return cache[key]
+
+        targets = list(audio_configs or [])
+        global_noise = case_config.get('background_noise')
+        if isinstance(global_noise, dict):
+            targets.append(global_noise)
+
+        for cfg in targets:
+            if not isinstance(cfg, dict):
+                continue
+            group_id = cfg.get('playback_speaker_group_id')
+            if group_id not in (None, ''):
+                target = _resolve(group_id)
+                if target is None:
+                    return f"逻辑音箱 {group_id} 未配置实验室 {lab_id} 的播放设备"
+                cfg['playback_device_id'] = target
+            group_ids = cfg.get('playback_speaker_group_ids')
+            if isinstance(group_ids, list) and group_ids:
+                device_ids = []
+                for raw in group_ids:
+                    target = _resolve(raw)
+                    if target is None:
+                        return f"逻辑音箱 {raw} 未配置实验室 {lab_id} 的播放设备"
+                    device_ids.append(target)
+                cfg['device_ids'] = device_ids
+            nested = cfg.get('background_noise')
+            if isinstance(nested, dict) and nested is not cfg:
+                # 段级背景噪声也走同一解析（audio_configs 项内嵌）
+                err = TestCaseQueryService._resolve_preview_speaker_groups(
+                    [nested], {}, lab_id)
+                if err:
+                    return err
+        return None
 
     @staticmethod
     def get_stats():

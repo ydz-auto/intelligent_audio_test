@@ -1,12 +1,9 @@
 # -*- coding: utf-8 -*-
-"""INT-79 二轮修复回归：报告音频口径改配置形态派生 + GetTaskStatus 响应去残留键。
+"""报告音频列表不再携带 api/e2e 口径 + GetTaskStatus 响应去残留键。
 
-缺陷4：report_helpers._build_audios_list 原读 test_case['test_type']——差异#2
-收尾后数据源（ListTestCases items / 用例详情 / BuildReferenceParams 的
-SimpleNamespace）均不再携带该键，表达式恒落 'api'，e2e 用例报告音频误标。
-修复后改 derive_case_test_type(config, name) 派生，task / compare /
-SimpleNamespace 三调用路径同源；传用例名兼容 INT-129 上传双变体
-（两变体配置形态相同，靠 _api/_e2e 后缀区分）。
+报告音频项原读用例 test_type（差异#2 收尾后恒缺键）并派生 testType/audio_type；
+用例不再区分 api/e2e 后，报告音频只保留音频本身信息（id/文件名/时长/设备等），
+执行口径由任务侧 task_case_relations.device_type 承载。
 
 缺陷5：task_service GetTaskStatus 死端点响应残留 "type"（Task.type 列已删
 恒 null）与 "error_message": None（Task 无该列的恒定占位）。
@@ -39,14 +36,11 @@ def _render_bigint_as_integer_sqlite(type_, compiler, **kw):
     return 'INTEGER'
 
 
-_E2E_ROUND = {
+_ROUND = {
     'roundNumber': 1,
     'audios': [{'audio_id': 11, 'playback_device_id': 7, 'spl': 70, 'play_order': 1}],
 }
-_API_ROUND = {
-    'roundNumber': 1,
-    'audios': [{'audio_id': 11, 'spl': 70, 'play_order': 1}],
-}
+_LEGACY_TYPE_KEYS = ('testType', 'audio_type', 'test_type')
 
 
 def _case(config, name='回归用例'):
@@ -65,68 +59,34 @@ def _stub_grpc_clients(monkeypatch):
                         lambda ids: {i: {'name': f'dev-{i}'} for i in ids})
 
 
-def _type_keys(audios_list, key):
-    return [item[key] for item in audios_list]
+def _assert_no_type_keys(audios_list):
+    for item in audios_list:
+        for key in _LEGACY_TYPE_KEYS:
+            assert key not in item, f'报告音频项残留口径键 {key}: {item}'
 
 
-def test_task_mode_e2e_shape_derives_e2e():
-    """task 模式：rounds 音频带 playback_device_id（物理执行形态）→ testType='e2e'。
-
-    缺陷4 主场景：修复前该表达式读不存在的 test_type 键恒落 'api'。
-    """
-    audios = ReportHelpers._build_audios_list(_case({'rounds': [_E2E_ROUND]}), mode='task')
-    assert audios, 'e2e 形态应产出音频项'
-    assert _type_keys(audios, 'testType') == ['e2e']
-
-
-def test_task_mode_api_shape_derives_api():
-    """task 模式：无播放设备的纯 API 形态 → testType='api'。"""
-    audios = ReportHelpers._build_audios_list(_case({'rounds': [_API_ROUND]}), mode='task')
+def test_task_mode_audios_have_no_type_key():
+    """task 模式：音频项不再输出 testType，其余字段照常。"""
+    audios = ReportHelpers._build_audios_list(_case({'rounds': [_ROUND]}), mode='task')
     assert audios
-    assert _type_keys(audios, 'testType') == ['api']
+    assert audios[0]['filename'] == 'a11.wav'
+    _assert_no_type_keys(audios)
 
 
-def test_compare_mode_audio_type_key_derived():
-    """compare 模式：同源派生写入 audio_type 键。
-
-    注：compare 模式 audios_list 存在存量重复 append（round_dry 项在
-    165 行无条件 append 后又于 190 行 extend，先于本卡存在），非本卡
-    范畴，故此处按集合口径断言派生值。
-    """
-    audios = ReportHelpers._build_audios_list(_case({'rounds': [_E2E_ROUND]}), mode='compare')
+def test_compare_mode_audios_have_no_audio_type_key():
+    """compare 模式：音频项不再输出 audio_type。"""
+    audios = ReportHelpers._build_audios_list(_case({'rounds': [_ROUND]}), mode='compare')
     assert audios
-    assert set(_type_keys(audios, 'audio_type')) == {'e2e'}
-
-
-def test_dual_variant_name_suffix_wins_over_config_shape():
-    """上传双变体（INT-129）：两变体配置形态相同，_api/_e2e 后缀区分口径。"""
-    config = {'auto_generated': True, 'rounds': [_E2E_ROUND]}
-    api_variant = ReportHelpers._build_audios_list(
-        _case(config, name='测试用例_素材_api_023604'), mode='task')
-    e2e_variant = ReportHelpers._build_audios_list(
-        _case(config, name='测试用例_素材_e2e_023604'), mode='task')
-    assert _type_keys(api_variant, 'testType') == ['api']
-    assert _type_keys(e2e_variant, 'testType') == ['e2e']
+    _assert_no_type_keys(audios)
 
 
 def test_simplenamespace_path_no_test_type_attribute():
-    """BuildReferenceParams 路径：SimpleNamespace 无 test_type 属性不再 AttributeError。
-
-    修复前 test_case.test_type 触发 AttributeError → 网关任务结果详情页
-    增强被 try/except 吞成 warning 静默失败。
-    """
+    """BuildReferenceParams 路径：SimpleNamespace 无 test_type 属性不再 AttributeError。"""
     case = SimpleNamespace(id='tc-1', name='测试用例_素材_e2e_023604',
-                           config={'auto_generated': True, 'rounds': [_E2E_ROUND]})
+                           config={'auto_generated': True, 'rounds': [_ROUND]})
     audios = ReportHelpers._build_audios_list(case, mode='task')
     assert audios
-    assert _type_keys(audios, 'testType') == ['e2e']
-
-
-def test_simplenamespace_without_name_falls_back_to_config_shape():
-    """SimpleNamespace 无 name 属性时回落配置形态口径（getattr 默认 None）。"""
-    case = SimpleNamespace(id='tc-1', config={'rounds': [_E2E_ROUND]})
-    audios = ReportHelpers._build_audios_list(case, mode='task')
-    assert _type_keys(audios, 'testType') == ['e2e']
+    _assert_no_type_keys(audios)
 
 
 @pytest.fixture(scope='module')

@@ -383,8 +383,8 @@ class TestSessionExecutorFullChain:
 
         executor._submit_evaluation(
             1, result_id, 9, 'case', {'reference_params': {}}, {},
-            'translation', aggregated, cfg.id)
+            'translation', aggregated, cfg.id, device_type='websocket_api')
         assert len(eval_calls) == 1
         assert eval_calls[0]['result_id'] == result_id
-        assert eval_calls[0]['eval_params']['test_type'] == 'api'
+        assert eval_calls[0]['eval_params']['device_type'] == 'websocket_api'
         assert eval_calls[0]['algorithm_result']['text_output'] == 'mock 请求-响应回复文本'

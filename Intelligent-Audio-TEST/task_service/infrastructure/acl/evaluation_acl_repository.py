@@ -53,7 +53,7 @@ class EvaluationAclRepository:
         return get_evaluation_service_stub()
 
     def reevaluate_multi_round(self, task_id, result_id, test_case_id,
-                               algorithm_result, test_type='api',
+                               algorithm_result, device_type='api',
                                algorithm_type='translation'):
         """多轮重新评估。
 
@@ -66,14 +66,14 @@ class EvaluationAclRepository:
             result_json=json.dumps(result_id, ensure_ascii=False, default=str),
             test_case_id=str(test_case_id or ''),
             algorithm_result=json.dumps(algorithm_result or {}, ensure_ascii=False, default=str),
-            test_type=test_type or 'api',
+            device_type=device_type or 'api',
             algorithm_type=algorithm_type or 'translation',
         ))
         return resp
 
     def reevaluate_single(self, task_id, result_id, test_case_id,
                           algorithm_result, reference_params,
-                          test_type='api', algorithm_type='translation'):
+                          device_type='api', algorithm_type='translation'):
         """单轮重新评估。
 
         封装 evaluation_service.EvaluationService.ReevaluateSingle RPC。
@@ -86,7 +86,7 @@ class EvaluationAclRepository:
             test_case_id=str(test_case_id or ''),
             algorithm_result=json.dumps(algorithm_result or {}, ensure_ascii=False, default=str),
             reference_params=json.dumps(reference_params or {}, ensure_ascii=False, default=str),
-            test_type=test_type or 'api',
+            device_type=device_type or 'api',
             algorithm_type=algorithm_type or 'translation',
         ))
         return resp

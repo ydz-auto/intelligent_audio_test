@@ -26,7 +26,7 @@ EVALUATION_SERVICE_GRPC_PORT = 51091
 TRANSFER_AGENT_GRPC_PORT = 51101
 
 # Mock 替身服务端口（INT-137/INT-182：mock_services 独立替身，仅联调/验收/回归用；
-# MOCK_SERVICES_ENABLED=true 时由 run_all.py 可选启动，默认关闭、不进生产编排与镜像）
+# MOCK_SERVICES_ENABLED=true 时按需独立启动，默认关闭、不进生产编排与镜像）
 MOCK_THIRD_PARTY_EVAL_HTTP_PORT = 5099
 MOCK_REALTIME_API_WS_PORT = 5098
 MOCK_EVAL_SERVER_HTTP_PORT = 5097
@@ -44,7 +44,7 @@ RUSTFS_PORT = 9000
 
 # 前端端口（来源：frontend/vite.config.ts）
 FRONTEND_PORT = 6173
-# 前端开发端口（run_all.py / stop_all.py 用 --port 覆盖 vite.config.ts 的 6173 为 5173）
+# 前端开发端口（本地 dev server 用 --port 覆盖 vite.config.ts 的 6173 为 5173）
 FRONTEND_DEV_PORT = 5173
 # RustFS 控制台端口（rustfs server --console-address :9001）
 RUSTFS_CONSOLE_PORT = 9001

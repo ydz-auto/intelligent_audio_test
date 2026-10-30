@@ -327,13 +327,11 @@ class TaskQueryService:
             if tc_res.get('success'):
                 case_info_dict = tc_res.get('data') or {}
                 if case_info_dict:
-                    test_type = data.get('algorithm_type') or 'api'
                     stub = report_config_service.stub
                     resp = stub.BuildReferenceParams(report_pb.BuildReferenceParamsRequest(
                         data=_dumps({
                             'case_info': case_info_dict,
                             'case_results': data.get('_raw_results', []),
-                            'test_type': test_type,
                         })
                     ))
                     if resp.success:

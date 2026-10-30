@@ -187,7 +187,7 @@ class TestOverallEntryRoundDimsFanout:
             host,
             task_id='t1', result_id=11, test_case_id='c1',
             algorithm_result=_upload_shaped_algo_result(),
-            algorithm_type='translation', test_type='api',
+            algorithm_type='translation', device_type='http_api',
         )
         assert ok is True
         assert host.dispatched == [(0, [72]), (1, [72]), (2, [72]), (None, [134])]
@@ -203,7 +203,7 @@ class TestOverallEntryRoundDimsFanout:
             host,
             task_id='t1', result_id=11, test_case_id='c1',
             algorithm_result=_upload_shaped_algo_result(),
-            algorithm_type='translation', test_type='api',
+            algorithm_type='translation', device_type='http_api',
         )
         assert ok is True
         assert host.dispatched == [(None, [134])]
@@ -217,7 +217,7 @@ class TestOverallEntryRoundDimsFanout:
             host,
             task_id='t1', result_id=11, test_case_id='c1',
             algorithm_result=_upload_shaped_algo_result(2),
-            algorithm_type='translation', test_type='api',
+            algorithm_type='translation', device_type='http_api',
         )
         assert ok is True
         assert host.dispatched == [(0, [72]), (1, [72])]
@@ -232,7 +232,7 @@ class TestOverallEntryRoundDimsFanout:
             host,
             task_id='t1', result_id=11, test_case_id='c1',
             algorithm_result=_upload_shaped_algo_result(2),
-            algorithm_type='translation', test_type='api',
+            algorithm_type='translation', device_type='http_api',
         )
         assert ok is False
         assert host.dispatched == []
@@ -248,7 +248,7 @@ class TestOverallEntryRoundDimsFanout:
             host,
             task_id='t1', result_id=11, test_case_id='c1',
             algorithm_result=_upload_shaped_algo_result(2),
-            algorithm_type='translation', test_type='api',
+            algorithm_type='translation', device_type='http_api',
         )
         assert ok is True
         assert host.dispatched == [(1, [72])]
@@ -261,7 +261,7 @@ class TestOverallEntryRoundDimsFanout:
             host,
             task_id='t1', result_id=11, test_case_id='c1',
             algorithm_result=_upload_shaped_algo_result(2),
-            algorithm_type='translation', test_type='api',
+            algorithm_type='translation', device_type='http_api',
         )
         assert ok is True
         assert host.dispatched == [(0, [72]), (1, [72])]
@@ -274,7 +274,7 @@ class TestOverallEntryRoundDimsFanout:
             host,
             task_id='t1', result_id=11, test_case_id='c1',
             algorithm_result=_upload_shaped_algo_result(2),
-            algorithm_type='translation', test_type='api',
+            algorithm_type='translation', device_type='http_api',
         )
         assert ok is True
         assert host.dispatched == [(None, [9])]
@@ -287,7 +287,7 @@ class TestOverallEntryRoundDimsFanout:
             host,
             task_id='t1', result_id=11, test_case_id='c1',
             algorithm_result=_upload_shaped_algo_result(),
-            algorithm_type='translation', test_type='api', round_number=1,
+            algorithm_type='translation', device_type='http_api', round_number=1,
         )
         assert ok is True
         assert host.dispatched == [(1, [72])]

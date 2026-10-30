@@ -40,7 +40,7 @@ class RoundDataBuilderMixin:
         return flat
 
     def _build_rounds_list(self, algorithm_result, reference_params_col,
-                            field_mapper, algorithm_type, test_type, task_id, test_case_id,
+                            field_mapper, algorithm_type, device_type, task_id, test_case_id,
                             algorithm_params_col=None, api_id=None):
         """从 algo_result.rounds 构建 [{reference, hypothesis, ...}, ...] 列表
 
@@ -79,7 +79,7 @@ class RoundDataBuilderMixin:
         for rd in rounds:
             item = self._build_single_round(
                 rd, reference_params_col, mappings,
-                test_type, algorithm_type, task_id, test_case_id,
+                device_type, algorithm_type, task_id, test_case_id,
                 algorithm_acl_repository.get_reference_params_list,
                 algorithm_acl_repository.load_reference_params_file,
                 algorithm_params_col=algorithm_params_col,
@@ -110,7 +110,7 @@ class RoundDataBuilderMixin:
             return {}
 
     @staticmethod
-    def _gen_reference_value(ref_item, test_type, ref_type):
+    def _gen_reference_value(ref_item, device_type, ref_type):
         """根据 ref_type 从参考参数项提取值（迁移自 reference_params_generator.get_reference_value）"""
         value = ref_item.get('value')
         if value is None:
@@ -141,7 +141,7 @@ class RoundDataBuilderMixin:
         return value
 
     def _build_single_round(self, round_item, reference_params_col, mappings,
-                            test_type, algorithm_type, task_id, test_case_id,
+                            device_type, algorithm_type, task_id, test_case_id,
                             get_reference_params_fn, load_round_ref_file_fn,
                             algorithm_params_col=None, case_config=None):
         """构建单轮评估数据 item
@@ -181,7 +181,7 @@ class RoundDataBuilderMixin:
                         if ref_def.get('code') == source_param:
                             ref_type = ref_def.get('type')
                             break
-                    value = self._gen_reference_value(ref_item, test_type, ref_type)
+                    value = self._gen_reference_value(ref_item, device_type, ref_type)
             elif source == 'case':
                 # 按轮从独立列加载 case 参数
                 # algo_result.rounds[].round 是 0-indexed，algorithm_params_col 用 1-indexed

@@ -15,7 +15,6 @@ from datetime import datetime
 
 from fastapi.responses import Response
 from api_gateway.infrastructure.request_adapter import request
-from shared.utils.testcase_helpers import derive_case_test_type
 from api_gateway.infrastructure.acl import (
     AudioAclRepositoryImpl,
     EvaluationConfigAclRepositoryImpl,
@@ -135,7 +134,6 @@ class TestCaseExportService:
             "description": tc.get('description'),
             "group": tc.get('group_name'),
             "group_id": tc.get('group_id'),
-            "test_type": derive_case_test_type(tc.get('config') or {}),
             "tags": tags,
             "tag_items": tag_items,
             "dimensions": dimension_names,
@@ -172,7 +170,6 @@ class TestCaseExportService:
             audios.append({
                 "audio_id": audio_id,
                 "audio_name": audio_name,
-                "test_type": derive_case_test_type(tc.get('config') or {}),
                 "spl": audio_item.get('spl'),
                 "playback_device_id": device_id,
                 "playback_device_name": device_name,

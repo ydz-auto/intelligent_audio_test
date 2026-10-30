@@ -129,7 +129,9 @@ class TaskDataAclRepositoryImpl(TaskDataAclRepository):
     def submit_evaluate_case(self, task_id, result_id, test_case_id, algorithm_result, **eval_params):
         """提交评估（通过 gRPC 调用 evaluation_service.EvaluateCase）"""
         from shared.clients.grpc_clients import submit_evaluate_case
+        device_type = eval_params.pop('device_type', None)
         return submit_evaluate_case(
             task_id=task_id, result_id=result_id, test_case_id=test_case_id,
             algorithm_result=algorithm_result, eval_params=eval_params,
+            device_type=device_type,
         )

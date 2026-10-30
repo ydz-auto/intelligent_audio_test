@@ -36,13 +36,13 @@ class ReevaluationAclRepositoryImpl(ReevaluationAclRepository):
         )
 
     def reevaluate_multi_round(self, task_id, result, test_case_id,
-                               algorithm_result, test_type,
+                               algorithm_result, device_type,
                                algorithm_type) -> ReevaluationResultDTO:
         from api_gateway.infrastructure.grpc_proxies import _ReevaluationExecutorProxy
         executor = _ReevaluationExecutorProxy.get_instance()
         success, message = executor._reevaluate_multi_round(
             task_id, result, test_case_id, algorithm_result,
-            test_type, algorithm_type,
+            device_type, algorithm_type,
         )
         return ReevaluationResultDTO(
             success=success,
@@ -51,13 +51,13 @@ class ReevaluationAclRepositoryImpl(ReevaluationAclRepository):
         )
 
     def reevaluate_single(self, task_id, result_id, test_case_id,
-                          algorithm_result, reference_params, test_type,
+                          algorithm_result, reference_params, device_type,
                           algorithm_type) -> ReevaluationResultDTO:
         from api_gateway.infrastructure.grpc_proxies import _ReevaluationExecutorProxy
         executor = _ReevaluationExecutorProxy.get_instance()
         success, message = executor._reevaluate_single(
             task_id, result_id, test_case_id, algorithm_result,
-            reference_params, test_type, algorithm_type,
+            reference_params, device_type, algorithm_type,
         )
         return ReevaluationResultDTO(
             success=success,

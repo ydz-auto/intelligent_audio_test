@@ -392,10 +392,10 @@ class TestExecutorFullChain:
 
         executor._submit_evaluation(
             1, result_id, 9, 'case', {'reference_params': {}}, {},
-            'voice_llm', aggregated, cfg.id)
+            'voice_llm', aggregated, cfg.id, device_type='http_api')
         assert len(eval_calls) == 1
         assert eval_calls[0]['result_id'] == result_id
-        assert eval_calls[0]['eval_params']['test_type'] == 'api'
+        assert eval_calls[0]['eval_params']['device_type'] == 'http_api'
 
     def test_ws_round_via_in_process_adapter(self, ws_stream_server, monkeypatch):
         """WS 流式传输全链（进程内适配器直构）：executor → ApiDriverAdapter(WS 流式) →

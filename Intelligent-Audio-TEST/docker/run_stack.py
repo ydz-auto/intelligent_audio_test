@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""INT-272：全栈 Docker Compose 薄封装 —— agent 运行时唯一启动/停止入口。
+"""INT-272：全栈 Docker Compose 薄封装 —— docker-only 启停/探测。
+
+全栈唯一入口是仓库根 ``stack.py``（compose + 宿主机 audio/device 服务）；
+本脚本只负责 compose 侧操作，被 ``stack.py`` 委托调用。
 
 根治口径（成员裁定）：服务生命周期归 Docker daemon，与一切 run 树解耦。
 agent 运行时只做 `docker compose up/down` 与健康探测；禁止宿主机直起进程；
@@ -77,28 +80,35 @@ RUSTFS_PORT = int(os.environ.get('RUSTFS_PORT', '9000'))
 
 
 def _load_env_file():
-    """把仓库根 .env 读进当前进程环境（子进程 compose 继承）。
+    """把仓库根 .env + docker/.env 读进当前进程环境（子进程 compose 继承）。
 
-    只注入 compose 需要的键；宿主 DATABASE_URL 等指向 localhost 的键不覆盖
-    （compose 内置值按容器网络服务名寻址，见 docker-compose.yml）。
+    compose 以 docker/ 为项目目录，实际读取的是 ``docker/.env``；只读根 .env 会让
+    本脚本健康探测的端口口径与 compose 不一致（历史上 PG 5432/15435 就是这样漂移的）。
+    这里两份都读，docker/.env 覆盖同名键，与 compose 实际生效值对齐。
+    宿主 DATABASE_URL 等指向 localhost 的键不参与容器形态（compose 内置服务名寻址）。
     """
-    env_file = os.path.join(BASE_DIR, '.env')
-    if not os.path.isfile(env_file):
-        return
+    root_env = os.path.join(BASE_DIR, '.env')
+    compose_env = os.path.join(BASE_DIR, 'docker', '.env')
     try:
         from dotenv import load_dotenv
-        load_dotenv(env_file)
+        if os.path.isfile(root_env):
+            load_dotenv(root_env)
+        if os.path.isfile(compose_env):
+            load_dotenv(compose_env, override=True)
         return
     except ImportError:
         pass
     # python-dotenv 缺席时的最小实现
-    with open(env_file, encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#') or '=' not in line:
-                continue
-            key, _, val = line.partition('=')
-            os.environ.setdefault(key.strip(), val.strip())
+    for env_file in (root_env, compose_env):
+        if not os.path.isfile(env_file):
+            continue
+        with open(env_file, encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, _, val = line.partition('=')
+                os.environ[key.strip()] = val.strip()
 
 
 def _compose(*args):
@@ -136,7 +146,7 @@ def cmd_up(args):
         print("[STACK] compose up 失败。常见原因：宿主端口被占用"
               "（本工具不清理端口，请处置占用方后重试）。", flush=True)
         return rc
-    print("[STACK] 全栈已交 Docker daemon 托管。健康探测：python docker/run_stack.py health",
+    print("[STACK] 全栈已交 Docker daemon 托管。健康探测：python stack.py health",
           flush=True)
     return 0
 

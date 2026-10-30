@@ -178,7 +178,7 @@ class TestFolderUploadGenerateTestCase:
                     'taskId': task_id,
                     'audioType': 'dry',
                     'createTestCase': is_final,
-                    'testTypes': ['api'],
+                    'deviceType': 'http_api',
                     'groupNameType': 'custom',
                     'customGroupName': 'API测试_文件夹上传',
                     'inheritTags': True,

@@ -135,6 +135,60 @@ def _collect_config_audio_ids(obj) -> set:
     return ids
 
 
+def _collect_result_api_ids(results) -> list:
+    """聚合本次任务结果行涉及的 API 实例 id（去重升序）。
+
+    API 参数与输出声明已改为实例作用域（策略 + 覆盖），同一算法类型下可能
+    同时存在多个 API，任务详情必须按实际出现的 api_id 逐个解析后取并集。
+    """
+    api_ids = set()
+    for row in results or []:
+        if not isinstance(row, dict):
+            continue
+        api_id = row.get('api_id')
+        if api_id is None:
+            api_id = (row.get('test_result') or {}).get('api_id')
+        if api_id:
+            try:
+                api_ids.add(int(api_id))
+            except (TypeError, ValueError):
+                continue
+    return sorted(api_ids)
+
+
+def _merge_field_mappings(mappings) -> dict:
+    """多个 api_id 的字段映射取并集（按 param_code 去重，先到先得）。"""
+    merged = {}
+    seen = {}
+    for mapping in mappings:
+        if not isinstance(mapping, dict):
+            continue
+        for section in ('result', 'reference'):
+            bucket = merged.setdefault(section, [])
+            keys = seen.setdefault(section, set())
+            for row in mapping.get(section) or []:
+                code = row.get('param_code') if isinstance(row, dict) else None
+                if code is None or code in keys:
+                    continue
+                keys.add(code)
+                bucket.append(row)
+    return merged or {'result': [], 'reference': []}
+
+
+def _merge_output_fields(field_lists) -> list:
+    """多个 api_id 的输出字段取并集（按 source_param 去重，先到先得）。"""
+    merged = []
+    seen = set()
+    for fields in field_lists:
+        for row in fields or []:
+            key = row.get('source_param') if isinstance(row, dict) else None
+            if key is None or key in seen:
+                continue
+            seen.add(key)
+            merged.append(row)
+    return merged
+
+
 class TaskQueryService:
     """任务查询应用服务（读侧）。"""
 
@@ -387,11 +441,22 @@ class TaskQueryService:
                 from task_service.infrastructure.acl.algorithm_acl_repository import AlgorithmRepository
                 _algo_repo = AlgorithmRepository()
 
+                # API 声明按实例作用域解析：同一算法类型下可能涉及多个 api_id，
+                # 逐个取值后取并集（无 api_id 时保留算法级口径，兼容物理任务）。
+                api_scopes = _collect_result_api_ids(results) or [None]
                 if algorithm_type:
-                    field_mapping = _algo_repo.algo_get_full_field_mapping(algorithm_type)
+                    field_mapping = _merge_field_mappings([
+                        _algo_repo.algo_get_full_field_mapping(algorithm_type, api_id=api_id)
+                        for api_id in api_scopes
+                    ])
 
                 # 7a. 收集所有维度 ID，批量查询 aux 参数（快照为空时才需要）
-                output_fields = _algo_repo.algo_get_output_fields(algorithm_type) if algorithm_type else []
+                output_fields = (
+                    _merge_output_fields([
+                        _algo_repo.algo_get_output_fields(algorithm_type, api_id=api_id)
+                        for api_id in api_scopes
+                    ]) if algorithm_type else []
+                )
                 # 设备输出声明只用于轮内子键类型/展示名解析，不进展示字段清单
                 device_output_fields = (
                     _algo_repo.algo_get_device_output_fields(algorithm_type) if algorithm_type else []

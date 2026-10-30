@@ -241,6 +241,10 @@ class TaskLifecycleMixin:
                 task = local_db_session.get(Task, task_id)
                 if not task:
                     continue
+                # 异步派发容量门控（spec §9）：在途执行达到并发上限时等空位，
+                # 行保持 PENDING（不提前认领堆在池队列，避免被挂起仲裁误判）
+                if not self._await_e2e_dispatch_capacity(task_id, stop_event):
+                    break
                 self._dispatch_case_by_type(task_id, task, tc_rel, local_db_session)
                 local_db_session.commit()
                 self._emit_progress(task)

@@ -202,7 +202,7 @@ class TestServicerReevaluateBoundary:
                   return_value=executor)
         req = SimpleNamespace(
             task_id='491', result_json='{}', test_case_id='tc-1',
-            algorithm_result='{}', test_type='api', algorithm_type='translation',
+            algorithm_result='{}', device_type='http_api', algorithm_type='translation',
         )
         with p:
             resp = servicer.ReevaluateMultiRound(req)
@@ -218,7 +218,7 @@ class TestServicerReevaluateBoundary:
         req = SimpleNamespace(
             task_id='491', result_id='4855', test_case_id='tc-1',
             algorithm_result='{}', reference_params='{}',
-            test_type='api', algorithm_type='translation',
+            device_type='http_api', algorithm_type='translation',
         )
         with p:
             resp = servicer.ReevaluateSingle(req)
@@ -340,7 +340,7 @@ class TestBuildRoundsListExplicitSkip:
                 reference_params_col=None,
                 field_mapper=MagicMock(),
                 algorithm_type='translation',
-                test_type='api',
+                device_type='http_api',
                 task_id=491,
                 test_case_id='tc-1',
             )
@@ -365,7 +365,7 @@ class TestEvaluateCaseSkippedTerminal:
             ret = host.evaluate_case(
                 task_id=491, result_id=4855, test_case_id='tc-1',
                 algorithm_result={'rounds': [{'output': {'asr_text': 'x'}, 'round': 0}]},
-                algorithm_type='translation', test_type='api',
+                algorithm_type='translation', device_type='http_api',
             )
         assert ret is False
         # TestResult 收口 completed
@@ -388,7 +388,7 @@ class TestEvaluateCaseSkippedTerminal:
             ret = host.evaluate_case(
                 task_id=491, result_id=4855, test_case_id='tc-1',
                 algorithm_result={'rounds': [{'output': {'asr_text': 'x'}, 'round': 0}]},
-                algorithm_type='translation', test_type='api',
+                algorithm_type='translation', device_type='http_api',
                 round_number=3,
             )
         assert ret is False
@@ -405,7 +405,7 @@ class TestEvaluateCaseSkippedTerminal:
             ret = host.evaluate_case(
                 task_id=491, result_id=4855, test_case_id='tc-1',
                 algorithm_result={'rounds': [{'output': {'asr_text': 'x'}, 'round': 0}]},
-                algorithm_type='translation', test_type='api',
+                algorithm_type='translation', device_type='http_api',
             )
         assert ret is False
         host._prepare_evaluation_data.assert_called_once()

@@ -111,7 +111,7 @@ class TestStaleSameNameDifferentMd5:
         rounds = [{'round_number': 1,
                    'audios': [{'audio_name': name, 'play_order': 0}]}]
         svc.create_test_case_from_audio(
-            2235, ['e2e'], [], rounds_config=rounds, raw_annotations=None,
+            2235, 'physical', [], rounds_config=rounds, raw_annotations=None,
             upload_task_id='task-113',
         )
         assert captured[0]['config']['rounds'][0]['audios'][0]['audio_id'] == 2235
@@ -146,7 +146,7 @@ class TestRenameReuploadTaskMap:
              'audios': [{'audio_name': '旧名.wav', 'play_order': 1}]},
         ]
         svc.create_test_case_from_audio(
-            2236, ['e2e'], [], rounds_config=rounds, raw_annotations=None,
+            2236, 'physical', [], rounds_config=rounds, raw_annotations=None,
             upload_task_id='task-113',
         )
         rounds_out = captured[0]['config']['rounds']
@@ -178,7 +178,7 @@ class TestMixedTaskAndLibraryNames:
              'audios': [{'audio_name': lib_name, 'play_order': 1}]},
         ]
         svc.create_test_case_from_audio(
-            2235, ['e2e'], [], rounds_config=rounds, raw_annotations=None,
+            2235, 'physical', [], rounds_config=rounds, raw_annotations=None,
             upload_task_id='task-113',
         )
         rounds_out = captured[0]['config']['rounds']
@@ -217,7 +217,7 @@ class TestNameMapPagingCap:
         rounds = [{'round_number': 1,
                    'audios': [{'audio_name': '窗口外.wav', 'play_order': 0}]}]
         svc.create_test_case_from_audio(
-            9001, ['api'], [], rounds_config=rounds, raw_annotations=None,
+            9001, 'http_api', [], rounds_config=rounds, raw_annotations=None,
         )
         assert captured[0]['config']['rounds'][0]['audios'][0]['audio_id'] == 9001
 
@@ -252,7 +252,7 @@ class TestInstantUploadChainWiring:
         params = {
             'rounds_config': [{'round_number': 1,
                                'audios': [{'audio_name': '新名.wav', 'play_order': 0}]}],
-            'test_types': ['e2e'],
+            'device_type': 'physical',
             'algorithm_type': None,
             'default_playback_device_id': None,
             'default_spl': 65.0,

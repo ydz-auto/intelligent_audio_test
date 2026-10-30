@@ -37,7 +37,7 @@ class _ReevaluationExecutorProxy:
         )
 
     def _reevaluate_multi_round(self, task_id, result, test_case_id, algorithm_result,
-                                 test_type, algorithm_type):
+                                 device_type, algorithm_type):
         """多轮用例重新评估"""
         from shared.proto import evaluation_service_pb2
 
@@ -48,7 +48,7 @@ class _ReevaluationExecutorProxy:
                 result_json=json.dumps(result or {}, ensure_ascii=False, default=str),
                 test_case_id=str(test_case_id or ''),
                 algorithm_result=json.dumps(algorithm_result or {}, ensure_ascii=False, default=str),
-                test_type=test_type or 'api',
+                device_type=device_type or '',
                 algorithm_type=algorithm_type or 'translation',
             ))
             return resp.success, resp.message
@@ -60,7 +60,7 @@ class _ReevaluationExecutorProxy:
         )
 
     def _reevaluate_single(self, task_id, result_id, test_case_id, algorithm_result,
-                           reference_params, test_type, algorithm_type):
+                           reference_params, device_type, algorithm_type):
         """单轮用例重新评估"""
         from shared.proto import evaluation_service_pb2
 
@@ -72,7 +72,7 @@ class _ReevaluationExecutorProxy:
                 test_case_id=str(test_case_id or ''),
                 algorithm_result=json.dumps(algorithm_result or {}, ensure_ascii=False, default=str),
                 reference_params=json.dumps(reference_params or {}, ensure_ascii=False, default=str),
-                test_type=test_type or 'api',
+                device_type=device_type or '',
                 algorithm_type=algorithm_type or 'translation',
             ))
             return resp.success, resp.message

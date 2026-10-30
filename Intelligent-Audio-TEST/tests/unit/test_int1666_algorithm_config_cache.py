@@ -158,6 +158,13 @@ def _install_repos(monkeypatch, *, algorithms=None, definitions_by_type=None,
                 if not types or row['algorithm_type'] in types
             ],
         ),
+        # 参数策略（API 参数 / 映射的唯一来源）：本文件只验证切片与构建语义，
+        # 策略内容留空即可。
+        'param_profile_repository': _FakeRepo(
+            load_active=_maybe_fail('profiles', ([], {}, {})),
+            load_bindings={},
+            load_profiles_by_types=_maybe_fail('profiles', []),
+        ),
     }
     for name, repo in repos.items():
         monkeypatch.setattr(config_cache_module, name, repo)
@@ -184,12 +191,15 @@ def test_full_load_uses_one_batch_query_per_table(monkeypatch):
     assert [p['code'] for p in snapshot['reference_params']['a1']] == ['r1']
     assert sorted(snapshot['evaluation_dimension_params']) == [101, 102]
     # 每张表一次批量调用（原实现是 N 个算法 × 6 次 + 每个维度 1 次）：
-    # device/api 参数各一次、case/reference/mapping 各一次、维度关系一次
+    # device/api 参数各一次、case/reference/mapping 各一次、维度关系一次；
+    # 参数策略新增两次（策略+声明+映射一次、API 绑定一次），同样与算法数量无关
     called = [name for repo in repos.values() for name, _, _ in repo.calls]
     assert called.count('list_online_definitions') == 1
     assert called.count('list_by_algorithms') == 6
     assert called.count('list_by_dimensions') == 1
-    assert _total_calls(repos) == 8
+    assert called.count('load_active') == 1
+    assert called.count('load_bindings') == 1
+    assert _total_calls(repos) == 10
 
 
 def test_full_load_query_count_does_not_grow_with_algorithm_count(monkeypatch):
@@ -204,8 +214,8 @@ def test_full_load_query_count_does_not_grow_with_algorithm_count(monkeypatch):
 
     cache._load_all_configs()
 
-    # 40 个算法仍是 8 次仓储调用：SQL 条数与算法数量解耦
-    assert _total_calls(repos) == 8
+    # 40 个算法仍是 10 次仓储调用：SQL 条数与算法数量解耦
+    assert _total_calls(repos) == 10
     assert len(cache._config_cache['algorithms']) == 40
 
 

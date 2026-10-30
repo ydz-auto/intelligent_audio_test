@@ -51,6 +51,9 @@ from algorithm_service.infrastructure.persistence.param_repository import (
     mapping_repository,
     dimension_relation_repository,
 )
+from algorithm_service.infrastructure.persistence._param_profile_repositories import (
+    param_profile_repository,
+)
 
 _REDIS_KEY = 'algo_config_cache'
 _RELOAD_CHANNEL = 'algo_config_invalidate'
@@ -180,6 +183,34 @@ def _merge_level_rows(rows, api_id: Optional[int], key_fn):
     return merged
 
 
+def _resolve_scope_rows(profile_rows, override_rows, key_fn):
+    """策略行 + 实例覆盖行按唯一键合并（覆盖行替换同键策略行）。
+
+    与 ``_merge_level_rows`` 的区别：来源是「策略声明」而不是「算法级默认行」，
+    算法类型级默认层已废弃，因此策略行为空时只返回覆盖行。
+    """
+    overrides = {}
+    for row in override_rows or []:
+        overrides.setdefault(key_fn(row), row)
+    merged = []
+    used_keys = set()
+    for row in profile_rows or []:
+        key = key_fn(row)
+        override = overrides.get(key)
+        if override is not None:
+            merged.append(override)
+            used_keys.add(key)
+        else:
+            merged.append(row)
+    for row in override_rows or []:
+        key = key_fn(row)
+        if key in used_keys:
+            continue
+        used_keys.add(key)
+        merged.append(row)
+    return merged
+
+
 def _merge_mapping_buckets(mappings, api_id: Optional[int]):
     """对 mappings 的每个来源桶分别做 api_id 作用域合并。"""
     merged = {}
@@ -252,6 +283,10 @@ class AlgorithmConfigCache:
             'evaluation_dimension_params': {},
             'mappings': {},
             'reference_params': {},
+            # 参数策略：profile_id → 字段声明 / 映射；api_id → profile_id
+            'profile_params': {},
+            'profile_mappings': {},
+            'api_bindings': {},
         }
 
     @staticmethod
@@ -316,6 +351,20 @@ class AlgorithmConfigCache:
                     reference_params.get(algo_type, [])))
             snapshot['mappings'][algo_type] = self._serialize_mappings(
                 mappings.get(algo_type, []), resolve_source, algo_type)
+
+        # 参数策略（API 参数与 API 映射的唯一来源）：按 profile 分组序列化，
+        # 同时载入 api_id → profile_id 绑定，供运行时按 API 实例解析。
+        profiles, profile_params, profile_mappings = param_profile_repository.load_active()
+        snapshot['api_bindings'] = param_profile_repository.load_bindings()
+        for profile in profiles:
+            profile_id = profile.get('id')
+            if profile_id is None:
+                continue
+            profile_algo = profile.get('algorithm_type') or ''
+            snapshot['profile_params'][profile_id] = self._serialize_params(
+                profile_params.get(profile_id, []))
+            snapshot['profile_mappings'][profile_id] = self._serialize_mappings(
+                profile_mappings.get(profile_id, []), resolve_source, profile_algo)
 
         # 维度参数：一次 IN 取回全部受影响维度（原实现逐条维度关系查一次）
         dim_ids = sorted({
@@ -893,12 +942,18 @@ class AlgorithmConfigCache:
         }
 
     def get_algorithm_params(self, algorithm_type: str) -> List[Dict[str, Any]]:
+        """算法级合并参数（设备参数 + 算法级 API 默认行）。
+
+        本入口没有 ``api_id``：API 参数按算法级默认口径直接读快照（迁移后为空），
+        不走 ``get_api_params``，避免把「调用方本就不该带 api_id」当成异常告警。
+        实例作用域的 API 声明请用 :meth:`get_api_params`。
+        """
         cache = self._config_cache
         device_params = cache.get('device_params', {}).get(algorithm_type, [])
-        # INT-1756：走 get_api_params 的算法级默认口径（api_id=None），
-        # 避免 API 实例级行混进「算法级合并参数」。
-        api_params = self.get_api_params(algorithm_type)
-        return device_params + api_params
+        api_level_rows = _merge_level_rows(
+            cache.get('api_params', {}).get(algorithm_type, []), None,
+            _api_param_merge_key)
+        return device_params + api_level_rows
 
     def get_device_params(self, algorithm_type: str) -> List[Dict[str, Any]]:
         return self._config_cache.get('device_params', {}).get(algorithm_type, [])
@@ -906,13 +961,98 @@ class AlgorithmConfigCache:
     def get_api_params(
         self, algorithm_type: str, api_id: Optional[int] = None
     ) -> List[Dict[str, Any]]:
-        """获取 API 参数（api_id 传入时按 API 实例级合并覆盖算法级默认）。
+        """获取 API 参数 = 策略声明 + 本 API 覆盖行。
 
-        INT-1756 C6a：不传 api_id 只返回算法级行（api_id IS NULL），与改动前
-        （存量行全部为算法级）结果一致；传 api_id 时该 API 的同键行覆盖算法级行。
+        算法类型级默认层（api_id IS NULL）已废弃：不传 api_id 没有任何声明可返回，
+        直接返回空列表——调用方必须带 api_id（执行 / 评估 / 报告链路均已接线）。
         """
-        rows = self._config_cache.get('api_params', {}).get(algorithm_type, [])
-        return _merge_level_rows(rows, api_id, _api_param_merge_key)
+        if api_id is None:
+            log_not_emit(
+                'WARN', 'algorithm_config_cache',
+                f'get_api_params 未带 api_id（algorithm_type={algorithm_type}）：'
+                f'算法类型级默认层已废弃，按空声明返回',
+                category='algorithm', algorithm_type=algorithm_type,
+            )
+            return []
+        cache = self._config_cache
+        overrides = [
+            row for row in cache.get('api_params', {}).get(algorithm_type, [])
+            if row.get('api_id') == api_id
+        ]
+        profile_id = cache.get('api_bindings', {}).get(api_id)
+        profile_rows = (
+            cache.get('profile_params', {}).get(profile_id, []) if profile_id else []
+        )
+        resolved = _resolve_scope_rows(profile_rows, overrides, _api_param_merge_key)
+        if not resolved:
+            log_not_emit(
+                'WARN', 'algorithm_config_cache',
+                f'get_api_params 空声明：algorithm_type={algorithm_type} api_id={api_id} '
+                f'（profile_id={profile_id}，策略与实例覆盖均为空）',
+                category='algorithm', algorithm_type=algorithm_type,
+            )
+        return resolved
+
+    def get_source_mappings(
+        self, algorithm_type: str, source: str,
+        api_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """跨桶取某来源的映射（输出字段映射不区分维度桶）。
+
+        维度级映射在 ``_serialize_mappings`` 中归入 ``evaluation`` 桶，
+        但输出字段映射需要的是「该来源的全部行」，因此按来源跨桶汇总。
+        """
+        rows: List[Dict[str, Any]] = []
+        for bucket_rows in self._scoped_mapping_buckets(algorithm_type, api_id).values():
+            if not isinstance(bucket_rows, list):
+                continue
+            rows.extend(
+                row for row in bucket_rows
+                if isinstance(row, dict) and row.get('source') == source
+            )
+        return rows
+
+    def _scoped_mapping_buckets(
+        self, algorithm_type: str, api_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """映射分桶按 API 作用域解析。
+
+        - ``source='api'`` 的来源行：策略映射 + 本 API 覆盖行（覆盖优先）；
+        - 其余来源（case / reference / device / case_config）：仍为算法类型级，
+          只保留 ``api_id IS NULL`` 的行；
+        - 不传 api_id：只返回算法级行（API 来源为空）。
+        """
+        cache = self._config_cache
+        buckets = cache.get('mappings', {}).get(algorithm_type, {}) or {}
+        base: Dict[str, Any] = {}
+        for bucket, rows in buckets.items():
+            if not isinstance(rows, list):
+                base[bucket] = rows
+                continue
+            base[bucket] = [row for row in rows if row.get('api_id') is None]
+        if api_id is None:
+            return base
+
+        profile_id = cache.get('api_bindings', {}).get(api_id)
+        profile_buckets = (
+            cache.get('profile_mappings', {}).get(profile_id, {}) if profile_id else {}
+        )
+        override_buckets: Dict[str, List[Dict[str, Any]]] = {}
+        for bucket, rows in buckets.items():
+            if not isinstance(rows, list):
+                continue
+            scoped = [row for row in rows if row.get('api_id') == api_id]
+            if scoped:
+                override_buckets[bucket] = scoped
+
+        merged: Dict[str, Any] = {}
+        for bucket in set(base) | set(profile_buckets) | set(override_buckets):
+            merged[bucket] = _resolve_scope_rows(
+                profile_buckets.get(bucket, []),
+                override_buckets.get(bucket, []),
+                _mapping_merge_key,
+            )
+        return merged
 
     def get_case_params(self, algorithm_type: str) -> List[Dict[str, Any]]:
         return self._config_cache.get('case_params', {}).get(algorithm_type, [])
@@ -924,26 +1064,22 @@ class AlgorithmConfigCache:
         self, algorithm_type: str, component_type: str,
         api_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """获取组件参数映射（api_id 传入时按 API 实例级合并）。
+        """获取组件参数映射（API 来源按「策略 + 实例覆盖」解析）。
 
-        INT-1756 C6a：合并只做一次，evaluation 桶的去重必须发生在合并之后——
-        低层 ``_get_evaluation_mappings`` 先合并再按既有口径去重。
+        修改点（本轮）：算法类型级默认层废弃，``source='api'`` 的映射只来自
+        策略 ``param_profile_mappings`` 与实例覆盖行；其余来源仍是算法级。
         """
-        cache = self._config_cache
-        mappings = cache.get('mappings', {}).get(algorithm_type, {})
         if component_type == 'evaluation':
-            return self._get_evaluation_mappings(algorithm_type, cache, api_id)
-        merged = _merge_mapping_buckets(mappings, api_id)
-        return merged.get(component_type, [])
+            return self._get_evaluation_mappings(algorithm_type, api_id=api_id)
+        buckets = self._scoped_mapping_buckets(algorithm_type, api_id)
+        return buckets.get(component_type, [])
 
     def _get_evaluation_mappings(
         self, algorithm_type: str, cache: Optional[Dict[str, Any]] = None,
         api_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        cache = cache if cache is not None else self._config_cache
-        # 先做 api_id 作用域合并，再走原有的四元组去重（INT-1751 硬约束 2）
-        mappings = _merge_mapping_buckets(
-            cache.get('mappings', {}).get(algorithm_type, {}), api_id)
+        # 先做 API 作用域解析（策略 + 覆盖），再走原有的四元组去重（INT-1751 硬约束 2）
+        mappings = self._scoped_mapping_buckets(algorithm_type, api_id)
         result = []
         seen = set()
         # 维度级映射（dimension_id 非空）在 _serialize_mappings 中统一归入 evaluation 桶，

@@ -27,7 +27,6 @@ import uuid
 from datetime import datetime, timezone, timedelta
 
 from shared.utils.query_utils import now_cst
-from shared.utils.testcase_helpers import derive_case_test_type as common_derive_case_test_type
 from task_service.infrastructure.persistence.testcase_repository import testcase_repository
 from task_service.application.testcase.testcase_batch_service import TestCaseBatchService
 from task_service.application.testcase.testcase_query_service import TestCaseQueryService
@@ -115,12 +114,10 @@ def _apply_reference_params_to_config(test_case) -> None:
 
     case_id = getattr(test_case, 'id', '') or str(id(test_case))
 
-    # 构建传入 gRPC 的 test_case_config（algorithm_type / config / test_type，
-    # test_type 为算法服务参考值口径契约值，由配置形态派生）
+    # 构建传入 gRPC 的 test_case_config（algorithm_type / config）
     test_case_config = {
         'algorithm_type': getattr(test_case, 'algorithm_type', None),
         'config': config,
-        'test_type': common_derive_case_test_type(config),
     }
 
     ref_params_list = []

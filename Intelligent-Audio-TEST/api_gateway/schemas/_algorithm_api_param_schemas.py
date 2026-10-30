@@ -8,6 +8,23 @@ from typing import Any, Dict, List, Optional
 from pydantic import ConfigDict, Field
 
 from api_gateway.schemas.base import APIModel
+from shared.models.common_enums import (
+    CASE_PARAM_SCOPE_MAX_LENGTH,
+    CASE_PARAM_SCOPE_PATTERN,
+    CaseParamScope,
+)
+
+_SCOPE_DESC = f"参数适用范围 ({'/'.join(s.value for s in CaseParamScope)})"
+
+
+def _scope_field(default=None):
+    """用例参数适用范围字段（缺省 common，词表与 CaseParamScope 同源）。"""
+    return Field(
+        default,
+        max_length=CASE_PARAM_SCOPE_MAX_LENGTH,
+        pattern=CASE_PARAM_SCOPE_PATTERN,
+        description=_SCOPE_DESC,
+    )
 
 
 # ========== API 参数 ==========
@@ -87,6 +104,49 @@ class AlgorithmApiParamListResponse(APIModel):
     total: int
 
 
+class ApiScopedConfigSaveRequest(APIModel):
+    """API 实例作用域配置聚合保存（API 参数 + 参数映射）。
+
+    API 参数与映射已从「算法类型级默认」下沉到「策略 + 实例覆盖」，由 API 管理
+    弹窗随 API 一起提交；算法编辑弹窗不再维护这两类数据。
+    """
+    algorithm_type: str = Field(..., min_length=1, description='算法类型（须与 API 归属一致）')
+    api_params: List[Dict[str, Any]] = Field(
+        default_factory=list, description='本 API 的字段声明覆盖（direction=input/output）')
+    mappings: List[Dict[str, Any]] = Field(
+        default_factory=list, description='本 API 的 API 输出 → 评估维度参数映射覆盖')
+
+
+# ========== 参数策略 ==========
+
+class ParamProfileListQuery(APIModel):
+    """策略列表查询"""
+    algorithm_type: Optional[str] = Field(None)
+    scope: Optional[str] = Field(None, description='api / device；空 = 全部')
+
+
+class ParamProfileSaveRequest(APIModel):
+    """整份保存策略（基础字段 + 字段声明 + 映射）"""
+    scope: str = Field('api', max_length=10, description='作用域：api / device')
+    algorithm_type: str = Field(..., min_length=1, max_length=50)
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None)
+    status: str = Field('online', description='状态：online / offline / draft')
+    params: List[Dict[str, Any]] = Field(default_factory=list)
+    mappings: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class ParamProfileCloneRequest(APIModel):
+    """克隆策略"""
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None)
+
+
+class ParamProfileBindRequest(APIModel):
+    """API 实例绑定/解绑策略（profile_id 缺省 = 解绑）"""
+    profile_id: Optional[int] = Field(None, ge=1)
+
+
 # ========== 用例专属参数 ==========
 
 class CaseAlgorithmParamCreate(APIModel):
@@ -101,7 +161,7 @@ class CaseAlgorithmParamCreate(APIModel):
     help_text: Optional[str] = Field(None)
     ui_order: int = Field(default=0, ge=0, description='界面排序')
     hidden: bool = Field(default=False, description='是否隐藏')
-    scope: str = Field(default='common', max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
+    scope: str = _scope_field(CaseParamScope.COMMON.value)
     min_value: Optional[float] = Field(None, description='最小值 (slider/number)')
     max_value: Optional[float] = Field(None, description='最大值 (slider/number)')
     step: Optional[float] = Field(None, description='步长 (slider/number)')
@@ -120,7 +180,7 @@ class CaseAlgorithmParamUpdate(APIModel):
     help_text: Optional[str] = Field(None)
     ui_order: Optional[int] = Field(None)
     hidden: Optional[bool] = Field(None)
-    scope: Optional[str] = Field(None, max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
+    scope: Optional[str] = _scope_field()
     min_value: Optional[float] = Field(None, description='最小值 (slider/number)')
     max_value: Optional[float] = Field(None, description='最大值 (slider/number)')
     step: Optional[float] = Field(None, description='步长 (slider/number)')
@@ -146,7 +206,7 @@ class CaseParamCreateRequest(APIModel):
     help_text: Optional[str] = Field(None)
     ui_order: int = Field(default=0)
     hidden: bool = Field(default=False)
-    scope: str = Field(default='common', max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
+    scope: str = _scope_field(CaseParamScope.COMMON.value)
 
 
 class CaseParamUpdateRequest(APIModel):
@@ -162,7 +222,7 @@ class CaseParamUpdateRequest(APIModel):
     help_text: Optional[str] = Field(None)
     ui_order: Optional[int] = Field(None)
     hidden: Optional[bool] = Field(None)
-    scope: Optional[str] = Field(None, max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
+    scope: Optional[str] = _scope_field()
 
 
 class ExtractParamsRequest(APIModel):

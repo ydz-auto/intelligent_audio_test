@@ -124,23 +124,24 @@ class AlgorithmDimensionQueryTxMixin:
         from shared.clients.grpc_clients import algo_load_reference_params_file
         return algo_load_reference_params_file(filepath)
 
-    def algo_get_full_field_mapping(self, algorithm_type: str):
-        """获取算法完整字段映射。
+    def algo_get_full_field_mapping(self, algorithm_type: str, api_id: int = None):
+        """获取算法完整字段映射（api_id 非空时按其「策略 + 覆盖」解析）。
 
         封装 shared.clients.grpc_clients.algo_get_full_field_mapping，
         通过 algorithm_service AlgorithmQueryService.GetFullFieldMapping RPC。
         """
         from shared.clients.grpc_clients import algo_get_full_field_mapping
-        return algo_get_full_field_mapping(algorithm_type)
+        return algo_get_full_field_mapping(algorithm_type, api_id=api_id)
 
-    def algo_get_output_fields(self, algorithm_type: str, test_type: str = None):
-        """获取算法结果输出字段。
+    def algo_get_output_fields(self, algorithm_type: str, device_type: str = None,
+                               api_id: int = None):
+        """获取算法结果输出字段（api_id 非空时取该 API 实例的输出声明）。
 
         封装 shared.clients.grpc_clients.algo_get_output_fields，
         通过 algorithm_service AlgorithmQueryService.GetOutputFields RPC。
         """
         from shared.clients.grpc_clients import algo_get_output_fields
-        return algo_get_output_fields(algorithm_type, test_type)
+        return algo_get_output_fields(algorithm_type, device_type, api_id=api_id)
 
     def algo_get_device_output_fields(self, algorithm_type: str):
         """获取设备输出声明（direction=output），只用于轮内子键类型/展示名解析。

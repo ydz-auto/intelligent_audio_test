@@ -4,12 +4,16 @@
 为消除 api_gateway 对 task_service 的跨服务 Python 直导，现迁至 shared/utils，
 供所有服务（api_gateway/task_service 等）共享引用。
 """
-import re
-
 from shared.utils.log_handler import log_not_emit
 
 # 预览停止标志：跨服务共享（原 TestCaseController 模块级全局变量）
 preview_stop_flags = {}
+
+# 用例音频关联播放设备的两种配置形态：
+# - playback_device_id：老用例直接指定某实验室的物理音箱；
+# - playback_speaker_group_id：新用例关联逻辑音箱（执行时按实验室换绑）。
+PLAYBACK_DEVICE_ID_KEY = 'playback_device_id'
+PLAYBACK_SPEAKER_GROUP_ID_KEY = 'playback_speaker_group_id'
 
 
 def log(level, content, task_id=None, test_case_id=None, api_id=None, category='execution', module='TestCase', **kwargs):
@@ -190,44 +194,23 @@ def collect_audios(config: dict) -> list:
     return all_audios
 
 
+def _has_playback_ref(audio_item: dict) -> bool:
+    """音频项是否关联了播放设备（老用例直接指定设备 / 新用例关联逻辑音箱）"""
+    return bool(audio_item.get('playback_device_id')
+                or audio_item.get(PLAYBACK_SPEAKER_GROUP_ID_KEY))
+
+
 def has_playback_audio(config: dict) -> bool:
-    """用例配置中是否存在携带播放设备的音频（E2E 形态标记）"""
+    """用例配置中是否存在携带播放设备/逻辑音箱的音频（E2E 形态标记）"""
     for audio_item in collect_audios(config):
-        if isinstance(audio_item, dict) and audio_item.get('playback_device_id'):
+        if isinstance(audio_item, dict) and _has_playback_ref(audio_item):
             return True
     # 兼容未轮次化的平面 audios 配置
     flat_audios = (config or {}).get('audios') if isinstance(config, dict) else None
     for audio_item in flat_audios if isinstance(flat_audios, list) else []:
-        if isinstance(audio_item, dict) and audio_item.get('playback_device_id'):
+        if isinstance(audio_item, dict) and _has_playback_ref(audio_item):
             return True
     return False
-
-
-# 上传双变体用例名后缀（INT-129）：audio_service 建用例名 f"{base_name}_{tt}"
-# （tt∈{api,e2e}），重名冲突追加 _%H%M%S，故后缀形如 _api / _api_HHMMSS
-_DUAL_VARIANT_NAME_RE = re.compile(r'_(api|e2e)(?:_\d{6})?$')
-
-
-def derive_case_test_type(config: dict, case_name: str = None) -> str:
-    """由用例配置形态推导 e2e/api 口径（用例纯数据化过渡）。
-
-    test_type 列已废弃（差异#2 收尾）：用例不再存储类型，执行方式由
-    任务侧 task_case_relations.device_type 决定。评估/报告/算法服务的
-    参考值口径契约仍需 'e2e'/'api' 取值，此处由配置形态派生：
-    任一音频携带 playback_device_id 即 E2E 口径（物理执行），否则 API 口径。
-
-    INT-129：上传双变体两变体配置形态相同（rounds[].audios 均带
-    playback_device_id——API 变体逐轮 SPL 渲染也依赖播放设备），配置形态
-    无法区分变体，唯一可靠标记是用例名 _api/_e2e 后缀。仅当用例为上传
-    生成（config.auto_generated）且名称带变体后缀时以后缀为准，避免 API
-    变体建任务被误路由到 E2E 执行器；未传名称或非上传生成的用例一律
-    回落配置形态口径，手工用例不受影响。
-    """
-    if case_name:
-        match = _DUAL_VARIANT_NAME_RE.search(case_name.strip())
-        if match and (config or {}).get('auto_generated'):
-            return match.group(1)
-    return 'e2e' if has_playback_audio(config) else 'api'
 
 
 def collect_dimensions(config: dict) -> list:

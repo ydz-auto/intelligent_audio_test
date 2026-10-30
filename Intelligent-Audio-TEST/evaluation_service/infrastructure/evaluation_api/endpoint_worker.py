@@ -9,7 +9,7 @@ from evaluation_service.infrastructure.acl import task_acl_repository
 from evaluation_service.infrastructure.acl import algorithm_acl_repository
 from evaluation_service.infrastructure.evaluation_api.api_request_handler import eval_task_registry
 from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerMixin
-from shared.models.common_enums import FieldType, RedisKeyPrefix
+from shared.models.common_enums import DeviceType, FieldType, RedisKeyPrefix
 from shared.utils.status_constants import EvaluationStatus
 from shared.utils.config_manager import config_manager
 from shared.utils.round_data_utils import normalize_round_output
@@ -227,7 +227,7 @@ class EndpointWorker(EvaluationLoggerMixin):
 
     def _execute_evaluation(self, task_id, result_id, test_case_id, algorithm_result,
                            representative_dim_data, group_items, algorithm_type='translation',
-                           test_type='api', api_id=None, **kwargs):
+                           device_type=DeviceType.HTTP_API.value, api_id=None, **kwargs):
         # INT-1757（C6b）：api_id 由 task_data 透传（test_results.api_id），
         # 字段定义/输出声明按该 API 实例作用域取；None 回落算法级默认。
         field_defs = algorithm_acl_repository.get_field_mappings(
@@ -273,7 +273,7 @@ class EndpointWorker(EvaluationLoggerMixin):
         )
 
         # 4. 处理评估结果（成功/失败）
-        self._process_evaluation_result(resp_data, group_items, task_id, test_case_id, result_id, payload, test_type)
+        self._process_evaluation_result(resp_data, group_items, task_id, test_case_id, result_id, payload, device_type)
 
     def _build_evaluation_context(self, task_id, test_case_id, algorithm_result, representative_dim_data,
                                   algorithm_type, output_field_keys, dim_id, eval_input_fields, kwargs,
@@ -488,7 +488,7 @@ class EndpointWorker(EvaluationLoggerMixin):
             # 异常时返回包含 __error__ 的 dict，由 _process_evaluation_result 统一处理
             return {"__error__": f"评估维度组异常: {str(e)}\n{traceback.format_exc()}"}
 
-    def _process_evaluation_result(self, resp_data, group_items, task_id, test_case_id, result_id, payload, test_type):
+    def _process_evaluation_result(self, resp_data, group_items, task_id, test_case_id, result_id, payload, device_type):
         """处理评估结果（成功/失败）"""
         # INT-174：评估任务已被重新评估提交摘除（方案A）——结果按取消隔离，
         # 不写库、不推进用例状态，避免旧评估结果覆盖新评估
@@ -537,7 +537,7 @@ class EndpointWorker(EvaluationLoggerMixin):
                     test_case_id=test_case_id,
                     result_id=result_id,
                     api_request_body=payload,
-                    test_type=test_type
+                    device_type=device_type
                 )
                 self._maybe_finalize_reeval(task_id)
             except Exception as e:

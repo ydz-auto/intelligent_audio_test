@@ -156,7 +156,7 @@ class TestCaseLoadFailureFinalization:
             host,
             task_id='t1', result_id=11, test_case_id='c1',
             algorithm_result={'output': {'asr_text': 'x'}},
-            algorithm_type='translation', test_type='api',
+            algorithm_type='translation', device_type='http_api',
         )
         assert ok is False
         # TaskCase 终态 failed + evaluation_status failed + 留痕
@@ -181,7 +181,7 @@ class TestCaseLoadFailureFinalization:
             host,
             task_id='t1', result_id=None, test_case_id='c1',
             algorithm_result={'output': {'asr_text': 'x'}},
-            algorithm_type='translation', test_type='api',
+            algorithm_type='translation', device_type='http_api',
         )
         assert ok is False
         host.result_processor.mark_test_result_completed.assert_not_called()
@@ -196,7 +196,7 @@ class TestCaseLoadFailureFinalization:
             host,
             task_id='t1', result_id=11, test_case_id='c1',
             algorithm_result={'output': {'asr_text': 'x'}},
-            algorithm_type='translation', test_type='api',
+            algorithm_type='translation', device_type='http_api',
         )
         assert ok is False
         assert any('失败收口写状态失败' in str(l.get('content', '')) for l in host.logs)
@@ -212,7 +212,7 @@ class TestCaseLoadFailureFinalization:
             host,
             task_id='t1', result_id=11, test_case_id='c1',
             algorithm_result={'output': {'asr_text': 'x'}},
-            algorithm_type='translation', test_type='api',
+            algorithm_type='translation', device_type='http_api',
         )
         assert ok is True
         host._dispatch_evaluation_tasks.assert_called_once()

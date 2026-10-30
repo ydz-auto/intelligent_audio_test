@@ -40,8 +40,8 @@ from evaluation_service.domain.services.evaluation_service.case_loader import (
 )
 from task_service.application.testcase.testcase_query_service import TestCaseQueryService
 
-TT_API = 'api'
-TT_E2E = 'e2e'
+DT_HTTP = 'http_api'
+DT_PHYSICAL = 'physical'
 _UNSET = object()
 
 
@@ -66,10 +66,10 @@ def _round(round_number, evaluation=_UNSET):
     return item
 
 
-def _build(rounds, dimensions_data=None, tt=TT_API):
+def _build(rounds, dimensions_data=None, device_type=DT_HTTP):
     svc = _Svc()
     return svc._build_config_and_apply_dimensions(
-        _audio(), rounds, dimensions_data, tt, 0, None,
+        _audio(), rounds, dimensions_data, device_type, 0, None,
     )
 
 
@@ -159,28 +159,28 @@ def test_a1_5_backfill_compat_per_round_scope_entry():
     assert 'dimensions' not in config
 
 
-def test_a1_6_test_type_filter_and_no_backfill_into_empty_round():
-    """test_type 过滤：api/e2e 各留各的；只有 e2e 条目的轮在 api 用例下为 []，不回填顶层（S5）。"""
+def test_a1_6_device_type_filter_and_no_backfill_into_empty_round():
+    """device_type 作用域过滤：各设备类型各留各的；只有 physical 条目的轮在 http_api 下为 []，不回填顶层（S5）。"""
     payload = [
-        _round(1, {'dimensions': [_dim(11, test_type=TT_API), _dim(12, test_type=TT_E2E)]}),
-        _round(2, {'dimensions': [_dim(13, test_type=TT_E2E)]}),
+        _round(1, {'dimensions': [_dim(11, device_type=DT_HTTP), _dim(12, device_type=DT_PHYSICAL)]}),
+        _round(2, {'dimensions': [_dim(13, device_type=DT_PHYSICAL)]}),
     ]
-    top = [_dim(21, test_type=TT_API), _dim(22, test_type=TT_E2E),
-           _dim(91, test_type=TT_E2E, round_scope='multi')]
+    top = [_dim(21, device_type=DT_HTTP), _dim(22, device_type=DT_PHYSICAL),
+           _dim(91, device_type=DT_PHYSICAL, round_scope='multi')]
 
-    api_config = _build(copy.deepcopy(payload), copy.deepcopy(top), tt=TT_API)
+    api_config = _build(copy.deepcopy(payload), copy.deepcopy(top), device_type=DT_HTTP)
     assert _ids(_round_dims(api_config, 0)) == [11]
     assert _round_dims(api_config, 1) == []
     assert 'dimensions' not in api_config
 
-    e2e_config = _build(copy.deepcopy(payload), copy.deepcopy(top), tt=TT_E2E)
+    e2e_config = _build(copy.deepcopy(payload), copy.deepcopy(top), device_type=DT_PHYSICAL)
     assert _ids(_round_dims(e2e_config, 0)) == [12]
     assert _ids(_round_dims(e2e_config, 1)) == [13]
     assert _ids(e2e_config['dimensions']) == [91]
 
 
 def test_a1_6b_top_level_per_round_dimensions_ignored_with_warning(caplog):
-    """R1：顶层逐轮维度一律忽略并记 WARNING（含 audio / test_type 标识）。"""
+    """R1：顶层逐轮维度一律忽略并记 WARNING（含 audio / device_type 标识）。"""
     rounds = [_round(1, {'dimensions': [_dim(11)]})]
 
     with caplog.at_level('WARNING'):
@@ -310,16 +310,16 @@ def test_a1_15_r4_branch_non_list_round_dimensions_normalized():
     assert _merge(config, 1) == []
 
 
-def test_a1_16_top_level_multi_test_type_filter_before_dedupe():
-    """顶层 multi 桶按「归一化 → tt 过滤 → 去重」：同 id 先 e2e 后 api 时 api 用例仍保留该条目（R3 / 审计 P3-1）。"""
+def test_a1_16_top_level_multi_device_type_filter_before_dedupe():
+    """顶层 multi 桶按「归一化 → device_type 过滤 → 去重」：同 id 先 physical 后 http_api 时 http_api 用例仍保留该条目（R3 / 审计 P3-1）。"""
     rounds = [_round(1, {'dimensions': [_dim(11)]})]
-    top = [_dim(91, test_type=TT_E2E, round_scope='multi'),
-           _dim(91, test_type=TT_API, round_scope='multi')]
+    top = [_dim(91, device_type=DT_PHYSICAL, round_scope='multi'),
+           _dim(91, device_type=DT_HTTP, round_scope='multi')]
 
-    config = _build(rounds, top, tt=TT_API)
+    config = _build(rounds, top, device_type=DT_HTTP)
 
     assert _ids(config['dimensions']) == [91]
-    assert config['dimensions'][0]['test_type'] == TT_API
+    assert config['dimensions'][0]['device_type'] == DT_HTTP
 
 
 # ==== A4 评测链冒烟（纯 py，读侧不变量） ====
@@ -423,13 +423,13 @@ def _gateway_get_detail_body(config):
     detail = TestCaseDetailData(
         id=item['id'], name=item['name'], description=item['description'],
         group_id=item['group_id'], group_name=item['group_name'], group=item['group'],
-        type=item['type'], config=item['config'] or {},
+        config=item['config'] or {},
         algorithm_params=item['algorithm_params'],
         reference_params=item['reference_params'],
         algorithm_type=item['algorithm_type'], tags=item['tags'],
         audios=[TestCaseAudioConfigItem(
             id=a['id'], audio_id=a['audio_id'], audio_name=a['audio_name'],
-            test_type=a['test_type'], spl=a['spl'],
+            spl=a['spl'],
             playback_device_id=a['playback_device_id'], play_order=a['play_order'],
         ) for a in item['audios']],
         dimensions=[TestCaseDimensionBrief(id=d['id'], name=d['name'], type=d['type'])

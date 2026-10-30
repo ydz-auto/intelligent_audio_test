@@ -158,6 +158,144 @@ class _AlgorithmQueryProxy:
             error_msg_prefix='清除草稿失败',
         )
 
+    # ---- 参数策略（API 参数/映射的可复用声明）----
+
+    @staticmethod
+    def _unwrap(resp):
+        return {
+            'success': resp.success,
+            'message': resp.message,
+            'data': json.loads(resp.data) if resp.data else None,
+            'code': resp.code,
+        }
+
+    def list_param_profiles(self, algorithm_type=None, scope=None):
+        """策略列表（AlgorithmQueryService.ListParamProfiles）。"""
+        from shared.proto import algorithm_service_pb2 as algo_pb
+        from shared.clients.grpc_clients import get_algorithm_query_service_stub
+
+        def _call():
+            stub = get_algorithm_query_service_stub()
+            return self._unwrap(stub.ListParamProfiles(
+                algo_pb.ListParamProfilesRequest(
+                    algorithm_type=algorithm_type or '',
+                    scope=scope or '',
+                )))
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {
+                'success': False, 'message': f'读取参数策略失败: {e}',
+                'data': None, 'code': 500},
+            error_msg_prefix='读取参数策略失败',
+        )
+
+    def get_param_profile(self, profile_id):
+        """策略详情（AlgorithmQueryService.GetParamProfile）。"""
+        from shared.proto import algorithm_service_pb2 as algo_pb
+        from shared.clients.grpc_clients import get_algorithm_query_service_stub
+
+        def _call():
+            stub = get_algorithm_query_service_stub()
+            return self._unwrap(stub.GetParamProfile(
+                algo_pb.GetParamProfileRequest(profile_id=int(profile_id))))
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {
+                'success': False, 'message': f'读取参数策略失败: {e}',
+                'data': None, 'code': 500},
+            error_msg_prefix='读取参数策略失败',
+        )
+
+    def save_param_profile(self, data):
+        """整份保存策略（AlgorithmDefinitionService.SaveParamProfile）。"""
+        from shared.proto import algorithm_service_pb2 as algo_pb
+
+        def _call():
+            resp = self.definition_stub.SaveParamProfile(
+                algo_pb.SaveParamProfileRequest(
+                    data=json.dumps(data, ensure_ascii=False, default=str)))
+            return self._unwrap(resp)
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {
+                'success': False, 'message': f'保存参数策略失败: {e}',
+                'data': None, 'code': 500},
+            error_msg_prefix='保存参数策略失败',
+        )
+
+    def clone_param_profile(self, source_profile_id, name, description=None):
+        from shared.proto import algorithm_service_pb2 as algo_pb
+
+        def _call():
+            resp = self.definition_stub.CloneParamProfile(
+                algo_pb.CloneParamProfileRequest(data=json.dumps({
+                    'source_profile_id': int(source_profile_id),
+                    'name': name,
+                    'description': description,
+                }, ensure_ascii=False)))
+            return self._unwrap(resp)
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {
+                'success': False, 'message': f'克隆参数策略失败: {e}',
+                'data': None, 'code': 500},
+            error_msg_prefix='克隆参数策略失败',
+        )
+
+    def delete_param_profile(self, profile_id):
+        from shared.proto import algorithm_service_pb2 as algo_pb
+
+        def _call():
+            resp = self.definition_stub.DeleteParamProfile(
+                algo_pb.DeleteParamProfileRequest(profile_id=int(profile_id)))
+            return self._unwrap(resp)
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {
+                'success': False, 'message': f'删除参数策略失败: {e}',
+                'data': None, 'code': 500},
+            error_msg_prefix='删除参数策略失败',
+        )
+
+    def bind_api_param_profile(self, api_id, profile_id=None):
+        from shared.proto import algorithm_service_pb2 as algo_pb
+
+        def _call():
+            resp = self.definition_stub.BindApiParamProfile(
+                algo_pb.BindApiParamProfileRequest(data=json.dumps({
+                    'api_id': int(api_id),
+                    'profile_id': int(profile_id) if profile_id else None,
+                }, ensure_ascii=False)))
+            return self._unwrap(resp)
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {
+                'success': False, 'message': f'绑定参数策略失败: {e}',
+                'data': None, 'code': 500},
+            error_msg_prefix='绑定参数策略失败',
+        )
+
+    def save_api_scope_overrides(self, api_id, algorithm_type, api_params, mappings):
+        """按 api_id 原子保存实例覆盖行（AlgorithmDefinitionService.SaveApiScopeOverrides）。"""
+        from shared.proto import algorithm_service_pb2 as algo_pb
+
+        def _call():
+            resp = self.definition_stub.SaveApiScopeOverrides(
+                algo_pb.SaveApiScopeOverridesRequest(data=json.dumps({
+                    'api_id': int(api_id),
+                    'algorithm_type': algorithm_type or '',
+                    'api_params': api_params or [],
+                    'mappings': mappings or [],
+                }, ensure_ascii=False, default=str)))
+            return self._unwrap(resp)
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {
+                'success': False, 'message': f'保存 API 覆盖配置失败: {e}',
+                'data': None, 'code': 500},
+            error_msg_prefix='保存 API 覆盖配置失败',
+        )
+
 
 # 算法查询代理模块级单例
 algorithm_query_service = _AlgorithmQueryProxy()

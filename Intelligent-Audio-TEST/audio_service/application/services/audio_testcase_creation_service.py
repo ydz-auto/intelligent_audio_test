@@ -14,6 +14,7 @@
 import json as _json
 import logging
 
+from shared.models.common_enums import DeviceType
 from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit
 from audio_service.domain.repositories.audio_repository_abc import AudioRepositoryInterface
@@ -51,26 +52,26 @@ class AudioTestCaseCreationService(CreationRoundConfigMixin,
         self._playback_acl = PlaybackConfigACLRepositoryImpl()
         self._testcase_acl = TestCaseConfigACLRepositoryImpl()
 
-    def create_test_case_from_audio(self, audio_id, test_types, audio_tags,
+    def create_test_case_from_audio(self, audio_id, device_type, audio_tags,
                                     playback_device_id=None, spl=65.0, noise_spl=60.0,
                                     noise_audio_id=None, group_name=None,
                                     dimensions_data=None, algorithm_type=None,
                                     algorithm_params=None, rounds_config=None,
                                     inherit_tags=True, raw_annotations=None,
                                     noise_device_ids=None, case_background_noise=None,
-                                    upload_task_id=None):
+                                    upload_task_id=None, playback_speaker_group_id=None):
         """从音频创建测试用例
 
         通过 ACL 仓储调用 gRPC TestCaseConfigService 创建测试用例（含分组/标签/参考参数），
         避免直接 import task_service PO。
 
+        :param device_type: 用例目标设备类型（DeviceType 值）。用例本身不承载执行口径，
+            仅用于按维度/参数的作用域（common 或该 device_type）做导入期筛选与物理设备回填；
+            缺省按 HTTP_API。
         :param upload_task_id: 本次上传任务 ID（合并/秒传流程传入）。用于把轮次音频名
             优先解析到本任务内的音频记录，避免同名素材绑到库中陈旧同名记录。
         """
-        if isinstance(test_types, str):
-            test_types = [test_types.strip()]
-        else:
-            test_types = [tt.strip() if isinstance(tt, str) else tt for tt in test_types]
+        device_type = str(device_type).strip() if device_type else DeviceType.HTTP_API.value
 
         audio = self.repo.get_audio(audio_id)
         if not audio:
@@ -79,7 +80,8 @@ class AudioTestCaseCreationService(CreationRoundConfigMixin,
         effective_group_name = group_name if group_name else '音频上传生成'
 
         effective_playback_device_id = playback_device_id
-        if 'e2e' in test_types and not effective_playback_device_id:
+        if (device_type == DeviceType.PHYSICAL.value and not effective_playback_device_id
+                and not playback_speaker_group_id):
             # 通过 ACL 仓储查找第一个 device_type='dry' 的播放设备
             devices = self._playback_acl.list_playback_devices()
             for dev in devices:
@@ -89,7 +91,7 @@ class AudioTestCaseCreationService(CreationRoundConfigMixin,
 
             if not effective_playback_device_id:
                 raise ValueError(
-                    "e2e 测试类型需要一个 device_type='dry' 的播放设备，"
+                    "物理设备（physical）用例需要一个 device_type='dry' 的播放设备，"
                     "但未找到可用设备。请先在设备管理中配置播放设备。"
                 )
 
@@ -106,80 +108,112 @@ class AudioTestCaseCreationService(CreationRoundConfigMixin,
                         break
                 if tc_audio_name != audio.name:
                     break
-        base_name = f"测试用例_{tc_audio_name}"
-        if not test_types:
-            test_types = ['api']
+        test_case_name = f"测试用例_{tc_audio_name}"
 
-        created_tc_ids = []
+        # 名称冲突检查：通过 ACL 仓储 ListTestCases 搜索同名用例
+        list_data = self._testcase_acl.list_testcases(
+            page=1, per_page=50, keyword=test_case_name,
+        )
+        if list_data:
+            for item in list_data.get('items', []):
+                if item.get('name') == test_case_name:
+                    test_case_name = f"{test_case_name}_{now_cst().strftime('%H%M%S')}"
+                    break
 
-        for tt in test_types:
-            if len(test_types) > 1:
-                test_case_name = f"{base_name}_{tt}"
-            else:
-                test_case_name = base_name
+        rounds_resolved, algo_params_col = self._resolve_rounds_and_strip_params(
+            device_type, audio_id, audio, spl, effective_playback_device_id,
+            rounds_config, algorithm_params,
+            upload_task_id=upload_task_id,
+        )
 
-            # 名称冲突检查：通过 ACL 仓储 ListTestCases 搜索同名用例
-            list_data = self._testcase_acl.list_testcases(
-                page=1, per_page=50, keyword=test_case_name,
-            )
-            if list_data:
-                for item in list_data.get('items', []):
-                    if item.get('name') == test_case_name:
-                        test_case_name = f"{test_case_name}_{now_cst().strftime('%H%M%S')}"
-                        break
+        self._inject_spl_and_device_from_annotations(
+            rounds_resolved, raw_annotations, device_type, effective_playback_device_id, spl
+        )
 
-            rounds_resolved, algo_params_col = self._resolve_rounds_and_strip_params(
-                tt, audio_id, audio, spl, effective_playback_device_id,
-                rounds_config, algorithm_params,
-                upload_task_id=upload_task_id,
-            )
+        self._extract_case_params_from_annotations(
+            rounds_resolved, raw_annotations, algorithm_type, device_type, algo_params_col
+        )
 
-            self._inject_spl_and_device_from_annotations(
-                rounds_resolved, raw_annotations, tt, effective_playback_device_id, spl
-            )
+        # 解析 segment 级背景噪声和干扰人：文件名→audio_id，设备名→device_ids/playback_device_id
+        self._resolve_bg_noise_and_interferers_ids(rounds_resolved)
 
-            self._extract_case_params_from_annotations(
-                rounds_resolved, raw_annotations, algorithm_type, tt, algo_params_col
-            )
+        # 用例只关联逻辑音箱：上传选项选了逻辑音箱时，把各播放目标统一改写为组引用
+        if playback_speaker_group_id:
+            self._apply_speaker_group_to_rounds(rounds_resolved, playback_speaker_group_id)
 
-            # 解析 segment 级背景噪声和干扰人：文件名→audio_id，设备名→device_ids/playback_device_id
-            self._resolve_bg_noise_and_interferers_ids(rounds_resolved)
+        # case 级背景噪声（rounds 外层）ID 解析
+        if case_background_noise and isinstance(case_background_noise, dict):
+            self._resolve_audio_field(case_background_noise)
+            self._resolve_device_fields(case_background_noise)
 
-            # case 级背景噪声（rounds 外层）ID 解析
-            if case_background_noise and isinstance(case_background_noise, dict):
-                self._resolve_audio_field(case_background_noise)
-                self._resolve_device_fields(case_background_noise)
+        config = self._build_config_and_apply_dimensions(
+            audio, rounds_resolved, dimensions_data, device_type, noise_spl, noise_audio_id,
+            noise_device_ids, case_background_noise
+        )
 
-            config = self._build_config_and_apply_dimensions(
-                audio, rounds_resolved, dimensions_data, tt, noise_spl, noise_audio_id,
-                noise_device_ids, case_background_noise
-            )
+        # 通过 ACL 仓储创建测试用例
+        # （task_service 侧自动处理分组创建/标签关联/参考参数生成）
+        create_data = {
+            'name': test_case_name,
+            'description': f"自动从音频 '{audio.name}' 创建的测试用例",
+            'group': effective_group_name,
+            'algorithm_type': algorithm_type,
+            'config': config,
+            'algorithm_params': algo_params_col if algo_params_col else None,
+        }
+        if inherit_tags and audio_tags:
+            create_data['tags'] = list(audio_tags)
 
-            # 通过 ACL 仓储创建测试用例
-            # （task_service 侧自动处理分组创建/标签关联/参考参数生成）
-            create_data = {
-                'name': test_case_name,
-                'description': f"自动从音频 '{audio.name}' 创建的测试用例",
-                'group': effective_group_name,
-                'test_type': tt,
-                'algorithm_type': algorithm_type,
-                'config': config,
-                'algorithm_params': algo_params_col if algo_params_col else None,
-            }
-            if inherit_tags and audio_tags:
-                create_data['tags'] = list(audio_tags)
+        log_not_emit('DEBUG', 'audio_controller',
+                     f'tc.algorithm_params={_json.dumps(algo_params_col, ensure_ascii=False)[:300]}',
+                     category='audio')
 
-            log_not_emit('DEBUG', 'audio_controller',
-                         f'tc.algorithm_params={_json.dumps(algo_params_col, ensure_ascii=False)[:300]}',
-                         category='audio')
+        resp_data = self._testcase_acl.create_testcase_config(create_data)
+        tc_id = resp_data.get('id') if resp_data else None
+        return [tc_id] if tc_id else []
 
-            resp_data = self._testcase_acl.create_testcase_config(create_data)
-            if resp_data:
-                tc_id = resp_data.get('id')
-                if tc_id:
-                    created_tc_ids.append(tc_id)
 
-        return created_tc_ids
+    @staticmethod
+    def _apply_speaker_group_to_rounds(rounds, group_id):
+        """把轮次内所有实体设备引用改写为逻辑音箱组引用（用例只关联逻辑音箱）。
+
+        - audios[].playback_device_id → playback_speaker_group_id
+        - segment/轮次背景噪声 device_ids / playback_device_ids → playback_speaker_group_ids
+        - 干扰人 / 声纹 playback_device_id → playback_speaker_group_id
+        """
+        for round_item in rounds or []:
+            if not isinstance(round_item, dict):
+                continue
+            for audio_config in round_item.get('audios', []) or []:
+                if not isinstance(audio_config, dict):
+                    continue
+                # 逐轮选择可能不同逻辑音箱：轮内值优先，否则用顶层默认组
+                round_group_id = audio_config.get('playback_device_id') or group_id
+                audio_config['playback_speaker_group_id'] = round_group_id
+                audio_config.pop('playback_device_id', None)
+                audio_config.pop('playback_device_name', None)
+                bn = audio_config.get('background_noise') or audio_config.get('backgroundNoise')
+                if isinstance(bn, dict):
+                    bn_group_ids = bn.get('device_ids') or [round_group_id]
+                    bn['playback_speaker_group_ids'] = list(bn_group_ids)
+                    bn.pop('device_ids', None)
+                    bn.pop('playback_device_ids', None)
+                for inf in audio_config.get('interferers', []) or []:
+                    if isinstance(inf, dict):
+                        inf['playback_speaker_group_id'] = (
+                            inf.get('playback_device_id') or round_group_id)
+                        inf.pop('playback_device_id', None)
+                vp = audio_config.get('voiceprint')
+                if isinstance(vp, dict):
+                    vp['playback_speaker_group_id'] = (
+                        vp.get('playback_device_id') or round_group_id)
+                    vp.pop('playback_device_id', None)
+            rbn = round_item.get('background_noise') or round_item.get('backgroundNoise')
+            if isinstance(rbn, dict):
+                rbn['playback_speaker_group_ids'] = (
+                    rbn.get('device_ids') or [group_id])
+                rbn.pop('device_ids', None)
+                rbn.pop('playback_device_ids', None)
 
 
 # 模块级实例

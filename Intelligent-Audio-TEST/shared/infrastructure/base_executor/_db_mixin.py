@@ -267,6 +267,8 @@ class DbMixin:
 def _get_case_fields(algorithm_type, algo_acl=None):
     """获取算法需要的 case 表字段
 
+    只看设备参数：API 参数已下沉到 API 实例作用域，本方法拿不到 api_id。
+
     Args:
         algorithm_type: 算法类型
         algo_acl: algorithm_service ACL 仓储（由调用方注入）
@@ -274,10 +276,9 @@ def _get_case_fields(algorithm_type, algo_acl=None):
     if algo_acl is None:
         from shared.clients.grpc_clients import (
             algo_get_device_params as _get_dev,
-            algo_get_api_params as _get_api,
             algo_get_param_mapping as _get_map,
         )
-        params = (_get_dev(algorithm_type) or []) + (_get_api(algorithm_type) or [])
+        params = _get_dev(algorithm_type) or []
         case_fields = {}
         for param in params:
             param_code = param.get('code', '')
@@ -294,7 +295,7 @@ def _get_case_fields(algorithm_type, algo_acl=None):
                     case_fields[target_key] = source_param
         return case_fields
 
-    params = (algo_acl.get_device_params(algorithm_type) or []) + (algo_acl.get_api_params(algorithm_type) or [])
+    params = algo_acl.get_device_params(algorithm_type) or []
     case_fields = {}
     for param in params:
         param_code = param.get('code', '')

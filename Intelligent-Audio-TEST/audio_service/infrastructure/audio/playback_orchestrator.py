@@ -62,9 +62,103 @@ class PlaybackOrchestrator:
     #                           高层 API                                  #
     # ------------------------------------------------------------------ #
 
+    # 配置中播放设备主键字段（用例/轮次配置共用）
+    PLAYBACK_DEVICE_ID_KEY = 'playback_device_id'
+
     def play_round(self, round_config, task_id,
                    case_config=None, test_case_id=None, round_number=None,
                    audio_local_paths=None):
+        """播放一轮 E2E 测试音频（先按播放设备加互斥锁再执行）。
+
+        播放设备与被测设备必须同实验室（由 e2e_test_service 换绑保证，见
+        lab_playback_binding）。同一只音箱同一时刻只允许一轮播放：同实验室
+        并行用例在此排队串行出音，不同实验室用不同音箱仍然并行。
+        """
+        playback_device_ids = self.collect_playback_device_ids(round_config)
+        locks = self._acquire_playback_device_locks(
+            task_id, playback_device_ids, round_number=round_number)
+        if locks is None:
+            return None
+        try:
+            return self._play_round_body(
+                round_config, task_id, case_config=case_config,
+                test_case_id=test_case_id, round_number=round_number,
+                audio_local_paths=audio_local_paths,
+            )
+        finally:
+            self._release_playback_device_locks(locks)
+
+    @staticmethod
+    def collect_playback_device_ids(config):
+        """递归收集配置中的 playback_device_id（主讲人 / 噪声 / 干扰人）"""
+        device_ids = []
+
+        def walk(node):
+            if isinstance(node, dict):
+                raw = node.get(PlaybackOrchestrator.PLAYBACK_DEVICE_ID_KEY)
+                if raw not in (None, ''):
+                    try:
+                        device_id = int(raw)
+                    except (TypeError, ValueError):
+                        device_id = None
+                    if device_id is not None and device_id not in device_ids:
+                        device_ids.append(device_id)
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+
+        walk(config or {})
+        return device_ids
+
+    def _acquire_playback_device_locks(self, task_id, playback_device_ids,
+                                       round_number=None):
+        """按播放设备抢占互斥锁（按 id 排序，避免交叉加锁死锁）
+
+        Returns:
+            list: 已获取的锁（空列表 = 无需加锁，配置里没有播放设备）；
+            None: 有设备被占用（等待超时，本轮不播放）
+        """
+        from shared.infrastructure.config import BaseConfig
+        from shared.models.common_enums import RedisKeyPrefix
+        from shared.utils.distributed_coordinator import DistributedLock
+
+        if not playback_device_ids:
+            return []
+        round_tag = f'R{round_number}' if round_number else 'R?'
+        ttl = int(getattr(BaseConfig, 'PLAYBACK_DEVICE_LOCK_TTL_SECONDS', 1800))
+        wait_seconds = int(getattr(BaseConfig, 'PLAYBACK_DEVICE_LOCK_WAIT_SECONDS', 900))
+
+        locks = []
+        for device_id in sorted(playback_device_ids):
+            lock = DistributedLock(
+                f'{RedisKeyPrefix.PLAYBACK_DEVICE_LOCK.value}:{device_id}',
+                ttl=ttl, retry_timeout=wait_seconds,
+            )
+            if not lock.acquire(blocking=True):
+                self._log(
+                    'ERROR',
+                    f'[play_round {round_tag}] 播放设备 {device_id} 正被其他用例占用'
+                    f'（等待 {wait_seconds}s 超时），本轮不播放',
+                    task_id=task_id,
+                )
+                self._release_playback_device_locks(locks)
+                return None
+            locks.append(lock)
+        return locks
+
+    @staticmethod
+    def _release_playback_device_locks(locks):
+        for lock in locks or ():
+            try:
+                lock.release()
+            except Exception:
+                pass
+
+    def _play_round_body(self, round_config, task_id,
+                         case_config=None, test_case_id=None, round_number=None,
+                         audio_local_paths=None):
         """
         播放一轮 E2E 测试音频（主讲人 + 噪声 + 干扰人）。
 

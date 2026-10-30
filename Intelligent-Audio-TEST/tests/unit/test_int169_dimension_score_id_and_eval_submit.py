@@ -190,7 +190,7 @@ class TestEvaluateResultWrapsSubmitFailure:
                 task_id='t1', result_id=99, test_case_id='c1',
                 algo_result={'rounds': []}, case_config={},
                 case_reference_params=None, algorithm_type='voice_llm',
-                test_type='e2e', round_number=0,
+                device_type='physical', round_number=0,
             )
 
     def test_submit_success_not_wrapped(self):
@@ -199,7 +199,7 @@ class TestEvaluateResultWrapsSubmitFailure:
             task_id='t1', result_id=99, test_case_id='c1',
             algo_result={'rounds': []}, case_config={},
             case_reference_params=None, algorithm_type='voice_llm',
-            test_type='e2e', round_number=0,
+            device_type='physical', round_number=0,
         )
         host._task_data_acl.submit_evaluate_case.assert_called_once()
 
@@ -253,7 +253,7 @@ class TestOverallEvalSubmitFailureCompletes:
 
     _ARGS = dict(
         task_id='t1', tc_rel_id='tc1', data={}, case_name='case-x',
-        algorithm_type='voice_llm', test_case_id='c1', result_id=99,
+        algorithm_type='voice_llm', test_case_id='c1', result_ids={1: 99},
         all_round_results=[{'response_time': 100}],
         case_reference_params=None, last_adjusted_ref_params=None,
         device_info_list=None,
@@ -278,7 +278,10 @@ class TestOverallEvalSubmitFailureCompletes:
 
         assert success is True
         ex._aggregator.process_results.assert_called_once()
-        assert ex._eval_submit_failures == ['整体评估提交失败: EvaluateCase gRPC 调用失败: grpc down']
+        assert len(ex._eval_submit_failures) == 1
+        # 组执行收口带设备上下文：整体评估提交失败(device_id=1): ...
+        assert '整体评估提交失败' in ex._eval_submit_failures[0]
+        assert 'EvaluateCase gRPC 调用失败: grpc down' in ex._eval_submit_failures[0]
 
 
 class TestEvalSubmitFailureClosure:

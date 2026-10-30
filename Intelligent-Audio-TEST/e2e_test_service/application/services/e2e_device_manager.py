@@ -28,22 +28,37 @@ class E2EDeviceManager:
     def _log(self):
         return self._executor._log
 
-    def get_device_info(self, task_id, case_config, device_id=None):
+    def get_device_info(self, task_id, case_config, device_id=None, device_ids=None):
         """查询任务关联的设备，组装 device_info_list
 
         device_id：当前物理路由行绑定的被测设备（task_case_relations.device_id）。
         传入时只返回该设备——一条 E2E 用例按物理设备行逐行执行，
         同机多 App 的多条设备记录各跑各的，避免一次运行并发驱动全部设备。
-        未传时保持历史行为（任务全部设备）。
+        device_ids：组执行（同实验室、同用例、不同 SN）——非空时优先，返回
+        组内全部设备（按传入顺序），一次执行驱动组内全部设备、每轮音频只播一次。
+        两者皆空时保持历史行为（任务全部设备）。
         """
         # 通过 ACL 仓储查询 TaskDevice 关联记录
         task_device_relations = self._task_data_repo.get_task_devices(task_id)
-        device_ids = [rel.device_id for rel in task_device_relations if rel.device_id]
-        if device_id:
-            device_ids = [did for did in device_ids if int(did) == int(device_id)]
-            if not device_ids:
+        task_device_ids = [rel.device_id for rel in task_device_relations if rel.device_id]
+
+        wanted_ids = [int(item) for item in (device_ids or []) if item]
+        if wanted_ids:
+            available = {int(did) for did in task_device_ids}
+            missing = [did for did in wanted_ids if did not in available]
+            if missing:
                 return {'success': False,
-                        'error': f"任务未关联设备 {device_id}，无法执行该路由行"}
+                        'error': f"任务未关联设备 {missing}，无法执行该执行组"}
+            device_ids = [did for did in task_device_ids if int(did) in wanted_ids]
+            # 按组内传入顺序归一（组选择以行创建顺序为准）
+            device_ids.sort(key=lambda did: wanted_ids.index(int(did)))
+        else:
+            device_ids = task_device_ids
+            if device_id:
+                device_ids = [did for did in device_ids if int(did) == int(device_id)]
+                if not device_ids:
+                    return {'success': False,
+                            'error': f"任务未关联设备 {device_id}，无法执行该路由行"}
         if not device_ids:
             return {'success': False, 'error': "没有可用的测试设备"}
 
@@ -62,6 +77,8 @@ class E2EDeviceManager:
                 "device_id": dev.id, "device_sn": dev.serial_number or dev.ip,
                 "device_name": dev.name, "system": dev.system,
                 "keywords": dev.keywords,
+                # 实验室归属：执行时据此把用例内播放设备换绑为本实验室设备
+                "lab_id": dev.lab_id,
                 "prompt_audio_path": prompt_path, "prompt_audio_name": prompt_name,
                 "needs_prompt_audio": dev.needs_prompt_audio
             })

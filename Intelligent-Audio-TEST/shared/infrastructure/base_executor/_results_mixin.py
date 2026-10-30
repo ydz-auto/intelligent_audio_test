@@ -3,6 +3,8 @@
 import json
 import copy
 
+from shared.models.common_enums import DeviceType
+
 
 class EvaluationSubmitError(Exception):
     """评估提交失败（EvaluateCase gRPC 调用异常）
@@ -18,7 +20,7 @@ class ResultsMixin:
 
     def _evaluate_result(self, task_id, result_id, test_case_id, algo_result,
                          case_config, case_reference_params, algorithm_type,
-                         test_type='e2e', case_algorithm_params=None,
+                         device_type=DeviceType.PHYSICAL.value, case_algorithm_params=None,
                          reference_params_col=None, round_number=None, **kwargs):
         """评估测试结果（通过 gRPC 调用 evaluation_service.EvaluateCase）
 
@@ -60,7 +62,7 @@ class ResultsMixin:
         eval_params = (eval_params.get('evaluation', {}) or {}) if isinstance(eval_params, dict) else {}
 
         eval_params['algorithm_type'] = algorithm_type
-        eval_params['test_type'] = test_type
+        eval_params['device_type'] = device_type
         if round_number is not None:
             eval_params['round_number'] = round_number
         if reference_params_col is not None:
@@ -186,19 +188,20 @@ class ResultsMixin:
 def _get_algorithm_output_keys(algorithm_type, algo_acl=None):
     """从算法配置派生 output_keys
 
+    只看设备参数：API 参数已下沉到 API 实例作用域（每个 API 各自的策略 + 覆盖），
+    本方法拿不到 api_id，且这些键（direction / source_lang / target_lang 的 code）
+    历史上只来自设备参数。
+
     Args:
         algorithm_type: 算法类型
         algo_acl: algorithm_service ACL 仓储（由调用方注入）
     """
     output_keys = {}
     if algo_acl is None:
-        from shared.clients.grpc_clients import (
-            algo_get_device_params as _get_dev,
-            algo_get_api_params as _get_api,
-        )
-        params = (_get_dev(algorithm_type) or []) + (_get_api(algorithm_type) or [])
+        from shared.clients.grpc_clients import algo_get_device_params as _get_dev
+        params = _get_dev(algorithm_type) or []
     else:
-        params = (algo_acl.get_device_params(algorithm_type) or []) + (algo_acl.get_api_params(algorithm_type) or [])
+        params = algo_acl.get_device_params(algorithm_type) or []
     for param in params:
         code = param.get('code', '')
         if 'direction' in code.lower():

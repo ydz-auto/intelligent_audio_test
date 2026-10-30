@@ -186,6 +186,9 @@ class AlgorithmListQuery(APIModel):
 class AlgorithmParamListQuery(APIModel):
     algorithm_type: Optional[str] = Field(None)
     param_type: str = Field('device')
+    # API 参数改为 API 实例作用域（api_id），算法类型级默认层废弃：
+    # param_type=api 时必须带 api_id，只返回该 API 的字段声明行。
+    api_id: Optional[int] = Field(None, ge=1, description='API 实例ID（param_type=api 时必填）')
 
 
 class AlgorithmCaseParamListQuery(APIModel):

@@ -11,5 +11,5 @@
   INT-2079/A4：websocket + streaming=false 冒烟）
 
 红线：生产路径零引用 —— 任何生产服务不得 import 本包；不进生产 docker-compose
-编排与镜像；由 run_all.py 按 MOCK_SERVICES_ENABLED=true 可选启动。
+编排与镜像；按需独立启动（不随 stack.py 默认拉起）。
 """

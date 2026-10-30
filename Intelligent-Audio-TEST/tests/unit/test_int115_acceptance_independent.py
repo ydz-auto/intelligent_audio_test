@@ -250,7 +250,7 @@ class TestServicerInvalidIdAllEntries:
                    return_value=executor):
             resp = s.ReevaluateMultiRound(SimpleNamespace(
                 task_id='abc', result_json='{}', test_case_id='tc-1',
-                algorithm_result='{}', test_type='api', algorithm_type='translation'))
+                algorithm_result='{}', device_type='http_api', algorithm_type='translation'))
         assert resp.success is False
         executor._reevaluate_multi_round.assert_not_called()
 
@@ -262,7 +262,7 @@ class TestServicerInvalidIdAllEntries:
             resp = s.ReevaluateSingle(SimpleNamespace(
                 task_id='491', result_id='abc', test_case_id='tc-1',
                 algorithm_result='{}', reference_params='{}',
-                test_type='api', algorithm_type='translation'))
+                device_type='http_api', algorithm_type='translation'))
         assert resp.success is False
         assert 'result_id' in resp.message
         executor._reevaluate_single.assert_not_called()
@@ -376,7 +376,7 @@ class TestSkippedNoDimensionDispatch:
             ret = host.evaluate_case(
                 task_id=491, result_id=4855, test_case_id='tc-1',
                 algorithm_result={'rounds': [{'output': {'asr_text': 'x'}, 'round': 0}]},
-                algorithm_type='translation', test_type='api',
+                algorithm_type='translation', device_type='http_api',
             )
         assert ret is False
         host._prepare_evaluation_data.assert_not_called()
@@ -393,7 +393,7 @@ class TestSkippedNoDimensionDispatch:
             ret = host.evaluate_case(
                 task_id=491, result_id=4855, test_case_id='tc-1',
                 algorithm_result={'rounds': [{'output': {'asr_text': 'x'}, 'round': 0}]},
-                algorithm_type='translation', test_type='api',
+                algorithm_type='translation', device_type='http_api',
                 round_number=5,
             )
         assert ret is False

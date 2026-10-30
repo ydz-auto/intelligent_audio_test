@@ -78,8 +78,9 @@ class TestInt45AclGetFullFieldMapping:
     def test_success_payload_roundtrip_lossless(self, monkeypatch):
         captured = {}
 
-        def _fake(algorithm_type):
+        def _fake(algorithm_type, api_id=None):
             captured['algorithm_type'] = algorithm_type
+            captured['api_id'] = api_id
             return dict(_PAYLOAD)
 
         _patch_shared_client(monkeypatch, _fake)
@@ -87,15 +88,28 @@ class TestInt45AclGetFullFieldMapping:
 
         assert isinstance(dto, AlgoFieldMappingDTO)
         assert captured['algorithm_type'] == 'translation'
+        # INT-1756：不传 api_id = 算法级口径（物理侧）
+        assert captured['api_id'] is None
         assert dto.result_data == _PAYLOAD
         assert dto_to_dict(dto) == _PAYLOAD, '动态键 payload 必须经 dto_to_dict 无损还原'
 
+    def test_api_scope_forwarded_to_client(self, monkeypatch):
+        """api_id 透传到 shared 客户端（「策略 + 实例覆盖」解析入口）。"""
+        captured = {}
+        _patch_shared_client(
+            monkeypatch,
+            lambda algorithm_type, api_id=None: captured.update(
+                {'algorithm_type': algorithm_type, 'api_id': api_id}) or dict(_PAYLOAD),
+        )
+        AlgorithmConfigAclRepositoryImpl().get_full_field_mapping('translation', api_id=201)
+        assert captured == {'algorithm_type': 'translation', 'api_id': 201}
+
     def test_non_dict_returns_none(self, monkeypatch):
-        _patch_shared_client(monkeypatch, lambda algorithm_type: ['not-a-dict'])
+        _patch_shared_client(monkeypatch, lambda algorithm_type, api_id=None: ['not-a-dict'])
         assert AlgorithmConfigAclRepositoryImpl().get_full_field_mapping('translation') is None
 
     def test_grpc_exception_returns_none_no_raise(self, monkeypatch):
-        def _boom(algorithm_type):
+        def _boom(algorithm_type, api_id=None):
             raise ConnectionError('simulated algorithm_service outage')
 
         _patch_shared_client(monkeypatch, _boom)
@@ -103,7 +117,7 @@ class TestInt45AclGetFullFieldMapping:
 
     def test_empty_dict_degrades_to_falsy(self, monkeypatch):
         """空结果经兼容层还原为 {}（falsy），被快照收集的 if mapping 跳过。"""
-        _patch_shared_client(monkeypatch, lambda algorithm_type: {})
+        _patch_shared_client(monkeypatch, lambda algorithm_type, api_id=None: {})
         dto = AlgorithmConfigAclRepositoryImpl().get_full_field_mapping('translation')
         assert dto_to_dict(dto) == {}
 
@@ -113,7 +127,7 @@ class TestInt45CompatLayer:
     def test_compat_layer_delegates_to_acl_and_passes_algorithm_type(self, monkeypatch):
         """_grpc_algo_get_field_mapping（report_task_generator 的真实入口）委托
         ACL 仓储并透传 algorithm_type，返回还原后的 dict。"""
-        _patch_shared_client(monkeypatch, lambda algorithm_type: dict(_PAYLOAD))
+        _patch_shared_client(monkeypatch, lambda algorithm_type, api_id=None: dict(_PAYLOAD))
         out = report_grpc_clients._grpc_algo_get_field_mapping('translation')
         assert out == _PAYLOAD
 

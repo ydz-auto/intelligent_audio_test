@@ -129,7 +129,7 @@ class _Repo:
 def _params(create_test_case=True):
     return {
         'create_test_case': create_test_case,
-        'test_types': ['api'],
+        'device_type': 'http_api',
         'dimensions_data': None,
         'default_playback_device_id': 8,
         'default_spl': 65.0,

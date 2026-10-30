@@ -418,7 +418,8 @@ class APIExecutor(BaseExecutor):
                 self._run_single_api(
                     task_id, tc_rel_id, test_case_id, case_name, algorithm_type,
                     api_config, api_specific_config, audio,
-                    total_audio_duration, case_config, case_algorithm_params
+                    total_audio_duration, case_config, case_algorithm_params,
+                    device_type=data.get('device_type'),
                 )
             except Exception as e:
                 import traceback
@@ -457,7 +458,8 @@ class APIExecutor(BaseExecutor):
 
     def _run_single_api(self, task_id, tc_rel_id, test_case_id, case_name, algorithm_type,
                         api_config, api_specific_config, audio,
-                        total_audio_duration, case_config, case_algorithm_params):
+                        total_audio_duration, case_config, case_algorithm_params,
+                        device_type=None):
         """执行单个 API 的完整流程：健康检查 -> 创建任务 -> 等待 -> 结果 -> 评估"""
         api_paths, select_base_url, release_base_url = self._task_runner.setup_endpoints(
             task_id, tc_rel_id, case_name, api_config
@@ -550,7 +552,8 @@ class APIExecutor(BaseExecutor):
                 task_id=task_id, result_id=result_id, test_case_id=test_case_id,
                 algo_result=algo_result_dict, case_config=case_config,
                 case_reference_params=case_config.get('reference_params', {}) if case_config else {},
-                algorithm_type=algorithm_type, test_type='api',
+                algorithm_type=algorithm_type,
+                device_type=device_type or DeviceType.HTTP_API.value,
                 case_algorithm_params=case_algorithm_params
             )
             self._log(level='INFO', category='evaluation',
@@ -626,7 +629,9 @@ class APIExecutor(BaseExecutor):
         full_case_params = {
             'algorithm_params': case_algorithm_params or {},
             'reference_params': case_config.get('reference_params', {}) if case_config else {},
-            'algorithm_type': algorithm_type
+            'algorithm_type': algorithm_type,
+            # API 实例作用域：评估映射按本实例的策略 + 覆盖解析
+            'api_id': api_config_id,
         }
         all_params = dto_to_dict(_algo_acl.extract_case_all_params(full_case_params)) or {}
         # 算法服务不可达时 ACL 回退 ExtractedCaseParamsDTO()（evaluation=None），

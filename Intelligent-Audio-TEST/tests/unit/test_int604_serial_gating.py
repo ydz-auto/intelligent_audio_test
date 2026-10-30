@@ -372,3 +372,81 @@ class TestSerialKeepAliveDecision:
         eng = _Engine()
         ok = eng._handle_no_pending_case_serial(1, _session_for({}, [c]))
         assert ok is False
+
+
+class TestGroupExecutionSelection:
+    """组执行选择（specs/group-execution）：同用例 + 同实验室 + 不同 SN 才合组。
+
+    组执行 = 一次 StartE2ETask 驱动组内全部设备、每轮音频只播一次；
+    不满足条件的行返回单行，退回逐行派发（零回归）。
+    """
+
+    CFG = {'target_modes': [
+        {'target_type': 'device', 'target_id': 1, 'mode': 'parallel'},
+        {'target_type': 'device', 'target_id': 2, 'mode': 'parallel'},
+    ]}
+
+    @staticmethod
+    def _fingerprint(patch_map):
+        return lambda device_id: patch_map.get(str(device_id), {'lab_id': None, 'serial_number': ''})
+
+    def test_same_lab_different_sn_groups(self):
+        rows = [_case_row('c1', 'physical', '1'), _case_row('c1', 'physical', '2')]
+        eng = _Engine()
+        eng._device_fingerprint = self._fingerprint({
+            '1': {'lab_id': 8, 'serial_number': 'SN-A'},
+            '2': {'lab_id': 8, 'serial_number': 'SN-B'},
+        })
+        group = eng._build_e2e_execution_group(1, _session_for(self.CFG, rows), rows[0])
+        assert [r.device_id for r in group] == ['1', '2']
+
+    def test_same_sn_not_grouped(self):
+        """同一台手机的多条设备记录（同 SN 多 App）必须串行，不合组。"""
+        rows = [_case_row('c1', 'physical', '1'), _case_row('c1', 'physical', '2')]
+        eng = _Engine()
+        eng._device_fingerprint = self._fingerprint({
+            '1': {'lab_id': 8, 'serial_number': 'SN-A'},
+            '2': {'lab_id': 8, 'serial_number': 'SN-A'},
+        })
+        group = eng._build_e2e_execution_group(1, _session_for(self.CFG, rows), rows[0])
+        assert [r.device_id for r in group] == ['1']
+
+    def test_serial_target_not_grouped(self):
+        """串行目标语义就是每台设备各播一遍，不合组。"""
+        rows = [_case_row('c1', 'physical', '1'), _case_row('c1', 'physical', '2')]
+        cfg = {'target_modes': [
+            {'target_type': 'device', 'target_id': 1, 'mode': 'serial'},
+            {'target_type': 'device', 'target_id': 2, 'mode': 'serial'},
+        ]}
+        eng = _Engine()
+        eng._device_fingerprint = self._fingerprint({
+            '1': {'lab_id': 8, 'serial_number': 'SN-A'},
+            '2': {'lab_id': 8, 'serial_number': 'SN-B'},
+        })
+        group = eng._build_e2e_execution_group(1, _session_for(cfg, rows), rows[0])
+        assert [r.device_id for r in group] == ['1']
+
+    def test_empty_lab_not_grouped(self):
+        """未绑定实验室无法确认物理隔离，不合组（保守逐行派发）。"""
+        rows = [_case_row('c1', 'physical', '1'), _case_row('c1', 'physical', '2')]
+        eng = _Engine()
+        eng._device_fingerprint = self._fingerprint({
+            '1': {'lab_id': None, 'serial_number': 'SN-A'},
+            '2': {'lab_id': None, 'serial_number': 'SN-B'},
+        })
+        group = eng._build_e2e_execution_group(1, _session_for(self.CFG, rows), rows[0])
+        assert [r.device_id for r in group] == ['1']
+
+    def test_disabled_switch_not_grouped(self):
+        from unittest.mock import patch
+        from shared.infrastructure.config import BaseConfig
+
+        rows = [_case_row('c1', 'physical', '1'), _case_row('c1', 'physical', '2')]
+        eng = _Engine()
+        eng._device_fingerprint = self._fingerprint({
+            '1': {'lab_id': 8, 'serial_number': 'SN-A'},
+            '2': {'lab_id': 8, 'serial_number': 'SN-B'},
+        })
+        with patch.object(BaseConfig, 'E2E_GROUP_EXECUTION_ENABLED', False):
+            group = eng._build_e2e_execution_group(1, _session_for(self.CFG, rows), rows[0])
+        assert [r.device_id for r in group] == ['1']

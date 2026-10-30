@@ -160,7 +160,7 @@ def test_group_dimension_results_no_cross_service_in_session_window(monkeypatch)
     obj.process_group_dimension_results(
         resp_data={'name': 'x'}, group_items=[({'id': 1, 'name': 'a'}, 11)],
         task_id=9, test_case_id='C-9', result_id=5, api_request_body={},
-        test_type='api')
+        device_type='http_api')
 
     assert events == [
         'grpc_get_test_result',   # 会话外

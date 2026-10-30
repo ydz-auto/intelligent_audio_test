@@ -16,6 +16,7 @@ from task_service.core.execution_engine.mixins.task_dispatch import TaskDispatch
 from task_service.core.execution_engine.mixins.device_check import DeviceCheckMixin
 from task_service.core.execution_engine.mixins.task_finalize import TaskFinalizeMixin
 from task_service.core.execution_engine.mixins.evaluation_arbiter import EvaluationArbiterMixin
+from task_service.core.execution_engine.mixins.e2e_async_dispatch import E2EAsyncDispatchMixin
 from task_service.core.execution_engine.mixins.grpc_helpers import (
     _stop_task_audio_via_grpc,
     _cleanup_devices_via_grpc,
@@ -37,6 +38,7 @@ __all__ = [
     "DeviceCheckMixin",
     "TaskFinalizeMixin",
     "EvaluationArbiterMixin",
+    "E2EAsyncDispatchMixin",
     # gRPC 封装函数
     "_stop_task_audio_via_grpc",
     "_cleanup_devices_via_grpc",

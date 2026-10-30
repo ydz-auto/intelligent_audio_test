@@ -141,7 +141,7 @@ class AudioMergeMixin:
         )
         tc_ids = self._testcase_creation_service.create_test_case_from_audio(
             existing_audio.id,
-            params['test_types'],
+            params['device_type'],
             audio_tags,
             params['default_playback_device_id'],
             params['default_spl'],
@@ -157,6 +157,7 @@ class AudioMergeMixin:
             noise_device_ids=params.get('noise_device_ids'),
             case_background_noise=params.get('case_background_noise'),
             upload_task_id=getattr(upload_file, 'upload_task_id', None),
+            playback_speaker_group_id=params.get('default_playback_speaker_group_id'),
         )
         self.repo.commit()
         return {
@@ -307,7 +308,7 @@ class AudioMergeMixin:
 
         tc_ids = self._testcase_creation_service.create_test_case_from_audio(
             new_audio.id,
-            params['test_types'],
+            params['device_type'],
             audio_tags,
             params['default_playback_device_id'],
             params['default_spl'],
@@ -323,6 +324,7 @@ class AudioMergeMixin:
             noise_device_ids=params.get('noise_device_ids'),
             case_background_noise=params.get('case_background_noise'),
             upload_task_id=task_id,
+            playback_speaker_group_id=params.get('default_playback_speaker_group_id'),
         )
 
         if isinstance(tc_ids, list):

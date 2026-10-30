@@ -14,7 +14,7 @@
 - WS 会话建立（session.update → session.updated）、音频帧收发（append × N +
   commit）、事件流转（ai_audio_delta/done、user_speech_started、response_cancelled）
 - 建用例（rounds 正常轮 + 打断轮）→ 执行（execute）→ 评估（evaluation ACL 收到
-  algorithm_result，test_type='api'）→ 出结果（multi_round result + summary 推送）
+  algorithm_result，device_type='websocket_api'）→ 出结果（multi_round result + summary 推送）
 - 超时/错误路径：断连注入收敛 connection_closed、协议错误注入 pre_process 失败
 - 隔离库口径（INT-246）：pytest 会话守卫拒绝共享业务库；用例内 mock/会话
   teardown 清理，主线程 scoped session 移除防污染
@@ -96,11 +96,11 @@ class ExecutorStub:
 
         def create_multi_round_test_result(self, task_id, test_case_id,
                                            api_config_id, algorithm_type,
-                                           aggregated, success):
+                                           aggregated, success, tc_rel_id=None):
             self._outer.result_calls.append({
                 'task_id': task_id, 'test_case_id': test_case_id,
                 'api_config_id': api_config_id, 'aggregated': aggregated,
-                'success': success})
+                'success': success, 'tc_rel_id': tc_rel_id})
             return 555
 
         def update_task_case_failure(self, task_id, tc_rel_id, error_msg,
@@ -134,9 +134,10 @@ class EvaluationAclStub:
         self.calls = []
 
     def submit_evaluate_case(self, task_id, result_id, test_case_id,
-                             algorithm_result, eval_params):
+                             algorithm_result, eval_params, device_type=None):
         self.calls.append({'task_id': task_id, 'result_id': result_id,
                            'test_case_id': test_case_id,
+                           'device_type': device_type,
                            'algorithm_result': algorithm_result,
                            'eval_params': eval_params})
         return True
@@ -308,12 +309,12 @@ class TestOpenAIRealtimeE2E:
         assert len(harness['publisher'].summaries) == 1
         assert harness['publisher'].summaries[0]['channel'] == 'realtime_summary'
 
-        # ⑥ 评估：evaluation ACL 收到 algorithm_result，test_type='api'
+        # ⑥ 评估：evaluation ACL 收到 algorithm_result，device_type='websocket_api'
         assert len(harness['eval_acl'].calls) == 1
         eval_call = harness['eval_acl'].calls[0]
         assert eval_call['result_id'] == 555
         assert eval_call['algorithm_result']['round_count'] == 2
-        assert eval_call['eval_params']['test_type'] == 'api'
+        assert eval_call['eval_params']['device_type'] == 'websocket_api'
 
     def test_disconnect_injection_converges(self, mock_rt):
         """超时/错误路径：断连注入收敛 connection_closed，wait_ai_complete 判失败"""

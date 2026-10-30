@@ -76,14 +76,26 @@ class AlgorithmQueryService:
 
     @staticmethod
     def list_params():
-        """获取参数列表（支持设备参数和API参数）"""
+        """获取参数列表（设备参数 / API 参数）。
+
+        API 参数已下沉到 API 实例作用域：param_type=api 必须带 api_id，只返回该
+        API 的字段声明行（算法类型级默认层废弃）。
+        """
         query_params_dict = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
         query_params = AlgorithmParamListQuery.model_validate(query_params_dict)
 
-        result = _algorithm_acl.list_params(
-            algorithm_type=query_params.algorithm_type,
-            param_type=query_params.param_type,
-        )
+        if query_params.param_type == 'api':
+            if query_params.api_id is None:
+                return error_response('param_type=api 时必须带 api_id（API 参数按 API 实例作用域读取）', 400)
+            result = _algorithm_acl.get_api_params(
+                algorithm_type=query_params.algorithm_type,
+                api_id=query_params.api_id,
+            )
+        else:
+            result = _algorithm_acl.list_params(
+                algorithm_type=query_params.algorithm_type,
+                param_type=query_params.param_type,
+            )
 
         if result.get('success'):
             return success_response(result.get('data'))
@@ -102,14 +114,25 @@ class AlgorithmQueryService:
 
     @staticmethod
     def list_mappings():
-        """获取参数映射列表"""
+        """获取参数映射列表。
+
+        source_type=api 且带 api_id 时按 API 实例作用域读取（映射随 API 参数一起
+        下沉，算法类型级默认层废弃）；其余情况沿用算法类型级读取。
+        """
         query = _parse_query_params(AlgorithmMappingListQuery)
 
-        result = _algorithm_acl.list_mappings(
-            algorithm_type=query.algorithm_type,
-            source_type=query.source_type,
-            dimension_id=query.dimension_id,
-        )
+        if query.api_id is not None:
+            result = _algorithm_acl.get_param_mapping_for_component(
+                algorithm_type=query.algorithm_type,
+                component_type=query.source_type or 'api',
+                api_id=query.api_id,
+            )
+        else:
+            result = _algorithm_acl.list_mappings(
+                algorithm_type=query.algorithm_type,
+                source_type=query.source_type,
+                dimension_id=query.dimension_id,
+            )
 
         if result.get('success'):
             return success_response(result.get('data'))

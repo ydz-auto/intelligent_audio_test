@@ -208,14 +208,14 @@ class AlgorithmAclRepository(_AlgorithmAclRepositoryABC):
         from shared.clients.grpc_clients import algo_extract_case_all_params
         return algo_extract_case_all_params(case_config)
 
-    def get_output_fields(self, algorithm_type: str, test_type: str = None, api_id=None):
+    def get_output_fields(self, algorithm_type: str, device_type: str = None, api_id=None):
         """获取结果输出字段（GetOutputFields）
 
         通过 gRPC 调用 algorithm_service.AlgorithmQueryService.GetOutputFields。
         INT-1757（C6b）：api_id 传入时取该 API 实例的输出声明（算法级 + API 级合并）。
         """
         from shared.clients.grpc_clients import algo_get_output_fields
-        return algo_get_output_fields(algorithm_type, test_type=test_type, api_id=api_id)
+        return algo_get_output_fields(algorithm_type, device_type=device_type, api_id=api_id)
 
     # ========== 参数映射同步 ==========
 

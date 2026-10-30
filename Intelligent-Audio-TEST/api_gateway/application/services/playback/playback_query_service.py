@@ -4,7 +4,11 @@ from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
 from api_gateway.infrastructure.acl import PlaybackConfigAclRepositoryImpl
-from api_gateway.schemas.playback import PlaybackDeviceListQuery
+from api_gateway.schemas.playback import (
+    PlaybackDeviceListQuery,
+    PlaybackSpeakerGroupData,
+    PlaybackSpeakerGroupListQuery,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,3 +120,21 @@ class PlaybackQueryService:
                                   code=ErrorCode.OPERATION_FAILED, http_code=400)
 
         return success_response(result.data, result.message or '诊断完成')
+
+    # ---- 逻辑音箱组（N 个实验室里位置相同的音箱互相对应）----
+
+    @staticmethod
+    def list_speaker_groups():
+        """逻辑音箱组列表（含各实验室对应设备）"""
+        query = _parse_query_params(PlaybackSpeakerGroupListQuery)
+        result = _playback_acl.list_speaker_groups(keyword=query.keyword)
+
+        if not result.success:
+            return error_response(result.message or '查询逻辑音箱失败',
+                                  code=result.code or ErrorCode.OPERATION_FAILED)
+
+        groups = [
+            PlaybackSpeakerGroupData.model_validate(item).model_dump(by_alias=False)
+            for item in (result.data or []) if isinstance(item, dict)
+        ]
+        return success_response(groups)

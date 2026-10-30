@@ -73,7 +73,7 @@ class _Host(FinalizationMixin):
 
 _RUN_ARGS = dict(
     task_id='t1', tc_rel_id='tc1', data={}, case_name='case-x',
-    algorithm_type='translation', test_case_id='c1', result_id=99,
+    algorithm_type='translation', test_case_id='c1', result_ids={1: 99},
     all_round_results=[{'response_time': 100}],
     case_reference_params=None, last_adjusted_ref_params=None,
     device_info_list=None,
@@ -100,7 +100,7 @@ class TestE2EFinalizationGate:
         host = _run(_config(rounds_dims=[[], []], top_dims=[7]))
         assert len(host.eval_calls) == 1
         assert host.eval_calls[0]['round_number'] is None
-        assert host.eval_calls[0]['test_type'] == 'e2e'
+        assert host.eval_calls[0]['device_type'] == 'physical'
         host._aggregator.update_algorithm_result_evaluation.assert_not_called()
 
     def test_both_dims_both_paths(self):
@@ -196,7 +196,7 @@ class _ApiHarness:
         self.executor._reevaluate_api_multi_round(
             task_id='t1', result=99, test_case_id='c1',
             algorithm_result={'rounds': [{'round': i, 'output': {}} for i in range(len(rounds))]},
-            test_type='api', algorithm_type='translation',
+            device_type='http_api', algorithm_type='translation',
             reference_params_col=None, rounds=rounds,
             test_case=SimpleNamespace(config=config or {}, algorithm_params=None,
                                       algorithm_type='translation'),
@@ -212,7 +212,7 @@ class TestApiReevalPerRoundGuard:
             calls = h.run(_api_rounds(3))
         assert [c.get('round_number') for c in calls] == [0, 1, 2]
         for c in calls:
-            assert c['test_type'] == 'api'
+            assert c['device_type'] == 'http_api'
             assert c['result_id'] == 99
 
     def test_round_gate_follows_case_config(self):

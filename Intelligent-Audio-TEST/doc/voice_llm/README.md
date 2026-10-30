@@ -33,7 +33,7 @@ doc/voice_llm/
 ├── 01_选算法/                                         # === 第 1 步：选算法（7个文档）===
 │   ├── 00_步骤总览.md                                   # 当前架构 vs 改造后架构
 │   ├── backend/                                       # -- 后端 --
-│   │   ├── 02_CaseAlgorithmParam_scope字段.md           # scope: common/api/e2e
+│   │   ├── 02_CaseAlgorithmParam_scope字段.md           # scope: common/physical/http_api/websocket_api
 │   │   ├── 06_algorithm_Schema与Controller.md           # scope 字段 CRUD + 接口过滤
 │   │   ├── 07_voice_llm算法参数种子数据.md              # voice_llm 参数 INSERT 记录
 │   │   └── 08_field_mapper_voice_llm映射.md             # voice_llm 字段定义
@@ -64,7 +64,6 @@ doc/voice_llm/
 │       ├── 12_VoiceprintConfigEditor.md                 # 声纹注册编辑器（DynamicForm 子编辑器）
 │       ├── 13_InterfererConfigEditor.md                 # 干扰人配置编辑器（DynamicForm 子编辑器）
 │       ├── 14_RoundEvaluationEditor.md                  # 单轮评估配置编辑器（E2E）
-│       ├── 23_UploadOptions_test_type.md                # 音频上传选项 test_type 适配
 │       └── 25_Evaluation页面_llm_judge维度.md            # 评估维度管理 llm_judge 类型
 │
 ├── 03_选设备API/                                      # === 第 3 步：选设备/API（5个文档）===
@@ -144,7 +143,7 @@ doc/voice_llm/
 | 编号 | 所属步骤 | 路径 | 功能说明 |
 |------|---------|------|---------|
 | 01 | 02_选用例 | `02_选用例/backend/01_TestCase模型新增字段.md` | test_type |
-| 02 | 01_选算法 | `01_选算法/backend/02_CaseAlgorithmParam_scope字段.md` | scope: common/api/e2e |
+| 02 | 01_选算法 | `01_选算法/backend/02_CaseAlgorithmParam_scope字段.md` | scope: common/physical/http_api/websocket_api |
 | 03 | 02_选用例 | `02_选用例/backend/03_Config_JSON扁平化设计.md` | 参数驱动 config 结构（algorithmParams 统一存储） |
 | 04 | 02_选用例 | `02_选用例/backend/04_testcase_Schema新类型.md` | RoundConfigItem Schema（参数驱动版） |
 | 05 | 02_选用例 | `02_选用例/backend/05_testcase_controller双记录CRUD.md` | 创建/更新/查询适配双记录 |
@@ -203,7 +202,6 @@ doc/voice_llm/
 | 20 | 05_查看结果 | `05_查看结果/frontend/20_TestCaseReportDetail多轮结果.md` | 报告详情展示多轮数据 |
 | 21 | 05_查看结果 | `05_查看结果/frontend/21_报告对比组件适配.md` | SpecificCase/CaseCategory 等 |
 | 22 | 05_查看结果 | `05_查看结果/frontend/22_reportService多轮数据.md` | 报告服务层多轮结果处理 |
-| 23 | 02_选用例 | `02_选用例/frontend/23_UploadOptions_test_type.md` | 音频上传选项 test_type 适配 |
 | 24 | 02_选用例 | `02_选用例/frontend/24_AlgorithmConfigPage_voice_llm.md` | 算法配置管理 voice_llm 注册 |
 | 25 | 02_选用例 | `02_选用例/frontend/25_Evaluation页面_llm_judge维度.md` | 评估维度管理 llm_judge 类型 |
 
@@ -263,7 +261,7 @@ doc/voice_llm/
 | 层 | 路径 | 说明 |
 |----|------|------|
 | **总览** | `01_选算法/00_步骤总览` | **先读此文档**：当前架构 vs 改造后架构 |
-| 后端 | `01_选算法/backend/02_CaseAlgorithmParam_scope字段` | 参数新增 scope(common/api/e2e) |
+| 后端 | `01_选算法/backend/02_CaseAlgorithmParam_scope字段` | 参数新增 scope(common/physical/http_api/websocket_api) |
 | 后端 | `01_选算法/backend/06_algorithm_Schema与Controller` | scope 字段 CRUD + 接口过滤 |
 | 后端 | `01_选算法/backend/07_voice_llm算法参数种子数据` | voice_llm 参数 INSERT 记录 |
 | 后端 | `01_选算法/backend/08_field_mapper_voice_llm映射` | voice_llm 字段定义 |
@@ -311,7 +309,6 @@ doc/voice_llm/
 | 前端 | `02_选用例/frontend/06_CaseForm_test_type驱动` | test_type 驱动 + 加载参数定义传给 RoundConfigEditor |
 | 前端 | `02_选用例/frontend/08_useAudioConfig_test_type适配` | 音频配置 Hook 按 test_type 区分 |
 | 前端 | `02_选用例/frontend/09_useDimensionConfig扁平维度` | dimensions 从 {api,e2e} 改为数组 |
-| 前端 | `02_选用例/frontend/23_UploadOptions_test_type` | 音频上传选项 test_type 适配 |
 
 #### 2.5 前端新增编辑器组件
 
@@ -495,11 +492,11 @@ graph TD
 | 术语 | 说明 |
 |------|------|
 | voice_llm | 语音交互大模型，本次改造新增的测试算法类型 |
-| test_type | 测试类型标识，取值 `api` 或 `e2e`，标记用例所属的测试通道 |
+| test_type | 【已废除】历史用例测试通道标识（api/e2e）；现由任务侧 `task_case_relations.device_type` 决定执行方式 |
 | 双记录架构 | E2E 用例创建时同时生成 API 记录，两条独立记录；API 用例也可独立存在（单条记录） |
 | Config 扁平化 | API 和 E2E 用例各自存储扁平的 config JSON，不再嵌套 `{api:{}, e2e:{}}` 结构 |
 | 参数驱动 | 用例表单字段由 `case_algorithm_params` 表定义驱动，DynamicForm 动态渲染，不硬编码 |
-| scope | CaseAlgorithmParam 的适用范围标记：`common`（通用）/ `api` / `e2e` |
+| scope | CaseAlgorithmParam 的适用范围标记：`common`（通用）/ `physical` / `http_api` / `websocket_api` |
 | SessionContext | API 多轮会话的上下文管理器，维护 session_id 和对话历史 |
 | RoundConfigItem | 单轮配置项，包含结构性字段（roundNumber/audios/backgroundNoise(E2E)/evaluation/algorithmParams/referenceParamsPath） |
 | algorithmParams | RoundConfigItem 中的统一参数存储字段，`[{field_code, field_value}]` 数组格式，由 case_algorithm_params 表驱动 |

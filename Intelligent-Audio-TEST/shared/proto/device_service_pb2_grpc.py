@@ -2190,6 +2190,46 @@ class PlaybackConfigServiceStub:
                 request_serializer=device__service__pb2.RepairPlaybackDeviceRequest.SerializeToString,
                 response_deserializer=device__service__pb2.RepairPlaybackDeviceResponse.FromString,
                 _registered_method=True)
+        self.ListPlaybackSpeakerGroups = channel.unary_unary(
+                '/device_service.PlaybackConfigService/ListPlaybackSpeakerGroups',
+                request_serializer=device__service__pb2.ListPlaybackSpeakerGroupsRequest.SerializeToString,
+                response_deserializer=device__service__pb2.ListPlaybackSpeakerGroupsResponse.FromString,
+                _registered_method=True)
+        self.CreatePlaybackSpeakerGroup = channel.unary_unary(
+                '/device_service.PlaybackConfigService/CreatePlaybackSpeakerGroup',
+                request_serializer=device__service__pb2.CreatePlaybackSpeakerGroupRequest.SerializeToString,
+                response_deserializer=device__service__pb2.CreatePlaybackSpeakerGroupResponse.FromString,
+                _registered_method=True)
+        self.UpdatePlaybackSpeakerGroup = channel.unary_unary(
+                '/device_service.PlaybackConfigService/UpdatePlaybackSpeakerGroup',
+                request_serializer=device__service__pb2.UpdatePlaybackSpeakerGroupRequest.SerializeToString,
+                response_deserializer=device__service__pb2.UpdatePlaybackSpeakerGroupResponse.FromString,
+                _registered_method=True)
+        self.DeletePlaybackSpeakerGroup = channel.unary_unary(
+                '/device_service.PlaybackConfigService/DeletePlaybackSpeakerGroup',
+                request_serializer=device__service__pb2.DeletePlaybackSpeakerGroupRequest.SerializeToString,
+                response_deserializer=device__service__pb2.DeletePlaybackSpeakerGroupResponse.FromString,
+                _registered_method=True)
+        self.SetPlaybackSpeakerGroupItem = channel.unary_unary(
+                '/device_service.PlaybackConfigService/SetPlaybackSpeakerGroupItem',
+                request_serializer=device__service__pb2.SetPlaybackSpeakerGroupItemRequest.SerializeToString,
+                response_deserializer=device__service__pb2.SetPlaybackSpeakerGroupItemResponse.FromString,
+                _registered_method=True)
+        self.DeletePlaybackSpeakerGroupItem = channel.unary_unary(
+                '/device_service.PlaybackConfigService/DeletePlaybackSpeakerGroupItem',
+                request_serializer=device__service__pb2.DeletePlaybackSpeakerGroupItemRequest.SerializeToString,
+                response_deserializer=device__service__pb2.DeletePlaybackSpeakerGroupItemResponse.FromString,
+                _registered_method=True)
+        self.ResolvePlaybackSpeakerDevice = channel.unary_unary(
+                '/device_service.PlaybackConfigService/ResolvePlaybackSpeakerDevice',
+                request_serializer=device__service__pb2.ResolvePlaybackSpeakerDeviceRequest.SerializeToString,
+                response_deserializer=device__service__pb2.ResolvePlaybackSpeakerDeviceResponse.FromString,
+                _registered_method=True)
+        self.ResolvePlaybackSpeakerGroupDevice = channel.unary_unary(
+                '/device_service.PlaybackConfigService/ResolvePlaybackSpeakerGroupDevice',
+                request_serializer=device__service__pb2.ResolvePlaybackSpeakerGroupDeviceRequest.SerializeToString,
+                response_deserializer=device__service__pb2.ResolvePlaybackSpeakerGroupDeviceResponse.FromString,
+                _registered_method=True)
 
 
 class PlaybackConfigServiceServicer:
@@ -2281,6 +2321,55 @@ class PlaybackConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListPlaybackSpeakerGroups(self, request, context):
+        """逻辑音箱组（N 个实验室里位置相同的音箱互相对应，用例内播放设备只属于一个实验室）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreatePlaybackSpeakerGroup(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdatePlaybackSpeakerGroup(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeletePlaybackSpeakerGroup(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetPlaybackSpeakerGroupItem(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeletePlaybackSpeakerGroupItem(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ResolvePlaybackSpeakerDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ResolvePlaybackSpeakerGroupDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_PlaybackConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -2353,6 +2442,46 @@ def add_PlaybackConfigServiceServicer_to_server(servicer, server):
                     servicer.RepairPlaybackDevice,
                     request_deserializer=device__service__pb2.RepairPlaybackDeviceRequest.FromString,
                     response_serializer=device__service__pb2.RepairPlaybackDeviceResponse.SerializeToString,
+            ),
+            'ListPlaybackSpeakerGroups': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListPlaybackSpeakerGroups,
+                    request_deserializer=device__service__pb2.ListPlaybackSpeakerGroupsRequest.FromString,
+                    response_serializer=device__service__pb2.ListPlaybackSpeakerGroupsResponse.SerializeToString,
+            ),
+            'CreatePlaybackSpeakerGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreatePlaybackSpeakerGroup,
+                    request_deserializer=device__service__pb2.CreatePlaybackSpeakerGroupRequest.FromString,
+                    response_serializer=device__service__pb2.CreatePlaybackSpeakerGroupResponse.SerializeToString,
+            ),
+            'UpdatePlaybackSpeakerGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdatePlaybackSpeakerGroup,
+                    request_deserializer=device__service__pb2.UpdatePlaybackSpeakerGroupRequest.FromString,
+                    response_serializer=device__service__pb2.UpdatePlaybackSpeakerGroupResponse.SerializeToString,
+            ),
+            'DeletePlaybackSpeakerGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeletePlaybackSpeakerGroup,
+                    request_deserializer=device__service__pb2.DeletePlaybackSpeakerGroupRequest.FromString,
+                    response_serializer=device__service__pb2.DeletePlaybackSpeakerGroupResponse.SerializeToString,
+            ),
+            'SetPlaybackSpeakerGroupItem': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetPlaybackSpeakerGroupItem,
+                    request_deserializer=device__service__pb2.SetPlaybackSpeakerGroupItemRequest.FromString,
+                    response_serializer=device__service__pb2.SetPlaybackSpeakerGroupItemResponse.SerializeToString,
+            ),
+            'DeletePlaybackSpeakerGroupItem': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeletePlaybackSpeakerGroupItem,
+                    request_deserializer=device__service__pb2.DeletePlaybackSpeakerGroupItemRequest.FromString,
+                    response_serializer=device__service__pb2.DeletePlaybackSpeakerGroupItemResponse.SerializeToString,
+            ),
+            'ResolvePlaybackSpeakerDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResolvePlaybackSpeakerDevice,
+                    request_deserializer=device__service__pb2.ResolvePlaybackSpeakerDeviceRequest.FromString,
+                    response_serializer=device__service__pb2.ResolvePlaybackSpeakerDeviceResponse.SerializeToString,
+            ),
+            'ResolvePlaybackSpeakerGroupDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResolvePlaybackSpeakerGroupDevice,
+                    request_deserializer=device__service__pb2.ResolvePlaybackSpeakerGroupDeviceRequest.FromString,
+                    response_serializer=device__service__pb2.ResolvePlaybackSpeakerGroupDeviceResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -2734,6 +2863,222 @@ class PlaybackConfigService:
             '/device_service.PlaybackConfigService/RepairPlaybackDevice',
             device__service__pb2.RepairPlaybackDeviceRequest.SerializeToString,
             device__service__pb2.RepairPlaybackDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListPlaybackSpeakerGroups(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.PlaybackConfigService/ListPlaybackSpeakerGroups',
+            device__service__pb2.ListPlaybackSpeakerGroupsRequest.SerializeToString,
+            device__service__pb2.ListPlaybackSpeakerGroupsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreatePlaybackSpeakerGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.PlaybackConfigService/CreatePlaybackSpeakerGroup',
+            device__service__pb2.CreatePlaybackSpeakerGroupRequest.SerializeToString,
+            device__service__pb2.CreatePlaybackSpeakerGroupResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdatePlaybackSpeakerGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.PlaybackConfigService/UpdatePlaybackSpeakerGroup',
+            device__service__pb2.UpdatePlaybackSpeakerGroupRequest.SerializeToString,
+            device__service__pb2.UpdatePlaybackSpeakerGroupResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeletePlaybackSpeakerGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.PlaybackConfigService/DeletePlaybackSpeakerGroup',
+            device__service__pb2.DeletePlaybackSpeakerGroupRequest.SerializeToString,
+            device__service__pb2.DeletePlaybackSpeakerGroupResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetPlaybackSpeakerGroupItem(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.PlaybackConfigService/SetPlaybackSpeakerGroupItem',
+            device__service__pb2.SetPlaybackSpeakerGroupItemRequest.SerializeToString,
+            device__service__pb2.SetPlaybackSpeakerGroupItemResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeletePlaybackSpeakerGroupItem(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.PlaybackConfigService/DeletePlaybackSpeakerGroupItem',
+            device__service__pb2.DeletePlaybackSpeakerGroupItemRequest.SerializeToString,
+            device__service__pb2.DeletePlaybackSpeakerGroupItemResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResolvePlaybackSpeakerDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.PlaybackConfigService/ResolvePlaybackSpeakerDevice',
+            device__service__pb2.ResolvePlaybackSpeakerDeviceRequest.SerializeToString,
+            device__service__pb2.ResolvePlaybackSpeakerDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResolvePlaybackSpeakerGroupDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.PlaybackConfigService/ResolvePlaybackSpeakerGroupDevice',
+            device__service__pb2.ResolvePlaybackSpeakerGroupDeviceRequest.SerializeToString,
+            device__service__pb2.ResolvePlaybackSpeakerGroupDeviceResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -145,9 +145,9 @@ class TestFetchCaseIdsFilterPassThrough:
         _seed_cases()
         assert _fetch_ids(dimension_id=1) == ['P215_D']
 
-    def test_test_type_alias_and_search_still_work(self):
-        # 既有键兼容不回归：type 别名经 test_type 派生过滤生效（造数 config
-        # 无播放音频 → 均派生 api，e2e 过滤后活跃集合为空）；search 在回收站路径生效
+    def test_test_type_param_ignored_and_search_still_works(self):
+        # 用例不再区分 api/e2e：type 参数不参与过滤（返回全部活跃用例）；
+        # search 在回收站路径生效
         _seed_cases()
-        assert _fetch_ids(type='e2e') == []
+        assert _fetch_ids(type='e2e') == ['P215_D']
         assert _fetch_ids(search='用例A', only_deleted=True) == ['P215_A']

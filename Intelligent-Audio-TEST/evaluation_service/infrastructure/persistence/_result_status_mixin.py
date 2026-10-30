@@ -8,7 +8,6 @@ from shared.utils.status_utils import derive_task_case_status
 from shared.utils.status_constants import (
     ExecutionStatus, EvaluationStatus, TaskStatus, ACTIVE_EVALUATION_STATUSES,
 )
-from shared.models.common_enums import TestType
 from evaluation_service.infrastructure.acl import task_acl_repository
 
 

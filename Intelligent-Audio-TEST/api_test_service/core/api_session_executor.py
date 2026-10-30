@@ -14,6 +14,7 @@ from shared.utils.api_output_extractor import (
     get_output_transform_types,
 )
 from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
+from shared.models.common_enums import DeviceType
 from shared.utils.query_utils import now_cst
 from shared.utils.config_manager import config_manager
 from shared.utils.api_key_provider import resolver_from_config
@@ -143,7 +144,8 @@ class APISessionExecutor:
                     try:
                         self._submit_evaluation(task_id, result_id, test_case_id, case_name,
                                                case_config, case_algorithm_params,
-                                               algorithm_type, aggregated, api_id)
+                                               algorithm_type, aggregated, api_id,
+                                               device_type=data.get('device_type'))
                     except Exception as eval_err:
                         self._finalize_evaluation_submit_failure(
                             task_id, test_case_id, api_id, eval_err, tc_rel_id)
@@ -250,7 +252,7 @@ class APISessionExecutor:
 
     def _submit_evaluation(self, task_id, result_id, test_case_id, case_name,
                            case_config, case_algorithm_params,
-                           algorithm_type, aggregated, api_id):
+                           algorithm_type, aggregated, api_id, device_type=None):
         """提交多轮会话评估
 
         通过 ACL 仓储调用 evaluation_service 的 EvaluationService.EvaluateCase。
@@ -258,7 +260,9 @@ class APISessionExecutor:
         full_case_params = {
             'algorithm_params': case_algorithm_params or {},
             'reference_params': case_config.get('reference_params', {}),
-            'algorithm_type': algorithm_type
+            'algorithm_type': algorithm_type,
+            # API 实例作用域：评估映射按本实例的策略 + 覆盖解析
+            'api_id': api_id,
         }
         all_params = dto_to_dict(_algo_acl.extract_case_all_params(full_case_params)) or {}
         # 算法服务不可达时 ACL 回退 ExtractedCaseParamsDTO()（evaluation=None），
@@ -272,8 +276,9 @@ class APISessionExecutor:
                               f"（算法服务不可达或算法类型 {algorithm_type} 无 evaluation param mappings），"
                               f"评估将以空参数提交",
                       task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+        device_type = device_type or DeviceType.HTTP_API.value
         eval_params['algorithm_type'] = algorithm_type
-        eval_params['test_type'] = 'api'
+        eval_params['device_type'] = device_type
 
         # 通过 ACL 仓储调用 evaluation_service 的 EvaluateCase
         _evaluation_acl.submit_evaluate_case(
@@ -282,6 +287,7 @@ class APISessionExecutor:
             test_case_id=test_case_id,
             algorithm_result=aggregated.get('algorithm_result', {}),
             eval_params=eval_params,
+            device_type=device_type,
         )
 
         self._log(level='INFO', category='evaluation',

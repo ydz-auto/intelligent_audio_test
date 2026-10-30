@@ -93,7 +93,9 @@ class TestCaseDimensionItem(APIModel):
     name: str = Field(...)
     weight: Optional[float] = Field(None)
     threshold: Optional[float] = Field(None)
-    test_type: Optional[str] = Field(None)
+    # 维度作用域（用例参数口径）：空=对所有设备类型生效，否则限定该 device_type
+    device_type: Optional[str] = Field(
+        None, validation_alias=AliasChoices('device_type', 'deviceType'))
     # 多轮整体评估口径：multi=整体评估（config.dimensions 口径），
     # single/per_round=逐轮口径（rounds[].evaluation.dimensions）
     round_scope: Optional[str] = Field(None, validation_alias=AliasChoices('round_scope', 'roundScope'))
@@ -136,7 +138,6 @@ class TestCaseListItem(APIModel):
     description: Optional[str] = Field(None)
     group_id: Optional[str] = Field(None)
     group_name: Optional[str] = Field(None)
-    type: Optional[str] = Field(None)
     tags: List[str] = Field(default_factory=list)
     config: TestCaseConfig = Field(default_factory=TestCaseConfig)
     algorithm_params: Optional[Any] = Field(None)
@@ -178,7 +179,6 @@ class TestCaseDetailData(APIModel):
     group_id: Optional[str] = Field(None)
     group_name: Optional[str] = Field(None)
     group: Optional[Dict[str, Any]] = Field(None)
-    type: Optional[str] = Field(None)
     config: TestCaseConfig = Field(default_factory=TestCaseConfig)
     algorithm_params: Optional[Any] = Field(None)
     reference_params: Optional[Any] = Field(None)
@@ -350,7 +350,6 @@ class TestCaseExportItem(APIModel):
     description: Optional[str] = Field(None)
     group: Optional[str] = Field(None)
     group_id: Optional[str] = Field(None)
-    test_type: Optional[str] = Field(None)
     tags: List[str] = Field(default_factory=list)
     tag_items: List[TestCaseExportTagItem] = Field(default_factory=list)
     dimensions: List[str] = Field(default_factory=list)
@@ -534,6 +533,8 @@ class TestCasePreviewRequest(APIModel):
     offset: Optional[float] = Field(0)
     preview_type: Optional[str] = Field(None)
     playback_mode: Optional[str] = Field('backend')
+    # 实验室播放必须选实验室：用例只关联逻辑音箱，需按实验室解析成实体播放设备
+    lab_id: Optional[int] = Field(None)
 
     @field_validator('offset', mode='before')
     @classmethod
@@ -562,6 +563,8 @@ class TestCaseBatchActionRequest(APIModel):
     noise_spl: Optional[float] = Field(None)
     noise_audio_id: Optional[Union[int, str]] = Field(None)
     noise_device_ids: Optional[List[Union[int, str]]] = Field(None)
+    # 逻辑音箱组（用例只关联逻辑音箱）：批量噪声多选组 id，替代 noise_device_ids
+    noise_speaker_group_ids: Optional[List[Union[int, str]]] = Field(None)
     group_name: Optional[str] = Field(None)
     tag_name: Optional[str] = Field(None)
     copy_to_new_group: Optional[bool] = Field(None)

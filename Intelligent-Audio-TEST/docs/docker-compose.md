@@ -67,8 +67,8 @@ python docker/run_stack.py down -v --yes
 - agent 运行时只做 `docker compose up/down` 与健康探测（或等价的
   `python docker/run_stack.py ...`），**禁止宿主机直起进程**；
 - **禁止启动期整树清场**：compose 启动遇宿主端口被占用一律报错退出，
-  交执行者处置，绝不自动 kill；`run_all.py` 的 `cleanup_occupied_ports`
-  已废除（改为 `_assert_ports_free` 只读检查，遇占用报错退出）；
+  交执行者处置，绝不自动 kill；旧的宿主起栈器（含其 `cleanup_occupied_ports`）
+  已随单一入口 `stack.py` 删除；
 - 验收与开发 run 一律**只连不拉**。
 
 ## 镜像
@@ -155,5 +155,5 @@ python docker/run_stack.py down -v --yes
   编排（B 区实例需跨区网络部署），属编排缺口而非技术不可行。mock
   四件套（mock_dut/mock_realtime/mock_eval/mock_third_party_eval）本就是
   真硬件替身，iso 栈已示范容器化。
-- `run_all.py` 宿主形态仍可用（本地调试），但启动期不再清场；生产/验收形态
+- 宿主 audio_service / device_service 由 `python stack.py up` 拉起；生产/验收形态
   一律 compose。

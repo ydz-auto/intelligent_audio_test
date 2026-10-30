@@ -178,7 +178,7 @@ class TestReevalMultiRoundNoSubmission:
             return ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [{'output': {}}]},
-                test_type='e2e', algorithm_type='translation',
+                device_type='physical', algorithm_type='translation',
                 reevaluate_type='all',
             )
 
@@ -214,7 +214,7 @@ class TestReevalMultiRoundNoSubmission:
             ok = ex._reevaluate_multi_round(
                 task_id=1, result=11, test_case_id='c1',
                 algorithm_result={'rounds': [{'output': {}}]},
-                test_type='e2e', algorithm_type='translation',
+                device_type='physical', algorithm_type='translation',
                 reevaluate_type='all',
             )
 

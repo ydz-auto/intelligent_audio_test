@@ -380,7 +380,6 @@ class TestRealChain:
 
         test_case_config = {
             'algorithm_type': 'voice_llm',
-            'test_type': 'api',
             'config': {},
         }
         round_data = {'round_number': 1, 'audios': [{'audio_id': 2235}]}
@@ -409,7 +408,6 @@ class TestRealChain:
 
         test_case_config = {
             'algorithm_type': 'voice_llm',
-            'test_type': 'api',
             'config': {},
         }
         round_data = {'round_number': 2, 'audios': [{'audio_id': 999999}]}
@@ -435,7 +433,6 @@ class TestRealChain:
 
         test_case_config = {
             'algorithm_type': 'voice_llm',
-            'test_type': 'api',
             'config': {},
         }
         round_data = {'round_number': 3, 'audios': [{'audio_id': 2235}]}

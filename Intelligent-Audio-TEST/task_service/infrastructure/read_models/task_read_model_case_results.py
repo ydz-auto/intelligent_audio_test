@@ -17,7 +17,17 @@ from shared.utils.status_utils import task_case_not_removed
 from shared.utils.json_utils import deserialize_algorithm_result  # noqa: F401
 from task_service.domain.services.task_case_stats import aggregate_case_rows
 from task_service.infrastructure.persistence.models import Task, TaskCase
-from shared.models.common_enums import TestType
+from shared.models.common_enums import DeviceType
+
+
+def _to_int_id(value) -> Optional[int]:
+    """路由 id（device_id / api_id）→ int；空值或非数字返回 None。"""
+    if value is None or value == '':
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def resolve_container_result_ids(task_id: int) -> List[int]:
@@ -99,21 +109,40 @@ class TaskCaseResultsMixin:
                 return None
             tc_rows = session.query(TaskCase).filter_by(
                 task_id=task_id, test_case_id=case_id
-            ).all()
+            ).order_by(TaskCase.id).all()
             if not tc_rows:
                 return None
             tc = tc_rows[0]
             # 用例级聚合：同一用例 × 多 API/设备有多行，详情头部状态按用例聚合
             case_agg = aggregate_case_rows(tc_rows)
+            # 目标全量展示（含未执行目标）：targets 行只带路由 id，按设备/API 名称回填
+            target_device_ids = set()
+            target_api_ids = set()
+            for row in tc_rows:
+                routed_id = _to_int_id(row.device_id)
+                if routed_id is None:
+                    continue
+                if (row.device_type or DeviceType.PHYSICAL.value) in (
+                        DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value):
+                    target_api_ids.add(routed_id)
+                else:
+                    target_device_ids.add(routed_id)
+            target_name_map = {
+                ('device', _to_int_id(k)): name
+                for k, name in self._fetch_device_names(target_device_ids).items()
+            }
+            target_name_map.update({
+                ('api', _to_int_id(k)): name
+                for k, name in self._fetch_api_names(target_api_ids).items()
+            })
+            for target in case_agg['targets']:
+                target['target_name'] = target_name_map.get(
+                    (target.get('target_type'), _to_int_id(target.get('device_id'))))
 
             case_info = session.get(TestCase, case_id)
-            # 评估/报告兼容口径值：由用例级 device_type 派生
-            # （差异#2 收尾：task.type 已废弃；gRPC 契约字段 test_type 保留）
-            from shared.models.common_enums import DeviceType
-            has_physical = any(
-                (r.device_type or DeviceType.PHYSICAL.value) == DeviceType.PHYSICAL.value
-                for r in tc_rows)
-            test_type = TestType.E2E.value if has_physical else TestType.API.value
+            # 评估/报告口径：用例级执行路由 device_type（多路由取首条）
+            device_type = (tc_rows[0].device_type if tc_rows else None) \
+                or DeviceType.HTTP_API.value
 
             results = self._query_results(session, task_id, case_id)
 
@@ -183,7 +212,7 @@ class TaskCaseResultsMixin:
                     "algorithm_type": case_info.algorithm_type if case_info else '',
                     "config": case_info.config if case_info else {},
                 } if case_info else None,
-                "test_type": test_type,
+                "device_type": device_type,
                 "tc": self._case_to_dto(tc, case_agg),
                 # 用例级执行目标（API/设备）：详情内逐目标对比与结果归属
                 "targets": case_agg['targets'],

@@ -165,7 +165,8 @@ class APIResultProcessor:
         return result_id
 
     def evaluate_test_result(self, task_id, result_id, test_case_id, case_name, case_config,
-                             algo_result_dict, algorithm_type='translation', test_type='api'):
+                             algo_result_dict, algorithm_type='translation', device_type=None,
+                             api_id=None):
         """评估测试结果 — 使用统一字段映射
 
         迁移后通过 gRPC 调用 task_service 的 ExecutionService.EvaluateCase。
@@ -183,7 +184,10 @@ class APIResultProcessor:
 
         full_case_params = {
             'algorithm_params': algorithm_params,
-            'reference_params': reference_params
+            'reference_params': reference_params,
+            'algorithm_type': algorithm_type,
+            # API 实例作用域：评估映射按本实例的策略 + 覆盖解析
+            'api_id': api_id,
         }
 
         all_params = dto_to_dict(_algo_acl.extract_case_all_params(full_case_params)) or {}
@@ -197,7 +201,9 @@ class APIResultProcessor:
             result_id=result_id,
             test_case_id=test_case_id,
             algorithm_result=algorithm_result,
-            eval_params={**eval_params, 'algorithm_type': algorithm_type, 'test_type': test_type},
+            eval_params={**eval_params, 'algorithm_type': algorithm_type,
+                         'device_type': device_type},
+            device_type=device_type,
         )
 
         self._log(level='INFO', category='evaluation',

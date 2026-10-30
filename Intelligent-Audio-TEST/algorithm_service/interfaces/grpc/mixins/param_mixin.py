@@ -28,6 +28,9 @@ from algorithm_service.interfaces.grpc.mixins.dimension_mixin import _DimensionM
 from algorithm_service.interfaces.grpc.mixins.algorithm_definition_mixin import (
     _AlgorithmDefinitionMixin,
 )
+from algorithm_service.interfaces.grpc.mixins.param_profile_mixin import (
+    _ParamProfileWriteMixin,
+)
 
 
 class _ParamMethodsMixin(
@@ -35,6 +38,7 @@ class _ParamMethodsMixin(
     _ParamCommandMixin,
     _DimensionMixin,
     _AlgorithmDefinitionMixin,
+    _ParamProfileWriteMixin,
     _ParamBaseMixin,
 ):
     """参数/映射/维度关系/分组/事务方法 mixin（聚合）。

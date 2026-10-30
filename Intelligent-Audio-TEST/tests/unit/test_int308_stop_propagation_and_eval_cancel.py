@@ -650,7 +650,7 @@ class TestProcessResultCancelCheck:
             worker._process_evaluation_result(
                 resp_data={'wer': 0.1}, group_items=[({'id': 1, 'name': 'd1'}, 101)],
                 task_id=5, test_case_id='case-1', result_id=11,
-                payload={}, test_type='api')
+                payload={}, device_type='http_api')
 
         # 结果处理器未被调用（结果未落库）
         assert worker.eval_service.result_processor.process_group_dimension_results.called is False
@@ -671,7 +671,7 @@ class TestSubmitSkipsCancelledCase:
                 endpoint_groups={('http://ep-a', 1): [({'id': 1, 'name': 'd1'}, 101)]},
                 result_id=11, task_id=5, test_case_id='case-1',
                 algorithm_result={}, algorithm_type='translation',
-                test_type='api', round_number=None, field_mapper=MagicMock(),
+                device_type='http_api', round_number=None, field_mapper=MagicMock(),
                 ref_texts={}, rounds_list=None, flat_eval_fields=None)
 
         mock_worker.assert_not_called()
@@ -904,8 +904,8 @@ class TestE2EExecutorStopBranchTerminalStatus:
         ex._handle_control = MagicMock(side_effect=TaskStopSignal('任务已停止'))
         ex._update_tc_rel_status = MagicMock()
         ex._get_control_events = MagicMock(return_value=(None, None))
-        ex._prepare_rounds = MagicMock(return_value=([{'device_id': 1}], 99))
-        ex._run_rounds_loop = MagicMock(return_value=([], [], True, None))
+        ex._prepare_rounds = MagicMock(return_value=([{'device_id': 1}], {1: 99}))
+        ex._run_rounds_loop = MagicMock(return_value=([], {}, True, None))
         return ex
 
     def test_stop_branch_writes_terminal_without_attributeerror(self):

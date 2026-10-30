@@ -97,10 +97,6 @@ class TestCaseQueryService:
             data = []
             for tc in test_cases:
                 config = tc.config or {}
-                # 用例不再存储 test_type（差异#2 收尾），展示口径由配置形态派生；
-                # 传用例名与 INT-129 执行路由口径一致（双变体 _api/_e2e 后缀优先，
-                # 并与 INT-193 的 test_type 过滤口径保持一致）
-                tc_test_type = common.derive_case_test_type(config, tc.name)
                 total_duration = 0.0
                 for audio_item in common.collect_audios(config):
                     audio_id = audio_item.get('audio_id')
@@ -117,7 +113,6 @@ class TestCaseQueryService:
                     'description': tc.description,
                     'group_id': tc.group_id,
                     'group_name': tc.group.name if tc.group else None,
-                    'type': tc_test_type,
                     'tags': [t.name for t in tc.tags],
                     'config': tc.config.copy() if tc.config else {},
                     'algorithm_params': tc.algorithm_params,
@@ -260,9 +255,6 @@ class TestCaseQueryService:
                     "description": tc.description,
                     "groupId": tc.group_id,
                     "groupName": tc.group.name if tc.group else None,
-                    # 用例不再存储 test_type（差异#2 收尾），展示口径由配置形态派生；
-                    # 传用例名与 INT-129 执行路由口径一致（并匹配 INT-193 过滤口径）
-                    "type": common.derive_case_test_type(tc.config or {}, tc.name),
                     "tags": [t.name for t in tc.tags],
                     "config": tc.config.copy() if tc.config else {},
                     "algorithmParams": tc.algorithm_params,
@@ -326,8 +318,6 @@ class TestCaseQueryService:
                 return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
 
             config = tc.config or {}
-            # 用例不再存储 test_type（差异#2 收尾），展示口径由配置形态派生
-            tc_test_type = common.derive_case_test_type(config)
 
             audios = []
             for i, audio_item in enumerate(common.collect_audios(config)):
@@ -337,7 +327,6 @@ class TestCaseQueryService:
                     'id': i,
                     'audio_id': audio_item.get('audio_id'),
                     'audio_name': audio.get('name') if audio else None,
-                    'test_type': tc_test_type,
                     'spl': audio_item.get('spl'),
                     'playback_device_id': common.normalize_optional_int(audio_item.get('playback_device_id')),
                     'play_order': audio_item.get('play_order'),
@@ -376,7 +365,6 @@ class TestCaseQueryService:
                 'group_id': tc.group_id,
                 'group_name': tc.group.name if tc.group else None,
                 'group': {"id": tc.group.id, "name": tc.group.name} if tc.group else None,
-                'type': tc_test_type,
                 'config': config,
                 'algorithm_params': getattr(tc, 'algorithm_params', None),
                 'reference_params': getattr(tc, 'reference_params', None),

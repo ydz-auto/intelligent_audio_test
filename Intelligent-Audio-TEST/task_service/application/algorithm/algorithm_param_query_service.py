@@ -27,10 +27,12 @@ import logging
 from dataclasses import asdict
 from typing import Any, Dict, Optional
 
+from shared.models.common_enums import CaseParamScope
+
 logger = logging.getLogger(__name__)
 
-# scope 合法取值
-VALID_SCOPES = ('common', 'api', 'e2e')
+# scope 合法取值（common + 各设备类型）
+VALID_SCOPES = tuple(scope.value for scope in CaseParamScope)
 
 
 class AlgorithmParamQueryService:
@@ -248,7 +250,7 @@ class AlgorithmParamQueryService:
                     'hidden': param.hidden,
                     'uiOrder': param.ui_order,
                     'uiGroup': 'basic',
-                    'scope': param.scope or 'common'
+                    'scope': param.scope or CaseParamScope.COMMON.value
                 }
 
                 fields.append(field)
