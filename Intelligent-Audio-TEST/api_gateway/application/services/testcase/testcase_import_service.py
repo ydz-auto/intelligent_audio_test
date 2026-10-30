@@ -788,17 +788,59 @@ class TestCaseImportService:
             'duplicateStrategyDefault': DEFAULT_DUPLICATE_STRATEGY.value,
         }
 
+        # 上传流只能读一次（_UploadedFile 无 seek），先落到内存供预览填充与行级校验共用
+        stream = io.BytesIO(file.read())
+
         if fmt in ('xlsx', 'xls'):
-            TestCaseImportService._fill_excel_preview(file, preview_result)
+            TestCaseImportService._fill_excel_preview(stream, preview_result)
         elif fmt == 'json':
-            TestCaseImportService._fill_json_preview(file, preview_result)
+            TestCaseImportService._fill_json_preview(stream, preview_result)
         elif fmt == 'csv':
-            TestCaseImportService._fill_csv_preview(file, preview_result)
+            TestCaseImportService._fill_csv_preview(stream, preview_result)
         elif fmt == 'zip':
-            TestCaseImportService._fill_zip_preview(file, preview_result)
+            TestCaseImportService._fill_zip_preview(stream, preview_result)
+
+        # ZIP 预览已解析出行，校验直接复用，不再二次解包
+        parsed_rows = preview_result.pop('_parsed_rows', None)
+        preview_result['errors'] = TestCaseImportService._preview_row_errors(
+            stream, fmt, parsed_rows)
 
         TestCaseImportService._detect_preview_duplicates(preview_result)
         return preview_result
+
+    @staticmethod
+    def _preview_row_errors(stream, fmt, parsed_rows=None):
+        """按导入同一解析口径逐行校验，返回 `第N行: 原因` 列表。
+
+        行号 `enumerate(rows, 1)`，与导入回执 `_create_cases_from_rows` 的
+        `第{idx + 1}行` 完全对齐；每个坏行只出 1 条（validate 单条返回）。
+        解析异常向上抛，交 preview_import 转 `预览失败: ...`，不吞成空 errors。
+        """
+        if parsed_rows is None:
+            stream.seek(0)
+            parsed_rows = TestCaseImportService._parse_rows_for_validation(stream, fmt)
+
+        errors = []
+        for idx, case_data in enumerate(parsed_rows):
+            try:
+                err = TestCaseImportService._validate_imported_case(case_data)
+            except Exception as e:
+                # 与导入路径同口径：行级异常也记为该行的 1 条错误
+                err = str(e)
+            if err:
+                errors.append(f"第{idx + 1}行: {err}")
+        return errors
+
+    @staticmethod
+    def _parse_rows_for_validation(stream, fmt):
+        """用导入路径的同一解析函数产出待校验行（stream 已 seek(0)）。"""
+        if fmt == 'json':
+            return TestCaseImportService._parse_json_file(stream)
+        if fmt == 'csv':
+            return TestCaseImportService._parse_csv_rows(stream)
+        if fmt == 'zip':
+            return TestCaseImportService._parse_zip_rows(stream)
+        return TestCaseImportService._parse_excel_rows(stream)
 
     @staticmethod
     def _detect_preview_duplicates(preview_result):
@@ -869,6 +911,8 @@ class TestCaseImportService:
         ]
         preview_result['testCases'] = preview_cases
         preview_result['totalRows'] = len(preview_cases)
+        # 行级校验复用已解析行（含 raw 行），避免二次解包
+        preview_result['_parsed_rows'] = test_cases
 
     @staticmethod
     def _fill_excel_preview(file, preview_result):
@@ -890,6 +934,14 @@ class TestCaseImportService:
                     preview_result['totalRows'] = len(df)
                 df = df.astype(object).where(pd.notna(df), None)
                 preview_result[result_key] = df.to_dict('records')
+
+        if 'TestCases' not in sheet_names:
+            # 旧版单 Sheet Excel：按首 Sheet 原始行补齐预览行（与 _fill_csv_preview 同法），
+            # 否则 totalRows=0 而 errors>0，前端可导入条数会算成负数。
+            df = pd.read_excel(xl)
+            preview_result['totalRows'] = len(df)
+            df = df.astype(object).where(pd.notna(df), None)
+            preview_result['testCases'] = df.to_dict('records')
 
     @staticmethod
     def _fill_json_preview(file, preview_result):
