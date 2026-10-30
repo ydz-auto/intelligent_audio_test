@@ -152,4 +152,44 @@ describe('ImportDialog 导入接线', () => {
     )
     expect(screen.getByText(/仅展示前 5 条，共 7 条/)).toBeInTheDocument()
   })
+
+  it('预检行级错误：列出错误行并提示仍可导入其余行（INT-2155）', async () => {
+    mockedPreview.mockResolvedValue({
+      ...PREVIEW,
+      totalRows: 2,
+      duplicates: [],
+      duplicateCount: 0,
+      errors: ['第2行: 用例名称不能为空'],
+    })
+    const user = userEvent.setup()
+    renderDialog()
+    const file = makeFile()
+
+    selectFile(file)
+
+    expect(await screen.findByText(/错误 1 行/)).toBeInTheDocument()
+    expect(screen.getByText('第2行: 用例名称不能为空')).toBeInTheDocument()
+    expect(screen.getByText(/其余 1 条可正常导入/)).toBeInTheDocument()
+    // 错误行与重复处理策略分开呈现：策略区仍在
+    expect(screen.getByText('重复用例处理')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '仍导入其余 1 条' }))
+    await waitFor(() => expect(mockedImport).toHaveBeenCalledWith(file, 'skip'))
+  })
+
+  it('预检全部行报错：不允许导入', async () => {
+    mockedPreview.mockResolvedValue({
+      ...PREVIEW,
+      totalRows: 1,
+      duplicates: [],
+      duplicateCount: 0,
+      errors: ['第1行: 用例名称不能为空'],
+    })
+    renderDialog()
+
+    selectFile(makeFile())
+
+    expect(await screen.findByText(/没有可导入的行/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled()
+  })
 })

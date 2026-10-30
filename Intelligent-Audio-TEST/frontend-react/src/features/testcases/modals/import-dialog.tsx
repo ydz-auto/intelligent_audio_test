@@ -2,8 +2,10 @@
  * 导入用例弹窗（11_用例域.md §5.7.1；与任务数据导入同型：选文件 → 预检 → 执行 → 回执）。
  *
  * - 文件：JSON / CSV / Excel / ZIP（ZIP = 「导出」产出的用例数据包，可含参考参数文件）
- * - 预检展示总用例数 + 重复用例清单（后端按 ID 或同分组同名命中）
+ * - 预检展示总用例数 + 行级校验错误（后端 errors，如「第2行: 用例名称不能为空」）+
+ *   重复用例清单（后端按 ID 或同分组同名命中）
  * - 重复策略：跳过（默认）/ 覆盖 / 另存副本（copy 自动追加 _copy 保证同组唯一）
+ * - 错误行与重复清单分开呈现：错误行在预检阶段列出并提示「仍导入其余 N 条」（导入时后端跳过坏行）
  * - 「导入音频生成用例」不在本弹窗：统一走音频管理页上传并勾选生成用例
  *
  * 请求一律经 infrastructure/api/testcases-api（client.ts），页面层只见 camelCase Domain。
@@ -179,6 +181,16 @@ export function ImportDialog({
 
   const canImport = file != null && preview != null && !previewing && !importing
 
+  // 预检行级错误（后端 errors，形如「第2行: 用例名称不能为空」）：导入时后端会跳过这些行，
+  // 预检阶段先列出来，避免用户以为整份文件都能进（INT-2155）。
+  const previewErrors = preview?.errors ?? []
+  const previewErrorCount = previewErrors.length
+  const importableRowCount = preview
+    ? Math.max(preview.totalRows - previewErrorCount, 0)
+    : 0
+  const hasPreviewErrors = previewErrorCount > 0
+  const canSubmitImport = canImport && importableRowCount > 0
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-lg'>
@@ -276,6 +288,12 @@ export function ImportDialog({
               <div className='space-y-3'>
                 <div className='rounded-lg border px-3 py-2 text-sm'>
                   共 {preview.totalRows} 条用例
+                  {hasPreviewErrors && (
+                    <span className='text-destructive'>
+                      {' '}
+                      · 错误 {previewErrorCount} 行
+                    </span>
+                  )}
                   {preview.duplicateCount > 0 ? (
                     <span className='text-amber-600'>
                       {' '}
@@ -285,6 +303,26 @@ export function ImportDialog({
                     <span className='text-emerald-600'> · 无重复用例</span>
                   )}
                 </div>
+
+                {hasPreviewErrors && (
+                  <Alert variant='destructive'>
+                    <AlertTitle>
+                      有 {previewErrorCount} 行未通过校验，导入时会跳过
+                    </AlertTitle>
+                    <AlertDescription>
+                      <ul className='max-h-32 list-disc space-y-0.5 overflow-y-auto pl-4'>
+                        {previewErrors.map((message, index) => (
+                          <li key={`${index}-${message}`}>{message}</li>
+                        ))}
+                      </ul>
+                      <p className='mt-1.5'>
+                        {importableRowCount > 0
+                          ? `其余 ${importableRowCount} 条可正常导入，请先修正文件后重新选择以修复错误行。`
+                          : '没有可导入的行，请修正文件后重新选择。'}
+                      </p>
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 {preview.duplicates.length > 0 && (
                   <div className='rounded-lg border'>
@@ -324,7 +362,7 @@ export function ImportDialog({
                   </p>
                 )}
 
-                <fieldset className='space-y-1.5'>
+                <fieldset className='space-y-1.5 border-t pt-3'>
                   <legend className='text-sm font-medium'>重复用例处理</legend>
                   {DUPLICATE_STRATEGIES.map((option) => (
                     <label
@@ -364,12 +402,17 @@ export function ImportDialog({
               >
                 取消
               </Button>
-              <Button disabled={!canImport} onClick={() => void handleImport()}>
+              <Button
+                disabled={!canSubmitImport}
+                onClick={() => void handleImport()}
+              >
                 {importing ? (
                   <>
                     <Spinner className='size-4' />
                     导入中…
                   </>
+                ) : hasPreviewErrors && importableRowCount > 0 ? (
+                  `仍导入其余 ${importableRowCount} 条`
                 ) : (
                   '开始导入'
                 )}
