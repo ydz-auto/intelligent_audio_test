@@ -27,7 +27,7 @@ WSL2 稳定性），只能靠「构建前体检 + 串行单服务 + 崩溃后按
 # 只体检引擎，不构建（20s 内必回，不跑无限等）
 python docker/build_stack.py --check
 
-# 构建全部 11 个后端服务
+# 构建全部 9 个容器化后端服务（audio/device 跑宿主机，无镜像）
 python docker/build_stack.py
 
 # 常规发版：只构建这一批变动的服务（推荐）

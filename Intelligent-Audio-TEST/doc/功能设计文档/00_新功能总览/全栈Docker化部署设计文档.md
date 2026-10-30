@@ -116,7 +116,7 @@
 
 ## 6. 实现锚点
 
-`docker/docker-compose.yml`（编排，`*_PORT`/`POSTGRES_DB` 参数化 + `db_bootstrap` 门控）· `docker/run_stack.py`（薄封装）· `docker/run_stack_iso.py` + `docker/docker-compose.iso.yml` + `docker/Dockerfile.mock_eval`（多栈并行测试隔离，§5.1）· `tools/iso_stack_smoke.py`（隔离栈验收冒烟）· `docker/Dockerfile.service`（12 后端统一镜像，单镜像多 CMD，含 ffmpeg/adb/portaudio）· `docker/Dockerfile.frontend` · `docker/Dockerfile.db_bootstrap` · `docker/db_bootstrap_entrypoint.py`（引导链）· `docker/nginx-frontend.conf`（反代契约 + gzip / 分级缓存，§8.2）· `docker/deploy_demo_frontends.ps1`（演示双址 15173 / 16173 幂等部署，§8.1）· `docker/.env.compose.example`（变量清单）· `run_all.py:524`（只读端口检查）· `shared/config/service_ports.py`（端口注册表）
+`docker/docker-compose.yml`（编排，`*_PORT`/`POSTGRES_DB` 参数化 + `db_bootstrap` 门控）· `docker/run_stack.py`（薄封装）· `docker/run_stack_iso.py` + `docker/docker-compose.iso.yml` + `docker/Dockerfile.mock_eval`（多栈并行测试隔离，§5.1）· `tools/iso_stack_smoke.py`（隔离栈验收冒烟）· `docker/Dockerfile.<服务名>`（每个容器化后端一份独立镜像，含 ffmpeg/adb/portaudio）· `docker/Dockerfile.frontend` · `docker/Dockerfile.db_bootstrap` · `docker/db_bootstrap_entrypoint.py`（引导链）· `docker/nginx-frontend.conf`（反代契约 + gzip / 分级缓存，§8.2）· `docker/deploy_demo_frontends.ps1`（演示双址 15173 / 16173 幂等部署，§8.1）· `docker/.env.compose.example`（变量清单）· `run_all.py:524`（只读端口检查）· `shared/config/service_ports.py`（端口注册表）
 
 ## 7. 落地缺陷与修复（2026-10-16，INT-472 实测发现）
 

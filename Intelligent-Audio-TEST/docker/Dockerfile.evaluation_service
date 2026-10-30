@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# pip 源可覆盖（内网/镜像源加速）：与 Dockerfile.service 同口径
+# pip 源可覆盖（内网/镜像源加速）：与其余后端 Dockerfile 同口径
 ARG PIP_INDEX_URL=https://pypi.org/simple
 
 WORKDIR /app

@@ -15,7 +15,7 @@ Docker Desktop 进程消失），**全部容器 Exited 255**。Dockerfile 侧已
   - 重试：失败层有缓存，重试只重跑失败层；引擎已死时不重试（白等）。
 
 用法（仓库根目录）：
-    python docker/build_stack.py                        # 构建全部 11 个后端服务
+    python docker/build_stack.py                        # 构建全部 9 个容器化后端服务
     python docker/build_stack.py api_gateway task_service evaluation_service
     python docker/build_stack.py --buildkit 0 api_gateway   # 旧 builder（BuildKit 打崩引擎时）
     python docker/build_stack.py --project int1820-verify api_gateway   # 隔离验证，不动现役镜像
@@ -44,6 +44,7 @@ COMPOSE_FILE = os.path.join(BASE_DIR, 'docker', 'docker-compose.yml')
 DEFAULT_PROJECT = 'intelligent-audio-test'
 
 # 构建目标：compose 里带 build: 段的全部后端服务（frontend 需显式点名，见 _require_vite_mode）
+# audio_service / device_service 依赖宿主声卡与 USB/ADB，按宿主形态运行、不在 compose 内，故不可构建。
 BACKEND_SERVICES = [
     'db_bootstrap',
     'api_gateway',
@@ -54,8 +55,6 @@ BACKEND_SERVICES = [
     'algorithm_service',
     'auth_service',
     'api_test_service',
-    'audio_service',
-    'device_service',
 ]
 
 PROBE_TIMEOUT = 20          # 单次引擎探测上限（秒）；引擎「半死」时 docker CLI 会挂到 45s+

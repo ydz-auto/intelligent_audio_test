@@ -73,8 +73,10 @@ python docker/run_stack.py down -v --yes
 
 ## 镜像
 
-- `docker/Dockerfile.service`：12 个后端微服务统一镜像（单镜像多 CMD），
-  含 ffmpeg + adb + portaudio 构建依赖；shared 以源码随镜像打包。
+- `docker/Dockerfile.<服务名>`：每个容器化后端服务一份独立 Dockerfile（原「单镜像多 CMD」
+  的统一 `Dockerfile.service` 已删除，2026-10-30），含 ffmpeg + adb + portaudio 构建依赖；
+  shared 以源码随镜像打包。audio_service / device_service 依赖宿主声卡与 USB/ADB，
+  按宿主形态运行，无容器镜像。
 - `docker/Dockerfile.db_bootstrap`：一次性引导 job 镜像（同 requirements）。
 - `docker/Dockerfile.frontend`：前端生产构建（VITE_AUTH_MODE 必须显式注入，
   INT-181 构建期守卫）+ nginx 反代（/api、/socket.io、/ws 契约与 vite dev 一致）。
@@ -130,10 +132,10 @@ python docker/run_stack.py down -v --yes
     `--device /dev/bus/usb:/dev/bus/usb` 验证通过）。仍有两个缺口：
     ① 主 compose 的 e2e 服务曾挂 `devices: /dev/bus/usb:/dev/bus/usb`，2026-10-29 核实
     e2e 零硬件调用（设备操作 gRPC 委托宿主 device_service）后已删除，容器侧不再需要
-    USB 直通；② 统一镜像仅装 adb、缺 hdc
-    二进制（`Dockerfile.service` 运行阶段只装 adb），鸿蒙链路
-    （harmony_driver 调 `hdc`）容器内不可用——需补 Linux 版 hdc 进
-    device_service 镜像，或鸿蒙真机链路保留宿主形态。
+    USB 直通；② 容器镜像仅装 adb、缺 hdc
+    二进制（如 `Dockerfile.e2e_test_service` 的 apt 层只装 adb），鸿蒙链路
+    （harmony_driver 调 `hdc`）容器内不可用——需把 Linux 版 hdc 补进相应镜像，
+    或鸿蒙真机链路保留宿主形态。
 - **mock_services**（INT-137/182）：仅联调/验收用、默认关闭，不进生产编排。
   需要时宿主形态直起（脚本自带 CLI，独立可运行）或按需补 profile。
 - **audio_service 物理放音链路**（2026-10-23 补记，此前文档盲区）：

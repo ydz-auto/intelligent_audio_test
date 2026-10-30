@@ -1,6 +1,6 @@
 # INT-597（INT-993 当前基线重交付）：隔离栈 mock 评估服务专用镜像。
 # mock_eval_server_judge 为纯标准库 + mock_services / shared.config.service_ports
-# （服务端口注册常量），无第三方依赖——不随 2.19GB 后端统一镜像（Dockerfile.service）
+# （服务端口注册常量），无第三方依赖——不随 2.19GB 后端业务镜像
 # 走，隔离栈可秒级起替身（apt/pip 冷缓存时不必重编 pyaudio 等）。
 # 生产路径零引用；仅 docker/docker-compose.iso.yml 的隔离栈引用。
 FROM python:3.11-slim

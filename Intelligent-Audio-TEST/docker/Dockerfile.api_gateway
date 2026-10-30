@@ -1,6 +1,6 @@
 # INT-1276：apt 走镜像源（compose 的 x-backend-build-args 已传 APT_MIRROR，
 # 本文件此前没接——deb.debian.org 多次 502 导致 api_gateway 镜像重建失败）。
-# 与 docker/Dockerfile.service 同一套约定：默认 tsinghua，可用 APT_MIRROR 覆盖。
+# 与其余后端 Dockerfile 同一套约定：默认 tsinghua，可用 APT_MIRROR 覆盖。
 FROM python:3.11-slim
 
 ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
