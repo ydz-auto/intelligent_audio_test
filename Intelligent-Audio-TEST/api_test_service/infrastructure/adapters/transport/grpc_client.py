@@ -529,6 +529,21 @@ def classify_call_exception(exc) -> dict:
 DEFAULT_MAX_MESSAGE_BYTES = 16 * 1024 * 1024
 
 
+def _normalize_target(target: str) -> str:
+    """把带 scheme 的 endpoint 归一为 gRPC target（host:port）。
+
+    写侧接口地址校验只允许 http/https/ws/wss 协议前缀（对外展示口径），
+    而 grpc.insecure_channel 只接受 host:port / dns:///host:port。
+    带 scheme 的写法在这里剥成 netloc，否则 gRPC 会把它当未知 resolver 挂死。
+    """
+    raw = str(target or '').strip()
+    if '://' not in raw:
+        return raw
+    from urllib.parse import urlsplit
+    parts = urlsplit(raw)
+    return parts.netloc or raw
+
+
 class GrpcClient:
     """单个方法上的 gRPC 调用客户端（unary / server-stream / bidi）。
 
@@ -542,7 +557,7 @@ class GrpcClient:
                  max_message_bytes: int = DEFAULT_MAX_MESSAGE_BYTES):
         if not target:
             raise GrpcProtoError("gRPC target 不能为空（api_endpoints[].endpoint）")
-        self.target = str(target)
+        self.target = _normalize_target(target)
         self.method = method
         self.metadata = list(metadata or [])
         self.deadline_ms = deadline_ms

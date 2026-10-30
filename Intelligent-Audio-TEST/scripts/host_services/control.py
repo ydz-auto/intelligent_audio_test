@@ -22,7 +22,38 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-PY = sys.executable
+
+# 宿主服务必须用项目 conda 解释器（装了 pyaudio / devicetest 等硬件依赖）；
+# 用 `python stack.py` 时的 sys.executable 可能是 miniconda，缺 devicetest 会让
+# 鸿蒙 UiDriver=None、设备初始化必失败。可用 HOST_SERVICE_PYTHON 覆盖。
+DEFAULT_HOST_PYTHON = r'D:\00_env\conda_envs\intelligent_audio_test\python.exe'
+
+
+def _dotenv() -> dict:
+    """仓库根 .env 的键值。
+
+    只返回字典、不写 os.environ：本模块会以子进程调用 `docker compose config`
+    解析端口，若把根 .env 的 TASK_SERVICE_GRPC_PORT=51061（容器内口径）注入
+    环境，会覆盖 compose 的宿主端口插值，把 53061 解析成 51061。
+    """
+    try:
+        from dotenv import dotenv_values
+        return {k: v for k, v in dotenv_values(REPO / '.env').items() if v is not None}
+    except ImportError:
+        return {}
+
+
+def _resolve_python() -> str:
+    configured = (os.environ.get('HOST_SERVICE_PYTHON')
+                  or _dotenv().get('HOST_SERVICE_PYTHON'))
+    if configured and Path(configured).is_file():
+        return configured
+    if Path(DEFAULT_HOST_PYTHON).is_file():
+        return DEFAULT_HOST_PYTHON
+    return sys.executable
+
+
+PY = _resolve_python()
 
 PROJECT = os.environ.get('COMPOSE_PROJECT_NAME', 'intelligent-audio-test')
 COMPOSE_FILE = REPO / 'docker' / 'docker-compose.yml'
@@ -104,10 +135,7 @@ def published_ports() -> dict[int, int]:
 
 def host_env() -> dict:
     """宿主服务子进程环境：仓库根 .env + compose 解析出的宿主端口。"""
-    from dotenv import load_dotenv
-    load_dotenv(REPO / '.env', override=False)
-
-    env = os.environ.copy()
+    env = {**_dotenv(), **os.environ}  # 进程环境优先于 .env
     ports = published_ports()
     infra = {**{k: ports.get(k, v) for k, v in _DEFAULT_INFRA_PORTS.items()}}
 
@@ -198,6 +226,11 @@ def _wmi_create(command_line: str, cwd: Path) -> int:
 def _launch(service: str, mode: str) -> int:
     """把完整环境落成 JSON（WMI 进程不继承调用方环境），再 WMI 拉起入口。"""
     env = host_env()
+    py_dir = Path(PY).parent
+    env['PATH'] = os.pathsep.join([
+        str(py_dir), str(py_dir / 'Library' / 'bin'), str(py_dir / 'Scripts'),
+        env.get('PATH', ''),
+    ])
     if service == 'audio' and mode == 'shim':
         env['PYTHONPATH'] = os.pathsep.join(
             [str(SHIM_DIR), str(REPO), str(REPO / 'shared' / 'proto')])

@@ -15,12 +15,24 @@ INT-1169/1176 迁移：独立服务 api_adapter_service 删除后，mock 适配�
 保冒烟行为现状（vendor=mock + adapter_class=MockDialogAdapter）。
 """
 import random
+import threading
 import time
+import uuid
 
 from shared.models.common_enums import VendorAdapterType
 
 from api_test_service.domain.ports import ApiVendorAdapter
 from api_test_service.infrastructure.adapters.registry import register_vendor_adapter
+
+# DUT 异步任务协议（create_task → get_status → get_final_result → delete_task）
+# 是 HTTP 非流式线性道的默认链路，而每一步都经 create_from_config 新建实例，
+# 任务态只能落进程级存储，否则第 2 步就查不到 task_id。
+_MOCK_TASKS: dict = {}
+_MOCK_TASKS_LOCK = threading.Lock()
+# 任务表上限：mock 只服务测试，超限整体清空，不保留历史
+_MOCK_MAX_TASKS = 500
+# 任务不存在时的兜底文本（mock 语义：永远成功，便于链路验证）
+_DEFAULT_MOCK_ASR = '你好，有什么可以帮助你的？'
 
 
 @register_vendor_adapter
@@ -67,28 +79,83 @@ class MockVendorAdapter(ApiVendorAdapter):
         self._round_counter: dict = {}  # session_id -> round count
 
     def execute(self, context_data, files=None, method=None):
-        """回显输入并返回统一结构化结果（与 ApiDriverAdapter 结果契约同形）"""
-        text = ''
-        if isinstance(context_data, dict):
-            text = str(context_data.get('input_text', ''))
-        latency_ms = int(self._mock_latency() * 1000)
-        if latency_ms > 0:
-            time.sleep(latency_ms / 1000)
+        """回显输入并返回统一结构化结果（与 ApiDriverAdapter 结果契约同形）。
 
+        按上下文分派 DUT 异步任务协议四步（HTTP 非流式线性道的默认链路）：
+        带 `task_id` 为状态/结果查询，`page` 为帧结果，`DELETE` 为删任务，
+        其余视作 create_task；非任务上下文保持原回显行为。
+        """
+        context = context_data if isinstance(context_data, dict) else {}
+        if method == 'DELETE':
+            return self._ok_result({'deleted': True})
+        if context.get('task_id'):
+            return self._query_result(str(context['task_id']))
+        if 'page' in context:
+            # 帧结果（非致命调试接口）：mock 无帧数据
+            return self._ok_result([])
+        if method == 'GET':
+            # health：健康检查读 json.status（不落 json.data）
+            result = self._ok_result({})
+            result['json']['status'] = 'healthy'
+            return result
+        return self._create_task_result(context)
+
+    def _ok_result(self, data, latency_ms=0):
+        """成功结果骨架（json.data 承载协议数据）。"""
         return {
             "success": True,
             "latency": latency_ms,
             "status_code": 200,
             "raw_response": {"mock": True, "endpoint": self.endpoint},
             "error": None,
-            "json": {"code": 0, "msg": "success", "data": {}},
-            "asr": text,
-            "trans": self.meta.get('mock_trans', self.DEFAULT_TRANS),
+            "json": {"code": 0, "msg": "success", "data": data},
             "is_sentence_end": True,
             "is_session_end": True,
             "biz_code": 0,
             "biz_msg": 'success',
         }
+
+    def _create_task_result(self, context):
+        """create_task：生成 task_id 并把输入文本记入任务表。"""
+        text = str(context.get('input_text', '') or '')
+        trans = self.meta.get('mock_trans', self.DEFAULT_TRANS)
+        latency_ms = int(self._mock_latency() * 1000)
+        if latency_ms > 0:
+            time.sleep(latency_ms / 1000)
+
+        task_id = f"mock-{uuid.uuid4().hex[:12]}"
+        with _MOCK_TASKS_LOCK:
+            if len(_MOCK_TASKS) >= _MOCK_MAX_TASKS:
+                _MOCK_TASKS.clear()
+            _MOCK_TASKS[task_id] = {'asr': text or _DEFAULT_MOCK_ASR, 'trans': trans}
+
+        result = self._ok_result({'task_id': task_id, 'status': 'completed',
+                                  'progress': 100}, latency_ms)
+        result.update({"asr": text, "trans": trans})
+        return result
+
+    def _query_result(self, task_id):
+        """get_status / get_final_result：同一份 payload 同时满足两处消费。
+
+        状态轮询读 `data.status/progress`，取结果读 `data` 里的文本字段；
+        mock 任务一次性即完成，未知 task_id 也按完成兜底（mock 语义）。
+        """
+        with _MOCK_TASKS_LOCK:
+            record = dict(_MOCK_TASKS.get(task_id) or {
+                'asr': _DEFAULT_MOCK_ASR,
+                'trans': self.meta.get('mock_trans', self.DEFAULT_TRANS),
+            })
+        data = {
+            'task_id': task_id,
+            'status': 'completed',
+            'progress': 100,
+            'asr_text': record['asr'],
+            'trans_text': record['trans'],
+            'output': record['asr'],
+        }
+        result = self._ok_result(data)
+        result.update({"asr": record['asr'], "trans": record['trans']})
+        return result
 
     def render_request_parts(self, context_data):
         """mock 渲染：headers 原样透传，body 回显上下文"""
