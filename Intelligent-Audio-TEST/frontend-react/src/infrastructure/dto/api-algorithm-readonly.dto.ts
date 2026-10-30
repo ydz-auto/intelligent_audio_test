@@ -1,15 +1,17 @@
 /**
- * API 编辑弹窗只读页签 DTO（infrastructure/dto 层；INT-1778，母卡 INT-1750 C5-2）。
+ * API 编辑弹窗「参数配置」页签 DTO（infrastructure/dto 层；T4.2）。
  *
- * 两个算法类型级读接口（snake_case ↔ camelCase 只在本层做）：
- * - `GET /algorithm/params?algorithm_type=X&param_type=api`
- *   → 输出字段页签数据源（只取 direction=output 行；同时是 C0 兜底口径的判定依据）；
- * - `GET /algorithm/mappings?algorithm_type=X&source_type=api`
- *   → 映射页签**唯一**数据源。后端 `ParamMapping.to_dict()` 只下发 PO 列（无 dimension_name），
- *   维度名由调用侧按 dimension_id 补齐。
+ * 两个 API 实例作用域读接口（snake_case ↔ camelCase 只在本层做）：
+ * - `GET /algorithm/params?algorithm_type=X&param_type=api&api_id=Y`
+ *   → 字段行数据源（后端 `config_cache.get_api_params` = 策略声明 + 本 API 覆盖行，
+ *   覆盖优先；算法类型级默认层已废弃，`api_id` 必填）；
+ * - `GET /algorithm/mappings?algorithm_type=X&source_type=evaluation&api_id=Y`
+ *   → 映射行数据源。API 输出映射带 dimension_id，后端 `_serialize_mappings` 归入
+ *   evaluation 桶，`source_type=api` 结构性为空；本层再按 `source === 'api'` 过滤。
  *
- * 映射行复用 algorithm-config.dto 的 toParamMapping（同一 ParamMappingItem 契约）；
- * 参数行复用 toDeviceApiParam 再补 C2（INT-1747）的 field_path。
+ * 后端 `get_api_params` / `_serialize_params` 的行键是 `code / name / type`
+ * （不是 `param_code / param_name / param_type`），这里统一归一再转 Domain。
+ * 映射行复用 algorithm-config.dto 的 toParamMapping（同一 ParamMappingItem 契约）。
  */
 import type { AlgorithmApiMapping, AlgorithmApiParam } from '@/domain/models/apiConfig'
 import {
@@ -27,23 +29,29 @@ function nullableStr(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null
 }
 
-/** GET /algorithm/params（INT-297 统一分页信封；只消费 items） */
-export interface AlgorithmApiParamListDto {
-  items?: unknown[]
-  total?: number
+/**
+ * `/algorithm/params`、`/algorithm/mappings` 的 data 兼容两种形态：
+ * 统一分页信封 `{ items, total }`（旧契约）与裸数组（现有 gRPC 返回值）。
+ */
+export function rowsFromPayload(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload
+  const items = asRecord(payload).items
+  return Array.isArray(items) ? items : []
 }
 
-/** GET /algorithm/mappings（同上） */
-export interface AlgorithmApiMappingListDto {
-  items?: unknown[]
-  total?: number
-}
-
-/** API 参数行 → Domain AlgorithmApiParam（含 field_path） */
+/** API 参数行 → Domain AlgorithmApiParam（兼容 code/name/type 旧键） */
 export function toAlgorithmApiParam(raw: unknown): AlgorithmApiParam {
   const r = asRecord(raw)
+  const normalized = {
+    ...r,
+    param_code: r.param_code ?? r.code ?? '',
+    param_name: r.param_name ?? r.name ?? null,
+    param_type: r.param_type ?? r.type ?? 'text',
+  }
+  const param = toDeviceApiParam(normalized)
   return {
-    ...toDeviceApiParam(raw),
+    ...param,
+    direction: param.direction === 'output' ? 'output' : 'input',
     fieldPath: nullableStr(r.field_path),
   }
 }

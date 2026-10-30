@@ -5,12 +5,12 @@
  * 未配置空态「未配置全局背景噪声，点击"添加全局噪声"开始配置」+「+ 添加全局噪声」ghost 钮
  * （已配置则钮位换「移除」destructive 软钮）；噪声音频卡（文件名+时长+标签 chips+更换/试听
  * ——试听走真实音频流，AudioPreviewConfigDialog）；声压级 dB number 0-120 step 1；
- * 循环播放 Switch；播放设备 chips 多选（真实 GET /playback-devices 同源，INT-1424
- * 移除 MOCK_PLAYBACK_DEVICES；设备名存在但未匹配到 ID 时黄色警示 chip）。
- * 数据契约 TestCaseBackgroundNoiseItem { audio_id, audio_name?, audio?, spl, device_ids[],
- *   device_names[]?, loop }（schemas/testcase.py:68-82 extra='allow' 兼容）。
+ * 循环播放 Switch；逻辑音箱 chips 多选（GET /playback-devices/speaker-groups；用例只关联逻辑音箱，
+ * 实体设备由执行/试听时按实验室换绑）。
+ * 数据契约 TestCaseBackgroundNoiseItem { audio_id, audio_name?, audio?, spl,
+ *   playback_speaker_group_ids[]（新）/ device_ids[]（历史）, loop }。
  */
-import { AudioWaveform, Plus, Trash2, TriangleAlert } from 'lucide-react'
+import { AudioWaveform, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -22,13 +22,12 @@ import { cn } from '@/lib/utils'
 import type {
   TestCaseBackgroundNoiseItem,
 } from '@/domain/models/evaluationStrategy'
-import { usePlaybackDevices } from '@/application/devices/use-devices'
+import { usePlaybackSpeakerGroups } from '@/application/devices/use-devices'
 import { AudioSelectDialog } from '@/features/testcases/modals/audio/audio-select-dialog'
 import {
   AudioPreviewConfigDialog,
   type PreviewAudioItem,
 } from '@/features/testcases/modals/audio-preview-config-dialog'
-import { playbackDeviceLabel } from '@/features/testcases/modals/round-config/playback-device-label'
 
 const formatDuration = (s: number | null | undefined) =>
   s == null ? '—' : s < 60 ? `${s}s` : s % 60 === 0 ? `${s / 60}m` : `${Math.floor(s / 60)}m ${s % 60}s`
@@ -41,47 +40,36 @@ export function GlobalNoiseEditor({
   value: TestCaseBackgroundNoiseItem | null
   onChange: (next: TestCaseBackgroundNoiseItem | null) => void
 }) {
-  const devicesQuery = usePlaybackDevices()
-  /** 真实播放设备（/playback-devices；chips 多选数据源，INT-1424 移除 mock） */
-  const deviceOptions = useMemo(
-    () => (devicesQuery.data ?? []).map((d) => ({ id: String(d.id), device: d })),
-    [devicesQuery.data]
-  )
+  const groupsQuery = usePlaybackSpeakerGroups()
+  /** 逻辑音箱（chips 多选数据源；用例只关联逻辑音箱） */
+  const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data])
   const [selectingAudio, setSelectingAudio] = useState(false)
-  /** 试听对象（INT-1424：试听 → 真实音频试听配置弹窗） */
+  /** 试听对象（INT-1424：试听 → 真实音频试听配置弹窗，实验室由弹窗选择） */
   const [previewItem, setPreviewItem] = useState<PreviewAudioItem | null>(null)
   const configured = value != null
 
-  const toggleDevice = (id: string) =>
+  const selectedGroupIds = (value?.speakerGroupIds ?? []).map(String)
+
+  const toggleGroup = (id: string) =>
     onChange({
       ...value,
-      deviceIds: (() => {
-        const next = new Set(value?.deviceIds ?? [])
+      speakerGroupIds: (() => {
+        const next = new Set(selectedGroupIds)
         if (next.has(id)) next.delete(id)
         else next.add(id)
-        return [...next]
+        return [...next].map((v) => Number(v))
       })(),
     })
 
-  /** 播放设备名存在但未匹配到 ID（旧配置残留名；黄色警示 chip） */
-  const unmatchedDeviceNames =
-    value?.deviceNames?.filter(
-      (name) => !deviceOptions.some((d) => d.device.name === name)
-    ) ?? []
-
-  /** 试听设备标签（已选设备 id → 名称；旧配置名兜底） */
-  const previewDeviceLabels = useMemo(() => {
-    if (!value) return []
-    const labels: string[] = []
-    for (const id of value.deviceIds ?? []) {
-      const hit = deviceOptions.find((d) => d.id === String(id))
-      if (hit) labels.push(playbackDeviceLabel(hit.device))
-    }
-    for (const name of value.deviceNames ?? []) {
-      if (!labels.some((l) => l.startsWith(name))) labels.push(name)
-    }
-    return labels
-  }, [value, deviceOptions])
+  /** 试听逻辑音箱标签（已选组 id → 名称） */
+  const previewDeviceLabels = useMemo(
+    () =>
+      selectedGroupIds
+        .map((id) => groups.find((group) => String(group.id) === id))
+        .filter((group): group is NonNullable<typeof group> => group != null)
+        .map((group) => `[逻辑音箱] ${group.name}`),
+    [selectedGroupIds, groups]
+  )
 
   return (
     <div className='space-y-2'>
@@ -167,8 +155,8 @@ export function GlobalNoiseEditor({
                     // 音频库时长兜底：实验室播放无浏览器流，播放器总时长靠它（INT-1424 UX 复核）
                     duration: value?.audio?.duration ?? null,
                     deviceLabels: previewDeviceLabels,
-                    // 实验室播放按全局噪声配置的设备发送（INT-1424 终审 P2-2）
-                    deviceIds: (value?.deviceIds ?? []).map(String),
+                    // 实验室试听必须先选实验室，由试听弹窗把逻辑音箱解析成实体设备
+                    speakerGroupIds: selectedGroupIds,
                   })
                 }
               >
@@ -203,18 +191,21 @@ export function GlobalNoiseEditor({
             </div>
           </div>
 
-          {/* 播放设备（可多选）chips（真实 /playback-devices） */}
+          {/* 逻辑音箱（可多选）chips（GET /playback-devices/speaker-groups） */}
           <div className='space-y-1.5'>
-            <Label className='text-sm'>播放设备（可多选）</Label>
+            <Label className='text-sm'>逻辑音箱（可多选）</Label>
             <div className='flex flex-wrap gap-1.5'>
-              {deviceOptions.map((d) => {
-                const checked = (value?.deviceIds ?? []).map(String).includes(d.id)
+              {groups.length === 0 && (
+                <p className='text-muted-foreground/70 text-xs'>暂无可用的逻辑音箱</p>
+              )}
+              {groups.map((group) => {
+                const checked = selectedGroupIds.includes(String(group.id))
                 return (
                   <button
-                    key={d.id}
+                    key={group.id}
                     type='button'
                     aria-pressed={checked}
-                    onClick={() => toggleDevice(d.id)}
+                    onClick={() => toggleGroup(String(group.id))}
                     className={cn(
                       'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
                       checked
@@ -222,22 +213,13 @@ export function GlobalNoiseEditor({
                         : 'hover:bg-accent border-border text-muted-foreground'
                     )}
                   >
-                    {playbackDeviceLabel(d.device)}
+                    [逻辑音箱] {group.name}
                   </button>
                 )
               })}
-              {unmatchedDeviceNames.map((name) => (
-                <span
-                  key={name}
-                  className='flex items-center gap-1 rounded-full border border-yellow-500/50 bg-yellow-500/10 px-2.5 py-1 text-xs text-yellow-700 dark:text-yellow-400'
-                >
-                  <TriangleAlert aria-hidden='true' className='size-3.5 shrink-0' />
-                  未匹配到播放设备ID：{name}
-                </span>
-              ))}
             </div>
             <p className='text-muted-foreground/70 text-xs'>
-              留空表示不指定播放设备；存在旧配置设备名但未匹配到 ID 时显示警示。
+              留空表示不指定播放目标；执行时按执行实验室换成本实验室的实体音箱。
             </p>
           </div>
         </div>

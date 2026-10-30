@@ -26,8 +26,8 @@ import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import type { AudioAsset } from '@/domain/models/audio'
+import { usePlaybackSpeakerGroups } from '@/application/devices/use-devices'
 import { fetchRealAudios } from '@/infrastructure/api/audio-list-api'
-import { fetchRealPlaybackDevices } from '@/infrastructure/api/playback-api'
 import {
   batchTestcaseAction,
   type TestcaseBatchPayload,
@@ -177,13 +177,8 @@ export function BatchNoiseDialog({
     scope
   )
 
-  const devicesQuery = useQuery({
-    queryKey: ['playback-devices', 'real'],
-    queryFn: fetchRealPlaybackDevices,
-    staleTime: 30_000,
-    enabled: open,
-  })
-  const devices = devicesQuery.data ?? []
+  const groupsQuery = usePlaybackSpeakerGroups()
+  const speakerGroups = groupsQuery.data ?? []
 
   const setAudio = (audio: AudioAsset | null) => setNoise({ ...noise, audio })
   const setSpl = (spl: string) => setNoise({ ...noise, spl })
@@ -217,7 +212,7 @@ export function BatchNoiseDialog({
         roundValues[roundKey] = {
           audioId: nv.audio.id,
           spl: roundSpl,
-          deviceIds: [...nv.devices]
+          speakerGroupIds: [...nv.devices]
             .map((id) => Number(id))
             .filter((n) => !Number.isNaN(n)),
           targets,
@@ -241,7 +236,7 @@ export function BatchNoiseDialog({
       payload = {
         noiseAudioId: audio.id,
         noiseSpl: splValue,
-        noiseDeviceIds: [...deviceIds]
+        noiseSpeakerGroupIds: [...deviceIds]
           .map((id) => Number(id))
           .filter((n) => !Number.isNaN(n)),
         targets,
@@ -350,14 +345,17 @@ export function BatchNoiseDialog({
 
           {/* 播放设备（多选）选择器卡 */}
           <div className='space-y-1.5'>
-            <span className='text-sm font-medium'>播放设备（可多选）</span>
+            <span className='text-sm font-medium'>逻辑音箱（可多选）</span>
             <div className='flex flex-wrap gap-1.5'>
-              {devices.map((d) => {
-                const id = String(d.id)
+              {speakerGroups.length === 0 && (
+                <p className='text-muted-foreground/70 text-xs'>暂无可用的逻辑音箱</p>
+              )}
+              {speakerGroups.map((group) => {
+                const id = String(group.id)
                 const checked = deviceIds.has(id)
                 return (
                   <button
-                    key={d.id}
+                    key={group.id}
                     type='button'
                     aria-pressed={checked}
                     onClick={() => toggleDevice(id)}
@@ -368,13 +366,13 @@ export function BatchNoiseDialog({
                         : 'hover:bg-accent border-border text-muted-foreground'
                     )}
                   >
-                    {d.name} (通道 {d.channelIndex ?? '—'}) [{d.deviceType === 'dry' ? '干声' : d.deviceType === 'noise' ? '噪声' : d.deviceType ?? '未知'}]
+                    [逻辑音箱] {group.name}
                   </button>
                 )
               })}
             </div>
             <p className='text-muted-foreground/70 text-xs'>
-              留空表示不指定播放设备
+              留空表示不指定播放目标；执行时按实验室换成本实验室的实体音箱
             </p>
           </div>
 

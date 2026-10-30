@@ -16,12 +16,14 @@
  */
 import { z } from 'zod'
 
+import { CASE_PARAM_SCOPES } from '@/domain/models/algorithmConfig'
+
 /** 算法代码正则（§6.2 新建校验 ^[a-z][a-z0-9_]*$） */
 export const ALGORITHM_TYPE_PATTERN = /^[a-z][a-z0-9_]*$/
 
 /**
  * 参数代码字段（§6.2 双门槛）：
- * - 发布（enforcePattern=true）= 正则（小写字母开头），设备/API/用例参数行级；
+ * - 发布（enforcePattern=true）= 正则（小写字母开头），设备/用例参数行级；
  * - 草稿（enforcePattern=false）= 仅非空（正则草稿阶段不校验，草稿是中间态允许暂存未完备内容）。
  */
 function paramCodeField(enforcePattern: boolean) {
@@ -49,7 +51,7 @@ function algorithmTypeField(enforcePattern: boolean) {
     : base
 }
 
-/** 映射行 schema（§6.5 设备/API/评估三节共用；INT-1160 返工字段补齐，可选字段 output 与 MappingRow 对齐） */
+/** 映射行 schema（§6.5 设备/评估两节共用；INT-1160 返工字段补齐，可选字段 output 与 MappingRow 对齐） */
 function mappingRowSchema(sourceRequired: boolean, targetRequired: boolean) {
   return z.object({
     key: z.string(),
@@ -86,25 +88,13 @@ const baseObjectFields = {
       helpText: z.string(),
     })
   ),
-  apiParams: z.array(
-    z.object({
-      key: z.string(),
-      paramCode: paramCodeField(true),
-      paramName: z.string(),
-      direction: z.enum(['input', 'output']),
-      paramType: paramTypeField(true),
-      required: z.boolean(),
-      defaultValue: z.string(),
-      helpText: z.string(),
-    })
-  ),
   caseParams: z.array(
     z.object({
       key: z.string(),
       paramCode: paramCodeField(true),
       paramName: z.string(),
       paramType: paramTypeField(true),
-      scope: z.enum(['common', 'api', 'e2e']),
+      scope: z.enum(CASE_PARAM_SCOPES),
       required: z.boolean(),
       defaultValue: z.string(),
       minValue: z.string(),
@@ -131,7 +121,6 @@ const baseObjectFields = {
   ),
   mappings: z.object({
     device: z.array(mappingRowSchema(true, true)),
-    api: z.array(mappingRowSchema(true, true)),
     evaluation: z.array(mappingRowSchema(true, true)),
   }),
   associatedDimensions: z.array(
@@ -165,13 +154,6 @@ const draftObjectFields = {
       paramType: paramTypeField(false),
     })
   ),
-  apiParams: z.array(
-    z.object({
-      ...baseObjectFields.apiParams.element.shape,
-      paramCode: paramCodeField(false),
-      paramType: paramTypeField(false),
-    })
-  ),
   caseParams: z.array(
     z.object({
       ...baseObjectFields.caseParams.element.shape,
@@ -187,7 +169,6 @@ const draftObjectFields = {
   ),
   mappings: z.object({
     device: z.array(mappingRowSchema(false, false)),
-    api: z.array(mappingRowSchema(false, false)),
     evaluation: z.array(mappingRowSchema(false, false)),
   }),
   associatedDimensions: z.array(
@@ -206,9 +187,8 @@ const draftObjectFields = {
 export const algorithmDraftFormSchema = z
   .object({ ...draftObjectFields })
   .superRefine((values, ctx) => {
-    // 同作用域内参数代码唯一（§6.4：统一表行带 scope 标记，唯一性按 device/api/case 各数组）
+    // 同作用域内参数代码唯一（§6.4：统一表行带 scope 标记，唯一性按 device/case 各数组）
     checkUnique(ctx, 'deviceParams', 'paramCode', values.deviceParams.map((p) => p.paramCode))
-    checkUnique(ctx, 'apiParams', 'paramCode', values.apiParams.map((p) => p.paramCode))
     checkUnique(ctx, 'caseParams', 'paramCode', values.caseParams.map((p) => p.paramCode))
     checkUnique(ctx, 'referenceParams', 'code', values.referenceParams.map((p) => p.code))
   })
@@ -230,7 +210,6 @@ function buildPublishAlgorithmFormSchema(enforcePattern: boolean) {
     .superRefine((values, ctx) => {
       // 参数代码同作用域唯一（§6.4）
       checkUnique(ctx, 'deviceParams', 'paramCode', values.deviceParams.map((p) => p.paramCode))
-      checkUnique(ctx, 'apiParams', 'paramCode', values.apiParams.map((p) => p.paramCode))
       checkUnique(ctx, 'caseParams', 'paramCode', values.caseParams.map((p) => p.paramCode))
       checkUnique(ctx, 'referenceParams', 'code', values.referenceParams.map((p) => p.code))
       // 范围 min≤max（number/slider 型；发布严格门槛，草稿不校验）
@@ -248,7 +227,7 @@ export const algorithmEditFormSchema = buildPublishAlgorithmFormSchema(false)
 
 function checkUnique(
   ctx: z.RefinementCtx,
-  field: 'deviceParams' | 'apiParams' | 'caseParams' | 'referenceParams',
+  field: 'deviceParams' | 'caseParams' | 'referenceParams',
   subField: 'paramCode' | 'code',
   codes: string[]
 ) {
@@ -323,7 +302,7 @@ type MappingRowDupShape = {
 /**
  * 参数映射判重兜底（§6.5/INT-1160 返工）：与后端 `_upsert_mappings` 唯一约束
  * (source, source_param, dimension_id) 对齐。
- * - 设备/API 来源 = 节类型固定，唯一键 = 源参数代码（dimension_id 恒空）；
+ * - 设备 来源 = 节类型固定，唯一键 = 源参数代码（dimension_id 恒空）；
  * - 评估 唯一键 = (来源, 源参数代码, 维度)。
  * 发布严格门槛（草稿宽松 schema 不校验）；行内 handler 实时判重弹 toast，
  * 此处兜底把重复行挡在发布之外（防后端 find-or-upsert 静默合并覆盖）。
@@ -332,11 +311,10 @@ function checkMappingDuplicates(
   ctx: z.RefinementCtx,
   mappings: {
     device: MappingRowDupShape[]
-    api: MappingRowDupShape[]
     evaluation: MappingRowDupShape[]
   }
 ) {
-  const seenSection = (section: 'device' | 'api' | 'evaluation') => {
+  const seenSection = (section: 'device' | 'evaluation') => {
     const rows = mappings[section]
     const seen = new Map<string, number>()
     rows.forEach((row, index) => {
@@ -356,7 +334,6 @@ function checkMappingDuplicates(
     })
   }
   seenSection('device')
-  seenSection('api')
   seenSection('evaluation')
 }
 

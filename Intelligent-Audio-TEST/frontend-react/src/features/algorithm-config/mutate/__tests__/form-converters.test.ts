@@ -39,7 +39,6 @@ const SAMPLE: AlgorithmDefinition = {
       hidden: false,
     },
   ],
-  apiParams: [],
   caseParams: [
     {
       id: 301,
@@ -89,7 +88,6 @@ const SAMPLE: AlgorithmDefinition = {
         transformType: 'none',
       },
     ],
-    api: [],
     evaluation: [
       {
         id: 504,
@@ -146,7 +144,7 @@ describe('form-converters', () => {
     expect(values.groupId).toBe('')
     expect(values.status).toBe('online')
     expect(values.deviceParams).toEqual([])
-    expect(values.mappings).toEqual({ device: [], api: [], evaluation: [] })
+    expect(values.mappings).toEqual({ device: [], evaluation: [] })
   })
 
   it('toSaveInput 剔除行级 key 并保留聚合字段（§6.3 聚合提交载荷）', () => {
@@ -159,6 +157,8 @@ describe('form-converters', () => {
     expect(input.deviceParams[0]).not.toHaveProperty('key')
     expect(input.deviceParams[0]).toMatchObject({ paramCode: 'input_audio' })
     expect(input.mappings.device).toHaveLength(1)
+    // 算法级 API 入参改由 API 实例作用域维护：表单/保存载荷均不再携带该分组
+    expect(Object.keys(input.mappings)).toEqual(['device', 'evaluation'])
     expect(input.associatedDimensions[0]).toMatchObject({ dimensionId: '3' })
   })
 

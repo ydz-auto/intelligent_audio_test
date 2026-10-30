@@ -34,7 +34,6 @@ export interface CaseBatchActionsHostProps {
   /** 评估维度分类（DimensionPicker 分类分组组头；负责人 2026-10-19 口径） */
   categories?: EvaluationCategory[]
   algorithmType?: string | null
-  testType?: string | null
 }
 
 export function CaseBatchActionsHost({
@@ -48,7 +47,6 @@ export function CaseBatchActionsHost({
   dimensions,
   categories = [],
   algorithmType,
-  testType,
 }: CaseBatchActionsHostProps) {
   /**
    * 选中用例的实际轮次数：由页级轮次登记表（CaseRoundsProvider）按选中 id 解析——
@@ -74,7 +72,6 @@ export function CaseBatchActionsHost({
           dimensions={dimensions}
           categories={categories}
           algorithmType={algorithmType}
-          testType={testType}
         />
       )}
       {batchDialog?.kind === 'group' && (

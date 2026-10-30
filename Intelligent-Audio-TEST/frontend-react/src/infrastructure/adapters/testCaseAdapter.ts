@@ -6,6 +6,7 @@ import type {
   CaseAudioResult,
   CaseDeviceResult,
   CaseExecutionDetail,
+  CaseExecutionTarget,
   CaseMetricConfig,
   CaseMetricPoint,
   CaseMetricRow,
@@ -66,7 +67,6 @@ export function testCaseFromDto(dto: TestCaseListItemDto): TestCase {
     description: dto.description,
     groupId: dto.group_id,
     groupName: dto.group_name,
-    type: dto.type === 'api' ? 'api' : 'e2e',
     tags: dto.tags ?? [],
     algorithmType: dto.algorithm_type,
     rounds,
@@ -92,7 +92,6 @@ export function testCaseListItemFromDto(
     description: dto.description,
     groupId: dto.group_id,
     groupName: dto.group_name,
-    type: dto.type === 'api' ? 'api' : dto.type === 'e2e' ? 'e2e' : null,
     tags: dto.tags ?? [],
     algorithmType: dto.algorithm_type,
     createdAt: dto.created_at ?? null,
@@ -224,6 +223,15 @@ function resolveDeviceName(key: string, rows: CaseResultForReview[]): string {
   return key
 }
 
+/** 目标类型中文（后端未回填 target_name 时的兜底展示前缀） */
+const TARGET_TYPE_LABELS: Record<CaseExecutionTarget['targetType'], string> = {
+  api: 'API',
+  device: '设备',
+}
+
+/** 路由 id 缺失时的占位 */
+const UNKNOWN_TARGET_ID = '—'
+
 /**
  * 结果音频（detail `result_audios`：设备键 → 音频项，无轮次信息）。
  * 10 §5.2 ①（INT-1723 ②）：**不随轮次 Tab 过滤**，按设备分组全量展示
@@ -322,24 +330,69 @@ export function caseDetailFromDto(
     name: c.name,
     ...(dimTypeByName.get(c.name) ?? {}),
   }))
-  // 目标列：物理用例取 detail.devices（设备名数组）；API 用例 devices 为空，
-  // 以结果行的 api_name/device_name 派生 API 维度列，保证「指标 × 目标」对比可渲染
-  // （与报告侧按设备/API 资源合并对比同口径）
+  // /results 行按目标 id 索引（API 行 api_id / 设备行 device_id；同目标多条取首条）
+  const rowByTargetKey = new Map<string, CaseResultForReview>()
+  for (const row of resultRows) {
+    if (row.deviceId != null && !rowByTargetKey.has(`device:${row.deviceId}`)) {
+      rowByTargetKey.set(`device:${row.deviceId}`, row)
+    }
+    if (row.apiId != null && !rowByTargetKey.has(`api:${row.apiId}`)) {
+      rowByTargetKey.set(`api:${row.apiId}`, row)
+    }
+  }
+
+  // 用例级执行目标（含未执行目标）：详情内逐目标 Tab / 指标列 / 执行结果全量展示
+  const targets: CaseExecutionTarget[] = (dto.targets ?? []).map((t) => {
+    const targetType: CaseExecutionTarget['targetType'] = t.target_type === 'api' ? 'api' : 'device'
+    const routeId = t.device_id ?? (t.api_id != null ? String(t.api_id) : null)
+    const row = rowByTargetKey.get(
+      targetType === 'api'
+        ? `api:${t.api_id ?? routeId ?? ''}`
+        : `device:${t.device_id ?? ''}`
+    )
+    return {
+      taskCaseId: t.task_case_id ?? null,
+      targetType,
+      targetName:
+        t.target_name ||
+        row?.deviceName ||
+        row?.apiName ||
+        `${TARGET_TYPE_LABELS[targetType]} ${routeId ?? UNKNOWN_TARGET_ID}`,
+      deviceId: t.device_id ?? null,
+      apiId: t.api_id ?? null,
+      executionStatus: t.execution_status ?? row?.executionStatus ?? null,
+      evaluationStatus: t.evaluation_status ?? null,
+    }
+  })
+
+  // 目标列：优先 targets 全量（API + 设备）；旧契约无 targets 时退回 detail.devices /
+  // 结果行 api_name·device_name（与报告侧按设备/API 资源合并对比同口径）
   const targetNames: string[] =
-    dto.devices && dto.devices.length > 0
-      ? dto.devices
-      : Array.from(
-          new Set(
-            resultRows
-              .map((r) => r.apiName ?? r.deviceName)
-              .filter((n): n is string => !!n)
+    targets.length > 0
+      ? targets.map((t) => t.targetName)
+      : dto.devices && dto.devices.length > 0
+        ? [...dto.devices]
+        : Array.from(
+            new Set(
+              resultRows
+                .map((r) => r.apiName ?? r.deviceName)
+                .filter((n): n is string => !!n)
+            )
           )
-        )
+  for (const name of dto.devices ?? []) {
+    if (name && !targetNames.includes(name)) targetNames.push(name)
+  }
+  for (const row of resultRows) {
+    const name = row.deviceName ?? row.apiName
+    if (name && !targetNames.includes(name)) targetNames.push(name)
+  }
+
   const rowByTarget = new Map<string, CaseResultForReview>()
   for (const row of resultRows) {
     const key = row.deviceName ?? row.apiName
     if (key && !rowByTarget.has(key)) rowByTarget.set(key, row)
   }
+  const targetByName = new Map(targets.map((t) => [t.targetName, t]))
 
   const devices: CaseDeviceResult[] = targetNames.map((targetName) => {
     const row = rowByTarget.get(targetName)
@@ -356,7 +409,8 @@ export function caseDetailFromDto(
       resultId: row?.id ?? null,
       deviceId: row?.deviceId ?? null,
       deviceName: targetName,
-      executionStatus: row?.executionStatus ?? null,
+      // 未执行目标：/results 无行 → 取目标行执行状态（pending 等），不再一律 null
+      executionStatus: row?.executionStatus ?? targetByName.get(targetName)?.executionStatus ?? null,
       metrics,
       asrReference: row?.asrResult ?? null,
       translationReference: row?.translationResult ?? null,
@@ -396,6 +450,7 @@ export function caseDetailFromDto(
       ...referenceAudios.map((a) => a.round),
     ]),
     devices,
+    targets,
     resultAudios,
     resultAudioFields,
     referenceAudios,

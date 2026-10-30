@@ -8,7 +8,8 @@
  * 本卡消费子集（被测 API 表格 + 编辑弹窗），完整配置域模型归设备管理页 API 页签。
  */
 
-import type { DeviceApiParam, ParamMapping } from './algorithmConfig'
+import type { ParamMapping } from './algorithmConfig'
+import type { ParamDirection } from './paramProfile'
 import type { DeviceType } from './device'
 import type { ApiProtocol } from './apiProtocol'
 
@@ -69,18 +70,32 @@ export interface ApiConfig {
 }
 
 /**
- * API 参数声明（INT-1778，输出字段页签只读视图）。
- * = 算法配置域 DeviceApiParam + C2（INT-1747）新增的 field_path：
- * 「声明表」的唯一来源是 algorithm_api_params(direction=output)，
- * field_path 非空按路径取厂商原始响应值，为空按 param_code 取顶层键（`shared/utils/api_output_extractor.py`）。
- * 未落库（老数据）时 fieldPath 为 null，界面显示「—」。
+ * API 实例作用域的参数字段行（T4.2「参数配置」页签可编辑数据源）。
+ * 读侧 = `GET /algorithm/params?param_type=api&api_id=X`（策略声明 + 本 API 覆盖行，
+ * 覆盖优先）；写侧 = `PUT /algorithm/api-scope/X/overrides` 整份回写覆盖行。
+ * field_path 非空按路径取厂商原始响应值，为空按 param_code 取顶层键
+ * （`shared/utils/api_output_extractor.py`）。
  */
-export type AlgorithmApiParam = DeviceApiParam & { fieldPath: string | null }
+export type AlgorithmApiParam = {
+  id: number
+  paramCode: string
+  paramName: string | null
+  label: string | null
+  paramType: string
+  /** 参数配置页签只维护输出字段（direction 固定 output） */
+  direction: ParamDirection
+  required: boolean
+  defaultValue: string | null
+  helpText: string | null
+  uiOrder: number
+  hidden: boolean
+  fieldPath: string | null
+}
 
 /**
- * 参数映射行（INT-1778，映射页签只读视图）。
- * 复用算法配置域 ParamMapping 全字段；`/algorithm/mappings` 只下发 PO 列（无 dimension_name），
- * 维度名由读侧按 dimension_id 补齐，取不到时 element 显示「—」。
+ * API 实例作用域的参数映射行（策略映射 + 本 API 覆盖行的解析结果）。
+ * `source` 固定 api；dimension_id 为目标评估维度；`/algorithm/mappings` 不下发
+ * dimension_name，维度名由读侧按 dimension_id 补齐，取不到时显示「—」。
  */
 export type AlgorithmApiMapping = ParamMapping
 

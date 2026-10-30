@@ -46,7 +46,6 @@ const makeCase = (overrides: Partial<TestCaseListItem> = {}): TestCaseListItem =
   description: '客厅环境播放中文音乐',
   groupId: 'g1',
   groupName: '智能音箱功能测试',
-  type: 'e2e',
   tags: ['音箱', '中文', '客厅'],
   algorithmType: 'asr-v3',
   createdAt: '2026-09-10 10:00',

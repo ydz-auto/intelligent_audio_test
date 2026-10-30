@@ -4,8 +4,7 @@
  * - roundDraftFromConfig / audioDraftFromConfig：真实音频回填 + 算法参数/噪声草稿；
  * - roundsFromConfig：按轮读独立列 algorithmParams；
  * - roundsToConfig：音频草稿保存生效（config.rounds[].audios），噪声段写入
- *   segment 级 audios[0].background_noise/interferers，新选维度补 name；
- * - toStrategyOverridesDto：覆盖键 backgroundNoise → background_noise。
+ *   segment 级 audios[0].background_noise/interferers，新选维度补 name。
  */
 import { describe, expect, it } from 'vitest'
 
@@ -16,7 +15,6 @@ import {
   roundDraftFromConfig,
   roundsFromConfig,
   roundsToConfig,
-  toStrategyOverridesDto,
 } from '@/domain/lib/testcase-round-config'
 import { emptyRoundNoise } from '@/domain/models/testCaseRound'
 import type { RoundDraft } from '@/domain/models/testCaseRound'
@@ -71,6 +69,19 @@ describe('testcase round config 序列化（INT-877/996 合流）', () => {
         spl: 65,
         deviceId: '',
         deviceName: null,
+      })
+    })
+
+    it('回填逻辑音箱关联（playback_speaker_group_id）', () => {
+      const draft = audioDraftFromConfig(
+        { audio_id: 102, playback_speaker_group_id: 7 },
+        1
+      )
+      expect(draft).toMatchObject({
+        id: 'backfill-1',
+        audioId: 102,
+        deviceId: '',
+        speakerGroupId: '7',
       })
     })
   })
@@ -179,9 +190,46 @@ describe('testcase round config 序列化（INT-877/996 合流）', () => {
           audio_id: 101,
           audio_name: '客厅_中文_命令集.wav',
           spl: 72,
+          playback_speaker_group_id: null,
           playback_device_id: '3',
           playback_device_name: '蓝牙音箱',
           play_order: 1,
+        },
+      ])
+    })
+
+    it('关联逻辑音箱时写 playback_speaker_group_id 且不写实体设备（跨实验室换绑由后端负责）', () => {
+      const drafts: RoundDraft[] = [
+        {
+          number: 1,
+          audioCount: 1,
+          dimensionCount: 0,
+          evaluation: { enabled: false, selectedIds: [], params: {} },
+          audios: [
+            {
+              id: 'backfill-0',
+              audioId: 101,
+              audioName: '客厅_中文_命令集.wav',
+              spl: 72,
+              deviceId: '',
+              deviceName: null,
+              speakerGroupId: '7',
+              speakerGroupName: '设备正面（0.5m+0°）',
+            },
+          ],
+          algorithmParams: [],
+          noise: emptyRoundNoise(),
+        },
+      ]
+      const config = roundsToConfig(drafts, null, dimNameById)
+      expect(config[0].audios).toEqual([
+        {
+          audio_id: 101,
+          audio_name: '客厅_中文_命令集.wav',
+          spl: 72,
+          playback_speaker_group_id: 7,
+          playback_device_id: null,
+          playback_device_name: null,
         },
       ])
     })
@@ -233,6 +281,7 @@ describe('testcase round config 序列化（INT-877/996 合流）', () => {
           audio_id: 101,
           audio_name: '客厅_中文_命令集.wav',
           spl: 72,
+          playback_speaker_group_id: null,
           playback_device_id: '3',
           playback_device_name: '蓝牙音箱',
           play_order: 1,
@@ -282,35 +331,6 @@ describe('testcase round config 序列化（INT-877/996 合流）', () => {
       expect((configFresh[0].evaluation as { dimensions?: unknown[] }).dimensions).toEqual([
         { id: 9, name: 'LLM复核测试维度', weight: 50, threshold: 80 },
       ])
-    })
-  })
-
-  describe('toStrategyOverridesDto（P3-1）', () => {
-    it('backgroundNoise → background_noise（后端读 raw dict snake_case 键）', () => {
-      const overrides = {
-        backgroundNoise: { audioId: 7, spl: 60 },
-      }
-      expect(toStrategyOverridesDto(overrides)).toEqual({
-        background_noise: { audioId: 7, spl: 60 },
-      })
-    })
-
-    it('dimensions 条目保持 llmJudgeConfig（后端覆盖字段同 camelCase）', () => {
-      const overrides = {
-        dimensions: [
-          { id: 1, name: '识别准确率', weight: 70, threshold: 80, llmJudgeConfig: { model: 'x', promptTemplate: 'y' } },
-        ],
-      }
-      expect(toStrategyOverridesDto(overrides)).toEqual({
-        dimensions: [
-          { id: 1, name: '识别准确率', weight: 70, threshold: 80, llmJudgeConfig: { model: 'x', promptTemplate: 'y' } },
-        ],
-      })
-    })
-
-    it('null / 空覆盖 → null', () => {
-      expect(toStrategyOverridesDto(null)).toBeNull()
-      expect(toStrategyOverridesDto({})).toBeNull()
     })
   })
 })

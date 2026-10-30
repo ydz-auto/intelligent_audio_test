@@ -39,13 +39,13 @@ const { GROUPS, GROUP_CASES, PAGE_ITEMS } = vi.hoisted(() => {
     },
   ]
   const GROUP_CASES: TestCaseListItem[] = [
-    { id: 'grp-1', name: '拒识-1', description: null, groupId: 'g1', groupName: '拒识', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 60, rounds: 3 },
-    { id: 'grp-2', name: '拒识-2', description: null, groupId: 'g1', groupName: '拒识', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 60, rounds: 2 },
-    { id: 'grp-3', name: '拒识-3', description: null, groupId: 'g1', groupName: '拒识', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 60, rounds: 1 },
+    { id: 'grp-1', name: '拒识-1', description: null, groupId: 'g1', groupName: '拒识', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 60, rounds: 3 },
+    { id: 'grp-2', name: '拒识-2', description: null, groupId: 'g1', groupName: '拒识', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 60, rounds: 2 },
+    { id: 'grp-3', name: '拒识-3', description: null, groupId: 'g1', groupName: '拒识', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 60, rounds: 1 },
   ]
   /** 列表首页 items：只含其他分组的用例，与组内用例 id 无交集（真实库 581 条时的分组视图口径） */
   const PAGE_ITEMS: TestCaseListItem[] = [
-    { id: 'page-1', name: '首页用例', description: null, groupId: 'g9', groupName: '其他分组', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 60, rounds: 4 },
+    { id: 'page-1', name: '首页用例', description: null, groupId: 'g9', groupName: '其他分组', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 60, rounds: 4 },
   ]
   return { GROUPS, GROUP_CASES, PAGE_ITEMS }
 })

@@ -15,7 +15,7 @@ import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useAlgorithmLabels } from '@/application/hooks/use-algorithm-options'
-import { useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
+import { useAlgorithmDimensions, useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
 import { CaseRoundsProvider } from '@/application/testcases/case-rounds-registry'
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
 import { useCaseTags, useTagCategories } from '@/application/testcases/use-case-tags'
@@ -102,6 +102,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   /** 全量评估维度（含子维度；批量设置评估维度 DimensionPicker 主/子分组云 + 列表筛选
    *  评估维度 facet 分组/主维度/子维度 共用，参考 V9.7.10；INT-1030 全站一致性） */
   const allDimsQuery = useEvaluationDimensions()
+  /** 批量设置评估维度数据源：options 端点按全局算法服务端收敛（含主/子层级与分类） */
+  const batchDimensions = useAlgorithmDimensions(algorithmId).data
   /** 评估维度分类（DimensionPicker 分类分组组头；负责人 2026-10-19 口径） */
   const categoriesQuery = useEvaluationCategories()
   /** 算法类型码 → 中文名（真实 GET /algorithm/options；用例卡算法徽章，INT-1687） */
@@ -456,12 +458,6 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     [filters.trash, items]
   )
 
-  /** 批量设置评估维度透传的 testType（取第一个选中用例；INT-486 用例不分 e2e/api 口径前对齐 Vue） */
-  const selectedTestType = useMemo(() => {
-    const first = items.find((c) => selected.has(c.id))
-    return first?.type ?? null
-  }, [items, selected])
-
   return (
     <CaseRoundsProvider cases={items}>
       <SectionPageLayout fixedContent>
@@ -652,6 +648,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         caseItem={mutateCase}
         groups={groups}
         presetGroupId={presetGroupId}
+        defaultAlgorithmType={algorithmId}
       />
       <ExportDialog
         open={exportOpen}
@@ -692,10 +689,9 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         handleConfirm={batch.handleConfirm}
         groups={groups}
         tags={tags}
-        dimensions={allDimensions}
+        dimensions={batchDimensions}
         categories={categories}
         algorithmType={algorithmId}
-        testType={selectedTestType}
       />
     </CaseRoundsProvider>
   )

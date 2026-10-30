@@ -18,13 +18,13 @@ export const ALGORITHM_STATUS_META: Record<
   offline: { label: '下线', badgeVariant: 'neutral' },
 }
 
-/** 参数方向选项（§6.3 设备/API 参数表格） */
+/** 参数方向选项（§6.3 设备参数表格） */
 export const PARAM_DIRECTION_OPTIONS = [
   { value: 'input', label: '输入' },
   { value: 'output', label: '输出' },
 ] as const
 
-/** 设备/API 参数类型选项（§6.3） */
+/** 设备参数类型选项（§6.3；API 参数改由 API 实例作用域维护） */
 export const DEVICE_PARAM_TYPE_OPTIONS = [
   { value: 'text', label: '文本' },
   { value: 'audio_stream', label: '音频流' },
@@ -47,11 +47,15 @@ export const CASE_PARAM_TYPE_OPTIONS = [
   { value: 'json', label: 'JSON结构化' },
 ] as const
 
-/** 用例参数适用范围选项（§6.3） */
+/**
+ * 用例参数适用范围选项（§6.3；词表对齐后端 `CaseParamScope` = common + DeviceType 三值。
+ * 注意与参数策略的 `param_profiles.scope`（api / device）无关，两者不可混用）。
+ */
 export const CASE_PARAM_SCOPE_OPTIONS = [
   { value: 'common', label: '通用' },
-  { value: 'api', label: 'API' },
-  { value: 'e2e', label: 'E2E' },
+  { value: 'physical', label: '真机' },
+  { value: 'http_api', label: 'HTTP API' },
+  { value: 'websocket_api', label: 'Realtime WS' },
 ] as const
 
 /** 参考参数类型选项（§6.4） */
@@ -70,7 +74,7 @@ export const REFERENCE_PARAM_MERGE_OPTIONS = [
   { value: 'first', label: '取第一个' },
 ] as const
 
-/** 转换类型枚举（§6.5 + V9.7.10 MappingEditor transformOptions；API 映射额外支持 base64） */
+/** 转换类型枚举（§6.5 + V9.7.10 MappingEditor transformOptions） */
 export const TRANSFORM_TYPE_OPTIONS = [
   { value: 'none', label: '无转换' },
   { value: 'uppercase', label: '转大写' },
@@ -78,11 +82,6 @@ export const TRANSFORM_TYPE_OPTIONS = [
   { value: 'json_parse', label: 'JSON解析' },
   { value: 'rttm_to_obj', label: 'RTTM转对象' },
   { value: 'stm_to_obj', label: 'STM转对象' },
-] as const
-
-export const API_TRANSFORM_TYPE_OPTIONS = [
-  ...TRANSFORM_TYPE_OPTIONS,
-  { value: 'base64', label: 'Base64' },
 ] as const
 
 /** 列表页分页每页条数选项（§3.7 PAGE_SIZE_OPTIONS 语义） */
@@ -163,7 +162,6 @@ export const PARAM_BLUR_DEBOUNCE_MS = 1500
 export const PARAM_SCOPE_CHIPS = [
   { value: 'all', label: '全部' },
   { value: 'device', label: '设备' },
-  { value: 'api', label: 'API' },
   { value: 'case', label: '用例' },
 ] as const
 

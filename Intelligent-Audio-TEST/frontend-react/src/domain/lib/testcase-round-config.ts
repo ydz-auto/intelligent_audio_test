@@ -6,12 +6,9 @@
  *   playback_device_id/playback_device_name；评估维度 id/weight/threshold/llmJudgeConfig；
  *   INT-996 算法参数独立列 + 噪声草稿按轮读取）；
  * - roundsToConfig：音频草稿与评估草稿序列化合并（保留原始轮次未编辑字段，
- *   新选维度补 name——INT-877 P3-3；噪声段经 round-noise-codec 写入 audios[0]——INT-996）；
- * - toStrategyOverridesDto：用例级覆盖 camelCase → snake_case（后端
- *   EvaluationStrategyMergeService 读 raw dict 的 `background_noise` 键，INT-877 P3-1）。
+ *   新选维度补 name——INT-877 P3-3；噪声段经 round-noise-codec 写入 audios[0]——INT-996）。
  * 纯函数无副作用，可单测（vitest .ts 直跑）。
  */
-import type { CaseEvaluationStrategy } from '@/domain/models/evaluationStrategy'
 import type { CasePlaybackDevice } from '@/domain/models/testCase'
 import {
   emptyRoundNoise,
@@ -92,6 +89,10 @@ export function audioDraftFromConfig(
     | number
     | string
     | null
+  const speakerGroupId = (raw.playback_speaker_group_id ?? raw.playbackSpeakerGroupId ?? '') as
+    | number
+    | string
+    | null
   return {
     id: `backfill-${index}`,
     audioId,
@@ -101,6 +102,7 @@ export function audioDraftFromConfig(
     deviceName: (raw.playback_device_name ?? raw.playbackDeviceName ?? null) as
       | string
       | null,
+    speakerGroupId: speakerGroupId == null ? '' : String(speakerGroupId),
     playOrder: raw.play_order != null ? Number(raw.play_order) : undefined,
   }
 }
@@ -214,8 +216,10 @@ export function roundsToConfig(
             audio_id: audio.audioId ?? null,
             audio_name: audio.audioName ?? null,
             spl: audio.spl,
-            playback_device_id: audio.deviceId || null,
-            playback_device_name: audio.deviceName ?? null,
+            // 关联逻辑音箱时不再写实体设备：执行侧按实验室换绑（playback_speaker_group_id 优先）
+            playback_speaker_group_id: audio.speakerGroupId ? Number(audio.speakerGroupId) : null,
+            playback_device_id: audio.speakerGroupId ? null : audio.deviceId || null,
+            playback_device_name: audio.speakerGroupId ? null : audio.deviceName ?? null,
             ...(audio.playOrder != null ? { play_order: audio.playOrder } : {}),
           }
         }),
@@ -241,17 +245,3 @@ export function roundsToConfig(
   })
 }
 
-/**
- * 用例级覆盖 camelCase → snake_case（INT-877 P3-1：后端 EvaluationStrategyMergeService
- * validate_overrides/resolve 读 raw dict 的 `background_noise` 键，camelCase 会被静默丢弃）。
- * dimensions 条目字段保持 llmJudgeConfig（后端 _DIMENSION_OVERRIDE_FIELDS 同 camelCase）。
- */
-export function toStrategyOverridesDto(
-  overrides: CaseEvaluationStrategy['overrides'] | null | undefined
-): Record<string, unknown> | null {
-  if (!overrides) return null
-  const dto: Record<string, unknown> = {}
-  if (overrides.dimensions != null) dto.dimensions = overrides.dimensions
-  if (overrides.backgroundNoise != null) dto.background_noise = overrides.backgroundNoise
-  return Object.keys(dto).length > 0 ? dto : null
-}

@@ -1,7 +1,7 @@
 /**
- * §6.4 统一参数表（INT-591 降维核心：设备/API/用例三数组并集展示 + 作用域 chips 过滤）。
- * 三数组各自 useFieldArray，合并为带 kind 标记的受控行；列随作用域 chip 动态显隐
- * （设备/API 隐藏用例专属列，用例隐藏方向列，「全部」全列展示）。
+ * §6.4 统一参数表（INT-591 降维核心：设备/用例两数组并集展示 + 作用域 chips 过滤）。
+ * 两数组各自 useFieldArray，合并为带 kind 标记的受控行；列随作用域 chip 动态显隐
+ * （设备隐藏用例专属列，用例隐藏方向列，「全部」全列展示）。
  * 行级 cell 直接 Input/Select/Checkbox 编辑，blur 即入表单态 + 失焦防抖草稿保存（§6.2，hook 层挂载）。
  */
 import { Plus, Trash2 } from 'lucide-react'
@@ -52,7 +52,7 @@ import { RANGE_MESSAGES, isRangeInvalid } from './algorithm-form-schema'
 
 const PRESET_DATALIST_ID = 'case-param-code-presets'
 
-type ParamRowKind = 'device' | 'api' | 'case'
+type ParamRowKind = 'device' | 'case'
 
 type MergedRow = {
   kind: ParamRowKind
@@ -62,16 +62,14 @@ type MergedRow = {
 
 const SCOPE_BADGE_LABEL: Record<ParamRowKind, string> = {
   device: '设备',
-  api: 'API',
   case: '用例',
 }
 
 /** 数组名（RHF 字段数组） */
-type ParamArrayName = 'deviceParams' | 'apiParams' | 'caseParams'
+type ParamArrayName = 'deviceParams' | 'caseParams'
 
 const ARRAY_NAME: Record<ParamRowKind, ParamArrayName> = {
   device: 'deviceParams',
-  api: 'apiParams',
   case: 'caseParams',
 }
 
@@ -84,7 +82,6 @@ export function ParamsTable({
   algorithmOptions: AlgorithmOption[]
 }) {
   const device = useFieldArray({ control: form.control, name: 'deviceParams' })
-  const api = useFieldArray({ control: form.control, name: 'apiParams' })
   const cases = useFieldArray({ control: form.control, name: 'caseParams' })
 
   // 作用域 chip（默认「全部」）；本地筛选行状态
@@ -97,7 +94,6 @@ export function ParamsTable({
 
   const counts = {
     device: device.fields.length,
-    api: api.fields.length,
     case: cases.fields.length,
   }
 
@@ -155,23 +151,11 @@ export function ParamsTable({
     }
   }
 
-  /* ───────── 添加参数（随 chip 定作用域；「全部」下小菜单三选） ───────── */
+  /* ───────── 添加参数（随 chip 定作用域；「全部」下小菜单二选） ───────── */
 
   const appendDevice = () =>
     device.append({
       key: `d-${Date.now()}-${device.fields.length}`,
-      paramCode: '',
-      paramName: '',
-      direction: 'input',
-      paramType: 'text',
-      required: false,
-      defaultValue: '',
-      helpText: '',
-    })
-
-  const appendApi = () =>
-    api.append({
-      key: `a-${Date.now()}-${api.fields.length}`,
       paramCode: '',
       paramName: '',
       direction: 'input',
@@ -208,11 +192,6 @@ export function ParamsTable({
         rows.push({ kind: 'device', index, key: field.key })
       )
     }
-    if (scope === 'all' || scope === 'api') {
-      api.fields.forEach((field, index) =>
-        rows.push({ kind: 'api', index, key: field.key })
-      )
-    }
     if (scope === 'all' || scope === 'case') {
       cases.fields.forEach((field, index) =>
         rows.push({ kind: 'case', index, key: field.key })
@@ -243,7 +222,7 @@ export function ParamsTable({
       return true
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, search, typeFilter, requiredFilter, device.fields, api.fields, cases.fields, watchParams])
+  }, [scope, search, typeFilter, requiredFilter, device.fields, cases.fields, watchParams])
 
   const showDirection = scope !== 'case'
   const showCaseOnly = scope === 'all' || scope === 'case'
@@ -326,9 +305,6 @@ export function ParamsTable({
                 <DropdownMenuItem onClick={appendDevice}>
                   添加设备参数
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={appendApi}>
-                  添加API参数
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={appendCase}>
                   添加用例参数
                 </DropdownMenuItem>
@@ -339,13 +315,7 @@ export function ParamsTable({
               variant='outline'
               size='sm'
               type='button'
-              onClick={
-                scope === 'device'
-                  ? appendDevice
-                  : scope === 'api'
-                    ? appendApi
-                    : appendCase
-              }
+              onClick={scope === 'device' ? appendDevice : appendCase}
             >
               <Plus aria-hidden='true' />
               添加参数
@@ -394,7 +364,7 @@ export function ParamsTable({
               {visibleRows.length === 0 ? (
                 <tr>
                   <td colSpan={13} className='text-muted-foreground px-3 py-6 text-center'>
-                    {counts.device + counts.api + counts.case === 0
+                    {counts.device + counts.case === 0
                       ? '暂无参数，点击「添加参数」或勾选上方功能特性快捷添加'
                       : '未找到匹配参数，换个关键词或筛选条件试试'}
                   </td>
@@ -406,7 +376,6 @@ export function ParamsTable({
                     row={row}
                     form={form}
                     device={device}
-                    api={api}
                     cases={cases}
                     showDirection={showDirection}
                     showCaseOnly={showCaseOnly}
@@ -426,10 +395,10 @@ function showBundlesHint(scope: ParamScope): boolean {
   return scope === 'all' || scope === 'case'
 }
 
-/** 按当前 chip 收敛类型筛选选项（设备/API 与用例类型集不同） */
+/** 按当前 chip 收敛类型筛选选项（设备与用例类型集不同） */
 function uniqueTypeOptions(scope: ParamScope) {
   if (scope === 'case') return CASE_PARAM_TYPE_OPTIONS
-  if (scope === 'device' || scope === 'api') return DEVICE_PARAM_TYPE_OPTIONS
+  if (scope === 'device') return DEVICE_PARAM_TYPE_OPTIONS
   return [
     ...new Map(
       [...DEVICE_PARAM_TYPE_OPTIONS, ...CASE_PARAM_TYPE_OPTIONS].map((o) => [
@@ -451,12 +420,6 @@ function getRowValues(
       ? { paramCode: p.paramCode, paramName: p.paramName, paramType: p.paramType, required: p.required }
       : { paramCode: '', paramName: '', paramType: '', required: false }
   }
-  if (row.kind === 'api') {
-    const p = values.apiParams[row.index]
-    return p
-      ? { paramCode: p.paramCode, paramName: p.paramName, paramType: p.paramType, required: p.required }
-      : { paramCode: '', paramName: '', paramType: '', required: false }
-  }
   const p = values.caseParams[row.index]
   return p
     ? { paramCode: p.paramCode, paramName: p.paramName, paramType: p.paramType, required: p.required }
@@ -469,7 +432,6 @@ function ParamRow({
   row,
   form,
   device,
-  api,
   cases,
   showDirection,
   showCaseOnly,
@@ -478,7 +440,6 @@ function ParamRow({
   row: MergedRow
   form: UseFormReturn<AlgorithmFormValues>
   device: UseFieldArrayReturn<AlgorithmFormValues, 'deviceParams'>
-  api: UseFieldArrayReturn<AlgorithmFormValues, 'apiParams'>
   cases: UseFieldArrayReturn<AlgorithmFormValues, 'caseParams'>
   showDirection: boolean
   showCaseOnly: boolean
@@ -488,27 +449,24 @@ function ParamRow({
   const arrayName = ARRAY_NAME[row.kind]
   const index = row.index
 
-  // 仅用例行路径（scope/范围/标注/字段路径字段不存在于设备/API 行类型）
+  // 仅用例行路径（scope/范围/标注/字段路径字段不存在于设备行类型）
   const casePath = (suffix: string): Path<AlgorithmFormValues> =>
     `caseParams.${index}.${suffix}` as Path<AlgorithmFormValues>
-  // 通用字段路径（三数组行类型均含；运行时前缀按行 kind 收窄，cast 为已知 Path 字面量）
+  // 通用字段路径（两数组行类型均含；运行时前缀按行 kind 收窄，cast 为已知 Path 字面量）
   const commonPath = (suffix: string): Path<AlgorithmFormValues> =>
     `${arrayName}.${index}.${suffix}` as Path<AlgorithmFormValues>
-  // 方向字段（仅设备/API 行类型含）
+  // 方向字段（仅设备行类型含）
   const directionPath = isCase
     ? null
-    : (`${row.kind === 'device' ? 'deviceParams' : 'apiParams'}.${index}.direction` as Path<AlgorithmFormValues>)
+    : (`deviceParams.${index}.direction` as Path<AlgorithmFormValues>)
 
   const rowErrors = isCase
     ? form.formState.errors.caseParams?.[index]
-    : row.kind === 'device'
-      ? form.formState.errors.deviceParams?.[index]
-      : form.formState.errors.apiParams?.[index]
+    : form.formState.errors.deviceParams?.[index]
   const paramCodeError = rowErrors?.paramCode?.message
   const paramTypeError = rowErrors?.paramType?.message
 
-  const fieldArray =
-    row.kind === 'device' ? device : row.kind === 'api' ? api : cases
+  const fieldArray = isCase ? cases : device
 
   const paramType = form.watch(commonPath('paramType')) as string
   const showRange = isCase && (paramType === 'number' || paramType === 'slider')
@@ -588,7 +546,7 @@ function ParamRow({
           <p className='text-destructive text-xs'>{paramTypeError}</p>
         )}
       </td>
-      {/* 方向（仅设备/API 行；用例 chip 隐藏列） */}
+      {/* 方向（仅设备行；用例 chip 隐藏列） */}
       {showDirection && (
         <td className='px-2 py-1.5'>
           {isCase || !directionPath ? (
@@ -672,7 +630,7 @@ function ParamRow({
           />
         </span>
       </td>
-      {/* 默认值（恒显，设备/API 亦支持） */}
+      {/* 默认值（恒显，设备亦支持） */}
       <td className='px-2 py-1.5'>
         <Input
           aria-label='默认值'

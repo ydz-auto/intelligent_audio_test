@@ -1,13 +1,13 @@
 /**
- * 新增/编辑 API 弹窗（INT-1777 五页签骨架 + INT-1778 后三个页签；母卡 INT-1750 C5 规格 v3；
- * interfaces/features/test-execution/modals）。
+ * 新增/编辑 API 弹窗（INT-1777 骨架 + T4.2 参数配置页签）。
  *
- * 五个页签：
+ * 四个页签：
  * - 基础：现有字段（名称 / 关联算法 / 最大并发 / 协议 + 流式性 / 描述 / 端点列表与密钥池），
  *   新增 audio_config 编辑区（顶层列 apis.audio_config，四项：采样率/位深/通道数/容器）；
  * - 请求模板：写 meta（协议决定请求/响应配置区，流式性决定轮次/会话配置区）；
  * - 响应解析：写 meta（result_parser 等 8 个解析器键；顶部固定提示 C0 裁定口径）；
- * - 输出字段 / 映射：只读，算法类型作用域（数据源见 application/test-execution/useApiAlgorithmReadonly）。
+ * - 参数配置：API 实例作用域（策略绑定 + 输出字段 / 映射可编辑 + 覆盖保存），
+ *   见 features/test-execution/modals/api-param-config-tab。
  *
  * 协议 × 流式性（INT-1800 / B0）：两维独立可组合，下拉 4 值、未上线协议置灰并提示；
  * 流式开关按 B0 §3.2.3 可用矩阵锁定（当前只有 http+非流式、websocket+流式可写）。
@@ -15,19 +15,16 @@
  */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
-import { ExternalLink, FileText, Plus, Upload, X } from 'lucide-react'
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import { Plus, Upload, X } from 'lucide-react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
-import {
-  useAlgorithmApiMappings,
-  useAlgorithmApiParams,
-  type ReadonlyQueryState,
-} from '@/application/test-execution/useApiAlgorithmReadonly'
+import { useApiParamConfig } from '@/application/test-execution/useApiParamConfig'
 import { useApisCrud } from '@/application/test-execution/useApisCrud'
 import { useTestAlgorithmOptions } from '@/application/test-execution/useTestAlgorithmOptions'
+import { usePermissions } from '@/application/hooks/use-permissions'
+import { ApiParamConfigTab } from '@/features/test-execution/modals/api-param-config-tab'
 import { fetchApi, parseApiResponsePreview, uploadApiProto } from '@/infrastructure/api/test-execution-api'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import { Badge } from '@/components/ui/badge'
@@ -40,13 +37,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -57,7 +47,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import {
   Table,
@@ -144,14 +133,13 @@ const apiFormSchema = z.object({
 
 type ApiForm = z.infer<typeof apiFormSchema>
 
-type ApiTab = 'basic' | 'request' | 'response' | 'output' | 'mapping'
+type ApiTab = 'basic' | 'request' | 'response' | 'param'
 
 const API_TABS: ReadonlyArray<{ value: ApiTab; label: string }> = [
   { value: 'basic', label: '基础' },
   { value: 'request', label: '请求模板' },
   { value: 'response', label: '响应解析' },
-  { value: 'output', label: '输出字段' },
-  { value: 'mapping', label: '映射' },
+  { value: 'param', label: '参数配置' },
 ]
 
 /** base-ui Select 不接受空串为「未设置」，统一用哨兵值映射草稿里的 '' */
@@ -320,14 +308,17 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   const watchedStreaming = form.watch('streaming')
   const algorithmType = form.watch('algorithmType')
 
-  // INT-1778 只读页签数据源（algorithm:read）：切到相关页签才请求，避免每次打开多发两个 GET。
-  // 响应解析页签也要 params 数据——C0 兜底口径的判定依据就是同一次
-  // GET /algorithm/params?param_type=api 有没有 direction=output 行。
-  const paramsQuery = useAlgorithmApiParams(
+  const { hasPermission } = usePermissions()
+
+  // T4.2 参数配置数据源：API 实例作用域（策略 + 本 API 覆盖行）。
+  // 只在打开且停留在「响应解析 / 参数配置」页签时取数，新建 API（无 id）不发请求。
+  // 响应解析页签的 C0 判定同样依赖这份解析结果（有无 direction=output 行）。
+  const apiParamConfig = useApiParamConfig(
+    api?.id ?? null,
     algorithmType,
-    open && (tab === 'response' || tab === 'output')
+    open && (tab === 'response' || tab === 'param')
   )
-  const mappingsQuery = useAlgorithmApiMappings(algorithmType, open && tab === 'mapping')
+  const canManageParams = hasPermission('algorithm:param_manage')
 
   // 端点列表（唯一端点入口；编辑回显，关闭清空）
   useEffect(() => {
@@ -393,20 +384,22 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   // 组合不在可用矩阵内（存量脏数据 / 旧后端）→ 明示后端会 400，不静默改写用户的选择
   const combinationWarning = unavailableCombinationReason(watchedProtocol, watchedStreaming)
 
-  // C0（INT-1745）判定结果展示：只说「该算法类型的声明情况」，不描述系统当前行为
+  // C0（INT-1745）判定结果展示：按该 API 实例（策略 + 覆盖）的解析结果说明，不描述系统当前行为
   const c0Status = !algorithmType
     ? '未选择关联算法，无法判定'
-    : paramsQuery.state === 'loading'
-      ? '正在读取该算法类型的输出字段声明…'
-      : paramsQuery.state === 'ready'
-        ? paramsQuery.noOutputDeclared
-          ? '该类型未声明输出字段 → 解析走本页 meta 兜底'
-          : `该类型已声明 ${paramsQuery.outputParams.length} 个输出字段 → 本页解析器不兜底`
-        : paramsQuery.state === 'forbidden'
-          ? '无权查看算法配置，无法判定'
-          : paramsQuery.state === 'error'
-            ? '算法配置读取失败，无法判定'
-            : '未判定'
+    : api?.id == null
+      ? '新建 API 保存后可用，无法判定'
+      : apiParamConfig.state === 'loading'
+        ? '正在读取该 API 的输出字段声明…'
+        : apiParamConfig.state === 'ready'
+          ? apiParamConfig.noOutputDeclared
+            ? '该 API 未声明输出字段 → 解析走本页 meta 兜底'
+            : `该 API 已声明 ${apiParamConfig.outputParams.length} 个输出字段 → 本页解析器不兜底`
+          : apiParamConfig.state === 'forbidden'
+            ? '无权查看参数配置，无法判定'
+            : apiParamConfig.state === 'error'
+              ? '参数配置读取失败，无法判定'
+              : '未判定'
 
   const metaErrorOf = (field: MetaDraftError['field']) =>
     metaErrors.find((error) => error.field === field)?.message
@@ -1591,14 +1584,14 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                     </Badge>
                   </p>
                   <p className='text-muted-foreground'>
-                    按 C0 裁定口径：本页 meta 解析器只在该算法类型
+                    按 C0 裁定口径：本页 meta 解析器只在该 API
                     <span className='text-foreground font-medium'>零输出字段声明</span>
                     时逐键兜底 —— 判定方式是同一次{' '}
                     <code className='font-mono'>
-                      GET /algorithm/params?algorithm_type=…&amp;param_type=api
+                      GET /algorithm/params?algorithm_type=…&amp;param_type=api&amp;api_id=…
                     </code>{' '}
-                    没有 <code className='font-mono'>direction=output</code> 行；该类型声明了输出字段时，
-                    解析以「输出字段」页签的声明为准，本页解析器不作兜底，两者不按字段混用。
+                    没有 <code className='font-mono'>direction=output</code> 行；该 API（策略 + 实例覆盖）
+                    声明了输出字段时，解析以「参数配置」页签的输出字段为准，本页解析器不作兜底，两者不按字段混用。
                   </p>
                 </div>
 
@@ -1703,103 +1696,13 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                 <ParsePreviewPanel protocol={watchedProtocol} draft={responseDraft} />
               </TabsContent>
 
-              {/* 输出字段页签（INT-1778 §2.4）：只读，算法类型级 */}
-              <TabsContent value='output' className='space-y-3'>
-                {algorithmType ? (
-                  <>
-                    <AlgorithmTypeBanner
-                      onClose={() => onOpenChange(false)}
-                      showJump={paramsQuery.state !== 'forbidden'}
-                    />
-                    <ReadonlyTabBody
-                      state={paramsQuery.state}
-                      isEmpty={paramsQuery.outputParams.length === 0}
-                      loadingHint='正在读取该算法类型的输出字段声明…'
-                      errorHint='输出字段读取失败'
-                      emptyTitle='该算法类型未声明输出字段'
-                      emptyDescription='该算法类型未声明输出字段，解析走 meta 兜底（见响应解析页签）。'
-                    >
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>参数代码</TableHead>
-                            <TableHead>类型</TableHead>
-                            <TableHead>响应路径（field_path）</TableHead>
-                            <TableHead>标签</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {paramsQuery.outputParams.map((param) => (
-                            <TableRow key={param.id}>
-                              <TableCell className='font-mono text-xs'>{param.paramCode}</TableCell>
-                              <TableCell className='text-xs'>{param.paramType}</TableCell>
-                              <TableCell className='font-mono text-xs'>
-                                {param.fieldPath ?? '—'}
-                              </TableCell>
-                              <TableCell className='text-xs'>{param.label ?? '—'}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </ReadonlyTabBody>
-                  </>
-                ) : (
-                  <ReadonlyTabUnselected tabLabel='输出字段' />
-                )}
-              </TabsContent>
-
-              {/* 映射页签（INT-1778 §2.5）：只读，唯一数据源 /algorithm/mappings?source_type=api */}
-              <TabsContent value='mapping' className='space-y-3'>
-                {algorithmType ? (
-                  <>
-                    <AlgorithmTypeBanner
-                      onClose={() => onOpenChange(false)}
-                      showJump={mappingsQuery.state !== 'forbidden'}
-                    />
-                    <ReadonlyTabBody
-                      state={mappingsQuery.state}
-                      isEmpty={mappingsQuery.rows.length === 0}
-                      loadingHint='正在读取该算法类型的 API 输出映射…'
-                      errorHint='映射读取失败'
-                      emptyTitle='该算法类型未配置来源为 API 输出的映射'
-                      emptyDescription='该算法类型没有 source=api 的参数映射；如需新增，请到算法配置页的评估参数映射里添加。'
-                    >
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>源参数（source_param）</TableHead>
-                            <TableHead>目标维度</TableHead>
-                            <TableHead>目标参数（target_param）</TableHead>
-                            <TableHead>转换（transform_type）</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {mappingsQuery.rows.map((mapping) => (
-                            <TableRow key={mapping.id}>
-                              <TableCell className='font-mono text-xs'>
-                                {mapping.sourceParam}
-                              </TableCell>
-                              <TableCell className='text-xs'>
-                                {mapping.dimensionName ??
-                                  (mapping.dimensionId != null
-                                    ? `#${mapping.dimensionId}`
-                                    : '—')}
-                              </TableCell>
-                              <TableCell className='font-mono text-xs'>
-                                {mapping.targetParam || '—'}
-                              </TableCell>
-                              <TableCell className='text-xs'>
-                                {mapping.transformType || '—'}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </ReadonlyTabBody>
-                  </>
-                ) : (
-                  <ReadonlyTabUnselected tabLabel='映射' />
-                )}
+              {/* 参数配置页签（T4.2）：API 实例作用域，策略绑定 + 输出字段 / 映射可编辑 + 覆盖保存 */}
+              <TabsContent value='param' className='space-y-3'>
+                <ApiParamConfigTab
+                  apiId={api?.id ?? null}
+                  algorithmType={algorithmType}
+                  canEdit={canManageParams}
+                />
               </TabsContent>
             </div>
           </Tabs>
@@ -1965,118 +1868,6 @@ function ResponsePathInput({
         className='font-mono text-xs'
       />
     </div>
-  )
-}
-
-/** 算法类型级横幅（输出字段 / 映射页签共用；母卡 §2.4 / §2.5） */
-function AlgorithmTypeBanner({
-  onClose,
-  showJump,
-}: {
-  onClose: () => void
-  showJump: boolean
-}) {
-  return (
-    <div className='bg-muted/40 flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2.5 text-xs'>
-      <p className='text-muted-foreground flex-1'>
-        <Badge variant='secondary' className='mr-1.5'>
-          算法类型级
-        </Badge>
-        算法类型级声明，本类型下所有 API 共用；
-        {showJump ? '此处只读，维护入口在算法配置页。' : '当前账号不可查看。'}
-      </p>
-      {showJump && <AlgorithmConfigJump onBeforeNavigate={onClose} />}
-    </div>
-  )
-}
-
-/**
- * 「去算法配置」跳转按钮。
- * useNavigate 需要路由上下文，所以只有真的渲染这个按钮时才调用（未选算法 / 无权限时不渲染）。
- */
-function AlgorithmConfigJump({ onBeforeNavigate }: { onBeforeNavigate: () => void }) {
-  const navigate = useNavigate()
-  return (
-    <Button
-      type='button'
-      variant='outline'
-      size='sm'
-      className='h-7 flex-none gap-1 text-xs'
-      onClick={() => {
-        onBeforeNavigate()
-        void navigate({ to: '/AlgorithmConfig' })
-      }}
-    >
-      <ExternalLink aria-hidden='true' className='size-3.5' />
-      去算法配置
-    </Button>
-  )
-}
-
-/** 只读页签的取数状态包装：加载 / 无权（403 降级）/ 错误 / 空态都收敛在这里 */
-function ReadonlyTabBody({
-  state,
-  isEmpty,
-  loadingHint,
-  errorHint,
-  emptyTitle,
-  emptyDescription,
-  children,
-}: {
-  state: ReadonlyQueryState
-  isEmpty: boolean
-  loadingHint: string
-  errorHint: string
-  emptyTitle: string
-  emptyDescription: string
-  children: ReactNode
-}) {
-  if (state === 'forbidden') {
-    return (
-      <ReadonlyTabEmpty
-        title='无权查看算法配置'
-        description='当前账号缺少 algorithm:read 权限，本页签不可用；不影响其它页签保存。'
-      />
-    )
-  }
-  if (state === 'error') {
-    return <ReadonlyTabEmpty title={errorHint} description='算法配置暂时读取不到，稍后可重新打开弹窗再试。' />
-  }
-  if (state !== 'ready') {
-    return (
-      <div className='text-muted-foreground flex items-center justify-center gap-2 py-10 text-xs'>
-        <Spinner className='size-4' />
-        {loadingHint}
-      </div>
-    )
-  }
-  if (isEmpty) {
-    return <ReadonlyTabEmpty title={emptyTitle} description={emptyDescription} />
-  }
-  return <div className='border-border/60 overflow-x-auto rounded-lg border'>{children}</div>
-}
-
-function ReadonlyTabEmpty({ title, description }: { title: string; description: string }) {
-  return (
-    <Empty className='border-border/60 border'>
-      <EmptyHeader>
-        <EmptyMedia variant='icon'>
-          <FileText aria-hidden='true' className='size-4' />
-        </EmptyMedia>
-        <EmptyTitle>{title}</EmptyTitle>
-        <EmptyDescription>{description}</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
-  )
-}
-
-/** 未选关联算法时的只读页签空态 */
-function ReadonlyTabUnselected({ tabLabel }: { tabLabel: string }) {
-  return (
-    <ReadonlyTabEmpty
-      title='未选择关联算法'
-      description={`请先在「基础」页签选择关联算法，再回来查看「${tabLabel}」页签（数据按算法类型汇总，与单个 API 无关）。`}
-    />
   )
 }
 

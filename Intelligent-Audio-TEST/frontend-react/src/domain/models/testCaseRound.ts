@@ -43,6 +43,14 @@ export interface RoundAudioDraft {
   deviceId: string
   /** 播放设备名（playback_device_name；Select 值回退展示） */
   deviceName: string | null
+  /**
+   * 逻辑音箱组 id（playback_speaker_group_id，string 归一）。
+   * 与 deviceId 二选一且优先生效：关联逻辑音箱的用例由后端按「执行实验室」换成
+   * 该实验室的实体播放设备，跨实验室执行不再驱动别处音箱。
+   */
+  speakerGroupId?: string
+  /** 逻辑音箱名（playback_speaker_group_name；仅展示用，不落库） */
+  speakerGroupName?: string | null
   /** 播放顺序（play_order 保留回传） */
   playOrder?: number | null
   /** 音频时长（秒；子弹窗选择回填，卡头展示） */
@@ -70,8 +78,10 @@ export interface RoundBackgroundNoiseDraft {
   } | null
   /** 声压级（dB；§5.3.4 建议值 94） */
   spl: number
-  /** 播放设备 id 列表（真实 /playback-devices） */
+  /** 播放设备 id 列表（历史字段：用例只关联逻辑音箱后不再写入） */
   deviceIds: Array<number | string>
+  /** 逻辑音箱组 id 列表（背景噪声可多选；用例唯一可选的播放目标） */
+  speakerGroupIds?: Array<number | string>
   /** 循环播放 */
   loop: boolean
 }
@@ -81,7 +91,10 @@ export interface RoundVoiceprintDraft {
   enabled: boolean
   audioId: number | string | null
   audioName?: string | null
+  /** 历史字段：实体播放设备 id（只读兼容旧配置） */
   playbackDeviceId: number | string | null
+  /** 逻辑音箱组 id（用例唯一可选的播放目标） */
+  speakerGroupId?: number | string | null
   /** 播放声压级（dB） */
   spl: number
   /** 注册后等待秒数（0-60） */
@@ -94,7 +107,10 @@ export interface RoundInterfererDraft {
   id: string
   audioId: number | string | null
   audioName?: string | null
+  /** 历史字段：实体播放设备 id（只读兼容旧配置） */
   playbackDeviceId: number | string | null
+  /** 逻辑音箱组 id（用例唯一可选的播放目标） */
+  speakerGroupId?: number | string | null
   /** 声压级（dB） */
   spl: number
   /** 开始延迟秒 */
@@ -116,6 +132,7 @@ export const emptyVoiceprint = (): RoundVoiceprintDraft => ({
   audioId: null,
   audioName: null,
   playbackDeviceId: null,
+  speakerGroupId: null,
   spl: 75,
   waitSec: 5,
 })

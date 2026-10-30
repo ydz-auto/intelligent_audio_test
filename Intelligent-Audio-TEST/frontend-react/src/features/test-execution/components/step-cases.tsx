@@ -27,7 +27,7 @@ import { useTestCasesList, type TestCaseListFilters } from '@/application/testca
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
 import { useCaseTags, useTagCategories } from '@/application/testcases/use-case-tags'
 import { useTagMutations } from '@/application/tags/useTags'
-import { useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
+import { useAlgorithmDimensions, useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
 import { useCaseBatchActions } from '@/application/testcases/use-case-batch-actions'
 import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-store'
 import {
@@ -128,6 +128,8 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   /** 全量评估维度（含子维度）+ 分类：与用例管理页同源（INT-1030 走查打回 P2-2——不再用
    *  /evaluation/dimensions/options 旧 facet 子集，保证 开始测试 筛选 facet 与用例管理分组一致） */
   const allDimsQuery = useEvaluationDimensions()
+  /** 批量设置评估维度数据源：options 端点按当前算法服务端收敛（含主/子层级与分类） */
+  const batchDimensions = useAlgorithmDimensions(algorithmType).data
   const categoriesQuery = useEvaluationCategories()
 
   const items = listQuery.data?.items ?? []
@@ -166,12 +168,6 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
 
   /** 批量弹窗状态机（七件套弹窗 + 两确认；INT-1026 与用例管理页共享 host 双挂） */
   const batch = useCaseBatchActions({ onClearSelection: selection.clearSelection })
-
-  /** 批量设置评估维度透传的 testType（取第一个选中用例；INT-486 口径对齐 /testcases） */
-  const selectedTestType = useMemo(
-    () => items.find((c) => selectedSet.has(c.id))?.type ?? null,
-    [items, selectedSet]
-  )
 
   /** 工具栏分组筛选对应的分组名（POST /testcases/ids 契约只认 group 名；__ungrouped__ 无 /groups 映射） */
   const groupName = useMemo(
@@ -636,6 +632,7 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
           caseItem={mutateCase}
           groups={groups}
           presetGroupId={presetGroupId}
+          defaultAlgorithmType={algorithmType}
         />
         <GroupMutateDialog
           open={groupDialog.open}
@@ -674,10 +671,9 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
           handleConfirm={batch.handleConfirm}
           groups={groups}
           tags={tags}
-          dimensions={dimensions}
+          dimensions={batchDimensions}
           categories={categories}
           algorithmType={algorithmType}
-          testType={selectedTestType}
         />
       </div>
     </CaseRoundsProvider>

@@ -32,7 +32,7 @@ describe('algorithm-config constants', () => {
     }
   })
 
-  it('设备/API 参数类型包含音频流/音频文件等核心形态', () => {
+  it('设备参数类型包含音频流/音频文件等核心形态', () => {
     const values = DEVICE_PARAM_TYPE_OPTIONS.map((o) => o.value)
     expect(values).toContain('audio_stream')
     expect(values).toContain('audio_file')
@@ -46,11 +46,12 @@ describe('algorithm-config constants', () => {
     )
   })
 
-  it('用例参数适用范围含通用/API/E2E 中文文案', () => {
+  it('用例参数适用范围含通用/真机/HTTP API/Realtime WS 中文文案', () => {
     expect(CASE_PARAM_SCOPE_OPTIONS).toEqual([
       { value: 'common', label: '通用' },
-      { value: 'api', label: 'API' },
-      { value: 'e2e', label: 'E2E' },
+      { value: 'physical', label: '真机' },
+      { value: 'http_api', label: 'HTTP API' },
+      { value: 'websocket_api', label: 'Realtime WS' },
     ])
   })
 

@@ -249,7 +249,9 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
         multiDimensions: roundScope.multiDimensionItems,
         dimensionPlan: roundScope.dimensionPlan,
         devicePlan: roundScope.devicePlan,
-        playbackDeviceId: roundScope.defaultDeviceId,
+        // 用例只关联逻辑音箱：devicePlan / defaultDeviceId 里的值均为逻辑音箱组 id
+        playbackDeviceId: null,
+        playbackSpeakerGroupId: roundScope.defaultDeviceId,
         spl: defaultSpl,
         noiseAudioId: null,
         noiseSpl: 60,

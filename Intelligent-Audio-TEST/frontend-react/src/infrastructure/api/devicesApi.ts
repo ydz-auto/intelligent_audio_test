@@ -12,6 +12,11 @@
  */
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
+import type {
+  PlaybackSpeakerGroup,
+  PlaybackSpeakerGroupInput,
+  PlaybackSpeakerGroupItemInput,
+} from '@/domain/models/playbackSpeakerGroup'
 import type { ApiDevice, ApiEndpoint } from '@/domain/models/apiDevice'
 import type {
   Alarm,
@@ -29,6 +34,7 @@ import { request, type ApiRequestOptions } from '@/infrastructure/api/client'
 import { ApiError } from '@/infrastructure/api/api-error'
 import type { TestDeviceItemDto } from '@/infrastructure/dto/test-device.dto'
 import type { PlaybackDeviceItemDto } from '@/infrastructure/dto/playback-device.dto'
+import type { PlaybackSpeakerGroupDto } from '@/infrastructure/dto/playback-speaker-group.dto'
 import type { ApiItemDto } from '@/infrastructure/dto/apis.dto'
 import type { DeviceGroupItemDto } from '@/infrastructure/dto/device-group.dto'
 import type { LaboratoryDto } from '@/infrastructure/dto/laboratory.dto'
@@ -40,6 +46,7 @@ import type {
 } from '@/infrastructure/dto/alarm.dto'
 import { testDeviceFromDto } from '@/infrastructure/adapters/testDeviceAdapter'
 import { playbackDeviceFromDto } from '@/infrastructure/adapters/playbackDeviceAdapter'
+import { playbackSpeakerGroupFromDto } from '@/infrastructure/adapters/playbackSpeakerGroupAdapter'
 import { apiDeviceFromDto } from '@/infrastructure/adapters/apiDeviceAdapter'
 import { extractEndpointApiKeys } from '@/infrastructure/adapters/api-keys'
 import { deviceGroupFromDto, deviceGroupsToTree } from '@/infrastructure/adapters/deviceGroupAdapter'
@@ -448,6 +455,78 @@ export async function deletePlaybackDevice(
   options: ApiRequestOptions = {}
 ): Promise<{ success: boolean; message?: string }> {
   return deleteGuard(() => request('DELETE', `/playback-devices/${id}`, undefined, options))
+}
+
+/* ==================== 逻辑音箱组（N 个实验室里位置相同的音箱互相对应） ==================== */
+
+/** 逻辑音箱组列表（GET /playback-devices/speaker-groups，含各实验室对应设备） */
+export async function fetchPlaybackSpeakerGroups(
+  options: ApiRequestOptions = {}
+): Promise<PlaybackSpeakerGroup[]> {
+  const dto = await request<PlaybackSpeakerGroupDto[] | PaginatedDto<PlaybackSpeakerGroupDto>>(
+    'GET', '/playback-devices/speaker-groups', undefined, options
+  )
+  const rows = Array.isArray(dto) ? dto : dto?.items ?? []
+  return rows.map(playbackSpeakerGroupFromDto)
+}
+
+/** 新建逻辑音箱组（POST /playback-devices/speaker-groups；组名唯一，冲突后端 409） */
+export async function createPlaybackSpeakerGroup(
+  input: PlaybackSpeakerGroupInput,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; id?: number | null }> {
+  const dto = await request<{ id?: number | null }>(
+    'POST', '/playback-devices/speaker-groups',
+    { name: input.name, description: input.description ?? null }, options
+  )
+  return { success: true, id: dto?.id ?? null }
+}
+
+/** 编辑逻辑音箱组（PUT /playback-devices/speaker-groups/{id}） */
+export async function updatePlaybackSpeakerGroup(
+  id: number,
+  input: PlaybackSpeakerGroupInput,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean }> {
+  await request(
+    'PUT', `/playback-devices/speaker-groups/${id}`,
+    { name: input.name, description: input.description ?? null }, options
+  )
+  return { success: true }
+}
+
+/** 删除逻辑音箱组（DELETE /playback-devices/speaker-groups/{id}） */
+export async function deletePlaybackSpeakerGroup(
+  id: number,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; message?: string }> {
+  return deleteGuard(() =>
+    request('DELETE', `/playback-devices/speaker-groups/${id}`, undefined, options)
+  )
+}
+
+/** 设置组内某实验室对应的实体播放设备（PUT /speaker-groups/{id}/items） */
+export async function setPlaybackSpeakerGroupItem(
+  groupId: number,
+  input: PlaybackSpeakerGroupItemInput,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean }> {
+  await request(
+    'PUT', `/playback-devices/speaker-groups/${groupId}/items`,
+    { lab_id: input.labId, playback_device_id: input.playbackDeviceId }, options
+  )
+  return { success: true }
+}
+
+/** 移除组内某实验室的对应设备（DELETE /speaker-groups/{id}/items/{lab_id}） */
+export async function deletePlaybackSpeakerGroupItem(
+  groupId: number,
+  labId: number,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; message?: string }> {
+  return deleteGuard(() =>
+    request('DELETE', `/playback-devices/speaker-groups/${groupId}/items/${labId}`, undefined, options)
+  )
 }
 
 /** 新增测试 API（§6.2；POST /apis） */

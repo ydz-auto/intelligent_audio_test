@@ -14,10 +14,13 @@ import {
   type BatchScope,
 } from '@/domain/lib/audio-batch-ops'
 
-/** 批量动作的最小行结构（与界面 RoundAudioDraft 结构兼容；deviceId 为 string 归一） */
+/** 批量动作的最小行结构（与界面 RoundAudioDraft 结构兼容；speakerGroupId 为逻辑音箱 id） */
 export interface RoundAudioLike {
   id: string
+  /** 老字段：实体播放设备 id（用例已不再直接选设备，保留以兼容回读） */
   deviceId: string
+  /** 逻辑音箱组 id（用例唯一可选的播放目标） */
+  speakerGroupId?: string
   spl: number
   /** 真实音频 id（标签源解析用；可选） */
   audioId?: number | string | null
@@ -62,17 +65,21 @@ export function useAudioListBatch(
     return {
       tagInterleave: (rows, tags, newId) =>
         interleaveByTags(rows, tagsOf, tags, (r) => ({ ...r, id: newId() })),
-      tagDevice: (rows, tag, deviceId) =>
-        patchByTag(rows, tagsOf, tag, (r) => ({ ...r, deviceId })),
-      batchDevice: (rows, deviceId, scope, selectedIds) =>
+      tagDevice: (rows, tag, speakerGroupId) =>
+        patchByTag(rows, tagsOf, tag, (r) => ({ ...r, speakerGroupId, deviceId: '' })),
+      batchDevice: (rows, speakerGroupId, scope, selectedIds) =>
         patchScope(
           rows,
           scope,
           (r) => selectedIds.has(r.id),
-          (r) => ({ ...r, deviceId })
+          (r) => ({ ...r, speakerGroupId, deviceId: '' })
         ),
-      crossDevice: (rows, deviceIds) =>
-        assignRoundRobin(rows, deviceIds, (r, deviceId) => ({ ...r, deviceId })),
+      crossDevice: (rows, speakerGroupIds) =>
+        assignRoundRobin(rows, speakerGroupIds, (r, speakerGroupId) => ({
+          ...r,
+          speakerGroupId,
+          deviceId: '',
+        })),
       batchSpl: (rows, spl, scope, selectedIds) =>
         patchScope(
           rows,

@@ -62,11 +62,7 @@ function formatDateTime(value: string): string {
 }
 
 function paramCount(algorithm: AlgorithmDefinition): number {
-  return (
-    algorithm.deviceParams.length +
-    algorithm.apiParams.length +
-    algorithm.caseParams.length
-  )
+  return algorithm.deviceParams.length + algorithm.caseParams.length
 }
 
 /** 分组徽章（GroupBadge 对位；空则「—」） */

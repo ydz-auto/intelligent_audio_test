@@ -52,12 +52,10 @@ describe('algorithm-config.dto toMappingItemDto（写侧）', () => {
         status: 'online',
         description: '',
         deviceParams: [],
-        apiParams: [],
         caseParams: [],
         referenceParams: [],
         mappings: {
           device: [],
-          api: [],
           evaluation: [
             {
               source: 'evaluation',
@@ -76,6 +74,8 @@ describe('algorithm-config.dto toMappingItemDto（写侧）', () => {
       dto.mappings as { evaluation: Array<Record<string, unknown>> }
     ).evaluation[0]
     expect(item.source).toBe('evaluation')
+    // 算法级 API 参数不再提交（api_params 缺省，后端 Optional）
+    expect(dto).not.toHaveProperty('api_params')
   })
 
   it('evaluation 已知 source 照常提交', () => {
@@ -88,12 +88,10 @@ describe('algorithm-config.dto toMappingItemDto（写侧）', () => {
         status: 'online',
         description: '',
         deviceParams: [],
-        apiParams: [],
         caseParams: [],
         referenceParams: [],
         mappings: {
           device: [],
-          api: [],
           evaluation: [{ source: 'case', sourceParam: 'wer', transformType: 'none' }],
         },
         associatedDimensions: [],

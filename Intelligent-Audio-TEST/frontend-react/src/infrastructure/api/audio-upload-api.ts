@@ -5,9 +5,9 @@
  *   POST /api/v1/audios/upload/register      → files[]（file_id/total_chunks/chunk_size）
  *   POST /api/v1/audios/upload/chunk         （multipart：file_id/chunk_index/total_chunks/task_id/chunk）
  *   POST /api/v1/audios/upload/merge         → { audio_id, test_case_id, test_case_count }
- * 载荷字段全 snake_case（MergeChunksRequest 契约；INT-714 口径修订：test_types 不再由前端传——
- * 用户不再选择用例类型，merge 缺省时后端 audio 服务默认 ['api'] 落库
- * （round_config_service.py data.get('test_types', ['api'])）；create_test_case 控制是否生成）。
+ * 载荷字段全 snake_case（MergeChunksRequest 契约）：用户不再选择用例类型，也无需传
+ * device_type——merge 缺省时后端按 http_api 处理（仅用于维度/参数作用域筛选与物理设备回填），
+ * create_test_case 控制是否生成。
  * md5 不做浏览器计算（无 spark-md5 依赖），注册传空串，后端不据此秒传；同批同名文件避免重复入库。
  */
 import { apiClient } from './client'
@@ -149,7 +149,7 @@ export type AudioTagSource = 'json' | 'path' | 'both'
 
 /** 生成测试用例配置（merge 载荷 test_case_config；照 TestCaseUploadConfig/RoundConfigItem 实测） */
 export interface UploadTestCaseConfig {
-  /** 是否生成测试用例（原 test_types.length>0 语义；用例类型由后端默认落库） */
+  /** 是否生成测试用例（用例不区分类型，后端按 device_type 缺省 http_api 处理） */
   createTestCase: boolean
   /** 整组轮次（文件夹导入：JSON 用例解析结果或按文件夹推断；缺省时按当前文件单轮） */
   rounds?: UploadRoundConfig[]
@@ -163,8 +163,10 @@ export interface UploadTestCaseConfig {
   dimensionPlan?: UploadDimensionPlan
   /** 播放设备三档计划（§5.7.4）；不传 = playbackDeviceId 统一作用于所有轮次 */
   devicePlan?: UploadDevicePlan
-  /** 顶层 default_playback_device_id（all/specific = 统一值、per_round = 第 1 轮值；§5.7.7） */
+  /** 顶层 default_playback_device_id（历史：实体设备；用例只关联逻辑音箱后不再使用） */
   playbackDeviceId: number | null
+  /** 顶层 default_playback_speaker_group_id（逻辑音箱组；逐轮计划里各轮值同样视为组 id） */
+  playbackSpeakerGroupId?: number | null
   spl: number
   noiseAudioId: number | null
   noiseSpl: number
@@ -310,7 +312,7 @@ export async function mergeChunks(
     file_id: fileId,
     task_id: taskId,
     create_test_case: createTestCase,
-    // test_types 不传（INT-714 口径修订）：前端不再暴露用例类型选择，后端缺省默认 ['api'] 落库
+    // device_type 不传：前端不再暴露用例类型选择，后端缺省按 http_api 处理
     audio_type: config.audioType,
     algorithm_type: config.algorithmType ?? '',
     algorithm_params: config.algorithmParams,
@@ -324,8 +326,9 @@ export async function mergeChunks(
     spl: config.spl,
     noise_audio_id: config.noiseAudioId,
     noise_spl: config.noiseSpl,
-    // §5.7.7：顶层键名是 default_playback_device_id（建用例链路唯一消费的兜底缺省键）
+    // 用例只关联逻辑音箱：建用例链路优先读 default_playback_speaker_group_id
     default_playback_device_id: config.playbackDeviceId,
+    default_playback_speaker_group_id: config.playbackSpeakerGroupId ?? null,
     description: '',
     asr_text: '',
     annotations: config.annotations ?? [],

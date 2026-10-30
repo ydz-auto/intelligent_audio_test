@@ -98,6 +98,45 @@ export function evaluationStatusLabel(status?: string | null): string {
   return EVALUATION_STATUS_LABELS[s] ?? (s || '未知')
 }
 
+/** 执行尚未开始的状态（评估侧不应显示「评估中/计算中」） */
+const EXECUTION_NOT_STARTED: readonly string[] = ['pending', 'queued']
+
+/** 评估进行中的状态（需结合执行进度判定是否真的在评估） */
+const EVALUATION_IN_PROGRESS: readonly string[] = ['queued', 'running', 'calculating', 'evaluating']
+
+/**
+ * 用例/目标评估状态展示口径：执行尚未开始时，评估侧的进行中状态一律归为「待评估」
+ * （后端多目标聚合可能因个别行评估中把整例标成 running，未执行用例不应显示评估中）。
+ */
+export function caseEvaluationStatusLabel(
+  executionStatus: string | null | undefined,
+  evaluationStatus: string | null | undefined
+): string {
+  const evalStatus = evaluationStatus ?? ''
+  if (!evalStatus) return '未评估'
+  if (
+    EXECUTION_NOT_STARTED.includes(executionStatus ?? '') &&
+    EVALUATION_IN_PROGRESS.includes(evalStatus)
+  ) {
+    return EVALUATION_STATUS_LABELS.pending
+  }
+  return evaluationStatusLabel(evalStatus)
+}
+
+/** 评估状态徽章色调（与 caseEvaluationStatusLabel 同口径） */
+export function caseEvaluationStatusTone(
+  executionStatus: string | null | undefined,
+  evaluationStatus: string | null | undefined
+): 'success' | 'danger' | 'warning' | 'neutral' {
+  const label = caseEvaluationStatusLabel(executionStatus, evaluationStatus)
+  if (label === EVALUATION_STATUS_LABELS.completed) return 'success'
+  if (label === EVALUATION_STATUS_LABELS.failed) return 'danger'
+  if (label === EVALUATION_STATUS_LABELS.running || label === EVALUATION_STATUS_LABELS.calculating) {
+    return 'warning'
+  }
+  return 'neutral'
+}
+
 // ---------------------------------------------------------------------------
 // AI 复核（契约定稿 INT-824；ai_reviews 表，infrastructure 层真实请求映射，INT-1063 去桩）
 // ---------------------------------------------------------------------------

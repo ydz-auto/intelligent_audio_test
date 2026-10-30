@@ -13,6 +13,20 @@ vi.mock('@/application/devices/use-devices', () => ({
     data: [{ id: 8, name: '设备正左侧（1m-90°）', channelIndex: 1, deviceType: 'dry' }],
     isLoading: false,
   }),
+  usePlaybackSpeakerGroups: () => ({
+    data: [
+      {
+        id: 7,
+        name: '设备正面（0.5m+0°）',
+        description: null,
+        items: [{ id: 1, groupId: 7, labId: 38, playbackDeviceId: 5 }],
+        createdAt: null,
+        updatedAt: null,
+      },
+    ],
+    isLoading: false,
+  }),
+  useLaboratories: () => ({ data: [], isLoading: false }),
 }))
 
 vi.mock('@/infrastructure/api/audioLibraryApi', () => ({
@@ -29,6 +43,7 @@ vi.mock('@/infrastructure/api/audioLibraryApi', () => ({
 // （useQuery 需 QueryClientProvider）。本文件只断言 Select 闭合态文案，维度目录桩成空即可。
 vi.mock('@/application/evaluation/use-dimensions', () => ({
   useEvaluationDimensions: () => ({ data: [], isLoading: false }),
+  useAlgorithmDimensions: () => ({ data: [], isLoading: false }),
 }))
 
 const DRAFT: RoundAudioDraft = {
@@ -36,17 +51,35 @@ const DRAFT: RoundAudioDraft = {
   audioId: 1,
   audioName: '接线测试音频.wav',
   spl: 65,
-  deviceId: '8',
-  deviceName: '设备正左侧（1m-90°）',
+  deviceId: '',
+  deviceName: null,
+  speakerGroupId: '7',
+  speakerGroupName: '设备正面（0.5m+0°）',
 }
 
-describe('AudioListStep 播放设备 Select（INT-1686 P2）', () => {
-  it('已选设备时触发器显示设备名，不显示设备 id', () => {
+describe('AudioListStep 逻辑音箱 Select（用例只关联逻辑音箱）', () => {
+  it('已关联逻辑音箱时触发器显示逻辑音箱名，不显示组 id', () => {
     render(<AudioListStep value={[DRAFT]} onChange={vi.fn()} />)
 
     const trigger = screen.getByRole('combobox')
-    expect(trigger).toHaveTextContent('设备正左侧（1m-90°）')
-    expect(trigger).toHaveTextContent('(通道 1) [干声]')
-    expect(trigger.textContent?.trim()).not.toBe('8')
+    expect(trigger).toHaveTextContent('[逻辑音箱] 设备正面（0.5m+0°）')
+    expect(trigger.textContent?.trim()).not.toBe('7')
+  })
+
+  it('卡片底部给出按实验室换绑的说明', () => {
+    render(<AudioListStep value={[DRAFT]} onChange={vi.fn()} />)
+
+    expect(screen.getByText(/执行时按实验室自动换成本实验室的实体音箱/)).toBeInTheDocument()
+  })
+
+  it('未关联逻辑音箱时触发器显示占位文案', () => {
+    render(
+      <AudioListStep
+        value={[{ ...DRAFT, speakerGroupId: '', speakerGroupName: null }]}
+        onChange={vi.fn()}
+      />
+    )
+
+    expect(screen.getByRole('combobox')).toHaveTextContent('请选择逻辑音箱')
   })
 })

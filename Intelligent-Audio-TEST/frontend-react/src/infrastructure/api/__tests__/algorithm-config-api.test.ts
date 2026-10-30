@@ -57,10 +57,9 @@ function saveInput(type: string): SaveAlgorithmInput {
     status: 'online',
     description: '',
     deviceParams: [{ paramCode: 'input_audio', paramName: '输入音频', direction: 'input', paramType: 'audio_file', required: true, defaultValue: '', helpText: '' }],
-    apiParams: [],
     caseParams: [],
     referenceParams: [],
-    mappings: { device: [], api: [], evaluation: [] },
+    mappings: { device: [], evaluation: [] },
     associatedDimensions: [],
   }
 }

@@ -115,8 +115,6 @@ export function useTestLaunch() {
         .filter((x): x is TargetDeviceAssignment => x !== null)
       const input: TaskLaunchInput = {
         name,
-        // 用例不分类型（test_type 残留列待 INT-79 废弃），任务不再声明测试类型
-        testType: null,
         algorithmType: opts.algorithmType ?? null,
         testCaseIds: caseStore.manualCaseIds,
         filterAllMode: caseStore.filterAllMode,

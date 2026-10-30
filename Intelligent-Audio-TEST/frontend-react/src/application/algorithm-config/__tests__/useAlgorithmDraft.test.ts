@@ -24,10 +24,9 @@ const VALID_EDIT_VALUES: AlgorithmFormValues = {
   status: 'online',
   description: '',
   deviceParams: [],
-  apiParams: [],
   caseParams: [],
   referenceParams: [],
-  mappings: { device: [], api: [], evaluation: [] },
+  mappings: { device: [], evaluation: [] },
   associatedDimensions: [],
 }
 

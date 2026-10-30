@@ -22,7 +22,6 @@ import { useResourceSelection } from '@/application/test-execution/useResourceSe
 import { useApisCrud } from '@/application/test-execution/useApisCrud'
 import { useTargetModes } from '@/application/test-execution/useTargetModes'
 import { useExecutionStore } from '@/infrastructure/stores/execution-store'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -213,11 +212,6 @@ export function StepResources({
     <div className='flex flex-col gap-4'>
       {/* 工具行 */}
       <div className='flex flex-wrap items-center gap-2'>
-        <Badge variant='secondary' className='gap-1 rounded-md px-2 py-1 text-xs'>
-          <span className='text-muted-foreground'>算法：</span>
-          <span className='font-medium'>{currentAlgorithm?.name ?? '未选择'}</span>
-        </Badge>
-
         <div className='relative'>
           <Search
             aria-hidden='true'

@@ -217,6 +217,8 @@ export interface EvaluationDimensionItem {
   isDefault?: boolean | null
   /** 是否需要音频文件（requires_audio；维度选项端点下发，INT-1843） */
   requiresAudio?: boolean
+  /** LLM Judge 派生布尔（llm_judge；options 端点下发，参数卡只读徽章） */
+  llmJudge?: boolean
   /** 启用状态（Dimension 全字段子集；options 端点不下发，恒 null） */
   status: boolean | null
   createdAt: string | null

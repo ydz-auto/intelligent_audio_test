@@ -39,7 +39,7 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: toastErrorMock },
 }))
 
-// 播放设备查表（真实 /playback-devices 的 application hook）
+// 播放设备查表（真实 /playback-devices 的 application hook）+ 逻辑音箱/实验室（实验室试听必须先选实验室）
 vi.mock('@/application/devices/use-devices', () => ({
   usePlaybackDevices: () => ({
     data: [
@@ -51,6 +51,23 @@ vi.mock('@/application/devices/use-devices', () => ({
         deviceUniqueId: 'uid-7',
       },
     ],
+    isLoading: false,
+  }),
+  usePlaybackSpeakerGroups: () => ({
+    data: [
+      {
+        id: 9,
+        name: '设备正面（0.5m+0°）',
+        description: null,
+        items: [{ id: 1, groupId: 9, labId: 38, playbackDeviceId: 7 }],
+        createdAt: null,
+        updatedAt: null,
+      },
+    ],
+    isLoading: false,
+  }),
+  useLaboratories: () => ({
+    data: [{ id: 38, code: 'LAB-A', name: '测试实验室A' }],
     isLoading: false,
   }),
 }))
@@ -73,7 +90,6 @@ const CASE_ITEM: TestCaseListItem = {
   description: '客厅环境播放中文音乐',
   groupId: 'g1',
   groupName: '智能音箱功能测试',
-  type: 'e2e',
   tags: ['音箱'],
   algorithmType: 'asr-v3',
   createdAt: '2026-09-10 10:00',
@@ -111,6 +127,12 @@ const AUDIO_ITEM = {
 }
 
 const setupUser = () => userEvent.setup()
+
+/** 实验室播放必须先选实验室（逻辑音箱按实验室解析成实体设备） */
+const selectLab = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(screen.getByRole('combobox'))
+  await user.click(await screen.findByRole('option', { name: '测试实验室A' }))
+}
 
 beforeEach(() => {
   previewTestCaseMock.mockReset()
@@ -155,6 +177,7 @@ describe('AudioPreviewConfigDialog', () => {
       offset: 3,
       previewType: 'frontend',
       playbackMode: 'frontend',
+      labId: null,
     })
     await waitFor(() =>
       expect(
@@ -219,12 +242,14 @@ describe('AudioPreviewConfigDialog', () => {
       />
     )
     await user.click(screen.getByText('实验室播放'))
+    await selectLab(user)
     await user.click(screen.getByRole('button', { name: '开始试听' }))
 
     expect(previewTestCaseMock).toHaveBeenCalledWith('tc-001', {
       offset: 0,
       previewType: 'backend',
       playbackMode: 'backend',
+      labId: 38,
     })
     await waitFor(() =>
       expect(screen.getByText('播放设备（实验室播放）')).toBeInTheDocument()
@@ -305,6 +330,7 @@ describe('AudioPreviewConfigDialog', () => {
       />
     )
     await user.click(screen.getByText('实验室播放'))
+    await selectLab(user)
     await user.click(screen.getByRole('button', { name: '开始试听' }))
     await waitFor(() =>
       expect(screen.getByText('实验室音箱 A')).toBeInTheDocument()
@@ -350,6 +376,7 @@ describe('AudioPreviewConfigDialog', () => {
       />
     )
     await user.click(screen.getByText('实验室播放'))
+    await selectLab(user)
     await user.click(screen.getByRole('button', { name: '开始试听' }))
     await user.click(screen.getByRole('button', { name: '播放' }))
 
@@ -375,6 +402,7 @@ describe('AudioPreviewConfigDialog', () => {
       />
     )
     await user.click(screen.getByText('实验室播放'))
+    await selectLab(user)
     const offsetInput = screen.getByLabelText('偏移量秒数')
     await user.clear(offsetInput)
     await user.type(offsetInput, '5')
@@ -428,6 +456,7 @@ describe('AudioPreviewConfigDialog', () => {
       />
     )
     await user.click(screen.getByText('实验室播放'))
+    await selectLab(user)
     await user.click(screen.getByRole('button', { name: '开始试听' }))
     await user.click(screen.getByRole('button', { name: '播放' }))
     await waitFor(() => expect(previewMock).toHaveBeenCalledTimes(1))
@@ -440,5 +469,72 @@ describe('AudioPreviewConfigDialog', () => {
     expect(stopPreviewMock.mock.invocationCallOrder[0]).toBeLessThan(
       previewMock.mock.invocationCallOrder[1]
     )
+  })
+
+  it('实验室播放未选实验室 → 错误条 + 不发请求', async () => {
+    const user = setupUser()
+    render(
+      <AudioPreviewConfigDialog
+        open
+        onOpenChange={vi.fn()}
+        caseItem={null}
+        audioItem={AUDIO_ITEM}
+      />
+    )
+    await user.click(screen.getByText('实验室播放'))
+    await user.click(screen.getByRole('button', { name: '开始试听' }))
+
+    expect(screen.getByText('实验室播放请先选择实验室')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '开始试听' })).toBeInTheDocument()
+    expect(previewMock).not.toHaveBeenCalled()
+  })
+
+  it('关联逻辑音箱 → 按所选实验室解析成该实验室实体设备再放音', async () => {
+    const user = setupUser()
+    render(
+      <AudioPreviewConfigDialog
+        open
+        onOpenChange={vi.fn()}
+        caseItem={null}
+        audioItem={{
+          ...AUDIO_ITEM,
+          deviceIds: [],
+          deviceLabels: ['[逻辑音箱] 设备正面（0.5m+0°）'],
+          speakerGroupIds: ['9'],
+        }}
+      />
+    )
+    await user.click(screen.getByText('实验室播放'))
+    await selectLab(user)
+    await user.click(screen.getByRole('button', { name: '开始试听' }))
+    await user.click(screen.getByRole('button', { name: '播放' }))
+
+    await waitFor(() =>
+      expect(previewMock).toHaveBeenCalledWith(42, {
+        playbackDeviceId: 7,
+        playbackDeviceIds: [7],
+        deviceUniqueIds: ['uid-7'],
+        spl: 65,
+        offset: undefined,
+      })
+    )
+  })
+
+  it('逻辑音箱在该实验室未配置设备 → 错误条且不发请求', async () => {
+    const user = setupUser()
+    render(
+      <AudioPreviewConfigDialog
+        open
+        onOpenChange={vi.fn()}
+        caseItem={null}
+        audioItem={{ ...AUDIO_ITEM, deviceIds: [], speakerGroupIds: ['99'] }}
+      />
+    )
+    await user.click(screen.getByText('实验室播放'))
+    await selectLab(user)
+    await user.click(screen.getByRole('button', { name: '开始试听' }))
+
+    expect(screen.getByText('未找到逻辑音箱 99')).toBeInTheDocument()
+    expect(previewMock).not.toHaveBeenCalled()
   })
 })

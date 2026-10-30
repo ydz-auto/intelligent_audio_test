@@ -5,10 +5,11 @@
  * _algorithm_dimension_schemas.py）实测字段，snake_case 仅存在于 infrastructure 层，
  * 前端 Domain 一律 camelCase（基座规范 §10.1 字段命名契约）。
  */
+import type { DeviceType } from './device'
 
 export type AlgorithmStatus = 'online' | 'offline'
 
-/** 设备参数（AlgorithmDeviceParamItem）——API 参数同契约（AlgorithmApiParamItem） */
+/** 算法侧设备参数（AlgorithmDeviceParamItem）；API 实例参数见 `domain/models/apiConfig` 的算法作用域行 */
 export type DeviceApiParam = {
   id: number
   paramCode: string
@@ -25,7 +26,20 @@ export type DeviceApiParam = {
   hidden: boolean
 }
 
-/** 用例专属参数（CaseAlgorithmParamCreate） */
+/** 用例参数适用范围（与后端 `CaseParamScope` 同词表；⚠ 与 `param_profiles.scope` 是两回事） */
+export type CaseParamScope = 'common' | DeviceType
+
+/**
+ * 用例参数适用范围取值（后端 `CaseParamScope` 词表：common + DeviceType 三值）。
+ * types / zod schema / infrastructure DTO 归一都以此为唯一来源，禁止再写字面量数组。
+ */
+export const CASE_PARAM_SCOPES = [
+  'common',
+  'physical',
+  'http_api',
+  'websocket_api',
+] as const satisfies readonly CaseParamScope[]
+
 export type CaseParam = {
   id: number
   paramCode: string
@@ -38,8 +52,8 @@ export type CaseParam = {
   helpText: string | null
   uiOrder: number
   hidden: boolean
-  /** common / api / e2e */
-  scope: 'common' | 'api' | 'e2e'
+  /** 适用范围（common = 所有设备类型通用；其余为 DeviceType 值，只在对应设备类型的用例生效） */
+  scope: CaseParamScope
   minValue: number | null
   maxValue: number | null
   step: number | null
@@ -112,10 +126,13 @@ export type ParamMapping = {
   transformType: MappingTransformType
 }
 
-/** 映射按来源分组：device / api / evaluation */
+/**
+ * 映射按来源分组：device / evaluation。
+ * 算法级 API 映射（`source=api`）已迁移到 API 实例作用域（策略 + 实例覆盖），
+ * 由 `features/algorithm-config/param-profiles` 与 API 编辑弹窗维护。
+ */
 export type AlgorithmMappings = {
   device: ParamMapping[]
-  api: ParamMapping[]
   evaluation: ParamMapping[]
 }
 
@@ -164,7 +181,6 @@ export type AlgorithmDefinition = {
   icon: string | null
   displayOrder: number
   deviceParams: DeviceApiParam[]
-  apiParams: DeviceApiParam[]
   caseParams: CaseParam[]
   referenceParams: ReferenceParam[]
   mappings: AlgorithmMappings

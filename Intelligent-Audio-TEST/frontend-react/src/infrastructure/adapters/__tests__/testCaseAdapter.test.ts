@@ -19,7 +19,6 @@ const DTO: TestCaseListItemDto = {
   description: '描述',
   group_id: 'g-1',
   group_name: '客厅',
-  type: 'api',
   tags: ['客厅', '中文'],
   algorithm_type: 'voice_llm',
   total_duration: 120,

@@ -113,6 +113,12 @@ export interface DimensionOptionsDataDto {
     type?: string | null
     /** 主/子维度（main/sub；options 端点实测含此字段，INT-1030 审计打回修正 type 错读） */
     dimension_type?: string | null
+    /** 父维度 id（options 端点下发后，维度云主/子层级以 options 为唯一数据源） */
+    parent_dimension_id?: number | null
+    /** 所属评估分类（分类组头） */
+    category_id?: number | null
+    /** LLM Judge 派生布尔（只读徽章；INT-1671） */
+    llm_judge?: boolean | null
     /** 是否需要音频（evaluation_service 按 audio_dim_ids 派生；INT-1843） */
     requires_audio?: boolean | null
   }>
@@ -325,7 +331,11 @@ export function toDimension(dto: DimensionItemDto): Dimension {
   }
 }
 
-/** 维度选项数据 → EvaluationDimensionItem[]（facet singleSelect 子集） */
+/**
+ * 维度选项数据 → EvaluationDimensionItem[]（facet/用例维度云共用）。
+ * options 端点按 algorithm_type 服务端收敛，并下发 parent_dimension_id/category_id，
+ * 因此用例编辑、音频上传、批量设置三处维度云可直接以 options 为唯一数据源（含主/子层级）。
+ */
 export function toDimensionOptionsList(
   dto: DimensionOptionsDataDto | null | undefined
 ): EvaluationDimensionItem[] {
@@ -335,8 +345,9 @@ export function toDimensionOptionsList(
     description: item.description ?? null,
     // INT-1030 审计打回：item.type 是评估类型（auto/manual），dimensionType 应取 dimension_type
     dimensionType: (item.dimension_type ?? 'main') as EvaluationDimensionItem['dimensionType'],
-    parentDimensionId: null,
-    categoryId: null,
+    parentDimensionId: item.parent_dimension_id ?? null,
+    categoryId: item.category_id ?? null,
+    llmJudge: item.llm_judge ?? false,
     weight: item.weight ?? null,
     // INT-646 代码审计 P3-3：is_default 语义为「是否默认评估维度」，独立字段映射，
     // 不再错位映射为 status（启用状态）

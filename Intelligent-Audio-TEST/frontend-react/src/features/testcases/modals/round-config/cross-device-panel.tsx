@@ -43,9 +43,9 @@ export function CrossDevicePanel({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-md'>
         <DialogHeader>
-          <DialogTitle>设备交叉</DialogTitle>
+          <DialogTitle>逻辑音箱交叉</DialogTitle>
           <DialogDescription>
-            多选播放设备后，按当前音频列表顺序轮转分配
+            多选逻辑音箱后，按当前音频列表顺序轮转分配
           </DialogDescription>
         </DialogHeader>
         <div className='flex flex-wrap gap-1.5'>
@@ -63,13 +63,13 @@ export function CrossDevicePanel({
                     : 'hover:bg-accent rounded-md border px-2 py-1 text-sm transition-colors'
                 }
               >
-                {d.name} (通道 {d.channel}) [{d.type}]
+                {d.label}
               </button>
             )
           })}
         </div>
         <p className='text-muted-foreground text-xs'>
-          已选 {selected.length} 个设备
+          已选 {selected.length} 个逻辑音箱
           {selected.length === 0 && '（至少选择 1 个）'}
         </p>
         <DialogFooter>

@@ -96,89 +96,89 @@ export const MOCK_EVALUATION_CATEGORIES: EvaluationCategory[] = [
  */
 export const MOCK_TEST_CASES: TestCaseListItem[] = [
   {
-    id: 'tc-001', name: '智能音箱-播放音乐-中文-客厅', description: '客厅环境播放中文音乐，验证连续指令', groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e',
+    id: 'tc-001', name: '智能音箱-播放音乐-中文-客厅', description: '客厅环境播放中文音乐，验证连续指令', groupId: 'g1', groupName: '智能音箱功能测试',
     tags: ['音箱', '中文', '客厅', '音乐', '1m'], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32',
     isFavorite: true, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 156, rounds: 2,
   },
   {
-    id: 'tc-002', name: '智能音箱-调节音量-2人', description: '两人对话场景下调节音量', groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e',
+    id: 'tc-002', name: '智能音箱-调节音量-2人', description: '两人对话场景下调节音量', groupId: 'g1', groupName: '智能音箱功能测试',
     tags: ['音箱', '中文', '2人', '安静'], algorithmType: 'asr-v3', createdAt: '2026-09-11 09:00', updatedAt: '2026-10-14 16:20',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 48, rounds: 1,
   },
   {
-    id: 'tc-003', name: '智能音箱-语音点歌-嘈杂环境', description: '嘈杂环境下语音点歌稳定性', groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e',
+    id: 'tc-003', name: '智能音箱-语音点歌-嘈杂环境', description: '嘈杂环境下语音点歌稳定性', groupId: 'g1', groupName: '智能音箱功能测试',
     tags: ['音箱', '中文', '嘈杂'], algorithmType: 'asr-stream', createdAt: '2026-09-12 14:00', updatedAt: '2026-10-14 10:05',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 210, rounds: 3,
   },
   {
-    id: 'tc-004', name: '智能音箱-天气查询-1人', description: '单人天气查询 API 通道', groupId: 'g1', groupName: '智能音箱功能测试', type: 'api',
+    id: 'tc-004', name: '智能音箱-天气查询-1人', description: '单人天气查询 API 通道', groupId: 'g1', groupName: '智能音箱功能测试',
     tags: ['音箱', '1人', '安静', '2m'], algorithmType: 'asr-v3', createdAt: '2026-09-13 10:30', updatedAt: '2026-10-13 09:50',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 12, rounds: 1,
   },
   {
-    id: 'tc-005', name: '智能音箱-闹钟设置-音乐干扰', description: '音乐背景下的闹钟设置指令', groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e',
+    id: 'tc-005', name: '智能音箱-闹钟设置-音乐干扰', description: '音乐背景下的闹钟设置指令', groupId: 'g1', groupName: '智能音箱功能测试',
     tags: ['音箱', '2人', '音乐', '3m'], algorithmType: 'asr-v3', createdAt: '2026-09-14 08:00', updatedAt: '2026-10-12 11:30',
     isFavorite: true, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 132, rounds: 2,
   },
   {
-    id: 'tc-006', name: '车载-导航指令-车内-1人', description: '车内导航指令识别', groupId: 'g2', groupName: '车载语音交互', type: 'e2e',
+    id: 'tc-006', name: '车载-导航指令-车内-1人', description: '车内导航指令识别', groupId: 'g2', groupName: '车载语音交互',
     tags: ['车载', '车内', '1人', '嘈杂', '1m'], algorithmType: 'asr-v3', createdAt: '2026-09-15 09:00', updatedAt: '2026-10-12 15:10',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 96, rounds: 2,
   },
   {
-    id: 'tc-007', name: '车载-电话接听-音乐场景', description: '音乐播放中接听电话指令', groupId: 'g2', groupName: '车载语音交互', type: 'api',
+    id: 'tc-007', name: '车载-电话接听-音乐场景', description: '音乐播放中接听电话指令', groupId: 'g2', groupName: '车载语音交互',
     tags: ['车载', '音乐'], algorithmType: 'asr-stream', createdAt: '2026-09-16 10:00', updatedAt: '2026-10-11 16:40',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 30, rounds: 1,
   },
   {
-    id: 'tc-008', name: '车载-空调调节-多人', description: '多人对话时空调调节指令', groupId: 'g2', groupName: '车载语音交互', type: 'e2e',
+    id: 'tc-008', name: '车载-空调调节-多人', description: '多人对话时空调调节指令', groupId: 'g2', groupName: '车载语音交互',
     tags: ['车载', '多人', '车内'], algorithmType: 'asr-v3', createdAt: '2026-09-17 11:00', updatedAt: '2026-10-10 09:20',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 84, rounds: 2,
   },
   {
-    id: 'tc-009', name: '手机-语音助手-唤醒', description: '手机语音助手唤醒成功率专项', groupId: 'g3', groupName: '手机助手场景', type: 'e2e',
+    id: 'tc-009', name: '手机-语音助手-唤醒', description: '手机语音助手唤醒成功率专项', groupId: 'g3', groupName: '手机助手场景',
     tags: ['手机', '1人', '安静', '2m'], algorithmType: 'asr-stream', createdAt: '2026-09-18 09:30', updatedAt: '2026-10-11 10:40',
     isFavorite: true, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 60, rounds: 2,
   },
   {
-    id: 'tc-010', name: '手机-发送消息-英文', description: '英文语音发送消息', groupId: 'g3', groupName: '手机助手场景', type: 'api',
+    id: 'tc-010', name: '手机-发送消息-英文', description: '英文语音发送消息', groupId: 'g3', groupName: '手机助手场景',
     tags: ['手机', '英文', '2人'], algorithmType: 'asr-v3', createdAt: '2026-09-19 13:00', updatedAt: '2026-10-09 17:30',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 24, rounds: 1,
   },
   {
-    id: 'tc-011', name: '手机-日程提醒-会议室', description: '会议室场景日程提醒', groupId: 'g3', groupName: '手机助手场景', type: 'e2e',
+    id: 'tc-011', name: '手机-日程提醒-会议室', description: '会议室场景日程提醒', groupId: 'g3', groupName: '手机助手场景',
     tags: ['手机', '会议室'], algorithmType: 'asr-v3', createdAt: '2026-09-20 09:00', updatedAt: '2026-10-08 10:15',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 40, rounds: 1,
   },
   {
-    id: 'tc-012', name: '会议-双人转写-中文', description: '双人中文会议转写评估', groupId: 'g4', groupName: '会议转写测试', type: 'e2e',
+    id: 'tc-012', name: '会议-双人转写-中文', description: '双人中文会议转写评估', groupId: 'g4', groupName: '会议转写测试',
     tags: ['会议', '2人', '中文', '会议室', '3m'], algorithmType: 'eval-ensemble', createdAt: '2026-09-21 10:00', updatedAt: '2026-10-10 18:05',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 180, rounds: 2,
   },
   {
-    id: 'tc-013', name: '会议-英文转写-多人', description: '多人英文会议转写评估', groupId: 'g4', groupName: '会议转写测试', type: 'api',
+    id: 'tc-013', name: '会议-英文转写-多人', description: '多人英文会议转写评估', groupId: 'g4', groupName: '会议转写测试',
     tags: ['会议', '多人', '英文'], algorithmType: 'eval-ensemble', createdAt: '2026-09-22 14:00', updatedAt: '2026-10-09 15:00',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 66, rounds: 1,
   },
   {
-    id: 'tc-014', name: '临时-接口稳定性回归', description: 'API 通道稳定性回归用例', groupId: null, groupName: null, type: 'api',
+    id: 'tc-014', name: '临时-接口稳定性回归', description: 'API 通道稳定性回归用例', groupId: null, groupName: null,
     tags: [], algorithmType: 'asr-stream', createdAt: '2026-09-23 09:00', updatedAt: '2026-10-07 10:00',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 20, rounds: 1,
     // §3.3.2 预览置灰演示：无关联音频文件
     audioCount: 0,
   },
   {
-    id: 'tc-015', name: '临时-唤醒率对比', description: '不同环境唤醒率对比', groupId: null, groupName: null, type: 'e2e',
+    id: 'tc-015', name: '临时-唤醒率对比', description: '不同环境唤醒率对比', groupId: null, groupName: null,
     tags: ['1人'], algorithmType: 'asr-v3', createdAt: '2026-09-24 09:00', updatedAt: '2026-10-06 14:20',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 98, rounds: 2,
   },
   {
-    id: 'tc-016', name: '临时-长文本转写', description: '长文本会议转写边界验证', groupId: null, groupName: null, type: 'e2e',
+    id: 'tc-016', name: '临时-长文本转写', description: '长文本会议转写边界验证', groupId: null, groupName: null,
     tags: ['中文', '会议室'], algorithmType: 'eval-ensemble', createdAt: '2026-09-25 09:00', updatedAt: '2026-10-15 08:40',
     isFavorite: true, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 240, rounds: 3,
   },
   {
-    id: 'tc-017', name: '已删除-旧版唤醒测试', description: '旧版唤醒链路回归（已移入回收站）', groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e',
+    id: 'tc-017', name: '已删除-旧版唤醒测试', description: '旧版唤醒链路回归（已移入回收站）', groupId: 'g1', groupName: '智能音箱功能测试',
     tags: ['音箱', '1人'], algorithmType: 'asr-v3', createdAt: '2026-08-30 09:00', updatedAt: '2026-09-30 11:00',
     isFavorite: false, deleted: true, deletedAt: '2026-10-10 14:20', deletedByUserId: 1001, totalDuration: 45, rounds: 1,
   },

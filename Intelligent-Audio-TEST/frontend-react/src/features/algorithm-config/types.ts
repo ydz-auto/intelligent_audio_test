@@ -5,13 +5,14 @@
 import type {
   AlgorithmDefinition,
   AlgorithmGroup,
+  CaseParamScope,
 } from '@/domain/models/algorithmConfig'
 
 /** 弹窗/抽屉统一状态（页级 Context Provider 语义，§3.1） */
 export type MutateMode = 'create' | 'edit' | 'clone'
 
-/** 统一参数表作用域（§6.4 作用域 chips：全部/设备/API/用例；行来源 device/api/case） */
-export type ParamScope = 'all' | 'device' | 'api' | 'case'
+/** 统一参数表作用域（§6.4 作用域 chips：全部/设备/用例；行来源 device/case） */
+export type ParamScope = 'all' | 'device' | 'case'
 
 export type MutateSheetState = {
   open: boolean
@@ -35,6 +36,7 @@ export type AlgorithmConfirmState =
 
 /* ───────────────────────── 编辑表单行类型（§6） ───────────────────────── */
 
+/** 设备参数行（§6 编辑表单；API 参数改由 API 实例作用域维护，算法侧不再承载） */
 export type DeviceApiParamRow = {
   key: string
   paramCode: string
@@ -42,7 +44,7 @@ export type DeviceApiParamRow = {
   direction: 'input' | 'output'
   paramType: string
   required: boolean
-  /** §6.4 默认值列恒显（设备/API 亦支持 defaultValue） */
+  /** §6.4 默认值列恒显（设备参数亦支持 defaultValue） */
   defaultValue: string
   helpText: string
 }
@@ -52,7 +54,7 @@ export type CaseParamRow = {
   paramCode: string
   paramName: string
   paramType: string
-  scope: 'common' | 'api' | 'e2e'
+  scope: CaseParamScope
   required: boolean
   defaultValue: string
   minValue: string
@@ -76,24 +78,24 @@ export type ReferenceParamRow = {
   helpText: string
 }
 
-/** 参数映射行（§6.5 设备/API/评估三节共用；评估行带 dimensionId/dimensionName） */
+/** 参数映射行（§6.5 设备/评估两节共用；评估行带 dimensionId/dimensionName） */
 export type MappingRow = {
   key: string
   /** 后端映射主键（已入库行；新增行无 id，聚合提交后由后端分配） */
   id?: number
-  /** 来源类型（设备/API 恒 case；评估：case/case_config/reference/device/api） */
+  /** 来源类型（设备恒 case；评估：case/case_config/reference/device） */
   source?: string
   /** 源参数方向（source_direction：input/output，缺省 output） */
   sourceDirection?: string
   sourceParam: string
   /** 源参数名称（读侧回填或按 code 查参数表兜底） */
   paramName?: string
-  /** 目标评估维度 id（评估行；设备/API 恒空） */
+  /** 目标评估维度 id（评估行；设备恒空） */
   dimensionId?: string
   /** 目标评估维度名（维度内目标参数的归属维度 / 分组展示键） */
   dimensionName?: string
   targetParam: string
-  /** 目标参数名称（设备/API=目标参数名；评估=维度内参数名） */
+  /** 目标参数名称（设备=目标参数名；评估=维度内参数名） */
   targetParamName?: string
   transformType: string
 }
@@ -117,12 +119,10 @@ export type AlgorithmFormValues = {
   /** 乐观锁版本号（§6.2/§12-10；编辑态取发布版 revision，草稿/发布请求携带做条件更新） */
   revision?: number
   deviceParams: DeviceApiParamRow[]
-  apiParams: DeviceApiParamRow[]
   caseParams: CaseParamRow[]
   referenceParams: ReferenceParamRow[]
   mappings: {
     device: MappingRow[]
-    api: MappingRow[]
     evaluation: MappingRow[]
   }
   associatedDimensions: DimensionRow[]

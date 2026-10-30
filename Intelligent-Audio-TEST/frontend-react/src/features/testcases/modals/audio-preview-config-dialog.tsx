@@ -8,7 +8,7 @@
  * 2) 音频列表卡「试听」/全局噪声「试听」（INT-1424）：带 audioItem 时进播放器，
  *    由播放器自己取 GET /audios/{id}/stream（浏览器）或 POST /audios/{id}/preview（实验室）。
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { TriangleAlert, X } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -23,6 +23,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { useLaboratories, usePlaybackSpeakerGroups } from '@/application/devices/use-devices'
 import {
   AudioPlayerPanel,
   type AudioPlayerPanelProps,
@@ -42,10 +50,11 @@ export interface PreviewAudioItem {
   spl?: number | null
   /** 音频时长（秒；音频库 AudioAsset.duration，实验室播放无浏览器流时作总时长兜底） */
   duration?: number | null
-  /** 播放设备展示标签（实验室播放=用例配置设备；浏览器可为空） */
+  /** 播放设备展示标签（实验室播放=用例配置的逻辑音箱） */
   deviceLabels?: string[]
-  /** 播放设备记录 id（用例配置的 playback_device_id / 全局噪声 deviceIds）；
-   *  实验室播放据此解析 device_unique_ids 发给后端，缺失时后端按默认设备播放 */
+  /** 逻辑音箱组 id（用例只关联逻辑音箱；实验室播放时按所选实验室解析成实体设备） */
+  speakerGroupIds?: string[]
+  /** 播放设备记录 id（历史兼容：上传/导入试听仍可直接指定实体设备） */
   deviceIds?: string[]
 }
 
@@ -71,6 +80,20 @@ export function AudioPreviewConfigDialog({
   const [error, setError] = useState<string | null>(null)
   /** 请求代次：关闭/重置后丢弃在途响应，避免把 stage 又推回播放器（INT-1534 P3-1） */
   const requestTokenRef = useRef(0)
+  /** 实验室试听必须先选实验室：逻辑音箱按「实验室」解析成该实验室的实体音箱 */
+  const [labId, setLabId] = useState('')
+  const [resolvedDeviceIds, setResolvedDeviceIds] = useState<string[]>([])
+  const labsQuery = useLaboratories()
+  const speakerGroupsQuery = usePlaybackSpeakerGroups()
+  const labs = useMemo(() => labsQuery.data ?? [], [labsQuery.data])
+  const speakerGroups = useMemo(
+    () => speakerGroupsQuery.data ?? [],
+    [speakerGroupsQuery.data]
+  )
+  const labItems = useMemo(
+    () => labs.map((lab) => ({ value: String(lab.id), label: lab.name })),
+    [labs]
+  )
 
   const isCasePreview = audioItem == null
 
@@ -83,6 +106,8 @@ export function AudioPreviewConfigDialog({
     setError(null)
     setOffset('0')
     setMode('frontend')
+    setLabId('')
+    setResolvedDeviceIds([])
   }
 
   // 外部关闭（父组件把 open 置 false / 换用例）时同样复位：在途请求的响应必须丢弃，
@@ -98,17 +123,45 @@ export function AudioPreviewConfigDialog({
     onOpenChange(false)
   }
 
+  /** 逻辑音箱 → 所选实验室的实体播放设备 id；解析失败返回中文原因 */
+  const resolveSpeakerDevices = (groupIds: string[], lab: number): string[] | string => {
+    const deviceIds: string[] = []
+    for (const raw of groupIds) {
+      const group = speakerGroups.find((item) => String(item.id) === raw)
+      if (!group) return `未找到逻辑音箱 ${raw}`
+      const item = group.items.find((it) => it.labId === lab)
+      if (!item) return `逻辑音箱「${group.name}」未配置该实验室的播放设备`
+      deviceIds.push(String(item.playbackDeviceId))
+    }
+    return deviceIds
+  }
+
   /** 开始试听：用例源发真实 preview 请求；音频库源直接进播放器（播放器自行取流/放音）。
-   *  两个源都必须先把偏移量落到 startOffset——音频库/全局噪声入口的实验室播放
-   *  由播放器按该偏移发 POST /audios/{id}/preview（INT-1534 P2 回归修复）。 */
+   *  实验室播放必须先选实验室：逻辑音箱按实验室解析成实体音箱后再发给后端
+   *  （两个源都必须先把偏移量落到 startOffset，INT-1534 P2 回归修复）。 */
   const handleStart = async () => {
     const seconds = Number(offset === '' ? 0 : offset)
     if (!Number.isFinite(seconds) || seconds < 0) {
       setError('偏移量需为不小于 0 的秒数')
       return
     }
+    const lab = Number(labId)
+    if (mode === 'backend' && (!labId || !Number.isFinite(lab))) {
+      setError('实验室播放请先选择实验室')
+      return
+    }
     setError(null)
     if (audioItem) {
+      let deviceIds = audioItem.deviceIds ?? []
+      if (mode === 'backend' && (audioItem.speakerGroupIds?.length ?? 0) > 0) {
+        const resolved = resolveSpeakerDevices(audioItem.speakerGroupIds ?? [], lab)
+        if (typeof resolved === 'string') {
+          setError(resolved)
+          return
+        }
+        deviceIds = resolved
+      }
+      setResolvedDeviceIds(deviceIds)
       setStartOffset(seconds)
       setStage('playing')
       return
@@ -123,6 +176,7 @@ export function AudioPreviewConfigDialog({
         offset: seconds,
         previewType: mode,
         playbackMode: mode,
+        labId: mode === 'backend' ? lab : null,
       })
       if (token !== requestTokenRef.current) return
       setPreview(result)
@@ -145,7 +199,7 @@ export function AudioPreviewConfigDialog({
         audioId: audioItem.id,
         audioName: audioItem.name ?? null,
         deviceLabels: audioItem.deviceLabels ?? [],
-        deviceIds: audioItem.deviceIds ?? [],
+        deviceIds: resolvedDeviceIds,
         spl: audioItem.spl ?? 65,
         offset: startOffset,
         durationHint: audioItem.duration ?? null,
@@ -238,12 +292,33 @@ export function AudioPreviewConfigDialog({
                   <span>
                     实验室播放
                     <span className='text-muted-foreground block text-xs'>
-                      音频将通过用例配置中的播放设备在实验室播放
+                      音频将通过所选实验室的实体音箱播放（逻辑音箱按实验室解析）
                     </span>
                   </span>
                 </label>
               </div>
             </div>
+            {mode === 'backend' && (
+              <div className='space-y-1.5'>
+                <span className='text-sm font-medium'>实验室 *</span>
+                <Select
+                  value={labId}
+                  onValueChange={(value) => setLabId(value ?? '')}
+                  items={labItems}
+                >
+                  <SelectTrigger size='sm' className='h-8 w-full'>
+                    <SelectValue placeholder='请选择实验室' />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {labItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className='flex items-center gap-2'>
               <span className='text-sm font-medium'>偏移量（秒）</span>
               <Input

@@ -46,7 +46,7 @@ export function AdvancedConfigCollapsible({
     name: 'mappings',
   })
   const mappingTotal =
-    mappingCount.device.length + mappingCount.api.length + mappingCount.evaluation.length
+    mappingCount.device.length + mappingCount.evaluation.length
   const dimensionCount = useWatch({
     control: form.control,
     name: 'associatedDimensions',

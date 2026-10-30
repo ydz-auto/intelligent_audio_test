@@ -21,10 +21,9 @@ function validBase(): AlgorithmFormValues {
     status: 'online',
     description: '',
     deviceParams: [],
-    apiParams: [],
     caseParams: [],
     referenceParams: [],
-    mappings: { device: [], api: [], evaluation: [] },
+    mappings: { device: [], evaluation: [] },
     associatedDimensions: [],
   }
 }
@@ -85,7 +84,7 @@ describe('algorithmFormSchema', () => {
     }
   })
 
-  it('不同页签同代码不视为重复（设备/API/用例各自唯一）', () => {
+  it('不同页签同代码不视为重复（设备/用例各自唯一）', () => {
     const spread = validBase()
     spread.deviceParams = [
       {
@@ -99,15 +98,21 @@ describe('algorithmFormSchema', () => {
         helpText: '',
       },
     ]
-    spread.apiParams = [
+    spread.caseParams = [
       {
-        key: 'a-1',
+        key: 'c-1',
         paramCode: 'input_audio',
         paramName: '',
-        direction: 'input',
         paramType: 'text',
+        scope: 'common',
         required: false,
         defaultValue: '',
+        minValue: '',
+        maxValue: '',
+        step: '',
+        unit: '',
+        annotationCode: '',
+        fieldPath: '',
         helpText: '',
       },
     ]
@@ -166,9 +171,9 @@ describe('algorithmFormSchema', () => {
     expect(algorithmDraftFormSchema.safeParse(duplicate).success).toBe(false)
 
     const unique = validBase()
-    unique.apiParams = [
-      { key: 'a-1', paramCode: 'good_code', paramName: '', direction: 'input', paramType: 'text', required: false, defaultValue: '', helpText: '' },
-      { key: 'a-2', paramCode: 'good_code', paramName: '', direction: 'input', paramType: 'text', required: false, defaultValue: '', helpText: '' },
+    unique.deviceParams = [
+      { key: 'd-1', paramCode: 'good_code', paramName: '', direction: 'input', paramType: 'text', required: false, defaultValue: '', helpText: '' },
+      { key: 'd-2', paramCode: 'good_code', paramName: '', direction: 'input', paramType: 'text', required: false, defaultValue: '', helpText: '' },
     ]
     const result = algorithmDraftFormSchema.safeParse(unique)
     expect(result.success).toBe(false)

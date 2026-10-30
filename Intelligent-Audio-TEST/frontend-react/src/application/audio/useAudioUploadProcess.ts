@@ -118,7 +118,7 @@ export async function runAudioUpload(
     const isLastFile = i === files.length - 1
     if (i === 0) emit(PROGRESS_START, file.name)
     try {
-      // 注册 → 分片上传 → 合并（生成测试用例由 merge 载荷 create_test_case 控制，test_types 不传）
+      // 注册 → 分片上传 → 合并（生成测试用例由 merge 载荷 create_test_case 控制，device_type 不传）
       const [registered] = await registerUploadFiles(taskId, [
         // 相对路径（INT-1979）：文件夹导入 = 含子目录的相对路径，单文件 = 文件名；
         // 后端据此解析路径标签（此前一直漏传，路径标签恒为空）

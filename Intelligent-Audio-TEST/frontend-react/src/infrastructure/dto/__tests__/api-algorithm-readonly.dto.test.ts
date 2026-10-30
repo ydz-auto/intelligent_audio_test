@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  rowsFromPayload,
   toAlgorithmApiMapping,
   toAlgorithmApiParam,
 } from '../api-algorithm-readonly.dto'
@@ -48,7 +49,22 @@ describe('toAlgorithmApiParam（GET /algorithm/params?param_type=api）', () => 
   })
 })
 
-describe('toAlgorithmApiMapping（GET /algorithm/mappings?source_type=api）', () => {
+describe('rowsFromPayload（/algorithm/params 与 /algorithm/mappings 的 data 形态）', () => {
+  it('裸数组（现有 gRPC 返回值）直接透传', () => {
+    expect(rowsFromPayload([{ id: 1 }])).toEqual([{ id: 1 }])
+  })
+
+  it('兼容统一分页信封 { items, total }', () => {
+    expect(rowsFromPayload({ items: [{ id: 2 }], total: 1 })).toEqual([{ id: 2 }])
+  })
+
+  it('未知形态返回空数组（不抛错）', () => {
+    expect(rowsFromPayload(null)).toEqual([])
+    expect(rowsFromPayload({ total: 3 })).toEqual([])
+  })
+})
+
+describe('toAlgorithmApiMapping（GET /algorithm/mappings?source_type=evaluation）', () => {
   it('映射行转 camelCase；后端不下发 dimension_name 时为 null', () => {
     expect(
       toAlgorithmApiMapping({

@@ -9,6 +9,7 @@
  * 点击开对应弹窗，不再禁用。
  */
 import {
+  AudioLines,
   Bell,
   Boxes,
   Building2,
@@ -16,7 +17,6 @@ import {
   ListChecks,
   MoreHorizontal,
   Plus,
-  ScanLine,
   SortAsc,
   Stethoscope,
   Upload,
@@ -61,6 +61,8 @@ export interface DevicesPrimaryButtonsProps {
   onScan: () => void
   onGroupManage: () => void
   onLabManage: () => void
+  /** 逻辑音箱管理（播放设备页签；N 个实验室里位置相同的音箱互相对应） */
+  onSpeakerGroupManage: () => void
   onBatchHealth: () => void
   onImport: () => void
   onExport: () => void
@@ -196,6 +198,13 @@ export function DevicesPrimaryButtons(props: DevicesPrimaryButtonsProps) {
             <DropdownMenuItem onClick={props.onLabManage}>
               <Building2 aria-hidden='true' />
               实验室管理
+            </DropdownMenuItem>
+          )}
+          {/* 逻辑音箱（播放设备页签：一个物理位置 × 各实验室实体音箱，用例可关联） */}
+          {props.canLabManage && tab === 'playback' && (
+            <DropdownMenuItem onClick={props.onSpeakerGroupManage}>
+              <AudioLines aria-hidden='true' />
+              逻辑音箱
             </DropdownMenuItem>
           )}
           {/* 批量健康检查（P2-8：device:control 且仅测试页签，播放/API 不再越位显） */}

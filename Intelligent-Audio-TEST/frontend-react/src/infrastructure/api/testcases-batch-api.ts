@@ -43,9 +43,10 @@ export interface TestcaseBatchPayload {
   noiseAudioId?: number | string
   noiseSpl?: number
   noiseDeviceIds?: (number | string)[]
-  /** 评估维度（update_dimensions）：主维度数组 + testType + 可选 roundDimensions/multiDimensions */
+  /** 逻辑音箱组（用例只关联逻辑音箱）：update_noise 多选组 id，替代 noiseDeviceIds */
+  noiseSpeakerGroupIds?: (number | string)[]
+  /** 评估维度（update_dimensions）：主维度数组 + 可选 roundDimensions/multiDimensions */
   dimensions?: Array<Record<string, unknown>>
-  testType?: string
   roundDimensions?: Record<string, unknown[]>
   multiDimensions?: Array<Record<string, unknown>>
   /** 目标分组（move_to_group / copy_to_group） */
@@ -87,6 +88,7 @@ const BATCH_ACTION_KEY_MAP: Record<string, string> = {
   noiseAudioId: 'noise_audio_id',
   noiseSpl: 'noise_spl',
   noiseDeviceIds: 'noise_device_ids',
+  noiseSpeakerGroupIds: 'noise_speaker_group_ids',
   targetGroupId: 'target_group_id',
   groupName: 'group_name',
   tagName: 'tag_name',

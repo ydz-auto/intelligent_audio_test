@@ -21,6 +21,7 @@ import {
   exportEvaluationDimensions,
   fetchAlgorithmOptions,
   fetchDimensionAudioFlags,
+  fetchDimensionOptions,
   fetchEvaluationCategories,
   fetchEvaluationDimensionDetail,
   fetchEvaluationDimensions,
@@ -71,6 +72,34 @@ export function useEvaluationDimensions() {
     [listQuery.data, audioFlagsQuery.data]
   )
   return { ...listQuery, data }
+}
+
+/**
+ * 维度选项（GET /evaluation/dimensions/options?algorithm_type=…；服务端按算法收敛）。
+ * queryKey ['evaluation','dimensions','options', algorithmType]；维度增删改经
+ * invalidateQueries(['evaluation']) 同前缀刷新。
+ */
+export function useDimensionOptions(
+  algorithmType?: string | null,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: ['evaluation', 'dimensions', 'options', algorithmType ?? 'all'],
+    queryFn: () => fetchDimensionOptions(algorithmType ?? undefined),
+    staleTime: 30_000,
+    enabled,
+  })
+}
+
+/**
+ * 用例维度云专用：直接以 options 端点作为唯一维度数据源。
+ * 该端点按 algorithmType 服务端过滤，并下发 parent_dimension_id / category_id，
+ * 主/子层级与分类组头不再依赖列表端点（列表端点不下发 associated_algorithms，
+ * 客户端二次过滤会恒空）。
+ */
+export function useAlgorithmDimensions(algorithmType?: string | null) {
+  const query = useDimensionOptions(algorithmType ?? null)
+  return { ...query, data: query.data ?? [] }
 }
 
 /** 维度详情（编辑反填用；列表不下发 required_inputs/output_fields，编辑必须走详情） */

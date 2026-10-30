@@ -2,17 +2,16 @@
  * 轮次步骤③：噪声与干扰（11_用例域.md §5.1）。
  * INT-996 接线：背景噪声/声纹注册/干扰人全部改真实数据源——
  * 噪声音频走真实音频库（AudioSelectDialog audioType='noise'，GET /audios 经 audioLibraryApi），
- * 播放设备走真实 GET /playback-devices（infrastructure/api/playback-api）；
+ * 播放目标只列逻辑音箱（GET /playback-devices/speaker-groups；实体设备由执行时按实验室换绑）；
  * 受控组件（value/onChange），保存侧由抽屉写入真实契约 config.rounds[].audios[].background_noise/interferers
  * + algorithm_params 独立列 voiceprint 字段。
- * 背景噪声节（噪声音频卡 + 添加/移除 + 声压级 + 循环 + 播放设备 chips 多选）+
- * 声纹注册配置节（启用→注册音频选择卡 + 播放设备 Select + 声压级 + 注册后等待秒数 0-60 + 提示）+
- * 干扰人配置节（干扰人列表卡「干扰音频* + 播放设备 + 声压级 dB + 开始延迟秒 + 循环播放 Switch」+
+ * 背景噪声节（噪声音频卡 + 添加/移除 + 声压级 + 循环 + 逻辑音箱 chips 多选）+
+ * 声纹注册配置节（启用→注册音频选择卡 + 逻辑音箱 Select + 声压级 + 注册后等待秒数 0-60 + 提示）+
+ * 干扰人配置节（干扰人列表卡「干扰音频* + 逻辑音箱 + 声压级 dB + 开始延迟秒 + 循环播放 Switch」+
  * 添加/删除；导入未匹配警示条）。
  */
 import { AudioWaveform, Plus, Trash2, TriangleAlert, UserRound } from 'lucide-react'
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,13 +27,12 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
+import { usePlaybackSpeakerGroups } from '@/application/devices/use-devices'
 import type {
   RoundInterfererDraft,
   RoundNoiseDraft,
 } from '@/features/testcases/modals/round-config/round-nav'
 import { AudioSelectDialog } from '@/features/testcases/modals/audio/audio-select-dialog'
-import { playbackDeviceLabel } from '@/features/testcases/modals/round-config/playback-device-label'
-import { fetchRealPlaybackDevices } from '@/infrastructure/api/playback-api'
 
 const formatDuration = (s: number | null | undefined) => {
   if (s == null) return '—'
@@ -42,8 +40,8 @@ const formatDuration = (s: number | null | undefined) => {
   return sec < 60 ? `${sec}s` : sec % 60 === 0 ? `${sec / 60}m` : `${Math.floor(sec / 60)}m ${sec % 60}s`
 }
 
-/** 播放设备选项文案「{设备名} (通道 {n}) [干声/噪声]」——与全局背景噪声 chips 同源 */
-const deviceLabel = playbackDeviceLabel
+/** 逻辑音箱选项文案（用例只关联逻辑音箱，不再直接选实体播放设备） */
+const speakerGroupLabel = (group: { name: string }): string => `[逻辑音箱] ${group.name}`
 
 let ifrSeq = 0
 const nextIfrId = () => `ifr-${++ifrSeq}`
@@ -53,6 +51,7 @@ const defaultInterferer = (): RoundInterfererDraft => ({
   audioId: null,
   audioName: null,
   playbackDeviceId: null,
+  speakerGroupId: null,
   spl: 70,
   startDelay: 0,
   loop: false,
@@ -66,12 +65,13 @@ export function NoiseInterferenceStep({
   value: RoundNoiseDraft
   onChange: (next: RoundNoiseDraft) => void
 }) {
-  const devicesQuery = useQuery({
-    queryKey: ['playback-devices', 'real'],
-    queryFn: fetchRealPlaybackDevices,
-    staleTime: 30_000,
-  })
-  const devices = devicesQuery.data ?? []
+  const groupsQuery = usePlaybackSpeakerGroups()
+  const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data])
+  /** 逻辑音箱下拉项（声纹/干扰人共用） */
+  const groupItems = useMemo(
+    () => groups.map((group) => ({ value: String(group.id), label: speakerGroupLabel(group) })),
+    [groups]
+  )
 
   const [bgPickerOpen, setBgPickerOpen] = useState(false)
   const [vpPickerOpen, setVpPickerOpen] = useState(false)
@@ -91,7 +91,7 @@ export function NoiseInterferenceStep({
   )
 
   const setBgAudio = (audio: { id: number | string; name: string; duration?: number | null; tags?: string[] }) => {
-    const current = bg ?? { audioId: null, audioName: null, audio: null, spl: 94, deviceIds: [], loop: true }
+    const current = bg ?? { audioId: null, audioName: null, audio: null, spl: 94, deviceIds: [], speakerGroupIds: [], loop: true }
     update({
       backgroundNoise: {
         ...current,
@@ -102,12 +102,19 @@ export function NoiseInterferenceStep({
     })
   }
 
-  const toggleBgDevice = (id: string) => {
+  const toggleBgGroup = (id: string) => {
     if (!bg) return
-    const next = new Set((bg.deviceIds ?? []).map(String))
+    const next = new Set((bg.speakerGroupIds ?? []).map(String))
     if (next.has(id)) next.delete(id)
     else next.add(id)
-    update({ backgroundNoise: { ...bg, deviceIds: [...next].map((v) => Number(v)).filter((n) => !Number.isNaN(n)) } })
+    update({
+      backgroundNoise: {
+        ...bg,
+        speakerGroupIds: [...next]
+          .map((v) => Number(v))
+          .filter((n) => !Number.isNaN(n)),
+      },
+    })
   }
 
   const updateVoiceprint = (patch: Partial<RoundNoiseDraft['voiceprint']>) =>
@@ -116,20 +123,20 @@ export function NoiseInterferenceStep({
   const updateInterferer = (id: string, patch: Partial<RoundInterfererDraft>) =>
     update({ interferers: value.interferers.map((x) => (x.id === id ? { ...x, ...patch } : x)) })
 
-  const deviceOptions = (loading: boolean, error: boolean) => {
+  const groupStatus = (loading: boolean, error: boolean) => {
     if (loading) {
       return (
         <div className='flex h-8 items-center gap-2 rounded-md border px-3 text-sm text-muted-foreground'>
           <Spinner className='size-3.5' />
-          加载播放设备...
+          加载逻辑音箱...
         </div>
       )
     }
     if (error) {
       return (
         <div className='rounded-md border px-3 py-1.5 text-sm'>
-          <p className='text-destructive text-xs'>加载播放设备失败</p>
-          <Button type='button' variant='outline' size='sm' className='mt-1 h-6 text-xs' onClick={() => void devicesQuery.refetch()}>
+          <p className='text-destructive text-xs'>加载逻辑音箱失败</p>
+          <Button type='button' variant='outline' size='sm' className='mt-1 h-6 text-xs' onClick={() => void groupsQuery.refetch()}>
             重试
           </Button>
         </div>
@@ -194,23 +201,23 @@ export function NoiseInterferenceStep({
               </div>
             </div>
 
-            {/* 播放设备（可多选）chips */}
+            {/* 逻辑音箱（可多选）chips */}
             <div className='space-y-1.5'>
-              <Label className='text-sm'>播放设备（可多选）</Label>
-              {deviceOptions(devicesQuery.isLoading, devicesQuery.isError) ?? (
+              <Label className='text-sm'>逻辑音箱（可多选）</Label>
+              {groupStatus(groupsQuery.isLoading, groupsQuery.isError) ?? (
                 <div className='flex flex-wrap gap-1.5'>
-                  {devices.length === 0 ? (
-                    <p className='text-muted-foreground/70 text-xs'>暂无可用的播放设备</p>
+                  {groups.length === 0 ? (
+                    <p className='text-muted-foreground/70 text-xs'>暂无可用的逻辑音箱</p>
                   ) : (
-                    devices.map((d) => {
-                      const id = String(d.id)
-                      const checked = (bg.deviceIds ?? []).map(String).includes(id)
+                    groups.map((group) => {
+                      const id = String(group.id)
+                      const checked = (bg.speakerGroupIds ?? []).map(String).includes(id)
                       return (
                         <button
-                          key={d.id}
+                          key={group.id}
                           type='button'
                           aria-pressed={checked}
-                          onClick={() => toggleBgDevice(id)}
+                          onClick={() => toggleBgGroup(id)}
                           className={cn(
                             'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
                             checked
@@ -218,7 +225,7 @@ export function NoiseInterferenceStep({
                               : 'hover:bg-accent border-border text-muted-foreground'
                           )}
                         >
-                          {deviceLabel(d)}
+                          {speakerGroupLabel(group)}
                         </button>
                       )
                     })
@@ -265,20 +272,22 @@ export function NoiseInterferenceStep({
             </div>
             <div className='grid gap-x-6 gap-y-3 sm:grid-cols-3'>
               <div className='space-y-1.5'>
-                <Label className='text-sm'>播放设备</Label>
-                {deviceOptions(devicesQuery.isLoading, devicesQuery.isError) ?? (
+                <Label className='text-sm'>逻辑音箱</Label>
+                {groupStatus(groupsQuery.isLoading, groupsQuery.isError) ?? (
                   <Select
-                    value={vp.playbackDeviceId != null ? String(vp.playbackDeviceId) : ''}
-                    onValueChange={(v) => updateVoiceprint({ playbackDeviceId: v ? Number(v) : null })}
-                    items={devices.map((d) => ({ value: String(d.id), label: deviceLabel(d) }))}
+                    value={vp.speakerGroupId != null ? String(vp.speakerGroupId) : ''}
+                    onValueChange={(v) =>
+                      updateVoiceprint({ speakerGroupId: v ? Number(v) : null })
+                    }
+                    items={groupItems}
                   >
                     <SelectTrigger size='sm' className='h-8'>
-                      <SelectValue placeholder='请选择设备' />
+                      <SelectValue placeholder='请选择逻辑音箱' />
                     </SelectTrigger>
                     <SelectContent>
-                      {devices.map((d) => (
-                        <SelectItem key={d.id} value={String(d.id)}>
-                          {deviceLabel(d)}
+                      {groupItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -349,20 +358,22 @@ export function NoiseInterferenceStep({
                   </div>
                 </div>
                 <div className='space-y-1.5'>
-                  <Label className='text-sm'>播放设备</Label>
-                  {deviceOptions(devicesQuery.isLoading, devicesQuery.isError) ?? (
+                  <Label className='text-sm'>逻辑音箱</Label>
+                  {groupStatus(groupsQuery.isLoading, groupsQuery.isError) ?? (
                     <Select
-                      value={ifr.playbackDeviceId != null ? String(ifr.playbackDeviceId) : ''}
-                      onValueChange={(v) => updateInterferer(ifr.id, { playbackDeviceId: v ? Number(v) : null })}
-                      items={devices.map((d) => ({ value: String(d.id), label: deviceLabel(d) }))}
+                      value={ifr.speakerGroupId != null ? String(ifr.speakerGroupId) : ''}
+                      onValueChange={(v) =>
+                        updateInterferer(ifr.id, { speakerGroupId: v ? Number(v) : null })
+                      }
+                      items={groupItems}
                     >
                       <SelectTrigger size='sm' className='h-8'>
-                        <SelectValue placeholder='请选择设备' />
+                        <SelectValue placeholder='请选择逻辑音箱' />
                       </SelectTrigger>
                       <SelectContent>
-                        {devices.map((d) => (
-                          <SelectItem key={d.id} value={String(d.id)}>
-                            {deviceLabel(d)}
+                        {groupItems.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
                           </SelectItem>
                         ))}
                       </SelectContent>

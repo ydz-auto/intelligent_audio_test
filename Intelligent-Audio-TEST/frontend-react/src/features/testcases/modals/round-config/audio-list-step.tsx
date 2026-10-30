@@ -46,9 +46,13 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useAudioListBatch, type RoundAudioLike } from '@/application/testcases/use-audio-list-batch'
-import { usePlaybackDevices } from '@/application/devices/use-devices'
+import { usePlaybackSpeakerGroups } from '@/application/devices/use-devices'
 import { fetchAudioLibrary } from '@/infrastructure/api/audioLibraryApi'
 import type { RoundAudioDraft } from '@/features/testcases/modals/round-config/round-nav'
+import {
+  speakerGroupIdOfOption,
+  speakerGroupOptionValue,
+} from '@/domain/models/playbackSpeakerGroup'
 import type { PlaybackDeviceOption } from '@/features/testcases/modals/round-config/audio-list-types'
 import { BatchDevicePanel } from '@/features/testcases/modals/round-config/batch-device-panel'
 import { BatchSplPanel } from '@/features/testcases/modals/round-config/batch-spl-panel'
@@ -61,18 +65,15 @@ import {
   type PreviewAudioItem,
 } from '@/features/testcases/modals/audio-preview-config-dialog'
 
-/** 真实播放设备（/playback-devices）→ 面板/Select 展示项「{设备名} (通道 {n}) [干声/噪声]」 */
-function toDeviceOption(d: {
-  id: number | string
+/** 逻辑音箱 → 面板/Select 展示项（用例只能关联逻辑音箱，不再直接选实体设备） */
+function toSpeakerOption(group: {
+  id: number
   name: string
-  channelIndex?: number | null
-  deviceType?: string | null
 }): PlaybackDeviceOption {
   return {
-    id: String(d.id),
-    name: d.name,
-    channel: d.channelIndex ?? 1,
-    type: d.deviceType === 'noise' ? '噪声' : '干声',
+    id: String(group.id),
+    name: group.name,
+    label: `[逻辑音箱] ${group.name}`,
   }
 }
 
@@ -111,6 +112,10 @@ const formatSeconds = (s: number | null | undefined): string | null => {
   return sec < 60 ? `${sec}s` : sec % 60 === 0 ? `${sec / 60}m` : `${Math.floor(sec / 60)}m ${sec % 60}s`
 }
 
+/** 播放目标展示文案（用例只关联逻辑音箱；未选返回 null） */
+const playbackTargetLabel = (groupName: string | null | undefined): string | null =>
+  groupName ? `[逻辑音箱] ${groupName}` : null
+
 export function AudioListStep({
   value,
   onChange,
@@ -118,20 +123,22 @@ export function AudioListStep({
   value: RoundAudioDraft[]
   onChange: (audios: RoundAudioDraft[]) => void
 }) {
-  const devicesQuery = usePlaybackDevices()
-  /** 真实播放设备（Select + 批量工具面板共用） */
+  /** 逻辑音箱组（用例唯一可选的播放目标，执行时按实验室换绑实体音箱） */
+  const speakerGroupsQuery = usePlaybackSpeakerGroups()
+  const speakerGroups = useMemo(() => speakerGroupsQuery.data ?? [], [speakerGroupsQuery.data])
+  /** 逻辑音箱展示项（Select + 批量工具面板共用） */
   const deviceOptions = useMemo<PlaybackDeviceOption[]>(
-    () => (devicesQuery.data ?? []).map(toDeviceOption),
-    [devicesQuery.data]
+    () => speakerGroups.map(toSpeakerOption),
+    [speakerGroups]
   )
-  /** 播放设备 Select 的声明式 items：闭合态取 label，否则 base-ui 回退显示设备 id（INT-1686） */
+  /** 播放目标 Select 的声明式 items（闭合态取 label，INT-1686） */
   const deviceSelectItems = useMemo(
     () =>
-      deviceOptions.map((d) => ({
-        value: d.id,
-        label: `${d.name} (通道 ${d.channel}) [${d.type}]`,
+      speakerGroups.map((group) => ({
+        value: speakerGroupOptionValue(group.id),
+        label: `[逻辑音箱] ${group.name}`,
       })),
-    [deviceOptions]
+    [speakerGroups]
   )
 
   /** 真实音频库（标签工具数据源 + 时长/标签展示；GET /audios 大页拉取） */
@@ -249,9 +256,9 @@ export function AudioListStep({
           replaceAudios((prev) => [...prev].sort(() => Math.random() - 0.5))
         )}
         {tool('标签交错', <Tags aria-hidden='true' className='size-3.5' />, () => setPanel('interleave'))}
-        {tool('标签设备', <Tag aria-hidden='true' className='size-3.5' />, () => setPanel('tagDevice'))}
-        {tool('批量设备', <Headphones aria-hidden='true' className='size-3.5' />, () => setPanel('batchDevice'))}
-        {tool('设备交叉', <RefreshCcw aria-hidden='true' className='size-3.5' />, () => setPanel('crossDevice'))}
+        {tool('标签音箱', <Tag aria-hidden='true' className='size-3.5' />, () => setPanel('tagDevice'))}
+        {tool('批量音箱', <Headphones aria-hidden='true' className='size-3.5' />, () => setPanel('batchDevice'))}
+        {tool('音箱交叉', <RefreshCcw aria-hidden='true' className='size-3.5' />, () => setPanel('crossDevice'))}
         {tool('批量声压', <Volume2 aria-hidden='true' className='size-3.5' />, () => setPanel('batchSpl'))}
         {tool('清空', <Trash2 aria-hidden='true' className='size-3.5' />, () => replaceAudios(() => []))}
       </div>
@@ -262,7 +269,10 @@ export function AudioListStep({
         </p>
       ) : (
         value.map((audio, index) => {
-          const device = deviceOptions.find((d) => d.id === audio.deviceId)
+          const speakerGroup = audio.speakerGroupId
+            ? speakerGroups.find((group) => String(group.id) === audio.speakerGroupId) ?? null
+            : null
+          const label = playbackTargetLabel(speakerGroup?.name)
           const duration = formatSeconds(
             audio.audioId != null ? audioLibrary.get(String(audio.audioId))?.duration ?? audio.duration : audio.duration
           )
@@ -296,11 +306,9 @@ export function AudioListStep({
                           // 音频库时长兜底：实验室播放无浏览器流，播放器总时长靠它（INT-1424 UX 复核）
                           duration:
                             audioLibrary.get(String(audio.audioId))?.duration ?? audio.duration ?? null,
-                          deviceLabels: device
-                            ? [`${device.name} (通道 ${device.channel}) [${device.type}]`]
-                            : [],
-                          // 实验室播放按用例配置的播放设备发送（INT-1424 终审 P2-2）
-                          deviceIds: audio.deviceId ? [audio.deviceId] : [],
+                          deviceLabels: label ? [label] : [],
+                          // 实验室试听必须先选实验室，由试听弹窗把逻辑音箱解析成该实验室的实体设备
+                          speakerGroupIds: audio.speakerGroupId ? [audio.speakerGroupId] : [],
                         })
                       }
                     >
@@ -361,21 +369,30 @@ export function AudioListStep({
                   </div>
                 </div>
                 <div className='space-y-1.5'>
-                  <Label className='text-sm'>播放设备</Label>
+                  <Label className='text-sm'>逻辑音箱</Label>
                   <Select
-                    value={audio.deviceId}
-                    onValueChange={(v) =>
-                      v != null &&
-                      update(audio.id, {
-                        deviceId: v,
-                        deviceName: deviceOptions.find((d) => d.id === v)?.name ?? null,
-                      })
+                    value={
+                      audio.speakerGroupId
+                        ? speakerGroupOptionValue(Number(audio.speakerGroupId))
+                        : ''
                     }
-                    // 闭合态按声明式 items 解析文案；缺省时 base-ui 回退原始 value（设备记录 id）
+                    onValueChange={(v) => {
+                      if (v == null) return
+                      const groupId = speakerGroupIdOfOption(v)
+                      if (groupId == null) return
+                      update(audio.id, {
+                        speakerGroupId: String(groupId),
+                        speakerGroupName:
+                          speakerGroups.find((group) => group.id === groupId)?.name ?? null,
+                        deviceId: '',
+                        deviceName: null,
+                      })
+                    }}
+                    // 闭合态按声明式 items 解析文案；缺省时 base-ui 回退原始 value
                     items={deviceSelectItems}
                   >
                     <SelectTrigger size='sm' className='h-8'>
-                      <SelectValue placeholder='请选择设备' />
+                      <SelectValue placeholder='请选择逻辑音箱' />
                     </SelectTrigger>
                     <SelectContent>
                       {deviceSelectItems.map((d) => (
@@ -399,7 +416,8 @@ export function AudioListStep({
                 </div>
               </div>
               <p className='text-muted-foreground/60 mt-2 text-xs'>
-                设备：{device ? `${device.name} (通道 ${device.channel}) [${device.type}]` : '—'}
+                逻辑音箱：{label ?? '—'}
+                {speakerGroup && '（执行时按实验室自动换成本实验室的实体音箱）'}
               </p>
             </div>
           )
@@ -442,7 +460,7 @@ export function AudioListStep({
             return
           }
           replaceAudios((prev) => batch.tagDevice(prev, tag, deviceId))
-          toast.success(`已将标签「${tag}」命中的音频批量设置播放设备`)
+          toast.success(`已将标签「${tag}」命中的音频批量关联到该逻辑音箱`)
         }}
       />
       <BatchDevicePanel
@@ -451,9 +469,11 @@ export function AudioListStep({
         devices={deviceOptions}
         selectedCount={selectedIds.size}
         onConfirm={(deviceId, scope) => {
-          replaceAudios((prev) => batch.batchDevice(prev, deviceId, scope, selectedIds))
+          replaceAudios((prev) =>
+            batch.batchDevice(prev, deviceId, scope, selectedIds)
+          )
           toast.success(
-            scope === 'selected' ? '已为勾选音频批量设置播放设备' : '已为全部音频批量设置播放设备'
+            scope === 'selected' ? '已为勾选音频批量关联逻辑音箱' : '已为全部音频批量关联逻辑音箱'
           )
         }}
       />
@@ -463,7 +483,7 @@ export function AudioListStep({
         devices={deviceOptions}
         onConfirm={(deviceIds) => {
           replaceAudios((prev) => batch.crossDevice(prev, deviceIds))
-          toast.success(`已按列表顺序轮转分配 ${deviceIds.length} 个设备`)
+          toast.success(`已按列表顺序轮转分配 ${deviceIds.length} 个逻辑音箱`)
         }}
       />
       <BatchSplPanel

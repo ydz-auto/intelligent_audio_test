@@ -123,10 +123,9 @@ export type SaveAlgorithmInput = {
   status: 'online' | 'offline'
   description: string
   deviceParams: Array<Record<string, unknown>>
-  apiParams: Array<Record<string, unknown>>
   caseParams: Array<Record<string, unknown>>
   referenceParams: Array<Record<string, unknown>>
-  mappings: { device: unknown[]; api: unknown[]; evaluation: unknown[] }
+  mappings: { device: unknown[]; evaluation: unknown[] }
   associatedDimensions: Array<Record<string, unknown>>
 }
 
@@ -183,12 +182,10 @@ async function buildDefinitionDto(input: SaveAlgorithmInput): Promise<Record<str
       status: input.status,
       description: input.description,
       deviceParams: input.deviceParams,
-      apiParams: input.apiParams,
       caseParams: input.caseParams,
       referenceParams: input.referenceParams,
       mappings: {
         device: asRows(input.mappings.device),
-        api: asRows(input.mappings.api),
         evaluation: asRows(input.mappings.evaluation),
       },
       associatedDimensions: input.associatedDimensions,

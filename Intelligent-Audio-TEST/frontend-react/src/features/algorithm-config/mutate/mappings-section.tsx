@@ -1,14 +1,14 @@
 /**
  * §6.5 参数映射分节（mutate sheet 高级配置折叠区）。
- * INT-1160 返工（负责人 2026-10-21「设备/API/评估参数映射照 V9.7.10 重做」）：
- * - 设备/API 6 列「源参数代码 / 源参数名称 / 目标参数代码 / 目标参数名称 / 转换 / 操作」；
+ * INT-1160 返工（负责人 2026-10-21「设备/评估参数映射照 V9.7.10 重做」）：
+ * - 设备 6 列「源参数代码 / 源参数名称 / 目标参数代码 / 目标参数名称 / 转换 / 操作」；
  *   评估 7 列「来源 / 源参数代码 / 源参数名称 / 目标评估维度 / 目标参数 / 转换 / 操作」。
  * - 公共工具栏：搜索映射 + 转换徽章筛选 + 平铺/分组视图切换 + 分页（平铺 >10 条）；
  *   评估另加 来源 / 评估维度 徽章筛选。
- * - 分组视图：设备/API 按源参数集合（用例参数·通用/API/E2E + 参考参数）、评估按目标维度
+ * - 分组视图：设备按源参数集合（用例参数·通用/API/E2E + 参考参数）、评估按目标维度
  *   （组头折叠 + 主/子徽章 + 计数 + 组尾「添加映射」预填维度；空行归「未指定维度」）。
  * - 数据模型补齐 id/source/sourceDirection/paramName/dimensionId/dimensionName/targetParamName
- *   （INT-1160 范围 1），评估来源可选 用例参数/用例配置/参考参数/设备输出/API输出，
+ *   （INT-1160 范围 1），评估来源可选 用例参数/用例配置/参考参数/设备输出，
  *   目标参数经 /algorithm/dimension-params 拉维度内参数。
  * 行值一律经 useWatch 读 form 值（useFieldArray.fields 不随 setValue 更新，只作 key/增删锚点）。
  */
@@ -39,15 +39,12 @@ import {
 } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
 import type { Dimension, EvaluationCategory } from '@/domain/models/evaluationDimension'
-import type { DimensionParam } from '@/domain/models/algorithmConfig'
+import type { CaseParamScope, DimensionParam } from '@/domain/models/algorithmConfig'
 import type { AlgorithmFormValues, MappingRow } from '@/features/algorithm-config/types'
 import { fetchDimensionParams } from '@/infrastructure/api/algorithm-config-api'
 import { DimensionSelect } from './dimension-select'
 import { CONTAINED_TABLE_CLASS } from './table-containment'
-import {
-  API_TRANSFORM_TYPE_OPTIONS,
-  TRANSFORM_TYPE_OPTIONS,
-} from '@/features/algorithm-config/constants'
+import { TRANSFORM_TYPE_OPTIONS } from '@/features/algorithm-config/constants'
 
 /** 评估来源选项（V9.7.10 MappingEditor sourceOptions；后端 VALID_SOURCES 含 case_config） */
 const EVALUATION_SOURCE_OPTIONS = [
@@ -55,7 +52,6 @@ const EVALUATION_SOURCE_OPTIONS = [
   { value: 'case_config', label: '用例配置' },
   { value: 'reference', label: '参考参数' },
   { value: 'device', label: '设备输出' },
-  { value: 'api', label: 'API输出' },
 ] as const
 
 /** 用例配置(config.rounds)可映射结构性字段：评估时从 test_case.config.rounds 按轮读取（V9.7.10 同款） */
@@ -63,7 +59,7 @@ const CASE_CONFIG_FIELD_PRESETS = [{ code: 'audios', name: '被播放音频' }] 
 
 type ParamOption = { value: string; label: string }
 
-/** 源参数选项（设备/API 共用：用例参数 + 参考参数；评估按 source 取对应集合） */
+/** 源参数选项（设备共用：用例参数 + 参考参数；评估按 source 取对应集合） */
 function buildSourceOptions(
   caseParams: Array<{ paramCode: string; paramName?: string }>,
   referenceParams: Array<{ code: string; name?: string }>
@@ -172,11 +168,11 @@ function ParamNameCell({ name, code }: { name: string; code: string }) {
 
 /* ───────────────────────── 判重（V9.7.10 唯一约束对齐） ───────────────────────── */
 
-/** 判重键：评估 = (source, sourceParam, dimensionId)；设备/API = (节类型, sourceParam) */
+/** 判重键：评估 = (source, sourceParam, dimensionId)；设备 = (节类型, sourceParam) */
 function findDuplicateIndex(
   rows: Array<{ source?: string; sourceParam: string; dimensionId?: string }>,
   index: number,
-  section: 'device' | 'api' | 'evaluation'
+  section: 'device' | 'evaluation'
 ): number {
   const current = rows[index]
   if (!current) return -1
@@ -344,7 +340,7 @@ const mainBadge =
 const subBadge =
   'bg-muted text-muted-foreground border-border inline-flex size-3.5 items-center justify-center rounded-[3px] border text-[9px] font-semibold'
 
-/* ───────────────────────── 分组组头 / 组尾（设备/API 与评估共用结构） ───────────────────────── */
+/* ───────────────────────── 分组组头 / 组尾（设备与评估共用结构） ───────────────────────── */
 
 function GroupHeaderButton({
   name,
@@ -402,23 +398,42 @@ function GroupAddRow({ colSpan, onClick }: { colSpan: number; onClick: () => voi
   )
 }
 
-/* ───────────────────────── 设备/API 参数映射分节 ───────────────────────── */
+/* ───────────────────────── 设备参数映射分节 ───────────────────────── */
 
-/** 设备/API 分组键：源参数所属集合（用例参数·scope / 参考参数 / 未分组） */
-type DeviceApiGroupKey = 'case-common' | 'case-api' | 'case-e2e' | 'reference' | 'unknown'
+/**
+ * 设备分组键：源参数所属集合（用例参数·scope / 参考参数 / 未分组）。
+ * 用例参数分组词表对齐后端 `CaseParamScope`（common + DeviceType 三值）。
+ */
+type DeviceApiGroupKey =
+  | 'case-common'
+  | 'case-physical'
+  | 'case-http_api'
+  | 'case-websocket_api'
+  | 'reference'
+  | 'unknown'
+
+/** 用例参数 scope → 分组键（唯一映射表，禁止散落相等判断） */
+const CASE_SCOPE_GROUP_KEY: Record<CaseParamScope, DeviceApiGroupKey> = {
+  common: 'case-common',
+  physical: 'case-physical',
+  http_api: 'case-http_api',
+  websocket_api: 'case-websocket_api',
+}
 
 const DEVICE_API_GROUP_ORDER: DeviceApiGroupKey[] = [
   'case-common',
-  'case-api',
-  'case-e2e',
+  'case-physical',
+  'case-http_api',
+  'case-websocket_api',
   'reference',
   'unknown',
 ]
 
 const DEVICE_API_GROUP_LABEL: Record<DeviceApiGroupKey, string> = {
   'case-common': '用例参数 · 通用',
-  'case-api': '用例参数 · API',
-  'case-e2e': '用例参数 · E2E',
+  'case-physical': '用例参数 · 真机',
+  'case-http_api': '用例参数 · HTTP API',
+  'case-websocket_api': '用例参数 · Realtime WS',
   reference: '参考参数',
   unknown: '未分组',
 }
@@ -431,34 +446,30 @@ function deviceApiGroupKey(
   if (!sourceParam) return 'unknown'
   const caseParam = caseParams.find((p) => p.paramCode === sourceParam)
   if (caseParam) {
-    if (caseParam.scope === 'api') return 'case-api'
-    if (caseParam.scope === 'e2e') return 'case-e2e'
-    return 'case-common'
+    // 后端已废弃旧词表（api/e2e），未知值按「通用」归组而不是丢弃
+    return CASE_SCOPE_GROUP_KEY[caseParam.scope as CaseParamScope] ?? 'case-common'
   }
   if (referenceParams.some((p) => p.code === sourceParam)) return 'reference'
   return 'unknown'
 }
 
-function DeviceApiMappingSection({
+function DeviceMappingSection({
   form,
-  arrayName,
-  sectionLabel,
   caseParams,
   referenceParams,
   targetParams,
-  transformOptions,
 }: {
   form: UseFormReturn<AlgorithmFormValues>
-  arrayName: 'mappings.device' | 'mappings.api'
-  sectionLabel: string
   /** 用例参数（源参数选项 + 分组键 scope） */
   caseParams: Array<{ paramCode: string; paramName?: string; scope: string }>
   /** 参考参数（源参数选项 + 分组键） */
   referenceParams: Array<{ code: string; name?: string }>
-  /** 目标参数（设备参数 / API 参数） */
+  /** 目标参数（设备参数） */
   targetParams: Array<{ paramCode: string; paramName?: string }>
-  transformOptions: ReadonlyArray<{ value: string; label: string }>
 }) {
+  const arrayName = 'mappings.device' as const
+  const sectionLabel = '设备'
+  const transformOptions = TRANSFORM_TYPE_OPTIONS
   const mappings = useFieldArray({ control: form.control, name: arrayName })
   /** 行实时值（setValue 后可读；fields 只作 key/增删锚点） */
   const liveRows = useWatch({ control: form.control, name: arrayName }) as MappingRow[] | undefined
@@ -495,7 +506,7 @@ function DeviceApiMappingSection({
   const targetName = (row: MappingRow) =>
     paramNameByCode(targetParams, row.targetParam) || row.targetParamName || ''
 
-  const section = arrayName === 'mappings.device' ? ('device' as const) : ('api' as const)
+  const section = 'device' as const
 
   const addEmpty = () =>
     mappings.append({
@@ -654,7 +665,7 @@ function DeviceApiMappingSection({
                 pageRows.map((row) => {
                   const index = indexOf(row.key)
                   return (
-                    <DeviceApiRow
+                    <DeviceMappingRow
                       key={row.key}
                       row={row}
                       index={index}
@@ -694,7 +705,7 @@ function DeviceApiMappingSection({
                         groupRows.map((row) => {
                           const index = indexOf(row.key)
                           return (
-                            <DeviceApiRow
+                            <DeviceMappingRow
                               key={row.key}
                               row={row}
                               index={index}
@@ -738,8 +749,8 @@ function DeviceApiMappingSection({
   )
 }
 
-/** 设备/API 映射行（6 列） */
-function DeviceApiRow({
+/** 设备映射行（6 列） */
+function DeviceMappingRow({
   row,
   index,
   sourceOptions,
@@ -863,7 +874,6 @@ function EvaluationMappingSection({
   const caseParams = useWatch({ control: form.control, name: 'caseParams' })
   const referenceParams = useWatch({ control: form.control, name: 'referenceParams' })
   const deviceParams = useWatch({ control: form.control, name: 'deviceParams' })
-  const apiParams = useWatch({ control: form.control, name: 'apiParams' })
 
   const [keyword, setKeyword] = useState('')
   const [sourceFilter, setSourceFilter] = useState('all')
@@ -952,7 +962,7 @@ function EvaluationMappingSection({
     form.setValue(`mappings.evaluation.${index}.sourceParam` as FieldPath<AlgorithmFormValues>, value ?? '')
     const liveRows = (form.getValues('mappings.evaluation') ?? []) as MappingRow[]
     const source = liveRows[index]?.source || 'case'
-    const name = evalSourceParamName(source, value ?? '', caseParams, referenceParams, deviceParams, apiParams)
+    const name = evalSourceParamName(source, value ?? '', caseParams, referenceParams, deviceParams)
     form.setValue(`mappings.evaluation.${index}.paramName` as FieldPath<AlgorithmFormValues>, name)
     checkDup(index)
   }
@@ -1011,10 +1021,6 @@ function EvaluationMappingSection({
           .filter((o) => o.value)
       case 'device':
         return deviceParams
-          .map((p) => ({ value: p.paramCode, label: `${p.paramCode} · ${p.paramName || '（未填名称）'}` }))
-          .filter((o) => o.value)
-      case 'api':
-        return apiParams
           .map((p) => ({ value: p.paramCode, label: `${p.paramCode} · ${p.paramName || '（未填名称）'}` }))
           .filter((o) => o.value)
       case 'case':
@@ -1173,7 +1179,6 @@ function EvaluationMappingSection({
                       caseParams={caseParams}
                       referenceParams={referenceParams}
                       deviceParams={deviceParams}
-                      apiParams={apiParams}
                       evalSourceOptions={evalSourceOptions}
                       onRemove={() => mappings.remove(index)}
                       onSourceChange={handleSourceChange}
@@ -1240,7 +1245,6 @@ function EvaluationMappingSection({
                               caseParams={caseParams}
                               referenceParams={referenceParams}
                               deviceParams={deviceParams}
-                              apiParams={apiParams}
                               evalSourceOptions={evalSourceOptions}
                               onRemove={() => mappings.remove(index)}
                               onSourceChange={handleSourceChange}
@@ -1294,7 +1298,6 @@ function EvaluationRow({
   caseParams,
   referenceParams,
   deviceParams,
-  apiParams,
   dimensionParamsMap,
   evalSourceOptions,
   onRemove,
@@ -1310,7 +1313,6 @@ function EvaluationRow({
   caseParams: Array<{ paramCode: string; paramName?: string }>
   referenceParams: Array<{ code: string; name?: string }>
   deviceParams: Array<{ paramCode: string; paramName?: string }>
-  apiParams: Array<{ paramCode: string; paramName?: string }>
   dimensionParamsMap: Record<string, DimensionParam[]>
   evalSourceOptions: (source: string) => ParamOption[]
   onRemove: () => void
@@ -1329,7 +1331,7 @@ function EvaluationRow({
   const sourceOptions = evalSourceOptions(source)
   /** 源参数名称：实时按 source 取对应集合兜底（存量行 paramName 为空时显示真实名称） */
   const resolvedSourceName =
-    evalSourceParamName(source, sourceParam, caseParams, referenceParams, deviceParams, apiParams) ||
+    evalSourceParamName(source, sourceParam, caseParams, referenceParams, deviceParams) ||
     sourceParamName ||
     sourceParam
   /** 维度内目标参数选项；存量 target_param（如旧版维度名）不在列表时回退展示（数据保全） */
@@ -1412,8 +1414,7 @@ function evalSourceParamName(
   code: string,
   caseParams: Array<{ paramCode: string; paramName?: string }>,
   referenceParams: Array<{ code: string; name?: string }>,
-  deviceParams: Array<{ paramCode: string; paramName?: string }>,
-  apiParams: Array<{ paramCode: string; paramName?: string }>
+  deviceParams: Array<{ paramCode: string; paramName?: string }>
 ): string {
   if (!code) return ''
   switch (source) {
@@ -1423,15 +1424,13 @@ function evalSourceParamName(
       return paramNameByCode(referenceParams, code)
     case 'device':
       return paramNameByCode(deviceParams, code)
-    case 'api':
-      return paramNameByCode(apiParams, code)
     case 'case':
     default:
       return paramNameByCode(caseParams, code)
   }
 }
 
-/* ───────────────────────── 三折叠分区外壳 ───────────────────────── */
+/* ───────────────────────── 两折叠分区外壳 ───────────────────────── */
 
 export function MappingsSection({
   form,
@@ -1447,10 +1446,8 @@ export function MappingsSection({
   const caseParams = useWatch({ control: form.control, name: 'caseParams' })
   const referenceParams = useWatch({ control: form.control, name: 'referenceParams' })
   const deviceParams = useWatch({ control: form.control, name: 'deviceParams' })
-  const apiParams = useWatch({ control: form.control, name: 'apiParams' })
 
   const deviceCount = useWatch({ control: form.control, name: 'mappings.device' }).length
-  const apiCount = useWatch({ control: form.control, name: 'mappings.api' }).length
   const evaluationCount = useWatch({ control: form.control, name: 'mappings.evaluation' }).length
 
   return (
@@ -1461,36 +1458,17 @@ export function MappingsSection({
         subtitle='用例参数 → 设备参数'
         count={deviceCount}
       >
-        <DeviceApiMappingSection
+        <DeviceMappingSection
           form={form}
-          arrayName='mappings.device'
-          sectionLabel='设备'
           caseParams={caseParams}
           referenceParams={referenceParams}
           targetParams={deviceParams}
-          transformOptions={TRANSFORM_TYPE_OPTIONS}
-        />
-      </MappingCollapsible>
-
-      <MappingCollapsible
-        title='API参数映射'
-        subtitle='用例参数 → API参数'
-        count={apiCount}
-      >
-        <DeviceApiMappingSection
-          form={form}
-          arrayName='mappings.api'
-          sectionLabel='API'
-          caseParams={caseParams}
-          referenceParams={referenceParams}
-          targetParams={apiParams}
-          transformOptions={API_TRANSFORM_TYPE_OPTIONS}
         />
       </MappingCollapsible>
 
       <MappingCollapsible
         title='评估参数映射'
-        subtitle='用例参数/设备输出/API输出 → 评估维度'
+        subtitle='用例参数/设备输出 → 评估维度'
         count={evaluationCount}
       >
         <EvaluationMappingSection

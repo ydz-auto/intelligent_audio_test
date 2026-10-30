@@ -27,6 +27,7 @@ import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import type {
   CaseDeviceResult,
   CaseExecutionDetail,
+  CaseExecutionTarget,
   CaseMetricConfig,
   CaseMetricRow,
   CaseRoundTab,
@@ -38,6 +39,7 @@ import { useTimelineComparison, hasTimelineData } from '@/application/report-vie
 import { MultiRoundResult } from '@/features/report-view/components/case-report-detail/multi-round-result'
 import { ExecutionResults } from '@/features/report-view/components/case-report-detail/execution-results'
 import { AudioTimeline } from '@/features/report-view/components/case-report-detail/audio-timeline'
+import { ALL_TARGETS } from '@/features/report-view/components/case-report-detail/target-tab-bar'
 import type { RoundTab } from '@/features/report-view/components/case-report-detail/case-report-utils'
 import { cn } from '@/lib/utils'
 
@@ -62,6 +64,8 @@ interface CaseDetailExecutionResultsProps {
    * 不传 = 全量（现状）。
    */
   targetDetail?: CaseExecutionDetail
+  /** 用例级执行目标全量（含未执行目标）→ 设备/API 执行结果逐目标状态行 */
+  targets?: CaseExecutionTarget[]
   /** 设备/API 一级 Tab（透传给执行结果块，渲染在「执行结果」之上） */
   targetTab?: {
     names: string[]
@@ -367,7 +371,10 @@ function hasTimelineEvidence(detail: CaseExecutionDetail): boolean {
 }
 
 /** test-execution 用例详情 → report 用例卡形态（组合点桥接；仅 ExecutionResults/MultiRoundResult 消费） */
-function toReportCaseItem(detail: CaseExecutionDetail): ReportCaseItem {
+function toReportCaseItem(
+  detail: CaseExecutionDetail,
+  targets: CaseExecutionTarget[] = []
+): ReportCaseItem {
   const isMultiRound = (detail.roundTabs ?? []).some((t) => t.kind === 'round')
   const metrics: Record<string, Record<string, number>> = {}
   for (const device of detail.devices) {
@@ -390,10 +397,17 @@ function toReportCaseItem(detail: CaseExecutionDetail): ReportCaseItem {
     tags: [],
     metrics,
     caseParams: detail.caseParams as ReportCaseItem['caseParams'],
-    results: (detail.results ?? []).map((r) => ({
-      resource: r.deviceName ?? r.apiName ?? `结果 ${r.id}`,
-      status: r.executionStatus ?? undefined,
-    })),
+    // 目标全量（含未执行目标）优先：设备/API 执行结果逐目标出状态行，不再只显示有结果的目标
+    results:
+      targets.length > 0
+        ? targets.map((t) => ({
+            resource: t.targetName,
+            status: t.executionStatus ?? 'pending',
+          }))
+        : (detail.results ?? []).map((r) => ({
+            resource: r.deviceName ?? r.apiName ?? `结果 ${r.id}`,
+            status: r.executionStatus ?? undefined,
+          })),
     audios: (detail.resultAudios ?? []).map((a) => ({
       audio_id: a.audioName ?? '',
       audio_name: a.audioName,
@@ -464,13 +478,23 @@ function toTimelineAudioItems(detail: CaseExecutionDetail) {
 export function CaseDetailExecutionResults({
   detail,
   targetDetail,
+  targets = [],
   targetTab,
   currentTab,
   onRoundTabLabelSelect,
 }: CaseDetailExecutionResultsProps) {
   /** 评分指标以下模块的取数作用域（目标切换）；评分指标本身恒用全量 detail */
   const scoped = targetDetail ?? detail
-  const reportCaseItem = useMemo(() => toReportCaseItem(scoped), [scoped])
+  /** 目标切换后只留当前目标的状态行（全部对比 = 全量） */
+  const activeTarget = targetTab?.active
+  const scopedTargets = useMemo(
+    () =>
+      activeTarget && activeTarget !== ALL_TARGETS
+        ? targets.filter((target) => target.targetName === activeTarget)
+        : targets,
+    [targets, activeTarget]
+  )
+  const reportCaseItem = useMemo(() => toReportCaseItem(scoped, scopedTargets), [scoped, scopedTargets])
   const reportDetail = useMemo(() => toReportDetailData(scoped), [scoped])
 
   /** 弹窗既有轮次 Tab → report 域 RoundTab（key/label/roundTag/order） */

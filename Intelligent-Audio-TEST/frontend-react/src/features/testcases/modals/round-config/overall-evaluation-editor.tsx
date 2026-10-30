@@ -8,7 +8,7 @@
  * + 阈值 0-100 默认 80 非 LLM Judge；LLM Judge 只有只读徽章，没有模型 / Prompt 模板
  * 可选项——INT-1681 / INT-1671 裁定 A）。
  * 数据契约 config.dimensions = [{ id, name, weight, threshold }]（历史 llmJudgeConfig 原样透传、不主动清理）
- * ——TestCaseDimensionItem {id,name,weight,threshold,test_type}（schemas/testcase.py:85-90）；
+ * ——TestCaseDimensionItem {id,name,weight,threshold,device_type}（schemas/testcase.py）；
  * 触发条件=顶层数组非空；报告取值整体优先、无整体结果取各轮算术平均。
  */
 import { useEffect, useState } from 'react'

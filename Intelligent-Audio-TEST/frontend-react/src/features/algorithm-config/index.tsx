@@ -48,6 +48,7 @@ import { AlgorithmDetailDialog } from '@/features/algorithm-config/components/mo
 import { AlgorithmGroupManagerDialog } from '@/features/algorithm-config/components/modals/algorithm-group-manager-dialog'
 import { AlgorithmImportDialog } from '@/features/algorithm-config/components/modals/algorithm-import-dialog'
 import { AlgorithmConfirmDialogs } from '@/features/algorithm-config/components/modals/algorithm-confirm-dialogs'
+import { ParamProfileManagerDialog } from '@/features/algorithm-config/param-profiles/param-profile-manager-dialog'
 import { AlgorithmMutateSheet } from '@/features/algorithm-config/mutate/algorithm-mutate-sheet'
 import type {
   AlgorithmConfirmState,
@@ -114,6 +115,8 @@ export function AlgorithmConfigPage() {
   })
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [paramProfilesOpen, setParamProfilesOpen] = useState(false)
+  const canManageParams = hasPermission('algorithm:param_manage')
   const [confirm, setConfirm] = useState<AlgorithmConfirmState>(null)
   const [confirmPending, setConfirmPending] = useState(false)
 
@@ -292,6 +295,7 @@ export function AlgorithmConfigPage() {
             canManage={canManage}
             canGroupManage={canGroupManage}
             onNew={openCreate}
+            onParamProfiles={() => setParamProfilesOpen(true)}
             onGroupManage={() => setGroupManagerOpen(true)}
             onImport={() => setImportOpen(true)}
             onExport={handleExport}
@@ -409,6 +413,12 @@ export function AlgorithmConfigPage() {
           // 导入成功后列表重拉（mock 阶段内存库变更，查询失效）
           void definitionsQuery.refetch()
         }}
+      />
+      <ParamProfileManagerDialog
+        open={paramProfilesOpen}
+        onOpenChange={setParamProfilesOpen}
+        canManage={canManageParams}
+        defaultAlgorithmType={globalAlgorithmType}
       />
       <AlgorithmConfirmDialogs
         state={confirm}

@@ -115,25 +115,23 @@ beforeEach(() => {
   algorithmOptions.list = []
 })
 
-describe('五页签骨架（INT-1777）', () => {
-  it('五个页签齐全，默认落基础页签', () => {
+describe('四页签骨架（T4.2：输出字段 / 映射合并为「参数配置」）', () => {
+  it('四个页签齐全，默认落基础页签', () => {
     renderDialog(API_FIXTURE)
     const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent)
-    expect(tabs).toEqual(['基础', '请求模板', '响应解析', '输出字段', '映射'])
+    expect(tabs).toEqual(['基础', '请求模板', '响应解析', '参数配置'])
     expect(screen.getByRole('tab', { name: '基础' }).getAttribute('aria-selected')).toBe('true')
     expect(screen.getByLabelText('API 名称 *')).toHaveValue('接线测试_API')
   })
 
-  it('未选算法时两个只读页签显示占位空态（响应解析是写 meta 的页签，仍可填）', () => {
+  it('未选算法时参数配置页签显示占位提示（响应解析是写 meta 的页签，仍可填）', () => {
     renderDialog(undefined)
     fireEvent.click(screen.getByRole('tab', { name: '响应解析' }))
     expect(screen.queryByText('未选择关联算法')).not.toBeInTheDocument()
     expect(screen.getByLabelText('响应解析器（result_parser）')).toBeInTheDocument()
     expect(screen.getByText('未选择关联算法，无法判定')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('tab', { name: '输出字段' }))
+    fireEvent.click(screen.getByRole('tab', { name: '参数配置' }))
     expect(screen.getAllByText('未选择关联算法').length).toBeGreaterThan(0)
-    fireEvent.click(screen.getByRole('tab', { name: '映射' }))
-    expect(screen.getAllByText('未选择关联算法').length).toBeGreaterThan(1)
   })
 
   it('请求模板按协议显隐：http 只显示 method/headers/body_template', () => {

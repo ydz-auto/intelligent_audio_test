@@ -74,14 +74,13 @@ beforeEach(() => {
 })
 
 describe('A3 协议区块显隐（request 页签内，不新增页签）', () => {
-  it('页签骨架不随协议变化：仍是五页签', () => {
+  it('页签骨架不随协议变化：仍是四页签（输出字段 / 映射已并入参数配置）', () => {
     renderDialog({ ...BASE_API, protocol: 'grpc', streaming: true })
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       '基础',
       '请求模板',
       '响应解析',
-      '输出字段',
-      '映射',
+      '参数配置',
     ])
   })
 

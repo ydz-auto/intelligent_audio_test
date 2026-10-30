@@ -25,7 +25,6 @@ const CASES: TestCaseListItem[] = [
     description: null,
     groupId: null,
     groupName: null,
-    type: 'e2e',
     tags: ['音箱'],
     algorithmType: 'asr-v3',
     createdAt: '2026-09-10 10:00',

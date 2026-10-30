@@ -20,7 +20,12 @@ import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { CaseResultForReview } from '@/domain/models/review'
-import { executionStatusLabel, toAiReviewDimensionIds } from '@/domain/models/review'
+import {
+  caseEvaluationStatusLabel,
+  caseEvaluationStatusTone,
+  executionStatusLabel,
+  toAiReviewDimensionIds,
+} from '@/domain/models/review'
 import type {
   CaseAlgorithmResult,
   CaseAudioResult,
@@ -358,11 +363,9 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
     isAudioFieldVisible(field, currentTab)
   )
 
-  /** 有真实执行数据才渲染指标×设备表；无结果用例退回结果摘要（空态不回归）。
-   *  以全量 detail 判定（评分指标恒全量，轮次 Tab 是全局二级轴，不随目标收窄）。 */
-  const hasDeviceTable =
-    (detail?.devices.length ?? 0) > 0 &&
-    (caseResults.length > 0 || (detail?.devices ?? []).some((d) => d.metrics.length > 0))
+  /** 有目标（设备/API）即渲染指标×目标表：targets 全量含未执行目标，
+   *  未执行时指标值为「—」，不再因无结果行退回结果摘要（目标必须可见）。 */
+  const hasDeviceTable = (detail?.devices.length ?? 0) > 0
   /**
    * 有任意执行数据 → 渲染 V9.7.10 全块（评分指标/多轮对话/执行结果——参考数据、用例参数、
    * 评估结果、设备·API 执行结果、时间轴对比、音频时间轴）。API/voice_llm 用例（devices 空）
@@ -412,8 +415,14 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                   }
                 />
                 <StatusBadge
-                  label={detail.evaluationStatus === 'completed' ? '评估完成' : '评估中'}
-                  variant={detail.evaluationStatus === 'completed' ? 'success' : 'neutral'}
+                  label={caseEvaluationStatusLabel(
+                    detail.executionStatus,
+                    detail.evaluationStatus
+                  )}
+                  variant={caseEvaluationStatusTone(
+                    detail.executionStatus,
+                    detail.evaluationStatus
+                  )}
                 />
                 {detail.duration != null && (
                   <span className='text-muted-foreground text-sm'>耗时 {detail.duration}s</span>
@@ -501,6 +510,7 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                     <CaseDetailExecutionResults
                       detail={detail}
                       targetDetail={scopedDetail}
+                      targets={detail.targets}
                       targetTab={{
                         names: targetNames,
                         active: activeTarget,

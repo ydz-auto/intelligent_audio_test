@@ -1,6 +1,6 @@
 /**
  * §6.4 作用域过滤 chips（INT-591 降维核心之一；newAPI ui/toggle-group 母版）。
- * ToggleGroup 单选计数：「全部 (n)」「设备 (n)」「API (n)」「用例 (n)」，切换即过滤统一参数表。
+ * ToggleGroup 单选计数：「全部 (n)」「设备 (n)」「用例 (n)」，切换即过滤统一参数表。
  * chip 为「全部」或「用例」时下方显示「功能特性快捷开关」（勾选自动批量添加/删除对应用例参数）。
  */
 import { Checkbox } from '@/components/ui/checkbox'
@@ -20,14 +20,14 @@ export type FeatureBundleItem = {
 export type ParamScopeChipsProps = {
   scope: ParamScope
   onScopeChange: (scope: ParamScope) => void
-  counts: { device: number; api: number; case: number }
+  counts: { device: number; case: number }
   /** 功能特性快捷开关（scope=全部/用例时显示；其余隐藏） */
   featureBundles?: FeatureBundleItem[]
   onToggleBundle?: (key: string) => void
 }
 
 export function ParamScopeChips(props: ParamScopeChipsProps) {
-  const total = props.counts.device + props.counts.api + props.counts.case
+  const total = props.counts.device + props.counts.case
   const showBundles =
     (props.scope === 'all' || props.scope === 'case') &&
     (props.featureBundles?.length ?? 0) > 0
@@ -42,19 +42,13 @@ export function ParamScopeChips(props: ParamScopeChipsProps) {
         aria-label='参数作用域筛选'
         onValueChange={(values) => {
           const next = values[0]
-          if (
-            next === 'all' ||
-            next === 'device' ||
-            next === 'api' ||
-            next === 'case'
-          ) {
+          if (next === 'all' || next === 'device' || next === 'case') {
             props.onScopeChange(next)
           }
         }}
       >
         <ToggleGroupItem value='all'>全部 ({total})</ToggleGroupItem>
         <ToggleGroupItem value='device'>设备 ({props.counts.device})</ToggleGroupItem>
-        <ToggleGroupItem value='api'>API ({props.counts.api})</ToggleGroupItem>
         <ToggleGroupItem value='case'>用例 ({props.counts.case})</ToggleGroupItem>
       </ToggleGroup>
 

@@ -7,6 +7,7 @@
 import {
   Boxes,
   Download,
+  ListChecks,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -27,6 +28,7 @@ export type AlgorithmPrimaryButtonsProps = {
   canManage: boolean
   canGroupManage: boolean
   onNew: () => void
+  onParamProfiles: () => void
   onGroupManage: () => void
   onImport: () => void
   onExport: () => void
@@ -43,6 +45,10 @@ export function AlgorithmPrimaryButtons(props: AlgorithmPrimaryButtonsProps) {
           新建算法
         </Button>
       )}
+      <Button variant='outline' size='sm' onClick={props.onParamProfiles}>
+        <ListChecks aria-hidden='true' />
+        参数策略
+      </Button>
       <DropdownMenu>
         <DropdownMenuTrigger
           render={

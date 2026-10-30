@@ -144,6 +144,25 @@ describe('DimensionPicker 主/子分组云（V9.7.10 口径）', () => {
     expect(screen.queryByText('字准率')).not.toBeInTheDocument()
   })
 
+  it('候选集无关联算法信息（列表端点恒 []）时不做客户端算法过滤', () => {
+    // GET /evaluation/dimensions 按契约不下发 associated_algorithms，算法归属由 options 端点收敛
+    const dims = MOCK_CASE_DIMENSIONS.map((d) => ({ ...d, associatedAlgorithms: [] }))
+    render(
+      <DimensionPicker
+        dimensions={dims}
+        categories={MOCK_EVALUATION_CATEGORIES}
+        algorithmType='eval-ensemble'
+        selected={[]}
+        onToggle={vi.fn()}
+      />
+    )
+    expect(screen.getByText('识别准确率')).toBeInTheDocument()
+    expect(screen.getByText('唤醒成功率')).toBeInTheDocument()
+    expect(
+      screen.queryByText('暂无可用维度（当前算法类型无关联维度）')
+    ).not.toBeInTheDocument()
+  })
+
   it('分类分组：按分类聚合组头（识别质量/响应体验）且分类计数正确', () => {
     setup()
     // 分类组头（识别质量/响应体验为分类专名，与维度名不冲突；语义理解组头见搜索用例）

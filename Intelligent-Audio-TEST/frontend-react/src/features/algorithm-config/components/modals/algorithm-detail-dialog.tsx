@@ -1,6 +1,6 @@
 /**
  * 算法详情弹窗（§7.2；Dialog sm:max-w-3xl + DetailSection 分节）。
- * 基本信息 + 参数定义（设备/API/用例三页签静态表）+ 参数映射（设备/API/评估三页签）。
+ * 基本信息 + 参数定义（设备/用例两页签静态表）+ 参数映射（设备/评估两页签）。
  * 权限 algorithm:read（tester 只读查看恢复入口，§12-2）。
  *
  * INT-1644（对齐编辑模态窗评估维度视图，只读）：
@@ -36,6 +36,7 @@ import type {
 import type { Dimension } from '@/domain/models/evaluationDimension'
 import { AlgorithmStatusBadge } from '@/features/algorithm-config/components/algorithm-status-badge'
 import {
+  CASE_PARAM_SCOPE_OPTIONS,
   CASE_PARAM_TYPE_OPTIONS,
   DEVICE_PARAM_TYPE_OPTIONS,
   PARAM_DIRECTION_OPTIONS,
@@ -334,9 +335,7 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
   const paramTotal = useMemo(
     () =>
       algorithm
-        ? algorithm.deviceParams.length +
-          algorithm.apiParams.length +
-          algorithm.caseParams.length
+        ? algorithm.deviceParams.length + algorithm.caseParams.length
         : 0,
     [algorithm]
   )
@@ -401,17 +400,11 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
                 <Tabs defaultValue='device'>
                   <TabsList variant='line' className='w-full justify-start'>
                     <TabsTrigger value='device'>设备参数（{algorithm.deviceParams.length}）</TabsTrigger>
-                    <TabsTrigger value='api'>API参数（{algorithm.apiParams.length}）</TabsTrigger>
                     <TabsTrigger value='case'>用例参数（{algorithm.caseParams.length}）</TabsTrigger>
                   </TabsList>
                   <TabsContent value='device' className='pt-2'>
                     <StaticTable headers={['参数代码', '参数名称', '类型', '方向', '必填', '默认值', '帮助文本']}>
                       <DeviceParamRows params={algorithm.deviceParams} />
-                    </StaticTable>
-                  </TabsContent>
-                  <TabsContent value='api' className='pt-2'>
-                    <StaticTable headers={['参数代码', '参数名称', '类型', '方向', '必填', '默认值', '帮助文本']}>
-                      <DeviceParamRows params={algorithm.apiParams} />
                     </StaticTable>
                   </TabsContent>
                   <TabsContent value='case' className='pt-2'>
@@ -431,14 +424,7 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
                               {labelOf(CASE_PARAM_TYPE_OPTIONS, param.paramType)}
                             </td>
                             <td className='px-3 py-2 text-xs'>
-                              {labelOf(
-                                [
-                                  { value: 'common', label: '通用' },
-                                  { value: 'api', label: 'API' },
-                                  { value: 'e2e', label: 'E2E' },
-                                ],
-                                param.scope
-                              )}
+                              {labelOf(CASE_PARAM_SCOPE_OPTIONS, param.scope)}
                             </td>
                             <td className='px-3 py-2'>{param.required ? '是' : '否'}</td>
                             <td className='px-3 py-2 font-mono text-xs'>{param.defaultValue ?? '—'}</td>
@@ -457,14 +443,10 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
                 <Tabs defaultValue='device'>
                   <TabsList variant='line' className='w-full justify-start'>
                     <TabsTrigger value='device'>设备参数（{algorithm.mappings.device.length}）</TabsTrigger>
-                    <TabsTrigger value='api'>API参数（{algorithm.mappings.api.length}）</TabsTrigger>
                     <TabsTrigger value='evaluation'>评估参数（{algorithm.mappings.evaluation.length}）</TabsTrigger>
                   </TabsList>
                   <TabsContent value='device' className='pt-2'>
                     <MappingRows mappings={algorithm.mappings.device} empty='无设备参数映射' />
-                  </TabsContent>
-                  <TabsContent value='api' className='pt-2'>
-                    <MappingRows mappings={algorithm.mappings.api} empty='无 API 参数映射' />
                   </TabsContent>
                   <TabsContent value='evaluation' className='pt-2'>
                     <EvaluationMappingRows
@@ -537,7 +519,7 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
   )
 }
 
-/** 设备 / API 参数映射（平铺 5 列，INT-1160 列口径） */
+/** 设备参数映射（平铺 5 列，INT-1160 列口径） */
 function MappingRows({
   mappings,
   empty,

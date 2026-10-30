@@ -61,7 +61,11 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { CaseResultForReview } from '@/domain/models/review'
-import { toAiReviewDimensionIds } from '@/domain/models/review'
+import {
+  caseEvaluationStatusLabel,
+  caseEvaluationStatusTone,
+  toAiReviewDimensionIds,
+} from '@/domain/models/review'
 import type { TaskCaseBrief, TaskCaseTarget, TaskDetailData } from '@/domain/models/task'
 import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
@@ -129,15 +133,30 @@ function matchesStatusFilter(c: TaskCaseBrief, status: string): boolean {
   return c.status === status || c.execution_status === status || c.evaluation_status === status
 }
 
-/** 执行/评估两列共用的状态徽章（INT-1492：failed 按列区分为「执行失败」「评估失败」） */
+/**
+ * 执行/评估两列共用的状态徽章（INT-1492：failed 按列区分为「执行失败」「评估失败」）。
+ * 评估列按「执行是否已开始」纠偏：未执行（pending/queued）时不显示评估中，
+ * 统一落「待评估」（后端多目标聚合可能因个别行评估中把整例标成 running）。
+ */
 function CaseStatusBadge({
   status,
   kind,
+  executionStatus,
 }: {
   status: string | null
   /** execution=执行状态列 / evaluation=评估状态列 */
   kind: 'execution' | 'evaluation'
+  /** 评估列纠偏所需的用例级执行状态 */
+  executionStatus?: string | null
 }) {
+  if (kind === 'evaluation') {
+    return (
+      <StatusBadge
+        label={caseEvaluationStatusLabel(executionStatus, status)}
+        variant={caseEvaluationStatusTone(executionStatus, status)}
+      />
+    )
+  }
   const map: Record<string, { label: string; variant: 'success' | 'danger' | 'info' | 'neutral' | 'warning' }> = {
     pending: { label: '等待中', variant: 'neutral' },
     queued: { label: '排队中', variant: 'info' },
@@ -145,10 +164,7 @@ function CaseStatusBadge({
     evaluating: { label: '计算指标中', variant: 'info' },
     calculating: { label: '计算指标中', variant: 'info' },
     completed: { label: '已完成', variant: 'success' },
-    failed: {
-      label: kind === 'execution' ? '执行失败' : '评估失败',
-      variant: 'danger',
-    },
+    failed: { label: '执行失败', variant: 'danger' },
     skipped: { label: '已跳过', variant: 'neutral' },
     stopped: { label: '已停止', variant: 'neutral' },
     deleted: { label: '已删除', variant: 'neutral' },
@@ -283,9 +299,13 @@ function TaskCaseRow({
         <CaseStatusBadge status={c.execution_status} kind='execution' />
       </div>
 
-      {/* 评估状态（failed → 评估失败） */}
+      {/* 评估状态（failed → 评估失败；未执行不显示评估中） */}
       <div role='cell' data-column='evaluation'>
-        <CaseStatusBadge status={c.evaluation_status} kind='evaluation' />
+        <CaseStatusBadge
+          status={c.evaluation_status}
+          kind='evaluation'
+          executionStatus={c.execution_status}
+        />
       </div>
 
       {/* 耗时 */}

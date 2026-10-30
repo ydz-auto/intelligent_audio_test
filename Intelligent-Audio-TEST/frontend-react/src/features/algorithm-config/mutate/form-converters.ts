@@ -39,16 +39,6 @@ export function toFormValues(algorithm: AlgorithmDefinition): AlgorithmFormValue
       defaultValue: param.defaultValue ?? '',
       helpText: param.helpText ?? '',
     })),
-    apiParams: algorithm.apiParams.map<DeviceApiParamRow>((param) => ({
-      key: nextKey('a'),
-      paramCode: param.paramCode,
-      paramName: param.paramName ?? '',
-      direction: param.direction,
-      paramType: param.paramType,
-      required: param.required,
-      defaultValue: param.defaultValue ?? '',
-      helpText: param.helpText ?? '',
-    })),
     caseParams: algorithm.caseParams.map<CaseParamRow>((param) => ({
       key: nextKey('c'),
       paramCode: param.paramCode,
@@ -79,17 +69,6 @@ export function toFormValues(algorithm: AlgorithmDefinition): AlgorithmFormValue
     mappings: {
       device: algorithm.mappings.device.map<MappingRow>((mapping) => ({
         key: nextKey('md'),
-        id: mapping.id,
-        source: mapping.source ?? '',
-        sourceDirection: mapping.sourceDirection ?? 'output',
-        sourceParam: mapping.sourceParam,
-        paramName: mapping.paramName ?? '',
-        targetParam: mapping.targetParam,
-        targetParamName: mapping.targetParamName ?? '',
-        transformType: mapping.transformType,
-      })),
-      api: algorithm.mappings.api.map<MappingRow>((mapping) => ({
-        key: nextKey('ma'),
         id: mapping.id,
         source: mapping.source ?? '',
         sourceDirection: mapping.sourceDirection ?? 'output',
@@ -135,10 +114,9 @@ export function emptyFormValues(): AlgorithmFormValues {
     status: 'online',
     description: '',
     deviceParams: [],
-    apiParams: [],
     caseParams: [],
     referenceParams: [],
-    mappings: { device: [], api: [], evaluation: [] },
+    mappings: { device: [], evaluation: [] },
     associatedDimensions: [],
   }
 }
@@ -168,12 +146,10 @@ export function toSaveInput(values: AlgorithmFormValues): SaveAlgorithmInput {
     status: values.status,
     description: values.description,
     deviceParams: strip(values.deviceParams),
-    apiParams: strip(values.apiParams),
     caseParams: strip(values.caseParams),
     referenceParams: strip(values.referenceParams),
     mappings: {
       device: strip(values.mappings.device),
-      api: strip(values.mappings.api),
       evaluation: strip(values.mappings.evaluation),
     },
     associatedDimensions: strip(values.associatedDimensions),

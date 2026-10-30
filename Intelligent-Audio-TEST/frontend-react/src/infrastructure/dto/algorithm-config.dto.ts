@@ -4,17 +4,30 @@
  * algorithm_crud_service.py 序列化输出（INT-297 统一分页信封 {items,total,page,per_page,pages}）。
  * 读侧：snake_case 响应 → camelCase Domain；写侧：camelCase 表单载荷 → snake_case 请求体。
  */
-import type {
-  AlgorithmDefinition,
-  AlgorithmGroup,
-  AlgorithmMappings,
-  CaseParam,
-  DeviceApiParam,
-  DimensionParam,
-  DimensionRelation,
-  ParamMapping,
-  ReferenceParam,
+import {
+  CASE_PARAM_SCOPES,
+  type AlgorithmDefinition,
+  type AlgorithmGroup,
+  type AlgorithmMappings,
+  type CaseParam,
+  type CaseParamScope,
+  type DeviceApiParam,
+  type DimensionParam,
+  type DimensionRelation,
+  type ParamMapping,
+  type ReferenceParam,
 } from '@/domain/models/algorithmConfig'
+
+/**
+ * 用例参数 scope 归一：后端词表 = common / physical / http_api / websocket_api
+ * （旧 common/api/e2e 已废弃）。未知值回落 common，避免把脏值写回。
+ */
+function toCaseParamScope(value: unknown): CaseParamScope {
+  const scope = typeof value === 'string' ? value : ''
+  return (CASE_PARAM_SCOPES as readonly string[]).includes(scope)
+    ? (scope as CaseParamScope)
+    : 'common'
+}
 
 /* ───────────────────────── 响应 DTO（snake_case） ───────────────────────── */
 
@@ -31,12 +44,11 @@ export interface AlgorithmDefinitionDto {
   icon?: string | null
   display_order?: number
   device_params?: Array<Record<string, unknown>>
-  api_params?: Array<Record<string, unknown>>
   case_params?: Array<Record<string, unknown>>
   /** 兼容字段：device_params 别名（部分服务同时输出 params） */
   params?: Array<Record<string, unknown>>
   reference_params?: Array<Record<string, unknown>>
-  /** 按 source 分组：device / api / evaluation（evaluation 项带 dimension_id） */
+  /** 按 source 分组：device / evaluation（evaluation 项带 dimension_id） */
   mappings?: Record<string, Array<Record<string, unknown>>>
   associated_dimensions?: Array<Record<string, unknown>>
   dimension_relations?: Array<Record<string, unknown>>
@@ -190,7 +202,7 @@ export function toCaseParam(raw: unknown): CaseParam {
     helpText: nullableStr(r.help_text),
     uiOrder: num(r.ui_order) ?? 0,
     hidden: bool(r.hidden),
-    scope: r.scope === 'api' || r.scope === 'e2e' ? r.scope : 'common',
+    scope: toCaseParamScope(r.scope),
     minValue: num(r.min_value),
     maxValue: num(r.max_value),
     step: num(r.step),
@@ -297,7 +309,7 @@ export function toDimensionParam(raw: unknown): DimensionParam {
   }
 }
 
-/** 映射按 source 分组（device / api / evaluation） */
+/** 映射按 source 分组（device / evaluation；算法级 api 已迁移到 API 实例作用域） */
 function toMappings(
   raw?: Record<string, Array<Record<string, unknown>>>
 ): AlgorithmMappings {
@@ -306,7 +318,6 @@ function toMappings(
     Array.isArray(source[key]) ? source[key].map(toParamMapping) : []
   return {
     device: list('device'),
-    api: list('api'),
     evaluation: list('evaluation'),
   }
 }
@@ -318,7 +329,6 @@ export function toAlgorithmDefinition(dto: AlgorithmDefinitionDto): AlgorithmDef
     : Array.isArray(dto.params)
       ? dto.params
       : []
-  const apiParams = Array.isArray(dto.api_params) ? dto.api_params : []
   const caseParams = Array.isArray(dto.case_params) ? dto.case_params : []
   const referenceParams = Array.isArray(dto.reference_params)
     ? dto.reference_params
@@ -340,7 +350,6 @@ export function toAlgorithmDefinition(dto: AlgorithmDefinitionDto): AlgorithmDef
     icon: nullableStr(dto.icon),
     displayOrder: num(dto.display_order) ?? 0,
     deviceParams: deviceParams.map(toDeviceApiParam),
-    apiParams: apiParams.map(toDeviceApiParam),
     caseParams: caseParams.map(toCaseParam),
     referenceParams: referenceParams.map(toReferenceParam),
     mappings: toMappings(dto.mappings as Record<string, Array<Record<string, unknown>>>),
@@ -414,7 +423,7 @@ export function toImportResult(
 
 type Row = Record<string, unknown>
 
-/** 设备/API 参数行（DeviceApiParamRow camelCase）→ device_params/api_params 列表项 */
+/** 设备参数行（DeviceApiParamRow camelCase）→ device_params 列表项 */
 function toDeviceApiParamItemDto(row: Row): Row {
   const r = row
   return {
@@ -444,7 +453,7 @@ function toCaseParamItemDto(row: Row): Row {
     help_text: nullableStr(r.helpText),
     ui_order: typeof r.uiOrder === 'number' ? r.uiOrder : 0,
     hidden: bool(r.hidden),
-    scope: r.scope === 'api' || r.scope === 'e2e' ? r.scope : 'common',
+    scope: toCaseParamScope(r.scope),
     min_value: r.minValue !== '' && r.minValue != null ? Number(r.minValue) : null,
     max_value: r.maxValue !== '' && r.maxValue != null ? Number(r.maxValue) : null,
     step: r.step !== '' && r.step != null ? Number(r.step) : null,
@@ -476,10 +485,10 @@ function toReferenceParamItemDto(row: Row): Row {
  *  写侧把 source / source_direction / dimension_id 原样提交（INT-1160 返工）：
  *  evaluation 行 dimension_id 从 row.dimensionId（数字）优先、维度名对账兜底；
  *  target_param 兼容维度内目标参数代码与存量维度名两种形态。
- *  设备/API 节 source = 节类型（device/api，后端按节派生）；评估节 source = 行来源（缺省 case）。 */
+ *  设备节 source = 节类型（device，后端按节派生）；评估节 source = 行来源（缺省 case）。 */
 function toMappingItemDto(
   row: Row,
-  section: 'device' | 'api' | 'evaluation',
+  section: 'device' | 'evaluation',
   dimensionIdByName?: Map<string, number>
 ): Row {
   const r = row
@@ -498,8 +507,7 @@ function toMappingItemDto(
       ? r.source === 'case' ||
         r.source === 'case_config' ||
         r.source === 'reference' ||
-        r.source === 'device' ||
-        r.source === 'api'
+        r.source === 'device'
         ? r.source
         : r.source !== undefined && r.source !== ''
           ? r.source
@@ -541,10 +549,9 @@ export function toAlgorithmDefinitionDto(
     status: 'online' | 'offline'
     description: string
     deviceParams: Row[]
-    apiParams: Row[]
     caseParams: Row[]
     referenceParams: Row[]
-    mappings: { device: Row[]; api: Row[]; evaluation: Row[] }
+    mappings: { device: Row[]; evaluation: Row[] }
     associatedDimensions: Row[]
   },
   dimensionIdByName?: Map<string, number>
@@ -557,12 +564,10 @@ export function toAlgorithmDefinitionDto(
     status: input.status,
     description: nullableStr(input.description),
     device_params: (input.deviceParams ?? []).map(toDeviceApiParamItemDto),
-    api_params: (input.apiParams ?? []).map(toDeviceApiParamItemDto),
     case_params: (input.caseParams ?? []).map(toCaseParamItemDto),
     reference_params: (input.referenceParams ?? []).map(toReferenceParamItemDto),
     mappings: {
       device: (input.mappings?.device ?? []).map((row) => toMappingItemDto(row, 'device')),
-      api: (input.mappings?.api ?? []).map((row) => toMappingItemDto(row, 'api')),
       evaluation: (input.mappings?.evaluation ?? []).map((row) =>
         toMappingItemDto(row, 'evaluation', dimensionIdByName)
       ),

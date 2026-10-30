@@ -40,11 +40,8 @@ export function TagDevicePanel({
   const [tag, setTag] = useState('')
   const [deviceId, setDeviceId] = useState('')
 
-  // 声明式 items：闭合态取 label，否则 base-ui 回退显示设备 id（INT-1686）
-  const deviceItems = devices.map((d) => ({
-    value: d.id,
-    label: `${d.name} (通道 ${d.channel}) [${d.type}]`,
-  }))
+  // 声明式 items：闭合态取 label，否则 base-ui 回退显示原始值（INT-1686）
+  const deviceItems = devices.map((d) => ({ value: d.id, label: d.label }))
 
   const confirm = () => {
     if (!tag || !deviceId) return
@@ -58,9 +55,9 @@ export function TagDevicePanel({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-md'>
         <DialogHeader>
-          <DialogTitle>标签设备</DialogTitle>
+          <DialogTitle>标签逻辑音箱</DialogTitle>
           <DialogDescription>
-            选择标签与目标播放设备，将该标签命中的音频播放设备批量设置
+            选择标签与目标逻辑音箱，将该标签命中的音频批量关联到该逻辑音箱
           </DialogDescription>
         </DialogHeader>
         <div className='grid gap-3 sm:grid-cols-2'>
@@ -80,14 +77,14 @@ export function TagDevicePanel({
             </Select>
           </div>
           <div className='space-y-1.5'>
-            <span className='text-sm font-medium'>目标播放设备</span>
+            <span className='text-sm font-medium'>目标逻辑音箱</span>
             <Select
               value={deviceId}
               onValueChange={(v) => setDeviceId(v ?? '')}
               items={deviceItems}
             >
               <SelectTrigger size='sm' className='h-8 w-full'>
-                <SelectValue placeholder='请选择设备' />
+                <SelectValue placeholder='请选择逻辑音箱' />
               </SelectTrigger>
               <SelectContent>
                 {deviceItems.map((d) => (

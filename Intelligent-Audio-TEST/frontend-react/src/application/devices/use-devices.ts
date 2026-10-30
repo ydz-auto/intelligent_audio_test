@@ -13,6 +13,10 @@ import type { ApiDevice } from '@/domain/models/apiDevice'
 import type { AlarmRule } from '@/domain/models/alarm'
 import type { Laboratory } from '@/domain/models/laboratory'
 import type { DeviceGroup } from '@/domain/models/deviceGroup'
+import type {
+  PlaybackSpeakerGroupInput,
+  PlaybackSpeakerGroupItemInput,
+} from '@/domain/models/playbackSpeakerGroup'
 import {
   acknowledgeAlarm,
   addDevicesToGroup,
@@ -23,12 +27,15 @@ import {
   createDeviceGroup,
   createLaboratory,
   createPlaybackDevice,
+  createPlaybackSpeakerGroup,
   createTestDevice,
   deleteAlarmRule,
   deleteApiDevice,
   deleteDeviceGroup,
   deleteLaboratory,
   deletePlaybackDevice,
+  deletePlaybackSpeakerGroup,
+  deletePlaybackSpeakerGroupItem,
   deleteTestDevice,
   fetchAlarmRules,
   fetchAlarms,
@@ -38,6 +45,7 @@ import {
   fetchDriverKeywords,
   fetchLaboratories,
   fetchPlaybackDevices,
+  fetchPlaybackSpeakerGroups,
   fetchStatusHistory,
   fetchTestDevices,
   moveDeviceGroup,
@@ -45,10 +53,12 @@ import {
   saveAlarmRule,
   scanDevices,
   setDeviceOccupied,
+  setPlaybackSpeakerGroupItem,
   updateApiDevice,
   updateDeviceGroup,
   updateLaboratory,
   updatePlaybackDevice,
+  updatePlaybackSpeakerGroup,
   updateTestDevice,
 } from '@/infrastructure/api/devicesApi'
 
@@ -339,6 +349,55 @@ export function useAlarmRuleMutations() {
   })
 
   return { save, remove }
+}
+
+/** 逻辑音箱组列表（GET /playback-devices/speaker-groups；含各实验室对应设备） */
+export function usePlaybackSpeakerGroups() {
+  return useQuery({
+    queryKey: ['devices', 'speaker-groups'],
+    queryFn: fetchPlaybackSpeakerGroups,
+    staleTime: 30_000,
+  })
+}
+
+/** 逻辑音箱组 CRUD + 组内实验室设备维护（成功后失效组列表与播放设备列表） */
+export function usePlaybackSpeakerGroupMutations() {
+  const queryClient = useQueryClient()
+
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['devices', 'speaker-groups'] })
+    void queryClient.invalidateQueries({ queryKey: ['devices', 'playback'] })
+  }
+
+  const create = useMutation({
+    mutationFn: (input: PlaybackSpeakerGroupInput) => createPlaybackSpeakerGroup(input),
+    onSuccess: invalidate,
+  })
+
+  const update = useMutation({
+    mutationFn: ({ id, input }: { id: number; input: PlaybackSpeakerGroupInput }) =>
+      updatePlaybackSpeakerGroup(id, input),
+    onSuccess: invalidate,
+  })
+
+  const remove = useMutation({
+    mutationFn: (id: number) => deletePlaybackSpeakerGroup(id),
+    onSuccess: invalidate,
+  })
+
+  const setItem = useMutation({
+    mutationFn: ({ groupId, input }: { groupId: number; input: PlaybackSpeakerGroupItemInput }) =>
+      setPlaybackSpeakerGroupItem(groupId, input),
+    onSuccess: invalidate,
+  })
+
+  const removeItem = useMutation({
+    mutationFn: ({ groupId, labId }: { groupId: number; labId: number }) =>
+      deletePlaybackSpeakerGroupItem(groupId, labId),
+    onSuccess: invalidate,
+  })
+
+  return { create, update, remove, setItem, removeItem }
 }
 
 /** 实验室 CRUD（§6.26；INT-655 /laboratories 真实端点，成功失效列表重拉） */

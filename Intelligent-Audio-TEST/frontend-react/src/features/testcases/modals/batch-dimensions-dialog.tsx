@@ -87,7 +87,6 @@ export function BatchDimensionsDialog({
   dimensions,
   categories = [],
   algorithmType,
-  testType,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -100,7 +99,6 @@ export function BatchDimensionsDialog({
   dimensions: Dimension[]
   categories?: EvaluationCategory[]
   algorithmType?: string | null
-  testType?: string | null
 }) {
   const [roundMode, setRoundMode] = useState<RoundMode>('all')
   const [rounds, setRounds] = useState<RoundKey[]>(() => roundKeysOf(roundCount))
@@ -339,7 +337,6 @@ export function BatchDimensionsDialog({
         }
         await batchTestcaseAction('update_dimensions', ids, {
           dimensions: [],
-          testType: testType ?? '',
           roundMode: 'per_round',
           roundNumbers: [],
           roundDimensions,
@@ -349,7 +346,6 @@ export function BatchDimensionsDialog({
         const flat = unifiedFlat()
         await batchTestcaseAction('update_dimensions', ids, {
           dimensions: flat.map((id) => toDimConfig(id, gridKeys)),
-          testType: testType ?? '',
           roundMode: roundMode as TestcaseRoundMode,
           roundNumbers: roundMode === 'specific' ? specificRounds : undefined,
           multiDimensions,

@@ -97,4 +97,23 @@ describe('evaluation.dto requires_audio → requiresAudio（INT-1843）', () => 
     })
     expect(items.map((d) => d.requiresAudio)).toEqual([true, false])
   })
+
+  it('options 端点 parent_dimension_id/category_id 映射主/子层级与分类', () => {
+    const items = toDimensionOptionsList({
+      dimensions: [
+        { id: 1, name: '识别准确率', dimension_type: 'main', category_id: 2 },
+        {
+          id: 11,
+          name: '字准率',
+          dimension_type: 'sub',
+          parent_dimension_id: 1,
+          category_id: 2,
+        },
+      ],
+    })
+    expect(items[0].categoryId).toBe(2)
+    expect(items[0].parentDimensionId).toBeNull()
+    expect(items[1].parentDimensionId).toBe(1)
+    expect(items[1].dimensionType).toBe('sub')
+  })
 })

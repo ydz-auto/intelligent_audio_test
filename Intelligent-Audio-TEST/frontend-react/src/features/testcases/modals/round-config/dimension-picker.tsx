@@ -320,13 +320,26 @@ export function DimensionPicker({
 }) {
   const [search, setSearch] = useState('')
 
-  /** 按当前算法过滤可用维度（associated_algorithms 口径；无算法=全量） */
+  /**
+   * 候选集是否带关联算法信息。
+   * `GET /evaluation/dimensions`（列表端点）按契约恒返回 `associated_algorithms: []`
+   * （详情字段按需加载，避免列表 N+1），此时客户端无从判断归属；若仍按关联严格过滤会把
+   * 全部维度滤空（用例编辑抽屉「暂无可用维度（当前算法类型无关联维度）」）。列表侧已由
+   * `GET /evaluation/dimensions/options?algorithm_type=` 预先按算法收敛，故无关联信息时
+   * 不再二次过滤（对齐 V9.7.10/Vue RoundEvaluationEditor「空关联视为通用维度」口径）。
+   */
+  const hasAssociationInfo = useMemo(
+    () => dimensions.some((d) => (d.associatedAlgorithms?.length ?? 0) > 0),
+    [dimensions]
+  )
+
+  /** 按当前算法过滤可用维度（associated_algorithms 口径；无算法/无关联信息=全量） */
   const algoFiltered = useMemo(() => {
-    if (!algorithmType) return dimensions
+    if (!algorithmType || !hasAssociationInfo) return dimensions
     return dimensions.filter((d) =>
       d.associatedAlgorithms?.some((a) => a.algorithmType === algorithmType)
     )
-  }, [dimensions, algorithmType])
+  }, [dimensions, algorithmType, hasAssociationInfo])
 
   const keyword = search.trim().toLowerCase()
 

@@ -26,7 +26,6 @@ function buildValues(): AlgorithmFormValues {
     status: 'online',
     description: '',
     deviceParams: [],
-    apiParams: [],
     caseParams: [],
     referenceParams: [
       {
@@ -63,7 +62,7 @@ function buildValues(): AlgorithmFormValues {
         helpText: '',
       },
     ],
-    mappings: { device: [], api: [], evaluation: [] },
+    mappings: { device: [], evaluation: [] },
     associatedDimensions: [],
   }
 }

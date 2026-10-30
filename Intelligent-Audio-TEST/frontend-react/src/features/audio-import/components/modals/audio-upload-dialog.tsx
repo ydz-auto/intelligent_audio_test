@@ -3,7 +3,7 @@
  * 拖放区 + 文件列表 + 目标文件夹配置 + 音频类型自动识别 + 文件命名与冲突 + 上传选项
  * （UploadOptions 复用）+ 主钮「开始上传」→ 真实上传（init/register/chunk/merge，
  * audio-upload-api；生成测试用例由 merge 载荷 create_test_case 控制，
- * test_types 不传——后端默认 ['api'] 落库，模态窗不再显示用例类型选择）。
+ * 用例不分类型——device_type 不传，后端缺省按 http_api 处理，模态窗不显示类型选择）。
  */
 import { FileAudio, FileText, FolderOpen, HardDriveUpload, UploadCloud } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
@@ -136,7 +136,7 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
               : undefined,
         annotations: perFileAnnotations[idx],
       }))
-      // 真实上传 + 生成测试用例（merge 载荷 create_test_case 控制；test_types 不传，后端默认 ['api']）
+      // 真实上传 + 生成测试用例（merge 载荷 create_test_case 控制；device_type 不传，后端缺省 http_api）
       const result = await startRealAudioUpload(audioFiles, {
         createTestCase: generateTestCase,
         algorithmType: algorithmType || null,
@@ -145,7 +145,9 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
         multiDimensions: roundScope.multiDimensionItems,
         dimensionPlan: roundScope.dimensionPlan,
         devicePlan: roundScope.devicePlan,
-        playbackDeviceId: roundScope.defaultDeviceId,
+        // 用例只关联逻辑音箱：devicePlan / defaultDeviceId 里的值均为逻辑音箱组 id
+        playbackDeviceId: null,
+        playbackSpeakerGroupId: roundScope.defaultDeviceId,
         spl: defaultSpl,
         noiseAudioId: null,
         noiseSpl: 60,

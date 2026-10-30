@@ -25,7 +25,6 @@ const base = (id: string, patch: Partial<TestCaseListItem>): TestCaseListItem =>
   description: null,
   groupId: null,
   groupName: null,
-  type: 'e2e',
   tags: [],
   algorithmType: 'asr-v3',
   createdAt: null,

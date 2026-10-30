@@ -16,11 +16,9 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
 
 import {
-  useEvaluationDimensions,
+  useAlgorithmDimensions,
   useEvaluationCategories,
   useAlgorithmOptions,
 } from '@/application/evaluation/use-dimensions'
@@ -46,12 +44,10 @@ import {
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
-import { usePlaybackDevices } from '@/application/audio/usePlaybackDevices'
+import { usePlaybackSpeakerGroups } from '@/application/devices/use-devices'
 import type {
   AudioTagSource,
-  PlaybackDeviceOption,
 } from '@/infrastructure/api/audio-upload-api'
-import { scanRealPlaybackDevices } from '@/infrastructure/api/playback-api'
 import { cn } from '@/lib/utils'
 import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
 import {
@@ -287,13 +283,13 @@ export function UploadOptions(props: UploadOptionsProps) {
   // 真实数据源（INT-714 接线）：算法选项 /algorithm/options、评估维度 /evaluation/dimensions、播放设备 /playback-devices
   const algorithmOptionsQuery = useAlgorithmOptions()
   const algorithmOptions = algorithmOptionsQuery.data ?? []
-  const uploadDimsQuery = useEvaluationDimensions()
-  const uploadDimensions = uploadDimsQuery.data ?? []
+  /** 维度云数据源：options 端点按上传算法服务端收敛（含主/子层级与分类） */
+  const uploadDimsQuery = useAlgorithmDimensions(props.algorithmType || null)
+  const uploadDimensions = uploadDimsQuery.data
   const categoriesQuery = useEvaluationCategories()
   const categories = categoriesQuery.data ?? []
-  const playbackDevicesQuery = usePlaybackDevices()
-  const playbackDevices = playbackDevicesQuery.data ?? []
-  const queryClient = useQueryClient()
+  const groupsQuery = usePlaybackSpeakerGroups()
+  const speakerGroups = groupsQuery.data ?? []
 
   const roundScope = props.roundScope
   const roundCount = Math.max(1, props.roundCount)
@@ -301,51 +297,8 @@ export function UploadOptions(props: UploadOptionsProps) {
   const disabledModes: UploadRoundScopeMode[] =
     roundCount <= 1 ? ['specific', 'per_round'] : []
 
-  const [scanning, setScanning] = useState(false)
-  const [scanError, setScanError] = useState('')
-  const scanMutation = useMutation({
-    mutationFn: scanRealPlaybackDevices,
-    onMutate: () => {
-      setScanning(true)
-      setScanError('')
-    },
-    onSuccess: (scanned) => {
-      setScanning(false)
-      // 扫描到的设备并入列表（照 §5.7.4：按 name|channelIndex 去重追加——
-      // 同名同型号不同通道是不同设备，按 model 去重会把它们吞掉）
-      queryClient.setQueryData<typeof playbackDevices>(
-        ['playback-devices'],
-        (prev) => {
-          const existing = prev ?? []
-          const keyOf = (device: { name: string; channelIndex?: number | null }) =>
-            `${device.name}|${device.channelIndex ?? ''}`
-          const keys = new Set(existing.map(keyOf))
-          const appended: PlaybackDeviceOption[] = []
-          for (const device of scanned) {
-            const key = keyOf(device)
-            if (keys.has(key)) continue
-            keys.add(key)
-            appended.push({
-              id: device.id,
-              name: device.name,
-              model: device.model ?? '',
-              deviceType: device.deviceType ?? '',
-              channelIndex: device.channelIndex ?? null,
-            })
-          }
-          return [...existing, ...appended]
-        }
-      )
-      toast.success('扫描完成')
-    },
-    onError: () => {
-      setScanning(false)
-      setScanError('扫描失败：无法连接设备管理器，请确认实验室设备在线后重试')
-    },
-  })
-
-  const selectedPlaybackDevice = playbackDevices.find(
-    (device) => String(device.id) === roundScope.deviceId
+  const selectedSpeakerGroup = speakerGroups.find(
+    (group) => String(group.id) === roundScope.deviceId
   )
 
   return (
@@ -505,6 +458,7 @@ export function UploadOptions(props: UploadOptionsProps) {
                 <DimensionPicker
                   dimensions={uploadDimensions}
                   categories={categories}
+                  algorithmType={props.algorithmType || null}
                   selected={roundScope.dimensionIds}
                   onToggle={(ids, checked) =>
                     roundScope.setDimensionIds(
@@ -532,6 +486,7 @@ export function UploadOptions(props: UploadOptionsProps) {
               <DimensionPicker
                 dimensions={uploadDimensions}
                 categories={categories}
+                algorithmType={props.algorithmType || null}
                 selected={roundScope.multiDimensionIds}
                 onToggle={(ids, checked) =>
                   roundScope.setMultiDimensionIds(
@@ -545,9 +500,9 @@ export function UploadOptions(props: UploadOptionsProps) {
             </div>
           </div>
 
-          {/* 播放设备（§5.7.4：三档轮次范围 + Select + 重新扫描） */}
+          {/* 逻辑音箱（用例只关联逻辑音箱；三档轮次范围） */}
           <div className='space-y-2'>
-            <Label htmlFor='upload-playback-device'>播放设备</Label>
+            <Label htmlFor='upload-playback-device'>逻辑音箱</Label>
             <RoundScopeThreeField
               name='upload-device-round'
               value={toThreeValue(roundScope.deviceScope, roundCount)}
@@ -570,7 +525,7 @@ export function UploadOptions(props: UploadOptionsProps) {
 
             {roundScope.deviceScope.mode === 'per_round' && (
               <PerRoundQuickActions
-                subject='播放设备'
+                subject='逻辑音箱'
                 activeRound={roundScope.deviceScope.activeRound}
                 roundCount={roundCount}
                 valueEmpty={roundScope.deviceId === ''}
@@ -580,62 +535,42 @@ export function UploadOptions(props: UploadOptionsProps) {
               />
             )}
 
-            <div className='flex flex-wrap items-center gap-2'>
-              <Select
-                value={roundScope.deviceId}
-                onValueChange={(value) => roundScope.setDeviceId(value ?? '')}
-                items={playbackDevices.map((device) => ({
-                  value: String(device.id),
-                  label: `${device.name}${device.model ? `（${device.model}）` : ''}`,
-                }))}
-              >
-                <SelectTrigger
-                  id='upload-playback-device'
-                  size='sm'
-                  className='w-full sm:w-72'
-                  disabled={playbackDevices.length === 0}
-                >
-                  <SelectValue placeholder={playbackDevicesQuery.isLoading ? '加载中…' : '选择播放设备'}>
-                    {selectedPlaybackDevice
-                      ? `${selectedPlaybackDevice.name}${selectedPlaybackDevice.model ? `（${selectedPlaybackDevice.model}）` : ''}`
-                      : ''}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {playbackDevices.map((device) => (
-                    <SelectItem key={device.id} value={String(device.id)}>
-                      {device.name}
-                      {device.model ? `（${device.model}）` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                type='button'
-                variant='ghost'
+            <Select
+              value={roundScope.deviceId}
+              onValueChange={(value) => roundScope.setDeviceId(value ?? '')}
+              items={speakerGroups.map((group) => ({
+                value: String(group.id),
+                label: `[逻辑音箱] ${group.name}`,
+              }))}
+            >
+              <SelectTrigger
+                id='upload-playback-device'
                 size='sm'
-                className='h-7'
-                disabled={scanMutation.isPending}
-                onClick={() => scanMutation.mutate()}
+                className='w-full sm:w-72'
+                disabled={speakerGroups.length === 0}
               >
-                重新扫描
-              </Button>
-              {scanning && (
-                <span className='text-muted-foreground inline-flex items-center gap-1.5 text-xs'>
-                  <Spinner className='size-3.5' />
-                  正在扫描可用设备...
-                </span>
-              )}
-              {scanError && <span className='text-destructive text-xs'>{scanError}</span>}
-            </div>
-            {playbackDevicesQuery.isLoading && (
+                <SelectValue placeholder={groupsQuery.isLoading ? '加载中…' : '选择逻辑音箱'}>
+                  {selectedSpeakerGroup ? `[逻辑音箱] ${selectedSpeakerGroup.name}` : ''}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {speakerGroups.map((group) => (
+                  <SelectItem key={group.id} value={String(group.id)}>
+                    [逻辑音箱] {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {groupsQuery.isLoading && (
               <p className='text-muted-foreground/70 inline-flex items-center gap-1.5 text-xs'>
                 <Spinner className='size-3.5' />
-                正在加载播放设备...
+                正在加载逻辑音箱...
               </p>
             )}
-            {!playbackDevicesQuery.isLoading && playbackDevices.length === 0 && (
-              <p className='text-muted-foreground/70 text-xs'>暂无可用的播放设备</p>
+            {!groupsQuery.isLoading && speakerGroups.length === 0 && (
+              <p className='text-muted-foreground/70 text-xs'>
+                暂无可用的逻辑音箱（请先在设备管理 → 逻辑音箱中配置）
+              </p>
             )}
           </div>
 

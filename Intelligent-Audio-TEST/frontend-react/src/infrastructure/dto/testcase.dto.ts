@@ -10,7 +10,6 @@ export interface TestCaseListItemDto {
   description: string | null
   group_id: string | null
   group_name: string | null
-  type: string | null
   tags: string[]
   algorithm_type: string | null
   total_duration: number | null
@@ -23,7 +22,7 @@ export interface TestCaseListItemDto {
   deleted_by_user_id?: number | null
   config: {
     rounds: Array<Record<string, unknown>> | null
-    dimensions: Array<{ id: number; name: string; weight: number | null; test_type: string | null }>
+    dimensions: Array<{ id: number; name: string; weight: number | null; device_type: string | null }>
   }
   /**
    * 算法参数独立列（test_cases.algorithm_params；按轮分组
@@ -130,10 +129,24 @@ export interface CaseAudioListItemDto {
   filename: string
   duration?: number | null
   url?: string | null
-  testType?: string | null
   /** 所属轮次（1 起；camelCase 实测，snake_case 兜底） */
   roundNumber?: number | null
   round_number?: number | null
+}
+
+/** 用例级执行目标（task targets 实测：一个用例 × 多 API/设备各一行；含未执行目标） */
+export interface CaseDetailTargetDto {
+  task_case_id?: number
+  target_type?: 'api' | 'device' | null
+  device_type?: string | null
+  /** 路由 id（physical=设备ID / http_api|websocket_api=api.id） */
+  device_id?: string | null
+  api_id?: number | null
+  /** 目标展示名（后端读模型按设备/API 名称回填；缺失时前端按类型 + id 兜底） */
+  target_name?: string | null
+  status?: string | null
+  execution_status?: string | null
+  evaluation_status?: string | null
 }
 
 /** 用例执行详情（task_bp.py GET /tasks/{id}/cases/{cid}/detail 实测） */
@@ -154,6 +167,8 @@ export interface CaseDetailDto {
    * **字符串数组**（INT-1688 修正：此前按对象数组声明，真实响应对应元素全 undefined）。
    */
   devices: string[]
+  /** 用例级执行目标（API/设备全量；未执行目标也在内 → 详情内逐目标展示） */
+  targets?: CaseDetailTargetDto[]
   /** 评估维度配置（维度列顺序权威源；实测 6 项） */
   metric_configs?: CaseMetricConfigDto[]
   /**

@@ -263,6 +263,8 @@ export async function previewTestCase(
     offset?: number
     previewType: PreviewPlaybackMode
     playbackMode: PreviewPlaybackMode
+    /** 实验室试听的实验室 id（用例只关联逻辑音箱，必须指定实验室才能解析实体设备） */
+    labId?: number | null
   }
 ): Promise<TestCasePreview> {
   const dto = await apiClient.post<TestCasePreviewDto>(
@@ -271,6 +273,7 @@ export async function previewTestCase(
       offset: Number.isFinite(payload.offset) ? Number(payload.offset) : 0,
       preview_type: payload.previewType,
       playback_mode: payload.playbackMode,
+      lab_id: payload.labId ?? null,
     }
   )
   return testCasePreviewFromDto(dto)

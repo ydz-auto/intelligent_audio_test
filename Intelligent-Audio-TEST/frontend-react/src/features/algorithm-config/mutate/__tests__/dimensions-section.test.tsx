@@ -32,10 +32,9 @@ function buildValues(): AlgorithmFormValues {
     status: 'online',
     description: '',
     deviceParams: [],
-    apiParams: [],
     caseParams: [],
     referenceParams: [],
-    mappings: { device: [], api: [], evaluation: [] },
+    mappings: { device: [], evaluation: [] },
     associatedDimensions: [
       { key: 'dim-1', dimensionId: '1', dimensionName: '识别准确率', weight: '0.5', isDefault: true },
       { key: 'dim-2', dimensionId: '2', dimensionName: '响应延迟', weight: '0.3', isDefault: false },

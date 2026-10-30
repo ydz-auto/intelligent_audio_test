@@ -38,8 +38,8 @@ import { AudioPlayerModal, type AudioItemMeta } from './audio-player-modal'
 import { hasTimelineData } from '@/application/report-view/use-timeline-comparison'
 
 const META_CODES = new Set([
-  'test_type',
-  'testType',
+  'device_type',
+  'deviceType',
   'algorithm_type',
   'algorithmType',
   'total_rounds',
@@ -606,6 +606,7 @@ function statusLabel(status?: string) {
     skipped: '已跳过',
     跳过: '已跳过',
     pending: '排队中',
+    stopped: '已停止',
     'in-progress': '执行中',
     warning: '警告',
     警告: '警告',

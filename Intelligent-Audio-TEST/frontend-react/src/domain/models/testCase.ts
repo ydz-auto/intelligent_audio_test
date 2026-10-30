@@ -1,12 +1,11 @@
 /**
  * 用例域领域模型（domain 层；10_测试执行.md §9 落位 + 11_用例域.md §3.3 表格版式）。
  * 形态对照 api_gateway/schemas/testcase.py TestCaseListItem/TestCaseConfig 实测：
- * id/name/description/group_id/group_name/type/tags/algorithm_type/total_duration/updated_at
+ * id/name/description/group_id/group_name/tags/algorithm_type/total_duration/updated_at
  * + INT-141 收藏/回收站字段（is_favorite/deleted/deleted_at/deleted_by_user_id）。
+ * 用例不区分执行类型（api/e2e 概念已废除，执行方式只看任务侧 device_type）。
  * 执行类型子集（选择场景列裁剪）；完整用例管理页列表项 = TestCaseListItem。
  */
-
-export type TestCaseType = 'e2e' | 'api'
 
 /** 用例列表项（选择场景所需子集） */
 export interface TestCase {
@@ -15,8 +14,6 @@ export interface TestCase {
   description: string | null
   groupId: string | null
   groupName: string | null
-  /** 执行类型（api/e2e）；schema type 字段实测 */
-  type: TestCaseType | null
   tags: string[]
   algorithmType: string | null
   /** 轮次数（由 config.rounds 长度派生；展示「{n} 轮」） */
@@ -37,8 +34,6 @@ export interface TestCaseListItem {
   description: string | null
   groupId: string | null
   groupName: string | null
-  /** 执行类型（api/e2e；残留 test_type 列，待 INT-79 废弃——正式类型维度=algorithmType） */
-  type: TestCaseType | null
   tags: string[]
   algorithmType: string | null
   createdAt: string | null

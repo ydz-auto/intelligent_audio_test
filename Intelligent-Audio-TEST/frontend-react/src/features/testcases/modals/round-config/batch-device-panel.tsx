@@ -41,11 +41,8 @@ export function BatchDevicePanel({
   const [deviceId, setDeviceId] = useState('')
   const [scope, setScope] = useState<BatchScope>('all')
 
-  // 声明式 items：闭合态取 label，否则 base-ui 回退显示设备 id（INT-1686）
-  const deviceItems = devices.map((d) => ({
-    value: d.id,
-    label: `${d.name} (通道 ${d.channel}) [${d.type}]`,
-  }))
+  // 声明式 items：闭合态取 label，否则 base-ui 回退显示原始值（INT-1686）
+  const deviceItems = devices.map((d) => ({ value: d.id, label: d.label }))
 
   const confirm = () => {
     if (!deviceId) return
@@ -59,19 +56,19 @@ export function BatchDevicePanel({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-md'>
         <DialogHeader>
-          <DialogTitle>批量设置播放设备</DialogTitle>
+          <DialogTitle>批量设置逻辑音箱</DialogTitle>
           <DialogDescription>应用到当前轮次音频列表（全部或勾选）</DialogDescription>
         </DialogHeader>
         <div className='space-y-4'>
           <div className='space-y-1.5'>
-            <span className='text-sm font-medium'>播放设备</span>
+            <span className='text-sm font-medium'>逻辑音箱</span>
             <Select
               value={deviceId}
               onValueChange={(v) => setDeviceId(v ?? '')}
               items={deviceItems}
             >
               <SelectTrigger size='sm' className='h-8 w-full'>
-                <SelectValue placeholder='请选择设备' />
+                <SelectValue placeholder='请选择逻辑音箱' />
               </SelectTrigger>
               <SelectContent>
                 {deviceItems.map((d) => (

@@ -84,8 +84,6 @@ export interface CaseSelectionFilter {
 /** 任务创建/启动载荷（task_bp.py POST /tasks + POST /tasks/{id}/start；TODO 接线） */
 export interface TaskLaunchInput {
   name: string
-  /** 用例不分类型（INT-486 2026-10-16 口径；test_type 残留列待 INT-79 废弃） */
-  testType: 'e2e' | 'api' | null
   algorithmType: string | null
   testCaseIds: string[]
   /** 圈定模式：未手动选择时按筛选条件全量圈定（filter-all 口径显性化） */
@@ -233,6 +231,23 @@ export interface CaseResultAudioField {
   path: string
 }
 
+/**
+ * 用例级执行目标（一个用例 × 多 API/设备各一行；含**未执行**目标）。
+ * 详情内「目标 Tab / 评分指标列 / 设备·API 执行结果」按该清单全量展示，
+ * 不再只取「已有结果行」的设备名（未执行目标也要可见，状态 pending）。
+ */
+export interface CaseExecutionTarget {
+  taskCaseId: number | null
+  targetType: 'api' | 'device'
+  /** 展示名（设备名 / API 名；后端未回填时按类型 + id 兜底） */
+  targetName: string
+  /** 路由 id 原始值（physical=设备ID / http_api|websocket_api=api.id） */
+  deviceId: string | null
+  apiId: number | null
+  executionStatus: string | null
+  evaluationStatus: string | null
+}
+
 /** 设备结果行（detail devices 设备名 + /results 结果行维度组合；10 §5.2） */
 export interface CaseDeviceResult {
   /** /results 结果行 id（无执行结果时为 null） */
@@ -276,6 +291,8 @@ export interface CaseExecutionDetail {
   /** 轮次 Tab（第1轮…第N轮 + 整体；无轮次标记时单个「指标」Tab） */
   roundTabs: CaseRoundTab[]
   devices: CaseDeviceResult[]
+  /** 用例级执行目标（API/设备全量，含未执行目标；顺序与用例关联行一致） */
+  targets: CaseExecutionTarget[]
   /** 结果音频（detail `result_audios`：按设备分组，任何轮次 Tab 都显示全部） */
   resultAudios: CaseAudioResult[]
   /** 执行结果音频字段（algorithm_results 的 audio_file 项；按当前轮次 Tab 过滤） */

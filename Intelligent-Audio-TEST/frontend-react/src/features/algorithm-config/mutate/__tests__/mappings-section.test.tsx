@@ -1,9 +1,10 @@
 /**
- * §6.5 参数映射三节测试（INT-1160 返工：列口径 + 搜索/筛选 + 分组视图照 V9.7.10）：
- * - 设备/API 6 列（源参数代码/名称、目标参数代码/名称、转换、操作）；
+ * §6.5 参数映射两节测试（INT-1160 返工：列口径 + 搜索/筛选 + 分组视图照 V9.7.10）：
+ * - 设备 6 列（源参数代码/名称、目标参数代码/名称、转换、操作）；
  * - 评估 7 列（来源/源参数代码/名称/目标评估维度/目标参数/转换/操作）；
  * - 默认「评估维度视图」按 dimensionId 分组（组头折叠 + 主/子徽章 + 计数 + 组尾添加预填维度）；
  * - 搜索映射 + 转换/来源/评估维度徽章筛选；平铺/分组视图切换。
+ * 算法级 API 映射已迁移到 API 实例作用域，分节内不再出现该映射。
  * 设备参数映射默认展开（defaultOpen），其余分节测试先折叠设备节，保证目标分节查询唯一。
  */
 import { render, screen, within } from '@testing-library/react'
@@ -45,19 +46,16 @@ function buildValues(): AlgorithmFormValues {
     status: 'online',
     description: '',
     deviceParams: [{ key: 'd-1', paramCode: 'audio_in', paramName: '音频输入', direction: 'input', paramType: 'text', required: false, defaultValue: '', helpText: '' }],
-    apiParams: [{ key: 'a-1', paramCode: 'api_key', paramName: 'API密钥', direction: 'input', paramType: 'text', required: false, defaultValue: '', helpText: '' }],
     caseParams: [
       { key: 'c-1', paramCode: 'asr_result', paramName: 'ASR结果', paramType: 'text', scope: 'common', required: false, defaultValue: '', minValue: '', maxValue: '', step: '', unit: '', annotationCode: '', fieldPath: '', helpText: '' },
-      { key: 'c-2', paramCode: 'tts_text', paramName: 'TTS文本', paramType: 'text', scope: 'api', required: false, defaultValue: '', minValue: '', maxValue: '', step: '', unit: '', annotationCode: '', fieldPath: '', helpText: '' },
-      { key: 'c-3', paramCode: 'char', paramName: '字符数', paramType: 'number', scope: 'e2e', required: false, defaultValue: '', minValue: '', maxValue: '', step: '', unit: '', annotationCode: '', fieldPath: '', helpText: '' },
+      { key: 'c-2', paramCode: 'tts_text', paramName: 'TTS文本', paramType: 'text', scope: 'http_api', required: false, defaultValue: '', minValue: '', maxValue: '', step: '', unit: '', annotationCode: '', fieldPath: '', helpText: '' },
+      { key: 'c-3', paramCode: 'char', paramName: '字符数', paramType: 'number', scope: 'physical', required: false, defaultValue: '', minValue: '', maxValue: '', step: '', unit: '', annotationCode: '', fieldPath: '', helpText: '' },
     ],
     referenceParams: [{ key: 'r-1', code: 'ref_text', name: '参考文本', type: 'text', annotationCode: '', annotationFormat: '', fieldPath: '', mergeMode: '', helpText: '' }],
     mappings: {
       device: [
         { key: 'md-1', source: 'case', sourceDirection: 'output', sourceParam: 'asr_result', paramName: 'ASR结果', targetParam: 'audio_in', targetParamName: '音频输入', transformType: 'none' },
-      ],
-      api: [
-        { key: 'ma-1', source: 'case', sourceDirection: 'output', sourceParam: 'tts_text', paramName: 'TTS文本', targetParam: 'api_key', targetParamName: 'API密钥', transformType: 'uppercase' },
+        { key: 'md-2', source: 'case', sourceDirection: 'output', sourceParam: 'tts_text', paramName: 'TTS文本', targetParam: 'audio_in', targetParamName: '音频输入', transformType: 'none' },
       ],
       evaluation: [
         { key: 'me-1', source: 'case', sourceDirection: 'output', sourceParam: 'asr_result', paramName: 'ASR结果', dimensionId: '1', dimensionName: '识别准确率', targetParam: 'wer', targetParamName: '字错率', transformType: 'none' },
@@ -211,7 +209,7 @@ describe('评估参数映射 搜索/筛选（INT-1160 返工）', () => {
   })
 })
 
-describe('设备/API 参数映射（INT-1160 返工）', () => {
+describe('设备参数映射（INT-1160 返工）', () => {
   it('设备映射 6 列 + 分组视图按源参数集合', async () => {
     const user = userEvent.setup()
     render(<Harness />)
@@ -219,20 +217,15 @@ describe('设备/API 参数映射（INT-1160 返工）', () => {
     for (const header of ['源参数代码', '源参数名称', '目标参数代码', '目标参数名称', '转换', '操作']) {
       expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument()
     }
-    // 分组视图：asr_result 属于用例参数·通用
+    // 分组视图：asr_result→通用、tts_text→HTTP API（scope 词表对齐后端 CaseParamScope）
     await user.click(screen.getByRole('button', { name: '分组视图' }))
     expect(screen.getByRole('button', { name: /用例参数 · 通用.*条/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /用例参数 · HTTP API.*条/ })).toBeInTheDocument()
   })
 
-  it('API 映射转换选项含 base64', async () => {
-    const user = userEvent.setup()
+  it('算法级 API 映射分节已移除（入参改由 API 实例作用域维护）', () => {
     render(<Harness />)
-    await isolateSection(user, 'API参数映射')
-    // API 行 3 个下拉：源参数 / 目标参数 / 转换（最后一个）
-    const combos = screen.getAllByRole('combobox')
-    await user.click(combos[combos.length - 1])
-    // 下拉 option 含 Base64（避开工具栏转换徽章筛选的「Base64」chip）
-    expect(screen.getByRole('option', { name: 'Base64' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /API.*映射/ })).not.toBeInTheDocument()
   })
 })
 

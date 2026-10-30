@@ -28,7 +28,6 @@ const setup = (roundCount = 4, unknownRoundCount = 0) => {
       unknownRoundCount={unknownRoundCount}
       dimensions={MOCK_CASE_DIMENSIONS}
       algorithmType={null}
-      testType='e2e'
     />
   )
 }

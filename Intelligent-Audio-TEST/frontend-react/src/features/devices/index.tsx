@@ -85,6 +85,7 @@ import { ExportDevicesDialog } from '@/features/devices/components/modals/export
 import { DeviceDetailDialog } from '@/features/devices/components/modals/device-detail-dialog'
 import { DeviceGroupManagerDialog } from '@/features/devices/components/modals/device-group-manager-dialog'
 import { LaboratoryManagerDialog } from '@/features/devices/components/modals/laboratory-manager-dialog'
+import { PlaybackSpeakerGroupDialog } from '@/features/devices/components/modals/playback-speaker-group-dialog'
 import { AssociateSplDialog } from '@/features/devices/components/modals/associate-spl-dialog'
 import {
   DeviceOperateDialog,
@@ -212,6 +213,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
   const queryClient = useQueryClient()
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)
   const [labManagerOpen, setLabManagerOpen] = useState(false)
+  const [speakerGroupOpen, setSpeakerGroupOpen] = useState(false)
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false)
   const [associateSplState, setAssociateSplState] = useState<AssociateSplState>({
     open: false,
@@ -644,6 +646,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
             }}
             onGroupManage={() => setGroupManagerOpen(true)}
             onLabManage={() => setLabManagerOpen(true)}
+            onSpeakerGroupManage={() => setSpeakerGroupOpen(true)}
             onBatchHealth={() => void handleBatchAction('health_check')}
             onImport={() => setImportOpen(true)}
             onExport={() => setExportOpen(true)}
@@ -884,6 +887,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
         onOpenChange={setLabManagerOpen}
         labs={labs}
       />
+      <PlaybackSpeakerGroupDialog open={speakerGroupOpen} onOpenChange={setSpeakerGroupOpen} />
       <AlarmRuleDialog
         open={ruleDialogOpen}
         onOpenChange={setRuleDialogOpen}
