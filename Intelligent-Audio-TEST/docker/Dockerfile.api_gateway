@@ -1,9 +1,10 @@
-# INT-1276：apt 走镜像源（compose 的 x-backend-build-args 已传 APT_MIRROR，
-# 本文件此前没接——deb.debian.org 多次 502 导致 api_gateway 镜像重建失败）。
-# 与其余后端 Dockerfile 同一套约定：默认 tsinghua，可用 APT_MIRROR 覆盖。
+# INT-2166：apt / pip 走可达镜像源（统一约定见 docker/README.md §3）。
+# 缺省值即推荐值；compose 经 x-backend-build-args 透传，可 --build-arg 或 .env 覆盖。
+# 历史：INT-1276 接 APT_MIRROR（deb.debian.org 502），INT-2156 接 PIP_INDEX_URL（pypi.org ~150 kB/s）。
 FROM python:3.11-slim
 
 ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+ARG PIP_INDEX_URL=https://pypi.org/simple
 
 WORKDIR /app
 
@@ -12,7 +13,8 @@ RUN set -eux; \
     for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
         [ -f "$f" ] && sed -i "s|deb.debian.org|${APT_MIRROR}|g" "$f"; \
     done; \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
     ffmpeg \
     adb \
     && rm -rf /var/lib/apt/lists/*
@@ -22,10 +24,11 @@ RUN set -eux; \
     for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
         [ -f "$f" ] && sed -i "s|deb.debian.org|${APT_MIRROR}|g" "$f"; \
     done; \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
         gcc libc6-dev libffi-dev portaudio19-dev \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r requirements.txt
 
 COPY . .
 

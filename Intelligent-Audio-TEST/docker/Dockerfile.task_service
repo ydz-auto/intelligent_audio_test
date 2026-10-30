@@ -1,20 +1,30 @@
 FROM python:3.11-slim
 
-# pip 源可覆盖（内网/镜像源加速）：与其余后端 Dockerfile 同口径
+# INT-2166：apt / pip 走可达镜像源（统一约定见 docker/README.md §3）。
+# 缺省值即推荐值；compose 经 x-backend-build-args 透传，可 --build-arg 或 .env 覆盖。
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
 ARG PIP_INDEX_URL=https://pypi.org/simple
 
 WORKDIR /app
 
 # 系统依赖：报告生成（libffi）、音频处理（ffmpeg）
-RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
-    && apt-get update && apt-get install -y --no-install-recommends \
+RUN set -eux; \
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
+        [ -f "$f" ] && sed -i "s|deb.debian.org|${APT_MIRROR}|g" "$f"; \
+    done; \
+    apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
     ffmpeg \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./requirements.txt
-RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
-    && apt-get update && apt-get install -y --no-install-recommends \
+RUN set -eux; \
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
+        [ -f "$f" ] && sed -i "s|deb.debian.org|${APT_MIRROR}|g" "$f"; \
+    done; \
+    apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
         gcc libc6-dev libffi-dev portaudio19-dev \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r requirements.txt

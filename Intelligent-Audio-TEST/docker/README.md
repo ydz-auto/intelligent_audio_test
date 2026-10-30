@@ -78,30 +78,52 @@ python docker/build_stack.py --project int1820-verify api_gateway
 
 ## 3. 故障 A：apt 源 502 —— 已修
 
-### 3.1 改了什么（`docker/Dockerfile.*`，12 个后端镜像统一）
+### 3.1 改了什么（`docker/Dockerfile.*`，9 个后端镜像统一）
+
+覆盖 `build_stack.py` 的 `BACKEND_SERVICES` 全量：`api_gateway` / `task_service` /
+`evaluation_service` / `e2e_test_service` / `report_service` / `algorithm_service` /
+`auth_service` / `api_test_service` / `db_bootstrap`。每份 Dockerfile 都声明同两个 `ARG`：
+`APT_MIRROR`（缺省 `mirrors.tuna.tsinghua.edu.cn`）、`PIP_INDEX_URL`（缺省
+`https://pypi.org/simple`），并由 `docker-compose.yml` 的 `x-backend-build-args` 统一透传。
+`mock_dut` / `mock_eval` 是纯标准库替身镜像，不跑 apt/pip，无需接；
+`frontend` 是 node/nginx 多阶段构建，不走 Debian 源。
 
 1. **apt 源换可达镜像**：`sed -i "s|deb.debian.org|${APT_MIRROR}|g"`，缺省
    `mirrors.tuna.tsinghua.edu.cn`。构建不再依赖 `deb.debian.org` 的可用性。
+   **INT-2166**：`api_test_service` / `auth_service` / `report_service` 此前连这行都没有
+   （`apt-get update` 直连 `deb.debian.org`），本机网络经代理返回 404 时 **apt 层 exit 100**，
+   镜像必红；`task/evaluation/e2e/db_bootstrap` 此前把 tuna 写死在 `RUN` 里，`APT_MIRROR`
+   覆盖不生效——一并改为读 `ARG`。
 2. **`Acquire::Retries=5`**：镜像源本身也有瞬时 5xx / DNS 抖动，层内重试自愈，不把一次抖动
-   放大成一次整 build 失败。
+   放大成一次整 build 失败。9 份 Dockerfile 的每个 `apt-get` 都带。
 3. **base image 钉 digest**：`python:3.11-slim` 这个浮 tag 已经漂过（bookworm → trixie，
    2026-10-24 实测部署镜像 `/etc/os-release` = Debian 13）。钉 digest 后同一份 Dockerfile
    产出的基座可复现，不会「昨天能构建、今天因为基座换了发行版而红」。
+   **现状（INT-2166 核对）**：只有 `Dockerfile.db_bootstrap` 通过 `ARG PY_IMAGE` 接了这个
+   digest（compose 的 `x-backend-build-args` 缺省值）；其余 8 个仍是 `FROM python:3.11-slim`
+   浮 tag，compose 传下去的 `PY_IMAGE` 对它们不生效（未声明即被忽略）。基座是否统一钉
+   digest 属另一项改动（会切换 8 个镜像的 Debian 发行版），不在本卡范围。
+
+> **pip 源**（INT-2156/2166）：`pip install` 统一带 `--index-url "${PIP_INDEX_URL}"`。缺省
+> `pypi.org` 在本机网络实测 ~150 kB/s，全量依赖 30 分钟起——**重建大镜像时建议显式指向镜像源**：
+> `PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`。
 
 ### 3.2 覆盖方式
 
-缺省值就是推荐值，不设也能构建。要换源（内网 / tuna 不可达时）：
+缺省值就是推荐值，不设也能构建（pip 缺省走 `pypi.org`，能通但慢）。要换源（内网 / tuna
+不可达 / 想让 pip 走镜像）：
 
 ```bash
 # 单次覆盖（compose 透传 --build-arg）
 docker compose -f docker/docker-compose.yml build --build-arg APT_MIRROR=mirrors.aliyun.com api_gateway
 
-# 或在 .env 里设同名变量（set docker-compose.yml 的 x-backend-build-args 缺省值）
+# 或在 .env 里设同名变量（docker-compose.yml 的 x-backend-build-args 读同名变量做缺省）
 echo 'APT_MIRROR=mirrors.aliyun.com' >> .env
+echo 'PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple' >> .env
 ```
 
-可用的镜像源（均实测可达）：`mirrors.tuna.tsinghua.edu.cn` / `mirrors.aliyun.com` /
-`mirrors.ustc.edu.cn`。
+可用的 apt 镜像源（均实测可达）：`mirrors.tuna.tsinghua.edu.cn` / `mirrors.aliyun.com` /
+`mirrors.ustc.edu.cn`。pip 镜像源（实测可达）：`https://pypi.tuna.tsinghua.edu.cn/simple`。
 
 ### 3.3 实测（2026-10-25，同一基座、同一台宿主）
 

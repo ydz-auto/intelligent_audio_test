@@ -10,6 +10,8 @@
 # 同源 scripts/ 副本（.dockerignore 仅排除 __pycache__，镜像内含 scripts/，卷缺席
 # 亦可引导）。脚本依赖的模型代码在镜像内 /app。
 ARG PY_IMAGE=python:3.11-slim
+# INT-2166：apt / pip 走可达镜像源（统一约定见 docker/README.md §3）
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
 ARG PIP_INDEX_URL=https://pypi.org/simple
 FROM ${PY_IMAGE}
 
@@ -21,13 +23,18 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app:/app/shared/proto
 
 # 阶段内重声明（FROM 前的 ARG 在 FROM 后不再在作用域内）
+ARG APT_MIRROR
 ARG PIP_INDEX_URL
 
 # gcc + libc6-dev + portaudio19-dev：pyaudio 无 linux 轮子，源码编译期需要
 # （slim 基镜像不带 libc 头文件——stdlib.h 在 libc6-dev；引导 job 同 requirements 全量安装）
-# deb.debian.org 慢/抖（2026-10-16 实测多次 fetch 失败）；切 tsinghua 镜像源
-RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
-    && apt-get update && apt-get install -y --no-install-recommends \
+# deb.debian.org 慢/抖（2026-10-16 实测多次 fetch 失败）；切 APT_MIRROR（缺省 tsinghua）
+RUN set -eux; \
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
+        [ -f "$f" ] && sed -i "s|deb.debian.org|${APT_MIRROR}|g" "$f"; \
+    done; \
+    apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
         gcc \
         libc6-dev \
         portaudio19-dev \

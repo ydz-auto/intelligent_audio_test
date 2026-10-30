@@ -82,8 +82,11 @@ python docker/run_stack.py down -v --yes
   INT-181 构建期守卫）+ nginx 反代（/api、/socket.io、/ws 契约与 vite dev 一致）。
 
 镜像/网络加速：`PY_IMAGE` / `APT_MIRROR` / `NODE_IMAGE` / `POSTGRES_IMAGE` / `REDIS_IMAGE` /
-`RUSTFS_IMAGE` / `PIP_INDEX_URL` 环境变量按需覆盖（后端镜像的 `PY_IMAGE` / `APT_MIRROR` 经
-`docker-compose.yml` 顶部的 `x-backend-build-args` 注入，缺省已钉 digest + 走清华镜像源）。
+`RUSTFS_IMAGE` / `PIP_INDEX_URL` 环境变量按需覆盖（`docker-compose.yml` 顶部的
+`x-backend-build-args` 把 `PY_IMAGE` / `APT_MIRROR` / `PIP_INDEX_URL` 注入全部 9 个后端服务的
+构建；缺省值 `APT_MIRROR` = 清华源、`PIP_INDEX_URL` = `pypi.org`。注意 `PY_IMAGE` 目前只有
+`Dockerfile.db_bootstrap` 声明并消费，其余 8 个仍是 `FROM python:3.11-slim` 浮 tag，
+见 `docker/README.md` §3.1）。
 
 **构建链路（INT-1820）**：构建入口是 `python docker/build_stack.py`，带引擎体检、容器身份
 对照与失败判定；deb 源 502、构建期引擎崩溃的可重复命令清单见
