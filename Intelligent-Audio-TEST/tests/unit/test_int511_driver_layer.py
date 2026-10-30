@@ -200,12 +200,14 @@ class TestListDrivers:
 # ──────────────────────────── 注册完整性（与 V9.7.10 移植对齐） ────────────────────────────
 
 # V9.7.10 移植对齐基线：V9.7.10 全量 app_type 移植 + V9.7.31 新增 XiaoyilivechatV2
-# （harmony_xiaoyilivechat.py），总登记数 12（含基础平台驱动与 hypium 缺失驱动）。
+# （harmony_xiaoyilivechat.py）+ INT-2146 新增 xiaoyi_livechat_reject
+# （harmony_xiaoyi_reject.py），总登记数 13（含基础平台驱动与 hypium 缺失驱动）。
 _EXPECTED_APP_TYPES = {
     'android_base', 'harmony_base',
     'plaud', 'doubao_asr', 'doubao', 'chatgpt',
     'xiaoyi_face2face', 'xiaoyi_simultaneous',
     'xiaoyi_huiji', 'xiaoyi_livechat', 'xiaoyi_input_method',
+    'xiaoyi_livechat_reject',
 }
 
 
@@ -220,8 +222,9 @@ class TestRegistrationCompleteness:
     def test_total_count_includes_v2_livechat(self):
         from device_service.infrastructure.drivers.registry import driver_registry
         drivers = driver_registry.list_drivers()
-        # V9.7.10 = 11（无 V2）；V9.7.31 移植后 +XiaoyilivechatV2 = 12
-        assert len(drivers) == 12, f"登记驱动数={len(drivers)}，期望 12"
+        # V9.7.10 = 11（无 V2）；V9.7.31 移植后 +XiaoyilivechatV2 = 12；
+        # INT-2146 拒识驱动 +XiaoyiLivechatReject = 13
+        assert len(drivers) == 13, f"登记驱动数={len(drivers)}，期望 13"
         v2_entries = [d for d in drivers
                       if d['app_type'] == 'xiaoyi_livechat'
                       and d['version'] == 'v2']

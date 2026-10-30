@@ -30,6 +30,7 @@ try:
     )
     from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
     from .harmony_xiaoyichat import Xiaoyilivechat
+    from .harmony_xiaoyi_reject import XiaoyiLivechatReject
     from .harmony_xiaoyilivechat import XiaoyilivechatV2
     from .harmony_asr_driver import HarmonyXiaoyiInputMethodDriver
     from .harmony_doubaochat import DoubaoChat
@@ -41,6 +42,7 @@ except ImportError:
     XiaoyiSimultaneousInterpretationDriver = None
     HarmonyHardenXiaoyiHuiJiDriver = None
     Xiaoyilivechat = None
+    XiaoyiLivechatReject = None
     XiaoyilivechatV2 = None
     HarmonyXiaoyiInputMethodDriver = None
     DoubaoChat = None

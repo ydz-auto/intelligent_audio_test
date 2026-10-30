@@ -1450,36 +1450,45 @@ class Xiaoyilivechat(HarmonyDriver):
             # ===== 开始回复检测（hw_params 法,主信号）：播放流 open=AI 开始说话 =====
             # 旧 UI 法(等"说话可打断"控件消失)在语音态透传不稳: 拒识轮提示常驻时
             # find_component 恒命中,整轮干等满 timeout 判"未回复"(实测卡 300s)。
-            replied = self._wait_for_condition(
-                lambda: self._hw_params_replying(device_sn) is True,
-                timeout=REPLY_START_TIMEOUT, interval=1,
-                operation_name='等待回复开始(hw_params)',
-            )
-            if not replied and self._hw_params_replying(device_sn) is None:
-                # hw_params 读不到(路径漂移/无权限) → 回退旧 UI 法
-                replied = self._wait_for_condition(
-                    lambda: driver.find_component(By.text("说话可打断")) is None,
-                    timeout=REPLY_START_TIMEOUT, interval=1,
-                    operation_name='等待回复开始(UI兜底)',
-                )
-            if not replied:
-                self._log(level='INFO', content='小艺未回复', task_id=task_id, test_case_id=test_case_id)
-                self.question_text = '小艺识别为空'
-                self.answer_text = '小艺回复为空'
+            # INT-2146: 子类可传 skip_reply_wait=True 只跳过下面两段长等待
+            # (等回复开始 REPLY_START_TIMEOUT + 等回复结束 HW_PARAMS_END_TIMEOUT),
+            # 由子类自行做受限判定;缺省 False,既有驱动行为完全不变。
+            if self._as_bool(kwargs.get('skip_reply_wait')):
+                self._log(level='INFO',
+                          content='skip_reply_wait=True,跳过回复开始/结束长等待(由子类自行判定)',
+                          task_id=task_id, test_case_id=test_case_id)
+                replied = True
             else:
-                self._log(level='INFO', content='模型成功回复', task_id=task_id, test_case_id=test_case_id)
-                # ===== 结束回复检测（hw_params 法,主信号）：播放流 closed=AI 说完 =====
-                if not self._wait_ai_reply_end_via_hw_params(
-                        device_sn, task_id=task_id, test_case_id=test_case_id):
-                    # hw_params 读不到 → 回退旧 UI 法："说话可打断"重现 + "正在听…"出现
-                    self._wait_for_condition(
-                        lambda: driver.find_component(By.text('说话可打断')),
-                        timeout=10, interval=1, operation_name="post_process_说话可打断"
+                replied = self._wait_for_condition(
+                    lambda: self._hw_params_replying(device_sn) is True,
+                    timeout=REPLY_START_TIMEOUT, interval=1,
+                    operation_name='等待回复开始(hw_params)',
+                )
+                if not replied and self._hw_params_replying(device_sn) is None:
+                    # hw_params 读不到(路径漂移/无权限) → 回退旧 UI 法
+                    replied = self._wait_for_condition(
+                        lambda: driver.find_component(By.text("说话可打断")) is None,
+                        timeout=REPLY_START_TIMEOUT, interval=1,
+                        operation_name='等待回复开始(UI兜底)',
                     )
-                    self._wait_for_condition(
-                        lambda: driver.find_component(By.text('正在听…')),
-                        timeout=300, interval=1, operation_name="post_process_正在听"
-                    )
+                if not replied:
+                    self._log(level='INFO', content='小艺未回复', task_id=task_id, test_case_id=test_case_id)
+                    self.question_text = '小艺识别为空'
+                    self.answer_text = '小艺回复为空'
+                else:
+                    self._log(level='INFO', content='模型成功回复', task_id=task_id, test_case_id=test_case_id)
+                    # ===== 结束回复检测（hw_params 法,主信号）：播放流 closed=AI 说完 =====
+                    if not self._wait_ai_reply_end_via_hw_params(
+                            device_sn, task_id=task_id, test_case_id=test_case_id):
+                        # hw_params 读不到 → 回退旧 UI 法："说话可打断"重现 + "正在听…"出现
+                        self._wait_for_condition(
+                            lambda: driver.find_component(By.text('说话可打断')),
+                            timeout=10, interval=1, operation_name="post_process_说话可打断"
+                        )
+                        self._wait_for_condition(
+                            lambda: driver.find_component(By.text('正在听…')),
+                            timeout=300, interval=1, operation_name="post_process_正在听"
+                        )
         record_mode = getattr(self, '_record_mode', 'round')
         round_number = getattr(self, '_round_number', 0)
         total_rounds = getattr(self, '_total_rounds', 1)

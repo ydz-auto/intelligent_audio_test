@@ -115,6 +115,36 @@ class RoundsLoopMixin:
                 result[snake_key] = value
         return result
 
+    @staticmethod
+    def _as_switch_on(value):
+        """轮次开关参数归一：只认显式真值（bool True / 非零数 / 'true'/'1' 等字符串）。"""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in ('true', '1', 'yes', 'y', '是')
+        return False
+
+    def _next_round_is_reject(self, rounds, round_idx):
+        """取下一轮的 is_reject 供驱动判断「连续拒识轮不等待」（INT-2146）。
+
+        is_reject 属轮次算法参数（test_cases.algorithm_params 按轮分组），与本轮
+        round_algo_params 同法 normalize。末轮 / 无下一轮返回 None（不注入，驱动缺省
+        按非拒识轮）；下一轮无算法参数时直接视为非拒识，省一次规范化调用。
+        """
+        next_idx = round_idx + 1
+        if not rounds or next_idx >= len(rounds):
+            return None
+        next_round = rounds[next_idx]
+        if not isinstance(next_round, dict):
+            return None
+        if not next_round.get('algorithm_params'):
+            return False
+        next_params = AlgorithmAclRepositoryImpl.normalize_algorithm_params(
+            next_round.get('algorithm_params', []))
+        return self._as_switch_on(next_params.get('is_reject'))
+
     def _execute_single_round(self, task_id, tc_rel_id, data, case_config, case_name,
                               algorithm_type, test_case_id, rounds,
                               device_info_list, result_ids, case_reference_params,
@@ -185,6 +215,10 @@ class RoundsLoopMixin:
                              'total_rounds': len(rounds),
                              **self._extract_exec_control_params(round_config),
                              **round_algo_params}
+        # INT-2146：向前看一轮，注入下一轮是否拒识轮（末轮不注入，驱动缺省 False）
+        next_round_is_reject = self._next_round_is_reject(rounds, round_idx)
+        if next_round_is_reject is not None:
+            post_extra_params['next_round_is_reject'] = next_round_is_reject
         if round_start_ms is not None and round_end_ms is not None:
             post_extra_params['playback_start_time_ms'] = round_start_ms
             post_extra_params['playback_end_time_ms'] = round_end_ms

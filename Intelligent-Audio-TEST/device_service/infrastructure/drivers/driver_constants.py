@@ -46,6 +46,9 @@ RMS_SCAN_HDC_TIMEOUT = config_manager.get_value('device_timing', 'rms_scan_hdc_t
 AI_PCM_FIRST_FRAME_TIMEOUT_MS = config_manager.get_value('device_timing', 'ai_pcm_first_frame_timeout_ms', 15000)
 # 小艺回复检测超时（秒）：hw_params 播放流法为主信号（30s），UI 法仅作读不到时的兜底
 REPLY_START_TIMEOUT = config_manager.get_value('device_timing', 'reply_start_timeout', 30)
+# 拒识轮等待回复结束的总上限（秒，INT-2146）：hw_params 主信号 + UI 兜底共用同一预算，
+# 超时记 WARNING 后放行，防止连续拒识短音频把整轮卡到基类 300s 上限
+REJECT_REPLY_WAIT_TIMEOUT = config_manager.get_value('device_timing', 'reject_reply_wait_timeout', 5)
 REPLY_STATE_TIMEOUT = config_manager.get_value('device_timing', 'reply_state_timeout', 10)
 REPLY_LISTEN_TIMEOUT = config_manager.get_value('device_timing', 'reply_listen_timeout', 300)
 # barge-in 打断轮轮间延迟（秒）：检测到 AI 开口后延迟再放下一轮打断音频
