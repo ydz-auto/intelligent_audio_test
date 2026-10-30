@@ -369,16 +369,21 @@ class _AlgorithmConfigProxy:
     def get_api_params(self, algorithm_type=None, api_id=None):
         """API 参数列表（API 实例作用域，INT-1756 契约）。
 
-        走 GetApiParamsList：proto3 optional api_id 用 presence 区分「未传」与显式值，
-        因此 api_id 为空时不写该键（不再回落算法类型级默认层）。
+        走 algorithm_service.AlgorithmQueryService.GetApiParamsList（读侧归属
+        algorithm_service，task_service 的 AlgorithmConfigService 没有该 RPC，INT-2165）：
+        proto3 optional api_id 用 presence 区分「未传」与显式值，因此 api_id 为空时
+        不写该键（不再回落算法类型级默认层）。
         """
+        from shared.proto import algorithm_service_pb2 as algo_pb
+        from shared.clients.grpc_clients import get_algorithm_query_service_stub
+
         def _call():
-            stub = get_algorithm_config_service_stub()
+            stub = get_algorithm_query_service_stub()
             kwargs = {'algorithm_type': algorithm_type or ''}
             if api_id is not None:
                 kwargs['api_id'] = int(api_id)
             return self._resp(
-                stub.GetApiParamsList(task_pb.GetApiParamsListRequest(**kwargs))
+                stub.GetApiParamsList(algo_pb.GetApiParamsListRequest(**kwargs))
             )
         return _grpc_call(
             _call,
@@ -387,9 +392,16 @@ class _AlgorithmConfigProxy:
         )
 
     def get_param_mapping_for_component(self, algorithm_type=None, component_type=None, api_id=None):
-        """参数映射（按组件 + API 实例作用域）。"""
+        """参数映射（按组件 + API 实例作用域）。
+
+        走 algorithm_service.AlgorithmQueryService.GetParamMappingForComponent
+        （task_service 的 AlgorithmConfigService 没有该 RPC，INT-2165）。
+        """
+        from shared.proto import algorithm_service_pb2 as algo_pb
+        from shared.clients.grpc_clients import get_algorithm_query_service_stub
+
         def _call():
-            stub = get_algorithm_config_service_stub()
+            stub = get_algorithm_query_service_stub()
             kwargs = {
                 'algorithm_type': algorithm_type or '',
                 'component_type': component_type or '',
@@ -398,7 +410,7 @@ class _AlgorithmConfigProxy:
                 kwargs['api_id'] = int(api_id)
             return self._resp(
                 stub.GetParamMappingForComponent(
-                    task_pb.GetParamMappingForComponentRequest(**kwargs))
+                    algo_pb.GetParamMappingForComponentRequest(**kwargs))
             )
         return _grpc_call(
             _call,
