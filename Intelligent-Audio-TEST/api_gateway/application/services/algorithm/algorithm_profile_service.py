@@ -62,7 +62,10 @@ class AlgorithmProfileService:
             req = ParamProfileSaveRequest.model_validate(request.get_json() or {})
         except Exception as exc:
             return error_response(f'请求数据验证失败: {exc}', 400)
-        result = _algo_proxy.save_param_profile(req.model_dump())
+        # INT-2268：显式 null 与「未提供」同义，不得下发到仓储（否则 config=None
+        # 会把 config_snapshot 写成 NULL；params/mappings 的默认 [] 仍保留，
+        # 维持「整份替换」语义）。
+        result = _algo_proxy.save_param_profile(req.model_dump(exclude_none=True))
         return _respond(result, '策略已保存')
 
     @staticmethod
@@ -71,7 +74,9 @@ class AlgorithmProfileService:
             req = ParamProfileSaveRequest.model_validate(request.get_json() or {})
         except Exception as exc:
             return error_response(f'请求数据验证失败: {exc}', 400)
-        payload = req.model_dump()
+        # INT-2268：exclude_none 让「未传 config / 传 null」在载荷里彻底消失，
+        # 仓储据此保持原 config_snapshot 不变（编辑名称/描述/状态不清快照）。
+        payload = req.model_dump(exclude_none=True)
         payload['id'] = int(profile_id)
         result = _algo_proxy.save_param_profile(payload)
         return _respond(result, '策略已保存')

@@ -143,7 +143,17 @@ class ParamProfileCommandRepository:
     # ---- 写 ----
 
     def save(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """整份保存策略（基础字段 + 字段声明 + 映射 + 配置快照）。返回详情。"""
+        """整份保存策略（基础字段 + 字段声明 + 映射 + 配置快照）。返回详情。
+
+        字段语义（INT-2268 写死，网关 ``ParamProfileSaveRequest`` 同口径）：
+
+        - ``name`` / ``description`` / ``status``：``None``（键缺失或显式 null）
+          表示保持原值；
+        - ``config``：``None`` 表示保持原 ``config_snapshot``；传对象覆盖；
+          传 ``{}`` 表示清成空快照（存 ``'{}'``，非 NULL）；
+        - ``params`` / ``mappings``：**整份替换**，键缺失等同 ``[]``，
+          未提交的既有行按自然键软删。
+        """
         from algorithm_service.infrastructure.persistence._algorithm_full_save import (
             _text_or_json,
         )
@@ -167,8 +177,9 @@ class ParamProfileCommandRepository:
                     po.description = data['description']
                 if data.get('status') is not None:
                     po.status = data['status']
-                if 'config' in data:
-                    po.config_snapshot = _text_or_json(data.get('config'))
+                # 显式 null 与键缺失同义：不得把快照写成 NULL（INT-2268）
+                if data.get('config') is not None:
+                    po.config_snapshot = _text_or_json(data['config'])
             else:
                 po = ParamProfile(
                     scope=scope,

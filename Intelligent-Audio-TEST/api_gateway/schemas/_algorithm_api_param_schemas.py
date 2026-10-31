@@ -126,18 +126,31 @@ class ParamProfileListQuery(APIModel):
 
 
 class ParamProfileSaveRequest(APIModel):
-    """整份保存策略（基础字段 + 字段声明 + 映射 + API 配置快照）"""
+    """整份保存策略（基础字段 + 字段声明 + 映射 + API 配置快照）
+
+    字段语义（POST 新建 / PUT 更新同口径，INT-2268 写死）：
+
+    - ``name`` / ``description`` / ``status``：PUT 时 null 或缺失 = 保持原值；
+    - ``config``：null 或缺失 = 保持原 ``config_snapshot``（编辑名称/描述/状态
+      不会清掉快照）；传对象整体覆盖；传 ``{}`` 表示清成空快照；
+    - ``params`` / ``mappings``：**整份替换**——缺失等同 ``[]``，即把策略下
+      未提交的既有字段声明/映射行软删。
+    """
     # INT-2186：scope 是列值域（param_profiles.scope），非法值必须在网关挡住，
     # 不能落库成脏数据（仓储侧另有一道白名单兜底）。
     scope: Literal['api', 'device'] = Field('api', description='作用域：api / device')
     algorithm_type: str = Field(..., min_length=1, max_length=50)
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = Field(None)
+    description: Optional[str] = Field(None, description='描述；PUT 时 null = 保持原值')
     status: str = Field('online', description='状态：online / offline / draft')
-    params: List[Dict[str, Any]] = Field(default_factory=list)
-    mappings: List[Dict[str, Any]] = Field(default_factory=list)
+    params: List[Dict[str, Any]] = Field(
+        default_factory=list, description='字段声明，整份替换：缺失等同 []（清空现有声明）')
+    mappings: List[Dict[str, Any]] = Field(
+        default_factory=list, description='参数映射，整份替换：缺失等同 []（清空现有映射）')
     config: Optional[Dict[str, Any]] = Field(
-        None, description='API 配置快照（protocol/streaming/audio_config/meta/…）；新建 API 可整体套用')
+        None,
+        description='API 配置快照（protocol/streaming/audio_config/meta/…）；'
+                    'null/缺失 = 保持原快照，{} = 清空快照；新建 API 可整体套用')
 
 
 class ParamProfileCloneRequest(APIModel):

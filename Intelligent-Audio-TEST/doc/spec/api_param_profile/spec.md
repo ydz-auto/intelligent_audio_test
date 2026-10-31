@@ -111,6 +111,19 @@
   - 回归：`tests/unit/test_int1756_api_id_scope.py`、`tests/unit/test_int1757_api_id_call_sites.py`。
 - 清理死代码：`api_gateway/application/services/algorithm/algorithm_common.py:61-70`（按 `param_type == 'device'/'api'` 分类，实际 `param_type` 是值类型，全仓无引用）。
 
+### R5 策略整份保存的字段语义（INT-2268 写死）
+
+`POST /param-profiles`（新建）与 `PUT /param-profiles/{id}`（更新）共用 `ParamProfileSaveRequest`，
+字段级语义如下，网关 `model_dump(exclude_none=True)` → 仓储 `save()` 同口径：
+
+| 字段 | 缺失 / 显式 `null` | 传值 | 说明 |
+|---|---|---|---|
+| `name` / `description` / `status` | 更新时保持原值 | 覆盖 | 新建时缺省取 schema 默认（`status=online`） |
+| `config` | **保持原 `config_snapshot`**（不清空） | 对象整体覆盖；`{}` = 清成空快照（存 `'{}'`） | 编辑名称/描述/状态不会再把快照写成 NULL |
+| `params` / `mappings` | 等同 `[]` → **整份替换**，未提交的既有行按自然键软删 | 整份替换 | 缺省即清空，前端必须提交完整行集 |
+
+快照的 `config_snapshot` 当前只做详情回显与「新建 API 时套用」，运行期解析不消费（见走查 P3）。
+
 ## 5. 验收标准
 
 1. `python -c "import algorithm_service.interfaces.grpc.algorithm_query_servicer"`、`import api_gateway.routes.algorithm_bp`（52 路由）通过；
