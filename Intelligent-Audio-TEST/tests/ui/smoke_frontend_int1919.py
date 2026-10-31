@@ -403,6 +403,10 @@ class Smoke1919(B.Smoke):
             if not B.RESULT['chains']['1_login'].get('ok'):
                 raise AssertionError('登录失败')
             B.RESULT['chains']['1_logout'] = self.logout()
+            # 登出后同一 tab 可能不再接收 CDP 输入事件（见 recreate_driver 注释），
+            # 换新会话再重登，避免驱动侧抖动把后续四条链路全判失败。
+            self.recreate_driver()
+            d = self.drv
             try:
                 B.RESULT['chains']['1_relogin'] = self.login()
             except Exception as exc:

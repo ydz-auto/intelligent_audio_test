@@ -243,6 +243,28 @@ class Smoke(object):
             return self.base + '/#/' + path.lstrip('/')
         return self.base + path
 
+    def recreate_driver(self):
+        """换一个新浏览器会话（登出后重登前调用）。
+
+        2026-11-01 INT-2277 实测：Chrome(headless)+Selenium 在「登出 → 同一 tab
+        再导航到登录页」后偶发不再把 CDP 输入事件派发给渲染器——页面上的
+        mousedown/click/focusin 一个都收不到，`send_keys` 写不进输入框，于是
+        `WebDriverWait` 等 URL 离开 /login 超时，后续链路全落在登录页。换新
+        driver 即恢复（同 run 实测）。这是驱动侧现象，不是前端可交互性缺陷，
+        重登前主动重建会话，避免把环境抖动误报成前端回归。
+        """
+        old = self.drv
+        if old is not None:
+            try:
+                old.quit()
+            except Exception:
+                pass
+        download_dir = os.path.join(RESULT['art'], 'downloads')
+        os.makedirs(download_dir, exist_ok=True)
+        self.drv = make_driver(download_dir)
+        log('driver recreated before relogin')
+        return self.drv
+
     # ── 1 登录 / 会话 / 登出 ────────────────────────────────
     def login(self):
         d = self.drv
@@ -746,6 +768,10 @@ class Smoke(object):
             if not RESULT['chains']['1_login'].get('ok'):
                 raise AssertionError('登录失败')
             RESULT['chains']['1_logout'] = self.logout()
+            # 登出后同一 tab 可能不再接收 CDP 输入事件（见 recreate_driver 注释），
+            # 换新会话再做重登，避免把驱动侧现象误报成前端回归。
+            self.recreate_driver()
+            d = self.drv
             # 登出后重新登录，继续其余链路
             try:
                 RESULT['chains']['1_relogin'] = self.login()
