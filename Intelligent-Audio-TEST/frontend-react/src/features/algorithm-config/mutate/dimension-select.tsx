@@ -6,7 +6,7 @@
  * 以 base-ui Select 下拉单选呈现，适配算法配置参数表行级单选项（评估映射 target、关联维度）。
  */
 import { Folder } from 'lucide-react'
-import { Fragment, useMemo } from 'react'
+import { Fragment, memo, useMemo } from 'react'
 
 import {
   Select,
@@ -118,6 +118,103 @@ function groupByCategory(
 const sectionCount = (section: CategorySection) =>
   section.groups.reduce((sum, g) => sum + g.children.length + (g.main ? 1 : 0), 0)
 
+/**
+ * 维度选项列表（只在弹层真正挂载时渲染）。
+ *
+ * base-ui Select 关闭时不渲染 Portal 子树，但把 `sections.map(...)` 直接写在
+ * `DimensionSelect` 体内时，每个关闭的行每次渲染仍会重建数百个 SelectItem
+ * （映射大表 60+ 行 × 300+ 维度的开销；INT-2213 审计 P1 主因）。
+ * 收进本组件后，关闭态只创建一个元素；分组云也只在打开时计算一次。
+ */
+const DimensionSelectOptions = memo(function DimensionSelectOptions({
+  dimensions,
+  categories,
+  valueOf,
+  clearLabel,
+  extraOptions,
+}: {
+  dimensions: Dimension[]
+  categories: EvaluationCategory[]
+  valueOf: (dimension: Dimension) => string
+  clearLabel?: string
+  extraOptions: ReadonlyArray<{ value: string; label: string }>
+}) {
+  const sections = useMemo(
+    () => groupByCategory(buildCloudGroups(dimensions), categories),
+    [dimensions, categories]
+  )
+  return (
+    <>
+      {clearLabel && (
+        <SelectItem value=''>
+          <span className='inline-flex items-center gap-1.5'>
+            <span className='text-muted-foreground'>{clearLabel}</span>
+          </span>
+        </SelectItem>
+      )}
+      {extraOptions.map((option) => (
+        <SelectItem key={option.value} value={option.value}>
+          <span className='text-muted-foreground'>{option.label}</span>
+        </SelectItem>
+      ))}
+      {sections.length === 0 ? (
+        <p className='text-muted-foreground px-3 py-4 text-center text-sm'>暂无可用维度</p>
+      ) : (
+        sections.map((section) => (
+          <SelectGroup key={section.key}>
+            <SelectLabel className='px-1.5 py-1 text-xs font-medium'>
+              <span className='inline-flex items-center gap-1'>
+                <Folder aria-hidden='true' className='size-3.5 shrink-0' />
+                <span className='truncate'>{section.category?.name ?? '未分类'}</span>
+                <span className='bg-muted text-muted-foreground shrink-0 rounded-full px-1.5 text-[10px] tabular-nums'>
+                  {sectionCount(section)}
+                </span>
+              </span>
+            </SelectLabel>
+            {section.groups.map((group, groupIndex) => (
+              <Fragment key={groupIndex}>
+                {group.main ? (
+                  <>
+                    <SelectItem value={valueOf(group.main)}>
+                      <span className='font-medium'>{group.main.name}</span>
+                      <span className={mainBadge}>主</span>
+                      {group.children.length > 0 && (
+                        <span className='bg-primary/15 text-primary inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums'>
+                          {group.children.length}
+                        </span>
+                      )}
+                    </SelectItem>
+                    {group.children.map((child) => (
+                      <SelectItem key={dimId(child)} value={valueOf(child)}>
+                        <span className='text-muted-foreground font-mono text-[10px]'>└</span>
+                        <span>{child.name}</span>
+                        <span className={subBadge}>子</span>
+                      </SelectItem>
+                    ))}
+                  </>
+                ) : (
+                  group.children.map((child) => (
+                    <SelectItem key={dimId(child)} value={valueOf(child)}>
+                      <span className='text-muted-foreground font-mono text-[10px]'>└</span>
+                      <span>{child.name}</span>
+                      <span className={subBadge}>子</span>
+                      {group.orphanParentName && (
+                        <span className='text-muted-foreground/70 text-[11px]'>
+                          （{group.orphanParentName}）
+                        </span>
+                      )}
+                    </SelectItem>
+                  ))
+                )}
+              </Fragment>
+            ))}
+          </SelectGroup>
+        ))
+      )}
+    </>
+  )
+})
+
 export function DimensionSelect(props: {
   dimensions: Dimension[]
   /** 评估维度分类（分类分组组头；不传=整片主/子分组云） */
@@ -162,10 +259,6 @@ export function DimensionSelect(props: {
   )
     ? (props.valueOf as (dimension: Dimension) => string)
     : (dimension: Dimension) => dimId(dimension)
-  const sections = useMemo(
-    () => groupByCategory(buildCloudGroups(dimensions), categories),
-    [dimensions, categories]
-  )
   const selected = dimensions.find((d) => valueOf(d) === value)
   const selectedExtra = extraOptions.find((option) => option.value === value)
 
@@ -188,72 +281,13 @@ export function DimensionSelect(props: {
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {clearLabel && (
-          <SelectItem value=''>
-            <span className='inline-flex items-center gap-1.5'>
-              <span className='text-muted-foreground'>{clearLabel}</span>
-            </span>
-          </SelectItem>
-        )}
-        {extraOptions.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            <span className='text-muted-foreground'>{option.label}</span>
-          </SelectItem>
-        ))}
-        {sections.length === 0 ? (
-          <p className='text-muted-foreground px-3 py-4 text-center text-sm'>暂无可用维度</p>
-        ) : (
-          sections.map((section) => (
-            <SelectGroup key={section.key}>
-              <SelectLabel className='px-1.5 py-1 text-xs font-medium'>
-                <span className='inline-flex items-center gap-1'>
-                  <Folder aria-hidden='true' className='size-3.5 shrink-0' />
-                  <span className='truncate'>{section.category?.name ?? '未分类'}</span>
-                  <span className='bg-muted text-muted-foreground shrink-0 rounded-full px-1.5 text-[10px] tabular-nums'>
-                    {sectionCount(section)}
-                  </span>
-                </span>
-              </SelectLabel>
-              {section.groups.map((group, groupIndex) => (
-                <Fragment key={groupIndex}>
-                  {group.main ? (
-                    <>
-                      <SelectItem value={valueOf(group.main)}>
-                        <span className='font-medium'>{group.main.name}</span>
-                        <span className={mainBadge}>主</span>
-                        {group.children.length > 0 && (
-                          <span className='bg-primary/15 text-primary inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums'>
-                            {group.children.length}
-                          </span>
-                        )}
-                      </SelectItem>
-                      {group.children.map((child) => (
-                        <SelectItem key={dimId(child)} value={valueOf(child)}>
-                          <span className='text-muted-foreground font-mono text-[10px]'>└</span>
-                          <span>{child.name}</span>
-                          <span className={subBadge}>子</span>
-                        </SelectItem>
-                      ))}
-                    </>
-                  ) : (
-                    group.children.map((child) => (
-                      <SelectItem key={dimId(child)} value={valueOf(child)}>
-                        <span className='text-muted-foreground font-mono text-[10px]'>└</span>
-                        <span>{child.name}</span>
-                        <span className={subBadge}>子</span>
-                        {group.orphanParentName && (
-                          <span className='text-muted-foreground/70 text-[11px]'>
-                            （{group.orphanParentName}）
-                          </span>
-                        )}
-                      </SelectItem>
-                    ))
-                  )}
-                </Fragment>
-              ))}
-            </SelectGroup>
-          ))
-        )}
+        <DimensionSelectOptions
+          dimensions={dimensions}
+          categories={categories}
+          valueOf={valueOf}
+          clearLabel={clearLabel}
+          extraOptions={extraOptions}
+        />
       </SelectContent>
     </Select>
   )

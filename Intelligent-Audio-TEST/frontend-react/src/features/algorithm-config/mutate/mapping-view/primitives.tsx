@@ -11,7 +11,7 @@
  * 只做视图，不持有表单或数据源状态——作用域写入由消费方决定。
  */
 import { ChevronDown, Folder, Plus, Search, Trash2 } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { memo, type ReactNode, type Ref } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,33 @@ import { cn } from '@/lib/utils'
 export type ParamOption = { value: string; label: string }
 
 /* ───────────────────────── 行级基础单元格 ───────────────────────── */
+
+/**
+ * 下拉选项列表（只在弹层真正挂载时渲染）。
+ *
+ * base-ui Select 的 Portal 在关闭时不渲染子树，但「把 options.map 写在 MappingSelect
+ * 体内」会让每个关闭的行也每次重建全部 SelectItem 元素——映射大表 60+ 行 × 每行数百个
+ * 选项时，滚动里每次窗口位移都是十万级元素创建（INT-2213 审计 P1 的主因）。
+ * 把选项收进独立组件后，关闭态只剩一个元素；打开态才展开。
+ */
+const MappingSelectOptions = memo(function MappingSelectOptions({
+  options,
+}: {
+  options: ReadonlyArray<ParamOption>
+}) {
+  if (options.length === 0) {
+    return <p className='text-muted-foreground px-3 py-2 text-center text-xs'>暂无可用选项</p>
+  }
+  return (
+    <>
+      {options.map((option) => (
+        <SelectItem key={option.value} value={option.value}>
+          {option.label}
+        </SelectItem>
+      ))}
+    </>
+  )
+})
 
 export function MappingSelect({
   value,
@@ -62,15 +89,7 @@ export function MappingSelect({
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {options.length === 0 ? (
-          <p className='text-muted-foreground px-3 py-2 text-center text-xs'>暂无可用选项</p>
-        ) : (
-          options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))
-        )}
+        <MappingSelectOptions options={options} />
       </SelectContent>
     </Select>
   )
@@ -326,7 +345,7 @@ export function GroupHeaderButton({
 
 export function GroupAddRow({ colSpan, onClick }: { colSpan: number; onClick: () => void }) {
   return (
-    <tr className='border-border/50 border-b last:border-b-0'>
+    <tr data-vkind='add' className='border-border/50 border-b last:border-b-0'>
       <td colSpan={colSpan} className='px-3 py-1.5'>
         <Button
           variant='ghost'
@@ -339,6 +358,18 @@ export function GroupAddRow({ colSpan, onClick }: { colSpan: number; onClick: ()
           添加映射
         </Button>
       </td>
+    </tr>
+  )
+}
+
+/**
+ * 窗口化渲染的占位行：补足滚动高度（不可交互、无障碍隐藏）。
+ * 高度由 `useGroupVirtualWindow` 按估算/实测行高累加，滚动条总高度不变。
+ */
+export function VirtualSpacerRow({ colSpan, height }: { colSpan: number; height: number }) {
+  return (
+    <tr aria-hidden='true' data-vkind='spacer'>
+      <td colSpan={colSpan} style={{ height, padding: 0, border: 0 }} />
     </tr>
   )
 }
@@ -450,6 +481,7 @@ export function MappingTableFrame({
   isFilteredEmpty = false,
   emptyText = '暂无映射，点击「添加映射」新增',
   noMatchText = '无匹配映射',
+  tbodyRef,
   children,
 }: {
   columns: ReadonlyArray<MappingColumn>
@@ -458,6 +490,8 @@ export function MappingTableFrame({
   isFilteredEmpty?: boolean
   emptyText?: string
   noMatchText?: string
+  /** 窗口化渲染的测量锚点（`useGroupVirtualWindow().tbodyRef`） */
+  tbodyRef?: Ref<HTMLTableSectionElement>
   children?: ReactNode
 }) {
   return (
@@ -476,7 +510,7 @@ export function MappingTableFrame({
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody ref={tbodyRef}>
             {isEmpty ? (
               <tr>
                 <td colSpan={colSpan} className='text-muted-foreground px-3 py-5 text-center'>

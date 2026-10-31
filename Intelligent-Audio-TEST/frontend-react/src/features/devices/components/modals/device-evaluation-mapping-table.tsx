@@ -6,7 +6,7 @@
  * 搜索 / 来源维度-转换筛选 / 平铺-维度视图 / 分页；写操作恒落本设备覆盖行。
  */
 import { useQuery } from '@tanstack/react-query'
-import { Fragment, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { useDeviceScopeMappings } from '@/application/devices/use-device-scope-mappings'
 import { useEvaluationCategories } from '@/application/evaluation/use-dimensions'
@@ -16,6 +16,7 @@ import type { Dimension } from '@/domain/models/evaluationDimension'
 import { TRANSFORM_TYPE_OPTIONS } from '@/features/algorithm-config/constants'
 import { DimensionSelect } from '@/features/algorithm-config/mutate/dimension-select'
 import {
+  DIMENSION_PREVIEW_GROUPS,
   evalGroupKey,
   evalGroupName,
   EvaluationMappingRowView,
@@ -31,7 +32,9 @@ import {
   MappingViewToggle,
   subBadge,
   useDimensionParamsMap,
+  useGroupVirtualWindow,
   useMappingViewState,
+  VirtualSpacerRow,
 } from '@/features/algorithm-config/mutate/mapping-view'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -133,12 +136,6 @@ export function DeviceEvaluationMappingTable({
     [dimensionsQuery.data]
   )
 
-  const dimensionIds = useMemo(
-    () => rows.map((row) => (row.dimensionId ? String(row.dimensionId) : '')),
-    [rows]
-  )
-  const dimensionParamsMap = useDimensionParamsMap(dimensionIds)
-
   const dimById = useMemo(
     () => new Map(dimensions.map((dimension) => [String(dimension.id), dimension])),
     [dimensions]
@@ -212,6 +209,40 @@ export function DeviceEvaluationMappingTable({
     const start = (view.page - 1) * view.pageSize
     return filtered.slice(start, start + view.pageSize)
   }, [view.viewMode, filtered, view.page, view.pageSize])
+
+  /* INT-2213：评估维度视图窗口化（与算法编辑 Sheet 同一套公共件） */
+  const {
+    tbodyRef,
+    window: virtualWindow,
+    visibleItems,
+    countByKey,
+  } = useGroupVirtualWindow(
+    groups,
+    view.collapsed,
+    view.viewMode === 'dimension',
+    canEdit
+  )
+
+  /**
+   * 维度参数预加载范围（避免一次性向 300+ 维度各发一次请求）：平铺 = 当前页；
+   * 窗口化生效 = 视口内行；窗口未测量 = 前若干分组（≈一屏），滚动后再增量拉取。
+   */
+  const dimensionIds = useMemo(() => {
+    if (view.viewMode === 'flat') {
+      return pageRows.map((row) => (row.dimensionId ? String(row.dimensionId) : ''))
+    }
+    if (virtualWindow.active) {
+      return visibleItems
+        .filter((item) => item.kind === 'row' && item.row)
+        .map((item) => (item.row?.dimensionId ? String(item.row.dimensionId) : ''))
+    }
+    return groups
+      .slice(0, DIMENSION_PREVIEW_GROUPS)
+      .flatMap(([, groupRows]) =>
+        groupRows.map((row) => (row.dimensionId ? String(row.dimensionId) : ''))
+      )
+  }, [view.viewMode, pageRows, virtualWindow.active, visibleItems, groups])
+  const dimensionParamsMap = useDimensionParamsMap(dimensionIds)
 
   const renderRow = (row: (typeof rows)[number]) => (
     <EvaluationMappingRowView
@@ -311,57 +342,73 @@ export function DeviceEvaluationMappingTable({
         isEmpty={rows.length === 0 && !isLoading}
         isFilteredEmpty={filtered.length === 0}
         emptyText={isLoading ? '正在读取设备映射…' : '该设备还没有输出映射；可添加设备输出 → 评估参数的映射。'}
+        tbodyRef={tbodyRef}
       >
         {view.viewMode === 'flat'
           ? pageRows.map(renderRow)
-          : groups.map(([key, groupRows]) => {
-              const isCollapsed = view.collapsed.has(key)
-              const dimId = !key.startsWith('name:') && key !== '__none__' ? key : ''
-              const dim = dimById.get(dimId)
-              const parentName = dim?.parentDimensionId
-                ? dimensions.find(
-                    (item) => String(item.id) === String(dim.parentDimensionId)
-                  )?.name
-                : undefined
-              return (
-                <Fragment key={key}>
-                  <tr className='bg-muted/40 border-border/50 border-b'>
-                    <td colSpan={7} className='px-0 py-0'>
-                      <GroupHeaderButton
-                        name={evalGroupName(key, dimensions, dimensionNameById)}
-                        count={groupRows.length}
-                        collapsed={isCollapsed}
-                        onToggle={() => view.toggleCollapsed(key)}
-                        badge={
-                          dim ? (
-                            dim.parentDimensionId ? (
-                              <>
-                                <span className={subBadge}>子</span>
-                                {parentName ? (
-                                  <span className='text-muted-foreground/70 text-[11px] font-normal'>
-                                    （{parentName}）
-                                  </span>
-                                ) : null}
-                              </>
-                            ) : (
-                              <span className={mainBadge}>主</span>
-                            )
-                          ) : key === '__none__' ? (
-                            <span className='text-muted-foreground text-[11px] font-normal'>
-                              （未指定）
-                            </span>
-                          ) : null
-                        }
-                      />
-                    </td>
-                  </tr>
-                  {!isCollapsed && groupRows.map(renderRow)}
-                  {!isCollapsed && canEdit && (
-                    <GroupAddRow colSpan={7} onClick={addRow} />
-                  )}
-                </Fragment>
-              )
-            })}
+          : (
+              <>
+                {virtualWindow.active && virtualWindow.topPad > 0 && (
+                  <VirtualSpacerRow colSpan={7} height={virtualWindow.topPad} />
+                )}
+                {visibleItems.map((item) => {
+                  const groupKey = item.groupKey
+                  const dimId =
+                    !groupKey.startsWith('name:') && groupKey !== '__none__' ? groupKey : ''
+                  if (item.kind === 'header') {
+                    const dim = dimById.get(dimId)
+                    const parentName = dim?.parentDimensionId
+                      ? dimensions.find(
+                          (entry) => String(entry.id) === String(dim.parentDimensionId)
+                        )?.name
+                      : undefined
+                    return (
+                      <tr
+                        key={item.key}
+                        data-vkind='header'
+                        className='bg-muted/40 border-border/50 border-b'
+                      >
+                        <td colSpan={7} className='px-0 py-0'>
+                          <GroupHeaderButton
+                            name={evalGroupName(groupKey, dimensions, dimensionNameById)}
+                            count={countByKey.get(groupKey) ?? 0}
+                            collapsed={view.collapsed.has(groupKey)}
+                            onToggle={() => view.toggleCollapsed(groupKey)}
+                            badge={
+                              dim ? (
+                                dim.parentDimensionId ? (
+                                  <>
+                                    <span className={subBadge}>子</span>
+                                    {parentName ? (
+                                      <span className='text-muted-foreground/70 text-[11px] font-normal'>
+                                        （{parentName}）
+                                      </span>
+                                    ) : null}
+                                  </>
+                                ) : (
+                                  <span className={mainBadge}>主</span>
+                                )
+                              ) : groupKey === '__none__' ? (
+                                <span className='text-muted-foreground text-[11px] font-normal'>
+                                  （未指定）
+                                </span>
+                              ) : null
+                            }
+                          />
+                        </td>
+                      </tr>
+                    )
+                  }
+                  if (item.kind === 'add') {
+                    return <GroupAddRow key={item.key} colSpan={7} onClick={addRow} />
+                  }
+                  return item.row ? renderRow(item.row) : null
+                })}
+                {virtualWindow.active && virtualWindow.bottomPad > 0 && (
+                  <VirtualSpacerRow colSpan={7} height={virtualWindow.bottomPad} />
+                )}
+              </>
+            )}
       </MappingTableFrame>
 
       {view.viewMode === 'flat' && filtered.length > view.pageSize && (
