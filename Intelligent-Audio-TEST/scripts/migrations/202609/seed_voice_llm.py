@@ -60,6 +60,52 @@ POSTGRES_URI = os.environ.get(
 )
 
 
+def _upsert_relation(conn, dim_id):
+    """注册 voice_llm → 维度关联（幂等），返回 'active' / 'revived' / 'inserted'。
+
+    INT-2293（沿用 INT-2292 判据）：`uq_algorithm_dimension` 是
+    `WHERE deleted = false` 的部分唯一索引，旧实现只
+    `SELECT id ... WHERE algorithm_type=... AND dimension_id=...`、不看 deleted，
+    关联一旦软删种子永远跳过、不复活。改为按唯一键全量判：
+      1. 有生效行 → 直接复用（不复活任何软删行）；
+      2. 无生效行 → 复活 id 最新的一条，复活前把同键其它行显式置软删；
+      3. 无行 → INSERT。
+    """
+    active = conn.execute(text(
+        "SELECT id FROM algorithm_dimension_relations "
+        "WHERE algorithm_type = 'voice_llm' AND dimension_id = :did "
+        "AND deleted = FALSE ORDER BY id DESC LIMIT 1"
+    ), {'did': dim_id}).fetchone()
+    if active:
+        return 'active'
+
+    revive = conn.execute(text(
+        "SELECT id FROM algorithm_dimension_relations "
+        "WHERE algorithm_type = 'voice_llm' AND dimension_id = :did "
+        "AND deleted = TRUE ORDER BY id DESC LIMIT 1"
+    ), {'did': dim_id}).fetchone()
+    if revive:
+        conn.execute(text(
+            "UPDATE algorithm_dimension_relations SET deleted = TRUE, updated_at = NOW() "
+            "WHERE algorithm_type = 'voice_llm' AND dimension_id = :did "
+            "AND deleted = FALSE AND id <> :id"
+        ), {'did': dim_id, 'id': revive[0]})
+        conn.execute(text(
+            "UPDATE algorithm_dimension_relations SET deleted = FALSE, updated_at = NOW() "
+            "WHERE id = :id"
+        ), {'id': revive[0]})
+        return 'revived'
+
+    conn.execute(text(
+        "INSERT INTO algorithm_dimension_relations "
+        "  (algorithm_type, dimension_id, is_default, weight, deleted, "
+        "   created_at, updated_at) "
+        "VALUES "
+        "  ('voice_llm', :did, FALSE, 1.0, FALSE, NOW(), NOW())"
+    ), {'did': dim_id})
+    return 'inserted'
+
+
 def seed_voice_llm():
     engine = create_engine(POSTGRES_URI)
 
@@ -346,31 +392,25 @@ def seed_voice_llm():
         )).fetchall()
 
         rel_inserted = 0
+        rel_revived = 0
         rel_skipped = 0
         if not dim_rows:
             print("  未找到维度，跳过")
         else:
             for dim_id, dim_name in dim_rows:
-                existing = conn.execute(text(
-                    "SELECT id FROM algorithm_dimension_relations "
-                    "WHERE algorithm_type = 'voice_llm' AND dimension_id = :did"
-                ), {'did': dim_id}).fetchone()
-
-                if existing:
+                # INT-2293：软删关联要复活，不能只查「任意行存在」就跳过
+                outcome = _upsert_relation(conn, dim_id)
+                if outcome == 'active':
                     print(f"  - 维度 '{dim_name}' (id={dim_id}) 关联已存在")
                     rel_skipped += 1
+                elif outcome == 'revived':
+                    print(f"  ~ 维度 '{dim_name}' (id={dim_id}) 关联已软删，重新激活")
+                    rel_revived += 1
                 else:
-                    conn.execute(text(
-                        "INSERT INTO algorithm_dimension_relations "
-                        "  (algorithm_type, dimension_id, is_default, weight, deleted, "
-                        "   created_at, updated_at) "
-                        "VALUES "
-                        "  ('voice_llm', :did, FALSE, 1.0, FALSE, NOW(), NOW())"
-                    ), {'did': dim_id})
                     print(f"  + 关联维度 '{dim_name}' (id={dim_id})")
                     rel_inserted += 1
 
-        print(f"  插入 {rel_inserted} 条，跳过 {rel_skipped} 条")
+        print(f"  插入 {rel_inserted} 条，复活 {rel_revived} 条，跳过 {rel_skipped} 条")
 
         print("\n=== voice_llm 种子数据注册完成 ===")
 

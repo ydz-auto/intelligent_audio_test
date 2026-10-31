@@ -249,6 +249,54 @@ SUB_DIMENSIONS = {
     'interruption_judge': _build_sub_dimensions('interruption_judge', '打断'),
 }
 
+# 202610/seed_env_judge.py 维护的 env_judge 新代主维度名（与本脚本的 legacy code
+# 共用 task_type_code='env_judge'）。INT-2293：Step 0 只迁移「旧代」行，新代这些行
+# 一律不碰 —— 否则引导链每跑一遍都会把 202610 刚建的 3 个维度当 legacy 软删，
+# 下一轮 202610 再按 name 重新 INSERT，dimension id 每代都变。
+ENV_JUDGE_NEW_GEN_NAMES = ('环境理解准确率', '平均回复时延', '环境理解评分')
+
+
+def _soft_delete_dimension_tree(conn, dim_id, reason):
+    """软删一个维度及其子维度 / params / mappings / relations（INT-2293）。
+
+    旧实现只 `UPDATE dimensions`，关联表会留下「生效关联指向已软删维度」的悬空行
+    （主库 algorithm_dimension_relations 751-753 即此形态）。
+    """
+    subs = conn.execute(text(
+        "SELECT id FROM dimensions "
+        "WHERE parent_dimension_id = :pid AND deleted = FALSE"
+    ), {'pid': dim_id}).fetchall()
+    for (sub_id,) in subs:
+        _soft_delete_dimension_tree(conn, sub_id, f"父维度 {dim_id} 被软删")
+
+    conn.execute(text(
+        "UPDATE dimensions SET deleted = TRUE, updated_at = NOW() "
+        "WHERE id = :did AND deleted = FALSE"
+    ), {'did': dim_id})
+    for table in ('evaluation_dimension_params', 'param_mappings',
+                  'algorithm_dimension_relations'):
+        conn.execute(text(
+            f"UPDATE {table} SET deleted = TRUE, updated_at = NOW() "
+            "WHERE dimension_id = :did AND deleted = FALSE"
+        ), {'did': dim_id})
+    print(f"  ! 软删维度 id={dim_id}（{reason}）：dimensions/子维度/params/mappings/relations "
+          f"同步置 deleted=TRUE")
+
+
+def _find_new_generation_dims(conn, legacy_codes, new_gen_names):
+    """返回已存在的 202610 新代主维度行（有则表示旧代已在既往引导中迁移完毕）。"""
+    placeholders = ', '.join(f':n{i}' for i in range(len(new_gen_names)))
+    bind = {f'n{i}': n for i, n in enumerate(new_gen_names)}
+    placeholders_y = ', '.join(f':c{i}' for i in range(len(legacy_codes)))
+    bind.update({f'c{i}': c for i, c in enumerate(legacy_codes)})
+    return conn.execute(text(
+        "SELECT id, name FROM dimensions "
+        f"WHERE task_type_code IN ({placeholders_y}) "
+        "AND dimension_type = 'main' AND parent_dimension_id IS NULL "
+        f"AND name IN ({placeholders}) AND deleted = FALSE "
+        "ORDER BY id"
+    ), bind).fetchall()
+
 
 def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
     """注册/更新一个维度，返回 dim_id。dimension_type: 'main' or 'sub'。"""
@@ -573,6 +621,57 @@ def _upsert_param_mappings(conn, dim_id, dim_def):
     print(f"  插入 {inserted} 条，更新 {updated} 条")
 
 
+def _migrate_legacy_codes(conn, task_code, legacy_codes):
+    """Step 0：把旧 code 的行改名到 task_code；与现行维度冲突则整棵树软删。
+
+    INT-2293：只处理「旧代」行 —— 202610/seed_env_judge.py 的 env_judge 新代三维度
+    与本脚本 legacy code 共用 task_type_code，按 code 一把抓会把现行代每轮软删一遍
+    （每代 dimension id 都变）。判据：新代主维度已存在 → 整段跳过；否则只迁移
+    name 不在新代名单内的旧代行。返回处理行数。
+    """
+    print(f"\n--- Step 0: 迁移旧 code {legacy_codes} → {task_code} ---")
+    new_gen = _find_new_generation_dims(conn, legacy_codes, ENV_JUDGE_NEW_GEN_NAMES)
+    if new_gen:
+        print(f"  - 检测到 202610 新代主维度已存在 "
+              f"{[(r[0], r[1]) for r in new_gen]}，旧代迁移整段跳过")
+        return 0
+
+    handled = 0
+    for old_code in legacy_codes:
+        legacy_rows = conn.execute(text(
+            "SELECT id, name FROM dimensions "
+            "WHERE task_type_code = :oc AND dimension_type = 'main' "
+            "AND parent_dimension_id IS NULL AND deleted = FALSE "
+            "AND name NOT IN ("
+            + ', '.join(f':n{i}' for i in range(len(ENV_JUDGE_NEW_GEN_NAMES)))
+            + ") ORDER BY id"
+        ), {'oc': old_code, **{
+            f'n{i}': n for i, n in enumerate(ENV_JUDGE_NEW_GEN_NAMES)
+        }}).fetchall()
+        if not legacy_rows:
+            print(f"  - 无 {old_code} 旧代记录，跳过")
+            continue
+        for rid, rname in legacy_rows:
+            conflict = conn.execute(text(
+                "SELECT id FROM dimensions "
+                "WHERE task_type_code = :nc AND deleted = FALSE "
+                "AND id <> :rid"
+            ), {'nc': task_code, 'rid': rid}).fetchone()
+            if conflict:
+                print(f"  ! {old_code}(id={rid}) 与 {task_code}(id={conflict[0]}) 冲突，软删旧记录")
+                _soft_delete_dimension_tree(
+                    conn, rid, f"旧代 {old_code} 与现行 {task_code} 冲突")
+            else:
+                print(f"  - {old_code}(id={rid}, name={rname}) "
+                      f"→ rename task_type_code = {task_code}")
+                conn.execute(text(
+                    "UPDATE dimensions SET task_type_code = :nc, "
+                    "updated_at = NOW() WHERE id = :rid"
+                ), {'nc': task_code, 'rid': rid})
+            handled += 1
+    return handled
+
+
 def seed_env_sound_judge():
     engine = create_engine(POSTGRES_URI)
 
@@ -587,37 +686,10 @@ def seed_env_sound_judge():
             print(f"{'=' * 60}")
 
             # ============================================================
-            # Step 0: 旧 code 改名（避免残留孤儿记录）
+            # Step 0: 旧 code 改名（避免残留孤儿记录；INT-2293 见 _migrate_legacy_codes）
             # ============================================================
             if legacy_codes:
-                print(f"\n--- Step 0: 迁移旧 code {legacy_codes} → {task_code} ---")
-                for old_code in legacy_codes:
-                    rows = conn.execute(text(
-                        "SELECT id, name FROM dimensions "
-                        "WHERE task_type_code = :oc AND deleted = FALSE"
-                    ), {'oc': old_code}).fetchall()
-                    if not rows:
-                        print(f"  - 无 {old_code} 记录，跳过")
-                        continue
-                    for rid, rname in rows:
-                        conflict = conn.execute(text(
-                            "SELECT id FROM dimensions "
-                            "WHERE task_type_code = :nc AND deleted = FALSE "
-                            "AND id <> :rid"
-                        ), {'nc': task_code, 'rid': rid}).fetchone()
-                        if conflict:
-                            print(f"  ! {old_code}(id={rid}) 与 {task_code}(id={conflict[0]}) 冲突，软删旧记录")
-                            conn.execute(text(
-                                "UPDATE dimensions SET deleted = TRUE, "
-                                "updated_at = NOW() WHERE id = :rid"
-                            ), {'rid': rid})
-                        else:
-                            print(f"  - {old_code}(id={rid}, name={rname}) "
-                                  f"→ rename task_type_code = {task_code}")
-                            conn.execute(text(
-                                "UPDATE dimensions SET task_type_code = :nc, "
-                                "updated_at = NOW() WHERE id = :rid"
-                            ), {'nc': task_code, 'rid': rid})
+                _migrate_legacy_codes(conn, task_code, legacy_codes)
 
             # ============================================================
             # Step 1: 注册主维度

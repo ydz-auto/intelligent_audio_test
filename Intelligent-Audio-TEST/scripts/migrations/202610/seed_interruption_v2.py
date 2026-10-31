@@ -857,6 +857,10 @@ def _cleanup_legacy_interruption_trees(conn):
     仅按 task_type_code='interruption_metrics' 的 main 维度中不属于本 seed 新族
     名单的行清理；interruption_judge（打断场景裁判）不在此列——V9.7.31 由
     seed_env_sound_judge 注册、属另一族存活口径，本脚本不动它。
+
+    INT-2293：202609/seed_interruption_dimensions.py 已不再创建「打断成功率」树，
+    故本步在正常引导链里恒为 no-op（找不到旧行就不会碰 test_result_dimensions）；
+    它只剩「存量库首轮升级」的迁移作用，不会再每轮删一次历史结果行。
     """
     new_main_names = [d['name'] for d in MAIN_DIMENSIONS] + [LATENCY_CONTAINER['name']]
     placeholders = ','.join(f':n{i}' for i in range(len(new_main_names)))

@@ -1,34 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-打断指标维度种子数据（打断成功率主维度 + 两个时延子维度）
+旧代打断指标维度清理（INT-2293 收敛：本脚本不再创建「打断成功率」树）
 
-功能：
-1. 软删除历史单维度 interruption_metrics（name='打断指标'，已被主+子维度方案替代）
-2. 注册/更新打断成功率主维度（dimension_type='main'）：
-   - 配置全部 input params、api_settings、body_template、param_mappings
-   - 配置打断成功率 output params（interruption_success_rate 等）
-   - 包含 LLM 评估 output params
-3. 注册/更新5个子维度（dimension_type='sub'，parent_dimension_id 指向主维度）：
-   - 打断检查时延 → task_type_code='interruption_stop_latency', output field_path = avg_stop_latency_s
-   - 打断恢复时延 → task_type_code='interruption_recovery_latency', output field_path = avg_recovery_latency_s
-   - 平均连贯性     → task_type_code='interruption_coherence'
-   - 平均相关性     → task_type_code='interruption_relevance'
-   - 平均适应性     → task_type_code='interruption_adaptability'
-   - 子维度 task_type_code 各自独立，平台按 parent_dimension_id 分组，
-     提取各子维度 task_type_code 组成 sub_tasks 注入 payload，eval_server 按 sub_tasks 只算选中子维度
-4. 注册 voice_llm 算法与主维度 + 5个子维度的关联（algorithm_dimension_relations）
-5. 注册 voice_llm → 主维度的参数映射（param_mappings.dimension_id = 主维度id）
+功能（现状）：
+1. 软删除历史单维度 interruption_metrics（旧代 name 集合：'打断指标'），
+   连同其子维度 / params / mappings / relations 一并软删。
 
-执行链路：
-   用例选主维度 + 5个子维度 → 平台按 (api_url, parent_dimension_id) 分到同一组
-   → task_type 用主维度的 interruption_metrics，payload 注入 sub_tasks（从各子维度 task_type_code 提取）
-   → 调一次 eval_server，eval_server 按 sub_tasks 只算选中的子维度
-   → process_group_dimension_results 把同一份响应按各自 output field_path 分发提取
-
-对应 eval_server 服务：
-   - eval_server/app/services/xiaoyi_metrics/turn_taking/__init__.py
-   - 入口：calculate_interruption_metrics(task_params)
-   - 一次返回包含 success_rate/stop_latency/recovery_latency 的 JSON
+INT-2293 变更背景：
+   本脚本原先还会注册「打断成功率」主维度 + 5 个子维度，但该族已被
+   202610/seed_interruption_v2.py 的打断指标 v2（11 主维度 + 「打断时延」容器）
+   整体取代：v2 的 Step 0 每次引导都把「打断成功率」树物理删除（连 test_result_dimensions
+   历史结果行一起删）。两代在引导链里一建一删的对冲会让「每次部署删一次历史结果行」，
+   故按卡内要求收敛为「202609 不再建」：本脚本只做旧代清理，不再创建该族。
+   下面的维度/参数定义与 helper 保留（INT-2292 单测引用 _upsert_relation；
+   历史版本形态可追溯），但已不参与引导链写入。
 
 使用方法：
     cd Intelligent-Audio-TEST
@@ -58,6 +43,10 @@ POSTGRES_URI = os.environ.get(
 
 # eval_server 微服务地址（本机 5002，见 eval_server/app/config.py PORT=5002）
 API_URL = resolve_eval_server_url()
+
+# INT-2293：旧代 interruption_metrics 单维度 name 集合（只这些行允许被本脚本软删）。
+# 202610/seed_interruption_v2 的现行 15 个维度名一律不在集合内，故不会被误删。
+LEGACY_MAIN_NAMES = ('打断指标',)
 
 # ============================================================
 # 主维度定义：打断成功率（配 input + output + api_settings + param_mappings）
@@ -688,87 +677,59 @@ def _soft_delete_dimension_tree(conn, dim_id, reason):
     print(f"  ! 软删维度 id={dim_id}（{reason}）：dimensions/params/mappings/relations 已置 deleted=TRUE")
 
 
+def _cleanup_legacy_main_dims(conn):
+    """Step 0：软删旧代单维度（LEGACY_MAIN_NAMES），整棵树级联软删。返回处理行数。
+
+    INT-2293：只按「旧代 name 集合」判定，不再 `name != '打断成功率'` 一把抓
+    ——那会把 202610/seed_interruption_v2 的现行 15 个维度每轮软删一遍。
+    """
+    placeholders = ', '.join(f':n{i}' for i in range(len(LEGACY_MAIN_NAMES)))
+    legacy = conn.execute(text(
+        "SELECT id, name, task_type_code FROM dimensions "
+        "WHERE task_type_code = 'interruption_metrics' "
+        "AND dimension_type = 'main' AND parent_dimension_id IS NULL "
+        f"AND name IN ({placeholders}) AND deleted = FALSE"
+    ), {f'n{i}': n for i, n in enumerate(LEGACY_MAIN_NAMES)}).fetchall()
+    for dim_id, name, tc in legacy:
+        print(f"  软删旧代维度: id={dim_id}, name={name}, task_type_code={tc}")
+        _soft_delete_dimension_tree(conn, dim_id, "旧代单维度，已由打断指标 v2 替代")
+    return len(legacy)
+
+
 def seed_interruption_dimensions():
     engine = create_engine(POSTGRES_URI)
 
     with engine.begin() as conn:
         # ============================================================
-        # Step 0: 软删除历史单维度 interruption_metrics（name='打断指标'）
+        # Step 0: 软删除旧代单维度 interruption_metrics
         # ============================================================
         print(f"\n{'=' * 60}")
-        print(f"  Step 0: 软删除历史单维度 interruption_metrics")
+        print(f"  Step 0: 软删除旧代单维度 interruption_metrics（name in {LEGACY_MAIN_NAMES}）")
         print(f"{'=' * 60}")
-        legacy = conn.execute(text(
-            "SELECT id, name, task_type_code FROM dimensions "
-            "WHERE task_type_code = 'interruption_metrics' "
-            "AND dimension_type = 'main' AND parent_dimension_id IS NULL "
-            "AND name != '打断成功率' AND deleted = FALSE"
-        )).fetchall()
-        if legacy:
-            for dim_id, name, tc in legacy:
-                print(f"  软删历史维度: id={dim_id}, name={name}, task_type_code={tc}")
-                _soft_delete_dimension_tree(conn, dim_id, "被 主+子维度方案替代")
-        else:
-            print("  无历史单维度需清理")
+        if not _cleanup_legacy_main_dims(conn):
+            print("  无旧代单维度需清理")
 
         # ============================================================
-        # Step 1: 注册/更新打断成功率主维度
+        # Step 1: （INT-2293 收敛）不再创建「打断成功率」树
         # ============================================================
         print(f"\n{'=' * 60}")
-        print(f"  Step 1: 注册打断成功率主维度")
-        print(f"{'=' * 60}")
-        main_id = _upsert_dimension(conn, MAIN_DIMENSION, dimension_type='main', parent_id=None)
-        print(f"  主维度 id = {main_id}")
-        _upsert_params(conn, main_id, MAIN_DIMENSION)
-        _upsert_relation(conn, main_id)
-        _upsert_param_mappings(conn, main_id, MAIN_DIMENSION)
-
-        # ============================================================
-        # Step 2: 注册5个子维度
-        # ============================================================
-        print(f"\n{'=' * 60}")
-        print(f"  Step 2: 注册5个子维度（parent_dimension_id={main_id}）")
-        print(f"{'=' * 60}")
-        for sub_def in SUB_DIMENSIONS:
-            print(f"\n  -- 子维度: {sub_def['name']} --")
-            sub_id = _upsert_dimension(conn, sub_def, dimension_type='sub', parent_id=main_id)
-            print(f"  子维度 id = {sub_id}")
-            _upsert_params(conn, sub_id, sub_def)
-            _upsert_relation(conn, sub_id)
-            # 子维度不配 param_mappings，共用主维度的 mappings
-
-        print(f"\n{'=' * 60}")
-        print(f"  打断指标维度种子数据注册完成")
-        print(f"  主维度 打断成功率 id={main_id}")
-        print(f"  5个子维度（各自 output field_path）:")
-        print(f"    - 打断检查时延 → avg_stop_latency_s")
-        print(f"    - 打断恢复时延 → avg_recovery_latency_s")
+        print("  Step 1: 跳过 —— 「打断成功率」族已由 202610/seed_interruption_v2.py 取代")
+        print("          （本脚本不再创建，避免与 v2 的旧代清理一建一删对冲）")
         print(f"{'=' * 60}")
 
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("打断指标维度种子数据注册")
+    print("旧代打断指标维度清理（INT-2293：不再创建「打断成功率」树）")
     print("=" * 60)
     print()
     print(f"数据库: {POSTGRES_URI[:POSTGRES_URI.rindex('@')]}@localhost/...")
     print()
     print("此脚本将：")
-    print("1. 软删除历史单维度 interruption_metrics（name='打断指标'，被替代）")
-    print("2. 注册/更新打断成功率主维度（dimension_type=main）")
-    print("   配置 input params + 打断成功率 output params + LLM 评估 output params")
-    print("   + api_settings + param_mappings")
-    print("3. 注册/更新5个子维度（dimension_type=sub，parent_dimension_id=主维度id）：")
-    print("   - 打断检查时延 → output field_path = avg_stop_latency_s")
-    print("   - 打断恢复时延 → output field_path = avg_recovery_latency_s")
-    print("4. 子维度不重复 input params / param_mappings：")
-    print("   - input_params 通过 evaluation_service._load_dimension_data 继承父维度")
-    print("   - param_mappings 挂主维度 id 下，子维度共用（dimension_ids=None 不过滤）")
-    print("5. 注册 voice_llm → 主维度 + 5个子维度的关联")
-    print()
-    print("执行链路：用例选主维度 + 5个子维度 → 继承父维度 task_type_code/api 配置")
-    print("→ 按 (endpoint_url, task_type_code) 分到同一组 → 调一次 eval_server")
-    print("→ process_group_dimension_results 按各自 output field_path 分发提取")
+    print(f"1. 软删除旧代单维度 interruption_metrics（name in {LEGACY_MAIN_NAMES}），")
+    print("   连同其子维度 / params / mappings / relations 一并软删")
+    print("2. 不再注册「打断成功率」主维度与 5 个子维度 —— 该族已由")
+    print("   202610/seed_interruption_v2.py（打断指标 v2）整体取代")
     print()
     print("脚本可重复执行（幂等）")
     print()
