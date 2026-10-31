@@ -56,7 +56,7 @@ export function DeviceMappingRowView({
   disabled?: boolean
 }) {
   return (
-    <tr className='border-border/50 border-b last:border-b-0'>
+    <tr data-vkind='row' className='border-border/50 border-b last:border-b-0'>
       <td className='px-2 py-1.5'>
         <MappingSelect
           value={value.sourceParam}
@@ -173,7 +173,7 @@ export function EvaluationMappingRowView({
   }
 
   return (
-    <tr className='border-border/50 border-b last:border-b-0'>
+    <tr data-vkind='row' className='border-border/50 border-b last:border-b-0'>
       <td className='px-2 py-1.5'>
         <MappingSelect
           value={source}

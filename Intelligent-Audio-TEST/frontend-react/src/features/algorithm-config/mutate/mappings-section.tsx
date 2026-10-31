@@ -14,7 +14,7 @@
  *
  * 视图层（工具栏/表格框/分组/分页/行组件）已抽到 `mapping-view`，与设备「参数配置」弹窗共用。
  */
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { type FieldPath, type UseFormReturn } from 'react-hook-form'
 import { useFieldArray, useWatch } from 'react-hook-form'
 
@@ -23,6 +23,7 @@ import type { AlgorithmFormValues, MappingRow } from '@/features/algorithm-confi
 import { TRANSFORM_TYPE_OPTIONS } from '@/features/algorithm-config/constants'
 import {
   buildSourceOptions,
+  DIMENSION_PREVIEW_GROUPS,
   DEVICE_API_GROUP_LABEL,
   DEVICE_API_GROUP_ORDER,
   deviceApiGroupKey,
@@ -47,6 +48,8 @@ import {
   paramNameByCode,
   subBadge,
   useDimensionParamsMap,
+  useGroupVirtualWindow,
+  VirtualSpacerRow,
   warnDuplicate,
 } from './mapping-view'
 import { DimensionSelect } from './dimension-select'
@@ -197,6 +200,15 @@ function DeviceMappingSection({
     return filtered.slice(start, start + pageSize)
   }, [viewMode, filtered, page, pageSize])
 
+  /* INT-2203 / INT-2213：分组视图窗口化——组头 / 数据行 / 组尾摊平成一维列表，
+     只渲染视口附近的条目（大表 1800+ 行时 DOM 从 6 万节点降到数千）。 */
+  const {
+    tbodyRef,
+    window: virtualWindow,
+    visibleItems,
+    countByKey,
+  } = useGroupVirtualWindow(groups, collapsed, viewMode === 'group')
+
   // 过滤条件/视图切换回到第一页
   useEffect(() => {
     setPage(1)
@@ -261,28 +273,48 @@ function DeviceMappingSection({
         colSpan={colspan}
         isEmpty={rows.length === 0}
         isFilteredEmpty={filtered.length === 0}
+        tbodyRef={tbodyRef}
       >
         {viewMode === 'flat'
           ? pageRows.map(renderRow)
-          : groups.map(([key, groupRows]) => {
-              const isCollapsed = collapsed.has(key)
-              return (
-                <Fragment key={key}>
-                  <tr className='bg-muted/40 border-border/50 border-b'>
-                    <td colSpan={colspan} className='px-0 py-0'>
-                      <GroupHeaderButton
-                        name={DEVICE_API_GROUP_LABEL[key as keyof typeof DEVICE_API_GROUP_LABEL]}
-                        count={groupRows.length}
-                        collapsed={isCollapsed}
-                        onToggle={() => toggleCollapsed(key)}
-                      />
-                    </td>
-                  </tr>
-                  {!isCollapsed && groupRows.map(renderRow)}
-                  {!isCollapsed && <GroupAddRow colSpan={colspan} onClick={addEmpty} />}
-                </Fragment>
-              )
-            })}
+          : (
+              <>
+                {virtualWindow.active && virtualWindow.topPad > 0 && (
+                  <VirtualSpacerRow colSpan={colspan} height={virtualWindow.topPad} />
+                )}
+                {visibleItems.map((item) => {
+                  if (item.kind === 'header') {
+                    return (
+                      <tr
+                        key={item.key}
+                        data-vkind='header'
+                        className='bg-muted/40 border-border/50 border-b'
+                      >
+                        <td colSpan={colspan} className='px-0 py-0'>
+                          <GroupHeaderButton
+                            name={
+                              DEVICE_API_GROUP_LABEL[
+                                item.groupKey as keyof typeof DEVICE_API_GROUP_LABEL
+                              ]
+                            }
+                            count={countByKey.get(item.groupKey) ?? 0}
+                            collapsed={collapsed.has(item.groupKey)}
+                            onToggle={() => toggleCollapsed(item.groupKey)}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  }
+                  if (item.kind === 'add' || !item.row) {
+                    return <GroupAddRow key={item.key} colSpan={colspan} onClick={addEmpty} />
+                  }
+                  return renderRow(item.row)
+                })}
+                {virtualWindow.active && virtualWindow.bottomPad > 0 && (
+                  <VirtualSpacerRow colSpan={colspan} height={virtualWindow.bottomPad} />
+                )}
+              </>
+            )}
       </MappingTableFrame>
 
       {viewMode === 'flat' && filtered.length > pageSize && (
@@ -338,8 +370,6 @@ function EvaluationMappingSection({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   /** 当前行引用的维度 id 集（预加载维度参数） */
-  const dimensionIds = useMemo(() => rows.map((row) => row.dimensionId || ''), [rows])
-  const dimensionParamsMap = useDimensionParamsMap(dimensionIds)
 
   /** 维度 id → 维度（组头主/子徽章、子维度父名） */
   const dimById = useMemo(
@@ -510,6 +540,35 @@ function EvaluationMappingSection({
     setPage(1)
   }, [keyword, sourceFilter, dimensionFilter, transformFilter, viewMode])
 
+  /* INT-2203 / INT-2213：评估维度视图窗口化（1193 条映射 / 328 分组时 DOM 从 6 万节点降到数千） */
+  const {
+    tbodyRef,
+    window: virtualWindow,
+    visibleItems,
+    countByKey,
+  } = useGroupVirtualWindow(groups, collapsed, viewMode === 'dimension')
+
+  /**
+   * 维度参数预加载范围（避免一次性向 300+ 维度各发一次请求）：
+   * - 平铺视图：只取当前页 10 行；
+   * - 维度视图窗口化生效：只取视口内行；
+   * - 窗口尚未测量（首帧 / 表未布局）：只取前若干分组（≈一屏），滚动到新分组再增量拉取。
+   */
+  const dimensionIds = useMemo(() => {
+    if (viewMode === 'flat') {
+      return pageRows.map((row) => row.dimensionId || '')
+    }
+    if (virtualWindow.active) {
+      return visibleItems
+        .filter((item) => item.kind === 'row' && item.row)
+        .map((item) => item.row?.dimensionId || '')
+    }
+    return groups
+      .slice(0, DIMENSION_PREVIEW_GROUPS)
+      .flatMap(([, groupRows]) => groupRows.map((row) => row.dimensionId || ''))
+  }, [viewMode, pageRows, virtualWindow.active, visibleItems, groups])
+  const dimensionParamsMap = useDimensionParamsMap(dimensionIds)
+
   const colspan = 7
   const indexOf = (key: string) => mappings.fields.findIndex((f) => f.key === key)
 
@@ -601,63 +660,84 @@ function EvaluationMappingSection({
         colSpan={colspan}
         isEmpty={rows.length === 0}
         isFilteredEmpty={filtered.length === 0}
+        tbodyRef={tbodyRef}
       >
         {viewMode === 'flat'
           ? pageRows.map(renderRow)
-          : groups.map(([key, groupRows]) => {
-              const isCollapsed = collapsed.has(key)
-              const dimId = !key.startsWith('name:') && key !== '__none__' ? key : ''
-              const dim = dimById.get(dimId)
-              const parentName = dim?.parentDimensionId
-                ? dimensions.find((d) => String(d.id) === String(dim.parentDimensionId))?.name
-                : undefined
-              return (
-                <Fragment key={key}>
-                  <tr className='bg-muted/40 border-border/50 border-b'>
-                    <td colSpan={colspan} className='px-0 py-0'>
-                      <GroupHeaderButton
-                        name={evalGroupName(key, dimensions, dimensionNameById)}
-                        count={groupRows.length}
-                        collapsed={isCollapsed}
-                        onToggle={() => toggleCollapsed(key)}
-                        badge={
-                          dim ? (
-                            dim.parentDimensionId ? (
-                              <>
-                                <span className={subBadge}>子</span>
-                                {parentName ? (
-                                  <span className='text-muted-foreground/70 text-[11px] font-normal'>
-                                    （{parentName}）
-                                  </span>
-                                ) : null}
-                              </>
-                            ) : (
-                              <span className={mainBadge}>主</span>
-                            )
-                          ) : key === '__none__' ? (
-                            <span className='text-muted-foreground text-[11px] font-normal'>
-                              （未指定）
-                            </span>
-                          ) : null
+          : (
+              <>
+                {virtualWindow.active && virtualWindow.topPad > 0 && (
+                  <VirtualSpacerRow colSpan={colspan} height={virtualWindow.topPad} />
+                )}
+                {visibleItems.map((item) => {
+                  const groupKey = item.groupKey
+                  const dimId =
+                    !groupKey.startsWith('name:') && groupKey !== '__none__' ? groupKey : ''
+                  if (item.kind === 'header') {
+                    const dim = dimById.get(dimId)
+                    const parentName = dim?.parentDimensionId
+                      ? dimensions.find((d) => String(d.id) === String(dim.parentDimensionId))?.name
+                      : undefined
+                    return (
+                      <tr
+                        key={item.key}
+                        data-vkind='header'
+                        className='bg-muted/40 border-border/50 border-b'
+                      >
+                        <td colSpan={colspan} className='px-0 py-0'>
+                          <GroupHeaderButton
+                            name={evalGroupName(groupKey, dimensions, dimensionNameById)}
+                            count={countByKey.get(groupKey) ?? 0}
+                            collapsed={collapsed.has(groupKey)}
+                            onToggle={() => toggleCollapsed(groupKey)}
+                            badge={
+                              dim ? (
+                                dim.parentDimensionId ? (
+                                  <>
+                                    <span className={subBadge}>子</span>
+                                    {parentName ? (
+                                      <span className='text-muted-foreground/70 text-[11px] font-normal'>
+                                        （{parentName}）
+                                      </span>
+                                    ) : null}
+                                  </>
+                                ) : (
+                                  <span className={mainBadge}>主</span>
+                                )
+                              ) : groupKey === '__none__' ? (
+                                <span className='text-muted-foreground text-[11px] font-normal'>
+                                  （未指定）
+                                </span>
+                              ) : null
+                            }
+                          />
+                        </td>
+                      </tr>
+                    )
+                  }
+                  if (item.kind === 'add') {
+                    return (
+                      <GroupAddRow
+                        key={item.key}
+                        colSpan={colspan}
+                        onClick={() =>
+                          addEmpty(
+                            dimId,
+                            dimId
+                              ? dimById.get(dimId)?.name ?? dimensionNameById.get(dimId) ?? ''
+                              : ''
+                          )
                         }
                       />
-                    </td>
-                  </tr>
-                  {!isCollapsed && groupRows.map(renderRow)}
-                  {!isCollapsed && (
-                    <GroupAddRow
-                      colSpan={colspan}
-                      onClick={() =>
-                        addEmpty(
-                          dimId,
-                          dimId ? dimById.get(dimId)?.name ?? dimensionNameById.get(dimId) ?? '' : ''
-                        )
-                      }
-                    />
-                  )}
-                </Fragment>
-              )
-            })}
+                    )
+                  }
+                  return item.row ? renderRow(item.row) : null
+                })}
+                {virtualWindow.active && virtualWindow.bottomPad > 0 && (
+                  <VirtualSpacerRow colSpan={colspan} height={virtualWindow.bottomPad} />
+                )}
+              </>
+            )}
       </MappingTableFrame>
 
       {viewMode === 'flat' && filtered.length > pageSize && (
