@@ -272,3 +272,14 @@ Intelligent-Audio-TEST/e2e_tests/selenium/drivers/
 /int447_snapshot.json
 /int447_snapshot.py
 /int447_soft_delete.py
+
+# 探针 / 一次性验收产物（非交付物，禁止入库）
+/_probe_*.py
+/_walkthrough/
+/make_ppt.py
+/tmp_hypium/
+Intelligent-Audio-TEST/_probe_*.py
+Intelligent-Audio-TEST/_int*_probe*
+Intelligent-Audio-TEST/_int*_shots*/
+Intelligent-Audio-TEST/_int[0-9]*_*.py
+Intelligent-Audio-TEST/scratch/
