@@ -179,13 +179,22 @@ class ResultStatusMixin:
 
     @staticmethod
     def _count_enabled_dimensions(unique_dim_ids):
-        """统计数据库中启用且存在的维度数量（自有 PO，本地查询）"""
+        """统计数据库中启用且未删除的维度数量（自有 PO，本地查询）
+
+        INT-2189：口径必须与评估链路的加载器
+        `EvaluationDimensionRepository.list_active_dimensions_by_ids`
+        （deleted == False 且 status == True）完全一致。此前只过滤 status，
+        config 仍引用已软删维度时预期数被算大、实际 TRD 行数按加载器口径偏小，
+        永久停在「维度未全 (n/m)，继续等待」，而该结果不会再被二次触发 ——
+        TaskCase 卡 evaluating、任务忙等到超时判 failed。
+        """
         from shared.models.database import get_db_session
         from evaluation_service.infrastructure.persistence.orm_models import Dimension
         local_db_session = get_db_session()
         try:
             return local_db_session.query(Dimension).filter(
                 Dimension.id.in_(unique_dim_ids),
+                Dimension.deleted == False,  # noqa: E712
                 Dimension.status == True  # noqa: E712
             ).count()
         finally:
