@@ -31,6 +31,15 @@ export interface TargetDeviceAssignment {
   deviceId: string
 }
 
+/**
+ * 任务 device_types 派生（INT-2195）：与 createTask 实际提交的 case_devices.device_type
+ * 同源（逐目标分配去重）。执行步据此判定 hasRealtimeDevice——只有选中流式 API
+ * （streaming=true → websocket_api）时才渲染「实时内容流」面板。
+ */
+export function deriveTaskDeviceTypes(assignments: TargetDeviceAssignment[]): DeviceType[] {
+  return [...new Set(assignments.map((a) => a.deviceType))]
+}
+
 /** 执行参数（§3.6.3；INT-486 2026-10-16 口径：设备+API 混合执行，均可编辑） */
 export interface ExecutionParams {
   /** 测试轮数（min 1 max 20，default 1） */

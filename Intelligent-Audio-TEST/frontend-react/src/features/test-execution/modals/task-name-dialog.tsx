@@ -68,9 +68,6 @@ export function TaskNameDialog({
     serialCount > 0 ? ` · 串行 ${serialCount} 个目标` : ''
   }`
 
-  /** 任务 device_types（混跑语义：设备 + HTTP API + Realtime WS 网关全链） */
-  const deviceTypes = ['smart_speaker', 'http_api', 'websocket_api']
-
   const handleStart = async () => {
     if (!name.trim()) return
     setStarting(true)
@@ -79,7 +76,6 @@ export function TaskNameDialog({
         algorithmType,
         deviceIds,
         apiIds,
-        deviceTypes,
         apis,
         params,
       })

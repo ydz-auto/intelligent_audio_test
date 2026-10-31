@@ -18,10 +18,11 @@ import { useResourceSelectionStore } from '@/infrastructure/stores/resource-sele
 import { deriveTargetModes } from '@/application/test-execution/useTargetModes'
 import { navigateWithSearch } from '@/features/test-execution/lib/navigate-search'
 import { deriveApiTargetDeviceType } from '@/domain/models/apiConfig'
-import type {
-  ExecutionParams,
-  TargetDeviceAssignment,
-  TaskLaunchInput,
+import {
+  deriveTaskDeviceTypes,
+  type ExecutionParams,
+  type TargetDeviceAssignment,
+  type TaskLaunchInput,
 } from '@/domain/models/testExecution'
 import type { Device } from '@/domain/models/device'
 import type { ApiConfig } from '@/domain/models/apiConfig'
@@ -88,7 +89,6 @@ export function useTestLaunch() {
       algorithmType?: string | null
       deviceIds: number[]
       apiIds: number[]
-      deviceTypes?: string[]
       /** 被测 API 全量配置（INT-1433：组装 case_devices 时取 deviceType / 按端点协议派生） */
       apis: ApiConfig[]
       params: ExecutionParams
@@ -113,6 +113,10 @@ export function useTestLaunch() {
           return { deviceType: deriveApiTargetDeviceType(api), deviceId: String(targetId) }
         })
         .filter((x): x is TargetDeviceAssignment => x !== null)
+      // INT-2195：任务 device_types 按实际选中目标派生（与下面 case_devices 同源），
+      // 不再恒定三值全链——否则只在 HTTP API 上执行的任务也会被判 hasRealtimeDevice=true，
+      // 执行步的「实时内容流」面板对所有任务都渲染。
+      const deviceTypes = deriveTaskDeviceTypes(targetDeviceAssignments)
       const input: TaskLaunchInput = {
         name,
         algorithmType: opts.algorithmType ?? null,
@@ -130,7 +134,7 @@ export function useTestLaunch() {
       try {
         const { id } = await createTask(input)
         await startTask(id)
-        useExecutionStore.getState().setTask(id, name, opts.deviceTypes)
+        useExecutionStore.getState().setTask(id, name, deviceTypes)
         // 负责人 2026-10-28：启动成功跳「执行测试」步（step=2）看实时进度/日志，不再直接跳到结果步
         navigateWithSearch(navigate, { step: 2 })
       } catch (error) {

@@ -284,9 +284,7 @@ export function TestExecutionPage({
               readOnly={readOnly}
               onBackToResources={() => goToStep(1, { force: true })}
               onCaseSelect={(caseId) => setCaseDetail({ caseId })}
-              deviceTypes={
-                taskId != null ? taskDeviceTypes : ['smart_speaker', 'http_api', 'websocket_api']
-              }
+              deviceTypes={taskId != null ? taskDeviceTypes : undefined}
             />
           )}
 
