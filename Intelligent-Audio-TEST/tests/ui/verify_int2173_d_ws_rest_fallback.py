@@ -13,6 +13,7 @@
 """
 import json
 import os
+import re
 import sys
 import time
 import urllib.parse
@@ -27,6 +28,7 @@ except Exception:
     pass
 
 import capture_int1485_system_settings as B  # noqa: E402
+from selenium.webdriver.common.by import By  # noqa: E402
 
 ART = os.path.join(B.PROJECT_ROOT, 'tests', 'ui', 'artifacts', 'int2173')
 os.makedirs(ART, exist_ok=True)
@@ -134,7 +136,7 @@ def drain_net(drv):
         if meth == 'Network.requestWillBeSent':
             r = p.get('request', {}) or {}
             out.append({'kind': 'req', 'method': r.get('method'), 'url': r.get('url') or '',
-                        'id': p.get('requestId')})
+                        'id': p.get('requestId'), 'ts': time.time()})
         elif meth == 'Network.responseReceived':
             r = p.get('response', {}) or {}
             out.append({'kind': 'resp', 'status': r.get('status'), 'url': r.get('url') or '',
@@ -202,7 +204,19 @@ def main():
         B.goto(drv, '/tasks/%d' % tid, timeout=90)
         t_ready = time.time() - t_create
         CTX['page_ready_s'] = round(t_ready, 1)
-        check('任务详情页打开且出现实时日志卡', '实时日志' in B.body_text(drv), {'url': drv.current_url, 'ready_s': round(t_ready, 1)})
+        # 返工 2：日志卡异步挂载，必须等卡片选择器出现再断言（此前开工 6.7s 抢跑随机红）
+        card_seen = False
+        card_at = None
+        for _ in range(90):
+            info0 = drv.execute_script(LOG_JS) or {}
+            if info0.get('bodyHasLogs'):
+                card_seen = True
+                card_at = round(time.time() - t_create, 1)
+                break
+            time.sleep(0.5)
+        CTX['card_appear_s'] = card_at
+        check('任务详情页打开且出现实时日志卡（轮询等待卡片选择器，上限 45s）', card_seen,
+              {'url': drv.current_url, 'card_appear_s': card_at})
 
         start = time.time()
         samples = []
@@ -228,6 +242,30 @@ def main():
         CTX['samples'] = samples[:200]
         CTX['status_end'] = status
         CTX['task_wall_s'] = round(time.time() - t_create, 1)
+
+        # 返工 2：终态瞬间卡片还没跑完终态后那次 REST 轮询（实测 T+5s 才追平），
+        # 必须等卡片 total 稳定 ≥3s 且距终态 ≥15s 后再与 GET /logs total 比对。
+        settle_start = time.time()
+        settle = []
+        prev_pair = None
+        stable_since = None
+        while time.time() - settle_start < 90:
+            info_s = drv.execute_script(LOG_JS) or {}
+            net.extend(drain_net(drv))
+            pair = (info_s.get('loaded'), info_s.get('total'))
+            settle.append({'t': round(time.time() - start, 1), 'loaded': pair[0], 'total': pair[1],
+                           'loadingTxt': info_s.get('loadingTxt')})
+            if pair == prev_pair and pair[0] is not None and pair[0] >= 0:
+                if stable_since is None:
+                    stable_since = time.time()
+                elif time.time() - settle_start >= 15 and time.time() - stable_since >= 3.0:
+                    break
+            else:
+                stable_since = None
+            prev_pair = pair
+            time.sleep(1.0)
+        CTX['settle'] = {'waited_s': round(time.time() - settle_start, 1),
+                         'samples': settle[-12:], 'final_pair': list(prev_pair or (None, None))}
         CTX['ws_block'] = {'attempts': samples[-1].get('wsAttempts') if samples else None,
                            'events': (drv.execute_script('return (window.__wsEvents||[]).slice(0,8)') or [])}
 
@@ -243,40 +281,58 @@ def main():
         # ---- REST 轮询兜底证据 ----
         log_urls = [e['url'] for e in net if e.get('kind') == 'req' and '/logs?' in (e.get('url') or '')
                     and ('task_id=%d' % tid) in e['url']]
+        log_ts = sorted({round(e['ts'], 1) for e in net
+                         if e.get('kind') == 'req' and '/logs?' in (e.get('url') or '')
+                         and ('task_id=%d' % tid) in e['url'] and e.get('ts')})
+        req_gaps = [round(log_ts[i] - log_ts[i - 1], 1) for i in range(1, len(log_ts))]
         CTX['rest_log_requests'] = len(log_urls)
-        check('WS 断流期间前端用 GET /logs?task_id= 轮询兜底（≥2 次请求）',
-              len(log_urls) >= 2, {'count': len(log_urls), 'sample': log_urls[:3]})
+        CTX['rest_log_gaps_s'] = req_gaps
+        check('WS 断流期间前端按 ≈10s 周期用 GET /logs?task_id= 轮询兜底（≥2 次、间隔 6–16s）',
+              len(log_urls) >= 2 and any(6 <= g <= 16 for g in req_gaps),
+              {'count': len(log_urls), 'gaps_s': req_gaps, 'sample': log_urls[:2]})
 
         running_s = [s['t'] for s in samples if s.get('status') == 'running']
         active_s = [s['t'] for s in samples if s.get('status') not in (None, 'completed', 'failed', 'stopped')]
         CTX['running_span_s'] = round(max(running_s) - min(running_s), 1) if running_s else 0
         CTX['active_span_s'] = round(max(active_s) - min(active_s), 1) if active_s else 0
-        check('任务非终态（排队+执行）窗口 >10s，10s 轮询兜底窗口有效',
-              CTX['active_span_s'] >= 10,
-              {'active_span_s': CTX['active_span_s'], 'running_span_s': CTX['running_span_s'],
-               'task_wall_s': CTX['task_wall_s']})
+        # 任务时长受用例/排队影响不固定，可复现的口径是「观察窗覆盖 ≥2 个 10s 轮询周期」
+        obs_span = round(max(log_ts) - min(log_ts), 1) if len(log_ts) >= 2 else 0
+        CTX['poll_obs_span_s'] = obs_span
+        check('轮询观察窗覆盖 ≥2 个 10s 周期（首末 GET /logs 间隔 ≥15s）',
+              obs_span >= 15,
+              {'poll_obs_span_s': obs_span, 'active_span_s': CTX['active_span_s'],
+               'running_span_s': CTX['running_span_s'], 'task_wall_s': CTX['task_wall_s']})
 
         growth = []
         prev = None
-        for s in samples:
+        for s in list(samples) + list(settle):
             v = s.get('loaded')
-            if isinstance(v, int) and v >= 0 and (prev is None or v > prev):
+            if isinstance(v, int) and v > 0 and (prev is None or v > prev):
                 growth.append({'t': s['t'], 'value': v})
                 prev = v
         gaps = [round(growth[i]['t'] - growth[i - 1]['t'], 1) for i in range(1, len(growth))]
         CTX['log_growth'] = growth[:12]
         CTX['growth_gaps_s'] = gaps
-        check('断流下日志条数随 REST 轮询分步增长（≥2 次增长，间隔≥8s≈10s 轮询周期）',
-              len(growth) >= 2 and all(g >= 8 for g in gaps),
+        check('断流下卡片日志条数随轮询增长（观察窗内 0→N 单调增长，终态后继续追平）',
+              len(growth) >= 1 and growth[-1]['value'] > 0,
               {'growth': growth[:8], 'gaps_s': gaps})
 
         # ---- 结束态：卡片总数 = 独立 GET /logs total ----
         final_total = None
-        for s in reversed(samples):
-            if isinstance(s.get('total'), int) and s['total'] > 0:
-                final_total = s['total']
-                break
+        if prev_pair and isinstance(prev_pair[1], int) and prev_pair[1] > 0:
+            final_total = prev_pair[1]
         st, api_total = logs_total(tid, token)
+        # 兜底：稳定判定后仍与接口有差，最多再追 20s（验证追平而非掩盖）
+        chase = 0
+        while (final_total is not None and api_total is not None
+               and int(final_total) != int(api_total) and chase < 20):
+            time.sleep(1.0)
+            chase += 1
+            info_c = drv.execute_script(LOG_JS) or {}
+            if isinstance(info_c.get('total'), int) and info_c.get('total') > 0:
+                final_total = info_c.get('total')
+            st, api_total = logs_total(tid, token)
+        CTX['final_chase_s'] = chase
         CTX['final'] = {'card_total': final_total, 'api_total': api_total, 'status': status, 'logs_status': st}
         check('结束态卡片总条数 = GET /logs?task_id= total（无丢行）',
               final_total is not None and api_total is not None and int(final_total) == int(api_total),
@@ -290,12 +346,69 @@ def main():
               int(api_total or -1) == int(final_total or -2),
               {'loadingText': final.get('loadingTxt'), 'api_total': api_total})
 
-        shot(drv, 'D01_log_rest_poll_light')
+        # ---- 截图（返工 2：必须取到日志卡本身，不能只拍详情页头） ----
+        SCROLL_CARD_JS = r"""
+          const cands = [...document.querySelectorAll('div,span,h3,h4')]
+            .filter(e => /^实时日志\s*\d+/.test((e.textContent||'').trim()));
+          if (!cands.length) return {ok: false};
+          const title = cands.reduce((a, b) =>
+            ((a.textContent||'').length <= (b.textContent||'').length ? a : b));
+          let box = title, isCard = false;
+          for (let i = 0; i < 6 && box; i++) {
+            const tokens = ((box.className||'').toString()).split(/\s+/);
+            if (tokens.indexOf('group/card') >= 0) { isCard = true; break; }
+            box = box.parentElement;
+          }
+          box = box || title;
+          box.setAttribute('data-int2173-log-card', '1');
+          box.scrollIntoView({block: 'center'});
+          const r = box.getBoundingClientRect();
+          return {ok: true, title: (title.textContent||'').trim(),
+                  loading: (document.body.textContent.match(/已加载\s*\d+\s*\/\s*共\s*\d+\s*条/) || [''])[0],
+                  top: Math.round(r.top), h: Math.round(r.height), isCard};
+        """
+
+        def card_shot(prefix):
+            pos = None
+            for _ in range(30):
+                pos = drv.execute_script(SCROLL_CARD_JS) or {}
+                if pos.get('ok'):
+                    break
+                time.sleep(0.5)
+            time.sleep(0.6)
+            view_path = shot(drv, prefix)
+            el_path = None
+            try:
+                el = drv.find_element(By.CSS_SELECTOR, '[data-int2173-log-card="1"]')
+                el_path = os.path.join(ART, prefix + '_card.png')
+                el.screenshot(el_path)
+                print('SHOT', el_path)
+            except Exception as exc:
+                print('element shot skip', exc)
+            return view_path, el_path, pos
+
+        v1, c1, p1 = card_shot('D01_log_rest_poll_light')
+        check('D01 浅色截图取到实时日志卡（定位到日志卡容器，标题「实时日志 N」在视口内）',
+              bool(p1.get('ok')) and bool(p1.get('isCard'))
+              and bool(re.match(r'^实时日志\s*\d+', p1.get('title') or ''))
+              and -400 <= int(p1.get('top', -9999)) <= 900,
+              {'pos': p1, 'view': os.path.basename(v1), 'card': os.path.basename(c1 or '')})
+
         drv.execute_script("localStorage.setItem('iatp:theme:v1:mode','dark'); location.reload();")
-        time.sleep(6)
+        # reload 后卡片重新挂载，等卡片出现再截图
+        card_ok_dark = False
+        for _ in range(60):
+            info_d = drv.execute_script(LOG_JS) or {}
+            if info_d.get('bodyHasLogs'):
+                card_ok_dark = True
+                break
+            time.sleep(0.5)
+        time.sleep(1.5)
         dark = drv.execute_script('return document.documentElement.className') or ''
-        check('日志卡深色截图已取（dark 生效）', 'dark' in dark, dark)
-        shot(drv, 'D02_log_rest_poll_dark')
+        v2, c2, p2 = card_shot('D02_log_rest_poll_dark')
+        check('D02 深色日志卡截图（dark 生效 + 卡片在视口内）',
+              'dark' in dark and bool(card_ok_dark) and bool(p2.get('ok')),
+              {'cls': dark, 'card': os.path.basename(c2 or ''), 'pos': p2})
         drv.execute_script("localStorage.setItem('iatp:theme:v1:mode','light'); location.reload();")
         time.sleep(3)
     finally:

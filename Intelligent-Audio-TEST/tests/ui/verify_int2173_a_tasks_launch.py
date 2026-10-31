@@ -515,12 +515,21 @@ def main():
         except Exception:
             pass
         time.sleep(1)
-        # 深色截图（通知取证之后 reload 不影响已取证据）
-        drv.execute_script("localStorage.setItem('iatp:theme:v1:mode','dark'); location.reload();")
-        time.sleep(6)
-        shot(drv, 'A11_dark_tasks_after')
-        drv.execute_script("localStorage.setItem('iatp:theme:v1:mode','light'); location.reload();")
-        time.sleep(6)
+        # 深色截图必须是任务列表页（返工 1：此前同页 reload 截到的是「开始测试·执行步」）
+        drv.execute_script("localStorage.setItem('iatp:theme:v1:mode','dark');")
+        open_daily(drv)
+        time.sleep(2)
+        drv.execute_script('window.scrollTo(0,0)')
+        dark_txt = body(drv)
+        dark_cls = drv.execute_script('return document.documentElement.className') or ''
+        check('任务列表深色截图取自 /tasks/daily（三页签+筛选条+分页齐全）',
+              'dark' in dark_cls and '任务名称' in dark_txt and '只看收藏' in dark_txt
+              and ('日常' in dark_txt and '已发布' in dark_txt and '挑选合并' in dark_txt),
+              {'cls': dark_cls, 'url': drv.current_url})
+        shot(drv, 'A11_dark_tasks_list')
+        drv.execute_script("localStorage.setItem('iatp:theme:v1:mode','light');")
+        open_daily(drv)
+        time.sleep(1)
 
         # ---------------- 10. 跨页刷新：新任务出现在日常列表且总数+1 ----------------
         open_daily(drv)

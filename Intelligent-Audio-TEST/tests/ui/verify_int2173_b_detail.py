@@ -203,7 +203,7 @@ def main():
                 break
         CTX['first_fail'] = first_err
         B.goto(drv, '/tasks/764', timeout=120)
-        # toast 只在 mount 后 ~10s 内，尽快抓
+        # toast 只在 mount 后 10s 内（sonner duration=10000），检测到即先截图再断言
         toast_text = None
         for _ in range(30):
             t = drv.execute_script("return [...document.querySelectorAll('[data-sonner-toast]')].map(e=>(e.textContent||'').trim())")
@@ -211,13 +211,17 @@ def main():
                 toast_text = t
                 break
             time.sleep(0.5)
+        shot(drv, 'B05_failed_toast')
+        with_err = [x for x in (toast_text or []) if '测试任务执行失败' in x]
+        CTX['toast_shot'] = {'texts': toast_text, 'has_error_toast': bool(with_err)}
+        check('B05 失败 toast 截图时 toast 仍在 DOM（图上有「测试任务执行失败」）',
+              bool(with_err) and any(('1 轮失败' in x) for x in with_err), CTX['toast_shot'])
         check('失败任务详情：弹出「测试任务执行失败」原因 toast',
               bool(toast_text) and any('测试任务执行失败' in x for x in toast_text),
               {'toasts': toast_text, 'first_err': (first_err or '')[:200]})
         if toast_text and first_err:
             check('失败弹窗内容与任务详情失败原因一致（首条 failed 用例 error_message）',
                   any(first_err in x for x in toast_text), {'toast': toast_text, 'first_err': first_err[:300]})
-        shot(drv, 'B05_failed_toast')
 
         # ---------- 3b. 未执行用例：526 中 pending 用例 ----------
         B.goto(drv, '/tasks/526', timeout=120)
