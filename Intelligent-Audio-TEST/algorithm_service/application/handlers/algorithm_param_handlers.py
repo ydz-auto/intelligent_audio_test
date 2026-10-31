@@ -133,6 +133,7 @@ class AlgorithmParamCommandHandler:
             cmd.param_code,
             cmd.direction,
             cmd.param_type_source,
+            cmd.device_id,
         )
 
     # ========== 用例参数命令 ==========
@@ -321,6 +322,7 @@ class AlgorithmParamQueryHandler:
             query.param_code,
             query.direction,
             query.param_type_source,
+            query.device_id,
         )
 
     # ========== 用例参数查询 ==========

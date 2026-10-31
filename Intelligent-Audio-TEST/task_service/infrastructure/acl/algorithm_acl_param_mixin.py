@@ -52,14 +52,24 @@ class AlgorithmParamMixin:
         return _one(resp, dto_cls=ApiParamDTO)
 
     def find_device_param_by_code(
-        self, algorithm_type: str, param_code: str, direction: str
+        self,
+        algorithm_type: str,
+        param_code: str,
+        direction: str,
+        device_id: Optional[int] = None,
     ):
-        """按算法/参数代码/方向查找未删除的设备参数。"""
+        """按算法/参数代码/方向查找未删除的设备参数。
+
+        INT-2289：device_id 限定作用域——不传只查算法类型级默认行
+        （``device_id IS NULL``），传了只查该设备的覆盖行，与表上两条部分
+        唯一索引同口径。
+        """
         resp = _get_stub().FindParamByCode(_pb.FindParamByCodeRequest(
             algorithm_type=algorithm_type or "",
             param_code=param_code or "",
             direction=direction or "",
             param_type_source="device",
+            device_id=int(device_id) if device_id else 0,
         ))
         if not resp.success:
             return None

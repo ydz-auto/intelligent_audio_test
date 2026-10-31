@@ -31,8 +31,13 @@ class IAlgorithmParamRepository(ABC):
         param_code: str,
         direction: str,
         param_type_source: str,
+        device_id: Optional[int] = 0,
     ) -> Optional[Dict[str, Any]]:
-        """按 算法/参数代码/方向 查找未删除的设备或 API 参数。"""
+        """按 算法/参数代码/方向 查找未删除的设备或 API 参数。
+
+        device_id（INT-2289）：0/None = 只匹配算法类型级行（``device_id IS
+        NULL``）；非 0 = 只匹配该设备的覆盖行。API 参数无设备作用域，忽略。
+        """
 
     @abstractmethod
     def get_by_id(

@@ -42,16 +42,30 @@ class AlgorithmParamRepository(IAlgorithmParamRepository):
         param_code: str,
         direction: str,
         param_type_source: str,
+        device_id: Optional[int] = 0,
     ) -> Optional[Dict[str, Any]]:
-        """按 算法/参数代码/方向 查找未删除的设备或 API 参数。"""
+        """按 算法/参数代码/方向 查找未删除的设备或 API 参数。
+
+        INT-2289：设备参数按作用域判重，与表上的两条部分唯一索引同口径——
+        ``device_id`` 为空只查算法类型级行（``device_id IS NULL``），非空只查
+        该设备的覆盖行。旧实现不带 device_id，任何设备覆盖行都会命中，导致
+        同名 code 的设备覆盖行永远建不出来。API 参数表无 device_id 列，不加
+        该条件。
+        """
         session = get_db_session()
         model = _resolve_param_model(param_type_source)
-        po = session.query(model).filter_by(
+        query = session.query(model).filter_by(
             algorithm_type=algorithm_type,
             param_code=param_code,
             direction=direction,
             deleted=False,
-        ).first()
+        )
+        if hasattr(model, "device_id"):
+            if device_id:
+                query = query.filter(model.device_id == int(device_id))
+            else:
+                query = query.filter(model.device_id.is_(None))
+        po = query.first()
         return _po_to_dict(po) if po is not None else None
 
     def get_by_id(

@@ -88,13 +88,20 @@ class AlgorithmParamCrudService(
                     }
                 param = self.repo.create_api_param(data)
             else:
+                # INT-2289：判重按作用域——device_id 非空查该设备的覆盖行，
+                # 为空查算法类型级默认行，与表上两条部分唯一索引同口径。
+                device_id = data.get('device_id')
                 existing = self.repo.find_device_param_by_code(
-                    algorithm_type, param_code, direction
+                    algorithm_type, param_code, direction, device_id
                 )
                 if existing:
+                    scope = (
+                        f" for device '{device_id}'" if device_id
+                        else ""
+                    )
                     return {
                         'success': False,
-                        'message': f"Device Parameter '{param_code}' already exists for algorithm '{algorithm_type}'",
+                        'message': f"Device Parameter '{param_code}' already exists for algorithm '{algorithm_type}'{scope}",
                     }
                 param = self.repo.create_device_param(data)
 

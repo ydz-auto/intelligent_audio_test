@@ -81,12 +81,15 @@ class FindParamByCodeCommand:
     - param_code: 参数代码
     - direction: 参数方向（input/output）
     - param_type_source: 参数来源（device/api）
+    - device_id: 设备级作用域（INT-2289）。0/None = 只匹配算法类型级行；
+      非 0 = 只匹配该设备的覆盖行；API 参数忽略该字段。
     """
 
     algorithm_type: str
     param_code: str
     direction: str
     param_type_source: str = "device"
+    device_id: Optional[int] = 0
 
 
 # ========== 用例参数命令 ==========

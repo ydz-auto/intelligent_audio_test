@@ -348,6 +348,9 @@ message FindParamByCodeRequest {
   string param_code = 2;
   string direction = 3;
   string param_type_source = 4;  // device/api
+  // INT-2289 作用域：0/未传 = 只匹配算法类型级行（device_id IS NULL）；
+  // 非 0 = 只匹配该设备的覆盖行。API 参数无设备作用域，忽略该字段。
+  int32 device_id = 5;
 }
 
 // ===== 用例参数写操作 =====

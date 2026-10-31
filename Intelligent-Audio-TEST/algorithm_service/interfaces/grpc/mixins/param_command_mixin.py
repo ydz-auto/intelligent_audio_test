@@ -77,7 +77,10 @@ class _ParamCommandMixin(_ParamBaseMixin):
             return _failure(str(e))
 
     def FindParamByCode(self, request, context=None):
-        """按算法/参数代码/方向查找未删除的设备参数或 API 参数。"""
+        """按算法/参数代码/方向查找未删除的设备参数或 API 参数。
+
+        INT-2289：请求可带 device_id 限定作用域（0 = 算法类型级默认行）。
+        """
         try:
             from algorithm_service.application.queries.algorithm_param_queries import (
                 FindParamByCodeQuery,
@@ -87,6 +90,7 @@ class _ParamCommandMixin(_ParamBaseMixin):
                 param_code=request.param_code,
                 direction=request.direction,
                 param_type_source=request.param_type_source or "device",
+                device_id=getattr(request, "device_id", 0),
             )
             result = self.param_query_handler.handle_find_param_by_code(query)
             return _success(result)
