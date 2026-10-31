@@ -10,13 +10,6 @@ import {
   type PickTaskRow,
 } from '@/features/tasks/cherry-pick/components/pick-task-stage'
 
-/** 后端裸 UTC 串 → 本地「YYYY-MM-DD HH:mm」（断言不写死时区偏移；INT-2211 共享口径） */
-function expectedLocal(naiveUtc: string): string {
-  const date = new Date(`${naiveUtc.replace(' ', 'T')}Z`)
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
 const TASKS: PickTaskRow[] = [
   { taskId: 1042, taskName: '任务A', executionStatus: 'completed', createdAt: '2026-10-18T09:00:00', count: 36 },
   { taskId: 1041, taskName: '任务B', executionStatus: 'failed', createdAt: '2026-10-18T10:00:00', count: 24 },
