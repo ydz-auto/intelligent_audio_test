@@ -8,8 +8,8 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ART = os.path.join(HERE, 'artifacts', 'int2176')
-ALGO = '接线测试_走查R4_编辑映射'
-ATYPE = 'wiring_r4_edit_int2176'
+ALGO = os.environ.get('INT2176_EDIT_NAME', '接线测试_走查R4_编辑映射4')
+ATYPE = os.environ.get('INT2176_EDIT_TYPE', 'wiring_r4_edit4_2176')
 TOKEN = open(os.path.join(ART, 'token.txt'), encoding='utf-8').read().strip()
 RES = {}
 
@@ -108,6 +108,10 @@ def main():
         time.sleep(1.5)
         RES['toast_1s5'] = sh.toast_info(d)
         RES['all_toasts'] = d.execute_script("return [...document.querySelectorAll('[data-sonner-toast]')].map(t=>({txt:(t.innerText||'').trim().slice(0,200), type:t.getAttribute('data-type')}))")
+        # 失败提示是 Sheet 顶部内联提示：滚回顶部再截图
+        d.execute_script("const f=document.querySelector('#algorithm-mutate-form'); if(f) f.scrollTop=0;")
+        time.sleep(0.8)
+        RES['shot14_now'] = r.shot(d, '14-small-mapping-published-light')
         time.sleep(3)
         RES['toast'] = sh.toast_info(d)
         RES['sheet_errors'] = d.execute_script(r.JS_VIS + """
