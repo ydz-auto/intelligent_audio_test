@@ -1093,7 +1093,9 @@ class AlgorithmConfigCache:
                 'source': m.get('source', 'api'),
                 'source_param': m.get('source_param'),
                 'target_param': m.get('target_param'),
-                'direction': 'output',
+                # 保留真实方向：input 行 = 用例参数 → API 输入字段（不再是恒 output）
+                'source_direction': m.get('source_direction') or 'output',
+                'direction': m.get('source_direction') or 'output',
                 'dimension_id': m.get('dimension_id'),
                 'dimension_name': m.get('dimension_name'),
                 'transform_type': m.get('transform_type', 'none'),
@@ -1110,7 +1112,9 @@ class AlgorithmConfigCache:
                     'source': source,
                     'source_param': m['source_param'],
                     'target_param': m['target_param'],
-                    'direction': 'output',
+                    # 非维度级行同样保留真实方向（input = 用例参数 → API 输入字段）
+                    'source_direction': m.get('source_direction') or 'output',
+                    'direction': m.get('source_direction') or 'output',
                     'dimension_id': m.get('dimension_id'),
                     'dimension_name': m.get('dimension_name'),
                     'transform_type': m.get('transform_type', 'none'),

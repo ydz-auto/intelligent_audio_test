@@ -39,10 +39,17 @@ def normalize_output_types(raw) -> List[str]:
 
 
 _AUDIO_CONFIG_KEYS = ('sample_rate', 'bit_depth', 'channels', 'container', 'format', 'chunk_duration_ms')
+# 输入 / 输出两套格式（INT-1771 扩展：下发格式与回传格式可以不同）
+_AUDIO_DIRECTIONS = ('input', 'output')
 
 
 def normalize_audio_config(raw) -> Optional[Dict]:
     """audio_config 归一化：仅保留已知键的 JSON 对象（None 原样通过）
+
+    支持两种形态：
+    - 扁平（旧）：`{sample_rate, bit_depth, channels, container}` = 输入输出共用；
+    - 分向（新）：`{input: {...}, output: {...}}`，两侧各按同一套已知键过滤。
+    两种同时存在时以分向为准，扁平键原样保留供存量兼容。
 
     CRUD 写路径与聚合共用此过滤，防止未知键原样入库。
     非 dict 输入抛 ValueError。
@@ -51,7 +58,14 @@ def normalize_audio_config(raw) -> Optional[Dict]:
         return None
     if not isinstance(raw, dict):
         raise ValueError("audio_config 必须是 JSON 对象")
-    return {k: raw[k] for k in _AUDIO_CONFIG_KEYS if k in raw}
+    normalized = {k: raw[k] for k in _AUDIO_CONFIG_KEYS if k in raw}
+    for direction in _AUDIO_DIRECTIONS:
+        sub = raw.get(direction)
+        if isinstance(sub, dict):
+            filtered = {k: sub[k] for k in _AUDIO_CONFIG_KEYS if k in sub}
+            if filtered:
+                normalized[direction] = filtered
+    return normalized
 
 
 # 目标音频格式默认值：列与 meta 都没有配置时的回退口径（UC-0901 / 08 文档 §2.2）
@@ -81,8 +95,12 @@ def _normalized_audio_dict(raw) -> Optional[Dict]:
     return normalized or None
 
 
-def resolve_audio_config(api_config) -> Dict:
-    """目标音频格式的单一取值口径（INT-1771）
+def resolve_audio_config(api_config, direction: Optional[str] = None) -> Dict:
+    """音频格式的单一取值口径（INT-1771，INT-1771+ 支持输入/输出分向）
+
+    - `direction='input'`：下发给被测服务的音频格式（混音渲染目标）；
+    - `direction='output'`：被测服务回传的音频格式（归档 wav 采样率）；
+    - 未传 direction：返回整份配置（旧口径）。
 
     单一事实源为顶层列 `apis.audio_config`（有独立校验与 DTO）：列非空时
     整份以列为准，不与 meta 逐键合并。列空时才读一次 `meta.audio_config`
@@ -92,32 +110,43 @@ def resolve_audio_config(api_config) -> Dict:
     HTTP / Realtime / 轮次渲染三条执行路径共用本函数，禁止各自读源。
     """
     column = _normalized_audio_dict(_field_of(api_config, 'audio_config'))
-    if column:
-        return column
-    meta = _field_of(api_config, 'meta')
-    if isinstance(meta, dict):
-        legacy = _normalized_audio_dict(meta.get('audio_config'))
-        if legacy:
-            return legacy
-    return {}
+    if not column:
+        meta = _field_of(api_config, 'meta')
+        if isinstance(meta, dict):
+            column = _normalized_audio_dict(meta.get('audio_config')) or {}
+    if not column:
+        return {}
+    if direction in _AUDIO_DIRECTIONS:
+        own = column.get(direction)
+        if isinstance(own, dict) and own:
+            return own
+        # 只配了另一侧 → 两侧同值（等价旧扁平语义）
+        other = 'output' if direction == 'input' else 'input'
+        sibling = column.get(other)
+        if isinstance(sibling, dict) and sibling:
+            return sibling
+    return {k: column[k] for k in _AUDIO_CONFIG_KEYS if k in column}
 
 
-def resolve_audio_sample_rate(api_config, default: int = None) -> int:
-    """目标采样率（resolve_audio_config 之上取 sample_rate，非法值回退默认）"""
+def resolve_audio_sample_rate(api_config, default: int = None,
+                              direction: Optional[str] = None) -> int:
+    """采样率（resolve_audio_config 之上取 sample_rate，非法值回退默认）"""
     fallback = DEFAULT_AUDIO_CONFIG['sample_rate'] if default is None else default
     try:
-        return int(resolve_audio_config(api_config).get('sample_rate') or fallback)
+        return int(resolve_audio_config(api_config, direction).get('sample_rate') or fallback)
     except (TypeError, ValueError):
         return fallback
 
 
-def resolve_target_audio_format(api_config, stream: bool = False) -> Dict:
+def resolve_target_audio_format(api_config, stream: bool = False,
+                                direction: str = 'input') -> Dict:
     """渲染目标格式 dict（sample_rate/bit_depth/channels[/container]）
 
+    direction：默认 'input'（下发渲染）；回传侧需要时传 'output'。
     stream=True（Realtime WS 推送）强制 s16 单声道：WS 事件协议输入为
     pcm16 单声道（input_audio_format 默认 pcm16），采样率仍取配置。
     """
-    audio_cfg = resolve_audio_config(api_config)
+    audio_cfg = resolve_audio_config(api_config, direction)
     try:
         sample_rate = int(audio_cfg.get('sample_rate')
                           or DEFAULT_AUDIO_CONFIG['sample_rate'])

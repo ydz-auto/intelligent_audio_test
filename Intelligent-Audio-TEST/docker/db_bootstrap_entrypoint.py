@@ -320,6 +320,11 @@ BOOTSTRAP_STEPS = [
     #     存量值映射 e2e→physical、api→http_api。幂等（列宽达标即 SKIP、值映射命中
     #     0 行）；纯 DDL + 值 UPDATE，须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202610/widen_case_param_scope_to_device_type.py'),
+    # ㊾ 设备级参数作用域（device_id）：algorithm_device_params / param_mappings 加
+    #     device_id INTEGER NULL（NULL = 算法类型级默认），唯一索引按「算法级 / API 级 /
+    #     设备级」拆分并统一 NULLS NOT DISTINCT。幂等（列/索引存在即 SKIP）；须排在
+    #     ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_device_id_scope.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器

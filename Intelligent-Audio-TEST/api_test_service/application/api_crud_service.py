@@ -263,30 +263,54 @@ class APICrudService:
             seen.add(stripped)
         return None
 
+    # audio_config 分向子对象（INT-1771：下发格式与回传格式可以不同）
+    _AUDIO_DIRECTIONS = ('input', 'output')
+
     @staticmethod
-    def _validate_audio_config(audio_config: dict) -> str:
-        """校验 audio_config 目标格式声明（08_混音与SPL映射.md §2.2 / §0.4）"""
-        sample_rate = audio_config.get('sample_rate')
+    def _validate_audio_format(fmt: dict, prefix: str) -> str:
+        """校验一套扁平音频格式（sample_rate / bit_depth / channels / container|format）"""
+        sample_rate = fmt.get('sample_rate')
         if sample_rate is not None and sample_rate not in _AUDIO_SAMPLE_RATES:
-            return (f"非法采样率 (audio_config.sample_rate): {sample_rate}，"
+            return (f"非法采样率 ({prefix}.sample_rate): {sample_rate}，"
                     f"仅支持: {', '.join(map(str, _AUDIO_SAMPLE_RATES))}")
 
-        bit_depth = audio_config.get('bit_depth')
+        bit_depth = fmt.get('bit_depth')
         if bit_depth is not None:
             normalized = _BIT_DEPTH_ALIASES.get(bit_depth, bit_depth)
             if normalized not in {item.value for item in AudioBitDepth}:
-                return (f"非法位深 (audio_config.bit_depth): {bit_depth}，"
+                return (f"非法位深 ({prefix}.bit_depth): {bit_depth}，"
                         f"仅支持: s16/s24/s32（或 16/24/32）")
 
-        channels = audio_config.get('channels')
+        channels = fmt.get('channels')
         if channels is not None and channels not in (1, 2):
-            return f"非法通道数 (audio_config.channels): {channels}，仅支持: 1/2"
+            return f"非法通道数 ({prefix}.channels): {channels}，仅支持: 1/2"
 
         for key in ('container', 'format'):
-            container = audio_config.get(key)
+            container = fmt.get(key)
             if container is not None and container not in {item.value for item in AudioContainer}:
-                return (f"非法音频容器 (audio_config.{key}): {container}，"
+                return (f"非法音频容器 ({prefix}.{key}): {container}，"
                         f"仅支持: {', '.join(item.value for item in AudioContainer)}")
+
+        return None
+
+    @classmethod
+    def _validate_audio_config(cls, audio_config: dict) -> str:
+        """校验 audio_config 目标格式声明（08_混音与SPL映射.md §2.2 / §0.4）
+
+        两种形态都校验：扁平（旧，输入输出共用）与 `input` / `output` 子对象（分向）。
+        """
+        error = cls._validate_audio_format(audio_config, 'audio_config')
+        if error:
+            return error
+        for direction in cls._AUDIO_DIRECTIONS:
+            sub = audio_config.get(direction)
+            if sub is None:
+                continue
+            if not isinstance(sub, dict):
+                return f"音频配置 (audio_config.{direction}) 必须是一个 JSON 对象"
+            error = cls._validate_audio_format(sub, f'audio_config.{direction}')
+            if error:
+                return error
 
         return None
 

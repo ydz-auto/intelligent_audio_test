@@ -769,9 +769,9 @@ class APISessionExecutor:
         """AI 输出 wav 采样率：api.audio_config.sample_rate，缺省 24000（回退默认）。
 
         INT-1771：与 Realtime / 轮次渲染共用 domain 层 resolve_audio_sample_rate，
-        顶层列优先、列空时 meta.audio_config 存量兼容。
+        顶层列优先、列空时 meta.audio_config 存量兼容；方向取 output（回传音频）。
         """
-        return resolve_audio_sample_rate(api_config)
+        return resolve_audio_sample_rate(api_config, direction='output')
 
     def _save_ai_output_wav(self, pcm: bytes, api_id=None, task_id=None,
                             sample_rate: int = 24000) -> 'str | None':

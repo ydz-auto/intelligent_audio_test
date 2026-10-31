@@ -212,7 +212,7 @@ class RealtimeSessionExecutor:
 
         client = None
         session_id = f"rt-{task_id}-{api_id}"
-        dst_sample_rate = resolve_audio_sample_rate(api_config)
+        dst_sample_rate = resolve_audio_sample_rate(api_config, direction='input')
         try:
             url = self._resolve_ws_url(api_config)
             headers = self._resolve_ws_headers(
@@ -363,6 +363,8 @@ class RealtimeSessionExecutor:
                 task_id, test_case_id, session_id, frame),
             chunk_duration_ms=chunk_ms,
             proxy_type=proxy_type, proxy_url=proxy_url,
+            # WS 音频帧方言（apis.meta.audio_frame）：未配置走默认 append 载荷
+            audio_frame=(getattr(api_config, 'meta', None) or {}).get('audio_frame'),
         )
 
     # ── 轮次执行 ──
@@ -492,7 +494,8 @@ class RealtimeSessionExecutor:
 
         # ② 等打断点（INT-2080）：fixed_delay 保持现状 sleep；output_duration
         #    轮询已返回 AI 音频长度（按采样率换算 ms）达 interrupt_after_ms
-        sample_rate = resolve_audio_sample_rate(api_config)
+        # 按「回传音频格式」的采样率换算 AI 已返回音频长度（output_duration 打断点）
+        sample_rate = resolve_audio_sample_rate(api_config, direction='output')
         if interrupt_mode == RealtimeInterruptMode.OUTPUT_DURATION.value:
             interrupt_trigger_ms = self._wait_output_duration(
                 client, interrupt_after_ms, sample_rate, task_id,
@@ -850,7 +853,7 @@ class RealtimeSessionExecutor:
         merged.update(session_config or {})
         merged.setdefault('input_audio_format', 'pcm16')
         merged.setdefault('input_audio_sample_rate',
-                          resolve_audio_sample_rate(api_config))
+                          resolve_audio_sample_rate(api_config, direction='input'))
         return merged
 
     @staticmethod
@@ -870,6 +873,8 @@ class RealtimeSessionExecutor:
             return None
         context = dict(meta.get('session_config') or {})
         context.update(session_cfg or {})
+        # 模板常用帧内时间戳（Qwen 等方言用 event_{{timestamp_ms}}）
+        context.setdefault('timestamp_ms', int(time.time() * 1000))
         if isinstance(template, dict):
             return _render_placeholders(template, context)
         if isinstance(template, str):

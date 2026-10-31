@@ -54,6 +54,8 @@ class AlgorithmParamUpdate(APIModel):
 class AlgorithmDeviceParamCreate(APIModel):
     """创建设备参数请求"""
     algorithm_type: str = Field(..., description='关联算法类型')
+    device_id: Optional[int] = Field(
+        None, ge=1, description='设备ID（空=算法类型级默认；非空=该设备覆盖）')
     param_code: str = Field(..., min_length=1, max_length=50, description='参数代码')
     param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称')
     label: Optional[str] = Field(None, max_length=100, description='字段显示名称')
@@ -72,6 +74,7 @@ class AlgorithmDeviceParamCreate(APIModel):
 
 class AlgorithmDeviceParamUpdate(APIModel):
     """更新设备参数请求"""
+    device_id: Optional[int] = Field(None, ge=1, description='设备ID（空=不改作用域）')
     param_code: Optional[str] = Field(None, max_length=50)
     param_name: Optional[str] = Field(None, max_length=100)
     label: Optional[str] = Field(None, max_length=100)
@@ -94,6 +97,7 @@ class AlgorithmDeviceParamItem(APIModel):
 
     id: int
     algorithm_type: str
+    device_id: Optional[int] = None
     param_code: str
     param_name: Optional[str]
     label: Optional[str]

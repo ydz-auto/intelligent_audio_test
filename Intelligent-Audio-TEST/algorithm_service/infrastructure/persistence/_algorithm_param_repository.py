@@ -150,6 +150,9 @@ class AlgorithmParamRepository(IAlgorithmParamRepository):
                 hidden=data.get("hidden") or False,
                 **({"api_id": data.get("api_id")}
                    if hasattr(model, "api_id") else {}),
+                # 设备级作用域：仅 AlgorithmDeviceParam 有该列（NULL=算法类型级默认）
+                **({"device_id": data.get("device_id")}
+                   if hasattr(model, "device_id") else {}),
             )
             if "field_path" in model.__table__.columns:
                 kwargs["field_path"] = data.get("field_path")

@@ -126,7 +126,7 @@ class ParamProfileListQuery(APIModel):
 
 
 class ParamProfileSaveRequest(APIModel):
-    """整份保存策略（基础字段 + 字段声明 + 映射）"""
+    """整份保存策略（基础字段 + 字段声明 + 映射 + API 配置快照）"""
     scope: str = Field('api', max_length=10, description='作用域：api / device')
     algorithm_type: str = Field(..., min_length=1, max_length=50)
     name: str = Field(..., min_length=1, max_length=100)
@@ -134,6 +134,8 @@ class ParamProfileSaveRequest(APIModel):
     status: str = Field('online', description='状态：online / offline / draft')
     params: List[Dict[str, Any]] = Field(default_factory=list)
     mappings: List[Dict[str, Any]] = Field(default_factory=list)
+    config: Optional[Dict[str, Any]] = Field(
+        None, description='API 配置快照（protocol/streaming/audio_config/meta/…）；新建 API 可整体套用')
 
 
 class ParamProfileCloneRequest(APIModel):

@@ -125,11 +125,18 @@ class AlgorithmDeviceParam(Base):
     """设备参数定义表 - 单个算法专用"""
     __tablename__ = 'algorithm_device_params'
     __table_args__ = (
-        Index('uq_algorithm_device_param_direction', 'algorithm_type', 'param_code', 'direction',
-              unique=True, postgresql_where=text('deleted = false')),
+        Index('uq_algorithm_device_param_algo_level',
+              'algorithm_type', 'param_code', 'direction', unique=True,
+              postgresql_where=text('deleted = false AND device_id IS NULL')),
+        Index('uq_algorithm_device_param_device_level',
+              'algorithm_type', 'device_id', 'param_code', 'direction', unique=True,
+              postgresql_where=text('deleted = false AND device_id IS NOT NULL')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True)
     algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type'), nullable=False, comment='关联算法类型')
+    # 设备级作用域：指向 device_service 的 devices.id（不建跨服务 FK）。
+    # NULL = 算法类型级默认；合并读取时设备级行覆盖同键算法级行。
+    device_id = Column(Integer, nullable=True, comment='设备ID（NULL=算法类型级默认）')
     param_code = Column(String(50), nullable=False, comment='参数代码')
     param_name = Column(String(100), comment='参数显示名称')
     label = Column(String(100), comment='字段显示名称（用于映射配置中的显示）')
@@ -151,6 +158,7 @@ class AlgorithmDeviceParam(Base):
         return {
             'id': self.id,
             'algorithm_type': self.algorithm_type,
+            'device_id': self.device_id,
             'param_code': self.param_code,
             'param_name': self.param_name,
             'label': self.label,
@@ -309,14 +317,26 @@ class ParamMapping(Base):
     """参数映射表 - 设备/API/用例参数 → 评估维度参数"""
     __tablename__ = 'param_mappings'
     __table_args__ = (
-        Index('uq_algorithm_source_to_dimension', 'algorithm_type', 'source', 'source_param', 'dimension_id',
-              unique=True, postgresql_where=text('deleted = false')),
+        Index('uq_param_mapping_algo_level', 'algorithm_type', 'source',
+              'source_param', 'dimension_id', unique=True,
+              postgresql_where=text(
+                  'deleted = false AND api_id IS NULL AND device_id IS NULL')),
+        Index('uq_param_mapping_api_level', 'algorithm_type', 'api_id', 'source',
+              'source_param', 'dimension_id', unique=True,
+              postgresql_where=text(
+                  'deleted = false AND api_id IS NOT NULL AND device_id IS NULL')),
+        Index('uq_param_mapping_device_level', 'algorithm_type', 'device_id', 'source',
+              'source_param', 'dimension_id', unique=True,
+              postgresql_where=text('deleted = false AND device_id IS NOT NULL')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True)
     algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type'), nullable=False, comment='关联算法类型')
     # INT-1756（C6a）：API 实例级作用域，指向 api_test_service 的 apis.id（不建跨服务 FK）。
     # NULL = 算法类型级默认；合并读取时 API 级行覆盖同键算法级行。
     api_id = Column(Integer, nullable=True, comment='API 实例ID（NULL=算法类型级默认）')
+    # 设备级作用域：指向 device_service 的 devices.id（不建跨服务 FK）。
+    # NULL = 算法类型级默认；合并读取时设备级行覆盖同键算法级行（优先于 api 级）。
+    device_id = Column(Integer, nullable=True, comment='设备ID（NULL=算法类型级默认）')
     source = Column(String(20), nullable=False, default='api', comment='参数来源：case=用例参数, reference=参考参数, device=设备输出, api=API输出')
     source_param = Column(String(50), nullable=False, comment='源参数代码')
     source_direction = Column(String(10), default='output', comment='源参数方向：input, output')
@@ -335,6 +355,7 @@ class ParamMapping(Base):
             'id': self.id,
             'algorithm_type': self.algorithm_type,
             'api_id': self.api_id,
+            'device_id': self.device_id,
             'source': self.source,
             'source_param': self.source_param,
             'source_direction': self.source_direction,
@@ -487,6 +508,9 @@ class ParamProfile(Base):
     description = Column(Text, comment='策略描述')
     status = Column(String(20), nullable=False, default='online', comment='状态：online / offline / draft')
     cloned_from = Column(Integer, nullable=True, comment='来源策略ID（仅血缘记录）')
+    # API 配置快照（JSON 文本）：协议/流式性/请求模板/响应解析/音频格式/厂商适配器 等
+    # 「与端点地址无关」的配置项；新建 API 时可整体套用（复制/覆盖）。
+    config_snapshot = Column(Text, comment='API 配置快照（JSON）')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
@@ -502,6 +526,7 @@ class ParamProfile(Base):
             'description': self.description,
             'status': self.status,
             'cloned_from': self.cloned_from,
+            'config': parse_json_or_raw(self.config_snapshot),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

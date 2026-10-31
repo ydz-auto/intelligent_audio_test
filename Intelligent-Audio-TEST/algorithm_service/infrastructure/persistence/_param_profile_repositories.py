@@ -115,7 +115,10 @@ class ParamProfileCommandRepository:
     # ---- 写 ----
 
     def save(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """整份保存策略（基础字段 + 字段声明 + 映射）。返回详情。"""
+        """整份保存策略（基础字段 + 字段声明 + 映射 + 配置快照）。返回详情。"""
+        from algorithm_service.infrastructure.persistence._algorithm_full_save import (
+            _text_or_json,
+        )
         session = get_db_session()
         try:
             profile_id = data.get('id')
@@ -130,6 +133,8 @@ class ParamProfileCommandRepository:
                     po.description = data['description']
                 if data.get('status') is not None:
                     po.status = data['status']
+                if 'config' in data:
+                    po.config_snapshot = _text_or_json(data.get('config'))
             else:
                 po = ParamProfile(
                     scope=data.get('scope') or 'api',
@@ -138,6 +143,7 @@ class ParamProfileCommandRepository:
                     description=data.get('description'),
                     status=data.get('status') or 'online',
                     cloned_from=data.get('cloned_from'),
+                    config_snapshot=_text_or_json(data.get('config')),
                 )
                 if not po.algorithm_type or not po.name:
                     raise ValueError('策略的 algorithm_type / name 必填')
@@ -167,6 +173,7 @@ class ParamProfileCommandRepository:
             'description': description if description is not None else source.get('description'),
             'status': source.get('status'),
             'cloned_from': source.get('id'),
+            'config': source.get('config'),
             'params': source.get('params') or [],
             'mappings': source.get('mappings') or [],
         })

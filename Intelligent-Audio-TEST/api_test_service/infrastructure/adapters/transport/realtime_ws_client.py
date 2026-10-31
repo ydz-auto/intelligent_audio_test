@@ -60,6 +60,18 @@ class RealtimeFrame:
         return {'ts': self.ts, 'type': self.type, 'payload': self.payload}
 
 
+def _render_audio_frame(value, context):
+    """音频帧模板占位符渲染（支持嵌套 dict / list，只替换字符串叶子）。"""
+    if isinstance(value, dict):
+        return {k: _render_audio_frame(v, context) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_render_audio_frame(v, context) for v in value]
+    if isinstance(value, str):
+        for key, item in (context or {}).items():
+            value = value.replace('{{' + str(key) + '}}', str(item))
+    return value
+
+
 class RealtimeWSClient:
     """厂商 Realtime WS 客户端：连接管理 + 接收线程 + 事件归一化 + 帧记录"""
 
@@ -68,7 +80,8 @@ class RealtimeWSClient:
                  event_listener: Optional[Callable[[dict], None]] = None,
                  chunk_duration_ms: int = 100,
                  proxy_type: Optional[str] = None,
-                 proxy_url: Optional[str] = None):
+                 proxy_url: Optional[str] = None,
+                 audio_frame: Optional[dict] = None):
         self._url = url
         self._headers = headers or {}
         self._vendor = vendor
@@ -77,6 +90,10 @@ class RealtimeWSClient:
         # INT-839：被测 API 网络代理（websocket-client 代理参数注入）
         self._proxy_type = proxy_type
         self._proxy_url = proxy_url
+        # WS 音频帧方言（apis.meta.audio_frame）：{"enabled": bool, "template": {...}}；
+        # 未配置时走默认 input_audio_buffer.append（OpenAI / Qwen 同形）。
+        self._audio_frame = audio_frame if isinstance(audio_frame, dict) else {}
+        self._audio_frame_seq = 0
 
         self._ws = None
         self._event_queue: queue.Queue = queue.Queue()
@@ -181,7 +198,25 @@ class RealtimeWSClient:
         return False
 
     def send_audio_chunk(self, pcm_b64: str):
-        """推送 100ms base64 PCM chunk（input_audio_buffer.append）"""
+        """推送一个 base64 PCM chunk。
+
+        默认载荷 ``input_audio_buffer.append``；``apis.meta.audio_frame`` 配置了
+        模板时按模板渲染（厂商字段名 / 追加 event_id、seq 等差异由配置表达）。
+        """
+        template = self._audio_frame.get('template') if self._audio_frame.get('enabled') else None
+        if isinstance(template, dict) and template:
+            self._audio_frame_seq += 1
+            now_ms = int(time.time() * 1000)
+            payload = _render_audio_frame(template, {
+                'audio_b64': pcm_b64,
+                'audio': pcm_b64,
+                'event_id': f'event_{now_ms}_{self._audio_frame_seq}',
+                'seq': self._audio_frame_seq,
+                'timestamp_ms': now_ms,
+            })
+            if isinstance(payload, dict) and payload:
+                self._send_json(payload)
+                return
         self._send_json({'type': 'input_audio_buffer.append', 'audio': pcm_b64})
 
     def commit_input(self):

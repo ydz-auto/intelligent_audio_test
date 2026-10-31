@@ -177,6 +177,7 @@ class MappingCreateRequest(APIModel):
     """创建参数映射请求"""
     algorithm_type: str = Field(...)
     api_id: Optional[int] = Field(None, ge=1, description='API 实例ID（空=算法类型级默认）')
+    device_id: Optional[int] = Field(None, ge=1, description='设备ID（空=算法类型级默认）')
     source_type: str = Field(...)
     source_param: str = Field(...)
     source_direction: str = Field(default='output')
@@ -188,6 +189,7 @@ class MappingCreateRequest(APIModel):
 class MappingUpdateRequest(APIModel):
     """更新参数映射请求"""
     api_id: Optional[int] = Field(None, ge=1, description='API 实例ID（空=不改）')
+    device_id: Optional[int] = Field(None, ge=1, description='设备ID（空=不改）')
     source_type: Optional[str] = Field(None)
     source_param: Optional[str] = Field(None)
     source_direction: Optional[str] = Field(None)

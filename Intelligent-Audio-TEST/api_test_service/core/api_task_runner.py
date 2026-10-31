@@ -141,6 +141,29 @@ class APITaskRunner:
 
         return context
 
+    @staticmethod
+    def _load_input_mappings(algorithm_type, api_id) -> dict:
+        """用例参数 → API 输入字段映射（target_param → 映射行）。
+
+        `param_mappings` 里 `source='case'` + `source_direction='input'` 的行，
+        表示「用例参数 source_param 供给 API 输入字段 target_param」。读侧失败
+        （算法服务不可用 / 旧数据）按「无映射」处理，不阻断执行，保持同名兜底。
+        """
+        try:
+            rows = _algo_acl.get_param_mapping(algorithm_type, 'case', api_id=api_id)
+        except Exception as exc:  # noqa: BLE001
+            _logger.debug("读取输入映射失败，按同名兜底: %s", exc)
+            return {}
+        mappings = {}
+        for row in rows or []:
+            item = dto_to_dict(row)
+            if not item or item.get('source_direction') != 'input':
+                continue
+            target = item.get('target_param')
+            if target:
+                mappings[target] = item
+        return mappings
+
     def create_task(self, task_id, audio, api_config, api_specific_config, api_paths, select_base_url, release_base_url, algorithm_type='translation'):
         """创建 API 任务"""
         self._executor._handle_control(task_id)
@@ -204,10 +227,21 @@ class APITaskRunner:
                 'to_bool': lambda x: bool(x) if x is not None else False,
             }
 
+            # 用例参数 → API 输入字段的映射（param_mappings: source='case',
+            # source_direction='input', source_param=用例参数 code,
+            # target_param=API 输入字段 code）。没有映射行时按同名字段兜底，
+            # 存量用例行为不变；有映射时以映射为准并叠加 transform_type。
+            input_mappings = self._load_input_mappings(
+                algorithm_type, getattr(api_config, 'id', None))
+
             create_task_data = {}
             for field_code, field_def in api_input_fields.items():
                 transform = field_def.get('transform', 'none') if isinstance(field_def, dict) else 'none'
-                value = param_sources.get(field_code)
+                mapping = input_mappings.get(field_code) or {}
+                source_code = mapping.get('source_param') or field_code
+                value = param_sources.get(source_code)
+                if mapping.get('transform_type'):
+                    transform = mapping['transform_type']
                 if value is not None:
                     transform_func = _transforms.get(transform, lambda x: x)
                     try:
