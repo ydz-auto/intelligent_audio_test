@@ -417,6 +417,7 @@ def network_entries(d):
 
 
 def main():
+    global ALGO
     ap = argparse.ArgumentParser()
     ap.add_argument('--base', required=True)
     ap.add_argument('--side', required=True)
@@ -426,7 +427,9 @@ def main():
     ap.add_argument('--mode', choices=['edit', 'detail', 'both'], default='edit')
     ap.add_argument('--skip-perf', action='store_true')
     ap.add_argument('--interval', type=float, default=0.03)
+    ap.add_argument('--algo', default=ALGO, help='算法显示名称（表格行定位）')
     args = ap.parse_args()
+    ALGO = args.algo
 
     art = os.path.join(HERE, 'artifacts', 'int2121', args.side)
     shots = os.path.join(art, 'shots')
