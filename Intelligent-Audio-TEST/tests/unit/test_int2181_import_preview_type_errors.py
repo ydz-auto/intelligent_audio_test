@@ -9,6 +9,8 @@
 约束：
 - 预览与导入共用同一段行级校验（`_validate_row_full` = 名称校验 +
   `_build_case_payload` 纯计算），错误文案 `第{N}行: 原因` 逐条可比；
+- 名称必须是非空字符串（打回项：JSON/旧版 Excel 的数字名称此前预览漏报，
+  导入才在 `_find_existing_case` 的 `.strip()` 上抛 AttributeError）；
 - 每个坏行只出 1 条；预览只读：不建分组、不写库；
 - 落库 / 参考参数恢复等写路径异常不在预览范围内（仍只出现在导入回执）。
 
@@ -18,12 +20,22 @@ import io
 import json
 import zipfile
 
+import pandas as pd
 import pytest
 
 from api_gateway.application.services.testcase.testcase_import_service import (
     TestCaseImportService,
 )
 from api_gateway.infrastructure.request_adapter import set_current_request
+
+try:
+    import openpyxl  # noqa: F401
+    _HAS_OPENPYXL = True
+except ImportError:
+    _HAS_OPENPYXL = False
+
+_requires_openpyxl = pytest.mark.skipif(
+    not _HAS_OPENPYXL, reason='openpyxl 未安装，Excel 用例跳过')
 
 
 class _FakeRequest:
@@ -188,3 +200,58 @@ def test_preview_does_not_write_or_create_group(monkeypatch):
     # 原始预览行不被校验口径改写
     assert [c.get('name') for c in data['testCases']] == [
         GOOD['name'], '接线测试_INT2181_tags']
+
+
+# ----------------------------------------------------------------------
+# 复测缺口（打回项）：name 非字符串两侧同口径
+# ----------------------------------------------------------------------
+NAME_TYPE_MSG = '第2行: 用例名称必须是字符串'
+
+
+def test_json_name_not_string_reports_in_preview(monkeypatch):
+    """JSON `name: 12345`：预览即报，且与导入回执同一条。"""
+    cases = [GOOD, {'name': 12345, 'group': GOOD['group']}]
+    raw = _json_bytes(cases)
+    preview = _preview_data('name_type.json', raw, monkeypatch)
+    assert preview['totalRows'] == 2
+    assert preview['errors'] == [NAME_TYPE_MSG]
+    assert _import_errors('name_type.json', raw, monkeypatch) == preview['errors']
+
+
+def test_zip_name_not_string_reports_in_preview(monkeypatch):
+    cases = [GOOD, {'name': 12345, 'group': GOOD['group']}]
+    raw = _zip_bytes(cases)
+    preview = _preview_data('name_type.zip', raw, monkeypatch)
+    assert preview['errors'] == [NAME_TYPE_MSG]
+    assert _import_errors('name_type.zip', raw, monkeypatch) == preview['errors']
+
+
+def _excel_legacy_bytes(rows):
+    """旧版单 Sheet Excel（列 用例名称）：数字名称单元格读回为 int。"""
+    df = pd.DataFrame(rows, columns=['用例名称', '分组'])
+    buf = io.BytesIO()
+    df.to_excel(buf, sheet_name='Sheet1', index=False, engine='openpyxl')
+    return buf.getvalue()
+
+
+@_requires_openpyxl
+def test_excel_numeric_name_reports_in_preview(monkeypatch):
+    """旧版 Excel 用例名称填数字（单元格 int）：预览与导入回执同一条。"""
+    rows = [
+        [GOOD['name'], GOOD['group']],
+        [12345, GOOD['group']],
+    ]
+    raw = _excel_legacy_bytes(rows)
+    preview = _preview_data('name_type.xlsx', raw, monkeypatch)
+    assert preview['totalRows'] == 2
+    assert preview['errors'] == [NAME_TYPE_MSG]
+    assert _import_errors('name_type.xlsx', raw, monkeypatch) == preview['errors']
+
+
+def test_name_type_error_precedence_over_payload_error(monkeypatch):
+    """名称非字符串且 tags 非法 → 仍只出 1 条，名称类型优先（两侧一致）。"""
+    cases = [GOOD, {'name': 12345, 'group': GOOD['group'], 'tags': 123}]
+    raw = _json_bytes(cases)
+    preview = _preview_data('name_type_mixed.json', raw, monkeypatch)
+    assert preview['errors'] == [NAME_TYPE_MSG]
+    assert _import_errors('name_type_mixed.json', raw, monkeypatch) == preview['errors']

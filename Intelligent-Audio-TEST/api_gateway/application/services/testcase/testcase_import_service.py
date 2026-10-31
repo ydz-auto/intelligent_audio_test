@@ -389,9 +389,18 @@ class TestCaseImportService:
 
     @staticmethod
     def _validate_imported_case(case_data):
-        """验证单个用例数据，返回错误消息或 None"""
-        if not case_data.get('name'):
+        """验证单个用例数据，返回错误消息或 None。
+
+        名称必须是字符串：导入侧 `_find_existing_case` 会对名称做 `.strip()`，
+        非字符串（JSON/ZIP 里的数字、旧版单 Sheet Excel 的数字单元格）会在那里
+        抛 AttributeError，预览必须在同一处提前拦截，两侧文案才能逐条可比
+        （INT-2181 复测缺口：预览漏报 `name: 12345`）。
+        """
+        name = case_data.get('name')
+        if not name:
             return "用例名称不能为空"
+        if not isinstance(name, str):
+            return "用例名称必须是字符串"
         return None
 
     @staticmethod
