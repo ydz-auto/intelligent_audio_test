@@ -42,6 +42,18 @@ def _group_data(group_id):
         return {}
 
 
+def _delete_message(result):
+    """删除分组回执（INT-2243）：级联实删/跳过条数与实际一致，跳过时明示原因。"""
+    deleted = result.get('deleted_case_count')
+    skipped = result.get('skipped_case_count')
+    if not result.get('cascade') or (deleted is None and skipped is None):
+        return "分组已删除"
+    message = f"分组已删除，级联删除用例 {deleted or 0} 条"
+    if skipped:
+        message += f"，{skipped} 条非本人私有用例未删除"
+    return message
+
+
 class GroupService:
     """测试用例分组 CRUD 服务"""
 
@@ -266,7 +278,8 @@ class GroupService:
             if not result or not result.get('id'):
                 return error_response("删除分组失败：服务未确认删除结果")
             maybe_audit_private_write('group', group_id, 'delete', pre_data)
-            return success_response(StringIdData(id=group_id), "分组已删除")
+            return success_response(
+                StringIdData(id=group_id), _delete_message(result))
         except Exception as e:
             return error_response(str(e))
 

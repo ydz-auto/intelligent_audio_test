@@ -80,7 +80,11 @@ class TestCascadeDeletePersistence:
 
         result = TestCaseGroupMixin().delete_group_and_commit(
             group_db['g'], cascade=True)
-        assert result == {'id': group_db['g'], 'cascade': True}
+        # INT-2243：回执补实删/跳过条数（无认证上下文 → 存量 shared 用例全删）
+        assert result['id'] == group_db['g']
+        assert result['cascade'] is True
+        assert result['deleted_case_count'] == 2
+        assert result['skipped_case_count'] == 0
 
         session = get_db_session()
         try:

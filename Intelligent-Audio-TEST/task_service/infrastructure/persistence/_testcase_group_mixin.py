@@ -355,11 +355,17 @@ class TestCaseGroupMixin:
         group.name = name
 
     def delete_group_and_commit(self, group_id: str, cascade: bool = False) -> dict:
-        """软删除 TestCaseGroup 并 commit（cascade=True 时同时软删分组下所有 TestCase）。
+        """软删除 TestCaseGroup 并 commit（cascade=True 时同时软删分组下可见 TestCase）。
 
         INT-423：私有分组非 owner 删除抛 VisibilityDenied（写操作 403 语义）。
+        INT-2243：级联删除逐行校验用例可见性——共享分组下他人创建的 private
+        用例不得被连带软删（与 `_visible_testcase_ids` 同口径）；回执返回
+        实删条数 deleted_case_count 与跳过条数 skipped_case_count。
         """
-        from shared.infrastructure.visibility_filter import check_visible
+        from shared.infrastructure.visibility_filter import (
+            check_visible,
+            filter_visible_owners,
+        )
         from task_service.infrastructure.visibility_context import visibility_identity
         session = get_db_session()
         try:
@@ -376,19 +382,39 @@ class TestCaseGroupMixin:
             r.deleted_by_user_id = operator_id
             r.updated_at = now
 
+            deleted_case_count = 0
+            skipped_case_count = 0
             if cascade:
-                session.query(TestCase).filter(
+                # INT-2243：先逐行取可见性再删，禁止无条件整批软删（共享分组下
+                # 可能存在他人创建的 private 用例）。与 _visible_testcase_ids 同口径。
+                rows = session.query(
+                    TestCase.id, TestCase.created_by_user_id, TestCase.visibility
+                ).filter(
                     TestCase.group_id == group_id,
                     TestCase.deleted == False,  # noqa: E712
-                ).update({
-                    'deleted': True,
-                    'deleted_at': now,
-                    'deleted_by_user_id': operator_id,
-                    'updated_at': now,
-                }, synchronize_session=False)
+                ).all()
+                visible_ids = filter_visible_owners(
+                    [(r[0], r[1], r[2]) for r in rows], uid, is_admin
+                )
+                skipped_case_count = len(rows) - len(visible_ids)
+                if visible_ids:
+                    deleted_case_count = session.query(TestCase).filter(
+                        TestCase.id.in_(visible_ids),
+                        TestCase.deleted == False,  # noqa: E712
+                    ).update({
+                        'deleted': True,
+                        'deleted_at': now,
+                        'deleted_by_user_id': operator_id,
+                        'updated_at': now,
+                    }, synchronize_session=False)
 
             session.commit()
-            return {'id': str(group_id), 'cascade': cascade}
+            return {
+                'id': str(group_id),
+                'cascade': cascade,
+                'deleted_case_count': deleted_case_count,
+                'skipped_case_count': skipped_case_count,
+            }
         except Exception:
             session.rollback()
             raise
