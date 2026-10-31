@@ -23,9 +23,9 @@ KEYWORDS = 'harmony.xiaoyi_livechat.v1'
 TASK_ID = '999181'
 
 
-def _request(pb, action, device_sn, **extra):
+def _request(pb, action, device_sn, keywords=KEYWORDS, **extra):
     payload = {'action': action, 'device_sn': device_sn, 'system': 'HarmonyOS',
-               'keywords': KEYWORDS}
+               'keywords': keywords}
     payload.update(extra)
     return pb.CreateDriverRequest(task_id=TASK_ID,
                                   device_config=json.dumps(payload, ensure_ascii=False))
@@ -36,11 +36,17 @@ def _run(stub, request, tag, out):
     began = time.time()
     try:
         resp = stub.CreateDriver(request, timeout=330)
+        try:
+            data = json.loads(resp.data or '{}')
+        except Exception:
+            data = {}
         box = {'tag': tag, 'start': began, 'end': time.time(),
-               'success': resp.success, 'message': resp.message}
+               'success': resp.success, 'message': resp.message,
+               'driver_name': data.get('driver_name') if isinstance(data, dict) else None}
     except Exception as exc:  # noqa: BLE001
         box = {'tag': tag, 'start': began, 'end': time.time(),
-               'success': False, 'message': f'{type(exc).__name__}: {exc}'}
+               'success': False, 'message': f'{type(exc).__name__}: {exc}',
+               'driver_name': None}
     out[tag] = box
 
 
@@ -48,19 +54,25 @@ def main():
     from shared.proto import device_service_pb2 as pb
     from shared.proto import device_service_pb2_grpc as pb_grpc
 
+    kw1 = sys.argv[1] if len(sys.argv) > 1 else KEYWORDS
+    kw2 = sys.argv[2] if len(sys.argv) > 2 else KEYWORDS
+
     channel = grpc.insecure_channel(DEVICE_ENDPOINT,
                                     options=[('grpc.max_receive_message_length', 16 * 1024 * 1024)])
     stub = pb_grpc.DeviceServiceStub(channel)
     out = {}
     try:
-        t1 = threading.Thread(target=_run, args=(stub, _request(pb, 'initialize', REAL_SN), 'init-1', out))
+        t1 = threading.Thread(target=_run, args=(
+            stub, _request(pb, 'initialize', REAL_SN, kw1), 'init-1', out))
         t1.start()
         time.sleep(3)
-        t2 = threading.Thread(target=_run, args=(stub, _request(pb, 'initialize', REAL_SN), 'init-2', out))
+        t2 = threading.Thread(target=_run, args=(
+            stub, _request(pb, 'initialize', REAL_SN, kw2), 'init-2', out))
         t2.start()
         time.sleep(0.5)
         t3 = threading.Thread(target=_run, args=(
-            stub, _request(pb, 'register', REAL_SN, device_info_list=[{'device_sn': REAL_SN}]),
+            stub, _request(pb, 'register', REAL_SN, kw1,
+                           device_info_list=[{'device_sn': REAL_SN}]),
             'register', out))
         t3.start()
         for t in (t1, t2, t3):
@@ -71,9 +83,9 @@ def main():
             if r:
                 print(f'[{tag}] start={r["start"]:.2f} end={r["end"]:.2f} '
                       f'dur={r["end"] - r["start"]:.2f}s success={r["success"]} '
-                      f'message={r["message"][:120]}')
+                      f'driver={r.get("driver_name")} message={r["message"][:100]}')
         try:
-            stub.CreateDriver(_request(pb, 'teardown', REAL_SN), timeout=120)
+            stub.CreateDriver(_request(pb, 'teardown', REAL_SN, kw1), timeout=120)
         except Exception:
             pass
 
