@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """用例批量操作幂等存储（Redis 实现）— INT-75。
 
-键空间：idempotency:testcase_batch:{key}，记录两态：
+键空间：idempotency:testcase_batch:{key}，其中 key 由应用层按操作人作用域构造
+（``client:{user_id}:{client_key}`` / ``fp:{user_id}:{digest}``，INT-2245），
+存储层只做原样拼接，不解析作用域。记录两态：
 - 占位态 {'status': 'processing'}：SET NX 原子写入，防并发重复执行；
   TTL 取保留上限（防进程崩溃后占位永久卡死，到期自愈可重试）
 - 完成态 {'status': 'completed', 'response': {...}}：执行成功后整体覆盖，

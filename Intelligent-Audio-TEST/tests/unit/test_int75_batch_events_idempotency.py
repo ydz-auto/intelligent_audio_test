@@ -288,8 +288,10 @@ class TestIdempotency:
         assert r2['message'] == r1['message']
 
     def test_processing_conflict_returns_409(self, service, fake_store):
-        fake_store.records['client:K9'] = {'status': 'processing'}
-        resp = service.batch_action({'action': 'delete', 'ids': ['a'], 'idempotency_key': 'K9'})
+        data = {'action': 'delete', 'ids': ['a'], 'idempotency_key': 'K9'}
+        key, _ = service._resolve_idempotency_key(data)
+        fake_store.records[key] = {'status': 'processing'}
+        resp = service.batch_action(data)
         assert resp['success'] is False
         assert resp['code'] == 409
 

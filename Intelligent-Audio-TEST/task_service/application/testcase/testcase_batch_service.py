@@ -41,6 +41,10 @@ logger = logging.getLogger(__name__)
 # 内容指纹计算时剔除的请求键：幂等键本身不参与指纹
 _IDEMPOTENCY_EXCLUDED_KEYS = {'idempotency_key'}
 
+# 未认证请求（AUTH_MODE=off / 内部调用）的幂等作用域：单独成域，
+# 不与任何真实用户共享键空间（INT-2245）
+_IDEMPOTENCY_ANONYMOUS_SCOPE = 'anonymous'
+
 # 模块级公共符号再导出（保持向后兼容：_REF_PARAMS_BUCKET / _build_ref_params_key /
 # _apply_reference_params_to_config 仍可从本模块导入）
 __all__ = [
@@ -77,28 +81,49 @@ class TestCaseBatchService(
     # ---------- 幂等防护（INT-75） ----------
 
     @staticmethod
+    def _idempotency_scope() -> str:
+        """幂等作用域：当前操作人 user_id（未认证为 anonymous）。
+
+        幂等键与指纹都必须按用户隔离，否则共享用例/自选客户端键会让不同用户
+        互相回放、破坏性操作被静默跳过并泄漏他人响应消息（INT-2245）。
+        user_id 由网关经 gRPC metadata 透传，ServerUserContextInterceptor
+        在 RPC 入口写入 contextvar，此处直接读取。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
+        return str(get_current_user_id() or _IDEMPOTENCY_ANONYMOUS_SCOPE)
+
+    @staticmethod
     def _resolve_idempotency_key(data: dict) -> Tuple[str, int]:
         """解析幂等键与回放 TTL：客户端幂等键优先，缺省回退请求内容指纹。
 
-        指纹 = sha256(action + 排序后 ids + 其余参数的稳定 JSON)，对 ids 排序
-        归一化以忽略提交顺序差异。同一指纹在窗口期内重复提交视为同批次。
+        键空间按操作人隔离（INT-2245）：
+        - 客户端键：``client:{user_id}:{client_key}``
+        - 内容指纹：``fp:{user_id}:{sha256(scope + action + 排序后 ids + 其余参数)}``
+
+        指纹对 ids 排序归一化以忽略提交顺序差异；作用域单独包裹进指纹输入，
+        不与客户端 payload 同层，避免 payload 里的同名字段篡改作用域。同一用户
+        同一指纹在窗口期内重复提交视为同批次。
 
         Returns:
             (幂等键, 回放 TTL 秒)
         """
         from task_service.config.config import Config
 
+        scope = TestCaseBatchService._idempotency_scope()
         client_key = str(data.get('idempotency_key') or '').strip()
         if client_key:
-            return f'client:{client_key}', Config.IDEMPOTENCY_CLIENT_KEY_TTL_SECONDS
+            return f'client:{scope}:{client_key}', Config.IDEMPOTENCY_CLIENT_KEY_TTL_SECONDS
 
         payload = {k: v for k, v in data.items() if k not in _IDEMPOTENCY_EXCLUDED_KEYS}
         ids = payload.get('ids')
         if isinstance(ids, list):
             payload['ids'] = sorted(str(i) for i in ids)
-        canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+        canonical = json.dumps(
+            {'scope': scope, 'payload': payload},
+            sort_keys=True, ensure_ascii=False, default=str,
+        )
         digest = hashlib.sha256(canonical.encode('utf-8')).hexdigest()
-        return f'fp:{digest}', Config.IDEMPOTENCY_FINGERPRINT_TTL_SECONDS
+        return f'fp:{scope}:{digest}', Config.IDEMPOTENCY_FINGERPRINT_TTL_SECONDS
 
     def _idempotency_guard(self, key: str, ttl_seconds: int) -> dict:
         """重复提交判定：completed 回放上次响应，processing 返回冲突，否则占位放行。

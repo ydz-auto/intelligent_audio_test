@@ -152,7 +152,7 @@ class TestAllActionsPublishCaseEvents:
         assert ev['event_type'] == EventType.CASE_BATCH_ACTION_COMPLETED
         payload = ev['payload']
         assert payload['status'] == 'completed'
-        assert payload['idempotency_key'] == f'client:k-{action}'
+        assert payload['idempotency_key'] == f'client:{service._idempotency_scope()}:k-{action}'
         assert payload['occurred_at']
         if action not in ('copy_by_group', 'copy_by_tag'):
             # 按分组/标签维度的 action 请求本身无 ids，payload 如实回显请求 ids
@@ -229,7 +229,7 @@ class TestIdempotencySequenceAndTtl:
         client_data = {'action': 'delete', 'ids': ['a'], 'idempotency_key': 'ttl-1'}
         key, client_ttl = svc._resolve_idempotency_key(client_data)
         svc.batch_action(dict(client_data))
-        assert key == 'client:ttl-1'
+        assert key == f'client:{svc._idempotency_scope()}:ttl-1'
         assert client_ttl == Config.IDEMPOTENCY_CLIENT_KEY_TTL_SECONDS
         assert store.reserve_ttls[key] == min(client_ttl, reserve_cap)
         assert store.complete_ttls[-1] == (key, client_ttl)
