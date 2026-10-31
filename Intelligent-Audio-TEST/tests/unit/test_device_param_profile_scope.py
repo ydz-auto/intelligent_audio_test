@@ -125,6 +125,8 @@ def _cache() -> AlgorithmConfigCache:
         },
         'api_bindings': {},
         'device_bindings': {DEVICE_BOUND: PROFILE},
+        # INT-2259：设备绑定策略只在该算法类型下参与合并
+        'profile_algorithm_types': {PROFILE: ALGO},
     }
     return cache
 

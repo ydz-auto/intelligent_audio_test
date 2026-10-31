@@ -295,6 +295,9 @@ class AlgorithmConfigCache:
             # 参数策略：profile_id → 字段声明 / 映射；api_id / device_id → profile_id
             'profile_params': {},
             'profile_mappings': {},
+            # profile_id → 策略声明的算法类型（INT-2259：设备绑定策略只在
+            # 该算法类型下参与合并，避免设备跑另一种算法时被串参）
+            'profile_algorithm_types': {},
             'api_bindings': {},
             'device_bindings': {},
         }
@@ -372,6 +375,7 @@ class AlgorithmConfigCache:
             if profile_id is None:
                 continue
             profile_algo = profile.get('algorithm_type') or ''
+            snapshot['profile_algorithm_types'][profile_id] = profile_algo
             snapshot['profile_params'][profile_id] = self._serialize_params(
                 profile_params.get(profile_id, []))
             snapshot['profile_mappings'][profile_id] = self._serialize_mappings(
@@ -973,6 +977,22 @@ class AlgorithmConfigCache:
             _api_param_merge_key)
         return device_params + api_level_rows
 
+    @staticmethod
+    def _profile_belongs_to(cache: Dict[str, Any], profile_id: int,
+                            algorithm_type: str) -> bool:
+        """绑定策略是否声明为该算法类型（INT-2259）。
+
+        ``param_profiles`` 唯一键是 ``(scope, algorithm_type, name)``，策略自带
+        算法类型；设备绑定表只按 ``device_id`` 唯一，一台设备跑多种算法时，
+        非本算法的策略行不能参与合并（否则同名 ``(direction, code)`` 行会串改
+        声明）。快照缺该策略的类型（旧快照/人工构造）按不匹配处理：宁可少叠加
+        策略层，也不跨算法串参。
+
+        传入调用方已持有的快照引用，避免与并发安装新快照交错读到两份数据。
+        """
+        profile_types = cache.get('profile_algorithm_types', {}) or {}
+        return profile_types.get(profile_id) == algorithm_type
+
     def get_device_params(
         self, algorithm_type: str, device_id: Optional[int] = None
     ) -> List[Dict[str, Any]]:
@@ -982,6 +1002,10 @@ class AlgorithmConfigCache:
         其它设备的行不会串进来（与 api_id 作用域同口径）。
         传 device_id：算法级默认打底，该设备绑定策略（``device_param_bindings``）
         覆盖同键行，最后由本设备覆盖行（``device_id`` 非空）覆盖同键行。
+
+        策略层只合并 ``profile.algorithm_type == algorithm_type`` 的行（INT-2259）：
+        绑定对 ``device_id`` 唯一，但一台设备可跑多种算法，跨算法策略会被同名
+        ``(direction, code)`` 行静默串改声明，必须按策略声明的算法类型过滤。
         """
         cache = self._config_cache
         rows = cache.get('device_params', {}).get(algorithm_type, []) or []
@@ -991,7 +1015,8 @@ class AlgorithmConfigCache:
             return merged
         profile_id = (cache.get('device_bindings', {}) or {}).get(device_id)
         profile_rows = (
-            cache.get('profile_params', {}).get(profile_id, []) if profile_id else []
+            cache.get('profile_params', {}).get(profile_id, []) if profile_id
+            and self._profile_belongs_to(cache, profile_id, algorithm_type) else []
         )
         if profile_rows:
             merged = _resolve_scope_rows(
@@ -1072,7 +1097,8 @@ class AlgorithmConfigCache:
         device_profile_buckets: Dict[str, Any] = {}
         if device_id is not None:
             profile_id = (cache.get('device_bindings', {}) or {}).get(device_id)
-            if profile_id:
+            if profile_id and self._profile_belongs_to(
+                    cache, profile_id, algorithm_type):
                 device_profile_buckets = (
                     cache.get('profile_mappings', {}).get(profile_id, {}) or {}
                 )
