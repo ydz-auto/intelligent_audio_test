@@ -1126,11 +1126,13 @@ class CherryPickService:
         from task_service.infrastructure.persistence.models import (
             Task, TaskCase, TaskDevice, TaskAPI, TaskTag,
         )
-        from task_service.infrastructure.persistence._task_converters import _UTC_PLUS_8
+        from task_service.core.time_utils import utcnow
         from shared.models.database import get_db_session
         from shared.utils.status_utils import derive_task_case_status
 
-        now = datetime.now(_UTC_PLUS_8)
+        # INT-2209：容器任务的 created_at/started_at/completed_at 一律 UTC naive；
+        # 来源结果行的 created_at 也是库内 UTC naive，两侧同口径直接取极值。
+        now = utcnow()
         ordered = list(rows.values())  # dict 保序（插入序）
         first_result, first_task = ordered[0]
 

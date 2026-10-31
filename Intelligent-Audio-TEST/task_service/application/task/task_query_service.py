@@ -25,6 +25,7 @@ from shared.utils.audio_path_utils import normalize_audio_path
 from shared.domain.algorithm_result_builder import build_algorithm_results_for_result
 from shared.models.database import get_db_session
 
+from task_service.core.time_utils import to_utc_naive, utcnow
 from task_service.infrastructure.persistence.task_repository import task_repository
 from task_service.infrastructure.read_models.task_read_model import task_read_model
 
@@ -329,27 +330,25 @@ class TaskQueryService:
             expected_complete_time_str = None
             used_time_str = None
             try:
-                now = datetime.now(_UTC_PLUS_8)
+                # INT-2209：库内时间列一律 UTC naive（见 task_service.core.time_utils），
+                # 已用时长两侧同为 UTC 相减；展示用字符串仍按东八区墙钟输出。
+                now_utc = utcnow()
                 started_at_str = result.get('started_at')
                 completed_at_str = result.get('completed_at')
 
                 if started_at_str:
-                    tz_started = datetime.fromisoformat(started_at_str)
-                    if tz_started.tzinfo is None:
-                        tz_started = tz_started.replace(tzinfo=_UTC_PLUS_8)
+                    started_at = to_utc_naive(started_at_str)
+                    completed_at = to_utc_naive(completed_at_str)
 
-                    tz_completed = None
-                    if completed_at_str:
-                        tz_completed = datetime.fromisoformat(completed_at_str)
-                        if tz_completed.tzinfo is None:
-                            tz_completed = tz_completed.replace(tzinfo=_UTC_PLUS_8)
+                    if started_at is None:
+                        raise ValueError(f'started_at 非法: {started_at_str}')
 
-                    if tz_completed:
-                        elapsed_seconds = max(0.0, (tz_completed - tz_started).total_seconds())
+                    if completed_at:
+                        elapsed_seconds = max(0.0, (completed_at - started_at).total_seconds())
                     elif result.get('status') in (TaskStatus.COMPLETED, TaskStatus.FAILED):
                         elapsed_seconds = 0.0
                     else:
-                        elapsed_seconds = max(0.0, (now - tz_started).total_seconds())
+                        elapsed_seconds = max(0.0, (now_utc - started_at).total_seconds())
 
                     used_time_str = self._format_duration(int(elapsed_seconds))
 
@@ -363,11 +362,13 @@ class TaskQueryService:
                             estimated_total_seconds = time_estimate.get('expected_total_time', 0) or 0
                             expected_total_time_str = self._format_duration(estimated_total_seconds)
 
-                            if not tz_completed:
-                                expected_complete_dt = now + timedelta(seconds=estimated_total_seconds)
+                            if not completed_at:
+                                # 展示层：预计完成时间按东八区墙钟输出（历史口径不变）
+                                now_local = datetime.now(_UTC_PLUS_8).replace(tzinfo=None)
+                                expected_complete_dt = now_local + timedelta(seconds=estimated_total_seconds)
                                 expected_complete_time_str = expected_complete_dt.strftime('%Y-%m-%d %H:%M:%S')
                             else:
-                                expected_complete_time_str = tz_completed.strftime('%Y-%m-%d %H:%M:%S')
+                                expected_complete_time_str = completed_at.strftime('%Y-%m-%d %H:%M:%S')
                     except Exception as e:
                         logger.warning(f"计算时间预估失败: {e}")
 

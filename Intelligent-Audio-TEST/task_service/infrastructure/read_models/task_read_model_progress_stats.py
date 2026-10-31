@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 from shared.models.database import get_db_session
 from shared.utils.status_utils import task_case_not_removed
 from shared.utils.query_utils import now_cst
+from task_service.core.time_utils import elapsed_seconds
 from task_service.domain.services.task_case_stats import aggregate_case_rows
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.utils.status_constants import (
@@ -136,20 +137,15 @@ class TaskProgressStatsMixin:
             rows_by_case: Dict[str, list] = {}
             for tc in all_task_cases:
                 rows_by_case.setdefault(str(tc.test_case_id), []).append(tc)
-            from datetime import timezone, timedelta
-            utc_plus_8 = timezone(timedelta(hours=8))
             for case_id, rows in rows_by_case.items():
                 agg = aggregate_case_rows(rows)
                 duration = 0
                 for r in rows:
                     if r.started_at and r.completed_at:
-                        started_at = r.started_at
-                        completed_at = r.completed_at
-                        if started_at.tzinfo is None:
-                            started_at = started_at.replace(tzinfo=utc_plus_8)
-                        if completed_at.tzinfo is None:
-                            completed_at = completed_at.replace(tzinfo=utc_plus_8)
-                        duration += int((completed_at - started_at).total_seconds())
+                        # INT-2209：两侧同为 UTC naive，直接相减；不再补东八区
+                        secs = elapsed_seconds(r.started_at, r.completed_at)
+                        if secs is not None:
+                            duration += secs
 
                 test_cases_data.append({
                     'id': case_id,

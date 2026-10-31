@@ -4,7 +4,7 @@
 供 gRPC servicer 使用的 dict 序列化读取、TaskCase 状态更新、聚合统计、
 TaskCaseRepositoryABC 接口适配。
 """
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from shared.models.common_enums import DeviceOccupancyStatus, DeviceType
@@ -15,6 +15,7 @@ from shared.utils.status_constants import (
     ExecutionStatus,
     TaskStatus as SharedTaskStatus,
 )
+from task_service.core.time_utils import to_utc_naive
 from task_service.infrastructure.persistence.models import Task, TaskCase, TaskAPI, TaskDevice
 
 
@@ -156,8 +157,8 @@ class TaskCaseStatsMixin:
             status = self._derive_case_status(
                 session, task_id, case_id, status, execution_status, evaluation_status,
                 tc_rel_id=tc_rel_id)
-            started_at = self._coerce_cst_datetime(started_at)
-            completed_at = self._coerce_cst_datetime(completed_at)
+            started_at = to_utc_naive(started_at)
+            completed_at = to_utc_naive(completed_at)
 
             update_fields = {}
             if status:
@@ -188,18 +189,10 @@ class TaskCaseStatsMixin:
         finally:
             session.close()
 
-    @staticmethod
-    def _coerce_cst_datetime(value):
-        """datetime 或 ISO8601 字符串 → naive +08:00 datetime；None/空串 → None。"""
-        if value is None or value == '':
-            return None
-        if isinstance(value, datetime):
-            dt = value
-        else:
-            dt = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(timezone(timedelta(hours=8))).replace(tzinfo=None)
-        return dt
+    # 时间口径（INT-2209）：库内一律 UTC naive，见 task_service.core.time_utils。
+    # 执行器（api_test_service）上报的是带 +08:00 的 ISO8601，这里按绝对时刻
+    # 换算成 UTC naive 落库；历史上把 aware 值转成「东八区 naive」再写，等于
+    # 在 UTC 列里存了本地墙钟，与 created_at 差 +8h。
 
     @staticmethod
     def _derive_case_status(session, task_id: int, case_id: str, status: str,

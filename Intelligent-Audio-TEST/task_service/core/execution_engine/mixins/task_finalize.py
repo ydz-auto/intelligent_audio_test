@@ -9,8 +9,8 @@
 """
 import time
 import traceback
-from datetime import datetime
 
+from task_service.core.time_utils import elapsed_seconds, utcnow
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.models.database import get_db_session
 from shared.utils.status_utils import derive_task_case_status
@@ -83,13 +83,13 @@ class TaskFinalizeMixin:
 
                     if task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
                         # 更新任务完成时间和实际执行时长
-                        task.completed_at = datetime.now(self.utc_plus_8)
-                        if task.started_at:
-                            # 确保 started_at 是带时区的 datetime 对象
-                            if task.started_at.tzinfo is None:
-                                task.started_at = task.started_at.replace(tzinfo=self.utc_plus_8)
-                            # 计算实际执行时长（秒）
-                            task.actual_duration = int((task.completed_at - task.started_at).total_seconds())
+                        # INT-2209：写库口径统一 UTC naive。started_at 只读不写回
+                        # ——给它补 tzinfo 再提交会让 PostgreSQL 按 UTC 再转一次，
+                        # 每往返一次偏移 -8h（历史 -8h/-16h 的成因）。
+                        task.completed_at = utcnow()
+                        duration = elapsed_seconds(task.started_at, task.completed_at)
+                        if duration is not None:
+                            task.actual_duration = max(0, duration)
                     # 更新任务的已完成/失败用例数（用例级口径，口径集中在 task_case_stats）
                     from shared.infrastructure.user_context import get_current_user_id
                     task.updated_by_user_id = get_current_user_id()
@@ -278,7 +278,7 @@ class TaskFinalizeMixin:
             tc.execution_status = ExecutionStatus.STOPPED
             tc.evaluation_status = EvaluationStatus.STOPPED
             tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
-            tc.completed_at = datetime.now(self.utc_plus_8)
+            tc.completed_at = utcnow()
             tc.duration = None
             tc.error_message = '任务被手动停止'
         session.commit()
@@ -310,7 +310,7 @@ class TaskFinalizeMixin:
                 tc.execution_status or ExecutionStatus.PENDING, tc.evaluation_status or EvaluationStatus.PENDING)
             tc.status = new_status
             if new_status in (TaskCaseStatus.COMPLETED, TaskCaseStatus.FAILED):
-                tc.completed_at = datetime.now(self.utc_plus_8)
+                tc.completed_at = utcnow()
                 updated = True
         if updated:
             session.commit()
@@ -432,18 +432,16 @@ class TaskFinalizeMixin:
                         for tc in unprocessed_cases:
                             tc.execution_status = ExecutionStatus.FAILED
                             tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status or EvaluationStatus.PENDING)
-                            tc.completed_at = datetime.now(self.utc_plus_8)
+                            tc.completed_at = utcnow()
                             tc.duration = 0
                             tc.error_message = "任务执行失败，未处理的用例被标记为失败"
 
                 # 记录任务完成时间和实际执行时长
-                task.completed_at = datetime.now(self.utc_plus_8)
-                if task.started_at:
-                    # 确保 started_at 是带时区的 datetime 对象
-                    if task.started_at.tzinfo is None:
-                        task.started_at = task.started_at.replace(tzinfo=self.utc_plus_8)
-                    # 计算实际执行时长（秒）
-                    task.actual_duration = int((task.completed_at - task.started_at).total_seconds())
+                # INT-2209：统一 UTC naive 口径，started_at 只读不写回
+                task.completed_at = utcnow()
+                duration = elapsed_seconds(task.started_at, task.completed_at)
+                if duration is not None:
+                    task.actual_duration = max(0, duration)
 
                 # 更新任务的已完成/失败用例数（用例级口径）
                 from shared.infrastructure.user_context import get_current_user_id
@@ -480,19 +478,11 @@ class TaskFinalizeMixin:
             for tc_rel in running_cases:
                 tc_rel.execution_status = ExecutionStatus.FAILED
                 tc_rel.status = derive_task_case_status(tc_rel.execution_status, tc_rel.evaluation_status or EvaluationStatus.PENDING)
-                tc_rel.completed_at = datetime.now(self.utc_plus_8)
+                tc_rel.completed_at = utcnow()
                 if tc_rel.started_at:
-                    # 确保两个datetime对象都具有相同的时区信息
+                    # INT-2209：两侧统一 UTC naive 后直接相减，不再给 started_at 补 tz
                     try:
-                        if tc_rel.started_at.tzinfo is None:
-                            # 如果started_at不带时区，将其转换为带时区的datetime对象
-                            started_at_with_tz = tc_rel.started_at.replace(tzinfo=self.utc_plus_8)
-                            completed_at_with_tz = datetime.now(self.utc_plus_8)
-                        else:
-                            started_at_with_tz = tc_rel.started_at
-                            completed_at_with_tz = datetime.now(self.utc_plus_8)
-                        # 计算执行时长
-                        tc_rel.duration = int((completed_at_with_tz - started_at_with_tz).total_seconds())
+                        tc_rel.duration = max(0, elapsed_seconds(tc_rel.started_at, tc_rel.completed_at) or 0)
                     except Exception as duration_error:
                         # 如果计算失败，设置时长为0
                         tc_rel.duration = 0
@@ -500,20 +490,11 @@ class TaskFinalizeMixin:
 
             # 更新任务状态为失败
             task.status = TaskStatus.FAILED
-            task.completed_at = datetime.now(self.utc_plus_8)
-            if task.started_at:
-                # 确保两个datetime对象都具有相同的时区信息
-                if task.started_at.tzinfo is None:
-                    started_at_with_tz = task.started_at.replace(tzinfo=self.utc_plus_8)
-                    completed_at_with_tz = task.completed_at
-                elif task.completed_at.tzinfo is None:
-                    started_at_with_tz = task.started_at
-                    completed_at_with_tz = task.completed_at.replace(tzinfo=self.utc_plus_8)
-                else:
-                    started_at_with_tz = task.started_at
-                    completed_at_with_tz = task.completed_at
-                # 计算实际执行时长
-                task.actual_duration = int((completed_at_with_tz - started_at_with_tz).total_seconds())
+            # INT-2209：统一 UTC naive 口径，started_at 只读不写回
+            task.completed_at = utcnow()
+            duration = elapsed_seconds(task.started_at, task.completed_at)
+            if duration is not None:
+                task.actual_duration = max(0, duration)
 
             # 更新任务统计信息（用例级口径，口径集中在 task_case_stats）
             from shared.infrastructure.user_context import get_current_user_id

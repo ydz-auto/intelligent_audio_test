@@ -48,8 +48,10 @@ class Task(Base):
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
-    started_at = Column(DateTime, comment='任务实际开始执行时间')
-    completed_at = Column(DateTime, comment='任务执行结束时间')
+    # INT-2209 时间口径契约：库内 UTC naive（tzinfo=None，值为 UTC 墙钟），
+    # 本地时区只在展示层转换；写入口径见 task_service.core.time_utils。
+    started_at = Column(DateTime, comment='任务实际开始执行时间（UTC naive，INT-2209）')
+    completed_at = Column(DateTime, comment='任务执行结束时间（UTC naive，INT-2209）')
     estimated_time = Column(Integer, comment='预计执行耗时 (秒)')
     actual_duration = Column(Integer, comment='实际执行耗时 (秒)')
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
@@ -109,8 +111,8 @@ class TaskCase(Base):
     status = Column(String(50), default='pending', nullable=True, comment='该用例在任务中的最终结果 (pending/running/completed/failed/skipped)')
     execution_status = Column(String(20), default='pending', nullable=False, comment='执行过程状态 (pending/queued/running/completed/stopped/failed)')
     evaluation_status = Column(String(20), default='pending', nullable=False, comment='评估过程状态 (queued/pending/running/calculating/completed/stopped/failed)')
-    started_at = Column(DateTime, comment='开始执行时间')
-    completed_at = Column(DateTime, comment='执行结束时间')
+    started_at = Column(DateTime, comment='开始执行时间（UTC naive，INT-2209）')
+    completed_at = Column(DateTime, comment='执行结束时间（UTC naive，INT-2209）')
     duration = Column(Integer, comment='执行耗时 (秒)')
     error_message = Column(Text, comment='执行过程中的错误信息')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')

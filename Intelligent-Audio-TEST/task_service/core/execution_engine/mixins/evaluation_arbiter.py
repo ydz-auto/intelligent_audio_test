@@ -19,7 +19,6 @@
 """
 import logging
 import time
-from datetime import datetime
 
 from shared.models.database import get_db_session
 from shared.utils.status_constants import (
@@ -27,6 +26,7 @@ from shared.utils.status_constants import (
     ACTIVE_EXECUTION_STATUSES, ACTIVE_EVALUATION_STATUSES,
 )
 from shared.utils.status_utils import derive_task_case_status
+from task_service.core.time_utils import utcnow
 from task_service.infrastructure.persistence.models import Task, TaskCase
 
 logger = logging.getLogger(__name__)
@@ -255,7 +255,7 @@ class EvaluationArbiterMixin:
         """
         if tc.execution_status in ACTIVE_EXECUTION_STATUSES:
             tc.execution_status = ExecutionStatus.FAILED
-            tc.completed_at = datetime.now(self.utc_plus_8)
+            tc.completed_at = utcnow()
             tc.duration = 0
             if (tc.evaluation_status or EvaluationStatus.PENDING) in (
                     EvaluationStatus.PENDING, EvaluationStatus.QUEUED):

@@ -1,4 +1,4 @@
-from datetime import datetime
+from task_service.core.time_utils import elapsed_seconds, utcnow
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from task_service.infrastructure.acl.report_acl_repository import api_test_acl_repository
 from shared.models.database import create_db_session
@@ -84,7 +84,7 @@ class CaseExecutionMixin:
                 if tc_rel:
                     # 若 api_test_service 未设置 started_at，在此兜底
                     if not tc_rel.started_at:
-                        tc_rel.started_at = datetime.now(self.utc_plus_8)
+                        tc_rel.started_at = utcnow()
                         local_db_session.commit()
             finally:
                 local_db_session.close()
@@ -110,13 +110,11 @@ class CaseExecutionMixin:
                     self._finalize_dispatch_failure(tc_rel)
                     # 如果started_at字段为空，设置它
                     if not tc_rel.started_at:
-                        tc_rel.started_at = datetime.now(self.utc_plus_8)
-                    tc_rel.completed_at = datetime.now(self.utc_plus_8)
-                    # 计算测试用例执行时长，确保时区一致
-                    started_at = tc_rel.started_at
-                    if started_at.tzinfo is None:
-                        started_at = started_at.replace(tzinfo=self.utc_plus_8)
-                    tc_rel.duration = int((tc_rel.completed_at - started_at).total_seconds())
+                        tc_rel.started_at = utcnow()
+                    tc_rel.completed_at = utcnow()
+                    # 计算测试用例执行时长（INT-2209：两侧统一 UTC naive 口径，
+                    # 不再对 started_at 补 tzinfo——补了会改掉库里已落的值）
+                    tc_rel.duration = max(0, elapsed_seconds(tc_rel.started_at, tc_rel.completed_at) or 0)
                     tc_rel.error_message = error_msg
                     local_db_session.commit()
 

@@ -6,8 +6,7 @@
 - _init_task_execution：API 任务初始化
 - _process_task_main_loop：主循环（取用例 → 设备检查 → 分发执行）
 """
-from datetime import datetime
-
+from task_service.core.time_utils import utcnow
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.models.database import get_db_session
 from shared.utils.status_constants import TaskStatus
@@ -69,7 +68,7 @@ class TaskLifecycleMixin:
 
                 # 更新任务状态为运行中，并记录开始时间
                 task.status = TaskStatus.RUNNING
-                task.started_at = datetime.now(self.utc_plus_8)
+                task.started_at = utcnow()
                 from shared.infrastructure.user_context import get_current_user_id
                 task.updated_by_user_id = get_current_user_id()
                 local_db_session.commit()
@@ -192,7 +191,7 @@ class TaskLifecycleMixin:
                     # API任务初始化失败，将任务标记为失败
                     # （Task 无 error_message 列，失败原因已记录执行日志）
                     task.status = TaskStatus.FAILED
-                    task.completed_at = datetime.now(self.utc_plus_8)
+                    task.completed_at = utcnow()
                     local_db_session.commit()
                     return False
         finally:

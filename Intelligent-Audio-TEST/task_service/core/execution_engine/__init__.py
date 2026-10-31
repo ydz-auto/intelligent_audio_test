@@ -1,6 +1,5 @@
 import logging
 import threading
-from datetime import timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from collections import deque
 
@@ -52,8 +51,8 @@ class ExecutionEngine(SchedulerMixin, ProgressMixin, TaskControlMixin, CaseExecu
                 cls._instance.pause_flags = {}
                 # 初始化API执行器字典，用于存储API任务的线程池
                 cls._instance.api_executors = {}
-                # 东八区时区定义，用于统一时间格式
-                cls._instance.utc_plus_8 = timezone(timedelta(hours=8))
+                # INT-2209：库内时间写入统一走 task_service.core.time_utils
+                # 的 UTC naive 口径，引擎不再持有东八区时区对象。
                 # 初始化执行器和管理器
                 cls._instance.api_entry_status = {}  # 存储 API 入口 (Master) 的状态: {url: {'available': True, 'fail_count': 0}}
                 cls._instance.api_entry_lock = threading.Lock()

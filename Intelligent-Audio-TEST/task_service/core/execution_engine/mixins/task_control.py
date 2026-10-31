@@ -1,6 +1,6 @@
 import threading
-from datetime import datetime
 from collections import deque
+from task_service.core.time_utils import utcnow
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.models.database import create_db_session, get_db_session
 from shared.utils import distributed_coordinator as _dc
@@ -309,7 +309,7 @@ class TaskControlMixin:
             if action == 'stop':
                 # 更新任务状态为stopped
                 task.status = TaskStatus.STOPPED
-                task.completed_at = datetime.now(self.utc_plus_8)
+                task.completed_at = utcnow()
 
                 # 只处理未完成的用例（执行中、排队中、待执行），保留已完成用例的状态
                 cases = local_db_session.query(TaskCase).filter(
@@ -348,7 +348,7 @@ class TaskControlMixin:
                     tc.evaluation_status = EvaluationStatus.STOPPED
                     tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
                     tc.started_at = None
-                    tc.completed_at = datetime.now(self.utc_plus_8)
+                    tc.completed_at = utcnow()
                     tc.duration = None
                     tc.error_message = '任务被手动停止'
                 

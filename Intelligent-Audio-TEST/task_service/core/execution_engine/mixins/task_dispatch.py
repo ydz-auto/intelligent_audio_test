@@ -7,10 +7,9 @@
 - _claim_case：原子占用用例
 - _handle_e2e_failure / _handle_device_check_failed：失败处理
 """
-from datetime import datetime
-
 from sqlalchemy.exc import InvalidRequestError
 
+from task_service.core.time_utils import utcnow
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.utils.status_utils import (
     derive_task_case_status, task_case_not_removed, REMOVED_CASE_MESSAGE,
@@ -272,7 +271,7 @@ class TaskDispatchMixin:
         pending 会被主循环计入活跃评估集合，混合 device_type 任务死等不收敛。
         """
         self._finalize_dispatch_failure(tc_rel)
-        tc_rel.completed_at = datetime.now(self.utc_plus_8)
+        tc_rel.completed_at = utcnow()
         tc_rel.duration = 0
         tc_rel.error_message = error_msg
         session.commit()
@@ -677,12 +676,11 @@ class TaskDispatchMixin:
                   task_id=task_id, device_id=tc_rel.device_id)
         from task_service.infrastructure.persistence.models import Task, TaskCase
         from shared.models.database import create_db_session
-        from datetime import datetime as _dt
         session = create_db_session()
         try:
             row = session.get(TaskCase, tc_rel.id)
             if row and row.execution_status in (ExecutionStatus.QUEUED, ExecutionStatus.RUNNING):
-                now = _dt.now()
+                now = utcnow()
                 if not row.started_at:
                     row.started_at = now
                 row.completed_at = now
@@ -737,7 +735,7 @@ class TaskDispatchMixin:
             tc_rel.execution_status = ExecutionStatus.FAILED
             tc_rel.evaluation_status = EvaluationStatus.COMPLETED
             tc_rel.status = derive_task_case_status(tc_rel.execution_status, tc_rel.evaluation_status)
-            tc_rel.completed_at = datetime.now(self.utc_plus_8)
+            tc_rel.completed_at = utcnow()
             tc_rel.error_message = tc_rel.error_message or 'E2E用例执行失败（gRPC返回失败或异常）'
         if tc_rel.execution_status == ExecutionStatus.FAILED:
             self._emit_alert(task_id, f"用例执行失败: {tc_rel.test_case_id}")
