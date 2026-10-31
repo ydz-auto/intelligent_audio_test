@@ -31,11 +31,13 @@ from shared.utils.status_constants import (
     RESULT_TYPE_PENDING,
 )
 
+from task_service.core.time_utils import local_naive_to_utc_naive, utcnow
 from task_service.infrastructure.persistence.cherry_pick_repository import cherry_pick_repository
 from task_service.infrastructure.persistence.task_repository import task_repository
 
 logger = logging.getLogger(__name__)
 
+# 展示/命名用本地时区（写库口径一律 UTC naive，见 task_service.core.time_utils）
 _UTC_PLUS_8 = timezone(timedelta(hours=8))
 
 # 可挑选任务清单（INT-1496 §8.1）：入参取值显式枚举，拒绝魔法字符串
@@ -511,11 +513,14 @@ class CherryPickService:
 
     @staticmethod
     def _parse_iso_dt(value) -> Optional[datetime]:
-        """ISO 8601 时间串 → datetime（非法值按未传处理，与 candidates 同口径）。"""
+        """ISO 8601 时间串 → 库内 UTC naive（非法值按未传处理，与 candidates 同口径）。
+
+        入参是用户选的本地墙钟，列里存 UTC naive（INT-2283），进 SQL 前归一。
+        """
         if not value:
             return None
         try:
-            return datetime.fromisoformat(str(value))
+            return local_naive_to_utc_naive(datetime.fromisoformat(str(value)))
         except ValueError:
             return None
 
@@ -772,12 +777,15 @@ class CherryPickService:
             q = q.filter(TestResult.excluded == 0)
             if start_date:
                 try:
-                    q = q.filter(TestResult.created_at >= datetime.fromisoformat(start_date))
+                    # 用户输入是本地墙钟，列里是 UTC naive（INT-2283）
+                    q = q.filter(TestResult.created_at >= local_naive_to_utc_naive(
+                        datetime.fromisoformat(start_date)))
                 except ValueError:
                     pass
             if end_date:
                 try:
-                    q = q.filter(TestResult.created_at <= datetime.fromisoformat(end_date))
+                    q = q.filter(TestResult.created_at <= local_naive_to_utc_naive(
+                        datetime.fromisoformat(end_date)))
                 except ValueError:
                     pass
 
@@ -1126,7 +1134,6 @@ class CherryPickService:
         from task_service.infrastructure.persistence.models import (
             Task, TaskCase, TaskDevice, TaskAPI, TaskTag,
         )
-        from task_service.core.time_utils import utcnow
         from shared.models.database import get_db_session
         from shared.utils.status_utils import derive_task_case_status
 
@@ -1434,8 +1441,9 @@ class CherryPickService:
             case_devices = self._inherit_case_devices(rows)
             device_ids = sorted({r.device_id for r, _t in rows.values() if r.device_id is not None})
 
-            now = datetime.now(_UTC_PLUS_8)
-            name = (data.get('name') or '').strip() or f'挑选重执行_{now.strftime("%Y%m%d%H%M%S")}'
+            # 任务名嵌本地墙钟（用户可见的本地日历语义）；created_at 走 UTC naive
+            name = (data.get('name') or '').strip() or \
+                f'挑选重执行_{datetime.now(_UTC_PLUS_8).strftime("%Y%m%d%H%M%S")}'
             new_task_id = task_repository.create_task_with_relations(
                 name=name,
                 description=data.get('description') or '挑选结果重新执行任务',
@@ -1447,6 +1455,7 @@ class CherryPickService:
                 api_ids=sorted({r.api_id for r, _t in rows.values() if r.api_id is not None}),
                 created_by=None,
                 case_devices=case_devices,
+                now=utcnow(),
             )
             if not new_task_id:
                 return {'success': False, 'message': '创建重执行任务失败',

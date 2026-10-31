@@ -19,7 +19,8 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.exc import OperationalError
 
-from shared.models.database import get_db_session, utc8now
+from shared.models.database import get_db_session
+from shared.utils.time_utils import utcnow
 from shared.utils.status_utils import derive_task_case_status, task_case_not_removed
 from task_service.infrastructure.persistence.models import (
     Task, TaskCase, TestResult, TestResultReview,
@@ -100,7 +101,7 @@ class ReviewRepository:
 
             old_exec = result.execution_status
             old_eval = tc.evaluation_status if tc else None
-            now = utc8now()
+            now = utcnow()
 
             applied: List[Dict[str, Any]] = []
             if exec_new and exec_new != old_exec:

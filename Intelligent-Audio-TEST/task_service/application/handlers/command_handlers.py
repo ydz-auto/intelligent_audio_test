@@ -6,12 +6,12 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Tuple
 
 import logging
 
 from shared.utils.log_handler import log_and_emit
+from shared.utils.time_utils import utcnow
 
 from task_service.application.commands.task_commands import (
     CreateTaskCommand,
@@ -61,9 +61,6 @@ from task_service.domain.entities import TaskStatus
 from task_service.infrastructure.persistence.task_repository import task_repository
 
 logger = logging.getLogger(__name__)
-
-# 东八区时区
-_UTC_PLUS_8 = timezone(timedelta(hours=8))
 
 
 class TaskCommandHandler:
@@ -146,7 +143,7 @@ class TaskCommandHandler:
         注意：仅创建记录，不启动执行，启动需调用 StartTaskCommand。
         """
         try:
-            now = datetime.now(_UTC_PLUS_8)
+            now = utcnow()
             task_id = self.task_repository.create_task_with_relations(
                 name=cmd.name,
                 description=cmd.description,
@@ -289,7 +286,7 @@ class TaskCommandHandler:
             return False, '源任务列表不能为空', {}
 
         try:
-            now = datetime.now(_UTC_PLUS_8)
+            now = utcnow()
             merged_task_id, total_results = self.task_repository.merge_tasks(
                 source_task_ids=cmd.source_task_ids,
                 merged_task_name=cmd.merged_task_name,

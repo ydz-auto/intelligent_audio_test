@@ -25,7 +25,7 @@ from shared.utils.audio_path_utils import normalize_audio_path
 from shared.domain.algorithm_result_builder import build_algorithm_results_for_result
 from shared.models.database import get_db_session
 
-from task_service.core.time_utils import to_utc_naive, utcnow
+from task_service.core.time_utils import to_local_naive, to_utc_naive, utcnow
 from task_service.infrastructure.persistence.task_repository import task_repository
 from task_service.infrastructure.read_models.task_read_model import task_read_model
 
@@ -306,7 +306,9 @@ class TaskQueryService:
                                 expected_complete_dt = now_local + timedelta(seconds=estimated_total_seconds)
                                 expected_complete_time_str = expected_complete_dt.strftime('%Y-%m-%d %H:%M:%S')
                             else:
-                                expected_complete_time_str = completed_at.strftime('%Y-%m-%d %H:%M:%S')
+                                # completed_at 是库内 UTC naive，与上面分支同为东八区展示串
+                                expected_complete_time_str = to_local_naive(
+                                    completed_at).strftime('%Y-%m-%d %H:%M:%S')
                     except Exception as e:
                         logger.warning(f"计算时间预估失败: {e}")
 

@@ -19,8 +19,8 @@ from task_service.infrastructure.persistence.models import Task, TaskCase, TaskA
 
 logger = logging.getLogger(__name__)
 
-# 中国标准时区（UTC+8）
-from task_service.infrastructure.persistence._task_converters import _UTC_PLUS_8
+# 时间口径：写库一律 UTC naive（INT-2209 / INT-2283），见 task_service.core.time_utils
+from task_service.core.time_utils import utcnow
 
 
 class ExecutionAffinityError(ValueError):
@@ -113,7 +113,7 @@ class TaskCrudMixin:
         """
         from task_service.infrastructure.persistence.models import TaskMergeRelation  # noqa: F401
         if now is None:
-            now = datetime.now(_UTC_PLUS_8)
+            now = utcnow()
 
         session = get_db_session()
         try:
@@ -336,7 +336,7 @@ class TaskCrudMixin:
             TaskMergeRelation, TaskCase, TaskDevice, TaskAPI, TaskTag,
         )
         if now is None:
-            now = datetime.now(_UTC_PLUS_8)
+            now = utcnow()
 
         session = get_db_session()
         try:
@@ -537,7 +537,7 @@ class TaskCrudMixin:
             if visibility is not None:
                 task.visibility = visibility
             task.updated_by_user_id = get_current_user_id()
-            task.updated_at = datetime.now(_UTC_PLUS_8)
+            task.updated_at = utcnow()
             session.commit()
             return True
         except Exception:
@@ -568,7 +568,7 @@ class TaskCrudMixin:
             if task is None:
                 return None
 
-            now = datetime.now(_UTC_PLUS_8)
+            now = utcnow()
 
             err = self._apply_case_action(session, task_id, action, case_ids, now, case_devices)
             if err:
@@ -651,7 +651,6 @@ class TaskCrudMixin:
         if not task_ids:
             return 0
         from shared.infrastructure.user_context import get_current_user_id, get_current_user_is_admin
-        from shared.models.database import utc8now
         session = get_db_session()
         try:
             ids = self.filter_visible_task_ids(
@@ -663,7 +662,7 @@ class TaskCrudMixin:
                 Task.id.in_(ids)
             ).update({
                 Task.deleted: True,
-                Task.deleted_at: utc8now(),
+                Task.deleted_at: utcnow(),
                 Task.deleted_by_user_id: get_current_user_id(),
             }, synchronize_session=False)
             session.commit()

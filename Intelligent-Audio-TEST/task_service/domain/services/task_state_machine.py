@@ -6,12 +6,13 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from typing import Optional, Tuple
 
-from task_service.domain.entities import TaskAggregate, TaskStatus
+# 写库口径 UTC naive（INT-2283）：领域层只依赖无基础设施的 shared.utils.time_utils
+from shared.utils.time_utils import utcnow
 
-_UTC_PLUS_8 = timezone(timedelta(hours=8))
+from task_service.domain.entities import TaskAggregate, TaskStatus
 
 
 class TaskStateMachine:
@@ -84,7 +85,7 @@ class TaskStateMachine:
         调用前应先 validate_action 校验。
         """
         if now is None:
-            now = datetime.now(_UTC_PLUS_8)
+            now = utcnow()
 
         if action == 'start':
             aggregate.mark_started(now)

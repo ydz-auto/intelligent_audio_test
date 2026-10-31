@@ -9,7 +9,7 @@
 - comment 为复核备注（负责人拍板 2026-10-15：必填）
 - 冗余 task_id / test_case_id：按任务查复核计数（覆盖提醒）与按用例查历史免回表
 """
-from shared.models.database import Base, utc8now
+from shared.models.database import Base, utcnow
 from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, Index,
 )
@@ -34,4 +34,4 @@ class TestResultReview(Base):
     new_value = Column(String(20), nullable=False, comment='改判后新值')
     comment = Column(Text, nullable=False, comment='复核备注（必填）')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='复核操作人（JWT 透传，未认证 NULL）')
-    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='复核时间')
+    created_at = Column(DateTime, default=utcnow, server_default=func.now(), nullable=False, comment='复核时间')

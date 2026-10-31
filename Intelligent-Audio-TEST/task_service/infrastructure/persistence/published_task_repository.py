@@ -21,6 +21,7 @@ import uuid
 from datetime import datetime
 
 from shared.models.database import get_db_session
+from shared.utils.time_utils import utcnow
 from shared.utils.status_utils import task_case_not_removed
 from shared.utils.status_constants import (
     ExecutionStatus,
@@ -413,7 +414,7 @@ class PublishedTaskRepository:
             task.execution_source = execution_source
             task.published_task_id = published_task_id
             task.published_task_version = published_task_version
-            task.updated_at = datetime.now(_UTC_PLUS_8)
+            task.updated_at = utcnow()
             session.commit()
             return True
         except Exception:
@@ -1122,7 +1123,9 @@ class PublishedTaskRepository:
         Returns:
             新任务 ID。
         """
-        now = datetime.now(_UTC_PLUS_8)
+        # 任务/用例/标签关联的时间列一律 UTC naive（INT-2283）；Tag 不在本条链路，
+        # 由模型默认值（本地墙钟）负责，这里不传。
+        now = utcnow()
         session = get_db_session()
         try:
             from shared.infrastructure.user_context import get_current_user_id
@@ -1183,7 +1186,8 @@ class PublishedTaskRepository:
             for tag_name in (snapshot_config.get('tags') or []):
                 tag = session.query(Tag).filter_by(name=tag_name).first()
                 if not tag:
-                    tag = Tag(name=tag_name, created_at=now, updated_at=now)
+                    # Tag 属用例域（尚未统一切口径），走模型默认值，不借用任务的 UTC now
+                    tag = Tag(name=tag_name)
                     session.add(tag)
                     session.flush()
                 session.add(TaskTag(task_id=task_id, tag_id=tag.id, created_at=now))

@@ -10,7 +10,7 @@ P5 改造：从 shared/models/models/task_models.py 真正下沉到本服务。
 - Task.devices / apis 移除（Device/API 不归属本服务，跨域查询改 gRPC）
 - TaskMergeRelation.merged_task / source_task 保留（Task 自身关系）
 """
-from shared.models.database import Base, utc8now
+from shared.models.database import Base, utcnow
 from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON,
     Index, ForeignKey, text,
@@ -46,8 +46,8 @@ class Task(Base):
     # INT-573：最后启动操作人（start/retry 记录；控制操作校验 owner 或启动人）
     last_started_by_user_id = Column(BigInteger, nullable=True, index=True, comment='最后启动操作人用户ID（INT-573 启动人记录）')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utcnow, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utcnow, server_default=func.now(), onupdate=utcnow, nullable=False, comment='更新时间')
     # INT-2209 时间口径契约：库内 UTC naive（tzinfo=None，值为 UTC 墙钟），
     # 本地时区只在展示层转换；写入口径见 task_service.core.time_utils。
     started_at = Column(DateTime, comment='任务实际开始执行时间（UTC naive，INT-2209）')
@@ -88,7 +88,7 @@ class TaskTag(Base):
     tag_id = Column(BigInteger, comment='关联标签ID')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utcnow, server_default=func.now(), nullable=False, comment='创建时间')
 
 
 class TaskCase(Base):
@@ -117,7 +117,7 @@ class TaskCase(Base):
     error_message = Column(Text, comment='执行过程中的错误信息')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utcnow, server_default=func.now(), nullable=False, comment='创建时间')
     # 执行域 P0 新增：用例级被测设备路由（取代已废弃的 task.type 语义）
     device_type = Column(String(20), nullable=True, comment='被测设备类型 (physical/http_api/websocket_api，用例级决定执行路由；历史 NULL 行已由 INT-789 回填迁移补齐)')
     device_id = Column(String(50), nullable=True, comment='被测设备ID (physical=设备ID / http_api|websocket_api=api.id)')
@@ -157,7 +157,7 @@ class TaskLaboratoryRelation(Base):
     task_id = Column(Integer, nullable=False, comment='关联测试任务ID')
     lab_id = Column(Integer, nullable=False, comment='关联实验室ID')
     priority = Column(Integer, nullable=False, default=1, comment='实验室优先级（按 lab_ids 传入顺序）')
-    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utcnow, server_default=func.now(), nullable=False, comment='创建时间')
 
 
 class TaskMergeRelation(Base):
@@ -171,7 +171,7 @@ class TaskMergeRelation(Base):
     source_result_count = Column(Integer, default=0, comment='该源任务贡献的结果数量')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utcnow, server_default=func.now(), nullable=False, comment='创建时间')
 
     merged_task = relationship('Task', foreign_keys=[merged_task_id], backref='source_relations')
     source_task = relationship('Task', foreign_keys=[source_task_id], backref='target_relations')

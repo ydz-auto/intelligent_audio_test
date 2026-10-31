@@ -10,7 +10,7 @@
 P5 改造：从 shared/models/models/result_models.py 真正下沉到本服务。
 shared/models/models/result_models.py 中的 TestResultDimension 改为从这里 re-export。
 """
-from shared.models.database import Base, utc8now
+from shared.models.database import Base, utcnow
 from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float,
     CHAR, Index,
@@ -55,4 +55,4 @@ class TestResultDimension(Base):
     api_request_body_created_at = Column(DateTime(timezone=True), comment='请求体对象写入时间')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='生成时间')
+    created_at = Column(DateTime, default=utcnow, server_default=func.now(), nullable=False, comment='生成时间')

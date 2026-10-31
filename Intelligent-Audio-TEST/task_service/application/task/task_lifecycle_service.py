@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from shared.utils.result_data_store import load_full_result_data
 from shared.utils.json_utils import deserialize_algorithm_result
@@ -103,7 +103,9 @@ class TaskLifecycleService:
                 'message': message,
                 'data': {
                     'task_id': str(task.id),
-                    'start_time': int(datetime.utcnow().timestamp() * 1000),
+                    # epoch ms 是绝对时刻：naive utcnow().timestamp() 会按本地时区解释，
+                    # 东八区下偏 8 小时（INT-2283）
+                    'start_time': int(datetime.now(timezone.utc).timestamp() * 1000),
                     'status': TaskStatus.QUEUED if '队列' in message else TaskStatus.RUNNING,
                     'expected_total_time': time_estimate.get('expected_total_time'),
                     'expected_complete_time': time_estimate.get('expected_complete_time'),

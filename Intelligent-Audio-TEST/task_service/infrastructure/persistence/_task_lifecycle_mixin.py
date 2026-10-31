@@ -11,6 +11,7 @@ from sqlalchemy import case, or_
 from sqlalchemy.exc import OperationalError
 
 from shared.models.database import get_db_session
+from shared.utils.time_utils import utcnow
 from shared.utils.status_utils import derive_task_case_status, task_case_not_removed
 from shared.utils.status_constants import (
     ExecutionStatus,
@@ -495,7 +496,7 @@ class TaskLifecycleMixin:
             ).update({
                 TestResult.excluded: 1,
                 TestResult.excluded_by_user_id: deleted_by_user_id,
-                TestResult.excluded_at: utc8now(),
+                TestResult.excluded_at: utcnow(),
             }, synchronize_session=False)
             session.commit()
             logger.info("移除任务用例(软删留痕) task_id=%s case_id=%s rows=%s",
@@ -642,8 +643,7 @@ class TaskLifecycleMixin:
         """
         session = get_db_session()
         try:
-            from shared.models.database import utc8now
-            now = utc8now()
+            now = utcnow()
 
             # 归属过滤：本实例名下或未归属（NULL）的中间态任务
             ownership_filter = or_(

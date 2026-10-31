@@ -10,7 +10,7 @@
 P5 改造：从 shared/models/models/result_models.py 真正下沉到本服务。
 shared 只保留 TestResult 的 re-export（TestResultDimension 从 evaluation_service re-export）。
 """
-from shared.models.database import Base, utc8now
+from shared.models.database import Base, utcnow
 from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, JSON,
 )
@@ -51,4 +51,4 @@ class TestResult(Base):
     last_review_action = Column(String(255), nullable=True, comment='最近一次复核动作摘要（如 execution_status:failed→completed）')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='生成时间')
+    created_at = Column(DateTime, default=utcnow, server_default=func.now(), nullable=False, comment='生成时间')

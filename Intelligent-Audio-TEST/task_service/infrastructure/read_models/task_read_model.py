@@ -234,6 +234,7 @@ class TaskReadModel(
         visibility（可选，INT-466）：可见性筛选（shared/private；None=全部）。
         """
         from datetime import datetime
+        from task_service.core.time_utils import local_naive_to_utc_naive
         from sqlalchemy import select as sa_select, or_
         from task_service.infrastructure.read_models.task_dual_status_expr import (
             EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR, evaluation_filter_condition,
@@ -313,13 +314,14 @@ class TaskReadModel(
                 )
             if start_date:
                 try:
-                    dt_start = datetime.fromisoformat(start_date)
+                    # 用户点的是本地墙钟，列里是 UTC naive（INT-2283），边界先归一
+                    dt_start = local_naive_to_utc_naive(datetime.fromisoformat(start_date))
                     query = query.filter(Task.created_at >= dt_start)
                 except ValueError:
                     logger.debug("start_date 非法 ISO 格式已忽略: %r", start_date)
             if end_date:
                 try:
-                    dt_end = datetime.fromisoformat(end_date)
+                    dt_end = local_naive_to_utc_naive(datetime.fromisoformat(end_date))
                     query = query.filter(Task.created_at <= dt_end)
                 except ValueError:
                     logger.debug("end_date 非法 ISO 格式已忽略: %r", end_date)

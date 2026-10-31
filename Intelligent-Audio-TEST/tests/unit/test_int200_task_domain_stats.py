@@ -71,13 +71,15 @@ def db():
     session = get_db_session()
     # A=仅 physical(e2e)；B=仅 http_api(api)；C=physical+websocket_api(mixed)；
     # D=无用例行(api 口径)；E/F=已完成（趋势分桶）；G=软删除且已完成（排除出全部默认统计）
+    # INT-2283：created_at 是库内 UTC naive，趋势按东八区自然日分桶——A/E 的
+    # 本地日同属 2026-03-15（A 10:00 UTC=18:00、E 15:30 UTC=23:30 本地）。
     a = Task(name='int200-a', status='completed', total_cases=1,
              created_at=datetime(2026, 3, 15, 10, 0, 0))
     b = Task(name='int200-b', status='failed', total_cases=1)
     c = Task(name='int200-c', status='running', total_cases=2)
     d = Task(name='int200-d', status='pending', total_cases=0)
     e = Task(name='int200-e', status='completed', total_cases=1,
-             created_at=datetime(2026, 3, 15, 23, 30, 0))
+             created_at=datetime(2026, 3, 15, 15, 30, 0))
     f = Task(name='int200-f', status='completed', total_cases=1,
              created_at=datetime(2025, 1, 1, 8, 0, 0))
     g = Task(name='int200-g', status='completed', total_cases=1,

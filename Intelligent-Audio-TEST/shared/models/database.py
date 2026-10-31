@@ -39,12 +39,21 @@ from sqlalchemy.orm import declarative_base, scoped_session, sessionmaker, Query
 from sqlalchemy.pool import QueuePool
 
 from shared.infrastructure.config import BaseConfig
+# 写库统一口径（UTC naive）；实现放在无基础设施依赖的 shared.utils.time_utils，
+# 领域层也能直接引用（见该函数 docstring）。
+from shared.utils.time_utils import utcnow  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 
 def utc8now():
-    """东八区当前时间（所有 PO 的 created_at/updated_at 默认值）。"""
+    """东八区当前时间（aware，+8 固定偏移）。
+
+    注意：**不要**用它给 `timestamp without time zone` 列做写库默认值——
+    PostgreSQL 会按会话时区（部署库为 Asia/Shanghai）再转一次，落库成 +8
+    墙钟，与执行链路的 UTC naive 值差 8 小时（INT-2283）。写库一律用
+    `utcnow()`；本函数只用于展示/本地日历语义。
+    """
     return datetime.now(timezone(timedelta(hours=8)))
 
 

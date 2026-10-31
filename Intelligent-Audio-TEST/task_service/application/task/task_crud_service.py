@@ -338,6 +338,9 @@ class TaskCrudService:
                         return {'success': False, 'message': str(e), 'data': None, 'code': 403}
 
             from datetime import datetime, timezone, timedelta
+            from task_service.core.time_utils import utcnow
+
+            # 任务名里嵌的是用户看到的本地墙钟（本地日历语义）；created_at 走 UTC naive
             _utc8 = timezone(timedelta(hours=8))
 
             merged_task_name = data.get('merged_task_name') or f"合并任务_{datetime.now(_utc8).strftime('%Y%m%d%H%M%S')}"
@@ -347,7 +350,7 @@ class TaskCrudService:
                 merged_task_name=merged_task_name,
                 description=data.get('description') or '',
                 created_by=data.get('created_by'),
-                now=datetime.now(_utc8),
+                now=utcnow(),
             )
 
             return {

@@ -3,15 +3,14 @@
 
 TaskAggregate / TaskCaseEntity 的加载、持久化与计数更新（DDD 写模型）。
 """
-from datetime import datetime
 from typing import List, Optional
 
 from shared.models.database import get_db_session
 from shared.utils.db_session import with_session
 
-# 中国标准时区（UTC+8），与 _task_converters 保持一致
+# 时间口径：写库一律 UTC naive（INT-2209 / INT-2283），见 task_service.core.time_utils
+from task_service.core.time_utils import utcnow
 from task_service.infrastructure.persistence._task_converters import (
-    _UTC_PLUS_8,
     _task_po_to_entity,
     _apply_aggregate_to_po,
     _task_case_po_to_entity,
@@ -129,7 +128,7 @@ class TaskAggregateMixin:
                 task.completed_cases = (task.completed_cases or 0) + completed_delta
             if failed_delta:
                 task.failed_cases = (task.failed_cases or 0) + failed_delta
-            task.updated_at = datetime.now(_UTC_PLUS_8)
+            task.updated_at = utcnow()
             session.commit()
         except Exception:
             session.rollback()

@@ -8,14 +8,15 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from shared.models.common_enums import DeviceOccupancyStatus, DeviceType
-from shared.models.database import get_db_session, utc8now
+from shared.models.database import get_db_session
+from shared.utils.time_utils import utcnow
 from shared.utils.status_utils import derive_task_case_status, task_case_not_removed
 from shared.utils.status_constants import (
     DEVICE_OCCUPANCY_EXECUTION_STATUSES,
     ExecutionStatus,
     TaskStatus as SharedTaskStatus,
 )
-from task_service.core.time_utils import to_utc_naive
+from task_service.core.time_utils import to_local_naive, to_utc_naive
 from task_service.infrastructure.persistence.models import Task, TaskCase, TaskAPI, TaskDevice
 
 
@@ -65,7 +66,7 @@ class TaskCaseStatsMixin:
             # 重新评估完成时自动更新计数和时间戳
             if old_status == SharedTaskStatus.REEVALUATING and status in (SharedTaskStatus.COMPLETED, SharedTaskStatus.FAILED):
                 task.reevaluation_count = (task.reevaluation_count or 0) + 1
-                task.reevaluated_at = utc8now()
+                task.reevaluated_at = utcnow()
             session.commit()
             return {
                 'task_id': task.id,
@@ -294,7 +295,9 @@ class TaskCaseStatsMixin:
         for (created_at,) in q.all():
             if created_at is None:
                 continue
-            key = TaskCaseStatsMixin._trend_bucket_key(created_at, granularity)
+            # created_at 是库内 UTC naive；趋势图按东八区自然日/周/月分桶（INT-2283）
+            local_created_at = to_local_naive(created_at) or created_at
+            key = TaskCaseStatsMixin._trend_bucket_key(local_created_at, granularity)
             buckets[key] = buckets.get(key, 0) + 1
         items = sorted(
             ({'key': k, 'count': int(c)} for k, c in buckets.items()),
