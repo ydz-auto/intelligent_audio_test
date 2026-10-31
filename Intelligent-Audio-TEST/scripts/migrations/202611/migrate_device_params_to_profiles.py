@@ -28,9 +28,18 @@
     设备仍需它）；下沉后保留原行，解析结果不变（策略内容 = 原行副本）。
     API 侧当年软删是因为不传 api_id 的读路径已废弃，设备侧没有这条前提。
 
-幂等性：
-    策略按 ``(scope, algorithm_type, name)`` 复用；参数/映射按唯一键
-    ``ON CONFLICT DO NOTHING``；设备绑定按 ``device_id`` 唯一索引去重。
+幂等性（INT-2275，语义级：只补「从未有过」的数据）：
+    本脚本留在引导链里、每次部署都会执行，所以不能只看 ``deleted = false`` 的
+    有效行——管理员在 UI 解绑设备（``device_param_bindings.deleted = true``）、
+    删除策略参数/映射、软删整个 default 策略，都是需要跨部署保持的用户状态。
+    口径统一为「有任何历史行（含 deleted=true）即视为已补过」：
+
+      - 策略：``(scope, algorithm_type, name)`` 有有效行 → 复用；只有软删行 →
+        整个算法类型跳过（不重建策略、不回填参数/映射/绑定）；从未有过 → 新建。
+      - 参数/映射：按唯一键 ``NOT EXISTS``（不筛 deleted）判断是否已存在，
+        ``ON CONFLICT DO NOTHING`` 仅作并发兜底。
+      - 设备绑定：``NOT EXISTS`` 不筛 deleted（有历史绑定行即不再补）。
+
     重复执行命中 0 行。
 
 用法：
@@ -91,37 +100,65 @@ _UPSERT_PROFILE_SQL = """
     ON CONFLICT (scope, algorithm_type, name) WHERE deleted = false DO NOTHING
 """
 
+# INT-2275：按 (scope, algorithm_type, name) 取**任意**历史行（含软删），
+# 有效行优先。软删行存在而有效行不存在 = 管理员删掉了 default 策略，
+# 本脚本不得重建（否则每次部署都会复活整条策略链）。
+_GET_ANY_PROFILE_SQL = """
+    SELECT id, COALESCE(deleted, false) FROM param_profiles
+     WHERE scope = %s AND algorithm_type = %s AND name = %s
+     ORDER BY COALESCE(deleted, false) ASC, id ASC
+     LIMIT 1
+"""
+
 _GET_PROFILE_SQL = """
     SELECT id FROM param_profiles
      WHERE scope = %s AND algorithm_type = %s AND name = %s AND deleted = false
 """
 
+# INT-2275：NOT EXISTS 不带 deleted 条件——同键行（哪怕已软删）存在即不补，
+# 用户删掉的策略参数保持删除状态。direction 可能为 NULL，用 IS NOT DISTINCT
+# FROM 比较（普通 = 遇 NULL 恒 UNKNOWN，会让 NULL 行每次部署重复插入）。
 _COPY_PARAMS_SQL = """
     INSERT INTO param_profile_params (
         profile_id, param_code, param_name, label, param_type, direction,
         required, default_value, validation_rules, help_text, ui_order, hidden,
         deleted)
-    SELECT %s, param_code, param_name, label, param_type, direction,
-           required, default_value, validation_rules, help_text, ui_order, hidden,
-           false
-      FROM algorithm_device_params
-     WHERE algorithm_type = %s AND device_id IS NULL AND deleted IS NOT TRUE
+    SELECT %s, a.param_code, a.param_name, a.label, a.param_type, a.direction,
+           a.required, a.default_value, a.validation_rules, a.help_text,
+           a.ui_order, a.hidden, false
+      FROM algorithm_device_params a
+     WHERE a.algorithm_type = %s AND a.device_id IS NULL AND a.deleted IS NOT TRUE
+       AND NOT EXISTS (
+           SELECT 1 FROM param_profile_params pp
+            WHERE pp.profile_id = %s
+              AND pp.param_code = a.param_code
+              AND pp.direction IS NOT DISTINCT FROM a.direction)
     ON CONFLICT (profile_id, param_code, direction) WHERE deleted = false DO NOTHING
 """
 
+# INT-2275：同上，dimension_id 可为 NULL，用 IS NOT DISTINCT FROM。
 _COPY_MAPPINGS_SQL = """
     INSERT INTO param_profile_mappings (
         profile_id, source, source_param, source_direction, dimension_id,
         target_param, transform_type, deleted)
-    SELECT %s, source, source_param, source_direction, dimension_id,
-           target_param, transform_type, false
-      FROM param_mappings
-     WHERE algorithm_type = %s AND source = 'device'
-       AND api_id IS NULL AND device_id IS NULL AND deleted IS NOT TRUE
+    SELECT %s, a.source, a.source_param, a.source_direction, a.dimension_id,
+           a.target_param, a.transform_type, false
+      FROM param_mappings a
+     WHERE a.algorithm_type = %s AND a.source = 'device'
+       AND a.api_id IS NULL AND a.device_id IS NULL AND a.deleted IS NOT TRUE
+       AND NOT EXISTS (
+           SELECT 1 FROM param_profile_mappings pm
+            WHERE pm.profile_id = %s
+              AND pm.source = a.source
+              AND pm.source_param = a.source_param
+              AND pm.dimension_id IS NOT DISTINCT FROM a.dimension_id)
     ON CONFLICT (profile_id, source, source_param, dimension_id)
         WHERE deleted = false DO NOTHING
 """
 
+# INT-2275：NOT EXISTS 不筛 deleted——设备曾在 UI 解绑（绑定行软删）就不再自动
+# 绑回；部分唯一索引 WHERE deleted = false 允许「软删行 + 新行」共存，只看有效行
+# 会让每次部署都补一条绑定。
 _BIND_DEVICES_SQL = """
     INSERT INTO device_param_bindings (device_id, profile_id, deleted)
     SELECT dv.id, %s, false
@@ -129,7 +166,7 @@ _BIND_DEVICES_SQL = """
      WHERE dv.deleted = false
        AND dv.supported_algorithms::jsonb @> to_jsonb(ARRAY[%s]::text[])
        AND NOT EXISTS (SELECT 1 FROM device_param_bindings b
-                        WHERE b.device_id = dv.id AND b.deleted = false)
+                        WHERE b.device_id = dv.id)
     ON CONFLICT (device_id) WHERE deleted = false DO NOTHING
 """
 
@@ -174,6 +211,20 @@ def _print_counts(conn):
 
 
 def _ensure_profile(cur, algorithm_type):
+    """取/建 default 策略。
+
+    返回 ``(profile_id, created)``；策略曾被软删时返回 ``(None, 0)``，调用方应
+    跳过该算法类型的后续步骤（INT-2275：不复活管理员删掉的策略）。
+    """
+    cur.execute(_GET_ANY_PROFILE_SQL, (
+        PROFILE_SCOPE_DEVICE, algorithm_type, PROFILE_NAME_DEFAULT))
+    row = cur.fetchone()
+    if row:
+        profile_id, deleted = row[0], row[1]
+        if deleted:
+            return None, 0
+        return profile_id, 0
+
     cur.execute(_UPSERT_PROFILE_SQL, (
         PROFILE_SCOPE_DEVICE, algorithm_type, PROFILE_NAME_DEFAULT,
         PROFILE_DESCRIPTION, PROFILE_STATUS_ONLINE))
@@ -187,8 +238,8 @@ def _ensure_profile(cur, algorithm_type):
 
 
 def apply(conn):
-    stats = {'types': 0, 'profiles_created': 0, 'params': 0,
-             'mappings': 0, 'devices': 0}
+    stats = {'types': 0, 'profiles_created': 0, 'profiles_skipped': 0,
+             'params': 0, 'mappings': 0, 'devices': 0}
     with conn.cursor() as cur:
         cur.execute(f"SET lock_timeout = '{LOCK_TIMEOUT}'")
         cur.execute(_TYPES_SQL)
@@ -197,12 +248,17 @@ def apply(conn):
         for algorithm_type in types:
             stats['types'] += 1
             profile_id, created = _ensure_profile(cur, algorithm_type)
+            if profile_id is None:
+                stats['profiles_skipped'] += 1
+                print(f"[skip] {algorithm_type}: default 策略已软删，"
+                      "保持删除状态（不重建、不回填）")
+                continue
             stats['profiles_created'] += created
 
-            cur.execute(_COPY_PARAMS_SQL, (profile_id, algorithm_type))
+            cur.execute(_COPY_PARAMS_SQL, (profile_id, algorithm_type, profile_id))
             stats['params'] += cur.rowcount
 
-            cur.execute(_COPY_MAPPINGS_SQL, (profile_id, algorithm_type))
+            cur.execute(_COPY_MAPPINGS_SQL, (profile_id, algorithm_type, profile_id))
             stats['mappings'] += cur.rowcount
 
             cur.execute(_BIND_DEVICES_SQL, (profile_id, algorithm_type))
@@ -213,6 +269,7 @@ def apply(conn):
 
     conn.commit()
     print(f"[ok] 算法类型 {stats['types']} 个；新建策略 {stats['profiles_created']} 个；"
+          f"跳过已软删策略 {stats['profiles_skipped']} 个；"
           f"复制参数 {stats['params']} 条、映射 {stats['mappings']} 条、"
           f"绑定设备 {stats['devices']} 台")
 

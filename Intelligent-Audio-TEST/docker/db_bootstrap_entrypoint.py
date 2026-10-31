@@ -337,8 +337,10 @@ BOOTSTRAP_STEPS = [
     #     default 策略，复制 algorithm_device_params（device_id IS NULL）与
     #     param_mappings(source='device')，并把 supported_algorithms 命中该类型的
     #     设备绑定到策略。算法级行保留作兜底层（与 API 侧软删口径不同）。
-    #     幂等（策略按 scope+type+name 复用、参数/映射 ON CONFLICT、绑定按
-    #     device_id 唯一索引去重）。纯数据写入，须排在 ㊽ ANALYZE 之前。
+    #     幂等（INT-2275 语义级）：只补「从未有过」的数据——策略/参数/映射/绑定
+    #     都按「含已软删行的历史行」判重，管理员在 UI 解绑设备、删策略参数或软删
+    #     default 策略后重跑迁移不会复活；第二遍插入 0 行。纯数据写入，须排在
+    #     ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202611/migrate_device_params_to_profiles.py', '--apply'),
     # ㊾-2 设备/播放设备统一归属缺省实验室：laboratories 为空时按 LAB_NAME
     #     （缺省 lab-a）建实验室，并把 lab_id IS NULL 的在用设备与播放设备挂上去。
