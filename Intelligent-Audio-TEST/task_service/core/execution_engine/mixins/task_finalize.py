@@ -55,8 +55,17 @@ class TaskFinalizeMixin:
                     not_removed,
                     TaskCase.execution_status.in_(ACTIVE_EXECUTION_STATUSES)
                 ).count()
-                failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.FAILED).count()
-                completed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.COMPLETED).count()
+                # INT-2232：移除留痕行不参与收敛判定/计数（与上方三处同口径）
+                failed_cases = local_db_session.query(TaskCase).filter(
+                    TaskCase.task_id == task_id,
+                    not_removed,
+                    TaskCase.status == TaskCaseStatus.FAILED,
+                ).count()
+                completed_cases = local_db_session.query(TaskCase).filter(
+                    TaskCase.task_id == task_id,
+                    not_removed,
+                    TaskCase.status == TaskCaseStatus.COMPLETED,
+                ).count()
 
                 # 如果所有测试用例都已处理完成，提前更新任务状态
                 if all_processed_cases == all_cases and running_cases == 0:
@@ -285,9 +294,14 @@ class TaskFinalizeMixin:
         self._log(level='INFO', content=f"任务已停止，收敛 {len(uncompleted)} 个未完成用例到停止终态", task_id=task_id)
 
     def _has_evaluating_cases(self, task_id, session):
-        """检查是否还有用例在评估中"""
+        """检查是否还有用例在评估中（INT-2232：移除留痕行不参与收敛等待）
+
+        留痕行若停留在评估未提交态，会让等待循环一直以为「还有用例在评估」，
+        只能靠 wait 超时兜底退出。
+        """
         return session.query(TaskCase).filter(
             TaskCase.task_id == task_id,
+            task_case_not_removed(TaskCase),
             TaskCase.evaluation_status.in_([EvaluationStatus.RUNNING, EvaluationStatus.CALCULATING,
                                              EvaluationStatus.QUEUED, EvaluationStatus.PENDING])
         ).count() > 0
@@ -403,7 +417,13 @@ class TaskFinalizeMixin:
                     # 检查是否所有测试用例都失败（INT-305：移除留痕行不计数）
                     all_cases = local_db_session.query(TaskCase).filter(
                         TaskCase.task_id == task.id, not_removed).count()
-                    failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task.id, status=TaskCaseStatus.FAILED).count()
+                    # INT-2232：移除留痕行不参与收敛判定（否则移除唯一失败用例后
+                    # 任务仍被判 failed，与 task_case_stats 的计数口径矛盾）
+                    failed_cases = local_db_session.query(TaskCase).filter(
+                        TaskCase.task_id == task.id,
+                        not_removed,
+                        TaskCase.status == TaskCaseStatus.FAILED,
+                    ).count()
                     all_processed_cases = local_db_session.query(TaskCase).filter(
                         TaskCase.task_id == task.id,
                         not_removed,

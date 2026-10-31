@@ -18,6 +18,11 @@ reevaluate_queued/reevaluating 表达评估侧），本模块用例级 TaskCase 
 失败路径补写的 completed 只是收敛占位） > completed（存在评估完成用例） > pending。
 执行侧：paused > running > failed > stopped > queued > completed > pending；
 评估过渡态不落入执行侧。
+
+INT-2232：移除留痕行（`error_message = '用例已被移除'`，INT-305）不参与任何
+聚合——`_tc_exists` 统一并入未移除条件。否则移除失败用例后，`HAS_EXEC_FAILED`
+仍为真（徽章/筛选仍判 failed），移除的 pending 行也会让 `EXEC_ALL_TERMINAL`
+永远为假（与 task_case_stats 的计数口径矛盾）。
 """
 from sqlalchemy import and_, case, exists, or_, select
 
@@ -25,6 +30,7 @@ from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.utils.status_constants import (
     ExecutionStatus, EvaluationStatus, TaskStatus, ACTIVE_EXECUTION_STATUSES,
 )
+from shared.utils.status_utils import task_case_not_removed
 
 # 用例级执行终态集合（failed/stopped 之外的执行终态为 completed）
 _EXEC_TERMINAL = ('completed', 'failed', 'stopped')
@@ -34,13 +40,15 @@ _EVAL_TRANSITION_STATUSES = (
 )
 # 评估进行中集合（queued/running/calculating；pending=评估未提交不计入）
 _EVAL_IN_PROGRESS = (EvaluationStatus.QUEUED, EvaluationStatus.RUNNING, EvaluationStatus.CALCULATING)
+# INT-2232：移除留痕行不参与双状态聚合（NULL 安全条件，模块级构造按不可变表达式复用）
+_NOT_REMOVED = task_case_not_removed(TaskCase)
 
 
 def _tc_exists(*criteria):
-    """按 task_id 关联的 TaskCase EXISTS 子查询。"""
+    """按 task_id 关联的 TaskCase EXISTS 子查询（移除留痕行一律剔除）。"""
     return exists(
         select(TaskCase.id)
-        .where(TaskCase.task_id == Task.id, *criteria)
+        .where(TaskCase.task_id == Task.id, _NOT_REMOVED, *criteria)
         .correlate(Task)
     )
 
