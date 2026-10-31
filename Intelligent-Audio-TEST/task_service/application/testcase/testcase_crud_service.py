@@ -365,11 +365,15 @@ class TestCaseCrudService:
 
             # 更新基本字段
             group_id = data.get('group_id')
+            group_to_check = None
             if group_id is None and data.get('group'):
                 group_name = data['group']
+                # INT-2242：get_group_by_name 已过滤软删分组——同名已删分组不复用，
+                # 按名称自动建组（否则会挂到已删分组上）
                 group = self.repo.get_group_by_name(group_name)
                 if group:
                     group_id = group.id
+                    group_to_check = group
                 else:
                     group_id = str(uuid.uuid4())
                     self.repo.create_group(
@@ -377,6 +381,22 @@ class TestCaseCrudService:
                         # INT-566：自动建组继承用例可见性（默认 shared）
                         visibility=data.get('visibility'),
                     )
+            elif group_id is not None:
+                # INT-2242：group_id 直传分支对齐 create——先取分组对象再校验，
+                # 软删/不存在 → 404，他人私有 → 403。getattr 防御既有测试替身
+                # repo（未实现该方法时跳过校验，生产仓储恒有）。
+                get_group_by_id = getattr(self.repo, 'get_group_by_id', None)
+                if get_group_by_id is not None:
+                    group_to_check = get_group_by_id(group_id)
+                    if group_to_check is None:
+                        return {'success': False, 'message': '未找到目标分组',
+                                'data': None, 'code': 404}
+
+            if group_to_check is not None:
+                try:
+                    check_object_visible(group_to_check, _uid, _is_admin)
+                except PermissionError as e:
+                    return {'success': False, 'message': str(e), 'data': None, 'code': 403}
 
             if group_id is not None:
                 tc.group_id = group_id

@@ -257,12 +257,15 @@ class TestCaseBatchService(
                     status='submitted', async_task_id=result.get('task_id', ''),
                 )
                 return response
-            # handler 返回 (message, is_error) tuple
-            if isinstance(result, tuple) and len(result) == 2:
-                message, is_error = result
+            # handler 返回 (message, is_error[, code]) tuple
+            # INT-2242：可选第三项为业务码（如目标分组 403/404），缺省沿用 400
+            if isinstance(result, tuple) and len(result) >= 2:
+                message, is_error = result[0], result[1]
+                error_code = result[2] if len(result) > 2 else 400
                 if is_error:
                     self._idempotency_release(idem_key)
-                    return {'success': False, 'message': message, 'data': None, 'code': 400}
+                    return {'success': False, 'message': message, 'data': None,
+                            'code': error_code}
                 # 正常 message，继续 commit
                 message = result[0]
             else:

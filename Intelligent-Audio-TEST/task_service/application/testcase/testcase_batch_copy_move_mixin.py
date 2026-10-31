@@ -35,11 +35,18 @@ class TestCaseCopyMoveMixin:
         return f"已成功恢复 {restored_count} 个用例"
 
     def _batch_move_to_group(self, data, common=None):
-        """批量移动用例到目标分组。"""
+        """批量移动用例到目标分组。
+
+        INT-2242：目标分组先校验存在性（软删/不存在 → 404）与可见性
+        （他人私有 → 403），避免把用例挂到不可写分组。
+        """
         ids = data.get('ids', [])
         target_group_id = data.get('target_group_id')
         if not target_group_id:
             return ("移动操作需要 'target_group_id'", True)
+        _target_group, error = self._resolve_target_group(target_group_id)
+        if error is not None:
+            return error
         self.repo.update_testcase_group_id_by_ids(ids, target_group_id)
         return f"已成功将 {len(ids)} 个用例移动至目标分组"
 
@@ -75,16 +82,19 @@ class TestCaseCopyMoveMixin:
             logger.warning("复制用例时刷新参考文本失败 tc_id=%s", tc.id, exc_info=True)
         return new_tc
 
-    def _case_visible(self, tc) -> bool:
-        """INT-423 单资源可见性判定（复制源）：私有非 owner 跳过。
+    def _row_visible(self, row) -> bool:
+        """INT-423/2242 单资源可见性判定（用例/分组通用）：私有非 owner 不可见。
 
         visibility/created_by_user_id 缺省的对象（测试替身/旧形态 PO）按
         shared 放行——避免替身对象 AttributeError 阻断既有测试。
         """
         from shared.infrastructure.visibility_filter import check_visible
         from task_service.infrastructure.visibility_context import visibility_identity
-        vis = getattr(tc, 'visibility', 'shared') or 'shared'
-        owner = getattr(tc, 'created_by_user_id', None)
+        vis = getattr(row, 'visibility', None)
+        if not isinstance(vis, str) or not vis:
+            # 缺省/非字符串形态（测试替身、旧形态 PO）按 shared 放行
+            vis = 'shared'
+        owner = getattr(row, 'created_by_user_id', None)
         uid, is_admin = visibility_identity()
         try:
             check_visible(owner, vis, uid, is_admin)
@@ -92,19 +102,43 @@ class TestCaseCopyMoveMixin:
         except PermissionError:
             return False
 
+    def _case_visible(self, tc) -> bool:
+        """INT-423 单资源可见性判定（复制源）：私有非 owner 跳过。"""
+        return self._row_visible(tc)
+
+    def _resolve_target_group(self, group_id):
+        """解析写操作目标分组，返回 (group, error)。
+
+        INT-2242：软删/不存在 → 404（repo 软删过滤后视为不存在）；他人私有 →
+        403。error 为 batch_action 可识别的 (message, is_error, code) 三元组。
+        """
+        target = self.repo.get_group_by_id(group_id)
+        if not target:
+            return None, (f"未找到目标分组: {group_id}", True, 404)
+        from task_service.infrastructure.visibility_context import (
+            check_object_visible, visibility_identity,
+        )
+        uid, is_admin = visibility_identity()
+        try:
+            check_object_visible(target, uid, is_admin)
+        except PermissionError as e:
+            return None, (str(e), True, 403)
+        return target, None
+
     def _batch_copy_to_group(self, data, common=None):
         """批量复制用例到指定分组。
 
         INT-423：私有非 owner 源用例跳过（_case_visible 逐行校验）。
+        INT-2242：目标分组校验存在性（404）/可见性（403）。
         """
         ids = data.get('ids', [])
         target_group_id = data.get('target_group_id')
         if not target_group_id:
             return ("复制到分组操作需要 'target_group_id'", True)
 
-        target_group = self.repo.get_group_by_id(target_group_id)
-        if not target_group:
-            return (f"未找到目标分组: {target_group_id}", True)
+        target_group, error = self._resolve_target_group(target_group_id)
+        if error is not None:
+            return error
 
         copied_count = 0
         for tc_id in ids:
@@ -130,18 +164,22 @@ class TestCaseCopyMoveMixin:
         return f"已成功批量复制 {copied_count} 个用例"
 
     def _batch_copy_by_group(self, data, common=None):
-        """按分组整体复制（复制分组下全部用例到新分组）。"""
+        """按分组整体复制（复制分组下全部用例到新分组）。
+
+        INT-2242：源分组不可见/已软删视为不存在（404）；同名目标分组若为他人
+        私有不可复用——另建当前用户自己的同名分组，避免写入不可写分组。
+        """
         group_name = data.get('group_name')
         if not group_name:
             return ("复制分组操作需要 'group_name'", True)
 
         source_group = self.repo.get_group_by_name(group_name)
-        if not source_group:
-            return (f"未找到分组: {group_name}", True)
+        if not source_group or not self._row_visible(source_group):
+            return (f"未找到分组: {group_name}", True, 404)
 
         new_group_name = f"{group_name}_copy"
         existing_group = self.repo.get_group_by_name(new_group_name)
-        if existing_group:
+        if existing_group and self._row_visible(existing_group):
             new_group = existing_group
         else:
             new_group = self.repo.create_group(
@@ -179,7 +217,8 @@ class TestCaseCopyMoveMixin:
         if data.get('copy_to_new_group'):
             new_group_name = f"{tag_name}_copy"
             new_group = self.repo.get_group_by_name(new_group_name)
-            if not new_group:
+            # INT-2242：同名分组为他人私有/已删则不复用，另建当前用户自己的分组
+            if not new_group or not self._row_visible(new_group):
                 new_group = self.repo.create_group(
                     str(uuid.uuid4()), new_group_name, f"从标签 '{tag_name}' 复制"
                 )

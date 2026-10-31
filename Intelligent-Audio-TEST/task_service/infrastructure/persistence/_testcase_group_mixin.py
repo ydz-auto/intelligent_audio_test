@@ -20,14 +20,29 @@ class TestCaseGroupMixin:
     """TestCaseGroup 持久化访问（实现 TestCaseGroupRepositoryABC 契约）"""
 
     def get_group_by_name(self, name: str) -> Optional[TestCaseGroup]:
-        """按名称查询分组。"""
+        """按名称查询未删除的分组（PO）。
+
+        INT-2242：软删分组不再命中——否则写路径（批量复制/移动、用例改分组、
+        按名称自动建组）会把数据挂到已删分组上。可见性不在此过滤：命令侧需要
+        区分「不存在 → 404」与「他人私有 → 403」，由调用方 check_object_visible
+        判定（读路径已有 get_group_by_name_as_dict 做不可见即 404 的口径）。
+        """
         session = get_db_session()
-        return session.query(TestCaseGroup).filter_by(name=name).first()
+        return session.query(TestCaseGroup).filter(
+            TestCaseGroup.name == name,
+            TestCaseGroup.deleted == False,  # noqa: E712
+        ).first()
 
     def get_group_by_id(self, group_id: str) -> Optional[TestCaseGroup]:
-        """按 ID 查询分组。"""
+        """按 ID 查询未删除的分组（PO）；软删视为不存在（INT-2242）。
+
+        可见性口径同 get_group_by_name：不在仓储过滤，交由命令侧判定 403。
+        """
         session = get_db_session()
-        return session.query(TestCaseGroup).filter_by(id=group_id).first()
+        row = session.get(TestCaseGroup, group_id)
+        if row is None or getattr(row, 'deleted', False):
+            return None
+        return row
 
     def create_group(self, group_id: str, name: str, description: str = None,
                      visibility: str = None) -> TestCaseGroup:
