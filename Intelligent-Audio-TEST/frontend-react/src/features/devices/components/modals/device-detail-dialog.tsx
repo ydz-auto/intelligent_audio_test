@@ -148,7 +148,7 @@ export function DeviceDetailDialog(props: DeviceDetailDialogProps) {
                 <Row label='端点' value={apiDevice.endpoints[0]?.endpoint} />
                 <Row label='供应商' value={apiDevice.vendor} />
                 <Row label='算法' value={apiDevice.algorithmType} />
-                <Row label='默认并发' value={apiDevice.defaultMaxProcess} />
+                <Row label='总最大并发' value={apiDevice.defaultMaxProcess} />
                 <Row label='健康分' value={apiDevice.healthScore} />
                 <Row
                   label='RMS-SPL 映射'

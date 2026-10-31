@@ -109,6 +109,45 @@ describe('mergeRequestTemplateMeta（后端整块 replace → 前端合并）', 
     expect(meta.appendix_test).toBe(1)
   })
 
+  it('WS 两段载荷：首帧 / 音频帧按开关写 meta，关闭即删键', () => {
+    const draft = requestTemplateDraftFromMeta({
+      first_frame: { enabled: true, template: { type: 'session.update', session: {} } },
+      audio_frame: { enabled: true, template: { type: 'input_audio_buffer.append', audio: '{{audio_b64}}' } },
+    })
+    expect(draft.firstFrameEnabled).toBe(true)
+    expect(draft.audioFrameEnabled).toBe(true)
+
+    const kept = mergeRequestTemplateMeta(
+      {},
+      { ...draft, firstFrameTemplate: '{"type":"session.update"}', audioFrameTemplate: '{"audio":"{{audio_b64}}"}' },
+      { protocol: 'websocket', streaming: true }
+    )
+    expect(kept.errors).toEqual([])
+    expect(kept.meta.first_frame).toEqual({ enabled: true, template: { type: 'session.update' } })
+    expect(kept.meta.audio_frame).toEqual({ enabled: true, template: { audio: '{{audio_b64}}' } })
+
+    // 关闭开关 → 两个键都删掉，回落执行侧默认载荷
+    const cleared = mergeRequestTemplateMeta(kept.meta, {
+      ...draft,
+      firstFrameEnabled: false,
+      audioFrameEnabled: false,
+    }, { protocol: 'websocket', streaming: true })
+    expect('first_frame' in cleared.meta).toBe(false)
+    expect('audio_frame' in cleared.meta).toBe(false)
+  })
+
+  it('WS 载荷开关打开但模板为空 → 字段级错误', () => {
+    const draft = requestTemplateDraftFromMeta({})
+    const { errors } = mergeRequestTemplateMeta({}, {
+      ...draft,
+      firstFrameEnabled: true,
+      firstFrameTemplate: '   ',
+    }, { protocol: 'websocket', streaming: true })
+    expect(errors).toEqual([
+      { field: 'firstFrameTemplate', message: '首帧载荷不能为空（关闭开关即回落默认载荷）' },
+    ])
+  })
+
   it('非法 JSON → 返回字段级错误（调用方拦截保存）', () => {
     const draft = requestTemplateDraftFromMeta({})
     draft.bodyTemplateText = '{bad json'
@@ -134,8 +173,8 @@ describe('mergeRequestTemplateMeta（后端整块 replace → 前端合并）', 
   })
 })
 
-describe('响应解析页签（INT-1778 §2.3，写 meta 的 8 个键）', () => {
-  it('编辑态回填 8 个键；append_mode 布尔 → 三态文本', () => {
+describe('响应解析页签（INT-1778 §2.3；负责人 2026-10-31 起只写 result_parser / append_mode）', () => {
+  it('编辑态回填 result_parser 与 append_mode；6 个 *_mapping 不再进草稿', () => {
     const draft = responseParserDraftFromMeta({
       result_parser: { asr_text_path: 'data.text', session_id_path: 'data.sid' },
       asr_mapping: 'data.asr.text',
@@ -150,31 +189,26 @@ describe('响应解析页签（INT-1778 §2.3，写 meta 的 8 个键）', () =>
       asr_text_path: 'data.text',
       session_id_path: 'data.sid',
     })
-    expect(draft.asrMapping).toBe('data.asr.text')
-    expect(draft.transMapping).toBe('data.translation')
-    expect(draft.sentenceEndMapping).toBe('data.is_end')
-    expect(draft.sessionEndMapping).toBe('data.finished')
-    expect(draft.errorCodeMapping).toBe('code')
-    expect(draft.errorMsgMapping).toBe('msg')
     expect(draft.appendMode).toBe('true')
+    expect(draft).not.toHaveProperty('asrMapping')
+    expect(draft).not.toHaveProperty('transMapping')
 
     expect(responseParserDraftFromMeta({ append_mode: false }).appendMode).toBe('false')
     expect(responseParserDraftFromMeta({}).appendMode).toBe('')
     expect(responseParserDraftFromMeta(null)).toEqual(emptyResponseParserDraft())
   })
 
-  it('保存：只覆盖 8 个声明键，请求模板 / 未知键原样保留', () => {
+  it('保存：只覆盖声明键，请求模板 / 未知键 / 存量 *_mapping 原样保留', () => {
     const base = {
       protocol: 'wss',
       appendix_test: 1,
       method: 'POST',
       body_template: { text: '{{text}}' },
       asr_mapping: 'old.path',
+      error_code_mapping: 'code',
     }
     const draft = responseParserDraftFromMeta(base)
     draft.resultParser = '{"asr_text_path":"data.text"}'
-    draft.asrMapping = 'data.asr.text'
-    draft.transMapping = ' data.translation '
 
     const { meta, errors } = mergeResponseParserMeta(base, draft)
     expect(errors).toEqual([])
@@ -183,27 +217,26 @@ describe('响应解析页签（INT-1778 §2.3，写 meta 的 8 个键）', () =>
       appendix_test: 1,
       method: 'POST',
       body_template: { text: '{{text}}' },
+      asr_mapping: 'old.path',
+      error_code_mapping: 'code',
       result_parser: { asr_text_path: 'data.text' },
-      asr_mapping: 'data.asr.text',
-      trans_mapping: 'data.translation',
     })
   })
 
-  it('清空 8 个键 → 从 base 删除（后端回落到内置缺省，不写 null / 空串）', () => {
+  it('清空声明键 → 从 base 删除（后端回落到内置缺省），存量 *_mapping 不动', () => {
     const base = {
       result_parser: { asr_text_path: 'a' },
-      asr_mapping: 'a',
       append_mode: true,
+      asr_mapping: 'a',
       appendix_test: 1,
     }
     const draft = responseParserDraftFromMeta(base)
     draft.resultParser = ''
-    draft.asrMapping = '   '
     draft.appendMode = ''
 
     const { meta, errors } = mergeResponseParserMeta(base, draft)
     expect(errors).toEqual([])
-    expect(meta).toEqual({ appendix_test: 1 })
+    expect(meta).toEqual({ asr_mapping: 'a', appendix_test: 1 })
   })
 
   it('append_mode 三态：true / false 写布尔，末态为空串则删键', () => {
@@ -239,13 +272,11 @@ describe('响应解析页签（INT-1778 §2.3，写 meta 的 8 个键）', () =>
 
     const responseMeta = mergeResponseParserMeta(requestMeta, {
       ...emptyResponseParserDraft(),
-      asrMapping: 'data.text',
       appendMode: 'true',
     }).meta
     expect(responseMeta).toEqual({
       appendix_test: 1,
       method: 'POST',
-      asr_mapping: 'data.text',
       append_mode: true,
     })
   })
@@ -488,8 +519,7 @@ describe('A3 / INT-1791：SSE 组（meta.sse 子对象 + method / headers 复用
 
     const responseMeta = mergeResponseParserMeta(requestMeta, {
       ...emptyResponseParserDraft(),
-      asrMapping: 'data.text',
-      sessionEndMapping: 'data.finished',
+      appendMode: 'true',
     }).meta
 
     expect(responseMeta.grpc).toEqual({
@@ -499,13 +529,13 @@ describe('A3 / INT-1791：SSE 组（meta.sse 子对象 + method / headers 复用
       method_kind: 'server_stream',
     })
     expect(responseMeta.vendor_adapter).toBe('GrpcAdapter')
-    expect(responseMeta.asr_mapping).toBe('data.text')
-    expect(responseMeta.session_end_mapping).toBe('data.finished')
+    expect(responseMeta.append_mode).toBe(true)
     expect(responseMeta.appendix_test).toBe(1)
   })
 })
 
-describe('audio_config（顶层列四项）', () => {  it('回填 bit_depth 数字别名 16/24/32 → s16/s24/s32', () => {
+describe('audio_config（输入 / 输出两套格式）', () => {
+  it('存量扁平配置 → 输入输出两侧同值，bit_depth 数字别名归一', () => {
     expect(
       audioConfigDraftFrom({
         sample_rate: 16000,
@@ -513,38 +543,70 @@ describe('audio_config（顶层列四项）', () => {  it('回填 bit_depth 数�
         channels: 1,
         container: 'pcm',
       })
-    ).toEqual({ sampleRate: '16000', bitDepth: 's16', channels: '1', container: 'pcm' })
-  })
-
-  it('null → 全空草稿', () => {
-    expect(audioConfigDraftFrom(null)).toEqual({
-      sampleRate: '',
-      bitDepth: '',
-      channels: '',
-      container: '',
+    ).toEqual({
+      input: { sampleRate: '16000', bitDepth: 's16', channels: '1', container: 'pcm' },
+      output: { sampleRate: '16000', bitDepth: 's16', channels: '1', container: 'pcm' },
     })
   })
 
-  it('保存保留 base 中本页签不编辑的已知键（format / chunk_duration_ms）', () => {
+  it('分向对象优先于扁平；只配单侧时另一侧取同值', () => {
+    const draft = audioConfigDraftFrom({
+      sample_rate: 8000,
+      input: { sample_rate: 16000, bit_depth: 's24', channels: 2, container: 'wav' },
+    })
+    expect(draft.input).toEqual({
+      sampleRate: '16000',
+      bitDepth: 's24',
+      channels: '2',
+      container: 'wav',
+    })
+    expect(draft.output.sampleRate).toBe('16000')
+  })
+
+  it('null → 两侧全空草稿', () => {
+    expect(audioConfigDraftFrom(null)).toEqual({
+      input: { sampleRate: '', bitDepth: '', channels: '', container: '' },
+      output: { sampleRate: '', bitDepth: '', channels: '', container: '' },
+    })
+  })
+
+  it('保存保留 base 中不编辑的已知键（format / chunk_duration_ms）并复制进两侧', () => {
     const base = { format: 'pcm', chunk_duration_ms: 100, sample_rate: 8000 }
     const draft = audioConfigDraftFrom(base)
-    draft.sampleRate = '24000'
-    draft.channels = '2'
+    draft.input.sampleRate = '24000'
+    draft.input.channels = '2'
     expect(buildAudioConfig(base, draft)).toEqual({
       format: 'pcm',
       chunk_duration_ms: 100,
-      sample_rate: 24000,
-      channels: 2,
+      input: {
+        format: 'pcm',
+        chunk_duration_ms: 100,
+        sample_rate: 24000,
+        channels: 2,
+      },
+      output: {
+        format: 'pcm',
+        chunk_duration_ms: 100,
+        sample_rate: 8000,
+      },
     })
   })
 
-  it('四项全清空 → 空对象（显式清除）', () => {
+  it('扁平四项改写为分向对象（不再写顶层四项）', () => {
     const base = { sample_rate: 8000, bit_depth: 's16', channels: 1, container: 'pcm' }
     const draft = audioConfigDraftFrom(base)
-    draft.sampleRate = ''
-    draft.bitDepth = ''
-    draft.channels = ''
-    draft.container = ''
+    draft.output.sampleRate = '16000'
+    expect(buildAudioConfig(base, draft)).toEqual({
+      input: { sample_rate: 8000, bit_depth: 's16', channels: 1, container: 'pcm' },
+      output: { sample_rate: 16000, bit_depth: 's16', channels: 1, container: 'pcm' },
+    })
+  })
+
+  it('两侧四项全清空 → 空对象（显式清除）', () => {
+    const base = { sample_rate: 8000, bit_depth: 's16', channels: 1, container: 'pcm' }
+    const draft = audioConfigDraftFrom(base)
+    draft.input = { sampleRate: '', bitDepth: '', channels: '', container: '' }
+    draft.output = { sampleRate: '', bitDepth: '', channels: '', container: '' }
     expect(buildAudioConfig(base, draft)).toEqual({})
   })
 })

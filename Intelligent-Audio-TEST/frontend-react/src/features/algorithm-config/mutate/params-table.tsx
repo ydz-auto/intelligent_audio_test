@@ -1,8 +1,9 @@
 /**
- * §6.4 统一参数表（INT-591 降维核心：设备/用例两数组并集展示 + 作用域 chips 过滤）。
- * 两数组各自 useFieldArray，合并为带 kind 标记的受控行；列随作用域 chip 动态显隐
- * （设备隐藏用例专属列，用例隐藏方向列，「全部」全列展示）。
- * 行级 cell 直接 Input/Select/Checkbox 编辑，blur 即入表单态 + 失焦防抖草稿保存（§6.2，hook 层挂载）。
+ * §6.4 统一参数表（INT-591 降维核心：用例参数一行一列可编辑）。
+ *
+ * 设备参数已迁到「设备管理 → 行操作 → 参数配置」（按 device_id 做设备级覆盖）；
+ * 本表只维护用例参数；`deviceParams` 仍随表单载入与整份保存，只是不再在这里展示 /
+ * 编辑，避免整份保存时把算法级设备参数误删。
  */
 import { Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -16,12 +17,6 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -93,7 +88,7 @@ export function ParamsTable({
   const watchParams = form.watch()
 
   const counts = {
-    device: device.fields.length,
+    device: 0,
     case: cases.fields.length,
   }
 
@@ -151,19 +146,7 @@ export function ParamsTable({
     }
   }
 
-  /* ───────── 添加参数（随 chip 定作用域；「全部」下小菜单二选） ───────── */
-
-  const appendDevice = () =>
-    device.append({
-      key: `d-${Date.now()}-${device.fields.length}`,
-      paramCode: '',
-      paramName: '',
-      direction: 'input',
-      paramType: 'text',
-      required: false,
-      defaultValue: '',
-      helpText: '',
-    })
+  /* ───────── 添加用例参数 ───────── */
 
   const appendCase = () =>
     cases.append({
@@ -186,17 +169,12 @@ export function ParamsTable({
   /* ───────── 合并行 + 过滤（scope chips → 搜索/类型/必填） ───────── */
 
   const visibleRows = useMemo(() => {
-    const rows: MergedRow[] = []
-    if (scope === 'all' || scope === 'device') {
-      device.fields.forEach((field, index) =>
-        rows.push({ kind: 'device', index, key: field.key })
-      )
-    }
-    if (scope === 'all' || scope === 'case') {
-      cases.fields.forEach((field, index) =>
-        rows.push({ kind: 'case', index, key: field.key })
-      )
-    }
+    // 设备参数不在本表展示（设备管理 → 参数配置），只列用例参数
+    const rows: MergedRow[] = cases.fields.map((field, index) => ({
+      kind: 'case',
+      index,
+      key: field.key,
+    }))
 
     const keyword = search.trim().toLowerCase()
     const filterType = typeFilter !== 'all' ? typeFilter : null
@@ -222,10 +200,10 @@ export function ParamsTable({
       return true
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, search, typeFilter, requiredFilter, device.fields, cases.fields, watchParams])
+  }, [scope, search, typeFilter, requiredFilter, cases.fields, watchParams])
 
-  const showDirection = scope !== 'case'
-  const showCaseOnly = scope === 'all' || scope === 'case'
+  const showDirection = false
+  const showCaseOnly = true
 
   return (
     <div className='space-y-2'>
@@ -236,6 +214,11 @@ export function ParamsTable({
         featureBundles={featureBundles}
         onToggleBundle={toggleBundle}
       />
+
+      <p className='text-muted-foreground text-xs'>
+        本表只维护用例参数。设备参数在「设备管理 → 行操作 → 参数配置」按设备配置（设备级覆盖算法级）。
+        被测 API 的字段在 API 编辑弹窗 →「参数配置」。
+      </p>
 
       {showBundlesHint(scope) && (
         <p className='text-muted-foreground text-xs'>{FEATURE_BUNDLES_HINT}</p>
@@ -291,36 +274,10 @@ export function ParamsTable({
           </SelectContent>
         </Select>
         <div className='ml-auto'>
-          {scope === 'all' ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button variant='outline' size='sm' type='button' aria-label='添加参数' />
-                }
-              >
-                <Plus aria-hidden='true' />
-                添加参数
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='end' className='w-40'>
-                <DropdownMenuItem onClick={appendDevice}>
-                  添加设备参数
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={appendCase}>
-                  添加用例参数
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <Button
-              variant='outline'
-              size='sm'
-              type='button'
-              onClick={scope === 'device' ? appendDevice : appendCase}
-            >
-              <Plus aria-hidden='true' />
-              添加参数
-            </Button>
-          )}
+          <Button variant='outline' size='sm' type='button' onClick={appendCase}>
+            <Plus aria-hidden='true' />
+            添加用例参数
+          </Button>
         </div>
       </div>
 

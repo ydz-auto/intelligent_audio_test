@@ -174,34 +174,18 @@ export interface ApiParsePreviewInput {
   sampleResponse: unknown
   /** 与 meta.result_parser 同形；非法 JSON 由调用方先拦截 */
   resultParser?: Record<string, unknown>
-  asrMapping?: string
-  transMapping?: string
-  sentenceEndMapping?: string
-  sessionEndMapping?: string
-  errorCodeMapping?: string
-  errorMsgMapping?: string
 }
 
 /**
  * 响应解析预览（INT-1772；`POST /apis/parse-preview`，api_config:read）。
  * 纯函数端点：不读库、不发外部请求、无副作用；A3 首次在 React 侧接上（§二.4）。
+ * 负责人 2026-10-31：6 个 `*_mapping` 不再由 UI 提供，请求体只带 result_parser。
  */
 export async function parseApiResponsePreview(
   input: ApiParsePreviewInput
 ): Promise<ApiParsePreviewResult> {
   const body: Record<string, unknown> = { sample_response: input.sampleResponse }
   if (input.resultParser !== undefined) body.result_parser = input.resultParser
-  const mappingKeys = [
-    ['asr_mapping', input.asrMapping],
-    ['trans_mapping', input.transMapping],
-    ['sentence_end_mapping', input.sentenceEndMapping],
-    ['session_end_mapping', input.sessionEndMapping],
-    ['error_code_mapping', input.errorCodeMapping],
-    ['error_msg_mapping', input.errorMsgMapping],
-  ] as const
-  for (const [key, value] of mappingKeys) {
-    if (value && value.trim()) body[key] = value.trim()
-  }
   const dto = await request<ApiParsePreviewDataDto>('POST', '/apis/parse-preview', body)
   return apiParsePreviewFromDto(dto ?? ({} as ApiParsePreviewDataDto))
 }

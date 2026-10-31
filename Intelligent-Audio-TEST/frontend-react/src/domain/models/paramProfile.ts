@@ -90,10 +90,10 @@ export interface ParamProfileParam {
   fieldPath: string | null
 }
 
-/** 映射行（source 恒 api；dimension_id 决定归入评估维度） */
+/** 映射行（source: api = API 输出 → 评估；case = 用例参数 → API 输入字段） */
 export interface ParamProfileMapping {
   id: number
-  source: 'api'
+  source: 'api' | 'case'
   sourceDirection: ParamDirection
   sourceParam: string
   dimensionId: number | null
@@ -108,6 +108,19 @@ export interface ParamProfileBinding {
   profileId: number
 }
 
+/**
+ * API 配置快照（策略里可复用的「非端点」配置）：
+ * 协议 / 流式性 / 厂商适配器 / 音频格式 / meta（请求模板、响应解析、会话、节奏、首帧/音频帧载荷）。
+ * 端点地址与密钥属于实例私有，不进快照。
+ */
+export interface ApiConfigSnapshot {
+  protocol: string | null
+  streaming: boolean | null
+  vendorAdapter: string | null
+  audioConfig: Record<string, unknown> | null
+  meta: Record<string, unknown> | null
+}
+
 /** 可复用参数策略（列表不带 params/mappings，详情带） */
 export interface ParamProfile {
   id: number
@@ -117,6 +130,8 @@ export interface ParamProfile {
   description: string | null
   status: ParamProfileStatus
   clonedFrom: number | null
+  /** API 配置快照（null = 旧策略，仅参数配置） */
+  config: ApiConfigSnapshot | null
   params: ParamProfileParam[]
   mappings: ParamProfileMapping[]
   createdAt: string | null
@@ -141,7 +156,8 @@ export interface ParamProfileParamDraft {
 }
 
 export interface ParamProfileMappingDraft {
-  source: 'api'
+  /** 源参数来源：api = API 输出（→ 评估）；case = 用例参数（→ API 输入字段） */
+  source: 'api' | 'case'
   sourceDirection: ParamDirection
   sourceParam: string
   targetParam: string
@@ -156,6 +172,8 @@ export interface ParamProfileInput {
   name: string
   description: string | null
   status: ParamProfileStatus
+  /** API 配置快照（新建 API 可整体套用；null = 不覆盖既有快照） */
+  config?: ApiConfigSnapshot | null
   params: ParamProfileParamDraft[]
   mappings: ParamProfileMappingDraft[]
 }

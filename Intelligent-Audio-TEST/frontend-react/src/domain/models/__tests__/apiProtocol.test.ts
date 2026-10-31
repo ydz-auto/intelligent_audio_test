@@ -1,6 +1,6 @@
 /**
  * INT-1800 / B0《09_API协议面与执行道契约》：协议 × 流式性两维的领域口径单测。
- * 锁定：4 值协议词表、可用矩阵（A3 / INT-1791 起 = 后端六组合同一张表）、
+ * 锁定：4 值协议词表、可用矩阵（A3 / INT-1791 + A4 / INT-2079 = 后端七组合同一张表）、
  * 流式开关锁定、亲和域令牌只由 streaming 派生。
  */
 import { describe, expect, it } from 'vitest'
@@ -43,11 +43,11 @@ describe('协议值域（B0 §3.2.1：只存规范值 4 个）', () => {
   })
 })
 
-describe('可用矩阵（A3 / INT-1791：与后端 AVAILABLE_PROTOCOL_STREAMING 同一张六组合表）', () => {
+describe('可用矩阵（A3 / INT-1791 + A4 / INT-2079：与后端 AVAILABLE_PROTOCOL_STREAMING 同一张七组合表）', () => {
   const expected: Record<string, boolean> = {
     'http:false': true,
     'http:true': true,
-    'websocket:false': false,
+    'websocket:false': true,
     'websocket:true': true,
     'sse:false': false,
     'sse:true': true,
@@ -75,7 +75,7 @@ describe('可用矩阵（A3 / INT-1791：与后端 AVAILABLE_PROTOCOL_STREAMING 
   it('流式开关仅在协议有多种可写形态时解锁', () => {
     expect(isStreamingLocked('http')).toBe(false)
     expect(isStreamingLocked('grpc')).toBe(false)
-    expect(isStreamingLocked('websocket')).toBe(true)
+    expect(isStreamingLocked('websocket')).toBe(false)
     expect(isStreamingLocked('sse')).toBe(true)
     expect(isStreamingLocked('https')).toBe(true)
   })
@@ -98,9 +98,8 @@ describe('可用矩阵（A3 / INT-1791：与后端 AVAILABLE_PROTOCOL_STREAMING 
     expect(unavailableCombinationReason('sse', false)).toBe(
       '协议 sse 与流式性 streaming=false 的组合实现未上线'
     )
-    expect(unavailableCombinationReason('websocket', false)).toBe(
-      '协议 websocket 与流式性 streaming=false 的组合实现未上线'
-    )
+    // A4（INT-2079）：websocket + 非流式（请求-响应）已上线，不再报未实现
+    expect(unavailableCombinationReason('websocket', false)).toBeNull()
     expect(unavailableCombinationReason('https', false)).toBe('协议取值非法')
   })
 

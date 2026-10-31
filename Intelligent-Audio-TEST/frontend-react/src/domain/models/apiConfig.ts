@@ -78,6 +78,8 @@ export interface ApiConfig {
  */
 export type AlgorithmApiParam = {
   id: number
+  /** 设备级作用域：null = 算法类型级默认，非空 = 该设备覆盖 */
+  deviceId?: number | null
   paramCode: string
   paramName: string | null
   label: string | null

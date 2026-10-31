@@ -2,7 +2,7 @@
  * 测试 API 列表数据表（16_设备域.md §3.6；DataTablePage 对位）。
  * 列：☑选择/ID/API名称(+vendor)/协议/环境/状态/算法/端点数/默认并发/健康分(Progress h-1+tabular)/
  * RMS-SPL 默认映射/更新时间/操作。API 不挂实验室维度（§3.6 注 / INT-487）。
- * 主行右侧 ChevronRight 展开行：端点明细 StaticDataTable（URL/名称/优先级/最大进程/超时/音频时长/状态）。
+ * 主行右侧 ChevronRight 展开行：端点明细 StaticDataTable（URL/名称/优先级/端点最大并发/超时/音频时长/状态）。
  * 离线 API 行 DISABLED_ROW + Checkbox 禁用 + Tooltip「API 离线，无法执行测试」（§3.6 注）。
  */
 import { BadgeCheck, ChevronDown, ChevronRight, Cloud, Link2Off } from 'lucide-react'
@@ -146,7 +146,7 @@ export function ApiDeviceTable(props: ApiDeviceTableProps) {
               <th className='px-3 py-2 text-left font-medium'>状态</th>
               <th className='px-3 py-2 text-left font-medium'>算法</th>
               <th className='px-3 py-2 text-right font-medium'>端点数</th>
-              <th className='px-3 py-2 text-right font-medium'>默认并发</th>
+              <th className='px-3 py-2 text-right font-medium'>总最大并发</th>
               <th className='w-32 px-3 py-2 text-left font-medium'>健康分</th>
               <th className='px-3 py-2 text-left font-medium'>RMS-SPL 默认映射</th>
               <th className='px-3 py-2 text-left font-medium'>更新时间</th>
@@ -340,7 +340,7 @@ export function ApiDeviceTable(props: ApiDeviceTableProps) {
                             },
                             {
                               key: 'maxProcess',
-                              header: '最大进程',
+                              header: '端点最大并发',
                               className: 'text-right tabular-nums',
                               render: (ep) => ep.maxProcess ?? '—',
                             },

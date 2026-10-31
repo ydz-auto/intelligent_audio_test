@@ -331,16 +331,42 @@ describe('参数配置页签', () => {
 })
 
 describe('降级口径', () => {
-  it('新建 API（无 id）→ 提示保存后可用，不发任何参数配置请求', async () => {
+  it('新建 API（无 id）→ 可直接配置参数，且不发参数/映射读请求（策略列表照拉）', async () => {
     // 新建 API 的算法类型来自全局算法（此处显式预设，避免先命中「未选择关联算法」）
     algorithmOptions.list = [{ id: 'voice_llm', name: '小艺语音大模型' }]
     useAlgorithmStore.setState({ algorithmId: 'voice_llm' })
     renderDialog(undefined)
     openTab('参数配置')
-    expect(await screen.findByText('新建 API：保存后可用')).toBeInTheDocument()
+    expect(await screen.findByText('新建 API：现在就能配参数')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '新增输出字段' })).toBeEnabled()
     expect(paramsMock).not.toHaveBeenCalled()
     expect(mappingsMock).not.toHaveBeenCalled()
-    expect(listProfilesMock).not.toHaveBeenCalled()
+    // 新建态也要能「套用配置策略」，故按算法类型拉取策略列表（与 apiId 无关）
+    await waitFor(() => expect(listProfilesMock).toHaveBeenCalledWith('voice_llm', 'api'))
+  })
+
+  it('新建 API：参数草稿随底部「保存」一并提交（无需先保存再回来配）', async () => {
+    algorithmOptions.list = [{ id: 'voice_llm', name: '小艺语音大模型' }]
+    useAlgorithmStore.setState({ algorithmId: 'voice_llm' })
+    renderDialog(undefined)
+    openTab('参数配置')
+
+    fireEvent.click(screen.getByRole('button', { name: '新增输出字段' }))
+    fireEvent.change(screen.getByLabelText('参数代码'), { target: { value: 'asr_text' } })
+
+    openTab('基础')
+    fireEvent.change(screen.getByLabelText('API 名称 *'), { target: { value: '新建_API' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
+    const call = saveMock.mock.calls[0] as unknown as [
+      Record<string, unknown>,
+      { algorithmType: string; params: Array<{ paramCode: string; direction: string }> },
+    ]
+    expect(call[1].algorithmType).toBe('voice_llm')
+    expect(call[1].params.map((p) => [p.paramCode, p.direction])).toEqual([
+      ['asr_text', 'output'],
+    ])
   })
 
   it('未选择关联算法 → 策略下拉与保存禁用并提示', () => {

@@ -208,6 +208,10 @@ export function ApiSection({
             添加输入
           </Button>
         </div>
+        <p className='text-muted-foreground text-xs'>
+          这里是评估契约：声明本维度需要 API 提供哪些入参，不代表 API 实际字段；
+          API 侧字段在「算法配置 → 参数策略」与该 API 编辑弹窗的「参数配置」里维护。
+        </p>
         <div className='space-y-2'>
           {inputs.fields.map((row, index) => (
             <div
@@ -315,7 +319,8 @@ export function ApiSection({
           </Button>
         </div>
         <p className='text-muted-foreground text-xs'>
-          配置评估结果提取字段及聚合角色（用于报告统计）
+          配置评估结果提取字段及聚合角色（用于报告统计）。字段路径从 API 响应里取；
+          与 API 弹窗「参数配置 → 输出字段」是两件事：那边声明响应里有什么，这里声明取哪个来算分。
         </p>
         <div className='space-y-2'>
           {outputs.fields.map((row, index) => (

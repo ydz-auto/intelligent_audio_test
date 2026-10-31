@@ -92,31 +92,22 @@ function withRange(minValue: string, maxValue: string): AlgorithmFormValues {
 }
 
 describe('ParamsTable 统一参数表（§6.4）', () => {
-  it('默认「全部」chip：设备/用例参数行并集展示，徽标区分来源', () => {
+  it('默认「全部」chip：只展示用例参数行（设备参数已迁到设备管理）', () => {
     render(<Harness />)
 
-    // 两个作用域徽标各出现一次（2 行）
-    expect(screen.getByText('设备')).toBeInTheDocument()
+    // 设备参数不在算法弹窗展示（设备管理 → 行操作 → 参数配置）
+    expect(screen.queryByDisplayValue('input_audio')).not.toBeInTheDocument()
+    expect(screen.queryByText('设备')).not.toBeInTheDocument()
+    // 用例参数行仍在
     expect(screen.getByText('用例')).toBeInTheDocument()
-    // 参数代码行内容
-    expect(screen.getByDisplayValue('input_audio')).toBeInTheDocument()
     expect(screen.getByDisplayValue('noise_level')).toBeInTheDocument()
     // 算法级 API 入参行已移除
     expect(screen.queryByText('API')).not.toBeInTheDocument()
   })
 
-  it('切「设备」chip：仅设备行可见，方向列保留、用例专属列隐藏', async () => {
-    const user = userEvent.setup()
+  it('不再提供「设备」chip（设备参数在设备管理页配置）', () => {
     render(<Harness />)
-
-    await user.click(screen.getByRole('button', { name: /设备 \(1\)/ }))
-
-    // 设备行保留，用例行隐藏
-    expect(screen.getByDisplayValue('input_audio')).toBeInTheDocument()
-    expect(screen.queryByDisplayValue('noise_level')).not.toBeInTheDocument()
-    // 列随 chip 动态显隐：设备态保留「方向」列，隐藏用例专属「适用范围」列
-    expect(screen.getByText('方向')).toBeInTheDocument()
-    expect(screen.queryByText('适用范围')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /设备 \(/ })).not.toBeInTheDocument()
   })
 
   it('切「用例」chip：仅用例行可见 + 功能特性快捷开关显示 + 方向列隐藏', async () => {
@@ -134,15 +125,15 @@ describe('ParamsTable 统一参数表（§6.4）', () => {
     expect(screen.getByText('勾选后自动批量添加/删除对应参数')).toBeInTheDocument()
   })
 
-  it('「全部」chip 下「添加参数」为小菜单（设备/用例两作用域可选）', async () => {
+  it('「添加用例参数」为单按钮（设备参数入口已迁走）', async () => {
     const user = userEvent.setup()
     render(<Harness />)
 
-    await user.click(screen.getByRole('button', { name: '添加参数' }))
+    const addButton = screen.getByRole('button', { name: '添加用例参数' })
+    await user.click(addButton)
 
-    expect(screen.getByText('添加设备参数')).toBeInTheDocument()
-    expect(screen.getByText('添加用例参数')).toBeInTheDocument()
-    expect(screen.queryByText(/添加.*API.*参数/)).not.toBeInTheDocument()
+    expect(screen.queryByText('添加设备参数')).not.toBeInTheDocument()
+    expect(screen.getAllByDisplayValue('').length).toBeGreaterThan(0)
   })
 
   it('用例行标注代码为下拉（算法类型/标注代码映射，INT-1030）', async () => {
@@ -180,11 +171,11 @@ describe('ParamsTable 范围约束字段级校验（INT-1540）', () => {
 })
 
 describe('ParamScopeChips 作用域 chips（§6.4）', () => {
-  it('chips 计数实时随行数（全部=2；无 API chip）', () => {
+  it('chips 只保留 全部/用例 两项且计数随行数（无设备/API chip）', () => {
     render(<Harness />)
-    expect(screen.getByRole('button', { name: /全部 \(2\)/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /设备 \(1\)/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /全部 \(1\)/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /用例 \(1\)/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /设备 \(/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /API/ })).not.toBeInTheDocument()
   })
 })

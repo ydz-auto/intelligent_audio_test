@@ -97,6 +97,13 @@ export interface RequestTemplateDraft {
   sessionConfig: string
   pacing: string
   vendorAdapter: string
+  /* ---- WS 流式的两段载荷（Qwen live-translate 这类方言） ---- */
+  /** 首帧载荷（meta.first_frame，建连后一次；占位符取自 session_config） */
+  firstFrameEnabled: boolean
+  firstFrameTemplate: string
+  /** 音频帧载荷（meta.audio_frame；占位符 {{audio_b64}} / {{event_id}}） */
+  audioFrameEnabled: boolean
+  audioFrameTemplate: string
   /* ---- gRPC 组（meta.grpc；A3 §4.1） ---- */
   grpcProtoObjectKey: string
   grpcProtoSha256: string
@@ -125,6 +132,8 @@ export interface MetaDraftError {
     | 'wsHeaders'
     | 'sessionConfig'
     | 'pacing'
+    | 'firstFrameTemplate'
+    | 'audioFrameTemplate'
     | 'grpcProto'
     | 'grpcService'
     | 'grpcMethod'
@@ -181,6 +190,10 @@ export function emptyRequestTemplateDraft(): RequestTemplateDraft {
     sessionConfig: '',
     pacing: '',
     vendorAdapter: '',
+    firstFrameEnabled: false,
+    firstFrameTemplate: '',
+    audioFrameEnabled: false,
+    audioFrameTemplate: '',
     grpcProtoObjectKey: '',
     grpcProtoSha256: '',
     grpcProtoSize: '',
@@ -208,6 +221,8 @@ export function requestTemplateDraftFromMeta(
   // meta.grpc / meta.sse 是嵌套对象（A3 §二.3）：子键逐键回填，缺省留空不预填
   const grpc = isPlainObject(base.grpc) ? base.grpc : {}
   const sse = isPlainObject(base.sse) ? base.sse : {}
+  const firstFrame = isPlainObject(base.first_frame) ? base.first_frame : {}
+  const audioFrame = isPlainObject(base.audio_frame) ? base.audio_frame : {}
   return {
     method: typeof base.method === 'string' ? base.method : '',
     headers: rowsFromRecord(base.headers),
@@ -217,6 +232,10 @@ export function requestTemplateDraftFromMeta(
     sessionConfig: valueToText(base.session_config),
     pacing: valueToText(base.pacing),
     vendorAdapter: typeof base.vendor_adapter === 'string' ? base.vendor_adapter : '',
+    firstFrameEnabled: firstFrame.enabled === true,
+    firstFrameTemplate: valueToText(firstFrame.template),
+    audioFrameEnabled: audioFrame.enabled === true,
+    audioFrameTemplate: valueToText(audioFrame.template),
     grpcProtoObjectKey: valueToText(grpc.proto_object_key),
     grpcProtoSha256: valueToText(grpc.proto_sha256),
     grpcProtoSize: valueToText(grpc.proto_size),
@@ -234,6 +253,112 @@ export function requestTemplateDraftFromMeta(
     sseMaxDurationMs: valueToText(sse.max_duration_ms),
   }
 }
+
+/**
+ * 写一段「开关 + JSON 模板」的载荷配置（meta.first_frame / meta.audio_frame）。
+ *
+ * 后端契约：`{"enabled": true, "template": {...}}`；关闭时删键，回落执行侧默认
+ * （首帧 = session.update，音频帧 = input_audio_buffer.append）。
+ */
+function mergeFrameTemplate(
+  next: Record<string, unknown>,
+  key: 'first_frame' | 'audio_frame',
+  enabled: boolean,
+  text: string,
+  label: string,
+  field: 'firstFrameTemplate' | 'audioFrameTemplate',
+  errors: MetaDraftError[]
+): void {
+  if (!enabled) {
+    assignOrDelete(next, key, undefined)
+    return
+  }
+  if (!text.trim()) {
+    errors.push({ field, message: `${label}不能为空（关闭开关即回落默认载荷）` })
+    return
+  }
+  const template = parseJsonObject(text, label, field, errors)
+  if (!template) return
+  next[key] = { enabled: true, template }
+}
+
+/**
+ * 从请求模板 / 响应解析推导字段（INT-1778 后的自动口径）：
+ *
+ * - 输入字段 = `body_template` 里出现的 `{{占位符}}`（下发时由渲染器替换）；
+ * - 输出字段 = `result_parser` 声明的 asr_text_path / trans_text_path / session_id_path。
+ *
+ * 用途：参数配置页签在用户没手工声明时也能看到「这套配置会用到/产出哪些字段」，
+ * 避免出现「没有地方配置输入字段」的死角。
+ */
+export interface DerivedFields {
+  /** 请求模板占位符（去重、保持出现顺序） */
+  input: string[]
+  /** 响应解析声明的输出字段（code 为字段名，path 为响应路径） */
+  output: Array<{ code: string; path: string }>
+}
+
+const RESULT_PARSER_OUTPUT_KEYS: Array<{ key: string; code: string }> = [
+  { key: 'asr_text_path', code: 'asr_text' },
+  { key: 'trans_text_path', code: 'trans_text' },
+  { key: 'session_id_path', code: 'session_id' },
+]
+
+function collectPlaceholders(value: unknown, out: string[]): void {
+  if (typeof value === 'string') {
+    for (const match of value.matchAll(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g)) {
+      if (!out.includes(match[1])) out.push(match[1])
+    }
+    return
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectPlaceholders(item, out))
+    return
+  }
+  if (value && typeof value === 'object') {
+    Object.values(value as Record<string, unknown>).forEach((item) =>
+      collectPlaceholders(item, out)
+    )
+  }
+}
+
+export function deriveFieldsFromMeta(
+  meta: Record<string, unknown> | null | undefined
+): DerivedFields {
+  const base = isPlainObject(meta) ? meta : {}
+  const input: string[] = []
+  collectPlaceholders(base.body_template, input)
+  collectPlaceholders(base.body, input)
+
+  const parser = isPlainObject(base.result_parser) ? base.result_parser : {}
+  const output = RESULT_PARSER_OUTPUT_KEYS.map(({ key, code }) => ({
+    code,
+    path: valueToText(parser[key]),
+  })).filter((row) => row.path.trim() !== '')
+
+  return { input, output }
+}
+
+/**
+ * WS 两段载荷的示例提示（Qwen live-translate 方言，实测自 `第三方/qwen_api`）：
+ * 首帧 = session.update，音频帧 = input_audio_buffer.append。
+ */
+export const FIRST_FRAME_HINT = `{
+  "event_id": "event_{{timestamp_ms}}",
+  "type": "session.update",
+  "session": {
+    "modalities": ["text", "audio"],
+    "input_audio_format": "pcm16",
+    "output_audio_format": "pcm16",
+    "translation": { "language": "en" }
+  }
+}`
+
+export const AUDIO_FRAME_HINT = `{
+  "event_id": "event_{{timestamp_ms}}",
+  "type": "input_audio_buffer.append",
+  "audio": "{{audio_b64}}"
+}`
 
 /**
  * 请求模板页签的显隐与合并（INT-1800 / B0 §3.5：协议决定请求配置区，流式性决定轮次/会话配置区）：
@@ -569,6 +694,27 @@ export function mergeRequestTemplateMeta(
       parseJsonObject(draft.sessionConfig, '会话配置', 'sessionConfig', errors)
     )
     assignOrDelete(next, 'pacing', parseJsonObject(draft.pacing, '节奏控制', 'pacing', errors))
+    // WS 流式的两段载荷（Qwen live-translate 这类方言）：首帧一次、音频帧每 100ms
+    if (target.protocol === 'websocket') {
+      mergeFrameTemplate(
+        next,
+        'first_frame',
+        draft.firstFrameEnabled,
+        draft.firstFrameTemplate,
+        '首帧载荷',
+        'firstFrameTemplate',
+        errors
+      )
+      mergeFrameTemplate(
+        next,
+        'audio_frame',
+        draft.audioFrameEnabled,
+        draft.audioFrameTemplate,
+        '音频帧载荷',
+        'audioFrameTemplate',
+        errors
+      )
+    }
   }
 
   const vendorAdapter = draft.vendorAdapter.trim()
@@ -582,31 +728,16 @@ export function mergeRequestTemplateMeta(
 /* ------------------------------------------------------------------ */
 
 /**
- * 响应解析页签声明的 8 个 meta 键（消费点 `api_driver_adapter.py:451-521,558`）。
+ * 响应解析页签写入的 meta 键（消费点 `api_driver_adapter.py:451-521,558`）。
  * 注意：C0（INT-1745）裁定这些解析器只在该算法类型**零输出字段声明**时逐键兜底，
  * 判定依据是同一次 GET /algorithm/params?param_type=api 没有 direction=output 行——
  * 该口径由页签顶部提示表达，代码侧不据此做门禁（`api_driver_adapter` 目前直接读 meta）。
+ *
+ * 负责人 2026-10-31 裁定：6 个 `*_mapping`（asr / trans / 句结束 / 会话结束 /
+ * 错误码 / 错误信息）属于后端内置缺省即可的专家参数，不在 UI 暴露；
+ * 存量 meta 里已有的这些键**原样保留**，不读、不写、不删。
  */
-export const RESPONSE_PARSER_META_KEYS = [
-  'result_parser',
-  'asr_mapping',
-  'trans_mapping',
-  'sentence_end_mapping',
-  'session_end_mapping',
-  'error_code_mapping',
-  'error_msg_mapping',
-  'append_mode',
-] as const
-
-/** 后端取值缺省（`api_driver_adapter.py:506-512`）；只作输入框 placeholder，不预填、不写库 */
-export const RESPONSE_PARSER_PATH_DEFAULTS = {
-  asrMapping: 'asr_result',
-  transMapping: 'translation_result',
-  sentenceEndMapping: 'is_sentence_end',
-  sessionEndMapping: 'session_finished',
-  errorCodeMapping: 'code',
-  errorMsgMapping: 'msg',
-} as const
+export const RESPONSE_PARSER_META_KEYS = ['result_parser', 'append_mode'] as const
 
 /** 三态：'' = 不写该键（沿用缺省），true/false = 显式写入 */
 export type AppendModeValue = '' | 'true' | 'false'
@@ -614,12 +745,6 @@ export type AppendModeValue = '' | 'true' | 'false'
 export interface ResponseParserDraft {
   /** JSON 对象文本（asr_text_path / trans_text_path / session_id_path） */
   resultParser: string
-  asrMapping: string
-  transMapping: string
-  sentenceEndMapping: string
-  sessionEndMapping: string
-  errorCodeMapping: string
-  errorMsgMapping: string
   appendMode: AppendModeValue
 }
 
@@ -632,18 +757,8 @@ export interface ResponseParserDraftError {
 export function emptyResponseParserDraft(): ResponseParserDraft {
   return {
     resultParser: '',
-    asrMapping: '',
-    transMapping: '',
-    sentenceEndMapping: '',
-    sessionEndMapping: '',
-    errorCodeMapping: '',
-    errorMsgMapping: '',
     appendMode: '',
   }
-}
-
-function textOfPath(value: unknown): string {
-  return typeof value === 'string' ? value : valueToText(value)
 }
 
 /** 编辑态回填：base meta → 响应解析草稿（append_mode 三态，缺省为空串） */
@@ -653,12 +768,6 @@ export function responseParserDraftFromMeta(
   const base = isPlainObject(meta) ? meta : {}
   return {
     resultParser: valueToText(base.result_parser),
-    asrMapping: textOfPath(base.asr_mapping),
-    transMapping: textOfPath(base.trans_mapping),
-    sentenceEndMapping: textOfPath(base.sentence_end_mapping),
-    sessionEndMapping: textOfPath(base.session_end_mapping),
-    errorCodeMapping: textOfPath(base.error_code_mapping),
-    errorMsgMapping: textOfPath(base.error_msg_mapping),
     appendMode:
       base.append_mode === true ? 'true' : base.append_mode === false ? 'false' : '',
   }
@@ -666,7 +775,7 @@ export function responseParserDraftFromMeta(
 
 /**
  * 草稿 + base meta → 保存用的完整 meta 对象（与请求模板同一套 base 合并语义）：
- * - 只覆盖本页签声明的 8 个键，其余键（含请求模板页签的键）原样保留；
+ * - 只覆盖本页签声明的键，其余键（含请求模板页签的键、存量 `*_mapping`）原样保留；
  * - 输入清空 → 删除该键（后端回落到内置缺省，不写 null / 空串）；
  * - `result_parser` 非法 JSON / 非对象 → 返回 errors，调用方拦截保存。
  */
@@ -683,18 +792,6 @@ export function mergeResponseParserMeta(
     parseJsonObject(draft.resultParser, '响应解析器', 'resultParser', errors)
   )
 
-  const pathKeys = [
-    ['asr_mapping', draft.asrMapping],
-    ['trans_mapping', draft.transMapping],
-    ['sentence_end_mapping', draft.sentenceEndMapping],
-    ['session_end_mapping', draft.sessionEndMapping],
-    ['error_code_mapping', draft.errorCodeMapping],
-    ['error_msg_mapping', draft.errorMsgMapping],
-  ] as const
-  for (const [key, value] of pathKeys) {
-    assignOrDelete(next, key, value.trim() || undefined)
-  }
-
   assignOrDelete(
     next,
     'append_mode',
@@ -705,18 +802,33 @@ export function mergeResponseParserMeta(
 }
 
 /* ------------------------------------------------------------------ */
-/* 端点行四项整数（优先级 / 最大进程 / 超时 / 音频时长） */
+/* 端点行四项整数（优先级 / 端点最大并发 / 超时 / 音频时长） */
 /* ------------------------------------------------------------------ */
 
 /**
  * 端点行数值字段的合法区间（与旧实现的原生 min/max 完全一致）。
  * INT-1939 返工：表单加了 noValidate 后原生约束不再拦截，改由这里自查。
+ *
+ * 命名口径：`maxProcess` 是**单个端点**的并发上限（端点级），与 API 级
+ * `default_max_process`（所有端点合计的总并发）区分，避免两个“最大并发”混淆。
  */
 export const ENDPOINT_NUMERIC_RULES = [
-  { field: 'priority', label: '优先级', min: 1, max: 10 },
-  { field: 'maxProcess', label: '最大进程', min: 1, max: 100 },
-  { field: 'maxTimeout', label: '超时(s)', min: 1, max: 300 },
-  { field: 'maxAudioDuration', label: '音频时长(s)', min: 1, max: null },
+  { field: 'priority', label: '优先级', ariaLabel: '端点优先级', min: 1, max: 10 },
+  {
+    field: 'maxProcess',
+    label: '端点最大并发',
+    ariaLabel: '端点最大并发',
+    min: 1,
+    max: 100,
+  },
+  { field: 'maxTimeout', label: '超时(s)', ariaLabel: '端点超时(s)', min: 1, max: 300 },
+  {
+    field: 'maxAudioDuration',
+    label: '音频时长(s)',
+    ariaLabel: '端点音频时长(s)',
+    min: 1,
+    max: null,
+  },
 ] as const
 
 export type EndpointNumericField = (typeof ENDPOINT_NUMERIC_RULES)[number]['field']
@@ -745,7 +857,7 @@ export function validateEndpointNumbers(row: EndpointNumericDraft): EndpointNume
 }
 
 /* ------------------------------------------------------------------ */
-/* audio_config（顶层列 apis.audio_config，四项 = 采样率/位深/通道数/容器） */
+/* audio_config（顶层列 apis.audio_config；输入 / 输出两套格式，INT-1771） */
 /* ------------------------------------------------------------------ */
 
 export const AUDIO_SAMPLE_RATE_OPTIONS = [8000, 16000, 24000, 48000] as const
@@ -756,20 +868,48 @@ export const AUDIO_CONTAINER_OPTIONS = ['pcm', 'wav'] as const
 /** 后端兼容 16/24/32 别名（api_crud_service._validate_audio_config → AudioBitDepth） */
 const BIT_DEPTH_ALIASES: Record<string, string> = { '16': 's16', '24': 's24', '32': 's32' }
 
-export interface AudioConfigDraft {
+/** 一套音频格式可编辑的四项（输入侧 / 输出侧共用同一词表） */
+const AUDIO_FORMAT_KEYS = ['sample_rate', 'bit_depth', 'channels', 'container'] as const
+/** 不随分向拆分的附加键：保存时原样保留，并复制进两侧子对象（执行侧只读子对象） */
+const AUDIO_SHARED_KEYS = ['format', 'chunk_duration_ms'] as const
+
+export interface AudioFormatDraft {
   sampleRate: string
   bitDepth: string
   channels: string
   container: string
 }
 
-export function emptyAudioConfigDraft(): AudioConfigDraft {
+/**
+ * 输入 / 输出两套格式：下发给被测服务的（input）与回传的（output）可以不同。
+ * 落库形态 `{input: {...}, output: {...}}`，与后端 `resolve_audio_config(direction)` 同口径。
+ */
+export interface AudioConfigDraft {
+  input: AudioFormatDraft
+  output: AudioFormatDraft
+}
+
+/** 分向展示文案（顺序即 UI 顺序；两套控件同一词表） */
+export const AUDIO_DIRECTION_FIELDS = [
+  {
+    key: 'input',
+    label: '输入音频格式（下发给被测服务）',
+    hint: '混音渲染的目标格式；未配置回退 24000Hz / s16 / 单声道 / pcm',
+  },
+  {
+    key: 'output',
+    label: '输出音频格式（被测服务回传）',
+    hint: '回传音频的采样率口径；未配置回退输入侧同值',
+  },
+] as const
+
+export type AudioDirection = (typeof AUDIO_DIRECTION_FIELDS)[number]['key']
+
+export function emptyAudioFormatDraft(): AudioFormatDraft {
   return { sampleRate: '', bitDepth: '', channels: '', container: '' }
 }
 
-export function audioConfigDraftFrom(
-  raw: Record<string, unknown> | null | undefined
-): AudioConfigDraft {
+function audioFormatDraftFrom(raw: unknown): AudioFormatDraft {
   const base = isPlainObject(raw) ? raw : {}
   const bitDepth = valueToText(base.bit_depth)
   return {
@@ -780,26 +920,62 @@ export function audioConfigDraftFrom(
   }
 }
 
+export function emptyAudioConfigDraft(): AudioConfigDraft {
+  return { input: emptyAudioFormatDraft(), output: emptyAudioFormatDraft() }
+}
+
+/**
+ * 编辑态回填：分向对象优先；存量扁平配置（输入输出共用）→ 两侧同值。
+ * 只配了单侧时另一侧按后端回退语义取同值，避免展示与执行口径分叉。
+ */
+export function audioConfigDraftFrom(
+  raw: Record<string, unknown> | null | undefined
+): AudioConfigDraft {
+  const base = isPlainObject(raw) ? raw : {}
+  const flat = audioFormatDraftFrom(base)
+  const sideOf = (key: AudioDirection): AudioFormatDraft | null =>
+    isPlainObject(base[key]) ? audioFormatDraftFrom(base[key]) : null
+  const inputSide = sideOf('input')
+  const outputSide = sideOf('output')
+  const input = inputSide ?? outputSide ?? flat
+  const output = outputSide ?? inputSide ?? flat
+  // 两侧必须是独立副本，否则改一侧会连带改另一侧
+  return { input: { ...input }, output: { ...output } }
+}
+
+function audioSideToObject(side: AudioFormatDraft): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (side.sampleRate) out.sample_rate = Number(side.sampleRate)
+  if (side.bitDepth) out.bit_depth = side.bitDepth
+  if (side.channels) out.channels = Number(side.channels)
+  if (side.container) out.container = side.container
+  return out
+}
+
 /**
  * 草稿 + base audio_config → 保存用对象。
- * 保留 base 里本页签不编辑的已知键（format / chunk_duration_ms），本四项清空则删除该键；
- * 全部为空时返回 {}（显式清除音频格式的写入口径）。
+ * - 扁平四项（旧形态）一律删除，改写成 `input` / `output` 两个子对象；
+ * - base 的 `format` / `chunk_duration_ms` 原样保留并复制进两侧（执行侧只读子对象）；
+ * - 某侧四项全空 → 删除该侧（目标侧回退另一侧同值）；两侧全空 → 返回 {}
+ *   （显式清除音频格式的写入口径）。
  */
 export function buildAudioConfig(
   base: Record<string, unknown> | null | undefined,
   draft: AudioConfigDraft
 ): Record<string, unknown> {
   const next: Record<string, unknown> = isPlainObject(base) ? { ...base } : {}
-  const assign = (key: string, raw: string, convert: (v: string) => unknown) => {
-    if (raw === '') {
-      delete next[key]
-      return
-    }
-    next[key] = convert(raw)
+  for (const key of AUDIO_FORMAT_KEYS) delete next[key]
+  const shared: Record<string, unknown> = {}
+  for (const key of AUDIO_SHARED_KEYS) {
+    if (key in next) shared[key] = next[key]
   }
-  assign('sample_rate', draft.sampleRate, Number)
-  assign('bit_depth', draft.bitDepth, (v) => v)
-  assign('channels', draft.channels, Number)
-  assign('container', draft.container, (v) => v)
+  for (const { key } of AUDIO_DIRECTION_FIELDS) {
+    const side = audioSideToObject(draft[key])
+    if (Object.keys(side).length === 0) {
+      delete next[key]
+      continue
+    }
+    next[key] = { ...shared, ...side }
+  }
   return next
 }

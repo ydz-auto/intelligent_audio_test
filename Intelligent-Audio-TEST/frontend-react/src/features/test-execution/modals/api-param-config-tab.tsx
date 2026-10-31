@@ -11,7 +11,8 @@
  *
  * 降级：
  * - 缺 `algorithm:read`（403）→ 页签「无权查看」；
- * - 新建 API（无 id）→ 提示「保存后可用」，不发请求；
+ * - 新建 API（无 id）→ 字段与映射可直接编辑，草稿经 onDraftChange 上抛，
+ *   随 API 创建一起提交；策略绑定 / 另存 / 克隆需先有 id，保持禁用；
  * - 未选择算法类型 → 下拉与保存禁用并提示。
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -22,14 +23,17 @@ import { toast } from 'sonner'
 import {
   paramConfigQueryKeys,
   useApiParamConfig,
+  useDimensionParams,
   useParamProfileOptions,
 } from '@/application/test-execution/useApiParamConfig'
 import type { AlgorithmApiMapping, AlgorithmApiParam } from '@/domain/models/apiConfig'
+import type { DerivedFields } from '@/features/test-execution/modals/api-edit-dialog-model'
 import {
   PARAM_TRANSFORM_TYPE_LABEL,
   PARAM_TRANSFORM_TYPES,
   PARAM_TYPE_LABEL,
   PARAM_TYPES,
+  type ApiScopeOverridesInput,
   type ParamProfile,
   type ParamProfileInput,
   type ParamProfileMappingDraft,
@@ -83,6 +87,8 @@ import { Textarea } from '@/components/ui/textarea'
 
 /** base-ui Select 不接受空串，未绑定用哨兵值 */
 const UNBOUND = '__unbound__'
+/** 输入映射的目标字段未选时的哨兵值 */
+const UNSET = '__unset__'
 
 const PARAM_TYPE_OPTIONS = PARAM_TYPES.map((value) => ({
   value,
@@ -111,6 +117,13 @@ interface EditableMappingRow {
   transformType: ParamTransformType
 }
 
+interface EditableInputMappingRow {
+  key: number
+  sourceParam: string
+  targetParam: string
+  transformType: ParamTransformType
+}
+
 function paramRowOf(param: AlgorithmApiParam, key: number): EditableParamRow {
   return {
     key,
@@ -134,6 +147,19 @@ function mappingRowOf(mapping: AlgorithmApiMapping, key: number): EditableMappin
       ? (mapping.transformType as ParamTransformType)
       : 'none',
   }
+}
+
+function draftInputMappingsOf(rows: EditableInputMappingRow[]): ParamProfileMappingDraft[] {
+  return rows
+    .filter((row) => row.sourceParam.trim() && row.targetParam.trim())
+    .map((row) => ({
+      source: 'case',
+      sourceDirection: 'input',
+      sourceParam: row.sourceParam.trim(),
+      targetParam: row.targetParam.trim(),
+      dimensionId: null,
+      transformType: row.transformType,
+    }))
 }
 
 function draftParamsOf(rows: EditableParamRow[]): ParamProfileParamDraft[] {
@@ -172,6 +198,66 @@ function errorMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message : '操作失败，请重试'
 }
 
+/** 映射行「目标参数」下拉：候选随所选评估维度联动；存量值不在候选里时补一项。 */
+function TargetParamSelect({
+  dimensionId,
+  value,
+  disabled,
+  onChange,
+}: {
+  dimensionId: number | null
+  value: string
+  disabled: boolean
+  onChange: (value: string) => void
+}) {
+  const paramsQuery = useDimensionParams(dimensionId)
+  const options = useMemo(() => {
+    const list = (paramsQuery.data ?? []).map((param) => ({
+      value: param.code,
+      label: param.name ? `${param.code}（${param.name}）` : param.code,
+    }))
+    if (value && !list.some((item) => item.value === value)) {
+      list.unshift({ value, label: `${value}（当前值，不在该维度参数里）` })
+    }
+    return list
+  }, [paramsQuery.data, value])
+
+  if (dimensionId == null) {
+    return <p className='text-muted-foreground text-xs'>先选目标维度</p>
+  }
+  if (paramsQuery.isLoading) {
+    return (
+      <span className='text-muted-foreground flex items-center gap-1 text-xs'>
+        <Spinner className='size-3' />
+        读取中
+      </span>
+    )
+  }
+  if (options.length === 0) {
+    return <p className='text-muted-foreground text-xs'>该维度没有参数</p>
+  }
+  return (
+    <Select
+      value={value || UNSET}
+      items={[{ value: UNSET, label: '未选择' }, ...options]}
+      onValueChange={(next) => onChange(!next || next === UNSET ? '' : next)}
+      disabled={disabled}
+    >
+      <SelectTrigger size='sm' className='w-40' aria-label='目标参数'>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={UNSET}>未选择</SelectItem>
+        {options.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
 interface ApiParamConfigTabProps {
   /** API 实例 id；新建 API（未保存）为 null */
   apiId: number | null
@@ -179,21 +265,31 @@ interface ApiParamConfigTabProps {
   algorithmType: string
   /** `algorithm:param_manage` */
   canEdit: boolean
+  /** 未保存改动上报：本页签有独立保存钮，弹窗底部「保存」不会落这些改动 */
+  onDirtyChange?: (dirty: boolean) => void
+  /** 草稿上报（新建态用：API 创建成功后由调用方连同覆盖行一起提交） */
+  onDraftChange?: (draft: Omit<ApiScopeOverridesInput, 'algorithmType'>) => void
+  /** 从请求模板 / 响应解析自动推导的字段（未手工声明时展示） */
+  derived?: DerivedFields
 }
 
 export function ApiParamConfigTab({
   apiId,
   algorithmType,
   canEdit,
+  onDirtyChange,
+  onDraftChange,
+  derived,
 }: ApiParamConfigTabProps) {
   const queryClient = useQueryClient()
-  // 新建 API（无 id）/ 未选算法 → 一律不发请求（提示见下方降级块）
+  // 读侧一律按 API 实例作用域取（新建态没有 id → 不发请求，只用内存草稿）
   const hasApiScope = apiId != null && Boolean(algorithmType)
   const config = useApiParamConfig(apiId, algorithmType, hasApiScope)
   const profiles = useParamProfileOptions(algorithmType, hasApiScope, apiId)
 
   const [outputRows, setOutputRows] = useState<EditableParamRow[]>([])
   const [mappingRows, setMappingRows] = useState<EditableMappingRow[]>([])
+  const [inputMappingRows, setInputMappingRows] = useState<EditableInputMappingRow[]>([])
   const [boundProfileId, setBoundProfileId] = useState<number | null>(null)
   const [nameDialog, setNameDialog] = useState<'create' | 'clone' | null>(null)
   const [draftName, setDraftName] = useState('')
@@ -203,7 +299,11 @@ export function ApiParamConfigTab({
   /** 上次已同步的服务端绑定值（null 与「未初始化」区分） */
   const lastServerBoundRef = useRef<number | null | undefined>(undefined)
 
-  const editable = canEdit && Boolean(algorithmType) && apiId != null
+  // 新建态（无 id）也允许编辑字段与映射：只改内存草稿，随 API 创建一起提交
+  const editable = canEdit && Boolean(algorithmType)
+  /** 依赖服务端 API 实例的动作（绑定 / 另存 / 克隆 / 立即保存）需先有 id */
+  const persisted = apiId != null
+  const canPersist = editable && persisted
 
   // 策略列表回读出本 API 的绑定 → 下拉回显；服务端值变化才同步，避免覆盖本地绑定结果
   const boundProfileIdFromServer = profiles.boundProfileId
@@ -217,15 +317,24 @@ export function ApiParamConfigTab({
   const signature = useMemo(
     () =>
       JSON.stringify({
-        params: config.outputParams.map((row) => [row.paramCode, row.paramType, row.uiOrder]),
+        params: config.outputParams.map((row) => [
+          row.paramCode,
+          row.paramType,
+          Number(row.uiOrder) || 0,
+        ]),
         mappings: config.mappings.map((row) => [
           row.sourceParam,
           row.targetParam,
           row.dimensionId,
           row.transformType,
         ]),
+        inputMappings: config.inputMappings.map((row) => [
+          row.sourceParam,
+          row.targetParam,
+          row.transformType,
+        ]),
       }),
-    [config.outputParams, config.mappings]
+    [config.outputParams, config.mappings, config.inputMappings]
   )
 
   useEffect(() => {
@@ -238,18 +347,100 @@ export function ApiParamConfigTab({
     setMappingRows(
       config.mappings.map((mapping) => mappingRowOf(mapping, rowKeyRef.current++))
     )
-  }, [config.state, config.outputParams, config.mappings, signature])
+    setInputMappingRows(
+      config.inputMappings.map((mapping) => ({
+        key: rowKeyRef.current++,
+        sourceParam: mapping.sourceParam,
+        targetParam: mapping.targetParam,
+        transformType: PARAM_TRANSFORM_TYPES.includes(
+          mapping.transformType as ParamTransformType
+        )
+          ? (mapping.transformType as ParamTransformType)
+          : 'none',
+      }))
+    )
+  }, [
+    config.state,
+    config.outputParams,
+    config.mappings,
+    config.inputMappings,
+    signature,
+  ])
 
-  // 维度名只做输入框下方提示（读侧补全），不随行草稿保存
-  const dimensionNameById = useMemo(() => {
-    const nameById = new Map<number, string>()
-    for (const mapping of config.mappings) {
-      if (mapping.dimensionId != null && mapping.dimensionName) {
-        nameById.set(mapping.dimensionId, mapping.dimensionName)
+  // 未保存改动判定：草稿行与服务端权威行逐字段比对（同一归一化口径）。
+  // 保存成功 → 读侧失效重拉 → appliedSignatureRef 与草稿一致 → 自动回到 false。
+  const dirty = useMemo(() => {
+    if (config.state !== 'ready') return false
+    return (
+      JSON.stringify({
+        params: outputRows.map((row) => [
+          row.paramCode,
+          row.paramType,
+          Number(row.uiOrder) || 0,
+        ]),
+        mappings: mappingRows.map((row) => [
+          row.sourceParam,
+          row.targetParam,
+          row.dimensionId.trim() === '' ? null : Number(row.dimensionId),
+          row.transformType,
+        ]),
+        inputMappings: inputMappingRows.map((row) => [
+          row.sourceParam,
+          row.targetParam,
+          row.transformType,
+        ]),
+      }) !== appliedSignatureRef.current
+    )
+  }, [config.state, outputRows, mappingRows, inputMappingRows])
+
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+  }, [dirty, onDirtyChange])
+
+  // 草稿上抛（新建态由弹窗在创建成功后统一提交，避免用户先保存再回来配参数）
+  useEffect(() => {
+    onDraftChange?.({
+      params: draftParamsOf(outputRows),
+      mappings: [
+        ...draftMappingsOf(mappingRows),
+        ...draftInputMappingsOf(inputMappingRows),
+      ],
+    })
+  }, [outputRows, mappingRows, inputMappingRows, onDraftChange])
+
+  // 映射行「源参数」下拉候选 = 本 API 的输出字段；存量值已不在声明里时补一项，
+  // 避免打开就丢值。
+  const outputParamOptions = useMemo(() => {
+    const options = config.outputParams.map((param) => ({
+      value: param.paramCode,
+      label: param.paramName
+        ? `${param.paramCode}（${param.paramName}）`
+        : param.paramCode,
+    }))
+    for (const row of mappingRows) {
+      const code = row.sourceParam.trim()
+      if (code && !options.some((item) => item.value === code)) {
+        options.push({ value: code, label: `${code}（当前值，已不在声明中）` })
       }
     }
-    return nameById
-  }, [config.mappings])
+    return options
+  }, [config.outputParams, mappingRows])
+
+  // 输入映射目标候选 = 已声明输入字段 ∪ 请求模板里识别到的占位符（后者标注「自动」）
+  const inputTargetOptions = useMemo(() => {
+    const options = config.inputParams.map((param) => ({
+      value: param.paramCode,
+      label: param.paramName
+        ? `${param.paramCode}（${param.paramName}）`
+        : param.paramCode,
+    }))
+    for (const code of derived?.input ?? []) {
+      if (!options.some((item) => item.value === code)) {
+        options.push({ value: code, label: `${code}（自动识别）` })
+      }
+    }
+    return options
+  }, [config.inputParams, derived?.input])
 
   const invalidateScope = () => {
     void queryClient.invalidateQueries({
@@ -325,7 +516,10 @@ export function ApiParamConfigTab({
       return saveApiScopeOverrides(apiId, {
         algorithmType,
         params: draftParamsOf(outputRows),
-        mappings: draftMappingsOf(mappingRows),
+        mappings: [
+          ...draftMappingsOf(mappingRows),
+          ...draftInputMappingsOf(inputMappingRows),
+        ],
       })
     },
     onSuccess: (result) => {
@@ -391,6 +585,29 @@ export function ApiParamConfigTab({
 
   return (
     <div className='space-y-3'>
+      <p className='text-muted-foreground text-xs'>
+        本页维护这个被测 API 的「输入映射（用例参数 → API 输入字段）+ 输出字段 + 输出映射
+        （API 输出 → 评估参数）」，可绑策略继承默认值；新建 API 也可直接在这里配置。
+      </p>
+
+      {/* 自动识别字段：请求模板占位符 = 输入，响应解析路径 = 输出（无需手工声明也能看到） */}
+      {((derived?.input.length ?? 0) > 0 || (derived?.output.length ?? 0) > 0) && (
+        <div className='bg-muted/40 space-y-1 rounded-lg border p-2.5 text-xs'>
+          <p className='font-medium'>自动识别字段</p>
+          {(derived?.input.length ?? 0) > 0 && (
+            <p className='text-muted-foreground'>
+              输入（请求模板占位符）：{derived?.input.join('、')}
+            </p>
+          )}
+          {(derived?.output.length ?? 0) > 0 && (
+            <p className='text-muted-foreground'>
+              输出（响应解析路径）：
+              {derived?.output.map((row) => `${row.code} ← ${row.path}`).join('；')}
+            </p>
+          )}
+        </div>
+      )}
+
       {!algorithmType && (
         <div className='bg-muted/40 rounded-lg border p-2.5 text-xs'>
           <p className='text-foreground font-medium'>未选择关联算法</p>
@@ -400,11 +617,12 @@ export function ApiParamConfigTab({
         </div>
       )}
 
-      {algorithmType && apiId == null && (
+      {algorithmType && !persisted && (
         <div className='bg-muted/40 rounded-lg border p-2.5 text-xs'>
-          <p className='text-foreground font-medium'>新建 API：保存后可用</p>
+          <p className='text-foreground font-medium'>新建 API：现在就能配参数</p>
           <p className='text-muted-foreground'>
-            参数配置属于 API 实例作用域，需先保存 API 拿到 id；本页签不会发出任何请求。
+            字段与映射先存草稿，点底部「保存」创建 API 后立即写入（无需二次进入）。
+            策略绑定 / 另存为策略需在 API 创建后使用。
           </p>
         </div>
       )}
@@ -428,7 +646,7 @@ export function ApiParamConfigTab({
               if (!value) return
               bindMutation.mutate(value === UNBOUND ? null : Number(value))
             }}
-            disabled={!editable || bindMutation.isPending}
+            disabled={!canPersist || bindMutation.isPending}
           >
             <SelectTrigger className='w-56 justify-between' aria-label='参数策略'>
               <SelectValue />
@@ -446,7 +664,7 @@ export function ApiParamConfigTab({
             variant='outline'
             size='sm'
             className='h-7 text-xs'
-            disabled={!editable || createMutation.isPending}
+            disabled={!canPersist || createMutation.isPending}
             onClick={() => openNameDialog('create')}
           >
             另存为新策略
@@ -456,7 +674,7 @@ export function ApiParamConfigTab({
             variant='outline'
             size='sm'
             className='h-7 text-xs'
-            disabled={!editable || boundProfileId == null || cloneMutation.isPending}
+            disabled={!canPersist || boundProfileId == null || cloneMutation.isPending}
             onClick={() => openNameDialog('clone')}
           >
             克隆当前策略
@@ -466,6 +684,135 @@ export function ApiParamConfigTab({
           策略提供默认字段与映射；本页的增删改写入 API 实例覆盖行（覆盖优先于策略）。
           切换下拉即保存绑定，选「未绑定」表示只使用本实例的覆盖行。
         </p>
+      </div>
+
+      {/* 输入映射（用例参数 → API 输入字段） */}
+      <div className='space-y-1.5'>
+        <div className='flex items-center justify-between'>
+          <Label>输入映射</Label>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            className='h-7 gap-1 text-xs'
+            disabled={!editable}
+            onClick={() =>
+              setInputMappingRows((rows) => [
+                ...rows,
+                { key: rowKeyRef.current++, sourceParam: '', targetParam: '', transformType: 'none' },
+              ])
+            }
+          >
+            <Plus aria-hidden='true' className='size-3.5' />
+            新增输入映射
+          </Button>
+        </div>
+        <p className='text-muted-foreground text-xs'>
+          用例参数（左）供给 API 输入字段（右）；不配则按同名字段直接取。
+        </p>
+        <datalist id='case-param-codes'>
+          {config.caseParams.map((param) => (
+            <option key={param.paramCode} value={param.paramCode}>
+              {param.paramName ?? ''}
+            </option>
+          ))}
+        </datalist>
+        {config.state === 'loading' ? (
+          <div className='text-muted-foreground flex items-center justify-center gap-2 py-4 text-xs'>
+            <Spinner className='size-4' />
+            正在读取参数配置…
+          </div>
+        ) : inputMappingRows.length === 0 ? (
+          <p className='text-muted-foreground border-border/60 rounded-lg border border-dashed p-3 text-center text-xs'>
+            未配置输入映射：用例参数与 API 输入字段同名时可直接取到值。
+          </p>
+        ) : (
+          <div className='space-y-1.5'>
+            {inputMappingRows.map((row) => (
+              <div key={row.key} className='flex flex-wrap items-center gap-2'>
+                <Input
+                  list='case-param-codes'
+                  aria-label='用例参数代码'
+                  placeholder='用例参数代码'
+                  className='h-7 w-40 font-mono text-xs'
+                  value={row.sourceParam}
+                  disabled={!editable}
+                  onChange={(e) =>
+                    setInputMappingRows((rows) =>
+                      rows.map((item) =>
+                        item.key === row.key ? { ...item, sourceParam: e.target.value } : item
+                      )
+                    )
+                  }
+                />
+                <span className='text-muted-foreground text-xs'>→</span>
+                <Select
+                  value={row.targetParam || UNSET}
+                  items={[{ value: UNSET, label: '选择 API 输入字段' }, ...inputTargetOptions]}
+                  onValueChange={(value) =>
+                    setInputMappingRows((rows) =>
+                      rows.map((item) =>
+                        item.key === row.key
+                          ? { ...item, targetParam: !value || value === UNSET ? '' : value }
+                          : item
+                      )
+                    )
+                  }
+                  disabled={!editable}
+                >
+                  <SelectTrigger size='sm' className='w-48' aria-label='API 输入字段'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={UNSET}>选择 API 输入字段</SelectItem>
+                    {inputTargetOptions.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={row.transformType}
+                  items={TRANSFORM_TYPE_OPTIONS}
+                  onValueChange={(value) =>
+                    setInputMappingRows((rows) =>
+                      rows.map((item) =>
+                        item.key === row.key
+                          ? { ...item, transformType: value as ParamTransformType }
+                          : item
+                      )
+                    )
+                  }
+                  disabled={!editable}
+                >
+                  <SelectTrigger size='sm' className='w-28' aria-label='转换类型'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TRANSFORM_TYPE_OPTIONS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='icon-xs'
+                  aria-label='删除输入映射'
+                  disabled={!editable}
+                  onClick={() =>
+                    setInputMappingRows((rows) => rows.filter((item) => item.key !== row.key))
+                  }
+                >
+                  <Trash2 aria-hidden='true' className='size-3.5' />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 输出字段（可编辑） */}
@@ -658,41 +1005,73 @@ export function ApiParamConfigTab({
                       <Badge variant='secondary'>api</Badge>
                     </TableCell>
                     <TableCell>
-                      <Input
-                        value={row.sourceParam}
-                        disabled={!editable}
-                        aria-label='源参数'
-                        className='h-7 w-28 font-mono text-xs'
-                        onChange={(e) =>
-                          updateMappingRow(row.key, { sourceParam: e.target.value })
+                      <Select
+                        value={row.sourceParam || UNSET}
+                        items={[
+                          { value: UNSET, label: '未选择' },
+                          ...outputParamOptions,
+                        ]}
+                        onValueChange={(value) =>
+                          updateMappingRow(row.key, {
+                            sourceParam: !value || value === UNSET ? '' : value,
+                          })
                         }
-                      />
+                        disabled={!editable}
+                      >
+                        <SelectTrigger size='sm' className='w-40' aria-label='源参数'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={UNSET}>未选择</SelectItem>
+                          {outputParamOptions.map((item) => (
+                            <SelectItem key={item.value} value={item.value}>
+                              {item.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell>
-                      <Input
-                        value={row.dimensionId}
-                        disabled={!editable}
-                        type='number'
-                        aria-label='目标维度'
-                        className='h-7 w-20 text-xs'
-                        onChange={(e) =>
-                          updateMappingRow(row.key, { dimensionId: e.target.value })
+                      <Select
+                        value={row.dimensionId || UNSET}
+                        items={[
+                          { value: UNSET, label: '不指定维度' },
+                          ...config.dimensions.map((dimension) => ({
+                            value: String(dimension.id),
+                            label: dimension.name,
+                          })),
+                        ]}
+                        onValueChange={(value) =>
+                          // 维度变了，目标参数重置（不同维度的参数不同）
+                          updateMappingRow(row.key, {
+                            dimensionId: !value || value === UNSET ? '' : value,
+                            targetParam: '',
+                          })
                         }
-                      />
-                      {row.dimensionId.trim() !== '' && dimensionNameById.get(Number(row.dimensionId)) && (
-                        <p className='text-muted-foreground mt-0.5 text-[10px]'>
-                          {dimensionNameById.get(Number(row.dimensionId))}
-                        </p>
-                      )}
+                        disabled={!editable}
+                      >
+                        <SelectTrigger size='sm' className='w-36' aria-label='目标维度'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={UNSET}>不指定维度</SelectItem>
+                          {config.dimensions.map((dimension) => (
+                            <SelectItem key={dimension.id} value={String(dimension.id)}>
+                              {dimension.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell>
-                      <Input
+                      <TargetParamSelect
+                        dimensionId={
+                          row.dimensionId.trim() === '' ? null : Number(row.dimensionId)
+                        }
                         value={row.targetParam}
                         disabled={!editable}
-                        aria-label='目标参数'
-                        className='h-7 w-28 font-mono text-xs'
-                        onChange={(e) =>
-                          updateMappingRow(row.key, { targetParam: e.target.value })
+                        onChange={(value) =>
+                          updateMappingRow(row.key, { targetParam: value })
                         }
                       />
                     </TableCell>
@@ -743,14 +1122,20 @@ export function ApiParamConfigTab({
       </div>
 
       <div className='flex items-center justify-end gap-2'>
-        <Button
-          type='button'
-          size='sm'
-          disabled={!editable || saveMutation.isPending}
-          onClick={() => saveMutation.mutate()}
-        >
-          {saveMutation.isPending ? '保存中…' : '保存参数配置'}
-        </Button>
+        {persisted ? (
+          <Button
+            type='button'
+            size='sm'
+            disabled={!canPersist || saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
+          >
+            {saveMutation.isPending ? '保存中…' : '保存参数配置'}
+          </Button>
+        ) : (
+          <p className='text-muted-foreground text-xs'>
+            新建态：本页草稿随底部「保存」一起提交，无需单独保存。
+          </p>
+        )}
       </div>
 
       {/* 另存 / 克隆：名称 + 描述 */}

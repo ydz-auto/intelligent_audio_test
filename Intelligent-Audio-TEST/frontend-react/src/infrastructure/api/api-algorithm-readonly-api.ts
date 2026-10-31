@@ -39,5 +39,21 @@ export async function fetchAlgorithmApiMappings(
   })
   return rowsFromPayload(payload)
     .map(toAlgorithmApiMapping)
-    .filter((mapping) => mapping.source === 'api')
+    .filter(
+      (mapping) =>
+        // API 输出 → 评估
+        mapping.source === 'api' ||
+        // 用例参数 → API 输入（source_direction=input）
+        (mapping.source === 'case' && mapping.sourceDirection === 'input')
+    )
+}
+
+/** 算法类型下的用例参数（`GET /algorithm/case-params`；供输入映射选源） */
+export async function fetchAlgorithmCaseParams(
+  algorithmType: string
+): Promise<AlgorithmApiParam[]> {
+  const payload = await apiClient.get<unknown>('/algorithm/case-params', {
+    params: { algorithm_type: algorithmType },
+  })
+  return rowsFromPayload(payload).map(toAlgorithmApiParam)
 }

@@ -6,9 +6,10 @@
  * - 两者**独立**：协议不参与执行道判断，执行道（lane）只由 streaming 派生。
  *
  * 可用矩阵（A3 / INT-1791：与后端 `AVAILABLE_PROTOCOL_STREAMING` 同一张表）：
- *   http + 非流式 / http + 流式（chunked） / websocket + 流式 / sse + 流式 /
+ *   http + 非流式 / http + 流式（chunked） / websocket + 流式 / websocket + 非流式
+ *   （A4 / INT-2079 请求-响应式） / sse + 流式 /
  *   grpc + 非流式（unary） / grpc + 流式（server-stream / bidi） → 已上线
- *   其余 2 种组合                                             → 后端 400「组合实现未上线」，前端置灰并提示
+ *   仅 `sse + 非流式` 一种组合未上线               → 后端 400「组合实现未上线」，前端置灰并提示
  *
  * 前端不自行推断协议：协议只读 `apis.protocol` 列，流式性只读 `apis.streaming` 列，
  * 不读 `meta.protocol`、不按端点前缀派生（§3.4 裁定五「单一来源」）。
@@ -45,13 +46,16 @@ export interface ApiProtocolCombination {
  * 当前批次**可写**的组合（B0 §3.2.3 可用矩阵）。
  *
  * A3（INT-1791）按后端 `shared/models/common_enums.py AVAILABLE_PROTOCOL_STREAMING`
- * 扩成同一张表（A1 gRPC 两条 + A2 `sse+true` / `http+true`），**不多不少**：
- * 前端放行后端必拒的组合 = 踩「前端不得自行放宽」红线，反之亦然。
+ * 扩成同一张表（A1 gRPC 两条 + A2 `sse+true` / `http+true` + A4 `websocket+false`），
+ * **不多不少**：前端放行后端必拒的组合 = 踩「前端不得自行放宽」红线，反之亦然
+ * （漏掉后端已放行的组合会让用户在 UI 里配不出来）。
  * 前端与后端各自独立校验：前端置灰 + 提示，后端写侧显式 400。
  */
 const WRITABLE_COMBINATIONS: readonly ApiProtocolCombination[] = [
   { protocol: 'http', streaming: false },
   { protocol: 'websocket', streaming: true },
+  // INT-2079（A4）：WS 请求-响应式（发请求消息 → 等响应，非会话式）
+  { protocol: 'websocket', streaming: false },
   { protocol: 'grpc', streaming: false },
   { protocol: 'grpc', streaming: true },
   { protocol: 'sse', streaming: true },
@@ -86,8 +90,8 @@ export function defaultStreamingFor(protocol: string | null | undefined): boolea
 
 /**
  * 该协议的流式开关是否被锁定：该协议只有一种可写流式性时锁定，
- * 避免用户组合出后端必拒的形态（websocket / sse 只有流式一条，
- * http / grpc 两条都有 → 解锁）。
+ * 避免用户组合出后端必拒的形态（sse 只有流式一条；
+ * http / websocket / grpc 两条都有 → 解锁）。
  */
 export function isStreamingLocked(protocol: string | null | undefined): boolean {
   if (!isApiProtocol(protocol)) return true

@@ -12,12 +12,15 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import type { AlgorithmApiMapping, AlgorithmApiParam } from '@/domain/models/apiConfig'
+import type { Dimension } from '@/domain/models/evaluationDimension'
 import type { ParamProfile } from '@/domain/models/paramProfile'
 import { ApiError } from '@/infrastructure/api/api-error'
 import {
   fetchAlgorithmApiMappings,
   fetchAlgorithmApiParams,
+  fetchAlgorithmCaseParams,
 } from '@/infrastructure/api/api-algorithm-readonly-api'
+import { fetchDimensionParams } from '@/infrastructure/api/algorithm-config-api'
 import { fetchEvaluationDimensions } from '@/infrastructure/api/evaluation-api'
 import { listProfiles } from '@/infrastructure/api/param-profile-api'
 
@@ -49,14 +52,24 @@ export const paramConfigQueryKeys = {
     ['test-execution', 'api-dialog', 'api-scope-mappings', algorithmType, apiId] as const,
   profiles: (algorithmType: string) =>
     ['test-execution', 'api-dialog', 'param-profiles', algorithmType] as const,
+  caseParams: (algorithmType: string) =>
+    ['test-execution', 'api-dialog', 'case-params', algorithmType] as const,
 }
 
 export interface ApiParamConfigResult {
   state: ReadonlyQueryState
   /** `direction=output` 的字段行（参数配置页签数据源） */
   outputParams: AlgorithmApiParam[]
+  /** `direction=input` 的字段行（输入映射的目标侧） */
+  inputParams: AlgorithmApiParam[]
   /** `source='api'` 的映射行（维度名已按 dimension_id 补齐） */
   mappings: AlgorithmApiMapping[]
+  /** `source='case'` + `source_direction='input'`：用例参数 → API 输入字段 */
+  inputMappings: AlgorithmApiMapping[]
+  /** 输入映射的源候选（算法类型下的用例参数） */
+  caseParams: AlgorithmApiParam[]
+  /** 评估维度列表（映射行的「维度」下拉 + 维度名补齐） */
+  dimensions: Dimension[]
   /**
    * C0（INT-1745）判定：该 API 是否没有任何 output 字段声明（策略 + 覆盖解析结果）。
    * 未知状态返回 null。
@@ -93,19 +106,23 @@ export function useApiParamConfig(
     () => (paramsQuery.data ?? []).filter((param) => param.direction === 'output'),
     [paramsQuery.data]
   )
-
-  const missingNames = (mappingsQuery.data ?? []).some(
-    (row) => row.dimensionId != null && !row.dimensionName
+  // API 输入字段（输入映射的目标侧；字段本身在「参数策略」声明）
+  const inputParams = useMemo(
+    () => (paramsQuery.data ?? []).filter((param) => param.direction === 'input'),
+    [paramsQuery.data]
   )
+
   const dimensionsQuery = useQuery({
     queryKey: ['evaluation', 'dimensions'],
     queryFn: fetchEvaluationDimensions,
-    enabled: active && missingNames,
+    // 维度下拉 + 维度名补齐共用一份：始终取（60s 缓存），不再只在缺名字时才拉
+    enabled: active,
     staleTime: 60_000,
     retry: false,
   })
+  const dimensions = useMemo(() => dimensionsQuery.data ?? [], [dimensionsQuery.data])
 
-  const mappings = useMemo(() => {
+  const allMappings = useMemo(() => {
     const data = mappingsQuery.data ?? []
     if (!dimensionsQuery.data) return data
     const nameById = new Map(dimensionsQuery.data.map((d) => [Number(d.id), d.name]))
@@ -115,6 +132,27 @@ export function useApiParamConfig(
         : row
     )
   }, [mappingsQuery.data, dimensionsQuery.data])
+
+  // 输出映射（API 响应字段 → 评估参数）与输入映射（用例参数 → API 输入字段）分开
+  const mappings = useMemo(
+    () => allMappings.filter((row) => row.source === 'api'),
+    [allMappings]
+  )
+  const inputMappings = useMemo(
+    () => allMappings.filter(
+      (row) => row.source === 'case' && row.sourceDirection === 'input'
+    ),
+    [allMappings]
+  )
+
+  // 输入映射的源候选：算法类型下的用例参数（失败不影响主流程，按空候选处理）
+  const caseParamsQuery = useQuery({
+    queryKey: paramConfigQueryKeys.caseParams(algorithmType),
+    queryFn: () => fetchAlgorithmCaseParams(algorithmType),
+    enabled: active,
+    staleTime: 60_000,
+    retry: false,
+  })
 
   const failure = paramsQuery.error ?? mappingsQuery.error
   const state = queryState(
@@ -127,9 +165,24 @@ export function useApiParamConfig(
   return {
     state,
     outputParams,
+    inputParams,
     mappings,
+    inputMappings,
+    caseParams: caseParamsQuery.data ?? [],
+    dimensions,
     noOutputDeclared: state === 'ready' ? outputParams.length === 0 : null,
   }
+}
+
+/** 某个评估维度的参数列表（映射行「目标参数」下拉；随维度联动） */
+export function useDimensionParams(dimensionId: number | null) {
+  return useQuery({
+    queryKey: ['algorithm', 'dimension-params', dimensionId],
+    queryFn: () => fetchDimensionParams(dimensionId as number),
+    enabled: dimensionId != null,
+    staleTime: 60_000,
+    retry: false,
+  })
 }
 
 export interface ParamProfileOptionsResult {

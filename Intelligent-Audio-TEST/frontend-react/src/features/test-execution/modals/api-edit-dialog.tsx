@@ -5,21 +5,22 @@
  *
  * 四个页签：
  * - 基础：现有字段（名称 / 关联算法 / 最大并发 / 协议 + 流式性 / 描述 / 端点列表与密钥池），
- *   新增 audio_config 编辑区（顶层列 apis.audio_config，四项：采样率/位深/通道数/容器）；
+ *   新增 audio_config 编辑区（顶层列 apis.audio_config，输入 / 输出两套格式可不同）；
  * - 请求模板：写 meta（协议决定请求/响应配置区，流式性决定轮次/会话配置区）；
  * - 响应解析：写 meta（result_parser 等 8 个解析器键；顶部固定提示 C0 裁定口径）；
  * - 参数配置：API 实例作用域（策略绑定 + 输出字段 / 映射可编辑 + 覆盖保存），
  *   见 features/test-execution/modals/api-param-config-tab。
  *
  * 协议 × 流式性（INT-1800 / B0）：两维独立可组合，下拉 4 值、未上线协议置灰并提示；
- * 流式开关按 B0 §3.2.3 可用矩阵锁定（当前只有 http+非流式、websocket+流式可写）。
+ * 流式开关按 B0 §3.2.3 可用矩阵锁定（仅 sse 只支持流式；http / websocket / grpc 两种都可写）。
  * 保存只提交 protocol / streaming，永不提交 `device_type`（后端写侧显式 400）。
  */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { Plus, Upload, X } from 'lucide-react'
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useForm } from 'react-hook-form'
+import { toast } from 'sonner'
 import { z } from 'zod'
 
 import { useApiParamConfig } from '@/application/test-execution/useApiParamConfig'
@@ -28,6 +29,7 @@ import { useTestAlgorithmOptions } from '@/application/test-execution/useTestAlg
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { ApiParamConfigTab } from '@/features/test-execution/modals/api-param-config-tab'
 import { fetchApi, parseApiResponsePreview, uploadApiProto } from '@/infrastructure/api/test-execution-api'
+import { createProfile, getProfile, listProfiles } from '@/infrastructure/api/param-profile-api'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -80,17 +82,23 @@ import {
   type ApiProtocol,
 } from '@/domain/models/apiProtocol'
 import { cn } from '@/lib/utils'
+import { evaluateAdapterCapability } from '@/domain/models/adapterSpec'
+import type { ApiConfigSnapshot, ApiScopeOverridesInput } from '@/domain/models/paramProfile'
+import { inferBodyTemplate, inferResponseParser } from '@/domain/models/sampleInference'
+import { VENDOR_ADAPTER_OPTIONS } from '@/domain/models/vendorAdapter'
 
 import {
+  AUDIO_DIRECTION_FIELDS,
   AUDIO_BIT_DEPTH_OPTIONS,
   AUDIO_CHANNEL_OPTIONS,
   AUDIO_CONTAINER_OPTIONS,
   AUDIO_SAMPLE_RATE_OPTIONS,
+  AUDIO_FRAME_HINT,
   ENDPOINT_NUMERIC_RULES,
+  FIRST_FRAME_HINT,
   GRPC_METADATA_SECRET_KEYS,
   GRPC_METHOD_KINDS,
   HTTP_METHOD_OPTIONS,
-  RESPONSE_PARSER_PATH_DEFAULTS,
   SSE_DEFAULTS,
   SSE_FIELD_LIMITS,
   audioConfigDraftFrom,
@@ -98,6 +106,7 @@ import {
   emptyAudioConfigDraft,
   emptyRequestTemplateDraft,
   emptyResponseParserDraft,
+  deriveFieldsFromMeta,
   mergeRequestTemplateMeta,
   mergeResponseParserMeta,
   newKeyValueRow,
@@ -106,6 +115,8 @@ import {
   validateEndpointNumbers,
   type AppendModeValue,
   type AudioConfigDraft,
+  type AudioDirection,
+  type AudioFormatDraft,
   type BodyTemplateMode,
   type EndpointNumericErrors,
   type EndpointNumericField,
@@ -281,10 +292,20 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   const [responseDraft, setResponseDraft] = useState<ResponseParserDraft>(emptyResponseParserDraft)
   const [responseTouched, setResponseTouched] = useState(false)
   const [responseErrors, setResponseErrors] = useState<ResponseParserDraftError[]>([])
+  // 「参数配置」页签有独立保存钮，底部「保存」不落这些改动：上报未保存状态用于拦截
+  const [paramConfigDirty, setParamConfigDirty] = useState(false)
+  // 新建态参数配置草稿：API 创建成功后随保存一起提交（api-scope 覆盖行）
+  const [paramConfigDraft, setParamConfigDraft] =
+    useState<Omit<ApiScopeOverridesInput, 'algorithmType'> | null>(null)
   // audio_config 草稿（顶层列；未改动不发该键）
   const [audioDraft, setAudioDraft] = useState<AudioConfigDraft>(emptyAudioConfigDraft)
   const [audioTouched, setAudioTouched] = useState(false)
   const [audioCleared, setAudioCleared] = useState(false)
+  // 配置策略（API 配置快照 + 参数配置）：套用 / 另存
+  const [applyProfileId, setApplyProfileId] = useState('')
+  const [strategyDialogOpen, setStrategyDialogOpen] = useState(false)
+  const [strategyName, setStrategyName] = useState('')
+  const [strategySaving, setStrategySaving] = useState(false)
   // A3（INT-1791）：gRPC 符号表（仅上传端点返回时才有；端点未部署 → 恒为 null，service/method 走手填）
   const [protoSymbols, setProtoSymbols] = useState<ApiProtoSymbolTable | null>(null)
   const [protoUploading, setProtoUploading] = useState(false)
@@ -386,6 +407,68 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   // 组合不在可用矩阵内（存量脏数据 / 旧后端）→ 明示后端会 400，不静默改写用户的选择
   const combinationWarning = unavailableCombinationReason(watchedProtocol, watchedStreaming)
 
+  // 关窗即清「参数配置未保存」标记（下次打开从服务端重新回读）
+  useEffect(() => {
+    if (!open) setParamConfigDirty(false)
+  }, [open])
+
+  // 厂商适配器候选：受控词表（后端 VendorAdapterType 同值域）+ 存量未知值兜底展示，
+  // 不静默改写用户已存的值，也不允许自由输入写错。
+  const vendorAdapterOptions = useMemo(() => {
+    const current = metaDraft.vendorAdapter.trim()
+    const options = VENDOR_ADAPTER_OPTIONS.map((item) => ({
+      value: item.value === '' ? UNSET : item.value,
+      label: item.label,
+      hint: item.hint,
+    }))
+    if (current && !VENDOR_ADAPTER_OPTIONS.some((item) => item.value === current)) {
+      options.push({
+        value: current,
+        label: `当前值：${current}（未注册）`,
+        hint: '该值执行期会被拒绝，请改选标准值或留空',
+      })
+    }
+    return options
+  }, [metaDraft.vendorAdapter])
+
+  // 保存后的 meta 预览（请求模板 → 响应解析串行合并），供配置自检与字段推导共用
+  const previewMeta = useMemo(() => {
+    const base = baseApi?.meta ?? {}
+    try {
+      let preview: Record<string, unknown> = mergeRequestTemplateMeta(base, metaDraft, {
+        protocol: watchedProtocol,
+        streaming: watchedStreaming,
+      }).meta
+      if (responseTouched) {
+        preview = mergeResponseParserMeta(preview, responseDraft).meta
+      }
+      return preview
+    } catch {
+      return base
+    }
+  }, [
+    baseApi?.meta,
+    metaDraft,
+    responseDraft,
+    responseTouched,
+    watchedProtocol,
+    watchedStreaming,
+  ])
+
+  // 「纯配置能否跑」自检：说清是「配置即可」还是「缺必填/需适配器」。
+  const capability = useMemo(
+    () =>
+      evaluateAdapterCapability({
+        protocol: watchedProtocol,
+        streaming: watchedStreaming,
+        meta: previewMeta,
+      }),
+    [watchedProtocol, watchedStreaming, previewMeta]
+  )
+
+  // 参数配置页签的自动字段：输入来自请求模板占位符，输出来自响应解析路径
+  const derivedFields = useMemo(() => deriveFieldsFromMeta(previewMeta), [previewMeta])
+
   // C0（INT-1745）判定结果展示：按该 API 实例（策略 + 覆盖）的解析结果说明，不描述系统当前行为
   const c0Status = !algorithmType
     ? '未选择关联算法，无法判定'
@@ -470,8 +553,11 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     setResponseErrors([])
   }
 
-  const updateAudio = (patch: Partial<AudioConfigDraft>) => {
-    setAudioDraft((prev) => ({ ...prev, ...patch }))
+  const updateAudio = (direction: AudioDirection, patch: Partial<AudioFormatDraft>) => {
+    setAudioDraft((prev) => ({
+      ...prev,
+      [direction]: { ...prev[direction], ...patch },
+    }))
     setAudioTouched(true)
     setAudioCleared(false)
   }
@@ -480,6 +566,135 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     setAudioDraft(emptyAudioConfigDraft())
     setAudioTouched(true)
     setAudioCleared(true)
+  }
+
+  /* ---------------- 配置策略（整份配置存/取） ---------------- */
+
+  const profilesQuery = useQuery({
+    queryKey: ['test-execution', 'api-dialog', 'param-profiles', algorithmType],
+    queryFn: () => listProfiles(algorithmType, 'api'),
+    enabled: open && Boolean(algorithmType),
+    staleTime: 0,
+    retry: false,
+  })
+
+  const profileOptions = useMemo(
+    () => (profilesQuery.data?.profiles ?? []).map((item) => ({ value: String(item.id), label: item.name })),
+    [profilesQuery.data]
+  )
+
+  /** 当前弹窗的全量配置快照（端点地址 / 密钥属实例私有，不进快照） */
+  const buildConfigSnapshot = (): ApiConfigSnapshot => {
+    let mergedMeta: Record<string, unknown> | null = baseApi?.meta ?? null
+    if (metaTouched || responseTouched) {
+      mergedMeta = mergeResponseParserMeta(
+        mergeRequestTemplateMeta(baseApi?.meta ?? {}, metaDraft, requestTarget).meta,
+        responseDraft
+      ).meta
+    }
+    let audioConfig: Record<string, unknown> | null = baseApi?.audioConfig ?? null
+    if (audioTouched) {
+      audioConfig = audioCleared ? null : buildAudioConfig(baseApi?.audioConfig, audioDraft)
+    }
+    return {
+      protocol: watchedProtocol,
+      streaming: watchedStreaming,
+      vendorAdapter: metaDraft.vendorAdapter.trim() || null,
+      audioConfig,
+      meta: mergedMeta,
+    }
+  }
+
+  /** 把策略快照写回当前表单（协议 / 流式 / 音频 / meta 请求模板与响应解析） */
+  const applyConfigSnapshot = (config: ApiConfigSnapshot | null) => {
+    if (!config) return
+    if (config.protocol && isApiProtocol(config.protocol)) {
+      form.setValue('protocol', config.protocol)
+    }
+    if (config.streaming != null) {
+      form.setValue('streaming', config.streaming)
+    }
+    if (config.audioConfig) {
+      setAudioDraft(audioConfigDraftFrom(config.audioConfig))
+      setAudioTouched(true)
+      setAudioCleared(false)
+    }
+    if (config.meta) {
+      setMetaDraft(requestTemplateDraftFromMeta(config.meta))
+      setResponseDraft(responseParserDraftFromMeta(config.meta))
+      setMetaTouched(true)
+      setResponseTouched(true)
+    }
+  }
+
+  /** 套用策略：新建态连同参数声明 / 映射一起作为创建草稿；编辑态只覆盖配置项 */
+  const applyStrategy = async () => {
+    if (!applyProfileId) return
+    try {
+      const profile = await getProfile(Number(applyProfileId))
+      applyConfigSnapshot(profile.config)
+      if (api?.id == null) {
+        setParamConfigDraft({
+          params: profile.params.map((param) => ({
+            paramCode: param.paramCode,
+            paramName: param.paramName,
+            paramType: param.paramType,
+            direction: param.direction,
+            required: param.required,
+            defaultValue: param.defaultValue,
+            helpText: param.helpText,
+            uiOrder: param.uiOrder,
+            hidden: param.hidden,
+            fieldPath: param.fieldPath,
+          })),
+          mappings: profile.mappings.map((mapping) => ({
+            source: 'api' as const,
+            sourceDirection: mapping.sourceDirection,
+            sourceParam: mapping.sourceParam,
+            targetParam: mapping.targetParam,
+            dimensionId: mapping.dimensionId,
+            transformType: mapping.transformType,
+          })),
+        })
+      }
+      toast.success('已套用策略配置；点「保存」后生效')
+    } catch (error) {
+      toast.error(`套用策略失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  /** 存为策略：当前全量配置（含参数声明 / 映射草稿）整份落库 */
+  const saveAsStrategy = async () => {
+    const name = strategyName.trim()
+    if (!name) {
+      toast.error('请填写策略名称')
+      return
+    }
+    if (!algorithmType) {
+      toast.error('请先选择关联算法')
+      return
+    }
+    setStrategySaving(true)
+    try {
+      await createProfile({
+        scope: 'api',
+        algorithmType,
+        name,
+        description: null,
+        status: 'online',
+        config: buildConfigSnapshot(),
+        params: paramConfigDraft?.params ?? [],
+        mappings: paramConfigDraft?.mappings ?? [],
+      })
+      toast.success('已存为配置策略')
+      setStrategyDialogOpen(false)
+      setStrategyName('')
+      void profilesQuery.refetch()
+    } catch (error) {
+      toast.error(`存为策略失败：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setStrategySaving(false)
+    }
   }
 
   const endpointErrorOf = (key: string, field: EndpointNumericField) =>
@@ -521,6 +736,13 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   }
 
   const handleSave = async (values: ApiForm) => {
+    // 编辑态：「参数配置」页签自带保存钮，这里拦下，避免用户以为底部保存已落参数改动；
+    // 新建态（还没有 id）参数草稿随本次保存一起提交，不需要拦截。
+    if (paramConfigDirty && api?.id != null) {
+      setTab('param')
+      toast.warning('「参数配置」还有未保存的改动，请先在该页签点「保存参数配置」')
+      return
+    }
     // INT-1939 返工：表单 noValidate 后原生 min/max 不再拦截，端点行四项整数在此自查
     // （口径同原原生约束：整数 + 区间；空串按缺省值兜底，不报错）。
     // 只校验会提交的行——端点 URL 为空的行整行不下发。
@@ -595,14 +817,35 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
       payload.audioConfig = audioCleared ? {} : buildAudioConfig(baseApi?.audioConfig, audioDraft)
     }
 
+    // 配置自检（守卫）：字段级校验通过后仍不可执行的组合 / 必填缺失 → 拦下并定位请求模板
+    if (capability.level === 'needs_adapter') {
+      setTab('request')
+      toast.error(
+        capability.issues.find((issue) => issue.severity === 'error')?.message ??
+          '当前配置无法由通用驱动执行'
+      )
+      return
+    }
+
+    // 新建态：参数配置草稿随创建一起提交（空草稿不发，避免无意义的覆盖请求）
+    const paramDraftHasContent =
+      paramConfigDraft != null &&
+      (paramConfigDraft.params.length > 0 || paramConfigDraft.mappings.length > 0)
+    const paramOverrides =
+      api?.id == null && paramDraftHasContent && paramConfigDraft
+        ? { algorithmType: values.algorithmType, ...paramConfigDraft }
+        : undefined
+
     // INT-1939：只有保存成功才关闭弹窗；失败时 toast 已由 useApisCrud 给出，
     // 弹窗与五个页签草稿原样保留，保存钮恢复可点，可在弹窗内直接重试。
-    if (await save(payload)) onOpenChange(false)
+    if (await save(payload, paramOverrides)) onOpenChange(false)
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-2xl'>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+      {/* 参数配置页签的表格列多（代码/名称/类型/方向/排序/响应路径），2xl 会横向裁切 */}
+      <DialogContent className='sm:max-w-5xl'>
         <DialogHeader>
           <DialogTitle>{api ? '编辑 API' : '新增 API'}</DialogTitle>
           <DialogDescription>
@@ -671,7 +914,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                 </div>
 
                 <div className='space-y-1.5'>
-                  <Label htmlFor='max-process'>最大并发</Label>
+                  <Label htmlFor='max-process'>最大并发（所有端点合计）</Label>
                   <Input
                     id='max-process'
                     type='number'
@@ -680,15 +923,19 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                     aria-invalid={Boolean(form.formState.errors.maxProcess)}
                     {...form.register('maxProcess', { valueAsNumber: true })}
                   />
-                  {form.formState.errors.maxProcess && (
+                  {form.formState.errors.maxProcess ? (
                     <p className='text-destructive text-xs'>
                       {form.formState.errors.maxProcess.message}
+                    </p>
+                  ) : (
+                    <p className='text-muted-foreground text-xs'>
+                      本 API 下所有端点共享的总并发上限；单个端点自己的上限在下方端点行「端点最大并发」。
                     </p>
                   )}
                 </div>
 
                 {/* 协议 × 流式性（INT-1800 / B0 §3.2）：两个独立维度，不互相推断。
-                    协议下拉 4 值，sse / grpc 未上线 → 置灰并提示；流式开关按可用矩阵锁定。 */}
+                    协议下拉 4 值均已上线；流式开关按可用矩阵锁定（仅 sse 锁流式）。 */}
                 <div className='space-y-1.5'>
                   <Label>协议 *</Label>
                   <Select
@@ -719,17 +966,17 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                     </SelectContent>
                   </Select>
                   <p className='text-muted-foreground text-xs'>
-                    协议只存规范值（http / websocket / sse / grpc）；四种协议均已上线，
-                    流式性由下方开关单独决定，不由协议推断。
+                    协议只存规范值（http / websocket / sse / grpc）；除 SSE 仅支持流式外，
+                    其余协议的流式性由下方开关决定，不由协议推断。
                   </p>
                 </div>
 
                 <div className='space-y-1.5'>
                   <div className='flex items-center justify-between gap-2'>
-                    <Label htmlFor='api-streaming'>流式</Label>
+                    <Label htmlFor='api-streaming'>流式性</Label>
                     <div className='flex items-center gap-2'>
                       <span className='text-muted-foreground text-xs'>
-                        {streamingLabel(watchedStreaming)}
+                        {watchedStreaming ? '实时（流式）' : '请求-响应（非流式）'}
                       </span>
                       <Switch
                         id='api-streaming'
@@ -743,8 +990,9 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                   </div>
                   {streamingLocked ? (
                     <p className='text-muted-foreground text-xs'>
-                      当前协议只放行一种流式性（{streamingLabel(defaultStreamingFor(watchedProtocol))}），
-                      开关暂锁定；两种形态都可用后开放。
+                      {API_PROTOCOL_LABEL[watchedProtocol] ?? '该协议'}只支持
+                      {streamingLabel(defaultStreamingFor(watchedProtocol))} 一种形态，开关锁定；
+                      需要另一种形态请改用 HTTP / WebSocket / gRPC。
                     </p>
                   ) : (
                     <p className='text-muted-foreground text-xs'>
@@ -763,13 +1011,14 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                   <Textarea id='api-desc' rows={2} placeholder='API 用途说明（可选）' {...form.register('description')} />
                 </div>
 
-                {/* INT-1777 audio_config（顶层列 apis.audio_config，不是 meta.audio_config） */}
-                <div className='border-border/60 space-y-2 rounded-lg border p-3'>
+                {/* INT-1777 audio_config（顶层列 apis.audio_config，不是 meta.audio_config）；
+                    INT-1771：输入 / 输出两套格式分开配置（可不同） */}
+                <div className='border-border/60 space-y-3 rounded-lg border p-3'>
                   <div className='flex flex-wrap items-start justify-between gap-2'>
                     <div>
                       <Label>音频格式（audio_config）</Label>
                       <p className='text-muted-foreground text-xs'>
-                        目标音频格式声明；未配置时运行时回退 24000Hz / s16 / 单声道 / pcm。
+                        输入（下发）与输出（回传）可以不同；未配置时运行时回退 24000Hz / s16 / 单声道 / pcm。
                       </p>
                     </div>
                     <Button
@@ -782,100 +1031,25 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                       清除音频格式
                     </Button>
                   </div>
-                  <div className='grid grid-cols-2 gap-2'>
-                    <div className='space-y-1'>
-                      <Label className='text-xs'>采样率</Label>
-                      <Select
-                        value={audioDraft.sampleRate || UNSET}
-                        items={SAMPLE_RATE_OPTIONS}
-                        onValueChange={(value) =>
-                          updateAudio({ sampleRate: value && value !== UNSET ? value : '' })
-                        }
+                  <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+                    {AUDIO_DIRECTION_FIELDS.map((direction) => (
+                      <div
+                        key={direction.key}
+                        className='border-border/40 space-y-2 rounded-md border p-2.5'
                       >
-                        <SelectTrigger className='w-full justify-between'>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={UNSET}>未设置</SelectItem>
-                          {AUDIO_SAMPLE_RATE_OPTIONS.map((rate) => (
-                            <SelectItem key={rate} value={String(rate)}>
-                              {rate} Hz
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className='space-y-1'>
-                      <Label className='text-xs'>位深</Label>
-                      <Select
-                        value={audioDraft.bitDepth || UNSET}
-                        items={BIT_DEPTH_OPTIONS}
-                        onValueChange={(value) =>
-                          updateAudio({ bitDepth: value && value !== UNSET ? value : '' })
-                        }
-                      >
-                        <SelectTrigger className='w-full justify-between'>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={UNSET}>未设置</SelectItem>
-                          {AUDIO_BIT_DEPTH_OPTIONS.map((depth) => (
-                            <SelectItem key={depth} value={depth}>
-                              {depth}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className='space-y-1'>
-                      <Label className='text-xs'>通道数</Label>
-                      <Select
-                        value={audioDraft.channels || UNSET}
-                        items={CHANNEL_OPTIONS}
-                        onValueChange={(value) =>
-                          updateAudio({ channels: value && value !== UNSET ? value : '' })
-                        }
-                      >
-                        <SelectTrigger className='w-full justify-between'>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={UNSET}>未设置</SelectItem>
-                          {AUDIO_CHANNEL_OPTIONS.map((channel) => (
-                            <SelectItem key={channel} value={String(channel)}>
-                              {channel === 1 ? '1（单声道）' : '2（立体声）'}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className='space-y-1'>
-                      <Label className='text-xs'>容器</Label>
-                      <Select
-                        value={audioDraft.container || UNSET}
-                        items={CONTAINER_OPTIONS}
-                        onValueChange={(value) =>
-                          updateAudio({ container: value && value !== UNSET ? value : '' })
-                        }
-                      >
-                        <SelectTrigger className='w-full justify-between'>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={UNSET}>未设置</SelectItem>
-                          {AUDIO_CONTAINER_OPTIONS.map((container) => (
-                            <SelectItem key={container} value={container}>
-                              {container}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                        <AudioFormatFields
+                          label={direction.label}
+                          hint={direction.hint}
+                          value={audioDraft[direction.key]}
+                          onChange={(patch) => updateAudio(direction.key, patch)}
+                        />
+                      </div>
+                    ))}
                   </div>
                   <p className='text-muted-foreground text-xs'>
                     {audioCleared
                       ? '保存后将清空 audio_config（提交 {}）。'
-                      : '未改动时不提交 audio_config；清空某一项则从 audio_config 删除该键。'}
+                      : '未改动时不提交 audio_config；某一侧四项全空则删除该侧（执行侧回退另一侧同值）。'}
                   </p>
                 </div>
 
@@ -896,7 +1070,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                   </div>
                   {endpoints.length === 0 ? (
                     <p className='text-muted-foreground border-border/60 rounded-lg border border-dashed p-3 text-center text-xs'>
-                      暂无端点，点击「添加端点」配置（优先级/最大进程/超时/音频时长）
+                      暂无端点，点击「添加端点」配置（优先级/端点最大并发/超时/音频时长）
                     </p>
                   ) : (
                     <div className='flex flex-col gap-2'>
@@ -948,7 +1122,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                                   type='number'
                                   min={rule.min}
                                   max={rule.max ?? undefined}
-                                  aria-label={`端点${rule.label}`}
+                                  aria-label={rule.ariaLabel}
                                   aria-invalid={Boolean(endpointErrorOf(row.key, rule.field))}
                                   onChange={(e) =>
                                     setEndpointNumber(row.key, rule.field, e.target.value)
@@ -996,6 +1170,33 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
 
               {/* 请求模板页签：写 meta，协议决定请求配置区、流式性决定轮次/会话配置区（旧键保留不删，只隐藏） */}
               <TabsContent value='request' className='space-y-3'>
+                {/* 配置自检：说清「纯配置可跑」还是「缺什么」 */}
+                <div
+                  className={cn(
+                    'rounded-lg border p-2.5 text-xs',
+                    capability.level === 'needs_adapter'
+                      ? 'border-destructive/40 bg-destructive/10'
+                      : 'border-border/60 bg-muted/40'
+                  )}
+                >
+                  <p className='font-medium'>
+                    {capability.level === 'configurable'
+                      ? '配置自检：当前配置可由通用驱动直接执行（无需代码适配器）'
+                      : '配置自检：还有必填项缺失，保存后无法执行'}
+                  </p>
+                  {capability.issues.length > 0 && (
+                    <ul className='text-muted-foreground mt-1 list-disc space-y-0.5 pl-4'>
+                      {capability.issues.map((issue) => (
+                        <li
+                          key={issue.message}
+                          className={issue.severity === 'error' ? 'text-destructive' : undefined}
+                        >
+                          {issue.message}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
                 <div className='bg-muted/40 text-muted-foreground rounded-lg border p-2.5 text-xs'>
                   按协议与流式性显隐，当前：
                   <Badge variant='secondary' className='mx-1'>
@@ -1092,6 +1293,19 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                         </p>
                       )}
                     </div>
+                    <SampleJsonImport
+                      kind='request'
+                      onApply={(text) => {
+                        const result = inferBodyTemplate(text)
+                        updateMeta({
+                          bodyTemplateMode: 'json',
+                          bodyTemplateText: result.templateText,
+                        })
+                        return result.audioPath
+                          ? `已生成模板；音频字段 ${result.audioPath} 已替换为 {{audio_b64}}`
+                          : '已生成请求模板'
+                      }}
+                    />
                   </>
                 )}
 
@@ -1574,22 +1788,100 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                   </>
                 )}
 
+                {/* WS 流式两段载荷（Qwen live-translate 方言）：首帧建连后一次、音频帧每 100ms。
+                    关闭开关即回落执行侧默认（session.update / input_audio_buffer.append）。 */}
+                {watchedStreaming && isWebSocket && (
+                  <div className='border-border/60 space-y-3 rounded-lg border p-3'>
+                    <div>
+                      <p className='text-sm font-medium'>WS 载荷模板</p>
+                      <p className='text-muted-foreground text-xs'>
+                        首帧与音频帧是两种载荷：首帧只发一次，音频帧按 100ms 持续发。
+                        首帧占位符取自会话配置的键；音频帧可用 {'{{audio_b64}}'} / {'{{event_id}}'}。
+                      </p>
+                    </div>
+                    <div className='flex items-center justify-between gap-2'>
+                      <Label htmlFor='meta-first-frame'>自定义首帧载荷（first_frame）</Label>
+                      <Switch
+                        id='meta-first-frame'
+                        size='sm'
+                        checked={metaDraft.firstFrameEnabled}
+                        onCheckedChange={(checked) =>
+                          updateMeta({ firstFrameEnabled: checked })
+                        }
+                        aria-label='自定义首帧载荷'
+                      />
+                    </div>
+                    {metaDraft.firstFrameEnabled && (
+                      <JsonTextarea
+                        id='meta-first-frame-template'
+                        label='首帧模板'
+                        hint={FIRST_FRAME_HINT}
+                        value={metaDraft.firstFrameTemplate}
+                        error={metaErrorOf('firstFrameTemplate')}
+                        onChange={(text) => updateMeta({ firstFrameTemplate: text })}
+                      />
+                    )}
+                    <div className='flex items-center justify-between gap-2'>
+                      <Label htmlFor='meta-audio-frame'>自定义音频帧载荷（audio_frame）</Label>
+                      <Switch
+                        id='meta-audio-frame'
+                        size='sm'
+                        checked={metaDraft.audioFrameEnabled}
+                        onCheckedChange={(checked) =>
+                          updateMeta({ audioFrameEnabled: checked })
+                        }
+                        aria-label='自定义音频帧载荷'
+                      />
+                    </div>
+                    {metaDraft.audioFrameEnabled && (
+                      <JsonTextarea
+                        id='meta-audio-frame-template'
+                        label='音频帧模板'
+                        hint={AUDIO_FRAME_HINT}
+                        value={metaDraft.audioFrameTemplate}
+                        error={metaErrorOf('audioFrameTemplate')}
+                        onChange={(text) => updateMeta({ audioFrameTemplate: text })}
+                      />
+                    )}
+                  </div>
+                )}
+
                 <Separator />
                 <div className='space-y-1.5'>
                   <Label htmlFor='meta-vendor-adapter'>厂商适配器（vendor_adapter）</Label>
-                  <Input
-                    id='meta-vendor-adapter'
-                    value={metaDraft.vendorAdapter}
-                    onChange={(e) => updateMeta({ vendorAdapter: e.target.value })}
-                    placeholder='留空 = 使用默认适配器'
-                  />
+                  <Select
+                    value={metaDraft.vendorAdapter.trim() || UNSET}
+                    items={vendorAdapterOptions}
+                    onValueChange={(value) =>
+                      updateMeta({ vendorAdapter: !value || value === UNSET ? '' : value })
+                    }
+                  >
+                    <SelectTrigger
+                      id='meta-vendor-adapter'
+                      className='w-full justify-between'
+                      aria-label='厂商适配器'
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vendorAdapterOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <p className='text-muted-foreground text-xs'>
-                    只填部署已注册的适配器名；留空使用默认适配器。写错值会在执行期被拒绝，该 API 的任务将无法运行。
+                    {
+                      (vendorAdapterOptions.find(
+                        (option) => option.value === (metaDraft.vendorAdapter.trim() || UNSET)
+                      ) ?? VENDOR_ADAPTER_OPTIONS[0]).hint
+                    }
                   </p>
                 </div>
               </TabsContent>
 
-              {/* 响应解析页签（INT-1778 §2.3）：写 meta 的 8 个解析器键 */}
+              {/* 响应解析页签（INT-1778 §2.3）：result_parser / append_mode 两键 */}
               <TabsContent value='response' className='space-y-3'>
                 <div className='bg-muted/40 space-y-1.5 rounded-lg border p-2.5 text-xs'>
                   <p className='flex flex-wrap items-center gap-1.5 font-medium'>
@@ -1632,50 +1924,20 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                   )}
                 </div>
 
-                <div className='grid grid-cols-2 gap-2'>
-                  <ResponsePathInput
-                    id='meta-asr-mapping'
-                    label='ASR 文本映射（asr_mapping）'
-                    defaultValue={RESPONSE_PARSER_PATH_DEFAULTS.asrMapping}
-                    value={responseDraft.asrMapping}
-                    onChange={(value) => updateResponse({ asrMapping: value })}
-                  />
-                  <ResponsePathInput
-                    id='meta-trans-mapping'
-                    label='翻译文本映射（trans_mapping）'
-                    defaultValue={RESPONSE_PARSER_PATH_DEFAULTS.transMapping}
-                    value={responseDraft.transMapping}
-                    onChange={(value) => updateResponse({ transMapping: value })}
-                  />
-                  <ResponsePathInput
-                    id='meta-sentence-end-mapping'
-                    label='句结束标志（sentence_end_mapping）'
-                    defaultValue={RESPONSE_PARSER_PATH_DEFAULTS.sentenceEndMapping}
-                    value={responseDraft.sentenceEndMapping}
-                    onChange={(value) => updateResponse({ sentenceEndMapping: value })}
-                  />
-                  <ResponsePathInput
-                    id='meta-session-end-mapping'
-                    label='会话结束标志（session_end_mapping）'
-                    defaultValue={RESPONSE_PARSER_PATH_DEFAULTS.sessionEndMapping}
-                    value={responseDraft.sessionEndMapping}
-                    onChange={(value) => updateResponse({ sessionEndMapping: value })}
-                  />
-                  <ResponsePathInput
-                    id='meta-error-code-mapping'
-                    label='业务错误码（error_code_mapping）'
-                    defaultValue={RESPONSE_PARSER_PATH_DEFAULTS.errorCodeMapping}
-                    value={responseDraft.errorCodeMapping}
-                    onChange={(value) => updateResponse({ errorCodeMapping: value })}
-                  />
-                  <ResponsePathInput
-                    id='meta-error-msg-mapping'
-                    label='业务错误信息（error_msg_mapping）'
-                    defaultValue={RESPONSE_PARSER_PATH_DEFAULTS.errorMsgMapping}
-                    value={responseDraft.errorMsgMapping}
-                    onChange={(value) => updateResponse({ errorMsgMapping: value })}
-                  />
-                </div>
+                <SampleJsonImport
+                  kind='response'
+                  onApply={(text) => {
+                    const result = inferResponseParser(text)
+                    updateResponse({ resultParser: result.parserText })
+                    return `识别到 ${result.fields
+                      .map((field) => `${field.code} ← ${field.path}`)
+                      .join('；')}`
+                  }}
+                />
+
+                {/* 负责人 2026-10-31 裁定：asr / trans / 句结束 / 会话结束 / 错误码 /
+                    错误信息 6 个 *_mapping 由后端内置缺省即可，UI 不再暴露
+                    （存量 meta 里的这些键原样保留，不读不写不删）。 */}
 
                 <div className='space-y-1.5'>
                   <Label>流式结果拼接（append_mode）</Label>
@@ -1711,16 +1973,71 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                 <ParsePreviewPanel protocol={watchedProtocol} draft={responseDraft} />
               </TabsContent>
 
-              {/* 参数配置页签（T4.2）：API 实例作用域，策略绑定 + 输出字段 / 映射可编辑 + 覆盖保存 */}
-              <TabsContent value='param' className='space-y-3'>
+              {/* 参数配置页签（T4.2）：API 实例作用域，策略绑定 + 输出字段 / 映射可编辑 + 覆盖保存。
+                  keepMounted：切页签不卸载，行草稿与「未保存」标记都不丢。 */}
+              <TabsContent value='param' className='space-y-3' keepMounted>
                 <ApiParamConfigTab
                   apiId={api?.id ?? null}
                   algorithmType={algorithmType}
                   canEdit={canManageParams}
+                  onDirtyChange={setParamConfigDirty}
+                  onDraftChange={setParamConfigDraft}
+                  derived={derivedFields}
                 />
               </TabsContent>
             </div>
           </Tabs>
+
+          {/* 配置策略：协议 / 流式 / 请求模板 / 响应解析 / 音频 / 参数与映射 整份存取（不含端点地址） */}
+          <div className='bg-muted/30 flex flex-wrap items-center gap-2 rounded-lg border p-2'>
+            <Label className='text-xs'>配置策略</Label>
+            <Select
+              value={applyProfileId || UNSET}
+              items={[{ value: UNSET, label: '选择策略…' }, ...profileOptions]}
+              onValueChange={(value) =>
+                setApplyProfileId(!value || value === UNSET ? '' : value)
+              }
+              disabled={!algorithmType}
+            >
+              <SelectTrigger size='sm' className='w-52' aria-label='配置策略'>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={UNSET}>选择策略…</SelectItem>
+                {profileOptions.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              className='h-7 text-xs'
+              disabled={!applyProfileId}
+              onClick={() => void applyStrategy()}
+            >
+              套用配置
+            </Button>
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              className='h-7 text-xs'
+              disabled={!algorithmType}
+              onClick={() => {
+                setStrategyName('')
+                setStrategyDialogOpen(true)
+              }}
+            >
+              存为策略
+            </Button>
+            <span className='text-muted-foreground ml-auto text-xs'>
+              策略含协议 / 请求模板 / 响应解析 / 音频 / 参数与映射；端点地址属实例私有不入策略。
+            </span>
+          </div>
 
           <DialogFooter>
             <Button variant='outline' type='button' onClick={() => onOpenChange(false)}>
@@ -1732,7 +2049,146 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
           </DialogFooter>
         </form>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+
+      {/* 存为配置策略：名称 + 说明（整份配置落 param_profiles.config_snapshot） */}
+      <Dialog open={strategyDialogOpen} onOpenChange={setStrategyDialogOpen}>
+        <DialogContent className='sm:max-w-md'>
+          <DialogHeader>
+            <DialogTitle>存为配置策略</DialogTitle>
+            <DialogDescription>
+              保存当前协议 / 请求模板 / 响应解析 / 音频格式 / 参数与映射，供新建 API 时一键套用。
+            </DialogDescription>
+          </DialogHeader>
+          <div className='space-y-2'>
+            <Label htmlFor='api-strategy-name'>策略名称 *</Label>
+            <Input
+              id='api-strategy-name'
+              value={strategyName}
+              maxLength={100}
+              placeholder='如：Qwen 实时翻译（WS）'
+              onChange={(e) => setStrategyName(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button type='button' variant='outline' onClick={() => setStrategyDialogOpen(false)}>
+              取消
+            </Button>
+            <Button type='button' disabled={strategySaving} onClick={() => void saveAsStrategy()}>
+              {strategySaving ? '保存中…' : '保存'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+/**
+ * 一套音频格式四项（采样率 / 位深 / 通道数 / 容器）。
+ * 输入侧与输出侧共用本组件，避免两份重复控件；aria-label 带上方向前缀便于定位。
+ */
+function AudioFormatFields({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string
+  hint: string
+  value: AudioFormatDraft
+  onChange: (patch: Partial<AudioFormatDraft>) => void
+}) {
+  const pick = (raw: string) => (raw && raw !== UNSET ? raw : '')
+  return (
+    <div className='space-y-2'>
+      <div>
+        <Label className='text-xs font-medium'>{label}</Label>
+        <p className='text-muted-foreground text-xs'>{hint}</p>
+      </div>
+      <div className='grid grid-cols-2 gap-2'>
+        <div className='space-y-1'>
+          <Label className='text-xs'>采样率</Label>
+          <Select
+            value={value.sampleRate || UNSET}
+            items={SAMPLE_RATE_OPTIONS}
+            onValueChange={(raw) => onChange({ sampleRate: pick(raw) })}
+          >
+            <SelectTrigger className='w-full justify-between' aria-label={`${label} 采样率`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={UNSET}>未设置</SelectItem>
+              {AUDIO_SAMPLE_RATE_OPTIONS.map((rate) => (
+                <SelectItem key={rate} value={String(rate)}>
+                  {rate} Hz
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className='space-y-1'>
+          <Label className='text-xs'>位深</Label>
+          <Select
+            value={value.bitDepth || UNSET}
+            items={BIT_DEPTH_OPTIONS}
+            onValueChange={(raw) => onChange({ bitDepth: pick(raw) })}
+          >
+            <SelectTrigger className='w-full justify-between' aria-label={`${label} 位深`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={UNSET}>未设置</SelectItem>
+              {AUDIO_BIT_DEPTH_OPTIONS.map((depth) => (
+                <SelectItem key={depth} value={depth}>
+                  {depth}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className='space-y-1'>
+          <Label className='text-xs'>通道数</Label>
+          <Select
+            value={value.channels || UNSET}
+            items={CHANNEL_OPTIONS}
+            onValueChange={(raw) => onChange({ channels: pick(raw) })}
+          >
+            <SelectTrigger className='w-full justify-between' aria-label={`${label} 通道数`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={UNSET}>未设置</SelectItem>
+              {AUDIO_CHANNEL_OPTIONS.map((channel) => (
+                <SelectItem key={channel} value={String(channel)}>
+                  {channel === 1 ? '1（单声道）' : '2（立体声）'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className='space-y-1'>
+          <Label className='text-xs'>容器</Label>
+          <Select
+            value={value.container || UNSET}
+            items={CONTAINER_OPTIONS}
+            onValueChange={(raw) => onChange({ container: pick(raw) })}
+          >
+            <SelectTrigger className='w-full justify-between' aria-label={`${label} 容器`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={UNSET}>未设置</SelectItem>
+              {AUDIO_CONTAINER_OPTIONS.map((container) => (
+                <SelectItem key={container} value={container}>
+                  {container}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1856,32 +2312,54 @@ function JsonTextarea({
   )
 }
 
-/** 响应解析页签的单条路径输入（6 个 *_mapping 键；占位符 = 后端内置缺省，不预填不写库） */
-function ResponsePathInput({
-  id,
-  label,
-  defaultValue,
-  value,
-  onChange,
+/** 贴样例 JSON → 一键生成模板（纯前端推断，结果回填到输入框由用户复核） */
+function SampleJsonImport({
+  kind,
+  onApply,
 }: {
-  id: string
-  label: string
-  defaultValue: string
-  value: string
-  onChange: (value: string) => void
+  kind: 'request' | 'response'
+  onApply: (text: string) => string
 }) {
+  const [text, setText] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = () => {
+    setError(null)
+    setMessage(null)
+    try {
+      setMessage(onApply(text) || '已生成，请核对后再保存')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '解析失败')
+    }
+  }
+
   return (
-    <div className='space-y-1'>
-      <Label htmlFor={id} className='text-xs'>
-        {label}
-      </Label>
-      <Input
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={`留空 = 默认 ${defaultValue}`}
+    <div className='border-border/60 space-y-1.5 rounded-lg border border-dashed p-2.5'>
+      <p className='text-xs font-medium'>
+        {kind === 'request'
+          ? '粘贴样例请求 JSON → 一键生成请求模板'
+          : '粘贴样例响应 JSON → 一键生成响应解析'}
+      </p>
+      <Textarea
+        rows={4}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={
+          kind === 'request'
+            ? '{\n  "type": "input_audio_buffer.append",\n  "audio": "<base64...>"\n}'
+            : '{\n  "type": "response.audio_transcript.delta",\n  "transcript": "..."\n}'
+        }
         className='font-mono text-xs'
+        aria-label={kind === 'request' ? '样例请求 JSON' : '样例响应 JSON'}
       />
+      <div className='flex flex-wrap items-center gap-2'>
+        <Button type='button' size='sm' variant='outline' className='h-7 text-xs' onClick={run}>
+          一键解析
+        </Button>
+        {message && <span className='text-muted-foreground text-xs'>{message}</span>}
+        {error && <span className='text-destructive text-xs'>{error}</span>}
+      </div>
     </div>
   )
 }
@@ -2007,12 +2485,6 @@ function ParsePreviewPanel({
         await parseApiResponsePreview({
           sampleResponse,
           resultParser: parser,
-          asrMapping: draft.asrMapping,
-          transMapping: draft.transMapping,
-          sentenceEndMapping: draft.sentenceEndMapping,
-          sessionEndMapping: draft.sessionEndMapping,
-          errorCodeMapping: draft.errorCodeMapping,
-          errorMsgMapping: draft.errorMsgMapping,
         })
       )
     } catch (err) {

@@ -175,6 +175,7 @@ export function toDeviceApiParam(raw: unknown): DeviceApiParam {
   const r = asRecord(raw)
   return {
     id: num(r.id) ?? 0,
+    deviceId: num(r.device_id),
     paramCode: str(r.param_code),
     paramName: nullableStr(r.param_name),
     label: nullableStr(r.label),

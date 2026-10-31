@@ -12,6 +12,8 @@ export type AlgorithmStatus = 'online' | 'offline'
 /** 算法侧设备参数（AlgorithmDeviceParamItem）；API 实例参数见 `domain/models/apiConfig` 的算法作用域行 */
 export type DeviceApiParam = {
   id: number
+  /** 设备级作用域：null = 算法类型级默认，非空 = 该设备覆盖 */
+  deviceId?: number | null
   paramCode: string
   paramName: string | null
   label: string | null

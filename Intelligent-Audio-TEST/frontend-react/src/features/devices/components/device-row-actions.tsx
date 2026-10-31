@@ -53,6 +53,8 @@ export interface DeviceRowActionsProps {
   /** 安装/卸载参数小弹窗（§3.4.1：file_path/package_name 输入，P3-31 补口） */
   onInstallApp: () => void
   onUninstallApp: () => void
+  /** 设备参数配置（测试设备；算法级声明 + 本设备覆盖） */
+  onParams?: () => void
 }
 
 export function DeviceRowActions(props: DeviceRowActionsProps) {
@@ -107,6 +109,11 @@ export function DeviceRowActions(props: DeviceRowActionsProps) {
           <DropdownMenuItem onClick={props.onEdit}>
             编辑
           </DropdownMenuItem>
+        )}
+
+        {/* 设备参数（算法级声明 + 本设备覆盖）；离线也可配置（纯配置操作） */}
+        {isTest && canRead && props.onParams && (
+          <DropdownMenuItem onClick={props.onParams}>参数配置</DropdownMenuItem>
         )}
 
         {isTest && canHealth && (

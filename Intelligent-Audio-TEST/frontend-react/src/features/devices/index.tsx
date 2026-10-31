@@ -83,6 +83,7 @@ import { ScanDevicesDialog } from '@/features/devices/components/modals/scan-dev
 import { ImportDevicesDialog } from '@/features/devices/components/modals/import-devices-dialog'
 import { ExportDevicesDialog } from '@/features/devices/components/modals/export-devices-dialog'
 import { DeviceDetailDialog } from '@/features/devices/components/modals/device-detail-dialog'
+import { DeviceParamsDialog } from '@/features/devices/components/modals/device-params-dialog'
 import { DeviceGroupManagerDialog } from '@/features/devices/components/modals/device-group-manager-dialog'
 import { LaboratoryManagerDialog } from '@/features/devices/components/modals/laboratory-manager-dialog'
 import { PlaybackSpeakerGroupDialog } from '@/features/devices/components/modals/playback-speaker-group-dialog'
@@ -204,6 +205,11 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     kind: 'test',
     device: null,
   })
+  /** 设备参数配置弹窗（算法级声明 + 本设备覆盖；设备级行带 device_id） */
+  const [paramsState, setParamsState] = useState<{
+    open: boolean
+    device: TestDevice | null
+  }>({ open: false, device: null })
   /** INT-1938 / INT-2153：「测试 API」页签的新增与编辑复用 §5.3 API 编辑弹窗（四页签，
    *  api = null 即新增态）；设备抽屉不再承载 API——UX 16_设备域.md:157/561、
    *  INT-2153 走查：创建时应能直接配请求模板 / 响应解析 / 参数配置 */
@@ -566,6 +572,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
         setOperateState({ open: true, kind: 'uninstall-app', device }),
       onDelete: (device: TestDevice) => setDeleteTarget({ kind: 'test', device }),
       onEmptyAdd: () => openMutate({ open: true, mode: 'create', kind: 'test' }),
+      onParams: (device: TestDevice) => setParamsState({ open: true, device }),
     },
     playback: {
       canRead,
@@ -885,6 +892,17 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
         canUpdate={canUpdate}
         algorithmNameMap={algorithmNameMap}
       />
+      {/* 设备参数（算法级声明 + 本设备覆盖；写侧带 device_id） */}
+      {paramsState.device && (
+        <DeviceParamsDialog
+          open={paramsState.open}
+          onOpenChange={(open) =>
+            setParamsState((prev) => ({ ...prev, open, device: open ? prev.device : null }))
+          }
+          device={{ id: paramsState.device.id, name: paramsState.device.name }}
+          defaultAlgorithmType={paramsState.device.supportedAlgorithms?.[0] ?? null}
+        />
+      )}
       {/* INT-1938 / INT-2153：「测试 API」页签新增与编辑共用的 §5.3 四页签弹窗 */}
       <ApiEditDialog
         open={apiEditState.open}

@@ -138,11 +138,32 @@ export function toParamProfile(raw: unknown): ParamProfile {
     description: nullableStr(r.description),
     status: isParamProfileStatus(r.status) ? r.status : 'online',
     clonedFrom: nullableNum(r.cloned_from),
+    config: toApiConfigSnapshot(r.config),
     params: Array.isArray(r.params) ? r.params.map(toParamProfileParam) : [],
     mappings: Array.isArray(r.mappings) ? r.mappings.map(toParamProfileMapping) : [],
     createdAt: nullableStr(r.created_at),
     updatedAt: nullableStr(r.updated_at),
   }
+}
+
+/**
+ * `config` 快照是不透明 JSON（前端写、前端读）：字段保持 camelCase，
+ * 仅做类型收敛，避免与后端 snake_case DTO 混淆。
+ */
+export function toApiConfigSnapshot(raw: unknown): ApiConfigSnapshot | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const r = asRecord(raw)
+  const protocol = nullableStr(r.protocol)
+  const vendorAdapter = nullableStr(r.vendorAdapter)
+  const streaming = typeof r.streaming === 'boolean' ? r.streaming : null
+  const audioConfig =
+    typeof r.audioConfig === 'object' && r.audioConfig !== null
+      ? (r.audioConfig as Record<string, unknown>)
+      : null
+  const meta =
+    typeof r.meta === 'object' && r.meta !== null ? (r.meta as Record<string, unknown>) : null
+  if (!protocol && streaming == null && !vendorAdapter && !audioConfig && !meta) return null
+  return { protocol, streaming, vendorAdapter, audioConfig, meta }
 }
 
 /** GET /algorithm/param-profiles 的 data（`{ profiles, total }` 或裸数组都兼容） */
@@ -194,6 +215,7 @@ export interface ParamProfileWriteDto {
   name: string
   description: string | null
   status: string
+  config?: Record<string, unknown> | null
   params: ParamProfileParamWriteDto[]
   mappings: ParamProfileMappingWriteDto[]
 }
@@ -244,6 +266,16 @@ export function toParamProfileDto(input: ParamProfileInput): ParamProfileWriteDt
     name: input.name,
     description: input.description,
     status: input.status,
+    // 快照保持 camelCase 原样透传（读侧 toApiConfigSnapshot 同口径）
+    config: input.config
+      ? {
+          protocol: input.config.protocol,
+          streaming: input.config.streaming,
+          vendorAdapter: input.config.vendorAdapter,
+          audioConfig: input.config.audioConfig,
+          meta: input.config.meta,
+        }
+      : null,
     params: input.params.map(toParamProfileParamDto),
     mappings: input.mappings.map(toParamProfileMappingDto),
   }

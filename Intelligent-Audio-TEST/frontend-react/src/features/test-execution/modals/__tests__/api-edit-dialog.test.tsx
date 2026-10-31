@@ -127,9 +127,12 @@ describe('四页签骨架（T4.2：输出字段 / 映射合并为「参数配置
   it('未选算法时参数配置页签显示占位提示（响应解析是写 meta 的页签，仍可填）', () => {
     renderDialog(undefined)
     fireEvent.click(screen.getByRole('tab', { name: '响应解析' }))
-    expect(screen.queryByText('未选择关联算法')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('响应解析器（result_parser）')).toBeInTheDocument()
-    expect(screen.getByText('未选择关联算法，无法判定')).toBeInTheDocument()
+    // 参数配置页签 keepMounted（切页签不丢草稿），断言只看响应解析面板内部
+    const responsePanel = screen
+      .getByLabelText('响应解析器（result_parser）')
+      .closest('[data-slot="tabs-content"]') as HTMLElement
+    expect(within(responsePanel).queryByText('未选择关联算法')).not.toBeInTheDocument()
+    expect(within(responsePanel).getByText('未选择关联算法，无法判定')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab', { name: '参数配置' }))
     expect(screen.getAllByText('未选择关联算法').length).toBeGreaterThan(0)
   })
@@ -299,10 +302,10 @@ describe('取消 / 关闭后重开不残留（INT-1777 复测 P2-1）', () => {
     fireEvent.change(screen.getByLabelText('API 名称 *'), {
       target: { value: '不该保存的名字' },
     })
-    fireEvent.change(screen.getByLabelText('最大并发'), { target: { value: '42' } })
+    fireEvent.change(screen.getByLabelText('最大并发（所有端点合计）'), { target: { value: '42' } })
     cancelAndReopen()
     expect(screen.getByLabelText('API 名称 *')).toHaveValue('')
-    expect(screen.getByLabelText('最大并发')).toHaveValue(5)
+    expect(screen.getByLabelText('最大并发（所有端点合计）')).toHaveValue(5)
   })
 
   it('取消后重开，页签仍落基础页签', () => {
@@ -344,7 +347,7 @@ describe('协议 × 流式性两维（INT-1800 / B0 §3.2.3）', () => {
     }
   })
 
-  it('http 两种流式性都可写 → 开关解锁；切 WebSocket 自动打开并锁定', async () => {
+  it('http 两种流式性都可写 → 开关解锁；切 WebSocket 自动打开但仍可切回非流式（A4）', async () => {
     algorithmOptions.list = [{ id: 'voice_llm', name: '小艺语音大模型' }]
     const user = userEvent.setup()
     renderDialog(API_FIXTURE)
@@ -363,7 +366,8 @@ describe('协议 × 流式性两维（INT-1800 / B0 §3.2.3）', () => {
         'true'
       )
     )
-    expect(screen.getByRole('switch', { name: '流式开关' })).toHaveAttribute(
+    // INT-2079（A4）：websocket + 非流式（请求-响应）已上线 → 开关不再锁定
+    expect(screen.getByRole('switch', { name: '流式开关' })).not.toHaveAttribute(
       'aria-disabled',
       'true'
     )
@@ -454,9 +458,9 @@ describe('端点行四项整数校验（INT-1939 返工：noValidate 后原生 m
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 
-  it('最大进程 5000 / 超时 301 / 音频时长 0 → 各自内联提示、保存请求不发出', async () => {
+  it('端点最大并发 5000 / 超时 301 / 音频时长 0 → 各自内联提示、保存请求不发出', async () => {
     renderDialog(API_FIXTURE)
-    fireEvent.change(screen.getByLabelText('端点最大进程'), { target: { value: '5000' } })
+    fireEvent.change(screen.getByLabelText('端点最大并发'), { target: { value: '5000' } })
     fireEvent.change(screen.getByLabelText('端点超时(s)'), { target: { value: '301' } })
     fireEvent.change(screen.getByLabelText('端点音频时长(s)'), { target: { value: '0' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
@@ -495,16 +499,16 @@ describe('端点行四项整数校验（INT-1939 返工：noValidate 后原生 m
 describe('最大并发校验内联提示（INT-1939）', () => {
   it('留空 → 中文内联提示、保存请求不发出', async () => {
     renderDialog(API_FIXTURE)
-    fireEvent.change(screen.getByLabelText('最大并发'), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText('最大并发（所有端点合计）'), { target: { value: '' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     expect(await screen.findByText('请输入 1~128 的整数')).toBeInTheDocument()
-    expect(screen.getByLabelText('最大并发')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('最大并发（所有端点合计）')).toHaveAttribute('aria-invalid', 'true')
     expect(saveMock).not.toHaveBeenCalled()
   })
 
   it('输入 200（超上限）→ 中文内联提示、保存请求不发出', async () => {
     renderDialog(API_FIXTURE)
-    fireEvent.change(screen.getByLabelText('最大并发'), { target: { value: '200' } })
+    fireEvent.change(screen.getByLabelText('最大并发（所有端点合计）'), { target: { value: '200' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     expect(await screen.findByText('请输入 1~128 的整数')).toBeInTheDocument()
     expect(saveMock).not.toHaveBeenCalled()
@@ -512,7 +516,7 @@ describe('最大并发校验内联提示（INT-1939）', () => {
 
   it('改回合法值后提示消失、可正常保存', async () => {
     renderDialog(API_FIXTURE)
-    const input = screen.getByLabelText('最大并发')
+    const input = screen.getByLabelText('最大并发（所有端点合计）')
     fireEvent.change(input, { target: { value: '200' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     expect(await screen.findByText('请输入 1~128 的整数')).toBeInTheDocument()

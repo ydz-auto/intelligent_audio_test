@@ -62,6 +62,8 @@ export interface TestDeviceTableProps {
   onEmptyAdd: () => void
   onInstallApp: (device: TestDevice) => void
   onUninstallApp: (device: TestDevice) => void
+  /** 设备参数配置（算法级声明 + 本设备覆盖） */
+  onParams?: (device: TestDevice) => void
 }
 
 /** 支持算法 BadgeListCell（最多 2 枚 + 「+N」tooltip 全量） */
@@ -347,6 +349,9 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
                         onStop={() => undefined}
                         onInstallApp={() => props.onInstallApp(row)}
                         onUninstallApp={() => props.onUninstallApp(row)}
+                        onParams={
+                          props.onParams ? () => props.onParams?.(row) : undefined
+                        }
                       />
                     </div>
                   </td>
