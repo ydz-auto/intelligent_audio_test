@@ -364,6 +364,16 @@ class ReportCompareGenerator(
         if len(report_ids) < 2:
             return {'success': False, 'data': None, 'message': '二次对比至少需要两个报告 ID'}
 
+        # INT-2236：提交前同步校验源报告可读性（软删 + 行级可见性）。原实现只在
+        # 异步线程里用无过滤读取，越权请求先拿 200「生成中」、失败经 SSE 才暴露，
+        # 期间还会占住去重标记。现在不可见 / 已删 / 不存在即整批拒，直接回错误，
+        # 不进线程池、不建任何报告。异步线程仍按同一助手复核（防提交后被删/收回）。
+        _, access_error = ReportCompareHelpers._load_secondary_source_reports(report_ids)
+        if access_error:
+            log_and_emit('WARNING', 'report',
+                         f'[secondary_compare] 源报告校验不通过: {access_error}')
+            return {'success': False, 'data': None, 'message': access_error, 'code': 404}
+
         report_key = tuple(sorted(report_ids))
 
         with _generating_secondary_lock:

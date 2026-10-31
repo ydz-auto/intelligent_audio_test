@@ -409,6 +409,10 @@ class TestSubmission:
 
     def test_secondary_compare_returns_failure_when_submit_fails(self, monkeypatch):
         t = _T(monkeypatch)
+        # INT-2236：提交前新增源报告可读性同步校验（需 DB），本用例只测提交失败回收
+        monkeypatch.setattr(
+            cmp_mod.ReportCompareHelpers, '_load_secondary_source_reports',
+            staticmethod(lambda report_ids: ([{'id': r} for r in report_ids], None)))
 
         class _BoomExecutor:
             def submit(self, fn, *args):
@@ -426,6 +430,10 @@ class TestSubmission:
     def test_secondary_compare_dedup_short_circuit(self, monkeypatch):
         t = _T(monkeypatch)
         submitted = []
+        # INT-2236：提交前新增源报告可读性同步校验（需 DB），本用例只测去重短路
+        monkeypatch.setattr(
+            cmp_mod.ReportCompareHelpers, '_load_secondary_source_reports',
+            staticmethod(lambda report_ids: ([{'id': r} for r in report_ids], None)))
 
         class _FakeExecutor:
             def submit(self, fn, *args):

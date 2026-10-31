@@ -290,6 +290,13 @@ class ReportCommandService:
                     'description': req.description or '',
                 })))
             if not resp.success:
+                # INT-2236：源报告不存在/已软删/私有非 owner 的业务码折在 data.code，
+                # 提升为 HTTP 404（与 INT-566 报告详情防探测口径一致），不生成报告
+                _data = _loads(resp.data, {}) or {}
+                _code = _data.get('code') if isinstance(_data, dict) else None
+                if _code == 404:
+                    return error_response(resp.message or '报告不存在或无权访问',
+                                          code=404, http_code=404)
                 return error_response(resp.message or '生成二次对比报告失败')
             data = _loads(resp.data, {}) or {}
             return success_response(data)

@@ -437,6 +437,9 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 result.get('success', False),
                 result.get('message', ''),
                 result.get('data'),
+                # INT-2236：源报告不可见/已软删/不存在 → 404（网关提升为 HTTP 404，
+                # 与 INT-566 报告详情防探测口径一致）
+                code=result.get('code') or 0,
             )
         except Exception as e:
             logger.exception("GenerateSecondaryCompareReport failed")

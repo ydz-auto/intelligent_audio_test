@@ -385,6 +385,27 @@ class ReportQueryMixin:
         return session.get(self.PO_CLASS, report_id)
 
     @with_session
+    def get_report_by_id_visible(self, report_id: int):
+        """按 ID 查询原始 Report PO，带软删 + 行级可见性过滤。
+
+        INT-2236：二次对比等「读源报告内容再复制」的链路用本方法，不得复用
+        ``get_report_by_id_raw``（那是不带过滤的生成引擎口径）。不存在 / 已软删 /
+        私有非 owner 一律返回 None，由调用方整批拒绝（与 INT-423 防探测口径一致，
+        不区分「不存在」与「无权」）。
+        """
+        session = get_db_session()
+        po = session.get(self.PO_CLASS, report_id)
+        if po is None or po.deleted:
+            return None
+        try:
+            check_visible(
+                po.created_by_user_id, po.visibility,
+                get_current_user_id(), get_current_user_is_admin())
+        except VisibilityDenied:
+            return None
+        return po
+
+    @with_session
     def get_report_by_task_id_raw(self, task_id: int):
         """按 task_id 查询原始 Report PO（不转换为实体）。
 

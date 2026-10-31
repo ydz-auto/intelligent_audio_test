@@ -451,21 +451,45 @@ class ReportCompareHelpers:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _load_secondary_source_reports(report_ids):
+        """读取二次对比的源报告 PO，逐个带软删 + 行级可见性过滤。
+
+        INT-2236（P1 IDOR）：原实现用 get_report_by_id_raw（无 visibility / 无
+        deleted 过滤）读源报告，随后 _get_source_cases_from_reports 会把其中的
+        用例名称/结果/评分复制进新建报告——持有 report:compare 的用户传他人私有
+        或已软删报告 ID 即可越权读出内容。改为逐个走 get_report_by_id_visible，
+        且不做「跳过不可见行、剩余凑够两个就放行」：任一报告不存在 / 已软删 /
+        私有非 owner 即整批拒绝（与 INT-423 防探测口径一致，错误文案不区分
+        「不存在」与「无权」）。
+
+        Returns:
+            (reports, error)：reports 按 created_at 升序；出错时 (None, 明确错误文案)。
+        """
+        reports = []
+        denied_ids = []
+        for rid in report_ids:
+            po = report_repository.get_report_by_id_visible(rid)
+            if po is None:
+                denied_ids.append(rid)
+            else:
+                reports.append(po)
+        if denied_ids:
+            listed = ', '.join(str(rid) for rid in denied_ids)
+            return None, f"报告不存在或无权访问: {listed}"
+        # 按 created_at 升序排序（原 .order_by(Report.created_at.asc())）
+        reports.sort(key=lambda r: (r.created_at is None, r.created_at))
+        return reports, None
+
+    @staticmethod
     def _validate_reports_and_get_tasks(report_ids):
         """校验报告列表并提取关联 task_ids。
 
-        原实现使用 Report.query.filter(Report.id.in_(report_ids))
-        .order_by(Report.created_at.asc()).all() 直连 PO；
-        迁移后改用 report_repository.get_report_by_id_raw 逐个读取原始 PO。
+        源报告读取统一走 _load_secondary_source_reports（带可见性 + 软删过滤，
+        INT-2236），不再使用生成引擎口径的 get_report_by_id_raw。
         """
-        # 逐个按 ID 读取原始 Report PO，保持按 created_at 升序排列
-        reports = []
-        for rid in report_ids:
-            po = report_repository.get_report_by_id_raw(rid)
-            if po is not None:
-                reports.append(po)
-        # 按 created_at 升序排序（原 .order_by(Report.created_at.asc())）
-        reports.sort(key=lambda r: (r.created_at is None, r.created_at))
+        reports, error = ReportCompareHelpers._load_secondary_source_reports(report_ids)
+        if error:
+            return None, None, None, error
 
         if len(reports) < 2:
             return None, None, None, "二次对比至少需要两个报告"

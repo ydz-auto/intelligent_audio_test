@@ -216,6 +216,14 @@ class ReportRepositoryABC(ABC):
         """
 
     @abstractmethod
+    def get_report_by_id_visible(self, report_id: int):
+        """按 ID 查询原始 Report PO，带软删 + 行级可见性过滤（INT-2236）。
+
+        不存在 / 已软删 / 私有非 owner 返回 None；供二次对比等「读源报告内容
+        再复制」的链路使用，不得复用 get_report_by_id_raw。
+        """
+
+    @abstractmethod
     def get_report_by_task_id_raw(self, task_id: int):
         """按 task_id 查询原始 Report PO（不转换为实体）。
 

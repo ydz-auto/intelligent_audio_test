@@ -112,6 +112,10 @@ class TestSecondaryRealHangReproduction:
         monkeypatch.setattr(
             cmp_mod.ReportCompareHelpers, '_validate_reports_and_get_tasks',
             staticmethod(_int122_hang_site))
+        # INT-2236：提交前新增源报告可读性同步校验（需 DB），本用例只测卡死复现
+        monkeypatch.setattr(
+            cmp_mod.ReportCompareHelpers, '_load_secondary_source_reports',
+            staticmethod(lambda report_ids: ([{'id': r} for r in report_ids], None)))
         cmp_mod.start_compare_generation_watchdog()
 
         result = cmp_mod.ReportCompareGenerator.secondary_compare([7, 8], None)
@@ -264,6 +268,10 @@ class TestRealQueueStarvation:
             monkeypatch.setattr(
                 cmp_mod.ReportCompareHelpers, '_validate_reports_and_get_tasks',
                 staticmethod(_validate))
+            # INT-2236：提交前新增源报告可读性同步校验（需 DB），本用例只测饥饿
+            monkeypatch.setattr(
+                cmp_mod.ReportCompareHelpers, '_load_secondary_source_reports',
+                staticmethod(lambda report_ids: ([{'id': r} for r in report_ids], None)))
             cmp_mod.start_compare_generation_watchdog()
 
             result = cmp_mod.ReportCompareGenerator.secondary_compare([7, 8], None)
