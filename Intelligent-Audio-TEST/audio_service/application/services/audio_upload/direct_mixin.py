@@ -9,6 +9,7 @@ import logging
 
 from shared.infrastructure.storage import storage
 from shared.clients.oss_client import oss
+from audio_service.domain.exceptions import InvalidAudioContentError
 
 logger = logging.getLogger(__name__)
 
@@ -95,11 +96,17 @@ class AudioDirectUploadMixin:
             oss.complete_multipart_upload('audios', oss_key, upload_id, normalized_parts)
 
     def _download_and_extract_direct_meta(self, oss_key):
-        """下载 OSS 文件到临时文件并提取元数据，返回 (temp_file, size, sr, bps, duration)"""
+        """下载 OSS 文件到临时文件并提取元数据，返回 (temp_file, size, sr, bps, duration)
+
+        INT-2202：空文件 / 无法解析 / 时长 ≤ 0 抛 InvalidAudioContentError，
+        直传路径同样不得以 duration=0 入库（与分片合并同口径）。
+        """
         import tempfile as _tmp2
         temp_file = _tmp2.NamedTemporaryFile(delete=False, suffix='.wav').name
         storage.load_file(f'audios/{oss_key}', temp_file)
         actual_file_size = os.path.getsize(temp_file)
+        if actual_file_size <= 0:
+            raise InvalidAudioContentError('文件内容为空（0 字节）')
 
         sample_rate = 44100
         bits_per_sample = 16
@@ -112,6 +119,8 @@ class AudioDirectUploadMixin:
         dur = self._metadata_service.extract_wav_duration(temp_file)
         if dur is not None:
             duration = dur
+        if duration <= 0:
+            raise InvalidAudioContentError('探测到时长为 0，可能不是音频文件或已损坏')
 
         return temp_file, actual_file_size, sample_rate, bits_per_sample, duration
 

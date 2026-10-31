@@ -23,6 +23,7 @@ from audio_service.application.services.audio_file_utils import (
     _convert_to_wav,
 )
 from audio_service.application.services.audio_upload.metadata_service import audio_metadata_service
+from audio_service.domain.exceptions import InvalidAudioContentError
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,8 @@ class AudioTranscodingService:
         :param final_path: 合并后的原始文件路径
         :param upload_file: UploadFile 记录（含 filename/relative_path）
         :return: dict，含 final_path/file_size/duration/sample_rate/channels/bitrate
+        :raises InvalidAudioContentError: 内容不是可解析的音频（空文件/非音频/时长 0），
+            此时已清掉刚上传的 OSS 对象与临时文件，调用方不得落库（INT-2202）。
         """
         wav_file_path = None
         oss_key = None
@@ -139,8 +142,15 @@ class AudioTranscodingService:
             bits_per_sample = 16
 
         meta_source_path, meta_tmp_path = self._prepare_meta_source(final_path, oss_key)
-        meta = audio_metadata_service.extract_from_local_file(meta_source_path)
-        self._cleanup_meta_tmp(meta_tmp_path)
+        try:
+            # INT-2202：入库前按真实内容探测参数；探测失败/时长≤0 抛异常，
+            # 同时清掉本次刚写入的 OSS 对象，避免留下无主文件
+            meta = audio_metadata_service.extract_from_local_file(meta_source_path)
+        except InvalidAudioContentError:
+            self._cleanup_transcode_failure(None, oss_key)
+            raise
+        finally:
+            self._cleanup_meta_tmp(meta_tmp_path)
 
         return {
             'final_path': final_path,

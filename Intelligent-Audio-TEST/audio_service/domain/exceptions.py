@@ -28,6 +28,22 @@ class TagResolutionError(RuntimeError):
         super().__init__(message)
 
 
+class InvalidAudioContentError(RuntimeError):
+    """上传内容不是可解析的音频：空文件、纯文本改名、时长 ≤ 0 或参数无效。
+
+    INT-2202：上传/合并链路必须在入库前探测真实音频参数，探测失败或时长为 0
+    时抛本异常。调用方不得用默认值兜底（旧行为会把 0 字节/非音频 .wav 落库成
+    duration=0），而应把该文件判失败、返回原因并清理临时分片。
+    """
+
+    def __init__(self, detail: str = ''):
+        self.detail = detail
+        message = '音频内容无效'
+        if detail:
+            message = f'{message}：{detail}'
+        super().__init__(message)
+
+
 class TestCaseCreationError(RuntimeError):
     """测试用例创建失败：task_service 拒绝，或 gRPC 调用不可用。
 

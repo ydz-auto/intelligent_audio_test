@@ -6,10 +6,11 @@
 self._transcoding_service / self._round_config_service。
 """
 import os
+import shutil
 import logging
 
 from audio_service.domain.entities import UploadStatus
-from audio_service.domain.exceptions import TestCaseCreationError
+from audio_service.domain.exceptions import InvalidAudioContentError, TestCaseCreationError
 from audio_service.application.services.audio_convert_service import (
     _get_source_language_from_algorithm_params,
 )
@@ -23,6 +24,8 @@ class AudioMergeMixin:
 
     def merge_chunks(self, data: dict) -> dict:
         """合并分片"""
+        upload_file = None
+        final_path = None
         try:
             file_id = data.get('file_id') or data.get('fileId')
             task_id = data.get('task_id') or data.get('taskId')
@@ -46,7 +49,7 @@ class AudioMergeMixin:
             # 合并分片
             final_path = self._merge_file_parts(upload_file, data)
 
-            # 转码并提取元数据
+            # 转码并提取元数据（INT-2202：内容非法时抛 InvalidAudioContentError）
             audio_meta = self._transcoding_service.transcode_and_extract_metadata(
                 final_path, upload_file
             )
@@ -63,6 +66,14 @@ class AudioMergeMixin:
 
             self.repo.commit()
             return self._build_merge_response(file_id, new_audio, tc_result)
+        except InvalidAudioContentError as e:
+            # INT-2202：0 字节 / 非音频内容不得入库——回滚并清掉临时合并文件与分片，
+            # message 逐文件带回原因（前端上传弹窗按 {name, error} 逐条 toast）
+            self.repo.rollback()
+            self._cleanup_failed_merge(upload_file, final_path)
+            logger.warning("合并分片失败（音频内容无效）: file=%s err=%s",
+                           getattr(upload_file, 'filename', None), e)
+            return {'success': False, 'message': str(e), 'data': None, 'code': 400}
         except TestCaseCreationError as e:
             # INT-1668：建用例被 task_service 拒绝不得静默——整体回滚并回 400，
             # message 带上后端原文，避免前端把「用例没生成」误判为缓存延迟
@@ -211,6 +222,21 @@ class AudioMergeMixin:
         return self._transcoding_service.merge_local_chunks(
             upload_file, base_upload_dir, chunk_base
         )
+
+    def _cleanup_failed_merge(self, upload_file, final_path=None):
+        """INT-2202：合并失败（内容非法）后清理临时合并文件与该文件的分片目录。"""
+        if final_path and os.path.exists(final_path):
+            try:
+                os.remove(final_path)
+            except OSError:
+                logger.warning("清理合并临时文件失败: %s", final_path, exc_info=True)
+        if upload_file is not None:
+            chunk_dir = os.path.join(self._get_base_upload_dir(), 'chunks', upload_file.id)
+            if os.path.isdir(chunk_dir):
+                try:
+                    shutil.rmtree(chunk_dir)
+                except OSError:
+                    logger.warning("清理分片目录失败: %s", chunk_dir, exc_info=True)
 
     def _create_audio_record(self, audio_meta, upload_file, data, params):
         """创建音频数据库记录，处理标签和算法关联"""
