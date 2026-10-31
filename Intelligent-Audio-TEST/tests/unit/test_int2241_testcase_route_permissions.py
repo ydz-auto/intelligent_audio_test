@@ -216,6 +216,22 @@ class TestBatchActionPermissions:
         assert resp.status_code == 200, resp.text
 
 
+class TestBatchMalformedAction:
+    """action 非字符串时权限判定不得崩溃（INT-233：非法请求回 400，不 500）。"""
+
+    @pytest.mark.parametrize('action', [{'x': 1}, ['delete'], 123, None])
+    def test_admin_malformed_action_400(self, client, action):
+        resp = _post_batch(client, ADMIN, action)
+        assert resp.status_code == 400, resp.text
+        assert '请求数据验证失败' in resp.text, resp.text
+
+    @pytest.mark.parametrize('action', [{'x': 1}, ['delete']])
+    def test_read_only_malformed_action_403(self, client, action):
+        """只读用户即使传畸形 action 也只得到 403（默认要求 update），不得 500。"""
+        resp = _post_batch(client, READ_ONLY, action)
+        assert resp.status_code == 403, resp.text
+
+
 class TestToolsRegistryConsistency:
     """与 MCP tools_registry 声明的权限点逐条一致。"""
 

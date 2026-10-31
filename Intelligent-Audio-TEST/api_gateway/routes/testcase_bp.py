@@ -32,6 +32,10 @@ def _require_batch_action_permission(request: Request) -> None:
     """批量端点按 action 细分权限（与 require_permission 同 403 语义）。"""
     body = getattr(request.state, '_json_body', None)
     action = body.get('action') if isinstance(body, dict) else None
+    # 畸形 action（dict/list/数字等）不可参与查表：先判型再取默认权限，
+    # 保证权限判定不因非法输入 500；非法 body 仍由服务层返回 400（INT-233 口径）
+    if not isinstance(action, str):
+        action = None
     required = _BATCH_ACTION_PERMISSIONS.get(action, _BATCH_DEFAULT_PERMISSION)
     user_perms = set(getattr(request.state, 'permissions', None) or [])
     if '*' in user_perms or required in user_perms:
