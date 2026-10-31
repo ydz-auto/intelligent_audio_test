@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from api_gateway.application.services.testcase.testcase_query_service import TestCaseQueryService
 from api_gateway.application.services.testcase.testcase_command_service import TestCaseCommandService
@@ -9,6 +9,34 @@ from api_gateway.application.services.visibility.visibility_service import Visib
 from api_gateway.schemas.visibility import VisibilityUpdateRequest
 
 router = APIRouter()
+
+# INT-2241：批量动作 → 所需权限点。路由依赖只看得到 URL，动作在请求体里，
+# 故按中间件预解析的 body（request.state._json_body）取 action 细分校验；
+# body 缺失/非法时按默认 testcase:update（非法 body 仍由服务层返回 400）。
+# 权限点与单资源端点对齐：delete=testcase:delete、copy 系=testcase:copy、
+# 其余写动作=testcase:update。破坏性动作（delete/restore/rename_tag）按
+# testcase:delete。
+_BATCH_ACTION_PERMISSIONS = {
+    'delete': 'testcase:delete',
+    'restore': 'testcase:delete',
+    'rename_tag': 'testcase:delete',
+    'copy': 'testcase:copy',
+    'copy_to_group': 'testcase:copy',
+    'copy_by_group': 'testcase:copy',
+    'copy_by_tag': 'testcase:copy',
+}
+_BATCH_DEFAULT_PERMISSION = 'testcase:update'
+
+
+def _require_batch_action_permission(request: Request) -> None:
+    """批量端点按 action 细分权限（与 require_permission 同 403 语义）。"""
+    body = getattr(request.state, '_json_body', None)
+    action = body.get('action') if isinstance(body, dict) else None
+    required = _BATCH_ACTION_PERMISSIONS.get(action, _BATCH_DEFAULT_PERMISSION)
+    user_perms = set(getattr(request.state, 'permissions', None) or [])
+    if '*' in user_perms or required in user_perms:
+        return
+    raise HTTPException(status_code=403, detail=f'缺少权限: {required}')
 
 
 @router.get('')
@@ -51,7 +79,7 @@ def preview_import(_: None = require_permission('testcase:import_export')):
 
 
 @router.get('/{tc_id}')
-def get_one(tc_id: str):
+def get_one(tc_id: str, _: None = require_permission('testcase:read')):
     return to_response(TestCaseQueryService.get_one(tc_id))
 
 # INT-466：用例可见性切换（资源:share + owner 校验，admin 豁免）
@@ -62,7 +90,7 @@ def update_visibility(tc_id: str, body: VisibilityUpdateRequest,
 
 
 @router.post('')
-def create():
+def create(_: None = require_permission('testcase:create')):
     return to_response(TestCaseCommandService.create())
 
 
@@ -72,7 +100,7 @@ def update(tc_id: str, _: None = require_permission('testcase:update')):
 
 
 @router.delete('/{tc_id}')
-def delete(tc_id: str):
+def delete(tc_id: str, _: None = require_permission('testcase:delete')):
     return to_response(TestCaseCommandService.delete(tc_id))
 
 
@@ -86,8 +114,10 @@ def preview(tc_id: str, _: None = require_permission('testcase:preview')):
     return to_response(TestCaseQueryService.preview(tc_id))
 
 
+# 停止试听：保留下划线/连字符两条别名（历史客户端口径），统一 testcase:preview
+# 权限点（与 preview 试听端点一致，INT-2241）
 @router.post('/{tc_id}/stop_preview')
-def stop_preview(tc_id: str):
+def stop_preview(tc_id: str, _: None = require_permission('testcase:preview')):
     return to_response(TestCaseCommandService.stop_preview(tc_id))
 
 
@@ -96,8 +126,9 @@ def stop_preview_hyphen(tc_id: str, _: None = require_permission('testcase:previ
     return to_response(TestCaseCommandService.stop_preview(tc_id))
 
 
+# INT-2241：批量写操作按 action 细分权限（读权限不再可执行批量写）
 @router.post('/batch')
-def batch_action(_: None = require_permission('testcase:read')):
+def batch_action(_: None = Depends(_require_batch_action_permission)):
     return to_response(TestCaseCommandService.batch_action())
 
 
