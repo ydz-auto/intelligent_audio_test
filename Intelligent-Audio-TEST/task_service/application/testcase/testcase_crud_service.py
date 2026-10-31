@@ -27,6 +27,11 @@ import uuid
 from datetime import datetime, timezone, timedelta
 
 from shared.utils.query_utils import now_cst
+from shared.utils.testcase_helpers import (
+    ROUND_NUMBER_KEYS,
+    build_ref_params_key,
+    resolve_round_number,
+)
 from task_service.infrastructure.persistence.testcase_repository import testcase_repository
 from task_service.application.testcase.testcase_batch_service import TestCaseBatchService
 from task_service.application.testcase.testcase_query_service import TestCaseQueryService
@@ -40,10 +45,11 @@ _REF_PARAMS_BUCKET = 'ref_params'
 
 
 def _build_ref_params_key(case_id, round_number, filename=None):
-    """构建参考参数 OSS key：{case_id}/{filename} 或 {case_id}/round_{round_number}.json"""
-    if filename is None:
-        filename = f"round_{round_number}.json"
-    return f"{case_id}/{filename}"
+    """构建参考参数 OSS key：{case_id}/{filename} 或 {case_id}/round_{round_number}.json
+
+    INT-2246：round_number 来自用例 config 自由 dict，统一走 shared 白名单校验。
+    """
+    return build_ref_params_key(case_id, round_number, filename)
 
 
 def _resolve_strategy_config(data, config, current_strategy_id=None, current_overrides=None):
@@ -126,7 +132,12 @@ def _apply_reference_params_to_config(test_case) -> None:
         if not isinstance(round_item, dict):
             continue
 
-        round_number = round_item.get('round_number') or round_item.get('roundNumber') or 1
+        round_number = resolve_round_number(round_item, default=1)
+        if round_number is None:
+            raw = {key: round_item.get(key) for key in ROUND_NUMBER_KEYS if key in round_item}
+            logger.warning("[ref_params] 非法 round_number，跳过该轮不写存储: case=%s raw=%r",
+                           case_id, raw)
+            continue
 
         round_params = _algo_repo.algo_generate_reference_params(test_case_config, round_item)
         if not round_params:

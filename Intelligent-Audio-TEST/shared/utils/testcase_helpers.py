@@ -4,6 +4,8 @@
 为消除 api_gateway 对 task_service 的跨服务 Python 直导，现迁至 shared/utils，
 供所有服务（api_gateway/task_service 等）共享引用。
 """
+import re
+
 from shared.utils.log_handler import log_not_emit
 
 # 预览停止标志：跨服务共享（原 TestCaseController 模块级全局变量）
@@ -58,6 +60,73 @@ def normalize_optional_int(value):
         return int(value)
     except Exception:
         return None
+
+
+# 用例配置里的轮次键：snake_case 为库/新接口口径，camelCase 为历史 config 口径
+ROUND_NUMBER_KEYS = ('round_number', 'roundNumber')
+
+# 轮次号白名单：只允许十进制数字（不带符号/空白/小数点/路径分隔符）
+_ROUND_NUMBER_PATTERN = re.compile(r'^\d+$')
+
+# 参考参数文件名白名单：单段文件名，不得含路径分隔符或 `..`
+_FILENAME_PATTERN = re.compile(r'^[A-Za-z0-9._-]+$')
+
+
+def parse_round_number(value):
+    """轮次号归一：只接受正整数（int / 整值 float / 纯数字字符串），其余返回 None。
+
+    `config` 在网关是自由 dict（无类型校验），`round_number` 会直接拼进
+    参考参数存储 key。`'../../../../tmp/x'` 这类非数字值必须在这里拦掉，
+    不能进入 key 拼接（INT-2246）。
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, float):
+        return int(value) if value.is_integer() and value > 0 else None
+    if isinstance(value, str):
+        text = value.strip()
+        if not _ROUND_NUMBER_PATTERN.match(text):
+            return None
+        number = int(text)
+        return number if number > 0 else None
+    return None
+
+
+def resolve_round_number(round_item, default=None):
+    """从轮次配置项取正整数轮次号。
+
+    键缺失 / 空值 → 返回 default（历史口径缺省为第 1 轮）；键有值但非法
+    → 返回 None，由调用方跳过该轮并告警，不写存储。
+    """
+    if not isinstance(round_item, dict):
+        return None
+    for key in ROUND_NUMBER_KEYS:
+        if key not in round_item:
+            continue
+        raw = round_item.get(key)
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            continue
+        return parse_round_number(raw)
+    return default
+
+
+def build_ref_params_key(case_id, round_number, filename=None):
+    """构建参考参数存储 key：`{case_id}/round_{n}.json`（或 `{case_id}/{filename}`）。
+
+    轮次号与文件名都按白名单校验，非法值直接抛 ValueError，避免拼出可穿越
+    存储根目录的 key（INT-2246）。
+    """
+    if filename is not None:
+        if not isinstance(filename, str) or not _FILENAME_PATTERN.match(filename) \
+                or filename in ('.', '..'):
+            raise ValueError(f"非法参考参数文件名，拒绝构建存储 key: {filename!r}")
+        return f"{case_id}/{filename}"
+    number = parse_round_number(round_number)
+    if number is None:
+        raise ValueError(f"非法轮次号，拒绝构建存储 key: {round_number!r}")
+    return f"{case_id}/round_{number}.json"
 
 
 def parse_config_lab_id(config: dict):
