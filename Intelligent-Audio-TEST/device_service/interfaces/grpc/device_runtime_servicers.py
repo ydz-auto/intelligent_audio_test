@@ -8,6 +8,7 @@
 import functools
 import logging
 import threading
+import time
 
 from shared.proto import device_service_pb2 as e2e_pb
 from shared.proto import device_service_pb2_grpc as e2e_grpc
@@ -26,12 +27,98 @@ _SERIALIZED_ACTIONS = frozenset({
     'extract_results_from_archive', 'get_final_results', 'teardown',
 })
 _device_step_locks = {}
+# 持锁者 / 排队者观测表（INT-2257）：超时消息要能说清「排队」还是「卡死」——
+# 前者说明前方步骤还在正常跑（持锁动作 + 已持锁时长），后者持锁时长会持续增长。
+_device_step_holders = {}
+_device_step_waiters = {}
 _device_step_locks_lock = threading.Lock()
+
+# 等待预算与调用方 deadline 之间的响应余量（秒）：等待必须在调用方放弃之前收敛，
+# 留这段时间把超时消息送达；否则调用方只看到 DEADLINE_EXCEEDED，无法区分排队与卡死。
+_CALLER_DEADLINE_RESPONSE_MARGIN_SECONDS = 5.0
 
 
 def _device_step_lock(device_sn):
     with _device_step_locks_lock:
         return _device_step_locks.setdefault(device_sn, threading.RLock())
+
+
+def _device_step_queue_enter(device_sn):
+    """登记排队，返回排队时前方的步骤数（当前持锁者 + 已排队者）。"""
+    with _device_step_locks_lock:
+        ahead = (1 if _device_step_holders.get(device_sn) else 0)
+        ahead += _device_step_waiters.get(device_sn, 0)
+        _device_step_waiters[device_sn] = _device_step_waiters.get(device_sn, 0) + 1
+        return ahead
+
+
+def _device_step_queue_leave(device_sn):
+    with _device_step_locks_lock:
+        remaining = _device_step_waiters.get(device_sn, 0) - 1
+        if remaining > 0:
+            _device_step_waiters[device_sn] = remaining
+        else:
+            _device_step_waiters.pop(device_sn, None)
+
+
+def _device_step_holder_enter(device_sn, action):
+    with _device_step_locks_lock:
+        _device_step_holders[device_sn] = {
+            'action': action,
+            'thread': threading.current_thread().name,
+            'since': time.monotonic(),
+        }
+
+
+def _device_step_holder_leave(device_sn):
+    with _device_step_locks_lock:
+        _device_step_holders.pop(device_sn, None)
+
+
+def _device_step_holder_snapshot(device_sn):
+    with _device_step_locks_lock:
+        holder = _device_step_holders.get(device_sn)
+        return dict(holder) if holder else None
+
+
+def _caller_time_remaining(context):
+    """调用方剩余 deadline（秒）；非 gRPC 上下文 / 无 deadline 时返回 None。"""
+    remaining_fn = getattr(context, 'time_remaining', None) if context is not None else None
+    if not callable(remaining_fn):
+        return None
+    try:
+        value = remaining_fn()
+        return None if value is None else float(value)
+    except Exception:  # 上下文已失效等，按「无 deadline」处理，不因观测失败阻断步骤
+        return None
+
+
+def _device_step_wait_budget(base_wait, ahead, context):
+    """本次等待预算（秒）：单步上界 × 排队位次，并收敛到调用方剩余 deadline 之内。
+
+    单步耗时上界扣除后立即释放锁，因此第 N 位最多等 N 个单步；再按调用方剩余
+    deadline 截断，保证「等待 < 调用方 deadline」——超时消息能先于 deadline 送达
+    调用方，而不是被 DEADLINE_EXCEEDED 掩盖。
+    """
+    budget = max(1, int(base_wait)) * max(1, ahead)
+    remaining = _caller_time_remaining(context)
+    if remaining is not None:
+        budget = min(budget, max(1, int(remaining - _CALLER_DEADLINE_RESPONSE_MARGIN_SECONDS)))
+    return budget
+
+
+def _format_step_lock_timeout(device_sn, action, wait_seconds, ahead, holder):
+    """超时文案：保留原「同 SN 步骤串行」句式，追加持锁动作 / 时长与排队位次。"""
+    if holder:
+        held_seconds = max(0.0, time.monotonic() - float(holder.get('since') or 0.0))
+        holder_desc = "持锁动作 {} 已持锁 {:.0f}s".format(holder.get('action'), held_seconds)
+    else:
+        holder_desc = "持锁动作未知"
+    # 等待超时说明锁确实被占着：前方至少 1 个步骤
+    position = max(1, ahead) + 1
+    return (f"设备 {device_sn} 正在执行其他操作（同 SN 步骤串行），等待 {wait_seconds}s 超时"
+            f"（{holder_desc}；步骤 {action} 本请求排队第 {position} 位）")
+
 
 
 def _peek_action_and_device_sn(request):
@@ -49,24 +136,39 @@ def _peek_action_and_device_sn(request):
 
 
 def serialized_device_step(func):
-    """设备步骤按 SN 串行执行（仅对触摸设备硬件的 action 生效）。"""
+    """设备步骤按 SN 串行执行（仅对触摸设备硬件的 action 生效）。
+
+    等待预算按排队位次累加（第 N 位最多等 N 个单步上界），并在调用方剩余
+    deadline 内收敛——单步真机 initialize 可超 200s，按整组固定的 60s 排队
+    总预算会把正常慢初始化误判为失败（INT-2257）。
+    """
     @functools.wraps(func)
     def wrapper(self, request, context=None):
         action, device_sn = _peek_action_and_device_sn(request)
         if not device_sn or action not in _SERIALIZED_ACTIONS:
             return func(self, request, context)
         from shared.infrastructure.config import BaseConfig
-        wait_seconds = int(getattr(BaseConfig, 'DEVICE_SN_STEP_LOCK_WAIT_SECONDS', 60))
+        base_wait = int(getattr(BaseConfig, 'DEVICE_SN_STEP_LOCK_WAIT_SECONDS', 60))
         lock = _device_step_lock(device_sn)
-        if not lock.acquire(timeout=wait_seconds):
-            logger.warning("设备 %s 步骤 %s 等待同 SN 串行锁超时(%ss)", device_sn, action, wait_seconds)
-            return e2e_pb.CreateDriverResponse(
-                success=False,
-                message=f"设备 {device_sn} 正在执行其他操作（同 SN 步骤串行），等待 {wait_seconds}s 超时",
-                data="")
+        ahead = _device_step_queue_enter(device_sn)
+        wait_seconds = _device_step_wait_budget(base_wait, ahead, context)
+        acquired = False
+        try:
+            acquired = lock.acquire(timeout=wait_seconds)
+        finally:
+            _device_step_queue_leave(device_sn)
+        if not acquired:
+            message = _format_step_lock_timeout(
+                device_sn, action, wait_seconds, ahead,
+                _device_step_holder_snapshot(device_sn))
+            logger.warning("设备 %s 步骤 %s 等待同 SN 串行锁超时(%ss)：%s",
+                           device_sn, action, wait_seconds, message)
+            return e2e_pb.CreateDriverResponse(success=False, message=message, data="")
+        _device_step_holder_enter(device_sn, action)
         try:
             return func(self, request, context)
         finally:
+            _device_step_holder_leave(device_sn)
             lock.release()
     return wrapper
 

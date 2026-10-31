@@ -378,12 +378,16 @@ class BaseConfig:
     TASK_PHYSICAL_LOCK_WAIT_SECONDS: int = _get_int(
         'TASK_PHYSICAL_LOCK_WAIT_SECONDS', 900)
 
-    # device_service 同 SN 步骤互斥等待上限（秒）：同一台设备上的多个被测 App
-    # （小艺/豆包）并发初始化/采集会互相打断设备端 uitest 守护，步骤必须串行。
-    # 必须小于调用方 gRPC 超时（GRPC_DEVICE_OP_DEADLINE_SECONDS），否则调用方
-    # 先超时放弃、服务端仍在排队。
+    # device_service 同 SN 步骤互斥等待上限（秒，**单步预算**）：同一台设备上的
+    # 多个被测 App（小艺/豆包）并发初始化/采集会互相打断设备端 uitest 守护，步骤
+    # 必须串行。取值必须覆盖单步最长耗时——真机 initialize 在守护自愈 + UI RPC
+    # 抖动时可超 200s（见上 GRPC_DEVICE_OP_DEADLINE_SECONDS），旧默认 60s 是整组
+    # 排队总预算，同 SN 第 2 条起被必然误判失败（INT-2257）。现按「单步上界 ×
+    # 排队位次」累加：第 N 位最多等 N 个单步，且由 device_service 按调用方剩余
+    # deadline 截断，保证「等待 < 调用方 deadline」（默认留 10% 余量，270s < 300s）。
     DEVICE_SN_STEP_LOCK_WAIT_SECONDS: int = _get_int(
-        'DEVICE_SN_STEP_LOCK_WAIT_SECONDS', 60)
+        'DEVICE_SN_STEP_LOCK_WAIT_SECONDS',
+        int(GRPC_DEVICE_OP_DEADLINE_SECONDS * 0.9))
 
     # --- E2E 组执行（同实验室多设备并行，音频每轮只播一次）---
     # 同实验室、同用例、不同 SN 的物理路由行合并为一次 StartE2ETask 执行：

@@ -226,15 +226,20 @@ class DeviceAclRepositoryImpl(DeviceAclRepository):
         通过 CreateDriver RPC 的 action 分发机制调用 driver.extract_results_from_archive。
         """
         from shared.clients.grpc_clients import get_device_service_stub
+        from shared.infrastructure.config import BaseConfig
         from shared.proto import device_service_pb2 as device_pb
         try:
             stub = get_device_service_stub()
             config = dict(device_config) if isinstance(device_config, dict) else {}
             config.setdefault('action', 'extract_results_from_archive')
+            # 显式放宽 deadline（INT-2257）：extract_results_from_archive 属于
+            # device_service 同 SN 串行 action，可能排在慢初始化后面；沿用默认
+            # 60s deadline 会让调用方先于服务端等待预算（DEVICE_SN_STEP_LOCK_WAIT_SECONDS）
+            # 放弃，掩盖真实排队情况。
             resp = stub.CreateDriver(device_pb.CreateDriverRequest(
                 task_id=str(task_id),
                 device_config=json.dumps(config),
-            ))
+            ), timeout=BaseConfig.GRPC_DEVICE_OP_DEADLINE_SECONDS)
             if not resp.success or not resp.data:
                 return []
             result = json.loads(resp.data)
@@ -249,15 +254,18 @@ class DeviceAclRepositoryImpl(DeviceAclRepository):
         通过 CreateDriver RPC 的 action 分发机制调用 driver.get_final_results。
         """
         from shared.clients.grpc_clients import get_device_service_stub
+        from shared.infrastructure.config import BaseConfig
         from shared.proto import device_service_pb2 as device_pb
         try:
             stub = get_device_service_stub()
             config = dict(device_config) if isinstance(device_config, dict) else {}
             config.setdefault('action', 'get_final_results')
+            # 显式放宽 deadline（INT-2257）：同 SN 串行 action，可能排队等待慢步骤，
+            # 与 extract_results_from_archive 同口径。
             resp = stub.CreateDriver(device_pb.CreateDriverRequest(
                 task_id=str(task_id),
                 device_config=json.dumps(config),
-            ))
+            ), timeout=BaseConfig.GRPC_DEVICE_OP_DEADLINE_SECONDS)
             if not resp.success or not resp.data:
                 return []
             result = json.loads(resp.data)

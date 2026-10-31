@@ -38,8 +38,12 @@ SN_B = 'INT2179_SN_B_6YF0126211000225'
 def _clean_step_locks():
     """模块级锁表按 SN 常驻，测试间必须清空，避免上一用例残留锁影响下一用例。"""
     servicer_mod._device_step_locks.clear()
+    servicer_mod._device_step_holders.clear()
+    servicer_mod._device_step_waiters.clear()
     yield
     servicer_mod._device_step_locks.clear()
+    servicer_mod._device_step_holders.clear()
+    servicer_mod._device_step_waiters.clear()
 
 
 class _GatedDriver:
@@ -102,15 +106,21 @@ def _call_in_thread(servicer, request, key, out):
     return thread
 
 
-def _hold_lock_in_thread(lock):
-    """RLock 可重入且按线程持有：超时用例必须由另一线程持锁，主线程调用才会真等待。"""
+def _hold_lock_in_thread(lock, device_sn=SN_A, action='initialize'):
+    """RLock 可重入且按线程持有：超时用例必须由另一线程持锁，主线程调用才会真等待。
+
+    同时登记持锁动作（INT-2257 起超时文案要带「持锁动作 + 已持锁时长」），
+    与真实步骤路径一致。
+    """
     held = threading.Event()
     release = threading.Event()
 
     def _run():
         assert lock.acquire(timeout=5)
+        servicer_mod._device_step_holder_enter(device_sn, action)
         held.set()
         release.wait(timeout=10)
+        servicer_mod._device_step_holder_leave(device_sn)
         lock.release()
 
     thread = threading.Thread(target=_run, name='int2179-lock-holder', daemon=True)
@@ -165,8 +175,11 @@ class TestSameSnSerialization:
             holder.join(timeout=5)
 
         assert resp.success is False
-        assert resp.message == (
-            f'设备 {SN_A} 正在执行其他操作（同 SN 步骤串行），等待 1s 超时')
+        # 原「同 SN 步骤串行 + 等待 Ns 超时」句式保留；INT-2257 起追加持锁动作 /
+        # 已持锁时长 / 排队位次，便于判定是排队还是卡死。
+        assert resp.message.startswith(
+            f'设备 {SN_A} 正在执行其他操作（同 SN 步骤串行），等待 1s 超时（持锁动作 initialize 已持锁 ')
+        assert resp.message.endswith('；步骤 pre_process 本请求排队第 2 位）')
         assert elapsed >= 0.9, f'等待时长 {elapsed:.2f}s 未按配置 1s 生效'
         assert driver.calls == 0, '超时后不应进入驱动层'
         assert any('等待同 SN 串行锁超时' in (r.getMessage() or '')
