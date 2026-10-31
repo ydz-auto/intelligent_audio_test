@@ -1251,6 +1251,19 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                       error={metaErrorOf('headers')}
                       onChange={(rows) => updateMeta({ headers: rows })}
                     />
+                    <SampleJsonImport
+                      kind='request'
+                      onApply={(text) => {
+                        const result = inferBodyTemplate(text)
+                        updateMeta({
+                          bodyTemplateMode: 'json',
+                          bodyTemplateText: result.templateText,
+                        })
+                        return result.audioPath
+                          ? `已生成模板；音频字段 ${result.audioPath} 已替换为 {{audio_b64}}`
+                          : '已生成请求模板'
+                      }}
+                    />
                     <div className='space-y-1.5'>
                       <div className='flex flex-wrap items-center justify-between gap-2'>
                         <Label htmlFor='meta-body-template'>请求体模板（body_template）</Label>
@@ -1293,19 +1306,6 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                         </p>
                       )}
                     </div>
-                    <SampleJsonImport
-                      kind='request'
-                      onApply={(text) => {
-                        const result = inferBodyTemplate(text)
-                        updateMeta({
-                          bodyTemplateMode: 'json',
-                          bodyTemplateText: result.templateText,
-                        })
-                        return result.audioPath
-                          ? `已生成模板；音频字段 ${result.audioPath} 已替换为 {{audio_b64}}`
-                          : '已生成请求模板'
-                      }}
-                    />
                   </>
                 )}
 
@@ -1902,6 +1902,17 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                   </p>
                 </div>
 
+                <SampleJsonImport
+                  kind='response'
+                  onApply={(text) => {
+                    const result = inferResponseParser(text)
+                    updateResponse({ resultParser: result.parserText })
+                    return `识别到 ${result.fields
+                      .map((field) => `${field.code} ← ${field.path}`)
+                      .join('；')}`
+                  }}
+                />
+
                 <div className='space-y-1.5'>
                   <Label htmlFor='meta-result-parser'>响应解析器（result_parser）</Label>
                   <Textarea
@@ -1923,17 +1934,6 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                     </p>
                   )}
                 </div>
-
-                <SampleJsonImport
-                  kind='response'
-                  onApply={(text) => {
-                    const result = inferResponseParser(text)
-                    updateResponse({ resultParser: result.parserText })
-                    return `识别到 ${result.fields
-                      .map((field) => `${field.code} ← ${field.path}`)
-                      .join('；')}`
-                  }}
-                />
 
                 {/* 负责人 2026-10-31 裁定：asr / trans / 句结束 / 会话结束 / 错误码 /
                     错误信息 6 个 *_mapping 由后端内置缺省即可，UI 不再暴露
