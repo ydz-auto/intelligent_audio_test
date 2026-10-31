@@ -4,6 +4,8 @@
 负责评估完成后 TaskCase/Task 的状态判定与推进：
 完成度检查、最终状态应用、事件发布（事件驱动）与 gRPC 同步回传。
 """
+import traceback
+
 from shared.utils.status_utils import derive_task_case_status
 from shared.utils.status_constants import (
     ExecutionStatus, EvaluationStatus, TaskStatus, ACTIVE_EVALUATION_STATUSES,
@@ -75,13 +77,17 @@ class ResultStatusMixin:
                                          new_evaluation_status, task,
                                          failed_reasons=failed_reasons)
         except Exception as e:
+            # INT-2189：原先此处吞掉异常只留一行 ERROR，导致收口逻辑整段跳过、
+            # 用例永久停在 evaluating（任务忙等到超时才判 failed）。改为带上
+            # stack 再向上抛，由调用方按失败收口（endpoint_worker 兜底落 failed）。
             self._log(
                 level='ERROR',
                 category='database',
-                content=f"更新TaskCase状态失败: {str(e)}",
+                content=f"更新TaskCase状态失败: {str(e)}\n{traceback.format_exc()}",
                 task_id=task_id,
                 test_case_id=test_case_id
             )
+            raise
 
     def _get_expected_result_count(self, task_id, task, test_case_id=None):
         """获取预期结果数量（P1.4: gRPC）
@@ -256,7 +262,6 @@ class ResultStatusMixin:
                 if len(dims) < expected_dim_count:
                     self._log(
                         level='DEBUG',
-                        module='evaluation',
                         category='database',
                         content=(f"用例 {test_case_id} 结果 {res.id} 维度未全 "
                                  f"({len(dims)}/{expected_dim_count})，继续等待"),
@@ -317,7 +322,6 @@ class ResultStatusMixin:
                 if len(dims) < expected_dim_count:
                     self._log(
                         level='DEBUG',
-                        module='evaluation',
                         category='database',
                         content=f"用例 {test_case_id} 结果 {res_id} 维度未全 ({len(dims)}/{expected_dim_count})，继续等待",
                         task_id=task_id,

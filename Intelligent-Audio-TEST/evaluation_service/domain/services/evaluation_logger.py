@@ -24,11 +24,16 @@ class EvaluationLoggerMixin:
         super().__init__(**kwargs)
 
     def _log(self, level, content, task_id=None, test_case_id=None, api_id=None,
-             device_id=None, algorithm_type=None, **kwargs):
-        """统一日志入口"""
+             device_id=None, algorithm_type=None, module='Evaluation', **kwargs):
+        """统一日志入口
+
+        INT-2189：module 显式收为形参（默认 'Evaluation'）——调用方再传
+        module= 只会覆盖取值，不会作为 **kwargs 与本函数固定传入的 module
+        重复绑定而抛 TypeError（曾致评估收口整段状态写回被吞）。
+        """
         log_and_emit(
             level=level,
-            module='Evaluation',
+            module=module,
             content=content,
             category=kwargs.pop('category', 'execution'),
             source='backend',
