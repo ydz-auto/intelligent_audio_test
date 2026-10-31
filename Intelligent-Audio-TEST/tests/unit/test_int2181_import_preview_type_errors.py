@@ -23,6 +23,9 @@ import zipfile
 import pandas as pd
 import pytest
 
+from api_gateway.application.services.testcase import (
+    testcase_import_service as _tis_module,
+)
 from api_gateway.application.services.testcase.testcase_import_service import (
     TestCaseImportService,
 )
@@ -36,6 +39,24 @@ except ImportError:
 
 _requires_openpyxl = pytest.mark.skipif(
     not _HAS_OPENPYXL, reason='openpyxl 未安装，Excel 用例跳过')
+
+
+class _FakeAudioAcl:
+    """INT-2182 合入适配：行级校验新增「引用音频存在性」查库，单测按全部存在放行。
+
+    本文件聚焦 类型校验/名称校验 的同口径，不覆盖音频引用；若不桩掉，合法夹具里
+    的 `audio_id=1` 会被判「音频 1 不存在」，与 `test_valid_rows_have_no_errors`
+    的意图冲突（INT-2182 的引用校验另有自己的单测）。
+    """
+
+    @staticmethod
+    def get_by_ids(payload):
+        ids = [int(i) for i in ((payload or {}).get('ids') or [])]
+        return {'success': True, 'data': [{'id': i} for i in ids]}
+
+
+def _stub_audio_acl(monkeypatch):
+    monkeypatch.setattr(_tis_module, '_audio_acl', _FakeAudioAcl())
 
 
 class _FakeRequest:
@@ -67,6 +88,7 @@ def _preview(filename, data, monkeypatch):
     monkeypatch.setattr(
         TestCaseImportService, '_persist_case',
         staticmethod(lambda *a, **k: pytest.fail('预览不得写库')))
+    _stub_audio_acl(monkeypatch)
     set_current_request(_FakeRequest({'file': _FakeUpload(filename, data)}))
     try:
         return TestCaseImportService.preview_import()
@@ -93,6 +115,7 @@ def _import_errors(filename, data, monkeypatch):
                         staticmethod(lambda payload, existing, strategy, group: 1))
     monkeypatch.setattr(TestCaseImportService, '_restore_reference_params',
                         staticmethod(lambda case_id, case_data, errors, idx: None))
+    _stub_audio_acl(monkeypatch)
     _, _, _, _, errors = TestCaseImportService._create_cases_from_rows(rows)
     return errors
 
