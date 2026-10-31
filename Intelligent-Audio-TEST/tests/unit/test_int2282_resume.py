@@ -20,6 +20,8 @@ paused 且无任何派发。两个成因：
 - 时序锁：队列项可见时 DB 已是 queued（INT-2231 语义不回退）。
 - 行为锁：workers 里只剩死线程时按「不在运行」处理，摘除陈旧槽位后重新派发。
 - 行为锁：工作线程存活时走原路恢复（不重复起线程、不入队）。
+- 行为锁：重新入队分支必须清除 pause 分支置的分布式暂停标志（否则新线程
+  在 api_test_service 执行器里被暂停屏障挡住，任务 running 但用例不推进）。
 """
 import os
 import tempfile
@@ -96,6 +98,19 @@ def sqlite_db(monkeypatch):
 
     scoped.close()
     engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_redis_control_flags(monkeypatch):
+    """控制类单测不触真实 Redis：分布式控制标志默认打桩为空操作。
+
+    重新入队分支的修复新增了 clear_task_pause 调用，正常用例不应因此去连 6379；
+    需要断言标志语义的用例在用例体内重新 setattr 覆盖。
+    """
+    import task_service.core.execution_engine.mixins.task_control as tc_mod
+    monkeypatch.setattr(tc_mod._dc, 'set_task_pause', lambda *a, **k: None)
+    monkeypatch.setattr(tc_mod._dc, 'clear_task_pause', lambda *a, **k: None)
+    monkeypatch.setattr(tc_mod._dc, 'is_task_paused', lambda task_id: False)
 
 
 def _seed_api_task(task_id=1, status=TaskStatus.PAUSED):
@@ -190,6 +205,60 @@ class TestResumeWithDeadWorker:
         assert eng.started == [1]
         assert _db_status(1) == TaskStatus.RUNNING
         assert eng.workers[1] is not dead, '死线程登记必须被新执行线程替换'
+
+
+class TestResumeRequeueClearsDistributedPause:
+    """行为锁（返工 P1）：重新入队分支必须清 pause 分支置的分布式暂停标志。
+
+    pause 分支在 task_control.py 置 `task:pause:{id}`（Redis）；仅「工作线程
+    存活」的 resume 分支清它，重新入队分支漏清。于是恢复后新起的执行线程把
+    任务带到 api_test_service，`_control_mixin._handle_control` 读到标志就
+    阻塞等待恢复——任务 running、队列空、线程活着，用例一步不动。
+    """
+
+    def test_requeue_branch_clears_pause_flag(self, sqlite_db, monkeypatch):
+        import task_service.core.execution_engine.mixins.task_control as tc_mod
+
+        paused = set()
+
+        def _set(task_id, ttl=86400):
+            paused.add(task_id)
+
+        def _clear(task_id):
+            paused.discard(task_id)
+
+        def _is_paused(task_id):
+            return task_id in paused
+
+        monkeypatch.setattr(tc_mod._dc, 'set_task_pause', _set)
+        monkeypatch.setattr(tc_mod._dc, 'clear_task_pause', _clear)
+        monkeypatch.setattr(tc_mod._dc, 'is_task_paused', _is_paused)
+
+        _seed_api_task(1, TaskStatus.PAUSED)
+        # pause 分支（存活线程路径）留下的分布式暂停标志
+        tc_mod._dc.set_task_pause(1)
+        assert tc_mod._dc.is_task_paused(1) is True
+
+        eng = _ResumeEngine()
+        seen_in_worker = []
+
+        def _probe(task_id, stop_event, pause_event, user_id=None):
+            # 新执行线程启动瞬间读到的分布式暂停标志
+            seen_in_worker.append(tc_mod._dc.is_task_paused(task_id))
+            eng.started.append(task_id)
+            eng.started_event.set()
+
+        eng._task_thread_main = _probe
+
+        ok, message = eng.control_task(1, 'resume')
+
+        assert ok is True and message == '任务已恢复'
+        assert tc_mod._dc.is_task_paused(1) is False, \
+            '重新入队分支必须清除分布式暂停标志，否则执行器卡在暂停屏障'
+        assert eng.started_event.wait(2), 'resume 入队后必须被消费起执行线程'
+        assert seen_in_worker == [False], \
+            '新执行线程启动时不得读到旧的分布式暂停标志'
+        assert _db_status(1) == TaskStatus.RUNNING
 
 
 class TestResumeWithLiveWorker:

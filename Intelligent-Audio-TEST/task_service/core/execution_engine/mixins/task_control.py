@@ -482,6 +482,15 @@ class TaskControlMixin:
                         self.stop_flags.pop(task_id, None)
                         self.pause_flags.pop(task_id, None)
                         self._release_running_slot(task_id)
+                        # INT-2282：清除 pause 分支置的分布式暂停信号。重新入队
+                        # 起的新执行线程会把任务带到 api_test_service，执行器
+                        # shared/infrastructure/base_executor/_control_mixin.py
+                        # 读到 `task:pause:{id}` 就阻塞等待恢复——任务显示 running、
+                        # 队列空、线程活着，但用例一步不推进。「存活线程」分支
+                        # （下方 resume 分支）本来就有 clear_task_pause，重新入队
+                        # 分支漏了。必须在入队前清：_check_queue / 调度器可能立刻
+                        # 消费队列项并起线程，晚一步新线程就会读到旧标志。
+                        _dc.clear_task_pause(task_id)
                         with self.queue_lock:
                             # INT-2231：状态置 QUEUED 必须与入队在同一把锁内完成，
                             # 否则 _check_queue 可能抢先消费到仍是 PAUSED 的队列项
