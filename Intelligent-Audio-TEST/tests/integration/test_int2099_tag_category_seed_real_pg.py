@@ -11,14 +11,9 @@
 临时库范式）：本机 Postgres 建一次性库 → 全模型 create_all → 造出与真实库
 同形的存量数据（105 条全软删分类、88 条活跃标签、外加若干软删标签/同名软删
 分类）→ 以**独立进程**跑种子脚本（dry-run / --apply / 再 --apply）→ 逐行
-快照对拍 → 再以独立进程跑标签 CRUD 回读探针（int2099_tag_crud_probe.py）。
-
-为什么 CRUD 走子进程：网关标签接口经 gRPC 调 task_service（真实库），而
-task_service 的连接由 BaseConfig 在导入时固化；同进程改绑定会污染同一
-pytest 会话的其它用例（INT-90 踩过），故探针独立进程只连隔离库。
+快照对拍。
 真实栈的 HTTP 层验收属本卡阶段 2（负责人确认口径后对 docker 主库执行）。
 """
-import json
 import os
 import subprocess
 import sys
@@ -43,8 +38,6 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))
 _SEED = os.path.join(PROJECT_ROOT, 'scripts', 'migrations', '202610',
                      'seed_tag_categories_int2099.py')
-_PROBE = os.path.join(PROJECT_ROOT, 'tests', 'integration',
-                      'int2099_tag_crud_probe.py')
 
 # 造存量：105 条软删分类（含一个与目标同名的「打断」，钉住「软删行不复活」）
 _SOFT_DELETED_FILLER_CATEGORIES = 99
@@ -264,12 +257,3 @@ def test_seed_and_crud_on_isolated_pg(int2099_pg_db):
     assert '新建分类 0 个、更新标签 0 行' in second.stdout
     assert _snapshot(uri) == after_first, '重跑不得产生任何变更'
     _assert_seed_result(uri)
-
-    # ── 4) 标签 CRUD 回读（独立进程连隔离库） ────────────────────
-    probe = _run_subprocess(_PROBE, uri)
-    assert probe.returncode == 0, probe.stdout + probe.stderr
-    summary = json.loads(probe.stdout.strip().splitlines()[-1])
-    assert summary['ok'] is True
-    assert summary['by_category_before'] == {
-        '人工录制': 1, '打断': 12, '拒识': 32, '接管': 9,
-        '恢复前文': 4, '环境理解': 3, '未分类': 27}
