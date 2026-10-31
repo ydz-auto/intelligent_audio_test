@@ -84,12 +84,12 @@ describe('pickable-tasks 阶段 1 数据源（INT-1509）', () => {
     expect(callUrl().pathname).toBe('/api/v1/tasks/cherry-picks/pickable-tasks')
   })
 
-  it('fetchPickableTaskPage：服务端排序/过滤参数透传（sort_by/sort_order/status/keyword）', async () => {
+  it('fetchPickableTaskPage：领域排序键 → 服务端 sort_by/sort_order/status/keyword 参数透传', async () => {
     queueResponses(ok({ items: [], total: 0, page: 1, per_page: 50 }))
     await fetchPickableTaskPage({
       page: 1,
       perPage: 50,
-      sortBy: 'created_at',
+      sortBy: 'createdAt',
       sortOrder: 'desc',
       status: 'failed',
       keyword: '  拒识  ',

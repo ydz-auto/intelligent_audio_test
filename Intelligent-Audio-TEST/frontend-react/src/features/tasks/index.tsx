@@ -480,7 +480,7 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
         tasks={(exportTasks ?? []).map((t) => ({
           id: t.id,
           name: t.name,
-          status: t.execution_status,
+          status: t.executionStatus,
         }))}
         onExported={() => void listQuery.refetch()}
       />
@@ -497,7 +497,7 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
         tasks={(incrementalExportTasks ?? []).map((t) => ({
           id: t.id,
           name: t.name,
-          status: t.execution_status,
+          status: t.executionStatus,
         }))}
       />
       <DataImportDialog

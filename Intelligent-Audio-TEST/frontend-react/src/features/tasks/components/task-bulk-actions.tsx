@@ -58,7 +58,7 @@ export function TaskBulkActions({
 
   const selectedTasks = tasks.filter((t) => selected.has(t.id))
   const hasTerminal = selectedTasks.every((t) =>
-    ['completed', 'failed', 'stopped', 'pending'].includes(t.execution_status ?? '')
+    ['completed', 'failed', 'stopped', 'pending'].includes(t.executionStatus ?? '')
   )
 
   const busy = actions.batchRemove.isPending || actions.batchRestore.isPending || actions.batchPurge.isPending
@@ -195,7 +195,7 @@ export function TaskBulkActions({
                         size='sm'
                         variant='outline'
                         disabled={!selectedTasks.every((t) =>
-                          ['completed', 'failed', 'stopped'].includes(t.execution_status ?? '')
+                          ['completed', 'failed', 'stopped'].includes(t.executionStatus ?? '')
                         )}
                         onClick={() =>
                           onJoinPick

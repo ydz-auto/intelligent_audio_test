@@ -359,6 +359,13 @@ export interface PickableTaskQuery extends PickableTaskFilters {
   perPage?: number
 }
 
+/** 领域排序键 → 后端 sort_by 契约值（snake_case 只出现在本层） */
+const SORT_KEY_TO_PARAM: Record<PickableTaskSortBy, string> = {
+  status: 'status',
+  name: 'name',
+  createdAt: 'created_at',
+}
+
 /** 单页可挑选任务（GET /tasks/cherry-picks/pickable-tasks；per_page 上限 200） */
 export async function fetchPickableTaskPage(
   query: PickableTaskQuery = {}
@@ -369,7 +376,7 @@ export async function fetchPickableTaskPage(
   }
   if (query.keyword && query.keyword.trim()) params.keyword = query.keyword.trim()
   if (query.status) params.status = query.status
-  if (query.sortBy) params.sort_by = query.sortBy
+  if (query.sortBy) params.sort_by = SORT_KEY_TO_PARAM[query.sortBy]
   if (query.sortOrder) params.sort_order = query.sortOrder
 
   const data = await request<PickableTaskPageDto>(

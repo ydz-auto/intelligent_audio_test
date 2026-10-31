@@ -7,9 +7,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ReportListItem } from '@/domain/models/report'
 
 const mocks = vi.hoisted(() => ({
-  fetchReportList: vi.fn(),
+  fetchLatestReportByTask: vi.fn(),
   generateTaskReport: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
@@ -24,7 +25,7 @@ vi.mock('@/application/hooks/use-permissions', () => ({
 }))
 
 vi.mock('@/infrastructure/api/reports-api', () => ({
-  fetchReportList: (...args: unknown[]) => mocks.fetchReportList(...args),
+  fetchLatestReportByTask: (...args: unknown[]) => mocks.fetchLatestReportByTask(...args),
   generateTaskReport: (...args: unknown[]) => mocks.generateTaskReport(...args),
 }))
 
@@ -43,38 +44,30 @@ function renderCard() {
   )
 }
 
-function reportItem(id: number) {
-  return {
-    id,
-    name: `接线测试_容器报告_${id}`,
-    type: 'task',
-    task_id: 611,
-    task_name: '接线测试_容器',
-    summary: { total_cases: 1, completed_cases: 1, failed_cases: 0, pass_rate: 1 },
-    status: 'draft',
-    created_at: '2026-10-25 10:00',
-  }
+/** 组件只读 id / name / status（报告域其余字段与本卡无关，最小夹具即可） */
+function reportItem(id: number): ReportListItem {
+  return { id, name: `接线测试_容器报告_${id}`, status: 'draft' } as ReportListItem
 }
 
 describe('ContainerReportCard（§5.5.6 无报告态）', () => {
   beforeEach(() => {
-    mocks.fetchReportList.mockReset()
+    mocks.fetchLatestReportByTask.mockReset()
     mocks.generateTaskReport.mockReset()
     mocks.toastSuccess.mockReset()
   })
 
   it('无报告 → 空态文案 + 生成报告按钮', async () => {
-    mocks.fetchReportList.mockResolvedValue({ items: [], total: 0, page: 1, per_page: 1, pages: 0 })
+    mocks.fetchLatestReportByTask.mockResolvedValue(null)
     renderCard()
 
     expect(await screen.findByText('该合并任务暂无报告')).toBeInTheDocument()
     // 卡头一行 + 空态说明各一处（同口径文案）
     expect(screen.getAllByText('合并任务无执行过程，报告需手动生成').length).toBeGreaterThan(0)
-    expect(mocks.fetchReportList).toHaveBeenCalledWith(expect.objectContaining({ task_id: 611 }))
+    expect(mocks.fetchLatestReportByTask).toHaveBeenCalledWith(611)
   })
 
   it('生成报告 → 调既有 generate-task + toast + 回显报告', async () => {
-    mocks.fetchReportList.mockResolvedValue({ items: [], total: 0, page: 1, per_page: 1, pages: 0 })
+    mocks.fetchLatestReportByTask.mockResolvedValue(null)
     mocks.generateTaskReport.mockResolvedValue({ report_id: 88 })
     renderCard()
 
@@ -89,13 +82,7 @@ describe('ContainerReportCard（§5.5.6 无报告态）', () => {
   })
 
   it('已有报告 → 名称 + 查看报告入口', async () => {
-    mocks.fetchReportList.mockResolvedValue({
-      items: [reportItem(88)],
-      total: 1,
-      page: 1,
-      per_page: 1,
-      pages: 1,
-    })
+    mocks.fetchLatestReportByTask.mockResolvedValue(reportItem(88))
     renderCard()
 
     expect(await screen.findByText('接线测试_容器报告_88')).toBeInTheDocument()
@@ -104,7 +91,7 @@ describe('ContainerReportCard（§5.5.6 无报告态）', () => {
   })
 
   it('报告列表加载失败 → 错误态 + 重试（不误报「暂无报告」）', async () => {
-    mocks.fetchReportList.mockRejectedValue(new Error('boom'))
+    mocks.fetchLatestReportByTask.mockRejectedValue(new Error('boom'))
     renderCard()
 
     expect(await screen.findByText('报告加载失败')).toBeInTheDocument()

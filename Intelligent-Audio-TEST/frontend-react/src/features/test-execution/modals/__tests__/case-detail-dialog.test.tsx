@@ -224,9 +224,9 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
       ...taskTerminal,
       cases: [
         {
-          case_id: 'case-1',
+          caseId: 'case-1',
           name: '用例一',
-          evaluation_dimensions: [
+          evaluationDimensions: [
             { id: 121, name: '识别成功' },
             { id: 124, name: '识别失败' },
           ],

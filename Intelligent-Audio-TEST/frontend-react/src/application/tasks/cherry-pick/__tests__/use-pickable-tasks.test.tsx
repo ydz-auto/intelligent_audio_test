@@ -85,10 +85,10 @@ describe('usePickableTasks（阶段 1 数据源）', () => {
     )
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    rerender({ sortBy: 'created_at' as PickableTaskSortBy, sortOrder: 'desc' as PickableTaskSortOrder })
+    rerender({ sortBy: 'createdAt' as PickableTaskSortBy, sortOrder: 'desc' as PickableTaskSortOrder })
     await waitFor(() =>
       expect(fetchAllPickableTasksMock).toHaveBeenLastCalledWith({
-        sortBy: 'created_at',
+        sortBy: 'createdAt',
         sortOrder: 'desc',
       })
     )

@@ -106,11 +106,11 @@ describe('PickTaskStage（§3.8.2 阶段 1 选择任务）', () => {
   })
 
   it('降序时按钮显示降序并可切回升序', () => {
-    const { onSortChange } = setup(new Set(), { sortOrder: 'desc', sortBy: 'created_at' })
+    const { onSortChange } = setup(new Set(), { sortOrder: 'desc', sortBy: 'createdAt' })
     const btn = screen.getByLabelText('当前降序，切换为升序')
     expect(btn).toHaveTextContent('降序')
     fireEvent.click(btn)
-    expect(onSortChange).toHaveBeenCalledWith('created_at', 'asc')
+    expect(onSortChange).toHaveBeenCalledWith('createdAt', 'asc')
   })
 
   it('清空触发 onClear；下一步：选择结果（{n}）按选中数启用/禁用', () => {

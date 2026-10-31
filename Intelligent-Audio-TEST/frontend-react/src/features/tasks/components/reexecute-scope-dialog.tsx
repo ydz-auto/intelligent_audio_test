@@ -4,7 +4,7 @@
  * （全选 Checkbox + 标签/分组过滤 Select + 行 Checkbox 列表，空态「本任务暂无已执行用例」）；
  * 重评估追加：评估维度勾选网格（默认全选，候选=本任务用例聚合维度）+
  * 「重新提取设备输出（从存档日志）」Checkbox（默认不勾）；底栏「取消｜确认{已选 n 项}」。
- * 存在人工复核结果（task.detail.review_count > 0）时追加硬确认层（§5.7）：
+ * 存在人工复核结果（task.detail.reviewCount > 0）时追加硬确认层（§5.7）：
  * 确认后先弹「该任务存在 {N} 条人工复核结果…是否继续？」主钮「覆盖并继续」（destructive）副钮「返回」。
  * 确认后经 infrastructure/api/tasks-control-api（client.ts）发起 retry / reevaluate。
  */
@@ -74,7 +74,7 @@ export function ReexecuteScopeDialog({
   const dimInitRef = useRef(false)
 
   const isReevaluate = actionType === 'reevaluate'
-  const reviewCount = detail?.review_count ?? 0
+  const reviewCount = detail?.reviewCount ?? 0
 
   /** 本任务已执行用例集（task 详情 task.cases；非全库用例） */
   const taskCases = useMemo(() => detail?.cases ?? [], [detail])
@@ -84,7 +84,7 @@ export function ReexecuteScopeDialog({
     const names = new Set<string>()
     taskCases.forEach((tc) => {
       ;(tc.tags ?? []).forEach((t) => names.add(t))
-      if (tc.group_name) names.add(tc.group_name)
+      if (tc.groupName) names.add(tc.groupName)
     })
     return Array.from(names).sort()
   }, [taskCases])
@@ -92,16 +92,16 @@ export function ReexecuteScopeDialog({
   const filteredCases = useMemo(() => {
     if (caseFilter === 'all') return taskCases
     return taskCases.filter(
-      (tc) => (tc.tags ?? []).includes(caseFilter) || tc.group_name === caseFilter
+      (tc) => (tc.tags ?? []).includes(caseFilter) || tc.groupName === caseFilter
     )
   }, [taskCases, caseFilter])
 
-  /** 重评估维度候选集 = 本任务用例聚合（task.cases[].evaluation_dimensions 去重） */
+  /** 重评估维度候选集 = 本任务用例聚合（task.cases[].evaluationDimensions 去重） */
   const dimensionOptions = useMemo(() => {
     if (!isReevaluate) return []
     const dimMap = new Map<number, string>()
     taskCases.forEach((tc) => {
-      ;(tc.evaluation_dimensions ?? []).forEach((d) => {
+      ;(tc.evaluationDimensions ?? []).forEach((d) => {
         const id = Number(d?.id)
         if (id && !dimMap.has(id)) dimMap.set(id, d?.name || `维度 ${id}`)
       })
@@ -137,7 +137,7 @@ export function ReexecuteScopeDialog({
   }, [open, isReevaluate, dimensionOptions])
 
   const isAllCasesSelected =
-    filteredCases.length > 0 && filteredCases.every((tc) => selectedCaseSet.has(String(tc.case_id)))
+    filteredCases.length > 0 && filteredCases.every((tc) => selectedCaseSet.has(String(tc.caseId)))
 
   const canConfirm = (() => {
     if (isReevaluate && dimensionOptions.length > 0 && selectedDimensionIds.length === 0) {
@@ -169,12 +169,12 @@ export function ReexecuteScopeDialog({
 
   const toggleSelectAll = () => {
     if (isAllCasesSelected) {
-      const removeSet = new Set(filteredCases.map((tc) => String(tc.case_id)))
+      const removeSet = new Set(filteredCases.map((tc) => String(tc.caseId)))
       setSelectedCaseIds((prev) => prev.filter((id) => !removeSet.has(id)))
     } else {
       setSelectedCaseIds((prev) => {
         const next = new Set(prev.map(String))
-        filteredCases.forEach((tc) => next.add(String(tc.case_id)))
+        filteredCases.forEach((tc) => next.add(String(tc.caseId)))
         return Array.from(next)
       })
     }
@@ -346,20 +346,20 @@ export function ReexecuteScopeDialog({
                   <ScrollArea className='max-h-60'>
                     <div className='flex flex-col gap-1.5'>
                       {filteredCases.map((tc) => {
-                        const checked = selectedCaseSet.has(String(tc.case_id))
+                        const checked = selectedCaseSet.has(String(tc.caseId))
                         return (
                           <label
-                            key={tc.case_id}
+                            key={tc.caseId}
                             className={cn(
                               'flex cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 py-2 text-sm transition-colors',
                               checked && 'bg-accent/40'
                             )}
                           >
-                            <Checkbox checked={checked} onCheckedChange={() => toggleCase(tc.case_id)} />
+                            <Checkbox checked={checked} onCheckedChange={() => toggleCase(tc.caseId)} />
                             <span className='min-w-0 flex-1 truncate'>{tc.name}</span>
-                            {tc.group_name && (
+                            {tc.groupName && (
                               <span className='text-muted-foreground shrink-0 text-xs'>
-                                {tc.group_name}
+                                {tc.groupName}
                               </span>
                             )}
                           </label>

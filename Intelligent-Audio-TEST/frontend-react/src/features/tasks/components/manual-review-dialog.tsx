@@ -91,7 +91,7 @@ export function ManualReviewDialog({
   caseNameByResultId?: Record<number, string>
   /** 结果摘要（单条=1 → 单条复核；多条 → 批量复核） */
   results: CaseResultForReview[]
-  /** 用例评估状态（结果行评估徽章展示；来自 TaskCaseBrief.evaluation_status） */
+  /** 用例评估状态（结果行评估徽章展示；来自 TaskCaseBrief.evaluationStatus） */
   evaluationStatus?: string | null
   /** AI 采纳预填（AI 判定的评估状态 + 备注=AI 理由） */
   preset?: { evaluationStatus?: string; comment?: string } | null

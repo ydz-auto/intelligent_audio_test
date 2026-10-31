@@ -4,7 +4,7 @@
  * ①任务信息（名称/说明/算法类型/标签键值行）②关联资源（发布时冻结）
  * （被测设备/API/播放设备引用行）③用例（{n}）（每用例 Collapsible：
  * 名称+类型徽章+轮次+标签+分组，展开显描述+配置/算法参数 JSON 块+参考参数摘要块）。
- * 空态「冻结体无用例数据」；数据源 = PublishedTaskDetail.snapshot_config.taskSnapshot。
+ * 空态「冻结体无用例数据」；数据源 = PublishedTaskDetail.snapshotConfig.taskSnapshot。
  */
 import { useMemo, useState } from 'react'
 
@@ -158,7 +158,7 @@ export function TaskSnapshotDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** 冻结体（source = PublishedTaskDetail.snapshot_config.taskSnapshot；null → 不渲染） */
+  /** 冻结体（source = PublishedTaskDetail.snapshotConfig.taskSnapshot；null → 不渲染） */
   snapshot: TaskSnapshot | null
 }) {
   const cases = useMemo(() => snapshot?.cases ?? [], [snapshot])

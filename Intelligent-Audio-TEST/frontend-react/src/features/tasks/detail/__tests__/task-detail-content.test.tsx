@@ -56,24 +56,24 @@ vi.mock('@/features/tasks/detail/realtime-logs', () => ({
   RealtimeLogs: () => <div data-testid='realtime-logs' />,
 }))
 
-/** 最小任务详情（资源区断言只关心 apis，device_types 不应影响渲染） */
+/** 最小任务详情（资源区断言只关心 apis，deviceTypes 不应影响渲染） */
 function makeDetail(overrides: Record<string, unknown> = {}) {
   return {
     id: 419,
     name: '小艺拒识E2E测试任务',
     status: 'completed',
-    execution_status: 'completed',
-    device_types: [] as string[],
+    executionStatus: 'completed',
+    deviceTypes: [] as string[],
     config: {},
-    algorithm_type: null,
-    algorithm_params: null,
+    algorithmType: null,
+    algorithmParams: null,
     apis: [
       { id: 1, name: 'ASR 接口', status: 'online' },
     ],
     devices: [],
     cases: [],
-    device_count: null,
-    api_count: null,
+    deviceCount: null,
+    apiCount: null,
     ...overrides,
   }
 }
@@ -103,13 +103,13 @@ describe('TaskDetailContent API 资源区（INT-1241 移除任务类型概念）
   })
 
   it('apis 非空即显示 API资源管理（websocket_api-only 任务）', () => {
-    renderDetail({ device_types: ['websocket_api'], apis: [{ id: 1, name: 'ASR 接口', status: 'online' }] })
+    renderDetail({ deviceTypes: ['websocket_api'], apis: [{ id: 1, name: 'ASR 接口', status: 'online' }] })
     expect(screen.getByText('API资源管理')).toBeInTheDocument()
     expect(screen.getByText('ASR 接口')).toBeInTheDocument()
   })
 
   it('apis 非空即显示 API资源管理（physical 任务亦显示，不再按类型显隐）', () => {
-    renderDetail({ device_types: ['physical'], apis: [{ id: 2, name: 'TTS 接口', status: 'online' }] })
+    renderDetail({ deviceTypes: ['physical'], apis: [{ id: 2, name: 'TTS 接口', status: 'online' }] })
     expect(screen.getByText('API资源管理')).toBeInTheDocument()
     expect(screen.getByText('TTS 接口')).toBeInTheDocument()
   })

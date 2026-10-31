@@ -38,13 +38,13 @@ export function useReportReviews(report?: ReportDetailData) {
   const reviewedCases = useMemo(() => {
     const map: Record<string, boolean> = {}
     for (const c of taskQuery.data?.cases ?? []) {
-      map[c.case_id] = c.reviewed === true
+      map[c.caseId] = c.reviewed === true
     }
     return map
   }, [taskQuery.data])
 
   /** 报告头「已复核 {n} 条」统计徽章数据源（源任务 review_count，INT-734 实测回填） */
-  const reviewCount = taskQuery.data?.review_count ?? 0
+  const reviewCount = taskQuery.data?.reviewCount ?? 0
 
   /** 复核历史（任务级；报告卡片明细按用例从 useCaseResults.reviewHistory 聚合） */
   const historyQuery = useQuery({

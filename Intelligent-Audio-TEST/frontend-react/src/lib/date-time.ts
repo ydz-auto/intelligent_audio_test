@@ -78,13 +78,14 @@ export function formatElapsed(ms: number | null): string {
 
 /**
  * 任务已用时长入参（结构化类型，避免共享层依赖任务域模型）。
- * 后端时间串按裸 UTC 解析；`execution_status` 只有 running / queued 视为进行中。
+ * 字段为 camelCase 领域口径（INT-2239：任务域模型已统一 camelCase）；
+ * 后端时间串按裸 UTC 解析；`executionStatus` 只有 running / queued 视为进行中。
  */
 export type UsedTimeSource = {
-  created_at?: string | null
-  started_at: string | null
-  completed_at: string | null
-  execution_status: string | null
+  createdAt?: string | null
+  startedAt: string | null
+  completedAt: string | null
+  executionStatus: string | null
 }
 
 /**
@@ -101,13 +102,13 @@ export function formatTaskUsedTime(
   detail: UsedTimeSource,
   now: Date = new Date()
 ): string {
-  const start = parseApiDateTime(detail.started_at)
+  const start = parseApiDateTime(detail.startedAt)
   if (!start) return '—'
-  const created = parseApiDateTime(detail.created_at)
+  const created = parseApiDateTime(detail.createdAt)
   if (created && start.getTime() < created.getTime()) return '—'
-  const completed = parseApiDateTime(detail.completed_at)
+  const completed = parseApiDateTime(detail.completedAt)
   const running =
-    detail.execution_status === 'running' || detail.execution_status === 'queued'
+    detail.executionStatus === 'running' || detail.executionStatus === 'queued'
   const end = completed ?? (running ? now : null)
   if (!end) return '—'
   return formatElapsed(end.getTime() - start.getTime())

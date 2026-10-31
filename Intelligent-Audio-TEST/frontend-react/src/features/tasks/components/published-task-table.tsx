@@ -70,10 +70,10 @@ function PublishedExpandRow({
   onOpenReport: () => void
 }) {
   const [versionsOpen, setVersionsOpen] = useState(true)
-  // INT-1627：以冻结体本身判定（has_task_snapshot 与 snapshot_config.taskSnapshot
+  // INT-1627：以冻结体本身判定（hasTaskSnapshot 与 snapshotConfig.taskSnapshot
   // 任一缺失都按历史版本处理，避免入口渲染后弹窗空体）
-  const legacy = readTaskSnapshot(detail.snapshot_config) == null
-  const reportSummary = readReportSummary(readReportSnapshot(detail.report_snapshot))
+  const legacy = readTaskSnapshot(detail.snapshotConfig) == null
+  const reportSummary = readReportSummary(readReportSnapshot(detail.reportSnapshot))
 
   return (
     <div className='bg-muted/20 px-4 py-3'>
@@ -103,16 +103,16 @@ function PublishedExpandRow({
                     label={STATUS_META[version.status]?.label ?? version.status}
                     variant={STATUS_META[version.status]?.variant ?? 'neutral'}
                   />
-                  {version.is_current && (
+                  {version.isCurrent && (
                     <Badge variant='secondary' className='rounded-md px-1.5 text-[11px]'>
                       当前
                     </Badge>
                   )}
                   <span className='text-muted-foreground'>
-                    {formatDateTime(version.published_at)}
+                    {formatDateTime(version.publishedAt)}
                   </span>
                   <span className='text-muted-foreground ml-auto'>
-                    来源任务 #{version.source_task_id ?? '—'}
+                    来源任务 #{version.sourceTaskId ?? '—'}
                   </span>
                 </div>
               ))}
@@ -125,8 +125,8 @@ function PublishedExpandRow({
           <p className='text-sm font-medium'>Benchmark 标记（发布时冻结）</p>
           {detail.benchmark ? (
             <div className='mt-2 flex flex-col gap-1 text-xs'>
-              <span>测试集：{String(detail.snapshot_config.benchmarkSuite ?? '—')}</span>
-              <span>被测类别：{String(detail.snapshot_config.benchmarkCategory ?? '—')}</span>
+              <span>测试集：{String(detail.snapshotConfig.benchmarkSuite ?? '—')}</span>
+              <span>被测类别：{String(detail.snapshotConfig.benchmarkCategory ?? '—')}</span>
             </div>
           ) : (
             <p className='text-muted-foreground mt-2 text-xs'>该版本未参与 Benchmark 排行</p>
@@ -144,9 +144,9 @@ function PublishedExpandRow({
         ) : (
           <div className='mt-2 flex flex-wrap items-center gap-2 text-xs'>
             <span className='text-muted-foreground'>来源任务：</span>
-            <span className='font-medium'>{detail.source_task_name ?? '—'}</span>
+            <span className='font-medium'>{detail.sourceTaskName ?? '—'}</span>
             <span className='text-muted-foreground'>
-              用例 {detail.source_task_completed_cases ?? 0}/{detail.source_task_total_cases ?? 0}
+              用例 {detail.sourceTaskCompletedCases ?? 0}/{detail.sourceTaskTotalCases ?? 0}
             </span>
             <Button
               size='sm'
@@ -163,10 +163,10 @@ function PublishedExpandRow({
       {/* ④ 冻结报告 */}
       <section className='mt-3 rounded-lg border p-3'>
         <p className='text-sm font-medium'>冻结报告（发布时快照 · 不可变）</p>
-        {detail.has_report_snapshot ? (
+        {detail.hasReportSnapshot ? (
           <div className='mt-2 flex flex-wrap items-center gap-2 text-xs'>
             <span className='font-medium'>
-              {String(readReportSnapshot(detail.report_snapshot)?.name ?? '冻结报告')}
+              {String(readReportSnapshot(detail.reportSnapshot)?.name ?? '冻结报告')}
             </span>
             <span className='text-muted-foreground'>
               用例 {reportSummary.caseCount ?? '—'} · 通过率 {reportSummary.passRate ?? '—'}%
@@ -190,21 +190,21 @@ function PublishedExpandRow({
       {/* ⑤ 执行记录 */}
       <section className='mt-3 rounded-lg border p-3'>
         <p className='text-sm font-medium'>执行记录（按冻结快照执行生成的日常任务）</p>
-        {detail.execution_history.length > 0 ? (
+        {detail.executionHistory.length > 0 ? (
           <div className='mt-2 flex flex-col gap-1.5 text-xs'>
-            {detail.execution_history.map((record) => (
-              <div key={record.task_id} className='flex items-center gap-2'>
-                <span className='font-medium'>{record.task_name}</span>
+            {detail.executionHistory.map((record) => (
+              <div key={record.taskId} className='flex items-center gap-2'>
+                <span className='font-medium'>{record.taskName}</span>
                 <span className='font-mono'>v{record.version}</span>
                 <StatusBadge
                   label={record.status === 'completed' ? '已完成' : record.status}
                   variant={record.status === 'completed' ? 'success' : 'neutral'}
                 />
                 <span className='text-muted-foreground'>
-                  用例 {record.completed_cases}/{record.total_cases}
+                  用例 {record.completedCases}/{record.totalCases}
                 </span>
                 <span className='text-muted-foreground ml-auto'>
-                  {formatDateTime(record.created_at)}
+                  {formatDateTime(record.createdAt)}
                 </span>
               </div>
             ))}
@@ -363,9 +363,9 @@ export function PublishedTaskTable({
     try {
       const result = await executePublishedTask(executeTask.id)
       setExecuteTask(null)
-      toast.success(`日常任务已创建（ID: ${result.task_id}），即将前往任务详情`)
+      toast.success(`日常任务已创建（ID: ${result.taskId}），即将前往任务详情`)
       invalidateTasks()
-      void navigate({ to: '/tasks/$tab', params: { tab: String(result.task_id) } })
+      void navigate({ to: '/tasks/$tab', params: { tab: String(result.taskId) } })
     } catch (error) {
       toast.error(toErrorMessage(error, '创建日常任务失败'))
     } finally {
@@ -533,12 +533,12 @@ export function PublishedTaskTable({
           <TaskSnapshotDialog
             open={snapshotOpen}
             onOpenChange={setSnapshotOpen}
-            snapshot={readTaskSnapshot(detail.snapshot_config)}
+            snapshot={readTaskSnapshot(detail.snapshotConfig)}
           />
           <ReportSnapshotDialog
             open={reportOpen}
             onOpenChange={setReportOpen}
-            report={readReportSnapshot(detail.report_snapshot)}
+            report={readReportSnapshot(detail.reportSnapshot)}
           />
         </>
       )}
@@ -665,7 +665,7 @@ function ExpandedRows({
         <td className='px-3 py-2'>
           <div className='flex items-center gap-1.5'>
             <Badge className='rounded-md px-1.5'>v{task.version}</Badge>
-            {task.is_current && (
+            {task.isCurrent && (
               <Badge variant='secondary' className='rounded-md px-1.5 text-[11px]'>
                 当前
               </Badge>
@@ -701,12 +701,12 @@ function ExpandedRows({
           )}
         </td>
         <td className='px-3 py-2 text-muted-foreground'>
-          {(task.version_count ?? 0) > 1 ? `共 ${task.version_count} 个版本` : '—'}
+          {(task.versionCount ?? 0) > 1 ? `共 ${task.versionCount} 个版本` : '—'}
         </td>
         <td className='px-3 py-2'>
-          <span className='block whitespace-nowrap'>{task.published_by ?? '—'}</span>
+          <span className='block whitespace-nowrap'>{task.publishedBy ?? '—'}</span>
           <span className='text-muted-foreground block whitespace-nowrap text-xs tabular-nums'>
-            {formatDateTime(task.published_at)}
+            {formatDateTime(task.publishedAt)}
           </span>
         </td>
         <td className='px-3 py-2'>

@@ -16,6 +16,13 @@ import type {
   CaseResultForReviewDto,
 } from '@/infrastructure/dto/review.dto'
 
+/** 复核留痕字段名：后端 field_name 原值（执行/评估状态）→ camelCase 领域枚举 */
+function toReviewFieldName(
+  fieldName: ReviewHistoryItemDto['field_name']
+): ReviewHistoryItem['fieldName'] {
+  return fieldName === 'execution_status' ? 'executionStatus' : 'evaluationStatus'
+}
+
 /** 复核留痕行：DTO → 领域（snake_case → camelCase） */
 export function toReviewHistoryItem(dto: ReviewHistoryItemDto): ReviewHistoryItem {
   return {
@@ -23,7 +30,7 @@ export function toReviewHistoryItem(dto: ReviewHistoryItemDto): ReviewHistoryIte
     resultId: dto.result_id,
     taskId: dto.task_id,
     testCaseId: dto.test_case_id,
-    fieldName: dto.field_name,
+    fieldName: toReviewFieldName(dto.field_name),
     oldValue: dto.old_value,
     newValue: dto.new_value,
     comment: dto.comment,

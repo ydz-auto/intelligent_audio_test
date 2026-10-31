@@ -30,9 +30,9 @@ const sourceTask = { id: 419, name: '小艺拒识E2E测试任务_2026/10/13 17:3
 const listRow = {
   id: 419,
   name: sourceTask.name,
-  execution_status: 'completed',
-  total_cases: 12,
-  device_count: 2,
+  executionStatus: 'completed',
+  totalCases: 12,
+  deviceCount: 2,
 } as unknown as TaskListItem
 
 function renderDialog() {

@@ -61,8 +61,8 @@ export function ContainerHeaderBadges({
 
   const sourceTaskCount = trace.groups.length
   const resultCount = trace.total ?? trace.groups.reduce((sum, g) => sum + g.results.length, 0)
-  const caseCount = detail.case_count ?? detail.total_cases ?? detail.cases?.length ?? 0
-  const failedCases = detail.failed_cases ?? 0
+  const caseCount = detail.caseCount ?? detail.totalCases ?? detail.cases?.length ?? 0
+  const failedCases = detail.failedCases ?? 0
   const partial = failedCases > 0 && caseCount > 0 && failedCases < caseCount
   const allFailed = caseCount > 0 && failedCases >= caseCount
 

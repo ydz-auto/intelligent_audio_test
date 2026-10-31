@@ -49,7 +49,7 @@ function formatTime(iso?: string | null): string {
 }
 
 function fieldBadge(field: ReviewHistoryItem['fieldName']) {
-  return field === 'execution_status' ? '执行状态' : '评估状态'
+  return field === 'executionStatus' ? '执行状态' : '评估状态'
 }
 
 export function ReviewHistoryDrawer({
@@ -125,11 +125,11 @@ export function ReviewHistoryDrawer({
                         {fieldBadge(item.fieldName)}
                       </Badge>
                       <span className='font-mono'>
-                        {item.fieldName === 'execution_status'
+                        {item.fieldName === 'executionStatus'
                           ? executionStatusLabel(item.oldValue)
                           : evaluationStatusLabel(item.oldValue)}
                         <span className='text-destructive'> → </span>
-                        {item.fieldName === 'execution_status'
+                        {item.fieldName === 'executionStatus'
                           ? executionStatusLabel(item.newValue)
                           : evaluationStatusLabel(item.newValue)}
                       </span>

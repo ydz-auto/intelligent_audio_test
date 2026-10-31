@@ -93,11 +93,11 @@ function buildDailyItems(
   if (has('task:read') && !task.deleted) {
     items.push({
       key: 'favorite',
-      label: task.is_favorite ? '取消收藏' : '收藏',
-      onSelect: task.is_favorite ? actions.onUnfavorite : actions.onFavorite,
+      label: task.isFavorite ? '取消收藏' : '收藏',
+      onSelect: task.isFavorite ? actions.onUnfavorite : actions.onFavorite,
     })
   }
-  if (has('report:create') && TERMINAL_STATES.has(task.execution_status ?? '')) {
+  if (has('report:create') && TERMINAL_STATES.has(task.executionStatus ?? '')) {
     items.push({
       key: 'regen-report',
       label: '重新生成报告',
@@ -105,15 +105,15 @@ function buildDailyItems(
     })
   }
   if (has('task:execute')) {
-    if (ACTIVE_STATES.has(task.execution_status ?? '')) {
-      if (task.execution_status === 'running' || task.execution_status === 'paused') {
+    if (ACTIVE_STATES.has(task.executionStatus ?? '')) {
+      if (task.executionStatus === 'running' || task.executionStatus === 'paused') {
         items.push({
           key: 'pause',
-          label: task.execution_status === 'running' ? '暂停' : '继续',
-          onSelect: task.execution_status === 'running' ? actions.onPause : actions.onResume,
+          label: task.executionStatus === 'running' ? '暂停' : '继续',
+          onSelect: task.executionStatus === 'running' ? actions.onPause : actions.onResume,
         })
       }
-      if (task.execution_status === 'running' || task.execution_status === 'paused' || task.execution_status === 'queued') {
+      if (task.executionStatus === 'running' || task.executionStatus === 'paused' || task.executionStatus === 'queued') {
         items.push({
           key: 'stop',
           label: '停止',
@@ -123,10 +123,10 @@ function buildDailyItems(
       }
     }
     if (
-      task.execution_status === 'pending' ||
-      task.execution_status === 'failed' ||
-      task.execution_status === 'completed' ||
-      task.execution_status === 'stopped'
+      task.executionStatus === 'pending' ||
+      task.executionStatus === 'failed' ||
+      task.executionStatus === 'completed' ||
+      task.executionStatus === 'stopped'
     ) {
       items.push({
         key: 'rerun',
@@ -135,7 +135,7 @@ function buildDailyItems(
       })
     }
   }
-  if (has('evaluation:execute') && TERMINAL_STATES.has(task.execution_status ?? '')) {
+  if (has('evaluation:execute') && TERMINAL_STATES.has(task.executionStatus ?? '')) {
     items.push({
       key: 'reevaluate',
       label: '重新评估',
@@ -154,7 +154,7 @@ function buildDailyItems(
     items.push({
       key: 'publish',
       label: '发布',
-      disabled: !['completed', 'failed', 'stopped', 'pending'].includes(task.execution_status ?? ''),
+      disabled: !['completed', 'failed', 'stopped', 'pending'].includes(task.executionStatus ?? ''),
       disabledReason: '仅已完成/失败/停止/待执行状态可发布',
       onSelect: actions.onPublish,
     })
@@ -400,7 +400,7 @@ export function TaskRowActions({
                 item.onSelect?.()
               }}
             >
-              {item.key === 'favorite' && task.is_favorite ? (
+              {item.key === 'favorite' && task.isFavorite ? (
                 <Star aria-hidden='true' className='size-4 fill-current' />
               ) : null}
               {item.label}

@@ -191,12 +191,12 @@ export function SpecificCaseComparison({
 
   // 用例当前评估状态（任务侧用例简报 evaluation_status → AI 结论卡「原评估判定」）
   const caseEvaluationStatus = (caseId: string): string | null | undefined =>
-    reviews.taskCases.find((c) => c.case_id === caseId)?.evaluation_status
+    reviews.taskCases.find((c) => c.caseId === caseId)?.evaluationStatus
 
   /** INT-1279：用例评估维度 id（源任务用例简报 evaluation_dimensions 溯源；AI 复核按用例评估维度显式传） */
   const caseDimensionIds = (caseId: string): number[] | undefined =>
     toAiReviewDimensionIds(
-      reviews.taskCases.find((c) => c.case_id === caseId)?.evaluation_dimensions
+      reviews.taskCases.find((c) => c.caseId === caseId)?.evaluationDimensions
     )
 
   /**
@@ -212,7 +212,7 @@ export function SpecificCaseComparison({
     if (reviews.taskLoading) {
       const result = await reviews.refetchTask()
       return toAiReviewDimensionIds(
-        result.data?.cases.find((c) => c.case_id === caseId)?.evaluation_dimensions
+        result.data?.cases.find((c) => c.caseId === caseId)?.evaluationDimensions
       )
     }
     return caseDimensionIds(caseId)

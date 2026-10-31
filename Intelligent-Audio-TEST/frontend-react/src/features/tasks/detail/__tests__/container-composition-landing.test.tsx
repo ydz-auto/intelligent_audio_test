@@ -48,18 +48,18 @@ import { ContainerComposition } from '@/features/tasks/detail/container-composit
 const CASE_A = '11111111-1111-1111-1111-111111111111'
 
 const CASE_BRIEF: TaskCaseBrief = {
-  case_id: CASE_A,
+  caseId: CASE_A,
   name: '用例 A',
   status: 'completed',
-  execution_status: 'completed',
-  evaluation_status: 'completed',
-  started_at: null,
-  completed_at: null,
+  executionStatus: 'completed',
+  evaluationStatus: 'completed',
+  startedAt: null,
+  completedAt: null,
   duration: null,
-  error_message: null,
-  group_name: '分组一',
+  errorMessage: null,
+  groupName: '分组一',
   tags: ['标签一'],
-  evaluation_dimensions: [],
+  evaluationDimensions: [],
   reviewed: false,
 }
 

@@ -2,8 +2,8 @@
  * 任务域真实接口 DTO（infrastructure/dto 层——snake_case 唯一出现层；09_任务域.md §10）。
  * 形态对照 api_gateway/schemas/task.py TaskListItem/TaskDetailData、published_task.py
  * PublishedTaskItem、log.py LogEntry 实测契约（Vue 侧 INT-623 已比对；本卡接线 React 侧）。
- * domain/models/task.ts 任务域模型同为 snake_case 字段（09 任务域卡时代落位），
- * 本层 DTO 与 Domain 近乎同构，转换函数仅补派生字段（api_count/source_task_count 等）。
+ * domain/models/task.ts 任务域模型为 camelCase 领域对象；snake_case↔camelCase 转换
+ * 只在 adapters/dto/task-adapter.ts 完成（INT-2239）。
  */
 
 /** 分页信封（common.py PaginatedData，task_bp/published_task_bp 列表响应统一形态） */
@@ -141,7 +141,24 @@ export interface TaskCaseBriefDto {
   reviewed?: boolean | null
   /** 用例级执行目标数 + 目标明细（后端按用例合并，执行行不再重复出条） */
   target_count?: number | null
-  targets?: Array<Record<string, unknown>>
+  targets?: TaskCaseTargetDto[]
+}
+
+/** 用例执行目标 DTO（task.py TaskCase 行级：API 行 device_id 即 apis.id） */
+export interface TaskCaseTargetDto {
+  task_case_id: number
+  target_type?: 'api' | 'device' | null
+  device_type?: string | null
+  device_id?: string | null
+  api_id?: number | null
+  target_name?: string | null
+  status: string | null
+  execution_status: string | null
+  evaluation_status: string | null
+  started_at: string | null
+  completed_at: string | null
+  duration: number | null
+  error_message: string | null
 }
 
 /** 任务域统计 DTO（task.py TaskDomainStatsData；与 domain TaskDomainStats 同构） */

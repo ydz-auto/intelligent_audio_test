@@ -130,7 +130,7 @@ export function PublishTaskDialog({
   const publishable = useMemo(
     () =>
       sourceTasks.filter((t) =>
-        PUBLISHABLE_STATUSES.includes(t.execution_status ?? '')
+        PUBLISHABLE_STATUSES.includes(t.executionStatus ?? '')
       ),
     [sourceTasks]
   )
@@ -143,7 +143,7 @@ export function PublishTaskDialog({
    */
   const sourceOptions = useMemo(() => {
     const optionLabel = (t: TaskListItem) =>
-      `${t.name}（${getExecutionStatusMeta(t.execution_status).label} · 用例 ${t.total_cases ?? 0}）`
+      `${t.name}（${getExecutionStatusMeta(t.executionStatus).label} · 用例 ${t.totalCases ?? 0}）`
     const list = publishable.map((t) => ({
       value: String(t.id),
       label: optionLabel(t),
@@ -289,8 +289,8 @@ export function PublishTaskDialog({
                   {source.name}
                 </Badge>
                 <span className='text-muted-foreground'>
-                  {getExecutionStatusMeta(source.execution_status).label} · 用例 {source.total_cases ?? 0} ·{' '}
-                  {source.device_count ?? 0} 设备
+                  {getExecutionStatusMeta(source.executionStatus).label} · 用例 {source.totalCases ?? 0} ·{' '}
+                  {source.deviceCount ?? 0} 设备
                 </span>
               </div>
             ) : (
@@ -305,7 +305,7 @@ export function PublishTaskDialog({
                       : tasksError
                         ? '来源任务状态未知（列表加载失败，可直接发布由后端校验）'
                         : presetInList
-                          ? `${getExecutionStatusMeta(presetInList.execution_status).label} · 当前状态不可发布`
+                          ? `${getExecutionStatusMeta(presetInList.executionStatus).label} · 当前状态不可发布`
                           : '来源任务状态未知（不在当前列表页）'}
                   </span>
                 </div>

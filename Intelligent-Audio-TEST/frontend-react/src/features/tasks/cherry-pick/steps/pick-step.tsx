@@ -79,7 +79,7 @@ export function PickStep({
   presetTaskIds?: number[]
 }) {
   /** 阶段 1 服务端排序（INT-1496 sort_by/sort_order；默认「创建时间 + 倒序」，新跑任务排在前面） */
-  const [sortBy, setSortBy] = useState<PickableTaskSortBy>('created_at')
+  const [sortBy, setSortBy] = useState<PickableTaskSortBy>('createdAt')
   const [sortOrder, setSortOrder] = useState<PickableTaskSortOrder>('desc')
   // 阶段 1 任务清单（pickable-tasks 任务级聚合 + 服务端分页排序，不受阶段 2 任务筛选影响）
   const pickableTasksQuery = usePickableTasks({ sortBy, sortOrder })

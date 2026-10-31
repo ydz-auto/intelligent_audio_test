@@ -103,29 +103,29 @@ describe('formatElapsed', () => {
 
 describe('formatTaskUsedTime', () => {
   const base = {
-    started_at: '2026-10-23T05:00:00',
-    completed_at: '2026-10-23T05:01:00',
-    execution_status: 'completed',
+    startedAt: '2026-10-23T05:00:00',
+    completedAt: '2026-10-23T05:01:00',
+    executionStatus: 'completed',
   }
 
-  it('以起止时间推算（不采用后端 used_time 异常值）', () => {
+  it('以起止时间推算（不采用后端 usedTime 异常值）', () => {
     expect(formatTaskUsedTime(base)).toBe('1 分钟')
   })
 
   it('进行中按当前时间实时推算', () => {
     expect(
       formatTaskUsedTime(
-        { ...base, completed_at: null, execution_status: 'running' },
+        { ...base, completedAt: null, executionStatus: 'running' },
         new Date('2026-10-23T05:02:00Z')
       )
     ).toBe('2 分钟')
   })
 
   it('无有效开始时间 → —', () => {
-    expect(formatTaskUsedTime({ ...base, started_at: null })).toBe('—')
+    expect(formatTaskUsedTime({ ...base, startedAt: null })).toBe('—')
   })
 
   it('已结束但无完成时间 → —（不拿当前时间冒充）', () => {
-    expect(formatTaskUsedTime({ ...base, completed_at: null })).toBe('—')
+    expect(formatTaskUsedTime({ ...base, completedAt: null })).toBe('—')
   })
 })

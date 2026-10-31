@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
-import { fetchReportList, generateTaskReport } from '@/infrastructure/api/reports-api'
+import { fetchLatestReportByTask, generateTaskReport } from '@/infrastructure/api/reports-api'
 import { ApiError } from '@/infrastructure/api/api-error'
 
 export function ContainerReportCard({ taskId }: { taskId: number }) {
@@ -37,20 +37,11 @@ export function ContainerReportCard({ taskId }: { taskId: number }) {
   // 这里用既有列表端点按 task_id 过滤取最新一份，不新增端点。
   const reportsQuery = useQuery({
     queryKey: ['reports', 'by-task', taskId],
-    queryFn: () =>
-      fetchReportList({
-        page: 1,
-        per_page: 1,
-        task_id: taskId,
-        sort_by: 'created_at',
-        order: 'desc',
-        favorite: false,
-        deleted: false,
-      }),
+    queryFn: () => fetchLatestReportByTask(taskId),
     staleTime: 15_000,
     refetchInterval: generating ? 2_000 : false,
   })
-  const report = reportsQuery.data?.items?.[0]
+  const report = reportsQuery.data
 
   // 出现报告即停止轮询；60s 仍未出现按「暂无报告」收尾（后端异步可能更久，刷新可再查）
   useEffect(() => {

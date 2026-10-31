@@ -76,7 +76,7 @@ export function ReportSnapshotDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** 报告快照（source = PublishedTaskDetail.report_snapshot；null → 空态） */
+  /** 报告快照（source = PublishedTaskDetail.reportSnapshot；null → 空态） */
   report: ReportSnapshot | null
 }) {
   const navigate = useNavigate()

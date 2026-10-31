@@ -1,7 +1,7 @@
 /**
  * 关联资源区文案接线测试（INT-1241 移除任务类型概念）：
- * 资源区页签标题统一中性「关联资源」，不再按 device_types/资源计数派生「关联API/关联设备」——
- * 任意 device_types（含 websocket_api-only、空 device_types 兜底）均不再出现按类型定文案。
+ * 资源区页签标题统一中性「关联资源」，不再按 deviceTypes/资源计数派生「关联API/关联设备」——
+ * 任意 deviceTypes（含 websocket_api-only、空 deviceTypes 兜底）均不再出现按类型定文案。
  * 断言目标是被测组件自身 resourceLabel 的接线；base-ui 原语仅透传，
  * 使 worker 启动不受重依赖图拖累（本机多 agent 并行负载高）。
  */
@@ -42,8 +42,8 @@ vi.mock('@/features/ai-review/quick-ai-review-dialog', () => ({
 }))
 vi.mock('@/features/tasks/components/review-history-drawer', () => ({
   ReviewHistoryDrawer: () => null,
-  buildCaseNameMap: (cases: Array<{ case_id: string; name: string }>) =>
-    new Map(cases.map((c) => [c.case_id, c.name])),
+  buildCaseNameMap: (cases: Array<{ caseId: string; name: string }>) =>
+    new Map(cases.map((c) => [c.caseId, c.name])),
 }))
 vi.mock('@/infrastructure/api/reviewApi', () => ({
   fetchCaseResults: vi.fn(),
@@ -95,38 +95,38 @@ vi.mock('@/components/ui/button', () => ({
   Button: ({ children }: { children?: ReactNode }) => <button>{children}</button>,
 }))
 
-/** 最小任务详情（资源区断言只关心 device_types/device_count/api_count，其余补全类型） */
+/** 最小任务详情（资源区断言只关心 deviceTypes/deviceCount/apiCount，其余补全类型） */
 function makeDetail(overrides: Partial<TaskDetailData> = {}): TaskDetailData {
   return {
     id: 419,
     name: '小艺拒识E2E测试任务',
     description: null,
     status: 'completed',
-    execution_status: 'completed',
-    evaluation_status: 'completed',
-    device_types: [],
+    executionStatus: 'completed',
+    evaluationStatus: 'completed',
+    deviceTypes: [],
     config: {},
-    algorithm_type: null,
-    algorithm_params: null,
-    started_at: null,
-    completed_at: null,
-    expected_total_time: null,
-    expected_complete_time: null,
-    used_time: null,
-    total_cases: 0,
-    case_count: 0,
-    device_count: null,
-    completed_cases: 0,
-    failed_cases: 0,
+    algorithmType: null,
+    algorithmParams: null,
+    startedAt: null,
+    completedAt: null,
+    expectedTotalTime: null,
+    expectedCompleteTime: null,
+    usedTime: null,
+    totalCases: 0,
+    caseCount: 0,
+    deviceCount: null,
+    completedCases: 0,
+    failedCases: 0,
     tags: [],
     cases: [],
     devices: [],
     apis: [],
-    created_at: null,
-    updated_at: null,
-    api_count: null,
+    createdAt: null,
+    updatedAt: null,
+    apiCount: null,
     concurrency: null,
-    review_count: 0,
+    reviewCount: 0,
     ...overrides,
   }
 }
@@ -162,22 +162,22 @@ describe('CaseAssociation 资源区文案（INT-1241 移除任务类型概念）
     })
   })
 
-  it('任意 device_types 均显示中性页签「关联资源」', () => {
-    renderDetail(makeDetail({ device_types: ['websocket_api'] }))
+  it('任意 deviceTypes 均显示中性页签「关联资源」', () => {
+    renderDetail(makeDetail({ deviceTypes: ['websocket_api'] }))
     expect(screen.getByText('关联资源')).toBeInTheDocument()
     expect(screen.queryByText('关联API')).not.toBeInTheDocument()
     expect(screen.queryByText('关联设备')).not.toBeInTheDocument()
   })
 
-  it('空 device_types + device_count>0（旧 e2e 任务）同样只显示「关联资源」', () => {
-    renderDetail(makeDetail({ device_types: [], device_count: 1, api_count: 0 }))
+  it('空 deviceTypes + deviceCount>0（旧 e2e 任务）同样只显示「关联资源」', () => {
+    renderDetail(makeDetail({ deviceTypes: [], deviceCount: 1, apiCount: 0 }))
     expect(screen.getByText('关联资源')).toBeInTheDocument()
     expect(screen.queryByText('关联API')).not.toBeInTheDocument()
     expect(screen.queryByText('关联设备')).not.toBeInTheDocument()
   })
 
-  it('空 device_types + api_count>0（旧 API 任务）同样只显示「关联资源」', () => {
-    renderDetail(makeDetail({ device_types: [], device_count: 0, api_count: 2 }))
+  it('空 deviceTypes + apiCount>0（旧 API 任务）同样只显示「关联资源」', () => {
+    renderDetail(makeDetail({ deviceTypes: [], deviceCount: 0, apiCount: 2 }))
     expect(screen.getByText('关联资源')).toBeInTheDocument()
     expect(screen.queryByText('关联API')).not.toBeInTheDocument()
     expect(screen.queryByText('关联设备')).not.toBeInTheDocument()
@@ -185,7 +185,7 @@ describe('CaseAssociation 资源区文案（INT-1241 移除任务类型概念）
 
   it('physical 任务同样只显示「关联资源」', () => {
     renderDetail(
-      makeDetail({ device_types: ['physical'], device_count: 1, api_count: 0 })
+      makeDetail({ deviceTypes: ['physical'], deviceCount: 1, apiCount: 0 })
     )
     expect(screen.getByText('关联资源')).toBeInTheDocument()
     expect(screen.queryByText('关联API')).not.toBeInTheDocument()
@@ -193,10 +193,10 @@ describe('CaseAssociation 资源区文案（INT-1241 移除任务类型概念）
   })
 
   /**
-   * INT-1626：挑选合并容器详情 review_count 恒 0（容器不拥有 test_results），
+   * INT-1626：挑选合并容器详情 reviewCount 恒 0（容器不拥有 test_results），
    * 复核计数须按来源任务聚合后的条数展示，否则「已复核 n 条 / 查看复核历史」入口不出现。
    */
-  it('容器任务：复核计数取来源任务聚合结果（review_count=0 也显示徽章与历史入口）', () => {
+  it('容器任务：复核计数取来源任务聚合结果（reviewCount=0 也显示徽章与历史入口）', () => {
     reviewRecordScopeMock.mockReturnValue({
       scope: { taskIds: [419], resultIds: [5715] },
       isContainer: true,
@@ -210,13 +210,13 @@ describe('CaseAssociation 资源区文案（INT-1241 移除任务类型概念）
       isLoading: false,
       isError: false,
     })
-    renderDetail(makeDetail({ id: 556, review_count: 0 }))
+    renderDetail(makeDetail({ id: 556, reviewCount: 0 }))
     expect(screen.getByText('已复核 1 条')).toBeInTheDocument()
     expect(screen.getByText('查看复核历史')).toBeInTheDocument()
   })
 
-  it('非容器任务：复核计数沿用后端 review_count', () => {
-    renderDetail(makeDetail({ review_count: 3 }))
+  it('非容器任务：复核计数沿用后端 reviewCount', () => {
+    renderDetail(makeDetail({ reviewCount: 3 }))
     expect(screen.getByText('已复核 3 条')).toBeInTheDocument()
   })
 })

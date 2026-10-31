@@ -28,16 +28,16 @@ export function QuickViewDialog({
   onOpenChange: (open: boolean) => void
 }) {
   if (!task) return null
-  const execMeta = getExecutionStatusMeta(task.execution_status)
-  const evalMeta = getEvaluationStatusMeta(task.evaluation_status)
-  const mergeType = task.merge_type ?? (task.is_cherry_pick ? 'picked' : null)
-  const sourceCount = task.source_task_count ?? task.source_tasks.length
+  const execMeta = getExecutionStatusMeta(task.executionStatus)
+  const evalMeta = getEvaluationStatusMeta(task.evaluationStatus)
+  const mergeType = task.mergeType ?? (task.isCherryPick ? 'picked' : null)
+  const sourceCount = task.sourceTaskCount ?? task.sourceTasks.length
   // INT-1498：容器标识说明（合并方式 + 来源任务/结果计数），普通任务不渲染
   const mergeDesc = mergeType
     ? [
         MERGE_TYPE_LABELS[mergeType],
         sourceCount > 0 ? `来源 ${sourceCount} 个任务` : null,
-        task.source_result_count != null ? `结果 ${task.source_result_count} 条` : null,
+        task.sourceResultCount != null ? `结果 ${task.sourceResultCount} 条` : null,
       ]
         .filter(Boolean)
         .join(' · ')

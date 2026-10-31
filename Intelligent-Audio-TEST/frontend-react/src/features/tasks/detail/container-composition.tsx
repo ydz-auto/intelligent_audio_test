@@ -217,7 +217,7 @@ export function ContainerComposition({
             未评估
           </Badge>
         )}
-        {/* 源结果时间：§11-8 的 result_created_at 未落地 → 不渲染（不拿关系行时间顶替，见审计 P2-1） */}
+        {/* 源结果时间：§11-8 的结果创建时间未落地 → 不渲染（不拿关系行时间顶替，见审计 P2-1） */}
         {entry.resultCreatedAt && (
           <span
             className='text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap tabular-nums'

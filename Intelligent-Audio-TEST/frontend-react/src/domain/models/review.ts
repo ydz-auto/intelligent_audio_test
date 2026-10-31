@@ -6,8 +6,8 @@
  * snake_case↔camelCase 只在 infrastructure 层做，本层只见 camelCase 领域对象。
  */
 
-/** 复核留痕字段名（test_result_reviews.field_name：执行/评估状态改判） */
-export type ReviewFieldName = 'execution_status' | 'evaluation_status'
+/** 复核留痕字段名（后端 test_result_reviews.field_name 的领域口径：执行/评估状态改判） */
+export type ReviewFieldName = 'executionStatus' | 'evaluationStatus'
 
 /** 人工复核留痕行（GET /tasks/results/{task_id}/review-history items 实测） */
 export interface ReviewHistoryItem {

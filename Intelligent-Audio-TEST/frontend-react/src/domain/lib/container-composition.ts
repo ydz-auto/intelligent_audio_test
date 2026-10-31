@@ -77,7 +77,7 @@ export function compositionEntryId(resultId: number): string {
 /** 容器用例行索引（降级状态数据源，§5.5.4） */
 function indexCases(cases: TaskCaseBrief[]): Map<string, TaskCaseBrief> {
   const map = new Map<string, TaskCaseBrief>()
-  for (const c of cases) map.set(c.case_id, c)
+  for (const c of cases) map.set(c.caseId, c)
   return map
 }
 
@@ -97,15 +97,15 @@ function toCompositionEntry(
   // §5.5.4 降级口径：结果级状态未返 → 取同 source_case_id 的容器用例行状态
   const statusFromCase = result.executionStatus == null
   const executionStatus =
-    result.executionStatus ?? caseRow?.execution_status ?? 'unknown'
+    result.executionStatus ?? caseRow?.executionStatus ?? 'unknown'
 
   // 评估侧同口径：结果级 evaluated 未返 → 容器用例行 evaluation_status === completed
   const evaluationFromCase = result.evaluated == null
   const evaluated =
-    result.evaluated ?? (caseRow?.evaluation_status === 'completed')
+    result.evaluated ?? (caseRow?.evaluationStatus === 'completed')
   const evaluationStatus = evaluated
     ? 'completed'
-    : caseRow?.evaluation_status ?? 'pending'
+    : caseRow?.evaluationStatus ?? 'pending'
 
   return {
     itemId: compositionEntryId(result.resultId),
@@ -127,7 +127,7 @@ function toCompositionEntry(
     evaluated,
     statusFromCase,
     evaluationFromCase,
-    sourceCaseGroupName: caseRow?.group_name ?? null,
+    sourceCaseGroupName: caseRow?.groupName ?? null,
     sourceCaseTags: caseRow?.tags ?? [],
   }
 }

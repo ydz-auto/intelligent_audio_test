@@ -42,7 +42,7 @@ describe('toReviewHistoryItem', () => {
       resultId: 5599,
       taskId: 407,
       testCaseId: '4607de9d-8a3e-4b96-8f12-b8c95bbb0c5e',
-      fieldName: 'evaluation_status',
+      fieldName: 'evaluationStatus',
       oldValue: 'failed',
       newValue: 'completed',
       comment: '接线测试：INT-793 演示',

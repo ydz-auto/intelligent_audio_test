@@ -89,54 +89,54 @@ describe('formatElapsed', () => {
 
 describe('formatTaskUsedTime', () => {
   const base = {
-    created_at: '2026-10-23T04:55:00',
-    started_at: '2026-10-23T05:00:00',
-    completed_at: '2026-10-23T05:01:00',
-    execution_status: 'completed' as const,
+    createdAt: '2026-10-23T04:55:00',
+    startedAt: '2026-10-23T05:00:00',
+    completedAt: '2026-10-23T05:01:00',
+    executionStatus: 'completed' as const,
   }
 
-  it('以起止时间推算（不采用后端 used_time 异常值）', () => {
+  it('以起止时间推算（不采用后端 usedTime 异常值）', () => {
     expect(formatTaskUsedTime(base)).toBe('1 分钟')
   })
 
   it('进行中按当前时间实时推算', () => {
     expect(
       formatTaskUsedTime(
-        { ...base, completed_at: null, execution_status: 'running' },
+        { ...base, completedAt: null, executionStatus: 'running' },
         new Date('2026-10-23T05:02:00Z')
       )
     ).toBe('2 分钟')
   })
 
   it('无有效开始时间 → —', () => {
-    expect(formatTaskUsedTime({ ...base, started_at: null })).toBe('—')
+    expect(formatTaskUsedTime({ ...base, startedAt: null })).toBe('—')
   })
 
   it('已结束但无完成时间 → —（不拿当前时间冒充）', () => {
     expect(
-      formatTaskUsedTime({ ...base, completed_at: null })
+      formatTaskUsedTime({ ...base, completedAt: null })
     ).toBe('—')
   })
 
-  // INT-2210：started_at 早于 created_at 的脏数据（真实库 173/408 条）视为无有效开始时间。
-  it('started_at 早于 created_at 16 小时（真实库任务 789）→ —', () => {
+  // INT-2210：startedAt 早于 createdAt 的脏数据（真实库 173/408 条）视为无有效开始时间。
+  it('startedAt 早于 createdAt 16 小时（真实库任务 789）→ —', () => {
     expect(
       formatTaskUsedTime({
-        created_at: '2026-10-31T01:08:22',
-        started_at: '2026-10-30T09:08:32',
-        completed_at: '2026-10-31T01:20:22',
-        execution_status: 'completed',
+        createdAt: '2026-10-31T01:08:22',
+        startedAt: '2026-10-30T09:08:32',
+        completedAt: '2026-10-31T01:20:22',
+        executionStatus: 'completed',
       })
     ).toBe('—')
   })
 
-  it('started_at 早于 created_at 8 小时 → —', () => {
+  it('startedAt 早于 createdAt 8 小时 → —', () => {
     expect(
       formatTaskUsedTime({
-        created_at: '2026-10-31T04:05:08',
-        started_at: '2026-10-30T20:05:08',
-        completed_at: '2026-10-31T04:20:08',
-        execution_status: 'completed',
+        createdAt: '2026-10-31T04:05:08',
+        startedAt: '2026-10-30T20:05:08',
+        completedAt: '2026-10-31T04:20:08',
+        executionStatus: 'completed',
       })
     ).toBe('—')
   })
@@ -146,28 +146,28 @@ describe('formatTaskUsedTime', () => {
       formatTaskUsedTime(
         {
           ...base,
-          created_at: '2026-10-23T05:00:00',
-          started_at: '2026-10-22T13:00:00',
-          completed_at: null,
-          execution_status: 'running',
+          createdAt: '2026-10-23T05:00:00',
+          startedAt: '2026-10-22T13:00:00',
+          completedAt: null,
+          executionStatus: 'running',
         },
         new Date('2026-10-23T05:02:00Z')
       )
     ).toBe('—')
   })
 
-  it('started_at 与 created_at 相同视为有效（守卫只挡严格早于）', () => {
+  it('startedAt 与 createdAt 相同视为有效（守卫只挡严格早于）', () => {
     expect(
       formatTaskUsedTime({
         ...base,
-        created_at: '2026-10-23T05:00:00',
-        started_at: '2026-10-23T05:00:00',
+        createdAt: '2026-10-23T05:00:00',
+        startedAt: '2026-10-23T05:00:00',
       })
     ).toBe('1 分钟')
   })
 
-  it('created_at 缺失时不启用守卫（无可比基准，沿用原口径）', () => {
-    expect(formatTaskUsedTime({ ...base, created_at: null })).toBe('1 分钟')
-    expect(formatTaskUsedTime({ ...base, created_at: 'oops' })).toBe('1 分钟')
+  it('createdAt 缺失时不启用守卫（无可比基准，沿用原口径）', () => {
+    expect(formatTaskUsedTime({ ...base, createdAt: null })).toBe('1 分钟')
+    expect(formatTaskUsedTime({ ...base, createdAt: 'oops' })).toBe('1 分钟')
   })
 })

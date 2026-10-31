@@ -132,16 +132,16 @@ export function TaskDetailContent({
   // 负责人 2026-10-28：任务执行失败时弹通知说明原因（不再静默/直接跳结果步）
   const failedNotifiedRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!detail || detail.execution_status !== 'failed') return
+    if (!detail || detail.executionStatus !== 'failed') return
     const key = `${taskId}:failed`
     if (failedNotifiedRef.current === key) return
     failedNotifiedRef.current = key
     const firstFail = (detail.cases ?? []).find(
-      (c) => c.execution_status === 'failed' && c.error_message
+      (c) => c.executionStatus === 'failed' && c.errorMessage
     )
     toast.error('测试任务执行失败', {
       description:
-        firstFail?.error_message ?? `失败用例 ${detail.failed_cases ?? 0} 个，详见关联用例`,
+        firstFail?.errorMessage ?? `失败用例 ${detail.failedCases ?? 0} 个，详见关联用例`,
       duration: 10000,
     })
   }, [detail, taskId])
@@ -189,11 +189,11 @@ export function TaskDetailContent({
   }
   if (!detail) return null
 
-  const effectiveDeviceTypes = deviceTypesOverride ?? detail.device_types
+  const effectiveDeviceTypes = deviceTypesOverride ?? detail.deviceTypes
   // INT-1241：API 资源区按真实 apis 数据无条件渲染（不再按任务类型推导显隐）
   const hasRealtimeDevice = effectiveDeviceTypes.includes('websocket_api')
   const isTerminal = ['completed', 'failed', 'stopped', 'merged', 'skipped'].includes(
-    detail.execution_status ?? ''
+    detail.executionStatus ?? ''
   )
   const pending = actions.control.isPending || actions.stop.isPending
 
@@ -257,18 +257,18 @@ export function TaskDetailContent({
           <div className='flex flex-wrap items-center gap-2'>
             {hasPermission('task:execute') &&
               !isTerminal &&
-              detail.execution_status !== 'pending' && (
+              detail.executionStatus !== 'pending' && (
                 <Button
                   size='sm'
                   disabled={pending}
                   onClick={() =>
                     setConfirm({
                       kind: 'detail-control',
-                      action: detail.execution_status === 'paused' ? 'resume' : 'pause',
+                      action: detail.executionStatus === 'paused' ? 'resume' : 'pause',
                     })
                   }
                 >
-                  {detail.execution_status === 'paused' ? (
+                  {detail.executionStatus === 'paused' ? (
                     <>
                       <Play aria-hidden='true' className='size-3.5' />
                       继续
@@ -283,7 +283,7 @@ export function TaskDetailContent({
               )}
             {hasPermission('task:execute') &&
               !isTerminal &&
-              detail.execution_status !== 'pending' && (
+              detail.executionStatus !== 'pending' && (
                 <Button
                   size='sm'
                   variant='destructive'
@@ -295,7 +295,7 @@ export function TaskDetailContent({
                 </Button>
               )}
             {hasPermission('task:execute') &&
-              ['pending', 'failed', 'completed', 'stopped'].includes(detail.execution_status ?? '') && (
+              ['pending', 'failed', 'completed', 'stopped'].includes(detail.executionStatus ?? '') && (
                 <Button
                   size='sm'
                   variant='outline'

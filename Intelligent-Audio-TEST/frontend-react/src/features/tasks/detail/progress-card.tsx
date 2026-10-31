@@ -19,10 +19,10 @@ const STAT_CELLS = [
 ]
 
 export function ProgressCard({ detail }: { detail: TaskDetailData }) {
-  const completed = detail.completed_cases ?? 0
-  const failed = detail.failed_cases ?? 0
-  const total = detail.total_cases ?? 0
-  const running = detail.execution_status === 'running' || detail.execution_status === 'queued'
+  const completed = detail.completedCases ?? 0
+  const failed = detail.failedCases ?? 0
+  const total = detail.totalCases ?? 0
+  const running = detail.executionStatus === 'running' || detail.executionStatus === 'queued'
     ? total - completed - failed
     : 0
   const pending = Math.max(0, total - completed - failed - running)
@@ -34,7 +34,7 @@ export function ProgressCard({ detail }: { detail: TaskDetailData }) {
     running,
     pending,
     failed,
-    'eval-failed': detail.cases.filter((c) => c.evaluation_status === 'failed').length,
+    'eval-failed': detail.cases.filter((c) => c.evaluationStatus === 'failed').length,
   }
 
   return (
@@ -53,7 +53,7 @@ export function ProgressCard({ detail }: { detail: TaskDetailData }) {
           />
         </div>
         <p className='text-muted-foreground mt-1.5 text-xs tabular-nums'>
-          已用时间 {formatTaskUsedTime(detail)} / 预计时间 {detail.expected_total_time ?? '—'}
+          已用时间 {formatTaskUsedTime(detail)} / 预计时间 {detail.expectedTotalTime ?? '—'}
         </p>
 
         <div className='mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5'>

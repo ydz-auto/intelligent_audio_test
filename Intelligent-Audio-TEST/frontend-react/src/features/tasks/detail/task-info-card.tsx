@@ -36,8 +36,8 @@ export function TaskInfoCard({
   /** 头行附加内容（容器信息头徽章组，§5.5.2 ②；非容器不传） */
   headerExtra?: React.ReactNode
 }) {
-  const execMeta = getExecutionStatusMeta(detail.execution_status)
-  const evalMeta = getEvaluationStatusMeta(detail.evaluation_status)
+  const execMeta = getExecutionStatusMeta(detail.executionStatus)
+  const evalMeta = getEvaluationStatusMeta(detail.evaluationStatus)
 
   return (
     <Card size='sm' className='gap-3 py-3'>
@@ -57,21 +57,21 @@ export function TaskInfoCard({
           {headerExtra}
         </div>
         <div className='text-muted-foreground text-xs tabular-nums'>
-          创建时间 {formatDateTime(detail.created_at)} · 创建人 张测试
+          创建时间 {formatDateTime(detail.createdAt)} · 创建人 张测试
         </div>
       </CardHeader>
       <CardContent className='px-4 pb-1'>
         <InfoGrid
           items={[
             { label: '任务名称', value: detail.name },
-            { label: '预计完成时间', value: formatDateTime(detail.expected_complete_time) },
-            { label: '预计总时长', value: detail.expected_total_time ?? '—' },
+            { label: '预计完成时间', value: formatDateTime(detail.expectedCompleteTime) },
+            { label: '预计总时长', value: detail.expectedTotalTime ?? '—' },
             // INT-2201：已用时长以起止时间推算为准（后端 used_time 有「16小时」类异常值）
             { label: '已用时长', value: formatTaskUsedTime(detail) },
             // INT-1241：资源计数按真实数据无条件展示（不再按任务类型条件显隐）
-            { label: '测试API数量', value: detail.api_count ?? 0 },
-            { label: '测试设备数量', value: detail.device_count ?? 0 },
-            { label: '测试用例数量', value: detail.case_count ?? detail.total_cases ?? 0 },
+            { label: '测试API数量', value: detail.apiCount ?? 0 },
+            { label: '测试设备数量', value: detail.deviceCount ?? 0 },
+            { label: '测试用例数量', value: detail.caseCount ?? detail.totalCases ?? 0 },
             { label: '并发数', value: detail.concurrency ?? '—' },
           ]}
         />

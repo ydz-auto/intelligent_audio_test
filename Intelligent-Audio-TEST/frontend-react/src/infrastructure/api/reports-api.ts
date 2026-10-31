@@ -31,6 +31,7 @@ import type {
   ReportDetailData,
   ReportListData,
   ReportListQuery,
+  ReportListItem,
   ReportLogFile,
   ReportMetricValue,
   ReportProgress,
@@ -68,6 +69,25 @@ export async function fetchReportList(
 ): Promise<ReportListData> {
   const params: Record<string, unknown> = { ...query }
   return request<ReportListData>('GET', '/reports', undefined, { params })
+}
+
+/**
+ * 某任务最新一份报告（容器详情卡 §5.5.6 ④）：`GET /reports?task_id=` 取第一行。
+ * 排序键/回收站标记属 wire 契约，收敛在本层，页面不持 sort_by 参数（INT-2239）。
+ */
+export async function fetchLatestReportByTask(
+  taskId: number
+): Promise<ReportListItem | null> {
+  const data = await fetchReportList({
+    page: 1,
+    per_page: 1,
+    task_id: taskId,
+    sort_by: 'created_at',
+    order: 'desc',
+    favorite: false,
+    deleted: false,
+  })
+  return data.items?.[0] ?? null
 }
 
 /**

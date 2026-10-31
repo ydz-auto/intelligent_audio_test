@@ -96,8 +96,8 @@ const SORT_KEY_BY_LABEL: Record<string, SortKey> = {
 /** 排序取值器（name/createdAt 字符串比较，execution 按原始枚举排序） */
 const SORT_VALUE: Record<SortKey, (t: TaskListItem) => string> = {
   name: (t) => t.name ?? '',
-  execution: (t) => t.execution_status ?? '',
-  createdAt: (t) => t.created_at ?? '',
+  execution: (t) => t.executionStatus ?? '',
+  createdAt: (t) => t.createdAt ?? '',
 }
 
 function compareTasks(a: TaskListItem, b: TaskListItem, sort: NonNullable<SortState>): number {
@@ -376,24 +376,24 @@ export function DailyTaskTable({
           </thead>
           <tbody>
             {sortedTasks.map((task) => {
-              const execMeta = getExecutionStatusMeta(task.execution_status)
-              const evalMeta = getEvaluationStatusMeta(task.evaluation_status)
+              const execMeta = getExecutionStatusMeta(task.executionStatus)
+              const evalMeta = getEvaluationStatusMeta(task.evaluationStatus)
               const disabled = task.deleted
-              const completed = task.completed_cases ?? 0
-              const total = task.total_cases ?? 0
-              const failed = task.failed_cases ?? 0
+              const completed = task.completedCases ?? 0
+              const total = task.totalCases ?? 0
+              const failed = task.failedCases ?? 0
               const progress =
                 total > 0 ? Math.round((completed / total) * 100) : 0
               const failedProgress =
                 total > 0 ? Math.round((failed / total) * 100) : 0
               // INT-1498：挑选合并容器标识（merge_type 为准；旧后端仅返 is_cherry_pick 时按结果挑选）
-              const mergeType = task.merge_type ?? (task.is_cherry_pick ? 'picked' : null)
-              const sourceCount = task.source_task_count ?? task.source_tasks.length
+              const mergeType = task.mergeType ?? (task.isCherryPick ? 'picked' : null)
+              const sourceCount = task.sourceTaskCount ?? task.sourceTasks.length
               const mergeDesc = mergeType
                 ? [
                     MERGE_TYPE_LABELS[mergeType],
                     sourceCount > 0 ? `来源 ${sourceCount} 个任务` : null,
-                    task.source_result_count != null ? `结果 ${task.source_result_count} 条` : null,
+                    task.sourceResultCount != null ? `结果 ${task.sourceResultCount} 条` : null,
                   ]
                     .filter(Boolean)
                     .join(' · ')
@@ -426,7 +426,7 @@ export function DailyTaskTable({
                         title='查看详情'
                       >
                         <span className='flex items-center gap-1.5 font-medium truncate'>
-                          {task.is_favorite && (
+                          {task.isFavorite && (
                             <Star
                               aria-hidden='true'
                               className='text-warning size-3 shrink-0 fill-current'
@@ -445,7 +445,7 @@ export function DailyTaskTable({
                         </span>
                         <span className='text-muted-foreground block truncate'>
                           {disabled
-                            ? `删除时间 ${formatDateTime(task.deleted_at)} · 删除人 ${task.deleted_by_user_id ? `用户#${task.deleted_by_user_id}` : '—'}`
+                            ? `删除时间 ${formatDateTime(task.deletedAt)} · 删除人 ${task.deletedByUserId ? `用户#${task.deletedByUserId}` : '—'}`
                             : mergeDesc
                               ? `${mergeDesc}${task.description ? ` · ${task.description}` : ''}`
                               : (task.description ?? '')}
@@ -490,10 +490,10 @@ export function DailyTaskTable({
                   )}
                   {col('resources') && (
                     <td className='px-3 py-2 text-muted-foreground whitespace-nowrap'>
-                      {task.device_count ? `${task.device_count} 设备` : ''}
-                      {task.device_count && task.api_count ? ' · ' : ''}
-                      {task.api_count ? `${task.api_count} API` : ''}
-                      {!task.device_count && !task.api_count ? '—' : ''}
+                      {task.deviceCount ? `${task.deviceCount} 设备` : ''}
+                      {task.deviceCount && task.apiCount ? ' · ' : ''}
+                      {task.apiCount ? `${task.apiCount} API` : ''}
+                      {!task.deviceCount && !task.apiCount ? '—' : ''}
                     </td>
                   )}
                   {col('tags') && (
@@ -503,7 +503,7 @@ export function DailyTaskTable({
                   )}
                   {col('createdAt') && (
                     <td className='px-3 py-2 font-mono text-xs whitespace-nowrap tabular-nums'>
-                      {formatDateTime(task.created_at)}
+                      {formatDateTime(task.createdAt)}
                     </td>
                   )}
                   <td className='px-3 py-2 text-right'>

@@ -43,7 +43,7 @@ export type PickTaskRow = PickableTask
 export const PICK_TASK_SORT_OPTIONS: { value: PickableTaskSortBy; label: string }[] = [
   { value: 'status', label: '状态' },
   { value: 'name', label: '任务名' },
-  { value: 'created_at', label: '创建时间' },
+  { value: 'createdAt', label: '创建时间' },
 ]
 
 export interface PickTaskStageProps {

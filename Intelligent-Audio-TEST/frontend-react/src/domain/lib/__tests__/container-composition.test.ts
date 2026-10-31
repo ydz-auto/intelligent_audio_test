@@ -31,18 +31,18 @@ function caseBrief(
   tags: string[] = []
 ): TaskCaseBrief {
   return {
-    case_id: caseId,
+    caseId: caseId,
     name,
     status: execution,
-    execution_status: execution,
-    evaluation_status: evaluation,
-    started_at: null,
-    completed_at: null,
+    executionStatus: execution,
+    evaluationStatus: evaluation,
+    startedAt: null,
+    completedAt: null,
     duration: null,
-    error_message: null,
-    group_name: groupName,
+    errorMessage: null,
+    groupName: groupName,
     tags,
-    evaluation_dimensions: [],
+    evaluationDimensions: [],
     reviewed: false,
   }
 }
@@ -273,12 +273,12 @@ describe('organizeCompositionCases（用例层组织）', () => {
 
 
 describe('containerMixState（列表「部分失败」映射，§5.5.4）', () => {
-  it('0 < failed_cases < case_count → partial（部分失败）', () => {
+  it('0 < failedCases < caseCount → partial（部分失败）', () => {
     expect(containerMixState(2, 5)).toBe('partial')
     expect(containerMixState(1, 3)).toBe('partial')
   })
 
-  it('failed_cases = case_count → all（沿用「已失败」，不显示部分失败）', () => {
+  it('failedCases = caseCount → all（沿用「已失败」，不显示部分失败）', () => {
     expect(containerMixState(5, 5)).toBe('all')
     expect(containerMixState(1, 1)).toBe('all')
   })

@@ -9,9 +9,9 @@
  * ② 用例区 max-h-[400px] + 虚拟滚动（scrollTop 切片 + overscan）替代全量渲染（任务 526 有 1737 条，
  *   旧实现 scrollHeight 达 136,697px），并补搜索（按名称或用例 ID，基线 caseSearchQuery 口径）。
  * ③ 状态筛选补「执行失败」「评估失败」两项（基线 execution_failed / evaluation_failed 口径：
- *   执行失败 = execution_status=failed；评估失败 = evaluation_status=failed 且执行未失败），
+ *   执行失败 = executionStatus 为 failed；评估失败 = evaluationStatus 为 failed 且执行未失败），
  *   执行/评估两列徽章分别显示「执行失败」「评估失败」，不再合并成「已失败」。
- * （轮次列：分母取 TaskCaseBrief.rounds_count（用例 config.rounds 长度），
+ * （轮次列：分母取 TaskCaseBrief.roundsCount（用例 config.rounds 长度），
  *   未执行（无耗时）显示「—」且进度条为空，执行后显示第 N/N 轮）
  * 19_人工审核与AI复核交互设计.md §3 落位（INT-795）：
  * - 已复核用例行执行/评估徽章旁叠加「人工复核」Badge（TaskCaseBrief.reviewed 驱动）；
@@ -94,7 +94,7 @@ const VIEW_OPTIONS: Array<{ value: ViewMode; label: string }> = [
 ]
 
 /**
- * 选项 value 为英文枚举（对齐 case.execution_status / evaluation_status 实测值）。
+ * 选项 value 为英文枚举（对齐 case.executionStatus / evaluationStatus 领域值）。
  * INT-1492：补 execution_failed / evaluation_failed 两个独立项（V9.7.10 TestExecutionComponent.vue:204-205 基线），
  * 与「已失败」（任务级合并态 status=failed）并存——任务 526 摘要「评估失败 1737 条」可直接筛出。
  */
@@ -122,15 +122,15 @@ const CASE_ROW_OVERSCAN = 5
 
 /**
  * 状态筛选（V9.7.10 filteredAssociatedCases 口径）：
- * 执行失败 = execution_status=failed（不论评估态）；评估失败 = evaluation_status=failed 且执行未失败
+ * 执行失败 = executionStatus 为 failed（不论评估态）；评估失败 = evaluationStatus 为 failed 且执行未失败
  * （两类互斥）；其余按任务级/执行/评估任一命中（保留 React 侧既有 OR 口径）。
  */
 function matchesStatusFilter(c: TaskCaseBrief, status: string): boolean {
   if (status === 'all') return true
-  if (status === 'execution_failed') return c.execution_status === 'failed'
+  if (status === 'execution_failed') return c.executionStatus === 'failed'
   if (status === 'evaluation_failed')
-    return c.evaluation_status === 'failed' && c.execution_status !== 'failed'
-  return c.status === status || c.execution_status === status || c.evaluation_status === status
+    return c.evaluationStatus === 'failed' && c.executionStatus !== 'failed'
+  return c.status === status || c.executionStatus === status || c.evaluationStatus === status
 }
 
 /**
@@ -193,8 +193,8 @@ const CASE_ROW_GRID =
 
 /** 目标展示名：API 名/设备名，缺失时按类型 + id 兜底 */
 function targetLabel(t: TaskCaseTarget): string {
-  if (t.target_name) return t.target_name
-  return t.target_type === 'api' ? `API ${t.api_id ?? t.device_id ?? '—'}` : `设备 ${t.device_id ?? '—'}`
+  if (t.targetName) return t.targetName
+  return t.targetType === 'api' ? `API ${t.apiId ?? t.deviceId ?? '—'}` : `设备 ${t.deviceId ?? '—'}`
 }
 
 /**
@@ -236,7 +236,7 @@ function TaskCaseRow({
   /** 耗时：任务侧 ms → 秒（features/testcases 口径格式化，null 落「—」） */
   const durationSeconds = c.duration != null ? Math.round(c.duration / 1000) : null
   /** 轮次：分母 = 用例真实轮次数（rounds_count）；未执行（无耗时）不显示轮次 */
-  const roundTotal = c.rounds_count != null && c.rounds_count > 0 ? c.rounds_count : 1
+  const roundTotal = c.roundsCount != null && c.roundsCount > 0 ? c.roundsCount : 1
   const roundsExecuted = c.duration != null
   const roundPercent = roundsExecuted ? 100 : 0
 
@@ -244,7 +244,7 @@ function TaskCaseRow({
     <div
       role='row'
       data-testid='task-case-row'
-      data-case-id={c.case_id}
+      data-case-id={c.caseId}
       style={{ height: CASE_ROW_HEIGHT }}
       className={cn(
         'hover:bg-muted/40 border-b transition-colors last:border-0',
@@ -266,7 +266,7 @@ function TaskCaseRow({
                 type='button'
                 className='hover:text-primary truncate text-left font-medium'
                 title={`查看用例详情：${c.name}`}
-                onClick={() => onCaseSelect(c.case_id)}
+                onClick={() => onCaseSelect(c.caseId)}
               >
                 {c.name}
               </button>
@@ -283,28 +283,28 @@ function TaskCaseRow({
               className='hover:text-foreground shrink-0 font-mono tabular-nums hover:underline'
               title='点击复制用例 ID'
               onClick={() => {
-                void navigator.clipboard?.writeText(c.case_id)
+                void navigator.clipboard?.writeText(c.caseId)
                 toast.success('已复制')
               }}
             >
-              {c.case_id.slice(0, 8)}
+              {c.caseId.slice(0, 8)}
             </button>
-            {c.group_name && <span className='truncate'>{c.group_name}</span>}
+            {c.groupName && <span className='truncate'>{c.groupName}</span>}
           </div>
         </div>
       </div>
 
       {/* 执行状态（failed → 执行失败） */}
       <div role='cell' data-column='execution'>
-        <CaseStatusBadge status={c.execution_status} kind='execution' />
+        <CaseStatusBadge status={c.executionStatus} kind='execution' />
       </div>
 
       {/* 评估状态（failed → 评估失败；未执行不显示评估中） */}
       <div role='cell' data-column='evaluation'>
         <CaseStatusBadge
-          status={c.evaluation_status}
+          status={c.evaluationStatus}
           kind='evaluation'
-          executionStatus={c.execution_status}
+          executionStatus={c.executionStatus}
         />
       </div>
 
@@ -332,8 +332,8 @@ function TaskCaseRow({
           if (targets.length === 0) {
             return <span className='text-muted-foreground text-xs'>—</span>
           }
-          const done = targets.filter((t) => t.execution_status === 'completed').length
-          const failed = targets.some((t) => t.execution_status === 'failed')
+          const done = targets.filter((t) => t.executionStatus === 'completed').length
+          const failed = targets.some((t) => t.executionStatus === 'failed')
           const finished = done === targets.length
           return (
             <span
@@ -342,7 +342,7 @@ function TaskCaseRow({
                 failed ? 'text-destructive' : finished ? 'text-emerald-600' : 'text-muted-foreground'
               )}
               title={targets
-                .map((t) => `${targetLabel(t)}：执行 ${t.execution_status ?? '—'} / 评估 ${t.evaluation_status ?? '—'}`)
+                .map((t) => `${targetLabel(t)}：执行 ${t.executionStatus ?? '—'} / 评估 ${t.evaluationStatus ?? '—'}`)
                 .join('\n')}
             >
               {done}/{targets.length}
@@ -445,7 +445,7 @@ export function CaseAssociation({
     if (!matchesStatusFilter(c, status)) return false
     const q = keyword.trim().toLowerCase()
     if (!q) return true
-    return c.name.toLowerCase().includes(q) || c.case_id.toLowerCase().includes(q)
+    return c.name.toLowerCase().includes(q) || c.caseId.toLowerCase().includes(q)
   })
 
   /** 虚拟滚动窗口（上下各 CASE_ROW_OVERSCAN 行缓冲，基线 visibleCases 同口径） */
@@ -478,7 +478,7 @@ export function CaseAssociation({
   const containerHistory = useScopedReviewHistory(detail.id, reviewScope.isContainer)
   const reviewCount = reviewScope.isContainer
     ? containerHistory.reviewedResultCount
-    : detail.review_count
+    : detail.reviewCount
   /** 容器任务：用例行「人工复核」标记按来源任务留痕派生（TaskCaseBrief.reviewed 由容器 id 算恒 false） */
   const reviewedCaseIds = new Set(
     (containerHistory.data ?? []).map((item) => item.testCaseId)
@@ -493,7 +493,7 @@ export function CaseAssociation({
   }, {})
   // 用例分组（按后端 group_name；无分组归「未分组」，INT-1033 对齐用例管理分组口径）
   const groupGroups = filtered.reduce<Record<string, typeof filtered>>((acc, c) => {
-    const key = c.group_name ?? '未分组'
+    const key = c.groupName ?? '未分组'
     acc[key] ??= []
     acc[key].push(c)
     return acc
@@ -586,17 +586,17 @@ export function CaseAssociation({
   const openCaseReview = async (c: TaskCaseBrief) => {
     setReviewLoading(true)
     try {
-      const res = await fetchCaseResults(detail.id, c.case_id)
+      const res = await fetchCaseResults(detail.id, c.caseId)
       // 无执行结果的用例不打开可提交的复核弹窗（旧 Vue 基线 TestCaseDetailModal 同口径收口，INT-795 P2-1）
       if (res.results.length === 0) {
         toast.error('该用例无执行结果，无法复核')
         return
       }
       setReviewTarget({
-        caseId: c.case_id,
+        caseId: c.caseId,
         caseName: res.caseName || c.name,
         results: res.results,
-        evaluationStatus: c.evaluation_status,
+        evaluationStatus: c.evaluationStatus,
       })
     } catch (err) {
       toast.error(
@@ -611,18 +611,18 @@ export function CaseAssociation({
   const openAiReview = async (c: TaskCaseBrief) => {
     setReviewLoading(true)
     try {
-      const res = await fetchCaseResults(detail.id, c.case_id)
+      const res = await fetchCaseResults(detail.id, c.caseId)
       // 无执行结果不发起 AI 复核（§5.2 可发起对象须有结果；INT-795 P2-1）
       if (res.results.length === 0) {
         toast.error('该用例无执行结果，无法复核')
         return
       }
       setAiReviewTarget({
-        caseId: c.case_id,
+        caseId: c.caseId,
         caseName: res.caseName || c.name,
         results: res.results,
-        evaluationStatus: c.evaluation_status,
-        dimensionIds: toAiReviewDimensionIds(c.evaluation_dimensions),
+        evaluationStatus: c.evaluationStatus,
+        dimensionIds: toAiReviewDimensionIds(c.evaluationDimensions),
       })
     } catch (err) {
       toast.error(
@@ -637,17 +637,17 @@ export function CaseAssociation({
   const openQuickReview = async (c: TaskCaseBrief) => {
     setReviewLoading(true)
     try {
-      const res = await fetchCaseResults(detail.id, c.case_id)
+      const res = await fetchCaseResults(detail.id, c.caseId)
       if (res.results.length === 0) {
         toast.error('该用例无执行结果，无法复核')
         return
       }
       setQuickReviewTarget({
-        caseId: c.case_id,
+        caseId: c.caseId,
         caseName: res.caseName || c.name,
         results: res.results,
-        evaluationStatus: c.evaluation_status,
-        dimensionIds: toAiReviewDimensionIds(c.evaluation_dimensions),
+        evaluationStatus: c.evaluationStatus,
+        dimensionIds: toAiReviewDimensionIds(c.evaluationDimensions),
       })
     } catch (err) {
       toast.error(
@@ -664,11 +664,11 @@ export function CaseAssociation({
     try {
       const entries = await Promise.all(
         [...selected].map(async (caseId) => {
-          const c = cases.find((x) => x.case_id === caseId)
+          const c = cases.find((x) => x.caseId === caseId)
           const res = await fetchCaseResults(detail.id, caseId)
           return {
             caseName: c?.name ?? res.caseName,
-            evaluationStatus: c?.evaluation_status ?? null,
+            evaluationStatus: c?.evaluationStatus ?? null,
             results: res.results,
           }
         })
@@ -708,15 +708,15 @@ export function CaseAssociation({
     <TaskCaseRow
       key={key}
       c={c}
-      selected={selected.has(c.case_id)}
-      onToggle={(checked) => toggleRow(c.case_id, checked)}
+      selected={selected.has(c.caseId)}
+      onToggle={(checked) => toggleRow(c.caseId, checked)}
       onCaseSelect={onCaseSelect}
       onRemove={() => {
         // INT-949：走 §5.9 移除确认（两段后果文案 + 末例二次确认）→ actions.removeCase API，
         // 不沿用设计分支仅 toast 的占位实现（接线保留 wiring/react 接口调用）
         setCaseRemoveTarget({
-          caseId: c.case_id,
-          phase: getCaseRemovePhase(detail.execution_status ?? detail.status),
+          caseId: c.caseId,
+          phase: getCaseRemovePhase(detail.executionStatus ?? detail.status),
           isLast: cases.length === 1,
         })
       }}
@@ -726,7 +726,7 @@ export function CaseAssociation({
       reviewLoading={reviewLoading}
       reviewed={
         c.reviewed ||
-        (reviewScope.isContainer && reviewedCaseIds.has(c.case_id))
+        (reviewScope.isContainer && reviewedCaseIds.has(c.caseId))
       }
       onReview={() => openCaseReview(c)}
       onAiReview={() => openAiReview(c)}
@@ -901,7 +901,7 @@ export function CaseAssociation({
             >
               <div style={{ transform: `translateY(${windowStart * CASE_ROW_HEIGHT}px)` }}>
                 {visibleCases.map((c, index) =>
-                  renderCaseRow(c, `${windowStart + index}-${c.case_id}`)
+                  renderCaseRow(c, `${windowStart + index}-${c.caseId}`)
                 )}
               </div>
             </div>
@@ -921,7 +921,7 @@ export function CaseAssociation({
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     {rows.map((c, index) =>
-                      renderCaseRow(c, `${group}-${index}-${c.case_id}`)
+                      renderCaseRow(c, `${group}-${index}-${c.caseId}`)
                     )}
                   </CollapsibleContent>
                 </Collapsible>

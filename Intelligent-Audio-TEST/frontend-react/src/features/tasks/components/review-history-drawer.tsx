@@ -23,7 +23,7 @@ import { formatDateTimeSeconds } from '@/lib/date-time'
 import { cn } from '@/lib/utils'
 
 function fieldLabel(field: ReviewFieldName): string {
-  return field === 'execution_status' ? '执行状态' : '评估状态'
+  return field === 'executionStatus' ? '执行状态' : '评估状态'
 }
 
 // 复核历史需要秒级精度：后端裸 UTC → 本地「YYYY-MM-DD HH:mm:ss」（共享口径）
@@ -156,10 +156,10 @@ export function ReviewHistoryDrawer({
 
 /** 复核历史抽屉的用例名映射构造（从任务详情 cases 构建 testCaseId → name） */
 export function buildCaseNameMap(
-  cases: Array<{ case_id: string; name: string }> | undefined
+  cases: Array<{ caseId: string; name: string }> | undefined
 ): Record<string, string> {
   return (cases ?? []).reduce<Record<string, string>>((acc, c) => {
-    acc[c.case_id] = c.name
+    acc[c.caseId] = c.name
     return acc
   }, {})
 }

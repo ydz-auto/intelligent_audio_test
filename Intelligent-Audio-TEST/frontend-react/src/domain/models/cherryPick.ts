@@ -427,6 +427,6 @@ export interface PickableTaskPage {
   perPage: number
 }
 
-/** 可挑选任务排序键（服务端 sort_by 枚举，INT-1496 §8.1） */
-export type PickableTaskSortBy = 'status' | 'name' | 'created_at'
+/** 可挑选任务排序键（服务端 sort_by 枚举的领域口径，INT-1496 §8.1；wire 值在 infrastructure/api 映射） */
+export type PickableTaskSortBy = 'status' | 'name' | 'createdAt'
 export type PickableTaskSortOrder = 'asc' | 'desc'
