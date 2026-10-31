@@ -8,7 +8,10 @@
 """
 import json
 import io
+import hashlib
 import logging
+import os
+import re
 import zipfile
 import pandas as pd
 from datetime import datetime
@@ -25,12 +28,14 @@ from api_gateway.infrastructure.acl import (
 from shared.utils.query_utils import now_cst
 from api_gateway.infrastructure.grpc_proxies import algorithm_query_service as _algo_query_svc
 from api_gateway.utils.response import success_response, error_response
+from api_gateway.utils.error_codes import ErrorCode
 from api_gateway.schemas.testcase import (
     TestCaseExportItem,
     TestCaseExportJsonData,
     TestCaseExportRequest,
 )
 from shared.constants.testcase_transfer import (
+    AUDIOS_DIR,
     MANIFEST_FILENAME,
     PACKAGE_FORMAT,
     PACKAGE_VERSION,
@@ -41,6 +46,11 @@ from shared.constants.testcase_transfer import (
 from shared.utils import testcase_helpers as common
 
 logger = logging.getLogger(__name__)
+
+
+class _AudioSourceUnavailableError(Exception):
+    """audio_service（ACL）不可用：整包导出失败，不产出半包（INT-2214）。"""
+
 
 _testcase_acl = TestCaseConfigAclRepositoryImpl()
 _tag_acl = TagConfigAclRepositoryImpl()
@@ -57,22 +67,26 @@ class TestCaseExportService:
     # ------------------------------------------------------------------
     @staticmethod
     def _query_cases_for_export():
-        """查询要导出的用例数据，返回 (test_cases, format, include_ref_params, err)"""
+        """查询要导出的用例数据。
+
+        返回 (test_cases, format, include_ref_params, include_audios, err)。
+        """
         req_data = TestCaseExportRequest.model_validate(request.get_json() or {})
 
         ids = req_data.ids
         format_type = (req_data.format or TestCaseExportFormat.JSON.value).strip().lower()
         include_deleted = req_data.include_deleted
         include_reference_params = req_data.include_reference_params is not False
+        include_audios = req_data.include_audios is True
 
         if not ids:
-            return None, None, None, error_response("未指定要导出的用例ID")
+            return None, None, None, None, error_response("未指定要导出的用例ID")
 
         test_cases = TestCaseExportService._fetch_testcases_by_ids(ids, include_deleted)
         if not test_cases:
-            return None, None, None, error_response("未找到指定的测试用例")
+            return None, None, None, None, error_response("未找到指定的测试用例")
 
-        return test_cases, format_type, include_reference_params, None
+        return test_cases, format_type, include_reference_params, include_audios, None
 
     @staticmethod
     def _fetch_testcases_by_ids(ids, include_deleted):
@@ -592,8 +606,31 @@ class TestCaseExportService:
     # ZIP 数据包导出（对齐任务数据导出）
     # ------------------------------------------------------------------
     @staticmethod
-    def _generate_zip_export(export_data, include_reference_params=True):
-        """生成 ZIP 数据包：manifest + testcases.json + 可选参考参数文件"""
+    def _generate_zip_export(export_data, include_reference_params=True,
+                             include_audios=False):
+        """生成 ZIP 数据包：manifest + testcases.json + 可选参考参数文件 / 音频附件。
+
+        include_audios=True 时按用例引用全口径（播放音频 + 干扰人 + 各级背景噪音）
+        收集音频，把可读到的二进制打进 `audios/{audio_id}.{ext}`，manifest 带
+        清单（id/name/file/md5/size/format）与缺失计数（INT-2214）。
+
+        失败分类：
+        - audio_service ACL 查询失败（依赖不可用）→ 返回 503，不产出半包；
+        - id 查到但二进制读不到 / 库里不存在 → 200，计入 missing。
+        """
+        audios, missing_audio_ids = [], []
+        if include_audios:
+            try:
+                audios, missing_audio_ids = \
+                    TestCaseExportService._collect_audio_package_entries(export_data)
+            except _AudioSourceUnavailableError as e:
+                logger.error("ZIP 导出中止：音频服务不可用，%s", e)
+                return error_response(
+                    f"音频服务不可用，导出中止（未生成数据包）: {e}",
+                    code=ErrorCode.EXTERNAL_SERVICE_ERROR,
+                    http_code=503,
+                )
+
         exported_at = now_cst().isoformat()
         output = io.BytesIO()
 
@@ -605,6 +642,9 @@ class TestCaseExportService:
                     zf.writestr(zip_path, content)
                 ref_file_count = len(ref_files)
 
+            for entry in audios:
+                zf.writestr(entry['file'], entry['content'])
+
             manifest = {
                 "format": PACKAGE_FORMAT,
                 "version": PACKAGE_VERSION,
@@ -612,8 +652,17 @@ class TestCaseExportService:
                 "total_count": len(export_data),
                 "options": {
                     "include_reference_params": bool(include_reference_params),
+                    "include_audios": bool(include_audios),
                 },
                 "reference_param_file_count": ref_file_count,
+                "audio_file_count": len(audios),
+                "missing_audio_count": len(missing_audio_ids),
+                "missing_audio_ids": list(missing_audio_ids),
+                "audios": [
+                    {key: entry[key] for key in
+                     ('id', 'name', 'file', 'md5', 'size', 'format')}
+                    for entry in audios
+                ],
             }
             zf.writestr(
                 MANIFEST_FILENAME,
@@ -637,6 +686,102 @@ class TestCaseExportService:
             media_type='application/zip',
             headers={"Content-Disposition": f"attachment; filename={download_name}"},
         )
+
+    @staticmethod
+    def _collect_audio_package_entries(export_data):
+        """收集并读取用例引用音频，返回 (entries, missing_ids)。
+
+        音频元数据一次批量查 audio_service（`GetAudiosByIds`），失败抛
+        `_AudioSourceUnavailableError`（调用方整包 5xx）；单条二进制读不到或
+        库里查不到只计入 missing，不阻断导出。
+        """
+        audio_ids = []
+        for item in export_data or []:
+            for audio_id in common.collect_case_audio_ids(item.get('config') or {}):
+                if audio_id not in audio_ids:
+                    audio_ids.append(audio_id)
+        if not audio_ids:
+            return [], []
+
+        try:
+            res = _audio_acl.get_by_ids({'ids': audio_ids})
+        except Exception as e:
+            raise _AudioSourceUnavailableError(str(e))
+        # ACL 仓储返回 CommandResultDTO（兼容 dict-like .get）
+        success = res.get('success') if hasattr(res, 'get') else None
+        if not success:
+            message = res.get('message') if hasattr(res, 'get') else None
+            raise _AudioSourceUnavailableError(message or '按ID查询音频失败')
+        records = res.get('data')
+        if not isinstance(records, list):
+            raise _AudioSourceUnavailableError('按ID查询音频返回的数据不是列表')
+
+        record_map = {}
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            record_id = common.normalize_optional_int(record.get('id'))
+            if record_id is not None:
+                record_map[record_id] = record
+
+        entries, missing = [], []
+        for audio_id in audio_ids:
+            entry = TestCaseExportService._load_audio_package_entry(
+                audio_id, record_map.get(audio_id))
+            if entry is None:
+                missing.append(audio_id)
+            else:
+                entries.append(entry)
+        return entries, missing
+
+    @staticmethod
+    def _load_audio_package_entry(audio_id, record):
+        """读取单条音频二进制并组装包内条目；查不到 / 读不到返回 None。"""
+        if not isinstance(record, dict):
+            return None
+        file_path = record.get('file_path')
+        if not file_path:
+            return None
+        try:
+            from shared.infrastructure.storage import storage_load_bytes
+            content = storage_load_bytes(file_path)
+        except Exception:
+            logger.warning(
+                "导出音频文件失败，按 missing 处理，audio_id=%s path=%s",
+                audio_id, file_path, exc_info=True)
+            return None
+        if not isinstance(content, (bytes, bytearray)):
+            logger.warning(
+                "导出音频文件内容非字节，按 missing 处理，audio_id=%s", audio_id)
+            return None
+        content = bytes(content)
+
+        ext = TestCaseExportService._resolve_audio_extension(record)
+        name = (record.get('name') or record.get('original_filename')
+                or os.path.basename(str(file_path).split('?', 1)[0]) or None)
+        return {
+            'id': audio_id,
+            'name': name,
+            'file': f"{AUDIOS_DIR}/{audio_id}.{ext}",
+            # md5 按包内实际字节计算，保证 manifest 清单与包内文件一致（导入回导按 md5 去重）
+            'md5': hashlib.md5(content).hexdigest(),
+            'size': len(content),
+            'format': record.get('format') or ext,
+            'content': content,
+        }
+
+    @staticmethod
+    def _resolve_audio_extension(record):
+        """音频扩展名：`format` 优先，回落 `file_path` 后缀，兜底 bin。"""
+        pattern = re.compile(r'^[a-z0-9]{1,10}$')
+        fmt = str(record.get('format') or '').strip().lstrip('.').lower()
+        if pattern.match(fmt):
+            return fmt
+        file_path = str(record.get('file_path') or '').split('?', 1)[0]
+        ext = os.path.splitext(file_path)[1].lstrip('.').lower()
+        if pattern.match(ext):
+            return ext
+        return 'bin'
 
     @staticmethod
     def _collect_reference_param_files(export_data):
@@ -705,7 +850,7 @@ class TestCaseExportService:
     def export_cases():
         """导出测试用例（薄编排层）"""
         try:
-            test_cases, format_type, include_reference_params, err = \
+            test_cases, format_type, include_reference_params, include_audios, err = \
                 TestCaseExportService._query_cases_for_export()
             if err is not None:
                 return err
@@ -714,7 +859,7 @@ class TestCaseExportService:
 
             if format_type == TestCaseExportFormat.ZIP.value:
                 return TestCaseExportService._generate_zip_export(
-                    export_data, include_reference_params)
+                    export_data, include_reference_params, include_audios)
             elif format_type == TestCaseExportFormat.JSON.value:
                 return TestCaseExportService._export_as_json(export_data)
             elif format_type == TestCaseExportFormat.CSV.value:

@@ -34,83 +34,21 @@ logger = logging.getLogger(__name__)
 _UTC_PLUS_8 = timezone(timedelta(hours=8))
 
 
-def _iter_background_noise(config: dict):
-    """遍历 config 中的背景噪音配置（background_noise / backgroundNoise）。
-
-    INT-1306（P1 覆盖修复）：真实引用形态由 task_service 的
-    _apply_noise_to_round / _apply_noise_to_case_bn 写入：
-    - 顶层 config.background_noise（_apply_noise_to_case_bn）
-    - 轮次级 round_item.background_noise（snake）/ backgroundNoise（camelCase）
-      （_apply_noise_to_round 的 caseBackgroundNoise 目标）
-    - segment 级 rounds[].audios[].background_noise（snake）
-      （_apply_noise_to_round 的 segmentBackgroundNoise 目标）
-
-    旧实现只读顶层 + 轮次级 snake，漏 camelCase 与 segment 级，可能静默删除
-    被引用音频；此处对齐旧字符串扫描口径（任意层级命中即拦）。
-    """
-    if not isinstance(config, dict):
-        return
-
-    def _noise_of(obj):
-        for key in ('background_noise', 'backgroundNoise'):
-            bn = obj.get(key)
-            if bn is not None:
-                yield bn if isinstance(bn, dict) else {}
-
-    for bn in _noise_of(config):
-        yield bn
-    for round_item in config.get('rounds', []) or []:
-        if not isinstance(round_item, dict):
-            continue
-        for bn in _noise_of(round_item):
-            yield bn
-        for audio_item in round_item.get('audios', []) or []:
-            if isinstance(audio_item, dict):
-                for bn in _noise_of(audio_item):
-                    yield bn
-
-
 def _collect_case_audio_references(config: dict):
-    """收集用例 config 被引用的音频 id，返回 (direct_ids, noise_ids)。
+    """收集用例 config 被引用的音频 id，返回 (direct_ids, noise_ids) 两个 set。
 
-    INT-1306（P1 覆盖修复）：对齐旧实现全量字符串扫描的命中口径，按形态分类：
+    口径单点实现在 `shared/utils/testcase_helpers.collect_case_audio_references`
+    （INT-2214 下沉；导出 / 导入校验 / 任务数据导出共用）：
     - direct：rounds[].audios[].audio_id / 顶层 audios[].audio_id /
-      rounds[].audios[].interferers[].audio_id（干扰人，_apply_noise_to_round
-      的 interferers 目标）
-    - noise：_iter_background_noise 收集（background_noise / backgroundNoise，
-      顶层 / 轮次级 / segment 级）
+      rounds[].audios[].interferers[].audio_id（干扰人）
+    - noise：顶层 / 轮次级 / segment 级 background_noise|backgroundNoise
 
-    用例侧与任务-用例关联侧复用，保证两种引用入口口径一致。
+    用例侧与任务-用例关联侧复用，保证两种引用入口口径一致（INT-1306）。
     """
     from shared.utils import testcase_helpers as _case_helpers
 
-    direct = set()
-    noise = set()
-
-    def _add(container, value):
-        if value is None:
-            return
-        try:
-            container.add(int(value))
-        except (TypeError, ValueError):
-            pass
-
-    def _collect_audio_item(item):
-        if not isinstance(item, dict):
-            return
-        _add(direct, item.get('audio_id'))
-        for inf in item.get('interferers', []) or []:
-            if isinstance(inf, dict):
-                _add(direct, inf.get('audio_id'))
-
-    for audio_item in _case_helpers.collect_audios(config or {}):
-        _collect_audio_item(audio_item)
-    for audio_item in (config or {}).get('audios', []) or []:
-        _collect_audio_item(audio_item)
-    for noise_cfg in _iter_background_noise(config or {}):
-        if isinstance(noise_cfg, dict):
-            _add(noise, noise_cfg.get('audio_id'))
-    return direct, noise
+    direct_ids, noise_ids = _case_helpers.collect_case_audio_references(config or {})
+    return set(direct_ids), set(noise_ids)
 
 
 def _collect_config_audio_ids(obj) -> set:

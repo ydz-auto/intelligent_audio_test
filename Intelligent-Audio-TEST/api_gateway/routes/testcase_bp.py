@@ -29,8 +29,8 @@ def get_tags(_: None = require_permission('testcase:read')):
 # ---- 静态路径导入导出（必须早于 /{tc_id}/preview 等动态路由注册，
 # 否则 POST /testcases/import/preview 会被 /{tc_id}/preview 以 tc_id=import 抢先匹配）----
 @router.post('/export')
-def export_cases():
-    """导出用例：format=zip 返回数据包（manifest+testcases.json+参考参数），对齐任务数据导出"""
+def export_cases(_: None = require_permission('testcase:import_export')):
+    """导出用例：format=zip 返回数据包（manifest+testcases.json+参考参数/音频），对齐任务数据导出"""
     return to_response(TestCaseImportExportService.export_cases())
 
 
