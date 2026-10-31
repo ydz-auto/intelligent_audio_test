@@ -6,7 +6,7 @@
  * 算法级行只读（编辑即新增覆盖），设备行可删除回落。
  */
 import { useQuery } from '@tanstack/react-query'
-import { Fragment, useMemo } from 'react'
+import { useMemo } from 'react'
 
 import { useDeviceScopeMappings } from '@/application/devices/use-device-scope-mappings'
 import { usePermissions } from '@/application/hooks/use-permissions'
@@ -28,7 +28,9 @@ import {
   MappingToolbar,
   MappingViewToggle,
   paramNameByCode,
+  useGroupVirtualWindow,
   useMappingViewState,
+  VirtualSpacerRow,
 } from '@/features/algorithm-config/mutate/mapping-view'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -170,6 +172,14 @@ export function DeviceMappingTable({
     return filtered.slice(start, start + view.pageSize)
   }, [view.viewMode, filtered, view.page, view.pageSize])
 
+  /* INT-2213：分组视图窗口化（与算法编辑 Sheet 同一套公共件） */
+  const {
+    tbodyRef,
+    window: virtualWindow,
+    visibleItems,
+    countByKey,
+  } = useGroupVirtualWindow(groups, view.collapsed, view.viewMode === 'group', canEdit)
+
   const renderRow = (row: (typeof rows)[number]) => (
     <DeviceMappingRowView
       key={row.key}
@@ -231,30 +241,48 @@ export function DeviceMappingTable({
         isEmpty={rows.length === 0 && !isLoading}
         isFilteredEmpty={filtered.length === 0}
         emptyText={isLoading ? '正在读取设备映射…' : '该算法还没有设备映射；可直接添加本设备的映射。'}
+        tbodyRef={tbodyRef}
       >
         {view.viewMode === 'flat'
           ? pageRows.map(renderRow)
-          : groups.map(([key, groupRows]) => {
-              const isCollapsed = view.collapsed.has(key)
-              return (
-                <Fragment key={key}>
-                  <tr className='bg-muted/40 border-border/50 border-b'>
-                    <td colSpan={6} className='px-0 py-0'>
-                      <GroupHeaderButton
-                        name={DEVICE_API_GROUP_LABEL[key as keyof typeof DEVICE_API_GROUP_LABEL]}
-                        count={groupRows.length}
-                        collapsed={isCollapsed}
-                        onToggle={() => view.toggleCollapsed(key)}
-                      />
-                    </td>
-                  </tr>
-                  {!isCollapsed && groupRows.map(renderRow)}
-                  {!isCollapsed && canEdit && (
-                    <GroupAddRow colSpan={6} onClick={addRow} />
-                  )}
-                </Fragment>
-              )
-            })}
+          : (
+              <>
+                {virtualWindow.active && virtualWindow.topPad > 0 && (
+                  <VirtualSpacerRow colSpan={6} height={virtualWindow.topPad} />
+                )}
+                {visibleItems.map((item) => {
+                  if (item.kind === 'header') {
+                    return (
+                      <tr
+                        key={item.key}
+                        data-vkind='header'
+                        className='bg-muted/40 border-border/50 border-b'
+                      >
+                        <td colSpan={6} className='px-0 py-0'>
+                          <GroupHeaderButton
+                            name={
+                              DEVICE_API_GROUP_LABEL[
+                                item.groupKey as keyof typeof DEVICE_API_GROUP_LABEL
+                              ]
+                            }
+                            count={countByKey.get(item.groupKey) ?? 0}
+                            collapsed={view.collapsed.has(item.groupKey)}
+                            onToggle={() => view.toggleCollapsed(item.groupKey)}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  }
+                  if (item.kind === 'add') {
+                    return <GroupAddRow key={item.key} colSpan={6} onClick={addRow} />
+                  }
+                  return item.row ? renderRow(item.row) : null
+                })}
+                {virtualWindow.active && virtualWindow.bottomPad > 0 && (
+                  <VirtualSpacerRow colSpan={6} height={virtualWindow.bottomPad} />
+                )}
+              </>
+            )}
       </MappingTableFrame>
 
       {view.viewMode === 'flat' && filtered.length > view.pageSize && (

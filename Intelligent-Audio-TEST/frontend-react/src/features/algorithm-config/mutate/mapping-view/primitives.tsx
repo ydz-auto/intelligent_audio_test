@@ -11,7 +11,7 @@
  * 只做视图，不持有表单或数据源状态——作用域写入由消费方决定。
  */
 import { ChevronDown, Folder, Plus, Search, Trash2 } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { ReactNode, Ref } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -326,7 +326,7 @@ export function GroupHeaderButton({
 
 export function GroupAddRow({ colSpan, onClick }: { colSpan: number; onClick: () => void }) {
   return (
-    <tr className='border-border/50 border-b last:border-b-0'>
+    <tr data-vkind='add' className='border-border/50 border-b last:border-b-0'>
       <td colSpan={colSpan} className='px-3 py-1.5'>
         <Button
           variant='ghost'
@@ -339,6 +339,18 @@ export function GroupAddRow({ colSpan, onClick }: { colSpan: number; onClick: ()
           添加映射
         </Button>
       </td>
+    </tr>
+  )
+}
+
+/**
+ * 窗口化渲染的占位行：补足滚动高度（不可交互、无障碍隐藏）。
+ * 高度由 `useGroupVirtualWindow` 按估算/实测行高累加，滚动条总高度不变。
+ */
+export function VirtualSpacerRow({ colSpan, height }: { colSpan: number; height: number }) {
+  return (
+    <tr aria-hidden='true' data-vkind='spacer'>
+      <td colSpan={colSpan} style={{ height, padding: 0, border: 0 }} />
     </tr>
   )
 }
@@ -450,6 +462,7 @@ export function MappingTableFrame({
   isFilteredEmpty = false,
   emptyText = '暂无映射，点击「添加映射」新增',
   noMatchText = '无匹配映射',
+  tbodyRef,
   children,
 }: {
   columns: ReadonlyArray<MappingColumn>
@@ -458,6 +471,8 @@ export function MappingTableFrame({
   isFilteredEmpty?: boolean
   emptyText?: string
   noMatchText?: string
+  /** 窗口化渲染的测量锚点（`useGroupVirtualWindow().tbodyRef`） */
+  tbodyRef?: Ref<HTMLTableSectionElement>
   children?: ReactNode
 }) {
   return (
@@ -476,7 +491,7 @@ export function MappingTableFrame({
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody ref={tbodyRef}>
             {isEmpty ? (
               <tr>
                 <td colSpan={colSpan} className='text-muted-foreground px-3 py-5 text-center'>
