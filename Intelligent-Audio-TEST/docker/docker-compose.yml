@@ -78,6 +78,9 @@ services:
       # INT-156 种子 AUTH_MODE 感知：prod 形态不种子 dev 引导用户（缺省弱口令管理员不得
       # 进入生产形态，门控在 fix_users_schema_drift.py ④）；off/dev/未设行为不变。
       AUTH_MODE: ${AUTH_MODE:-}
+      # 评估维度种子端点：种子脚本按此写入 dimensions.api_url。缺省指向宿主 mock
+      # 裁判替身（:5097），避免重建栈后维度回落不可达的外部服务。
+      EVAL_SERVER_URL: ${EVAL_SERVER_URL:-http://host.docker.internal:5097}
     volumes:
       # 迁移脚本只读挂载：运行期遮蔽镜像内 COPY 的同源 scripts/ 副本（镜像内含副本，卷缺席亦可引导）
       - ../scripts:/opt/scripts:ro

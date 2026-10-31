@@ -333,6 +333,22 @@ BOOTSTRAP_STEPS = [
     #     IF NOT EXISTS、deleted 补默认值 + NULL 归 false 命中 0 行）；纯 DDL，
     #     须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202611/add_device_param_bindings.py', '--apply'),
+    # ㊾-1.1 设备参数下沉：按 algorithm_definitions 逐算法类型建 scope=device 的
+    #     default 策略，复制 algorithm_device_params（device_id IS NULL）与
+    #     param_mappings(source='device')，并把 supported_algorithms 命中该类型的
+    #     设备绑定到策略。算法级行保留作兜底层（与 API 侧软删口径不同）。
+    #     幂等（策略按 scope+type+name 复用、参数/映射 ON CONFLICT、绑定按
+    #     device_id 唯一索引去重）。纯数据写入，须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/migrate_device_params_to_profiles.py', '--apply'),
+    # ㊾-2 设备/播放设备统一归属缺省实验室：laboratories 为空时按 LAB_NAME
+    #     （缺省 lab-a）建实验室，并把 lab_id IS NULL 的在用设备与播放设备挂上去。
+    #     幂等（实验室按 code 复用，UPDATE 只命中未归属行）。纯数据写入，
+    #     须排在 ㊽ ANALYZE 之前；须先于 ㊾-3（组内条目要求 lab_id 非空）。
+    ('python', 'scripts/migrations/202611/associate_devices_to_default_lab.py', '--apply'),
+    # ㊾-3 逻辑音箱补建：每个在用播放设备确保存在同名逻辑音箱组，并写入
+    #     (group_id, lab_id, playback_device_id) 组内条目（用例只引用逻辑音箱）。
+    #     幂等（组按名复用、设备已有条目即跳过）。纯数据写入，须排在 ㊽ 之前。
+    ('python', 'scripts/migrations/202611/seed_playback_speaker_groups.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
