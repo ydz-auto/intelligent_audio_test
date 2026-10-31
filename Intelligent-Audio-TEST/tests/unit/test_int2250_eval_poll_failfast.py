@@ -290,7 +290,7 @@ class TestFallbackRedispatchDedup:
 
         def _fake_single(fallback_url, endpoints, method, headers, payload,
                          task_id, test_case_id, api_id, dim_names, dim_info,
-                         audio_field_names=None):
+                         audio_field_names=None, request_timeout=None):
             seen.append((fallback_url, tuple(dim_names)))
             return True, fallback_url, {'score': 1.0}
 

@@ -8,6 +8,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from evaluation_service.domain.services.evaluation_utils import render_body_template
+from evaluation_service.domain.services.endpoint_helpers import get_api_timeout_seconds
 from evaluation_service.infrastructure.evaluation_api.api_request_handler import ApiRequestHandler
 from evaluation_service.infrastructure.evaluation_api.payload_builder import PayloadBuilder
 from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerMixin, get_endpoint_url, get_endpoint_field
@@ -246,12 +247,14 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         """
         return any(isinstance(v, str) and 'oss://' in v for v in form_fields.values())
 
-    def _create_async_task(self, selected_url, form_fields, files, create_task_payload, task_id, test_case_id, api_id):
+    def _create_async_task(self, selected_url, form_fields, files, create_task_payload, task_id, test_case_id, api_id, request_timeout=None):
         """调用API创建任务"""
         if files or self._has_oss_pass_through_value(form_fields):
-            create_response = self.create_task_upload(selected_url, form_fields, files, task_id=task_id)
+            create_response = self.create_task_upload(
+                selected_url, form_fields, files, timeout=request_timeout, task_id=task_id)
         else:
-            create_response = self.create_task(selected_url, create_task_payload, task_id=task_id)
+            create_response = self.create_task(
+                selected_url, create_task_payload, timeout=request_timeout, task_id=task_id)
         return create_response
 
     def _process_async_result(self, create_response, selected_url, task_id, test_case_id, api_id, dim_names=None):
@@ -387,7 +390,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                     pass
 
     def _execute_async_api_flow(self, selected_url, payload, dim_info, endpoints, api_url,
-                                task_id, test_case_id, api_id, dim_names, audio_field_names=None):
+                                task_id, test_case_id, api_id, dim_names, audio_field_names=None,
+                                request_timeout=None):
         """
         执行异步任务API流程：创建任务 -> 释放槽位 -> 轮询等待 -> 获取结果
 
@@ -404,7 +408,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
 
         # 3. 调用API创建任务
         create_response = self._create_async_task(
-            selected_url, form_fields, files, create_task_payload, task_id, test_case_id, api_id
+            selected_url, form_fields, files, create_task_payload, task_id, test_case_id, api_id,
+            request_timeout=request_timeout,
         )
 
         # 4. 创建任务后立即释放端点槽位，轮询等待不需要占用并发槽位
@@ -425,7 +430,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
 
         return resp_data
 
-    def _acquire_and_execute(self, selected_url, method, headers, payload, task_id, dim_names, endpoints, api_url, test_case_id, api_id, dim_info, audio_field_names):
+    def _acquire_and_execute(self, selected_url, method, headers, payload, task_id, dim_names, endpoints, api_url, test_case_id, api_id, dim_info, audio_field_names, request_timeout=None):
         """获取端点槽位并执行请求"""
         # 尝试获取端点并发槽位，支持排队等待
         self._log(
@@ -488,7 +493,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                 resp_data = self._execute_async_api_flow(
                     selected_url, payload, dim_info, endpoints, api_url,
                     task_id, test_case_id, api_id, dim_names,
-                    audio_field_names=audio_field_names
+                    audio_field_names=audio_field_names,
+                    request_timeout=request_timeout,
                 )
                 slot_released = True
             else:
@@ -517,7 +523,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                 )
         return resp_data
 
-    def make_api_request_with_fallback(self, endpoints, method, headers, payload, task_id, dim_names, api_url=None, test_case_id=None, api_id=None, dim_info=None, audio_field_names=None):
+    def make_api_request_with_fallback(self, endpoints, method, headers, payload, task_id, dim_names, api_url=None, test_case_id=None, api_id=None, dim_info=None, audio_field_names=None, api_settings=None):
         """
         发起API请求，支持失败时切换到备用端点
         同时支持同步API和异步任务API（WER/SER计算器服务）
@@ -537,18 +543,22 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
             test_case_id: 用例ID
             api_id: API ID
             dim_info: 维度详细信息字典，包含 dimension_type, task_type_code 等
+            api_settings: 维度 API 配置；INT-2287：其 timeout（毫秒）用作创建任务的出站超时
         """
         # 选择URL：优先使用api_url，否则从endpoints中选择
         selected_url = api_url if api_url else self.select_endpoint(endpoints)
         if not selected_url:
             return None, None
 
+        # INT-2287：维度配置的出站超时（api_settings.timeout，毫秒）在整条请求链上生效
+        request_timeout = get_api_timeout_seconds(api_settings)
         resp_data = None
 
         try:
             resp_data = self._acquire_and_execute(
                 selected_url, method, headers, payload, task_id, dim_names,
-                endpoints, api_url, test_case_id, api_id, dim_info, audio_field_names
+                endpoints, api_url, test_case_id, api_id, dim_info, audio_field_names,
+                request_timeout=request_timeout,
             )
             if resp_data is None:
                 return None, None
@@ -567,7 +577,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                 selected_url, resp_data = self._try_fallback_endpoints(
                     endpoints, selected_url, method, headers, payload,
                     task_id, test_case_id, api_id, dim_names, dim_info,
-                    audio_field_names=audio_field_names
+                    audio_field_names=audio_field_names,
+                    request_timeout=request_timeout,
                 )
 
         # INT-107: 主端点连接级失败时，按配置尝试兜底评估端点
@@ -576,6 +587,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                 selected_url, endpoints, method, headers, payload, task_id,
                 test_case_id, api_id, dim_names, dim_info, audio_field_names,
                 primary_error=resp_data,
+                request_timeout=request_timeout,
             )
             if fb_resp_data is not None:
                 return fb_selected_url, fb_resp_data
@@ -606,7 +618,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
 
     def _try_configured_fallback_urls(self, selected_url, endpoints, method, headers, payload,
                                        task_id, test_case_id, api_id, dim_names, dim_info,
-                                       audio_field_names, primary_error):
+                                       audio_field_names, primary_error, request_timeout=None):
         """按配置依次尝试兜底评估端点
 
         Returns:
@@ -647,7 +659,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
             should_break, new_selected_url, fb_resp = self._try_single_fallback(
                 fallback_url, endpoints, method, headers, payload,
                 task_id, test_case_id, api_id, dim_names, dim_info,
-                audio_field_names=audio_field_names
+                audio_field_names=audio_field_names,
+                request_timeout=request_timeout,
             )
             if should_break and isinstance(fb_resp, dict) and '__error__' not in fb_resp:
                 self._log(
@@ -671,7 +684,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         return selected_url, None
 
     def _try_single_fallback(self, fallback_url, endpoints, method, headers, payload,
-                              task_id, test_case_id, api_id, dim_names, dim_info, audio_field_names=None):
+                              task_id, test_case_id, api_id, dim_names, dim_info, audio_field_names=None,
+                              request_timeout=None):
         """单个备用端点的尝试逻辑
 
         Returns:
@@ -730,7 +744,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                     resp_data = self._execute_async_api_flow(
                         fallback_url, payload, dim_info, endpoints, None,
                         task_id, test_case_id, api_id, dim_names,
-                        audio_field_names=audio_field_names
+                        audio_field_names=audio_field_names,
+                        request_timeout=request_timeout,
                     )
                     fallback_slot_released = True
 
@@ -778,7 +793,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
             return False, None, None
 
     def _try_fallback_endpoints(self, endpoints, selected_url, method, headers, payload,
-                                 task_id, test_case_id, api_id, dim_names, dim_info, audio_field_names=None):
+                                 task_id, test_case_id, api_id, dim_names, dim_info, audio_field_names=None,
+                                 request_timeout=None):
         """
         尝试备用端点
 
@@ -794,7 +810,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
 
             should_break, new_selected_url, current_resp = self._try_single_fallback(
                 fallback_url, endpoints, method, headers, payload,
-                task_id, test_case_id, api_id, dim_names, dim_info, audio_field_names
+                task_id, test_case_id, api_id, dim_names, dim_info, audio_field_names,
+                request_timeout=request_timeout,
             )
             if should_break or current_resp is not None:
                 resp_data = current_resp

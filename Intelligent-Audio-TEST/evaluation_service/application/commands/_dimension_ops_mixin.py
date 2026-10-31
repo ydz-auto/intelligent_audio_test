@@ -347,7 +347,11 @@ class DimensionOpsMixin(DimensionParamsMixin):
             end_read_transaction()
 
     def health_check(self, dim_id: int) -> Dict[str, Any]:
-        """对维度配置的 API 端点进行健康探测（委托 Infrastructure 层 EndpointHealthChecker）。"""
+        """对维度配置的 API 端点进行健康探测（委托 Infrastructure 层 EndpointHealthChecker）。
+
+        INT-2287：无可用端点（api_url 与 api_endpoints 都为空）时状态落 offline 并回明确
+        message，不再因 results=[] / all_online 空真而写成 online。
+        """
         try:
             dim = self.repo.get_dimension(dim_id)
             if not dim or dim.deleted:
@@ -357,27 +361,29 @@ class DimensionOpsMixin(DimensionParamsMixin):
             if err:
                 return err
 
-            if not (dim.api_endpoints and isinstance(dim.api_endpoints, list) and len(dim.api_endpoints) > 0):
-                dim.api_status = 'offline'
-                self.repo.commit()
-                return command_error('未配置任何 API 端点', code=400)
-
             # P1-2: HTTP 探测委托 Infrastructure 层，Application 不直接 import requests
+            # INT-2287：探测目标由 Infrastructure 按 api_url ∪ api_endpoints 解析
+            # （真实端点在 api_url，api_endpoints[].url 多为空串）
             from evaluation_service.infrastructure.evaluation_api.health_checker import (
                 endpoint_health_checker,
             )
             probe = endpoint_health_checker.check_endpoints(
-                endpoints=dim.api_endpoints,
+                endpoints=dim.api_endpoints or [],
                 api_settings=dim.api_settings,
+                api_url=dim.api_url,
             )
 
             dim.api_status = 'online' if probe['all_online'] else 'offline'
             self.repo.commit()
 
-            return command_ok('健康探测完成', data={
+            data = {
                 'results': probe['results'],
                 'overall_status': dim.api_status,
-            })
+            }
+            if not probe.get('configured', True):
+                # 未配置端点 ≠ 在线：状态落 offline，并回明确口径（前端空态文案同源）
+                return command_ok(probe['message'], data=data)
+            return command_ok('健康探测完成', data=data)
         except Exception as e:
             self.repo.rollback()
             logger.error(f"健康探测失败: {e}")

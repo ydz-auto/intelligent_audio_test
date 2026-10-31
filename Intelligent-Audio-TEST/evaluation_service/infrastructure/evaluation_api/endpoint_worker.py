@@ -481,7 +481,9 @@ class EndpointWorker(EvaluationLoggerMixin):
                 api_url=representative_dim_data.get('api_url'),
                 test_case_id=test_case_id,
                 dim_info=dim_info,
-                audio_field_names=audio_field_names
+                audio_field_names=audio_field_names,
+                # INT-2287：维度配置的 api_settings.timeout（毫秒）用作创建任务的出站超时
+                api_settings=representative_dim_data.get('api_settings'),
             )
             return resp_data
         except Exception as e:

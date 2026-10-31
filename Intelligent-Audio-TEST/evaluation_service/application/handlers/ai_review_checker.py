@@ -302,6 +302,8 @@ class AiReviewChecker:
             task_id=task_id or 0, dim_names=[dim_config.get('name') or ''],
             api_url=dim_config.get('api_url'), test_case_id=test_case_id or '',
             dim_info=dim_info, audio_field_names=audio_field_names,
+            # INT-2287：维度配置的 api_settings.timeout（毫秒）用作创建任务的出站超时
+            api_settings=api_settings,
         )
         return resp_data
 

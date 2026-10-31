@@ -12,6 +12,12 @@ from shared.utils.config_manager import config_manager
 
 logger = logging.getLogger(__name__)
 
+# 创建评估任务的出站超时（秒）：调用方未显式传入（维度未配置 api_settings.timeout）时的缺省。
+# INT-2287：此前硬编码在签名里，维度配置的超时不生效。
+DEFAULT_CREATE_TASK_TIMEOUT_SECONDS = 10
+# multipart 上传（音频文件）缺省给更宽的窗口
+DEFAULT_CREATE_TASK_UPLOAD_TIMEOUT_SECONDS = 30
+
 
 class EvalTaskRegistry:
     """在途评估任务注册表（V9.7.10 eval_callback_registry 的本服务等价物）
@@ -287,10 +293,12 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
         return resp_data
 
-    def create_task(self, url, payload, timeout=10, task_id=None):
+    def create_task(self, url, payload, timeout=None, task_id=None):
         """
         创建WER/SER计算任务
         """
+        if timeout is None:
+            timeout = DEFAULT_CREATE_TASK_TIMEOUT_SECONDS
         headers = {'Content-Type': 'application/json'}
         create_task_url = f"{url}/api/create_task"
         if task_id:
@@ -524,10 +532,12 @@ class ApiRequestHandler(EvaluationLoggerMixin):
             logger.debug("解析相对路径 %r 失败", value, exc_info=True)
             return None
 
-    def create_task_upload(self, url, form_fields, files, timeout=30, task_id=None):
+    def create_task_upload(self, url, form_fields, files, timeout=None, task_id=None):
         """
         通过 multipart/form-data 创建评估任务（支持文件上传）
         """
+        if timeout is None:
+            timeout = DEFAULT_CREATE_TASK_UPLOAD_TIMEOUT_SECONDS
         create_task_url = f"{url}/api/create_task_upload"
 
         if task_id:
