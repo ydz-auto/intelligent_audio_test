@@ -77,6 +77,21 @@ class _ParamProfileWriteMixin(_ParamBaseMixin):
         except Exception as exc:
             return _failure(f'绑定参数策略失败: {exc}')
 
+    def BindDeviceParamProfile(self, request, context=None):
+        try:
+            data = _loads(request.data, {}) if not isinstance(request, dict) else request
+            device_id = data.get('device_id') or data.get('deviceId')
+            if device_id is None:
+                return _failure('device_id 必填')
+            profile_id = data.get('profile_id', data.get('profileId'))
+            result = ParamProfileCommandHandler.bind_device(int(device_id), profile_id)
+            self._invalidate_cache()
+            return _success(result)
+        except (TypeError, ValueError) as exc:
+            return _failure(str(exc))
+        except Exception as exc:
+            return _failure(f'绑定设备参数策略失败: {exc}')
+
     def SaveApiScopeOverrides(self, request, context=None):
         try:
             data = _loads(request.data, {}) if not isinstance(request, dict) else request

@@ -62,11 +62,13 @@ service AlgorithmDefinitionService {
   //   - CloneParamProfile：从既有策略克隆一份新策略（cloned_from 记血缘）
   //   - DeleteParamProfile：软删策略（仍被 API 引用时由调用方先解绑）
   //   - BindApiParamProfile：API 实例绑定/解绑策略（profile_id 缺省或 0 = 解绑）
+  //   - BindDeviceParamProfile：设备绑定/解绑策略（scope=device；0 = 解绑）
   //   - SaveApiScopeOverrides：按 api_id 原子保存实例覆盖行（差集 upsert + 软删）
   rpc SaveParamProfile(SaveParamProfileRequest) returns (AlgorithmResponse);
   rpc CloneParamProfile(CloneParamProfileRequest) returns (AlgorithmResponse);
   rpc DeleteParamProfile(DeleteParamProfileRequest) returns (AlgorithmResponse);
   rpc BindApiParamProfile(BindApiParamProfileRequest) returns (AlgorithmResponse);
+  rpc BindDeviceParamProfile(BindDeviceParamProfileRequest) returns (AlgorithmResponse);
   rpc SaveApiScopeOverrides(SaveApiScopeOverridesRequest) returns (AlgorithmResponse);
 
   // 维度关系
@@ -674,6 +676,10 @@ message DeleteParamProfileRequest {
 }
 message BindApiParamProfileRequest {
   // JSON: {api_id, profile_id}；profile_id 缺省或 0 = 解绑
+  string data = 1;
+}
+message BindDeviceParamProfileRequest {
+  // JSON: {device_id, profile_id}；profile_id 缺省或 0 = 解绑
   string data = 1;
 }
 message SaveApiScopeOverridesRequest {

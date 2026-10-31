@@ -30,6 +30,11 @@ class ParamProfileHandler:
         """按策略 id 批量读取 API 绑定（api_id / profile_id）。"""
         return param_profile_repository.list_bindings(profile_ids or [])
 
+    @staticmethod
+    def list_device_bindings(profile_ids: List[int]) -> List[Dict[str, Any]]:
+        """按策略 id 批量读取设备绑定（device_id / profile_id）。"""
+        return param_profile_repository.list_device_bindings(profile_ids or [])
+
 
 class ParamProfileCommandHandler:
     """策略写操作（保存 / 克隆 / 删除 / 绑定 / 实例覆盖）。"""
@@ -51,6 +56,10 @@ class ParamProfileCommandHandler:
     @staticmethod
     def bind_api(api_id: int, profile_id: Optional[int]) -> Dict[str, Any]:
         return param_profile_command_repository.bind_api(int(api_id), profile_id)
+
+    @staticmethod
+    def bind_device(device_id: int, profile_id: Optional[int]) -> Dict[str, Any]:
+        return param_profile_command_repository.bind_device(int(device_id), profile_id)
 
     @staticmethod
     def save_api_overrides(api_id: int, algorithm_type: str,

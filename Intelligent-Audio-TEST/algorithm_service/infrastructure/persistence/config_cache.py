@@ -292,10 +292,11 @@ class AlgorithmConfigCache:
             'evaluation_dimension_params': {},
             'mappings': {},
             'reference_params': {},
-            # 参数策略：profile_id → 字段声明 / 映射；api_id → profile_id
+            # 参数策略：profile_id → 字段声明 / 映射；api_id / device_id → profile_id
             'profile_params': {},
             'profile_mappings': {},
             'api_bindings': {},
+            'device_bindings': {},
         }
 
     @staticmethod
@@ -365,6 +366,7 @@ class AlgorithmConfigCache:
         # 同时载入 api_id → profile_id 绑定，供运行时按 API 实例解析。
         profiles, profile_params, profile_mappings = param_profile_repository.load_active()
         snapshot['api_bindings'] = param_profile_repository.load_bindings()
+        snapshot['device_bindings'] = param_profile_repository.load_device_bindings()
         for profile in profiles:
             profile_id = profile.get('id')
             if profile_id is None:
@@ -974,14 +976,28 @@ class AlgorithmConfigCache:
     def get_device_params(
         self, algorithm_type: str, device_id: Optional[int] = None
     ) -> List[Dict[str, Any]]:
-        """获取设备参数（device_id 传入时按设备级合并覆盖算法级）。
+        """获取设备参数（三层解析：算法级默认 → 设备绑定策略 → 设备覆盖）。
 
         不传 device_id：只返回 ``device_id IS NULL`` 的算法类型级默认行，
         其它设备的行不会串进来（与 api_id 作用域同口径）。
+        传 device_id：算法级默认打底，该设备绑定策略（``device_param_bindings``）
+        覆盖同键行，最后由本设备覆盖行（``device_id`` 非空）覆盖同键行。
         """
-        rows = self._config_cache.get('device_params', {}).get(algorithm_type, []) or []
-        return _merge_scoped_rows(
-            rows, 'device_id', device_id, _device_param_merge_key)
+        cache = self._config_cache
+        rows = cache.get('device_params', {}).get(algorithm_type, []) or []
+        merged = _merge_scoped_rows(
+            rows, 'device_id', None, _device_param_merge_key)
+        if device_id is None:
+            return merged
+        profile_id = (cache.get('device_bindings', {}) or {}).get(device_id)
+        profile_rows = (
+            cache.get('profile_params', {}).get(profile_id, []) if profile_id else []
+        )
+        if profile_rows:
+            merged = _resolve_scope_rows(
+                merged, profile_rows, _device_param_merge_key)
+        overrides = [row for row in rows if row.get('device_id') == device_id]
+        return _resolve_scope_rows(merged, overrides, _device_param_merge_key)
 
     def get_api_params(
         self, algorithm_type: str, api_id: Optional[int] = None
@@ -1047,19 +1063,38 @@ class AlgorithmConfigCache:
 
         - ``source='api'`` 的来源行：策略映射 + 本 API 覆盖行（覆盖优先）；
         - 其余来源（case / reference / device / case_config）：算法类型级打底，
-          传 ``device_id`` 时该设备的行覆盖同键算法级行；
+          传 ``device_id`` 时先被该设备绑定策略覆盖，再被本设备覆盖行覆盖
+          （优先级：设备覆盖 > 设备绑定策略 > 算法级默认）；
         - 不传任一作用域：只返回作用域字段为 NULL 的算法级行。
         """
         cache = self._config_cache
         buckets = cache.get('mappings', {}).get(algorithm_type, {}) or {}
+        device_profile_buckets: Dict[str, Any] = {}
+        if device_id is not None:
+            profile_id = (cache.get('device_bindings', {}) or {}).get(device_id)
+            if profile_id:
+                device_profile_buckets = (
+                    cache.get('profile_mappings', {}).get(profile_id, {}) or {}
+                )
         base: Dict[str, Any] = {}
         for bucket, rows in buckets.items():
             if not isinstance(rows, list):
                 base[bucket] = rows
                 continue
-            base[bucket] = _merge_scoped_rows(
-                [row for row in rows if row.get('api_id') is None],
-                'device_id', device_id, _mapping_merge_key)
+            level_rows = [row for row in rows if row.get('api_id') is None]
+            merged = _merge_scoped_rows(
+                level_rows, 'device_id', None, _mapping_merge_key)
+            if device_id is not None:
+                profile_rows = device_profile_buckets.get(bucket) or []
+                if profile_rows:
+                    merged = _resolve_scope_rows(
+                        merged, profile_rows, _mapping_merge_key)
+                merged = _resolve_scope_rows(
+                    merged,
+                    [row for row in level_rows if row.get('device_id') == device_id],
+                    _mapping_merge_key,
+                )
+            base[bucket] = merged
         if api_id is None:
             return base
 

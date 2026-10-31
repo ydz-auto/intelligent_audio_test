@@ -490,8 +490,8 @@ class ParamProfile(Base):
     API 参数与映射从「算法类型级默认（api_id IS NULL）」改为「显式命名策略」：
     - ``scope='api'``：由 API 实例经 ``api_param_bindings`` 引用（绑定点归本服务，
       运行时解析不必跨服务查 ``apis``）；
-    - ``scope='device'``：预留（物理侧按驱动标识 ``(system, keywords)`` 绑定，
-      本轮不接线）。
+    - ``scope='device'``：由设备经 ``device_param_bindings`` 引用（按 ``device_id``
+      绑定；按驱动标识 ``(system, keywords)`` 的物理侧绑定仍为后续能力）。
     多个实例引用同一策略即共享同一份声明，差异只在实例覆盖行里表达。
 
     ``cloned_from`` 记录来源策略 id，仅作血缘展示，不参与任何解析。
@@ -633,5 +633,34 @@ class ApiParamBinding(Base):
         return {
             'id': self.id,
             'api_id': self.api_id,
+            'profile_id': self.profile_id,
+        }
+
+
+class DeviceParamBinding(Base):
+    """设备 → 参数策略绑定（device_param_bindings）。
+
+    与 ``ApiParamBinding`` 同构：绑定归 algorithm_service 所有，运行时按
+    ``device_id`` 解析策略不需要读 device_service 的库；设备级差异仍写在
+    ``algorithm_device_params`` / ``param_mappings`` 的 device_id 行（设备覆盖）。
+
+    解析优先级（config_cache）：设备覆盖 > 设备绑定策略 > 算法类型级默认。
+    """
+    __tablename__ = 'device_param_bindings'
+    __table_args__ = (
+        Index('uq_device_param_binding_device', 'device_id',
+              unique=True, postgresql_where=text('deleted = false')),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(Integer, nullable=False, comment='设备ID（device_service 的设备主键）')
+    profile_id = Column(Integer, nullable=False, comment='关联策略ID（scope=device）')
+    deleted = Column(Boolean, default=False, server_default=text('false'), comment='逻辑删除标志')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'device_id': self.device_id,
             'profile_id': self.profile_id,
         }

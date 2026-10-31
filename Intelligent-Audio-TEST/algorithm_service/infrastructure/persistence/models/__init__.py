@@ -8,6 +8,7 @@
      / algorithm_dimension_relations / case_algorithm_params
      / algorithm_definition_drafts（INT-589 草稿快照）
      / param_profiles / param_profile_params / param_profile_mappings（参数策略）
+     / api_param_bindings / device_param_bindings（策略绑定）
 
 P5 改造：PO 定义真正下沉到本包，shared/models/algorithm_models.py
 改为从这里 re-export。
@@ -27,6 +28,7 @@ from .algorithm_models import (
     ParamProfileParam,
     ParamProfileMapping,
     ApiParamBinding,
+    DeviceParamBinding,
 )
 
 __all__ = [
@@ -35,4 +37,5 @@ __all__ = [
     'ParamMapping', 'AlgorithmDimensionRelation', 'CaseAlgorithmParam',
     'AlgorithmDefinitionDraft',
     'ParamProfile', 'ParamProfileParam', 'ParamProfileMapping', 'ApiParamBinding',
+    'DeviceParamBinding',
 ]

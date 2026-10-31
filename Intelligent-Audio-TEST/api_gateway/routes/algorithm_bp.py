@@ -149,6 +149,12 @@ def put_api_scope_overrides(api_id: int, _: None = require_permission('algorithm
     return to_response(AlgorithmProfileService.save_api_overrides(api_id))
 
 
+# ========== 设备作用域：策略绑定 ==========
+@router.put('/device-scope/{device_id}/binding')
+def put_device_scope_binding(device_id: int, _: None = require_permission('algorithm:param_manage')):
+    return to_response(AlgorithmProfileService.bind_device(device_id))
+
+
 # 用例专属参数相关路由
 @router.get('/case-params')
 def get_case_params(_: None = require_permission('algorithm:read')):

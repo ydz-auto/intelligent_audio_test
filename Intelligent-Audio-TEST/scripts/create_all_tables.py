@@ -21,7 +21,7 @@ import sys
 import os
 
 # 模型全集应有的表数（新增表必须同时改这里）
-EXPECTED_TABLE_COUNT = 95
+EXPECTED_TABLE_COUNT = 100
 
 # 确保项目根目录在 sys.path 中
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

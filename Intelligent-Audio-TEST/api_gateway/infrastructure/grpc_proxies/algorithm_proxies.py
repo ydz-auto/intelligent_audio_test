@@ -275,6 +275,25 @@ class _AlgorithmQueryProxy:
             error_msg_prefix='绑定参数策略失败',
         )
 
+    def bind_device_param_profile(self, device_id, profile_id=None):
+        """设备绑定 / 解绑策略（AlgorithmDefinitionService.BindDeviceParamProfile）。"""
+        from shared.proto import algorithm_service_pb2 as algo_pb
+
+        def _call():
+            resp = self.definition_stub.BindDeviceParamProfile(
+                algo_pb.BindDeviceParamProfileRequest(data=json.dumps({
+                    'device_id': int(device_id),
+                    'profile_id': int(profile_id) if profile_id else None,
+                }, ensure_ascii=False)))
+            return self._unwrap(resp)
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {
+                'success': False, 'message': f'绑定设备参数策略失败: {e}',
+                'data': None, 'code': 500},
+            error_msg_prefix='绑定设备参数策略失败',
+        )
+
     def save_api_scope_overrides(self, api_id, algorithm_type, api_params, mappings):
         """按 api_id 原子保存实例覆盖行（AlgorithmDefinitionService.SaveApiScopeOverrides）。"""
         from shared.proto import algorithm_service_pb2 as algo_pb

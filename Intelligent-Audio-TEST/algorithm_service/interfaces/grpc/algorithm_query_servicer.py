@@ -193,6 +193,7 @@ class AlgorithmQueryServicer(_pb_grpc.AlgorithmQueryServiceServicer):
                 'profiles': data,
                 'total': len(data),
                 'bindings': ParamProfileHandler.list_bindings(profile_ids),
+                'device_bindings': ParamProfileHandler.list_device_bindings(profile_ids),
             })
         except Exception as e:
             return _failure(str(e))

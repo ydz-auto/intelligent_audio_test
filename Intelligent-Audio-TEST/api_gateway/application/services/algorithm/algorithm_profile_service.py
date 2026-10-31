@@ -106,6 +106,20 @@ class AlgorithmProfileService:
         return _respond(result, '绑定已保存')
 
     @staticmethod
+    def bind_device(device_id: int):
+        """设备绑定 / 解绑 scope=device 的策略。
+
+        设备存在性归 device_service，网关不做跨服务校验（与设备参数写路径同口径）；
+        策略作用域由 algorithm_service 仓储兜底（非 device 策略拒绝绑定）。
+        """
+        try:
+            req = ParamProfileBindRequest.model_validate(request.get_json() or {})
+        except Exception as exc:
+            return error_response(f'请求数据验证失败: {exc}', 400)
+        result = _algo_proxy.bind_device_param_profile(device_id, req.profile_id)
+        return _respond(result, '绑定已保存')
+
+    @staticmethod
     def save_api_overrides(api_id: int):
         try:
             req = ApiScopedConfigSaveRequest.model_validate(request.get_json() or {})

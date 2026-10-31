@@ -13,6 +13,7 @@ from shared.models.database import get_db_session
 
 from algorithm_service.infrastructure.persistence.models import (
     ApiParamBinding,
+    DeviceParamBinding,
     ParamProfile,
     ParamProfileMapping,
     ParamProfileParam,
@@ -72,6 +73,23 @@ class ParamProfileRepository:
         ).all()
         return [{'api_id': po.api_id, 'profile_id': po.profile_id} for po in rows]
 
+    def load_device_bindings(self) -> Dict[int, int]:
+        """返回 device_id → profile_id（仅未删除绑定）。"""
+        session = get_db_session()
+        rows = session.query(DeviceParamBinding).filter_by(deleted=False).all()
+        return {po.device_id: po.profile_id for po in rows}
+
+    def list_device_bindings(self, profile_ids: List[int]) -> List[Dict[str, Any]]:
+        """按策略 id 批量读取设备绑定（仅未删除）；空列表不发 IN 查询。"""
+        if not profile_ids:
+            return []
+        session = get_db_session()
+        rows = session.query(DeviceParamBinding).filter(
+            DeviceParamBinding.deleted.is_(False),
+            DeviceParamBinding.profile_id.in_([int(pid) for pid in profile_ids]),
+        ).all()
+        return [{'device_id': po.device_id, 'profile_id': po.profile_id} for po in rows]
+
 
 class ParamProfileCommandRepository:
     """策略写仓储（保存 / 克隆 / 删除 / 绑定 / 实例覆盖）。
@@ -114,6 +132,12 @@ class ParamProfileCommandRepository:
         session = get_db_session()
         po = session.query(ApiParamBinding).filter_by(
             api_id=int(api_id), deleted=False).first()
+        return po.profile_id if po is not None else None
+
+    def get_device_binding(self, device_id: int) -> Optional[int]:
+        session = get_db_session()
+        po = session.query(DeviceParamBinding).filter_by(
+            device_id=int(device_id), deleted=False).first()
         return po.profile_id if po is not None else None
 
     # ---- 写 ----
@@ -232,6 +256,36 @@ class ParamProfileCommandRepository:
                 binding.profile_id = int(profile_id)
             session.commit()
             return {'api_id': int(api_id), 'profile_id': int(profile_id)}
+        except Exception:
+            session.rollback()
+            raise
+
+    def bind_device(self, device_id: int, profile_id: Optional[int]) -> Dict[str, Any]:
+        """设备绑定策略；profile_id 为空/0 表示解绑。"""
+        session = get_db_session()
+        try:
+            binding = session.query(DeviceParamBinding).filter_by(
+                device_id=int(device_id), deleted=False).first()
+            if not profile_id:
+                if binding is not None:
+                    binding.deleted = True
+                session.commit()
+                return {'device_id': int(device_id), 'profile_id': None}
+
+            profile = session.query(ParamProfile).filter_by(
+                id=int(profile_id), deleted=False).first()
+            if profile is None:
+                raise ValueError('策略不存在或已删除')
+            if profile.scope != 'device':
+                raise ValueError(f"策略 scope={profile.scope}，不能绑定到设备")
+            if binding is None:
+                binding = DeviceParamBinding(
+                    device_id=int(device_id), profile_id=int(profile_id))
+                session.add(binding)
+            else:
+                binding.profile_id = int(profile_id)
+            session.commit()
+            return {'device_id': int(device_id), 'profile_id': int(profile_id)}
         except Exception:
             session.rollback()
             raise

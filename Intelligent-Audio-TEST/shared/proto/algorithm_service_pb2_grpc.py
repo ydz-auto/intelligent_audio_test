@@ -452,6 +452,11 @@ class AlgorithmDefinitionServiceStub:
                 request_serializer=algorithm__service__pb2.BindApiParamProfileRequest.SerializeToString,
                 response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
                 _registered_method=True)
+        self.BindDeviceParamProfile = channel.unary_unary(
+                '/algorithm.AlgorithmDefinitionService/BindDeviceParamProfile',
+                request_serializer=algorithm__service__pb2.BindDeviceParamProfileRequest.SerializeToString,
+                response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
+                _registered_method=True)
         self.SaveApiScopeOverrides = channel.unary_unary(
                 '/algorithm.AlgorithmDefinitionService/SaveApiScopeOverrides',
                 request_serializer=algorithm__service__pb2.SaveApiScopeOverridesRequest.SerializeToString,
@@ -876,6 +881,7 @@ class AlgorithmDefinitionServiceServicer:
         - CloneParamProfile：从既有策略克隆一份新策略（cloned_from 记血缘）
         - DeleteParamProfile：软删策略（仍被 API 引用时由调用方先解绑）
         - BindApiParamProfile：API 实例绑定/解绑策略（profile_id 缺省或 0 = 解绑）
+        - BindDeviceParamProfile：设备绑定/解绑策略（scope=device；0 = 解绑）
         - SaveApiScopeOverrides：按 api_id 原子保存实例覆盖行（差集 upsert + 软删）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -895,6 +901,12 @@ class AlgorithmDefinitionServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def BindApiParamProfile(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BindDeviceParamProfile(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -1361,6 +1373,11 @@ def add_AlgorithmDefinitionServiceServicer_to_server(servicer, server):
             'BindApiParamProfile': grpc.unary_unary_rpc_method_handler(
                     servicer.BindApiParamProfile,
                     request_deserializer=algorithm__service__pb2.BindApiParamProfileRequest.FromString,
+                    response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
+            ),
+            'BindDeviceParamProfile': grpc.unary_unary_rpc_method_handler(
+                    servicer.BindDeviceParamProfile,
+                    request_deserializer=algorithm__service__pb2.BindDeviceParamProfileRequest.FromString,
                     response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
             ),
             'SaveApiScopeOverrides': grpc.unary_unary_rpc_method_handler(
@@ -2507,6 +2524,33 @@ class AlgorithmDefinitionService:
             target,
             '/algorithm.AlgorithmDefinitionService/BindApiParamProfile',
             algorithm__service__pb2.BindApiParamProfileRequest.SerializeToString,
+            algorithm__service__pb2.AlgorithmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BindDeviceParamProfile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/algorithm.AlgorithmDefinitionService/BindDeviceParamProfile',
+            algorithm__service__pb2.BindDeviceParamProfileRequest.SerializeToString,
             algorithm__service__pb2.AlgorithmResponse.FromString,
             options,
             channel_credentials,

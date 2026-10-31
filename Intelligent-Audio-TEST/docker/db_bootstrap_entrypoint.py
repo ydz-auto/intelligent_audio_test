@@ -328,6 +328,11 @@ BOOTSTRAP_STEPS = [
     #     设备级」拆分并统一 NULLS NOT DISTINCT。幂等（列/索引存在即 SKIP）；须排在
     #     ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202611/add_device_id_scope.py', '--apply'),
+    # ㊾-1 设备 → 参数策略绑定表（device_param_bindings）：与 api_param_bindings 同构，
+    #     支撑「设备覆盖 > 设备绑定策略 > 算法类型级默认」三层解析。幂等（建表/索引
+    #     IF NOT EXISTS、deleted 补默认值 + NULL 归 false 命中 0 行）；纯 DDL，
+    #     须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_device_param_bindings.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
