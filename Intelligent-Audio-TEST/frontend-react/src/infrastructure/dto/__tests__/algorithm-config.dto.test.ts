@@ -103,4 +103,53 @@ describe('algorithm-config.dto toMappingItemDto（写侧）', () => {
     ).evaluation[0]
     expect(item.source).toBe('case')
   })
+
+  it('已入库行回传 id，新增行不带 id（INT-2193）', () => {
+    const dto = toAlgorithmDefinitionDto(
+      {
+        type: 'asr_v3',
+        name: '语音识别',
+        groupId: null,
+        displayOrder: 0,
+        status: 'online',
+        description: '',
+        deviceParams: [],
+        caseParams: [],
+        referenceParams: [],
+        mappings: {
+          device: [
+            {
+              id: 4101,
+              source: 'device',
+              sourceParam: 'asr_text',
+              targetParam: 'text',
+              transformType: 'none',
+            },
+          ],
+          evaluation: [
+            {
+              id: 4102,
+              source: 'reference',
+              sourceParam: 'query',
+              dimensionId: '72',
+              targetParam: 'query',
+              transformType: 'json_parse',
+            },
+            { source: 'case', sourceParam: 'wer', transformType: 'none' },
+          ],
+        },
+        associatedDimensions: [],
+      },
+      new Map()
+    )
+    const device = (
+      dto.mappings as { device: Array<Record<string, unknown>> }
+    ).device[0]
+    const evaluation = (
+      dto.mappings as { evaluation: Array<Record<string, unknown>> }
+    ).evaluation
+    expect(device.id).toBe(4101)
+    expect(evaluation[0].id).toBe(4102)
+    expect(evaluation[1]).not.toHaveProperty('id')
+  })
 })

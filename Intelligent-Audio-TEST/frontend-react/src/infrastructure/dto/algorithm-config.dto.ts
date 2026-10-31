@@ -487,7 +487,9 @@ function toReferenceParamItemDto(row: Row): Row {
  *  写侧把 source / source_direction / dimension_id 原样提交（INT-1160 返工）：
  *  evaluation 行 dimension_id 从 row.dimensionId（数字）优先、维度名对账兜底；
  *  target_param 兼容维度内目标参数代码与存量维度名两种形态。
- *  设备节 source = 节类型（device，后端按节派生）；评估节 source = 行来源（缺省 case）。 */
+ *  设备节 source = 节类型（device，后端按节派生）；评估节 source = 行来源（缺省 case）。
+ *  已入库行回传 id（INT-2193）：后端 PUT 更新按 id 改行，缺 id 会被当成新增行 INSERT，
+ *  撞唯一键 uq_param_mapping_algo_level 返回 400；新增行无 id，由后端分配。 */
 function toMappingItemDto(
   row: Row,
   section: 'device' | 'evaluation',
@@ -526,6 +528,9 @@ function toMappingItemDto(
     target_param: str(r.targetParam),
     transform_type: transformType,
   }
+  // 已入库行回传主键（INT-2193）：后端按 id 更新，缺 id 会 INSERT 撞唯一键
+  const mappingId = r.id !== undefined && r.id !== null && r.id !== '' ? Number(r.id) : NaN
+  if (Number.isFinite(mappingId)) item.id = mappingId
   if (dimensionId != null && Number.isFinite(dimensionId)) item.dimension_id = dimensionId
   return item
 }

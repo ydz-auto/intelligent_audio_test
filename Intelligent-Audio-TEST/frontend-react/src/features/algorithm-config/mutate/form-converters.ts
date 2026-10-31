@@ -121,15 +121,23 @@ export function emptyFormValues(): AlgorithmFormValues {
   }
 }
 
-/** 克隆载荷（§7.4 复制：type 追加 _copy、name 追加「(副本)」） */
+/** 克隆载荷（§7.4 复制：type 追加 _copy、name 追加「(副本)」）
+ *  行级 id 一律剔除（INT-211）：携带源算法行 id 会让后端按 id 改写源算法的行，
+ *  副本必须由后端重新分配主键。 */
 export function cloneFormValues(
   algorithm: AlgorithmDefinition
 ): AlgorithmFormValues {
   const values = toFormValues(algorithm)
+  const withoutId = (rows: MappingRow[]): MappingRow[] =>
+    rows.map(({ id: _id, ...rest }) => rest)
   return {
     ...values,
     type: `${algorithm.type}_copy`,
     name: `${algorithm.name} (副本)`,
+    mappings: {
+      device: withoutId(values.mappings.device),
+      evaluation: withoutId(values.mappings.evaluation),
+    },
   }
 }
 

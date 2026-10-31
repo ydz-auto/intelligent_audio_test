@@ -130,6 +130,25 @@ describe('form-converters', () => {
     expect(values.associatedDimensions[0].isDefault).toBe(true)
   })
 
+  it('toFormValues 保留映射行 id（编辑态按 id 更新，INT-2193）', () => {
+    __resetFormKeyCounter()
+    const values = toFormValues(SAMPLE)
+    expect(values.mappings.device[0].id).toBe(501)
+    expect(values.mappings.evaluation[0].id).toBe(504)
+    const input = toSaveInput(values)
+    expect(input.mappings.evaluation[0]).toMatchObject({ id: 504 })
+  })
+
+  it('cloneFormValues 剔除映射行 id，副本由后端重新分配（INT-211/INT-2193）', () => {
+    __resetFormKeyCounter()
+    const values = cloneFormValues(SAMPLE)
+    expect(values.type).toBe('asr-v3_copy')
+    expect(values.name).toBe('通用识别引擎 (副本)')
+    expect(values.mappings.device[0]).not.toHaveProperty('id')
+    expect(values.mappings.evaluation[0]).not.toHaveProperty('id')
+    expect(values.mappings.evaluation[0].sourceParam).toBe('output_text')
+  })
+
   it('cloneFormValues 追加 _copy 与「(副本)」（§7.4 副本命名）', () => {
     __resetFormKeyCounter()
     const values = cloneFormValues(SAMPLE)
