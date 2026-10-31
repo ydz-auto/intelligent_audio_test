@@ -28,6 +28,7 @@ import {
   isParamProfileStatus,
   isParamTransformType,
   isParamType,
+  type ApiConfigSnapshot,
   type ApiScopeOverridesInput,
   type DeviceParamProfileBinding,
   type ParamProfile,
@@ -115,6 +116,8 @@ export function toParamProfileParam(raw: unknown): ParamProfileParam {
     required: bool(r.required),
     defaultValue: textOrNull(r.default_value),
     helpText: nullableStr(r.help_text),
+    // 后端 `_po_to_dict` 的输出键是 `validation`（列 validation_rules）
+    validationRules: textOrNull(r.validation_rules ?? r.validation),
     uiOrder: num(r.ui_order),
     hidden: bool(r.hidden),
     fieldPath: nullableStr(r.field_path),
@@ -220,6 +223,9 @@ export interface ParamProfileParamWriteDto {
   ui_order: number
   hidden: boolean
   field_path: string | null
+  /** 界面无编辑控件；编辑既有策略时透传读到的原值（INT-2267）。 */
+  label?: string | null
+  validation_rules?: string | null
 }
 
 export interface ParamProfileMappingWriteDto {
@@ -265,6 +271,11 @@ export function toParamProfileParamDto(draft: ParamProfileParamDraft): ParamProf
     ui_order: draft.uiOrder,
     hidden: draft.hidden,
     field_path: draft.fieldPath,
+    // 未传（undefined）= 不写该列语义；显式 null 才是清空
+    ...(draft.label === undefined ? {} : { label: draft.label }),
+    ...(draft.validationRules === undefined
+      ? {}
+      : { validation_rules: draft.validationRules }),
   }
 }
 
@@ -288,16 +299,22 @@ export function toParamProfileDto(input: ParamProfileInput): ParamProfileWriteDt
     name: input.name,
     description: input.description,
     status: input.status,
-    // 快照保持 camelCase 原样透传（读侧 toApiConfigSnapshot 同口径）
-    config: input.config
-      ? {
-          protocol: input.config.protocol,
-          streaming: input.config.streaming,
-          vendorAdapter: input.config.vendorAdapter,
-          audioConfig: input.config.audioConfig,
-          meta: input.config.meta,
-        }
-      : null,
+    // 快照保持 camelCase 原样透传（读侧 toApiConfigSnapshot 同口径）。
+    // 未传 undefined = 请求体不带 config 键（后端不会被覆盖语义命中）；
+    // 显式 null = 清空快照（INT-2267：编辑不能顺手抹掉既有快照）。
+    ...(input.config === undefined
+      ? {}
+      : {
+          config: input.config
+            ? {
+                protocol: input.config.protocol,
+                streaming: input.config.streaming,
+                vendorAdapter: input.config.vendorAdapter,
+                audioConfig: input.config.audioConfig,
+                meta: input.config.meta,
+              }
+            : null,
+        }),
     params: input.params.map(toParamProfileParamDto),
     mappings: input.mappings.map(toParamProfileMappingDto),
   }

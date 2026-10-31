@@ -1,9 +1,13 @@
 /**
  * 参数策略管理对话框（features/algorithm-config/param-profiles；T4.3）。
  *
- * 列表（GET /algorithm/param-profiles）+ 新建 / 编辑（POST / PUT）
+ * 列表（GET /algorithm/param-profiles?scope=api）+ 新建 / 编辑（POST / PUT）
  * + 克隆（POST /{id}/clone）+ 删除二次确认（DELETE /{id}，软删除）。
  * 权限：读 = algorithm:read；写 = algorithm:param_manage（canManage 控制动作可用）。
+ *
+ * 作用域过滤（INT-2267）：本入口在算法配置页，只管理 scope=api 的策略；
+ * scope=device 的策略由设备侧入口编辑（两侧参数类型 / 映射来源词表不同，
+ * 用 API 语义的表单打开设备策略会改写来源、丢掉 timestamp 类型）。
  */
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -18,6 +22,7 @@ import {
   PARAM_PROFILE_SCOPE_LABEL,
   PARAM_PROFILE_STATUS_LABEL,
   type ParamProfile,
+  type ParamProfileScope,
 } from '@/domain/models/paramProfile'
 import { ApiError } from '@/infrastructure/api/api-error'
 import { Badge } from '@/components/ui/badge'
@@ -52,6 +57,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { ParamProfileFormDialog } from '@/features/algorithm-config/param-profiles/param-profile-form-dialog'
 
 const ALL_ALGORITHMS = '__all__'
+/** 本入口只管 API 作用域策略（INT-2267） */
+const MANAGED_SCOPE: ParamProfileScope = 'api'
 
 function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return error.userMessage
@@ -87,6 +94,7 @@ export function ParamProfileManagerDialog({
 
   const { profiles, isLoading, isError } = useParamProfileList(
     algorithmFilter === ALL_ALGORITHMS ? null : algorithmFilter,
+    MANAGED_SCOPE,
     open
   )
   const { clone, remove } = useParamProfileMutations()
@@ -157,6 +165,7 @@ export function ParamProfileManagerDialog({
             <DialogTitle>参数策略</DialogTitle>
             <DialogDescription>
               可复用参数策略：多个 API 实例可绑定同一策略，实例覆盖优先于策略。
+              此处只管理 API 作用域策略，设备策略在设备侧编辑。
             </DialogDescription>
           </DialogHeader>
 
@@ -299,6 +308,7 @@ export function ParamProfileManagerDialog({
         onOpenChange={(next) => setFormState((prev) => ({ ...prev, open: next }))}
         mode={formState.mode}
         profileId={formState.profileId}
+        scope={MANAGED_SCOPE}
         defaultAlgorithmType={
           algorithmFilter === ALL_ALGORITHMS ? defaultAlgorithmType : algorithmFilter
         }

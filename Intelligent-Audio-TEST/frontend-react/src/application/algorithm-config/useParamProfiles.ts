@@ -10,6 +10,7 @@ import type {
   ParamProfile,
   ParamProfileCloneInput,
   ParamProfileInput,
+  ParamProfileScope,
 } from '@/domain/models/paramProfile'
 import {
   cloneProfile,
@@ -23,8 +24,13 @@ import {
 const PARAM_PROFILE_QUERY_ROOT = ['algorithm-config', 'param-profiles'] as const
 
 export const paramProfileQueryKeys = {
-  list: (algorithmType: string | null) =>
-    [...PARAM_PROFILE_QUERY_ROOT, 'list', algorithmType ?? 'all'] as const,
+  list: (algorithmType: string | null, scope: ParamProfileScope | null) =>
+    [
+      ...PARAM_PROFILE_QUERY_ROOT,
+      'list',
+      algorithmType ?? 'all',
+      scope ?? 'all',
+    ] as const,
   detail: (profileId: number | null) =>
     [...PARAM_PROFILE_QUERY_ROOT, 'detail', profileId] as const,
 }
@@ -35,14 +41,20 @@ export interface ParamProfileListResult {
   isError: boolean
 }
 
-/** 列表（algorithmType = null → 全部） */
+/**
+ * 列表（algorithmType = null → 全部；scope = null → 全部作用域）
+ *
+ * 作用域是策略的语义分界：api 策略的字段/映射面向 API 输出，device 策略面向
+ * 设备输出，两者的来源词表不同，必须由各自入口过滤后编辑（INT-2267）。
+ */
 export function useParamProfileList(
   algorithmType: string | null,
+  scope: ParamProfileScope | null,
   enabled: boolean
 ): ParamProfileListResult {
   const query = useQuery({
-    queryKey: paramProfileQueryKeys.list(algorithmType),
-    queryFn: () => listProfiles(algorithmType ?? undefined),
+    queryKey: paramProfileQueryKeys.list(algorithmType, scope),
+    queryFn: () => listProfiles(algorithmType ?? undefined, scope ?? undefined),
     enabled,
     staleTime: 0,
     retry: false,

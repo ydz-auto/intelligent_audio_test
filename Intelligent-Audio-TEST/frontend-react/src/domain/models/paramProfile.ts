@@ -84,6 +84,8 @@ export interface ParamProfileParam {
   required: boolean
   defaultValue: string | null
   helpText: string | null
+  /** 校验规则（后端 validation_rules 列；JSON 文本原样透传） */
+  validationRules: string | null
   uiOrder: number
   hidden: boolean
   /** 输出字段响应路径（C2/INT-1747；空 = 按 param_code 取顶层键） */
@@ -96,7 +98,17 @@ export interface ParamProfileParam {
  * - `case`：用例参数 → 设备输入 / API 输入字段；
  * - `device`：设备输出 → 评估（scope=device 策略）。
  */
-export type ParamProfileMappingSource = 'api' | 'case' | 'device'
+export const PARAM_PROFILE_MAPPING_SOURCES = ['api', 'case', 'device'] as const
+export type ParamProfileMappingSource = (typeof PARAM_PROFILE_MAPPING_SOURCES)[number]
+
+export function isParamProfileMappingSource(
+  value: unknown
+): value is ParamProfileMappingSource {
+  return (
+    typeof value === 'string' &&
+    (PARAM_PROFILE_MAPPING_SOURCES as readonly string[]).includes(value)
+  )
+}
 
 /** 映射行（source 见 ParamProfileMappingSource） */
 export interface ParamProfileMapping {
@@ -167,6 +179,12 @@ export interface ParamProfileParamDraft {
   uiOrder: number
   hidden: boolean
   fieldPath: string | null
+  /**
+   * 显示名称 / 校验规则：界面无编辑控件，编辑既有策略时按读到的原值透传，
+   * 避免「表单没展示的字段」被后端整份同步清空（INT-2267）。
+   */
+  label?: string | null
+  validationRules?: string | null
 }
 
 export interface ParamProfileMappingDraft {
@@ -259,4 +277,11 @@ export const PARAM_PROFILE_STATUS_LABEL: Record<ParamProfileStatus, string> = {
 export const PARAM_DIRECTION_LABEL: Record<ParamDirection, string> = {
   input: '输入',
   output: '输出',
+}
+
+/** 映射来源文案（表单「来源」下拉；api = API 输出，case = 用例参数，device = 设备输出） */
+export const PARAM_MAPPING_SOURCE_LABEL: Record<ParamProfileMappingSource, string> = {
+  api: 'API 输出',
+  case: '用例参数',
+  device: '设备输出',
 }

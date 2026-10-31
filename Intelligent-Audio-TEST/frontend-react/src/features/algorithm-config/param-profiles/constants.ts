@@ -3,6 +3,10 @@
  * 枚举值来自 domain/models/paramProfile，这里只做 Select 需要的 label 文案。
  */
 import {
+  PARAM_DIRECTION_LABEL,
+  PARAM_DIRECTIONS,
+  PARAM_MAPPING_SOURCE_LABEL,
+  PARAM_PROFILE_MAPPING_SOURCES,
   PARAM_PROFILE_SCOPE_LABEL,
   PARAM_PROFILE_SCOPES,
   PARAM_PROFILE_STATUS_LABEL,
@@ -16,6 +20,17 @@ import {
 export const PARAM_TYPE_OPTIONS = PARAM_TYPES.map((value) => ({
   value,
   label: PARAM_TYPE_LABEL[value],
+}))
+
+export const PARAM_DIRECTION_OPTIONS = PARAM_DIRECTIONS.map((value) => ({
+  value,
+  label: PARAM_DIRECTION_LABEL[value],
+}))
+
+/** 映射来源（api = API 输出 / case = 用例参数 / device = 设备输出） */
+export const PARAM_MAPPING_SOURCE_OPTIONS = PARAM_PROFILE_MAPPING_SOURCES.map((value) => ({
+  value,
+  label: PARAM_MAPPING_SOURCE_LABEL[value],
 }))
 
 export const TRANSFORM_TYPE_OPTIONS = PARAM_TRANSFORM_TYPES.map((value) => ({

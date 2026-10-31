@@ -6,8 +6,12 @@
  * 三组行编辑器统一走 RHF `useFieldArray`，整份随表单提交。
  *
  * 提交口径（POST /algorithm/param-profiles 或 PUT /{id}）：
- * params = 输入行（direction=input）+ 输出行（direction=output）；mappings = source 固定 api。
- * 空 param_code / 映射缺源或目标的行视为空草稿，不提交。
+ * params = 输入行（direction=input）+ 输出行（direction=output）；mappings 保留每行的来源与方向。
+ *
+ * 整份保存纪律（INT-2267）：后端 `_sync_params` / `_sync_mappings` 按自然键整份同步，
+ * 请求里没带的列会被写成默认值。因此凡表单不展示的字段（label / validation_rules /
+ * config 快照）一律按详情读到的原值透传，不用常量兜底。
+ * 作用域由入口给定：本入口只编辑 scope=api 的策略，设备策略走设备侧。
  */
 import { Plus, Trash2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
@@ -17,10 +21,13 @@ import { toast } from 'sonner'
 import { useParamProfileDetail, useParamProfileMutations } from '@/application/algorithm-config/useParamProfiles'
 import { useTestAlgorithmOptions } from '@/application/test-execution/useTestAlgorithmOptions'
 import {
+  PARAM_PROFILE_SCOPE_LABEL,
+  type ApiConfigSnapshot,
   type ParamDirection,
   type ParamProfile,
   type ParamProfileInput,
   type ParamProfileMappingDraft,
+  type ParamProfileMappingSource,
   type ParamProfileParamDraft,
   type ParamProfileScope,
   type ParamProfileStatus,
@@ -28,7 +35,9 @@ import {
   type ParamType,
 } from '@/domain/models/paramProfile'
 import { ApiError } from '@/infrastructure/api/api-error'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -49,7 +58,8 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 import {
-  PARAM_PROFILE_SCOPE_OPTIONS,
+  PARAM_DIRECTION_OPTIONS,
+  PARAM_MAPPING_SOURCE_OPTIONS,
   PARAM_PROFILE_STATUS_OPTIONS,
   PARAM_TYPE_OPTIONS,
   TRANSFORM_TYPE_OPTIONS,
@@ -61,9 +71,18 @@ interface ParamRowValues {
   paramType: ParamType
   uiOrder: number
   fieldPath: string
+  required: boolean
+  defaultValue: string
+  helpText: string
+  hidden: boolean
+  /** 不在表单展示，编辑既有策略时按原值透传（否则后端整份同步会清空） */
+  label: string | null
+  validationRules: string | null
 }
 
 interface MappingRowValues {
+  source: ParamProfileMappingSource
+  sourceDirection: ParamDirection
   sourceParam: string
   targetParam: string
   dimensionId: string
@@ -76,22 +95,37 @@ interface ParamProfileFormValues {
   name: string
   description: string
   status: ParamProfileStatus
+  /** API 配置快照：不在表单展示，编辑时按详情原值透传 */
+  config: ApiConfigSnapshot | null
   inputParams: ParamRowValues[]
   outputParams: ParamRowValues[]
   mappings: MappingRowValues[]
 }
 
 function emptyParamRow(uiOrder: number): ParamRowValues {
-  return { paramCode: '', paramName: '', paramType: 'text', uiOrder, fieldPath: '' }
+  return {
+    paramCode: '',
+    paramName: '',
+    paramType: 'text',
+    uiOrder,
+    fieldPath: '',
+    required: false,
+    defaultValue: '',
+    helpText: '',
+    hidden: false,
+    label: null,
+    validationRules: null,
+  }
 }
 
-function emptyValues(algorithmType: string): ParamProfileFormValues {
+function emptyValues(algorithmType: string, scope: ParamProfileScope): ParamProfileFormValues {
   return {
-    scope: 'api',
+    scope,
     algorithmType,
     name: '',
     description: '',
     status: 'online',
+    config: null,
     inputParams: [emptyParamRow(1)],
     outputParams: [],
     mappings: [],
@@ -105,6 +139,12 @@ function valuesOf(profile: ParamProfile): ParamProfileFormValues {
     paramType: param.paramType,
     uiOrder: param.uiOrder ?? index + 1,
     fieldPath: param.fieldPath ?? '',
+    required: param.required,
+    defaultValue: param.defaultValue ?? '',
+    helpText: param.helpText ?? '',
+    hidden: param.hidden,
+    label: param.label,
+    validationRules: param.validationRules,
   })
   return {
     scope: profile.scope,
@@ -112,6 +152,7 @@ function valuesOf(profile: ParamProfile): ParamProfileFormValues {
     name: profile.name,
     description: profile.description ?? '',
     status: profile.status,
+    config: profile.config,
     inputParams: profile.params
       .filter((param) => param.direction === 'input')
       .map(toRow),
@@ -119,6 +160,8 @@ function valuesOf(profile: ParamProfile): ParamProfileFormValues {
       .filter((param) => param.direction === 'output')
       .map(toRow),
     mappings: profile.mappings.map((mapping) => ({
+      source: mapping.source,
+      sourceDirection: mapping.sourceDirection,
       sourceParam: mapping.sourceParam,
       targetParam: mapping.targetParam,
       dimensionId: mapping.dimensionId == null ? '' : String(mapping.dimensionId),
@@ -135,12 +178,14 @@ function paramDraftsOf(rows: ParamRowValues[], direction: ParamDirection): Param
       paramName: row.paramName.trim() || null,
       paramType: row.paramType,
       direction,
-      required: false,
-      defaultValue: null,
-      helpText: null,
+      required: row.required,
+      defaultValue: row.defaultValue.trim() === '' ? null : row.defaultValue,
+      helpText: row.helpText.trim() === '' ? null : row.helpText,
       uiOrder: Number(row.uiOrder) || 0,
-      hidden: false,
+      hidden: row.hidden,
       fieldPath: row.fieldPath.trim() || null,
+      label: row.label,
+      validationRules: row.validationRules,
     }))
 }
 
@@ -148,8 +193,8 @@ function mappingDraftsOf(rows: MappingRowValues[]): ParamProfileMappingDraft[] {
   return rows
     .filter((row) => row.sourceParam.trim() && row.targetParam.trim())
     .map((row) => ({
-      source: 'api',
-      sourceDirection: 'output',
+      source: row.source,
+      sourceDirection: row.sourceDirection,
       sourceParam: row.sourceParam.trim(),
       targetParam: row.targetParam.trim(),
       dimensionId: row.dimensionId.trim() === '' ? null : Number(row.dimensionId),
@@ -164,6 +209,7 @@ function toInput(values: ParamProfileFormValues): ParamProfileInput {
     name: values.name.trim(),
     description: values.description.trim() || null,
     status: values.status,
+    config: values.config,
     params: [
       ...paramDraftsOf(values.inputParams, 'input'),
       ...paramDraftsOf(values.outputParams, 'output'),
@@ -183,6 +229,8 @@ export interface ParamProfileFormDialogProps {
   mode: 'create' | 'edit'
   profileId: number | null
   defaultAlgorithmType: string
+  /** 本入口的作用域：新建时写死为该值；编辑时以详情为准（后端不接受改作用域） */
+  scope?: ParamProfileScope
 }
 
 export function ParamProfileFormDialog({
@@ -191,6 +239,7 @@ export function ParamProfileFormDialog({
   mode,
   profileId,
   defaultAlgorithmType,
+  scope = 'api',
 }: ParamProfileFormDialogProps) {
   const detail = useParamProfileDetail(profileId, open && mode === 'edit')
   const { save } = useParamProfileMutations()
@@ -198,7 +247,7 @@ export function ParamProfileFormDialog({
   const appliedRef = useRef<number | null>(null)
 
   const form = useForm<ParamProfileFormValues>({
-    defaultValues: emptyValues(defaultAlgorithmType),
+    defaultValues: emptyValues(defaultAlgorithmType, scope),
   })
   const { register, watch, setValue, reset, formState, setError } = form
   const inputs = useFieldArray({ control: form.control, name: 'inputParams' })
@@ -213,14 +262,14 @@ export function ParamProfileFormDialog({
     if (mode === 'create') {
       if (appliedRef.current === 0) return
       appliedRef.current = 0
-      reset(emptyValues(defaultAlgorithmType))
+      reset(emptyValues(defaultAlgorithmType, scope))
       return
     }
     if (!detail.profile) return
     if (appliedRef.current === detail.profile.id) return
     appliedRef.current = detail.profile.id
     reset(valuesOf(detail.profile))
-  }, [open, mode, defaultAlgorithmType, detail.profile, reset])
+  }, [open, mode, defaultAlgorithmType, scope, detail.profile, reset])
 
   const algorithmOptions = [
     ...(algorithmsQuery.data ?? []).map((item) => ({
@@ -304,25 +353,13 @@ export function ParamProfileFormDialog({
                 )}
               </div>
               <div className='space-y-1.5'>
-                <Label required>作用域</Label>
-                <Select
-                  value={watch('scope')}
-                  items={PARAM_PROFILE_SCOPE_OPTIONS}
-                  onValueChange={(value) =>
-                    setValue('scope', value as ParamProfileScope, { shouldDirty: true })
-                  }
-                >
-                  <SelectTrigger className='w-full justify-between'>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PARAM_PROFILE_SCOPE_OPTIONS.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>作用域</Label>
+                <div className='border-border/60 bg-muted/30 flex h-8 items-center gap-2 rounded-lg border px-2.5'>
+                  <Badge variant='secondary'>{PARAM_PROFILE_SCOPE_LABEL[watch('scope')]}</Badge>
+                  <span className='text-muted-foreground text-xs'>
+                    由入口决定，设备策略在设备侧编辑
+                  </span>
+                </div>
               </div>
               <div className='space-y-1.5'>
                 <Label required>状态</Label>
@@ -367,6 +404,9 @@ export function ParamProfileFormDialog({
               onParamTypeChange={(index, value) =>
                 setValue(`inputParams.${index}.paramType`, value, { shouldDirty: true })
               }
+              onCheckChange={(index, key, checked) =>
+                setValue(`inputParams.${index}.${key}`, checked, { shouldDirty: true })
+              }
               registerPath={(index, key) =>
                 register(`inputParams.${index}.${key}` as const)
               }
@@ -382,6 +422,9 @@ export function ParamProfileFormDialog({
               onRemove={outputs.remove}
               onParamTypeChange={(index, value) =>
                 setValue(`outputParams.${index}.paramType`, value, { shouldDirty: true })
+              }
+              onCheckChange={(index, key, checked) =>
+                setValue(`outputParams.${index}.${key}`, checked, { shouldDirty: true })
               }
               registerPath={(index, key) =>
                 register(`outputParams.${index}.${key}` as const)
@@ -399,6 +442,8 @@ export function ParamProfileFormDialog({
                   className='h-7 gap-1 text-xs'
                   onClick={() =>
                     mappings.append({
+                      source: 'api',
+                      sourceDirection: 'output',
                       sourceParam: '',
                       targetParam: '',
                       dimensionId: '',
@@ -412,12 +457,62 @@ export function ParamProfileFormDialog({
               </div>
               {watch('mappings').length === 0 ? (
                 <p className='text-muted-foreground border-border/60 rounded-lg border border-dashed p-3 text-center text-xs'>
-                  无映射行；API 输出映射按 source=api 写入。
+                  无映射行；新增时来源默认 API 输出，可改为用例参数 / 设备输出。
                 </p>
               ) : (
                 <div className='space-y-2'>
                   {watch('mappings').map((row, index) => (
                     <div key={index} className='flex flex-wrap items-end gap-2'>
+                      <div className='space-y-1'>
+                        <Label className='text-xs'>来源</Label>
+                        <Select
+                          value={row.source}
+                          items={PARAM_MAPPING_SOURCE_OPTIONS}
+                          onValueChange={(value) =>
+                            setValue(
+                              `mappings.${index}.source`,
+                              value as ParamProfileMappingSource,
+                              { shouldDirty: true }
+                            )
+                          }
+                        >
+                          <SelectTrigger size='sm' className='w-28'>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PARAM_MAPPING_SOURCE_OPTIONS.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className='space-y-1'>
+                        <Label className='text-xs'>来源方向</Label>
+                        <Select
+                          value={row.sourceDirection}
+                          items={PARAM_DIRECTION_OPTIONS}
+                          onValueChange={(value) =>
+                            setValue(
+                              `mappings.${index}.sourceDirection`,
+                              value as ParamDirection,
+                              { shouldDirty: true }
+                            )
+                          }
+                        >
+                          <SelectTrigger size='sm' className='w-20'>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PARAM_DIRECTION_OPTIONS.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <div className='space-y-1'>
                         <Label className='text-xs'>源参数</Label>
                         <Input
@@ -508,6 +603,7 @@ function ParamRowsEditor({
   onRemove,
   onParamTypeChange,
   registerPath,
+  onCheckChange,
 }: {
   title: string
   rows: ParamRowValues[]
@@ -517,8 +613,9 @@ function ParamRowsEditor({
   onParamTypeChange: (index: number, value: ParamType) => void
   registerPath: (
     index: number,
-    key: 'paramCode' | 'paramName' | 'uiOrder' | 'fieldPath'
+    key: 'paramCode' | 'paramName' | 'uiOrder' | 'fieldPath' | 'defaultValue' | 'helpText'
   ) => UseFormRegisterReturn
+  onCheckChange: (index: number, key: 'required' | 'hidden', checked: boolean) => void
 }) {
   return (
     <div className='space-y-1.5'>
@@ -542,7 +639,10 @@ function ParamRowsEditor({
       ) : (
         <div className='space-y-2'>
           {rows.map((row, index) => (
-            <div key={index} className='flex flex-wrap items-end gap-2'>
+            <div
+              key={index}
+              className='border-border/60 bg-muted/20 flex flex-wrap items-end gap-2 rounded-lg border p-2'
+            >
               <div className='space-y-1'>
                 <Label className='text-xs'>参数代码</Label>
                 <Input
@@ -598,6 +698,42 @@ function ParamRowsEditor({
                   />
                 </div>
               )}
+              <div className='space-y-1'>
+                <Label className='text-xs'>默认值</Label>
+                <Input
+                  className='h-7 w-32 font-mono text-xs'
+                  placeholder='default_value'
+                  {...registerPath(index, 'defaultValue')}
+                />
+              </div>
+              <div className='space-y-1'>
+                <Label className='text-xs'>帮助提示</Label>
+                <Input
+                  className='h-7 w-44 text-xs'
+                  placeholder='填写说明'
+                  {...registerPath(index, 'helpText')}
+                />
+              </div>
+              <label className='flex h-7 items-center gap-1.5 text-xs'>
+                <Checkbox
+                  aria-label={`必填 ${row.paramCode || index + 1}`}
+                  checked={row.required}
+                  onCheckedChange={(checked) =>
+                    onCheckChange(index, 'required', Boolean(checked))
+                  }
+                />
+                必填
+              </label>
+              <label className='flex h-7 items-center gap-1.5 text-xs'>
+                <Checkbox
+                  aria-label={`隐藏 ${row.paramCode || index + 1}`}
+                  checked={row.hidden}
+                  onCheckedChange={(checked) =>
+                    onCheckChange(index, 'hidden', Boolean(checked))
+                  }
+                />
+                隐藏
+              </label>
               <Button
                 type='button'
                 variant='ghost'
