@@ -300,6 +300,15 @@ class TaskControlMixin:
             if api_ids:
                 self.running_apis.difference_update(api_ids)
 
+    def _is_worker_alive(self, task_id):
+        """任务在本实例是否有存活的工作线程（INT-2282）。
+
+        workers 字典只增删于启动/清理分支，暂停期间退出（等待超时等）的线程
+        会留下死条目；控制类判定必须看线程是否真的活着，而不是字典里有没有键。
+        """
+        worker = self.workers.get(task_id)
+        return bool(worker is not None and worker.is_alive())
+
     def control_task(self, task_id, action):
         """
         控制任务执行（暂停、恢复、停止）
@@ -455,16 +464,37 @@ class TaskControlMixin:
                     self._emit_progress(task)
                     return True, "任务已暂停"
 
-                if action == 'resume' and task_id not in self.workers:
+                # INT-2282：判定依据由「在 workers 字典里」改为「工作线程仍存活」。
+                # 暂停期间工作线程可能已经退出（等待用例超时 / 异常收尾），此时
+                # workers 里只剩一条死线程：按成员判定会走到下面的「在跑」分支，
+                # 只置 pause_event 与 RUNNING 就返回成功，而没有任何线程继续执行。
+                if action == 'resume' and not self._is_worker_alive(task_id):
                     # 恢复时任务不在运行集合：含 API 用例的任务重新入队，
                     # 重建 API 异步等待流程；纯物理任务无法恢复
                     from task_service.infrastructure.persistence.task_repository import task_repository
                     profile = task_repository.get_execution_profile(task_id)
                     if profile['api_ids']:
+                        # INT-2282：陈旧执行态清理。暂停期间退出的工作线程留下的
+                        # workers/事件登记与内存槽位（_cleanup_task_resources 见到
+                        # paused 会刻意保留）必须先摘除——否则 _check_queue 会因
+                        # 本任务自己的 API 互斥把它永远挡在队列里，恢复后无派发。
+                        self.workers.pop(task_id, None)
+                        self.stop_flags.pop(task_id, None)
+                        self.pause_flags.pop(task_id, None)
+                        self._release_running_slot(task_id)
                         with self.queue_lock:
                             # INT-2231：状态置 QUEUED 必须与入队在同一把锁内完成，
                             # 否则 _check_queue 可能抢先消费到仍是 PAUSED 的队列项
                             # 并把它当作陈旧项丢弃，恢复的任务再无线程启动
+                            # INT-2282：上面的 get_execution_profile 内部用同一 scope
+                            # 的 scoped session 并在 finally close()，把本方法的 task
+                            # 实例 expunge 成脱管对象——脱管对象的赋值不会随 commit
+                            # 落库，resume 返回 success=true 而 DB 仍是 paused，入队
+                            # 项又被 _check_queue 当陈旧项丢弃。写状态前重新取回托管
+                            # 实例（close 已清空 identity map，取回的是新对象）。
+                            task = local_db_session.get(Task, task_id)
+                            if task is None:
+                                return False, "任务不存在"
                             task.status = TaskStatus.QUEUED
                             local_db_session.commit()
                             self.task_queue.append({
@@ -474,6 +504,15 @@ class TaskControlMixin:
                             })
                         self._emit_progress(task)
                         self.trigger_scheduler_check()
+                        # INT-2282：内存队列只由「停止任务」与「其它任务收尾清理」
+                        # 顺带消费一次，调度器兜底只捞 PENDING——恢复入队的队列项
+                        # 没人消费会一直停在 queued（表现为 resume 后无任何派发）。
+                        # 消费失败不翻转恢复结果：状态已是 queued，队列项仍在，
+                        # 后续任一停止/收尾触发的消费都会把它拉起。
+                        try:
+                            self._check_queue()
+                        except Exception as e:
+                            logger.error("恢复任务 %s 入队后立即消费失败: %s", task_id, e)
                         return True, "任务已恢复"
                     return False, "未找到运行中的任务"
 

@@ -266,23 +266,13 @@ class TestResumeEnqueueAtomic:
         ok, message = eng.control_task(1, 'resume')
 
         assert ok is True and message == '任务已恢复'
+        # INT-2231 时序锁：队列项可见的瞬间 DB 必须已是 queued（旧实现为 paused）
         assert observed == [TaskStatus.QUEUED], \
             f'队列项可见时 DB 必须已是 queued（旧实现此处为 paused）: {observed}'
-        assert _db_status(1) == TaskStatus.QUEUED, '入队时 DB 必须已是 queued'
-        assert len(eng.task_queue) == 1
-
-        # 恢复后的队列项必须能被消费者正常拉起（状态晚写时会被当陈旧项丢弃）
-        eng._check_queue()
-
+        # INT-2282：resume 入队后立即消费一次——队列项不会再无人消费地停在 queued
         assert eng.started_event.wait(2), '恢复入队的任务必须被消费启动'
         assert _db_status(1) == TaskStatus.RUNNING
-
-
-        # 恢复后的队列项必须能被消费者正常拉起（状态晚写时会被当陈旧项丢弃）
-        eng._check_queue()
-
-        assert eng.started_event.wait(2), '恢复入队的任务必须被消费启动'
-        assert _db_status(1) == TaskStatus.RUNNING
+        assert len(eng.task_queue) == 0
 
 
 class TestTwoInstancesOnlyOneStarts:
