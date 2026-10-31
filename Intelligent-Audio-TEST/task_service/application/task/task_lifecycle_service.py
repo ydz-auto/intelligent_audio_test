@@ -338,6 +338,10 @@ class TaskLifecycleService:
 
         全程审计事件（操作人经 x-user-id metadata 透传，get_current_user_id 读取）。
 
+        INT-2233：多路由任务（INT-604，同一用例 × 多设备/API 落多行）按
+        `(task_id, test_case_id)` **全量路由行**收敛，任一在途行即置中断信号；
+        计数重算与报告剔除随全量行收敛，详情/列表/统计不再残留。
+
         Returns:
             dict: {success, message, data, code?}
         """
@@ -351,12 +355,14 @@ class TaskLifecycleService:
             if denied:
                 return denied
 
-            tc = task_repository.find_task_case(task_id, case_id)
-            if tc is None:
+            # INT-2233：多路由任务同一用例落多行（INT-604），用例级移除按全量行收敛
+            tcs = task_repository.find_task_cases(task_id, case_id)
+            if not tcs:
                 return {'success': False, 'message': '未找到该任务关联的用例', 'data': {'code': 404}, 'code': 404}
 
+            live_tcs = [tc for tc in tcs if (tc.error_message or '') != REMOVED_CASE_MESSAGE]
             # 已移除留痕行幂等成功（重复删除不报错）
-            if (tc.error_message or '') == REMOVED_CASE_MESSAGE:
+            if not live_tcs:
                 return {'success': True, 'message': '用例已被移除', 'data': {'removed': True, 'idempotent': True}}
 
             from shared.infrastructure.user_context import get_current_user_id
@@ -368,7 +374,9 @@ class TaskLifecycleService:
                                              TaskStatus.REEVALUATING, TaskStatus.PAUSED)
 
             # 1. 执行中：先置用例级中断信号（执行器轮次边界/长阻塞点检测收敛）
-            if is_active_task and tc.execution_status in ACTIVE_EXECUTION_STATUSES:
+            #    INT-2233：任一路由行在途即置信号（不能只看首行）
+            if is_active_task and any(
+                    tc.execution_status in ACTIVE_EXECUTION_STATUSES for tc in live_tcs):
                 from shared.utils import distributed_coordinator as _dc
                 _dc.set_task_case_stop(task_id, case_id)
 

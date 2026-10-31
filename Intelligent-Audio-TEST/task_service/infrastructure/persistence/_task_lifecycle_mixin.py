@@ -340,34 +340,30 @@ class TaskLifecycleMixin:
             session.close()
 
     def recount_task_cases(self, task_id: int) -> None:
-        """重新统计任务的完成/失败用例数。
+        """重新统计任务的总/完成/失败**用例数**。
 
         INT-305：移除留痕行（error_message = _REMOVED_CASE_MESSAGE 的软删行）
         不计入总数/完成/失败——用例已从任务剔除，计数口径与列表/报告一致。
+
+        INT-2233：口径改为**用例级去重**（`test_case_id`），与建任务时的
+        `COUNT(DISTINCT test_case_id)` 及 `task_case_stats.refresh_task_counts_atomic`
+        同一来源；多路由任务（一个用例 × 多目标多行）此前按行计数会把同一用例
+        数成多条，移除后 total_cases 也不减 1。
         """
         session = get_db_session()
         try:
-            from sqlalchemy import func as _func
+            from task_service.domain.services.task_case_stats import case_level_counts
             not_removed = task_case_not_removed(TaskCase)
-            total = session.query(_func.count(TaskCase.id)).filter(
+            rows = session.query(TaskCase).filter(
                 TaskCase.task_id == task_id,
                 not_removed,
-            ).scalar() or 0
-            completed = session.query(_func.count(TaskCase.id)).filter(
-                TaskCase.task_id == task_id,
-                TaskCase.execution_status == ExecutionStatus.COMPLETED,
-                not_removed,
-            ).scalar() or 0
-            failed = session.query(_func.count(TaskCase.id)).filter(
-                TaskCase.task_id == task_id,
-                TaskCase.execution_status == ExecutionStatus.FAILED,
-                not_removed,
-            ).scalar() or 0
+            ).all()
+            counts = case_level_counts(rows)
             task = session.get(Task, task_id)
             if task:
-                task.total_cases = total
-                task.completed_cases = completed
-                task.failed_cases = failed
+                task.total_cases = counts['total']
+                task.completed_cases = counts['completed']
+                task.failed_cases = counts['failed']
             session.commit()
         except Exception:
             session.rollback()
@@ -390,7 +386,7 @@ class TaskLifecycleMixin:
             session.close()
 
     def find_task_case(self, task_id: int, case_id: str):
-        """查询单个 TaskCase PO。"""
+        """查询单个 TaskCase PO（单行语义：按行控制 skip/retry 等场景）。"""
         session = get_db_session()
         try:
             return session.query(TaskCase).filter(
@@ -400,17 +396,39 @@ class TaskLifecycleMixin:
         finally:
             session.close()
 
+    def find_task_cases(self, task_id: int, case_id: str) -> list:
+        """查询该用例在任务下的**全部路由行**（INT-604 多路由：同一用例 × 多设备/API
+        每个 (case, device_type, device_id) 落一行；INT-2233）。
+
+        用例级操作（如移除）必须按全量行收敛，不能只取首行，否则剩余路由行
+        仍被详情/列表/统计计入，与报告口径冲突。
+        """
+        session = get_db_session()
+        try:
+            return session.query(TaskCase).filter(
+                TaskCase.task_id == task_id,
+                TaskCase.test_case_id == case_id,
+            ).all()
+        finally:
+            session.close()
+
     # ==================== INT-305：用例移除 ====================
 
     def remove_task_case(self, task_id: int, case_id: str,
                          deleted_by_user_id=None) -> dict:
-        """移除任务用例（INT-305）。
+        """移除任务用例（INT-305；INT-2233 全量路由行收敛）。
 
         分阶段语义由调用方（task_lifecycle_service.remove_case）决定：
-        - pending/queued（无结果产出）：物理删除 TaskCase 行
+        - pending/queued 且无结果产出：物理删除 TaskCase 行
           （该行从未执行过，删除后重跑可重新关联）；
         - 其余（已有执行/评估产出）：软删（error_message 盖写移除留痕）
           + 级联处置 TestResult（excluded 标记，不物理删，保审计）。
+
+        INT-2233：多路由任务（INT-604）同一用例 × 多设备/API 会落多行
+        `task_case_relations`。移除必须覆盖 `(task_id, test_case_id)` 下**全部
+        未留痕行**，否则剩余行仍被详情/列表/统计计入，而报告已按 excluded
+        剔除——同一操作两套结果。物理删/软删按全量行统一判定（存在任一结果
+        即整体软删留痕，保审计）。
 
         Args:
             task_id: 任务 ID
@@ -418,35 +436,59 @@ class TaskLifecycleMixin:
             deleted_by_user_id: 操作人（x-user-id 透传；None 保持 NULL）
 
         Returns:
-            {'removed': True, 'had_result': bool}；用例不存在返回 None
+            {'removed': True, 'had_result': bool, 'purged': bool}；用例不存在返回 None
         """
         session = get_db_session()
         try:
-            tc = session.query(TaskCase).filter(
+            rows = session.query(TaskCase).filter(
                 TaskCase.task_id == task_id,
                 TaskCase.test_case_id == case_id,
-            ).first()
-            if tc is None:
+            ).all()
+            if not rows:
                 return None
+
+            # 已留痕行不重复处置（重复移除幂等：只剩留痕行时不再产生副作用）
+            live_rows = [tc for tc in rows
+                         if (tc.error_message or '') != _REMOVED_CASE_MESSAGE]
+            if not live_rows:
+                had_result = session.query(TestResult.id).filter(
+                    TestResult.task_id == task_id,
+                    TestResult.test_case_id == case_id,
+                ).first() is not None
+                return {'removed': True, 'had_result': had_result, 'purged': False}
 
             had_result = session.query(TestResult.id).filter(
                 TestResult.task_id == task_id,
                 TestResult.test_case_id == case_id,
             ).first() is not None
 
-            if not had_result and tc.execution_status in (ExecutionStatus.PENDING, ExecutionStatus.QUEUED):
-                # 无结果产出且未开始执行：物理删除（重跑可重新关联）
-                session.query(TaskCase).filter(TaskCase.id == tc.id).delete(synchronize_session=False)
+            # 物理删仅当：全量行都无结果、且都未开始执行（任一在跑/有产出即转软删）
+            purgeable = (
+                not had_result
+                and all(tc.execution_status in (ExecutionStatus.PENDING, ExecutionStatus.QUEUED)
+                        for tc in live_rows)
+            )
+            row_ids = [tc.id for tc in live_rows]
+
+            if purgeable:
+                # 无结果产出且未开始执行：物理删除全部路由行（重跑可重新关联）
+                session.query(TaskCase).filter(TaskCase.id.in_(row_ids)).delete(
+                    synchronize_session=False)
                 session.commit()
+                logger.info("移除任务用例(物理删) task_id=%s case_id=%s rows=%s",
+                            task_id, case_id, len(row_ids))
                 return {'removed': True, 'had_result': False, 'purged': True}
 
-            # 软删留痕：error_message 盖写移除语义（对齐 skip 的 error_message 用法）
-            tc.error_message = '用例已被移除'
-            tc.updated_by_user_id = deleted_by_user_id
+            # 软删留痕：error_message 盖写移除语义（对齐 skip 的 error_message 用法），
+            # 按全量行批量盖写（INT-2233：不能只改首行）
+            from shared.models.database import utc8now
+            session.query(TaskCase).filter(TaskCase.id.in_(row_ids)).update({
+                TaskCase.error_message: _REMOVED_CASE_MESSAGE,
+                TaskCase.updated_by_user_id: deleted_by_user_id,
+            }, synchronize_session=False)
             # 级联处置 TestResult：excluded 标记（不物理删，保审计；
             # 报告/聚合按 excluded=1 剔除被删用例；
             # excluded_at 盖写排除时间——软删行"何时被移除"的库内持久落点）
-            from shared.models.database import utc8now
             session.query(TestResult).filter(
                 TestResult.task_id == task_id,
                 TestResult.test_case_id == case_id,
@@ -456,6 +498,8 @@ class TaskLifecycleMixin:
                 TestResult.excluded_at: utc8now(),
             }, synchronize_session=False)
             session.commit()
+            logger.info("移除任务用例(软删留痕) task_id=%s case_id=%s rows=%s",
+                        task_id, case_id, len(row_ids))
             return {'removed': True, 'had_result': had_result, 'purged': False}
         except Exception:
             session.rollback()

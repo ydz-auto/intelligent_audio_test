@@ -46,10 +46,10 @@ _remove_db_session()
 # ==================== 公共构造 ====================
 
 def _tc(case_id, exec_st=ExecutionStatus.PENDING, eval_st=EvaluationStatus.PENDING,
-        error_message=None):
+        error_message=None, row_id=1):
     """TaskCase ORM 形状的对象（remove_case 消费）"""
     return SimpleNamespace(
-        id=1,
+        id=row_id,
         task_id=5,
         test_case_id=case_id,
         execution_status=exec_st,
@@ -76,10 +76,14 @@ REMOVED_MSG = '用例已被移除'
 class TestRemoveCaseLifecycle:
     """TaskLifecycleService.remove_case：四阶段语义 + 审计 + 幂等"""
 
-    def _run(self, task_status, tc, removal=None, cancel_data=None):
-        """公共编排：mock 仓储/引擎/评估取消/报告重算，跑 remove_case"""
+    def _run(self, task_status, tc, removal=None, cancel_data=None, tcs=None):
+        """公共编排：mock 仓储/引擎/评估取消/报告重算，跑 remove_case
+
+        `tcs`：多路由场景（INT-2233）下 find_task_cases 返回的全部路由行；
+        缺省按单行 `[tc]`。
+        """
         calls = {'case_stop': [], 'cancel': [], 'recount': 0, 'audit': [],
-                 'progress': 0, 'report': 0}
+                 'progress': 0, 'report': 0, 'remove': 0}
         if removal is None:
             removal = {'removed': True, 'had_result': True, 'purged': False}
 
@@ -93,7 +97,7 @@ class TestRemoveCaseLifecycle:
                  '_publish_removal_audit',
                  side_effect=lambda *a, **k: calls['audit'].append((a, k))):
             repo.get_task_orm.return_value = _task(task_status)
-            repo.find_task_case.return_value = tc
+            repo.find_task_cases.return_value = list(tcs) if tcs is not None else [tc]
             repo.remove_task_case.return_value = removal
             repo.expire_progress_cache.return_value = None
             engine.notify_case_completed.return_value = None
@@ -111,7 +115,12 @@ class TestRemoveCaseLifecycle:
             def _set_stop(tid, cid):
                 calls['case_stop'].append((tid, cid))
 
+            def _remove(tid, cid, deleted_by_user_id=None):
+                calls['remove'] += 1
+                return removal
+
             repo.recount_task_cases.side_effect = _recount
+            repo.remove_task_case.side_effect = _remove
             set_stop.side_effect = _set_stop
 
             svc = __import__('task_service.application.task.task_lifecycle_service',
@@ -133,7 +142,7 @@ class TestRemoveCaseLifecycle:
         from task_service.application.task.task_lifecycle_service import TaskLifecycleService
         with patch('task_service.application.task.task_lifecycle_service.task_repository') as repo:
             repo.get_task_orm.return_value = _task()
-            repo.find_task_case.return_value = None
+            repo.find_task_cases.return_value = []
             result = TaskLifecycleService().remove_case(5, 'c1')
         assert result['success'] is False and result['code'] == 404
 
@@ -142,7 +151,7 @@ class TestRemoveCaseLifecycle:
         from task_service.application.task.task_lifecycle_service import TaskLifecycleService
         with patch('task_service.application.task.task_lifecycle_service.task_repository') as repo:
             repo.get_task_orm.return_value = _task()
-            repo.find_task_case.return_value = _tc('c1', error_message=REMOVED_MSG)
+            repo.find_task_cases.return_value = [_tc('c1', error_message=REMOVED_MSG)]
             result = TaskLifecycleService().remove_case(5, 'c1')
         assert result['success'] is True
         assert result['data']['idempotent'] is True
@@ -197,7 +206,7 @@ class TestRemoveCaseLifecycle:
              patch('task_service.core.execution_engine.execution_engine') as engine, \
              patch('task_service.infrastructure.acl.report_acl_repository.report_acl_repository') as report_acl:
             repo.get_task_orm.return_value = _task('completed')
-            repo.find_task_case.return_value = _tc('c1', ExecutionStatus.COMPLETED, EvaluationStatus.COMPLETED)
+            repo.find_task_cases.return_value = [_tc('c1', ExecutionStatus.COMPLETED, EvaluationStatus.COMPLETED)]
             repo.remove_task_case.return_value = {'removed': True, 'had_result': True, 'purged': False}
             repo.expire_progress_cache.return_value = None
             report_acl.recalculate_task_report.side_effect = RuntimeError('report svc down')
@@ -205,6 +214,50 @@ class TestRemoveCaseLifecycle:
                 result = TaskLifecycleService().remove_case(5, 'c1')
         assert result['success'] is True
         assert result['data']['report_requeued'] is False
+
+    # ---------- INT-2233：多路由用例移除（全量行收敛） ----------
+
+    def test_multi_route_calls_removal_once_for_all_rows(self):
+        """多路由：用例级移除只调用一次仓储全量处置（不是按行重复删）"""
+        row1 = _tc('c1', ExecutionStatus.PENDING, EvaluationStatus.PENDING, row_id=11)
+        row2 = _tc('c1', ExecutionStatus.COMPLETED, EvaluationStatus.COMPLETED, row_id=12)
+        result, calls = self._run('running', row1, tcs=[row1, row2])
+        assert result['success'] is True
+        assert calls['remove'] == 1      # 全量行一次收敛
+        assert calls['recount'] == 1
+        assert len(calls['audit']) == 1
+        assert result['data']['idempotent'] is False
+
+    def test_multi_route_active_row_sets_interrupt(self):
+        """多路由：任一路由行在途即置用例级中断信号（不能只看首行 pending）"""
+        row1 = _tc('c1', ExecutionStatus.PENDING, EvaluationStatus.PENDING, row_id=11)
+        row2 = _tc('c1', ExecutionStatus.RUNNING, EvaluationStatus.RUNNING, row_id=12)
+        result, calls = self._run('running', row1, tcs=[row1, row2])
+        assert result['success'] is True
+        assert calls['case_stop'] == [(5, 'c1')]
+
+    def test_multi_route_idempotent_when_all_rows_traced(self):
+        """多路由：全量行均已留痕 → 幂等成功且无任何副作用"""
+        from task_service.application.task.task_lifecycle_service import TaskLifecycleService
+        rows = [_tc('c1', error_message=REMOVED_MSG, row_id=11),
+                _tc('c1', error_message=REMOVED_MSG, row_id=12)]
+        with patch('task_service.application.task.task_lifecycle_service.task_repository') as repo:
+            repo.get_task_orm.return_value = _task()
+            repo.find_task_cases.return_value = rows
+            result = TaskLifecycleService().remove_case(5, 'c1')
+        assert result['success'] is True
+        assert result['data']['idempotent'] is True
+        repo.remove_task_case.assert_not_called()
+        repo.recount_task_cases.assert_not_called()
+
+    def test_multi_route_partial_trace_still_removes_live_rows(self):
+        """多路由：历史残留半删状态（部分行已留痕）→ 仍按存活行执行移除"""
+        row1 = _tc('c1', error_message=REMOVED_MSG, row_id=11)
+        row2 = _tc('c1', ExecutionStatus.COMPLETED, EvaluationStatus.COMPLETED, row_id=12)
+        result, calls = self._run('completed', row2, tcs=[row1, row2])
+        assert result['success'] is True
+        assert calls['remove'] == 1
+        assert result['data']['idempotent'] is False
 
 
 # ==================== 2. 仓储 remove_task_case ====================
@@ -323,6 +376,229 @@ class TestRemoveTaskCaseRepository:
             task = session.get(Task, 103)
             assert task.total_cases == 1  # 移除留痕行不计入
             assert task.completed_cases == 1
+        finally:
+            session.close()
+
+    # ---------- INT-2233：多路由（同一用例 × 多目标多行） ----------
+
+    def test_multi_route_pending_rows_all_purged(self):
+        """多路由未执行：全部路由行物理删除（不是只删首行）"""
+        self._setup_sqlite()
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.persistence.models import Task, TaskCase
+        from task_service.infrastructure.persistence.task_repository import task_repository
+
+        session = get_db_session()
+        try:
+            session.add(Task(id=201, name='t', status='pending', total_cases=1,
+                             completed_cases=0, failed_cases=0))
+            for dev_id in (11, 12):
+                session.add(TaskCase(task_id=201, test_case_id='c-multi', device_id=dev_id,
+                                     execution_status=ExecutionStatus.PENDING,
+                                     evaluation_status=EvaluationStatus.PENDING))
+            session.commit()
+        finally:
+            session.close()
+
+        result = task_repository.remove_task_case(201, 'c-multi', deleted_by_user_id=9)
+        assert result == {'removed': True, 'had_result': False, 'purged': True}
+
+        session = get_db_session()
+        try:
+            assert session.query(TaskCase).filter_by(task_id=201).count() == 0
+        finally:
+            session.close()
+
+    def test_multi_route_soft_delete_covers_all_rows(self):
+        """多路由已执行：全部路由行留痕软删 + 结果 excluded（保审计）"""
+        self._setup_sqlite()
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.persistence.models import Task, TaskCase, TestResult
+        from task_service.infrastructure.persistence.task_repository import task_repository
+
+        session = get_db_session()
+        try:
+            session.add(Task(id=202, name='t', status='completed', total_cases=1,
+                             completed_cases=1, failed_cases=0))
+            for dev_id in (21, 22):
+                session.add(TaskCase(task_id=202, test_case_id='c-multi', device_id=dev_id,
+                                     status='completed',
+                                     execution_status=ExecutionStatus.COMPLETED,
+                                     evaluation_status=EvaluationStatus.COMPLETED))
+            session.add(TestResult(task_id=202, test_case_id='c-multi', device_id=21,
+                                   execution_status=ExecutionStatus.COMPLETED))
+            session.commit()
+        finally:
+            session.close()
+
+        result = task_repository.remove_task_case(202, 'c-multi', deleted_by_user_id=7)
+        assert result == {'removed': True, 'had_result': True, 'purged': False}
+
+        session = get_db_session()
+        try:
+            rows = session.query(TaskCase).filter_by(task_id=202, test_case_id='c-multi').all()
+            assert len(rows) == 2                       # 留痕保审计，不物理删
+            assert all(r.error_message == REMOVED_MSG for r in rows)  # 两行都盖上移除留痕
+            assert all(r.updated_by_user_id == 7 for r in rows)
+            tr = session.query(TestResult).filter_by(task_id=202, test_case_id='c-multi').first()
+            assert tr is not None and int(tr.excluded) == 1
+        finally:
+            session.close()
+
+        # 详情/统计按留痕行剔除 → 该用例已不可见
+        assert task_repository.count_task_cases_excluding_removed(202) == 0
+
+    def test_multi_route_mixed_pending_and_completed_soft_deletes_all(self):
+        """多路由混合状态（一行未开始、一行已完成）：存在产出即整体软删留痕"""
+        self._setup_sqlite()
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.persistence.models import Task, TaskCase, TestResult
+        from task_service.infrastructure.persistence.task_repository import task_repository
+
+        session = get_db_session()
+        try:
+            session.add(Task(id=203, name='t', status='running', total_cases=1,
+                             completed_cases=0, failed_cases=0))
+            session.add(TaskCase(task_id=203, test_case_id='c-mixed', device_id=31,
+                                 execution_status=ExecutionStatus.PENDING,
+                                 evaluation_status=EvaluationStatus.PENDING))
+            session.add(TaskCase(task_id=203, test_case_id='c-mixed', device_id=32,
+                                 status='completed',
+                                 execution_status=ExecutionStatus.COMPLETED,
+                                 evaluation_status=EvaluationStatus.COMPLETED))
+            session.add(TestResult(task_id=203, test_case_id='c-mixed', device_id=32,
+                                   execution_status=ExecutionStatus.COMPLETED))
+            session.commit()
+        finally:
+            session.close()
+
+        result = task_repository.remove_task_case(203, 'c-mixed', deleted_by_user_id=7)
+        assert result == {'removed': True, 'had_result': True, 'purged': False}
+
+        session = get_db_session()
+        try:
+            rows = session.query(TaskCase).filter_by(task_id=203).all()
+            assert len(rows) == 2
+            assert all(r.error_message == REMOVED_MSG for r in rows)
+        finally:
+            session.close()
+
+    def test_multi_route_partial_trace_purges_remaining_live_rows(self):
+        """多路由历史半删（首行已留痕）：移除仍清理剩余存活行"""
+        self._setup_sqlite()
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.persistence.models import Task, TaskCase
+        from task_service.infrastructure.persistence.task_repository import task_repository
+
+        session = get_db_session()
+        try:
+            session.add(Task(id=204, name='t', status='pending', total_cases=1,
+                             completed_cases=0, failed_cases=0))
+            session.add(TaskCase(task_id=204, test_case_id='c-half', device_id=41,
+                                 execution_status=ExecutionStatus.PENDING,
+                                 evaluation_status=EvaluationStatus.PENDING,
+                                 error_message=REMOVED_MSG))
+            session.add(TaskCase(task_id=204, test_case_id='c-half', device_id=42,
+                                 execution_status=ExecutionStatus.PENDING,
+                                 evaluation_status=EvaluationStatus.PENDING))
+            session.commit()
+        finally:
+            session.close()
+
+        result = task_repository.remove_task_case(204, 'c-half', deleted_by_user_id=7)
+        assert result == {'removed': True, 'had_result': False, 'purged': True}
+
+        session = get_db_session()
+        try:
+            rows = session.query(TaskCase).filter_by(task_id=204).all()
+            assert len(rows) == 1 and str(rows[0].device_id) == '41'  # 只留历史留痕行
+        finally:
+            session.close()
+        assert task_repository.count_task_cases_excluding_removed(204) == 0
+
+    def test_recount_is_case_level_not_row_level(self):
+        """INT-2233：计数按用例去重（一个用例 × 2 路由 = 1 条用例）"""
+        self._setup_sqlite()
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.persistence.models import Task, TaskCase
+        from task_service.infrastructure.persistence.task_repository import task_repository
+
+        session = get_db_session()
+        try:
+            session.add(Task(id=205, name='t', status='completed', total_cases=2,
+                             completed_cases=2, failed_cases=0))
+            for dev_id in (51, 52):  # 同一用例两条路由
+                session.add(TaskCase(task_id=205, test_case_id='c-two-routes', device_id=dev_id,
+                                     status='completed',
+                                     execution_status=ExecutionStatus.COMPLETED,
+                                     evaluation_status=EvaluationStatus.COMPLETED))
+            session.add(TaskCase(task_id=205, test_case_id='c-single', device_id=53,
+                                 status='completed',
+                                 execution_status=ExecutionStatus.COMPLETED,
+                                 evaluation_status=EvaluationStatus.COMPLETED))
+            session.commit()
+        finally:
+            session.close()
+
+        task_repository.recount_task_cases(205)
+        session = get_db_session()
+        try:
+            task = session.get(Task, 205)
+            assert task.total_cases == 2       # 去重用例数（不是 3 行）
+            assert task.completed_cases == 2
+        finally:
+            session.close()
+
+    def test_acceptance_multi_route_remove_then_counts_and_idempotent(self):
+        """验收：用例 × 2 目标 → 移除后详情/统计 0 条、total_cases 减 1、重复移除幂等"""
+        self._setup_sqlite()
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.persistence.models import Task, TaskCase, TestResult
+        from task_service.infrastructure.persistence.task_repository import task_repository
+
+        session = get_db_session()
+        try:
+            session.add(Task(id=206, name='t', status='completed', total_cases=2,
+                             completed_cases=2, failed_cases=0))
+            # 用例 c-multi × 2 目标；另一用例 c-keep
+            for dev_id in (61, 62):
+                session.add(TaskCase(task_id=206, test_case_id='c-multi', device_id=dev_id,
+                                     status='completed',
+                                     execution_status=ExecutionStatus.COMPLETED,
+                                     evaluation_status=EvaluationStatus.COMPLETED))
+            session.add(TaskCase(task_id=206, test_case_id='c-keep', device_id=63,
+                                 status='completed',
+                                 execution_status=ExecutionStatus.COMPLETED,
+                                 evaluation_status=EvaluationStatus.COMPLETED))
+            for dev_id in (61, 62):
+                session.add(TestResult(task_id=206, test_case_id='c-multi', device_id=dev_id,
+                                       execution_status=ExecutionStatus.COMPLETED))
+            session.commit()
+        finally:
+            session.close()
+
+        task_repository.remove_task_case(206, 'c-multi', deleted_by_user_id=7)
+        task_repository.recount_task_cases(206)
+
+        session = get_db_session()
+        try:
+            task = session.get(Task, 206)
+            assert task.total_cases == 1          # 移除后减 1（用例级口径）
+            live = session.query(TaskCase).filter(
+                TaskCase.task_id == 206,
+                TaskCase.test_case_id == 'c-multi',
+                TaskCase.error_message != REMOVED_MSG,
+            ).count()
+            assert live == 0                      # 详情/列表不再出现该用例
+        finally:
+            session.close()
+
+        # 重复移除幂等：不再产生副作用
+        again = task_repository.remove_task_case(206, 'c-multi', deleted_by_user_id=7)
+        assert again == {'removed': True, 'had_result': True, 'purged': False}
+        session = get_db_session()
+        try:
+            assert session.query(TaskCase).filter_by(task_id=206).count() == 3  # 2 留痕 + 1 保留
         finally:
             session.close()
 
