@@ -90,10 +90,18 @@ export interface ParamProfileParam {
   fieldPath: string | null
 }
 
-/** 映射行（source: api = API 输出 → 评估；case = 用例参数 → API 输入字段） */
+/**
+ * 策略映射来源：
+ * - `api`：API 输出 → 评估（scope=api 策略）；
+ * - `case`：用例参数 → 设备输入 / API 输入字段；
+ * - `device`：设备输出 → 评估（scope=device 策略）。
+ */
+export type ParamProfileMappingSource = 'api' | 'case' | 'device'
+
+/** 映射行（source 见 ParamProfileMappingSource） */
 export interface ParamProfileMapping {
   id: number
-  source: 'api' | 'case'
+  source: ParamProfileMappingSource
   sourceDirection: ParamDirection
   sourceParam: string
   dimensionId: number | null
@@ -105,6 +113,12 @@ export interface ParamProfileMapping {
 /** 策略 ↔ API 实例绑定（来自 `GET /algorithm/param-profiles` 响应的 bindings） */
 export interface ParamProfileBinding {
   apiId: number
+  profileId: number
+}
+
+/** 策略 ↔ 设备绑定（来自 `GET /algorithm/param-profiles` 响应的 device_bindings） */
+export interface DeviceParamProfileBinding {
+  deviceId: number
   profileId: number
 }
 
@@ -156,8 +170,8 @@ export interface ParamProfileParamDraft {
 }
 
 export interface ParamProfileMappingDraft {
-  /** 源参数来源：api = API 输出（→ 评估）；case = 用例参数（→ API 输入字段） */
-  source: 'api' | 'case'
+  /** 源参数来源：api = API 输出（→ 评估）；case = 用例参数；device = 设备输出（→ 评估） */
+  source: ParamProfileMappingSource
   sourceDirection: ParamDirection
   sourceParam: string
   targetParam: string

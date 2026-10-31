@@ -10,6 +10,7 @@
  * - POST   /algorithm/param-profiles/{id}/clone         （algorithm:param_manage）
  * - PUT    /algorithm/api-scope/{api_id}/binding        （algorithm:param_manage）
  * - PUT    /algorithm/api-scope/{api_id}/overrides      （algorithm:param_manage）
+ * - PUT    /algorithm/device-scope/{device_id}/binding  （algorithm:param_manage）
  *
  * 错误统一抛 ApiError（client 层已按 { success, code, message, detail } 归一）。
  */
@@ -17,6 +18,7 @@ import type {
   ApiScopeOverridesInput,
   ApiScopeOverridesResult,
   ApiScopeBinding,
+  DeviceParamProfileBinding,
   ParamProfile,
   ParamProfileBinding,
   ParamProfileCloneInput,
@@ -25,6 +27,7 @@ import type {
 import { apiClient } from '@/infrastructure/api/client'
 import {
   toApiScopeOverridesDto,
+  toDeviceParamProfileBindingList,
   toParamProfile,
   toParamProfileBindDto,
   toParamProfileBindingList,
@@ -35,11 +38,13 @@ import {
 
 const PARAM_PROFILES_PATH = '/algorithm/param-profiles'
 const API_SCOPE_PATH = '/algorithm/api-scope'
+const DEVICE_SCOPE_PATH = '/algorithm/device-scope'
 
-/** 列表响应（策略 + 这些策略的 API 绑定，同一响应返回） */
+/** 列表响应（策略 + 这些策略的 API / 设备绑定，同一响应返回） */
 export interface ParamProfileListResult {
   profiles: ParamProfile[]
   bindings: ParamProfileBinding[]
+  deviceBindings: DeviceParamProfileBinding[]
 }
 
 function profilePath(profileId: number): string {
@@ -79,6 +84,7 @@ export async function listProfiles(
   return {
     profiles: toParamProfileList(payload),
     bindings: toParamProfileBindingList(payload),
+    deviceBindings: toDeviceParamProfileBindingList(payload),
   }
 }
 
@@ -129,6 +135,22 @@ export async function bindApiProfile(
   const dto = (payload ?? {}) as ApiScopeBindingDto
   return {
     apiId: dto.api_id == null ? apiId : count(dto.api_id),
+    profileId: dto.profile_id == null ? null : count(dto.profile_id),
+  }
+}
+
+/** 设备绑定策略（scope=device）；profileId = null 解绑 */
+export async function bindDeviceProfile(
+  deviceId: number,
+  profileId: number | null
+): Promise<{ deviceId: number; profileId: number | null }> {
+  const payload = await apiClient.put<unknown>(
+    `${DEVICE_SCOPE_PATH}/${deviceId}/binding`,
+    toParamProfileBindDto(profileId)
+  )
+  const dto = (payload ?? {}) as { device_id?: unknown; profile_id?: unknown }
+  return {
+    deviceId: dto.device_id == null ? deviceId : count(dto.device_id),
     profileId: dto.profile_id == null ? null : count(dto.profile_id),
   }
 }

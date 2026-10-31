@@ -29,12 +29,14 @@ import {
   isParamTransformType,
   isParamType,
   type ApiScopeOverridesInput,
+  type DeviceParamProfileBinding,
   type ParamProfile,
   type ParamProfileBinding,
   type ParamProfileCloneInput,
   type ParamProfileInput,
   type ParamProfileMapping,
   type ParamProfileMappingDraft,
+  type ParamProfileMappingSource,
   type ParamProfileParam,
   type ParamProfileParamDraft,
 } from '@/domain/models/paramProfile'
@@ -88,10 +90,16 @@ export interface ParamProfileListDto {
   profiles?: unknown[]
   total?: number
   bindings?: unknown[]
+  device_bindings?: unknown[]
 }
 
 export interface ParamProfileBindingDto {
   api_id: number
+  profile_id: number
+}
+
+export interface DeviceParamProfileBindingDto {
+  device_id: number
   profile_id: number
 }
 
@@ -115,10 +123,12 @@ export function toParamProfileParam(raw: unknown): ParamProfileParam {
 
 export function toParamProfileMapping(raw: unknown): ParamProfileMapping {
   const r = asRecord(raw)
+  // 策略映射来源：api（API 输出→评估）/ case（用例参数）/ device（设备输出→评估）
+  const source: ParamProfileMappingSource =
+    r.source === 'case' || r.source === 'device' ? r.source : 'api'
   return {
     id: num(r.id),
-    // 策略映射只服务 API 作用域；后端脏值一律收敛为 api
-    source: 'api',
+    source,
     sourceDirection: isParamDirection(r.source_direction) ? r.source_direction : 'output',
     sourceParam: nullableStr(r.source_param) ?? nullableStr(r.source_field) ?? '',
     dimensionId: nullableNum(r.dimension_id),
@@ -180,6 +190,18 @@ export function toParamProfileBindingList(payload: unknown): ParamProfileBinding
   return dto.bindings.map((raw) => {
     const r = asRecord(raw) as Partial<ParamProfileBindingDto>
     return { apiId: num(r.api_id), profileId: num(r.profile_id) }
+  })
+}
+
+/** 同一响应的 `device_bindings`（device_id → profile_id）；缺省 / 非法 = 空数组 */
+export function toDeviceParamProfileBindingList(
+  payload: unknown
+): DeviceParamProfileBinding[] {
+  const dto = asRecord(payload) as ParamProfileListDto
+  if (!Array.isArray(dto.device_bindings)) return []
+  return dto.device_bindings.map((raw) => {
+    const r = asRecord(raw) as Partial<DeviceParamProfileBindingDto>
+    return { deviceId: num(r.device_id), profileId: num(r.profile_id) }
   })
 }
 
