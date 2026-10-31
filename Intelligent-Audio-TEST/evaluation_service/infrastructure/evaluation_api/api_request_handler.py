@@ -39,7 +39,8 @@ class EvalTaskRegistry:
     _cancelled_cases = {}  # 'task_id:test_case_id' -> reason（case 级取消标记，有序，FIFO 淘汰）
     _CANCELLED_CASES_CAP = 4096
     # case 取消标记 Redis TTL：覆盖 Redis 持久化队列的消费周期（远长于最长评估
-    # 等待 eval_max_wait_time=600s，重启+队列重放场景后自然过期，不留永久垃圾）
+    # 等待上限 evaluation_service.eval_max_wait_time，缺省 72000s = 20h；重启+队列
+    # 重放场景后自然过期，不留永久垃圾）
     _CASE_CANCELLED_TTL = 86400
 
     @staticmethod
@@ -50,14 +51,41 @@ class EvalTaskRegistry:
             return task_id
 
     @classmethod
-    def register(cls, eval_task_id, task_id, endpoint_url, test_case_id=None):
-        """登记在途评估任务（同 eval_task_id 重复登记幂等覆盖）"""
+    def register(cls, eval_task_id, task_id, endpoint_url, test_case_id=None, dim_key=None):
+        """登记在途评估任务（同 eval_task_id 重复登记幂等覆盖）
+
+        dim_key：本次提交覆盖的维度组标识（INT-2250 重投判重用）——同一用例的不同
+        维度组会并发提交，判重必须带上维度组，不能只按 (task_id, test_case_id)。
+        """
         with cls._lock:
             cls._entries[eval_task_id] = {
                 'task_id': cls._norm_task_id(task_id),
                 'endpoint_url': endpoint_url,
                 'test_case_id': str(test_case_id) if test_case_id else None,
+                'dim_key': dim_key,
             }
+
+    @classmethod
+    def has_inflight(cls, task_id, test_case_id, endpoint_url=None, dim_key=None):
+        """该 (task_id, test_case_id, 维度组) 是否已在某端点在途（INT-2250 重投判重）
+
+        换端点重投同一评估前调用：同一维度组已在该端点有在途评估时不重复提交，
+        避免重复计分/重复占用端点并发。endpoint_url / dim_key 为 None 时不做该项限定。
+        """
+        task_id = cls._norm_task_id(task_id)
+        case_id = str(test_case_id) if test_case_id else None
+        if case_id is None:
+            return False
+        with cls._lock:
+            for ctx in cls._entries.values():
+                if ctx.get('task_id') != task_id or ctx.get('test_case_id') != case_id:
+                    continue
+                if endpoint_url is not None and ctx.get('endpoint_url') != endpoint_url:
+                    continue
+                if dim_key is not None and ctx.get('dim_key') != dim_key:
+                    continue
+                return True
+            return False
 
     @classmethod
     def unregister(cls, eval_task_id):
@@ -172,6 +200,39 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         """构造连接级错误响应（INT-107：标注 __error_kind__，供降级路径识别端点不可达）"""
         return {'__error__': message, '__error_kind__': EvalErrorKind.CONNECTION.value}
 
+    @staticmethod
+    def _timeout_error(message):
+        """构造端点超时错误响应（INT-2250：连接已建立但无响应，结果未知，不换端点）"""
+        return {'__error__': message, '__error_kind__': EvalErrorKind.TIMEOUT.value}
+
+    @staticmethod
+    def _classify_request_exception(exc):
+        """把请求异常归入评估错误类别（INT-2250）
+
+        - ConnectTimeout / ConnectionError：连接级失败（端点不可达、DNS、连接被拒）→ connection
+        - 其余 Timeout（ReadTimeout / Timeout）：连接已建立但无响应，评估结果未知 → timeout
+        - 其它异常（序列化、解析等本地错误）：不分类，按未分类错误原样上报
+
+        注意判定顺序：requests 的 ConnectTimeout 同时继承 ConnectionError 与 Timeout，
+        必须先判连接级，否则会被误归为「结果未知」而不触发兜底端点。
+        """
+        if isinstance(exc, requests.exceptions.ConnectTimeout):
+            return EvalErrorKind.CONNECTION.value
+        if isinstance(exc, requests.exceptions.ConnectionError):
+            return EvalErrorKind.CONNECTION.value
+        if isinstance(exc, requests.exceptions.Timeout):
+            return EvalErrorKind.TIMEOUT.value
+        return None
+
+    def _error_response_for_exception(self, exc, error_message):
+        """按异常类别构造响应体（INT-2250）：连接级/超时带 __error_kind__，其余只带 __error__"""
+        kind = self._classify_request_exception(exc)
+        if kind == EvalErrorKind.CONNECTION.value:
+            return self._connection_error(error_message)
+        if kind == EvalErrorKind.TIMEOUT.value:
+            return self._timeout_error(error_message)
+        return {'__error__': error_message}
+
     def make_api_request(self, url, method, headers, payload, timeout=10):
         """
         发起API请求，支持GET和POST方法
@@ -214,18 +275,15 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 else:
                     resp_data = {'__error__': error_msg, '__raw_response__': resp_data}
         except Exception as e:
-            # 网络错误等异常情况
-            error_msg = str(e)
+            # 网络错误等异常情况（INT-2250：按连接级/超时分类，错误文案带方法与 URL 便于定位）
+            error_msg = f"{method} {url} 请求异常: {str(e)}"
             self._log(
                 level='ERROR',
                 category='execution',
                 content=f"API请求异常: {error_msg}"
             )
             # 返回异常信息作为响应数据；连接级失败标注 __error_kind__（INT-107 降级路径）
-            if isinstance(e, requests.exceptions.ConnectionError):
-                resp_data = self._connection_error(error_msg)
-            else:
-                resp_data = {'__error__': error_msg}
+            resp_data = self._error_response_for_exception(e, error_msg)
 
         return resp_data
 
@@ -499,14 +557,13 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
             return resp_data
         except Exception as e:
+            error_msg = f"POST {create_task_url} 请求异常: {str(e)}"
             self._log(
                 level='ERROR',
                 category='execution',
-                content=f"上传API请求异常: {str(e)}"
+                content=f"上传API请求异常: {error_msg}"
             )
-            if isinstance(e, requests.exceptions.ConnectionError):
-                return self._connection_error(str(e))
-            return {'__error__': str(e)}
+            return self._error_response_for_exception(e, error_msg)
 
     def get_task_status(self, url, eval_task_id, timeout=30):
         """
@@ -643,6 +700,20 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         start_time = time.time()
         poll_count = 0
 
+        # INT-2250：轮询期失败分类与快速失败阈值（配置化，拒绝魔法数字）。
+        # 端点中途挂掉时，原先只打 WARNING 一直轮询到 eval_max_wait_time（缺省 72000s=20h），
+        # 端点消费线程被无结果任务长期占用、最终错误只剩「评估任务超时」。改为连续 N 次
+        # 同类失败即快速失败，并把「端点不可达 / 端点超时 / 业务失败」类别落进 __error_kind__。
+        max_conn_failures = int(config_manager.get_value(
+            'evaluation_service', 'eval_poll_max_connection_failures', 3) or 3)
+        max_timeout_failures = int(config_manager.get_value(
+            'evaluation_service', 'eval_poll_max_timeout_failures', 3) or 3)
+        max_business_failures = int(config_manager.get_value(
+            'evaluation_service', 'eval_poll_max_business_failures', 6) or 6)
+        conn_streak = 0       # 连续连接级失败（端点不可达）
+        timeout_streak = 0    # 连续端点超时（结果未知）
+        business_streak = 0   # 连续业务级失败（HTTP 错误/状态查询被拒）
+
         while time.time() - start_time < effective_max_wait:
             poll_count += 1
 
@@ -656,7 +727,9 @@ class ApiRequestHandler(EvaluationLoggerMixin):
             status_response = self.get_task_status(url, eval_task_id)
 
             if isinstance(status_response, dict) and status_response.get('code') == 0:
-                data = status_response.get('data', {})
+                # 状态查询成功即清零连续失败计数（只看连续失败，容忍偶发抖动）
+                conn_streak = timeout_streak = business_streak = 0
+                data = status_response.get('data') or {}
                 status = data.get('status', '')
                 elapsed_time = int(time.time() - start_time)
 
@@ -669,6 +742,8 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                     error_msg = data.get('error_msg', 'Task failed')
                     self._log('error', f'评估任务失败: eval_task_id={eval_task_id}, error={error_msg}',
                               task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                    # 业务级失败（任务执行失败）：不带 __error_kind__，与既有兜底契约一致
+                    # （不切换端点，避免重复计分）
                     return {'__error__': error_msg}
                 elif status == 'canceled':
                     # INT-174：子服务 cancel_task（方案B）已生效，任务不会产生结果与回调
@@ -679,8 +754,50 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                     self._log('info', f'等待评估任务: eval_task_id={eval_task_id}, status={status}, 已等待={elapsed_time}秒, 第{poll_count}次查询',
                               task_id=task_id, test_case_id=test_case_id, api_id=api_id)
             else:
-                self._log('warning', f'查询评估任务状态失败: eval_task_id={eval_task_id}, response={status_response}',
+                # INT-2250：按错误类别累计连续失败；达到阈值立即收敛为可定位的失败原因
+                kind = status_response.get('__error_kind__') if isinstance(status_response, dict) else None
+                if isinstance(status_response, dict):
+                    failure_text = str(status_response.get('__error__')
+                                       or status_response.get('msg') or status_response)
+                else:
+                    failure_text = str(status_response)
+                if kind == EvalErrorKind.CONNECTION.value:
+                    conn_streak += 1
+                    timeout_streak = business_streak = 0
+                    streak, limit = conn_streak, max_conn_failures
+                elif kind == EvalErrorKind.TIMEOUT.value:
+                    timeout_streak += 1
+                    conn_streak = business_streak = 0
+                    streak, limit = timeout_streak, max_timeout_failures
+                else:
+                    business_streak += 1
+                    conn_streak = timeout_streak = 0
+                    streak, limit = business_streak, max_business_failures
+
+                self._log('warning',
+                          f'查询评估任务状态失败: eval_task_id={eval_task_id}, kind={kind or "unclassified"}, '
+                          f'连续失败={streak}/{limit}, response={status_response}',
                           task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+
+                if streak >= limit:
+                    elapsed_time = int(time.time() - start_time)
+                    if kind == EvalErrorKind.CONNECTION.value:
+                        fail_msg = (f'评估端点不可达: 端点 {url} 连续 {streak} 次查询状态失败'
+                                    f'（eval_task_id={eval_task_id}, 已等待={elapsed_time}秒），'
+                                    f'放弃等待: {failure_text}')
+                        fail_kind = EvalErrorKind.CONNECTION.value
+                    elif kind == EvalErrorKind.TIMEOUT.value:
+                        fail_msg = (f'评估端点响应超时: 端点 {url} 连续 {streak} 次查询无响应'
+                                    f'（eval_task_id={eval_task_id}, 已等待={elapsed_time}秒），'
+                                    f'评估结果未知: {failure_text}')
+                        fail_kind = EvalErrorKind.TIMEOUT.value
+                    else:
+                        fail_msg = (f'评估任务状态查询连续失败: 端点 {url} 连续 {streak} 次返回错误'
+                                    f'（eval_task_id={eval_task_id}, 已等待={elapsed_time}秒）: {failure_text}')
+                        fail_kind = EvalErrorKind.BUSINESS.value
+                    self._log('error', fail_msg, task_id=task_id,
+                              test_case_id=test_case_id, api_id=api_id)
+                    return {'__error__': fail_msg, '__error_kind__': fail_kind}
 
             # INT-308 停止传播：轮询间隔 sleep 拆片，片间检查 case 级取消标记——
             # 用例删除/任务停止取消评估时 ≤1s 退出等待，不再睡满整个 poll_interval
@@ -693,6 +810,9 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 time.sleep(slice_wait)
                 sleep_remaining -= slice_wait
 
-        timeout_msg = f"评估任务超时: eval_task_id={eval_task_id}, 等待时间超过{effective_max_wait}秒"
+        # INT-2250：等待上限耗尽属「结果未知」——带 timeout 类别，提示端点/配置可定位项
+        timeout_msg = (f"评估任务超时: eval_task_id={eval_task_id}, 端点 {url} 在 "
+                       f"{effective_max_wait}秒 内未返回终态（结果未知，请检查该端点或 "
+                       f"evaluation_service.eval_max_wait_time 配置）")
         self._log('error', timeout_msg, task_id=task_id, test_case_id=test_case_id, api_id=api_id)
-        return {'__error__': timeout_msg}
+        return {'__error__': timeout_msg, '__error_kind__': EvalErrorKind.TIMEOUT.value}

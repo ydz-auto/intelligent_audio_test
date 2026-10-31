@@ -746,12 +746,17 @@ class ThirdPartyAdapterKind(str, Enum):
 
 
 class EvalErrorKind(str, Enum):
-    """评估外呼错误类型枚举（INT-107）— 标注 __error__ 的失败类别，供降级路径判定
+    """评估外呼错误类型枚举（INT-107 / INT-2250）— 标注 __error__ 的失败类别，供降级路径与排障判定
 
-    CONNECTION  连接级失败（端点不可达/DNS/连接超时），评估任务未被接受，可安全切换兜底端点
+    CONNECTION  连接级失败（端点不可达/DNS/连接超时），可安全切换兜底端点。
+                创建阶段表示评估任务未被接受；轮询阶段表示端点中途不可达（任务状态不可知，
+                原端点已无法出结果，按配置换兜底端点重跑或快速失败，INT-2250）
+    TIMEOUT     端点超时/结果未知（连接已建立但无响应，如 ReadTimeout、等待上限耗尽），
+                评估任务可能仍在端点侧执行，不做端点切换，避免重复计分
     BUSINESS    业务级失败（HTTP 4xx/5xx、评估任务执行失败），重投可能重复计分，不做端点切换
     """
     CONNECTION = 'connection'
+    TIMEOUT = 'timeout'
     BUSINESS = 'business'
 
 

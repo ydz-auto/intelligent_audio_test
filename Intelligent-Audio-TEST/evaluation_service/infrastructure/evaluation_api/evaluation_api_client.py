@@ -254,14 +254,17 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
             create_response = self.create_task(selected_url, create_task_payload, task_id=task_id)
         return create_response
 
-    def _process_async_result(self, create_response, selected_url, task_id, test_case_id, api_id):
+    def _process_async_result(self, create_response, selected_url, task_id, test_case_id, api_id, dim_names=None):
         """处理创建任务后的轮询和结果提取"""
         resp_data = None
         eval_task_id = None
 
         try:
             if isinstance(create_response, dict) and create_response.get('code') == 0:
-                eval_task_id = create_response.get('data', {}).get('eval_task_id')
+                # INT-2250：data 可能是 null（{"code":0,"data":null}）——判空后再取，
+                # 避免 AttributeError 被上层误判为端点故障而换端点重投同一评估
+                create_data = create_response.get('data')
+                eval_task_id = create_data.get('eval_task_id') if isinstance(create_data, dict) else None
                 if eval_task_id:
                     self._log(
                         level='INFO',
@@ -277,7 +280,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                     # 支持执行中删除用例/任务停止的 case 级取消
                     from evaluation_service.infrastructure.evaluation_api.api_request_handler import eval_task_registry
                     eval_task_registry.register(eval_task_id, task_id, selected_url,
-                                                test_case_id=test_case_id)
+                                                test_case_id=test_case_id,
+                                                dim_key=tuple(dim_names) if dim_names else None)
 
                     # 2. 等待任务完成
                     result_response = self.wait_for_task_completion(
@@ -303,8 +307,9 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
 
                     if isinstance(result_response, dict):
                         if result_response.get('code') == 0:
-                            # 任务成功完成，提取结果数据
-                            resp_data = result_response.get('data', {}).get('result', {})
+                            # 任务成功完成，提取结果数据（INT-2250：data 为 null 时判空）
+                            result_data = result_response.get('data')
+                            resp_data = result_data.get('result', {}) if isinstance(result_data, dict) else {}
                             self._log(
                                 level='INFO',
                                 category='execution',
@@ -319,8 +324,12 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                             if isinstance(resp_data, dict):
                                 resp_data['__eval_task_id__'] = eval_task_id
                         else:
-                            # 任务失败
-                            error_msg = result_response.get('msg', 'Unknown error')
+                            # 任务失败/等待失败（INT-2250）：优先保留 __error__ 的真实原因
+                            # （轮询期端点不可达/超时/状态查询失败文案），并透传错误类别，
+                            # 供上层兜底判定与 TRD.error_message 定位——不再塌缩成 "Unknown error"
+                            error_msg = (result_response.get('__error__')
+                                         or result_response.get('msg')
+                                         or f"异步任务执行失败: code={result_response.get('code')}")
                             self._log(
                                 level='ERROR',
                                 category='execution',
@@ -330,10 +339,15 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                                 api_id=api_id
                             )
                             resp_data = {'__error__': error_msg}
+                            if result_response.get('__error_kind__'):
+                                resp_data['__error_kind__'] = result_response['__error_kind__']
                     else:
                         resp_data = {'__error__': f"Invalid response format: {str(result_response)}"}
                 else:
-                    error_msg = "创建任务失败: 未返回task_id"
+                    # 创建成功但无 eval_task_id（INT-2250：含 data=null 的协议异常）——
+                    # 按业务级失败收敛，不用端点切换重投同一评估
+                    error_msg = (f"创建任务失败: 端点 {selected_url} 返回成功但未携带 eval_task_id"
+                                 f"（data={'null' if create_data is None else create_data}）")
                     self._log(
                         level='ERROR',
                         category='execution',
@@ -405,7 +419,9 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         )
 
         # 5. 处理创建任务后的轮询和结果提取
-        resp_data = self._process_async_result(create_response, selected_url, task_id, test_case_id, api_id)
+        resp_data = self._process_async_result(
+            create_response, selected_url, task_id, test_case_id, api_id,
+            dim_names=dim_names)
 
         return resp_data
 
@@ -612,6 +628,22 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         )
 
         for fallback_url in fallback_urls:
+            # INT-2250 重投判重：同一 (task_id, test_case_id, 维度组) 已在该兜底端点有
+            # 在途评估时跳过，避免重复提交同一评估（重复计分/重复占端点并发）
+            from evaluation_service.infrastructure.evaluation_api.api_request_handler import eval_task_registry
+            dim_key = tuple(dim_names) if dim_names else None
+            if eval_task_registry.has_inflight(task_id, test_case_id, fallback_url, dim_key):
+                self._log(
+                    level='WARNING',
+                    category='execution',
+                    content=f"兜底端点 {fallback_url} 已有同一评估在途"
+                            f"（task_id={task_id}, test_case_id={test_case_id}, 维度={dim_names}），跳过重投",
+                    task_id=task_id,
+                    test_case_id=test_case_id,
+                    api_id=api_id
+                )
+                continue
+
             should_break, new_selected_url, fb_resp = self._try_single_fallback(
                 fallback_url, endpoints, method, headers, payload,
                 task_id, test_case_id, api_id, dim_names, dim_info,

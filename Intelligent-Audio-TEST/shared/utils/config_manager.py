@@ -59,6 +59,9 @@ class ConfigManager:
                     "default_max_concurrent": 10,
                     "poll_interval": 5,
                     "eval_max_wait_time": 72000,
+                    "eval_poll_max_connection_failures": 3,
+                    "eval_poll_max_timeout_failures": 3,
+                    "eval_poll_max_business_failures": 6,
                     "redis_queue_brpop_timeout": 1,
                     "redis_result_callback_timeout": 5,
                     "eval_fallback_urls": []
@@ -113,6 +116,9 @@ class ConfigManager:
                     "default_max_concurrent": 10,
                     "poll_interval": 5,
                     "eval_max_wait_time": 72000,
+                    "eval_poll_max_connection_failures": 3,
+                    "eval_poll_max_timeout_failures": 3,
+                    "eval_poll_max_business_failures": 6,
                     "redis_queue_brpop_timeout": 1,
                     "redis_result_callback_timeout": 5,
                     "eval_fallback_urls": []
