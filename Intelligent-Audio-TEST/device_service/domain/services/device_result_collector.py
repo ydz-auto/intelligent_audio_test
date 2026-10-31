@@ -290,7 +290,9 @@ class DeviceResultCollector:
                          category='engine')
 
             # 添加更多调试信息（按结果所属设备取作用域，未带则回落算法级默认）
-            device_id = res.get('_device_id')
+            # 采集行/全链路的设备键名统一为 device_id（见 collect_raw_results /
+            # collect_round_results 以及 e2e CollectedResultDTO.device_id）
+            device_id = res.get('device_id')
             if self._field_query:
                 mapped_fields = self._field_query.get_mapped_device_output_fields(
                     algorithm_type, device_id)
@@ -329,8 +331,9 @@ class DeviceResultCollector:
         if ref_fields is None:
             ref_fields = {}
 
-        # 获取算法映射后的设备输出字段键列表（按结果所属设备取作用域）
-        device_id = res.get('_device_id')
+        # 获取算法映射后的设备输出字段键列表（按结果所属设备取作用域，
+        # 键名与采集行/全链路一致为 device_id，未带则回落算法级默认）
+        device_id = res.get('device_id')
         if self._field_query:
             mapped_output_keys = self._field_query.get_mapped_device_output_field_keys(
                 algorithm_type, device_id)
