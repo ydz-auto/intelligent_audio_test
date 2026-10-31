@@ -14,11 +14,12 @@
  *
  * 视图层（工具栏/表格框/分组/分页/行组件）已抽到 `mapping-view`，与设备「参数配置」弹窗共用。
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { type FieldPath, type UseFormReturn } from 'react-hook-form'
 import { useFieldArray, useWatch } from 'react-hook-form'
 
 import type { Dimension, EvaluationCategory } from '@/domain/models/evaluationDimension'
+import type { DimensionParam } from '@/domain/models/algorithmConfig'
 import type { AlgorithmFormValues, MappingRow } from '@/features/algorithm-config/types'
 import { TRANSFORM_TYPE_OPTIONS } from '@/features/algorithm-config/constants'
 import {
@@ -28,11 +29,13 @@ import {
   DEVICE_API_GROUP_ORDER,
   deviceApiGroupKey,
   DeviceMappingRowView,
+  type DeviceMappingRowValues,
   EVALUATION_SOURCE_OPTIONS,
   evalGroupKey,
   evalGroupName,
   evalSourceParamName,
   EvaluationMappingRowView,
+  type EvaluationMappingRowValues,
   findDuplicateIndex,
   GroupAddRow,
   GroupHeaderButton,
@@ -55,6 +58,23 @@ import {
 import { DimensionSelect } from './dimension-select'
 
 /* ───────────────────────── 设备参数映射分节 ───────────────────────── */
+
+/** 维度参数缺省值（稳定引用：避免行组件 memo 因 `?? []` 的新数组每次全量重渲染） */
+const NO_DIMENSION_PARAMS: DimensionParam[] = []
+
+/**
+ * 行回调按 key 缓存（INT-2213 返工）：窗口化滚动时行组件是 `memo` 的，
+ * 回调必须引用稳定才能跳过未变化的行；具体逻辑从 ref 读最新闭包，
+ * 因此缓存项永不过期，行增删也不影响已有行的回调身份。
+ */
+function rowActionsFor<A>(cache: Map<string, A>, key: string, make: (key: string) => A): A {
+  let actions = cache.get(key)
+  if (actions === undefined) {
+    actions = make(key)
+    cache.set(key, actions)
+  }
+  return actions
+}
 
 const DEVICE_COLUMNS = [
   { label: '源参数代码' },
@@ -216,10 +236,40 @@ function DeviceMappingSection({
 
   const colspan = 6
   /** 行索引锚点（fields 为 key 真源，rows 实时值同序） */
-  const indexOf = (key: string) => mappings.fields.findIndex((f) => f.key === key)
+  const indexByKey = useMemo(() => {
+    const map = new Map<string, number>()
+    mappings.fields.forEach((field, index) => map.set(field.key, index))
+    return map
+  }, [mappings.fields])
+
+  /** 行回调（引用稳定，行组件 memo 才能跳过未变化的行；逻辑走 ref 取最新闭包） */
+  const patchRowRef = useRef<(key: string, patch: Partial<DeviceMappingRowValues>) => void>(() => {})
+  patchRowRef.current = (key, patch) => {
+    const index = indexByKey.get(key)
+    if (index === undefined) return
+    if (patch.sourceParam !== undefined) handleSourceChange(index, patch.sourceParam)
+    if (patch.targetParam !== undefined) handleTargetChange(index, patch.targetParam)
+    if (patch.transformType !== undefined) {
+      form.setValue(
+        `${arrayName}.${index}.transformType` as FieldPath<AlgorithmFormValues>,
+        patch.transformType ?? 'none'
+      )
+    }
+  }
+  const removeRowRef = useRef<(key: string) => void>(() => {})
+  removeRowRef.current = (key) => {
+    const index = indexByKey.get(key)
+    if (index !== undefined) mappings.remove(index)
+  }
+  const actionsCacheRef = useRef<
+    Map<string, { onChange: (patch: Partial<DeviceMappingRowValues>) => void; onRemove: () => void }>
+  >(new Map())
 
   const renderRow = (row: MappingRow) => {
-    const index = indexOf(row.key)
+    const actions = rowActionsFor(actionsCacheRef.current, row.key, (key) => ({
+      onChange: (patch: Partial<DeviceMappingRowValues>) => patchRowRef.current(key, patch),
+      onRemove: () => removeRowRef.current(key),
+    }))
     return (
       <DeviceMappingRowView
         key={row.key}
@@ -229,17 +279,8 @@ function DeviceMappingSection({
         transformOptions={transformOptions}
         sourceName={sourceName(row)}
         targetName={targetName(row)}
-        onChange={(patch) => {
-          if (patch.sourceParam !== undefined) handleSourceChange(index, patch.sourceParam)
-          if (patch.targetParam !== undefined) handleTargetChange(index, patch.targetParam)
-          if (patch.transformType !== undefined) {
-            form.setValue(
-              `${arrayName}.${index}.transformType` as FieldPath<AlgorithmFormValues>,
-              patch.transformType ?? 'none'
-            )
-          }
-        }}
-        onRemove={() => mappings.remove(index)}
+        onChange={actions.onChange}
+        onRemove={actions.onRemove}
       />
     )
   }
@@ -570,42 +611,61 @@ function EvaluationMappingSection({
   const dimensionParamsMap = useDimensionParamsMap(dimensionIds)
 
   const colspan = 7
-  const indexOf = (key: string) => mappings.fields.findIndex((f) => f.key === key)
+  const indexByKey = useMemo(() => {
+    const map = new Map<string, number>()
+    mappings.fields.forEach((field, index) => map.set(field.key, index))
+    return map
+  }, [mappings.fields])
+
+  /** 行回调（引用稳定，行组件 memo 才能跳过未变化的行；逻辑走 ref 取最新闭包） */
+  const patchRowRef = useRef<(key: string, patch: Partial<EvaluationMappingRowValues>) => void>(
+    () => {}
+  )
+  patchRowRef.current = (key, patch) => {
+    const index = indexByKey.get(key)
+    if (index === undefined) return
+    if (patch.source !== undefined) handleSourceChange(index, patch.source)
+    if (patch.sourceParam !== undefined) handleSourceParamChange(index, patch.sourceParam)
+    if (patch.dimensionId !== undefined) handleDimensionChange(index, patch.dimensionId)
+    if (patch.targetParam !== undefined) handleTargetChange(index, patch.targetParam)
+    if (patch.transformType !== undefined) {
+      form.setValue(
+        `mappings.evaluation.${index}.transformType` as FieldPath<AlgorithmFormValues>,
+        patch.transformType ?? 'none'
+      )
+    }
+  }
+  const removeRowRef = useRef<(key: string) => void>(() => {})
+  removeRowRef.current = (key) => {
+    const index = indexByKey.get(key)
+    if (index !== undefined) mappings.remove(index)
+  }
+  const actionsCacheRef = useRef<
+    Map<
+      string,
+      { onChange: (patch: Partial<EvaluationMappingRowValues>) => void; onRemove: () => void }
+    >
+  >(new Map())
 
   const renderRow = (row: MappingRow) => {
-    const index = indexOf(row.key)
+    const actions = rowActionsFor(actionsCacheRef.current, row.key, (key) => ({
+      onChange: (patch: Partial<EvaluationMappingRowValues>) =>
+        patchRowRef.current(key, patch),
+      onRemove: () => removeRowRef.current(key),
+    }))
     return (
       <EvaluationMappingRowView
         key={row.key}
-        value={{
-          source: row.source || 'case',
-          sourceParam: row.sourceParam,
-          dimensionId: row.dimensionId || '',
-          targetParam: row.targetParam,
-          transformType: row.transformType,
-          paramName: row.paramName,
-          targetParamName: row.targetParamName,
-        }}
+        value={row}
         caseParams={caseParams}
         referenceParams={referenceParams}
         deviceParams={deviceParams}
         dimensions={dimensions}
         categories={categories}
-        dimensionParams={dimensionParamsMap[row.dimensionId || ''] ?? []}
+        dimensionParams={dimensionParamsMap[row.dimensionId || ''] ?? NO_DIMENSION_PARAMS}
         transformOptions={TRANSFORM_TYPE_OPTIONS}
-        onChange={(patch) => {
-          if (patch.source !== undefined) handleSourceChange(index, patch.source)
-          if (patch.sourceParam !== undefined) handleSourceParamChange(index, patch.sourceParam)
-          if (patch.dimensionId !== undefined) handleDimensionChange(index, patch.dimensionId)
-          if (patch.targetParam !== undefined) handleTargetChange(index, patch.targetParam)
-          if (patch.transformType !== undefined) {
-            form.setValue(
-              `mappings.evaluation.${index}.transformType` as FieldPath<AlgorithmFormValues>,
-              patch.transformType ?? 'none'
-            )
-          }
-        }}
-        onRemove={() => mappings.remove(index)}
+        onChange={actions.onChange}
+        onRemove={actions.onRemove}
       />
     )
   }

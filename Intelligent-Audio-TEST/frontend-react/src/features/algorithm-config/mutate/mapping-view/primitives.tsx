@@ -11,7 +11,7 @@
  * 只做视图，不持有表单或数据源状态——作用域写入由消费方决定。
  */
 import { ChevronDown, Folder, Plus, Search, Trash2 } from 'lucide-react'
-import type { ReactNode, Ref } from 'react'
+import { memo, type ReactNode, type Ref } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,33 @@ import { cn } from '@/lib/utils'
 export type ParamOption = { value: string; label: string }
 
 /* ───────────────────────── 行级基础单元格 ───────────────────────── */
+
+/**
+ * 下拉选项列表（只在弹层真正挂载时渲染）。
+ *
+ * base-ui Select 的 Portal 在关闭时不渲染子树，但「把 options.map 写在 MappingSelect
+ * 体内」会让每个关闭的行也每次重建全部 SelectItem 元素——映射大表 60+ 行 × 每行数百个
+ * 选项时，滚动里每次窗口位移都是十万级元素创建（INT-2213 审计 P1 的主因）。
+ * 把选项收进独立组件后，关闭态只剩一个元素；打开态才展开。
+ */
+const MappingSelectOptions = memo(function MappingSelectOptions({
+  options,
+}: {
+  options: ReadonlyArray<ParamOption>
+}) {
+  if (options.length === 0) {
+    return <p className='text-muted-foreground px-3 py-2 text-center text-xs'>暂无可用选项</p>
+  }
+  return (
+    <>
+      {options.map((option) => (
+        <SelectItem key={option.value} value={option.value}>
+          {option.label}
+        </SelectItem>
+      ))}
+    </>
+  )
+})
 
 export function MappingSelect({
   value,
@@ -62,15 +89,7 @@ export function MappingSelect({
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {options.length === 0 ? (
-          <p className='text-muted-foreground px-3 py-2 text-center text-xs'>暂无可用选项</p>
-        ) : (
-          options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))
-        )}
+        <MappingSelectOptions options={options} />
       </SelectContent>
     </Select>
   )

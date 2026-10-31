@@ -6,8 +6,11 @@
  *
  * 行只接收值 + 回调（不依赖 react-hook-form），作用域徽章由消费方以 `sourceBadge` 注入，
  * 保证算法级编辑与设备级覆盖编辑共用同一套视图。
+ *
+ * INT-2213 返工：行组件全部 `memo`。窗口化滚动时每次窗口位移只重渲染新进入视口的行，
+ * 留在窗口内的行跳过（消费方需保证 `value` / 选项数组 / 回调的引用稳定）。
  */
-import type { ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
 
 import type { DimensionParam } from '@/domain/models/algorithmConfig'
 import type { Dimension, EvaluationCategory } from '@/domain/models/evaluationDimension'
@@ -29,7 +32,7 @@ export interface DeviceMappingRowValues {
   transformType: string
 }
 
-export function DeviceMappingRowView({
+export const DeviceMappingRowView = memo(function DeviceMappingRowView({
   value,
   sourceName,
   targetName,
@@ -102,15 +105,16 @@ export function DeviceMappingRowView({
       </td>
     </tr>
   )
-}
+})
 
 /* ───────────────────────── 评估参数映射行 ───────────────────────── */
 
 export interface EvaluationMappingRowValues {
-  source: string
+  /** 来源类型（缺省按「用例参数」） */
+  source?: string
   sourceParam: string
   /** 目标评估维度 id（字符串形态，空 = 未指定） */
-  dimensionId: string
+  dimensionId?: string
   targetParam: string
   transformType: string
   /** 存量参数名（查表不到时兜底） */
@@ -118,7 +122,7 @@ export interface EvaluationMappingRowValues {
   targetParamName?: string | null
 }
 
-export function EvaluationMappingRowView({
+export const EvaluationMappingRowView = memo(function EvaluationMappingRowView({
   value,
   caseParams,
   referenceParams,
@@ -206,7 +210,7 @@ export function EvaluationMappingRowView({
         <DimensionSelect
           dimensions={dimensions}
           categories={categories}
-          value={value.dimensionId}
+          value={value.dimensionId ?? ''}
           onValueChange={(next) => onChange({ dimensionId: next })}
           valueOf={(dimension) => String(dimension.id)}
           placeholder='选择维度'
@@ -243,4 +247,4 @@ export function EvaluationMappingRowView({
       </td>
     </tr>
   )
-}
+})

@@ -11,6 +11,14 @@
  * INT-2213：映射视图抽成 mapping-view 公共件后，算法编辑 Sheet 与设备「参数配置」
  * 弹窗的四张分组表共用本模块（`useGroupVirtualWindow` 负责摊平组头/行/组尾）。
  *
+ * INT-2213 返工（审计 P1：4x 节流滚动出现 1s 级长任务）：
+ * - 滚动按 `SCROLL_STEP_PX` 阈值合帧：位移不足一个阈值不重算、不 setState，
+ *   配合 overscan 保证不露白，避免每个 rAF 都整窗重渲染；
+ * - 布局（行高 / 表格顶在滚动内容里的位置 / 视口高）只在列表变化、启用切换和容器
+ *   尺寸变化时测一次并缓存，滚动路径上不再 `querySelector` + `getBoundingClientRect`
+ *   强制同步布局；
+ * - 窗口命中时返回原 state（引用不变），不再触发下游 memo 失效。
+ *
  * 判据与降级：
  * - 找不到可滚动祖先（jsdom / 非 Sheet 宿主）或表格尚未布局（高度为 0）→ 关闭窗口化、
  *   全量渲染（单元测试与嵌套用法行为不变）。
@@ -48,9 +56,11 @@ export type GroupVirtualItem<T> = {
 }
 
 /** 首帧测量前的高度估算（数据行 = 13px 字号 + py-1.5 + sm Select） */
-const ESTIMATED_HEIGHT: Record<VirtualKind, number> = { row: 41, header: 34, add: 31 }
-/** 视口外多渲染的像素带，抵消测量误差与快速滚动 */
-const OVERSCAN_PX = 800
+const ESTIMATED_HEIGHT: Record<VirtualKind, number> = { row: 41, header: 31, add: 30 }
+/** 视口外多渲染的像素带，抵消测量误差、阈值滞后与快速滚动 */
+const OVERSCAN_PX = 600
+/** 滚动位移不足该像素不重算窗口（≈5 行，远小于 overscan，滚动手感无差） */
+const SCROLL_STEP_PX = 200
 
 const FULL_WINDOW: VirtualWindowState = {
   start: 0,
@@ -58,6 +68,14 @@ const FULL_WINDOW: VirtualWindowState = {
   topPad: 0,
   bottomPad: 0,
   active: false,
+}
+
+/** 最近一次实测的布局（滚动路径直接复用，避免每帧强制同步布局） */
+type VirtualLayout = {
+  scroller: HTMLElement
+  /** 表格顶在滚动内容坐标（scrollTop 空间）里的位置 */
+  tableTop: number
+  viewport: number
 }
 
 /** 最近的纵向可滚动祖先（Sheet 的 form.overflow-y-auto / 弹窗的 DialogContent） */
@@ -84,6 +102,9 @@ export function useVirtualWindow(
 } {
   const tbodyRef = useRef<HTMLTableSectionElement | null>(null)
   const heightsRef = useRef<Record<VirtualKind, number>>({ ...ESTIMATED_HEIGHT })
+  const layoutRef = useRef<VirtualLayout | null>(null)
+  /** 上次计算窗口时的 scrollTop（滚动阈值判定用） */
+  const lastScrollTopRef = useRef(Number.NEGATIVE_INFINITY)
   const [win, setWin] = useState<VirtualWindowState>(FULL_WINDOW)
   const [measured, setMeasured] = useState(false)
   /** 切到分组视图的那一帧窗口还没测量：先让消费方按「未测量」处理，避免立刻全量拉取 */
@@ -95,14 +116,10 @@ export function useVirtualWindow(
   const itemsRef = useRef(items)
   itemsRef.current = items
 
-  const recompute = useCallback(() => {
+  /** 实测并缓存布局（行高 / 表格顶位置 / 视口高）；只在失效时调用 */
+  const measureLayout = useCallback((): VirtualLayout | null => {
     const tbody = tbodyRef.current
-    const list = itemsRef.current
-    setMeasured(!enabled || Boolean(tbody))
-    if (!enabled || !tbody) {
-      setWin((prev) => (prev.active || prev.end !== list.length ? FULL_WINDOW : prev))
-      return
-    }
+    if (!tbody) return null
     // 用已渲染的代表行校准真实行高（组头/数据行/组尾各一个）
     for (const kind of ['header', 'row', 'add'] as const) {
       const tr = tbody.querySelector(`tr[data-vkind="${kind}"]`) as HTMLElement | null
@@ -111,83 +128,116 @@ export function useVirtualWindow(
     }
     const scroller = findScrollParent(tbody)
     const table = tbody.closest('table')
-    const scrollerHeight = scroller?.clientHeight ?? 0
-    if (!scroller || !table || scrollerHeight <= 0) {
-      setWin((prev) => (prev.active ? FULL_WINDOW : prev))
-      return
-    }
-
+    if (!scroller || !table || scroller.clientHeight <= 0) return null
     const scRect = scroller.getBoundingClientRect()
     const tableRect = table.getBoundingClientRect()
-    // 表格顶在滚动内容坐标里的位置（每次读取 rect，表格上方内容高度变化也能跟上）
-    const tableTopInContent = tableRect.top - scRect.top + scroller.scrollTop
-    const viewTop = scroller.scrollTop - tableTopInContent
-    const viewBottom = viewTop + scrollerHeight
-    const heights = heightsRef.current
-
-    let acc = 0
-    let start = 0
-    let end = list.length
-    let foundEnd = false
-    for (let i = 0; i < list.length; i++) {
-      const h = heights[list[i].kind]
-      // 累计顶边 acc 已在窗口上沿之上、且整行在 overscan 带外 → 跳过
-      if (acc + h < viewTop - OVERSCAN_PX) {
-        start = i + 1
-      } else if (acc > viewBottom + OVERSCAN_PX) {
-        end = i
-        foundEnd = true
-        break
-      }
-      acc += h
+    const layout: VirtualLayout = {
+      scroller,
+      tableTop: tableRect.top - scRect.top + scroller.scrollTop,
+      viewport: scroller.clientHeight,
     }
-    if (!foundEnd) end = list.length
+    layoutRef.current = layout
+    return layout
+  }, [])
 
-    let topPad = 0
-    for (let i = 0; i < start; i++) topPad += heights[list[i].kind]
-    let bottomPad = 0
-    for (let i = end; i < list.length; i++) bottomPad += heights[list[i].kind]
+  /** 按缓存的布局算窗口；force=false 时滚动位移不足阈值直接跳过（不 setState） */
+  const recompute = useCallback(
+    (force: boolean) => {
+      const tbody = tbodyRef.current
+      if (!enabled || !tbody) {
+        setMeasured(!enabled)
+        if (!enabled) setWin((prev) => (prev.active ? FULL_WINDOW : prev))
+        return
+      }
+      const layout = layoutRef.current ?? measureLayout()
+      if (!layout) {
+        setWin((prev) => (prev.active ? FULL_WINDOW : prev))
+        return
+      }
+      setMeasured(true)
+      const scrollTop = layout.scroller.scrollTop
+      if (!force && Math.abs(scrollTop - lastScrollTopRef.current) < SCROLL_STEP_PX) {
+        // 位移还在 overscan 缓冲里：保持原窗口（引用不变，下游 memo 不失效）
+        return
+      }
+      lastScrollTopRef.current = scrollTop
 
-    setWin((prev) =>
-      prev.active &&
-      prev.start === start &&
-      prev.end === end &&
-      prev.topPad === topPad &&
-      prev.bottomPad === bottomPad
-        ? prev
-        : { start, end, topPad, bottomPad, active: true }
-    )
-  }, [enabled])
+      const list = itemsRef.current
+      const heights = heightsRef.current
+      const viewTop = scrollTop - layout.tableTop
+      const viewBottom = viewTop + layout.viewport
+
+      let acc = 0
+      let start = 0
+      let end = list.length
+      let foundEnd = false
+      for (let i = 0; i < list.length; i++) {
+        const h = heights[list[i].kind]
+        // 累计顶边 acc 已在窗口上沿之上、且整行在 overscan 带外 → 跳过
+        if (acc + h < viewTop - OVERSCAN_PX) {
+          start = i + 1
+        } else if (acc > viewBottom + OVERSCAN_PX) {
+          end = i
+          foundEnd = true
+          break
+        }
+        acc += h
+      }
+      if (!foundEnd) end = list.length
+
+      let topPad = 0
+      for (let i = 0; i < start; i++) topPad += heights[list[i].kind]
+      let bottomPad = 0
+      for (let i = end; i < list.length; i++) bottomPad += heights[list[i].kind]
+
+      setWin((prev) =>
+        prev.active &&
+        prev.start === start &&
+        prev.end === end &&
+        prev.topPad === topPad &&
+        prev.bottomPad === bottomPad
+          ? prev
+          : { start, end, topPad, bottomPad, active: true }
+      )
+    },
+    [enabled, measureLayout]
+  )
 
   const recomputeRef = useRef(recompute)
   recomputeRef.current = recompute
 
-  // 列表/折叠态变化时重算
+  // 列表/折叠态变化时重测布局并重算
   useEffect(() => {
-    recomputeRef.current()
+    layoutRef.current = null
+    lastScrollTopRef.current = Number.NEGATIVE_INFINITY
+    recomputeRef.current(true)
   }, [items, enabled])
 
-  // 滚动 / 容器尺寸变化时重算（rAF 合帧）
+  // 滚动（阈值合帧）/ 容器尺寸变化（重测布局并重算）
   useEffect(() => {
     const tbody = tbodyRef.current
     if (!tbody) return
     const scroller = findScrollParent(tbody)
     if (!scroller) return
     let raf = 0
-    const onScroll = () => {
+    const schedule = () => {
       if (raf) return
       raf = requestAnimationFrame(() => {
         raf = 0
-        recomputeRef.current()
+        recomputeRef.current(false)
       })
     }
-    scroller.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onScroll)
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onScroll) : null
+    const remeasure = () => {
+      layoutRef.current = null
+      recomputeRef.current(true)
+    }
+    scroller.addEventListener('scroll', schedule, { passive: true })
+    window.addEventListener('resize', remeasure)
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(remeasure) : null
     ro?.observe(scroller)
     return () => {
-      scroller.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onScroll)
+      scroller.removeEventListener('scroll', schedule)
+      window.removeEventListener('resize', remeasure)
       ro?.disconnect()
       if (raf) cancelAnimationFrame(raf)
     }

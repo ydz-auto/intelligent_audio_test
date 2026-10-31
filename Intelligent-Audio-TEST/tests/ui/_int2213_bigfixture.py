@@ -18,7 +18,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ART = os.path.join(HERE, 'artifacts', 'int2213')
 API = 'http://127.0.0.1:15000/api/v1'
-BIG_TYPE = 'int2213_perf_1192v2'
+BIG_TYPE = 'int2213_perf_1192v4'
 BIG_NAME = '接线测试_2213_性能1192'
 TARGET_ROWS = 1192
 TARGET_GROUPS = 327
