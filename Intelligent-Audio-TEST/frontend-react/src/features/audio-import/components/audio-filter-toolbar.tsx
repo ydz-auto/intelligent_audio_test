@@ -24,7 +24,6 @@ import {
   SAMPLE_RATE_OPTIONS,
   TAG_MODE_OPTIONS,
 } from '@/features/audio-import/constants'
-import { AudioAlgorithmChip } from '@/features/audio-import/components/global-algorithm-chip'
 import type { AudioListFilters, TagMode } from '@/features/audio-import/types'
 
 export interface AudioFilterToolbarProps {

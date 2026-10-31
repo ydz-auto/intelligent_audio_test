@@ -5,7 +5,8 @@
  * 测试设备（ADB/HDC 扫描）：系统图标 + name + 「{system} - {serial}」+ ip + 连接方式 +
  * 「添加」primary 钮（防重 3s）；播放设备（系统音频通道）：通道索引/采样率 + 添加；
  * API 服务：后端恒空 → 页签显空态「API 暂不支持自动扫描，请手动添加」（§11-11）。
- * 已注册设备行显「已添加」muted 徽标 + 添加钮禁用；底部「开始扫描/扫描中...」；
+ * 扫描结果行一律显示「添加」（后端 is_registered 恒 false，不按 serial 去重，可重复登记）；
+ * 底部「开始扫描/扫描中...」；
  * 空态「未扫描到任何设备，请确保 ADB 设备已连接」；mock 兜底加 muted 提示「当前为模拟数据」。
  * 点「添加」→ 关扫描窗 + 开新增抽屉并预填扫描行字段（§6.1 注 / P2-13 返修）。
  * P2-2 返修：timer 用 useRef 持有，reset/关闭 clearInterval，杜绝并发双 interval。
@@ -398,7 +399,7 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
               <p className='text-muted-foreground text-xs'>
                 {fillMode
                   ? '选择设备将回填登记表单（已注册设备也可选择，INT-1029）'
-                  : '已注册设备显示「已添加」，可跳转登记表单补充信息后保存（§6.1）'}
+                  : '扫描行均显示「添加」，同一序列号可重复登记（§6.1）'}
               </p>
             </div>
           )}

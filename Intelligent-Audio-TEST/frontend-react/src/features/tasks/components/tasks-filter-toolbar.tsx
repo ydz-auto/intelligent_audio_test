@@ -46,7 +46,6 @@ import {
   type TasksTabKey,
 } from '@/features/tasks/constants'
 import { FavoriteTrashToggle } from '@/features/tasks/components/favorite-trash-toggle'
-import { GlobalAlgorithmChip } from '@/features/tasks/components/global-algorithm-chip'
 import { TasksStatsRow } from '@/features/tasks/components/tasks-stats-row'
 
 export interface TasksFilterToolbarProps {

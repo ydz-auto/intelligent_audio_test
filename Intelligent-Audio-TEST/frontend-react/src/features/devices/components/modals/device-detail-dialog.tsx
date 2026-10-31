@@ -22,6 +22,7 @@ import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { ApiDevice } from '@/domain/models/apiDevice'
 import type { DeviceDetailState } from '@/features/devices/types'
 import { DeviceStatusBadge } from '@/features/devices/components/device-status-badge'
+import { connectionTypeLabel } from '@/features/devices/lib/connection-type'
 
 export interface DeviceDetailDialogProps {
   state: DeviceDetailState
@@ -104,9 +105,11 @@ export function DeviceDetailDialog(props: DeviceDetailDialogProps) {
                   <Row
                     label='连接方式'
                     value={
-                      <Badge variant='secondary' className='rounded-md px-1.5 font-normal'>
-                        {testDevice.connectionType === 'remote' ? '远程连接' : 'USB连接'}
-                      </Badge>
+                      connectionTypeLabel(testDevice.connectionType) ? (
+                        <Badge variant='secondary' className='rounded-md px-1.5 font-normal'>
+                          {connectionTypeLabel(testDevice.connectionType)}
+                        </Badge>
+                      ) : null
                     }
                   />
                   {testDevice.ip && <Row label='IP 地址' value={testDevice.ip} />}

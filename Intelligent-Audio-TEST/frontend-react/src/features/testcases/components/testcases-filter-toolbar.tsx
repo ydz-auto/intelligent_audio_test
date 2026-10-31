@@ -41,7 +41,6 @@ import type { TagCategory, TagDraft, TagItem } from '@/domain/models/testTag'
 import { ApiError } from '@/infrastructure/api/api-error'
 import { DimensionSelect } from '@/features/algorithm-config/mutate/dimension-select'
 import { FavoriteTrashToggle } from '@/features/testcases/components/favorite-trash-toggle'
-import { TestCasesAlgorithmChip } from '@/features/testcases/components/global-algorithm-chip'
 import { TagEditDialog } from '@/features/tags/tag-mutate-dialog'
 
 export interface TestCasesFilterToolbarProps {

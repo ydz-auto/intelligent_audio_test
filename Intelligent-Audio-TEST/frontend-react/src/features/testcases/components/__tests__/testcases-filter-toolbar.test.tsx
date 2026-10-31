@@ -73,7 +73,7 @@ const tagCount = (name: string) =>
   MOCK_TEST_CASES.filter((c) => !c.deleted && c.tags.includes(name)).length
 
 
-/** React Query 上下文（芯片 TestCasesAlgorithmChip 经 useAlgorithmOptions 依赖；INT-710 补） */
+/** React Query 上下文（工具栏内 DimensionSelect / TagEditDialog 依赖；INT-710 补） */
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, gcTime: 0 } },
 })

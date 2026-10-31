@@ -721,7 +721,6 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
 
             <DevicesFilterToolbar
               tab={tab}
-              showAlgorithmChip={tab === 'test'}
               searchValue={activeFilters.search}
               onSearch={(value) => setActiveFilters({ ...activeFilters, search: value })}
               status={activeFilters.status}

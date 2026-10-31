@@ -29,6 +29,7 @@ import {
 import { cn } from '@/lib/utils'
 import type { TestDevice } from '@/domain/models/testDevice'
 import { deviceSystemLabel } from '@/features/devices/lib/device-system'
+import { connectionTypeLabel } from '@/features/devices/lib/connection-type'
 import { DeviceStatusBadge } from '@/features/devices/components/device-status-badge'
 import { DeviceRowActions } from '@/features/devices/components/device-row-actions'
 
@@ -278,9 +279,13 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
                     </span>
                   </td>
                   <td className='px-3 py-2'>
-                    <Badge variant='secondary' className='rounded-md px-1.5 font-normal'>
-                      {row.connectionType === 'remote' ? '远程连接' : 'USB连接'}
-                    </Badge>
+                    {connectionTypeLabel(row.connectionType) ? (
+                      <Badge variant='secondary' className='rounded-md px-1.5 font-normal'>
+                        {connectionTypeLabel(row.connectionType)}
+                      </Badge>
+                    ) : (
+                      <span className='text-muted-foreground'>—</span>
+                    )}
                     {row.connectionType === 'remote' && row.ip && (
                       <span className='text-muted-foreground block text-xs'>
                         {row.ip}
