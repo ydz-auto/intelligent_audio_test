@@ -8,8 +8,11 @@
  * - 删除设备级行即回落到算法级声明（不动物理参数定义的算法默认值）。
  * - 设备级**映射**由同目录 `device-mappings-section` 维护（同样是设备行覆盖算法级行）。
  * - **参数策略**：设备可绑定 scope=device 的策略（`device_param_bindings`），
- *   解析顺序 = 本设备覆盖 > 设备绑定策略 > 算法类型级默认；「另存为新策略」
- *   把当前生效的参数与映射收成策略模板。
+ *   解析顺序 = 本设备覆盖 > 设备绑定策略 > 算法类型级默认。
+ *   **本表只展开前两层**（算法级默认 + 本设备覆盖）：网关参数读接口
+ *   `GET /algorithm/params` 不支持按 device_id 解析（INT-2299），绑定策略层在表里
+ *   看不到；因此**已绑定策略时禁用「另存为新策略」**（只收两层会丢策略层生效值），
+ *   改用「克隆当前策略」。
  *
  * 降级：缺 `algorithm:param_manage` → 参数区只读；未选算法 → 空态提示。
  */
@@ -188,6 +191,18 @@ export function DeviceParamsDialog({
     setBoundProfileId(profileOptions.boundProfileId)
   }, [profileOptions.boundProfileId])
 
+  /** 已绑定策略名（提示文案用；列表未加载到时回落 id） */
+  const boundProfileName = useMemo(() => {
+    if (boundProfileId == null) return null
+    return (
+      profileOptions.profiles.find((profile) => profile.id === boundProfileId)?.name ??
+      `#${boundProfileId}`
+    )
+  }, [profileOptions.profiles, boundProfileId])
+
+  /** 绑定状态是否已确定（策略列表读到且没报错）：未确定时无法判定是否已绑定，禁止另存 */
+  const bindingKnown = !profileOptions.isLoading && !profileOptions.isError
+
   /** 策略变化会影响参数与两桶映射的解析结果，全部失效 */
   const invalidateScope = () => {
     invalidate()
@@ -220,6 +235,7 @@ export function DeviceParamsDialog({
         deviceId: device.id,
         name: input.name,
         description: input.description,
+        boundProfileId: bindingKnown ? boundProfileId : undefined,
       })
       return createProfile(payload)
     },
@@ -406,7 +422,16 @@ export function DeviceParamsDialog({
                   variant='outline'
                   size='sm'
                   className='h-7 text-xs'
-                  disabled={!canEdit || createMutation.isPending}
+                  disabled={
+                    !canEdit || !bindingKnown || boundProfileId != null || createMutation.isPending
+                  }
+                  title={
+                    boundProfileId != null
+                      ? '已绑定策略：另存只含「算法级 + 本设备覆盖」两层，会丢失策略层生效值；请用「克隆当前策略」'
+                      : !bindingKnown
+                        ? '策略列表尚未读取，暂不能另存为新策略'
+                        : undefined
+                  }
                   onClick={() => openNameDialog('create')}
                 >
                   另存为新策略
@@ -424,8 +449,14 @@ export function DeviceParamsDialog({
               </div>
               <p className='text-muted-foreground text-xs'>
                 解析顺序：本设备覆盖 &gt; 设备绑定策略 &gt; 算法类型级默认。
-                另存为策略会把当前生效的参数与映射收成 scope=device 策略，供其他设备套用。
+                「另存为新策略」只收「本设备覆盖 + 算法级默认」两层，供其他设备套用。
               </p>
+              {boundProfileId != null && (
+                <p className='border-warning/40 bg-warning/10 text-warning rounded-lg border px-3 py-2 text-xs'>
+                  已绑定策略「{boundProfileName}」：策略层的生效值不在本表内，「另存为新策略」会丢失该层，已禁用；
+                  需要以该策略为底稿另存请用「克隆当前策略」。
+                </p>
+              )}
               {profileOptions.isError && (
                 <p className='text-destructive text-xs'>参数策略读取失败，稍后重试。</p>
               )}
@@ -450,6 +481,12 @@ export function DeviceParamsDialog({
 
           {algorithmType && (
             <div className='border-border/60 overflow-x-auto rounded-lg border'>
+              <p className='text-muted-foreground border-b px-3 py-2 text-xs'>
+                本表 = 算法类型级默认 + 本设备覆盖（两层）
+                {boundProfileId != null
+                  ? `；不含已绑定策略「${boundProfileName}」的生效值（待 INT-2299 读接口）`
+                  : '；已绑定策略时策略层生效值也不在本表内'}
+              </p>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -662,7 +699,7 @@ export function DeviceParamsDialog({
             <DialogDescription>
               {nameDialog === 'clone'
                 ? '从当前绑定策略复制一份新策略，保存后本设备改绑到新策略。'
-                : '把本设备当前生效的参数与映射保存成 scope=device 的策略，保存后本设备绑定到该策略。'}
+                : '把本设备的参数与映射（算法级默认 + 本设备覆盖两层）保存成 scope=device 的策略，保存后本设备绑定到该策略。'}
             </DialogDescription>
           </DialogHeader>
           <div className='space-y-3'>
