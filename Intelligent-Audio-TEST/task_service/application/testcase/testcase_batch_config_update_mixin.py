@@ -498,7 +498,11 @@ class TestCaseConfigUpdateMixin:
         targets = self._normalize_targets(data.get('targets')) or ['audio']
 
         device_id = self._extract_device_id(playback_devices)
-        if device_id is None and group_id is None:
+        # INT-2244：逐轮模式（per_round）的设备/组逐轮取自 round_values，顶层值可缺省；
+        # 整体模式（case_level）只写 config 级背景噪声，同样不要求顶层值。
+        # 仅统一/指定轮次模式在两者都空时才要求顶层 device/group。
+        if (device_id is None and group_id is None
+                and round_mode != 'per_round' and not case_level):
             return ("更新播放设备需要 'deviceId' 或 'speakerGroupId'", True)
 
         test_cases = _filter_visible_testcases(self.repo.list_testcases_by_ids(ids))
