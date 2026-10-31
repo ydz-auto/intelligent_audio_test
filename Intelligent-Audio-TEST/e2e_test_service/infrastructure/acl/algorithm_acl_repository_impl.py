@@ -38,10 +38,11 @@ class AlgorithmAclRepositoryImpl:
         return algo_load_reference_params_file(filepath)
 
     @staticmethod
-    def get_device_params(algorithm_type: str) -> List[Dict]:
-        """获取设备参数列表"""
+    def get_device_params(algorithm_type: str,
+                          device_id: Optional[int] = None) -> List[Dict]:
+        """获取设备参数列表（device_id 非空时按其覆盖解析）"""
         from shared.clients.grpc_clients import algo_get_device_params
-        return algo_get_device_params(algorithm_type)
+        return algo_get_device_params(algorithm_type, device_id=device_id)
 
     @staticmethod
     def get_api_params(algorithm_type: str, api_id: Optional[int] = None) -> List[Dict]:
@@ -51,16 +52,20 @@ class AlgorithmAclRepositoryImpl:
 
     @staticmethod
     def get_param_mapping(algorithm_type: str, component_type: str,
-                          api_id: Optional[int] = None) -> List[Dict]:
-        """获取参数映射（api_id 非空时按其「策略 + 覆盖」解析）"""
+                          api_id: Optional[int] = None,
+                          device_id: Optional[int] = None) -> List[Dict]:
+        """获取参数映射（api_id / device_id 非空时按其「策略 + 覆盖」解析）"""
         from shared.clients.grpc_clients import algo_get_param_mapping
-        return algo_get_param_mapping(algorithm_type, component_type, api_id=api_id)
+        return algo_get_param_mapping(
+            algorithm_type, component_type, api_id=api_id, device_id=device_id)
 
     @staticmethod
-    def get_field_mappings(algorithm_type: str, api_id: Optional[int] = None):
+    def get_field_mappings(algorithm_type: str, api_id: Optional[int] = None,
+                           device_id: Optional[int] = None):
         """获取字段定义（original + mapped），返回 FieldMapperWrapper"""
         from shared.clients.grpc_clients import algo_get_field_mappings
-        return algo_get_field_mappings(algorithm_type, api_id=api_id)
+        return algo_get_field_mappings(
+            algorithm_type, api_id=api_id, device_id=device_id)
 
     @staticmethod
     def extract_case_all_params(case_config=None) -> Dict[str, Any]:

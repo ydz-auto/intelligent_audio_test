@@ -119,7 +119,6 @@ class ResultsMixin:
         converted = mapper.convert_results(all_results, algorithm_type)
 
         algo_acl = self._get_algorithm_acl()
-        output_keys = _get_algorithm_output_keys(algorithm_type, algo_acl)
 
         all_eval_items = []
         execution_success = True
@@ -132,7 +131,12 @@ class ResultsMixin:
 
             success = res.get('success', True)
 
-            mapped_output_keys = _get_mapped_device_output_field_keys(algorithm_type, algo_acl)
+            # 按结果所属设备取作用域（未带则为算法级默认）
+            device_id = (result_item.get('device_id') if isinstance(result_item, dict) else None) \
+                or res.get('device_id')
+            output_keys = _get_algorithm_output_keys(algorithm_type, algo_acl, device_id)
+            mapped_output_keys = _get_mapped_device_output_field_keys(
+                algorithm_type, algo_acl, device_id)
             ref_fields = _build_ref_fields({
                 'case_reference_params': case_reference_params,
                 'output_keys': output_keys,
@@ -185,7 +189,7 @@ class ResultsMixin:
         )
 
 
-def _get_algorithm_output_keys(algorithm_type, algo_acl=None):
+def _get_algorithm_output_keys(algorithm_type, algo_acl=None, device_id=None):
     """从算法配置派生 output_keys
 
     只看设备参数：API 参数已下沉到 API 实例作用域（每个 API 各自的策略 + 覆盖），
@@ -195,13 +199,14 @@ def _get_algorithm_output_keys(algorithm_type, algo_acl=None):
     Args:
         algorithm_type: 算法类型
         algo_acl: algorithm_service ACL 仓储（由调用方注入）
+        device_id: 设备级作用域（按该设备参数覆盖取键名）
     """
     output_keys = {}
     if algo_acl is None:
         from shared.clients.grpc_clients import algo_get_device_params as _get_dev
-        params = _get_dev(algorithm_type) or []
+        params = _get_dev(algorithm_type, device_id=device_id) or []
     else:
-        params = algo_acl.get_device_params(algorithm_type) or []
+        params = algo_acl.get_device_params(algorithm_type, device_id=device_id) or []
     for param in params:
         code = param.get('code', '')
         if 'direction' in code.lower():
@@ -213,13 +218,13 @@ def _get_algorithm_output_keys(algorithm_type, algo_acl=None):
     return output_keys
 
 
-def _get_mapped_device_output_field_keys(algorithm_type, algo_acl=None):
-    """获取设备输出字段键列表（映射后）"""
+def _get_mapped_device_output_field_keys(algorithm_type, algo_acl=None, device_id=None):
+    """获取设备输出字段键列表（映射后，按设备级作用域）"""
     if algo_acl is None:
         from shared.clients.grpc_clients import algo_get_field_mappings
-        field_defs = algo_get_field_mappings(algorithm_type)
+        field_defs = algo_get_field_mappings(algorithm_type, device_id=device_id)
     else:
-        field_defs = algo_acl.get_field_mappings(algorithm_type)
+        field_defs = algo_acl.get_field_mappings(algorithm_type, device_id=device_id)
     if not field_defs:
         return []
     return field_defs.get_mapped_device_output_field_keys(algorithm_type)

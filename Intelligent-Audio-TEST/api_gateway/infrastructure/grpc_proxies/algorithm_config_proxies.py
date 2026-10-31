@@ -391,8 +391,8 @@ class _AlgorithmConfigProxy:
             error_msg_prefix='获取API参数列表失败',
         )
 
-    def get_param_mapping_for_component(self, algorithm_type=None, component_type=None, api_id=None):
-        """参数映射（按组件 + API 实例作用域）。
+    def get_param_mapping_for_component(self, algorithm_type=None, component_type=None, api_id=None, device_id=None):
+        """参数映射（按组件 + API/设备实例作用域）。
 
         走 algorithm_service.AlgorithmQueryService.GetParamMappingForComponent
         （task_service 的 AlgorithmConfigService 没有该 RPC，INT-2165）。
@@ -408,6 +408,8 @@ class _AlgorithmConfigProxy:
             }
             if api_id is not None:
                 kwargs['api_id'] = int(api_id)
+            if device_id is not None:
+                kwargs['device_id'] = int(device_id)
             return self._resp(
                 stub.GetParamMappingForComponent(
                     algo_pb.GetParamMappingForComponentRequest(**kwargs))

@@ -29,9 +29,12 @@ class AlgorithmConfigQueryHandler:
         return cache.get_algorithm_params(algorithm_type)
 
     @staticmethod
-    def get_device_params(algorithm_type: str) -> List[Dict[str, Any]]:
+    def get_device_params(
+        algorithm_type: str, device_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """设备参数列表（device_id 传入时按设备级合并覆盖算法级）。"""
         cache = get_config_cache()
-        return cache.get_device_params(algorithm_type)
+        return cache.get_device_params(algorithm_type, device_id)
 
     @staticmethod
     def get_api_params(
@@ -53,11 +56,15 @@ class AlgorithmConfigQueryHandler:
 
     @staticmethod
     def get_param_mapping(
-        algorithm_type: str, component_type: str, api_id: Optional[int] = None
+        algorithm_type: str,
+        component_type: str,
+        api_id: Optional[int] = None,
+        device_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """组件参数映射（INT-1756：api_id 传入时按 API 实例级合并覆盖算法级）。"""
+        """组件参数映射（api_id / device_id 传入时按实例级合并覆盖算法级）。"""
         cache = get_config_cache()
-        return cache.get_param_mapping(algorithm_type, component_type, api_id)
+        return cache.get_param_mapping(
+            algorithm_type, component_type, api_id, device_id)
 
     @staticmethod
     def get_evaluation_dimension_params(dimension_id: int) -> List[Dict[str, Any]]:

@@ -146,19 +146,23 @@ def _mapping_merge_key(mapping: Dict[str, Any]):
             mapping.get('dimension_id'))
 
 
-def _merge_level_rows(rows, api_id: Optional[int], key_fn):
-    """算法级 + API 级行按唯一键合并（api_id 为 None 时只返回算法级行）。
+def _device_param_merge_key(param: Dict[str, Any]):
+    """algorithm_device_params 的合并键 = 唯一键 (direction, code)。"""
+    return (param.get('direction'), param.get('code'))
 
-    - 不传 api_id：只保留算法级行（存量行全部 ``api_id IS NULL``，与改动前一致），
-      其它 API 的行不会串进来；
-    - 传 api_id：命中该 API 的行覆盖同键算法级行（覆盖行占据算法级行的位置，
-      保持输出顺序稳定），未被覆盖的算法级行原样保留；API 独有的行按缓存顺序追加。
+
+def _merge_scoped_rows(rows, scope_field: str, scope_value, key_fn):
+    """按作用域字段合并行（scope_value 为 None 时只返回算法级行）。
+
+    - 不传作用域值：只保留作用域字段为 NULL 的算法级行（其它设备/实例的行不会串进来）；
+    - 传值：命中该作用域的行覆盖同键算法级行（覆盖行占据算法级行的位置，
+      保持输出顺序稳定），未被覆盖的算法级行原样保留；作用域独有的行按缓存顺序追加。
     """
     rows = rows or []
-    level_rows = [r for r in rows if r.get('api_id') is None]
-    if api_id is None:
+    level_rows = [r for r in rows if r.get(scope_field) is None]
+    if scope_value is None:
         return level_rows
-    scoped_rows = [r for r in rows if r.get('api_id') == api_id]
+    scoped_rows = [r for r in rows if r.get(scope_field) == scope_value]
     if not scoped_rows:
         return level_rows
     overrides = {}
@@ -181,6 +185,11 @@ def _merge_level_rows(rows, api_id: Optional[int], key_fn):
         used_keys.add(key)
         merged.append(row)
     return merged
+
+
+def _merge_level_rows(rows, api_id: Optional[int], key_fn):
+    """算法级 + API 级行按唯一键合并（api_id 为 None 时只返回算法级行）。"""
+    return _merge_scoped_rows(rows, 'api_id', api_id, key_fn)
 
 
 def _resolve_scope_rows(profile_rows, override_rows, key_fn):
@@ -726,6 +735,9 @@ class AlgorithmConfigCache:
             # 的 PO 没有该字段，不补键，保持既有序列化结果不变。
             if 'api_id' in p:
                 entry['api_id'] = p.get('api_id')
+            # 设备级作用域：只有 algorithm_device_params 有 device_id 列（NULL=算法级默认）
+            if 'device_id' in p:
+                entry['device_id'] = p.get('device_id')
             result.append(entry)
         return result
 
@@ -803,6 +815,7 @@ class AlgorithmConfigCache:
                     'target_param': m.get('target_param') or m.get('target_field'),
                     'transform_type': m.get('transform_type') or m.get('transform_rule') or 'none',
                     'api_id': m.get('api_id'),
+                    'device_id': m.get('device_id'),
                 }
                 # 评估维度映射（dimension_id 非空）归入 evaluation 分组
                 if m.get('dimension_id') is not None:
@@ -932,7 +945,9 @@ class AlgorithmConfigCache:
         # 不能把某个 API 实例级行当作算法级配置透出。
         return {
             'definition': cache['algorithms'].get(algorithm_type),
-            'device_params': cache['device_params'].get(algorithm_type, []),
+            'device_params': _merge_scoped_rows(
+                cache['device_params'].get(algorithm_type, []), 'device_id', None,
+                _device_param_merge_key),
             'api_params': _merge_level_rows(
                 cache['api_params'].get(algorithm_type, []), None,
                 _api_param_merge_key),
@@ -949,14 +964,24 @@ class AlgorithmConfigCache:
         实例作用域的 API 声明请用 :meth:`get_api_params`。
         """
         cache = self._config_cache
-        device_params = cache.get('device_params', {}).get(algorithm_type, [])
+        # 本入口没有 device_id：设备参数按算法级默认口径（不能把某台设备的覆盖行透出）
+        device_params = self.get_device_params(algorithm_type)
         api_level_rows = _merge_level_rows(
             cache.get('api_params', {}).get(algorithm_type, []), None,
             _api_param_merge_key)
         return device_params + api_level_rows
 
-    def get_device_params(self, algorithm_type: str) -> List[Dict[str, Any]]:
-        return self._config_cache.get('device_params', {}).get(algorithm_type, [])
+    def get_device_params(
+        self, algorithm_type: str, device_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """获取设备参数（device_id 传入时按设备级合并覆盖算法级）。
+
+        不传 device_id：只返回 ``device_id IS NULL`` 的算法类型级默认行，
+        其它设备的行不会串进来（与 api_id 作用域同口径）。
+        """
+        rows = self._config_cache.get('device_params', {}).get(algorithm_type, []) or []
+        return _merge_scoped_rows(
+            rows, 'device_id', device_id, _device_param_merge_key)
 
     def get_api_params(
         self, algorithm_type: str, api_id: Optional[int] = None
@@ -996,6 +1021,7 @@ class AlgorithmConfigCache:
     def get_source_mappings(
         self, algorithm_type: str, source: str,
         api_id: Optional[int] = None,
+        device_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """跨桶取某来源的映射（输出字段映射不区分维度桶）。
 
@@ -1003,7 +1029,8 @@ class AlgorithmConfigCache:
         但输出字段映射需要的是「该来源的全部行」，因此按来源跨桶汇总。
         """
         rows: List[Dict[str, Any]] = []
-        for bucket_rows in self._scoped_mapping_buckets(algorithm_type, api_id).values():
+        for bucket_rows in self._scoped_mapping_buckets(
+                algorithm_type, api_id, device_id).values():
             if not isinstance(bucket_rows, list):
                 continue
             rows.extend(
@@ -1013,14 +1040,15 @@ class AlgorithmConfigCache:
         return rows
 
     def _scoped_mapping_buckets(
-        self, algorithm_type: str, api_id: Optional[int] = None
+        self, algorithm_type: str, api_id: Optional[int] = None,
+        device_id: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """映射分桶按 API 作用域解析。
+        """映射分桶按 API / 设备作用域解析。
 
         - ``source='api'`` 的来源行：策略映射 + 本 API 覆盖行（覆盖优先）；
-        - 其余来源（case / reference / device / case_config）：仍为算法类型级，
-          只保留 ``api_id IS NULL`` 的行；
-        - 不传 api_id：只返回算法级行（API 来源为空）。
+        - 其余来源（case / reference / device / case_config）：算法类型级打底，
+          传 ``device_id`` 时该设备的行覆盖同键算法级行；
+        - 不传任一作用域：只返回作用域字段为 NULL 的算法级行。
         """
         cache = self._config_cache
         buckets = cache.get('mappings', {}).get(algorithm_type, {}) or {}
@@ -1029,7 +1057,9 @@ class AlgorithmConfigCache:
             if not isinstance(rows, list):
                 base[bucket] = rows
                 continue
-            base[bucket] = [row for row in rows if row.get('api_id') is None]
+            base[bucket] = _merge_scoped_rows(
+                [row for row in rows if row.get('api_id') is None],
+                'device_id', device_id, _mapping_merge_key)
         if api_id is None:
             return base
 
@@ -1063,23 +1093,27 @@ class AlgorithmConfigCache:
     def get_param_mapping(
         self, algorithm_type: str, component_type: str,
         api_id: Optional[int] = None,
+        device_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """获取组件参数映射（API 来源按「策略 + 实例覆盖」解析）。
+        """获取组件参数映射（API 来源按「策略 + 实例覆盖」，设备来源按设备覆盖解析）。
 
         修改点（本轮）：算法类型级默认层废弃，``source='api'`` 的映射只来自
-        策略 ``param_profile_mappings`` 与实例覆盖行；其余来源仍是算法级。
+        策略 ``param_profile_mappings`` 与实例覆盖行；其余来源仍是算法级默认，
+        传 ``device_id`` 时该设备的行覆盖同键算法级行。
         """
         if component_type == 'evaluation':
-            return self._get_evaluation_mappings(algorithm_type, api_id=api_id)
-        buckets = self._scoped_mapping_buckets(algorithm_type, api_id)
+            return self._get_evaluation_mappings(
+                algorithm_type, api_id=api_id, device_id=device_id)
+        buckets = self._scoped_mapping_buckets(algorithm_type, api_id, device_id)
         return buckets.get(component_type, [])
 
     def _get_evaluation_mappings(
         self, algorithm_type: str, cache: Optional[Dict[str, Any]] = None,
         api_id: Optional[int] = None,
+        device_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        # 先做 API 作用域解析（策略 + 覆盖），再走原有的四元组去重（INT-1751 硬约束 2）
-        mappings = self._scoped_mapping_buckets(algorithm_type, api_id)
+        # 先做 API / 设备作用域解析（策略 + 覆盖），再走原有的四元组去重（INT-1751 硬约束 2）
+        mappings = self._scoped_mapping_buckets(algorithm_type, api_id, device_id)
         result = []
         seen = set()
         # 维度级映射（dimension_id 非空）在 _serialize_mappings 中统一归入 evaluation 桶，
@@ -1100,6 +1134,7 @@ class AlgorithmConfigCache:
                 'dimension_name': m.get('dimension_name'),
                 'transform_type': m.get('transform_type', 'none'),
                 'api_id': m.get('api_id'),
+                'device_id': m.get('device_id'),
             })
         # 非维度级映射仍分布在各来源桶
         for source in ['device', 'api', 'case', 'case_config', 'reference', 'adjusted_reference']:
@@ -1119,6 +1154,7 @@ class AlgorithmConfigCache:
                     'dimension_name': m.get('dimension_name'),
                     'transform_type': m.get('transform_type', 'none'),
                     'api_id': m.get('api_id'),
+                    'device_id': m.get('device_id'),
                 })
         if 'adjusted_reference' not in mappings:
             for source in ['device', 'api', 'case', 'case_config', 'reference']:
@@ -1138,6 +1174,7 @@ class AlgorithmConfigCache:
                             'dimension_name': m.get('dimension_name'),
                             'transform_type': m.get('transform_type', 'none'),
                             'api_id': m.get('api_id'),
+                            'device_id': m.get('device_id'),
                         })
         return result
 

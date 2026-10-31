@@ -61,20 +61,23 @@ class AlgorithmQueryAclRepositoryImpl(AlgorithmQueryAclRepository):
             return []
 
     def get_field_mappings(self, algorithm_type,
-                           api_id: Optional[int] = None) -> AlgoFieldMappingsDTO:
+                           api_id: Optional[int] = None,
+                           device_id: Optional[int] = None) -> AlgoFieldMappingsDTO:
         from shared.clients.grpc_clients import algo_get_field_mappings
         try:
-            data = algo_get_field_mappings(algorithm_type, api_id=api_id)
+            data = algo_get_field_mappings(
+                algorithm_type, api_id=api_id, device_id=device_id)
             raw = data._data if hasattr(data, '_data') else data
             return _attach(dict_to_dto(raw, AlgoFieldMappingsDTO), raw)
         except Exception as e:
             logger.warning("get_field_mappings failed: %s", e)
             return AlgoFieldMappingsDTO()
 
-    def get_device_params(self, algorithm_type) -> List[AlgoParamDTO]:
+    def get_device_params(self, algorithm_type,
+                          device_id: Optional[int] = None) -> List[AlgoParamDTO]:
         from shared.clients.grpc_clients import algo_get_device_params
         try:
-            data = algo_get_device_params(algorithm_type)
+            data = algo_get_device_params(algorithm_type, device_id=device_id)
             return [_attach(dict_to_dto(d, AlgoParamDTO), d)
                     for d in data if isinstance(d, dict)]
         except Exception as e:
@@ -93,10 +96,12 @@ class AlgorithmQueryAclRepositoryImpl(AlgorithmQueryAclRepository):
             return []
 
     def get_param_mapping(self, algorithm_type, comp_type,
-                          api_id: Optional[int] = None) -> List[AlgoParamMappingDTO]:
+                          api_id: Optional[int] = None,
+                          device_id: Optional[int] = None) -> List[AlgoParamMappingDTO]:
         from shared.clients.grpc_clients import algo_get_param_mapping
         try:
-            data = algo_get_param_mapping(algorithm_type, comp_type, api_id=api_id)
+            data = algo_get_param_mapping(
+                algorithm_type, comp_type, api_id=api_id, device_id=device_id)
             return [_attach(dict_to_dto(d, AlgoParamMappingDTO), d)
                     for d in data if isinstance(d, dict)]
         except Exception as e:

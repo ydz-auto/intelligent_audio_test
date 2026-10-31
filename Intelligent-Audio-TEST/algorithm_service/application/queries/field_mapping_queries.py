@@ -20,18 +20,19 @@ class FieldMappingQueryHandler:
 
     @staticmethod
     def get_field_definitions(
-        algorithm_type: str, api_id: int | None = None
+        algorithm_type: str, api_id: int | None = None, device_id: int | None = None
     ) -> Dict[str, Any]:
         """构建字段定义（original + mapped）
 
-        INT-1756 C6a：``api_id`` 传入时，API 参数与映射都按「API 级覆盖算法级、
-        未覆盖键回落算法级」的合并口径取；不传时与改动前完全一致（算法级默认）。
+        ``api_id`` / ``device_id`` 传入时，对应作用域的参数与映射都按「实例级
+        覆盖算法级、未覆盖键回落算法级」的合并口径取；不传时按算法级默认。
         """
         cache = get_config_cache()
-        device_params = cache.get_device_params(algorithm_type)
+        device_params = cache.get_device_params(algorithm_type, device_id)
         api_params = cache.get_api_params(algorithm_type, api_id)
         reference_params = cache.get_reference_params(algorithm_type)
-        mappings = cache.get_param_mapping(algorithm_type, 'evaluation', api_id)
+        mappings = cache.get_param_mapping(
+            algorithm_type, 'evaluation', api_id, device_id)
         case_params = cache.get_case_params(algorithm_type)
 
         original = {

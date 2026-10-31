@@ -88,12 +88,14 @@ class MappingRepository(IMappingRepository):
         - source ← data.source_type（servicer 传参为 source_type，PO 字段为 source）
         - source_param / source_direction / dimension_id / target_param / transform_type
         - api_id（INT-1756 C6a）：API 实例级作用域，NULL = 算法类型级默认
+        - device_id：设备级作用域（与 api_id 同范式），NULL = 算法类型级默认
         """
         session = get_db_session()
         try:
             po = ParamMappingPO(
                 algorithm_type=data.get("algorithm_type"),
                 api_id=data.get("api_id"),
+                device_id=data.get("device_id"),
                 source=data.get("source_type"),
                 source_param=data.get("source_param"),
                 source_direction=data.get("source_direction") or "output",
@@ -118,6 +120,7 @@ class MappingRepository(IMappingRepository):
         - 显式处理 source / source_param / source_direction
           / dimension_id / target_param / transform_type
         - api_id（INT-1756 C6a）：None 表示不改，显式传值才落库
+        - device_id：None 表示不改，显式传值才落库
         """
         session = get_db_session()
         try:
@@ -133,6 +136,11 @@ class MappingRepository(IMappingRepository):
                 api_id = fields.get("apiId")
             if api_id is not None:
                 po.api_id = api_id
+            device_id = fields.get("device_id")
+            if device_id is None:
+                device_id = fields.get("deviceId")
+            if device_id is not None:
+                po.device_id = device_id
             if fields.get("source") is not None:
                 po.source = fields["source"]
             if fields.get("source_param") is not None:

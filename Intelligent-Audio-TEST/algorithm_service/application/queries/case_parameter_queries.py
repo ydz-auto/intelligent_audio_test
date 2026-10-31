@@ -37,6 +37,15 @@ class CaseParameterQueryHandler:
             return None
 
     @staticmethod
+    def get_device_id(case_config: Dict) -> Optional[int]:
+        """用例所属设备（缺省 None = 只取算法级默认设备参数）"""
+        device_id = case_config.get('device_id')
+        try:
+            return int(device_id) if device_id is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
     def get_algorithm_params(case_config: Dict) -> Dict[str, Any]:
         raw = case_config.get('algorithm_params', {})
         return ParamNormalizerService.normalize_algorithm_params(raw)
@@ -67,7 +76,8 @@ class CaseParameterQueryHandler:
         algorithm_type = CaseParameterQueryHandler.get_algorithm_type(case_config)
         algorithm_params = CaseParameterQueryHandler.get_algorithm_params(case_config)
         cache = get_config_cache()
-        device_params_config = cache.get_device_params(algorithm_type)
+        device_params_config = cache.get_device_params(
+            algorithm_type, CaseParameterQueryHandler.get_device_id(case_config))
 
         result = {}
         for p in device_params_config:

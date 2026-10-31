@@ -116,11 +116,11 @@ def _field_mappings(monkeypatch, answer_transform='json_parse',
     from algorithm_service.application.queries import field_mapping_queries as q
 
     cache = SimpleNamespace(
-        get_device_params=lambda algorithm_type: [],
+        get_device_params=lambda algorithm_type, device_id=None: [],
         get_api_params=lambda algorithm_type, api_id=None: (
             _api_params() if api_params is None else api_params),
         get_reference_params=lambda algorithm_type: [],
-        get_param_mapping=lambda algorithm_type, component, api_id=None: (
+        get_param_mapping=lambda algorithm_type, component, api_id=None, device_id=None: (
             _mapping_rows(answer_transform, audio_transform)
             if component == 'evaluation' else []),
         get_case_params=lambda algorithm_type: [],
@@ -142,7 +142,7 @@ class _GrpcBackedAcl:
         self._impl = AlgorithmQueryAclRepositoryImpl()
         self.calls = []
 
-    def get_field_mappings(self, algorithm_type, api_id=None):
+    def get_field_mappings(self, algorithm_type, api_id=None, device_id=None):
         return self._field_mappings
 
     def get_device_params(self, *args, **kwargs):

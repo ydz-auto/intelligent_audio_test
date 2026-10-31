@@ -28,7 +28,7 @@ class _FakeConfigCache:
         self._api_params = api_params
         self._evaluation_mappings = evaluation_mappings
 
-    def get_device_params(self, algorithm_type):
+    def get_device_params(self, algorithm_type, device_id=None):
         return []
 
     def get_api_params(self, algorithm_type, api_id=None):
@@ -40,7 +40,7 @@ class _FakeConfigCache:
     def get_case_params(self, algorithm_type):
         return []
 
-    def get_param_mapping(self, algorithm_type, source, api_id=None):
+    def get_param_mapping(self, algorithm_type, source, api_id=None, device_id=None):
         return self._evaluation_mappings if source == 'evaluation' else []
 
 
@@ -319,13 +319,13 @@ def test_single_round_extract_final_result_applies_transform(monkeypatch):
         return None if data.get('errors') else data.get('values')
 
     monkeypatch.setattr(runner_mod._algo_acl, 'get_field_mappings',
-                        lambda algorithm_type, api_id=None: mappings)
+                        lambda algorithm_type, api_id=None, device_id=None: mappings)
     monkeypatch.setattr(runner_mod._algo_acl, 'get_device_params',
-                        lambda algorithm_type: [])
+                        lambda algorithm_type, device_id=None: [])
     monkeypatch.setattr(runner_mod._algo_acl, 'get_api_params',
                         lambda algorithm_type, api_id=None: [])
     monkeypatch.setattr(runner_mod._algo_acl, 'get_param_mapping',
-                        lambda algorithm_type, comp_type, api_id=None: [])
+                        lambda algorithm_type, comp_type, api_id=None, device_id=None: [])
     monkeypatch.setattr(runner_mod._algo_acl, 'convert_field_values', _convert)
 
     runner = runner_mod.APITaskRunner(_LogExecutorStub())

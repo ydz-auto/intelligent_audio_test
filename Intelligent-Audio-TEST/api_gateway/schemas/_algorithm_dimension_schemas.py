@@ -205,3 +205,5 @@ class AlgorithmMappingListQuery(APIModel):
     # 映射随 API 参数一起下沉到 API 实例作用域：source_type=api 时按 api_id 读取
     # 该 API 的映射行（算法类型级默认层废弃）。
     api_id: Optional[int] = Field(None, ge=1, description='API 实例ID（source_type=api 时使用）')
+    # 设备级映射读取：source_type=device 时按 device_id 读取该设备行并覆盖算法级行
+    device_id: Optional[int] = Field(None, ge=1, description='设备ID（source_type=device 时使用）')

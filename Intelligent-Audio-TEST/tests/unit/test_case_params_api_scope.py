@@ -35,7 +35,7 @@ class _FakeCache:
             {'code': 'asr_text', 'direction': 'output'},
         ]
 
-    def get_param_mapping(self, algorithm_type, component_type, api_id=None):
+    def get_param_mapping(self, algorithm_type, component_type, api_id=None, device_id=None):
         self.mapping_calls.append((algorithm_type, component_type, api_id))
         if component_type != 'evaluation' or api_id != API:
             return []
@@ -44,7 +44,7 @@ class _FakeCache:
             'target_param': 'wer', 'transform_type': 'none',
         }]
 
-    def get_device_params(self, algorithm_type):
+    def get_device_params(self, algorithm_type, device_id=None):
         return []
 
 

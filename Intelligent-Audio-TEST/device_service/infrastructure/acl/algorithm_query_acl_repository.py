@@ -36,27 +36,32 @@ class AlgorithmQueryACLRepository:
 
     # ========== 字段映射查询 ==========
 
-    def get_field_mappings(self, algorithm_type: str) -> Dict[str, Any]:
+    def get_field_mappings(
+        self, algorithm_type: str, device_id: Optional[int] = None
+    ) -> Dict[str, Any]:
         """获取完整字段定义（original + mapped）
 
         对应原 FieldMapper._get_field_definitions(algorithm_type)。
 
         Args:
             algorithm_type: 算法类型
+            device_id: 设备级作用域（未传 = 算法级默认，传值 = 该设备行覆盖）
 
         Returns:
             {'original': {...}, 'mapped': {...}}，失败返回空结构
         """
         if not algorithm_type:
             return {'original': {}, 'mapped': {}}
-        data = algo_get_field_mappings(algorithm_type)
+        data = algo_get_field_mappings(algorithm_type, device_id=device_id)
         # algo_get_field_mappings 返回 FieldMapperWrapper，取原始 dict
         raw = data._data if hasattr(data, '_data') else data
         if not isinstance(raw, dict):
             return {'original': {}, 'mapped': {}}
         return raw
 
-    def get_device_output_fields(self, algorithm_type: str) -> Dict[str, Any]:
+    def get_device_output_fields(
+        self, algorithm_type: str, device_id: Optional[int] = None
+    ) -> Dict[str, Any]:
         """获取设备输出字段（原始，未映射）
 
         对应原 FieldMapper.get_device_output_fields(algorithm_type)。
@@ -64,14 +69,17 @@ class AlgorithmQueryACLRepository:
 
         Args:
             algorithm_type: 算法类型
+            device_id: 设备级作用域
 
         Returns:
             设备输出字段字典
         """
-        defs = self.get_field_mappings(algorithm_type)
+        defs = self.get_field_mappings(algorithm_type, device_id)
         return defs.get('original', {}).get('device', {}).get('output', {}) or {}
 
-    def get_mapped_device_output_fields(self, algorithm_type: str) -> List[FieldMappingDTO]:
+    def get_mapped_device_output_fields(
+        self, algorithm_type: str, device_id: Optional[int] = None
+    ) -> List[FieldMappingDTO]:
         """获取设备输出字段（映射后）
 
         对应原 FieldMapper.get_mapped_device_output_fields(algorithm_type)。
@@ -82,11 +90,12 @@ class AlgorithmQueryACLRepository:
 
         Args:
             algorithm_type: 算法类型
+            device_id: 设备级作用域
 
         Returns:
             映射后的设备输出字段 DTO 列表
         """
-        defs = self.get_field_mappings(algorithm_type)
+        defs = self.get_field_mappings(algorithm_type, device_id)
         mapped_device = defs.get('mapped', {}).get('device', {}) or {}
         if isinstance(mapped_device, list):
             return dict_list_to_dto(mapped_device, FieldMappingDTO)
@@ -106,7 +115,9 @@ class AlgorithmQueryACLRepository:
             return dict_list_to_dto(result, FieldMappingDTO)
         return []
 
-    def get_mapped_device_output_field_keys(self, algorithm_type: str) -> List[str]:
+    def get_mapped_device_output_field_keys(
+        self, algorithm_type: str, device_id: Optional[int] = None
+    ) -> List[str]:
         """获取设备输出字段键列表（映射后）
 
         对应原 FieldMapper.get_mapped_device_output_field_keys(algorithm_type)。
@@ -117,11 +128,11 @@ class AlgorithmQueryACLRepository:
         Returns:
             字段代码列表
         """
-        output_fields = self.get_mapped_device_output_fields(algorithm_type)
+        output_fields = self.get_mapped_device_output_fields(algorithm_type, device_id)
         return [f.code for f in output_fields if f.code]
 
     def get_device_output_field_codes_by_type(
-        self, algorithm_type: str, param_type: str
+        self, algorithm_type: str, param_type: str, device_id: Optional[int] = None
     ) -> List[str]:
         """根据 param_type 获取设备输出字段代码列表
 
@@ -136,7 +147,8 @@ class AlgorithmQueryACLRepository:
             匹配的字段代码列表
         """
         device_params = dict_list_to_dto(
-            algo_get_device_params(algorithm_type) or [], DeviceParamDTO
+            algo_get_device_params(algorithm_type, device_id=device_id) or [],
+            DeviceParamDTO,
         )
         return [
             p.code for p in device_params
@@ -146,7 +158,8 @@ class AlgorithmQueryACLRepository:
         ]
 
     def convert_device_output(
-        self, algorithm_type: str, device_result: Dict[str, Any]
+        self, algorithm_type: str, device_result: Dict[str, Any],
+        device_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """转换设备输出为映射后的格式
 
@@ -163,8 +176,9 @@ class AlgorithmQueryACLRepository:
         success = device_result.get('success', False)
         message = device_result.get('message', '')
 
-        mapped_output_fields = self.get_mapped_device_output_fields(algorithm_type)
-        orig_output_fields = self.get_device_output_fields(algorithm_type)
+        mapped_output_fields = self.get_mapped_device_output_fields(
+            algorithm_type, device_id)
+        orig_output_fields = self.get_device_output_fields(algorithm_type, device_id)
 
         result: Dict[str, Any] = {}
 
@@ -207,7 +221,9 @@ class AlgorithmQueryACLRepository:
 
         return result
 
-    def get_algorithm_extra_config(self, algorithm_type: str) -> Dict[str, Any]:
+    def get_algorithm_extra_config(
+        self, algorithm_type: str, device_id: Optional[int] = None
+    ) -> Dict[str, Any]:
         """获取算法额外配置
 
         对应原 FieldMapper._get_algorithm_extra_config(algorithm_type)。
@@ -215,6 +231,7 @@ class AlgorithmQueryACLRepository:
 
         Args:
             algorithm_type: 算法类型
+            device_id: 设备级作用域
 
         Returns:
             额外配置字典
@@ -225,7 +242,7 @@ class AlgorithmQueryACLRepository:
             algo_get_param_mapping,
         )
 
-        device_params = algo_get_device_params(algorithm_type) or []
+        device_params = algo_get_device_params(algorithm_type, device_id=device_id) or []
         api_params = algo_get_api_params(algorithm_type) or []
         params = list(device_params) + list(api_params)
 
@@ -272,7 +289,8 @@ class AlgorithmQueryACLRepository:
 
         # 各 component 的映射
         for comp_type in ('device', 'api', 'case', 'reference', 'evaluation'):
-            mappings = algo_get_param_mapping(algorithm_type, comp_type) or []
+            mappings = algo_get_param_mapping(
+                algorithm_type, comp_type, device_id=device_id) or []
             for mapping in mappings:
                 if not isinstance(mapping, dict):
                     continue

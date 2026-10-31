@@ -514,6 +514,9 @@ message GetAlgorithmParamsMergedRequest {
 }
 message GetDeviceParamsListRequest {
   string algorithm_type = 1;
+  // 设备级作用域（与 api_id 同范式）：未传 = 算法类型级默认行（device_id IS NULL）；
+  // 传值 = 该设备的行覆盖同键算法级行。响应行带 device_id。
+  optional int32 device_id = 2;
 }
 message GetApiParamsListRequest {
   string algorithm_type = 1;
@@ -531,6 +534,7 @@ message GetParamMappingForComponentRequest {
   string algorithm_type = 1;
   string component_type = 2;  // device/api/case/reference/evaluation
   optional int32 api_id = 3;  // INT-1756：API 实例级作用域（未传=算法级默认）
+  optional int32 device_id = 4;  // 设备级作用域（未传=算法级默认，传值=该设备行覆盖）
 }
 message GetEvaluationDimensionParamsRequest {
   int32 dimension_id = 1;
@@ -545,6 +549,7 @@ message GetFieldMappingsRequest {
   string algorithm_type = 1;
   string component_type = 2;  // device/api/evaluation
   optional int32 api_id = 3;  // INT-1756：API 实例级作用域（未传=算法级默认）
+  optional int32 device_id = 4;  // 设备级作用域（未传=算法级默认，传值=该设备行覆盖）
 }
 message GetEvaluationFieldMappingsRequest {
   string algorithm_type = 1;

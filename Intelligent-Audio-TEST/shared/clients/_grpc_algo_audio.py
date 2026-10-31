@@ -192,15 +192,17 @@ def _call_algo_query_rpc(method_name: str, **kwargs):
         return None
 
 
-def _with_api_scope(kwargs: dict, api_id) -> dict:
-    """INT-1757（C6b）：api_id 非空才写入请求。
+def _with_scope(kwargs: dict, api_id=None, device_id=None) -> dict:
+    """INT-1757（C6b）/ 设备级作用域：作用域值非空才写入请求。
 
-    proto3 ``optional int32 api_id`` 用 presence 区分「未传」（回落算法级默认）
+    proto3 ``optional int32`` 用 presence 区分「未传」（回落算法级默认）
     与显式传值；未传时不写该键，避免把 None 当作用域值下发。
     """
-    if api_id is not None:
+    for key, value in (('api_id', api_id), ('device_id', device_id)):
+        if value is None:
+            continue
         try:
-            kwargs['api_id'] = int(api_id)
+            kwargs[key] = int(value)
         except (TypeError, ValueError):
             pass
     return kwargs
@@ -216,14 +218,15 @@ def algo_get_all_algorithms():
     return _call_algo_query_rpc('GetAllAlgorithmsList') or []
 
 
-def algo_get_device_params(algorithm_type: str):
-    """获取设备参数列表"""
-    return _call_algo_query_rpc('GetDeviceParamsList', algorithm_type=algorithm_type or '') or []
+def algo_get_device_params(algorithm_type: str, device_id=None):
+    """获取设备参数列表（device_id 传入时按设备级合并覆盖算法级）"""
+    return _call_algo_query_rpc('GetDeviceParamsList', **_with_scope(
+        {'algorithm_type': algorithm_type or ''}, device_id=device_id)) or []
 
 
 def algo_get_api_params(algorithm_type: str, api_id=None):
     """获取 API 参数列表（api_id 传入时按 API 实例级合并覆盖算法级）"""
-    return _call_algo_query_rpc('GetApiParamsList', **_with_api_scope(
+    return _call_algo_query_rpc('GetApiParamsList', **_with_scope(
         {'algorithm_type': algorithm_type or ''}, api_id)) or []
 
 
@@ -237,11 +240,13 @@ def algo_get_reference_params_list(algorithm_type: str):
     return _call_algo_query_rpc('GetReferenceParamsList', algorithm_type=algorithm_type or '') or []
 
 
-def algo_get_param_mapping(algorithm_type: str, component_type: str, api_id=None):
-    """获取参数映射（api_id 传入时按 API 实例级合并覆盖算法级）"""
-    return _call_algo_query_rpc('GetParamMappingForComponent', **_with_api_scope(
+def algo_get_param_mapping(
+    algorithm_type: str, component_type: str, api_id=None, device_id=None
+):
+    """获取参数映射（api_id / device_id 传入时按实例级合并覆盖算法级）"""
+    return _call_algo_query_rpc('GetParamMappingForComponent', **_with_scope(
         {'algorithm_type': algorithm_type or '',
-         'component_type': component_type or ''}, api_id)) or []
+         'component_type': component_type or ''}, api_id, device_id)) or []
 
 
 def algo_get_evaluation_dimension_params(dimension_id: int):
@@ -259,14 +264,14 @@ def algo_reload_config():
     return _call_algo_query_rpc('ReloadConfig')
 
 
-def algo_get_field_mappings(algorithm_type: str, api_id=None):
+def algo_get_field_mappings(algorithm_type: str, api_id=None, device_id=None):
     """获取字段定义（original + mapped），返回 FieldMapperWrapper
 
-    api_id 传入时按 API 实例级合并覆盖算法级（INT-1757 / C6b）。
+    api_id / device_id 传入时按实例级合并覆盖算法级（INT-1757 / 设备级作用域）。
     """
     from shared.utils.field_mapper_wrapper import FieldMapperWrapper
-    data = _call_algo_query_rpc('GetFieldMappings', **_with_api_scope(
-        {'algorithm_type': algorithm_type or ''}, api_id)) or {}
+    data = _call_algo_query_rpc('GetFieldMappings', **_with_scope(
+        {'algorithm_type': algorithm_type or ''}, api_id, device_id)) or {}
     return FieldMapperWrapper(data)
 
 
@@ -287,7 +292,7 @@ def algo_build_api_request_data(algorithm_type: str, device_params=None, api_par
     }, ensure_ascii=False)
     return _call_algo_query_rpc(
         'BuildApiRequestData',
-        **_with_api_scope({'algorithm_type': algorithm_type or '', 'data': data}, api_id),
+        **_with_scope({'algorithm_type': algorithm_type or '', 'data': data}, api_id),
     ) or {}
 
 
@@ -320,12 +325,12 @@ def algo_convert_field_values(items):
 
 def algo_get_output_fields(algorithm_type: str, device_type: str = None, api_id=None):
     """获取结果输出字段（api_id 传入时取该 API 实例的输出声明，INT-1757 / C6b）"""
-    return _call_algo_query_rpc('GetOutputFields', **_with_api_scope(
+    return _call_algo_query_rpc('GetOutputFields', **_with_scope(
         {'algorithm_type': algorithm_type or '',
          'device_type': device_type or ''}, api_id)) or []
 
 
-def algo_get_device_output_fields(algorithm_type: str):
+def algo_get_device_output_fields(algorithm_type: str, device_id=None):
     """获取设备输出声明（algorithm_device_params(direction=output)，ACL 字段形态）。
 
     设备声明不进入 GetOutputFields 的展示字段清单（C0 裁定 3：API 声明优先且唯一），
@@ -333,7 +338,7 @@ def algo_get_device_output_fields(algorithm_type: str):
     复用既有 GetDeviceParamsList RPC（`algo_get_device_params`），不新增 RPC。
     """
     fields = []
-    for p in algo_get_device_params(algorithm_type) or []:
+    for p in algo_get_device_params(algorithm_type, device_id) or []:
         if not isinstance(p, dict) or p.get('direction') != 'output':
             continue
         code = p.get('code') or p.get('param_code')
@@ -362,7 +367,7 @@ def algo_extract_result_fields(algorithm_type: str, algorithm_result=None, resul
     import json as _json
     return _call_algo_query_rpc(
         'ExtractResultFields',
-        **_with_api_scope({
+        **_with_scope({
             'algorithm_type': algorithm_type or '',
             'algorithm_result': _json.dumps(algorithm_result or {}, ensure_ascii=False),
             'result_data': _json.dumps(result_data or {}, ensure_ascii=False),
@@ -374,7 +379,7 @@ def algo_get_timeline_fields(algorithm_type: str, api_id=None):
     """获取时间线字段（api_id 非空时输出声明按该 API 的策略 + 覆盖解析）"""
     return _call_algo_query_rpc(
         'GetTimelineFields',
-        **_with_api_scope({'algorithm_type': algorithm_type or ''}, api_id),
+        **_with_scope({'algorithm_type': algorithm_type or ''}, api_id),
     ) or []
 
 
@@ -382,7 +387,7 @@ def algo_get_full_field_mapping(algorithm_type: str, api_id=None):
     """获取完整字段映射（api_id 非空时按该 API 的策略 + 覆盖解析）。"""
     return _call_algo_query_rpc(
         'GetFullFieldMapping',
-        **_with_api_scope({'algorithm_type': algorithm_type or ''}, api_id),
+        **_with_scope({'algorithm_type': algorithm_type or ''}, api_id),
     ) or {}
 
 

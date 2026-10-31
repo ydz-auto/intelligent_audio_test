@@ -99,7 +99,8 @@ class DeviceResultCollector:
                                          category='engine')
 
                             alignment_result = self._aligner.calculate_effective_offset_for_single_result(
-                                result_item, reference_params, playback_time_offsets, algorithm_type
+                                result_item, reference_params, playback_time_offsets,
+                                algorithm_type, info["device_id"]
                             )
                             item_res['adjusted_reference_params'] = alignment_result.get('adjusted_params') or reference_params or []
                             item_res['alignment_info'] = alignment_result.get('alignment_info')
@@ -114,7 +115,8 @@ class DeviceResultCollector:
                     res['result_type'] = 'default'
 
                     alignment_result = self._aligner.calculate_effective_offset_for_single_result(
-                        raw_results, reference_params, playback_time_offsets, algorithm_type
+                        raw_results, reference_params, playback_time_offsets,
+                        algorithm_type, info["device_id"]
                     )
                     res['adjusted_reference_params'] = alignment_result.get('adjusted_params') or reference_params or []
                     res['alignment_info'] = alignment_result.get('alignment_info')
@@ -287,13 +289,16 @@ class DeviceResultCollector:
                          f'convert_results: result_type={result_type}, all_results id={id(all_results)}, res id={id(res)}, raw_results id={id(raw_results)}, raw_keys={list(raw_results.keys())[:5]}',
                          category='engine')
 
-            # 添加更多调试信息
+            # 添加更多调试信息（按结果所属设备取作用域，未带则回落算法级默认）
+            device_id = res.get('_device_id')
             if self._field_query:
-                mapped_fields = self._field_query.get_mapped_device_output_fields(algorithm_type)
+                mapped_fields = self._field_query.get_mapped_device_output_fields(
+                    algorithm_type, device_id)
                 log_not_emit('DEBUG', 'device_collector', f'mapped_fields: {[f.code for f in mapped_fields]}',
                              category='engine')
 
-                mapped_results = self._field_query.convert_device_output(algorithm_type, raw_results)
+                mapped_results = self._field_query.convert_device_output(
+                    algorithm_type, raw_results, device_id)
             else:
                 mapped_results = {}
 
@@ -324,9 +329,11 @@ class DeviceResultCollector:
         if ref_fields is None:
             ref_fields = {}
 
-        # 获取算法映射后的设备输出字段键列表
+        # 获取算法映射后的设备输出字段键列表（按结果所属设备取作用域）
+        device_id = res.get('_device_id')
         if self._field_query:
-            mapped_output_keys = self._field_query.get_mapped_device_output_field_keys(algorithm_type)
+            mapped_output_keys = self._field_query.get_mapped_device_output_field_keys(
+                algorithm_type, device_id)
         else:
             mapped_output_keys = []
 
@@ -356,7 +363,8 @@ class DeviceResultCollector:
 
         # 处理额外配置的查询字段
         if self._field_query:
-            extra_fields = self._field_query.get_algorithm_extra_config(algorithm_type).get('query_fields', {}).keys()
+            extra_fields = self._field_query.get_algorithm_extra_config(
+                algorithm_type, device_id).get('query_fields', {}).keys()
         else:
             extra_fields = []
         for field in extra_fields:

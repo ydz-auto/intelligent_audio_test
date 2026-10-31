@@ -69,6 +69,9 @@ def db():
     ])
     with engine.begin() as conn:
         conn.execute(text('DROP INDEX IF EXISTS uq_algorithm_source_to_dimension'))
+        # create_all 已按模型渲染出（SQLite 上无条件化的）同名唯一索引，先删后重建
+        conn.execute(text('DROP INDEX IF EXISTS uq_param_mapping_algo_level'))
+        conn.execute(text('DROP INDEX IF EXISTS uq_param_mapping_api_level'))
         conn.execute(text(
             'CREATE UNIQUE INDEX uq_param_mapping_algo_level ON param_mappings '
             '(algorithm_type, source, source_param, dimension_id) '

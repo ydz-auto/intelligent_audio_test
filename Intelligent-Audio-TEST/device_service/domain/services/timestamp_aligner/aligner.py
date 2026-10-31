@@ -37,7 +37,7 @@ class TimestampAligner(
         self._field_query = field_query_service
         self._rttm_utils = RttmStmUtils(field_query_service=field_query_service)
 
-    def _needs_alignment(self, algorithm_type, reference_params):
+    def _needs_alignment(self, algorithm_type, reference_params, device_id=None):
         """判断是否需要进行时间对齐
 
         根据算法配置判断：
@@ -49,6 +49,7 @@ class TimestampAligner(
         Args:
             algorithm_type: 算法类型
             reference_params: 参考参数列表
+            device_id: 设备级作用域（按该设备的参数覆盖取字段名）
 
         Returns:
             bool: True 表示需要对齐，False 表示不需要
@@ -72,8 +73,10 @@ class TimestampAligner(
 
         if algorithm_type and self._field_query:
             try:
-                stm_codes = self._field_query.get_device_output_field_codes_by_type(algorithm_type, 'stm')
-                rttm_codes = self._field_query.get_device_output_field_codes_by_type(algorithm_type, 'rttm')
+                stm_codes = self._field_query.get_device_output_field_codes_by_type(
+                    algorithm_type, 'stm', device_id)
+                rttm_codes = self._field_query.get_device_output_field_codes_by_type(
+                    algorithm_type, 'rttm', device_id)
                 has_time_series_output = bool(stm_codes or rttm_codes)
                 if not has_time_series_output:
                     log_not_emit('DEBUG', 'device_collector',
@@ -88,7 +91,10 @@ class TimestampAligner(
 
         return True
 
-    def calculate_effective_offset_for_single_result(self, raw_results, reference_params, playback_time_offsets, algorithm_type=None):
+    def calculate_effective_offset_for_single_result(
+        self, raw_results, reference_params, playback_time_offsets,
+        algorithm_type=None, device_id=None,
+    ):
         """为单个设备结果计算 effective_offset 并调整参考参数
 
         采用混合对齐策略（按优先级）：
@@ -101,11 +107,12 @@ class TimestampAligner(
                          '[calculate_effective_offset_for_single_result] reference_params is empty', category='engine')
             return {'adjusted_params': reference_params or [], 'alignment_info': alignment_info}
 
-        if not self._needs_alignment(algorithm_type, reference_params):
+        if not self._needs_alignment(algorithm_type, reference_params, device_id):
             alignment_info['method'] = 'skipped'
             return {'adjusted_params': reference_params, 'alignment_info': alignment_info}
 
-        device_segments = self._rttm_utils._extract_segments_from_result(raw_results, algorithm_type)
+        device_segments = self._rttm_utils._extract_segments_from_result(
+            raw_results, algorithm_type, device_id)
         ref_segments = self._rttm_utils._extract_segments_from_reference(reference_params)
 
         alignment_info['device_segment_count'] = len(device_segments)

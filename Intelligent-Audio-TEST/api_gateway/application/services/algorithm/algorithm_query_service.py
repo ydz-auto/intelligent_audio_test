@@ -117,11 +117,18 @@ class AlgorithmQueryService:
         """获取参数映射列表。
 
         source_type=api 且带 api_id 时按 API 实例作用域读取（映射随 API 参数一起
-        下沉，算法类型级默认层废弃）；其余情况沿用算法类型级读取。
+        下沉，算法类型级默认层废弃）；带 device_id 时按设备级作用域读取
+        （设备行覆盖算法级同键行）；其余情况沿用算法类型级读取。
         """
         query = _parse_query_params(AlgorithmMappingListQuery)
 
-        if query.api_id is not None:
+        if query.device_id is not None:
+            result = _algorithm_acl.get_param_mapping_for_component(
+                algorithm_type=query.algorithm_type,
+                component_type=query.source_type or 'device',
+                device_id=query.device_id,
+            )
+        elif query.api_id is not None:
             result = _algorithm_acl.get_param_mapping_for_component(
                 algorithm_type=query.algorithm_type,
                 component_type=query.source_type or 'api',

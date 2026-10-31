@@ -96,7 +96,7 @@ class RttmStmUtils:
         segments.sort(key=lambda x: x['start'])
         return segments
 
-    def _get_stm_rttm_content_from_result(self, result_dict, algorithm_type=None):
+    def _get_stm_rttm_content_from_result(self, result_dict, algorithm_type=None, device_id=None):
         """从结果字典中提取 STM/RTTM 内容
 
         优先使用数据库配置（algorithm_device_params 的 param_type）动态查找字段名，
@@ -105,6 +105,7 @@ class RttmStmUtils:
         Args:
             result_dict: 设备结果字典
             algorithm_type: 算法类型（可选，用于从数据库配置动态查找字段名）
+            device_id: 设备级作用域（可选，按该设备的参数覆盖取字段名）
 
         Returns:
             tuple: (stm_content, rttm_content)
@@ -118,8 +119,10 @@ class RttmStmUtils:
         # 策略1: 通过字段查询服务动态查找字段名
         if algorithm_type and self._field_query:
             try:
-                stm_codes = self._field_query.get_device_output_field_codes_by_type(algorithm_type, 'stm')
-                rttm_codes = self._field_query.get_device_output_field_codes_by_type(algorithm_type, 'rttm')
+                stm_codes = self._field_query.get_device_output_field_codes_by_type(
+                    algorithm_type, 'stm', device_id)
+                rttm_codes = self._field_query.get_device_output_field_codes_by_type(
+                    algorithm_type, 'rttm', device_id)
                 for code in stm_codes:
                     if result_dict.get(code):
                         stm_content = result_dict[code]
@@ -144,12 +147,13 @@ class RttmStmUtils:
 
         return stm_content, rttm_content
 
-    def _extract_segments_from_result(self, raw_results, algorithm_type=None):
+    def _extract_segments_from_result(self, raw_results, algorithm_type=None, device_id=None):
         """从设备结果中提取片段列表
 
         Args:
             raw_results: 设备驱动提取的结果
             algorithm_type: 算法类型（可选，用于动态查找字段名）
+            device_id: 设备级作用域（可选，按该设备参数覆盖取字段名）
 
         Returns:
             list: 片段列表
@@ -157,7 +161,8 @@ class RttmStmUtils:
         if not raw_results:
             return []
 
-        stm_content, rttm_content = self._get_stm_rttm_content_from_result(raw_results, algorithm_type)
+        stm_content, rttm_content = self._get_stm_rttm_content_from_result(
+            raw_results, algorithm_type, device_id)
 
         # 优先使用 STM（包含文本内容，支持内容对齐）
         if stm_content:
