@@ -336,7 +336,8 @@ export function DeviceParamsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-3xl'>
+      {/* 与算法编辑弹窗同宽：两节映射表 7 列，3xl 太窄 */}
+      <DialogContent className='sm:max-w-[min(1400px,92vw)]'>
         <DialogHeader>
           <DialogTitle>设备参数配置 · {device.name}</DialogTitle>
           <DialogDescription>
