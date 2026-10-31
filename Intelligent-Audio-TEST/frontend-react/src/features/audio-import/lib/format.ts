@@ -29,14 +29,9 @@ export function durationBucket(seconds: number | null): 'short' | 'medium' | 'lo
   return 'long'
 }
 
-/** 创建时间格式化（mono tabular） */
-export function formatDateTime(value: string | null): string {
-  if (!value) return '—'
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value))
-}
+/**
+ * 创建时间格式化（mono tabular）。
+ * INT-2211：后端下发裸 UTC，统一走共享工具按 UTC 解析后转本地展示。
+ */
+export { formatDateTime } from '@/lib/date-time'
+

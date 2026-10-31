@@ -9,17 +9,12 @@ export function gainToDb(gain: number | null | undefined): string {
   return `${(20 * Math.log10(gain)).toFixed(1)} dB`
 }
 
-/** 时间格式化（mono tabular，YYYY-MM-DD HH:mm 口径） */
-export function formatDateTime(value: string | null): string {
-  if (!value) return '—'
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value))
-}
+/**
+ * 时间格式化（mono tabular，YYYY-MM-DD HH:mm 口径）。
+ * INT-2211：后端下发裸 UTC，统一走共享工具按 UTC 解析后转本地展示。
+ */
+export { formatDateTime } from '@/lib/date-time'
+
 
 /** 线性增益列值格式化：整数补一位小数（1.0/10.0），其余保留至 3 位去尾零（0.001/3.162）。 */
 export function formatLinearGain(value: number): string {

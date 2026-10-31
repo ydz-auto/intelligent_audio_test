@@ -22,6 +22,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { formatDateTime } from '@/lib/date-time'
 import { cn } from '@/lib/utils'
 import type { AlgorithmDefinition } from '@/domain/models/algorithmConfig'
 import { AlgorithmStatusBadge } from '@/features/algorithm-config/components/algorithm-status-badge'
@@ -48,17 +49,6 @@ export type AlgorithmTableProps = {
   onEdit: (algorithm: AlgorithmDefinition) => void
   onClone: (algorithm: AlgorithmDefinition) => void
   onDelete: (algorithm: AlgorithmDefinition) => void
-}
-
-/** 列表更新时间格式化（默认 locale；§3.1） */
-function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value))
 }
 
 function paramCount(algorithm: AlgorithmDefinition): number {
