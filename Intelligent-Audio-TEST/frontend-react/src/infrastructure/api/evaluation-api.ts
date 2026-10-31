@@ -22,6 +22,7 @@ import type {
 } from '@/domain/models/evaluationDimension'
 import { request } from '@/infrastructure/api/client'
 import {
+  type AlgorithmDimensionsDataDto,
   type CategoryListDataDto,
   type DimensionHealthCheckDataDto,
   type DimensionItemDto,
@@ -101,6 +102,35 @@ export async function fetchAlgorithmOptions(): Promise<
     '/algorithm/options'
   )
   return toAlgorithmOptionsList(dto)
+}
+
+/** 算法关联维度的单条关系（GET /algorithm/dimensions/{algo_type}；本层已转 camelCase） */
+export interface DimensionAlgorithmLink {
+  dimensionId: number
+  algorithmType: string
+  isDefault: boolean
+  weight: number
+}
+
+/**
+ * 某算法关联的维度（GET /algorithm/dimensions/{algo_type}，algorithm:read）。
+ * `GET /evaluation/dimensions` 列表端点按契约恒下发 `associated_algorithms: []`（省 N+1），
+ * 只有详情才带关联；本端点一次取回某算法关联的全部维度（含 is_default / weight），
+ * 评估维度页据此按算法批量补齐「关联算法」列与筛选（INT-2252）。
+ */
+export async function fetchAlgorithmDimensionLinks(
+  algorithmType: string
+): Promise<DimensionAlgorithmLink[]> {
+  const dto = await request<AlgorithmDimensionsDataDto>(
+    'GET',
+    `/algorithm/dimensions/${encodeURIComponent(algorithmType)}`
+  )
+  return (dto?.dimensions ?? []).map((d) => ({
+    dimensionId: Number(d.id),
+    algorithmType,
+    isDefault: Boolean(d.is_default),
+    weight: d.weight ?? 1,
+  }))
 }
 
 /** 保存维度（新增/编辑/权重更新共用；有 id 走 PUT /{id}，无 id 走 POST） */

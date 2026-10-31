@@ -1,14 +1,23 @@
 /**
  * 评估维度页 query hooks（application 层；11_用例域.md §9 组件树落位）。
- * queryKey：['evaluation','dimensions'] / ['evaluation','categories'] / ['algorithm','options']。
+ * queryKey：['evaluation','dimensions'] / ['evaluation','categories'] / ['algorithm','options'] /
+ * ['algorithm','dimensions',algo]（某算法关联维度，INT-2252）。
  * 维度增删/权重/启停后 invalidate(['evaluation'])——与用例管理「评估维度」facet
- * （['evaluation','dimensions','options']）同前缀联动刷新（§4.3 三页口径）。
+ * （['evaluation','dimensions','options']）同前缀联动刷新（§4.3 三页口径）；
+ * 关联算法关系随维度保存变化，故同时 invalidate(['algorithm','dimensions'])。
  */
 import { useMemo } from 'react'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from '@tanstack/react-query'
 
 import type {
+  AlgorithmAssociation,
   Dimension,
   EvaluationCategory,
 } from '@/domain/models/evaluationDimension'
@@ -19,6 +28,7 @@ import {
   deleteEvaluationDimension,
   duplicateDimension,
   exportEvaluationDimensions,
+  fetchAlgorithmDimensionLinks,
   fetchAlgorithmOptions,
   fetchDimensionAudioFlags,
   fetchDimensionOptions,
@@ -32,6 +42,7 @@ import {
   testDimensionHealth,
   updateDimensionStatus,
   updateDimensionWeight,
+  type DimensionAlgorithmLink,
 } from '@/infrastructure/api/evaluation-api'
 
 /**
@@ -131,12 +142,92 @@ export function useAlgorithmOptions() {
   })
 }
 
+/**
+ * 维度 id → 关联算法项（多算法合并；同一维度可关联多个算法）。
+ * 入参是各算法的关联维度关系（GET /algorithm/dimensions/{algo_type}）。
+ */
+export function buildAlgorithmAssociationIndex(
+  links: DimensionAlgorithmLink[]
+): Map<number, AlgorithmAssociation[]> {
+  const index = new Map<number, AlgorithmAssociation[]>()
+  for (const link of links) {
+    const list = index.get(link.dimensionId) ?? []
+    list.push({
+      algorithmType: link.algorithmType,
+      isDefault: link.isDefault,
+      weight: link.weight,
+    })
+    index.set(link.dimensionId, list)
+  }
+  return index
+}
+
+/**
+ * 把关联算法索引按 id 合并进维度行（INT-2252）。
+ * `GET /evaluation/dimensions` 列表端点按契约恒下发 `associated_algorithms: []`
+ * （省 N+1，只有详情带关联），页面筛选与「关联算法」列若直接读行字段会恒空——
+ * 顶部选中任一算法即把列表滤空。索引为空（尚未取到 / 取失败）时原样返回。
+ */
+export function mergeDimensionAssociations(
+  dimensions: Dimension[],
+  index: Map<number, AlgorithmAssociation[]>
+): Dimension[] {
+  if (index.size === 0) return dimensions
+  return dimensions.map((dim) => {
+    const associations = index.get(Number(dim.id))
+    return associations && associations.length > 0
+      ? { ...dim, associatedAlgorithms: associations }
+      : dim
+  })
+}
+
+/** useQueries combine：module 级常量保证函数身份稳定（避免每渲染重算整表） */
+function combineAlgorithmAssociationIndex(
+  results: UseQueryResult<DimensionAlgorithmLink[], Error>[]
+) {
+  return {
+    index: buildAlgorithmAssociationIndex(
+      results.flatMap((result) => result.data ?? [])
+    ),
+    /** 任一算法关联查询仍在加载 → 页面暂不按算法过滤，避免加载瞬间误报空态 */
+    pending: results.some((result) => result.isPending),
+    /** 取失败 → 同样不按算法过滤（列已降级为「—」），宁可多显示也不吞掉全部维度 */
+    failed: results.some((result) => result.isError),
+  }
+}
+
+/**
+ * 各算法关联的维度索引（INT-2252；评估维度页「关联算法」列与筛选的数据源）。
+ * 每个算法一次 GET /algorithm/dimensions/{algo_type}（请求数 = 算法数，不随维度行数增长，
+ * 而非逐行拉详情的 N+1）；算法列表与 /algorithm/options 共用缓存。
+ */
+export function useAlgorithmDimensionIndex() {
+  const algorithmOptionsQuery = useAlgorithmOptions()
+  const algorithms = algorithmOptionsQuery.data ?? []
+  const combined = useQueries({
+    queries: algorithms.map((algorithm) => ({
+      queryKey: ['algorithm', 'dimensions', algorithm.value],
+      queryFn: () => fetchAlgorithmDimensionLinks(algorithm.value),
+      staleTime: 60_000,
+    })),
+    combine: combineAlgorithmAssociationIndex,
+  })
+  // 算法清单未就绪/取失败时同样视为「索引不可用」——否则首帧空索引会把整页滤空
+  return {
+    index: combined.index,
+    pending: combined.pending || algorithmOptionsQuery.isPending,
+    failed: combined.failed || algorithmOptionsQuery.isError,
+  }
+}
+
 /** 维度增删改 + 权重/排序/启停/批量（聚合 CRUD + invalidate 联动） */
 export function useEvaluationMutations() {
   const queryClient = useQueryClient()
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['evaluation'] })
+    // 维度保存可能改动「关联算法」关系，按算法缓存的关系索引同前缀失效（INT-2252）
+    void queryClient.invalidateQueries({ queryKey: ['algorithm', 'dimensions'] })
   }
 
   const save = useMutation({

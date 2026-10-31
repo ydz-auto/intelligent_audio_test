@@ -14,6 +14,8 @@ import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import {
+  mergeDimensionAssociations,
+  useAlgorithmDimensionIndex,
   useCalculateScore,
   useEvaluationCategories,
   useEvaluationCategoryMutations,
@@ -197,6 +199,20 @@ export function EvaluationPage() {
 
   /* ───────── 派生：筛选 → 层级 → 分组 ───────── */
 
+  // 关联算法索引（INT-2252）：`GET /evaluation/dimensions` 按契约恒下发
+  // associated_algorithms: []（省 N+1，只有详情带关联），直接读行字段会让「选中任一算法
+  // → 全部滤空、关联算法列恒 —」。这里按算法批量取关联维度（GET /algorithm/dimensions/
+  // {algo}）后合并进行，供顶部算法筛选与「关联算法」列共用。
+  const algorithmDimensionIndex = useAlgorithmDimensionIndex()
+  /* 索引未就绪 / 取失败时不按算法过滤：加载瞬间或降级下宁可多显示，也不把整页滤空 */
+  const algorithmFilterUnavailable =
+    algorithmDimensionIndex.pending || algorithmDimensionIndex.failed
+  const dimensionsWithAlgorithms = useMemo(
+    () =>
+      mergeDimensionAssociations(dimensions, algorithmDimensionIndex.index),
+    [dimensions, algorithmDimensionIndex.index]
+  )
+
   const filteredDimensions = useMemo(() => {
     const keyword = searchKeyword
     const matches = (dim: Dimension): boolean => {
@@ -214,6 +230,7 @@ export function EvaluationPage() {
         String(dim.categoryId ?? '') === categoryFilter
       const algorithmHit =
         !effectiveAlgorithmId ||
+        algorithmFilterUnavailable ||
         (dim.associatedAlgorithms ?? []).some(
           (a) => a.algorithmType === effectiveAlgorithmId
         )
@@ -222,13 +239,13 @@ export function EvaluationPage() {
 
     // 主/子联动：子维度命中时带上父维度上下文；主维度命中整组展示（避免孤儿子维度）
     const byParentId = new Map<number | string, Dimension[]>()
-    for (const dim of dimensions) {
+    for (const dim of dimensionsWithAlgorithms) {
       const pid = dim.parentDimensionId ?? ''
       if (!byParentId.has(pid)) byParentId.set(pid, [])
       byParentId.get(pid)!.push(dim)
     }
     const included = new Set<number | string>()
-    for (const dim of dimensions) {
+    for (const dim of dimensionsWithAlgorithms) {
       if (!dim.parentDimensionId) {
         if (matches(dim)) {
           included.add(dim.id)
@@ -242,8 +259,15 @@ export function EvaluationPage() {
         if (dim.parentDimensionId != null) included.add(dim.parentDimensionId)
       }
     }
-    return dimensions.filter((dim) => included.has(dim.id))
-  }, [dimensions, searchKeyword, statusFilter, categoryFilter, effectiveAlgorithmId])
+    return dimensionsWithAlgorithms.filter((dim) => included.has(dim.id))
+  }, [
+    dimensionsWithAlgorithms,
+    searchKeyword,
+    statusFilter,
+    categoryFilter,
+    effectiveAlgorithmId,
+    algorithmFilterUnavailable,
+  ])
 
   const hierarchicalDimensions = useMemo<HierarchicalDimension[]>(() => {
     const mains = filteredDimensions.filter(

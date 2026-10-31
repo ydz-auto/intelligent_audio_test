@@ -141,6 +141,25 @@ export interface DimensionOptionsDataDto {
   }>
 }
 
+/**
+ * GET /algorithm/dimensions/{algo_type} 数据（algorithm_bp.py:242；算法关联维度）。
+ * 与 `GET /evaluation/dimensions` 列表端点非同一口径：本端点直接读算法侧维度关系，
+ * 含 is_default / weight（列表端点按契约恒返回 associated_algorithms: []，INT-2252），
+ * 因此调用方须与可见维度列表按 id 取交集后再消费。
+ */
+export interface AlgorithmDimensionsDataDto {
+  dimensions: Array<{
+    id: number
+    name?: string | null
+    description?: string | null
+    type?: string | null
+    weight?: number | null
+    is_default?: boolean | null
+  }>
+  dimension_ids?: number[] | null
+  default_dimension_id?: number | null
+}
+
 /** GET /algorithm/options 数据（algorithm_bp.py:165；{ algorithms: [...] }） */
 export interface AlgorithmOptionsDataDto {
   algorithms: Array<{
