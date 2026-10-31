@@ -131,6 +131,18 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
     ).not.toBeChecked()
   })
 
+  it('INT-2196 返工：音频选项提示只说「（体积较大）」，不承诺导入后音频可用', () => {
+    renderDialog({ resolveFilteredIds: vi.fn().mockResolvedValue(['tc-1']) })
+
+    const label = screen
+      .getByRole('checkbox', { name: /包含音频文件/ })
+      .closest('label')
+    expect(label?.textContent).toContain('（体积较大）')
+    expect(label?.textContent).not.toMatch(
+      /不依赖目标环境|随包携带|自动可用|无需重新绑定/
+    )
+  })
+
   it('INT-2196：勾选「包含音频文件」→ includeAudios=true，包内有音频则只提示导出成功', async () => {
     const zipFilename = 'testcases_export_20261031_120000.zip'
     mockedExport.mockResolvedValue({

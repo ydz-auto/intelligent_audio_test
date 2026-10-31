@@ -334,8 +334,9 @@ export function ExportDialog({
                   onCheckedChange={(v) => setIncludeAudios(!!v)}
                 />
                 包含音频文件
+                {/* 文案口径同 09_任务域.md §5.12「（体积较大）」：导入侧回导能力未落地前不承诺跨环境可用 */}
                 <span className='text-muted-foreground text-xs'>
-                  （体积较大，跨环境导入不依赖目标环境的音频库）
+                  （体积较大）
                 </span>
               </label>
             </div>
