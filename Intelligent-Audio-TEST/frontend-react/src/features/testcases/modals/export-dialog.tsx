@@ -1,8 +1,8 @@
 /**
  * 导出用例弹窗（11_用例域.md §5.7.2，Dialog sm:max-w-md）。
  * 导出范围 RadioGroup「按当前筛选条件导出（导出全部筛选结果）/仅导出已选 {n} 个用例」
- * + 格式 Select（ZIP 数据包 / Excel / JSON）+ ZIP 选项「包含参考参数文件」+ 主钮「开始导出」。
- * 与任务数据导出同型：ZIP 为完整用例数据包（manifest + testcases.json + 参考参数文件），
+ * + 格式 Select（ZIP 数据包 / Excel / JSON）+ ZIP 选项「包含参考参数文件」「包含音频文件」+ 主钮「开始导出」。
+ * 与任务数据导出同型：ZIP 为完整用例数据包（manifest + testcases.json + 参考参数文件 [+ audios/ 音频]），
  * 可直接用于「导入用例」做跨环境搬运。
  * INT-1642 接线：真实 POST /testcases/export（testcase_export_service）——
  * - 已选范围直接用勾选 id；筛选范围由页面解析器（POST /testcases/ids 全量圈定，非仅当前页）；
@@ -10,6 +10,8 @@
  * - 失败（空 ids 400「未指定要导出的用例ID」等）toast 透出后端 message。
  * INT-2154：弹窗给出「将导出 N 条用例」范围预览（开窗即按当前筛选解析全量 id，与真正导出
  * 同一份），未勾选时提示怎么去选，JSON 导出后按信封条数核对并提示不一致。
+ * INT-2196：ZIP 选项增加「包含音频文件」（默认不勾，体积较大）；导出后按包内 `audios/` 条目
+ * 核对，勾了却没打包时明确提示「音频仍以引用方式导出」，不假装成功。
  * 注：页头「导入用例」为文件/用例包导入（ImportDialog：JSON/CSV/Excel/ZIP + 重复策略）；
  * 「导入音频生成用例」留在音频管理页（/AudioImport）上传并勾选生成，两个入口互不替代。
  */
@@ -35,6 +37,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
+import { countZipAudioEntries } from '@/features/testcases/lib/zip-audio-entries'
 import { downloadBlob } from '@/lib/download-blob'
 import { ApiError } from '@/infrastructure/api/api-error'
 import {
@@ -90,6 +93,8 @@ export function ExportDialog({
 }) {
   const [format, setFormat] = useState<TestCaseExportFormat>('zip')
   const [includeReferenceParams, setIncludeReferenceParams] = useState(true)
+  /** 音频文件进包（INT-2196）：默认不勾，跨环境搬运需要时再开，避免默认导出体积暴涨 */
+  const [includeAudios, setIncludeAudios] = useState(false)
   const [scope, setScope] = useState<ExportScope>('filter')
   const [submitting, setSubmitting] = useState(false)
   /**
@@ -175,6 +180,7 @@ export function ExportDialog({
       }
       const { blob, filename, exportedCount } = await exportTestCases(ids, format, {
         includeReferenceParams,
+        includeAudios,
       })
       if (blob.size === 0) {
         toast.error('导出失败：后端返回空文件')
@@ -189,6 +195,15 @@ export function ExportDialog({
         )
       } else {
         toast.success(`已导出 ${ids.length} 个用例`, { description: filename })
+      }
+      // INT-2196：勾了「包含音频文件」就核对包内 `audios/` 条目；读不懂包体时不提示（不误报）
+      if (format === 'zip' && includeAudios) {
+        const audioCount = await countZipAudioEntries(blob)
+        if (audioCount === 0) {
+          toast.warning('导出包内没有音频文件：用例音频仍以引用方式导出', {
+            description: filename,
+          })
+        }
       }
       onOpenChange(false)
     } catch (error) {
@@ -305,13 +320,25 @@ export function ExportDialog({
             </Select>
           </div>
           {format === 'zip' && (
-            <label className='flex cursor-pointer items-center gap-2 text-sm'>
-              <Checkbox
-                checked={includeReferenceParams}
-                onCheckedChange={(v) => setIncludeReferenceParams(!!v)}
-              />
-              包含参考参数文件
-            </label>
+            <div className='space-y-2'>
+              <label className='flex cursor-pointer items-center gap-2 text-sm'>
+                <Checkbox
+                  checked={includeReferenceParams}
+                  onCheckedChange={(v) => setIncludeReferenceParams(!!v)}
+                />
+                包含参考参数文件
+              </label>
+              <label className='flex cursor-pointer items-center gap-2 text-sm'>
+                <Checkbox
+                  checked={includeAudios}
+                  onCheckedChange={(v) => setIncludeAudios(!!v)}
+                />
+                包含音频文件
+                <span className='text-muted-foreground text-xs'>
+                  （体积较大，跨环境导入不依赖目标环境的音频库）
+                </span>
+              </label>
+            </div>
           )}
         </div>
 

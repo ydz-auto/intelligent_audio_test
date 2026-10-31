@@ -403,7 +403,7 @@ export async function updateRoundRefParams(
 
 /**
  * 导出格式：
- * - zip：后端打包（manifest + testcases.json + 可选参考参数文件），与任务数据导出口径一致；
+ * - zip：后端打包（manifest + testcases.json + 可选参考参数文件/音频文件），与任务数据导出口径一致；
  * - xlsx：后端直接回 xlsx 字节流；
  * - json：后端返回 JSON 数据信封，前端序列化为 .json 文件下载。
  */
@@ -412,6 +412,12 @@ export type TestCaseExportFormat = 'zip' | 'json' | 'xlsx'
 export interface TestCaseExportOptions {
   /** ZIP 数据包是否包含参考参数文件（默认包含） */
   includeReferenceParams?: boolean
+  /**
+   * ZIP 数据包是否包含音频文件（默认不包含，INT-2196）。
+   * 下发 `include_audios`，与任务数据导出的同名选项同口径；后端未支持时包内不含音频，
+   * 由导出弹窗按包内条目核对后提示。
+   */
+  includeAudios?: boolean
 }
 
 export interface TestCaseExportResult {
@@ -433,7 +439,7 @@ function exportTimestamp(): string {
 
 /**
  * 导出用例（POST /testcases/export，testcase:import_export）。
- * format=zip 走 ZIP 数据包（含参考参数文件开关）；format=xlsx 走 xlsx 字节流；
+ * format=zip 走 ZIP 数据包（含参考参数文件 / 音频文件开关）；format=xlsx 走 xlsx 字节流；
  * format=json 走 success_response（数据在信封 data，结构 {test_cases, exported_at,
  * total_count}，与导入端往返一致），前端序列化落文件。
  * 空 ids 后端 400「未指定要导出的用例ID」由 client 抛 ApiError。
@@ -449,6 +455,7 @@ export async function exportTestCases(
     const body: Record<string, unknown> = { ids, format }
     if (format === 'zip') {
       body.include_reference_params = options.includeReferenceParams ?? true
+      body.include_audios = options.includeAudios ?? false
     }
     const blob = await apiClient.post<Blob>('/testcases/export', body, {
       responseType: 'blob',

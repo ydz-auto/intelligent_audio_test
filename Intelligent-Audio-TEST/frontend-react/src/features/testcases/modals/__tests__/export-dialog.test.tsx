@@ -44,6 +44,39 @@ const ZIP_RESULT = {
   filename: 'testcases_export_20261024_120000.zip',
 }
 
+const encoder = new TextEncoder()
+const u16 = (value: number) => [value & 0xff, (value >> 8) & 0xff]
+const u32 = (value: number) => [...u16(value & 0xffff), ...u16(value >>> 16)]
+
+/** 造一个 stored（不压缩）的最小合法 ZIP，供「包内是否含 audios/」核对用 */
+function buildZip(entries: Array<{ name: string; data?: string }>): Uint8Array<ArrayBuffer> {
+  const body: number[] = []
+  const central: number[] = []
+  for (const entry of entries) {
+    const name = Array.from(encoder.encode(entry.name))
+    const data = Array.from(encoder.encode(entry.data ?? ''))
+    const localOffset = body.length
+    body.push(
+      ...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0),
+      ...u32(0), ...u32(data.length), ...u32(data.length),
+      ...u16(name.length), ...u16(0), ...name, ...data
+    )
+    central.push(
+      ...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(0),
+      ...u16(0), ...u16(0), ...u32(0), ...u32(data.length), ...u32(data.length),
+      ...u16(name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0),
+      ...u32(0), ...u32(localOffset), ...name
+    )
+  }
+  const centralOffset = body.length
+  return new Uint8Array([
+    ...body,
+    ...central,
+    ...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(entries.length),
+    ...u16(entries.length), ...u32(central.length), ...u32(centralOffset), ...u16(0),
+  ])
+}
+
 describe('ExportDialog 导出接线（INT-1642）', () => {
   beforeEach(() => {
     mockedExport.mockReset()
@@ -61,6 +94,7 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
     await waitFor(() =>
       expect(mockedExport).toHaveBeenCalledWith(['tc-1', 'tc-2'], 'zip', {
         includeReferenceParams: true,
+        includeAudios: false,
       })
     )
     expect(mockedDownload).toHaveBeenCalledWith(
@@ -84,8 +118,74 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
     await waitFor(() =>
       expect(mockedExport).toHaveBeenCalledWith(['tc-1'], 'zip', {
         includeReferenceParams: false,
+        includeAudios: false,
       })
     )
+  })
+
+  it('ZIP 默认不勾「包含音频文件」（包体积不变）', () => {
+    renderDialog({ resolveFilteredIds: vi.fn().mockResolvedValue(['tc-1']) })
+
+    expect(
+      screen.getByRole('checkbox', { name: /包含音频文件/ })
+    ).not.toBeChecked()
+  })
+
+  it('INT-2196：勾选「包含音频文件」→ includeAudios=true，包内有音频则只提示导出成功', async () => {
+    const zipFilename = 'testcases_export_20261031_120000.zip'
+    mockedExport.mockResolvedValue({
+      blob: new Blob(
+        [buildZip([
+          { name: 'manifest.json', data: '{}' },
+          { name: 'testcases.json', data: '{}' },
+          { name: 'audios/audio-1.wav', data: 'wav' },
+        ])],
+        { type: 'application/zip' }
+      ),
+      filename: zipFilename,
+    })
+    const user = userEvent.setup()
+    renderDialog({ resolveFilteredIds: vi.fn().mockResolvedValue(['tc-1']) })
+
+    await user.click(screen.getByRole('checkbox', { name: /包含音频文件/ }))
+    await user.click(screen.getByRole('button', { name: /开始导出/ }))
+
+    await waitFor(() =>
+      expect(mockedExport).toHaveBeenCalledWith(['tc-1'], 'zip', {
+        includeReferenceParams: true,
+        includeAudios: true,
+      })
+    )
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        '已导出 1 个用例',
+        expect.objectContaining({ description: zipFilename })
+      )
+    )
+    expect(toast.warning).not.toHaveBeenCalled()
+  })
+
+  it('INT-2196：勾选音频但包内没有 audios/ → 明确提示仍以引用方式导出', async () => {
+    const zipFilename = 'testcases_export_20261031_120000.zip'
+    mockedExport.mockResolvedValue({
+      blob: new Blob([buildZip([{ name: 'manifest.json', data: '{}' }])], {
+        type: 'application/zip',
+      }),
+      filename: zipFilename,
+    })
+    const user = userEvent.setup()
+    renderDialog({ resolveFilteredIds: vi.fn().mockResolvedValue(['tc-1']) })
+
+    await user.click(screen.getByRole('checkbox', { name: /包含音频文件/ }))
+    await user.click(screen.getByRole('button', { name: /开始导出/ }))
+
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        '导出包内没有音频文件：用例音频仍以引用方式导出',
+        expect.objectContaining({ description: zipFilename })
+      )
+    )
+    expect(mockedDownload).toHaveBeenCalled()
   })
 
   it('仅导出已选：用勾选 id，且切换后不再重新解析筛选 id', async () => {
@@ -106,6 +206,7 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
     await waitFor(() =>
       expect(mockedExport).toHaveBeenCalledWith(['tc-8', 'tc-9'], 'zip', {
         includeReferenceParams: true,
+        includeAudios: false,
       })
     )
     // 已选范围不依赖筛选解析
@@ -123,11 +224,15 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
     await waitFor(() =>
       expect(mockedExport).toHaveBeenCalledWith(['tc-1'], 'xlsx', {
         includeReferenceParams: true,
+        includeAudios: false,
       })
     )
-    // Excel 格式不展示参考参数选项
+    // Excel 格式不展示参考参数 / 音频文件选项
     expect(
       screen.queryByRole('checkbox', { name: /包含参考参数文件/ })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('checkbox', { name: /包含音频文件/ })
     ).not.toBeInTheDocument()
   })
 
@@ -146,6 +251,7 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
     await waitFor(() =>
       expect(mockedExport).toHaveBeenCalledWith(['tc-1'], 'json', {
         includeReferenceParams: true,
+        includeAudios: false,
       })
     )
   })
@@ -269,6 +375,7 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
     await waitFor(() =>
       expect(mockedExport).toHaveBeenCalledWith(['tc-1'], 'zip', {
         includeReferenceParams: true,
+        includeAudios: false,
       })
     )
   })
@@ -310,6 +417,7 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
     await waitFor(() =>
       expect(mockedExport).toHaveBeenCalledWith(['tc-1'], 'zip', {
         includeReferenceParams: true,
+        includeAudios: false,
       })
     )
   })
