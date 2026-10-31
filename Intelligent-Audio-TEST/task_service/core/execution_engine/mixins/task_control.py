@@ -164,11 +164,11 @@ class TaskControlMixin:
         # 避免本方法的 close 把外层会话上的对象 expunge 脱管
         local_db_session = create_db_session()
         try:
-            tasks_to_start = []
-            
+            candidates = []
+
             with self.queue_lock:
                 remaining_tasks = deque()
-                
+
                 while self.task_queue:
                     queued_task = self.task_queue.popleft()
                     task_id = queued_task['id']
@@ -176,9 +176,12 @@ class TaskControlMixin:
                     api_ids = queued_task.get('api_ids', [])
 
                     task = local_db_session.get(Task, task_id)
-                    task_status = task.status if task else None
 
-                    if task_status == TaskStatus.STOPPED:
+                    # INT-2231：只有仍待执行（pending/queued）的任务才可能被本实例
+                    # 消费。终态 / 已停止 / 已被其它实例推进 / 已删除的任务直接丢弃
+                    # 本地队列项——本方法是消费入口，不能凭内存队列的陈旧快照起线程。
+                    # 锁内只做廉价预判，真正的抢占以锁外条件 UPDATE（CAS）为准。
+                    if not task or task.status not in (TaskStatus.PENDING, TaskStatus.QUEUED):
                         continue
 
                     can_run = False
@@ -191,6 +194,7 @@ class TaskControlMixin:
                         can_run = True
 
                     if can_run:
+                        # 锁内抢占内存槽位；CAS 失败时由 _release_running_slot 回滚
                         self.running_tasks[task_id] = {
                             'has_physical': has_physical,
                             'api_ids': api_ids,
@@ -200,20 +204,44 @@ class TaskControlMixin:
                         if api_ids:
                             self.running_apis.update(api_ids)
 
-                        if task:
-                            task.status = TaskStatus.RUNNING
-                            local_db_session.commit()
-
-                        tasks_to_start.append({
+                        candidates.append({
                             'task_id': task_id,
-                            'task': task,
                             'user_id': queued_task.get('user_id'),
                         })
                     else:
                         remaining_tasks.append(queued_task)
-                
+
                 self.task_queue = remaining_tasks
-            
+
+            # INT-2231：多实例下用 DB 条件 UPDATE 做任务抢占 CAS，与 start_task
+            # 同口径——只有 pending/queued 才能翻转为 running；影响行数不为 1
+            # 说明任务已被其它实例抢占或已终结，放弃启动并回滚刚抢到的内存槽位。
+            # INT-418：CAS 与其回滚槽位移出 queue_lock，避免持锁做 DB 写、以及
+            # 回滚分支在持锁线程上重入非重入锁（INT-321 自死锁）。
+            tasks_to_start = []
+            for candidate in candidates:
+                task_id = candidate['task_id']
+                try:
+                    claimed = local_db_session.query(Task).filter(
+                        Task.id == task_id,
+                        Task.status.in_([TaskStatus.PENDING, TaskStatus.QUEUED]),
+                    ).update({Task.status: TaskStatus.RUNNING},
+                             synchronize_session=False)
+                    if claimed != 1:
+                        local_db_session.rollback()
+                        self._release_running_slot(task_id)
+                        logger.info(
+                            "队列任务 %s 已被其它实例抢占或已终结，放弃本地启动", task_id)
+                        continue
+                    local_db_session.commit()
+                except Exception as e:
+                    local_db_session.rollback()
+                    self._release_running_slot(task_id)
+                    logger.error("队列任务 %s 抢占 CAS 失败，放弃本地启动: %s", task_id, e)
+                    continue
+
+                tasks_to_start.append(candidate)
+
             for task_info in tasks_to_start:
                 task_id = task_info['task_id']
 
@@ -434,13 +462,16 @@ class TaskControlMixin:
                     profile = task_repository.get_execution_profile(task_id)
                     if profile['api_ids']:
                         with self.queue_lock:
+                            # INT-2231：状态置 QUEUED 必须与入队在同一把锁内完成，
+                            # 否则 _check_queue 可能抢先消费到仍是 PAUSED 的队列项
+                            # 并把它当作陈旧项丢弃，恢复的任务再无线程启动
+                            task.status = TaskStatus.QUEUED
+                            local_db_session.commit()
                             self.task_queue.append({
                                 'id': task.id,
                                 'has_physical': profile['has_physical'],
                                 'api_ids': profile['api_ids'],
                             })
-                        task.status = TaskStatus.QUEUED
-                        local_db_session.commit()
                         self._emit_progress(task)
                         self.trigger_scheduler_check()
                         return True, "任务已恢复"
