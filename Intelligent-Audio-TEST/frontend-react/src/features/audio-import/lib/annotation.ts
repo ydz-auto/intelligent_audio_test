@@ -400,6 +400,34 @@ export function isAnnotationFile(name: string): boolean {
   return ANNOTATION_FILE_EXTS.some((e) => lower.endsWith(e))
 }
 
+/** 标注 ↔ 音频匹配键（相对路径去扩展名 + 叶文件名，与 parseAnnotationsForAudios 同口径） */
+function matchKeys(file: File): { baseKey: string; leafKey: string } {
+  const rel = file.webkitRelativePath || file.name
+  const baseKey = rel.replace(/\.[^.]+$/, '').toLowerCase()
+  return { baseKey, leafKey: baseKey.split('/').pop() ?? '' }
+}
+
+/**
+ * 找出没有命中任何音频的标注/txt 文件（INT-2192）。
+ * 上传前对这类文件逐条提示「未匹配到同名音频文件，已忽略」——此前它们被静默丢弃：
+ * 统计里计入「文本文件」，上传回执却只有音频数，既不报错也不说明。
+ */
+export function findUnmatchedAnnotationFiles(allFiles: File[], audioFiles: File[]): File[] {
+  const baseKeys = new Set<string>()
+  const leafKeys = new Set<string>()
+  for (const audioFile of audioFiles) {
+    const { baseKey, leafKey } = matchKeys(audioFile)
+    baseKeys.add(baseKey)
+    leafKeys.add(leafKey)
+  }
+  return allFiles
+    .filter((f) => isAnnotationFile(f.name))
+    .filter((annotationFile) => {
+      const { baseKey, leafKey } = matchKeys(annotationFile)
+      return !baseKeys.has(baseKey) && !leafKeys.has(leafKey)
+    })
+}
+
 /**
  * 从选中文件集中解析标注/txt 文件并按文件名（baseKey 优先、叶文件名回退）匹配音频，
  * 返回与 audioFiles 平行的每音频标注数组。供文件夹导入 / 上传弹窗复用。

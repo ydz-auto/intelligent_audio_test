@@ -8,6 +8,7 @@ import {
   determineAnnotationName,
   parseAnnotationFile,
   parseAnnotationFormat,
+  findUnmatchedAnnotationFiles,
   parseAnnotationsForAudios,
   parseAudioTxt,
 } from '@/features/audio-import/lib/annotation'
@@ -220,5 +221,46 @@ describe('parseAnnotationsForAudios（按 baseKey / 叶文件名匹配音频与�
     const audio1 = fileWithRel('audio1.wav', 'audio1.wav')
     const result = await parseAnnotationsForAudios([txt], [audio1], 'diarization')
     expect(result[0].map((a) => a.code)).toEqual(['asr', 'translation'])
+  })
+})
+
+describe('findUnmatchedAnnotationFiles（INT-2192 上传前逐条提示）', () => {
+  function fileWithRel(name: string, rel: string, content = '{}'): File {
+    const f = new File([content], name, { type: 'text/plain' })
+    Object.defineProperty(f, 'webkitRelativePath', { value: rel, configurable: true })
+    return f
+  }
+
+  function audioWithRel(name: string, rel: string): File {
+    const f = new File([new Uint8Array([1, 2, 3])], name, { type: 'audio/wav' })
+    Object.defineProperty(f, 'webkitRelativePath', { value: rel, configurable: true })
+    return f
+  }
+
+  it('同目录同名标注视为命中，不留提示', () => {
+    const audio = audioWithRel('a.wav', 'r/a.wav')
+    const ann = fileWithRel('a.txt', 'r/a.txt', '文本')
+    expect(findUnmatchedAnnotationFiles([audio, ann], [audio])).toEqual([])
+  })
+
+  it('跨目录同名标注按叶文件名回退命中，不留提示', () => {
+    const audio = audioWithRel('a.wav', 'r1/a.wav')
+    const ann = fileWithRel('a.json', 'r2/a.json', '{"segments":[]}')
+    expect(findUnmatchedAnnotationFiles([audio, ann], [audio])).toEqual([])
+  })
+
+  it('无同名音频的游离标注文件被返回', () => {
+    const audio = audioWithRel('a.wav', 'r/a.wav')
+    const strayTxt = fileWithRel('stray.txt', 'stray.txt', '无关文本')
+    const strayJson = fileWithRel('other.json', 'r/other.json', '{"segments":[]}')
+    expect(findUnmatchedAnnotationFiles([audio, strayTxt, strayJson], [audio])).toEqual([
+      strayTxt,
+      strayJson,
+    ])
+  })
+
+  it('无音频时所有标注文件都是游离文件', () => {
+    const ann = fileWithRel('a.txt', 'a.txt', '文本')
+    expect(findUnmatchedAnnotationFiles([ann], [])).toEqual([ann])
   })
 })

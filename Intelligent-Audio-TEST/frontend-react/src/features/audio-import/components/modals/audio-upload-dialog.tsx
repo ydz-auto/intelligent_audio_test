@@ -33,7 +33,17 @@ import { startRealAudioUpload, type PerFileUploadConfig } from '@/application/au
 import { useUploadRoundScope } from '@/application/audio/useUploadRoundScope'
 import type { AudioTagSource } from '@/infrastructure/api/audio-upload-api'
 import { DEFAULT_SPL, DEFAULT_TAG_SOURCE } from '@/features/audio-import/constants'
-import { parseAnnotationsForAudios } from '@/features/audio-import/lib/annotation'
+import {
+  ANNOTATION_FILE_EXTS,
+  findUnmatchedAnnotationFiles,
+  isAnnotationFile,
+  parseAnnotationsForAudios,
+} from '@/features/audio-import/lib/annotation'
+import {
+  AUDIO_ACCEPT_ATTR,
+  isAudioFile,
+  validateAudioFiles,
+} from '@/features/audio-import/lib/audio-file-validation'
 import { formatFileSize } from '@/features/audio-import/lib/format'
 
 export type AudioUploadDialogProps = {
@@ -56,8 +66,6 @@ const CONFLICT_OPTIONS = [
   { value: 'overwrite', label: '覆盖冲突文件' },
   { value: 'skip', label: '跳过冲突文件' },
 ] as const
-
-const ACCEPTED_AUDIO = '.wav,.mp3,.m4a,.flac,.aac,.ogg'
 
 /** §5.7.2 上传窗 N=1 收敛 Tooltip（§9 文案表逐字） */
 const SINGLE_ROUND_HINT =
@@ -84,8 +92,8 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
   const roundScope = useUploadRoundScope({ roundCount: 1 })
 
   const stats = useMemo(() => {
-    const audioCount = files.filter((f) => ACCEPTED_AUDIO.split(',').some((ext) => f.name.toLowerCase().endsWith(ext))).length
-    const textCount = files.filter((f) => /\.(json|jsonl|rttm|stm|txt)$/i.test(f.name)).length
+    const audioCount = files.filter((f) => isAudioFile(f.name)).length
+    const textCount = files.filter((f) => isAnnotationFile(f.name)).length
     return {
       audioCount,
       textCount,
@@ -112,22 +120,37 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
       toast.info('请先选择需要上传的文件')
       return
     }
-    const audioFiles = files.filter((f) =>
-      ACCEPTED_AUDIO.split(',').some((ext) => f.name.toLowerCase().endsWith(ext))
-    )
+    const audioFiles = files.filter((f) => isAudioFile(f.name))
     if (audioFiles.length === 0) {
       toast.error('未选择任何音频文件')
       return
     }
     setUploading(true)
     try {
+      // 逐条提示：不支持的文件（既非音频也非标注）、未匹配到同名音频的标注文件（INT-2192）。
+      // 此前这两类被静默丢弃：弹窗统计计入，上传回执里却没有任何说明。
+      files
+        .filter((f) => !isAudioFile(f.name) && !isAnnotationFile(f.name))
+        .forEach((f) => toast.warning(`${f.name}：不是支持的音频或标注文件，已忽略`))
+      findUnmatchedAnnotationFiles(files, audioFiles).forEach((f) => {
+        toast.warning(`${f.name}：未匹配到同名音频文件，已忽略`)
+      })
+      // 内容预检：0 字节 / 非音频内容（如文本改名 .wav）在提交前拦下，逐条报错；
+      // 后端 register/merge 不校验内容，不拦就会「上传成功」并入库 duration=0（INT-2192）。
+      const { valid: uploadFiles, invalid } = await validateAudioFiles(audioFiles)
+      invalid.forEach((f) => toast.error(`${f.name}：${f.error}`))
+      if (uploadFiles.length === 0) {
+        toast.error('没有可上传的音频文件，请检查文件内容后重试')
+        return
+      }
+      const skippedCount = files.length - uploadFiles.length
       // 标注文件（json/jsonl/rttm/stm/txt）按文件名匹配音频解析；标注代码取上传算法类型随 merge 落库
       const perFileAnnotations = await parseAnnotationsForAudios(
         files,
-        audioFiles,
+        uploadFiles,
         algorithmType || undefined
       )
-      const perFile: PerFileUploadConfig[] = audioFiles.map((f, idx) => ({
+      const perFile: PerFileUploadConfig[] = uploadFiles.map((f, idx) => ({
         groupName:
           caseGroup === 'custom' && customGroupName.trim()
             ? customGroupName.trim()
@@ -137,7 +160,7 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
         annotations: perFileAnnotations[idx],
       }))
       // 真实上传 + 生成测试用例（merge 载荷 create_test_case 控制；device_type 不传，后端缺省 http_api）
-      const result = await startRealAudioUpload(audioFiles, {
+      const result = await startRealAudioUpload(uploadFiles, {
         createTestCase: generateTestCase,
         algorithmType: algorithmType || null,
         algorithmParams: [],
@@ -161,14 +184,17 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
         tagSource,
         audioType,
       }, perFile)
+      const skippedSuffix = skippedCount > 0 ? `，跳过 ${skippedCount} 个文件` : ''
       if (result.testCaseCount > 0) {
         toast.success(
-          `上传完成：成功 ${result.successCount} 个，生成 ${result.testCaseCount} 个测试用例`
+          `上传完成：成功 ${result.successCount} 个，生成 ${result.testCaseCount} 个测试用例${skippedSuffix}`
         )
       } else if (result.failedCount === 0) {
-        toast.success(`上传完成：成功 ${result.successCount} 个音频文件`)
+        toast.success(`上传完成：成功 ${result.successCount} 个音频文件${skippedSuffix}`)
       } else {
-        toast.error(`上传完成：成功 ${result.successCount} 个，失败 ${result.failedCount} 个`)
+        toast.error(
+          `上传完成：成功 ${result.successCount} 个，失败 ${result.failedCount} 个${skippedSuffix}`
+        )
       }
       if (result.failed.length > 0) {
         result.failed.forEach((f) => toast.error(`${f.name}：${f.error}`))
@@ -236,7 +262,7 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
               ref={fileRef}
               type='file'
               multiple
-              accept={`${ACCEPTED_AUDIO},.json,.jsonl,.rttm,.stm,.txt`}
+              accept={`${AUDIO_ACCEPT_ATTR},${ANNOTATION_FILE_EXTS.join(',')}`}
               className='hidden'
               onChange={(e) => {
                 handleFiles(e.target.files)
