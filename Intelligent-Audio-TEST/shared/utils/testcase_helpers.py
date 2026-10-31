@@ -341,3 +341,103 @@ def collect_case_audio_ids(config: dict) -> list:
         if audio_id not in result:
             result.append(audio_id)
     return result
+
+
+# ==================== 用例音频 id 位置级重写（INT-2215） ====================
+# `collect_*` 只回 id 列表，没有「写回哪里」的信息；导入回导音频需要把全部
+# 引用位置按映射改写成目标库 id。下面与 collect_case_audio_references 共用同一
+# 遍历口径（同一顺序、同一层级），不另起一套。
+
+def _iter_audio_item_id_positions(audio_item):
+    """产出单个音频项（含 interferers 干扰人）里承载 audio_id 的 dict。"""
+    if not isinstance(audio_item, dict):
+        return
+    yield audio_item
+    interferers = audio_item.get('interferers') or []
+    if isinstance(interferers, list):
+        for inf in interferers:
+            if isinstance(inf, dict):
+                yield inf
+
+
+def iter_case_audio_id_positions(config: dict):
+    """遍历用例 config 中全部 `audio_id` 写入位置，产出承载它的 dict。
+
+    覆盖 direct（rounds[].audios[]/interferers[]、顶层 audios[]）与 noise
+    （顶层 / 轮次 / segment 级 background_noise|backgroundNoise），顺序与
+    `collect_case_audio_references` 一致，保证「收集到的 id 都重写得到」。
+    """
+    if not isinstance(config, dict):
+        return
+    for audio_item in collect_audios(config):
+        for holder in _iter_audio_item_id_positions(audio_item):
+            yield holder
+    flat_audios = config.get('audios')
+    if isinstance(flat_audios, list):
+        for audio_item in flat_audios:
+            for holder in _iter_audio_item_id_positions(audio_item):
+                yield holder
+    for noise_cfg in iter_background_noise(config):
+        yield noise_cfg
+
+
+def iter_case_data_audio_id_positions(case_data: dict):
+    """遍历 config 之外的两处扁平音频列：`audios[].audio_id` 与 `noise_audio_id`。
+
+    CSV/Excel 解析列（也是 ZIP 导出行携带的扁平字段，见导出 `_build_case_row`），
+    不重写会让行级校验按源 id 查库、把整包误判成「音频 X 不存在」。
+    """
+    if not isinstance(case_data, dict):
+        return
+    flat_audios = case_data.get('audios')
+    if isinstance(flat_audios, list):
+        for audio_item in flat_audios:
+            if isinstance(audio_item, dict):
+                yield audio_item, 'audio_id'
+    if case_data.get('noise_audio_id') is not None:
+        yield case_data, 'noise_audio_id'
+
+
+def remap_audio_ids(positions, id_map: dict) -> int:
+    """按 id_map（源 id → 目标 id）就地重写 positions 里的 audio_id，返回改写数。
+
+    positions 产出 `(holder, key)` 或直接产出 `holder`（键固定 `audio_id`）；
+    不在 id_map 内、非数值、目标为空的保持原样（调用方据此报行级错误）。
+    """
+    if not isinstance(id_map, dict) or not id_map:
+        return 0
+    normalized = {}
+    for source_id, target_id in id_map.items():
+        source = normalize_optional_int(source_id)
+        target = normalize_optional_int(target_id)
+        if source is not None and target is not None:
+            normalized[source] = target
+    if not normalized:
+        return 0
+
+    changed = 0
+    for position in positions:
+        if isinstance(position, tuple):
+            holder, key = position
+        else:
+            holder, key = position, 'audio_id'
+        if not isinstance(holder, dict):
+            continue
+        current = normalize_optional_int(holder.get(key))
+        if current is None or current not in normalized:
+            continue
+        holder[key] = normalized[current]
+        changed += 1
+    return changed
+
+
+def remap_case_audio_ids(case_data: dict, id_map: dict) -> int:
+    """用例级全口径音频 id 重写：config 全部位置 + 扁平 audios[] / noise_audio_id。
+
+    返回改写位置数；id_map 为 {源 audio_id: 目标 audio_id}。
+    """
+    if not isinstance(case_data, dict):
+        return 0
+    changed = remap_audio_ids(iter_case_audio_id_positions(case_data.get('config') or {}), id_map)
+    changed += remap_audio_ids(iter_case_data_audio_id_positions(case_data), id_map)
+    return changed

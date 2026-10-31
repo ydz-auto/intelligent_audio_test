@@ -269,3 +269,7 @@ class AudioAclRepositoryImpl(AudioAclRepository):
     def url_import(self, data) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import audio_config_service
         return _wrap(audio_config_service.url_import(data))
+
+    def register_audio_by_bytes(self, data) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import audio_config_service
+        return _wrap(audio_config_service.register_audio_by_bytes(data))

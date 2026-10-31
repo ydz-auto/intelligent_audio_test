@@ -148,3 +148,6 @@ class AudioAclRepository(ABC):
 
     @abstractmethod
     def url_import(self, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def register_audio_by_bytes(self, data) -> CommandResultDTO: ...

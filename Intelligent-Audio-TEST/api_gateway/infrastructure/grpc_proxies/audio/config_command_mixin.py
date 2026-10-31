@@ -266,6 +266,27 @@ class _AudioConfigCommandMixin:
             error_msg_prefix='URL导入失败',
         )
 
+    def register_audio_by_bytes(self, data):
+        """按字节登记音频（INT-2216，用例 ZIP 导入回导用；md5 幂等）。
+
+        失败时 `data.reason` 带 machine-readable 原因（`md5_mismatch` /
+        `invalid_audio_content` / `persist_failed` 等），调用方据此报行级错误。
+        """
+        from shared.proto import audio_service_pb2 as audio_pb
+
+        def _call():
+            stub = get_audio_config_service_stub()
+            resp = stub.RegisterAudioByBytes(audio_pb.RegisterAudioByBytesRequest(
+                data=json.dumps(data or {}, ensure_ascii=False, default=str),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'按字节登记音频失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='按字节登记音频失败',
+        )
+
     # ---------- 转换/预览操作 ----------
 
     def convert_audio(self, audio_id, data):

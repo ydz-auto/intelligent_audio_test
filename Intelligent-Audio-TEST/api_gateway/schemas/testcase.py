@@ -322,12 +322,18 @@ class TestCaseImportResult(APIModel):
 
     imported_count=新建；updated_count=覆盖；skipped_count=跳过重复；
     copied_count=另存副本；errors=逐行失败/警告明细。
+    音频字段（INT-2215）：包内音频按 md5 复用/登记的汇总，失败逐条带原因，
+    `audio_orphaned_ids` 是已登记/复用但没有成功落库用例引用到的音频（允许存在，不静默）。
     """
     imported_count: int = Field(...)
     updated_count: int = Field(0)
     skipped_count: int = Field(0)
     copied_count: int = Field(0)
     errors: List[Any] = Field(default_factory=list)
+    audio_registered_count: int = Field(0)
+    audio_reused_count: int = Field(0)
+    audio_failed: List[Any] = Field(default_factory=list)
+    audio_orphaned_ids: List[int] = Field(default_factory=list)
 
 
 class TestCaseExportTagItem(APIModel):
