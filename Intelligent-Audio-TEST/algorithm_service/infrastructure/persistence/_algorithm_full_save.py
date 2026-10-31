@@ -106,10 +106,18 @@ def _upsert_device_api_params(session, algorithm_type: str, items: List[Dict[str
     INT-1756：本 upsert 的载荷是算法级定义（自然键不含 api_id），只管理
     ``api_id IS NULL`` 的算法级行；API 实例级行由独立写路径维护，不能被
     这里的「提交集外软删」当成未提交行清掉。
+
+    INT-2266：设备级行（``device_id`` 非空）同理归独立写路径
+    （AlgorithmParamRepository）。``AlgorithmDeviceParam`` 没有 api_id 列，
+    不加 ``device_id IS NULL`` 时设备级行会混进 ``all_rows`` 而被软删，或与
+    算法级行同自然键后在 ``_split_rows`` 里互相覆盖——按作用域收窄查询，
+    与既有的 api_id 过滤同范式。
     """
     query = session.query(po_cls).filter_by(algorithm_type=algorithm_type)
     if hasattr(po_cls, 'api_id'):
         query = query.filter_by(api_id=None)
+    if hasattr(po_cls, 'device_id'):
+        query = query.filter_by(device_id=None)
     all_rows = query.all()
     active, deleted = _split_rows(
         all_rows, lambda r: (r.param_code, r.direction)
@@ -296,9 +304,12 @@ def _upsert_mappings(session, algorithm_type: str, items: List[Dict[str, Any]]) 
 
     INT-1756：同 _upsert_device_api_params，只管理算法级行（api_id IS NULL），
     API 实例级映射不受算法定义整份保存影响。
+
+    INT-2266：同时排除设备级行（``device_id`` 非空），设备级映射由
+    ``_mapping_relation_repositories`` 的独立写路径维护。
     """
     all_rows = session.query(ParamMappingPO).filter_by(
-        algorithm_type=algorithm_type, api_id=None
+        algorithm_type=algorithm_type, api_id=None, device_id=None
     ).all()
     active, deleted = _split_rows(
         all_rows, lambda r: (r.source, r.source_param, r.dimension_id)
