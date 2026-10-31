@@ -18,6 +18,7 @@ from e2e_test_service.domain.dto import (
 )
 from e2e_test_service.domain.repositories.device_acl_repository import (
     DeviceAclRepository,
+    DeviceQueryResult,
 )
 from shared.utils.dto_utils import dict_to_dto, dict_list_to_dto
 
@@ -50,27 +51,61 @@ def _to_collected_list(raw: Any) -> List[CollectedResultDTO]:
 class DeviceAclRepositoryImpl(DeviceAclRepository):
     """DeviceService ACL 仓储实现"""
 
-    def get_devices_by_ids(self, device_ids: List[int]) -> List[DeviceDTO]:
+    def get_devices_by_ids(self, device_ids: List[int]) -> DeviceQueryResult:
         """按 ID 列表获取设备信息（通过 DeviceConfigService.GetDevice 逐个查询）
 
         device_service 没有 batch get，用 GetDeviceStatuses 获取状态，
         再逐个 GetDevice 获取详情。为简化，这里逐个调用 GetDevice。
+
+        INT-2255：单台失败只丢该台并累计到 errors（不因一台异常丢弃已取到的
+        设备）；stub 建立失败时全部 device_id 各记一条 error。调用方据此
+        区分「查询失败」与「查询成功但没有数据」。
         """
         from shared.clients.grpc_clients import get_device_config_service_stub
         from shared.proto import device_service_pb2 as device_pb
+
+        normalized_ids = [int(did) for did in device_ids]
+        result = DeviceQueryResult()
         try:
             stub = get_device_config_service_stub()
-            devices = []
-            for did in device_ids:
-                resp = stub.GetDevice(device_pb.GetDeviceRequest(device_id=int(did)))
-                if resp.success and resp.data:
-                    data = json.loads(resp.data)
-                    if isinstance(data, dict):
-                        devices.append(data)
-            return dict_list_to_dto(devices, DeviceDTO)
         except Exception as e:
-            logger.error("get_devices_by_ids 失败: %s", e)
-            return []
+            logger.error("get_devices_by_ids 获取 gRPC stub 失败: %s", e)
+            result.errors = [
+                {'device_id': did, 'error': f'gRPC 连接失败: {e}'}
+                for did in normalized_ids
+            ]
+            return result
+
+        devices = []
+        for did in normalized_ids:
+            try:
+                resp = stub.GetDevice(device_pb.GetDeviceRequest(device_id=did))
+            except Exception as e:
+                logger.error("get_devices_by_ids 单台查询异常 device_id=%s: %s", did, e)
+                result.errors.append(
+                    {'device_id': did, 'error': f'GetDevice 调用异常: {e}'})
+                continue
+            if not resp.success:
+                logger.error("get_devices_by_ids 单台查询失败 device_id=%s: %s",
+                             did, resp.message)
+                result.errors.append(
+                    {'device_id': did, 'error': resp.message or 'GetDevice 返回失败'})
+                continue
+            try:
+                data = json.loads(resp.data) if resp.data else None
+            except (ValueError, TypeError) as e:
+                logger.error("get_devices_by_ids 单台数据解析失败 device_id=%s: %s", did, e)
+                result.errors.append(
+                    {'device_id': did, 'error': f'设备数据解析失败: {e}'})
+                continue
+            if not isinstance(data, dict):
+                result.errors.append(
+                    {'device_id': did, 'error': 'GetDevice 未返回设备数据'})
+                continue
+            devices.append(data)
+
+        result.devices = dict_list_to_dto(devices, DeviceDTO)
+        return result
 
     def register_task_events(self, task_id: str, stop_event_set: bool,
                              pause_event_set: bool) -> bool:

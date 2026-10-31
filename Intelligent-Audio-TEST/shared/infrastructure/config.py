@@ -356,12 +356,20 @@ class BaseConfig:
     # 显式传本值；其余调用维持默认 deadline（INT-54 防假死悬挂的失败收敛路径不变）。
     GRPC_DEVICE_OP_DEADLINE_SECONDS: int = _get_int('GRPC_DEVICE_OP_DEADLINE_SECONDS', 300)
 
-    # E2E 侧设备操作线程等待上限（秒）：必须 >= gRPC deadline，否则 e2e 先放弃
-    # 等待、底层 RPC 仍在跑，形成「e2e 报超时但设备仍在操作」的错位（真机实测
-    # initialize 在守护自愈 + UI RPC 抖动时可超 200s，旧硬编码 60s 必然误杀，
+    # E2E 侧设备操作线程等待上限（秒）：必须严格大于 gRPC deadline，否则 e2e
+    # 先放弃等待、底层 RPC 仍在跑，形成「e2e 报超时但设备仍在操作」的错位（真机
+    # 实测 initialize 在守护自愈 + UI RPC 抖动时可超 200s，旧硬编码 60s 必然误杀，
     # 且后续 pre_process 会在半初始化的设备上找组件而失败）。
+    # INT-2255：默认值取 GRPC_DEVICE_OP_DEADLINE_SECONDS(300) + 余量，避免两值
+    # 同时到期时 future 先抛 TimeoutError、RPC 结果被丢弃（见下方 MARGIN 配置）。
     E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS: int = _get_int(
-        'E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS', 300)
+        'E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS', 330)
+    # future 等待相对 gRPC deadline 的最小安全余量（秒，INT-2255）：即使环境变量
+    # 把两值配成相同（或 future 更小），调用方也按
+    # max(E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS, GRPC_DEVICE_OP_DEADLINE_SECONDS + 本值)
+    # 等待，保证 gRPC 先因 deadline 收敛、future 仍能拿到结果并落成设备失败。
+    E2E_DEVICE_OP_FUTURE_TIMEOUT_MARGIN_SECONDS: int = _get_int(
+        'E2E_DEVICE_OP_FUTURE_TIMEOUT_MARGIN_SECONDS', 30)
 
     # 物理设备占用锁等待上限（秒）：同一 SN 的多个设备记录（如同一台手机上的
     # 小艺/豆包两个被测 App）必须串行执行，后到的路由行在此时间内排队等待，

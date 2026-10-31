@@ -4,15 +4,49 @@
 """
 import time
 import threading
+from concurrent.futures import TimeoutError as FutureTimeoutError
 
 from shared.constants.ui_capture import UiCaptureDegradeReason
 from shared.infrastructure.config import BaseConfig
+from e2e_test_service.domain.repositories.acl_errors import AclQueryError
 from e2e_test_service.infrastructure.acl import (
     AudioAclRepositoryImpl,
     DeviceAclRepositoryImpl,
     EnvDeviceAclRepositoryImpl,
     TaskDataAclRepositoryImpl,
 )
+
+
+def resolve_device_op_future_timeout():
+    """设备操作 future 等待上限（秒）：强制严格大于 gRPC 长操作 deadline。
+
+    两值若同时到期（或 future 更短），future.result 先抛 TimeoutError、底层
+    RPC 的结果被丢弃，设备真实失败原因不可达（INT-2255）。这里统一取
+    max(配置值, GRPC_DEVICE_OP_DEADLINE_SECONDS + 安全余量)，保证 gRPC 先按
+    deadline 收敛、future 仍能拿到结果并落成该设备的失败。
+    """
+    configured = float(BaseConfig.E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS)
+    minimum = (float(BaseConfig.GRPC_DEVICE_OP_DEADLINE_SECONDS)
+               + float(BaseConfig.E2E_DEVICE_OP_FUTURE_TIMEOUT_MARGIN_SECONDS))
+    return configured if configured >= minimum else minimum
+
+
+def _describe_device(info):
+    """设备描述（名称/SN/系统/关键字）：同 SN 多 App 时据此定位失败设备。"""
+    info = info or {}
+    parts = []
+    if info.get('device_name'):
+        parts.append(f"名称={info['device_name']}")
+    if info.get('device_sn'):
+        parts.append(f"SN={info['device_sn']}")
+    if info.get('system'):
+        parts.append(f"系统={info['system']}")
+    keywords = info.get('keywords')
+    if keywords:
+        if isinstance(keywords, (list, tuple, set)):
+            keywords = ','.join(str(item) for item in keywords)
+        parts.append(f"关键字={keywords}")
+    return ' '.join(parts) if parts else '未知设备'
 
 
 class E2EDeviceManager:
@@ -39,7 +73,12 @@ class E2EDeviceManager:
         两者皆空时保持历史行为（任务全部设备）。
         """
         # 通过 ACL 仓储查询 TaskDevice 关联记录
-        task_device_relations = self._task_data_repo.get_task_devices(task_id)
+        # INT-2255：查询失败（gRPC 异常/服务端失败）与「任务没有关联设备」区分，
+        # 前者返回可诊断的失败，不再误报成「没有可用的测试设备」。
+        try:
+            task_device_relations = self._task_data_repo.get_task_devices(task_id)
+        except AclQueryError as e:
+            return {'success': False, 'error': f"任务设备关联查询失败: {e}"}
         task_device_ids = [rel.device_id for rel in task_device_relations if rel.device_id]
 
         wanted_ids = [int(item) for item in (device_ids or []) if item]
@@ -63,8 +102,26 @@ class E2EDeviceManager:
             return {'success': False, 'error': "没有可用的测试设备"}
 
         # 通过 ACL 仓储查询 device_service 的设备数据
-        device_repo = DeviceAclRepositoryImpl()
-        devices = device_repo.get_devices_by_ids(device_ids)
+        # INT-2255：单台失败只丢该台（ACL 累计到 errors），此处按数量校验，
+        # 取不全即失败并写清缺失 device_id 与原因（区分查询失败/无数据），
+        # 避免空列表被下游误判为「被测设备未绑定实验室」或静默跑空。
+        query = self._device_repo.get_devices_by_ids(device_ids)
+        devices = query.devices
+        returned_ids = {int(dev.id) for dev in devices if dev.id is not None}
+        missing_ids = [int(did) for did in device_ids if int(did) not in returned_ids]
+        if missing_ids:
+            error_map = query.error_map()
+            details = []
+            for did in missing_ids:
+                reason = error_map.get(did)
+                if reason:
+                    details.append(f"device_id={did} 查询失败: {reason}")
+                else:
+                    details.append(
+                        f"device_id={did} 无设备数据（设备可能已删除或不属于该实验室）")
+            return {'success': False,
+                    'error': (f"{len(missing_ids)}/{len(device_ids)} 台设备信息未取到（"
+                              + "; ".join(details) + "）")}
 
         device_info_list = []
         for dev in devices:
@@ -127,7 +184,18 @@ class E2EDeviceManager:
         # 非设备互斥；物理设备占用互斥统一由 task_service 派发层
         # DistributedLock（RedisKeyPrefix.TASK_PHYSICAL_LOCK）承担（UC-0903 4a）
         results_lock = threading.Lock()
-        futures = []
+        future_timeout = resolve_device_op_future_timeout()
+
+        def _record_failure(info, err):
+            with results_lock:
+                results.append({
+                    'success': False, 'error': err,
+                    'device_name': info.get('device_name'),
+                    'device_sn': info.get('device_sn'),
+                    'system': info.get('system'),
+                    'keywords': info.get('keywords'),
+                    'data': {},
+                })
 
         def init_device(info):
             ok = False
@@ -151,22 +219,42 @@ class E2EDeviceManager:
             if not ok and err is None:
                 err = "CreateDriver 返回失败（未提供失败原因）"
             with results_lock:
-                results.append({'success': ok, 'error': err, 'device_name': info["device_name"],
+                results.append({'success': ok, 'error': err,
+                                'device_name': info.get('device_name'),
+                                'device_sn': info.get('device_sn'),
+                                'system': info.get('system'),
+                                'keywords': info.get('keywords'),
                                 'data': data if isinstance(data, dict) else {}})
 
+        submitted = []
         for info in device_info_list:
-            future = pool.submit(init_device, info)
-            futures.append(future)
+            submitted.append((info, pool.submit(init_device, info)))
 
-        for future in futures:
+        for info, future in submitted:
             try:
-                future.result(timeout=BaseConfig.E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS)
+                future.result(timeout=future_timeout)
+            except FutureTimeoutError:
+                # INT-2255：超时原本只写日志、不进 results，failed 为空即被判定
+                # 初始化成功，用例随后在半初始化设备上继续执行并产出空结果。
+                # 超时必须作为该设备的初始化失败参与汇总，与 gRPC 返回失败同等。
+                err = (f"设备初始化超时：{future_timeout:g}s 内未返回结果"
+                       f"（线程池排队饥饿或 RPC 悬挂，设备未就绪）")
+                _record_failure(info, err)
+                self._log(level='ERROR',
+                          content=f"{_describe_device(info)} 初始化超时: {err}",
+                          task_id=task_id, test_case_id=test_case_id)
             except Exception as e:
-                self._log(level='ERROR', content=f"设备初始化超时或失败: {e}", task_id=task_id, test_case_id=test_case_id)
+                # init_device 已兜底捕获自身异常，此处覆盖线程被取消等边缘情况
+                err = f"设备初始化异常: {e}"
+                _record_failure(info, err)
+                self._log(level='ERROR',
+                          content=f"{_describe_device(info)} 初始化异常: {e}",
+                          task_id=task_id, test_case_id=test_case_id)
 
         failed = [r for r in results if not r['success']]
         if failed:
-            detail = '; '.join([f"{r.get('device_name')}: {r.get('error')}" for r in failed])
+            detail = '; '.join(
+                [f"{_describe_device(r)}: {r.get('error')}" for r in failed])
             raise RuntimeError(f"设备初始化失败: {detail}")
 
         # INT-296：UI 抓取层降级留痕（explicit_degrade 模式下 initialize 成功但
@@ -206,7 +294,8 @@ class E2EDeviceManager:
             'theory_offsets': {}
         }
         pool = self._executor.execution_engine.device_control_pool
-        futures = []
+        future_timeout = resolve_device_op_future_timeout()
+        submitted = []
         for info in device_info_list:
             future = pool.submit(
                 self._device_repo.create_driver,
@@ -221,18 +310,21 @@ class E2EDeviceManager:
                     'kwargs': extra_params,
                 }],
             )
-            futures.append(future)
+            submitted.append((info, future))
         success = True
-        for future in futures:
+        for info, future in submitted:
             try:
                 # 驱动返回 False（如预处理失败）需落为轮次失败，不能只看 gRPC 异常
-                if future.result(timeout=BaseConfig.E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS) is False:
+                if future.result(timeout=future_timeout) is False:
                     success = False
-                    self._log(level='ERROR', content="设备预处理返回失败",
+                    self._log(level='ERROR',
+                              content=f"{_describe_device(info)} 预处理返回失败",
                               task_id=task_id, test_case_id=test_case_id)
             except Exception as e:
                 success = False
-                self._log(level='ERROR', content=f"设备预处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
+                self._log(level='ERROR',
+                          content=f"{_describe_device(info)} 预处理失败: {e}",
+                          task_id=task_id, test_case_id=test_case_id)
         return success
 
     def post_process_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
@@ -243,7 +335,8 @@ class E2EDeviceManager:
         """
         extra_params = kwargs.get('extra_params', {})
         pool = self._executor.execution_engine.device_control_pool
-        futures = []
+        future_timeout = resolve_device_op_future_timeout()
+        submitted = []
         for info in device_info_list:
             future = pool.submit(
                 self._device_repo.create_driver,
@@ -257,17 +350,20 @@ class E2EDeviceManager:
                     'kwargs': extra_params,
                 }],
             )
-            futures.append(future)
+            submitted.append((info, future))
         success = True
-        for future in futures:
+        for info, future in submitted:
             try:
-                if future.result(timeout=BaseConfig.E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS) is False:
+                if future.result(timeout=future_timeout) is False:
                     success = False
-                    self._log(level='ERROR', content="设备后处理返回失败",
+                    self._log(level='ERROR',
+                              content=f"{_describe_device(info)} 后处理返回失败",
                               task_id=task_id, test_case_id=test_case_id)
             except Exception as e:
                 success = False
-                self._log(level='ERROR', content=f"设备后处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
+                self._log(level='ERROR',
+                          content=f"{_describe_device(info)} 后处理失败: {e}",
+                          task_id=task_id, test_case_id=test_case_id)
         return success
 
     def teardown_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
@@ -278,7 +374,8 @@ class E2EDeviceManager:
         """
         extra_params = kwargs.get('extra_params', {})
         pool = self._executor.execution_engine.device_control_pool
-        futures = []
+        future_timeout = resolve_device_op_future_timeout()
+        submitted = []
         for info in device_info_list:
             future = pool.submit(
                 self._device_repo.create_driver,
@@ -292,14 +389,16 @@ class E2EDeviceManager:
                     'kwargs': extra_params,
                 }],
             )
-            futures.append(future)
+            submitted.append((info, future))
         success = True
-        for future in futures:
+        for info, future in submitted:
             try:
-                future.result(timeout=BaseConfig.E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS)
+                future.result(timeout=future_timeout)
             except Exception as e:
                 success = False
-                self._log(level='ERROR', content=f"设备 teardown 失败: {e}", task_id=task_id, test_case_id=test_case_id)
+                self._log(level='ERROR',
+                          content=f"{_describe_device(info)} teardown 失败: {e}",
+                          task_id=task_id, test_case_id=test_case_id)
         return success
 
     def play_prompt_audio(self, device_info_list, task_id, device_index, playback_dev, main_gain):

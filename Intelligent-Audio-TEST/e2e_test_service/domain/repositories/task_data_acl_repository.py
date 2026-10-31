@@ -26,7 +26,11 @@ class TaskDataAclRepository(ABC):
 
     @abstractmethod
     def get_task_devices(self, task_id: str) -> List[TaskDeviceDTO]:
-        """查询任务关联的设备记录"""
+        """查询任务关联的设备记录
+
+        查询失败（gRPC 异常 / 服务端返回失败）上抛 AclQueryError，
+        与「任务没有关联设备」的空列表区分（INT-2255）。
+        """
 
     @abstractmethod
     def get_test_result_by_id(self, result_id: int) -> Optional[TestResultDTO]:

@@ -4,11 +4,13 @@
 跨服务数据访问的抽象接口，infrastructure/acl/ 下提供基于 gRPC 的实现。
 应用层通过依赖注入使用这些接口，不直接 import gRPC stub。
 """
+from e2e_test_service.domain.repositories.acl_errors import AclQueryError
 from e2e_test_service.domain.repositories.audio_acl_repository import (
     AudioAclRepository,
 )
 from e2e_test_service.domain.repositories.device_acl_repository import (
     DeviceAclRepository,
+    DeviceQueryResult,
 )
 from e2e_test_service.domain.repositories.device_result_acl_repository import (
     DeviceResultAclRepository,
@@ -24,8 +26,10 @@ from e2e_test_service.domain.repositories.e2e_repository_abc import (
 )
 
 __all__ = [
+    'AclQueryError',
     'AudioAclRepository',
     'DeviceAclRepository',
+    'DeviceQueryResult',
     'DeviceResultAclRepository',
     'PlaybackAclRepository',
     'TaskDataAclRepository',

@@ -7,16 +7,44 @@ e2e_test_service 通过此接口访问 device_service 的设备数据与驱动�
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+
+
+@dataclass
+class DeviceQueryResult:
+    """按 ID 批量查询设备的结果（INT-2255）
+
+    devices：成功取到的设备 DTO 列表（单台失败只影响该台）；
+    errors：失败明细 [{'device_id': int, 'error': str}]，用于区分「查询失败」
+        与「查询成功但没有数据」——调用方据此给出可诊断的失败信息，
+        不再把底层故障吞成空列表。
+    """
+    devices: List[Any] = field(default_factory=list)
+    errors: List[Dict[str, Any]] = field(default_factory=list)
+
+    def error_map(self) -> Dict[int, str]:
+        """device_id → 错误消息"""
+        result: Dict[int, str] = {}
+        for item in self.errors:
+            try:
+                result[int(item['device_id'])] = item.get('error') or ''
+            except (KeyError, TypeError, ValueError):
+                continue
+        return result
 
 
 class DeviceAclRepository(ABC):
     """设备服务 ACL 仓储接口"""
 
     @abstractmethod
-    def get_devices_by_ids(self, device_ids: List[int]) -> List[Dict[str, Any]]:
+    def get_devices_by_ids(self, device_ids: List[int]) -> DeviceQueryResult:
         """按 ID 列表获取设备信息（name, serial_number, ip, system, keywords,
-        needs_prompt_audio, prompt_config 等）"""
+        needs_prompt_audio, prompt_config 等）
+
+        INT-2255：单台 GetDevice 失败只丢该台并累计到 errors，不因一台异常
+        丢弃已取到的设备；整体连接失败时全部 device_id 均记一条 error。
+        """
 
     @abstractmethod
     def register_task_events(self, task_id: str, stop_event_set: bool,

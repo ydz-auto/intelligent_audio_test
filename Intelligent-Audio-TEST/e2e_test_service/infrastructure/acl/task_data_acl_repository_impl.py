@@ -8,6 +8,7 @@ from typing import List, Optional
 from e2e_test_service.domain.dto import (
     TestResultDTO, TaskCaseDTO, DimensionResultDTO, TaskDeviceDTO,
 )
+from e2e_test_service.domain.repositories.acl_errors import AclQueryError
 from e2e_test_service.domain.repositories.task_data_acl_repository import (
     TaskDataAclRepository,
 )
@@ -67,21 +68,31 @@ class TaskDataAclRepositoryImpl(TaskDataAclRepository):
         return False
 
     def get_task_devices(self, task_id: str) -> List[TaskDeviceDTO]:
-        """查询任务关联的 TaskDevice 关联记录"""
+        """查询任务关联的 TaskDevice 关联记录
+
+        INT-2255：gRPC 异常 / 服务端 success=False 上抛 AclQueryError，与
+        「任务确实没有关联设备」的空列表严格区分；不得吞成 []，否则设备
+        准备阶段会把查询故障误报成「没有可用的测试设备」。
+        """
         from shared.clients.grpc_clients import get_task_data_service_stub
         from shared.proto import task_service_pb2 as task_pb
         from shared.utils.grpc_json import loads as _loads
         try:
             stub = get_task_data_service_stub()
             resp = stub.GetTaskDevices(task_pb.GetTaskDevicesRequest(task_id=int(task_id)))
-            if not resp.success:
-                logger.error("get_task_devices 失败: %s", resp.message)
-                return []
-            data = _loads(resp.data, []) or []
-            return dict_list_to_dto(data, TaskDeviceDTO)
         except Exception as e:
             logger.error("get_task_devices 异常: %s", e)
-            return []
+            raise AclQueryError(f"GetTaskDevices 调用失败: {e}") from e
+        if not resp.success:
+            logger.error("get_task_devices 失败: %s", resp.message)
+            raise AclQueryError(
+                f"GetTaskDevices 返回失败: {resp.message or '未提供失败原因'}")
+        try:
+            data = _loads(resp.data, []) or []
+        except (ValueError, TypeError) as e:
+            logger.error("get_task_devices 数据解析失败: %s", e)
+            raise AclQueryError(f"GetTaskDevices 数据解析失败: {e}") from e
+        return dict_list_to_dto(data, TaskDeviceDTO)
 
     def get_test_result_by_id(self, result_id: int) -> Optional[TestResultDTO]:
         """按 ID 查询 TestResult"""
