@@ -260,3 +260,84 @@ def get_algorithm_params_dict_for_executor(config: dict) -> dict:
     if rounds:
         return rounds[0].get('algorithmParams', {}) or {}
     return {}
+
+
+# ==================== 用例音频引用收集（单点口径，INT-2214） ====================
+# 用例对音频的真实引用不止「播放音频」：
+# - direct：rounds[].audios[].audio_id、rounds[].audios[].interferers[].audio_id、
+#   顶层 audios[].audio_id（未轮次化的平面形态兜底）；
+# - noise：顶层 / 轮次级 / segment 级 background_noise|backgroundNoise.audio_id
+#   （task_service 的 _apply_noise_to_round / _apply_noise_to_case_bn 写入）。
+# 导出、导入校验、任务数据导出共用本模块的实现，不允许各写一份。
+
+BACKGROUND_NOISE_KEYS = ('background_noise', 'backgroundNoise')
+
+
+def iter_background_noise(config: dict):
+    """遍历 config 中各级背景噪音配置（dict），供统一判定 noise 引用。
+
+    层级：顶层 config → rounds[] → rounds[].audios[]（segment 级）。
+    非 dict 的噪音值归一为空 dict（与 task_service 的 _iter_background_noise 一致）。
+    """
+    if not isinstance(config, dict):
+        return
+
+    def _noise_of(obj):
+        for key in BACKGROUND_NOISE_KEYS:
+            noise = obj.get(key)
+            if noise is not None:
+                yield noise if isinstance(noise, dict) else {}
+
+    for noise in _noise_of(config):
+        yield noise
+    for round_item in iter_dict_rounds(config):
+        for noise in _noise_of(round_item):
+            yield noise
+        for audio_item in round_item.get('audios') or []:
+            if isinstance(audio_item, dict):
+                for noise in _noise_of(audio_item):
+                    yield noise
+
+
+def _collect_audio_item_ids(audio_item, target: list) -> None:
+    """把单个音频项（含 interferers 干扰人）的 audio_id 追加进 target。"""
+    if not isinstance(audio_item, dict):
+        return
+    for value in [audio_item.get('audio_id')] + [
+        inf.get('audio_id') for inf in (audio_item.get('interferers') or [])
+        if isinstance(inf, dict)
+    ]:
+        audio_id = normalize_optional_int(value)
+        if audio_id is not None and audio_id not in target:
+            target.append(audio_id)
+
+
+def collect_case_audio_references(config: dict) -> tuple:
+    """收集用例 config 的音频引用，返回 (direct_ids, noise_ids)。
+
+    两个列表均为 int、去重保序；空值 / 非数值跳过。
+    direct 覆盖 rounds[].audios[]（含 interferers[]）与顶层 audios[]；
+    noise 覆盖顶层 / 轮次级 / segment 级背景噪音。
+    """
+    direct, noise = [], []
+    if not isinstance(config, dict):
+        return direct, noise
+    for audio_item in collect_audios(config):
+        _collect_audio_item_ids(audio_item, direct)
+    for audio_item in config.get('audios') or []:
+        _collect_audio_item_ids(audio_item, direct)
+    for noise_cfg in iter_background_noise(config):
+        audio_id = normalize_optional_int(noise_cfg.get('audio_id'))
+        if audio_id is not None and audio_id not in noise:
+            noise.append(audio_id)
+    return direct, noise
+
+
+def collect_case_audio_ids(config: dict) -> list:
+    """用例引用音频的全口径 id 列表（direct + noise，去重保序）。"""
+    direct, noise = collect_case_audio_references(config)
+    result = list(direct)
+    for audio_id in noise:
+        if audio_id not in result:
+            result.append(audio_id)
+    return result

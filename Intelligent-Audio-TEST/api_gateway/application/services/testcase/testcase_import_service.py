@@ -442,29 +442,27 @@ class TestCaseImportService:
 
     @staticmethod
     def _collect_referenced_audio_ids(case_data):
-        """收集用例引用的音频 ID（去重保序，跳过空值 / 非数字）。"""
-        audio_ids = []
+        """收集用例引用的音频 ID（去重保序，跳过空值 / 非数字）。
 
-        def _collect(values):
-            for value in values:
-                audio_id = TestCaseImportService._parse_int_or_none(value)
-                if audio_id is not None and audio_id not in audio_ids:
-                    audio_ids.append(audio_id)
+        引用口径与导出同源（`shared.utils.testcase_helpers.collect_case_audio_references`）：
+        config 内 direct（rounds[].audios[]/interferers[]/顶层 audios[]）+ 各级
+        背景噪音；另加解析期已落好的扁平 `audios[]`（CSV/Excel 的 AUDIO_ID 列）。
+        """
+        direct_ids, noise_ids = common.collect_case_audio_references(
+            case_data.get('config') or {})
+        audio_ids = list(direct_ids)
+        for audio_id in noise_ids:
+            if audio_id not in audio_ids:
+                audio_ids.append(audio_id)
 
-        config = case_data.get('config') or {}
-        if isinstance(config, dict):
-            _collect(
-                item.get('audio_id')
-                for item in common.collect_audios(config)
-                if isinstance(item, dict)
-            )
         flat_audios = case_data.get('audios')
         if isinstance(flat_audios, list):
-            _collect(
-                item.get('audio_id')
-                for item in flat_audios
-                if isinstance(item, dict)
-            )
+            for item in flat_audios:
+                if not isinstance(item, dict):
+                    continue
+                audio_id = TestCaseImportService._parse_int_or_none(item.get('audio_id'))
+                if audio_id is not None and audio_id not in audio_ids:
+                    audio_ids.append(audio_id)
         return audio_ids
 
     @staticmethod

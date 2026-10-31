@@ -527,16 +527,17 @@ class DataTransferExportService:
 
     @staticmethod
     def _collect_audio_infos(case_configs: Dict[str, dict]) -> List[dict]:
-        """从用例配置收集音频 ID 并经 audio_service ACL 批量查询音频信息"""
-        from shared.utils.testcase_helpers import collect_audios
+        """从用例配置收集音频 ID 并经 audio_service ACL 批量查询音频信息。
+
+        口径与用例 ZIP 导出同源（INT-2214 下沉 shared）：direct（播放音频 +
+        干扰人）+ 各级背景噪音，避免噪声/干扰人跨环境导入后悬空。
+        """
+        from shared.utils.testcase_helpers import collect_case_audio_ids
         from task_service.infrastructure.acl.audio_acl_repository import audio_acl_repository
 
         audio_ids = set()
         for cfg in case_configs.values():
-            for item in collect_audios(cfg.get('config') or {}):
-                audio_id = item.get('audio_id')
-                if audio_id:
-                    audio_ids.add(audio_id)
+            audio_ids.update(collect_case_audio_ids(cfg.get('config') or {}))
         if not audio_ids:
             return []
         audio_map = audio_acl_repository.list_audios_by_ids(audio_ids)

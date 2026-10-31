@@ -48,10 +48,13 @@ DUPLICATE_MATCH_NAME = 'name'
 
 # ---- ZIP 包结构 ----
 PACKAGE_FORMAT = 'intelligent-audio-testcase-package'
-PACKAGE_VERSION = '1.0'
+# 1.1（INT-2214）：ZIP 可携带 audios/（用例引用音频二进制）+ manifest 音频清单/缺失计数
+PACKAGE_VERSION = '1.1'
 MANIFEST_FILENAME = 'manifest.json'
 TESTCASES_FILENAME = 'testcases.json'
 REFERENCE_PARAMS_DIR = 'reference_params'
+# 用例引用音频在包内的目录（文件名 {audio_id}.{ext}）
+AUDIOS_DIR = 'audios'
 
 # 包内单个参考参数文件大小上限（防异常包撑爆内存）
 MAX_REFERENCE_PARAM_BYTES = 5 * 1024 * 1024

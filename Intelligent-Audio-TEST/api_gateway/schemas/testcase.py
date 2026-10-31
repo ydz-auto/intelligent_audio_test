@@ -593,6 +593,8 @@ class TestCaseExportRequest(APIModel):
     include_deleted: Optional[bool] = Field(False)
     # ZIP 数据包导出选项：是否把参考参数文件一并打包（默认包含，对齐任务数据导出）
     include_reference_params: Optional[bool] = Field(True)
+    # ZIP 数据包导出选项：是否把用例引用的音频二进制一并打包（默认不包含）
+    include_audios: Optional[bool] = Field(False)
 
 
 class TestCaseImportRequest(APIModel):
