@@ -115,6 +115,12 @@ class FinalizationMixin:
                                     break
             _has_overall_dims = bool(case_config.get('dimensions')) if case_config else False
 
+            # INT-2285：本用例是否真的有评估提交。逐轮评估在上面的轮次循环里按
+            # _has_round_dims 提交、整体评估按 _has_overall_dims 提交；两者皆无
+            # （评测关闭 / 无维度）时评估永远不会回调，收口必须就地把评估状态
+            # 补写终态，否则 TaskCase 停留 evaluating、任务执行完成后不收敛。
+            _evaluation_expected = _has_overall_dims or _has_round_dims
+
             # 停止/暂停检查：任务已停则跳过整体评估提交（评估耗时较长），仅完成结果落库与状态收尾
             _stopped = False
             try:
@@ -163,6 +169,7 @@ class FinalizationMixin:
                 precreated_result_id=result_id,
                 precomputed_execution_success=device_success,
                 publish_event=is_last_device,
+                evaluation_expected=_evaluation_expected,
             )
             any_success = any_success or bool(row_success)
 

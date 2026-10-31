@@ -170,7 +170,8 @@ class E2EAggregator:
 
     def process_results(self, task_id, case_name, tc_rel_id, test_case_id, all_results, case_config=None,
                         case_reference_params=None, case_algorithm_params=None,
-                        adjusted_case_reference_params=None, publish_event=True, **kwargs):
+                        adjusted_case_reference_params=None, publish_event=True,
+                        evaluation_expected=True, **kwargs):
         """处理 E2E 测试结果 — 更新 TaskCase 状态，提交非多轮场景的评估
 
         事件驱动改造: 完成后发布 CaseExecutionCompleted 事件到 Redis 事件总线，
@@ -179,6 +180,12 @@ class E2EAggregator:
         publish_event：组执行时一次执行驱动多台设备、逐设备回写路由行；
         事件体不含 tc_rel_id，重复发布会让 task_service 消费侧重复唤醒/统计，
         因此只有组内最后一台设备回写时才发布（其余传 False）。
+
+        evaluation_expected：本用例是否真的会提交评估（调用方按实际提交门控传入，
+        见 finalization_mixin._finalize_rounds 的 _has_overall_dims/_has_round_dims）。
+        为 False（评测关闭 / 无评估维度）时不会有任何评估回调，多轮收口必须就地把
+        评估状态补写终态——否则 TaskCase 停留 evaluating 被引擎计入活跃评估集合，
+        任务执行完成后永不收敛（INT-2285）。
         """
         algorithm_type = kwargs.get('algorithm_type', 'translation')
         precreated_result_id = kwargs.get('precreated_result_id')
@@ -259,11 +266,27 @@ class E2EAggregator:
                 )
 
                 if execution_success:
+                    # INT-2285：未提交评估（评测关闭 / 无评估维度）时补写评估终态。
+                    # 与评估入口「无维度跳过」的收尾口径一致（_post_evaluate_updates
+                    # 写 COMPLETED）：执行已完成、评估不会发生，用例必须是终态，
+                    # 否则 status 推导为 evaluating，task_service 等待循环把
+                    # evaluation_status=pending 计入活跃评估集合，任务永挂 running。
+                    eval_status = (EvaluationStatus.PENDING if evaluation_expected
+                                   else EvaluationStatus.COMPLETED)
+                    if not evaluation_expected:
+                        self._log(
+                            level='INFO',
+                            content=f"[process_results] 用例未提交评估（评测关闭或无维度），"
+                                    f"评估状态就地收口: tc_rel_id={tc_rel_id}, "
+                                    f"evaluation_status={eval_status}",
+                            task_id=task_id,
+                            test_case_id=test_case_id
+                        )
                     self._task_data_repo.update_task_case_status(
                         task_id, str(test_case_id),
-                        status=derive_task_case_status(ExecutionStatus.COMPLETED, EvaluationStatus.PENDING),
+                        status=derive_task_case_status(ExecutionStatus.COMPLETED, eval_status),
                         execution_status=ExecutionStatus.COMPLETED,
-                        evaluation_status=EvaluationStatus.PENDING,
+                        evaluation_status=eval_status,
                         tc_rel_id=tc_rel_id,
                     )
                 else:
