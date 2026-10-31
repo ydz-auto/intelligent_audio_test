@@ -12,6 +12,9 @@
  *   目标参数经 /algorithm/dimension-params 拉维度内参数。
  * 行值一律经 useWatch 读 form 值（useFieldArray.fields 不随 setValue 更新，只作 key/增删锚点）。
  *
+ * INT-2265：映射行的所有 setValue 均带 `{ shouldDirty: true }`（与 params-table 同口径）——
+ * 否则只改映射行不会置脏表单，footer「保存草稿」按 isDirty 判定会一直灰着。
+ *
  * 视图层（工具栏/表格框/分组/分页/行组件）已抽到 `mapping-view`，与设备「参数配置」弹窗共用。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -165,10 +168,16 @@ function DeviceMappingSection({
    * 用快照判重会漏掉「编辑存量完备行 sourceParam 制造重复」的变更（INT-1160 返工 P2）。
    */
   const handleSourceChange = (index: number, value: string) => {
-    form.setValue(`${arrayName}.${index}.sourceParam` as FieldPath<AlgorithmFormValues>, value ?? '')
+    form.setValue(
+      `${arrayName}.${index}.sourceParam` as FieldPath<AlgorithmFormValues>,
+      value ?? '',
+      { shouldDirty: true }
+    )
     const name =
       paramNameByCode(caseParams, value ?? '') || paramNameByCode(referenceParams, value ?? '')
-    form.setValue(`${arrayName}.${index}.paramName` as FieldPath<AlgorithmFormValues>, name)
+    form.setValue(`${arrayName}.${index}.paramName` as FieldPath<AlgorithmFormValues>, name, {
+      shouldDirty: true,
+    })
     const liveRows = (form.getValues(arrayName) ?? []) as MappingRow[]
     const dupIndex = findDuplicateIndex(liveRows, index, section)
     if (dupIndex >= 0) warnDuplicate(sectionLabel, value || '', '')
@@ -176,10 +185,15 @@ function DeviceMappingSection({
 
   /** 目标参数变更（V9.7.10 handleTargetChange 口径：判重提示不阻塞；同样读实时值） */
   const handleTargetChange = (index: number, value: string) => {
-    form.setValue(`${arrayName}.${index}.targetParam` as FieldPath<AlgorithmFormValues>, value ?? '')
+    form.setValue(
+      `${arrayName}.${index}.targetParam` as FieldPath<AlgorithmFormValues>,
+      value ?? '',
+      { shouldDirty: true }
+    )
     form.setValue(
       `${arrayName}.${index}.targetParamName` as FieldPath<AlgorithmFormValues>,
-      paramNameByCode(targetParams, value ?? '')
+      paramNameByCode(targetParams, value ?? ''),
+      { shouldDirty: true }
     )
     const liveRows = (form.getValues(arrayName) ?? []) as MappingRow[]
     const dupIndex = findDuplicateIndex(liveRows, index, section)
@@ -252,7 +266,8 @@ function DeviceMappingSection({
     if (patch.transformType !== undefined) {
       form.setValue(
         `${arrayName}.${index}.transformType` as FieldPath<AlgorithmFormValues>,
-        patch.transformType ?? 'none'
+        patch.transformType ?? 'none',
+        { shouldDirty: true }
       )
     }
   }
@@ -465,24 +480,44 @@ function EvaluationMappingSection({
 
   /** 来源变更（V9.7.10 handleSourceTypeChange：清 source_param/param_name；case/case_config 清维度） */
   const handleSourceChange = (index: number, value: string) => {
-    form.setValue(`mappings.evaluation.${index}.source` as FieldPath<AlgorithmFormValues>, value ?? 'case')
-    form.setValue(`mappings.evaluation.${index}.sourceParam` as FieldPath<AlgorithmFormValues>, '')
-    form.setValue(`mappings.evaluation.${index}.paramName` as FieldPath<AlgorithmFormValues>, '')
+    form.setValue(`mappings.evaluation.${index}.source` as FieldPath<AlgorithmFormValues>, value ?? 'case', {
+      shouldDirty: true,
+    })
+    form.setValue(`mappings.evaluation.${index}.sourceParam` as FieldPath<AlgorithmFormValues>, '', {
+      shouldDirty: true,
+    })
+    form.setValue(`mappings.evaluation.${index}.paramName` as FieldPath<AlgorithmFormValues>, '', {
+      shouldDirty: true,
+    })
     if (value === 'case' || value === 'case_config') {
-      form.setValue(`mappings.evaluation.${index}.dimensionId` as FieldPath<AlgorithmFormValues>, '')
-      form.setValue(`mappings.evaluation.${index}.dimensionName` as FieldPath<AlgorithmFormValues>, '')
-      form.setValue(`mappings.evaluation.${index}.targetParam` as FieldPath<AlgorithmFormValues>, '')
-      form.setValue(`mappings.evaluation.${index}.targetParamName` as FieldPath<AlgorithmFormValues>, '')
+      form.setValue(`mappings.evaluation.${index}.dimensionId` as FieldPath<AlgorithmFormValues>, '', {
+        shouldDirty: true,
+      })
+      form.setValue(`mappings.evaluation.${index}.dimensionName` as FieldPath<AlgorithmFormValues>, '', {
+        shouldDirty: true,
+      })
+      form.setValue(`mappings.evaluation.${index}.targetParam` as FieldPath<AlgorithmFormValues>, '', {
+        shouldDirty: true,
+      })
+      form.setValue(
+        `mappings.evaluation.${index}.targetParamName` as FieldPath<AlgorithmFormValues>,
+        '',
+        { shouldDirty: true }
+      )
     }
   }
 
   /** 源参数变更：回填 paramName + 判重提示（判重读实时值，INT-1160 返工 P2） */
   const handleSourceParamChange = (index: number, value: string) => {
-    form.setValue(`mappings.evaluation.${index}.sourceParam` as FieldPath<AlgorithmFormValues>, value ?? '')
+    form.setValue(`mappings.evaluation.${index}.sourceParam` as FieldPath<AlgorithmFormValues>, value ?? '', {
+      shouldDirty: true,
+    })
     const liveRows = (form.getValues('mappings.evaluation') ?? []) as MappingRow[]
     const source = liveRows[index]?.source || 'case'
     const name = evalSourceParamName(source, value ?? '', caseParams, referenceParams, deviceParams)
-    form.setValue(`mappings.evaluation.${index}.paramName` as FieldPath<AlgorithmFormValues>, name)
+    form.setValue(`mappings.evaluation.${index}.paramName` as FieldPath<AlgorithmFormValues>, name, {
+      shouldDirty: true,
+    })
     checkDup(index)
   }
 
@@ -490,23 +525,38 @@ function EvaluationMappingSection({
   const handleDimensionChange = (index: number, dimId: string) => {
     const id = dimId || ''
     const dim = dimensions.find((d) => String(d.id) === id)
-    form.setValue(`mappings.evaluation.${index}.dimensionId` as FieldPath<AlgorithmFormValues>, id)
-    form.setValue(`mappings.evaluation.${index}.dimensionName` as FieldPath<AlgorithmFormValues>, dim?.name ?? '')
-    form.setValue(`mappings.evaluation.${index}.targetParam` as FieldPath<AlgorithmFormValues>, '')
-    form.setValue(`mappings.evaluation.${index}.targetParamName` as FieldPath<AlgorithmFormValues>, '')
+    form.setValue(`mappings.evaluation.${index}.dimensionId` as FieldPath<AlgorithmFormValues>, id, {
+      shouldDirty: true,
+    })
+    form.setValue(
+      `mappings.evaluation.${index}.dimensionName` as FieldPath<AlgorithmFormValues>,
+      dim?.name ?? '',
+      { shouldDirty: true }
+    )
+    form.setValue(`mappings.evaluation.${index}.targetParam` as FieldPath<AlgorithmFormValues>, '', {
+      shouldDirty: true,
+    })
+    form.setValue(
+      `mappings.evaluation.${index}.targetParamName` as FieldPath<AlgorithmFormValues>,
+      '',
+      { shouldDirty: true }
+    )
     checkDup(index)
   }
 
   /** 维度内目标参数变更：回填名称 + 判重（维度 id 读实时值，INT-1160 返工 P2） */
   const handleTargetChange = (index: number, value: string) => {
-    form.setValue(`mappings.evaluation.${index}.targetParam` as FieldPath<AlgorithmFormValues>, value ?? '')
+    form.setValue(`mappings.evaluation.${index}.targetParam` as FieldPath<AlgorithmFormValues>, value ?? '', {
+      shouldDirty: true,
+    })
     const liveRows = (form.getValues('mappings.evaluation') ?? []) as MappingRow[]
     const dimId = liveRows[index]?.dimensionId || ''
     const params = dimensionParamsMap[dimId] ?? []
     const param = params.find((p) => p.code === value)
     form.setValue(
       `mappings.evaluation.${index}.targetParamName` as FieldPath<AlgorithmFormValues>,
-      param?.name ?? ''
+      param?.name ?? '',
+      { shouldDirty: true }
     )
     checkDup(index)
   }
@@ -631,7 +681,8 @@ function EvaluationMappingSection({
     if (patch.transformType !== undefined) {
       form.setValue(
         `mappings.evaluation.${index}.transformType` as FieldPath<AlgorithmFormValues>,
-        patch.transformType ?? 'none'
+        patch.transformType ?? 'none',
+        { shouldDirty: true }
       )
     }
   }

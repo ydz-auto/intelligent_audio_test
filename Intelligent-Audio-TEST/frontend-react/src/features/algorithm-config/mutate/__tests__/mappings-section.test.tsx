@@ -7,9 +7,9 @@
  * 算法级 API 映射已迁移到 API 实例作用域，分节内不再出现该映射。
  * 设备参数映射默认展开（defaultOpen），其余分节测试先折叠设备节，保证目标分节查询唯一。
  */
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useForm } from 'react-hook-form'
+import { useForm, type UseFormReturn } from 'react-hook-form'
 import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -45,7 +45,10 @@ function buildValues(): AlgorithmFormValues {
     displayOrder: 0,
     status: 'online',
     description: '',
-    deviceParams: [{ key: 'd-1', paramCode: 'audio_in', paramName: '音频输入', direction: 'input', paramType: 'text', required: false, defaultValue: '', helpText: '' }],
+    deviceParams: [
+      { key: 'd-1', paramCode: 'audio_in', paramName: '音频输入', direction: 'input', paramType: 'text', required: false, defaultValue: '', helpText: '' },
+      { key: 'd-2', paramCode: 'audio_out', paramName: '音频输出', direction: 'output', paramType: 'text', required: false, defaultValue: '', helpText: '' },
+    ],
     caseParams: [
       { key: 'c-1', paramCode: 'asr_result', paramName: 'ASR结果', paramType: 'text', scope: 'common', required: false, defaultValue: '', minValue: '', maxValue: '', step: '', unit: '', annotationCode: '', fieldPath: '', helpText: '' },
       { key: 'c-2', paramCode: 'tts_text', paramName: 'TTS文本', paramType: 'text', scope: 'http_api', required: false, defaultValue: '', minValue: '', maxValue: '', step: '', unit: '', annotationCode: '', fieldPath: '', helpText: '' },
@@ -231,6 +234,105 @@ describe('设备参数映射（INT-1160 返工）', () => {
   it('算法级 API 映射分节已移除（入参改由 API 实例作用域维护）', () => {
     render(<Harness />)
     expect(screen.queryByRole('button', { name: /API.*映射/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('映射行编辑置脏（INT-2265：只改映射行也要点亮「保存草稿」）', () => {
+  let formRef: UseFormReturn<AlgorithmFormValues> | null = null
+
+  /** 把 formState.isDirty 渲染到 DOM（RHF 只有订阅才更新脏态），并暴露 form 供 reset 断言 */
+  function DirtyHarness() {
+    const form = useForm<AlgorithmFormValues>({ defaultValues: buildValues() })
+    formRef = form
+    return (
+      <>
+        <output data-testid='is-dirty'>{String(form.formState.isDirty)}</output>
+        <MappingsSection form={form} dimensions={DIMENSIONS} categories={CATEGORIES} />
+      </>
+    )
+  }
+
+  beforeEach(() => {
+    formRef = null
+  })
+
+  /** 设备映射行：源参数 / 目标参数 / 转换 三个下拉（按行顺序） */
+  async function pickTransformOfFirstDeviceRow(
+    user: ReturnType<typeof userEvent.setup>,
+    label: string
+  ) {
+    await user.click(screen.getAllByRole('combobox')[2])
+    await user.click(screen.getByRole('option', { name: label }))
+  }
+
+  it('未做任何修改：isDirty 保持 false（不误置脏）', () => {
+    render(<DirtyHarness />)
+    expect(screen.getByTestId('is-dirty')).toHaveTextContent('false')
+    expect(formRef!.formState.isDirty).toBe(false)
+  })
+
+  it('设备映射只改「转换」：isDirty 立即变 true（footer 保存草稿随之可点）', async () => {
+    const user = userEvent.setup()
+    render(<DirtyHarness />)
+    await pickTransformOfFirstDeviceRow(user, 'JSON解析')
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('true'))
+    expect(formRef!.getValues('mappings.device.0.transformType')).toBe('json_parse')
+  })
+
+  it('设备映射只改「源参数」/「目标参数」：同样置脏', async () => {
+    const user = userEvent.setup()
+    render(<DirtyHarness />)
+    const combos = screen.getAllByRole('combobox')
+    await user.click(combos[0])
+    await user.click(screen.getByRole('option', { name: 'char · 字符数' }))
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('true'))
+
+    act(() => formRef!.reset(formRef!.getValues()))
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('false'))
+
+    await user.click(screen.getAllByRole('combobox')[1])
+    await user.click(screen.getByRole('option', { name: 'audio_out · 音频输出' }))
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('true'))
+    expect(formRef!.getValues('mappings.device.0.targetParam')).toBe('audio_out')
+  })
+
+  it('评估映射只改「来源」：同样置脏', async () => {
+    const user = userEvent.setup()
+    render(<DirtyHarness />)
+    await isolateSection(user, '评估参数映射')
+    await user.click(screen.getByRole('button', { name: '平铺视图' }))
+    // 工具栏「评估维度筛选」占 combos[0]；行内 5 个下拉依次为一行的 来源/源参数/维度/目标参数/转换
+    await user.click(screen.getAllByRole('combobox')[1])
+    await user.click(screen.getByRole('option', { name: '参考参数' }))
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('true'))
+    expect(formRef!.getValues('mappings.evaluation.0.source')).toBe('reference')
+  })
+
+  it('新增一行映射即置脏', async () => {
+    const user = userEvent.setup()
+    render(<DirtyHarness />)
+    await user.click(screen.getByRole('button', { name: '添加映射' }))
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('true'))
+  })
+
+  it('删除一行映射即置脏', async () => {
+    const user = userEvent.setup()
+    render(<DirtyHarness />)
+    await user.click(screen.getAllByRole('button', { name: '删除该映射' })[0]!)
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('true'))
+    expect(formRef!.getValues('mappings.device')).toHaveLength(1)
+  })
+
+  it('reset 后脏态归零（草稿保存后的按钮回禁用口径）', async () => {
+    const user = userEvent.setup()
+    render(<DirtyHarness />)
+    await pickTransformOfFirstDeviceRow(user, '转大写')
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('true'))
+    act(() => {
+      formRef!.reset(formRef!.getValues())
+    })
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('false'))
+    expect(formRef!.formState.isDirty).toBe(false)
   })
 })
 
