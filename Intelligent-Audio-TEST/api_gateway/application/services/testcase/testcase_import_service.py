@@ -394,6 +394,27 @@ class TestCaseImportService:
             return "用例名称不能为空"
         return None
 
+    @staticmethod
+    def _validate_row_full(case_data):
+        """行级全量校验：名称 + 导入构建 payload 的纯计算，返回错误消息或 None。
+
+        导入侧 `_create_cases_from_rows` 在 `_validate_imported_case` 之后还会调
+        `_build_case_payload`（合并噪声/音频/维度、收集标签），其中的类型/结构
+        异常按行记错（`第{idx+1}行: ...`）。预览要与之同口径，必须跑同一段纯计算
+        （INT-2181：`tags` 非数组等行此前预览漏报）。
+
+        这里传 `group=None`：payload 只在拼 `group_id` 时用到分组，且预览期不得
+        查/建分组。落库与参考参数恢复等写路径异常仍只可能出现在导入回执。
+        """
+        err = TestCaseImportService._validate_imported_case(case_data)
+        if err:
+            return err
+        try:
+            TestCaseImportService._build_case_payload(case_data, None)
+        except Exception as e:
+            return str(e)
+        return None
+
     # ------------------------------------------------------------------
     # 重复处理策略
     # ------------------------------------------------------------------
@@ -810,10 +831,11 @@ class TestCaseImportService:
 
     @staticmethod
     def _preview_row_errors(stream, fmt, parsed_rows=None):
-        """按导入同一解析口径逐行校验，返回 `第N行: 原因` 列表。
+        """按导入同一校验口径逐行校验，返回 `第N行: 原因` 列表。
 
         行号 `enumerate(rows, 1)`，与导入回执 `_create_cases_from_rows` 的
-        `第{idx + 1}行` 完全对齐；每个坏行只出 1 条（validate 单条返回）。
+        `第{idx + 1}行` 完全对齐；每行走 `_validate_row_full`（名称校验 +
+        `_build_case_payload` 纯计算），每个坏行只出 1 条。
         解析异常向上抛，交 preview_import 转 `预览失败: ...`，不吞成空 errors。
         """
         if parsed_rows is None:
@@ -823,7 +845,7 @@ class TestCaseImportService:
         errors = []
         for idx, case_data in enumerate(parsed_rows):
             try:
-                err = TestCaseImportService._validate_imported_case(case_data)
+                err = TestCaseImportService._validate_row_full(case_data)
             except Exception as e:
                 # 与导入路径同口径：行级异常也记为该行的 1 条错误
                 err = str(e)
