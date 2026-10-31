@@ -19,6 +19,10 @@ from algorithm_service.infrastructure.persistence.models import (
 )
 from algorithm_service.infrastructure.persistence._param_converters import _po_to_dict
 
+# 策略作用域白名单（param_profiles.scope 列值域）。网关 schema 已用 Literal 拦住
+# 非法值，这里兜住绕过网关直连 gRPC 的写入（INT-2186）。
+_PROFILE_SCOPES = ('api', 'device')
+
 
 class ParamProfileRepository:
     """策略只读仓储（重载用）。"""
@@ -119,6 +123,12 @@ class ParamProfileCommandRepository:
         from algorithm_service.infrastructure.persistence._algorithm_full_save import (
             _text_or_json,
         )
+        scope = data.get('scope')
+        if scope is None:
+            scope = 'api'
+        if scope not in _PROFILE_SCOPES:
+            raise ValueError(
+                f"策略 scope 非法：{scope!r}（只允许 {' / '.join(_PROFILE_SCOPES)}）")
         session = get_db_session()
         try:
             profile_id = data.get('id')
@@ -137,7 +147,7 @@ class ParamProfileCommandRepository:
                     po.config_snapshot = _text_or_json(data.get('config'))
             else:
                 po = ParamProfile(
-                    scope=data.get('scope') or 'api',
+                    scope=scope,
                     algorithm_type=data.get('algorithm_type') or '',
                     name=data.get('name') or '',
                     description=data.get('description'),

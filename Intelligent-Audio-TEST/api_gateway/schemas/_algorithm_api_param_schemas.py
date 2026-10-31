@@ -3,7 +3,7 @@
 
 API 参数 CRUD、用例专属参数创建/更新、用例参数提取请求 Schema。
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import ConfigDict, Field
 
@@ -127,7 +127,9 @@ class ParamProfileListQuery(APIModel):
 
 class ParamProfileSaveRequest(APIModel):
     """整份保存策略（基础字段 + 字段声明 + 映射 + API 配置快照）"""
-    scope: str = Field('api', max_length=10, description='作用域：api / device')
+    # INT-2186：scope 是列值域（param_profiles.scope），非法值必须在网关挡住，
+    # 不能落库成脏数据（仓储侧另有一道白名单兜底）。
+    scope: Literal['api', 'device'] = Field('api', description='作用域：api / device')
     algorithm_type: str = Field(..., min_length=1, max_length=50)
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None)
