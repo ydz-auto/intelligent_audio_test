@@ -110,7 +110,7 @@ export function EvaluationPage() {
   const dimensionsQuery = useEvaluationDimensions()
   const categoriesQuery = useEvaluationCategories()
   const algorithmOptionsQuery = useAlgorithmOptions()
-  const { save, remove, batch, weight, reorder, duplicate } =
+  const { remove, batch, weight, status, reorder, duplicate } =
     useEvaluationMutations()
   const categoryMutations = useEvaluationCategoryMutations()
   const calculate = useCalculateScore()
@@ -470,6 +470,7 @@ export function EvaluationPage() {
       })
   }
 
+  /** 行内启停：只发变更字段（列表行不含真实 output_fields/关联算法，整行 PUT 会清空配置 → INT-2247） */
   const toggleStatus = (dimension: Dimension) => {
     const nextStatus = !dimension.status
     setDimensions((prev) =>
@@ -477,11 +478,20 @@ export function EvaluationPage() {
         d.id === dimension.id ? { ...d, status: nextStatus } : d
       )
     )
-    void save
-      .mutateAsync({ ...dimension, status: nextStatus } as Dimension)
+    void status
+      .mutateAsync({ id: dimension.id, status: nextStatus })
       .then(() =>
         toast.success(nextStatus ? '维度已启用' : '维度已禁用')
       )
+      .catch(() => {
+        // 失败回滚本地乐观值，避免开关停在未落库的状态
+        setDimensions((prev) =>
+          prev.map((d) =>
+            d.id === dimension.id ? { ...d, status: dimension.status } : d
+          )
+        )
+        toast.error('状态更新失败，请重试')
+      })
   }
 
   const handleConfirm = async () => {

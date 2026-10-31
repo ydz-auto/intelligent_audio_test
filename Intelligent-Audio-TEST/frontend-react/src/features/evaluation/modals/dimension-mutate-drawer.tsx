@@ -144,11 +144,18 @@ export function DimensionMutateDrawer({
   )
   // 编辑反填必须走详情（列表不下发 required_inputs/output_fields）：
   // 抽屉先以列表数据渲染基础字段，详情返回后再重同步全量配置
-  const { data: detailDimension } = useEvaluationDimensionDetail(
+  const {
+    data: detailDimension,
+    isError: detailError,
+  } = useEvaluationDimensionDetail(
     open && mode === 'edit' && dimension ? dimension.id : null
   )
   const effectiveDimension = detailDimension ?? dimension
   const dimensionId = dimension?.id ?? null
+  // INT-2247：编辑态必须以详情为提交基座。详情未就绪时表单只有列表行（占位空配置）+
+  // 子编辑器默认行，此时提交会把空 required_inputs/output_fields 与默认行写回后端
+  // （后端按「显式清空」删参数与 ParamMapping）；故详情到达前禁止保存。
+  const detailReady = mode !== 'edit' || Boolean(detailDimension)
 
   const form = useForm<DimensionFormValues>({
     // mode:'onChange'：字段错误随输入即时显示（INT-1551：默认 onSubmit 下 errors 不产出，
@@ -197,6 +204,8 @@ export function DimensionMutateDrawer({
   }
 
   const handleSave = form.handleSubmit(async (values) => {
+    // 详情未就绪时拒绝提交（否则会以列表占位配置覆盖真实配置，INT-2247）
+    if (!detailReady) return
     try {
       // 编辑态必须携带 id：saveEvaluationDimension 凭 input.id 走 PUT /{id}，
       // 缺 id 会落入 POST 新建同名副本（INT-948）。复制路径不经本抽屉（onDuplicate 显式 copy- 前缀）。
@@ -304,7 +313,17 @@ export function DimensionMutateDrawer({
 
         <SheetFooter className='border-t px-4 py-3'>
           <div className='flex w-full items-center justify-between gap-3'>
-            {!isFormValid && (
+            {!detailReady && (
+              <p
+                className='text-muted-foreground min-w-0 text-xs'
+                data-testid='dimension-detail-pending'
+              >
+                {detailError
+                  ? '维度详情加载失败，请关闭后重试'
+                  : '正在加载维度详情…'}
+              </p>
+            )}
+            {detailReady && !isFormValid && (
               <p
                 className='text-muted-foreground min-w-0 text-xs'
                 data-testid='dimension-form-validation-summary'
@@ -324,7 +343,7 @@ export function DimensionMutateDrawer({
               <Button
                 type='submit'
                 form='dimension-mutate-form'
-                disabled={save.isPending || !isFormValid || !canManage}
+                disabled={save.isPending || !isFormValid || !canManage || !detailReady}
               >
                 {save.isPending ? '保存中…' : '保存'}
               </Button>

@@ -30,6 +30,7 @@ import {
   saveEvaluationCategory,
   saveEvaluationDimension,
   testDimensionHealth,
+  updateDimensionStatus,
   updateDimensionWeight,
 } from '@/infrastructure/api/evaluation-api'
 
@@ -165,6 +166,13 @@ export function useEvaluationMutations() {
     onSuccess: invalidate,
   })
 
+  // 行内启停（INT-2247）：只提交 { status }，不上送列表行的占位空配置
+  const status = useMutation({
+    mutationFn: ({ id, status }: { id: number | string; status: boolean }) =>
+      updateDimensionStatus(id, status),
+    onSuccess: invalidate,
+  })
+
   const reorder = useMutation({
     mutationFn: (ids: Array<number | string>) => reorderDimension(ids),
     onSuccess: invalidate,
@@ -175,7 +183,7 @@ export function useEvaluationMutations() {
     onSuccess: invalidate,
   })
 
-  return { save, remove, batch, weight, reorder, duplicate, invalidate }
+  return { save, remove, batch, weight, status, reorder, duplicate, invalidate }
 }
 
 /** 规则试算（行内「规则试算」；门槛 evaluation:dim_manage） */

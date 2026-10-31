@@ -116,6 +116,21 @@ export async function saveEvaluationDimension(
   return { success: true }
 }
 
+/**
+ * 行内启用/禁用（INT-2247）：只提交变更字段 `{ status }`。
+ * 列表端点把 required_inputs / output_fields / associated_algorithms 固定下发空数组
+ * （evaluation_query_service 省 N+1 的占位），整行 PUT 会被后端当「用户显式清空」→
+ * 删输出参数与 output ParamMapping；后端 PUT 为部分更新（只写 payload 里出现的键），
+ * 故单独发 status 即可。
+ */
+export async function updateDimensionStatus(
+  id: number | string,
+  status: boolean
+): Promise<{ success: boolean }> {
+  await request('PUT', `/evaluation/dimensions/${id}`, { status })
+  return { success: true }
+}
+
 /** 删除维度（逻辑删除） */
 export async function deleteEvaluationDimension(
   id: number | string
@@ -197,12 +212,18 @@ export async function testDimensionHealth(
   return toDimensionHealthCheck(dto)
 }
 
-/** 复制维度（后端无独立 duplicate 端点：以「{原名}（副本）」为名 POST 创建，配置深拷贝） */
+/**
+ * 复制维度（后端无独立 duplicate 端点：以「{原名}（副本）」为名 POST 创建，配置深拷贝）。
+ * INT-2247：列表行不含真实配置（列表端点固定下发空 required_inputs / output_fields /
+ * associated_algorithms），直接以列表行复制会被后端当「用户清空」→ 副本丢输入/输出字段
+ * 与算法关联；故复制前必须先取详情（GET /dimensions/{id}），以详情为载荷。
+ */
 export async function duplicateDimension(
   dimension: Dimension
 ): Promise<{ success: boolean }> {
+  const detail = await fetchEvaluationDimensionDetail(dimension.id)
   const body = toDimensionInputDto({
-    ...dimension,
+    ...detail,
     name: `${dimension.name}（副本）`,
   })
   await request('POST', '/evaluation/dimensions', body)

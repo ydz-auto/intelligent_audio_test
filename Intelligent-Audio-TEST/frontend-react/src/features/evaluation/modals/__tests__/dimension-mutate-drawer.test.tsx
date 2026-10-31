@@ -227,7 +227,8 @@ describe('DimensionMutateDrawer 回填（INT-1660）', () => {
 
   it('空规则维度：不注入默认规则、结果类型 0 显示中文标签、原样保存保留 defaultScore（INT-1732）', async () => {
     const user = userEvent.setup()
-    detailStore.current = {}
+    // INT-2247：编辑态以详情为提交基座，详情先就绪再保存
+    detailStore.current = { '121': EMPTY_RULE_ROW }
     saveMock.mockClear()
     render(<Harness dimension={EMPTY_RULE_ROW} />)
 
@@ -251,5 +252,21 @@ describe('DimensionMutateDrawer 回填（INT-1660）', () => {
     const payload = saveMock.mock.calls[0][0] as Partial<Dimension>
     expect(payload.rule).toEqual({ rules: [], defaultScore: 7 })
     expect(payload.resultType).toBe(0)
+  })
+
+  it('详情未就绪时禁用保存并提示（避免以列表占位配置覆盖真实配置，INT-2247）', async () => {
+    const user = userEvent.setup()
+    detailStore.current = {}
+    saveMock.mockClear()
+    render(<Harness dimension={LIST_ROW} />)
+
+    await user.click(screen.getByRole('button', { name: '编辑维度' }))
+    await waitFor(() =>
+      expect(screen.getByLabelText(/维度名称/)).toHaveValue(LIST_ROW.name)
+    )
+    expect(screen.getByTestId('dimension-detail-pending')).toHaveTextContent(
+      '正在加载维度详情…'
+    )
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
   })
 })
