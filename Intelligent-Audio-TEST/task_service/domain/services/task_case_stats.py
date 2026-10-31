@@ -8,6 +8,8 @@
 本模块是唯一口径来源：
 - refresh_task_counts_atomic：用例级计数写库（多实例安全，SQL 子查询一次 UPDATE）
 - aggregate_case_rows：把同一用例的多行聚合为用例级视图（含 targets）
+- derive_terminal_task_status：终态任务移除用例后按剩余用例重新派生任务状态
+  （INT-2232，与执行引擎收敛口径一致）
 """
 from typing import Dict, Iterable, List, Optional
 
@@ -16,7 +18,9 @@ from shared.utils.status_constants import (
     ACTIVE_EXECUTION_STATUSES,
     EvaluationStatus,
     ExecutionStatus,
+    FINISHED_CASE_STATUSES,
     TaskCaseStatus,
+    TaskStatus,
 )
 from shared.utils.status_utils import (
     derive_case_evaluation_status,
@@ -158,6 +162,43 @@ def case_level_counts(rows: Iterable) -> Dict[str, int]:
         elif agg['status'] == TaskCaseStatus.FAILED:
             failed += 1
     return {'total': len(groups), 'completed': completed, 'failed': failed}
+
+
+def derive_terminal_task_status(current_status: str,
+                                case_statuses: Iterable[str]) -> Optional[str]:
+    """终态任务按剩余用例重新派生任务状态（INT-2232）。
+
+    任务收敛（``TaskFinalizeMixin._update_post_loop_status`` /
+    ``_finalize_task_status``）只在执行/评估推进时跑；终态任务移除用例走
+    ``task_lifecycle_service.remove_case``，原先只重算计数（``recount_task_cases``
+    / ``refresh_task_counts_atomic``），不回写 ``Task.status``——移除任务里唯一
+    的失败用例后 stored status 仍是 failed，而 ``/tasks/stats`` 按 stored status
+    分组，导致页面「失败 1 / 已完成 0」与任务行的 completed 徽章、1/1/0 计数
+    互相矛盾。
+
+    口径与收敛路径一致：存在未移除的 failed 用例 → failed；全部到终态
+    （含用例已全部移除）→ completed。
+
+    Args:
+        current_status: 任务当前 stored status
+        case_statuses: 未移除用例行的 status（TaskCase.status）
+
+    Returns:
+        需回写的新状态；无需改写时返回 None。
+
+    Notes:
+        - 只改写 failed：completed 的移除不可能产出 failed；stopped / skipped
+          是用户手动停止 / 跳过语义，不因移除用例改写。
+        - 终态任务仍存在未收敛用例行（数据不一致）时不擅自改写。
+    """
+    if current_status != TaskStatus.FAILED:
+        return None
+    statuses = list(case_statuses)
+    if any(s == TaskCaseStatus.FAILED for s in statuses):
+        return None
+    if not all(s in FINISHED_CASE_STATUSES for s in statuses):
+        return None
+    return TaskStatus.COMPLETED
 
 
 def refresh_task_counts_atomic(task_id) -> None:

@@ -14,6 +14,12 @@ from shared.utils.status_constants import (
     TaskStatus,
 )
 
+# INT-2232：空任务（用例被全部移除）双状态派生可沿用的任务终态。
+# 不含 skipped：执行状态筛选合法值里没有 skipped（人工复核停留在用例级）。
+_EMPTY_FALLBACK_TASK_STATUSES = (
+    TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED,
+)
+
 
 def derive_task_case_status(execution_status: str, evaluation_status: str) -> str:
     """根据 execution_status 和 evaluation_status 推导 status。
@@ -49,7 +55,8 @@ def derive_task_dual_status(task_status: str, *,
                             exec_all_terminal: bool,
                             has_eval_in_progress: bool,
                             has_eval_failed: bool,
-                            has_eval_completed: bool) -> tuple:
+                            has_eval_completed: bool,
+                            has_cases: bool = True) -> tuple:
     """任务级执行/评估双状态推导（INT-301，与 task_read_model SQL 条件严格同构）。
 
     输入为 TaskCase 聚合布尔量 + Task.status：
@@ -59,17 +66,25 @@ def derive_task_dual_status(task_status: str, *,
       （queued/running/calculating；pending=评估未提交不计入）
     - has_eval_failed：执行未失败的用例中存在 evaluation_status=failed
     - has_eval_completed：存在 evaluation_status=completed
+    - has_cases：任务是否还有未移除用例行（INT-2232）。False = 用例被全部移除
+      （INT-305 允许删到为空），此时无聚合可依据，按任务终态派生——与 SQL
+      表达式的 EMPTY_TERMINAL_TASK 分支同口径。
 
     返回 (execution_status, evaluation_status)：
     - 执行侧：paused > running（有活跃执行） > failed > stopped > queued
-      > completed（全部用例执行终态） > pending；评估过渡态（evaluating/
-      reevaluate_queued/reevaluating）不落入执行侧——评估推进不改执行徽章。
+      > completed（全部用例执行终态） > 空任务沿用任务终态 > pending；评估
+      过渡态（evaluating/reevaluate_queued/reevaluating）不落入执行侧——评估
+      推进不改执行徽章。
     - 评估侧优先级：evaluating（评估过渡态或存在进行中评估） > failed
       （执行未失败而评估失败） > skipped（手动停止中断评估 / 执行失败评估
       未发生，失败路径补写的 completed 是收敛占位而非真实评估） >
       completed（存在评估完成用例，不要求任务已收敛——评估完成即评估完成） >
-      pending（尚未进入评估）。
+      空任务沿用任务终态 > pending（尚未进入评估）。
     """
+    # 空任务兜底：用例全部被移除时按任务终态派生（与 SQL 同口径）
+    empty_terminal_task = (not has_cases
+                           and task_status in _EMPTY_FALLBACK_TASK_STATUSES)
+
     # ---- 执行侧（纯执行域）----
     if task_status == TaskStatus.PAUSED:
         execution = TaskStatus.PAUSED
@@ -83,6 +98,8 @@ def derive_task_dual_status(task_status: str, *,
         execution = TaskStatus.QUEUED
     elif exec_all_terminal:
         execution = ExecutionStatus.COMPLETED
+    elif empty_terminal_task:
+        execution = task_status
     else:
         execution = ExecutionStatus.PENDING
 
@@ -100,6 +117,10 @@ def derive_task_dual_status(task_status: str, *,
         evaluation = EvaluationStatus.SKIPPED
     elif has_eval_completed:
         evaluation = EvaluationStatus.COMPLETED
+    elif empty_terminal_task:
+        evaluation = (EvaluationStatus.COMPLETED
+                      if task_status == TaskStatus.COMPLETED
+                      else EvaluationStatus.SKIPPED)
     else:
         evaluation = EvaluationStatus.PENDING
 

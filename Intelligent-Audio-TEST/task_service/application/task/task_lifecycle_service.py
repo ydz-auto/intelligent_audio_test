@@ -336,7 +336,8 @@ class TaskLifecycleService:
           CancelEvaluation reason=case_deleted）→ 软删留痕 + TestResult excluded
           → 计数重算 → 中断事件推送；
         - 已完成/评估完成（completed/failed/stopped）：软删留痕 + TestResult
-          excluded（保审计）→ 计数重算 → 触发报告重算。
+          excluded（保审计）→ 计数重算 → 任务状态按剩余用例重新派生（INT-2232：
+          移除唯一失败用例后 failed → completed）→ 触发报告重算。
 
         全程审计事件（操作人经 x-user-id metadata 透传，get_current_user_id 读取）。
 
@@ -401,6 +402,16 @@ class TaskLifecycleService:
 
             # 4. 计数重算（recount 按移除留痕行剔除口径）
             task_repository.recount_task_cases(task_id)
+
+            # 4b. 终态任务：按剩余用例重新派生并回写任务状态（INT-2232）。
+            #     移除唯一失败用例后 stored status 必须收敛 completed，否则
+            #     /tasks/stats（按 Task.status 分组）仍计失败，与计数/双状态
+            #     徽章互相矛盾。进行中任务由执行引擎收敛，此处不改写。
+            if task.status in FINISHED_TASK_STATUSES:
+                refreshed_status = task_repository.refresh_terminal_task_status(task_id)
+                if refreshed_status:
+                    logger.info("移除用例后任务状态重新派生 task_id=%s %s→%s",
+                                task_id, task.status, refreshed_status)
 
             # 5. 执行中：任务行 updated_by 留痕 + 唤醒等待线程推进收敛 + 进度推送
             if is_active_task:

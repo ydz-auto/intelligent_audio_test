@@ -372,6 +372,45 @@ class TaskLifecycleMixin:
         finally:
             session.close()
 
+    def refresh_terminal_task_status(self, task_id: int):
+        """终态任务按剩余用例重新派生并回写 Task.status（INT-2232）。
+
+        移除用例只重算计数不回写任务状态时，「移除唯一失败用例」后 stored
+        status 仍是 failed（``/tasks/stats`` 按 stored status 分组 → 页面统计
+        与任务行徽章/计数矛盾）。派生规则委托
+        ``domain.services.task_case_stats.derive_terminal_task_status``。
+
+        Returns:
+            新状态（已回写时）；无需改写（非 failed 任务 / 仍有失败用例 /
+            存在未收敛用例行）返回 None。
+        """
+        from task_service.domain.services.task_case_stats import (
+            derive_terminal_task_status,
+        )
+
+        session = get_db_session()
+        try:
+            task = session.get(Task, task_id)
+            if task is None:
+                return None
+            case_statuses = [
+                row[0] for row in session.query(TaskCase.status).filter(
+                    TaskCase.task_id == task_id,
+                    task_case_not_removed(TaskCase),
+                ).all()
+            ]
+            new_status = derive_terminal_task_status(task.status, case_statuses)
+            if new_status is None or new_status == task.status:
+                return None
+            task.status = new_status
+            session.commit()
+            return new_status
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
     def reset_task_to_pending(self, task_id: int) -> None:
         """重置任务状态为 pending。"""
         session = get_db_session()

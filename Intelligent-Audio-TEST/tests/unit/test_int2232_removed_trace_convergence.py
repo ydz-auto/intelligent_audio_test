@@ -16,8 +16,17 @@
 验收口径：任务 2 用例（1 completed / 1 failed）→ 移除 failed 用例 →
 任务 status=completed、execution_status=completed、failed_cases=0。
 
+返工轮（测试打回）补齐两处：
+1. 移除链路 ``task_lifecycle_service.remove_case`` 原先只重算计数、不回写
+   ``Task.status``，终态任务移除唯一失败用例后 stored status 仍是 failed
+   （``/tasks/stats`` 按 stored status 分组 → 页面统计与徽章互相矛盾）；
+2. 用例被全部移除（INT-305 允许删到为空）时 ``EXEC_ALL_TERMINAL`` 恒为假，
+   徽章从 completed 退化为 pending —— 空任务改按任务终态派生（SQL 与
+   Python 派生器同口径）。
+
 DB：进程级 SQLite（tests/conftest.py 注入），仅建 test_tasks /
-task_case_relations，用例内自行清理，对齐 test_int2209 / test_int301 口径。
+task_case_relations / test_results，用例内自行清理，对齐 test_int2209 /
+test_int301 口径。
 """
 import os
 from datetime import datetime, timedelta, timezone
@@ -39,10 +48,12 @@ BASE_ID = 2232000
 def _tables():
     from shared.models.database import Base, get_engine, init_db, remove_db_session
     from task_service.infrastructure.persistence.models.task_models import Task, TaskCase
+    from task_service.infrastructure.persistence.models.result_models import TestResult
 
     init_db(pool_size=2)
     Base.metadata.create_all(
-        bind=get_engine(), tables=[Task.__table__, TaskCase.__table__])
+        bind=get_engine(),
+        tables=[Task.__table__, TaskCase.__table__, TestResult.__table__])
     _purge()
     yield
     _purge()
@@ -309,3 +320,162 @@ def test_execution_filter_ignores_removed_failure(db):
     finally:
         remove_db_session()
     assert hit == {miss_id}
+
+
+# ============================================================
+# 3) 返工轮：移除链路回写任务状态（打回失败项 1）
+# ============================================================
+
+def _remove_via_service(task_id, case_id):
+    """走真实 remove_case 服务链（跨服务审计/报告重算打桩）。"""
+    from task_service.application.task.task_lifecycle_service import TaskLifecycleService
+
+    svc = TaskLifecycleService()
+    svc._check_control_visible = lambda task: None
+    svc._publish_removal_audit = lambda *a, **k: None
+    svc._trigger_report_recalculate = lambda tid: False
+    return svc.remove_case(task_id, case_id)
+
+
+def test_remove_case_converges_failed_task_to_completed(db):
+    """卡面验收：终态任务移除唯一失败用例 → stored status=completed（失败项 1）。
+
+    移除链路原先只重算计数不回写 Task.status，/tasks/stats 按 stored status
+    分组仍计「执行失败 1」，与任务行 completed 徽章 + 1/1/0 计数矛盾。
+    """
+    task_id = BASE_ID + 11
+    _seed_task(task_id, status='failed')
+    _seed_case(task_id * 10 + 1, task_id, f'{task_id}-c1',
+               status='completed', execution_status='completed',
+               evaluation_status='completed')
+    _seed_case(task_id * 10 + 2, task_id, f'{task_id}-c2',
+               status='failed', execution_status='failed',
+               evaluation_status='completed')
+    from task_service.domain.services.task_case_stats import refresh_task_counts_atomic
+    refresh_task_counts_atomic(task_id)
+
+    result = _remove_via_service(task_id, f'{task_id}-c2')
+    assert result['success'] is True
+
+    task = _get_task(task_id)
+    assert task.status == 'completed'
+    assert (task.total_cases, task.completed_cases, task.failed_cases) == (1, 1, 0)
+    assert _derive(task_id) == ('completed', 'completed')
+    # 留痕行保留（INT-305 审计语义不被回写覆盖）
+    assert _get_case(task_id * 10 + 2).error_message == REMOVED_MSG
+
+
+def test_remove_case_keeps_failed_when_another_failed_case_remains(db):
+    """对照：仍有未移除的失败用例时任务保持 failed（不误判 completed）。"""
+    task_id = BASE_ID + 12
+    _seed_task(task_id, status='failed')
+    _seed_case(task_id * 10 + 1, task_id, f'{task_id}-c1',
+               status='failed', execution_status='failed',
+               evaluation_status='completed')
+    _seed_case(task_id * 10 + 2, task_id, f'{task_id}-c2',
+               status='failed', execution_status='failed',
+               evaluation_status='completed')
+
+    result = _remove_via_service(task_id, f'{task_id}-c2')
+    assert result['success'] is True
+    assert _get_task(task_id).status == 'failed'
+    assert _derive(task_id)[0] == 'failed'
+
+
+def test_remove_case_preserves_stopped_task_status(db):
+    """停止语义不被移除改写：stopped 任务移除用例后仍为 stopped。"""
+    task_id = BASE_ID + 13
+    _seed_task(task_id, status='stopped')
+    _seed_case(task_id * 10 + 1, task_id, f'{task_id}-c1',
+               status='failed', execution_status='stopped',
+               evaluation_status='stopped')
+
+    result = _remove_via_service(task_id, f'{task_id}-c1')
+    assert result['success'] is True
+    assert _get_task(task_id).status == 'stopped'
+
+
+# ============================================================
+# 4) 返工轮：移除最后一个用例后的空任务口径（打回失败项 2）
+# ============================================================
+
+def test_dual_status_empty_completed_task_not_pending(db):
+    """移除最后一个用例：空任务沿任务终态，徽章不得退化为 pending（失败项 2）。"""
+    task_id = BASE_ID + 14
+    _seed_task(task_id, status='completed')
+    _seed_case(task_id * 10 + 1, task_id, f'{task_id}-c1',
+               status='completed', execution_status='completed',
+               evaluation_status='completed')
+
+    result = _remove_via_service(task_id, f'{task_id}-c1')
+    assert result['success'] is True
+
+    task = _get_task(task_id)
+    assert (task.total_cases, task.completed_cases, task.failed_cases) == (0, 0, 0)
+    assert task.status == 'completed'
+    assert _derive(task_id) == ('completed', 'completed')
+
+
+def test_dual_status_empty_stopped_task_falls_back(db):
+    """空任务兜底同样覆盖 stopped / failed 终态（口径与任务 stored status 一致）。"""
+    completed_id, stopped_id = BASE_ID + 15, BASE_ID + 16
+    for task_id, status in ((completed_id, 'completed'), (stopped_id, 'stopped')):
+        _seed_task(task_id, status=status)
+        _seed_case(task_id * 10 + 1, task_id, f'{task_id}-c1',
+                   status='completed', execution_status='completed',
+                   evaluation_status='completed', error_message=REMOVED_MSG)
+
+    assert _derive(completed_id) == ('completed', 'completed')
+    assert _derive(stopped_id) == ('stopped', 'skipped')
+
+
+def test_dual_status_empty_failed_task_keeps_failed(db):
+    """兜底不掩盖失败：仅剩留痕行的 failed 任务执行侧仍 failed。"""
+    task_id = BASE_ID + 17
+    _seed_task(task_id, status='failed')
+    _seed_case(task_id * 10 + 1, task_id, f'{task_id}-c1',
+               status='failed', execution_status='failed',
+               evaluation_status='completed', error_message=REMOVED_MSG)
+
+    assert _derive(task_id) == ('failed', 'skipped')
+
+
+def test_derive_dual_status_empty_cases_falls_back_to_task_status():
+    """Python 派生器与 SQL 同构：has_cases=False 时按任务终态派生。"""
+    from shared.utils.status_utils import derive_task_dual_status
+
+    empty = dict(has_exec_active=False, has_exec_failed=False, has_exec_stopped=False,
+                 exec_all_terminal=False, has_eval_in_progress=False,
+                 has_eval_failed=False, has_eval_completed=False, has_cases=False)
+    assert derive_task_dual_status('completed', **empty) == ('completed', 'completed')
+    assert derive_task_dual_status('failed', **empty) == ('failed', 'skipped')
+    assert derive_task_dual_status('stopped', **empty) == ('stopped', 'skipped')
+    # 对照：非终态任务保持 pending；has_cases=True 保持旧口径（不混淆「全 pending」）
+    assert derive_task_dual_status('running', **empty) == ('pending', 'pending')
+    assert derive_task_dual_status('completed', **{**empty, 'has_cases': True}) == \
+        ('pending', 'pending')
+
+
+def test_execution_filter_empty_completed_task_matches_completed(db):
+    """空任务筛选同口径：completed 筛选命中、failed 不命中。"""
+    from shared.models.database import get_db_session, remove_db_session
+    from task_service.infrastructure.persistence.models.task_models import Task
+    from task_service.infrastructure.read_models.task_dual_status_expr import (
+        execution_filter_condition,
+    )
+
+    task_id = BASE_ID + 18
+    _seed_task(task_id, status='completed')
+    _seed_case(task_id * 10 + 1, task_id, f'{task_id}-c1',
+               status='completed', execution_status='completed',
+               evaluation_status='completed', error_message=REMOVED_MSG)
+
+    session = get_db_session()
+    try:
+        matched_completed = session.query(Task).filter(
+            Task.id == task_id, execution_filter_condition('completed')).count()
+        matched_failed = session.query(Task).filter(
+            Task.id == task_id, execution_filter_condition('failed')).count()
+    finally:
+        remove_db_session()
+    assert (matched_completed, matched_failed) == (1, 0)

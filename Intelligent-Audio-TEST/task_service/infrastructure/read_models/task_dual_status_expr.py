@@ -22,7 +22,9 @@ reevaluate_queued/reevaluating 表达评估侧），本模块用例级 TaskCase 
 INT-2232：移除留痕行（`error_message = '用例已被移除'`，INT-305）不参与任何
 聚合——`_tc_exists` 统一并入未移除条件。否则移除失败用例后，`HAS_EXEC_FAILED`
 仍为真（徽章/筛选仍判 failed），移除的 pending 行也会让 `EXEC_ALL_TERMINAL`
-永远为假（与 task_case_stats 的计数口径矛盾）。
+永远为假（与 task_case_stats 的计数口径矛盾）。用例被全部移除时（INT-305
+允许删到为空）没有任何用例级聚合可依据，改按任务终态派生（`EMPTY_TERMINAL_TASK`），
+避免徽章从 completed 退化为 pending。
 """
 from sqlalchemy import and_, case, exists, or_, select
 
@@ -42,6 +44,12 @@ _EVAL_TRANSITION_STATUSES = (
 _EVAL_IN_PROGRESS = (EvaluationStatus.QUEUED, EvaluationStatus.RUNNING, EvaluationStatus.CALCULATING)
 # INT-2232：移除留痕行不参与双状态聚合（NULL 安全条件，模块级构造按不可变表达式复用）
 _NOT_REMOVED = task_case_not_removed(TaskCase)
+# 任务终态集合（空任务派生兜底：用例被全部移除时沿用任务终态）。
+# 不含 skipped：执行状态筛选合法值里没有 skipped（人工复核停留在用例级），
+# 避免徽章产出筛选选项集外的值。
+_TERMINAL_TASK_STATUSES = (
+    TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED,
+)
 
 
 def _tc_exists(*criteria):
@@ -72,6 +80,12 @@ HAS_EVAL_FAILED = _tc_exists(and_(
 ))
 HAS_EVAL_COMPLETED = _tc_exists(TaskCase.evaluation_status == EvaluationStatus.COMPLETED)
 
+# INT-2232：空任务（用例被全部移除，INT-305 允许删到为空）没有任何
+# 用例级聚合可依据——EXEC_ALL_TERMINAL 要求「存在未移除的终态行」恒为假，
+# 徽章会从 completed 退化为 pending，与任务行的终态 status 自相矛盾。
+EMPTY_TASK = ~_tc_exists()
+EMPTY_TERMINAL_TASK = and_(EMPTY_TASK, Task.status.in_(_TERMINAL_TASK_STATUSES))
+
 # ---- 派生 CASE 表达式（与 derive_task_dual_status 同构） ----
 
 EXECUTION_STATUS_EXPR = case(
@@ -81,6 +95,9 @@ EXECUTION_STATUS_EXPR = case(
     (HAS_EXEC_STOPPED, ExecutionStatus.STOPPED),
     (Task.status == 'queued', 'queued'),
     (EXEC_ALL_TERMINAL, ExecutionStatus.COMPLETED),
+    # 空任务沿用任务终态（completed 的移除不会产生 failed；stopped/skipped
+    # 是手动停止/跳过语义，原样透出）
+    (EMPTY_TERMINAL_TASK, Task.status),
     else_=ExecutionStatus.PENDING,
 ).label('execution_status')
 
@@ -90,6 +107,10 @@ EVALUATION_STATUS_EXPR = case(
     (Task.status == 'stopped', EvaluationStatus.SKIPPED),
     (HAS_EXEC_FAILED, EvaluationStatus.SKIPPED),
     (HAS_EVAL_COMPLETED, EvaluationStatus.COMPLETED),
+    # 空任务沿用任务终态：任务已完成 → 评估完成；失败/跳过 → 评估未实际发生
+    (and_(EMPTY_TERMINAL_TASK, Task.status == TaskStatus.COMPLETED),
+     EvaluationStatus.COMPLETED),
+    (EMPTY_TERMINAL_TASK, EvaluationStatus.SKIPPED),
     else_=EvaluationStatus.PENDING,
 ).label('evaluation_status')
 

@@ -616,6 +616,8 @@ class ProgressMixin:
                                      for tc in test_cases),
             has_eval_failed=evaluation_failed_count > 0,
             has_eval_completed=any(tc.evaluation_status == EvaluationStatus.COMPLETED for tc in test_cases),
+            # INT-2232：用例被全部移除时按任务终态派生（与列表/详情 SQL 同口径）
+            has_cases=bool(test_cases),
         )
 
         progress = TaskProgressPayload(
