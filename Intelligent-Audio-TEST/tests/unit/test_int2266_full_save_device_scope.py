@@ -62,7 +62,7 @@ _DEVICE_ID = 7
 
 @pytest.fixture(scope='module')
 def db():
-    """初始化文件型 SQLite 库并建算法相关全部表。"""
+    """在隔离库建算法相关全部表（默认文件型 SQLite；显式 DATABASE_URL 指向 PG 时同跑）。"""
     init_db(pool_size=3)
     engine = get_engine()
     assert ':memory:' not in str(engine.url), (
@@ -92,9 +92,11 @@ def db():
     # SQLite 会丢掉 `postgresql_where` 谓词，把「作用域内唯一」的两条 PG 部分索引
     # 渲染成整列唯一：算法级行与设备级行同自然键时连播种都插不进去，与生产语义
     # 不符。这里去掉这两条 SQLite 特有的整列唯一索引，还原 PG「按作用域唯一」。
-    with engine.begin() as conn:
-        conn.execute(text('DROP INDEX IF EXISTS uq_algorithm_device_param_algo_level'))
-        conn.execute(text('DROP INDEX IF EXISTS uq_param_mapping_algo_level'))
+    # PG 上这两条就是真正的部分索引，必须保留（同时跑 PG 时也不该改 schema）。
+    if engine.dialect.name == 'sqlite':
+        with engine.begin() as conn:
+            conn.execute(text('DROP INDEX IF EXISTS uq_algorithm_device_param_algo_level'))
+            conn.execute(text('DROP INDEX IF EXISTS uq_param_mapping_algo_level'))
     yield
     remove_db_session()
 
