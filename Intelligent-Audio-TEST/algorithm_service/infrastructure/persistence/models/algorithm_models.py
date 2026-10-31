@@ -127,9 +127,11 @@ class AlgorithmDeviceParam(Base):
     __table_args__ = (
         Index('uq_algorithm_device_param_algo_level',
               'algorithm_type', 'param_code', 'direction', unique=True,
+              postgresql_nulls_not_distinct=True,
               postgresql_where=text('deleted = false AND device_id IS NULL')),
         Index('uq_algorithm_device_param_device_level',
               'algorithm_type', 'device_id', 'param_code', 'direction', unique=True,
+              postgresql_nulls_not_distinct=True,
               postgresql_where=text('deleted = false AND device_id IS NOT NULL')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -319,14 +321,17 @@ class ParamMapping(Base):
     __table_args__ = (
         Index('uq_param_mapping_algo_level', 'algorithm_type', 'source',
               'source_param', 'dimension_id', unique=True,
+              postgresql_nulls_not_distinct=True,
               postgresql_where=text(
                   'deleted = false AND api_id IS NULL AND device_id IS NULL')),
         Index('uq_param_mapping_api_level', 'algorithm_type', 'api_id', 'source',
               'source_param', 'dimension_id', unique=True,
+              postgresql_nulls_not_distinct=True,
               postgresql_where=text(
                   'deleted = false AND api_id IS NOT NULL AND device_id IS NULL')),
         Index('uq_param_mapping_device_level', 'algorithm_type', 'device_id', 'source',
               'source_param', 'dimension_id', unique=True,
+              postgresql_nulls_not_distinct=True,
               postgresql_where=text('deleted = false AND device_id IS NOT NULL')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True)

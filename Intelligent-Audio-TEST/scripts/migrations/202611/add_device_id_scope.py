@@ -24,7 +24,8 @@ DDL（与 algorithm_service/infrastructure/persistence/models/algorithm_models.p
         NULLS NOT DISTINCT WHERE deleted = false AND device_id IS NOT NULL
 
     -- 参数映射：api_id 迁移已拆成 algo/api 两级，这里再收敛为「算法级 / API 级 / 设备级」三条
-    DROP INDEX uq_param_mapping_algo_level / uq_param_mapping_api_level
+    -- 两条旧索引与新索引同名，只有定义不同（旧定义无 device_id 条件），
+    -- 故按「名称 + 定义」双匹配判断：定义已一致就不动，不一致才 DROP 后重建。
     CREATE UNIQUE INDEX uq_param_mapping_algo_level   ... WHERE deleted = false
         AND api_id IS NULL AND device_id IS NULL
     CREATE UNIQUE INDEX uq_param_mapping_api_level    ... WHERE deleted = false
@@ -37,7 +38,9 @@ DDL（与 algorithm_service/infrastructure/persistence/models/algorithm_models.p
 - 默认 dry-run：打印待执行 DDL 与前置检查（存量行数、重复组、索引现状），不改库；
 - ``--apply``：单事务执行（DDL 在 PostgreSQL 可事务化，失败整体回滚）；
 - ``--rollback``：DROP 新索引 → 按迁移前定义重建旧索引 → DROP COLUMN device_id；
-- 幂等：列 / 索引存在即 SKIP；
+- 幂等：列 / 简单索引存在即 SKIP；唯一索引按「名称 + 定义」比对——唯一性、
+  NULLS NOT DISTINCT、列序、WHERE 谓词全部一致才 SKIP，因此迁移完成后的
+  每次部署都不会再对 param_mappings / algorithm_device_params 做 DROP + CREATE；
 - ``lock_timeout`` 固定 10s，等不到 ACCESS EXCLUSIVE 抛 55P03 且原样上抛（引导链失败）。
 
 用法：
@@ -47,6 +50,7 @@ DDL（与 algorithm_service/infrastructure/persistence/models/algorithm_models.p
 """
 import argparse
 import os
+import re
 import sys
 import time
 from urllib.parse import urlparse
@@ -70,7 +74,7 @@ DEVICE_PARAM_TABLE = 'algorithm_device_params'
 MAPPING_TABLE = 'param_mappings'
 PROFILE_TABLE = 'param_profiles'
 
-# 设备参数：旧唯一索引 vs 新两级索引
+# 设备参数：旧唯一索引 vs 新两级索引（列定义见 UNIQUE_INDEX_SPECS）
 DEVICE_PARAM_SPEC = {
     'table': DEVICE_PARAM_TABLE,
     'device_index': 'idx_algorithm_device_params_device_id',
@@ -78,15 +82,12 @@ DEVICE_PARAM_SPEC = {
     'old_unique_cols': 'algorithm_type, param_code, direction',
     'algo_level': 'uq_algorithm_device_param_algo_level',
     'device_level': 'uq_algorithm_device_param_device_level',
-    'algo_cols': 'algorithm_type, param_code, direction',
-    'device_cols': 'algorithm_type, device_id, param_code, direction',
 }
 
-# 参数映射：api_id 迁移留下的两级索引 → 收敛为三级
+# 参数映射：api_id 迁移留下的同名两级索引 → 收敛为三级（旧定义无 device_id 条件）
 MAPPING_SPEC = {
     'table': MAPPING_TABLE,
     'device_index': 'idx_param_mappings_device_id',
-    'old_indexes': ('uq_param_mapping_algo_level', 'uq_param_mapping_api_level'),
     'base_cols': 'algorithm_type, source, source_param, dimension_id',
     'algo_level': 'uq_param_mapping_algo_level',
     'api_level': 'uq_param_mapping_api_level',
@@ -97,6 +98,44 @@ LEGACY_MAPPING_INDEX = {
     'old_unique': 'uq_algorithm_source_to_dimension',
     'old_unique_cols': 'algorithm_type, source, source_param, dimension_id',
 }
+
+# 唯一索引目标定义：幂等判定按「唯一 / NULLS NOT DISTINCT / 列序 / WHERE 谓词」逐项比对，
+# 与 ORM（algorithm_service/.../models/algorithm_models.py）保持同一口径。
+# 注意 param_mappings 的两条旧索引与新索引**同名**，不能只看索引名存在就 SKIP。
+UNIQUE_INDEX_SPECS = (
+    {
+        'name': DEVICE_PARAM_SPEC['algo_level'],
+        'table': DEVICE_PARAM_TABLE,
+        'columns': ('algorithm_type', 'param_code', 'direction'),
+        'where': 'deleted = false AND device_id IS NULL',
+    },
+    {
+        'name': DEVICE_PARAM_SPEC['device_level'],
+        'table': DEVICE_PARAM_TABLE,
+        'columns': ('algorithm_type', 'device_id', 'param_code', 'direction'),
+        'where': 'deleted = false AND device_id IS NOT NULL',
+    },
+    {
+        'name': MAPPING_SPEC['algo_level'],
+        'table': MAPPING_TABLE,
+        'columns': ('algorithm_type', 'source', 'source_param', 'dimension_id'),
+        'where': 'deleted = false AND api_id IS NULL AND device_id IS NULL',
+    },
+    {
+        'name': MAPPING_SPEC['api_level'],
+        'table': MAPPING_TABLE,
+        'columns': ('algorithm_type', 'api_id', 'source', 'source_param',
+                    'dimension_id'),
+        'where': 'deleted = false AND api_id IS NOT NULL AND device_id IS NULL',
+    },
+    {
+        'name': MAPPING_SPEC['device_level'],
+        'table': MAPPING_TABLE,
+        'columns': ('algorithm_type', 'device_id', 'source', 'source_param',
+                    'dimension_id'),
+        'where': 'deleted = false AND device_id IS NOT NULL',
+    },
+)
 
 
 def _connect():
@@ -123,6 +162,53 @@ def _column_exists(cur, table, column='device_id'):
 def _index_exists(cur, name):
     cur.execute('SELECT 1 FROM pg_indexes WHERE indexname = %s', (name,))
     return cur.fetchone() is not None
+
+
+def _index_state(cur, name):
+    """唯一索引现状：None（不存在）或 dict(unique/nulls_not_distinct/columns/predicate/definition)。"""
+    cur.execute(
+        "SELECT i.indisunique, i.indnullsnotdistinct, "
+        "       pg_get_expr(i.indpred, i.indrelid), "
+        "       pg_get_indexdef(i.indexrelid), "
+        "       ARRAY(SELECT a.attname "
+        "               FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord) "
+        "               JOIN pg_attribute a "
+        "                 ON a.attrelid = i.indrelid AND a.attnum = k.attnum "
+        "              ORDER BY k.ord) "
+        "  FROM pg_index i "
+        "  JOIN pg_class c ON c.oid = i.indexrelid "
+        "  JOIN pg_namespace n ON n.oid = c.relnamespace "
+        " WHERE c.relname = %s AND n.nspname = current_schema()", (name,))
+    row = cur.fetchone()
+    if row is None:
+        return None
+    return {
+        'unique': bool(row[0]),
+        'nulls_not_distinct': bool(row[1]),
+        'predicate': row[2],
+        'definition': row[3],
+        'columns': [str(col) for col in (row[4] or [])],
+    }
+
+
+def _normalize_sql(fragment):
+    """归一化 WHERE 谓词：去括号 / 空白并转小写（PG 回显会把三元 AND 加括号）。"""
+    return re.sub(r'[\s()]+', '', fragment or '').lower()
+
+
+def _index_matches(state, spec):
+    """索引定义与目标一致（唯一 + NULLS NOT DISTINCT + 列序 + WHERE 谓词）。"""
+    return (state['unique']
+            and state['nulls_not_distinct']
+            and state['columns'] == list(spec['columns'])
+            and _normalize_sql(state['predicate'])
+            == _normalize_sql(spec['where']))
+
+
+def _create_index_sql(spec):
+    return (f"CREATE UNIQUE INDEX IF NOT EXISTS {spec['name']} "
+            f"ON {spec['table']} ({', '.join(spec['columns'])}) "
+            f"NULLS NOT DISTINCT WHERE {spec['where']}")
 
 
 def _count_rows(cur, table):
@@ -157,36 +243,18 @@ def _forward_statements(cur):
     spec = DEVICE_PARAM_SPEC
     if _index_exists(cur, spec['old_unique']):
         stmts.append(f"DROP INDEX IF EXISTS {spec['old_unique']}")
-    if not _index_exists(cur, spec['algo_level']):
-        stmts.append(
-            f"CREATE UNIQUE INDEX IF NOT EXISTS {spec['algo_level']} "
-            f"ON {spec['table']} ({spec['algo_cols']}) NULLS NOT DISTINCT "
-            'WHERE deleted = false AND device_id IS NULL')
-    if not _index_exists(cur, spec['device_level']):
-        stmts.append(
-            f"CREATE UNIQUE INDEX IF NOT EXISTS {spec['device_level']} "
-            f"ON {spec['table']} ({spec['device_cols']}) NULLS NOT DISTINCT "
-            'WHERE deleted = false AND device_id IS NOT NULL')
 
-    spec = MAPPING_SPEC
-    # 旧两级索引定义里没有 device_id 条件，必须重建（存在就 drop，随后按新定义建）
-    for name in spec['old_indexes']:
-        if _index_exists(cur, name):
-            stmts.append(f'DROP INDEX IF EXISTS {name}')
-    stmts.append(
-        f"CREATE UNIQUE INDEX IF NOT EXISTS {spec['algo_level']} "
-        f"ON {spec['table']} ({spec['base_cols']}) NULLS NOT DISTINCT "
-        'WHERE deleted = false AND api_id IS NULL AND device_id IS NULL')
-    stmts.append(
-        f"CREATE UNIQUE INDEX IF NOT EXISTS {spec['api_level']} "
-        f"ON {spec['table']} (algorithm_type, api_id, source, source_param, dimension_id) "
-        'NULLS NOT DISTINCT WHERE deleted = false '
-        'AND api_id IS NOT NULL AND device_id IS NULL')
-    if not _index_exists(cur, spec['device_level']):
-        stmts.append(
-            f"CREATE UNIQUE INDEX IF NOT EXISTS {spec['device_level']} "
-            f"ON {spec['table']} (algorithm_type, device_id, source, source_param, dimension_id) "
-            'NULLS NOT DISTINCT WHERE deleted = false AND device_id IS NOT NULL')
+    # 唯一索引按「名称 + 定义」判：已一致就 SKIP（迁移完成后再部署不再 DROP/CREATE）；
+    # 存在但定义不符（旧两级的 / 缺 NULLS NOT DISTINCT 的）才重建。
+    for item in UNIQUE_INDEX_SPECS:
+        state = _index_state(cur, item['name'])
+        if state is None:
+            stmts.append(_create_index_sql(item))
+        elif not _index_matches(state, item):
+            print(f"[INFO] {item['name']} 定义与目标不符，重建："
+                  f"{state['definition']}")
+            stmts.append(f"DROP INDEX IF EXISTS {item['name']}")
+            stmts.append(_create_index_sql(item))
     return stmts
 
 
@@ -239,12 +307,13 @@ def _verify(cur):
         print(f'[VERIFY] {table}.device_id: '
               f'{row[0] if row else "MISSING"} '
               f'{"NULL" if row and row[1] == "YES" else ""}'.rstrip())
-    for name in (DEVICE_PARAM_SPEC['algo_level'], DEVICE_PARAM_SPEC['device_level'],
-                 MAPPING_SPEC['algo_level'], MAPPING_SPEC['api_level'],
-                 MAPPING_SPEC['device_level']):
-        cur.execute('SELECT indexdef FROM pg_indexes WHERE indexname = %s', (name,))
-        r = cur.fetchone()
-        print(f'[VERIFY] {name}: {r[0] if r else "不存在"}')
+    for item in UNIQUE_INDEX_SPECS:
+        state = _index_state(cur, item['name'])
+        if state is None:
+            print(f"[VERIFY] {item['name']}: 不存在")
+        else:
+            mark = '一致' if _index_matches(state, item) else '与目标不符'
+            print(f"[VERIFY] {item['name']}: {mark} :: {state['definition']}")
 
 
 def _run(dry_run, statements, label):
