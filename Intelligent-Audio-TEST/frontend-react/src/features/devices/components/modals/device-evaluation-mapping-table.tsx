@@ -9,10 +9,12 @@ import { useQuery } from '@tanstack/react-query'
 import { Fragment, useMemo, useState } from 'react'
 
 import { useDeviceScopeMappings } from '@/application/devices/use-device-scope-mappings'
+import { useEvaluationCategories } from '@/application/evaluation/use-dimensions'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import type { AlgorithmApiParam } from '@/domain/models/apiConfig'
 import type { Dimension } from '@/domain/models/evaluationDimension'
 import { TRANSFORM_TYPE_OPTIONS } from '@/features/algorithm-config/constants'
+import { DimensionSelect } from '@/features/algorithm-config/mutate/dimension-select'
 import {
   evalGroupKey,
   evalGroupName,
@@ -30,7 +32,6 @@ import {
   subBadge,
   useDimensionParamsMap,
   useMappingViewState,
-  type ParamOption,
 } from '@/features/algorithm-config/mutate/mapping-view'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -116,6 +117,7 @@ export function DeviceEvaluationMappingTable({
     staleTime: 60_000,
     retry: false,
   })
+  const categoriesQuery = useEvaluationCategories()
 
   const caseParams = useMemo(() => caseParamsQuery.data ?? [], [caseParamsQuery.data])
   const referenceParams = useMemo(
@@ -144,20 +146,20 @@ export function DeviceEvaluationMappingTable({
   /** 已删除维度的组名兜底（行内维度的 id 仍在，名称查不到时显示「维度(id)」） */
   const dimensionNameById = useMemo(() => new Map<string, string>(), [])
 
-  const dimensionFilterOptions = useMemo(() => {
-    const seen = new Set<string>()
-    const options: ParamOption[] = []
-    for (const dimension of dimensions) {
-      const key = String(dimension.id)
-      if (seen.has(key)) continue
-      seen.add(key)
-      options.push({ value: key, label: dimension.name })
-    }
+  const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data])
+
+  /** 字典外筛选选项：「未指定维度」+ 已删除维度存量行（分类节之外兜底） */
+  const extraDimensionFilterOptions = useMemo(() => {
+    const known = new Set(dimensions.map((dimension) => String(dimension.id)))
+    const seen = new Set<string>(['__none__'])
+    const options: Array<{ value: string; label: string }> = [
+      { value: '__none__', label: '未指定维度' },
+    ]
     for (const row of rows) {
       const key = row.dimensionId ? String(row.dimensionId) : '__none__'
-      if (seen.has(key)) continue
+      if (known.has(key) || seen.has(key)) continue
       seen.add(key)
-      options.push({ value: key, label: key === '__none__' ? '未指定维度' : `维度(${key})` })
+      options.push({ value: key, label: `维度(${key})` })
     }
     return options
   }, [dimensions, rows])
@@ -261,12 +263,19 @@ export function DeviceEvaluationMappingTable({
     <div className='space-y-2'>
       <MappingToolbar>
         <MappingSearch value={view.keyword} onChange={view.setKeyword} />
-        <MappingBadgeFilter
-          title='评估维度'
-          options={dimensionFilterOptions}
-          value={dimensionFilter}
-          onValueChange={setDimensionFilter}
-          allLabel='全部维度'
+        {/* 评估维度筛选：分类 → 主维度 → 子维度（与算法编辑/用例 facet 同口径） */}
+        <DimensionSelect
+          dimensions={dimensions}
+          categories={categories}
+          value={dimensionFilter === 'all' ? '' : dimensionFilter}
+          onValueChange={(value) => setDimensionFilter(value || 'all')}
+          valueOf={(dimension) => String(dimension.id)}
+          clearLabel='全部维度'
+          triggerLabel='评估维度'
+          placeholder='全部维度'
+          ariaLabel='评估维度筛选'
+          triggerClassName='h-8 w-auto gap-1.5 rounded-lg px-2.5 font-normal'
+          extraOptions={extraDimensionFilterOptions}
         />
         <MappingBadgeFilter
           title='转换'

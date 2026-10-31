@@ -48,8 +48,8 @@ import {
   subBadge,
   useDimensionParamsMap,
   warnDuplicate,
-  type ParamOption,
 } from './mapping-view'
+import { DimensionSelect } from './dimension-select'
 
 /* ───────────────────────── 设备参数映射分节 ───────────────────────── */
 
@@ -357,19 +357,14 @@ function EvaluationMappingSection({
     return map
   }, [rows])
 
-  /** 维度筛选选项（全量维度 + 已删除维度存量行兜底） */
-  const dimensionFilterOptions = useMemo(() => {
+  /** 字典外存量维度的筛选选项（已删除维度：行内仍有 id/名称，字典查不到） */
+  const orphanDimensionFilterOptions = useMemo(() => {
+    const known = new Set(dimensions.map((dim) => String(dim.id)))
     const seen = new Set<string>()
-    const options: ParamOption[] = []
-    for (const dim of dimensions) {
-      const key = String(dim.id)
-      if (seen.has(key)) continue
-      seen.add(key)
-      options.push({ value: key, label: dim.name })
-    }
+    const options: Array<{ value: string; label: string }> = []
     for (const row of rows) {
-      if (!row.dimensionId || seen.has(String(row.dimensionId))) continue
-      const key = String(row.dimensionId)
+      const key = row.dimensionId ? String(row.dimensionId) : ''
+      if (!key || known.has(key) || seen.has(key)) continue
       seen.add(key)
       options.push({ value: key, label: row.dimensionName || `维度(${key})` })
     }
@@ -568,12 +563,19 @@ function EvaluationMappingSection({
           onValueChange={setSourceFilter}
           allLabel='全部来源'
         />
-        <MappingBadgeFilter
-          title='评估维度'
-          options={dimensionFilterOptions}
-          value={dimensionFilter}
-          onValueChange={setDimensionFilter}
-          allLabel='全部维度'
+        {/* 评估维度筛选：分类 → 主维度 → 子维度（与用例 facet / 行内维度选择同口径） */}
+        <DimensionSelect
+          dimensions={dimensions}
+          categories={categories}
+          value={dimensionFilter === 'all' ? '' : dimensionFilter}
+          onValueChange={(value) => setDimensionFilter(value || 'all')}
+          valueOf={(dimension) => String(dimension.id)}
+          clearLabel='全部维度'
+          triggerLabel='评估维度'
+          placeholder='全部维度'
+          ariaLabel='评估维度筛选'
+          triggerClassName='h-8 w-auto gap-1.5 rounded-lg px-2.5 font-normal'
+          extraOptions={orphanDimensionFilterOptions}
         />
         <MappingBadgeFilter
           title='转换'

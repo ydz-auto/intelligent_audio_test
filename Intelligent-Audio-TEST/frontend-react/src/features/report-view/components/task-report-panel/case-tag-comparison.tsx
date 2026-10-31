@@ -18,11 +18,13 @@ import {
 } from '@/components/ui/collapsible'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useCaseTagComparison } from '@/application/report-view/use-case-tag-comparison'
+import { useReportFilterTaxonomy } from '@/application/report-view/use-report-filter-taxonomy'
 import { getValidResources } from '@/application/report-view/use-report-summary'
 import { useReportSummaryEdit } from '@/application/report-view/use-report-summary-edit'
 import type { ReportDetailData, ReportTag } from '@/domain/models/report'
 import { cn } from '@/lib/utils'
 
+import { FilterDimensionTree } from './filter-dimension-tree'
 import { MetricMatrixTable } from './metric-matrix-table'
 import { MultiSelectFilter, SelectedConditionsBar } from './multi-select-filter'
 
@@ -54,6 +56,13 @@ export function CaseTagComparison({
     resetFilters,
   } = useCaseTagComparison(report)
   const resources = getValidResources(report.summary)
+  /** 评估维度三级树（分类 → 主维度 → 子维度；只影响展示，不改筛选请求） */
+  const taxonomy = useReportFilterTaxonomy(
+    availableMetrics,
+    allMetrics,
+    allTags,
+    allTags.map((tag) => tag.tag_name)
+  )
   const [collapsed, setCollapsed] = useState(false)
   const { scheduleSaveSummary } = useReportSummaryEdit(report.id)
 
@@ -159,17 +168,21 @@ export function CaseTagComparison({
                 )
               }
             />
-            <MultiSelectFilter
-              label='评估维度'
-              options={availableMetrics}
-              selected={selectedMetrics}
-              variant='checkbox'
-              onToggle={(m) =>
-                setSelectedMetrics((prev) =>
-                  prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
-                )
-              }
-            />
+            {/* 评估维度：分类 → 主维度 → 子维度三级树（§3.3.7 同一 filter-dimension-tree） */}
+            <div className='rounded-lg border p-2'>
+              <FilterDimensionTree
+                sections={taxonomy.dimensionSections}
+                selected={selectedMetrics}
+                pageSize={8}
+                onToggle={(names, checked) =>
+                  setSelectedMetrics((prev) =>
+                    checked
+                      ? [...new Set([...prev, ...names])]
+                      : prev.filter((x) => !names.includes(x))
+                  )
+                }
+              />
+            </div>
           </div>
           <SelectedConditionsBar
             conditions={[
