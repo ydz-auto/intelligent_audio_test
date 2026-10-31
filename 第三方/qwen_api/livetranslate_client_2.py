@@ -60,7 +60,6 @@ class LiveTranslateClient:
             "event_id": f"event_{int(time.time() * 1000)}",
             "type": "session.update",
             "session": {
-l
                 "modalities": ["text", "audio"] if self.audio_enabled else ["text"],
                 **({"voice": self.voice} if self.audio_enabled and self.voice else {}),
                 "input_audio_format": "pcm16",
