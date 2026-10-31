@@ -106,6 +106,24 @@ def derive_task_dual_status(task_status: str, *,
     return execution, evaluation
 
 
+def derive_case_evaluation_status(execution_status: str, evaluation_status: str, *,
+                                  real_evaluation_happened: bool = True) -> str:
+    """用例级评估状态展示口径（与任务级 derive_task_dual_status 同口径）。
+
+    执行失败的用例，失败路径补写的 evaluation_status=completed 只是收敛占位
+    （评估未实际发生，见 task_dispatch._finalize_dispatch_failure /
+    _handle_e2e_failure），展示时呈现为 skipped 而非 completed。
+
+    real_evaluation_happened：同用例是否存在「执行未失败/停止且评估完成」的
+    真实评估行（多目标用例中部分目标评估成功时不得误判为跳过）。
+    """
+    if (execution_status == ExecutionStatus.FAILED
+            and evaluation_status == EvaluationStatus.COMPLETED
+            and not real_evaluation_happened):
+        return EvaluationStatus.SKIPPED
+    return evaluation_status
+
+
 # ---- INT-305：用例移除留痕 ----
 
 REMOVED_CASE_MESSAGE = '用例已被移除'

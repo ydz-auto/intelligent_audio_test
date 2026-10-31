@@ -13,7 +13,11 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from shared.models.database import get_db_session
-from shared.utils.status_utils import task_case_not_removed
+from shared.utils.status_utils import (
+    derive_case_evaluation_status,
+    task_case_not_removed,
+)
+from shared.utils.status_constants import ExecutionStatus
 from shared.utils.json_utils import deserialize_algorithm_result  # noqa: F401
 from task_service.domain.services.task_case_stats import aggregate_case_rows
 from task_service.infrastructure.persistence.models import Task, TaskCase
@@ -409,7 +413,10 @@ class TaskCaseResultsMixin:
             'test_case_id': tc.test_case_id,
             'status': tc.status,
             'execution_status': tc.execution_status,
-            'evaluation_status': tc.evaluation_status,
+            # 执行失败的评估 completed 是失败补写占位，展示为 skipped
+            'evaluation_status': derive_case_evaluation_status(
+                tc.execution_status, tc.evaluation_status,
+                real_evaluation_happened=tc.execution_status != ExecutionStatus.FAILED),
             'started_at': tc.started_at.isoformat() if tc.started_at else None,
             'completed_at': tc.completed_at.isoformat() if tc.completed_at else None,
             'duration': tc.duration,

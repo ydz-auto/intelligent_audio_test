@@ -18,13 +18,20 @@ from shared.utils.status_constants import (
     ExecutionStatus,
     TaskCaseStatus,
 )
-from shared.utils.status_utils import derive_task_case_status
+from shared.utils.status_utils import (
+    derive_case_evaluation_status,
+    derive_task_case_status,
+)
 
 # 用例移除留痕（INT-305）：留痕行不参与任何统计
 REMOVED_CASE_MESSAGE = '用例已被移除'
 
 # 用例行终止态（completed/skipped 视为已完成侧）
 _DONE_CASE_STATUSES = (TaskCaseStatus.COMPLETED, TaskCaseStatus.SKIPPED)
+
+# 执行失败/停止行上的评估 completed 不足以证明评估真实发生（可能是失败补写占位）
+_NON_EVALUATING_EXEC_STATUSES = (ExecutionStatus.FAILED, ExecutionStatus.STOPPED)
+
 
 
 def _fmt(dt) -> Optional[str]:
@@ -57,6 +64,13 @@ def _aggregate_evaluation(eval_statuses: List[str]) -> str:
     return EvaluationStatus.PENDING
 
 
+def _row_has_real_evaluation(row) -> bool:
+    """该执行行是否为真实评估完成（执行未失败/停止）。"""
+    return ((row.evaluation_status or EvaluationStatus.PENDING) == EvaluationStatus.COMPLETED
+            and (row.execution_status or ExecutionStatus.PENDING)
+            not in _NON_EVALUATING_EXEC_STATUSES)
+
+
 def _row_target(row) -> Dict:
     """执行行 → 目标摘要（API 行 device_id 即 apis.id）"""
     from shared.models.common_enums import DeviceType
@@ -78,7 +92,9 @@ def _row_target(row) -> Dict:
         'api_id': api_id,
         'status': row.status,
         'execution_status': row.execution_status,
-        'evaluation_status': row.evaluation_status,
+        'evaluation_status': derive_case_evaluation_status(
+            row.execution_status, row.evaluation_status,
+            real_evaluation_happened=_row_has_real_evaluation(row)),
         'started_at': _fmt(row.started_at),
         'completed_at': _fmt(row.completed_at),
         'duration': row.duration,
@@ -95,7 +111,10 @@ def aggregate_case_rows(rows: Iterable) -> Dict:
     exec_statuses = [r.execution_status or ExecutionStatus.PENDING for r in rows]
     eval_statuses = [r.evaluation_status or EvaluationStatus.PENDING for r in rows]
     execution_status = _aggregate_execution(exec_statuses)
-    evaluation_status = _aggregate_evaluation(eval_statuses)
+    # 执行失败且无任一目标真实评估完成：completed 只是失败补写占位 → 展示 skipped
+    evaluation_status = derive_case_evaluation_status(
+        execution_status, _aggregate_evaluation(eval_statuses),
+        real_evaluation_happened=any(_row_has_real_evaluation(r) for r in rows))
 
     started = [r.started_at for r in rows if r.started_at]
     completed = [r.completed_at for r in rows if r.completed_at]
