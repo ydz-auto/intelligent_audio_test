@@ -134,10 +134,9 @@ class TestHealthCheckOnlineDecision:
             'status': device.status}])
         svc = DeviceCommandService(repo=repo)
         with patch(FACTORY_TARGET, factory), \
-             patch('device_service.application.services.device_monitor_service.device_monitor_service') as monitor, \
-             patch('device_service.application.commands.device_command_service.time.sleep'):
+             patch('device_service.application.services.device_monitor_service.device_monitor_service') as monitor:
             result = svc.health_check()
-        return result, repo.update_device_status
+        return result, repo.update_device_statuses
 
     def test_scanned_device_marked_online(self):
         # 修复前：此处 get_driver_for_device 缺 keywords 抛 ValueError → 设备被误标 offline
@@ -145,12 +144,12 @@ class TestHealthCheckOnlineDecision:
         assert result['success'] is True
         assert result['data'][0]['status'] == 'online'
         update.assert_called_once()
-        assert update.call_args[0][1] == 'online'
+        assert update.call_args[0][0][0]['status'] == 'online'
 
     def test_unscanned_device_marked_offline(self):
         result, update = self._run([{'serial': 'other-sn', 'system': 'HarmonyOS'}])
         assert result['data'][0]['status'] == 'offline'
-        assert update.call_args[0][1] == 'offline'
+        assert update.call_args[0][0][0]['status'] == 'offline'
 
 
 class TestCreateOnlineCheck:

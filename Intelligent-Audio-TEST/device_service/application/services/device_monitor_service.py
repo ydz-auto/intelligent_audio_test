@@ -86,6 +86,32 @@ class DeviceMonitorService:
         self._publish_device_events(device_id, event_type, to_status, source, success, detail)
         return event
 
+    def record_status_events(self, events: list) -> list:
+        """批量状态事件落库（单事务提交）并逐条发布 DEVICE_EVENTS（INT-2258）。
+
+        与 ``record_status_event`` 字段口径一致；批量健康检查按批调用，
+        把「每设备每事件一次提交」压成「每批一次提交」。落库失败整批降级为空，
+        不阻断健康检查主流程（发布同样按落库失败的降级口径跳过）。
+        """
+        payloads = [dict(event) for event in (events or []) if event]
+        if not payloads:
+            return []
+        try:
+            records = self.monitor_repo.record_status_events(payloads)
+        except Exception:
+            logger.warning("设备状态事件批量落库失败 count=%s", len(payloads), exc_info=True)
+            return []
+        for payload in payloads:
+            self._publish_device_events(
+                payload['device_id'],
+                payload['event_type'],
+                payload.get('to_status'),
+                payload.get('source') or 'monitor',
+                payload.get('success', True),
+                payload.get('detail'),
+            )
+        return records
+
     @staticmethod
     def _publish_device_events(device_id, event_type, to_status, source, success, detail):
         """发布领域事件到 DEVICE_EVENTS 频道。"""

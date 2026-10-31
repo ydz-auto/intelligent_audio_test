@@ -657,6 +657,11 @@ class FakeHealthRepo:
         self.status_updates.append((device_id, status))
         return True
 
+    def update_device_statuses(self, updates):
+        for update in updates:
+            self.status_updates.append((update['id'], update['status']))
+        return len(updates)
+
 
 class FakeDriver:
     def __init__(self, serials):
@@ -676,6 +681,11 @@ class FakeMonitorService:
         self.recorded.append(kwargs)
         return kwargs
 
+    def record_status_events(self, events):
+        for event in events:
+            self.recorded.append(dict(event))
+        return list(events)
+
 
 @pytest.fixture
 def health_service():
@@ -691,12 +701,6 @@ def health_service():
 
 
 class TestHealthCheckMetrics:
-    @pytest.fixture(autouse=True)
-    def _no_sleep(self):
-        """健康检查每台设备有 0.5~2s 随机等待，测试中直接跳过。"""
-        with patch('device_service.application.commands.device_command_service.time.sleep'):
-            yield
-
     def _run(self, health_service, metrics_by_serial, serials=('ONLINE-1',)):
         monitor = FakeMonitorService()
         driver = FakeDriver(serials)

@@ -572,6 +572,11 @@ class _FakeHealthRepo:
     def update_device_status(self, device_id, status, online_time=None):
         self.status_updates.append((device_id, status))
 
+    def update_device_statuses(self, updates):
+        for update in updates:
+            self.status_updates.append((update['id'], update['status']))
+        return len(updates)
+
 
 class _FakeMonitor:
     def __init__(self):
@@ -580,6 +585,11 @@ class _FakeMonitor:
     def record_status_event(self, **kwargs):
         self.events.append(kwargs)
         return kwargs
+
+    def record_status_events(self, events):
+        for event in events:
+            self.events.append(dict(event))
+        return list(events)
 
 
 def _health_service(devices, online_serials):
@@ -593,7 +603,6 @@ def _health_service(devices, online_serials):
         patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory'),
         patch('device_service.application.services.device_monitor_service.device_monitor_service',
               monitor),
-        patch('device_service.application.commands.device_command_service.time.sleep'),
     ]
     for p in patches:
         p.start()

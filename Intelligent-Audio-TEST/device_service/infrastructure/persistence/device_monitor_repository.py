@@ -462,9 +462,9 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
     """设备监控/告警仓储"""
     # ========== 状态历史 ==========
 
-    def record_status_event(self, data: dict) -> dict:
-        session = get_db_session()
-        po = DeviceStatusEvent(
+    @staticmethod
+    def _build_status_event_po(data: dict) -> 'DeviceStatusEvent':
+        return DeviceStatusEvent(
             device_id=int(data['device_id']),
             device_kind=data.get('device_kind') or _TEST_KIND,
             event_type=data['event_type'],
@@ -474,9 +474,23 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
             success=data.get('success', True),
             detail=data.get('detail'),
         )
+
+    def record_status_event(self, data: dict) -> dict:
+        session = get_db_session()
+        po = self._build_status_event_po(data)
         session.add(po)
         session.commit()
         return _event_to_dict(po)
+
+    def record_status_events(self, events: List[dict]) -> List[dict]:
+        """批量落状态事件（INT-2258：一次提交，替代逐条 commit）。"""
+        if not events:
+            return []
+        session = get_db_session()
+        pos = [self._build_status_event_po(data) for data in events]
+        session.add_all(pos)
+        session.commit()
+        return [_event_to_dict(po) for po in pos]
 
     def list_status_events(self, device_ids: List[int] = None, event_type: str = None,
                            start_time=None, end_time=None,

@@ -194,6 +194,36 @@ class DeviceRepository(DeviceRepositoryInterface):
         session.commit()
         return True
 
+    def update_device_statuses(self, updates: List[dict]) -> int:
+        """批量更新设备在线状态（INT-2258：一次查询 + 一次提交）。
+
+        updates 每项含 ``id`` / ``status`` / 可选 ``last_online_at``；
+        不存在的设备（含软删）跳过，返回实际更新条数。
+        """
+        if not updates:
+            return 0
+        session = get_db_session()
+        device_ids = [int(update['id']) for update in updates]
+        devices = {
+            device.id: device
+            for device in session.query(Device).filter(
+                Device.id.in_(device_ids), Device.deleted == False  # noqa: E712
+            ).all()
+        }
+        updated_at = _now()
+        count = 0
+        for update in updates:
+            device = devices.get(int(update['id']))
+            if device is None:
+                continue
+            device.status = update['status']
+            if update.get('last_online_at') is not None:
+                device.last_online_at = update['last_online_at']
+            device.updated_at = updated_at
+            count += 1
+        session.commit()
+        return count
+
     def check_device_in_tasks(self, device_id: int) -> bool:
         """检查设备是否被任务引用"""
         from device_service.infrastructure.acl.task_acl_repository import task_acl_repository

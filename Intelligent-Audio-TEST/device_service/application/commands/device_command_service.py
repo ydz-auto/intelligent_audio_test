@@ -7,8 +7,6 @@
 - 返回 dict（{success, message, data, code}），由 servicer 层包装为 gRPC 响应
 - 设备扫描/测试逻辑中调用本地的 device_driver_factory（device_service 已有）
 """
-import time
-import random
 import logging
 import threading
 from typing import Optional
@@ -24,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 # 唤醒前在线探测超时（秒）；驱动扫描底层 adb/hdc 子进程无内建超时，超时按读取失败降级
 _WAKEUP_ONLINE_PROBE_TIMEOUT_SECONDS = 5
+
+# 健康检查每批落库的设备数（INT-2258）：状态更新一次提交 + 状态事件一次提交，
+# 避免逐设备独立事务把批量检查放大成数百次 commit。
+_HEALTH_CHECK_BATCH_SIZE = 50
 
 
 class DeviceCommandService:
@@ -335,98 +337,155 @@ class DeviceCommandService:
                 "健康检查指标采集失败 device_id=%s", device_data.get('id'), exc_info=True)
             return {}
 
+    @staticmethod
+    def _system_key(system) -> str:
+        """设备 system 归一键（驱动工厂按大小写/别名匹配，分组时同样归一）。"""
+        return (system or '').strip().lower()
+
+    @staticmethod
+    def _scan_driver_serials(driver, system: str) -> set:
+        """对单个驱动做一次全量扫描，返回在线 serial 集合；异常降级为空集合。
+
+        scan() 本身即全量扫描（adb/hdc 子进程），因此一次健康检查里必须按驱动复用结果，
+        不能每台设备各扫一遍（INT-2258）。扫描期间临时关闭 mock 模式（原行为）。
+        """
+        has_mock_mode = hasattr(driver, '_mock_mode')
+        original_mock_mode = getattr(driver, '_mock_mode', False)
+        try:
+            if has_mock_mode:
+                driver._mock_mode = False
+            online_devices = driver.scan() or []
+        except Exception as scan_error:
+            logger.debug("健康检查扫描 system=%s 时发生异常 error=%s", system, scan_error,
+                         exc_info=True)
+            return set()
+        finally:
+            if has_mock_mode:
+                driver._mock_mode = original_mock_mode
+        return {d['serial'] for d in online_devices
+                if isinstance(d, dict) and d.get('serial')}
+
+    def _scan_online_serials(self, devices: list, factory) -> dict:
+        """按 system 分组扫描一次，返回 ``{system 归一键: 在线 serial 集合}``。
+
+        每个驱动实例只扫描一次；映射到同一驱动的不同 system 写法共用结果。
+        """
+        serials_by_system = {}
+        scanned_by_driver = {}
+        for device_data in devices:
+            key = self._system_key(device_data.get('system'))
+            if key in serials_by_system:
+                continue
+            driver = factory.get_driver_by_system(device_data.get('system'))
+            if driver is None:
+                serials_by_system[key] = set()
+                continue
+            driver_key = id(driver)
+            if driver_key not in scanned_by_driver:
+                scanned_by_driver[driver_key] = self._scan_driver_serials(
+                    driver, device_data.get('system'))
+            serials_by_system[key] = scanned_by_driver[driver_key]
+        return serials_by_system
+
+    @staticmethod
+    def _is_device_online(device_data: dict, online_serials: set) -> bool:
+        serial_number = device_data.get('serial_number')
+        return bool(serial_number) and serial_number in online_serials
+
+    def _load_health_check_devices(self, device_ids: list) -> list:
+        """取本次健康检查的目标设备。
+
+        显式传入 ID 时只处理这些设备；为空时沿用接口契约「不传则检查所有设备」
+        （``POST /test-devices/health-check``，监控线程内部也走这条全量路径）。
+        """
+        if not device_ids:
+            result = self.repo.list_devices(page=1, per_page=QueryConstants.UNLIMITED_PAGE_SIZE)
+            return result['items']
+        devices = []
+        for did in device_ids:
+            d = self.repo.get_device(did)
+            if d:
+                devices.append(d.to_dict())
+        return devices
+
     def health_check(self, device_ids: list = None) -> dict:
-        """批量健康检查（每次结果落状态历史事件并发布 DEVICE_EVENTS，INT-80）"""
+        """批量健康检查（每次结果落状态历史事件并发布 DEVICE_EVENTS，INT-80）。
+
+        INT-2258 性能口径：删除逐设备人为随机等待；同一 system 的驱动只做一次
+        全量 scan 并复用在线 serial 集合；状态更新与状态事件按 ``_HEALTH_CHECK_BATCH_SIZE``
+        分批提交（每批各一次事务），批量检查不再产生每设备多次独立 commit。
+        """
         from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         from device_service.application.services.device_monitor_service import device_monitor_service
 
-        if not device_ids:
-            # 查询所有设备
-            result = self.repo.list_devices(page=1, per_page=QueryConstants.UNLIMITED_PAGE_SIZE)
-            devices = result['items']
-        else:
-            devices = []
-            for did in device_ids:
-                d = self.repo.get_device(did)
-                if d:
-                    devices.append(d.to_dict())
-
+        devices = self._load_health_check_devices(device_ids)
         if not devices:
             return {'success': True, 'message': '没有可检查的设备', 'data': [], 'code': 200}
 
+        online_serials_by_system = self._scan_online_serials(devices, device_driver_factory)
+
         health_results = []
+        for start in range(0, len(devices), _HEALTH_CHECK_BATCH_SIZE):
+            batch = devices[start:start + _HEALTH_CHECK_BATCH_SIZE]
+            status_updates = []
+            status_events = []
 
-        for device_data in devices:
-            time.sleep(random.uniform(0.5, 2.0))
-
-            is_online = False
-            try:
-                driver = device_driver_factory.get_driver_by_system(device_data['system'])
-                if driver:
-                    original_mock_mode = getattr(driver, '_mock_mode', False)
-                    if hasattr(driver, '_mock_mode'):
-                        driver._mock_mode = False
-
-                    online_devices = driver.scan()
-
-                    if hasattr(driver, '_mock_mode'):
-                        driver._mock_mode = original_mock_mode
-
-                    serial_number = device_data.get('serial_number')
-                    if serial_number:
-                        for online_device in online_devices:
-                            if online_device['serial'] == serial_number:
-                                is_online = True
-                                break
-            except Exception as scan_error:
-                logger.debug("健康检查扫描设备时发生异常 device_id=%s error=%s", device_data.get('id'), scan_error, exc_info=True)
-
-            new_status = (
-                DeviceStatusEventType.ONLINE.value if is_online
-                else DeviceStatusEventType.OFFLINE.value
-            )
-            old_status = device_data.get('status')
-            self.repo.update_device_status(
-                device_data['id'], new_status,
-                now_cst() if is_online else None
-            )
-
-            # 状态历史事件落库 + DEVICE_EVENTS 发布（INT-80；INT-69 收敛至单一 EventBus 链路）
-            detail = {'serial_number': device_data.get('serial_number')}
-            if is_online:
-                # INT-1578：在线设备补充采集 cpu/memory/battery，写入同一条 health_check 事件的
-                # detail.metrics（采不到就不写该键；采集失败不影响 is_online 与整体成功）
-                metrics = self._collect_health_metrics(device_data)
-                if metrics:
-                    detail['metrics'] = metrics
-            device_monitor_service.record_status_event(
-                device_id=device_data['id'],
-                event_type=DeviceStatusEventType.HEALTH_CHECK.value,
-                from_status=old_status,
-                to_status=new_status,
-                source='health_check',
-                success=is_online,
-                detail=detail,
-            )
-            if new_status != old_status:
-                device_monitor_service.record_status_event(
-                    device_id=device_data['id'],
-                    event_type=new_status,
-                    from_status=old_status,
-                    to_status=new_status,
-                    source='health_check',
-                    success=is_online,
-                    detail={'serial_number': device_data.get('serial_number')},
+            for device_data in batch:
+                is_online = self._is_device_online(
+                    device_data,
+                    online_serials_by_system.get(
+                        self._system_key(device_data.get('system')), set()),
                 )
+                new_status = (
+                    DeviceStatusEventType.ONLINE.value if is_online
+                    else DeviceStatusEventType.OFFLINE.value
+                )
+                old_status = device_data.get('status')
+                status_updates.append({
+                    'id': device_data['id'],
+                    'status': new_status,
+                    'last_online_at': now_cst() if is_online else None,
+                })
 
-            health_results.append({
-                'id': device_data['id'],
-                'name': device_data['name'],
-                'status': new_status,
-                'last_online_at': now_cst().isoformat() if is_online else None,
-                'model': device_data.get('model'),
-                'system': device_data.get('system'),
-            })
+                # 状态历史事件落库 + DEVICE_EVENTS 发布（INT-80；INT-69 收敛至单一 EventBus 链路）
+                detail = {'serial_number': device_data.get('serial_number')}
+                if is_online:
+                    # INT-1578：在线设备补充采集 cpu/memory/battery，写入同一条 health_check 事件的
+                    # detail.metrics（采不到就不写该键；采集失败不影响 is_online 与整体成功）
+                    metrics = self._collect_health_metrics(device_data)
+                    if metrics:
+                        detail['metrics'] = metrics
+                status_events.append({
+                    'device_id': device_data['id'],
+                    'event_type': DeviceStatusEventType.HEALTH_CHECK.value,
+                    'from_status': old_status,
+                    'to_status': new_status,
+                    'source': 'health_check',
+                    'success': is_online,
+                    'detail': detail,
+                })
+                if new_status != old_status:
+                    status_events.append({
+                        'device_id': device_data['id'],
+                        'event_type': new_status,
+                        'from_status': old_status,
+                        'to_status': new_status,
+                        'source': 'health_check',
+                        'success': is_online,
+                        'detail': {'serial_number': device_data.get('serial_number')},
+                    })
+
+                health_results.append({
+                    'id': device_data['id'],
+                    'name': device_data['name'],
+                    'status': new_status,
+                    'last_online_at': now_cst().isoformat() if is_online else None,
+                    'model': device_data.get('model'),
+                    'system': device_data.get('system'),
+                })
+
+            self.repo.update_device_statuses(status_updates)
+            device_monitor_service.record_status_events(status_events)
 
         return {
             'success': True,

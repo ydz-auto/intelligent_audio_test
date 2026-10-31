@@ -44,6 +44,10 @@ class DeviceRepositoryInterface(ABC):
     def update_device_status(self, device_id: int, status: str, last_online_at=None) -> bool: ...
 
     @abstractmethod
+    def update_device_statuses(self, updates: List[dict]) -> int:
+        """批量更新设备状态（单事务），updates 每项含 id/status/last_online_at。"""
+
+    @abstractmethod
     def delete_device_tags(self, device_id: int) -> int: ...
 
     @abstractmethod

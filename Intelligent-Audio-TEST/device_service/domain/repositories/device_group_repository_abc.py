@@ -63,6 +63,10 @@ class DeviceMonitorRepositoryInterface(ABC):
     def record_status_event(self, data: dict) -> dict: ...
 
     @abstractmethod
+    def record_status_events(self, events: List[dict]) -> List[dict]:
+        """批量落状态事件（单事务提交）。"""
+
+    @abstractmethod
     def list_status_events(self, device_ids: List[int] = None, event_type: str = None,
                            start_time=None, end_time=None,
                            page: int = 1, per_page: int = 50) -> dict: ...
