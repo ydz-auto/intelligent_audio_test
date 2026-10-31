@@ -1,3 +1,6 @@
+import threading
+from contextlib import contextmanager
+
 from shared.infrastructure.base_executor import BaseExecutor, TaskStopSignal
 from shared.utils.status_constants import ExecutionStatus, TaskCaseStatus, EvaluationStatus
 from shared.constants.ui_capture import UiCaptureSkipReason, UiCaptureStepStatus
@@ -20,16 +23,49 @@ from e2e_test_service.infrastructure.acl import (
 )
 
 
+class _CaseScopedState:
+    """用例级状态描述符：按执行线程隔离，随用例开始/结束重建与回收（INT-2256）
+
+    E2EExecutor 是进程级单例（E2EService.executor 懒加载唯一实例），gRPC 线程池
+    并发执行不同用例——同一任务不同实验室的路由行也会并行。用例级状态挂在实例
+    属性上会跨用例串味：UI 抓取降级标记继承上一用例、音频本地路径只增不减。
+
+    一个用例在单个 gRPC 线程内同步跑完，线程即用例上下文的天然边界（与
+    BaseExecutor._thread_ctx 同款做法）；用例入口 execute_e2e_case 经 _case_scope
+    重建/回收，读出写入都落在当前线程的上下文里。
+    """
+
+    def __init__(self, key, empty):
+        self._key = key
+        self._empty = empty  # 空值工厂：复位时给全新对象，避免共享可变默认值
+
+    def __get__(self, instance, owner=None):
+        if instance is None:
+            return self
+        return instance._case_state()[self._key]
+
+    def __set__(self, instance, value):
+        instance._case_state()[self._key] = value
+
+    def __delete__(self, instance):
+        # 兼容 __new__ 裸宿主上的 del：复位为空值而不是摘掉属性
+        instance._case_state()[self._key] = self._empty()
+
+
 class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin,
                   LabPlaybackBindingMixin, BaseExecutor):
+    # ── 用例级状态（按执行线程隔离，见 _CaseScopedState）──
+    _playback_timestamps = _CaseScopedState('playback_timestamps', dict)
+    _audio_local_paths = _CaseScopedState('audio_local_paths', dict)
+    # INT-296：用例级 UI 抓取层降级标记（explicit_degrade 模式下由
+    # E2EDeviceManager.initialize_devices 写入；None = 无降级）
+    _ui_capture_degraded = _CaseScopedState('ui_capture_degraded', lambda: None)
+    _ui_capture_degraded_note = _CaseScopedState('ui_capture_degraded_note', lambda: None)
+
     def __init__(self, execution_engine):
         super().__init__(execution_engine)
-        self._playback_timestamps = {}
-        self._audio_local_paths = {}  # {audio_id: {target_rate: local_path, "original": local_path}}（准备阶段预下载+重采样）
-        # INT-296：用例级 UI 抓取层降级标记（explicit_degrade 模式下由
-        # E2EDeviceManager.initialize_devices 写入；None = 无降级）
-        self._ui_capture_degraded = None
-        self._ui_capture_degraded_note = None
+        # 用例级状态容器（threading.local，键为执行线程；见 _CaseScopedState）
+        self._case_state_local = threading.local()
         # 委托组件
         self._device_manager = E2EDeviceManager(self)
         self._collector = E2ECollector(self)
@@ -39,6 +75,48 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin,
         self._playback_repo = PlaybackAclRepositoryImpl()
         self._device_result_repo = DeviceResultAclRepositoryImpl()
         self._task_data_repo = TaskDataAclRepositoryImpl()
+
+    @staticmethod
+    def _empty_case_state():
+        """全新用例上下文（一个用例一份，不复用可变对象）"""
+        return {
+            'playback_timestamps': {},
+            'audio_local_paths': {},
+            'ui_capture_degraded': None,
+            'ui_capture_degraded_note': None,
+        }
+
+    def _case_state(self):
+        """当前执行线程的用例上下文（首次访问懒建；__new__ 裸宿主同样可用）"""
+        local = getattr(self, '_case_state_local', None)
+        if local is None:
+            # 正常实例在 __init__ 建好；此处兜底 __new__ 裸宿主（单测）
+            local = threading.local()
+            self._case_state_local = local
+        state = getattr(local, 'state', None)
+        if state is None:
+            state = self._empty_case_state()
+            local.state = state
+        return state
+
+    def _reset_case_state(self):
+        """丢弃当前线程的用例上下文（用例开始/结束各调用一次）"""
+        local = getattr(self, '_case_state_local', None)
+        if local is not None:
+            local.state = None
+
+    @contextmanager
+    def _case_scope(self):
+        """用例执行上下文：进入重建、退出回收用例级状态（INT-2256）
+
+        单例只承载无状态依赖；降级标记、音频本地路径、播放时间戳都限定在
+        本用例内，退出即释放（并发用例各在自己的 gRPC 线程上互不可见）。
+        """
+        self._reset_case_state()
+        try:
+            yield
+        finally:
+            self._reset_case_state()
 
     def set_ui_capture_degraded(self, degraded, task_id=None, test_case_id=None):
         """记录用例级 UI 抓取层降级并构建轮次留痕结构（INT-296，仅 explicit_degrade 模式可达）
@@ -228,15 +306,17 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin,
                 self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
             return False
 
-        data_result = self._validate_and_get_data(task_id, tc_rel_id)
-        if not data_result['success']:
-            error_msg = data_result.get('error', '获取基础数据失败')
-            self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
-            return False
+        # INT-2256：用例级状态按本次执行重建/回收（单例 executor 并发用例互不串味）
+        with self._case_scope():
+            data_result = self._validate_and_get_data(task_id, tc_rel_id)
+            if not data_result['success']:
+                error_msg = data_result.get('error', '获取基础数据失败')
+                self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
+                return False
 
-        data = data_result['data']
-        return self._execute_e2e_with_rounds(
-            task_id, tc_rel_id, data, device_id=device_id, device_ids=device_ids)
+            data = data_result['data']
+            return self._execute_e2e_with_rounds(
+                task_id, tc_rel_id, data, device_id=device_id, device_ids=device_ids)
 
     def _execute_e2e_with_rounds(self, task_id, tc_rel_id, data, device_id=None, device_ids=None):
         """新格式执行：支持多轮（rounds）的 E2E 执行
