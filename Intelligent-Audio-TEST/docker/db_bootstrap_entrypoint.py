@@ -349,6 +349,16 @@ BOOTSTRAP_STEPS = [
     #     (group_id, lab_id, playback_device_id) 组内条目（用例只引用逻辑音箱）。
     #     幂等（组按名复用、设备已有条目即跳过）。纯数据写入，须排在 ㊽ 之前。
     ('python', 'scripts/migrations/202611/seed_playback_speaker_groups.py', '--apply'),
+    # ㊾-4 audios 补 md5 / file_path 局部索引（INT-2280）：上传按 md5 去重、ZIP 回导
+    #     逐文件去重（INT-2215）、stream/download 的 file_path 可见性校验此前无索引
+    #     可命中，每次都是整表顺序扫描（O(文件数 × 表行数)）。两条索引都是局部索引
+    #     （WHERE deleted = false，三条读路径恒带该谓词），与 ORM
+    #     Audio.__table_args__ 定义一致；全新库 create_all 已建，本步为存量库兜底。
+    #     脚本用 autocommit 连接逐条 CREATE INDEX CONCURRENTLY（不在事务块内、不长时间
+    #     阻塞写），索引已存在即 SKIP；CONCURRENTLY 中途失败留下的 invalid 索引会被
+    #     检出并以非零码退出并打印 DROP 命令（IF NOT EXISTS 不会自愈它）。
+    #     默认 dry-run，引导链必须带 --apply；须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_audios_md5_filepath_index.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器

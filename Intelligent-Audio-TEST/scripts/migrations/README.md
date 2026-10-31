@@ -71,6 +71,10 @@ python scripts/migrations/202610/add_merge_snapshots_int1762.py --apply         
 python scripts/migrations/202610/fix_voice_llm_reference_params_definitions.py --apply  # ㊽-8 voice_llm 参考参数定义口径订正（INT-2040：algorithm_reference_params 7 行 annotation_code 统一 voice_llm、annotation_format 统一 json、field_path 统一 segments[].<字段>，按文档《参考参数生成器设计文档》口径；只改这三列，不新增行；须在 ⑪ seed_voice_llm 之后、㊽ INT-1741 ANALYZE 之前；幂等，取值已一致的行不进 UPDATE；默认 dry-run）
 python scripts/migrations/202610/drop_published_task_type_and_case_derived_test_type.py  # ㊾ 任务类型 / 用例执行口径列下线：DROP published_tasks.type + test_cases.derived_test_type（含 ix_test_cases_derived_test_type）；任务类型 api/e2e/mixed 概念废除，执行方式只看 task_case_relations.device_type；须在 ㊽ INT-1741 ANALYZE 之前；幂等，列/索引不存在即 SKIP
 python scripts/migrations/202610/widen_case_param_scope_to_device_type.py  # ㊿-2 用例参数作用域词表改 device_type：case_algorithm_params.scope VARCHAR(10)→VARCHAR(20)（'websocket_api' 13 字符，不改宽写入必失败）+ 存量值 e2e→physical / api→http_api；须在 ㊽ INT-1741 ANALYZE 之前；幂等，列宽达标即 SKIP、值映射命中 0 行（--dry-run 预览）
+# ── 202611 ──────────────────────────────────────────────
+# 注：202611 目录另有参数作用域 / 设备参数策略 / 设备绑定 / 音箱组等步骤（㊾、㊾-1~㊾-3），
+#     其顺序以 docker/db_bootstrap_entrypoint.py 的 BOOTSTRAP_STEPS 为准（本节此前未同步到本总览）。
+python scripts/migrations/202611/add_audios_md5_filepath_index.py --apply  # ㊾-4 audios 补 md5 / file_path 局部索引（INT-2280：上传按 md5 去重、ZIP 回导逐文件去重、stream/download 的 file_path 可见性校验此前每请求全表扫描；两索引均 WHERE deleted = false，与 ORM Audio.__table_args__ 对齐；autocommit 逐条 CREATE INDEX CONCURRENTLY（不阻塞写），已存在即 SKIP，留 invalid 索引时打印 DROP 命令并以非零码退出；默认 dry-run，须在 ㊽ INT-1741 ANALYZE 之前）
 # ── 数据补齐（INT-2099，独立窗口，不进 docker 引导链）────────────────────
 python scripts/migrations/202610/seed_tag_categories_int2099.py --apply  # ㊿ 真实库标签分类数据补齐（INT-2099：按名称规则建 6 个活跃分类 + 给活跃标签补 category_id；**真实库用户数据定向补齐，不进 docker 引导链**，须负责人确认分类口径后由部署卡单独执行；只补 NULL、不动软删行、不删数据；默认 dry-run）
 # ── 档4 M1（INT-1995，独立窗口，不进 docker 引导链）──────────────────────

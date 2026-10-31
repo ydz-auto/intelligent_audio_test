@@ -28,6 +28,13 @@ class Audio(Base):
         Index('idx_audios_deleted_created', 'deleted', 'created_at'),
         # INT-423 数据可见性：行级过滤高频列表表复合索引（与迁移脚本对齐）
         Index('idx_audios_created_visibility', 'created_by_user_id', 'visibility'),
+        # INT-2280 上传去重 / stream 可见性校验：按 md5、file_path 等值查询此前无索引，
+        # 逐文件一次全表扫描（ZIP 回导 O(文件数 × 表行数)）。两条读路径
+        # （get_audio_by_md5 / get_audio_by_file_path / get_audios_by_md5_list）恒带
+        # deleted = false，故建局部索引（软删行不进索引，体积更小）。
+        # 与 scripts/migrations/202611/add_audios_md5_filepath_index.py 定义对齐。
+        Index('idx_audios_md5', 'md5', postgresql_where=text('deleted = false')),
+        Index('idx_audios_file_path', 'file_path', postgresql_where=text('deleted = false')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='音频唯一ID')
     name = Column(String(255), nullable=False, comment='音频显示名称')
