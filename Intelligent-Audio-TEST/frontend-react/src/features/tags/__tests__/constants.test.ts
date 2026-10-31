@@ -34,9 +34,17 @@ describe('tags constants', () => {
     expect(TAG_DESC_MAX_LENGTH).toBe(500)
   })
 
-  it('formatDateTime：YYYY-MM-DD HH:mm 截取，null 显 —', () => {
-    expect(formatDateTime('2026-09-01 10:00')).toBe('2026-09-01 10:00')
-    expect(formatDateTime('2026-09-01T10:05:00')).toBe('2026-09-01 10:05')
+  it('formatDateTime：裸 UTC 转本地 YYYY-MM-DD HH:mm，null 显 —', () => {
+    // 断言以本地时区换算为基准，不写死 +08:00（INT-2211 起走共享口径）
+    const date = new Date('2026-09-01T10:05:00Z')
+    const pad = (value: number) => String(value).padStart(2, '0')
+    const expected = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+      date.getDate()
+    )} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+    expect(formatDateTime('2026-09-01T10:05:00')).toBe(expected)
+    expect(formatDateTime('2026-09-01 10:00')).toBe(
+      formatDateTime('2026-09-01T10:00:00')
+    )
     expect(formatDateTime(null)).toBe('—')
     expect(formatDateTime(undefined)).toBe('—')
   })

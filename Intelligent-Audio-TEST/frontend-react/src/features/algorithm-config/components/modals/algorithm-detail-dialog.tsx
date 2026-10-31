@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { formatDateTime } from '@/lib/date-time'
 import type {
   AlgorithmDefinition,
   DeviceApiParam,
@@ -385,8 +386,8 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
                   <FieldRow label='状态' value={algorithm.status === 'online' ? '上线' : '下线'} />
                   <FieldRow label='排序' value={algorithm.displayOrder} />
                   <FieldRow label='参数数量' value={paramTotal} />
-                  <FieldRow label='创建时间' value={new Date(algorithm.createdAt).toLocaleString()} />
-                  <FieldRow label='更新时间' value={new Date(algorithm.updatedAt).toLocaleString()} />
+                  <FieldRow label='创建时间' value={formatDateTime(algorithm.createdAt)} />
+                  <FieldRow label='更新时间' value={formatDateTime(algorithm.updatedAt)} />
                   {algorithm.description && (
                     <FieldRow label='描述' value={algorithm.description} />
                   )}

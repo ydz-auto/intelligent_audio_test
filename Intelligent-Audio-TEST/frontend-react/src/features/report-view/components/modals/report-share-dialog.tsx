@@ -33,6 +33,7 @@ import type {
   ShareExpiry,
   ShareMethod,
 } from '@/application/report-view/use-report-share'
+import { formatDateTime } from '@/lib/date-time'
 
 const SHARE_METHODS: { value: ShareMethod; label: string }[] = [
   { value: 'link', label: '生成分享链接' },
@@ -226,7 +227,7 @@ export function ReportShareDialog({
               <span className='flex items-center gap-4 text-sm'>
                 <span className='font-mono tabular-nums'>访问 {state.visits} 次</span>
                 <span className='font-mono text-muted-foreground tabular-nums'>
-                  最近 {state.lastVisitedAt ? new Date(state.lastVisitedAt).toLocaleString() : '—'}
+                  最近 {formatDateTime(state.lastVisitedAt)}
                 </span>
                 <Button variant='ghost' size='sm' onClick={onRefreshStats}>
                   刷新统计

@@ -35,6 +35,7 @@ import {
   usePlaybackSpeakerGroupMutations,
   usePlaybackSpeakerGroups,
 } from '@/application/devices/use-devices'
+import { formatDateTime } from '@/lib/date-time'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { PlaybackSpeakerGroup } from '@/domain/models/playbackSpeakerGroup'
 import { ApiError } from '@/infrastructure/api/api-error'
@@ -242,7 +243,7 @@ export function PlaybackSpeakerGroupDialog(props: PlaybackSpeakerGroupDialogProp
                   header: '更新时间',
                   className: 'font-mono tabular-nums',
                   render: (group: PlaybackSpeakerGroup) =>
-                    group.updatedAt ? group.updatedAt.replace('T', ' ').slice(0, 16) : '—',
+                    formatDateTime(group.updatedAt),
                 },
               ]}
               rows={groups}

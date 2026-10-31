@@ -35,6 +35,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { ApiError } from '@/infrastructure/api/api-error'
 import { StaticDataTable } from '@/features/system-settings/components/static-data-table'
 import { cn } from '@/lib/utils'
+import { formatDateTime } from '@/lib/date-time'
 import type { Laboratory, LaboratoryStatus } from '@/domain/models/laboratory'
 import { LABORATORY_STATUS_META } from '@/domain/models/laboratory'
 import { useLaboratoryMutations } from '@/application/devices/use-devices'
@@ -284,7 +285,7 @@ export function LaboratoryManagerDialog(props: LaboratoryManagerDialogProps) {
                   header: '更新时间',
                   className: 'font-mono tabular-nums',
                   render: (lab: Laboratory) =>
-                    lab.updatedAt ? lab.updatedAt.replace('T', ' ').slice(0, 16) : '—',
+                    formatDateTime(lab.updatedAt),
                 },
               ]}
               rows={props.labs}

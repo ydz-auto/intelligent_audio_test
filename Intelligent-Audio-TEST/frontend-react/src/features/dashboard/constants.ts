@@ -63,9 +63,8 @@ export const TREND_VARIANT_OPTIONS = [
   { value: 'area', label: '面积图' },
 ] as const
 
-/** ISO 时间串 → 「YYYY-MM-DD HH:mm」（无 dayjs，轻量格式化；异常原样返回） */
-export function formatDateTime(value: string | null): string {
-  if (!value) return '—'
-  const normalized = value.replace('T', ' ')
-  return normalized.length >= 16 ? normalized.slice(0, 16) : normalized
-}
+/**
+ * 后端时间串 → 本地「YYYY-MM-DD HH:mm」（裸 UTC 按 UTC 解析后转本地；INT-2211）。
+ * 口径统一在 @/lib/date-time。
+ */
+export { formatDateTime } from '@/lib/date-time'

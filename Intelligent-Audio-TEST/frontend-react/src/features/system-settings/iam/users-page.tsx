@@ -14,6 +14,7 @@ import {
   Ellipsis,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { formatDate } from '@/lib/date-time'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useUsersQuery, useUserDetail, useUserMutations } from '@/application/iam/use-users-query'
@@ -350,7 +351,7 @@ export function UsersPage() {
                       </td>
                       <td className='px-3 py-3'>
                         <span className='text-muted-foreground font-mono text-xs tabular-nums'>
-                          {user.createdAt.slice(0, 10)}
+                          {formatDate(user.createdAt)}
                         </span>
                       </td>
                       <td className='px-3 py-3 text-right'>

@@ -19,17 +19,15 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { ReviewFieldName } from '@/domain/models/review'
+import { formatDateTimeSeconds } from '@/lib/date-time'
 import { cn } from '@/lib/utils'
 
 function fieldLabel(field: ReviewFieldName): string {
   return field === 'execution_status' ? '执行状态' : '评估状态'
 }
 
-function formatDateTime(value: string | null): string {
-  if (!value) return '—'
-  // 2026-10-09T20:21:28 → 2026-10-09 20:21:28（mono 展示口径）
-  return value.replace('T', ' ').slice(0, 19)
-}
+// 复核历史需要秒级精度：后端裸 UTC → 本地「YYYY-MM-DD HH:mm:ss」（共享口径）
+const formatDateTime = formatDateTimeSeconds
 
 export function ReviewHistoryDrawer({
   open,

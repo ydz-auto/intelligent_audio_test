@@ -33,6 +33,7 @@ import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TagItem } from '@/domain/models/testTag'
 import {
   formatCaseDuration,
+  formatDateTime,
   getAlgorithmLabel,
 } from '@/features/testcases/constants'
 import { TagBadge } from '@/features/testcases/components/tag-cell'
@@ -262,16 +263,12 @@ export function CaseCard<T extends CaseCardItem>({
                   </p>
                   <p className='text-muted-foreground/70 mt-0.5 text-xs'>
                     最后编辑时间{' '}
-                    {caseItem.updatedAt
-                      ? caseItem.updatedAt.slice(0, 16).replace('T', ' ')
-                      : '—'}
+                    {formatDateTime(caseItem.updatedAt)}
                   </p>
                   {disabled && (
                     <p className='text-muted-foreground/70 mt-0.5 text-xs'>
                       删除时间{' '}
-                      {caseItem.deletedAt
-                        ? caseItem.deletedAt.slice(0, 16).replace('T', ' ')
-                        : '—'}{' '}
+                      {formatDateTime(caseItem.deletedAt)}{' '}
                       · 删除人{' '}
                       {caseItem.deletedByUserId ? `用户#${caseItem.deletedByUserId}` : '—'}
                     </p>

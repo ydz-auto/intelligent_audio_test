@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { formatDateTime } from '@/lib/date-time'
 import type { DevicesTabKey } from '@/features/devices/constants'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
@@ -166,11 +167,11 @@ export function DeviceDetailDialog(props: DeviceDetailDialogProps) {
               <h3 className='text-sm font-medium'>时间信息</h3>
               <Row
                 label='最后在线'
-                value={testDevice?.lastOnlineAt ? testDevice.lastOnlineAt.replace('T', ' ').slice(0, 16) : null}
+                value={formatDateTime(testDevice?.lastOnlineAt)}
               />
               <Row
                 label='更新时间'
-                value={device.updatedAt ? device.updatedAt.replace('T', ' ').slice(0, 16) : null}
+                value={formatDateTime(device.updatedAt)}
               />
             </section>
           </div>

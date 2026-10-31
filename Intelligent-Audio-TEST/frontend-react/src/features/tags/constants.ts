@@ -39,9 +39,8 @@ export const TAG_SEARCH_DEBOUNCE_MS = 300
 /** 列表页首屏条数 + 滚动/「加载更多」追加步长（已显示 {n} / {总} 条 · 加载更多，§4.2） */
 export const TAG_LIST_PAGE_SIZE = 20
 
-/** ISO 时间串 → 「YYYY-MM-DD HH:mm」（轻量格式化，无 dayjs；异常原样返回） */
-export function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '—'
-  const normalized = value.replace('T', ' ')
-  return normalized.length >= 16 ? normalized.slice(0, 16) : normalized
-}
+/**
+ * 后端时间串 → 本地「YYYY-MM-DD HH:mm」（裸 UTC 按 UTC 解析后转本地；INT-2211）。
+ * 口径统一在 @/lib/date-time。
+ */
+export { formatDateTime } from '@/lib/date-time'

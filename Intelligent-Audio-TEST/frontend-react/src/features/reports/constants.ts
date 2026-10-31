@@ -128,12 +128,11 @@ export const CASE_STATUS_META: Record<
   unknown: { label: '未知', variant: 'neutral' },
 }
 
-export function formatDateTime(value?: string): string {
-  if (!value) return '—'
-  // 入参形态：'2026-10-15T09:20:00'（schema created_at 实测）→ 'YYYY-MM-DD HH:mm'
-  const normalized = value.includes('T') ? value.replace('T', ' ') : value
-  return normalized.length > 16 ? normalized.slice(0, 16) : normalized
-}
+/**
+ * 后端时间串 → 本地「YYYY-MM-DD HH:mm」（入参形态 '2026-10-15T09:20:00' 的裸 UTC；
+ * 按 UTC 解析后转本地时区；INT-2211，口径统一在 @/lib/date-time）。
+ */
+export { formatDateTime } from '@/lib/date-time'
 
 /** 排序下拉当前项中文标签 */
 export function getReportSortLabel(sortBy: ReportSortBy): string {

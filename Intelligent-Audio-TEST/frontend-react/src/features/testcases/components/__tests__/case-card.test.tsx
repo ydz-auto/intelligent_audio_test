@@ -15,6 +15,13 @@ import { Badge } from '@/components/ui/badge'
 import { CaseCard, type CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
 
+/** 后端裸 UTC 串 → 本地「YYYY-MM-DD HH:mm」（断言不写死时区偏移；INT-2211 口径） */
+function expectedLocal(naiveUtc: string): string {
+  const date = new Date(`${naiveUtc.replace(' ', 'T')}Z`)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 /** 本地演示管理员（permissions '*'）：算法名映射取真实 GET /algorithm/options（INT-1506） */
 const ADMIN_USER = {
   id: 'mock-user-001',
@@ -185,7 +192,9 @@ describe('CaseCard', () => {
         onToggleSelect={vi.fn()}
       />
     )
-    expect(screen.getByText(/删除时间 2026-10-10 14:20/)).toBeInTheDocument()
+    expect(
+      screen.getByText(new RegExp(`删除时间 ${expectedLocal('2026-10-10 14:20')}`))
+    ).toBeInTheDocument()
     expect(screen.getByText(/删除人 用户#1001/)).toBeInTheDocument()
     expect(screen.getByLabelText('恢复用例')).toBeInTheDocument()
     expect(screen.getByLabelText('彻底删除（不可恢复）')).toBeInTheDocument()

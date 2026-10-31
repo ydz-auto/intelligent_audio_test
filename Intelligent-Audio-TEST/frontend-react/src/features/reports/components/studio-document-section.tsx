@@ -44,6 +44,7 @@ import {
 } from '@/domain/models/report-studio'
 import { fetchStudioSourceBlob } from '@/infrastructure/api/reportStudioApi'
 import { cn } from '@/lib/utils'
+import { formatDateTime } from '@/lib/date-time'
 
 /** 版本下拉的「当前版本」哨兵值（Select 不接受空字符串 as value） */
 export const CURRENT_VERSION = '__current__'
@@ -55,8 +56,8 @@ export function formatSize(bytes: number | null): string {
 }
 
 export function compactDate(value: string | null): string {
-  if (!value) return '—'
-  return value.replace('T', ' ').slice(0, 16)
+  // 后端时间串为裸 UTC，统一走共享口径转本地时区（INT-2211）
+  return formatDateTime(value)
 }
 
 /** html / pptx 上传件预览：鉴权取 Blob → sandbox iframe（不加 allow-same-origin） */

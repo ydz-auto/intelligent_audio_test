@@ -27,6 +27,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { formatDateTime } from '@/lib/date-time'
 import type { TestDevice } from '@/domain/models/testDevice'
 import { deviceSystemLabel } from '@/features/devices/lib/device-system'
 import { connectionTypeLabel } from '@/features/devices/lib/connection-type'
@@ -329,7 +330,7 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
                     )}
                   </td>
                   <td className='px-3 py-2 font-mono text-xs tabular-nums'>
-                    {row.lastOnlineAt ? row.lastOnlineAt.replace('T', ' ').slice(0, 16) : '—'}
+                    {formatDateTime(row.lastOnlineAt)}
                   </td>
                   <td className='px-3 py-2'>
                     <div className='flex items-center justify-end gap-0.5'>

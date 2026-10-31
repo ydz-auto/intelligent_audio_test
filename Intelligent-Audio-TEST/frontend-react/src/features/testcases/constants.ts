@@ -40,12 +40,11 @@ export function getAlgorithmLabel(
   return labels?.[algorithmType] ?? null
 }
 
-/** ISO 时间串 → 「YYYY-MM-DD HH:mm」（轻量格式化，无 dayjs；异常原样返回） */
-export function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '—'
-  const normalized = value.replace('T', ' ')
-  return normalized.length >= 16 ? normalized.slice(0, 16) : normalized
-}
+/**
+ * 后端时间串 → 本地「YYYY-MM-DD HH:mm」（裸 UTC 按 UTC 解析后转本地；INT-2211）。
+ * 口径统一在 @/lib/date-time。
+ */
+export { formatDateTime } from '@/lib/date-time'
 
 /** 总时长（秒）→ 「{x}m {y}s」（§3.3；0/null 不显 —） */
 export function formatCaseDuration(seconds: number | null | undefined): string {

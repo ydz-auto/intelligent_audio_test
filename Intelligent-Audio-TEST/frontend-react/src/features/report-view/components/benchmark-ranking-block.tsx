@@ -25,6 +25,7 @@ import {
   VCHART_OPTION,
 } from '@/features/dashboard/lib/vchart'
 import { cn } from '@/lib/utils'
+import { formatDateTime } from '@/lib/date-time'
 
 const SOURCE_FILTERS: { value: BenchmarkSourceFilter; label: string }[] = [
   { value: 'all', label: '全部' },
@@ -200,7 +201,7 @@ export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRanking
         </Button>
       </div>
       <p className='text-muted-foreground mt-1 text-xs'>
-        计算时间 {data.computedAt.replace('T', ' ').slice(0, 16)} · 中位数 {data.median}{data.unit} · 最佳 {data.best}{data.unit}
+        计算时间 {formatDateTime(data.computedAt)} · 中位数 {data.median}{data.unit} · 最佳 {data.best}{data.unit}
       </p>
 
       {/* 来源筛选（仅实测/仅导入/全部/仅看有差异的） */}

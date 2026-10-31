@@ -26,6 +26,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { formatDateTime } from '@/lib/date-time'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import { PLAYBACK_DEVICE_TYPE_META } from '@/domain/models/playbackDevice'
 import { DeviceStatusBadge } from '@/features/devices/components/device-status-badge'
@@ -260,7 +261,7 @@ export function PlaybackDeviceTable(props: PlaybackDeviceTableProps) {
                     )}
                   </td>
                   <td className='px-3 py-2 font-mono text-xs tabular-nums'>
-                    {row.updatedAt ? row.updatedAt.replace('T', ' ').slice(0, 16) : '—'}
+                    {formatDateTime(row.updatedAt)}
                   </td>
                   <td className='px-3 py-2'>
                     <div className='flex items-center justify-end gap-0.5'>
