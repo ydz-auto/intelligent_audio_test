@@ -12,6 +12,8 @@
 执行步骤（单事务，``--apply`` 时）：
     1) CREATE TABLE IF NOT EXISTS param_profiles / param_profile_params /
        param_profile_mappings / api_param_bindings（含唯一索引）；
+    1.5) 存量修复（INT-2184）：四张表 ``deleted`` 列补 DB 默认值 false，并把
+       已落库的 ``deleted IS NULL`` 行归 false（幂等，归一次后命中 0 行）；
     2) 按 algorithm_type 生成/复用默认策略（scope='api', name='default'）；
     3) 复制 algorithm_api_params(api_id IS NULL) → param_profile_params；
        复制 param_mappings(api_id IS NULL AND source='api') → param_profile_mappings；
@@ -21,6 +23,15 @@
 幂等：建表/建索引均有 IF NOT EXISTS；复制按唯一键 ON CONFLICT 跳过；
 默认行软删后重复执行不会再复制出重复行。本脚本不新增任何列（绑定只落
 ``api_param_bindings``，不在 ``apis`` 上冗余 ``param_profile_id``）。
+
+INT-2184（deleted 落 NULL）：引导链第 ① 步 ``create_all_tables.py`` 先按 ORM
+建表，而模型当时的 ``deleted`` 只有 Python 侧 ``default=False``、列上没有
+``server_default``，所以本脚本的 ``CREATE TABLE ... deleted BOOLEAN DEFAULT false``
+是 no-op；早期版本的 INSERT 又不写 ``deleted``，落库行于是为 NULL，读侧
+``filter_by(deleted=False)`` 全部滤掉（策略 / API 参数 / 映射接口恒空）。
+现两处收口：① 模型四张表的 ``deleted`` 补 ``server_default=false``（新库建表
+即带默认值）；② 本脚本 INSERT 显式写 ``deleted=false``，并在第 1.5 步把存量
+NULL 归 false（步骤本身幂等，重复执行命中 0 行）。
 
 部署顺序（重要）：本脚本把默认层数据搬走后，读侧必须已经按「策略 + 实例覆盖」
 解析，否则该算法类型下没有实例引用时会读成空。因此本步必须与读侧改造同版本上线，
@@ -152,6 +163,33 @@ DDL_ROLLBACK = (
     "DROP TABLE IF EXISTS param_profiles",
 )
 
+# 本脚本写入的四张表（建表 / 存量修复 / 计数共用）。
+_PARAM_PROFILE_TABLES = (
+    'param_profiles',
+    'param_profile_params',
+    'param_profile_mappings',
+    'api_param_bindings',
+)
+
+# 存量修复（INT-2184）：create_all 先于本脚本的 CREATE TABLE IF NOT EXISTS 建表时，
+# ORM 模型上只有 Python 侧 default=False、列上没有 DB 默认值，本脚本早期版本
+# 的 INSERT 又不写 deleted → 落库行 deleted 为 NULL。读侧一律按 deleted = false
+# 过滤（策略/参数/映射仓储与 config_cache），这些行等于全部不可见：
+# 参数策略列表恒空、API 参数与映射恒空。
+# 故本步先给四张表的列补 DB 默认值，再把存量 NULL 归 false（幂等：归一次后
+# UPDATE 命中 0 行，ALTER ... SET DEFAULT 重复执行无副作用）。
+# 必须排在 DDL_FORWARD 之后（否则表还不存在）、任何按 deleted = false 的查询
+# （_COLLECT_TYPES_SQL / _GET_PROFILE_ID_SQL / ON CONFLICT 绑定）之前——否则
+# 存量 NULL 行躲过部分唯一索引，重复执行会再插一份 default 策略。
+REPAIR_NULL_DELETED_SQL = tuple(
+    sql
+    for table in _PARAM_PROFILE_TABLES
+    for sql in (
+        f'ALTER TABLE {table} ALTER COLUMN deleted SET DEFAULT false',
+        f'UPDATE {table} SET deleted = false WHERE deleted IS NULL',
+    )
+)
+
 # 参与迁移的算法类型：有算法级默认行或有 API 实例
 _COLLECT_TYPES_SQL = """
     SELECT DISTINCT t FROM (
@@ -167,8 +205,8 @@ _COLLECT_TYPES_SQL = """
 """
 
 _UPSERT_PROFILE_SQL = """
-    INSERT INTO param_profiles (scope, algorithm_type, name, description, status)
-    VALUES ('api', %s, 'default', '由算法级默认参数迁移生成', 'online')
+    INSERT INTO param_profiles (scope, algorithm_type, name, description, status, deleted)
+    VALUES ('api', %s, 'default', '由算法级默认参数迁移生成', 'online', false)
     ON CONFLICT (scope, algorithm_type, name) WHERE deleted = false DO NOTHING
     RETURNING id
 """
@@ -181,9 +219,9 @@ _GET_PROFILE_ID_SQL = """
 _COPY_PARAMS_SQL = """
     INSERT INTO param_profile_params (
         profile_id, param_code, param_name, label, param_type, direction,
-        required, default_value, validation_rules, help_text, ui_order, hidden, field_path)
+        required, default_value, validation_rules, help_text, ui_order, hidden, field_path, deleted)
     SELECT %s, param_code, param_name, label, param_type, direction,
-           required, default_value, validation_rules, help_text, ui_order, hidden, field_path
+           required, default_value, validation_rules, help_text, ui_order, hidden, field_path, false
       FROM algorithm_api_params
      WHERE algorithm_type = %s AND api_id IS NULL AND deleted = false
     ON CONFLICT (profile_id, param_code, direction) WHERE deleted = false DO NOTHING
@@ -192,17 +230,17 @@ _COPY_PARAMS_SQL = """
 _COPY_MAPPINGS_SQL = """
     INSERT INTO param_profile_mappings (
         profile_id, source, source_param, source_direction, dimension_id,
-        target_param, transform_type)
+        target_param, transform_type, deleted)
     SELECT %s, source, source_param, source_direction, dimension_id,
-           target_param, transform_type
+           target_param, transform_type, false
       FROM param_mappings
      WHERE algorithm_type = %s AND api_id IS NULL AND deleted = false AND source = 'api'
     ON CONFLICT (profile_id, source, source_param, dimension_id) WHERE deleted = false DO NOTHING
 """
 
 _BACKFILL_APIS_SQL = """
-    INSERT INTO api_param_bindings (api_id, profile_id)
-    SELECT a.id, %s FROM apis a
+    INSERT INTO api_param_bindings (api_id, profile_id, deleted)
+    SELECT a.id, %s, false FROM apis a
      WHERE a.algorithm_type = %s
        AND NOT EXISTS (
            SELECT 1 FROM api_param_bindings b
@@ -221,13 +259,19 @@ _SOFT_DELETE_DEFAULTS_MAPPINGS_SQL = """
 """
 
 _COUNT_SQL = {
+    'param_profiles(deleted=false)': """
+        SELECT count(*) FROM param_profiles WHERE deleted = false""",
+    'param_profiles(deleted IS NULL)': """
+        SELECT count(*) FROM param_profiles WHERE deleted IS NULL""",
+    'api_param_bindings(deleted=false)': """
+        SELECT count(*) FROM api_param_bindings WHERE deleted = false""",
+    'api_param_bindings(deleted IS NULL)': """
+        SELECT count(*) FROM api_param_bindings WHERE deleted IS NULL""",
     'algorithm_api_params(NULL)': """
         SELECT count(*) FROM algorithm_api_params WHERE deleted = false AND api_id IS NULL""",
     'param_mappings(NULL, api)': """
         SELECT count(*) FROM param_mappings
          WHERE deleted = false AND api_id IS NULL AND source = 'api'""",
-    'api_param_bindings': """
-        SELECT count(*) FROM api_param_bindings WHERE deleted = false""",
 }
 
 
@@ -263,6 +307,16 @@ def apply(conn):
             cur.execute(ddl)
         print(f"[ok] 策略三表 + api_param_bindings 就绪（{len(DDL_FORWARD)} 条 DDL；"
               f"apis={'同库，可回填绑定' if apis_exists else '不同库，跳过回填'}）")
+
+        # INT-2184：存量修复必须排在下面所有按 deleted = false 的查询之前
+        # （否则 NULL 行躲过部分唯一索引，ON CONFLICT 不生效会重复插 default 策略）。
+        repaired = 0
+        for sql in REPAIR_NULL_DELETED_SQL:
+            cur.execute(sql)
+            if sql.startswith('UPDATE '):
+                repaired += max(cur.rowcount, 0)
+        print(f"[ok] 存量修复：四张表 deleted 列默认值=false；"
+              f"NULL → false 共 {repaired} 行（幂等，再次执行命中 0 行）")
 
         cur.execute(_COLLECT_TYPES_SQL)
         types = [row[0] for row in cur.fetchall()]

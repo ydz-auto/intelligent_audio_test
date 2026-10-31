@@ -511,7 +511,7 @@ class ParamProfile(Base):
     # API 配置快照（JSON 文本）：协议/流式性/请求模板/响应解析/音频格式/厂商适配器 等
     # 「与端点地址无关」的配置项；新建 API 时可整体套用（复制/覆盖）。
     config_snapshot = Column(Text, comment='API 配置快照（JSON）')
-    deleted = Column(Boolean, default=False, comment='逻辑删除标志')
+    deleted = Column(Boolean, default=False, server_default=text('false'), comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 
@@ -553,7 +553,7 @@ class ParamProfileParam(Base):
     ui_order = Column(Integer, default=0, comment='界面排序')
     hidden = Column(Boolean, default=False, comment='是否隐藏')
     field_path = Column(String(255), comment='输出字段取值路径（空 = 按 param_code 取顶层键）')
-    deleted = Column(Boolean, default=False, comment='逻辑删除标志')
+    deleted = Column(Boolean, default=False, server_default=text('false'), comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 
@@ -591,7 +591,7 @@ class ParamProfileMapping(Base):
     dimension_id = Column(Integer, nullable=True, comment='目标评估维度ID')
     target_param = Column(String(50), nullable=False, comment='目标评估维度参数代码')
     transform_type = Column(String(20), default='none', comment='转换类型：none, uppercase, lowercase, json_parse, base64')
-    deleted = Column(Boolean, default=False, comment='逻辑删除标志')
+    deleted = Column(Boolean, default=False, server_default=text('false'), comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 
@@ -625,7 +625,7 @@ class ApiParamBinding(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     api_id = Column(Integer, nullable=False, comment='API 实例ID（apis.id）')
     profile_id = Column(Integer, nullable=False, comment='关联策略ID')
-    deleted = Column(Boolean, default=False, comment='逻辑删除标志')
+    deleted = Column(Boolean, default=False, server_default=text('false'), comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 

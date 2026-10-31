@@ -310,9 +310,12 @@ BOOTSTRAP_STEPS = [
     #     param_profile_params / param_profile_mappings / api_param_bindings 建表，
     #     按 algorithm_type 生成 default 策略并把算法级默认行（api_id IS NULL）搬进
     #     策略，回填 API 绑定，再软删默认行；实例级行（api_id 非空）保留为覆盖。
-    #     幂等（建表/加列 IF NOT EXISTS、复制 ON CONFLICT 跳过）；默认 dry-run，引导链
-    #     必须带 --apply。读侧按「策略 + 实例覆盖」解析必须与本次部署同版本上线，
-    #     否则默认行搬走后读成空。须排在 ㊽ ANALYZE 之前。
+    #     INT-2184：四张表的 deleted 列补 DB 默认值 false，并把存量 deleted IS NULL
+    #     行归 false（create_all 先建表时列上没有默认值，迁移 INSERT 曾落 NULL，
+    #     读侧按 deleted=false 过滤导致策略/API 参数/映射接口全空）。
+    #     幂等（建表/加列 IF NOT EXISTS、复制 ON CONFLICT 跳过、NULL 归 false 命中 0 行）；
+    #     默认 dry-run，引导链必须带 --apply。读侧按「策略 + 实例覆盖」解析必须与本次
+    #     部署同版本上线，否则默认行搬走后读成空。须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202610/add_param_profiles_scope.py', '--apply'),
     # ㊿-2 用例参数作用域词表改 device_type：case_algorithm_params.scope 由
     #     common/api/e2e 改为 common/physical/http_api/websocket_api。列宽

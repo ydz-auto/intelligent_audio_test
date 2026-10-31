@@ -109,7 +109,7 @@ def _run_main(monkeypatch, conn, argv):
 
 
 def test_dry_run_never_writes(monkeypatch, capsys):
-    cursor, conn = _make(fetchone_results=[(True,), (0,), (0,), (0,)])
+    cursor, conn = _make(fetchone_results=[(True,)] + [(0,)] * len(migration._COUNT_SQL))
     _run_main(monkeypatch, conn, ['prog'])
 
     out = capsys.readouterr().out
@@ -117,6 +117,8 @@ def test_dry_run_never_writes(monkeypatch, capsys):
     sqls = cursor.sqls
     for ddl in migration.DDL_FORWARD:
         assert _norm(ddl) not in sqls
+    for repair_sql in migration.REPAIR_NULL_DELETED_SQL:
+        assert _norm(repair_sql) not in sqls
     assert not any('INSERT INTO param_profile_params' in s for s in sqls)
     assert not any('INSERT INTO param_profile_mappings' in s for s in sqls)
     assert not any(s.startswith('UPDATE algorithm_api_params') for s in sqls)
@@ -127,8 +129,8 @@ def test_dry_run_never_writes(monkeypatch, capsys):
 def test_apply_cross_db_executes_ddl_and_copy_without_backfill(
         monkeypatch, capsys):
     cursor, conn = _make(
-        fetchone_results=[(True,), (0,), (0,), (0,),
-                          (False,), (101,), (102,)],
+        fetchone_results=[(True,)] + [(0,)] * len(migration._COUNT_SQL)
+        + [(False,), (101,), (102,)],
         fetchall_results=[[('asr',), ('tts',)]],
         rowcount_plan={
             'INSERT INTO param_profile_params': 2,
@@ -142,6 +144,10 @@ def test_apply_cross_db_executes_ddl_and_copy_without_backfill(
     sqls = cursor.sqls
     for ddl in migration.DDL_FORWARD:
         assert _norm(ddl) in sqls
+
+    # INT-2184：存量修复也要在 --apply 时执行
+    for repair_sql in migration.REPAIR_NULL_DELETED_SQL:
+        assert _norm(repair_sql) in sqls
 
     assert sum(1 for s in sqls if s.startswith('INSERT INTO param_profiles')) == 2
     assert sum(1 for s in sqls if s.startswith(
@@ -163,7 +169,8 @@ def test_apply_cross_db_executes_ddl_and_copy_without_backfill(
 
 def test_apply_same_db_backfills_bindings(monkeypatch, capsys):
     cursor, conn = _make(
-        fetchone_results=[(True,), (0,), (0,), (0,), (True,), (201,)],
+        fetchone_results=[(True,)] + [(0,)] * len(migration._COUNT_SQL)
+        + [(True,), (201,)],
         fetchall_results=[[('asr',)]],
         rowcount_plan={
             'INSERT INTO param_profile_params': 2,
@@ -242,3 +249,78 @@ def test_apply_raises_when_profile_id_unresolvable(monkeypatch):
         migration.apply(conn)
 
     assert conn.commits == 0
+
+
+# ---- INT-2184：deleted 落 NULL 的根因收口 ----
+
+_REPAIR_TABLES = (
+    'param_profiles',
+    'param_profile_params',
+    'param_profile_mappings',
+    'api_param_bindings',
+)
+
+
+def test_repair_null_deleted_runs_after_ddl_before_deleted_false_queries(monkeypatch):
+    """存量 NULL 归 false 必须排在 DDL 之后、按 deleted=false 的查询之前。
+
+    排错后果：NULL 行不在部分唯一索引里 → ON CONFLICT 不触发 → 重复插一份
+    default 策略 / 绑定。
+    """
+    cursor, conn = _make(
+        fetchone_results=[(False,), (1,)],
+        fetchall_results=[[('asr',)]],
+    )
+    migration.apply(conn)
+
+    sqls = cursor.sqls
+    last_ddl = max(sqls.index(_norm(ddl)) for ddl in migration.DDL_FORWARD)
+    first_repair = min(sqls.index(_norm(sql))
+                       for sql in migration.REPAIR_NULL_DELETED_SQL)
+    collect = sqls.index(_norm(migration._COLLECT_TYPES_SQL))
+    first_upsert = sqls.index(_norm(migration._UPSERT_PROFILE_SQL))
+
+    assert last_ddl < first_repair
+    assert first_repair < collect < first_upsert
+
+
+def test_repair_covers_all_four_tables_with_default_and_update():
+    repair = [_norm(sql) for sql in migration.REPAIR_NULL_DELETED_SQL]
+    for table in _REPAIR_TABLES:
+        assert f'ALTER TABLE {table} ALTER COLUMN deleted SET DEFAULT false' in repair
+        assert f'UPDATE {table} SET deleted = false WHERE deleted IS NULL' in repair
+    assert len(repair) == len(_REPAIR_TABLES) * 2
+
+
+def test_inserts_write_deleted_explicitly():
+    """迁移 INSERT 显式写 deleted=false，不依赖列默认值（列默认值曾经是空的）。"""
+    upsert = _norm(migration._UPSERT_PROFILE_SQL)
+    assert 'status, deleted)' in upsert
+    assert "'online', false)" in upsert
+
+    for sql in (migration._COPY_PARAMS_SQL, migration._COPY_MAPPINGS_SQL,
+                migration._BACKFILL_APIS_SQL):
+        normalized = _norm(sql)
+        assert ', deleted)' in normalized
+        assert ', false' in normalized
+
+
+def test_models_declare_server_default_for_deleted():
+    """模型补 server_default：全新库 create_all 建表即带 DEFAULT false。"""
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.schema import CreateTable
+
+    from algorithm_service.infrastructure.persistence.models import (
+        ApiParamBinding,
+        ParamProfile,
+        ParamProfileMapping,
+        ParamProfileParam,
+    )
+
+    for model in (ParamProfile, ParamProfileParam, ParamProfileMapping,
+                  ApiParamBinding):
+        column = model.__table__.c.deleted
+        assert column.server_default is not None, model.__table__.name
+        ddl = str(CreateTable(model.__table__).compile(
+            dialect=postgresql.dialect()))
+        assert 'deleted BOOLEAN DEFAULT false' in _norm(ddl), model.__table__.name
