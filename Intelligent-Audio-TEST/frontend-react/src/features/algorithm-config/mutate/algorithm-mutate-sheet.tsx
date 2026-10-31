@@ -1,5 +1,6 @@
 /**
- * §6 算法编辑 Sheet（INT-591 编辑结构降维核心：ModelMutateDrawer 母版，sm:max-w-[900px]）。
+ * §6 算法编辑 Sheet（INT-591 编辑结构降维核心：ModelMutateDrawer 母版）。
+ * 宽度：≥sm 92vw、上限 1400px——映射表 7 列 + 大量分组时 900px 太窄。
  * 去五 Tab 顶层切换改单页滚动布局：基本信息（§6.3）→ 统一参数表 + 作用域 chips（§6.4）
  * → 高级配置折叠区默认收起（§6.5）。保存=草稿/发布双态（§6.2）：
  * - footer 左端草稿状态区三形态（「将在 {n} 秒后自动保存草稿」/「正在保存草稿…」/「上次保存 HH:mm:ss」）
@@ -235,7 +236,7 @@ export function AlgorithmMutateSheet(props: AlgorithmMutateSheetProps) {
       <Sheet open={props.open} onOpenChange={handleOpenChange}>
         <SheetContent
           side='right'
-          className='gap-0 sm:max-w-[900px]'
+          className='gap-0 sm:w-[92vw] sm:max-w-[1400px]'
         >
           <SheetHeader className='pb-3'>
             <SheetTitle>{MODE_TITLES[props.mode]}</SheetTitle>

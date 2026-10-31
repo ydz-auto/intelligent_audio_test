@@ -10,18 +10,20 @@ import {
   type PickTaskRow,
 } from '@/features/tasks/cherry-pick/components/pick-task-stage'
 
-/** 后端裸 UTC 串 → 本地「YYYY-MM-DD HH:mm」（断言不写死时区偏移；INT-2211 共享口径） */
-function expectedLocal(naiveUtc: string): string {
-  const date = new Date(`${naiveUtc.replace(' ', 'T')}Z`)
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
 const TASKS: PickTaskRow[] = [
-  { taskId: 1042, taskName: '任务A', executionStatus: 'completed', createdAt: '2026-10-18 09:00', count: 36 },
-  { taskId: 1041, taskName: '任务B', executionStatus: 'failed', createdAt: '2026-10-18 10:00', count: 24 },
-  { taskId: 1040, taskName: '任务C', executionStatus: 'stopped', createdAt: '2026-10-17 15:00', count: 12 },
+  { taskId: 1042, taskName: '任务A', executionStatus: 'completed', createdAt: '2026-10-18T09:00:00', count: 36 },
+  { taskId: 1041, taskName: '任务B', executionStatus: 'failed', createdAt: '2026-10-18T10:00:00', count: 24 },
+  { taskId: 1040, taskName: '任务C', executionStatus: 'stopped', createdAt: '2026-10-17T15:00:00', count: 12 },
 ]
+
+/** 后端裸 UTC 串 → 本地「YYYY-MM-DD HH:mm」（INT-2201 展示口径） */
+function localLabel(isoUtc: string): string {
+  const date = new Date(`${isoUtc}Z`)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate()
+  )} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
 
 function setup(selected = new Set<number>(), overrides: Partial<Parameters<typeof PickTaskStage>[0]> = {}) {
   const onToggle = vi.fn()
@@ -61,7 +63,7 @@ describe('PickTaskStage（§3.8.2 阶段 1 选择任务）', () => {
     expect(screen.getByText('执行失败')).toBeInTheDocument()
     expect(screen.getByText('已停止')).toBeInTheDocument()
     expect(screen.getByText('36 条')).toBeInTheDocument()
-    expect(screen.getByText(expectedLocal('2026-10-18 09:00'))).toBeInTheDocument()
+    expect(screen.getByText(localLabel('2026-10-18T09:00:00'))).toBeInTheDocument()
   })
 
   it('勾选任务触发 onToggle，已选计数更新', () => {

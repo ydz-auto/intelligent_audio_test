@@ -617,16 +617,6 @@ export function ApiParamConfigTab({
         </div>
       )}
 
-      {algorithmType && !persisted && (
-        <div className='bg-muted/40 rounded-lg border p-2.5 text-xs'>
-          <p className='text-foreground font-medium'>新建 API：现在就能配参数</p>
-          <p className='text-muted-foreground'>
-            字段与映射先存草稿，点底部「保存」创建 API 后立即写入（无需二次进入）。
-            策略绑定 / 另存为策略需在 API 创建后使用。
-          </p>
-        </div>
-      )}
-
       {!canEdit && (
         <p className='text-destructive text-xs'>当前账号缺少 algorithm:param_manage 权限，本页签只读。</p>
       )}

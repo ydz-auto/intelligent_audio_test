@@ -199,11 +199,16 @@ describe('评估参数映射 搜索/筛选（INT-1160 返工）', () => {
     expect(screen.queryByRole('button', { name: /字准率.*条/ })).not.toBeInTheDocument()
   })
 
-  it('评估维度徽章筛选：只保留所选维度', async () => {
+  it('评估维度筛选：分类 → 主维度 → 子维度 分组展示，选中后只保留该维度', async () => {
     const user = userEvent.setup()
     render(<Harness />)
     await isolateSection(user, '评估参数映射')
-    await user.click(screen.getByRole('button', { name: '响应延迟' }))
+    await user.click(screen.getByRole('combobox', { name: '评估维度筛选' }))
+    // 分类组头 + 主维度 + 其子维度（DimensionSelect 三级树）
+    expect(screen.getByText('基础质量')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /识别准确率/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /字准率/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('option', { name: /响应延迟/ }))
     expect(groupHeader('响应延迟')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /识别准确率.*条/ })).not.toBeInTheDocument()
   })
@@ -258,9 +263,10 @@ describe('映射判重实时值（INT-1160 返工 P2：判重读 form.getValues(
     await isolateSection(user, '评估参数映射')
     await user.click(screen.getByRole('button', { name: '平铺视图' }))
     const combos = screen.getAllByRole('combobox')
-    // 5 行 × 5 下拉；me-5（case/char/维度11）的维度下拉 = 第 5 行第 3 个 = combos[22]
+    // 工具栏「评估维度筛选」占 combos[0]；5 行 × 5 下拉；
+    // me-5（case/char/维度11）的维度下拉 = 第 5 行第 3 个 = combos[23]
     // 改为「响应延迟」（维度2）→ (case, char, 2) 与 me-3 重复 → toast
-    await user.click(combos[22])
+    await user.click(combos[23])
     await user.click(screen.getByRole('option', { name: /响应延迟/ }))
     expect(toast.warning).toHaveBeenCalledWith(expect.stringContaining('映射已存在'))
   })

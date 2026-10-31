@@ -13,6 +13,7 @@ import {
   getEvaluationStatusMeta,
   getExecutionStatusMeta,
 } from '@/features/tasks/constants'
+import { formatTaskUsedTime } from '@/features/tasks/lib/date-time'
 
 function InfoGrid({ items }: { items: Array<{ label: string; value: string | number }> }) {
   return (
@@ -65,7 +66,8 @@ export function TaskInfoCard({
             { label: '任务名称', value: detail.name },
             { label: '预计完成时间', value: formatDateTime(detail.expected_complete_time) },
             { label: '预计总时长', value: detail.expected_total_time ?? '—' },
-            { label: '已用时长', value: detail.used_time ?? '—' },
+            // INT-2201：已用时长以起止时间推算为准（后端 used_time 有「16小时」类异常值）
+            { label: '已用时长', value: formatTaskUsedTime(detail) },
             // INT-1241：资源计数按真实数据无条件展示（不再按任务类型条件显隐）
             { label: '测试API数量', value: detail.api_count ?? 0 },
             { label: '测试设备数量', value: detail.device_count ?? 0 },

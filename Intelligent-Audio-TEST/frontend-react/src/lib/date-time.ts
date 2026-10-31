@@ -81,15 +81,21 @@ export function formatElapsed(ms: number | null): string {
  * 后端时间串按裸 UTC 解析；`execution_status` 只有 running / queued 视为进行中。
  */
 export type UsedTimeSource = {
+  created_at?: string | null
   started_at: string | null
   completed_at: string | null
-  execution_status: string
+  execution_status: string | null
 }
 
 /**
  * 任务已用时长：一律以起止时间推算为准（后端 `used_time` 存在「16小时」类异常值，
  * 实测任务只跑约 1 分钟）。进行中任务按「当前 - 开始」实时推算；
  * 无有效开始时间 / 结束时点 → 「—」。
+ *
+ * INT-2210：后端 `started_at` 存在早于 `created_at` 的脏数据（真实库 173/408 条，
+ * 多为 -16h、少数 -8h），按此推算会把 12 分钟的任务显示成「16 小时」。`created_at`
+ * 与 `started_at` 都可解析且 `started_at < created_at` 时视为无有效开始时间 → 「—」。
+ * 这是展示兜底，不替代后端修复；后端回填历史数据后本守卫可按需保留或撤除。
  */
 export function formatTaskUsedTime(
   detail: UsedTimeSource,
@@ -97,6 +103,8 @@ export function formatTaskUsedTime(
 ): string {
   const start = parseApiDateTime(detail.started_at)
   if (!start) return '—'
+  const created = parseApiDateTime(detail.created_at)
+  if (created && start.getTime() < created.getTime()) return '—'
   const completed = parseApiDateTime(detail.completed_at)
   const running =
     detail.execution_status === 'running' || detail.execution_status === 'queued'

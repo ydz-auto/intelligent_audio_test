@@ -337,7 +337,7 @@ describe('降级口径', () => {
     useAlgorithmStore.setState({ algorithmId: 'voice_llm' })
     renderDialog(undefined)
     openTab('参数配置')
-    expect(await screen.findByText('新建 API：现在就能配参数')).toBeInTheDocument()
+    expect(await screen.findByLabelText('参数策略')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新增输出字段' })).toBeEnabled()
     expect(paramsMock).not.toHaveBeenCalled()
     expect(mappingsMock).not.toHaveBeenCalled()

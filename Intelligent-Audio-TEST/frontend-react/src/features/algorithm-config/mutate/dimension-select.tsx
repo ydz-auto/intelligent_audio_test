@@ -135,6 +135,11 @@ export function DimensionSelect(props: {
   clearLabel?: string
   /** 触发器前缀标签（筛选 chip 形态：如「评估维度」+ 当前值） */
   triggerLabel?: string
+  /**
+   * 字典外的附加选项（筛选场景：已删除维度存量行 / 「未指定维度」）。
+   * 排在「全部」后、分类节前，不参与分类分组。
+   */
+  extraOptions?: ReadonlyArray<{ value: string; label: string }>
 }) {
   const {
     dimensions,
@@ -146,6 +151,7 @@ export function DimensionSelect(props: {
     ariaLabel = '评估维度',
     clearLabel,
     triggerLabel,
+    extraOptions = [],
   } = props
   // valueOf 是 Object.prototype 的继承属性：调用方缺省该 prop 时解构仍会拿到原生
   // valueOf（而非 undefined），参数默认值因此不生效（JS 解构坑）。用 hasOwnProperty
@@ -161,6 +167,7 @@ export function DimensionSelect(props: {
     [dimensions, categories]
   )
   const selected = dimensions.find((d) => valueOf(d) === value)
+  const selectedExtra = extraOptions.find((option) => option.value === value)
 
   return (
     <Select value={value} onValueChange={(next) => onValueChange(next ?? '')}>
@@ -173,9 +180,11 @@ export function DimensionSelect(props: {
             ? selected.parentDimensionId
               ? `└ ${selected.name}`
               : selected.name
-            : value !== ''
-              ? `维度(${value})`
-              : placeholder}
+            : selectedExtra
+              ? selectedExtra.label
+              : value !== ''
+                ? `维度(${value})`
+                : placeholder}
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
@@ -186,6 +195,11 @@ export function DimensionSelect(props: {
             </span>
           </SelectItem>
         )}
+        {extraOptions.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            <span className='text-muted-foreground'>{option.label}</span>
+          </SelectItem>
+        ))}
         {sections.length === 0 ? (
           <p className='text-muted-foreground px-3 py-4 text-center text-sm'>暂无可用维度</p>
         ) : (

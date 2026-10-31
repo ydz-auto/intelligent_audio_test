@@ -115,30 +115,31 @@ function toMappingWriteBody(
 }
 
 /**
- * 该算法下与设备相关的映射行（算法级打底 + 本设备覆盖）。
+ * 设备映射所属缓存桶（对齐后端 `_serialize_mappings` 的分桶规则）：
+ * - `case`：无目标维度的用例参数 → 设备参数映射；
+ * - `evaluation`：带目标维度的评估映射（设备输出 → 评估参数在此桶）。
+ */
+export type DeviceMappingBucket = 'case' | 'evaluation'
+
+/**
+ * 该算法下某桶的映射行（算法级打底 + 本设备覆盖）。
  *
  * 后端 `GetParamMappingForComponent(device_id=Y)` 按设备作用域解析覆盖；
- * 行带 `device_id`（null = 算法级默认）。`source_type=evaluation` 拿全桶后按
- * 设备组件语义过滤：设备输出映射 + 用例参数 → 设备输入的映射。
+ * 行带 `device_id`（null = 算法级默认），调用方按 `source` 再分流到具体分节。
  */
 export async function fetchDeviceScopeMappings(
   algorithmType: string,
-  deviceId: number
+  deviceId: number,
+  bucket: DeviceMappingBucket = 'evaluation'
 ): Promise<ParamMapping[]> {
   const payload = await apiClient.get<unknown>('/algorithm/mappings', {
     params: {
       algorithm_type: algorithmType,
-      source_type: 'evaluation',
+      source_type: bucket,
       device_id: deviceId,
     },
   })
-  return rowsFromPayload(payload)
-    .map(toParamMapping)
-    .filter(
-      (row) =>
-        row.source === 'device' ||
-        (row.source === 'case' && row.sourceDirection === 'input')
-    )
+  return rowsFromPayload(payload).map(toParamMapping)
 }
 
 /** 新增设备映射（带 device_id，仅对本设备生效） */
@@ -159,4 +160,60 @@ export async function updateDeviceScopeMapping(
 /** 软删除设备映射（删除即回落到算法级映射） */
 export async function deleteDeviceScopeMapping(mappingId: number): Promise<void> {
   await apiClient.delete(`/algorithm/mappings/${mappingId}`)
+}
+
+/* ───────────────── 设备映射视图的参数选项数据源 ───────────────── */
+
+/** 用例参数（源）：`scope` 供分组视图归组（通用/真机/HTTP API/Realtime WS） */
+export interface DeviceMappingCaseParam {
+  paramCode: string
+  paramName: string | null
+  scope: string | null
+}
+
+function pickStr(record: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'string' && value !== '') return value
+  }
+  return null
+}
+
+/** 算法类型下的用例参数（`GET /algorithm/case-params`；分组键 scope 同后端 CaseParamScope） */
+export async function fetchDeviceMappingCaseParams(
+  algorithmType: string
+): Promise<DeviceMappingCaseParam[]> {
+  const payload = await apiClient.get<unknown>('/algorithm/case-params', {
+    params: { algorithm_type: algorithmType },
+  })
+  return rowsFromPayload(payload)
+    .map((raw) => {
+      const record =
+        typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {}
+      return {
+        paramCode: pickStr(record, 'param_code', 'code') ?? '',
+        paramName: pickStr(record, 'param_name', 'name'),
+        scope: pickStr(record, 'scope'),
+      }
+    })
+    .filter((param) => param.paramCode)
+}
+
+/** 算法参考参数（`GET /algorithm/reference-params`；设备映射源参数可选用例/参考） */
+export async function fetchDeviceMappingReferenceParams(
+  algorithmType: string
+): Promise<Array<{ code: string; name: string | null }>> {
+  const payload = await apiClient.get<unknown>('/algorithm/reference-params', {
+    params: { algorithm_type: algorithmType },
+  })
+  return rowsFromPayload(payload)
+    .map((raw) => {
+      const record =
+        typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {}
+      return {
+        code: pickStr(record, 'code') ?? '',
+        name: pickStr(record, 'name'),
+      }
+    })
+    .filter((param) => param.code)
 }
