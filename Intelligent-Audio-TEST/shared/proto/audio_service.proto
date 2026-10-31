@@ -80,6 +80,8 @@ service AudioConfigService {
   rpc MergeChunks(MergeChunksRequest) returns (AudioConfigResponse);
   rpc GetUploadProgress(GetUploadProgressRequest) returns (AudioConfigResponse);
   rpc UrlImport(UrlImportRequest) returns (AudioConfigResponse);
+  // 按字节登记音频（INT-2216：用例包导入回导，md5 幂等；同 md5 复用既有 id）
+  rpc RegisterAudioByBytes(RegisterAudioByBytesRequest) returns (AudioConfigResponse);
   rpc ConvertAudio(ConvertAudioRequest) returns (AudioConfigResponse);
   rpc PreviewAudio(PreviewAudioRequest) returns (AudioConfigResponse);
   rpc StopPreviewAudio(StopPreviewAudioRequest) returns (AudioConfigResponse);
@@ -382,6 +384,11 @@ message GetUploadProgressRequest {
 
 message UrlImportRequest {
   string data = 1;  // JSON: URL 导入参数
+}
+
+// INT-2216：用例 ZIP 导入回导音频——按字节登记一条音频（md5 幂等）
+message RegisterAudioByBytesRequest {
+  string data = 1;  // JSON: {name, format, size?, md5, content_b64, audio_type?, source_filename?}
 }
 
 message ConvertAudioRequest {

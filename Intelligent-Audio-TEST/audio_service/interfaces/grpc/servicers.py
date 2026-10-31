@@ -640,6 +640,20 @@ class AudioConfigServiceServicer(e2e_grpc.AudioConfigServiceServicer):
         except Exception as e:
             return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
 
+    def RegisterAudioByBytes(self, request, context=None):
+        """按字节登记音频（INT-2216：用例 ZIP 导入回导，md5 幂等）。
+
+        data JSON: {name, format, size?, md5, content_b64, audio_type?, source_filename?}
+        """
+        try:
+            data = _loads(request.data, {})
+            from audio_service.application.commands import RegisterAudioByBytesCommand
+            result = self.upload_handler.handle_register_audio_by_bytes(
+                RegisterAudioByBytesCommand(data=data))
+            return self._wrap(result)
+        except Exception as e:
+            return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
+
     # ---------- 转换/预览操作 ----------
 
     def ConvertAudio(self, request, context=None):

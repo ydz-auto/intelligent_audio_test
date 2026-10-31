@@ -205,3 +205,56 @@
    - 响应：`{audio_id, operation, mode, format: 'wav', file_path, duration, size[, new_audio_id]}`。
    - DSP：降噪 = STFT 谱门降噪（软增益掩码 + 响度保持）；增益 = 线性增益 + 削波保护；剪辑 = pydub 切片。
 
+### 1.14 按字节登记音频（RegisterAudioByBytes，gRPC 内部命令，INT-2216）
+（INT-2215 用例 ZIP 导入回导音频的第二张卡；契约来自 INT-2205 审计「导入侧裁定」，2026-10-31）
+
+**用途**：用例包只带音频二进制 + manifest（name/format/size/md5，见 INT-2214 导出），目标库没有对应音频时按字节登记一条 `audios` 记录；**同 md5 幂等复用**，保证跨库导入重复执行不产生重复音频、不按 `audio_id` 错绑。本命令不对外暴露 HTTP，只经 audio_service gRPC 供 api_gateway 用例导入服务调用。
+
+**接口签名**：`rpc RegisterAudioByBytes(RegisterAudioByBytesRequest) returns (AudioConfigResponse);`
+
+- 请求：`RegisterAudioByBytesRequest { string data = 1; }`，`data` 为 JSON 字符串（与 `UploadChunk` 同法，二进制走 base64）。
+- 响应：既有 `AudioConfigResponse { success, message, data }`；`data` 为 JSON 字符串。proto 无 `code` 字段，成功/失败的 200/400 语义随 `data.code` 回传。
+
+**请求字段（data JSON）**
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `name` | string | 是 | 音频显示名（`audios.name`）；同 md5 复用时**不会**改名 |
+| `md5` | string | 是 | 源字节 md5（32 位十六进制，大小写不敏感）；必须与实际字节一致 |
+| `content_b64` | string | 是 | 源字节 base64；空串表示 0 字节内容（会被拒） |
+| `format` | string | 否 | 源格式，缺省 `wav`（落库 `audios.format`） |
+| `size` | int | 否 | 源字节数，仅作调用方自检参照；落库 `audios.size` 取存储对象真实大小 |
+| `audio_type` | string | 否 | 音频类型，缺省 `dry` |
+| `source_filename` | string | 否 | 原始文件名（存储 key 用的 stem），缺省用 `name` |
+
+**响应字段（成功时 `data`）**
+
+`{id, name, original_filename, format, size, md5, duration, sample_rate, channels, bitrate, audio_type, file_path, visibility, created_by_user_id, reused, code}`
+
+- `reused`：`true` = 命中既有同 md5 记录（未新建、未改名）；`false` = 本次新建。
+- `code`：成功恒 `200`。
+- `duration` 为**真实探测值**（pydub 解码，秒）；`size` 为存储对象字节数；`visibility` 默认 `shared`；`created_by_user_id` 取调用方 gRPC metadata `x-user-id`（未透传时为空）。
+
+**失败分类（四类分开，`success=false` + `data.code` / `data.reason` + `message`，均不落库）**
+
+| 场景 | `data.code` | `data.reason` | 说明 |
+|---|---|---|---|
+| 缺 `name` / `md5` / `content_b64` | 400 | `missing_name` / `missing_md5` / `missing_content` | 参数缺失 |
+| `content_b64` 非法 | 400 | `invalid_base64` | 不是合法 base64 |
+| 内容为空（0 字节） | 400 | `empty_content` | INT-2202 口径 |
+| 非音频（无法解码 / 时长 ≤ 0，含纯文本伪装 `.wav`） | 400 | `invalid_audio_content` | INT-2202 口径 |
+| `md5` 与实际字节不一致 | 400 | `md5_mismatch` | **防错绑**：直接拒绝，不以实算 md5 静默改写 |
+| 入库失败（DB 异常） | 500 | `persist_failed` | 已回滚 |
+
+**幂等与落库语义**
+
+1. **去重维度只认 md5**：先 `repo.get_audio_by_md5(md5)`（未软删记录）；命中直接返回既有 `id`（`reused=true`），不新建、不改名、不写标注/标签。
+2. 同名不同 md5：允许新建（名称不是去重键）。
+3. 落库复用既有上传链 `AudioTranscodingService.transcode_and_extract_metadata`：写临时文件 → 落存储 → 真实探测 `duration/sample_rate/channels/bitrate` → `repo.create_audio` + commit。`audios.duration` 为 NOT NULL，不在此处重算。
+4. **合法 wav 不重编码**：存储对象字节与入参字节一致（`size`、`md5` 与入参一致，存储对象 md5 = `audios.md5`），保证「导入 → 导出（INT-2214）→ 再导入」往复中 md5 幂等键稳定。非 wav 输入按既有链转码为 wav 落存储。
+5. 不迁移标注 / 标签 / 播放历史（用例包只带音频二进制）。
+6. 登记成功后按既有口径刷新首页统计缓存（与 URL 导入一致，失败不影响登记结果）。
+
+**调用方顺序（api_gateway 用例导入服务）**：先用 `GetAudioByMD5`（`{md5_list: [...]}` → `{md5: {id, name}}`）查目标库 → 命中直接复用 `id`；未命中再对包内文件调用本命令，取 `data.id` 做 config 的 audio_id 重映射。**传入的 `md5` 必须按包内文件实际字节计算**（不能取源库 `audios.md5` 回填），否则命中 `md5_mismatch` 被拒。
+
+

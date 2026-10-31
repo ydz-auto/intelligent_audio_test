@@ -19,6 +19,7 @@ from audio_service.application.commands.audio_upload_commands import (
     MergeChunksCommand,
     GetUploadProgressQuery,
     UrlImportCommand,
+    RegisterAudioByBytesCommand,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,3 +67,8 @@ class AudioUploadHandler:
 
     def handle_url_import(self, cmd: UrlImportCommand) -> Dict[str, Any]:
         return self.upload_service.url_import(cmd.data)
+
+    def handle_register_audio_by_bytes(
+            self, cmd: RegisterAudioByBytesCommand) -> Dict[str, Any]:
+        """按字节登记音频（INT-2216：用例 ZIP 导入回导，md5 幂等）"""
+        return self.upload_service.register_audio_by_bytes(cmd.data)

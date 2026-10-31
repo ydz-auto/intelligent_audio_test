@@ -980,6 +980,11 @@ class AudioConfigServiceStub:
                 request_serializer=audio__service__pb2.UrlImportRequest.SerializeToString,
                 response_deserializer=audio__service__pb2.AudioConfigResponse.FromString,
                 _registered_method=True)
+        self.RegisterAudioByBytes = channel.unary_unary(
+                '/audio_service.AudioConfigService/RegisterAudioByBytes',
+                request_serializer=audio__service__pb2.RegisterAudioByBytesRequest.SerializeToString,
+                response_deserializer=audio__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
         self.ConvertAudio = channel.unary_unary(
                 '/audio_service.AudioConfigService/ConvertAudio',
                 request_serializer=audio__service__pb2.ConvertAudioRequest.SerializeToString,
@@ -1183,6 +1188,13 @@ class AudioConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RegisterAudioByBytes(self, request, context):
+        """按字节登记音频（INT-2216：用例包导入回导，md5 幂等；同 md5 复用既有 id）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ConvertAudio(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -1366,6 +1378,11 @@ def add_AudioConfigServiceServicer_to_server(servicer, server):
             'UrlImport': grpc.unary_unary_rpc_method_handler(
                     servicer.UrlImport,
                     request_deserializer=audio__service__pb2.UrlImportRequest.FromString,
+                    response_serializer=audio__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'RegisterAudioByBytes': grpc.unary_unary_rpc_method_handler(
+                    servicer.RegisterAudioByBytes,
+                    request_deserializer=audio__service__pb2.RegisterAudioByBytesRequest.FromString,
                     response_serializer=audio__service__pb2.AudioConfigResponse.SerializeToString,
             ),
             'ConvertAudio': grpc.unary_unary_rpc_method_handler(
@@ -2111,6 +2128,33 @@ class AudioConfigService:
             target,
             '/audio_service.AudioConfigService/UrlImport',
             audio__service__pb2.UrlImportRequest.SerializeToString,
+            audio__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RegisterAudioByBytes(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/audio_service.AudioConfigService/RegisterAudioByBytes',
+            audio__service__pb2.RegisterAudioByBytesRequest.SerializeToString,
             audio__service__pb2.AudioConfigResponse.FromString,
             options,
             channel_credentials,

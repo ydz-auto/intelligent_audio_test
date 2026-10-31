@@ -50,3 +50,9 @@ class GetUploadProgressQuery:
 @dataclass(frozen=True)
 class UrlImportCommand:
     data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RegisterAudioByBytesCommand:
+    """按字节登记音频（INT-2216：用例 ZIP 导入回导，md5 幂等）"""
+    data: Dict[str, Any] = field(default_factory=dict)

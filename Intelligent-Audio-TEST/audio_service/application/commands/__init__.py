@@ -29,6 +29,7 @@ from audio_service.application.commands.audio_upload_commands import (
     MergeChunksCommand,
     GetUploadProgressQuery as GetUploadProgressCommand,
     UrlImportCommand,
+    RegisterAudioByBytesCommand,
 )
 
 __all__ = [
@@ -56,4 +57,5 @@ __all__ = [
     "MergeChunksCommand",
     "GetUploadProgressCommand",
     "UrlImportCommand",
+    "RegisterAudioByBytesCommand",
 ]

@@ -11,6 +11,7 @@
 - task_mixin.py：AudioUploadTaskMixin — 上传任务初始化/文件注册/分片上传/进度查询
 - merge_mixin.py：AudioMergeMixin — 分片合并/秒传处理/音频记录/测试用例创建
 - url_import_mixin.py：AudioUrlImportMixin — URL 远程导入
+- register_by_bytes_mixin.py：AudioRegisterByBytesMixin — 按字节登记音频（md5 幂等，INT-2216）
 
 重构后仅保留上传流程编排，具体子能力委托给：
 - transcoding_service: 转码/OSS/文件路径/分片合并
@@ -35,6 +36,9 @@ from audio_service.application.services.audio_upload.direct_mixin import AudioDi
 from audio_service.application.services.audio_upload.task_mixin import AudioUploadTaskMixin
 from audio_service.application.services.audio_upload.merge_mixin import AudioMergeMixin
 from audio_service.application.services.audio_upload.url_import_mixin import AudioUrlImportMixin
+from audio_service.application.services.audio_upload.register_by_bytes_mixin import (
+    AudioRegisterByBytesMixin,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +49,7 @@ class AudioUploadService(
     AudioUploadTaskMixin,
     AudioMergeMixin,
     AudioUrlImportMixin,
+    AudioRegisterByBytesMixin,
 ):
     """音频上传应用服务（编排器，组合各职责 Mixin）。
 
