@@ -587,20 +587,41 @@ def _upsert_params(conn, dim_id, dim_def):
 
 
 def _upsert_relation(conn, dim_id):
-    """注册 voice_llm → 维度关联（幂等）。"""
-    existing = conn.execute(text(
-        "SELECT id, deleted FROM algorithm_dimension_relations "
-        "WHERE algorithm_type = 'voice_llm' AND dimension_id = :did"
+    """注册 voice_llm → 维度关联（幂等）。
+
+    INT-2292：`uq_algorithm_dimension` 是 `WHERE deleted = false` 的部分唯一索引，
+    选行不能「取任意一条软删行复活」——同键堆积多行软删历史时，取到最早那行复活
+    会与当前生效行撞唯一索引，引导链整条 db_bootstrap 失败。按唯一键
+    (algorithm_type, dimension_id) 全量判：
+      1. 有生效行 → 直接复用，不复活任何软删行；
+      2. 无生效行 → 复活 id 最新的一条（同键其余软删行保持软删态）；
+      3. 复活前先把同键残留的生效行显式置软删（历史脏数据兜底，防撞索引）。
+    """
+    active = conn.execute(text(
+        "SELECT id FROM algorithm_dimension_relations "
+        "WHERE algorithm_type = 'voice_llm' AND dimension_id = :did "
+        "AND deleted = FALSE ORDER BY id DESC LIMIT 1"
     ), {'did': dim_id}).fetchone()
-    if existing:
-        if existing[1]:
-            conn.execute(text(
-                "UPDATE algorithm_dimension_relations SET deleted = FALSE, updated_at = NOW() "
-                "WHERE id = :id"
-            ), {'id': existing[0]})
-            print(f"  ~ 关联 voice_llm → dim {dim_id} 已软删，重新激活")
-        else:
-            print(f"  - 关联 voice_llm → dim {dim_id} 已存在，跳过")
+    if active:
+        print(f"  - 关联 voice_llm → dim {dim_id} 已存在，跳过")
+        return
+
+    revive = conn.execute(text(
+        "SELECT id FROM algorithm_dimension_relations "
+        "WHERE algorithm_type = 'voice_llm' AND dimension_id = :did "
+        "AND deleted = TRUE ORDER BY id DESC LIMIT 1"
+    ), {'did': dim_id}).fetchone()
+    if revive:
+        conn.execute(text(
+            "UPDATE algorithm_dimension_relations SET deleted = TRUE, updated_at = NOW() "
+            "WHERE algorithm_type = 'voice_llm' AND dimension_id = :did "
+            "AND deleted = FALSE AND id <> :id"
+        ), {'did': dim_id, 'id': revive[0]})
+        conn.execute(text(
+            "UPDATE algorithm_dimension_relations SET deleted = FALSE, updated_at = NOW() "
+            "WHERE id = :id"
+        ), {'id': revive[0]})
+        print(f"  ~ 关联 voice_llm → dim {dim_id} 已软删，重新激活 (id={revive[0]})")
     else:
         conn.execute(text(
             "INSERT INTO algorithm_dimension_relations "
