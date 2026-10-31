@@ -78,6 +78,74 @@ describe('evaluation.dto toDimension（llm_judge_config 读侧）', () => {
   })
 })
 
+describe('evaluation.dto api_settings / api_endpoints 归一（INT-2248）', () => {
+  it('body_template → bodyTemplate（后端/运行时只认 snake 键，表单只认 camel）', () => {
+    const dimension = toDimension(
+      dto({
+        api_settings: {
+          method: 'POST',
+          timeout: 30000,
+          body_template: { rounds: [{ answer: '{{answer}}' }], model: '{{model}}' },
+        },
+      })
+    )
+    expect(dimension.apiSettings).toEqual({
+      method: 'POST',
+      timeout: 30000,
+      bodyTemplate: { rounds: [{ answer: '{{answer}}' }], model: '{{model}}' },
+    })
+  })
+
+  it('api_endpoints 的 snake 键归一为 camel，未知端点字段原样保留', () => {
+    const dimension = toDimension(
+      dto({
+        api_endpoints: [
+          {
+            url: 'https://api.example.com/eval',
+            name: '主端点',
+            priority: 1,
+            max_process: 2,
+            max_timeout: 30,
+            max_audio_duration: 60,
+            status: 'online',
+            health_score: 99,
+          },
+        ],
+      })
+    )
+    expect(dimension.apiEndpoints).toEqual([
+      {
+        url: 'https://api.example.com/eval',
+        name: '主端点',
+        priority: 1,
+        maxProcess: 2,
+        maxTimeout: 30,
+        maxAudioDuration: 60,
+        status: 'online',
+        health_score: 99,
+      },
+    ])
+  })
+
+  it('端点只有 endpoint 别名时回填为 url（与后端 get_endpoint_url 同口径）', () => {
+    const dimension = toDimension(
+      dto({ api_endpoints: [{ endpoint: 'https://api.example.com/alias', max_process: 2 }] })
+    )
+    expect(dimension.apiEndpoints?.[0].url).toBe('https://api.example.com/alias')
+    expect(dimension.apiEndpoints?.[0].maxProcess).toBe(2)
+  })
+
+  it('api_settings 为 JSON 字符串（历史数据）时也能解析回 bodyTemplate', () => {
+    const dimension = toDimension(
+      dto({ api_settings: JSON.stringify({ method: 'POST', body_template: { rounds: [] } }) })
+    )
+    expect(dimension.apiSettings).toEqual({
+      method: 'POST',
+      bodyTemplate: { rounds: [] },
+    })
+  })
+})
+
 describe('evaluation.dto requires_audio → requiresAudio（INT-1843）', () => {
   it('列表端点下发 requires_audio 时映射为 requiresAudio', () => {
     expect(toDimension(dto({ requires_audio: true })).requiresAudio).toBe(true)

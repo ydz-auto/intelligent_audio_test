@@ -280,6 +280,22 @@ function parseRuleObject(rule: Dimension['rule']): RuleExtra {
   return typeof rule === 'object' ? { ...rule } : {}
 }
 
+/**
+ * required_inputs → 所需输入编辑器行（反填与「是否改动」比对共用同一映射，INT-2248）。
+ * INT-1690：显示标签只有 paramName 一个口径；旧数据 param_name 缺失时仍可用 label 兜底回显。
+ */
+function toRequiredInputRows(dimension: Dimension): RequiredInputRow[] {
+  return (dimension.requiredInputs ?? []).map((ri) => ({
+    paramCode: ri.paramCode ?? '',
+    paramName: ri.paramName || ri.label || '',
+    fieldType: ri.fieldType ?? 'text',
+    required: ri.required === undefined ? true : !!ri.required,
+    defaultValue: formDefaultValue(ri.defaultValue),
+    helpText: ri.helpText ?? '',
+    uiOrder: ri.uiOrder ?? 0,
+  }))
+}
+
 /** 编辑态 Dimension → 表单值（反填） */
 export function toDimensionFormValues(dimension: Dimension): DimensionFormValues {
   // INT-1732：rule 是后端不透明 JSON（可能是对象，历史数据也可能是 JSON 字符串）。
@@ -294,15 +310,7 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
     }))
   // 子编辑器反填（P3-2）：缺省（null/空）时回退默认行，保证编辑态可继续编辑
   // INT-1690：显示标签只有 paramName 一个口径；旧数据 param_name 缺失时仍可用 label 兜底回显
-  const requiredInputs = (dimension.requiredInputs ?? []).map((ri) => ({
-    paramCode: ri.paramCode ?? '',
-    paramName: ri.paramName || ri.label || '',
-    fieldType: ri.fieldType ?? 'text',
-    required: ri.required === undefined ? true : !!ri.required,
-    defaultValue: formDefaultValue(ri.defaultValue),
-    helpText: ri.helpText ?? '',
-    uiOrder: ri.uiOrder ?? 0,
-  }))
+  const requiredInputs = toRequiredInputRows(dimension)
   const outputFields = (dimension.outputFields ?? []).map((of) => ({
     paramCode: of.paramCode ?? '',
     paramName: of.paramName || of.label || '',
@@ -357,17 +365,15 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
     associatedAlgorithms: (dimension.associatedAlgorithms ?? []).map(
       (a) => a.algorithmType
     ),
-    requiredInputs:
-      requiredInputs.length > 0
-        ? requiredInputs
-        : emptyDimensionFormValues().requiredInputs,
+    // INT-2248：空就空着（不再兜底 ASR 两行——否则没有输入字段的维度编辑保存后
+    // 会凭空写入 asr_result/asr_ref 的输入契约与 ParamMapping）
+    requiredInputs,
     // INT-1816 P3-1：空就空着（不兜底默认输出字段——否则没有输出字段的维度会凭空
     // 出现示例 score 行，保存即落库）
     outputFields,
-    apiEndpoints:
-      apiEndpoints.length > 0
-        ? apiEndpoints
-        : emptyDimensionFormValues().apiEndpoints,
+    // INT-2248：空就空着（不兜底默认端点行——否则没有端点的维度编辑保存后会凭空
+    // 落一条空 URL 端点）
+    apiEndpoints,
   }
 }
 
@@ -405,15 +411,53 @@ function toApiHeaders(settings: Dimension['apiSettings']): string {
   return ''
 }
 
+/**
+ * api_settings.bodyTemplate 反填文本（INT-2248）。
+ * 读侧 DTO 已把 body_template 归一为 bodyTemplate；历史数据可能把它存成 JSON 字符串，
+ * 先解析再美化，解析不了就按原文展示（不吞用户内容）。
+ */
 function toApiBodyTemplate(settings: Dimension['apiSettings']): string {
-  if (settings && typeof settings === 'object' && settings.bodyTemplate != null)
-    return JSON.stringify(settings.bodyTemplate, null, 2)
-  return ''
+  if (!settings || typeof settings !== 'object' || settings.bodyTemplate == null) return ''
+  const bodyTemplate = settings.bodyTemplate
+  if (typeof bodyTemplate === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(bodyTemplate), null, 2)
+    } catch {
+      return bodyTemplate
+    }
+  }
+  return JSON.stringify(bodyTemplate, null, 2)
 }
 
-/** 表单值 → 保存载荷（收敛为 Partial<Dimension>） */
-export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimension> {
+/**
+ * 表单值 → 保存载荷（收敛为 Partial<Dimension>）。
+ * 编辑态须传 `source`（反填所用的 Dimension）：api_settings / api_endpoints 按
+ * 「原对象展开 + 变更覆盖」合并，保留表单未编辑的未知键（body_template 之外的设置、
+ * 端点的 status/health_score/description 等），避免编辑保存把未展示字段抹掉（INT-2248）。
+ */
+export function toDimensionSaveInput(
+  values: DimensionFormValues,
+  source?: Dimension | null
+): Partial<Dimension> {
   const isSub = values.dimensionType === 'sub'
+  // 端点按行序与源端点一一对齐（表单不提供重排，行序即后端列表序）
+  const sourceEndpoints = Array.isArray(source?.apiEndpoints) ? source.apiEndpoints : []
+  const sourceSettings =
+    source?.apiSettings && typeof source.apiSettings === 'object'
+      ? source.apiSettings
+      : undefined
+  // 所需输入是否改动：与反填行做同映射后逐项比较（rows 只含原始类型，序列化比较即可）。
+  // 关联算法变了也要回传：后端 _sync_param_mappings 会用 payload 里的输入参数按新算法
+  // 重建映射（payload 无 required_inputs 时该步直接 return）。
+  const algorithmsChanged =
+    source == null ||
+    JSON.stringify(values.associatedAlgorithms) !==
+      JSON.stringify((source.associatedAlgorithms ?? []).map((a) => a.algorithmType))
+  const requiredInputsChanged =
+    algorithmsChanged ||
+    source == null ||
+    JSON.stringify(values.requiredInputs) !==
+      JSON.stringify(toRequiredInputRows(source))
   return {
     name: values.name,
     description: values.description || null,
@@ -447,7 +491,11 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
     // P3-2：所需输入/输出字段/API 端点随保存载荷提交（子维度继承父维度，不携带）
     // INT-1690：param_name / label 同取可见的 paramName —— 旧隐藏 label 会把编辑掉的
     // 「输入显示标签」用旧值覆盖，后端又按 param_name 优先，导致编辑不落库。
-    requiredInputs: isSub
+    // INT-2248：所需输入未改动（且关联算法未变）时不回传——后端 _sync_update_body_template
+    // 只要收到 required_inputs 就会把 body_template 里没有的 param_code 以扁平平铺补到顶层，
+    // rounds 这类嵌套模板会被污染（rounds 结构保留但多出顶层占位符）。不改动就不触发，
+    // 落库结果与「原样保持」一致；真正改了输入或算法仍照常回传，由后端同步参数/映射/模板。
+    requiredInputs: isSub || !requiredInputsChanged
       ? undefined
       : values.requiredInputs.map((ri) => ({
           paramCode: ri.paramCode,
@@ -480,7 +528,8 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
         })),
     apiEndpoints: isSub
       ? undefined
-      : values.apiEndpoints.map((ep) => ({
+      : values.apiEndpoints.map((ep, index) => ({
+          ...sourceEndpoints[index],
           url: ep.url,
           name: ep.name,
           priority: ep.priority,
@@ -492,6 +541,7 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
     apiSettings: isSub
       ? undefined
       : {
+          ...sourceSettings,
           method: values.apiMethod,
           timeout: values.apiTimeout,
           headers: values.apiHeaders

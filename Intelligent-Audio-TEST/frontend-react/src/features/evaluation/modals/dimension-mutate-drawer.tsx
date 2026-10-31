@@ -209,9 +209,14 @@ export function DimensionMutateDrawer({
     try {
       // 编辑态必须携带 id：saveEvaluationDimension 凭 input.id 走 PUT /{id}，
       // 缺 id 会落入 POST 新建同名副本（INT-948）。复制路径不经本抽屉（onDuplicate 显式 copy- 前缀）。
+      // 编辑态把反填用的维度一并传入：api_settings / api_endpoints 按「原对象展开 +
+      // 变更覆盖」保存，保住表单未编辑的未知键（INT-2248）
       await save.mutateAsync(
         mode === 'edit' && effectiveDimension
-          ? { ...toDimensionSaveInput(values), id: effectiveDimension.id }
+          ? {
+              ...toDimensionSaveInput(values, effectiveDimension),
+              id: effectiveDimension.id,
+            }
           : toDimensionSaveInput(values)
       )
       toast.success(

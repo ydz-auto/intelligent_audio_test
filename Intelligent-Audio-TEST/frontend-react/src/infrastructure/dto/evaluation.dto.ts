@@ -7,6 +7,7 @@
  */
 import type {
   Dimension,
+  DimensionApiEndpoint,
   DimensionApiSettings,
   DimensionHealthCheckData,
   DimensionOutputField,
@@ -36,6 +37,22 @@ export interface CategoryListDataDto {
   pages: number
 }
 
+/**
+ * api_endpoints wire 项（snake_case；INT-2248）。
+ * 后端 evaluation_service/domain/services/endpoint_helpers.py 双键兼容读
+ * url/endpoint 与 max_process/maxProcess；历史数据两种都出现过。
+ */
+export interface DimensionApiEndpointDto {
+  url?: string | null
+  endpoint?: string | null
+  name?: string | null
+  priority?: number | null
+  max_process?: number | null
+  max_timeout?: number | null
+  max_audio_duration?: number | null
+  [key: string]: unknown
+}
+
 /** GET /evaluation/dimensions 列表项（evaluation.py DimensionItem；rule/api_endpoints 等宽松结构原样透传） */
 export interface DimensionItemDto {
   id: number
@@ -47,8 +64,8 @@ export interface DimensionItemDto {
   task_type_code: string | null
   category_id: number | null
   api_url: string | null
-  api_endpoints: Dimension['apiEndpoints'] | null
-  api_settings: DimensionApiSettings | null
+  api_endpoints: DimensionApiEndpointDto[] | string | null
+  api_settings: Record<string, unknown> | string | null
   api_status: string | null
   score_unit: string | null
   type: string | null
@@ -240,6 +257,89 @@ function toDimensionOutputFields(value: unknown): DimensionOutputField[] | null 
   })
 }
 
+/**
+ * api_settings 归一（snake_case wire → camelCase domain；INT-2248）。
+ * 后端/运行时只认 body_template（_dimension_params_mixin.py、endpoint_worker.py），
+ * 此前读侧原样透传，表单按 bodyTemplate 取值恒空 → 打开编辑模板框为空、保存即丢模板。
+ * 除 body_template 外的键（timeout/headers/method 及未知扩展）原样保留，保存时带回。
+ */
+function toDimensionApiSettings(
+  value: unknown
+): DimensionApiSettings | undefined {
+  const record = toRecord(value)
+  if (!record) return undefined
+  const {
+    body_template: snakeBodyTemplate,
+    bodyTemplate: camelBodyTemplate,
+    ...rest
+  } = record
+  const settings: DimensionApiSettings = { ...rest }
+  const bodyTemplate = snakeBodyTemplate ?? camelBodyTemplate
+  if (bodyTemplate !== undefined) settings.bodyTemplate = bodyTemplate
+  return settings
+}
+
+/**
+ * api_endpoints 归一（snake_case wire → camelCase domain；INT-2248）。
+ * 后端双键兼容 url/endpoint（endpoint_helpers.get_endpoint_url 取 url or endpoint）
+ * 与 max_process/maxProcess；此前读侧原样透传，表单 `ep.maxProcess ?? 5` 恒取 5，
+ * 保存即把基线并发上限改成 5、并丢掉 status/health_score/description 等未编辑字段。
+ */
+function toDimensionApiEndpoints(value: unknown): DimensionApiEndpoint[] | undefined {
+  const list = toNestedList(value)
+  if (!list) return undefined
+  return list.map((item) => {
+    const {
+      url,
+      endpoint,
+      name,
+      priority,
+      max_process: snakeMaxProcess,
+      maxProcess: camelMaxProcess,
+      max_timeout: snakeMaxTimeout,
+      maxTimeout: camelMaxTimeout,
+      max_audio_duration: snakeMaxAudioDuration,
+      maxAudioDuration: camelMaxAudioDuration,
+      ...rest
+    } = item
+    return {
+      ...rest,
+      // 与后端 `url or endpoint` 同口径：url 为空串时退回 endpoint 别名
+      url: toText(url) || toText(endpoint),
+      name: toText(name),
+      priority: toNumber(priority, 1),
+      maxProcess: toNumber(snakeMaxProcess ?? camelMaxProcess, 5),
+      maxTimeout: toNumber(snakeMaxTimeout ?? camelMaxTimeout, 30),
+      maxAudioDuration: toNumber(snakeMaxAudioDuration ?? camelMaxAudioDuration, 60),
+    }
+  })
+}
+
+/** 宽松对象读取：对象原样；JSON 字符串解析；其余 undefined */
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function toText(value: unknown): string {
+  return value == null ? '' : String(value)
+}
+
+function toNumber(value: unknown, fallback: number): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : fallback
+}
+
 /** CategoryItemDto → EvaluationCategory */
 export function toEvaluationCategory(dto: CategoryItemDto): EvaluationCategory {
   return {
@@ -283,7 +383,7 @@ function toLlmJudgeConfig(
   }
 }
 
-/** DimensionItemDto → Dimension（rule/api_settings/api_endpoints 宽松结构原样透传） */
+/** DimensionItemDto → Dimension（rule 宽松结构原样透传；api_settings/api_endpoints 归一为 camelCase，INT-2248） */
 export function toDimension(dto: DimensionItemDto): Dimension {
   return {
     id: dto.id,
@@ -294,8 +394,8 @@ export function toDimension(dto: DimensionItemDto): Dimension {
     parentDimensionId: dto.parent_dimension_id,
     categoryId: dto.category_id,
     apiUrl: dto.api_url,
-    apiEndpoints: dto.api_endpoints ?? undefined,
-    apiSettings: dto.api_settings ?? undefined,
+    apiEndpoints: toDimensionApiEndpoints(dto.api_endpoints),
+    apiSettings: toDimensionApiSettings(dto.api_settings),
     apiStatus: dto.api_status,
     scoreUnit: dto.score_unit,
     type: dto.type,
@@ -390,6 +490,47 @@ export function toDimensionHealthCheck(
 
 // ===== Domain → snake_case 请求体（写侧转换） =====
 
+/**
+ * DimensionApiEndpoint[] → api_endpoints wire（camelCase domain → snake_case；INT-2248）。
+ * 只收敛表单已知的 6 个键，其余未知键（status/health_score/description 等）原样带回；
+ * 后端 endpoint_helpers 优先读 max_process / url，写成驼峰会被当未知扩展。
+ */
+function toDimensionApiEndpointsDto(
+  value: DimensionApiEndpoint[]
+): Array<Record<string, unknown>> {
+  return value.map((endpoint) => {
+    const { url, name, priority, maxProcess, maxTimeout, maxAudioDuration, ...rest } =
+      endpoint
+    return {
+      ...rest,
+      url,
+      name,
+      priority,
+      max_process: maxProcess,
+      max_timeout: maxTimeout,
+      max_audio_duration: maxAudioDuration,
+    }
+  })
+}
+
+/**
+ * DimensionApiSettings → api_settings wire（camelCase domain → snake_case；INT-2248）。
+ * bodyTemplate 必须以 body_template 上送——后端与运行时（_dimension_params_mixin /
+ * endpoint_worker）只认这个键；写成 bodyTemplate 会被丢弃，保存后 body_template 缺失，
+ * 后端再按 required_inputs 重建为扁平 {param: "{{param}}"}，rounds 等结构丢失。
+ */
+function toDimensionApiSettingsDto(
+  value: DimensionApiSettings | string
+): Record<string, unknown> | string {
+  if (typeof value === 'string') return value
+  const result: Record<string, unknown> = { ...value }
+  const { bodyTemplate } = result
+  delete result.bodyTemplate
+  delete result.body_template
+  if (bodyTemplate !== undefined) result.body_template = bodyTemplate
+  return result
+}
+
 /** Partial<Dimension>（camelCase）→ DimensionInput 请求体（snake_case；与 Vue toDimensionDto 口径一致） */
 export function toDimensionInputDto(data: Partial<Dimension>): Record<string, unknown> {
   const result: Record<string, unknown> = {}
@@ -400,8 +541,12 @@ export function toDimensionInputDto(data: Partial<Dimension>): Record<string, un
   if (data.parentDimensionId !== undefined) result.parent_dimension_id = data.parentDimensionId
   if (data.categoryId !== undefined) result.category_id = data.categoryId
   if (data.apiUrl !== undefined) result.api_url = data.apiUrl
-  if (data.apiEndpoints !== undefined) result.api_endpoints = data.apiEndpoints
-  if (data.apiSettings !== undefined) result.api_settings = data.apiSettings
+  if (data.apiEndpoints !== undefined) {
+    result.api_endpoints = toDimensionApiEndpointsDto(data.apiEndpoints)
+  }
+  if (data.apiSettings !== undefined) {
+    result.api_settings = toDimensionApiSettingsDto(data.apiSettings)
+  }
   if (data.apiStatus !== undefined) result.api_status = data.apiStatus
   if (data.scoreUnit !== undefined) result.score_unit = data.scoreUnit
   if (data.type !== undefined) result.type = data.type

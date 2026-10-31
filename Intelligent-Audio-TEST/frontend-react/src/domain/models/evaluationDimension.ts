@@ -26,7 +26,12 @@ export interface AlgorithmAssociation {
   weight: number
 }
 
-/** 维度 API 端点配置（api_endpoints 列表项） */
+/**
+ * 维度 API 端点配置（api_endpoints 列表项）。
+ * INT-2248：wire 是 snake_case（max_process/max_timeout/max_audio_duration，url 兼容 endpoint 别名），
+ * 转换只在 infrastructure/dto；表单不编辑的其它端点字段（status/health_score/description 等）
+ * 以未知键保留，保存时按「原对象展开 + 变更覆盖」原样带回。
+ */
 export interface DimensionApiEndpoint {
   url: string
   name: string
@@ -34,9 +39,14 @@ export interface DimensionApiEndpoint {
   maxProcess: number
   maxTimeout: number
   maxAudioDuration: number
+  [key: string]: unknown
 }
 
-/** 维度 API 设置（api_settings JSON 对象；结构宽松不开放索引签名） */
+/**
+ * 维度 API 设置（api_settings JSON 对象；结构宽松）。
+ * INT-2248：wire 只认 body_template，读侧归一为 bodyTemplate 后表单才能回显；
+ * 未经表单编辑的其它键在保存时原样带回。
+ */
 export interface DimensionApiSettings {
   method?: string
   headers?: Record<string, string>

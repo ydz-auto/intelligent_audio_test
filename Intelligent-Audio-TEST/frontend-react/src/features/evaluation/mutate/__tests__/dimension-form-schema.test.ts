@@ -416,3 +416,100 @@ describe('dimensionFormSchema 结果区间校验（INT-1551）', () => {
     expect(dimensionFormSchema.safeParse(values).success).toBe(true)
   })
 })
+
+describe('api_settings / api_endpoints 编辑往返（INT-2248）', () => {
+  // 形态取自真实库：body_template 是对象（含 rounds 数组与顶层占位符），
+  // 端点项是 snake_case + 未编辑的 status/health_score 等未知键
+  const rawBodyTemplate = {
+    model: '{{model}}',
+    rounds: [{ answer: '{{answer}}', correct_answer: '{{correct_answer}}' }],
+  }
+  const source: Dimension = {
+    ...mockDimension,
+    apiSettings: {
+      method: 'POST',
+      timeout: 30000,
+      headers: { 'content-type': 'application/json' },
+      bodyTemplate: rawBodyTemplate,
+      custom_flag: true,
+    },
+    apiEndpoints: [
+      {
+        url: 'https://api.example.com/evaluation/accuracy',
+        name: '主评估端点',
+        priority: 1,
+        maxProcess: 2,
+        maxTimeout: 30,
+        maxAudioDuration: 60,
+        status: 'online',
+        health_score: 88,
+      },
+    ],
+  }
+
+  it('打开编辑：模板框回显原 bodyTemplate，端点并发上限回填为 2', () => {
+    const values = toDimensionFormValues(source)
+    expect(JSON.parse(values.apiBodyTemplate)).toEqual(rawBodyTemplate)
+    expect(values.apiEndpoints[0].maxProcess).toBe(2)
+  })
+
+  it('不改任何字段直接保存：body_template 结构与 max_process 原值不变，未知键不丢', () => {
+    const values = toDimensionFormValues(source)
+    const dto = toDimensionInputDto(toDimensionSaveInput(values, source))
+    expect(dto.api_settings).toEqual({
+      method: 'POST',
+      timeout: 30000,
+      headers: { 'content-type': 'application/json' },
+      body_template: rawBodyTemplate,
+      custom_flag: true,
+    })
+    expect(dto.api_settings).not.toHaveProperty('bodyTemplate')
+    expect(dto.api_endpoints).toEqual([
+      {
+        url: 'https://api.example.com/evaluation/accuracy',
+        name: '主评估端点',
+        priority: 1,
+        max_process: 2,
+        max_timeout: 30,
+        max_audio_duration: 60,
+        status: 'online',
+        health_score: 88,
+      },
+    ])
+  })
+
+  it('所需输入未改动时不回传，改了才回传（避开后端按 required_inputs 补平 body_template）', () => {
+    const values = toDimensionFormValues(source)
+    expect(toDimensionSaveInput(values, source).requiredInputs).toBeUndefined()
+    expect(toDimensionInputDto(toDimensionSaveInput(values, source))).not.toHaveProperty(
+      'required_inputs'
+    )
+
+    const edited = { ...values, requiredInputs: [...values.requiredInputs, { ...values.requiredInputs[0], paramCode: 'extra_param' }] }
+    const editedInput = toDimensionSaveInput(edited, source)
+    expect(editedInput.requiredInputs?.map((ri) => ri.paramCode)).toEqual([
+      'asr_result',
+      'extra_param',
+    ])
+
+    // 关联算法变了也要回传（后端按新算法重建 ParamMapping）
+    const algoEdited = { ...values, associatedAlgorithms: ['voice_llm'] }
+    expect(toDimensionSaveInput(algoEdited, source).requiredInputs).toHaveLength(1)
+  })
+
+  it('无输入字段/端点的维度反填为空，保存不会凭空写入 ASR 两行或空端点（INT-2248）', () => {
+    const emptySource: Dimension = {
+      ...mockDimension,
+      requiredInputs: [],
+      apiEndpoints: [],
+      apiSettings: undefined,
+    }
+    const values = toDimensionFormValues(emptySource)
+    expect(values.requiredInputs).toEqual([])
+    expect(values.apiEndpoints).toEqual([])
+    const input = toDimensionSaveInput(values, emptySource)
+    // 空数组与反填一致 → 视为未改动，不上送（后端同样不清不建）
+    expect(input.requiredInputs).toBeUndefined()
+    expect(input.apiEndpoints).toEqual([])
+  })
+})
