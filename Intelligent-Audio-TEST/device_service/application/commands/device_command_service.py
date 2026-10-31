@@ -179,10 +179,13 @@ class DeviceCommandService:
                 {"serial": "mock-harmony-1", "model": "Mock HarmonyOS Device", "system": "HarmonyOS", "status": "online"}
             ]
 
+        registered_serials = set(self.repo.get_all_device_serials())
         for device in all_devices:
-            # 不按 serial 去重：serial 不唯一（同一物理机可多次登记不同配置/用例），
+            # is_registered 仅作展示：有 serial 且在未删除设备里出现过即为已注册（INT-2185）。
+            # 它不约束添加动作——serial 不唯一（同一物理机可多次登记不同配置/用例），
             # 扫描行始终可「添加」，不做「已添加」拦截。
-            device['is_registered'] = False
+            serial = device.get('serial')
+            device['is_registered'] = bool(serial) and serial in registered_serials
             device['id'] = device.get('serial')
             device['name'] = f"{device['system']} {device['model']}"
             device['type'] = 'phone'
