@@ -341,29 +341,36 @@ export function caseDetailFromDto(
     }
   }
 
-  // 用例级执行目标（含未执行目标）：详情内逐目标 Tab / 指标列 / 执行结果全量展示
-  const targets: CaseExecutionTarget[] = (dto.targets ?? []).map((t) => {
-    const targetType: CaseExecutionTarget['targetType'] = t.target_type === 'api' ? 'api' : 'device'
-    const routeId = t.device_id ?? (t.api_id != null ? String(t.api_id) : null)
-    const row = rowByTargetKey.get(
-      targetType === 'api'
-        ? `api:${t.api_id ?? routeId ?? ''}`
-        : `device:${t.device_id ?? ''}`
-    )
-    return {
-      taskCaseId: t.task_case_id ?? null,
-      targetType,
-      targetName:
-        t.target_name ||
-        row?.deviceName ||
-        row?.apiName ||
-        `${TARGET_TYPE_LABELS[targetType]} ${routeId ?? UNKNOWN_TARGET_ID}`,
-      deviceId: t.device_id ?? null,
-      apiId: t.api_id ?? null,
-      executionStatus: t.execution_status ?? row?.executionStatus ?? null,
-      evaluationStatus: t.evaluation_status ?? null,
-    }
-  })
+  // 用例级执行目标（含未执行目标）：详情内逐目标 Tab / 指标列 / 执行结果全量展示。
+  // INT-2194：历史任务 targets 可能只下发占位行（target_name / device_id / api_id 全空，
+  // 仅带执行状态）——没有目标身份，兜底成「设备 —」会与 detail.devices 的真实设备并列出
+  // 幽灵列 / 目标 Tab，无执行数据的用例还会因此误判 hasDeviceTable、丢掉「暂无执行结果」空态；
+  // 这类占位行直接丢弃（真实设备列由下方 detail.devices 回填）。
+  const targets: CaseExecutionTarget[] = (dto.targets ?? [])
+    .filter((t) => !!t.target_name || t.device_id != null || t.api_id != null)
+    .map((t) => {
+      const targetType: CaseExecutionTarget['targetType'] =
+        t.target_type === 'api' ? 'api' : 'device'
+      const routeId = t.device_id ?? (t.api_id != null ? String(t.api_id) : null)
+      const row = rowByTargetKey.get(
+        targetType === 'api'
+          ? `api:${t.api_id ?? routeId ?? ''}`
+          : `device:${t.device_id ?? ''}`
+      )
+      return {
+        taskCaseId: t.task_case_id ?? null,
+        targetType,
+        targetName:
+          t.target_name ||
+          row?.deviceName ||
+          row?.apiName ||
+          `${TARGET_TYPE_LABELS[targetType]} ${routeId ?? UNKNOWN_TARGET_ID}`,
+        deviceId: t.device_id ?? null,
+        apiId: t.api_id ?? null,
+        executionStatus: t.execution_status ?? row?.executionStatus ?? null,
+        evaluationStatus: t.evaluation_status ?? null,
+      }
+    })
 
   // 目标列：优先 targets 全量（API + 设备）；旧契约无 targets 时退回 detail.devices /
   // 结果行 api_name·device_name（与报告侧按设备/API 资源合并对比同口径）

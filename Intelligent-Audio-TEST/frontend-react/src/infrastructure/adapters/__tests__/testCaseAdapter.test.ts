@@ -585,3 +585,74 @@ describe('testCasePreviewFromDto（INT-1534 试听接线）', () => {
     expect(preview.audioStreamUrls).toEqual([])
   })
 })
+
+/**
+ * INT-2194：历史任务的详情 targets 只回占位行（target_name / device_id / api_id 全空），
+ * 不得生成「设备 —」幽灵目标列 / Tab，也不得让无执行数据用例误判 hasDeviceTable。
+ */
+describe('caseDetailFromDto（INT-2194 历史任务占位目标）', () => {
+  const ghostTarget = {
+    task_case_id: 9166,
+    target_type: 'device' as const,
+    device_type: null,
+    device_id: null,
+    api_id: null,
+    target_name: null,
+    status: 'completed',
+    execution_status: 'completed',
+    evaluation_status: 'completed',
+  }
+  const baseDto = (overrides: Partial<CaseDetailDto>): CaseDetailDto => ({
+    test_case_id: '7bac162b-275d-4567-b924-954736dc3ce9',
+    task_id: 402,
+    case_name: '接线测试_幽灵目标',
+    execution_status: 'completed',
+    evaluation_status: 'completed',
+    duration: null,
+    score: null,
+    algorithm_type: 'voice_llm',
+    algorithm_results: [],
+    devices: [],
+    ...overrides,
+  })
+
+  it('占位 target（name/id 全空）丢弃，目标列回退 detail.devices（任务 402 / JG0006：1 列真实设备）', () => {
+    const detail = caseDetailFromDto(baseDto({ devices: ['pura90小艺'], targets: [ghostTarget] }))
+    expect(detail.targets).toEqual([])
+    expect(detail.devices.map((d) => d.deviceName)).toEqual(['pura90小艺'])
+    expect(detail.devices.some((d) => d.deviceName.includes('—'))).toBe(false)
+  })
+
+  it('占位 target + devices/results/algorithm_results 全空（任务 399 / c76c053e）→ 无目标、无设备列（保住空态判据）', () => {
+    const detail = caseDetailFromDto(
+      baseDto({
+        task_id: 399,
+        test_case_id: 'c76c053e-bcd8-48cb-b5f8-60d60e13c268',
+        execution_status: 'failed',
+        devices: [],
+        targets: [{ ...ghostTarget, task_case_id: 6131, execution_status: 'failed' }],
+      })
+    )
+    expect(detail.targets).toEqual([])
+    expect(detail.devices).toEqual([])
+  })
+
+  it('真实 target（有 target_name + device_id）保留，且与同名 detail.devices 去重', () => {
+    const detail = caseDetailFromDto(
+      baseDto({
+        devices: ['pura90小艺'],
+        targets: [
+          {
+            ...ghostTarget,
+            task_case_id: 1,
+            device_id: '9',
+            target_name: 'pura90小艺',
+          },
+        ],
+      })
+    )
+    expect(detail.targets).toHaveLength(1)
+    expect(detail.targets[0]).toMatchObject({ targetName: 'pura90小艺', deviceId: '9' })
+    expect(detail.devices.map((d) => d.deviceName)).toEqual(['pura90小艺'])
+  })
+})

@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { CaseRoundTab } from '@/domain/models/testExecution'
+import { caseDetailFromDto } from '@/infrastructure/adapters/testCaseAdapter'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
 
 import { CaseDetailDialog } from '../case-detail-dialog'
@@ -309,6 +310,74 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     })
     expect(screen.queryByRole('button', { name: '人工复核' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'AI 复核' })).not.toBeInTheDocument()
+  })
+
+  // ---- INT-2194：历史任务 targets 占位行（name/id 全空）不得生成「设备 —」幽灵目标 ----
+  it('INT-2194：占位目标 + 无执行数据（任务 399 形态）→ 仍显示「暂无执行结果」，不出现「设备 —」', async () => {
+    fetchDetailMock.mockResolvedValue(
+      caseDetailFromDto({
+        test_case_id: 'c76c053e-bcd8-48cb-b5f8-60d60e13c268',
+        task_id: 399,
+        case_name: '未知用例',
+        execution_status: 'failed',
+        evaluation_status: 'completed',
+        duration: null,
+        score: null,
+        algorithm_type: null,
+        algorithm_results: [],
+        devices: [],
+        targets: [
+          {
+            task_case_id: 6131,
+            target_type: 'device',
+            device_id: null,
+            api_id: null,
+            target_name: null,
+            execution_status: 'failed',
+          },
+        ],
+      })
+    )
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    renderDialog()
+    await waitFor(() => {
+      expect(screen.getByText('暂无执行结果')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('设备 —')).not.toBeInTheDocument()
+  })
+
+  it('INT-2194：占位目标 + 真实设备（任务 402 / JG0006 形态）→ 只渲染真实设备列，不出现「设备 —」', async () => {
+    fetchDetailMock.mockResolvedValue(
+      caseDetailFromDto({
+        test_case_id: '7bac162b-275d-4567-b924-954736dc3ce9',
+        task_id: 402,
+        case_name: '接线测试_JG0006',
+        execution_status: 'completed',
+        evaluation_status: 'completed',
+        duration: null,
+        score: null,
+        algorithm_type: 'voice_llm',
+        algorithm_results: [],
+        devices: ['pura90小艺'],
+        metric_configs: [{ code: '接管率占比', name: '接管率占比' }],
+        targets: [
+          {
+            task_case_id: 9166,
+            target_type: 'device',
+            device_id: null,
+            api_id: null,
+            target_name: null,
+            execution_status: 'completed',
+          },
+        ],
+      })
+    )
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    renderDialog()
+    await waitFor(() => {
+      expect(screen.getAllByText('pura90小艺').length).toBeGreaterThan(0)
+    })
+    expect(screen.queryByText('设备 —')).not.toBeInTheDocument()
   })
 
   // ---- INT-1688（返工）：轮次 Tab + 行=指标/列=设备 + 结果音频两种口径 ----
