@@ -236,6 +236,10 @@ class RoundDataBuilderMixin:
         背景噪声为单个配置块（dict），干扰人与被播放音频为音频列表（list of dict）。
         评估服务以二进制（multipart）接收音频文件，主服务需先把 audio_id 解析为
         服务器物理路径，后续由 api_request_handler 提取文件上传。
+
+        INT-2235：音频元数据改经 audio_service 的 gRPC + ACL 批量取
+        （AudioConfigService.GetAudiosByIds），不再跨服务裸 SQL 直连 audios 表；
+        一轮内所有待补全 audio_id 合并为一次调用，deleted 过滤由 audio_service 侧保证。
         """
         targets = []
         audios = round_cfg.get('audios') if isinstance(round_cfg, dict) else None
@@ -249,47 +253,47 @@ class RoundDataBuilderMixin:
             targets.extend(interferers)
         if not targets:
             return
+
+        # 收集待补全项（无 audio_id 或已带 audio_path 的跳过）
+        pending = []
+        audio_ids = []
+        for item in targets:
+            if not isinstance(item, dict) or item.get('audio_path'):
+                continue
+            audio_id = item.get('audio_id')
+            if not audio_id:
+                continue
+            pending.append((item, audio_id))
+            audio_ids.append(audio_id)
+        if not pending:
+            return
+
         try:
-            from shared.models.database import get_db_session
-            from sqlalchemy import text
-            session = get_db_session()
-            for item in targets:
-                if not isinstance(item, dict):
-                    continue
-                audio_id = item.get('audio_id')
-                if not audio_id or item.get('audio_path'):
-                    continue
-                row = session.execute(
-                    text("SELECT file_path FROM audios WHERE id = :aid AND deleted = false"),
-                    {'aid': audio_id}
-                ).fetchone()
-                if row and row[0]:
-                    item['audio_path'] = row[0]
-                else:
-                    self._log(
-                        level='WARNING',
-                        content=f"[_fill_round_audio_paths] 未找到音频记录或文件路径: audio_id={audio_id}",
-                        task_id=task_id, test_case_id=test_case_id
-                    )
-        except Exception as e:
-            try:
-                session.rollback()
-            except Exception:
-                pass
+            from evaluation_service.infrastructure.acl import audio_acl_repository
+            audio_map = audio_acl_repository.get_audios_by_ids(audio_ids)
+        except Exception as e:  # noqa: BLE001 - ACL 异常不阻断评估链
             self._log(
                 level='ERROR',
                 content=f"[_fill_round_audio_paths] 查询音频失败: error={e}",
                 task_id=task_id, test_case_id=test_case_id
             )
-        finally:
-            # INT-1691：评估链路跑在 EndpointWorker / 线程池长驻线程上，
-            # 纯读查询结束即结束事务（有 pending 写时不回滚，见
-            # shared/models/database.py::end_read_transaction）。
+            return
+
+        for item, audio_id in pending:
             try:
-                from shared.models.database import end_read_transaction
-                end_read_transaction()
-            except Exception:  # noqa: BLE001 - 收尾失败不影响评估结果
-                pass
+                audio_id_key = int(audio_id)
+            except (TypeError, ValueError):
+                audio_id_key = None
+            audio = audio_map.get(audio_id_key) if audio_id_key is not None else None
+            file_path = getattr(audio, 'file_path', None) if audio else None
+            if file_path:
+                item['audio_path'] = file_path
+            else:
+                self._log(
+                    level='WARNING',
+                    content=f"[_fill_round_audio_paths] 未找到音频记录或文件路径: audio_id={audio_id}",
+                    task_id=task_id, test_case_id=test_case_id
+                )
 
     def _normalize_round_eval_fields(self, round_cfg, case_config=None,
                                      task_id=None, test_case_id=None):

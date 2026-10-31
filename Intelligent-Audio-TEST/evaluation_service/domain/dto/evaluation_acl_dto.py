@@ -128,3 +128,15 @@ class TaskApiDTO:
     api_id: Optional[int] = None
     api_name: Optional[str] = None
     extra: Any = None
+
+
+@dataclass
+class AudioDTO:
+    """Audio DTO（audio_service.GetAudiosByIds 的精简投影）
+
+    INT-2235：评估轮次音频路径补全改经 gRPC ACL 批量取，
+    只承载评估侧需要的字段，不复制 audio_service 的完整模型。
+    """
+    id: Optional[int] = None
+    name: Optional[str] = None
+    file_path: Optional[str] = None

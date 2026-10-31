@@ -6,12 +6,14 @@ Infrastructure 层的 acl/ 和 persistence/ 实现这些接口，通过依赖注
 """
 from evaluation_service.domain.repositories.task_acl_repository import TaskAclRepository
 from evaluation_service.domain.repositories.algorithm_acl_repository import AlgorithmAclRepository
+from evaluation_service.domain.repositories.audio_acl_repository import AudioAclRepository
 from evaluation_service.domain.repositories.evaluation_dimension_repository import EvaluationDimensionRepository
 from evaluation_service.domain.repositories.evaluation_repository_abc import EvaluationRepositoryABC
 
 __all__ = [
     'TaskAclRepository',
     'AlgorithmAclRepository',
+    'AudioAclRepository',
     'EvaluationDimensionRepository',
     'EvaluationRepositoryABC',
 ]

@@ -4,6 +4,7 @@
 - task_acl_repository.py: 调 task_service 的 TaskDataService（跨服务数据访问）
 - algorithm_acl_repository.py: 调 algorithm_service 的 AlgorithmDefinitionService（跨服务数据访问）
 - device_result_acl_repository.py: 调 device_service 的 DeviceResultService（跨服务结果采集）
+- audio_acl_repository.py: 调 audio_service 的 AudioConfigService（跨服务音频元数据查询）
 """
 from evaluation_service.infrastructure.acl.task_acl_repository import (
     TaskAclRepository,
@@ -12,6 +13,10 @@ from evaluation_service.infrastructure.acl.task_acl_repository import (
 from evaluation_service.infrastructure.acl.algorithm_acl_repository import (
     AlgorithmAclRepository,
     algorithm_acl_repository,
+)
+from evaluation_service.infrastructure.acl.audio_acl_repository import (
+    AudioAclRepository,
+    audio_acl_repository,
 )
 from evaluation_service.infrastructure.acl.device_result_acl_repository import (
     DeviceResultAclRepository,
@@ -23,6 +28,8 @@ __all__ = [
     'task_acl_repository',
     'AlgorithmAclRepository',
     'algorithm_acl_repository',
+    'AudioAclRepository',
+    'audio_acl_repository',
     'DeviceResultAclRepository',
     'device_result_acl_repository',
 ]
