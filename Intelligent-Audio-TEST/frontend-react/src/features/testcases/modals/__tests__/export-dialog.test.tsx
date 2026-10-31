@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 
 import { ExportDialog } from '@/features/testcases/modals/export-dialog'
 import { downloadBlob } from '@/lib/download-blob'
+import { ApiError } from '@/infrastructure/api/api-error'
 import { exportTestCases } from '@/infrastructure/api/testcases-api'
 
 vi.mock('@/infrastructure/api/testcases-api', () => ({
@@ -162,6 +163,38 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
       )
     )
     expect(mockedDownload).not.toHaveBeenCalled()
+  })
+
+  // INT-2191：nginx 反代 60s 超时返回 504 HTML，ApiError.message 为空 → 旧版 toast「导出失败：」。
+  it('INT-2191：504（HTML 错误体、无 message）→ 可读的超时提示，不出现空「导出失败：」', async () => {
+    const user = userEvent.setup()
+    mockedExport.mockRejectedValue(
+      new ApiError({ httpStatus: 504, message: '' })
+    )
+    renderDialog({ resolveFilteredIds: vi.fn().mockResolvedValue(['tc-1']) })
+
+    await user.click(screen.getByRole('button', { name: /开始导出/ }))
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        '导出失败：导出超时，请缩小筛选范围后重试'
+      )
+    )
+    expect(mockedDownload).not.toHaveBeenCalled()
+  })
+
+  it('INT-2191：无业务码的非 504 失败 → 用 userMessage 的状态码兜底文案', async () => {
+    const user = userEvent.setup()
+    mockedExport.mockRejectedValue(
+      new ApiError({ httpStatus: 502, message: '' })
+    )
+    renderDialog({ resolveFilteredIds: vi.fn().mockResolvedValue(['tc-1']) })
+
+    await user.click(screen.getByRole('button', { name: /开始导出/ }))
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('导出失败：网关错误，请稍后重试')
+    )
   })
 
   it('筛选结果为空：不发导出请求', async () => {

@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { downloadBlob } from '@/lib/download-blob'
+import { ApiError } from '@/infrastructure/api/api-error'
 import {
   exportTestCases,
   type TestCaseExportFormat,
@@ -51,6 +52,19 @@ const FORMAT_OPTIONS: Array<{ value: TestCaseExportFormat; label: string }> = [
 
 function formatLabel(format: TestCaseExportFormat): string {
   return FORMAT_OPTIONS.find((option) => option.value === format)?.label ?? format
+}
+
+/**
+ * 导出失败文案（INT-2191）：504 是前端容器 nginx 反代 60s 超时返回的 HTML 错误体，
+ * 后端 message 取不到，直接用 ApiError.message 会得到空的「导出失败：」。这里优先用
+ * userMessage（服务端 message > 错误码 > HTTP 状态码兜底），504 另给可执行的缩小范围提示。
+ */
+function exportErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.httpStatus === 504) return '导出超时，请缩小筛选范围后重试'
+    return error.userMessage || error.message || '请稍后重试'
+  }
+  return error instanceof Error && error.message ? error.message : '请稍后重试'
 }
 
 export function ExportDialog({
@@ -178,9 +192,7 @@ export function ExportDialog({
       }
       onOpenChange(false)
     } catch (error) {
-      toast.error(
-        `导出失败：${error instanceof Error ? error.message : '请稍后重试'}`
-      )
+      toast.error(`导出失败：${exportErrorMessage(error)}`)
     } finally {
       setSubmitting(false)
     }
