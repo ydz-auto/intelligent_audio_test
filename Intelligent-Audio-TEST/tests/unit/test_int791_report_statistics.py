@@ -30,6 +30,19 @@ from shared.utils.grpc_json import loads as grpc_loads, dumps as grpc_dumps
 _STAT_TABLES = None
 
 
+@pytest.fixture(autouse=True)
+def _disable_scope_limits(monkeypatch):
+    """固定口径：本文件只验聚合计算，关闭 INT-2237 的默认时间窗与行上限。
+
+    否则「无时间范围 → 全量」类断言会随真实时钟滑动（硬编码 2026-10 样本
+    终将落到默认窗外）。默认窗 / 行上限 / 行级可见性由
+    tests/unit/test_int2237_report_statistics_scope.py 专项覆盖。
+    """
+    from shared.infrastructure.config import BaseConfig
+    monkeypatch.setattr(BaseConfig, 'REPORT_STATISTICS_DEFAULT_WINDOW_DAYS', 0)
+    monkeypatch.setattr(BaseConfig, 'REPORT_STATISTICS_MAX_ROWS', 0)
+
+
 def _ensure_stat_tables():
     init_db(pool_size=2)
     global _STAT_TABLES
@@ -153,7 +166,7 @@ class TestStatisticsService:
         assert result['chart']['categories'] == ['2026-10-01']
         assert result['chart']['series'][0]['name'] == '报告数量'
 
-        # 无时间范围 → 全量
+        # 无时间范围 → 全量（本文件 autouse 关闭了 INT-2237 默认时间窗）
         result_all = statistics_service.get_statistics(
             {'dimension': 'time'}, report_repository)
         assert result_all['overview']['report_count'] == 3

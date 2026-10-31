@@ -213,6 +213,15 @@ class BaseConfig:
     # 超限网关直接 413，不落盘。
     REPORT_STUDIO_UPLOAD_MAX_MB: int = _get_int('REPORT_STUDIO_UPLOAD_MAX_MB', 50)
 
+    # --- 报告统计分析（INT-2237 §8：/reports/statistics*）---
+    # 未传 start_time 时的默认统计窗口（天）：统计基础行不再无界全表 outer join，
+    # 统计/趋势/报表生成三入口共用同一窗口（0 = 不设默认窗，按调用方给定范围）
+    REPORT_STATISTICS_DEFAULT_WINDOW_DAYS: int = _get_int(
+        'REPORT_STATISTICS_DEFAULT_WINDOW_DAYS', 90)
+    # 统计基础行单次物化上限（条，0 = 不限）：超限显式报错让调用方缩小时间范围，
+    # 绝不静默截断成部分聚合（对齐 LOG_DB_EXPORT_MAX_ROWS 口径）
+    REPORT_STATISTICS_MAX_ROWS: int = _get_int('REPORT_STATISTICS_MAX_ROWS', 20000)
+
     # --- 服务发现 ---
     SERVICE_HOST: str = _get_env('SERVICE_HOST', '0.0.0.0')
     SERVICE_NAME: str = _get_env('SERVICE_NAME', 'unknown')

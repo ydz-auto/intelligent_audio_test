@@ -501,7 +501,8 @@ class ReportQueryMixin:
     # ---- 统计分析基础行（INT-791：/reports/statistics*） ----
 
     @with_session
-    def get_statistics_rows(self, start_time=None, end_time=None, algorithm_type=None):
+    def get_statistics_rows(self, start_time=None, end_time=None, algorithm_type=None,
+                            limit=None):
         """查询统计用报告基础行（主表 + 摘要 + 元数据，外连接）。
 
         Args:
@@ -509,6 +510,8 @@ class ReportQueryMixin:
             end_time: datetime 或 None，created_at <= end_time
             algorithm_type: str 或 None，按 report_cases.algorithm_type 存在性过滤
                 （报告无 algorithm_type 列，以用例级算法类型归属）
+            limit: int 或 None，最多返回行数（服务端上限由应用层传入，
+                超限判定后显式报错，不做静默截断）
 
         Returns:
             list[tuple(Report, ReportSummary|None, ReportSummaryMeta|None)]，
@@ -529,6 +532,15 @@ class ReportQueryMixin:
             .outerjoin(ReportSummaryMeta, self.PO_CLASS.id == ReportSummaryMeta.report_id)
             .filter(self.PO_CLASS.deleted == False)  # noqa: E712
         )
+        # INT-2237 修复（P1）：统计/趋势/报表生成三入口共用本基础行，必须注入
+        # 行级过滤，与 list_reports/count_reports/get_trend_data 同一口径——
+        # 私有报告的名称/通过率/时长/设备不得并入非 owner 的统计聚合
+        query = query.filter(visible_condition(
+            self.PO_CLASS.created_by_user_id,
+            self.PO_CLASS.visibility,
+            get_current_user_id(),
+            get_current_user_is_admin(),
+        ))
         if start_time is not None:
             query = query.filter(self.PO_CLASS.created_at >= start_time)
         if end_time is not None:
@@ -542,6 +554,8 @@ class ReportQueryMixin:
                 .exists()
             )
         query = query.order_by(self.PO_CLASS.created_at.asc())
+        if limit is not None:
+            query = query.limit(limit)
         return query.all()
 
     @with_session

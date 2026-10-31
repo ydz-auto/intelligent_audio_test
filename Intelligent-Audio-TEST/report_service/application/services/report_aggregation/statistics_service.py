@@ -15,6 +15,11 @@ report_summary_meta / report_metric_stats），不引入 DB 迁移。
 algorithm_type 可选过滤按 report_cases.algorithm_type 存在性匹配
 （报告主表无该列，以用例级算法类型归属）。
 
+INT-2237（P1 缺陷修复）：基础行查询统一走行级可见性过滤（私有报告不并入
+非 owner 的统计/趋势/报表），未传 start_time 时补默认时间窗（近 90 天），
+并对单次物化的基础行设服务端上限——超限显式报错让调用方缩小范围，
+不静默截断成部分聚合。三入口共用同一口径（_load_rows）。
+
 异常统计识别规则（实施裁定 INT-791，schema 见 doc/接口文档/06_报告管理.md）：
 - pass_rate < 60 → 通过率偏低
 - total_cases = 0 → 无用例数据
@@ -61,6 +66,68 @@ def _to_cst_naive(value) -> Optional[datetime]:
         return dt
     except (TypeError, ValueError):
         return None
+
+
+# ======================================================================
+# 统计范围收敛（INT-2237：默认时间窗 + 服务端行上限）
+# ======================================================================
+
+def _default_window_start(days: int) -> datetime:
+    """未传起始时间时的默认窗口起点（CST 无时区，近 N 天）。
+
+    N 取 ``REPORT_STATISTICS_DEFAULT_WINDOW_DAYS``（默认 90；0 = 不设默认窗）。
+    统计基础行是三表 outer join，无窗口时随报告表增长线性变慢；默认窗与
+    DB 列 utc8now 同口径（CST 无时区）。
+    """
+    from shared.utils.query_utils import now_cst
+
+    return now_cst().replace(tzinfo=None) - timedelta(days=days)
+
+
+def _window_payload(window: Tuple[Optional[datetime], Optional[datetime]]) -> dict:
+    """实际生效的统计窗口 → 响应载荷（ISO 字符串，缺省 None）。"""
+    start_time, end_time = window
+    return {
+        'start_time': start_time.isoformat() if start_time else None,
+        'end_time': end_time.isoformat() if end_time else None,
+    }
+
+
+def _load_rows(repository, start_time, end_time, algorithm_type=None):
+    """按默认时间窗与服务端行上限加载统计基础行（三入口共用）。
+
+    Args:
+        repository: ReportRepository（get_statistics_rows 提供方）
+        start_time: datetime 或 None；None 时按默认窗（近 N 天）
+        end_time: datetime 或 None
+        algorithm_type: str 或 None
+
+    Returns:
+        tuple(rows, window, error)：
+        - rows：统计基础行（created_at 升序）
+        - window：实际生效的 (start_time, end_time)
+        - error：超过服务端上限时返回失败 dict（显式报错，绝不静默截断），
+          否则 None
+    """
+    from shared.infrastructure.config import BaseConfig
+
+    days = int(BaseConfig.REPORT_STATISTICS_DEFAULT_WINDOW_DAYS or 0)
+    if start_time is None and days > 0:
+        start_time = _default_window_start(days)
+    max_rows = max(int(BaseConfig.REPORT_STATISTICS_MAX_ROWS or 0), 0)
+    rows = repository.get_statistics_rows(
+        start_time, end_time, algorithm_type,
+        limit=(max_rows + 1) if max_rows else None,
+    )
+    window = (start_time, end_time)
+    if max_rows and len(rows) > max_rows:
+        return [], window, {
+            'success': False,
+            'code': 400,
+            'message': (f'统计范围过大（报告数超过服务端上限 {max_rows} 条），'
+                        '请缩小时间范围后重试'),
+        }
+    return rows, window, None
 
 
 def _num(source, key, default=0) -> float:
@@ -607,7 +674,10 @@ class StatisticsService:
         end_time = _to_cst_naive(params.get('end_time'))
         algorithm_type = (params.get('algorithm_type') or '').strip() or None
 
-        rows = repository.get_statistics_rows(start_time, end_time, algorithm_type)
+        rows, window, error = _load_rows(
+            repository, start_time, end_time, algorithm_type)
+        if error is not None:
+            return error
 
         overview = _summarize_rows(rows)
         detail = _build_detail(dimension, rows)
@@ -619,6 +689,8 @@ class StatisticsService:
             'detail': detail,
             'chart': chart,
             'anomaly': anomaly,
+            # INT-2237：回显实际生效窗口（未传 start_time 时为默认窗）
+            'time_range': _window_payload(window),
         }
 
     @staticmethod
@@ -640,7 +712,9 @@ class StatisticsService:
         start_time = _to_cst_naive(params.get('start_time'))
         end_time = _to_cst_naive(params.get('end_time'))
 
-        rows = repository.get_statistics_rows(start_time, end_time)
+        rows, window, error = _load_rows(repository, start_time, end_time)
+        if error is not None:
+            return error
 
         if trend_type == 'dimension':
             return {
@@ -648,11 +722,13 @@ class StatisticsService:
                 'metric': metric,
                 'time_trend': [],
                 'dimension_trend': _build_dimension_trend(rows, metric),
+                'time_range': _window_payload(window),
             }
         return {
             'trend_type': 'time',
             'time_trend': _build_time_trend(rows),
             'dimension_trend': [],
+            'time_range': _window_payload(window),
         }
 
     @staticmethod
@@ -680,7 +756,9 @@ class StatisticsService:
         start_time = _to_cst_naive(time_range.get('start_time'))
         end_time = _to_cst_naive(time_range.get('end_time'))
 
-        rows = repository.get_statistics_rows(start_time, end_time)
+        rows, _window, error = _load_rows(repository, start_time, end_time)
+        if error is not None:
+            return error
         table = _build_report_table(report_type, rows, repository)
         return _build_file_payload(table, format_type)
 
