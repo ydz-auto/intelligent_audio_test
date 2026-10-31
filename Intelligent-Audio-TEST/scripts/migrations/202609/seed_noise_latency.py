@@ -36,13 +36,22 @@ import os
 import json
 from sqlalchemy import create_engine, text
 
+# INT-2249：评估端点缺省与 docker-compose 同源（shared/config/eval_endpoint.py）；
+# 脚本可脱离 compose 手工执行，仓库根入 sys.path 才能 import shared。
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from shared.config.eval_endpoint import resolve_eval_server_url  # noqa: E402
+
 POSTGRES_URI = os.environ.get(
     'DATABASE_URI',
     'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test'
 )
 
 # eval_server 微服务地址
-API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:8888')
+API_URL = resolve_eval_server_url()
 
 # ============================================================
 # 维度定义

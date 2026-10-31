@@ -10,7 +10,7 @@
 #   - 容器名隔离：rustfs 在 base 中是固定 container_name（rustfs-server），
 #     第二/三套栈必须改名，否则 container_name 全局冲突导致 compose 拒绝起栈
 #   - 自举链：db_bootstrap 门控（base 已含），EVAL_SERVER_URL 指向本栈 mock 评估
-#     替身——维度种子指向本栈，报告链无需外部算法服务（100.70.20.135:8888）
+#     替身——维度种子指向本栈，报告链无需外部算法服务（历史端点 100.70.20.135:8888 已下线）
 #
 # 运行（见 docker/run_stack_iso.py 用法）：
 #   docker compose -p <project> -f docker/docker-compose.yml -f docker/docker-compose.iso.yml up -d
@@ -49,7 +49,8 @@ services:
         max-file: "5"
 
   # 维度种子指向本栈 mock：db_bootstrap 内 seed_*.py 以 EVAL_SERVER_URL 写入
-  # dimensions.api_url（缺省 100.70.20.135:8888），隔离栈固定指向 mock，
+  # dimensions.api_url（脚本缺省 host.docker.internal:5097，见
+  # shared/config/eval_endpoint.py），隔离栈固定指向本栈 mock，
   # 保证全新起栈即可出评估结果、报告链无需外部网络。
   db_bootstrap:
     environment:

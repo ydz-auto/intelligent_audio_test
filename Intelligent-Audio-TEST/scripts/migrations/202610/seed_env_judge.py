@@ -48,7 +48,17 @@ V9.7.31 适配（与 V9.7.10 蓝本差异）：
 
 import os
 import json
+import sys
 from sqlalchemy import create_engine, text
+
+# INT-2249：评估端点缺省与 docker-compose 同源（shared/config/eval_endpoint.py）；
+# 脚本可脱离 compose 手工执行，仓库根入 sys.path 才能 import shared。
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from shared.config.eval_endpoint import resolve_eval_server_url  # noqa: E402
 
 POSTGRES_URI = os.environ.get(
     'DATABASE_URI',
@@ -56,7 +66,7 @@ POSTGRES_URI = os.environ.get(
 )
 
 ALGORITHM_TYPE = os.environ.get('ALGO_TYPE', 'voice_llm')
-API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:8888')
+API_URL = resolve_eval_server_url()
 TASK_TYPE = 'env_judge'
 
 # 族 → 分类（同族同分组）
