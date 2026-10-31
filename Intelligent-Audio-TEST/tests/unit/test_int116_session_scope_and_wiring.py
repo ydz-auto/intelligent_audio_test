@@ -332,7 +332,9 @@ def test_update_task_case_status_in_db_persistent_failure_enqueues(silent_queue,
     key = (9, 'C-9')
     assert key in silent_queue._pending_case
     item = silent_queue._pending_case[key]
-    assert item.status  # 推导终态非空
+    # INT-2234：评估侧只回写评估终态，不写复合 status（执行状态不回写）——
+    # 补写时由 task_service 按行自身 execution + evaluation 派生，仍可收敛
+    assert item.status == ''
     assert item.evaluation_status == 'failed'
     assert item.error_message == 'endpoint unreachable'
 

@@ -283,13 +283,15 @@ class DimensionResultMixin:
             )
         return deleted_total
 
-    def update_all_dimensions_in_group_failed(self, group_items, error_message, task_id, test_case_id=None, api_raw_response=None, api_request_body=None):
+    def update_all_dimensions_in_group_failed(self, group_items, error_message, task_id, test_case_id=None, api_raw_response=None, api_request_body=None, result_id=None):
         """
         更新组内所有维度的评估结果为失败状态
 
         P1.4: TestResultDimension 本地写（自有 PO），TaskCase 通过 gRPC 更新
         INT-116: 本地事务先提交并释放连接，再做 gRPC 终态写库——
         本地 commit 失败也不得跳过 TaskCase failed 终态（杜绝永久 evaluating）
+        INT-2234: result_id 用于兜底写回时解析路由行（tc_rel_id），多路由下
+        只命中本次评估的行，不改写兄弟路由。
         """
         for dim_data, _dimension_result_id in group_items:
             self._log(
@@ -321,6 +323,7 @@ class DimensionResultMixin:
             self.mark_case_failed_if_active(
                 task_id, test_case_id,
                 f"维度评估失败且失败记录落库失败，兜底收口: {error_message}",
+                result_id=result_id,
             )
 
         # 更新 TaskCase 的评估状态（P1.4: 通过 gRPC）
@@ -412,14 +415,21 @@ class DimensionResultMixin:
                 local_db_session.close()
         return False
 
-    def _mark_group_case_failed(self, task_id, test_case_id, error_message=''):
-        """组内维度评估失败时，将 TaskCase 状态置为失败（P1.4: 通过 gRPC）"""
+    def _mark_group_case_failed(self, task_id, test_case_id, error_message='', tc_rel_id=None):
+        """组内维度评估失败时，将 TaskCase 状态置为失败（P1.4: 通过 gRPC）
+
+        INT-2234：只回写评估侧（execution_status=None，由 task_service 按行自身
+        执行状态推导复合 status），并携带 tc_rel_id 精确命中本次评估的路由行——
+        否则同用例兄弟路由（可能仍在执行）会被整体覆盖。
+        """
         from evaluation_service.infrastructure.evaluation_mixin import update_task_case_status_in_db
         from evaluation_service.domain.services.evaluation_utils import compose_case_error_message
         try:
             update_count = update_task_case_status_in_db(
                 None, task_id, test_case_id, TaskCaseStatus.FAILED, EvaluationStatus.FAILED,
+                execution_status=None,
                 error_message=compose_case_error_message([error_message] if error_message else []),
+                tc_rel_id=tc_rel_id,
             )
 
             self._log(
@@ -438,27 +448,38 @@ class DimensionResultMixin:
                 test_case_id=test_case_id
             )
 
-    def mark_case_failed_if_active(self, task_id, test_case_id, error_message):
+    def mark_case_failed_if_active(self, task_id, test_case_id, error_message, result_id=None):
         """评估处理异常兜底（INT-116）：仅当用例评估状态仍活跃时落 failed 终态。
 
         端点 Worker 处理任务抛出未捕获异常（本地 DB 写失败、状态推进异常等）时，
         原先只记日志，task_case_relations 永久停留在 evaluating。此处先读当前
         评估状态，仍处于 pending/queued/running/calculating 才写 failed，避免
         覆盖并发链路已写下的 completed/skipped 等终态。
+
+        INT-2234：result_id 传入时按结果归属解析路由行（tc_rel_id），只读/只写
+        该行；未传入（旧调用）按首行判定，写回口径同旧行为。
         """
         if not task_id or not test_case_id:
             return
         try:
             from evaluation_service.infrastructure.acl import task_acl_repository
+            from evaluation_service.infrastructure.evaluation_mixin import (
+                resolve_row_tc_rel_id,
+            )
             from shared.utils.status_constants import ACTIVE_EVALUATION_STATUSES
             tc_rels = task_acl_repository.get_task_case_by_ids(
                 task_id=task_id, case_ids=[str(test_case_id)]
             )
             if not tc_rels:
                 return
-            if tc_rels[0].evaluation_status not in ACTIVE_EVALUATION_STATUSES:
+            tc_rel_id = resolve_row_tc_rel_id(tc_rels, result_id)
+            target = (next((r for r in tc_rels if getattr(r, 'id', None) == tc_rel_id),
+                           tc_rels[0])
+                      if tc_rel_id else tc_rels[0])
+            if target.evaluation_status not in ACTIVE_EVALUATION_STATUSES:
                 return
-            self._mark_group_case_failed(task_id, test_case_id, error_message)
+            self._mark_group_case_failed(
+                task_id, test_case_id, error_message, tc_rel_id=tc_rel_id)
         except Exception as e:
             self._log(
                 level='ERROR',

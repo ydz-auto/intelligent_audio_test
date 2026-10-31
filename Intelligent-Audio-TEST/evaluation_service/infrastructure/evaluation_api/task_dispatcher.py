@@ -47,7 +47,8 @@ class TaskDispatcherMixin:
                 group_items=no_endpoint_groups,
                 error_message='维度未配置评估端点(api_url为空)，无法执行评估',
                 task_id=task_id,
-                test_case_id=test_case_id
+                test_case_id=test_case_id,
+                result_id=result_id,
             )
             self._post_evaluate_updates(task_id, test_case_id)
 

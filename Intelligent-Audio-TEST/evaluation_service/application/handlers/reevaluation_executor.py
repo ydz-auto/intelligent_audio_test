@@ -268,10 +268,13 @@ class ReevaluationExecutor:
                 if (tc_case_id not in reevaluated_case_ids
                         and tc_rel.execution_status == ExecutionStatus.COMPLETED
                         and tc_rel.evaluation_status in ACTIVE_EVALUATION_STATUSES):
+                    # INT-2234：逐行遍历就逐行写回，不带 tc_rel_id 会按
+                    # (task_id, test_case_id) 命中同用例所有路由行
                     task_acl_repository.update_task_case_status(
                         task_id=task_id,
                         case_id=str(tc_case_id),
                         evaluation_status=EvaluationStatus.COMPLETED,
+                        tc_rel_id=tc_rel.id,
                     )
 
             # 3. 提交用例进行重新评估（INT-302：dimension_ids 随用例提交下传评估入口）
@@ -575,13 +578,17 @@ class ReevaluationExecutor:
         tc_rels = task_acl_repository.get_task_case_by_ids(
             task_id=task_id, case_ids=[str(test_case_id)]
         )
-        tc_rel = tc_rels[0] if tc_rels else None
-        if tc_rel:
+        if tc_rels:
             # 重新评估只更新 evaluation_status，不修改 status（执行结果）
+            # INT-2234：带 tc_rel_id 精确命中本结果所属路由行
+            from evaluation_service.infrastructure.evaluation_mixin import (
+                resolve_row_tc_rel_id,
+            )
             task_acl_repository.update_task_case_status(
                 task_id=task_id,
                 case_id=str(test_case_id),
                 evaluation_status=EvaluationStatus.QUEUED,
+                tc_rel_id=resolve_row_tc_rel_id(tc_rels, result),
             )
 
         # P1.4: 通过 gRPC 读 TestCase
@@ -879,7 +886,10 @@ class ReevaluationExecutor:
         """
         if failed_dims_by_round:
             try:
-                from evaluation_service.infrastructure.evaluation_mixin import update_task_case_status_in_db
+                from evaluation_service.infrastructure.evaluation_mixin import (
+                    resolve_route_tc_rel_id,
+                    update_task_case_status_in_db,
+                )
                 from evaluation_service.domain.services.evaluation_utils import compose_case_error_message
                 reasons = [
                     score.error_message
@@ -888,10 +898,13 @@ class ReevaluationExecutor:
                 ]
                 if not reasons:
                     reasons = ['重新评估（失败维度）无可用评估配置，失败维度保留失败终态']
+                # INT-2234：评估侧只回写评估终态 + 命中本结果路由行（不改写兄弟路由执行状态）
                 update_task_case_status_in_db(
                     None, task_id, str(test_case_id),
                     TaskCaseStatus.FAILED, EvaluationStatus.FAILED,
+                    execution_status=None,
                     error_message=compose_case_error_message(reasons),
+                    tc_rel_id=resolve_route_tc_rel_id(task_id, test_case_id, result),
                 )
                 log_and_emit('INFO', 'reevaluator',
                             f"E2E/API 重评全部轮次被跳过，用例按评估失败收口: test_case_id={test_case_id}",
@@ -1005,13 +1018,17 @@ class ReevaluationExecutor:
         tc_rels = task_acl_repository.get_task_case_by_ids(
             task_id=task_id, case_ids=[str(test_case_id)]
         )
-        tc_rel = tc_rels[0] if tc_rels else None
-        if tc_rel:
+        if tc_rels:
             # 重新评估只更新 evaluation_status，不修改 status（执行结果）
+            # INT-2234：带 tc_rel_id 精确命中本结果所属路由行
+            from evaluation_service.infrastructure.evaluation_mixin import (
+                resolve_row_tc_rel_id,
+            )
             task_acl_repository.update_task_case_status(
                 task_id=task_id,
                 case_id=str(test_case_id),
                 evaluation_status=EvaluationStatus.QUEUED,
+                tc_rel_id=resolve_row_tc_rel_id(tc_rels, result_id),
             )
 
         # P1.4: 通过 gRPC 读 TestCase
@@ -1068,24 +1085,34 @@ class ReevaluationExecutor:
             # 此处仅在收尾未生效（TaskCase 仍 queued）时兜底回滚。
             self._rollback_case_if_stuck_queued(
                 task_id, test_case_id,
-                reevaluate_type=reevaluate_type)
+                reevaluate_type=reevaluate_type,
+                result_id=result_id)
         return submitted
 
-    def _rollback_case_if_stuck_queued(self, task_id, test_case_id, reevaluate_type=None):
+    def _rollback_case_if_stuck_queued(self, task_id, test_case_id, reevaluate_type=None,
+                                       result_id=None):
         """重评未提交任何评估时，回滚仍停留 queued/pending 的用例到终态（INT-364）。
 
         - failed 型重评回滚为 evaluation_status=failed（失败原因写入 error_message）；
         - 其余类型回滚为 evaluation_status=completed；
-        - status 由执行终态恢复（derive 推导已能正确落 completed/failed）。
+        - status 不直接写：按行自身 execution + 本次 evaluation 由 task_service 派生
+          （INT-2234，原先直写 status 会绕过双状态派生）。
         幂等安全：仅当用例仍处 queued/pending 中间态才写，评估入口已收尾
         （终态）的用例不再触碰。
+        INT-2234：按 result_id 解析路由行，只回滚本次重评的行，不碰兄弟路由。
         """
         try:
+            from evaluation_service.infrastructure.evaluation_mixin import (
+                resolve_row_tc_rel_id,
+            )
             tc_rels = task_acl_repository.get_task_case_by_ids(
                 task_id=task_id, case_ids=[str(test_case_id)])
             if not tc_rels:
                 return
-            tc_rel = tc_rels[0]
+            tc_rel_id = resolve_row_tc_rel_id(tc_rels, result_id)
+            tc_rel = (next((r for r in tc_rels if getattr(r, 'id', None) == tc_rel_id),
+                           tc_rels[0])
+                      if tc_rel_id else tc_rels[0])
             if tc_rel.evaluation_status not in (
                     EvaluationStatus.QUEUED, EvaluationStatus.PENDING):
                 return  # 评估入口已收尾（终态）或评估在途，不动
@@ -1095,24 +1122,19 @@ class ReevaluationExecutor:
                 if reevaluate_type == REEVALUATE_TYPE_FAILED
                 else EvaluationStatus.COMPLETED
             )
-            rollback_case = (
-                TaskCaseStatus.FAILED
-                if reevaluate_type == REEVALUATE_TYPE_FAILED
-                else TaskCaseStatus.COMPLETED
-            )
             task_acl_repository.update_task_case_status(
                 task_id=task_id,
                 case_id=str(test_case_id),
-                status=rollback_case,
                 evaluation_status=rollback_eval,
                 error_message=(
                     f"重新评估无维度可提交，回滚用例评估状态为 {rollback_eval}"
                     if reevaluate_type == REEVALUATE_TYPE_FAILED else ''
                 ),
+                tc_rel_id=tc_rel_id,
             )
             log_and_emit('WARNING', 'reevaluator',
                          f"重新评估无维度可提交，回滚用例评估状态: test_case_id={test_case_id}, "
-                         f"evaluation_status={rollback_eval}, status={rollback_case}",
+                         f"evaluation_status={rollback_eval}, tc_rel_id={tc_rel_id}",
                          task_id=task_id, test_case_id=test_case_id)
         except Exception as e:
             log_and_emit('WARNING', 'reevaluator',

@@ -10,7 +10,83 @@ from evaluation_service.domain.services.endpoint_helpers import (  # noqa: F401
     get_endpoint_url,
     get_endpoint_field,
 )
-from shared.utils.status_constants import ExecutionStatus
+
+# 路由行类型（task_case_relations.device_type）：API 侧行的 device_id 列存 api.id
+_API_ROUTE_DEVICE_TYPES = ('http_api', 'websocket_api')
+
+
+def get_result_route_binding(result_id):
+    """读取结果行的路由归属 (device_id, api_id)；读不到返回 (None, None)。
+
+    INT-2234：评估写回必须按结果所属路由行精确命中，结果行的 device_id/api_id
+    是唯一的归属线索（与 task_case_relations.device_type/device_id 对应）。
+    """
+    from evaluation_service.infrastructure.acl import task_acl_repository
+
+    try:
+        result = task_acl_repository.get_test_result_by_id(result_id)
+    except Exception:
+        return None, None
+    if result is None:
+        return None, None
+    if isinstance(result, dict):
+        return result.get('device_id'), result.get('api_id')
+    return getattr(result, 'device_id', None), getattr(result, 'api_id', None)
+
+
+def match_route_tc_rel_id(rows, device_id=None, api_id=None):
+    """在多路由行中按结果归属选出 task_case_relations.id（纯匹配）。
+
+    - 单行：直接命中该行；
+    - 多行：physical 行按 device_id、http_api/websocket_api 行按 api_id 匹配；
+    - 匹配不到 → None（调用方按旧口径处理，由服务端自行决定命中范围）。
+    """
+    if not rows:
+        return None
+    if len(rows) == 1:
+        return getattr(rows[0], 'id', None)
+    for row in rows:
+        row_bind = getattr(row, 'device_id', None)
+        row_type = getattr(row, 'device_type', '') or ''
+        if device_id is not None and row_type == 'physical' \
+                and str(row_bind) == str(device_id):
+            return getattr(row, 'id', None)
+        if api_id is not None and row_type in _API_ROUTE_DEVICE_TYPES \
+                and str(row_bind) == str(api_id):
+            return getattr(row, 'id', None)
+    return None
+
+
+def resolve_row_tc_rel_id(rows, result_id=None):
+    """在已读取的路由行中按结果归属解析路由行 id（INT-2234）。
+
+    调用方已拿到 tc_rels 时用它，避免重复读；结果归属读不到 → None（旧口径）。
+    """
+    if not rows:
+        return None
+    if len(rows) == 1:
+        return getattr(rows[0], 'id', None)
+    device_id = api_id = None
+    if result_id:
+        device_id, api_id = get_result_route_binding(result_id)
+    return match_route_tc_rel_id(rows, device_id=device_id, api_id=api_id)
+
+
+def resolve_route_tc_rel_id(task_id, test_case_id, result_id=None):
+    """按结果归属解析 task_case_relations.id（INT-2234，多路由精确命中）。
+
+    评估侧所有 TaskCase 写回都应带此 id：不带时 task_service 按
+    (task_id, test_case_id) 全量更新，会把同用例兄弟路由行一并改写
+    （INT-604「逐行写回」的反面）。解析不出时返回 None，保持旧口径。
+    """
+    from evaluation_service.infrastructure.acl import task_acl_repository
+
+    try:
+        rows = task_acl_repository.get_task_case_by_ids(
+            task_id=task_id, case_ids=[str(test_case_id)])
+    except Exception:
+        return None
+    return resolve_row_tc_rel_id(rows, result_id)
 
 
 def update_task_case_status_with_retry(task_id, case_id, status='',
@@ -53,6 +129,7 @@ def update_task_case_status_with_retry(task_id, case_id, status='',
     task_status_retry_queue.enqueue_case_status(
         task_id=task_id, case_id=str(case_id), status=status,
         evaluation_status=evaluation_status, error_message=error_message,
+        tc_rel_id=tc_rel_id,
     )
     import logging
     logging.getLogger(__name__).warning(
@@ -92,7 +169,7 @@ def update_task_status_with_retry(task_id, status):
 
 
 def update_task_case_status_in_db(local_db_session, task_id, test_case_id, status,
-                                  evaluation_status=None, execution_status=ExecutionStatus.COMPLETED,
+                                  evaluation_status=None, execution_status=None,
                                   exclude_stopped=True, error_message='', tc_rel_id=None):
     """
     统一更新 TaskCase 状态（P1.4 改造：通过 gRPC 调 task_service.UpdateTaskCaseStatus）
@@ -103,9 +180,10 @@ def update_task_case_status_in_db(local_db_session, task_id, test_case_id, statu
         test_case_id: 用例ID
         status: 新状态（仅作向后兼容参数，实际由 derive_task_case_status 推导）
         evaluation_status: 评估状态，默认与 status 一致
-        execution_status: 执行状态，默认 'completed'（评估服务调用时执行已完成）；
-            INT-604 显式传 None 表示「不回写 execution_status」——多路由下兄弟
-            路由可能仍在执行中，由 task_service 按行自身执行状态推导复合 status
+        execution_status: 执行状态。评估侧写回不持有执行事实，默认 None 表示
+            「不回写 execution_status」——多路由下兄弟路由可能仍在执行中，
+            由 task_service 按行自身执行状态推导复合 status（INT-604/INT-2234）。
+            历史默认值 ExecutionStatus.COMPLETED 会把同用例所有路由行强写执行完成。
         exclude_stopped: 是否排除已停止的任务（gRPC 接口暂未支持，服务端处理）
         error_message: 失败原因（INT-107：评估失败时写入 task_case_relations.error_message，
             服务端仅在非空时写入，不会覆盖已有值）

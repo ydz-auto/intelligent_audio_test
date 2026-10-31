@@ -201,6 +201,7 @@ class EndpointWorker(EvaluationLoggerMixin):
                                 task_data.get('task_id'),
                                 task_data.get('test_case_id'),
                                 f"端点Worker处理任务异常: {str(e)}",
+                                result_id=task_data.get('result_id'),
                             )
                             self._maybe_finalize_reeval(task_data.get('task_id'))
                         except Exception as mark_err:
@@ -553,7 +554,8 @@ class EndpointWorker(EvaluationLoggerMixin):
                     test_case_id=test_case_id
                 )
                 self.eval_service.result_processor.mark_case_failed_if_active(
-                    task_id, test_case_id, f"评估结果处理异常: {str(e)}"
+                    task_id, test_case_id, f"评估结果处理异常: {str(e)}",
+                    result_id=result_id,
                 )
                 self._maybe_finalize_reeval(task_id)
         else:
@@ -564,7 +566,8 @@ class EndpointWorker(EvaluationLoggerMixin):
                 task_id=task_id,
                 test_case_id=test_case_id,
                 api_raw_response=resp_data,
-                api_request_body=payload
+                api_request_body=payload,
+                result_id=result_id,
             )
             self._maybe_finalize_reeval(task_id)
 

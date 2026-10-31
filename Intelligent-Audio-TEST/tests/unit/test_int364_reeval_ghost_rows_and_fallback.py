@@ -327,7 +327,8 @@ class TestRollbackCaseIfStuckQueued:
         assert kwargs['task_id'] == 1
         assert kwargs['case_id'] == 'c1'
         assert kwargs['evaluation_status'] == EvaluationStatus.FAILED
-        assert kwargs['status'] == TaskCaseStatus.FAILED
+        # INT-2234：不直写复合 status，由 task_service 按行自身执行状态派生
+        assert 'status' not in kwargs
         assert '回滚' in (kwargs.get('error_message') or '')
 
     def test_non_failed_type_rolls_back_to_completed(self, patched_acl):
@@ -342,7 +343,7 @@ class TestRollbackCaseIfStuckQueued:
 
         kwargs = patched_acl.upd_tc.call_args.kwargs
         assert kwargs['evaluation_status'] == EvaluationStatus.COMPLETED
-        assert kwargs['status'] == TaskCaseStatus.COMPLETED
+        assert 'status' not in kwargs
 
     def test_terminal_case_not_touched(self, patched_acl):
         """评估入口已收尾（终态）的用例不触碰"""
@@ -393,7 +394,8 @@ class TestRollbackCaseIfStuckQueued:
 
         assert submitted is False
         sweep.assert_called_once()
-        rollback.assert_called_once_with(1, 'c1', reevaluate_type='failed')
+        rollback.assert_called_once_with(
+            1, 'c1', reevaluate_type='failed', result_id=11)
 
     def test_single_path_no_rollback_on_submit(self, patched_acl):
         """单轮链：提交成功 → 不触发回滚"""

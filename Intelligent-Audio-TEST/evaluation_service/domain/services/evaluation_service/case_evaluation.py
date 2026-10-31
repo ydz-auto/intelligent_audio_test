@@ -8,6 +8,22 @@ from shared.models.common_enums import DeviceType
 # domain 层通过 ACL 仓储获取字段映射数据（延迟 import 避免循环依赖）
 
 
+def _route_tc_rel_id(host, task_id, test_case_id, result_id):
+    """解析本次结果所属的路由行 id（INT-2234，多路由精确命中）。
+
+    解析能力由 DimensionResultRecorderMixin._resolve_tc_rel_id 提供（生产宿主
+    两类混入同时组合）；只组合其它混入的宿主（部分单测）拿不到时返回 None，
+    保持旧写回口径，不让解析失败阻断收口。
+    """
+    resolver = getattr(host, '_resolve_tc_rel_id', None)
+    if not callable(resolver):
+        return None
+    try:
+        return resolver(task_id, test_case_id, result_id)
+    except Exception:
+        return None
+
+
 class CaseEvaluationMixin:
     """用例评估的顶层编排：准备数据 → 分发到 worker"""
 
@@ -146,12 +162,14 @@ class CaseEvaluationMixin:
         )
         try:
             self.result_processor.mark_test_result_completed(result_id)
+            # INT-2234：只命中本次结果所属路由行，不改写同用例兄弟路由
             self._task_acl_repo.update_task_case_status(
                 task_id=task_id,
                 case_id=str(test_case_id),
                 status=TaskCaseStatus.SKIPPED,
                 evaluation_status=EvaluationStatus.COMPLETED,
                 error_message=reason,
+                tc_rel_id=_route_tc_rel_id(self, task_id, test_case_id, result_id),
             )
             self._post_evaluate_updates(task_id, test_case_id)
         except Exception as e:
@@ -183,6 +201,7 @@ class CaseEvaluationMixin:
                 status=derive_task_case_status(ExecutionStatus.COMPLETED, EvaluationStatus.FAILED),
                 evaluation_status=EvaluationStatus.FAILED,
                 error_message=reason,
+                tc_rel_id=_route_tc_rel_id(self, task_id, test_case_id, result_id),
             )
             self._post_evaluate_updates(task_id, test_case_id)
         except Exception as e:

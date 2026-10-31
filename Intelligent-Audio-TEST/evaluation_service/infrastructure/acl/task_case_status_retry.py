@@ -33,16 +33,30 @@ RETRY_MAX_INTERVAL_SECONDS = 60
 MAX_RETRY_WINDOW_SECONDS = 30 * 60
 
 
+def _coerce_tc_rel_id(value):
+    """路由行 id 归一为 int；空/非数字 → None（INT-2234，防御转换）。"""
+    if value in (None, '', 0):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 class _PendingCaseStatus:
     __slots__ = ('task_id', 'case_id', 'status', 'evaluation_status',
-                 'error_message', 'attempts', 'next_attempt_at', 'enqueued_at')
+                 'error_message', 'tc_rel_id', 'attempts', 'next_attempt_at',
+                 'enqueued_at')
 
-    def __init__(self, task_id, case_id, status, evaluation_status, error_message):
+    def __init__(self, task_id, case_id, status, evaluation_status, error_message,
+                 tc_rel_id=None):
         self.task_id = task_id
         self.case_id = case_id
         self.status = status or ''
         self.evaluation_status = evaluation_status or ''
         self.error_message = error_message or ''
+        # INT-2234：多路由下补写必须仍命中原路由行，否则会把兄弟路由一并改写
+        self.tc_rel_id = _coerce_tc_rel_id(tc_rel_id)
         self.attempts = 0
         self.next_attempt_at = 0.0
         self.enqueued_at = 0.0
@@ -78,12 +92,17 @@ class TaskStatusRetryQueue:
     # ---------- 对外入队 API ----------
 
     def enqueue_case_status(self, task_id, case_id, status,
-                            evaluation_status='', error_message=''):
-        """TaskCase 终态写库失败的延迟重试请求（同 case 只保留最新状态）"""
+                            evaluation_status='', error_message='', tc_rel_id=None):
+        """TaskCase 终态写库失败的延迟重试请求（同 (case, 路由行) 只保留最新状态）
+
+        INT-2234：tc_rel_id 非空时按路由行入队，多路由下兄弟路由的待补写请求
+        互不覆盖（键含路由行 id）。
+        """
         item = _PendingCaseStatus(task_id, str(case_id), status,
-                                  evaluation_status, error_message)
+                                  evaluation_status, error_message,
+                                  tc_rel_id=tc_rel_id)
         with self._lock:
-            self._pending_case[(item.task_id, item.case_id)] = item
+            self._pending_case[self._case_key(item)] = item
             self._arm_locked(item)
             self._ensure_worker_locked()
         self._wake.set()
@@ -98,6 +117,13 @@ class TaskStatusRetryQueue:
         self._wake.set()
 
     # ---------- 内部 ----------
+
+    @staticmethod
+    def _case_key(item):
+        """用例级待补写键：带路由行 id 时区分到行（INT-2234），否则沿用旧键。"""
+        if item.tc_rel_id:
+            return (item.task_id, item.case_id, item.tc_rel_id)
+        return (item.task_id, item.case_id)
 
     def _arm_locked(self, item):
         now = time.monotonic()
@@ -143,6 +169,7 @@ class TaskStatusRetryQueue:
                     status=item.status,
                     evaluation_status=item.evaluation_status,
                     error_message=item.error_message,
+                    tc_rel_id=item.tc_rel_id,
                 )
             except Exception as e:
                 logger.warning('终态重试写库异常: task_id=%s case_id=%s: %s',
@@ -172,7 +199,7 @@ class TaskStatusRetryQueue:
         with self._lock:
             if isinstance(item, _PendingCaseStatus):
                 pending = self._pending_case
-                key = (item.task_id, item.case_id)
+                key = self._case_key(item)
             else:
                 pending = self._pending_task
                 key = item.task_id
