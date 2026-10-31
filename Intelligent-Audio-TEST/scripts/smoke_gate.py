@@ -380,7 +380,10 @@ def s2_create_case(token: str, created: dict) -> dict:
     r = httpx.post(f'{API_BASE}/apis', headers=h, **CK,
                    json={'name': f'{TAG}_mock_api',
                          'vendor': 'mock', 'description': 'INT-314 冒烟门禁 mock 适配器',
-                         'algorithm_type': 'voice_llm', 'device_type': 'http_api',
+                         'algorithm_type': 'voice_llm',
+                         # INT-1799：写侧 device_type 已废弃（一律 400），
+                         # 改用协议 / 流式性正交两维（与 INT-2198 门禁同口径）
+                         'protocol': 'http', 'streaming': False,
                          'adapter_class': 'MockDialogAdapter', 'status': 'online',
                          'meta': {'purpose': 'int314-smoke-gate', 'mode': 'dialog'}})
     api_cfg_id = resp_data(r).get('id')

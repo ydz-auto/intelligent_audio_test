@@ -1077,8 +1077,30 @@ class AlgorithmConfigCache:
 
         merged: Dict[str, Any] = {}
         for bucket in set(base) | set(profile_buckets) | set(override_buckets):
-            merged[bucket] = _resolve_scope_rows(
+            base_rows = base.get(bucket, [])
+            if not isinstance(base_rows, list):
+                # 非行列表的桶（防御分支）不参与行级合并
+                merged[bucket] = base_rows
+                continue
+            if bucket == 'api':
+                # source='api' 的算法类型级默认层已废弃（spec：带作用域时
+                # API 来源只由「策略 + 实例覆盖」提供）
+                base_rows = []
+            else:
+                # 其余来源（含 evaluation 桶里的 case / case_config / reference /
+                # device 行）以算法类型级行为默认层打底，优先级
+                # 实例覆盖 > 策略 > 算法级打底（INT-2204：此前 base 被整层丢弃，
+                # 只有算法级 case_config 映射的 API 用例会拿到空映射 → 评估
+                # skipped → 报告无法生成）
+                base_rows = [row for row in base_rows
+                             if row.get('source') != 'api']
+            layered = _resolve_scope_rows(
+                base_rows,
                 profile_buckets.get(bucket, []),
+                _mapping_merge_key,
+            )
+            merged[bucket] = _resolve_scope_rows(
+                layered,
                 override_buckets.get(bucket, []),
                 _mapping_merge_key,
             )
