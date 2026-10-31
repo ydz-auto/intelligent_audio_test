@@ -6,8 +6,9 @@
  *   本弹窗按 `device_id` 合并——设备级行覆盖同键（param_code + direction）算法级行；
  * - 写：新增 / 编辑 / 删除都落**设备级行**（带 device_id），算法级声明只读；
  * - 删除设备级行即回落到算法级声明（不动物理参数定义的算法默认值）。
+ * - 设备级**映射**由同目录 `device-mappings-section` 维护（同样是设备行覆盖算法级行）。
  *
- * 降级：缺 `algorithm:param_manage` → 只读；未选算法 → 空态提示。
+ * 降级：缺 `algorithm:param_manage` → 参数区只读；未选算法 → 空态提示。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2 } from 'lucide-react'
@@ -17,6 +18,7 @@ import { toast } from 'sonner'
 import { useTestAlgorithmOptions } from '@/application/test-execution/useTestAlgorithmOptions'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import type { AlgorithmApiParam } from '@/domain/models/apiConfig'
+import { DeviceMappingsSection } from './device-mappings-section'
 import {
   createDeviceScopeParam,
   deleteDeviceScopeParam,
@@ -356,9 +358,11 @@ export function DeviceParamsDialog({
             </div>
           )}
 
-          <p className='text-muted-foreground text-xs'>
-            映射规则（用例参数 → 设备参数、设备输出 → 评估参数）仍在「算法配置 → 参数映射」维护。
-          </p>
+          <DeviceMappingsSection
+            open={open}
+            algorithmType={algorithmType}
+            deviceId={device.id}
+          />
         </div>
 
         <DialogFooter>

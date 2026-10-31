@@ -275,6 +275,7 @@ export function toParamMapping(raw: unknown): ParamMapping {
     targetParam: str(r.target_param),
     targetParamName: nullableStr(r.target_param_name),
     transformType,
+    deviceId: num(r.device_id),
   }
 }
 

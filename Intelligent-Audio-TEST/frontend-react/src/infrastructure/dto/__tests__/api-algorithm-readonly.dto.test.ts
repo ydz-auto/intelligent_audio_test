@@ -28,6 +28,7 @@ describe('toAlgorithmApiParam（GET /algorithm/params?param_type=api）', () => 
       })
     ).toEqual({
       id: 9,
+      deviceId: null,
       paramCode: 'response_audio',
       paramName: '回复音频',
       label: null,
@@ -88,6 +89,7 @@ describe('toAlgorithmApiMapping（GET /algorithm/mappings?source_type=evaluation
       targetParam: 'audio_file',
       targetParamName: null,
       transformType: 'base64',
+      deviceId: null,
     })
   })
 

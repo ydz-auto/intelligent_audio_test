@@ -126,6 +126,8 @@ export type ParamMapping = {
   /** 目标参数名称（设备/API=目标参数名；评估=维度内参数名） */
   targetParamName: string | null
   transformType: MappingTransformType
+  /** 行所属设备（设备级覆盖；缺省/空 = 算法类型级默认行） */
+  deviceId?: number | null
 }
 
 /**
