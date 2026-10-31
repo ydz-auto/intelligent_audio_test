@@ -395,13 +395,15 @@ class TestCaseImportService:
         非字符串（JSON/ZIP 里的数字、旧版单 Sheet Excel 的数字单元格）会在那里
         抛 AttributeError，预览必须在同一处提前拦截，两侧文案才能逐条可比
         （INT-2181 复测缺口：预览漏报 `name: 12345`）。
+        校验顺序：用例名称 → 引用音频存在性。每个坏行只返回 1 条（先命中的），
+        与「预览 errors 与导入回执逐条可比」的口径一致（INT-2182）。
         """
         name = case_data.get('name')
         if not name:
             return "用例名称不能为空"
         if not isinstance(name, str):
             return "用例名称必须是字符串"
-        return None
+        return TestCaseImportService._validate_audio_references(case_data)
 
     @staticmethod
     def _validate_row_full(case_data):
@@ -423,6 +425,74 @@ class TestCaseImportService:
         except Exception as e:
             return str(e)
         return None
+
+    @staticmethod
+    def _validate_audio_references(case_data):
+        """校验用例引用的音频在库中存在（不存在 → 行级引用错误）。
+
+        覆盖 `config.rounds[].audios[].audio_id`（ZIP/JSON 包）与解析期已落好的
+        `audios[]`（CSV/Excel 扁平格式，AUDIO_ID 列）。软删音频由
+        audio_config_service 的 `deleted=false` 过滤，按不存在处理。
+        音频服务查询失败时放行（fail-open），避免依赖抖动阻断整包导入。
+        """
+        missing = TestCaseImportService._find_missing_audio_ids(case_data)
+        if not missing:
+            return None
+        return f"音频 {'、'.join(str(audio_id) for audio_id in missing)} 不存在"
+
+    @staticmethod
+    def _collect_referenced_audio_ids(case_data):
+        """收集用例引用的音频 ID（去重保序，跳过空值 / 非数字）。"""
+        audio_ids = []
+
+        def _collect(values):
+            for value in values:
+                audio_id = TestCaseImportService._parse_int_or_none(value)
+                if audio_id is not None and audio_id not in audio_ids:
+                    audio_ids.append(audio_id)
+
+        config = case_data.get('config') or {}
+        if isinstance(config, dict):
+            _collect(
+                item.get('audio_id')
+                for item in common.collect_audios(config)
+                if isinstance(item, dict)
+            )
+        flat_audios = case_data.get('audios')
+        if isinstance(flat_audios, list):
+            _collect(
+                item.get('audio_id')
+                for item in flat_audios
+                if isinstance(item, dict)
+            )
+        return audio_ids
+
+    @staticmethod
+    def _find_missing_audio_ids(case_data):
+        """批量查库，返回引用但不存在的音频 ID 列表（查询失败时返回空）。"""
+        audio_ids = TestCaseImportService._collect_referenced_audio_ids(case_data)
+        if not audio_ids:
+            return []
+        try:
+            res = _audio_acl.get_by_ids({'ids': audio_ids})
+        except Exception:
+            logger.warning("导入校验：批量查询音频失败，跳过引用校验", exc_info=True)
+            return []
+        if not res.get('success'):
+            logger.warning(
+                "导入校验：批量查询音频失败（%s），跳过引用校验", res.get('message'))
+            return []
+
+        found = set()
+        records = res.get('data')
+        if not isinstance(records, list):
+            logger.warning(
+                "导入校验：音频批量查询返回非列表（%r），跳过引用校验", type(records))
+            return []
+        for record in records:
+            if isinstance(record, dict):
+                found.add(TestCaseImportService._parse_int_or_none(record.get('id')))
+        return [audio_id for audio_id in audio_ids if audio_id not in found]
 
     # ------------------------------------------------------------------
     # 重复处理策略
