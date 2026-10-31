@@ -135,12 +135,11 @@ export const PUBLISHED_ROW_ACTIONS = [
   { key: 'archive', label: '归档', permission: 'published_task:archive' },
 ] as const
 
-/** ISO 时间串 → 「YYYY-MM-DD HH:mm」（轻量格式化，无 dayjs；异常原样返回） */
-export function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '—'
-  const normalized = value.replace('T', ' ')
-  return normalized.length >= 16 ? normalized.slice(0, 16) : normalized
-}
+/**
+ * 后端时间串 → 本地「YYYY-MM-DD HH:mm」。
+ * INT-2201：后端多为无时区后缀的裸 UTC，切片会早 8 小时；统一走 lib/date-time。
+ */
+export { formatDateTime } from '@/features/tasks/lib/date-time'
 
 /** 时长 ms → 「x 秒 / x 分钟」 */
 export function formatDuration(ms: number | null | undefined): string {

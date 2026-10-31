@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import type { TaskDetailData } from '@/domain/models/task'
 import { Progress } from '@/features/tasks/components/ui/progress'
+import { formatTaskUsedTime } from '@/features/tasks/lib/date-time'
 
 const STAT_CELLS = [
   { key: 'completed', label: '已完成', textClass: 'text-success bg-success/10' },
@@ -52,7 +53,7 @@ export function ProgressCard({ detail }: { detail: TaskDetailData }) {
           />
         </div>
         <p className='text-muted-foreground mt-1.5 text-xs tabular-nums'>
-          已用时间 {detail.used_time ?? '—'} / 预计时间 {detail.expected_total_time ?? '—'}
+          已用时间 {formatTaskUsedTime(detail)} / 预计时间 {detail.expected_total_time ?? '—'}
         </p>
 
         <div className='mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5'>

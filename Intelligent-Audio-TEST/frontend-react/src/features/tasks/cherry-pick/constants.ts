@@ -97,9 +97,5 @@ export function getCheckoutActionMeta(key: CheckoutAction) {
   return CHECKOUT_ACTIONS.find((a) => a.key === key) ?? CHECKOUT_ACTIONS[0]
 }
 
-/** ISO 时间串 → 「YYYY-MM-DD HH:mm」（复用 tasks/constants 同款轻量格式化） */
-export function formatPickDateTime(value: string | null | undefined): string {
-  if (!value) return '—'
-  const normalized = value.replace('T', ' ')
-  return normalized.length >= 16 ? normalized.slice(0, 16) : normalized
-}
+/** 后端时间串 → 本地「YYYY-MM-DD HH:mm」（INT-2201：统一走任务域时间工具，裸 UTC 转本地） */
+export { formatDateTime as formatPickDateTime } from '@/features/tasks/lib/date-time'
