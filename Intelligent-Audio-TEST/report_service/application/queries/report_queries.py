@@ -62,7 +62,7 @@ class ListReportsQuery:
     """分页列出报告（未删除）。
 
     Attributes:
-        status: 可选状态过滤（pending/generating/completed/failed）
+        status: 可选状态过滤（draft / published）
         report_types: 可选类型集合过滤（IN 口径；INT-280 对比视图多类型下发，
             None/空集合不过滤）
         task_id: 可选任务 ID 精确过滤（INT-262：按任务查报告）

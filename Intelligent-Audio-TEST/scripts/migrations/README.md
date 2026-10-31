@@ -75,6 +75,7 @@ python scripts/migrations/202610/widen_case_param_scope_to_device_type.py  # ㊿
 # 注：202611 目录另有参数作用域 / 设备参数策略 / 设备绑定 / 音箱组等步骤（㊾、㊾-1~㊾-3），
 #     其顺序以 docker/db_bootstrap_entrypoint.py 的 BOOTSTRAP_STEPS 为准（本节此前未同步到本总览）。
 python scripts/migrations/202611/add_audios_md5_filepath_index.py --apply  # ㊾-4 audios 补 md5 / file_path 局部索引（INT-2280：上传按 md5 去重、ZIP 回导逐文件去重、stream/download 的 file_path 可见性校验此前每请求全表扫描；两索引均 WHERE deleted = false，与 ORM Audio.__table_args__ 对齐；autocommit 逐条 CREATE INDEX CONCURRENTLY（不阻塞写），已存在即 SKIP，留 invalid 索引时打印 DROP 命令并以非零码退出；默认 dry-run，须在 ㊽ INT-1741 ANALYZE 之前）
+python scripts/migrations/202611/normalize_report_status_int2238.py --apply  # ㊾-5 test_reports.status 历史混值归一（INT-2238：该列曾被 pending/generating/completed/failed 与 draft/published 两套词表混写，统计只认 published 导致漏计、页面恒「草稿」；代码侧已统一为 ReportStatus 枚举，本步把 completed→published、其余非标准值→draft；只命中非标准值行，幂等；纯数据 UPDATE、无 DDL；默认 dry-run，引导链须在 ㊽ INT-1741 ANALYZE 之前）
 # ── 数据补齐（INT-2099，独立窗口，不进 docker 引导链）────────────────────
 python scripts/migrations/202610/seed_tag_categories_int2099.py --apply  # ㊿ 真实库标签分类数据补齐（INT-2099：按名称规则建 6 个活跃分类 + 给活跃标签补 category_id；**真实库用户数据定向补齐，不进 docker 引导链**，须负责人确认分类口径后由部署卡单独执行；只补 NULL、不动软删行、不删数据；默认 dry-run）
 # ── 档4 M1（INT-1995，独立窗口，不进 docker 引导链）──────────────────────

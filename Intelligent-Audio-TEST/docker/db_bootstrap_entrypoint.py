@@ -359,6 +359,15 @@ BOOTSTRAP_STEPS = [
     #     检出并以非零码退出并打印 DROP 命令（IF NOT EXISTS 不会自愈它）。
     #     默认 dry-run，引导链必须带 --apply；须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202611/add_audios_md5_filepath_index.py', '--apply'),
+    # ㊾-5 test_reports.status 历史混值归一（INT-2238）：同一列曾被两套互斥词表
+    #     混写（域实体/命令侧 pending/generating/completed/failed vs 生成/统计/
+    #     渲染/前端 draft/published），统计只认 published → 混写报告永久漏计、
+    #     页面恒「草稿」。代码侧已统一走 shared.models.common_enums.ReportStatus
+    #     （draft/published），本步把存量值归一：completed→published，其余
+    #     非标准值→draft。幂等（只命中 status NOT IN (draft, published) 的行，
+    #     归一后重复执行命中 0 行），纯数据 UPDATE、无 DDL；默认 dry-run，
+    #     引导链必须带 --apply；须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/normalize_report_status_int2238.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器

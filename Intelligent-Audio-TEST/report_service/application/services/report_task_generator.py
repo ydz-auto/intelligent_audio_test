@@ -35,7 +35,7 @@ from report_service.infrastructure.clients.grpc_clients import (
 )
 from report_service.infrastructure.persistence.report_repository import report_repository
 from shared.infrastructure.user_context import capture_identity, run_with_identity
-from shared.models.common_enums import TaskStatus
+from shared.models.common_enums import ReportStatus, TaskStatus
 from shared.utils.log_handler import log_and_emit
 from shared.utils.query_utils import now_cst
 from shared.utils.distributed_coordinator import DistributedLock
@@ -926,7 +926,7 @@ class ReportTaskGenerator:
             # 报告生成完成，设置状态为 published
             with _StageSpan(task_id, GenerationStage.SET_STATUS):
                 try:
-                    report_repository.update_status(report_id, 'published')
+                    report_repository.update_status(report_id, ReportStatus.PUBLISHED.value)
                     log_and_emit('INFO', 'report', f'[generate_task_report_async] Report status set to published, report_id={report_id}', task_id=task_id)
                 except Exception as status_err:
                     log_and_emit('WARNING', 'report', f'[generate_task_report_async] Failed to set published status: {status_err}', task_id=task_id)

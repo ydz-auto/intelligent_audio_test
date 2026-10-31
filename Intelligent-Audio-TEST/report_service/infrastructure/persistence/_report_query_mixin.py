@@ -124,7 +124,7 @@ class ReportQueryMixin:
         """分页列出报告聚合根。
 
         Args:
-            status: 可选状态过滤（pending/generating/completed/failed）
+            status: 可选状态过滤（draft / published）
             report_types: 可选类型集合过滤（IN 口径，INT-280 对比视图多类型；
                 空集合或 None 不过滤）
             task_id: 可选任务 ID 精确过滤（INT-262）

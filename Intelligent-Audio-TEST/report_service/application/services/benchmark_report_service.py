@@ -157,7 +157,7 @@ class BenchmarkReportService:
                 task_id=task_id or 0,
                 name=name,
                 report_type='benchmark',
-                status='published',
+                status=ReportStatus.PUBLISHED.value,
                 config={'name': name, 'description': command.description or '',
                         'benchmark': True, 'suite': suite, 'category': category,
                         'source': source},

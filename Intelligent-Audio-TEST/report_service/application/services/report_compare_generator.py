@@ -9,7 +9,7 @@
 - gRPC helper 统一从 report_service.infrastructure.clients.grpc_clients 导入
 - ReportUtils / ReportQueryBuilder / ReportDataBuilder / ReportCompareHelpers
   导入路径切换到 report_service
-- 报告类型与状态使用字符串字面量 'comparison' / 'secondary_comparison' / 'draft'
+- 报告类型与状态取 ReportType / ReportStatus 枚举值（'comparison' / 'secondary_comparison' / 'draft'）
 - 保留 ThreadPoolExecutor 与锁，保留 _emit_secondary_compare_event 事件推送
 
 实现采用 Mixin 组合模式（同 report_utils / report_aggregation 拆分先例）：
@@ -43,7 +43,7 @@ from report_service.application.services.report_compare_helpers import ReportCom
 from report_service.application.services.report_task_generator import GenerationTracker, _thread_stack
 from report_service.application.services import report_task_generator as _gen_mod
 from report_service.config.config import Config
-from report_service.domain.entities import ReportAggregate
+from report_service.domain.entities import ReportAggregate, ReportStatus
 from report_service.domain.entities.report import GenerationStage
 from report_service.infrastructure.persistence.report_repository import report_repository
 
@@ -447,7 +447,7 @@ class ReportCompareGenerator(
                     id=0,
                     task_id=0,
                     report_type='secondary_comparison',
-                    status='draft',
+                    status=ReportStatus.DRAFT.value,
                     config={'name': name, 'description': description},
                     deleted=False,
                 )

@@ -10,7 +10,7 @@
 - _create_report_record / _create_report_summary / _create_report_detail_data
   改为通过 report_repository 对应方法写入
 - 移除 _build_response（Pydantic 响应组装属 api_gateway 职责，不在 report_service 内）
-- 报告状态/类型使用字符串字面量 'draft' / 'task'，保持与现有数据模型一致
+- 报告状态/类型取 ReportStatus / ReportType 枚举值（'draft' / 'task'），全链路单一词表
 
 实现采用 Mixin 组合模式（同 report_utils / report_aggregation 拆分先例）：
 - ReportDataTaskMixin: 任务校验 + 维度结果/aux 参数批量查询 + 结果类型提取

@@ -580,12 +580,13 @@ def s4_report(token: str, created: dict) -> int:
             continue
         rr = httpx.get(f'{API_BASE}/reports/{report_id}', headers=h, **CK)
         report = resp_data(rr)
-        if report.get('status') in ('completed', 'failed', 'published'):
+        # INT-2238：报告行状态只有 draft / published，生成成功即 published
+        if report.get('status') == 'published':
             break
         time.sleep(3)
     if not report_id:
         raise GateFail(f'报告未生成（generate-task 响应: {json.dumps(gd, ensure_ascii=False)[:300]}）')
-    if not report or report.get('status') not in ('completed', 'published'):
+    if not report or report.get('status') != 'published':
         st = report.get('status') if report else 'unknown'
         raise GateFail(f'报告 {report_id} 未达完成终态（status={st}，180s 超时）。'
                        f'排查: GET {API_BASE}/reports/{report_id} 与 report_service 日志')

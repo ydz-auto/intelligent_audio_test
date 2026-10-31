@@ -18,7 +18,7 @@ from report_service.domain.entities import ReportStatus, ReportType
 class CreateReportCommand:
     """创建报告命令。
 
-    用于新建一个处于 pending 状态的报告聚合根。
+    用于新建一个处于 draft（未发布）状态的报告聚合根。
 
     Attributes:
         task_id: 关联任务 ID
@@ -36,9 +36,9 @@ class CreateReportCommand:
 class GenerateReportCommand:
     """生成报告命令。
 
-    触发报告生成流程（pending -> generating -> completed/failed）。
-    Handler 会查找任务的最新报告并将其标记为 generating，
-    若不存在则新建报告并标记为 generating。
+    触发报告生成流程（发布态：draft -> published）。
+    Handler 会查找任务的最新报告并将其状态回到 draft（重新生成期间未发布），
+    若不存在则新建报告并以 draft 落库；生成成功后由引擎置 published。
 
     Attributes:
         task_id: 关联任务 ID
@@ -75,16 +75,14 @@ class UpdateReportCommand:
 
 @dataclass(frozen=True)
 class UpdateReportStatusCommand:
-    """更新报告状态命令。
-
-    用于报告状态流转（如 generating -> completed/failed）。
+    """更新报告状态命令（发布态：draft ↔ published）。
 
     Attributes:
         report_id: 报告 ID
-        status: 目标状态（pending/generating/completed/failed）
+        status: 目标状态（ReportStatus 词表：draft / published）
     """
     report_id: int
-    status: str = ReportStatus.PENDING.value
+    status: str = ReportStatus.DRAFT.value
 
 
 @dataclass(frozen=True)

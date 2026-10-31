@@ -17,6 +17,7 @@ from api_gateway.schemas.report import (
 )
 from api_gateway.infrastructure.grpc_proxies import report_config_service
 from shared.proto import report_service_pb2 as report_pb
+from shared.models.common_enums import ReportStatus
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
 logger = logging.getLogger(__name__)
@@ -179,7 +180,7 @@ class ReportCommandService:
             stub = report_config_service.stub
             resp = stub.UpdateReportStatus(report_pb.UpdateReportStatusRequest(
                 report_id=int(report_id),
-                status='published'))
+                status=ReportStatus.PUBLISHED.value))
             if not resp.success:
                 return error_response(resp.message or '发布失败')
             data = _loads(resp.data, {}) or {}

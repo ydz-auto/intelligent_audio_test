@@ -60,35 +60,28 @@ class ReportGenerator:
 
     @staticmethod
     def determine_status(task_status: str) -> str:
-        """映射任务完成状态到报告状态。
+        """映射任务完成状态到报告状态（发布态）。
+
+        报告行状态只有 draft / published 两个取值（INT-2238）：任务完成类状态
+        对应报告生成成功 → published；任务失败或仍在执行 → draft（未发布，
+        失败后可重新生成）。
 
         Args:
             task_status: 任务状态字符串
 
         Returns:
-            报告状态字符串（pending/generating/completed/failed）
+            报告状态字符串（draft / published）
         """
         # 任务终态映射规则
         _COMPLETED_LIKE = {
             'completed', 'stopped', 'skipped',
         }
-        _FAILED_LIKE = {
-            'failed',
-        }
-        _RUNNING_LIKE = {
-            'running', 'evaluating', 'reevaluating',
-            'queued', 'reevaluate_queued', 'pending',
-        }
 
         lowered = (task_status or '').lower()
         if lowered in _COMPLETED_LIKE:
-            return ReportStatus.COMPLETED.value
-        if lowered in _FAILED_LIKE:
-            return ReportStatus.FAILED.value
-        if lowered in _RUNNING_LIKE:
-            return ReportStatus.GENERATING.value
-        # 未知任务状态默认回到 pending，等待后续流转
-        return ReportStatus.PENDING.value
+            return ReportStatus.PUBLISHED.value
+        # 失败 / 执行中 / 未知任务状态：报告未完成，保持草稿待后续流转
+        return ReportStatus.DRAFT.value
 
     @staticmethod
     def orchestrate_task_report(task_id: int, name: str = None, description: str = None) -> dict:

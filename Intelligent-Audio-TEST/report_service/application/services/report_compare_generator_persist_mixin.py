@@ -9,7 +9,7 @@
 """
 import json
 
-from report_service.domain.entities import ReportAggregate
+from report_service.domain.entities import ReportAggregate, ReportStatus
 from report_service.infrastructure.persistence.report_repository import report_repository
 
 
@@ -29,7 +29,7 @@ class ReportComparePersistMixin:
             id=0,
             task_id=0,
             report_type='comparison',
-            status='draft',
+            status=ReportStatus.DRAFT.value,
             config={'name': name, 'description': description},
             deleted=False,
         )

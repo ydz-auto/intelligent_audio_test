@@ -91,6 +91,18 @@ def _normalize_summary_keys(summary_dict):
     return normalized
 
 
+def _assert_report_status(status: str) -> None:
+    """报告状态入参校验：只接受 ReportStatus 词表（draft / published）。
+
+    INT-2238：`test_reports.status` 全链路只有一套词表，命令侧挡住历史
+    pending/generating/completed/failed，避免混值重新落库。
+    """
+    if status not in ReportStatus.values():
+        raise ValueError(
+            'status 仅支持 ' + ' / '.join(ReportStatus.values())
+            + f'，收到 {status!r}')
+
+
 class ReportCommandHandler:
     """报告命令处理器。
 
@@ -109,7 +121,7 @@ class ReportCommandHandler:
     def handle_create(self, command: CreateReportCommand) -> int:
         """处理创建报告命令。
 
-        构造一个处于 pending 状态的聚合根并持久化。
+        构造一个处于 draft 状态的聚合根并持久化。
 
         Args:
             command: CreateReportCommand
@@ -130,7 +142,7 @@ class ReportCommandHandler:
             id=0,
             task_id=command.task_id,
             report_type=command.report_type,
-            status=ReportStatus.PENDING.value,
+            status=ReportStatus.DRAFT.value,
             config=dict(command.config),
             visibility=vis,
         )
@@ -139,8 +151,8 @@ class ReportCommandHandler:
     def handle_generate(self, command: GenerateReportCommand) -> Optional[int]:
         """处理生成报告命令。
 
-        流程：查找任务最新报告 -> 标记为 generating；
-        若报告不存在则创建新报告并直接标记为 generating。
+        流程：查找任务最新报告 -> 标记回 draft（重新生成期间未发布）；
+        若报告不存在则创建新报告并直接以 draft 落库。
 
         Args:
             command: GenerateReportCommand
@@ -150,18 +162,18 @@ class ReportCommandHandler:
         """
         aggregate = self.repository.get_by_task(command.task_id)
         if aggregate is None:
-            # 任务尚无报告，新建并直接进入 generating
+            # 任务尚无报告，新建并以 draft 落库
             aggregate = ReportAggregate(
                 id=0,
                 task_id=command.task_id,
                 report_type=command.report_type,
-                status=ReportStatus.GENERATING.value,
+                status=ReportStatus.DRAFT.value,
                 config={},
             )
             return self.repository.add(aggregate)
-        # 已存在报告：更新类型并标记为 generating
+        # 已存在报告：更新类型并回到 draft
         aggregate.report_type = command.report_type
-        aggregate.mark_generating()
+        aggregate.mark_draft()
         self.repository.save(aggregate)
         return aggregate.id
 
@@ -186,13 +198,19 @@ class ReportCommandHandler:
     def handle_update_status(self, command: UpdateReportStatusCommand) -> None:
         """处理更新报告状态命令。
 
-        用于报告生成流转（pending → generating → completed/failed）与
-        发布路径（网关 PUT /reports/{id}/status，对应 POST /reports/{id}/publish）。
+        报告行状态只有一个维度（发布态）：draft ↔ published。生成过程的
+        generating / completed 不是本列取值，进度走 GET /reports/{id}/progress。
+        入口：网关 POST /reports/{id}/publish（→ published）与内部
+        PUT /reports/{id}/status。
+
+        INT-2238：入参按 ReportStatus 词表校验，非 draft/published 直接 ValueError，
+        避免把第二批词表重新写进 test_reports.status。
 
         INT-465 命令侧校验：私有报告非 owner 发布/流转抛 VisibilityDenied（403），
         与 update/delete 写口径闭合（内部生成引擎直调 repository.update_status，
         不经本 Handler，不受此校验影响）。
         """
+        _assert_report_status(command.status)
         self._ensure_report_visible(command.report_id)
         self.repository.update_status(command.report_id, command.status)
 
@@ -237,6 +255,9 @@ class ReportCommandHandler:
         """
         # INT-423 命令侧 owner 校验：私有非 owner 更新抛 VisibilityDenied
         self._ensure_report_visible(command.report_id)
+        # INT-2238：状态入参同 handle_update_status 的词表校验
+        if command.status is not None:
+            _assert_report_status(command.status)
         fields = {
             'name': command.name,
             'description': command.description,

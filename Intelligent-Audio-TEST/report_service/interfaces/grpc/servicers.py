@@ -57,7 +57,7 @@ from report_service.application.queries.report_queries import (
     ListReportsQuery,
     split_report_types,
 )
-from report_service.domain.entities import ReportAggregate
+from report_service.domain.entities import ReportAggregate, ReportStatus
 from report_service.domain.entities.benchmark import BaselineDraftEntry
 from report_service.application.services.report_share_service import (
     report_share_service,
@@ -366,7 +366,7 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             return self._resp(False, str(e), {})
 
     def GenerateReport(self, request, context=None):
-        """生成报告（pending -> generating -> completed/failed）。
+        """生成报告（发布态：draft -> published；生成进度见 GET /reports/{id}/progress）。
 
         请求字段（proto GenerateReportRequest）：
             task_id: int      关联任务 ID
@@ -446,16 +446,16 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             return self._resp(False, str(e), {})
 
     def UpdateReportStatus(self, request, context=None):
-        """更新报告状态（状态流转）。
+        """更新报告状态（发布态：draft ↔ published）。
 
         请求字段（proto UpdateReportStatusRequest）：
             report_id: int  报告 ID
-            status: str     目标状态
+            status: str     目标状态（ReportStatus：draft / published）
         """
         try:
             command = UpdateReportStatusCommand(
                 report_id=getattr(request, 'report_id'),
-                status=getattr(request, 'status', None) or 'pending',
+                status=getattr(request, 'status', None) or ReportStatus.DRAFT.value,
             )
             self.command_handler.handle_update_status(command)
             return self._resp(True, 'ok', {

@@ -16,25 +16,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from shared.models.common_enums import Visibility
-
-
-class ReportStatus(str, Enum):
-    """报告状态枚举（与 PO Report.status 字段值保持一致）。"""
-    PENDING = 'pending'
-    GENERATING = 'generating'
-    COMPLETED = 'completed'
-    FAILED = 'failed'
-
-    @classmethod
-    def is_terminal(cls, status: str) -> bool:
-        """判断状态是否为终态。"""
-        return status in (cls.COMPLETED.value, cls.FAILED.value)
-
-    @classmethod
-    def is_running(cls, status: str) -> bool:
-        """判断状态是否为生成中。"""
-        return status == cls.GENERATING.value
+from shared.models.common_enums import ReportStatus, Visibility
 
 
 class ReportType(str, Enum):
@@ -156,7 +138,7 @@ class ReportAggregate:
     task_id: int
     name: str = ''
     report_type: str = ReportType.STANDARD.value
-    status: str = ReportStatus.PENDING.value
+    status: str = ReportStatus.DRAFT.value
     config: Dict[str, Any] = field(default_factory=dict)
     created_at: Optional[Any] = None
     summaries: List[ReportSummaryEntity] = field(default_factory=list)
@@ -175,38 +157,22 @@ class ReportAggregate:
     full_summary: Optional[Dict[str, Any]] = None
 
     # ---- 状态查询 ----
-    def is_completed(self) -> bool:
-        """是否已完成。"""
-        return self.status == ReportStatus.COMPLETED.value
+    def is_published(self) -> bool:
+        """是否已发布。"""
+        return self.status == ReportStatus.PUBLISHED.value
 
-    def is_generating(self) -> bool:
-        """是否生成中。"""
-        return self.status == ReportStatus.GENERATING.value
-
-    def is_failed(self) -> bool:
-        """是否失败。"""
-        return self.status == ReportStatus.FAILED.value
+    def is_draft(self) -> bool:
+        """是否草稿（未发布）。"""
+        return self.status == ReportStatus.DRAFT.value
 
     # ---- 状态流转 ----
-    def mark_generating(self) -> None:
-        """标记报告为生成中。"""
-        self.status = ReportStatus.GENERATING.value
+    def mark_draft(self) -> None:
+        """置为草稿（重新生成期间回到未发布态）。"""
+        self.status = ReportStatus.DRAFT.value
 
-    def mark_completed(self) -> None:
-        """标记报告为已完成。"""
-        self.status = ReportStatus.COMPLETED.value
-
-    def mark_failed(self, reason: str = '') -> None:
-        """标记报告为失败。
-
-        Args:
-            reason: 失败原因
-        """
-        self.status = ReportStatus.FAILED.value
-        # 失败原因记入 config，便于上游消费
-        if reason:
-            self.config = dict(self.config)
-            self.config['fail_reason'] = reason
+    def mark_published(self) -> None:
+        """置为已发布（生成成功或人工发布）。"""
+        self.status = ReportStatus.PUBLISHED.value
 
     # ---- 派生视图 ----
     def flat_summary(self) -> Dict[str, Any]:

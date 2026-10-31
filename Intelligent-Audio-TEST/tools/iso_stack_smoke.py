@@ -287,14 +287,15 @@ def _generate_report_and_wait(client, base, headers, task_id):
     while time.time() < deadline:
         r = client.get(f'{base}/reports/{report_id}', headers=headers, **CK)
         detail = _resp_data(r)
-        if detail.get('status') in ('completed', 'failed', 'published'):
+        # INT-2238：报告行状态只有 draft / published，生成成功即 published
+        if (detail or {}).get('status') == 'published':
             break
         time.sleep(POLL_INTERVAL)
     _dump_evidence('06_report_generated', {'report_id': report_id,
                                            'status': (detail or {}).get('status'),
                                            'summary_keys': sorted(
                                                (detail or {}).get('summary', {}).keys())})
-    if (detail or {}).get('status') not in ('completed', 'published'):
+    if (detail or {}).get('status') != 'published':
         note = f'报告状态未达终态: {(detail or {}).get("status")}'
         return report_id, detail, note
     return report_id, detail, note

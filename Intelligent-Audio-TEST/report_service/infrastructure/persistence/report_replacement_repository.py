@@ -26,6 +26,7 @@ from sqlalchemy import String, cast
 from sqlalchemy.orm import Session
 
 from shared.constants.data_transfer import BATCH_TTL_SECONDS
+from shared.models.common_enums import ReportStatus
 from shared.models.database import get_db_session, utc8now
 from shared.utils.log_handler import log_not_emit
 from report_service.infrastructure.persistence.models import (
@@ -438,7 +439,7 @@ class ReportReplacementRepository:
             type=source.get('type') or 'task',
             description=source.get('description'),
             analysis=source.get('analysis'),
-            status=source.get('status') or 'published',
+            status=source.get('status') or ReportStatus.PUBLISHED.value,
             task_id=task_id,
             visibility='shared',
             created_by_user_id=None,

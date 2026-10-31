@@ -61,7 +61,7 @@ class ReportRepositoryABC(ABC):
         """分页列出报告聚合根（未删除）。
 
         Args:
-            status: 可选状态过滤（pending/generating/completed/failed）
+            status: 可选状态过滤（draft / published）
             report_types: 可选类型集合过滤（IN 口径，INT-280；None/空不过滤）
             page: 页码（从 1 开始）
             page_size: 每页数量
@@ -151,9 +151,9 @@ class ReportRepositoryABC(ABC):
 
     @abstractmethod
     def update_status(self, report_id: int, status: str) -> None:
-        """更新报告状态。
+        """更新报告状态（发布态：draft ↔ published）。
 
-        用于报告生成流转（pending → generating → completed/failed）。
+        生成引擎成功完成时置 published；重新生成回到 draft。
         """
 
     # ---- 子实体直接写入（供报告生成引擎使用，入参为 dict） ----

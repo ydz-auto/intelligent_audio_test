@@ -150,7 +150,7 @@ def create_report(req: CreateReportRequest):
 
 @router.post('/generate')
 def generate_report(req: GenerateReportRequest):
-    """生成报告（pending -> generating -> completed/failed）。
+    """生成报告（发布态：draft -> published；生成进度见 GET /reports/{id}/progress）。
 
     请求体 JSON：
         task_id: int      关联任务 ID
@@ -178,7 +178,7 @@ def update_report_status(report_id: int, req: UpdateReportStatusRequest):
         report_id: 报告 ID
 
     请求体 JSON：
-        status: str  目标状态（pending/generating/completed/failed）
+        status: str  目标状态（draft / published）
     """
     try:
         if not req.status:

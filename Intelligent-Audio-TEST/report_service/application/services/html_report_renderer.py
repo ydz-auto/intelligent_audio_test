@@ -13,6 +13,8 @@
 import html
 from datetime import datetime
 
+from shared.models.common_enums import ReportStatus
+
 from report_service.application.services.html_report_renderer_section_mixin import HtmlReportSectionMixin
 from report_service.application.services.html_report_renderer_table_mixin import HtmlReportTableMixin
 from report_service.application.services.html_report_renderer_data_mixin import HtmlReportDataMixin
@@ -47,7 +49,7 @@ class HtmlReportRenderer(
         report_desc = report_data.get('description') or ''
         report_analysis = report_data.get('analysis') or ''
         created_at = report_data.get('created_at', '')
-        status = report_data.get('status', 'draft')
+        status = report_data.get('status', ReportStatus.DRAFT.value)
         task_name = report_data.get('task_name', '')
 
         total_cases = summary.get('total_cases', 0) or 0
@@ -125,7 +127,7 @@ class HtmlReportRenderer(
 
         # ---------- 组装完整 HTML ----------
         type_label = {'task': '任务报告', 'comparison': '对比报告', 'secondary_comparison': '二次对比报告'}.get(report_type, report_type)
-        status_label = '已发布' if status == 'published' else '草稿'
+        status_label = '已发布' if status == ReportStatus.PUBLISHED.value else '草稿'
 
         html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">

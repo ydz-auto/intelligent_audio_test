@@ -10,7 +10,7 @@
 """
 import json
 
-from report_service.domain.entities import ReportAggregate
+from report_service.domain.entities import ReportAggregate, ReportStatus
 from report_service.infrastructure.persistence.report_repository import report_repository
 
 
@@ -22,14 +22,14 @@ class ReportDataPersistMixin:
         """创建报告主表记录。
 
         通过 report_repository.add 写入聚合根，避免直接操作 PO。
-        报告类型与状态使用字符串字面量 'task' / 'draft'，
-        保持与现有数据模型一致（shared.models.common_enums 中定义的值）。
+        报告类型与状态取 ReportType / ReportStatus 枚举值（'task' / 'draft'），
+        全链路单一词表（INT-2238）。
         """
         aggregate = ReportAggregate(
             id=0,
             task_id=task_id,
             report_type='task',
-            status='draft',
+            status=ReportStatus.DRAFT.value,
             config={'name': name, 'description': description},
         )
         report_id = report_repository.add(aggregate)

@@ -310,21 +310,21 @@ class TestReportPublishTrendCreateVisibility:
         set_current_user_id(USER_B)
         with pytest.raises(VisibilityDenied):
             cmd.handle_update_status(UpdateReportStatusCommand(
-                report_id=rid_private, status='completed'))
+                report_id=rid_private, status='published'))
         set_current_user_id(USER_A)
         cmd.handle_update_status(UpdateReportStatusCommand(
-            report_id=rid_private, status='completed'))
+            report_id=rid_private, status='published'))
 
         # 共享报告：非 owner 发布零回归（回落既有权限语义）
         set_current_user_id(USER_B)
         cmd.handle_update_status(UpdateReportStatusCommand(
-            report_id=rid_shared, status='completed'))
+            report_id=rid_shared, status='published'))
 
-        # 落库校验：私有报告状态确已流转
+        # 落库校验：私有报告状态确已流转（INT-2238：报告行状态只有 draft/published）
         session = db.get_db_session()
         from report_service.infrastructure.persistence.models import Report
         po = session.get(Report, rid_private)
-        assert po.status == 'completed'
+        assert po.status == 'published'
         db.remove_db_session()
 
     def test_trend_data_filters_private_reports(self, db):

@@ -9,6 +9,8 @@
 import html
 import re
 
+from shared.models.common_enums import ReportStatus
+
 from report_service.application.services.html_report_renderer_style_mixin import HtmlReportStyleMixin
 
 
@@ -18,8 +20,9 @@ class HtmlReportSectionMixin:
     @staticmethod
     def _render_hero(name, desc, created_at, status, report_type, task_name):
         type_label = {'task': '任务报告', 'comparison': '对比报告', 'secondary_comparison': '二次对比报告'}.get(report_type, report_type)
-        status_label = '已发布' if status == 'published' else '草稿'
-        status_class = 'published' if status == 'published' else 'draft'
+        is_published = status == ReportStatus.PUBLISHED.value
+        status_label = '已发布' if is_published else '草稿'
+        status_class = ReportStatus.PUBLISHED.value if is_published else ReportStatus.DRAFT.value
 
         desc_html = f'<p class="hero-desc">{html.escape(desc)}</p>' if desc else ''
         task_html = f'<span class="hero-meta-item">任务: {html.escape(task_name)}</span>' if task_name else ''

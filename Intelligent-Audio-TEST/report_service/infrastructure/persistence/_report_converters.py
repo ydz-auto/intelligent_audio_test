@@ -221,7 +221,7 @@ def _report_po_to_entity(po: Report) -> ReportAggregate:
         task_id=po.task_id or 0,
         name=po.name or '',
         report_type=po.type or 'standard',
-        status=po.status or ReportStatus.PENDING.value,
+        status=po.status or ReportStatus.DRAFT.value,
         config=config,
         created_at=po.created_at,
         summaries=[],   # 子实体按需加载

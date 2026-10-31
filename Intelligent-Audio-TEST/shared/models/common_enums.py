@@ -37,9 +37,23 @@ class Visibility(str, Enum):
 
 
 class ReportStatus(str, Enum):
-    """报告状态枚举"""
+    """报告状态枚举 —— `test_reports.status` 的唯一词表（发布态，INT-2238）
+
+    这一列只表达「是否已发布」一个维度，生成过程的进行中 / 完成态不落库：
+    - DRAFT      草稿：报告行已落库但未发布（生成中、生成失败待重试均留此态）
+    - PUBLISHED  已发布：生成成功自动置位，或人工发布
+
+    生成进度（generating / completed）是 GET /reports/{id}/progress 的响应态，
+    由生成锁实时推导，不是本列取值；不要再往本列写 pending/generating/
+    completed/failed（历史混值由 202611/normalize_report_status_int2238.py 归一）。
+    """
     DRAFT = 'draft'
     PUBLISHED = 'published'
+
+    @classmethod
+    def values(cls) -> tuple:
+        """全部合法取值（命令侧入参校验用）。"""
+        return tuple(m.value for m in cls)
 
 
 class TaskStatus(str, Enum):

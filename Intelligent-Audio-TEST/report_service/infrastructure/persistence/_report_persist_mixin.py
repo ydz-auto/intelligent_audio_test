@@ -68,9 +68,9 @@ class ReportPersistMixin:
 
     @with_session(auto_commit=True)
     def update_status(self, report_id: int, status: str) -> None:
-        """更新报告状态。
+        """更新报告状态（发布态：draft ↔ published）。
 
-        用于报告生成流转（pending → generating → completed/failed）。
+        生成引擎成功完成时置 published；重新生成回到 draft。
         """
         session = get_db_session()
         po = session.get(self.PO_CLASS, report_id)

@@ -34,6 +34,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from shared.models.common_enums import ReportStatus
+
 logger = logging.getLogger(__name__)
 
 # 中国标准时区 UTC+8（对齐 shared.utils.query_utils.now_cst）
@@ -179,13 +181,14 @@ def _summarize_rows(rows: List[Tuple[Any, Any, Any]]) -> dict:
     """对一批 (Report, ReportSummary, ReportSummaryMeta) 计算总览聚合。
 
     已完成报告按 published 计数：报告生成完成置 published（ReportStatus
-    仅 draft/published，见 shared/models/common_enums.py），draft 计入
+    词表只有 draft / published，见 shared/models/common_enums.py），draft 计入
     report_count 但不计入已完成；报告表无 failed 状态（生成失败留 draft
     或未落行），overview 不含 failed_reports，失败口径以用例级
     failed_cases 体现。
     """
     report_count = len(rows)
-    completed_reports = sum(1 for r, _s, _m in rows if r.status == 'published')
+    completed_reports = sum(
+        1 for r, _s, _m in rows if r.status == ReportStatus.PUBLISHED.value)
     total_cases = int(sum(_num(s, 'total_cases') for _r, s, _m in rows))
     completed_cases = int(sum(_num(s, 'completed_cases') for _r, s, _m in rows))
     failed_cases = int(sum(_num(s, 'failed_cases') for _r, s, _m in rows))
