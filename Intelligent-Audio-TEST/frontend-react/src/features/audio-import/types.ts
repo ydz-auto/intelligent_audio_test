@@ -9,6 +9,9 @@ export type AudioViewMode = 'list' | 'folder'
 
 export type TagMode = 'or' | 'and'
 
+/** 可见性（数据可见性设计文档 §二：仅二值 private/shared；null = 全部） */
+export type AudioVisibility = 'shared' | 'private'
+
 export interface AudioListFilters {
   search: string
   format: string | null
@@ -17,6 +20,8 @@ export interface AudioListFilters {
   duration: 'short' | 'medium' | 'long' | null
   tags: string[]
   tagMode: TagMode
+  /** 可见性筛选（服务端参数下发，不做前端过滤；null = 全部） */
+  visibility: AudioVisibility | null
 }
 
 /** 行操作弹窗分派态（§5.3.1 + §6.13-6.15/6.23） */

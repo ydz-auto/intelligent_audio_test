@@ -36,6 +36,8 @@ export interface AudioListQueryOptions {
   duration?: 'short' | 'medium' | 'long' | null
   tags?: string[]
   tagMode?: 'or' | 'and'
+  /** 可见性筛选（shared/private；null = 全部，INT-2197 服务端参数） */
+  visibility?: 'shared' | 'private' | null
   /** 跨页完整行集（OR 标签客户端过滤 / 文件夹视图 / 批量标注匹配）；置 true 时按 page=1&per_page=全部 拉取 */
   allRows?: boolean
   /** 查询启用（批量标注弹窗懒加载，避免页面常驻时多拉一份全量） */
@@ -63,6 +65,7 @@ export function useAudioList(options: AudioListQueryOptions = {}) {
         sampleRate: options.sampleRate ? Number(options.sampleRate) : undefined,
         duration: options.duration ?? undefined,
         tags: tagsServerSide ? tags : undefined,
+        visibility: options.visibility ?? undefined,
       },
     ],
     queryFn: () =>
@@ -75,6 +78,7 @@ export function useAudioList(options: AudioListQueryOptions = {}) {
         sampleRate: options.sampleRate ? Number(options.sampleRate) : undefined,
         duration: options.duration ?? undefined,
         tags: tagsServerSide ? tags : undefined,
+        visibility: options.visibility ?? undefined,
       }),
     enabled: options.enabled,
     staleTime: 30_000,

@@ -1,6 +1,6 @@
 /**
  * 音频列表筛选工具栏（§5.1 DataTableToolbar 形态）：
- * 搜索（debounce 500ms）+ 格式/音频类型/采样率/时长 facet chips + 标签 facet（多选
+ * 搜索（debounce 500ms）+ 格式/音频类型/采样率/时长/可见性 facet chips + 标签 facet（多选
  * + OR/AND 模式）+ 全局算法联动 chip + 重置。对位 newAPI faceted-filter 单选语义。
  */
 import { Check, ChevronDown, FilterX, Search } from 'lucide-react'
@@ -23,6 +23,7 @@ import {
   FORMAT_OPTIONS,
   SAMPLE_RATE_OPTIONS,
   TAG_MODE_OPTIONS,
+  VISIBILITY_OPTIONS,
 } from '@/features/audio-import/constants'
 import type { AudioListFilters, TagMode } from '@/features/audio-import/types'
 
@@ -257,6 +258,15 @@ export function AudioFilterToolbar(props: AudioFilterToolbarProps) {
           options={DURATION_OPTIONS}
           onChange={(v) =>
             update({ duration: v as AudioListFilters['duration'] })
+          }
+        />
+        {/* INT-2197：可见性筛选（shared/private 服务端参数下发，非前端过滤） */}
+        <SingleFacet
+          label='可见性'
+          value={props.filters.visibility}
+          options={VISIBILITY_OPTIONS}
+          onChange={(v) =>
+            update({ visibility: v as AudioListFilters['visibility'] })
           }
         />
         <TagFacet

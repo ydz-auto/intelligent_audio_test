@@ -44,6 +44,15 @@ export const TAG_MODE_OPTIONS = [
   { value: 'and', label: '全部（AND）' },
 ] as const
 
+/**
+ * 可见性 facet 选项（数据可见性设计文档 §八「全部/共享/私有」筛选 chips）。
+ * 「全部」= 不传服务端参数（null），由 SingleFacet 的「全部」文案表达。
+ */
+export const VISIBILITY_OPTIONS = [
+  { value: 'shared', label: '共享' },
+  { value: 'private', label: '私有' },
+] as const
+
 /** 列表分页每页条数选项（§3.9 PAGE_SIZE_OPTIONS 语义） */
 export const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50, 100]
 

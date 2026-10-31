@@ -86,6 +86,8 @@ export interface FetchAudiosParams {
   duration?: 'short' | 'medium' | 'long'
   /** 标签过滤（后端仅 AND 语义；OR 模式由页面客户端过滤，不传本参数） */
   tags?: string[]
+  /** 可见性（INT-2043 服务端筛选：shared/private；不传 = 全部，含 admin 全量） */
+  visibility?: 'shared' | 'private'
 }
 
 /**
@@ -108,6 +110,8 @@ export async function fetchAudios(
       params.sampleRate != null ? String(params.sampleRate / 1000) : undefined,
     duration: params.duration || undefined,
     tags: params.tags && params.tags.length > 0 ? params.tags : undefined,
+    // INT-2197：visibility 走服务端筛选（空 = 全部；后端 _normalize_visibility_filter 同口径）
+    visibility: params.visibility || undefined,
   })
   return {
     items: (dto?.items ?? []).map(audioFromDto),

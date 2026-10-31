@@ -68,6 +68,7 @@ const DEFAULT_FILTERS: AudioListFilters = {
   duration: null,
   tags: [],
   tagMode: 'or',
+  visibility: null,
 }
 
 /** 搜索防抖毫秒（§5.2 search debounce 500ms 口径） */
@@ -109,6 +110,7 @@ export function AudioImportPage() {
     duration: filters.duration,
     tags: filters.tags,
     tagMode: filters.tagMode,
+    visibility: filters.visibility,
     // 标签 OR 模式与文件夹视图需要跨页完整行集（后端不表达 OR / 列表接口无 folder 过滤）
     allRows: view === 'folder' || (filters.tags.length > 0 && filters.tagMode === 'or'),
   })
@@ -196,6 +198,7 @@ export function AudioImportPage() {
     filters.audioType != null ||
     filters.sampleRate != null ||
     filters.duration != null ||
+    filters.visibility != null ||
     filters.tags.length > 0
 
   /* ───────── 选择 ───────── */
