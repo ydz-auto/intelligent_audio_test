@@ -478,16 +478,20 @@ def _build_file_payload(table: List[dict], format_type: str) -> dict:
 
 
 def _build_csv_payload(table: List[dict], now_cst) -> dict:
-    """构建 CSV 载荷（UTF-8 BOM）。"""
-    buf = io.BytesIO()
-    buf.write('﻿'.encode('utf-8-sig'))
+    """构建 CSV 载荷（整段一次编码，仅文件头一个 UTF-8 BOM）。
+
+    逐行 `encode('utf-8-sig')` 会让每一行都带一个 BOM（INT-2183）。
+    """
+    lines: List[str] = []
     if table:
         headers = list(table[0].keys())
-        buf.write((",".join(headers) + "\n").encode('utf-8-sig'))
+        lines.append(",".join(headers))
         for row in table:
             csv_row = [f'"{str(row[h])}"' if ',' in str(row[h]) else str(row[h])
                        for h in headers]
-            buf.write((",".join(csv_row) + "\n").encode('utf-8-sig'))
+            lines.append(",".join(csv_row))
+    body = ("\n".join(lines) + "\n") if lines else ""
+    buf = io.BytesIO(body.encode('utf-8-sig'))
     buf.seek(0)
     filename = f"statistics_report_{now_cst().strftime('%Y%m%d')}.csv"
     return {

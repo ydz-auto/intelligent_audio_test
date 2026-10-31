@@ -133,15 +133,18 @@ class _AggregationExportMixin:
 
     @staticmethod
     def _build_csv_payload(export_data: list, _io, base64, now_cst) -> dict:
-        """构建 CSV 导出响应。"""
-        buf = _io.BytesIO()
-        buf.write('\ufeff'.encode('utf-8-sig'))
+        """构建 CSV 导出响应。
+
+        整段一次编码：`utf-8-sig` 编码器只在整段编码时写一次 BOM；
+        逐行 `encode('utf-8-sig')` 会让每一行都带一个 BOM（INT-2183）。
+        """
         headers = list(export_data[0].keys())
-        buf.write((",".join(headers) + "\n").encode('utf-8-sig'))
+        lines = [",".join(headers)]
         for row in export_data:
             csv_row = [row[h] for h in headers]
             csv_row = [f'"{r}"' if ',' in str(r) else str(r) for r in csv_row]
-            buf.write((",".join(csv_row) + "\n").encode('utf-8-sig'))
+            lines.append(",".join(csv_row))
+        buf = _io.BytesIO(("\n".join(lines) + "\n").encode('utf-8-sig'))
         buf.seek(0)
         filename = f"reports_export_{now_cst().strftime('%Y%m%d')}.csv"
         mime_type = 'text/csv'
