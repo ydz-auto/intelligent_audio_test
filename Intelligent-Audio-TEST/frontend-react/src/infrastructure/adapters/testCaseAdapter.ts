@@ -17,6 +17,11 @@ import type {
 import type { CaseResultForReview } from '@/domain/models/review'
 import type {
   TestCase,
+  TestCaseExportFormat,
+  TestCaseExportJob,
+  TestCaseExportJobPhase,
+  TestCaseExportJobStatus,
+  TestCaseExportMissingReason,
   TestCaseImportDuplicate,
   TestCaseImportPreview,
   TestCaseImportResult,
@@ -25,6 +30,7 @@ import type {
 } from '@/domain/models/testCase'
 import type {
   CaseDetailDto,
+  TestCaseExportJobDto,
   TestCaseImportPreviewDto,
   TestCaseImportResultDto,
   TestCaseListItemDto,
@@ -545,5 +551,97 @@ export function testCaseImportResultFromDto(
     audioOrphanedIds: (dto?.audio_orphaned_ids ?? []).filter(
       (id) => typeof id === 'number'
     ),
+  }
+}
+
+const EXPORT_JOB_STATUSES: readonly TestCaseExportJobStatus[] = [
+  'queued',
+  'running',
+  'done',
+  'failed',
+  'expired',
+]
+
+const EXPORT_JOB_PHASES: readonly TestCaseExportJobPhase[] = [
+  'fetching',
+  'packaging',
+  'uploading',
+]
+
+const EXPORT_MISSING_REASONS: readonly TestCaseExportMissingReason[] = [
+  'not_found',
+  'rpc_error',
+]
+
+const EXPORT_FORMATS: readonly TestCaseExportFormat[] = ['zip', 'json', 'xlsx']
+
+function toJobStatus(value: unknown): TestCaseExportJobStatus {
+  // 未知状态按 running 处理：宁可多轮询一次，也不要误判终态提前收尾
+  return EXPORT_JOB_STATUSES.find((status) => status === value) ?? 'running'
+}
+
+function toJobPhase(value: unknown): TestCaseExportJobPhase | null {
+  return EXPORT_JOB_PHASES.find((phase) => phase === value) ?? null
+}
+
+function toExportFormat(value: unknown): TestCaseExportFormat | null {
+  return EXPORT_FORMATS.find((format) => format === value) ?? null
+}
+
+/**
+ * 异步导出作业 DTO → Domain（INT-2315）。
+ * 后端该端点不带 success 信封，字段为 snake_case；缺失的进度/结果/错误一律归一为 null，
+ * 页面据此判空，不做假值填充。
+ */
+export function testCaseExportJobFromDto(
+  dto: TestCaseExportJobDto | null | undefined,
+  fallbackTaskId = ''
+): TestCaseExportJob {
+  const progressDto = dto?.progress
+  const resultDto = dto?.result
+  const errorDto = dto?.error
+  return {
+    taskId: dto?.task_id ?? fallbackTaskId,
+    status: toJobStatus(dto?.status),
+    phase: toJobPhase(dto?.phase),
+    progress:
+      progressDto == null
+        ? null
+        : {
+            total: progressDto.total ?? 0,
+            processed: progressDto.processed ?? 0,
+            exported: progressDto.exported ?? 0,
+            missing: (progressDto.missing ?? [])
+              .filter((item) => typeof item?.id === 'string' && item.id !== '')
+              .map((item) => ({
+                id: String(item.id),
+                reason:
+                  EXPORT_MISSING_REASONS.find((reason) => reason === item.reason) ??
+                  'not_found',
+              })),
+          },
+    result:
+      resultDto == null
+        ? null
+        : {
+            format: toExportFormat(resultDto.format),
+            filename: resultDto.filename ?? '',
+            size: resultDto.size ?? null,
+            downloadUrl:
+              typeof resultDto.download_url === 'string' && resultDto.download_url
+                ? resultDto.download_url
+                : null,
+          },
+    error:
+      errorDto == null
+        ? null
+        : {
+            code: errorDto.code ?? null,
+            message: errorDto.message ?? null,
+          },
+    total: dto?.total ?? null,
+    createdAt: dto?.created_at ?? null,
+    expiresAt: dto?.expires_at ?? null,
+    pollAfterMs: dto?.poll_after_ms ?? null,
   }
 }

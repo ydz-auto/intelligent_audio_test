@@ -149,3 +149,68 @@ export interface TestCaseImportResult {
   /** 已登记/复用但没有成功落库用例引用的音频 id（后端要求不静默） */
   audioOrphanedIds: number[]
 }
+
+// ===== 用例导出（INT-2312 异步作业 / INT-2315 接线）=====
+
+/**
+ * 导出格式：
+ * - zip：ZIP 数据包（manifest + testcases.json + 可选参考参数文件/音频文件）；
+ * - xlsx：Excel 字节流；
+ * - json：`{test_cases, exported_at, total_count}` 文档（异步作业产出不带信封的文件）。
+ */
+export type TestCaseExportFormat = 'zip' | 'json' | 'xlsx'
+
+/** 作业状态机：queued → running → done → expired；queued/running → failed */
+export type TestCaseExportJobStatus =
+  | 'queued'
+  | 'running'
+  | 'done'
+  | 'failed'
+  | 'expired'
+
+/** 运行阶段（仅 running 期间非空）：fetching=读取用例 / packaging=打包 / uploading=上传产物 */
+export type TestCaseExportJobPhase = 'fetching' | 'packaging' | 'uploading'
+
+/** 部分失败原因（无权限在下游被伪装成 not_found，后端不另给 forbidden） */
+export type TestCaseExportMissingReason = 'not_found' | 'rpc_error'
+
+/** 作业进度：processed=已尝试取详情条数，exported=成功进入导出条数，两者单调不减 */
+export interface TestCaseExportJobProgress {
+  total: number
+  processed: number
+  exported: number
+  missing: Array<{ id: string; reason: TestCaseExportMissingReason }>
+}
+
+/** 作业产物：downloadUrl 为预签名直链，后端本地降级时缺省（走 .../download 端点） */
+export interface TestCaseExportJobResult {
+  format: TestCaseExportFormat | null
+  filename: string
+  size: number | null
+  downloadUrl: string | null
+}
+
+/** 作业级错误：code 为字符串枚举（EXPORT_NO_DATA / EXPORT_STORAGE_FAILED / GATEWAY_RESTARTED / …） */
+export interface TestCaseExportJobError {
+  code: string | null
+  message: string | null
+}
+
+/** 异步导出作业快照（GET /testcases/export/jobs/{task_id}） */
+export interface TestCaseExportJob {
+  taskId: string
+  status: TestCaseExportJobStatus
+  /** 仅 running 期间非空 */
+  phase: TestCaseExportJobPhase | null
+  /** 进度快照（后端尚未写入进度时为 null） */
+  progress: TestCaseExportJobProgress | null
+  /** 仅 done 非空 */
+  result: TestCaseExportJobResult | null
+  /** 仅 failed 非空 */
+  error: TestCaseExportJobError | null
+  total: number | null
+  createdAt: string | null
+  expiresAt: string | null
+  /** 建议轮询间隔（毫秒，缺省 1000） */
+  pollAfterMs: number | null
+}

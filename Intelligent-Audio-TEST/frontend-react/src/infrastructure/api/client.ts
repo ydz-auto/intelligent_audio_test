@@ -203,6 +203,7 @@ async function buildApiError(response: Response): Promise<ApiError> {
     detail?: unknown
     code?: unknown
     errors?: unknown
+    data?: unknown
   } = {}
   try {
     const text = await response.text()
@@ -216,6 +217,8 @@ async function buildApiError(response: Response): Promise<ApiError> {
     message: typeof payload.message === 'string' ? payload.message : '',
     detail: payload.detail,
     errors: payload.errors,
+    // INT-2315：429「已有导出任务在进行」把在办 task_id 放在 data，页面据此接管轮询
+    data: payload.data,
   })
 }
 

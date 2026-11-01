@@ -2,6 +2,10 @@
  * 导出用例弹窗（11_用例域.md §5.7.2；INT-1642 接线）。
  * 导出范围（当前筛选 / 已选）+ 格式（ZIP 数据包 / Excel / JSON）→ 真实 POST /testcases/export，
  * 文件非空后触发下载；ZIP 支持「包含参考参数文件」开关；失败透出后端 message；空 id 集不发请求。
+ *
+ * INT-2315 起主路径改为异步作业（POST /testcases/export/jobs → 轮询 → 下载），同步导出降为
+ * 老网关回退路径。本文件上半部分是回退路径的行为验证（提交端点 404 时自动改走同步导出，
+ * 逐条断言与 INT-1642/2154/2196 原口径一致）；下半部分「异步导出作业」新增主路径用例。
  */
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -11,22 +15,42 @@ import { toast } from 'sonner'
 import { ExportDialog } from '@/features/testcases/modals/export-dialog'
 import { downloadBlob } from '@/lib/download-blob'
 import { ApiError } from '@/infrastructure/api/api-error'
-import { exportTestCases } from '@/infrastructure/api/testcases-api'
+import {
+  downloadTestCaseExportJob,
+  exportTestCases,
+  fetchExportJobDownloadUrl,
+  getTestCaseExportJob,
+  submitTestCaseExportJob,
+} from '@/infrastructure/api/testcases-api'
 
-vi.mock('@/infrastructure/api/testcases-api', () => ({
-  exportTestCases: vi.fn(),
-}))
+vi.mock('@/infrastructure/api/testcases-api', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('@/infrastructure/api/testcases-api')
+  >()
+  return {
+    ...actual,
+    exportTestCases: vi.fn(),
+    submitTestCaseExportJob: vi.fn(),
+    getTestCaseExportJob: vi.fn(),
+    downloadTestCaseExportJob: vi.fn(),
+    fetchExportJobDownloadUrl: vi.fn(),
+  }
+})
 
 vi.mock('@/lib/download-blob', () => ({
   downloadBlob: vi.fn(),
 }))
 
 vi.mock('sonner', () => ({
-  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }))
 
 const mockedExport = vi.mocked(exportTestCases)
 const mockedDownload = vi.mocked(downloadBlob)
+const mockedSubmit = vi.mocked(submitTestCaseExportJob)
+const mockedGetJob = vi.mocked(getTestCaseExportJob)
+const mockedDownloadJob = vi.mocked(downloadTestCaseExportJob)
+const mockedDownloadUrl = vi.mocked(fetchExportJobDownloadUrl)
 
 const renderDialog = (props: Partial<Parameters<typeof ExportDialog>[0]> = {}) =>
   render(
@@ -81,7 +105,15 @@ describe('ExportDialog 导出接线（INT-1642）', () => {
   beforeEach(() => {
     mockedExport.mockReset()
     mockedDownload.mockReset()
+    mockedSubmit.mockReset()
+    mockedGetJob.mockReset()
+    mockedDownloadJob.mockReset()
+    mockedDownloadUrl.mockReset()
     mockedExport.mockResolvedValue(ZIP_RESULT)
+    // INT-2315：这些用例验证同步导出回退路径——作业端点按老网关 404 处理
+    mockedSubmit.mockRejectedValue(
+      new ApiError({ httpStatus: 404, message: 'Not Found' })
+    )
   })
 
   it('按当前筛选导出：默认 ZIP 数据包（含参考参数）并下载非空文件', async () => {

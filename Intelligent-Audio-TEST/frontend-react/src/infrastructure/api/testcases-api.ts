@@ -8,22 +8,27 @@
  * （11_用例域.md §3.6），故一律走普通列表（不传 view）。
  * snake→camel 转换收敛在 adapters/dto；application/domain 层只见 camelCase Domain。
  */
+import { ApiError } from './api-error'
 import { apiClient } from './client'
 import type {
   PreviewPlaybackMode,
   TestCaseDuplicateStrategy,
+  TestCaseExportFormat,
+  TestCaseExportJob,
   TestCaseImportPreview,
   TestCaseImportResult,
   TestCaseListItem,
   TestCasePreview,
 } from '@/domain/models/testCase'
 import {
+  testCaseExportJobFromDto,
   testCaseImportPreviewFromDto,
   testCaseImportResultFromDto,
   testCaseListItemFromDto,
   testCasePreviewFromDto,
 } from '@/infrastructure/adapters/testCaseAdapter'
 import type {
+  TestCaseExportJobDto,
   TestCaseImportPreviewDto,
   TestCaseImportResultDto,
   TestCaseListDataDto,
@@ -402,12 +407,12 @@ export async function updateRoundRefParams(
 }
 
 /**
- * 导出格式：
+ * 导出格式（口径见 domain 模型）：
  * - zip：后端打包（manifest + testcases.json + 可选参考参数文件/音频文件），与任务数据导出口径一致；
  * - xlsx：后端直接回 xlsx 字节流；
  * - json：后端返回 JSON 数据信封，前端序列化为 .json 文件下载。
  */
-export type TestCaseExportFormat = 'zip' | 'json' | 'xlsx'
+export type { TestCaseExportFormat } from '@/domain/models/testCase'
 
 export interface TestCaseExportOptions {
   /** ZIP 数据包是否包含参考参数文件（默认包含） */
@@ -449,8 +454,7 @@ export async function exportTestCases(
   format: TestCaseExportFormat,
   options: TestCaseExportOptions = {}
 ): Promise<TestCaseExportResult> {
-  const extension = format === 'json' ? 'json' : format
-  const filename = `testcases_export_${exportTimestamp()}.${extension}`
+  const filename = buildTestCaseExportFilename(format)
   if (format === 'zip' || format === 'xlsx') {
     const body: Record<string, unknown> = { ids, format }
     if (format === 'zip') {
@@ -483,6 +487,147 @@ function jsonExportCount(data: unknown): number | undefined {
   if (Array.isArray(record.test_cases)) return record.test_cases.length
   if (typeof record.total_count === 'number') return record.total_count
   return undefined
+}
+
+// ===== 异步导出作业（INT-2312 后端 3 端点；INT-2315 React 接线）=====
+
+/** 导出文件扩展名（zip→.zip / xlsx→.xlsx / json→.json） */
+function exportExtension(format: TestCaseExportFormat): string {
+  return format === 'json' ? 'json' : format
+}
+
+/** 导出文件 MIME（落盘 / 下载端点同口径） */
+export const TEST_CASE_EXPORT_MIME: Record<TestCaseExportFormat, string> = {
+  zip: 'application/zip',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  json: 'application/json',
+}
+
+/** 导出文件名（`testcases_export_<yyyyMMdd_HHmmss>.<ext>`，与后端 download_name 同口径） */
+export function buildTestCaseExportFilename(format: TestCaseExportFormat): string {
+  return `testcases_export_${exportTimestamp()}.${exportExtension(format)}`
+}
+
+/** 提交作业的返回：job 为作业快照；resumed=true 表示接管了已有在办任务（非本次新建） */
+export interface TestCaseExportJobSubmission {
+  job: TestCaseExportJob
+  resumed: boolean
+}
+
+/** 提交请求体（与同步 `POST /testcases/export` 同构；zip 才带两个包选项） */
+function exportJobBody(
+  ids: string[],
+  format: TestCaseExportFormat,
+  options: TestCaseExportOptions
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { ids, format }
+  if (format === 'zip') {
+    body.include_reference_params = options.includeReferenceParams ?? true
+    body.include_audios = options.includeAudios ?? false
+  }
+  return body
+}
+
+/**
+ * 429「已有导出任务在进行」里携带的在办作业（INT-2315 契约第 6 条）：
+ * 后端把 `{task_id, status}` 放在错误响应体的 **data** 里，据此接管继续轮询而不是报错。
+ * 队列满（「导出任务队列已满」）不带 data，按普通失败处理。
+ */
+function activeJobFromConflictError(error: ApiError): TestCaseExportJob | null {
+  const data = error.data
+  if (data == null || typeof data !== 'object') return null
+  const record = data as { task_id?: unknown; status?: unknown }
+  if (typeof record.task_id !== 'string' || record.task_id === '') return null
+  return testCaseExportJobFromDto(
+    { task_id: record.task_id, status: typeof record.status === 'string' ? record.status : undefined },
+    record.task_id
+  )
+}
+
+/**
+ * 提交异步导出作业（POST /testcases/export/jobs，testcase:import_export）。
+ * 202 回 `{task_id, status, total, created_at, expires_at, poll_after_ms}`（无 success 信封）。
+ * 同用户已有在办任务时后端 429 —— 从错误体 data 取出在办作业直接接管（resumed=true）。
+ */
+export async function submitTestCaseExportJob(
+  ids: string[],
+  format: TestCaseExportFormat,
+  options: TestCaseExportOptions = {}
+): Promise<TestCaseExportJobSubmission> {
+  try {
+    const dto = await apiClient.post<TestCaseExportJobDto>(
+      '/testcases/export/jobs',
+      exportJobBody(ids, format, options)
+    )
+    const job = testCaseExportJobFromDto(dto)
+    // 同参数重复提交命中幂等指纹时后端直接返回既有作业：状态已不是 queued 即视为接管
+    return { job, resumed: job.status !== 'queued' }
+  } catch (error) {
+    if (error instanceof ApiError && error.httpStatus === 429) {
+      const active = activeJobFromConflictError(error)
+      if (active) return { job: active, resumed: true }
+    }
+    throw error
+  }
+}
+
+/**
+ * 查询作业状态（GET /testcases/export/jobs/{task_id}）。
+ * 404 = 任务不存在 / TTL 已过 / 非本人（后端不区分，防枚举）。
+ */
+export async function getTestCaseExportJob(
+  taskId: string,
+  options: { signal?: AbortSignal } = {}
+): Promise<TestCaseExportJob> {
+  const dto = await apiClient.get<TestCaseExportJobDto>(
+    `/testcases/export/jobs/${encodeURIComponent(taskId)}`,
+    { signal: options.signal }
+  )
+  return testCaseExportJobFromDto(dto, taskId)
+}
+
+/**
+ * 下载作业产物（GET /testcases/export/jobs/{task_id}/download）。
+ * 非 done → 409「导出未完成」；产物过期 → 410「导出文件已过期，请重新导出」。
+ */
+export async function downloadTestCaseExportJob(
+  taskId: string,
+  options: { signal?: AbortSignal } = {}
+): Promise<Blob> {
+  return apiClient.get<Blob>(
+    `/testcases/export/jobs/${encodeURIComponent(taskId)}/download`,
+    { responseType: 'blob', signal: options.signal }
+  )
+}
+
+/**
+ * 预签名直链取产物字节（result.download_url）。
+ * 该 URL 指向对象存储（非网关 API，不带我方鉴权），故不经 apiClient；
+ * 取不到（跨域 / 过期 / 存储不可达）由调用方回落到 `downloadTestCaseExportJob`。
+ */
+export async function fetchExportJobDownloadUrl(
+  downloadUrl: string,
+  options: { signal?: AbortSignal } = {}
+): Promise<Blob> {
+  const response = await fetch(downloadUrl, { signal: options.signal })
+  if (!response.ok) {
+    throw new ApiError({
+      httpStatus: response.status,
+      message: `导出文件下载失败（${response.status}）`,
+    })
+  }
+  return response.blob()
+}
+
+/**
+ * 异步作业端点不可用（老网关没这 3 个路由 / 网关未开启）：导出弹窗据此回退到同步导出。
+ * 404 对 POST 提交即路由缺失（作业 404 只出现在 GET 查询上，由轮询分支处理）。
+ */
+export function isExportJobEndpointUnavailable(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.httpStatus === 404 || error.httpStatus === 405 || error.httpStatus === 501)
+  )
 }
 
 /**

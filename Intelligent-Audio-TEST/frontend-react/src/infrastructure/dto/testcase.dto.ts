@@ -90,6 +90,65 @@ export interface TestCaseImportResultDto {
   audio_orphaned_ids?: number[]
 }
 
+/**
+ * 异步导出作业提交回执（INT-2312：POST /testcases/export/jobs → 202）。
+ * 实测该端点**不带 success 信封**，直接回作业摘要（snake_case）。
+ */
+export interface TestCaseExportJobSubmitDto {
+  task_id?: string
+  status?: string
+  total?: number | null
+  created_at?: string | null
+  expires_at?: string | null
+  poll_after_ms?: number | null
+}
+
+/** 作业部分失败项（reason 只有 not_found / rpc_error；无权限在下游被伪装成 not_found） */
+export interface TestCaseExportJobMissingDto {
+  id?: string
+  reason?: string | null
+}
+
+/** 作业进度（processed = 已尝试取详情条数，exported = 成功进入导出条数，两者单调不减） */
+export interface TestCaseExportJobProgressDto {
+  total?: number | null
+  processed?: number | null
+  exported?: number | null
+  missing?: TestCaseExportJobMissingDto[] | null
+}
+
+/** 作业产物（download_url 为预签名直链；后端本地降级时该字段省略） */
+export interface TestCaseExportJobResultDto {
+  format?: string | null
+  filename?: string | null
+  size?: number | null
+  path?: string | null
+  download_url?: string | null
+}
+
+/** 作业级错误（code 为字符串枚举 EXPORT_NO_DATA / EXPORT_STORAGE_FAILED / …） */
+export interface TestCaseExportJobErrorDto {
+  code?: string | null
+  message?: string | null
+}
+
+/** GET /testcases/export/jobs/{task_id} 响应（实测不带信封，snake_case） */
+export interface TestCaseExportJobDto {
+  task_id?: string
+  status?: string
+  phase?: string | null
+  progress?: TestCaseExportJobProgressDto | null
+  result?: TestCaseExportJobResultDto | null
+  error?: TestCaseExportJobErrorDto | null
+  total?: number | null
+  created_by_user_id?: number | null
+  created_at?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  expires_at?: string | null
+  poll_after_ms?: number | null
+}
+
 /** 导入预览重复项（POST /testcases/import/preview 的 duplicates[]） */
 export interface TestCaseImportDuplicateDto {
   row?: number
