@@ -659,9 +659,7 @@ class TestCaseExportService:
                 "missing_audio_count": len(missing_audio_ids),
                 "missing_audio_ids": list(missing_audio_ids),
                 "audios": [
-                    {key: entry[key] for key in
-                     ('id', 'name', 'file', 'md5', 'size', 'format',
-                      'audio_type')}
+                    TestCaseExportService._manifest_audio_entry(entry)
                     for entry in audios
                 ],
             }
@@ -736,6 +734,30 @@ class TestCaseExportService:
         return entries, missing
 
     @staticmethod
+    def _manifest_audio_entry(entry):
+        """组装 manifest.audios[] 单条：固定字段 + 可空的 `source_md5`。
+
+        `md5` 是包内文件的字节 md5（登记用）；`source_md5` 是源库 `audios.md5`
+        （原始上传字节 md5，导入端复用查找用，INT-2314）。源记录无 md5 时
+        省略该键，老导入端不受影响。
+        """
+        item = {key: entry[key] for key in
+                ('id', 'name', 'file', 'md5', 'size', 'format', 'audio_type')}
+        if entry.get('source_md5'):
+            item['source_md5'] = entry['source_md5']
+        return item
+
+    @staticmethod
+    def _normalize_source_md5(record):
+        """源库 `audios.md5` 规整为 32 位小写 hex；空 / 非 hex 返回 None。"""
+        if not isinstance(record, dict):
+            return None
+        value = str(record.get('md5') or '').strip().lower()
+        if re.fullmatch(r'[0-9a-f]{32}', value):
+            return value
+        return None
+
+    @staticmethod
     def _load_audio_package_entry(audio_id, record):
         """读取单条音频二进制并组装包内条目；查不到 / 读不到返回 None。"""
         if not isinstance(record, dict):
@@ -760,7 +782,7 @@ class TestCaseExportService:
         ext = TestCaseExportService._resolve_audio_extension(record)
         name = (record.get('name') or record.get('original_filename')
                 or os.path.basename(str(file_path).split('?', 1)[0]) or None)
-        return {
+        entry = {
             'id': audio_id,
             'name': name,
             'file': f"{AUDIOS_DIR}/{audio_id}.{ext}",
@@ -772,6 +794,12 @@ class TestCaseExportService:
             'audio_type': str(record.get('audio_type') or '').strip() or 'dry',
             'content': content,
         }
+        # source_md5：源库 audios.md5（原始上传字节），与包内字节 md5 口径不同，
+        # 导入端先用它做复用查找（INT-2314）；源记录无 md5 时不写该键。
+        source_md5 = TestCaseExportService._normalize_source_md5(record)
+        if source_md5:
+            entry['source_md5'] = source_md5
+        return entry
 
     @staticmethod
     def _resolve_audio_extension(record):

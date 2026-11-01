@@ -439,9 +439,93 @@ def main():
 
         check('S4 不落库', (PREFIX + 'S4_篡改失败') not in by_name, list(by_name))
 
+        # ---------- S6（INT-2314）：存量形态导出 → 同库导入（source_md5 复用） ----------
+        # 存量音频：audios.md5 = 原始上传字节 md5 X，存储对象字节 md5 = Y（X≠Y，模拟转码后存储）
+        stock_original = _wav_bytes(duration_ms=170, seed=6)
+        stock_stored = _wav_bytes(duration_ms=175, sample_rate=16000, seed=7)
+        stock_source_md5 = hashlib.md5(stock_original).hexdigest()
+        stock_storage_md5 = hashlib.md5(stock_stored).hexdigest()
+        stock_path = os.path.join(UPLOAD_ROOT, 'seed_stock.wav')
+        open(stock_path, 'wb').write(stock_stored)
+        db.execute(text(
+            "INSERT INTO audios (name, original_filename, file_path, size, duration, format, "
+            "md5, audio_type, deleted, visibility, created_at, updated_at) VALUES "
+            "(:n, :n, :p, :s, 0.175, 'wav', :m, 'dry', false, 'shared', now(), now())"),
+            {'n': PREFIX + 'S6_存量音频.wav', 'p': stock_path,
+             's': len(stock_stored), 'm': stock_source_md5})
+        db.commit()
+        stock_audio_id = _count('SELECT id FROM audios WHERE name = :n',
+                                {'n': PREFIX + 'S6_存量音频.wav'})
+        check('S6 预置存量音频 md5≠存储字节 md5（模拟转码后存储）',
+              stock_source_md5 != stock_storage_md5,
+              {'source_md5': stock_source_md5, 'storage_md5': stock_storage_md5})
+
+        from api_gateway.application.services.testcase.testcase_export_service import (
+            TestCaseExportService,
+        )
+        import shared.infrastructure.storage as storage_module
+        _orig_load = storage_module.storage_load_bytes
+        storage_module.storage_load_bytes = (
+            lambda p: open(p, 'rb').read() if os.path.isfile(str(p)) else _orig_load(p))
+        try:
+            export_response = TestCaseExportService._generate_zip_export(
+                [{'id': 'probe-s6', 'name': PREFIX + 'S6_存量形态往返',
+                  'group': PREFIX + '分组',
+                  'config': {'rounds': [{'round_number': 1, 'audios': [
+                      {'audio_id': stock_audio_id, 'spl': 60}]}]}}],
+                include_reference_params=False, include_audios=True)
+        finally:
+            storage_module.storage_load_bytes = _orig_load
+        check('S6 导出成功（非 5xx）', not isinstance(export_response, tuple), export_response)
+
+        export_manifest = {}
+        exported_package = b''
+        if not isinstance(export_response, tuple):
+            with zipfile.ZipFile(io.BytesIO(export_response.body)) as zf:
+                export_manifest = json.loads(zf.read('manifest.json'))
+            exported_package = export_response.body
+        manifest_audios = {
+            int(a['id']): a for a in export_manifest.get('audios') or []}
+        manifest_entry = manifest_audios.get(int(stock_audio_id)) or {}
+        out['scenarios']['s6_manifest'] = export_manifest.get('audios')
+        check('S6 manifest version=1.2 且 source_md5=源库 md5、md5=存储字节 md5',
+              export_manifest.get('version') == '1.2'
+              and manifest_entry.get('source_md5') == stock_source_md5
+              and manifest_entry.get('md5') == stock_storage_md5,
+              manifest_entry)
+
+        if exported_package:
+            audio_before_s6 = _count('SELECT count(*) FROM audios')
+            s6_payload, s6_code = _run_service(
+                TestCaseImportService, 'import_cases', exported_package)
+            s6_receipt = s6_payload.get('data') or {}
+            audio_after_s6 = _count('SELECT count(*) FROM audios')
+            out['scenarios']['s6_import'] = {
+                'code': s6_code, 'receipt': s6_receipt,
+                'audio_rows': f'{audio_before_s6}->{audio_after_s6}',
+            }
+            check('S6 同库导入：复用 1 / 登记 0 / 无失败',
+                  s6_receipt.get('audio_reused_count') == 1
+                  and s6_receipt.get('audio_registered_count') == 0
+                  and not (s6_receipt.get('audio_failed') or []),
+                  {k: s6_receipt.get(k) for k in
+                   ('audio_reused_count', 'audio_registered_count', 'audio_failed')})
+            check('S6 audios 行数不变（不重复登记存量音频）',
+                  audio_after_s6 == audio_before_s6,
+                  f'{audio_before_s6}->{audio_after_s6}')
+            s6_case = db.execute(text(
+                'SELECT id, config FROM test_cases WHERE name = :n'),
+                {'n': PREFIX + 'S6_存量形态往返'}).mappings().first()
+            s6_config = (s6_case or {}).get('config') or {}
+            s6_audio_id = (((s6_config.get('rounds') or [{}])[0].get('audios')
+                            or [{}])[0]).get('audio_id')
+            check('S6 新用例 config 仍指向原 audio_id（未被复制成新行）',
+                  s6_audio_id is not None and int(s6_audio_id) == int(stock_audio_id),
+                  {'expected': stock_audio_id, 'actual': s6_audio_id})
+
         audio_after = _count('SELECT count(*) FROM audios')
-        check('audios 行数 = 预置 2 + S1 新增 1 + S3 新增 1',
-              audio_after - audio_before == 2, f'{audio_before}->{audio_after}')
+        check('audios 行数 = 预置 3（S2 同md5 / S3 撞号 / S6 存量）+ S1 新增 1 + S3 新增 1',
+              audio_after - audio_before == 3, f'{audio_before}->{audio_after}')
 
     finally:
         # 清理：自建用例 / 分组 / 音频 + 存储对象

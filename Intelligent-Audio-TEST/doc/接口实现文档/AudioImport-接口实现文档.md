@@ -255,7 +255,9 @@
 5. 不迁移标注 / 标签 / 播放历史（用例包只带音频二进制）。
 6. 登记成功后按既有口径刷新首页统计缓存（与 URL 导入一致，失败不影响登记结果）。
 
-**调用方顺序（api_gateway 用例导入服务）**：先用 `GetAudioByMD5`（`{md5_list: [...]}` → `{md5: {id, name}}`）查目标库 → 命中直接复用 `id`；未命中再对包内文件调用本命令，取 `data.id` 做 config 的 audio_id 重映射。**传入的 `md5` 必须按包内文件实际字节计算**（不能取源库 `audios.md5` 回填），否则命中 `md5_mismatch` 被拒。
+**调用方顺序（api_gateway 用例导入服务，INT-2314 起两跳）**：先用 `GetAudioByMD5`（`{md5_list: [...]}` → `{md5: {id, name}}`）查目标库——一次查询覆盖 `union(manifest 全部 source_md5, 全部包内字节 md5)`；每条音频**先**按 `source_md5`（= 源库 `audios.md5`，原始上传字节 md5）命中 → 复用 `id`，**再**按包内字节 md5 命中 → 复用 `id`；两跳都未命中才对包内文件调用本命令，取 `data.id` 做 config 的 audio_id 重映射。**本命令传入的 `md5` 必须按包内文件实际字节计算**（不能取源库 `audios.md5` / manifest 的 `source_md5` 回填），否则命中 `md5_mismatch` 被拒——`source_md5` 只用于 `GetAudioByMD5` 复用查找，不进登记请求。
+
+**存量 md5 口径边界**：存量 `audios.md5` 多为**客户端原始上传字节** md5（上传链取客户端文件 md5，同时作秒传键），与**存储对象字节**（经 ffmpeg 转码后）普遍不一致（INT-2308 真实库抽样 4/4；INT-2314）。因此只按包内字节 md5 查重对存量音频基本失效，而按 `source_md5` 才能命中同环境往来；`audios.md5` 语义本卡不迁移（改成存储字节会打断秒传，见 INT-2314 裁定）。
 
 **已知边界**：`persist_failed` 时 DB 已回滚、不落行，但转码链此前写入的存储对象不回滚（与上传链 `MergeChunks` 同口径），会留孤儿对象，需靠存储回收处理——拒绝类失败（`empty_content` / `invalid_audio_content` / `md5_mismatch` / `invalid_base64` / 缺参）在落存储前就被拦下，不留对象。另外，本命令的 md5 幂等只对「库里 `audios.md5` 与实际内容摘要一致」的记录有效：存量 `audios.md5` 多为原始上传字节 md5，与导入侧按包内字节算出的 md5 普遍不一致（INT-2308 实测，缺陷卡 INT-2314），此时首跳 `GetAudioByMD5` 命中不了、会新建。
 
