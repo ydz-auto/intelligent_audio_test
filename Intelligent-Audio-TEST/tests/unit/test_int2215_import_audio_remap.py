@@ -98,7 +98,8 @@ def _wav_bytes(seed=1):
 def _zip_bytes(cases, audio_files=None, manifest_audios='auto'):
     """构造用例包。
 
-    audio_files: [{'id', 'name', 'bytes'}]；None = 老包（不带 audios/ 与 manifest）。
+    audio_files: [{'id', 'name', 'bytes', 'source_md5'?}]；None = 老包（不带 audios/ 与 manifest）。
+        'source_md5' 存在时写进 manifest 条目（INT-2314），缺省 = 老包形态。
     manifest_audios: 'auto' 按 audio_files 生成清单；list 用给定清单；None = manifest 无 audios。
     """
     buf = io.BytesIO()
@@ -109,14 +110,17 @@ def _zip_bytes(cases, audio_files=None, manifest_audios='auto'):
         for item in audio_files or []:
             path = f"audios/{item['id']}.wav"
             zf.writestr(path, item['bytes'])
-            entries.append({
+            entry = {
                 'id': item['id'],
                 'name': item['name'],
                 'file': path,
                 'md5': hashlib.md5(item['bytes']).hexdigest(),
                 'size': len(item['bytes']),
                 'format': 'wav',
-            })
+            }
+            if 'source_md5' in item:
+                entry['source_md5'] = item['source_md5']
+            entries.append(entry)
         if audio_files is not None:
             audios_field = entries if manifest_audios == 'auto' else manifest_audios
             manifest = {

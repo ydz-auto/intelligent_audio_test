@@ -49,7 +49,9 @@ DUPLICATE_MATCH_NAME = 'name'
 # ---- ZIP 包结构 ----
 PACKAGE_FORMAT = 'intelligent-audio-testcase-package'
 # 1.1（INT-2214）：ZIP 可携带 audios/（用例引用音频二进制）+ manifest 音频清单/缺失计数
-PACKAGE_VERSION = '1.1'
+# 1.2（INT-2314）：manifest.audios[] 增可空 `source_md5`（源库 audios.md5，复用查找用）；
+#                 导入端不按 version 分支，按字段存在性判定（老包 1.1 照常）
+PACKAGE_VERSION = '1.2'
 MANIFEST_FILENAME = 'manifest.json'
 TESTCASES_FILENAME = 'testcases.json'
 REFERENCE_PARAMS_DIR = 'reference_params'

@@ -162,7 +162,7 @@ def test_zip_includes_audios_and_manifest(monkeypatch):
     assert manifest['audio_file_count'] == 3
     assert manifest['missing_audio_count'] == 0
     assert manifest['missing_audio_ids'] == []
-    assert manifest['version'] == '1.1'
+    assert manifest['version'] == '1.2'
     assert manifest['options']['include_audios'] is True
 
     by_id = {a['id']: a for a in manifest['audios']}
@@ -313,3 +313,52 @@ def test_noise_audio_referenced_in_rounds_is_packaged(monkeypatch):
     assert 'audios/52.wav' in zf.namelist()
     assert 'audios/53.wav' in zf.namelist()
     assert 'audios/54.wav' in zf.namelist()
+
+
+# ----------------------------------------------------------------------
+# 7. INT-2314：manifest.audios[].source_md5（源库 audios.md5）可选字段
+# ----------------------------------------------------------------------
+def test_manifest_carries_source_md5_from_source_record(monkeypatch):
+    """source_md5 = ACL 返回的源库 md5，与包内字节 md5 并存（两者口径不同）。"""
+    source_md5 = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
+    records = [
+        {'id': 11, 'name': '播放音频', 'file_path': 'oss://b/play.wav',
+         'format': 'wav', 'md5': source_md5.upper()},   # 大写也归一
+        {'id': 12, 'name': '干扰人', 'file_path': 'oss://b/interf.mp3',
+         'format': 'mp3', 'md5': ''},
+    ]
+    _fake_audio_lookup(monkeypatch, records)
+    _fake_storage(monkeypatch, _files())
+
+    response = TestCaseExportService._generate_zip_export(
+        _export_data_with_audio(), include_reference_params=False, include_audios=True)
+    zf, manifest = _read_zip(response)
+
+    assert manifest['version'] == '1.2'
+    by_id = {a['id']: a for a in manifest['audios']}
+    # 11：包内字节 md5 原样保留，source_md5 为源库原始上传 md5
+    assert by_id[11]['md5'] == hashlib.md5(b'AAAA').hexdigest()
+    assert by_id[11]['source_md5'] == source_md5
+    assert by_id[11]['md5'] != by_id[11]['source_md5']
+    # 12：源记录 md5 为空 → 省略该键（老导入端不受影响）
+    assert 'source_md5' not in by_id[12]
+    assert set(by_id[11]) == {
+        'id', 'name', 'file', 'md5', 'size', 'format', 'source_md5'}
+
+
+def test_source_md5_omitted_when_not_32_hex(monkeypatch):
+    records = [
+        {'id': 11, 'name': 'A', 'file_path': 'oss://b/play.wav',
+         'format': 'wav', 'md5': 'not-a-md5'},
+        {'id': 12, 'name': 'B', 'file_path': 'oss://b/interf.mp3',
+         'format': 'mp3', 'md5': 'z' * 32},          # 32 位但不是 hex
+    ]
+    _fake_audio_lookup(monkeypatch, records)
+    _fake_storage(monkeypatch, _files())
+
+    response = TestCaseExportService._generate_zip_export(
+        _export_data_with_audio(), include_reference_params=False, include_audios=True)
+    _, manifest = _read_zip(response)
+
+    for item in manifest['audios']:
+        assert 'source_md5' not in item, '非 32 位 hex 不得写进 manifest'

@@ -1,23 +1,30 @@
 # -*- coding: utf-8 -*-
-"""用例 ZIP 导入的包内音频回导（INT-2215）。
+"""用例 ZIP 导入的包内音频回导（INT-2215 / INT-2314）。
 
 导出侧（INT-2214）把用例引用音频打进 `audios/{audio_id}.{ext}`，manifest 带
-`audios[] = {id, name, file, md5, size, format}` 与缺失计数。导入侧要按包内
-**字节**把音频回导到目标库，再把用例 config / 扁平列里的音频 id 全部重写成
+`audios[] = {id, name, file, md5, size, format, source_md5?}` 与缺失计数。导入侧要按
+包内**字节**把音频回导到目标库，再把用例 config / 扁平列里的音频 id 全部重写成
 目标库 id——绝不按 audio_id 直接绑定（目标库同 id 可能是另一条音频）。
 
-顺序固定（INT-2205 契约裁定）：
-1. 按 `manifest.audios[].md5` 批量 `GetAudioByMD5`，命中即复用目标库 id；
-2. 未命中的逐条 `RegisterAudioByBytes`（audio_service，md5 幂等）；
-3. 用返回的 `data.id` 构建 `{源 id: 目标 id}` 映射做重写。
+两个 md5 口径不同（INT-2314）：
+- `md5` = 包内文件字节 md5（登记用，必须与实际字节一致，否则 `md5_mismatch`）；
+- `source_md5` = 源库 `audios.md5`（原始上传字节 md5），存量库里多为它，只有它能
+  在「同环境导出→导入」时命中既有音频；老包没有该键。
 
-预览只做第 1 步（只读），不得登记音频。
+顺序固定（INT-2205 契约裁定，INT-2314 扩成两跳）：
+1. 一次 `GetAudioByMD5(union(source_md5, 包内 md5))`；
+2. 每条 entry 先 `source_md5` 命中 → 复用，再包内 `md5` 命中 → 复用；
+3. 都未命中的逐条 `RegisterAudioByBytes`（audio_service，md5 幂等）；
+4. 用返回的 `data.id` 构建 `{源 id: 目标 id}` 映射做重写。
+
+预览只做第 1、2 步（只读），不得登记音频。
 """
 from __future__ import annotations
 
 import base64
 import json
 import logging
+import re
 
 from shared.constants.testcase_transfer import MANIFEST_FILENAME
 
@@ -27,12 +34,19 @@ logger = logging.getLogger(__name__)
 REGISTER_FAIL_REASON_MISSING_IN_PACKAGE = 'missing_in_package'
 REGISTER_FAIL_REASON_NO_MD5 = 'missing_md5'
 
+# 复用命中来源（只进 ImportAudioRemap.reused 供单测/日志，回执不对外）
+MATCHED_BY_SOURCE_MD5 = 'source_md5'
+MATCHED_BY_PACKAGE_MD5 = 'package_md5'
+
+_MD5_HEX_RE = re.compile(r'[0-9a-f]{32}')
+
 
 class ImportAudioPackage:
     """包内音频清单（parse 自 manifest + audios/ 二进制）。"""
 
     def __init__(self, entries=None, unavailable=None):
-        # entries: [{source_id, name, file, md5, size, format, content}]
+        # entries: [{source_id, name, file, md5, source_md5, size, format, content}]
+        #   md5 = 包内字节 md5；source_md5 = 源库 audios.md5（老包为 None）
         self.entries = entries or []
         # unavailable: {source_id: reason} 清单声明但包内取不到（文件缺失/无 md5）
         self.unavailable = unavailable or {}
@@ -89,6 +103,8 @@ class ImportAudioPackage:
                 'source_filename': _basename(zip_path),
                 'file': zip_path,
                 'md5': md5,
+                # 源库 audios.md5（原始上传字节）；缺失/非法即 None，老包不受影响
+                'source_md5': _normalize_md5(item.get('source_md5')),
                 'size': _to_int(item.get('size')) or len(content),
                 'format': str(item.get('format') or _ext_of(zip_path) or 'wav'),
                 'content': content,
@@ -126,7 +142,7 @@ class ImportAudioRemap:
 
 
 def build_audio_remap(package, audio_acl, register):
-    """按 md5 复用 / 登记包内音频，返回 ImportAudioRemap。
+    """按 source_md5 / 包内 md5 两跳复用或登记包内音频，返回 ImportAudioRemap。
 
     register=False（预览）：只做 `GetAudioByMD5` 批量查询，不产生任何写入；
     查不到的源 id 记入 pending，校验时按「待登记」放行。
@@ -138,10 +154,12 @@ def build_audio_remap(package, audio_acl, register):
     for source_id, reason in package.unavailable.items():
         remap.failures[source_id] = reason
 
+    # 两跳同一次查询：源库原始上传 md5 ∪ 包内字节 md5
     md5s = []
     for entry in package.entries:
-        if entry['md5'] not in md5s:
-            md5s.append(entry['md5'])
+        for value in (_source_md5_of(entry), entry['md5']):
+            if value and value not in md5s:
+                md5s.append(value)
 
     md5_target = {}
     if md5s:
@@ -163,11 +181,17 @@ def build_audio_remap(package, audio_acl, register):
 
     for entry in package.entries:
         md5 = entry['md5']
-        target_id = md5_target.get(md5)
+        source_md5 = _source_md5_of(entry)
+        target_id, matched_by = None, None
+        if source_md5 and source_md5 in md5_target:
+            target_id, matched_by = md5_target[source_md5], MATCHED_BY_SOURCE_MD5
+        elif md5 in md5_target:
+            target_id, matched_by = md5_target[md5], MATCHED_BY_PACKAGE_MD5
         if target_id is not None:
             remap.source_to_target[entry['source_id']] = target_id
             remap.reused.append({
-                'source_id': entry['source_id'], 'md5': md5, 'target_id': target_id})
+                'source_id': entry['source_id'], 'md5': md5,
+                'target_id': target_id, 'matched_by': matched_by})
             continue
         if not register:
             remap.pending.append(entry['source_id'])
@@ -176,7 +200,10 @@ def build_audio_remap(package, audio_acl, register):
         if target_id is None:
             remap.failures[entry['source_id']] = reason
             continue
+        # 同包后续 entry 命中同一份内容不再重复登记（包内 md5 与 source_md5 都缓存）
         md5_target[md5] = target_id
+        if source_md5:
+            md5_target[source_md5] = target_id
         remap.source_to_target[entry['source_id']] = target_id
         remap.registered.append({
             'source_id': entry['source_id'], 'md5': md5, 'target_id': target_id})
@@ -220,6 +247,19 @@ def _message(result):
     if hasattr(result, 'get'):
         return result.get('message')
     return None
+
+
+def _normalize_md5(value):
+    """规整 manifest 里的 md5 字段：去空白转小写，非 32 位 hex 返回 None。"""
+    text = str(value or '').strip().lower()
+    if not text or not _MD5_HEX_RE.fullmatch(text):
+        return None
+    return text
+
+
+def _source_md5_of(entry):
+    """entry 的源库 md5（老包/手工构造的 entry 可能没有该键）。"""
+    return _normalize_md5(entry.get('source_md5'))
 
 
 def _to_int(value):
