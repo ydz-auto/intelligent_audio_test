@@ -84,6 +84,15 @@ MISSING_REASON_RPC_ERROR = 'rpc_error'
 # 音频分块读写的块大小（md5 与流式下载共用口径）
 AUDIO_CHUNK_BYTES = 1024 * 1024
 
+# manifest `audios[]` 条目的键清单（INT-2311 起含 `audio_type`：噪声音频回导不再落成 dry）
+AUDIO_MANIFEST_KEYS = ('id', 'name', 'file', 'md5', 'size', 'format', 'audio_type')
+
+# 音频 `audio_type` 缺失/空串时的回落值（与导入端兜底一致）
+DEFAULT_AUDIO_TYPE = 'dry'
+
+# 音频临时文件名合法扩展名：非白名单一律按 bin，避免格式值里的 `/`、空格、超长让 open() 失败
+_AUDIO_EXT_PATTERN = re.compile(r'^[a-z0-9]{1,10}$')
+
 
 class _AudioSourceUnavailableError(Exception):
     """audio_service（ACL）不可用：整包导出失败，不产出半包（INT-2214）。"""
@@ -838,7 +847,12 @@ class TestCaseExportService:
                     "missing_audio_ids": list(missing_audio_ids),
                     # 逐条详情取不到、未进包的用例（INT-2312 部分失败回报）
                     "missing_case_ids": list(missing_case_ids or []),
-                    "audios": packed_audios,
+                    # 按显式键清单投影：条目与清单同源，避免单侧缺失（INT-2311）；
+                    # `source_md5` 可空，源记录无 md5 时整键省略（INT-2314）
+                    "audios": [
+                        TestCaseExportService._manifest_audio_entry(entry)
+                        for entry in packed_audios
+                    ],
                 }
                 zf.writestr(
                     MANIFEST_FILENAME,
@@ -975,9 +989,9 @@ class TestCaseExportService:
         （原始上传字节 md5，导入端复用查找用，INT-2314）。源记录无 md5 时
         省略该键，老导入端不受影响。
         """
-        item = {key: entry[key] for key in
-                ('id', 'name', 'file', 'md5', 'size', 'format')}
-        item['audio_type'] = str(entry.get('audio_type') or '').strip() or 'dry'
+        item = {key: entry.get(key) for key in AUDIO_MANIFEST_KEYS}
+        item['audio_type'] = (str(entry.get('audio_type') or '').strip()
+                              or DEFAULT_AUDIO_TYPE)
         if entry.get('source_md5'):
             item['source_md5'] = entry['source_md5']
         return item
@@ -1008,8 +1022,8 @@ class TestCaseExportService:
             'name': name,
             'file': f"{AUDIOS_DIR}/{audio_id}.{ext}",
             'format': record.get('format') or ext,
-            # 类型原样透传（noise / prompt / mixed），保证导入回导后不丢；源记录缺失回落 dry
-            'audio_type': str(record.get('audio_type') or '').strip() or 'dry',
+            # 类型原样透传（noise / prompt / mixed），保证导入回导后不丢；源记录缺失回落 dry（INT-2311）
+            'audio_type': str(record.get('audio_type') or '').strip() or DEFAULT_AUDIO_TYPE,
             'file_path': file_path,
         }
         # source_md5：源库 audios.md5（原始上传字节），与包内字节 md5 口径不同，
@@ -1026,8 +1040,14 @@ class TestCaseExportService:
         `storage.load_file` 先落临时文件 → 分块算 md5 → `zf.write` 落包 →
         立即删临时文件。md5 按包内实际字节计算，保证 manifest 清单与包内文件
         一致（导入回导按 md5 去重）。
+
+        临时文件名只用白名单扩展名：`format` 是上游记录原值，含 `/`、空格或
+        超长会让 `open()` 失败、该音频被静默计入 missing。
         """
-        tmp_path = os.path.join(tmp_dir, f"audio_{entry['id']}.{entry['format']}")
+        tmp_ext = str(entry.get('format') or '').strip().lstrip('.').lower()
+        if not _AUDIO_EXT_PATTERN.match(tmp_ext):
+            tmp_ext = 'bin'
+        tmp_path = os.path.join(tmp_dir, f"audio_{entry['id']}.{tmp_ext}")
         try:
             _storage.load_file(entry['file_path'], tmp_path)
         except Exception:
@@ -1051,16 +1071,18 @@ class TestCaseExportService:
             except OSError:
                 pass
 
-        return TestCaseExportService._manifest_audio_entry({
+        packed = {
             'id': entry['id'],
             'name': entry['name'],
             'file': entry['file'],
             'md5': md5_digest,
             'size': size,
             'format': entry['format'],
-            'audio_type': entry.get('audio_type'),
-            'source_md5': entry.get('source_md5'),
-        })
+            'audio_type': entry.get('audio_type') or DEFAULT_AUDIO_TYPE,
+        }
+        if entry.get('source_md5'):
+            packed['source_md5'] = entry['source_md5']
+        return packed
 
     @staticmethod
     def _file_md5(path):

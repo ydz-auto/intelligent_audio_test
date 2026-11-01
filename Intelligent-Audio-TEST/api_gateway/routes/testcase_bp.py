@@ -1,5 +1,3 @@
-import logging
-
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from api_gateway.application.services.testcase.testcase_query_service import TestCaseQueryService
@@ -10,13 +8,9 @@ from api_gateway.application.services.auth.dependencies import require_permissio
 from api_gateway.application.services.visibility.visibility_service import VisibilityService
 from api_gateway.schemas.visibility import VisibilityUpdateRequest
 from api_gateway.infrastructure.request_adapter import request as api_request
-from api_gateway.utils.response import error_response
-from shared.infrastructure.storage import Storage
 from shared.infrastructure.user_context import capture_identity
 
 router = APIRouter()
-
-logger = logging.getLogger(__name__)
 
 # 异步导出产物下载的分块大小（不把文件对象直接交给 Starlette，它会按行迭代）
 EXPORT_DOWNLOAD_CHUNK_BYTES = 1024 * 1024
@@ -123,14 +117,8 @@ def download_export_job(task_id: str,
     if err is not None:
         return to_response(err)
 
-    try:
-        stream = Storage().load_stream(info['path'])
-    except Exception:
-        logger.warning("读取导出产物失败 path=%s", info.get('path'), exc_info=True)
-        return to_response(error_response('导出文件已过期，请重新导出', http_code=410))
-
     return StreamingResponse(
-        _iter_file_chunks(stream),
+        _iter_file_chunks(info['stream']),
         media_type=info['media_type'],
         headers={'Content-Disposition':
                  content_disposition(info['filename'], fallback='testcases_export')},

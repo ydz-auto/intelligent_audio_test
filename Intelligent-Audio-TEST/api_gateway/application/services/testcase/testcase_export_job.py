@@ -291,6 +291,11 @@ class TestCaseExportJobManager:
         # 先用 SET NX 抢该用户的在办位，再落作业：并发提交时后到者直接 429，
         # 不会出现「作业已写入但没抢到位、需要回滚删除」的窗口
         if not self._store.claim_user(user_id, task_id, ttl):
+            # 几乎同时的同参双提交：前者可能刚抢到在办位、幂等键也刚写好，
+            # 复查一次再决定 429，避免同参连点拿到「已有任务在进行」
+            resumed = self._resume_idempotent(fingerprint)
+            if resumed is not None:
+                return self._accepted_payload(resumed), 202
             conflict = self._current_active(user_id)
             if conflict is not None:
                 return self._conflict_response(*conflict)
@@ -440,9 +445,16 @@ class TestCaseExportJobManager:
         if not path:
             return None, error_response('导出文件已过期，请重新导出', http_code=410)
 
+        # 取流下沉在应用层：路由只做 StreamingResponse 包装，不直触 Infrastructure
+        try:
+            stream = self._storage.load_stream(path)
+        except Exception:
+            logger.warning("读取导出产物失败 path=%s", path, exc_info=True)
+            return None, error_response('导出文件已过期，请重新导出', http_code=410)
+
         svc = _export_service()
         return {
-            'path': path,
+            'stream': stream,
             'filename': result.get('filename') or 'testcases_export',
             'media_type': svc.EXPORT_MEDIA_TYPES.get(
                 result.get('format'), 'application/octet-stream'),
@@ -484,7 +496,20 @@ class TestCaseExportJobManager:
         self.executor.submit(self._run_job, task_id)
 
     def _run_job(self, task_id: str) -> None:
-        """工作线程入口：排队出队 → CAS 置 running → 带身份执行。"""
+        """工作线程入口：整段兜底。
+
+        线程池会静默吞异常：`load` / `cas_status` 这类 Redis 异常若漏在最外层
+        try 之外，任务会停在 `queued`（且已从 pending 出队），排队深度不回落、
+        用户一路轮询到 TTL。所以这里全包，任何未捕获异常都落到 `failed`。
+        """
+        try:
+            self._run_job_inner(task_id)
+        except Exception:
+            logger.exception("导出作业执行异常 task_id=%s", task_id)
+            self._abort_job(task_id)
+
+    def _run_job_inner(self, task_id: str) -> None:
+        """出队 → CAS 置 running → 带身份执行（异常由 `_run_job` 兜底）。"""
         try:
             self._store.dequeue(task_id)
         except Exception:
@@ -510,12 +535,27 @@ class TestCaseExportJobManager:
                     'started_at': started_at})
 
         identity = tuple(job.get('identity') or (None, False))
-        # 最外层兜底：线程池会静默吞异常，没这里一次未捕获异常就会让任务永远停在 running
+        run_with_identity(identity, self._execute_job, job)
+
+    def _abort_job(self, task_id: str) -> None:
+        """未捕获异常兜底：置 failed、释放在办位、重试一次出队。
+
+        作业记录都读不到时（Redis 不可用）只能记日志：在办位键带任务 TTL，
+        且 `_current_active` 遇到记录缺失/终态会自愈释放。
+        """
         try:
-            run_with_identity(identity, self._execute_job, job)
+            self._store.dequeue(task_id)
         except Exception:
-            logger.exception("导出作业执行异常 task_id=%s", task_id)
-            self._fail(job, ExportJobErrorCode.INTERNAL_ERROR, '导出任务异常终止')
+            logger.warning("兜底出队失败 task_id=%s", task_id, exc_info=True)
+
+        try:
+            job = self._store.load(task_id)
+        except Exception:
+            logger.warning("兜底读取导出作业失败 task_id=%s", task_id, exc_info=True)
+            return
+        if not job:
+            return
+        self._fail(job, ExportJobErrorCode.INTERNAL_ERROR, '导出任务异常终止')
 
     def _execute_job(self, job: dict) -> None:
         svc = _export_service()

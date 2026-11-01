@@ -153,6 +153,9 @@ class FakeStorage:
         self.deleted.append(path)
         self.files.pop(path, None)
 
+    def load_stream(self, path):
+        return io.BytesIO(self.files[path])
+
     def get_url(self, path, expires=3600):
         return self.url
 
@@ -275,6 +278,23 @@ def test_failed_job_is_not_reused_by_idempotency(manager, monkeypatch):
     second, code = _submit(manager, payload)
     assert code == 202
     assert second['task_id'] != first['task_id'], 'failed 后重提必须新建'
+
+
+def test_racing_same_params_submit_reuses_task_id(manager, monkeypatch):
+    """几乎同时的同参双提交：后者抢在办位失败时，复查幂等键仍返回原 task_id。"""
+    _patch_detail(monkeypatch, ['c1'])
+    payload = {'ids': ['c1'], 'format': 'zip'}
+
+    first, code1 = _submit(manager, payload)
+    assert code1 == 202
+
+    # 模拟后者到达时前者已抢到在办位（claim 失败），幂等键也已写好
+    monkeypatch.setattr(manager._store, 'claim_user', lambda *a, **k: False)
+    second, code2 = _submit(manager, payload)
+
+    assert code2 == 202
+    assert second['task_id'] == first['task_id'], '同参并发提交不得落到 429'
+    assert len(manager._executor.calls) == 1
 
 
 # ----------------------------------------------------------------------
@@ -495,6 +515,16 @@ def test_download_states(manager, monkeypatch):
     assert err[1] == 410 and err[0]['message'] == '导出文件已过期，请重新导出'
 
 
+def test_download_410_when_artifact_object_missing(manager, monkeypatch):
+    """产物对象已不在存储（被清理 / 存储漂移）→ 410，不给半截流。"""
+    _patch_detail(monkeypatch, ['c1'])
+    task_id = _run(manager, {'ids': ['c1'], 'format': 'zip'})
+    manager._storage.files.clear()
+
+    info, err = manager.get_download(task_id, (USER_ID, False))
+    assert info is None and err[1] == 410
+
+
 def test_download_route_streams_with_sync_filename_contract(manager, monkeypatch):
     _patch_detail(monkeypatch, ['c1'])
     task_id = _run(manager, {'ids': ['c1'], 'format': 'zip'})
@@ -503,9 +533,10 @@ def test_download_route_streams_with_sync_filename_contract(manager, monkeypatch
     monkeypatch.setattr(job_module, 'get_export_job_manager', lambda: manager)
     monkeypatch.setattr(
         route_module, 'capture_identity', lambda: (USER_ID, False))
+    # 取流在应用层（路由不直触 Storage），替身按 path 返回文件流
     monkeypatch.setattr(
-        route_module.Storage, 'load_stream',
-        lambda self, _path: io.BytesIO(manager._storage.files[_path]))
+        manager._storage, 'load_stream',
+        lambda _path: io.BytesIO(manager._storage.files[_path]))
 
     response = route_module.download_export_job(task_id)
     assert response.status_code == 200
@@ -634,3 +665,29 @@ def test_cleanup_expires_artifact_and_deletes_object(manager, monkeypatch):
     assert manager._storage.deleted == [path]
     info, err = manager.get_download(task_id, (USER_ID, False))
     assert info is None and err[1] == 410
+
+
+# ----------------------------------------------------------------------
+# 13. worker 兜底（存储异常不得让任务卡在 queued / 占着在办位）
+# ----------------------------------------------------------------------
+def test_worker_store_error_fails_job_and_releases_slot(manager, monkeypatch):
+    """`_run_job` 整段兜底：cas_status 抛异常也要落 failed 并释放在办位。
+
+    线程池会静默吞异常，漏出去任务就停在 queued（且已出队），排队深度不回落。
+    """
+    _patch_detail(monkeypatch, ['c1'])
+    body, code = _submit(manager, {'ids': ['c1']})
+    assert code == 202
+    task_id = body['task_id']
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError('redis down')
+    monkeypatch.setattr(manager._store, 'cas_status', _boom)
+
+    manager._run_job(task_id)  # 异常不得逃逸出工作线程
+
+    job = manager._store.load(task_id)
+    assert job['status'] == 'failed'
+    assert job['error']['code'] == 'EXPORT_INTERNAL_ERROR'
+    assert manager._store.get_user_active(USER_ID) is None
+    assert task_id not in manager._store.pending, '兜底要出队，否则排队深度一直挡提交'
