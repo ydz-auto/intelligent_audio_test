@@ -7,7 +7,8 @@
  *   覆盖优先；算法类型级默认层已废弃，`api_id` 必填）；
  * - `GET /algorithm/mappings?algorithm_type=X&source_type=evaluation&api_id=Y`
  *   → 映射行数据源。API 输出映射带 dimension_id，后端 `_serialize_mappings` 归入
- *   evaluation 桶，`source_type=api` 结构性为空；本层再按 `source === 'api'` 过滤。
+ *   evaluation 桶，`source_type=api` 结构性为空；本层只做 snake→camel，返回原始集合
+ *   （按来源分桶在 application 层，`api_id` 一并透传供分桶区分覆盖行 / 算法级行）。
  *
  * 后端 `get_api_params` / `_serialize_params` 的行键是 `code / name / type`
  * （不是 `param_code / param_name / param_type`），这里统一归一再转 Domain。

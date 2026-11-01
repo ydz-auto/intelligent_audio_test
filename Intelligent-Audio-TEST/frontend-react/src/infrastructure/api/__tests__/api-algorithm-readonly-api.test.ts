@@ -3,7 +3,10 @@
  * - 字段行 → GET /algorithm/params?algorithm_type=X&param_type=api&api_id=Y
  *   （策略声明 + 本 API 覆盖行解析结果；api_id 必填，算法类型级默认层已废弃）；
  * - 映射行 → GET /algorithm/mappings?algorithm_type=X&source_type=evaluation&api_id=Y
- *   （API 输出映射带 dimension_id 落在 evaluation 桶），客户端再按 source=api 过滤。
+ *   （API 输出映射带 dimension_id 落在 evaluation 桶）。读侧返回「算法级 + 本 API 级」
+ *   合并的原始集合，本层**不按 source 过滤**——device / case+output 等页签不展示的行
+ *   也要拿到，整份保存时按原值透传，否则会被软删（INT-2281）；按用途分桶在
+ *   application 层（`useApiParamConfig`）做。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -95,7 +98,7 @@ describe('fetchAlgorithmApiParams', () => {
 })
 
 describe('fetchAlgorithmApiMappings', () => {
-  it('请求带 source_type=evaluation + api_id，并再按 source=api 过滤', async () => {
+  it('请求带 source_type=evaluation + api_id，返回原始集合（不按 source 过滤）', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         success: true,
@@ -125,17 +128,44 @@ describe('fetchAlgorithmApiMappings', () => {
     expect(urlOf()).toBe(
       '/api/v1/algorithm/mappings?algorithm_type=voice_llm&source_type=evaluation&api_id=42'
     )
-    expect(rows.map((r) => r.sourceParam)).toEqual(['response_audio'])
+    // 过滤已下沉到 application 层分桶，infrastructure 原样返回全部行
+    expect(rows.map((r) => [r.source, r.sourceParam])).toEqual([
+      ['api', 'response_audio'],
+      ['case_config', 'audios'],
+    ])
   })
 
-  it('非 api 来源行不会进入页签数据', async () => {
+  it('非 api 来源行（device / reference）一并返回：页签不展示但要原值透传', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         success: true,
         code: 0,
-        data: [{ id: 3, source: 'reference', source_param: 'query' }],
+        data: [
+          { id: 3, source: 'reference', source_param: 'query' },
+          { id: 4, source: 'device', source_param: 'device_score', api_id: 42 },
+        ],
       })
     )
-    expect(await fetchAlgorithmApiMappings('voice_llm', 42)).toEqual([])
+    const rows = await fetchAlgorithmApiMappings('voice_llm', 42)
+    expect(rows.map((r) => [r.id, r.source, r.sourceParam])).toEqual([
+      [3, 'reference', 'query'],
+      [4, 'device', 'device_score'],
+    ])
+  })
+
+  it('api_id 透传：覆盖行为本 API id，算法级行（api_id=null）为 null', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        code: 0,
+        data: [
+          { id: 5, source: 'device', source_param: 'device_score', api_id: 42 },
+          { id: 6, source: 'api', source_param: 'resp_text', api_id: null },
+        ],
+      })
+    )
+    const rows = await fetchAlgorithmApiMappings('voice_llm', 42)
+    // 应用层据此只把本 API 的覆盖行当覆盖行提交，算法级行不能固化成重复行
+    expect(rows.map((r) => r.apiId)).toEqual([42, null])
   })
 })

@@ -104,8 +104,9 @@ export type AlgorithmApiParam = {
 
 /**
  * API 实例作用域的参数映射行（策略映射 + 本 API 覆盖行的解析结果）。
- * `source` 固定 api；dimension_id 为目标评估维度；`/algorithm/mappings` 不下发
- * dimension_name，维度名由读侧按 dimension_id 补齐，取不到时显示「—」。
+ * 读侧返回「算法级 + 本 API 级」原始集合，`source` 不止 api（另有 device / case /
+ * reference 等，由 application 层分桶）；dimension_id 为目标评估维度；
+ * `/algorithm/mappings` 不下发 dimension_name，维度名由读侧按 dimension_id 补齐。
  */
 export type AlgorithmApiMapping = ParamMapping
 

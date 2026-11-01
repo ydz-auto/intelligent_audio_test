@@ -6,7 +6,9 @@
  *   → 该 API 的字段行（策略 + 实例覆盖解析结果；后端强制要求 api_id，缺省 400）；
  * - `GET /algorithm/mappings?algorithm_type=X&source_type=evaluation&api_id=Y`
  *   → 按 API 作用域解析的映射行；API 输出映射带 dimension_id 会落在 evaluation 桶，
- *   因此这里用 evaluation 作为组件类型，再按 `source === 'api'` 过滤（见 DTO 文件头）。
+ *   因此这里用 evaluation 作为组件类型，返回「算法级 + 本 API 级」原始集合；
+ *   按来源分桶在 application 层（`useApiParamConfig`），本层不按 source 过滤
+ *   （否则 device / case+输出行被丢掉，整份保存时会被软删，INT-2281）。
  *
  * 降级：403（缺 algorithm:read）原样抛 ApiError，由 composable 判定为 forbidden。
  */
