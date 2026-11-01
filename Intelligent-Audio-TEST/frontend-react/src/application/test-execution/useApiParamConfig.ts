@@ -66,6 +66,11 @@ export interface ApiParamConfigResult {
   mappings: AlgorithmApiMapping[]
   /** `source='case'` + `source_direction='input'`：用例参数 → API 输入字段 */
   inputMappings: AlgorithmApiMapping[]
+  /**
+   * 页签两个编辑器都不展示的映射行（如 source=device、case+output、来源未知）。
+   * 保存是整份同步（后端按自然键把未提交行软删），所以这些行必须原值透传，不能丢（INT-2281）。
+   */
+  otherMappings: AlgorithmApiMapping[]
   /** 输入映射的源候选（算法类型下的用例参数） */
   caseParams: AlgorithmApiParam[]
   /** 评估维度列表（映射行的「维度」下拉 + 维度名补齐） */
@@ -146,6 +151,13 @@ export function useApiParamConfig(
     ),
     [allMappings]
   )
+  // 两个编辑器都不展示的行：保存时按原值透传，避免整份同步把它们软删（INT-2281）
+  const otherMappings = useMemo(
+    () => allMappings.filter(
+      (row) => row.source !== 'api' && !(row.source === 'case' && row.sourceDirection === 'input')
+    ),
+    [allMappings]
+  )
 
   // 输入映射的源候选：算法类型下的用例参数（失败不影响主流程，按空候选处理）
   const caseParamsQuery = useQuery({
@@ -170,6 +182,7 @@ export function useApiParamConfig(
     inputParams,
     mappings,
     inputMappings,
+    otherMappings,
     caseParams: caseParamsQuery.data ?? [],
     dimensions,
     noOutputDeclared: state === 'ready' ? outputParams.length === 0 : null,

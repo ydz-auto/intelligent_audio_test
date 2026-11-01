@@ -37,6 +37,7 @@ describe('toAlgorithmApiParam（GET /algorithm/params?param_type=api）', () => 
       required: false,
       defaultValue: null,
       helpText: null,
+      validationRules: null,
       uiOrder: 21,
       hidden: false,
       fieldPath: null,
@@ -60,6 +61,17 @@ describe('toAlgorithmApiParam（GET /algorithm/params?param_type=api）', () => 
     expect(toAlgorithmApiParam({ id: 1, field_path: 'data.items[0].text' }).fieldPath).toBe(
       'data.items[0].text'
     )
+  })
+
+  it('validation_rules 透传（后端 _serialize_params 键名），旧键 validation 兼容（INT-2281）', () => {
+    expect(
+      toAlgorithmApiParam({ id: 2, validation_rules: '{"min":1}' }).validationRules
+    ).toBe('{"min":1}')
+    expect(toAlgorithmApiParam({ id: 3, validation: '{"max":9}' }).validationRules).toBe(
+      '{"max":9}'
+    )
+    expect(toAlgorithmApiParam({ id: 4, validation_rules: null, validation: '' }).validationRules)
+      .toBeNull()
   })
 })
 

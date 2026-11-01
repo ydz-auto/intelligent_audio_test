@@ -92,6 +92,11 @@ export type AlgorithmApiParam = {
   required: boolean
   defaultValue: string | null
   helpText: string | null
+  /**
+   * 校验规则（后端列 validation_rules，`_serialize_params` 的键也是 validation_rules）。
+   * 参数配置页签不展示但必须原值透传：整份同步的口径下，没带该列 = 清空（INT-2281）。
+   */
+  validationRules: string | null
   uiOrder: number
   hidden: boolean
   fieldPath: string | null

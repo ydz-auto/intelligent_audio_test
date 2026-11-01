@@ -29,14 +29,21 @@ import {
 import type { AlgorithmApiMapping, AlgorithmApiParam } from '@/domain/models/apiConfig'
 import type { DerivedFields } from '@/features/test-execution/modals/api-edit-dialog-model'
 import {
+  PARAM_DIRECTION_LABEL,
+  PARAM_DIRECTIONS,
+  PARAM_MAPPING_SOURCE_LABEL,
+  PARAM_PROFILE_MAPPING_SOURCES,
   PARAM_TRANSFORM_TYPE_LABEL,
   PARAM_TRANSFORM_TYPES,
   PARAM_TYPE_LABEL,
   PARAM_TYPES,
+  isParamProfileMappingSource,
   type ApiScopeOverridesInput,
+  type ParamDirection,
   type ParamProfile,
   type ParamProfileInput,
   type ParamProfileMappingDraft,
+  type ParamProfileMappingSource,
   type ParamProfileParamDraft,
   type ParamTransformType,
   type ParamType,
@@ -50,6 +57,7 @@ import {
 } from '@/infrastructure/api/param-profile-api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -100,17 +108,37 @@ const TRANSFORM_TYPE_OPTIONS = PARAM_TRANSFORM_TYPES.map((value) => ({
   label: PARAM_TRANSFORM_TYPE_LABEL[value],
 }))
 
+/** 映射来源（api = API 输出 / case = 用例参数 / device = 设备输出） */
+const MAPPING_SOURCE_OPTIONS = PARAM_PROFILE_MAPPING_SOURCES.map((value) => ({
+  value,
+  label: PARAM_MAPPING_SOURCE_LABEL[value],
+}))
+
+const MAPPING_DIRECTION_OPTIONS = PARAM_DIRECTIONS.map((value) => ({
+  value,
+  label: PARAM_DIRECTION_LABEL[value],
+}))
+
 interface EditableParamRow {
   key: number
   paramCode: string
   paramName: string
   paramType: ParamType
+  required: boolean
+  defaultValue: string
+  helpText: string
+  hidden: boolean
+  /** 界面无编辑控件，保存时按读到的原值透传（INT-2281：整份同步会清空未提交列） */
+  label: string | null
+  validationRules: string | null
   uiOrder: string
   fieldPath: string
 }
 
 interface EditableMappingRow {
   key: number
+  source: ParamProfileMappingSource
+  sourceDirection: ParamDirection
   sourceParam: string
   targetParam: string
   dimensionId: string
@@ -119,9 +147,46 @@ interface EditableMappingRow {
 
 interface EditableInputMappingRow {
   key: number
+  source: ParamProfileMappingSource
+  sourceDirection: ParamDirection
   sourceParam: string
   targetParam: string
   transformType: ParamTransformType
+}
+
+/** 读侧映射来源：未知 / 空值收敛为 api（写侧后端缺省值同口径） */
+function mappingSourceOf(mapping: AlgorithmApiMapping): ParamProfileMappingSource {
+  return isParamProfileMappingSource(mapping.source) ? mapping.source : 'api'
+}
+
+/** 读侧源方向：空值按 output 处理（写侧后端缺省值同口径） */
+function mappingDirectionOf(mapping: AlgorithmApiMapping): ParamDirection {
+  return mapping.sourceDirection === 'input' ? 'input' : 'output'
+}
+
+/** 字段行归一：比较脏 / 透传共用一份口径，避免两处漂移 */
+function paramSignatureOf(param: {
+  paramCode: string
+  paramType: string
+  required: boolean
+  defaultValue: string | null
+  helpText: string | null
+  hidden: boolean
+  label: string | null
+  validationRules: string | null
+  uiOrder: number | string
+}) {
+  return [
+    param.paramCode,
+    param.paramType,
+    Number(param.uiOrder) || 0,
+    param.required,
+    param.defaultValue,
+    param.helpText,
+    param.hidden,
+    param.label,
+    param.validationRules,
+  ]
 }
 
 function paramRowOf(param: AlgorithmApiParam, key: number): EditableParamRow {
@@ -132,6 +197,12 @@ function paramRowOf(param: AlgorithmApiParam, key: number): EditableParamRow {
     paramType: PARAM_TYPES.includes(param.paramType as ParamType)
       ? (param.paramType as ParamType)
       : 'text',
+    required: param.required,
+    defaultValue: param.defaultValue ?? '',
+    helpText: param.helpText ?? '',
+    hidden: param.hidden,
+    label: param.label,
+    validationRules: param.validationRules,
     uiOrder: String(param.uiOrder ?? 0),
     fieldPath: param.fieldPath ?? '',
   }
@@ -140,9 +211,38 @@ function paramRowOf(param: AlgorithmApiParam, key: number): EditableParamRow {
 function mappingRowOf(mapping: AlgorithmApiMapping, key: number): EditableMappingRow {
   return {
     key,
+    source: mappingSourceOf(mapping),
+    sourceDirection: mappingDirectionOf(mapping),
     sourceParam: mapping.sourceParam,
     targetParam: mapping.targetParam,
     dimensionId: mapping.dimensionId == null ? '' : String(mapping.dimensionId),
+    transformType: PARAM_TRANSFORM_TYPES.includes(mapping.transformType as ParamTransformType)
+      ? (mapping.transformType as ParamTransformType)
+      : 'none',
+  }
+}
+
+function inputMappingRowOf(mapping: AlgorithmApiMapping, key: number): EditableInputMappingRow {
+  return {
+    key,
+    source: mappingSourceOf(mapping),
+    sourceDirection: mappingDirectionOf(mapping),
+    sourceParam: mapping.sourceParam,
+    targetParam: mapping.targetParam,
+    transformType: PARAM_TRANSFORM_TYPES.includes(mapping.transformType as ParamTransformType)
+      ? (mapping.transformType as ParamTransformType)
+      : 'none',
+  }
+}
+
+/** 页面不展示的映射行：原值透传（否则整份同步会把它们软删） */
+function passthroughMappingDraftOf(mapping: AlgorithmApiMapping): ParamProfileMappingDraft {
+  return {
+    source: mappingSourceOf(mapping),
+    sourceDirection: mappingDirectionOf(mapping),
+    sourceParam: mapping.sourceParam,
+    targetParam: mapping.targetParam,
+    dimensionId: mapping.dimensionId,
     transformType: PARAM_TRANSFORM_TYPES.includes(mapping.transformType as ParamTransformType)
       ? (mapping.transformType as ParamTransformType)
       : 'none',
@@ -153,8 +253,8 @@ function draftInputMappingsOf(rows: EditableInputMappingRow[]): ParamProfileMapp
   return rows
     .filter((row) => row.sourceParam.trim() && row.targetParam.trim())
     .map((row) => ({
-      source: 'case',
-      sourceDirection: 'input',
+      source: row.source,
+      sourceDirection: row.sourceDirection,
       sourceParam: row.sourceParam.trim(),
       targetParam: row.targetParam.trim(),
       dimensionId: null,
@@ -172,10 +272,19 @@ function normalizeParamType(value: string): ParamType {
 }
 
 /**
+ * 文本列（默认值 / 帮助提示）：用户没改时按读侧原样回写（保留 null 与空串的差异），
+ * 改过之后空串按 null 提交。不用常量兜底（INT-2281）。
+ */
+function textFieldOf(value: string, origin: string | null | undefined): string | null {
+  if (value === (origin ?? '')) return origin ?? null
+  return value.trim() === '' ? null : value
+}
+
+/**
  * 输出字段行 → 提交草稿。
  *
- * 界面只编辑代码/名称/类型/排序/响应路径；`required / defaultValue / helpText /
- * hidden / label / validationRules` 没有编辑控件，必须按读到的原值透传——
+ * `required / defaultValue / helpText / hidden` 表格可见可改，按行内值提交
+ * （INT-2281 回显口径）；`label / validationRules` 没有编辑控件，按读侧原值透传——
  * `PUT /algorithm/api-scope/{id}/overrides` 是整份保存，缺省即被清空（INT-2270）。
  */
 function draftParamsOf(
@@ -192,12 +301,13 @@ function draftParamsOf(
         paramName: row.paramName.trim() || null,
         paramType: row.paramType,
         direction: 'output',
-        required: origin?.required ?? false,
-        defaultValue: origin?.defaultValue ?? null,
-        helpText: origin?.helpText ?? null,
+        required: row.required,
+        defaultValue: textFieldOf(row.defaultValue, origin?.defaultValue),
+        helpText: textFieldOf(row.helpText, origin?.helpText),
         uiOrder: Number(row.uiOrder) || 0,
-        hidden: origin?.hidden ?? false,
+        hidden: row.hidden,
         fieldPath: row.fieldPath.trim() || null,
+        // 无编辑控件的列按读侧原值透传（INT-2281）
         label: origin?.label ?? null,
         validationRules: origin?.validationRules ?? null,
       }
@@ -232,8 +342,8 @@ function draftMappingsOf(rows: EditableMappingRow[]): ParamProfileMappingDraft[]
   return rows
     .filter((row) => row.sourceParam.trim() && row.targetParam.trim())
     .map((row) => ({
-      source: 'api',
-      sourceDirection: 'output',
+      source: row.source,
+      sourceDirection: row.sourceDirection,
       sourceParam: row.sourceParam.trim(),
       targetParam: row.targetParam.trim(),
       dimensionId: row.dimensionId.trim() === '' ? null : Number(row.dimensionId),
@@ -372,22 +482,24 @@ export function ApiParamConfigTab({
     setBoundProfileId(boundProfileIdFromServer)
   }, [boundProfileIdFromServer])
 
-  // 读侧数据到达 / 保存后重新拉取 → 同步到可编辑行；用户正在编辑时不覆盖
+  // 读侧数据到达 / 保存后重新拉取 → 同步到可编辑行；用户正在编辑时不覆盖。
+  // 签名含「整份提交」的全部列（INT-2281）：只改必填 / 默认值 / 帮助提示 / 隐藏、
+  // 或只改映射来源 / 方向，也必须被认作脏，否则界面会说「无改动」。
   const signature = useMemo(
     () =>
       JSON.stringify({
-        params: config.outputParams.map((row) => [
-          row.paramCode,
-          row.paramType,
-          Number(row.uiOrder) || 0,
-        ]),
+        params: config.outputParams.map((row) => paramSignatureOf(row)),
         mappings: config.mappings.map((row) => [
+          mappingSourceOf(row),
+          mappingDirectionOf(row),
           row.sourceParam,
           row.targetParam,
           row.dimensionId,
           row.transformType,
         ]),
         inputMappings: config.inputMappings.map((row) => [
+          mappingSourceOf(row),
+          mappingDirectionOf(row),
           row.sourceParam,
           row.targetParam,
           row.transformType,
@@ -407,16 +519,7 @@ export function ApiParamConfigTab({
       config.mappings.map((mapping) => mappingRowOf(mapping, rowKeyRef.current++))
     )
     setInputMappingRows(
-      config.inputMappings.map((mapping) => ({
-        key: rowKeyRef.current++,
-        sourceParam: mapping.sourceParam,
-        targetParam: mapping.targetParam,
-        transformType: PARAM_TRANSFORM_TYPES.includes(
-          mapping.transformType as ParamTransformType
-        )
-          ? (mapping.transformType as ParamTransformType)
-          : 'none',
-      }))
+      config.inputMappings.map((mapping) => inputMappingRowOf(mapping, rowKeyRef.current++))
     )
   }, [
     config.state,
@@ -432,18 +535,18 @@ export function ApiParamConfigTab({
     if (config.state !== 'ready') return false
     return (
       JSON.stringify({
-        params: outputRows.map((row) => [
-          row.paramCode,
-          row.paramType,
-          Number(row.uiOrder) || 0,
-        ]),
+        params: outputRows.map((row) => paramSignatureOf(row)),
         mappings: mappingRows.map((row) => [
+          row.source,
+          row.sourceDirection,
           row.sourceParam,
           row.targetParam,
           row.dimensionId.trim() === '' ? null : Number(row.dimensionId),
           row.transformType,
         ]),
         inputMappings: inputMappingRows.map((row) => [
+          row.source,
+          row.sourceDirection,
           row.sourceParam,
           row.targetParam,
           row.transformType,
@@ -456,6 +559,13 @@ export function ApiParamConfigTab({
     onDirtyChange?.(dirty)
   }, [dirty, onDirtyChange])
 
+  // 两个编辑器都不展示的映射行（source=device / case+output / 来源未知）：
+  // 整份同步下不提交即被软删，所以每次提交都按读侧原值带上（INT-2281）
+  const passthroughMappingDrafts = useMemo(
+    () => config.otherMappings.map(passthroughMappingDraftOf),
+    [config.otherMappings]
+  )
+
   // 草稿上抛（新建态由弹窗在创建成功后统一提交，避免用户先保存再回来配参数）
   useEffect(() => {
     onDraftChange?.({
@@ -466,6 +576,7 @@ export function ApiParamConfigTab({
       mappings: [
         ...draftMappingsOf(mappingRows),
         ...draftInputMappingsOf(inputMappingRows),
+        ...passthroughMappingDrafts,
       ],
     })
   }, [
@@ -474,6 +585,7 @@ export function ApiParamConfigTab({
     config.inputParams,
     mappingRows,
     inputMappingRows,
+    passthroughMappingDrafts,
     onDraftChange,
   ])
 
@@ -598,6 +710,7 @@ export function ApiParamConfigTab({
         mappings: [
           ...draftMappingsOf(mappingRows),
           ...draftInputMappingsOf(inputMappingRows),
+          ...passthroughMappingDrafts,
         ],
       })
     },
@@ -781,7 +894,14 @@ export function ApiParamConfigTab({
             onClick={() =>
               setInputMappingRows((rows) => [
                 ...rows,
-                { key: rowKeyRef.current++, sourceParam: '', targetParam: '', transformType: 'none' },
+                {
+                  key: rowKeyRef.current++,
+                  source: 'case',
+                  sourceDirection: 'input',
+                  sourceParam: '',
+                  targetParam: '',
+                  transformType: 'none',
+                },
               ])
             }
           >
@@ -915,6 +1035,12 @@ export function ApiParamConfigTab({
                   paramCode: '',
                   paramName: '',
                   paramType: 'text',
+                  required: false,
+                  defaultValue: '',
+                  helpText: '',
+                  hidden: false,
+                  label: null,
+                  validationRules: null,
                   uiOrder: String(rows.length + 1),
                   fieldPath: '',
                 },
@@ -945,6 +1071,10 @@ export function ApiParamConfigTab({
                   <TableHead className='text-xs'>方向</TableHead>
                   <TableHead className='text-xs'>排序</TableHead>
                   <TableHead className='text-xs'>响应路径</TableHead>
+                  <TableHead className='text-xs'>默认值</TableHead>
+                  <TableHead className='text-xs'>帮助提示</TableHead>
+                  <TableHead className='text-xs'>必填</TableHead>
+                  <TableHead className='text-xs'>隐藏</TableHead>
                   <TableHead className='w-10 text-xs'>操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1014,6 +1144,48 @@ export function ApiParamConfigTab({
                       />
                     </TableCell>
                     <TableCell>
+                      <Input
+                        value={row.defaultValue}
+                        disabled={!editable}
+                        aria-label='默认值'
+                        placeholder='default_value'
+                        className='h-7 w-32 font-mono text-xs'
+                        onChange={(e) =>
+                          updateOutputRow(row.key, { defaultValue: e.target.value })
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={row.helpText}
+                        disabled={!editable}
+                        aria-label='帮助提示'
+                        placeholder='填写说明'
+                        className='h-7 w-40 text-xs'
+                        onChange={(e) => updateOutputRow(row.key, { helpText: e.target.value })}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Checkbox
+                        aria-label={`必填 ${row.paramCode || '新字段'}`}
+                        checked={row.required}
+                        disabled={!editable}
+                        onCheckedChange={(checked) =>
+                          updateOutputRow(row.key, { required: Boolean(checked) })
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Checkbox
+                        aria-label={`隐藏 ${row.paramCode || '新字段'}`}
+                        checked={row.hidden}
+                        disabled={!editable}
+                        onCheckedChange={(checked) =>
+                          updateOutputRow(row.key, { hidden: Boolean(checked) })
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>
                       <Button
                         type='button'
                         variant='ghost'
@@ -1051,6 +1223,8 @@ export function ApiParamConfigTab({
                 ...rows,
                 {
                   key: rowKeyRef.current++,
+                  source: 'api',
+                  sourceDirection: 'output',
                   sourceParam: '',
                   targetParam: '',
                   dimensionId: '',
@@ -1073,6 +1247,7 @@ export function ApiParamConfigTab({
               <TableHeader>
                 <TableRow>
                   <TableHead className='text-xs'>来源</TableHead>
+                  <TableHead className='text-xs'>来源方向</TableHead>
                   <TableHead className='text-xs'>源参数</TableHead>
                   <TableHead className='text-xs'>目标维度</TableHead>
                   <TableHead className='text-xs'>目标参数</TableHead>
@@ -1084,7 +1259,50 @@ export function ApiParamConfigTab({
                 {mappingRows.map((row) => (
                   <TableRow key={row.key}>
                     <TableCell>
-                      <Badge variant='secondary'>api</Badge>
+                      <Select
+                        value={row.source}
+                        items={MAPPING_SOURCE_OPTIONS}
+                        onValueChange={(value) =>
+                          updateMappingRow(row.key, {
+                            source: value as ParamProfileMappingSource,
+                          })
+                        }
+                        disabled={!editable}
+                      >
+                        <SelectTrigger size='sm' className='w-28' aria-label='映射来源'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MAPPING_SOURCE_OPTIONS.map((item) => (
+                            <SelectItem key={item.value} value={item.value}>
+                              {item.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={row.sourceDirection}
+                        items={MAPPING_DIRECTION_OPTIONS}
+                        onValueChange={(value) =>
+                          updateMappingRow(row.key, {
+                            sourceDirection: value as ParamDirection,
+                          })
+                        }
+                        disabled={!editable}
+                      >
+                        <SelectTrigger size='sm' className='w-20' aria-label='来源方向'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MAPPING_DIRECTION_OPTIONS.map((item) => (
+                            <SelectItem key={item.value} value={item.value}>
+                              {item.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell>
                       <Select

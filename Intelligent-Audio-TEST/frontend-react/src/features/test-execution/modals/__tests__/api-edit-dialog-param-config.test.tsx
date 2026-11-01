@@ -130,6 +130,7 @@ const PROFILE_FIXTURE: ParamProfile = {
   description: null,
   status: 'online',
   clonedFrom: null,
+  config: null,
   params: [],
   mappings: [],
   createdAt: null,
@@ -166,7 +167,12 @@ const RAW_PARAMS = [
     direction: 'output',
     field_path: 'data.items[0].text',
     label: 'ASR 文本',
+    // INT-2281：整份保存必须原值回写，不能落成默认值
+    required: true,
+    default_value: '未识别',
+    help_text: '识别出的文本',
     validation_rules: '{"min_length": 1}',
+    hidden: true,
   },
 ]
 
@@ -178,6 +184,26 @@ const RAW_MAPPINGS = [
     source_direction: 'output',
     dimension_id: 72,
     target_param: 'text',
+    transform_type: 'none',
+  },
+  {
+    // INT-2281：api 来源但方向是 input 的行，保存不得被改写成 output
+    id: 1712,
+    source: 'api',
+    source_param: 'user_query',
+    source_direction: 'input',
+    dimension_id: null,
+    target_param: 'text',
+    transform_type: 'none',
+  },
+  {
+    // INT-2281：页签不展示的来源行（device），保存必须原值透传，否则整份同步会软删
+    id: 1713,
+    source: 'device',
+    source_param: 'device_score',
+    source_direction: 'output',
+    dimension_id: null,
+    target_param: '准确率',
     transform_type: 'none',
   },
 ]
@@ -277,7 +303,7 @@ describe('参数配置页签', () => {
     await waitFor(() => expect(bindMock).toHaveBeenCalledWith(21, 12))
   })
 
-  it('保存参数配置 → PUT overrides（body 含 output 行与 input 声明行，input 覆盖行不被整份删）', async () => {
+  it('保存参数配置 → PUT overrides（body 含 output 行与 input 声明行；字段原值回写、不展示的映射行透传）', async () => {
     renderDialog(API_FIXTURE)
     openTab('参数配置')
     await screen.findByDisplayValue('response_audio')
@@ -307,7 +333,78 @@ describe('参数配置页签', () => {
       ['input_text', 'input'],
     ])
     const mappings = (payload as { mappings: Array<{ source: string }> }).mappings
-    expect(mappings.map((m) => m.source)).toEqual(['api'])
+    // api 行照提交；不展示来源的 device 行原值透传（否则整份同步会软删，INT-2281）
+    expect(mappings.map((m) => m.source)).toEqual(['api', 'api', 'device'])
+  })
+
+  it('保存时回写 required/default/help/hidden，未展示的 label/validation 原值透传（INT-2281）', async () => {
+    renderDialog(API_FIXTURE)
+    openTab('参数配置')
+    await screen.findByDisplayValue('response_audio')
+
+    fireEvent.click(screen.getByRole('button', { name: '保存参数配置' }))
+
+    await waitFor(() => expect(saveOverridesMock).toHaveBeenCalledTimes(1))
+    const payload = saveOverridesMock.mock.calls[0][1] as {
+      params: Array<Record<string, unknown>>
+    }
+    expect(payload.params.find((p) => p.paramCode === 'asr_text')).toMatchObject({
+      required: true,
+      defaultValue: '未识别',
+      helpText: '识别出的文本',
+      hidden: true,
+      label: 'ASR 文本',
+      validationRules: '{"minLength":1}',
+    })
+    // 无值行仍按 null 提交（不是常量兜底，而是「本来就没有」）
+    expect(payload.params.find((p) => p.paramCode === 'response_audio')).toMatchObject({
+      required: false,
+      defaultValue: null,
+      helpText: null,
+      hidden: false,
+      label: null,
+      validationRules: null,
+    })
+  })
+
+  it('映射按读侧 source/sourceDirection 原值提交，不统一改写成 api/output（INT-2281）', async () => {
+    renderDialog(API_FIXTURE)
+    openTab('参数配置')
+    await screen.findByDisplayValue('response_audio')
+
+    fireEvent.click(screen.getByRole('button', { name: '保存参数配置' }))
+
+    await waitFor(() => expect(saveOverridesMock).toHaveBeenCalledTimes(1))
+    const payload = saveOverridesMock.mock.calls[0][1] as {
+      mappings: Array<{ source: string; sourceDirection: string; sourceParam: string }>
+    }
+    expect(
+      payload.mappings.map((m) => [m.source, m.sourceDirection, m.sourceParam])
+    ).toEqual([
+      ['api', 'output', 'asr_text'],
+      ['api', 'input', 'user_query'],
+      ['device', 'output', 'device_score'],
+    ])
+  })
+
+  it('改「必填 / 隐藏」复选框后保存：提交勾选后的值', async () => {
+    const user = userEvent.setup()
+    renderDialog(API_FIXTURE)
+    openTab('参数配置')
+    await screen.findByDisplayValue('response_audio')
+
+    await user.click(screen.getByRole('checkbox', { name: '必填 response_audio' }))
+    await user.click(screen.getByRole('checkbox', { name: '隐藏 response_audio' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存参数配置' }))
+
+    await waitFor(() => expect(saveOverridesMock).toHaveBeenCalledTimes(1))
+    const payload = saveOverridesMock.mock.calls[0][1] as {
+      params: Array<Record<string, unknown>>
+    }
+    expect(payload.params.find((p) => p.paramCode === 'response_audio')).toMatchObject({
+      required: true,
+      hidden: true,
+    })
   })
 
   it('保存时按原值透传界面未展示的字段（input 的 required/default/help/hidden，output 的 label/validation）', async () => {

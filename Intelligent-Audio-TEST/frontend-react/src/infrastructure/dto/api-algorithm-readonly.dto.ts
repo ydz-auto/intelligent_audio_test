@@ -64,7 +64,8 @@ export function toAlgorithmApiParam(raw: unknown): AlgorithmApiParam {
     ...param,
     direction: param.direction === 'output' ? 'output' : 'input',
     fieldPath: nullableStr(r.field_path),
-    // 校验规则无编辑控件：读出来供整份保存时原值透传（INT-2270）
+    // 校验规则无编辑控件：读出来供整份保存时原值透传（后端 `_serialize_params` 下发
+    // validation_rules；旧口径键名是 validation）（INT-2270 / INT-2281）
     validationRules: textOrNull(r.validation_rules ?? r.validation),
   }
 }
