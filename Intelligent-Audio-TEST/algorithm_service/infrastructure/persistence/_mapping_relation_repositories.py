@@ -117,10 +117,15 @@ class MappingRepository(IMappingRepository):
         """按 ID 更新参数映射可写字段，返回更新后的 dict。
 
         字段映射与 servicers.py UpdateMapping 一致：
-        - 显式处理 source / source_param / source_direction
+        - source ← fields.source_type（与 create 同口径：网关/gRPC 传的是
+          source_type，PO 字段为 source；仍兼容直接传 source 的调用方）
+        - 显式处理 source_param / source_direction
           / dimension_id / target_param / transform_type
         - api_id（INT-1756 C6a）：None 表示不改，显式传值才落库
         - device_id：None 表示不改，显式传值才落库
+
+        INT-2300：此前只读 ``source``，网关 PUT 带的 ``source_type`` 被丢弃，
+        导致「改映射来源」返回 200 但库里的 source 不变。
         """
         session = get_db_session()
         try:
@@ -141,7 +146,10 @@ class MappingRepository(IMappingRepository):
                 device_id = fields.get("deviceId")
             if device_id is not None:
                 po.device_id = device_id
-            if fields.get("source") is not None:
+            # INT-2300：source_type 优先（create 口径），source 为兼容键
+            if fields.get("source_type") is not None:
+                po.source = fields["source_type"]
+            elif fields.get("source") is not None:
                 po.source = fields["source"]
             if fields.get("source_param") is not None:
                 po.source_param = fields["source_param"]
