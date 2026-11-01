@@ -809,7 +809,11 @@ class TestCaseCrudService:
         return self._query_service.get_testcase_detail(tc_id)
 
     def get_testcase_details_by_ids(self, ids, include_deleted: bool = False) -> dict:
-        """按 ID 列表批量取详情（INT-2313，委托 TestCaseQueryService）。"""
+        """按 ID 列表批量取详情（INT-2313，委托 TestCaseQueryService）。
+
+        INT-2323：`include_deleted` 仅透传签名、接收但无效（§3.7.5 回收站用例
+        不导出），由查询服务恒按 `deleted=False` 取数。
+        """
         return self._query_service.get_testcase_details_by_ids(
             ids, include_deleted=include_deleted)
 

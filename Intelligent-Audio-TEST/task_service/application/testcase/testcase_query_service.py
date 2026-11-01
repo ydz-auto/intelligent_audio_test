@@ -337,6 +337,10 @@ class TestCaseQueryService:
         - 每片只取一次音频摘要与评估维度，避免逐条 N+1；
         - 逐条结构与 `get_testcase_detail` 的 data 完全同构（共用 `_build_detail_data`）。
 
+        INT-2323：这是详情取数通道，与 `get_testcase_detail` 同口径——**回收站用例
+        一律取不到**（§3.7.5「回收站用例不导出」）。`include_deleted` 仅为 wire 兼容
+        保留、接收但无效，绝不下传给仓储；软删 id 落进 `missing_ids`。
+
         返回 `{'test_cases': [detail...], 'missing_ids': [...]}`。
         """
         ids = [str(i) for i in (ids or [])]
@@ -345,7 +349,7 @@ class TestCaseQueryService:
                     'data': {'test_cases': [], 'missing_ids': []}}
         try:
             test_cases = self.repo.list_testcases_by_ids_visible(
-                ids, include_deleted=include_deleted)
+                ids, include_deleted=False)
             by_id = {str(tc.id): tc for tc in test_cases}
             # 保持入参顺序、并按 id 去重（重复 id 不重复返回）
             ordered, seen = [], set()

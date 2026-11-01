@@ -138,6 +138,8 @@ class TestCaseConfigServiceServicer(task_grpc.TestCaseConfigServiceServicer):
 
         响应逐条为详情 JSON 字符串（与 GetTestCaseDetail.data 同构）+ 未命中 /
         不可见 ID 列表；可见性在应用层强制（私有非 owner 进 missing_ids）。
+        INT-2323：`include_deleted` 接收但无效（§3.7.5 回收站用例不导出），
+        应用层恒按 `deleted=False` 取数。
         """
         try:
             from task_service.application.queries.task_queries import GetTestCasesByIdsQuery

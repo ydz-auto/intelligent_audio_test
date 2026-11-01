@@ -125,6 +125,7 @@ class ExportSpec:
     format: str = TestCaseExportFormat.JSON.value
     include_reference_params: bool = True
     include_audios: bool = False
+    # 请求回显字段：接收但无效（§3.7.5 回收站用例不导出），取数链路不消费它
     include_deleted: bool = False
     idempotency_key: Optional[str] = None
 
@@ -203,7 +204,8 @@ class TestCaseExportService:
             # 与同步口径一致：只有显式传 false 才不含参考参数，只有显式 true 才带音频
             include_reference_params=req_data.include_reference_params is not False,
             include_audios=req_data.include_audios is True,
-            # 契约口径（INT-2312）：回收站用例不导出，该字段接收但无效
+            # 契约口径（INT-2312 / §3.7.5）：回收站用例不导出，该字段接收但无效
+            # （仅回显进作业记录，取数链路不看它——见 `_iter_testcase_shards`）
             include_deleted=bool(req_data.include_deleted),
             idempotency_key=req_data.idempotency_key,
         ), None
@@ -218,8 +220,7 @@ class TestCaseExportService:
         if err is not None:
             return None, None, None, None, err
 
-        test_cases = TestCaseExportService._fetch_testcases_by_ids(
-            spec.ids, spec.include_deleted)
+        test_cases = TestCaseExportService._fetch_testcases_by_ids(spec.ids)
         if not test_cases:
             return None, None, None, None, error_response("未找到指定的测试用例")
 
@@ -227,7 +228,7 @@ class TestCaseExportService:
                 spec.include_audios, None)
 
     @staticmethod
-    def _iter_testcase_shards(ids, include_deleted):
+    def _iter_testcase_shards(ids):
         """按 200/片批量取详情，逐片产出 (shard_ids, tc_by_id, reason_by_id)。
 
         INT-2313：把逐 id 的 `GetTestCaseDetail` 换成 task_service 的批量 RPC，
@@ -235,12 +236,18 @@ class TestCaseExportService:
 
         可见性由 task_service 强制（私有非 owner 进 `missing_ids`），网关侧
         不做放行判断——这里只把「没返回的 id」按 not_found 记账。
+
+        INT-2323：导出契约（§3.7.5）是「回收站用例不导出」，因此**不把请求里的
+        `include_deleted` 传下去**（该字段接收但无效）。软删用例在服务端就被
+        `deleted=False` 过滤掉，落进 `missing[].reason=not_found`，与 INT-2312 及
+        以前逐条 `GetTestCaseDetail` 的行为一致；详情 data 本就不带 `deleted`
+        字段，网关侧也没有可依赖的二次剔除依据。
         """
         ids = [str(i) for i in (ids or [])]
         for start in range(0, len(ids), TESTCASE_DETAIL_SHARD_SIZE):
             shard_ids = ids[start:start + TESTCASE_DETAIL_SHARD_SIZE]
             try:
-                res = _testcase_acl.get_testcases_by_ids(shard_ids, include_deleted)
+                res = _testcase_acl.get_testcases_by_ids(shard_ids)
             except Exception:
                 logger.warning(
                     "批量取用例详情异常，整片按 rpc_error 计入 missing，size=%s",
@@ -263,8 +270,6 @@ class TestCaseExportService:
             for tc in data.get('test_cases') or []:
                 if not isinstance(tc, dict):
                     continue
-                if not include_deleted and tc.get('deleted'):
-                    continue
                 tc_by_id[str(tc.get('id'))] = tc
             reason_by_id = {
                 tc_id: MISSING_REASON_NOT_FOUND
@@ -273,24 +278,25 @@ class TestCaseExportService:
             yield shard_ids, tc_by_id, reason_by_id
 
     @staticmethod
-    def _iter_testcase_details(ids, include_deleted):
+    def _iter_testcase_details(ids):
         """逐条产出 (tc_id, tc_or_None, missing_reason_or_None)。
 
         取数与失败分类的唯一实现：单条失败不再静默丢弃，按原因计入 missing
-        （`not_found` 涵盖下游把无权限私有用例伪装成的不存在，不臆造 forbidden）。
+        （`not_found` 涵盖下游把无权限私有用例伪装成的不存在，不臆造 forbidden，
+        也涵盖回收站用例——导出契约不导出它们，见 `_iter_testcase_shards`）。
         """
         for shard_ids, tc_by_id, reason_by_id in \
-                TestCaseExportService._iter_testcase_shards(ids, include_deleted):
+                TestCaseExportService._iter_testcase_shards(ids):
             for tc_id in shard_ids:
                 tc = tc_by_id.get(tc_id)
                 yield tc_id, tc, (None if tc is not None
                                   else reason_by_id.get(tc_id, MISSING_REASON_NOT_FOUND))
 
     @staticmethod
-    def _fetch_testcases_by_ids(ids, include_deleted):
-        """通过 gRPC 逐个获取测试用例详情（丢弃取不到的条目，历史行为）"""
+    def _fetch_testcases_by_ids(ids):
+        """通过 gRPC 批量获取测试用例详情（丢弃取不到的条目，历史行为）"""
         return [tc for _, tc, _ in
-                TestCaseExportService._iter_testcase_details(ids, include_deleted)
+                TestCaseExportService._iter_testcase_details(ids)
                 if tc is not None]
 
     @staticmethod
@@ -310,8 +316,7 @@ class TestCaseExportService:
         device_map_loaded = False
 
         for shard_ids, tc_by_id, reason_by_id in \
-                TestCaseExportService._iter_testcase_shards(
-                    spec.ids, spec.include_deleted):
+                TestCaseExportService._iter_testcase_shards(spec.ids):
             if not device_map_loaded:
                 device_map = TestCaseExportService._load_playback_device_names()
                 device_map_loaded = True
@@ -1438,8 +1443,7 @@ class TestCaseExportService:
 
             if spec.format == TestCaseExportFormat.JSON.value:
                 # 同步 JSON 是 API 信封（历史契约），异步作业才产出 .json 文件
-                test_cases = TestCaseExportService._fetch_testcases_by_ids(
-                    spec.ids, spec.include_deleted)
+                test_cases = TestCaseExportService._fetch_testcases_by_ids(spec.ids)
                 if not test_cases:
                     return error_response("未找到指定的测试用例")
                 return TestCaseExportService._export_as_json(

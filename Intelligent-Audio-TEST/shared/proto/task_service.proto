@@ -530,7 +530,9 @@ message GetTestCaseDetailRequest {
 // 分片失败互不影响（失败片由调用方整体计入 missing）。
 message GetTestCasesByIdsRequest {
   repeated string ids = 1;        // 用例 ID 列表（单片 ≤200）
-  bool include_deleted = 2;       // true 时回收站用例也返回（导出契约保留字段）
+  // INT-2323：接收但无效（§3.7.5 回收站用例不导出）——详情取数通道恒按
+  // deleted=False 取，软删 ID 进 missing_ids；保留字段只为 wire 兼容，不再下传
+  bool include_deleted = 2;
 }
 message GetTestCasesByIdsResponse {
   bool success = 1;
