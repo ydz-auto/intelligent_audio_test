@@ -381,8 +381,10 @@ def test_manifest_carries_source_md5_from_source_record(monkeypatch):
     assert by_id[11]['md5'] != by_id[11]['source_md5']
     # 12：源记录 md5 为空 → 省略该键（老导入端不受影响）
     assert 'source_md5' not in by_id[12]
+    # audio_type 为 INT-2311 起的必写键（与本条 source_md5 并存）
     assert set(by_id[11]) == {
-        'id', 'name', 'file', 'md5', 'size', 'format', 'source_md5'}
+        'id', 'name', 'file', 'md5', 'size', 'format', 'audio_type',
+        'source_md5'}
 
 
 def test_source_md5_omitted_when_not_32_hex(monkeypatch):
