@@ -257,4 +257,6 @@
 
 **调用方顺序（api_gateway 用例导入服务）**：先用 `GetAudioByMD5`（`{md5_list: [...]}` → `{md5: {id, name}}`）查目标库 → 命中直接复用 `id`；未命中再对包内文件调用本命令，取 `data.id` 做 config 的 audio_id 重映射。**传入的 `md5` 必须按包内文件实际字节计算**（不能取源库 `audios.md5` 回填），否则命中 `md5_mismatch` 被拒。
 
+**已知边界**：`persist_failed` 时 DB 已回滚、不落行，但转码链此前写入的存储对象不回滚（与上传链 `MergeChunks` 同口径），会留孤儿对象，需靠存储回收处理——拒绝类失败（`empty_content` / `invalid_audio_content` / `md5_mismatch` / `invalid_base64` / 缺参）在落存储前就被拦下，不留对象。另外，本命令的 md5 幂等只对「库里 `audios.md5` 与实际内容摘要一致」的记录有效：存量 `audios.md5` 多为原始上传字节 md5，与导入侧按包内字节算出的 md5 普遍不一致（INT-2308 实测，缺陷卡 INT-2314），此时首跳 `GetAudioByMD5` 命中不了、会新建。
+
 
