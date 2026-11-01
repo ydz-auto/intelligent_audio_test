@@ -445,6 +445,29 @@ class BaseConfig:
     # 不走五通道事件）；环境变量可覆盖默认 60 天 ---
     TRASH_RETENTION_DAYS: int = _get_int('TRASH_RETENTION_DAYS', 60)
 
+    # --- 用例导出异步作业（INT-2312）---
+    # 大范围导出不再依赖单次 HTTP 长连接（5000 条含音频可达 GB 级、耗时远超
+    # 15173 反代 300s）：提交秒级返回 202，后台线程池执行，产物落存储后下载。
+    # 单次提交的 ids 上限（同步接口不受此限，保持历史行为）。
+    TESTCASE_EXPORT_JOB_MAX_IDS: int = _get_int('TESTCASE_EXPORT_JOB_MAX_IDS', 20000)
+    # 全局排队深度上限（queued + 执行中尚未出队的成员数），超出即 429。
+    TESTCASE_EXPORT_JOB_MAX_QUEUE: int = _get_int('TESTCASE_EXPORT_JOB_MAX_QUEUE', 50)
+    # 网关内导出工作线程数：网关是 uvicorn workers=1，线程与请求线程同进程，
+    # 取小值避免导出把请求线程和内存吃满。
+    TESTCASE_EXPORT_MAX_WORKERS: int = _get_int('TESTCASE_EXPORT_MAX_WORKERS', 2)
+    # 作业状态（HASH）与幂等 / 在办键的存活时长，也是响应里 expires_at 的口径。
+    TESTCASE_EXPORT_JOB_TTL_SECONDS: int = _get_int(
+        'TESTCASE_EXPORT_JOB_TTL_SECONDS', 86400)
+    # 产物（下载文件）存活时长：到期由网关清理线程删存储对象并置 expired。
+    TESTCASE_EXPORT_ARTIFACT_TTL_SECONDS: int = _get_int(
+        'TESTCASE_EXPORT_ARTIFACT_TTL_SECONDS', 7200)
+    # 状态响应里 download_url（预签名）的有效期。
+    TESTCASE_EXPORT_DOWNLOAD_URL_TTL_SECONDS: int = _get_int(
+        'TESTCASE_EXPORT_DOWNLOAD_URL_TTL_SECONDS', 600)
+    # 清理线程扫描周期：产物到期置 expired、作业 TTL 到期删 HASH。
+    TESTCASE_EXPORT_CLEANUP_INTERVAL_SECONDS: int = _get_int(
+        'TESTCASE_EXPORT_CLEANUP_INTERVAL_SECONDS', 600)
+
     # --- 工具 ---
     FFMPEG_PATH: str = _get_env('FFMPEG_PATH', 'ffmpeg')
     FFPROBE_PATH: str = _get_env('FFPROBE_PATH', 'ffprobe')

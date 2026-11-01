@@ -67,10 +67,27 @@ async def lifespan(app: FastAPI):
     from api_gateway.infrastructure.event_bus_forwarder import start_event_forwarder
     start_event_forwarder(ws_manager)
 
+    # INT-2312：用例导出异步作业——接管遗留作业（running→failed / queued 重投）
+    # 并起产物 TTL 清理线程。Redis / 存储不可用不阻断网关启动（提交接口自会 503）。
+    job_manager = None
+    try:
+        from api_gateway.application.services.testcase.testcase_export_job import (
+            get_export_job_manager,
+        )
+        job_manager = get_export_job_manager()
+        job_manager.start_maintenance()
+    except Exception:
+        logger.warning("用例导出作业维护线程启动失败（不影响其余功能）", exc_info=True)
+
     # 软删除硬清理已下沉至各微服务（各自只清理 owned 表），api_gateway 不再负责
     logger.info("API Gateway (FastAPI + DDD) started on port %s", Config.PORT)
     yield
     logger.info("API Gateway shutting down")
+    if job_manager is not None:
+        try:
+            job_manager.shutdown()
+        except Exception:
+            logger.warning("用例导出作业收尾失败", exc_info=True)
 
 
 def create_app(config_name='default') -> FastAPI:

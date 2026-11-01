@@ -61,15 +61,20 @@ def _fake_audio_lookup(monkeypatch, records, raises=False, success=True, data=No
 
 
 def _fake_storage(monkeypatch, files, raising_paths=()):
-    """替换 storage_load_bytes：files 为 {file_path: bytes}，raise 列表模拟读失败。"""
-    import shared.infrastructure.storage as storage_mod
+    """替换 Storage.load_file：files 为 {file_path: bytes}，raise 列表模拟读失败。
 
-    def _load(path):
+    INT-2312 起音频走 `storage.load_file(path, tmp_path)` 落临时文件再入包
+    （不再整条读进内存），故替身按「写入 local_path」的语义实现。
+    """
+    def _load(path, local_path=None, allow_fallback=True):
         if path in raising_paths:
             raise RuntimeError(f'storage down: {path}')
-        return files[path]
+        data = files[path]
+        with open(local_path, 'wb') as fh:
+            fh.write(data)
+        return local_path
 
-    monkeypatch.setattr(storage_mod, 'storage_load_bytes', _load)
+    monkeypatch.setattr(module._storage, 'load_file', _load)
 
 
 def _read_zip(response):
@@ -259,7 +264,7 @@ def test_missing_and_unreadable_audios_are_counted(monkeypatch):
     zf, manifest = _read_zip(response)
     assert manifest['audio_file_count'] == 0
     assert manifest['missing_audio_count'] == 2
-    assert manifest['missing_audio_ids'] == [11, 12]
+    assert sorted(manifest['missing_audio_ids']) == [11, 12]
     assert manifest['audios'] == []
     assert not [n for n in zf.namelist() if n.startswith('audios/')]
 

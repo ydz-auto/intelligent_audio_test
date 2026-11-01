@@ -601,6 +601,9 @@ class TestCaseExportRequest(APIModel):
     include_reference_params: Optional[bool] = Field(True)
     # ZIP 数据包导出选项：是否把用例引用的音频二进制一并打包（默认不包含）
     include_audios: Optional[bool] = Field(False)
+    # 异步导出作业的可选幂等键（INT-2312）：给了按它去重，不给按请求指纹
+    idempotency_key: Optional[str] = Field(
+        None, validation_alias=AliasChoices('idempotency_key', 'idempotencyKey'))
 
 
 class TestCaseImportRequest(APIModel):

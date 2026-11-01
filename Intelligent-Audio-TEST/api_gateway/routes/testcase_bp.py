@@ -1,14 +1,37 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from api_gateway.application.services.testcase.testcase_query_service import TestCaseQueryService
 from api_gateway.application.services.testcase.testcase_command_service import TestCaseCommandService
 from api_gateway.application.services.testcase.testcase_import_export_service import TestCaseImportExportService
-from api_gateway.routes._response import to_response
+from api_gateway.routes._response import to_response, content_disposition
 from api_gateway.application.services.auth.dependencies import require_permission
 from api_gateway.application.services.visibility.visibility_service import VisibilityService
 from api_gateway.schemas.visibility import VisibilityUpdateRequest
+from api_gateway.infrastructure.request_adapter import request as api_request
+from api_gateway.utils.response import error_response
+from shared.infrastructure.storage import Storage
+from shared.infrastructure.user_context import capture_identity
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
+
+# 异步导出产物下载的分块大小（不把文件对象直接交给 Starlette，它会按行迭代）
+EXPORT_DOWNLOAD_CHUNK_BYTES = 1024 * 1024
+
+
+def _iter_file_chunks(stream, chunk_size=EXPORT_DOWNLOAD_CHUNK_BYTES):
+    """按固定块把存储流 yield 给 StreamingResponse，结束即关闭句柄。"""
+    try:
+        while True:
+            chunk = stream.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+    finally:
+        stream.close()
 
 # INT-2241：批量动作 → 所需权限点。路由依赖只看得到 URL，动作在请求体里，
 # 故按中间件预解析的 body（request.state._json_body）取 action 细分校验；
@@ -64,6 +87,54 @@ def get_tags(_: None = require_permission('testcase:read')):
 def export_cases(_: None = require_permission('testcase:import_export')):
     """导出用例：format=zip 返回数据包（manifest+testcases.json+参考参数/音频），对齐任务数据导出"""
     return to_response(TestCaseImportExportService.export_cases())
+
+
+# ---- 用例导出异步作业（INT-2312）：提交 → 轮询 → 下载 ----
+# 同步 /export 原样保留；这三个路由必须早于 /{tc_id} 动态路由注册（见上）
+@router.post('/export/jobs')
+def create_export_job(_: None = require_permission('testcase:import_export')):
+    """提交异步导出作业：秒级返回 202 + task_id，后台线程池执行（5000 条不撞 300s）"""
+    from api_gateway.application.services.testcase.testcase_export_job import (
+        get_export_job_manager,
+    )
+    return to_response(get_export_job_manager().submit(
+        api_request.get_json() or {}, capture_identity()))
+
+
+@router.get('/export/jobs/{task_id}')
+def get_export_job(task_id: str,
+                   _: None = require_permission('testcase:import_export')):
+    """查询导出作业状态：status/phase/progress/result（done 时含预签名下载链接）"""
+    from api_gateway.application.services.testcase.testcase_export_job import (
+        get_export_job_manager,
+    )
+    return to_response(get_export_job_manager().get_status(
+        task_id, capture_identity()))
+
+
+@router.get('/export/jobs/{task_id}/download')
+def download_export_job(task_id: str,
+                        _: None = require_permission('testcase:import_export')):
+    """下载导出产物：按 1MB 分块流式回传（不整包读进内存）"""
+    from api_gateway.application.services.testcase.testcase_export_job import (
+        get_export_job_manager,
+    )
+    info, err = get_export_job_manager().get_download(task_id, capture_identity())
+    if err is not None:
+        return to_response(err)
+
+    try:
+        stream = Storage().load_stream(info['path'])
+    except Exception:
+        logger.warning("读取导出产物失败 path=%s", info.get('path'), exc_info=True)
+        return to_response(error_response('导出文件已过期，请重新导出', http_code=410))
+
+    return StreamingResponse(
+        _iter_file_chunks(stream),
+        media_type=info['media_type'],
+        headers={'Content-Disposition':
+                 content_disposition(info['filename'], fallback='testcases_export')},
+    )
 
 
 @router.post('/import')
