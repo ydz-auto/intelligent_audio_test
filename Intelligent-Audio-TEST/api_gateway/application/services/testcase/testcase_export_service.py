@@ -81,6 +81,17 @@ EXPORT_PHASE_UPLOADING = 'uploading'
 MISSING_REASON_NOT_FOUND = 'not_found'
 MISSING_REASON_RPC_ERROR = 'rpc_error'
 
+# 批量详情分片大小（INT-2313）：单片 200 条，单响应体积可控、分片失败互不影响
+TESTCASE_DETAIL_SHARD_SIZE = 200
+
+# 批量取音频元数据的分片大小与并发度（INT-2313）：GetAudiosByIds 内部逐音频
+# 查标签 + 标注（真实库 337 条约 22.8s），整包一次塞过去会顶满单响应与超时
+AUDIO_BATCH_CHUNK_SIZE = 200
+AUDIO_BATCH_MAX_WORKERS = 4
+
+# 播放设备名预载分页大小（设备总量小，一次导出只预载一次）
+PLAYBACK_DEVICE_PRELOAD_PER_PAGE = 500
+
 # 音频分块读写的块大小（md5 与流式下载共用口径）
 AUDIO_CHUNK_BYTES = 1024 * 1024
 
@@ -216,28 +227,64 @@ class TestCaseExportService:
                 spec.include_audios, None)
 
     @staticmethod
+    def _iter_testcase_shards(ids, include_deleted):
+        """按 200/片批量取详情，逐片产出 (shard_ids, tc_by_id, reason_by_id)。
+
+        INT-2313：把逐 id 的 `GetTestCaseDetail` 换成 task_service 的批量 RPC，
+        单片失败只影响本片（片内 id 全部记 `rpc_error`），其余片照常导出。
+
+        可见性由 task_service 强制（私有非 owner 进 `missing_ids`），网关侧
+        不做放行判断——这里只把「没返回的 id」按 not_found 记账。
+        """
+        ids = [str(i) for i in (ids or [])]
+        for start in range(0, len(ids), TESTCASE_DETAIL_SHARD_SIZE):
+            shard_ids = ids[start:start + TESTCASE_DETAIL_SHARD_SIZE]
+            try:
+                res = _testcase_acl.get_testcases_by_ids(shard_ids, include_deleted)
+            except Exception:
+                logger.warning(
+                    "批量取用例详情异常，整片按 rpc_error 计入 missing，size=%s",
+                    len(shard_ids), exc_info=True)
+                yield (shard_ids, {},
+                       {tc_id: MISSING_REASON_RPC_ERROR for tc_id in shard_ids})
+                continue
+
+            success = res.get('success') if hasattr(res, 'get') else None
+            if not success:
+                logger.warning(
+                    "批量取用例详情失败，整片按 rpc_error 计入 missing，message=%s",
+                    res.get('message') if hasattr(res, 'get') else None)
+                yield (shard_ids, {},
+                       {tc_id: MISSING_REASON_RPC_ERROR for tc_id in shard_ids})
+                continue
+
+            data = res.get('data') or {}
+            tc_by_id = {}
+            for tc in data.get('test_cases') or []:
+                if not isinstance(tc, dict):
+                    continue
+                if not include_deleted and tc.get('deleted'):
+                    continue
+                tc_by_id[str(tc.get('id'))] = tc
+            reason_by_id = {
+                tc_id: MISSING_REASON_NOT_FOUND
+                for tc_id in shard_ids if tc_id not in tc_by_id
+            }
+            yield shard_ids, tc_by_id, reason_by_id
+
+    @staticmethod
     def _iter_testcase_details(ids, include_deleted):
-        """逐条取详情，产出 (tc_id, tc_or_None, missing_reason_or_None)。
+        """逐条产出 (tc_id, tc_or_None, missing_reason_or_None)。
 
         取数与失败分类的唯一实现：单条失败不再静默丢弃，按原因计入 missing
         （`not_found` 涵盖下游把无权限私有用例伪装成的不存在，不臆造 forbidden）。
         """
-        for tc_id in ids:
-            try:
-                res = _testcase_acl.get_testcase_detail(tc_id)
-            except Exception:
-                logger.warning(
-                    "导出取用例详情失败，按 rpc_error 计入 missing，id=%s",
-                    tc_id, exc_info=True)
-                yield tc_id, None, MISSING_REASON_RPC_ERROR
-                continue
-
-            success = res.get('success') if hasattr(res, 'get') else None
-            tc = res.get('data') if hasattr(res, 'get') else None
-            if success and tc and (include_deleted or not tc.get('deleted')):
-                yield tc_id, tc, None
-            else:
-                yield tc_id, None, MISSING_REASON_NOT_FOUND
+        for shard_ids, tc_by_id, reason_by_id in \
+                TestCaseExportService._iter_testcase_shards(ids, include_deleted):
+            for tc_id in shard_ids:
+                tc = tc_by_id.get(tc_id)
+                yield tc_id, tc, (None if tc is not None
+                                  else reason_by_id.get(tc_id, MISSING_REASON_NOT_FOUND))
 
     @staticmethod
     def _fetch_testcases_by_ids(ids, include_deleted):
@@ -250,24 +297,70 @@ class TestCaseExportService:
     def _fetch_export_data(spec, on_progress=None):
         """取详情并构建导出行，返回 (export_data, missing)。
 
-        `missing` 为 [{id, reason}]，不阻断导出；`on_progress` 每条回调一次，
-        由调用方负责节流写状态。
+        INT-2313：按 200/片批量取详情，评估维度每片只查一次、播放设备一次导出
+        只预载一次；音频名直接取详情里已返回的 `audios[].audio_name`（不再逐条
+        查 audio_service）。取数失败不阻断导出，`missing` 为 [{id, reason}]，
+        `on_progress` 每条回调一次，由调用方负责节流写状态。
         """
         export_data, missing = [], []
         total = len(spec.ids)
-        for processed, (tc_id, tc, reason) in enumerate(
-                TestCaseExportService._iter_testcase_details(
-                    spec.ids, spec.include_deleted), 1):
-            if tc is None:
-                missing.append({'id': tc_id, 'reason': reason})
-            else:
-                export_data.append(TestCaseExportService._build_case_row(tc))
-            if on_progress is not None:
-                on_progress(ExportProgress(
-                    phase=EXPORT_PHASE_FETCHING, total=total,
-                    processed=processed, exported=len(export_data),
-                    missing=missing))
+        processed = 0
+        # 播放设备映射一次导出只预载一次；预载失败返回 None，由逐条兜底
+        device_map = None
+        device_map_loaded = False
+
+        for shard_ids, tc_by_id, reason_by_id in \
+                TestCaseExportService._iter_testcase_shards(
+                    spec.ids, spec.include_deleted):
+            if not device_map_loaded:
+                device_map = TestCaseExportService._load_playback_device_names()
+                device_map_loaded = True
+            # 维度在本片内一次批量取回，逐条装配时复用（原来 xlsx/csv 每用例查两次）
+            dim_map = TestCaseExportService._fetch_dimension_map(
+                TestCaseExportService._collect_case_dim_ids(tc_by_id.values()))
+
+            for tc_id in shard_ids:
+                tc = tc_by_id.get(tc_id)
+                if tc is None:
+                    missing.append({
+                        'id': tc_id,
+                        'reason': reason_by_id.get(tc_id, MISSING_REASON_NOT_FOUND),
+                    })
+                else:
+                    export_data.append(TestCaseExportService._build_case_row(
+                        tc, dim_map=dim_map, device_map=device_map))
+                processed += 1
+                if on_progress is not None:
+                    on_progress(ExportProgress(
+                        phase=EXPORT_PHASE_FETCHING, total=total,
+                        processed=processed, exported=len(export_data),
+                        missing=missing))
         return export_data, missing
+
+    @staticmethod
+    def _collect_row_dim_ids(export_data):
+        """汇总导出行引用的评估维度 ID（扁平化时一次批量取名称/权重）。"""
+        dim_ids, seen = [], set()
+        for item in export_data:
+            for d_id in item.get('dimension_ids') or []:
+                if d_id not in seen:
+                    seen.add(d_id)
+                    dim_ids.append(d_id)
+        return dim_ids
+
+    @staticmethod
+    def _collect_case_dim_ids(test_cases):
+        """汇总一批用例引用的评估维度 ID（供一次批量取名称/权重）。"""
+        dim_ids, seen = [], set()
+        for tc in test_cases:
+            if not isinstance(tc, dict):
+                continue
+            dim_list = common.collect_dimensions(tc.get('config') or {})
+            for d_id in TestCaseExportService._extract_dim_ids_from_list(dim_list):
+                if d_id not in seen:
+                    seen.add(d_id)
+                    dim_ids.append(d_id)
+        return dim_ids
 
     # ------------------------------------------------------------------
     # 构建导出数据行
@@ -276,22 +369,30 @@ class TestCaseExportService:
     def _build_export_rows(test_cases):
         """构建导出数据行（遍历所有用例）"""
         export_data = []
+        # 播放设备名一次预载（INT-2313），不再逐条 get_one
+        device_map = TestCaseExportService._load_playback_device_names()
         for tc in test_cases:
-            case_data = TestCaseExportService._build_case_row(tc)
+            case_data = TestCaseExportService._build_case_row(tc, device_map=device_map)
             export_data.append(case_data)
         return export_data
 
     @staticmethod
-    def _build_case_row(tc):
-        """构建单个用例的导出行"""
+    def _build_case_row(tc, dim_map=None, device_map=None):
+        """构建单个用例的导出行。
+
+        `dim_map` / `device_map` 由批量路径预载后传入（同一导出内复用）；
+        不传时各自按单条口径取一次，保证旧的直接调用方行为不变。
+        """
         config = tc.get('config') or {}
 
         # 音频信息
-        audios, playback_device_names = TestCaseExportService._collect_case_audios(tc, config)
+        audios, playback_device_names = TestCaseExportService._collect_case_audios(
+            tc, config, device_map)
 
         # 评分维度
         dimensions_data = common.collect_dimensions(config)
-        dimension_names = TestCaseExportService._get_dimension_names(dimensions_data)
+        dimension_names = TestCaseExportService._get_dimension_names(
+            dimensions_data, dim_map)
         dimension_ids = TestCaseExportService._get_dimension_ids(dimensions_data)
 
         # 音频详细信息列
@@ -334,16 +435,22 @@ class TestCaseExportService:
         }
 
     @staticmethod
-    def _collect_case_audios(tc, config):
-        """从 config 中提取音频信息，返回 (audios, playback_device_names)"""
+    def _collect_case_audios(tc, config, device_map=None):
+        """从 config 中提取音频信息，返回 (audios, playback_device_names)
+
+        INT-2313：音频名取详情已返回的 `audios[].audio_name`（一次详情 RPC 顺带
+        带回），不再逐条 `get_one`；播放设备名用预载映射，不再逐条 `get_one`。
+        """
         audios = []
         playback_device_names = set()
+        name_map = TestCaseExportService._case_audio_name_map(tc)
         for i, audio_item in enumerate(common.collect_audios(config)):
             audio_id = audio_item.get('audio_id')
-            audio_name = TestCaseExportService._resolve_audio_name(audio_id, audio_item.get('audio_name'))
+            audio_name = TestCaseExportService._resolve_audio_name(
+                audio_id, audio_item.get('audio_name'), name_map)
 
             device_id = common.normalize_optional_int(audio_item.get('playback_device_id'))
-            device_name = TestCaseExportService._resolve_device_name(device_id)
+            device_name = TestCaseExportService._resolve_device_name(device_id, device_map)
             if device_name != "未知设备":
                 playback_device_names.add(device_name)
 
@@ -358,25 +465,74 @@ class TestCaseExportService:
         return audios, playback_device_names
 
     @staticmethod
-    def _resolve_audio_name(audio_id, fallback_name):
-        """通过 gRPC 获取音频名称"""
+    def _case_audio_name_map(tc):
+        """详情里已返回的音频名映射 {audio_id: name}（取不到名的条目不进映射）。"""
+        names = {}
+        for audio in tc.get('audios') or []:
+            if not isinstance(audio, dict):
+                continue
+            audio_id = common.normalize_optional_int(audio.get('audio_id'))
+            name = audio.get('audio_name')
+            if audio_id is not None and name:
+                names[audio_id] = name
+        return names
+
+    @staticmethod
+    def _resolve_audio_name(audio_id, fallback_name, name_map=None):
+        """音频名：详情返回的名称优先，回落配置里的 audio_name。"""
         audio_name = fallback_name or "未知音频"
-        try:
-            res = _audio_acl.get_one(audio_id)
-            if res.get('success'):
-                rec = res.get('data') or {}
-                if rec.get('name'):
-                    audio_name = rec.get('name')
-        except Exception:
-            logger.debug("导出时获取音频名称失败，audio_id=%s", audio_id, exc_info=True)
+        resolved = (name_map or {}).get(common.normalize_optional_int(audio_id))
+        if resolved:
+            audio_name = resolved
         return audio_name
 
     @staticmethod
-    def _resolve_device_name(device_id):
-        """通过 gRPC 获取播放设备名称"""
+    def _load_playback_device_names():
+        """一次列表把播放设备名预载成 {device_id: name}（INT-2313）。
+
+        失败返回 None（不是空 dict）：调用方据此回落逐条 `get_one`，避免设备服务
+        抖动时整份导出的播放设备列静默退化成「未知设备」。
+        """
+        names = {}
+        page = 1
+        while True:
+            try:
+                res = _playback_acl.get_all(
+                    page=page, per_page=PLAYBACK_DEVICE_PRELOAD_PER_PAGE)
+            except Exception:
+                logger.debug("导出时预载播放设备失败，page=%s", page, exc_info=True)
+                return None
+            if not (res.get('success') if hasattr(res, 'get') else None):
+                return None
+            data = res.get('data') or {}
+            items = data.get('items') if isinstance(data, dict) else data
+            for rec in items or []:
+                if not isinstance(rec, dict):
+                    continue
+                device_id = common.normalize_optional_int(rec.get('id'))
+                if device_id is not None and rec.get('name'):
+                    names[device_id] = rec.get('name')
+            pages = data.get('pages') if isinstance(data, dict) else None
+            if not pages or page >= int(pages):
+                return names
+            page += 1
+
+    @staticmethod
+    def _resolve_device_name(device_id, device_map=None):
+        """播放设备名称：优先用预载映射，预载不可用时逐条兜底。"""
         device_name = "未知设备"
         if not device_id:
             return device_name
+        if device_map is None:
+            device_map = TestCaseExportService._load_playback_device_names()
+        if device_map is None:
+            return TestCaseExportService._resolve_device_name_by_id(device_id)
+        return device_map.get(device_id, device_name)
+
+    @staticmethod
+    def _resolve_device_name_by_id(device_id):
+        """逐条取播放设备名（预载不可用时的兜底路径）。"""
+        device_name = "未知设备"
         try:
             res = _playback_acl.get_one(device_id)
             if res.get('success'):
@@ -388,12 +544,13 @@ class TestCaseExportService:
         return device_name
 
     @staticmethod
-    def _get_dimension_names(dim_list):
+    def _get_dimension_names(dim_list, dim_map=None):
         """获取评分维度名称列表（通过 gRPC 批量查询）"""
         if not dim_list:
             return []
         d_ids = TestCaseExportService._extract_dim_ids_from_list(dim_list)
-        dim_map = TestCaseExportService._fetch_dimension_map(d_ids)
+        if dim_map is None:
+            dim_map = TestCaseExportService._fetch_dimension_map(d_ids)
         names = []
         for d_id in d_ids:
             dim = dim_map.get(str(d_id)) or {}
@@ -573,12 +730,19 @@ class TestCaseExportService:
 
     @staticmethod
     def _flatten_all_export_data(export_data):
-        """将所有导出数据扁平化为各 Sheet 的行列表"""
+        """将所有导出数据扁平化为各 Sheet 的行列表。
+
+        INT-2313：评估维度在整份导出里只查一次（此前逐用例再查一遍，
+        xlsx/csv 路径相当于维度 RPC 翻倍）。
+        """
         flattened_data = []
         audio_configs = []
         dimensions_data_list = []
         groups = []
         case_tags = []
+
+        dim_map = TestCaseExportService._fetch_dimension_map(
+            TestCaseExportService._collect_row_dim_ids(export_data))
 
         for item in export_data:
             flattened_data.append(TestCaseExportService._flatten_export_item(item))
@@ -587,7 +751,6 @@ class TestCaseExportService:
                 audio_configs.append(TestCaseExportService._build_audio_config_row(item, audio))
 
             all_dim_ids = item.get('dimension_ids', []) or []
-            dim_map = TestCaseExportService._fetch_dimension_map(all_dim_ids)
             for dim_id in all_dim_ids:
                 dim_obj = dim_map.get(str(dim_id)) or {}
                 dimensions_data_list.append(TestCaseExportService._build_dimension_row(item, dim_id, dim_obj))
@@ -950,26 +1113,7 @@ class TestCaseExportService:
         if not audio_ids:
             return [], []
 
-        try:
-            res = _audio_acl.get_by_ids({'ids': audio_ids})
-        except Exception as e:
-            raise _AudioSourceUnavailableError(str(e))
-        # ACL 仓储返回 CommandResultDTO（兼容 dict-like .get）
-        success = res.get('success') if hasattr(res, 'get') else None
-        if not success:
-            message = res.get('message') if hasattr(res, 'get') else None
-            raise _AudioSourceUnavailableError(message or '按ID查询音频失败')
-        records = res.get('data')
-        if not isinstance(records, list):
-            raise _AudioSourceUnavailableError('按ID查询音频返回的数据不是列表')
-
-        record_map = {}
-        for record in records:
-            if not isinstance(record, dict):
-                continue
-            record_id = common.normalize_optional_int(record.get('id'))
-            if record_id is not None:
-                record_map[record_id] = record
+        record_map = TestCaseExportService._fetch_audio_record_map(audio_ids)
 
         entries, missing = [], []
         for audio_id in audio_ids:
@@ -980,6 +1124,53 @@ class TestCaseExportService:
             else:
                 entries.append(entry)
         return entries, missing
+
+    @staticmethod
+    def _fetch_audio_record_map(audio_ids):
+        """按 200/片并发批量查音频元数据，返回 {id: record}。
+
+        `GetAudiosByIds` 在 audio_service 内部逐音频查标签 + 标注（真实库 337 条
+        实测 22.8s），整包一次塞过去会顶满单响应与超时（INT-2313）；分片并发后
+        任一片失败仍按「音频服务不可用 → 整包失败」处理，不产出半包。
+        """
+        chunks = [list(audio_ids[i:i + AUDIO_BATCH_CHUNK_SIZE])
+                  for i in range(0, len(audio_ids), AUDIO_BATCH_CHUNK_SIZE)]
+        if len(chunks) <= 1:
+            raw_records = TestCaseExportService._fetch_audio_chunk(chunks[0])
+        else:
+            raw_records = []
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(
+                    max_workers=min(AUDIO_BATCH_MAX_WORKERS, len(chunks))) as pool:
+                for chunk_records in pool.map(
+                        TestCaseExportService._fetch_audio_chunk, chunks):
+                    raw_records.extend(chunk_records)
+
+        record_map = {}
+        for record in raw_records:
+            if not isinstance(record, dict):
+                continue
+            record_id = common.normalize_optional_int(record.get('id'))
+            if record_id is not None:
+                record_map[record_id] = record
+        return record_map
+
+    @staticmethod
+    def _fetch_audio_chunk(audio_ids):
+        """取一片音频元数据；ACL 不可用抛 `_AudioSourceUnavailableError`。"""
+        try:
+            res = _audio_acl.get_by_ids({'ids': list(audio_ids)})
+        except Exception as e:
+            raise _AudioSourceUnavailableError(str(e))
+        # ACL 仓储返回 CommandResultDTO（兼容 dict-like .get）
+        success = res.get('success') if hasattr(res, 'get') else None
+        if not success:
+            message = res.get('message') if hasattr(res, 'get') else None
+            raise _AudioSourceUnavailableError(message or '按ID查询音频失败')
+        records = res.get('data')
+        if not isinstance(records, list):
+            raise _AudioSourceUnavailableError('按ID查询音频返回的数据不是列表')
+        return records
 
     @staticmethod
     def _manifest_audio_entry(entry):

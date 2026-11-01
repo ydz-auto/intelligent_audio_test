@@ -130,6 +130,9 @@ class TestCaseConfigAclRepository(ABC):
     def get_testcase_detail(self, tc_id) -> CommandResultDTO: ...
 
     @abstractmethod
+    def get_testcases_by_ids(self, ids, include_deleted=False) -> CommandResultDTO: ...
+
+    @abstractmethod
     def get_testcase_stats(self) -> CommandResultDTO: ...
 
     @abstractmethod

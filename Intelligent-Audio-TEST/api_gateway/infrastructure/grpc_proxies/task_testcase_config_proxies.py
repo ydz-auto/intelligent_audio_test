@@ -739,9 +739,42 @@ class _TestCaseConfigProxy:
             error_msg_prefix='获取测试用例详情失败',
         )
 
-    def get_testcase_stats(self):
+    def get_testcases_by_ids(self, ids, include_deleted=False):
+        """按 ID 列表批量取用例详情（INT-2313，单片 ≤200）。
+
+        返回 {success, message, data:{test_cases:[detail...], missing_ids:[...]}}，
+        与 get_testcase_detail 的 data 逐字段同构（服务端同一装配实现）。
+        """
         from shared.proto import task_service_pb2 as task_pb
 
+        def _call():
+            stub = get_testcase_config_service_stub()
+            resp = stub.GetTestCasesByIds(task_pb.GetTestCasesByIdsRequest(
+                ids=[str(i) for i in (ids or [])],
+                include_deleted=bool(include_deleted),
+            ))
+            test_cases = []
+            for raw in resp.test_cases:
+                parsed = json.loads(raw) if raw else None
+                if isinstance(parsed, dict):
+                    test_cases.append(parsed)
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': {
+                    'test_cases': test_cases,
+                    'missing_ids': [str(i) for i in resp.missing_ids],
+                },
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'批量获取测试用例详情失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='批量获取测试用例详情失败',
+        )
+
+    def get_testcase_stats(self):
+        from shared.proto import task_service_pb2 as task_pb
         def _call():
             stub = get_testcase_config_service_stub()
             resp = stub.GetTestCaseStats(task_pb.GetTestCaseStatsRequest())

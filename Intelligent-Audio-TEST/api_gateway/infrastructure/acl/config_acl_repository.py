@@ -178,6 +178,11 @@ class TestCaseConfigAclRepositoryImpl(TestCaseConfigAclRepository):
         from api_gateway.infrastructure.grpc_proxies import testcase_config_service
         return _wrap(testcase_config_service.get_testcase_detail(tc_id))
 
+    def get_testcases_by_ids(self, ids, include_deleted=False) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import testcase_config_service
+        return _wrap(testcase_config_service.get_testcases_by_ids(
+            ids, include_deleted=include_deleted))
+
     def get_testcase_stats(self) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import testcase_config_service
         return _wrap(testcase_config_service.get_testcase_stats())

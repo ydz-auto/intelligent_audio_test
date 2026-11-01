@@ -3031,6 +3031,11 @@ class TestCaseConfigServiceStub:
                 request_serializer=task__service__pb2.GetTestCaseDetailRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
                 _registered_method=True)
+        self.GetTestCasesByIds = channel.unary_unary(
+                '/task_service.TestCaseConfigService/GetTestCasesByIds',
+                request_serializer=task__service__pb2.GetTestCasesByIdsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.GetTestCasesByIdsResponse.FromString,
+                _registered_method=True)
         self.GetTestCaseStats = channel.unary_unary(
                 '/task_service.TestCaseConfigService/GetTestCaseStats',
                 request_serializer=task__service__pb2.GetTestCaseStatsRequest.SerializeToString,
@@ -3128,6 +3133,13 @@ class TestCaseConfigServiceServicer:
 
     def GetTestCaseDetail(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTestCasesByIds(self, request, context):
+        """INT-2313：按 ID 列表分片批量取详情（导出批量取数；单片 ≤200，套行级可见性）
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -3230,6 +3242,11 @@ def add_TestCaseConfigServiceServicer_to_server(servicer, server):
                     servicer.GetTestCaseDetail,
                     request_deserializer=task__service__pb2.GetTestCaseDetailRequest.FromString,
                     response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'GetTestCasesByIds': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTestCasesByIds,
+                    request_deserializer=task__service__pb2.GetTestCasesByIdsRequest.FromString,
+                    response_serializer=task__service__pb2.GetTestCasesByIdsResponse.SerializeToString,
             ),
             'GetTestCaseStats': grpc.unary_unary_rpc_method_handler(
                     servicer.GetTestCaseStats,
@@ -3494,6 +3511,33 @@ class TestCaseConfigService:
             '/task_service.TestCaseConfigService/GetTestCaseDetail',
             task__service__pb2.GetTestCaseDetailRequest.SerializeToString,
             task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTestCasesByIds(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/GetTestCasesByIds',
+            task__service__pb2.GetTestCasesByIdsRequest.SerializeToString,
+            task__service__pb2.GetTestCasesByIdsResponse.FromString,
             options,
             channel_credentials,
             insecure,

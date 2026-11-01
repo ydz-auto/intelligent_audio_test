@@ -189,6 +189,36 @@ class TestCaseCrudMixin:
             query = query.filter(TestCase.deleted == False)  # noqa: E712
         return query.all()
 
+    def list_testcases_by_ids_visible(self, ids: List[str],
+                                      include_deleted: bool = False) -> List[TestCase]:
+        """按 ID 列表查询测试用例，并套行级可见性（INT-2313 导出批量取数）。
+
+        与 `list_testcases_by_ids` 的关键区别：那个是内部/后台任务用的无过滤通道
+        （注释已明说不做行级可见性），直接给对用户暴露的读路径复用会越权导出私有用例。
+        这里照 `list_testcases_by_group` 的写法叠 `visible_condition` +
+        `visibility_identity()`，私有非 owner 行不进入结果集。
+
+        预加载 group（多对一，逐条序列化都要用）；tags 保持惰性加载——
+        关系无 order_by，预加载走 join 后数据库返回顺序与逐条惰性加载可能不同，
+        会让导出行的 tags 顺序变化（导出逐字段对拍口径要求完全一致）。
+        """
+        from shared.infrastructure.visibility_filter import visible_condition
+        from task_service.infrastructure.visibility_context import visibility_identity
+        session = get_db_session()
+        if not ids:
+            return []
+        _vis_uid, _vis_admin = visibility_identity()
+        query = session.query(TestCase).options(
+            joinedload(TestCase.group),
+        ).filter(
+            TestCase.id.in_([str(i) for i in ids]),
+            visible_condition(
+                TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin),
+        )
+        if not include_deleted:
+            query = query.filter(TestCase.deleted == False)  # noqa: E712
+        return query.all()
+
     def list_testcases_by_group(self, group_id: str, include_deleted: bool = False) -> List[TestCase]:
         """按分组查询测试用例。
 

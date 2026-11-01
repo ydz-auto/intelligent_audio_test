@@ -21,6 +21,7 @@ from task_service.application.queries.task_queries import (
     GetCaseResultsQuery,
     ListTestCasesQuery,
     GetTestCaseDetailQuery,
+    GetTestCasesByIdsQuery,
     GetTestCaseStatsQuery,
     GetTestCaseTagsQuery,
     GetTestCaseRefParamsQuery,
@@ -265,6 +266,11 @@ class TaskQueryHandler:
     def handle_get_testcase_detail(self, query: GetTestCaseDetailQuery) -> Dict[str, Any]:
         """处理测试用例详情查询。委托 testcase_crud_service.get_testcase_detail。"""
         return self.testcase_query_service.get_testcase_detail(query.tc_id)
+
+    def handle_get_testcases_by_ids(self, query: GetTestCasesByIdsQuery) -> Dict[str, Any]:
+        """按 ID 列表批量取用例详情（INT-2313 导出批量取数）。"""
+        return self.testcase_query_service.get_testcase_details_by_ids(
+            query.ids, include_deleted=query.include_deleted)
 
     def handle_get_testcase_stats(self, query: GetTestCaseStatsQuery) -> Dict[str, Any]:
         """处理测试用例统计信息查询。委托 testcase_crud_service.get_testcase_stats。"""

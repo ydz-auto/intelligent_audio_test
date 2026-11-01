@@ -184,14 +184,26 @@ def _case_detail(case_id, config=None):
     })
 
 
-def _patch_detail(monkeypatch, case_ids, config=None):
+def _patch_batch(monkeypatch, case_ids, config=None, missing_ids=None,
+                 success=True):
+    """INT-2313：导出改走批量详情 RPC，替身按分片返回 test_cases + missing_ids。"""
     wanted = set(case_ids)
+    missing = set(missing_ids or ())
+    calls = []
 
-    def _fake(tc_id):
-        if tc_id not in wanted:
-            return CommandResultDTO(success=False, message='not found', data=None)
-        return _case_detail(tc_id, config)
-    monkeypatch.setattr(svc_module._testcase_acl, 'get_testcase_detail', _fake)
+    def _fake(ids, include_deleted=False):
+        calls.append(list(ids))
+        if not success:
+            return CommandResultDTO(success=False, message='rpc down', data=None)
+        found = [dict(_case_detail(tc_id, config).data) for tc_id in ids
+                 if tc_id in wanted and tc_id not in missing]
+        gone = [tc_id for tc_id in ids if tc_id not in wanted or tc_id in missing]
+        return CommandResultDTO(
+            success=True,
+            data={'test_cases': found, 'missing_ids': gone})
+
+    monkeypatch.setattr(svc_module._testcase_acl, 'get_testcases_by_ids', _fake)
+    return calls
 
 
 def _submit(manager, payload, identity=(USER_ID, False)):
@@ -243,7 +255,7 @@ def test_submit_returns_503_when_redis_unavailable(manager):
 # 2. 幂等
 # ----------------------------------------------------------------------
 def test_same_request_reuses_task_id_and_submits_once(manager, monkeypatch):
-    _patch_detail(monkeypatch, ['c1'])
+    _patch_batch(monkeypatch, ['c1'])
     payload = {'ids': ['c1'], 'format': 'zip'}
 
     first, code1 = _submit(manager, payload)
@@ -258,7 +270,7 @@ def test_same_request_reuses_task_id_and_submits_once(manager, monkeypatch):
 
 
 def test_idempotency_key_wins_over_request_fingerprint(manager, monkeypatch):
-    _patch_detail(monkeypatch, ['c1', 'c2'])
+    _patch_batch(monkeypatch, ['c1', 'c2'])
     first, _ = _submit(manager, {'ids': ['c1'], 'idempotency_key': 'k-1'})
     second, _ = _submit(manager, {'ids': ['c2'], 'idempotency_key': 'k-1'})
     assert first['task_id'] == second['task_id']
@@ -266,9 +278,7 @@ def test_idempotency_key_wins_over_request_fingerprint(manager, monkeypatch):
 
 
 def test_failed_job_is_not_reused_by_idempotency(manager, monkeypatch):
-    monkeypatch.setattr(
-        svc_module._testcase_acl, 'get_testcase_detail',
-        lambda _id: CommandResultDTO(success=False, data=None))
+    _patch_batch(monkeypatch, [], success=False)
     payload = {'ids': ['c1'], 'format': 'zip'}
 
     first, _ = _submit(manager, payload)
@@ -282,7 +292,7 @@ def test_failed_job_is_not_reused_by_idempotency(manager, monkeypatch):
 
 def test_racing_same_params_submit_reuses_task_id(manager, monkeypatch):
     """几乎同时的同参双提交：后者抢在办位失败时，复查幂等键仍返回原 task_id。"""
-    _patch_detail(monkeypatch, ['c1'])
+    _patch_batch(monkeypatch, ['c1'])
     payload = {'ids': ['c1'], 'format': 'zip'}
 
     first, code1 = _submit(manager, payload)
@@ -301,7 +311,7 @@ def test_racing_same_params_submit_reuses_task_id(manager, monkeypatch):
 # 3. 并发闸
 # ----------------------------------------------------------------------
 def test_active_job_blocks_second_submit_with_429(manager, monkeypatch):
-    _patch_detail(monkeypatch, ['c1', 'c2'])
+    _patch_batch(monkeypatch, ['c1', 'c2'])
     first, _ = _submit(manager, {'ids': ['c1']})
     body, code = _submit(manager, {'ids': ['c2']})
 
@@ -311,7 +321,7 @@ def test_active_job_blocks_second_submit_with_429(manager, monkeypatch):
 
 
 def test_queue_depth_limit_returns_429(manager, monkeypatch):
-    _patch_detail(monkeypatch, ['c1'])
+    _patch_batch(monkeypatch, ['c1'])
     monkeypatch.setattr(BaseConfig, 'TESTCASE_EXPORT_JOB_MAX_QUEUE', 1)
     manager._store.pending['existing'] = time.time()
 
@@ -324,7 +334,7 @@ def test_queue_depth_limit_returns_429(manager, monkeypatch):
 # 4. 状态机
 # ----------------------------------------------------------------------
 def test_state_machine_queued_running_done(manager, monkeypatch):
-    _patch_detail(monkeypatch, ['c1', 'c2'])
+    _patch_batch(monkeypatch, ['c1', 'c2'])
     body, code = _submit(manager, {'ids': ['c1', 'c2'], 'format': 'zip'})
     task_id = body['task_id']
 
@@ -372,7 +382,7 @@ def test_state_machine_queued_running_done(manager, monkeypatch):
 
 
 def test_download_url_present_only_when_storage_can_presign(manager, monkeypatch):
-    _patch_detail(monkeypatch, ['c1'])
+    _patch_batch(monkeypatch, ['c1'])
     task_id = _run(manager, {'ids': ['c1']})
 
     # 本地降级：get_url 返回 None → 字段省略
@@ -388,11 +398,8 @@ def test_download_url_present_only_when_storage_can_presign(manager, monkeypatch
 # 5. 部分失败
 # ----------------------------------------------------------------------
 def test_partial_failure_reports_missing_and_still_produces_zip(manager, monkeypatch):
-    def fake_detail(tc_id):
-        if tc_id == 'bad':
-            raise RuntimeError('rpc down')
-        return _case_detail(tc_id)
-    monkeypatch.setattr(svc_module._testcase_acl, 'get_testcase_detail', fake_detail)
+    # INT-2313：批量详情未返回的 id（不存在 / 无权限私有用例）按 not_found 记账
+    _patch_batch(monkeypatch, ['ok1'], missing_ids=['bad'])
 
     task_id = _run(manager, {'ids': ['ok1', 'bad'], 'format': 'zip'})
     status_body, _ = manager.get_status(task_id, (USER_ID, False))
@@ -400,7 +407,7 @@ def test_partial_failure_reports_missing_and_still_produces_zip(manager, monkeyp
     assert status_body['status'] == 'done'
     assert status_body['progress'] == {
         'total': 2, 'processed': 2, 'exported': 1,
-        'missing': [{'id': 'bad', 'reason': 'rpc_error'}],
+        'missing': [{'id': 'bad', 'reason': 'not_found'}],
     }
 
     zf = _zip_bytes(manager, status_body)
@@ -409,29 +416,32 @@ def test_partial_failure_reports_missing_and_still_produces_zip(manager, monkeyp
     assert manifest['total_count'] == 1
 
 
-def test_not_found_reason_for_unsuccessful_detail(manager, monkeypatch):
-    """下游返回 success=false（含无权限被伪装成不存在）→ reason=not_found。"""
-    calls = []
+def test_missing_ids_reported_as_not_found(manager, monkeypatch):
+    """批量详情 missing_ids（不存在 / 无权限私有用例）→ reason=not_found。"""
+    calls = _patch_batch(monkeypatch, ['ok'], missing_ids=['gone'])
 
-    def fake_detail(tc_id):
-        calls.append(tc_id)
-        return CommandResultDTO(success=False, data=None)
-    monkeypatch.setattr(svc_module._testcase_acl, 'get_testcase_detail', fake_detail)
+    export_data, missing = svc_module.TestCaseExportService._fetch_export_data(
+        svc_module.ExportSpec(ids=['ok', 'gone'], format='zip'))
+    assert [row['id'] for row in export_data] == ['ok']
+    assert missing == [{'id': 'gone', 'reason': 'not_found'}]
+    assert calls == [['ok', 'gone']], '一片一次批量调用'
+
+
+def test_batch_rpc_failure_reports_rpc_error(manager, monkeypatch):
+    """批量 RPC 整体失败（success=false）→ 该片全部记 rpc_error。"""
+    _patch_batch(monkeypatch, [], success=False)
 
     export_data, missing = svc_module.TestCaseExportService._fetch_export_data(
         svc_module.ExportSpec(ids=['gone'], format='zip'))
     assert export_data == []
-    assert missing == [{'id': 'gone', 'reason': 'not_found'}]
-    assert calls == ['gone']
+    assert missing == [{'id': 'gone', 'reason': 'rpc_error'}]
 
 
 # ----------------------------------------------------------------------
 # 6. exported == 0
 # ----------------------------------------------------------------------
 def test_no_exported_rows_fails_with_no_data(manager, monkeypatch):
-    monkeypatch.setattr(
-        svc_module._testcase_acl, 'get_testcase_detail',
-        lambda _id: CommandResultDTO(success=False, data=None))
+    _patch_batch(monkeypatch, [], success=False)
 
     body, _ = _submit(manager, {'ids': ['x'], 'format': 'zip'})
     task_id = body['task_id']
@@ -451,7 +461,7 @@ def test_no_exported_rows_fails_with_no_data(manager, monkeypatch):
 # ----------------------------------------------------------------------
 def test_audio_source_unavailable_fails_job(manager, monkeypatch):
     audio_config = {'rounds': [{'round_number': 1, 'audios': [{'audio_id': 11}]}]}
-    _patch_detail(monkeypatch, ['c1'], config=audio_config)
+    _patch_batch(monkeypatch, ['c1'], config=audio_config)
     monkeypatch.setattr(
         svc_module._audio_acl, 'get_one',
         lambda _id: CommandResultDTO(success=False, data=None))
@@ -475,7 +485,7 @@ def test_audio_source_unavailable_fails_job(manager, monkeypatch):
 # 8. 归属
 # ----------------------------------------------------------------------
 def test_ownership_404_for_other_user_and_200_for_admin(manager, monkeypatch):
-    _patch_detail(monkeypatch, ['c1'])
+    _patch_batch(monkeypatch, ['c1'])
     task_id = _run(manager, {'ids': ['c1']})
 
     payload, code = manager.get_status(task_id, (OTHER_USER_ID, False))
@@ -495,7 +505,7 @@ def test_ownership_404_for_other_user_and_200_for_admin(manager, monkeypatch):
 # 9. 下载语义
 # ----------------------------------------------------------------------
 def test_download_states(manager, monkeypatch):
-    _patch_detail(monkeypatch, ['c1'])
+    _patch_batch(monkeypatch, ['c1'])
     body, _ = _submit(manager, {'ids': ['c1'], 'format': 'zip'})
     task_id = body['task_id']
 
@@ -517,7 +527,7 @@ def test_download_states(manager, monkeypatch):
 
 def test_download_410_when_artifact_object_missing(manager, monkeypatch):
     """产物对象已不在存储（被清理 / 存储漂移）→ 410，不给半截流。"""
-    _patch_detail(monkeypatch, ['c1'])
+    _patch_batch(monkeypatch, ['c1'])
     task_id = _run(manager, {'ids': ['c1'], 'format': 'zip'})
     manager._storage.files.clear()
 
@@ -526,7 +536,7 @@ def test_download_410_when_artifact_object_missing(manager, monkeypatch):
 
 
 def test_download_route_streams_with_sync_filename_contract(manager, monkeypatch):
-    _patch_detail(monkeypatch, ['c1'])
+    _patch_batch(monkeypatch, ['c1'])
     task_id = _run(manager, {'ids': ['c1'], 'format': 'zip'})
     path = manager._store.load(task_id)['result']['path']
 
@@ -558,13 +568,17 @@ def test_download_route_streams_with_sync_filename_contract(manager, monkeypatch
 def test_worker_runs_with_submitter_identity(manager, monkeypatch):
     seen = []
 
-    def fake_detail(tc_id):
+    def fake_batch(ids, include_deleted=False):
         seen.append(get_current_user_id())
-        return _case_detail(tc_id)
-    monkeypatch.setattr(svc_module._testcase_acl, 'get_testcase_detail', fake_detail)
+        return CommandResultDTO(success=True, data={
+            'test_cases': [dict(_case_detail(tc_id).data) for tc_id in ids],
+            'missing_ids': [],
+        })
+    monkeypatch.setattr(svc_module._testcase_acl, 'get_testcases_by_ids', fake_batch)
 
     _run(manager, {'ids': ['c1', 'c2']})
-    assert seen == [USER_ID, USER_ID], 'worker 内必须带提交人身份（否则私有用例静默少条）'
+    # INT-2313：两条用例落在同一片，一次批量调用里必须带提交人身份
+    assert seen == [USER_ID], 'worker 内必须带提交人身份（否则私有用例静默少条）'
 
 
 # ----------------------------------------------------------------------
@@ -572,7 +586,7 @@ def test_worker_runs_with_submitter_identity(manager, monkeypatch):
 # ----------------------------------------------------------------------
 def test_zip_writes_to_file_object_and_audio_streams_via_tmp_file(manager, monkeypatch):
     audio_config = {'rounds': [{'round_number': 1, 'audios': [{'audio_id': 11}]}]}
-    _patch_detail(monkeypatch, ['c1'], config=audio_config)
+    _patch_batch(monkeypatch, ['c1'], config=audio_config)
     monkeypatch.setattr(
         svc_module._audio_acl, 'get_one',
         lambda _id: CommandResultDTO(success=True, data={'name': 'play'}))
@@ -636,7 +650,7 @@ def test_audio_entries_carry_no_binary_content(monkeypatch):
 # 12. 重启接管 / 清理
 # ----------------------------------------------------------------------
 def test_takeover_fails_running_and_requeues_queued(manager, monkeypatch):
-    _patch_detail(monkeypatch, ['a', 'b'])
+    _patch_batch(monkeypatch, ['a', 'b'])
     running, _ = _submit(manager, {'ids': ['a']}, (USER_ID, False))
     queued, _ = _submit(manager, {'ids': ['b']}, (OTHER_USER_ID, False))
     manager._store.save(running['task_id'], {'status': 'running'}, 100)
@@ -653,7 +667,7 @@ def test_takeover_fails_running_and_requeues_queued(manager, monkeypatch):
 
 
 def test_cleanup_expires_artifact_and_deletes_object(manager, monkeypatch):
-    _patch_detail(monkeypatch, ['c1'])
+    _patch_batch(monkeypatch, ['c1'])
     task_id = _run(manager, {'ids': ['c1']})
     path = manager._store.load(task_id)['result']['path']
 
@@ -675,7 +689,7 @@ def test_worker_store_error_fails_job_and_releases_slot(manager, monkeypatch):
 
     线程池会静默吞异常，漏出去任务就停在 queued（且已出队），排队深度不回落。
     """
-    _patch_detail(monkeypatch, ['c1'])
+    _patch_batch(monkeypatch, ['c1'])
     body, code = _submit(manager, {'ids': ['c1']})
     assert code == 202
     task_id = body['task_id']

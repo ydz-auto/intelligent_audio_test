@@ -300,8 +300,9 @@ class TestCaseQueryService:
         """获取单个测试用例详情。
 
         INT-423：私有用例对非 owner 视为不存在（404）。
+        INT-2313：同一音频只取一次（此前详情对同一音频取了两轮：
+        序列化播放音频一轮、汇总时长一轮）。
         """
-        from shared.utils import testcase_helpers as common
         from shared.infrastructure.visibility_filter import VisibilityDenied
         from task_service.infrastructure.visibility_context import (
             check_object_visible, visibility_identity,
@@ -317,76 +318,190 @@ class TestCaseQueryService:
             except VisibilityDenied:
                 return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
 
-            config = tc.config or {}
-
-            audios = []
-            for i, audio_item in enumerate(common.collect_audios(config)):
-                # 跨域查询：Audio（后续 gRPC 改造）
-                audio = self.repo.get_audio_by_id(audio_item.get('audio_id'))
-                audios.append({
-                    'id': i,
-                    'audio_id': audio_item.get('audio_id'),
-                    'audio_name': audio.get('name') if audio else None,
-                    'spl': audio_item.get('spl'),
-                    'playback_device_id': common.normalize_optional_int(audio_item.get('playback_device_id')),
-                    'play_order': audio_item.get('play_order'),
-                })
-
-            dimensions = []
-            dim_config = common.collect_dimensions(config)
-            dimension_ids = []
-            for item in dim_config:
-                if isinstance(item, dict):
-                    dim_id = item.get('id')
-                    if dim_id:
-                        dimension_ids.append(dim_id)
-                else:
-                    dimension_ids.append(item)
-
-            unique_dimension_ids = list(set(dimension_ids))
-            # P1.7: Dimension 跨域查询改 gRPC（evaluation_service 自有 PO）
-            dim_list = self.repo.list_dimensions_by_ids(unique_dimension_ids)
-            for dim in dim_list:
-                dimensions.append({'id': dim.get('id'), 'name': dim.get('name'), 'type': dim.get('type')})
-
-            total_duration = 0.0
-            for audio_item in common.collect_audios(config):
-                audio_id = audio_item.get('audio_id')
-                if audio_id:
-                    # 跨域查询：Audio（后续 gRPC 改造）
-                    audio = self.repo.get_audio_by_id(audio_id)
-                    if audio and audio.get('duration'):
-                        total_duration += float(audio.get('duration'))
-
-            detail_data = {
-                'id': tc.id,
-                'name': tc.name,
-                'description': tc.description,
-                'group_id': tc.group_id,
-                'group_name': tc.group.name if tc.group else None,
-                'group': {"id": tc.group.id, "name": tc.group.name} if tc.group else None,
-                'config': config,
-                'algorithm_params': getattr(tc, 'algorithm_params', None),
-                'reference_params': getattr(tc, 'reference_params', None),
-                'algorithm_type': tc.algorithm_type,
-                # INT-590：评估策略引用（详情回显引用策略 + 覆盖源，前端可编辑覆盖）
-                'strategy_id': getattr(tc, 'strategy_id', None),
-                'strategy_overrides': getattr(tc, 'strategy_overrides', None),
-                'tags': [tag.name for tag in tc.tags],
-                'audios': audios,
-                'dimensions': dimensions,
-                'created_at': tc.created_at.isoformat() if tc.created_at else None,
-                'updated_at': tc.updated_at.isoformat() if tc.updated_at else None,
-                'total_duration': round(total_duration, 2) if total_duration > 0 else None,
-                # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
-                'visibility': getattr(tc, 'visibility', 'shared'),
-                'created_by_user_id': getattr(tc, 'created_by_user_id', None),
+            audio_map = self._load_case_audio_map([tc])
+            dim_list = self._load_case_dimensions([tc])
+            return {
+                'success': True,
+                'message': '',
+                'data': self._build_detail_data(tc, audio_map, dim_list),
             }
-
-            return {'success': True, 'message': '', 'data': detail_data}
         except Exception as e:
             logger.error(f"获取测试用例详情失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
+    def get_testcase_details_by_ids(self, ids, include_deleted: bool = False) -> dict:
+        """按 ID 列表批量取用例详情（INT-2313 导出批量取数，单片 ≤200）。
+
+        - **必须套行级可见性**：私有用例对非 owner 按不存在处理，进 `missing_ids`，
+          绝不越权导出（不复用 `list_testcases_by_ids` 的无过滤通道）；
+        - 每片只取一次音频摘要与评估维度，避免逐条 N+1；
+        - 逐条结构与 `get_testcase_detail` 的 data 完全同构（共用 `_build_detail_data`）。
+
+        返回 `{'test_cases': [detail...], 'missing_ids': [...]}`。
+        """
+        ids = [str(i) for i in (ids or [])]
+        if not ids:
+            return {'success': True, 'message': '',
+                    'data': {'test_cases': [], 'missing_ids': []}}
+        try:
+            test_cases = self.repo.list_testcases_by_ids_visible(
+                ids, include_deleted=include_deleted)
+            by_id = {str(tc.id): tc for tc in test_cases}
+            # 保持入参顺序、并按 id 去重（重复 id 不重复返回）
+            ordered, seen = [], set()
+            for tc_id in ids:
+                tc = by_id.get(tc_id)
+                if tc is not None and tc_id not in seen:
+                    seen.add(tc_id)
+                    ordered.append(tc)
+
+            audio_map = self._load_case_audio_summaries(ordered)
+            dim_list = self._load_case_dimensions(ordered)
+            missing_ids = []
+            for tc_id in ids:
+                if tc_id not in by_id and tc_id not in missing_ids:
+                    missing_ids.append(tc_id)
+
+            return {
+                'success': True,
+                'message': '',
+                'data': {
+                    'test_cases': [
+                        self._build_detail_data(tc, audio_map, dim_list)
+                        for tc in ordered
+                    ],
+                    'missing_ids': missing_ids,
+                },
+            }
+        except Exception as e:
+            logger.error(f"批量获取测试用例详情失败: {e}", exc_info=True)
+            return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
+    # ------------------------------------------------------------------
+    # 详情装配（单条 / 批量共用，保证两条路径逐字段一致）
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _audio_key(audio_id):
+        """音频 ID 归一：数字串 / 整数统一成 int，其余保留原值（原样去重）。"""
+        from shared.utils import testcase_helpers as common
+        normalized = common.normalize_optional_int(audio_id)
+        return normalized if normalized is not None else audio_id
+
+    def _load_case_audio_map(self, test_cases) -> dict:
+        """逐条取音频（每个音频只取一次），返回 {audio_key: audio_dict|None}。"""
+        from shared.utils import testcase_helpers as common
+        audio_map = {}
+        for tc in test_cases:
+            for audio_item in common.collect_audios(tc.config or {}):
+                audio_id = audio_item.get('audio_id')
+                if audio_id is None:
+                    continue
+                key = self._audio_key(audio_id)
+                if key not in audio_map:
+                    audio_map[key] = self.repo.get_audio_by_id(audio_id)
+        return audio_map
+
+    def _load_case_audio_summaries(self, test_cases) -> dict:
+        """一片用例的音频一次窄字段批量取回，并按可见性逐行过滤。
+
+        口径对齐 `GetAudio` 详情读：私有音频对非 owner 视为不存在（名称回落空），
+        admin 豁免——`filter_visible_owners` 与 `check_visible` 同源同义。
+        """
+        from shared.infrastructure.visibility_filter import filter_visible_owners
+        from shared.utils import testcase_helpers as common
+        from task_service.infrastructure.visibility_context import visibility_identity
+
+        audio_ids = []
+        for tc in test_cases:
+            for audio_item in common.collect_audios(tc.config or {}):
+                audio_id = common.normalize_optional_int(audio_item.get('audio_id'))
+                if audio_id is not None and audio_id not in audio_ids:
+                    audio_ids.append(audio_id)
+        if not audio_ids:
+            return {}
+
+        records = self.repo.list_audio_summaries_by_ids(audio_ids) or {}
+        _uid, _is_admin = visibility_identity()
+        rows = [
+            (rec_id, rec.get('created_by_user_id'),
+             rec.get('visibility') or 'shared')
+            for rec_id, rec in records.items()
+        ]
+        visible = set(filter_visible_owners(rows, _uid, _is_admin))
+        return {rec_id: rec for rec_id, rec in records.items() if rec_id in visible}
+
+    def _load_case_dimensions(self, test_cases) -> list:
+        """一片用例的评估维度一次批量取回（返回原始记录列表，供逐条过滤）。"""
+        from shared.utils import testcase_helpers as common
+        dim_ids, seen = [], set()
+        for tc in test_cases:
+            for item in common.collect_dimensions(tc.config or {}):
+                dim_id = item.get('id') if isinstance(item, dict) else item
+                if dim_id is None or dim_id in seen:
+                    continue
+                seen.add(dim_id)
+                dim_ids.append(dim_id)
+        if not dim_ids:
+            return []
+        return self.repo.list_dimensions_by_ids(dim_ids)
+
+    def _build_detail_data(self, tc, audio_map, dim_list) -> dict:
+        """把用例 PO + 音频/维度映射装配成详情 data（单条与批量同源）。"""
+        from shared.utils import testcase_helpers as common
+        config = tc.config or {}
+
+        audios = []
+        total_duration = 0.0
+        for i, audio_item in enumerate(common.collect_audios(config)):
+            audio = audio_map.get(self._audio_key(audio_item.get('audio_id')))
+            if audio and audio.get('duration'):
+                total_duration += float(audio.get('duration'))
+            audios.append({
+                'id': i,
+                'audio_id': audio_item.get('audio_id'),
+                'audio_name': audio.get('name') if audio else None,
+                'spl': audio_item.get('spl'),
+                'playback_device_id': common.normalize_optional_int(
+                    audio_item.get('playback_device_id')),
+                'play_order': audio_item.get('play_order'),
+            })
+
+        dim_ids = []
+        for item in common.collect_dimensions(config):
+            dim_id = item.get('id') if isinstance(item, dict) else item
+            if dim_id:
+                dim_ids.append(dim_id)
+        case_dim_ids = set(dim_ids)
+        dimensions = [
+            {'id': dim.get('id'), 'name': dim.get('name'), 'type': dim.get('type')}
+            for dim in dim_list
+            if dim.get('id') in case_dim_ids
+        ]
+
+        return {
+            'id': tc.id,
+            'name': tc.name,
+            'description': tc.description,
+            'group_id': tc.group_id,
+            'group_name': tc.group.name if tc.group else None,
+            'group': {"id": tc.group.id, "name": tc.group.name} if tc.group else None,
+            'config': config,
+            'algorithm_params': getattr(tc, 'algorithm_params', None),
+            'reference_params': getattr(tc, 'reference_params', None),
+            'algorithm_type': tc.algorithm_type,
+            # INT-590：评估策略引用（详情回显引用策略 + 覆盖源，前端可编辑覆盖）
+            'strategy_id': getattr(tc, 'strategy_id', None),
+            'strategy_overrides': getattr(tc, 'strategy_overrides', None),
+            'tags': [tag.name for tag in tc.tags],
+            'audios': audios,
+            'dimensions': dimensions,
+            'created_at': tc.created_at.isoformat() if tc.created_at else None,
+            'updated_at': tc.updated_at.isoformat() if tc.updated_at else None,
+            'total_duration': round(total_duration, 2) if total_duration > 0 else None,
+            # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
+            'visibility': getattr(tc, 'visibility', 'shared'),
+            'created_by_user_id': getattr(tc, 'created_by_user_id', None),
+        }
 
     def get_testcase_stats(self) -> dict:
         """获取测试用例统计信息。"""

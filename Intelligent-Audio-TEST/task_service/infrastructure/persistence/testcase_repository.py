@@ -86,6 +86,19 @@ class TestCaseRepository(
         from task_service.infrastructure.acl.audio_acl_repository import audio_acl_repository
         return audio_acl_repository.list_audios_by_ids(audio_ids)
 
+    def list_audio_summaries_by_ids(self, audio_ids) -> Dict[Any, dict]:
+        """按 ID 集合批量取音频窄字段摘要，返回 {id: audio_dict} 映射（INT-2313）。
+
+        批量详情（导出取数）只需要名称 / 时长等标量，走 `GetAudiosByIds` 会因
+        audio_service 内部的标签 + 标注 N+1 退化成整导出瓶颈，故走窄字段投影。
+        失败时返回空 dict（仅日志告警）。
+        """
+        if not audio_ids:
+            return {}
+
+        from task_service.infrastructure.acl.audio_acl_repository import audio_acl_repository
+        return audio_acl_repository.list_audio_summaries_by_ids(audio_ids)
+
     def list_dimensions_by_ids(self, dim_ids):
         """按 ID 列表批量查询评价维度基础信息。
 

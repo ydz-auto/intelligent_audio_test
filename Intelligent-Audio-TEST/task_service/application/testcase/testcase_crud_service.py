@@ -808,6 +808,11 @@ class TestCaseCrudService:
         """获取单个测试用例详情（委托 TestCaseQueryService）。"""
         return self._query_service.get_testcase_detail(tc_id)
 
+    def get_testcase_details_by_ids(self, ids, include_deleted: bool = False) -> dict:
+        """按 ID 列表批量取详情（INT-2313，委托 TestCaseQueryService）。"""
+        return self._query_service.get_testcase_details_by_ids(
+            ids, include_deleted=include_deleted)
+
     def get_testcase_stats(self) -> dict:
         """获取测试用例统计信息（委托 TestCaseQueryService）。"""
         return self._query_service.get_testcase_stats()

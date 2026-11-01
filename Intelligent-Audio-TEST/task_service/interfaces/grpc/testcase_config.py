@@ -133,6 +133,33 @@ class TestCaseConfigServiceServicer(task_grpc.TestCaseConfigServiceServicer):
         except Exception as e:
             return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
 
+    def GetTestCasesByIds(self, request, context=None):
+        """按 ID 列表批量取详情（INT-2313 导出批量取数，单片 ≤200）。
+
+        响应逐条为详情 JSON 字符串（与 GetTestCaseDetail.data 同构）+ 未命中 /
+        不可见 ID 列表；可见性在应用层强制（私有非 owner 进 missing_ids）。
+        """
+        try:
+            from task_service.application.queries.task_queries import GetTestCasesByIdsQuery
+            result = self.qry.handle_get_testcases_by_ids(GetTestCasesByIdsQuery(
+                ids=list(request.ids),
+                include_deleted=bool(request.include_deleted),
+            ))
+            if not result.get('success', False):
+                return task_pb.GetTestCasesByIdsResponse(
+                    success=False, message=result.get('message', ''),
+                    test_cases=[], missing_ids=[])
+            data = result.get('data') or {}
+            return task_pb.GetTestCasesByIdsResponse(
+                success=True,
+                message=result.get('message', ''),
+                test_cases=[_dumps(item) for item in data.get('test_cases') or []],
+                missing_ids=[str(i) for i in data.get('missing_ids') or []],
+            )
+        except Exception as e:
+            return task_pb.GetTestCasesByIdsResponse(
+                success=False, message=str(e), test_cases=[], missing_ids=[])
+
     def GetTestCaseStats(self, request, context=None):
         try:
             from task_service.application.queries.task_queries import GetTestCaseStatsQuery

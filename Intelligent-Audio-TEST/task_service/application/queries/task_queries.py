@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 
@@ -177,6 +177,13 @@ class ListTestCasesQuery(Query):
 class GetTestCaseDetailQuery(Query):
     """测试用例详情查询。委托 testcase_query_service.get_testcase_detail。"""
     tc_id: str = ''
+
+
+@dataclass(frozen=True)
+class GetTestCasesByIdsQuery(Query):
+    """按 ID 列表批量取用例详情（INT-2313 导出批量取数，单片 ≤200）。"""
+    ids: List[str] = field(default_factory=list)
+    include_deleted: bool = False
 
 
 @dataclass(frozen=True)

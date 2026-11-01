@@ -465,6 +465,8 @@ service TestCaseConfigService {
   // ---- 读操作 ----
   rpc ListTestCases(ListTestCasesRequest) returns (TestCaseConfigResponse);
   rpc GetTestCaseDetail(GetTestCaseDetailRequest) returns (TestCaseConfigResponse);
+  // INT-2313：按 ID 列表分片批量取详情（导出批量取数；单片 ≤200，套行级可见性）
+  rpc GetTestCasesByIds(GetTestCasesByIdsRequest) returns (GetTestCasesByIdsResponse);
   rpc GetTestCaseStats(GetTestCaseStatsRequest) returns (TestCaseConfigResponse);
   rpc GetTestCaseTags(GetTestCaseTagsRequest) returns (TestCaseConfigResponse);
   rpc GetTestCaseRefParams(GetTestCaseRefParamsRequest) returns (TestCaseConfigResponse);
@@ -523,6 +525,20 @@ message ListTestCasesRequest {
 }
 message GetTestCaseDetailRequest {
   string tc_id = 1;
+}
+// INT-2313：批量详情（导出批量取数）。调用方按 200/片切分，单响应体积可控、
+// 分片失败互不影响（失败片由调用方整体计入 missing）。
+message GetTestCasesByIdsRequest {
+  repeated string ids = 1;        // 用例 ID 列表（单片 ≤200）
+  bool include_deleted = 2;       // true 时回收站用例也返回（导出契约保留字段）
+}
+message GetTestCasesByIdsResponse {
+  bool success = 1;
+  string message = 2;
+  // 逐条为 JSON 字符串，结构同 GetTestCaseDetail 的 data（逐字段同口径）
+  repeated string test_cases = 3;
+  // 未命中 / 不可见（私有非 owner 按不存在处理）的 ID，保持入参顺序
+  repeated string missing_ids = 4;
 }
 message GetTestCaseStatsRequest {}
 message GetTestCaseTagsRequest {}
