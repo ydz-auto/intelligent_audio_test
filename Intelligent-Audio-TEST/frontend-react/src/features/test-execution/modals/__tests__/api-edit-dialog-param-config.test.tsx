@@ -357,7 +357,7 @@ describe('参数配置页签', () => {
       helpText: '识别出的文本',
       hidden: true,
       label: 'ASR 文本',
-      validationRules: '{"minLength":1}',
+      validationRules: '{"min_length": 1}',
     })
     // 无值行仍按 null 提交（不是常量兜底，而是「本来就没有」）
     expect(payload.params.find((p) => p.paramCode === 'response_audio')).toMatchObject({

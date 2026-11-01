@@ -46,7 +46,6 @@ import {
   type ParamProfileMappingSource,
   type ParamProfileParamDraft,
   type ParamTransformType,
-  type ParamType,
 } from '@/domain/models/paramProfile'
 import { ApiError } from '@/infrastructure/api/api-error'
 import {
@@ -103,6 +102,17 @@ const PARAM_TYPE_OPTIONS = PARAM_TYPES.map((value) => ({
   label: PARAM_TYPE_LABEL[value],
 }))
 
+/**
+ * 参数类型下拉选项：枚举值 + 存量里枚举外的当前值（如 number）。
+ * 不补这一项，界面会在保存时把该值收敛成 text（INT-2281）。
+ */
+function paramTypeOptionsOf(value: string) {
+  if (!value || PARAM_TYPE_OPTIONS.some((item) => item.value === value)) {
+    return PARAM_TYPE_OPTIONS
+  }
+  return [...PARAM_TYPE_OPTIONS, { value, label: `${value}（当前值）` }]
+}
+
 const TRANSFORM_TYPE_OPTIONS = PARAM_TRANSFORM_TYPES.map((value) => ({
   value,
   label: PARAM_TRANSFORM_TYPE_LABEL[value],
@@ -123,7 +133,8 @@ interface EditableParamRow {
   key: number
   paramCode: string
   paramName: string
-  paramType: ParamType
+  /** 读侧原值；可能是枚举外的存量类型（如 number），保存时原样回写（INT-2281） */
+  paramType: string
   required: boolean
   defaultValue: string
   helpText: string
@@ -173,7 +184,7 @@ function paramSignatureOf(param: {
   helpText: string | null
   hidden: boolean
   label: string | null
-  validationRules: string | null
+  validationRules?: string | null
   uiOrder: number | string
 }) {
   return [
@@ -185,7 +196,7 @@ function paramSignatureOf(param: {
     param.helpText,
     param.hidden,
     param.label,
-    param.validationRules,
+    param.validationRules ?? null,
   ]
 }
 
@@ -194,15 +205,13 @@ function paramRowOf(param: AlgorithmApiParam, key: number): EditableParamRow {
     key,
     paramCode: param.paramCode,
     paramName: param.paramName ?? '',
-    paramType: PARAM_TYPES.includes(param.paramType as ParamType)
-      ? (param.paramType as ParamType)
-      : 'text',
+    paramType: param.paramType || 'text',
     required: param.required,
     defaultValue: param.defaultValue ?? '',
     helpText: param.helpText ?? '',
     hidden: param.hidden,
     label: param.label,
-    validationRules: param.validationRules,
+    validationRules: param.validationRules ?? null,
     uiOrder: String(param.uiOrder ?? 0),
     fieldPath: param.fieldPath ?? '',
   }
@@ -267,10 +276,6 @@ function originMapOf(params: AlgorithmApiParam[]): Map<string, AlgorithmApiParam
   return new Map(params.map((param) => [param.paramCode, param]))
 }
 
-function normalizeParamType(value: string): ParamType {
-  return PARAM_TYPES.includes(value as ParamType) ? (value as ParamType) : 'text'
-}
-
 /**
  * 文本列（默认值 / 帮助提示）：用户没改时按读侧原样回写（保留 null 与空串的差异），
  * 改过之后空串按 null 提交。不用常量兜底（INT-2281）。
@@ -299,7 +304,7 @@ function draftParamsOf(
       return {
         paramCode,
         paramName: row.paramName.trim() || null,
-        paramType: row.paramType,
+        paramType: row.paramType || 'text',
         direction: 'output',
         required: row.required,
         defaultValue: textFieldOf(row.defaultValue, origin?.defaultValue),
@@ -325,7 +330,7 @@ function draftInputParamsOf(params: AlgorithmApiParam[]): ParamProfileParamDraft
     .map((param) => ({
       paramCode: param.paramCode.trim(),
       paramName: param.paramName,
-      paramType: normalizeParamType(param.paramType),
+      paramType: param.paramType || 'text',
       direction: 'input',
       required: param.required,
       defaultValue: param.defaultValue,
@@ -776,7 +781,7 @@ export function ApiParamConfigTab({
   ]
 
   return (
-    <div className='space-y-3'>
+    <div className='min-w-0 space-y-3'>
       <p className='text-muted-foreground text-xs'>
         本页维护这个被测 API 的「输入映射（用例参数 → API 输入字段）+ 输出字段 + 输出映射
         （API 输出 → 评估参数）」，可绑策略继承默认值；新建 API 也可直接在这里配置。
@@ -1061,7 +1066,7 @@ export function ApiParamConfigTab({
             当前策略与本实例均无输出字段声明；可新增行后保存。
           </p>
         ) : (
-          <div className='border-border/60 overflow-x-auto rounded-lg border'>
+          <div className='border-border/60 min-w-0 overflow-x-auto rounded-lg border'>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1102,9 +1107,9 @@ export function ApiParamConfigTab({
                     <TableCell>
                       <Select
                         value={row.paramType}
-                        items={PARAM_TYPE_OPTIONS}
+                        items={paramTypeOptionsOf(row.paramType)}
                         onValueChange={(value) =>
-                          updateOutputRow(row.key, { paramType: value as ParamType })
+                          updateOutputRow(row.key, { paramType: value ?? 'text' })
                         }
                         disabled={!editable}
                       >
@@ -1112,7 +1117,7 @@ export function ApiParamConfigTab({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {PARAM_TYPE_OPTIONS.map((item) => (
+                          {paramTypeOptionsOf(row.paramType).map((item) => (
                             <SelectItem key={item.value} value={item.value}>
                               {item.label}
                             </SelectItem>
@@ -1242,7 +1247,7 @@ export function ApiParamConfigTab({
             当前策略与本实例均无 API 输出映射；可新增行后保存。
           </p>
         ) : (
-          <div className='border-border/60 overflow-x-auto rounded-lg border'>
+          <div className='border-border/60 min-w-0 overflow-x-auto rounded-lg border'>
             <Table>
               <TableHeader>
                 <TableRow>

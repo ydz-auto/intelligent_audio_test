@@ -858,12 +858,12 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
         <form
           noValidate
           onSubmit={form.handleSubmit(handleSave)}
-          className='flex min-h-0 flex-col gap-3'
+          className='flex min-h-0 min-w-0 flex-col gap-3'
         >
           <Tabs
             value={tab}
             onValueChange={(value) => setTab(value as ApiTab)}
-            className='min-h-0'
+            className='min-h-0 min-w-0'
           >
             <TabsList variant='line' className='w-full justify-start gap-1 overflow-x-auto'>
               {API_TABS.map((item) => (
@@ -873,7 +873,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
               ))}
             </TabsList>
 
-            <div className='max-h-[58vh] min-h-[22rem] overflow-y-auto pr-1'>
+            <div className='max-h-[58vh] min-h-[22rem] min-w-0 overflow-x-hidden overflow-y-auto pr-1'>
               {/* 基础页签：现有字段口径不变 + audio_config 编辑区（顶层列） */}
               <TabsContent value='basic' className='space-y-3'>
                 <div className='space-y-1.5'>

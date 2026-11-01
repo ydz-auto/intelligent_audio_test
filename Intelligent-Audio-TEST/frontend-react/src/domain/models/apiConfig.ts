@@ -94,17 +94,12 @@ export type AlgorithmApiParam = {
   helpText: string | null
   /**
    * 校验规则（后端列 validation_rules，`_serialize_params` 的键也是 validation_rules）。
-   * 参数配置页签不展示但必须原值透传：整份同步的口径下，没带该列 = 清空（INT-2281）。
+   * 参数配置页签不展示但必须原值透传：整份同步的口径下，没带该列 = 清空（INT-2270 / INT-2281）。
    */
-  validationRules: string | null
+  validationRules?: string | null
   uiOrder: number
   hidden: boolean
   fieldPath: string | null
-  /**
-   * 校验规则（后端 `validation_rules` 列，JSON 文本原样）。
-   * 参数配置页签无编辑控件：整份保存时按读到的原值透传（INT-2270）。
-   */
-  validationRules?: string | null
 }
 
 /**

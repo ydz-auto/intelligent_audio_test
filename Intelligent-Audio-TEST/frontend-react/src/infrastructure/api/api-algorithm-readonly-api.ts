@@ -29,7 +29,14 @@ export async function fetchAlgorithmApiParams(
   return rowsFromPayload(payload).map(toAlgorithmApiParam)
 }
 
-/** API 实例 `source='api'` 的参数映射（已按 source 过滤） */
+/**
+ * API 实例作用域映射行（原始集合，不在这里过滤）。
+ *
+ * 读侧返回「算法级 + 本 API 级」合并结果，应用层再按用途分桶：
+ * API 输出映射、用例参数输入映射、以及页签不展示但保存时必须原值透传的
+ * 本 API 其余来源行（api_id 命中）。在这一层按 source 过滤会把 device 行
+ * 直接丢掉，整份保存时它们就被软删（INT-2281）。
+ */
 export async function fetchAlgorithmApiMappings(
   algorithmType: string,
   apiId: number
@@ -37,15 +44,7 @@ export async function fetchAlgorithmApiMappings(
   const payload = await apiClient.get<unknown>('/algorithm/mappings', {
     params: { algorithm_type: algorithmType, source_type: 'evaluation', api_id: apiId },
   })
-  return rowsFromPayload(payload)
-    .map(toAlgorithmApiMapping)
-    .filter(
-      (mapping) =>
-        // API 输出 → 评估
-        mapping.source === 'api' ||
-        // 用例参数 → API 输入（source_direction=input）
-        (mapping.source === 'case' && mapping.sourceDirection === 'input')
-    )
+  return rowsFromPayload(payload).map(toAlgorithmApiMapping)
 }
 
 /** 算法类型下的用例参数（`GET /algorithm/case-params`；供输入映射选源） */

@@ -171,7 +171,11 @@ export interface ParamProfile {
 export interface ParamProfileParamDraft {
   paramCode: string
   paramName: string | null
-  paramType: ParamType
+  /**
+   * 参数类型：正常是 ParamType，但后端存量行可能有枚举外的值（如 number）。
+   * 整份保存时这类值必须原样回写，不能被界面收敛成 text（INT-2281）。
+   */
+  paramType: string
   direction: ParamDirection
   required: boolean
   defaultValue: string | null

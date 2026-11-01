@@ -41,7 +41,6 @@ describe('toAlgorithmApiParam（GET /algorithm/params?param_type=api）', () => 
       uiOrder: 21,
       hidden: false,
       fieldPath: null,
-      validationRules: null,
     })
   })
 
