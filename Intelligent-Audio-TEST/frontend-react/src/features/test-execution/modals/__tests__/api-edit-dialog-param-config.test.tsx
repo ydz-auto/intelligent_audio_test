@@ -185,6 +185,7 @@ const RAW_MAPPINGS = [
     dimension_id: 72,
     target_param: 'text',
     transform_type: 'none',
+    api_id: 21,
   },
   {
     // INT-2281：api 来源但方向是 input 的行，保存不得被改写成 output
@@ -195,6 +196,7 @@ const RAW_MAPPINGS = [
     dimension_id: null,
     target_param: 'text',
     transform_type: 'none',
+    api_id: 21,
   },
   {
     // INT-2281：页签不展示的来源行（device），保存必须原值透传，否则整份同步会软删
@@ -205,6 +207,7 @@ const RAW_MAPPINGS = [
     dimension_id: null,
     target_param: '准确率',
     transform_type: 'none',
+    api_id: 21,
   },
 ]
 
@@ -385,6 +388,38 @@ describe('参数配置页签', () => {
       ['api', 'input', 'user_query'],
       ['device', 'output', 'device_score'],
     ])
+  })
+
+  it('算法级映射行（api_id 为空）不当本 API 覆盖行提交，避免造重复行（INT-2281）', async () => {
+    // 读侧返回「算法级 + 本 API 级」合并结果：算法级 device 行不该被带进 overrides
+    mappingsMock.mockResolvedValue(
+      [
+        ...RAW_MAPPINGS,
+        {
+          id: 1800,
+          source: 'device',
+          source_param: 'algorithm_level_score',
+          source_direction: 'output',
+          dimension_id: null,
+          target_param: '准确率',
+          transform_type: 'none',
+          api_id: null,
+        },
+      ].map(toAlgorithmApiMapping)
+    )
+    renderDialog(API_FIXTURE)
+    openTab('参数配置')
+    await screen.findByDisplayValue('response_audio')
+
+    fireEvent.click(screen.getByRole('button', { name: '保存参数配置' }))
+
+    await waitFor(() => expect(saveOverridesMock).toHaveBeenCalledTimes(1))
+    const payload = saveOverridesMock.mock.calls[0][1] as {
+      mappings: Array<{ sourceParam: string }>
+    }
+    expect(payload.mappings.map((m) => m.sourceParam)).not.toContain(
+      'algorithm_level_score'
+    )
   })
 
   it('改「必填 / 隐藏」复选框后保存：提交勾选后的值', async () => {

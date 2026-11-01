@@ -128,6 +128,12 @@ export type ParamMapping = {
   transformType: MappingTransformType
   /** 行所属设备（设备级覆盖；缺省/空 = 算法类型级默认行） */
   deviceId?: number | null
+  /**
+   * 行所属 API 实例（API 作用域覆盖；null/缺省 = 算法类型级默认行）。
+   * 读侧 `/algorithm/mappings` 返回的是「算法级 + 该 API 级」合并结果，
+   * 写回时只能把本 API 自己的行当覆盖行提交（INT-2281）。
+   */
+  apiId?: number | null
 }
 
 /**

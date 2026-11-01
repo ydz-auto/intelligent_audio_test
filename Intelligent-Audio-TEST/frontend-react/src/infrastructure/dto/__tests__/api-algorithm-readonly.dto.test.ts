@@ -115,7 +115,13 @@ describe('toAlgorithmApiMapping（GET /algorithm/mappings?source_type=evaluation
       targetParamName: null,
       transformType: 'base64',
       deviceId: null,
+      apiId: null,
     })
+  })
+
+  it('api_id 透传（区分算法级 / 本 API 覆盖行；INT-2281）', () => {
+    expect(toAlgorithmApiMapping({ source: 'device', api_id: 7 }).apiId).toBe(7)
+    expect(toAlgorithmApiMapping({ source: 'device', api_id: null }).apiId).toBeNull()
   })
 
   it('未知 transform_type 收敛为 none（不让脏值进界面）', () => {

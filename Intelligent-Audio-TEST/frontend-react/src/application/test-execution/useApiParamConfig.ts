@@ -151,12 +151,18 @@ export function useApiParamConfig(
     ),
     [allMappings]
   )
-  // 两个编辑器都不展示的行：保存时按原值透传，避免整份同步把它们软删（INT-2281）
+  // 两个编辑器都不展示的本 API 覆盖行：保存时按原值透传，避免整份同步把它们软删（INT-2281）。
+  // 只取 api_id 命中本实例的行——读侧返回的是「算法级 + 本 API 级」合并结果，
+  // 把算法级行当覆盖行提交会在本 API 下造出重复行。
   const otherMappings = useMemo(
-    () => allMappings.filter(
-      (row) => row.source !== 'api' && !(row.source === 'case' && row.sourceDirection === 'input')
-    ),
-    [allMappings]
+    () =>
+      allMappings.filter(
+        (row) =>
+          row.apiId === apiId &&
+          row.source !== 'api' &&
+          !(row.source === 'case' && row.sourceDirection === 'input')
+      ),
+    [allMappings, apiId]
   )
 
   // 输入映射的源候选：算法类型下的用例参数（失败不影响主流程，按空候选处理）
