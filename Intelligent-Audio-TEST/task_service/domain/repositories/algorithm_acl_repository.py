@@ -121,7 +121,8 @@ class AlgorithmAclRepository(ABC):
         ...
 
     @abstractmethod
-    def update_mapping_attrs(self, mapping, data: dict) -> None:
+    def update_mapping_attrs(self, mapping, data: dict) -> Optional[ParamMappingDTO]:
+        """更新映射属性，返回更新后的映射（无回读数据时为 None）。"""
         ...
 
     @abstractmethod

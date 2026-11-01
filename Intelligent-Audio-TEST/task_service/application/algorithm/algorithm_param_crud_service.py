@@ -47,6 +47,34 @@ from task_service.application.algorithm.algorithm_dimension_relation_service imp
 
 logger = logging.getLogger(__name__)
 
+# INT-2301：映射 PUT 响应回显字段白名单。
+# 只取服务端（algorithm_service UpdateMapping）回写的更新后值，缺失时回落到
+# 更新前快照；请求体从不原样合入，避免未校验/未生效的键污染响应。
+MAPPING_ECHO_FIELDS = (
+    'id', 'algorithm_type', 'source', 'source_param', 'source_direction',
+    'dimension_id', 'target_param', 'transform_type',
+)
+
+
+def _get_row_field(obj, field: str):
+    """兼容 dict / DTO 两种仓储返回形态取字段。"""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj.get(field)
+    return getattr(obj, field, None)
+
+
+def _mapping_view(mapping, updated=None) -> Dict[str, Any]:
+    """构造映射响应视图：优先用 ACL 返回的更新后值，缺省回落更新前对象。"""
+    view: Dict[str, Any] = {}
+    for field in MAPPING_ECHO_FIELDS:
+        value = _get_row_field(updated, field)
+        if value is None:
+            value = _get_row_field(mapping, field)
+        view[field] = value
+    return view
+
 
 class AlgorithmParamCrudService(
     AlgorithmDimensionRelationService,
@@ -222,18 +250,24 @@ class AlgorithmParamCrudService(
             return {'success': False, 'message': f'创建失败: {e}', 'code': 500}
 
     def update_mapping(self, mapping_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
-        """更新参数映射"""
+        """更新参数映射
+
+        INT-2301：PUT 响应必须回显更新后的值。ACL 层 UpdateMapping 已返回更新后
+        的映射，这里只把该返回值的白名单字段合入响应视图（不直接复用更新前快照，
+        也不合入请求体），也不再额外发一次 GetMapping。
+        """
         try:
             mapping = self.repo.get_mapping(mapping_id)
             if not mapping:
                 return {'success': False, 'message': 'Mapping not found', 'code': 404}
 
-            self.repo.update_mapping_attrs(mapping, data)
+            updated = self.repo.update_mapping_attrs(mapping, data)
+            view = _mapping_view(mapping, updated)
 
             dim_name = None
-            if mapping.dimension_id:
+            if view['dimension_id']:
                 # P1.7: Dimension 跨域查询改 gRPC（返回 DimensionDTO）
-                dim = self.repo.get_dimension_by_id(mapping.dimension_id)
+                dim = self.repo.get_dimension_by_id(view['dimension_id'])
                 if dim:
                     dim_name = dim.name
 
@@ -242,15 +276,15 @@ class AlgorithmParamCrudService(
                 'success': True,
                 'message': 'Mapping updated',
                 'data': {
-                    'id': mapping.id,
-                    'algorithm_type': mapping.algorithm_type,
-                    'source': mapping.source,
-                    'source_param': mapping.source_param,
-                    'source_direction': mapping.source_direction,
-                    'dimension_id': mapping.dimension_id,
+                    'id': view['id'],
+                    'algorithm_type': view['algorithm_type'],
+                    'source': view['source'],
+                    'source_param': view['source_param'],
+                    'source_direction': view['source_direction'],
+                    'dimension_id': view['dimension_id'],
                     'dimension_name': dim_name,
-                    'target_param': mapping.target_param,
-                    'transform_type': mapping.transform_type
+                    'target_param': view['target_param'],
+                    'transform_type': view['transform_type'],
                 },
             }
         except Exception as e:

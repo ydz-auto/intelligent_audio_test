@@ -59,8 +59,13 @@ class AlgorithmMappingDimensionMixin:
                      if it.dimension_id == int(dimension_id)]
         return items
 
-    def update_mapping_attrs(self, mapping, data: dict) -> None:
-        """更新参数映射属性（gRPC 自动提交）。"""
+    def update_mapping_attrs(self, mapping, data: dict):
+        """更新参数映射属性（gRPC 自动提交），返回更新后的映射 DTO。
+
+        INT-2301：algorithm_service 的 UpdateMapping 响应 data 已是更新后映射，
+        直接解析返回供调用方回显（避免再发一次 GetMapping）。响应无数据时返回
+        None，调用方回落到更新前对象。
+        """
         mapping_id = mapping.get("id") if isinstance(mapping, dict) else getattr(mapping, "id", None)
         if mapping_id is None:
             raise RuntimeError("update_mapping_attrs: mapping 缺少 id 字段")
@@ -69,6 +74,7 @@ class AlgorithmMappingDimensionMixin:
             data=json.dumps(data or {}, ensure_ascii=False, default=str),
         ))
         _raise_on_failure(resp)
+        return _one(resp, dto_cls=ParamMappingDTO)
 
     def soft_delete_mapping(self, mapping) -> None:
         """软删除参数映射（gRPC 自动提交）。"""
