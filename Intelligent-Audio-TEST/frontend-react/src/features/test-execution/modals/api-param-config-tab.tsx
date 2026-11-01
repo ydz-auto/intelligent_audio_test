@@ -32,7 +32,6 @@ import {
   PARAM_DIRECTION_LABEL,
   PARAM_DIRECTIONS,
   PARAM_MAPPING_SOURCE_LABEL,
-  PARAM_PROFILE_MAPPING_SOURCES,
   PARAM_TRANSFORM_TYPE_LABEL,
   PARAM_TRANSFORM_TYPES,
   PARAM_TYPE_LABEL,
@@ -118,12 +117,6 @@ const TRANSFORM_TYPE_OPTIONS = PARAM_TRANSFORM_TYPES.map((value) => ({
   label: PARAM_TRANSFORM_TYPE_LABEL[value],
 }))
 
-/** 映射来源（api = API 输出 / case = 用例参数 / device = 设备输出） */
-const MAPPING_SOURCE_OPTIONS = PARAM_PROFILE_MAPPING_SOURCES.map((value) => ({
-  value,
-  label: PARAM_MAPPING_SOURCE_LABEL[value],
-}))
-
 const MAPPING_DIRECTION_OPTIONS = PARAM_DIRECTIONS.map((value) => ({
   value,
   label: PARAM_DIRECTION_LABEL[value],
@@ -175,7 +168,13 @@ function mappingDirectionOf(mapping: AlgorithmApiMapping): ParamDirection {
   return mapping.sourceDirection === 'input' ? 'input' : 'output'
 }
 
-/** 字段行归一：比较脏 / 透传共用一份口径，避免两处漂移 */
+/**
+ * 字段行归一：比较脏 / 透传共用一份口径，避免两处漂移。
+ *
+ * 可编辑列的归一必须与 `paramRowOf` 的展示值一致（文本列 `?? ''`、类型 `|| 'text'`）：
+ * 服务端 `default_value / help_text` 为 null 时行内回显是空串，直接用 null 比空串会
+ * 判成「打开即脏」，底部「保存」被永久拦下（INT-2281 返工二）。
+ */
 function paramSignatureOf(param: {
   paramCode: string
   paramType: string
@@ -189,11 +188,11 @@ function paramSignatureOf(param: {
 }) {
   return [
     param.paramCode,
-    param.paramType,
+    param.paramType || 'text',
     Number(param.uiOrder) || 0,
     param.required,
-    param.defaultValue,
-    param.helpText,
+    param.defaultValue ?? '',
+    param.helpText ?? '',
     param.hidden,
     param.label,
     param.validationRules ?? null,
@@ -538,6 +537,9 @@ export function ApiParamConfigTab({
   // 保存成功 → 读侧失效重拉 → appliedSignatureRef 与草稿一致 → 自动回到 false。
   const dirty = useMemo(() => {
     if (config.state !== 'ready') return false
+    // 数据刚就绪、可编辑行还没同步（首次签名尚未落）时不算脏：空行集与权威签名
+    // 必然不等，否则打开弹窗会误报一次「有未保存改动」（INT-2281 返工二）
+    if (appliedSignatureRef.current === '') return false
     return (
       JSON.stringify({
         params: outputRows.map((row) => paramSignatureOf(row)),
@@ -1264,27 +1266,11 @@ export function ApiParamConfigTab({
                 {mappingRows.map((row) => (
                   <TableRow key={row.key}>
                     <TableCell>
-                      <Select
-                        value={row.source}
-                        items={MAPPING_SOURCE_OPTIONS}
-                        onValueChange={(value) =>
-                          updateMappingRow(row.key, {
-                            source: value as ParamProfileMappingSource,
-                          })
-                        }
-                        disabled={!editable}
-                      >
-                        <SelectTrigger size='sm' className='w-28' aria-label='映射来源'>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {MAPPING_SOURCE_OPTIONS.map((item) => (
-                            <SelectItem key={item.value} value={item.value}>
-                              {item.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {/* 来源只读：本表只维护 API 来源的映射行；改成 device / case+输出 会落到
+                          两个编辑器都不展示的透传行，用户再也看不到也删不掉（INT-2281 审计 P3） */}
+                      <Badge variant='secondary' aria-label='映射来源'>
+                        {PARAM_MAPPING_SOURCE_LABEL[row.source]}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Select

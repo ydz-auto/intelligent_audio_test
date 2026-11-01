@@ -102,6 +102,7 @@ vi.mock('@/infrastructure/api/param-profile-api', () => ({
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 
 import { ApiEditDialog } from '../api-edit-dialog'
+import { ApiParamConfigTab } from '../api-param-config-tab'
 
 const API_FIXTURE: ApiConfig = {
   id: 21,
@@ -223,6 +224,21 @@ function renderDialog(api?: ApiConfig) {
 
 function openTab(label: string) {
   fireEvent.click(screen.getByRole('tab', { name: label }))
+}
+
+/** 单独渲染「参数配置」页签：用于断言 onDirtyChange 的脏标记流转 */
+function renderParamTab(onDirtyChange: (dirty: boolean) => void) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <ApiParamConfigTab
+        apiId={21}
+        algorithmType='voice_llm'
+        canEdit
+        onDirtyChange={onDirtyChange}
+      />
+    </QueryClientProvider>
+  )
 }
 
 beforeEach(() => {
@@ -586,8 +602,59 @@ describe('参数配置页签', () => {
     await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
     expect(saveMock.mock.calls[0][0].name).toBe('接线测试_可保存')
   })
-})
 
+  it('服务端 default_value / help_text 为 null 的输出行不算脏，保存后脏标记仍为 false（INT-2281 返工二）', async () => {
+    const onDirtyChange = vi.fn()
+    renderParamTab(onDirtyChange)
+
+    // response_audio 的 default_value / help_text 读侧都是 null
+    await screen.findByDisplayValue('response_audio')
+    await waitFor(() => expect(onDirtyChange).toHaveBeenCalled())
+    expect(onDirtyChange.mock.calls[onDirtyChange.mock.calls.length - 1]?.[0]).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: '保存参数配置' }))
+
+    await waitFor(() => expect(saveOverridesMock).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(onDirtyChange.mock.calls[onDirtyChange.mock.calls.length - 1]?.[0]).toBe(false))
+    // 全程没有出现过脏标记（含数据到达、保存后重新拉取两次同步）
+    expect(onDirtyChange.mock.calls.some(([dirty]) => dirty)).toBe(false)
+  })
+
+  it('含 null 默认值 / 帮助提示的输出行：底部「保存」不被「参数配置未保存」拦下（INT-2281 返工二）', async () => {
+    renderDialog(API_FIXTURE)
+    openTab('参数配置')
+    await screen.findByDisplayValue('response_audio')
+
+    openTab('基础')
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText(/还有未保存的改动/)).not.toBeInTheDocument()
+  })
+
+  it('真改了「默认值」仍算脏（归一化只消掉 null 与空串的差异）', async () => {
+    const onDirtyChange = vi.fn()
+    renderParamTab(onDirtyChange)
+    await screen.findByDisplayValue('response_audio')
+
+    const defaultInputs = screen.getAllByLabelText('默认值') as HTMLInputElement[]
+    fireEvent.change(defaultInputs[0], { target: { value: 'hello' } })
+
+    await waitFor(() => expect(onDirtyChange.mock.calls[onDirtyChange.mock.calls.length - 1]?.[0]).toBe(true))
+  })
+
+  it('映射来源只读展示，不再提供会落到透传行的 device / case+输出 选项（审计 P3）', async () => {
+    renderDialog(API_FIXTURE)
+    openTab('参数配置')
+    await screen.findByDisplayValue('response_audio')
+
+    expect(screen.queryByRole('combobox', { name: '映射来源' })).not.toBeInTheDocument()
+    expect(screen.getAllByLabelText('映射来源').map((node) => node.textContent)).toEqual([
+      'API 输出',
+      'API 输出',
+    ])
+  })
+})
 describe('降级口径', () => {
   it('新建 API（无 id）→ 可直接配置参数，且不发参数/映射读请求（策略列表照拉）', async () => {
     // 新建 API 的算法类型来自全局算法（此处显式预设，避免先命中「未选择关联算法」）
