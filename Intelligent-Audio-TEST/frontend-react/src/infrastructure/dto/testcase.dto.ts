@@ -67,6 +67,12 @@ export interface TestCaseStopPreviewDto {
   message?: string | null
 }
 
+/** 导入回执·音频登记失败项（INT-2215：包内音频按 source_id 回报失败原因） */
+export interface TestCaseImportAudioFailureDto {
+  source_id?: string | number | null
+  reason?: string | null
+}
+
 /** POST /testcases/import 响应 data（TestCaseImportResult，snake_case 回执） */
 export interface TestCaseImportResultDto {
   imported_count?: number
@@ -74,6 +80,14 @@ export interface TestCaseImportResultDto {
   skipped_count?: number
   copied_count?: number
   errors?: unknown[]
+  /** 包内音频按字节新登记的条数（INT-2215；非 ZIP 包与老后端恒缺省） */
+  audio_registered_count?: number
+  /** 包内音频按 md5 复用目标库既有记录的条数 */
+  audio_reused_count?: number
+  /** 登记失败的音频（`{source_id, reason}`） */
+  audio_failed?: TestCaseImportAudioFailureDto[]
+  /** 已登记/复用但没有任何成功落库用例引用到的音频 id（后端要求不静默） */
+  audio_orphaned_ids?: number[]
 }
 
 /** 导入预览重复项（POST /testcases/import/preview 的 duplicates[]） */
@@ -96,6 +110,8 @@ export interface TestCaseImportPreviewDto {
   duplicateCount?: number
   duplicateScanTruncated?: boolean
   errors?: unknown[]
+  /** 包内可回导音频条数（INT-2215；仅 ZIP，其余格式与老包恒 0） */
+  audioPackageCount?: number
 }
 
 /** 用例执行详情·算法结果扁平项（task_bp.py get_case_detail algorithm_results 实测；API/voice_llm 用例分节①结果摘要消费） */

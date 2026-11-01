@@ -6,6 +6,8 @@
  *   重复用例清单（后端按 ID 或同分组同名命中）
  * - 重复策略：跳过（默认）/ 覆盖 / 另存副本（copy 自动追加 _copy 保证同组唯一）
  * - 错误行与重复清单分开呈现：错误行在预检阶段列出并提示「仍导入其余 N 条」（导入时后端跳过坏行）
+ * - 音频回导（INT-2215）：ZIP 用例包内的音频按字节登记 / 按 md5 复用，回执带登记 / 复用 / 失败 /
+ *   孤儿音频四字段；失败逐条列出，孤儿音频（已登记但无用例引用）不静默。非 ZIP 包无音频区
  * - 「导入音频生成用例」不在本弹窗：统一走音频管理页上传并勾选生成用例
  *
  * 请求一律经 infrastructure/api/testcases-api（client.ts），页面层只见 camelCase Domain。
@@ -191,6 +193,15 @@ export function ImportDialog({
   const hasPreviewErrors = previewErrorCount > 0
   const canSubmitImport = canImport && importableRowCount > 0
 
+  // 音频回导回执（INT-2215）：非 ZIP 包与老后端四字段缺省 → 全 0 / 空数组，音频区整体不出现
+  const audioFailed = result?.audioFailed ?? []
+  const audioOrphanedIds = result?.audioOrphanedIds ?? []
+  const audioHandledCount =
+    (result?.audioRegisteredCount ?? 0) +
+    (result?.audioReusedCount ?? 0) +
+    audioFailed.length
+  const hasAudioReceipt = audioHandledCount > 0 || audioOrphanedIds.length > 0
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-lg'>
@@ -217,6 +228,35 @@ export function ImportDialog({
                 副本 <strong>{result.copiedCount}</strong>
               </span>
             </div>
+            {hasAudioReceipt && (
+              <div className='rounded-lg border px-3 py-2.5 text-sm'>
+                <p>
+                  音频：登记 <strong>{result.audioRegisteredCount}</strong> / 复用{' '}
+                  <strong>{result.audioReusedCount}</strong> / 失败{' '}
+                  <strong
+                    className={
+                      audioFailed.length > 0 ? 'text-destructive' : undefined
+                    }
+                  >
+                    {audioFailed.length}
+                  </strong>
+                </p>
+                {audioFailed.length > 0 && (
+                  <ul className='text-destructive mt-1.5 list-disc space-y-0.5 pl-4 text-xs'>
+                    {audioFailed.map((item) => (
+                      <li key={`${item.sourceId}-${item.reason}`}>
+                        音频 {item.sourceId} 回导失败：{item.reason}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {audioOrphanedIds.length > 0 && (
+                  <p className='mt-1.5 text-xs text-amber-600'>
+                    未被用例引用的已登记音频：{audioOrphanedIds.join('、')}
+                  </p>
+                )}
+              </div>
+            )}
             {result.errors.length > 0 && (
               <Alert variant='destructive'>
                 <AlertTitle>部分用例导入失败（{result.errors.length}）</AlertTitle>
@@ -301,6 +341,12 @@ export function ImportDialog({
                     </span>
                   ) : (
                     <span className='text-emerald-600'> · 无重复用例</span>
+                  )}
+                  {preview.audioPackageCount > 0 && (
+                    <span className='text-muted-foreground'>
+                      {' '}
+                      · 包内音频 {preview.audioPackageCount} 条可回导
+                    </span>
                   )}
                 </div>
 

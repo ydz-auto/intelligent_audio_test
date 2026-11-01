@@ -123,6 +123,14 @@ export interface TestCaseImportPreview {
   /** 超过扫描上限时重复清单未覆盖全部行 */
   duplicateScanTruncated: boolean
   errors: string[]
+  /** 包内可回导音频条数（仅 ZIP 用例包；其余格式与老包为 0） */
+  audioPackageCount: number
+}
+
+/** 导入回执·音频回导失败项（source_id 统一字符串，展示用） */
+export interface TestCaseImportAudioFailure {
+  sourceId: string
+  reason: string
 }
 
 /** 导入回执（POST /testcases/import） */
@@ -132,4 +140,12 @@ export interface TestCaseImportResult {
   skippedCount: number
   copiedCount: number
   errors: string[]
+  /** 包内音频按字节新登记条数（非 ZIP 包恒 0） */
+  audioRegisteredCount: number
+  /** 包内音频按 md5 复用目标库既有记录的条数 */
+  audioReusedCount: number
+  /** 音频回导失败明细（与行级 errors 分开展示，不并入 errors 计数） */
+  audioFailed: TestCaseImportAudioFailure[]
+  /** 已登记/复用但没有成功落库用例引用的音频 id（后端要求不静默） */
+  audioOrphanedIds: number[]
 }

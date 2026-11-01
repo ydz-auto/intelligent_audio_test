@@ -40,6 +40,7 @@ const PREVIEW = {
   duplicateCount: 1,
   duplicateScanTruncated: false,
   errors: [],
+  audioPackageCount: 0,
 }
 
 const IMPORT_RESULT = {
@@ -48,6 +49,10 @@ const IMPORT_RESULT = {
   skippedCount: 1,
   copiedCount: 0,
   errors: [],
+  audioRegisteredCount: 0,
+  audioReusedCount: 0,
+  audioFailed: [],
+  audioOrphanedIds: [],
 }
 
 const makeFile = () =>
@@ -191,5 +196,107 @@ describe('ImportDialog 导入接线', () => {
 
     expect(await screen.findByText(/没有可导入的行/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled()
+  })
+})
+
+describe('ImportDialog 音频回导回执（INT-2215）', () => {
+  beforeEach(() => {
+    mockedPreview.mockReset()
+    mockedImport.mockReset()
+    mockedPreview.mockResolvedValue(PREVIEW)
+    mockedImport.mockResolvedValue(IMPORT_RESULT)
+  })
+
+  /** 选文件 → 预检 → 执行导入，等回执阶段的「完成」按钮出现 */
+  const runImport = async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    selectFile(makeFile())
+    await screen.findByText(/共 3 条用例/)
+    await user.click(screen.getByRole('button', { name: '开始导入' }))
+    await screen.findByRole('button', { name: '完成' })
+  }
+
+  it('回执带音频计数时展示「登记 / 复用 / 失败」汇总', async () => {
+    mockedImport.mockResolvedValue({
+      ...IMPORT_RESULT,
+      audioRegisteredCount: 4,
+      audioReusedCount: 2,
+      audioFailed: [{ sourceId: '101', reason: 'md5_mismatch' }],
+    })
+
+    await runImport()
+
+    const summary = await screen.findByText(/音频：/)
+    expect(summary).toHaveTextContent(
+      /音频：登记 4 \/ 复用 2 \/ 失败 1/
+    )
+  })
+
+  it('音频失败逐条展示，且不并入行级 errors 计数', async () => {
+    mockedImport.mockResolvedValue({
+      ...IMPORT_RESULT,
+      audioRegisteredCount: 0,
+      audioReusedCount: 0,
+      errors: [],
+      audioFailed: [
+        { sourceId: '101', reason: 'md5_mismatch' },
+        { sourceId: '102', reason: 'invalid_audio_content' },
+      ],
+    })
+
+    await runImport()
+
+    expect(
+      await screen.findByText('音频 101 回导失败：md5_mismatch')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('音频 102 回导失败：invalid_audio_content')
+    ).toBeInTheDocument()
+    // 行级 errors 为空 → 不出现「部分用例导入失败」，音频失败不重复计数
+    expect(screen.queryByText(/部分用例导入失败/)).not.toBeInTheDocument()
+  })
+
+  it('孤儿音频非空时提示未被用例引用的音频 id', async () => {
+    mockedImport.mockResolvedValue({
+      ...IMPORT_RESULT,
+      audioRegisteredCount: 3,
+      audioOrphanedIds: [201, 202],
+    })
+
+    await runImport()
+
+    expect(
+      await screen.findByText(/未被用例引用的已登记音频：201、202/)
+    ).toBeInTheDocument()
+  })
+
+  it('非 ZIP / 老后端四字段缺省：不出现音频区', async () => {
+    mockedImport.mockResolvedValue({ ...IMPORT_RESULT })
+
+    await runImport()
+
+    expect(await screen.findByText(/新增/)).toBeInTheDocument()
+    expect(screen.queryByText(/音频：/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/未被用例引用的已登记音频/)).not.toBeInTheDocument()
+  })
+
+  it('预览 audioPackageCount > 0 时展示「包内音频 N 条可回导」', async () => {
+    mockedPreview.mockResolvedValue({ ...PREVIEW, audioPackageCount: 3 })
+
+    renderDialog()
+    selectFile(makeFile())
+
+    expect(
+      await screen.findByText(/包内音频 3 条可回导/)
+    ).toBeInTheDocument()
+  })
+
+  it('预览 audioPackageCount 为 0 时不展示音频提示', async () => {
+    renderDialog()
+    selectFile(makeFile())
+
+    expect(await screen.findByText(/共 3 条用例/)).toBeInTheDocument()
+    expect(screen.queryByText(/条可回导/)).not.toBeInTheDocument()
   })
 })

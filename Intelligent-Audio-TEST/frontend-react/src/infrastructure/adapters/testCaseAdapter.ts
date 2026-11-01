@@ -520,10 +520,11 @@ export function testCaseImportPreviewFromDto(
     duplicateCount: dto?.duplicateCount ?? duplicates.length,
     duplicateScanTruncated: dto?.duplicateScanTruncated ?? false,
     errors: (dto?.errors ?? []).map((e) => String(e)),
+    audioPackageCount: dto?.audioPackageCount ?? 0,
   }
 }
 
-/** 导入回执 DTO → Domain（snake_case 计数 → camelCase） */
+/** 导入回执 DTO → Domain（snake_case 计数 → camelCase；音频四字段老后端/老包缺省） */
 export function testCaseImportResultFromDto(
   dto: TestCaseImportResultDto | null | undefined
 ): TestCaseImportResult {
@@ -533,5 +534,16 @@ export function testCaseImportResultFromDto(
     skippedCount: dto?.skipped_count ?? 0,
     copiedCount: dto?.copied_count ?? 0,
     errors: (dto?.errors ?? []).map((e) => String(e)),
+    audioRegisteredCount: dto?.audio_registered_count ?? 0,
+    audioReusedCount: dto?.audio_reused_count ?? 0,
+    audioFailed: (dto?.audio_failed ?? [])
+      .filter((item) => item?.source_id != null && item.source_id !== '')
+      .map((item) => ({
+        sourceId: String(item.source_id),
+        reason: item.reason ? String(item.reason) : '未知原因',
+      })),
+    audioOrphanedIds: (dto?.audio_orphaned_ids ?? []).filter(
+      (id) => typeof id === 'number'
+    ),
   }
 }

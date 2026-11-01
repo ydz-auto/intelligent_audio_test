@@ -8,6 +8,8 @@ import { describe, expect, it } from 'vitest'
 import type { CaseResultDimension, CaseResultForReview } from '@/domain/models/review'
 import {
   caseDetailFromDto,
+  testCaseImportPreviewFromDto,
+  testCaseImportResultFromDto,
   testCaseListItemFromDto,
   testCasePreviewFromDto,
 } from '@/infrastructure/adapters/testCaseAdapter'
@@ -654,5 +656,77 @@ describe('caseDetailFromDto（INT-2194 历史任务占位目标）', () => {
     expect(detail.targets).toHaveLength(1)
     expect(detail.targets[0]).toMatchObject({ targetName: 'pura90小艺', deviceId: '9' })
     expect(detail.devices.map((d) => d.deviceName)).toEqual(['pura90小艺'])
+  })
+})
+
+describe('测试用例导入回执 / 预览适配器（INT-2215 音频回导）', () => {
+  it('回执：snake_case 音频四字段映射为 camelCase 领域字段', () => {
+    const result = testCaseImportResultFromDto({
+      imported_count: 2,
+      updated_count: 1,
+      skipped_count: 0,
+      copied_count: 0,
+      errors: ['第2行: 音频 101 回导失败: md5_mismatch'],
+      audio_registered_count: 4,
+      audio_reused_count: 2,
+      audio_failed: [
+        { source_id: 101, reason: 'md5_mismatch' },
+        { source_id: '102', reason: 'invalid_audio_content' },
+      ],
+      audio_orphaned_ids: [201, 202],
+    })
+
+    expect(result.audioRegisteredCount).toBe(4)
+    expect(result.audioReusedCount).toBe(2)
+    expect(result.audioFailed).toEqual([
+      { sourceId: '101', reason: 'md5_mismatch' },
+      { sourceId: '102', reason: 'invalid_audio_content' },
+    ])
+    expect(result.audioOrphanedIds).toEqual([201, 202])
+    expect(result.errors).toEqual(['第2行: 音频 101 回导失败: md5_mismatch'])
+  })
+
+  it('回执：老后端缺省音频四字段 → 0 / 空数组（不报错）', () => {
+    const result = testCaseImportResultFromDto({
+      imported_count: 1,
+      errors: [],
+    })
+
+    expect(result.audioRegisteredCount).toBe(0)
+    expect(result.audioReusedCount).toBe(0)
+    expect(result.audioFailed).toEqual([])
+    expect(result.audioOrphanedIds).toEqual([])
+  })
+
+  it('回执：null DTO 全部给缺省值', () => {
+    const result = testCaseImportResultFromDto(null)
+
+    expect(result.importedCount).toBe(0)
+    expect(result.audioFailed).toEqual([])
+    expect(result.audioOrphanedIds).toEqual([])
+  })
+
+  it('回执：缺 source_id 的失败项与空原因按兜底处理', () => {
+    const result = testCaseImportResultFromDto({
+      audio_failed: [
+        { reason: 'missing_source' },
+        { source_id: 103, reason: null },
+      ],
+    })
+
+    expect(result.audioFailed).toEqual([
+      { sourceId: '103', reason: '未知原因' },
+    ])
+  })
+
+  it('预览：audioPackageCount 映射，缺省为 0', () => {
+    expect(
+      testCaseImportPreviewFromDto({ totalRows: 3, audioPackageCount: 5 })
+        .audioPackageCount
+    ).toBe(5)
+    expect(testCaseImportPreviewFromDto({ totalRows: 3 }).audioPackageCount).toBe(
+      0
+    )
+    expect(testCaseImportPreviewFromDto(null).audioPackageCount).toBe(0)
   })
 })
