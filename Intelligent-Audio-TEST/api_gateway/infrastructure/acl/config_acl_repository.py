@@ -388,6 +388,16 @@ class AlgorithmConfigAclRepositoryImpl(AlgorithmConfigAclRepository):
         return _wrap(algorithm_config_service.get_api_params(
             algorithm_type=algorithm_type, api_id=api_id))
 
+    def get_device_params(self, algorithm_type=None, device_id=None) -> CommandResultDTO:
+        """设备参数三层解析结果（INT-2299）。
+
+        与 ``list_params``（task_service 原始行）不同源：走 algorithm_service 的
+        ``GetDeviceParamsList``，行带 ``resolved_from`` / ``profile_param_id``。
+        """
+        from api_gateway.infrastructure.grpc_proxies import algorithm_config_service
+        return _wrap(algorithm_config_service.get_device_params(
+            algorithm_type=algorithm_type, device_id=device_id))
+
     def get_param_mapping_for_component(
         self, algorithm_type=None, component_type=None, api_id=None,
         device_id=None

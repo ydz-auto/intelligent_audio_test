@@ -298,11 +298,57 @@ interface UpdateAlgorithmRequest extends Partial<CreateAlgorithmRequest> {}
 
 ### 4.10 获取参数列表（设备参数 / API 参数统一入口）
 
+查询参数（snake_case，均为可选）：
+
+| 参数 | 说明 |
+|---|---|
+| `algorithm_type` | 算法类型 |
+| `param_type` | `device`（默认）/ `api` |
+| `api_id` | API 实例 ID；`param_type=api` 时必填 |
+| `device_id` | 设备 ID（INT-2299）；**只对 `param_type=device` 生效，且必须带 `algorithm_type`** |
+
+响应形态按作用域分三种（同一端点，**不要套用别的分支的信封/行键**）：
+
 ```typescript
-// GET /api/v1/algorithm/params?algorithmType=:type&paramType=device|api
-// paramType=device 返回 AlgorithmDeviceParam[]，paramType=api 返回 AlgorithmApiParam[]
-// 响应：{ parameters: [...], total: number }
+// ① 不带作用域（no-device，React 抽屉写侧依赖的原始行口径）
+// GET /api/v1/algorithm/params?algorithm_type=:type[&param_type=device]
+// 行是 task_service 的 algorithm_device_params 原始行（设备级 + 算法级都返回）：
+{
+  items: AlgorithmDeviceParamDTO[],   // 行键：id / algorithm_type / device_id /
+                                      //      param_code / param_name / label /
+                                      //      param_type / direction / required /
+                                      //      default_value / validation /
+                                      //      help_text / ui_order / hidden（14 个）
+  total: number; page: number; per_page: number; pages: number;
+}
+// device_id 为 null 表示算法类型级默认行，非空表示该设备的覆盖行；
+// 写侧据此区分「本设备覆盖 / 算法级」，新增/编辑/删除都走这个口径。
+
+// ② API 实例作用域（裸数组 + 缓存行键）
+// GET /api/v1/algorithm/params?algorithm_type=:type&param_type=api&api_id=N
+// 行键：id / algorithm_type / code / name / label / type / direction /
+//      required / default_value / validation_rules / help_text /
+//      ui_order / ui_group / hidden / param_type / api_id
+AlgorithmApiParamRow[]
+
+// ③ 设备实例作用域 = 三层解析结果（裸数组 + 缓存行键，INT-2299）
+// GET /api/v1/algorithm/params?algorithm_type=:type&param_type=device&device_id=N
+// 优先级：设备覆盖 > 设备绑定策略 > 算法级默认，合并键 (direction, code)
+AlgorithmDeviceParamResolvedRow[]
 ```
+
+设备作用域每一行除缓存行键（`id` / `algorithm_type` / `code` / `name` / `label` / `type` / `direction` / `required` / `default_value` / `validation_rules` / `help_text` / `ui_order` / `ui_group` / `hidden` / `param_type`，源行有 `device_id` 时原样带出）外，新增两个键：
+
+| 键 | 取值 | 说明 |
+|---|---|---|
+| `resolved_from` | `algorithm` / `profile` / `device` | 该行最终取值来自哪一层（算法级默认 / 设备绑定策略 / 本设备覆盖） |
+| `profile_param_id` | int | 仅 `resolved_from='profile'` 的行带，值为 `param_profile_params.id` |
+
+**策略层行的 `id` 恒为 `null`**：`param_profile_params` 与 `algorithm_device_params` 各自自增、可能同号，写侧 `PUT/DELETE /algorithm/params/{id}` 按载荷 `param_type_source`（默认 `device`）选表，拿策略行 id 去改删会静默打到同号的算法设备参数行上。前端只允许对 `resolved_from` 为 `device` / `algorithm` 的行调用 `/params/{id}`；策略行要改请走策略接口。
+
+校验：`device_id < 1` 或非整数 → 422；带 `device_id` 但缺 `algorithm_type`、或 `param_type != 'device'` → 400。
+
+> 历史说明：本文旧版写的 `{ parameters, total }` 与 `algorithmType` / `paramType` 驼峰参数名均已不符实现，以上为 INT-2299 落地后的实际契约。
 
 ### 4.11 获取用例专属参数列表
 

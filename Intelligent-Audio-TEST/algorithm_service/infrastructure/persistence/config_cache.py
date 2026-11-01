@@ -151,6 +151,50 @@ def _device_param_merge_key(param: Dict[str, Any]):
     return (param.get('direction'), param.get('code'))
 
 
+class ParamResolvedFrom:
+    """三层解析的层来源标识（INT-2299 C3）。"""
+
+    ALGORITHM = 'algorithm'   # 算法类型级默认行（device_id IS NULL）
+    PROFILE = 'profile'       # 设备绑定策略行（param_profile_params）
+    DEVICE = 'device'         # 本设备覆盖行（algorithm_device_params.device_id）
+
+
+def _tag_resolved_layers(resolved_rows, profile_rows, override_rows):
+    """给三层解析结果逐行打层来源标识（INT-2299）。
+
+    只在 ``get_device_params`` 的 ``device_id`` 非空分支调用：``device_id`` 为空
+    的那条路径输出必须与改造前逐字节一致（C5），因此本函数不参与。
+
+    层归属按合并键反查——覆盖行 > 策略行 > 算法级；这与
+    ``_resolve_scope_rows`` 的优先级完全一致，且同一层内同键行也已由该函数
+    按「首个命中」收敛。行的来源是 L1 快照里的共享 dict，必须 ``dict(row)``
+    复制后再写键，否则会污染后续 no-device 调用与执行链路。
+
+    策略层的 ``id`` 置空：``param_profile_params`` 与 ``algorithm_device_params``
+    各自自增、可能同号，写侧 ``PUT/DELETE /algorithm/params/{id}`` 按
+    ``param_type_source`` 选表，前端拿策略行 id 去改删会静默打到同号的设备
+    参数行上；原名改带 ``profile_param_id``（C3）。
+    """
+    override_keys = {_device_param_merge_key(row) for row in override_rows or []}
+    profile_keys = {_device_param_merge_key(row) for row in profile_rows or []}
+    tagged = []
+    for row in resolved_rows:
+        key = _device_param_merge_key(row)
+        if key in override_keys:
+            layer = ParamResolvedFrom.DEVICE
+        elif key in profile_keys:
+            layer = ParamResolvedFrom.PROFILE
+        else:
+            layer = ParamResolvedFrom.ALGORITHM
+        entry = dict(row)
+        entry['resolved_from'] = layer
+        if layer == ParamResolvedFrom.PROFILE:
+            entry['profile_param_id'] = row.get('id')
+            entry['id'] = None
+        tagged.append(entry)
+    return tagged
+
+
 def _merge_scoped_rows(rows, scope_field: str, scope_value, key_fn):
     """按作用域字段合并行（scope_value 为 None 时只返回算法级行）。
 
@@ -1006,6 +1050,10 @@ class AlgorithmConfigCache:
         策略层只合并 ``profile.algorithm_type == algorithm_type`` 的行（INT-2259）：
         绑定对 ``device_id`` 唯一，但一台设备可跑多种算法，跨算法策略会被同名
         ``(direction, code)`` 行静默串改声明，必须按策略声明的算法类型过滤。
+
+        传 ``device_id`` 时逐行带 ``resolved_from``（algorithm / profile / device）
+        标识取值来自哪一层，策略层行额外带 ``profile_param_id`` 且 ``id`` 置空
+        （INT-2299）；不传时输出与改造前逐字节一致，不带这两个键。
         """
         cache = self._config_cache
         rows = cache.get('device_params', {}).get(algorithm_type, []) or []
@@ -1022,7 +1070,8 @@ class AlgorithmConfigCache:
             merged = _resolve_scope_rows(
                 merged, profile_rows, _device_param_merge_key)
         overrides = [row for row in rows if row.get('device_id') == device_id]
-        return _resolve_scope_rows(merged, overrides, _device_param_merge_key)
+        resolved = _resolve_scope_rows(merged, overrides, _device_param_merge_key)
+        return _tag_resolved_layers(resolved, profile_rows, overrides)
 
     def get_api_params(
         self, algorithm_type: str, api_id: Optional[int] = None

@@ -55,6 +55,12 @@ class _FakeQueryStub:
             raise RuntimeError('algorithm_service unavailable')
         return _Resp(data=json.dumps(self._payload))
 
+    def GetDeviceParamsList(self, request):
+        self.calls.append(('GetDeviceParamsList', request))
+        if self._fail:
+            raise RuntimeError('algorithm_service unavailable')
+        return _Resp(data=json.dumps(self._payload))
+
 
 class _ForbiddenConfigStub:
     """task 通道 stub：本卡修复后不应再被这两个方法触达。"""
@@ -136,6 +142,60 @@ def test_get_param_mapping_uses_algorithm_query_service(wire):
     assert req.algorithm_type == 'voice_llm'
     assert req.component_type == 'evaluation'
     assert req.HasField('api_id') and req.api_id == 424
+
+
+# ---- INT-2299：设备参数三层解析同样走 AlgorithmQueryService ----
+
+def test_device_params_rpc_not_on_task_service_contract():
+    """GetDeviceParamsList 只在 algorithm_service.proto，task_service 没有。"""
+    assert not hasattr(task_pb, 'GetDeviceParamsListRequest')
+    task_rpcs = task_pb.DESCRIPTOR.services_by_name['AlgorithmConfigService'].methods_by_name
+    assert 'GetDeviceParamsList' not in task_rpcs
+    algo_rpcs = algo_pb.DESCRIPTOR.services_by_name['AlgorithmQueryService'].methods_by_name
+    assert 'GetDeviceParamsList' in algo_rpcs
+
+
+def test_get_device_params_uses_algorithm_query_service(wire):
+    wire._payload = [
+        {'id': 3001, 'algorithm_type': 'voice_llm', 'device_id': 801,
+         'code': 'text', 'name': '文本', 'direction': 'input',
+         'resolved_from': 'device'},
+    ]
+    proxy = _AlgorithmConfigProxy()
+    result = proxy.get_device_params(algorithm_type='voice_llm', device_id=801)
+
+    assert result['success'] is True
+    assert result['data'][0]['resolved_from'] == 'device'
+
+    method, req = wire.calls[0]
+    assert method == 'GetDeviceParamsList'
+    assert isinstance(req, algo_pb.GetDeviceParamsListRequest)
+    assert req.algorithm_type == 'voice_llm'
+    assert req.HasField('device_id') and req.device_id == 801
+
+
+def test_get_device_params_omits_absent_device_id(wire):
+    """device_id 未传时不写该键：presence 缺失 → 算法级默认口径，不落成 0。"""
+    proxy = _AlgorithmConfigProxy()
+    proxy.get_device_params(algorithm_type='voice_llm')
+
+    _, req = wire.calls[0]
+    assert isinstance(req, algo_pb.GetDeviceParamsListRequest)
+    assert not req.HasField('device_id')
+
+
+def test_acl_get_device_params_routes_to_query_stub(wire, monkeypatch):
+    """ACL 端口 get_device_params 存在且同样不打 task 通道 stub。"""
+    from api_gateway.infrastructure.acl.config_acl_repository import (
+        AlgorithmConfigAclRepositoryImpl,
+    )
+
+    result = AlgorithmConfigAclRepositoryImpl().get_device_params(
+        algorithm_type='voice_llm', device_id=801)
+
+    assert result.success is True
+    method, _ = wire.calls[0]
+    assert method == 'GetDeviceParamsList'
 
 
 def test_failure_returns_error_envelope(monkeypatch):

@@ -193,6 +193,9 @@ class AlgorithmParamListQuery(APIModel):
     # API 参数改为 API 实例作用域（api_id），算法类型级默认层废弃：
     # param_type=api 时必须带 api_id，只返回该 API 的字段声明行。
     api_id: Optional[int] = Field(None, ge=1, description='API 实例ID（param_type=api 时必填）')
+    # 设备参数读取：带 device_id 时返回三层解析结果（INT-2299），只对
+    # param_type=device 生效，且必须带 algorithm_type（服务层校验，违规 400）。
+    device_id: Optional[int] = Field(None, ge=1, description='设备ID（返回三层解析结果）')
 
 
 class AlgorithmCaseParamListQuery(APIModel):

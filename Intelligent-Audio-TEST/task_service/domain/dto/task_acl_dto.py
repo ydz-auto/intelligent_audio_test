@@ -50,6 +50,10 @@ class DeviceParamDTO:
     """设备参数 DTO（对应 AlgorithmDeviceParam.to_dict()）"""
     id: Optional[int] = None
     algorithm_type: Optional[str] = None
+    # INT-2299：作用域列，NULL=算法类型级默认行，非空=该设备覆盖行。
+    # 缺这一列时 ``_items`` 的 DTO 投影会把设备行上的 device_id 丢掉，写侧
+    # 无法识别「本设备覆盖 / 算法级」。
+    device_id: Optional[int] = None
     param_code: Optional[str] = None
     param_name: Optional[str] = None
     label: Optional[str] = None

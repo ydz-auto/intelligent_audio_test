@@ -80,11 +80,27 @@ class AlgorithmQueryService:
 
         API 参数已下沉到 API 实例作用域：param_type=api 必须带 api_id，只返回该
         API 的字段声明行（算法类型级默认层废弃）。
-        """
-        query_params_dict = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
-        query_params = AlgorithmParamListQuery.model_validate(query_params_dict)
 
-        if query_params.param_type == 'api':
+        带 device_id 时返回该设备的三层解析结果（算法级默认 → 设备绑定策略 →
+        本设备覆盖，INT-2299），响应为裸数组 + 缓存行键（带 ``resolved_from``）；
+        不带 device_id 时保持原口径——task_service 的原始行 + 分页信封，React
+        抽屉写侧依赖它做增删改。
+        """
+        query_params = _parse_query_params(AlgorithmParamListQuery)
+
+        if query_params.device_id is not None:
+            # device_id 只对 param_type=device 有意义：策略/设备作用域都挂在
+            # 设备参数表上，其它 param_type 组合按参数冲突拒绝（C1）。
+            if not query_params.algorithm_type:
+                return error_response('带 device_id 时必须带 algorithm_type（设备参数按算法类型解析）', 400)
+            if query_params.param_type != 'device':
+                return error_response(
+                    f'device_id 只支持 param_type=device（当前 param_type={query_params.param_type}）', 400)
+            result = _algorithm_acl.get_device_params(
+                algorithm_type=query_params.algorithm_type,
+                device_id=query_params.device_id,
+            )
+        elif query_params.param_type == 'api':
             if query_params.api_id is None:
                 return error_response('param_type=api 时必须带 api_id（API 参数按 API 实例作用域读取）', 400)
             result = _algorithm_acl.get_api_params(

@@ -391,6 +391,32 @@ class _AlgorithmConfigProxy:
             error_msg_prefix='获取API参数列表失败',
         )
 
+    def get_device_params(self, algorithm_type=None, device_id=None):
+        """设备参数三层解析结果（设备实例作用域，INT-2299 契约）。
+
+        走 algorithm_service.AlgorithmQueryService.GetDeviceParamsList（读侧归属
+        algorithm_service，task_service 的 AlgorithmConfigService 没有该 RPC，
+        与 ``get_api_params`` 同因，INT-2165）：proto3 optional device_id 用
+        presence 表达「未传 vs 显式值」；带值时行额外带 ``resolved_from`` /
+        ``profile_param_id``（打标在 algorithm_service 内完成，网关不反推）。
+        """
+        from shared.proto import algorithm_service_pb2 as algo_pb
+        from shared.clients.grpc_clients import get_algorithm_query_service_stub
+
+        def _call():
+            stub = get_algorithm_query_service_stub()
+            kwargs = {'algorithm_type': algorithm_type or ''}
+            if device_id is not None:
+                kwargs['device_id'] = int(device_id)
+            return self._resp(
+                stub.GetDeviceParamsList(algo_pb.GetDeviceParamsListRequest(**kwargs))
+            )
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'获取设备参数列表失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='获取设备参数列表失败',
+        )
+
     def get_param_mapping_for_component(self, algorithm_type=None, component_type=None, api_id=None, device_id=None):
         """参数映射（按组件 + API/设备实例作用域）。
 
