@@ -162,6 +162,26 @@ function nullableStr(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null
 }
 
+/**
+ * 默认值列归一：后端是 `Text` 列（存 JSON 或纯文本，读侧 `parse_json_or_raw`
+ * 会把 `"3"` / `"true"` / `"{...}"` 解析回标量或对象）。这里必须把标量还原成
+ * 字符串——否则 number/boolean 型默认值读成 null，界面回显为空、保存时按空值
+ * 提交把库里的值清掉（INT-2281）。
+ *
+ * 写回口径与后端 `_text_or_json` 对称：字符串原样，其它序列化成 JSON 文本。
+ */
+function scalarTextOrNull(value: unknown): string | null {
+  if (typeof value === 'string') return value === '' ? null : value
+  if (value == null) return null
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : null
+  if (typeof value === 'boolean') return String(value)
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return null
+  }
+}
+
 function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
@@ -182,7 +202,7 @@ export function toDeviceApiParam(raw: unknown): DeviceApiParam {
     paramType: str(r.param_type) || 'text',
     direction: r.direction === 'output' ? 'output' : 'input',
     required: bool(r.required),
-    defaultValue: nullableStr(r.default_value),
+    defaultValue: scalarTextOrNull(r.default_value),
     helpText: nullableStr(r.help_text),
     uiOrder: num(r.ui_order) ?? 0,
     hidden: bool(r.hidden),
@@ -199,7 +219,7 @@ export function toCaseParam(raw: unknown): CaseParam {
     label: nullableStr(r.label),
     paramType: str(r.param_type) || 'text',
     required: bool(r.required),
-    defaultValue: nullableStr(r.default_value),
+    defaultValue: scalarTextOrNull(r.default_value),
     helpText: nullableStr(r.help_text),
     uiOrder: num(r.ui_order) ?? 0,
     hidden: bool(r.hidden),

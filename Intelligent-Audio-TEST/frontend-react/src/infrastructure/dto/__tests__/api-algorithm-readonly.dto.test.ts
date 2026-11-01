@@ -72,6 +72,27 @@ describe('toAlgorithmApiParam（GET /algorithm/params?param_type=api）', () => 
     expect(toAlgorithmApiParam({ id: 4, validation_rules: null, validation: '' }).validationRules)
       .toBeNull()
   })
+
+  it('标量 default_value 归一为字符串回显（INT-2281 返工）', () => {
+    // 后端 Text 列存 JSON 文本，读侧 parse_json_or_raw 后 number/boolean 是标量；
+    // 不归一 → 界面回显为空、保存按空值提交把 3 清成 null
+    expect(
+      toAlgorithmApiParam({ id: 5, param_code: 'round_count', param_type: 'number', default_value: 3 })
+        .defaultValue
+    ).toBe('3')
+    expect(toAlgorithmApiParam({ param_code: 'flag', default_value: true }).defaultValue).toBe(
+      'true'
+    )
+    expect(
+      toAlgorithmApiParam({ param_code: 'cfg', default_value: { rounds: 3 } }).defaultValue
+    ).toBe('{"rounds":3}')
+    // 文本与空值口径不变
+    expect(toAlgorithmApiParam({ param_code: 'txt', default_value: '未识别' }).defaultValue).toBe(
+      '未识别'
+    )
+    expect(toAlgorithmApiParam({ param_code: 'none', default_value: null }).defaultValue).toBeNull()
+    expect(toAlgorithmApiParam({ param_code: 'empty', default_value: '' }).defaultValue).toBeNull()
+  })
 })
 
 describe('rowsFromPayload（/algorithm/params 与 /algorithm/mappings 的 data 形态）', () => {

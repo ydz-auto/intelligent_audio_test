@@ -370,6 +370,46 @@ describe('参数配置页签', () => {
     })
   })
 
+  it('number 型默认值回显为 3，不改动直接保存仍提交 3（不被清空，INT-2281 返工）', async () => {
+    paramsMock.mockResolvedValue(
+      [
+        ...RAW_PARAMS,
+        {
+          id: 12,
+          param_code: 'round_count',
+          param_type: 'number',
+          direction: 'output',
+          default_value: 3,
+          required: true,
+          help_text: '对话轮数',
+          hidden: false,
+          label: null,
+          ui_order: 5,
+        },
+      ].map(toAlgorithmApiParam)
+    )
+    renderDialog(API_FIXTURE)
+    openTab('参数配置')
+
+    // 回显：数字 3 归一成字符串「3」，默认值列不是空
+    await waitFor(() =>
+      expect(
+        (screen.getAllByLabelText('默认值') as HTMLInputElement[]).map((input) => input.value)
+      ).toContain('3')
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '保存参数配置' }))
+
+    await waitFor(() => expect(saveOverridesMock).toHaveBeenCalledTimes(1))
+    const payload = saveOverridesMock.mock.calls[0][1] as {
+      params: Array<Record<string, unknown>>
+    }
+    expect(payload.params.find((p) => p.paramCode === 'round_count')).toMatchObject({
+      paramType: 'number',
+      defaultValue: '3',
+    })
+  })
+
   it('映射按读侧 source/sourceDirection 原值提交，不统一改写成 api/output（INT-2281）', async () => {
     renderDialog(API_FIXTURE)
     openTab('参数配置')
