@@ -75,6 +75,8 @@ export interface ApiParamConfigResult {
    * 未知状态返回 null。
    */
   noOutputDeclared: boolean | null
+  /** 读取失败后的重试入口（同时重拉字段行与映射行） */
+  refetch: () => void
 }
 
 /** API 实例的字段行 + 映射（参数配置页签 + 响应解析页签 C0 判定共用一次请求） */
@@ -171,6 +173,10 @@ export function useApiParamConfig(
     caseParams: caseParamsQuery.data ?? [],
     dimensions,
     noOutputDeclared: state === 'ready' ? outputParams.length === 0 : null,
+    refetch: () => {
+      void paramsQuery.refetch()
+      void mappingsQuery.refetch()
+    },
   }
 }
 

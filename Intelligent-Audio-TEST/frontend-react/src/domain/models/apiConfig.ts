@@ -84,7 +84,10 @@ export type AlgorithmApiParam = {
   paramName: string | null
   label: string | null
   paramType: string
-  /** 参数配置页签只维护输出字段（direction 固定 output） */
+  /**
+   * 参数方向：页签只编辑 output 行；input 行仅作输入映射的目标候选，
+   * 保存时按读到的原值透传（整份保存不能丢 input 覆盖行，INT-2270）。
+   */
   direction: ParamDirection
   required: boolean
   defaultValue: string | null
@@ -92,6 +95,11 @@ export type AlgorithmApiParam = {
   uiOrder: number
   hidden: boolean
   fieldPath: string | null
+  /**
+   * 校验规则（后端 `validation_rules` 列，JSON 文本原样）。
+   * 参数配置页签无编辑控件：整份保存时按读到的原值透传（INT-2270）。
+   */
+  validationRules?: string | null
 }
 
 /**

@@ -29,6 +29,17 @@ function nullableStr(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null
 }
 
+/** Text/JSON 列统一收敛为字符串（后端 `_text_or_json` 可能存对象） */
+function textOrNull(value: unknown): string | null {
+  if (typeof value === 'string') return value === '' ? null : value
+  if (value == null) return null
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return null
+  }
+}
+
 /**
  * `/algorithm/params`、`/algorithm/mappings` 的 data 兼容两种形态：
  * 统一分页信封 `{ items, total }`（旧契约）与裸数组（现有 gRPC 返回值）。
@@ -53,6 +64,8 @@ export function toAlgorithmApiParam(raw: unknown): AlgorithmApiParam {
     ...param,
     direction: param.direction === 'output' ? 'output' : 'input',
     fieldPath: nullableStr(r.field_path),
+    // 校验规则无编辑控件：读出来供整份保存时原值透传（INT-2270）
+    validationRules: textOrNull(r.validation_rules ?? r.validation),
   }
 }
 

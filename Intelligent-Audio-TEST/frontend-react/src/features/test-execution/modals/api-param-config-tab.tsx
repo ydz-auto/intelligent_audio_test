@@ -162,20 +162,69 @@ function draftInputMappingsOf(rows: EditableInputMappingRow[]): ParamProfileMapp
     }))
 }
 
-function draftParamsOf(rows: EditableParamRow[]): ParamProfileParamDraft[] {
+/** 服务端字段行按参数代码索引（整份保存时取未展示字段的原值） */
+function originMapOf(params: AlgorithmApiParam[]): Map<string, AlgorithmApiParam> {
+  return new Map(params.map((param) => [param.paramCode, param]))
+}
+
+function normalizeParamType(value: string): ParamType {
+  return PARAM_TYPES.includes(value as ParamType) ? (value as ParamType) : 'text'
+}
+
+/**
+ * 输出字段行 → 提交草稿。
+ *
+ * 界面只编辑代码/名称/类型/排序/响应路径；`required / defaultValue / helpText /
+ * hidden / label / validationRules` 没有编辑控件，必须按读到的原值透传——
+ * `PUT /algorithm/api-scope/{id}/overrides` 是整份保存，缺省即被清空（INT-2270）。
+ */
+function draftParamsOf(
+  rows: EditableParamRow[],
+  originals: Map<string, AlgorithmApiParam>
+): ParamProfileParamDraft[] {
   return rows
     .filter((row) => row.paramCode.trim())
-    .map((row) => ({
-      paramCode: row.paramCode.trim(),
-      paramName: row.paramName.trim() || null,
-      paramType: row.paramType,
-      direction: 'output',
-      required: false,
-      defaultValue: null,
-      helpText: null,
-      uiOrder: Number(row.uiOrder) || 0,
-      hidden: false,
-      fieldPath: row.fieldPath.trim() || null,
+    .map((row) => {
+      const paramCode = row.paramCode.trim()
+      const origin = originals.get(paramCode)
+      return {
+        paramCode,
+        paramName: row.paramName.trim() || null,
+        paramType: row.paramType,
+        direction: 'output',
+        required: origin?.required ?? false,
+        defaultValue: origin?.defaultValue ?? null,
+        helpText: origin?.helpText ?? null,
+        uiOrder: Number(row.uiOrder) || 0,
+        hidden: origin?.hidden ?? false,
+        fieldPath: row.fieldPath.trim() || null,
+        label: origin?.label ?? null,
+        validationRules: origin?.validationRules ?? null,
+      }
+    })
+}
+
+/**
+ * 输入字段（本页签只作输入映射的目标候选，不展示编辑控件）→ 提交草稿。
+ *
+ * 覆盖行按 (param_code, direction) 整份同步：不提交 input 行 = 保存时把它们软删。
+ */
+function draftInputParamsOf(params: AlgorithmApiParam[]): ParamProfileParamDraft[] {
+  return params
+    .filter((param) => param.paramCode.trim())
+    .map((param) => ({
+      paramCode: param.paramCode.trim(),
+      paramName: param.paramName,
+      paramType: normalizeParamType(param.paramType),
+      direction: 'input',
+      required: param.required,
+      defaultValue: param.defaultValue,
+      helpText: param.helpText,
+      uiOrder: Number(param.uiOrder) || 0,
+      hidden: param.hidden,
+      fieldPath: param.fieldPath,
+      label: param.label ?? null,
+      validationRules: param.validationRules ?? null,
     }))
 }
 
@@ -286,6 +335,11 @@ export function ApiParamConfigTab({
   const hasApiScope = apiId != null && Boolean(algorithmType)
   const config = useApiParamConfig(apiId, algorithmType, hasApiScope)
   const profiles = useParamProfileOptions(algorithmType, hasApiScope, apiId)
+  /** 服务端输出行（按参数代码索引）：整份保存时透传界面未展示的字段 */
+  const outputOriginals = useMemo(
+    () => originMapOf(config.outputParams),
+    [config.outputParams]
+  )
 
   const [outputRows, setOutputRows] = useState<EditableParamRow[]>([])
   const [mappingRows, setMappingRows] = useState<EditableMappingRow[]>([])
@@ -304,6 +358,11 @@ export function ApiParamConfigTab({
   /** 依赖服务端 API 实例的动作（绑定 / 另存 / 克隆 / 立即保存）需先有 id */
   const persisted = apiId != null
   const canPersist = editable && persisted
+  /**
+   * 读侧就绪才允许整份保存：加载 / 失败时 outputRows、mappingRows 是空数组，
+   * 此时提交等于用空集覆盖，会把该 API 的覆盖行全部软删（INT-2270）。
+   */
+  const configReady = config.state === 'ready'
 
   // 策略列表回读出本 API 的绑定 → 下拉回显；服务端值变化才同步，避免覆盖本地绑定结果
   const boundProfileIdFromServer = profiles.boundProfileId
@@ -400,13 +459,23 @@ export function ApiParamConfigTab({
   // 草稿上抛（新建态由弹窗在创建成功后统一提交，避免用户先保存再回来配参数）
   useEffect(() => {
     onDraftChange?.({
-      params: draftParamsOf(outputRows),
+      params: [
+        ...draftParamsOf(outputRows, outputOriginals),
+        ...draftInputParamsOf(config.inputParams),
+      ],
       mappings: [
         ...draftMappingsOf(mappingRows),
         ...draftInputMappingsOf(inputMappingRows),
       ],
     })
-  }, [outputRows, mappingRows, inputMappingRows, onDraftChange])
+  }, [
+    outputRows,
+    outputOriginals,
+    config.inputParams,
+    mappingRows,
+    inputMappingRows,
+    onDraftChange,
+  ])
 
   // 映射行「源参数」下拉候选 = 本 API 的输出字段；存量值已不在声明里时补一项，
   // 避免打开就丢值。
@@ -482,8 +551,14 @@ export function ApiParamConfigTab({
         name: input.name,
         description: input.description,
         status: 'online',
-        params: draftParamsOf(outputRows),
-        mappings: draftMappingsOf(mappingRows),
+        params: [
+          ...draftParamsOf(outputRows, outputOriginals),
+          ...draftInputParamsOf(config.inputParams),
+        ],
+        mappings: [
+          ...draftMappingsOf(mappingRows),
+          ...draftInputMappingsOf(inputMappingRows),
+        ],
       }
       return createProfile(payload)
     },
@@ -515,7 +590,11 @@ export function ApiParamConfigTab({
       if (apiId == null) throw new Error('API 尚未保存')
       return saveApiScopeOverrides(apiId, {
         algorithmType,
-        params: draftParamsOf(outputRows),
+        // 整份保存：output 行 + input 声明行一起提交，未提交的既有覆盖行会被软删（INT-2270）
+        params: [
+          ...draftParamsOf(outputRows, outputOriginals),
+          ...draftInputParamsOf(config.inputParams),
+        ],
         mappings: [
           ...draftMappingsOf(mappingRows),
           ...draftInputMappingsOf(inputMappingRows),
@@ -622,7 +701,20 @@ export function ApiParamConfigTab({
       )}
 
       {config.state === 'error' && (
-        <p className='text-destructive text-xs'>参数配置读取失败，稍后可重新打开弹窗再试。</p>
+        <div className='flex flex-wrap items-center gap-2'>
+          <p className='text-destructive text-xs'>
+            参数配置读取失败，未就绪时不能保存（整份保存会清空既有覆盖行）。
+          </p>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            className='h-7 text-xs'
+            onClick={() => config.refetch()}
+          >
+            重试
+          </Button>
+        </div>
       )}
 
       {/* 策略绑定 */}
@@ -654,7 +746,7 @@ export function ApiParamConfigTab({
             variant='outline'
             size='sm'
             className='h-7 text-xs'
-            disabled={!canPersist || createMutation.isPending}
+            disabled={!canPersist || !configReady || createMutation.isPending}
             onClick={() => openNameDialog('create')}
           >
             另存为新策略
@@ -1116,7 +1208,7 @@ export function ApiParamConfigTab({
           <Button
             type='button'
             size='sm'
-            disabled={!canPersist || saveMutation.isPending}
+            disabled={!canPersist || !configReady || saveMutation.isPending}
             onClick={() => saveMutation.mutate()}
           >
             {saveMutation.isPending ? '保存中…' : '保存参数配置'}

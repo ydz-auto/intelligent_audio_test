@@ -40,7 +40,20 @@ describe('toAlgorithmApiParam（GET /algorithm/params?param_type=api）', () => 
       uiOrder: 21,
       hidden: false,
       fieldPath: null,
+      validationRules: null,
     })
+  })
+
+  it('validation_rules 读到后透传（无编辑控件，保存时按原值回写）', () => {
+    expect(
+      toAlgorithmApiParam({ id: 2, param_code: 'asr_text', validation_rules: '{"min_length":1}' })
+        .validationRules
+    ).toBe('{"min_length":1}')
+    // 后端 `_po_to_dict` 的另一套键名 `validation`
+    expect(
+      toAlgorithmApiParam({ id: 3, param_code: 'asr_text', validation: '{"max_length":9}' })
+        .validationRules
+    ).toBe('{"max_length":9}')
   })
 
   it('field_path 落库后透传（C2/INT-1747）', () => {

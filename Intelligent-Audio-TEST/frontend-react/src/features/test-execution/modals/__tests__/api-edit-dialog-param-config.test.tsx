@@ -138,7 +138,19 @@ const PROFILE_FIXTURE: ParamProfile = {
 
 /** 后端 api-scope 解析结果（策略 + 实例覆盖；无算法类型级默认层） */
 const RAW_PARAMS = [
-  { id: 7, param_code: 'input_text', param_type: 'text', direction: 'input', field_path: null },
+  {
+    id: 7,
+    param_code: 'input_text',
+    param_name: '输入文本',
+    param_type: 'text',
+    direction: 'input',
+    required: true,
+    default_value: '你好',
+    help_text: '用户这句问话',
+    hidden: true,
+    field_path: null,
+    validation_rules: '{"max_length": 200}',
+  },
   {
     id: 9,
     param_code: 'response_audio',
@@ -154,6 +166,7 @@ const RAW_PARAMS = [
     direction: 'output',
     field_path: 'data.items[0].text',
     label: 'ASR 文本',
+    validation_rules: '{"min_length": 1}',
   },
 ]
 
@@ -264,7 +277,7 @@ describe('参数配置页签', () => {
     await waitFor(() => expect(bindMock).toHaveBeenCalledWith(21, 12))
   })
 
-  it('保存参数配置 → PUT overrides（body 只含 output 字段与 api 映射）', async () => {
+  it('保存参数配置 → PUT overrides（body 含 output 行与 input 声明行，input 覆盖行不被整份删）', async () => {
     renderDialog(API_FIXTURE)
     openTab('参数配置')
     await screen.findByDisplayValue('response_audio')
@@ -274,13 +287,58 @@ describe('参数配置页签', () => {
     await waitFor(() => expect(saveOverridesMock).toHaveBeenCalledTimes(1))
     const [, payload] = saveOverridesMock.mock.calls[0]
     expect(payload).toMatchObject({ algorithmType: 'voice_llm' })
-    const params = (payload as { params: Array<{ paramCode: string; direction: string }> }).params
+    const params = (
+      payload as {
+        params: Array<{
+          paramCode: string
+          direction: string
+          required: boolean
+          defaultValue: string | null
+          helpText: string | null
+          hidden: boolean
+          label: string | null
+          validationRules: string | null
+        }>
+      }
+    ).params
     expect(params.map((p) => [p.paramCode, p.direction])).toEqual([
       ['response_audio', 'output'],
       ['asr_text', 'output'],
+      ['input_text', 'input'],
     ])
     const mappings = (payload as { mappings: Array<{ source: string }> }).mappings
     expect(mappings.map((m) => m.source)).toEqual(['api'])
+  })
+
+  it('保存时按原值透传界面未展示的字段（input 的 required/default/help/hidden，output 的 label/validation）', async () => {
+    renderDialog(API_FIXTURE)
+    openTab('参数配置')
+    await screen.findByDisplayValue('response_audio')
+
+    fireEvent.click(screen.getByRole('button', { name: '保存参数配置' }))
+    await waitFor(() => expect(saveOverridesMock).toHaveBeenCalledTimes(1))
+
+    const payload = saveOverridesMock.mock.calls[0][1] as {
+      params: Array<Record<string, unknown>>
+    }
+    const byCode = new Map(payload.params.map((p) => [p.paramCode as string, p]))
+
+    // 输入声明行：4 个无控件字段原值透传，整份保存不再把它们清空
+    expect(byCode.get('input_text')).toMatchObject({
+      direction: 'input',
+      paramName: '输入文本',
+      required: true,
+      defaultValue: '你好',
+      helpText: '用户这句问话',
+      hidden: true,
+      validationRules: '{"max_length": 200}',
+    })
+    // 输出行：label / validation_rules 也按读到的原值回写
+    expect(byCode.get('asr_text')).toMatchObject({
+      label: 'ASR 文本',
+      validationRules: '{"min_length": 1}',
+      fieldPath: 'data.items[0].text',
+    })
   })
 
   it('删除输出字段后保存：该行不再提交', async () => {
@@ -296,7 +354,8 @@ describe('参数配置页签', () => {
     const payload = saveOverridesMock.mock.calls[0][1] as {
       params: Array<{ paramCode: string }>
     }
-    expect(payload.params.map((p) => p.paramCode)).toEqual(['asr_text'])
+    // 删除的 output 行不再提交；input 声明行照常并入（否则会被整份保存软删）
+    expect(payload.params.map((p) => p.paramCode)).toEqual(['asr_text', 'input_text'])
   })
 
   it('另存为新策略 → POST create 后绑定新策略', async () => {
@@ -312,6 +371,33 @@ describe('参数配置页签', () => {
 
     await waitFor(() => expect(createProfileMock).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(bindMock).toHaveBeenCalledWith(21, 99))
+  })
+
+  it('读侧加载中 → 保存 / 另存按钮禁用（此时行是空集，整份提交会清空覆盖行）', async () => {
+    paramsMock.mockReturnValue(new Promise(() => {}))
+    renderDialog(API_FIXTURE)
+    openTab('参数配置')
+
+    expect((await screen.findAllByText('正在读取参数配置…')).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: '保存参数配置' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '另存为新策略' })).toBeDisabled()
+  })
+
+  it('读侧失败 → 保存禁用并给出重试；重试成功后恢复可保存', async () => {
+    paramsMock.mockRejectedValueOnce(new Error('network down'))
+    renderDialog(API_FIXTURE)
+    openTab('参数配置')
+
+    const retry = await screen.findByRole('button', { name: '重试' })
+    const saveButton = screen.getByRole('button', { name: '保存参数配置' })
+    expect(saveButton).toBeDisabled()
+    expect(paramsMock).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(retry)
+
+    await waitFor(() => expect(saveButton).toBeEnabled())
+    expect(await screen.findByDisplayValue('response_audio')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument()
   })
 
   it('algorithm:read 403 → 页签「无权查看参数配置」，不影响保存', async () => {
