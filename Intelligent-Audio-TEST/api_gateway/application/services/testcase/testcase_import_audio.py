@@ -2,7 +2,7 @@
 """用例 ZIP 导入的包内音频回导（INT-2215）。
 
 导出侧（INT-2214）把用例引用音频打进 `audios/{audio_id}.{ext}`，manifest 带
-`audios[] = {id, name, file, md5, size, format}` 与缺失计数。导入侧要按包内
+`audios[] = {id, name, file, md5, size, format, audio_type}` 与缺失计数。导入侧要按包内
 **字节**把音频回导到目标库，再把用例 config / 扁平列里的音频 id 全部重写成
 目标库 id——绝不按 audio_id 直接绑定（目标库同 id 可能是另一条音频）。
 
@@ -27,12 +27,34 @@ logger = logging.getLogger(__name__)
 REGISTER_FAIL_REASON_MISSING_IN_PACKAGE = 'missing_in_package'
 REGISTER_FAIL_REASON_NO_MD5 = 'missing_md5'
 
+# 音频类型白名单（与 audio_service `_ALLOWED_AUDIO_TYPES` 同口径）
+ALLOWED_AUDIO_TYPES = ('dry', 'noise', 'prompt', 'mixed')
+DEFAULT_AUDIO_TYPE = 'dry'
+
+
+def _normalize_audio_type(item, source_id):
+    """清单条目的 audio_type：缺失 / 空串 / 未知值回落 dry（未知值告警不阻断）。
+
+    老包（INT-2214 之前发布的、清单无该键）按 dry 落库，行为与本卡之前一致；
+    缺键 / 空串属预期，不告警；只有写了值的未知取值才告警。
+    """
+    raw = item.get('audio_type', item.get('audioType'))
+    value = str(raw or '').strip().lower()
+    if not value:
+        return DEFAULT_AUDIO_TYPE
+    if value not in ALLOWED_AUDIO_TYPES:
+        logger.warning(
+            "用例包音频类型非法，按 dry 处理: audio_id=%s audio_type=%s",
+            source_id, raw)
+        return DEFAULT_AUDIO_TYPE
+    return value
+
 
 class ImportAudioPackage:
     """包内音频清单（parse 自 manifest + audios/ 二进制）。"""
 
     def __init__(self, entries=None, unavailable=None):
-        # entries: [{source_id, name, file, md5, size, format, content}]
+        # entries: [{source_id, name, file, md5, size, format, audio_type, content}]
         self.entries = entries or []
         # unavailable: {source_id: reason} 清单声明但包内取不到（文件缺失/无 md5）
         self.unavailable = unavailable or {}
@@ -91,6 +113,8 @@ class ImportAudioPackage:
                 'md5': md5,
                 'size': _to_int(item.get('size')) or len(content),
                 'format': str(item.get('format') or _ext_of(zip_path) or 'wav'),
+                # 类型随包透传（INT-2311）；老包缺键 / 空串 / 未知值回落 dry
+                'audio_type': _normalize_audio_type(item, source_id),
                 'content': content,
             })
         return cls(entries, unavailable)
@@ -192,6 +216,8 @@ def _register_entry(audio_acl, entry):
         'format': entry['format'],
         'size': entry['size'],
         'source_filename': entry['source_filename'],
+        # 类型透传（INT-2311）：audio_service 已支持该入参，缺省 dry
+        'audio_type': entry.get('audio_type') or DEFAULT_AUDIO_TYPE,
     }
     try:
         res = audio_acl.register_audio_by_bytes(data)

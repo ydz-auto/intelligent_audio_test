@@ -8,7 +8,8 @@
 3. 引用库内不存在的 id / 二进制读不到 → 200 + missing 计数，不 500、不静默跳过；
 3b. audio_service ACL 不可用 → 5xx（503），不产出半包；
 5. 扩展名 format 优先、回落 file_path 后缀；
-6. 噪声音频（含干扰人与各级 backgroundNoise）同样入包。
+6. 噪声音频（含干扰人与各级 backgroundNoise）同样入包；
+7. 清单条目带 `audio_type`，类型原样透传、源记录缺失回落 `dry`（INT-2311）。
 
 全部用例在宿主树直跑服务层（不经容器镜像），gRPC / 存储用替身隔离。
 """
@@ -119,8 +120,10 @@ def test_export_request_defaults_to_without_audios():
 def _records():
     return [
         {'id': 11, 'name': '播放音频', 'file_path': 'oss://b/play.wav', 'format': 'wav'},
-        {'id': 12, 'name': '干扰人', 'file_path': 'oss://b/interf.mp3', 'format': None},
-        {'id': 13, 'name': None, 'file_path': 'oss://b/noise.wav', 'format': 'FLAC'},
+        {'id': 12, 'name': '干扰人', 'file_path': 'oss://b/interf.mp3', 'format': None,
+         'audio_type': 'noise'},
+        {'id': 13, 'name': None, 'file_path': 'oss://b/noise.wav', 'format': 'FLAC',
+         'audio_type': ''},
     ]
 
 
@@ -174,6 +177,7 @@ def test_zip_includes_audios_and_manifest(monkeypatch):
         'md5': hashlib.md5(b'AAAA').hexdigest(),
         'size': 4,
         'format': 'wav',
+        'audio_type': 'dry',
     }
     assert by_id[13]['name'] == 'noise.wav', 'name 缺失回落文件名'
     for audio_id, record in by_id.items():
@@ -183,6 +187,36 @@ def test_zip_includes_audios_and_manifest(monkeypatch):
     # 去重后只向 audio_service 查一次
     assert len(calls) == 1
     assert calls[0]['ids'] == [11, 12, 13]
+
+
+def test_manifest_audios_carry_audio_type(monkeypatch):
+    """INT-2311：清单条目带 audio_type，导出原样透传，源记录缺失回落 dry。"""
+    records = [
+        {'id': 21, 'name': 'n', 'file_path': 'oss://b/n.wav', 'format': 'wav',
+         'audio_type': 'noise'},
+        {'id': 22, 'name': 'p', 'file_path': 'oss://b/p.wav', 'format': 'wav',
+         'audio_type': 'prompt'},
+        {'id': 23, 'name': 'm', 'file_path': 'oss://b/m.wav', 'format': 'wav',
+         'audio_type': 'mixed'},
+        {'id': 24, 'name': 'legacy', 'file_path': 'oss://b/d.wav', 'format': 'wav'},
+    ]
+    files = {r['file_path']: b'z' * (i + 1) for i, r in enumerate(records)}
+    _fake_audio_lookup(monkeypatch, records)
+    _fake_storage(monkeypatch, files)
+
+    export_data = [_case('c1', {'rounds': [
+        {'audios': [{'audio_id': r['id']} for r in records]}]})]
+    response = TestCaseExportService._generate_zip_export(
+        export_data, include_reference_params=False, include_audios=True)
+    zf, manifest = _read_zip(response)
+
+    assert {a['id']: a['audio_type'] for a in manifest['audios']} == {
+        21: 'noise', 22: 'prompt', 23: 'mixed', 24: 'dry'}
+    assert all('audio_type' in item for item in manifest['audios'])
+    # 条目（写入包内二进制的那份）与清单同源，键集合一致
+    assert set(manifest['audios'][0]) == {
+        'id', 'name', 'file', 'md5', 'size', 'format', 'audio_type'}
+    assert zf.read(manifest['audios'][0]['file'])
 
 
 # ----------------------------------------------------------------------

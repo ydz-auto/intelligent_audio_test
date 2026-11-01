@@ -660,7 +660,8 @@ class TestCaseExportService:
                 "missing_audio_ids": list(missing_audio_ids),
                 "audios": [
                     {key: entry[key] for key in
-                     ('id', 'name', 'file', 'md5', 'size', 'format')}
+                     ('id', 'name', 'file', 'md5', 'size', 'format',
+                      'audio_type')}
                     for entry in audios
                 ],
             }
@@ -767,6 +768,8 @@ class TestCaseExportService:
             'md5': hashlib.md5(content).hexdigest(),
             'size': len(content),
             'format': record.get('format') or ext,
+            # 类型原样透传（noise / prompt / mixed），保证导入回导后不丢；源记录缺失回落 dry
+            'audio_type': str(record.get('audio_type') or '').strip() or 'dry',
             'content': content,
         }
 

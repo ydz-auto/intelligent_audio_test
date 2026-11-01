@@ -109,14 +109,19 @@ def _zip_bytes(cases, audio_files=None, manifest_audios='auto'):
         for item in audio_files or []:
             path = f"audios/{item['id']}.wav"
             zf.writestr(path, item['bytes'])
-            entries.append({
+            entry = {
                 'id': item['id'],
                 'name': item['name'],
                 'file': path,
                 'md5': hashlib.md5(item['bytes']).hexdigest(),
                 'size': len(item['bytes']),
                 'format': 'wav',
-            })
+            }
+            # INT-2311：清单里的 audio_type / audioType 原样写进清单（缺省则老包口径）
+            for key in ('audio_type', 'audioType'):
+                if key in item:
+                    entry[key] = item[key]
+            entries.append(entry)
         if audio_files is not None:
             audios_field = entries if manifest_audios == 'auto' else manifest_audios
             manifest = {
@@ -224,6 +229,7 @@ def test_manifest_parsed_into_package_entries():
     assert entry['source_filename'] == '7.wav'   # 保留扩展名，不触发 ffmpeg 转码分支
     assert entry['md5'] == hashlib.md5(_wav_bytes(1)).hexdigest()
     assert entry['content'] == _wav_bytes(1)
+    assert entry['audio_type'] == 'dry', '老包清单无 audio_type → dry'
 
 
 def test_remap_table_built_from_md5_hits(monkeypatch):
@@ -518,3 +524,94 @@ def test_preview_and_import_errors_comparable(monkeypatch):
     persisted = []
     receipt = _run_import(monkeypatch, 'pkg.zip', data, persisted)
     assert preview['errors'] == receipt['errors']
+
+
+# ----------------------------------------------------------------------
+# 10. audio_type 随包透传（INT-2311）
+# ----------------------------------------------------------------------
+_AUDIO_MODULE_LOGGER = 'api_gateway.application.services.testcase.testcase_import_audio'
+
+
+def test_audio_type_passed_through_to_register(monkeypatch):
+    """清单写 noise → 解析保留 → RegisterAudioByBytes 入参透传 noise。"""
+    acl = _FakeAudioAcl(register_results=[{
+        'success': True, 'message': '登记成功', 'data': {'id': 701, 'reused': False}}])
+    _install_acl(monkeypatch, acl, existing_ids=(701,))
+
+    persisted = []
+    data = _zip_bytes([_simple_case(7)], audio_files=[{
+        'id': 7, 'name': '噪声.wav', 'bytes': _wav_bytes(21), 'audio_type': 'noise'}])
+    assert _parse_package(data).entries[0]['audio_type'] == 'noise'
+    receipt = _run_import(monkeypatch, 'pkg.zip', data, persisted)
+
+    assert acl.register_calls[0]['audio_type'] == 'noise'
+    assert receipt['errors'] == []
+    assert persisted[0]['config']['rounds'][0]['audios'][0]['audio_id'] == 701
+
+
+def test_camel_case_audio_type_honored(monkeypatch):
+    """清单用 camelCase `audioType` 同样识别（与仓库既有双口径读法一致）。"""
+    acl = _FakeAudioAcl(register_results=[{
+        'success': True, 'message': '登记成功', 'data': {'id': 702, 'reused': False}}])
+    _install_acl(monkeypatch, acl, existing_ids=(702,))
+
+    data = _zip_bytes([_simple_case(7)], audio_files=[{
+        'id': 7, 'name': '提示音.wav', 'bytes': _wav_bytes(22), 'audioType': 'prompt'}])
+    _run_import(monkeypatch, 'pkg.zip', data, [])
+
+    assert acl.register_calls[0]['audio_type'] == 'prompt'
+
+
+def test_old_package_audio_type_defaults_to_dry(monkeypatch, caplog):
+    """老包（清单无该键 / 空串）→ dry，不告警、不阻断。"""
+    acl = _FakeAudioAcl(register_results=[
+        {'success': True, 'message': '登记成功', 'data': {'id': 703, 'reused': False}},
+        {'success': True, 'message': '登记成功', 'data': {'id': 704, 'reused': False}},
+    ])
+    _install_acl(monkeypatch, acl, existing_ids=(703, 704))
+
+    caplog.clear()
+    with caplog.at_level('WARNING', logger=_AUDIO_MODULE_LOGGER):
+        data = _zip_bytes([_simple_case(7), _simple_case(8)], audio_files=[
+            {'id': 7, 'name': '老包A.wav', 'bytes': _wav_bytes(23)},
+            {'id': 8, 'name': '老包B.wav', 'bytes': _wav_bytes(24), 'audio_type': ''},
+        ])
+        receipt = _run_import(monkeypatch, 'old.zip', data, [])
+
+    assert [c['audio_type'] for c in acl.register_calls] == ['dry', 'dry']
+    assert receipt['errors'] == []
+    assert not [r for r in caplog.records if '音频类型非法' in r.getMessage()]
+
+
+def test_invalid_audio_type_falls_back_to_dry_with_warning(monkeypatch, caplog):
+    """未知取值 → dry + warning，导入照常成功（不因单条未知值阻断整包）。"""
+    acl = _FakeAudioAcl(register_results=[{
+        'success': True, 'message': '登记成功', 'data': {'id': 705, 'reused': False}}])
+    _install_acl(monkeypatch, acl, existing_ids=(705,))
+
+    caplog.clear()
+    with caplog.at_level('WARNING', logger=_AUDIO_MODULE_LOGGER):
+        data = _zip_bytes([_simple_case(7)], audio_files=[{
+            'id': 7, 'name': '怪类型.wav', 'bytes': _wav_bytes(25), 'audio_type': 'xxx'}])
+        receipt = _run_import(monkeypatch, 'pkg.zip', data, [])
+
+    assert acl.register_calls[0]['audio_type'] == 'dry'
+    assert receipt['errors'] == []
+    warns = [r for r in caplog.records if '音频类型非法' in r.getMessage()]
+    assert len(warns) == 1 and 'xxx' in warns[0].getMessage()
+
+
+def test_md5_reuse_does_not_rewrite_audio_type(monkeypatch):
+    """md5 复用分支不变：命中目标库既有记录即复用，不登记、不改其类型。"""
+    md5 = hashlib.md5(_wav_bytes(26)).hexdigest()
+    acl = _FakeAudioAcl(md5_hits={md5: 706})
+    _install_acl(monkeypatch, acl, existing_ids=(706,))
+
+    persisted = []
+    data = _zip_bytes([_simple_case(7)], audio_files=[{
+        'id': 7, 'name': '噪声复用.wav', 'bytes': _wav_bytes(26), 'audio_type': 'noise'}])
+    receipt = _run_import(monkeypatch, 'pkg.zip', data, persisted)
+
+    assert acl.register_calls == [], '复用分支不得登记，也就不会改写目标库记录的 audio_type'
+    assert receipt['audio_reused_count'] == 1
+    assert persisted[0]['config']['rounds'][0]['audios'][0]['audio_id'] == 706
