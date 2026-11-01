@@ -42,6 +42,14 @@
 
     重复执行命中 0 行。
 
+INT-2303（悬空映射）：
+    复制口径只认「维度未软删」的源行（``dimension_id IS NULL`` 的行照抄——设备侧
+    允许不挂维度），并在处理任何算法类型之前先回收旧部署遗留的「生效映射 → 已
+    软删维度」行（幂等 UPDATE，重复执行命中 0 行）。维度树被软删时，
+    ``202609/seed_interruption_dimensions.py`` 的级联也同步软删
+    ``param_profile_mappings``；两处合起来不再产生悬空引用。硬删仍走数据清理卡
+    （INT-2294），不进引导链。
+
 用法：
     python scripts/migrations/202611/migrate_device_params_to_profiles.py            # 预览
     python scripts/migrations/202611/migrate_device_params_to_profiles.py --apply    # 执行
@@ -75,6 +83,8 @@ REQUIRED_COLUMNS = (
     'param_profile_mappings.profile_id',
     'device_param_bindings.device_id',
     'devices.supported_algorithms',
+    # INT-2303：映射复制/回收都按维度软删状态过滤
+    'dimensions.deleted',
 )
 
 # 只处理正式登记的算法类型（排除 int2213_perf_* 这类用例残留）
@@ -137,6 +147,9 @@ _COPY_PARAMS_SQL = """
 """
 
 # INT-2275：同上，dimension_id 可为 NULL，用 IS NOT DISTINCT FROM。
+# INT-2303：跳过「指向已软删维度」的映射行——这类源头行往往自身没软删（维度树
+# 被级联软删的旧路径留下的），照抄就会每轮把悬空引用复制成一条新的生效策略映射。
+# dimension_id 为 NULL 表示不挂维度（设备侧合法形态），不能因为 exists 判定被误伤。
 _COPY_MAPPINGS_SQL = """
     INSERT INTO param_profile_mappings (
         profile_id, source, source_param, source_direction, dimension_id,
@@ -146,6 +159,10 @@ _COPY_MAPPINGS_SQL = """
       FROM param_mappings a
      WHERE a.algorithm_type = %s AND a.source = 'device'
        AND a.api_id IS NULL AND a.device_id IS NULL AND a.deleted IS NOT TRUE
+       AND (
+            a.dimension_id IS NULL
+            OR EXISTS (SELECT 1 FROM dimensions d
+                        WHERE d.id = a.dimension_id AND d.deleted IS NOT TRUE))
        AND NOT EXISTS (
            SELECT 1 FROM param_profile_mappings pm
             WHERE pm.profile_id = %s
@@ -154,6 +171,20 @@ _COPY_MAPPINGS_SQL = """
               AND pm.dimension_id IS NOT DISTINCT FROM a.dimension_id)
     ON CONFLICT (profile_id, source, source_param, dimension_id)
         WHERE deleted = false DO NOTHING
+"""
+
+# INT-2303：回收历史孤儿——生效策略映射指向已软删维度。上面的复制过滤只能拦住
+# 「新复制」，旧部署已经复制出来的行仍在库里；本脚本每轮引导都跑且排在全部维度
+# 种子之后，这里做一次幂等软删，让悬空行在一次引导后就归零（重复执行命中 0 行）。
+# 只碰「维度确实已软删」的行：dimension_id 为 NULL 不参与 join；硬删走数据清理卡
+# （INT-2294），不进引导链。
+_PURGE_DANGLING_MAPPINGS_SQL = """
+    UPDATE param_profile_mappings ppm
+       SET deleted = true, updated_at = NOW()
+      FROM dimensions d
+     WHERE d.id = ppm.dimension_id
+       AND d.deleted IS TRUE
+       AND ppm.deleted IS NOT TRUE
 """
 
 # INT-2275：NOT EXISTS 不筛 deleted——设备曾在 UI 解绑（绑定行软删）就不再自动
@@ -183,6 +214,11 @@ _COUNT_SQL = {
          WHERE p.scope = 'device' AND p.deleted = false AND pm.deleted = false""",
     'device_param_bindings(有效)': """
         SELECT count(*) FROM device_param_bindings WHERE deleted = false""",
+    # INT-2303：应为 0；非 0 说明有生效映射指向已软删维度（apply 会幂等回收）
+    'param_profile_mappings(悬空·指向软删维度)': """
+        SELECT count(*) FROM param_profile_mappings ppm
+          JOIN dimensions d ON d.id = ppm.dimension_id
+         WHERE d.deleted IS TRUE AND ppm.deleted IS NOT TRUE""",
 }
 
 
@@ -239,9 +275,15 @@ def _ensure_profile(cur, algorithm_type):
 
 def apply(conn):
     stats = {'types': 0, 'profiles_created': 0, 'profiles_skipped': 0,
-             'params': 0, 'mappings': 0, 'devices': 0}
+             'params': 0, 'mappings': 0, 'devices': 0, 'purged': 0}
     with conn.cursor() as cur:
         cur.execute(f"SET lock_timeout = '{LOCK_TIMEOUT}'")
+        # INT-2303：先回收旧部署遗留的「生效映射 → 已软删维度」，再按过滤后的口径
+        # 复制；两者合起来保证单轮引导后悬空行为 0（重复执行命中 0 行）。
+        cur.execute(_PURGE_DANGLING_MAPPINGS_SQL)
+        stats['purged'] = cur.rowcount
+        if stats['purged']:
+            print(f"[purge] 回收指向已软删维度的生效映射 {stats['purged']} 条")
         cur.execute(_TYPES_SQL)
         types = [row[0] for row in cur.fetchall()]
 
@@ -271,7 +313,8 @@ def apply(conn):
     print(f"[ok] 算法类型 {stats['types']} 个；新建策略 {stats['profiles_created']} 个；"
           f"跳过已软删策略 {stats['profiles_skipped']} 个；"
           f"复制参数 {stats['params']} 条、映射 {stats['mappings']} 条、"
-          f"绑定设备 {stats['devices']} 台")
+          f"绑定设备 {stats['devices']} 台；"
+          f"回收悬空映射 {stats['purged']} 条")
 
 
 def main():

@@ -4,7 +4,8 @@
 
 功能（现状）：
 1. 软删除历史单维度 interruption_metrics（旧代 name 集合：'打断指标'），
-   连同其子维度 / params / mappings / relations 一并软删。
+   连同其子维度 / params / mappings / relations / 参数策略映射
+   （``param_profile_mappings``，INT-2303）一并软删。
 
 INT-2293 变更背景：
    本脚本原先还会注册「打断成功率」主维度 + 5 个子维度，但该族已被
@@ -649,7 +650,13 @@ def _upsert_param_mappings(conn, dim_id, dim_def):
 
 
 def _soft_delete_dimension_tree(conn, dim_id, reason):
-    """软删除一个维度及其 params / mappings / 子维度。"""
+    """软删除一个维度及其 params / mappings / 参数策略映射 / 子维度。
+
+    INT-2303：级联里必须带 ``param_profile_mappings``。参数策略映射是
+    ``param_mappings`` 的下沉副本（202610/add_param_profiles_scope.py、
+    202611/migrate_device_params_to_profiles.py 各复制一份），只软删源头
+    ``param_mappings`` 会让策略侧留下「生效映射指向已软删维度」的悬空行。
+    """
     # 子维度
     subs = conn.execute(text(
         "SELECT id, name FROM dimensions "
@@ -670,11 +677,18 @@ def _soft_delete_dimension_tree(conn, dim_id, reason):
         "UPDATE param_mappings SET deleted = TRUE, updated_at = NOW() "
         "WHERE dimension_id = :did AND deleted = FALSE"
     ), {'did': dim_id})
+    # INT-2303：deleted 为 NULL 的行读侧（deleted = false）本就滤掉，这里只置真
+    # 生效行；NULL 行仍由 202611 迁移的回收步（IS NOT TRUE）兜底。
+    conn.execute(text(
+        "UPDATE param_profile_mappings SET deleted = TRUE, updated_at = NOW() "
+        "WHERE dimension_id = :did AND deleted = FALSE"
+    ), {'did': dim_id})
     conn.execute(text(
         "UPDATE algorithm_dimension_relations SET deleted = TRUE, updated_at = NOW() "
         "WHERE dimension_id = :did AND deleted = FALSE"
     ), {'did': dim_id})
-    print(f"  ! 软删维度 id={dim_id}（{reason}）：dimensions/params/mappings/relations 已置 deleted=TRUE")
+    print(f"  ! 软删维度 id={dim_id}（{reason}）：dimensions/params/mappings/"
+          f"profile_mappings/relations 已置 deleted=TRUE")
 
 
 def _cleanup_legacy_main_dims(conn):
@@ -727,7 +741,7 @@ if __name__ == '__main__':
     print()
     print("此脚本将：")
     print(f"1. 软删除旧代单维度 interruption_metrics（name in {LEGACY_MAIN_NAMES}），")
-    print("   连同其子维度 / params / mappings / relations 一并软删")
+    print("   连同其子维度 / params / mappings / relations / 参数策略映射一并软删")
     print("2. 不再注册「打断成功率」主维度与 5 个子维度 —— 该族已由")
     print("   202610/seed_interruption_v2.py（打断指标 v2）整体取代")
     print()
