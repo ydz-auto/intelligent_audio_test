@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import {
+  useParamProfileCounts,
   useParamProfileList,
   useParamProfileMutations,
 } from '@/application/algorithm-config/useParamProfiles'
@@ -106,6 +107,8 @@ export function ParamProfileManagerDialog({
     scopeFilter === ALL_SCOPES ? null : scopeFilter,
     open
   )
+  // 列表接口不含 params / mappings，计数由详情补齐（INT-2358）
+  const profileCounts = useParamProfileCounts(profiles, open)
   const { clone, remove } = useParamProfileMutations()
 
   useEffect(() => {
@@ -273,67 +276,72 @@ export function ParamProfileManagerDialog({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {profiles.map((profile) => (
-                    <TableRow key={profile.id}>
-                      <TableCell>
-                        <p className='text-sm font-medium'>{profile.name}</p>
-                        {profile.description && (
-                          <p className='text-muted-foreground text-xs'>{profile.description}</p>
-                        )}
-                      </TableCell>
-                      <TableCell className='font-mono text-xs'>{profile.algorithmType}</TableCell>
-                      <TableCell>
-                        <Badge variant='secondary'>
-                          {PARAM_PROFILE_SCOPE_LABEL[profile.scope]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className='text-xs'>
-                        {PARAM_PROFILE_STATUS_LABEL[profile.status]}
-                      </TableCell>
-                      <TableCell className='text-xs tabular-nums'>
-                        {profile.params.length}
-                      </TableCell>
-                      <TableCell className='text-xs tabular-nums'>
-                        {profile.mappings.length}
-                      </TableCell>
-                      <TableCell>
-                        <div className='flex items-center gap-1'>
-                          <Button
-                            type='button'
-                            variant='ghost'
-                            size='sm'
-                            className='h-7 gap-1 px-2 text-xs'
-                            disabled={!canManage}
-                            onClick={() => openEdit(profile)}
-                          >
-                            <Pencil aria-hidden='true' className='size-3.5' />
-                            编辑
-                          </Button>
-                          <Button
-                            type='button'
-                            variant='ghost'
-                            size='sm'
-                            className='h-7 px-2 text-xs'
-                            disabled={!canManage}
-                            onClick={() => openClone(profile)}
-                          >
-                            克隆
-                          </Button>
-                          <Button
-                            type='button'
-                            variant='ghost'
-                            size='sm'
-                            className='text-destructive h-7 px-2 text-xs'
-                            disabled={!canManage}
-                            onClick={() => setDeleteTarget(profile)}
-                          >
-                            <Trash2 aria-hidden='true' className='size-3.5' />
-                            删除
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {profiles.map((profile) => {
+                    const counts = profileCounts[profile.id]
+                    return (
+                      <TableRow key={profile.id}>
+                        <TableCell>
+                          <p className='text-sm font-medium'>{profile.name}</p>
+                          {profile.description && (
+                            <p className='text-muted-foreground text-xs'>{profile.description}</p>
+                          )}
+                        </TableCell>
+                        <TableCell className='font-mono text-xs'>
+                          {profile.algorithmType}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant='secondary'>
+                            {PARAM_PROFILE_SCOPE_LABEL[profile.scope]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className='text-xs'>
+                          {PARAM_PROFILE_STATUS_LABEL[profile.status]}
+                        </TableCell>
+                        <TableCell className='text-xs tabular-nums'>
+                          {counts ? counts.paramCount : '—'}
+                        </TableCell>
+                        <TableCell className='text-xs tabular-nums'>
+                          {counts ? counts.mappingCount : '—'}
+                        </TableCell>
+                        <TableCell>
+                          <div className='flex items-center gap-1'>
+                            <Button
+                              type='button'
+                              variant='ghost'
+                              size='sm'
+                              className='h-7 gap-1 px-2 text-xs'
+                              disabled={!canManage}
+                              onClick={() => openEdit(profile)}
+                            >
+                              <Pencil aria-hidden='true' className='size-3.5' />
+                              编辑
+                            </Button>
+                            <Button
+                              type='button'
+                              variant='ghost'
+                              size='sm'
+                              className='h-7 px-2 text-xs'
+                              disabled={!canManage}
+                              onClick={() => openClone(profile)}
+                            >
+                              克隆
+                            </Button>
+                            <Button
+                              type='button'
+                              variant='ghost'
+                              size='sm'
+                              className='text-destructive h-7 px-2 text-xs'
+                              disabled={!canManage}
+                              onClick={() => setDeleteTarget(profile)}
+                            >
+                              <Trash2 aria-hidden='true' className='size-3.5' />
+                              删除
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -398,13 +406,16 @@ export function ParamProfileManagerDialog({
         </DialogContent>
       </Dialog>
 
-      {/* 删除二次确认（软删除；绑定的 API 回落为未绑定） */}
+      {/* 删除二次确认（软删除；按作用域说明绑定方回落） */}
       <Dialog open={deleteTarget != null} onOpenChange={(next) => !next && setDeleteTarget(null)}>
         <DialogContent className='sm:max-w-md'>
           <DialogHeader>
             <DialogTitle>删除参数策略</DialogTitle>
             <DialogDescription>
-              确认删除「{deleteTarget?.name ?? ''}」？绑定该策略的 API 将回落为未绑定（实例覆盖行保留）。
+              确认删除「{deleteTarget?.name ?? ''}」？
+              {deleteTarget?.scope === 'device'
+                ? '绑定该策略的设备将回落为未绑定。'
+                : '绑定该策略的 API 将回落为未绑定（实例覆盖行保留）。'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

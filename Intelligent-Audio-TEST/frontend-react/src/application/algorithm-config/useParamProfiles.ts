@@ -4,7 +4,7 @@
  * 列表 / 详情 / 保存 / 克隆 / 删除都走 infrastructure/api/param-profile-api；
  * 本层只做查询键统一与失效，不在界面层拼供数逻辑。
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type {
   ParamProfile,
@@ -80,6 +80,47 @@ export function useParamProfileDetail(profileId: number | null, enabled: boolean
     isLoading: query.isLoading,
     isError: query.isError,
   }
+}
+
+export interface ParamProfileCounts {
+  paramCount: number
+  mappingCount: number
+}
+
+/**
+ * 列表行的「字段 / 映射」计数。
+ *
+ * 列表接口（`GET /algorithm/param-profiles`）只返回策略基础字段，没有
+ * `params` / `mappings`，也没有计数列，直接读列表项会恒为 0（INT-2358）。
+ * 这里按策略逐条取详情计数：当前真实库策略量很小（个位数），且详情查询与
+ * 编辑弹窗共用 `detail(id)` 缓存键，编辑过一次就不会重复请求。
+ * 未取到（加载中 / 失败）的策略不出现在结果里，调用方按「未知」展示，
+ * 不把未知渲染成 0。
+ */
+export function useParamProfileCounts(
+  profiles: ParamProfile[],
+  enabled: boolean
+): Record<number, ParamProfileCounts> {
+  const detailQueries = useQueries({
+    queries: profiles.map((profile) => ({
+      queryKey: paramProfileQueryKeys.detail(profile.id),
+      queryFn: () => getProfile(profile.id),
+      enabled,
+      // 列表计数不要求强实时：短时间内重复开关弹窗不重复打接口
+      staleTime: 30_000,
+      retry: false,
+    })),
+  })
+  const counts: Record<number, ParamProfileCounts> = {}
+  profiles.forEach((profile, index) => {
+    const detail = detailQueries[index]?.data
+    if (!detail) return
+    counts[profile.id] = {
+      paramCount: detail.params.length,
+      mappingCount: detail.mappings.length,
+    }
+  })
+  return counts
 }
 
 /** 保存（id 为空 → 新建；否则整份更新）、克隆、删除 */
