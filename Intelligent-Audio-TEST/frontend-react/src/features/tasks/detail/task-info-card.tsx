@@ -13,7 +13,10 @@ import {
   getEvaluationStatusMeta,
   getExecutionStatusMeta,
 } from '@/features/tasks/constants'
-import { formatTaskUsedTime } from '@/features/tasks/lib/date-time'
+import {
+  formatLocalWallClock,
+  formatTaskUsedTime,
+} from '@/features/tasks/lib/date-time'
 
 function InfoGrid({ items }: { items: Array<{ label: string; value: string | number }> }) {
   return (
@@ -64,7 +67,8 @@ export function TaskInfoCard({
         <InfoGrid
           items={[
             { label: '任务名称', value: detail.name },
-            { label: '预计完成时间', value: formatDateTime(detail.expectedCompleteTime) },
+            // INT-2345：该字段后端是东八区墙钟展示串，原样展示，不能再按 UTC +8
+            { label: '预计完成时间', value: formatLocalWallClock(detail.expectedCompleteTime) },
             { label: '预计总时长', value: detail.expectedTotalTime ?? '—' },
             // INT-2201：已用时长以起止时间推算为准（后端 used_time 有「16小时」类异常值）
             { label: '已用时长', value: formatTaskUsedTime(detail) },

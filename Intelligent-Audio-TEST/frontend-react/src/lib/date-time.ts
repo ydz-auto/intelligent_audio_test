@@ -30,6 +30,12 @@ function pad(value: number): string {
   return String(value).padStart(2, '0')
 }
 
+/** 墙钟串：`YYYY-MM-DD HH:mm` / `YYYY-MM-DDTHH:mm[:ss[.fff]]`（无时区语义） */
+const WALL_CLOCK_DATETIME = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/
+
+/** 串自带绝对时区语义（`Z` / `±HH:mm` / `±HHmm`） */
+const HAS_ZONE_SUFFIX = /(?:Z|[+-]\d{2}:?\d{2})$/i
+
 /** Date → 本地「YYYY-MM-DD HH:mm[:ss]」 */
 function formatLocal(date: Date, withSeconds: boolean): string {
   const minutePrecision = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
@@ -52,6 +58,30 @@ export function formatDateTimeSeconds(
 ): string {
   const date = parseApiDateTime(value)
   return date ? formatLocal(date, true) : '—'
+}
+
+/**
+ * 后端「本地墙钟串」→ 原样展示为「YYYY-MM-DD HH:mm」（不解析、不换算）。
+ *
+ * INT-2345：任务详情 `expected_complete_time` 在后端按**东八区墙钟**输出纯展示串
+ * （task_query_service 注释：「展示用字符串仍按东八区墙钟输出」），如
+ * `2026-11-02 09:41:06` 本身已是本地时间。若再走 `formatDateTime`，无时区后缀会被
+ * 当成裸 UTC 解析并 +8，页面显示成 17:41（恒晚 8 小时）。此字段必须原样切片。
+ *
+ * 只用于后端明确以本地墙钟输出的字段；其余任务域时间（`created_at` / `completed_at`
+ * 等）仍是裸 UTC，继续走 {@link formatDateTime}。若该字段将来改成带
+ * `Z` / `±HH:mm` 的绝对时间串，这里自动回落到 {@link formatDateTime}，
+ * 不会出现两套口径各自误解。
+ */
+export function formatLocalWallClock(
+  value: string | null | undefined
+): string {
+  if (typeof value !== 'string') return '—'
+  const trimmed = value.trim()
+  if (!trimmed) return '—'
+  if (HAS_ZONE_SUFFIX.test(trimmed)) return formatDateTime(trimmed)
+  const wallClock = WALL_CLOCK_DATETIME.exec(trimmed)
+  return wallClock ? `${wallClock[1]} ${wallClock[2]}` : '—'
 }
 
 /** 后端时间串 → 本地「YYYY-MM-DD」；空值 / 不可解析 → 「—」（列表只展示日期时用） */

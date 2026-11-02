@@ -9,6 +9,7 @@ import {
   formatDateTime,
   formatDateTimeSeconds,
   formatElapsed,
+  formatLocalWallClock,
   formatTaskUsedTime,
   parseApiDateTime,
 } from '@/lib/date-time'
@@ -75,6 +76,30 @@ describe('formatDateTime / formatDateTimeSeconds', () => {
     expect(formatDateTime(undefined)).toBe('—')
     expect(formatDateTime('oops')).toBe('—')
     expect(formatDateTimeSeconds(null)).toBe('—')
+  })
+})
+
+describe('formatLocalWallClock', () => {
+  it('墙钟串原样切片，不再按 UTC +8（INT-2345）', () => {
+    expect(formatLocalWallClock('2026-11-02 09:41:06')).toBe('2026-11-02 09:41')
+    expect(formatLocalWallClock('2026-10-31 17:57:44')).toBe('2026-10-31 17:57')
+    expect(formatLocalWallClock('2026-11-02T09:41')).toBe('2026-11-02 09:41')
+  })
+
+  it('带时区后缀的绝对时间串回落到本地换算（口径不分裂）', () => {
+    expect(formatLocalWallClock('2026-11-02T01:41:06Z')).toBe(
+      expectedLocal('2026-11-02T01:41:06Z')
+    )
+    expect(formatLocalWallClock('2026-11-02T09:41:06+08:00')).toBe(
+      expectedLocal('2026-11-02T01:41:06Z')
+    )
+  })
+
+  it('空值 / 不可解析 → —', () => {
+    expect(formatLocalWallClock(null)).toBe('—')
+    expect(formatLocalWallClock(undefined)).toBe('—')
+    expect(formatLocalWallClock('')).toBe('—')
+    expect(formatLocalWallClock('oops')).toBe('—')
   })
 })
 
