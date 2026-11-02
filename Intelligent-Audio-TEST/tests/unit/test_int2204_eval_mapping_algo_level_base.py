@@ -15,9 +15,8 @@
   ``GET /reports/by_task/{id}`` 恒 404。
 
 期望语义（spec ``api_param_profile``）：
-1. ``source='api'`` 的算法类型级默认层已废弃，带作用域时只由「策略 + 实例覆盖」
-   提供；
-2. 其余来源（case / case_config / reference / device，含 evaluation 桶里的
+1. 所有来源（含 ``source='api'``）的算法类型级默认层作为兜底层保留；
+2. 来源（case / case_config / reference / device / api，含 evaluation 桶里的
    维度级行）以算法类型级行为默认层打底；
 3. 优先级：实例覆盖 > 策略 > 算法级打底。
 """
@@ -45,7 +44,7 @@ RAW_ALGO_LEVEL = [
     {'id': 2, 'algorithm_type': ALGO, 'api_id': None, 'source': 'case_config',
      'source_param': 'background_noise', 'target_param': 'background_noise',
      'dimension_id': DIM_TURN, 'dimension_name': '逐轮话轮评估'},
-    # 算法类型级 + source='api'：已废弃，带作用域时不应再出现
+    # 算法类型级 + source='api'：作为兜底层参与合并
     {'id': 3, 'algorithm_type': ALGO, 'api_id': None, 'source': 'api',
      'source_param': 'answer', 'target_param': 'transcript',
      'dimension_id': DIM_TURN, 'dimension_name': '逐轮话轮评估'},
@@ -88,12 +87,13 @@ def test_algo_level_case_config_mapping_survives_api_scope():
     assert by_param['audios']['source'] == 'case_config'
 
 
-def test_algo_level_api_source_mapping_deprecated_with_scope():
-    """source='api' 的算法级默认层带作用域时仍不返回（只留策略/实例覆盖）。"""
+def test_algo_level_api_source_mapping_kept_as_base():
+    """source='api' 的算法级默认层作为兜底：带作用域且无策略/覆盖时保留。"""
     cache = _bare_cache()
 
-    scoped = cache.get_param_mapping(ALGO, 'evaluation', API_A)
-    assert 'answer' not in _index(scoped)
+    scoped = _index(cache.get_param_mapping(ALGO, 'evaluation', API_A))
+    assert scoped['answer']['target_param'] == 'transcript'
+    assert scoped['answer']['source'] == 'api'
 
     # 不带作用域时算法级行仍可见（既有口径）
     unscoped = _index(cache.get_param_mapping(ALGO, 'evaluation'))

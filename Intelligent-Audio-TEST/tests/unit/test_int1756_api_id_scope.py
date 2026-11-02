@@ -3,11 +3,11 @@
 
 设计变更（docs/spec/api_param_profile/spec.md）：
 1. API 参数与 ``source='api'`` 映射的作用域 = ``api_id``；算法类型级默认层
-   （``api_id IS NULL``）已废弃，迁移后软删；
+   （``api_id IS NULL``）作为三层解析的兜底层保留；
 2. ``api_params`` 行 = 实例**覆盖**，``param_profiles`` = 可复用**策略**，
    ``api_param_bindings`` = ``api_id → profile_id``；
-3. 解析优先级：**实例覆盖 > 策略 > 空**；空声明必须显式告警；
-4. 不传 ``api_id`` 一律返回空（调用方必须带作用域）。
+3. 解析优先级：**实例覆盖 > 策略 > 算法级默认**；空声明必须显式告警；
+4. 不传 ``api_id`` 只返回算法级默认层（不串其它实例）。
 """
 import os
 
@@ -120,20 +120,50 @@ def _by_code(rows):
     return {row['code']: row for row in rows}
 
 
-# ========== 1. 不传 api_id：空声明 + 显式告警 ==========
+# ========== 1. 不传 api_id：只返回算法类型级默认层 ==========
 
-def test_api_params_without_api_id_returns_empty(monkeypatch):
-    warnings = []
+def test_api_params_without_api_id_returns_algorithm_level_rows():
+    snapshot = _snapshot()
+    snapshot['api_params'] = {ALGO: AlgorithmConfigCache._serialize_params([
+        {'id': 21, 'algorithm_type': ALGO, 'api_id': None, 'param_code': 'top_k',
+         'param_name': '算法级 top_k', 'param_type': 'text', 'direction': 'input',
+         'ui_order': 1},
+        *RAW_OVERRIDE_PARAMS,
+    ])}
+    cache = _bare_cache(snapshot)
 
-    def _fake_log(level, logger_name, message, **kwargs):
-        warnings.append((level, message))
+    rows = cache.get_api_params(ALGO)
+    assert [row['code'] for row in rows] == ['top_k']
+    # 无作用域路径不打下层标识（与改造前逐字节一致）
+    assert 'resolved_from' not in rows[0]
 
-    monkeypatch.setattr(cc, 'log_not_emit', _fake_log)
-    cache = _bare_cache()
 
-    assert cache.get_api_params(ALGO) == []
-    assert warnings and warnings[0][0] == 'WARN'
-    assert ALGO in warnings[0][1]
+def test_api_params_three_layers_and_resolved_from():
+    snapshot = _snapshot()
+    snapshot['api_params'] = {ALGO: AlgorithmConfigCache._serialize_params([
+        {'id': 21, 'algorithm_type': ALGO, 'api_id': None, 'param_code': 'lang',
+         'param_name': '算法级语言', 'param_type': 'text', 'direction': 'input',
+         'ui_order': 1},
+        {'id': 22, 'algorithm_type': ALGO, 'api_id': None, 'param_code': 'answer',
+         'param_name': '算法级答案', 'param_type': 'text', 'direction': 'output',
+         'ui_order': 2},
+        {'id': 23, 'algorithm_type': ALGO, 'api_id': None, 'param_code': 'top_k',
+         'param_name': '算法级 top_k', 'param_type': 'text', 'direction': 'input',
+         'ui_order': 3},
+        *RAW_OVERRIDE_PARAMS,
+    ])}
+    cache = _bare_cache(snapshot)
+
+    rows = _by_code(cache.get_api_params(ALGO, API_A))
+    # 实例覆盖 > 策略 > 算法级
+    assert rows['lang']['name'] == 'A家语言'
+    assert rows['lang']['resolved_from'] == 'api'
+    assert rows['answer']['name'] == '策略答案'
+    assert rows['answer']['resolved_from'] == 'profile'
+    assert rows['answer']['id'] is None
+    assert rows['answer']['profile_param_id'] is not None
+    assert rows['top_k']['name'] == '算法级 top_k'
+    assert rows['top_k']['resolved_from'] == 'algorithm'
 
 
 def test_api_params_unbound_api_id_returns_empty(monkeypatch):

@@ -400,8 +400,16 @@ def _upsert_dimension_relations(session, algorithm_type: str, items: List[Dict[s
 
 
 def _upsert_all_sub_entities(session, algorithm_type: str, sub_entities: Dict[str, Any]) -> None:
-    """按固定顺序 upsert 六类子实体（任一步失败由调用方整体回滚）。"""
-    _upsert_device_api_params(session, algorithm_type, sub_entities.get('device_params'), AlgorithmDeviceParamPO)
+    """按固定顺序 upsert 六类子实体（任一步失败由调用方整体回滚）。
+
+    ``device_params`` 已迁到设备管理页维护：键缺省时跳过该层，不能按「提交集外
+    软删」处理——算法编辑表单不再携带该字段，按空集处理会清空算法级声明。
+    显式传 ``[]`` 仍按空集软删（导入等全量替换场景）。
+    """
+    if 'device_params' in sub_entities:
+        _upsert_device_api_params(
+            session, algorithm_type, sub_entities['device_params'],
+            AlgorithmDeviceParamPO)
     _upsert_device_api_params(session, algorithm_type, sub_entities.get('api_params'), AlgorithmApiParamPO)
     _upsert_case_params(session, algorithm_type, sub_entities.get('case_params'))
     _upsert_reference_params(session, algorithm_type, sub_entities.get('reference_params'))

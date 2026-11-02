@@ -73,7 +73,8 @@ class _AlgorithmDefinitionMixin(_ParamBaseMixin):
                 status=data.get('status'),
                 icon=data.get('icon'),
                 display_order=data.get('display_order'),
-                device_params=data.get('device_params') or [],
+                # 未携带 = None（跳过设备参数层）；显式 [] 才清空
+                device_params=data.get('device_params'),
                 api_params=data.get('api_params') or [],
                 case_params=data.get('case_params') or [],
                 reference_params=data.get('reference_params') or [],

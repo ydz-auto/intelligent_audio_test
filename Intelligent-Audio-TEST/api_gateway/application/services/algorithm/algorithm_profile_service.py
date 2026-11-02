@@ -135,4 +135,10 @@ class AlgorithmProfileService:
             return scope_error
         result = _algo_proxy.save_api_scope_overrides(
             api_id, req.algorithm_type, req.api_params, req.mappings)
+        if result.get('success'):
+            # 追加版本快照（失败不阻断保存）
+            from api_gateway.application.services.algorithm.param_history_service import (
+                ParamHistoryService,
+            )
+            ParamHistoryService.record('api', api_id, req.algorithm_type)
         return _respond(result, 'API 参数配置已保存')

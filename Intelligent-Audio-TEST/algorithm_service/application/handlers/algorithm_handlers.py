@@ -242,13 +242,15 @@ class AlgorithmCommandHandler:
 
         mappings = _normalize_mappings(cmd.mappings)
         sub_entities = {
-            'device_params': cmd.device_params or [],
             'api_params': cmd.api_params or [],
             'case_params': cmd.case_params or [],
             'reference_params': cmd.reference_params or [],
             'mappings': mappings,
             'associated_dimensions': cmd.associated_dimensions or [],
         }
+        # 设备参数已迁到设备管理页维护：未携带该层时跳过（显式 [] 才清空）
+        if cmd.device_params is not None:
+            sub_entities['device_params'] = cmd.device_params
 
         # 发布校验：associated_dimensions 的 dimension_id 存在性
         dimension_ids = _as_dimension_ids(cmd.associated_dimensions)

@@ -370,6 +370,10 @@ BOOTSTRAP_STEPS = [
     #     归一后重复执行命中 0 行），纯数据 UPDATE、无 DDL；默认 dry-run，
     #     引导链必须带 --apply；须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202611/normalize_report_status_int2238.py', '--apply'),
+    # ㊾-6 参数变更历史表（param_change_history）：设备 / API 参数与映射的版本快照，
+    #     支撑「历史列表 + 回滚」。幂等（建表/索引 IF NOT EXISTS）；纯 DDL，
+    #     须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_param_change_history.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器

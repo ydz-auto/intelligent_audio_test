@@ -146,7 +146,8 @@ class SaveAlgorithmDefinitionCommand:
     status: Optional[str] = "online"
     icon: Optional[str] = None
     display_order: Optional[int] = 0
-    device_params: List[Dict[str, Any]] = field(default_factory=list)
+    # None = 请求未携带该层（跳过，不软删）；显式 [] = 清空该层
+    device_params: Optional[List[Dict[str, Any]]] = None
     api_params: List[Dict[str, Any]] = field(default_factory=list)
     case_params: List[Dict[str, Any]] = field(default_factory=list)
     reference_params: List[Dict[str, Any]] = field(default_factory=list)

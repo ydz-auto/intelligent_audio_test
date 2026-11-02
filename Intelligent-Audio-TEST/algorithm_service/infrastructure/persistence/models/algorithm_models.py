@@ -178,9 +178,19 @@ class AlgorithmDeviceParam(Base):
 class AlgorithmApiParam(Base):
     """API参数定义表 - 单个算法专用"""
     __tablename__ = 'algorithm_api_params'
+    # 唯一索引按作用域拆分（与 scripts/migrations/202610/add_api_id_scope_int1751.py 一致）：
+    # 算法级默认行（api_id IS NULL）与实例覆盖行可同键共存，三层解析才能成立。
     __table_args__ = (
-        Index('uq_algorithm_api_param_direction', 'algorithm_type', 'param_code', 'direction',
-              unique=True, postgresql_where=text('deleted = false')),
+        Index('uq_algorithm_api_param_algo_level',
+              'algorithm_type', 'param_code', 'direction', unique=True,
+              postgresql_nulls_not_distinct=True,
+              postgresql_where=text('deleted = false AND api_id IS NULL')),
+        Index('uq_algorithm_api_param_api_level',
+              'algorithm_type', 'api_id', 'param_code', 'direction', unique=True,
+              postgresql_nulls_not_distinct=True,
+              postgresql_where=text('deleted = false AND api_id IS NOT NULL')),
+        Index('idx_algorithm_api_params_api_id', 'api_id',
+              postgresql_where=text('deleted = false')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True)
     algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type'), nullable=False, comment='关联算法类型')

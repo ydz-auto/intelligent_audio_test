@@ -154,16 +154,19 @@ def _device_param_merge_key(param: Dict[str, Any]):
 class ParamResolvedFrom:
     """三层解析的层来源标识（INT-2299 C3）。"""
 
-    ALGORITHM = 'algorithm'   # 算法类型级默认行（device_id IS NULL）
-    PROFILE = 'profile'       # 设备绑定策略行（param_profile_params）
+    ALGORITHM = 'algorithm'   # 算法类型级默认行（作用域字段 IS NULL）
+    PROFILE = 'profile'       # 绑定策略行（param_profile_params）
     DEVICE = 'device'         # 本设备覆盖行（algorithm_device_params.device_id）
+    API = 'api'               # 本 API 覆盖行（algorithm_api_params.api_id）
 
 
-def _tag_resolved_layers(resolved_rows, profile_rows, override_rows):
+def _tag_resolved_layers(resolved_rows, profile_rows, override_rows,
+                         key_fn=_device_param_merge_key,
+                         override_layer: str = ParamResolvedFrom.DEVICE):
     """给三层解析结果逐行打层来源标识（INT-2299）。
 
-    只在 ``get_device_params`` 的 ``device_id`` 非空分支调用：``device_id`` 为空
-    的那条路径输出必须与改造前逐字节一致（C5），因此本函数不参与。
+    只在带作用域（``device_id`` / ``api_id``）的解析分支调用：无作用域路径
+    输出必须与改造前逐字节一致（C5），因此本函数不参与。
 
     层归属按合并键反查——覆盖行 > 策略行 > 算法级；这与
     ``_resolve_scope_rows`` 的优先级完全一致，且同一层内同键行也已由该函数
@@ -175,13 +178,13 @@ def _tag_resolved_layers(resolved_rows, profile_rows, override_rows):
     ``param_type_source`` 选表，前端拿策略行 id 去改删会静默打到同号的设备
     参数行上；原名改带 ``profile_param_id``（C3）。
     """
-    override_keys = {_device_param_merge_key(row) for row in override_rows or []}
-    profile_keys = {_device_param_merge_key(row) for row in profile_rows or []}
+    override_keys = {key_fn(row) for row in override_rows or []}
+    profile_keys = {key_fn(row) for row in profile_rows or []}
     tagged = []
     for row in resolved_rows:
-        key = _device_param_merge_key(row)
+        key = key_fn(row)
         if key in override_keys:
-            layer = ParamResolvedFrom.DEVICE
+            layer = override_layer
         elif key in profile_keys:
             layer = ParamResolvedFrom.PROFILE
         else:
@@ -240,7 +243,7 @@ def _resolve_scope_rows(profile_rows, override_rows, key_fn):
     """策略行 + 实例覆盖行按唯一键合并（覆盖行替换同键策略行）。
 
     与 ``_merge_level_rows`` 的区别：来源是「策略声明」而不是「算法级默认行」，
-    算法类型级默认层已废弃，因此策略行为空时只返回覆盖行。
+    因此策略行为空时只返回覆盖行；调用方按需在更前面再叠一层算法级默认。
     """
     overrides = {}
     for row in override_rows or []:
@@ -1076,37 +1079,36 @@ class AlgorithmConfigCache:
     def get_api_params(
         self, algorithm_type: str, api_id: Optional[int] = None
     ) -> List[Dict[str, Any]]:
-        """获取 API 参数 = 策略声明 + 本 API 覆盖行。
+        """获取 API 参数（三层解析：算法级默认 → 绑定策略 → 本 API 覆盖）。
 
-        算法类型级默认层（api_id IS NULL）已废弃：不传 api_id 没有任何声明可返回，
-        直接返回空列表——调用方必须带 api_id（执行 / 评估 / 报告链路均已接线）。
+        不传 api_id：只返回 ``api_id IS NULL`` 的算法类型级默认行，不串其它实例。
+        传 api_id：算法级默认打底，该 API 绑定策略覆盖同键行，最后本 API 覆盖行
+        覆盖同键行；逐行带 ``resolved_from``（algorithm / profile / api），策略层
+        行额外带 ``profile_param_id`` 且 ``id`` 置空（与设备作用域同口径）。
         """
-        if api_id is None:
-            log_not_emit(
-                'WARN', 'algorithm_config_cache',
-                f'get_api_params 未带 api_id（algorithm_type={algorithm_type}）：'
-                f'算法类型级默认层已废弃，按空声明返回',
-                category='algorithm', algorithm_type=algorithm_type,
-            )
-            return []
         cache = self._config_cache
-        overrides = [
-            row for row in cache.get('api_params', {}).get(algorithm_type, [])
-            if row.get('api_id') == api_id
-        ]
+        rows = cache.get('api_params', {}).get(algorithm_type, []) or []
+        merged = _merge_scoped_rows(rows, 'api_id', None, _api_param_merge_key)
+        if api_id is None:
+            return merged
+        overrides = [row for row in rows if row.get('api_id') == api_id]
         profile_id = cache.get('api_bindings', {}).get(api_id)
         profile_rows = (
             cache.get('profile_params', {}).get(profile_id, []) if profile_id else []
         )
-        resolved = _resolve_scope_rows(profile_rows, overrides, _api_param_merge_key)
+        resolved = _resolve_scope_rows(merged, profile_rows, _api_param_merge_key)
+        resolved = _resolve_scope_rows(resolved, overrides, _api_param_merge_key)
         if not resolved:
             log_not_emit(
                 'WARN', 'algorithm_config_cache',
                 f'get_api_params 空声明：algorithm_type={algorithm_type} api_id={api_id} '
-                f'（profile_id={profile_id}，策略与实例覆盖均为空）',
+                f'（profile_id={profile_id}，算法级 / 策略 / 实例覆盖均为空）',
                 category='algorithm', algorithm_type=algorithm_type,
             )
-        return resolved
+        return _tag_resolved_layers(
+            resolved, profile_rows, overrides,
+            key_fn=_api_param_merge_key,
+            override_layer=ParamResolvedFrom.API)
 
     def get_source_mappings(
         self, algorithm_type: str, source: str,
@@ -1135,10 +1137,10 @@ class AlgorithmConfigCache:
     ) -> Dict[str, Any]:
         """映射分桶按 API / 设备作用域解析。
 
-        - ``source='api'`` 的来源行：策略映射 + 本 API 覆盖行（覆盖优先）；
-        - 其余来源（case / reference / device / case_config）：算法类型级打底，
-          传 ``device_id`` 时先被该设备绑定策略覆盖，再被本设备覆盖行覆盖
-          （优先级：设备覆盖 > 设备绑定策略 > 算法级默认）；
+        - 所有来源（case / reference / device / case_config / api）都以算法类型级
+          行为默认层打底；
+        - 传 ``device_id``：先被该设备绑定策略覆盖，再被本设备覆盖行覆盖；
+        - 传 ``api_id``：先被该 API 绑定策略覆盖，再被本 API 覆盖行覆盖；
         - 不传任一作用域：只返回作用域字段为 NULL 的算法级行。
         """
         cache = self._config_cache
@@ -1192,18 +1194,9 @@ class AlgorithmConfigCache:
                 # 非行列表的桶（防御分支）不参与行级合并
                 merged[bucket] = base_rows
                 continue
-            if bucket == 'api':
-                # source='api' 的算法类型级默认层已废弃（spec：带作用域时
-                # API 来源只由「策略 + 实例覆盖」提供）
-                base_rows = []
-            else:
-                # 其余来源（含 evaluation 桶里的 case / case_config / reference /
-                # device 行）以算法类型级行为默认层打底，优先级
-                # 实例覆盖 > 策略 > 算法级打底（INT-2204：此前 base 被整层丢弃，
-                # 只有算法级 case_config 映射的 API 用例会拿到空映射 → 评估
-                # skipped → 报告无法生成）
-                base_rows = [row for row in base_rows
-                             if row.get('source') != 'api']
+            # 各来源（含 source='api'）统一以算法类型级行为默认层打底，优先级
+            # 实例覆盖 > 策略 > 算法级（INT-2204：base 整层丢弃会让只有算法级
+            # 映射的用例拿到空映射 → 评估 skipped → 报告无法生成）。
             layered = _resolve_scope_rows(
                 base_rows,
                 profile_buckets.get(bucket, []),
@@ -1227,11 +1220,11 @@ class AlgorithmConfigCache:
         api_id: Optional[int] = None,
         device_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """获取组件参数映射（API 来源按「策略 + 实例覆盖」，设备来源按设备覆盖解析）。
+        """获取组件参数映射（算法级默认 → 策略 → 实例覆盖）。
 
-        修改点（本轮）：算法类型级默认层废弃，``source='api'`` 的映射只来自
-        策略 ``param_profile_mappings`` 与实例覆盖行；其余来源仍是算法级默认，
-        传 ``device_id`` 时该设备的行覆盖同键算法级行。
+        所有来源（含 ``source='api'``）都以算法类型级行为默认层打底：
+        传 ``api_id`` 时依次叠加该 API 的绑定策略与实例覆盖行；传 ``device_id``
+        时依次叠加该设备绑定策略与设备覆盖行。
         """
         if component_type == 'evaluation':
             return self._get_evaluation_mappings(

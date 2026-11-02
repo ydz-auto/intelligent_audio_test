@@ -200,15 +200,15 @@ def test_api_acl_forwards_api_id(monkeypatch):
 
     seen = {}
 
-    def _fake_field(algorithm_type, api_id=None):
+    def _fake_field(algorithm_type, api_id=None, device_id=None):
         seen['field'] = api_id
         return {}
 
-    def _fake_params(algorithm_type, api_id=None):
+    def _fake_params(algorithm_type, api_id=None, device_id=None):
         seen['params'] = api_id
         return []
 
-    def _fake_mapping(algorithm_type, component_type, api_id=None):
+    def _fake_mapping(algorithm_type, component_type, api_id=None, device_id=None):
         seen['mapping'] = (component_type, api_id)
         return []
 

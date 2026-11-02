@@ -5,8 +5,8 @@
 1. API 参数与 ``source='api'`` 映射的作用域 = ``api_id``；
 2. ``param_profiles`` 是可复用**策略**，``api_param_bindings`` 给出
    ``api_id → profile_id``，``api_params`` 行是实例**覆盖**；
-3. 解析优先级：实例覆盖（同键替换策略行）> 策略（未覆盖键回落）> 空（WARN）；
-4. 算法类型级默认层（``api_id IS NULL``）已废弃，不传 ``api_id`` 返回空。
+3. 解析优先级：实例覆盖（同键替换策略行）> 策略（未覆盖键回落）> 算法级默认；
+4. 算法类型级默认层（``api_id IS NULL``）作为兜底层保留，不传 ``api_id`` 只返回该层。
 
 全部用例用 ``object.__new__(AlgorithmConfigCache)`` 直接安装快照，不连库。
 """
@@ -132,15 +132,22 @@ def _by_code(rows):
     return {row['code']: row for row in rows}
 
 
-# ========== 1. api_id 缺省：空声明 + WARN ==========
+# ========== 1. api_id 缺省：只返回算法级默认层 ==========
 
-def test_api_id_none_returns_empty_with_warn(monkeypatch):
-    warnings = _warnings(monkeypatch)
-    cache = _bare_cache()
+def test_api_id_none_returns_algorithm_level_rows():
+    snapshot = _snapshot()
+    snapshot['api_params'] = {ALGO: AlgorithmConfigCache._serialize_params([
+        {'id': 21, 'algorithm_type': ALGO, 'api_id': None, 'param_code': 'lang',
+         'param_name': '算法级语言', 'param_type': 'text', 'direction': 'input',
+         'ui_order': 1},
+        *OVERRIDE_PARAMS,
+    ])}
+    cache = _bare_cache(snapshot)
 
-    assert cache.get_api_params(ALGO) == []
-    assert warnings and warnings[0][0] == 'WARN'
-    assert ALGO in warnings[0][1]
+    rows = cache.get_api_params(ALGO)
+    assert [row['code'] for row in rows] == ['lang']
+    # 其它实例的覆盖行不会串进来
+    assert all(row['api_id'] is None for row in rows)
 
 
 # ========== 2. 仅策略：返回策略行，api_id 为 None ==========
