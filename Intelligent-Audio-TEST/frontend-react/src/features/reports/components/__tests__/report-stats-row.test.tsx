@@ -13,8 +13,9 @@ const counts: ReportCounts = {
   all: 42,
   published: 30,
   draft: 10,
-  comparison: 2,
-  types: { task: 38, comparison: 2, secondary_comparison: 2, benchmark: 0 },
+  // legacy 汇总口径（comparison + secondary_comparison），与徽章点击结果无关
+  comparison: 4,
+  types: { task: 38, comparison: 1, secondary_comparison: 3, benchmark: 0 },
   favorite: 0,
 }
 
@@ -42,7 +43,15 @@ describe('ReportStatsRow', () => {
     )
     expect(
       screen.getByRole('button', { name: /对比报告/ })
-    ).toHaveTextContent('2')
+    ).toHaveTextContent('1')
+  })
+
+  it('对比报告徽章读 types.comparison，不用 legacy 汇总计数（与点击结果/类型 chips 同口径）', () => {
+    render(<ReportStatsRow counts={counts} onQuickFilter={vi.fn()} />)
+    const badge = screen.getByRole('button', { name: /对比报告/ })
+    // types.comparison = 1；legacy counts.comparison = 4 不得出现
+    expect(badge).toHaveTextContent('1')
+    expect(within(badge).queryByText('4')).toBeNull()
   })
 
   it('点击徽章触发 onQuickFilter', async () => {
@@ -72,7 +81,7 @@ describe('ReportStatsRow', () => {
     ).toBeInTheDocument()
   })
 
-  it('对比类型筛选同时匹配 comparison 与 secondary_comparison', () => {
+  it('type=comparison 时对比报告徽章置选中态（二次对比独立经类型 chips）', () => {
     render(
       <ReportStatsRow
         counts={counts}

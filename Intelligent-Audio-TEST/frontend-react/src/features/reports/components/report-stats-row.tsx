@@ -57,7 +57,9 @@ export function ReportStatsRow({
       case 'draft':
         return counts.draft
       case 'comparison':
-        return counts.comparison
+        // 徽章点击即 type='comparison' 精确筛选，与类型 chips 同口径用 types.comparison；
+        // legacy counts.comparison 是 comparison + secondary_comparison 之和，会与点击结果对不上（INT-2350 审计打回）
+        return counts.types.comparison
     }
   }
 
