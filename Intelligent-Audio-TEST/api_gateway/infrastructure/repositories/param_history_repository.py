@@ -188,14 +188,23 @@ class ParamHistoryRepository:
 
         ``table`` 只接受 ``params`` / ``mappings``；删除接口没有 body，
         需要先定位再记录版本。
+
+        参数表（``algorithm_device_params`` / ``algorithm_api_params``）各自
+        独立自增 id，同号行很常见，且软删行会长期占号。判定必须与
+        ``ParamRepository.soft_delete`` 的删除口径一致：**设备表优先、只认
+        未删除行**，否则会把一个设备参数字段的历史记到同号的 API / 其它算法
+        作用域上（INT-2344 实测：设备参数 id=238 与某 API 的软删行同号，
+        历史被写到 device/17/voice_llm）。
         """
         session = get_db_session()
         if table == 'params':
-            for scope, spec in _SCOPE_SPECS.items():
+            for scope in (SCOPE_DEVICE, SCOPE_API):
+                spec = _SCOPE_SPECS[scope]
                 row = session.execute(
                     text(
                         f"SELECT algorithm_type, {spec['scope_column']} AS scope_id "
-                        f"FROM {spec['params_table']} WHERE id = :id"
+                        f"FROM {spec['params_table']} WHERE id = :id "
+                        f"AND deleted = false"
                     ),
                     {'id': int(row_id)},
                 ).mappings().first()
@@ -205,7 +214,7 @@ class ParamHistoryRepository:
         row = session.execute(
             text(
                 "SELECT algorithm_type, api_id, device_id FROM param_mappings "
-                "WHERE id = :id"
+                "WHERE id = :id AND deleted = false"
             ),
             {'id': int(row_id)},
         ).mappings().first()

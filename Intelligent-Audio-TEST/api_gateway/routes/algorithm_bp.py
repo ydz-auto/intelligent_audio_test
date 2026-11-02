@@ -20,12 +20,16 @@ router = APIRouter()
 def _record_device_history(result, device_id, algorithm_type) -> None:
     """设备参数 / 映射写成功后追加版本快照（失败不影响主流程）。
 
-    ``result`` 必须是服务层返回的 ``(payload, http_code)`` 元组：``to_response``
-    之后已经是 Response 对象，不再是元组（INT-2342：此前传的是转换后的响应，
-    判型恒为假，设备作用域版本一条都没写过）。
+    调用点传入服务层返回的 ``(payload, http_code)`` 元组（INT-2342：此前传的是
+    ``to_response`` 转换后的 Response，判型恒为假，设备作用域版本一条都没写过）。
+    为兼容仍可能传入 Response 的入口，状态码同时认元组与带 ``status_code`` 的
+    两种形态，只保留这一处判据（INT-2344），避免双口径。
     """
-    if (isinstance(result, tuple) and len(result) == 2
-            and result[1] < 400 and device_id and algorithm_type):
+    if isinstance(result, tuple) and len(result) == 2:
+        status = result[1]
+    else:
+        status = getattr(result, 'status_code', 500)
+    if status < 400 and device_id and algorithm_type:
         ParamHistoryService.record('device', int(device_id), algorithm_type)
 
 
@@ -149,7 +153,8 @@ def put_param(param_id: int, _: None = require_permission('algorithm:param_manag
 
 @router.delete('/params/{param_id}')
 def delete_param_by_id(param_id: int, _: None = require_permission('algorithm:param_manage')):
-    # 删除接口通常没有 body：先按行定位作用域，再记录删除后的快照
+    # 删除接口通常没有 body：先按行定位作用域，再记录删除后的快照。
+    # API 作用域的历史由 save_api_overrides 维护，这里只记设备作用域（INT-2344）。
     body = request.get_json(silent=True) or {}
     device_id, algorithm_type = _write_body_scope(body)
     if not (device_id and algorithm_type):
@@ -308,6 +313,7 @@ def put_mapping(mapping_id: int, _: None = require_permission('algorithm:param_m
 
 @router.delete('/mappings/{mapping_id}')
 def delete_mapping_by_id(mapping_id: int, _: None = require_permission('algorithm:param_manage')):
+    # 与 DELETE /params 同口径：只记设备作用域（INT-2344）。
     body = request.get_json(silent=True) or {}
     device_id, algorithm_type = _write_body_scope(body)
     if not (device_id and algorithm_type):
