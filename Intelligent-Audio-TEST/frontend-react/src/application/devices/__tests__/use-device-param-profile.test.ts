@@ -181,4 +181,43 @@ describe('buildDeviceScopeProfileInput', () => {
       defaultValue: '策略层生效值',
     })
   })
+
+  it('不同原始 source 归一后同键只提交一行（INT-2341 二次另存唯一索引 500）', async () => {
+    // 读接口同时返回算法级原 source 行（case_config / reference）与策略层已归一的
+    // case 行；三者归一后是同一个自然键 (case, audios, 72)，原样提交会撞后端唯一索引。
+    fetchMappingsMock.mockImplementation(async (_algorithmType, _deviceId, bucket) => {
+      if (bucket !== 'evaluation') return []
+      return [
+        { ...EVALUATION_MAPPING, id: 21, source: 'case_config', sourceParam: 'audios', targetParam: 'played_audios' },
+        { ...EVALUATION_MAPPING, id: 22, source: 'reference', sourceParam: 'audios', targetParam: 'played_audios' },
+        { ...EVALUATION_MAPPING, id: 23, source: 'case', sourceParam: 'audios', targetParam: 'played_audios' },
+      ]
+    })
+
+    const payload = await buildDeviceScopeProfileInput(BASE_INPUT)
+
+    expect(payload.mappings).toHaveLength(1)
+    expect(payload.mappings[0]).toMatchObject({
+      source: 'case',
+      sourceParam: 'audios',
+      dimensionId: 72,
+      targetParam: 'played_audios',
+    })
+  })
+
+  it('设备覆盖行优先于同 source 的算法级行', async () => {
+    fetchMappingsMock.mockImplementation(async (_algorithmType, _deviceId, bucket) =>
+      bucket === 'evaluation'
+        ? [
+            { ...EVALUATION_MAPPING, id: 31, source: 'device', sourceParam: 'rec_text', targetParam: 'text' },
+            { ...EVALUATION_MAPPING, id: 32, source: 'device', sourceParam: 'rec_text', targetParam: 'text', deviceId: 5 },
+          ]
+        : []
+    )
+
+    const payload = await buildDeviceScopeProfileInput(BASE_INPUT)
+
+    expect(payload.mappings).toHaveLength(1)
+    expect(payload.mappings[0].source).toBe('device')
+  })
 })

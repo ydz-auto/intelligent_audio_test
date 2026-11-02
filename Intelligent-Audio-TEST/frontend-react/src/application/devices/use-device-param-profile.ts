@@ -116,13 +116,25 @@ function toParamDraft(row: AlgorithmApiParam): ParamProfileParamDraft {
   }
 }
 
-function mappingKey(row: ParamMapping): string {
-  return `${row.source}|${row.sourceParam}|${row.dimensionId ?? ''}`
+/** 策略侧映射来源：后端策略只存 device / case 两种（设备输出 → 评估维度也归 device） */
+function draftSource(row: ParamMapping): 'device' | 'case' {
+  return row.source === 'device' ? 'device' : 'case'
 }
 
 /**
- * 两桶映射：读接口已按算法级 → 绑定策略 → 本设备覆盖解析，这里只做同键去重
- * （策略层行不带 device_id，按打底层处理）并丢弃脏行（缺源/目标）。
+ * 策略映射自然键 = 后端唯一索引 `(profile_id, source, source_param, dimension_id)`
+ * 的前三段。**必须按归一后的 source 去重**（INT-2341）：读接口返回的是三层解析
+ * 结果，算法级行保留原始 source（case_config / reference / api…），而策略层行
+ * 已归一成 case——原始 source 不同的两行归一后同键，原样提交会撞唯一索引 500。
+ */
+function mappingKey(row: ParamMapping): string {
+  return `${draftSource(row)}|${row.sourceParam}|${row.dimensionId ?? ''}`
+}
+
+/**
+ * 两桶映射：读接口已按算法级 → 绑定策略 → 本设备覆盖解析，这里按**归一后**的
+ * 自然键去重（后出现的行优先，与后端合并顺序一致：策略层行排在算法级之后），
+ * 设备覆盖行最后覆盖，并丢弃脏行（缺源/目标）。
  */
 function effectiveMappings(rows: ParamMapping[], deviceId: number): ParamProfileMappingDraft[] {
   const map = new Map<string, ParamMapping>()
@@ -135,7 +147,7 @@ function effectiveMappings(rows: ParamMapping[], deviceId: number): ParamProfile
   return [...map.values()]
     .filter((row) => row.sourceParam && row.targetParam)
     .map((row) => ({
-      source: row.source === 'device' ? 'device' : 'case',
+      source: draftSource(row),
       sourceDirection: row.sourceDirection === 'input' ? 'input' : 'output',
       sourceParam: row.sourceParam,
       targetParam: row.targetParam,

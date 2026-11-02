@@ -7,6 +7,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ParamProfile } from '@/domain/models/paramProfile'
@@ -170,4 +171,20 @@ describe('DeviceParamsDialog 参数策略（INT-2271）', () => {
 
     expect(screen.getByRole('button', { name: '另存为新策略' })).toBeEnabled()
   })
-})
+
+  it('另存失败不把 psycopg2 / 唯一索引原文透给用户（INT-2341 P3）', async () => {
+    const user = userEvent.setup()
+    buildMock.mockResolvedValue({ scope: 'device', algorithmType: 'asr', name: 'x' })
+    createProfileMock.mockRejectedValue(
+      new Error(
+        '保存参数策略失败: (psycopg2.errors.UniqueViolation) duplicate key value violates unique constraint "uq_param_profile_mapping_key" DETAIL: Key (profile_id, source, source_param, dimension_id)=(67, case, audios, 72) already exists.'
+      )
+    )
+
+    renderDialog()
+    await user.click(screen.getByRole('button', { name: '另存为新策略' }))
+    await user.type(screen.getByLabelText('策略名称 *'), '矩阵测试_INT2341_二次另存')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(toast.error).toHaveBeenCalledWith('另存失败：保存参数策略失败，请稍后重试')
+  })})

@@ -93,6 +93,28 @@ const PARAM_TYPE_LABEL: Record<string, string> = Object.fromEntries(
   PARAM_TYPE_OPTIONS.map((item) => [item.value, item.label])
 )
 
+/**
+ * toast 用的失败文案：优先服务端可读 message；后端异常兜底会把 psycopg2 / 唯一
+ * 索引原文（数百字符）透出，这类技术性文案回落成本页可读提示（INT-2341）。
+ */
+function readableError(error: unknown, fallback: string): string {
+  const candidate = error as { userMessage?: unknown; message?: unknown } | null
+  const message =
+    typeof candidate?.userMessage === 'string' && candidate.userMessage
+      ? candidate.userMessage
+      : typeof candidate?.message === 'string'
+        ? candidate.message
+        : ''
+  if (!message) return fallback
+  if (
+    message.length > 160 ||
+    /psycopg2|Traceback|duplicate key|violates .*constraint/i.test(message)
+  ) {
+    return fallback
+  }
+  return message
+}
+
 interface DeviceParamsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -229,7 +251,7 @@ export function DeviceParamsDialog({
       invalidateScope()
     },
     onError: (error) =>
-      toast.error(`绑定失败：${error instanceof Error ? error.message : String(error)}`),
+      toast.error(`绑定失败：${readableError(error, '请稍后重试')}`),
   })
 
   const createMutation = useMutation({
@@ -248,7 +270,7 @@ export function DeviceParamsDialog({
       bindMutation.mutate(profile.id)
     },
     onError: (error) =>
-      toast.error(`另存失败：${error instanceof Error ? error.message : String(error)}`),
+      toast.error(`另存失败：${readableError(error, '保存参数策略失败，请稍后重试')}`),
   })
 
   const cloneMutation = useMutation({
@@ -262,7 +284,7 @@ export function DeviceParamsDialog({
       bindMutation.mutate(profile.id)
     },
     onError: (error) =>
-      toast.error(`克隆失败：${error instanceof Error ? error.message : String(error)}`),
+      toast.error(`克隆失败：${readableError(error, '请稍后重试')}`),
   })
 
   const names = profileOptions.profiles.map((profile) => ({
@@ -314,7 +336,7 @@ export function DeviceParamsDialog({
       invalidate()
     },
     onError: (error) =>
-      toast.error(`保存失败：${error instanceof Error ? error.message : String(error)}`),
+      toast.error(`保存失败：${readableError(error, '请稍后重试')}`),
   })
 
   const deleteMutation = useMutation({
@@ -324,7 +346,7 @@ export function DeviceParamsDialog({
       invalidate()
     },
     onError: (error) =>
-      toast.error(`删除失败：${error instanceof Error ? error.message : String(error)}`),
+      toast.error(`删除失败：${readableError(error, '请稍后重试')}`),
   })
 
   const openOverride = (row: AlgorithmApiParam | null) => {
