@@ -20,6 +20,14 @@
     4) 为同 algorithm_type 的 API 实例回填 api_param_bindings；
     5) 软删算法级默认行（api_id IS NULL），实例级行（api_id 非空）保持为覆盖。
 
+INT-2361 已完成守卫：第 1.5 步之后先判定本脚本的数据搬迁是否已经做过，做过则
+只打印 ``[SKIP] 已完成迁移，跳过默认层搬迁与绑定回填`` 并提交（DDL / 存量修复
+照常执行），不再重复软删算法级行 / 回填绑定。原因是 2026-11-02 起口径改为
+「算法级默认层作为三层解析兜底层保留」，紧随其后的 ㊾-7
+``restore_api_algorithm_level.py`` 每次都会把本脚本刚软删的行恢复、并解绑刚回填
+的绑定——数据最终正确，但每次 bootstrap 都白做一遍「软删 → 恢复 → 解绑」，绑定
+数在 27/28 之间抖动。
+
 幂等：建表/建索引均有 IF NOT EXISTS；复制按唯一键 ON CONFLICT 跳过；
 默认行软删后重复执行不会再复制出重复行。本脚本不新增任何列（绑定只落
 ``api_param_bindings``，不在 ``apis`` 上冗余 ``param_profile_id``）。
@@ -216,6 +224,27 @@ _GET_PROFILE_ID_SQL = """
      WHERE scope = 'api' AND algorithm_type = %s AND name = 'default' AND deleted = false
 """
 
+# INT-2361 已完成守卫：返回一行即表示本脚本的数据搬迁（第 2~5 步）已执行过。
+# 判据只取「本脚本自身在引导链里留下的痕迹」，两个信号任一命中即可：
+#   1) 已有 scope='api' AND name='default' 的策略——**不看 deleted**：管理员软删
+#      掉 default 策略后也不该重新搬迁（行仍在表里，硬删不存在的语义）；
+#   2) api_param_bindings 已有任何行——含 ㊾-7 解绑后 deleted=true 的行（解绑只置
+#      软删、行保留），即使策略行被人硬删也能判出已迁移。
+# 两个信号在空库执行本步前恒为空：param_profiles / api_param_bindings 只由本步
+# 写入（设备侧走 scope='device' 的 ㊾-1.1，在其后执行）。
+# 不能用「algorithm_api_params 存在 api_id IS NULL AND deleted=false 的行」当判据：
+# ⑪ seed_voice_llm、seed_api_eval_mapping 等种子在本步之前（引导链更早位置）就已
+# 写入算法级行，空库同样命中 → 会把初次搬迁也跳过，default 策略永远建不出来。
+_COMPLETED_GUARD_SQL = """
+    SELECT 1 FROM param_profiles
+     WHERE scope = 'api' AND name = 'default'
+    UNION ALL
+    SELECT 1 FROM api_param_bindings
+    LIMIT 1
+"""
+
+_COMPLETED_GUARD_MESSAGE = '[SKIP] 已完成迁移，跳过默认层搬迁与绑定回填'
+
 _COPY_PARAMS_SQL = """
     INSERT INTO param_profile_params (
         profile_id, param_code, param_name, label, param_type, direction,
@@ -325,6 +354,15 @@ def apply(conn, ddl_only=False):
 
         if ddl_only:
             print('[ok] --ddl-only：跳过默认层搬迁 / 绑定回填 / 算法级行软删（生产口径）')
+            conn.commit()
+            return
+
+        # INT-2361：数据搬迁只做一次。守卫命中时 DDL / 存量修复照常提交，但不再
+        # 软删算法级行 / 回填绑定——否则紧随其后的 ㊾-7 每次都要把刚软删的行恢复、
+        # 刚回填的绑定解绑（「软删 → 恢复 → 解绑」空转，绑定数 27/28 抖动）。
+        cur.execute(_COMPLETED_GUARD_SQL)
+        if cur.fetchone() is not None:
+            print(_COMPLETED_GUARD_MESSAGE)
             conn.commit()
             return
 

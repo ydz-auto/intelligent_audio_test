@@ -346,6 +346,10 @@ BOOTSTRAP_STEPS = [
     #     行归 false（create_all 先建表时列上没有默认值，迁移 INSERT 曾落 NULL，
     #     读侧按 deleted=false 过滤导致策略/API 参数/映射接口全空）。
     #     幂等（建表/加列 IF NOT EXISTS、复制 ON CONFLICT 跳过、NULL 归 false 命中 0 行）；
+    #     INT-2361 已完成守卫：数据搬迁只在首次执行——param_profiles 已有 scope='api'
+    #     name='default' 策略或 api_param_bindings 已有任何行时，只打印
+    #     [SKIP] 已完成迁移，跳过默认层搬迁与绑定回填（DDL / 存量修复照跑），
+    #     避免每次部署「本步软删 → ㊾-7 恢复 → 解绑」空转。
     #     默认 dry-run，引导链必须带 --apply。读侧按「策略 + 实例覆盖」解析必须与本次
     #     部署同版本上线，否则默认行搬走后读成空。须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202610/add_param_profiles_scope.py', '--apply'),

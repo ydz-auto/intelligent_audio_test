@@ -130,7 +130,7 @@ def test_apply_cross_db_executes_ddl_and_copy_without_backfill(
         monkeypatch, capsys):
     cursor, conn = _make(
         fetchone_results=[(True,)] + [(0,)] * len(migration._COUNT_SQL)
-        + [(False,), (101,), (102,)],
+        + [(False,), None, (101,), (102,)],
         fetchall_results=[[('asr',), ('tts',)]],
         rowcount_plan={
             'INSERT INTO param_profile_params': 2,
@@ -170,7 +170,7 @@ def test_apply_cross_db_executes_ddl_and_copy_without_backfill(
 def test_apply_same_db_backfills_bindings(monkeypatch, capsys):
     cursor, conn = _make(
         fetchone_results=[(True,)] + [(0,)] * len(migration._COUNT_SQL)
-        + [(True,), (201,)],
+        + [(True,), None, (201,)],
         fetchall_results=[[('asr',)]],
         rowcount_plan={
             'INSERT INTO param_profile_params': 2,
@@ -202,7 +202,7 @@ def test_idempotent_sql_structure_and_double_apply(monkeypatch):
     assert 'ON CONFLICT' in migration._UPSERT_PROFILE_SQL
 
     cursor, conn = _make(
-        fetchone_results=[(False,), (1,), (False,), (1,)],
+        fetchone_results=[(False,), None, (1,), (False,), None, (1,)],
         fetchall_results=[[('asr',)], [('asr',)]],
         rowcount_plan={
             'INSERT INTO param_profile_params': 1,
@@ -242,7 +242,7 @@ def test_rollback_drops_tables_in_order(monkeypatch, capsys):
 
 def test_apply_raises_when_profile_id_unresolvable(monkeypatch):
     cursor, conn = _make(
-        fetchone_results=[(False,), None, None],
+        fetchone_results=[(False,), None, None, None],
         fetchall_results=[[('asr',)]],
     )
     with pytest.raises(RuntimeError):
@@ -268,7 +268,7 @@ def test_repair_null_deleted_runs_after_ddl_before_deleted_false_queries(monkeyp
     default 策略 / 绑定。
     """
     cursor, conn = _make(
-        fetchone_results=[(False,), (1,)],
+        fetchone_results=[(False,), None, (1,)],
         fetchall_results=[[('asr',)]],
     )
     migration.apply(conn)
@@ -277,11 +277,12 @@ def test_repair_null_deleted_runs_after_ddl_before_deleted_false_queries(monkeyp
     last_ddl = max(sqls.index(_norm(ddl)) for ddl in migration.DDL_FORWARD)
     first_repair = min(sqls.index(_norm(sql))
                        for sql in migration.REPAIR_NULL_DELETED_SQL)
+    guard = sqls.index(_norm(migration._COMPLETED_GUARD_SQL))
     collect = sqls.index(_norm(migration._COLLECT_TYPES_SQL))
     first_upsert = sqls.index(_norm(migration._UPSERT_PROFILE_SQL))
 
     assert last_ddl < first_repair
-    assert first_repair < collect < first_upsert
+    assert first_repair < guard < collect < first_upsert
 
 
 def test_repair_covers_all_four_tables_with_default_and_update():
@@ -324,3 +325,70 @@ def test_models_declare_server_default_for_deleted():
         ddl = str(CreateTable(model.__table__).compile(
             dialect=postgresql.dialect()))
         assert 'deleted BOOLEAN DEFAULT false' in _norm(ddl), model.__table__.name
+
+
+# ---- INT-2361：已完成守卫（避免每次 bootstrap 重复「软删 → 恢复 → 解绑」） ----
+
+def test_completed_guard_hit_skips_data_movement(capsys):
+    """守卫命中：DDL / 存量修复照跑，数据搬迁（复制 / 回填 / 软删）全部跳过。"""
+    cursor, conn = _make(fetchone_results=[(False,), (1,)])
+
+    migration.apply(conn)
+
+    out = capsys.readouterr().out
+    assert migration._COMPLETED_GUARD_MESSAGE in out
+
+    sqls = cursor.sqls
+    for ddl in migration.DDL_FORWARD:
+        assert _norm(ddl) in sqls
+    for repair_sql in migration.REPAIR_NULL_DELETED_SQL:
+        assert _norm(repair_sql) in sqls
+
+    assert _norm(migration._COLLECT_TYPES_SQL) not in sqls
+    assert not any('INSERT INTO param_profiles' in s for s in sqls)
+    assert not any('INSERT INTO param_profile_params' in s for s in sqls)
+    assert not any('INSERT INTO param_profile_mappings' in s for s in sqls)
+    assert not any('INSERT INTO api_param_bindings' in s for s in sqls)
+    assert not any(s.startswith('UPDATE algorithm_api_params') for s in sqls)
+    assert not any(s.startswith('UPDATE param_mappings') for s in sqls)
+    # DDL / 存量修复必须落库，否则被跳过的迁移结构不生效
+    assert conn.commits == 1
+
+
+def test_completed_guard_miss_runs_data_movement(capsys):
+    """守卫未命中（空库首次搬迁）：照常复制 / 回填 / 软删，且不打印 SKIP。"""
+    cursor, conn = _make(
+        fetchone_results=[(False,), None, (1,)],
+        fetchall_results=[[('asr',)]],
+        rowcount_plan={'INSERT INTO param_profile_params': 2},
+    )
+
+    migration.apply(conn)
+
+    out = capsys.readouterr().out
+    assert migration._COMPLETED_GUARD_MESSAGE not in out
+
+    sqls = cursor.sqls
+    assert _norm(migration._COLLECT_TYPES_SQL) in sqls
+    assert sum(1 for s in sqls if s.startswith('INSERT INTO param_profiles')) == 1
+    assert sum(1 for s in sqls if s.startswith(
+        'INSERT INTO param_profile_params')) == 1
+    assert sum(1 for s in sqls if s.startswith(
+        'UPDATE algorithm_api_params SET deleted = true')) == 1
+    assert sum(1 for s in sqls if s.startswith(
+        'UPDATE param_mappings SET deleted = true')) == 1
+    assert conn.commits == 1
+
+
+def test_completed_guard_sql_counts_soft_deleted_profiles_and_unbound_rows():
+    """判据：软删的 default 策略仍算已迁移；解绑后 deleted=true 的绑定也算。"""
+    sql = _norm(migration._COMPLETED_GUARD_SQL)
+    profile_branch = sql.split('UNION ALL')[0]
+    assert "scope = 'api' AND name = 'default'" in profile_branch
+    assert 'deleted' not in profile_branch
+    assert 'FROM api_param_bindings' in sql
+
+
+def test_completed_guard_does_not_use_algorithm_level_rows_as_signal():
+    """种子在空库会先写算法级行，该信号会把首次搬迁也跳过（default 策略建不出来）。"""
+    assert 'algorithm_api_params' not in migration._COMPLETED_GUARD_SQL
