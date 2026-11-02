@@ -99,10 +99,34 @@ def build_pgoptions(budget):
 BOOTSTRAP_STEPS = [
     # ① 初始建表（69 表）
     ('python', 'scripts/create_all_tables.py'),
+    # ①.1 数据可见性基座列（INT-423）：10 张资源表补 visibility（默认 shared）+
+    #     复合索引。全新库由 create_all 带出（本步全 SKIP）；建库早于 INT-423 的
+    #     存量库必须在本步补齐——否则 ② 的 (created_by_user_id, visibility)
+    #     索引会因列不存在直接失败（2026-11-02 生产副本演练实测）。
+    ('python', 'scripts/migrations/202610/add_visibility_columns_int423.py'),
     # ② 结构基线：删 FK（应用层管理引用完整性）+ 软删除/审计列 + 索引
     ('python', 'scripts/migrations/202608/remove_foreign_keys_and_soft_delete.py'),
     # ③ 审计/软删除列兜底（逐表对齐 ORM 元数据）
     ('python', 'scripts/migrations/202608/add_audit_columns.py'),
+    # ③.1~③.6 存量库结构补齐（create_all 只建缺失表、不给已有表补列）：
+    #     2026-11-02 生产副本演练用 ORM 元数据做结构 diff，查出 19 列缺口
+    #     （新代码一读就 UndefinedColumn）。这些脚本全是幂等 DDL，全新库为
+    #     全 SKIP，因此 dev / prod 两档都必须执行。
+    #     用户名展示列
+    ('python', 'scripts/migrations/202610/add_users_display_name.py'),
+    #     被测 API 网络代理两列（INT-839）
+    ('python', 'scripts/migrations/202610/add_api_proxy_columns.py'),
+    #     评估域软删操作人列（INT-841：categories / dimensions）
+    ('python', 'scripts/migrations/202610/add_evaluation_deleted_by_int841.py'),
+    #     标签域软删操作人列（INT-840：tags / tag_categories / test_case_groups）
+    ('python', 'scripts/migrations/202610/add_tag_operator_columns_int840.py'),
+    #     评估策略实体 + test_cases.strategy_id / strategy_overrides（INT-590）
+    ('python', 'scripts/migrations/202610/add_evaluation_strategies_int590.py'),
+    #     人工复核：test_result_reviews 表 + test_results 复核/剔除列 +
+    #     report_summaries.review_count（INT-340）
+    ('python', 'scripts/migrations/202610/add_test_result_reviews_int340.py'),
+    #     结果排除标记三列（INT-305：excluded / excluded_by_user_id / excluded_at）
+    ('python', 'scripts/migrations/202610/add_result_excluded_columns_int305.py'),
     # ④ 重新评估列
     ('python', 'scripts/migrations/202608/add_reevaluated_at.py'),
     # ④.1 实验室扩展：laboratories 主表 + task_laboratory_relations + 各表 lab_id 列
@@ -369,6 +393,12 @@ BOOTSTRAP_STEPS = [
     #     检出并以非零码退出并打印 DROP 命令（IF NOT EXISTS 不会自愈它）。
     #     默认 dry-run，引导链必须带 --apply；须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202611/add_audios_md5_filepath_index.py', '--apply'),
+    # ㊾-4.1 test_tasks 列表查询索引补齐（生产副本结构对齐）：task_models.TestTask
+    #     声明的 idx_task_status / idx_task_algorithm_type / idx_task_created_at /
+    #     idx_task_status_deleted 只由 create_all 建表时带出，存量库（生产热备实测）
+    #     一条都没有——任务列表的状态/时间/算法类型筛选全部走顺序扫描。
+    #     幂等（索引已存在即 SKIP、表不存在即跳过）；须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_task_list_indexes.py'),
     # ㊾-5 test_reports.status 历史混值归一（INT-2238）：同一列曾被两套互斥词表
     #     混写（域实体/命令侧 pending/generating/completed/failed vs 生成/统计/
     #     渲染/前端 draft/published），统计只认 published → 混写报告永久漏计、
@@ -409,9 +439,18 @@ BOOTSTRAP_STEPS = [
 # 的 seed 脚本「默认就跑进生产」。
 PROD_DDL_SCRIPTS = frozenset({
     'scripts/create_all_tables.py',
+    'scripts/migrations/202610/add_visibility_columns_int423.py',
     'scripts/migrations/202608/remove_foreign_keys_and_soft_delete.py',
     'scripts/migrations/202608/add_audit_columns.py',
     'scripts/migrations/202608/add_reevaluated_at.py',
+    # 存量库结构补齐（③.1~③.6）：生产副本演练实测缺这 19 列，纯 DDL、幂等
+    'scripts/migrations/202610/add_users_display_name.py',
+    'scripts/migrations/202610/add_api_proxy_columns.py',
+    'scripts/migrations/202610/add_evaluation_deleted_by_int841.py',
+    'scripts/migrations/202610/add_tag_operator_columns_int840.py',
+    'scripts/migrations/202610/add_evaluation_strategies_int590.py',
+    'scripts/migrations/202610/add_test_result_reviews_int340.py',
+    'scripts/migrations/202610/add_result_excluded_columns_int305.py',
     'scripts/migrations/202608/add_laboratory_tables.py',
     'scripts/migrations/202609/add_pass_threshold_to_eval_params.py',
     'scripts/migrations/202609/add_task_case_device_type.py',
@@ -438,7 +477,9 @@ PROD_DDL_SCRIPTS = frozenset({
     'scripts/migrations/202610/add_device_kind_int1679.py',
     'scripts/migrations/202610/add_test_result_result_type_int1510.py',
     'scripts/migrations/202610/add_api_protocol_streaming_int1798.py',
-    'scripts/migrations/202610/add_pg_stat_statements_int1783.py',
+    # 注意：add_pg_stat_statements_int1783.py 不在 prod 白名单——它需要超级用户，
+    # 生产业务账号（intelligent_audio_test）没有该权限，演练实测会整链失败。
+    # 观测扩展由 DBA 用超级用户单独安装，不属于业务上线阻塞项。
     'scripts/migrations/202610/add_api_param_field_path_int1747.py',
     'scripts/migrations/202610/add_api_id_scope_int1751.py',
     'scripts/migrations/202610/add_data_transfer_source_maps_int1760.py',
@@ -452,6 +493,7 @@ PROD_DDL_SCRIPTS = frozenset({
     'scripts/migrations/202611/add_device_id_scope.py',
     'scripts/migrations/202611/add_device_param_bindings.py',
     'scripts/migrations/202611/add_audios_md5_filepath_index.py',
+    'scripts/migrations/202611/add_task_list_indexes.py',
     'scripts/migrations/202611/add_param_change_history.py',
     'scripts/migrations/202610/analyze_stale_statistics_int1741.py',
 })

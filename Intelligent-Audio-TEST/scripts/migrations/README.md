@@ -132,10 +132,39 @@ python scripts/migrations/202610/sweep_report_case_snapshots_int1995.py --apply 
   `backfill_result_type_channel_*`、`migrate_device_params_to_profiles`、
   `associate_devices_to_default_lab`、`seed_playback_speaker_groups`、
   `normalize_report_status_int2238`、`restore_api_algorithm_level`；
+- `add_pg_stat_statements_int1783.py` 也**不在** prod 白名单：`CREATE EXTENSION` 需要超级用户，生产业务账号无此权限（2026-11-02 副本演练实测整链失败）。该扩展由 DBA 用超级用户单独安装，不属于业务上线阻塞项；
 - 也可沿用 `docker-compose.simprod.yml` 的 `db_bootstrap: command: ["true"]` 整体关闭，
   再由变更窗口单独跑 prod 档；
 - 部署前后各做一次有效行数/内容比对：`algorithm_api_params`、`param_mappings`、
   `algorithm_device_params` 应保持不变（只允许新增空表/列/索引）。
+
+### 生产副本演练（上线前必做）
+
+`create_all` 只建缺失的表，**不会给已有表补列**。生产库 schema 落后于模型时，新代码一读就会 `UndefinedColumn`。2026-11-02 用最新生产热备做演练，查出并已补入引导链的结构缺口：
+
+| 缺口 | 补齐脚本（③.1~③.6） |
+|------|----------------------|
+| `users.display_name` | `add_users_display_name.py` |
+| `apis.proxy_type` / `proxy_url` | `add_api_proxy_columns.py` |
+| `categories` / `dimensions.deleted_by_user_id` | `add_evaluation_deleted_by_int841.py` |
+| `tags` / `tag_categories` / `test_case_groups.deleted_by_user_id` | `add_tag_operator_columns_int840.py` |
+| `evaluation_strategies` 表 + `test_cases.strategy_id` / `strategy_overrides` | `add_evaluation_strategies_int590.py` |
+| `test_result_reviews` 表 + `test_results` 复核/剔除列 + `report_summaries.review_count` | `add_test_result_reviews_int340.py` |
+| `test_results.excluded` / `excluded_by_user_id` / `excluded_at` | `add_result_excluded_columns_int305.py` |
+| `test_tasks` 列表索引 4 条（status / algorithm_type / created_at / status+deleted） | `add_task_list_indexes.py`（202611） |
+
+顺序约束（演练实测，错了就整链失败）：
+
+1. `add_visibility_columns_int423.py` 必须在 `remove_foreign_keys_and_soft_delete.py` **之前**——否则后者建 `(created_by_user_id, visibility)` 索引时列不存在；
+2. `add_param_profiles_scope.py --apply --ddl-only` 必须在 `add_device_id_scope.py` **之前**——后者依赖 `param_profiles` 已存在；
+3. `analyze_stale_statistics_int1741.py` 必须保持末位。
+
+演练验收口径：
+
+- 全链 rc=0，且**二次重跑**仍 rc=0（每套部署都会重跑引导链，幂等是硬要求）；
+- ORM 元数据与库结构 diff 为 0：缺表 0、缺列 0（用全部 PO 模型对比 `information_schema`）；
+- 金标表行数不变：`algorithm_api_params` 0、`algorithm_device_params` 6、
+  `algorithm_reference_params` 3、`param_mappings` 138（case 80 / device 42 / reference 16）。
 
 ## 脚本明细
 

@@ -94,3 +94,41 @@ def test_prod_allowlist_has_no_typos(monkeypatch):
     chain = {step[1] for step in _bootstrap.BOOTSTRAP_STEPS}
     unknown = _bootstrap.PROD_DDL_SCRIPTS - chain
     assert not unknown, f'白名单脚本不在引导链中（疑似拼写错误）: {sorted(unknown)}'
+
+
+# 2026-11-02 生产热备副本演练查出的结构缺口（create_all 不给已有表补列）：
+# 新代码读这些列会 UndefinedColumn，dev / prod 两档都必须补齐。
+SCHEMA_GAP_SCRIPTS = {
+    'scripts/migrations/202610/add_users_display_name.py',
+    'scripts/migrations/202610/add_api_proxy_columns.py',
+    'scripts/migrations/202610/add_evaluation_deleted_by_int841.py',
+    'scripts/migrations/202610/add_tag_operator_columns_int840.py',
+    'scripts/migrations/202610/add_evaluation_strategies_int590.py',
+    'scripts/migrations/202610/add_test_result_reviews_int340.py',
+    'scripts/migrations/202610/add_result_excluded_columns_int305.py',
+}
+
+
+def test_schema_gap_scripts_run_in_both_profiles():
+    chain = {step[1] for step in _bootstrap.BOOTSTRAP_STEPS}
+    assert not (SCHEMA_GAP_SCRIPTS - chain), \
+        f'引导链缺少存量库补列脚本: {sorted(SCHEMA_GAP_SCRIPTS - chain)}'
+    assert not (SCHEMA_GAP_SCRIPTS - _bootstrap.PROD_DDL_SCRIPTS), \
+        f'prod 白名单缺少存量库补列脚本: {sorted(SCHEMA_GAP_SCRIPTS - _bootstrap.PROD_DDL_SCRIPTS)}'
+
+
+def test_bootstrap_step_order_constraints():
+    """演练实测的顺序硬约束：错了整链失败。"""
+    chain = [step[1] for step in _bootstrap.BOOTSTRAP_STEPS]
+    idx = {script: i for i, script in enumerate(chain)}
+
+    def before(first, second):
+        assert idx[first] < idx[second], f'{first} 必须在 {second} 之前'
+
+    before('scripts/migrations/202610/add_visibility_columns_int423.py',
+           'scripts/migrations/202608/remove_foreign_keys_and_soft_delete.py')
+    before('scripts/migrations/202610/add_param_profiles_scope.py',
+           'scripts/migrations/202611/add_device_id_scope.py')
+    before('scripts/migrations/202610/add_param_profiles_scope.py',
+           'scripts/migrations/202611/add_device_param_bindings.py')
+    assert chain[-1].endswith('analyze_stale_statistics_int1741.py')
