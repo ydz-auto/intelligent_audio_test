@@ -15,6 +15,7 @@ try:
     )
     from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
     from .harmony_xiaoyichat import Xiaoyilivechat
+    from .harmony_xiaoyilivechat import XiaoyiLivechatReject
     from .harmony_chatgpt import ChatGptVoiceChat
     from .harmony_doubaochat import DoubaoChat
     from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
@@ -26,6 +27,7 @@ except ImportError:
     XiaoyiSimultaneousInterpretationDriver = None
     HarmonyHardenXiaoyiHuiJiDriver = None
     Xiaoyilivechat = None
+    XiaoyiLivechatReject = None
     ChatGptVoiceChat = None
     DoubaoChat = None
     HarmonyHardenXiaoyi_Input_MethodDriver = None
