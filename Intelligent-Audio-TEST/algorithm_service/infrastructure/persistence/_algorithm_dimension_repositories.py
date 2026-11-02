@@ -285,7 +285,7 @@ class ParamMappingQueryRepository(IParamMappingQueryRepository):
 
     def sync_for_dimension(
         self, dimension_id: int, params: list, direction: str = "output",
-        algorithm_type: str = "voice_llm", api_id: Optional[int] = None,
+        algorithm_type: Optional[str] = None, api_id: Optional[int] = None,
     ) -> bool:
         """同步 ParamMapping：当评估维度的输入/输出字段变更时，
         自动为该维度创建/更新/删除对应的 ParamMapping 记录。
@@ -293,7 +293,15 @@ class ParamMappingQueryRepository(IParamMappingQueryRepository):
         INT-1863：只管理调用方给定作用域（默认算法级 ``api_id IS NULL``）的行。
         评估维度保存走默认口径，绝不会改写或软删 API 实例级维度映射；新建行
         显式落 ``api_id``，与查询口径保持一致。
+
+        INT-2355：``algorithm_type`` 必须由调用方显式给定（维度关联的算法）。
+        缺失时直接拒绝，不再回落某个真实算法名——否则没有关联算法的维度会
+        把映射写进在用算法。
         """
+        if not algorithm_type:
+            raise ValueError(
+                "sync_for_dimension 需要显式 algorithm_type，禁止回落真实算法默认值"
+            )
         from algorithm_service.infrastructure.persistence.models import (
             ParamMapping as ParamMappingPO,
         )

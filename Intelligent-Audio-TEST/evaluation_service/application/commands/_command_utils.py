@@ -12,9 +12,6 @@ from shared.models.common_enums import Visibility
 
 logger = logging.getLogger(__name__)
 
-# 维度参数映射的默认算法类型（与 evaluation_repository_abc 的 gRPC 契约默认值保持一致）
-DEFAULT_ALGORITHM_TYPE = 'voice_llm'
-
 # Dimension 模型可赋值字段（不含 visibility——可见性修改走专用 share 端点 INT-466，
 # 更新 payload 不得改可见性；新建可见性在 create_dimension 显式设置）
 DIMENSION_MODEL_FIELDS = [
@@ -140,18 +137,40 @@ def extract_associated_relations(associated_algorithms) -> List[Dict[str, Any]]:
     return relations
 
 
-def get_default_algorithm_type(associated_algorithms) -> str:
-    """从关联算法列表取默认（或第一个）算法的 type，回落到 DEFAULT_ALGORITHM_TYPE。"""
-    if not associated_algorithms:
-        return DEFAULT_ALGORITHM_TYPE
-    for algo in associated_algorithms:
-        if isinstance(algo, dict):
-            # INT-1692：与 extract_associated_relations 同步 is_default 双键兼容
-            if algo.get('isDefault') or algo.get('is_default'):
-                return algo.get('algorithmType') or algo.get('algorithm_type') or DEFAULT_ALGORITHM_TYPE
+def _relation_algorithm_type(algo) -> Tuple[Optional[str], bool]:
+    """从单条关联算法（dict / DTO / 纯字符串）取 (algorithm_type, is_default)。
+
+    兼容前端驼峰键与后端下划线键；DTO 走属性（GetRelationsByDimension 返回
+    DimensionRelationDTO）。
+    """
+    if isinstance(algo, dict):
+        algo_type = algo.get('algorithmType') or algo.get('algorithm_type')
+        # INT-1692：isDefault / is_default 双键兼容
+        is_default = algo.get('isDefault', algo.get('is_default', False))
+    elif isinstance(algo, str):
+        algo_type, is_default = algo, False
+    else:
+        algo_type = getattr(algo, 'algorithm_type', None)
+        is_default = getattr(algo, 'is_default', False)
+    return (algo_type or None), bool(is_default)
+
+
+def get_default_algorithm_type(associated_algorithms) -> Optional[str]:
+    """从关联算法列表取默认（或第一个）算法的 type；无关联算法时返回 None。
+
+    INT-2355：不再回落到任何真实算法名（旧实现回落 'voice_llm'，会把没有
+    关联算法的维度的 ParamMapping 写进在用算法）。返回 None 时调用方必须
+    跳过 ParamMapping 同步。
+    """
+    relations = [
+        _relation_algorithm_type(algo)
+        for algo in (associated_algorithms or [])
+    ]
+    relations = [(algo_type, is_default) for algo_type, is_default in relations if algo_type]
+    if not relations:
+        return None
+    for algo_type, is_default in relations:
+        if is_default:
+            return algo_type
     # 没有标记默认的，取第一个
-    for algo in associated_algorithms:
-        if isinstance(algo, dict):
-            return algo.get('algorithmType') or algo.get('algorithm_type') or DEFAULT_ALGORITHM_TYPE
-        return algo or DEFAULT_ALGORITHM_TYPE
-    return DEFAULT_ALGORITHM_TYPE
+    return relations[0][0]

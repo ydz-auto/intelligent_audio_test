@@ -55,6 +55,9 @@ from evaluation_service.application.commands._dimension_ops_mixin import (
 
 logger = logging.getLogger(__name__)
 
+# 关联算法载荷「未携带」哨兵：与显式空列表（清空关联）区分（INT-2355）
+_UNSET = object()
+
 
 def _refresh_stats_cache(op_name: str):
     """写操作后刷新统计缓存（api_gateway 提供的旁路优化，失败降级忽略）"""
@@ -120,11 +123,13 @@ class EvaluationCommandService(CategoryCommandsMixin, DimensionOpsMixin):
 
             # 关联算法（gRPC 同步：先清空再插入）
             raw_associated = data.get('associatedAlgorithms') or data.get('associated_algorithms') or []
-            self.repo.sync_relations(new_dim.id, extract_associated_relations(raw_associated))
+            relations = extract_associated_relations(raw_associated)
+            self.repo.sync_relations(new_dim.id, relations)
 
             # 参数与 ParamMapping 同步（input + output）
+            # INT-2355：未关联任何算法时 algo_type 为 None → 不写任何映射
             err = self._sync_dimension_params(
-                new_dim.id, data, get_default_algorithm_type(raw_associated), update_mode=False)
+                new_dim.id, data, get_default_algorithm_type(relations), update_mode=False)
             if err:
                 # INT-1691：此处已有未提交的新建行，返回前必须回滚，不能留 pending 写
                 self.repo.rollback()
@@ -171,11 +176,23 @@ class EvaluationCommandService(CategoryCommandsMixin, DimensionOpsMixin):
 
             self._apply_dimension_fields(dim, data)
 
-            # 关联算法（payload 未携带时不处理）
-            raw_associated = data.get('associatedAlgorithms') or data.get('associated_algorithms')
-            if raw_associated is not None:
-                self.repo.sync_relations(dim.id, extract_associated_relations(raw_associated))
-            algo_type = get_default_algorithm_type(raw_associated)
+            # 关联算法（payload 未携带时不改关联；显式空列表 = 清空关联）
+            # INT-2355：区分「未携带」与「空列表」，后者此前被 `or` 吞掉成
+            # None，既不清关联也不该写映射。
+            raw_associated = _UNSET
+            for key in ('associatedAlgorithms', 'associated_algorithms'):
+                if key in data:
+                    raw_associated = data.get(key)
+                    break
+            if raw_associated is not _UNSET:
+                relations = extract_associated_relations(raw_associated)
+                self.repo.sync_relations(dim.id, relations)
+                algo_type = get_default_algorithm_type(relations)
+            else:
+                # 未携带关联算法时按库内现有关系取默认算法；没有关联算法则
+                # 不写映射，绝不回落到某个真实算法名（INT-2355）。
+                algo_type = get_default_algorithm_type(
+                    self.repo.list_relations_by_dimension(dim.id))
 
             err = self._sync_dimension_params(dim.id, data, algo_type, update_mode=True)
             if err:

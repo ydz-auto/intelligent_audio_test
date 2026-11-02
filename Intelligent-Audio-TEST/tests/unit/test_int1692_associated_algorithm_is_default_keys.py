@@ -19,7 +19,6 @@ os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
 from evaluation_service.application.commands._command_utils import (
-    DEFAULT_ALGORITHM_TYPE,
     extract_associated_relations,
     get_default_algorithm_type,
 )
@@ -121,9 +120,16 @@ class TestGetDefaultAlgorithmType:
         ])
         assert got == 'asr'
 
-    def test_empty_falls_back_to_constant(self):
-        assert get_default_algorithm_type(None) == DEFAULT_ALGORITHM_TYPE
-        assert get_default_algorithm_type([]) == DEFAULT_ALGORITHM_TYPE
+    def test_empty_returns_none(self):
+        """INT-2355：无关联算法时返回 None，不再回落真实算法名。"""
+        assert get_default_algorithm_type(None) is None
+        assert get_default_algorithm_type([]) is None
+
+    def test_entries_without_type_are_ignored(self):
+        """条目缺 algorithm_type 时不得回落到默认算法。"""
+        assert get_default_algorithm_type([{}, {'weight': 1.0}]) is None
+        got = get_default_algorithm_type([{}, {'algorithm_type': 'asr'}])
+        assert got == 'asr'
 
     def test_string_list_keeps_original_semantics(self):
         assert get_default_algorithm_type(['asr']) == 'asr'

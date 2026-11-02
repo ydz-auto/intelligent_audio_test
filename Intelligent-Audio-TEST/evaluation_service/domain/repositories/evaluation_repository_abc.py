@@ -202,9 +202,12 @@ class EvaluationRepositoryABC(ABC):
         dimension_id: int,
         params: Any,
         direction: str = 'output',
-        algorithm_type: str = 'voice_llm',
+        algorithm_type: Optional[str] = None,
     ) -> bool:
-        """同步 ParamMapping（gRPC 委托）。"""
+        """同步 ParamMapping（gRPC 委托）。
+
+        algorithm_type 必须来自维度显式关联的算法；为空时不写映射（INT-2355）。
+        """
         ...
 
     # ========== 事务控制（仅限本服务自有 PO） ==========

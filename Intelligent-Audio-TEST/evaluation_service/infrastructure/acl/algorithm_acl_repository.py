@@ -242,7 +242,7 @@ class AlgorithmAclRepository(_AlgorithmAclRepositoryABC):
         dimension_id: int,
         params: Any,
         direction: str = 'output',
-        algorithm_type: str = 'voice_llm',
+        algorithm_type: Optional[str] = None,
     ) -> bool:
         """同步 ParamMapping：当评估维度的输入/输出字段变更时，
         自动为该维度创建/更新/删除对应的 ParamMapping 记录。
@@ -251,11 +251,17 @@ class AlgorithmAclRepository(_AlgorithmAclRepositoryABC):
             dimension_id: 维度 ID
             params: 参数列表（list 或 JSON 字符串）
             direction: 参数方向（input / output）
-            algorithm_type: 默认算法类型
+            algorithm_type: 维度显式关联的算法类型；为空时不发起同步（INT-2355）
 
         Returns:
             是否成功
         """
+        if not algorithm_type:
+            logger.warning(
+                'sync_param_mappings 缺少 algorithm_type，跳过同步: dimension_id=%s',
+                dimension_id,
+            )
+            return False
         try:
             stub = get_algorithm_definition_service_stub()
             data = {

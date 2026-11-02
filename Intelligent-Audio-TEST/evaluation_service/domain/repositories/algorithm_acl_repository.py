@@ -71,7 +71,7 @@ class AlgorithmAclRepository(ABC):
         dimension_id: int,
         params: Any,
         direction: str = 'output',
-        algorithm_type: str = 'voice_llm',
+        algorithm_type: Optional[str] = None,
     ) -> bool:
-        """同步 ParamMapping。"""
+        """同步 ParamMapping（algorithm_type 为空时不写映射，INT-2355）。"""
         ...

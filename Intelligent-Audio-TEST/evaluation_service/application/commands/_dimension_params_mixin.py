@@ -6,11 +6,10 @@ required_inputs / output_fields / 关联算法 / body_template 四段处理逻�
 按项目既有 Mixin 组合模式复用（消除大段重复代码）。
 """
 import json
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from evaluation_service.application.commands._command_utils import (
     command_error,
-    get_default_algorithm_type,
 )
 
 
@@ -160,15 +159,18 @@ class DimensionParamsMixin:
         dimension_id: int,
         params,
         direction: str = 'output',
-        algorithm_type: str = 'voice_llm',
+        algorithm_type: Optional[str] = None,
     ) -> None:
         """同步 ParamMapping：当评估维度的输入/输出字段变更时，
         自动为该维度创建/更新/删除对应的 ParamMapping 记录。
 
         委托 algorithm_service gRPC（SyncParamMappings），由 algorithm_service
         在其本地事务内完成 ParamMapping 的创建/更新/软删除。
+
+        INT-2355：algorithm_type 为空（维度未关联任何算法）时不写任何映射，
+        也不回落到真实算法名——否则会污染在用算法的 algorithm-level 映射。
         """
-        if params is None:
+        if params is None or not algorithm_type:
             return
 
         # params 可以是 list 或 JSON 字符串，直接传给 gRPC 端处理

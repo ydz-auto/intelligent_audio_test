@@ -413,13 +413,18 @@ class EvaluationRepository(EvaluationRepositoryABC):
         dimension_id: int,
         params: Any,
         direction: str = 'output',
-        algorithm_type: str = 'voice_llm',
+        algorithm_type: Optional[str] = None,
     ) -> bool:
         """同步 ParamMapping（gRPC 委托）。
 
         当评估维度的输入/输出字段变更时，自动为该维度创建/更新/删除
         对应的 ParamMapping 记录。
+
+        INT-2355：algorithm_type 为空（维度未关联算法）时不发起同步，
+        不回落任何真实算法名。
         """
+        if not algorithm_type:
+            return False
         return self._algo.sync_param_mappings(
             dimension_id, params, direction, algorithm_type
         )

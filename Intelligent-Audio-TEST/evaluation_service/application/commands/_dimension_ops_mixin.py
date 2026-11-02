@@ -99,12 +99,13 @@ class DimensionOpsMixin(DimensionParamsMixin):
             setattr(dim, field, value)
 
     def _sync_dimension_params(self, dim_id: int, data: Dict[str, Any],
-                               algo_type: str, update_mode: bool) -> Optional[Dict[str, Any]]:
+                               algo_type: Optional[str], update_mode: bool) -> Optional[Dict[str, Any]]:
         """同步 input/output 参数与 ParamMapping。
 
         create 模式走 _sync_inputs_and_mappings / _sync_outputs_and_mappings；
         update 模式先删除旧参数再重建（保留对侧方向的参数）。
-        返回错误响应 dict 或 None。
+        algo_type 为 None（维度未关联任何算法，INT-2355）时只保存维度参数，
+        不写 ParamMapping。返回错误响应 dict 或 None。
         """
         if update_mode:
             raw_required_inputs = data.get('required_inputs')

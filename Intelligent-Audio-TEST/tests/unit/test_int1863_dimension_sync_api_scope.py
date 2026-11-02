@@ -174,6 +174,7 @@ def test_sync_leaves_api_level_rows_untouched(clean_tables):
         DIM_TEXT,
         [{'param_code': 'q_text'}, {'param_code': 'o_new'}],
         direction='input',
+        algorithm_type=ALGO,
     )
     assert ok is True
 
@@ -242,7 +243,7 @@ def test_sync_explicit_api_scope_only_touches_that_api(clean_tables):
 
     assert param_mapping_query_repository.sync_for_dimension(
         DIM_TEXT, [{'param_code': 'q_text'}], direction='output',
-        api_id=API_A,
+        algorithm_type=ALGO, api_id=API_A,
     ) is True
 
     by_key = {(r[0], r[1]): r for r in _dump().values()}
@@ -274,7 +275,8 @@ def test_sync_select_carries_api_id_is_null_predicate(clean_tables):
     event.listen(get_engine(), 'before_cursor_execute', _capture)
     try:
         param_mapping_query_repository.sync_for_dimension(
-            DIM_TEXT, [{'param_code': 'q_text'}], direction='input')
+            DIM_TEXT, [{'param_code': 'q_text'}], direction='input',
+            algorithm_type=ALGO)
     finally:
         event.remove(get_engine(), 'before_cursor_execute', _capture)
 

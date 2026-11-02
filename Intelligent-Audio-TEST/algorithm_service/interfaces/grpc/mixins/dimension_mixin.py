@@ -232,10 +232,19 @@ class _DimensionMixin(_ParamBaseMixin):
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             params = data.get("params", [])
             direction = data.get("direction", "output")
-            algorithm_type = data.get("algorithm_type", "voice_llm")
+            # INT-2355：algorithm_type 必须来自调用方显式关联的算法，缺失时
+            # 报错而不是回落到真实算法名（否则会写入在用算法的映射）。
+            algorithm_type = (data.get("algorithm_type") or "").strip()
 
             if params is None:
                 return _success({"dimension_id": dimension_id, "synced": True})
+
+            if not algorithm_type:
+                logger.warning(
+                    "SyncParamMappings 缺少 algorithm_type，拒绝同步: dimension_id=%s",
+                    dimension_id,
+                )
+                return _failure("缺少 algorithm_type，未同步参数映射")
 
             params = self._normalize_param_list(params)
             param_mapping_query_repository.sync_for_dimension(

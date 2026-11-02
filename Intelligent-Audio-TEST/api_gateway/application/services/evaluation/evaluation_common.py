@@ -65,22 +65,32 @@ def _sync_body_template(api_settings, param_codes):
 
 
 def _get_default_algorithm_type(associated_algorithms):
-    """从关联算法列表取默认（或第一个）算法的 type，回落到 voice_llm"""
-    if not associated_algorithms:
-        return 'voice_llm'
-    for algo in associated_algorithms:
+    """从关联算法列表取默认（或第一个）算法的 type；无关联算法时返回 None。
+
+    INT-2355：不再回落 'voice_llm' 等真实算法名。
+    """
+    relations = []
+    for algo in associated_algorithms or []:
         if isinstance(algo, dict):
-            if algo.get('isDefault'):
-                return algo.get('algorithmType') or algo.get('algorithm_type') or 'voice_llm'
+            algo_type = algo.get('algorithmType') or algo.get('algorithm_type')
+            is_default = algo.get('isDefault', algo.get('is_default', False))
+        elif isinstance(algo, str):
+            algo_type, is_default = algo, False
+        else:
+            algo_type = getattr(algo, 'algorithm_type', None)
+            is_default = getattr(algo, 'is_default', False)
+        if algo_type:
+            relations.append((algo_type, bool(is_default)))
+    if not relations:
+        return None
+    for algo_type, is_default in relations:
+        if is_default:
+            return algo_type
     # 没有标记默认的，取第一个
-    for algo in associated_algorithms:
-        if isinstance(algo, dict):
-            return algo.get('algorithmType') or algo.get('algorithm_type') or 'voice_llm'
-        return algo or 'voice_llm'
-    return 'voice_llm'
+    return relations[0][0]
 
 
-def _sync_param_mappings(dimension_id, params, direction='output', algorithm_type='voice_llm'):
+def _sync_param_mappings(dimension_id, params, direction='output', algorithm_type=None):
     """
     同步 ParamMapping：当评估维度的输入/输出字段变更时，
     自动为该维度创建/更新/删除对应的 ParamMapping 记录。
@@ -93,7 +103,7 @@ def _sync_param_mappings(dimension_id, params, direction='output', algorithm_typ
     通过 gRPC 调用 algorithm_service.AlgorithmDefinitionService.SyncParamMappings，
     替代直连 algorithm_service PO（ParamMapping）。
     """
-    if params is None:
+    if params is None or not algorithm_type:
         return
 
     from api_gateway.infrastructure.grpc_proxies import algorithm_query_service as _algo_svc
