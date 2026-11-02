@@ -32,10 +32,17 @@ import { PLAYBACK_DEVICE_TYPE_META } from '@/domain/models/playbackDevice'
 import { isDeviceSelectable } from '@/features/devices/constants'
 import { DeviceStatusBadge } from '@/features/devices/components/device-status-badge'
 import { DeviceRowActions } from '@/features/devices/components/device-row-actions'
+import {
+  DeviceListErrorBanner,
+  DeviceListErrorState,
+} from '@/features/devices/components/device-list-error'
 
 export interface PlaybackDeviceTableProps {
   rows: PlaybackDevice[]
   loading: boolean
+  /** 列表查询失败（INT-2330：失败不得渲染成「暂无播放设备」空态） */
+  error?: boolean
+  onRetry?: () => void
   total: number
   searchKeyword: string
   selectedIds: Set<number>
@@ -94,7 +101,8 @@ function FormatsCell({ formats }: { formats: string[] | null }) {
 }
 
 export function PlaybackDeviceTable(props: PlaybackDeviceTableProps) {
-  const isEmpty = !props.loading && props.rows.length === 0
+  // 失败不等于空库（INT-2330）：isError 时不得走「暂无播放设备」空态
+  const isEmpty = !props.loading && !props.error && props.rows.length === 0
   /** 离线行不参与全选/选中（与 index.toggleSelect 同口径） */
   const selectableRows = props.rows.filter((row) => isDeviceSelectable(row.status))
   const allSelected =
@@ -110,6 +118,17 @@ export function PlaybackDeviceTable(props: PlaybackDeviceTableProps) {
           <Skeleton key={i} className='h-12 w-full rounded-none border-b' />
         ))}
       </div>
+    )
+  }
+
+  // 首载失败且无任何可展示行：错误态优先于空态（INT-2330，不复用「暂无播放设备」）
+  if (props.error && props.rows.length === 0) {
+    return (
+      <DeviceListErrorState
+        title='播放设备列表加载失败'
+        description='播放设备列表获取失败，请重试'
+        onRetry={props.onRetry}
+      />
     )
   }
 
@@ -143,6 +162,15 @@ export function PlaybackDeviceTable(props: PlaybackDeviceTableProps) {
 
   return (
     <div className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
+      {/* 刷新失败但保留上一次数据：不清空列表，行内提示（INT-2330） */}
+      {props.error && (
+        <div className='p-2 pb-0'>
+          <DeviceListErrorBanner
+            message='播放设备列表加载失败，当前显示的是上一次加载的数据'
+            onRetry={props.onRetry}
+          />
+        </div>
+      )}
       <div className='overflow-x-auto'>
         <table className='w-full min-w-[1050px] text-[13px]'>
           <thead>

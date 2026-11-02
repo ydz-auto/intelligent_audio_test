@@ -3,7 +3,8 @@
  * 测试/播放页签：总设备数/在线设备/离线设备/异常设备（错误态聚合）。
  * API 页签：总测试API数/可用API/不可用API/测试中API。
  * 「测试中」占用态不参与统计口径（§3.4 注 / INT-487）：占用设备按其五态状态计数。
- * 加载中 Skeleton h-7；接口失败整行隐藏不报错（照 §4.1.2 口径）。
+ * 加载中 Skeleton h-7；接口失败整行隐藏不报错（照 §4.1.2 口径；INT-2330 补实现——
+ * 失败时不再摆一排 0 把「取不到数」显示成「没有设备」）。
  */
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -29,10 +30,13 @@ export function DevicesStatsRow({
   labels,
   values,
   loading,
+  error,
 }: {
   labels: readonly string[]
   values: number[]
   loading: boolean
+  /** 列表查询失败（INT-2330）：统计行整行隐藏，不把 0 当作真实统计 */
+  error?: boolean
 }) {
   if (loading) {
     return (
@@ -43,6 +47,8 @@ export function DevicesStatsRow({
       </div>
     )
   }
+  // §4.1.2：接口失败整行隐藏不报错（错误提示由列表错误态承担，不重复报错）
+  if (error) return null
   // P4 返修：色条全走语义 token（neutral/success/muted/destructive，§2.1 口径）
   const dots = [
     'bg-[var(--muted-foreground)]',

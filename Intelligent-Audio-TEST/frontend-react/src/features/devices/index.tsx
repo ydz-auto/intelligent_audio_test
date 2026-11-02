@@ -159,6 +159,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
   const testQuery = useTestDevices()
   const playbackQuery = usePlaybackDevices()
   const apiQuery = useApiDevices()
+  /** 当前页签的列表查询（INT-2330：错误/重试按页签同口径下发给统计行与表格） */
+  const activeListQuery = tab === 'test' ? testQuery : tab === 'playback' ? playbackQuery : apiQuery
   const labsQuery = useLaboratories()
   const groupsQuery = useDeviceGroups()
   const alarmsQuery = useDeviceAlarms()
@@ -657,6 +659,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     ? apiDevices.filter((d) => d.status === 'online').length
     : (tab === 'test' ? algorithmFilteredTestDevices : playbackDevices).filter((d) => d.status === 'online').length
   const totalCount = tab === 'api' ? apiDevices.length : (tab === 'test' ? algorithmFilteredTestDevices : playbackDevices).length
+  /** INT-2330：首载失败且无旧数据时，徽标/分页不得再把「取不到」显示成「0 台」 */
+  const listLoadFailed = activeListQuery.isError && sortedRows.length === 0
 
   return (
     <>
@@ -665,8 +669,9 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
           <span className='flex flex-wrap items-center gap-2'>
             设备管理
             <Badge variant='outline' className='font-normal tabular-nums'>
-              {/* §3.1/§9 口径「在线 {n}/共 {m}」（P3-23 返修：API 页签不再用「可用」） */}
-              在线 {onlineCount}/共 {totalCount}
+              {/* §3.1/§9 口径「在线 {n}/共 {m}」（P3-23 返修：API 页签不再用「可用」）
+                  INT-2330：列表加载失败且无旧数据 → 显示「—」而非误导性的 0 */}
+              {listLoadFailed ? '在线 —/共 —' : `在线 ${onlineCount}/共 ${totalCount}`}
             </Badge>
           </span>
         </SectionPageLayout.Title>
@@ -787,7 +792,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
             <DevicesStatsRow
               labels={DEVICES_STATS_LABELS[tab]}
               values={statsValues}
-              loading={tab === 'test' ? testQuery.isLoading : tab === 'playback' ? playbackQuery.isLoading : apiQuery.isLoading}
+              loading={activeListQuery.isLoading}
+              error={activeListQuery.isError}
             />
 
             <div className='min-h-0 flex-1 overflow-y-auto'>
@@ -795,6 +801,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
                 <TestDeviceTable
                   rows={pageRows as TestDevice[]}
                   loading={testQuery.isLoading}
+                  error={testQuery.isError}
+                  onRetry={() => void testQuery.refetch()}
                   total={sortedRows.length}
                   unfilteredTotal={testDevices.length}
                   searchKeyword={testFilters.search}
@@ -812,6 +820,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
                 <PlaybackDeviceTable
                   rows={pageRows as PlaybackDevice[]}
                   loading={playbackQuery.isLoading}
+                  error={playbackQuery.isError}
+                  onRetry={() => void playbackQuery.refetch()}
                   total={sortedRows.length}
                   searchKeyword={playbackFilters.search}
                   selectedIds={selectedIds}
@@ -827,6 +837,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
                 <ApiDeviceTable
                   rows={pageRows as ApiDevice[]}
                   loading={apiQuery.isLoading}
+                  error={apiQuery.isError}
+                  onRetry={() => void apiQuery.refetch()}
                   total={sortedRows.length}
                   searchKeyword={apiFilters.search}
                   selectedIds={selectedIds}
@@ -848,20 +860,22 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
               onAction={(action) => void handleBatchAction(action)}
             />
 
-            {/* 分页 Portal（§3.9） */}
-            <PageFooterPortal>
-              <PaginationBar
-                page={safePage}
-                pageCount={pageCount}
-                pageSize={pageSize}
-                total={sortedRows.length}
-                onPageChange={setPage}
-                onPageSizeChange={(size) => {
-                  setPageSize(size)
-                  setPage(1)
-                }}
-              />
-            </PageFooterPortal>
+            {/* 分页 Portal（§3.9）；列表首载失败时隐藏「共 0 条」（INT-2330） */}
+            {!listLoadFailed && (
+              <PageFooterPortal>
+                <PaginationBar
+                  page={safePage}
+                  pageCount={pageCount}
+                  pageSize={pageSize}
+                  total={sortedRows.length}
+                  onPageChange={setPage}
+                  onPageSizeChange={(size) => {
+                    setPageSize(size)
+                    setPage(1)
+                  }}
+                />
+              </PageFooterPortal>
+            )}
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>
