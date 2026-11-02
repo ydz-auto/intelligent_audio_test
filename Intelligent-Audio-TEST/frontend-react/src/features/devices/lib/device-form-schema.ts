@@ -32,6 +32,8 @@ export const testDeviceFormSchema = z.object({
   /** 自定义属性（逗号分隔 key=value，§6.2 高级设置） */
   customAttributes: z.string().optional(),
   priority: z.string(),
+  /** 所属实验室（空 = 未绑定；写入侧 lab_id，此前只能靠迁移脚本挂载） */
+  labId: z.string().optional(),
 })
 
 export type TestDeviceForm = z.infer<typeof testDeviceFormSchema>
@@ -50,6 +52,8 @@ export const playbackDeviceFormSchema = z.object({
   sampleRate: z.string().min(1, '请填写采样率'),
   /** 声压映射 select（§6.2：loadSplMappings，「不使用声压映射」+「{名}(已校准/未校准)」） */
   splMappingId: z.string().optional(),
+  /** 所属实验室（空 = 未绑定；写入侧 lab_id，此前只能靠迁移脚本挂载） */
+  labId: z.string().optional(),
 })
 
 export type PlaybackDeviceForm = z.infer<typeof playbackDeviceFormSchema>

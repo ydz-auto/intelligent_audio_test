@@ -12,6 +12,7 @@ import { Link } from '@tanstack/react-router'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { isDeviceSelectable } from '@/features/devices/constants'
 import {
   Empty,
   EmptyContent,
@@ -70,8 +71,12 @@ function ApiStatusBadge({ status }: { status: string | null }) {
 
 export function ApiDeviceTable(props: ApiDeviceTableProps) {
   const isEmpty = !props.loading && props.rows.length === 0
+  /** 离线行不参与全选/选中（与 index.toggleSelect 同口径） */
+  const selectableRows = props.rows.filter((row) => isDeviceSelectable(row.status))
   const allSelected =
-    !isEmpty && props.rows.length > 0 && props.selectedIds.size === props.rows.length
+    !isEmpty &&
+    selectableRows.length > 0 &&
+    selectableRows.every((row) => props.selectedIds.has(row.id))
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
 
   const toggleExpanded = (id: number) => {

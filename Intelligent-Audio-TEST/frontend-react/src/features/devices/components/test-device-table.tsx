@@ -29,6 +29,7 @@ import {
 import { cn } from '@/lib/utils'
 import { formatDateTime } from '@/lib/date-time'
 import type { TestDevice } from '@/domain/models/testDevice'
+import { isDeviceSelectable } from '@/features/devices/constants'
 import { deviceSystemLabel } from '@/features/devices/lib/device-system'
 import { connectionTypeLabel } from '@/features/devices/lib/connection-type'
 import { DeviceStatusBadge } from '@/features/devices/components/device-status-badge'
@@ -114,8 +115,12 @@ function AlgorithmsCell({
 
 export function TestDeviceTable(props: TestDeviceTableProps) {
   const isEmpty = !props.loading && props.rows.length === 0
+  /** 离线行不参与全选/选中（与 index.toggleSelect 同口径） */
+  const selectableRows = props.rows.filter((row) => isDeviceSelectable(row.status))
   const allSelected =
-    !isEmpty && props.rows.length > 0 && props.selectedIds.size === props.rows.length
+    !isEmpty &&
+    selectableRows.length > 0 &&
+    selectableRows.every((row) => props.selectedIds.has(row.id))
   /** 有设备但被搜索/筛选（含全局算法联动）排除 → 「未找到匹配」；否则「暂无设备」 */
   const filteredOut =
     props.unfilteredTotal != null ? props.unfilteredTotal > 0 : Boolean(props.searchKeyword)
@@ -222,6 +227,8 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
                         <Checkbox
                           aria-label={`选择设备 ${row.name}`}
                           checked={props.selectedIds.has(row.id)}
+                          disabled={isOffline}
+                          title={isOffline ? '设备离线，不可选中' : undefined}
                           onCheckedChange={() => props.onToggleSelect(row.id)}
                         />
                       </span>

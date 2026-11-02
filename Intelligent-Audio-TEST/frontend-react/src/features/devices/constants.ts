@@ -34,6 +34,18 @@ export const STATUS_FILTER_OPTIONS: ReadonlyArray<{ value: string; label: string
   { value: 'error', label: '错误' },
 ]
 
+/** 离线状态值（设备/播放设备/API 三页签共用词表） */
+export const OFFLINE_STATUS = 'offline'
+
+/**
+ * 批量选择是否可选：离线设备一律不可选。
+ * 离线设备批量测试/操作必然被后端拒绝（接口 400），选中态没有任何执行路径，
+ * 因此勾选入口禁用，且状态转为离线时自动移出选中集。
+ */
+export function isDeviceSelectable(status?: string | null): boolean {
+  return status !== OFFLINE_STATUS
+}
+
 /** 播放设备类型 facet（§9：干声/噪声） */
 export const PLAYBACK_TYPE_FILTER_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'dry', label: '干声' },

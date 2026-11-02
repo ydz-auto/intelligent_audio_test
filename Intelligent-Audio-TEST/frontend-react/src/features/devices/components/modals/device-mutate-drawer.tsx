@@ -48,7 +48,7 @@ import {
   testDeviceFormSchema,
 } from '@/features/devices/lib/device-form-schema'
 import { normalizeDeviceSystem } from '@/features/devices/lib/device-system'
-import { useDeviceMutations, useDriverKeywords } from '@/application/devices/use-devices'
+import { useDeviceMutations, useDriverKeywords, useLaboratories } from '@/application/devices/use-devices'
 import { useSplMappingsByDevice } from '@/application/spl/useSplMappings'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import type { TestDevice } from '@/domain/models/testDevice'
@@ -181,6 +181,7 @@ function buildDefaults(
       tags: device?.tags ?? [],
       customAttributes: (device?.customAttributes ?? []).join(', '),
       priority: String(device?.priority ?? 5),
+      labId: device?.labId != null ? String(device.labId) : '',
     }
   }
   const device = state.mode === 'edit' ? (state.device as PlaybackDevice | null) : null
@@ -199,6 +200,7 @@ function buildDefaults(
     supportedFormats: device?.supportedFormats ?? [],
     sampleRate: String(device?.sampleRate ?? scanPrefill?.sampleRate ?? 48000),
     splMappingId: device?.currentSplMappingId != null ? String(device.currentSplMappingId) : '',
+    labId: device?.labId != null ? String(device.labId) : '',
   }
 }
 
@@ -278,6 +280,12 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
   const editingDevice = isEdit ? state.device : null
   const { createTest, updateTest, createPlayback, updatePlayback } = useDeviceMutations()
   const driverKeywordsQuery = useDriverKeywords()
+  /** 所属实验室选项（GET /laboratories；设备与播放设备共用） */
+  const labsQuery = useLaboratories()
+  const labOptions = useMemo(
+    () => (labsQuery.data ?? []).map((lab) => ({ value: String(lab.id), label: lab.name })),
+    [labsQuery.data]
+  )
   // 声压映射选项仅编辑态（设备已存在）加载该设备映射（V9.7.10 loadSplMappings 同源 GET /spl/by-device/{id}）；
   // 新增态 deviceId 为空 → 无选项（设备创建后再经行操作关联）
   const editingPlaybackId = kind === 'playback' && isEdit ? (state.device?.id ?? null) : null
@@ -342,6 +350,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
           supportedAlgorithms: values.algorithms.length > 0 ? values.algorithms : null,
           tags: values.tags.length > 0 ? values.tags : null,
           priority: Number(values.priority) || 5,
+          labId: values.labId ? Number(values.labId) : null,
           // 高级设置「自定义属性」（§6.2；逗号分隔 key=value，接线后按后端契约）
           customAttributes: values.customAttributes?.trim()
             ? values.customAttributes
@@ -358,7 +367,6 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
             ...editable,
             status: 'offline',
             occupied: false,
-            labId: null,
             labName: null,
             driverName: null,
             maxAudioDuration: null,
@@ -380,6 +388,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
           sampleRate: Number(values.sampleRate) || 48000,
           currentSplMappingId: splMappingId,
           currentSplMappingName: splOptions.find((m) => m.id === splMappingId)?.name ?? null,
+          labId: values.labId ? Number(values.labId) : null,
         }
         if (isEdit) {
           await updatePlayback.mutateAsync({ id: editingDevice!.id, patch: editable })
@@ -388,7 +397,6 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
             ...editable,
             status: 'offline',
             occupied: false,
-            labId: null,
             labName: null,
           })
         }
@@ -590,6 +598,26 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                       </SelectContent>
                     </Select>
                   </Field>
+                  {/* 所属实验室（写入侧 lab_id；此前只能靠迁移脚本挂载） */}
+                  <Field label='所属实验室'>
+                    <Select
+                      value={form.watch('labId') ?? ''}
+                      items={[{ value: '', label: '未绑定实验室' }, ...labOptions]}
+                      onValueChange={(value) => form.setValue('labId', value ?? '')}
+                    >
+                      <SelectTrigger size='sm' className='w-full'>
+                        <SelectValue placeholder='未绑定实验室' />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value=''>未绑定实验室</SelectItem>
+                        {labOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
                 </div>
                 <label className='flex items-center gap-2 text-sm'>
                   <Switch
@@ -731,6 +759,26 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                         {splOptions.map((mapping) => (
                           <SelectItem key={mapping.id} value={String(mapping.id)}>
                             {mapping.name}（{mapping.calibrationStatus === 'calibrated' ? '已校准' : '未校准'}）
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  {/* 所属实验室（写入侧 lab_id；此前只能靠迁移脚本挂载） */}
+                  <Field label='所属实验室'>
+                    <Select
+                      value={form.watch('labId') ?? ''}
+                      items={[{ value: '', label: '未绑定实验室' }, ...labOptions]}
+                      onValueChange={(value) => form.setValue('labId', value ?? '')}
+                    >
+                      <SelectTrigger size='sm' className='w-full'>
+                        <SelectValue placeholder='未绑定实验室' />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value=''>未绑定实验室</SelectItem>
+                        {labOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
                           </SelectItem>
                         ))}
                       </SelectContent>

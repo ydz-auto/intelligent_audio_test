@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils'
 import { formatDateTime } from '@/lib/date-time'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import { PLAYBACK_DEVICE_TYPE_META } from '@/domain/models/playbackDevice'
+import { isDeviceSelectable } from '@/features/devices/constants'
 import { DeviceStatusBadge } from '@/features/devices/components/device-status-badge'
 import { DeviceRowActions } from '@/features/devices/components/device-row-actions'
 
@@ -94,8 +95,12 @@ function FormatsCell({ formats }: { formats: string[] | null }) {
 
 export function PlaybackDeviceTable(props: PlaybackDeviceTableProps) {
   const isEmpty = !props.loading && props.rows.length === 0
+  /** 离线行不参与全选/选中（与 index.toggleSelect 同口径） */
+  const selectableRows = props.rows.filter((row) => isDeviceSelectable(row.status))
   const allSelected =
-    !isEmpty && props.rows.length > 0 && props.selectedIds.size === props.rows.length
+    !isEmpty &&
+    selectableRows.length > 0 &&
+    selectableRows.every((row) => props.selectedIds.has(row.id))
 
   if (props.loading) {
     return (
@@ -196,6 +201,8 @@ export function PlaybackDeviceTable(props: PlaybackDeviceTableProps) {
                         <Checkbox
                           aria-label={`选择播放设备 ${row.name}`}
                           checked={props.selectedIds.has(row.id)}
+                          disabled={isOffline}
+                          title={isOffline ? '设备离线，不可选中' : undefined}
                           onCheckedChange={() => props.onToggleSelect(row.id)}
                         />
                       </span>

@@ -324,6 +324,7 @@ function toTestDeviceUpsertDto(data: Partial<TestDevice>): Record<string, unknow
   pick('ip', 'ip')
   pick('status', 'status')
   pick('supportedAlgorithms', 'supported_algorithms')
+  pick('labId', 'lab_id')
   return dto
 }
 
@@ -343,6 +344,7 @@ function toPlaybackDeviceUpsertDto(data: Partial<PlaybackDevice>): Record<string
   pick('description', 'description')
   pick('status', 'status')
   pick('currentSplMappingId', 'current_spl_mapping_id')
+  pick('labId', 'lab_id')
   return dto
 }
 

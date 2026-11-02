@@ -51,6 +51,7 @@ import {
   DEVICES_STATS_LABELS,
   DEVICES_TABS,
   PAGE_SIZE_OPTIONS,
+  isDeviceSelectable,
   type DevicesTabKey,
 } from '@/features/devices/constants'
 import type {
@@ -392,6 +393,9 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
   /* ───────── 选择 ───────── */
 
   const toggleSelect = (id: number) => {
+    const row = pageRows.find((item) => item.id === id)
+    // 离线设备不可选中（批量操作必然被后端拒绝）
+    if (row && !isDeviceSelectable(row.status)) return
     setSelectedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -402,18 +406,36 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
 
   const toggleSelectAll = () => {
     // P3-30 返修：按「本页是否全选」切换，保留跨页选择集（不再 prev.size===pageRows.length 巧合清选）
+    // 离线设备不参与全选：只统计可选行，避免「全选后仍有行未选中」的假象
+    const selectableRows = pageRows.filter((row) => isDeviceSelectable(row.status))
     setSelectedIds((prev) => {
-      const pageSelected = pageRows.filter((row) => prev.has(row.id))
-      if (pageRows.length > 0 && pageSelected.length === pageRows.length) {
+      const pageSelected = selectableRows.filter((row) => prev.has(row.id))
+      if (selectableRows.length > 0 && pageSelected.length === selectableRows.length) {
         const next = new Set(prev)
-        pageRows.forEach((row) => next.delete(row.id))
+        selectableRows.forEach((row) => next.delete(row.id))
         return next
       }
       const next = new Set(prev)
-      pageRows.forEach((row) => next.add(row.id))
+      selectableRows.forEach((row) => next.add(row.id))
       return next
     })
   }
+
+  /* 设备状态转为离线时自动移出选中集（三页签统一口径；离线项没有任何批量执行路径） */
+  useEffect(() => {
+    const offlineIds = new Set(
+      [...algorithmFilteredTestDevices, ...playbackDevices, ...apiDevices]
+        .filter((row) => !isDeviceSelectable(row.status))
+        .map((row) => row.id)
+    )
+    if (offlineIds.size === 0) return
+    setSelectedIds((prev) => {
+      if (![...prev].some((id) => offlineIds.has(id))) return prev
+      const next = new Set(prev)
+      offlineIds.forEach((id) => next.delete(id))
+      return next
+    })
+  }, [algorithmFilteredTestDevices, playbackDevices, apiDevices])
 
   /* ───────── 行操作分派 ───────── */
 
