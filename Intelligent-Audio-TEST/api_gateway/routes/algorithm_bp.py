@@ -8,6 +8,7 @@ from api_gateway.application.services.algorithm.algorithm_group_service import A
 from api_gateway.application.services.algorithm.algorithm_profile_service import AlgorithmProfileService
 from api_gateway.application.services.algorithm.param_history_service import ParamHistoryService
 from api_gateway.infrastructure.repositories.param_history_repository import (
+    SCOPE_DEVICE,
     param_history_repository,
 )
 from api_gateway.infrastructure.request_adapter import request
@@ -16,11 +17,33 @@ from api_gateway.routes._response import to_response
 router = APIRouter()
 
 
-def _record_device_history(response, device_id, algorithm_type) -> None:
-    """设备参数 / 映射写成功后追加版本快照（失败不影响主流程）。"""
-    if (isinstance(response, tuple) and len(response) == 2
-            and response[1] < 400 and device_id and algorithm_type):
+def _record_device_history(result, device_id, algorithm_type) -> None:
+    """设备参数 / 映射写成功后追加版本快照（失败不影响主流程）。
+
+    ``result`` 必须是服务层返回的 ``(payload, http_code)`` 元组：``to_response``
+    之后已经是 Response 对象，不再是元组（INT-2342：此前传的是转换后的响应，
+    判型恒为假，设备作用域版本一条都没写过）。
+    """
+    if (isinstance(result, tuple) and len(result) == 2
+            and result[1] < 400 and device_id and algorithm_type):
         ParamHistoryService.record('device', int(device_id), algorithm_type)
+
+
+def _device_scope(table: str, row_id: int):
+    """按行定位设备作用域；API 作用域 / 无法定位时返回 (None, None)。
+
+    设备与 API 两张参数表的 ``id`` 由各自序列生成、值域重叠，仅凭 id
+    无法区分，故此处只接受仓储明确解析为设备作用域的结果。
+    """
+    scope = param_history_repository.lookup_scope(table, int(row_id))
+    if scope is None or scope[0] != SCOPE_DEVICE:
+        return None, None
+    return scope[1], scope[2]
+
+
+def _write_body_scope(body) -> tuple:
+    """从写请求体取设备作用域（POST 必填、PUT 随行带 device_id）。"""
+    return body.get('device_id'), body.get('algorithm_type')
 
 
 # 算法定义相关路由
@@ -107,27 +130,33 @@ def get_param_by_id(param_id: int, _: None = require_permission('algorithm:read'
 @router.post('/params')
 def post_param(_: None = require_permission('algorithm:param_manage')):
     body = request.get_json(silent=True) or {}
-    response = to_response(AlgorithmCommandService.create_param())
-    _record_device_history(response, body.get('device_id'), body.get('algorithm_type'))
-    return response
+    result = AlgorithmCommandService.create_param()
+    _record_device_history(result, *_write_body_scope(body))
+    return to_response(result)
 
 
 @router.put('/params/{param_id}')
 def put_param(param_id: int, _: None = require_permission('algorithm:param_manage')):
     body = request.get_json(silent=True) or {}
-    response = to_response(AlgorithmCommandService.update_param(param_id))
-    _record_device_history(response, body.get('device_id'), body.get('algorithm_type'))
-    return response
+    result = AlgorithmCommandService.update_param(param_id)
+    device_id, algorithm_type = _write_body_scope(body)
+    if not (device_id and algorithm_type):
+        # 载荷未带作用域（如只改默认值）时按行定位；API / 算法级不记设备版本
+        device_id, algorithm_type = _device_scope('params', param_id)
+    _record_device_history(result, device_id, algorithm_type)
+    return to_response(result)
 
 
 @router.delete('/params/{param_id}')
 def delete_param_by_id(param_id: int, _: None = require_permission('algorithm:param_manage')):
-    # 删除接口没有 body：先按行定位作用域，再记录删除后的快照
-    scope = param_history_repository.lookup_scope('params', param_id)
-    response = to_response(AlgorithmCommandService.delete_param(param_id))
-    if scope:
-        _record_device_history(response, scope[1], scope[2])
-    return response
+    # 删除接口通常没有 body：先按行定位作用域，再记录删除后的快照
+    body = request.get_json(silent=True) or {}
+    device_id, algorithm_type = _write_body_scope(body)
+    if not (device_id and algorithm_type):
+        device_id, algorithm_type = _device_scope('params', param_id)
+    result = AlgorithmCommandService.delete_param(param_id)
+    _record_device_history(result, device_id, algorithm_type)
+    return to_response(result)
 
 
 # ========== 参数策略（API 参数/映射的可复用声明） ==========
@@ -261,26 +290,31 @@ def get_mappings(_: None = require_permission('algorithm:read')):
 @router.post('/mappings')
 def post_mapping(_: None = require_permission('algorithm:param_manage')):
     body = request.get_json(silent=True) or {}
-    response = to_response(AlgorithmCommandService.create_mapping())
-    _record_device_history(response, body.get('device_id'), body.get('algorithm_type'))
-    return response
+    result = AlgorithmCommandService.create_mapping()
+    _record_device_history(result, *_write_body_scope(body))
+    return to_response(result)
 
 
 @router.put('/mappings/{mapping_id}')
 def put_mapping(mapping_id: int, _: None = require_permission('algorithm:param_manage')):
     body = request.get_json(silent=True) or {}
-    response = to_response(AlgorithmCommandService.update_mapping(mapping_id))
-    _record_device_history(response, body.get('device_id'), body.get('algorithm_type'))
-    return response
+    result = AlgorithmCommandService.update_mapping(mapping_id)
+    device_id, algorithm_type = _write_body_scope(body)
+    if not (device_id and algorithm_type):
+        device_id, algorithm_type = _device_scope('mappings', mapping_id)
+    _record_device_history(result, device_id, algorithm_type)
+    return to_response(result)
 
 
 @router.delete('/mappings/{mapping_id}')
 def delete_mapping_by_id(mapping_id: int, _: None = require_permission('algorithm:param_manage')):
-    scope = param_history_repository.lookup_scope('mappings', mapping_id)
-    response = to_response(AlgorithmCommandService.delete_mapping(mapping_id))
-    if scope:
-        _record_device_history(response, scope[1], scope[2])
-    return response
+    body = request.get_json(silent=True) or {}
+    device_id, algorithm_type = _write_body_scope(body)
+    if not (device_id and algorithm_type):
+        device_id, algorithm_type = _device_scope('mappings', mapping_id)
+    result = AlgorithmCommandService.delete_mapping(mapping_id)
+    _record_device_history(result, device_id, algorithm_type)
+    return to_response(result)
 
 
 # 其他功能路由
