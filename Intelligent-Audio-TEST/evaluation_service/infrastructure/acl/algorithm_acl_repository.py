@@ -281,6 +281,30 @@ class AlgorithmAclRepository(_AlgorithmAclRepositoryABC):
             logger.exception('sync_param_mappings failed: %s', e)
             return False
 
+    def delete_param_mappings_by_dimension(self, dimension_ids: List[int]) -> bool:
+        """按维度树软删所有作用域（算法级 / API 级 / 设备级）的 ParamMapping。
+
+        INT-2353：维度删除级联。委托 algorithm_service.AlgorithmDefinitionService
+        .DeleteParamMappingsByDimension RPC（不在 evaluation_service 直连算法库）。
+        """
+        try:
+            ids = [int(d) for d in (dimension_ids or []) if d is not None]
+            if not ids:
+                return True
+            stub = get_algorithm_definition_service_stub()
+            resp = stub.DeleteParamMappingsByDimension(
+                algo_pb.DeleteParamMappingsByDimensionRequest(
+                    dimension_ids=_dumps(ids),
+                )
+            )
+            if not resp.success:
+                logger.warning('DeleteParamMappingsByDimension failed: %s', resp.message)
+                return False
+            return True
+        except Exception as e:
+            logger.exception('delete_param_mappings_by_dimension failed: %s', e)
+            return False
+
 
 # 模块级单例
 algorithm_acl_repository = AlgorithmAclRepository()

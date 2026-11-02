@@ -352,3 +352,30 @@ class ParamMappingQueryRepository(IParamMappingQueryRepository):
         except Exception:
             session.rollback()
             raise
+
+    def delete_by_dimension_ids(self, dimension_ids: List[int]) -> int:
+        """软删全部作用域下指向给定维度的 ParamMapping（INT-2353）。
+
+        维度被删除后，指向它的映射在算法级（``api_id IS NULL``）、API 实例级
+        （``api_id`` 非空）、设备级（``device_id`` 非空）三个作用域都已失去意义，
+        统一软删（口径与 ``sync_for_dimension`` 的差集软删一致：保留行、不物理删）。
+        返回受影响行数。
+        """
+        from algorithm_service.infrastructure.persistence.models import (
+            ParamMapping as ParamMappingPO,
+        )
+        ids = sorted({int(d) for d in (dimension_ids or []) if d is not None})
+        if not ids:
+            return 0
+        session = get_db_session()
+        try:
+            affected = session.query(ParamMappingPO).filter(
+                ParamMappingPO.dimension_id.in_(ids),
+                ParamMappingPO.deleted == False,  # noqa: E712
+            ).update({'deleted': True}, synchronize_session=False)
+            session.flush()
+            session.commit()
+            return int(affected or 0)
+        except Exception:
+            session.rollback()
+            raise

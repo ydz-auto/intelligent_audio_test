@@ -210,6 +210,11 @@ class EvaluationRepositoryABC(ABC):
         """
         ...
 
+    @abstractmethod
+    def delete_param_mappings_by_dimension(self, dim_ids: List[int]) -> bool:
+        """按维度树软删所有作用域的 ParamMapping（gRPC 委托，INT-2353）。"""
+        ...
+
     # ========== 事务控制（仅限本服务自有 PO） ==========
 
     @abstractmethod

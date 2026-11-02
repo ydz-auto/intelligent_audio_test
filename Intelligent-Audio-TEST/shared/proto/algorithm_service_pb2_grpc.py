@@ -517,6 +517,11 @@ class AlgorithmDefinitionServiceStub:
                 request_serializer=algorithm__service__pb2.ListParamMappingsForDimensionRequest.SerializeToString,
                 response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
                 _registered_method=True)
+        self.DeleteParamMappingsByDimension = channel.unary_unary(
+                '/algorithm.AlgorithmDefinitionService/DeleteParamMappingsByDimension',
+                request_serializer=algorithm__service__pb2.DeleteParamMappingsByDimensionRequest.SerializeToString,
+                response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
+                _registered_method=True)
         self.ImportAlgorithms = channel.unary_unary(
                 '/algorithm.AlgorithmDefinitionService/ImportAlgorithms',
                 request_serializer=algorithm__service__pb2.ImportAlgorithmsRequest.SerializeToString,
@@ -987,6 +992,13 @@ class AlgorithmDefinitionServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def DeleteParamMappingsByDimension(self, request, context):
+        """维度删除级联：软删所有作用域下指向被删维度的 ParamMapping（INT-2353）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ImportAlgorithms(self, request, context):
         """导入/导出
         """
@@ -1438,6 +1450,11 @@ def add_AlgorithmDefinitionServiceServicer_to_server(servicer, server):
             'ListParamMappingsForDimension': grpc.unary_unary_rpc_method_handler(
                     servicer.ListParamMappingsForDimension,
                     request_deserializer=algorithm__service__pb2.ListParamMappingsForDimensionRequest.FromString,
+                    response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
+            ),
+            'DeleteParamMappingsByDimension': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteParamMappingsByDimension,
+                    request_deserializer=algorithm__service__pb2.DeleteParamMappingsByDimensionRequest.FromString,
                     response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
             ),
             'ImportAlgorithms': grpc.unary_unary_rpc_method_handler(
@@ -2875,6 +2892,33 @@ class AlgorithmDefinitionService:
             target,
             '/algorithm.AlgorithmDefinitionService/ListParamMappingsForDimension',
             algorithm__service__pb2.ListParamMappingsForDimensionRequest.SerializeToString,
+            algorithm__service__pb2.AlgorithmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteParamMappingsByDimension(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/algorithm.AlgorithmDefinitionService/DeleteParamMappingsByDimension',
+            algorithm__service__pb2.DeleteParamMappingsByDimensionRequest.SerializeToString,
             algorithm__service__pb2.AlgorithmResponse.FromString,
             options,
             channel_credentials,

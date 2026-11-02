@@ -75,3 +75,11 @@ class AlgorithmAclRepository(ABC):
     ) -> bool:
         """同步 ParamMapping（algorithm_type 为空时不写映射，INT-2355）。"""
         ...
+
+    @abstractmethod
+    def delete_param_mappings_by_dimension(self, dimension_ids: List[int]) -> bool:
+        """按维度树软删所有作用域（算法级 / API 级 / 设备级）的 ParamMapping。
+
+        INT-2353：维度删除级联，返回是否成功。
+        """
+        ...

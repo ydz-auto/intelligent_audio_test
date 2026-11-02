@@ -275,6 +275,7 @@ def get_algorithm_definition_service_stub():
     DeleteRelationsByDimension / GetRelationsByDimension / SyncDimensionRelations /
     CreateDimensionParam / DeleteDimensionParamsByDirection / FindAudioDimensionIds /
     SyncParamMappings / ListParamMappingsForDimension /
+    DeleteParamMappingsByDimension /
     ImportAlgorithms / ReloadAlgorithmConfig
     """
     from shared.proto import algorithm_service_pb2_grpc

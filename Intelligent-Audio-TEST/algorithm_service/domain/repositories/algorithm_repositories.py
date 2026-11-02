@@ -146,3 +146,8 @@ class IParamMappingQueryRepository(ABC):
     @abstractmethod
     def list_by_dimension(self, dimension_id: int) -> List[Dict[str, Any]]:
         ...
+
+    @abstractmethod
+    def delete_by_dimension_ids(self, dimension_ids: List[int]) -> int:
+        """软删全部作用域下指向给定维度的映射，返回受影响行数（INT-2353）。"""
+        ...

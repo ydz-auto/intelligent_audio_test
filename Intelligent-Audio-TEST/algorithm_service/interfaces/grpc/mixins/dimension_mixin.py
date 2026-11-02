@@ -258,6 +258,27 @@ class _DimensionMixin(_ParamBaseMixin):
         except Exception as e:
             return _failure(str(e))
 
+    def DeleteParamMappingsByDimension(self, request, context=None):
+        """软删所有作用域下指向给定维度（树）的 ParamMapping（INT-2353）。
+
+        evaluation_service 删除评估维度后调用，清掉算法级 / API 实例级 /
+        设备级三种作用域残留的「指向已删维度」活动映射。
+        """
+        try:
+            from algorithm_service.infrastructure.persistence.algorithm_repository import (
+                param_mapping_query_repository,
+            )
+            raw = request.dimension_ids
+            dim_ids = _loads(raw, []) if isinstance(raw, str) else list(raw or [])
+            dim_ids = [int(d) for d in dim_ids if d is not None]
+            if not dim_ids:
+                return _success({"dimension_ids": [], "deleted": 0})
+            deleted = param_mapping_query_repository.delete_by_dimension_ids(dim_ids)
+            self._invalidate_cache(dimension_ids=dim_ids)
+            return _success({"dimension_ids": dim_ids, "deleted": deleted})
+        except Exception as e:
+            return _failure(str(e))
+
     @staticmethod
     def _normalize_param_list(params):
         """将参数归一化为 list（字符串尝试 JSON 解析，非 list 则置空）。"""

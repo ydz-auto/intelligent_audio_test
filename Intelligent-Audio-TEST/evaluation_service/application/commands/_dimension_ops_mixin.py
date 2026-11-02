@@ -210,6 +210,11 @@ class DimensionOpsMixin(DimensionParamsMixin):
             logger.warning(f"级联软删维度 {dim_id} 的 output 参数失败或无可删数据")
         if not self.repo.delete_relations_by_dimension(dim_id):
             logger.warning(f"级联软删维度 {dim_id} 的算法关联失败或无可删数据")
+        # INT-2353：指向被删维度的 ParamMapping 此前无人清理，维度删除后
+        # 算法详情仍会返回这些「指向已删维度」的活动映射。覆盖全部作用域
+        # （算法级 api_id IS NULL / API 实例级 / 设备级），由 algorithm_service 软删。
+        if not self.repo.delete_param_mappings_by_dimension([dim_id]):
+            logger.warning(f"级联软删维度 {dim_id} 的参数映射失败或无可删数据")
 
     def batch_action(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """批量操作维度（delete/enable/disable 主/子级联，对齐旧库）。

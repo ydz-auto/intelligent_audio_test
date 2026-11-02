@@ -87,6 +87,8 @@ service AlgorithmDefinitionService {
   // 参数映射同步
   rpc SyncParamMappings(SyncParamMappingsRequest) returns (AlgorithmResponse);
   rpc ListParamMappingsForDimension(ListParamMappingsForDimensionRequest) returns (AlgorithmResponse);
+  // 维度删除级联：软删所有作用域下指向被删维度的 ParamMapping（INT-2353）
+  rpc DeleteParamMappingsByDimension(DeleteParamMappingsByDimensionRequest) returns (AlgorithmResponse);
 
   // 导入/导出
   rpc ImportAlgorithms(ImportAlgorithmsRequest) returns (AlgorithmResponse);
@@ -330,6 +332,10 @@ message SyncParamMappingsRequest {
 }
 message ListParamMappingsForDimensionRequest {
   int32 dimension_id = 1;
+}
+// INT-2353：按维度树批量软删映射（全部作用域：算法级 / API 级 / 设备级）
+message DeleteParamMappingsByDimensionRequest {
+  string dimension_ids = 1;  // JSON: [int, ...]
 }
 
 // ===== 设备/API 参数写操作 =====

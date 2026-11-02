@@ -429,6 +429,10 @@ class EvaluationRepository(EvaluationRepositoryABC):
             dimension_id, params, direction, algorithm_type
         )
 
+    def delete_param_mappings_by_dimension(self, dim_ids: List[int]) -> bool:
+        """按维度树软删所有作用域的 ParamMapping（gRPC 委托，INT-2353）。"""
+        return self._algo.delete_param_mappings_by_dimension(dim_ids)
+
     # ========== 事务控制（仅限本服务自有 PO） ==========
 
     def commit(self):
