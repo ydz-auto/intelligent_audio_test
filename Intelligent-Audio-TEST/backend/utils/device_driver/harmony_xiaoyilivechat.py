@@ -2,18 +2,18 @@
 """小艺通话拒识轮驱动（试验实现）。
 
 继承原 Xiaoyilivechat，避免直接改动稳定驱动。当前实现：
-- timing=“回复过程中”映射 is_interruption=true；“静默”映射 false。
-- is_reject=true 的轮次播放完成后等待 input_gap_ms。
-- 下一轮是非拒识轮时检测 UI：说话可打断→AI 仍在回复；正在听…连续约 3s→回复结束。
-- UI 等待 5s 兜底超时，超时后直接放行，避免连续拒识短音频卡死。
+- is_interruption 由 executor 按配置注入，本驱动不再用 timing 覆盖。
+- 静默拒识轮（is_reject 且 timing=静默）在播放前先按 input_gap_ms 静音，再等小艺
+  上一句说完（hw_params 主 + AI PCM RMS 备，不依赖 find_component/UI）后播放。
+- 等待 10s 兜底超时，超时后直接放行，避免连续拒识短音频卡死。
+- 不再依赖下一轮 timing（next_round_is_reject）。
 
 注意：executor 当前仍将轮参数传给 Xiaoyilivechat；如要启用本驱动，
-需要在设备配置中选择本驱动并在 e2e_executor 中补充 next_round_is_reject 注入。
+需要在设备配置中选择本驱动（app_type=xiaoyi_livechat_reject）。
 """
 import time
 
 from .harmony_xiaoyichat import Xiaoyilivechat
-from .utils import By, is_rpc_not_running_error
 from .driver_types import DevicePlatform
 from .registry import register_driver
 
@@ -26,10 +26,11 @@ class XiaoyiLivechatReject(Xiaoyilivechat):
     keywords = "harmony.xiaoyi_livechat_reject.v1"
     display_name = "小艺通话聊天拒识试验驱动"
 
-    # “正在听…”连续出现时长，确认回复结束
-    REJECT_LISTENING_CONFIRM_SECONDS = 3.0
-    # 等目标 UI 的兜底超时，避免连续拒识轮卡死
-    REJECT_UI_WAIT_TIMEOUT = 5.0
+    # 静默拒识轮「等上一句回复结束」检测（不依赖 UI/RPC）：
+    #   主：hw_params 播放流 closed=说完；备：AI PCM 尾部 RMS 静默。
+    REJECT_REPLY_WAIT_TIMEOUT = 10.0       # 总兜底超时，避免连续拒识短音频卡死
+    REJECT_REPLY_CLOSED_CONFIRM = 2        # hw_params 连续 N 次 closed 判定结束
+    REJECT_REPLY_RMS_SILENCE_CONFIRM = 3   # RMS 备路：连续 N 秒尾部静默判定结束
 
     @staticmethod
     def _normalize_timing_to_interruption(timing):
@@ -38,72 +39,86 @@ class XiaoyiLivechatReject(Xiaoyilivechat):
 
     def _wait_reject_reply_finished(self, driver, device_sn, task_id=None,
                                     test_case_id=None):
-        """拒识轮后等待小艺回复结束。
+        """静默拒识轮播放前等待小艺回复结束（不依赖 UI/RPC）。
 
-        目标 UI: 说话可打断→AI 仍在回复；正在听…连续约 3s→回复结束。
-        连续拒识轮+短音频可能错过“回复中”窗口，故总等待 5s 超时后直接放行。
+        原 UI 法（find_component 说话可打断/正在听…）在设备 hypium 后端
+        std::bad_alloc 或 RPC 断连时会卡死/误判，故改为：
+          - 主：轮询 hw_params（播放流 closed=说完），连续 N 次 closed 判定结束。
+          - 备：hw_params 连续读不到（路径漂移/无权限）时，改看 AI PCM 尾部 RMS，
+                连续静默 N 秒判定结束。
+          - 兜底：总等待超时后直接放行，避免连续拒识短音频卡死。
         """
-        deadline = time.time() + self.REJECT_UI_WAIT_TIMEOUT
-        stable_listening_since = None
+        deadline = time.time() + self.REJECT_REPLY_WAIT_TIMEOUT
+        closed_hits = hw_read_fails = rms_silent_hits = 0
         while time.time() < deadline:
-            if self._check_stop('post_process_拒识等待回复结束'):
-                return False
-            try:
-                listening = driver.find_component(By.text('正在听…')) is not None
-                replying = listening or (
-                    driver.find_component(By.text('说话可打断')) is not None)
-            except Exception as exc:
-                if is_rpc_not_running_error(exc):
-                    raise
-                self._log(level='WARNING', content=f'拒识轮 UI 检测异常: {exc}',
-                          task_id=task_id, test_case_id=test_case_id)
+            if self._check_stop('pre_process_拒识等待回复结束'):
                 return False
 
-            now = time.time()
-            if listening:
-                if stable_listening_since is None:
-                    stable_listening_since = now
-                elif now - stable_listening_since >= self.REJECT_LISTENING_CONFIRM_SECONDS:
+            state = self._hw_params_replying(device_sn)
+            if state is True:
+                # 播放流仍打开 = 上一句还在说，继续等
+                closed_hits = hw_read_fails = rms_silent_hits = 0
+                time.sleep(1)
+                continue
+            if state is False:
+                # closed = 上一句说完
+                hw_read_fails = rms_silent_hits = 0
+                closed_hits += 1
+                if closed_hits >= self.REJECT_REPLY_CLOSED_CONFIRM:
                     self._log(level='INFO',
-                              content=f'拒识轮确认回复结束(“正在听…”稳定{now - stable_listening_since:.1f}s)',
+                              content=f'拒识轮确认回复结束(hw_params=closed,连续{closed_hits}次)',
+                              task_id=task_id, test_case_id=test_case_id)
+                    return True
+                time.sleep(1)
+                continue
+
+            # state is None：hw_params 读不到 → 容忍几次后走 AI PCM RMS 备路
+            hw_read_fails += 1
+            if hw_read_fails <= 3:
+                time.sleep(1)
+                continue
+            remote = self._find_ai_pcm_remote(device_sn, task_id=task_id,
+                                              test_case_id=test_case_id)
+            rms = None
+            if remote:
+                rms, _ = self._read_tail_rms(device_sn, remote, tail_seconds=1.0,
+                                             task_id=task_id, test_case_id=test_case_id)
+            if rms is None:
+                time.sleep(1)
+                continue
+            if rms < self.RMS_THRESHOLD:
+                rms_silent_hits += 1
+                if rms_silent_hits >= self.REJECT_REPLY_RMS_SILENCE_CONFIRM:
+                    self._log(level='INFO',
+                              content=f'拒识轮确认回复结束(AI PCM 尾部静默{self.REJECT_REPLY_RMS_SILENCE_CONFIRM}s)',
                               task_id=task_id, test_case_id=test_case_id)
                     return True
             else:
-                stable_listening_since = None
-            if replying:
-                # 仍在回复：重置 UI 总兜底，只等待“正在听…”出现并稳定
-                deadline = max(deadline,
-                               now + self.REJECT_LISTENING_CONFIRM_SECONDS + 1)
+                rms_silent_hits = 0
             time.sleep(1)
 
         self._log(level='WARNING',
-                  content='拒识轮等待回复结束超时(5s兜底)，直接进入下一轮',
+                  content=f'拒识轮等待回复结束超时({self.REJECT_REPLY_WAIT_TIMEOUT}s兜底)，直接进入本轮播放',
                   task_id=task_id, test_case_id=test_case_id)
         return True
 
-    def post_process(self, device_sn, task_id=None, test_case_id=None,
-                     **kwargs) -> bool:
-        """在稳定驱动 post_process 前插入拒识轮等待逻辑。"""
+    def pre_process(self, device_sn, task_id=None, test_case_id=None,
+                    **kwargs) -> bool:
+        """静默拒识轮在播放前先按 input_gap_ms 静音，再等小艺上一句说完后播放。"""
         is_reject = self._as_bool(kwargs.get('is_reject'))
-        if is_reject:
-            driver = self._get_driver(device_sn)
-            kwargs['is_interruption'] = self._normalize_timing_to_interruption(
-                kwargs.get('timing'))
-            self._post_process_reject_wait(
-                driver, device_sn, kwargs, task_id=task_id,
-                test_case_id=test_case_id)
+        timing = kwargs.get('timing') or kwargs.get('trigger_timing') or ''
+        is_silent = not self._normalize_timing_to_interruption(timing)
+        if is_reject and is_silent:
+            self._pre_process_reject_wait(
+                self._get_driver(device_sn), device_sn, kwargs,
+                task_id=task_id, test_case_id=test_case_id)
 
-        return super().post_process(
+        return super().pre_process(
             device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
 
-    def _post_process_reject_wait(self, driver, device_sn, kwargs,
-                                  task_id=None, test_case_id=None):
-        """拒识轮播放后等待 input_gap_ms，并按下一轮类型确认回复结束。"""
-        is_reject = self._as_bool(kwargs.get('is_reject'))
-        next_round_is_reject = self._as_bool(kwargs.get('next_round_is_reject'))
-        if not is_reject:
-            return
-
+    def _pre_process_reject_wait(self, driver, device_sn, kwargs,
+                                 task_id=None, test_case_id=None):
+        """静默拒识轮播放前：先等 input_gap_ms 静音间隙，再检测小艺是否结束回复。"""
         try:
             input_gap_ms = int(float(kwargs.get('input_gap_ms', 0) or 0))
         except (TypeError, ValueError):
@@ -115,18 +130,23 @@ class XiaoyiLivechatReject(Xiaoyilivechat):
             timing_text = kwargs.get('timing') or kwargs.get('trigger_timing') or ''
             self._log(
                 level='INFO',
-                content=(f'拒识轮播放完成，等待 input_gap_ms={input_gap_ms}ms '
-                         f'(timing={timing_text}) 后检测回复状态'),
+                content=(f'静默拒识轮播放前等待 input_gap_ms={input_gap_ms}ms '
+                         f'(timing={timing_text})'),
                 task_id=task_id, test_case_id=test_case_id)
             wait_seconds = input_gap_ms / 1000.0
             wait_deadline = time.time() + wait_seconds
             while time.time() < wait_deadline:
                 if self._check_stop(
-                        f'post_process_拒识input_gap({input_gap_ms}ms)'):
+                        f'pre_process_拒识input_gap({input_gap_ms}ms)'):
                     return
                 time.sleep(min(0.5, max(0.1, wait_deadline - time.time())))
 
-        if not next_round_is_reject:
-            self._wait_reject_reply_finished(
-                driver, device_sn, task_id=task_id, test_case_id=test_case_id)
+        self._wait_reject_reply_finished(
+            driver, device_sn, task_id=task_id, test_case_id=test_case_id)
+
+    def post_process(self, device_sn, task_id=None, test_case_id=None,
+                     **kwargs) -> bool:
+        """拒识轮直接复用稳定驱动收尾，is_interruption 由 executor 按配置注入。"""
+        return super().post_process(
+            device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
 
