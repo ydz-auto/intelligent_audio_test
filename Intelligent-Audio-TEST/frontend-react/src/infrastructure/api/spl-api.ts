@@ -56,7 +56,7 @@ export async function fetchSplMappings(
   return (dto?.items ?? []).map(splMappingFromDto)
 }
 
-/** 某播放设备的声压映射（§6.4 关联弹窗选项来源；GET /spl/by-device/{device_id}，V9.7.10 loadSplMappings 同源） */
+/** 某播放设备的声压映射（播放设备表单编辑；GET /spl/by-device/{device_id}，V9.7.10 loadSplMappings 同源。INT-2343 起关联弹窗改用 GET /spl） */
 export async function fetchSplMappingsByDevice(
   deviceId: number,
   options: ApiRequestOptions = {}

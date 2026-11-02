@@ -38,7 +38,7 @@ export function useSplMappings(enabled: boolean = true) {
   })
 }
 
-/** 某播放设备的声压映射（§6.4 关联弹窗/播放表单编辑；GET /spl/by-device/{id}，V9.7.10 loadSplMappings 同源） */
+/** 某播放设备的声压映射（播放表单编辑；GET /spl/by-device/{id}，V9.7.10 loadSplMappings 同源。INT-2343 起关联弹窗改用 useSplMappings） */
 export function useSplMappingsByDevice(deviceId: number | null) {
   return useQuery({
     queryKey: ['spl-by-device', deviceId],
