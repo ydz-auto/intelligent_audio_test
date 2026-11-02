@@ -37,6 +37,7 @@ function toPlaybackDevice(dto: PlaybackDeviceItemDto): PlaybackDevice {
     deviceUniqueId: dto.device_unique_id ?? null,
     status: (dto.status ?? null) as PlaybackDevice['status'],
     currentSplMappingId: dto.current_spl_mapping_id ?? null,
+    // INT-2347：名称由页面用 GET /spl 数据在适配层回填（attachSplMappingNames）
     currentSplMappingName: null,
     labId: null,
     labName: null,

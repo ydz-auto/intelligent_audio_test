@@ -31,8 +31,10 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { ApiError } from '@/infrastructure/api/api-error'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
+import { attachSplMappingNames } from '@/infrastructure/adapters/playbackDeviceAdapter'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
+import { useSplMappings } from '@/application/spl/useSplMappings'
 import {
   useApiDevices,
   useAlarmRules,
@@ -158,6 +160,10 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
 
   const testQuery = useTestDevices()
   const playbackQuery = usePlaybackDevices()
+  /** 声压映射名解析（INT-2347）：列表接口只回 current_spl_mapping_id，名称取同一份 GET /spl
+   *  （与关联弹窗同源）；无 spl:read 不下发，名称回退「未关联」。 */
+  const canSplRead = hasPermission('spl:read')
+  const splMappingsQuery = useSplMappings(tab === 'playback' && canSplRead)
   const apiQuery = useApiDevices()
   /** 当前页签的列表查询（INT-2330：错误/重试按页签同口径下发给统计行与表格） */
   const activeListQuery = tab === 'test' ? testQuery : tab === 'playback' ? playbackQuery : apiQuery
@@ -263,7 +269,11 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     () => filterTestDevicesByAlgorithm(testDevices, algorithmId),
     [testDevices, algorithmId]
   )
-  const playbackDevices = playbackQuery.data ?? []
+  /** 播放设备列表 + 当前声压映射名（关联/解除后 invalidate ['devices','playback'] 自动重取并回填） */
+  const playbackDevices = useMemo(
+    () => attachSplMappingNames(playbackQuery.data ?? [], splMappingsQuery.data),
+    [playbackQuery.data, splMappingsQuery.data]
+  )
   const apiDevices = apiQuery.data ?? []
   const labs = labsQuery.data ?? []
   const groups = groupsQuery.data ?? []

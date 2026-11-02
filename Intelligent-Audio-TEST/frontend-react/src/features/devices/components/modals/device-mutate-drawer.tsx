@@ -49,8 +49,10 @@ import {
 } from '@/features/devices/lib/device-form-schema'
 import { normalizeDeviceSystem } from '@/features/devices/lib/device-system'
 import { useDeviceMutations, useDriverKeywords, useLaboratories } from '@/application/devices/use-devices'
-import { useSplMappingsByDevice } from '@/application/spl/useSplMappings'
+import { useSplMappings } from '@/application/spl/useSplMappings'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
+import { usePermissions } from '@/application/hooks/use-permissions'
+import { filterAssociableSplMappings } from '@/features/devices/lib/spl-associable-options'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { ApiDevice } from '@/domain/models/apiDevice'
@@ -286,12 +288,12 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
     () => (labsQuery.data ?? []).map((lab) => ({ value: String(lab.id), label: lab.name })),
     [labsQuery.data]
   )
-  // 声压映射选项仅编辑态（设备已存在）加载该设备映射（V9.7.10 loadSplMappings 同源 GET /spl/by-device/{id}）；
-  // 新增态 deviceId 为空 → 无选项（设备创建后再经行操作关联）
+  // 声压映射选项源与关联弹窗（INT-2343）同源：GET /spl 全量后按可关联集合过滤；
+  // 无 spl:read 不下发（后端 403）。新增态无设备 → 无选项（设备创建后再经行操作关联）
+  const canReadSpl = usePermissions().hasPermission('spl:read')
   const editingPlaybackId = kind === 'playback' && isEdit ? (state.device?.id ?? null) : null
-  const splMappingsQuery = useSplMappingsByDevice(editingPlaybackId)
+  const splMappingsQuery = useSplMappings(open && kind === 'playback' && canReadSpl)
   const driverKeywords = driverKeywordsQuery.data ?? []
-  const splOptions = splMappingsQuery.data ?? []
   // 算法类型选项（INT-1213：真实 GET /algorithm/options，显示中文名；V9.7.10 algorithmSelect 口径）
   // INT-1239：改壳层门控版（['shell','algorithm','options']，enabled: algorithm:read）——device_admin
   // 无 algorithm:read 不下发请求（后端 RBAC 403）；选项为 {value,name}，抽屉统一映射 {value,label}。
@@ -304,6 +306,24 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
     resolver: zodResolver(deviceFormSchema),
     values: buildDefaults(state, prefill),
   })
+
+  const watchedPlaybackType = (form.watch('deviceType') || null) as PlaybackDevice['deviceType']
+  const currentSplMappingId =
+    kind === 'playback'
+      ? ((editingDevice as PlaybackDevice | null)?.currentSplMappingId ?? null)
+      : null
+  /**
+   * 可关联映射（INT-2347）：device_id 为空或归属本设备、device_type 匹配（后端 associate_spl
+   * 同口径，他机归属/类型不符直接 400）；当前已关联映射恒保留，保证 Select 回显名称而非裸 id。
+   */
+  const splOptions = useMemo(() => {
+    if (editingPlaybackId == null) return []
+    return filterAssociableSplMappings(splMappingsQuery.data ?? [], {
+      deviceId: editingPlaybackId,
+      deviceType: watchedPlaybackType,
+      currentMappingId: currentSplMappingId,
+    })
+  }, [editingPlaybackId, watchedPlaybackType, currentSplMappingId, splMappingsQuery.data])
 
   // INT-1029 抽屉内扫描「选择」→ 回填当前表单（编辑/新增态均可用；nonce 递增触发）
   useEffect(() => {
