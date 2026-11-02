@@ -331,7 +331,8 @@ rounds[i].output = {target_param: value}      ← 评估侧唯一读取的口径
 ### 10.1 语义与优先级
 
 - `algorithm_api_params.api_id`、`param_mappings.api_id`：`NULL` = **算法类型级默认**（同类型各 API 共享），非空 = **API 实例级**，指向 `api_test_service` 的 `apis.id`（跨服务不建 DB 外键）。
-- 读取优先级：**API 实例级 > 算法类型级**，且是**合并**而非二选一——同键的 API 级行覆盖算法级行，未被覆盖的键继续用算法级行；其它 `api_id` 的行不参与。
+- 读取优先级（2026-11-02 起）：**API 实例覆盖 > 绑定策略 > 算法级默认**，且是**三层合并**而非二选一——同键逐层覆盖，未被覆盖的键继续用下一层；其它 `api_id` 的行不参与。
+- 带作用域读取时逐行下发 `resolved_from`（`algorithm` / `profile` / `api`）；`resolved_from='profile'` 的行 `id` 恒为 `null`，原名带 `profile_param_id`。
 - 不传 `api_id`（存量路径）：只返回算法级行，行为与 C6a 之前一致；行里多一个 `api_id: null` 键。
 
 ### 10.2 唯一索引（算法级 / API 级各一条，统一 `NULLS NOT DISTINCT`）
@@ -346,7 +347,7 @@ rounds[i].output = {target_param: value}      ← 评估侧唯一读取的口径
 
 - 旧索引 `uq_algorithm_api_param_direction`、`uq_algorithm_source_to_dimension` 由迁移 **DROP**（不保留）。
 - `NULLS NOT DISTINCT` 是必需的：PG 默认 `NULLS DISTINCT` 下 `api_id IS NULL` 的行不参与唯一约束；`param_mappings.dimension_id` 本身可空，不加会把 `(…, NULL)` 的重复插入放过去。
-- 模型 `__table_args__` 仍声明上述两条旧索引（C2 并行期「不改既有索引定义」的约定），**全新库须靠引导链本步纠正**；在只跑 `create_all` 未跑引导链的库上，旧唯一键会拦住 API 级覆盖行。
+- 模型 `__table_args__` 已与迁移对齐（2026-11-02 修订）：`algorithm_api_params` 声明 `uq_algorithm_api_param_algo_level` / `uq_algorithm_api_param_api_level` / `idx_algorithm_api_params_api_id` 三条索引；`create_all` 建出的新库不再有「旧唯一键拦住 API 级覆盖行」的问题。
 
 ### 10.3 读侧合并入口
 
@@ -368,11 +369,19 @@ rounds[i].output = {target_param: value}      ← 评估侧唯一读取的口径
 
 - 脚本 `scripts/migrations/202610/add_api_id_scope_int1751.py`：默认 dry-run、`--apply` 执行、`--rollback [--apply]` 回滚；幂等（列/索引存在即 SKIP）；`SET lock_timeout='10s'`，等锁超时抛 `55P03` 原样上抛不吞；执行前统计两个层级的重复组，有重复直接 `[FAIL]` 退出（码 2）。
 - 已接入引导链 `docker/db_bootstrap_entrypoint.py:206`（㊻，带 `--apply`），排在 ㊽ `analyze_stale_statistics_int1741.py` **之前**（ANALYZE 必须保持末位，`tests/unit/test_int1741_analyze_stale_statistics.py` 钉死）。
+- 后续两步（2026-11-02）同排在 ㊽ 之前：㊾-6 `add_param_change_history.py`（建历史表）、㊾-7 `restore_api_algorithm_level.py`（恢复算法级默认层并解绑 default 策略）。
 - 部署：`db_bootstrap` 是 compose 门控服务（`service_completed_successfully`），重建 db_bootstrap 镜像后随 `docker compose up` 对目标库执行本步；**未跑本步的库上新镜像读参数表会 `UndefinedColumn`**，因此 `db_bootstrap` 必须先于各服务完成。
 - 存量安全（2026-10-25 主库只读实测）：`param_mappings` 未删除 959 行（其中 `dimension_id IS NULL` 1 行）、`algorithm_api_params` 未删除 7 行；按两条新算法级唯一键统计**重复组均为 0**，加索引不会产生重复键失败。主库当前仍是迁移前形态（无 `api_id` 列、旧两条唯一索引），迁移随部署执行。
 - 与相邻卡：INT-1784（冗余索引下线）只 DROP「名字 + 定义双匹配且非 UNIQUE」的 22 条 btree，不涉及本节四条唯一索引与两条 `idx_*_api_id`；其脚本尚未合入 V9.7.31，合入时其引导链步同样须排在 ㊽ 之前（两步互不依赖，无次序要求）。INT-1794 结论为「不需要整体重新设计」，不改这两张表的关系模型，与本迁移不冲突。
 
-### 10.6 未收口事项（跟踪，不是 C6a 的实现偏差）
+### 10.6 2026-11-02 口径修订（算法级兜底 + 变更历史）
+
+- **恢复算法级默认层**：`config_cache.get_api_params(algorithm_type, api_id=None)` 返回 `api_id IS NULL` 的算法级行；传 `api_id` 时按「算法级默认 → 绑定策略 → 本 API 覆盖」三层合并。`_scoped_mapping_buckets` 同步恢复 `source='api'` 的算法级映射打底。
+- **数据恢复**：`scripts/migrations/202611/restore_api_algorithm_level.py`（引导链 ㊾-7，幂等）把 `add_param_profiles_scope` 软删的算法级参数/`source='api'` 映射恢复为可见（每个自然键只恢复一行，优先 id 最大者），并解绑迁移期 `scope='api' AND name='default'` 策略（策略本身保留）。主库实测恢复 11 个参数键 / 2159 行映射、解绑 27 条绑定。
+- **变更历史与回滚**：新增 `param_change_history` 表（`scripts/migrations/202611/add_param_change_history.py`，引导链 ㊾-6），按 `(scope, scope_id, algorithm_type)` 追加版本，只存该作用域的**覆盖行**快照（params / mappings），保留最近 50 版；端点 `GET /algorithm/param-history`、`POST /algorithm/param-history/{id}/restore`。回滚口径：API 复用 `SaveApiScopeOverrides` 整份同步；设备按自然键 diff 后逐行 create/update/delete；回滚本身再记一版 `action=restore`。
+- **写侧变化**：设备参数/映射的增删改与 API 覆盖保存成功后自动记版本；映射写权限统一为 `algorithm:param_manage`；算法定义整份保存不再携带 `device_params`（键缺省 = 跳过该层，显式 `[]` 才清空），避免用界面看不见的旧值覆盖设备参数声明。
+
+### 10.7 未收口事项（跟踪，不是 C6a 的实现偏差）
 
 - **C6b（INT-1757）已实施**：合入提交 `406b6a941`（按补丁 `int1757_c6b_rebased_on_v9731.patch` 在含 INT-1748 返工的基线上重解）。`api_id` 已接到执行 / 评估 / 报告调用点，`result_field_mapping_queries._output_field_cache` 键为 `(algorithm_type, api_id)`；逐点接线清单与边界见 §9.5。
 - **INT-1863 已收口**：合入提交 `2316a703b`。`algorithm_service/infrastructure/persistence/_algorithm_dimension_repositories.py:265-284` 的 `list_for_dimension` 与 `:286-346` 的 `sync_for_dimension` 显式带 `api_id` 形参并按作用域过滤（默认 `api_id IS NULL`），新建行显式落 `api_id`——**维度同步只管理算法级（`api_id IS NULL`）行，API 实例级维度映射由 API 作用域自己的写路径负责**，同一 `(source_param, dimension_id)` 的算法级与 API 级行并存时，一轮同步后 API 级行的 `target_param` / `source_direction` / `deleted` 均不变。两个调用方（`interfaces/grpc/mixins/dimension_mixin.py:241` 同步、`param_query_mixin.py:210` 维度读取）走默认算法级口径。

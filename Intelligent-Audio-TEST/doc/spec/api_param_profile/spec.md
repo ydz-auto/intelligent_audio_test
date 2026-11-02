@@ -11,8 +11,8 @@
 - 新增可复用**参数策略**（`param_profiles` + `param_profile_params` + `param_profile_mappings`）；
 - API 实例通过 `api_param_bindings` **引用**一份策略；
 - 实例可对策略做**覆盖**（`algorithm_api_params` / `param_mappings` 中 `api_id = X` 的行）；
-- 解析优先级恒定为：**实例覆盖 > 策略 > 空（显式告警）**；
-- 彻底废弃 `api_id IS NULL` 的算法类型级默认层（迁移后软删）。
+- 解析优先级恒定为：**实例覆盖 > 策略 > 算法级默认**；
+- **2026-11-02 口径修订**：此前「彻底废弃 `api_id IS NULL` 的算法类型级默认层（迁移后软删）」已回退——算法级默认行作为三层解析的**兜底层**保留，不再软删；不传 `api_id` 时返回该层。
 
 ### 非目标
 
@@ -27,7 +27,7 @@
 | 模型 | `algorithm_service/infrastructure/persistence/models/algorithm_models.py` | `ParamProfile` / `ParamProfileParam` / `ParamProfileMapping` / `ApiParamBinding`（无 ORM relationship，按 id 显式查询） |
 | 迁移 | `scripts/migrations/202610/add_param_profiles_scope.py` | 建表 → 按 `algorithm_type` 生成 `default` 策略 → 复制默认层参数与映射 → 回填绑定 → 软删默认行；`--apply` / `--rollback` / dry-run 默认 |
 | 引导 | `docker/db_bootstrap_entrypoint.py` | ㊾ 之后、㊽ ANALYZE 之前执行迁移（`--apply`） |
-| 解析 | `algorithm_service/infrastructure/persistence/config_cache.py` | `get_api_params` / `get_param_mapping` / `_scoped_mapping_buckets` / `_get_evaluation_mappings` 改为「策略 + 实例覆盖」；`api_id=None` 返回空 |
+| 解析 | `algorithm_service/infrastructure/persistence/config_cache.py` | `get_api_params` / `get_param_mapping` / `_scoped_mapping_buckets` / `_get_evaluation_mappings` 按「算法级默认 → 策略 → 实例覆盖」三层合并；`api_id=None` 返回算法级默认行；带作用域时逐行下发 `resolved_from`（`algorithm` / `profile` / `api`）与 `profile_param_id` |
 | 读 Handler | `algorithm_service/application/handlers/param_profile_handlers.py`、`algorithm_service/interfaces/grpc/algorithm_query_servicer.py` | 策略读 RPC |
 | 写 Handler | `algorithm_service/interfaces/grpc/mixins/param_profile_mixin.py` | 策略写 RPC，成功后全量失效缓存 |
 | 仓储 | `algorithm_service/infrastructure/persistence/_param_profile_repositories.py` | 策略 CRUD + 绑定 + 覆盖的原子落库 |

@@ -289,6 +289,8 @@ interface CreateAlgorithmRequest {
 interface UpdateAlgorithmRequest extends Partial<CreateAlgorithmRequest> {}
 ```
 
+> **参数子实体提交口径（2026-11-02）**：算法编辑表单**不再提交 `device_params`**——请求缺省该键时后端跳过设备参数层（不软删、不改写）；显式传 `[]` 才清空。设备参数统一在「设备管理 → 参数配置」维护，避免表单用用户看不见的旧值覆盖设备级 / 算法级声明。
+
 ### 4.9 删除算法
 
 ```typescript
@@ -324,11 +326,13 @@ interface UpdateAlgorithmRequest extends Partial<CreateAlgorithmRequest> {}
 // device_id 为 null 表示算法类型级默认行，非空表示该设备的覆盖行；
 // 写侧据此区分「本设备覆盖 / 算法级」，新增/编辑/删除都走这个口径。
 
-// ② API 实例作用域（裸数组 + 缓存行键）
+// ② API 实例作用域 = 三层解析结果（裸数组 + 缓存行键）
 // GET /api/v1/algorithm/params?algorithm_type=:type&param_type=api&api_id=N
+// 优先级：本 API 覆盖 > 绑定策略 > 算法级默认，合并键 (direction, code)
 // 行键：id / algorithm_type / code / name / label / type / direction /
 //      required / default_value / validation_rules / help_text /
-//      ui_order / ui_group / hidden / param_type / api_id
+//      ui_order / ui_group / hidden / param_type / api_id /
+//      resolved_from（algorithm | profile | api）/ profile_param_id
 AlgorithmApiParamRow[]
 
 // ③ 设备实例作用域 = 三层解析结果（裸数组 + 缓存行键，INT-2299）

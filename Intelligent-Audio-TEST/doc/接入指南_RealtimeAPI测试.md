@@ -96,13 +96,32 @@ _FLAT_KEY_DIMENSIONS = { ..., VendorAdapterType.MY_VENDOR: (AdapterProtocol.REAL
 - **APIs 表一行**：`vendor=my_vendor`、`api_url`（`ws://` 或 `wss://`）、`device_type=websocket_api`、`audio_config`（顶层列，目标音频格式；meta.audio_config 仅存量兼容，INT-1771）、meta（session_config / ws_headers / api_key）、proxy_type / proxy_url
 - **建任务**：选用例 + 选 API（可同时选多个 API 和物理设备混跑）→ 用例在选中目标上分别执行（case_devices 指派 device_type）
 
-## 六、验证
+## 六、参数配置（三层解析）
+
+被测 Realtime API 的输入/输出字段与映射在 **设备管理 → 测试 API → 编辑 → 「参数配置」页签**维护；新建 API 时也可直接配，随创建一起提交。
+
+解析顺序固定为：
+
+```text
+本 API 覆盖  >  绑定策略  >  算法级默认
+```
+
+- 表格「来源」列展示生效值来自哪一层：`算法级` / `策略` / `本 API`。
+- **编辑算法级或策略行 = 新增本 API 覆盖**；删除覆盖行 = 回落到上一层，不会改动算法级声明本身。
+- 保存只写本 API 的覆盖行：未改动的算法级 / 策略行不会被固化成覆盖行。
+- 策略可在 **算法配置页右上「参数策略」** 集中管理（按作用域筛选「全部 / API / 设备」并分别新建）；也可在页签内「另存为新策略 / 克隆当前策略」，切换绑定即时生效。
+- **历史与回滚**：参数区「历史」按钮可查看最近 50 个版本并回滚。回滚只恢复本 API 的覆盖行，不动策略绑定；回滚本身也会记一版。
+- 权限：读 `algorithm:read`，写 `algorithm:param_manage`（参数与映射同一权限）。
+
+> 输出字段（`direction=output`）与评估映射是同一份三层解析结果；打断轮 / 拒识的用例语义见 §四，与参数层级无关。
+
+## 七、验证
 
 1. **mock 冒烟**：`mock_realtime_api.py --barge-in`（预置「AI 说话 + 打断」事件序列）→ 正常轮 + 打断轮跑通
 2. **真机**：换 `api_url` 为被测端点，核对事件协议与归一化（`response.audio.delta` 等）
 3. **回归**：`test_int497_openai_realtime_e2e.py`（分发 + 打断轮）、`test_int475_realtime_pacing.py`（节奏策略）
 
-## 七、FAQ
+## 八、FAQ
 
 - **Q：我的服务事件字段和 OpenAI 不同？** 在适配器 `recv` 归一化即可，用户侧能力不受影响。
 - **Q：怎么确认打断测试生效？** 看轮次结果打断指标（barge_in 统计）；页面有实时帧可观察。

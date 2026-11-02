@@ -374,6 +374,10 @@ BOOTSTRAP_STEPS = [
     #     支撑「历史列表 + 回滚」。幂等（建表/索引 IF NOT EXISTS）；纯 DDL，
     #     须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202611/add_param_change_history.py', '--apply'),
+    # ㊾-7 恢复 API 算法级默认层（三层解析兜底）：把 add_param_profiles_scope 软删的
+    #     algorithm_api_params / source='api' 映射恢复为可见，并解绑迁移期 default 策略。
+    #     幂等（只命中 deleted=true 且同键无活跃行的记录）；纯数据 UPDATE，须排在 ㊽ 之前。
+    ('python', 'scripts/migrations/202611/restore_api_algorithm_level.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
