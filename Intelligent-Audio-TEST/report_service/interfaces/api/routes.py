@@ -41,6 +41,7 @@ from report_service.application.queries.report_queries import (
     GetReportSummaryQuery,
     GetTrendDataQuery,
     ListReportsQuery,
+    parse_report_date,
     split_report_types,
 )
 from report_service.domain.entities import ReportAggregate
@@ -221,6 +222,9 @@ def list_reports(
     status: Optional[str] = Query(None),
     task_id: Optional[int] = Query(None),
     search: Optional[str] = None,
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
+    algorithm_type: Optional[str] = Query(None),
     page: int = Query(1),
     page_size: int = Query(20),
 ):
@@ -231,14 +235,25 @@ def list_reports(
         task_id:    int  可选任务 ID 精确过滤（INT-262：只返回该任务报告，
                          任务无报告时返回空列表而非全量）
         search:     str  可选关键字（INT-2329：报告名称/描述模糊匹配）
+        start_time: str  可选时间窗起点（INT-2351，口径见 parse_report_date：
+                         闭区间 / 纯日期当天 00:00 / 无时区按东八区）
+        end_time:   str  可选时间窗终点（INT-2351，纯日期覆盖当天整天）
+        algorithm_type: str 可选算法类型（INT-2351：按 report_cases 存在性归属）
         page:       int  页码（默认 1）
         page_size:  int  每页数量（默认 20）
     """
     try:
+        # 直调（单测）不传时参数值是 FastAPI Query 默认对象而非 None，先归一为 str/None
+        start_text = start_time if isinstance(start_time, str) else None
+        end_text = end_time if isinstance(end_time, str) else None
+        algo_text = algorithm_type if isinstance(algorithm_type, str) else None
         query = ListReportsQuery(
             status=status,
             task_id=task_id,
             search=search,
+            start_time=parse_report_date(start_text),
+            end_time=parse_report_date(end_text, end_of_day=True),
+            algorithm_type=(algo_text or '').strip() or None,
             page=page,
             page_size=page_size,
         )

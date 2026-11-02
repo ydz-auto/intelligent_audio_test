@@ -57,6 +57,7 @@ from report_service.application.queries.report_queries import (
     ListReportBriefsByTaskIdsQuery,
     ListReportsQuery,
     empty_tab_counts,
+    parse_report_date,
     split_report_types,
 )
 from report_service.domain.entities import ReportAggregate, ReportStatus
@@ -575,18 +576,35 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             page: int           页码（从 1 开始）
             per_page: int       每页数量
             search: str         可选搜索关键字
-            start_date: str     可选开始日期
-            end_date: str       可选结束日期
+            start_date: str     可选开始日期（INT-2351：created_at >= start，
+                                含边界；纯日期取当日 00:00:00）
+            end_date: str       可选结束日期（INT-2351：created_at <= end，
+                                含边界；纯日期取当日 23:59:59.999999）
+            algorithm_type: str 可选算法类型（INT-2351：按 report_cases
+                                .algorithm_type 存在性归属，报告主表无该列）
             favorite: bool      INT-141 仅当前用户收藏（x-user-id metadata）
             deleted: bool       INT-141 仅回收站软删除项
+
+        时间窗 / 算法类型筛选与 items、total 同口径（INT-2351）；非法日期返
+        失败（网关转 400），不静默忽略。Tab 计数（CountReportsByTabs）仍只随
+        keyword/favorite/deleted 收缩（INT-2339 裁定），本接口不改其口径。
         """
         try:
             from shared.infrastructure.user_context import user_id_from_context
+            start_time = parse_report_date(getattr(request, 'start_date', '') or None)
+            end_time = parse_report_date(
+                getattr(request, 'end_date', '') or None, end_of_day=True)
+            if (start_time is not None and end_time is not None
+                    and start_time > end_time):
+                return self._resp(False, '开始日期不能晚于结束日期')
             query = ListReportsQuery(
                 status=getattr(request, 'status', None) or None,
                 report_types=split_report_types(getattr(request, 'report_type', '') or ''),
                 task_id=getattr(request, 'task_id', 0) or None,
                 search=getattr(request, 'search', '') or None,
+                start_time=start_time,
+                end_time=end_time,
+                algorithm_type=(getattr(request, 'algorithm_type', '') or '').strip() or None,
                 page=getattr(request, 'page', None) or 1,
                 page_size=getattr(request, 'per_page', None) or 20,
                 favorite=getattr(request, 'favorite', False),
@@ -627,15 +645,25 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
     def CountReports(self, request, context=None):
         """按 ListReports 同一套过滤条件计数（INT-280：HistoryReports Tab 计数服务端聚合）。
 
-        复用 ListReportsRequest：仅 report_type（可逗号分隔多类型）/status/
-        favorite/deleted 过滤生效，分页与搜索字段忽略。
+        复用 ListReportsRequest：report_type（可逗号分隔多类型）/status/
+        favorite/deleted + INT-2351 时间窗（start_date/end_date）/
+        algorithm_type 过滤生效，分页与搜索字段忽略。
         响应 data: {'total': N}
         """
         try:
             from shared.infrastructure.user_context import user_id_from_context
+            start_time = parse_report_date(getattr(request, 'start_date', '') or None)
+            end_time = parse_report_date(
+                getattr(request, 'end_date', '') or None, end_of_day=True)
+            if (start_time is not None and end_time is not None
+                    and start_time > end_time):
+                return self._resp(False, '开始日期不能晚于结束日期')
             query = ListReportsQuery(
                 status=getattr(request, 'status', None) or None,
                 report_types=split_report_types(getattr(request, 'report_type', '') or ''),
+                start_time=start_time,
+                end_time=end_time,
+                algorithm_type=(getattr(request, 'algorithm_type', '') or '').strip() or None,
                 favorite=getattr(request, 'favorite', False),
                 deleted=getattr(request, 'deleted', False),
                 user_id=user_id_from_context(context),

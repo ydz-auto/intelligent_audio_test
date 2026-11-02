@@ -461,7 +461,8 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         """处理分页列出报告（各条附摘要统计）。
 
         Args:
-            query: ListReportsQuery（favorite/deleted/user_id 见 INT-141）
+            query: ListReportsQuery（favorite/deleted/user_id 见 INT-141；
+                start_time/end_time/algorithm_type 见 INT-2351）
 
         Returns:
             聚合根列表（不含 cases 等大体积子实体）
@@ -471,6 +472,9 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
             report_types=query.report_types,
             task_id=query.task_id,
             search=query.search,
+            start_time=query.start_time,
+            end_time=query.end_time,
+            algorithm_type=query.algorithm_type,
             page=query.page,
             page_size=query.page_size,
             favorite=query.favorite,
@@ -491,7 +495,7 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
 
         Args:
             query: ListReportsQuery（favorite/deleted/user_id 见 INT-141，
-                report_types 见 INT-280）
+                report_types 见 INT-280，时间窗/算法类型见 INT-2351）
 
         Returns:
             满足过滤条件的报告总数。
@@ -501,6 +505,9 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
             report_types=query.report_types,
             task_id=query.task_id,
             search=query.search,
+            start_time=query.start_time,
+            end_time=query.end_time,
+            algorithm_type=query.algorithm_type,
             favorite=query.favorite,
             deleted=query.deleted,
             user_id=query.user_id,

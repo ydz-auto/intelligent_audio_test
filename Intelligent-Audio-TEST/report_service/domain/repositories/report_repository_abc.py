@@ -17,6 +17,7 @@ infrastructure/persistence/report_repository.py 提供具体实现（ReportRepos
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:  # 避免循环引用，仅用于类型注解
@@ -57,6 +58,9 @@ class ReportRepositoryABC(ABC):
         report_types: Optional[List[str]] = None,
         task_id: Optional[int] = None,
         search: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        algorithm_type: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> List['ReportAggregate']:
@@ -67,6 +71,9 @@ class ReportRepositoryABC(ABC):
             report_types: 可选类型集合过滤（IN 口径，INT-280；None/空不过滤）
             task_id: 可选任务 ID 精确过滤（INT-262）
             search: 可选关键字（INT-2329：报告名称/描述模糊匹配，忽略大小写）
+            start_time: 可选时间窗起点（含，INT-2351：created_at >= start_time）
+            end_time: 可选时间窗终点（含，INT-2351：created_at <= end_time）
+            algorithm_type: 可选算法类型（INT-2351：按 report_cases 存在性归属）
             page: 页码（从 1 开始）
             page_size: 每页数量
 
@@ -81,6 +88,9 @@ class ReportRepositoryABC(ABC):
         report_types: Optional[List[str]] = None,
         task_id: Optional[int] = None,
         search: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        algorithm_type: Optional[str] = None,
         favorite: bool = False,
         deleted: bool = False,
         user_id: Optional[int] = None,

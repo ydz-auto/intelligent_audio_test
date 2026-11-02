@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import List, Optional
 
 from shared.infrastructure.user_context import (
@@ -92,6 +93,47 @@ def _report_search_condition(po_class, pattern: str):
         _analysis_text_field(po_class.analysis, 'description').ilike(
             pattern, escape='\\'),
     )
+
+
+def _report_time_algorithm_conditions(po_class, start_time=None, end_time=None,
+                                     algorithm_type=None):
+    """INT-2351：列表时间窗 + 算法类型过滤条件（list_reports/count_reports 共用）。
+
+    口径（与报告统计 statistics_service._load_rows 一致，避免同域双口径）：
+
+    - 时间窗作用于 ``test_reports.created_at``（列表展示/排序同列），闭区间
+      （>= start、<= end）；边界值的「纯日期取整天 / 时区归一」由应用层
+      ``parse_report_date`` 完成，本层只吃 datetime。
+    - 算法类型：报告主表无该列，按 ``report_cases.algorithm_type`` 存在性归属
+      ——报告里有任一条该算法类型的用例即命中，与统计页同一口径。
+
+    Args:
+        po_class: Report 主表 PO 类
+        start_time: datetime 或 None（None 不过滤）
+        end_time: datetime 或 None（None 不过滤）
+        algorithm_type: 算法类型码或 None（空串 / None 不过滤）
+
+    Returns:
+        条件列表（可直接 ``query.filter(*conditions)``；空列表表示不过滤）
+    """
+    from sqlalchemy import select as sa_select
+
+    conditions = []
+    if start_time is not None:
+        conditions.append(po_class.created_at >= start_time)
+    if end_time is not None:
+        conditions.append(po_class.created_at <= end_time)
+    if algorithm_type:
+        from report_service.infrastructure.persistence.models import ReportCase
+
+        conditions.append(
+            sa_select(ReportCase.id)
+            .where(ReportCase.report_id == po_class.id,
+                   ReportCase.algorithm_type == algorithm_type)
+            .correlate(po_class)
+            .exists()
+        )
+    return conditions
 
 
 def _brief_name(name, analysis) -> str:
@@ -182,6 +224,9 @@ class ReportQueryMixin:
         report_types: Optional[List[str]] = None,
         task_id: Optional[int] = None,
         search: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        algorithm_type: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
         favorite: bool = False,
@@ -198,6 +243,10 @@ class ReportQueryMixin:
             search: 可选关键字（INT-2329：报告名称/描述模糊匹配，忽略大小写；
                 名称/描述为空时按展示口径回退 analysis JSON 的同名字段；
                 空白不过滤）
+            start_time: 可选时间窗起点（含，INT-2351：created_at >= start_time）
+            end_time: 可选时间窗终点（含，INT-2351：created_at <= end_time）
+            algorithm_type: 可选算法类型（INT-2351：按 report_cases
+                .algorithm_type 存在性归属；空 / None 不过滤）
             page: 页码（从 1 开始）
             page_size: 每页数量
             favorite: 可选（INT-141）仅当前用户收藏
@@ -231,6 +280,11 @@ class ReportQueryMixin:
             # INT-2329：名称/描述关键字模糊匹配（与 count_reports 同口径，
             # 含 analysis JSON 里展示名/描述的回退字段）
             query = query.filter(_report_search_condition(self.PO_CLASS, pattern))
+        # INT-2351：时间窗 / 算法类型（与 count_reports 同一套条件，保证 items 与 total 同口径）
+        time_algo_conditions = _report_time_algorithm_conditions(
+            self.PO_CLASS, start_time, end_time, algorithm_type)
+        if time_algo_conditions:
+            query = query.filter(*time_algo_conditions)
         if favorite:
             from report_service.infrastructure.persistence.models import ReportFavorite
             if not user_id:
@@ -317,6 +371,9 @@ class ReportQueryMixin:
         report_types: Optional[List[str]] = None,
         task_id: Optional[int] = None,
         search: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        algorithm_type: Optional[str] = None,
         favorite: bool = False,
         deleted: bool = False,
         user_id: Optional[int] = None,
@@ -326,6 +383,8 @@ class ReportQueryMixin:
         Args:
             status/report_types/task_id/search/favorite/deleted/user_id:
                 与 list_reports 口径一致（search 见 INT-2329）。
+            start_time/end_time/algorithm_type: 与 list_reports 完全同一套
+                条件（INT-2351，见 ``_report_time_algorithm_conditions``）。
 
         Returns:
             满足过滤条件的报告总数。
@@ -353,6 +412,11 @@ class ReportQueryMixin:
         if pattern:
             # INT-2329：与 list_reports 同一套名称/描述关键字匹配
             query = query.filter(_report_search_condition(self.PO_CLASS, pattern))
+        # INT-2351：与 list_reports 同一套时间窗 / 算法类型条件（分页 total 对齐）
+        time_algo_conditions = _report_time_algorithm_conditions(
+            self.PO_CLASS, start_time, end_time, algorithm_type)
+        if time_algo_conditions:
+            query = query.filter(*time_algo_conditions)
         if favorite:
             from report_service.infrastructure.persistence.models import ReportFavorite
             if not user_id:
