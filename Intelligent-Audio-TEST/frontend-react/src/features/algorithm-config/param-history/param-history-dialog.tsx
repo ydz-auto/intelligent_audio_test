@@ -64,7 +64,27 @@ function formatTime(value: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN')
 }
 
-function restoreSummary(result: ParamHistoryRestoreResult): string {
+/**
+ * 回滚回执 → toast 文案（INT-2341）。
+ *
+ * 后端两种口径都要认：
+ * - API 作用域整份回滚只回 `paramsRestored / mappingsRestored`（无增删改拆分）——
+ *   只读 created/updated 会误报「无变化」；
+ * - 设备作用域回 `paramsCreated/Updated/Deleted + mappings*`。
+ */
+export function restoreSummary(result: ParamHistoryRestoreResult): string {
+  // API 作用域：只有恢复总数（快照整份写回），0 也要显示——
+  // 快照为空时「恢复参数 0」比「无变化」更准确；有值时即本卡要展示的实际恢复条数
+  const restored: string[] = []
+  if (typeof result.paramsRestored === 'number') {
+    restored.push(`恢复参数 ${result.paramsRestored}`)
+  }
+  if (typeof result.mappingsRestored === 'number') {
+    restored.push(`恢复映射 ${result.mappingsRestored}`)
+  }
+  if (restored.length > 0) return restored.join('，')
+
+  // 设备作用域：按增删改计数，只列真正发生的动作
   const parts = [
     ['新增参数', result.paramsCreated],
     ['更新参数', result.paramsUpdated],

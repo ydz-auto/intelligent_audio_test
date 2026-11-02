@@ -207,9 +207,6 @@ export function DeviceParamsDialog({
     )
   }, [profileOptions.profiles, boundProfileId])
 
-  /** 绑定状态是否已确定（策略列表读到且没报错）：未确定时无法判定是否已绑定，禁止另存 */
-  const bindingKnown = !profileOptions.isLoading && !profileOptions.isError
-
   /** 策略变化会影响参数与两桶映射的解析结果，全部失效 */
   const invalidateScope = () => {
     invalidate()
@@ -242,7 +239,6 @@ export function DeviceParamsDialog({
         deviceId: device.id,
         name: input.name,
         description: input.description,
-        boundProfileId: bindingKnown ? boundProfileId : undefined,
       })
       return createProfile(payload)
     },

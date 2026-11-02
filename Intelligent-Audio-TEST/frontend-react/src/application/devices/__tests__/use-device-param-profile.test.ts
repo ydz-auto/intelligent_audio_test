@@ -1,8 +1,8 @@
 /**
- * 设备「另存为策略」请求体拼装（INT-2271）：
- * ① 未绑定策略时只收「算法级打底 + 本设备覆盖」两层（同键覆盖、其它设备的行不串入、脏映射丢弃）；
- * ② 设备已绑定策略时直接拒绝——两层结果会丢掉绑定策略层的生效值；
- * ③ 策略列表还没读到（绑定状态未知）时同样拒绝，避免「加载态仍可另存」。
+ * 设备「另存为策略」请求体拼装（INT-2271 / INT-2341）：
+ * ① 参数取 device 作用域三层解析结果（算法级默认 → 绑定策略 → 本设备覆盖），
+ *    同键覆盖、其它设备的行不串入、脏映射丢弃；
+ * ② 已绑定策略时同样可另存（读接口已解析策略层，不再依赖策略列表 / boundProfileId）。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -10,7 +10,9 @@ import type { ParamMapping } from '@/domain/models/algorithmConfig'
 import type { AlgorithmApiParam } from '@/domain/models/apiConfig'
 
 const { fetchParamsMock, fetchMappingsMock } = vi.hoisted(() => ({
-  fetchParamsMock: vi.fn(async (_algorithmType: string): Promise<AlgorithmApiParam[]> => []),
+  fetchParamsMock: vi.fn(
+    async (_algorithmType: string, _deviceId?: number): Promise<AlgorithmApiParam[]> => []
+  ),
   fetchMappingsMock: vi.fn(
     async (
       _algorithmType: string,
@@ -36,15 +38,27 @@ const ALGO_ROW: AlgorithmApiParam = {
   deviceId: null,
   paramCode: 'input_text',
   paramName: '输入文本',
-  label: null,
+  label: '输入文本(展示名)',
   paramType: 'text',
   direction: 'input',
   required: true,
   defaultValue: '算法级默认',
   helpText: null,
+  validationRules: '{"max":10}',
   uiOrder: 0,
   hidden: false,
   fieldPath: null,
+  resolvedFrom: 'algorithm',
+}
+
+/** 策略层生效行：device_id 为空（策略属于算法类型），值来自绑定策略 */
+const PROFILE_ROW: AlgorithmApiParam = {
+  ...ALGO_ROW,
+  id: 0,
+  paramName: '策略输入文本',
+  defaultValue: '策略层生效值',
+  resolvedFrom: 'profile',
+  profileParamId: 77,
 }
 
 const DEVICE_ROW: AlgorithmApiParam = {
@@ -54,12 +68,14 @@ const DEVICE_ROW: AlgorithmApiParam = {
   paramName: '本设备输入文本',
   defaultValue: '本设备覆盖值',
   uiOrder: 1,
+  resolvedFrom: 'device',
 }
 
 const OTHER_DEVICE_ROW: AlgorithmApiParam = {
   ...ALGO_ROW,
   id: 3,
   deviceId: 6,
+  paramCode: 'other_param',
   paramName: '别的设备覆盖',
   defaultValue: '别的设备值',
 }
@@ -101,7 +117,13 @@ const DIRTY_MAPPING: ParamMapping = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  fetchParamsMock.mockResolvedValue([OTHER_DEVICE_ROW, ALGO_ROW, DEVICE_ROW])
+  // 解析接口只返回一行/键；这里故意多塞一份同键行与其它设备行，验证归一逻辑
+  fetchParamsMock.mockResolvedValue([
+    OTHER_DEVICE_ROW,
+    ALGO_ROW,
+    PROFILE_ROW,
+    DEVICE_ROW,
+  ])
   fetchMappingsMock.mockImplementation(async (_algorithmType, _deviceId, bucket) =>
     bucket === 'case' ? [CASE_MAPPING, DIRTY_MAPPING] : [EVALUATION_MAPPING]
   )
@@ -115,8 +137,8 @@ const BASE_INPUT = {
 }
 
 describe('buildDeviceScopeProfileInput', () => {
-  it('未绑定时收成两层：算法级打底 + 本设备覆盖，其它设备行不串入、脏映射丢弃', async () => {
-    const payload = await buildDeviceScopeProfileInput({ ...BASE_INPUT, boundProfileId: null })
+  it('收成三层生效值：同键取本设备覆盖、其它设备行不串入、脏映射丢弃', async () => {
+    const payload = await buildDeviceScopeProfileInput(BASE_INPUT)
 
     expect(payload.scope).toBe('device')
     expect(payload.algorithmType).toBe('asr')
@@ -131,29 +153,32 @@ describe('buildDeviceScopeProfileInput', () => {
       defaultValue: '本设备覆盖值',
       direction: 'input',
       required: true,
+      // 无编辑控件的列原值透传（INT-2267 / INT-2281）
+      label: '输入文本(展示名)',
+      validationRules: '{"max":10}',
     })
 
     // 两桶映射合并；脏行（缺源参数）被丢弃
     expect(payload.mappings).toHaveLength(2)
     expect(payload.mappings.map((row) => row.source).sort()).toEqual(['case', 'device'])
 
-    expect(fetchParamsMock).toHaveBeenCalledWith('asr')
+    // 读侧必须带 device_id（三层解析），否则只拿到算法级 + 全部原始行
+    expect(fetchParamsMock).toHaveBeenCalledWith('asr', 5)
     expect(fetchMappingsMock).toHaveBeenCalledWith('asr', 5, 'case')
     expect(fetchMappingsMock).toHaveBeenCalledWith('asr', 5, 'evaluation')
   })
 
-  it('设备已绑定策略时拒绝另存（两层结果会丢策略层生效值）', async () => {
-    await expect(
-      buildDeviceScopeProfileInput({ ...BASE_INPUT, boundProfileId: 12 })
-    ).rejects.toThrow(/已绑定策略/)
-    expect(fetchParamsMock).not.toHaveBeenCalled()
-    expect(fetchMappingsMock).not.toHaveBeenCalled()
-  })
+  it('策略层行成为生效值时按策略层取值（绑定态另存不再被拒绝）', async () => {
+    // 设备没有覆盖行时，解析结果里的同键行来自策略层
+    fetchParamsMock.mockResolvedValue([ALGO_ROW, PROFILE_ROW])
 
-  it('策略列表未读到（绑定状态未知）时同样拒绝另存', async () => {
-    await expect(
-      buildDeviceScopeProfileInput({ ...BASE_INPUT, boundProfileId: undefined })
-    ).rejects.toThrow(/策略列表尚未读取/)
-    expect(fetchParamsMock).not.toHaveBeenCalled()
+    const payload = await buildDeviceScopeProfileInput(BASE_INPUT)
+
+    expect(payload.params).toHaveLength(1)
+    expect(payload.params[0]).toMatchObject({
+      paramCode: 'input_text',
+      paramName: '策略输入文本',
+      defaultValue: '策略层生效值',
+    })
   })
 })
