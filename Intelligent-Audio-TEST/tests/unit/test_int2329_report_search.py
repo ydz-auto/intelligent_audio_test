@@ -57,17 +57,37 @@ def _cleanup_tables(tables):
         remove_db_session()
 
 
-def _make_report(name, task_id=None, description=None):
+def _make_report(name, task_id=None, description=None, analysis=None):
     from report_service.infrastructure.persistence.models import Report
     session = get_db_session()
     try:
         po = Report(name=name, type='task', status='completed',
-                    task_id=task_id, description=description)
+                    task_id=task_id, description=description,
+                    analysis=analysis)
         session.add(po)
         session.commit()
         return po.id
     finally:
         remove_db_session()
+
+
+def _make_analysis_report(name, task_id=None, description=None,
+                          analysis_name=None, analysis_description=None,
+                          extra=None):
+    """造一条模拟生成报告：名称/描述落在 analysis(JSON)，物理列为空。
+
+    对齐真实库 10-29 / 10-31 生成的 6 条任务报告（PO.name 为空，
+    展示名走 config['name']）。
+    """
+    import json
+
+    config = dict(extra or {})
+    if analysis_name is not None:
+        config['name'] = analysis_name
+    if analysis_description is not None:
+        config['description'] = analysis_description
+    return _make_report(name, task_id=task_id, description=description,
+                        analysis=json.dumps(config, ensure_ascii=False))
 
 
 @pytest.fixture()
@@ -168,6 +188,78 @@ class TestReportSearchRepository:
         assert report_repository.count_reports(search='_') == 1
         assert report_repository.list_reports(
             search='_', page=1, page_size=20)[0].id == with_us
+
+
+class TestReportSearchAnalysisFallback:
+    """返工 P1：展示名/描述取自 analysis JSON 的报告也必须能搜到。
+
+    列表展示口径（servicers._aggregate_to_dict）：
+    ``name = aggregate.name or config['name']``、``description = config['description']``；
+    生成报告只写 config，物理列 name/description 为空，搜索须同口径。
+    """
+
+    def test_list_matches_display_name_in_analysis(self, report_tables):
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        hit = _make_analysis_report(
+            '', task_id=460,
+            analysis_name='全类型覆盖报告_task460_20261031-100112',
+            analysis_description='3 类 API + 3 台实体设备全链路测试报告')
+        _make_report('INT2329_物理列报告')
+
+        got = report_repository.list_reports(
+            search='全类型覆盖', page=1, page_size=20)
+        assert [a.id for a in got] == [hit]
+        assert report_repository.count_reports(search='全类型覆盖') == 1
+
+    def test_list_matches_display_description_in_analysis(self, report_tables):
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        hit = _make_analysis_report(
+            '', task_id=1, analysis_name='INT2329_生成报告',
+            analysis_description='3 类 API + 3 台实体设备全链路测试报告')
+        _make_report('INT2329_另一份报告')
+
+        assert [a.id for a in report_repository.list_reports(
+            search='实体设备', page=1, page_size=20)] == [hit]
+        assert report_repository.count_reports(search='实体设备') == 1
+
+    def test_non_json_analysis_text_neither_breaks_nor_matches(
+            self, report_tables):
+        """历史行 analysis 是纯文本结论：不能 cast 报错，也不该凭空命中。"""
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        _make_report('INT2329_纯文本分析', analysis='夜间回归结论：通过')
+
+        assert report_repository.list_reports(
+            search='夜间回归', page=1, page_size=20) == []
+        assert report_repository.count_reports(search='夜间回归') == 0
+        # 不过滤时该行仍在，说明只是不参与关键字命中
+        assert report_repository.count_reports() == 1
+
+    def test_servicer_matches_analysis_display_name(self, report_tables):
+        from shared.proto import report_service_pb2 as report_pb
+        from report_service.interfaces.grpc.servicers import ReportServicer
+
+        hit = _make_analysis_report(
+            '', task_id=460,
+            analysis_name='全类型覆盖报告_task460_20261031-100112')
+        _make_report('INT2329_gRPC_物理列报告')
+
+        resp = ReportServicer().ListReports(
+            report_pb.ListReportsRequest(page=1, per_page=20,
+                                         search='全类型覆盖'),
+            context=None)
+        assert resp.success is True
+        data = grpc_loads(resp.data, {}) or {}
+        assert {i['id'] for i in data['items']} == {hit}
+        assert data['total'] == 1
 
 
 class TestReportSearchGrpcServicer:

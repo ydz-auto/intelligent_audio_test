@@ -20,7 +20,7 @@ from shared.infrastructure.visibility_filter import (
     check_visible,
     visible_condition,
 )
-from shared.models.database import get_db_session
+from shared.models.database import get_db_session, get_engine
 from shared.utils.db_session import with_session
 
 from report_service.infrastructure.persistence._report_converters import (
@@ -43,6 +43,55 @@ def _search_like_pattern(keyword: Optional[str]) -> Optional[str]:
                .replace('%', '\\%')
                .replace('_', '\\_'))
     return f'%{escaped}%'
+
+
+def _analysis_text_field(column, field: str):
+    """analysis 列（TEXT 存 config JSON）按字段取文本的 SQL 表达式。
+
+    INT-2329 返工：生成报告只把名称/描述写进 config（落到 analysis 列），
+    ``test_reports.name`` / ``description`` 为空，列表展示名走
+    ``aggregate.name or config['name']``（servicers._aggregate_to_dict）。
+    搜索必须与展示同口径，否则「列表里看得见、搜不到」。
+
+    analysis 允许是任意文本（历史行存过纯文本结论），非法 JSON 直接取字段会让
+    整条查询报错，因此先判有效性再取字段：PostgreSQL 用 ``pg_input_is_valid``
+    （PG16 起提供，docker/docker-compose.yml 固定 postgres:16-alpine），
+    SQLite（单测）用 ``json_valid``；非 JSON 行该表达式为 NULL（不参与命中）。
+    """
+    from sqlalchemy import and_, case, cast, func, literal_column
+
+    engine = get_engine()
+    dialect = engine.dialect.name if engine is not None else ''
+    if dialect == 'sqlite':
+        return case(
+            (and_(column.isnot(None), func.json_valid(column) == 1),
+             func.json_extract(column, f'$.{field}')),
+            else_=None,
+        )
+    from sqlalchemy.dialects.postgresql import JSONB
+    return case(
+        (and_(column.isnot(None),
+              func.pg_input_is_valid(column, literal_column("'jsonb'"))),
+         func.jsonb_extract_path_text(cast(column, JSONB), field)),
+        else_=None,
+    )
+
+
+def _report_search_condition(po_class, pattern: str):
+    """INT-2329：报告关键字过滤条件（列表与 count 共用，保证同口径）。
+
+    匹配范围与列表展示一致：名称/描述取物理列，为空时展示回退 analysis
+    JSON 里的 ``name`` / ``description``，故两处一并纳入。
+    """
+    from sqlalchemy import or_
+
+    return or_(
+        po_class.name.ilike(pattern, escape='\\'),
+        po_class.description.ilike(pattern, escape='\\'),
+        _analysis_text_field(po_class.analysis, 'name').ilike(pattern, escape='\\'),
+        _analysis_text_field(po_class.analysis, 'description').ilike(
+            pattern, escape='\\'),
+    )
 
 
 def _brief_name(name, analysis) -> str:
@@ -147,6 +196,7 @@ class ReportQueryMixin:
                 空集合或 None 不过滤）
             task_id: 可选任务 ID 精确过滤（INT-262）
             search: 可选关键字（INT-2329：报告名称/描述模糊匹配，忽略大小写；
+                名称/描述为空时按展示口径回退 analysis JSON 的同名字段；
                 空白不过滤）
             page: 页码（从 1 开始）
             page_size: 每页数量
@@ -157,7 +207,7 @@ class ReportQueryMixin:
         Returns:
             聚合根列表（不含子实体集合）。
         """
-        from sqlalchemy import select as sa_select, cast as sa_cast, String, or_
+        from sqlalchemy import select as sa_select, cast as sa_cast, String
         from shared.models.common_enums import EntityType
 
         session = get_db_session()
@@ -178,11 +228,9 @@ class ReportQueryMixin:
             query = query.filter(self.PO_CLASS.task_id == task_id)
         pattern = _search_like_pattern(search)
         if pattern:
-            # INT-2329：名称/描述关键字模糊匹配（与服务端 count_reports 同口径）
-            query = query.filter(or_(
-                self.PO_CLASS.name.ilike(pattern, escape='\\'),
-                self.PO_CLASS.description.ilike(pattern, escape='\\'),
-            ))
+            # INT-2329：名称/描述关键字模糊匹配（与 count_reports 同口径，
+            # 含 analysis JSON 里展示名/描述的回退字段）
+            query = query.filter(_report_search_condition(self.PO_CLASS, pattern))
         if favorite:
             from report_service.infrastructure.persistence.models import ReportFavorite
             if not user_id:
@@ -282,7 +330,7 @@ class ReportQueryMixin:
         Returns:
             满足过滤条件的报告总数。
         """
-        from sqlalchemy import select as sa_select, cast as sa_cast, String, or_
+        from sqlalchemy import select as sa_select, cast as sa_cast, String
         from shared.models.common_enums import EntityType
 
         session = get_db_session()
@@ -304,10 +352,7 @@ class ReportQueryMixin:
         pattern = _search_like_pattern(search)
         if pattern:
             # INT-2329：与 list_reports 同一套名称/描述关键字匹配
-            query = query.filter(or_(
-                self.PO_CLASS.name.ilike(pattern, escape='\\'),
-                self.PO_CLASS.description.ilike(pattern, escape='\\'),
-            ))
+            query = query.filter(_report_search_condition(self.PO_CLASS, pattern))
         if favorite:
             from report_service.infrastructure.persistence.models import ReportFavorite
             if not user_id:
