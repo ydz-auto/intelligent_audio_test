@@ -82,6 +82,11 @@ class PlaybackCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         validated_dict = validated_data.model_dump(by_alias=False, exclude_none=True)
+        # INT-2346：exclude_none 会抹平「字段缺省」与「显式 null」。声压映射关联允许
+        # 用显式 null 解除关联，按请求体是否真的带了这个键（而非值为空）单独保留。
+        if ('current_spl_mapping_id' in validated_data.model_fields_set
+                and validated_data.current_spl_mapping_id is None):
+            validated_dict['current_spl_mapping_id'] = None
 
         result = _playback_acl.update(device_id, validated_dict)
 

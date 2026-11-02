@@ -208,8 +208,21 @@ class PlaybackCommandService:
                 'lab_id': 'lab_id',
             }
             for json_key, attr_name in field_map.items():
-                if json_key in data and data[json_key] is not None:
-                    update_fields[attr_name] = data[json_key]
+                if json_key not in data:
+                    continue
+                value = data[json_key]
+                if value is None:
+                    # INT-2346：仅 current_spl_mapping_id 的显式 null 表示「解除关联」；
+                    # 其它字段的 null 与缺省同义，仍按部分更新跳过（不误清空）。
+                    if json_key != 'current_spl_mapping_id':
+                        continue
+                    if device.current_spl_mapping_id is None:
+                        continue  # 幂等：本来未关联，不写库
+                update_fields[attr_name] = value
+
+            if not update_fields:
+                # 无可写字段（如对未关联设备重复解除）：直接成功，不触碰 updated_at
+                return {'success': True, 'message': '播放设备信息更新成功', 'data': None, 'code': 200}
 
             updated = self.repo.update_playback_device(device_id, update_fields)
             if not updated:
