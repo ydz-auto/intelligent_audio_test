@@ -35,11 +35,22 @@ export interface DeviceDetailDialogProps {
   algorithmNameMap?: Record<string, string>
 }
 
-function Row({ label, value }: { label: string; value: ReactNode }) {
+function Row({
+  label,
+  value,
+  title,
+}: {
+  label: string
+  value: ReactNode
+  /** INT-2347：值为截断文本时提供全文提示 */
+  title?: string
+}) {
   return (
     <div className='grid grid-cols-[96px_1fr] gap-2 text-sm'>
       <dt className='text-muted-foreground'>{label}</dt>
-      <dd className='min-w-0 truncate'>{value ?? '—'}</dd>
+      <dd className='min-w-0 truncate' title={title}>
+        {value ?? '—'}
+      </dd>
     </div>
   )
 }
@@ -141,7 +152,11 @@ export function DeviceDetailDialog(props: DeviceDetailDialogProps) {
                 <Row label='采样率' value={playbackDevice.sampleRate ? `${playbackDevice.sampleRate} Hz` : null} />
                 <Row label='通道索引' value={playbackDevice.channelIndex} />
                 <Row label='支持的格式' value={playbackDevice.supportedFormats?.join('、')} />
-                <Row label='声压映射' value={playbackDevice.currentSplMappingName ?? '未关联'} />
+                <Row
+                  label='声压映射'
+                  value={playbackDevice.currentSplMappingName ?? '未关联'}
+                  title={playbackDevice.currentSplMappingName ?? undefined}
+                />
               </section>
             )}
 

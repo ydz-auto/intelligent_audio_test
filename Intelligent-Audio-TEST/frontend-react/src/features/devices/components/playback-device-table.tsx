@@ -288,8 +288,11 @@ export function PlaybackDeviceTable(props: PlaybackDeviceTableProps) {
                   </td>
                   <td className='max-w-40 px-3 py-2'>
                     {row.currentSplMappingName ? (
-                      <Badge variant='outline' className='rounded-md px-1.5 font-normal'>
-                        {row.currentSplMappingName}
+                      // INT-2347：映射名超列宽时省略，悬停看全文，不压住「更新时间」列
+                      <Badge variant='outline' className='max-w-full rounded-md px-1.5 font-normal'>
+                        <span className='min-w-0 truncate' title={row.currentSplMappingName}>
+                          {row.currentSplMappingName}
+                        </span>
                       </Badge>
                     ) : (
                       <span className='text-muted-foreground'>未关联</span>
