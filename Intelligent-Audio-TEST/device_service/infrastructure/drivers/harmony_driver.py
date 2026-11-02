@@ -1,4 +1,5 @@
 import time
+import shutil
 import subprocess
 import os
 import logging
@@ -12,6 +13,7 @@ from .utils import (
     is_rpc_not_running_error, restart_uitest_daemon,
 )
 from .driver_constants import *
+from shared.utils.config_manager import config_manager
 from shared.constants.ui_capture import (
     UiCaptureDegradeReason, UiCaptureMode, normalize_ui_capture_mode,
 )
@@ -250,6 +252,53 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
         except FileNotFoundError as e:
             self._log(level='WARNING', content=f"hdc command not found: {e}")
         return devices
+
+    def supports_device_watch(self):
+        """hdc 可用即可做设备表变更监听。"""
+        return shutil.which('hdc') is not None
+
+    def watch_device_snapshots(self, stop_event=None):
+        """``hdc list targets`` 变更检测流：设备表变化时 yield ``{serial: 'device'}``。
+
+        hdc 3.2.0c（``hdc help verbose`` 实测）没有设备变更 track 命令（只有
+        track-jpid），因此这里用短周期（默认 1s，配置
+        ``device_presence.hdc_scan_interval_seconds``）比对设备表，仅在变化时
+        产出快照；上层消费方式与 adb 事件流一致，无需区分。扫描失败（hdc
+        server 未就绪等）跳过本轮，不产出空快照，避免误判整批离线。
+        """
+        if not self.supports_device_watch():
+            return
+        interval = float(config_manager.get_value(
+            'device_presence', 'hdc_scan_interval_seconds', 1))
+        previous = None
+        while not (stop_event and stop_event.is_set()):
+            snapshot = self._scan_target_snapshot()
+            if snapshot is not None and snapshot != previous:
+                previous = snapshot
+                yield snapshot
+            if stop_event is not None:
+                if stop_event.wait(interval):
+                    break
+            else:
+                time.sleep(interval)
+
+    def _scan_target_snapshot(self):
+        """执行一次 ``hdc list targets``，返回在线目标集合；失败返回 None。"""
+        try:
+            output = subprocess.check_output(
+                ['hdc', 'list', 'targets'],
+                encoding='utf-8', errors='replace', stderr=subprocess.STDOUT,
+                timeout=HDC_TIMEOUT,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError,
+                subprocess.TimeoutExpired):
+            logger.warning("执行 hdc list targets 失败，跳过本轮设备快照", exc_info=True)
+            return None
+        return {
+            line.strip(): 'device'
+            for line in output.splitlines()
+            if line.strip() and '[Empty]' not in line
+        }
 
     @check_stop("initialize")
     @with_rpc_retry()

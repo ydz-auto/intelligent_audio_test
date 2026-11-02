@@ -20,6 +20,7 @@ from typing import Tuple
 from device_service.domain.repositories import DeviceRepositoryInterface
 from shared.models.common_enums import DeviceOperation, DeviceStatusEventType
 from shared.utils.log_handler import log_not_emit
+from shared.utils.query_utils import now_cst
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,12 @@ _IDEMPOTENCY_CLIENT_KEY_TTL = 86400
 _IDEMPOTENCY_FINGERPRINT_TTL = 3600
 _IDEMPOTENCY_RESERVE_TTL = 600
 _IDEMPOTENCY_EXCLUDED_KEYS = {'idempotency_key'}
+
+# 操作 → 目标在线状态（只有连接/断开会改变在线态；其余操作保持原状态）
+_OPERATION_TARGET_STATUS = {
+    DeviceOperation.CONNECT.value: DeviceStatusEventType.ONLINE.value,
+    DeviceOperation.DISCONNECT.value: DeviceStatusEventType.OFFLINE.value,
+}
 
 # 批量动作白名单：设备控制类操作 + 健康检查
 BATCH_ACTIONS = (
@@ -77,11 +84,24 @@ class DeviceOperationService:
                 return {'success': False, 'message': '未找到设备', 'data': None, 'code': 404}
 
             result = self.executor.execute(device, operation, params or {})
+            # 连接/断开成功后同步在线态（否则前端点了“断开”仍显示在线）
+            previous_status = device.status
+            target_status = _OPERATION_TARGET_STATUS.get(operation, previous_status)
+            if target_status != previous_status:
+                self.repo.update_device_status(
+                    device_id,
+                    target_status,
+                    last_online_at=(
+                        now_cst()
+                        if target_status == DeviceStatusEventType.ONLINE.value
+                        else None
+                    ),
+                )
             self._monitor.record_status_event(
                 device_id=device_id,
                 event_type=DeviceStatusEventType.OPERATION.value,
-                from_status=device.status,
-                to_status=device.status,
+                from_status=previous_status,
+                to_status=target_status,
                 source='operation',
                 success=True,
                 detail={'operation': operation, 'params': params or {}, 'output': result.get('output', '')},

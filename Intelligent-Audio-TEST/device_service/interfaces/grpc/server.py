@@ -85,7 +85,14 @@ def start_grpc_server(port=DEVICE_SERVICE_GRPC_PORT):
     _cleaner = get_soft_delete_cleaner()
     _cleaner.start()
 
-    # 启动设备监控守护线程（INT-80：周期健康检查 + 告警规则评估）
+    # 启动设备热插拔实时监听（adb track-devices / hdc 变更检测 → DEVICE_EVENTS → SSE；
+    # 不支持的平台自动跳过，由下面的监控线程兜底对账）
+    from device_service.application.services.device_presence_service import (
+        get_device_presence_service,
+    )
+    get_device_presence_service().start()
+
+    # 启动设备监控守护线程（INT-80：周期健康检查 + 告警规则评估；兜底对账）
     from device_service.application.services.device_monitor_service import get_monitor_thread
     _monitor = get_monitor_thread()
     _monitor.start()

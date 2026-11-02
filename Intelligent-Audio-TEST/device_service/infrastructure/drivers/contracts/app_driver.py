@@ -136,6 +136,30 @@ class AppDriver(ABC):
             return self.platform_ops.scan()
         return []
 
+    def supports_device_watch(self) -> bool:
+        """是否支持设备热插拔事件监听（可选能力，默认不支持）。
+
+        不支持时由调用方降级为周期扫描兜底。
+        """
+        return False
+
+    def watch_device_snapshots(self, stop_event=None):
+        """设备表变化快照流（可选能力）。
+
+        每次设备表变化 yield ``{serial: state}`` 全量快照；生成器结束表示
+        监听流断开（调用方按退避重连）。``stop_event`` 为调用方的停止信号
+        （轮询型实现用它及时退出）。默认不产生任何快照。
+        """
+        return
+        yield  # pragma: no cover - 保持生成器语义
+
+    def stop_device_watch(self) -> None:
+        """请求结束 ``watch_device_snapshots``（阻塞式实现用它释放子进程）。
+
+        默认空实现；轮询型实现由 stop_event 自行退出。
+        """
+        return
+
     def extract_results_from_archive(self, **kwargs) -> list[dict]:
         """从存档文件提取结果 — 默认无"""
         return []

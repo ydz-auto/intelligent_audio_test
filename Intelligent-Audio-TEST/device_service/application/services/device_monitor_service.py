@@ -34,11 +34,14 @@ from shared.models.common_enums import (
     DeviceKind,
 )
 from shared.utils.log_handler import log_not_emit
+from shared.utils.config_manager import config_manager
 
 logger = logging.getLogger(__name__)
 
-# 监控线程默认轮询间隔（秒）；device_service 单实例内一个监控循环即可
-_MONITOR_INTERVAL_SECONDS = 300
+# 监控线程轮询间隔（秒）：设备热插拔已由 DevicePresenceService 实时入账，
+# 本线程降级为“漏事件对账 + 告警规则评估”的兜底（间隔配置化）。
+_MONITOR_INTERVAL_SECONDS = config_manager.get_value(
+    'device_monitor', 'interval_seconds', 300)
 
 
 class DeviceMonitorService:
@@ -380,11 +383,14 @@ device_monitor_service = DeviceMonitorService()
 
 
 class DeviceMonitorThread:
-    """设备监控守护线程：周期健康检查 + 告警规则评估。
+    """设备监控守护线程：周期健康检查 + 告警规则评估（兜底对账）。
 
-    启动方式：device_service gRPC server 启动时调用 start()（幂等），
-    与软删除清理线程同模式。健康检查复用 DeviceCommandService.health_check
-    （其内部已走 record 状态事件链路），随后评估告警规则。
+    设备热插拔的实时状态由 DevicePresenceService 监听驱动事件流处理；本线程
+    只保留低频兜底：驱动不支持事件监听（hdc）、监听流漏事件、网络类设备，
+    以及健康指标采集/告警规则评估。启动方式：device_service gRPC server 启动时
+    调用 start()（幂等），与软删除清理线程同模式。健康检查复用
+    DeviceCommandService.health_check（其内部已走 record 状态事件链路），
+    随后评估告警规则。
     """
 
     def __init__(self, interval_seconds: int = _MONITOR_INTERVAL_SECONDS):

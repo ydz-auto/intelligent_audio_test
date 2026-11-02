@@ -7,6 +7,8 @@ SSE 事件流 —— 订阅 EventBus 五通道，实时推送日志/进度/报�
 - TASK_EVENTS / import_progress → event: import_progress
 - REPORT_EVENTS / report_generated、secondary_compare_generated → event: 同名
 - REPORT_EVENTS / realtime_frame、realtime_summary → event: realtime_frame / realtime_summary
+- DEVICE_EVENTS / device_status_changed → event: device_status_changed
+  （device_service 监控线程 5 分钟健康检查、设备操作、播放通道检测的发布方；前端据此刷新设备在线态）
 """
 import json
 import logging
@@ -71,6 +73,11 @@ def _map_event(channel: str, data: dict):
             return payload.get('event', event_type), payload.get('data') or {}
         if event_type in ('realtime_frame', 'realtime_summary'):
             return event_type, payload
+        return None
+
+    if channel == EventChannel.DEVICE_EVENTS.value:
+        if event_type == 'device_status_changed':
+            return 'device_status_changed', payload
         return None
 
     return None

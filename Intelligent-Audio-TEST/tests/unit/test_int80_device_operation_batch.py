@@ -34,9 +34,18 @@ class FakeDeviceRepo:
             2: SimpleNamespace(id=2, name='D2', status='offline', system='HarmonyOS',
                                serial_number='sn-2', ip='', connection_type='usb'),
         }
+        self.status_updates = []
 
     def get_device(self, device_id):
         return self.devices.get(int(device_id))
+
+    def update_device_status(self, device_id, status, last_online_at=None):
+        device = self.devices.get(int(device_id))
+        if device is None:
+            return False
+        device.status = status
+        self.status_updates.append((int(device_id), status, last_online_at))
+        return True
 
 
 class FakeExecutor:
@@ -155,6 +164,24 @@ class TestSingleOperation:
 
     def test_missing_device_404(self, op_service):
         assert op_service.execute(999, 'reboot')['code'] == 404
+
+    def test_disconnect_marks_device_offline(self, op_service, event_repo):
+        """点“断开”后设备状态必须落到 offline（前端不再显示在线）。"""
+        result = op_service.execute(1, 'disconnect')
+
+        assert result['success'] is True
+        assert op_service.repo.devices[1].status == 'offline'
+        assert event_repo.events[0]['from_status'] == 'online'
+        assert event_repo.events[0]['to_status'] == 'offline'
+
+    def test_connect_marks_device_online(self, op_service, event_repo):
+        result = op_service.execute(2, 'connect')
+
+        assert result['success'] is True
+        assert op_service.repo.devices[2].status == 'online'
+        assert event_repo.events[0]['to_status'] == 'online'
+        # 上线刷新 last_online_at（离线/其余操作保持原值）
+        assert op_service.repo.status_updates[0][2] is not None
 
 
 class TestBatchIdempotency:

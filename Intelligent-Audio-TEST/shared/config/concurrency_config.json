@@ -42,6 +42,15 @@
   "db": {
     "device_service_pool_size": 10
   },
+  "device_monitor": {
+    "interval_seconds": 300
+  },
+  "device_presence": {
+    "enabled": true,
+    "reconnect_base_seconds": 2,
+    "reconnect_max_seconds": 30,
+    "hdc_scan_interval_seconds": 1
+  },
   "device_timing": {
     "ui_wait": 0.2,
     "short_wait": 0.1,
@@ -53,6 +62,7 @@
     "translation_wait": 1.5,
     "app_launch_wait": 3,
     "adb_timeout": 10,
+    "adb_track_terminate_timeout": 3,
     "hdc_timeout": 30,
     "long_hdc_timeout": 300,
     "extra_long_hdc_timeout": 120,

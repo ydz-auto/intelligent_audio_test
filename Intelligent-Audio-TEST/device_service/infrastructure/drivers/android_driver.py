@@ -1,8 +1,10 @@
 import time
+import shutil
 import subprocess
 import logging
 from collections import OrderedDict
 from .base_driver import BaseDeviceDriver
+from .adb_track import parse_device_snapshot, read_device_frame
 from .device_config import get_device_config
 from .driver_types import DevicePlatform
 from .registry import register_driver
@@ -125,6 +127,57 @@ class AndroidDriver(BaseDeviceDriver):
         except (subprocess.CalledProcessError, FileNotFoundError):
             logger.warning("执行adb命令列出安卓设备失败", exc_info=True)
         return devices
+
+    def supports_device_watch(self):
+        """adb 可用即可做热插拔监听（Windows/Linux/macOS 同一命令）。"""
+        return shutil.which('adb') is not None
+
+    def watch_device_snapshots(self, stop_event=None):
+        """``adb track-devices -l`` 长连接：每次设备表变化 yield ``{serial: state}``。
+
+        设备增删、授权态变化由 adb server 主动推送（不是轮询）；进程退出
+        （adb server 重启/被杀）时生成器自然结束，由上层按退避重连。
+        停止由 ``stop_device_watch()`` 终止子进程触发 EOF 收口。
+        """
+        if not self.supports_device_watch():
+            return
+        try:
+            proc = subprocess.Popen(
+                ['adb', 'track-devices', '-l'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                bufsize=0,
+            )
+        except OSError:
+            logger.warning("启动 adb track-devices 失败，设备热插拔监听不可用", exc_info=True)
+            return
+        self._watch_process = proc
+        self._log(level='INFO', content="开始监听 adb 设备热插拔（track-devices -l）")
+        try:
+            while True:
+                payload = read_device_frame(proc.stdout)
+                if payload is None:
+                    break
+                yield parse_device_snapshot(payload)
+        finally:
+            self._close_watch_process(proc)
+            self._watch_process = None
+            self._log(level='INFO', content="adb 设备热插拔监听结束")
+
+    def stop_device_watch(self):
+        """终止 track-devices 子进程，让监听生成器读到 EOF 后收口。"""
+        self._close_watch_process(getattr(self, '_watch_process', None))
+
+    @staticmethod
+    def _close_watch_process(proc):
+        """结束 track-devices 子进程（正常退出/服务停止/重连前统一收口）。"""
+        if proc is None or proc.poll() is not None:
+            return
+        proc.terminate()
+        try:
+            proc.wait(timeout=ADB_TRACK_TERMINATE_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            proc.kill()
 
     @check_stop("initialize")
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
