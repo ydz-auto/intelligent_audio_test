@@ -153,7 +153,8 @@ export function toSaveInput(values: AlgorithmFormValues): SaveAlgorithmInput {
     displayOrder: values.displayOrder,
     status: values.status,
     description: values.description,
-    deviceParams: strip(values.deviceParams),
+    // 设备参数已迁到「设备管理 → 参数配置」维护：表单不再提交该层，
+    // 避免用用户看不见的旧值覆盖算法级设备参数声明。
     caseParams: strip(values.caseParams),
     referenceParams: strip(values.referenceParams),
     mappings: {

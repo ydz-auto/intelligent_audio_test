@@ -81,7 +81,7 @@ export function DeviceEvaluationMappingTable({
   deviceId: number
 }) {
   const { hasPermission } = usePermissions()
-  const canEdit = hasPermission('algorithm:definition_manage')
+  const canEdit = hasPermission('algorithm:param_manage')
   const view = useMappingViewState<'flat' | 'dimension'>('dimension')
   const [dimensionFilter, setDimensionFilter] = useState('all')
 
@@ -329,7 +329,7 @@ export function DeviceEvaluationMappingTable({
 
       {!canEdit && (
         <p className='text-destructive text-xs'>
-          当前账号缺少 algorithm:definition_manage 权限，设备映射只读。
+          当前账号缺少 algorithm:param_manage 权限，设备映射只读。
         </p>
       )}
       {isError && (

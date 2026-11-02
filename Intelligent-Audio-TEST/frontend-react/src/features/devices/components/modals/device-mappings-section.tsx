@@ -11,7 +11,7 @@
  * - 写：新增 / 编辑 / 删除都落**设备级行**（带 device_id），算法级行只读；
  * - 删除设备级行即回落到算法级映射。
  *
- * 降级：写操作需 `algorithm:definition_manage`，缺失时只读。
+ * 降级：写操作需 `algorithm:param_manage`（与参数区同一权限），缺失时只读。
  */
 import { useQuery } from '@tanstack/react-query'
 

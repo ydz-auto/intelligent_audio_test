@@ -16,7 +16,7 @@
  * - 未选择算法类型 → 下拉与保存禁用并提示。
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2 } from 'lucide-react'
+import { History, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -28,6 +28,7 @@ import {
 } from '@/application/test-execution/useApiParamConfig'
 import type { AlgorithmApiMapping, AlgorithmApiParam } from '@/domain/models/apiConfig'
 import type { DerivedFields } from '@/features/test-execution/modals/api-edit-dialog-model'
+import { ParamHistoryDialog } from '@/features/algorithm-config/param-history/param-history-dialog'
 import {
   PARAM_DIRECTION_LABEL,
   PARAM_DIRECTIONS,
@@ -137,6 +138,12 @@ interface EditableParamRow {
   validationRules: string | null
   uiOrder: string
   fieldPath: string
+  /** 解析层来源（算法级 / 策略 / 本 API 覆盖），用于表格徽章 */
+  resolvedFrom?: 'algorithm' | 'profile' | 'api'
+  /** 已存在的本 API 覆盖行：整份同步必须原样回传，否则会被软删 */
+  override: boolean
+  /** 读侧签名：未改动的非覆盖行不回传，避免把算法级/策略行固化成覆盖 */
+  originSignature: string
 }
 
 interface EditableMappingRow {
@@ -147,6 +154,10 @@ interface EditableMappingRow {
   targetParam: string
   dimensionId: string
   transformType: ParamTransformType
+  /** 已存在的本 API 覆盖行：整份同步必须原样回传 */
+  override: boolean
+  /** 读侧签名：未改动的非覆盖行不回传 */
+  originSignature: string
 }
 
 interface EditableInputMappingRow {
@@ -156,6 +167,42 @@ interface EditableInputMappingRow {
   sourceParam: string
   targetParam: string
   transformType: ParamTransformType
+  /** 已存在的本 API 覆盖行：整份同步必须原样回传 */
+  override: boolean
+  /** 读侧签名：未改动的非覆盖行不回传 */
+  originSignature: string
+}
+
+/**
+ * 提交口径：
+ * - `snapshot`：整份快照（另存为策略 / 新建 API 草稿）；
+ * - `overrides`：只回写本 API 覆盖行（算法级 / 策略层未改动的行不回传，
+ *   否则整份同步会把它们固化成实例覆盖）。
+ */
+type DraftMode = 'snapshot' | 'overrides'
+
+/** API 参数三层来源徽章（与设备参数弹窗同口径） */
+const API_LAYER_BADGE: Record<
+  'algorithm' | 'profile' | 'api',
+  { label: string; variant: 'default' | 'secondary' | 'outline' }
+> = {
+  algorithm: { label: '算法级', variant: 'secondary' },
+  profile: { label: '策略', variant: 'outline' },
+  api: { label: '本 API', variant: 'default' },
+}
+
+function layerOfParam(row: EditableParamRow): keyof typeof API_LAYER_BADGE {
+  if (row.resolvedFrom === 'profile') return 'profile'
+  if (row.resolvedFrom === 'api') return 'api'
+  return 'algorithm'
+}
+
+/** Domain 的 resolvedFrom 还含 device（设备作用域），API 页签只保留三层来源 */
+function apiLayerOf(
+  value: AlgorithmApiParam['resolvedFrom']
+): EditableParamRow['resolvedFrom'] {
+  if (value === 'api' || value === 'profile' || value === 'algorithm') return value
+  return undefined
 }
 
 /** 读侧映射来源：未知 / 空值收敛为 api（写侧后端缺省值同口径） */
@@ -200,6 +247,8 @@ function paramSignatureOf(param: {
 }
 
 function paramRowOf(param: AlgorithmApiParam, key: number): EditableParamRow {
+  // 旧读侧未下发 resolvedFrom 时按覆盖行处理（整份回传，保持改造前行为）
+  const override = param.resolvedFrom == null || param.resolvedFrom === 'api'
   return {
     key,
     paramCode: param.paramCode,
@@ -213,11 +262,37 @@ function paramRowOf(param: AlgorithmApiParam, key: number): EditableParamRow {
     validationRules: param.validationRules ?? null,
     uiOrder: String(param.uiOrder ?? 0),
     fieldPath: param.fieldPath ?? '',
+    resolvedFrom: apiLayerOf(param.resolvedFrom),
+    override,
+    originSignature: JSON.stringify(paramSignatureOf(param)),
   }
 }
 
-function mappingRowOf(mapping: AlgorithmApiMapping, key: number): EditableMappingRow {
-  return {
+/** 映射行签名（与保存载荷同口径，用于判断用户是否改过） */
+function mappingRowSignatureOf(row: {
+  source: string
+  sourceDirection: string
+  sourceParam: string
+  targetParam: string
+  dimensionId?: string | null
+  transformType: string
+}): string {
+  return JSON.stringify([
+    row.source,
+    row.sourceDirection,
+    row.sourceParam,
+    row.targetParam,
+    row.dimensionId ?? null,
+    row.transformType,
+  ])
+}
+
+function mappingRowOf(
+  mapping: AlgorithmApiMapping,
+  key: number,
+  apiId: number | null
+): EditableMappingRow {
+  const row: EditableMappingRow = {
     key,
     source: mappingSourceOf(mapping),
     sourceDirection: mappingDirectionOf(mapping),
@@ -227,11 +302,18 @@ function mappingRowOf(mapping: AlgorithmApiMapping, key: number): EditableMappin
     transformType: PARAM_TRANSFORM_TYPES.includes(mapping.transformType as ParamTransformType)
       ? (mapping.transformType as ParamTransformType)
       : 'none',
+    override: mapping.apiId != null && mapping.apiId === apiId,
+    originSignature: '',
   }
+  return { ...row, originSignature: mappingRowSignatureOf(row) }
 }
 
-function inputMappingRowOf(mapping: AlgorithmApiMapping, key: number): EditableInputMappingRow {
-  return {
+function inputMappingRowOf(
+  mapping: AlgorithmApiMapping,
+  key: number,
+  apiId: number | null
+): EditableInputMappingRow {
+  const row: EditableInputMappingRow = {
     key,
     source: mappingSourceOf(mapping),
     sourceDirection: mappingDirectionOf(mapping),
@@ -240,7 +322,10 @@ function inputMappingRowOf(mapping: AlgorithmApiMapping, key: number): EditableI
     transformType: PARAM_TRANSFORM_TYPES.includes(mapping.transformType as ParamTransformType)
       ? (mapping.transformType as ParamTransformType)
       : 'none',
+    override: mapping.apiId != null && mapping.apiId === apiId,
+    originSignature: '',
   }
+  return { ...row, originSignature: mappingRowSignatureOf(row) }
 }
 
 /** 页面不展示的映射行：原值透传（否则整份同步会把它们软删） */
@@ -257,8 +342,17 @@ function passthroughMappingDraftOf(mapping: AlgorithmApiMapping): ParamProfileMa
   }
 }
 
-function draftInputMappingsOf(rows: EditableInputMappingRow[]): ParamProfileMappingDraft[] {
+function draftInputMappingsOf(
+  rows: EditableInputMappingRow[],
+  mode: DraftMode
+): ParamProfileMappingDraft[] {
   return rows
+    .filter(
+      (row) =>
+        mode === 'snapshot' ||
+        row.override ||
+        row.originSignature !== mappingRowSignatureOf(row)
+    )
     .filter((row) => row.sourceParam.trim() && row.targetParam.trim())
     .map((row) => ({
       source: row.source,
@@ -293,10 +387,15 @@ function textFieldOf(value: string, origin: string | null | undefined): string |
  */
 function draftParamsOf(
   rows: EditableParamRow[],
-  originals: Map<string, AlgorithmApiParam>
+  originals: Map<string, AlgorithmApiParam>,
+  mode: DraftMode
 ): ParamProfileParamDraft[] {
   return rows
     .filter((row) => row.paramCode.trim())
+    // 覆盖行必须整份回传；非覆盖行只在用户改过时回传
+    .filter(
+      (row) => mode === 'snapshot' || row.override || row.originSignature !== JSON.stringify(paramSignatureOf(row))
+    )
     .map((row) => {
       const paramCode = row.paramCode.trim()
       const origin = originals.get(paramCode)
@@ -323,9 +422,19 @@ function draftParamsOf(
  *
  * 覆盖行按 (param_code, direction) 整份同步：不提交 input 行 = 保存时把它们软删。
  */
-function draftInputParamsOf(params: AlgorithmApiParam[]): ParamProfileParamDraft[] {
+function draftInputParamsOf(
+  params: AlgorithmApiParam[],
+  mode: DraftMode
+): ParamProfileParamDraft[] {
   return params
     .filter((param) => param.paramCode.trim())
+    // 输入行在本页签不可编辑：覆盖口径只回传本 API 覆盖行（旧读侧无层标识按覆盖处理）
+    .filter(
+      (param) =>
+        mode === 'snapshot' ||
+        param.resolvedFrom == null ||
+        param.resolvedFrom === 'api'
+    )
     .map((param) => ({
       paramCode: param.paramCode.trim(),
       paramName: param.paramName,
@@ -342,8 +451,18 @@ function draftInputParamsOf(params: AlgorithmApiParam[]): ParamProfileParamDraft
     }))
 }
 
-function draftMappingsOf(rows: EditableMappingRow[]): ParamProfileMappingDraft[] {
+function draftMappingsOf(
+  rows: EditableMappingRow[],
+  mode: DraftMode
+): ParamProfileMappingDraft[] {
   return rows
+    // 覆盖行必须整份回传；非覆盖行只在用户改过时回传
+    .filter(
+      (row) =>
+        mode === 'snapshot' ||
+        row.override ||
+        row.originSignature !== mappingRowSignatureOf(row)
+    )
     .filter((row) => row.sourceParam.trim() && row.targetParam.trim())
     .map((row) => ({
       source: row.source,
@@ -460,6 +579,7 @@ export function ApiParamConfigTab({
   const [inputMappingRows, setInputMappingRows] = useState<EditableInputMappingRow[]>([])
   const [boundProfileId, setBoundProfileId] = useState<number | null>(null)
   const [nameDialog, setNameDialog] = useState<'create' | 'clone' | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [draftName, setDraftName] = useState('')
   const [draftDescription, setDraftDescription] = useState('')
   const rowKeyRef = useRef(0)
@@ -520,16 +640,19 @@ export function ApiParamConfigTab({
       config.outputParams.map((param) => paramRowOf(param, rowKeyRef.current++))
     )
     setMappingRows(
-      config.mappings.map((mapping) => mappingRowOf(mapping, rowKeyRef.current++))
+      config.mappings.map((mapping) => mappingRowOf(mapping, rowKeyRef.current++, apiId))
     )
     setInputMappingRows(
-      config.inputMappings.map((mapping) => inputMappingRowOf(mapping, rowKeyRef.current++))
+      config.inputMappings.map((mapping) =>
+        inputMappingRowOf(mapping, rowKeyRef.current++, apiId)
+      )
     )
   }, [
     config.state,
     config.outputParams,
     config.mappings,
     config.inputMappings,
+    apiId,
     signature,
   ])
 
@@ -576,13 +699,14 @@ export function ApiParamConfigTab({
   // 草稿上抛（新建态由弹窗在创建成功后统一提交，避免用户先保存再回来配参数）
   useEffect(() => {
     onDraftChange?.({
+      // 新建 API：整份快照（含算法级 / 策略层解析值），随创建提交
       params: [
-        ...draftParamsOf(outputRows, outputOriginals),
-        ...draftInputParamsOf(config.inputParams),
+        ...draftParamsOf(outputRows, outputOriginals, 'snapshot'),
+        ...draftInputParamsOf(config.inputParams, 'snapshot'),
       ],
       mappings: [
-        ...draftMappingsOf(mappingRows),
-        ...draftInputMappingsOf(inputMappingRows),
+        ...draftMappingsOf(mappingRows, 'snapshot'),
+        ...draftInputMappingsOf(inputMappingRows, 'snapshot'),
         ...passthroughMappingDrafts,
       ],
     })
@@ -670,13 +794,14 @@ export function ApiParamConfigTab({
         name: input.name,
         description: input.description,
         status: 'online',
+        // 另存为策略：整份快照（当前三层生效值）
         params: [
-          ...draftParamsOf(outputRows, outputOriginals),
-          ...draftInputParamsOf(config.inputParams),
+          ...draftParamsOf(outputRows, outputOriginals, 'snapshot'),
+          ...draftInputParamsOf(config.inputParams, 'snapshot'),
         ],
         mappings: [
-          ...draftMappingsOf(mappingRows),
-          ...draftInputMappingsOf(inputMappingRows),
+          ...draftMappingsOf(mappingRows, 'snapshot'),
+          ...draftInputMappingsOf(inputMappingRows, 'snapshot'),
         ],
       }
       return createProfile(payload)
@@ -709,14 +834,15 @@ export function ApiParamConfigTab({
       if (apiId == null) throw new Error('API 尚未保存')
       return saveApiScopeOverrides(apiId, {
         algorithmType,
-        // 整份保存：output 行 + input 声明行一起提交，未提交的既有覆盖行会被软删（INT-2270）
+        // 覆盖口径：只提交「本 API 覆盖行 + 用户改过的行」，未提交的既有覆盖行会被软删
+        // （INT-2270）；未改动的算法级 / 策略层行不回传，避免被固化成实例覆盖。
         params: [
-          ...draftParamsOf(outputRows, outputOriginals),
-          ...draftInputParamsOf(config.inputParams),
+          ...draftParamsOf(outputRows, outputOriginals, 'overrides'),
+          ...draftInputParamsOf(config.inputParams, 'overrides'),
         ],
         mappings: [
-          ...draftMappingsOf(mappingRows),
-          ...draftInputMappingsOf(inputMappingRows),
+          ...draftMappingsOf(mappingRows, 'overrides'),
+          ...draftInputMappingsOf(inputMappingRows, 'overrides'),
           ...passthroughMappingDrafts,
         ],
       })
@@ -881,6 +1007,17 @@ export function ApiParamConfigTab({
           >
             克隆当前策略
           </Button>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            className='h-7 gap-1 text-xs'
+            disabled={!persisted || !algorithmType}
+            onClick={() => setHistoryOpen(true)}
+          >
+            <History aria-hidden='true' className='size-3.5' />
+            历史
+          </Button>
         </div>
         <p className='text-muted-foreground text-xs'>
           策略提供默认字段与映射；本页的增删改写入 API 实例覆盖行（覆盖优先于策略）。
@@ -908,6 +1045,9 @@ export function ApiParamConfigTab({
                   sourceParam: '',
                   targetParam: '',
                   transformType: 'none',
+                  // 新增行 = 待创建的实例覆盖行
+                  override: true,
+                  originSignature: '',
                 },
               ])
             }
@@ -1050,6 +1190,9 @@ export function ApiParamConfigTab({
                   validationRules: null,
                   uiOrder: String(rows.length + 1),
                   fieldPath: '',
+                  // 新增行 = 待创建的实例覆盖行
+                  override: true,
+                  originSignature: '',
                 },
               ])
             }
@@ -1076,6 +1219,7 @@ export function ApiParamConfigTab({
                   <TableHead className='text-xs'>参数名称</TableHead>
                   <TableHead className='text-xs'>类型</TableHead>
                   <TableHead className='text-xs'>方向</TableHead>
+                  <TableHead className='text-xs'>来源</TableHead>
                   <TableHead className='text-xs'>排序</TableHead>
                   <TableHead className='text-xs'>响应路径</TableHead>
                   <TableHead className='text-xs'>默认值</TableHead>
@@ -1129,6 +1273,11 @@ export function ApiParamConfigTab({
                     </TableCell>
                     <TableCell>
                       <Badge variant='secondary'>输出</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={API_LAYER_BADGE[layerOfParam(row)].variant}>
+                        {API_LAYER_BADGE[layerOfParam(row)].label}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Input
@@ -1236,6 +1385,9 @@ export function ApiParamConfigTab({
                   targetParam: '',
                   dimensionId: '',
                   transformType: 'none',
+                  // 新增行 = 待创建的实例覆盖行
+                  override: true,
+                  originSignature: '',
                 },
               ])
             }
@@ -1472,6 +1624,16 @@ export function ApiParamConfigTab({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ParamHistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        scope='api'
+        scopeId={apiId}
+        algorithmType={algorithmType}
+        canRestore={editable}
+        onRestored={invalidateScope}
+      />
     </div>
   )
 }

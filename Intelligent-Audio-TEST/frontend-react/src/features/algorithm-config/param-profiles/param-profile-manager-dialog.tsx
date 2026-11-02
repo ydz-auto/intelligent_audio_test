@@ -1,13 +1,13 @@
 /**
- * 参数策略管理对话框（features/algorithm-config/param-profiles；T4.3）。
+ * 参数策略集中管理对话框（features/algorithm-config/param-profiles；T4.3）。
  *
- * 列表（GET /algorithm/param-profiles?scope=api）+ 新建 / 编辑（POST / PUT）
+ * 列表（GET /algorithm/param-profiles，可按作用域过滤）+ 新建 / 编辑（POST / PUT）
  * + 克隆（POST /{id}/clone）+ 删除二次确认（DELETE /{id}，软删除）。
  * 权限：读 = algorithm:read；写 = algorithm:param_manage（canManage 控制动作可用）。
  *
- * 作用域过滤（INT-2267）：本入口在算法配置页，只管理 scope=api 的策略；
- * scope=device 的策略由设备侧入口编辑（两侧参数类型 / 映射来源词表不同，
- * 用 API 语义的表单打开设备策略会改写来源、丢掉 timestamp 类型）。
+ * 作用域（INT-2267）：API 与设备策略共用本入口，列表可用作用域过滤；
+ * 新建时显式选择作用域，编辑时以策略自身作用域为准（后端不接受改作用域）。
+ * 两侧参数类型 / 映射来源词表不同，因此表单的 scope 必须逐条带入，不能写死。
  */
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -57,8 +57,15 @@ import { Textarea } from '@/components/ui/textarea'
 import { ParamProfileFormDialog } from '@/features/algorithm-config/param-profiles/param-profile-form-dialog'
 
 const ALL_ALGORITHMS = '__all__'
-/** 本入口只管 API 作用域策略（INT-2267） */
-const MANAGED_SCOPE: ParamProfileScope = 'api'
+const ALL_SCOPES = '__all_scopes__'
+
+type ScopeFilter = ParamProfileScope | typeof ALL_SCOPES
+
+const SCOPE_FILTER_OPTIONS: Array<{ value: ScopeFilter; label: string }> = [
+  { value: ALL_SCOPES, label: '全部作用域' },
+  { value: 'api', label: PARAM_PROFILE_SCOPE_LABEL.api },
+  { value: 'device', label: PARAM_PROFILE_SCOPE_LABEL.device },
+]
 
 function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return error.userMessage
@@ -82,11 +89,13 @@ export function ParamProfileManagerDialog({
 }: ParamProfileManagerDialogProps) {
   const algorithmsQuery = useTestAlgorithmOptions()
   const [algorithmFilter, setAlgorithmFilter] = useState(defaultAlgorithmType || ALL_ALGORITHMS)
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>(ALL_SCOPES)
   const [formState, setFormState] = useState<{
     open: boolean
     mode: 'create' | 'edit'
     profileId: number | null
-  }>({ open: false, mode: 'create', profileId: null })
+    scope: ParamProfileScope
+  }>({ open: false, mode: 'create', profileId: null, scope: 'api' })
   const [cloneTarget, setCloneTarget] = useState<ParamProfile | null>(null)
   const [cloneName, setCloneName] = useState('')
   const [cloneDescription, setCloneDescription] = useState('')
@@ -94,7 +103,7 @@ export function ParamProfileManagerDialog({
 
   const { profiles, isLoading, isError } = useParamProfileList(
     algorithmFilter === ALL_ALGORITHMS ? null : algorithmFilter,
-    MANAGED_SCOPE,
+    scopeFilter === ALL_SCOPES ? null : scopeFilter,
     open
   )
   const { clone, remove } = useParamProfileMutations()
@@ -108,16 +117,27 @@ export function ParamProfileManagerDialog({
     ...(algorithmsQuery.data ?? []).map((item) => ({ value: item.id, label: item.name })),
   ]
 
-  const openCreate = () => {
+  /** 作用域过滤 = 全部时提供两个显式新建入口，避免新建出非预期作用域的策略 */
+  const createScopes: ParamProfileScope[] =
+    scopeFilter === ALL_SCOPES ? ['api', 'device'] : [scopeFilter]
+
+  const openCreate = (scope: ParamProfileScope) => {
     setFormState({
       open: true,
       mode: 'create',
       profileId: null,
+      scope,
     })
   }
 
   const openEdit = (profile: ParamProfile) => {
-    setFormState({ open: true, mode: 'edit', profileId: profile.id })
+    setFormState({
+      open: true,
+      mode: 'edit',
+      profileId: profile.id,
+      // 编辑以策略自身作用域为准（后端不接受改作用域）
+      scope: profile.scope,
+    })
   }
 
   const openClone = (profile: ParamProfile) => {
@@ -164,8 +184,8 @@ export function ParamProfileManagerDialog({
           <DialogHeader>
             <DialogTitle>参数策略</DialogTitle>
             <DialogDescription>
-              可复用参数策略：多个 API 实例可绑定同一策略，实例覆盖优先于策略。
-              此处只管理 API 作用域策略，设备策略在设备侧编辑。
+              可复用参数策略集中管理：API 实例与设备都可绑定同一策略，实例覆盖优先于策略。
+              解析顺序统一为「实例覆盖 &gt; 绑定策略 &gt; 算法级默认」。
             </DialogDescription>
           </DialogHeader>
 
@@ -188,17 +208,41 @@ export function ParamProfileManagerDialog({
                   ))}
                 </SelectContent>
               </Select>
+              <Label className='text-xs whitespace-nowrap'>作用域</Label>
+              <Select
+                value={scopeFilter}
+                items={SCOPE_FILTER_OPTIONS}
+                onValueChange={(value) =>
+                  setScopeFilter((value ?? ALL_SCOPES) as ScopeFilter)
+                }
+              >
+                <SelectTrigger size='sm' className='w-32 justify-between'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SCOPE_FILTER_OPTIONS.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Button
-              type='button'
-              size='sm'
-              className='gap-1'
-              disabled={!canManage}
-              onClick={openCreate}
-            >
-              <Plus aria-hidden='true' className='size-3.5' />
-              新建策略
-            </Button>
+            <div className='flex items-center gap-2'>
+              {createScopes.map((scope) => (
+                <Button
+                  key={scope}
+                  type='button'
+                  size='sm'
+                  className='gap-1'
+                  disabled={!canManage}
+                  onClick={() => openCreate(scope)}
+                >
+                  <Plus aria-hidden='true' className='size-3.5' />
+                  新建{PARAM_PROFILE_SCOPE_LABEL[scope]}策略
+                </Button>
+              ))}
+            </div>
           </div>
 
           {isLoading ? (
@@ -308,7 +352,7 @@ export function ParamProfileManagerDialog({
         onOpenChange={(next) => setFormState((prev) => ({ ...prev, open: next }))}
         mode={formState.mode}
         profileId={formState.profileId}
-        scope={MANAGED_SCOPE}
+        scope={formState.scope}
         defaultAlgorithmType={
           algorithmFilter === ALL_ALGORITHMS ? defaultAlgorithmType : algorithmFilter
         }

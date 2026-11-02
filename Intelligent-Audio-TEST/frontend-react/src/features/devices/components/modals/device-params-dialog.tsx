@@ -2,22 +2,20 @@
  * 设备参数配置弹窗（设备管理页 → 行操作「参数配置」）。
  *
  * 语义（真·设备级独立覆盖）：
- * - 读：`GET /algorithm/params?param_type=device` 返回算法级 + 各设备级行；
- *   本弹窗按 `device_id` 合并——设备级行覆盖同键（param_code + direction）算法级行；
- * - 写：新增 / 编辑 / 删除都落**设备级行**（带 device_id），算法级声明只读；
- * - 删除设备级行即回落到算法级声明（不动物理参数定义的算法默认值）。
+ * - 读：`GET /algorithm/params?param_type=device&device_id=Y` 返回该设备的三层
+ *   解析结果（算法级默认 → 绑定策略 → 本设备覆盖），逐行带 `resolved_from`；
+ * - 写：新增 / 编辑 / 删除都落**设备级覆盖行**（带 device_id）：编辑算法级或策略行
+ *   等价于新增本设备覆盖；
+ * - 删除设备覆盖行即回落到上一层（策略 → 算法级声明）。
  * - 设备级**映射**由同目录 `device-mappings-section` 维护（同样是设备行覆盖算法级行）。
  * - **参数策略**：设备可绑定 scope=device 的策略（`device_param_bindings`），
- *   解析顺序 = 本设备覆盖 > 设备绑定策略 > 算法类型级默认。
- *   **本表只展开前两层**（算法级默认 + 本设备覆盖）：网关参数读接口
- *   `GET /algorithm/params` 不支持按 device_id 解析（INT-2299），绑定策略层在表里
- *   看不到；因此**已绑定策略时禁用「另存为新策略」**（只收两层会丢策略层生效值），
- *   改用「克隆当前策略」。
+ *   解析顺序 = 本设备覆盖 > 设备绑定策略 > 算法类型级默认；三层均在表内可见，
+ *   因此已绑定策略时仍可「另存为新策略」（整份含策略层生效值）。
  *
- * 降级：缺 `algorithm:param_manage` → 参数区只读；未选算法 → 空态提示。
+ * 降级：缺 `algorithm:param_manage` → 参数区与映射区都只读；未选算法 → 空态提示。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2 } from 'lucide-react'
+import { History, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -37,6 +35,7 @@ import {
   cloneProfile,
   createProfile,
 } from '@/infrastructure/api/param-profile-api'
+import { ParamHistoryDialog } from '@/features/algorithm-config/param-history/param-history-dialog'
 import { DeviceMappingsSection } from './device-mappings-section'
 import {
   createDeviceScopeParam,
@@ -130,6 +129,18 @@ function rowKey(row: AlgorithmApiParam): string {
   return `${row.paramCode}|${row.direction}`
 }
 
+/** 设备作用域的三层来源 */
+type ParamLayer = 'algorithm' | 'profile' | 'device'
+
+const LAYER_BADGE: Record<
+  ParamLayer,
+  { label: string; variant: 'default' | 'secondary' | 'outline' }
+> = {
+  algorithm: { label: '算法级', variant: 'secondary' },
+  profile: { label: '策略', variant: 'outline' },
+  device: { label: '本设备', variant: 'default' },
+}
+
 export function DeviceParamsDialog({
   open,
   onOpenChange,
@@ -143,38 +154,34 @@ export function DeviceParamsDialog({
 
   const [algorithmType, setAlgorithmType] = useState(defaultAlgorithmType ?? '')
   const [form, setForm] = useState<ParamFormState | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   useEffect(() => {
     if (open) setAlgorithmType(defaultAlgorithmType ?? '')
   }, [open, defaultAlgorithmType])
 
   const paramsQuery = useQuery({
-    queryKey: ['devices', 'device-params', algorithmType],
-    queryFn: () => fetchDeviceScopeParams(algorithmType),
+    queryKey: ['devices', 'device-params', algorithmType, device.id],
+    queryFn: () => fetchDeviceScopeParams(algorithmType, device.id),
     enabled: open && Boolean(algorithmType),
     staleTime: 0,
     retry: false,
   })
 
-  const rows = useMemo(() => paramsQuery.data ?? [], [paramsQuery.data])
+  /** 三层解析结果（后端已按 算法级默认 → 绑定策略 → 本设备覆盖 合并） */
+  const effectiveRows = useMemo(() => paramsQuery.data ?? [], [paramsQuery.data])
 
-  /** 生效行：算法级打底，本设备覆盖行按 (code, direction) 覆盖 */
-  const effectiveRows = useMemo(() => {
-    const map = new Map<string, AlgorithmApiParam & { scoped: boolean }>()
-    for (const row of rows) {
-      if (row.deviceId == null) map.set(rowKey(row), { ...row, scoped: false })
-    }
-    for (const row of rows) {
-      if (row.deviceId === device.id) map.set(rowKey(row), { ...row, scoped: true })
-    }
-    return [...map.values()].sort(
-      (a, b) => a.uiOrder - b.uiOrder || a.paramCode.localeCompare(b.paramCode)
-    )
-  }, [rows, device.id])
+  /** 行来源层：优先用后端 `resolvedFrom`，旧快照缺该键时按 deviceId 推断 */
+  const layerOf = (row: AlgorithmApiParam): ParamLayer => {
+    if (row.resolvedFrom === 'profile') return 'profile'
+    if (row.resolvedFrom === 'device') return 'device'
+    if (row.resolvedFrom === 'algorithm') return 'algorithm'
+    return row.deviceId === device.id ? 'device' : 'algorithm'
+  }
 
   const invalidate = () => {
     void queryClient.invalidateQueries({
-      queryKey: ['devices', 'device-params', algorithmType],
+      queryKey: ['devices', 'device-params', algorithmType, device.id],
     })
   }
 
@@ -324,7 +331,7 @@ export function DeviceParamsDialog({
       toast.error(`删除失败：${error instanceof Error ? error.message : String(error)}`),
   })
 
-  const openOverride = (row: (AlgorithmApiParam & { scoped: boolean }) | null) => {
+  const openOverride = (row: AlgorithmApiParam | null) => {
     setForm(
       row
         ? {
@@ -335,7 +342,8 @@ export function DeviceParamsDialog({
             required: row.required,
             defaultValue: row.defaultValue ?? '',
             helpText: row.helpText ?? '',
-            paramId: row.scoped ? row.id : null,
+            // 只有本设备覆盖行可直接更新；算法级 / 策略行编辑 = 新增本设备覆盖
+            paramId: layerOf(row) === 'device' ? row.id : null,
           }
         : { ...EMPTY_FORM }
     )
@@ -422,16 +430,7 @@ export function DeviceParamsDialog({
                   variant='outline'
                   size='sm'
                   className='h-7 text-xs'
-                  disabled={
-                    !canEdit || !bindingKnown || boundProfileId != null || createMutation.isPending
-                  }
-                  title={
-                    boundProfileId != null
-                      ? '已绑定策略：另存只含「算法级 + 本设备覆盖」两层，会丢失策略层生效值；请用「克隆当前策略」'
-                      : !bindingKnown
-                        ? '策略列表尚未读取，暂不能另存为新策略'
-                        : undefined
-                  }
+                  disabled={!canEdit || createMutation.isPending}
                   onClick={() => openNameDialog('create')}
                 >
                   另存为新策略
@@ -446,17 +445,22 @@ export function DeviceParamsDialog({
                 >
                   克隆当前策略
                 </Button>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  className='h-7 gap-1 text-xs'
+                  disabled={!algorithmType}
+                  onClick={() => setHistoryOpen(true)}
+                >
+                  <History aria-hidden='true' className='size-3.5' />
+                  历史
+                </Button>
               </div>
               <p className='text-muted-foreground text-xs'>
                 解析顺序：本设备覆盖 &gt; 设备绑定策略 &gt; 算法类型级默认。
-                「另存为新策略」只收「本设备覆盖 + 算法级默认」两层，供其他设备套用。
+                「另存为新策略」把当前三层生效值保存成 scope=device 的策略，供其他设备套用。
               </p>
-              {boundProfileId != null && (
-                <p className='border-warning/40 bg-warning/10 text-warning rounded-lg border px-3 py-2 text-xs'>
-                  已绑定策略「{boundProfileName}」：策略层的生效值不在本表内，「另存为新策略」会丢失该层，已禁用；
-                  需要以该策略为底稿另存请用「克隆当前策略」。
-                </p>
-              )}
               {profileOptions.isError && (
                 <p className='text-destructive text-xs'>参数策略读取失败，稍后重试。</p>
               )}
@@ -482,10 +486,8 @@ export function DeviceParamsDialog({
           {algorithmType && (
             <div className='border-border/60 overflow-x-auto rounded-lg border'>
               <p className='text-muted-foreground border-b px-3 py-2 text-xs'>
-                本表 = 算法类型级默认 + 本设备覆盖（两层）
-                {boundProfileId != null
-                  ? `；不含已绑定策略「${boundProfileName}」的生效值（待 INT-2299 读接口）`
-                  : '；已绑定策略时策略层生效值也不在本表内'}
+                本表 = 算法类型级默认 → 绑定策略 → 本设备覆盖（三层生效值）
+                {boundProfileId != null ? `；当前策略「${boundProfileName}」` : ''}
               </p>
               <Table>
                 <TableHeader>
@@ -513,51 +515,54 @@ export function DeviceParamsDialog({
                       </TableCell>
                     </TableRow>
                   ) : (
-                    effectiveRows.map((row) => (
-                      <TableRow key={`${row.deviceId ?? 'algo'}-${rowKey(row)}`}>
-                        <TableCell className='font-mono text-xs'>{row.paramCode}</TableCell>
-                        <TableCell className='text-xs'>{row.paramName ?? '—'}</TableCell>
-                        <TableCell className='text-xs'>
-                          {PARAM_TYPE_LABEL[row.paramType] ?? row.paramType}
-                        </TableCell>
-                        <TableCell className='text-xs'>
-                          {row.direction === 'output' ? '输出' : '输入'}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={row.scoped ? 'default' : 'secondary'}>
-                            {row.scoped ? '本设备' : '算法级'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className='text-xs'>{row.defaultValue ?? '—'}</TableCell>
-                        <TableCell>
-                          <div className='flex items-center gap-1'>
-                            <Button
-                              type='button'
-                              variant='ghost'
-                              size='sm'
-                              className='h-7 text-xs'
-                              disabled={!canEdit}
-                              onClick={() => openOverride(row)}
-                            >
-                              {row.scoped ? '编辑' : '覆盖'}
-                            </Button>
-                            {row.scoped && (
+                    effectiveRows.map((row) => {
+                      const layer = layerOf(row)
+                      return (
+                        <TableRow key={`${layer}-${rowKey(row)}`}>
+                          <TableCell className='font-mono text-xs'>{row.paramCode}</TableCell>
+                          <TableCell className='text-xs'>{row.paramName ?? '—'}</TableCell>
+                          <TableCell className='text-xs'>
+                            {PARAM_TYPE_LABEL[row.paramType] ?? row.paramType}
+                          </TableCell>
+                          <TableCell className='text-xs'>
+                            {row.direction === 'output' ? '输出' : '输入'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={LAYER_BADGE[layer].variant}>
+                              {LAYER_BADGE[layer].label}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className='text-xs'>{row.defaultValue ?? '—'}</TableCell>
+                          <TableCell>
+                            <div className='flex items-center gap-1'>
                               <Button
                                 type='button'
                                 variant='ghost'
-                                size='icon-sm'
-                                className='text-destructive size-6'
-                                aria-label='删除设备覆盖'
+                                size='sm'
+                                className='h-7 text-xs'
                                 disabled={!canEdit}
-                                onClick={() => deleteMutation.mutate(row.id)}
+                                onClick={() => openOverride(row)}
                               >
-                                <Trash2 aria-hidden='true' className='size-3.5' />
+                                {layer === 'device' ? '编辑' : '覆盖'}
                               </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                              {layer === 'device' && (
+                                <Button
+                                  type='button'
+                                  variant='ghost'
+                                  size='icon-sm'
+                                  className='text-destructive size-6'
+                                  aria-label='删除设备覆盖'
+                                  disabled={!canEdit}
+                                  onClick={() => deleteMutation.mutate(row.id)}
+                                >
+                                  <Trash2 aria-hidden='true' className='size-3.5' />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -699,7 +704,7 @@ export function DeviceParamsDialog({
             <DialogDescription>
               {nameDialog === 'clone'
                 ? '从当前绑定策略复制一份新策略，保存后本设备改绑到新策略。'
-                : '把本设备的参数与映射（算法级默认 + 本设备覆盖两层）保存成 scope=device 的策略，保存后本设备绑定到该策略。'}
+                : '把本设备当前三层生效值（算法级默认 → 绑定策略 → 本设备覆盖）保存成 scope=device 的策略，保存后本设备绑定到该策略。'}
             </DialogDescription>
           </DialogHeader>
           <div className='space-y-3'>
@@ -732,6 +737,16 @@ export function DeviceParamsDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ParamHistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        scope='device'
+        scopeId={device.id}
+        algorithmType={algorithmType}
+        canRestore={canEdit}
+        onRestored={invalidateScope}
+      />
     </Dialog>
   )
 }

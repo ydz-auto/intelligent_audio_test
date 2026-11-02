@@ -11,7 +11,7 @@
  * 整份保存纪律（INT-2267）：后端 `_sync_params` / `_sync_mappings` 按自然键整份同步，
  * 请求里没带的列会被写成默认值。因此凡表单不展示的字段（label / validation_rules /
  * config 快照）一律按详情读到的原值透传，不用常量兜底。
- * 作用域由入口给定：本入口只编辑 scope=api 的策略，设备策略走设备侧。
+ * 作用域由入口给定：集中管理页新建时按所选作用域带入，编辑时以策略详情为准。
  */
 import { Plus, Trash2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
@@ -357,7 +357,7 @@ export function ParamProfileFormDialog({
                 <div className='border-border/60 bg-muted/30 flex h-8 items-center gap-2 rounded-lg border px-2.5'>
                   <Badge variant='secondary'>{PARAM_PROFILE_SCOPE_LABEL[watch('scope')]}</Badge>
                   <span className='text-muted-foreground text-xs'>
-                    由入口决定，设备策略在设备侧编辑
+                    由入口决定，编辑时不可变更
                   </span>
                 </div>
               </div>

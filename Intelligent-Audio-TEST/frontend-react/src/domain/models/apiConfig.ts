@@ -71,8 +71,9 @@ export interface ApiConfig {
 
 /**
  * API 实例作用域的参数字段行（T4.2「参数配置」页签可编辑数据源）。
- * 读侧 = `GET /algorithm/params?param_type=api&api_id=X`（策略声明 + 本 API 覆盖行，
- * 覆盖优先）；写侧 = `PUT /algorithm/api-scope/X/overrides` 整份回写覆盖行。
+ * 读侧 = `GET /algorithm/params?param_type=api&api_id=X`（算法级默认 → 策略声明 →
+ * 本 API 覆盖行，覆盖优先，逐行带 `resolvedFrom`）；写侧 =
+ * `PUT /algorithm/api-scope/X/overrides` 只回写本 API 覆盖行。
  * field_path 非空按路径取厂商原始响应值，为空按 param_code 取顶层键
  * （`shared/utils/api_output_extractor.py`）。
  */
@@ -100,6 +101,10 @@ export type AlgorithmApiParam = {
   uiOrder: number
   hidden: boolean
   fieldPath: string | null
+  /** 解析层来源（带作用域读取时后端下发）：算法级 / 策略 / 设备覆盖 / 本 API 覆盖 */
+  resolvedFrom?: 'algorithm' | 'profile' | 'device' | 'api'
+  /** 策略层行 id：该层 `id` 被后端置空，写侧不能用它改删 */
+  profileParamId?: number | null
 }
 
 /**

@@ -1,9 +1,10 @@
 /**
  * API 编辑弹窗「参数配置」页签查询编排（application 层；T4.2 / T4.4）。
  *
- * 数据源全部是 **API 实例作用域**（算法类型级默认层已废弃）：
- * - 字段行 = 策略声明 + 本 API 覆盖行（`GET /algorithm/params?...&api_id=Y`）；
- * - 映射行 = 策略映射 + 本 API 覆盖行（`GET /algorithm/mappings?...&api_id=Y`）；
+ * 数据源是 **API 实例作用域的三层解析结果**：
+ * - 字段行 = 算法级默认 → 策略声明 → 本 API 覆盖行（`GET /algorithm/params?...&api_id=Y`），
+ *   逐行带 `resolvedFrom`；
+ * - 映射行 = 算法级默认 → 策略映射 → 本 API 覆盖行（`GET /algorithm/mappings?...&api_id=Y`）；
  * - 策略下拉 = 本 algorithm_type 下 scope=api 的策略列表。
  *
  * 降级口径：403（缺 `algorithm:read`）→ 页签「无权查看」，不阻断其他页签保存。
@@ -152,8 +153,8 @@ export function useApiParamConfig(
     [allMappings]
   )
   // 两个编辑器都不展示的本 API 覆盖行：保存时按原值透传，避免整份同步把它们软删（INT-2281）。
-  // 只取 api_id 命中本实例的行——读侧返回的是「算法级 + 本 API 级」合并结果，
-  // 把算法级行当覆盖行提交会在本 API 下造出重复行。
+  // 只取 api_id 命中本实例的行——读侧返回的是三层合并结果，
+  // 把算法级 / 策略行当覆盖行提交会在本 API 下造出重复行。
   const otherMappings = useMemo(
     () =>
       allMappings.filter(

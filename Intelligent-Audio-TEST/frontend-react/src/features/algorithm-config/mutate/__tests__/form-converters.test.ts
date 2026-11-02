@@ -172,9 +172,8 @@ describe('form-converters', () => {
     const input = toSaveInput(values)
     expect(input.type).toBe('asr-v3')
     expect(input.groupId).toBe(1)
-    expect(input.deviceParams).toHaveLength(1)
-    expect(input.deviceParams[0]).not.toHaveProperty('key')
-    expect(input.deviceParams[0]).toMatchObject({ paramCode: 'input_audio' })
+    // 设备参数已迁到设备管理页：表单不再提交该层（缺省 = 后端跳过）
+    expect(input.deviceParams).toBeUndefined()
     expect(input.mappings.device).toHaveLength(1)
     // 算法级 API 入参改由 API 实例作用域维护：表单/保存载荷均不再携带该分组
     expect(Object.keys(input.mappings)).toEqual(['device', 'evaluation'])

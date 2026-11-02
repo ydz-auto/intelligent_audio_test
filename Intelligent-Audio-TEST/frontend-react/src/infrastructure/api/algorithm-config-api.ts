@@ -122,7 +122,8 @@ export type SaveAlgorithmInput = {
   displayOrder: number
   status: 'online' | 'offline'
   description: string
-  deviceParams: Array<Record<string, unknown>>
+  /** 算法编辑表单不再维护设备参数：缺省 = 不动该层（设备管理页独立写） */
+  deviceParams?: Array<Record<string, unknown>>
   caseParams: Array<Record<string, unknown>>
   referenceParams: Array<Record<string, unknown>>
   mappings: { device: unknown[]; evaluation: unknown[] }
@@ -181,7 +182,9 @@ async function buildDefinitionDto(input: SaveAlgorithmInput): Promise<Record<str
       displayOrder: input.displayOrder,
       status: input.status,
       description: input.description,
-      deviceParams: input.deviceParams,
+      ...(input.deviceParams !== undefined
+        ? { deviceParams: input.deviceParams }
+        : {}),
       caseParams: input.caseParams,
       referenceParams: input.referenceParams,
       mappings: {

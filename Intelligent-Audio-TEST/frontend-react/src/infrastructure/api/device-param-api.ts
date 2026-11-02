@@ -49,12 +49,23 @@ function toWriteBody(input: DeviceParamWriteInput): Record<string, unknown> {
   }
 }
 
-/** 该算法下全部设备参数行（算法级 + 各设备级） */
+/**
+ * 设备参数行。
+ *
+ * - 传 `deviceId`：后端返回该设备的三层解析结果（算法级 → 绑定策略 → 本设备覆盖），
+ *   逐行带 `resolved_from`；
+ * - 不传：返回算法级默认 + 各设备级原始行（写侧增删改依赖这份原始集合）。
+ */
 export async function fetchDeviceScopeParams(
-  algorithmType: string
+  algorithmType: string,
+  deviceId?: number
 ): Promise<AlgorithmApiParam[]> {
   const payload = await apiClient.get<unknown>('/algorithm/params', {
-    params: { algorithm_type: algorithmType, param_type: 'device' },
+    params: {
+      algorithm_type: algorithmType,
+      param_type: 'device',
+      ...(deviceId != null ? { device_id: deviceId } : {}),
+    },
   })
   return rowsFromPayload(payload).map(toAlgorithmApiParam)
 }

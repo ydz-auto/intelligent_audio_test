@@ -51,6 +51,27 @@ export function rowsFromPayload(payload: unknown): unknown[] {
   return Array.isArray(items) ? items : []
 }
 
+/** 三层解析的层来源标识（后端 `resolved_from`） */
+export type ParamResolvedFrom = 'algorithm' | 'profile' | 'device' | 'api'
+
+const PARAM_RESOLVED_FROMS: readonly ParamResolvedFrom[] = [
+  'algorithm',
+  'profile',
+  'device',
+  'api',
+]
+
+function toResolvedFrom(value: unknown): ParamResolvedFrom | undefined {
+  return PARAM_RESOLVED_FROMS.includes(value as ParamResolvedFrom)
+    ? (value as ParamResolvedFrom)
+    : undefined
+}
+
+/** 策略层行 id（该层 `id` 被后端置空，写侧不能用它） */
+function nullableNum(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
 /** API 参数行 → Domain AlgorithmApiParam（兼容 code/name/type 旧键） */
 export function toAlgorithmApiParam(raw: unknown): AlgorithmApiParam {
   const r = asRecord(raw)
@@ -68,6 +89,9 @@ export function toAlgorithmApiParam(raw: unknown): AlgorithmApiParam {
     // 校验规则无编辑控件：读出来供整份保存时原值透传（后端 `_serialize_params` 下发
     // validation_rules；旧口径键名是 validation）（INT-2270 / INT-2281）
     validationRules: textOrNull(r.validation_rules ?? r.validation),
+    // 带作用域读取时后端下发层来源；无作用域读取不带这两个键
+    resolvedFrom: toResolvedFrom(r.resolved_from),
+    profileParamId: nullableNum(r.profile_param_id),
   }
 }
 

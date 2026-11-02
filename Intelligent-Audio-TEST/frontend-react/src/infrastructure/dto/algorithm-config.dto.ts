@@ -576,7 +576,8 @@ export function toAlgorithmDefinitionDto(
     displayOrder: number
     status: 'online' | 'offline'
     description: string
-    deviceParams: Row[]
+    /** 缺省 = 请求体不带 device_params（后端跳过该层，不软删既有行） */
+    deviceParams?: Row[]
     caseParams: Row[]
     referenceParams: Row[]
     mappings: { device: Row[]; evaluation: Row[] }
@@ -591,7 +592,9 @@ export function toAlgorithmDefinitionDto(
     display_order: input.displayOrder,
     status: input.status,
     description: nullableStr(input.description),
-    device_params: (input.deviceParams ?? []).map(toDeviceApiParamItemDto),
+    ...(input.deviceParams !== undefined
+      ? { device_params: input.deviceParams.map(toDeviceApiParamItemDto) }
+      : {}),
     case_params: (input.caseParams ?? []).map(toCaseParamItemDto),
     reference_params: (input.referenceParams ?? []).map(toReferenceParamItemDto),
     mappings: {

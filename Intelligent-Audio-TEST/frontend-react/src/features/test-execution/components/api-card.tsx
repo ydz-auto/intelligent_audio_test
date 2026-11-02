@@ -70,6 +70,8 @@ export function ApiCard({
   // 算法类型码 → 算法名（真实 GET /algorithm/options；INT-1687 同口径）
   const algorithmLabels = useAlgorithmLabels()
   const online = api.status === 'online'
+  // 整卡可点选：仅非观察态且在线时生效（离线禁选口径不变）
+  const selectable = !readOnly && online
   // INT-1800：协议与流式性是两维，卡片直接展示两列，不再由 device_type 推断
   // INT-1223：Master URL 移除，端点只取 api_endpoints 首个
   const endpoint = api.endpoints[0]?.endpoint ?? null
@@ -80,8 +82,10 @@ export function ApiCard({
         'flex flex-col gap-2 rounded-xl border p-4 transition-colors',
         selected && 'border-primary ring-primary/20 ring-2',
         !selected && 'border-border hover:bg-muted/30',
+        selectable && 'cursor-pointer',
         !online && 'opacity-70'
       )}
+      onClick={selectable ? () => onToggle(api.id) : undefined}
     >
       {/* 头行 */}
       <div className='flex items-center gap-2'>
@@ -147,6 +151,7 @@ export function ApiCard({
                     disabled={!online}
                     aria-label={`选择 API ${api.name}`}
                     className='size-4'
+                    onClick={(e) => e.stopPropagation()}
                     onCheckedChange={() => onToggle(api.id)}
                   />
                   <span className={cn('text-xs', !online && 'text-muted-foreground')}>选择</span>
@@ -160,14 +165,19 @@ export function ApiCard({
         )}
         {/* 逐卡执行模式（INT-1060 返工/INT-1119：仅被选中卡显示；默认并行；readOnly 展示 Badge） */}
         {!readOnly && selected && onModeChange && (
-          <ExecutionModeControl
-            value={mode}
-            onChange={onModeChange}
-            ariaLabel={`${api.name} 执行模式`}
-          />
+          <span onClick={(e) => e.stopPropagation()}>
+            <ExecutionModeControl
+              value={mode}
+              onChange={onModeChange}
+              ariaLabel={`${api.name} 执行模式`}
+            />
+          </span>
         )}
         {!readOnly && (
-          <div className='ml-auto flex items-center gap-0.5'>
+          <div
+            className='ml-auto flex items-center gap-0.5'
+            onClick={(e) => e.stopPropagation()}
+          >
             {canTest && (
               <Button
                 variant='ghost'

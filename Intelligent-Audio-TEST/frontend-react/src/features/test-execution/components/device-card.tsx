@@ -63,6 +63,8 @@ export function DeviceCard({
   const online = device.status === 'online'
   const TypeIcon = device.type ? DEVICE_TYPE_ICON[device.type] : Smartphone
   const typeLabel = device.type ? DEVICE_TYPE_LABEL[device.type] : '未知'
+  // 整卡可点选：仅非观察态且在线时生效（离线禁选口径不变）
+  const selectable = !readOnly && online
 
   return (
     <div
@@ -70,8 +72,10 @@ export function DeviceCard({
         'flex flex-col gap-2 rounded-xl border p-4 transition-colors',
         selected && 'border-primary ring-primary/20 ring-2',
         !selected && 'border-border hover:bg-muted/30',
+        selectable && 'cursor-pointer',
         !online && 'opacity-70'
       )}
+      onClick={selectable ? () => onToggle(device.id) : undefined}
     >
       {/* 头行 */}
       <div className='flex items-center gap-2'>
@@ -127,6 +131,7 @@ export function DeviceCard({
                       disabled={!online}
                       aria-label={`选择设备 ${device.name}`}
                       className='size-4'
+                      onClick={(e) => e.stopPropagation()}
                       onCheckedChange={() => onToggle(device.id)}
                     />
                     <span className={cn('text-xs', !online && 'text-muted-foreground')}>选择</span>
@@ -139,11 +144,13 @@ export function DeviceCard({
             </Tooltip>
             {/* 逐卡执行模式（INT-1119：仅被选中卡显示；默认并行） */}
             {selected && onModeChange && (
-              <ExecutionModeControl
-                value={mode}
-                onChange={onModeChange}
-                ariaLabel={`${device.name} 执行模式`}
-              />
+              <span onClick={(e) => e.stopPropagation()}>
+                <ExecutionModeControl
+                  value={mode}
+                  onChange={onModeChange}
+                  ariaLabel={`${device.name} 执行模式`}
+                />
+              </span>
             )}
           </>
         )}
@@ -153,7 +160,10 @@ export function DeviceCard({
             size='sm'
             className='ml-auto h-7 gap-1 text-xs'
             disabled={testing}
-            onClick={() => onTestConnection(device.id)}
+            onClick={(e) => {
+              e.stopPropagation()
+              onTestConnection(device.id)
+            }}
           >
             <PlugZap aria-hidden='true' className={cn('size-3.5', testing && 'animate-pulse')} />
             {testing ? '测试中…' : '连接测试'}

@@ -125,7 +125,7 @@ beforeEach(() => {
 })
 
 describe('DeviceParamsDialog 参数策略（INT-2271）', () => {
-  it('已绑定策略：另存禁用、提示改用克隆，表格标注不含策略层', () => {
+  it('已绑定策略：另存与克隆都可用，表格标注三层生效值', () => {
     profileState.value = {
       profiles: [BOUND_PROFILE],
       boundProfileId: BOUND_PROFILE.id,
@@ -135,16 +135,15 @@ describe('DeviceParamsDialog 参数策略（INT-2271）', () => {
 
     renderDialog()
 
-    expect(screen.getByRole('button', { name: '另存为新策略' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '另存为新策略' })).toBeEnabled()
     expect(screen.getByRole('button', { name: '克隆当前策略' })).toBeEnabled()
     expect(
-      screen.getByText(/已绑定策略「接线测试_设备策略X」：策略层的生效值不在本表内/)
+      screen.getByText(/本表 = 算法类型级默认 → 绑定策略 → 本设备覆盖（三层生效值）/)
     ).toBeInTheDocument()
-    expect(screen.getByText(/不含已绑定策略「接线测试_设备策略X」的生效值/)).toBeInTheDocument()
-    expect(screen.getByText(/「另存为新策略」只收「本设备覆盖 \+ 算法级默认」两层/)).toBeInTheDocument()
+    expect(screen.getByText(/当前策略「接线测试_设备策略X」/)).toBeInTheDocument()
   })
 
-  it('未绑定策略：另存可点并打开命名弹窗，说明只含两层', async () => {
+  it('未绑定策略：另存可点并打开命名弹窗，说明快照口径', async () => {
     const user = userEvent.setup()
     renderDialog()
 
@@ -155,11 +154,11 @@ describe('DeviceParamsDialog 参数策略（INT-2271）', () => {
     await user.click(saveAsButton)
 
     expect(await screen.findByText('另存为设备策略')).toBeInTheDocument()
-    expect(screen.getByText(/算法级默认 \+ 本设备覆盖两层/)).toBeInTheDocument()
+    expect(screen.getByText(/三层生效值（算法级默认 → 绑定策略 → 本设备覆盖）/)).toBeInTheDocument()
     expect(buildMock).not.toHaveBeenCalled()
   })
 
-  it('策略列表仍在读取（绑定未知）：另存禁用', () => {
+  it('策略列表仍在读取：另存仍可用（三层由读接口解析，不依赖列表就绪）', () => {
     profileState.value = {
       profiles: [],
       boundProfileId: null,
@@ -169,6 +168,6 @@ describe('DeviceParamsDialog 参数策略（INT-2271）', () => {
 
     renderDialog()
 
-    expect(screen.getByRole('button', { name: '另存为新策略' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '另存为新策略' })).toBeEnabled()
   })
 })
