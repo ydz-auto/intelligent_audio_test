@@ -192,9 +192,10 @@ class ParamHistoryRepository:
         参数表（``algorithm_device_params`` / ``algorithm_api_params``）各自
         独立自增 id，同号行很常见，且软删行会长期占号。判定必须与
         ``ParamRepository.soft_delete`` 的删除口径一致：**设备表优先、只认
-        未删除行**，否则会把一个设备参数字段的历史记到同号的 API / 其它算法
-        作用域上（INT-2344 实测：设备参数 id=238 与某 API 的软删行同号，
-        历史被写到 device/17/voice_llm）。
+        未删除行**，否则会把设备参数的历史记到同号的 API 行 / 其它作用域上
+        （INT-2344：设备参数 id=238 与某 API 的软删行同号，历史被写到
+        device/17/voice_llm；INT-2352：设备参数删除无 body 时历史不记，
+        因 API 同号行被先命中）。
         """
         session = get_db_session()
         if table == 'params':
