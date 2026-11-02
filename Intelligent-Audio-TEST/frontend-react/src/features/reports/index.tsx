@@ -33,13 +33,12 @@ import { usePermissions } from '@/application/hooks/use-permissions'
 import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import { useReportList } from '@/application/reports/use-report-list'
 import { useReportCounts } from '@/application/reports/use-report-counts'
-import { useReportSummaryCounts } from '@/application/reports/use-report-summary-counts'
 import { useReportExportAll } from '@/application/reports/use-report-export-all'
 import {
   useBatchReportActions,
   useReportActions,
 } from '@/application/reports/use-report-actions'
-import type { ReportListItem } from '@/domain/models/report'
+import type { ReportListItem, ReportType } from '@/domain/models/report'
 import type { ReportsSearch } from '@/features/reports/types'
 import { getLinkedAlgorithmLabel, toReportAlgorithmType } from '@/features/reports/lib/algorithm'
 import { buildReportListQuery } from '@/application/reports/report-query'
@@ -76,15 +75,6 @@ export function ReportCenterPage() {
   const reportActions = useReportActions()
   const batchActions = useBatchReportActions()
   const fetchExportAllIds = useReportExportAll()
-  const summaryCountsQuery = useReportSummaryCounts()
-  const typeCounts = summaryCountsQuery.data?.typeCounts ?? {
-    all: 0,
-    task: 0,
-    comparison: 0,
-    secondary_comparison: 0,
-    benchmark: 0,
-  }
-  const favoriteCount = summaryCountsQuery.data?.favoriteCount ?? 0
 
   const search: ReportsSearch = {
     ...rawSearch,
@@ -96,6 +86,9 @@ export function ReportCenterPage() {
     sortBy: rawSearch.sortBy ?? 'created_at',
     sortOrder: rawSearch.sortOrder ?? 'desc',
   }
+
+  const trashMode = search.trash ?? false
+  const favoriteOnly = search.favorite ?? false
 
   // 全局算法联动（规范 §2.2）：URL 无 algorithmType 时自动附全局；'none' 为「本页临时解除」
   const linkedAlgorithmType = useMemo(
@@ -114,9 +107,26 @@ export function ReportCenterPage() {
   )
 
   const listQuery = useReportList(query)
-  const countsQuery = useReportCounts()
+  // 计数与列表同口径（INT-2339）：keyword / favorite / deleted 任一变化即换 queryKey 重取
+  const countsQuery = useReportCounts({
+    keyword: search.search,
+    favorite: favoriteOnly,
+    deleted: trashMode,
+  })
   const items = listQuery.data?.items ?? []
   const total = listQuery.data?.total ?? 0
+  // Hero 类型 chips：all 取 Tab 全量计数，四分项取后端 types（INT-2339，不再 /reports 客户端聚合）
+  const typeCounts = useMemo<Record<ReportType | 'all', number>>(() => {
+    const types = countsQuery.data?.types
+    return {
+      all: countsQuery.data?.all ?? 0,
+      task: types?.task ?? 0,
+      comparison: types?.comparison ?? 0,
+      secondary_comparison: types?.secondary_comparison ?? 0,
+      benchmark: types?.benchmark ?? 0,
+    }
+  }, [countsQuery.data])
+  const favoriteCount = countsQuery.data?.favorite ?? 0
 
   const setSearch = useCallback(
     (patch: Record<string, unknown>) => {
@@ -196,6 +206,14 @@ export function ReportCenterPage() {
         effectiveAlgorithmType
     )
   }, [search, effectiveAlgorithmType])
+
+  /**
+   * 「列表被筛选/视图收窄」判别（INT-2350 空态口径）：
+   * 空态必须用是否处于筛选态区分「无命中」与「库里真没有」，不得用计数判别——
+   * INT-2339 起计数本身也随关键字收缩，用 totalCount === 0 判会恒落「暂无报告」。
+   * 收藏视图 / 回收站视图同样算收窄，避免在该视图空结果时误报「暂无报告」。
+   */
+  const isNarrowed = hasActiveFilters || favoriteOnly || trashMode
 
   const handleClearAll = useCallback(() => {
     setSearch({
@@ -342,9 +360,6 @@ export function ReportCenterPage() {
     [navigate]
   )
 
-  const trashMode = search.trash ?? false
-  const favoriteOnly = search.favorite ?? false
-
   return (
     <>
       <SectionPageLayout fixedContent>
@@ -467,6 +482,7 @@ export function ReportCenterPage() {
           <ReportFilterToolbar
             filteredCount={total}
             totalCount={countsQuery.data?.all ?? 0}
+            hasActiveFilters={isNarrowed}
             sortBy={search.sortBy ?? 'created_at'}
             sortOrder={search.sortOrder ?? 'desc'}
             onSortChange={handleSortChange}
@@ -494,7 +510,7 @@ export function ReportCenterPage() {
               items={items}
               isLoading={listQuery.isLoading}
               hasError={listQuery.isError}
-              totalCount={total}
+              hasActiveFilters={isNarrowed}
               trashMode={trashMode}
               hasPermission={hasPermission}
               onRowAction={handleRowAction}
@@ -515,7 +531,7 @@ export function ReportCenterPage() {
               items={items}
               isLoading={listQuery.isLoading}
               hasError={listQuery.isError}
-              totalCount={total}
+              hasActiveFilters={isNarrowed}
               trashMode={trashMode}
               selectedIds={selectedIds}
               onToggleRow={handleToggleRow}

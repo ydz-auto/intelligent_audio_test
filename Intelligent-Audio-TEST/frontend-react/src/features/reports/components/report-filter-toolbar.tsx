@@ -1,6 +1,7 @@
 /**
  * 报告列表工具栏（移植自 newAPI PricingToolbar，规范 §3.5）：
- * 左=已筛选计数 + 全局算法联动 chip（Badge secondary + × 清空）；右=排序 DropdownMenu
+ * 左=计数（无筛选「共 N 个报告」/ 有筛选只留「已筛选 N 个报告」，同一数字不重复展示，
+ * INT-2350）+ 全局算法联动 chip（Badge secondary + × 清空）；右=排序 DropdownMenu
  * （ArrowUpDown + Check 标记）+ 视图切换（表格/卡片）。
  */
 import { ArrowUpDown, Check, LayoutGrid, Table2, X } from 'lucide-react'
@@ -27,8 +28,12 @@ import {
 } from '@/features/reports/constants'
 
 interface ReportFilterToolbarProps {
+  /** 当前列表命中数（服务端分页 total） */
   filteredCount: number
+  /** 当前筛选口径下的全量计数（GET /reports/tab-counts 的 all，无筛选时与 filteredCount 相等） */
   totalCount: number
+  /** 是否处于筛选/视图收窄态：有筛选时只留「已筛选 N」，不再重复写「共 N」 */
+  hasActiveFilters: boolean
   sortBy: ReportSortBy
   sortOrder: ReportSortOrder
   onSortChange: (sortBy: ReportSortBy, sortOrder?: ReportSortOrder) => void
@@ -42,6 +47,7 @@ interface ReportFilterToolbarProps {
 export function ReportFilterToolbar({
   filteredCount,
   totalCount,
+  hasActiveFilters,
   sortBy,
   sortOrder,
   onSortChange,
@@ -54,16 +60,22 @@ export function ReportFilterToolbar({
     <div className='bg-card rounded-xl border p-3'>
       <div className='flex flex-wrap items-center justify-between gap-3'>
         <div className='text-muted-foreground flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-2 text-sm'>
-          <span className='flex items-baseline gap-1'>
-            已筛选{' '}
-            <span className='text-foreground font-semibold tabular-nums'>
-              {filteredCount}
-            </span>{' '}
-            个报告
-          </span>
-          <span className='text-muted-foreground/60 text-xs'>
-            共 {totalCount} 个
-          </span>
+          {/* INT-2350：有筛选只展示一个数字（已筛选 N），无筛选展示全量（共 N），不重复同一计数 */}
+          {hasActiveFilters ? (
+            <span className='flex items-baseline gap-1'>
+              已筛选{' '}
+              <span className='text-foreground font-semibold tabular-nums'>
+                {filteredCount}
+              </span>{' '}
+              个报告
+            </span>
+          ) : (
+            <span className='flex items-baseline gap-1'>
+              共{' '}
+              <span className='text-foreground font-semibold tabular-nums'>{totalCount}</span>{' '}
+              个报告
+            </span>
+          )}
           {linkedAlgorithm && (
             <Badge variant='secondary' className='h-6 gap-1 px-2'>
               算法：{linkedAlgorithm}

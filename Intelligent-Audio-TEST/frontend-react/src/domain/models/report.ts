@@ -83,14 +83,19 @@ export interface ReportListData {
   pages: number
 }
 
-/** GET /reports/counts（report_query_sevice.get_tab_counts 返回；口径修正 2026-10-16 取消页签，改为单一列表全量分类计数） */
+/**
+ * GET /reports/tab-counts（report_query_sevice.get_tab_counts 返回；口径修正 2026-10-16 取消页签，
+ * 改为单一列表分类计数；INT-2339 起与列表同口径：keyword / favorite / deleted 任一筛选都会让计数收缩）。
+ */
 export interface ReportCounts {
   all: number
   draft: number
   published: number
   comparison: number
-  /** Benchmark 报告计数（P3-：徽章行 4 枚固定，Benchmark 分项供类型 chips/后续消费） */
-  benchmark?: number
+  /** 报告类型分项计数（task/comparison/secondary_comparison/benchmark），供 Hero 类型 chips（INT-2339 后端 types 键） */
+  types: Record<ReportType, number>
+  /** 当前用户收藏计数（随 keyword 等筛选收缩；无用户上下文时后端回 0，INT-2339 后端 favorite 键） */
+  favorite: number
 }
 
 /** GET /reports 查询（report.py ReportListQuery；favorite/deleted 直传） */

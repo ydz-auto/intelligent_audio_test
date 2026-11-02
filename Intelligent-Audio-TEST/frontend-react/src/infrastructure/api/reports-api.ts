@@ -3,7 +3,8 @@
  * 全部请求经 client.ts 统一 fetch 封装（baseURL / JWT / 错误码 / SSE 通道），端点对照
  * api_gateway 实测契约：
  *   GET  /reports                        （report_bp.py:29，ReportListQuery 全参，服务端分页）
- *   GET  /reports/tab-counts             （report_bp.py:34，{all,draft,published,comparison}）
+ *   GET  /reports/tab-counts             （report_bp.py:37，{all,draft,published,comparison,
+ *                                         types,favorite}；INT-2339 起接受 keyword/favorite/deleted）
  *   GET  /reports/{id}                   （report_bp.py:51，ReportDetailData）
  *   POST /reports/{id}/cases/search      （report_bp.py:116，ReportSearchCasesRequest）
  *   GET  /reports/{id}/cases/{caseId}/logs/download
@@ -39,6 +40,7 @@ import type {
   ReportSummary,
   ReportSummaryUpdate,
   ReportTag,
+  ReportType,
 } from '@/domain/models/report'
 import type {
   ReportCaseAverageMetric,
@@ -115,9 +117,61 @@ export async function fetchReportIdByTask(taskId: number): Promise<number | null
   }
 }
 
-/** GET /reports/tab-counts 全量分类计数（all/draft/published/comparison 四键服务端聚合） */
-export async function fetchReportCounts(): Promise<ReportCounts> {
-  return request<ReportCounts>('GET', '/reports/tab-counts')
+/**
+ * GET /reports/tab-counts 计数筛选入参（INT-2339：与列表同口径，随筛选收缩）。
+ * 只有 keyword / favorite / deleted 三个维度；status / report_type 属 Tab 自身维度，
+ * 后端禁止作为计数入参（否则草稿 Tab 恒 0），前端同样不传。
+ */
+export interface ReportCountsQuery {
+  keyword?: string
+  favorite?: boolean
+  deleted?: boolean
+}
+
+/** tab-counts 原始响应（四键沿用旧契约 + INT-2339 新增 types / favorite） */
+interface ReportCountsRaw {
+  all?: number
+  draft?: number
+  published?: number
+  comparison?: number
+  types?: Partial<Record<ReportType, number>>
+  favorite?: number
+}
+
+/** 原始响应 → 域模型：单键缺失/非法降级 0（后端 RPC 失败时同样回全 0） */
+function toReportCounts(raw: ReportCountsRaw | null | undefined): ReportCounts {
+  const types = raw?.types ?? {}
+  return {
+    all: num(raw?.all) ?? 0,
+    draft: num(raw?.draft) ?? 0,
+    published: num(raw?.published) ?? 0,
+    comparison: num(raw?.comparison) ?? 0,
+    types: {
+      task: num(types.task) ?? 0,
+      comparison: num(types.comparison) ?? 0,
+      secondary_comparison: num(types.secondary_comparison) ?? 0,
+      benchmark: num(types.benchmark) ?? 0,
+    },
+    favorite: num(raw?.favorite) ?? 0,
+  }
+}
+
+/**
+ * GET /reports/tab-counts 计数（all/draft/published/comparison + 类型分项 types + 收藏 favorite）。
+ * INT-2339：带当前筛选维度（keyword / favorite / deleted），与列表同口径收缩；
+ * 同参数可复用于「报告统计」页（不传 = 全量活跃口径）。
+ */
+export async function fetchReportCounts(
+  query: ReportCountsQuery = {}
+): Promise<ReportCounts> {
+  const raw = await request<ReportCountsRaw>('GET', '/reports/tab-counts', undefined, {
+    params: {
+      keyword: query.keyword || undefined,
+      favorite: query.favorite ?? false,
+      deleted: query.deleted ?? false,
+    },
+  })
+  return toReportCounts(raw)
 }
 
 /**
@@ -164,33 +218,6 @@ interface TaskOptionRaw {
   completed_at?: string
   updated_at?: string
   config?: { task_type?: string }
-}
-
-/** Hero 类型 chips / 收藏计数（全量非回收站项；按 type 客户端聚合，供类型筛选 chips 消费） */
-export async function fetchReportTypeCounts(): Promise<{
-  typeCounts: Record<string, number>
-  favoriteCount: number
-}> {
-  const data = await fetchReportList({
-    page: 1,
-    per_page: 1000,
-    sort_by: 'created_at',
-    order: 'desc',
-    favorite: false,
-    deleted: false,
-  })
-  const items = data.items
-  const count = (type: string) => items.filter((i) => i.type === type).length
-  return {
-    typeCounts: {
-      all: items.length,
-      task: count('task'),
-      comparison: count('comparison'),
-      secondary_comparison: count('secondary_comparison'),
-      benchmark: count('benchmark'),
-    },
-    favoriteCount: items.filter((i) => i.is_favorite).length,
-  }
 }
 
 /** GET /reports/{id} 报告详情（404/非法 id → 页面按 ApiError.httpStatus=404 分叉「报告不存在」） */

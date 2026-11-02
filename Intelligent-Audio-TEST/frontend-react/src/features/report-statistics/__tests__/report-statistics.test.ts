@@ -10,7 +10,14 @@ import type { ReportCaseAveragesData } from '@/domain/models/report-statistics'
 import { toReportStatisticsData, type StatisticsTimeRange } from '@/application/report-statistics/use-report-statistics'
 import { STATISTIC_TABS, STATISTIC_DIMENSIONS } from '@/features/report-statistics/constants'
 
-const counts: ReportCounts = { all: 42, draft: 8, published: 34, comparison: 5, benchmark: 0 }
+const counts: ReportCounts = {
+  all: 42,
+  draft: 8,
+  published: 34,
+  comparison: 5,
+  types: { task: 37, comparison: 3, secondary_comparison: 2, benchmark: 0 },
+  favorite: 0,
+}
 
 const reports: ReportListItem[] = [
   {

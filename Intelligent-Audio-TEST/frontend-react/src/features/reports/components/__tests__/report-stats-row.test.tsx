@@ -14,6 +14,8 @@ const counts: ReportCounts = {
   published: 30,
   draft: 10,
   comparison: 2,
+  types: { task: 38, comparison: 2, secondary_comparison: 2, benchmark: 0 },
+  favorite: 0,
 }
 
 describe('ReportStatsRow', () => {

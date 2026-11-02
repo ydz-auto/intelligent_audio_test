@@ -76,7 +76,7 @@ export function ReportHero({
             报告中心
           </Badge>
           <h1 className='max-w-2xl text-3xl leading-tight font-semibold tracking-tight sm:text-4xl'>
-            浏览测试报告，按任务与算法检索
+            浏览测试报告，按名称与描述检索
           </h1>
           <p className='text-muted-foreground mt-4 text-sm leading-7'>
             共 {totalReports} 个报告，其中草稿 {draftCount} 个、已发布 {publishedCount} 个
@@ -87,7 +87,7 @@ export function ReportHero({
             value={search}
             onChange={onSearchChange}
             onClear={() => onSearchChange('')}
-            placeholder='搜索报告名称、任务或算法...'
+            placeholder='搜索报告名称或描述...'
           />
           <p className='text-muted-foreground mt-3 text-xs leading-6'>
             报告为任务执行结果的落库快照，支持对比、导出与发布。

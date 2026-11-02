@@ -36,7 +36,11 @@ interface ReportsTableProps {
   isLoading?: boolean
   /** 列表加载失败（P2-18：错误态「加载失败/请重试」，不得落「暂无报告」误导） */
   hasError?: boolean
-  totalCount: number
+  /**
+   * 是否处于筛选态（INT-2350 空态判别）：只看筛选状态，不看计数——
+   * 计数自 INT-2339 起随关键字收缩，用计数判「无命中」会恒落「暂无报告」。
+   */
+  hasActiveFilters: boolean
   trashMode: boolean
   selectedIds: number[]
   onToggleRow: (id: number) => void
@@ -54,7 +58,7 @@ export function ReportsTable({
   items,
   isLoading,
   hasError,
-  totalCount,
+  hasActiveFilters,
   trashMode,
   selectedIds,
   onToggleRow,
@@ -110,14 +114,14 @@ export function ReportsTable({
             <ArrowUpDown className='size-4' />
           </EmptyMedia>
           <EmptyTitle>
-            {trashMode ? '回收站是空的' : totalCount === 0 ? '暂无报告' : '未找到匹配报告'}
+            {trashMode ? '回收站是空的' : hasActiveFilters ? '未找到匹配报告' : '暂无报告'}
           </EmptyTitle>
           <EmptyDescription>
             {trashMode
               ? '删除的报告会保留在这里，可恢复或彻底删除'
-              : totalCount === 0
-                ? '测试任务执行完成后生成的报告将在此展示'
-                : '换个关键词或清除筛选条件试试'}
+              : hasActiveFilters
+                ? '试试其他关键字'
+                : '测试任务执行完成后生成的报告将在此展示'}
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>

@@ -1,7 +1,8 @@
 /**
  * INT-500 v2.9 报告类型 benchmark 落位测试（接线卡 INT-643 后不再读 mock 常量）：
- * 常量 chips/徽标含「Benchmark 报告」；fetchReportTypeCounts / fetchBenchmarkReports
- * 经 mock fetch 断言真实端点契约（report_type=benchmark 过滤 + 类型聚合计数）。
+ * 常量 chips/徽标含「Benchmark 报告」；类型 chips 计数改读
+ * GET /reports/tab-counts 的 types（INT-2339/INT-2350，取消 /reports 客户端聚合）；
+ * fetchBenchmarkReports 仍经 report_type=benchmark 过滤。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -11,7 +12,7 @@ import {
 } from '@/features/reports/constants'
 import {
   fetchBenchmarkReports,
-  fetchReportTypeCounts,
+  fetchReportCounts,
 } from '@/infrastructure/api/reports-api'
 import { API_BASE_URL, setSessionExpiredHandler } from '@/infrastructure/api/client'
 import { authTokenStore } from '@/infrastructure/storage/auth-token'
@@ -89,18 +90,30 @@ describe('INT-500 报告类型 benchmark 落位', () => {
     expect(REPORT_TYPE_META.secondary_comparison.label).toBe('二次对比')
   })
 
-  it('fetchReportTypeCounts：GET /reports 全量后按 type 聚合 benchmark 计数', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(LIST_DATA))
-    const counts = await fetchReportTypeCounts()
-    expect(counts.typeCounts.benchmark).toBe(1)
-    expect(counts.typeCounts.all).toBe(2)
-    expect(counts.typeCounts.task).toBe(1)
-    expect(counts.favoriteCount).toBe(1)
+  it('fetchReportCounts：读 tab-counts 后端 types/收藏计数，不再拉 /reports 聚合', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        success: true,
+        code: 0,
+        data: {
+          all: 2,
+          draft: 0,
+          published: 2,
+          comparison: 0,
+          types: { task: 1, comparison: 0, secondary_comparison: 0, benchmark: 1 },
+          favorite: 1,
+        },
+      })
+    )
+    const counts = await fetchReportCounts()
+    expect(counts.all).toBe(2)
+    expect(counts.types.benchmark).toBe(1)
+    expect(counts.types.task).toBe(1)
+    expect(counts.favorite).toBe(1)
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toContain(`${API_BASE_URL}/reports`)
-    const query = new URLSearchParams(url.split('?')[1])
-    expect(query.get('per_page')).toBe('1000')
+    expect(url).toContain(`${API_BASE_URL}/reports/tab-counts`)
+    expect(url).not.toContain('per_page')
     expect(init.method).toBe('GET')
   })
 

@@ -30,7 +30,14 @@ const deletedTaskReport = report({ id: 566, task_id: 527, task_name: '' })
 const aliveTaskReport = report({ id: 564, task_id: 413, task_name: '环境理解小艺E2E测试任务' })
 const comparisonReport = report({ id: 567, type: 'comparison', task_id: 0, task_name: '' })
 
-const counts: ReportCounts = { all: 66, draft: 60, published: 6, comparison: 9 }
+const counts: ReportCounts = {
+  all: 66,
+  draft: 60,
+  published: 6,
+  comparison: 9,
+  types: { task: 57, comparison: 5, secondary_comparison: 4, benchmark: 0 },
+  favorite: 0,
+}
 
 const averages: ReportCaseAveragesData = {
   totalCases: 50,

@@ -111,18 +111,66 @@ describe('reports 域 API 真实端点', () => {
     expect(init.method).toBe('GET')
   })
 
-  it('fetchReportCounts：GET /reports/tab-counts 返回四键计数', async () => {
+  it('fetchReportCounts：GET /reports/tab-counts 带 keyword/favorite/deleted，返回 types/favorite', async () => {
     queueResponses(
       jsonResponse({
         success: true,
         code: 0,
-        data: { all: 11, draft: 3, published: 8, comparison: 2 },
+        data: {
+          all: 11,
+          draft: 3,
+          published: 8,
+          comparison: 2,
+          types: { task: 9, comparison: 1, secondary_comparison: 1, benchmark: 1 },
+          favorite: 4,
+        },
+      })
+    )
+    const counts = await fetchReportCounts({
+      keyword: '回归',
+      favorite: false,
+      deleted: false,
+    })
+    expect(counts).toEqual({
+      all: 11,
+      draft: 3,
+      published: 8,
+      comparison: 2,
+      types: { task: 9, comparison: 1, secondary_comparison: 1, benchmark: 1 },
+      favorite: 4,
+    })
+    const [url] = fetchMock.mock.calls[0] as [string]
+    const query = new URLSearchParams(url.split('?')[1])
+    expect(url).toContain(`${API_BASE_URL}/reports/tab-counts`)
+    expect(query.get('keyword')).toBe('回归')
+    expect(query.get('favorite')).toBe('false')
+    expect(query.get('deleted')).toBe('false')
+    // status / report_type 属 Tab 自身维度，不得作为计数入参
+    expect(query.get('status')).toBeNull()
+    expect(query.get('report_type')).toBeNull()
+  })
+
+  it('fetchReportCounts：缺 types/favorite 或非法值时降级 0（全 0 降级兜底）', async () => {
+    queueResponses(
+      jsonResponse({
+        success: true,
+        code: 0,
+        data: { all: 5, draft: 1, published: 4, comparison: 0 },
       })
     )
     const counts = await fetchReportCounts()
-    expect(counts).toEqual({ all: 11, draft: 3, published: 8, comparison: 2 })
+    expect(counts.types).toEqual({
+      task: 0,
+      comparison: 0,
+      secondary_comparison: 0,
+      benchmark: 0,
+    })
+    expect(counts.favorite).toBe(0)
     const [url] = fetchMock.mock.calls[0] as [string]
-    expect(url).toBe(`${API_BASE_URL}/reports/tab-counts`)
+    const query = new URLSearchParams(url.split('?')[1])
+    expect(query.get('keyword')).toBeNull()
+    expect(query.get('favorite')).toBe('false')
+    expect(query.get('deleted')).toBe('false')
   })
 
   it('fetchReportDetail：GET /reports/{id} 返回详情', async () => {

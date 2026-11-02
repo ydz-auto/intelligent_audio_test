@@ -84,7 +84,7 @@ export function ReportStatsRow({
             type='button'
             onClick={() => onQuickFilter(badge.kind)}
             aria-pressed={active}
-            title='统计为全量报告计数，点击徽章快速筛选'
+            title='统计随当前关键词/收藏/回收站筛选收缩，点击徽章快速筛选'
             className={cn(
               'border-border/60 bg-muted/25 hover:bg-muted/50 inline-flex h-7 items-center gap-2 rounded-md border px-2.5 text-xs shadow-xs transition-colors',
               active && 'bg-accent text-foreground'

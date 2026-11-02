@@ -39,7 +39,8 @@ interface ReportCardGridProps {
   items: ReportListItem[]
   isLoading?: boolean
   hasError?: boolean
-  totalCount?: number
+  /** 是否处于筛选态（INT-2350 空态判别；不用计数——计数随关键字收缩，会恒落「暂无报告」） */
+  hasActiveFilters?: boolean
   trashMode: boolean
   hasPermission: (permission: string) => boolean
   onRowAction: (report: ReportListItem, action: ReportRowAction) => void
@@ -54,7 +55,7 @@ export function ReportCardGrid({
   items,
   isLoading,
   hasError,
-  totalCount = 0,
+  hasActiveFilters = false,
   trashMode,
   hasPermission,
   onRowAction,
@@ -105,14 +106,14 @@ export function ReportCardGrid({
             <LayoutGrid className='size-4' />
           </EmptyMedia>
           <EmptyTitle>
-            {trashMode ? '回收站是空的' : totalCount === 0 ? '暂无报告' : '未找到匹配报告'}
+            {trashMode ? '回收站是空的' : hasActiveFilters ? '未找到匹配报告' : '暂无报告'}
           </EmptyTitle>
           <EmptyDescription>
             {trashMode
               ? '删除的报告会保留在这里，可恢复或彻底删除'
-              : totalCount === 0
-                ? '测试任务执行完成后生成的报告将在此展示'
-                : '换个关键词或清除筛选条件试试'}
+              : hasActiveFilters
+                ? '试试其他关键字'
+                : '测试任务执行完成后生成的报告将在此展示'}
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
