@@ -66,6 +66,7 @@ class ListReportsQuery:
         report_types: 可选类型集合过滤（IN 口径；INT-280 对比视图多类型下发，
             None/空集合不过滤）
         task_id: 可选任务 ID 精确过滤（INT-262：按任务查报告）
+        search: 可选关键字（INT-2329：报告名称/描述模糊匹配，忽略大小写）
         page: 页码（从 1 开始）
         page_size: 每页数量
         favorite: 可选（INT-141）仅当前用户收藏（user_id 来自 x-user-id metadata）
@@ -75,6 +76,7 @@ class ListReportsQuery:
     status: Optional[str] = None
     report_types: Optional[List[str]] = None
     task_id: Optional[int] = None
+    search: Optional[str] = None
     page: int = 1
     page_size: int = 20
     favorite: bool = False

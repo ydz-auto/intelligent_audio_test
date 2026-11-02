@@ -28,6 +28,23 @@ from report_service.infrastructure.persistence._report_converters import (
 )
 
 
+def _search_like_pattern(keyword: Optional[str]) -> Optional[str]:
+    """搜索关键字 → 安全 LIKE 模式（INT-2329）；空串/纯空白返回 None（不过滤）。
+
+    转义顺序须先反斜杠再 % / _，否则已插入的转义符会被二次转义
+    （对齐 shared.utils.query_utils.escape_like_pattern 的意图，但修正其顺序）。
+    """
+    from shared.utils.query_utils import sanitize_keyword
+
+    keyword = sanitize_keyword(keyword)
+    if not keyword:
+        return None
+    escaped = (keyword.replace('\\', '\\\\')
+               .replace('%', '\\%')
+               .replace('_', '\\_'))
+    return f'%{escaped}%'
+
+
 def _brief_name(name, analysis) -> str:
     """列表摘要报告名：PO.name 优先，空则回退 analysis(JSON).name。
 
@@ -115,6 +132,7 @@ class ReportQueryMixin:
         status: Optional[str] = None,
         report_types: Optional[List[str]] = None,
         task_id: Optional[int] = None,
+        search: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
         favorite: bool = False,
@@ -128,6 +146,8 @@ class ReportQueryMixin:
             report_types: 可选类型集合过滤（IN 口径，INT-280 对比视图多类型；
                 空集合或 None 不过滤）
             task_id: 可选任务 ID 精确过滤（INT-262）
+            search: 可选关键字（INT-2329：报告名称/描述模糊匹配，忽略大小写；
+                空白不过滤）
             page: 页码（从 1 开始）
             page_size: 每页数量
             favorite: 可选（INT-141）仅当前用户收藏
@@ -137,7 +157,7 @@ class ReportQueryMixin:
         Returns:
             聚合根列表（不含子实体集合）。
         """
-        from sqlalchemy import select as sa_select, cast as sa_cast, String
+        from sqlalchemy import select as sa_select, cast as sa_cast, String, or_
         from shared.models.common_enums import EntityType
 
         session = get_db_session()
@@ -156,6 +176,13 @@ class ReportQueryMixin:
             query = query.filter(self.PO_CLASS.type.in_(report_types))
         if task_id:
             query = query.filter(self.PO_CLASS.task_id == task_id)
+        pattern = _search_like_pattern(search)
+        if pattern:
+            # INT-2329：名称/描述关键字模糊匹配（与服务端 count_reports 同口径）
+            query = query.filter(or_(
+                self.PO_CLASS.name.ilike(pattern, escape='\\'),
+                self.PO_CLASS.description.ilike(pattern, escape='\\'),
+            ))
         if favorite:
             from report_service.infrastructure.persistence.models import ReportFavorite
             if not user_id:
@@ -241,6 +268,7 @@ class ReportQueryMixin:
         status: Optional[str] = None,
         report_types: Optional[List[str]] = None,
         task_id: Optional[int] = None,
+        search: Optional[str] = None,
         favorite: bool = False,
         deleted: bool = False,
         user_id: Optional[int] = None,
@@ -248,12 +276,13 @@ class ReportQueryMixin:
         """按 list_reports 同一套过滤条件计数（INT-297：分页信封补 total/pages）。
 
         Args:
-            status/report_types/task_id/favorite/deleted/user_id: 与 list_reports 口径一致。
+            status/report_types/task_id/search/favorite/deleted/user_id:
+                与 list_reports 口径一致（search 见 INT-2329）。
 
         Returns:
             满足过滤条件的报告总数。
         """
-        from sqlalchemy import select as sa_select, cast as sa_cast, String
+        from sqlalchemy import select as sa_select, cast as sa_cast, String, or_
         from shared.models.common_enums import EntityType
 
         session = get_db_session()
@@ -272,6 +301,13 @@ class ReportQueryMixin:
             query = query.filter(self.PO_CLASS.type.in_(report_types))
         if task_id:
             query = query.filter(self.PO_CLASS.task_id == task_id)
+        pattern = _search_like_pattern(search)
+        if pattern:
+            # INT-2329：与 list_reports 同一套名称/描述关键字匹配
+            query = query.filter(or_(
+                self.PO_CLASS.name.ilike(pattern, escape='\\'),
+                self.PO_CLASS.description.ilike(pattern, escape='\\'),
+            ))
         if favorite:
             from report_service.infrastructure.persistence.models import ReportFavorite
             if not user_id:

@@ -220,6 +220,7 @@ def delete_report(report_id: int):
 def list_reports(
     status: Optional[str] = Query(None),
     task_id: Optional[int] = Query(None),
+    search: Optional[str] = None,
     page: int = Query(1),
     page_size: int = Query(20),
 ):
@@ -229,6 +230,7 @@ def list_reports(
         status:     str  可选状态过滤
         task_id:    int  可选任务 ID 精确过滤（INT-262：只返回该任务报告，
                          任务无报告时返回空列表而非全量）
+        search:     str  可选关键字（INT-2329：报告名称/描述模糊匹配）
         page:       int  页码（默认 1）
         page_size:  int  每页数量（默认 20）
     """
@@ -236,6 +238,7 @@ def list_reports(
         query = ListReportsQuery(
             status=status,
             task_id=task_id,
+            search=search,
             page=page,
             page_size=page_size,
         )

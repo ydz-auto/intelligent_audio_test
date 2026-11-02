@@ -55,6 +55,8 @@ class ReportRepositoryABC(ABC):
         self,
         status: Optional[str] = None,
         report_types: Optional[List[str]] = None,
+        task_id: Optional[int] = None,
+        search: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> List['ReportAggregate']:
@@ -63,6 +65,8 @@ class ReportRepositoryABC(ABC):
         Args:
             status: 可选状态过滤（draft / published）
             report_types: 可选类型集合过滤（IN 口径，INT-280；None/空不过滤）
+            task_id: 可选任务 ID 精确过滤（INT-262）
+            search: 可选关键字（INT-2329：报告名称/描述模糊匹配，忽略大小写）
             page: 页码（从 1 开始）
             page_size: 每页数量
 
@@ -76,6 +80,7 @@ class ReportRepositoryABC(ABC):
         status: Optional[str] = None,
         report_types: Optional[List[str]] = None,
         task_id: Optional[int] = None,
+        search: Optional[str] = None,
         favorite: bool = False,
         deleted: bool = False,
         user_id: Optional[int] = None,

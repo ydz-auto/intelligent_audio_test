@@ -584,6 +584,7 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 status=getattr(request, 'status', None) or None,
                 report_types=split_report_types(getattr(request, 'report_type', '') or ''),
                 task_id=getattr(request, 'task_id', 0) or None,
+                search=getattr(request, 'search', '') or None,
                 page=getattr(request, 'page', None) or 1,
                 page_size=getattr(request, 'per_page', None) or 20,
                 favorite=getattr(request, 'favorite', False),
