@@ -115,6 +115,28 @@ python scripts/migrations/202610/sweep_report_case_snapshots_int1995.py --apply 
 3. **验证结果**：`python scripts/migrations/202608/add_audit_columns.py --dry-run` 输出"所有表均已包含审计列，无需迁移"即结构完整。
 4. 部分脚本用法特殊：`fix_partial_unique_indexes.py` 默认 dry-run，需 `--apply` 才真正执行；`add_laboratory_tables.py` / `seed_rbac.py` 支持 `--dry-run` / `--step N`。
 
+## 生产环境（`DB_BOOTSTRAP_PROFILE=prod`）
+
+`docker/db_bootstrap_entrypoint.py` 默认是 dev 口径（完整引导链，含所有 `seed_*` 与数据迁移）。**生产禁止直接使用默认档**：
+
+- 生产库的算法参数、评估参数、设备参数与映射是金标，不允许被 seed 或数据迁移改写；
+- 用 `DB_BOOTSTRAP_PROFILE=prod` 只执行结构 DDL 白名单（默认拒绝，未列入的步骤一律跳过）：
+
+  ```bash
+  DB_BOOTSTRAP_PROFILE=prod DATABASE_URI=... python docker/db_bootstrap_entrypoint.py
+  ```
+
+- `add_param_profiles_scope.py` 在 prod 档自动降级为 `--apply --ddl-only`（只建表/索引、补 `deleted` 默认值，不搬数据、不软删算法级行、不回填绑定）；
+- 以下脚本在 prod 档**永不执行**，需要时由 DBA 在变更窗口单独评估后手工执行：
+  `seed_rbac`、全部 `seed_*`、`fix_voice_llm_reference_params_definitions`、
+  `backfill_result_type_channel_*`、`migrate_device_params_to_profiles`、
+  `associate_devices_to_default_lab`、`seed_playback_speaker_groups`、
+  `normalize_report_status_int2238`、`restore_api_algorithm_level`；
+- 也可沿用 `docker-compose.simprod.yml` 的 `db_bootstrap: command: ["true"]` 整体关闭，
+  再由变更窗口单独跑 prod 档；
+- 部署前后各做一次有效行数/内容比对：`algorithm_api_params`、`param_mappings`、
+  `algorithm_device_params` 应保持不变（只允许新增空表/列/索引）。
+
 ## 脚本明细
 
 ### 202608 — 结构基线与软删除改造

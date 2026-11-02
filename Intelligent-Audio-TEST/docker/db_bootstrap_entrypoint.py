@@ -14,6 +14,14 @@
 种子/迁移脚本以子进程运行（与 README 手工口径 1:1，脚本各自处理幂等与输出）；
 连接串统一经 DATABASE_URI 环境变量注入（compose 设置）。
 
+档位（``DB_BOOTSTRAP_PROFILE``）：
+    - ``dev``（默认）：跑完整引导链（含 seed / 数据迁移），用于开发与演示环境；
+    - ``prod``：**只跑结构 DDL**（``PROD_DDL_SCRIPTS`` 白名单，默认拒绝），
+      seed / 数据迁移全部跳过——生产库的算法参数、评估参数、设备参数与映射
+      是金标，不允许被迁移脚本改写。生产形态也可整体关闭 bootstrap
+      （见 ``docker-compose.simprod.yml`` 的 ``command: ["true"]``），由变更
+      窗口单独执行本入口的 prod 档。
+
 INT-1652（DDL 锁预算）：本入口给每个子进程注入 PGOPTIONS，让它们建立的**每一条**
 数据库连接（psycopg2 与 SQLAlchemy/psycopg2 底层同是 libpq）在会话级带上：
     lock_timeout                       —— DDL 等锁上限（默认 5s），不再无限等
@@ -395,6 +403,90 @@ BOOTSTRAP_STEPS = [
 ]
 
 
+# ===== 生产口径（DB_BOOTSTRAP_PROFILE=prod）=====
+# 生产库的算法参数 / 评估参数 / 设备参数 / 映射是金标，**不允许由 seed 或数据迁移
+# 改写**。prod 只跑结构 DDL，默认拒绝：未列入本集合的步骤一律跳过，避免以后新增
+# 的 seed 脚本「默认就跑进生产」。
+PROD_DDL_SCRIPTS = frozenset({
+    'scripts/create_all_tables.py',
+    'scripts/migrations/202608/remove_foreign_keys_and_soft_delete.py',
+    'scripts/migrations/202608/add_audit_columns.py',
+    'scripts/migrations/202608/add_reevaluated_at.py',
+    'scripts/migrations/202608/add_laboratory_tables.py',
+    'scripts/migrations/202609/add_pass_threshold_to_eval_params.py',
+    'scripts/migrations/202609/add_task_case_device_type.py',
+    'scripts/migrations/202609/add_published_tasks.py',
+    'scripts/migrations/202609/add_dimension_sort_order.py',
+    'scripts/migrations/202609/add_agg_denominator_column.py',
+    'scripts/migrations/202609/add_exclude_rounds_column.py',
+    'scripts/migrations/202609/add_worker_instance_id.py',
+    'scripts/migrations/202610/add_timestamp_db_defaults.py',
+    'scripts/migrations/202610/add_benchmark_tables.py',
+    'scripts/migrations/202610/fix_leftover_foreign_keys_and_indexes.py',
+    'scripts/migrations/202610/add_api_rms_spl_mappings.py',
+    'scripts/migrations/202610/add_api_output_types.py',
+    'scripts/migrations/202610/add_api_device_adapter_columns.py',
+    'scripts/migrations/202610/fix_users_schema_drift.py',
+    'scripts/migrations/202610/add_user_oauth_bindings.py',
+    'scripts/migrations/202610/add_access_tokens_table.py',
+    'scripts/migrations/202610/add_operator_columns_int299.py',
+    'scripts/migrations/202610/add_trash_operator_and_favorites.py',
+    'scripts/migrations/202610/add_published_task_type_algorithm_type.py',
+    'scripts/migrations/202610/add_uq_task_case_route_int604.py',
+    'scripts/migrations/202610/add_report_export_records_int1555.py',
+    'scripts/migrations/202610/add_transfer_agent_tables_int1623.py',
+    'scripts/migrations/202610/add_device_kind_int1679.py',
+    'scripts/migrations/202610/add_test_result_result_type_int1510.py',
+    'scripts/migrations/202610/add_api_protocol_streaming_int1798.py',
+    'scripts/migrations/202610/add_pg_stat_statements_int1783.py',
+    'scripts/migrations/202610/add_api_param_field_path_int1747.py',
+    'scripts/migrations/202610/add_api_id_scope_int1751.py',
+    'scripts/migrations/202610/add_data_transfer_source_maps_int1760.py',
+    'scripts/migrations/202610/drop_redundant_indexes_int1784.py',
+    'scripts/migrations/202610/alter_report_studio_sources.py',
+    'scripts/migrations/202610/add_raw_payload_pointers_int1807.py',
+    'scripts/migrations/202610/add_merge_snapshots_int1762.py',
+    'scripts/migrations/202610/add_report_case_snapshots_int1994.py',
+    'scripts/migrations/202610/drop_published_task_type_and_case_derived_test_type.py',
+    'scripts/migrations/202610/widen_case_param_scope_to_device_type.py',
+    'scripts/migrations/202611/add_device_id_scope.py',
+    'scripts/migrations/202611/add_device_param_bindings.py',
+    'scripts/migrations/202611/add_audios_md5_filepath_index.py',
+    'scripts/migrations/202611/add_param_change_history.py',
+    'scripts/migrations/202610/analyze_stale_statistics_int1741.py',
+})
+
+# 生产口径下个别脚本要换参数：只建结构、不搬数据。
+PROD_STEP_ARGS = {
+    'scripts/migrations/202610/add_param_profiles_scope.py': ('--apply', '--ddl-only'),
+}
+# 允许以「改参数」形式进入 prod 的脚本（本身仍是白名单的一部分）。
+PROD_DDL_SCRIPTS = PROD_DDL_SCRIPTS | frozenset(PROD_STEP_ARGS)
+
+
+def bootstrap_profile():
+    """引导档位：dev（默认，全链） / prod（仅结构 DDL）。"""
+    return (os.environ.get('DB_BOOTSTRAP_PROFILE') or 'dev').strip().lower()
+
+
+def select_steps():
+    """按档位筛选引导步骤。
+
+    prod 为**默认拒绝**：只有 PROD_DDL_SCRIPTS 里的结构步骤会执行，seed /
+    数据迁移 / 回填一律跳过；需要时由 DBA 在变更窗口手工执行。
+    """
+    if bootstrap_profile() != 'prod':
+        return list(BOOTSTRAP_STEPS)
+    steps = []
+    for step in BOOTSTRAP_STEPS:
+        script = step[1]
+        if script not in PROD_DDL_SCRIPTS:
+            continue
+        args = PROD_STEP_ARGS.get(script, tuple(step[2:]))
+        steps.append((step[0], script) + tuple(args))
+    return steps
+
+
 def _prepare_env(budget):
     """子进程环境：库连接串映射 + OSS 兜底凭据 + 锁预算 PGOPTIONS。"""
     env = os.environ.copy()
@@ -587,9 +679,14 @@ def main():
           f"statement_timeout={budget['statement_timeout_ms']}ms "
           f"idle_in_transaction_session_timeout={budget['idle_in_tx_timeout_ms']}ms "
           f"单步时限={budget['step_timeout_s']}s", flush=True)
+    steps = select_steps()
+    profile = bootstrap_profile()
+    print(f"[BOOTSTRAP] profile={profile}：执行 {len(steps)} 个步骤"
+          f"（引导链共 {len(BOOTSTRAP_STEPS)} 个，跳过 {len(BOOTSTRAP_STEPS) - len(steps)} 个）",
+          flush=True)
     # 交互式确认类 seed 脚本（202609 seed_voice_llm 等 6 个的 input() 提示）：
     # stdin 预喂 y 逐条确认（脚本幂等，重复执行安全）。
-    confirmations = ['y'] * len(BOOTSTRAP_STEPS)
+    confirmations = ['y'] * len(steps)
     # 脚本以「仓库根」为 cwd 运行（README 手工口径：python scripts/migrations/...）。
     # BOOTSTRAP_STEPS 的路径自带 scripts/ 前缀，故 script_root 必须是仓库根：
     #   - 卷挂载形态：scripts/ 挂在 /opt/scripts → 取其父目录 /opt 为根；
@@ -600,7 +697,7 @@ def main():
         script_root = os.path.dirname(SCRIPTS)
     else:
         script_root = APP_ROOT
-    for step in BOOTSTRAP_STEPS:
+    for step in steps:
         script = step[1]
         if not os.path.isfile(os.path.join(script_root, script)):
             print(f"[BOOTSTRAP] [SKIP] 脚本不存在: {script}", flush=True)

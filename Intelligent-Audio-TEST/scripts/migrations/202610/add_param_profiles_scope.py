@@ -299,7 +299,12 @@ def _print_counts(conn):
                 print(f"[state] {label}: 跳过（{exc.__class__.__name__}）")
 
 
-def apply(conn):
+def apply(conn, ddl_only=False):
+    """执行迁移；``ddl_only=True`` 只建表/索引/补 deleted 默认值，不搬数据。
+
+    生产环境用 ``--ddl-only``：生产库的算法参数 / 策略绑定是金标，不能被迁移
+    脚本软删或回填；只允许补齐结构。
+    """
     with conn.cursor() as cur:
         cur.execute(f"SET lock_timeout = '{LOCK_TIMEOUT}'")
         apis_exists = _apis_exists(cur)
@@ -317,6 +322,11 @@ def apply(conn):
                 repaired += max(cur.rowcount, 0)
         print(f"[ok] 存量修复：四张表 deleted 列默认值=false；"
               f"NULL → false 共 {repaired} 行（幂等，再次执行命中 0 行）")
+
+        if ddl_only:
+            print('[ok] --ddl-only：跳过默认层搬迁 / 绑定回填 / 算法级行软删（生产口径）')
+            conn.commit()
+            return
 
         cur.execute(_COLLECT_TYPES_SQL)
         types = [row[0] for row in cur.fetchall()]
@@ -368,6 +378,8 @@ def main():
     parser = argparse.ArgumentParser(description='参数策略迁移（dry-run 默认）')
     parser.add_argument('--apply', action='store_true', help='执行迁移')
     parser.add_argument('--rollback', action='store_true', help='回滚结构')
+    parser.add_argument('--ddl-only', action='store_true',
+                        help='只建表/索引/补 deleted 默认值，不搬数据（生产口径）')
     args = parser.parse_args()
 
     conn = _connect()
@@ -379,7 +391,7 @@ def main():
         if not args.apply:
             print('[dry-run] 未修改数据库；加 --apply 执行')
             return
-        apply(conn)
+        apply(conn, ddl_only=args.ddl_only)
     finally:
         conn.close()
 
