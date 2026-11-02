@@ -326,3 +326,49 @@ class TestReportSearchHttpRoute:
         resp_all = list_reports(status=None, task_id=None, search=None,
                                 page=1, page_size=20)
         assert resp_all['data']['total'] == 2
+
+
+class TestTabCountsSameSearchScope:
+    """INT-2339：Tab / 类型 / 收藏计数与列表关键字同口径。"""
+
+    def test_tab_all_matches_list_total_for_keyword(self, report_tables):
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        _make_report('INT2339_Tab_话轮接管')
+        _make_report('INT2339_Tab_其他')
+
+        counts = report_repository.count_reports_by_tabs(search='话轮接管')
+        assert counts['all'] == 1
+        assert counts['all'] == report_repository.count_reports(search='话轮接管')
+        assert counts['all'] == len(report_repository.list_reports(
+            search='话轮接管', page=1, page_size=20))
+
+    def test_tab_counts_match_analysis_display_name(self, report_tables):
+        """生成报告只写 analysis(JSON) 的展示名，计数也须命中（与列表同口径）。"""
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        _make_analysis_report(
+            '', task_id=460,
+            analysis_name='全类型覆盖报告_task460_20261031-100112')
+        _make_report('INT2339_Tab_物理列报告')
+
+        counts = report_repository.count_reports_by_tabs(search='全类型覆盖')
+        assert counts['all'] == 1
+        assert counts['types'] == {'task': 1, 'comparison': 0,
+                                   'secondary_comparison': 0, 'benchmark': 0}
+
+    def test_tab_counts_without_keyword_keep_full(self, report_tables):
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        _make_report('INT2339_Tab_全量A')
+        _make_report('INT2339_Tab_全量B')
+
+        assert report_repository.count_reports_by_tabs(search='')['all'] == 2
+        assert report_repository.count_reports_by_tabs(search='   ')['all'] == 2
+        assert report_repository.count_reports_by_tabs()['all'] == 2

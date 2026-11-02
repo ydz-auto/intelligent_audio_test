@@ -563,7 +563,7 @@ class ReportConfigServiceServicer:
 
     def GetStatistics(self, request, context):
         """---- 报告统计分析（INT-791：G04 报告统计分析页接真实接口）----
-        GET /reports/statistics：按维度统计（time|task_type|device_type|evaluation_metric）
+        GET /reports/statistics：按维度统计（time|device_type|evaluation_metric）
         + start_time/end_time + 可选 algorithm_type；结果含 overview/detail/chart/anomaly 四形态
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)

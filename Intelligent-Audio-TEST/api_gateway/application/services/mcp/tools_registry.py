@@ -536,8 +536,12 @@ TOOLS: List[dict] = [
 
     # report 统计/导出/分享子接口补全（INT-1150 审计打回 P3 覆盖完整性）。
     # 刻意排除：case 日志下载（logs/download，二进制流）。
-    _tool('report_tab_counts', '获取报告页签计数',
-          {}, ['report:read'], 'GET', '/api/v1/reports/tab-counts'),
+    _tool('report_tab_counts', '获取报告页签计数（与列表同口径，随关键词收缩）',
+          {'keyword': _str('关键词过滤'),
+           'favorite': _bool('仅当前用户收藏'),
+           'deleted': _bool('仅回收站（软删除项）')},
+          ['report:read'], 'GET', '/api/v1/reports/tab-counts',
+          query_params=['keyword', 'favorite', 'deleted']),
     _tool('report_export_get', '导出报告（GET）',
           {'keyword': _str('关键词过滤')},
           ['report:read'], 'GET', '/api/v1/reports/export',

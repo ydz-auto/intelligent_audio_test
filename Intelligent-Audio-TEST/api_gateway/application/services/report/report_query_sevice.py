@@ -79,22 +79,39 @@ class ReportQueryService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def get_tab_counts():
-        """四个视图 Tab 的全量计数（单次 RPC：report_service 一条条件聚合 SQL）。
+    def get_tab_counts(keyword=None, favorite=False, deleted=False):
+        """Tab / 类型 / 收藏计数（INT-2339：与列表同口径，随 keyword 收缩）。
 
         Tab → 过滤映射由 report_service 持有（all/draft/published/comparison，
         与 ReportStatus/ReportType 枚举一致）；本层只做透传，不再逐 Tab 串行
         CountReports（INT-1463：4 次 RPC 合并为 1 次）。
-        RPC 失败时四个计数全 0 降级（列表仍可用，计数不阻塞主视图）。
+        计数入参只有 keyword → proto.search、favorite、deleted；status /
+        report_type 属 Tab 自身维度，不传。
+        RPC 失败时全 0 降级（列表仍可用，计数不阻塞主视图）。
         """
-        counts = {'all': 0, 'draft': 0, 'published': 0, 'comparison': 0}
+        counts = {
+            'all': 0, 'draft': 0, 'published': 0, 'comparison': 0,
+            'types': {'task': 0, 'comparison': 0,
+                      'secondary_comparison': 0, 'benchmark': 0},
+            'favorite': 0,
+        }
         try:
             stub = report_config_service.stub
-            resp = stub.CountReportsByTabs(report_pb.CountReportsByTabsRequest())
+            resp = stub.CountReportsByTabs(report_pb.CountReportsByTabsRequest(
+                search=keyword or '',
+                favorite=bool(favorite),
+                deleted=bool(deleted),
+            ))
             if resp.success:
                 data = _loads(resp.data, {}) or {}
-                for tab in counts:
+                for tab in ('all', 'draft', 'published', 'comparison'):
                     counts[tab] = int(data.get(tab, 0) or 0)
+                types = data.get('types') or {}
+                if isinstance(types, dict):
+                    for report_type in counts['types']:
+                        counts['types'][report_type] = int(
+                            types.get(report_type, 0) or 0)
+                counts['favorite'] = int(data.get('favorite', 0) or 0)
             else:
                 logger.warning('报告 Tab 计数失败（降级为 0）: %s', resp.message)
             return success_response(counts)

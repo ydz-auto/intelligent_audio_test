@@ -521,16 +521,22 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         )
 
 
-    def handle_count_reports_by_tabs(self, deleted: bool = False) -> dict:
-        """四个视图 Tab 一次聚合计数（INT-1463：替代 4 次串行 CountReports RPC）。
+    def handle_count_reports_by_tabs(self, query) -> dict:
+        """Tab / 类型 / 收藏一次聚合计数（INT-1463；INT-2339 随筛选收缩）。
 
         Args:
-            deleted: 是否统计回收站软删除项（默认 False）
+            query: CountReportsByTabsQuery（search / favorite / deleted / user_id）
 
         Returns:
-            {'all': N, 'draft': N, 'published': N, 'comparison': N}
+            {'all': N, 'draft': N, 'published': N, 'comparison': N,
+             'types': {...}, 'favorite': N}
         """
-        return self.repository.count_reports_by_tabs(deleted=deleted)
+        return self.repository.count_reports_by_tabs(
+            search=query.search,
+            favorite=query.favorite,
+            deleted=query.deleted,
+            user_id=query.user_id,
+        )
 
 
     def handle_list_favorite_report_ids(self, user_id) -> dict:

@@ -174,7 +174,14 @@ class TestCountReportsByTabs:
 
         counts = report_repository.count_reports_by_tabs()
         # 活跃行 4 条，软删 1 条不计入
-        assert counts == {'all': 4, 'draft': 2, 'published': 2, 'comparison': 2}
+        assert counts['all'] == 4
+        assert counts['draft'] == 2
+        assert counts['published'] == 2
+        assert counts['comparison'] == 2
+        # INT-2339：类型计数四值分开，收藏数为 0（无 user_id）
+        assert counts['types'] == {'task': 2, 'comparison': 1,
+                                   'secondary_comparison': 1, 'benchmark': 0}
+        assert counts['favorite'] == 0
 
     def test_repository_matches_count_reports_per_tab(self):
         """聚合口径与 CountReports（逐 Tab）一致，防两套口径漂移。"""
@@ -204,4 +211,200 @@ class TestCountReportsByTabs:
             report_pb.CountReportsByTabsRequest(), context=None)
         assert resp.success is True
         data = grpc_loads(resp.data, {}) or {}
-        assert data == {'all': 2, 'draft': 1, 'published': 1, 'comparison': 1}
+        assert data == {
+            'all': 2, 'draft': 1, 'published': 1, 'comparison': 1,
+            'types': {'task': 1, 'comparison': 1,
+                      'secondary_comparison': 0, 'benchmark': 0},
+            'favorite': 0,
+        }
+
+
+def _make_favorite(report_id, user_id):
+    from report_service.infrastructure.persistence.models import ReportFavorite
+    session = get_db_session()
+    try:
+        session.add(ReportFavorite(user_id=user_id, entity_type='report',
+                                   entity_id=str(report_id)))
+        session.commit()
+    finally:
+        remove_db_session()
+
+
+class _FakeGrpcContext:
+    """最小 gRPC context：只提供 invocation_metadata。"""
+
+    def __init__(self, user_id=None, is_admin=False):
+        self._meta = [('x-user-is-admin', 'true' if is_admin else 'false')]
+        if user_id is not None:
+            self._meta.append(('x-user-id', str(user_id)))
+
+    def invocation_metadata(self):
+        return self._meta
+
+
+class TestCountReportsByTabsFiltered:
+    """INT-2339：Tab / 类型 / 收藏计数与列表同口径，随 keyword 收缩。"""
+
+    def setup_method(self):
+        _ensure_report_tables()
+
+    def teardown_method(self):
+        _cleanup_tables(_REPORT_TABLES)
+
+    def test_search_shrinks_tabs_and_matches_list_total(self):
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        _make_report('INT2339_话轮接管_任务报告', type_='task', status='draft')
+        _make_report('INT2339_话轮接管_对比报告', type_='comparison',
+                     status='published')
+        _make_report('INT2339_无关报告', type_='task', status='published')
+
+        counts = report_repository.count_reports_by_tabs(search='话轮接管')
+        assert counts['all'] == 2
+        assert counts['draft'] == 1
+        assert counts['published'] == 1
+        assert counts['comparison'] == 1
+        assert counts['types'] == {'task': 1, 'comparison': 1,
+                                   'secondary_comparison': 0, 'benchmark': 0}
+        # 与列表 total 同口径（INT-2339 验收第 2 条）
+        assert counts['all'] == report_repository.count_reports(search='话轮接管')
+
+    def test_types_sum_equals_all(self):
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        _make_report('INT2339_类型_task', type_='task')
+        _make_report('INT2339_类型_cmp', type_='comparison')
+        _make_report('INT2339_类型_sec', type_='secondary_comparison')
+        _make_report('INT2339_类型_bench', type_='benchmark')
+        _make_report('INT2339_类型_软删', type_='task', deleted=True)
+
+        counts = report_repository.count_reports_by_tabs()
+        assert counts['types'] == {'task': 1, 'comparison': 1,
+                                   'secondary_comparison': 1, 'benchmark': 1}
+        assert sum(counts['types'].values()) == counts['all'] == 4
+
+    def test_search_no_match_returns_all_zero(self):
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        _make_report('INT2339_存在报告')
+
+        counts = report_repository.count_reports_by_tabs(search='zzzz_no_such')
+        assert counts['all'] == counts['draft'] == counts['published'] == 0
+        assert counts['comparison'] == counts['favorite'] == 0
+        assert sum(counts['types'].values()) == 0
+
+    def test_favorite_requires_user_and_does_not_fall_back_to_full(self):
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        hit = _make_report('INT2339_收藏命中', type_='task', status='draft')
+        _make_report('INT2339_收藏无关')
+        _make_favorite(hit, 7)
+
+        # 有 user_id：收藏数与列表同口径
+        counts = report_repository.count_reports_by_tabs(search='收藏命中',
+                                                         user_id=7)
+        assert counts['all'] == 1
+        assert counts['favorite'] == 1
+
+        # favorite=True 作为入参：整组计数收窄到收藏集
+        only = report_repository.count_reports_by_tabs(favorite=True, user_id=7)
+        assert only['all'] == 1
+        assert only['favorite'] == 1
+
+        # 无 user_id：与 count_reports(favorite=True) 一致，全 0 不退回全量
+        none_user = report_repository.count_reports_by_tabs(favorite=True)
+        assert none_user['all'] == 0
+        assert none_user['favorite'] == 0
+        assert report_repository.count_reports(favorite=True) == 0
+
+    def test_favorite_count_follows_search_scope(self):
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        rid_a = _make_report('INT2339_收藏子集_甲')
+        rid_b = _make_report('INT2339_收藏子集_乙')
+        _make_favorite(rid_a, 9)
+        _make_favorite(rid_b, 9)
+        _make_report('INT2339_他人报告')
+
+        counts = report_repository.count_reports_by_tabs(search='收藏子集',
+                                                         user_id=9)
+        assert counts['all'] == 2
+        assert counts['favorite'] == 2
+
+        other_scope = report_repository.count_reports_by_tabs(search='他人',
+                                                              user_id=9)
+        assert other_scope['all'] == 1
+        assert other_scope['favorite'] == 0
+
+    def test_deleted_passthrough(self):
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        _make_report('INT2339_活跃')
+        _make_report('INT2339_回收站', deleted=True)
+
+        assert report_repository.count_reports_by_tabs()['all'] == 1
+        assert report_repository.count_reports_by_tabs(deleted=True)['all'] == 1
+
+    def test_grpc_forwards_search_favorite_and_user(self):
+        from shared.proto import report_service_pb2 as report_pb
+        from report_service.interfaces.grpc.servicers import ReportServicer
+
+        hit = _make_report('INT2339_gRPC_话轮接管')
+        _make_report('INT2339_gRPC_无关')
+        _make_favorite(hit, 7)
+
+        resp = ReportServicer().CountReportsByTabs(
+            report_pb.CountReportsByTabsRequest(search='话轮接管', favorite=True),
+            context=_FakeGrpcContext(user_id=7))
+        assert resp.success is True
+        data = grpc_loads(resp.data, {}) or {}
+        assert data['all'] == 1
+        assert data['favorite'] == 1
+        assert data['types']['task'] == 1
+
+    def test_grpc_without_params_keeps_full_counts(self):
+        from shared.proto import report_service_pb2 as report_pb
+        from report_service.interfaces.grpc.servicers import ReportServicer
+
+        _make_report('INT2339_gRPC_全量A')
+        _make_report('INT2339_gRPC_全量B')
+
+        resp = ReportServicer().CountReportsByTabs(
+            report_pb.CountReportsByTabsRequest(), context=None)
+        data = grpc_loads(resp.data, {}) or {}
+        assert data['all'] == 2
+        assert data['favorite'] == 0
+
+    def test_grpc_failure_degrades_to_zero_including_new_keys(self, monkeypatch):
+        from shared.proto import report_service_pb2 as report_pb
+        from report_service.interfaces.grpc.servicers import ReportServicer
+        from report_service.application.handlers.report_handlers import (
+            ReportQueryHandler,
+        )
+
+        def _boom(self, query):  # pragma: no cover - 触发即降级路径
+            raise RuntimeError('db down')
+
+        monkeypatch.setattr(ReportQueryHandler,
+                            'handle_count_reports_by_tabs', _boom)
+
+        resp = ReportServicer().CountReportsByTabs(
+            report_pb.CountReportsByTabsRequest(search='x'), context=None)
+        assert resp.success is False
+        data = grpc_loads(resp.data, {}) or {}
+        assert data['all'] == data['draft'] == data['published'] == 0
+        assert data['comparison'] == data['favorite'] == 0
+        assert data['types'] == {'task': 0, 'comparison': 0,
+                                 'secondary_comparison': 0, 'benchmark': 0}

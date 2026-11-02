@@ -328,7 +328,13 @@ class TestGatewayTabCounts:
         assert r.status_code == 200
         body = r.json()
         assert body['success'] is True
-        assert body['data'] == {'all': 20, 'draft': 5, 'published': 12, 'comparison': 3}
+        # 原 4 键保留不改名；INT-2339 新增 types / favorite（旧服务未返回时补 0）
+        assert body['data'] == {
+            'all': 20, 'draft': 5, 'published': 12, 'comparison': 3,
+            'types': {'task': 0, 'comparison': 0,
+                      'secondary_comparison': 0, 'benchmark': 0},
+            'favorite': 0,
+        }
         # 单次 RPC（并发/串行均只有一次调用）
         assert len(calls) == 1
 
@@ -346,7 +352,12 @@ class TestGatewayTabCounts:
         r = gw_client.get('/api/v1/reports/tab-counts')
         assert r.status_code == 200
         body = r.json()
-        assert body['data'] == {'all': 0, 'draft': 0, 'published': 0, 'comparison': 0}
+        assert body['data'] == {
+            'all': 0, 'draft': 0, 'published': 0, 'comparison': 0,
+            'types': {'task': 0, 'comparison': 0,
+                      'secondary_comparison': 0, 'benchmark': 0},
+            'favorite': 0,
+        }
 
     def test_tab_counts_grpc_failure_response_counts_zero(self, gw_client, monkeypatch):
         """RPC 返回 success=False：四 Tab 计数 0（不假成功）。"""
@@ -366,7 +377,90 @@ class TestGatewayTabCounts:
         r = gw_client.get('/api/v1/reports/tab-counts')
         assert r.status_code == 200
         body = r.json()
-        assert body['data'] == {'all': 0, 'draft': 0, 'published': 0, 'comparison': 0}
+        assert body['data'] == {
+            'all': 0, 'draft': 0, 'published': 0, 'comparison': 0,
+            'types': {'task': 0, 'comparison': 0,
+                      'secondary_comparison': 0, 'benchmark': 0},
+            'favorite': 0,
+        }
+
+
+    def test_tab_counts_forwards_keyword_as_proto_search(self, gw_client, monkeypatch):
+        """INT-2339：HTTP 参数 keyword → proto.search（禁止在 HTTP 层叫 search）。"""
+        from shared.proto import report_service_pb2 as report_pb
+
+        calls = []
+
+        def _fake_count_by_tabs(req):
+            calls.append(req)
+            return report_pb.ReportConfigResponse(
+                success=True, message='ok',
+                data=grpc_dumps({'all': 0, 'draft': 0,
+                                 'published': 0, 'comparison': 0}))
+
+        fake = _FakeStub()
+        fake.CountReportsByTabs = _fake_count_by_tabs
+        monkeypatch.setattr(report_proxies_module(), 'get_report_config_service_stub',
+                            lambda: fake)
+
+        r = gw_client.get('/api/v1/reports/tab-counts',
+                          params={'keyword': '话轮接管', 'favorite': 'true',
+                                  'deleted': 'true'})
+        assert r.status_code == 200
+        assert len(calls) == 1
+        assert calls[0].search == '话轮接管'
+        assert calls[0].favorite is True
+        assert calls[0].deleted is True
+
+    def test_tab_counts_defaults_when_no_query(self, gw_client, monkeypatch):
+        """无 keyword/favorite/deleted 时为全量口径（空 search，布尔 False）。"""
+        from shared.proto import report_service_pb2 as report_pb
+
+        calls = []
+
+        def _fake_count_by_tabs(req):
+            calls.append(req)
+            return report_pb.ReportConfigResponse(
+                success=True, message='ok', data=grpc_dumps({}))
+
+        fake = _FakeStub()
+        fake.CountReportsByTabs = _fake_count_by_tabs
+        monkeypatch.setattr(report_proxies_module(), 'get_report_config_service_stub',
+                            lambda: fake)
+
+        r = gw_client.get('/api/v1/reports/tab-counts')
+        assert r.status_code == 200
+        assert calls[0].search == ''
+        assert calls[0].favorite is False
+        assert calls[0].deleted is False
+
+    def test_tab_counts_returns_types_and_favorite(self, gw_client, monkeypatch):
+        """INT-2339：响应含 types（四值）与 favorite，原 4 键不改名。"""
+        from shared.proto import report_service_pb2 as report_pb
+
+        def _fake_count_by_tabs(req):
+            return report_pb.ReportConfigResponse(
+                success=True, message='ok',
+                data=grpc_dumps({'all': 7, 'draft': 3, 'published': 4,
+                                 'comparison': 2,
+                                 'types': {'task': 5, 'comparison': 1,
+                                           'secondary_comparison': 1,
+                                           'benchmark': 0},
+                                 'favorite': 2}))
+
+        fake = _FakeStub()
+        fake.CountReportsByTabs = _fake_count_by_tabs
+        monkeypatch.setattr(report_proxies_module(), 'get_report_config_service_stub',
+                            lambda: fake)
+
+        r = gw_client.get('/api/v1/reports/tab-counts', params={'keyword': 'x'})
+        assert r.status_code == 200
+        data = r.json()['data']
+        assert data['all'] == 7
+        assert data['types'] == {'task': 5, 'comparison': 1,
+                                 'secondary_comparison': 1, 'benchmark': 0}
+        assert data['favorite'] == 2
+        assert sum(data['types'].values()) == data['all']
 
 
 def report_proxies_module():

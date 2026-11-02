@@ -92,11 +92,23 @@ class ReportRepositoryABC(ABC):
         """
 
     @abstractmethod
-    def count_reports_by_tabs(self, deleted: bool = False) -> dict:
-        """四个视图 Tab 的计数（INT-1463：单条条件聚合，替代 4 次串行 count）。
+    def count_reports_by_tabs(
+        self,
+        search: Optional[str] = None,
+        favorite: bool = False,
+        deleted: bool = False,
+        user_id: Optional[int] = None,
+    ) -> dict:
+        """Tab / 类型 / 收藏计数（INT-1463 单条聚合；INT-2339 随筛选收缩）。
+
+        计数入参只有 search / favorite / deleted + 当前用户可见性；
+        status / report_type 属 Tab 自身维度，不作为计数入参。
 
         Returns:
-            {'all': N, 'draft': N, 'published': N, 'comparison': N}
+            {'all': N, 'draft': N, 'published': N, 'comparison': N,
+             'types': {'task': N, 'comparison': N, 'secondary_comparison': N,
+                       'benchmark': N},
+             'favorite': N}
         """
 
     # ---- 子实体集合加载 ----

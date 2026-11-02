@@ -366,39 +366,82 @@ class ReportQueryMixin:
         return query.count()
 
     @with_session
-    def count_reports_by_tabs(self, deleted: bool = False) -> dict:
-        """四个视图 Tab 的计数（INT-1463：单条条件聚合 SQL，替代 4 次 CountReports）。
+    def count_reports_by_tabs(
+        self,
+        search: Optional[str] = None,
+        favorite: bool = False,
+        deleted: bool = False,
+        user_id: Optional[int] = None,
+    ) -> dict:
+        """Tab / 类型 / 收藏计数（INT-1463 单条聚合；INT-2339 随筛选收缩）。
 
-        Tab 口径与 Tab 过滤映射一致（与 count_reports 同一套可见性/软删过滤）：
-        - all:        无过滤
+        计数入参只有 search / favorite / deleted + 当前用户可见性；
+        status / report_type 属 Tab 自身维度，不参与过滤：
+        - all:        无 status/type 过滤
         - draft:      status = draft
         - published:  status = published
         - comparison: type IN (comparison, secondary_comparison)
+        - types:      ReportType 四值分别计数
+        - favorite:   当前用户收藏且命中同一筛选集的条数（无 user_id 为 0）
 
         Args:
+            search: 关键字（与 list_reports / count_reports 同一套
+                ``_report_search_condition`` 口径）
+            favorite: 仅当前用户收藏（与 count_reports.favorite 一致；
+                无 user_id 时与列表一致返回全 0，不退回全量）
             deleted: 是否统计回收站软删除项（默认 False，与列表活跃口径一致）
+            user_id: 当前用户（收藏过滤/计数；x-user-id metadata）
 
         Returns:
-            {'all': N, 'draft': N, 'published': N, 'comparison': N}
+            {'all': N, 'draft': N, 'published': N, 'comparison': N,
+             'types': {'task': N, 'comparison': N, 'secondary_comparison': N,
+                       'benchmark': N},
+             'favorite': N}
         """
-        from sqlalchemy import case as sa_case, func as sa_func
+        from sqlalchemy import (
+            String,
+            case as sa_case,
+            cast as sa_cast,
+            false as sa_false,
+            func as sa_func,
+            literal as sa_literal,
+            select as sa_select,
+        )
 
-        from shared.models.common_enums import ReportStatus, ReportType
+        from shared.models.common_enums import EntityType, ReportStatus, ReportType
 
         session = get_db_session()
-        comparison_types = [ReportType.COMPARISON.value, ReportType.SECONDARY_COMPARISON.value]
+        comparison_types = [ReportType.COMPARISON.value,
+                            ReportType.SECONDARY_COMPARISON.value]
+        type_values = [ReportType.TASK.value, ReportType.COMPARISON.value,
+                       ReportType.SECONDARY_COMPARISON.value, ReportType.BENCHMARK.value]
+
+        fav_exists = None
+        if user_id:
+            from report_service.infrastructure.persistence.models import ReportFavorite
+            fav_exists = (
+                sa_select(ReportFavorite.id)
+                .where(ReportFavorite.user_id == user_id,
+                       ReportFavorite.entity_type == EntityType.REPORT.value,
+                       ReportFavorite.entity_id == sa_cast(self.PO_CLASS.id, String))
+                .correlate(self.PO_CLASS)
+                .exists()
+            )
+
+        def _count_if(condition):
+            return sa_func.coalesce(
+                sa_func.sum(sa_case((condition, 1), else_=0)), 0)
+
         row = (
             session.query(
                 sa_func.count(self.PO_CLASS.id),
-                sa_func.coalesce(
-                    sa_func.sum(sa_case((self.PO_CLASS.status == ReportStatus.DRAFT.value, 1),
-                                        else_=0)), 0),
-                sa_func.coalesce(
-                    sa_func.sum(sa_case((self.PO_CLASS.status == ReportStatus.PUBLISHED.value, 1),
-                                        else_=0)), 0),
-                sa_func.coalesce(
-                    sa_func.sum(sa_case((self.PO_CLASS.type.in_(comparison_types), 1),
-                                        else_=0)), 0),
+                _count_if(self.PO_CLASS.status == ReportStatus.DRAFT.value),
+                _count_if(self.PO_CLASS.status == ReportStatus.PUBLISHED.value),
+                _count_if(self.PO_CLASS.type.in_(comparison_types)),
+                # INT-2339：ReportType 四值分别计数
+                *[_count_if(self.PO_CLASS.type == value) for value in type_values],
+                # INT-2339：当前用户收藏数（无 user_id 时为 0）
+                _count_if(fav_exists) if fav_exists is not None else sa_literal(0),
             )
             .filter(self.PO_CLASS.deleted == (True if deleted else False))  # noqa: E712
             .filter(visible_condition(
@@ -407,13 +450,23 @@ class ReportQueryMixin:
                 get_current_user_id(),
                 get_current_user_is_admin(),
             ))
-            .one()
         )
+        pattern = _search_like_pattern(search)
+        if pattern:
+            # INT-2339：与列表同一套名称/描述关键字口径
+            row = row.filter(_report_search_condition(self.PO_CLASS, pattern))
+        if favorite:
+            # 与 count_reports.favorite 一致：未认证用户没有收藏，返回全 0
+            row = row.filter(fav_exists if fav_exists is not None else sa_false())
+        row = row.one()
         return {
             'all': int(row[0] or 0),
             'draft': int(row[1] or 0),
             'published': int(row[2] or 0),
             'comparison': int(row[3] or 0),
+            'types': {value: int(row[4 + idx] or 0)
+                      for idx, value in enumerate(type_values)},
+            'favorite': int(row[8] or 0),
         }
 
     # ---- 可见性辅助（INT-423，供命令侧 check_visible / 批量 filter_visible_owners） ----

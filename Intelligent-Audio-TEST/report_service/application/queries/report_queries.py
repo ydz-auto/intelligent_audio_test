@@ -85,6 +85,36 @@ class ListReportsQuery:
 
 
 @dataclass(frozen=True)
+class CountReportsByTabsQuery:
+    """Tab / 类型 / 收藏计数（INT-2339：与列表同口径，随筛选收缩）。
+
+    计数入参只有 search / favorite / deleted + 当前用户可见性；
+    status / report_type 属 Tab 自身维度，禁止作为计数入参
+    （否则「已发布」筛选下草稿 Tab 恒 0）。
+
+    Attributes:
+        search: 可选关键字（与 ListReportsQuery.search 同口径）
+        favorite: 仅当前用户收藏（与列表 favorite 过滤一致；无 user_id 时全 0）
+        deleted: 仅回收站软删除项
+        user_id: 可选，收藏过滤/计数用当前用户
+    """
+    search: Optional[str] = None
+    favorite: bool = False
+    deleted: bool = False
+    user_id: Optional[int] = None
+
+
+def empty_tab_counts() -> dict:
+    """Tab 计数零值（INT-2339：RPC 失败降级口径，保持 200 + 全 0）。"""
+    return {
+        'all': 0, 'draft': 0, 'published': 0, 'comparison': 0,
+        'types': {'task': 0, 'comparison': 0,
+                  'secondary_comparison': 0, 'benchmark': 0},
+        'favorite': 0,
+    }
+
+
+@dataclass(frozen=True)
 class ListReportBriefsByTaskIdsQuery:
     """页级批量列出多个任务的报告摘要（INT-1462）。
 

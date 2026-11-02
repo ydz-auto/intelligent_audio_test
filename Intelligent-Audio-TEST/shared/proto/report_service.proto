@@ -156,8 +156,12 @@ message ListReportsRequest {
 }
 
 message CountReportsByTabsRequest {
-  // 空请求：Tab 口径（all/draft/published/comparison）由服务端持有；
-  // 可见性 / 软删过滤沿用当前用户上下文与活跃口径。
+  // INT-2339：Tab / 类型 / 收藏计数与列表同口径（随筛选收缩）。
+  // Tab 口径（all/draft/published/comparison）仍由服务端持有；status /
+  // report_type 属 Tab 自身维度，禁止作为计数入参（否则草稿 Tab 恒 0）。
+  string search = 1;   // 可选，关键字；口径与 ListReportsRequest.search 一致
+  bool favorite = 2;   // 可选，仅当前用户收藏（x-user-id metadata）
+  bool deleted = 3;    // 可选，仅回收站（软删除项）
 }
 
 message GetReportDetailRequest {

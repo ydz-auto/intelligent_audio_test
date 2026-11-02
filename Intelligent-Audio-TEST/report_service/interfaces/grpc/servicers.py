@@ -49,12 +49,14 @@ from report_service.application.queries.benchmark_queries import (
     ListBenchmarkSourcesQuery,
 )
 from report_service.application.queries.report_queries import (
+    CountReportsByTabsQuery,
     GetReportByTaskQuery,
     GetReportProgressQuery,
     GetReportQuery,
     GetReportSummaryQuery,
     ListReportBriefsByTaskIdsQuery,
     ListReportsQuery,
+    empty_tab_counts,
     split_report_types,
 )
 from report_service.domain.entities import ReportAggregate, ReportStatus
@@ -645,18 +647,27 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             return self._resp(False, str(e), {'total': 0})
 
     def CountReportsByTabs(self, request, context=None):
-        """四个视图 Tab 一次聚合计数（INT-1463：单条条件聚合 SQL）。
+        """Tab / 类型 / 收藏一次聚合计数（INT-1463；INT-2339 与列表同口径）。
 
         Tab 口径由服务端持有（all/draft/published/comparison），可见性/软删过滤
-        沿用当前用户上下文与活跃口径；响应 data: {all, draft, published, comparison}。
+        沿用当前用户上下文与活跃口径；计数只吃 search / favorite / deleted，
+        status / report_type 不作为入参（属 Tab 自身维度）。
+        响应 data: {all, draft, published, comparison, types, favorite}。
         """
         try:
-            counts = self.query_handler.handle_count_reports_by_tabs()
+            from shared.infrastructure.user_context import user_id_from_context
+            counts = self.query_handler.handle_count_reports_by_tabs(
+                CountReportsByTabsQuery(
+                    search=getattr(request, 'search', '') or None,
+                    favorite=getattr(request, 'favorite', False),
+                    deleted=getattr(request, 'deleted', False),
+                    user_id=user_id_from_context(context),
+                ))
             return self._resp(True, 'ok', counts)
         except Exception as e:
             logger.exception("CountReportsByTabs failed")
-            return self._resp(False, str(e), {'all': 0, 'draft': 0,
-                                              'published': 0, 'comparison': 0})
+            # 降级口径不变：全 0（含 types / favorite），不改成抛错
+            return self._resp(False, str(e), empty_tab_counts())
 
     # ---- 收藏 / 回收站（INT-141）----
 

@@ -6,6 +6,7 @@
 """
 from fastapi import APIRouter
 from fastapi.responses import Response
+from typing import Optional
 from api_gateway.routes._response import to_response, content_disposition
 from api_gateway.application.services.auth.dependencies import require_permission
 from api_gateway.application.services.report.report_query_sevice import ReportQueryService
@@ -34,9 +35,14 @@ def get_all(_: None = require_permission('report:read')):
 
 
 @router.get('/tab-counts')
-def tab_counts(_: None = require_permission('report:read')):
+def tab_counts(keyword: Optional[str] = None, favorite: bool = False,
+               deleted: bool = False,
+               _: None = require_permission('report:read')):
     # INT-280：HistoryReports Tab 全量计数（服务端聚合，客户端不再按当前页统计）
-    return _handle(ReportQueryService.get_tab_counts())
+    # INT-2339：计数与列表同口径（随 keyword 收缩）；HTTP 参数名用 keyword，
+    # 与 GET /api/v1/reports 一致，禁止在 HTTP 层叫 search（同层双口径）
+    return _handle(ReportQueryService.get_tab_counts(
+        keyword=keyword, favorite=favorite, deleted=deleted))
 
 
 @router.get('/export')
