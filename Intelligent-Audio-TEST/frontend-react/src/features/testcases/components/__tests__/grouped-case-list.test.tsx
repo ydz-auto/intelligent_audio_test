@@ -159,6 +159,8 @@ function Harness({
   trash = false,
   hasQueryFilters = false,
   filters = {},
+  groupsError = false,
+  onRetryGroups,
 }: {
   loading?: boolean
   /** 分组列表查询态（INT-1657 用例：分组先到、扁平集仍在加载） */
@@ -168,6 +170,9 @@ function Harness({
   trash?: boolean
   hasQueryFilters?: boolean
   filters?: TestCaseListFilters
+  /** 分组数据源查询失败（INT-2331） */
+  groupsError?: boolean
+  onRetryGroups?: () => void
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   return (
@@ -177,6 +182,8 @@ function Harness({
         cases={loading ? [] : cases}
         loading={loading}
         groupsLoading={groupsLoading}
+        groupsError={groupsError}
+        onRetryGroups={onRetryGroups}
         trash={trash}
         hasQueryFilters={hasQueryFilters}
         filters={filters}
@@ -742,5 +749,38 @@ describe('GroupedCaseList', () => {
     expect(
       screen.getByText('当前搜索没有命中用例，可清空搜索词或切换到「按标签」视图')
     ).toBeInTheDocument()
+  })
+})
+
+/**
+ * INT-2331：/groups 失败时分组卡流会整块留白（分组名/计数无来源）。
+ * 有旧分组 → 保留分组卡 + 行内提示；无旧分组且有用例 → 错误态 + 重试，不留白。
+ */
+describe('GroupedCaseList 分组数据源失败（INT-2331）', () => {
+  it('无旧分组：显示「分组列表加载失败」+ 重试，不留白', async () => {
+    const onRetryGroups = vi.fn()
+    render(<Harness groups={[]} groupsError onRetryGroups={onRetryGroups} />)
+
+    expect(screen.getByText('分组列表加载失败')).toBeInTheDocument()
+    expect(
+      screen.getByText('分组数据获取失败，无法按分组展示用例；请重试或切换到「按标签」视图')
+    ).toBeInTheDocument()
+    expect(screen.queryByText('没有找到符合条件的测试用例')).not.toBeInTheDocument()
+
+    await setupUser().click(screen.getByRole('button', { name: '重试' }))
+    expect(onRetryGroups).toHaveBeenCalledTimes(1)
+  })
+
+  it('有旧分组：保留分组卡 + 行内「分组列表加载失败」提示 + 重试', async () => {
+    const onRetryGroups = vi.fn()
+    render(<Harness groupsError onRetryGroups={onRetryGroups} />)
+
+    expect(screen.getByText('智能音箱功能测试')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '分组列表加载失败，当前显示的是上一次加载的分组'
+    )
+
+    await setupUser().click(screen.getByRole('button', { name: '重试' }))
+    expect(onRetryGroups).toHaveBeenCalledTimes(1)
   })
 })

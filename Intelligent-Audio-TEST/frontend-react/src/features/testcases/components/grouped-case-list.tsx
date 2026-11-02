@@ -419,6 +419,8 @@ export function GroupedCaseList({
   groupsLoading,
   isError,
   onRetry,
+  groupsError,
+  onRetryGroups,
   trash,
   hasQueryFilters,
   filters,
@@ -442,6 +444,13 @@ export function GroupedCaseList({
   isError?: boolean
   /** 查询失败重试（refetch） */
   onRetry?: () => void
+  /**
+   * 分组数据源查询失败（INT-2331）：/groups 失败时分组的名称/计数都无来源，
+   * 无旧分组可渲染时给错误态 + 重试，不留白。
+   */
+  groupsError?: boolean
+  /** 分组数据源重试（refetch） */
+  onRetryGroups?: () => void
   trash: boolean
   /** 非回收站筛选是否激活（搜索/分组/标签/维度）——回收站空态区分「真空」与「筛选无匹配」 */
   hasQueryFilters: boolean
@@ -604,6 +613,18 @@ export function GroupedCaseList({
     )
   }
 
+  // 分组数据源失败且无旧分组可渲染（INT-2331）：分组名称/计数都无来源，分组卡流会整块留白，
+  // 给显式错误态 + 重试，而不是让用户面对空白内容区。
+  if (groupsError && sortedGroups.length === 0 && cases.length > 0) {
+    return (
+      <CaseListErrorState
+        title='分组列表加载失败'
+        description='分组数据获取失败，无法按分组展示用例；请重试或切换到「按标签」视图'
+        onRetry={onRetryGroups}
+      />
+    )
+  }
+
   /**
    * 空态三态（§3.3 INT-592 平铺流文案）：回收站空 → 筛选无匹配 → 全空。
    * 以可见用例集为准——筛选把全部用例排除后即使分组列表非空也走空态（INT-595 补）。
@@ -658,6 +679,13 @@ export function GroupedCaseList({
 
   return (
     <div className={cn('space-y-3 transition-opacity', dimmed && 'opacity-60')}>
+      {/* 分组数据源失败但保留了上一次分组：分组卡照常渲染 + 行内提示（INT-2331） */}
+      {groupsError && sortedGroups.length > 0 && (
+        <CaseListErrorBanner
+          message='分组列表加载失败，当前显示的是上一次加载的分组'
+          onRetry={onRetryGroups}
+        />
+      )}
       {/* 翻页 / 筛选失败但有上次数据：保留旧列表 + 行内提示（INT-1605） */}
       {isError && cases.length > 0 && (
         <CaseListErrorBanner

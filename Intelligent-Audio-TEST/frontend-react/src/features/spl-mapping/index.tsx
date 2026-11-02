@@ -205,6 +205,8 @@ export function SplMappingPage() {
   }, [splStatsQuery.data])
 
   const digitalStats = useMemo(() => {
+    // INT-2331：数字域统计由列表 computed；首屏失败时不能拿空数组冒充「共 0 条」
+    if (digitalQuery.isError && digitalMappings.length === 0) return undefined
     const total = digitalMappings.length
     const calibrated = digitalMappings.filter((m) => m.calibrationStatus === 'calibrated').length
     return {
@@ -213,9 +215,15 @@ export function SplMappingPage() {
       uncalibrated: total - calibrated,
       associated: new Set(digitalMappings.map((m) => m.apiId)).size,
     }
-  }, [digitalMappings])
+  }, [digitalMappings, digitalQuery.isError])
 
   const currentStats = domain === 'device' ? deviceStats : digitalStats
+  /** 当前域列表查询失败（INT-2331）：数量/统计不得落成 0，表格显示错误态 + 重试 */
+  const currentListError = domain === 'device' ? splQuery.isError : digitalQuery.isError
+  /** 统计行：无数据且查询失败时隐藏，避免无限骨架或假 0 */
+  const statsUnavailable =
+    currentStats == null &&
+    (domain === 'device' ? splStatsQuery.isError : digitalQuery.isError)
 
   const isFiltered =
     filters.search !== '' ||
@@ -387,13 +395,19 @@ export function SplMappingPage() {
               isFiltered={isFiltered}
             />
 
-            <SplStatsRow domain={domain} stats={currentStats} />
+            {!statsUnavailable && <SplStatsRow domain={domain} stats={currentStats} />}
 
             <div className='min-h-0 flex-1 overflow-y-auto'>
               {domain === 'device' ? (
                 <DeviceSplTable
                   rows={devicePageRows}
                   loading={splQuery.isLoading}
+                  isError={splQuery.isError}
+                  onRetry={() => {
+                    // 统计与列表同源接口一起重取：只恢复列表会让页头「已校准 —/共 —」停在失败态
+                    void splQuery.refetch()
+                    void splStatsQuery.refetch()
+                  }}
                   searchKeyword={filters.search}
                   canRead={canSplRead}
                   canUpdate={canSplUpdate}
@@ -411,6 +425,8 @@ export function SplMappingPage() {
                   rows={digitalPageRows}
                   apis={apis}
                   loading={digitalQuery.isLoading}
+                  isError={digitalQuery.isError}
+                  onRetry={() => void digitalQuery.refetch()}
                   searchKeyword={filters.search}
                   canRead={canDigitalRead}
                   canUpdate={canDigitalUpdate}
@@ -431,7 +447,7 @@ export function SplMappingPage() {
             <PageFooterPortal>
               <div className='flex flex-wrap items-center justify-end gap-2 text-sm'>
                 <span className='text-muted-foreground tabular-nums'>
-                  共 {activeCount} 条
+                  共 {currentListError ? '—' : activeCount} 条
                 </span>
                 <PaginationBar
                   page={safePage}

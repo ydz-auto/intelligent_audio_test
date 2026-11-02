@@ -49,6 +49,12 @@ export interface TestCasesFilterToolbarProps {
   onReset: () => void
   isFiltered: boolean
   groups: TestCaseGroup[]
+  /** 分组数据源查询失败（INT-2331）：分组 facet 显示错误态 + 重试，不得静默只剩「未分组」 */
+  groupsError?: boolean
+  /** 分组数据源加载中（重试期间避免闪一下「全部」） */
+  groupsLoading?: boolean
+  /** 分组数据源重试（refetch） */
+  onRetryGroups?: () => void
   tags: TagItem[]
   /** 评估维度全量（含子维度；评估维度 facet 按 分组/主维度/子维度 单选，INT-1030 全站一致性） */
   dimensions: Dimension[]
@@ -85,6 +91,9 @@ function SingleFacet({
   options,
   onChange,
   footerAction,
+  error = false,
+  loading = false,
+  onRetry,
 }: {
   label: string
   value: string | null | undefined
@@ -92,6 +101,11 @@ function SingleFacet({
   onChange: (value: string | null) => void
   /** 下拉底部固定动作项（分组 facet「+ 新增分组」→ §5.7.4 新建分组弹窗） */
   footerAction?: { label: string; onSelect: () => void }
+  /** 数据源查询失败（INT-2331）：下拉内显示「{label}加载失败」+ 重试，不得只剩兜底项 */
+  error?: boolean
+  /** 数据源加载中（重试期间不闪「全部」） */
+  loading?: boolean
+  onRetry?: () => void
 }) {
   const current = options.find((o) => o.value === value)
   const [open, setOpen] = useState(false)
@@ -107,8 +121,13 @@ function SingleFacet({
         }
       >
         <span className='text-muted-foreground'>{label}</span>
-        <span className='max-w-28 truncate font-medium'>
-          {current?.label ?? '全部'}
+        <span
+          className={cn(
+            'max-w-28 truncate font-medium',
+            error && !current && 'text-destructive'
+          )}
+        >
+          {error && !current ? '加载失败' : (current?.label ?? '全部')}
         </span>
         <ChevronDown
           aria-hidden='true'
@@ -116,45 +135,62 @@ function SingleFacet({
         />
       </PopoverTrigger>
       <PopoverContent align='start' className='min-w-48 p-1.5'>
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type='button'
-            onClick={() => {
-              onChange(option.value === value ? null : option.value)
-              setOpen(false)
-            }}
-            className={cn(
-              'hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm transition-colors',
-              option.value === value && 'bg-accent'
+        {/* 数据源失败（INT-2331）：先给错误 + 重试，有旧选项时保留可选项，不静默伪装成「只有未分组」 */}
+        {error && (
+          <div role='alert' className='flex flex-col items-center gap-2 border-b px-3 py-2 text-center'>
+            <p className='text-destructive text-sm'>{label}加载失败</p>
+            {onRetry && (
+              <Button variant='outline' size='sm' className='h-7' onClick={onRetry}>
+                重试
+              </Button>
             )}
-          >
-            {option.dotColor && (
-              <span
-                aria-hidden='true'
-                className='size-2 shrink-0 rounded-full'
-                style={{ backgroundColor: option.dotColor }}
-              />
-            )}
-            <span className='min-w-0 flex-1 truncate'>{option.label}</span>
-            {option.value === value && (
-              <Check aria-hidden='true' className='size-4 shrink-0' />
-            )}
-          </button>
-        ))}
-        {footerAction && (
-          <div className='mt-1 border-t pt-1'>
-            <button
-              type='button'
-              onClick={() => {
-                setOpen(false)
-                footerAction.onSelect()
-              }}
-              className='hover:bg-accent flex w-full items-center rounded-md px-2 py-1.5 text-start text-sm font-medium transition-colors'
-            >
-              {footerAction.label}
-            </button>
           </div>
+        )}
+        {loading && !error ? (
+          <p className='text-muted-foreground px-3 py-4 text-center text-sm'>加载中…</p>
+        ) : (
+          <>
+            {options.map((option) => (
+              <button
+                key={option.value}
+                type='button'
+                onClick={() => {
+                  onChange(option.value === value ? null : option.value)
+                  setOpen(false)
+                }}
+                className={cn(
+                  'hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm transition-colors',
+                  option.value === value && 'bg-accent'
+                )}
+              >
+                {option.dotColor && (
+                  <span
+                    aria-hidden='true'
+                    className='size-2 shrink-0 rounded-full'
+                    style={{ backgroundColor: option.dotColor }}
+                  />
+                )}
+                <span className='min-w-0 flex-1 truncate'>{option.label}</span>
+                {option.value === value && (
+                  <Check aria-hidden='true' className='size-4 shrink-0' />
+                )}
+              </button>
+            ))}
+            {footerAction && (
+              <div className='mt-1 border-t pt-1'>
+                <button
+                  type='button'
+                  onClick={() => {
+                    setOpen(false)
+                    footerAction.onSelect()
+                  }}
+                  className='hover:bg-accent flex w-full items-center rounded-md px-2 py-1.5 text-start text-sm font-medium transition-colors'
+                >
+                  {footerAction.label}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </PopoverContent>
     </Popover>
@@ -585,6 +621,9 @@ export function TestCasesFilterToolbar({
   onReset,
   isFiltered,
   groups,
+  groupsError = false,
+  groupsLoading = false,
+  onRetryGroups,
   tags,
   dimensions,
   categories = [],
@@ -665,6 +704,9 @@ export function TestCasesFilterToolbar({
           value={filters.groupId ?? null}
           options={groupOptions}
           onChange={(v) => update({ groupId: v ?? null })}
+          error={groupsError}
+          loading={groupsLoading}
+          onRetry={onRetryGroups}
           footerAction={
             onCreateGroup ? { label: '+ 新增分组', onSelect: onCreateGroup } : undefined
           }

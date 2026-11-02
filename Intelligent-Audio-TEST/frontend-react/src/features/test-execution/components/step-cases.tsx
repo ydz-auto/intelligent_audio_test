@@ -534,6 +534,9 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
           onReset={handleReset}
           isFiltered={isFiltered}
           groups={groups}
+          groupsError={groupsQuery.isError}
+          groupsLoading={groupsQuery.isLoading}
+          onRetryGroups={() => void groupsQuery.refetch()}
           tags={tags}
           tagsError={tagsQuery.isError}
           tagsLoading={tagsQuery.isLoading}
@@ -581,6 +584,10 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
               groups={groups}
               cases={items}
               loading={listQuery.isLoading}
+              isError={listQuery.isError}
+              onRetry={() => void listQuery.refetch()}
+              groupsError={groupsQuery.isError}
+              onRetryGroups={() => void groupsQuery.refetch()}
               groupsLoading={groupsQuery.isLoading}
               filters={effectiveFilters}
               trash={filters.trash ?? false}
@@ -600,6 +607,8 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
             <TagCaseList
               cases={items}
               loading={listQuery.isLoading}
+              isError={listQuery.isError}
+              onRetry={() => void listQuery.refetch()}
               selected={selectedSet}
               tagRegistry={tags}
               algorithmLabels={algorithmLabels}
@@ -613,14 +622,14 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
           )}
         </div>
 
-        {/* 已选汇总行（常驻） */}
+        {/* 已选汇总行（常驻）；INT-2331：列表查询失败时 total=0 不可当真，提示条不渲染 */}
         {canManage && (
           <SelectionSummary
             mode='case'
             count={selection.selectedCount}
             manual={selection.summary.manual}
             invertAdded={selection.summary.invertAdded}
-            total={total}
+            total={listQuery.isError ? undefined : total}
             onClear={selection.clearSelection}
           />
         )}

@@ -3,8 +3,9 @@
  * 关联 API/参考基准/校准点数/增益限幅/校准状态/默认/操作；协议/供应商列隐藏）。
  * 「默认」列由 apis.rmsSplMappingId 指针命中判定（§4.3）。
  */
-import { Star, Waves } from 'lucide-react'
+import { AlertTriangle, RotateCw, Star, Waves } from 'lucide-react'
 
+import { ErrorState } from '@/components/error-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -28,6 +29,10 @@ export type DigitalSplTableProps = {
   rows: ApiRmsSplMapping[]
   apis: ApiConfigRef[]
   loading: boolean
+  /** 映射列表查询失败（INT-2331）：失败且无行时显示错误态 + 重试，不得伪装成「暂无 RMS-SPL 映射」 */
+  isError?: boolean
+  /** 查询失败重试（refetch） */
+  onRetry?: () => void
   searchKeyword: string
   canRead: boolean
   canUpdate: boolean
@@ -54,7 +59,8 @@ function isDefaultMapping(apis: ApiConfigRef[], mapping: ApiRmsSplMapping): bool
 }
 
 export function DigitalSplTable(props: DigitalSplTableProps) {
-  const isEmpty = !props.loading && props.rows.length === 0
+  // 失败不等于空库（INT-2331，与 INT-1583 音频页同型）：isError 时不得走「暂无 RMS-SPL 映射」空态
+  const isEmpty = !props.loading && !props.isError && props.rows.length === 0
 
   if (props.loading) {
     return (
@@ -63,6 +69,19 @@ export function DigitalSplTable(props: DigitalSplTableProps) {
         {Array.from({ length: 8 }).map((_, i) => (
           <Skeleton key={i} className='h-12 w-full rounded-none border-b' />
         ))}
+      </div>
+    )
+  }
+
+  // 查询失败且无任何可展示行：显式错误态 + 重试（用户可区分「库里没有映射」与「接口挂了」）
+  if (props.isError && props.rows.length === 0) {
+    return (
+      <div className='bg-card ring-foreground/10 rounded-xl ring-1'>
+        <ErrorState
+          title='SPL 映射加载失败'
+          description='RMS-SPL 映射列表获取失败，请重试'
+          onRetry={props.onRetry}
+        />
       </div>
     )
   }
@@ -99,6 +118,29 @@ export function DigitalSplTable(props: DigitalSplTableProps) {
 
   return (
     <div className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
+      {/* 失败但保留着上一次成功结果：不清空表格，行内提示 + 重试 */}
+      {props.isError && (
+        <div
+          role='alert'
+          className='border-destructive/30 bg-destructive/5 text-destructive flex flex-wrap items-center gap-2 border-b px-3 py-2 text-xs'
+        >
+          <AlertTriangle aria-hidden='true' className='size-3.5 shrink-0' />
+          <span className='min-w-0 flex-1'>
+            SPL 映射加载失败，当前显示的是上一次加载的数据
+          </span>
+          {props.onRetry && (
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-7 gap-1'
+              onClick={props.onRetry}
+            >
+              <RotateCw aria-hidden='true' className='size-3' />
+              重试
+            </Button>
+          )}
+        </div>
+      )}
       <div className='overflow-x-auto'>
         <table className='w-full min-w-[860px] text-[13px]'>
           <thead>
