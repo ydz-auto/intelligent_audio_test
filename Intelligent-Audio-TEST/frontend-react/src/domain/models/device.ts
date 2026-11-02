@@ -38,3 +38,10 @@ export const DEVICE_TYPE_META: Record<
   http_api: { label: 'HTTP API', short: 'http_api' },
   websocket_api: { label: 'Realtime WS', short: 'websocket_api' },
 }
+
+/**
+ * SSE 设备状态变更事件名（后端 shared.utils.redis_pubsub.EventType.DEVICE_STATUS_CHANGED，
+ * 经 sse_bp._map_event 以同名推送到 DEVICE_EVENTS 通道）。
+ * 载荷：{device_id, event_type, status, source, success, detail, timestamp}（snake_case 直出）。
+ */
+export const DEVICE_STATUS_CHANGED_EVENT = 'device_status_changed'

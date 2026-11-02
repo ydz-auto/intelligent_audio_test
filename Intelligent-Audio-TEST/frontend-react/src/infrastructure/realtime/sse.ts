@@ -25,7 +25,7 @@ export const SSE_EVENT_CHANNELS = {
 export type SseChannel =
   (typeof SSE_EVENT_CHANNELS)[keyof typeof SSE_EVENT_CHANNELS]
 
-/** 事件名 → 通道映射（sse_bp._map_event 口径；CASE/DEVICE/CONFIG 后端暂未映射推送） */
+/** 事件名 → 通道映射（sse_bp._map_event 口径；CASE/CONFIG 后端暂未映射推送） */
 const EVENT_TO_CHANNEL: Record<string, SseChannel> = {
   task_log: SSE_EVENT_CHANNELS.TASK_EVENTS,
   task_progress: SSE_EVENT_CHANNELS.TASK_EVENTS,
@@ -34,6 +34,7 @@ const EVENT_TO_CHANNEL: Record<string, SseChannel> = {
   secondary_compare_generated: SSE_EVENT_CHANNELS.REPORT_EVENTS,
   realtime_frame: SSE_EVENT_CHANNELS.REPORT_EVENTS,
   realtime_summary: SSE_EVENT_CHANNELS.REPORT_EVENTS,
+  device_status_changed: SSE_EVENT_CHANNELS.DEVICE_EVENTS,
 }
 
 export interface SseEvent {

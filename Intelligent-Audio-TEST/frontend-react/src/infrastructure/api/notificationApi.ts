@@ -27,7 +27,7 @@ import { fetchReportList } from '@/infrastructure/api/reports-api'
 import { fetchTaskList } from '@/infrastructure/api/tasks-list-api'
 import type { AppNotification } from '@/domain/models/notification'
 
-/** 通知中心订阅通道（TASK + REPORT；CASE/DEVICE/CONFIG 后端暂未映射推送） */
+/** 通知中心订阅通道（TASK + REPORT；CASE/CONFIG 后端暂未映射推送，DEVICE 由设备状态流单独消费） */
 const NOTIFICATION_CHANNELS = [
   SSE_EVENT_CHANNELS.TASK_EVENTS,
   SSE_EVENT_CHANNELS.REPORT_EVENTS,
