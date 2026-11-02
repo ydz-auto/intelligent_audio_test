@@ -5,9 +5,9 @@
 initialize(reject 关键词) → post_process 三种参数口径 → teardown，
 用耗时与服务端返回证明：
 - 路由：keywords=harmony.xiaoyi_livechat_reject.v1 选中 XiaoyiLivechatReject
-- 参数透传：is_reject / timing / next_round_is_reject 原样进入驱动
-- 行为：timing=silence（非打断、非连续拒识）走受限等待；timing=response
-  （打断型）与 next_round_is_reject=true 不等待
+- 参数透传：is_reject / timing 原样进入驱动
+- 行为（INT-2363）：timing=silence 走播放后 AI PCM RMS 回复检测；timing=response
+  （打断型）与显式 is_interruption=true 不等待。不再注入 next_round_is_reject。
 
 驱动日志落在库内 logs 表（task_id=--task-id），可直接回读作为证据。
 
@@ -71,11 +71,11 @@ def main():
         base = {'is_reject': True, 'record_mode': 'round',
                 'total_rounds': 1, 'round_number': 1}
         results.append(_call(pb, stub, task_id, 'post_process',
-                             dict(base, timing='silence', next_round_is_reject=False)))
+                             dict(base, timing='silence')))
         results.append(_call(pb, stub, task_id, 'post_process',
-                             dict(base, timing='response', next_round_is_reject=False)))
+                             dict(base, timing='response')))
         results.append(_call(pb, stub, task_id, 'post_process',
-                             dict(base, timing='silence', next_round_is_reject=True)))
+                             dict(base, timing='silence', is_interruption=True)))
         results.append(_call(pb, stub, task_id, 'teardown', {}))
     finally:
         channel.close()

@@ -728,7 +728,7 @@ class Xiaoyilivechat(HarmonyDriver):
         return 'none', remote
 
     def _wait_ai_reply_end_via_pcm(self, device_sn, task_id=None, test_case_id=None,
-                                   interval=NORMAL_WAIT):
+                                   interval=NORMAL_WAIT, silence_seconds=None):
         """等 AI 回复完成: 基于 AI PCM 尾部 RMS 能量判定(双阶段+历史兜底)。
 
         阶段A: 等尾部 1s RMS>阈值(AI 开始说话), start_timeout 内。
@@ -738,8 +738,13 @@ class Xiaoyilivechat(HarmonyDriver):
         阶段B: AI 开说过后,等连续 silence_seconds 秒 RMS<阈值(说完回静默)。
         实测: 回复中停顿≤6s, 回复后静默很长, silence_seconds=8 不误触发。
 
+        silence_seconds=None 时用模块常量 RMS_SILENCE_SECONDS(默认 8);拒识轮
+        (INT-2363)显式传 0,模型一静默即视为说完。其余驱动不传,行为不变。
+
         返回: True=回复结束(或超时但已说过,视为已回复); False=未回复。
         """
+        if silence_seconds is None:
+            silence_seconds = RMS_SILENCE_SECONDS
         remote = None
         # 阶段A: 等 AI 开始说话
         deadline_start = time.time() + RMS_START_TIMEOUT
@@ -788,9 +793,9 @@ class Xiaoyilivechat(HarmonyDriver):
             else:
                 if silence_since is None:
                     silence_since = now
-                elif (now - silence_since) >= RMS_SILENCE_SECONDS:
+                elif (now - silence_since) >= silence_seconds:
                     self._log(level='INFO',
-                              content=(f"AI回复结束(尾部静默 {RMS_SILENCE_SECONDS}s, "
+                              content=(f"AI回复结束(尾部静默 {silence_seconds}s, "
                                        f"size={size} rms={rms:.0f})"),
                               task_id=task_id, test_case_id=test_case_id)
                     return True
@@ -825,13 +830,18 @@ class Xiaoyilivechat(HarmonyDriver):
             return None
 
     def _wait_ai_reply_end_via_hw_params(self, device_sn, task_id=None, test_case_id=None,
-                                         interval=1.0):
+                                         interval=1.0, timeout=None):
         """等 AI 回复完成: 轮询 hw_params,连续 HW_PARAMS_CLOSED_CONFIRM 次 closed 判定结束。
+
+        timeout=None 时用 self.HW_PARAMS_END_TIMEOUT(默认 300s);拒识轮降级路径
+        (INT-2363)显式传 REJECT_REPLY_WAIT_TIMEOUT 封顶,其余驱动行为不变。
 
         返回: True=回复结束(或超时,已确认开说过→视为已回复可能截断);
               False=hw_params 连续读不到(路径不符/无权限),调用方回退 UI 法。
         """
-        deadline = time.time() + self.HW_PARAMS_END_TIMEOUT
+        if timeout is None:
+            timeout = self.HW_PARAMS_END_TIMEOUT
+        deadline = time.time() + timeout
         closed_hits = read_fails = 0
         while time.time() < deadline:
             if self._check_stop("post_process_等AI回复结束_hw_params"):
@@ -856,7 +866,7 @@ class Xiaoyilivechat(HarmonyDriver):
                     return True
             time.sleep(interval)
         self._log(level='WARNING',
-                  content=f'hw_params 等待回复结束超时 {self.HW_PARAMS_END_TIMEOUT}s(视为已回复可能截断)',
+                  content=f'hw_params 等待回复结束超时 {timeout}s(视为已回复可能截断)',
                   task_id=task_id, test_case_id=test_case_id)
         return True
 
@@ -1425,7 +1435,16 @@ class Xiaoyilivechat(HarmonyDriver):
         return True
 
     @with_rpc_retry()
-    def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
+    def post_process(self, device_sn, task_id=None, test_case_id=None,
+                     reply_detected=None, **kwargs) -> bool:
+        """轮次收尾：等待/判定 AI 回复 → 停录屏/挂断 → 提取问答。
+
+        reply_detected=None（缺省）时自行检测，既有驱动行为不变；子类已自行判定
+        回复结果时（INT-2363 拒识轮）传入 True/False：True=已回复，直接进入问答
+        提取；False=未回复，走既有「未回复」收尾分支并跳过问答提取（子类负责先
+        置 question_text/answer_text）。注意 skip_reply_wait 会把结果强制成已回复，
+        不能用来传「未回复」。
+        """
         driver = self._get_driver(device_sn)
         # 打印接收到的播放时间戳（验证链路）
         ts = self._extract_playback_timestamps(kwargs)
@@ -1442,6 +1461,14 @@ class Xiaoyilivechat(HarmonyDriver):
             self._log(level='INFO', content='is_interruption=True,跳过等待 AI 回复完成,直接收尾',
                       task_id=task_id, test_case_id=test_case_id)
             replied = True
+        elif reply_detected is not None:
+            # 子类已自行判定回复结果(INT-2363 拒识轮)：不再做回复开始/结束检测，
+            # 也不做 AI PCM 首帧检测(该值为 None)，直接按判定结果收尾。
+            replied = self._as_bool(reply_detected)
+            self._log(level='INFO',
+                      content=(f'reply_detected={replied},子类已判定模型'
+                               f'{"已回复(直接提取问答)" if replied else "未回复(跳过问答提取)"}'),
+                      task_id=task_id, test_case_id=test_case_id)
         else:
             # 检测 ai PCM 首帧(模型回复起始时刻,替代录屏 first_frame)
             self._ai_first_frame_ms = self._detect_ai_pcm_first_frame(

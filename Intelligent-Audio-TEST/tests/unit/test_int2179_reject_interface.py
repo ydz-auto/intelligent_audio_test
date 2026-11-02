@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-"""INT-2179 补证：拒识轮驱动的服务层接口口径（参数透传 / 路由分支）。
+"""INT-2179 补证（INT-2363 同步）：拒识轮驱动的服务层接口口径（参数透传 / 路由分支）。
 
-打回项 3 要求「接口级验证（参数、路由、结果落库字段）」。路由与真实设备初始化
-由 tests/verify/int2179_reject_probe.py 走宿主机 device_service 取证；本文件补
-服务层口径：
+路由与真实设备初始化由 tests/verify/int2179_reject_probe.py 走宿主机 device_service
+取证；本文件补服务层口径：
 - `DeviceServiceServicer.CreateDriver(action='post_process')` 会把 device_config
-  的 kwargs 原样传给驱动（is_reject / timing / next_round_is_reject 不缺不改）
-- 真实 XiaoyiLivechatReject 经该入口：非打断且非连续拒识 → 受限等待；
-  打断型 / 下一轮仍拒识 → 不等待
+  的 kwargs 原样传给驱动（is_reject / timing / record_mode 等不缺不改）；
+- 真实 XiaoyiLivechatReject 经该入口：静默拒识轮（非打断型）→ 走播放后回复检测；
+  打断型（显式 is_interruption 或 timing）→ 不检测、直接收尾。
+- INT-2363 起执行器不再注入 next_round_is_reject，服务层也不得感知该字段。
 """
 import json
 import os
@@ -43,7 +43,7 @@ class _FakeFactory:
         return self.driver
 
 
-def _make_reject_driver():
+def _make_reject_driver(detect_result=True):
     driver = XiaoyiLivechatReject.__new__(XiaoyiLivechatReject)
     driver._logs = []
     driver._log = lambda **kw: driver._logs.append(kw)
@@ -51,9 +51,9 @@ def _make_reject_driver():
     driver.HW_PARAMS_CLOSED_CONFIRM = 3
     driver._check_stop = lambda *a, **k: False
     driver._get_driver = lambda sn: None
-    driver._wait_calls = []
-    driver._wait_reject_reply_end_limited = lambda sn, task_id=None, test_case_id=None: (
-        driver._wait_calls.append(sn) or True)
+    driver._detect_calls = []
+    driver._detect_silent_reject_reply = lambda *a, **k: (
+        driver._detect_calls.append(1) or detect_result)
     return driver
 
 
@@ -75,8 +75,7 @@ class TestServicerParamPassthrough:
     def test_reject_kwargs_reach_driver_unchanged(self, monkeypatch):
         spy = _SpyDriver()
         servicer = _servicer(monkeypatch, spy)
-        kwargs = {'is_reject': True, 'timing': 'silence',
-                  'next_round_is_reject': False, 'record_mode': 'round',
+        kwargs = {'is_reject': True, 'timing': 'silence', 'record_mode': 'round',
                   'total_rounds': 2, 'round_number': 1}
         resp = servicer.CreateDriver(_post_process_request(kwargs))
         assert resp.success is True
@@ -86,19 +85,32 @@ class TestServicerParamPassthrough:
 
 
 class TestRealRejectDriverThroughServicer:
-    @pytest.mark.parametrize('kwargs,should_wait', [
-        ({'is_reject': True, 'timing': 'silence', 'next_round_is_reject': False}, True),
-        ({'is_reject': True, 'timing': 'response', 'next_round_is_reject': False}, False),
-        ({'is_reject': True, 'timing': 'silence', 'next_round_is_reject': True}, False),
-        ({'is_reject': False, 'timing': 'silence', 'next_round_is_reject': False}, False),
+    @pytest.mark.parametrize('kwargs,should_detect', [
+        ({'is_reject': True, 'timing': 'silence'}, True),
+        ({'is_reject': True, 'timing': '静默'}, True),
+        ({'is_reject': True, 'timing': 'response'}, False),
+        ({'is_reject': True, 'timing': 'silence', 'is_interruption': True}, False),
+        ({'is_reject': True, 'timing': 'response', 'is_interruption': False}, True),
+        ({'is_reject': False, 'timing': 'silence'}, False),
     ])
-    def test_limited_wait_branch_selected(self, monkeypatch, kwargs, should_wait):
+    def test_reply_detection_branch_selected(self, monkeypatch, kwargs, should_detect):
         driver = _make_reject_driver()
+        expected = kwargs.get('is_interruption')
         # 基类收尾用桩替换，避免依赖真机录音文件
         monkeypatch.setattr(Xiaoyilivechat, 'post_process', lambda self, *a, **k: True)
         servicer = _servicer(monkeypatch, driver)
         resp = servicer.CreateDriver(_post_process_request(kwargs))
         assert resp.success is True
-        assert bool(driver._wait_calls) is should_wait
-        # 轮次口径字段不得被驱动回写
-        assert 'is_interruption' not in kwargs
+        assert bool(driver._detect_calls) is should_detect
+        # 轮次口径字段不得被驱动改写
+        assert kwargs.get('is_interruption') == expected
+
+    def test_next_round_is_reject_not_required(self, monkeypatch):
+        """INT-2363：服务层/驱动不再依赖 next_round_is_reject（缺省也照常检测）。"""
+        driver = _make_reject_driver()
+        monkeypatch.setattr(Xiaoyilivechat, 'post_process', lambda self, *a, **k: True)
+        servicer = _servicer(monkeypatch, driver)
+        resp = servicer.CreateDriver(_post_process_request(
+            {'is_reject': True, 'timing': 'silence'}))
+        assert resp.success is True
+        assert driver._detect_calls == [1]

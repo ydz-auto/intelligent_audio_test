@@ -52,6 +52,10 @@ REPLY_START_TIMEOUT = config_manager.get_value('device_timing', 'reply_start_tim
 # 拒识轮等待回复结束的总上限（秒，INT-2146）：hw_params 主信号 + UI 兜底共用同一预算，
 # 超时记 WARNING 后放行，防止连续拒识短音频把整轮卡到基类 300s 上限
 REJECT_REPLY_WAIT_TIMEOUT = config_manager.get_value('device_timing', 'reject_reply_wait_timeout', 5)
+# 静默拒识轮 AI PCM RMS 主检测窗口（秒，INT-2363）：连续 N 秒无语音能量判定「未回复」，
+# 直接收尾进下一轮；也是 hw_params 降级路径「播放流是否 open」的观察窗口
+REJECT_SILENT_NO_REPLY_SECONDS = config_manager.get_value(
+    'device_timing', 'reject_silent_no_reply_seconds', 2)
 REPLY_STATE_TIMEOUT = config_manager.get_value('device_timing', 'reply_state_timeout', 10)
 REPLY_LISTEN_TIMEOUT = config_manager.get_value('device_timing', 'reply_listen_timeout', 300)
 # barge-in 打断轮轮间延迟（秒）：检测到 AI 开口后延迟再放下一轮打断音频
