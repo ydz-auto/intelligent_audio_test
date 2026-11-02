@@ -56,6 +56,8 @@ class DeviceCreateSchema(APIModel):
     ip: Optional[str] = Field(None)
     status: Optional[str] = Field('offline')
     supported_algorithms: Optional[List[str]] = Field(None)
+    # 实验室归属（写入侧此前缺失，只能靠迁移脚本挂 lab_id）
+    lab_id: Optional[int] = Field(None, description='所属实验室ID')
 
     @field_validator('system', mode='before')
     @classmethod
@@ -82,6 +84,8 @@ class DeviceUpdateSchema(APIModel):
     ip: Optional[str] = Field(None)
     status: Optional[str] = Field(None)
     supported_algorithms: Optional[List[str]] = Field(None)
+    # 实验室归属（写入侧此前缺失，只能靠迁移脚本挂 lab_id）
+    lab_id: Optional[int] = Field(None, description='所属实验室ID')
 
     @field_validator('system', mode='before')
     @classmethod

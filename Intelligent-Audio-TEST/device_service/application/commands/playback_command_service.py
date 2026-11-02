@@ -205,6 +205,7 @@ class PlaybackCommandService:
                 'description': 'description',
                 'status': 'status',
                 'current_spl_mapping_id': 'current_spl_mapping_id',
+                'lab_id': 'lab_id',
             }
             for json_key, attr_name in field_map.items():
                 if json_key in data and data[json_key] is not None:

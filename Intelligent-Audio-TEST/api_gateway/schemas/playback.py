@@ -71,6 +71,8 @@ class PlaybackCreateSchema(APIModel):
     channel_index: Optional[int] = Field(0)
     description: Optional[str] = Field(None)
     status: Optional[str] = Field('online')
+    # 实验室归属（写入侧此前缺失，只能靠迁移脚本挂 lab_id）
+    lab_id: Optional[int] = Field(None, description='所属实验室ID')
 
 
 class PlaybackUpdateSchema(APIModel):
@@ -83,6 +85,8 @@ class PlaybackUpdateSchema(APIModel):
     description: Optional[str] = Field(None)
     status: Optional[str] = Field(None)
     current_spl_mapping_id: Optional[int] = Field(None)
+    # 实验室归属（写入侧此前缺失，只能靠迁移脚本挂 lab_id）
+    lab_id: Optional[int] = Field(None, description='所属实验室ID')
 
 
 class PlaybackTestSchema(APIModel):
