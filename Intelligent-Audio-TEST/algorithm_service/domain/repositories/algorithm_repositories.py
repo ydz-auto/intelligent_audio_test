@@ -151,3 +151,10 @@ class IParamMappingQueryRepository(ABC):
     def delete_by_dimension_ids(self, dimension_ids: List[int]) -> int:
         """软删全部作用域下指向给定维度的映射，返回受影响行数（INT-2353）。"""
         ...
+
+    @abstractmethod
+    def list_algorithm_types_by_dimension_ids(
+        self, dimension_ids: List[int]
+    ) -> List[str]:
+        """列出这些维度下仍有活动映射的算法类型（INT-2353 缓存定向失效）。"""
+        ...

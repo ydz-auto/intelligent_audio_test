@@ -379,3 +379,26 @@ class ParamMappingQueryRepository(IParamMappingQueryRepository):
         except Exception:
             session.rollback()
             raise
+
+    def list_algorithm_types_by_dimension_ids(
+        self, dimension_ids: List[int]
+    ) -> List[str]:
+        """列出这些维度下仍有活动映射的算法类型（INT-2353 缓存定向失效）。
+
+        必须在 :meth:`delete_by_dimension_ids` 之前调用（软删后这些行虽仍在
+        表里，但已不是「活动」映射）；返回排序去重的算法类型，供写路径按
+        算法切片重建配置缓存中的 ``mappings`` 桶，避免只按 ``dimension_ids``
+        失效时 ``mappings`` 切片不刷新、缓存读路径仍返回旧映射。
+        """
+        from algorithm_service.infrastructure.persistence.models import (
+            ParamMapping as ParamMappingPO,
+        )
+        ids = sorted({int(d) for d in (dimension_ids or []) if d is not None})
+        if not ids:
+            return []
+        session = get_db_session()
+        rows = session.query(ParamMappingPO.algorithm_type).filter(
+            ParamMappingPO.dimension_id.in_(ids),
+            ParamMappingPO.deleted == False,  # noqa: E712
+        ).distinct().all()
+        return sorted({str(r[0]) for r in rows if r[0]})

@@ -111,12 +111,44 @@ class TestDeleteByDimensionIds:
         assert session.query(ParamMapping).filter_by(
             source_param='keep').one().deleted is False
 
+    def test_lists_affected_algorithm_types_before_delete(self, db):
+        """缓存定向失效的输入：仅活动映射的算法类型，去重排序、排除树外/已删。"""
+        from algorithm_service.infrastructure.persistence.algorithm_repository import (
+            param_mapping_query_repository,
+        )
+        session = db.get_db_session()
+        tree = [10, 20]
+        _add(session, source_param='a1', dimension_id=10,
+             algorithm_type='algo_b')
+        _add(session, source_param='a2', api_id=7, dimension_id=10,
+             algorithm_type='algo_a')
+        _add(session, source_param='a3', device_id=9, dimension_id=20,
+             algorithm_type='algo_b')
+        _add(session, source_param='other', dimension_id=30,
+             algorithm_type='algo_outside')
+        _add(session, source_param='gone', dimension_id=10,
+             algorithm_type='algo_gone', deleted=True)
+        session.commit()
+
+        assert param_mapping_query_repository.list_algorithm_types_by_dimension_ids(
+            tree) == ['algo_a', 'algo_b']
+        # 列表取的是软删前的活动行；软删后不再返回
+        param_mapping_query_repository.delete_by_dimension_ids(tree)
+        assert param_mapping_query_repository.list_algorithm_types_by_dimension_ids(
+            tree) == []
+        assert param_mapping_query_repository.list_algorithm_types_by_dimension_ids(
+            []) == []
+
 
 # ==================== 2. RPC：JSON 维度列表解析并委托仓储 ====================
 
 class _FakeMappingQueryRepo:
-    def __init__(self):
+    def __init__(self, algorithm_types=None):
         self.calls = []
+        self._algorithm_types = algorithm_types or []
+
+    def list_algorithm_types_by_dimension_ids(self, dimension_ids):
+        return list(self._algorithm_types)
 
     def delete_by_dimension_ids(self, dimension_ids):
         self.calls.append(list(dimension_ids))
@@ -124,13 +156,15 @@ class _FakeMappingQueryRepo:
 
 
 class _MixinUnderTest:
-    """只借用 _DimensionMixin 的 RPC 方法，缓存刷新替换为空操作。"""
+    """只借用 _DimensionMixin 的 RPC 方法，缓存刷新捕获入参。"""
 
     def __init__(self):
         from algorithm_service.interfaces.grpc.mixins.dimension_mixin import (
             _DimensionMixin,
         )
-        self._invalidate_cache = lambda **kwargs: None
+        self.invalidate_calls = []
+        self._invalidate_cache = lambda **kwargs: self.invalidate_calls.append(
+            kwargs)
         self._rpc = _DimensionMixin.DeleteParamMappingsByDimension.__get__(
             self, type(self))
 
@@ -141,7 +175,7 @@ class _MixinUnderTest:
 def test_rpc_parses_json_ids_and_delegates(db, monkeypatch):
     import algorithm_service.infrastructure.persistence.algorithm_repository as repo_mod
 
-    fake = _FakeMappingQueryRepo()
+    fake = _FakeMappingQueryRepo(algorithm_types=['algo_b', 'algo_a'])
     monkeypatch.setattr(repo_mod, 'param_mapping_query_repository', fake)
 
     svc = _MixinUnderTest()
@@ -150,6 +184,43 @@ def test_rpc_parses_json_ids_and_delegates(db, monkeypatch):
     assert resp.success is True
     assert fake.calls == [[10, 20]]
     assert '"deleted": 2' in resp.data
+
+
+def test_rpc_invalidates_mappings_slice_by_affected_algorithm_types(
+        db, monkeypatch):
+    """打回修复：失效范围必须覆盖 mappings 桶（按受影响算法类型），
+    不能只传 dimension_ids（那只重载 evaluation_dimension_params 切片）。"""
+    import algorithm_service.infrastructure.persistence.algorithm_repository as repo_mod
+
+    fake = _FakeMappingQueryRepo(algorithm_types=['voice_llm'])
+    monkeypatch.setattr(repo_mod, 'param_mapping_query_repository', fake)
+
+    svc = _MixinUnderTest()
+    resp = svc.call(types.SimpleNamespace(dimension_ids='[578]'))
+
+    assert resp.success is True
+    assert svc.invalidate_calls == [{
+        'algorithm_types': ['voice_llm'],
+        'dimension_ids': [578],
+    }]
+
+
+def test_rpc_without_mappings_still_invalidates_dimension_params(
+        db, monkeypatch):
+    """无活动映射时仍按维度刷新（覆盖 evaluation_dimension_params 切片）。"""
+    import algorithm_service.infrastructure.persistence.algorithm_repository as repo_mod
+
+    fake = _FakeMappingQueryRepo(algorithm_types=[])
+    monkeypatch.setattr(repo_mod, 'param_mapping_query_repository', fake)
+
+    svc = _MixinUnderTest()
+    resp = svc.call(types.SimpleNamespace(dimension_ids='[578]'))
+
+    assert resp.success is True
+    assert svc.invalidate_calls == [{
+        'algorithm_types': [],
+        'dimension_ids': [578],
+    }]
 
 
 def test_rpc_empty_ids_skips_repo(db, monkeypatch):

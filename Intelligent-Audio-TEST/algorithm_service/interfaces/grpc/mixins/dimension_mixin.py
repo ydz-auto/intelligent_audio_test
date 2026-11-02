@@ -273,9 +273,25 @@ class _DimensionMixin(_ParamBaseMixin):
             dim_ids = [int(d) for d in dim_ids if d is not None]
             if not dim_ids:
                 return _success({"dimension_ids": [], "deleted": 0})
+            # 先取受影响的算法类型（软删后这些行就不再是活动映射），再软删。
+            # INT-2353 打回修复：只按 dimension_ids 失效时 config_cache 仅重载
+            # evaluation_dimension_params 切片，不会重建 mappings 桶，缓存读路径
+            # （/algorithm/mappings、评估取值）会继续返回指向已删维度的旧映射。
+            # 按受影响算法类型 + 维度一起失效，两个切片同步刷新。
+            algorithm_types = (
+                param_mapping_query_repository.list_algorithm_types_by_dimension_ids(
+                    dim_ids)
+            )
             deleted = param_mapping_query_repository.delete_by_dimension_ids(dim_ids)
-            self._invalidate_cache(dimension_ids=dim_ids)
-            return _success({"dimension_ids": dim_ids, "deleted": deleted})
+            self._invalidate_cache(
+                algorithm_types=algorithm_types,
+                dimension_ids=dim_ids,
+            )
+            return _success({
+                "dimension_ids": dim_ids,
+                "algorithm_types": algorithm_types,
+                "deleted": deleted,
+            })
         except Exception as e:
             return _failure(str(e))
 
