@@ -98,6 +98,43 @@ class DimensionResultDTO:
 
 
 @dataclass
+class DimensionResultsWithBody:
+    """带原始响应的维度结果 + 覆盖信息（INT-2379 C2）。
+
+    覆盖信息用于报告链/查询链在 body 拉取不完整时如实标注降级，替代
+    「单块失败只记 WARNING 然后整块行消失」的静默行为：
+
+    - dim_map:       {result_id: [DimensionResultDTO, ...]} 成功取到的 body 结果
+    - requested_ids: 本次请求的全部 result_id
+    - covered_ids:   实际取到 body 的 result_id
+    - failed_chunks: [(start, end, reason), ...] 重试后仍失败的块（下标闭开区间）
+    - dropped_ids:   单条本身超过 gRPC 消息上限被丢弃的 result_id
+    """
+    dim_map: Any = None
+    requested_ids: Any = None
+    covered_ids: Any = None
+    failed_chunks: Any = None
+    dropped_ids: Any = None
+
+    def coverage(self, missing_limit: int = 50) -> dict:
+        """覆盖摘要（缺失 result_id 截断到前 missing_limit 条 + 总数）。"""
+        requested = list(self.requested_ids or [])
+        covered = set(self.covered_ids or [])
+        missing = [rid for rid in requested if rid not in covered]
+        dropped = list(self.dropped_ids or [])
+        reason = 'partial_api_raw_response_coverage' if missing else None
+        return {
+            'requested': len(requested),
+            'covered': len(requested) - len(missing),
+            'missing': missing[:missing_limit],
+            'missing_total': len(missing),
+            'failed_chunks': list(self.failed_chunks or []),
+            'dropped_ids': dropped,
+            'reason': reason,
+        }
+
+
+@dataclass
 class DimensionDTO:
     """维度配置 DTO（EvaluationConfigService.ListDimensions / GetDimensionByIds）"""
     id: Optional[int] = None

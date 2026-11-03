@@ -655,12 +655,13 @@ class ReportTaskGenerator:
         # INT-1752：存在加权维度（weighted_sum_ratio / weighted_wer）时二次拉取带
         # api_raw_response 的维度结果——分子/分母从原始响应提取，不带则策略恒返回 None。
         # 首次拉取不带 body 是为了先确定维度集合（维度列表由维度结果推导，鸡生蛋）。
+        # INT-2379 C1：二次拉取结果按行合并进首次完整 map，任何 body 块失败都不得删行；
+        # C2：覆盖信息随聚合说明标注到 all_metrics 指标项。
         from report_service.domain.services.aggregation_strategies import needs_raw_response
+        aggregation_coverage = {}
         if any(needs_raw_response(_dim_statistic_method(d)) for d in all_dimensions):
-            dim_results_map_with_body, _ = ReportDataBuilder._get_dimension_results_batch(
-                res_ids, include_body=True)
-            if dim_results_map_with_body:
-                dim_results_map = dim_results_map_with_body
+            dim_results_map, aggregation_coverage = (
+                ReportDataBuilder._get_dimension_results_merged(dim_results_map, res_ids))
 
         test_cases, test_case_ids = ReportDataBuilder._get_task_test_cases(task_ids_for_query)
         devices_list, apis_list, device_ids, api_ids = ReportDataBuilder._get_task_resources(task_ids_for_query)
@@ -770,6 +771,7 @@ class ReportTaskGenerator:
             "source_task_ids": source_task_ids,
             "field_mappings": field_mappings,
             "aggregation_degraded": aggregation_degraded,
+            "aggregation_coverage": aggregation_coverage,
         }
 
     @staticmethod
@@ -779,6 +781,8 @@ class ReportTaskGenerator:
         INT-1752：报告详情此前对「加权指标算不出来」静默显示简单平均；现在指标项带
         aggregation_degraded / degradation_reason / degradation_detail，
         前端与导出据此标注「已降级为简单平均」。
+        INT-2379 C2：部分覆盖（partial_api_raw_response_coverage）同样落标，并带
+        coverage（requested/covered/missing/missing_total），说明加权值只覆盖了哪些 item。
         """
         if not aggregation_degraded or not isinstance(all_metrics, list):
             return
@@ -793,6 +797,8 @@ class ReportTaskGenerator:
             metric['applied_method'] = info.get('applied_method', 'average')
             metric['degradation_reason'] = info.get('reason')
             metric['degradation_detail'] = info.get('detail')
+            if info.get('coverage') is not None:
+                metric['coverage'] = info['coverage']
 
     @staticmethod
     def _build_task_summary(task, task_id, results, data_dict):

@@ -395,3 +395,82 @@ def simple_average_of_items(items: List[Dict[str, Any]]) -> Optional[float]:
     if not vals:
         return None
     return sum(vals) / len(vals)
+
+
+#: INT-2379 C2：加权维度部分覆盖（部分 item 缺原始响应）的降级原因。
+PARTIAL_API_RAW_RESPONSE_COVERAGE = 'partial_api_raw_response_coverage'
+
+#: 指标/响应里缺失 result_id 明细的截断长度（总数另记 missing_total）。
+COVERAGE_MISSING_LIMIT = 50
+
+
+def _raw_response_coverage(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """统计参与聚合的 item 中带原始响应的覆盖情况。
+
+    Returns:
+        {requested, covered, missing, missing_total}
+        requested/covered 按 item 计；missing 为缺原始响应的去重 result_id。
+    """
+    requested = len(items)
+    covered = 0
+    missing_ids = []
+    seen = set()
+    for it in items or []:
+        if _parse_raw_response(it.get('api_raw_response')):
+            covered += 1
+            continue
+        rid = it.get('test_result_id')
+        if rid is not None and rid not in seen:
+            seen.add(rid)
+            missing_ids.append(rid)
+    return {
+        'requested': requested,
+        'covered': covered,
+        'missing': missing_ids[:COVERAGE_MISSING_LIMIT],
+        'missing_total': len(missing_ids),
+    }
+
+
+def explain_aggregation_degradation(method: str, items: List[Dict[str, Any]],
+                                    output_params: List[Dict[str, Any]] = None,
+                                    denominator_mode: str = None,
+                                    aggregate_value: Any = None) -> Optional[Dict[str, Any]]:
+    """加权维度的降级说明（含部分覆盖标记），无降级返回 None。
+
+    与 explain_degradation 的区别：本函数对**已算出值**的情况也会判定。
+    INT-2379 C2：部分 item 缺原始响应时，策略按有快照的 item 加权，值不再
+    静默偏小——统一标 `partial_api_raw_response_coverage` 并带 coverage 明细：
+
+      - 缺 body 比例 = 0          → 不标；
+      - 0 < 比例 < 1 且能算出值   → partial_api_raw_response_coverage（applied_method 仍为原策略）；
+      - 全部缺 body / 分子分母取不到且算不出值 → 沿用 missing_api_raw_response /
+        numerator_denominator_unavailable，并把 coverage 明细附在说明里。
+    """
+    if not needs_raw_response(method) or not items:
+        return None
+    coverage = _raw_response_coverage(items)
+    partial = 0 < coverage['covered'] < coverage['requested']
+    coverage_summary = {
+        **coverage,
+        'reason': PARTIAL_API_RAW_RESPONSE_COVERAGE if partial else None,
+    }
+
+    if aggregate_value is None:
+        degradation = explain_degradation(
+            method, items, output_params=output_params,
+            denominator_mode=denominator_mode)
+        if degradation is not None and partial:
+            degradation['coverage'] = coverage_summary
+        return degradation
+
+    if partial:
+        return {
+            'configured_method': method,
+            'applied_method': method,
+            'reason': PARTIAL_API_RAW_RESPONSE_COVERAGE,
+            'detail': (f'{coverage["requested"] - coverage["covered"]}/'
+                       f'{coverage["requested"]} 个参与聚合的 item 缺少 API 原始响应，'
+                       f'加权结果只覆盖 {coverage["covered"]} 个 item'),
+            'coverage': coverage_summary,
+        }
+    return None

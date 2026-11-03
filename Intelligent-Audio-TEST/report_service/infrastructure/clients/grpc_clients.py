@@ -154,6 +154,21 @@ def _grpc_get_dimension_results_by_result_ids(result_ids, include_body=False):
     return {rid: [_dto_to_dict(d) for d in items] for rid, items in raw.items()}
 
 
+def _grpc_get_dimension_results_with_body(result_ids):
+    """带原始响应批量查询维度结果，并返回覆盖信息（INT-2379 C2）。
+
+    Returns:
+        (dim_results_map, coverage):
+            dim_results_map: {result_id: [item_dict, ...]}
+            coverage: {requested, covered, missing, missing_total,
+                       failed_chunks, dropped_ids, reason}
+    """
+    result = _eval_data.get_dimension_results_with_body(result_ids)
+    dim_map = {rid: [_dto_to_dict(d) for d in items]
+               for rid, items in (result.dim_map or {}).items()}
+    return dim_map, result.coverage()
+
+
 # ======================================================================
 # EvaluationConfigService —— 维度配置查询
 # ======================================================================
