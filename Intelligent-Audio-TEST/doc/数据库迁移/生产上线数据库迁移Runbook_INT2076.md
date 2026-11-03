@@ -7,7 +7,94 @@
 > （Phase 0~6），是 INT-2077（隔离库补跑取证）与生产部署卡的**执行契约**。
 > **不改任何迁移脚本代码、不跑迁移**；发现的脚本缺陷以实施卡登记（§10）。与 INT-2075 基线冲突以本文件为准。
 
+## 0.0 执行口径更新（2026-11-03，**以本节为准**；下文 §2~§8 为历史版本，仅作脚本级参考）
+
+> 依据：用 `D:\新建文件夹\1101.rar` 解出的干净副本（Windows PG 16.15，端口 15441）从头跑通
+> 「prod 档结构 → 8 步数据迁移 → 网关接口冒烟」，替代下文 46+11 手工分段。
+> 演练脚本：`run_full_migration.py ddl|data|all`；冒烟编排：`docker-compose.smoke.yml`（仓外参考件）。
+
+### A. 结构升级：一条命令（56 步，默认拒绝白名单）
+
+```bash
+DB_BOOTSTRAP_PROFILE=prod DATABASE_URI=... python docker/db_bootstrap_entrypoint.py
+```
+
+- 二次重跑幂等（实测 rc=0 且零变更）；结构 diff：缺表 0 / 缺列 0
+- **新纳入**：`seed_rbac`（130 权限 / 5 角色 / 181 角色-权限）随 prod 档自动执行
+- **排除**：`add_pg_stat_statements_int1783`（`CREATE EXTENSION` 需超管，业务账号会整链失败）→ 由 DBA 用超管单独安装
+- 顺序硬约束（错则整链失败，已被单测钉死）：
+  1. `add_visibility_columns_int423` **先于** `remove_foreign_keys_and_soft_delete`
+  2. `add_param_profiles_scope --ddl-only` **先于** `add_device_id_scope` / `add_device_param_bindings`
+  3. `add_timestamp_db_defaults` **先于** `seed_rbac`（否则 `permissions.created_at` NotNullViolation）
+  4. `seed_rbac` **先于** `fix_users_schema_drift`（后者依赖 roles）
+  5. `analyze_stale_statistics_int1741` 保持末位
+
+### B. 结构之后必须手工执行的 8 步数据步骤
+
+```bash
+export DATABASE_URL=... DATABASE_URI=...      # 双设；LAB_NAME 与部署口径一致（缺省 lab-a）
+python scripts/migrations/202611/associate_devices_to_default_lab.py --apply   # ① lab
+python scripts/migrations/202611/seed_playback_speaker_groups.py --apply       # ② 逻辑音箱
+python scripts/migrations/202610/backfill_result_type_channel_20261029.py --apply  # ③ 结果类型
+python scripts/migrations/202610/migrate_cases_to_speaker_groups.py            # ④ 用例→逻辑音箱
+# ⑤ 引导管理员：二选一（见 §C）；prod 档未显式给 DEV_DEFAULT_PASSWORD 会自动跳过
+DEV_DEFAULT_PASSWORD='<强密码>' python scripts/migrations/202610/fix_users_schema_drift.py --apply
+python scripts/migrations/202610/seed_custom_oauth_providers.py                # ⑥ 需 HW_OAUTH_*，否则跳过
+python scripts/migrations/202611/migrate_device_params_to_profiles.py --apply  # ⑦ 设备参数下沉
+python scripts/migrations/202610/migrate_audios_to_oss.py --dry-run            # ⑧ 音频先 dry-run
+python scripts/migrations/202610/migrate_audios_to_oss.py
+```
+
+- 音频根：生产源文件在 `D:/00_static/static/audios`（脚本默认主根）；主根找不到时按同一相对路径回退
+  `C:\S2TT\...`；可用 `--audio-root` / `AUDIO_ROOT` 覆盖
+- 实测：`local_found=1953 / missing_local=0`；用例改写 649 条 / 1303 处、`playback_device_id` 残留 0
+
+### C. 用户与登录（推荐方案 A）
+
+- **方案 A（推荐）**：跳过 ⑤。`users` 为空时，自助注册的**第一个用户自动获得 admin**，第二个起回落 guest
+  （代码：`auth_handlers.handle_create_user` 的 `count_all()==0` 分支；前提是 `seed_rbac` 已建 admin 角色）
+- **方案 B**：显式给 `DEV_DEFAULT_PASSWORD` 执行 ⑤，预置 `dev_user`；之后注册用户均为 guest
+- 两种方案都已实测；prod 档缺 `DEV_DEFAULT_PASSWORD` 时脚本拒绝用缺省密码建号
+
+### D. 本次补入引导链的 4 项（原「未入链 DDL」剩余项，已修复）
+
+干净副本实测发现「表/列齐全，但索引与种子行缺失」，已全部补入 BOOTSTRAP_STEPS 与 prod 白名单，
+部署时自动执行（`fix_users_email_unique` 在 prod 档自动换参数为 `--apply`）：
+
+| 脚本 | 补前实测缺口 | 补后预期 |
+|---|---|---|
+| `202610/add_system_options_table.py` | `system_options` 表存在但 0 行 | 11 条默认 KV |
+| `202610/fix_users_email_unique.py --apply` | 缺 `uq_users_email` 部分唯一索引 | 空邮箱归一 NULL + 非空 email 唯一 |
+| `202610/add_logs_query_indexes_int1468.py` | `logs` 仅 4 个单列索引 | 3 个 lower() 函数索引 + (task_id, id) |
+| `202610/add_test_cases_group_id_index_int1470.py` | 缺 `idx_test_cases_group_id_active` | 分组计数走部分索引 |
+
+> 其余原 §5 未入链项已被覆盖：9 个建表类由 `create_all_tables.py` 建出（实测 9 表全部存在），
+> 7 个加列/建表脚本已并入引导链 ③.1~③.7，4 条 test_tasks 索引有 `202611/add_task_list_indexes.py`。
+
+### E. 验收口径（本次实测值）
+
+| 检查 | 结果 |
+|---|---|
+| 结构 | 缺表 0 / 缺列 0；二次重跑零变更 |
+| 金标 | `algorithm_api_params` 0、`algorithm_device_params` 6、`algorithm_reference_params` 3、`param_mappings` 138 |
+| 业务数据 | 实验室 1、逻辑音箱 12/条目 12、`result_type` e2e 4583 + 待补充 1、用例 578 在用 |
+| 账户 | permissions 130 / roles 5 / role_permissions 181；方案 A 下 users 保持 0 |
+| 设备参数 | 策略 1 / 参数 6 / 映射 42 / 绑定 5 |
+| 音频 | 1953 条全命中本地源文件 |
+| 索引/种子补齐 | `system_options` 11 行；`logs` 4 条过滤索引（lower_level_id / lower_module_id / lower_category_id / task_id_id）；`uq_users_email`；`idx_test_cases_group_id_active` |
+| 服务冒烟 | 复用镜像起隔离栈（网关 15010），9 容器 healthy；28 项接口 200；8 个服务日志零 `UndefinedColumn`/`ProgrammingError` |
+
+### F. 回滚与备份
+
+- 结构步骤全部幂等且**无破坏性 DDL**（DROP 类在 §7 独立窗口，本次演练未执行）
+- 数据步骤只改 `NULL` 行（lab_id / result_type / 用例 config 引用改写除外——④ 会重写用例 config，执行前备份 `test_cases`）
+- 金标参数表行数在演练前后一致；策略下沉只新增 `param_profile_*` 行，算法级行保留
+- 建议上线前逻辑备份：`test_cases`、`test_results`、`algorithm_*`、`param_mappings`、`users`
+
 ## 0. 结论摘要
+
+> **2026-11-03 更新**：本节与 §2~§8 为历史版本（2026-10-28 口径），执行一律以 **§0.0** 为准；
+> 本节及以下保留用于脚本级说明与缺口溯源。
 
 - 完整上线链：**Phase 0 准备 → Phase 1 A 段（46 结构/真修复）→ Phase 2 B 段（11 可跳过 seed）→
   Phase 3 部署闸口（未入链 DDL 20 个 + 部署前置核验）→ 部署新代码 → Phase 4 回填 →
@@ -141,6 +228,9 @@
 > 生产库该族维度若已软删，52 的 B 段 param_mappings 自然 0 条，不补跑该 seed。
 
 ## 5. Phase 3 部署闸口（未入链 DDL 20 个 + 部署前置核验）
+
+> **2026-11-03 更新**：本节的 20 个未入链 DDL 已有 16 个被覆盖（9 个建表类由 `create_all_tables.py`
+> 建出；7 个加列/建表脚本已并入引导链 ③.1~③.7），**仅剩 4 个仍需部署前补跑**，见 §0.0 D。
 
 > 这 20 个脚本是 INT-2071 的 57 步**未覆盖**的缺口（隔离库↔主库逐列 diff 证实），全部为结构 DDL
 > （建表/加列/索引/约束），新代码读写路径依赖 → **必须在部署新代码之前执行**。全部幂等；
