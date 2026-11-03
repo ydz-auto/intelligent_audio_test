@@ -34,10 +34,20 @@ class ReportSecondaryDataMixin:
 
         # INT-1752：与任务报告链同口径——存在加权维度时才带 api_raw_response 二次拉取，
         # 否则载荷不变；带 body 后加权策略可按分子/分母真实计算。
+        # INT-2379 C4：先非 body 取全量作完整性基准，再带 body 按行合并（共用同一
+        # helper，不另写一份逻辑）；body 块失败只丢字段不丢行。
         need_raw_body = any(
             needs_raw_response(_dim_statistic_method(d)) for d in all_dimensions)
-        dim_results_map, _ = ReportDataBuilder._get_dimension_results_batch(
-            res_ids, include_body=need_raw_body)
+        base_map, _ = ReportDataBuilder._get_dimension_results_batch(
+            res_ids, include_body=False)
+        dim_results_map = base_map
+        aggregation_coverage = {}
+        if need_raw_body:
+            body_map, _ = ReportDataBuilder._get_dimension_results_batch(
+                res_ids, include_body=True)
+            dim_results_map, aggregation_coverage = (
+                ReportDataBuilder._get_dimension_results_merged(
+                    base_map, res_ids, body_map=body_map))
 
         tasks_map = {}
         for t in tasks:
@@ -119,6 +129,7 @@ class ReportSecondaryDataMixin:
             "case_tags_list": case_tags_list,
             "source_cases": source_cases,
             "comparison_matrix_data": comparison_matrix_data,
+            "aggregation_coverage": aggregation_coverage,
         }, None
 
     @staticmethod

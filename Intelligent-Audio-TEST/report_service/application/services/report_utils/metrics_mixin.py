@@ -374,7 +374,9 @@ class MetricsMixin:
         if not agg_items:
             return
 
-        from report_service.domain.services.aggregation_strategies import explain_degradation, get_strategy
+        from report_service.domain.services.aggregation_strategies import (
+            explain_aggregation_degradation, get_strategy,
+        )
 
         for dim_name, resources in agg_items.items():
             method = dim_statistic_method.get(dim_name, 'average')
@@ -390,13 +392,15 @@ class MetricsMixin:
                     output_params=output_params,
                     denominator_mode=denominator_mode,
                 )
+                # INT-2379 C2：已算出值但部分 item 缺原始响应时也要打标，
+                # 不再只在 aggregate() 返回 None 时判定降级。
+                degradation = explain_aggregation_degradation(
+                    method, items, output_params=output_params,
+                    denominator_mode=denominator_mode, aggregate_value=agg_val)
+                if degradation is not None and degraded_out is not None:
+                    degraded_out.setdefault(dim_name, degradation)
                 if agg_val is not None and resource in metric_data:
                     metric_data[resource][dim_name] = agg_val
-                elif agg_val is None and degraded_out is not None:
-                    degradation = explain_degradation(method, items, output_params=output_params,
-                                            denominator_mode=denominator_mode)
-                    if degradation is not None:
-                        degraded_out.setdefault(dim_name, degradation)
 
     @staticmethod
     def _apply_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None,
@@ -416,7 +420,9 @@ class MetricsMixin:
         if not agg_items:
             return
 
-        from report_service.domain.services.aggregation_strategies import explain_degradation, get_strategy
+        from report_service.domain.services.aggregation_strategies import (
+            explain_aggregation_degradation, get_strategy,
+        )
 
         for dim_name, groups in agg_items.items():
             method = dim_statistic_method.get(dim_name, 'average')
@@ -433,13 +439,14 @@ class MetricsMixin:
                         output_params=output_params,
                         denominator_mode=denominator_mode,
                     )
+                    # INT-2379 C2：部分 item 缺原始响应时，即使策略算出了值也打标
+                    degradation = explain_aggregation_degradation(
+                        method, items, output_params=output_params,
+                        denominator_mode=denominator_mode, aggregate_value=agg_val)
+                    if degradation is not None and degraded_out is not None:
+                        degraded_out.setdefault(dim_name, degradation)
                     if agg_val is not None and group_key in metric_data and resource in metric_data[group_key]:
                         metric_data[group_key][resource][dim_name] = agg_val
-                    elif agg_val is None and degraded_out is not None:
-                        degradation = explain_degradation(method, items, output_params=output_params,
-                                            denominator_mode=denominator_mode)
-                        if degradation is not None:
-                            degraded_out.setdefault(dim_name, degradation)
 
     @staticmethod
     def _calculate_tag_category_averages(tag_accumulator, tag_category_map):

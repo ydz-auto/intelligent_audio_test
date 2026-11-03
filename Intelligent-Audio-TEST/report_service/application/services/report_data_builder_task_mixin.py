@@ -9,11 +9,17 @@
 import json
 
 from shared.models.common_enums import TaskStatus
+from shared.utils.aggregation_gate import heavy_include_body_aggregation
 from shared.utils.response import error_response
 from shared.utils.result_data_store import load_full_result_data
 
+from report_service.application.services.dimension_body_merge import (
+    build_coverage,
+    merge_body_into_base,
+)
 from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_dimension_results_by_result_ids as _grpc_get_dim_results,
+    _grpc_get_dimension_results_with_body as _grpc_get_dim_results_with_body,
     _grpc_get_dimension_params,
     _grpc_get_task_case_ids,
     _grpc_get_test_results_by_task_ids,
@@ -130,7 +136,12 @@ class ReportDataTaskMixin:
         if not result_ids:
             return {}, []
 
-        dim_map = _grpc_get_dim_results(result_ids, include_body=include_body)
+        if include_body:
+            # INT-2379：带 body 的分批拉取统一走覆盖接口（内部有 C6 串行护栏、
+            # 失败块重试与覆盖信息）；此处只要 map，覆盖信息由调用方另行合并获取。
+            dim_map, _ = _grpc_get_dim_results_with_body(result_ids)
+        else:
+            dim_map = _grpc_get_dim_results(result_ids, include_body=False)
 
         dim_results_map = {}
         dim_stats = {}
@@ -158,6 +169,31 @@ class ReportDataTaskMixin:
                     dim_stats[dim_id]["count"] += 1
 
         return dim_results_map, dim_stats
+
+    @staticmethod
+    def _get_dimension_results_merged(base_map, result_ids, body_map=None,
+                                      acl_coverage=None):
+        """带 body 拉取并按行合并进基础 map（INT-2379 C1/C2/C4 共用 helper）。
+
+        Args:
+            base_map: 首次非 body 拉取的完整结果 {result_id: [row, ...]}，
+                作为完整性基准；任何 body 块失败都不得删行。
+            result_ids: 本次参与聚合的 result_id 列表。
+            body_map: 已带 body 拉取的结果（二次对比链复用本函数时传入）；
+                None 时本函数经 ACL 覆盖接口自行拉取。
+            acl_coverage: 与 body_map 配套的 ACL 覆盖信息（可选）。
+
+        Returns:
+            (merged_map, coverage)
+            merged_map：key 集合与 base_map 完全一致，body 行逐行覆盖字段；
+            coverage：{requested, covered, missing, missing_total, failed_chunks,
+                       dropped_ids, reason, ...}
+        """
+        with heavy_include_body_aggregation():
+            if body_map is None:
+                body_map, acl_coverage = _grpc_get_dim_results_with_body(result_ids)
+            merged, stats = merge_body_into_base(base_map, body_map)
+        return merged, build_coverage(acl_coverage, stats)
 
     @staticmethod
     def _get_resource_result_types_batch(task_id_or_ids, device_ids, api_ids):

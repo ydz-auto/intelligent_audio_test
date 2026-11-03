@@ -129,6 +129,10 @@ class ReportStatsQueryMixin:
             "normal_distribution": stats['normal_distribution_data'],
             "resources": stats['resources'],
             "resource_headers": stats['resource_headers'],
+            # INT-2379 C2：加权维度部分覆盖时不再静默——布尔降级标记 + 覆盖明细
+            # （缺失 result_id 截断前 50 条 + 总数），前端只判布尔即安全。
+            "aggregation_degraded": bool(stats.get('aggregation_degraded')),
+            "aggregation_coverage": stats.get('aggregation_coverage') or {},
             "filters": {
                 "category": category,
                 "tags": tags

@@ -65,7 +65,15 @@ class _AggregationStatsMixin:
             needs_raw_response(info.get('method')) for info in dim_strategy_info.values()
         )
         res_ids = [rid for rid in (_r_get(r, 'id') for r in test_results) if rid is not None]
-        dim_results_map = _grpc_get_dim_results(res_ids, include_body=need_raw_body) if res_ids else {}
+        # INT-2379 C1/C4：先非 body 取全量作完整性基准，再带 body 行级合并（共用
+        # ReportDataBuilder 的合并 helper）；body 块失败只丢字段不丢行。
+        base_map = _grpc_get_dim_results(res_ids, include_body=False) if res_ids else {}
+        dim_results_map = base_map
+        aggregation_coverage = {}
+        if need_raw_body and res_ids:
+            from report_service.application.services.report_data_builder import ReportDataBuilder
+            dim_results_map, aggregation_coverage = (
+                ReportDataBuilder._get_dimension_results_merged(base_map, res_ids))
 
         # 1.7 统计前置过滤：用例任一维度评估状态非 completed → 该用例所有结果不参与统计
         # （对齐 V9.7.10 ReportUtils.filter_results_by_case_evaluation；filtered_case_ids
@@ -123,6 +131,8 @@ class _AggregationStatsMixin:
         )
         # INT-1752：降级说明（空 dict 表示无降级）
         result['aggregation_degraded'] = aggregation_degraded
+        # INT-2379 C2：查询链同时输出覆盖信息（缺失 result_id / 失败块）
+        result['aggregation_coverage'] = aggregation_coverage
         return result
 
     # ------------------------------------------------------------------
@@ -242,7 +252,7 @@ class _AggregationStatsMixin:
         并把降级说明写入 degraded_out[dim_name]（不再静默丢值）。
         """
         from report_service.domain.services.aggregation_strategies import (
-            explain_degradation, get_strategy, simple_average_of_items,
+            explain_aggregation_degradation, get_strategy, simple_average_of_items,
         )
 
         custom_agg_items = {}   # dim_name -> [item, ...]（策略聚合用）
@@ -281,16 +291,17 @@ class _AggregationStatsMixin:
                 val = get_strategy(info['method']).aggregate(
                     items, output_params=info['output_params'], denominator_mode=info['denominator_mode']
                 )
+                # INT-2379 C2：部分 item 缺原始响应时，即使能算出加权值也要打标
+                degradation = explain_aggregation_degradation(
+                    info['method'], items, output_params=info['output_params'],
+                    denominator_mode=info['denominator_mode'], aggregate_value=val)
+                if degradation is not None and degraded_out is not None:
+                    degraded_out.setdefault(dim_name, degradation)
                 if val is None:
-                    degradation = explain_degradation(
-                        info['method'], items, output_params=info['output_params'],
-                        denominator_mode=info['denominator_mode'])
-                    if degradation is not None:
-                        if degraded_out is not None:
-                            degraded_out.setdefault(dim_name, degradation)
-                        fallback = simple_average_of_items(items)
-                        if fallback is not None:
-                            averages_map[dim_name] = fallback
+                    fallback = (simple_average_of_items(items)
+                                if degradation is not None else None)
+                    if fallback is not None:
+                        averages_map[dim_name] = fallback
                     continue
                 averages_map[dim_name] = val
             else:
@@ -499,7 +510,7 @@ class _AggregationStatsMixin:
         INT-1752：加权策略返回 None 时按 item 原始值降级为简单平均并记入 degraded_out。
         """
         from report_service.domain.services.aggregation_strategies import (
-            explain_degradation, get_strategy, simple_average_of_items,
+            explain_aggregation_degradation, get_strategy, simple_average_of_items,
         )
         dim_strategy_info = dim_strategy_info or {}
         tag_metric_data = {}
@@ -517,14 +528,14 @@ class _AggregationStatsMixin:
                         val = get_strategy(info['method']).aggregate(
                             items, output_params=info['output_params'], denominator_mode=info['denominator_mode']
                         )
+                        degradation = explain_aggregation_degradation(
+                            info['method'], items, output_params=info['output_params'],
+                            denominator_mode=info['denominator_mode'], aggregate_value=val)
+                        if degradation is not None and degraded_out is not None:
+                            degraded_out.setdefault(dim_name, degradation)
                         if val is None:
-                            degradation = explain_degradation(
-                                info['method'], items, output_params=info['output_params'],
-                                denominator_mode=info['denominator_mode'])
-                            if degradation is not None:
-                                if degraded_out is not None:
-                                    degraded_out.setdefault(dim_name, degradation)
-                                val = simple_average_of_items(items)
+                            val = (simple_average_of_items(items)
+                                   if degradation is not None else None)
                         tag_metric_data[tag_name][res][dim_name] = val
                     else:
                         tag_metric_data[tag_name][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
@@ -543,7 +554,7 @@ class _AggregationStatsMixin:
         INT-1752：加权策略返回 None 时按 item 原始值降级为简单平均并记入 degraded_out。
         """
         from report_service.domain.services.aggregation_strategies import (
-            explain_degradation, get_strategy, simple_average_of_items,
+            explain_aggregation_degradation, get_strategy, simple_average_of_items,
         )
         dim_strategy_info = dim_strategy_info or {}
         metric_data = {}
@@ -561,14 +572,14 @@ class _AggregationStatsMixin:
                         val = get_strategy(info['method']).aggregate(
                             items, output_params=info['output_params'], denominator_mode=info['denominator_mode']
                         )
+                        degradation = explain_aggregation_degradation(
+                            info['method'], items, output_params=info['output_params'],
+                            denominator_mode=info['denominator_mode'], aggregate_value=val)
+                        if degradation is not None and degraded_out is not None:
+                            degraded_out.setdefault(dim_name, degradation)
                         if val is None:
-                            degradation = explain_degradation(
-                                info['method'], items, output_params=info['output_params'],
-                                denominator_mode=info['denominator_mode'])
-                            if degradation is not None:
-                                if degraded_out is not None:
-                                    degraded_out.setdefault(dim_name, degradation)
-                                val = simple_average_of_items(items)
+                            val = (simple_average_of_items(items)
+                                   if degradation is not None else None)
                         metric_data[cat_name][res][dim_name] = val
                     else:
                         metric_data[cat_name][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
