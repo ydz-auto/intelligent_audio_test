@@ -164,6 +164,10 @@ BOOTSTRAP_STEPS = [
     ('python', 'scripts/migrations/202608/seed_rbac.py'),
     # ⑬ Benchmark 排行 4 表 + 指标映射种子（INT-27）
     ('python', 'scripts/migrations/202610/add_benchmark_tables.py'),
+    # ⑬.1 system_options 表 + 11 条默认 KV（INT-620）：全新库 create_all 只建表、
+    #      不写种子行；存量库（生产副本实测 0 行）缺默认值 → 页面设置项为空。
+    #      幂等（表存在即 SKIP、键存在即 SKIP）。
+    ('python', 'scripts/migrations/202610/add_system_options_table.py'),
     # ⑯ INT-88 残留约束修复（FK / 唯一约束 / 缺失索引）
     ('python', 'scripts/migrations/202610/fix_leftover_foreign_keys_and_indexes.py'),
     # ⑰-⑲ apis 列扩展（RMS-SPL 映射 / output_types / device adapter 三列）
@@ -172,6 +176,10 @@ BOOTSTRAP_STEPS = [
     ('python', 'scripts/migrations/202610/add_api_device_adapter_columns.py'),
     # ㉑ users schema 漂移收敛 + dev 引导用户种子（INT-156）
     ('python', 'scripts/migrations/202610/fix_users_schema_drift.py', '--apply'),
+    # ㉑-1 users 邮箱唯一口径（INT-84）：空邮箱归一 NULL + 删历史 users_email_key +
+    #      建部分唯一索引 uq_users_email（仅非空 email 唯一）。存量库缺该索引时
+    #      邮箱可重复注册。脚本默认 dry-run，引导链必须带 --apply。
+    ('python', 'scripts/migrations/202610/fix_users_email_unique.py', '--apply'),
     # ㉒ user_oauth_bindings 表（全新库 create_all 已含，执行为全 SKIP）
     ('python', 'scripts/migrations/202610/add_user_oauth_bindings.py'),
     # INT-1140 access_tokens 表（Access Token + skill/MCP 鉴权令牌；全新库 create_all 已含，执行为全 SKIP）
@@ -408,6 +416,15 @@ BOOTSTRAP_STEPS = [
     #     一条都没有——任务列表的状态/时间/算法类型筛选全部走顺序扫描。
     #     幂等（索引已存在即 SKIP、表不存在即跳过）；须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202611/add_task_list_indexes.py'),
+    # ㊾-4.2 logs 过滤索引（INT-1468）：读侧恒用 lower(level/module/category)，
+    #      裸列索引命中不了 → 24.3 万行的日志检索/统计全表扫描。建 3 个函数索引
+    #      （列尾带 id 覆盖 ORDER BY id DESC）+ (task_id, id)。幂等；非 CONCURRENTLY，
+    #      事务内可重复执行，须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202610/add_logs_query_indexes_int1468.py'),
+    # ㊾-4.3 用例分组计数索引（INT-1470）：GET /groups 每次下发
+    #      GROUP BY group_id 统计，缺索引即全表扫描。部分索引（WHERE deleted=false），
+    #      幂等；须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202610/add_test_cases_group_id_index_int1470.py'),
     # ㊾-5 test_reports.status 历史混值归一（INT-2238）：同一列曾被两套互斥词表
     #     混写（域实体/命令侧 pending/generating/completed/failed vs 生成/统计/
     #     渲染/前端 draft/published），统计只认 published → 混写报告永久漏计、
@@ -474,6 +491,11 @@ PROD_DDL_SCRIPTS = frozenset({
     'scripts/migrations/202609/add_worker_instance_id.py',
     'scripts/migrations/202610/add_timestamp_db_defaults.py',
     'scripts/migrations/202610/add_benchmark_tables.py',
+    # 存量库实测缺口补齐（建表种子 / 索引 / 用户唯一口径），均幂等
+    'scripts/migrations/202610/add_system_options_table.py',
+    'scripts/migrations/202610/fix_users_email_unique.py',
+    'scripts/migrations/202610/add_logs_query_indexes_int1468.py',
+    'scripts/migrations/202610/add_test_cases_group_id_index_int1470.py',
     'scripts/migrations/202610/fix_leftover_foreign_keys_and_indexes.py',
     'scripts/migrations/202610/add_api_rms_spl_mappings.py',
     'scripts/migrations/202610/add_api_output_types.py',
@@ -514,6 +536,8 @@ PROD_DDL_SCRIPTS = frozenset({
 # 生产口径下个别脚本要换参数：只建结构、不搬数据。
 PROD_STEP_ARGS = {
     'scripts/migrations/202610/add_param_profiles_scope.py': ('--apply', '--ddl-only'),
+    # 默认 dry-run 的结构/数据收敛脚本：prod 档必须带 --apply 才真正执行
+    'scripts/migrations/202610/fix_users_email_unique.py': ('--apply',),
 }
 # 允许以「改参数」形式进入 prod 的脚本（本身仍是白名单的一部分）。
 PROD_DDL_SCRIPTS = PROD_DDL_SCRIPTS | frozenset(PROD_STEP_ARGS)

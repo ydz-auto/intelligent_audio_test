@@ -90,6 +90,16 @@ def test_prod_includes_rbac_seed_before_bootstrap_user(monkeypatch):
         scripts.index('scripts/migrations/202610/fix_users_schema_drift.py')
 
 
+def test_prod_user_email_unique_runs_with_apply(monkeypatch):
+    """fix_users_email_unique 默认 dry-run，prod 档必须换参数为 --apply。"""
+    monkeypatch.setenv('DB_BOOTSTRAP_PROFILE', 'prod')
+    step = next(
+        item for item in _bootstrap.select_steps()
+        if item[1] == 'scripts/migrations/202610/fix_users_email_unique.py'
+    )
+    assert step[2:] == ('--apply',)
+
+
 def test_prod_runs_param_profiles_migration_as_ddl_only(monkeypatch):
     monkeypatch.setenv('DB_BOOTSTRAP_PROFILE', 'prod')
     step = next(
@@ -116,6 +126,11 @@ SCHEMA_GAP_SCRIPTS = {
     'scripts/migrations/202610/add_evaluation_strategies_int590.py',
     'scripts/migrations/202610/add_test_result_reviews_int340.py',
     'scripts/migrations/202610/add_result_excluded_columns_int305.py',
+    # 2026-11-03 干净副本实测：表存在但种子 0 行 / 索引缺失
+    'scripts/migrations/202610/add_system_options_table.py',
+    'scripts/migrations/202610/fix_users_email_unique.py',
+    'scripts/migrations/202610/add_logs_query_indexes_int1468.py',
+    'scripts/migrations/202610/add_test_cases_group_id_index_int1470.py',
 }
 
 

@@ -199,6 +199,7 @@ python scripts/migrations/202610/migrate_audios_to_oss.py
 | 步骤 | 作用 | 不做的后果 |
 |------|------|-----------|
 | （自动）`seed_rbac` | prod 档自动写 130 权限点、5 角色、181 角色-权限 | 无权限/角色，登录后全部 403 |
+| （自动）存量库索引/种子补齐 | `add_system_options_table`（11 条默认 KV）、`fix_users_email_unique --apply`（`uq_users_email`）、`add_logs_query_indexes_int1468`（lower() 函数索引）、`add_test_cases_group_id_index_int1470`（分组计数索引） | 设置项为空、邮箱可重复、日志检索与用例分组统计走全表扫描 |
 | `associate_devices_to_default_lab` | `laboratories` 为空时建实验室，未归属设备/播放设备挂上 | 实验室页空、逻辑音箱无法绑设备、任务按实验室路由无实验室可选 |
 | `seed_playback_speaker_groups`（依赖上一步） | 每个在用播放设备补建同名逻辑音箱组 + 组内条目 | 用例引用的逻辑音箱解析不到实体音箱 |
 | `backfill_result_type_channel_20261029` | 按通道回填 `test_results.result_type` | 存量结果全落「待补充」，按类型筛选/报告候选行退化 |
