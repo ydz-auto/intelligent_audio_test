@@ -25,7 +25,9 @@ import copy
 import os
 import sys
 
-_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 脚本位于 scripts/migrations/202610/：向上 4 层才是仓库根（否则 `import scripts.*` 失败）
+_project_root = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 

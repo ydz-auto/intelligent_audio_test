@@ -157,7 +157,9 @@ python scripts/migrations/202610/sweep_report_case_snapshots_int1995.py --apply 
 
 1. `add_visibility_columns_int423.py` 必须在 `remove_foreign_keys_and_soft_delete.py` **之前**——否则后者建 `(created_by_user_id, visibility)` 索引时列不存在；
 2. `add_param_profiles_scope.py --apply --ddl-only` 必须在 `add_device_id_scope.py` **之前**——后者依赖 `param_profiles` 已存在；
-3. `analyze_stale_statistics_int1741.py` 必须保持末位。
+3. `add_timestamp_db_defaults.py` 必须在 `seed_rbac.py` **之前**——存量库 `permissions.created_at` 无 DB 默认值，早跑会 `NotNullViolation`；
+4. `seed_rbac.py` 必须在 `fix_users_schema_drift.py` **之前**——后者依赖 `roles` 才能种子管理员；
+5. `analyze_stale_statistics_int1741.py` 必须保持末位。
 
 演练验收口径：
 
@@ -165,6 +167,52 @@ python scripts/migrations/202610/sweep_report_case_snapshots_int1995.py --apply 
 - ORM 元数据与库结构 diff 为 0：缺表 0、缺列 0（用全部 PO 模型对比 `information_schema`）；
 - 金标表行数不变：`algorithm_api_params` 0、`algorithm_device_params` 6、
   `algorithm_reference_params` 3、`param_mappings` 138（case 80 / device 42 / reference 16）。
+
+### 生产变更窗口必做的数据步骤（RBAC 自动 + 8 步手工）
+
+`seed_rbac` 已进 prod 档白名单（130 权限点 / 5 角色 / 181 角色-权限，幂等），由引导链自动执行；
+其余 8 步由 DBA 在变更窗口**按序**手工执行（均幂等，2026-11-03 干净副本从头实测）：
+
+```bash
+export DATABASE_URL=... DATABASE_URI=...   # 生产业务账号；LAB_NAME 与部署口径一致（缺省 lab-a）
+# ①~④ 存量业务数据补齐
+python scripts/migrations/202611/associate_devices_to_default_lab.py --apply
+python scripts/migrations/202611/seed_playback_speaker_groups.py --apply
+python scripts/migrations/202610/backfill_result_type_channel_20261029.py --apply
+python scripts/migrations/202610/migrate_cases_to_speaker_groups.py          # 用例实体音箱引用 → 逻辑音箱
+# ⑤ 引导管理员（二选一）
+#    A. 走「首个注册用户即管理员」：跳过本步（空库 + 自助注册 → admin）
+#    B. 预置管理员：显式给强密码执行；之后注册的用户都是 guest
+#    prod 档未显式给 DEV_DEFAULT_PASSWORD 时本脚本自动跳过（不用缺省密码建号）
+DEV_DEFAULT_PASSWORD='<强密码>' python scripts/migrations/202610/fix_users_schema_drift.py --apply
+# ⑥ 登录提供方（未配置 HW_OAUTH_* 时自动跳过）
+python scripts/migrations/202610/seed_custom_oauth_providers.py
+# ⑦ 设备参数下沉为 scope=device 策略（算法级行保留作兜底层）
+python scripts/migrations/202611/migrate_device_params_to_profiles.py --apply
+# ⑧ 存量音频源文件 → 对象存储（只上传对象，不改 DB）
+#    生产源文件在 D:/00_static/static/audios（脚本默认主根）；
+#    主根找不到时按同一相对路径回退 C:\S2TT\...
+python scripts/migrations/202610/migrate_audios_to_oss.py --dry-run
+python scripts/migrations/202610/migrate_audios_to_oss.py
+```
+
+| 步骤 | 作用 | 不做的后果 |
+|------|------|-----------|
+| （自动）`seed_rbac` | prod 档自动写 130 权限点、5 角色、181 角色-权限 | 无权限/角色，登录后全部 403 |
+| `associate_devices_to_default_lab` | `laboratories` 为空时建实验室，未归属设备/播放设备挂上 | 实验室页空、逻辑音箱无法绑设备、任务按实验室路由无实验室可选 |
+| `seed_playback_speaker_groups`（依赖上一步） | 每个在用播放设备补建同名逻辑音箱组 + 组内条目 | 用例引用的逻辑音箱解析不到实体音箱 |
+| `backfill_result_type_channel_20261029` | 按通道回填 `test_results.result_type` | 存量结果全落「待补充」，按类型筛选/报告候选行退化 |
+| `migrate_cases_to_speaker_groups` | 用例 `playback_device_id` → `playback_speaker_group_id(s)` | 用例仍引用实体播放设备，与现行模型不一致 |
+| `fix_users_schema_drift --apply` | `users` 为空时种子引导管理员 | 方案 B 才有意义；方案 A 跳过，首个注册用户即 admin |
+| `seed_custom_oauth_providers` | 按 `HW_OAUTH_*` 写华为云提供方 | 未配置时跳过；账号密码登录不受影响 |
+| `migrate_device_params_to_profiles` | 建 `scope=device` 的 `default` 策略并绑定设备 | 设备参数页「策略层」恒空，只能吃算法级兜底 |
+| `migrate_audios_to_oss` | 按 `audios.file_path` 作 key 上传本地源文件 | `GET /audios/{id}/stream` 预签名 404，音频播不了 |
+
+实测（1101 干净副本从头）：结构 56 步 + 数据 8 步全绿；`laboratories` 1、逻辑音箱 12/条目 12、
+`result_type` e2e 4583 + 待补充 1、用例改写 649 条（1303 处，残留 0）、`permissions` 130、`roles` 5、
+`role_permissions` 181、`param_profiles` 1 / 策略参数 6 / 策略映射 42 / 设备绑定 5、
+音频 `local_found=1953 / missing_local=0`；金标 `algorithm_device_params` 6、`param_mappings` 138 不变。
+方案 A 另经应用层实测：空库首个注册用户 → admin，第二个 → guest。
 
 ## 脚本明细
 

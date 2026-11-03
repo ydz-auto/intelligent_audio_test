@@ -124,7 +124,9 @@ MAIN_DIMENSION = {
         # 主维度不配 output 参数
     ],
     'param_mappings': [
-        # 与库真实运行状态一致：仅 case_config 轮次音频映射（音频路径运行时按维度注入，无需 device 映射）
+        # 与库真实运行状态一致：主维度 query 取参考参数，其余为 case_config 轮次音频映射
+        # （音频路径运行时按维度注入，无需 device 映射）
+        ('reference', 'output', 'query', 'query', 'none'),
         ('case_config', 'output', 'audios', 'played_audios', 'none'),
         ('case_config', 'output', 'background_noise', 'background_noise', 'none'),
         ('case_config', 'output', 'interferers', 'interferers', 'none'),
@@ -198,6 +200,14 @@ SUB_DIMENSIONS = [
             ('te_interaction', '交互内容', '完整交互文字(带时间戳)', 'text', 'output',
              'interaction_text', None, 'aux', True,
              False, None, '用例完整交互文字，query/answer 按时间排序，含 [m:ss; m:ss] 时间戳', 30),
+            # 对齐生产库 73 号：分类判定理由 + 误接管触发次数
+            ('te_classification_reason', '三分类判定理由', '三分类判定理由', 'text', 'output',
+             'reasons.classification', None, 'aux', True,
+             False, None, '逐轮分类及判定原因汇总', 31),
+            ('false_takeover_trigger_count', '误接管次数', '误接管次数', 'number', 'output',
+             'turn_classification.false_takeover_trigger_count', None, 'aux', True,
+             False, None,
+             '本轮内误接管触发事件总次数，覆盖误接管/误接管-正常接管/误接管-未接管', 32),
         ],
     },
     # ════════════════════════════════════════════════════════════
@@ -217,7 +227,8 @@ SUB_DIMENSIONS = [
         'weight': 1,
         'estimated_exec_time': 60,
         'score_unit': '',
-        'statistic_method': 'ratio',
+        # 对齐生产库：接管率/未接管率/误接管率均按「Σ分子 / Σ分母」加权聚合
+        'statistic_method': 'weighted_sum_ratio',
         'agg_denominator': 'round',
         'sort_order': 28,
         'params': [
@@ -230,6 +241,10 @@ SUB_DIMENSIONS = [
             ('total_turns', '总轮数(分母)', '总轮数', 'number', 'output',
              'turn_classification.total_turns', 'denominator', 'aux', False,
              False, None, 'ratio 分母：总轮次数', 3),
+            # 对齐生产库 84 号的 reason 输出
+            ('takeover_rate_reason', '接管率说明', '接管率判定理由', 'text', 'output',
+             'reasons.takeover_rate', None, 'aux', True,
+             False, None, '接管率判定理由（评估裁判输出）', 4),
         ],
     },
     {
@@ -245,7 +260,8 @@ SUB_DIMENSIONS = [
         'weight': 1,
         'estimated_exec_time': 60,
         'score_unit': '',
-        'statistic_method': 'ratio',
+        # 对齐生产库：接管率/未接管率/误接管率均按「Σ分子 / Σ分母」加权聚合
+        'statistic_method': 'weighted_sum_ratio',
         'agg_denominator': 'round',
         'sort_order': 29,
         'params': [
@@ -258,6 +274,10 @@ SUB_DIMENSIONS = [
             ('total_turns', '总轮数(分母)', '总轮数', 'number', 'output',
              'turn_classification.total_turns', 'denominator', 'aux', False,
              False, None, 'ratio 分母：总轮次数', 3),
+            # 对齐生产库 85 号的 reason 输出
+            ('no_takeover_rate_reason', '未接管率说明', '未接管率判定理由', 'text', 'output',
+             'reasons.no_takeover_rate', None, 'aux', True,
+             False, None, '未接管率判定理由（评估裁判输出）', 4),
         ],
     },
     {
@@ -273,7 +293,8 @@ SUB_DIMENSIONS = [
         'weight': 1,
         'estimated_exec_time': 60,
         'score_unit': '',
-        'statistic_method': 'ratio',
+        # 对齐生产库：接管率/未接管率/误接管率均按「Σ分子 / Σ分母」加权聚合
+        'statistic_method': 'weighted_sum_ratio',
         'agg_denominator': 'round',
         'sort_order': 30,
         'params': [
@@ -286,6 +307,10 @@ SUB_DIMENSIONS = [
             ('total_turns', '总轮数(分母)', '总轮数', 'number', 'output',
              'turn_classification.total_turns', 'denominator', 'aux', False,
              False, None, 'ratio 分母：总轮次数', 3),
+            # 对齐生产库 86 号的 reason 输出
+            ('false_takeover_rate_reason', '误接管率判定理由', '误接管率判定理由', 'text', 'output',
+             'reasons.false_takeover_rate', None, 'aux', True,
+             False, None, '纯误接管轮次数、总轮数及对应轮次', 4),
         ],
     },
     {
@@ -308,6 +333,10 @@ SUB_DIMENSIONS = [
             ('takeover_latency_avg_ms', '接管时延平均值', '接管时延平均值', 'number', 'output',
              'takeover_latency.takeover_latency_avg_ms', 'main', 'main', True,
              False, None, '所有接管轮接管时延均值(ms)，正=AI后回复，负=抢话', 1),
+            # 对齐生产库 87 号的 reason 输出
+            ('takeover_latency_avg_reason', '接管时延均值说明', '接管时延均值判定理由', 'text', 'output',
+             'reasons.takeover_latency_avg', None, 'aux', True,
+             False, None, '接管时延均值判定理由（评估裁判输出）', 2),
         ],
     },
     {
@@ -330,6 +359,82 @@ SUB_DIMENSIONS = [
             ('reply_quality_avg_score', '接管内容平均分', '接管内容平均分', 'number', 'output',
              'reply_quality.reply_quality_avg_score', 'main', 'main', True,
              False, None, '所有接管轮回复质量评分均值(1-5分)', 1),
+            # 对齐生产库 88 号的 reason 输出
+            ('reply_quality_avg_reason', '接管内容均分说明', '接管内容均分判定理由', 'text', 'output',
+             'reasons.reply_quality_avg', None, 'aux', True,
+             False, None, '接管内容均分判定理由（评估裁判输出）', 2),
+        ],
+    },
+    # ════════════════════════════════════════════════════════════
+    # 误接管后序行为子维度（对齐生产库 151 / 152）
+    # 口径：误接管后下一轮「转为正常接管」/「仍未接管」的轮次占比
+    # ════════════════════════════════════════════════════════════
+    {
+        'task_type_code': 'turn_evaluation',
+        'name': '误接管-正常接管率占比',
+        'keywords': 'turn_evaluation,误接管-正常接管率,false_then_normal_takeover_rate',
+        'description': '子维度：误接管-正常接管率占比 = Σ(误接管后下一轮正常接管) / Σ总轮次（加权聚合，产出 %）。',
+        'type': 'auto',
+        'result_type': 0,
+        'result_min': 0.0,
+        'result_max': 1.0,
+        'decimal_places': 2,
+        'weight': 1,
+        'estimated_exec_time': 60,
+        'score_unit': '',
+        'statistic_method': 'weighted_sum_ratio',
+        'agg_denominator': 'round',
+        'sort_order': 33,
+        'params': [
+            ('false_then_normal_takeover_rate', '误接管-正常接管率占比',
+             '误接管-正常接管率占比', 'number', 'output',
+             'turn_classification.false_then_normal_takeover_rate', 'main', 'main', True,
+             False, None, '误接管后转为正常接管的轮次占比(0~1)', 1),
+            ('false_then_normal_takeover_count', '误接管-正常接管数(分子)',
+             '误接管-正常接管数', 'number', 'output',
+             'turn_classification.false_then_normal_takeover_count', 'numerator', 'aux', False,
+             False, None, 'ratio 分子：误接管后正常接管的轮次数', 2),
+            ('total_turns', '总轮数(分母)', '总轮数', 'number', 'output',
+             'turn_classification.total_turns', 'denominator', 'aux', False,
+             False, None, 'ratio 分母：总轮次数', 3),
+            ('false_then_normal_takeover_rate_reason', '误接管-正常接管率说明',
+             '误接管-正常接管率判定理由', 'text', 'output',
+             'reasons.false_then_normal_takeover_rate', None, 'aux', True,
+             False, None, '误接管-正常接管率判定理由（评估裁判输出）', 4),
+        ],
+    },
+    {
+        'task_type_code': 'turn_evaluation',
+        'name': '误接管-未接管率占比',
+        'keywords': 'turn_evaluation,误接管-未接管率,false_then_no_takeover_rate',
+        'description': '子维度：误接管-未接管率占比 = Σ(误接管后下一轮仍未接管) / Σ总轮次（加权聚合，产出 %）。',
+        'type': 'auto',
+        'result_type': 0,
+        'result_min': 0.0,
+        'result_max': 1.0,
+        'decimal_places': 2,
+        'weight': 1,
+        'estimated_exec_time': 60,
+        'score_unit': '',
+        'statistic_method': 'weighted_sum_ratio',
+        'agg_denominator': 'round',
+        'sort_order': 34,
+        'params': [
+            ('false_then_no_takeover_rate', '误接管-未接管率占比',
+             '误接管-未接管率占比', 'number', 'output',
+             'turn_classification.false_then_no_takeover_rate', 'main', 'main', True,
+             False, None, '误接管后仍未接管的轮次占比(0~1)', 1),
+            ('false_then_no_takeover_count', '误接管-未接管数(分子)',
+             '误接管-未接管数', 'number', 'output',
+             'turn_classification.false_then_no_takeover_count', 'numerator', 'aux', False,
+             False, None, 'ratio 分子：误接管后仍未接管的轮次数', 2),
+            ('total_turns', '总轮数(分母)', '总轮数', 'number', 'output',
+             'turn_classification.total_turns', 'denominator', 'aux', False,
+             False, None, 'ratio 分母：总轮次数', 3),
+            ('false_then_no_takeover_rate_reason', '误接管-未接管率说明',
+             '误接管-未接管率判定理由', 'text', 'output',
+             'reasons.false_then_no_takeover_rate', None, 'aux', True,
+             False, None, '误接管-未接管率判定理由（评估裁判输出）', 4),
         ],
     },
 ]

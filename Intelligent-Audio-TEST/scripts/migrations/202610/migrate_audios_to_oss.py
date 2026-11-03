@@ -31,10 +31,20 @@ import re
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# 脚本位于 scripts/migrations/202610/：向上 4 层才是仓库根（否则 `shared.*` 导入失败）
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-DEFAULT_AUDIO_ROOT = r'C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\static\audios'
+# 本地音频根目录：生产环境源文件在 D:/00_static/static/audios（DB file_path 前缀即此）；
+# 可用 --audio-root 或 AUDIO_ROOT 环境变量覆盖。
+DEFAULT_AUDIO_ROOT = os.environ.get('AUDIO_ROOT', r'D:\00_static\static\audios')
+
+# 备选根目录：历史存在两套 file_path 前缀，实际源文件可能只落在其中一处。
+# 主根目录找不到时按同一相对路径依次回退，避免整批 missing_local。
+ALTERNATE_AUDIO_ROOTS = (
+    r'D:\00_static\static\audios',
+    r'C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\static\audios',
+)
 
 # DB file_path 历史前缀（去掉后即 <audio-root> 下的相对路径）
 PATH_PREFIXES = (
@@ -71,6 +81,18 @@ def _iter_db_audios(limit: int = 0):
         yield aid, fp
 
 
+def _resolve_local(audio_root: Path, rel: str):
+    """按相对路径在主根目录找源文件；找不到再回退 ALTERNATE_AUDIO_ROOTS。"""
+    candidate = audio_root / rel
+    if candidate.is_file():
+        return candidate
+    for alt in ALTERNATE_AUDIO_ROOTS:
+        alt_path = Path(alt) / rel
+        if alt_path.is_file():
+            return alt_path
+    return None
+
+
 def migrate(audio_root: Path, dry_run: bool = False, limit: int = 0,
             force: bool = False) -> dict:
     from shared.infrastructure.storage import storage
@@ -91,8 +113,8 @@ def migrate(audio_root: Path, dry_run: bool = False, limit: int = 0,
         if rel is None:
             stats['unknown_prefix'] += 1
             continue
-        local = audio_root / rel
-        if not local.is_file():
+        local = _resolve_local(audio_root, rel)
+        if local is None:
             stats['missing_local'] += 1
             continue
         stats['local_found'] += 1

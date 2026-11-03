@@ -161,6 +161,10 @@ def main():
     print(f"\n④ dev 引导用户种子: users 现有 {user_count} 行")
     if user_count > 0:
         print("  [SKIP] 表非空，不种子（运行时 INT-36 引导路径自会建号）")
+    elif (os.environ.get('DB_BOOTSTRAP_PROFILE') or 'dev').strip().lower() == 'prod' \
+            and not (os.environ.get('DEV_DEFAULT_PASSWORD') or '').strip():
+        print("  [SKIP] prod 档未显式设置 DEV_DEFAULT_PASSWORD，"
+              "拒绝用缺省密码创建管理员（请显式配置后重跑）")
     else:
         has_roles = False
         with conn.cursor() as c:

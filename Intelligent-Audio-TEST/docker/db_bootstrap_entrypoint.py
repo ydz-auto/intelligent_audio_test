@@ -132,8 +132,10 @@ BOOTSTRAP_STEPS = [
     # ④.1 实验室扩展：laboratories 主表 + task_laboratory_relations + 各表 lab_id 列
     #     （INT-493/INT-537 拆分①；脚本幂等，全步骤 CREATE IF NOT EXISTS / 列存在跳过）
     ('python', 'scripts/migrations/202608/add_laboratory_tables.py'),
-    # ⑦ RBAC 种子（权限点 + 5 角色，含 INT-537 lab:* 三码）
-    ('python', 'scripts/migrations/202608/seed_rbac.py'),
+    # ⑦ RBAC 种子（权限点 + 5 角色，含 INT-537 lab:* 三码）——
+    #     必须排在 ⑫ add_timestamp_db_defaults 之后：存量库的 permissions/roles
+    #     没有 DB 级 created_at 默认值，脚本的 INSERT 只写 name/description，
+    #     早跑会 NotNullViolation（2026-11-03 干净副本实测）。
     # ⑧ 评估阈值列
     ('python', 'scripts/migrations/202609/add_pass_threshold_to_eval_params.py'),
     # ⑨ 用例级设备路由列
@@ -157,6 +159,9 @@ BOOTSTRAP_STEPS = [
     ('python', 'scripts/migrations/202609/seed_env_sound_judge.py'),
     # ⑫ 时间戳列 DB 级 DEFAULT（INT-47；create_all 新库为 no-op）
     ('python', 'scripts/migrations/202610/add_timestamp_db_defaults.py'),
+    # ⑦（续）RBAC 种子：依赖 ⑫ 已补齐 permissions/roles 的 created_at 默认值；
+    #     必须早于 fix_users_schema_drift（后者依赖 roles 才能种子引导管理员）。
+    ('python', 'scripts/migrations/202608/seed_rbac.py'),
     # ⑬ Benchmark 排行 4 表 + 指标映射种子（INT-27）
     ('python', 'scripts/migrations/202610/add_benchmark_tables.py'),
     # ⑯ INT-88 残留约束修复（FK / 唯一约束 / 缺失索引）
@@ -447,6 +452,10 @@ PROD_DDL_SCRIPTS = frozenset({
     'scripts/migrations/202608/remove_foreign_keys_and_soft_delete.py',
     'scripts/migrations/202608/add_audit_columns.py',
     'scripts/migrations/202608/add_reevaluated_at.py',
+    # RBAC 系统基线（130 权限点 / 5 系统角色 / 角色-权限映射）：属结构级参考数据，
+    # 不是业务金标。脚本幂等；位置在 add_timestamp_db_defaults 之后（否则
+    # permissions.created_at 无默认值 → NotNullViolation）、fix_users 之前。
+    'scripts/migrations/202608/seed_rbac.py',
     # 存量库结构补齐（③.1~③.6）：生产副本演练实测缺这 19 列，纯 DDL、幂等
     'scripts/migrations/202610/add_users_display_name.py',
     'scripts/migrations/202610/add_api_proxy_columns.py',

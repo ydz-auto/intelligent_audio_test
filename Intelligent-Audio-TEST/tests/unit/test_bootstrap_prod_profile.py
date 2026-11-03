@@ -26,8 +26,8 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 os.environ.setdefault('DATABASE_URL', 'postgresql://u:p@localhost:1/unused')
 
 # 生产绝对不允许执行的数据脚本（seed / 数据迁移 / 回填）
+# 例外：seed_rbac 属系统基线（权限点/角色），已进 prod 白名单
 PROD_FORBIDDEN = {
-    'scripts/migrations/202608/seed_rbac.py',
     'scripts/migrations/202609/seed_voice_llm.py',
     'scripts/migrations/202609/seed_interruption_dimensions.py',
     'scripts/migrations/202609/seed_noise_latency.py',
@@ -78,6 +78,16 @@ def test_prod_profile_is_ddl_only_default_deny(monkeypatch):
     assert 'scripts/migrations/202611/add_param_change_history.py' in scripts
     assert 'scripts/migrations/202611/add_device_id_scope.py' in scripts
     assert scripts[-1].endswith('analyze_stale_statistics_int1741.py')
+
+
+def test_prod_includes_rbac_seed_before_bootstrap_user(monkeypatch):
+    """RBAC 属系统基线（130 权限 / 5 角色），必须进 prod 档，
+    且排在 fix_users_schema_drift 之前——否则 roles 缺失、引导管理员被跳过。"""
+    monkeypatch.setenv('DB_BOOTSTRAP_PROFILE', 'prod')
+    scripts = [step[1] for step in _bootstrap.select_steps()]
+    assert 'scripts/migrations/202608/seed_rbac.py' in scripts
+    assert scripts.index('scripts/migrations/202608/seed_rbac.py') < \
+        scripts.index('scripts/migrations/202610/fix_users_schema_drift.py')
 
 
 def test_prod_runs_param_profiles_migration_as_ddl_only(monkeypatch):
@@ -131,4 +141,10 @@ def test_bootstrap_step_order_constraints():
            'scripts/migrations/202611/add_device_id_scope.py')
     before('scripts/migrations/202610/add_param_profiles_scope.py',
            'scripts/migrations/202611/add_device_param_bindings.py')
+    # RBAC 种子依赖 ⑫ 补齐 permissions/roles 的 created_at DB 默认值，
+    # 又必须先于 fix_users_schema_drift（后者依赖 roles 种子管理员）
+    before('scripts/migrations/202610/add_timestamp_db_defaults.py',
+           'scripts/migrations/202608/seed_rbac.py')
+    before('scripts/migrations/202608/seed_rbac.py',
+           'scripts/migrations/202610/fix_users_schema_drift.py')
     assert chain[-1].endswith('analyze_stale_statistics_int1741.py')
