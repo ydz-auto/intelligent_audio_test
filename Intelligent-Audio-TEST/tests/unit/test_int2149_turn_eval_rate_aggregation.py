@@ -6,7 +6,7 @@ V9.7.10 金标（commit `3d27e8028^`）是 `weighted_sum_ratio`。两者口径�
 
 - `ratio`：分子 = Σ用例级 dimension_value（这里是 0~1 的**比率**，不是计数），
   分母 = Σ有值轮次数（round_count）。用例只有整体结果、没有逐轮行时 round_count=0，
-  分子照样计入 → 分母偏小，占比可超过 100%（实测任务 407 接管率 137.25%）。
+  分子照样计入 → 分母偏小，占比可超过 100%（任务 402 报告口径实测接管率 138.98%）。
 - `weighted_sum_ratio`：从每条结果的 `api_raw_response` 取
   `turn_classification.<count>` / `turn_classification.total_turns`，Σ分子/Σ分母。
 
