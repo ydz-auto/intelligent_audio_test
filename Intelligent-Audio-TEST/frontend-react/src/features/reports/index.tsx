@@ -421,7 +421,9 @@ export function ReportCenterPage() {
       </SectionPageLayout.Actions>
 
       <SectionPageLayout.Content>
-        <div className='flex h-full min-h-0 flex-col gap-4 overflow-y-auto pb-4'>
+        {/* INT-2368：竖向间距改 gap-3（同任务/用例页节奏）；Hero/筛选区已压缩，
+            列表空态才有足够首屏高度完整显示标题 + 引导 + 清除筛选。 */}
+        <div className='flex h-full min-h-0 flex-col gap-3 overflow-y-auto pb-4'>
           <ReportHero
             totalReports={countsQuery.data?.all ?? 0}
             draftCount={countsQuery.data?.draft ?? 0}

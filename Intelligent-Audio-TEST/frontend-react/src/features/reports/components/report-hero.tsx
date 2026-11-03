@@ -69,7 +69,9 @@ export function ReportHero({
   onClearAll,
 }: ReportHeroProps) {
   return (
-    <header className='pricing-hero mb-6 rounded-3xl border px-6 py-8 sm:px-8 sm:py-10'>
+    // INT-2368：Hero 竖向留白按规范 §2「rounded-3xl border px-6 py-8」收口（原 sm:py-10 超出规范值），
+    // 去掉与父级 gap 重复的 mb-6 / mt-2 / mt-8，确保无命中空态在 900px 视口首屏可见。
+    <header className='pricing-hero rounded-3xl border px-6 py-8 sm:px-8'>
       <div className='grid gap-7 lg:grid-cols-[1.1fr_0.9fr] lg:items-center'>
         <div>
           <Badge variant='outline' className='mb-4'>
@@ -97,7 +99,7 @@ export function ReportHero({
 
       <nav
         aria-label='报告类型筛选'
-        className='mt-8 flex flex-wrap gap-2 border-t pt-6'
+        className='mt-6 flex flex-wrap gap-2 border-t pt-6'
       >
         {REPORT_TYPE_OPTIONS.map((option) => {
           const active = type === undefined
@@ -123,7 +125,7 @@ export function ReportHero({
         })}
       </nav>
 
-      <div className='mt-4 flex flex-wrap items-center gap-2'>
+      <div className='mt-3 flex flex-wrap items-center gap-2'>
         <SlidersHorizontal className='text-muted-foreground size-4' aria-hidden='true' />
         {/* 状态筛选（PricingCapabilityFilter 单筛 chips 形态） */}
         <div role='group' aria-label='报告状态筛选' className='flex flex-wrap items-center gap-2'>

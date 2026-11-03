@@ -81,7 +81,7 @@ export function ReportCardGrid({
 
   if (hasError && items.length === 0) {
     return (
-      <Empty className='min-h-[320px] border-dashed'>
+      <Empty className='min-h-fit border-dashed'>
         <EmptyHeader>
           <EmptyMedia variant='icon'>
             <LayoutGrid className='size-4' />
@@ -100,7 +100,7 @@ export function ReportCardGrid({
 
   if (items.length === 0) {
     return (
-      <Empty className='min-h-[320px] border-dashed'>
+      <Empty className='min-h-fit border-dashed'>
         <EmptyHeader>
           <EmptyMedia variant='icon'>
             <LayoutGrid className='size-4' />

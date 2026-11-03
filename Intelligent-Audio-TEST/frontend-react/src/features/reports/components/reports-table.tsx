@@ -89,7 +89,7 @@ export function ReportsTable({
 
   if (hasError && items.length === 0) {
     return (
-      <Empty className='min-h-[320px] border-dashed'>
+      <Empty className='min-h-fit border-dashed'>
         <EmptyHeader>
           <EmptyMedia variant='icon'>
             <ArrowUpDown className='size-4' />
@@ -107,8 +107,10 @@ export function ReportsTable({
   }
 
   if (items.length === 0) {
+    // INT-2368：不再写死 min-h-[320px]（会把空态内容顶出 900px 视口），
+    // 用 min-h-fit 只保底内容高度、剩余高度由基座的 flex-1 撑满。
     return (
-      <Empty className='min-h-[320px] border-dashed'>
+      <Empty className='min-h-fit border-dashed'>
         <EmptyHeader>
           <EmptyMedia variant='icon'>
             <ArrowUpDown className='size-4' />

@@ -70,6 +70,10 @@ import type {
 import { DevicesPrimaryButtons } from '@/features/devices/components/devices-primary-buttons'
 import { findDeviceGroup } from '@/features/devices/lib/device-group-tree'
 import { filterTestDevicesByAlgorithm } from '@/features/devices/lib/device-algorithm-filter'
+import {
+  getDeviceStatsBadgeText,
+  isDeviceListUnknown,
+} from '@/features/devices/lib/device-stats-badge'
 import { apiConfigFromApiDevice } from '@/features/devices/lib/api-device-to-api-config'
 // INT-1938：API 编辑复用 §5.3 四页签弹窗（与「开始测试」同件，16_设备域.md:157；INT-2153 新增同件）
 import { ApiEditDialog } from '@/features/test-execution/modals/api-edit-dialog'
@@ -669,8 +673,18 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     ? apiDevices.filter((d) => d.status === 'online').length
     : (tab === 'test' ? algorithmFilteredTestDevices : playbackDevices).filter((d) => d.status === 'online').length
   const totalCount = tab === 'api' ? apiDevices.length : (tab === 'test' ? algorithmFilteredTestDevices : playbackDevices).length
-  /** INT-2330：首载失败且无旧数据时，徽标/分页不得再把「取不到」显示成「0 台」 */
-  const listLoadFailed = activeListQuery.isError && sortedRows.length === 0
+  /** INT-2330：首载失败且无旧数据时，徽标/分页不得再把「取不到」显示成「0 台」；
+   *  INT-2368：首载「加载中」同口径——统计值未取到前显示「—」，不闪「在线 0/共 0」 */
+  const listState = {
+    isLoading: activeListQuery.isLoading,
+    isError: activeListQuery.isError,
+    hasRows: sortedRows.length > 0,
+  }
+  const listUnknown = isDeviceListUnknown(listState)
+  const statsBadgeText = getDeviceStatsBadgeText(listState, {
+    online: onlineCount,
+    total: totalCount,
+  })
 
   return (
     <>
@@ -680,8 +694,9 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
             设备管理
             <Badge variant='outline' className='font-normal tabular-nums'>
               {/* §3.1/§9 口径「在线 {n}/共 {m}」（P3-23 返修：API 页签不再用「可用」）
-                  INT-2330：列表加载失败且无旧数据 → 显示「—」而非误导性的 0 */}
-              {listLoadFailed ? '在线 —/共 —' : `在线 ${onlineCount}/共 ${totalCount}`}
+                  INT-2330：列表加载失败且无旧数据 → 显示「—」而非误导性的 0
+                  INT-2368：首载加载中同样显示「—」，不把未加载完显示成「在线 0/共 0」 */}
+              {statsBadgeText}
             </Badge>
           </span>
         </SectionPageLayout.Title>
@@ -870,8 +885,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
               onAction={(action) => void handleBatchAction(action)}
             />
 
-            {/* 分页 Portal（§3.9）；列表首载失败时隐藏「共 0 条」（INT-2330） */}
-            {!listLoadFailed && (
+            {/* 分页 Portal（§3.9）；列表首载加载中/失败且无数据时隐藏「共 0 条」（INT-2330 / INT-2368） */}
+            {!listUnknown && (
               <PageFooterPortal>
                 <PaginationBar
                   page={safePage}

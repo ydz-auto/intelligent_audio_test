@@ -54,7 +54,8 @@ export function ReportAdvancedSearch({
   const hasActive = Boolean(deviceType || creator || (timeRange && timeRange !== 'all'))
 
   return (
-    <div className='mt-2'>
+    // INT-2368：去掉与父级 gap 重复的 mt-2（页内已按 gap-3 排列），给列表空态让出首屏高度
+    <div>
       <button
         type='button'
         className={cn(
