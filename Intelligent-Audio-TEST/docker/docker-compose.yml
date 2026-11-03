@@ -11,6 +11,8 @@ x-backend-build-args: &backend-build-args
 
 services:
   postgres:
+    # INT-2373：数据服务与业务服务一律 unless-stopped，引擎抖动后自愈。
+    restart: unless-stopped
     image: postgres:16-alpine
     # INT-1783 观测基线（档 0）：pg_stat_statements 只能经 shared_preload_libraries
     # 在**服务端启动时**加载，运行期无法补载，故以 -c 直接内联在 command 里
@@ -50,6 +52,7 @@ services:
         max-file: "5"
 
   redis:
+    restart: unless-stopped
     image: redis:7
     ports:
       - "${REDIS_PORT:-6379}:6379"
@@ -124,6 +127,9 @@ services:
     restart: unless-stopped
 
   api_gateway:
+    # INT-2373：Docker 引擎抖动/重启后长驻业务容器曾整批 Exited(255) 不自愈。
+    # 长驻服务统一 unless-stopped（db_bootstrap 一次性 job 保持 "no"）。
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: docker/Dockerfile.api_gateway
@@ -202,6 +208,7 @@ services:
       start_period: 20s
 
   task_service:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: docker/Dockerfile.task_service
@@ -271,6 +278,7 @@ services:
       start_period: 20s
 
   evaluation_service:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: docker/Dockerfile.evaluation_service
@@ -322,6 +330,7 @@ services:
       start_period: 20s
 
   e2e_test_service:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: docker/Dockerfile.e2e_test_service
@@ -377,6 +386,7 @@ services:
       start_period: 20s
 
   report_service:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: docker/Dockerfile.report_service
@@ -439,6 +449,7 @@ services:
       start_period: 20s
 
   algorithm_service:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: docker/Dockerfile.algorithm_service
@@ -484,6 +495,7 @@ services:
       start_period: 20s
 
   auth_service:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: docker/Dockerfile.auth_service
@@ -526,6 +538,7 @@ services:
       start_period: 20s
 
   api_test_service:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: docker/Dockerfile.api_test_service
@@ -585,6 +598,7 @@ services:
       replicas: ${API_TEST_REPLICAS:-2}
 
   frontend:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: docker/Dockerfile.frontend
