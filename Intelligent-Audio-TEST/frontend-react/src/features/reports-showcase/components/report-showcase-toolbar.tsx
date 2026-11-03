@@ -19,7 +19,8 @@ import { cn } from '@/lib/utils'
 import { REPORT_SORT_OPTIONS } from '@/features/reports/constants'
 
 interface ReportShowcaseToolbarProps {
-  filteredCount: number
+  /** 与页头徽标同源文案（INT-2378）：首载中/失败且无数据时为「共 — 个已发布报告」 */
+  countText: string
   sortBy: ReportSortBy
   sortOrder: ReportSortOrder
   onSortChange: (sortBy: ReportSortBy, sortOrder?: ReportSortOrder) => void
@@ -28,7 +29,7 @@ interface ReportShowcaseToolbarProps {
 }
 
 export function ReportShowcaseToolbar({
-  filteredCount,
+  countText,
   sortBy,
   sortOrder,
   onSortChange,
@@ -39,7 +40,7 @@ export function ReportShowcaseToolbar({
   return (
     <div className='flex flex-wrap items-center justify-between gap-2'>
       <span className='text-muted-foreground tabular-nums text-sm'>
-        共 {filteredCount} 个已发布报告
+        {countText}
       </span>
 
       <div className='flex items-center gap-1.5'>

@@ -22,6 +22,7 @@ import { ReportShowcaseHero } from './components/report-showcase-hero'
 import { ReportShowcaseToolbar } from './components/report-showcase-toolbar'
 import { ReportShowcaseList } from './components/report-showcase-list'
 import { ReportShowcaseCardGrid } from './components/report-showcase-card-grid'
+import { getShowcaseCountText } from './lib/showcase-count'
 
 export function ReportShowcasePage() {
   const rawSearch = useSearch({ strict: false }) as unknown as ShowcaseSearch
@@ -96,6 +97,16 @@ export function ReportShowcasePage() {
   const listQuery = usePublishedReportList(query)
   const items = listQuery.data?.items ?? []
   const total = listQuery.data?.total ?? 0
+  /** INT-2378：首载中 / 首载失败且无数据时计数未知，页头徽标与工具栏同显「共 — 个已发布报告」，
+   *  不把「尚未加载完」显示成「共 0 个已发布报告」（口径同 INT-2368 设备页） */
+  const countText = getShowcaseCountText(
+    {
+      isLoading: listQuery.isLoading,
+      isError: listQuery.isError,
+      hasData: listQuery.data !== undefined,
+    },
+    total
+  )
 
   const setSearch = useCallback(
     (patch: Record<string, unknown>) => {
@@ -188,7 +199,7 @@ export function ReportShowcasePage() {
         <span className='inline-flex items-center gap-2'>
           报告
           <Badge variant='outline' className='font-mono tabular-nums'>
-            共 {total} 个已发布报告
+            {countText}
           </Badge>
         </span>
       </SectionPageLayout.Title>
@@ -213,7 +224,7 @@ export function ReportShowcasePage() {
           <AlgorithmCardGrid title='选择算法' />
 
           <ReportShowcaseToolbar
-            filteredCount={total}
+            countText={countText}
             sortBy={search.sortBy}
             sortOrder={search.sortOrder}
             onSortChange={handleSortChange}

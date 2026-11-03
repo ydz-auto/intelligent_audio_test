@@ -3,6 +3,7 @@
  * 列=名称(次行 类型+任务名)/类型/算法/通过率/用例数/创建时间/操作；行点击 → /report/$reportId。
  * 行操作仅「查看」「复制链接」——生成/编辑/发布/删除/批量/导出/收藏/回收站等管理操作不在本页。
  * 空态「暂无已发布报告」；TableSkeleton/ErrorState。
+ * INT-2378：空态容器按内容高度（min-h-fit），与 INT-2368 报告中心空态口径一致，不再写死 320px。
  */
 import { ArrowUpDown, Copy, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
@@ -60,7 +61,7 @@ export function ReportShowcaseList({
 
   if (hasError && items.length === 0) {
     return (
-      <Empty className='min-h-[320px] border-dashed'>
+      <Empty className='min-h-fit border-dashed'>
         <EmptyHeader>
           <EmptyMedia variant='icon'>
             <ArrowUpDown className='size-4' />
@@ -79,7 +80,7 @@ export function ReportShowcaseList({
 
   if (items.length === 0) {
     return (
-      <Empty className='min-h-[320px] border-dashed'>
+      <Empty className='min-h-fit border-dashed'>
         <EmptyHeader>
           <EmptyMedia variant='icon'>
             <ArrowUpDown className='size-4' />

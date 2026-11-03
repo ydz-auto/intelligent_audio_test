@@ -2,6 +2,7 @@
  * 报告展示页卡片视图（15_报告域.md §2.1：卡片栅格，仅已发布展示）。
  * 卡片=类型徽标 + 报告名 + 算法 + 通过率 + 用例数 + 创建时间 + 「查看/复制链接」。
  * 骨架/错误态/空态与列表视图对齐（§2.1「暂无已发布报告」+ ErrorState + 卡片骨架）。
+ * INT-2378：空态容器按内容高度（min-h-fit），与 INT-2368 报告中心空态口径一致，不再写死 320px。
  */
 import { ArrowUpDown, Copy, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
@@ -77,7 +78,7 @@ export function ReportShowcaseCardGrid({
 
   if (hasError && items.length === 0) {
     return (
-      <Empty className='min-h-[320px] border-dashed'>
+      <Empty className='min-h-fit border-dashed'>
         <EmptyHeader>
           <EmptyMedia variant='icon'>
             <ArrowUpDown className='size-4' />
@@ -96,7 +97,7 @@ export function ReportShowcaseCardGrid({
 
   if (items.length === 0) {
     return (
-      <Empty className='min-h-[320px] border-dashed'>
+      <Empty className='min-h-fit border-dashed'>
         <EmptyHeader>
           <EmptyMedia variant='icon'>
             <ArrowUpDown className='size-4' />
