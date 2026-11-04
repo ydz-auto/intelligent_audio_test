@@ -36,8 +36,8 @@ import os
 import subprocess
 import sys
 
-SCRIPTS = '/opt/scripts'
-APP_ROOT = '/app'
+SCRIPTS = os.environ.get('BOOTSTRAP_SCRIPTS_DIR', '/opt/scripts')
+APP_ROOT = os.environ.get('BOOTSTRAP_APP_ROOT', '/app')
 
 # ===== INT-1652：DDL 锁预算 =====
 # 事故：db_bootstrap 的 ALTER TABLE 需要 ACCESS EXCLUSIVE，被应用层 idle in

@@ -82,8 +82,8 @@ def get_log_archive_threshold() -> int:
 class BaseConfig:
     """基础设施配置（所有服务共用）"""
 
-    # --- 平台版本（/health 暴露，供 tests/api 健康检查区分 V9.7.10/V9.7.31，避免误连）---
-    PLATFORM_VERSION: str = _get_env('PLATFORM_VERSION', 'V9.7.31')
+    # --- 平台版本（/health 暴露，供 tests/api 健康检查区分不同分支，避免误连）---
+    PLATFORM_VERSION: str = _get_env('PLATFORM_VERSION', 'V10.11.2')
 
     # --- 数据库 ---
     AUDIO_STORAGE_PATH: str = os.environ.get(

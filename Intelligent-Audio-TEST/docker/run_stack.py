@@ -259,7 +259,7 @@ def _http_health(port, timeout=3.0):
         return False
     # version 字段存在时校验（仅 api_gateway 有），防误连同端口异版本进程
     if 'version' in body:
-        return body.get('version') in ('V9.7.31', 'V9.7.10')
+        return body.get('version') in ('V10.11.2', 'V9.7.31', 'V9.7.10')
     return body.get('status') in ('ok', 'healthy')
 
 

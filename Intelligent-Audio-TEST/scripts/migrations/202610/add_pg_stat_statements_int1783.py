@@ -81,6 +81,13 @@ def _extension_version(cur):
     return row[0] if row else None
 
 
+def _current_user_is_superuser(cur):
+    cur.execute(
+        "SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
+    row = cur.fetchone()
+    return bool(row and row[0])
+
+
 def _setting(cur, name):
     cur.execute('SHOW ' + name)
     return cur.fetchone()[0]
@@ -105,6 +112,12 @@ def migrate(dry_run=False):
     installed = _extension_version(cur)
     if installed:
         print(f'[SKIP] 扩展 {EXTENSION} 已安装（版本 {installed}）')
+    elif not _current_user_is_superuser(cur):
+        print(f'[SKIP] 当前数据库账号不是超级用户，无法安装 {EXTENSION}；'
+              f'该观测扩展不阻塞业务结构引导')
+        cur.close()
+        conn.close()
+        return 0
     elif dry_run:
         print(f'[DRY-RUN] CREATE EXTENSION IF NOT EXISTS {EXTENSION}')
     else:

@@ -93,7 +93,10 @@ e2e_tests/selenium/drivers/
 static/audios/chunks/
 static/ref_params/
 static/case_result/
+static/case_pcm/
 report_service/logs/
+archives/
+frontend/dist/
 
 # ===== Large media (use volumes instead) =====
 *.mp4
