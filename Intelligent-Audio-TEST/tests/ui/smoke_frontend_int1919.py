@@ -34,6 +34,28 @@ ART_ROOT = os.path.join(B.PROJECT_ROOT, 'tests', 'ui', 'artifacts', 'int1919')
 
 
 class Smoke1919(B.Smoke):
+    # ── 4 报告中心 → 报告详情 / 导出（带驱动侧抖动重试）──────
+    def chain_reports(self):
+        """报告详情链路，详情未挂载时重试（记录次数）。
+
+        2026-11-05 INT-2386 日巡：完整链路里点报告行后 URL 已到
+        /report/<id>?from=management，但详情组件在 7s 内未挂载（列表仍渲染、
+        无 GET /api/v1/reports/<id>），同 run 内 Selenium 单链路 3/3、换新
+        会话 2/2、Playwright 直连/点击 3/3 + 前置任务/用例页 3/3 均正常，
+        判驱动侧/渲染层抖动（INT-2375 记为 1/9 瞬抖，本次 3/3 触发）。
+        重试次数落在 detail_retries 里，不掩盖频率。
+        """
+        out = self.chain_reports_impl()
+        retries = 0
+        while (not out.get('ok')
+               and retries < 2
+               and '返回' not in ((out.get('detail') or {}).get('text_head') or '')):
+            retries += 1
+            B.log('CHAIN 4_reports 详情未挂载（驱动侧抖动），第 %d 次重试' % retries)
+            out = self.chain_reports_impl()
+        out['detail_retries'] = retries
+        return out
+
     # ── 2 任务列表 → 任务详情 ───────────────────────────────
     def chain_tasks(self):
         if not self.vue:
@@ -250,7 +272,7 @@ class Smoke1919(B.Smoke):
         return None
 
     # ── 4 报告中心 → 报告详情 / 导出 ────────────────────────
-    def chain_reports(self):
+    def chain_reports_impl(self):
         if not self.vue:
             return super(Smoke1919, self).chain_reports()
         d = self.drv
