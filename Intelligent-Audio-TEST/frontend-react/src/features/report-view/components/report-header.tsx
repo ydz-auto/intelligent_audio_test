@@ -88,7 +88,9 @@ export function ReportHeader({
 
       <div className='bg-card from-primary/5 via-transparent to-transparent rounded-2xl border bg-gradient-to-br p-5 sm:p-6'>
         <div className='flex flex-wrap items-start justify-between gap-3'>
-          <div className='min-w-0 flex-1'>
+          {/* INT-2387：标题列给 16rem 基准宽，空间不足时动作组整组换到下一行，
+              避免一排动作按钮把标题/任务信息压到 239px 后在标签中间断字 */}
+          <div className='min-w-0 grow basis-[16rem]'>
             <div className='flex flex-wrap items-center gap-2'>
               <h1 className='font-mono max-w-full text-2xl leading-tight font-bold tracking-tight break-all'>
                 {report.name}
@@ -117,21 +119,22 @@ export function ReportHeader({
               {isComparison ? (
                 <span>{report.summary.task_count ?? report.summary.resources.length} 个任务对比</span>
               ) : (
-                <span className='flex items-center gap-1'>
-                  任务：
+                <span className='flex min-w-0 flex-wrap items-center gap-x-1'>
+                  {/* INT-2387：「任务：」标签整体不换行（否则被挤成「任」/「务：」） */}
+                  <span className='shrink-0 whitespace-nowrap'>任务：</span>
                   {/* 任务名点击进任务详情（规范 §3.2：次行 taskName 点击进 /tasks/$taskId） */}
                   {report.task_id ? (
                     <Link
                       to='/tasks/$tab'
                       params={{ tab: String(report.task_id) }}
-                      className='hover:text-foreground underline decoration-muted underline-offset-2 transition-colors'
+                      className='hover:text-foreground decoration-muted min-w-0 break-words underline underline-offset-2 transition-colors'
                     >
                       {report.task_name}
                     </Link>
                   ) : (
-                    report.task_name
+                    <span className='min-w-0 break-words'>{report.task_name}</span>
                   )}
-                  <span className='font-mono'>#{report.task_id ?? ''}</span>
+                  <span className='shrink-0 font-mono'>#{report.task_id ?? ''}</span>
                 </span>
               )}
               <span className='font-mono tabular-nums'>
@@ -150,7 +153,8 @@ export function ReportHeader({
             )}
           </div>
 
-          <div className='flex flex-wrap items-center gap-2'>
+          {/* 动作组按需换行；换行后仍靠右对齐（INT-2387） */}
+          <div className='ml-auto flex flex-wrap items-center gap-2'>
             {hasPermission('report:update') && (
               <Button
                 variant='outline'
