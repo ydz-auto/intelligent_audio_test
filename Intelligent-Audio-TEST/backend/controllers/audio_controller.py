@@ -2962,6 +2962,7 @@ class AudioController:
         updated_count = 0
         failed_count = 0
         refreshed_tc_ids = []
+        raw_annotations_by_audio = {}
 
         try:
             for item in validated.items:
@@ -2976,9 +2977,11 @@ class AudioController:
                     continue
 
                 # 复用已有的持久化逻辑：写标注 + 返回 raw_annotations
-                AudioController._persist_annotations_and_raw(
+                raw_annotations = AudioController._persist_annotations_and_raw(
                     audio_id, annotations, algorithm_type
                 )
+                if raw_annotations:
+                    raw_annotations_by_audio[audio_id] = raw_annotations
                 updated_audio_ids.append(audio_id)
                 updated_count += 1
 
@@ -2987,7 +2990,7 @@ class AudioController:
             # 刷新关联测试用例
             if refresh_test_cases and updated_audio_ids:
                 refreshed_tc_ids = AudioController._refresh_test_cases_for_audios(
-                    updated_audio_ids, algorithm_type
+                    updated_audio_ids, algorithm_type, raw_annotations_by_audio
                 )
 
             db.session.commit()
@@ -3010,7 +3013,8 @@ class AudioController:
             return error_response(str(e))
 
     @staticmethod
-    def _refresh_test_cases_for_audios(audio_ids, algorithm_type=None):
+    def _refresh_test_cases_for_audios(
+            audio_ids, algorithm_type=None, raw_annotations_by_audio=None):
         """按 audio_id 反查 config.rounds[].audios[].audio_id 关联的 TestCase，
         重新提取用例参数并刷新参考参数。
 
@@ -3093,14 +3097,17 @@ class AudioController:
                         # 从数据库查这些音频的最新标注
                         raw_anns = []
                         for aid in round_audio_ids:
-                            anns = AudioAnnotation.query.filter_by(
-                                audio_id=aid, deleted=False
-                            ).all()
-                            for ann in anns:
-                                raw_anns.append({
-                                    'code': ann.code,
-                                    'data': ann.data,
-                                })
+                            if raw_annotations_by_audio and aid in raw_annotations_by_audio:
+                                raw_anns.extend(raw_annotations_by_audio[aid])
+                            else:
+                                anns = AudioAnnotation.query.filter_by(
+                                    audio_id=aid, deleted=False
+                                ).all()
+                                for ann in anns:
+                                    raw_anns.append({
+                                        'code': ann.code,
+                                        'data': ann.data,
+                                    })
 
                         if not raw_anns:
                             continue
@@ -3176,13 +3183,17 @@ class AudioController:
                         if not round_ap_entry:
                             round_ap_entry = {'round_number': round_number, 'params': []}
                             algo_params_col.append(round_ap_entry)
-                        existing_codes = set(
-                            p.get('field_code') for p in round_ap_entry.get('params', [])
-                        )
+                        round_params = round_ap_entry.setdefault('params', [])
+                        params_by_code = {
+                            param.get('field_code'): param for param in round_params
+                        }
                         for p in extracted_params:
-                            if p['field_code'] not in existing_codes:
-                                round_ap_entry.setdefault('params', []).append(p)
-                                existing_codes.add(p['field_code'])
+                            existing_param = params_by_code.get(p['field_code'])
+                            if existing_param is not None:
+                                existing_param['field_value'] = p['field_value']
+                            else:
+                                round_params.append(p)
+                                params_by_code[p['field_code']] = p
 
                     tc.algorithm_params = algo_params_col
 
