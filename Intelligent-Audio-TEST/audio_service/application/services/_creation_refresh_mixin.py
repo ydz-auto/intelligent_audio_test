@@ -12,7 +12,8 @@ _resolve_interferer_ids 辅助方法）。
 class CreationRefreshMixin:
     """音频变更后反向刷新关联测试用例的职责"""
 
-    def refresh_test_cases_for_audios(self, audio_ids, algorithm_type=None):
+    def refresh_test_cases_for_audios(
+            self, audio_ids, algorithm_type=None, raw_annotations_by_audio=None):
         """按 audio_id 反查 config.rounds[].audios[].audio_id 关联的 TestCase
 
         通过 ACL 仓储 ListTestCases 分页获取所有用例，在本地过滤出引用了
@@ -31,7 +32,8 @@ class CreationRefreshMixin:
             tc_id = tc.get('id')
             tc_algo_type = algorithm_type or tc.get('algorithm_type')
             if tc_algo_type:
-                self._refresh_single_testcase_params(tc, tc_id, tc_algo_type)
+                self._refresh_single_testcase_params(
+                    tc, tc_id, tc_algo_type, raw_annotations_by_audio)
             refreshed_ids.append(tc_id)
 
         return refreshed_ids
@@ -75,7 +77,8 @@ class CreationRefreshMixin:
                     return True
         return False
 
-    def _refresh_single_testcase_params(self, tc, tc_id, tc_algo_type):
+    def _refresh_single_testcase_params(
+            self, tc, tc_id, tc_algo_type, raw_annotations_by_audio=None):
         """刷新单个用例的 algorithm_params（从标注重新提取）"""
         case_params_list = self._algorithm_acl.list_case_params(tc_algo_type)
 
@@ -107,7 +110,8 @@ class CreationRefreshMixin:
             if not round_audio_ids:
                 continue
 
-            raw_anns = self._load_raw_annotations(round_audio_ids)
+            raw_anns = self._load_raw_annotations(
+                round_audio_ids, raw_annotations_by_audio)
             if not raw_anns:
                 continue
 
@@ -117,23 +121,30 @@ class CreationRefreshMixin:
             )
 
             round_ap_entry = self._ensure_round_params_entry(algo_params_col, round_number)
-            existing_codes = set(
-                p.get('field_code') for p in round_ap_entry.get('params', [])
-            )
+            round_params = round_ap_entry.setdefault('params', [])
+            params_by_code = {
+                param.get('field_code'): param for param in round_params
+            }
             for p in extracted_params:
-                if p['field_code'] not in existing_codes:
-                    round_ap_entry.setdefault('params', []).append(p)
-                    existing_codes.add(p['field_code'])
+                existing_param = params_by_code.get(p['field_code'])
+                if existing_param is not None:
+                    existing_param['field_value'] = p['field_value']
+                else:
+                    round_params.append(p)
+                    params_by_code[p['field_code']] = p
 
         # 通过 ACL 仓储 UpdateTestCaseConfig 更新 algorithm_params
         # （task_service 侧会自动触发 ReferenceParamsGenerator.apply_to_config）
         update_data = {'algorithm_params': algo_params_col}
         self._testcase_acl.update_testcase_config(str(tc_id), update_data)
 
-    def _load_raw_annotations(self, audio_ids):
+    def _load_raw_annotations(self, audio_ids, raw_annotations_by_audio=None):
         """按音频 ID 列表加载原始标注（code + data）"""
         raw_anns = []
         for aid in audio_ids:
+            if raw_annotations_by_audio and aid in raw_annotations_by_audio:
+                raw_anns.extend(raw_annotations_by_audio[aid])
+                continue
             anns = self.repo.get_annotations_by_audio(aid)
             for ann in anns:
                 raw_anns.append({

@@ -35,15 +35,16 @@ class TestCaseRefreshScheduler:
     # 名字以 Test 开头，避免被 pytest 当成测试类收集
     __test__ = False
 
-    def __init__(self, refresh_fn: Callable[[List[int], Optional[str]], List[str]]):
-        # refresh_fn(audio_ids, algorithm_type) -> 被刷新的用例 ID 列表
+    def __init__(self, refresh_fn: Callable[[List[int], Optional[str], Optional[dict]], List[str]]):
+        # refresh_fn(audio_ids, algorithm_type, raw_annotations_by_audio) -> 被刷新的用例 ID 列表
         self._refresh_fn = refresh_fn
         self._lock = threading.Lock()
         # 队列项：{'key': (algorithm_type, identity), 'audio_ids': set[int]}
         self._queue: List[dict] = []
         self._worker: Optional[threading.Thread] = None
 
-    def enqueue(self, audio_ids, algorithm_type=None, identity=None) -> bool:
+    def enqueue(self, audio_ids, algorithm_type=None, identity=None,
+                raw_annotations_by_audio=None) -> bool:
         """把一批 audio_id 的刷新请求入队，立即返回是否已入队（不阻塞调用方）。"""
         ids: Set[int] = set()
         for audio_id in audio_ids or []:
@@ -55,13 +56,24 @@ class TestCaseRefreshScheduler:
             return False
 
         key = (algorithm_type or None, identity)
+        raw_by_audio = {}
+        for audio_id, annotations in (raw_annotations_by_audio or {}).items():
+            try:
+                raw_by_audio[int(audio_id)] = annotations
+            except (TypeError, ValueError):
+                continue
         with self._lock:
             for job in self._queue:
                 if job['key'] == key:
                     job['audio_ids'].update(ids)
+                    job['raw_annotations_by_audio'].update(raw_by_audio)
                     break
             else:
-                self._queue.append({'key': key, 'audio_ids': set(ids)})
+                self._queue.append({
+                    'key': key,
+                    'audio_ids': set(ids),
+                    'raw_annotations_by_audio': raw_by_audio,
+                })
 
             if self._worker is not None and self._worker.is_alive():
                 return True
@@ -105,7 +117,8 @@ class TestCaseRefreshScheduler:
         audio_ids = sorted(job['audio_ids'])
         try:
             refreshed = run_with_identity(
-                identity, self._refresh_fn, audio_ids, algorithm_type)
+                identity, self._refresh_fn, audio_ids, algorithm_type,
+                job.get('raw_annotations_by_audio') or {})
             logger.info(
                 "关联用例参考参数刷新完成: audio=%s 用例=%s",
                 len(audio_ids), len(refreshed or []))

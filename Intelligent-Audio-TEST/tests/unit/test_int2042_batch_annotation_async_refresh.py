@@ -74,6 +74,7 @@ class FakeAnnotationService:
 
     def persist_annotations_and_raw(self, audio_id, annotations, algorithm_type):
         self.persisted.append((audio_id, algorithm_type))
+        return [{'code': 'reference', 'data': {'audio_id': audio_id}}]
 
 
 def _make_handler(repo):
@@ -99,7 +100,7 @@ def scheduler(monkeypatch):
     """把调度器替换成注入假刷新函数的实例，避免真的走 gRPC。"""
     calls = []
 
-    def fake_refresh(audio_ids, algorithm_type):
+    def fake_refresh(audio_ids, algorithm_type, raw_annotations_by_audio=None):
         calls.append({'audio_ids': list(audio_ids), 'algorithm_type': algorithm_type})
         return []
 
@@ -115,7 +116,7 @@ def test_annotations_committed_before_background_refresh(scheduler):
     handler = _make_handler(repo)
     seen = []
 
-    def record_refresh(audio_ids, algorithm_type):
+    def record_refresh(audio_ids, algorithm_type, raw_annotations_by_audio=None):
         seen.append((sorted(audio_ids), repo.committed))
         return []
 
@@ -136,11 +137,29 @@ def test_annotations_committed_before_background_refresh(scheduler):
     assert seen == [([1, 2], True)]
 
 
+def test_refresh_receives_raw_annotations_before_stripping(scheduler):
+    """后台刷新使用本次请求的原始标注，而不是剔除参数后的数据库版本。"""
+    repo = FakeRepo([1])
+    handler = _make_handler(repo)
+    seen = []
+
+    def record_refresh(audio_ids, algorithm_type, raw_annotations_by_audio=None):
+        seen.append(raw_annotations_by_audio)
+        return []
+
+    scheduler._refresh_fn = record_refresh
+    result = handler.handle_batch_update_annotations(_cmd(_items(1), True))
+
+    assert result['success'] is True
+    assert scheduler.wait_idle(5)
+    assert seen == [{1: [{'code': 'reference', 'data': {'audio_id': 1}}]}]
+
+
 def test_response_does_not_wait_for_slow_refresh(scheduler):
     """刷新即使远超客户端 deadline，批量标注响应也不等待它。"""
     release = threading.Event()
 
-    def slow_refresh(audio_ids, algorithm_type):
+    def slow_refresh(audio_ids, algorithm_type, raw_annotations_by_audio=None):
         release.wait(5)
         return []
 
@@ -159,7 +178,7 @@ def test_response_does_not_wait_for_slow_refresh(scheduler):
 
 def test_refresh_failure_keeps_annotation_success(scheduler):
     """刷新抛 DEADLINE_EXCEEDED 类异常时，标注结果不受影响。"""
-    def boom(audio_ids, algorithm_type):
+    def boom(audio_ids, algorithm_type, raw_annotations_by_audio=None):
         raise RuntimeError(
             '<_InactiveRpcError ... StatusCode.DEADLINE_EXCEEDED>')
 
@@ -206,7 +225,7 @@ def test_scheduler_coalesces_and_propagates_identity():
     release = threading.Event()
     seen = []
 
-    def slow_refresh(audio_ids, algorithm_type):
+    def slow_refresh(audio_ids, algorithm_type, raw_annotations_by_audio=None):
         if not started.is_set():
             started.set()
             release.wait(5)

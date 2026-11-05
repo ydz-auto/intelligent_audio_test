@@ -411,6 +411,7 @@ class AudioCommandHandler:
         updated_audio_ids = []
         updated_count = 0
         failed_count = 0
+        raw_annotations_by_audio = {}
 
         try:
             for item in items:
@@ -428,7 +429,10 @@ class AudioCommandHandler:
                     failed_count += 1
                     continue
 
-                self.annotation_service.persist_annotations_and_raw(audio_id, annotations, algorithm_type)
+                raw_annotations = self.annotation_service.persist_annotations_and_raw(
+                    audio_id, annotations, algorithm_type)
+                if raw_annotations:
+                    raw_annotations_by_audio[audio_id] = raw_annotations
                 updated_audio_ids.append(audio_id)
                 updated_count += 1
 
@@ -450,7 +454,7 @@ class AudioCommandHandler:
         refresh_scheduled = False
         if refresh_test_cases and updated_audio_ids:
             refresh_scheduled = self._schedule_testcase_refresh(
-                updated_audio_ids, algorithm_type)
+                updated_audio_ids, algorithm_type, raw_annotations_by_audio)
 
         data = {
             'updated_count': updated_count,
@@ -466,7 +470,8 @@ class AudioCommandHandler:
             message = f'批量更新标注成功，更新 {updated_count} 个音频'
         return _ok(data=data, message=message)
 
-    def _schedule_testcase_refresh(self, audio_ids, algorithm_type) -> bool:
+    def _schedule_testcase_refresh(
+            self, audio_ids, algorithm_type, raw_annotations_by_audio=None) -> bool:
         """把关联用例参考参数刷新交给后台调度器（INT-2042）。
 
         刷新失败不影响标注结果（标注已是提交态），异常只记录日志并回 False。
@@ -476,7 +481,8 @@ class AudioCommandHandler:
                 get_testcase_refresh_scheduler,
             )
             return get_testcase_refresh_scheduler().enqueue(
-                audio_ids, algorithm_type, capture_identity())
+                audio_ids, algorithm_type, capture_identity(),
+                raw_annotations_by_audio)
         except Exception as e:
             logger.warning("提交关联用例刷新任务失败: %s", e, exc_info=True)
             return False
