@@ -21,6 +21,7 @@ try:
     from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
     from .harmony_xiaoyichat import Xiaoyilivechat
     from .harmony_xiaoyilivechat import XiaoyiLivechatReject
+    from .harmony_doubaolivechat import DoubaoReject
     from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
     _HYPium_AVAILABLE = True
 except ImportError:
@@ -31,6 +32,7 @@ except ImportError:
     HarmonyHardenXiaoyiHuiJiDriver = None
     Xiaoyilivechat = None
     XiaoyiLivechatReject = None
+    DoubaoReject = None
     HarmonyHardenXiaoyi_Input_MethodDriver = None
     _HYPium_AVAILABLE = False
 
@@ -56,6 +58,7 @@ __all__ = [
     'HarmonyHardenXiaoyiHuiJiDriver',
     'Xiaoyilivechat',
     'XiaoyiLivechatReject',
+    'DoubaoReject',
     'HarmonyHardenXiaoyi_Input_MethodDriver',
     'DeviceDriverFactory',
     'device_driver_factory'

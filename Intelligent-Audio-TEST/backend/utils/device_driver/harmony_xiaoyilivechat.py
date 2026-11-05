@@ -37,8 +37,8 @@ class XiaoyiLivechatReject(Xiaoyilivechat):
 
     @staticmethod
     def _normalize_timing_to_interruption(timing):
-        """拒识参数 timing 与打断标记对齐：静默=false，回复过程中=true。"""
-        return (timing or '').strip() == '回复过程中'
+        """拒识参数 timing 与打断标记对齐：silence=false，response=true。"""
+        return (timing or '').strip() == 'response'
 
     def _wait_input_gap_after(self, device_sn, kwargs,
                               task_id=None, test_case_id=None):

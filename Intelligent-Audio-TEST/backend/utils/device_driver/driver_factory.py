@@ -18,6 +18,7 @@ try:
     from .harmony_xiaoyilivechat import XiaoyiLivechatReject
     from .harmony_chatgpt import ChatGptVoiceChat
     from .harmony_doubaochat import DoubaoChat
+    from .harmony_doubaolivechat import DoubaoReject
     from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
 
     _HYPium_AVAILABLE = True
@@ -30,6 +31,7 @@ except ImportError:
     XiaoyiLivechatReject = None
     ChatGptVoiceChat = None
     DoubaoChat = None
+    DoubaoReject = None
     HarmonyHardenXiaoyi_Input_MethodDriver = None
     _HYPium_AVAILABLE = False
 
