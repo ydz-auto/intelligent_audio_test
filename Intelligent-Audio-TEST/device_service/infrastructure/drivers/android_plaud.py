@@ -509,7 +509,7 @@ class PlaudDriver(AndroidDriver):
             'recording_stm_path': recording_stm_path,
             'recording_rttm_path': recording_rttm_path,
             'recording_asr_path': srt_file_path,
-            'stm_res': recording_stm_content,
-            'rttm_res': recording_rttm_content,
+            'stm_hyp': recording_stm_content,
+            'rttm_hyp': recording_rttm_content,
             'asr_result': recording_asr_content,
         }]
