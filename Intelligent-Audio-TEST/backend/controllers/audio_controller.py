@@ -6,6 +6,7 @@ import requests
 import time
 import shutil
 import logging
+import copy as _copy
 from flask import request, send_file, Response, current_app
 from sqlalchemy.orm import joinedload
 from sqlalchemy import cast, String, func
@@ -2982,6 +2983,9 @@ class AudioController:
                 )
                 if raw_annotations:
                     raw_annotations_by_audio[audio_id] = raw_annotations
+                    AudioController._sync_audio_tags_from_annotations(
+                        audio_id, raw_annotations
+                    )
                 updated_audio_ids.append(audio_id)
                 updated_count += 1
 
@@ -3011,6 +3015,52 @@ class AudioController:
                 category='audio',
             )
             return error_response(str(e))
+
+    @staticmethod
+    def _sync_audio_tags_from_annotations(audio_id, raw_annotations):
+        """JSON 标注 segments[].tags 存在时，追加到音频标签并去重。"""
+        tag_names = []
+        has_tags = False
+        for annotation in raw_annotations or []:
+            data = annotation.get('data') or {}
+            segments = data.get('segments') if isinstance(data, dict) else None
+            if not isinstance(segments, list):
+                continue
+            for segment in segments:
+                if not isinstance(segment, dict) or 'tags' not in segment:
+                    continue
+                has_tags = True
+                segment_tags = segment.get('tags')
+                if isinstance(segment_tags, str):
+                    segment_tags = segment_tags.split(',')
+                if not isinstance(segment_tags, list):
+                    continue
+                for tag_name in segment_tags:
+                    tag_name = str(tag_name).strip()
+                    if tag_name and tag_name not in tag_names:
+                        tag_names.append(tag_name)
+
+        if not has_tags:
+            return
+
+        existing_names = {
+            name for (name,) in (
+                db.session.query(Tag.name)
+                .join(AudioTag, AudioTag.tag_id == Tag.id)
+                .filter(AudioTag.audio_id == audio_id)
+                .all()
+            )
+        }
+        for tag_name in tag_names:
+            if tag_name in existing_names:
+                continue
+            tag = Tag.query.filter_by(name=tag_name).first()
+            if not tag:
+                tag = Tag(name=tag_name)
+                db.session.add(tag)
+                db.session.flush()
+            db.session.add(AudioTag(audio_id=audio_id, tag_id=tag.id))
+            existing_names.add(tag_name)
 
     @staticmethod
     def _refresh_test_cases_for_audios(
@@ -3077,7 +3127,7 @@ class AudioController:
                     # 收集该用例所有轮的 audio_id → annotation 映射
                     config = tc.config or {}
                     rounds = config.get('rounds', [])
-                    algo_params_col = tc.algorithm_params or []
+                    algo_params_col = _copy.deepcopy(tc.algorithm_params or [])
 
                     for round_item in rounds:
                         if not isinstance(round_item, dict):
