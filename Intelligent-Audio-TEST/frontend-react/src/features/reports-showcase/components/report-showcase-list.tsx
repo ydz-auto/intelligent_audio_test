@@ -46,7 +46,7 @@ export function ReportShowcaseList({
 }: ReportShowcaseListProps) {
   if (isLoading && items.length === 0) {
     return (
-      <div aria-busy='true' className='overflow-hidden rounded-lg border'>
+      <div aria-busy='true' className='shrink-0 overflow-hidden rounded-lg border'>
         {Array.from({ length: 5 }).map((_, index) => (
           <div key={index} className='flex gap-4 border-b p-4 last:border-0'>
             <Skeleton className='h-5 w-48 max-w-full' />
@@ -100,7 +100,9 @@ export function ReportShowcaseList({
   }
 
   return (
-    <div className='overflow-hidden rounded-lg border'>
+    // INT-2398：同报告中心——页面列（flex h-full min-h-0 flex-col overflow-y-auto）的
+    // flex 子项带 overflow:hidden 时自动最小尺寸为 0、被 flex-shrink 压扁，加 shrink-0。
+    <div className='shrink-0 overflow-hidden rounded-lg border'>
       <div className='overflow-x-auto'>
         <table className='w-full min-w-[760px] text-sm'>
           <thead>
