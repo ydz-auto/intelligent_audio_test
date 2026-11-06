@@ -1,0 +1,730 @@
+# -*- coding: utf-8 -*-
+"""xiaoyi_metrics 共享 LLM 客户端
+
+统一 LLM API 调用实现，消除 5 处重复代码:
+  - env_judge/_common.py:call_llm_api      (omni stream + 重试 + 多模态)
+  - env_judge/env_judge.py:_call_llm_api    (legacy 重复)
+  - interruptibility/interruption_llm.py:_call_llm_json (无重试)
+  - llm_judge/strategy.py:_call_llm        (无重试)
+  - llm_judge/llm_judge_calculator.py:_call_llm_api (重试 + 多模态)
+
+统一入口: call_llm(prompt, model, file_paths, ...) -> dict
+"""
+import json
+import os
+import re
+import time
+import io
+import wave
+import base64
+import logging
+import threading
+from typing import Any, Dict, List, Optional
+
+import httpx
+
+from .llm_call_logger import log_llm_call
+from .constants import (
+    LLM_DEFAULT_TIMEOUT,
+    LLM_HTTP_CONNECT_TIMEOUT,
+    LLM_MAX_RETRIES,
+    LLM_RETRY_BASE_DELAY,
+    LLM_DEFAULT_TEMPERATURE,
+    LLM_DEFAULT_MAX_TOKENS,
+    LLM_DEFAULT_MODEL,
+    AUDIO_EXTS,
+    VIDEO_EXTS,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ─────────── LLM 调用共享并发上限（按中转站 × 模型品牌两级分池）───────────
+# 所有 LLM 裁判调用（文本 + 传音频/视频的多模态）按「中转站(api_base) × 模型品牌」分池：
+#   一级：中转站（api_base_url，如 az.gptplus5.com / azpro.xunxkj.cn）
+#   二级：模型品牌（gemini* → Gemini；gpt*/chatgpt/o1/o3/o4 → OpenAI；claude* → Anthropic；其他按模型名）
+# 每个「站 × 品牌」分两个信号量池：
+#   - 文本(非音频)调用池   LLM_TEXT_MAX_CONCURRENCY  （默认 100）
+#   - 多模态(传音频/视频)池 LLM_AUDIO_MAX_CONCURRENCY （默认 5）
+# 同一「站 × 品牌」的各维度共用所属池，池满后新增调用排队等待空位，
+# 避免各维度独立计数叠加把该站/该品牌模型打满。
+# 上限通过 eval_server/.env 配置：LLM_TEXT_MAX_CONCURRENCY / LLM_AUDIO_MAX_CONCURRENCY。
+try:
+    from app.config import config as _eval_config
+    _LLM_TEXT_MAX = int(getattr(_eval_config, 'LLM_TEXT_MAX_CONCURRENCY', 100) or 100)
+    _LLM_AUDIO_MAX = int(getattr(_eval_config, 'LLM_AUDIO_MAX_CONCURRENCY', 5) or 5)
+except Exception:
+    _LLM_TEXT_MAX, _LLM_AUDIO_MAX = 100, 5
+
+_llm_pools_lock = threading.Lock()
+_llm_pools: Dict[str, Dict[str, threading.Semaphore]] = {}
+
+
+def _get_llm_brand(model: str) -> str:
+    """从模型名识别品牌（规则见 config.LLM_BRAND_KEYWORDS，可配置）。
+
+    同品牌（如 Gemini 各代模型 / 千问各代）在同一个「站 × 品牌」池内共用并发位；
+    未命中任何品牌规则的模型按模型名单独分池。
+    """
+    m = (model or '').lower()
+    try:
+        from app.config import config as _cfg
+        rules = getattr(_cfg, 'LLM_BRAND_KEYWORDS', None) or {}
+    except Exception:
+        rules = {}
+    for brand, keywords in rules.items():
+        for kw in keywords:
+            if kw in m:
+                return brand
+    return m or 'default'
+
+
+def _get_llm_pool(api_base: str, brand: str) -> Dict[str, threading.Semaphore]:
+    """按「中转站(api_base) × 品牌」获取/创建两个并发信号量池：{'text': ..., 'audio': ...}。"""
+    key = f'{api_base}|{brand}'
+    with _llm_pools_lock:
+        pool = _llm_pools.get(key)
+        if pool is None:
+            pool = _llm_pools[key] = {
+                'text': threading.Semaphore(_LLM_TEXT_MAX),
+                'audio': threading.Semaphore(_LLM_AUDIO_MAX),
+            }
+        return pool
+
+
+class LLMError(Exception):
+    """LLM 调用失败异常，携带详细报错信息。
+
+    相比裸异常，额外携带 HTTP 状态码 / 响应体 / 请求地址 / 模型名 / 重试次数，
+    供调用方在 except 中读取（``str(e)`` 即为可直接展示的详细中文报错）。
+    """
+
+    def __init__(self,
+                 message: str,
+                 *,
+                 error_type: str = 'LLMError',
+                 status_code: Optional[int] = None,
+                 body_snippet: str = '',
+                 url: str = '',
+                 model: str = '',
+                 attempts: int = 1,
+                 cause: Optional[BaseException] = None):
+        super().__init__(message)
+        self.error_type = error_type
+        self.status_code = status_code
+        self.body_snippet = body_snippet
+        self.url = url
+        self.model = model
+        self.attempts = attempts
+        self.cause = cause
+
+    def to_dict(self) -> Dict[str, Any]:
+        """返回结构化报错信息 dict，便于写入结果 / 日志。"""
+        return {
+            'error_type': self.error_type,
+            'message': str(self),
+            'status_code': self.status_code,
+            'body_snippet': self.body_snippet,
+            'url': self.url,
+            'model': self.model,
+            'attempts': self.attempts,
+        }
+
+
+# ─────────── 文件编码 ───────────
+def is_audio(file_path: str) -> bool:
+    return os.path.splitext(file_path)[1].lower() in AUDIO_EXTS
+
+
+def encode_file_to_base64(file_path: str) -> str:
+    """将音频文件编码为纯 base64 字符串（不带 data URI 前缀）。
+
+    用于 OpenAI input_audio 格式的 data 字段——该字段要求纯 base64，
+    不能带 ``data:;base64,`` 前缀，否则部分代理/模型会静默忽略音频。
+    """
+    with open(file_path, 'rb') as f:
+        return base64.b64encode(f.read()).decode()
+
+
+def _compress_to_16k_mono_wav(file_path: str) -> Optional[bytes]:
+    """将 WAV 降采样为 16kHz 单声道 16bit PCM，返回内存 WAV 字节。
+
+    - 只处理 16bit PCM WAV（wave 模块可读）；其他位宽/格式回退 None（原文件直传）。
+    - 语义无损：语音内容频带 0-8kHz，16kHz 采样率完整保留；
+      48kHz 立体声 → 16kHz 单声道后体积约降为 1/6，规避中转 nginx ~20MB 请求体上限。
+    - 任何异常（文件损坏/库缺失等）都回退 None，绝不阻断评估。
+    """
+    try:
+        import numpy as np
+        from scipy.signal import resample_poly
+    except Exception:
+        return None
+    try:
+        with wave.open(file_path, 'rb') as w:
+            nch, sampwidth, framerate, nframes = (
+                w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes())
+            raw = w.readframes(nframes)
+        if sampwidth != 2 or framerate <= 0 or nframes <= 0:
+            return None
+        a = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
+        if nch > 1:
+            a = a.reshape(-1, nch).mean(axis=1)
+        if framerate != 16000:
+            a = resample_poly(a, 16000, framerate)
+        pcm = np.clip(a, -32768, 32767).astype(np.int16)
+        buf = io.BytesIO()
+        with wave.open(buf, 'wb') as out:
+            out.setnchannels(1)
+            out.setsampwidth(2)
+            out.setframerate(16000)
+            out.writeframes(pcm.tobytes())
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
+def _prepare_audio_data(file_path: str) -> tuple:
+    """按配置预处理音频，返回 (base64_data, format)。
+
+    - audio_compress=16k_mono 且为 .wav 且文件较大时 → 降采样后编码；
+    - 其余情况（off / 非 WAV / 压缩失败 / 小文件）→ 原文件直传，保证兼容性。
+    """
+    fmt = get_audio_format(file_path)
+    try:
+        cfg = get_llm_config()
+        mode = str(cfg.get('audio_compress', '') or '').strip().lower()
+    except Exception:
+        mode = ''
+    try:
+        fsize = os.path.getsize(file_path)
+    except OSError:
+        fsize = 0
+    if mode == '16k_mono' and os.path.splitext(file_path)[1].lower() == '.wav':
+        # 小文件本就不构成超限风险，跳过压缩省 CPU
+        if fsize > 1024 * 1024:
+            compressed = _compress_to_16k_mono_wav(file_path)
+            if compressed is not None:
+                return base64.b64encode(compressed).decode(), 'wav'
+    return encode_file_to_base64(file_path), fmt
+
+
+def encode_video_to_data_uri(file_path: str) -> str:
+    """将视频文件编码为带 MIME 的 base64 data URI（用于 image_url）。"""
+    ext = os.path.splitext(file_path)[1].lower()
+    mime_map = {
+        '.mp4': 'video/mp4', '.avi': 'video/x-msvideo',
+        '.mkv': 'video/x-matroska', '.webm': 'video/webm',
+        '.mov': 'video/quicktime', '.flv': 'video/x-flv',
+        '.wmv': 'video/x-ms-wmv', '.m4v': 'video/x-m4v',
+        '.ts': 'video/mp2t', '.3gp': 'video/3gpp',
+    }
+    mime = mime_map.get(ext, 'application/octet-stream')
+    with open(file_path, 'rb') as f:
+        encoded = base64.b64encode(f.read()).decode()
+    return f'data:{mime};base64,{encoded}'
+
+
+def get_audio_format(file_path: str) -> str:
+    """从文件扩展名获取音频格式名称"""
+    ext = os.path.splitext(file_path)[1].lower()
+    fmt_map = {'.wav': 'wav', '.mp3': 'mp3', '.flac': 'flac',
+               '.aac': 'aac', '.ogg': 'ogg', '.opus': 'opus',
+               '.m4a': 'm4a'}
+    return fmt_map.get(ext, 'wav')
+
+
+# ─────────── 多模态 content 构建 ───────────
+def build_content(prompt: str, file_paths: Optional[List[str]] = None) -> list:
+    """构建 user message content，自动区分音频/视频。音频在前、视频在后、文本最后。"""
+    content: list = []
+    audio_parts: List[str] = []
+    video_parts: List[str] = []
+    if file_paths:
+        for fp in file_paths:
+            if is_audio(fp):
+                audio_parts.append(fp)
+            else:
+                video_parts.append(fp)
+
+    for ap in audio_parts:
+        b64_data, audio_fmt = _prepare_audio_data(ap)
+        content.append({
+            'type': 'input_audio',
+            'input_audio': {'data': b64_data, 'format': audio_fmt},
+        })
+    for vp in video_parts:
+        data_uri = encode_video_to_data_uri(vp)
+        content.append({
+            'type': 'image_url',
+            'image_url': {'url': data_uri},
+        })
+    content.append({'type': 'text', 'text': prompt})
+    return content
+
+
+# ─────────── LLM 配置读取 ───────────
+def get_llm_config() -> Dict[str, Any]:
+    """读取 config.LLM_JUDGE，返回统一配置 dict"""
+    from app.config import config
+    return getattr(config, 'LLM_JUDGE', {})
+
+
+def resolve_model(model: str = '', dimension: str = '') -> str:
+    """解析模型名（优先级：显式参数 > 维度配置 > 全局默认）
+
+    Args:
+        model: 显式传入的模型名，非空直接返回
+        dimension: 维度标识（如 'rejection_judge'），从 config 读取
+                   LLM_JUDGE_MODEL_REJECTION_JUDGE 环境变量
+    """
+    if model:
+        return model
+    llm_config = get_llm_config()
+    # 维度级配置优先
+    if dimension:
+        dim_model = llm_config.get('dimension_models', {}).get(dimension, '')
+        if dim_model:
+            return dim_model
+    return llm_config.get('default_model', LLM_DEFAULT_MODEL)
+
+
+# ─────────── LLM 调用 ───────────
+def call_llm(model: str,
+             prompt: str,
+             max_tokens: int = LLM_DEFAULT_MAX_TOKENS,
+             temperature: float = LLM_DEFAULT_TEMPERATURE,
+             file_paths: Optional[List[str]] = None,
+             system_message: str = '',
+             log_context: Optional[Dict[str, Any]] = None,
+             ) -> Dict[str, Any]:
+    """调用 OpenAI 兼容的 LLM API（多模态：文本 + 音频/录屏）。
+
+    - 音频文件使用 input_audio 格式，视频文件使用 image_url 格式。
+    - 支持 stream 模式以兼容 Qwen omni 等模型。
+    - 429 / 5xx 指数退避重试。
+    - 每次调用（成功或失败）写一条审计日志（剥离 base64，保留 token/原始请求响应/失败原因）。
+
+    Args:
+        log_context: 调用方上下文（如 {'dimension': 'interruption_llm', 'event_index': 3}），
+                     写入审计日志便于回溯定位。默认 None。
+
+    Returns:
+        dict: {content, tokens_used, input_token, output_token}
+
+    Raises:
+        LLMError: 调用失败时抛出，携带详细报错信息（HTTP 状态码 / 响应体 /
+                  请求地址 / 模型名 / 重试次数），可通过 e.to_dict() 取结构化数据。
+    """
+    llm_config = get_llm_config()
+    api_base = llm_config.get('api_base_url', '')
+    api_key = llm_config.get('api_key', '')
+    proxy = (llm_config.get('http_proxy') or '').strip() or None
+    timeout = llm_config.get('timeout', LLM_DEFAULT_TIMEOUT)
+    httpx_timeout = httpx.Timeout(
+        connect=LLM_HTTP_CONNECT_TIMEOUT,
+        write=float(timeout), read=float(timeout), pool=float(timeout),
+    )
+
+    if not api_base or not api_key:
+        raise ValueError(
+            'LLM 评估未配置：请在 eval_server 设置 '
+            'LLM_JUDGE_API_BASE 与 LLM_JUDGE_API_KEY'
+        )
+
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json',
+    }
+
+    if file_paths:
+        user_content = build_content(prompt, file_paths)
+    else:
+        user_content = [{'type': 'text', 'text': prompt}]
+
+    messages: List[Dict[str, Any]] = []
+    if system_message:
+        messages.append({'role': 'system', 'content': system_message})
+    messages.append({'role': 'user', 'content': user_content})
+
+    # 判断模型类型（仅影响 response_format，不影响 stream）
+    model_lower = model.lower()
+    is_omni = 'omni' in model_lower
+    is_audio_model = is_omni or ('audio' in model_lower)
+
+    payload: Dict[str, Any] = {
+        'model': model,
+        'messages': messages,
+        'max_tokens': max_tokens,
+        'temperature': temperature,
+    }
+
+    # 统一使用流式调用：增量返回 token，避免长响应整体超时断连
+    payload['stream'] = True
+    payload['stream_options'] = {'include_usage': True}
+    if not is_audio_model:
+        payload['response_format'] = {'type': 'json_object'}
+
+    url = f'{api_base.rstrip("/")}/chat/completions'
+    max_retries = llm_config.get('max_retries', LLM_MAX_RETRIES)
+
+    # 按「中转站(api_base) × 模型品牌」取信号量池：文本调用走 text 池，传音频/视频走 audio 池
+    _sem = _get_llm_pool(api_base, _get_llm_brand(model))['audio' if file_paths else 'text']
+
+    last_exc = None
+    attempts_made = 0
+    try:
+        for attempt in range(max_retries + 1):
+            attempts_made = attempt + 1
+            try:
+                content_text = ''
+                usage_data: Dict[str, Any] = {}
+                # 同品牌 LLM 调用共用信号量池：池满时排队等待空位
+                _sem.acquire()
+                try:
+                    with httpx.Client(trust_env=False, timeout=httpx_timeout, proxy=proxy) as client:
+                        with client.stream("POST", url, headers=headers, json=payload) as response:
+                            if response.status_code >= 400:
+                                response.read()
+                            response.raise_for_status()
+                            for line in response.iter_lines():
+                                line = line.strip()
+                                if not line or not line.startswith('data: '):
+                                    continue
+                                chunk_str = line[6:]
+                                if chunk_str == '[DONE]':
+                                    break
+                                try:
+                                    chunk = json.loads(chunk_str)
+                                except json.JSONDecodeError:
+                                    continue
+                                choices = chunk.get('choices', [])
+                                if choices:
+                                    delta = choices[0].get('delta', {})
+                                    content_text += delta.get('content', '')
+                                if chunk.get('usage'):
+                                    usage_data = chunk['usage']
+                finally:
+                    _sem.release()
+                data = {
+                    'choices': [{'message': {'content': content_text}}],
+                    'usage': usage_data,
+                }
+                # HTTP 200 但 content 为空：视为失败并重试（代理/模型偶发空返回，
+                # 同一载荷重试后常可成功；最后一次仍为空则抛错走统一失败处理）
+                if not content_text.strip():
+                    if attempt >= max_retries:
+                        raise ValueError(
+                            f'LLM API 返回空 content（HTTP 200, completion_tokens='
+                            f'{usage_data.get("completion_tokens", 0)}）'
+                        )
+                    delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(
+                        f'LLM API 返回空 content（HTTP 200），{delay:.1f}s 后重试 '
+                        f'(attempt {attempt + 1}/{max_retries})'
+                    )
+                    time.sleep(delay)
+                    continue
+                break
+            except httpx.HTTPStatusError as e:
+                last_exc = e
+                status_code = e.response.status_code
+                if 500 <= status_code < 600:
+                    try:
+                        err_body = e.response.text[:500]
+                    except Exception:
+                        err_body = '<无法读取>'
+                    logger.warning(f'LLM API 返回 {status_code}，响应体: {err_body}')
+                if status_code != 429 and not (500 <= status_code < 600):
+                    raise
+                if attempt >= max_retries:
+                    logger.error(f'LLM API 返回 {status_code}，已达最大重试次数 {max_retries}')
+                    raise
+                retry_after = e.response.headers.get('Retry-After')
+                if retry_after:
+                    try:
+                        delay = float(retry_after)
+                    except ValueError:
+                        delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
+                else:
+                    delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning(
+                    f'LLM API 返回 {status_code}，{delay:.1f}s 后重试 '
+                    f'(attempt {attempt + 1}/{max_retries})'
+                )
+                time.sleep(delay)
+            except httpx.RequestError as e:
+                last_exc = e
+                if attempt >= max_retries:
+                    logger.error(f'LLM API 请求失败，已达最大重试次数 {max_retries}')
+                    raise
+                delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning(
+                    f'LLM API 请求异常: {e}，{delay:.1f}s 后重试 '
+                    f'(attempt {attempt + 1}/{max_retries})'
+                )
+                time.sleep(delay)
+        else:
+            raise last_exc
+    except Exception as e:
+        # 失败也记审计日志（含失败原因），再以携带详细信息的 LLMError 抛出
+        details = _extract_error(e)
+        log_llm_call(model, payload, None, log_context,
+                     status='failed', error=details, attempts=attempts_made)
+        raise _build_llm_error(e, url=url, model=model,
+                               attempts=attempts_made) from e
+
+    # 成功：记审计日志（剥离 base64，含 token/原始请求响应）
+    log_llm_call(model, payload, data, log_context,
+                 status='success', error=None, attempts=attempts_made)
+
+    return {
+        'content': data['choices'][0]['message']['content'],
+        'tokens_used': data.get('usage', {}).get('total_tokens', 0),
+        'input_token': data.get('usage', {}).get('prompt_tokens', 0),
+        'output_token': data.get('usage', {}).get('completion_tokens', 0),
+    }
+
+
+def _extract_error(e: Exception) -> Dict[str, Any]:
+    """从异常提取失败原因，用于审计日志"""
+    err: Dict[str, Any] = {
+        'type': type(e).__name__,
+        'message': str(e),
+    }
+    if isinstance(e, httpx.HTTPStatusError) and e.response is not None:
+        err['status_code'] = e.response.status_code
+        try:
+            err['body_snippet'] = e.response.text[:500]
+        except Exception:
+            err['body_snippet'] = '<无法读取>'
+    return err
+
+
+def _build_llm_error(e: Exception, *, url: str, model: str,
+                     attempts: int) -> LLMError:
+    """从逃逸异常构建携带详细报错信息的 LLMError。
+
+    组装可读中文 message（含状态码 / 响应体 / 重试次数 / 请求地址），
+    并保留结构化字段供 to_dict() 输出。
+    """
+    details = _extract_error(e)
+    parts = [f"LLM 调用失败（模型={model or '<未指定>'}）: {details['message']}"]
+    if details.get('status_code') is not None:
+        parts.append(f"HTTP 状态码={details['status_code']}")
+    if details.get('body_snippet'):
+        parts.append(f"响应体={details['body_snippet']}")
+    parts.append(f"已重试 {max(attempts - 1, 0)} 次")
+    parts.append(f"请求地址={url or '<未配置>'}")
+    return LLMError(
+        '，'.join(parts),
+        error_type=details['type'],
+        status_code=details.get('status_code'),
+        body_snippet=details.get('body_snippet', ''),
+        url=url,
+        model=model,
+        attempts=attempts,
+        cause=e,
+    )
+
+
+# ─────────── JSON 解析 ───────────
+def parse_json(content: str) -> Optional[dict]:
+    """解析 LLM 输出为 dict。先 json.loads，失败用正则兜底。"""
+    if not content:
+        return None
+    try:
+        return json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    m = re.search(r'\{.*\}', content, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group())
+        except (json.JSONDecodeError, TypeError):
+            return None
+    return None
+
+
+# ─────────── 时间线构建 ───────────
+def env_events_from_ms(start_ms, end_ms, pcm_first_ms=None,
+                       label: str = '环境声') -> Optional[List[Dict[str, Any]]]:
+    """把环境声播放的绝对毫秒 [start_ms, end_ms] 换算到模型音频相对秒。
+
+    相对秒 = (abs_ms - pcm_first_ms) / 1000。
+    pcm_first_ms 缺省时按 0 处理。
+    """
+    if start_ms is None or end_ms is None:
+        return None
+    try:
+        base = float(pcm_first_ms) if pcm_first_ms is not None else 0.0
+        s = (float(start_ms) - base) / 1000.0
+        e = (float(end_ms) - base) / 1000.0
+    except (TypeError, ValueError):
+        return None
+    return [{'start_s': s, 'end_s': e, 'label': label}]
+
+
+def build_timeline_text(user_chunks: Optional[List[Dict[str, Any]]] = None,
+                        env_events: Optional[List[Dict[str, Any]]] = None) -> str:
+    """构建文本时间线：用户侧 ASR 转写 + 环境声事件窗。
+
+    用户侧走小 ASR（内容错了不伤模型回复判定），环境声不可 ASR，只给时间窗。
+    模型回复本身不在此时间线里——它以随附的 ai_wav 音频为准，交给裁判模型直接听。
+    """
+    parts: List[str] = []
+
+    if user_chunks:
+        lines = []
+        for c in user_chunks:
+            if not isinstance(c, dict):
+                continue
+            t = c.get('timestamp') or [None, None]
+            text = c.get('text', '')
+            if t and t[0] is not None and t[1] is not None:
+                try:
+                    lines.append(f'  [{float(t[0]):.2f}-{float(t[1]):.2f}] 用户: {text}')
+                except (TypeError, ValueError):
+                    continue
+        if lines:
+            parts.append('【用户语音时间线】（小 ASR 转写，可能存在误差）\n' + '\n'.join(lines))
+
+    if env_events:
+        lines = []
+        for ev in env_events:
+            if not isinstance(ev, dict):
+                continue
+            s = ev.get('start_s')
+            e = ev.get('end_s')
+            lbl = ev.get('label', '环境声')
+            if s is None or e is None:
+                continue
+            try:
+                lines.append(
+                    f'  [{float(s):.2f}-{float(e):.2f}] {lbl}'
+                    f'（环境声，不可ASR；模型在此窗内应保持沉默/不应被触发）'
+                )
+            except (TypeError, ValueError):
+                continue
+        if lines:
+            parts.append('【环境声事件】\n' + '\n'.join(lines))
+
+    return '\n\n'.join(parts)
+
+
+def _fmt_mmss(sec: float) -> str:
+    """秒 → m:ss 显示格式"""
+    sec = int(round(sec))
+    return f'{sec // 60}:{sec % 60:02d}'
+
+
+def build_interaction_text(user_chunks: Optional[List[Dict[str, Any]]],
+                           model_chunks: Optional[List[Dict[str, Any]]]) -> str:
+    """两路词级 ASR 合并为完整交互文字时间线（query/answer + [m:ss; m:ss] 时间戳）。
+
+    与 build_timeline_text（仅用户侧、秒级、供 LLM prompt）不同：
+    本函数面向报告展示，用户=query / 模型=answer，按开始时间排序：
+        query [1:20; 1:30]今天天气怎么样
+        answer [1:31; 1:40]今天天气晴
+
+    词合并为段复用打断指标的 _to_segments（用户 1.5s / 模型 0.7s 间隙阈值），
+    保证与打断判定的分段口径一致。
+    """
+    from app.services.calculators.xiaoyi_metrics.interruptibility.interruption import (
+        _to_segments,
+        USER_SEG_MERGE_GAP_S,
+        MODEL_SEG_MERGE_GAP_S,
+    )
+
+    lines: List[tuple] = []
+    for chunks, label in ((user_chunks, 'query'), (model_chunks, 'answer')):
+        if not chunks:
+            continue
+        # 用户/模型侧用各自阈值合并段：模型 0.7s（打断处短停顿+恢复要切开，与打断判定口径一致）
+        gap = MODEL_SEG_MERGE_GAP_S if label == 'answer' else USER_SEG_MERGE_GAP_S
+        for s in _to_segments(chunks, gap=gap):
+            lines.append((s['start'], f"{label} [{_fmt_mmss(s['start'])}; {_fmt_mmss(s['end'])}]{s['text']}"))
+    lines.sort(key=lambda x: x[0])
+    if not lines:
+        return ''
+    # 每行结尾都带换行（含最后一行），报告/导出按行显示不会挤成一坨
+    return ''.join(f'{text}\n' for _, text in lines)
+
+
+# ─────────── evaluations 归一化 ───────────
+def parse_evaluations(parsed: dict) -> List[Dict[str, Any]]:
+    """从 parsed 中提取 evaluations 列表，归一化 behavior 标签。
+
+    支持三种格式:
+    - 多场景: {"evaluations": [{scene, behavior, reason}, ...]}
+    - 单场景(含 scene): {"scene": "...", "behavior": "...", "reason": "..."}
+    - 单条(无 scene): {"behavior": "...", "reason": "..."}
+    """
+    from .constants import BEHAVIOR_LABELS
+
+    if 'behavior' in parsed:
+        evaluations = [parsed]
+    else:
+        evaluations = parsed.get('evaluations', [])
+        if not isinstance(evaluations, list):
+            evaluations = []
+
+    for item in evaluations:
+        if not isinstance(item, dict):
+            continue
+        behavior = str(item.get('behavior', '')).strip()
+        if behavior and behavior not in BEHAVIOR_LABELS:
+            matched = next(
+                (label for label in BEHAVIOR_LABELS if label in behavior),
+                None,
+            )
+            if matched:
+                item['behavior'] = matched
+    return evaluations
+
+
+# ─────────── ASR 辅助 ───────────
+def get_asr_chunks(wav_path: str) -> Optional[List[Dict[str, Any]]]:
+    """调用 ASR 获取用户侧 chunks（用于构建时间线上下文）"""
+    try:
+        from app.services.calculators.xiaoyi_metrics.turn_taking import _get_asr_chunks
+        return _get_asr_chunks(wav_path)
+    except Exception as e:
+        logger.warning(f'[llm_client] 用户侧 ASR 失败，时间线将缺用户段: {e}')
+        return None
+
+
+def get_asr_text(wav_path: str) -> str:
+    """从 ASR 结果 JSON 文件中读取 text 字段。
+
+    wav_path 对应的 ASR JSON 由 asr_adapter._save_asr_json 落盘，
+    路径由 _build_json_save_path(wav_path) 决定。
+    若 JSON 不存在则先触发 ASR 调用生成 JSON。
+    """
+    if not wav_path or not os.path.isfile(wav_path):
+        return ''
+    try:
+        from app.utils.asr_adapter import _build_json_save_path
+        json_path = _build_json_save_path(wav_path)
+        if not os.path.isfile(json_path):
+            logger.info(f'[llm_client] ASR JSON 不存在，触发 ASR 生成: {wav_path}')
+            get_asr_chunks(wav_path)
+        if os.path.isfile(json_path):
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return data.get('text', '')
+        logger.warning(f'[llm_client] ASR JSON 仍不存在: {json_path}')
+    except Exception as e:
+        logger.warning(f'[llm_client] 读取 ASR JSON 失败: {wav_path}: {e}')
+    return ''
+
+
+def extract_video_paths(kwargs: dict) -> List[str]:
+    """从 kwargs 中提取存在的录屏/音频文件路径（legacy：录屏模式下的额外文件）"""
+    paths = []
+    for value in kwargs.values():
+        if not isinstance(value, str) or not value:
+            continue
+        ext = os.path.splitext(value)[1].lower()
+        if ext in (VIDEO_EXTS | AUDIO_EXTS) and os.path.isfile(value):
+            paths.append(value)
+    return paths
