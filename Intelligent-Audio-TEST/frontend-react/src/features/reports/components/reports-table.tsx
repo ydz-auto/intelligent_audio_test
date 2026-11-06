@@ -74,7 +74,7 @@ export function ReportsTable({
 
   if (isLoading && items.length === 0) {
     return (
-      <div aria-busy='true' className='overflow-hidden rounded-lg border'>
+      <div aria-busy='true' className='shrink-0 overflow-hidden rounded-lg border'>
         {Array.from({ length: 6 }).map((_, index) => (
           <div key={index} className='flex gap-4 border-b p-4 last:border-0'>
             <Skeleton className='h-4 w-4' />
@@ -139,7 +139,10 @@ export function ReportsTable({
   }
 
   return (
-    <div className='overflow-hidden rounded-lg border'>
+    // INT-2398：外层必须 shrink-0——它是页面列（flex h-full min-h-0 flex-col
+    // overflow-y-auto）的 flex 子项，overflow:hidden 让自动最小尺寸为 0，
+    // 默认 flex-shrink:1 会把列表压成一条窄带（1680×899 仅 2~3/20 行可见、1280×800 全不可见）。
+    <div className='shrink-0 overflow-hidden rounded-lg border'>
       <div className='overflow-x-auto'>
         <table className='w-full min-w-[720px] text-sm'>
           <thead>
