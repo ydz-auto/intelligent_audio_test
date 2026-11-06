@@ -7,6 +7,7 @@
 
 import pyaudio
 import wave
+import audioop
 import threading
 import time
 import numpy as np
@@ -39,6 +40,15 @@ def clear_gain_compensation_cache():
 
 class AudioDriver(ABC):
     """音频驱动基类"""
+
+    # 增益补偿标定目标（RMS 电平，dBFS）
+    TARGET_RMS_DBFS = -30.0
+    # 静音门限分帧窗长（毫秒）
+    RMS_GATE_FRAME_MS = 20
+    # 静音门限：相对峰值 RMS 的比例系数（帧 RMS 低于 max_rms × 该系数视为静音）
+    RMS_GATE_THRESHOLD_FACTOR = 0.1
+    # 静音门限：绝对噪声底（dBFS），低于该电平的帧视为静音
+    RMS_GATE_ABS_FLOOR_DBFS = -60.0
 
     def play_multi(self, audio_configs, device_index=0, stop_event=None, offset=0, loop=False):
         pass
@@ -73,19 +83,30 @@ class AudioDriver(ABC):
             return None
 
     def _compute_gain_compensation(self, file_path):
-        """原 calculate_gain_compensation 主体（无缓存）。"""
+        """原 calculate_gain_compensation 主体（无缓存）。
+
+        短窗能量门限：按 RMS_GATE_FRAME_MS 分帧计算 RMS，剔除低于
+        max(max_rms × RMS_GATE_THRESHOLD_FACTOR, 绝对噪声底) 的静音帧后
+        仅对活跃帧求 RMS，避免素材首尾留白/句间停顿等静音段拉低总 RMS，
+        导致补偿增益虚高、实际播放音量偏大。
+        """
         try:
             import math
+            frame_ms = self.RMS_GATE_FRAME_MS
+            abs_floor = self.RMS_GATE_ABS_FLOOR_DBFS
             try:
                 # 优先使用 wave 分块读取计算 RMS，避免整文件解码（内存优化）
                 with wave.open(file_path, 'rb') as wf:
                     sampwidth = wf.getsampwidth()
+                    channels = wf.getnchannels() or 1
                     framerate = wf.getframerate() or 44100
                     # 分块大小：1 秒音频
                     chunk_frames = framerate
+                    # 每帧样本数（多通道展平样本：帧时长 × 通道数）
+                    frame_len = max(1, int(framerate * frame_ms / 1000)) * channels
 
-                    sum_sq = 0.0
-                    total_samples = 0
+                    frame_sq_chunks = []   # 每帧平方和（int16 幅度尺度）
+                    frame_rms_chunks = []  # 每帧 RMS
                     while True:
                         frames = wf.readframes(chunk_frames)
                         if not frames:
@@ -93,26 +114,72 @@ class AudioDriver(ABC):
                         # 按采样宽度解析并统一归一化到 int16 幅度范围（含 24bit 逐字节重组，
                         # INT-67 防误解析：走 AudioFormatAdapter 共享解析器，无 int16 兜底）
                         audio_np = AudioFormatAdapter.to_int16_scale(frames, sampwidth)
-                        sum_sq += float(np.sum(audio_np * audio_np))
-                        total_samples += len(audio_np)
+                        n_complete = (len(audio_np) // frame_len) * frame_len
+                        if n_complete <= 0:
+                            continue
+                        block = audio_np[:n_complete].reshape(-1, frame_len)
+                        sq = np.einsum('ij,ij->i', block, block)
+                        frame_sq_chunks.append(sq)
+                        frame_rms_chunks.append(np.sqrt(sq / frame_len))
 
-                    if total_samples <= 0:
+                    if not frame_sq_chunks:
+                        return 1.0
+                    frame_sq_all = np.concatenate(frame_sq_chunks)
+                    frame_rms_all = np.concatenate(frame_rms_chunks)
+                    max_rms = float(frame_rms_all.max())
+                    if max_rms <= 0:
+                        # 纯数字静音：不做无意义补偿
                         return 1.0
 
                     max_amplitude = 32768.0
-                    rms = math.sqrt(sum_sq / total_samples)
+                    gate = max(max_rms * self.RMS_GATE_THRESHOLD_FACTOR,
+                               max_amplitude * 10 ** (abs_floor / 20))
+                    active = frame_rms_all > gate
+                    if active.any():
+                        active_sq = float(frame_sq_all[active].sum())
+                        active_n = int(active.sum()) * frame_len
+                    else:
+                        # 无活跃帧（整体接近静音）：回退整段 RMS
+                        active_sq = float(frame_sq_all.sum())
+                        active_n = int(frame_sq_all.size) * frame_len
+
+                    rms = math.sqrt(active_sq / active_n)
                     current_rms_db = 20 * math.log10(rms / max_amplitude) if rms > 0 else -999.0
-                    gain_db = -30.0 - current_rms_db
+                    gain_db = self.TARGET_RMS_DBFS - current_rms_db
                     gain_compensation = 10 ** (gain_db / 20)
-                    log_and_emit('DEBUG', 'audio_engine', f"[calculate_gain_compensation] file={os.path.basename(file_path)}, current_rms_db={current_rms_db:.2f} dBFS, target=-30 dBFS, gain_db={gain_db:.2f} dB, gain_compensation={gain_compensation:.4f} (linear)", category='audio')
+                    log_and_emit('DEBUG', 'audio_engine', f"[calculate_gain_compensation] file={os.path.basename(file_path)}, current_rms_db={current_rms_db:.2f} dBFS, target={self.TARGET_RMS_DBFS:.0f} dBFS, gain_db={gain_db:.2f} dB, gain_compensation={gain_compensation:.4f} (linear)", category='audio')
                     return gain_compensation
             except wave.Error:
                 # 非 PCM WAV（mp3 等）wave 模块不支持，回退 pydub 整文件解码
                 audio_seg = AudioSegment.from_file(file_path)
-                current_rms_db = audio_seg.dBFS
-                gain_db = -30.0 - current_rms_db
+                raw = audio_seg.raw_data
+                frame_width = audio_seg.frame_width
+                if not raw:
+                    return 1.0
+                frame_len = max(1, int(audio_seg.frame_rate * frame_ms / 1000))
+                frame_bytes = frame_len * frame_width
+                frame_rms = np.array(
+                    [audioop.rms(raw[i:i + frame_bytes], frame_width)
+                     for i in range(0, len(raw) - frame_bytes + 1, frame_bytes)],
+                    dtype=np.float64,
+                )
+                if frame_rms.size == 0 or float(frame_rms.max()) <= 0:
+                    return 1.0
+                max_rms = float(frame_rms.max())
+                full_scale = 2 ** (8 * frame_width - 1)
+                gate = max(max_rms * self.RMS_GATE_THRESHOLD_FACTOR,
+                           full_scale * 10 ** (abs_floor / 20))
+                active_frames = frame_rms > gate
+                if not active_frames.any():
+                    # 无活跃帧（整体接近静音）：回退整段 RMS
+                    rms = float(np.sqrt(np.mean(frame_rms ** 2)))
+                else:
+                    # 只对活跃帧求 RMS（等长帧：均方根可等价为对帧 RMS 平方求均值再开方）
+                    rms = float(np.sqrt(np.mean(frame_rms[active_frames] ** 2)))
+                current_rms_db = 20 * math.log10(max(rms, 1e-12) / full_scale)
+                gain_db = self.TARGET_RMS_DBFS - current_rms_db
                 gain_compensation = 10 ** (gain_db / 20)
-                log_and_emit('DEBUG', 'audio_engine', f"[calculate_gain_compensation] file={os.path.basename(file_path)}, current_rms_db={current_rms_db:.2f} dBFS, target=-30 dBFS, gain_db={gain_db:.2f} dB, gain_compensation={gain_compensation:.4f} (linear)", category='audio')
+                log_and_emit('DEBUG', 'audio_engine', f"[calculate_gain_compensation] file={os.path.basename(file_path)}, current_rms_db={current_rms_db:.2f} dBFS, target={self.TARGET_RMS_DBFS:.0f} dBFS, gain_db={gain_db:.2f} dB, gain_compensation={gain_compensation:.4f} (linear)", category='audio')
                 return gain_compensation
         except Exception as e:
             log_and_emit('WARNING', 'audio_engine', f"Failed to calculate RMS for gain adjustment: {e}", category='audio')
