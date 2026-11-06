@@ -1,0 +1,511 @@
+/**
+ * 算法配置 API 单测（infrastructure/api；INT-647 接线后真实端点契约）。
+ * mock client.ts 的 request（及 evaluation-api 的 fetchEvaluationDimensions），断言：
+ * 端点路径/方法、snake_case 请求体、INT-297 信封解包、响应 camelCase 映射；
+ * §154 用例引用聚合兜底（后端未返 case_count 时经 testcases-api 拉用例计数）。
+ */
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('@/infrastructure/api/client', () => ({
+  request: vi.fn(),
+  apiClient: {
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
+  },
+}))
+
+vi.mock('@/infrastructure/api/evaluation-api', () => ({
+  fetchEvaluationDimensions: vi.fn(),
+}))
+
+import { request, apiClient } from '@/infrastructure/api/client'
+import { fetchEvaluationDimensions } from '@/infrastructure/api/evaluation-api'
+import { ApiError } from '@/infrastructure/api/api-error'
+import {
+  bulkDeleteAlgorithms,
+  createAlgorithm,
+  createAlgorithmGroup,
+  deleteAlgorithm,
+  deleteAlgorithmGroup,
+  fetchAlgorithmDefinitions,
+  fetchAlgorithmDetail,
+  fetchAlgorithmDraft,
+  fetchAlgorithmGroups,
+  fetchCaseCountByAlgorithmType,
+  importAlgorithms,
+  publishAlgorithm,
+  reloadAlgorithmConfig,
+  saveAlgorithmDraft,
+  updateAlgorithm,
+  updateAlgorithmGroup,
+  type SaveAlgorithmInput,
+} from '@/infrastructure/api/algorithm-config-api'
+
+const mockRequest = request as unknown as ReturnType<typeof vi.fn>
+const mockApiClientGet = apiClient.get as unknown as ReturnType<typeof vi.fn>
+const mockFetchEvaluationDimensions = fetchEvaluationDimensions as unknown as ReturnType<typeof vi.fn>
+
+function saveInput(type: string): SaveAlgorithmInput {
+  return {
+    type,
+    name: `${type} 名称`,
+    groupId: 1,
+    displayOrder: 1,
+    status: 'online',
+    description: '',
+    deviceParams: [{ paramCode: 'input_audio', paramName: '输入音频', direction: 'input', paramType: 'audio_file', required: true, defaultValue: '', helpText: '' }],
+    caseParams: [],
+    referenceParams: [],
+    mappings: { device: [], evaluation: [] },
+    associatedDimensions: [],
+  }
+}
+
+/** AlgorithmDetailResponse 形态（snake_case 列表项） */
+function definitionDto(type: string, name = `${type} 名称`): Record<string, unknown> {
+  return {
+    id: 1,
+    type,
+    name,
+    group_id: 1,
+    group_name: '语音识别',
+    category: null,
+    description: '描述',
+    status: 'online',
+    icon: null,
+    display_order: 1,
+    device_params: [
+      { id: 101, param_code: 'input_audio', param_name: '输入音频', label: '输入音频', param_type: 'audio_file', direction: 'input', required: true, default_value: null, help_text: '待识别音频', ui_order: 1, hidden: false },
+    ],
+    api_params: [],
+    case_params: [],
+    reference_params: [],
+    mappings: { device: [], api: [], evaluation: [] },
+    associated_dimensions: [],
+    created_at: '2026-08-10T08:30:00Z',
+    updated_at: '2026-10-12T16:40:00Z',
+  }
+}
+
+/** GET /testcases 信封（INT-297 分页信封；聚合兜底只消费 total，items 可为空） */
+function testcasesEnvelope(
+  total: number,
+  items: unknown[] = []
+): Record<string, unknown> {
+  return { items, total, page: 1, per_page: 1, pages: Math.max(1, Math.ceil(total / 1)) }
+}
+
+describe('algorithm-config-api（真实端点接线）', () => {
+  beforeEach(() => {
+    mockRequest.mockReset()
+    mockApiClientGet.mockReset()
+    mockFetchEvaluationDimensions.mockReset()
+    mockFetchEvaluationDimensions.mockResolvedValue([])
+  })
+
+  it('fetchAlgorithmDefinitions 走 GET /algorithm/definitions 并解 INT-297 信封（首屏不阻塞）', async () => {
+    mockRequest.mockResolvedValue({
+      items: [definitionDto('asr-v3')],
+      total: 1,
+      page: 1,
+      per_page: 1,
+      pages: 1,
+    })
+    // P3-1（INT-1319）：后端无 case_count → 不再在这里逐算法聚合（列表首屏先渲染），
+    // caseCount 保持 null 待 useAlgorithmCaseCounts 异步补齐
+    const list = await fetchAlgorithmDefinitions()
+    // INT-1225：/rankings 公开页算法网格同源消费 → 匿名 401 不触发 sessionExpired
+    expect(mockRequest).toHaveBeenCalledWith('GET', '/algorithm/definitions', undefined, {
+      skipAuthRedirect: true,
+    })
+    // P3-1（INT-1319）：列表项无 case_count → 不在列表函数内聚合（首屏先渲染）
+    expect(mockApiClientGet).not.toHaveBeenCalled()
+    expect(list).toHaveLength(1)
+    expect(list[0].type).toBe('asr-v3')
+    expect(list[0].name).toBe('asr-v3 名称')
+    expect(list[0].groupId).toBe(1)
+    expect(list[0].deviceParams[0].paramCode).toBe('input_audio')
+    expect(list[0].deviceParams[0].direction).toBe('input')
+    expect(list[0].caseCount).toBeNull()
+  })
+
+  it('fetchCaseCountByAlgorithmType 后端无 case_count 时按用例引用筛选 total 填充关联用例数', async () => {
+    mockApiClientGet.mockImplementation((_path: string, opts: { params: { algorithm_type: string } }) => {
+      const type = opts.params.algorithm_type
+      if (type === 'asr-v3') return Promise.resolve(testcasesEnvelope(2))
+      if (type === 'tts-1') return Promise.resolve(testcasesEnvelope(1))
+      return Promise.resolve(testcasesEnvelope(0))
+    })
+    const counts = await fetchCaseCountByAlgorithmType(['asr-v3', 'tts-1'])
+    expect(mockApiClientGet).toHaveBeenCalledTimes(2)
+    expect(mockApiClientGet).toHaveBeenCalledWith(
+      '/testcases',
+      expect.objectContaining({
+        params: expect.objectContaining({ page: 1, per_page: 1, algorithm_type: 'asr-v3' }),
+      })
+    )
+    expect(counts.get('asr-v3')).toBe(2)
+    expect(counts.get('tts-1')).toBe(1)
+  })
+
+  it('fetchAlgorithmDefinitions 后端返回 case_count 时直接消费、不再聚合', async () => {
+    const dto = definitionDto('asr-v3')
+    dto.case_count = 42
+    mockRequest.mockResolvedValue({
+      items: [dto],
+      total: 1,
+      page: 1,
+      per_page: 1,
+      pages: 1,
+    })
+    const list = await fetchAlgorithmDefinitions()
+    expect(mockApiClientGet).not.toHaveBeenCalled()
+    expect(list[0].caseCount).toBe(42)
+  })
+
+  it('fetchCaseCountByAlgorithmType 单类型聚合失败不影响其余（该类型不落表）', async () => {
+    mockApiClientGet.mockImplementation((_path: string, opts: { params: { algorithm_type: string } }) => {
+      const type = opts.params.algorithm_type
+      if (type === 'asr-v3') return Promise.resolve(testcasesEnvelope(5))
+      return Promise.reject(new Error('network'))
+    })
+    const counts = await fetchCaseCountByAlgorithmType(['asr-v3', 'tts-1'])
+    expect(counts.get('asr-v3')).toBe(5)
+    expect(counts.has('tts-1')).toBe(false)
+  })
+
+  it('fetchAlgorithmDetail 走 GET /algorithm/definitions/{type}（编辑/复制预填）', async () => {
+    mockRequest.mockResolvedValue(definitionDto('asr-v3'))
+    const detail = await fetchAlgorithmDetail('asr-v3')
+    expect(mockRequest).toHaveBeenCalledWith('GET', '/algorithm/definitions/asr-v3')
+    expect(detail?.type).toBe('asr-v3')
+    expect(detail?.status).toBe('online')
+  })
+
+  it('fetchAlgorithmGroups 走 GET /algorithm/groups 并解信封', async () => {
+    mockRequest.mockResolvedValue({
+      items: [{ id: 1, name: '语音识别', description: 'desc', icon: null, display_order: 1, algorithm_count: 3, created_at: '2026-08-01T08:00:00Z', updated_at: '2026-09-28T10:12:00Z' }],
+      total: 1,
+      page: 1,
+      per_page: 1,
+      pages: 1,
+    })
+    const groups = await fetchAlgorithmGroups()
+    expect(mockRequest).toHaveBeenCalledWith('GET', '/algorithm/groups')
+    expect(groups).toHaveLength(1)
+    expect(groups[0].name).toBe('语音识别')
+    expect(groups[0].algorithmCount).toBe(3)
+  })
+
+  it('createAlgorithm 提交 snake_case 请求体并映射响应', async () => {
+    mockRequest.mockResolvedValue(definitionDto('tts-new', 'tts-new 名称'))
+    const created = await createAlgorithm(saveInput('tts-new'))
+    expect(mockRequest).toHaveBeenCalledWith(
+      'POST',
+      '/algorithm/definitions',
+      expect.objectContaining({
+        type: 'tts-new',
+        group_id: 1,
+        status: 'online',
+        device_params: expect.arrayContaining([
+          expect.objectContaining({ param_code: 'input_audio', param_name: '输入音频' }),
+        ]),
+      })
+    )
+    expect(created.type).toBe('tts-new')
+  })
+
+  it('createAlgorithm 后端 create 落 draft 时补一次 PUT 应用表单所选 status（INT-1317）', async () => {
+    // 后端 POST create 无视提交 status 落 draft（INT-1253 证据）→ 前端立即用所选 status 补 PUT
+    const draft = definitionDto('tts-new', 'tts-new 名称')
+    draft.status = 'draft'
+    const offline = definitionDto('tts-new', 'tts-new 名称')
+    offline.status = 'offline'
+    mockRequest.mockResolvedValueOnce(draft).mockResolvedValueOnce(offline)
+    const created = await createAlgorithm({ ...saveInput('tts-new'), status: 'offline' })
+    expect(mockRequest).toHaveBeenNthCalledWith(
+      1,
+      'POST',
+      '/algorithm/definitions',
+      expect.objectContaining({ type: 'tts-new', status: 'offline' })
+    )
+    expect(mockRequest).toHaveBeenNthCalledWith(
+      2,
+      'PUT',
+      '/algorithm/definitions/tts-new',
+      expect.objectContaining({ type: 'tts-new', status: 'offline' })
+    )
+    expect(created.status).toBe('offline')
+  })
+
+  it('createAlgorithm 后端已应用表单所选 status 时不再补 PUT', async () => {
+    mockRequest.mockResolvedValue(definitionDto('tts-new', 'tts-new 名称'))
+    const created = await createAlgorithm({ ...saveInput('tts-new'), status: 'online' })
+    expect(mockRequest).toHaveBeenCalledTimes(1)
+    expect(mockRequest).toHaveBeenCalledWith('POST', '/algorithm/definitions', expect.any(Object))
+    expect(created.status).toBe('online')
+  })
+
+  it('updateAlgorithm 走 PUT /algorithm/definitions/{type}', async () => {
+    mockRequest.mockResolvedValue(definitionDto('asr-v3', '改名后的识别引擎'))
+    const updated = await updateAlgorithm('asr-v3', saveInput('asr-v3'))
+    expect(mockRequest).toHaveBeenCalledWith(
+      'PUT',
+      '/algorithm/definitions/asr-v3',
+      expect.objectContaining({ name: 'asr-v3 名称' })
+    )
+    expect(updated.name).toBe('改名后的识别引擎')
+  })
+
+  it('deleteAlgorithm 走 DELETE 并返回 success', async () => {
+    mockRequest.mockResolvedValue(undefined)
+    const result = await deleteAlgorithm('asr-v3')
+    expect(mockRequest).toHaveBeenCalledWith('DELETE', '/algorithm/definitions/asr-v3')
+    expect(result).toEqual({ success: true })
+  })
+
+  it('bulkDeleteAlgorithms 提交 algorithm_types，并逐类型复核详情（INT-1316）', async () => {
+    // 后端 bulk-delete 报成功但记录残留（真实栈 soft_delete 未生效），详情仍 200 → 回退单删
+    mockRequest.mockImplementation((method: string, path: string) => {
+      if (method === 'POST' && path === '/algorithm/bulk-delete') {
+        return Promise.resolve({ deleted_types: ['asr-v3', 'tts-brand-new'], message: '' })
+      }
+      if (method === 'GET' && path === '/algorithm/definitions/asr-v3') {
+        return Promise.resolve(definitionDto('asr-v3'))
+      }
+      if (method === 'GET' && path === '/algorithm/definitions/tts-brand-new') {
+        return Promise.resolve(definitionDto('tts-brand-new'))
+      }
+      if (method === 'DELETE' && path === '/algorithm/definitions/asr-v3') {
+        return Promise.resolve(undefined)
+      }
+      if (method === 'DELETE' && path === '/algorithm/definitions/tts-brand-new') {
+        return Promise.resolve(undefined)
+      }
+      return Promise.reject(new ApiError({ httpStatus: 500, message: 'unexpected' }))
+    })
+    const result = await bulkDeleteAlgorithms(['asr-v3', 'tts-brand-new'])
+    expect(mockRequest).toHaveBeenCalledWith(
+      'POST',
+      '/algorithm/bulk-delete',
+      { algorithm_types: ['asr-v3', 'tts-brand-new'] }
+    )
+    // 批量残留两条 → 回退单删两条成功 → 实际成功 2、失败 0（不再盲信 deleted_types）
+    expect(mockRequest).toHaveBeenCalledWith('DELETE', '/algorithm/definitions/asr-v3')
+    expect(mockRequest).toHaveBeenCalledWith('DELETE', '/algorithm/definitions/tts-brand-new')
+    expect(result).toEqual({ successCount: 2, failedCount: 0 })
+  })
+
+  it('bulkDeleteAlgorithms 批量已生效（详情 400 not-found）不再回退单删', async () => {
+    mockRequest.mockImplementation((method: string, path: string) => {
+      if (method === 'POST' && path === '/algorithm/bulk-delete') {
+        return Promise.resolve({ deleted_types: ['asr-v3', 'tts-brand-new'], message: '' })
+      }
+      if (method === 'GET' && path.startsWith('/algorithm/definitions/')) {
+        return Promise.reject(new ApiError({ httpStatus: 400, message: 'Algorithm not found' }))
+      }
+      return Promise.resolve(undefined)
+    })
+    const result = await bulkDeleteAlgorithms(['asr-v3', 'tts-brand-new'])
+    expect(mockRequest).toHaveBeenCalledWith(
+      'POST',
+      '/algorithm/bulk-delete',
+      { algorithm_types: ['asr-v3', 'tts-brand-new'] }
+    )
+    expect(mockRequest).not.toHaveBeenCalledWith('DELETE', '/algorithm/definitions/asr-v3')
+    expect(result).toEqual({ successCount: 2, failedCount: 0 })
+  })
+
+  it('bulkDeleteAlgorithms 回退单删失败计入 failedCount（INT-1316）', async () => {
+    mockRequest.mockImplementation((method: string, path: string) => {
+      if (method === 'POST' && path === '/algorithm/bulk-delete') {
+        return Promise.resolve({ deleted_types: ['asr-v3'], message: '' })
+      }
+      if (method === 'GET' && path === '/algorithm/definitions/asr-v3') {
+        return Promise.resolve(definitionDto('asr-v3'))
+      }
+      if (method === 'GET' && path === '/algorithm/definitions/tts-brand-new') {
+        return Promise.reject(new ApiError({ httpStatus: 400, message: 'Algorithm not found' }))
+      }
+      if (method === 'DELETE' && path === '/algorithm/definitions/asr-v3') {
+        return Promise.reject(new ApiError({ httpStatus: 500, message: 'delete failed' }))
+      }
+      return Promise.resolve(undefined)
+    })
+    const result = await bulkDeleteAlgorithms(['asr-v3', 'tts-brand-new'])
+    // asr-v3 残留且单删失败 → 失败 1；tts-brand-new 已删 → 成功
+    expect(result).toEqual({ successCount: 1, failedCount: 1 })
+  })
+
+  it('reloadAlgorithmConfig 走 POST /algorithm/reload 并映射 reloadTime', async () => {
+    mockRequest.mockResolvedValue({ success: true, message: '', reload_time: '2026-10-17T00:00:00Z' })
+    const result = await reloadAlgorithmConfig()
+    expect(mockRequest).toHaveBeenCalledWith('POST', '/algorithm/reload')
+    expect(result.success).toBe(true)
+    expect(result.reloadTime).toBe('2026-10-17T00:00:00Z')
+  })
+
+  it('importAlgorithms 提交 { algorithms } 并返回实际导入数', async () => {
+    mockRequest.mockResolvedValue({ imported: ['tts-import-a', 'tts-import-b'] })
+    const result = await importAlgorithms([
+      { type: 'tts-import-a' },
+      { type: 'tts-import-b' },
+      { type: 'asr-v3' },
+    ])
+    expect(mockRequest).toHaveBeenCalledWith(
+      'POST',
+      '/algorithm/import',
+      { algorithms: [{ type: 'tts-import-a' }, { type: 'tts-import-b' }, { type: 'asr-v3' }] }
+    )
+    expect(result.importedCount).toBe(2)
+  })
+
+  it('分组 CRUD：create 走 POST /algorithm/groups、update 走 PUT、delete 走 DELETE', async () => {
+    mockRequest.mockResolvedValue({ id: 9, name: '新分组', description: null, icon: null, display_order: 9, algorithm_count: 0, created_at: '', updated_at: '' })
+    const created = await createAlgorithmGroup({ name: '新分组', description: '', icon: '', displayOrder: 9 })
+    expect(mockRequest).toHaveBeenCalledWith(
+      'POST',
+      '/algorithm/groups',
+      { name: '新分组', description: null, icon: null, display_order: 9 }
+    )
+    expect(created.algorithmCount).toBe(0)
+
+    mockRequest.mockResolvedValue({ id: 9, name: '改名分组', description: null, icon: null, display_order: 9, algorithm_count: 0, created_at: '', updated_at: '' })
+    const updated = await updateAlgorithmGroup(9, { name: '改名分组', description: '', icon: '', displayOrder: 9 })
+    expect(mockRequest).toHaveBeenCalledWith('PUT', '/algorithm/groups/9', expect.objectContaining({ name: '改名分组' }))
+    expect(updated.name).toBe('改名分组')
+
+    mockRequest.mockResolvedValue(undefined)
+    const deleted = await deleteAlgorithmGroup(9)
+    expect(mockRequest).toHaveBeenCalledWith('DELETE', '/algorithm/groups/9')
+    expect(deleted).toEqual({ success: true })
+  })
+
+  it('publishAlgorithm 新建走 GET 探测(400-not-found) + POST 创建；存量走 PUT 更新', async () => {
+    // 新建：GET detail 返回 400 + 「Algorithm not found」（网关映射缺失算法语义）→ 判新 → POST 创建
+    mockRequest.mockRejectedValueOnce(new ApiError({ httpStatus: 400, message: 'Algorithm not found' }))
+    mockRequest.mockResolvedValueOnce(definitionDto('tts-new', 'tts-new 名称'))
+    const created = await publishAlgorithm(saveInput('tts-new'))
+    expect(mockRequest).toHaveBeenNthCalledWith(1, 'GET', '/algorithm/definitions/tts-new')
+    expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/algorithm/definitions', expect.any(Object))
+    expect(created.type).toBe('tts-new')
+
+    // 存量：GET detail 返回定义 → PUT 更新
+    mockRequest.mockReset()
+    mockRequest.mockResolvedValueOnce(definitionDto('asr-v3', 'asr-v3 名称'))
+    mockRequest.mockResolvedValueOnce(definitionDto('asr-v3', 'asr-v3 名称'))
+    const updated = await publishAlgorithm(saveInput('asr-v3'))
+    expect(mockRequest).toHaveBeenNthCalledWith(1, 'GET', '/algorithm/definitions/asr-v3')
+    expect(mockRequest).toHaveBeenNthCalledWith(2, 'PUT', '/algorithm/definitions/asr-v3', expect.any(Object))
+    expect(updated.name).toBe('asr-v3 名称')
+  })
+
+  it('publishAlgorithm 新建时 create 落 draft 也补 PUT 应用表单所选 status（INT-1317）', async () => {
+    // GET 探测 400-not-found → 判新 → POST 创建返回 draft → 补 PUT 应用 offline
+    mockRequest.mockRejectedValueOnce(new ApiError({ httpStatus: 400, message: 'Algorithm not found' }))
+    const draft = definitionDto('tts-new', 'tts-new 名称')
+    draft.status = 'draft'
+    const offline = definitionDto('tts-new', 'tts-new 名称')
+    offline.status = 'offline'
+    mockRequest.mockResolvedValueOnce(draft).mockResolvedValueOnce(offline)
+    const created = await publishAlgorithm({ ...saveInput('tts-new'), status: 'offline' })
+    expect(mockRequest).toHaveBeenNthCalledWith(1, 'GET', '/algorithm/definitions/tts-new')
+    expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/algorithm/definitions', expect.any(Object))
+    expect(mockRequest).toHaveBeenNthCalledWith(
+      3,
+      'PUT',
+      '/algorithm/definitions/tts-new',
+      expect.objectContaining({ status: 'offline' })
+    )
+    expect(created.status).toBe('offline')
+  })
+
+  it('saveAlgorithmDraft 走 PUT /algorithm/definitions/draft（完整快照 + algorithm_type）并回服务端 saved_at', async () => {
+    mockRequest.mockResolvedValue({
+      saved: true,
+      algorithm_type: 'asr-v3',
+      saved_at: '2026-10-19T12:00:00Z',
+    })
+    const result = await saveAlgorithmDraft(saveInput('asr-v3'))
+    expect(mockRequest).toHaveBeenCalledWith(
+      'PUT',
+      '/algorithm/definitions/draft',
+      expect.objectContaining({
+        type: 'asr-v3',
+        algorithm_type: 'asr-v3',
+        name: 'asr-v3 名称',
+        group_id: 1,
+        status: 'online',
+        device_params: expect.arrayContaining([
+          expect.objectContaining({ param_code: 'input_audio', param_name: '输入音频' }),
+        ]),
+      })
+    )
+    expect(result.revision).toBe(0)
+    expect(result.savedAt).toBe('2026-10-19T12:00:00Z')
+  })
+
+  it('saveAlgorithmDraft 后端未回 saved_at 时前端取本端 now', async () => {
+    mockRequest.mockResolvedValue({ saved: true, algorithm_type: 'asr-v3' })
+    const before = Date.now()
+    const result = await saveAlgorithmDraft(saveInput('asr-v3'))
+    expect(Date.parse(result.savedAt)).toBeGreaterThanOrEqual(before)
+    expect(result.revision).toBe(0)
+  })
+
+  it('fetchAlgorithmDraft 无草稿（data:{}）返回 undefined；有草稿映射回 Domain 定义', async () => {
+    // 无草稿：后端返回空对象 → undefined
+    mockRequest.mockResolvedValue({})
+    const none = await fetchAlgorithmDraft('asr-v3')
+    expect(mockRequest).toHaveBeenCalledWith('GET', '/algorithm/definitions/draft/asr-v3')
+    expect(none).toBeUndefined()
+
+    // 有草稿：完整快照（snake_case，type 键）→ AlgorithmDefinition
+    mockRequest.mockReset()
+    mockRequest.mockResolvedValue({
+      type: 'asr-v3',
+      name: 'asr-v3 草稿名',
+      group_id: 1,
+      display_order: 1,
+      status: 'online',
+      description: '草稿描述',
+      device_params: [
+        { id: 0, param_code: 'input_audio', param_name: '输入音频', label: '输入音频', param_type: 'audio_file', direction: 'input', required: true, default_value: null, help_text: '待识别音频', ui_order: 1, hidden: false },
+      ],
+      api_params: [],
+      case_params: [],
+      reference_params: [],
+      mappings: { device: [], api: [], evaluation: [] },
+      associated_dimensions: [],
+    })
+    const draft = await fetchAlgorithmDraft('asr-v3')
+    expect(draft?.type).toBe('asr-v3')
+    expect(draft?.name).toBe('asr-v3 草稿名')
+    expect(draft?.deviceParams[0].paramCode).toBe('input_audio')
+  })
+
+  it('fetchAlgorithmDraft 草稿含 algorithm_type 键（后端快照归属键）时仍按 type 还原', async () => {
+    mockRequest.mockResolvedValue({
+      algorithm_type: 'asr-v3',
+      type: 'asr-v3',
+      name: 'asr-v3 草稿名',
+      group_id: null,
+      display_order: 0,
+      status: 'offline',
+      description: '',
+      device_params: [],
+      api_params: [],
+      case_params: [],
+      reference_params: [],
+      mappings: { device: [], api: [], evaluation: [] },
+      associated_dimensions: [],
+    })
+    const draft = await fetchAlgorithmDraft('asr-v3')
+    expect(draft?.type).toBe('asr-v3')
+    expect(draft?.name).toBe('asr-v3 草稿名')
+    expect(draft?.status).toBe('offline')
+  })
+})

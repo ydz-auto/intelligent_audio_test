@@ -1,0 +1,19 @@
+# Rsbuild
+dist
+rsbuild.config.*.bak
+
+# 依赖
+node_modules
+
+# TanStack Router 生成的路由树（构建期由 router-plugin 生成）
+src/routeTree.gen.ts
+
+# 日志与本地文件
+*.log
+.DS_Store
+
+# 工作区根 .gitignore 的 `logs/` 目录规则会误命中日志页功能目录与 application 层
+# hooks（页面组件树按 17_配置运维.md §11 落 features/logs/ + application/logs/），
+# 此处豁免——否则 INT-693 三个日志 hooks 会被忽略漏提交（2026-10-18 返修根因）
+!src/features/logs/
+!src/application/logs/

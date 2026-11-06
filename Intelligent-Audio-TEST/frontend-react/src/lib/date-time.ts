@@ -1,0 +1,145 @@
+/**
+ * 共享时间展示工具（INT-2211：跨域唯一口径；原 features/tasks/lib/date-time 提升而来）。
+ *
+ * 后端下发的时间串多为无时区后缀的裸 UTC（如 `2026-10-23T05:11:14.017258`，
+ * `timestamp without time zone` 直出），直接 `T→空格` + `slice` 会原样显示 UTC，
+ * 比本地（Asia/Shanghai）早 8 小时。此处统一按 UTC 解析后转本地时区输出
+ * 「YYYY-MM-DD HH:mm(:ss)」。带时区后缀（`Z` / `±HH:mm`）的串按原语义解析。
+ *
+ * 只用于「展示后端时间」；`datetime-local` 等本地输入、查询参数与文件名时间戳
+ * 保持各自原语义，不要走这里。
+ */
+
+/** 无时区后缀的日期时间串（日期 + T/空格 + 时分[秒[.毫秒]]） */
+const NAIVE_DATETIME = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?)$/
+
+/** 后端时间串 → Date（无时区后缀按 UTC 解释）；空值 / 不可解析 → null */
+export function parseApiDateTime(
+  value: string | null | undefined
+): Date | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const naive = NAIVE_DATETIME.exec(trimmed)
+  const normalized = naive ? `${naive[1]}T${naive[2]}Z` : trimmed
+  const date = new Date(normalized)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function pad(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+/** 墙钟串：`YYYY-MM-DD HH:mm` / `YYYY-MM-DDTHH:mm[:ss[.fff]]`（无时区语义） */
+const WALL_CLOCK_DATETIME = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/
+
+/** 串自带绝对时区语义（`Z` / `±HH:mm` / `±HHmm`） */
+const HAS_ZONE_SUFFIX = /(?:Z|[+-]\d{2}:?\d{2})$/i
+
+/** Date → 本地「YYYY-MM-DD HH:mm[:ss]」 */
+function formatLocal(date: Date, withSeconds: boolean): string {
+  const minutePrecision = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate()
+  )} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  return withSeconds
+    ? `${minutePrecision}:${pad(date.getSeconds())}`
+    : minutePrecision
+}
+
+/** 后端时间串 → 本地「YYYY-MM-DD HH:mm」；空值 / 不可解析 → 「—」 */
+export function formatDateTime(value: string | null | undefined): string {
+  const date = parseApiDateTime(value)
+  return date ? formatLocal(date, false) : '—'
+}
+
+/** 同上，带秒（复核历史等需要秒级精度的行） */
+export function formatDateTimeSeconds(
+  value: string | null | undefined
+): string {
+  const date = parseApiDateTime(value)
+  return date ? formatLocal(date, true) : '—'
+}
+
+/**
+ * 后端「本地墙钟串」→ 原样展示为「YYYY-MM-DD HH:mm」（不解析、不换算）。
+ *
+ * INT-2345：任务详情 `expected_complete_time` 在后端按**东八区墙钟**输出纯展示串
+ * （task_query_service 注释：「展示用字符串仍按东八区墙钟输出」），如
+ * `2026-11-02 09:41:06` 本身已是本地时间。若再走 `formatDateTime`，无时区后缀会被
+ * 当成裸 UTC 解析并 +8，页面显示成 17:41（恒晚 8 小时）。此字段必须原样切片。
+ *
+ * 只用于后端明确以本地墙钟输出的字段；其余任务域时间（`created_at` / `completed_at`
+ * 等）仍是裸 UTC，继续走 {@link formatDateTime}。若该字段将来改成带
+ * `Z` / `±HH:mm` 的绝对时间串，这里自动回落到 {@link formatDateTime}，
+ * 不会出现两套口径各自误解。
+ */
+export function formatLocalWallClock(
+  value: string | null | undefined
+): string {
+  if (typeof value !== 'string') return '—'
+  const trimmed = value.trim()
+  if (!trimmed) return '—'
+  if (HAS_ZONE_SUFFIX.test(trimmed)) return formatDateTime(trimmed)
+  const wallClock = WALL_CLOCK_DATETIME.exec(trimmed)
+  return wallClock ? `${wallClock[1]} ${wallClock[2]}` : '—'
+}
+
+/** 后端时间串 → 本地「YYYY-MM-DD」；空值 / 不可解析 → 「—」（列表只展示日期时用） */
+export function formatDate(value: string | null | undefined): string {
+  const date = parseApiDateTime(value)
+  if (!date) return '—'
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+/** 毫秒时长 → 「x 秒 / x 分钟 / x 小时 y 分钟 / x 天 y 小时」 */
+export function formatElapsed(ms: number | null): string {
+  if (ms == null) return '—'
+  const totalSeconds = Math.max(0, Math.round(ms / 1000))
+  if (totalSeconds < 60) return `${totalSeconds} 秒`
+  const totalMinutes = Math.floor(totalSeconds / 60)
+  if (totalMinutes < 60) return `${totalMinutes} 分钟`
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours < 24) return minutes ? `${hours} 小时 ${minutes} 分钟` : `${hours} 小时`
+  const days = Math.floor(hours / 24)
+  const restHours = hours % 24
+  return restHours ? `${days} 天 ${restHours} 小时` : `${days} 天`
+}
+
+/**
+ * 任务已用时长入参（结构化类型，避免共享层依赖任务域模型）。
+ * 字段为 camelCase 领域口径（INT-2239：任务域模型已统一 camelCase）；
+ * 后端时间串按裸 UTC 解析；`executionStatus` 只有 running / queued 视为进行中。
+ */
+export type UsedTimeSource = {
+  createdAt?: string | null
+  startedAt: string | null
+  completedAt: string | null
+  executionStatus: string | null
+}
+
+/**
+ * 任务已用时长：一律以起止时间推算为准（后端 `used_time` 存在「16小时」类异常值，
+ * 实测任务只跑约 1 分钟）。进行中任务按「当前 - 开始」实时推算；
+ * 无有效开始时间 / 结束时点 → 「—」。
+ *
+ * INT-2210：后端 `started_at` 存在早于 `created_at` 的脏数据（真实库 173/408 条，
+ * 多为 -16h、少数 -8h），按此推算会把 12 分钟的任务显示成「16 小时」。`created_at`
+ * 与 `started_at` 都可解析且 `started_at < created_at` 时视为无有效开始时间 → 「—」。
+ * 这是展示兜底，不替代后端修复；后端回填历史数据后本守卫可按需保留或撤除。
+ */
+export function formatTaskUsedTime(
+  detail: UsedTimeSource,
+  now: Date = new Date()
+): string {
+  const start = parseApiDateTime(detail.startedAt)
+  if (!start) return '—'
+  const created = parseApiDateTime(detail.createdAt)
+  if (created && start.getTime() < created.getTime()) return '—'
+  const completed = parseApiDateTime(detail.completedAt)
+  const running =
+    detail.executionStatus === 'running' || detail.executionStatus === 'queued'
+  const end = completed ?? (running ? now : null)
+  if (!end) return '—'
+  return formatElapsed(end.getTime() - start.getTime())
+}

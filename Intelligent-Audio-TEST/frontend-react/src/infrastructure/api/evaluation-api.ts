@@ -1,0 +1,336 @@
+/**
+ * 评估维度 API（infrastructure/api 层；11_用例域.md §3.4 facet + §4.1 评估维度页）。
+ * 已接线（INT-646）：全部经 client.ts 统一 fetch 封装走真实后端，端点对照
+ * api_gateway/routes/evaluation_bp.py 实测：
+ *   GET  /api/v1/evaluation/dimensions/options?algorithm_type=…  （DimensionOptionsData；facet）
+ *   GET  /api/v1/evaluation/dimensions?category_id&page&per_page&search（DimensionListData）
+ *   GET  /api/v1/evaluation/categories                            （CategoryListData）
+ *   GET  /api/v1/algorithm/options                                 （算法 facet/表单）
+ *   POST/PUT /api/v1/evaluation/dimensions|/{id}                  （维度保存；dim_manage）
+ *   DELETE /api/v1/evaluation/dimensions/{id}                     （维度删除）
+ *   POST /api/v1/evaluation/dimensions/batch                       （批量启用/禁用/删除）
+ *   POST /api/v1/evaluation/dimensions/reorder                     （ids 顺序即新展示序）
+ *   POST /api/v1/evaluation/dimensions/{id}/calculate              （规则试算）
+ *   GET  /api/v1/evaluation/dimensions/{id}/health                 （API 健康探测）
+ *   POST/PUT/DELETE /api/v1/evaluation/categories|/{id}            （分类管理）
+ * snake_case 契约只在 infrastructure/dto/evaluation.dto.ts 出现，本层与 domain 只见 camelCase。
+ */
+import type {
+  Dimension,
+  DimensionHealthCheckData,
+  EvaluationCategory,
+} from '@/domain/models/evaluationDimension'
+import { request } from '@/infrastructure/api/client'
+import {
+  type AlgorithmDimensionsDataDto,
+  type CategoryListDataDto,
+  type DimensionHealthCheckDataDto,
+  type DimensionItemDto,
+  type DimensionListDataDto,
+  type DimensionOptionsDataDto,
+  type ScoreDataDto,
+  toAlgorithmOptionsList,
+  toCategoryInputDto,
+  toDimension,
+  toDimensionHealthCheck,
+  toDimensionInputDto,
+  toDimensionOptionsList,
+  toEvaluationCategory,
+} from '@/infrastructure/dto/evaluation.dto'
+import type { EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
+
+/** 维度选项（facet singleSelect；仅主维度，子维度折叠进主维度 Popover 内滚动） */
+export async function fetchDimensionOptions(
+  algorithmType?: string
+): Promise<EvaluationDimensionItem[]> {
+  const dto = await request<DimensionOptionsDataDto>('GET', '/evaluation/dimensions/options', undefined, {
+    params: { algorithm_type: algorithmType || '' },
+  })
+  return toDimensionOptionsList(dto)
+}
+
+/** 评估维度全量（列表/分组双视图；主/子同屏聚合，前端过滤分页；per_page=1000 全量拉取） */
+export async function fetchEvaluationDimensions(): Promise<Dimension[]> {
+  const dto = await request<DimensionListDataDto>('GET', '/evaluation/dimensions', undefined, {
+    params: { per_page: 1000 },
+  })
+  return (dto?.items ?? []).map(toDimension)
+}
+
+/**
+ * 维度「是否需要音频」标记表（id → requires_audio）。
+ * INT-1843：`GET /evaluation/dimensions` 列表端点不下发 requires_audio（实测 63 条均无该键），
+ * 该派生布尔只在 `GET /evaluation/dimensions/options` 下发（真实库 63 条中 30 条为 true），
+ * 故维度云的音乐图标须由本函数取值后按 id 合并进 Dimension。
+ */
+export async function fetchDimensionAudioFlags(): Promise<Map<number, boolean>> {
+  const dto = await request<DimensionOptionsDataDto>(
+    'GET',
+    '/evaluation/dimensions/options',
+    undefined,
+    { params: { algorithm_type: '' } }
+  )
+  const flags = new Map<number, boolean>()
+  for (const item of dto?.dimensions ?? []) {
+    flags.set(Number(item.id), Boolean(item.requires_audio))
+  }
+  return flags
+}
+
+/** 维度详情（编辑抽屉反填 required_inputs/output_fields——列表接口不下发，恒 []） */
+export async function fetchEvaluationDimensionDetail(
+  id: number | string
+): Promise<Dimension> {
+  const dto = await request<DimensionItemDto>('GET', `/evaluation/dimensions/${id}`)
+  return toDimension(dto)
+}
+
+/** 评估分类（分类 facet + 分组视图组头 + 分类表单） */
+export async function fetchEvaluationCategories(): Promise<EvaluationCategory[]> {
+  const dto = await request<CategoryListDataDto>('GET', '/evaluation/categories', undefined, {
+    params: { per_page: 100 },
+  })
+  return (dto?.items ?? []).map(toEvaluationCategory)
+}
+
+/** 算法选项（关联算法 facet singleSelect + 维度表单关联算法 Combobox；algorithm:read） */
+export async function fetchAlgorithmOptions(): Promise<
+  Array<{ value: string; label: string }>
+> {
+  const dto = await request<{ algorithms: Array<{ value: string; name: string }> }>(
+    'GET',
+    '/algorithm/options'
+  )
+  return toAlgorithmOptionsList(dto)
+}
+
+/** 算法关联维度的单条关系（GET /algorithm/dimensions/{algo_type}；本层已转 camelCase） */
+export interface DimensionAlgorithmLink {
+  dimensionId: number
+  algorithmType: string
+  isDefault: boolean
+  weight: number
+}
+
+/**
+ * 某算法关联的维度（GET /algorithm/dimensions/{algo_type}，algorithm:read）。
+ * `GET /evaluation/dimensions` 列表端点按契约恒下发 `associated_algorithms: []`（省 N+1），
+ * 只有详情才带关联；本端点一次取回某算法关联的全部维度（含 is_default / weight），
+ * 评估维度页据此按算法批量补齐「关联算法」列与筛选（INT-2252）。
+ */
+export async function fetchAlgorithmDimensionLinks(
+  algorithmType: string
+): Promise<DimensionAlgorithmLink[]> {
+  const dto = await request<AlgorithmDimensionsDataDto>(
+    'GET',
+    `/algorithm/dimensions/${encodeURIComponent(algorithmType)}`
+  )
+  return (dto?.dimensions ?? []).map((d) => ({
+    dimensionId: Number(d.id),
+    algorithmType,
+    isDefault: Boolean(d.is_default),
+    weight: d.weight ?? 1,
+  }))
+}
+
+/** 保存维度（新增/编辑/权重更新共用；有 id 走 PUT /{id}，无 id 走 POST） */
+export async function saveEvaluationDimension(
+  input: Partial<Dimension>
+): Promise<{ success: boolean }> {
+  const body = toDimensionInputDto(input)
+  if (input.id != null && input.id !== '' && !String(input.id).startsWith('copy-')) {
+    await request('PUT', `/evaluation/dimensions/${input.id}`, body)
+  } else {
+    await request('POST', '/evaluation/dimensions', body)
+  }
+  return { success: true }
+}
+
+/**
+ * 行内启用/禁用（INT-2247）：只提交变更字段 `{ status }`。
+ * 列表端点把 required_inputs / output_fields / associated_algorithms 固定下发空数组
+ * （evaluation_query_service 省 N+1 的占位），整行 PUT 会被后端当「用户显式清空」→
+ * 删输出参数与 output ParamMapping；后端 PUT 为部分更新（只写 payload 里出现的键），
+ * 故单独发 status 即可。
+ */
+export async function updateDimensionStatus(
+  id: number | string,
+  status: boolean
+): Promise<{ success: boolean }> {
+  await request('PUT', `/evaluation/dimensions/${id}`, { status })
+  return { success: true }
+}
+
+/** 删除维度（逻辑删除） */
+export async function deleteEvaluationDimension(
+  id: number | string
+): Promise<{ success: boolean }> {
+  await request('DELETE', `/evaluation/dimensions/${id}`)
+  return { success: true }
+}
+
+/** 批量操作（启用/禁用/删除；BatchActionInput） */
+export async function batchEvaluationDimensions(
+  ids: Array<number | string>,
+  action: 'enable' | 'disable' | 'delete'
+): Promise<{ success: boolean; updatedCount: number }> {
+  await request('POST', '/evaluation/dimensions/batch', { ids, action })
+  return { success: true, updatedCount: ids.length }
+}
+
+/** 权重滑杆提交（拖动停止 onValueCommitted 才触发，§4.1/§10-4；PUT /{id} 载荷 { weight }） */
+export async function updateDimensionWeight(
+  id: number | string,
+  weight: number
+): Promise<{ success: boolean }> {
+  await request('PUT', `/evaluation/dimensions/${id}`, { weight })
+  return { success: true }
+}
+
+/**
+ * 维度上移/下移（主维度整块移动、子维度仅同组内移动）。
+ * 后端 reorder 契约：ids 顺序即新展示顺序（下标即 sort_order）——调用方需传
+ * 当前筛选集完整重排后的 id 序（Vue reorder(ids) 同口径）。
+ */
+export async function reorderDimension(
+  ids: Array<number | string>
+): Promise<{ success: boolean }> {
+  await request('POST', '/evaluation/dimensions/reorder', { ids })
+  return { success: true }
+}
+
+/** 规则试算（POST /evaluation/dimensions/{id}/calculate；门槛 evaluation:dim_manage） */
+export async function calculateDimensionScore(
+  dimension: Dimension,
+  value: number
+): Promise<{ score: number; matchedRule: { condition: string; value: number; score: number } | null }> {
+  const dto = await request<ScoreDataDto>('POST', `/evaluation/dimensions/${dimension.id}/calculate`, {
+    value,
+  })
+  const score = dto?.score ?? 0
+  // 命中规则行本地推导（后端仅回 score；高亮展示用，规则按序匹配命中首条即停）
+  const rules = Array.isArray(dimension.rule)
+    ? dimension.rule
+    : typeof dimension.rule === 'object' && dimension.rule?.rules
+      ? dimension.rule.rules
+      : []
+  let matchedRule: { condition: string; value: number; score: number } | null = null
+  for (const rule of rules) {
+    const { condition, value: threshold } = rule
+    const hit =
+      condition === '>=' ? value >= threshold :
+      condition === '<=' ? value <= threshold :
+      condition === '>' ? value > threshold :
+      condition === '<' ? value < threshold :
+      condition === '=' ? value === threshold : false
+    if (hit) {
+      matchedRule = rule
+      break
+    }
+  }
+  return { score, matchedRule }
+}
+
+/** 测试 API 健康（行内「测试 API」；GET /{id}/health，门槛 evaluation:read） */
+export async function testDimensionHealth(
+  dimension: Dimension
+): Promise<DimensionHealthCheckData> {
+  const dto = await request<DimensionHealthCheckDataDto>(
+    'GET',
+    `/evaluation/dimensions/${dimension.id}/health`
+  )
+  return toDimensionHealthCheck(dto)
+}
+
+/**
+ * 复制维度（后端无独立 duplicate 端点：以「{原名}（副本）」为名 POST 创建，配置深拷贝）。
+ * INT-2247：列表行不含真实配置（列表端点固定下发空 required_inputs / output_fields /
+ * associated_algorithms），直接以列表行复制会被后端当「用户清空」→ 副本丢输入/输出字段
+ * 与算法关联；故复制前必须先取详情（GET /dimensions/{id}），以详情为载荷。
+ */
+export async function duplicateDimension(
+  dimension: Dimension
+): Promise<{ success: boolean }> {
+  const detail = await fetchEvaluationDimensionDetail(dimension.id)
+  const body = toDimensionInputDto({
+    ...detail,
+    name: `${dimension.name}（副本）`,
+  })
+  await request('POST', '/evaluation/dimensions', body)
+  return { success: true }
+}
+
+/** 导入维度（POST /evaluation/dimensions/import；multipart：file + updateExisting；返回 { imported, updated }） */
+export async function importEvaluationDimensions(
+  file: File,
+  updateExisting: boolean
+): Promise<{ imported: number; updated: number }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('updateExisting', updateExisting ? 'true' : 'false')
+  const data = await request<{ imported?: number; updated?: number }>(
+    'POST',
+    '/evaluation/dimensions/import',
+    formData
+  )
+  return { imported: data?.imported ?? 0, updated: data?.updated ?? 0 }
+}
+
+/** 导出维度结果（excel 为后端二进制 XLSX，json 为行数组） */
+export type DimensionExportResult =
+  | { format: 'json'; rows: Array<Record<string, unknown>> }
+  | { format: 'excel'; blob: Blob }
+
+/** 导出维度（GET /evaluation/dimensions/export?format=json|excel）。
+ * json：后端返回 JSON 信封（data=行数组），前端序列化落盘；
+ * excel：后端返回二进制 XLSX（Response 字节流），须 blob 直落
+ * （对照旧 Vue responseType:'blob' 口径）。 */
+export async function exportEvaluationDimensions(
+  format: 'json' | 'excel'
+): Promise<DimensionExportResult> {
+  if (format === 'excel') {
+    const blob = await request<Blob>('GET', '/evaluation/dimensions/export', undefined, {
+      params: { format: 'excel' },
+      responseType: 'blob',
+      unwrapResponse: false,
+    })
+    return { format: 'excel', blob }
+  }
+  const dto = await request<Array<Record<string, unknown>>>(
+    'GET',
+    '/evaluation/dimensions/export',
+    undefined,
+    { params: { format: 'json' } }
+  )
+  return { format: 'json', rows: Array.isArray(dto) ? dto : [] }
+}
+
+/**
+ * 保存分类（新增/编辑；有 id 走 PUT /categories/{id}，无 id 走 POST；门槛 category_manage）。
+ * 新增返回后端下发的真实分类 id（POST 201，data = { id }，evaluation_service
+ * `_category_commands_mixin.create_category`），供维度抽屉内联新建分类回填 category_id。
+ */
+export async function saveEvaluationCategory(
+  input: Partial<EvaluationCategory>
+): Promise<{ success: boolean; id: number | null }> {
+  const body = toCategoryInputDto(input)
+  if (input.id != null) {
+    await request('PUT', `/evaluation/categories/${input.id}`, body)
+    return { success: true, id: Number(input.id) }
+  }
+  const dto = await request<{ id?: number | string } | null>(
+    'POST',
+    '/evaluation/categories',
+    body
+  )
+  const id = dto?.id != null && Number.isFinite(Number(dto.id)) ? Number(dto.id) : null
+  return { success: true, id }
+}
+
+/** 删除分类（DELETE /evaluation/categories/{id}；门槛 category_manage） */
+export async function deleteEvaluationCategory(
+  id: number
+): Promise<{ success: boolean }> {
+  await request('DELETE', `/evaluation/categories/${id}`)
+  return { success: true }
+}

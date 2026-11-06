@@ -1,0 +1,96 @@
+/**
+ * 任务信息卡（09_任务域.md §4.2，Card）。
+ * 头行：任务名 + 双状态徽章 + 创建时间 + 创建人；
+ * 信息网格 `grid gap-4 sm:grid-cols-3 lg:grid-cols-4`（label text-xs muted + 值 text-sm font-medium tabular-nums）；
+ * 标签行 BadgeListCell。
+ */
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
+import type { TaskDetailData } from '@/domain/models/task'
+import {
+  formatDateTime,
+  getEvaluationStatusMeta,
+  getExecutionStatusMeta,
+} from '@/features/tasks/constants'
+import {
+  formatLocalWallClock,
+  formatTaskUsedTime,
+} from '@/features/tasks/lib/date-time'
+
+function InfoGrid({ items }: { items: Array<{ label: string; value: string | number }> }) {
+  return (
+    <div className='grid gap-4 sm:grid-cols-3 lg:grid-cols-4'>
+      {items.map((item) => (
+        <div key={item.label}>
+          <p className='text-muted-foreground text-xs'>{item.label}</p>
+          <p className='text-sm font-medium tabular-nums'>{item.value}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export function TaskInfoCard({
+  detail,
+  headerExtra,
+}: {
+  detail: TaskDetailData
+  /** 头行附加内容（容器信息头徽章组，§5.5.2 ②；非容器不传） */
+  headerExtra?: React.ReactNode
+}) {
+  const execMeta = getExecutionStatusMeta(detail.executionStatus)
+  const evalMeta = getEvaluationStatusMeta(detail.evaluationStatus)
+
+  return (
+    <Card size='sm' className='gap-3 py-3'>
+      <CardHeader className='px-4'>
+        <div className='flex flex-wrap items-center gap-2'>
+          <CardTitle className='text-base font-semibold'>{detail.name}</CardTitle>
+          <StatusBadge
+            label={execMeta.label}
+            variant={execMeta.variant}
+            pulse={execMeta.pulse}
+          />
+          <StatusBadge
+            label={evalMeta.label}
+            variant={evalMeta.variant}
+            pulse={evalMeta.pulse}
+          />
+          {headerExtra}
+        </div>
+        <div className='text-muted-foreground text-xs tabular-nums'>
+          创建时间 {formatDateTime(detail.createdAt)} · 创建人 张测试
+        </div>
+      </CardHeader>
+      <CardContent className='px-4 pb-1'>
+        <InfoGrid
+          items={[
+            { label: '任务名称', value: detail.name },
+            // INT-2345：该字段后端是东八区墙钟展示串，原样展示，不能再按 UTC +8
+            { label: '预计完成时间', value: formatLocalWallClock(detail.expectedCompleteTime) },
+            { label: '预计总时长', value: detail.expectedTotalTime ?? '—' },
+            // INT-2201：已用时长以起止时间推算为准（后端 used_time 有「16小时」类异常值）
+            { label: '已用时长', value: formatTaskUsedTime(detail) },
+            // INT-1241：资源计数按真实数据无条件展示（不再按任务类型条件显隐）
+            { label: '测试API数量', value: detail.apiCount ?? 0 },
+            { label: '测试设备数量', value: detail.deviceCount ?? 0 },
+            { label: '测试用例数量', value: detail.caseCount ?? detail.totalCases ?? 0 },
+            { label: '并发数', value: detail.concurrency ?? '—' },
+          ]}
+        />
+        <div className='mt-3 flex flex-wrap items-center gap-1'>
+          {detail.tags.length === 0 ? (
+            <span className='text-muted-foreground text-xs'>—</span>
+          ) : (
+            detail.tags.map((tag) => (
+              <Badge key={tag} variant='outline' className='rounded-md px-1.5'>
+                {tag}
+              </Badge>
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}

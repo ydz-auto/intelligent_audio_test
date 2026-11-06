@@ -1,0 +1,784 @@
+/**
+ * 用例筛选工具栏（11_用例域.md §3.4 DataTableToolbar 形态）：
+ * 搜索（debounce 500ms）+ 分组/标签/评估维度 facet chips + 全局算法联动 chip
+ * + 收藏/回收站工具条（回收站态「全部恢复」ghost 钮）+ 重置。
+ * 标签 facet 按分类分组呈现（INT-487：选项组头=分类名，数据源 GET /tags/by-category），
+ * singleSelect + Command 搜索（INT-592 裁定由多选改单选——后端 tag 参数为单值）。
+ * INT-486 用例不分类型口径（负责人 2026-10-16）：测试类型 facet 移除——用例无 api/e2e 之分。
+ */
+import { Check, ChevronDown, FilterX, Search, Tag } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
+
+import { usePermissions } from '@/application/hooks/use-permissions'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { ConfirmDialog } from '@/components/confirm-dialog'
+import { cn } from '@/lib/utils'
+import type { TestCaseListFilters } from '@/application/testcases/use-testcases-list'
+import type { TestCaseListItem } from '@/domain/models/testCase'
+import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
+import type {
+  Dimension,
+  EvaluationCategory,
+} from '@/domain/models/evaluationDimension'
+import type { TagCategory, TagDraft, TagItem } from '@/domain/models/testTag'
+import { ApiError } from '@/infrastructure/api/api-error'
+import { DimensionSelect } from '@/features/algorithm-config/mutate/dimension-select'
+import { FavoriteTrashToggle } from '@/features/testcases/components/favorite-trash-toggle'
+import { TagEditDialog } from '@/features/tags/tag-mutate-dialog'
+
+export interface TestCasesFilterToolbarProps {
+  filters: TestCaseListFilters
+  onChange: (next: TestCaseListFilters) => void
+  onReset: () => void
+  isFiltered: boolean
+  groups: TestCaseGroup[]
+  /** 分组数据源查询失败（INT-2331）：分组 facet 显示错误态 + 重试，不得静默只剩「未分组」 */
+  groupsError?: boolean
+  /** 分组数据源加载中（重试期间避免闪一下「全部」） */
+  groupsLoading?: boolean
+  /** 分组数据源重试（refetch） */
+  onRetryGroups?: () => void
+  tags: TagItem[]
+  /** 评估维度全量（含子维度；评估维度 facet 按 分组/主维度/子维度 单选，INT-1030 全站一致性） */
+  dimensions: Dimension[]
+  /** 评估维度分类（分类分组组头） */
+  categories?: EvaluationCategory[]
+  /** 标签分类（标签操作·编辑标签弹窗所属分类选项；页面经 useTagCategories 装配，INT-1294） */
+  tagCategories: TagCategory[]
+  /** 编辑标签提交（PUT /tags/{id}；页面装配 updateTagMutation + 刷新用例列表，INT-1294） */
+  onUpdateTag: (id: number, draft: TagDraft) => Promise<void>
+  /** 删除标签（DELETE /tags/{id}?cascade=true 级联；页面装配 deleteTag + 刷新，INT-1294） */
+  onDeleteTag: (id: number) => Promise<void>
+  /** 复制标签下用例（POST /testcases/batch copy_by_tag；页面装配 batchTestcaseAction + 刷新，INT-1294） */
+  onCopyTag: (tagName: string, copyToNewGroup: boolean) => Promise<void>
+  /** 已加载/已筛选用例集（INT-677：标签 facet 计数从该集实时聚合，与列表同源；回收站项不计入） */
+  cases: TestCaseListItem[]
+  /** 回收站「全部恢复」 */
+  onRestoreAll: () => void
+  /** 标签数据源查询失败（INT-1560）：facet 显示错误态 + 重试，不得落成「暂无标签」空态 */
+  tagsError?: boolean
+  /** 标签数据源加载中（重试期间避免闪一下「暂无标签」） */
+  tagsLoading?: boolean
+  /** 标签数据源重试（refetch） */
+  onRetryTags?: () => void
+  /** readOnly 观察态（10_测试执行.md §3.1.1）：收藏/回收站切换、全部恢复、重置隐藏 */
+  readOnly?: boolean
+  /** 分组 facet 底部「+ 新增分组」（§3.4/§5.7.4；group:create 时由页面装配，打开新建分组弹窗） */
+  onCreateGroup?: () => void
+}
+
+/** 单选 facet chip（Popover + 选项列表 + 选中态 + 可选底部固定动作项，§3.4） */
+function SingleFacet({
+  label,
+  value,
+  options,
+  onChange,
+  footerAction,
+  error = false,
+  loading = false,
+  onRetry,
+}: {
+  label: string
+  value: string | null | undefined
+  options: Array<{ value: string; label: string; dotColor?: string }>
+  onChange: (value: string | null) => void
+  /** 下拉底部固定动作项（分组 facet「+ 新增分组」→ §5.7.4 新建分组弹窗） */
+  footerAction?: { label: string; onSelect: () => void }
+  /** 数据源查询失败（INT-2331）：下拉内显示「{label}加载失败」+ 重试，不得只剩兜底项 */
+  error?: boolean
+  /** 数据源加载中（重试期间不闪「全部」） */
+  loading?: boolean
+  onRetry?: () => void
+}) {
+  const current = options.find((o) => o.value === value)
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button
+            variant='outline'
+            size='sm'
+            className='h-8 gap-1.5 px-2.5 font-normal'
+          />
+        }
+      >
+        <span className='text-muted-foreground'>{label}</span>
+        <span
+          className={cn(
+            'max-w-28 truncate font-medium',
+            error && !current && 'text-destructive'
+          )}
+        >
+          {error && !current ? '加载失败' : (current?.label ?? '全部')}
+        </span>
+        <ChevronDown
+          aria-hidden='true'
+          className={cn('size-3.5 transition-transform', open && 'rotate-180')}
+        />
+      </PopoverTrigger>
+      <PopoverContent align='start' className='min-w-48 p-1.5'>
+        {/* 数据源失败（INT-2331）：先给错误 + 重试，有旧选项时保留可选项，不静默伪装成「只有未分组」 */}
+        {error && (
+          <div role='alert' className='flex flex-col items-center gap-2 border-b px-3 py-2 text-center'>
+            <p className='text-destructive text-sm'>{label}加载失败</p>
+            {onRetry && (
+              <Button variant='outline' size='sm' className='h-7' onClick={onRetry}>
+                重试
+              </Button>
+            )}
+          </div>
+        )}
+        {loading && !error ? (
+          <p className='text-muted-foreground px-3 py-4 text-center text-sm'>加载中…</p>
+        ) : (
+          <>
+            {options.map((option) => (
+              <button
+                key={option.value}
+                type='button'
+                onClick={() => {
+                  onChange(option.value === value ? null : option.value)
+                  setOpen(false)
+                }}
+                className={cn(
+                  'hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm transition-colors',
+                  option.value === value && 'bg-accent'
+                )}
+              >
+                {option.dotColor && (
+                  <span
+                    aria-hidden='true'
+                    className='size-2 shrink-0 rounded-full'
+                    style={{ backgroundColor: option.dotColor }}
+                  />
+                )}
+                <span className='min-w-0 flex-1 truncate'>{option.label}</span>
+                {option.value === value && (
+                  <Check aria-hidden='true' className='size-4 shrink-0' />
+                )}
+              </button>
+            ))}
+            {footerAction && (
+              <div className='mt-1 border-t pt-1'>
+                <button
+                  type='button'
+                  onClick={() => {
+                    setOpen(false)
+                    footerAction.onSelect()
+                  }}
+                  className='hover:bg-accent flex w-full items-center rounded-md px-2 py-1.5 text-start text-sm font-medium transition-colors'
+                >
+                  {footerAction.label}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/**
+ * 标签 facet（11_用例域.md §3.4/§3.6，INT-592 裁定单选）：
+ * singleSelect + Command 搜索（输入过滤标签名）+ 选项按分类分组展示
+ * （组头=分类名，数据源 GET /tags/by-category，INT-487 口径）+ 色点 +
+ * 客户端聚合计数（§3.4：/tags/by-category 未返回 count，暂从已加载集聚合；
+ * INT-677：聚合源改为父级传入的已加载/已筛选用例集，不再走 mock）。
+ * 空态「暂无标签」；选中项再点 = 取消（清空标签筛选，与重置联动）。
+ */
+function TagFacet({
+  value,
+  tags,
+  caseCounts,
+  error,
+  loading,
+  onRetry,
+  onChange,
+}: {
+  value: string | null
+  tags: TagItem[]
+  caseCounts: Record<string, number>
+  /** 标签数据源查询失败（INT-1560）：错误态 + 重试，不得显示「暂无标签」 */
+  error: boolean
+  /** 标签数据源加载中（重试期间不闪「暂无标签」） */
+  loading: boolean
+  onRetry?: () => void
+  onChange: (value: string | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+
+  // Command 搜索过滤 + 按分类分组（未分类兜底）
+  const grouped = useMemo(() => {
+    const kw = query.trim().toLowerCase()
+    const source = kw
+      ? tags.filter(
+          (t) =>
+            t.name.toLowerCase().includes(kw) ||
+            (t.categoryName ?? '').toLowerCase().includes(kw)
+        )
+      : tags
+    const map = new Map<string, TagItem[]>()
+    for (const tag of source) {
+      const key = tag.categoryName ?? '未分类'
+      map.set(key, [...(map.get(key) ?? []), tag])
+    }
+    return [...map.entries()].sort(([a], [b]) =>
+      a === '未分类' ? 1 : b === '未分类' ? -1 : a.localeCompare(b, 'zh-CN')
+    )
+  }, [tags, query])
+
+  const selectedTag = tags.find((t) => t.name === value)
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (!o) setQuery('')
+      }}
+    >
+      <PopoverTrigger
+        render={
+          <Button
+            variant='outline'
+            size='sm'
+            className='h-8 gap-1.5 px-2.5 font-normal'
+          />
+        }
+      >
+        <span className='text-muted-foreground'>标签</span>
+        {selectedTag ? (
+          <span className='flex min-w-0 items-center gap-1.5'>
+            <span
+              aria-hidden='true'
+              className='size-2 shrink-0 rounded-full'
+              style={{ backgroundColor: selectedTag.color ?? '#94a3b8' }}
+            />
+            <span className='max-w-28 truncate font-medium'>
+              {selectedTag.name}
+            </span>
+          </span>
+        ) : (
+          <span className='max-w-28 truncate font-medium'>全部</span>
+        )}
+        <ChevronDown
+          aria-hidden='true'
+          className={cn('size-3.5 transition-transform', open && 'rotate-180')}
+        />
+      </PopoverTrigger>
+      <PopoverContent align='start' className='max-w-72 min-w-56 p-1.5'>
+        {error ? (
+          <div className='flex flex-col items-center gap-2 px-3 py-4 text-center'>
+            <p className='text-destructive text-sm'>标签加载失败</p>
+            {onRetry && (
+              <Button
+                variant='outline'
+                size='sm'
+                className='h-7'
+                onClick={onRetry}
+              >
+                重试
+              </Button>
+            )}
+          </div>
+        ) : loading ? (
+          <p className='text-muted-foreground px-3 py-4 text-center text-sm'>
+            加载中…
+          </p>
+        ) : tags.length === 0 ? (
+          <p className='text-muted-foreground px-3 py-4 text-center text-sm'>
+            暂无标签
+          </p>
+        ) : (
+          <>
+            {/* Command 搜索（§3.4：FacetedFilter singleSelect 同款） */}
+            <div className='relative mb-1'>
+              <Search
+                aria-hidden='true'
+                className='text-muted-foreground absolute top-1/2 start-2 size-3.5 -translate-y-1/2'
+              />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder='搜索标签...'
+                aria-label='搜索标签'
+                className='h-8 ps-7'
+              />
+            </div>
+            <div className='border-border/60 mb-1 flex max-h-60 flex-col gap-1 overflow-y-auto'>
+              {grouped.length === 0 ? (
+                <p className='text-muted-foreground px-3 py-4 text-center text-sm'>
+                  没有找到匹配的标签
+                </p>
+              ) : (
+                grouped.map(([categoryName, items]) => (
+                  <div key={categoryName}>
+                    <p className='text-muted-foreground px-2 pt-1 pb-0.5 text-xs font-medium'>
+                      {categoryName}
+                    </p>
+                    {items.map((tag) => {
+                      const checked = value === tag.name
+                      const count = caseCounts[tag.name] ?? 0
+                      return (
+                        <button
+                          key={tag.id}
+                          type='button'
+                          onClick={() => {
+                            onChange(checked ? null : tag.name)
+                            setOpen(false)
+                            setQuery('')
+                          }}
+                          className={cn(
+                            'hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm transition-colors',
+                            checked && 'bg-accent'
+                          )}
+                        >
+                          <span
+                            aria-hidden='true'
+                            className='size-2 shrink-0 rounded-full'
+                            style={{ backgroundColor: tag.color ?? '#94a3b8' }}
+                          />
+                          <span className='min-w-0 flex-1 truncate'>
+                            {tag.name}
+                          </span>
+                          {count > 0 && (
+                            <span
+                              aria-hidden='true'
+                              className='text-muted-foreground shrink-0 text-xs tabular-nums'
+                            >
+                              {count}
+                            </span>
+                          )}
+                          {checked && (
+                            <Check
+                              aria-hidden='true'
+                              className='size-4 shrink-0'
+                            />
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ))
+              )}
+            </div>
+            {value != null && (
+              <div className='border-t pt-1'>
+                <button
+                  type='button'
+                  className='text-muted-foreground hover:text-foreground text-xs font-medium transition-colors'
+                  onClick={() => {
+                    onChange(null)
+                    setOpen(false)
+                    setQuery('')
+                  }}
+                >
+                  清空选择
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+const fallbackTag = (name: string): TagItem => ({
+  id: -1,
+  name,
+  description: null,
+  color: null,
+  categoryId: null,
+  categoryName: null,
+  createdAt: null,
+  updatedAt: null,
+})
+
+/**
+ * 标签操作 DropdownMenu（11_用例域.md §3.6 收编①：标签 facet 单选选中态后工具栏右端出现）。
+ * 三项操作逐钮按权限过滤：编辑标签（tag:update → §5.4 真实 TagEditDialog + PUT /tags/{id}）/
+ * 删除标签（tag:delete，级联确认 destructive → DELETE /tags/{id}?cascade=true）/
+ * 复制标签下用例（testcase:copy → POST /testcases/batch copy_by_tag）；批量已单轨收勾选浮条（§3.7），
+ * 下拉不挂批量。一等管理位=标签管理页（§4.2，对齐 INT-417 口径）。
+ * INT-1294 接线：三项操作均由页面装配真实 mutation 回调（onUpdateTag/onDeleteTag/onCopyTag），
+ * 本组件只承载交互（编辑弹窗 + 级联/复制确认 + 成功/失败 toast），不再演示。
+ * 权限口径（§7 注 1）：写权限逐钮禁用+Tooltip，不整组隐藏——只读角色
+ * （algo_engineer 等）无标签写能力时下拉保留、三项逐钮置灰（无 hook 早退）。
+ */
+function TagActionsDropdown({
+  tagName,
+  tags,
+  caseCounts,
+  categories,
+  onUpdateTag,
+  onDeleteTag,
+  onCopyTag,
+}: {
+  tagName: string
+  tags: TagItem[]
+  caseCounts: Record<string, number>
+  categories: TagCategory[]
+  onUpdateTag: (id: number, draft: TagDraft) => Promise<void>
+  onDeleteTag: (id: number) => Promise<void>
+  onCopyTag: (tagName: string, copyToNewGroup: boolean) => Promise<void>
+}) {
+  const { hasPermission } = usePermissions()
+  const [open, setOpen] = useState(false)
+  const [editTag, setEditTag] = useState<TagItem | null>(null)
+  /** 复制确认「同时复制到新分组」勾选态（§3.6 Checkbox；每次打开重置为默认勾选） */
+  const [copyToNewGroup, setCopyToNewGroup] = useState(true)
+  /** 级联/复制确认请求进行中（真实 API 接线后防重复提交） */
+  const [pending, setPending] = useState(false)
+  const [confirm, setConfirm] = useState<{
+    kind: 'delete' | 'copy'
+    tag: TagItem
+    count: number
+  } | null>(null)
+
+  const canEdit = hasPermission('tag:update')
+  const canDelete = hasPermission('tag:delete')
+  const canCopy = hasPermission('testcase:copy')
+  // §7 注 1：不整组隐藏——写权限逐钮禁用 + Tooltip（hook 调用保持无条件）
+  const registry = useMemo(() => new Map(tags.map((t) => [t.name, t])), [tags])
+  const tag = registry.get(tagName) ?? fallbackTag(tagName)
+  const count = caseCounts[tag.name] ?? 0
+
+  const disabledItem = (reason: string, label: string) => (
+    <DropdownMenuItem disabled title={reason}>
+      {label}
+    </DropdownMenuItem>
+  )
+
+  return (
+    <>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-8 gap-1.5 px-2.5 font-normal'
+            />
+          }
+        >
+          <Tag aria-hidden='true' className='size-3.5' />
+          <span className='text-muted-foreground'>标签操作</span>
+          <ChevronDown
+            aria-hidden='true'
+            className={cn('size-3.5 transition-transform', open && 'rotate-180')}
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align='end' className='w-44'>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className='truncate'>
+              标签「{tag.name}」
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          {canEdit ? (
+            <DropdownMenuItem
+              onSelect={() => {
+                setOpen(false)
+                // 编辑弹窗需真实 TagItem.id（facet 选中标签可能不在已加载集，fallback id=-1 不可编辑）
+                const target = registry.get(tagName)
+                if (!target) {
+                  toast.error('标签数据未加载，无法编辑')
+                  return
+                }
+                setEditTag(target)
+              }}
+            >
+              编辑标签
+            </DropdownMenuItem>
+          ) : (
+            disabledItem('无 tag:update 权限', '编辑标签')
+          )}
+          {canDelete ? (
+            <DropdownMenuItem
+              variant='destructive'
+              onSelect={() => {
+                setOpen(false)
+                setConfirm({ kind: 'delete', tag, count })
+              }}
+            >
+              删除标签
+            </DropdownMenuItem>
+          ) : (
+            disabledItem('无 tag:delete 权限', '删除标签')
+          )}
+          {canCopy ? (
+            <DropdownMenuItem
+              onSelect={() => {
+                setOpen(false)
+                setCopyToNewGroup(true)
+                setConfirm({ kind: 'copy', tag, count })
+              }}
+            >
+              复制标签下用例
+            </DropdownMenuItem>
+          ) : (
+            disabledItem('无 testcase:copy 权限', '复制标签下用例')
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <ConfirmDialog
+        open={confirm != null}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        title={confirm?.kind === 'delete' ? '删除标签' : '复制标签下用例'}
+        desc={
+          confirm?.kind === 'delete'
+            ? `确定要删除标签「${confirm.tag.name}」吗？该操作将级联删除标签下的 ${confirm.count} 个用例，不可恢复！`
+            : `确定要复制标签「${confirm?.tag.name ?? ''}」下的 ${confirm?.count ?? 0} 个用例吗？复制后将生成新标签：${confirm?.tag.name ?? ''}_copy`
+        }
+        confirmText={confirm?.kind === 'delete' ? '删除' : '复制'}
+        destructive={confirm?.kind === 'delete'}
+        isLoading={pending}
+        handleConfirm={async () => {
+          if (!confirm || pending) return
+          // 标签不在已加载集（fallback id=-1）时不可执行真实删除
+          if (confirm.tag.id === -1) {
+            toast.error('标签数据未加载，无法删除')
+            setConfirm(null)
+            return
+          }
+          setPending(true)
+          try {
+            if (confirm.kind === 'delete') {
+              await onDeleteTag(confirm.tag.id)
+              toast.success('标签已删除', {
+                description: `已级联删除 ${confirm.count} 个用例`,
+              })
+            } else {
+              await onCopyTag(confirm.tag.name, copyToNewGroup)
+              toast.success('已复制标签下用例', {
+                description: `新标签：${confirm.tag.name}_copy`,
+              })
+            }
+            setConfirm(null)
+          } catch (error) {
+            toast.error(
+              error instanceof ApiError
+                ? error.userMessage
+                : error instanceof Error
+                  ? error.message
+                  : '操作失败，请稍后重试'
+            )
+          } finally {
+            setPending(false)
+          }
+        }}
+      >
+        {confirm?.kind === 'copy' && (
+          <label className='flex items-center gap-2 text-sm'>
+            <Checkbox
+              checked={copyToNewGroup}
+              onCheckedChange={(checked) => setCopyToNewGroup(checked === true)}
+            />
+            同时复制到新分组
+          </label>
+        )}
+      </ConfirmDialog>
+
+      <TagEditDialog
+        open={editTag != null}
+        onOpenChange={(open) => !open && setEditTag(null)}
+        tag={editTag}
+        categories={categories}
+        presetCategoryId={editTag?.categoryId ?? null}
+        onSubmit={async (draft, id) => {
+          if (id != null) await onUpdateTag(id, draft)
+        }}
+      />
+    </>
+  )
+}
+
+export function TestCasesFilterToolbar({
+  filters,
+  onChange,
+  onReset,
+  isFiltered,
+  groups,
+  groupsError = false,
+  groupsLoading = false,
+  onRetryGroups,
+  tags,
+  dimensions,
+  categories = [],
+  tagCategories,
+  onUpdateTag,
+  onDeleteTag,
+  onCopyTag,
+  cases,
+  onRestoreAll,
+  tagsError = false,
+  tagsLoading = false,
+  onRetryTags,
+  readOnly = false,
+  onCreateGroup,
+}: TestCasesFilterToolbarProps) {
+  const searchRef = useRef<HTMLInputElement>(null)
+  const [searchInput, setSearchInput] = useState(filters.search ?? '')
+
+  /**
+   * 标签下在用（未删除）用例数（INT-677：客户端从已加载/已筛选用例集实时聚合，
+   * §3.4 计数与列表同源；§3.6 删除/复制级联计数；回收站项不计入——级联作用于在用集）
+   */
+  const tagCaseCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const c of cases) {
+      if (c.deleted) continue
+      for (const t of c.tags) m.set(t, (m.get(t) ?? 0) + 1)
+    }
+    return Object.fromEntries(m)
+  }, [cases])
+
+  const update = useCallback(
+    (patch: Partial<TestCaseListFilters>) => onChange({ ...filters, ...patch }),
+    [filters, onChange]
+  )
+
+  /** 搜索 debounce 500ms（users 表同款） */
+  const debounceTimer = useRef<number | null>(null)
+  const handleSearchChange = (value: string) => {
+    setSearchInput(value)
+    if (debounceTimer.current) window.clearTimeout(debounceTimer.current)
+    debounceTimer.current = window.setTimeout(() => {
+      update({ search: value.trim() })
+    }, 500)
+  }
+
+  const isTrash = filters.trash === true
+  const groupOptions = [
+    ...groups.map((g) => ({ value: g.id, label: g.name })),
+    { value: '__ungrouped__', label: '未分组' },
+  ]
+  /** 评估维度 facet 当前选中（按 id 精确匹配；维度可能不在候选集时回退原值） */
+  const currentDimension =
+    filters.dimensionId != null
+      ? dimensions.find((d) => String(d.id) === String(filters.dimensionId)) ?? null
+      : null
+
+  return (
+    <div className='bg-card/50 rounded-lg border p-2.5 sm:p-3'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <div className='relative'>
+          <Search
+            aria-hidden='true'
+            className='text-muted-foreground absolute start-2 top-1/2 size-3.5 -translate-y-1/2'
+          />
+          <Input
+            ref={searchRef}
+            value={searchInput}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            placeholder='搜索用例名称或描述'
+            className='h-8 w-full sm:w-[200px] lg:w-[240px] ps-7'
+            aria-label='搜索用例'
+          />
+        </div>
+
+        <SingleFacet
+          label='分组'
+          value={filters.groupId ?? null}
+          options={groupOptions}
+          onChange={(v) => update({ groupId: v ?? null })}
+          error={groupsError}
+          loading={groupsLoading}
+          onRetry={onRetryGroups}
+          footerAction={
+            onCreateGroup ? { label: '+ 新增分组', onSelect: onCreateGroup } : undefined
+          }
+        />
+        <TagFacet
+          value={filters.tag ?? null}
+          tags={tags}
+          caseCounts={tagCaseCounts}
+          error={tagsError}
+          loading={tagsLoading}
+          onRetry={onRetryTags}
+          onChange={(tag) => update({ tag })}
+        />
+        {/* 评估维度 facet（INT-1030：按 分组→主维度→子维度 单选，全站一致性；「全部」清除） */}
+        <DimensionSelect
+          dimensions={dimensions}
+          categories={categories}
+          value={currentDimension ? String(currentDimension.id) : ''}
+          onValueChange={(v) => update({ dimensionId: v === '' ? null : Number(v) })}
+          valueOf={(d) => String(d.id)}
+          placeholder='全部'
+          clearLabel='全部'
+          triggerLabel='评估维度'
+          ariaLabel='评估维度筛选'
+          triggerClassName='h-8 gap-1.5 rounded-lg px-2.5 font-normal'
+        />
+
+        {!readOnly && (
+          <FavoriteTrashToggle
+            value={{
+              favorite: filters.favorite ?? false,
+              trash: filters.trash ?? false,
+            }}
+            onChange={(v) => update({ favorite: v.favorite, trash: v.trash })}
+          />
+        )}
+        {!readOnly && isTrash && (
+          <Button
+            variant='ghost'
+            size='sm'
+            className='h-8 gap-1 px-2.5'
+            onClick={onRestoreAll}
+          >
+            全部恢复
+          </Button>
+        )}
+
+        {/* §3.6 收编①：标签 facet 单选选中态后工具栏右端出现标签操作入口 */}
+        {!isTrash && filters.tag != null && (
+          <TagActionsDropdown
+            tagName={filters.tag}
+            tags={tags}
+            caseCounts={tagCaseCounts}
+            categories={tagCategories}
+            onUpdateTag={onUpdateTag}
+            onDeleteTag={onDeleteTag}
+            onCopyTag={onCopyTag}
+          />
+        )}
+
+        {!readOnly && isFiltered && (
+          <Button
+            variant='ghost'
+            size='sm'
+            className='h-8 gap-1 px-2.5'
+            onClick={onReset}
+          >
+            <FilterX aria-hidden='true' className='size-3.5' />
+            重置
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}

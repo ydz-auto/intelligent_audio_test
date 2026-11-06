@@ -1,0 +1,101 @@
+/**
+ * API 编辑弹窗「参数配置」页签 DTO（infrastructure/dto 层；T4.2）。
+ *
+ * 两个 API 实例作用域读接口（snake_case ↔ camelCase 只在本层做）：
+ * - `GET /algorithm/params?algorithm_type=X&param_type=api&api_id=Y`
+ *   → 字段行数据源（后端 `config_cache.get_api_params` = 策略声明 + 本 API 覆盖行，
+ *   覆盖优先；算法类型级默认层已废弃，`api_id` 必填）；
+ * - `GET /algorithm/mappings?algorithm_type=X&source_type=evaluation&api_id=Y`
+ *   → 映射行数据源。API 输出映射带 dimension_id，后端 `_serialize_mappings` 归入
+ *   evaluation 桶，`source_type=api` 结构性为空；本层只做 snake→camel，返回原始集合
+ *   （按来源分桶在 application 层，`api_id` 一并透传供分桶区分覆盖行 / 算法级行）。
+ *
+ * 后端 `get_api_params` / `_serialize_params` 的行键是 `code / name / type`
+ * （不是 `param_code / param_name / param_type`），这里统一归一再转 Domain。
+ * 映射行复用 algorithm-config.dto 的 toParamMapping（同一 ParamMappingItem 契约）。
+ */
+import type { AlgorithmApiMapping, AlgorithmApiParam } from '@/domain/models/apiConfig'
+import {
+  toDeviceApiParam,
+  toParamMapping,
+} from '@/infrastructure/dto/algorithm-config.dto'
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
+function nullableStr(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null
+}
+
+/** Text/JSON 列统一收敛为字符串（后端 `_text_or_json` 可能存对象） */
+function textOrNull(value: unknown): string | null {
+  if (typeof value === 'string') return value === '' ? null : value
+  if (value == null) return null
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * `/algorithm/params`、`/algorithm/mappings` 的 data 兼容两种形态：
+ * 统一分页信封 `{ items, total }`（旧契约）与裸数组（现有 gRPC 返回值）。
+ */
+export function rowsFromPayload(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload
+  const items = asRecord(payload).items
+  return Array.isArray(items) ? items : []
+}
+
+/** 三层解析的层来源标识（后端 `resolved_from`） */
+export type ParamResolvedFrom = 'algorithm' | 'profile' | 'device' | 'api'
+
+const PARAM_RESOLVED_FROMS: readonly ParamResolvedFrom[] = [
+  'algorithm',
+  'profile',
+  'device',
+  'api',
+]
+
+function toResolvedFrom(value: unknown): ParamResolvedFrom | undefined {
+  return PARAM_RESOLVED_FROMS.includes(value as ParamResolvedFrom)
+    ? (value as ParamResolvedFrom)
+    : undefined
+}
+
+/** 策略层行 id（该层 `id` 被后端置空，写侧不能用它） */
+function nullableNum(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+/** API 参数行 → Domain AlgorithmApiParam（兼容 code/name/type 旧键） */
+export function toAlgorithmApiParam(raw: unknown): AlgorithmApiParam {
+  const r = asRecord(raw)
+  const normalized = {
+    ...r,
+    param_code: r.param_code ?? r.code ?? '',
+    param_name: r.param_name ?? r.name ?? null,
+    param_type: r.param_type ?? r.type ?? 'text',
+  }
+  const param = toDeviceApiParam(normalized)
+  return {
+    ...param,
+    direction: param.direction === 'output' ? 'output' : 'input',
+    fieldPath: nullableStr(r.field_path),
+    // 校验规则无编辑控件：读出来供整份保存时原值透传（后端 `_serialize_params` 下发
+    // validation_rules；旧口径键名是 validation）（INT-2270 / INT-2281）
+    validationRules: textOrNull(r.validation_rules ?? r.validation),
+    // 带作用域读取时后端下发层来源；无作用域读取不带这两个键
+    resolvedFrom: toResolvedFrom(r.resolved_from),
+    profileParamId: nullableNum(r.profile_param_id),
+  }
+}
+
+/** 映射行 → Domain AlgorithmApiMapping */
+export function toAlgorithmApiMapping(raw: unknown): AlgorithmApiMapping {
+  return toParamMapping(raw)
+}

@@ -1,0 +1,232 @@
+/**
+ * infrastructure/adapters/dto/cherry-pick-adapter 购物车条目转换测试（18 规范 §7.3/§11-5，INT-790 返工 P2-1）。
+ * 对位 cherry_pick_service.cart_get 实测响应：cart_get 已返 source_case_name/source_device_name/
+ * source_result_type（source_api_name 缺省 undefined）——adapter 优先直取，name map 兜底。
+ */
+import { describe, expect, it } from 'vitest'
+
+import {
+  fromCartEntryDto,
+  fromContainerDto,
+  fromSourceTraceDto,
+} from '@/infrastructure/adapters/dto/cherry-pick-adapter'
+import type {
+  CherryPickCartItemDto,
+  CherryPickSourceTraceDto,
+} from '@/infrastructure/dto/cherry-pick.dto'
+
+function baseItem(overrides: Partial<CherryPickCartItemDto> = {}): CherryPickCartItemDto {
+  return {
+    item_id: 1,
+    result_id: 101,
+    source_task_id: 1042,
+    source_task_name: '任务A',
+    source_case_id: 'c1',
+    source_device_id: 1,
+    source_api_id: null,
+    source_case_name: null,
+    source_device_name: null,
+    source_api_name: null,
+    source_result_type: 'real-time',
+    execution_status: 'completed',
+    created_at: '2026-10-19T04:00:00',
+    invalid: false,
+    ...overrides,
+  }
+}
+
+describe('fromCartEntryDto', () => {
+  it('cart_get 返回 source_*_name 时优先直取真实名（P2-1 修复）', () => {
+    expect(
+      fromCartEntryDto(
+        baseItem({
+          source_case_name: '用例001',
+          source_device_name: 'pura90豆包',
+          source_api_name: '语音识别API',
+        })
+      )
+    ).toMatchObject({
+      sourceCaseName: '用例001',
+      sourceDeviceName: 'pura90豆包',
+      sourceApiName: '语音识别API',
+    })
+  })
+
+  it('source_*_name 缺省时回退 name map 兜底（设备/API map 已预取）', () => {
+    const names = {
+      devices: new Map([[1, '设备-01']]),
+      apis: new Map([[9, 'API-09']]),
+      cases: new Map([['c1', '用例-map']]),
+    }
+    expect(
+      fromCartEntryDto(
+        baseItem({ source_device_id: 1, source_api_id: null, source_case_name: null }),
+        names
+      )
+    ).toMatchObject({
+      sourceCaseName: '用例-map',
+      sourceDeviceName: '设备-01',
+      sourceApiName: null,
+    })
+    // api 分支：source_api_id 有值且 source_api_name 缺省 → apis map
+    expect(
+      fromCartEntryDto(
+        baseItem({
+          source_device_id: null,
+          source_api_id: 9,
+          source_device_name: null,
+          source_api_name: null,
+        }),
+        names
+      )
+    ).toMatchObject({
+      sourceDeviceName: null,
+      sourceApiName: 'API-09',
+    })
+  })
+
+  it('双缺省时保持 null，由树层 caseDisplayName 降级（不裸显 UUID）', () => {
+    expect(
+      fromCartEntryDto(
+        baseItem({ source_case_name: null, source_device_name: null, source_api_name: null }),
+        { devices: new Map(), apis: new Map(), cases: new Map() }
+      )
+    ).toMatchObject({
+      sourceCaseName: null,
+      sourceDeviceName: null,
+      sourceApiName: null,
+    })
+  })
+
+  it('source_result_type 空白 → null（result_type 级折叠「结果类型待补充」）', () => {
+    expect(fromCartEntryDto(baseItem({ source_result_type: '  ' })).sourceResultType).toBeNull()
+  })
+
+  it('INT-1693：cart_get 逐行 tags/group_id/group_name 透传（用例层组织出真名）', () => {
+    expect(
+      fromCartEntryDto(
+        baseItem({ tags: ['拒识', '多轮拒识'], group_id: 'g1', group_name: '拒识' })
+      )
+    ).toMatchObject({
+      sourceTags: ['拒识', '多轮拒识'],
+      sourceGroupId: 'g1',
+      sourceGroupName: '拒识',
+    })
+  })
+
+  it('INT-1693：历史条目缺字段 → tags=[] / groupId=None（落「未设置标签 / 未分组」兜底桶，不报错）', () => {
+    expect(
+      fromCartEntryDto(baseItem({ tags: null, group_id: null, group_name: null }))
+    ).toMatchObject({ sourceTags: [], sourceGroupId: null, sourceGroupName: null })
+    // 后端未返字段（undefined）同口径
+    expect(
+      fromCartEntryDto(
+        baseItem({ tags: undefined, group_id: undefined, group_name: undefined })
+      )
+    ).toMatchObject({ sourceTags: [], sourceGroupId: null, sourceGroupName: null })
+  })
+})
+
+describe('fromSourceTraceDto（INT-1711 容器溯源；审计 P2-1 回归）', () => {
+  const dto: CherryPickSourceTraceDto = {
+    task_id: 595,
+    is_cherry_pick: true,
+    total: 1,
+    groups: [
+      {
+        source_task_id: 419,
+        source_task_name: '任务419',
+        results: [
+          {
+            result_id: 5714,
+            source_task_id: 419,
+            source_task_name: '任务419',
+            source_case_id: 'c1',
+            source_device_id: 9,
+            source_api_id: null,
+            missing: false,
+            // 关系行时间 = 并入容器的时间，实测 5 条叶行同值（= 容器 created_at）
+            created_at: '2026-10-24T03:41:47.289098',
+          },
+        ],
+      },
+    ],
+  }
+
+  it('关系行 created_at 不得映射为源结果时间（§11-8 字段未返 → null，叶行不渲染时间）', () => {
+    expect(fromSourceTraceDto(dto).groups[0].results[0].resultCreatedAt).toBeNull()
+  })
+
+  it('§11-8 的 result_created_at 返值后直取真值', () => {
+    const withResultTime: CherryPickSourceTraceDto = {
+      ...dto,
+      groups: [
+        {
+          ...dto.groups[0],
+          results: [
+            {
+              ...dto.groups[0].results[0],
+              result_created_at: '2026-10-14T09:27:22',
+            },
+          ],
+        },
+      ],
+    }
+    expect(fromSourceTraceDto(withResultTime).groups[0].results[0].resultCreatedAt).toBe(
+      '2026-10-14T09:27:22'
+    )
+  })
+})
+
+
+describe('fromContainerDto（列表计数口径，INT-1716）', () => {
+  const base = {
+    id: 603,
+    name: '接线测试_INT1716行展开A',
+    description: null,
+    status: 'completed',
+    execution_status: 'failed',
+    evaluation_status: 'completed',
+    total_cases: 4,
+    case_count: 4,
+    failed_cases: 3,
+    created_at: '2026-10-24T09:24:00',
+    is_favorite: false,
+    is_cherry_pick: true,
+    source_task_count: 3,
+    source_result_count: 4,
+    source_tasks: [
+      { id: 419, name: '任务419', status: 'completed', total_cases: 137, completed_cases: 137, failed_cases: 0, created_at: null },
+      { id: 391, name: '任务391', status: 'failed', total_cases: 1, completed_cases: 0, failed_cases: 1, created_at: null },
+      { id: 384, name: '任务384', status: 'failed', total_cases: 2, completed_cases: 0, failed_cases: 2, created_at: null },
+    ],
+    devices: [],
+    apis: [],
+    reports: null,
+    mergeType: 'picked' as const,
+  }
+
+  it('来源任务数 / 结果条数取后端容器计数，不被 source_tasks[].total_cases 顶替', () => {
+    const container = fromContainerDto(base)
+    expect(container.sourceTaskCount).toBe(3)
+    // source_tasks 的用例数合计是 137，真实挑选结果是 4 条
+    expect(container.sourceResultCount).toBe(4)
+  })
+
+  it('后端计数缺省时回退到 source_tasks 聚合（旧口径不炸）', () => {
+    const container = fromContainerDto({
+      ...base,
+      source_task_count: null,
+      source_result_count: null,
+    })
+    expect(container.sourceTaskCount).toBe(3)
+    // 回退口径 = completed_cases 兜底 total_cases（137 + 0 + 0），仅供后端未返计数时兜底
+    expect(container.sourceResultCount).toBe(137)
+  })
+
+  it('case_count / failed_cases 映射给「部分失败」口径', () => {
+    const container = fromContainerDto(base)
+    expect(container.caseCount).toBe(4)
+    expect(container.failedCases).toBe(3)
+  })
+})

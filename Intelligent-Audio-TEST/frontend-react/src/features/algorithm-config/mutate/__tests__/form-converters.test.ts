@@ -1,0 +1,212 @@
+/**
+ * 算法编辑表单 领域模型 ↔ RHF 值 转换单测（features/algorithm-config/mutate）。
+ * 覆盖 toFormValues / cloneFormValues（INT-211 副本命名）/ toSaveInput 聚合载荷（剔除 key）。
+ */
+import { describe, expect, it } from 'vitest'
+
+import type { AlgorithmDefinition } from '@/domain/models/algorithmConfig'
+import {
+  cloneFormValues,
+  emptyFormValues,
+  toFormValues,
+  toSaveInput,
+  __resetFormKeyCounter,
+} from '@/features/algorithm-config/mutate/form-converters'
+
+const SAMPLE: AlgorithmDefinition = {
+  id: 1,
+  type: 'asr-v3',
+  name: '通用识别引擎',
+  groupId: 1,
+  groupName: '语音识别',
+  category: null,
+  description: '基线模型',
+  status: 'online',
+  icon: null,
+  displayOrder: 1,
+  deviceParams: [
+    {
+      id: 101,
+      paramCode: 'input_audio',
+      paramName: '输入音频',
+      label: '输入音频',
+      paramType: 'audio_file',
+      direction: 'input',
+      required: true,
+      defaultValue: null,
+      helpText: '',
+      uiOrder: 101,
+      hidden: false,
+    },
+  ],
+  caseParams: [
+    {
+      id: 301,
+      paramCode: 'source_language',
+      paramName: '源语言',
+      label: '源语言',
+      paramType: 'select',
+      scope: 'common',
+      required: false,
+      defaultValue: 'zh',
+      helpText: '',
+      uiOrder: 301,
+      hidden: false,
+      minValue: null,
+      maxValue: null,
+      step: null,
+      unit: null,
+      annotationCode: null,
+      fieldPath: null,
+    },
+  ],
+  referenceParams: [
+    {
+      id: 401,
+      code: 'ref_text',
+      name: '参考文本',
+      type: 'text',
+      annotationCode: null,
+      annotationFormat: null,
+      fieldPath: null,
+      mergeMode: 'join',
+      helpText: null,
+    },
+  ],
+  mappings: {
+    device: [
+      {
+        id: 501,
+        source: 'case',
+        sourceDirection: 'output',
+        sourceParam: 'audio_file',
+        paramName: '音频文件',
+        dimensionId: null,
+        dimensionName: null,
+        targetParam: 'input_audio',
+        targetParamName: '输入音频',
+        transformType: 'none',
+      },
+    ],
+    evaluation: [
+      {
+        id: 504,
+        source: 'case',
+        sourceDirection: 'output',
+        sourceParam: 'output_text',
+        paramName: '输出文本',
+        dimensionId: 3,
+        dimensionName: '识别准确率',
+        targetParam: '识别准确率',
+        targetParamName: null,
+        transformType: 'none',
+      },
+    ],
+  },
+  associatedDimensions: [{ id: 601, dimensionId: 3, dimensionName: '识别准确率', weight: 1, isDefault: true }],
+  caseCount: 50,
+  createdAt: '2026-08-10T08:30:00Z',
+  updatedAt: '2026-10-12T16:40:00Z',
+}
+
+describe('form-converters', () => {
+  it('toFormValues 将领域模型完整映射为表单值（含字段数组与映射）', () => {
+    __resetFormKeyCounter()
+    const values = toFormValues(SAMPLE)
+    expect(values.type).toBe('asr-v3')
+    expect(values.name).toBe('通用识别引擎')
+    expect(values.groupId).toBe('1')
+    expect(values.status).toBe('online')
+    expect(values.deviceParams).toHaveLength(1)
+    expect(values.deviceParams[0]).toMatchObject({
+      paramCode: 'input_audio',
+      direction: 'input',
+      required: true,
+    })
+    expect(values.caseParams[0]).toMatchObject({ defaultValue: 'zh', scope: 'common' })
+    expect(values.referenceParams[0]).toMatchObject({ mergeMode: 'join' })
+    expect(values.mappings.device[0].targetParam).toBe('input_audio')
+    expect(values.mappings.evaluation[0].targetParam).toBe('识别准确率')
+    expect(values.associatedDimensions[0].isDefault).toBe(true)
+  })
+
+  it('toFormValues 保留映射行 id（编辑态按 id 更新，INT-2193）', () => {
+    __resetFormKeyCounter()
+    const values = toFormValues(SAMPLE)
+    expect(values.mappings.device[0].id).toBe(501)
+    expect(values.mappings.evaluation[0].id).toBe(504)
+    const input = toSaveInput(values)
+    expect(input.mappings.evaluation[0]).toMatchObject({ id: 504 })
+  })
+
+  it('cloneFormValues 剔除映射行 id，副本由后端重新分配（INT-211/INT-2193）', () => {
+    __resetFormKeyCounter()
+    const values = cloneFormValues(SAMPLE)
+    expect(values.type).toBe('asr-v3_copy')
+    expect(values.name).toBe('通用识别引擎 (副本)')
+    expect(values.mappings.device[0]).not.toHaveProperty('id')
+    expect(values.mappings.evaluation[0]).not.toHaveProperty('id')
+    expect(values.mappings.evaluation[0].sourceParam).toBe('output_text')
+  })
+
+  it('cloneFormValues 追加 _copy 与「(副本)」（§7.4 副本命名）', () => {
+    __resetFormKeyCounter()
+    const values = cloneFormValues(SAMPLE)
+    expect(values.type).toBe('asr-v3_copy')
+    expect(values.name).toBe('通用识别引擎 (副本)')
+    expect(values.deviceParams).toHaveLength(1)
+  })
+
+  it('emptyFormValues 默认状态上线、分组与代码为空（§6.1 create 初始载荷）', () => {
+    const values = emptyFormValues()
+    expect(values.type).toBe('')
+    expect(values.groupId).toBe('')
+    expect(values.status).toBe('online')
+    expect(values.deviceParams).toEqual([])
+    expect(values.mappings).toEqual({ device: [], evaluation: [] })
+  })
+
+  it('toSaveInput 剔除行级 key 并保留聚合字段（§6.3 聚合提交载荷）', () => {
+    __resetFormKeyCounter()
+    const values = toFormValues(SAMPLE)
+    const input = toSaveInput(values)
+    expect(input.type).toBe('asr-v3')
+    expect(input.groupId).toBe(1)
+    // 设备参数已迁到设备管理页：表单不再提交该层（缺省 = 后端跳过）
+    expect(input.deviceParams).toBeUndefined()
+    expect(input.mappings.device).toHaveLength(1)
+    // 算法级 API 入参改由 API 实例作用域维护：表单/保存载荷均不再携带该分组
+    expect(Object.keys(input.mappings)).toEqual(['device', 'evaluation'])
+    expect(input.associatedDimensions[0]).toMatchObject({ dimensionId: '3' })
+  })
+
+  it('存量未知 source（evaluation）toFormValues 不回退 case、toSaveInput 原样保留（INT-1160 返工 P3）', () => {
+    __resetFormKeyCounter()
+    const withDirty: AlgorithmDefinition = {
+      ...SAMPLE,
+      mappings: {
+        ...SAMPLE.mappings,
+        evaluation: [
+          {
+            id: 910,
+            source: 'evaluation',
+            sourceDirection: 'output',
+            sourceParam: 'wer',
+            paramName: '字错率',
+            dimensionId: 26,
+            dimensionName: '',
+            targetParam: '',
+            targetParamName: null,
+            transformType: 'none',
+          },
+        ],
+      },
+    }
+    const values = toFormValues(withDirty)
+    expect(values.mappings.evaluation[0].source).toBe('evaluation')
+    const input = toSaveInput(values)
+    expect(
+      (input.mappings.evaluation[0] as Record<string, unknown>).source
+    ).toBe('evaluation')
+  })
+})

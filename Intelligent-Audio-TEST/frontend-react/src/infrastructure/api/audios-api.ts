@@ -1,0 +1,517 @@
+/**
+ * 音频管理 API（infrastructure 层；16_设备域.md §10 组件树落位）。
+ * 【接线·React·音频】INT-645：从 mock 切真实后端端点，全部经 client.ts 统一 fetch 封装
+ * （baseURL /api/v1、JWT 自动注入、信封解包、错误码归一为 ApiError）。
+ *
+ * 端点契约对照 api_gateway/routes/audio_bp.py + api_gateway/schemas/audio.py：
+ *   GET    /audios                          列表（分页/facet；响应信封内 data.stats）
+ *   POST   /audios/by-md5                   按内容 MD5 批量查音频（INT-1582 批量更新标注匹配）
+ *   GET    /audios/tags                     标签列表（PaginatedData 信封）
+ *   POST   /audios/folder-tree              文件夹树（depth 增量）
+ *   DELETE /audios/{id}                     删除（引用四路拦截文案由后端错误响应带回）
+ *   PUT    /audios/{id}/metadata            编辑元数据（§6.13）
+ *   POST   /audios/{id}/convert             格式转换（§6.15，body { format, sample_rate, channels, bit_depth, bitrate }）
+ *   POST   /audios/url-import               单条 URL 导入（§6.18；批量由本层循环）
+ *   POST   /audios/batch/annotations        批量更新标注（§6.19）
+ *   POST   /audios/batch-action             批量 action（§5.6，body { action, audio_ids }）
+ *   GET    /audios/{id}/stream              预签名 URL（§6.14 浏览器播放 + §5.3.1 下载二次取流）
+ *   POST   /audios/{id}/preview             实验室播放（BatchPlaybackRequest，§6.14）
+ *   POST   /audios/{id}/stop-preview        停止实验室播放（§6.14）
+ *   GET    /audios/{id}/features            特征分析（§6.23；INT-820 → 频谱/能量/时域三组）
+ *   GET    /audios/{id}/quality             质量评估（§6.23；INT-820 → SNR/动态范围/频率响应/评分）
+ *   POST   /audios/{id}/process             处理操作（§6.23；INT-820 → denoise/gain/trim）
+ *
+ * snake_case 契约：infrastructure 是唯一 snake→camel 转换层（adapters/audioAdapter.ts），
+ * application/domain 层只见 camelCase Domain，展示层不感知 wire 字段。
+ */
+import type {
+  AudioAsset,
+  AudioConvertOptions,
+  AudioFeatures,
+  AudioFolderNode,
+  AudioListStats,
+  AudioProcessRequest,
+  AudioProcessResult,
+  AudioQuality,
+} from '@/domain/models/audio'
+import { request } from '@/infrastructure/api/client'
+import { ApiError } from '@/infrastructure/api/api-error'
+import {
+  audioFeaturesFromDto,
+  audioFromDto,
+  audioProcessResultFromDto,
+  audioQualityFromDto,
+  audioStatsFromDto,
+  folderNodeFromDto,
+} from '@/infrastructure/adapters/audioAdapter'
+import type {
+  AudioFeaturesDto,
+  AudioItemDto,
+  AudioListDto,
+  AudioProcessResultDto,
+  AudioQualityDto,
+  AudioTagListDto,
+  FolderTreeDto,
+} from '@/infrastructure/dto/audio.dto'
+
+export type AudioListResult = {
+  items: AudioAsset[]
+  stats: AudioListStats
+  /** 当前查询匹配总数（服务端 total；页面分页/标题徽标以此为准） */
+  total: number
+  page: number
+  perPage: number
+  pages: number
+}
+
+/** 音频列表默认每页条数（与页面 §3.9 默认 20 一致） */
+const DEFAULT_LIST_PER_PAGE = 20
+
+const EMPTY_STATS: AudioListStats = {
+  totalFiles: 0,
+  totalSize: '0 B',
+  totalDuration: '0:00',
+  todayUploads: 0,
+}
+
+/** 音频列表查询参数（infra 层；snake_case 化只在本层发生） */
+export interface FetchAudiosParams {
+  page?: number
+  perPage?: number
+  keyword?: string
+  format?: string
+  audioType?: string
+  /** 采样率（Hz，如 48000）；本层按后端口径转 kHz 数值（sample_rate=48） */
+  sampleRate?: number
+  duration?: 'short' | 'medium' | 'long'
+  /** 标签过滤（后端仅 AND 语义；OR 模式由页面客户端过滤，不传本参数） */
+  tags?: string[]
+  /** 可见性（INT-2043 服务端筛选：shared/private；不传 = 全部，含 admin 全量） */
+  visibility?: 'shared' | 'private'
+}
+
+/**
+ * 音频列表（POST /audios；INT-1216 服务端分页）。
+ * V9.7.10 AudioImportLogic 同款：POST body 传 page/per_page + 过滤条件，切页才请求；
+ * 响应信封内 data = { items, total, page, per_page, pages, stats }。
+ * 用 POST 而非 GET：GET /audios 的 tags 参数后端按单值解析会 422（实测），
+ * 且 OR 标签语义后端不表达——AND 标签与 scalar facet 一并服务端过滤。
+ */
+export async function fetchAudios(
+  params: FetchAudiosParams = {}
+): Promise<AudioListResult> {
+  const dto = await request<AudioListDto>('POST', '/audios', {
+    page: params.page ?? 1,
+    per_page: params.perPage ?? DEFAULT_LIST_PER_PAGE,
+    keyword: params.keyword || undefined,
+    format: params.format || undefined,
+    audio_type: params.audioType || undefined,
+    sample_rate:
+      params.sampleRate != null ? String(params.sampleRate / 1000) : undefined,
+    duration: params.duration || undefined,
+    tags: params.tags && params.tags.length > 0 ? params.tags : undefined,
+    // INT-2197：visibility 走服务端筛选（空 = 全部；后端 _normalize_visibility_filter 同口径）
+    visibility: params.visibility || undefined,
+  })
+  return {
+    items: (dto?.items ?? []).map(audioFromDto),
+    stats: dto?.stats ? audioStatsFromDto(dto.stats) : EMPTY_STATS,
+    total: dto?.total ?? 0,
+    page: dto?.page ?? (params.page ?? 1),
+    perPage: dto?.per_page ?? (params.perPage ?? DEFAULT_LIST_PER_PAGE),
+    pages: dto?.pages ?? 0,
+  }
+}
+
+/** 标签列表（GET /audios/tags；INT-297 PaginatedData 信封，取 data.items） */
+export async function fetchAudioTags(): Promise<string[]> {
+  const dto = await request<AudioTagListDto>('GET', '/audios/tags')
+  return dto?.items ?? []
+}
+
+/**
+ * 单条音频时长（秒）兜底：后端无 GET /audios/{id} 详情端点，按文件名 keyword 检索
+ * POST /audios 后按 id 命中（唯一命中时直接取），供播放器实验室播放对齐总时长
+ * （设备端播放无浏览器音频流，取不到 metadata）。
+ */
+export async function fetchAudioDuration(
+  id: number,
+  name: string | null | undefined
+): Promise<number | null> {
+  if (!name) return null
+  const result = await fetchAudios({ keyword: name, perPage: 10 })
+  const hit =
+    result.items.find((item) => item.id === id) ??
+    (result.items.length === 1 ? result.items[0] : undefined)
+  const duration = hit?.duration
+  return duration != null && duration > 0 ? duration : null
+}
+
+/**
+ * 按内容 MD5 查音频（POST /audios/by-md5，body { md5_list }）。
+ * INT-1582 批量更新标注：拖入音频文件算内容 MD5 后全库匹配，替代只按文件名匹配已载入行。
+ * 后端响应 data = { <md5>: { id, name } }，只含命中项；键统一小写，便于前端按小写 MD5 取值。
+ */
+export async function fetchAudiosByMd5(
+  md5List: string[]
+): Promise<Record<string, { id: number; name: string }>> {
+  if (md5List.length === 0) return {}
+  const dto = await request<Record<string, { id?: number; name?: string } | null>>(
+    'POST',
+    '/audios/by-md5',
+    { md5_list: md5List }
+  )
+  const result: Record<string, { id: number; name: string }> = {}
+  for (const [md5, audio] of Object.entries(dto ?? {})) {
+    if (!audio || audio.id == null) continue
+    result[md5.toLowerCase()] = { id: Number(audio.id), name: String(audio.name ?? '') }
+  }
+  return result
+}
+
+/** 文件夹树（POST /audios/folder-tree；depth=10 全量渲染，响应信封内 data.tree.folders 为顶层节点） */
+export async function fetchFolderTree(): Promise<AudioFolderNode[]> {
+  const dto = await request<FolderTreeDto>('POST', '/audios/folder-tree', {
+    depth: 10,
+  })
+  return (dto?.tree?.folders ?? []).map((node) => folderNodeFromDto(node, 1))
+}
+
+/** 删除音频（DELETE /audios/{id}；引用四路拦截文案由后端错误响应带回） */
+export async function deleteAudio(
+  id: number
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    await request('DELETE', `/audios/${id}`)
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof ApiError ? err.userMessage : '删除失败，请重试',
+    }
+  }
+}
+
+/**
+ * 下载音频（§5.3.1 二次取流）：GET /audios/{id}/stream 返 OSS 预签名 URL，
+ * 前端再取字节流；网关相对路径（本地降级 /api/v1/audios/download?path=…）经
+ * client 注入 JWT 取 blob。
+ */
+export async function downloadAudio(id: number): Promise<Blob> {
+  const result = await request<{ url?: string }>('GET', `/audios/${id}/stream`)
+  const url = result?.url
+  if (!url) throw new ApiError({ message: '获取音频下载地址失败' })
+  if (/^https?:\/\//i.test(url)) {
+    const resp = await fetch(url)
+    if (!resp.ok) throw new ApiError({ message: `下载音频失败: ${resp.status}` })
+    return await resp.blob()
+  }
+  const relative = url.replace(/^\/api\/v1\//i, '')
+  const data = await request<Blob>('GET', relative, undefined, {
+    responseType: 'blob',
+  })
+  return data instanceof Blob ? data : new Blob([data as unknown as BlobPart])
+}
+
+/**
+ * 音频流 URL（§6.14 浏览器播放）：GET /audios/{id}/stream 返回 JSON 预签名 URL
+ * （V9.7.31 契约，非裸字节流），前端 <audio> 直接以该 URL 播放。
+ */
+export async function stream(id: number): Promise<string> {
+  const result = await request<{ url?: string }>('GET', `/audios/${id}/stream`)
+  const url = result?.url
+  if (!url) throw new ApiError({ message: '获取音频播放地址失败' })
+  return url
+}
+
+/**
+ * 静态路径音频流 URL（INT-1688；用例执行详情结果音频 result_audios / algorithm_results 的
+ * audio_file 项是 `case_pcm/...` 相对路径，无音频库 id）：
+ * GET /audios/stream-by-path?path=… 返回 JSON 预签名 URL（与 /audios/{id}/stream 同形）。
+ */
+export async function streamByPath(path: string): Promise<string> {
+  const result = await request<{ url?: string }>(
+    'GET',
+    '/audios/stream-by-path',
+    undefined,
+    { params: { path } }
+  )
+  const url = result?.url
+  if (!url) throw new ApiError({ message: '获取音频播放地址失败' })
+  return url
+}
+
+/** 实验室播放载荷（BatchPlaybackRequest，api_gateway/schemas/audio.py:207；
+ * playback_device_id | playback_device_ids | device_unique_ids 三选一 + spl + offset） */
+export interface AudioPreviewPayload {
+  playbackDeviceId?: number | null
+  playbackDeviceIds?: number[]
+  deviceUniqueIds?: string[]
+  spl?: number | null
+  offset?: number
+}
+
+/** 实验室播放（POST /audios/{id}/preview → 后端扬声器播放；请求成功即设备端输出） */
+export async function preview(
+  id: number,
+  payload: AudioPreviewPayload
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    await request('POST', `/audios/${id}/preview`, {
+      playback_device_id: payload.playbackDeviceId ?? undefined,
+      playback_device_ids: payload.playbackDeviceIds,
+      device_unique_ids: payload.deviceUniqueIds,
+      spl: payload.spl ?? undefined,
+      offset: payload.offset ?? 0,
+    })
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof ApiError ? err.userMessage : '试听启动失败，请重试',
+    }
+  }
+}
+
+/** 停止实验室播放（POST /audios/{id}/stop-preview） */
+export async function stopPreview(
+  id: number
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    await request('POST', `/audios/${id}/stop-preview`)
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof ApiError ? err.userMessage : '停止试听失败，请重试',
+    }
+  }
+}
+
+/**
+ * 编辑元数据（PUT /audios/{id}/metadata；patch 为 camelCase Domain，出参按 UpdateMetadataRequest
+ * snake_case 化；tags 为逗号分隔字符串——后端 update_metadata 按 split(',') 重建标签）。
+ * 后端仅回 message 不回完整对象，由 queryClient invalidate 刷新列表。
+ */
+export async function updateAudioMetadata(
+  id: number,
+  patch: Partial<AudioAsset>
+): Promise<AudioAsset | undefined> {
+  const body: Record<string, unknown> = {}
+  if (patch.name !== undefined) body.name = patch.name
+  if (patch.audioType !== undefined) body.audio_type = patch.audioType
+  if (patch.asrText !== undefined) body.asr_text = patch.asrText
+  if (patch.description !== undefined) body.description = patch.description
+  if (patch.sourceLanguage !== undefined) body.source_language = patch.sourceLanguage
+  if (patch.tags !== undefined) body.tags = patch.tags.join(', ')
+  if (patch.annotations !== undefined) body.annotations = patch.annotations
+  const dto = await request<AudioItemDto | null>(
+    'PUT',
+    `/audios/${id}/metadata`,
+    body
+  )
+  return dto ? audioFromDto(dto) : undefined
+}
+
+/**
+ * 格式转换（POST /audios/{id}/convert；body 对照 ConvertFormatRequest
+ * { format, sample_rate, channels, bit_depth, bitrate }）。
+ * camelCase Domain 在此转 snake_case wire；未选参数不发送（后端全部可选）。
+ * bitrate 单位 kbps（audio_service 落库时换算 bps）。
+ */
+export async function convertAudio(
+  id: number,
+  options: AudioConvertOptions
+): Promise<{ success: boolean; message?: string }> {
+  const body: Record<string, unknown> = { format: options.format }
+  if (options.sampleRate !== undefined) body.sample_rate = options.sampleRate
+  if (options.channels !== undefined) body.channels = options.channels
+  if (options.bitDepth !== undefined) body.bit_depth = options.bitDepth
+  if (options.bitrate !== undefined) body.bitrate = options.bitrate
+  await request('POST', `/audios/${id}/convert`, body)
+  return { success: true, message: `已提交转换为 ${options.format}` }
+}
+
+/**
+ * 特征分析（GET /audios/{id}/features；§6.23 特征分区，INT-820 §3.3.2）。
+ * 响应 data = { spectral, energy, time_domain, audio_id, duration }，
+ * 由 audio_service compute_features 计算（字段以 200 响应为准）。
+ * 端点异常（如分析失败 400 / 音频不存在 404）由 client 抛 ApiError，
+ * 调用方须呈现错误态 + 重试，不得退化成空态。
+ */
+export async function getAudioFeatures(id: number): Promise<AudioFeatures> {
+  const dto = await request<AudioFeaturesDto>('GET', `/audios/${id}/features`)
+  if (!dto) throw new ApiError({ message: '特征分析返回为空' })
+  return audioFeaturesFromDto(dto)
+}
+
+/**
+ * 质量评估（GET /audios/{id}/quality；§6.23 质量评估分区）。
+ * 响应 data = { snr_db, dynamic_range_db, frequency_response_score, quality_score, audio_id, duration }。
+ */
+export async function getAudioQuality(id: number): Promise<AudioQuality> {
+  const dto = await request<AudioQualityDto>('GET', `/audios/${id}/quality`)
+  if (!dto) throw new ApiError({ message: '质量评估返回为空' })
+  return audioQualityFromDto(dto)
+}
+
+/**
+ * 处理操作（POST /audios/{id}/process；§6.23 处理操作，INT-820 §3.3.2）。
+ * body 对照 AudioProcessRequest{ operation, mode, gain_db, start_ms, end_ms }：
+ * operation 必填（denoise / gain / trim），mode 默认 new（建新音频记录，回 new_audio_id），
+ * overwrite 覆盖原记录 file_path（破坏性，调用方须二次确认）。
+ */
+export async function processAudio(
+  id: number,
+  payload: AudioProcessRequest
+): Promise<AudioProcessResult> {
+  const body: Record<string, unknown> = {
+    operation: payload.operation,
+    mode: payload.mode ?? 'new',
+  }
+  if (payload.gainDb !== undefined) body.gain_db = payload.gainDb
+  if (payload.startMs !== undefined) body.start_ms = payload.startMs
+  if (payload.endMs !== undefined) body.end_ms = payload.endMs
+  const dto = await request<AudioProcessResultDto>(
+    'POST',
+    `/audios/${id}/process`,
+    body
+  )
+  if (!dto) throw new ApiError({ message: '处理操作返回为空' })
+  return audioProcessResultFromDto(dto)
+}
+
+/**
+ * URL 导入（POST /audios/url-import；后端为单条契约 URLImportRequest{ url, audio_type }，
+ * 批量由本层循环逐条提交并统计成功/失败）。
+ */export async function urlImportAudios(
+  urls: string[],
+  audioType = 'dry'
+): Promise<{ successCount: number; failedCount: number }> {
+  let successCount = 0
+  let failedCount = 0
+  for (const url of urls) {
+    try {
+      await request('POST', '/audios/url-import', { url, audio_type: audioType })
+      successCount += 1
+    } catch {
+      failedCount += 1
+    }
+  }
+  return { successCount, failedCount }
+}
+
+/** 批量更新标注请求条目（camelCase 域契约；snake_case 化在本层完成） */
+export interface BatchAnnotationItem {
+  audioId: number
+  annotations: unknown[]
+}
+
+/**
+ * 批量更新标注（POST /audios/batch/annotations；body 对照 BatchUpdateAnnotationsRequest，
+ * 响应 data = { updated_count, failed_count, refreshed_test_case_ids } 归一为页面 toast 计数）。
+ * items 缺省为空（对话框文件解析/匹配流尚未接线，本卡只切 infra；传空后端回「标注列表不能为空」）。
+ */
+export async function batchUpdateAnnotations(
+  payload: {
+    items?: BatchAnnotationItem[]
+    algorithmType?: string
+    refreshTestCases?: boolean
+  } = {}
+): Promise<{ success: number; failed: number; refreshed: number }> {
+  const body = {
+    items: (payload.items ?? []).map((item) => ({
+      audio_id: item.audioId,
+      annotations: item.annotations ?? [],
+    })),
+    algorithm_type: payload.algorithmType,
+    refresh_test_cases: payload.refreshTestCases,
+  }
+  const result = await request<{
+    updated_count?: number
+    failed_count?: number
+    refreshed_test_case_ids?: number[]
+  }>('POST', '/audios/batch/annotations', body)
+  return {
+    success: result?.updated_count ?? 0,
+    failed: result?.failed_count ?? 0,
+    refreshed: result?.refreshed_test_case_ids?.length ?? 0,
+  }
+}
+
+/** 批量 action（§5.6；POST /audios/batch-action，body { action, audio_ids }） */
+export type AudioBatchAction =
+  | 'delete'
+  | 'export'
+  | 'tags'
+  | 'move'
+  | 'copy'
+  | 'rename'
+  | 'modify-properties'
+
+export type BatchActionResult = {
+  action: AudioBatchAction
+  total: number
+  successCount: number
+  /** 后端消息（delete/tags 仅回 message 不回逐项计数；页面 toast 优先呈现） */
+  message?: string
+  /** export 响应 data（zip_base64/filename）透传，供页面解码下载 */
+  zipBase64?: string
+  filename?: string
+}
+
+/** batch-action 扩展参数（INT-818：move/copy/rename/modify-properties 四分支；snake_case 化在本层完成） */
+export type AudioBatchActionOptions = {
+  /** 批量设置标签（action=tags）时传入，替换选中音频原有标签 */
+  tags?: string[]
+  /** 批量移动/复制目标文件夹（move/copy；对应后端 target_folder，如 test_data/dry） */
+  targetFolder?: string
+  /** 批量重命名统一规则前缀（rename；对应后端 rename_rule，自动追加序号） */
+  renameRule?: string
+  /** 批量修改属性名（modify-properties：metadata / audio-type / spl） */
+  property?: string
+  /** 批量修改属性值（modify-properties：metadata 为字段字典、audio-type 为类型值） */
+  propertyValue?: unknown
+}
+
+export async function batchActionAudios(
+  action: AudioBatchAction,
+  ids: number[],
+  options?: AudioBatchActionOptions
+): Promise<BatchActionResult> {
+  // 契约对照 api_gateway/schemas/audio.py BatchActionRequest：
+  // audio_ids / action / tags / target_folder / rename_rule / property / property_value
+  const body: Record<string, unknown> = { action, audio_ids: ids }
+  if (options?.tags && options.tags.length > 0) body.tags = options.tags
+  if (options?.targetFolder) body.target_folder = options.targetFolder
+  if (options?.renameRule) body.rename_rule = options.renameRule
+  if (options?.property) body.property = options.property
+  if (options?.propertyValue !== undefined) body.property_value = options.propertyValue
+
+  // unwrapResponse: false 保留信封 message（delete/tags 的引用跳过明细以 message 呈现，
+  // 后端不回逐项计数）；错误信封仍由 client 在非 2xx 时抛 ApiError。
+  const envelope = await request<{
+    message?: string
+    data?: {
+      zip_base64?: string
+      filename?: string
+      /** move/copy/rename/modify-properties 回逐项计数（INT-818） */
+      success_count?: number
+      failed_count?: number
+    }
+  }>('POST', '/audios/batch-action', body, { unwrapResponse: false })
+
+  const dto = envelope?.data
+  return {
+    action,
+    total: ids.length,
+    // 四分支后端回 success_count/failed_count 按实计；delete/tags/export 不回逐项计数，
+    // 整批成功即按 ids.length 计（引用跳过明细以 message 呈现）
+    successCount:
+      dto?.success_count ??
+      (dto?.failed_count != null ? ids.length - dto.failed_count : ids.length),
+    message: envelope?.message,
+    zipBase64: dto?.zip_base64,
+    filename: dto?.filename,
+  }
+}
