@@ -1252,7 +1252,7 @@ const currentRoundTableData = computed(() => {
     if (group.mainItem) {
       const row = {
         _rowId: `main_${rowSeq++}`,
-        metricName: group.mainItem.base,
+        metricName: getMetricDisplayName(group.mainItem.base),
         isSubDim: false,
         // 主维度名与分组名相同时，主维度行兼作分组标题
         isGroupHeader: mainItemIsHeader,
@@ -1266,7 +1266,7 @@ const currentRoundTableData = computed(() => {
     group.subItems.forEach(sub => {
       const row = {
         _rowId: `sub_${rowSeq++}`,
-        metricName: sub.base,
+        metricName: getMetricDisplayName(sub.base),
         isSubDim: true,
       };
       props.devices.forEach((device, index) => {
@@ -1285,6 +1285,21 @@ const formatMetricLabel = (key) => {
   const m2 = key.match(/^(.*)@overall$/);
   if (m2) return `${m2[1]} (整体)`;
   return key;
+};
+
+const metricDisplayNameMap = computed(() => {
+  const map = {};
+  const list = Array.isArray(props.metricConfigs) ? props.metricConfigs : [];
+  list.forEach((config) => {
+    if (!config?.name) return;
+    if (config.id) map[String(config.id)] = String(config.name);
+    map[String(config.name)] = String(config.name);
+  });
+  return map;
+});
+
+const getMetricDisplayName = (metricKey) => {
+  return metricDisplayNameMap.value[String(metricKey)] || metricKey;
 };
 
 const metricDecimalPlacesMap = computed(() => {

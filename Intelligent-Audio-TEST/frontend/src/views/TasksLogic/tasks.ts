@@ -337,7 +337,7 @@ export function useTasks() {
         retryTask(task.id);
         break;
       case 'reevaluate':
-        reevaluateTask(task.id);
+        reevaluateTask(task);
         break;
       case 'delete':
         deleteTask(task.id);
@@ -565,11 +565,16 @@ export function useTasks() {
     }
   };
 
-  const reevaluateTask = async (taskId: string | number) => {
+  const reevaluateTask = async (task: any) => {
+    const taskId = task?.id ?? task;
     if (isControlling.value.has(taskId)) return;
+    const isImportedInterruption = task?.config?.import_source === 'interruption_package';
     
     const result = await modalControl.open(MODAL_TYPES.REEVALUATE, {
-      content: '请选择重新评估类型'
+      content: isImportedInterruption
+        ? '将基于已导入的双轨音频和报告明细重新生成统计报告'
+        : '请选择重新评估类型',
+      isImported: isImportedInterruption
     });
 
     if (result?.reevaluateType) {

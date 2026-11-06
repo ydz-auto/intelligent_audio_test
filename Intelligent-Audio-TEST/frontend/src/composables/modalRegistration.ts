@@ -28,6 +28,7 @@ import AudioPlayerModal from '../components/common/AudioPlayerModal.vue';
 import AudioSelectModal from '../components/common/AudioSelectModal.vue';
 import TaskTypeModal from '../views/TasksLogic/TaskTypeModal.vue';
 import TaskDetailModal from '../views/TasksLogic/TaskDetailModal.vue';
+import TaskRecordImportModal from '../views/TasksLogic/TaskRecordImportModal.vue';
 import ReevaluateSelectModal from '../components/common/modal/ReevaluateSelectModal.vue';
 
 export function registerGlobalModals() {
@@ -123,6 +124,14 @@ export function registerGlobalModals() {
       title: '任务详情',
       width: '1200px',
       maxWidth: '90vw'
+    }
+  });
+
+  manager.registerModal(MODAL_TYPES.TASK_RECORD_IMPORT, {
+    component: TaskRecordImportModal,
+    defaultConfig: {
+      title: '导入测试任务记录',
+      width: '680px'
     }
   });
 

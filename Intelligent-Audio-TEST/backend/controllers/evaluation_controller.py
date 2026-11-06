@@ -1443,6 +1443,29 @@ class EvaluationController:
         if task.status not in ['completed', 'failed', 'stopped', 'paused', 'skipped']:
             return error_response("只有已完成/失败/停止/暂停/跳过的任务才能重新评估")
 
+        task_config = task.config or {}
+        if task_config.get('import_source') in ('interruption_package', 'evaluation_result_package'):
+            try:
+                from backend.controllers.testcase_controller import TestCaseController
+                result = TestCaseController.reevaluate_interruption_task(task_id)
+                task_label = '评分任务' if task_config.get('import_source') == 'evaluation_result_package' else '打断任务'
+                message = (
+                    f"{task_label}重新评估完成：{result['completed_cases']}/{result['total_cases']} 条完成，"
+                    f"{result['metric_count']} 个指标已刷新"
+                )
+                return success_response(
+                    TaskReevaluateResult(
+                        total_cases=result['total_cases'],
+                        queued_cases=result['total_cases'],
+                        reextracted_cases=0,
+                        message=message,
+                    ),
+                    message,
+                )
+            except Exception as e:
+                db.session.rollback()
+                return error_response(f"导入任务重新评估失败: {str(e)}")
+
         from backend.services.execution.reevaluation_executor import ReevaluationExecutor
         executor = ReevaluationExecutor.get_instance()
         success, message = executor.submit(

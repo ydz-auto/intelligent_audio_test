@@ -68,6 +68,7 @@ export const MODAL_TYPES = {
     TASK_RELATED: 'taskTypeSelect',
     TASK_DETAIL: 'taskDetail',
     TASK_CONFIG: 'taskConfig',
+    TASK_RECORD_IMPORT: 'taskRecordImport',
     REPORT_DETAIL: 'reportDetail',
     API_OTHER_CONFIG: 'apiEdit',
     API_HEALTH: 'apiHealth',

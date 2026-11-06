@@ -41,6 +41,34 @@ interface MultiRoundResult {
   totalRounds: number;
 }
 
+function normalizeMetricGroups(rawMetricData: any): any[] {
+  if (Array.isArray(rawMetricData)) {
+    return rawMetricData;
+  }
+
+  let metricData = rawMetricData;
+  if (typeof metricData === 'string') {
+    try {
+      metricData = JSON.parse(metricData);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!metricData || typeof metricData !== 'object') {
+    return [];
+  }
+
+  return Object.entries(metricData).map(([resource, metricValues]) => ({
+    resource,
+    categories: [{
+      metrics: Object.entries(
+        metricValues && typeof metricValues === 'object' ? metricValues : {}
+      ).map(([metric, value]) => ({ metric, value }))
+    }]
+  }));
+}
+
 const now = new Date().toISOString();
 const modalManager = useModalControl();
 
@@ -233,7 +261,7 @@ function updateComparisonData(tasks?: Task[], report?: Report): void {
             let metricCount = 0;
             let werSum = 0;
             
-            const metricGroups = (currentReport.summary.metricData || []) as any[];
+            const metricGroups = normalizeMetricGroups(currentReport.summary.metricData);
             const deviceName = String(d.name || '').toLowerCase();
             const deviceId = String(d.id || '').toLowerCase();
             metricGroups.forEach((group) => {
@@ -279,7 +307,7 @@ function updateComparisonData(tasks?: Task[], report?: Report): void {
             let metricCount = 0;
             let werSum = 0;
             
-            const metricGroups = (currentReport.summary.metricData || []) as any[];
+            const metricGroups = normalizeMetricGroups(currentReport.summary.metricData);
             const apiName = String(d.name || '').toLowerCase();
             const apiId = String(d.id || '').toLowerCase();
             metricGroups.forEach((group) => {

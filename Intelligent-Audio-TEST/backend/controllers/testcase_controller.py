@@ -1,6 +1,10 @@
 import os
 from flask import request, send_file, current_app
-from backend.models.models import TestCase, TestCaseGroup, Tag, Dimension, Audio, PlaybackDevice
+from backend.models.models import (
+    TestCase, TestCaseGroup, Tag, Dimension, Audio, PlaybackDevice,
+    Task, Report, ReportSummary, ReportSummaryMeta, ReportRawData,
+    ReportCase, ReportMetricStats, ReportStatus, ReportType, TaskStatus,
+)
 from backend.models.database import db
 from backend.models.soft_delete import bulk_soft_delete, include_deleted
 from backend.utils.web.response import success_response, error_response
@@ -34,12 +38,140 @@ from backend.utils.algorithm.reference_params_generator import ReferenceParamsGe
 import uuid
 import json
 import io
+import hashlib
+import zipfile
 import logging
 import pandas as pd
 from datetime import datetime, timezone, timedelta
+from pathlib import PurePosixPath
 from backend.utils.common.query_utils import now_cst
 
 logger = logging.getLogger(__name__)
+
+INTERRUPTION_METRIC_DEFINITIONS = [
+    ('success_count', '打断成功数量', '%', 2),
+    ('failure_count', '打断失败数量', '%', 2),
+    ('inquiry_count', '打断询问数量', '%', 2),
+    ('reply_behavior_count', '打断回复行为数量', '%', 2),
+    ('recover_behavior_count', '打断恢复行为数量', '%', 2),
+    ('irrelevant_behavior_count', '打断无关行为数量', '%', 2),
+    ('silence_behavior_count', '打断静默行为数量', '%', 2),
+    ('ask_behavior_count', '打断询问行为数量', '%', 2),
+    ('reply_content_score', '打断回复内容评分', '分', 2),
+    ('stop_compliance_rate', '停止指令遵循', '%', 2),
+    ('resume_content_score', '恢复首轮内容评分', '分', 2),
+    ('response_latency_avg_ms', '响应时延', 'ms', 0),
+    ('reply_latency_avg_ms', '回复时延', 'ms', 0),
+    ('resume_first_reply_latency_ms', '恢复首轮内容时延', 'ms', 0),
+]
+INTERRUPTION_METRIC_FIELDS = {
+    '打断成功数量': 'success_count',
+    '打断失败数量': 'failure_count',
+    '打断询问数量': 'inquiry_count',
+    '打断回复行为数量': 'reply_behavior_count',
+    '打断恢复行为数量': 'recover_behavior_count',
+    '打断无关行为数量': 'irrelevant_behavior_count',
+    '打断静默行为数量': 'silence_behavior_count',
+    '打断询问行为数量': 'ask_behavior_count',
+    '打断回复内容评分': 'reply_content_score',
+    '停止指令遵循': 'stop_compliance_rate',
+    '恢复首轮内容评分': 'resume_content_score',
+    '响应时延': 'response_latency_avg_ms',
+    '回复时延': 'reply_latency_avg_ms',
+    '恢复首轮内容时延': 'resume_first_reply_latency_ms',
+}
+INTERRUPTION_METRIC_CODES = {
+    metric_code for metric_code in INTERRUPTION_METRIC_FIELDS.values()
+}
+LEGACY_INTERRUPTION_EXECUTION_METRICS = {
+    'duration_ms',
+    'turns',
+    'round_count',
+    'completed_step_count',
+    'trigger_error_ms',
+    'input_end_output_ms',
+    'audio_output_detected_rate',
+}
+TURN_EVAL_DIMENSION_IDS = (72, 84, 85, 86, 87, 88)
+TURN_EVAL_DIMENSION_FIELDS = {
+    84: ('takeover_rate', 'turn_classification.takeover_rate'),
+    85: ('no_takeover_rate', 'turn_classification.no_takeover_rate'),
+    86: ('false_takeover_rate', 'turn_classification.false_takeover_rate'),
+    87: ('takeover_latency_avg_ms', 'takeover_latency.takeover_latency_avg_ms'),
+    88: ('reply_quality_avg_score', 'reply_quality.reply_quality_avg_score'),
+}
+TURN_EVAL_LEGACY_METRICS = {'round_count', 'completed_step_count'}
+REJECT_DIMENSION_IDS = tuple(range(121, 133))
+REJECT_DIMENSION_FIELDS = {
+    121: ('n_rate_success', 'n_reject_rounds'),
+    122: ('n_rate_inquiry', 'n_reject_rounds'),
+    123: ('n_rate_failure', 'n_reject_rounds'),
+    124: ('n_success_silent_recover', 'n_rate_success'),
+    125: ('n_success_reply_recover', 'n_rate_success'),
+    126: ('n_inquiry_silent', 'n_rate_inquiry'),
+    127: ('n_inquiry_reply', 'n_rate_inquiry'),
+    128: ('n_failure_silent_respond', 'n_rate_failure'),
+    129: ('n_failure_reply_respond', 'n_rate_failure'),
+    130: ('n_failure_silent_irrelevant', 'n_rate_failure'),
+    131: ('n_failure_reply_irrelevant', 'n_rate_failure'),
+    132: ('n_failure_reply_silent', 'n_rate_failure'),
+}
+REJECT_LEGACY_METRICS = {'round_count', 'completed_step_count'}
+ENV_DIMENSION_IDS = (133, 134, 135)
+ENV_DIMENSION_FIELDS = {
+    133: 'understand_correct_pass',
+    134: 'response_latency_ms',
+    135: 'score',
+}
+ENV_LEGACY_METRICS = {'round_count', 'completed_step_count'}
+
+
+def _normalize_interruption_path(path: str) -> str:
+    """把 ZIP 内路径规范成 POSIX 相对路径。"""
+    return str(PurePosixPath(str(path or '').replace('\\', '/')).as_posix()).lstrip('/')
+
+
+def _interruption_md5(content: bytes) -> str:
+    return hashlib.md5(content).hexdigest()
+
+
+def _safe_interruption_zip_names(names):
+    normalized_names = []
+    for raw_name in names:
+        normalized_name = _normalize_interruption_path(raw_name)
+        if not normalized_name or normalized_name.endswith('/'):
+            continue
+        if normalized_name.startswith('..') or '/..' in normalized_name:
+            raise ValueError(f"ZIP 内存在非法路径: {raw_name}")
+        normalized_names.append(normalized_name)
+    return set(normalized_names)
+
+
+def _find_interruption_zip_root(names):
+    report_candidates = sorted(
+        [name for name in names if name == 'report.json' or name.endswith('/report.json')],
+        key=len,
+    )
+    if not report_candidates:
+        raise ValueError("ZIP 包中未找到 report.json")
+    report_path = report_candidates[0]
+    if report_path == 'report.json':
+        return ''
+    return report_path[:-len('report.json')]
+
+
+def _resolve_interruption_zip_entry(logical_path, names, path_mapping):
+    normalized_logical_path = _normalize_interruption_path(logical_path)
+    actual_path = path_mapping.get(normalized_logical_path)
+    if actual_path and actual_path in names:
+        return actual_path
+    if normalized_logical_path in names:
+        return normalized_logical_path
+    suffix = f'/{normalized_logical_path}'
+    candidates = sorted([name for name in names if name.endswith(suffix)], key=len)
+    if candidates:
+        return candidates[0]
+    return None
 
 class TestCaseController:
     @staticmethod
@@ -2878,6 +3010,2376 @@ class TestCaseController:
         except Exception as e:
             db.session.rollback()
             return error_response(str(e))
+
+    @staticmethod
+    def _read_interruption_package(file):
+        if (file.filename or '').lower().endswith('.zip') is False:
+            raise ValueError("打断测试包必须是 ZIP 格式")
+
+        archive = zipfile.ZipFile(file.stream, mode='r')
+        try:
+            names = _safe_interruption_zip_names(archive.namelist())
+            zip_root = _find_interruption_zip_root(names)
+            report_path = 'report.json' if not zip_root else f'{zip_root}report.json'
+            report = json.loads(archive.read(report_path).decode('utf-8-sig'))
+            report_cases = report.get('cases') if isinstance(report, dict) else None
+            if not isinstance(report_cases, list) or not report_cases:
+                raise ValueError("report.json 中没有可导入的 cases")
+
+            path_mapping = {}
+            report_case_by_uid = {
+                str(report_case.get('case_uid') or report_case.get('id') or ''): report_case
+                for report_case in report_cases
+            }
+            for report_case in report_cases:
+                for file_item in report_case.get('files', []):
+                    logical_path = _normalize_interruption_path(file_item.get('path'))
+                    actual_path = _normalize_interruption_path(file_item.get('key'))
+                    if logical_path and actual_path and actual_path in names:
+                        path_mapping[logical_path] = actual_path
+            for attempt in report.get('attempts', []):
+                case_uid = str(
+                    attempt.get('case_uid')
+                    or (attempt.get('case') or {}).get('case_uid')
+                    or ''
+                ).strip()
+                if not case_uid:
+                    continue
+                for file_item in (attempt.get('result') or {}).get('artifacts', []):
+                    filename = _normalize_interruption_path(file_item.get('path'))
+                    actual_path = _normalize_interruption_path(file_item.get('key'))
+                    if not actual_path or actual_path not in names:
+                        report_case = report_case_by_uid.get(case_uid, {})
+                        case_folder = _normalize_interruption_path(
+                            report_case.get('relative_path') or ''
+                        )
+                        if case_folder.endswith('.json'):
+                            case_folder = case_folder[:-len('.json')]
+                        direct_path = _normalize_interruption_path(
+                            f'{zip_root}{case_folder}/result/{filename}'
+                        )
+                        if direct_path in names:
+                            actual_path = direct_path
+                    if filename and actual_path and actual_path in names:
+                        path_mapping[f'cases/{case_uid}/result/{filename}'] = actual_path
+
+            return {
+                'archive': archive,
+                'report': report,
+                'cases': report_cases,
+                'names': names,
+                'zip_root': zip_root,
+                'path_mapping': path_mapping,
+            }
+        except Exception:
+            archive.close()
+            raise
+
+    @staticmethod
+    def _read_interruption_file(package, logical_path):
+        actual_path = _resolve_interruption_zip_entry(
+            logical_path,
+            package['names'],
+            package['path_mapping'],
+        )
+        if not actual_path:
+            raise ValueError(f"ZIP 包中未找到文件: {logical_path}")
+        return package['archive'].read(actual_path)
+
+    @staticmethod
+    def _interruption_preview_items(package):
+        items = []
+        attempt_count = 0
+        result_audio_count = 0
+        report = package['report']
+        dataset_id = str(report.get('id') or '')
+        existing_task = TestCaseController._find_interruption_task(dataset_id)
+
+        for attempt in report.get('attempts', []):
+            case_info = attempt.get('case') or {}
+            case_uid = str(attempt.get('case_uid') or case_info.get('case_uid') or case_info.get('id') or '').strip()
+            outcome = ((attempt.get('result') or {}).get('outcome')
+                       or attempt.get('state')
+                       or 'unknown')
+            has_result_audio = any(
+                artifact.get('path') in ('input-actual.wav', 'live-output.wav')
+                for artifact in (attempt.get('result') or {}).get('artifacts', [])
+            )
+            attempt_count += 1
+            if has_result_audio:
+                result_audio_count += 1
+
+            items.append({
+                'ID': dataset_id,
+                'EXISTING': bool(existing_task),
+                'NAME': case_info.get('title') or f"打断执行记录 {case_uid}",
+                'DESCRIPTION': f"历史执行结果：{outcome}",
+                'GROUP_NAME': case_info.get('group_path') or '未分类',
+                'TEST_TYPE': 'e2e',
+                'CASE_UID': case_uid,
+                'OUTCOME': outcome,
+                'HAS_RESULT_AUDIO': has_result_audio,
+            })
+        return items, attempt_count, result_audio_count
+
+    @staticmethod
+    def preview_interruption_package():
+        try:
+            if 'file' not in request.files:
+                return error_response("未上传文件")
+            file = request.files['file']
+            if not file.filename:
+                return error_response("未选择文件")
+
+            package = TestCaseController._read_interruption_package(file)
+            report = package['report']
+            dataset_label = report.get('id') or 'unknown'
+            try:
+                items, attempt_count, result_audio_count = TestCaseController._interruption_preview_items(package)
+            finally:
+                package['archive'].close()
+
+            return success_response({
+                'packageType': 'interruption',
+                'totalRows': len(items),
+                'testCases': items,
+                'audioConfigsCount': attempt_count,
+                'resultAudioCount': result_audio_count,
+                'taskName': f"打断历史任务_{dataset_label}",
+                'reportName': f"打断历史报告_{dataset_label}",
+                'importTarget': 'task-report',
+                'errors': [],
+            })
+        except Exception as e:
+            return error_response(f"打断测试包预览失败: {str(e)}")
+
+    @staticmethod
+    def _get_or_create_interruption_group(group_name):
+        group = TestCaseGroup.query.filter_by(
+            name=group_name,
+            algorithm_type='voice_llm',
+            deleted=False,
+        ).first()
+        if group:
+            return group
+        group = TestCaseGroup(
+            id=str(uuid.uuid4()),
+            name=group_name,
+            description='外部打断测试包自动创建的分组',
+            algorithm_type='voice_llm',
+        )
+        db.session.add(group)
+        db.session.flush()
+        return group
+
+    @staticmethod
+    def _resolve_interruption_device(device_name):
+        device = None
+        if device_name:
+            device = PlaybackDevice.query.filter_by(name=device_name, is_deleted=0).first()
+        if not device:
+            device = PlaybackDevice.query.filter_by(device_type='dry', is_deleted=0).first()
+        if not device:
+            raise ValueError("未找到可用于打断用例的信号播放设备，请先配置播放设备")
+        return device
+
+    @staticmethod
+    def _save_interruption_audio(package, logical_path, relative_path, original_filename):
+        content = TestCaseController._read_interruption_file(package, logical_path)
+        md5 = _interruption_md5(content)
+        existing_audio = Audio.query.filter_by(md5=md5, deleted=False).first()
+        if existing_audio:
+            return existing_audio
+
+        metadata = AudioController._save_audio(
+            _MemoryAudioFile(original_filename, content),
+            relative_path=relative_path,
+        )
+        audio = Audio(
+            name=metadata['name'],
+            original_filename=original_filename,
+            file_path=metadata['file_path'],
+            size=metadata['size'],
+            duration=metadata['duration'],
+            sample_rate=metadata['sample_rate'],
+            channels=metadata['channels'],
+            bitrate=metadata['bitrate'],
+            format=metadata['format'],
+            audio_type='dry',
+            md5=md5,
+            description='外部打断测试包导入的播放音源',
+        )
+        db.session.add(audio)
+        db.session.flush()
+        return audio
+
+    @staticmethod
+    def _save_interruption_result_audio(package, report_case, result_dir):
+        logical_paths = {
+            'user_wav': 'result/input-actual.wav',
+            'ai_wav': 'result/live-output.wav',
+            'record_file': 'result/conversation.wav',
+        }
+        file_items = {
+            _normalize_interruption_path(file_item.get('path', '')): file_item
+            for file_item in report_case.get('files', [])
+        }
+        saved_paths = {}
+        for key, logical_name in logical_paths.items():
+            logical_path = f"cases/{report_case.get('case_uid')}/{logical_name}"
+            if logical_path not in file_items and key != 'record_file':
+                raise ValueError(f"用例 {report_case.get('case_uid')} 缺少 {logical_name}")
+            if logical_path not in file_items:
+                continue
+
+            target_path = os.path.join(result_dir, logical_name.replace('/', os.sep))
+            os.makedirs(os.path.dirname(target_path), exist_ok=True)
+            with open(target_path, 'wb') as output:
+                output.write(TestCaseController._read_interruption_file(package, logical_path))
+            saved_paths[key] = {
+                'source_path': logical_path,
+                'file_path': target_path.replace('\\', '/'),
+            }
+        return saved_paths
+
+    @staticmethod
+    def import_interruption_package():
+        return TestCaseController.import_interruption_task_report()
+
+        try:
+            if 'file' not in request.files:
+                return error_response("未上传文件")
+            file = request.files['file']
+            if not file.filename:
+                return error_response("未选择文件")
+
+            package = TestCaseController._read_interruption_package(file)
+            imported_count = 0
+            updated_count = 0
+            errors = []
+            try:
+                report = package['report']
+                dataset_id = str(report.get('id') or uuid.uuid4())
+                storage_root = current_app.config.get('AUDIO_STORAGE_PATH')
+
+                for index, report_case in enumerate(package['cases'], 1):
+                    try:
+                        case_transaction = db.session.begin_nested()
+                        case_uid = str(report_case.get('case_uid') or report_case.get('id') or '').strip()
+                        if not case_uid:
+                            raise ValueError("缺少 case_uid")
+                        case_id = f"INT-{case_uid}"
+                        source = json.loads(
+                            TestCaseController._read_interruption_file(
+                                package,
+                                report_case.get('source_json') or f"cases/{case_uid}/source.json",
+                            ).decode('utf-8-sig')
+                        )
+
+                        report_segments = {}
+                        for segment in report_case.get('segments', []):
+                            segment_id = segment.get('id')
+                            if segment_id:
+                                report_segments[segment_id] = segment
+
+                        rounds = []
+                        for round_item in source.get('rounds', []):
+                            round_number = int(round_item.get('round_number') or len(rounds) + 1)
+                            audios = []
+                            for play_order, segment in enumerate(round_item.get('segments', [])):
+                                segment_id = segment.get('id') or f"r{round_number:03d}-s{play_order + 1:03d}"
+                                report_segment = report_segments.get(segment_id, {})
+                                logical_audio = report_segment.get('pcm_audio') or f"cases/{case_uid}/pcm/{segment_id}.wav"
+                                original_filename = os.path.basename(str(segment.get('audio') or f'{segment_id}.wav'))
+                                audio = TestCaseController._save_interruption_audio(
+                                    package,
+                                    logical_audio,
+                                    f"interruption_packages/{dataset_id}/{case_uid}/pcm/{segment_id}.wav",
+                                    original_filename,
+                                )
+                                device = TestCaseController._resolve_interruption_device(
+                                    segment.get('playback_device_name'),
+                                )
+                                audios.append({
+                                    'audio_id': audio.id,
+                                    'audio_name': original_filename,
+                                    'spl': segment.get('spl', 65),
+                                    'playback_device_id': device.id,
+                                    'playback_device_name': device.name,
+                                    'play_order': play_order,
+                                    'source': {
+                                        'query': segment.get('query'),
+                                        'input_text': segment.get('input_text'),
+                                        'timing': segment.get('timing'),
+                                        'trigger': report_segment.get('trigger'),
+                                        'is_interruption': segment.get('is_interruption'),
+                                    },
+                                })
+                            rounds.append({
+                                'round_number': round_number,
+                                'audios': audios,
+                            })
+
+                        if not rounds:
+                            raise ValueError("source.json 中没有 rounds 配置")
+
+                        result_audio = TestCaseController._save_interruption_result_audio(
+                            package,
+                            report_case,
+                            os.path.join(storage_root, 'interruption_packages', dataset_id, case_uid),
+                        )
+                        config = {
+                            'rounds': rounds,
+                            'source_audio': report_case.get('relative_path'),
+                            'auto_generated': False,
+                            'result_audio': result_audio,
+                        }
+
+                        group = TestCaseController._get_or_create_interruption_group(
+                            report_case.get('group_path') or '打断测试',
+                        )
+                        with include_deleted():
+                            existing_tc = db.session.get(TestCase, case_id)
+                        if existing_tc:
+                            if existing_tc.deleted:
+                                existing_tc.deleted = False
+                            existing_tc.name = report_case.get('title') or case_id
+                            existing_tc.description = f"外部打断测试包导入；原ID: {report_case.get('original_id', '')}；数据集: {dataset_id}"
+                            existing_tc.group_id = group.id
+                            existing_tc.algorithm_type = 'voice_llm'
+                            existing_tc.test_type = 'e2e'
+                            existing_tc.config = config
+                            existing_tc.tags = []
+                            current_tc = existing_tc
+                            updated_count += 1
+                        else:
+                            current_tc = TestCase(
+                                id=case_id,
+                                name=report_case.get('title') or case_id,
+                                description=f"外部打断测试包导入；原ID: {report_case.get('original_id', '')}；数据集: {dataset_id}",
+                                group_id=group.id,
+                                algorithm_type='voice_llm',
+                                test_type='e2e',
+                                config=config,
+                            )
+                            db.session.add(current_tc)
+                            imported_count += 1
+
+                        for tag_name in ('打断测试', '外部导入'):
+                            tag = Tag.query.filter_by(name=tag_name).first()
+                            if not tag:
+                                tag = Tag(name=tag_name)
+                                db.session.add(tag)
+                            current_tc.tags.append(tag)
+
+                        TestCaseController.refresh_reference_texts(current_tc)
+                        case_transaction.commit()
+                    except Exception as case_error:
+                        case_transaction.rollback()
+                        errors.append(f"第{index}个用例 {report_case.get('case_uid', '')}: {str(case_error)}")
+
+                db.session.commit()
+            finally:
+                package['archive'].close()
+
+            message = f"成功导入 {imported_count} 个打断用例，更新 {updated_count} 个打断用例"
+            if errors:
+                message += f"，{len(errors)} 个失败: {'; '.join(errors[:5])}"
+                if len(errors) > 5:
+                    message += f" ... (共{len(errors)}个错误)"
+            return success_response(
+                TestCaseImportResult(imported_count=imported_count, errors=errors),
+                message,
+            )
+        except Exception as e:
+            db.session.rollback()
+            return error_response(f"打断测试包导入失败: {str(e)}")
+
+    @staticmethod
+    def _find_interruption_task(dataset_id):
+        if not dataset_id:
+            return None
+        return Task.query.filter(
+            Task.config.cast(db.Text).like(f'%{dataset_id}%'),
+            Task.deleted == False,
+        ).first()
+
+    @staticmethod
+    def _find_imported_task(import_source, dataset_id):
+        if not dataset_id:
+            return None
+        candidates = Task.query.filter(
+            Task.config.cast(db.Text).like(f'%{dataset_id}%'),
+            Task.deleted == False,
+        ).all()
+        for task in candidates:
+            if (task.config or {}).get('import_source') == import_source:
+                return task
+        return None
+
+    @staticmethod
+    def reevaluate_interruption_task(task_id):
+        task = Task.query.filter_by(id=task_id, deleted=False).first()
+        if not task:
+            raise ValueError("未找到导入的打断任务")
+        config = task.config or {}
+        import_source = config.get('import_source')
+        if import_source not in ('interruption_package', 'evaluation_result_package'):
+            raise ValueError("该任务不是历史测试包导入任务")
+        resource_name = '历史打断执行' if import_source == 'interruption_package' else '历史评分执行'
+        resource_tags = (
+            ['历史导入', '打断测试']
+            if import_source == 'interruption_package'
+            else ['历史导入', '评分结果']
+        )
+
+        report_record = Report.query.filter_by(task_id=task.id, deleted=False).first()
+        if not report_record:
+            raise ValueError("未找到导入任务对应的报告")
+        report_cases = ReportCase.query.filter_by(report_id=report_record.id).order_by(ReportCase.id).all()
+        if not report_cases:
+            raise ValueError("报告中没有可重新评估的执行记录")
+
+        def as_json(value, fallback):
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except (TypeError, ValueError):
+                    return fallback
+            return value if value is not None else fallback
+
+        completed_count = 0
+        failed_count = 0
+        metric_values = {}
+        category_stats = {}
+        durations = []
+        for report_case in report_cases:
+            results = as_json(report_case.results, [])
+            outcome = ''
+            if results and isinstance(results[0], dict):
+                outcome = results[0].get('outcome') or results[0].get('state') or ''
+            if outcome == 'completed':
+                completed_count += 1
+            else:
+                failed_count += 1
+
+            case_metrics = {}
+            for resource_item in as_json(report_case.metrics, []):
+                if not isinstance(resource_item, dict):
+                    continue
+                for metric_item in resource_item.get('metrics') or []:
+                    if not isinstance(metric_item, dict):
+                        continue
+                    metric_name = metric_item.get('metric')
+                    metric_value = metric_item.get('value')
+                    if metric_name and isinstance(metric_value, (int, float)):
+                        metric_values.setdefault(metric_name, []).append(metric_value)
+                        case_metrics[metric_name] = metric_value
+            category = report_case.category or '未分类'
+            category_stats.setdefault(category, []).append(case_metrics)
+            if isinstance(case_metrics.get('duration_ms'), (int, float)):
+                durations.append(case_metrics['duration_ms'] / 1000)
+
+        metric_names = [
+            metric_code for metric_code, _, _, _ in INTERRUPTION_METRIC_DEFINITIONS
+            if metric_values.get(metric_code)
+        ]
+        averages = {
+            metric_name: round(sum(metric_values[metric_name]) / len(metric_values[metric_name]), 2)
+            for metric_name in metric_names
+            if metric_values.get(metric_name)
+        }
+        all_metrics = [
+            {
+                'id': metric_code,
+                'name': metric_name,
+                'unit': unit,
+                'decimal_places': decimal_places,
+            }
+            for metric_code, metric_name, unit, decimal_places in INTERRUPTION_METRIC_DEFINITIONS
+            if metric_values.get(metric_code)
+        ]
+        dimension_values = [
+            {
+                'id': metric_code,
+                'name': metric_name,
+                'average_value': averages.get(metric_code),
+            }
+            for metric_code, metric_name, _, _ in INTERRUPTION_METRIC_DEFINITIONS
+            if metric_values.get(metric_code)
+        ]
+        case_type_stats = []
+        for category, category_items in category_stats.items():
+            category_metrics = []
+            for metric_code, _, _, _ in INTERRUPTION_METRIC_DEFINITIONS:
+                values = [
+                    item.get(metric_code)
+                    for item in category_items
+                    if isinstance(item.get(metric_code), (int, float))
+                ]
+                if values:
+                    category_metrics.append({
+                        'metric': metric_code,
+                        'value': round(sum(values) / len(values), 2),
+                    })
+            case_type_stats.append({
+                'groupId': category,
+                'groupName': category,
+                'metrics': category_metrics,
+            })
+
+        old_meta = ReportSummaryMeta.query.filter_by(report_id=report_record.id).first()
+        raw_devices = as_json(old_meta.devices, []) if old_meta else []
+        devices = []
+        for index, device in enumerate(raw_devices):
+            if isinstance(device, dict):
+                devices.append(device)
+            elif device:
+                devices.append({'id': index + 1, 'name': str(device)})
+        apis = as_json(old_meta.apis, []) if old_meta else []
+
+        for model in (ReportSummary, ReportSummaryMeta, ReportRawData, ReportMetricStats):
+            model.query.filter_by(report_id=report_record.id).delete(synchronize_session=False)
+
+        task.status = TaskStatus.COMPLETED.value
+        task.total_cases = len(report_cases)
+        task.completed_cases = completed_count
+        task.failed_cases = failed_count
+        task.actual_duration = round(sum(durations), 2)
+        task.updated_at = now_cst()
+        task.completed_at = task.completed_at or task.created_at or now_cst()
+        report_record.status = ReportStatus.PUBLISHED.value
+        report_record.updated_at = now_cst()
+
+        db.session.add(ReportSummary(
+            report_id=report_record.id,
+            task_ids=[task.id],
+            total_cases=len(report_cases),
+            completed_cases=completed_count,
+            failed_cases=failed_count,
+            pass_rate=round(completed_count / len(report_cases) * 100, 2),
+            duration=task.actual_duration,
+            started_at=task.started_at,
+            completed_at=task.completed_at,
+        ))
+        db.session.add(ReportSummaryMeta(
+            report_id=report_record.id,
+            dimension_values=json.dumps(dimension_values, ensure_ascii=False),
+            case_categories=json.dumps(sorted(category_stats.keys()), ensure_ascii=False),
+            all_case_tags=json.dumps(resource_tags, ensure_ascii=False),
+            devices=json.dumps(devices, ensure_ascii=False),
+            apis=json.dumps(apis, ensure_ascii=False),
+            resources=json.dumps([resource_name], ensure_ascii=False),
+            resource_headers=json.dumps([{
+                'key': resource_name,
+                'label': resource_name,
+                'type': 'unknown',
+                'id': None,
+                'name': resource_name,
+                'version': None,
+                'result_type': None,
+                'editable': False,
+            }], ensure_ascii=False),
+            all_metrics=json.dumps(all_metrics, ensure_ascii=False),
+            field_mappings=json.dumps({}, ensure_ascii=False),
+        ))
+        db.session.add(ReportRawData(
+            report_id=report_record.id,
+            raw_data=json.dumps({resource_name: metric_values}, ensure_ascii=False),
+        ))
+        db.session.add(ReportMetricStats(
+            report_id=report_record.id,
+            metric_data=json.dumps({resource_name: averages}, ensure_ascii=False),
+            tag_metric_data=json.dumps({}, ensure_ascii=False),
+            tag_category_metric_data=json.dumps({}, ensure_ascii=False),
+            case_type_stats=json.dumps(case_type_stats, ensure_ascii=False),
+            device_stats=json.dumps([], ensure_ascii=False),
+            api_stats=json.dumps([], ensure_ascii=False),
+        ))
+        db.session.commit()
+        return {
+            'task_id': task.id,
+            'report_id': report_record.id,
+            'total_cases': len(report_cases),
+            'completed_cases': completed_count,
+            'failed_cases': failed_count,
+            'metric_count': len(metric_names),
+        }
+
+    @staticmethod
+    def _interruption_datetime(value):
+        try:
+            if isinstance(value, (int, float)):
+                return datetime.fromtimestamp(value, timezone(timedelta(hours=8)))
+        except (TypeError, ValueError, OSError):
+            pass
+        return now_cst()
+
+    @staticmethod
+    def _read_interruption_result_json(package, case_uid, filename):
+        logical_path = f'cases/{case_uid}/result/{filename}'
+        try:
+            return json.loads(TestCaseController._read_interruption_file(package, logical_path).decode('utf-8-sig'))
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _save_interruption_artifact(package, dataset_id, case_uid, filename):
+        logical_path = f'cases/{case_uid}/result/{filename}'
+        content = TestCaseController._read_interruption_file(package, logical_path)
+        relative_path = f'case_result/interruption_packages/{dataset_id}/{case_uid}/{filename}'
+        target_path = os.path.join(
+            current_app.config.get('STATIC_BASE_PATH'),
+            *relative_path.split('/'),
+        )
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        with open(target_path, 'wb') as output:
+            output.write(content)
+        return {
+            'filename': filename,
+            'url': f'/static/{relative_path}',
+            'size': len(content),
+        }
+
+    @staticmethod
+    def _interruption_case_metrics(status_data, evaluation_data, segments):
+        steps = evaluation_data.get('steps') or []
+        trigger_errors = [step.get('trigger_error_ms') for step in steps if isinstance(step.get('trigger_error_ms'), (int, float))]
+        input_end_outputs = [step.get('input_end_output_ms') for step in steps if isinstance(step.get('input_end_output_ms'), (int, float))]
+        detected = sum(1 for step in steps if step.get('audio_output_detected') is True)
+        round_count = len(segments or [])
+        completed_steps = sum(1 for step in steps if step.get('status') == 'played')
+        values = {
+            'duration_ms': status_data.get('duration_ms'),
+            'turns': status_data.get('turns'),
+            'round_count': round_count,
+            'completed_step_count': completed_steps,
+            'trigger_error_ms': round(sum(trigger_errors) / len(trigger_errors), 2) if trigger_errors else None,
+            'input_end_output_ms': round(sum(input_end_outputs) / len(input_end_outputs), 2) if input_end_outputs else None,
+            'audio_output_detected_rate': round(detected / len(steps) * 100, 2) if steps else None,
+        }
+        return {key: value for key, value in values.items() if value is not None}
+
+    @staticmethod
+    def _build_interruption_report_case(package, report, dataset_id, attempt):
+        case_info = attempt.get('case') or {}
+        case_uid = str(attempt.get('case_uid') or case_info.get('case_uid') or case_info.get('id') or '')
+        result = attempt.get('result') or {}
+        status_data = TestCaseController._read_interruption_result_json(package, case_uid, 'status.json')
+        evaluation_data = TestCaseController._read_interruption_result_json(package, case_uid, 'evaluation-result.json')
+        metrics = TestCaseController._interruption_case_metrics(
+            status_data,
+            evaluation_data,
+            case_info.get('segments'),
+        )
+
+        audio_entries = []
+        for filename, label in (
+            ('input-actual.wav', '用户实际输入'),
+            ('live-output.wav', 'AI实时输出'),
+            ('conversation.wav', '完整对话录音'),
+        ):
+            try:
+                audio_entry = TestCaseController._save_interruption_artifact(
+                    package, dataset_id, case_uid, filename,
+                )
+                audio_entry['label'] = label
+                audio_entries.append(audio_entry)
+            except Exception:
+                continue
+
+        algorithm_results = []
+        for metric_name, metric_value in metrics.items():
+            algorithm_results.append({
+                'device': '历史打断执行',
+                'param_code': metric_name,
+                'param_type': 'number',
+                'label': metric_name,
+                'value': metric_value,
+                'round_number': None,
+                'dimension_name': None,
+            })
+        for audio_entry in audio_entries:
+            algorithm_results.append({
+                'device': '历史打断执行',
+                'param_code': audio_entry['filename'],
+                'param_type': 'audio_file',
+                'label': audio_entry['label'],
+                'value': audio_entry['url'],
+                'round_number': None,
+                'dimension_name': None,
+            })
+
+        reference_params = {}
+        for segment in case_info.get('segments', []):
+            source_info = segment.get('source') or {}
+            reference_params[str(segment.get('round_number'))] = {
+                'query': source_info.get('query'),
+                'input_text': source_info.get('input_text'),
+                'timing': source_info.get('timing'),
+                'trigger': segment.get('trigger'),
+            }
+
+        return {
+            'test_case_id': None,
+            'name': case_info.get('title') or case_uid,
+            'description': f"历史打断执行记录；原ID: {case_info.get('original_id', '')}",
+            'category': case_info.get('group_path') or '未分类',
+            'tags': ['历史导入', '打断测试'],
+            'metrics': [{
+                'resource': '历史打断执行',
+                'metrics': [
+                    {'metric': metric_name, 'value': metric_value}
+                    for metric_name, metric_value in metrics.items()
+                ],
+            }],
+            'results': [{
+                'resource': '历史打断执行',
+                'outcome': result.get('outcome') or attempt.get('state'),
+                'state': result.get('state') or attempt.get('state'),
+                'archive': result.get('archive'),
+                'scoring': result.get('scoring'),
+                'status': status_data,
+                'evaluation': {
+                    'schema': evaluation_data.get('schema'),
+                    'status': evaluation_data.get('status'),
+                    'steps': evaluation_data.get('steps', []),
+                    'final_reply': evaluation_data.get('final_reply'),
+                },
+            }],
+            'audios': audio_entries,
+            'reference_params': reference_params,
+            'algorithm_results': algorithm_results,
+            'algorithm_type': 'voice_llm',
+            'logs': json.dumps({
+                'attempt_id': attempt.get('id'),
+                'rerun_count': attempt.get('rerun_count'),
+                'package_id': report.get('id'),
+            }, ensure_ascii=False),
+        }
+
+    @staticmethod
+    def _create_or_update_interruption_task_report(package):
+        report = package['report']
+        dataset_id = str(report.get('id') or uuid.uuid4())
+        attempts = report.get('attempts') or []
+        if not attempts:
+            raise ValueError("report.json 中没有 attempts 执行记录")
+
+        completed_count = sum(
+            1 for attempt in attempts
+            if (attempt.get('result') or {}).get('outcome') == 'completed'
+            or attempt.get('state') == 'completed'
+        )
+        failed_count = len(attempts) - completed_count
+        durations = []
+        for attempt in attempts:
+            case_uid = attempt.get('case_uid') or (attempt.get('case') or {}).get('case_uid')
+            status_data = TestCaseController._read_interruption_result_json(package, case_uid, 'status.json')
+            if isinstance(status_data.get('duration_ms'), (int, float)):
+                durations.append(status_data['duration_ms'] / 1000)
+
+        task_config = {
+            'import_source': 'interruption_package',
+            'dataset_id': dataset_id,
+            'package_id': report.get('id'),
+            'revision': report.get('revision'),
+            'state': report.get('state'),
+            'options': report.get('options', {}),
+        }
+        task = TestCaseController._find_interruption_task(dataset_id)
+        if task:
+            if task.deleted:
+                task.deleted = False
+            task.name = f"打断历史任务_{report.get('id')}"
+            task.description = '外部全双工打断测试包导入的历史任务记录'
+            task.type = 'e2e'
+            task.status = TaskStatus.COMPLETED.value
+            task.config = task_config
+            task.algorithm_type = 'voice_llm'
+            task.total_cases = len(attempts)
+            task.completed_cases = completed_count
+            task.failed_cases = failed_count
+            task.created_at = TestCaseController._interruption_datetime(report.get('created_at'))
+            task.updated_at = now_cst()
+            task.started_at = task.created_at
+            task.completed_at = task.created_at
+            task.actual_duration = round(sum(durations), 2)
+            created = False
+        else:
+            task = Task(
+                name=f"打断历史任务_{report.get('id')}",
+                description='外部全双工打断测试包导入的历史任务记录',
+                type='e2e',
+                status=TaskStatus.COMPLETED.value,
+                config=task_config,
+                algorithm_type='voice_llm',
+                total_cases=len(attempts),
+                completed_cases=completed_count,
+                failed_cases=failed_count,
+                created_at=TestCaseController._interruption_datetime(report.get('created_at')),
+                started_at=TestCaseController._interruption_datetime(report.get('created_at')),
+                completed_at=TestCaseController._interruption_datetime(report.get('created_at')),
+                actual_duration=round(sum(durations), 2),
+                execution_source='manual',
+            )
+            db.session.add(task)
+            db.session.flush()
+            created = True
+
+        report_cases = [
+            TestCaseController._build_interruption_report_case(package, report, dataset_id, attempt)
+            for attempt in attempts
+        ]
+        metric_names = []
+        metric_values = {}
+        category_stats = {}
+        devices = set()
+        for case_item, attempt in zip(report_cases, attempts):
+            case_metrics = {}
+            for resource_item in case_item['metrics']:
+                for metric_item in resource_item['metrics']:
+                    metric_name = metric_item['metric']
+                    metric_value = metric_item['value']
+                    if isinstance(metric_value, (int, float)):
+                        metric_names.append(metric_name)
+                        metric_values.setdefault(metric_name, []).append(metric_value)
+                        case_metrics[metric_name] = metric_value
+            category = case_item['category']
+            category_stats.setdefault(category, []).append(case_metrics)
+            for segment in (attempt.get('case') or {}).get('segments', []):
+                device_name = (segment.get('source') or {}).get('playback_device_name')
+                if device_name:
+                    devices.add(device_name)
+        device_infos = []
+        for index, device_name in enumerate(sorted(devices)):
+            device = PlaybackDevice.query.filter_by(name=device_name, is_deleted=0).first()
+            device_infos.append({
+                'id': device.id if device else index + 1,
+                'name': device_name,
+            })
+
+        metric_names = sorted(set(metric_names))
+        averages = {
+            metric_name: round(sum(metric_values[metric_name]) / len(metric_values[metric_name]), 2)
+            for metric_name in metric_names
+            if metric_values.get(metric_name)
+        }
+        all_metrics = [
+            {'id': metric_name, 'name': metric_name, 'unit': 'ms' if metric_name.endswith('_ms') else '', 'decimal_places': 2}
+            for metric_name in metric_names
+        ]
+        dimension_values = [
+            {'id': metric_name, 'name': metric_name, 'average_value': metric_value}
+            for metric_name, metric_value in averages.items()
+        ]
+        case_type_stats = []
+        for category, category_items in category_stats.items():
+            category_metrics = []
+            for metric_name in metric_names:
+                values = [item.get(metric_name) for item in category_items if isinstance(item.get(metric_name), (int, float))]
+                if values:
+                    category_metrics.append({
+                        'metric': metric_name,
+                        'value': round(sum(values) / len(values), 2),
+                    })
+            case_type_stats.append({
+                'groupId': category,
+                'groupName': category,
+                'metrics': category_metrics,
+            })
+
+        report_record = Report.query.filter_by(task_id=task.id, deleted=False).first()
+        if report_record:
+            for model in (ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats):
+                model.query.filter_by(report_id=report_record.id).delete(synchronize_session=False)
+            report_record.name = f"打断历史报告_{report.get('id')}"
+            report_record.description = '外部全双工打断测试包导入的历史任务报告'
+            report_record.algorithm_type = 'voice_llm'
+            report_record.status = ReportStatus.PUBLISHED.value
+            report_record.updated_at = now_cst()
+        else:
+            report_record = Report(
+                name=f"打断历史报告_{report.get('id')}",
+                type=ReportType.TASK.value,
+                task_id=task.id,
+                description='外部全双工打断测试包导入的历史任务报告',
+                algorithm_type='voice_llm',
+                status=ReportStatus.PUBLISHED.value,
+            )
+            db.session.add(report_record)
+            db.session.flush()
+
+        summary_info = ReportSummary(
+            report_id=report_record.id,
+            task_ids=[task.id],
+            total_cases=len(report_cases),
+            completed_cases=completed_count,
+            failed_cases=failed_count,
+            pass_rate=round(completed_count / len(report_cases) * 100, 2) if report_cases else 0,
+            duration=task.actual_duration,
+            started_at=task.started_at,
+            completed_at=task.completed_at,
+        )
+        db.session.add(summary_info)
+        db.session.add(ReportSummaryMeta(
+            report_id=report_record.id,
+            dimension_values=json.dumps(dimension_values, ensure_ascii=False),
+            case_categories=json.dumps(sorted(category_stats.keys()), ensure_ascii=False),
+            all_case_tags=json.dumps(['历史导入', '打断测试'], ensure_ascii=False),
+            devices=json.dumps(device_infos, ensure_ascii=False),
+            apis=json.dumps([], ensure_ascii=False),
+            resources=json.dumps(['历史打断执行'], ensure_ascii=False),
+            resource_headers=json.dumps([{
+                'key': '历史打断执行',
+                'label': '历史打断执行',
+                'type': 'unknown',
+                'id': None,
+                'name': '历史打断执行',
+                'version': None,
+                'result_type': None,
+                'editable': False,
+            }], ensure_ascii=False),
+            all_metrics=json.dumps(all_metrics, ensure_ascii=False),
+            field_mappings=json.dumps({}, ensure_ascii=False),
+        ))
+        db.session.add(ReportRawData(
+            report_id=report_record.id,
+            raw_data=json.dumps({'历史打断执行': metric_values}, ensure_ascii=False),
+        ))
+        for case_item in report_cases:
+            db.session.add(ReportCase(report_id=report_record.id, **case_item))
+        db.session.add(ReportMetricStats(
+            report_id=report_record.id,
+            metric_data=json.dumps({'历史打断执行': averages}, ensure_ascii=False),
+            tag_metric_data=json.dumps({}, ensure_ascii=False),
+            tag_category_metric_data=json.dumps({}, ensure_ascii=False),
+            case_type_stats=json.dumps(case_type_stats, ensure_ascii=False),
+            device_stats=json.dumps([], ensure_ascii=False),
+            api_stats=json.dumps([], ensure_ascii=False),
+        ))
+        db.session.commit()
+        return task, report_record, created
+
+    @staticmethod
+    def import_interruption_task_report():
+        try:
+            if 'file' not in request.files:
+                return error_response("未上传文件")
+            file = request.files['file']
+            if not file.filename:
+                return error_response("未选择文件")
+
+            package = TestCaseController._read_interruption_package(file)
+            try:
+                task, report_record, created = TestCaseController._create_or_update_interruption_task_report(package)
+            finally:
+                package['archive'].close()
+
+            return success_response({
+                'taskId': task.id,
+                'reportId': report_record.id,
+                'importedCount': 1 if created else 0,
+                'updatedCount': 0 if created else 1,
+                'errors': [],
+            }, '打断历史任务和报告导入成功')
+        except Exception as e:
+            db.session.rollback()
+            return error_response(f"打断历史任务和报告导入失败: {str(e)}")
+
+    @staticmethod
+    def _read_evaluation_result_package(file):
+        if (file.filename or '').lower().endswith('.json') is False:
+            raise ValueError("评分结果包必须是 JSON 格式")
+        content = file.stream.read()
+        report = json.loads(content.decode('utf-8-sig'))
+        cases = report.get('cases') if isinstance(report, dict) else None
+        if not isinstance(cases, list) or not cases:
+            raise ValueError("评分结果 JSON 中没有可导入的 cases")
+        if any(not (case_item.get('case') and case_item.get('title')) for case_item in cases):
+            raise ValueError("评分结果中存在缺少 case 或 title 的记录")
+        return {
+            'content': content,
+            'sha256': hashlib.sha256(content).hexdigest(),
+            'report': report,
+            'cases': cases,
+        }
+
+    @staticmethod
+    def _evaluation_targets(package):
+        targets = {}
+        for case_item in package['cases']:
+            run_id = str(case_item.get('run') or '').strip()
+            if not run_id or run_id in targets:
+                continue
+            target_list = []
+            tasks = Task.query.filter(
+                Task.config.cast(db.Text).like(f'%{run_id}%'),
+                Task.deleted == False,
+            ).order_by(Task.id).all()
+            for task in tasks:
+                if (task.config or {}).get('dataset_id') != run_id:
+                    continue
+                report_record = Report.query.filter_by(
+                    task_id=task.id, deleted=False,
+                ).order_by(Report.id).first()
+                if report_record:
+                    target_list.append((task, report_record))
+            if target_list:
+                targets[run_id] = target_list
+        return targets
+
+    @staticmethod
+    def _split_case_codes(task):
+        return {
+            str(code).strip().upper()
+            for code in ((task.config or {}).get('split_case_codes') or [])
+            if str(code).strip()
+        }
+
+    @staticmethod
+    def _evaluation_target_for_case(run_targets, case_code):
+        normalized_code = str(case_code or '').strip().upper()
+        for task, report_record in run_targets:
+            if normalized_code in TestCaseController._split_case_codes(task):
+                return task, report_record
+        for task, report_record in run_targets:
+            if not TestCaseController._split_case_codes(task):
+                return task, report_record
+        return None
+
+    @staticmethod
+    def _evaluation_case_metrics(case_item):
+        raw_result = case_item.get('raw_platform_result') or {}
+        interruption = raw_result.get('interruption') or {}
+        primary_metrics = case_item.get('primary_metrics') or {}
+        metrics = {}
+        for metric_name, metric_code in INTERRUPTION_METRIC_FIELDS.items():
+            metric_value = interruption.get(metric_code, primary_metrics.get(metric_code))
+            if isinstance(metric_value, bool):
+                metric_value = int(metric_value)
+            metrics[metric_name] = metric_value if isinstance(metric_value, (int, float)) else None
+        return metrics
+
+    @staticmethod
+    def _evaluation_dimensions():
+        dimensions = Dimension.query.filter(
+            Dimension.task_type_code == 'interruption_metrics',
+            Dimension.deleted == False,
+            Dimension.status == True,
+        ).order_by(Dimension.sort_order, Dimension.id).all()
+        if not dimensions:
+            raise ValueError("未找到打断评估维度配置")
+        return dimensions
+
+    @staticmethod
+    def _evaluation_all_metrics(dimensions):
+        dim_id_to_name = {dim.id: dim.name for dim in dimensions}
+        return [{
+            'id': dim.id,
+            'name': dim.name,
+            'unit': '%' if (dim.statistic_method or 'average') in ('pass_rate', 'ratio', 'weighted_sum_ratio', 'weighted_wer') else (dim.score_unit or ''),
+            'decimal_places': dim.decimal_places if dim.decimal_places is not None else 2,
+            'statistic_method': dim.statistic_method or 'average',
+            'agg_denominator': dim.agg_denominator or 'case',
+            'sort_order': dim.sort_order or 0,
+            'dimension_type': dim.dimension_type or 'main',
+            'parent_dimension_id': dim.parent_dimension_id,
+            'parent_dimension_name': dim_id_to_name.get(dim.parent_dimension_id),
+        } for dim in dimensions]
+
+    @staticmethod
+    def _aggregate_evaluation_metrics(dimensions, metric_values):
+        total_interruption_rounds = sum(
+            metric_values.get('打断成功数量', [0])[i]
+            + metric_values.get('打断失败数量', [0])[i]
+            + metric_values.get('打断询问数量', [0])[i]
+            for i in range(len(metric_values.get('打断成功数量', [])))
+        ) if metric_values.get('打断成功数量') else 0
+        result = {}
+        for dim in dimensions:
+            values = metric_values.get(dim.name, [])
+            if not values:
+                result[dim.id] = None
+                continue
+            method = dim.statistic_method or 'average'
+            if method == 'ratio' and (dim.agg_denominator or 'case') == 'round':
+                if total_interruption_rounds:
+                    result[dim.id] = round(sum(values) / total_interruption_rounds * 100, 2)
+                else:
+                    result[dim.id] = None
+            elif method == 'pass_rate':
+                passed_count = sum(1 for value in values if value == 1)
+                result[dim.id] = round(passed_count / len(values) * 100, 2)
+            else:
+                result[dim.id] = round(sum(values) / len(values), 2)
+        return result
+
+    @staticmethod
+    def _turn_eval_dimensions():
+        dimensions = Dimension.query.filter(
+            Dimension.id.in_(TURN_EVAL_DIMENSION_IDS),
+            Dimension.deleted == False,
+            Dimension.status == True,
+        ).order_by(Dimension.sort_order, Dimension.id).all()
+        if not dimensions:
+            raise ValueError("未找到接管评估维度配置")
+        return dimensions
+
+    @staticmethod
+    def _nested_value(payload, path):
+        current = payload
+        for key in path.split('.'):
+            if not isinstance(current, dict):
+                return None
+            current = current.get(key)
+        return current
+
+    @staticmethod
+    def _turn_eval_case_values(case_item):
+        raw_result = case_item.get('raw_platform_result') or {}
+        primary_metrics = case_item.get('primary_metrics') or {}
+        values = {}
+        for dimension_id, (_, field_path) in TURN_EVAL_DIMENSION_FIELDS.items():
+            value = TestCaseController._nested_value(raw_result, field_path)
+            if value is None:
+                value = TestCaseController._nested_value({'turn_classification': primary_metrics}, field_path)
+            if isinstance(value, bool):
+                value = int(value)
+            values[dimension_id] = value if isinstance(value, (int, float)) else None
+        return values
+
+    @staticmethod
+    def _aggregate_turn_eval_metrics(dimensions, cases):
+        total_turns = sum(
+            int(TestCaseController._nested_value(case.get('raw_platform_result') or {}, 'turn_classification.total_turns') or 0)
+            for case in cases
+        )
+        result = {}
+        for dimension in dimensions:
+            if dimension.id == 72:
+                result[dimension.id] = None
+                continue
+            if dimension.id in (84, 85, 86):
+                count_field = {
+                    84: 'normal_takeover_count',
+                    85: 'no_takeover_count',
+                    86: 'false_takeover_count',
+                }[dimension.id]
+                numerator = sum(
+                    int(TestCaseController._nested_value(
+                        case.get('raw_platform_result') or {},
+                        f'turn_classification.{count_field}',
+                    ) or 0)
+                    for case in cases
+                )
+                result[dimension.id] = round(numerator / total_turns * 100, 4) if total_turns else None
+                continue
+            values = [
+                TestCaseController._turn_eval_case_values(case).get(dimension.id)
+                for case in cases
+            ]
+            values = [value for value in values if isinstance(value, (int, float))]
+            result[dimension.id] = round(sum(values) / len(values), 4) if values else None
+        return result
+
+    @staticmethod
+    def _evaluation_preview_items(package):
+        targets = TestCaseController._evaluation_targets(package)
+        if not targets:
+            raise ValueError("评分结果中未找到已导入的打断任务记录，请先导入对应的打断测试包")
+
+        matched_cases = []
+        valid_count = 0
+        for case_item in package['cases']:
+            run_id = str(case_item.get('run') or '').strip()
+            if run_id not in targets:
+                continue
+            if not TestCaseController._evaluation_target_for_case(
+                targets[run_id], case_item.get('case'),
+            ):
+                continue
+            matched_cases.append(case_item)
+            if case_item.get('category') == 'valid_metrics':
+                valid_count += 1
+
+        items = []
+        for case_item in matched_cases:
+            task, report_record = TestCaseController._evaluation_target_for_case(
+                targets[str(case_item.get('run'))], case_item.get('case'),
+            )
+            outcome = case_item.get('category') or 'unknown'
+            items.append({
+                'ID': case_item.get('case'),
+                'NAME': case_item.get('title'),
+                'DESCRIPTION': f"合并到已有报告：{report_record.name}",
+                'GROUP_NAME': task.name,
+                'OUTCOME': outcome,
+                'REASON': case_item.get('reason') or '',
+                'HAS_RESULT_AUDIO': True,
+            })
+        return items, valid_count, targets, matched_cases
+
+    @staticmethod
+    def preview_evaluation_result_package():
+        try:
+            if 'file' not in request.files:
+                return error_response("未上传文件")
+            file = request.files['file']
+            if not file.filename:
+                return error_response("未选择文件")
+
+            package = TestCaseController._read_evaluation_result_package(file)
+            items, valid_count, targets, matched_cases = TestCaseController._evaluation_preview_items(package)
+            primary_task, primary_report = next(iter(targets.values()))[0]
+            return success_response({
+                'packageType': 'evaluation-result',
+                'totalRows': len(items),
+                'validCount': valid_count,
+                'matchedTargetCount': sum(len(items) for items in targets.values()),
+                'unmatchedSourceCount': len(package['cases']) - len(matched_cases),
+                'testCases': items,
+                'taskId': primary_task.id,
+                'reportId': primary_report.id,
+                'taskName': primary_task.name,
+                'reportName': primary_report.name,
+                'importTarget': 'existing-task-report',
+                'errors': [],
+            })
+        except Exception as e:
+            return error_response(f"评分结果包预览失败: {str(e)}")
+
+    @staticmethod
+    def _merge_evaluation_results_into_report(task, report_record, cases, package):
+        if cases and cases[0].get('task_type') == 'turn_eval':
+            return TestCaseController._merge_turn_eval_results_into_report(
+                task, report_record, cases, package,
+            )
+        if cases and cases[0].get('task_type') == 'reject_judge':
+            return TestCaseController._merge_reject_results_into_report(
+                task, report_record, cases, package,
+            )
+        if cases and cases[0].get('task_type') == 'env_judge':
+            return TestCaseController._merge_env_results_into_report(
+                task, report_record, cases, package,
+            )
+
+        report_cases = ReportCase.query.filter_by(report_id=report_record.id).order_by(ReportCase.id).all()
+        if not report_cases:
+            raise ValueError(f"报告 {report_record.id} 中没有可合并评分的执行记录")
+
+        report_case_by_name = {report_case.name: report_case for report_case in report_cases}
+        report_case_by_code = {}
+        for report_case in report_cases:
+            code = str(report_case.name or '').split('_', 1)[0]
+            if code:
+                report_case_by_code[code] = report_case
+
+        dimensions = TestCaseController._evaluation_dimensions()
+        dimension_id_to_name = {dimension.id: dimension.name for dimension in dimensions}
+
+        unmatched_cases = []
+        matched_count = 0
+        metric_values = {}
+        category_stats = {}
+        completed_count = 0
+
+        for case_item in cases:
+            case_code = str(case_item.get('case') or '').strip()
+            report_case = report_case_by_name.get(case_item.get('title')) or report_case_by_code.get(case_code)
+            if not report_case:
+                unmatched_cases.append(case_item.get('case') or case_item.get('title'))
+                continue
+
+            metrics = TestCaseController._evaluation_case_metrics(case_item)
+            report_case.metrics = [{
+                'resource': '历史打断执行',
+                'metrics': [
+                    {
+                        'id': dimension.id,
+                        'metric': dimension.name,
+                        'value': metrics.get(dimension.name),
+                        'round_number': None,
+                        'dimension_type': dimension.dimension_type or 'main',
+                        'parent_dimension_id': dimension.parent_dimension_id,
+                        'parent_dimension_name': dimension_id_to_name.get(dimension.parent_dimension_id),
+                    }
+                    for dimension in dimensions
+                ],
+            }]
+
+            old_algorithm_results = report_case.algorithm_results or []
+            if isinstance(old_algorithm_results, str):
+                try:
+                    old_algorithm_results = json.loads(old_algorithm_results)
+                except (TypeError, ValueError):
+                    old_algorithm_results = []
+            preserved_algorithm_results = [
+                algorithm_result for algorithm_result in old_algorithm_results
+                if not (
+                    isinstance(algorithm_result, dict)
+                    and algorithm_result.get('param_type') == 'number'
+                    and (
+                        algorithm_result.get('param_code') in INTERRUPTION_METRIC_CODES
+                        or algorithm_result.get('param_code') in LEGACY_INTERRUPTION_EXECUTION_METRICS
+                    )
+                )
+            ]
+            report_case.algorithm_results = preserved_algorithm_results + [
+                {
+                    'device': '历史打断执行',
+                    'param_code': INTERRUPTION_METRIC_FIELDS[dimension.name],
+                    'param_type': 'number',
+                    'label': dimension.name,
+                    'value': metrics.get(dimension.name),
+                    'round_number': None,
+                    'dimension_name': dimension.name,
+                }
+                for dimension in dimensions
+                if dimension.name in INTERRUPTION_METRIC_FIELDS
+            ]
+
+            results = report_case.results or []
+            if isinstance(results, str):
+                try:
+                    results = json.loads(results)
+                except (TypeError, ValueError):
+                    results = []
+            if results and isinstance(results[0], dict):
+                updated_result = dict(results[0])
+                updated_result['evaluation'] = {
+                    'schema': package['report'].get('schema'),
+                    'status': case_item.get('category'),
+                    'imported_at': now_cst().isoformat(),
+                    'primary_metrics': metrics,
+                }
+                updated_result['scoring'] = 'completed' if case_item.get('category') == 'valid_metrics' else 'not_scored'
+                report_case.results = [updated_result, *results[1:]]
+
+            old_logs = report_case.logs or {}
+            if isinstance(old_logs, str):
+                try:
+                    old_logs = json.loads(old_logs)
+                except (TypeError, ValueError):
+                    old_logs = {}
+            if not isinstance(old_logs, dict):
+                old_logs = {'original_logs': old_logs}
+            old_logs['evaluation_result_import'] = {
+                'case': case_item.get('case'),
+                'run': case_item.get('run'),
+                'case_uid': case_item.get('case_uid'),
+                'attempt': case_item.get('Live_attempt'),
+                'category': case_item.get('category'),
+            }
+            report_case.logs = json.dumps(old_logs, ensure_ascii=False)
+
+            matched_count += 1
+            case_metrics = {}
+            for dimension in dimensions:
+                metric_value = metrics.get(dimension.name)
+                if isinstance(metric_value, (int, float)):
+                    metric_values.setdefault(dimension.name, []).append(metric_value)
+                    case_metrics[dimension.name] = metric_value
+            category_stats.setdefault(report_case.category or '未分类', []).append(metrics)
+
+            result_outcome = ''
+            if results and isinstance(results[0], dict):
+                result_outcome = results[0].get('outcome') or results[0].get('state') or ''
+            if result_outcome == 'completed':
+                completed_count += 1
+
+        if unmatched_cases:
+            preview = '、'.join(str(item) for item in unmatched_cases[:5])
+            raise ValueError(f"有 {len(unmatched_cases)} 条评分结果未匹配到报告执行记录: {preview}")
+
+        metric_averages = TestCaseController._aggregate_evaluation_metrics(dimensions, metric_values)
+        all_metrics = TestCaseController._evaluation_all_metrics(dimensions)
+        case_type_stats = []
+        for category, category_items in category_stats.items():
+            category_values = {}
+            for item in category_items:
+                for dimension in dimensions:
+                    value = item.get(dimension.name)
+                    if isinstance(value, (int, float)):
+                        category_values.setdefault(dimension.name, []).append(value)
+            category_averages = TestCaseController._aggregate_evaluation_metrics(dimensions, category_values)
+            category_metrics = []
+            for dimension in dimensions:
+                value = category_averages.get(dimension.id)
+                if value is not None:
+                    category_metrics.append({
+                        'id': dimension.id,
+                        'metric': dimension.name,
+                        'value': value,
+                    })
+            case_type_stats.append({
+                'groupId': category,
+                'groupName': category,
+                'metrics': category_metrics,
+            })
+
+        old_meta = ReportSummaryMeta.query.filter_by(report_id=report_record.id).first()
+
+        def meta_value(field, fallback):
+            if not old_meta:
+                return fallback
+            value = getattr(old_meta, field, fallback)
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except (TypeError, ValueError):
+                    return fallback
+            return value if value is not None else fallback
+
+        devices = meta_value('devices', [])
+        apis = meta_value('apis', [])
+        all_case_tags = meta_value('all_case_tags', ['历史导入', '打断测试'])
+        resource_headers = meta_value('resource_headers', [])
+        if not resource_headers:
+            resource_headers = [{
+                'key': '历史打断执行',
+                'label': '历史打断执行',
+                'type': 'unknown',
+                'id': None,
+                'name': '历史打断执行',
+                'version': None,
+                'result_type': None,
+                'editable': False,
+            }]
+
+        for model in (ReportSummary, ReportSummaryMeta, ReportRawData, ReportMetricStats):
+            model.query.filter_by(report_id=report_record.id).delete(synchronize_session=False)
+
+        task_config = task.config or {}
+        task_config['evaluation_result_imported'] = True
+        task_config['evaluation_result_sha256'] = package['sha256']
+        task_config['evaluation_result_as_of'] = package['report'].get('as_of_UTC')
+        task.config = task_config
+        task.updated_at = now_cst()
+
+        report_record.description = '外部全双工打断测试包导入的历史任务报告；已合并外部评分结果'
+        report_record.status = ReportStatus.PUBLISHED.value
+        report_record.updated_at = now_cst()
+
+        db.session.add(ReportSummary(
+            report_id=report_record.id,
+            task_ids=[task.id],
+            total_cases=len(report_cases),
+            completed_cases=completed_count,
+            failed_cases=len(report_cases) - completed_count,
+            pass_rate=round(completed_count / len(report_cases) * 100, 2) if report_cases else 0,
+            duration=task.actual_duration or 0,
+            started_at=task.started_at,
+            completed_at=task.completed_at,
+        ))
+        db.session.add(ReportSummaryMeta(
+            report_id=report_record.id,
+            dimension_values=[
+                {'id': dimension.id, 'name': dimension.name, 'average_value': metric_averages.get(dimension.id)}
+                for dimension in dimensions
+            ],
+            case_categories=sorted(category_stats.keys()),
+            all_case_tags=all_case_tags,
+            devices=devices,
+            apis=apis,
+            resources=['历史打断执行'],
+            resource_headers=resource_headers,
+            all_metrics=all_metrics,
+            field_mappings=meta_value('field_mappings', {}),
+        ))
+        db.session.add(ReportRawData(
+            report_id=report_record.id,
+            raw_data={'历史打断执行': {
+                dimension.name: metric_values.get(dimension.name, [])
+                for dimension in dimensions
+            }},
+        ))
+        db.session.add(ReportMetricStats(
+            report_id=report_record.id,
+            metric_data=[{
+                'resource': '历史打断执行',
+                'metrics': [
+                    {'id': dimension.id, 'metric': dimension.name, 'value': metric_averages.get(dimension.id)}
+                    for dimension in dimensions
+                ],
+            }],
+            tag_metric_data={},
+            tag_category_metric_data={},
+            case_type_stats=case_type_stats,
+            device_stats=[],
+            api_stats=[],
+        ))
+        db.session.commit()
+        return matched_count, len(dimensions)
+
+    @staticmethod
+    def _merge_turn_eval_results_into_report(task, report_record, cases, package):
+        report_cases = ReportCase.query.filter_by(report_id=report_record.id).order_by(ReportCase.id).all()
+        if not report_cases:
+            raise ValueError(f"报告 {report_record.id} 中没有可合并评分的执行记录")
+
+        report_case_by_name = {report_case.name: report_case for report_case in report_cases}
+        report_case_by_code = {}
+        for report_case in report_cases:
+            code = str(report_case.name or '').split('_', 1)[0]
+            if code:
+                report_case_by_code[code] = report_case
+
+        dimensions = TestCaseController._turn_eval_dimensions()
+        dimension_id_to_name = {dimension.id: dimension.name for dimension in dimensions}
+        resource = '历史接管执行'
+        unmatched_cases = []
+        matched_cases = []
+        category_cases = {}
+        completed_count = 0
+
+        for case_item in cases:
+            case_code = str(case_item.get('case') or '').strip()
+            report_case = report_case_by_name.get(case_item.get('title')) or report_case_by_code.get(case_code)
+            if not report_case:
+                unmatched_cases.append(case_code or case_item.get('title'))
+                continue
+
+            case_values = TestCaseController._turn_eval_case_values(case_item)
+            case_metrics = [{
+                'id': dimension.id,
+                'metric': dimension.name,
+                'value': case_values.get(dimension.id),
+                'round_number': None,
+                'dimension_type': dimension.dimension_type or 'main',
+                'parent_dimension_id': dimension.parent_dimension_id,
+                'parent_dimension_name': dimension_id_to_name.get(dimension.parent_dimension_id),
+            } for dimension in dimensions]
+            report_case.metrics = [{'resource': resource, 'metrics': case_metrics}]
+            report_case.description = (
+                str(report_case.description or '').replace('历史打断执行记录', '历史接管执行记录')
+            )
+            report_case.tags = ['历史导入', '话轮接管']
+
+            old_algorithm_results = report_case.algorithm_results or []
+            if isinstance(old_algorithm_results, str):
+                try:
+                    old_algorithm_results = json.loads(old_algorithm_results)
+                except (TypeError, ValueError):
+                    old_algorithm_results = []
+            turn_eval_codes = {code for code, _ in TURN_EVAL_DIMENSION_FIELDS.values()}
+            preserved_algorithm_results = [
+                algorithm_result for algorithm_result in old_algorithm_results
+                if not (
+                    isinstance(algorithm_result, dict)
+                    and algorithm_result.get('param_type') == 'number'
+                    and (
+                        algorithm_result.get('param_code') in turn_eval_codes
+                        or algorithm_result.get('param_code') in TURN_EVAL_LEGACY_METRICS
+                    )
+                )
+            ]
+            report_case.algorithm_results = preserved_algorithm_results + [{
+                'device': resource,
+                'param_code': TURN_EVAL_DIMENSION_FIELDS[dimension.id][0],
+                'param_type': 'number',
+                'label': dimension.name,
+                'value': case_values.get(dimension.id),
+                'round_number': None,
+                'dimension_name': dimension.name,
+            } for dimension in dimensions if dimension.id in TURN_EVAL_DIMENSION_FIELDS]
+
+            results = report_case.results or []
+            if isinstance(results, str):
+                try:
+                    results = json.loads(results)
+                except (TypeError, ValueError):
+                    results = []
+            if results and isinstance(results[0], dict):
+                updated_result = dict(results[0])
+                updated_result['evaluation'] = {
+                    'schema': package['report'].get('schema'),
+                    'status': case_item.get('category'),
+                    'imported_at': now_cst().isoformat(),
+                    'primary_metrics': {
+                        dimensions_by_id.id: case_values.get(dimensions_by_id.id)
+                        for dimensions_by_id in dimensions
+                    },
+                }
+                updated_result['scoring'] = 'completed' if case_item.get('category') == 'valid_metrics' else 'not_scored'
+                report_case.results = [updated_result, *results[1:]]
+
+            old_logs = report_case.logs or {}
+            if isinstance(old_logs, str):
+                try:
+                    old_logs = json.loads(old_logs)
+                except (TypeError, ValueError):
+                    old_logs = {}
+            if not isinstance(old_logs, dict):
+                old_logs = {'original_logs': old_logs}
+            old_logs['evaluation_result_import'] = {
+                'case': case_item.get('case'),
+                'run': case_item.get('run'),
+                'case_uid': case_item.get('case_uid'),
+                'attempt': case_item.get('Live_attempt'),
+                'category': case_item.get('category'),
+            }
+            report_case.logs = json.dumps(old_logs, ensure_ascii=False)
+
+            matched_cases.append(case_item)
+            category_cases.setdefault(report_case.category or '未分类', []).append(case_item)
+            if (results and isinstance(results[0], dict)
+                    and (results[0].get('outcome') or results[0].get('state')) == 'completed'):
+                completed_count += 1
+
+        if unmatched_cases:
+            preview = '、'.join(str(item) for item in unmatched_cases[:5])
+            raise ValueError(f"有 {len(unmatched_cases)} 条评分结果未匹配到报告执行记录: {preview}")
+
+        metric_averages = TestCaseController._aggregate_turn_eval_metrics(dimensions, matched_cases)
+        all_metrics = TestCaseController._evaluation_all_metrics(dimensions)
+        case_type_stats = []
+        for category, category_items in category_cases.items():
+            category_averages = TestCaseController._aggregate_turn_eval_metrics(dimensions, category_items)
+            case_type_stats.append({
+                'groupId': category,
+                'groupName': category,
+                'metrics': [
+                    {'id': dimension.id, 'metric': dimension.name, 'value': category_averages.get(dimension.id)}
+                    for dimension in dimensions
+                    if category_averages.get(dimension.id) is not None
+                ],
+            })
+
+        old_meta = ReportSummaryMeta.query.filter_by(report_id=report_record.id).first()
+
+        def meta_value(field, fallback):
+            if not old_meta:
+                return fallback
+            value = getattr(old_meta, field, fallback)
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except (TypeError, ValueError):
+                    return fallback
+            return value if value is not None else fallback
+
+        for model in (ReportSummary, ReportSummaryMeta, ReportRawData, ReportMetricStats):
+            model.query.filter_by(report_id=report_record.id).delete(synchronize_session=False)
+
+        task_config = task.config or {}
+        task_config['evaluation_result_imported'] = True
+        task_config['evaluation_result_sha256'] = package['sha256']
+        task_config['evaluation_result_as_of'] = package['report'].get('as_of_UTC')
+        task.config = task_config
+        task.updated_at = now_cst()
+
+        dataset_id = (
+            (task.config or {}).get('dataset_id')
+            or (task.config or {}).get('package_id')
+            or report_record.name.rsplit('_', 1)[-1]
+        )
+        report_record.name = f"接管历史报告_{dataset_id}"
+        report_record.description = '外部全双工接管测试包导入的历史任务报告；已合并外部评分结果'
+        report_record.status = ReportStatus.PUBLISHED.value
+        report_record.updated_at = now_cst()
+
+        db.session.add(ReportSummary(
+            report_id=report_record.id,
+            task_ids=[task.id],
+            total_cases=len(report_cases),
+            completed_cases=completed_count,
+            failed_cases=len(report_cases) - completed_count,
+            pass_rate=round(completed_count / len(report_cases) * 100, 2) if report_cases else 0,
+            duration=task.actual_duration or 0,
+            started_at=task.started_at,
+            completed_at=task.completed_at,
+        ))
+        db.session.add(ReportSummaryMeta(
+            report_id=report_record.id,
+            dimension_values=[
+                {'id': dimension.id, 'name': dimension.name, 'average_value': metric_averages.get(dimension.id)}
+                for dimension in dimensions
+            ],
+            case_categories=sorted(category_cases.keys()),
+            all_case_tags=['历史导入', '话轮接管'],
+            devices=meta_value('devices', []),
+            apis=meta_value('apis', []),
+            resources=[resource],
+            resource_headers=[{
+                'key': resource,
+                'label': resource,
+                'type': 'unknown',
+                'id': None,
+                'name': resource,
+                'version': None,
+                'result_type': None,
+                'editable': False,
+            }],
+            all_metrics=all_metrics,
+            field_mappings=meta_value('field_mappings', {}),
+        ))
+        db.session.add(ReportRawData(
+            report_id=report_record.id,
+            raw_data={resource: {
+                dimension.name: [
+                    TestCaseController._turn_eval_case_values(case_item).get(dimension.id)
+                    for case_item in matched_cases
+                    if TestCaseController._turn_eval_case_values(case_item).get(dimension.id) is not None
+                ]
+                for dimension in dimensions
+            }},
+        ))
+        db.session.add(ReportMetricStats(
+            report_id=report_record.id,
+            metric_data=[{
+                'resource': resource,
+                'metrics': [
+                    {'id': dimension.id, 'metric': dimension.name, 'value': metric_averages.get(dimension.id)}
+                    for dimension in dimensions
+                ],
+            }],
+            tag_metric_data={},
+            tag_category_metric_data={},
+            case_type_stats=case_type_stats,
+            device_stats=[],
+            api_stats=[],
+        ))
+        db.session.commit()
+        return len(matched_cases), len(dimensions)
+
+    @staticmethod
+    def _reject_dimensions():
+        dimensions = Dimension.query.filter(
+            Dimension.id.in_(REJECT_DIMENSION_IDS),
+            Dimension.deleted == False,
+            Dimension.status == True,
+        ).order_by(Dimension.sort_order, Dimension.id).all()
+        if not dimensions:
+            raise ValueError("未找到拒识评估维度配置")
+        return dimensions
+
+    @staticmethod
+    def _reject_case_values(case_item):
+        raw_result = case_item.get('raw_platform_result') or {}
+        primary_metrics = case_item.get('primary_metrics') or {}
+        values = {}
+        for dimension_id, (metric_code, _) in REJECT_DIMENSION_FIELDS.items():
+            value = raw_result.get(metric_code)
+            if value is None:
+                value = primary_metrics.get(metric_code)
+            if isinstance(value, bool):
+                value = int(value)
+            values[dimension_id] = value if isinstance(value, (int, float)) else None
+        return values
+
+    @staticmethod
+    def _reject_numeric_value(payload, field_name):
+        value = (payload or {}).get(field_name)
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, (int, float)):
+            return float(value)
+        try:
+            return float(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _aggregate_reject_metrics(dimensions, cases):
+        result = {}
+        for dimension in dimensions:
+            numerator_field, denominator_field = REJECT_DIMENSION_FIELDS[dimension.id]
+            total_numerator = 0.0
+            total_denominator = 0.0
+            for case_item in cases:
+                raw_result = case_item.get('raw_platform_result') or {}
+                primary_metrics = case_item.get('primary_metrics') or {}
+                message = raw_result.get('message') or primary_metrics.get('message')
+                if 'LLM 调用失败' in str(message or ''):
+                    continue
+
+                numerator = TestCaseController._reject_numeric_value(raw_result, numerator_field)
+                if numerator is None:
+                    numerator = TestCaseController._reject_numeric_value(primary_metrics, numerator_field)
+                denominator = TestCaseController._reject_numeric_value(raw_result, denominator_field)
+                if denominator is None:
+                    denominator = TestCaseController._reject_numeric_value(primary_metrics, denominator_field)
+                if numerator is None or denominator is None or denominator <= 0:
+                    continue
+                total_numerator += numerator
+                total_denominator += denominator
+
+            result[dimension.id] = (
+                round(total_numerator / total_denominator * 100, 4)
+                if total_denominator else None
+            )
+        return result
+
+    @staticmethod
+    def _merge_reject_results_into_report(task, report_record, cases, package, commit=True):
+        report_cases = ReportCase.query.filter_by(report_id=report_record.id).order_by(ReportCase.id).all()
+        if not report_cases:
+            raise ValueError(f"报告 {report_record.id} 中没有可合并评分的执行记录")
+
+        report_case_by_name = {report_case.name: report_case for report_case in report_cases}
+        report_case_by_code = {}
+        for report_case in report_cases:
+            code = str(report_case.name or '').split('_', 1)[0]
+            if code:
+                report_case_by_code[code] = report_case
+
+        dimensions = TestCaseController._reject_dimensions()
+        dimension_id_to_name = {dimension.id: dimension.name for dimension in dimensions}
+        resource = '历史拒识执行'
+        unmatched_cases = []
+        matched_cases = []
+        category_cases = {}
+
+        for case_item in cases:
+            case_code = str(case_item.get('case') or '').strip()
+            report_case = report_case_by_name.get(case_item.get('title')) or report_case_by_code.get(case_code)
+            if not report_case:
+                unmatched_cases.append(case_code or case_item.get('title'))
+                continue
+
+            case_values = TestCaseController._reject_case_values(case_item)
+            case_metrics = [{
+                'id': dimension.id,
+                'metric': dimension.name,
+                'value': case_values.get(dimension.id),
+                'round_number': None,
+                'dimension_type': dimension.dimension_type or 'main',
+                'parent_dimension_id': dimension.parent_dimension_id,
+                'parent_dimension_name': dimension_id_to_name.get(dimension.parent_dimension_id),
+            } for dimension in dimensions]
+            report_case.metrics = [{'resource': resource, 'metrics': case_metrics}]
+            report_case.description = (
+                str(report_case.description or '').replace('历史打断执行记录', '历史拒识执行记录')
+            )
+            report_case.tags = ['历史导入', '拒识测试']
+
+            old_algorithm_results = report_case.algorithm_results or []
+            if isinstance(old_algorithm_results, str):
+                try:
+                    old_algorithm_results = json.loads(old_algorithm_results)
+                except (TypeError, ValueError):
+                    old_algorithm_results = []
+            reject_codes = {
+                code for fields in REJECT_DIMENSION_FIELDS.values() for code in fields
+            }
+            preserved_algorithm_results = [
+                algorithm_result for algorithm_result in old_algorithm_results
+                if not (
+                    isinstance(algorithm_result, dict)
+                    and algorithm_result.get('param_type') == 'number'
+                    and (
+                        algorithm_result.get('param_code') in reject_codes
+                        or algorithm_result.get('param_code') in REJECT_LEGACY_METRICS
+                    )
+                )
+            ]
+            report_case.algorithm_results = preserved_algorithm_results + [{
+                'device': resource,
+                'param_code': REJECT_DIMENSION_FIELDS[dimension.id][0],
+                'param_type': 'number',
+                'label': dimension.name,
+                'value': case_values.get(dimension.id),
+                'round_number': None,
+                'dimension_name': dimension.name,
+            } for dimension in dimensions]
+
+            results = report_case.results or []
+            if isinstance(results, str):
+                try:
+                    results = json.loads(results)
+                except (TypeError, ValueError):
+                    results = []
+            if results and isinstance(results[0], dict):
+                updated_result = dict(results[0])
+                updated_result['evaluation'] = {
+                    'schema': package['report'].get('schema'),
+                    'status': case_item.get('category'),
+                    'imported_at': now_cst().isoformat(),
+                    'primary_metrics': case_values,
+                }
+                updated_result['scoring'] = (
+                    'completed' if case_item.get('category') == 'valid_metrics' else 'not_scored'
+                )
+                report_case.results = [updated_result, *results[1:]]
+
+            old_logs = report_case.logs or {}
+            if isinstance(old_logs, str):
+                try:
+                    old_logs = json.loads(old_logs)
+                except (TypeError, ValueError):
+                    old_logs = {}
+            if not isinstance(old_logs, dict):
+                old_logs = {'original_logs': old_logs}
+            old_logs['evaluation_result_import'] = {
+                'case': case_item.get('case'),
+                'run': case_item.get('run'),
+                'case_uid': case_item.get('case_uid'),
+                'attempt': case_item.get('Live_attempt'),
+                'category': case_item.get('category'),
+            }
+            report_case.logs = json.dumps(old_logs, ensure_ascii=False)
+
+            matched_cases.append(case_item)
+            category_cases.setdefault(report_case.category or '未分类', []).append(case_item)
+
+        if unmatched_cases:
+            preview = '、'.join(str(item) for item in unmatched_cases[:5])
+            raise ValueError(f"有 {len(unmatched_cases)} 条评分结果未匹配到报告执行记录: {preview}")
+
+        metric_averages = TestCaseController._aggregate_reject_metrics(dimensions, matched_cases)
+        all_metrics = TestCaseController._evaluation_all_metrics(dimensions)
+        case_type_stats = []
+        for category, category_items in category_cases.items():
+            category_averages = TestCaseController._aggregate_reject_metrics(dimensions, category_items)
+            case_type_stats.append({
+                'groupId': category,
+                'groupName': category,
+                'metrics': [
+                    {'id': dimension.id, 'metric': dimension.name, 'value': category_averages.get(dimension.id)}
+                    for dimension in dimensions
+                    if category_averages.get(dimension.id) is not None
+                ],
+            })
+
+        old_meta = ReportSummaryMeta.query.filter_by(report_id=report_record.id).first()
+
+        def meta_value(field, fallback):
+            if not old_meta:
+                return fallback
+            value = getattr(old_meta, field, fallback)
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except (TypeError, ValueError):
+                    return fallback
+            return value if value is not None else fallback
+
+        for model in (ReportSummary, ReportSummaryMeta, ReportRawData, ReportMetricStats):
+            model.query.filter_by(report_id=report_record.id).delete(synchronize_session=False)
+
+        dataset_id = (
+            (task.config or {}).get('dataset_id')
+            or (task.config or {}).get('package_id')
+            or report_record.name.rsplit('_', 1)[-1]
+        )
+        split_suffix = str((task.config or {}).get('split_suffix') or '')
+        task.name = f"拒识历史任务_{dataset_id}{split_suffix}"
+        task.description = '外部全双工拒识测试包导入的历史任务记录'
+        task_config = task.config or {}
+        task_config['evaluation_result_imported'] = True
+        task_config['evaluation_result_sha256'] = package['sha256']
+        task_config['evaluation_result_as_of'] = package['report'].get('as_of_UTC')
+        task.config = task_config
+        task.updated_at = now_cst()
+
+        report_record.name = f"拒识历史报告_{dataset_id}{split_suffix}"
+        report_record.description = '外部全双工拒识测试包导入的历史任务报告；已合并外部评分结果'
+        report_record.status = ReportStatus.PUBLISHED.value
+        report_record.updated_at = now_cst()
+
+        completed_count = int(task.completed_cases or 0)
+        db.session.add(ReportSummary(
+            report_id=report_record.id,
+            task_ids=[task.id],
+            total_cases=len(report_cases),
+            completed_cases=completed_count,
+            failed_cases=max(len(report_cases) - completed_count, 0),
+            pass_rate=round(completed_count / len(report_cases) * 100, 2) if report_cases else 0,
+            duration=task.actual_duration or 0,
+            started_at=task.started_at,
+            completed_at=task.completed_at,
+        ))
+        db.session.add(ReportSummaryMeta(
+            report_id=report_record.id,
+            dimension_values=[
+                {'id': dimension.id, 'name': dimension.name, 'average_value': metric_averages.get(dimension.id)}
+                for dimension in dimensions
+            ],
+            case_categories=sorted(category_cases.keys()),
+            all_case_tags=['历史导入', '拒识测试'],
+            devices=meta_value('devices', []),
+            apis=meta_value('apis', []),
+            resources=[resource],
+            resource_headers=[{
+                'key': resource,
+                'label': resource,
+                'type': 'unknown',
+                'id': None,
+                'name': resource,
+                'version': None,
+                'result_type': None,
+                'editable': False,
+            }],
+            all_metrics=all_metrics,
+            field_mappings=meta_value('field_mappings', {}),
+        ))
+        db.session.add(ReportRawData(
+            report_id=report_record.id,
+            raw_data={resource: {
+                dimension.name: [
+                    TestCaseController._reject_case_values(case_item).get(dimension.id)
+                    for case_item in matched_cases
+                    if TestCaseController._reject_case_values(case_item).get(dimension.id) is not None
+                ]
+                for dimension in dimensions
+            }},
+        ))
+        db.session.add(ReportMetricStats(
+            report_id=report_record.id,
+            metric_data=[{
+                'resource': resource,
+                'metrics': [
+                    {'id': dimension.id, 'metric': dimension.name, 'value': metric_averages.get(dimension.id)}
+                    for dimension in dimensions
+                ],
+            }],
+            tag_metric_data={},
+            tag_category_metric_data={},
+            case_type_stats=case_type_stats,
+            device_stats=[],
+            api_stats=[],
+        ))
+        if commit:
+            db.session.commit()
+        return len(matched_cases), len(dimensions)
+
+    @staticmethod
+    def _env_dimensions():
+        dimensions = Dimension.query.filter(
+            Dimension.id.in_(ENV_DIMENSION_IDS),
+            Dimension.deleted == False,
+            Dimension.status == True,
+        ).order_by(Dimension.sort_order, Dimension.id).all()
+        if not dimensions:
+            raise ValueError("未找到环境理解评估维度配置")
+        return dimensions
+
+    @staticmethod
+    def _env_case_values(case_item):
+        raw_result = case_item.get('raw_platform_result') or {}
+        primary_metrics = case_item.get('primary_metrics') or {}
+        values = {}
+        for dimension_id, metric_code in ENV_DIMENSION_FIELDS.items():
+            value = raw_result.get(metric_code)
+            if value is None:
+                value = primary_metrics.get(metric_code)
+            if isinstance(value, bool):
+                value = int(value)
+            values[dimension_id] = value if isinstance(value, (int, float)) else None
+        return values
+
+    @staticmethod
+    def _aggregate_env_metrics(dimensions, cases):
+        result = {}
+        for dimension in dimensions:
+            values = [
+                TestCaseController._env_case_values(case_item).get(dimension.id)
+                for case_item in cases
+            ]
+            values = [value for value in values if isinstance(value, (int, float))]
+            if not values:
+                result[dimension.id] = None
+            elif dimension.id == 133:
+                result[dimension.id] = round(
+                    sum(1 for value in values if value == 1) / len(values) * 100,
+                    2,
+                )
+            else:
+                result[dimension.id] = round(sum(values) / len(values), 2)
+        return result
+
+    @staticmethod
+    def _merge_env_results_into_report(task, report_record, cases, package):
+        report_cases = ReportCase.query.filter_by(report_id=report_record.id).order_by(ReportCase.id).all()
+        if not report_cases:
+            raise ValueError(f"报告 {report_record.id} 中没有可合并评分的执行记录")
+
+        report_case_by_name = {report_case.name: report_case for report_case in report_cases}
+        report_case_by_code = {}
+        for report_case in report_cases:
+            code = str(report_case.name or '').split('_', 1)[0]
+            if code:
+                report_case_by_code[code] = report_case
+
+        dimensions = TestCaseController._env_dimensions()
+        resource = '历史环境理解执行'
+        unmatched_cases = []
+        matched_cases = []
+        category_cases = {}
+
+        for case_item in cases:
+            case_code = str(case_item.get('case') or '').strip()
+            report_case = report_case_by_name.get(case_item.get('title')) or report_case_by_code.get(case_code)
+            if not report_case:
+                unmatched_cases.append(case_code or case_item.get('title'))
+                continue
+
+            case_values = TestCaseController._env_case_values(case_item)
+            case_metrics = [{
+                'id': dimension.id,
+                'metric': dimension.name,
+                'value': case_values.get(dimension.id),
+                'round_number': None,
+                'dimension_type': dimension.dimension_type or 'main',
+                'parent_dimension_id': dimension.parent_dimension_id,
+                'parent_dimension_name': None,
+            } for dimension in dimensions]
+            report_case.metrics = [{'resource': resource, 'metrics': case_metrics}]
+            report_case.description = (
+                str(report_case.description or '').replace('历史打断执行记录', '历史环境理解执行记录')
+            )
+            report_case.tags = ['历史导入', '环境理解']
+
+            old_algorithm_results = report_case.algorithm_results or []
+            if isinstance(old_algorithm_results, str):
+                try:
+                    old_algorithm_results = json.loads(old_algorithm_results)
+                except (TypeError, ValueError):
+                    old_algorithm_results = []
+            env_codes = set(ENV_DIMENSION_FIELDS.values())
+            preserved_algorithm_results = [
+                algorithm_result for algorithm_result in old_algorithm_results
+                if not (
+                    isinstance(algorithm_result, dict)
+                    and algorithm_result.get('param_type') == 'number'
+                    and (
+                        algorithm_result.get('param_code') in env_codes
+                        or algorithm_result.get('param_code') in ENV_LEGACY_METRICS
+                    )
+                )
+            ]
+            report_case.algorithm_results = preserved_algorithm_results + [{
+                'device': resource,
+                'param_code': ENV_DIMENSION_FIELDS[dimension.id],
+                'param_type': 'number',
+                'label': dimension.name,
+                'value': case_values.get(dimension.id),
+                'round_number': None,
+                'dimension_name': dimension.name,
+            } for dimension in dimensions]
+
+            results = report_case.results or []
+            if isinstance(results, str):
+                try:
+                    results = json.loads(results)
+                except (TypeError, ValueError):
+                    results = []
+            if results and isinstance(results[0], dict):
+                updated_result = dict(results[0])
+                updated_result['evaluation'] = {
+                    'schema': package['report'].get('schema'),
+                    'status': case_item.get('category'),
+                    'imported_at': now_cst().isoformat(),
+                    'primary_metrics': case_values,
+                }
+                updated_result['scoring'] = (
+                    'completed' if case_item.get('category') == 'valid_metrics' else 'not_scored'
+                )
+                report_case.results = [updated_result, *results[1:]]
+
+            old_logs = report_case.logs or {}
+            if isinstance(old_logs, str):
+                try:
+                    old_logs = json.loads(old_logs)
+                except (TypeError, ValueError):
+                    old_logs = {}
+            if not isinstance(old_logs, dict):
+                old_logs = {'original_logs': old_logs}
+            old_logs['evaluation_result_import'] = {
+                'case': case_item.get('case'),
+                'run': case_item.get('run'),
+                'case_uid': case_item.get('case_uid'),
+                'attempt': case_item.get('Live_attempt'),
+                'category': case_item.get('category'),
+            }
+            report_case.logs = json.dumps(old_logs, ensure_ascii=False)
+
+            matched_cases.append(case_item)
+            category_cases.setdefault(report_case.category or '未分类', []).append(case_item)
+
+        if unmatched_cases:
+            preview = '、'.join(str(item) for item in unmatched_cases[:5])
+            raise ValueError(f"有 {len(unmatched_cases)} 条评分结果未匹配到报告执行记录: {preview}")
+
+        metric_averages = TestCaseController._aggregate_env_metrics(dimensions, matched_cases)
+        all_metrics = TestCaseController._evaluation_all_metrics(dimensions)
+        case_type_stats = []
+        for category, category_items in category_cases.items():
+            category_averages = TestCaseController._aggregate_env_metrics(dimensions, category_items)
+            case_type_stats.append({
+                'groupId': category,
+                'groupName': category,
+                'metrics': [
+                    {'id': dimension.id, 'metric': dimension.name, 'value': category_averages.get(dimension.id)}
+                    for dimension in dimensions
+                    if category_averages.get(dimension.id) is not None
+                ],
+            })
+
+        old_meta = ReportSummaryMeta.query.filter_by(report_id=report_record.id).first()
+
+        def meta_value(field, fallback):
+            if not old_meta:
+                return fallback
+            value = getattr(old_meta, field, fallback)
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except (TypeError, ValueError):
+                    return fallback
+            return value if value is not None else fallback
+
+        for model in (ReportSummary, ReportSummaryMeta, ReportRawData, ReportMetricStats):
+            model.query.filter_by(report_id=report_record.id).delete(synchronize_session=False)
+
+        dataset_id = (
+            (task.config or {}).get('dataset_id')
+            or (task.config or {}).get('package_id')
+            or report_record.name.rsplit('_', 1)[-1]
+        )
+        task.name = f"环境理解历史任务_{dataset_id}"
+        task.description = '外部全双工环境理解测试包导入的历史任务记录'
+        task_config = task.config or {}
+        task_config['evaluation_result_imported'] = True
+        task_config['evaluation_result_sha256'] = package['sha256']
+        task_config['evaluation_result_as_of'] = package['report'].get('as_of_UTC')
+        task.config = task_config
+        task.updated_at = now_cst()
+
+        report_record.name = f"环境理解历史报告_{dataset_id}"
+        report_record.description = '外部全双工环境理解测试包导入的历史任务报告；已合并外部评分结果'
+        report_record.status = ReportStatus.PUBLISHED.value
+        report_record.updated_at = now_cst()
+
+        completed_count = int(task.completed_cases or 0)
+        db.session.add(ReportSummary(
+            report_id=report_record.id,
+            task_ids=[task.id],
+            total_cases=len(report_cases),
+            completed_cases=completed_count,
+            failed_cases=max(len(report_cases) - completed_count, 0),
+            pass_rate=round(completed_count / len(report_cases) * 100, 2) if report_cases else 0,
+            duration=task.actual_duration or 0,
+            started_at=task.started_at,
+            completed_at=task.completed_at,
+        ))
+        db.session.add(ReportSummaryMeta(
+            report_id=report_record.id,
+            dimension_values=[
+                {'id': dimension.id, 'name': dimension.name, 'average_value': metric_averages.get(dimension.id)}
+                for dimension in dimensions
+            ],
+            case_categories=sorted(category_cases.keys()),
+            all_case_tags=['历史导入', '环境理解'],
+            devices=meta_value('devices', []),
+            apis=meta_value('apis', []),
+            resources=[resource],
+            resource_headers=[{
+                'key': resource,
+                'label': resource,
+                'type': 'unknown',
+                'id': None,
+                'name': resource,
+                'version': None,
+                'result_type': None,
+                'editable': False,
+            }],
+            all_metrics=all_metrics,
+            field_mappings=meta_value('field_mappings', {}),
+        ))
+        db.session.add(ReportRawData(
+            report_id=report_record.id,
+            raw_data={resource: {
+                dimension.name: [
+                    TestCaseController._env_case_values(case_item).get(dimension.id)
+                    for case_item in matched_cases
+                    if TestCaseController._env_case_values(case_item).get(dimension.id) is not None
+                ]
+                for dimension in dimensions
+            }},
+        ))
+        db.session.add(ReportMetricStats(
+            report_id=report_record.id,
+            metric_data=[{
+                'resource': resource,
+                'metrics': [
+                    {'id': dimension.id, 'metric': dimension.name, 'value': metric_averages.get(dimension.id)}
+                    for dimension in dimensions
+                ],
+            }],
+            tag_metric_data={},
+            tag_category_metric_data={},
+            case_type_stats=case_type_stats,
+            device_stats=[],
+            api_stats=[],
+        ))
+        db.session.commit()
+        return len(matched_cases), len(dimensions)
+
+    @staticmethod
+    def _create_or_update_evaluation_task_report(package):
+        targets = TestCaseController._evaluation_targets(package)
+        if not targets:
+            raise ValueError("评分结果中未找到已导入的打断任务记录，请先导入对应的打断测试包")
+
+        results = []
+        for run_id, run_targets in targets.items():
+            run_cases = [
+                case_item for case_item in package['cases']
+                if str(case_item.get('run') or '').strip() == run_id
+            ]
+            split_codes = set().union(*[
+                TestCaseController._split_case_codes(task)
+                for task, _ in run_targets
+            ] or [set()])
+            for task, report_record in run_targets:
+                target_codes = TestCaseController._split_case_codes(task)
+                cases = [
+                    case_item for case_item in run_cases
+                    if (
+                        str(case_item.get('case') or '').strip().upper() in target_codes
+                        if target_codes
+                        else str(case_item.get('case') or '').strip().upper() not in split_codes
+                    )
+                ]
+                matched_count, metric_count = TestCaseController._merge_evaluation_results_into_report(
+                    task, report_record, cases, package,
+                )
+                results.append({
+                    'run': run_id,
+                    'task_id': task.id,
+                    'report_id': report_record.id,
+                    'matched_count': matched_count,
+                    'metric_count': metric_count,
+                })
+        return results
+
+
+    @staticmethod
+    def import_evaluation_result_package():
+        try:
+            if 'file' not in request.files:
+                return error_response("未上传文件")
+            file = request.files['file']
+            if not file.filename:
+                return error_response("未选择文件")
+
+            package = TestCaseController._read_evaluation_result_package(file)
+            results = TestCaseController._create_or_update_evaluation_task_report(package)
+            primary_result = results[0]
+            return success_response({
+                'taskId': primary_result['task_id'],
+                'reportId': primary_result['report_id'],
+                'importedCount': 0,
+                'updatedCount': primary_result['matched_count'],
+                'targetCount': len(results),
+                'results': results,
+                'errors': [],
+            }, '评分结果已合并到已有任务报告')
+        except Exception as e:
+            db.session.rollback()
+            return error_response(f"评分结果合并到已有任务报告失败: {str(e)}")
 
     @staticmethod
     def download_template():

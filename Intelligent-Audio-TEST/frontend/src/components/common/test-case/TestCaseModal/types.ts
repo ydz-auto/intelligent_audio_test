@@ -66,6 +66,7 @@ export interface ImportPreviewData {
   total: number;
   items: ImportPreviewItem[];
   audioConfigsCount: number;
+  resultAudioCount?: number;
   dimensionsCount: number;
   tagsCount: number;
   groupsCount: number;

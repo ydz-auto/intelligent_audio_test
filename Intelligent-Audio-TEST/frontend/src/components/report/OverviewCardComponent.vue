@@ -116,12 +116,20 @@ const getNormalizedMetricData = () => {
     })
     return map
   }
-  // 旧格式: {category: {resource: {metric: value}}}
+  // 对象格式:
+  //   {resource: {metric: value}}
+  //   {category: {resource: {metric: value}}}
   if (raw && typeof raw === 'object') {
     const map = {}
     Object.keys(raw).forEach(category => {
       const resData = raw[category]
       if (!resData || typeof resData !== 'object') return
+      const entries = Object.entries(resData)
+      const isFlatResource = entries.length > 0 && entries.every(([, value]) => value === null || typeof value !== 'object')
+      if (isFlatResource) {
+        map[category] = { ...resData }
+        return
+      }
       Object.keys(resData).forEach(resource => {
         if (!map[resource]) map[resource] = {}
         const metrics = resData[resource]
@@ -306,7 +314,7 @@ const tableData = computed(() => {
       const row = { _rowId: `main_${rowSeq++}`, dimension: group.main.name, isSubDim: false, isGroupHeader: mainIsHeader }
       const unit = group.main.unit || ''
       devices.value.forEach((device, index) => {
-        const val = formatMetricValue(group.main.name, getAverageValue(group.main.name, device))
+        const val = formatMetricValue(group.main.name, getAverageValue(group.main, device))
         row[`device-${index}`] = val === '-' ? '-' : val + unit
       })
       rows.push(row)
@@ -316,7 +324,7 @@ const tableData = computed(() => {
       const row = { _rowId: `sub_${rowSeq++}`, dimension: sub.name, isSubDim: true }
       const unit = sub.unit || ''
       devices.value.forEach((device, index) => {
-        const val = formatMetricValue(sub.name, getAverageValue(sub.name, device))
+        const val = formatMetricValue(sub.name, getAverageValue(sub, device))
         row[`device-${index}`] = val === '-' ? '-' : val + unit
       })
       rows.push(row)
@@ -336,14 +344,28 @@ const formatMetricValue = (metricName, value) => {
 
 // 从 metricData 获取指定 resource 的指定 metric 值
 // metricData 已归一化为 {resource: {metric: value}}（resource 级别全局平均）
-const getAverageValue = (metricName, device) => {
+const getAverageValue = (metric, device) => {
   const metricData = getNormalizedMetricData()
   if (!metricData || typeof metricData !== 'object') return null
+  const metricIds = [metric?.id, metric?.metric, metric?.name].filter(Boolean).map(String)
+
+  const normalizeMetricName = (name) =>
+    String(name ?? '').replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+
+  const readMetric = (metrics) => {
+    if (!metrics || typeof metrics !== 'object') return null
+    for (const metricId of metricIds) {
+      if (typeof metrics[metricId] === 'number') return metrics[metricId]
+    }
+    const normalizedIds = new Set(metricIds.map(metricId => normalizeMetricName(metricId)))
+    const matchedKey = Object.keys(metrics).find(key => normalizedIds.has(normalizeMetricName(key)))
+    return matchedKey && typeof metrics[matchedKey] === 'number' ? metrics[matchedKey] : null
+  }
 
   const findValue = (resourceKey) => {
     if (resourceKey && metricData[resourceKey]) {
-      const v = metricData[resourceKey][metricName]
-      if (typeof v === 'number') return v
+      const v = readMetric(metricData[resourceKey])
+      if (v !== null) return v
     }
     return null
   }
@@ -367,8 +389,9 @@ const getAverageValue = (metricName, device) => {
   for (const [key, metrics] of Object.entries(metricData)) {
     if (!metrics || typeof metrics !== 'object') continue
     const currentResourceName = key.includes('-') ? key.split('-').slice(1).join('-') : key
-    if (currentResourceName === deviceName && typeof metrics[metricName] === 'number') {
-      return metrics[metricName]
+    if (currentResourceName === deviceName) {
+      const v = readMetric(metrics)
+      if (v !== null) return v
     }
   }
 

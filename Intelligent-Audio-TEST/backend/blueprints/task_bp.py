@@ -1,5 +1,6 @@
 from flask import Blueprint
 from backend.controllers.task_controller import TaskController
+from backend.controllers.testcase_controller import TestCaseController
 
 task_bp = Blueprint('tasks', __name__)
 
@@ -54,6 +55,22 @@ def batch_action():
 @task_bp.route('/merge', methods=['POST'])
 def merge():
     return TaskController.merge()
+
+@task_bp.route('/import/interruption-package/preview', methods=['POST'])
+def preview_interruption_package():
+    return TestCaseController.preview_interruption_package()
+
+@task_bp.route('/import/interruption-package', methods=['POST'])
+def import_interruption_package():
+    return TestCaseController.import_interruption_task_report()
+
+@task_bp.route('/import/evaluation-result-package/preview', methods=['POST'])
+def preview_evaluation_result_package():
+    return TestCaseController.preview_evaluation_result_package()
+
+@task_bp.route('/import/evaluation-result-package', methods=['POST'])
+def import_evaluation_result_package():
+    return TestCaseController.import_evaluation_result_package()
 
 @task_bp.route('/<int:task_id>/stop', methods=['POST'])
 def stop(task_id):

@@ -71,6 +71,7 @@ def download_template():
 def preview_import():
     return TestCaseController.preview_import()
 
+
 @testcase_bp.route('/refresh_task/<task_id>', methods=['GET'])
 def get_refresh_task_status(task_id):
     from backend.utils.common.reference_refresh_task import get_reference_refresh_task_status

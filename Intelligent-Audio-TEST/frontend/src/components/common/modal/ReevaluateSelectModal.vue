@@ -3,7 +3,8 @@
     <p class="reevaluate-title">{{ content }}</p>
     <div class="reevaluate-options">
 
-      <div 
+      <div
+        v-if="!isImported"
         class="reevaluate-option" 
         :class="{ active: selectedType === 'failed' }"
         @click="selectedType = 'failed'"
@@ -30,7 +31,7 @@
         </div>
       </div>
     </div>
-    <div class="reevaluate-checkbox">
+    <div v-if="!isImported" class="reevaluate-checkbox">
       <label class="checkbox-label">
         <input 
           type="checkbox" 
@@ -62,11 +63,13 @@ import { ref } from 'vue'
 const props = defineProps({
   modalId: { type: String, required: true },
   content: { type: String, default: '请选择重新评估类型' }
+  ,
+  isImported: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['close', 'confirm'])
 
-const selectedType = ref(null)
+const selectedType = ref(props.isImported ? 'all' : null)
 const reextractDeviceOutput = ref(false)
 
 const handleConfirm = () => {

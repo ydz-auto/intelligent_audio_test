@@ -229,6 +229,9 @@
         <div class="task-list-header">
           <h3 class="task-list-title">任务列表</h3>
           <div class="task-actions">
+            <button class="btn btn-secondary" @click="openTaskRecordImport">
+              <i class="fas fa-file-import"></i> 导入历史任务
+            </button>
             <button class="btn btn-primary" @click="createNewTask">
               <i class="fas fa-plus"></i> 创建新任务
             </button>
@@ -557,6 +560,7 @@ import ComparisonReportPanel from '../components/report/ComparisonReportPanel.vu
 import TaskTypeModal from './TasksLogic/TaskTypeModal.vue';
 import PublishTaskModal from '../components/published-task/PublishTaskModal.vue';
 import ReportSnapshotModal from '../components/published-task/ReportSnapshotModal.vue';
+import { tasksApi } from '../utils/api';
 import { usePublishedTasks } from '../composables/usePublishedTasks';
 import { useMergedTasks } from '../composables/useMergedTasks';
 import { usePermissions } from '../composables/usePermissions';
@@ -887,6 +891,30 @@ function openPublishForTask(task: any) {
 function handleClosePublishModal() {
   publishPresetTaskId.value = null;
   isPublishModalVisible.value = false;
+}
+
+async function openTaskRecordImport() {
+  const file = await modalControl.open(MODAL_TYPES.TASK_RECORD_IMPORT, {
+    title: '导入测试任务记录',
+    width: '680px'
+  });
+  if (!(file instanceof File)) return;
+
+  notification.info('正在导入测试任务记录，请稍候...');
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const isJson = file.name.toLowerCase().endsWith('.json');
+    const result = isJson
+      ? await tasksApi.importEvaluationResultPackage(formData)
+      : await tasksApi.importInterruptionPackage(formData);
+    notification.success(
+      `任务记录导入成功：${result?.updatedCount ? '已更新' : '已新增'}，任务 #${result?.taskId}，报告 #${result?.reportId}`
+    );
+    await fetchTasks();
+  } catch (error: any) {
+    notification.error(error?.message || '任务记录导入失败，请检查测试包格式');
+  }
 }
 
 /** 勾选批量发布：名称沿用源任务名，不可发布状态自动跳过 */

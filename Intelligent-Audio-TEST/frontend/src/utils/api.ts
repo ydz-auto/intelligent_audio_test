@@ -372,6 +372,22 @@ async function handleResponse(response: Response, responseType: string = 'json',
 }
 
 export const tasksApi = {
+  async importInterruptionPackage(fileData: FormData) {
+    return request<any>('POST', '/tasks/import/interruption-package', fileData, { isMultipart: true });
+  },
+
+  async previewInterruptionPackage(fileData: FormData) {
+    return request<any>('POST', '/tasks/import/interruption-package/preview', fileData, { isMultipart: true });
+  },
+
+  async importEvaluationResultPackage(fileData: FormData) {
+    return request<any>('POST', '/tasks/import/evaluation-result-package', fileData, { isMultipart: true });
+  },
+
+  async previewEvaluationResultPackage(fileData: FormData) {
+    return request<any>('POST', '/tasks/import/evaluation-result-package/preview', fileData, { isMultipart: true });
+  },
+
   async getAll(params: Record<string, any> = {}, options: RequestOptions = {}) {
     return request('GET', '/tasks', null, { ...options, params });
   },

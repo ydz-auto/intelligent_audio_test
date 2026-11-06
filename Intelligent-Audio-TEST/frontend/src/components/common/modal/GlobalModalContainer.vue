@@ -134,6 +134,7 @@ import TagCategoryModal from './TagCategoryModal.vue'
 import TagEditModal from './TagEditModal.vue'
 import TaskTypeModal from '../../../views/TasksLogic/TaskTypeModal.vue'
 import TaskDetailModal from '../../../views/TasksLogic/TaskDetailModal.vue'
+import TaskRecordImportModal from '../../../views/TasksLogic/TaskRecordImportModal.vue'
 import TestCaseDetailModal from './TestCaseDetailModal.vue'
 import AudioPlayerModal from '../AudioPlayerModal.vue'
 import AudioSelectModal from '../AudioSelectModal.vue'
@@ -271,6 +272,7 @@ const getModalComponent = (type: string) => {
     [MODAL_TYPES.FOLDER_IMPORT]: FolderImportModal,
     [MODAL_TYPES.TASK_RELATED]: TaskTypeModal,
     [MODAL_TYPES.TASK_DETAIL]: TaskDetailModal,
+    [MODAL_TYPES.TASK_RECORD_IMPORT]: TaskRecordImportModal,
     [MODAL_TYPES.TEST_CASE_DETAIL]: TestCaseDetailModal,
     [MODAL_TYPES.SPL_CALIBRATION]: SPLCalibrationModal,
     [MODAL_TYPES.AUDIO_IMPORT]: UploadFileModal,

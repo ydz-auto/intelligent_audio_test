@@ -68,6 +68,10 @@ def get_case_averages_by_filters():
 def get_report_cases(report_id):
     return ReportController.get_report_cases(report_id)
 
+@report_bp.route('/<int:report_id>/split', methods=['POST'])
+def split_report(report_id):
+    return ReportController.split_report(report_id)
+
 @report_bp.route('/<int:report_id>/cases/search', methods=['POST'])
 def search_report_cases(report_id):
     return ReportController.search_report_cases(report_id)

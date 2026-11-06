@@ -1,5 +1,5 @@
 from flask import request, send_file, Response, stream_with_context, jsonify
-from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, TaskCase, TaskDevice, TaskAPI, ReportStatus, ReportType
+from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, TaskCase, TaskDevice, TaskAPI, TaskTag, ReportStatus, ReportType
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response, format_response
 from backend.utils.web.error_codes import ErrorCode
@@ -44,6 +44,256 @@ class ReportController(ReportControllerBase):
     @staticmethod
     def search_report_cases(report_id):
         return ReportControllerBase.search_report_cases(report_id)
+
+    @staticmethod
+    def split_report(report_id):
+        report = Report.query.filter(
+            Report.id == report_id,
+            Report.deleted == False,
+        ).first()
+        if not report:
+            return error_response("未找到测试报告", 404)
+        if report.type != ReportType.TASK.value:
+            return error_response("仅任务报告支持按用例分离")
+
+        task = db.session.get(Task, report.task_id) if report.task_id else None
+        if not task:
+            return error_response("报告关联任务不存在")
+
+        upload = request.files.get('file')
+        if not upload or not upload.filename:
+            return error_response("请上传评分结果 JSON，用于重算分离后的报告")
+
+        raw_codes = request.form.get('case_codes') or request.form.get('caseCodes')
+        if raw_codes is None and request.is_json:
+            payload = request.get_json(silent=True) or {}
+            raw_codes = payload.get('case_codes') or payload.get('caseCodes')
+        if isinstance(raw_codes, str):
+            try:
+                parsed_codes = json.loads(raw_codes)
+                raw_codes = parsed_codes if isinstance(parsed_codes, list) else raw_codes.split(',')
+            except (TypeError, ValueError):
+                raw_codes = raw_codes.split(',')
+        if not isinstance(raw_codes, list) or not raw_codes:
+            return error_response("请提供要分离的用例编号")
+
+        def normalize_code(value):
+            code = str(value or '').strip().upper()
+            if code.isdigit():
+                return f"JS{int(code):03d}"
+            return code
+
+        case_codes = list(dict.fromkeys(normalize_code(code) for code in raw_codes if str(code).strip()))
+        if not case_codes:
+            return error_response("请提供要分离的用例编号")
+
+        from backend.controllers.testcase_controller import TestCaseController
+
+        try:
+            package = TestCaseController._read_evaluation_result_package(upload)
+        except Exception as exc:
+            return error_response(f"评分结果读取失败: {str(exc)}")
+
+        dataset_id = str(
+            (task.config or {}).get('dataset_id')
+            or (task.config or {}).get('package_id')
+            or ''
+        ).strip()
+        run_cases = [
+            case_item for case_item in package['cases']
+            if (not dataset_id or str(case_item.get('run') or '').strip() == dataset_id)
+        ]
+        if not run_cases:
+            return error_response("评分结果中没有找到该任务对应的评分数据")
+        if run_cases[0].get('task_type') != 'reject_judge':
+            return error_response("当前仅支持拒识历史报告的用例分离")
+
+        package_case_by_code = {
+            normalize_code(case_item.get('case')): case_item
+            for case_item in run_cases
+        }
+        missing_package_codes = [code for code in case_codes if code not in package_case_by_code]
+        if missing_package_codes:
+            return error_response(f"评分结果缺少用例: {', '.join(missing_package_codes)}")
+
+        report_cases = ReportCase.query.filter_by(report_id=report.id).order_by(ReportCase.id).all()
+        report_case_by_code = {}
+        for report_case in report_cases:
+            code = normalize_code(str(report_case.name or '').split('_', 1)[0])
+            if code:
+                report_case_by_code[code] = report_case
+        missing_report_codes = [code for code in case_codes if code not in report_case_by_code]
+        if missing_report_codes:
+            return error_response(f"报告中缺少用例: {', '.join(missing_report_codes)}")
+        if len(case_codes) >= len(report_cases):
+            return error_response("不能分离全部用例，原报告至少需要保留一条记录")
+
+        selected_report_cases = [report_case_by_code[code] for code in case_codes]
+        selected_case_ids = set(case_codes)
+        selected_package_cases = [package_case_by_code[code] for code in case_codes]
+        remaining_package_cases = [
+            case_item for case_item in run_cases
+            if normalize_code(case_item.get('case')) not in selected_case_ids
+        ]
+
+        def completion_counts(items):
+            completed = 0
+            for report_case in items:
+                results = report_case.results or []
+                if isinstance(results, str):
+                    try:
+                        results = json.loads(results)
+                    except (TypeError, ValueError):
+                        results = []
+                result = results[0] if results and isinstance(results[0], dict) else {}
+                outcome = str(result.get('outcome') or '')
+                scoring = str(result.get('scoring') or '')
+                if outcome == 'completed' or (
+                    outcome == 'infrastructure_failed' and scoring == 'completed'
+                ):
+                    completed += 1
+            return completed, len(items) - completed
+
+        selected_completed, selected_failed = completion_counts(selected_report_cases)
+        remaining_report_cases = [
+            report_case for report_case in report_cases
+            if normalize_code(str(report_case.name or '').split('_', 1)[0]) not in selected_case_ids
+        ]
+        remaining_completed, remaining_failed = completion_counts(remaining_report_cases)
+
+        split_suffix = '_分离组'
+        new_task = Task(
+            name=f"拒识历史任务_{dataset_id}{split_suffix}",
+            description=f"从任务 {task.id} 的报告分离出的拒识用例集合",
+            type=task.type,
+            status=task.status,
+            config={
+                **(task.config or {}),
+                'split_suffix': split_suffix,
+                'split_from_task_id': task.id,
+                'split_from_report_id': report.id,
+                'split_case_codes': case_codes,
+            },
+            algorithm_type=task.algorithm_type,
+            algorithm_params=task.algorithm_params,
+            total_cases=len(selected_report_cases),
+            completed_cases=selected_completed,
+            failed_cases=selected_failed,
+            created_by=task.created_by,
+            created_at=now_cst(),
+            updated_at=now_cst(),
+            started_at=task.started_at,
+            completed_at=task.completed_at,
+            estimated_time=task.estimated_time,
+            actual_duration=task.actual_duration,
+            published_task_id=task.published_task_id,
+            published_task_version=task.published_task_version,
+            execution_source=task.execution_source,
+        )
+        db.session.add(new_task)
+        db.session.flush()
+
+        for relation in TaskDevice.query.filter_by(task_id=task.id).all():
+            db.session.add(TaskDevice(task_id=new_task.id, device_id=relation.device_id))
+        for relation in TaskAPI.query.filter_by(task_id=task.id).all():
+            db.session.add(TaskAPI(task_id=new_task.id, api_id=relation.api_id))
+        for relation in TaskTag.query.filter_by(task_id=task.id).all():
+            db.session.add(TaskTag(task_id=new_task.id, tag_id=relation.tag_id))
+
+        selected_test_case_ids = [
+            report_case.test_case_id for report_case in selected_report_cases
+            if report_case.test_case_id
+        ]
+        if selected_test_case_ids:
+            for relation in TaskCase.query.filter(
+                TaskCase.task_id == task.id,
+                TaskCase.test_case_id.in_(selected_test_case_ids),
+            ).all():
+                db.session.add(TaskCase(
+                    task_id=new_task.id,
+                    test_case_id=relation.test_case_id,
+                    status=relation.status,
+                    execution_status=relation.execution_status,
+                    evaluation_status=relation.evaluation_status,
+                    started_at=relation.started_at,
+                    completed_at=relation.completed_at,
+                    duration=relation.duration,
+                    error_message=relation.error_message,
+                ))
+
+        new_report = Report(
+            name=f"拒识历史报告_{dataset_id}{split_suffix}",
+            type=ReportType.TASK.value,
+            description=f"从报告 {report.id} 分离出的拒识用例报告",
+            task_id=new_task.id,
+            algorithm_type=task.algorithm_type,
+            status=ReportStatus.PUBLISHED.value,
+            analysis=report.analysis,
+        )
+        db.session.add(new_report)
+        db.session.flush()
+
+        old_meta = ReportSummaryMeta.query.filter_by(report_id=report.id).first()
+        if old_meta:
+            db.session.add(ReportSummaryMeta(
+                report_id=new_report.id,
+                dimension_values=old_meta.dimension_values or [],
+                case_categories=old_meta.case_categories or [],
+                all_case_tags=old_meta.all_case_tags or [],
+                devices=old_meta.devices or [],
+                apis=old_meta.apis or [],
+                resources=old_meta.resources or [],
+                resource_headers=old_meta.resource_headers or [],
+                all_metrics=old_meta.all_metrics or [],
+                field_mappings=old_meta.field_mappings or {},
+            ))
+
+        for report_case in selected_report_cases:
+            db.session.add(ReportCase(
+                report_id=new_report.id,
+                test_case_id=report_case.test_case_id,
+                name=report_case.name,
+                description=report_case.description,
+                category=report_case.category,
+                tags=report_case.tags,
+                metrics=report_case.metrics,
+                results=report_case.results,
+                audios=report_case.audios,
+                reference_params=report_case.reference_params,
+                algorithm_results=report_case.algorithm_results,
+                algorithm_type=report_case.algorithm_type,
+                logs=report_case.logs,
+            ))
+            db.session.delete(report_case)
+
+        task.total_cases = len(remaining_report_cases)
+        task.completed_cases = remaining_completed
+        task.failed_cases = remaining_failed
+        task.updated_at = now_cst()
+        db.session.flush()
+
+        try:
+            TestCaseController._merge_reject_results_into_report(
+                new_task, new_report, selected_package_cases, package, commit=False,
+            )
+            TestCaseController._merge_reject_results_into_report(
+                task, report, remaining_package_cases, package, commit=False,
+            )
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+
+        return success_response({
+            'sourceReportId': report.id,
+            'sourceTaskId': task.id,
+            'newReportId': new_report.id,
+            'newTaskId': new_task.id,
+            'splitCount': len(case_codes),
+            'remainingCount': len(remaining_report_cases),
+            'splitReportName': new_report.name,
+            'remainingReportName': report.name,
+        }, '拒识用例已分离到独立报告')
 
     # 生成单个任务报告
     @staticmethod
