@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>拒识裁判 (reject_judge) — 输入输出参数与计算逻辑文档</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #f5f7fa;
+    color: #333;
+    line-height: 1.7;
+    padding: 20px 40px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 28px;
+    margin: 30px 0 10px;
+    color: #1a1a2e;
+  }
+  .subtitle {
+    text-align: center;
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 40px;
+  }
+  h2 {
+    font-size: 22px;
+    color: #1a1a2e;
+    margin: 40px 0 16px;
+    padding-left: 12px;
+    border-left: 4px solid #4a6cf7;
+  }
+  h3 {
+    font-size: 17px;
+    color: #2d2d44;
+    margin: 24px 0 10px;
+  }
+  p { margin: 8px 0; }
+  .card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 24px;
+    margin: 16px 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  th {
+    background: #4a6cf7;
+    color: #fff;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+  }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #e8e8e8;
+  }
+  tr:nth-child(even) td { background: #f9f9fb; }
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .tag-in { background: #e3f2fd; color: #1565c0; }
+  .tag-out { background: #e8f5e9; color: #2e7d32; }
+  .tag-bool { background: #fff3e0; color: #e65100; }
+  .badge-green { background: #c8e6c9; color: #1b5e20; padding: 3px 10px; border-radius: 12px; font-size: 13px; }
+  .badge-yellow { background: #fff9c4; color: #f57f17; padding: 3px 10px; border-radius: 12px; font-size: 13px; }
+  .badge-red { background: #ffcdd2; color: #b71c1c; padding: 3px 10px; border-radius: 12px; font-size: 13px; }
+  pre {
+    background: #1e1e2e;
+    color: #d4d4d4;
+    padding: 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .json-key { color: #569cd6; }
+  .json-str { color: #ce9178; }
+  .json-num { color: #b5cea8; }
+  .json-bool { color: #c586c0; }
+  .json-comment { color: #6a9955; }
+  .flow-diagram {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    margin: 20px 0;
+  }
+  .flow-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .flow-box {
+    border: 2px solid #4a6cf7;
+    border-radius: 8px;
+    padding: 10px 18px;
+    text-align: center;
+    font-size: 14px;
+    background: #fff;
+    min-width: 120px;
+  }
+  .flow-box-io { border-color: #2e7d32; background: #f1f8e9; }
+  .flow-box-process { border-color: #4a6cf7; background: #e8eaf6; }
+  .flow-box-output { border-color: #e65100; background: #fff3e0; }
+  .flow-box-rate { border-color: #7b1fa2; background: #f3e5f5; }
+  .arrow-down {
+    width: 2px;
+    height: 24px;
+    background: #999;
+    position: relative;
+  }
+  .arrow-down::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: -5px;
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 8px solid #999;
+  }
+  .arrow-right {
+    font-size: 20px;
+    color: #999;
+  }
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .scene-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 14px;
+    background: #fafafa;
+  }
+  .scene-card h4 {
+    font-size: 15px;
+    margin-bottom: 6px;
+    color: #4a6cf7;
+  }
+  .scene-card p { font-size: 13px; color: #555; }
+  .behavior-table td:first-child {
+    font-weight: 600;
+    width: 110px;
+  }
+  .rate-table th { font-size: 13px; }
+  .rate-table td { text-align: center; }
+  .rate-success { background: #e8f5e9 !important; color: #2e7d32; font-weight: 600; }
+  .rate-inquiry { background: #fff9c4 !important; color: #f57f17; font-weight: 600; }
+  .rate-failure { background: #ffcdd2 !important; color: #b71c1c; font-weight: 600; }
+  .highlight-box {
+    border-left: 4px solid #e65100;
+    background: #fff8e1;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  .count-table td { font-size: 13px; }
+  .count-total { font-weight: 700; color: #4a6cf7; }
+  .footer {
+    text-align: center;
+    color: #999;
+    font-size: 12px;
+    margin: 40px 0 20px;
+    border-top: 1px solid #e0e0e0;
+    padding-top: 16px;
+  }
+</style>
+</head>
+<body>
+
+<h1>拒识裁判 (reject_judge)</h1>
+<p class="subtitle">输入输出参数与计算逻辑文档 — 基于最新代码梳理</p>
+
+<!-- ════════════ 概述 ════════════ -->
+<h2>概述</h2>
+<div class="card">
+  <p>拒识裁判用于评估语音对话模型在<strong>拒识场景</strong>（非意图交互内容出现时）下的行为表现。</p>
+  <p>裁判 LLM 直接<strong>听取模型回复音频 (ai_wav) 和用户输入音频 (user_wav)</strong>，结合 ASR 时间线辅助参考，判断模型行为类别（五选一），再由代码根据 <code>timing + behavior</code> 计算 <code>rate</code> 评级。</p>
+  <div class="highlight-box">
+    <strong>核心设计理念：</strong>user_wav 音频直接送 LLM（不走 ASR 文本转写），因为环境噪声（地铁播报、商场环境声等）经手机端降噪后 ASR 会丢失关键信息。
+  </div>
+</div>
+
+<!-- ════════════ 流程图 ════════════ -->
+<h2>整体流程</h2>
+<div class="card">
+  <div class="flow-diagram">
+    <div class="flow-row">
+      <div class="flow-box flow-box-io">ai_wav<br><small>模型回复音频</small></div>
+      <div class="flow-box flow-box-io">user_wav<br><small>用户输入音频</small></div>
+      <div class="flow-box flow-box-io">timing<br><small>回复过程中/静默</small></div>
+      <div class="flow-box flow-box-io">is_single_round<br><small>true/false</small></div>
+    </div>
+    <div class="arrow-down"></div>
+    <div class="flow-box flow-box-process" style="min-width:280px;">
+      构建 ASR 时间线 + 完整交互文字 + Prompt<br>
+      <small>ai_wav + user_wav 音频直接发送给 LLM</small>
+    </div>
+    <div class="arrow-down"></div>
+    <div class="flow-box flow-box-process" style="min-width:280px;">
+      LLM 判断 behavior（五选一）+ reason<br>
+      <small>回应 / 恢复 / 不确定询问 / 无关回复 / 静默</small>
+    </div>
+    <div class="arrow-down"></div>
+    <div class="flow-box flow-box-rate" style="min-width:280px;">
+      代码计算 rate + 统计 count<br>
+      <small>compute_rate(timing, behavior)</small>
+    </div>
+    <div class="arrow-down"></div>
+    <div class="flow-row">
+      <div class="flow-box flow-box-output">behavior 0/1 字段<br><small>5个</small></div>
+      <div class="flow-box flow-box-output">rate 字段<br><small>4个</small></div>
+      <div class="flow-box flow-box-output">count 字段<br><small>3组字典</small></div>
+      <div class="flow-box flow-box-output">元信息<br><small>tokens等</small></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ 输入参数 ════════════ -->
+<h2>输入参数</h2>
+<div class="card">
+  <table>
+    <tr>
+      <th>参数名</th><th>类型</th><th>必填</th><th>说明</th>
+    </tr>
+    <tr>
+      <td><code>ai_wav</code></td>
+      <td><span class="tag tag-in">str</span></td>
+      <td>是</td>
+      <td>模型回复音频文件路径（主输入，被判定对象）</td>
+    </tr>
+    <tr>
+      <td><code>user_wav</code></td>
+      <td><span class="tag tag-in">str</span></td>
+      <td>否</td>
+      <td>用户通道音频路径。多轮模式含意图交互+拒识干扰两段；单轮模式直接为拒识内容</td>
+    </tr>
+    <tr>
+      <td><code>is_single_round</code></td>
+      <td><span class="tag tag-bool">bool</span></td>
+      <td>否</td>
+      <td>True=单轮拒识（user_wav 直接为拒识内容）；False=多轮拒识（默认）</td>
+    </tr>
+    <tr>
+      <td><code>timing</code></td>
+      <td><span class="tag tag-in">str</span></td>
+      <td>是</td>
+      <td>拒识发生时机：<code>"回复过程中"</code> 或 <code>"静默"</code>，决定行为类别定义</td>
+    </tr>
+    <tr>
+      <td><code>model</code></td>
+      <td><span class="tag tag-in">str</span></td>
+      <td>否</td>
+      <td>LLM 模型名，留空则自动解析 <code>resolve_model(dimension='reject_judge')</code></td>
+    </tr>
+    <tr>
+      <td><code>max_tokens</code></td>
+      <td><span class="tag tag-in">int</span></td>
+      <td>否</td>
+      <td>LLM 最大输出 token 数，默认读配置</td>
+    </tr>
+    <tr>
+      <td><code>temperature</code></td>
+      <td><span class="tag tag-in">float</span></td>
+      <td>否</td>
+      <td>LLM 温度参数，默认读配置</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ════════════ 单轮 vs 多轮 ════════════ -->
+<h2>单轮 vs 多轮模式</h2>
+<div class="card">
+  <div class="grid-2">
+    <div class="scene-card">
+      <h4>单轮拒识 (is_single_round=True)</h4>
+      <p><strong>user_wav 直接就是需要被拒识的语音内容</strong>，不存在第一段意图交互 + 第二段拒识干扰的分段结构。</p>
+      <p>模型应当拒识该内容，根据 ai_wav 中模型的反应行为进行评判。</p>
+    </div>
+    <div class="scene-card">
+      <h4>多轮拒识 (is_single_round=False)</h4>
+      <p><strong>user_wav 包含两部分内容：</strong></p>
+      <p>1. 第一段：用户意图交互内容</p>
+      <p>2. 第二段：非意图交互内容（拒识干扰）</p>
+      <p>Prompt 中包含分析步骤：找干扰内容时间戳 → 列出其后所有 answer 行 → 检查语义关联。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ 场景定义 ════════════ -->
+<h2>拒识场景定义</h2>
+<div class="card">
+  <div class="grid-2">
+    <div class="scene-card">
+      <h4>场景1 — 非目标人拒识</h4>
+      <p>在目标人与模型对话过程中，出现的非目标人干扰讲话。</p>
+    </div>
+    <div class="scene-card">
+      <h4>场景2 — 目标人非交互意图</h4>
+      <p>在目标人与模型对话过程中，出现了目标人临时插入与其他人的讲话、打电话等，不具备与模型交互意图的语音。</p>
+    </div>
+    <div class="scene-card">
+      <h4>场景3 — 环境噪声</h4>
+      <p>音频中出现环境噪声，如关门声、交通噪声、音乐声等非语音噪声。</p>
+    </div>
+    <div class="scene-card">
+      <h4>场景4 — 用户BC</h4>
+      <p>用户在交互过程中发出"嗯""啊""好的""对"等短反馈词，不具备发起新请求的意图。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ timing 时机 ════════════ -->
+<h2>拒识发生时机 (timing)</h2>
+<div class="card">
+  <table>
+    <tr>
+      <th>timing</th><th>定义</th>
+    </tr>
+    <tr>
+      <td><strong>回复过程中</strong></td>
+      <td>拒识干扰内容在模型正在语音回复的过程中出现，即非意图交互内容与模型的主动语音输出在时间上重叠。模型正在说话，干扰可能打断或穿插在模型回复中。</td>
+    </tr>
+    <tr>
+      <td><strong>静默</strong></td>
+      <td>拒识干扰内容在模型未在进行语音回复的静默期间出现，即模型当前没有主动语音输出，干扰发生在模型的停顿、等待或回复结束后的间隙中。</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ════════════ 行为类别 ════════════ -->
+<h2>行为类别定义（五选一）</h2>
+<div class="card">
+  <p>行为类别定义根据 <code>timing</code> 不同有两套定义，但五种类别名称相同：</p>
+
+  <h3>回复过程中</h3>
+  <table class="behavior-table">
+    <tr><th>行为</th><th>定义</th></tr>
+    <tr><td>回应</td><td>模型中断或偏离正在进行的回复，转而对拒识干扰内容进行了有意义的回应（回答、澄清或反应）。</td></tr>
+    <tr><td>恢复</td><td>模型忽略拒识干扰内容，继续或完成正在进行中的回复或任务。</td></tr>
+    <tr><td>不确定询问</td><td>模型因干扰内容暂停回复，表示不确定或难以听清、缺少信息，未给出明确回答。所有泛化的重复或澄清行为归入此类。</td></tr>
+    <tr><td>无关回复</td><td>模型输出语义偏离目标或答非所问，未明确恢复、回应或表达不确定。</td></tr>
+    <tr><td>静默</td><td>模型在重叠发生后完全中断语音输出且未恢复，未产生任何有意义的语音内容。</td></tr>
+  </table>
+
+  <h3>静默</h3>
+  <table class="behavior-table">
+    <tr><th>行为</th><th>定义</th></tr>
+    <tr><td>回应</td><td>模型在静默期间对拒识干扰内容进行了有意义的回应，即本应保持静默但被干扰触发产生了回复。</td></tr>
+    <tr><td>恢复</td><td>模型忽略静默期间出现的干扰内容，保持静默状态或恢复到之前的任务上下文继续推进。</td></tr>
+    <tr><td>不确定询问</td><td>模型因静默期间出现的干扰内容打破沉默，表示不确定或难以听清、缺少信息。</td></tr>
+    <tr><td>无关回复</td><td>模型输出语义偏离目标或答非所问，未明确恢复、回应或表达不确定。</td></tr>
+    <tr><td>静默</td><td>模型在静默期间收到干扰后始终未产生任何语音输出。</td></tr>
+  </table>
+</div>
+
+<!-- ════════════ rate 计算 ════════════ -->
+<h2>rate 评级计算规则</h2>
+<div class="card">
+  <p><code>rate</code> 由代码函数 <code>compute_rate(timing, behavior)</code> 计算，<strong>非 LLM 输出</strong>。返回值为字符串：</p>
+
+  <table class="rate-table">
+    <tr>
+      <th>timing</th>
+      <th>behavior</th>
+      <th>rate</th>
+    </tr>
+    <tr><td>回复过程中</td><td>恢复</td><td><span class="badge-green">拒识成功</span></td></tr>
+    <tr><td>回复过程中</td><td>不确定询问</td><td><span class="badge-yellow">拒识询问</span></td></tr>
+    <tr><td>回复过程中</td><td>回应</td><td><span class="badge-red">拒识失败</span></td></tr>
+    <tr><td>回复过程中</td><td>无关回复</td><td><span class="badge-red">拒识失败</span></td></tr>
+    <tr><td>回复过程中</td><td>静默</td><td><span class="badge-red">拒识失败</span></td></tr>
+    <tr><td>静默</td><td>静默</td><td><span class="badge-green">拒识成功</span></td></tr>
+    <tr><td>静默</td><td>恢复</td><td><span class="badge-green">拒识成功</span></td></tr>
+    <tr><td>静默</td><td>不确定询问</td><td><span class="badge-yellow">拒识询问</span></td></tr>
+    <tr><td>静默</td><td>回应</td><td><span class="badge-red">拒识失败</span></td></tr>
+    <tr><td>静默</td><td>无关回复</td><td><span class="badge-red">拒识失败</span></td></tr>
+  </table>
+
+  <div class="highlight-box">
+    <strong>规则速记：</strong><br>
+    &bull; 不确定询问 → 拒识询问（不论 timing）<br>
+    &bull; 回应 / 无关回复 → 拒识失败（不论 timing）<br>
+    &bull; 回复过程中 + 恢复 → 拒识成功<br>
+    &bull; 回复过程中 + 静默 → 拒识失败<br>
+    &bull; 静默 + 静默 → 拒识成功<br>
+    &bull; 静默 + 恢复 → 拒识成功
+  </div>
+</div>
+
+<!-- ════════════ 输出参数 ════════════ -->
+<h2>输出参数</h2>
+<div class="card">
+
+  <h3>核心判断</h3>
+  <table>
+    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+    <tr><td><code>enabled</code></td><td>bool</td><td>是否成功执行（LLM 调用失败时 False）</td></tr>
+    <tr><td><code>timing</code></td><td>str</td><td>回显输入的 timing</td></tr>
+    <tr><td><code>evaluations</code></td><td>list</td><td>逐轮评估列表，每项含 <code>{behavior, reason}</code></td></tr>
+    <tr><td><code>interaction_text</code></td><td>str</td><td>注入 prompt 的交互文本（query/answer + 时间戳）</td></tr>
+    <tr><td><code>query</code></td><td>str</td><td>提取的用户 query 文本</td></tr>
+    <tr><td><code>answer</code></td><td>str</td><td>提取的模型 answer 文本</td></tr>
+  </table>
+
+  <h3>行为 0/1 字段（取首轮 evaluation）</h3>
+  <table>
+    <tr><th>字段</th><th>对应行为</th><th>说明</th></tr>
+    <tr><td><code>behavior_respond</code></td><td>回应</td><td>命中 → 1, 否则 0</td></tr>
+    <tr><td><code>behavior_recover</code></td><td>恢复</td><td>命中 → 1, 否则 0</td></tr>
+    <tr><td><code>behavior_uncertain</code></td><td>不确定询问</td><td>命中 → 1, 否则 0</td></tr>
+    <tr><td><code>behavior_irrelevant</code></td><td>无关回复</td><td>命中 → 1, 否则 0</td></tr>
+    <tr><td><code>behavior_silent</code></td><td>静默</td><td>命中 → 1, 否则 0</td></tr>
+  </table>
+
+  <h3>rate 评级字段（取首轮 evaluation）</h3>
+  <table>
+    <tr><th>字段</th><th>说明</th></tr>
+    <tr><td><code>rate</code></td><td>字符串：<code>"拒识成功"</code> / <code>"拒识询问"</code> / <code>"拒识失败"</code></td></tr>
+    <tr><td><code>rate_success</code></td><td>rate="拒识成功" → 1, 否则 0</td></tr>
+    <tr><td><code>rate_inquiry</code></td><td>rate="拒识询问" → 1, 否则 0</td></tr>
+    <tr><td><code>rate_failure</code></td><td>rate="拒识失败" → 1, 否则 0</td></tr>
+  </table>
+
+  <h3>rate 分组统计（遍历所有 evaluations）</h3>
+  <p>以下 3 个字典字段统计多轮中每个 <code>timing+behavior</code> 组合的数量及总数：</p>
+
+  <table class="count-table">
+    <tr><th>字段</th><th>键</th><th>说明</th></tr>
+    <tr class="count-total"><td rowspan="4"><code>rate_success_count</code></td><td>拒识成功数量</td><td>总数</td></tr>
+    <tr><td>回复过程中_恢复</td><td>命中数</td></tr>
+    <tr><td>静默_静默</td><td>命中数</td></tr>
+    <tr><td>静默_恢复</td><td>命中数</td></tr>
+    <tr class="count-total"><td rowspan="3"><code>rate_inquiry_count</code></td><td>拒识询问数量</td><td>总数</td></tr>
+    <tr><td>回复过程中_不确定询问</td><td>命中数</td></tr>
+    <tr><td>静默_不确定询问</td><td>命中数</td></tr>
+    <tr class="count-total"><td rowspan="6"><code>rate_failure_count</code></td><td>拒识失败数量</td><td>总数</td></tr>
+    <tr><td>回复过程中_回应</td><td>命中数</td></tr>
+    <tr><td>回复过程中_无关回复</td><td>命中数</td></tr>
+    <tr><td>回复过程中_静默</td><td>命中数</td></tr>
+    <tr><td>静默_回应</td><td>命中数</td></tr>
+    <tr><td>静默_无关回复</td><td>命中数</td></tr>
+  </table>
+
+  <h3>元信息</h3>
+  <table>
+    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+    <tr><td><code>model</code></td><td>str</td><td>使用的 LLM 模型名</td></tr>
+    <tr><td><code>ai_wav</code></td><td>str</td><td>回显输入的 ai_wav 路径</td></tr>
+    <tr><td><code>tokens_used</code></td><td>int</td><td>总 token 数</td></tr>
+    <tr><td><code>input_token</code></td><td>int</td><td>输入 token 数</td></tr>
+    <tr><td><code>output_token</code></td><td>int</td><td>输出 token 数</td></tr>
+    <tr><td><code>message</code></td><td>str</td><td>"OK" 或错误信息</td></tr>
+  </table>
+</div>
+
+<!-- ════════════ 完整输出示例 ════════════ -->
+<h2>完整输出示例</h2>
+<div class="card">
+  <pre>{
+  <span class="json-key">"enabled"</span>: <span class="json-bool">true</span>,
+  <span class="json-key">"model"</span>: <span class="json-str">"gpt-4o"</span>,
+  <span class="json-key">"ai_wav"</span>: <span class="json-str">"D:/test/ai.wav"</span>,
+  <span class="json-key">"timing"</span>: <span class="json-str">"回复过程中"</span>,
+  <span class="json-key">"evaluations"</span>: [
+    {
+      <span class="json-key">"behavior"</span>: <span class="json-str">"回应"</span>,
+      <span class="json-key">"reason"</span>: <span class="json-str">"模型在听到干扰内容'帮我开下门'后，回复中出现'门'相关内容..."</span>
+    }
+  ],
+  <span class="json-key">"interaction_text"</span>: <span class="json-str">"[0.5-2.1s] query: 帮我开下门\n[3.0-5.5s] answer: 好的，先绑定门..."</span>,
+  <span class="json-key">"query"</span>: <span class="json-str">"帮我开下门"</span>,
+  <span class="json-key">"answer"</span>: <span class="json-str">"好的，先绑定门"</span>,
+
+  <span class="json-comment">// 行为 0/1 字段</span>
+  <span class="json-key">"behavior_respond"</span>: <span class="json-num">1</span>,
+  <span class="json-key">"behavior_recover"</span>: <span class="json-num">0</span>,
+  <span class="json-key">"behavior_uncertain"</span>: <span class="json-num">0</span>,
+  <span class="json-key">"behavior_irrelevant"</span>: <span class="json-num">0</span>,
+  <span class="json-key">"behavior_silent"</span>: <span class="json-num">0</span>,
+
+  <span class="json-comment">// rate 评级</span>
+  <span class="json-key">"rate"</span>: <span class="json-str">"拒识失败"</span>,
+  <span class="json-key">"rate_success"</span>: <span class="json-num">0</span>,
+  <span class="json-key">"rate_inquiry"</span>: <span class="json-num">0</span>,
+  <span class="json-key">"rate_failure"</span>: <span class="json-num">1</span>,
+
+  <span class="json-comment">// rate 分组统计</span>
+  <span class="json-key">"rate_success_count"</span>: {
+    <span class="json-key">"拒识成功数量"</span>: <span class="json-num">0</span>,
+    <span class="json-key">"回复过程中_恢复"</span>: <span class="json-num">0</span>,
+    <span class="json-key">"静默_静默"</span>: <span class="json-num">0</span>,
+    <span class="json-key">"静默_恢复"</span>: <span class="json-num">0</span>
+  },
+  <span class="json-key">"rate_inquiry_count"</span>: {
+    <span class="json-key">"拒识询问数量"</span>: <span class="json-num">0</span>,
+    <span class="json-key">"回复过程中_不确定询问"</span>: <span class="json-num">0</span>,
+    <span class="json-key">"静默_不确定询问"</span>: <span class="json-num">0</span>
+  },
+  <span class="json-key">"rate_failure_count"</span>: {
+    <span class="json-key">"拒识失败数量"</span>: <span class="json-num">1</span>,
+    <span class="json-key">"回复过程中_回应"</span>: <span class="json-num">1</span>,
+    <span class="json-key">"回复过程中_无关回复"</span>: <span class="json-num">0</span>,
+    <span class="json-key">"回复过程中_静默"</span>: <span class="json-num">0</span>,
+    <span class="json-key">"静默_回应"</span>: <span class="json-num">0</span>,
+    <span class="json-key">"静默_无关回复"</span>: <span class="json-num">0</span>
+  },
+
+  <span class="json-comment">// 元信息</span>
+  <span class="json-key">"tokens_used"</span>: <span class="json-num">1523</span>,
+  <span class="json-key">"input_token"</span>: <span class="json-num">1200</span>,
+  <span class="json-key">"output_token"</span>: <span class="json-num">323</span>,
+  <span class="json-key">"message"</span>: <span class="json-str">"OK"</span>
+}</pre>
+</div>
+
+<!-- ════════════ Prompt 关键设计 ════════════ -->
+<h2>Prompt 关键设计</h2>
+<div class="card">
+  <h3>多轮模式分析步骤</h3>
+  <ol>
+    <li>指出拒识干扰内容（第二段非意图交互内容）是什么，以及它的时间戳。</li>
+    <li><strong>关键：</strong>在完整交互文字中，找到时间戳在干扰内容之后的<strong>所有 answer 行</strong>，逐行列出。这是模型在听到干扰后做出的回复。</li>
+    <li>逐一检查这些 answer 行的内容是否与干扰内容存在语义关联（如关键词重叠、话题回应、指令执行等）。只要任意一条 answer 与干扰内容相关，即应判定为"回应"。</li>
+    <li>给出最终行为类别判断。</li>
+  </ol>
+
+  <h3>LLM 输出格式</h3>
+  <pre>{
+  <span class="json-key">"behavior"</span>: <span class="json-str">""</span>,
+  <span class="json-key">"reason"</span>: <span class="json-str">""</span>
+}</pre>
+  <p>behavior 必须是【回应】【恢复】【不确定询问】【无关回复】【静默】五个类别之一。</p>
+
+  <div class="highlight-box">
+    <strong>音频直送 LLM：</strong>ai_wav + user_wav 两个音频文件直接发送给 LLM（<code>file_paths=[ai_wav, user_wav]</code>），ASR 时间线和交互文字仅作为辅助参考。Prompt 中明确提示"以实际音频为准"。
+  </div>
+</div>
+
+<div class="footer">
+  拒识裁判 (reject_judge) 文档 — 基于代码 <a href="file:///d:/intelligent_audio_test/eval_server/app/services/calculators/xiaoyi_metrics/env_judge/rejection_judge.py">rejection_judge.py</a> 生成
+</div>
+
+</body>
+</html>

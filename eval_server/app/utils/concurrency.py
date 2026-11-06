@@ -1,0 +1,101 @@
+import threading
+from ..config import config
+
+class ConcurrencyManager:
+    _stats = {}
+    _lock = threading.Lock()
+    _initialized = False
+
+    @classmethod
+    def _ensure_initialized(cls):
+        """Lazily initialize all known task types from config."""
+        if cls._initialized:
+            return
+        with cls._lock:
+            if cls._initialized:
+                return
+            all_types = [
+                'wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer',
+                'turn_taking', 'interruption_metrics', 'non_interactive_latency',
+                'noise_latency', 'env_judge',
+                'high_freq_turn_taking', 'high_freq_llm_judge',
+                'reject_judge', 'turn_eval',
+            ]
+            limits = getattr(config, 'CONCURRENCY_LIMITS', {})
+            default_max = getattr(config, 'DEFAULT_MAX_CONCURRENCY', 2)
+            for task_type in all_types:
+                if task_type not in cls._stats:
+                    max_concurrency = limits.get(task_type, default_max)
+                    cls._stats[task_type] = {
+                        'current': 0,
+                        'max': max_concurrency,
+                    }
+            cls._initialized = True
+
+    @classmethod
+    def register_task_type(cls, task_type: str, max_concurrency: int = None):
+        """Dynamically register a new task type."""
+        if max_concurrency is None:
+            max_concurrency = getattr(config, 'DEFAULT_MAX_CONCURRENCY', 3)
+        with cls._lock:
+            if task_type not in cls._stats:
+                cls._stats[task_type] = {
+                    'current': 0,
+                    'max': max_concurrency,
+                }
+
+    @classmethod
+    def get_stats(cls):
+        cls._ensure_initialized()
+        with cls._lock:
+            return {k: v.copy() for k, v in cls._stats.items()}
+
+    @classmethod
+    def can_start(cls, task_type):
+        cls._ensure_initialized()
+        with cls._lock:
+            stats = cls._stats.get(task_type)
+            if stats is None:
+                cls._stats[task_type] = {
+                    'current': 0,
+                    'max': getattr(config, 'DEFAULT_MAX_CONCURRENCY', 3),
+                }
+                stats = cls._stats[task_type]
+            return stats['current'] < stats['max']
+
+    @classmethod
+    def try_start(cls, task_type):
+        """原子地检查并占用该任务类型的一个并发位。
+
+        可用（current < max）则 current+1 并返回 True；否则返回 False。
+        避免 can_start() + increment() 两步之间的 TOCTOU 竞态。
+        """
+        cls._ensure_initialized()
+        with cls._lock:
+            stats = cls._stats.get(task_type)
+            if stats is None:
+                stats = cls._stats[task_type] = {
+                    'current': 0,
+                    'max': getattr(config, 'DEFAULT_MAX_CONCURRENCY', 3),
+                }
+            if stats['current'] < stats['max']:
+                stats['current'] += 1
+                return True
+            return False
+
+    @classmethod
+    def increment(cls, task_type):
+        cls._ensure_initialized()
+        with cls._lock:
+            if task_type not in cls._stats:
+                cls.register_task_type(task_type)
+            cls._stats[task_type]['current'] += 1
+
+    @classmethod
+    def decrement(cls, task_type):
+        cls._ensure_initialized()
+        with cls._lock:
+            if task_type in cls._stats:
+                cls._stats[task_type]['current'] = max(
+                    0, cls._stats[task_type]['current'] - 1
+                )
