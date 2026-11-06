@@ -1,0 +1,27 @@
+# -*- coding: utf-8 -*-
+from .execution import ExecutionServiceServicer
+from .task_config import TaskConfigServiceServicer
+from .published_task_config import PublishedTaskConfigServiceServicer
+from .testcase_config import TestCaseConfigServiceServicer
+from .tag_config import TagConfigServiceServicer
+from .algorithm_config import AlgorithmConfigServiceServicer
+from .task_data_service import TaskDataServiceServicer
+from .data_transfer import DataTransferServiceServicer
+from .cherry_pick import CherryPickServiceServicer
+from .review import ReviewServiceServicer
+from .evaluation_strategy_config import EvaluationStrategyServiceServicer
+# 注：EvaluationConfigServiceServicer 已迁移至 evaluation_service
+
+__all__ = [
+    'ExecutionServiceServicer',
+    'TaskConfigServiceServicer',
+    'PublishedTaskConfigServiceServicer',
+    'TestCaseConfigServiceServicer',
+    'TagConfigServiceServicer',
+    'AlgorithmConfigServiceServicer',
+    'TaskDataServiceServicer',
+    'DataTransferServiceServicer',
+    'CherryPickServiceServicer',
+    'ReviewServiceServicer',
+    'EvaluationStrategyServiceServicer',
+]

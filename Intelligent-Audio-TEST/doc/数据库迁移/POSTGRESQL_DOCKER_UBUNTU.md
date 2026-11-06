@@ -211,6 +211,19 @@ lc_time = 'C.UTF-8'
 default_text_search_config = 'pg_catalog.english'
 ```
 
+> **本仓库 compose 栈的口径（INT-1783）**：`docker/docker-compose.yml` 的 postgres 服务
+> **不挂 postgresql.conf**，观测类参数一律以 `command` 里的 `-c` 内联下发（整份 conf
+> 会覆盖镜像默认的 `listen_addresses` / hba 等）：
+>
+> - `shared_preload_libraries=pg_stat_statements`——只能服务端启动时加载，运行期无法补载；
+> - `pg_stat_statements.max=5000`、`pg_stat_statements.track=all`；
+> - `log_min_duration_statement=500`（慢 SQL 阈值，配 json-file 轮转上限 50m×5）。
+>
+> 扩展本身由引导链 `scripts/migrations/202610/add_pg_stat_statements_int1783.py`（㊹）
+> 在库内 `CREATE EXTENSION IF NOT EXISTS`，新库/隔离库自动自愈。**改这些参数必须改
+> compose 并 recreate postgres**，`ALTER SYSTEM` / 手工改容器内数据文件在重建时都会丢。
+> `shared_buffers` / `work_mem` 本卡未改动（随镜像默认，属档 5 范围）。
+
 ### 4.3 配置访问权限
 
 ```bash

@@ -1,0 +1,194 @@
+# -*- coding: utf-8 -*-
+"""audio_service gRPC server 启动模块。
+
+注册 audio_service 相关 servicer（定义于 interfaces/grpc/servicers.py）：
+- AudioServiceServicer
+- PlaybackServiceServicer
+- AudioConfigServiceServicer
+- RenderServiceServicer（INT-67 混音下沉：双出口）
+
+端口：50052
+"""
+
+import os
+import logging
+from concurrent import futures
+from typing import Optional
+
+import grpc
+
+from shared.proto import audio_service_pb2_grpc as audio_grpc
+from shared.infrastructure.config import BaseConfig
+from shared.infrastructure.grpc_interceptors import (
+    server_log_interceptor, server_db_scope_interceptor, server_user_context_interceptor,
+)
+from audio_service.config.config import Config
+from shared.utils.config_manager import config_manager
+from shared.config.service_ports import AUDIO_SERVICE_GRPC_PORT
+from audio_service.interfaces.grpc.servicers import (
+    AudioServiceServicer,
+    PlaybackServiceServicer,
+    AudioConfigServiceServicer,
+    RenderServiceServicer,
+)
+
+logger = logging.getLogger(__name__)
+
+# INT-1973 音频域并发扩容（原值 5）：gRPC 线程池与 DB 连接池同口径 20。
+# 依据 INT-1471 压测，conc40 下直连 ListAudios 时延主要被 5 线程池串行化放大，
+# 池内连接 5+max_overflow(5)=10 条同时成为读路径的排队点。连接上限随之为
+# 20+5=25 条，仍远低于 docker PG 的 max_connections=100。
+AUDIO_GRPC_WORKERS_DEFAULT = 20
+AUDIO_DB_POOL_SIZE = 20
+
+# INT-2086 优雅停止：Shutdown RPC 触发后给在途 RPC 的宽限秒数。audio_service.shutdown()
+# 默认等播放线程最多 10s，宽限必须覆盖它，否则在途 Shutdown 调用会被 stop() 强断。
+GRACEFUL_STOP_GRACE_SECONDS = 15
+GRACEFUL_STOP_PLAYER_WAIT_SECONDS = 10
+
+# 运行中 server 引用：Shutdown RPC（servicer 线程）经 initiate_graceful_shutdown() 停它。
+# 注意（INT-2086 审计 P1）：生产用 runpy.run_module(..., run_name='__main__') 启动时，
+# 本模块只登记为 sys.modules['__main__']、不登记真实模块名；servicer 惰性按真实名
+# import 会拿到第二份拷贝，读不到这份模块全局 `_server`。因此 start_grpc_server 还会
+# 把 server 引用挂到 AudioServiceServicer 实例的 _grpc_server 属性上，Shutdown 经实例
+# 引用停服，不依赖本模块全局（见 servicers.py::Shutdown）。
+_server: Optional[grpc.Server] = None
+_shutdown_started = False
+
+
+def _configure_pydub_ffmpeg():
+    """根据 Config 中已解析的路径配置 pydub 的 ffmpeg/ffprobe 可执行文件路径。
+
+    若不设置，pydub 会回退到裸字符串 'ffmpeg'/'ffprobe'，在 PATH 未包含
+    可执行文件时导致 ffprobe 警告或转码失败。
+    """
+    from pydub import AudioSegment
+    ffmpeg_path = Config.FFMPEG_PATH
+    ffprobe_path = Config.FFPROBE_PATH
+    if ffmpeg_path and os.path.isfile(ffmpeg_path):
+        AudioSegment.converter = ffmpeg_path
+    if ffprobe_path and os.path.isfile(ffprobe_path):
+        AudioSegment.ffprobe = ffprobe_path
+
+
+def _server_options() -> list:
+    """gRPC 收发消息上限（与 task_service 服务端、共享客户端 channel 同口径）。
+
+    grpcio 服务端默认收包上限 4MiB：网关 UploadChunk 把分片内容 base64 后经
+    protobuf string 字段转发（×4/3 膨胀），>3MB 的分片即被 RESOURCE_EXHAUSTED
+    拒收（INT-1522）。与客户端 channel 一样按 BaseConfig.GRPC_MAX_MESSAGE_MB
+    显式放大，避免两端上限不一致。
+    """
+    max_bytes = max(int(BaseConfig.GRPC_MAX_MESSAGE_MB), 1) * 1024 * 1024
+    return [
+        ('grpc.max_receive_message_length', max_bytes),
+        ('grpc.max_send_message_length', max_bytes),
+    ]
+
+
+def start_grpc_server(port=AUDIO_SERVICE_GRPC_PORT):
+    """启动 audio_service 的 gRPC server
+
+    Args:
+        port: gRPC 监听端口，默认 50052
+
+    Returns:
+        grpc.Server: 已启动的 server 实例，调用方持有引用以防被 GC 回收
+    """
+    # 配置 pydub 的 ffmpeg/ffprobe 路径（必须在首次使用 AudioSegment 前完成）
+    _configure_pydub_ffmpeg()
+
+    # 初始化数据库连接池（audio_service 无 FastAPI lifespan，在此处初始化）
+    from shared.models.database import init_db
+    init_db(pool_size=AUDIO_DB_POOL_SIZE)
+    logger.info("数据库连接池已初始化 (pool_size=%s)", AUDIO_DB_POOL_SIZE)
+
+    # 启动软删除硬清理守护线程（只清理本服务 owned 表 audios 及子表）
+    from audio_service.infrastructure.persistence.soft_delete_cleaner import get_cleaner as get_soft_delete_cleaner
+    _cleaner = get_soft_delete_cleaner()
+    _cleaner.start()
+
+    # 在主线程中预初始化 PyAudio 驱动
+    # Pa_Initialize() 非线程安全，必须在服务启动前完成，避免子线程调用时卡死/崩溃
+    try:
+        from audio_service.infrastructure.audio.audio_engine import audio_service
+        audio_service.init_driver()
+    except Exception as e:
+        logger.warning(f"PyAudio 驱动预初始化失败（音频功能可能不可用）: {e}")
+
+    # INT-2047：起服预热标签 id→name 快照。请求线程不再承担刷新（TTL 过期
+    # 只排期后台刷新），没有预热时冷启动的头几个列表请求会降级成数字 id。
+    # 放后台 daemon：宿主机 → docker task_service 首连可到 10 s 以上，预热
+    # 自带 deadline（AUDIO_TAG_ACL_REFRESH_TIMEOUT_SECONDS，默认 2 s）与
+    # 重试退避，不拿服务启动时间去赌建连；失败只告警。
+    from audio_service.infrastructure.acl.tag_acl_repository import start_tag_acl_warmup
+    start_tag_acl_warmup()
+
+    # gRPC 线程池大小配置化：优先读取 concurrency_config.json 中的 grpc.audio_service_workers
+    _max_workers = config_manager.get_value('grpc', 'audio_service_workers', AUDIO_GRPC_WORKERS_DEFAULT)
+    logger.info("gRPC 线程池大小: %s", _max_workers)
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=_max_workers),
+        options=_server_options(),
+        interceptors=[server_db_scope_interceptor, server_log_interceptor,
+                      server_user_context_interceptor],
+    )
+    # INT-2086 审计 P1：server 引用挂到 AudioServiceServicer 实例上。生产启动
+    # （runpy-as-__main__）下 servicer 惰性 import server.py 会拿到第二份拷贝、
+    # 模块全局 _server 读不到；实例引用被运行中的 server 共享，无模块身份问题。
+    audio_servicer = AudioServiceServicer()
+    audio_servicer._grpc_server = server
+    audio_grpc.add_AudioServiceServicer_to_server(audio_servicer, server)
+    audio_grpc.add_PlaybackServiceServicer_to_server(PlaybackServiceServicer(), server)
+    audio_grpc.add_AudioConfigServiceServicer_to_server(AudioConfigServiceServicer(), server)
+    audio_grpc.add_RenderServiceServicer_to_server(RenderServiceServicer(), server)
+    server.add_insecure_port(f'[::]:{port}')
+    server.start()
+    logger.info("audio_service gRPC server started on port %s", port)
+    global _server
+    _server = server
+    return server
+
+
+def initiate_graceful_shutdown(server: Optional[grpc.Server] = None):
+    """优雅停止入口（INT-2086）：停播放 → 等流关闭 → pa.terminate → 停 gRPC server。
+
+    由 AudioServiceServicer.Shutdown RPC 触发。server 引用经 servicer 实例的
+    _grpc_server 显式传入（规避 runpy-as-__main__ 的模块身份分裂——见模块 docstring）；
+    Ctrl+C / 直接调用路径不传参时回退本模块全局 _server。整个流程同步执行：
+    - audio_service.shutdown()：set 全部 stop_event → 等播放线程结束（流在
+      play_multi finally 中 stop_stream + close）→ driver.terminate()（pa.terminate）。
+    - server.stop(GRACEFUL_STOP_GRACE_SECONDS)：停接收新调用，给在途 RPC 宽限；
+      __main__ 的 wait_for_termination() 随即返回，进程自然退出。
+
+    幂等：重复触发直接返回，避免并发 Shutdown 二次 pa.terminate。
+    """
+    global _server, _shutdown_started
+    if _shutdown_started:
+        logger.info("graceful shutdown already in progress, skip duplicate trigger")
+        return
+    _shutdown_started = True
+    logger.info("graceful shutdown initiated (INT-2086)")
+    from audio_service.infrastructure.audio.audio_engine import audio_service
+    audio_service.shutdown(wait_seconds=GRACEFUL_STOP_PLAYER_WAIT_SECONDS)
+    target = server if server is not None else _server
+    if target is not None:
+        target.stop(GRACEFUL_STOP_GRACE_SECONDS)
+        logger.info("gRPC server stop requested, grace=%ss", GRACEFUL_STOP_GRACE_SECONDS)
+    else:
+        logger.warning("no active gRPC server reference to stop")
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    # INT-81：挂统一日志基座，运行日志落 logs/{service_name}/（去库化前系统日志仅本地文件）
+    from shared.utils.log_handler import get_db_handler
+    logging.getLogger().addHandler(get_db_handler())
+    _server = start_grpc_server()
+    try:
+        _server.wait_for_termination()
+    except KeyboardInterrupt:
+        # INT-2086：Ctrl+C 也走优雅停止（停播放 → 等流关闭 → pa.terminate），
+        # 避免强停把 WASAPI 会话锁在驱动里导致下次 Pa_Initialize 楔死。
+        initiate_graceful_shutdown()
+        _server.stop(0)

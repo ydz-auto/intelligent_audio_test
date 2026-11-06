@@ -1,0 +1,621 @@
+version: '3.8'
+
+# INT-1820：后端镜像共用的构建参数——各 docker/Dockerfile.* 均声明同名 ARG，
+# 缺省值即推荐值（base image 钉 digest + apt 走可达镜像源，不再依赖 deb.debian.org 的可用性）。
+# 在 .env 里设 PY_IMAGE / APT_MIRROR 即可覆盖全部后端镜像的构建（见 docker/.env.compose.example）。
+x-backend-build-args: &backend-build-args
+  PY_IMAGE: ${PY_IMAGE:-python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce}
+  APT_MIRROR: ${APT_MIRROR:-mirrors.tuna.tsinghua.edu.cn}
+  # pip 源可覆盖：pypi.org 在部分网络不可达，构建前设 PIP_INDEX_URL 指向可达镜像
+  PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+
+services:
+  postgres:
+    # INT-2373：数据服务与业务服务一律 unless-stopped，引擎抖动后自愈。
+    restart: unless-stopped
+    image: postgres:16-alpine
+    # INT-1783 观测基线（档 0）：pg_stat_statements 只能经 shared_preload_libraries
+    # 在**服务端启动时**加载，运行期无法补载，故以 -c 直接内联在 command 里
+    # （不额外挂配置文件，避免整份 conf 覆盖镜像默认的 listen_addresses / hba 等）。
+    # 慢 SQL 阈值 log_min_duration_statement=500ms 让慢语句进 postgres 容器日志
+    # （档 2 logs 收口与索引二次评审的取数源）；因每秒可产生上百行，本服务补上
+    # 与其他服务一致的 json-file 轮转上限，避免无界增长吃满磁盘。
+    # 注意：这些参数只在本卡批准的「档 0~3」范围内，shared_buffers / work_mem
+    # 仍保持镜像默认（档 5 未批准）。
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.max=5000
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - log_min_duration_statement=500
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-intelligent_audio_test}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-intelligent_audio_test666}
+      POSTGRES_DB: ${POSTGRES_DB:-intelligent_audio_test}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U intelligent_audio_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  redis:
+    restart: unless-stopped
+    image: redis:7
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==================== 数据库结构引导 job（一次性，门控后端服务启动）====================
+  # 全新库初始化链（scripts/migrations/README.md）：建表 → 202608 结构 + RBAC 种子 →
+  # 202609 结构 + 种子 → 202610 结构 + dev 引导用户。全脚本幂等；已初始化库重复 up 跳过。
+  # 以 service_completed_successfully 门控全部后端服务——未引导完成的库不会被业务服务连接。
+  db_bootstrap:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.db_bootstrap
+      args: *backend-build-args
+    environment:
+      # 连接串经 POSTGRES_DB 覆盖指向目标库（隔离栈由 docker-compose.iso.yml 置为
+      # intelligent_audio_test_test；缺省与历史口径一致）
+      DATABASE_URI: postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
+      DEV_DEFAULT_USERNAME: ${DEV_DEFAULT_USERNAME:-dev_user}
+      DEV_DEFAULT_ROLE: ${DEV_DEFAULT_ROLE:-admin}
+      DEV_DEFAULT_PASSWORD: ${DEV_DEFAULT_PASSWORD:-dev_password}
+      # INT-156 种子 AUTH_MODE 感知：prod 形态不种子 dev 引导用户（缺省弱口令管理员不得
+      # 进入生产形态，门控在 fix_users_schema_drift.py ④）；off/dev/未设行为不变。
+      AUTH_MODE: ${AUTH_MODE:-}
+      # 评估维度种子端点：种子脚本按此写入 dimensions.api_url。缺省指向宿主 mock
+      # 裁判替身（:5097），避免重建栈后维度回落不可达的外部服务。
+      EVAL_SERVER_URL: ${EVAL_SERVER_URL:-http://host.docker.internal:5097}
+    volumes:
+      # 迁移脚本只读挂载：运行期遮蔽镜像内 COPY 的同源 scripts/ 副本（镜像内含副本，卷缺席亦可引导）
+      - ../scripts:/opt/scripts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: rustfs-server
+    ports:
+      - "${RUSTFS_PORT:-9000}:9000"   # S3 API
+      - "${RUSTFS_CONSOLE_PORT:-9001}:9001"   # Console
+    environment:
+      # 单卷 /data 形态（INT-993 起栈实测）：`{0...3}` 多端点在 Docker 单盘 VM
+      # 上触发 rustfs「独立物理盘」校验 + 卷权限必败（FATAL: distinct physical
+      # disks / Permission denied）；现役栈（intelligent-audio-test / int597iso）
+      # 均为单卷 /data 运行形态，回写一致。
+      - RUSTFS_VOLUMES=/data
+      - RUSTFS_ADDRESS=0.0.0.0:9000
+      - RUSTFS_CONSOLE_ADDRESS=0.0.0.0:9001
+      - RUSTFS_CONSOLE_ENABLE=true
+      - RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS=*
+      - RUSTFS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - RUSTFS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - RUSTFS_OBS_LOGGER_LEVEL=info
+    volumes:
+      - rustfs_data:/data
+    healthcheck:
+      test: ["CMD", "sh", "-ec", "curl -fsS http://localhost:9000/health && curl -fsS http://localhost:9001/rustfs/console/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  api_gateway:
+    # INT-2373：Docker 引擎抖动/重启后长驻业务容器曾整批 Exited(255) 不自愈。
+    # 长驻服务统一 unless-stopped（db_bootstrap 一次性 job 保持 "no"）。
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api_gateway
+      args: *backend-build-args
+    ports:
+      - "${API_GATEWAY_PORT:-5000}:5000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://rustfs:9000
+      # 预签名 URL 的签名 endpoint（INT-1719）：该 URL 返回给浏览器/第三方，
+      # 必须宿主可达；容器内的 rustfs:9000 宿主解析不了（ERR_NAME_NOT_RESOLVED）。
+      # 跨机访问在 .env 覆盖成局域网 IP 或公开域名，不要写死 127.0.0.1。
+      - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=api_gateway
+      - SERVICE_NAME=api_gateway
+      # INT-1962：日志归档阈值（logs 表行数超过它才触发 OSS 归档巡检）。
+      # 缺省 300000，与改造前写死的常量一致；置 0 = 禁用归档（巡检直接返回：
+      # 不查计数、不上传、不删行）。发版应急开关——姊妹修复（归档先删后传）
+      # 落地前用它把归档关掉，后端栈刷新就不必等归档链路。
+      # 注意：每个挂了 DB 日志 handler 的后端容器都要透传，否则只关网关，
+      # 别的服务 flush 批次时仍会按默认阈值触发归档（auth_service 实测会触发）。
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
+      - TASK_SERVICE_HOST=task_service
+      - TASK_SERVICE_GRPC_PORT=51061
+      - E2E_TEST_SERVICE_HOST=e2e_test_service
+      - E2E_TEST_SERVICE_GRPC_PORT=50051
+      - API_TEST_SERVICE_HOST=api_test_service
+      - API_TEST_SERVICE_GRPC_PORT=51071
+      - EVALUATION_SERVICE_HOST=evaluation_service
+      - EVALUATION_SERVICE_GRPC_PORT=51091
+      - AUDIO_SERVICE_HOST=host.docker.internal
+      - AUDIO_SERVICE_GRPC_PORT=50052
+      - DEVICE_SERVICE_HOST=host.docker.internal
+      - DEVICE_SERVICE_GRPC_PORT=50053
+      - REPORT_SERVICE_HOST=report_service
+      - REPORT_SERVICE_GRPC_PORT=51068
+      - ALGORITHM_SERVICE_HOST=algorithm_service
+      - ALGORITHM_SERVICE_GRPC_PORT=51067
+      - AUTH_SERVICE_HOST=auth_service
+      - AUTH_SERVICE_GRPC_PORT=51069
+      - AUTH_MODE=${AUTH_MODE:-off}
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production}
+      - JWT_EXPIRE_HOURS=${JWT_EXPIRE_HOURS:-24}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - DATA_TRANSFER_TMP_DIR=/app/storage/data_transfer
+    volumes:
+      # 与 task_service 共享：数据导入/导出 ZIP 中转（INT-25），两容器必须挂同一卷
+      - data_transfer_tmp:/app/storage/data_transfer
+      # INT-81：服务运行日志/业务日志统一卷（api_gateway 读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      report_service:
+        condition: service_healthy
+      algorithm_service:
+        condition: service_healthy
+      auth_service:
+        condition: service_healthy
+      db_bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  task_service:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.task_service
+      args: *backend-build-args
+    ports:
+      - "${TASK_SERVICE_HTTP_PORT:-5001}:5001"
+      - "${TASK_SERVICE_GRPC_PORT:-51061}:51061"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://rustfs:9000
+      # 预签名 URL 的签名 endpoint（INT-1719）：该 URL 返回给浏览器/第三方，
+      # 必须宿主可达；容器内的 rustfs:9000 宿主解析不了（ERR_NAME_NOT_RESOLVED）。
+      # 跨机访问在 .env 覆盖成局域网 IP 或公开域名，不要写死 127.0.0.1。
+      - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=task_service
+      - SERVICE_NAME=task_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
+      - GRPC_PORT=51061
+      - E2E_TEST_SERVICE_HOST=e2e_test_service
+      - E2E_TEST_SERVICE_GRPC_PORT=50051
+      - API_TEST_SERVICE_HOST=api_test_service
+      - API_TEST_SERVICE_PORT=5003
+      - API_TEST_SERVICE_GRPC_PORT=51071
+      - EVALUATION_SERVICE_HOST=evaluation_service
+      - EVALUATION_SERVICE_GRPC_PORT=51091
+      - AUDIO_SERVICE_HOST=host.docker.internal
+      - AUDIO_SERVICE_GRPC_PORT=50052
+      - DEVICE_SERVICE_HOST=host.docker.internal
+      - DEVICE_SERVICE_GRPC_PORT=50053
+      # INT-1553：算法域 gRPC（algorithm_service:51067），缺省 localhost 在容器内解析为 ::1 → 调用全部失败
+      - ALGORITHM_SERVICE_HOST=algorithm_service
+      - ALGORITHM_SERVICE_GRPC_PORT=51067
+      # INT-1548：用例列表回显报告状态走 report_service 内网 gRPC（51068），缺省 localhost 在容器内
+      # 解析为 ::1 → 每个用例一次 ListReports 立即失败并重试，列表 20 条耗时 14s+、200 条即超时
+      - REPORT_SERVICE_HOST=report_service
+      - REPORT_SERVICE_GRPC_PORT=51068
+      - DATA_TRANSFER_TMP_DIR=/app/storage/data_transfer
+      # INT-1760 / INT-1862：本端稳定服务标识。导出写 `manifest.serverInfo.source`，导入侧读它作
+      # source_map.source_server。A/B 两侧须各自不同、换机 / 换容器都不能变；留空回落
+      # task_service-<容器 hostname>，容器重建即变 → 跨机增量回导断链；部署须在 .env 显式指定。
+      - DATA_TRANSFER_SERVER_ID=${DATA_TRANSFER_SERVER_ID:-}
+    volumes:
+      # 与 api_gateway 共享：数据导入/导出 ZIP 中转（INT-25），两容器必须挂同一卷
+      - data_transfer_tmp:/app/storage/data_transfer
+      # INT-81：服务运行日志/业务日志统一卷（api_gateway 读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      db_bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  evaluation_service:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.evaluation_service
+      args: *backend-build-args
+    ports:
+      - "${EVALUATION_SERVICE_HTTP_PORT:-5004}:5004"
+      - "${EVALUATION_SERVICE_GRPC_PORT:-51091}:51091"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=evaluation_service
+      - SERVICE_NAME=evaluation_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
+      - GRPC_PORT=51091
+      - TASK_SERVICE_HOST=task_service
+      - TASK_SERVICE_GRPC_PORT=51061
+      - AUDIO_SERVICE_HOST=host.docker.internal
+      - AUDIO_SERVICE_GRPC_PORT=50052
+      # INT-1548：结果采集走 device_service gRPC（宿主机 50053），缺省 localhost 在容器内解析为 ::1
+      - DEVICE_SERVICE_HOST=host.docker.internal
+      - DEVICE_SERVICE_GRPC_PORT=50053
+      # INT-1553：维度参数/关联算法校验走 algorithm_service gRPC，缺 env 时回落 localhost:50067
+      # 导致 CreateDimensionParam 静默失败（DB 无 evaluation_dimension_params 行，接口仍 201）
+      - ALGORITHM_SERVICE_HOST=algorithm_service
+      - ALGORITHM_SERVICE_GRPC_PORT=51067
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      db_bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5004/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  e2e_test_service:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.e2e_test_service
+      args: *backend-build-args
+    ports:
+      - "${E2E_TEST_HTTP_PORT:-5002}:5002"
+      - "${E2E_TEST_GRPC_PORT:-50051}:50051"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - GRPC_PORT=50051
+      - LAB_NAME=lab-a
+      - SERVICE_HOST=e2e_test_service
+      - SERVICE_NAME=e2e_test_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
+      - TASK_SERVICE_HOST=task_service
+      - TASK_SERVICE_GRPC_PORT=51061
+      - EVALUATION_SERVICE_HOST=evaluation_service
+      - EVALUATION_SERVICE_GRPC_PORT=51091
+      - AUDIO_SERVICE_HOST=host.docker.internal
+      - AUDIO_SERVICE_GRPC_PORT=50052
+      - DEVICE_SERVICE_HOST=host.docker.internal
+      - DEVICE_SERVICE_GRPC_PORT=50053
+      # INT-1541：e2e 算法的参数/字段映射/参考参数 ACL 直连 algorithm_service
+      - ALGORITHM_SERVICE_HOST=algorithm_service
+      - ALGORITHM_SERVICE_GRPC_PORT=51067
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      db_bootstrap:
+        condition: service_completed_successfully
+    # 刻意不挂 devices: /dev/bus/usb：e2e 零硬件调用，设备操作全部经 gRPC 委托宿主
+    # device_service（见上方 DEVICE_SERVICE_HOST）；挂了反而让 WSL VM 重启后容器起不来
+    # （error gathering device information），且不带来任何能力。详见 docker/README.md §6。
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5002/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  report_service:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.report_service
+      args: *backend-build-args
+    ports:
+      - "${REPORT_SERVICE_HTTP_PORT:-5006}:5006"
+      - "${REPORT_SERVICE_GRPC_PORT:-51068}:51068"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://rustfs:9000
+      # 预签名 URL 的签名 endpoint（INT-1719）：该 URL 返回给浏览器/第三方，
+      # 必须宿主可达；容器内的 rustfs:9000 宿主解析不了（ERR_NAME_NOT_RESOLVED）。
+      # 跨机访问在 .env 覆盖成局域网 IP 或公开域名，不要写死 127.0.0.1。
+      - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=report_service
+      - SERVICE_NAME=report_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
+      - GRPC_PORT=51068
+      - TASK_SERVICE_HOST=task_service
+      - TASK_SERVICE_GRPC_PORT=51061
+      - EVALUATION_SERVICE_HOST=evaluation_service
+      - EVALUATION_SERVICE_GRPC_PORT=51091
+      # INT-1548：device/audio 按环境铁律跑宿主机（gRPC 50053 / 50052），容器内经
+      # host.docker.internal 访问；缺这两组变量时回落 localhost，容器内解析为 ::1 连接被拒
+      # → 报告生成「任务没有关联任何设备或API」/ 对比 60s 超时 / case-averages 504
+      - AUDIO_SERVICE_HOST=host.docker.internal
+      - AUDIO_SERVICE_GRPC_PORT=50052
+      - DEVICE_SERVICE_HOST=host.docker.internal
+      - DEVICE_SERVICE_GRPC_PORT=50053
+      # INT-1548：API 资源 ACL 走 api_test_service 内网 gRPC（GRPC_PORT=51071，多副本 DNS 轮询）；
+      # 缺省 localhost:50071 在容器内为 127.0.0.1 拒绝 → get_api 恒失败
+      - API_TEST_SERVICE_HOST=api_test_service
+      - API_TEST_SERVICE_GRPC_PORT=51071
+      # INT-1541：算法域 ACL 直连 algorithm_service（缺省 localhost:50067 必败）
+      - ALGORITHM_SERVICE_HOST=algorithm_service
+      - ALGORITHM_SERVICE_GRPC_PORT=51067
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      db_bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5006/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  algorithm_service:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.algorithm_service
+      args: *backend-build-args
+    ports:
+      - "${ALGORITHM_SERVICE_HTTP_PORT:-5007}:5007"
+      - "${ALGORITHM_SERVICE_GRPC_PORT:-51067}:51067"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=algorithm_service
+      - SERVICE_NAME=algorithm_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
+      - GRPC_PORT=51067
+      # INT-2038：audio 按环境铁律跑宿主机（gRPC 50052），容器内经 host.docker.internal 访问；
+      # 缺这两组变量时回落 localhost（容器内为 127.0.0.1）连接被拒 → get_audios_by_ids 恒失败
+      # → 用例参考参数（reference_params）逐参数生成为 0，前端「参考参数」恒为空
+      - AUDIO_SERVICE_HOST=host.docker.internal
+      - AUDIO_SERVICE_GRPC_PORT=50052
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      db_bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5007/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  auth_service:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.auth_service
+      args: *backend-build-args
+    ports:
+      - "${AUTH_SERVICE_HTTP_PORT:-5009}:5009"
+      - "${AUTH_SERVICE_GRPC_PORT:-51069}:51069"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=auth_service
+      - SERVICE_NAME=auth_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
+      - GRPC_PORT=51069
+      # INT-180：/api/auth/mode 自检端点数据源，与 api_gateway 注入同一变量
+      - AUTH_MODE=${AUTH_MODE:-off}
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      db_bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5009/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  api_test_service:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api_test_service
+      args: *backend-build-args
+    # 不发布宿主端口（UC-1001/INT-69）：服务间经容器网络互访
+    # （API_TEST_SERVICE_HOST=api_test_service，多副本由 Docker DNS 轮询），
+    # 会话亲和路由按注册表中各副本自解析的 host:grpc_port 精确寻址。
+    # 宿主机调试按需在 compose.override.yml 中对单副本追加 ports 映射。
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://rustfs:9000
+      # 预签名 URL 的签名 endpoint（INT-1719）：该 URL 返回给浏览器/第三方，
+      # 必须宿主可达；容器内的 rustfs:9000 宿主解析不了（ERR_NAME_NOT_RESOLVED）。
+      # 跨机访问在 .env 覆盖成局域网 IP 或公开域名，不要写死 127.0.0.1。
+      - OSS_PUBLIC_ENDPOINT=${OSS_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=api_test_service
+      - SERVICE_NAME=api_test_service
+      # INT-1962：日志归档阈值（0 = 禁用归档巡检），口径见 api_gateway 注释
+      - LOG_ARCHIVE_THRESHOLD=${LOG_ARCHIVE_THRESHOLD:-300000}
+      - GRPC_PORT=51071
+      - TASK_SERVICE_HOST=task_service
+      - TASK_SERVICE_GRPC_PORT=51061
+      - AUDIO_SERVICE_HOST=host.docker.internal
+      - AUDIO_SERVICE_GRPC_PORT=50052
+      - EVALUATION_SERVICE_HOST=evaluation_service
+      - EVALUATION_SERVICE_GRPC_PORT=51091
+      # INT-1548：device_service 结果采集 gRPC 跑宿主机 50053，缺省 localhost 容器内为 ::1
+      - DEVICE_SERVICE_HOST=host.docker.internal
+      - DEVICE_SERVICE_GRPC_PORT=50053
+      # INT-1541：算法域 ACL 直连 algorithm_service（缺省 localhost:50067 必败）
+      - ALGORITHM_SERVICE_HOST=algorithm_service
+      - ALGORITHM_SERVICE_GRPC_PORT=51067
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      db_bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5003/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      replicas: ${API_TEST_REPLICAS:-2}
+
+  frontend:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        # INT-181：必填——认证模式（off|dev|prod），须与 api_gateway 的 AUTH_MODE 一致；
+        # 未显式设置时 compose 直接报错退出，禁止静默默认 off
+        VITE_AUTH_MODE: ${VITE_AUTH_MODE:?VITE_AUTH_MODE must be set explicitly (off|dev|prod), see docs/oauth.md}
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      api_gateway:
+        condition: service_healthy
+
+volumes:
+  # INT-81：服务运行日志/业务日志统一卷
+  service_logs:
+  postgres_data:
+  rustfs_data:
+  # 网关 ↔ task_service 数据导入/导出 ZIP 中转卷（INT-25 链路依赖）
+  data_transfer_tmp:

@@ -1,0 +1,31 @@
+# INT-181：前端生产构建镜像 —— VITE_AUTH_MODE 必须经 build-arg 显式注入，禁止静默默认 off。
+# 用法（compose）：docker compose build frontend（VITE_AUTH_MODE 缺失时 compose 直接报错）。
+# 用法（裸 docker）：docker build -f docker/Dockerfile.frontend --build-arg VITE_AUTH_MODE=<off|dev|prod> ..
+# 取值含义见 docs/oauth.md「前端构建期注入（VITE_AUTH_MODE）」。
+
+# ---- 构建阶段 ----
+FROM node:20-alpine AS build
+WORKDIR /app
+
+# 构建期注入认证模式（off|dev|prod），ARG 不给默认值——未注入时下方显式失败，绝不静默 off
+ARG VITE_AUTH_MODE
+ENV VITE_AUTH_MODE=$VITE_AUTH_MODE
+
+# 前置快速失败：未注入/空值立即退出（取值合法性由 vite.config.ts 构建期守卫按 src/domain/enums.ts 校验）
+RUN if [ -z "$VITE_AUTH_MODE" ]; then \
+      echo "ERROR [INT-181]: VITE_AUTH_MODE 未注入。" \
+        "请使用 --build-arg VITE_AUTH_MODE=<off|dev|prod> 构建前端镜像，取值含义见 docs/oauth.md。" \
+      && exit 1; \
+    fi
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ ./
+RUN npm run build
+
+# ---- 运行阶段 ----
+FROM nginx:alpine
+COPY docker/nginx-frontend.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80

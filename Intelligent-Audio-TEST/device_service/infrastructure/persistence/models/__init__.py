@@ -1,0 +1,41 @@
+# -*- coding: utf-8 -*-
+"""device_service PO re-exports.
+
+re-export：本包作为各 PO 子模块的统一入口，便于上层以
+``from device_service.infrastructure.persistence.models import Device`` 形式引用。
+"""
+from device_service.infrastructure.persistence.models.device_models import (
+    Device,
+    DeviceTag,
+    PlaybackDevice,
+    DeviceGroup,
+    DeviceGroupMember,
+    DeviceStatusEvent,
+    DeviceAlarmRule,
+    DeviceAlarm,
+    Laboratory,
+)
+from device_service.infrastructure.persistence.models.spl_models import (
+    CalibrationHistory,
+    SPLMapping,
+)
+from device_service.infrastructure.persistence.models.playback_speaker_models import (
+    PlaybackSpeakerGroup,
+    PlaybackSpeakerGroupItem,
+)
+
+__all__ = [
+    "Device",
+    "PlaybackDevice",
+    "PlaybackSpeakerGroup",
+    "PlaybackSpeakerGroupItem",
+    "DeviceTag",
+    "DeviceGroup",
+    "DeviceGroupMember",
+    "DeviceStatusEvent",
+    "DeviceAlarmRule",
+    "DeviceAlarm",
+    "Laboratory",
+    "SPLMapping",
+    "CalibrationHistory",
+]

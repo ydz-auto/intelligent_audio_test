@@ -162,7 +162,7 @@
   <text x="642" y="707" class="pill-t" fill="#5b21b6">OpenAIRealtimeAdapter / DoubaoRealtime…</text>
   <rect x="878" y="636" width="338" height="80" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
   <text x="894" y="656" font-size="11.5" font-weight="700" fill="#4c1d95">落位与迁移</text>
-  <text x="894" y="674" class="body">现状：api_adapter_service/adapters/factory.py</text>
+  <text x="894" y="674" class="body">现状：api_test_service/adapters/factory.py</text>
   <text x="894" y="690" class="body">P1：api_test_service/infrastructure/adapters/</text>
   <text x="894" y="707" class="note">P3：5008 下线，注册表随迁，(protocol, vendor) 键不变</text>
 

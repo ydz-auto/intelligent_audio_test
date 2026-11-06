@@ -1,0 +1,31 @@
+from e2e_test_service.domain.dto.e2e_acl_dto import (
+    AudioDTO,
+    CollectedResultDTO,
+    DeviceDTO,
+    DimensionResultDTO,
+    DriverScanDTO,
+    PhysicalDeviceDTO,
+    PlaybackResultDTO,
+    PlayStatusDTO,
+    ReextractResultDTO,
+    RegisteredKeywordsDTO,
+    TaskCaseDTO,
+    TaskDeviceDTO,
+    TestResultDTO,
+)
+
+__all__ = [
+    'AudioDTO',
+    'CollectedResultDTO',
+    'DeviceDTO',
+    'DimensionResultDTO',
+    'DriverScanDTO',
+    'PhysicalDeviceDTO',
+    'PlaybackResultDTO',
+    'PlayStatusDTO',
+    'ReextractResultDTO',
+    'RegisteredKeywordsDTO',
+    'TaskCaseDTO',
+    'TaskDeviceDTO',
+    'TestResultDTO',
+]

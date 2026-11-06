@@ -255,7 +255,7 @@
   <text x="536" y="1142" class="chip-t" fill="#64748b">状态 · 日志</text>
   <rect x="60" y="1164" width="544" height="26" rx="6" fill="#fefce8" stroke="#fde047" stroke-width="1"/>
   <text x="332" y="1181" text-anchor="middle" class="body" fill="#854d0e">任务执行完成 → 后端更新任务状态和结果 → 前端显示任务结果</text>
-  <text x="60" y="1208" class="note">关键: WebSocket 实时推送 execution_status / evaluation_status 变更 · 前端 transformTestCaseStatus 映射展示状态</text>
+  <text x="60" y="1208" class="note">关键: WebSocket 实时推送 execution_status / evaluation_status 变更 · 前端执行/评估双徽章独立展示（INT-405 废弃单值合成）</text>
   <text x="60" y="1226" class="note">执行引擎异步调度 · 并行执行模式(v1.8+): 执行完成 → 立即提交评估 → 继续下一用例</text>
 
   <!-- 数据流2: 历史查询 -->

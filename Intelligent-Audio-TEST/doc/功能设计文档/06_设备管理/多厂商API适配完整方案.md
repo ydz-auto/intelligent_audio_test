@@ -15,17 +15,20 @@
 > 《01_测试执行/Realtime_API_Adapter方案与UseCase文档.md》《01_测试执行/04_类设计.md》
 > 《01_测试执行/05_路由与废弃.md》为准，差异与处理如下：
 >
-> 1. **独立微服务已废弃**：`api_adapter_service/` 整个微服务列入废弃清单（实施阶段 4 下线），
+> 1. **独立微服务已废弃**：`api_adapter_service/` 整个微服务列入废弃清单（实施阶段 4 下线，INT-1176 已删除），
 >    其能力由主服务内的适配器体系承接：`BaseAPIAdapter` → `HttpAPIAdapter` / `HttpStreamAdapter` / `RealtimeAPIAdapter`；
 >    执行入口为 `ExecutionEngine` 按被测设备类型 `device_type`（`http_api` / `websocket_api`）路由到
 >    `APISessionExecutor` / `RealtimeSessionExecutor`，不再存在 `APIExecutor` 等中间编排层。
 > 2. **APIDriver 扩展方案作废**：本文第 4.2 节对 `APIDriver` 的"适配器模式"扩展不再实施；
 >    `APIDriver` 本身已列入废弃清单（见同目录《api_driver_documentation.md》废弃声明）。
-> 3. **工厂/注册机制以最新设计为准**：适配器创建由 `APIAdapterFactory` 按 `(protocol, vendor)` 或 `apis` 表新增的
->    `adapter_class` 列完成（第 5.4 节 `f"{vendor}_{api_type}"` 字符串 key 方案不再采用）；
+> 3. **工厂/注册机制以最新设计为准（INT-497 起与设备驱动同构）**：适配器创建由 `APIAdapterFactory` 按 `(protocol, vendor)`
+>    或 `apis` 表新增的 `adapter_class` 列完成（第 5.4 节 `f"{vendor}_{api_type}"` 字符串 key 方案不再采用）；
 >    设备侧 App 驱动注册则由 `backend/utils/device_driver/registry.py` 的 `DriverRegistry` 实现
 >    （`@register_driver` 装饰器注册、三元 key `(AppType, AppVersion, DevicePlatform)`、依赖检测、
->    版本降级 resolve、热更新），两套注册表相互独立、互不混用。
+>    版本降级 resolve、热更新），**与 API 适配器注册表（`api_test_service/infrastructure/adapters/registry.py`）为同构机制**：
+>    API 侧按 `(AdapterProtocol, AdapterVendor)` 多维 key（装饰器注册 + 依赖检测 + resolve
+>    精确→同协议基线兜底 + 热更新），三级继承 `ApiVendorAdapter → 协议_base_adaptor
+>    （如 RealtimeAdapterBase）→ 品牌适配器（如 OpenAIRealtimeAdapter）`。**裁定日期：2026-10-16**。
 > 4. **仍然有效的信息资产**：厂商协议调研结论、API `meta` 配置结构理念（`response_mappings` / `streaming` / `adapter_specific`）、
 >    `ExecutionConfig` 的字段拆分思想、LLM 中转站复用 OpenAI 适配器的策略，可在实施 API Adapter 体系时参考。
 
@@ -81,7 +84,7 @@
 
 **核心设计:**
 - 中转站**复用OpenAI适配器**，无需单独开发
-- 只需在API配置中更换`api_url`为中转站地址
+- 只需在API配置的`api_endpoints`中更换为中转站端点地址（INT-1361：api_url 已移除，api_endpoints 为唯一端点入口）
 - 请求格式、响应格式完全兼容
 - **无需代理**，直接访问
 
@@ -104,10 +107,9 @@
 │  │  │  - id          │  │  - config       │  │  (环境变量)     │           │ │
 │  │  │  - name        │  │  - algorithm_   │  │                 │           │ │
 │  │  │  - vendor      │  │    params       │  │  VOLC_APP_KEY   │           │ │
-│  │  │  - api_url     │  │  - reference_   │  │  VOLC_ACCESS_KEY│           │ │
-│  │  │  - meta (JSON) │  │    params       │  │  ALIYUN_API_KEY │           │ │
-│  │  │  - api_        │  │                 │  │  OPENAI_API_KEY │           │ │
-│  │  │    endpoints   │  │                 │  │  ...            │           │ │
+│  │  │  - meta (JSON) │  │  - reference_   │  │  VOLC_ACCESS_KEY│           │ │
+│  │  │  - api_        │  │    params       │  │  ALIYUN_API_KEY │           │ │
+│  │  │    endpoints   │  │                 │  │  OPENAI_API_KEY │           │ │
 │  │  └─────────────────┘  └─────────────────┘  └─────────────────┘           │ │
 │  └───────────────────────────────────────────────────────────────────────────┘ │
 │                                        │                                        │
@@ -228,8 +230,9 @@
 │  │   引擎ASR"    │    │ - algorithm_  │    │   KEY         │                   │
 │  │ - vendor:     │    │   params: {...}│   │ ...           │                   │
 │  │   "volcengine"│    │ - reference_  │    │               │                   │
-│  │ - api_url:    │    │   params: {...}│   │               │                   │
-│  │   "wss://..." │    │               │    │               │                   │
+│  │ - api_        │    │   params: {...}│   │               │                   │
+│  │   endpoints:  │    │               │    │               │                   │
+│  │   [...端点]   │    │               │    │               │                   │
 │  │ - meta: {     │    │               │    │               │                   │
 │  │   protocol,   │    │               │    │               │                   │
 │  │   auth_type,  │    │               │    │               │                   │
@@ -411,7 +414,7 @@ class API(db.Model):
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)           # API名称
     vendor = Column(String(50))                          # 厂商标识 (volcengine, aliyun, openai等)
-    api_url = Column(String(512))                        # 主入口URL
+    # INT-1361：api_url（Master 入口 URL）已移除，api_endpoints 为唯一端点配置入口
     description = Column(Text)                           # 描述
     status = Column(String(20), default='online')        # 状态
     meta = Column(JSON, nullable=False)                  # ★ 元数据配置 (核心) ★
@@ -755,17 +758,14 @@ class ExecutionConfigBuilder:
         选择API端点
         
         策略: 
-        1. 优先选择状态为online的端点
-        2. 按优先级排序 (priority越小越优先)
-        3. 按健康分数排序 (health_score越高越优先)
+        1. 仅从 api_endpoints 选择（INT-1361：api_url 已移除，无兜底）
+        2. 优先选择状态为online的端点
+        3. 按优先级排序 (priority越小越优先)
+        4. 按健康分数排序 (health_score越高越优先)
         """
         if not api.api_endpoints:
-            return {
-                'endpoint': api.api_url,
-                'max_timeout': api.max_timeout,
-                'max_process': api.max_process,
-                'max_audio_duration': api.max_audio_duration,
-            }
+            # INT-1361：api_url 已移除，api_endpoints 为唯一端点配置入口
+            raise ValueError("API 未配置端点（api_endpoints 为空）")
         
         # 筛选在线端点
         online_endpoints = [
@@ -1468,7 +1468,7 @@ class VolcASRAdapter(ASRAdapter):
 
 ### 5.4 适配器工厂
 
-> ⚠️ **一致性修订（2026-09）**：注册/解析机制以最新设计为准，本节的字符串 key（`f"{vendor}_{api_type}"`）方案不再采用。最新设计中，API 适配器统一由主服务内的 `APIAdapterFactory` 承接（按 `(protocol, vendor)` 组合键或显式 `adapter_class` 创建）；设备驱动侧由 `backend/utils/device_driver/registry.py` 的 `DriverRegistry`（三元 key：`(AppType, AppVersion, DevicePlatform)`，装饰器注册 + 依赖检测 + 版本降级 resolve + 热更新）承接，两套注册表相互独立。以下代码仅作历史方案存档。
+> ⚠️ **一致性修订（2026-09，INT-497 2026-10-16 复核）**：注册/解析机制以最新设计为准，本节的字符串 key（`f"{vendor}_{api_type}"`）方案不再采用。最新设计中，API 适配器统一由主服务内的适配器注册表（`api_test_service/infrastructure/adapters/registry.py`，按 `(AdapterProtocol, AdapterVendor)` 多维 key）承接，三级继承 `ApiVendorAdapter → 协议_base_adaptor → 品牌适配器`；设备驱动侧由 `backend/utils/device_driver/registry.py` 的 `DriverRegistry`（三元 key：`(AppType, AppVersion, DevicePlatform)`，装饰器注册 + 依赖检测 + 版本降级 resolve + 热更新）承接，**两套注册表为同构机制（INT-497 起，不再相互独立）**。以下代码仅作历史方案存档。
 
 **文件**: `api_adaper_service/services/adapter_factory.py`
 
@@ -1706,7 +1706,7 @@ Intelligent-Audio-TEST/
 {
     "name": "火山引擎流式ASR",
     "vendor": "volcengine",
-    "api_url": "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel",
+    "api_endpoints": [{"endpoint": "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel"}],
     "algorithm_type": "asr",
     "meta": {
         "adapter_type": "volcengine_asr",
@@ -1764,7 +1764,7 @@ Intelligent-Audio-TEST/
 {
     "name": "阿里云百炼实时ASR",
     "vendor": "aliyun",
-    "api_url": "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
+    "api_endpoints": [{"endpoint": "wss://dashscope.aliyuncs.com/api-ws/v1/inference"}],
     "algorithm_type": "asr",
     "meta": {
         "adapter_type": "aliyun_asr",
@@ -1800,7 +1800,7 @@ Intelligent-Audio-TEST/
 {
     "name": "OpenAI Whisper",
     "vendor": "openai",
-    "api_url": "https://api.openai.com/v1/audio/transcriptions",
+    "api_endpoints": [{"endpoint": "https://api.openai.com/v1/audio/transcriptions"}],
     "algorithm_type": "asr",
     "meta": {
         "adapter_type": "openai_asr",
@@ -1836,7 +1836,7 @@ Intelligent-Audio-TEST/
 {
     "name": "OpenAI GPT-4 (直连)",
     "vendor": "openai",
-    "api_url": "https://api.openai.com/v1/chat/completions",
+    "api_endpoints": [{"endpoint": "https://api.openai.com/v1/chat/completions"}],
     "algorithm_type": "llm",
     "meta": {
         "adapter_type": "openai_llm",
@@ -1871,7 +1871,7 @@ Intelligent-Audio-TEST/
 {
     "name": "讯星API-GPT4",
     "vendor": "openai",
-    "api_url": "https://az.gptplus5.com/v1/chat/completions",
+    "api_endpoints": [{"endpoint": "https://az.gptplus5.com/v1/chat/completions"}],
     "algorithm_type": "llm",
     "meta": {
         "adapter_type": "openai_llm",
@@ -1905,7 +1905,7 @@ Intelligent-Audio-TEST/
 | 配置项 | 直连OpenAI | 中转站 | 说明 |
 |--------|------------|--------|------|
 | `vendor` | `openai` | `openai` | **相同**，复用同一适配器 |
-| `api_url` | `api.openai.com` | 中转站域名 | **唯一区别** |
+| `api_endpoints[0].endpoint` | `api.openai.com` | 中转站域名 | **唯一区别** |
 | `api_key` | OpenAI官方Key | 中转站Key | **唯一区别** |
 | `body_template` | 相同 | 相同 | 请求格式兼容 |
 | `response_mappings` | 相同 | 相同 | 响应格式兼容 |
@@ -2050,7 +2050,7 @@ class OpenAIAdapter(LLMAdapter):
 
 ```python
 # 中转站复用OpenAI适配器，无需单独注册
-# 只需在API配置中更换api_url即可
+# 只需在API配置的api_endpoints中更换为中转站端点地址即可（INT-1361：api_url 已移除）
 
 AdapterFactory.register("openai", "llm", OpenAIAdapter)
 ```

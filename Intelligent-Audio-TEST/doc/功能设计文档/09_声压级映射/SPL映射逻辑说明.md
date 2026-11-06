@@ -177,6 +177,8 @@ def _apply_gain_limit(gain_linear):
 
 > **当前状态**：`ApiRmsSplMapping` / `ApiRmsSplService` / `AudioStreamOrchestrator` 仅存在于设计文档，backend 代码尚未实现。API/Realtime 类任务当前不经过 SPL→gain 映射。
 
+> **【实现演进裁定 2026-10-27，INT-2082/2084/2085】**：API 类数字域映射体系已实现——映射归属 api_test_service（表 `api_rms_spl_mappings`），audio_service `ApiRmsSplService` 经 `render_config` 预载映射 dict 执行 SPL→gain（`audio_stream_orchestrator` 混音管线内调用）。校准点集口径定为「目标 SPL ↔ 该 SPL 对应 dBFS」：写侧 `rms_dbfs` 必填主输入、`gain_linear` 后端按 `10^((rms_dbfs+30)/20)` 推导覆盖（提交值不落库）、落库前按 `target_spl` 升序；插值新数据按 dBFS 口径、旧数据（`rms_dbfs=null`）回退 `gain_linear`。详见《01_测试执行/08_混音与SPL映射.md》§6.2/6.3。
+
 ## 5. 用例执行时如何使用 SPL 映射
 
 ### 5.0 E2E 播放链路总览

@@ -1,0 +1,177 @@
+# -*- coding: utf-8 -*-
+"""task_service 测试任务管理 PO 定义
+
+归属：task_service（测试任务上下文）
+表：test_tasks / task_tags / task_case_relations / task_device_relations
+     / task_api_relations / task_merge_relations
+
+P5 改造：从 shared/models/models/task_models.py 真正下沉到本服务。
+- Task.tags / cases 保留（Tag/TestCase 归属本服务，可跨上下文 relationship）
+- Task.devices / apis 移除（Device/API 不归属本服务，跨域查询改 gRPC）
+- TaskMergeRelation.merged_task / source_task 保留（Task 自身关系）
+"""
+from shared.models.database import Base, utcnow
+from sqlalchemy import (
+    func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON,
+    Index, ForeignKey, text,
+)
+from sqlalchemy.orm import relationship
+
+
+class Task(Base):
+    """测试任务模型 (Test Task Model)
+    代表一次完整的测试执行过程，关联了用例、设备、API、算法配置及最终结果。
+    """
+    __tablename__ = 'test_tasks'
+    __table_args__ = (
+        Index('idx_task_status', 'status'),
+        Index('idx_task_algorithm_type', 'algorithm_type'),
+        Index('idx_task_created_at', 'created_at'),
+        Index('idx_task_status_deleted', 'status', 'deleted'),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='任务唯一ID')
+    name = Column(String(255), nullable=False, comment='任务名称')
+    description = Column(Text, comment='任务描述')
+    status = Column(String(20), nullable=False, default='pending', comment='任务状态 (pending/queued/running/evaluating/reevaluate_queued/reevaluating/completed/failed/stopped/paused/skipped)')
+    config = Column(JSON, comment='任务执行时的特定配置')
+    algorithm_type = Column(String(50), comment='关联算法类型 (如: translation, asr, speaker_recognition, tts)')
+    algorithm_params = Column(JSON, comment='算法参数配置 (JSON格式)')
+    total_cases = Column(Integer, nullable=False, default=0, comment='总测试用例数量')
+    completed_cases = Column(Integer, nullable=False, default=0, comment='已执行完成的用例数量')
+    failed_cases = Column(Integer, nullable=False, default=0, comment='执行失败的用例数量')
+    created_by = Column(Integer, comment='创建者用户ID')
+    # INT-1784：(created_by_user_id, visibility) 复合索引覆盖该列，单列索引下线
+    created_by_user_id = Column(BigInteger, nullable=True, comment='创建者用户ID')
+    visibility = Column(String(20), nullable=False, default='shared', server_default='shared', comment='数据可见性 (shared/private，INT-423)')
+    # INT-573：最后启动操作人（start/retry 记录；控制操作校验 owner 或启动人）
+    last_started_by_user_id = Column(BigInteger, nullable=True, index=True, comment='最后启动操作人用户ID（INT-573 启动人记录）')
+    updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
+    created_at = Column(DateTime, default=utcnow, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utcnow, server_default=func.now(), onupdate=utcnow, nullable=False, comment='更新时间')
+    # INT-2209 时间口径契约：库内 UTC naive（tzinfo=None，值为 UTC 墙钟），
+    # 本地时区只在展示层转换；写入口径见 task_service.core.time_utils。
+    started_at = Column(DateTime, comment='任务实际开始执行时间（UTC naive，INT-2209）')
+    completed_at = Column(DateTime, comment='任务执行结束时间（UTC naive，INT-2209）')
+    estimated_time = Column(Integer, comment='预计执行耗时 (秒)')
+    actual_duration = Column(Integer, comment='实际执行耗时 (秒)')
+    deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
+    deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
+    deleted_by_user_id = Column(BigInteger, nullable=True, comment='执行删除操作的用户ID（JWT，INT-141）')
+    reevaluated_at = Column(DateTime, nullable=True, comment='最后一次重新评估完成时间')
+    reevaluation_count = Column(Integer, nullable=False, default=0, comment='重新评估次数')
+    worker_instance_id = Column(String(100), nullable=True, index=True, comment='归属执行实例ID (task_service:{host}:{port}:{hex})，NULL 表示未绑定，任意实例可接管')
+    # 已发布任务追溯字段（从已发布任务执行生成的日常任务回填）
+    published_task_id = Column(Integer, nullable=True, comment='来源已发布任务 ID')
+    published_task_version = Column(Integer, nullable=True, comment='来源已发布任务版本号')
+    execution_source = Column(String(20), nullable=True, default='manual', comment='执行来源 (manual/published_task)')
+
+    # 跨上下文 relationship（Tag/TestCase 归属本服务，可保留）
+    tags = relationship('Tag', secondary='task_tags',
+        primaryjoin='Task.id == TaskTag.task_id',
+        secondaryjoin='Tag.id == TaskTag.tag_id',
+        backref='tasks')
+    cases = relationship('TestCase', secondary='task_case_relations',
+        primaryjoin='Task.id == TaskCase.task_id',
+        secondaryjoin='TestCase.id == TaskCase.test_case_id',
+        backref='tasks')
+    # P5: devices / apis relationship 移除（Device/API 不归属本服务），
+    #     跨域查询改 gRPC 调 e2e_test_service / api_test_service
+
+
+class TaskTag(Base):
+    """任务标签关联模型 (Task-Tag Relation)
+    维护测试任务与标签之间的多对多映射关系。
+    """
+    __tablename__ = 'task_tags'
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
+    task_id = Column(BigInteger, comment='关联测试任务ID')
+    tag_id = Column(BigInteger, comment='关联标签ID')
+    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
+    created_at = Column(DateTime, default=utcnow, server_default=func.now(), nullable=False, comment='创建时间')
+
+
+class TaskCase(Base):
+    """任务-用例执行状态模型 (Task-Case Relation)
+    记录特定任务中每个用例的执行状态和耗时。
+    """
+    __tablename__ = 'task_case_relations'
+    __table_args__ = (
+        # INT-604：任务内 (case, 路由) 唯一——同一用例可同时存在设备侧 + API 侧
+        # 多行（混选前置），但同一路由不得重复。COALESCE 与 202611 迁移
+        # add_uq_task_case_route_int604.py 口径一致（NULL device_type/device_id
+        # 归一为空串，Postgres 唯一索引默认 NULL 互异，裸列索引拦不住 NULL 行）。
+        Index('uq_task_case_route', 'task_id', 'test_case_id',
+              text("COALESCE(device_type, '')"), text("COALESCE(device_id, '')"),
+              unique=True),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
+    task_id = Column(BigInteger, comment='关联测试任务ID')
+    test_case_id = Column(String(50), comment='关联测试用例ID')
+    status = Column(String(50), default='pending', nullable=True, comment='该用例在任务中的最终结果 (pending/running/completed/failed/skipped)')
+    execution_status = Column(String(20), default='pending', nullable=False, comment='执行过程状态 (pending/queued/running/completed/stopped/failed)')
+    evaluation_status = Column(String(20), default='pending', nullable=False, comment='评估过程状态 (queued/pending/running/calculating/completed/stopped/failed)')
+    started_at = Column(DateTime, comment='开始执行时间（UTC naive，INT-2209）')
+    completed_at = Column(DateTime, comment='执行结束时间（UTC naive，INT-2209）')
+    duration = Column(Integer, comment='执行耗时 (秒)')
+    error_message = Column(Text, comment='执行过程中的错误信息')
+    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
+    created_at = Column(DateTime, default=utcnow, server_default=func.now(), nullable=False, comment='创建时间')
+    # 执行域 P0 新增：用例级被测设备路由（取代已废弃的 task.type 语义）
+    device_type = Column(String(20), nullable=True, comment='被测设备类型 (physical/http_api/websocket_api，用例级决定执行路由；历史 NULL 行已由 INT-789 回填迁移补齐)')
+    device_id = Column(String(50), nullable=True, comment='被测设备ID (physical=设备ID / http_api|websocket_api=api.id)')
+    # 实验室扩展：用例级实验室归属（可空=通用任务，随设备选择按实验室过滤）
+    lab_id = Column(Integer, nullable=True, index=True, comment='关联实验室ID (实验室扩展)')
+
+
+class TaskDevice(Base):
+    """任务设备关联模型 (Task-Device Relation)
+    定义任务执行时所使用的被测设备。
+    """
+    __tablename__ = 'task_device_relations'
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
+    task_id = Column(Integer, comment='关联测试任务ID')
+    device_id = Column(Integer, comment='关联被测设备ID')
+
+
+class TaskAPI(Base):
+    """任务 API 关联模型 (Task-API Relation)
+    定义任务执行时所调用的 API 服务。
+    """
+    __tablename__ = 'task_api_relations'
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
+    task_id = Column(Integer, comment='关联测试任务ID')
+    api_id = Column(Integer, comment='关联 API ID')
+
+
+class TaskLaboratoryRelation(Base):
+    """任务-实验室关联模型 (Task-Laboratory Relation)
+
+    记录任务关联的实验室（N:M，INT-493/INT-540 拆分④）。
+    表已由 scripts/migrations/202608/add_laboratory_tables.py Step2 建立
+    （含 priority + UNIQUE(task_id, lab_id)）。
+    """
+    __tablename__ = 'task_laboratory_relations'
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
+    task_id = Column(Integer, nullable=False, comment='关联测试任务ID')
+    lab_id = Column(Integer, nullable=False, comment='关联实验室ID')
+    priority = Column(Integer, nullable=False, default=1, comment='实验室优先级（按 lab_ids 传入顺序）')
+    created_at = Column(DateTime, default=utcnow, server_default=func.now(), nullable=False, comment='创建时间')
+
+
+class TaskMergeRelation(Base):
+    """任务合并关联模型 (Task Merge Relation)
+    记录合并任务与源任务之间的多对多映射关系。
+    """
+    __tablename__ = 'task_merge_relations'
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
+    merged_task_id = Column(Integer, ForeignKey('test_tasks.id'), nullable=False, comment='合并后的任务ID')
+    source_task_id = Column(Integer, ForeignKey('test_tasks.id'), nullable=False, comment='源任务ID')
+    source_result_count = Column(Integer, default=0, comment='该源任务贡献的结果数量')
+    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
+    created_at = Column(DateTime, default=utcnow, server_default=func.now(), nullable=False, comment='创建时间')
+
+    merged_task = relationship('Task', foreign_keys=[merged_task_id], backref='source_relations')
+    source_task = relationship('Task', foreign_keys=[source_task_id], backref='target_relations')

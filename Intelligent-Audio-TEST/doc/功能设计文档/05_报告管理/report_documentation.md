@@ -63,7 +63,9 @@
 | 表名 | 核心字段 | 用途 |
 |------|---------|------|
 | test_results | task_id、test_case_id、device_id、api_id、algorithm_type、execution_status、response_time、algorithm_result(JSON)、execution_steps(JSON) | 测试执行结果（snake_case 存储） |
-| test_result_dimensions | test_result_id、dimension_id、round_number（NULL=整体评估，0-indexed）、dimension_value、score、status(passed/failed)、evaluation_status | 各轮次/整体维度得分，报告指标计算的直接数据源 |
+| test_result_dimensions | test_result_id、dimension_id、round_number（NULL=整体评估，0-indexed）、dimension_value、score、status(passed/failed)、evaluation_status、api_raw_response_uri 等五列指针 | 各轮次/整体维度得分，报告指标计算的直接数据源 |
+
+> **原始报文不在报告侧直读**（INT-1807 / INT-1809）。`api_raw_response` / `api_request_body` 两个 JSON 列自 C2 起不再有代码读写，并已由 M1（INT-1813）**从库中 DROP**；报文按内容寻址外置在对象存储（`case_result/raw/{resp|req}/{sha[:2]}/{sha}.json.gz`），行上只有 `_uri / _sha256 / _bytes / _content_type / _created_at` 五列指针（口径见 `01_测试执行/09_原始报文外置对象存储.md`）。需要原始报文的两条链路都**按指针读对象并校验 sha256**：报告快照构建吃评估时内存里的 payload（不回读）；报告加权策略 / 报告详情「按需查看原始响应」/ LLM 复检走 `GetDimensionResultsByResultIds(include_body=True)`，由 evaluation_service 读对象后回传（载荷形状不变）。
 
 ### 3.2 报告数据结构
 
@@ -98,6 +100,8 @@
 
 字段命名约定：数据库与后端 API 均为 **snake_case**；前端遵循 DDD 分层，仅 Infrastructure 层（api/adapters/dto）感知 snake_case，并在 DTO→Domain 映射时转换为 **camelCase**，Presentation 层（views/components）只见 camelCase Domain 模型。
 
+`summary_meta.all_case_tags` 为报告快照的用例标签条目列表，条目结构 `{id, name, category_id, category_name}`（无分类 tag 的 `category_id`/`category_name` 为 null），详见 §4.2.7。
+
 ### 3.3 数据存储方式
 
 1. **关系型存储** - 核心数据（测试任务、用例、结果、报告）存储在PostgreSql数据库中
@@ -129,6 +133,12 @@ test_reports + report_summaries / report_summary_meta / report_raw_data
 ```
 
 生成进度可通过 `GET /api/v1/reports/<id>/progress` 轮询查询。
+
+**报告只读冻结快照，不读 TRD 原始报文**（INT-1809 / C2 定稿）：
+
+- 报告页 / HTML / Excel / 对比报告读的是 `test_results.result_data.algorithm_results` —— 评估时预提取并冻结的扁平快照，构建时消耗的是**评估进程内存里的 payload**，快照一旦落定就与原始报文解耦；
+- 只有两类链路需要原始报文，且都按指针读对象（sha256 校验，对象缺失/损坏显式报错）：加权聚合策略（`weighted_sum_ratio` / `weighted_wer` 取分子分母）与报告详情「按需查看原始响应」端点，统一走 `GetDimensionResultsByResultIds(include_body=True)`；`include_body=False` 时 evaluation_service 连对象都不碰；
+- 因此 M1 DROP 掉两个 JSON 列不会影响报告生成，也不会出现「读已删列报错」。
 
 #### 4.1.2 对比报告数据查询
 
@@ -166,6 +176,43 @@ test_reports + report_summaries / report_summary_meta / report_raw_data
 #### 4.2.5 指标维度与 xiaoyi_metrics 体系对齐
 
 报告展示的指标维度由 `dimensions` 表配置驱动（小艺维度经 `backend/scripts/migrations/202606/seed_xiaoyi_dimensions.py` 以中文名 + `task_type_code` 注册），维度名与 `xiaoyi_metrics` 评估指标体系的 12 个 task_type（Calculator 注册表）一一对应：turn_taking（话轮接管主维度，统一双路 ASR 后遍历子维度）、tor、false_takeover、takeover_latency、high_freq_turn_taking、high_freq_llm_judge、interruption_metrics、non_interactive_latency、noise_latency、rejection_judge、interruption_judge、llm_judge。报告侧不重新定义指标含义，仅按上述体系展示与聚合；`input_asr`（输入识别准确率）为 turn_taking 包内的辅助计算函数，非独立注册维度。
+
+#### 4.2.6 筛选聚合（POST /reports/case-averages）
+
+> 口径裁定 2026-10-21（INT-1059，V9.7.10 五连移植等价核验）：筛选聚合与报告生成共用同一套维度取值与策略聚合工具，避免「筛选后数据全为 -」「百分比维度超 100%」「pass_rate 误报 100%」三类口径偏差。
+
+用例分组/标签对比卡片的筛选聚合由 `POST /reports/case-averages` 服务端完成（report_service `handle_get_case_averages` → `ReportAggregationService.calculate_averages`）：
+
+- **请求**：`taskId`（任务筛选）或 `reportId`（对比/二次对比报告筛选）二者必传其一；`category` / `tags` / `categories` / `includeUntagged` 为筛选条件。
+- **reportId 解析**：对比/二次对比报告经 `report_comparison_matrix.comparison_matrix.task_ids`（兜底 `report_summary.task_ids`）解析源任务集合，与 `taskId` 走同一聚合工具（INT-1059 对齐 V9.7.10 0c6b2028a）。
+- **资源 key 口径**：设备/API 资源唯一 key 与对应报告摘要列一致——
+  - 任务报告（`taskId` 或报告主表含 `task_id` 的 `reportId`）：无时间前缀、含版本、含 `result_type` 后缀（`get_resource_name` 形态，INT-1059 对齐 b47cae340）；
+  - 对比/二次对比报告（`reportId`，报告主表无 `task_id`）：**按源任务聚合，key 带 `t{task}-{time}-` 前缀**（`get_resource_name(result, 源任务, use_time_prefix=True)`，与对比摘要资源列 `report_compare_generator_data_mixin._collect_resources_batch` 同源）——保证筛选响应资源/指标 key 与前端对比面板列（按源任务展示）一一对应，避免列 key 与数据 key 不匹配导致数值不显示（INT-1059 返工裁定 2026-10-21）。
+  - 同一源任务共享的设备/API 在对比筛选下不跨任务合并，各源任务独立成列。
+- **响应**：`metricData`（分组×资源×指标）、`tagMetricData`（标签×资源×指标，新增）、`rawData`、`normalDistribution`、`resources`、`resourceHeaders`、`overallAverages` / `overallAveragesMap`、`filters`。
+- **百分比口径**：非 `average` 维度（pass_rate / ratio / weighted_sum_ratio）按维度 `statistic_method` 策略聚合，产出 0~100；**逐轮失败值 0 是合法数据点**，计入分子/分母（失败轮不会从分母消失，pass_rate 不误报 100%，INT-1059 对齐 a9c4adc56）；`average` 维度按轮次口径取算术平均。
+- **分组筛选口径（INT-1059 返工裁定 2026-10-21）**：`task_service TestCaseConfigService.ListTestCases` 透传 `group_name`/`group_id` 顶层字段（无 `group` 对象），`_report_case_filters.tc_group_name`、聚合侧 `_get_case_category_name`、报告摘要 `extract_case_categories_and_tags` 均回退 `group_name`，保证按真实分组名筛选命中且分类/摘要不落「未分类」；无分组用例归类「未分类」，`categories=['未分类']`（或 `category='未分类'`）命中未分组用例。前端分组对比组件 `applyFilters` 加空结果守卫（与标签组件一致），API 返回空矩阵时保留默认值不清空为 0.00。
+- **前端**：旧 Vue 分组/标签对比组件筛选一律走后端聚合，移除 `searchCases` + 前端手写平均（避免按用例简单平均导致超 100%，INT-1059 对齐 7bb9fd339/e4e5dface/0c6b2028a）。
+
+#### 4.2.7 报告快照标签条目携带分类（all_case_tags / case_tags_list）
+
+`report_summary_meta.all_case_tags`（快照列）由 `ReportQueryBuilder.extract_case_categories_and_tags`（`report_service/application/services/report_query_builder.py`）在报告生成时构建，条目结构：
+
+```json
+{
+  "id": "<tag_id>",
+  "name": "<tag_name>",
+  "category_id": "<category_id 或 null>",
+  "category_name": "<category_name 或 null>"
+}
+```
+
+- **字段对齐（INT-2100）**：`id / name / category_id / category_name` 与 `task_service/application/testcase/tag_crud_service.py` `_tag_to_dict` 对应字段一致（`_tag_to_dict` 另有 description/color/created_at 等页面 DTO 字段，报告快照只透传这 4 个）；
+- **透传规则**：读取 `_tc_get_tags(test_case)` 返回的 tag 对象（dict / ORM）中的 `category_id` / `category_name` 一并写入条目；**无分类 tag 保持 `category_id` / `category_name` 为 null**，前端报告筛选 taxonomy 按分类展示时走「未分类」兜底尾组；
+- **空标签回落**：无标签时 `case_tags_list` 回落 `{id: "default_tag", name: "无标签", category_id: null, category_name: null}`；主报告 / 对比 / 二次对比三条生成链缺省结构一致；
+- **不回溯**：历史报告快照不回填分类（前端「未分类」兜底展示），仅新生成报告透传。
+
+> 实现说明（INT-2100 返工裁定 2026-10-27，数据源契约路线 A）：真实 task_service 契约当前把用例 tags 序列化为**字符串名列表**（`task_service/application/testcase/testcase_query_service.py` ListTestCases / GetTestCaseDetail），报告域按名经 `TagConfigService.GetTagsByCategory` **单次调用**建 `name → {id, category_id, category_name}` 映射解析分类（真实库 ~115 活跃标签，载荷小）；**解析不到的字符串 tag 不丢标签**，`id` 为 null、`category_id`/`category_name` 保持 null（前端「未分类」兜底）；task_service 契约不变（tags 仍为 string[]），前端 DTO 与其他服务不受影响；与「task_service 交付 tag dict」路线 B **前向兼容**——若后续契约变更，字符串路径自然退化为兜底。
 
 ## 5. 报告生成流程
 

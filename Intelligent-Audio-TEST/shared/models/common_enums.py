@@ -1,0 +1,911 @@
+# -*- coding: utf-8 -*-
+"""跨服务共享枚举
+
+这些枚举不是 PO（无 __tablename__），不归属任何单一服务，
+作为跨服务共享的领域语义保持在本文件。
+
+- ReportStatus  报告状态（归属 report_service 域，但被多处引用）
+- TaskStatus    任务状态（归属 task_service 域，但被多处引用）
+- ReportType    报告类型（归属 report_service 域，但被多处引用）
+
+P5 改造：从 shared/models/models/user_models.py 中拆出（原 user_models
+混入这三个枚举是历史遗留），user_models 的 PO 已下沉到 auth_service。
+"""
+from enum import Enum
+
+
+class EntityType(str, Enum):
+    """可收藏实体类型枚举 — 收藏/回收站按实体分治路由（INT-141）
+
+    task_service 管辖 task|testcase，report_service 管辖 report；
+    收藏表 (user_id, entity_type, entity_id) 唯一。
+    """
+    TASK = 'task'
+    REPORT = 'report'
+    TESTCASE = 'testcase'
+
+
+class Visibility(str, Enum):
+    """数据可见性枚举（INT-423 数据可见性体系一期基座）
+
+    仅二值（负责人拍板，共享范围由 RBAC 角色承载，不加团队/多级可见性）：
+    - SHARED  共享（默认；存量行为，所有有权用户可见）
+    - PRIVATE 私有（仅 owner 与 admin 可见，行级过滤走 visibility_filter）
+    """
+    SHARED = 'shared'
+    PRIVATE = 'private'
+
+
+class ReportStatus(str, Enum):
+    """报告状态枚举 —— `test_reports.status` 的唯一词表（发布态，INT-2238）
+
+    这一列只表达「是否已发布」一个维度，生成过程的进行中 / 完成态不落库：
+    - DRAFT      草稿：报告行已落库但未发布（生成中、生成失败待重试均留此态）
+    - PUBLISHED  已发布：生成成功自动置位，或人工发布
+
+    生成进度（generating / completed）是 GET /reports/{id}/progress 的响应态，
+    由生成锁实时推导，不是本列取值；不要再往本列写 pending/generating/
+    completed/failed（历史混值由 202611/normalize_report_status_int2238.py 归一）。
+    """
+    DRAFT = 'draft'
+    PUBLISHED = 'published'
+
+    @classmethod
+    def values(cls) -> tuple:
+        """全部合法取值（命令侧入参校验用）。"""
+        return tuple(m.value for m in cls)
+
+
+class TaskStatus(str, Enum):
+    """任务状态枚举"""
+    PENDING = 'pending'
+    RUNNING = 'running'
+    COMPLETED = 'completed'
+    FAILED = 'failed'
+    MERGED = 'merged'
+
+
+class ReportType(str, Enum):
+    """报告类型枚举"""
+    TASK = 'task'
+    COMPARISON = 'comparison'
+    SECONDARY_COMPARISON = 'secondary_comparison'
+    BENCHMARK = 'benchmark'  # INT-481：Benchmark 报告（发布记录见 benchmark_reports 第五表）
+
+
+class RetryScopeMode(str, Enum):
+    """重执行/重评估范围模式（INT-302：任务卡片按用例+按维度选择）
+
+    - selected: 仅选中集合（case_ids 指定用例）
+    - failed_only: 仅失败用例（执行失败或评估失败）
+    - all: 整任务（缺省，保持既有语义）
+    """
+    SELECTED = 'selected'
+    FAILED_ONLY = 'failed_only'
+    ALL = 'all'
+
+
+class FieldType(str, Enum):
+    """字段类型枚举（用于参数/结果字段的类型标识）"""
+    RTTM = 'rttm'
+    STM = 'stm'
+    TEXT = 'text'
+    AUDIO_FILE = 'audio_file'
+    AUDIO = 'audio'
+    NUMBER = 'number'
+    BOOLEAN = 'boolean'
+    JSON = 'json'
+    TIMESTAMP = 'timestamp'
+
+
+class ViewMode(str, Enum):
+    """视图模式枚举（全部 / 按分组 / 按标签）"""
+    ALL = 'all'
+    GROUP = 'group'
+    TAG = 'tag'
+
+
+class DeviceType(str, Enum):
+    """被测设备类型枚举 — 用例级决定执行路由（执行域 P0 新增）
+
+    语义取代源单体的 task.type / test_type 分支：
+    - PHYSICAL       物理设备       → e2e_test_service E2EExecutor
+    - HTTP_API       HTTP API       → api_test_service APISessionExecutor
+    - WEBSOCKET_API  WebSocket API  → api_test_service RealtimeSessionExecutor
+    """
+    PHYSICAL = 'physical'
+    HTTP_API = 'http_api'
+    WEBSOCKET_API = 'websocket_api'
+
+
+class CaseParamScope(str, Enum):
+    """用例参数适用范围枚举 — `case_algorithm_params.scope` 列值域
+
+    - COMMON  所有设备类型通用的参数（缺省）
+    - 其余三个值直接复用 DeviceType 值：参数只在对应设备类型的用例里生效
+
+    取代旧的 common/api/e2e 词表（用例不再区分 api/e2e，执行方式只看
+    task_case_relations.device_type）。
+    """
+    COMMON = 'common'
+    PHYSICAL = DeviceType.PHYSICAL.value
+    HTTP_API = DeviceType.HTTP_API.value
+    WEBSOCKET_API = DeviceType.WEBSOCKET_API.value
+
+
+# 写侧校验正则（网关 pydantic pattern 与共享常量同源，避免魔法字符串）
+CASE_PARAM_SCOPE_PATTERN = '^(' + '|'.join(s.value for s in CaseParamScope) + ')$'
+CASE_PARAM_SCOPE_MAX_LENGTH = max(len(s.value) for s in CaseParamScope)
+
+
+class DeviceOccupancyStatus(str, Enum):
+    """物理设备占用状态枚举（实验室扩展 INT-493 §4.3）
+
+    语义（按 task_case_relations 活动行聚合，只统计 device_type='physical'）：
+    - TESTING  测试中（存在 execution_status='running' 的活动行）
+    - OCCUPIED 已占用（无 running，但存在 pending/queued 排队活动行）
+    无任何活动行时占用态为 null（无枚举成员，DTO 字段直接为 None，前端渲染「未绑定」）。
+    """
+    TESTING = 'testing'
+    OCCUPIED = 'occupied'
+
+
+class APIProtocol(str, Enum):
+    """API 传输协议枚举 — `apis.protocol` 列值域（执行域 P0 新增，INT-1799 扩两值）
+
+    协议与流式性正交：本枚举只管「用什么传输」，流式与否由 `apis.streaming`
+    布尔决定、执行道由 `ExecutionLane` 承载（见 B0 裁定文档 09 §3.1）。
+    只存规范值；`https` / `ws` / `wss` 等别名经 `normalize_protocol` 归一，
+    归一后仍非法即写侧 400。
+    """
+    HTTP = 'http'
+    WEBSOCKET = 'websocket'
+    SSE = 'sse'
+    GRPC = 'grpc'
+
+
+# 协议词表归一表（迁移回填 + 写侧共用，INT-1799）：历史别名 → 规范值。
+# `apis.meta.protocol` 存量取值只有 http/https（主库 62 行），ws/wss 为其他
+# 环境的保守覆盖；归一后仍无映射的值一律报错，不静默兜底。
+PROTOCOL_ALIASES = {
+    'http': APIProtocol.HTTP.value,
+    'https': APIProtocol.HTTP.value,
+    'ws': APIProtocol.WEBSOCKET.value,
+    'wss': APIProtocol.WEBSOCKET.value,
+    'websocket': APIProtocol.WEBSOCKET.value,
+    'sse': APIProtocol.SSE.value,
+    'grpc': APIProtocol.GRPC.value,
+}
+
+
+def normalize_protocol(raw) -> str:
+    """协议值归一（别名 → 规范值）；未知值抛 ValueError（不静默兜底）。
+
+    空值（None / 空串）视为未提交，由调用方决定默认值——本函数只做词表归一。
+    """
+    key = str(raw).strip().lower() if raw is not None else ''
+    if not key:
+        raise ValueError('protocol 不能为空')
+    normalized = PROTOCOL_ALIASES.get(key)
+    if normalized is None:
+        raise ValueError(
+            f"非法的协议 (protocol): {raw}，仅支持: "
+            f"{', '.join(p.value for p in APIProtocol)}（别名 http/https/ws/wss 可用）")
+    return normalized
+
+
+class ExecutionLane(str, Enum):
+    """执行道枚举 — 由 `apis.streaming` 布尔唯一决定（INT-1799 / B0 裁定）
+
+    两道：streaming（流式 = 实时）/ non_streaming（非流式 = 非实时）。
+    协议不参与道判断；多轮（rounds）只在道内决定「线性 / 会话 / 按事件」策略。
+    `ExecutionMode`（parallel/serial，INT-1115）另有所指，不复用。
+    """
+    STREAMING = 'streaming'
+    NON_STREAMING = 'non_streaming'
+
+
+def lane_of(streaming: bool) -> ExecutionLane:
+    """执行道唯一推导入口：只吃 `streaming`，不接受 protocol / rounds / device_type。"""
+    return ExecutionLane.STREAMING if bool(streaming) else ExecutionLane.NON_STREAMING
+
+
+# 可写的协议 × 流式性组合（B0 裁定 §3.2.3）：每种组合都必须有落地的执行器。
+# 其余组合写侧显式 400（「实现未上线」），不得在写侧静默降级。
+# A1（INT-1789）放开 gRPC 两种；A2（INT-1790）放开 sse+true（text/event-stream）
+# 与 http+true（chunked 流式）；A4（INT-2079）放开 websocket+false（请求-响应式）。
+AVAILABLE_PROTOCOL_STREAMING = frozenset({
+    (APIProtocol.HTTP.value, False),
+    (APIProtocol.WEBSOCKET.value, True),
+    # INT-1789（A1）：gRPC unary = 非流式，server-stream / bidi = 流式
+    (APIProtocol.GRPC.value, False),
+    (APIProtocol.GRPC.value, True),
+    # INT-1790（A2）：SSE 事件流与 HTTP chunked 流式
+    (APIProtocol.SSE.value, True),
+    (APIProtocol.HTTP.value, True),
+    # INT-2079（A4）：WS 请求-响应式（非会话式，发请求消息 → 等响应）
+    (APIProtocol.WEBSOCKET.value, False),
+})
+
+
+def is_protocol_streaming_available(protocol: str, streaming: bool) -> bool:
+    """组合是否已实现执行器（B1 可用矩阵）。"""
+    return (normalize_protocol(protocol), bool(streaming)) in AVAILABLE_PROTOCOL_STREAMING
+
+
+class TargetType(str, Enum):
+    """逐目标执行模式的目标类型枚举（INT-1115 target_modes 契约）
+
+    - DEVICE  物理设备目标：task_case_relations 中 device_type='physical'
+              且 device_id=str(target_id) 的用例行归属该目标
+    - API     HTTP/WebSocket API 目标：device_type ∈ {http_api, websocket_api}
+              且 device_id=str(target_id) 的用例行归属该目标
+    """
+    DEVICE = 'device'
+    API = 'api'
+
+
+class ExecutionMode(str, Enum):
+    """逐目标执行模式枚举 — 单个目标（设备/API）在其道内的时序（INT-1115）
+
+    - PARALLEL  并行（默认/现行为）：任务启动即并发派发，不受任何目标门控
+    - SERIAL    串行：仅当同类型道内全部前序目标用例行到达终态后才派发本目标
+    """
+    PARALLEL = 'parallel'
+    SERIAL = 'serial'
+
+
+# 设备系统输入别名 → 规范成员（小写键）。harmony 为前端注册/扫描表单实际写入的别名（INT-206）
+_DEVICE_SYSTEM_ALIASES = {
+    'android': 'ANDROID',
+    'ios': 'IOS',
+    'harmonyos': 'HARMONYOS',
+    'harmony': 'HARMONYOS',
+}
+
+
+class DeviceSystem(str, Enum):
+    """设备操作系统枚举 — device.system 落库规范值（INT-206）
+
+    成员值与驱动注册表基础驱动键（'Android'/'HarmonyOS'）及扫描产出一致；
+    写入侧必须经 normalize() 归一后落库，杜绝 'harmony' 等别名脏数据；
+    查询/驱动侧匹配一律大小写不敏感。
+    """
+    ANDROID = 'Android'
+    HARMONYOS = 'HarmonyOS'
+    IOS = 'iOS'
+
+    @classmethod
+    def normalize(cls, value) -> 'DeviceSystem':
+        """归一设备系统输入：大小写不敏感，接受 harmony 等别名。
+
+        空/未知值抛 ValueError（消息含合法值清单）：写入侧转 400，
+        驱动解析侧转 CreateDriver 真因失败信息。
+        """
+        legal = '/'.join(item.value for item in cls)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"设备系统 system 不能为空，合法值: {legal}（别名: harmony）")
+        member_name = _DEVICE_SYSTEM_ALIASES.get(value.strip().lower())
+        if member_name is None:
+            raise ValueError(
+                f"未知设备系统 system: {value!r}，合法值: {legal}（别名: harmony）")
+        return cls[member_name]
+
+
+class LabStatus(str, Enum):
+    """实验室状态枚举（INT-493/INT-537 实验室扩展）
+
+    对齐 laboratories.status 列（migration 202608 add_laboratory_tables 默认 'active'）；
+    网关 laboratory 路由 create/update 及列表过滤均以本枚举校验，拒绝魔法字符串。
+    """
+    ACTIVE = 'active'
+    INACTIVE = 'inactive'
+    MAINTENANCE = 'maintenance'
+
+
+class AdapterProtocol(str, Enum):
+    """适配器协议维度枚举 — vendor_adapter_registry 多维 key（INT-497 新增）
+
+    语义域区别于 APIProtocol（传输协议分型）：AdapterProtocol 是适配器三级体系
+    （base_adaptor → 协议_base_adaptor → 品牌适配器）中协议级 base 的分型依据，
+    覆盖 HTTP / WEBSOCKET / REALTIME / GRPC；ANY 为遗留适配器（仅 adapter_type）
+    注册时的协议通配维度。REALTIME 落本枚举，不复用/扩展 APIProtocol（方案审计
+    2026-10-16 拍板）。GRPC 由 A1（INT-1789）在协议级 base 落地时新增；SSE 仍待
+    A2（INT-1790）落地后补（B1 明确本卡不扩）。
+    """
+    HTTP = 'http'
+    WEBSOCKET = 'websocket'
+    REALTIME = 'realtime'
+    GRPC = 'grpc'
+    ANY = 'any'
+
+
+class AdapterVendor(str, Enum):
+    """适配器品牌维度枚举 — vendor_adapter_registry 多维 key（INT-497 新增）
+
+    API_DRIVER 为内置 HTTP/WS 协议适配器的品牌兜底，MOCK 为测试替身，
+    OPENAI 为 OpenAI 品牌适配器；ANY 为未声明品牌维度时的通配。
+    """
+    API_DRIVER = 'api_driver'
+    MOCK = 'mock'
+    OPENAI = 'openai'
+    ANY = 'any'
+
+
+class VendorAdapterType(str, Enum):
+    """厂商适配器类型枚举 — 用例配置 vendor_adapter 扁平 key 兼容层（INT-62 / INT-497）
+
+    注册表主 key 已升级为 (AdapterProtocol, AdapterVendor) 多维（INT-497 与设备驱动
+    注册表同构）；本枚举保留为用例配置的扁平 key 层，create_from_config 经
+    adapter_type_from_config 映射为多维 key。新增厂商适配器 = 新增本枚举扁平 key
+    + @register_vendor_adapter 注册实现 + 用例配置 vendor_adapter 选择。
+    """
+    API_DRIVER = 'api_driver'        # 内置 HTTP/WS 协议适配器（原 clients/api_driver + api_client 迁移）
+    MOCK = 'mock'                    # mock 厂商适配器（扩展性验证 / 测试替身）
+    OPENAI = 'openai'                # OpenAI 品牌扁平 key（首期 websocket_api 路径 → (REALTIME, OPENAI)）
+    OPENAI_REALTIME = 'openai_realtime'  # OpenAI Realtime 组合扁平 key → (REALTIME, OPENAI)
+
+
+class RealtimeChannel(str, Enum):
+    """Realtime 流式双通道枚举 — frame 逐帧 / summary 会话汇总（INT-61 新增）
+
+    双通道经 REPORT_EVENTS 领域事件 + sse_events SSE 桥推前端，
+    通道名即 SSE event 名，前端按通道订阅渲染。
+    """
+    FRAME = 'realtime_frame'
+    SUMMARY = 'realtime_summary'
+
+
+class RealtimeFrameType(str, Enum):
+    """Realtime 归一化帧事件类型（INT-61 新增）
+
+    厂商原始事件经 ACL 归一化（默认 OpenAI Realtime 事件协议），
+    executor 与前端只消费本枚举类型，不接触厂商字段。
+    """
+    SESSION_CREATED = 'session_created'
+    SESSION_UPDATED = 'session_updated'
+    AI_AUDIO_DELTA = 'ai_audio_delta'
+    AI_AUDIO_DONE = 'ai_audio_done'
+    AI_TEXT_DELTA = 'ai_text_delta'
+    AI_TEXT_DONE = 'ai_text_done'
+    USER_SPEECH_STARTED = 'user_speech_started'
+    USER_SPEECH_STOPPED = 'user_speech_stopped'
+    RESPONSE_CANCELLED = 'response_cancelled'
+    ERROR = 'error'
+    CONNECTION_CLOSED = 'connection_closed'
+    INPUT_COMMITTED = 'input_committed'
+
+
+class RealtimeRoundMode(str, Enum):
+    """Realtime 轮次模式枚举 — 正常轮 / 打断轮（barge-in）（INT-61 新增）"""
+    NORMAL = 'normal'
+    INTERRUPTION = 'interruption'
+
+
+class RealtimeInterruptMode(str, Enum):
+    """Realtime 打断轮打断点模式枚举（INT-2080 新增）
+
+    打断点模式化：fixed_delay 为现状默认（AI 开口后按固定延时
+    interruption_delay_ms 推打断音频，零回归）；output_duration 基于已返回
+    AI 音频流长度（轮询 client.output['audio'] 累计时长达 interrupt_after_ms，
+    按采样率换算 ms）触发，适配变长/大块回复的精确打断点。
+    """
+    FIXED_DELAY = 'fixed_delay'
+    OUTPUT_DURATION = 'output_duration'
+
+
+class RealtimePacingStrategy(str, Enum):
+    """Realtime 输入节奏策略枚举（INT-475 新增）
+
+    驱动输入推送节奏的输出信号来自被测厂商 Realtime API 实时输出
+    （RealtimeWSClient 归一化事件实例内回流），执行器据此调整后续音频
+    输入帧的推送时机，而非固定间隔盲推。
+
+    - FIXED              恒定节奏（默认 = 现状，回归基准）
+    - WAIT_TURN_END      模型输出 turn 进行中则暂停输入推流，turn 结束后续推
+    - ALLOW_BARGE_IN     允许输入推流中模型提前回话/打断，打断信号到达即收敛输入推流
+    - TIMEOUT_FALLBACK   模型无输出/无 turn 结束时按配置超时兜底，不无限等待
+                         （可与 WAIT_TURN_END / ALLOW_BARGE_IN 组合）
+
+    配置取值：单值字符串或组合列表/逗号分隔字符串（如 ['wait_turn_end',
+    'timeout_fallback']）；case_config['pacing'] / api_config.meta['pacing']
+    可覆盖 realtime_session 全局配置。
+    """
+    FIXED = 'fixed'
+    WAIT_TURN_END = 'wait_turn_end'
+    ALLOW_BARGE_IN = 'allow_barge_in'
+    TIMEOUT_FALLBACK = 'timeout_fallback'
+
+
+class OutputType(str, Enum):
+    """API 输出类型枚举 — adapter 多模态输出采集（执行域 P0 新增）"""
+    AUDIO = 'audio'
+    TEXT = 'text'
+    VIDEO = 'video'
+    IMAGE = 'image'
+
+
+class AudioBitDepth(str, Enum):
+    """音频位深枚举 — api.audio_config 目标格式声明（08_混音与SPL映射.md §2.2）"""
+    S16 = 's16'
+    S24 = 's24'
+    S32 = 's32'
+
+
+class AudioContainer(str, Enum):
+    """音频容器枚举 — api.audio_config 目标格式声明（08_混音与SPL映射.md §2.2）"""
+    PCM = 'pcm'
+    WAV = 'wav'
+
+
+class CalibrationStatus(str, Enum):
+    """SPL 校准状态枚举（执行域 P0 新增）"""
+    CALIBRATED = 'calibrated'
+    UNCALIBRATED = 'uncalibrated'
+
+
+class RedisKeyPrefix(str, Enum):
+    """Redis Key 前缀枚举 — 禁止裸字符串拼接 Redis key
+
+    各模块使用统一前缀，避免魔法字符串和 key 冲突。
+    """
+    # 端点任务队列前缀: eval:queue:{endpoint_url}
+    EVAL_QUEUE = 'eval:queue'
+    # 端点并发信号量前缀: eval:sem:{endpoint_url}
+    EVAL_SEMAPHORE = 'eval:sem'
+    # 评估结果回调频道前缀: eval:result:{eval_task_id}
+    EVAL_RESULT = 'eval:result'
+    # case 级评估取消标记前缀（INT-308，重启后核销仍生效）: eval:case_cancelled:{task_id}:{test_case_id}
+    EVAL_CASE_CANCELLED = 'eval:case_cancelled'
+    # physical 设备互斥锁前缀: lock:task:physical:{device_id}
+    TASK_PHYSICAL_LOCK = 'lock:task:physical'
+    # 播放设备互斥锁前缀: lock:playback:device:{playback_device_id}
+    # （同实验室并行用例共用一只音箱时串行播放；不同实验室不同音箱仍并行）
+    PLAYBACK_DEVICE_LOCK = 'lock:playback:device'
+    # API 数字 SPL 校准互斥锁前缀: lock:spl:calibration:{api_id}（UC-0902）
+    SPL_CALIBRATION_LOCK = 'lock:spl:calibration'
+    # 同 endpoint 并发信号量前缀: sem:api:endpoint:{host}
+    API_ENDPOINT_SEMAPHORE = 'sem:api:endpoint'
+    # Realtime 会话实例绑定前缀: session:bind:{task_id}
+    SESSION_BIND = 'session:bind'
+
+
+class EvalTaskStatus(str, Enum):
+    """eval_server 任务状态枚举 — 替代裸字符串状态判断"""
+    COMPLETED = 'completed'
+    FAILED = 'failed'
+
+
+class PublishedTaskStatus(str, Enum):
+    """已发布任务状态枚举 — 发布/归档状态机（任务发布功能）"""
+    PUBLISHED = 'published'
+    ARCHIVED = 'archived'
+
+
+class AuditEvent(str, Enum):
+    """审计事件名枚举 — 落库到 logs（category=System），供审计查询过滤
+
+    命名对齐设计文档《任务发布功能设计文档》§9 /《报告Benchmark排行功能设计文档》。
+    """
+    PUBLISHED_TASK_BENCHMARK_MARKED = 'PUBLISHED_TASK_BENCHMARK_MARKED'
+    BENCHMARK_RANKING_COMPUTED = 'BENCHMARK_RANKING_COMPUTED'
+    BENCHMARK_BASELINE_IMPORTED = 'BENCHMARK_BASELINE_IMPORTED'
+    BENCHMARK_MAPPING_CREATED = 'BENCHMARK_MAPPING_CREATED'
+    BENCHMARK_MAPPING_UPDATED = 'BENCHMARK_MAPPING_UPDATED'
+    BENCHMARK_REPORT_PUBLISHED = 'BENCHMARK_REPORT_PUBLISHED'  # INT-481：Benchmark 报告发布
+    # 用户/角色/权限管理审计（INT-30，category='auth'）
+    AUTH_USER_CREATED = 'AUTH_USER_CREATED'
+    AUTH_USER_UPDATED = 'AUTH_USER_UPDATED'
+    AUTH_USER_STATUS_CHANGED = 'AUTH_USER_STATUS_CHANGED'
+    AUTH_USER_ROLE_ASSIGNED = 'AUTH_USER_ROLE_ASSIGNED'
+    AUTH_USER_PERMISSION_GRANTED = 'AUTH_USER_PERMISSION_GRANTED'
+    AUTH_USER_PERMISSION_REVOKED = 'AUTH_USER_PERMISSION_REVOKED'
+    AUTH_ROLE_CREATED = 'AUTH_ROLE_CREATED'
+    AUTH_ROLE_UPDATED = 'AUTH_ROLE_UPDATED'
+    AUTH_ROLE_PERMISSIONS_SET = 'AUTH_ROLE_PERMISSIONS_SET'
+    AUTH_ROLE_DELETED = 'AUTH_ROLE_DELETED'
+    # 登录体系改造（INT-51，category='auth'）
+    AUTH_USER_REGISTERED = 'AUTH_USER_REGISTERED'
+    AUTH_OAUTH_PROVIDER_CREATED = 'AUTH_OAUTH_PROVIDER_CREATED'
+    AUTH_OAUTH_PROVIDER_UPDATED = 'AUTH_OAUTH_PROVIDER_UPDATED'
+    AUTH_OAUTH_PROVIDER_DELETED = 'AUTH_OAUTH_PROVIDER_DELETED'
+    # 自助改密（INT-794，category='auth'）
+    AUTH_PASSWORD_CHANGED = 'AUTH_PASSWORD_CHANGED'
+    # 登录/登出审计（INT-406，category='auth'）——登录成功与登出各落一条
+    AUTH_LOGIN = 'AUTH_LOGIN'
+    AUTH_LOGOUT = 'AUTH_LOGOUT'
+    # 设备管理审计（INT-80，category='device'）
+    DEVICE_GROUP_CREATED = 'DEVICE_GROUP_CREATED'
+    DEVICE_GROUP_UPDATED = 'DEVICE_GROUP_UPDATED'
+    DEVICE_GROUP_DELETED = 'DEVICE_GROUP_DELETED'
+    DEVICE_GROUP_MEMBERSHIP_CHANGED = 'DEVICE_GROUP_MEMBERSHIP_CHANGED'
+    DEVICE_CONTROL_EXECUTED = 'DEVICE_CONTROL_EXECUTED'
+    DEVICE_BATCH_ACTION_EXECUTED = 'DEVICE_BATCH_ACTION_EXECUTED'
+    DEVICE_ALARM_RULE_CREATED = 'DEVICE_ALARM_RULE_CREATED'
+    DEVICE_ALARM_RULE_UPDATED = 'DEVICE_ALARM_RULE_UPDATED'
+    DEVICE_ALARM_RULE_DELETED = 'DEVICE_ALARM_RULE_DELETED'
+    DEVICE_ALARM_TRIGGERED = 'DEVICE_ALARM_TRIGGERED'
+    DEVICE_ALARM_ACKNOWLEDGED = 'DEVICE_ALARM_ACKNOWLEDGED'
+    # 任务发布审计（INT-65，category='System'）
+    PUBLISHED_TASK_CREATED = 'PUBLISHED_TASK_CREATED'
+    PUBLISHED_TASK_VERSION_CREATED = 'PUBLISHED_TASK_VERSION_CREATED'
+    PUBLISHED_TASK_EXECUTED = 'PUBLISHED_TASK_EXECUTED'
+    PUBLISHED_TASK_ARCHIVED = 'PUBLISHED_TASK_ARCHIVED'
+    # 测试结果人工复核审计（INT-340，category='System'）
+    MANUAL_REVIEW_SUBMITTED = 'MANUAL_REVIEW_SUBMITTED'
+    # AI 复核审计（INT-822/INT-800，category='System'；AI 结论独立表，不污染人工复核审计）
+    AI_REVIEW_INITIATED = 'AI_REVIEW_INITIATED'
+    AI_REVIEW_ADOPTED = 'AI_REVIEW_ADOPTED'
+    AI_REVIEW_REJECTED = 'AI_REVIEW_REJECTED'
+    # 数据可见性审计（INT-423，category='System'）——私有资源被非 owner 访问（越权命中/尝试）时落一条
+    PRIVATE_RESOURCE_ACCESS = 'PRIVATE_RESOURCE_ACCESS'
+
+
+class AuthErrorCode(str, Enum):
+    """认证/权限管理错误码枚举（INT-30）
+
+    auth_service gRPC 失败响应 data 返回 {"error_code": "<成员值>"}，
+    api_gateway 按此映射 HTTP 状态码（400/403/404/409，未知一律 400）。
+    """
+    USER_NOT_FOUND = 'USER_NOT_FOUND'
+    ROLE_NOT_FOUND = 'ROLE_NOT_FOUND'
+    PERMISSION_NOT_FOUND = 'PERMISSION_NOT_FOUND'
+    USERNAME_DUPLICATED = 'USERNAME_DUPLICATED'
+    ROLE_NAME_DUPLICATED = 'ROLE_NAME_DUPLICATED'
+    ROLE_IS_SYSTEM = 'ROLE_IS_SYSTEM'
+    ROLE_IN_USE = 'ROLE_IN_USE'
+    WILDCARD_FORBIDDEN = 'WILDCARD_FORBIDDEN'
+    SELF_OPERATION_FORBIDDEN = 'SELF_OPERATION_FORBIDDEN'
+    PERMISSION_NOT_GRANTED = 'PERMISSION_NOT_GRANTED'
+    # 管理入口参数非法（INT-1590：用户管理建号/改密密码长度 8–128）。
+    # 网关未登记的 AuthErrorCode 统一映射 HTTP 400 + code:203（OPERATION_FAILED），
+    # 与网关层前置校验同码，保证网关拦截与 gRPC 直连兜底对同一非法输入一致。
+    INVALID_PARAMS = 'INVALID_PARAMS'
+    # 自助改密原密码校验失败（INT-794：网关映射 401 + code:106，与登录链防枚举语义一致）
+    AUTH_CREDENTIALS_INVALID = 'AUTH_CREDENTIALS_INVALID'
+    # 自定义 OAuth 提供方（INT-51）
+    OAUTH_PROVIDER_NOT_FOUND = 'OAUTH_PROVIDER_NOT_FOUND'
+    OAUTH_SLUG_DUPLICATED = 'OAUTH_SLUG_DUPLICATED'
+    OAUTH_PROVIDER_DISABLED = 'OAUTH_PROVIDER_DISABLED'
+    # Access Token（INT-1140：token 校验/管理失败语义；网关按 401 映射）
+    ACCESS_TOKEN_NOT_FOUND = 'ACCESS_TOKEN_NOT_FOUND'
+    ACCESS_TOKEN_DISABLED = 'ACCESS_TOKEN_DISABLED'
+    ACCESS_TOKEN_EXPIRED = 'ACCESS_TOKEN_EXPIRED'
+    ACCESS_TOKEN_INVALID = 'ACCESS_TOKEN_INVALID'
+    ACCESS_TOKEN_LIMIT_REACHED = 'ACCESS_TOKEN_LIMIT_REACHED'
+
+
+class AuditLogCategory(str, Enum):
+    """审计事件 category 枚举 — 审计落文件路径的 category 段（INT-1793 契约五值）
+
+    审计事件的身份由 emit 的 `audit_event` 实参判定（H1），category 只决定
+    文件路径段：`logs/audit/{YYYY-MM-DD}/{category}.{service}.{identity}.jsonl`。
+    category 属于本枚举但不是审计事件（如设备运维日志 category='device'、
+    无 audit_event）只写服务文件，不进审计目录。
+    """
+    AUTH = 'auth'
+    BENCHMARK = 'benchmark'
+    # 设备管理审计（INT-80：分组/操作/批量端点）
+    DEVICE = 'device'
+    # 数据可见性审计（INT-466/573：PRIVATE_RESOURCE_ACCESS / 可见性切换 / admin 访问私有资源）
+    VISIBILITY = 'visibility'
+    # task_service 直写仓储的三类系统审计（INT-1793 契约：发布/人工复核/AI 复核）
+    SYSTEM = 'system'
+
+
+AUDIT_LOG_CATEGORIES = frozenset(item.value for item in AuditLogCategory)
+
+
+class DeviceOperation(str, Enum):
+    """设备操作枚举（INT-80 设备操作端点/批量操作）
+
+    connect     连接设备（远程设备 adb connect / USB 设备唤醒校验）
+    disconnect  断开设备连接
+    reboot      重启设备
+    shutdown    关闭设备
+    install_app 安装应用（params: file_path）
+    uninstall_app 卸载应用（params: package_name）
+    """
+    CONNECT = 'connect'
+    DISCONNECT = 'disconnect'
+    REBOOT = 'reboot'
+    SHUTDOWN = 'shutdown'
+    INSTALL_APP = 'install_app'
+    UNINSTALL_APP = 'uninstall_app'
+
+
+class DeviceGroupType(str, Enum):
+    """设备分组类型枚举（INT-80 设备分组，区别于用例分组 group_bp）"""
+    TEST = 'test'          # 测试设备组（被测设备）
+    PLAYBACK = 'playback'  # 播放设备组
+
+
+class DeviceKind(str, Enum):
+    """设备状态事件的设备类型枚举（INT-1679）
+
+    区分 `device_status_events` 里一条事件属于哪张设备表：`devices`（测试设备）
+    还是 `playback_devices`（播放设备）。两张表的 id 各自自增、真实库里已重叠，
+    只凭 `device_id` 无法判断来源；查询侧只统计测试设备（契约 §1.2）必须靠本列。
+
+    与 `DeviceGroupType` 语义不同（那是设备**分组**类型），不复用、不双口径。
+    """
+    TEST = 'test'          # 测试设备（被测设备，devices 表）
+    PLAYBACK = 'playback'  # 播放设备（playback_devices 表）
+
+
+class LaboratoryStatus(str, Enum):
+    """实验室状态枚举（INT-655 实验室管理；实验室扩展功能设计.md §4.1/§6.26）"""
+    ACTIVE = 'active'          # 启用
+    INACTIVE = 'inactive'      # 停用
+    MAINTENANCE = 'maintenance'  # 维护中
+
+
+class AlarmMetricType(str, Enum):
+    """设备告警指标枚举（INT-80 监控告警）"""
+    OFFLINE_DURATION = 'offline_duration'    # 离线时长（秒）
+    HEALTH_CHECK_FAILURES = 'health_check_failures'  # 连续健康检查失败次数
+    CPU = 'cpu'                              # CPU 使用率（%）
+    MEMORY = 'memory'                        # 内存使用率（%）
+    BATTERY = 'battery'                      # 电量（%）
+
+
+class AlarmSeverity(str, Enum):
+    """告警级别枚举（INT-80）"""
+    INFO = 'info'
+    WARNING = 'warning'
+    CRITICAL = 'critical'
+
+
+class AlarmStatus(str, Enum):
+    """告警状态枚举（INT-80 告警确认流）"""
+    ACTIVE = 'active'
+    ACKNOWLEDGED = 'acknowledged'
+    RESOLVED = 'resolved'
+
+
+class DeviceStatusEventType(str, Enum):
+    """设备状态事件类型枚举（INT-80 状态历史）"""
+    ONLINE = 'online'
+    OFFLINE = 'offline'
+    HEALTH_CHECK = 'health_check'
+    OPERATION = 'operation'
+
+
+class PlaybackDeviceStatus(str, Enum):
+    """播放设备状态（playback_devices.status，实验室换绑时优先选在线设备）"""
+    ONLINE = 'online'
+    OFFLINE = 'offline'
+
+
+class DeviceStatusEventSource(str, Enum):
+    """设备状态事件来源枚举（INT-1677，契约《设备监控统计与播放设备控制接口契约》§0）
+
+    ``device_status_events`` 被测试设备与播放设备两个 id 空间共用，``source``
+    是事件主体（哪个设备空间）的判别位：读测试设备口径的所有路径统一排除
+    ``PLAYBACK_OPERATION``（排除集合见 device_monitor_repository）。
+
+    - MONITOR            监控线程/状态轮询写入（仓储默认值）
+    - MANUAL             人工操作
+    - HEALTH_CHECK       健康检查
+    - OPERATION          测试设备操作（connect / disconnect / reboot / install_app 等）
+    - PLAYBACK_OPERATION 播放设备控制（restart / reset-config / re-enumerate）
+
+    新增非测试设备写入方必须登记进排除集合，否则其事件会被计入同号测试设备。
+    """
+    MONITOR = 'monitor'
+    MANUAL = 'manual'
+    HEALTH_CHECK = 'health_check'
+    OPERATION = 'operation'
+    PLAYBACK_OPERATION = 'playback_operation'
+
+
+class PkgType(str, Enum):
+    """跨区传输包类型枚举 — transfer_agent 传输包协议（设计文档 09_跨区网络传输方案 §4.2.1）
+
+    EVAL_REQUEST  A/B→B→C  评估输入包（算法结果 JSON + 所需文件，C 侧临时处理不落持久盘）
+    EVAL_RESULT   C→B      评估结果包（随第三方 API 同步响应返回）
+    REPORT_SYNC   A↔B      报告同步
+    DATA_SYNC     A↔B      A/B 之间任务数据同步
+    C_REPORT      C→B→A    C 自产报告推送（备选方案）
+    C_RESULT      C→B→A    C 自产评估结果推送（备选方案）
+    """
+    EVAL_REQUEST = 'EVAL_REQUEST'
+    EVAL_RESULT = 'EVAL_RESULT'
+    REPORT_SYNC = 'REPORT_SYNC'
+    DATA_SYNC = 'DATA_SYNC'
+    C_REPORT = 'C_REPORT'
+    C_RESULT = 'C_RESULT'
+
+
+class TransferStatus(str, Enum):
+    """跨区传输包状态枚举 — transfer_agent 传输流水状态机
+
+    CREATED      会话已创建（收到 CreateTransfer）
+    TRANSFERRING 分片传输中（已收到至少一个分片）
+    COMPLETED    传输完成（分片合并 + file_hash 校验通过）
+    DELIVERED    出站交付完成（transit 暂存包已按第三方契约投递 C 并收到同步响应；
+                 允许幂等重投，C 按 transfer_id 去重；ephemeral 暂存仍按 TTL 回收，
+                 交付事实保留于流水 meta.delivery 与 TransferDelivered 事件）
+    FAILED       传输失败（合并校验失败等终态，需新建 transfer_id 重传）
+    EXPIRED      超过 TTL 被清理（分片/临时文件回收，流水保留供审计）
+    """
+    CREATED = 'CREATED'
+    TRANSFERRING = 'TRANSFERRING'
+    COMPLETED = 'COMPLETED'
+    DELIVERED = 'DELIVERED'
+    FAILED = 'FAILED'
+    EXPIRED = 'EXPIRED'
+
+
+class EvalCapabilityTarget(str, Enum):
+    """评估能力归属枚举 — 评估能力注册表路由目标（设计文档 09_跨区网络传输方案 §4.1.1）
+
+    LOCAL          本区 evaluation_service gRPC（现有 EvaluateCase 链路不变）
+    THIRD_PARTY_C  经 transfer_agent 传输链路调 C 第三方评估 API（B 为评估中枢）
+    """
+    LOCAL = 'LOCAL'
+    THIRD_PARTY_C = 'THIRD_PARTY_C'
+
+
+class ThirdPartyAdapterKind(str, Enum):
+    """B→C 第三方评估适配形态枚举 — ThirdPartyEvalPort 适配器策略（设计文档 §4.3）
+
+    MULTIPART       支持 multipart/form-data + 同步响应，流式上传文件
+    FEATURE_EXTRACT B 预处理大文件→提取特征向量→只传特征（C 仅接受小参数字段）
+    PRESIGNED_URL   B 生成预签名 URL→C 主动拉取→携带对象引用评估
+    """
+    MULTIPART = 'multipart'
+    FEATURE_EXTRACT = 'feature_extract'
+    PRESIGNED_URL = 'presigned_url'
+
+
+class EvalErrorKind(str, Enum):
+    """评估外呼错误类型枚举（INT-107 / INT-2250）— 标注 __error__ 的失败类别，供降级路径与排障判定
+
+    CONNECTION  连接级失败（端点不可达/DNS/连接超时），可安全切换兜底端点。
+                创建阶段表示评估任务未被接受；轮询阶段表示端点中途不可达（任务状态不可知，
+                原端点已无法出结果，按配置换兜底端点重跑或快速失败，INT-2250）
+    TIMEOUT     端点超时/结果未知（连接已建立但无响应，如 ReadTimeout、等待上限耗尽），
+                评估任务可能仍在端点侧执行，不做端点切换，避免重复计分
+    BUSINESS    业务级失败（HTTP 4xx/5xx、评估任务执行失败），重投可能重复计分，不做端点切换
+    """
+    CONNECTION = 'connection'
+    TIMEOUT = 'timeout'
+    BUSINESS = 'business'
+
+
+class PlaybackQueryCode(int, Enum):
+    """播放设备查询响应业务码枚举（INT-92）
+
+    device_service GetPlaybackDeviceResponse.code 按失败原因填充，
+    audio_service ACL 据此区分「设备不存在（合法降级返回 None）」与
+    「服务故障（上抛 PlaybackDeviceQueryError 传递真实错误）」：
+    - UNSPECIFIED(0)   旧版本 device_service 未透传 code——保持既有降级语义
+    - OK(200)          查询成功
+    - NOT_FOUND(404)   设备不存在/已删除——合法降级，返回 None
+    - INTERNAL_ERROR(500) 服务故障——调用方必须上抛，不得伪装成业务空结果
+    """
+    UNSPECIFIED = 0
+    OK = 200
+    NOT_FOUND = 404
+    INTERNAL_ERROR = 500
+
+
+class PlaybackControlAction(str, Enum):
+    """播放设备控制动作枚举（INT-1579，设备监控统计与播放设备控制接口契约 §2.1/§2.2）
+
+    端点级控制动作，写成 device_status_events.operation 事件的 detail.operation 值：
+    - RESTART:       音频通道层重开 + 重新枚举（不是硬件重启）
+    - RESET_CONFIG:  按硬件重新探测采样率与通道索引
+
+    修复动作（re-enumerate / reopen-channel）是 PlaybackRepairAction 的取值，
+    其中 reopen-channel 复用 restart 实现，事件仍记为 RESTART。
+    """
+    RESTART = 'restart'
+    RESET_CONFIG = 'reset-config'
+
+
+class PlaybackRepairAction(str, Enum):
+    """播放设备修复动作白名单（契约 §2.5）——仅两个安全动作，无破坏性修复"""
+    RE_ENUMERATE = 're-enumerate'
+    REOPEN_CHANNEL = 'reopen-channel'
+
+
+class PlaybackDiagnosisKey(str, Enum):
+    """播放设备诊断项 key 枚举（契约 §2.5 固定 6 项，不得臆造后端没有的能力）"""
+    ENUMERABLE = 'enumerable'
+    CHANNEL_INDEX = 'channel_index'
+    SAMPLE_RATE = 'sample_rate'
+    SPL_MAPPING = 'spl_mapping'
+    STATUS = 'status'
+    BUSY = 'busy'
+
+
+class PlaybackDiagnosisStatus(str, Enum):
+    """播放设备诊断项状态枚举（契约 §2.5）
+
+    UNSUPPORTED 专用于「硬件枚举不可用」——此时无法判定，不得记成 ERROR 制造噪声告警。
+    """
+    OK = 'ok'
+    WARN = 'warn'
+    ERROR = 'error'
+    UNSUPPORTED = 'unsupported'
+
+
+class CherryPickCheckoutAction(str, Enum):
+    """购物车下单出口枚举（INT-339 挑选合并，设计文档 §3）
+
+    - merge:       合并生成新任务（cherry-pick 容器任务）+ 手动生成报告（默认）
+    - reexecute:   对所选结果的用例×设备集合发起重新执行
+    - reevaluate:  对所选结果发起重新评估（逐源任务发起，评估域契约不动）
+    """
+    MERGE = 'merge'
+    REEXECUTE = 'reexecute'
+    REEVALUATE = 'reevaluate'
+
+
+class PickableTaskStatus(str, Enum):
+    """可挑选的源任务状态显式集合（INT-339 设计文档 §10）
+
+    默认仅终态任务可挑选（retry/cleanup 会重建执行中结果行，购物车引用会悬空）；
+    显式集合宽于合并容器的 completed/merged（挑选是结果级）。
+    """
+    COMPLETED = 'completed'
+    FAILED = 'failed'
+    STOPPED = 'stopped'
+
+
+class StudioExportFormat(str, Enum):
+    """Report Studio 导出格式（INT-673，设计文档 §15.6）
+
+    HTML/MD 为本卡落地格式；PPTX/PDF 属 S3 增强候选技术（需实测后定）。
+    """
+    HTML = 'html'
+    MD = 'md'
+    PPTX = 'pptx'
+    PDF = 'pdf'
+
+
+class StudioExportStatus(str, Enum):
+    """Report Studio 导出作业状态（INT-673，设计文档 §15.5）"""
+    PENDING = 'pending'
+    RUNNING = 'running'
+    DONE = 'done'
+    FAILED = 'failed'
+
+
+class StudioSnapshotReason(str, Enum):
+    """Report Studio 文档版本快照原因（INT-673，设计文档 §15.3）
+
+    每次编辑在同一数据库事务落不可变历史版本；snapshot_reason 记录
+    版本产生方式：ai_edit（AI 结构化编辑）/ manual_edit（人工编辑）/
+    restore（历史版本恢复为新版本）/ import（文件导入建初始版，INT-1763）。
+    """
+    AI_EDIT = 'ai_edit'
+    MANUAL_EDIT = 'manual_edit'
+    RESTORE = 'restore'
+    IMPORT = 'import'
+
+
+class ReportStudioSourceType(str, Enum):
+    """Report Studio 文档来源类型（INT-1763，离线搬运设计文档 §6.4 / D0 A6）
+
+    - platform_report：文档挂在平台报告（test_reports.id）上，存量行为；
+    - uploaded_file：用户上传的 MD / HTML / PPTX 文件型独立报告（3b）；
+    - agent_summary：Agent 分析总结文档（3c），血缘走 report_id 或 parent_doc_id。
+
+    列默认值 platform_report，迁移后存量行全部落该值（语义等价，无需回填）。
+    """
+    PLATFORM_REPORT = 'platform_report'
+    UPLOADED_FILE = 'uploaded_file'
+    AGENT_SUMMARY = 'agent_summary'
+
+
+class StudioUploadFormat(str, Enum):
+    """Report Studio 文件型报告上传格式白名单（INT-1763，设计文档 §6.2）
+
+    扩展名 + Content-Type 双校验；md 入 markdown_content，html/pptx 只落文件。
+    """
+    MD = 'md'
+    HTML = 'html'
+    PPTX = 'pptx'

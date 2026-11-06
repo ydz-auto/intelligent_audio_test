@@ -17,7 +17,7 @@ interface Props {
   showGroupHeader?: boolean
   defaultExpandedGroups?: string[]
   labelWidth?: string
-  scope?: 'api' | 'e2e'  // 新增：当前 test_type
+  scope?: 'physical' | 'http_api' | 'websocket_api'  // 新增：当前目标设备类型（device_type）
 }
 ```
 
@@ -37,11 +37,12 @@ const filterByScope = (fields: FieldSchema[]): FieldSchema[] => {
 
 ### 显示规则
 
-| param.scope | test_type='api' | test_type='e2e' | 无 scope 传入 |
-|-------------|:---------------:|:---------------:|:-------------:|
-| common | 显示 | 显示 | 显示 |
-| api | 显示 | 隐藏 | 显示 |
-| e2e | 隐藏 | 显示 | 显示 |
+| param.scope | device_type='physical' | device_type='http_api' | device_type='websocket_api' | 无 scope 传入 |
+|-------------|:----------------------:|:---------------------:|:-----------------------------:|:-------------:|
+| common | 显示 | 显示 | 显示 | 显示 |
+| physical | 显示 | 隐藏 | 隐藏 | 显示 |
+| http_api | 隐藏 | 显示 | 隐藏 | 显示 |
+| websocket_api | 隐藏 | 隐藏 | 显示 | 显示 |
 
 ### 格式转换（RoundConfigEditor 中处理）
 

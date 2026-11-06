@@ -621,3 +621,27 @@ docker build -f docker/Dockerfile.frontend --build-arg VITE_AUTH_MODE=prod ..
 - 仅「显式注入」被认可——`frontend/.env*` 文件值不作为生产构建依据（`.env.production` 已不提供默认值）。
 - 注入值必须与后端 `api_gateway` 的 `AUTH_MODE` 一致，两者不一致会出现前端跳登录而后端不放 token（或反向）的错配。
 - 取值非法（不在 `off|dev|prod` 内）同样构建失败。
+
+### 6.1 本地 dev server 的 mode 生效规则（INT-363）
+
+vite dev（`npm run dev` / run_all.py 前端 / tests/ui 并行栈）下 served
+`VITE_AUTH_MODE` 按 vite env 优先级解析：
+
+**进程 env > `.env.[mode]`（如 `.env.development`）> `.env.local` > `.env`**
+
+当前仓库 tracked 的 `frontend/.env.development` 固定 `VITE_AUTH_MODE=off`，
+其优先级**高于** `.env.local`——在 `.env.local` 写 `VITE_AUTH_MODE=dev`
+会被静默覆盖（INT-363 实证：`/src/domain/enums.ts` 注入值恒 off）。
+本地开发切换认证模式的正确方式：
+
+```bash
+# 进程 env 注入（优先级最高，dev/build 同理）
+VITE_AUTH_MODE=dev npm run dev
+
+# run_all.py 已透传本机 env：VITE_AUTH_MODE=dev python run_all.py
+```
+
+运行中 dev server **不会**热加载 .env 文件变更，改文件后必须重启进程。
+UI 门禁（tests/ui）的 served-mode 口径见 `tests/ui/README.md`：并行隔离栈
+由 launcher 进程 env 固定注入 `dev/dev`；served=off 时认证链路用例
+（test_ui_01/ui_02）显式 skip。

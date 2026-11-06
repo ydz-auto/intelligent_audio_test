@@ -454,6 +454,25 @@ class ParamMapping(db.Model):
 | `reference` | `text`（direction=output） | 从参考参数的输出参考（标准文本）中提取 |
 | `reference` | `audio`（direction=input） | 从参考参数的输入参考（待测音频）中提取 |
 
+### 6.5 rounds[] 结构与评估取值口径（C0 裁定 2026-10-24；C1~C4 / C6a 已实施）
+
+> 本节由 INT-1745（C0）出具，是 §6.4 的**取值口径补充**：§6.4 说明「从哪取」，本节钉死「取到的数据长什么样、由谁写」。实施卡 C1（INT-1746）/ C2（INT-1747）/ C3（INT-1748）/ C4（INT-1749）均已 done；C2 的落点为 `algorithm_api_params.field_path`（`algorithm_service/infrastructure/persistence/models/algorithm_models.py:191`）+ 三链统一入口 `shared/utils/api_output_extractor.py`，评估侧键集合见本节第 8 条。
+
+1. **`rounds[i].output` 是唯一的数据子字典**：键为映射后的 `target_param`（未配映射时为源 `param_code`）。轮次元字段（`round` / `round_number` / `latency` / `success` / `mode` / `first_frame_latency_ms` 等）留作兄弟键，**不进** `output`。
+   - 现状：E2E 已是此结构（`e2e_test_service/domain/services/e2e_calculation_service.py:216-244`）；HTTP 多轮的 `output` 是纯文本（`api_test_service/core/api_session_executor.py:512-521`），经 `shared/utils/round_data_utils.py:26-27` 归一成 `{'text': ...}`；Realtime 把评估字段平铺在轮次顶层（`api_test_service/core/realtime_session_executor.py:395,487`、`_aggregate:600-610`），评估侧 `normalize_round_output(None)` 得 `{}` → 维度入参全空。
+2. **映射责任在执行侧**（`api_test_service`）。评估侧不做 source→target 翻译，只按 `target_param` 取值，`round_data_builder.py:162-172` 的 `source in ('device','api')` 分支**不动**。
+3. **`device` 与 `api` 两条分支同构**：都从同一 `output` 里按 `target_param` 取，区别只在「谁把值写进去」。
+4. **`transform_type` 在写 `output` 之前应用一次**（执行侧），评估侧不重复应用。
+   - **已实施（C4 / INT-1749，合入 V9.7.31 `f8a97ea94`）**：三条 API 执行链共用唯一变换编排 `api_test_service/domain/services/eval_output_transform_service.py`（`EvalOutputTransformService.apply`），位置在 `build_eval_output` 之后、写 `rounds[i].output` 之前——HTTP 多轮 `api_session_executor.py:626-634`、HTTP 单轮 `api_task_runner.py:516-526`、Realtime `realtime_session_executor.py:803-814`。
+   - **变换实现只有一份**：仍归 algorithm_service（`algorithm_service/domain/services/field_transforms.py` 的 `FieldTransformService.apply_transform` / `apply_transform_with_error`），经批量 RPC `ConvertFieldValues` 一次取全部字段（`shared/proto/algorithm_service.proto:154-160`、`algorithm_query_servicer.py:285-297`；编排侧 ACL `api_test_service/infrastructure/acl/algorithm_acl_repository.py:103-116`）。非法输入（未知类型 / 转换抛异常）保留原值 + `errors` 回传，服务端 WARNING，不吞成空串；RPC 不可达或返回长度不符时整批按原值保留，不中断用例执行。
+   - **作用域**：只对 `source ∈ {api, device}` 的映射应用（`shared/utils/api_output_extractor.py:163-180` 的 `get_output_transform_types`）。`case` / `reference` / `adjusted_reference` 来源不由执行侧变换——这类来源若配了 `transform_type`，仍在评估入参提取路径（`algorithm_service/application/queries/case_parameter_queries.py:157-159`，`ExtractCaseAllParams` → `get_evaluation_params`）应用一次，与执行侧来源互斥，不构成二次变换。评估侧取值处（`round_data_builder.py:168-171`）只 `output.get(target_param)`，全服务无第二处变换实现。
+   - **未接线**：E2E 设备链（`device_service/infrastructure/acl/algorithm_query_acl_repository.py` 的 `convert_device_output`）不做 `transform_type` 变换；主库 `device` 来源映射当前全为 `none`，无实际影响，需要时另开卡。
+5. **`map_api_results` 不承担此职责**：该 RPC 无调用方且传参错位（`algorithm_service/interfaces/grpc/algorithm_query_servicer.py:337` 只传 1 个参数，`result_field_mapping_queries.py:207` 需要 2 个），按 C0 裁定废弃，不作为评估入参入口。
+6. **维度输入若期望来自 API 输出**，必须满足其一：以该 `target_param` 为 `param_code` 在 `algorithm_api_params(direction=output)` 有声明；或建 `param_mappings(source='api', source_param=<已声明的 api 输出参数>, target_param=<维度入参>)`。否则 `config_cache.py:87-123`（`_resolve_actual_source`）会把无归属键按 `case` 兜底，最终读成空值——这是「评估请求发出但维度无值」的第二条成因（主库 2026-10-24 实测：`param_mappings` 无 `source='api'` 行，`algorithm_api_params` 中 voice_llm 仅 `response_audio` 一条 output 声明）。
+7. **声明优先级与兜底**见 [18_设备参数和API参数绑定方案.md](./18_设备参数和API参数绑定方案.md) §九：声明（`field_path` → `param_code`）优先；`apis.meta.result_parser` / `asr_mapping` / `trans_mapping` 仅在该算法类型**零输出声明**时整体兜底。声明与 meta 互斥，**不做逐键合并**——有任意一条 output 声明就只走声明，`meta` 完全不参与（`shared/utils/api_output_extractor.py:69-86`）。
+8. **评估侧输出字段键 = device ∪ api（已实施：C2）**：构建评估上下文时取设备侧与 API 侧映射后输出字段的并集，`output_field_keys = list(dict.fromkeys(device_keys + api_keys))`（`evaluation_service/infrastructure/evaluation_api/endpoint_worker.py:232-237`）。键两侧同为 `target_param`（`shared/utils/field_mapper_wrapper.py:36-53`）；顺序为 device 先、api 追加，同键保留先出现的（device 位）。
+   - **边界：只用于输出字段的展示 / 提取，不扩到评估入参映射**——入参仍只认 `param_mappings`（`eval_input_fields` 走 `get_evaluation_input_fields`，与 `output_field_keys` 是两套口径）。详细口径见 18 号 §9.6。
+
 ---
 
 ## 7. task_type 与 dimensions 多维度结果配置

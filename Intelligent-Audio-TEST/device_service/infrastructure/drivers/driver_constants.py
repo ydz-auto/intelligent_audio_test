@@ -1,0 +1,84 @@
+"""设备驱动常量 — 集中管理时序参数和设备路径，消除魔法数字"""
+
+from shared.utils.config_manager import config_manager
+
+# 时序参数（秒）— UI 操作间隔、动画等待等
+UI_WAIT = config_manager.get_value('device_timing', 'ui_wait', 0.2)
+SHORT_WAIT = config_manager.get_value('device_timing', 'short_wait', 0.1)
+NORMAL_WAIT = config_manager.get_value('device_timing', 'normal_wait', 1.0)
+LONG_WAIT = config_manager.get_value('device_timing', 'long_wait', 2.0)
+EXTRA_LONG_WAIT = config_manager.get_value('device_timing', 'extra_long_wait', 5.0)
+# 解锁滑动等待（秒）
+UNLOCK_SWIPE_WAIT = config_manager.get_value('device_timing', 'unlock_swipe_wait', 0.5)
+# 弹窗关闭等待（秒）
+POPUP_CLOSE_WAIT = config_manager.get_value('device_timing', 'popup_close_wait', 0.5)
+# 翻译服务启用等待（秒）
+TRANSLATION_WAIT = config_manager.get_value('device_timing', 'translation_wait', 1.5)
+# 应用启动等待（秒）
+APP_LAUNCH_WAIT = config_manager.get_value('device_timing', 'app_launch_wait', 3)
+
+# 超时参数（秒）— subprocess / hdc 命令超时
+ADB_TIMEOUT = config_manager.get_value('device_timing', 'adb_timeout', 10)
+HDC_TIMEOUT = config_manager.get_value('device_timing', 'hdc_timeout', 30)
+# 设备热插拔监听（adb track-devices）退出时等待子进程结束的超时（秒）
+ADB_TRACK_TERMINATE_TIMEOUT_SECONDS = config_manager.get_value(
+    'device_timing', 'adb_track_terminate_timeout', 3)
+
+# 健康检查性能指标采集（INT-1578）：单条采集命令超时（契约 §1.3 要求 ≤ 5s）。
+# 独立于 ADB_TIMEOUT/HDC_TIMEOUT，避免采集慢拖垮健康检查主流程。
+METRICS_COMMAND_TIMEOUT = config_manager.get_value(
+    'device_timing', 'metrics_command_timeout', 5)
+LONG_HDC_TIMEOUT = config_manager.get_value('device_timing', 'long_hdc_timeout', 300)
+EXTRA_LONG_HDC_TIMEOUT = config_manager.get_value('device_timing', 'extra_long_hdc_timeout', 120)
+
+# 安卓驱动缓存设备连接上限(条)：超过后按 LRU 淘汰最久未用的设备连接,
+# 防止长跑服务中 _drivers 连接只增不减导致内存泄漏
+MAX_CACHED_DEVICES = config_manager.get_value('device_timing', 'max_cached_devices', 10)
+
+# —— 语音通话驱动（小艺/豆包/ChatGPT）参数 ——
+# AI 回复检测（RMS 能量法，基于 AI PCM 尾部能量）
+RMS_THRESHOLD = config_manager.get_value('device_timing', 'rms_threshold', 300)
+RMS_SILENCE_SECONDS = config_manager.get_value('device_timing', 'rms_silence_seconds', 8)
+RMS_START_TIMEOUT = config_manager.get_value('device_timing', 'rms_start_timeout', 25)
+RMS_END_TIMEOUT = config_manager.get_value('device_timing', 'rms_end_timeout', 60)
+RMS_SCAN_SECONDS = config_manager.get_value('device_timing', 'rms_scan_seconds', 15)
+# PCM 尾部读取 hdc 超时（1s 音频 base64 传输 / 15s 历史扫描传输）
+RMS_READ_TIMEOUT = config_manager.get_value('device_timing', 'rms_read_timeout', 20)
+RMS_SCAN_HDC_TIMEOUT = config_manager.get_value('device_timing', 'rms_scan_hdc_timeout', 40)
+# ai PCM 首帧检测超时（毫秒）
+AI_PCM_FIRST_FRAME_TIMEOUT_MS = config_manager.get_value('device_timing', 'ai_pcm_first_frame_timeout_ms', 15000)
+# 小艺回复检测超时（秒）：hw_params 播放流法为主信号（30s），UI 法仅作读不到时的兜底
+REPLY_START_TIMEOUT = config_manager.get_value('device_timing', 'reply_start_timeout', 30)
+# 拒识轮等待回复结束的总上限（秒，INT-2146）：hw_params 主信号 + UI 兜底共用同一预算，
+# 超时记 WARNING 后放行，防止连续拒识短音频把整轮卡到基类 300s 上限
+REJECT_REPLY_WAIT_TIMEOUT = config_manager.get_value('device_timing', 'reject_reply_wait_timeout', 5)
+# 静默拒识轮 AI PCM RMS 主检测窗口（秒，INT-2363）：连续 N 秒无语音能量判定「未回复」，
+# 直接收尾进下一轮；也是 hw_params 降级路径「播放流是否 open」的观察窗口
+REJECT_SILENT_NO_REPLY_SECONDS = config_manager.get_value(
+    'device_timing', 'reject_silent_no_reply_seconds', 2)
+REPLY_STATE_TIMEOUT = config_manager.get_value('device_timing', 'reply_state_timeout', 10)
+REPLY_LISTEN_TIMEOUT = config_manager.get_value('device_timing', 'reply_listen_timeout', 300)
+# barge-in 打断轮轮间延迟（秒）：检测到 AI 开口后延迟再放下一轮打断音频
+BARGE_IN_DELAY_SECONDS = config_manager.get_value('device_timing', 'barge_in_delay_seconds', 1)
+CASE_BARGE_IN_DELAY_SECONDS = config_manager.get_value('device_timing', 'case_barge_in_delay_seconds', 5)
+# 停止检查轮询间隔（秒）：长延迟分片 sleep，每片检查一次任务是否被停止/暂停（可随时打断）
+CHECK_STOP_POLL_INTERVAL = config_manager.get_value('device_timing', 'check_stop_poll_interval', 0.5)
+
+# —— 基础驱动采集参数（harmony_collection_mixin，harmony_base 平台驱动）——
+# 录屏启动后轮询发现新 mp4 文件的超时（秒）
+BASE_RECORDER_START_TIMEOUT = config_manager.get_value('device_timing', 'base_recorder_start_timeout', 30)
+# 启动无产物时的恢复 toggle 后二次轮询超时（秒）：首 toggle 可能停掉残留录制而非开新录制
+BASE_RECORDER_START_RECOVERY_TIMEOUT = config_manager.get_value('device_timing', 'base_recorder_start_recovery_timeout', 10)
+# 回答文本稳定采样总超时（秒）：超过即按当前采样收口
+BASE_REPLY_END_TIMEOUT = config_manager.get_value('device_timing', 'base_reply_end_timeout', 60)
+# 回答文本采样间隔（秒）
+BASE_REPLY_SETTLE_INTERVAL = config_manager.get_value('device_timing', 'base_reply_settle_interval', 2)
+# 回答文本视为稳定所需的连续相同采样次数
+BASE_REPLY_STABLE_ROUNDS = config_manager.get_value('device_timing', 'base_reply_stable_rounds', 3)
+# 停止录屏后的收尾校验：mp4 size 稳定（连续两次读数相同）判定录屏确已停止，
+# 超时上限与轮询间隔（秒）。进程常驻（ps 可见）不可用作停止依据，size 稳定才可靠。
+BASE_RECORDER_STOP_VERIFY_TIMEOUT = config_manager.get_value('device_timing', 'base_recorder_stop_verify_timeout', 10)
+BASE_RECORDER_STOP_VERIFY_INTERVAL = config_manager.get_value('device_timing', 'base_recorder_stop_verify_interval', 1)
+
+# 设备路径
+DEVICE_TMP_DIR = '/data/local/tmp'

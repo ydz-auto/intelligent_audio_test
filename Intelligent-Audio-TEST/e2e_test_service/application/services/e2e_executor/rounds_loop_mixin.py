@@ -1,0 +1,489 @@
+import time
+
+from shared.infrastructure.base_executor import TaskStopSignal, EvaluationSubmitError
+from shared.logging import log_round
+from e2e_test_service.domain.services import E2ECalculationService
+from e2e_test_service.infrastructure.acl import (
+    AlgorithmAclRepositoryImpl,
+    PlaybackAclRepositoryImpl,
+    DeviceResultAclRepositoryImpl,
+)
+from shared.utils.dto_utils import dto_to_dict
+from shared.utils.status_constants import ExecutionStatus
+from shared.models.common_enums import DeviceType
+
+
+class RoundsLoopMixin:
+    """阶段二：多轮循环 —— 环境设置 → 声纹注册 → 预处理 → 播放 → 后处理 → 采集 → 评估"""
+
+    def _check_control_or_cleanup(self, task_id, env_states=None):
+        """轮次间停止/暂停检查；检测到停止时先清理本轮环境设备再上抛 TaskStopSignal
+
+        Args:
+            env_states: 本轮 setup_env_devices_for_round 已建立的环境设备状态，
+                停止上抛前需要对称 teardown；轮次开头（尚未 setup）传 None。
+        """
+        try:
+            self._handle_control(task_id)
+        except TaskStopSignal:
+            if env_states:
+                self._device_manager.teardown_env_devices_for_round(env_states, task_id)
+            raise
+
+    def _run_rounds_loop(self, task_id, tc_rel_id, data, case_config, case_name,
+                         algorithm_type, test_case_id, rounds,
+                         device_info_list, result_ids, case_reference_params,
+                         tc_rel_ids=None):
+        """执行多轮循环
+
+        Returns:
+            (all_round_results, rounds_data_by_device, execution_success,
+             last_adjusted_ref_params)
+            rounds_data_by_device: {device_id: [round_data, ...]}——组执行时每台设备
+            各一份累积轮次数据（评估按路由行逐行收敛）。
+        """
+        all_round_results = []
+        last_adjusted_ref_params = None
+        execution_success = True
+        rounds_data_by_device = {}
+        tc_rel_ids = tc_rel_ids or {}
+
+        for round_idx, round_config in enumerate(rounds):
+            if not isinstance(round_config, dict):
+                continue
+
+            # 每轮开头检查停止/暂停信号，避免停止后仍继续启动下一轮
+            self._check_control_or_cleanup(task_id)
+
+            # INT-305：用例被移除（执行中删除）→ 本用例静默收敛，不抛任务级停止
+            if getattr(self, '_is_case_removed', None) and self._is_case_removed(task_id, test_case_id):
+                self._log(level='INFO', content=f"用例 {case_name} 已被移除，中断本轮执行",
+                          task_id=task_id, test_case_id=test_case_id)
+                return all_round_results, rounds_data_by_device, False, last_adjusted_ref_params
+
+            round_number = round_config.get('round_number', round_idx + 1)
+            self.execution_engine.update_case_round_progress(task_id, tc_rel_id, round_idx, len(rounds))
+            self._log(level='INFO', content=f"执行第 {round_number} 轮", task_id=task_id, test_case_id=test_case_id)
+
+            # INT-81：本轮范围内业务日志（执行/设备交互/评估）落到对应轮次目录
+            with log_round(round_number):
+                round_result = self._execute_single_round(
+                    task_id, tc_rel_id, data, case_config, case_name,
+                    algorithm_type, test_case_id, rounds,
+                    device_info_list, result_ids, case_reference_params,
+                    round_idx, round_config, round_number, rounds_data_by_device,
+                    tc_rel_ids=tc_rel_ids,
+                )
+
+                # 累积结果
+                tagged_results = round_result.get('tagged_results', [])
+                all_round_results.extend(tagged_results)
+                for device_key, round_data in round_result.get('rounds_data_by_device', {}).items():
+                    rounds_data_by_device.setdefault(device_key, []).append(round_data)
+                if round_result.get('adjusted_ref_params'):
+                    last_adjusted_ref_params = round_result['adjusted_ref_params']
+
+                # 本轮失败：设备状态已损坏，后续轮次无法正常执行，直接结束
+                if not round_result.get('success', True):
+                    execution_success = False
+                    self._log(level='ERROR',
+                              content=f"第 {round_number} 轮失败，跳过剩余 {len(rounds) - round_idx - 1} 轮",
+                              task_id=task_id, test_case_id=test_case_id)
+                    break
+
+        return all_round_results, rounds_data_by_device, execution_success, last_adjusted_ref_params
+
+    # 轮次级执行控制字段：前端将 segment 级控制字段提升到 round 级结构字段，
+    # 经 RoundConfigItem(extra='allow') 保留在 config.rounds[] 中；
+    # 需显式提取并转 snake_case 后经 kwargs 透传给设备驱动（驼峰/蛇形双兼容）
+    _EXEC_CONTROL_FIELD_ALIASES = (
+        ('is_interruption', 'isInterruption'),   # 打断轮：不等 AI 回复完成即进入下一轮（barge-in）
+        ('record_mode', 'recordMode'),           # 录屏模式：case=全程单文件 / round=每轮独立
+        ('ai_start_timeout', 'aiStartTimeout'),  # 打断轮等待 AI 开始回复的超时（秒）
+    )
+
+    def _extract_exec_control_params(self, round_config):
+        """从轮次配置提取执行控制字段，返回 snake_case kwargs dict（缺省字段不出现）"""
+        if not isinstance(round_config, dict):
+            return {}
+        result = {}
+        for snake_key, camel_key in self._EXEC_CONTROL_FIELD_ALIASES:
+            value = round_config.get(snake_key)
+            if value is None:
+                value = round_config.get(camel_key)
+            if value is not None:
+                result[snake_key] = value
+        return result
+
+    @staticmethod
+    def _as_switch_on(value):
+        """轮次开关参数归一：只认显式真值（bool True / 非零数 / 'true'/'1' 等字符串）。"""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in ('true', '1', 'yes', 'y', '是')
+        return False
+
+    def _execute_single_round(self, task_id, tc_rel_id, data, case_config, case_name,
+                              algorithm_type, test_case_id, rounds,
+                              device_info_list, result_ids, case_reference_params,
+                              round_idx, round_config, round_number,
+                              rounds_data_by_device, tc_rel_ids=None):
+        """执行单轮：环境设置 → 声纹注册 → 预处理 → 播放 → 后处理 → 采集 → 评估
+
+        组执行时一次播放驱动组内全部设备，采集结果按设备分组，各自更新
+        自己的 TestResult 并提交单轮评估（评估按路由行逐行收敛）。
+        """
+        rounds_data_by_device = rounds_data_by_device or {}
+        tc_rel_ids = tc_rel_ids or {}
+        round_algo_params = AlgorithmAclRepositoryImpl.normalize_algorithm_params(round_config.get('algorithm_params', []))
+
+        env_states = self._device_manager.setup_env_devices_for_round(round_algo_params, task_id)
+        self._register_voiceprint(task_id, tc_rel_id, round_algo_params, test_case_id,
+                                  device_info_list=device_info_list)
+        pre_ok = self._device_manager.pre_process_devices(
+            device_info_list, task_id, test_case_id=test_case_id,
+            extra_params={'round_number': round_idx,
+                          'total_rounds': len(rounds),
+                          **self._extract_exec_control_params(round_config),
+                          **round_algo_params},
+        )
+        if not pre_ok:
+            self._log(level='ERROR', content=f"第 {round_number} 轮设备预处理失败，跳过本轮",
+                      task_id=task_id, test_case_id=test_case_id)
+            self._device_manager.teardown_env_devices_for_round(env_states, task_id)
+            return {
+                'success': False,
+                'tagged_results': [],
+                'rounds_data_by_device': self._failed_round_data(round_idx, result_ids),
+                'adjusted_ref_params': None,
+            }
+
+        # 播放前检查停止/暂停信号（play_round 是整轮最长同步阻塞点）
+        self._check_control_or_cleanup(task_id, env_states)
+
+        play_result = PlaybackAclRepositoryImpl().play_round(
+            round_config=round_config, task_id=task_id,
+            case_config=case_config, test_case_id=test_case_id,
+            round_number=round_number,
+            audio_local_paths=self._audio_local_paths,
+        )
+        if not play_result:
+            self._log(level='WARNING', content=f"第 {round_number} 轮音频播放失败，跳过",
+                      task_id=task_id, test_case_id=test_case_id)
+            self._device_manager.teardown_env_devices_for_round(env_states, task_id)
+            return {
+                'success': False,
+                'tagged_results': [],
+                'rounds_data_by_device': self._failed_round_data(round_idx, result_ids),
+                'adjusted_ref_params': None,
+            }
+
+        # 收集播放时间戳（含毫秒级起止时间），供 post_process / collect_results 传递给设备驱动
+        self._log(level='DEBUG', content=f"[play_round] has audio_timelines={play_result.audio_timelines is not None if play_result else False}", task_id=task_id, test_case_id=test_case_id)
+        self._collect_playback_timestamps(task_id, play_result, case_config)
+
+        # 播放返回后立即检查停止/暂停信号：任务已停则不再执行后处理、采集与评估
+        self._check_control_or_cleanup(task_id, env_states)
+
+        # 构建含播放时间戳的 extra_params，供设备驱动 post_process / get_results 使用
+        playback_ts = self._playback_timestamps.get(task_id, {})
+        round_start_ms = playback_ts.get('current_round_start_ms')
+        round_end_ms = playback_ts.get('current_round_end_ms')
+        post_extra_params = {'round_number': round_idx,
+                             'total_rounds': len(rounds),
+                             **self._extract_exec_control_params(round_config),
+                             **round_algo_params}
+        if round_start_ms is not None and round_end_ms is not None:
+            post_extra_params['playback_start_time_ms'] = round_start_ms
+            post_extra_params['playback_end_time_ms'] = round_end_ms
+            detail = playback_ts.get('audio_play_times', [])
+            if detail:
+                post_extra_params['playback_timestamps_detail'] = [
+                    {
+                        'audio_id': p.get('audio_id'),
+                        'audio_type': p.get('audio_type'),
+                        'play_order': p.get('play_order'),
+                        'start_ms': p.get('playback_start_time_ms'),
+                        'end_ms': p.get('playback_end_time_ms'),
+                    }
+                    for p in detail
+                ]
+
+        post_ok = self._device_manager.post_process_devices(
+            device_info_list, task_id, test_case_id=test_case_id,
+            extra_params=post_extra_params,
+        )
+        if not post_ok:
+            self._log(level='ERROR', content=f"第 {round_number} 轮设备后处理失败，跳过采集",
+                      task_id=task_id, test_case_id=test_case_id)
+            self._device_manager.teardown_env_devices_for_round(env_states, task_id)
+            return {
+                'success': False,
+                'tagged_results': [],
+                'rounds_data_by_device': self._failed_round_data(round_idx, result_ids),
+                'adjusted_ref_params': None,
+            }
+
+        # 后处理后、采集评估前检查停止/暂停信号
+        self._check_control_or_cleanup(task_id, env_states)
+
+        # 采集结果
+        collect_result = self._collector.collect_results(
+            task_id, test_case_id, device_info_list,
+            algorithm_type=algorithm_type,
+            case_reference_params=case_reference_params,
+            round_algo_params=round_algo_params,
+        )
+        if isinstance(collect_result, tuple):
+            round_results, adjusted_case_ref_params = collect_result
+        else:
+            round_results, adjusted_case_ref_params = collect_result, None
+
+        tagged_results = round_results if isinstance(round_results, list) else [round_results]
+        for r in tagged_results:
+            r.round_number = round_idx
+
+        # 字段映射：将 raw_results 映射为 target 字段（如 output_text、question_text 等）
+        # 通过 ACL 仓储转换结果字段
+        tagged_results = DeviceResultAclRepositoryImpl().convert_results(tagged_results, algorithm_type)
+        # 转换 DTO 为 dict 供下游处理
+        tagged_results = [dto_to_dict(r) for r in tagged_results]
+
+        # 轮次内评估（按设备分组：每台设备更新自己的 TestResult 并提交单轮评估）
+        sn_map = {info.get('device_sn'): int(info.get('device_id'))
+                  for info in (device_info_list or [])
+                  if info.get('device_sn') and info.get('device_id') is not None}
+        grouped_results = self._group_tagged_results(tagged_results, result_ids, sn_map)
+        round_success = True
+        round_data_by_device = {}
+        for device_index, (device_key, device_results) in enumerate(grouped_results.items()):
+            primary = device_results[0] if device_results else {}
+            if not primary:
+                continue
+            device_result_id = result_ids.get(device_key)
+            if device_result_id is None:
+                # 结果归属设备没有预创建结果行（异常数据）：不写结果，仅告警
+                self._log(
+                    level='WARNING',
+                    content=f"第 {round_number} 轮设备 {device_key} 缺少预创建结果行，跳过结果写入",
+                    task_id=task_id, test_case_id=test_case_id,
+                )
+                continue
+            device_success = primary.get('success')
+            if device_success is None:
+                device_success = (primary.get('raw_results') or {}).get('success', False)
+            round_success = round_success and bool(device_success)
+            round_data_by_device[device_key] = self._build_and_submit_round_data(
+                task_id, tc_rel_ids.get(device_key, tc_rel_id), data, case_config, case_name,
+                algorithm_type, test_case_id, rounds,
+                device_result_id, case_reference_params,
+                round_idx, primary, device_results,
+                rounds_data_by_device.get(device_key, []),
+                round_algo_params,
+                log_case_result=(device_index == 0),
+            )
+
+        self._device_manager.teardown_env_devices_for_round(env_states, task_id)
+
+        return {
+            'success': round_success,
+            'tagged_results': tagged_results,
+            'rounds_data_by_device': round_data_by_device,
+            'adjusted_ref_params': adjusted_case_ref_params,
+        }
+
+    @staticmethod
+    def _result_device_key(result, result_ids, sn_map=None):
+        """结果归属设备键：device_id 优先 → device_sn 映射 → 单设备回落唯一键。"""
+        raw_device_id = result.get('device_id')
+        device_key = None
+        if raw_device_id not in (None, ''):
+            try:
+                device_key = int(raw_device_id)
+            except (TypeError, ValueError):
+                device_key = None
+        if device_key in result_ids:
+            return device_key
+        raw_sn = str(result.get('device_sn') or '')
+        mapped = (sn_map or {}).get(raw_sn)
+        if mapped in result_ids:
+            return mapped
+        if len(result_ids) == 1:
+            return next(iter(result_ids))
+        return None
+
+    def _group_tagged_results(self, tagged_results, result_ids, sn_map=None):
+        """按设备分组本轮采集结果；无法归属设备的结果丢弃并告警。"""
+        grouped = {}
+        for result in tagged_results:
+            device_key = self._result_device_key(result, result_ids, sn_map)
+            if device_key is None:
+                self._log(
+                    level='WARNING',
+                    content=(f"本轮结果无法归属设备（device_id={result.get('device_id')}, "
+                             f"device_sn={result.get('device_sn')}），已跳过"),
+                    task_id=None,
+                )
+                continue
+            grouped.setdefault(device_key, []).append(result)
+        return grouped
+
+    @staticmethod
+    def _failed_round_data(round_idx, result_ids):
+        """轮次失败占位 round_data：每台设备各一份，保留失败轮在结果时序中的位置。"""
+        if not isinstance(result_ids, dict) or not result_ids:
+            return {}
+        placeholder = {'round': round_idx, 'input': {}, 'output': {}, 'latency': None, 'evaluation': {}}
+        return {device_key: dict(placeholder) for device_key in result_ids}
+
+    def _build_and_submit_round_data(self, task_id, tc_rel_id, data, case_config, case_name,
+                                     algorithm_type, test_case_id, rounds,
+                                     result_id, case_reference_params,
+                                     round_idx, primary, tagged_results, rounds_data,
+                                     round_algo_params=None, log_case_result=True):
+        """构建本轮 round_data，增量更新 TestResult，提交单轮评估，返回 round_data
+
+        Args:
+            rounds_data: 该设备已执行轮次的 round_data 列表（累积），用于构建含全部轮次的 algo_result
+            round_algo_params: 本轮算法参数（已扁平化为 dict）
+            log_case_result: 是否输出用例级结果日志（组执行时仅首台设备输出，避免重复）
+        """
+        ref_fields = E2ECalculationService.build_ref_fields(round_algo_params or {})
+
+        if log_case_result:
+            self._aggregator.log_case_result(
+                task_id, case_name, primary, ref_fields,
+                algorithm_type=algorithm_type, test_case_id=test_case_id
+            )
+
+        case_rounds = case_config.get('rounds', [])
+        round_cfg = case_rounds[round_idx] if round_idx < len(case_rounds) else {}
+        audios = round_cfg.get('audios', [])
+        first_audio = audios[0] if audios else {}
+        audio_name = first_audio.get('audio_name') or first_audio.get('name', '')
+        audio_path = first_audio.get('audio_path') or first_audio.get('path', '')
+
+        round_data = E2ECalculationService.build_round_data(
+            primary, round_idx, case_config, algorithm_type,
+            audio_name, audio_path,
+        )
+
+        # INT-296：UI 抓取层降级（explicit_degrade）时本轮 UI 抓取步骤显式标记
+        # skipped（环境排除）并留痕（note 由 initialize 阶段 set_ui_capture_degraded
+        # 构建），严禁无痕跳过；其余步骤口径不变
+        ui_capture_note = getattr(self, '_ui_capture_degraded_note', None)
+        if ui_capture_note:
+            round_data['ui_capture'] = ui_capture_note
+
+        # 构建含已执行轮次 + 本轮的 algo_result，使 _extract_round_eval_data(rounds[round_idx]) 能正确索引
+        accumulated_rounds = list(rounds_data) + [round_data]
+        current_algo_result = {
+            'device_type': 'physical',
+            'algorithm_type': algorithm_type,
+            'total_rounds': len(rounds),
+            'rounds': accumulated_rounds,
+            'aggregated': {},
+        }
+        self._aggregator.update_test_result(
+            result_id=result_id, algo_result=current_algo_result,
+            execution_status=ExecutionStatus.RUNNING, task_id=task_id,
+        )
+        # DEBUG: 记录单轮写入后的 record_file 状态
+        _round_output = round_data.get('output', {}) if isinstance(round_data, dict) else {}
+        self._log(
+            level='DEBUG',
+            content=f"[_build_and_submit_round_data] round_idx={round_idx}, round_output_keys={list(_round_output.keys())}, record_file={_round_output.get('record_file', '<MISSING>')}",
+            task_id=task_id, test_case_id=test_case_id,
+        )
+
+        # 检查本轮 evaluation.enabled 开关，enabled 为 False 时跳过单轮评估
+        # 同时检查本轮 dimensions 是否为空，为空时也跳过单轮评估（对齐 V9.7.10 e2e_executor）
+        _round_eval_enabled = True
+        if case_config:
+            _case_rounds = case_config.get('rounds', [])
+            if _case_rounds and round_idx < len(_case_rounds):
+                _round_eval = _case_rounds[round_idx].get('evaluation', {})
+                if isinstance(_round_eval, dict):
+                    if _round_eval.get('enabled', True) is False:
+                        _round_eval_enabled = False
+                    elif not _round_eval.get('dimensions'):
+                        _round_eval_enabled = False
+
+        if _round_eval_enabled:
+            # INT-169: 单轮评估提交失败不中止执行链——设备状态无恙，剩余轮次照常执行
+            try:
+                self._evaluate_result(
+                    task_id=task_id, result_id=result_id, test_case_id=test_case_id,
+                    algo_result=current_algo_result, case_config=case_config or {},
+                    case_reference_params=case_reference_params,
+                    algorithm_type=algorithm_type, device_type=DeviceType.PHYSICAL.value,
+                    case_algorithm_params=data.get('case_algorithm_params'),
+                    round_number=round_idx,
+                    reference_params_col=data.get('reference_params_col')
+                )
+            except EvaluationSubmitError as e:
+                self._record_eval_submit_failure(
+                    f"第 {round_cfg.get('round_number', round_idx + 1)} 轮评估提交失败: {e}",
+                    task_id=task_id, test_case_id=test_case_id)
+
+        return round_data
+
+    def _collect_playback_timestamps(self, task_id, play_result, case_config):
+        """从 play_result 的 audio_timelines 收集播放时间戳"""
+        algo_params = AlgorithmAclRepositoryImpl.normalize_algorithm_params(case_config.get('algorithm_params', {})) if case_config else {}
+        try:
+            overlap_rate = max(0.0, min(1.0, float(algo_params.get('overlap_rate', 0)))) if algo_params else 0
+        except (ValueError, TypeError):
+            overlap_rate = 0
+        try:
+            overlap_time = max(0.0, float(algo_params.get('overlap_time', 0))) if algo_params else 0
+        except (ValueError, TypeError):
+            overlap_time = 0
+
+        audio_timelines = (play_result.audio_timelines or []) if play_result else []
+        self._log(level='DEBUG', content=f"[collect_ts] audio_timelines count={len(audio_timelines)}, first_keys={list(audio_timelines[0].keys()) if audio_timelines else 'empty'}", task_id=task_id)
+        round_start_ms = None
+        round_end_ms = None
+        for timeline in audio_timelines:
+            audio_config = timeline.get('config', {})
+            audio_obj = timeline.get('audio', {})
+            # gRPC JSON 序列化后 audio 变成字符串，优先从 config 取 audio_id
+            audio_id = (
+                audio_config.get('audio_id')
+                or getattr(audio_obj, 'id', None)
+                or timeline.get('file')
+            )
+
+            if task_id not in self._playback_timestamps:
+                self._playback_timestamps[task_id] = {
+                    'record_start_time': time.time(),
+                    'audio_play_times': [],
+                    'theory_offsets': {},
+                }
+            start_ms = timeline.get('playback_start_time_ms')
+            end_ms = timeline.get('playback_end_time_ms')
+            if start_ms is not None and (round_start_ms is None or start_ms < round_start_ms):
+                round_start_ms = start_ms
+            if end_ms is not None and (round_end_ms is None or end_ms > round_end_ms):
+                round_end_ms = end_ms
+            self._playback_timestamps[task_id]['audio_play_times'].append({
+                'audio_id': audio_id,
+                'play_order': audio_config.get('play_order', 0),
+                'actual_time': timeline.get('actual_play_time', time.time()),
+                'actual_end_time': timeline.get('actual_end_time'),
+                'playback_start_time_ms': start_ms,
+                'playback_end_time_ms': end_ms,
+                'actual_start_offset': timeline.get('start', 0),
+                'is_overlap': bool(overlap_rate and overlap_rate > 0),
+                'overlap_rate': overlap_rate,
+                'overlap_time': overlap_time,
+                'is_noise': bool(timeline.get('is_noise') or audio_config.get('is_noise')),
+                'audio_type': audio_config.get('type'),
+            })
+        # 记录本轮播放起止时间戳（毫秒），供 collect_results 传递给设备驱动
+        if round_start_ms is not None and round_end_ms is not None:
+            self._playback_timestamps[task_id]['current_round_start_ms'] = round_start_ms
+            self._playback_timestamps[task_id]['current_round_end_ms'] = round_end_ms

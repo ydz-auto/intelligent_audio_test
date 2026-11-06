@@ -6,7 +6,9 @@
 
 ### 1.1 页面定位
 
-Device 页面用于管理测试设备（测试设备、测试API、播放设备），承载智能语音算法配置化方案中的**设备算法兼容性管理**：声明每台设备支持的算法类型（`supportedAlgorithms`），供测试执行时按被测设备 `device_type` 路由三执行器（物理设备→E2EExecutor、HTTP API→APISessionExecutor、WebSocket API→RealtimeSessionExecutor）前的设备选择与筛选使用。
+Device 页面用于管理测试设备（测试设备、测试API、播放设备），承载智能语音算法配置化方案中的**设备算法兼容性管理**：声明每台设备支持的算法类型（`supportedAlgorithms`），供测试执行前按算法类型做设备选择与筛选使用。
+
+> **执行路由口径（2026-10-26 回收 B0 两道，INT-1954）**：被测 API 的执行道只有两条，由 `apis.streaming` 唯一派生；`apis.protocol` 只决定 transport 适配器，`apis.device_type` 已废弃。物理设备走 `E2EExecutor` 属 E2E 链路，与 API 的两条道无关。原「按被测设备类型分派 E2E / HTTP API / WebSocket API 三个执行器」口径作废，裁定见 [01_测试执行/09_API协议面与执行道契约 §3.1](../../../01_测试执行/09_API协议面与执行道契约.md)。
 
 ### 1.2 页面路由
 - 路由路径：`/Device`

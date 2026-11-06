@@ -1,0 +1,918 @@
+# -*- coding: utf-8 -*-
+"""Realtime 多轮流式会话执行器（INT-61）
+
+与 APISessionExecutor 平级的第三类执行器，由 APIExecutor 按 device_type
+运行时分发（websocket_api → 本执行器，http_api → APISessionExecutor 不变）。
+
+实例内闭环：WS 长连接与帧状态封闭在接单实例内存中；会话亲和经
+RealtimeSessionRegistry（session:bind:{task_id}）记录 task → 实例绑定，
+双副本下同会话粘同实例，绑定实例失联自动重路由。
+
+流式双通道：frame（逐帧归一化事件）+ summary（会话汇总）经
+RealtimeStreamPublisher 推送（REPORT_EVENTS 领域事件 + sse_events SSE 桥）。
+
+混音渲染（INT-82 接线）：多源时间轴混音在 audio_service RenderAudioStream
+进程内完成（08 设计文档 §7.1）；本执行器经 RoundRenderService → ACL 端口
+「组装请求 + 消费 chunk」，逐 chunk 推送 WS 并按 chunk 时长 sleep 模拟实时速率，
+不得直调 gRPC stub。
+
+SPL 对称：推送增益与 AI 输出实测口径均经 ApiRmsSplService（被测 API 数字域
+RMS→SPL 映射），与 E2E/API 结果对称可比。
+
+评估异步：summary 落库后提交 evaluation_service 评估队列，不阻塞会话收尾。
+"""
+import io
+import json
+import logging
+import time
+import wave
+from typing import Optional
+
+from shared.models.common_enums import (
+    AdapterProtocol,
+    RealtimeFrameType,
+    RealtimeInterruptMode,
+    RealtimePacingStrategy,
+    RealtimeRoundMode,
+)
+from shared.utils.config_manager import config_manager
+from shared.utils.api_key_provider import (
+    endpoint_rotation_key,
+    resolver_from_config,
+)
+from api_test_service.application.round_render_service import RoundRenderService
+from api_test_service.core import eval_output_collector, evaluation_submitter
+from api_test_service.core.eval_output_collector import collect_round_eval_fields
+from api_test_service.core.evaluation_submitter import submit_case_evaluation
+from api_test_service.domain.entities.api import resolve_audio_sample_rate
+from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
+from api_test_service.domain.services.realtime_pacing_service import (
+    RealtimePacingContext,
+    RealtimePacingService,
+)
+from api_test_service.infrastructure.acl import (
+    AudioConfigAclRepositoryImpl,
+    AudioRenderACLRepositoryImpl,
+)
+from api_test_service.infrastructure.adapters import (
+    _ADAPTER_TYPE_CONFIG_KEY,
+    adapter_type_from_config,
+    vendor_adapter_registry,
+)
+from api_test_service.infrastructure.messaging import RealtimeStreamPublisher
+from api_test_service.infrastructure.adapters.transport import RealtimeWSClient
+from api_test_service.infrastructure.persistence.api_rms_spl_repository import (
+    ApiRmsSplRepositoryImpl,
+)
+from shared.utils.realtime_session_registry import RealtimeSessionRegistry
+
+logger = logging.getLogger(__name__)
+
+
+def _render_placeholders(value, context):
+    """把模板中的 ``{{key}}`` 替换为 context 里的值（支持嵌套 dict / list）。"""
+    if isinstance(value, dict):
+        return {k: _render_placeholders(v, context) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_render_placeholders(v, context) for v in value]
+    if isinstance(value, str):
+        for key, item in (context or {}).items():
+            value = value.replace('{{' + str(key) + '}}', str(item))
+    return value
+
+
+def audio_bytes_to_ms(audio_bytes: int, sample_rate: int,
+                     bytes_per_sample: int = 2) -> float:
+    """PCM 音频字节数 → 毫秒（s16 单声道：每样本 2 字节，与 session 契约一致）。
+
+    INT-2080 output_duration 打断点的换算基础：基于已返回 AI 音频流长度
+    判定打断时机（client.output['audio'] 累计字节 → ms）。0 长度 / 非法
+    采样率收敛为 0，不做除零。
+    """
+    if sample_rate <= 0 or audio_bytes <= 0:
+        return 0.0
+    return audio_bytes / (sample_rate * bytes_per_sample) * 1000.0
+
+# 算法字段映射 / 评估入队 ACL 由 core/eval_output_collector 与
+# core/evaluation_submitter 统一持有（INT-1790 提库）。本模块保留同名引用作为
+# 既有单测 / 集成测试的替身注入点（rt_mod._algo_acl / rt_mod._evaluation_acl）。
+_algo_acl = eval_output_collector._algo_acl
+_evaluation_acl = evaluation_submitter._evaluation_acl
+
+# 密钥链解析器（UC-0901 扩展流程 3a）：case_config → meta → env
+# OPENAI_API_KEY 逐级回退，各级键名经 config_manager secrets 段配置
+_key_resolver = resolver_from_config(config_manager.get_value)
+
+
+class RealtimeSessionExecutor:
+    """Realtime API 多轮流式会话执行器"""
+
+    def __init__(self, executor):
+        self._executor = executor
+        self._spl_repo = ApiRmsSplRepositoryImpl()
+        self._spl_service = ApiRmsSplService(self._spl_repo)
+        # 混音渲染经 ACL 端口出站（RenderService 消费链路，INT-82 接线）
+        self._render_service = RoundRenderService(
+            AudioRenderACLRepositoryImpl(), spl_repo=self._spl_repo,
+            audio_acl=AudioConfigAclRepositoryImpl())
+        self._publisher = RealtimeStreamPublisher()
+        self._session_registry = RealtimeSessionRegistry(
+            bind_ttl_seconds=int(config_manager.get_value(
+                'realtime_session', 'bind_ttl_seconds', 3600)))
+        self._pacing_service = RealtimePacingService()
+        self._frame_seq = 0
+
+    @property
+    def _log(self):
+        return self._executor._log
+
+    # ── 配置化参数（无魔法数字）──
+    def _cfg(self, key, default):
+        return config_manager.get_value('realtime_session', key, default)
+
+    def _resolve_interrupt_cfg(self, round_config, api_config, case_config,
+                               key, default):
+        """打断轮打断点配置兜底链（INT-2080）：round_config → api.meta → 用例 → 全局 → 默认。
+
+        与既有 interruption_delay_ms 取值语义一致（round 级 0/空值回退下一级），
+        fixed_delay 缺省行为不变（零回归）。interrupt_mode / interrupt_after_ms /
+        interruption_delay_ms 三个键共用本链。
+        """
+        value = None
+        if isinstance(round_config, dict):
+            value = round_config.get(key)
+        if not value:
+            meta = getattr(api_config, 'meta', None) or {}
+            if isinstance(meta, dict):
+                value = meta.get(key)
+        if not value and isinstance(case_config, dict):
+            value = case_config.get(key)
+        if not value:
+            value = self._cfg(key, default)
+        return default if value is None else value
+
+    def _stop_check(self, task_id):
+        """INT-308 停止检测回调工厂（INT-316 向后兼容）：执行器带 ControlMixin
+        （生产 APIExecutor）才有 _is_task_stopped；鸭子类型替身缺失时不启用
+        停止检测（stop_check=None），等待行为退回 INT-308 之前的纯超时语义。"""
+        stopped = getattr(self._executor, '_is_task_stopped', None)
+        if stopped is None:
+            return None
+        return lambda: stopped(task_id)
+
+    # ── 执行入口 ──
+    def execute(self, task_id, tc_rel_id, data, case_config) -> bool:
+        case_name = data['case_name']
+        test_case_id = data['test_case_id']
+        algorithm_type = data.get('algorithm_type', 'voice_llm')
+        api_configs = data['api_configs']
+
+        rounds = case_config.get('rounds') or []
+        session_config = case_config.get('session', {})
+        chunk_ms = int(self._cfg('chunk_duration_ms', 100))
+
+        self._log(level='INFO',
+                  content=f"开始 Realtime 流式会话执行: {case_name}, 共 {len(rounds)} 轮, "
+                          f"chunk={chunk_ms}ms",
+                  task_id=task_id, test_case_id=test_case_id)
+
+        for api_config in api_configs:
+            self._executor._handle_control(task_id)
+            api_id = api_config.id
+
+            max_process = getattr(api_config, 'default_max_process', None) or \
+                config_manager.get_value('api_executor', 'default_max_process', 5)
+            if not self._executor._concurrency.acquire(api_id, task_id, tc_rel_id,
+                                                       max_process=max_process):
+                self._log(level='ERROR', content=f"API {api_id} 执行权获取失败，跳过",
+                          task_id=task_id, api_id=api_id)
+                continue
+
+            try:
+                self._execute_for_api(task_id, tc_rel_id, data, case_config,
+                                      api_config, rounds, session_config, chunk_ms)
+            finally:
+                self._executor._concurrency.release(api_id, task_id)
+
+        return True
+
+    def _execute_for_api(self, task_id, tc_rel_id, data, case_config,
+                         api_config, rounds, session_config, chunk_ms):
+        """单 API 的 Realtime 会话：绑定亲和 → WS 连接 → 多轮 → 聚合落库 → 评估"""
+        api_id = api_config.id
+        test_case_id = data['test_case_id']
+        algorithm_type = data.get('algorithm_type', 'voice_llm')
+
+        # 会话亲和：绑定 task → 本实例（双副本同会话粘同实例）
+        instance_id, bound = self._session_registry.bind(task_id)
+        self._log(level='INFO',
+                  content=f"Realtime 会话亲和绑定: instance={instance_id}, "
+                          f"redis_bound={bound}",
+                  task_id=task_id, api_id=api_id)
+
+        client = None
+        session_id = f"rt-{task_id}-{api_id}"
+        dst_sample_rate = resolve_audio_sample_rate(api_config, direction='input')
+        try:
+            url = self._resolve_ws_url(api_config)
+            headers = self._resolve_ws_headers(
+                api_config,
+                case_api_key=self._case_level_key(
+                    data.get('api_specific_config'), case_config))
+            client = self._resolve_realtime_transport(
+                api_config, case_config, data.get('api_specific_config'),
+                url, headers, chunk_ms, task_id, test_case_id, session_id,
+                # INT-839：被测 API 网络代理（websocket-client 代理参数注入，
+                # 适配器路径与 RealtimeWSClient 默认路径同口径透传）
+                proxy_type=getattr(api_config, 'proxy_type', None),
+                proxy_url=getattr(api_config, 'proxy_url', None))
+            if not client.connect():
+                raise ConnectionError(f"Realtime WS 连接失败: {url}")
+
+            session_cfg = self._build_session_config(api_config, session_config)
+            first_frame = self._build_first_frame(api_config, session_cfg)
+            if not client.pre_process(session_cfg, first_frame=first_frame):
+                raise ConnectionError("Realtime 会话配置未确认（session.updated 超时）")
+
+            round_results = []
+            all_success = True
+            session_ai_audio = bytearray()
+            # INT-305：用例被移除（执行中删除）→ 本用例静默收敛
+            _is_case_removed = getattr(self._executor, '_is_case_removed', None)
+            for round_idx, round_config in enumerate(rounds):
+                if not isinstance(round_config, dict):
+                    continue
+                self._executor._handle_control(task_id)
+                if _is_case_removed and _is_case_removed(task_id, test_case_id):
+                    self._log(level='INFO', content=f"用例 {case_name} 已被移除，中断会话轮次",
+                              task_id=task_id, test_case_id=test_case_id)
+                    return False
+                round_number = round_config.get('round_number', round_idx + 1)
+                self._executor.execution_engine.update_case_round_progress(
+                    task_id, tc_rel_id, round_idx, len(rounds))
+                # 轮次边界重置（连接跨轮保持，状态按轮归零，会话级音频由本执行器拼接）
+                client.reset_round_state()
+                try:
+                    result = self._execute_round(
+                        client, api_config, round_config, round_number,
+                        len(rounds), task_id, case_config,
+                        algorithm_type=algorithm_type)
+                except Exception as e:
+                    import traceback
+                    self._log(level='ERROR',
+                              content=f"Realtime 第 {round_number} 轮异常: {e}\n"
+                                      f"{traceback.format_exc()}",
+                              task_id=task_id, api_id=api_id)
+                    result = {'round_number': round_number, 'success': False,
+                              'error': str(e)}
+                result.setdefault('round_number', round_number)
+                round_output = client.output
+                session_ai_audio += round_output['audio']
+                result['frame_count'] = len(round_output['frame_results'])
+                round_results.append(result)
+                if not result.get('success'):
+                    all_success = False
+
+            aggregated = self._aggregate(round_results, bytes(session_ai_audio),
+                                         api_config)
+            aggregated['ai_wav'] = self._save_ai_audio(
+                bytes(session_ai_audio), task_id, api_id,
+                sample_rate=dst_sample_rate)
+            # AI 输出音频归档路径并入 algorithm_result，随结果落库与评估入参下发
+            aggregated['algorithm_result']['ai_wav'] = aggregated['ai_wav']
+            result_id = self._executor._result_processor.create_multi_round_test_result(
+                task_id=task_id, test_case_id=test_case_id, api_config_id=api_id,
+                algorithm_type=algorithm_type, aggregated=aggregated,
+                success=all_success, tc_rel_id=tc_rel_id)
+            aggregated['result_id'] = result_id
+
+            # summary 通道推送（会话汇总落库后）
+            self._publisher.publish_summary(
+                task_id, test_case_id, session_id=session_id,
+                summary={
+                    'success': all_success,
+                    'round_count': aggregated.get('round_count', 0),
+                    'total_latency': aggregated.get('total_latency', 0),
+                    'avg_latency': aggregated.get('algorithm_result', {}).get('avg_latency', 0),
+                    'barge_in_total': aggregated.get('algorithm_result', {}).get('barge_in_total', 0),
+                    'barge_in_success_rate': aggregated.get('algorithm_result', {}).get('barge_in_success_rate', 0),
+                    'ai_output_rms_dbfs': aggregated.get('ai_output_rms_dbfs'),
+                    'ai_output_spl_db': aggregated.get('ai_output_spl_db'),
+                    'rounds': aggregated.get('algorithm_result', {}).get('rounds', []),
+                })
+
+            if result_id and all_success:
+                self._submit_evaluation(task_id, result_id, test_case_id,
+                                        case_config, data, algorithm_type,
+                                        aggregated, api_id)
+
+            self._refresh_progress(task_id)
+            return all_success
+        except Exception as e:
+            import traceback
+            error_msg = f"API {api_id} Realtime 会话执行异常: {e}"
+            self._log(level='ERROR', content=f"{error_msg}\n{traceback.format_exc()}",
+                      task_id=task_id, api_id=api_id)
+            self._executor._result_processor.update_task_case_failure(
+                task_id, tc_rel_id, error_msg)
+            return False
+        finally:
+            if client is not None:
+                client.close()
+            self._session_registry.release(task_id)
+
+    def _resolve_realtime_transport(self, api_config, case_config, api_specific_config,
+                                    url, headers, chunk_ms, task_id, test_case_id,
+                                    session_id, *, proxy_type=None, proxy_url=None):
+        """Realtime 传输对象工厂（INT-497 最小接线，仅替换构造对象一处）
+
+        INT-1299 分发表驱动化：不再用 if/else 白名单，统一经注册表表驱动入口
+        resolve_for(REALTIME, flat_key) 查表——配置了 REALTIME 品牌适配器
+        （vendor_adapter=openai / openai_realtime）命中映射 → 严格分发
+        （resolve 失败必须抛错，不静默回退 RealtimeWSClient，防双通道语义歧义）；
+        未映射（api_driver / mock / 未配置）→ None → 保持既有 RealtimeWSClient
+        默认行为（向后兼容）。新增厂商只加注册表维度与实现，本方法零改动。
+        轮次编排零改动——适配器暴露 RealtimeWSClient 同形方法面。
+
+        配置来源与 HTTP 路径同口径：api_specific_config（API 级）优先，
+        回退 case_config（用例级），再经 api.meta（adapter_type_from_config 内置）。
+        proxy_type / proxy_url（INT-839）两条路径同口径透传，避免新适配器
+        路径静默丢失基线已具备的被测 API 网络代理能力。
+        """
+        sel_config = dict(api_specific_config or {})
+        if isinstance(case_config, dict):
+            for key in (_ADAPTER_TYPE_CONFIG_KEY,):
+                if key not in sel_config and case_config.get(key) is not None:
+                    sel_config[key] = case_config[key]
+        a_type = adapter_type_from_config(api_config, sel_config)
+        adapter_cls = vendor_adapter_registry.resolve_for(
+            AdapterProtocol.REALTIME, a_type)
+        if adapter_cls is not None:
+            return adapter_cls(
+                api_config=api_config, case_config=case_config, endpoint=url,
+                headers=headers,
+                event_listener=lambda frame: self._on_frame(
+                    task_id, test_case_id, session_id, frame),
+                chunk_duration_ms=chunk_ms,
+                test_case_id=test_case_id, task_id=task_id,
+                proxy_type=proxy_type, proxy_url=proxy_url)
+        return RealtimeWSClient(
+            url, headers=headers,
+            vendor=(getattr(api_config, 'vendor', None) or 'openai'),
+            event_listener=lambda frame: self._on_frame(
+                task_id, test_case_id, session_id, frame),
+            chunk_duration_ms=chunk_ms,
+            proxy_type=proxy_type, proxy_url=proxy_url,
+            # WS 音频帧方言（apis.meta.audio_frame）：未配置走默认 append 载荷
+            audio_frame=(getattr(api_config, 'meta', None) or {}).get('audio_frame'),
+        )
+
+    # ── 轮次执行 ──
+    def _execute_round(self, client, api_config, round_config, round_number,
+                       total_rounds, task_id, case_config,
+                       algorithm_type=None) -> dict:
+        # INT-1299：轮次模式经传输对象 resolve_round_mode 归一化（默认 is_interruption，
+        # 内部 _as_bool 类型兼容；厂商方言字段覆写），executor 不再自行 get 字段
+        mode = client.resolve_round_mode(round_config)
+        if mode == RealtimeRoundMode.INTERRUPTION:
+            return self._execute_interruption_round(
+                client, api_config, round_config, round_number, task_id,
+                case_config, algorithm_type=algorithm_type)
+        return self._execute_normal_round(
+            client, api_config, round_config, round_number, task_id, case_config,
+            algorithm_type=algorithm_type)
+
+    def _execute_normal_round(self, client, api_config, round_config,
+                              round_number, task_id, case_config,
+                              algorithm_type=None) -> dict:
+        """正常轮：流式推送混音音频（RenderAudioStream 消费链路）→ commit → 等 AI 完整回复
+
+        INT-475 节奏：推流中按 RealtimePacingStrategy 插 recv() 检输出事件，
+        模型输出 turn 进行中暂停推流（WAIT_TURN_END）或打断收敛（ALLOW_BARGE_IN）；
+        默认 FIXED 恒定节奏，不消费事件（回归基线）。
+        """
+        start_time = time.time()
+        chunk_ms = int(self._cfg('chunk_duration_ms', 100))
+        ai_start_timeout = float(self._cfg('ai_start_timeout_seconds', 25))
+        ai_complete_timeout = float(self._cfg('ai_complete_timeout_seconds', 60))
+        pacing = self._resolve_pacing(api_config, case_config)
+
+        input_chunk_count = 0
+        input_interrupted = False
+        # 混音渲染经 ACL（多源时间轴混音在 audio_service 进程内，08 设计文档 §7.1）；
+        # chunk 恒定时长，逐 chunk 推送 + sleep 模拟实时速率
+        chunks = self._render_service.stream_round_chunks(
+            api_config, round_config, case_config, task_id)
+        for chunk in chunks:
+            if chunk.sequence < 0 and chunk.message:
+                # ACL 失败收敛终止帧（gRPC 异常 / 渲染失败）：轮次失败，不静默吞掉
+                return {'round_number': round_number, 'success': False,
+                        'error': f'混音渲染失败: {chunk.message}'}
+            self._executor._handle_control(task_id)
+            decision = self._pacing_gate(client, pacing, task_id)
+            if decision == 'interrupt':
+                # ALLOW_BARGE_IN：模型提前回话/打断，收敛输入推流（剩余输入不再推）
+                input_interrupted = True
+                break
+            if decision == 'abort':
+                break
+            client.send_audio_chunk(chunk.data_b64)
+            input_chunk_count += 1
+            time.sleep(chunk_ms / 1000.0)
+
+        client.commit_input()
+        # INT-308 停止传播：等 AI 回复期间检查任务停止，停止时立即中断等待
+        # INT-475 TIMEOUT_FALLBACK：模型无输出时按配置兜底超时不无限等待
+        complete = client.wait_ai_complete(
+            start_timeout=pacing.effective_fallback_end_timeout(ai_start_timeout),
+            end_timeout=pacing.effective_fallback_end_timeout(ai_complete_timeout),
+            stop_check=self._stop_check(task_id))
+        latency = round(time.time() - start_time, 3)
+        output = client.output
+
+        result = {
+            'round_number': round_number,
+            'mode': RealtimeRoundMode.NORMAL.value,
+            'success': bool(complete and output['ai_complete']),
+            'latency': latency,
+            'input_chunk_count': input_chunk_count,
+            'input_interrupted': input_interrupted,
+            'output_audio_size': len(output['audio']),
+            'answer_text': output['text'],
+            'first_frame_latency_ms': output['latency_ms'],
+            'frame_count': len(output['frame_results']),
+            'error': None if complete else 'AI 回复未在超时内完成',
+        }
+        # INT-1746：评估入参统一落轮次 output 子字典（不再平铺到轮次顶层）
+        result['output'] = self._collect_eval_fields(
+            round_config, output, algorithm_type,
+            text_output=result.get('answer_text'),
+            api_id=getattr(api_config, 'id', None))
+        return result
+
+    def _execute_interruption_round(self, client, api_config, round_config,
+                                    round_number, task_id, case_config,
+                                    algorithm_type=None) -> dict:
+        """打断轮（barge-in）：等 AI 开始 → 推打断混音音频 → 检测打断 → 等新回复
+
+        INT-475 节奏策略不套打断轮推流阶段：步骤①已确认 AI 在说话，步骤④已有
+        独立 barge-in 检测窗口（recv 轮询），若在步骤③推流中套节奏门会抢占
+        user_speech_started / response_cancelled 信号源，故打断轮保持既有时序。
+        """
+        start_time = time.time()
+        chunk_ms = int(self._cfg('chunk_duration_ms', 100))
+        ai_start_timeout = float(self._cfg('ai_start_timeout_seconds', 25))
+        ai_complete_timeout = float(self._cfg('ai_complete_timeout_seconds', 60))
+        barge_in_window = float(self._cfg('barge_in_window_seconds', 5))
+        # INT-2080 打断点模式化：interrupt_mode ∈ {fixed_delay（现状默认，零回归）,
+        # output_duration（轮询已返回音频长度达 interrupt_after_ms）}
+        interrupt_mode = self._resolve_interrupt_cfg(
+            round_config, api_config, case_config,
+            'interrupt_mode', RealtimeInterruptMode.FIXED_DELAY.value)
+        try:
+            interrupt_mode = RealtimeInterruptMode(interrupt_mode).value
+        except ValueError:
+            logger.warning('未知 interrupt_mode=%r，回退 fixed_delay', interrupt_mode)
+            interrupt_mode = RealtimeInterruptMode.FIXED_DELAY.value
+        interrupt_delay_ms = float(self._resolve_interrupt_cfg(
+            round_config, api_config, case_config, 'interruption_delay_ms', 1000))
+        interrupt_after_ms = float(self._resolve_interrupt_cfg(
+            round_config, api_config, case_config, 'interrupt_after_ms', 3000))
+        pacing = self._resolve_pacing(api_config, case_config)
+
+        # ① 等 AI 开始说话（INT-308：等待期间检查任务停止）
+        ai_started = client.wait_ai_speaking(
+            start_timeout=ai_start_timeout,
+            stop_check=self._stop_check(task_id))
+        before_size = len(client.output['audio'])
+        if not ai_started:
+            return {'round_number': round_number,
+                    'mode': RealtimeRoundMode.INTERRUPTION.value,
+                    'interrupt_mode': interrupt_mode,
+                    'success': False, 'error': 'AI 未开始说话，无法打断',
+                    'latency': round(time.time() - start_time, 3)}
+
+        # ② 等打断点（INT-2080）：fixed_delay 保持现状 sleep；output_duration
+        #    轮询已返回 AI 音频长度（按采样率换算 ms）达 interrupt_after_ms
+        # 按「回传音频格式」的采样率换算 AI 已返回音频长度（output_duration 打断点）
+        sample_rate = resolve_audio_sample_rate(api_config, direction='output')
+        if interrupt_mode == RealtimeInterruptMode.OUTPUT_DURATION.value:
+            interrupt_trigger_ms = self._wait_output_duration(
+                client, interrupt_after_ms, sample_rate, task_id,
+                timeout=ai_complete_timeout)
+        else:
+            time.sleep(interrupt_delay_ms / 1000.0)
+            interrupt_trigger_ms = interrupt_delay_ms
+
+        # ③ 流式推送打断音频（RenderAudioStream 消费链路）+ commit
+        chunks = self._render_service.stream_round_chunks(
+            api_config, round_config, case_config, task_id)
+        client.mark_commit()
+        for chunk in chunks:
+            if chunk.sequence < 0 and chunk.message:
+                return {'round_number': round_number,
+                        'mode': RealtimeRoundMode.INTERRUPTION.value,
+                        'interrupt_mode': interrupt_mode,
+                        'interrupt_trigger_ms': interrupt_trigger_ms,
+                        'success': False,
+                        'error': f'混音渲染失败: {chunk.message}',
+                        'latency': round(time.time() - start_time, 3)}
+            self._executor._handle_control(task_id)
+            client.send_audio_chunk(chunk.data_b64)
+            time.sleep(chunk_ms / 1000.0)
+        client.commit_input()
+
+        # ④ barge-in 检测窗口：等 user_speech_started / response_cancelled
+        deadline = time.time() + barge_in_window
+        while time.time() < deadline:
+            event = client.recv(timeout=0.5)
+            etype = event.get('type')
+            if etype in ('user_speech_started', 'response_cancelled'):
+                break
+            if etype == 'connection_closed':
+                break
+
+        at_window_end_size = len(client.output['audio'])
+        barge_in_detected = client.output['barge_in_detected']
+
+        # ⑤ 打断成功则等 AI 重新回复（INT-308：等待期间检查任务停止；
+        # INT-475 TIMEOUT_FALLBACK：打断后 AI 未重新回复同样按兜底超时收敛）
+        renewed = False
+        if barge_in_detected:
+            renewed = client.wait_ai_complete(
+                start_timeout=pacing.effective_fallback_end_timeout(ai_start_timeout),
+                end_timeout=pacing.effective_fallback_end_timeout(ai_complete_timeout),
+                stop_check=self._stop_check(task_id))
+
+        # 打断后音频量 = 重新回复部分（整轮累计扣除打断窗口结束时已有量）
+        after_size = max(len(client.output['audio']) - at_window_end_size, 0)
+
+        latency = round(time.time() - start_time, 3)
+        result = {
+            'round_number': round_number,
+            'mode': RealtimeRoundMode.INTERRUPTION.value,
+            # INT-2080 打断点依据：模式 + 触发点时长（fixed_delay=延时；
+            # output_duration=已返回音频实际时长）+ output_duration 阈值
+            'interrupt_mode': interrupt_mode,
+            'interrupt_trigger_ms': interrupt_trigger_ms,
+            'interrupt_after_ms': interrupt_after_ms,
+            'success': bool(barge_in_detected and renewed),
+            'latency': latency,
+            'barge_in_detected': barge_in_detected,
+            'barge_in_latency_ms': client.output['barge_in_latency_ms'],
+            'interruption_delay_ms': interrupt_delay_ms,
+            'ai_response_before_interrupt_size': before_size,
+            'ai_response_after_interrupt_size': after_size,
+            'ai_renewed': renewed,
+            'answer_text': client.output['text'],
+            'error': None if (barge_in_detected and renewed) else '打断未生效或 AI 未重新回复',
+        }
+        # INT-1746：评估入参统一落轮次 output 子字典（不再平铺到轮次顶层）
+        result['output'] = self._collect_eval_fields(
+            round_config, client.output, algorithm_type,
+            text_output=result.get('answer_text'),
+            api_id=getattr(api_config, 'id', None))
+        return result
+
+    def _wait_output_duration(self, client, interrupt_after_ms, sample_rate,
+                              task_id, timeout=60.0) -> float:
+        """output_duration 打断点等待：轮询已返回 AI 音频长度达阈值，返回触发时长 ms。
+
+        复用 before_size 累计机制（client.output['audio']），每次 recv() 后按
+        采样率换算已返回音频毫秒数，≥ interrupt_after_ms 即返回。AI 输出 turn
+        结束（ai_audio_done / ai_text_done）、打断信号已到（speech_started /
+        cancelled）、连接收敛或任务停止时提前返回（不无限等待）。
+        """
+        stop_check = self._stop_check(task_id)
+        deadline = time.time() + max(float(timeout), 0)
+        while time.time() < deadline:
+            audio_ms = audio_bytes_to_ms(len(client.output['audio']), sample_rate)
+            if audio_ms >= interrupt_after_ms:
+                return round(audio_ms, 3)
+            event = client.recv(timeout=0.2)
+            etype = event.get('type')
+            if etype in (RealtimeFrameType.AI_AUDIO_DONE.value,
+                         RealtimeFrameType.AI_TEXT_DONE.value,
+                         RealtimeFrameType.USER_SPEECH_STARTED.value,
+                         RealtimeFrameType.RESPONSE_CANCELLED.value,
+                         RealtimeFrameType.CONNECTION_CLOSED.value,
+                         RealtimeFrameType.ERROR.value):
+                break
+            if stop_check is not None and stop_check():
+                break
+        return round(audio_bytes_to_ms(len(client.output['audio']), sample_rate), 3)
+
+    # ── 节奏（INT-475：输出调输入）──
+    def _resolve_pacing(self, api_config, case_config) -> RealtimePacingContext:
+        """解析节奏上下文：case_config['pacing'] → meta['pacing'] → 全局配置 → 默认"""
+        return self._pacing_service.resolve(api_config, case_config, cfg_getter=self._cfg)
+
+    def _pacing_gate(self, client, pacing: RealtimePacingContext,
+                     task_id) -> str:
+        """推流节奏门：推流中检模型输出事件，按策略决定是否放行下一帧。
+
+        返回 'pass'（放行下一帧）/ 'interrupt'（模型提前回话/打断，收敛输入推流）/
+        'abort'（任务停止）。默认 FIXED 恒定节奏：不消费事件，恒放行（零回归）。
+
+        输出信号经 RealtimeWSClient 内部事件队列 + recv() 轮询回流（评审修订③）；
+        事件归一化与帧记录在收包侧（_parse_event），本方法只读状态、不改变产出链路。
+        """
+        if pacing.is_fixed():
+            return 'pass'
+        want_turn_end = pacing.has(RealtimePacingStrategy.WAIT_TURN_END)
+        allow_barge_in = pacing.has(RealtimePacingStrategy.ALLOW_BARGE_IN)
+        stop_check = self._stop_check(task_id)
+
+        def stopped():
+            return stop_check is not None and stop_check()
+
+        # ① 非阻塞排空已有输出事件，判定输出 turn 是否进行中
+        turn_active = False
+        while True:
+            event = client.recv(timeout=0)
+            etype = event.get('type')
+            if etype == 'recv_timeout':
+                break
+            if etype in (RealtimeFrameType.AI_AUDIO_DELTA.value,
+                         RealtimeFrameType.AI_TEXT_DELTA.value):
+                turn_active = True
+            elif etype in (RealtimeFrameType.AI_AUDIO_DONE.value,
+                           RealtimeFrameType.AI_TEXT_DONE.value):
+                return 'pass'   # 输出 turn 已结束：放行下一帧
+            elif etype in (RealtimeFrameType.USER_SPEECH_STARTED.value,
+                           RealtimeFrameType.RESPONSE_CANCELLED.value):
+                if allow_barge_in:
+                    return 'interrupt'
+            elif etype in (RealtimeFrameType.CONNECTION_CLOSED.value,
+                           RealtimeFrameType.ERROR.value):
+                return 'pass'   # 连接收敛：放行，由 wait_ai_complete 收敛轮次失败
+
+        if not (turn_active and want_turn_end):
+            return 'pass'   # 无输出 turn：恒定节奏放行
+
+        # ② WAIT_TURN_END：输出 turn 进行中 → 暂停推流，等 turn 结束（或超时兜底）
+        deadline = time.time() + pacing.effective_turn_end_timeout()
+        while time.time() < deadline:
+            if stopped():
+                return 'abort'
+            event = client.recv(timeout=0.2)
+            etype = event.get('type')
+            if etype in (RealtimeFrameType.AI_AUDIO_DONE.value,
+                         RealtimeFrameType.AI_TEXT_DONE.value):
+                return 'pass'   # turn 结束：放行下一帧
+            if etype in (RealtimeFrameType.USER_SPEECH_STARTED.value,
+                         RealtimeFrameType.RESPONSE_CANCELLED.value):
+                if allow_barge_in:
+                    return 'interrupt'
+            if etype in (RealtimeFrameType.CONNECTION_CLOSED.value,
+                         RealtimeFrameType.ERROR.value):
+                return 'pass'
+
+        # ③ 超时兜底：节奏等待非硬阻断，超时一律放行（模型无输出不无限等待）
+        logger.info('Realtime 节奏等待超时（策略=%s），放行推流兜底',
+                    [s.value for s in pacing.strategies])
+        return 'pass'
+
+    # ── 帧推送（frame 通道，客户端解析回调在执行线程触发）──
+    def _on_frame(self, task_id, test_case_id, session_id, frame: dict):
+        """帧监听：逐帧推送 frame 通道（轻量载荷，不含原始音频）"""
+        self._frame_seq += 1
+        try:
+            self._publisher.publish_frame(
+                task_id=task_id, test_case_id=test_case_id,
+                session_id=session_id, round_number=0,
+                seq=self._frame_seq, frame=frame)
+        except Exception:
+            logger.debug("frame 通道推送失败", exc_info=True)
+
+    # ── 聚合与落库 ──
+    def _aggregate(self, round_results, session_ai_audio: bytes, api_config) -> dict:
+        """会话聚合：延迟统计 + barge-in 统计 + 会话级 AI 输出 SPL 口径实测"""
+        total_latency = sum(r.get('latency', 0) for r in round_results)
+        success_count = sum(1 for r in round_results if r.get('success'))
+        total_count = len(round_results)
+
+        interrupt_rounds = [r for r in round_results
+                            if r.get('mode') == RealtimeRoundMode.INTERRUPTION.value]
+        barge_in_total = len(interrupt_rounds)
+        barge_in_success = sum(1 for r in interrupt_rounds if r.get('barge_in_detected'))
+
+        spl_service = self._spl_service
+        ai_rms_dbfs = spl_service.calculate_rms_dbfs(session_ai_audio) \
+            if session_ai_audio else None
+        mapping = None
+        try:
+            mapping = self._spl_repo.get_default_mapping(api_config.id)
+        except Exception:
+            logger.debug("查询 SPL 映射失败，按基准口径计算", exc_info=True)
+        ai_spl = spl_service.rms_dbfs_to_spl(ai_rms_dbfs, mapping) if ai_rms_dbfs is not None else None
+
+        first_frame_latencies = [
+            r.get('first_frame_latency_ms') for r in round_results
+            if r.get('first_frame_latency_ms') is not None
+        ]
+
+        algorithm_result = {
+            'round_count': total_count,
+            'success_count': success_count,
+            'total_latency': round(total_latency, 3),
+            'avg_latency': round(total_latency / total_count, 3) if total_count else 0,
+            'barge_in_total': barge_in_total,
+            'barge_in_success': barge_in_success,
+            'barge_in_success_rate': round(barge_in_success / barge_in_total, 3) if barge_in_total else 0,
+            'rounds': round_results,
+            'first_frame_latency_ms': first_frame_latencies[0] if first_frame_latencies else None,
+        }
+        # 实测口径并入 algorithm_result：落库（TestResult）与评估入参均只消费
+        # algorithm_result，顶层同名字段仅供 SSE summary 通道（对称可比，§AC3）
+        algorithm_result['ai_output_rms_dbfs'] = ai_rms_dbfs
+        algorithm_result['ai_output_spl_db'] = ai_spl
+        return {
+            'success': success_count == total_count,
+            'algorithm_result': algorithm_result,
+            'total_latency': round(total_latency, 3),
+            'round_count': total_count,
+            'session_summary': {
+                'session_id': f"rt-{api_config.id}",
+                'frame_count': sum(r.get('frame_count', 0) for r in round_results),
+            },
+            'ai_output_rms_dbfs': ai_rms_dbfs,
+            'ai_output_spl_db': ai_spl,
+        }
+
+    def _save_ai_audio(self, output_audio: bytes, task_id, api_id,
+                       sample_rate: int = 24000) -> str:
+        """AI 输出 PCM → wav → 存储归档（audios/{task}/realtime），返回存储路径"""
+        if not output_audio:
+            return ''
+        try:
+            buf = io.BytesIO()
+            with wave.open(buf, 'wb') as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(sample_rate)
+                w.writeframes(output_audio)
+            from shared.infrastructure.storage import storage
+            key = f"{task_id}/{api_id}/realtime/ai_output_{int(time.time() * 1000)}.wav"
+            return storage.save_bytes(buf.getvalue(), 'audios', key,
+                                      content_type='audio/wav') or ''
+        except Exception:
+            logger.debug("保存 AI 输出音频失败", exc_info=True)
+            return ''
+
+    # ── 评估提交（异步入队，不阻塞会话）──
+    def _submit_evaluation(self, task_id, result_id, test_case_id, case_config,
+                           data, algorithm_type, aggregated, api_id):
+        """提交评估：复用多轮会话评估入参链路，device_type 由用例级路由透传
+
+        实现见 `core/evaluation_submitter.submit_case_evaluation`：INT-1790（A2）
+        提库后与按事件切的流式策略共用同一入参口径。
+        """
+        submit_case_evaluation(
+            task_id=task_id, result_id=result_id, test_case_id=test_case_id,
+            algorithm_result=aggregated.get('algorithm_result', {}),
+            case_algorithm_params=data.get('case_algorithm_params'),
+            reference_params=case_config.get('reference_params', {}),
+            algorithm_type=algorithm_type, acl=_evaluation_acl,
+            device_type=(data.get('device_type') or 'websocket_api'),
+            api_id=api_id,
+            log=lambda level, msg: self._log(level=level, category='evaluation',
+                                             content=f"API {api_id} Realtime 会话完成，"
+                                                     f"{msg}",
+                                             task_id=task_id, api_id=api_id))
+
+    # ── 辅助 ──
+    @staticmethod
+    def _resolve_ws_endpoint(api_config) -> Optional[dict]:
+        """解析当前 ws 端点 dict：api_endpoints 中 ws://wss:// endpoint（INT-1361
+        api_url 移除后 api_endpoints 为唯一端点来源）。返回端点 dict（含 api_keys
+        池，INT-1177 endpoint 级轮换池来源）；无 ws 端点返回 None。"""
+        for ep in (getattr(api_config, 'api_endpoints', None) or []):
+            url = (ep.get('endpoint') or '') if isinstance(ep, dict) else str(ep)
+            if url.startswith(('ws://', 'wss://')):
+                return ep if isinstance(ep, dict) else {'endpoint': str(ep)}
+        return None
+
+    @staticmethod
+    def _resolve_ws_url(api_config) -> str:
+        """解析 WS 连接地址：api_endpoints 中首个 ws://wss:// endpoint（INT-1361 api_url 移除）"""
+        endpoint = RealtimeSessionExecutor._resolve_ws_endpoint(api_config)
+        if endpoint is None:
+            raise ValueError(
+                f"API {getattr(api_config, 'id', '?')} 未配置 WebSocket 端点"
+                "（需 ws:// 或 wss:// 前缀）")
+        return endpoint.get('endpoint', '')
+
+    @staticmethod
+    def _case_level_key(api_specific_config, case_config) -> str:
+        """密钥链 case 层候选：用例 api 段优先，回退用例顶层（键名可配置）"""
+        case_key = _key_resolver.case_key
+        if isinstance(api_specific_config, dict):
+            value = api_specific_config.get(case_key)
+            if value:
+                return value
+        if isinstance(case_config, dict):
+            return case_config.get(case_key) or ''
+        return ''
+
+    @staticmethod
+    def _resolve_ws_headers(api_config, case_api_key='') -> dict:
+        """解析 WS 握手头（_build_connect_headers 语义）：meta.ws_headers
+        直传 + 密钥链 case_config → meta → env（UC-0901 扩展流程 3a，
+        禁止硬编码密钥）；显式 Authorization 头优先，不覆盖
+
+        INT-1177 endpoint 级（INT-1230 审计 D5'）：经 resolve_rotating 消费
+        **当前 ws 端点**的 api_keys 轮换池（传 `(api_id, ws endpoint URL)` 轮换
+        key，同一端点跨协议同源轮换游标；case 层单值最高优先不变；未配池
+        回退单值链）。
+        """
+        meta = getattr(api_config, 'meta', None) or {}
+        headers = dict(meta.get('ws_headers') or {})
+        endpoint = RealtimeSessionExecutor._resolve_ws_endpoint(api_config)
+        api_key = _key_resolver.resolve_rotating(
+            rotation_key=endpoint_rotation_key(
+                getattr(api_config, 'id', None),
+                (endpoint or {}).get('endpoint', '') or ''),
+            endpoint=endpoint,
+            case_value=case_api_key,
+            meta=meta,
+        )
+        if api_key and not any(k.lower() == 'authorization' for k in headers):
+            headers['Authorization'] = f'Bearer {api_key}'
+        return headers
+
+    @staticmethod
+    def _build_session_config(api_config, session_config) -> dict:
+        """会话配置（session.update 载荷）：VAD/音频格式/voice 全配置化
+
+        采样率经 resolve_audio_sample_rate 取（顶层列优先、meta 存量兼容，
+        INT-1771），与 HTTP / 轮次渲染同一口径。
+        """
+        meta = getattr(api_config, 'meta', None) or {}
+        merged = dict(meta.get('session_config') or {})
+        merged.update(session_config or {})
+        merged.setdefault('input_audio_format', 'pcm16')
+        merged.setdefault('input_audio_sample_rate',
+                          resolve_audio_sample_rate(api_config, direction='input'))
+        return merged
+
+    @staticmethod
+    def _build_first_frame(api_config, session_cfg) -> Optional[dict]:
+        """首帧模板（``apis.meta.first_frame``）：未配置返回 None，回落 session.update。
+
+        各协议首帧载荷格式不一（WS 建连 / session.update 声明），因此把首帧做成
+        可配置模板：``{"enabled": bool, "template": {...} 或 "json 字符串"}``，
+        ``{{placeholder}}`` 取自 meta.session_config 与用例级 session 配置。
+        """
+        meta = getattr(api_config, 'meta', None) or {}
+        cfg = meta.get('first_frame')
+        if not isinstance(cfg, dict) or not cfg.get('enabled'):
+            return None
+        template = cfg.get('template')
+        if not template:
+            return None
+        context = dict(meta.get('session_config') or {})
+        context.update(session_cfg or {})
+        # 模板常用帧内时间戳（Qwen 等方言用 event_{{timestamp_ms}}）
+        context.setdefault('timestamp_ms', int(time.time() * 1000))
+        if isinstance(template, dict):
+            return _render_placeholders(template, context)
+        if isinstance(template, str):
+            rendered = _render_placeholders(template, context)
+            try:
+                payload = json.loads(rendered)
+            except (TypeError, ValueError):
+                return None
+            return payload if isinstance(payload, dict) else None
+        return None
+
+    def _collect_eval_fields(self, round_config, output, algorithm_type=None,
+                             text_output=None, api_id=None) -> dict:
+        """轮次评估输出 → ``{target_param: value}``（C0 裁定 1/2，INT-1299 / INT-1746）
+
+        实现见 `core/eval_output_collector.collect_round_eval_fields`：INT-1790
+        （A2）把本方法提库，按轮次切（WS）与按事件切（SSE）两条策略共用同一
+        实现（字段提取 field_path → param_mappings 映射 → transform_type 变换）。
+        返回值整体写入 ``rounds[i].output``。
+        """
+        return collect_round_eval_fields(
+            output, algorithm_type=algorithm_type, api_id=api_id,
+            text_output=text_output, log=self._log_eval_output,
+            acl=_algo_acl)
+
+    def _log_eval_output(self, level, message):
+        """评估映射兜底日志：走执行器 _log（任务日志可见），替身无执行器时退模块日志。"""
+        executor = getattr(self, '_executor', None)
+        log_fn = getattr(executor, '_log', None)
+        if callable(log_fn):
+            log_fn(level=level, content=message)
+        else:
+            logger.log(logging.getLevelName(level) if isinstance(level, str)
+                       else level, message)
+
+    def _refresh_progress(self, task_id):
+        """会话收尾：刷新进度（状态回写由 result_processor 统一负责）"""
+        try:
+            self._executor.execution_engine._emit_progress(task_id, force=True)
+        except Exception:
+            logger.debug("刷新进度失败", exc_info=True)

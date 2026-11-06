@@ -124,14 +124,22 @@ AlgorithmConfigModal.vue
 | 参考参数 | 未覆盖 | ✅ **新增 reference 标签页**（参考字段，供评估参数映射取用） |
 | 自动保存 | 未覆盖 | ✅ **新增**（失焦防抖自动入库，见 §5.5） |
 
+> **落地记录（INT-407，2026-10-17）**：评估映射标签页（MappingEditor 评估维度视图）新增**分组头可折叠/展开**交互——
+> 点击分组头行在折叠↔展开间切换，折叠组隐藏其映射行与组尾"添加映射"行；
+> 分组头样式对齐 Evaluation 分组视图卡片头（渐变底 + chevron 折叠图标 + folder 图标 + count 徽章），
+> 折叠状态与分页/过滤/视图切换互不干扰（过滤回第一页时折叠状态保持）。对齐 V9.7.10 792b3de7。
+
 ### 3.2 适配结论（已实施）
 
 1. ~~UI 框架沿用 Ant Design Vue~~ → 实际沿用项目统一的 **BasicModal + 原生 HTML + CSS 变量** 风格，未引入 Ant Design Vue；
 2. ~~Props 传入 groups~~ → 实际**组件内部加载分组**（见 §4.1 落地记录），调用方无需感知分组数据；
 3. 分组选择、禁用/启用、关联维度标签页均已落地；
 4. 参数配置演进为"设备参数 / API 参数 / 用例参数"三类独立配置，
-   用例参数支持 `scope: 'common' | 'api' | 'e2e'` 执行器作用域（对齐三执行器路由口径：
-   执行方式由被测设备 `device_type` 路由 E2EExecutor / APISessionExecutor / RealtimeSessionExecutor，
+   用例参数支持 `scope: 'common' | 'api' | 'e2e'` 执行器作用域（对齐执行路由口径：
+   API 用例的执行道只有两条，由 `apis.streaming` 派生（`non_streaming` 道 → `APISessionExecutor` 等，
+   `streaming` 道 → `RealtimeSessionExecutor` / `StreamSessionExecutor`），`apis.protocol` 只决定 transport；
+   物理设备 `E2EExecutor` 属 E2E 链路。原「按被测设备类型分派三个执行器」口径作废，
+   见 [01_测试执行/09_API协议面与执行道契约 §3.1](../../../01_测试执行/09_API协议面与执行道契约.md)。
    用例参数的 scope 仅决定该参数在哪个执行器作用域的表单中出现）。
 
 ---

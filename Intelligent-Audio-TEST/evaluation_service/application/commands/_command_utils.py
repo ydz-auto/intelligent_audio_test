@@ -1,0 +1,176 @@
+# -*- coding: utf-8 -*-
+"""评估维度 Command 内部辅助工具（从 evaluation_command_service.py 拆分，P4-4）。
+
+包含：模块级常量（消除魔法字符串）、维度配置变更事件发布、
+统一响应构造、JSON 字段解析、关联算法载荷解析。
+"""
+import json
+import logging
+from typing import Any, Dict, List, Optional, Tuple
+
+from shared.models.common_enums import Visibility
+
+logger = logging.getLogger(__name__)
+
+# Dimension 模型可赋值字段（不含 visibility——可见性修改走专用 share 端点 INT-466，
+# 更新 payload 不得改可见性；新建可见性在 create_dimension 显式设置）
+DIMENSION_MODEL_FIELDS = [
+    'name', 'keywords', 'description', 'category_id', 'api_url',
+    'api_endpoints', 'type', 'result_type', 'result_min',
+    'result_max', 'decimal_places', 'weight', 'sort_order', 'estimated_exec_time',
+    'rule', 'api_settings', 'status', 'api_status', 'score_unit',
+    'dimension_type', 'parent_dimension_id', 'task_type_code',
+    'statistic_method', 'agg_denominator', 'exclude_rounds',
+]
+
+# 评分规则合法条件（已移至 Domain Entity ScoringRule._VALID_RULE_CONDITIONS）
+
+
+def command_ok(message: str, data: Any = None, code: int = 200) -> Dict[str, Any]:
+    """构造成功响应 dict（统一 Command 返回契约 {success, message, data, code?}）"""
+    resp: Dict[str, Any] = {'success': True, 'message': message}
+    if data is not None:
+        resp['data'] = data
+    if code != 200:
+        resp['code'] = code
+    return resp
+
+
+def command_error(message: str, code: int = 500) -> Dict[str, Any]:
+    """构造失败响应 dict"""
+    return {'success': False, 'message': message, 'code': code}
+
+
+def parse_visibility(value) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    """解析/校验 visibility（INT-423）：'shared'/'private'，空值默认 shared。
+
+    Returns:
+        (值, 错误响应 dict)：校验通过时错误为 None。
+    """
+    if value is None or value == '':
+        return Visibility.SHARED.value, None
+    if value in (Visibility.SHARED.value, Visibility.PRIVATE.value):
+        return value, None
+    return None, command_error('visibility 仅支持 shared/private', code=400)
+
+
+def check_visible_or_error(owner, vis) -> Optional[Dict[str, Any]]:
+    """命令侧可见性校验（INT-423）：私有资源非 owner 写操作返回 403 响应。
+
+    共享 / owner / admin 放行返回 None；user_id/is_admin 取 x-user-id context
+    （get_current_user_id / get_current_user_is_admin），禁止从业务表反查。
+    """
+    from shared.infrastructure.user_context import (
+        get_current_user_id,
+        get_current_user_is_admin,
+    )
+    from shared.infrastructure.visibility_filter import (
+        VisibilityDenied,
+        check_visible,
+    )
+
+    try:
+        check_visible(
+            owner, vis,
+            get_current_user_id(), get_current_user_is_admin())
+    except VisibilityDenied:
+        return command_error('资源不存在或无权访问', code=403)
+    return None
+
+
+def parse_json_field(value: Any, error_message: str) -> Tuple[bool, Any]:
+    """解析可能为 JSON 字符串的字段。
+
+    Returns:
+        (ok, parsed)：ok=False 时 parsed 为错误响应 dict
+    """
+    if not isinstance(value, str):
+        return True, value
+    try:
+        return True, json.loads(value)
+    except json.JSONDecodeError:
+        return False, command_error(error_message, code=400)
+
+
+def publish_dimension_config_changed(action: str, dim_id=None):
+    """维度配置变更后发布事件，订阅方（EndpointWorker）热加载维度配置，无需重启服务。
+
+    降级：Redis 不可用时 EventBus.publish 内部只打日志不抛异常，不影响写操作主流程。
+    """
+    try:
+        from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+        payload = {'action': action}
+        if dim_id is not None:
+            payload['dimension_id'] = dim_id
+        EventBus().publish(
+            EventChannel.CONFIG_EVENTS,
+            EventType.DIMENSION_CONFIG_CHANGED,
+            payload,
+        )
+    except Exception as e:
+        logger.warning(f"发布维度配置变更事件失败，降级忽略: {e}")
+
+
+def extract_associated_relations(associated_algorithms) -> List[Dict[str, Any]]:
+    """将关联算法载荷（dict 列表或字符串列表）规范化为 relation 字典列表。
+
+    兼容前端驼峰键（algorithmType/isDefault）与后端下划线键。
+    """
+    relations = []
+    for algo in associated_algorithms or []:
+        if isinstance(algo, dict):
+            algo_type = algo.get('algorithmType') or algo.get('algorithm_type')
+            # INT-1692：isDefault / is_default 双键兼容（与上面 algo_type 同口径），
+            # 否则后端内部/脚本用 snake_case 传 is_default 会被静默丢成 False。
+            is_default = algo.get('isDefault', algo.get('is_default', False))
+            weight = algo.get('weight', 1.0)
+        else:
+            algo_type = algo
+            is_default = False
+            weight = 1.0
+        if algo_type:
+            relations.append({
+                'algorithm_type': algo_type,
+                'is_default': is_default,
+                'weight': weight,
+            })
+    return relations
+
+
+def _relation_algorithm_type(algo) -> Tuple[Optional[str], bool]:
+    """从单条关联算法（dict / DTO / 纯字符串）取 (algorithm_type, is_default)。
+
+    兼容前端驼峰键与后端下划线键；DTO 走属性（GetRelationsByDimension 返回
+    DimensionRelationDTO）。
+    """
+    if isinstance(algo, dict):
+        algo_type = algo.get('algorithmType') or algo.get('algorithm_type')
+        # INT-1692：isDefault / is_default 双键兼容
+        is_default = algo.get('isDefault', algo.get('is_default', False))
+    elif isinstance(algo, str):
+        algo_type, is_default = algo, False
+    else:
+        algo_type = getattr(algo, 'algorithm_type', None)
+        is_default = getattr(algo, 'is_default', False)
+    return (algo_type or None), bool(is_default)
+
+
+def get_default_algorithm_type(associated_algorithms) -> Optional[str]:
+    """从关联算法列表取默认（或第一个）算法的 type；无关联算法时返回 None。
+
+    INT-2355：不再回落到任何真实算法名（旧实现回落 'voice_llm'，会把没有
+    关联算法的维度的 ParamMapping 写进在用算法）。返回 None 时调用方必须
+    跳过 ParamMapping 同步。
+    """
+    relations = [
+        _relation_algorithm_type(algo)
+        for algo in (associated_algorithms or [])
+    ]
+    relations = [(algo_type, is_default) for algo_type, is_default in relations if algo_type]
+    if not relations:
+        return None
+    for algo_type, is_default in relations:
+        if is_default:
+            return algo_type
+    # 没有标记默认的，取第一个
+    return relations[0][0]

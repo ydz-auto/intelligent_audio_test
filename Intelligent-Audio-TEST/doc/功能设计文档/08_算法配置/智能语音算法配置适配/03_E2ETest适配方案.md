@@ -16,7 +16,7 @@ E2ETest 是端到端测试的核心页面，用于执行设备端的测试任务
 - 算法参数随用例（algorithm_params 独立列）进入执行链路，任务级不重复传递
 
 ### 1.4 分层与命名口径
-后端响应经 `success_response` 统一转 camelCase；前端 DDD 分层——Presentation（E2ETest.vue + 公共组件）只消费 composables（useE2eView/useAlgorithmConfig 等）与 camelCase Domain；`utils/api.ts`（Infrastructure）唯一感知 snake_case。用例执行的执行方式由被测设备 `device_type` 路由三执行器（物理设备→E2EExecutor、HTTP API→APISessionExecutor、WebSocket API→RealtimeSessionExecutor）；"api/e2e 为独立用例记录的 test_type 决定执行方式"属废弃口径，本页任务的 `type: 'e2e'` 仅是任务分类标识。
+后端响应经 `success_response` 统一转 camelCase；前端 DDD 分层——Presentation（E2ETest.vue + 公共组件）只消费 composables（useE2eView/useAlgorithmConfig 等）与 camelCase Domain；`utils/api.ts`（Infrastructure）唯一感知 snake_case。执行路由口径（2026-10-26 回收，INT-1954）：**被测 API 的执行道只有两条，由 `apis.streaming` 派生，`apis.protocol` 只决定 transport 适配器**（裁定见 [01_测试执行/09_API协议面与执行道契约 §3.1](../../../01_测试执行/09_API协议面与执行道契约.md)）；本页的物理设备仍按 `task_case_relations.device_type='physical'` 走 `E2EExecutor`，属 E2E 链路，与 API 两条道无关。原「按被测设备类型分派 E2E / HTTP API / WebSocket API 三个执行器」口径作废；"api/e2e 为独立用例记录的 test_type 决定执行方式"同属废弃口径，本页任务的 `type: 'e2e'` 仅是任务分类标识。
 
 ---
 
@@ -187,7 +187,7 @@ interface Device {
 {
   name: 'E2E测试任务_2026-09-11 12:00:00',
   type: 'e2e',                       // 任务分类标识（非执行路由依据）
-  deviceIds: number[],               // 关联被测设备；执行方式由设备 device_type 路由
+  deviceIds: number[],               // 关联被测设备；物理设备走 E2E 链路（不进 apis.streaming 两道判定）
   caseIds: (string|number)[],        // 关联用例；算法参数随用例 algorithm_params 独立列下发
   config: { parallel: true, concurrentTasks: number }
 }
@@ -300,7 +300,7 @@ const startTest = async () => {
   const payload = {
     name: taskName.value || `E2E测试任务_${new Date().toLocaleString()}`,
     type: 'e2e',
-    deviceIds: selectedDeviceIds,        // 关联被测设备，执行方式由 device_type 路由
+    deviceIds: selectedDeviceIds,        // 关联被测设备，物理设备走 E2E 链路
     caseIds: selectedCaseIds,            // 算法参数随用例 algorithm_params 独立列下发
     config: { parallel: true, concurrentTasks: concurrentTasks.value }
   };
@@ -428,7 +428,7 @@ interface Props {
 const payload = {
   name: 'E2E测试任务_2026-09-11 12:00:00',
   type: 'e2e',                        // 任务分类标识，非执行路由依据
-  deviceIds: [1, 2],                  // 被测设备：执行方式由设备 device_type 路由三执行器
+  deviceIds: [1, 2],                  // 被测设备：E2E 链路按 physical 分发 E2EExecutor
   caseIds: ['case_001', 'case_002'],  // 算法参数随用例 algorithm_params 独立列下发，任务级不传
   config: { parallel: true, concurrentTasks: 4 }
 };
@@ -452,7 +452,7 @@ class TaskCreateRequest(APIModel):
     algorithm_params: Optional[Dict[str, Any]] = Field(None, alias='algorithmParams', validation_alias='algorithmParams')
 ```
 
-链路：`POST /api/v1/tasks` 创建任务（blueprints/task_bp.py，写入用例/设备关联）→ `POST /api/v1/tasks/:id/start` 启动 → ExecutionEngine 按每台被测设备的 `device_type` 路由执行器（物理设备→E2EExecutor、HTTP API→APISessionExecutor、WebSocket API→RealtimeSessionExecutor），执行时从用例 `algorithm_params` 独立列取参数注入 E2E 指令。响应经 `success_response` 统一转 camelCase。
+链路：`POST /api/v1/tasks` 创建任务（blueprints/task_bp.py，写入用例/设备关联）→ `POST /api/v1/tasks/:id/start` 启动 → ExecutionEngine 按 `task_case_relations.device_type` 分发：本页的物理设备（`physical`）交 `E2EExecutor`；API 域（`http_api` / `websocket_api`）走 api_test_service，其执行道由 `apis.streaming` 派生两条（`apis.protocol` 只决定 transport，见 [01_测试执行/09_API协议面与执行道契约 §3.1](../../../01_测试执行/09_API协议面与执行道契约.md)）。执行时从用例 `algorithm_params` 独立列取参数注入 E2E 指令。响应经 `success_response` 统一转 camelCase。
 
 ---
 
@@ -499,7 +499,7 @@ const isVoiceLLM = computed(...);                  // 特殊算法提示开关
 - [x] 用例按算法类型筛选（testcases 查询参数 algorithmType）
 - [x] 任务创建/启动接口（POST /api/v1/tasks + POST /api/v1/tasks/:id/start，TaskCreateRequest 兼容两种命名）
 - [x] 执行时从用例 algorithm_params 独立列取参考参数（reference_params）注入 E2E 指令
-- [x] 执行路由：ExecutionEngine 按被测设备 device_type 分发三执行器
+- [x] 执行路由：ExecutionEngine 按 `task_case_relations.device_type` 分发（`physical` → `E2EExecutor`；API 两道由 `apis.streaming` 派生，见 01_测试执行/09_API协议面与执行道契约 §3.1）
 
 ### 11.2 前端实施
 

@@ -1,0 +1,3 @@
+# device_service 专属依赖（2026-10-15 从 requirements.txt 拆出：hypium 传递依赖 opencv-python ~190MB，
+# 全栈统一镜像仅 device_service 使用；瘦身方案拍板后主 requirements 移除 hypium，本文件供 device_service 专用构建）
+hypium>=6.0.0

@@ -1,0 +1,551 @@
+# -*- coding: utf-8 -*-
+"""INT-497 Realtime 协议级 base / OpenAI 品牌适配器生命周期单测（验收标准 3）
+
+对进程内 mock Realtime API（mock_services/mock_realtime_api.py，INT-137 契约）
+验证 OpenAIRealtimeAdapter（继承 RealtimeAdapterBase）三级生命周期：
+    initialize → pre_process → send → recv → post_process → teardown
+
+覆盖：
+- 生命周期六钩子对 mock 跑通：WS 建立、session.update 确认、音频帧收发、
+  事件流转（ai_audio_delta/done/text_delta）、输出聚合
+- 注入路径：first_delta_delay_ms（首帧延迟）、disconnect_after_events（中途断连
+  收敛 connection_closed）、protocol_error_on_event（协议错误 → pre_process 失败）
+- RealtimeWSClient 同形方法面：connect / close / send_audio_chunk / commit_input /
+  mark_commit / wait_ai_speaking / wait_ai_complete / output / connected
+- 三级体系：OpenAIRealtimeAdapter(RealtimeAdapterBase(ApiVendorAdapter))，注册键
+  (REALTIME, OPENAI)；HTTP 执行契约（execute/render_request_parts）明确拒绝
+"""
+import base64
+import os
+import time
+from types import SimpleNamespace
+
+import pytest
+
+os.environ.setdefault('DATABASE_URL', 'sqlite:///:memory:')
+os.environ.setdefault('OSS_ACCESS_KEY', 'test')
+os.environ.setdefault('OSS_SECRET_KEY', 'test')
+
+from shared.models.common_enums import (
+    AdapterProtocol,
+    AdapterVendor,
+    RealtimeFrameType,
+    VendorAdapterType,
+)
+from api_test_service.domain.ports import ApiVendorAdapter
+from api_test_service.infrastructure.adapters import vendor_adapter_registry
+from api_test_service.infrastructure.adapters.protocol.realtime_adapter_base import (
+    RealtimeAdapterBase,
+)
+from api_test_service.infrastructure.adapters.vendors.openai_realtime_adapter import (
+    OpenAIRealtimeAdapter,
+)
+from mock_services.mock_realtime_api import MockRealtimeBehavior, MockRealtimeServer
+
+
+@pytest.fixture()
+def mock_rt():
+    server = MockRealtimeServer(MockRealtimeBehavior())
+    server.start()
+    try:
+        yield server
+    finally:
+        server.stop()
+        server.service.state.reset()
+        server.service.behavior = MockRealtimeBehavior()
+
+
+def _make_api_config(url, meta=None, vendor='openai'):
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        id=7, endpoint=url, api_endpoints=[], meta=dict(meta or {}),
+        max_timeout=30, vendor=vendor)
+
+
+def _chunk_b64(n_bytes=80):
+    return base64.b64encode(b'\x00\x01' * (n_bytes // 2)).decode('ascii')
+
+
+# ──────────────────────────── 三级体系 ────────────────────────────
+
+class TestThreeTierHierarchy:
+    def test_openai_realtime_inherits_base_which_is_port_subclass(self):
+        assert issubclass(RealtimeAdapterBase, ApiVendorAdapter)
+        assert issubclass(OpenAIRealtimeAdapter, RealtimeAdapterBase)
+
+    def test_protocol_vendor_class_attrs(self):
+        assert RealtimeAdapterBase.protocol is AdapterProtocol.REALTIME
+        assert RealtimeAdapterBase.vendor is AdapterVendor.ANY
+        assert OpenAIRealtimeAdapter.protocol is AdapterProtocol.REALTIME
+        assert OpenAIRealtimeAdapter.vendor is AdapterVendor.OPENAI
+        assert OpenAIRealtimeAdapter.adapter_type is VendorAdapterType.OPENAI_REALTIME
+
+    def test_registered_in_global_registry(self):
+        assert vendor_adapter_registry.resolve(
+            AdapterProtocol.REALTIME, AdapterVendor.OPENAI) is OpenAIRealtimeAdapter
+        assert vendor_adapter_registry.resolve(
+            AdapterProtocol.REALTIME, AdapterVendor.ANY) is RealtimeAdapterBase
+
+    def test_http_execute_contract_rejected(self):
+        """Realtime 适配器不经 HTTP execute/render_request_parts（执行面不同）"""
+        adapter = OpenAIRealtimeAdapter(None, case_config={})
+        with pytest.raises(NotImplementedError, match='Realtime'):
+            adapter.render_request_parts({})
+        with pytest.raises(NotImplementedError, match='Realtime'):
+            adapter.execute({})
+
+
+# ──────────────────────────── 生命周期 ────────────────────────────
+
+class TestLifecycle:
+    def test_initialize_pre_process_send_recv_post_process_teardown(self, mock_rt):
+        adapter = OpenAIRealtimeAdapter(
+            _make_api_config(mock_rt.url), case_config={}, endpoint=mock_rt.url)
+        try:
+            # initialize：WS 握手
+            assert adapter.initialize() is True
+            assert adapter.connected is True
+            # pre_process：session.update → session.updated 确认
+            assert adapter.pre_process({'voice': 'alloy'}) is True
+            # send：逐帧推送音频 + commit（recv 流转事件）
+            chunk = _chunk_b64()
+            for _ in range(3):
+                adapter.send_audio_chunk(chunk)
+            adapter.commit_input()
+            # recv：事件轮转（首帧 delta → done 收口）
+            assert adapter.wait_ai_complete(start_timeout=5, end_timeout=5) is True
+            # post_process：聚合轮次/会话输出
+            output = adapter.post_process()
+            assert output['ai_complete'] is True
+            assert output['audio'] == b'\x01\x02' * 40 * 3
+            assert output['text'] == 'mock 回复文本'
+            assert output['latency_ms'] is not None
+            types = {f['type'] for f in output['frame_results']}
+            assert RealtimeFrameType.SESSION_CREATED.value in types
+            assert RealtimeFrameType.SESSION_UPDATED.value in types
+            assert RealtimeFrameType.AI_AUDIO_DELTA.value in types
+            assert RealtimeFrameType.AI_AUDIO_DONE.value in types
+            assert RealtimeFrameType.AI_TEXT_DELTA.value in types
+            # 服务端观测：会话建立 + 音频帧收发 + commit
+            assert mock_rt.service.state.received[0] == 'session.update'
+            assert mock_rt.service.state.received.count(
+                'input_audio_buffer.append') == 3
+            assert 'input_audio_buffer.commit' in mock_rt.service.state.received
+        finally:
+            # teardown：关连接、释放会话绑定（幂等）
+            adapter.teardown()
+        assert adapter.connected is False
+        adapter.teardown()  # 幂等
+
+    def test_recv_timeout_semantics(self, mock_rt):
+        adapter = OpenAIRealtimeAdapter(
+            _make_api_config(mock_rt.url), case_config={}, endpoint=mock_rt.url)
+        adapter.initialize()
+        try:
+            event = adapter.recv(timeout=0.2)
+            assert event['type'] == 'recv_timeout'
+        finally:
+            adapter.close()
+
+    def test_send_is_single_chunk_alias(self, mock_rt):
+        """send（Port 生命周期钩子）= send_audio_chunk 单帧粒度"""
+        adapter = OpenAIRealtimeAdapter(
+            _make_api_config(mock_rt.url), case_config={}, endpoint=mock_rt.url)
+        adapter.initialize()
+        try:
+            adapter.send(_chunk_b64())
+            adapter.commit_input()
+            assert adapter.wait_ai_complete(start_timeout=5, end_timeout=5) is True
+            assert mock_rt.service.state.received.count(
+                'input_audio_buffer.append') == 1
+        finally:
+            adapter.teardown()
+
+    def test_connect_failure_returns_false(self):
+        adapter = OpenAIRealtimeAdapter(
+            _make_api_config('ws://127.0.0.1:1'), case_config={},
+            endpoint='ws://127.0.0.1:1')
+        assert adapter.connect() is False
+        adapter.close()
+
+
+# ──────────────────────────── 注入路径（超时/断连/协议错误） ────────────────────────────
+
+class TestInjectionPaths:
+    def test_first_delta_delay_injection(self, mock_rt):
+        """首帧延迟注入：first_delta_delay_ms 生效于 commit → 首帧延迟口径"""
+        mock_rt.set_behavior({'first_delta_delay_ms': 400})
+        adapter = OpenAIRealtimeAdapter(
+            _make_api_config(mock_rt.url), case_config={}, endpoint=mock_rt.url)
+        adapter.initialize()
+        try:
+            assert adapter.pre_process() is True
+            adapter.commit_input()
+            assert adapter.wait_ai_complete(start_timeout=10, end_timeout=5) is True
+            assert adapter.output['latency_ms'] >= 350
+        finally:
+            adapter.teardown()
+
+    def test_disconnect_injection_converges_connection_closed(self, mock_rt):
+        """中途断连注入：disconnect_after_events 后连接收敛 connection_closed，
+        wait_ai_complete 判失败"""
+        mock_rt.set_behavior({'disconnect_after_events': 2})
+        adapter = OpenAIRealtimeAdapter(
+            _make_api_config(mock_rt.url), case_config={}, endpoint=mock_rt.url)
+        adapter.initialize()
+        try:
+            assert adapter.pre_process() is True
+            adapter.send_audio_chunk(_chunk_b64())
+            closed = False
+            end = time.time() + 5
+            while time.time() < end:
+                event = adapter.recv(timeout=1)
+                if event.get('type') == 'connection_closed':
+                    closed = True
+                    break
+            assert closed, '服务端断连后适配器未收敛 connection_closed'
+            assert adapter.wait_ai_complete(start_timeout=2, end_timeout=2) is False
+        finally:
+            adapter.teardown()
+
+    def test_protocol_error_injection_fails_pre_process(self, mock_rt):
+        """协议错误注入：session.update 回 error → pre_process 收敛失败"""
+        mock_rt.set_behavior({'protocol_error_on_event': 'session.update'})
+        adapter = OpenAIRealtimeAdapter(
+            _make_api_config(mock_rt.url), case_config={}, endpoint=mock_rt.url)
+        adapter.initialize()
+        try:
+            assert adapter.pre_process() is False
+        finally:
+            adapter.teardown()
+
+
+# ──────────────────────────── RealtimeWSClient 同形方法面 ────────────────────────────
+
+class TestSameShapeMethodSurface:
+    def test_method_surface_delegates_to_transport(self, mock_rt):
+        """executor 轮次编排消费的同形方法面齐全且可被 mock 应答"""
+        adapter = OpenAIRealtimeAdapter(
+            _make_api_config(mock_rt.url), case_config={}, endpoint=mock_rt.url)
+        adapter.initialize()
+        try:
+            adapter.pre_process()
+            adapter.reset_round_state()
+            adapter.mark_commit()
+            adapter.send_audio_chunk(_chunk_b64())
+            adapter.commit_input()
+            assert adapter.wait_ai_speaking(start_timeout=5) is True
+            assert adapter.wait_ai_complete(start_timeout=5, end_timeout=5) is True
+            output = adapter.output
+            assert output['ai_complete'] is True
+            assert len(adapter.frame_results) > 0
+            assert adapter.connected is True
+        finally:
+            adapter.close()
+
+    def test_output_defaults_before_connect(self):
+        """未连接时 output 返回空聚合，不抛异常（executor finally 兜底安全）"""
+        adapter = OpenAIRealtimeAdapter(
+            _make_api_config('ws://127.0.0.1:1'), case_config={})
+        out = adapter.output
+        assert out['audio'] == b'' and out['ai_complete'] is False
+        assert adapter.frame_results == []
+
+
+# ──────────────────────────── INT-1177 密钥池轮换（握手 401/403/429） ────────────────────────────
+
+class TestKeyPoolRotation:
+    """Realtime 适配器内握手失败重试：401/403/429 → 切下一非冷却 key 重建
+    client；重试上限 = 池内 key 总数；池全冷却立即失败；5xx/网络错误不轮换。
+
+    通过独立 resolver（绑定隔离 store）monkeypatch 模块级 _key_resolver，
+    避免污染进程内共享轮换状态（跨协议同源单例）。
+    """
+
+    def _install_resolver(self, monkeypatch, pool=None, cooldown=60):
+        from api_test_service.infrastructure.adapters.protocol import (
+            realtime_adapter_base as rab,
+        )
+        from shared.utils.api_key_provider import (
+            ApiKeyChainResolver,
+            InMemoryRotationStateStore,
+        )
+        resolver = ApiKeyChainResolver(cooldown_seconds=cooldown)
+        resolver.rotation_store = InMemoryRotationStateStore()
+        monkeypatch.setattr(rab, '_key_resolver', resolver)
+        return resolver
+
+    def _make_pool_config(self, pool_keys, api_id=77, url='ws://127.0.0.1:1'):
+        # INT-1177 endpoint 级（INT-1230 审计 D1'）：轮换池挂端点 api_keys，
+        # 不在 meta.api_keys
+        cfg = SimpleNamespace(
+            id=api_id, endpoint=url,
+            api_endpoints=[{'endpoint': url, 'api_keys': list(pool_keys)}],
+            meta={}, max_timeout=30, vendor='openai')
+        return cfg
+
+    def test_handshake_401_rotates_keys_then_succeeds(self, monkeypatch):
+        """前两次握手 401 → 切下一 key；第三次成功。重试上限 = 池内 key 数。"""
+        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+            RealtimeWSClient,
+        )
+        resolver = self._install_resolver(monkeypatch)
+        api_config = self._make_pool_config(['sk-a1', 'sk-b2', 'sk-c3'])
+
+        seen_auth = []
+        failures = {'sk-a1': 401, 'sk-b2': 401}
+
+        def fake_connect(self, proxy_type=None, proxy_url=None):
+            auth = (self._headers or {}).get('Authorization', '')
+            seen_auth.append(auth)
+            key = auth.replace('Bearer ', '')
+            status = failures.get(key)
+            if status is not None:
+                self._handshake_error_status = status
+                self._handshake_error = f'mock WS 握手 {status}'
+                self._connected = False
+                return False
+            self._handshake_error_status = None
+            self._connected = True
+            return True
+
+        monkeypatch.setattr(RealtimeWSClient, 'connect', fake_connect)
+
+        adapter = OpenAIRealtimeAdapter(api_config, case_config={})
+        assert adapter.initialize() is True
+        assert seen_auth == ['Bearer sk-a1', 'Bearer sk-b2', 'Bearer sk-c3']
+        # 失败 key 已冷却，未重复分配
+        from shared.utils.api_key_provider import endpoint_rotation_key
+        ep = {'endpoint': 'ws://127.0.0.1:1',
+              'api_keys': ['sk-a1', 'sk-b2', 'sk-c3']}
+        assert resolver.has_available_rotating_key(
+            endpoint_rotation_key(77, 'ws://127.0.0.1:1'), ep) is True
+
+    def test_handshake_403_rotates(self, monkeypatch):
+        """403 同样触发轮换（白名单 401/403/429）"""
+        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+            RealtimeWSClient,
+        )
+        self._install_resolver(monkeypatch)
+        api_config = self._make_pool_config(['sk-a1', 'sk-b2'])
+
+        seen_auth = []
+
+        def fake_connect(self, proxy_type=None, proxy_url=None):
+            auth = (self._headers or {}).get('Authorization', '')
+            seen_auth.append(auth)
+            if len(seen_auth) == 1:
+                self._handshake_error_status = 403
+                self._handshake_error = 'mock WS 握手 403'
+                self._connected = False
+                return False
+            self._connected = True
+            return True
+
+        monkeypatch.setattr(RealtimeWSClient, 'connect', fake_connect)
+        adapter = OpenAIRealtimeAdapter(api_config, case_config={})
+        assert adapter.initialize() is True
+        assert seen_auth == ['Bearer sk-a1', 'Bearer sk-b2']
+
+    def test_handshake_pool_all_cooled_raises(self, monkeypatch):
+        """池全冷却立即失败：不空转等待，抛 ConnectionError"""
+        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+            RealtimeWSClient,
+        )
+        resolver = self._install_resolver(monkeypatch)
+        api_config = self._make_pool_config(['sk-a1', 'sk-b2'])
+        # 预置两 key 全冷却
+        resolver.report_failure(77, 'sk-a1')
+        resolver.report_failure(77, 'sk-b2')
+
+        def fake_connect(self, proxy_type=None, proxy_url=None):
+            self._handshake_error_status = 401
+            self._handshake_error = 'mock WS 握手 401'
+            self._connected = False
+            return False
+
+        monkeypatch.setattr(RealtimeWSClient, 'connect', fake_connect)
+        adapter = OpenAIRealtimeAdapter(api_config, case_config={})
+        with pytest.raises(ConnectionError, match='轮换耗尽'):
+            adapter.initialize()
+
+    def test_handshake_all_failed_raises_last_error(self, monkeypatch):
+        """全失败抛最后错误：池内每 key 都 401 → ConnectionError"""
+        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+            RealtimeWSClient,
+        )
+        self._install_resolver(monkeypatch)
+        api_config = self._make_pool_config(['sk-a1', 'sk-b2'])
+
+        def fake_connect(self, proxy_type=None, proxy_url=None):
+            self._handshake_error_status = 401
+            self._handshake_error = 'mock WS 握手 401'
+            self._connected = False
+            return False
+
+        monkeypatch.setattr(RealtimeWSClient, 'connect', fake_connect)
+        adapter = OpenAIRealtimeAdapter(api_config, case_config={})
+        with pytest.raises(ConnectionError, match='轮换耗尽'):
+            adapter.initialize()
+
+    def test_handshake_network_error_no_rotation(self, monkeypatch):
+        """5xx / 网络错误明确不轮换：单次失败即返回 False，不重试"""
+        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+            RealtimeWSClient,
+        )
+        self._install_resolver(monkeypatch)
+        api_config = self._make_pool_config(['sk-a1', 'sk-b2'])
+
+        connect_calls = []
+
+        def fake_connect(self, proxy_type=None, proxy_url=None):
+            connect_calls.append((self._headers or {}).get('Authorization', ''))
+            self._handshake_error_status = None  # 网络错误无状态码
+            self._handshake_error = 'mock 网络不可达'
+            self._connected = False
+            return False
+
+        monkeypatch.setattr(RealtimeWSClient, 'connect', fake_connect)
+        adapter = OpenAIRealtimeAdapter(api_config, case_config={})
+        assert adapter.initialize() is False
+        assert len(connect_calls) == 1, '非轮换触发状态不应重试'
+
+    def test_case_level_key_no_rotation(self, monkeypatch):
+        """case 层单值最高优先（现状不变）：配置池也不轮换，单次连接"""
+        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+            RealtimeWSClient,
+        )
+        self._install_resolver(monkeypatch)
+        api_config = self._make_pool_config(['sk-a1', 'sk-b2'])
+
+        connect_calls = []
+
+        def fake_connect(self, proxy_type=None, proxy_url=None):
+            connect_calls.append((self._headers or {}).get('Authorization', ''))
+            self._handshake_error_status = 401
+            self._handshake_error = 'mock WS 握手 401'
+            self._connected = False
+            return False
+
+        monkeypatch.setattr(RealtimeWSClient, 'connect', fake_connect)
+        adapter = OpenAIRealtimeAdapter(
+            api_config, case_config={'api_key': 'sk-case'})
+        assert adapter.initialize() is False
+        assert connect_calls == ['Bearer sk-case']
+        assert len(connect_calls) == 1, 'case 层单值不参与轮换重试'
+
+    def test_executor_pre_resolved_headers_no_double_advance(self, monkeypatch):
+        """executor→adapter 组合路径（返工(2) P2 回归）：executor 预解析传入
+        headers 后，适配器首 attempt 沿用外部头（不二次推进游标）；首 attempt
+        失败冷却命中预解析 key。
+
+        若适配器首 attempt 就丢弃外部头重新解析（双推进），2-key 池恒用
+        第二把密钥、round-robin 失效，且失败 key 不进入冷却。
+        """
+        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+            RealtimeWSClient,
+        )
+        from shared.utils.api_key_provider import (
+            ApiKeyChainResolver,
+            InMemoryRotationStateStore,
+        )
+        from api_test_service.core import realtime_session_executor as rse
+        from api_test_service.infrastructure.adapters.protocol import (
+            realtime_adapter_base as rab,
+        )
+
+        # 共享同一隔离 store 的两个 resolver：模拟 executor 模块级 resolver
+        # 与 adapter 模块级 resolver 经共享单例同源轮换
+        fresh = InMemoryRotationStateStore()
+        resolver = ApiKeyChainResolver(cooldown_seconds=60)
+        resolver.rotation_store = fresh
+        monkeypatch.setattr(rse, '_key_resolver', resolver)
+        monkeypatch.setattr(rab, '_key_resolver', resolver)
+
+        api_config = self._make_pool_config(['sk-a1', 'sk-b2'], api_id=77)
+        # executor 预解析：推进游标取 sk-a1
+        pre_headers = rse.RealtimeSessionExecutor._resolve_ws_headers(api_config)
+        assert pre_headers['Authorization'] == 'Bearer sk-a1'
+
+        seen_auth = []
+
+        def fake_connect(self, proxy_type=None, proxy_url=None):
+            auth = (self._headers or {}).get('Authorization', '')
+            seen_auth.append(auth)
+            if len(seen_auth) == 1:
+                self._handshake_error_status = 401
+                self._handshake_error = 'mock WS 握手 401'
+                self._connected = False
+                return False
+            self._handshake_error_status = None
+            self._connected = True
+            return True
+
+        monkeypatch.setattr(RealtimeWSClient, 'connect', fake_connect)
+        adapter = OpenAIRealtimeAdapter(
+            api_config, case_config={}, headers=pre_headers)
+        assert adapter.initialize() is True
+        # 首 attempt 沿用 executor 预解析 key（sk-a1），失败后重解析取 sk-b2：
+        # 未双推进（若双推进则首 attempt 已是 sk-b2）
+        assert seen_auth == ['Bearer sk-a1', 'Bearer sk-b2']
+        # 失败冷却命中预解析 key sk-a1：后续 resolve 跳过 sk-a1 取 sk-b2
+        from shared.utils.api_key_provider import endpoint_rotation_key
+        ep = {'endpoint': 'ws://127.0.0.1:1', 'api_keys': ['sk-a1', 'sk-b2']}
+        assert resolver.resolve_rotating(
+            rotation_key=endpoint_rotation_key(77, 'ws://127.0.0.1:1'),
+            endpoint=ep) == 'sk-b2'
+
+
+# ──────────────────────────── INT-1177 RealtimeWSClient 握手状态码透出 ────────────────────────────
+
+class TestHandshakeStatusPassthrough:
+    """RealtimeWSClient.connect 握手异常 status_code 透出（供适配器判定轮换）。"""
+
+    def test_websocket_bad_status_captured(self, monkeypatch):
+        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+            RealtimeWSClient,
+        )
+        import websocket
+
+        def fake_create_connection(*args, **kwargs):
+            raise websocket.WebSocketBadStatusException('mock 401', 401)
+
+        monkeypatch.setattr(websocket, 'create_connection', fake_create_connection)
+        client = RealtimeWSClient('ws://127.0.0.1:1', headers={'Authorization': 'Bearer sk-a1'})
+        assert client.connect() is False
+        assert client.last_handshake_status == 401
+        assert 'mock 401' in client.last_handshake_error
+
+    def test_generic_error_no_status(self, monkeypatch):
+        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+            RealtimeWSClient,
+        )
+        import websocket
+
+        def fake_create_connection(*args, **kwargs):
+            raise ConnectionError('mock 网络不可达')
+
+        monkeypatch.setattr(websocket, 'create_connection', fake_create_connection)
+        client = RealtimeWSClient('ws://127.0.0.1:1')
+        assert client.connect() is False
+        assert client.last_handshake_status is None
+        assert 'mock 网络不可达' in client.last_handshake_error
+
+    def test_resolved_headers_rotation(self):
+        """_resolve_ws_headers 消费 resolve_rotating（传 (api_id, ws endpoint
+        URL)）：同一端点连续解析轮换命中各 key"""
+        from api_test_service.infrastructure.adapters.protocol.realtime_adapter_base import (
+            RealtimeAdapterBase,
+        )
+        api_config = SimpleNamespace(
+            id=7, endpoint='ws://127.0.0.1:1',
+            api_endpoints=[{'endpoint': 'ws://127.0.0.1:1',
+                            'api_keys': ['sk-a1', 'sk-b2']}],
+            meta={}, max_timeout=30, vendor='openai')
+        adapter = RealtimeAdapterBase(api_config, case_config={})
+        headers1 = adapter._resolve_ws_headers(api_config)
+        headers2 = adapter._resolve_ws_headers(api_config)
+        headers3 = adapter._resolve_ws_headers(api_config)
+        assert headers1['Authorization'] == 'Bearer sk-a1'
+        assert headers2['Authorization'] == 'Bearer sk-b2'
+        assert headers3['Authorization'] == 'Bearer sk-a1'

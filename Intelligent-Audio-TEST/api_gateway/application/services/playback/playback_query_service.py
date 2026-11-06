@@ -1,0 +1,140 @@
+import logging
+
+from api_gateway.infrastructure.request_adapter import request
+from api_gateway.utils.response import success_response, error_response
+from api_gateway.utils.error_codes import ErrorCode
+from api_gateway.infrastructure.acl import PlaybackConfigAclRepositoryImpl
+from api_gateway.schemas.playback import (
+    PlaybackDeviceListQuery,
+    PlaybackSpeakerGroupData,
+    PlaybackSpeakerGroupListQuery,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_query_params(model_cls):
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
+
+
+_playback_acl = PlaybackConfigAclRepositoryImpl()
+
+
+class PlaybackQueryService:
+    """播放设备查询读侧 Service。
+
+    按 DDD 原则，网关不再直接操作 DB，而是通过 gRPC 调用 device_service。
+    保留对路由层的签名不变（静态方法 + success_response/error_response 包装）。
+    """
+
+    @staticmethod
+    def _log(level, content, task_id=None, test_case_id=None, api_id=None, category='execution', module='Playback', **kwargs):
+        """统一日志记录方法"""
+        from shared.utils.log_handler import log_not_emit
+        log_not_emit(
+            level=level,
+            module=module,
+            content=content,
+            category=category,
+            source='backend',
+            task_id=task_id,
+            api_id=api_id,
+            test_case_id=test_case_id,
+            **kwargs
+        )
+
+    # 获取所有播放设备
+    @staticmethod
+    def get_all():
+        query = _parse_query_params(PlaybackDeviceListQuery)
+
+        result = _playback_acl.get_all(
+            page=query.page,
+            per_page=query.per_page,
+            keyword=query.keyword,
+            device_type=query.device_type,
+            lab_id=query.lab_id,
+        )
+
+        if not result.get('success'):
+            return error_response(result.get('message', '查询失败'))
+
+        data = result.get('data')
+        if isinstance(data, dict) and data.get('items'):
+            # INT-655：lab_name 由网关装饰（device_service 只返回 lab_id）
+            from api_gateway.application.services.device.lab_name_decorator import _decorate_lab_names
+            data['items'] = _decorate_lab_names(data['items'])
+        return success_response(data)
+
+    # 获取单个播放设备详情
+    @staticmethod
+    def get_one(device_id):
+        result = _playback_acl.get_one(device_id)
+
+        if not result.get('success'):
+            code = result.get('code', 400)
+            if code == 404:
+                return error_response(result.get('message', '未找到播放设备'), 404)
+            return error_response(result.get('message', '查询失败'))
+
+        data = result.get('data')
+        if isinstance(data, dict):
+            # INT-655：lab_name 由网关装饰（device_service 只返回 lab_id）
+            from api_gateway.application.services.device.lab_name_decorator import _decorate_lab_names
+            data = _decorate_lab_names([data])[0]
+        return success_response(data)
+
+    @staticmethod
+    def scan():
+        """扫描可用的物理播放通道，并过滤掉已注册的设备"""
+        result = _playback_acl.scan()
+
+        if not result.get('success'):
+            return error_response(result.get('message', '扫描失败'))
+
+        data = result.get('data') or []
+        return success_response(data, result.get('message', f'成功扫描到 {len(data)} 个新通道'))
+
+    # 检查所有播放设备状态
+    @staticmethod
+    def check_status():
+        result = _playback_acl.check_status()
+
+        if not result.get('success'):
+            return error_response(result.get('message', '检查状态失败'))
+
+        return success_response(result.get('data'), result.get('message', '设备状态检查完成'))
+
+    # 播放设备诊断（INT-1579 契约 §2.5，权限 playback:read，无副作用）
+    @staticmethod
+    def diagnosis(device_id):
+        result = _playback_acl.diagnosis(device_id)
+
+        if not result.success:
+            code = result.code or 400
+            if code == 404:
+                return error_response(result.message or '未找到播放设备',
+                                      code=ErrorCode.NOT_FOUND, http_code=404)
+            return error_response(result.message or '诊断失败',
+                                  code=ErrorCode.OPERATION_FAILED, http_code=400)
+
+        return success_response(result.data, result.message or '诊断完成')
+
+    # ---- 逻辑音箱组（N 个实验室里位置相同的音箱互相对应）----
+
+    @staticmethod
+    def list_speaker_groups():
+        """逻辑音箱组列表（含各实验室对应设备）"""
+        query = _parse_query_params(PlaybackSpeakerGroupListQuery)
+        result = _playback_acl.list_speaker_groups(keyword=query.keyword)
+
+        if not result.success:
+            return error_response(result.message or '查询逻辑音箱失败',
+                                  code=result.code or ErrorCode.OPERATION_FAILED)
+
+        groups = [
+            PlaybackSpeakerGroupData.model_validate(item).model_dump(by_alias=False)
+            for item in (result.data or []) if isinstance(item, dict)
+        ]
+        return success_response(groups)

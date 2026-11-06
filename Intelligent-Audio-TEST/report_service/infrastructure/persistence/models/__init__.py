@@ -1,0 +1,65 @@
+# -*- coding: utf-8 -*-
+"""report_service 持久化对象（PO）包。
+
+归属：report_service（报告上下文）
+表：test_reports / report_summaries / report_summary_meta / report_raw_data
+     / report_cases / report_metric_stats / report_comparison_matrix
+
+P5 改造：从 shared/models/models/report_models.py 真正下沉到本服务。
+shared/models/models/report_models.py 改为从这里 re-export。
+
+关键决策：移除 Report.task 跨域 relationship（Task 归属 task_service）。
+跨域查询 Task 改通过 task_service gRPC 调用。
+Report → ReportSummary/ReportCase 等子表的同域 relationship 全部保留。
+"""
+from .report_models import (
+    Report,
+    ReportSummary,
+    ReportSummaryMeta,
+    ReportRawData,
+    ReportCase,
+    ReportMetricStats,
+    ReportComparisonMatrix,
+)
+from .benchmark_models import (
+    BenchmarkRanking,
+    BenchmarkMetricMapping,
+    BenchmarkSource,
+    BenchmarkBaseline,
+    BenchmarkReport,
+)
+from .favorite_models import ReportFavorite
+from .report_studio_models import (
+    ReportStudioChartSpec,
+    ReportStudioDocument,
+    ReportStudioDocumentVersion,
+    ReportStudioExportJob,
+)
+# 报告分享（INT-971）
+from .report_share_models import ReportShare
+# 报告导出历史（INT-1555）
+from .report_export_record_models import ReportExportRecord
+# 报告用例配置内容寻址快照（INT-1994 / 档4 R1）
+from .report_case_snapshot_models import ReportCaseSnapshot
+# 增量回导报告替换批次快照（INT-1762 D4）
+from .merge_snapshot_models import ReportMergeSnapshot
+
+__all__ = [
+    'Report', 'ReportSummary', 'ReportSummaryMeta', 'ReportRawData',
+    'ReportCase', 'ReportMetricStats', 'ReportComparisonMatrix',
+    'BenchmarkRanking', 'BenchmarkMetricMapping', 'BenchmarkSource',
+    'BenchmarkBaseline', 'BenchmarkReport',
+    # 收藏（report，INT-141）
+    'ReportFavorite',
+    # Report Studio（INT-673）
+    'ReportStudioDocument', 'ReportStudioDocumentVersion',
+    'ReportStudioChartSpec', 'ReportStudioExportJob',
+    # 报告分享（INT-971）
+    'ReportShare',
+    # 报告导出历史（INT-1555）
+    'ReportExportRecord',
+    # 报告用例配置内容寻址快照（INT-1994 / 档4 R1）
+    'ReportCaseSnapshot',
+    # 增量回导报告替换批次快照（INT-1762 D4）
+    'ReportMergeSnapshot',
+]

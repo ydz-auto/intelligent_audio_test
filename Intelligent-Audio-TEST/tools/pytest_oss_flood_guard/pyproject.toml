@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytest-oss-flood-guard"
+version = "1.0.0"
+description = "INT-352: 解释器级 pytest OSS 断网守卫——禁止 pytest 会话以假凭据触达本机真实 rustfs(:9000)"
+requires-python = ">=3.8"
+
+[project.entry-points.pytest11]
+oss_flood_guard = "int_oss_flood_guard"
+
+[tool.setuptools]
+py-modules = ["int_oss_flood_guard"]

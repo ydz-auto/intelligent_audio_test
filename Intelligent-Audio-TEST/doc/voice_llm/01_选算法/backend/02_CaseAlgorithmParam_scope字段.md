@@ -40,10 +40,10 @@ class CaseAlgorithmParam(db.Model):
     
     # === 新增字段 ===
     scope = Column(
-        String(10), 
-        nullable=False, 
-        default='common', 
-        comment='参数适用范围 (common/api/e2e)'
+        String(20),
+        nullable=False,
+        default='common',
+        comment='参数适用范围 (common/physical/http_api/websocket_api)'
     )
 ```
 
@@ -51,20 +51,24 @@ class CaseAlgorithmParam(db.Model):
 
 | 字段 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| scope | VARCHAR(10) | 是 | 'common' | 参数适用范围 |
+| scope | VARCHAR(20) | 是 | 'common' | 参数适用范围 |
 
 ### scope 取值
 
+> 词表来源：`shared/models/common_enums.py` 的 `CaseParamScope`（common + DeviceType 三值）。
+> 旧的 common/api/e2e 已废弃（用例不再区分 api/e2e）。
+
 | 值 | 说明 | 前端显示规则 |
 |----|------|-------------|
-| common | 通用参数，API 和 E2E 都显示 | 始终显示 |
-| api | 仅 API 测试显示 | test_type='api' 时显示 |
-| e2e | 仅 E2E 测试显示 | test_type='e2e' 时显示 |
+| common | 通用参数，所有设备类型都显示 | 始终显示 |
+| physical | 仅物理设备用例显示 | 目标设备类型为 physical 时显示 |
+| http_api | 仅 HTTP API 用例显示 | 目标设备类型为 http_api 时显示 |
+| websocket_api | 仅 WebSocket API 用例显示 | 目标设备类型为 websocket_api 时显示 |
 
 ### 前端过滤规则
 
 ```
-显示条件: scope == 'common' OR scope == 当前用例的 test_type
+显示条件: scope == 'common' OR scope == 当前目标设备类型（device_type）
 ```
 
 ### algorithmParams 存储格式
@@ -88,7 +92,7 @@ class CaseAlgorithmParam(db.Model):
 
 ### UniqueConstraint 不变
 
-现有唯一约束 `UniqueConstraint('algorithm_type', 'param_code')` 保持不变。同一个算法类型下，param_code 唯一。scope 不参与唯一性约束（同一个 param_code 不能同时是 api 和 e2e）。
+现有唯一约束 `UniqueConstraint('algorithm_type', 'param_code')` 保持不变。同一个算法类型下，param_code 唯一。scope 不参与唯一性约束（同一个 param_code 不能同时出现在多个设备类型作用域）。
 
 ### to_dict 扩展
 

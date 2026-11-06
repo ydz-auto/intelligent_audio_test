@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1750" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1770" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
@@ -41,7 +41,7 @@
     </style>
   </defs>
 
-  <rect x="0" y="0" width="1240" height="1750" fill="#f1f5f9"/>
+  <rect x="0" y="0" width="1240" height="1770" fill="#f1f5f9"/>
 
   <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">执行路由流程图</text>
   <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">ExecutionEngine._run_task() 遍历 TaskCase → submit(_execute_single_or_multi) → 按 device_type 直接路由到各执行器 · v3.1</text>
@@ -117,103 +117,105 @@
   <text x="209" y="896" text-anchor="middle" class="chip-t" fill="#5b21b6" font-weight="600">SPLMappingService (device SPL) · 全维度评估</text>
 
   <!-- ====== APISessionExecutor Branch (Middle) ====== -->
-  <rect x="414" y="684" width="412" height="280" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="414" y="684" width="412" height="294" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.4" filter="url(#softShadow)"/>
   <rect x="414" y="684" width="412" height="34" rx="10" fill="#dbeafe"/>
   <rect x="414" y="708" width="412" height="10" fill="#dbeafe"/>
   <circle cx="434" cy="701" r="10" fill="#2563eb"/>
   <text x="434" y="704.5" class="num-badge" font-size="10">B</text>
   <text x="452" y="705" class="box-name" fill="#1e40af">APISessionExecutor.execute()</text>
 
-  <rect x="430" y="732" width="380" height="28" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
-  <text x="620" y="750" text-anchor="middle" class="chip-t" fill="#1e40af">APIAdapterFactory.get_adapter() → HttpAPIAdapter / HttpStreamAdapter</text>
-  <rect x="430" y="766" width="380" height="28" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
-  <text x="620" y="784" text-anchor="middle" class="chip-t" fill="#1e40af">adapter.initialize() — requests.Session + 健康检查</text>
-  <rect x="430" y="800" width="380" height="28" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
-  <text x="620" y="818" text-anchor="middle" class="chip-t" fill="#1e40af">for each round: pre_process() → send(payload) → post_process()</text>
-  <rect x="430" y="834" width="380" height="28" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
-  <text x="620" y="852" text-anchor="middle" class="chip-t" fill="#1e40af">adapter.teardown() — 关闭 session</text>
-  <rect x="430" y="868" width="380" height="28" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="1"/>
-  <text x="620" y="886" text-anchor="middle" class="chip-t" fill="#1e40af" font-weight="600">_aggregate_round_results() → create_test_result() → _submit_evaluation()</text>
-  <text x="620" y="918" text-anchor="middle" class="note">单轮 = rounds=[1] 特例 · 多轮走 session_id</text>
-  <text x="620" y="934" text-anchor="middle" class="note">评估维度: tor · false_takeover · takeover_latency · llm_judge</text>
-  <text x="620" y="950" text-anchor="middle" class="note">SPL: 不涉及</text>
+  <rect x="430" y="732" width="380" height="42" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="620" y="748" text-anchor="middle" class="chip-t" fill="#1e40af">vendor_adapter_registry.create_from_config → ApiDriverAdapter (默认)</text>
+  <text x="620" y="764" text-anchor="middle" class="chip-t" fill="#1e40af">→ transport/http_client</text>
+  <rect x="430" y="780" width="380" height="28" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="620" y="798" text-anchor="middle" class="chip-t" fill="#1e40af">adapter.initialize() — requests.Session + 健康检查</text>
+  <rect x="430" y="814" width="380" height="28" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="620" y="832" text-anchor="middle" class="chip-t" fill="#1e40af">for each round: pre_process() → send(payload) → post_process()</text>
+  <rect x="430" y="848" width="380" height="28" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="620" y="866" text-anchor="middle" class="chip-t" fill="#1e40af">adapter.teardown() — 关闭 session</text>
+  <rect x="430" y="882" width="380" height="28" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="1"/>
+  <text x="620" y="900" text-anchor="middle" class="chip-t" fill="#1e40af" font-weight="600">_aggregate_round_results() → create_test_result() → _submit_evaluation()</text>
+  <text x="620" y="932" text-anchor="middle" class="note">单轮 = rounds=[1] 特例 · 多轮走 session_id</text>
+  <text x="620" y="948" text-anchor="middle" class="note">评估维度: tor · false_takeover · takeover_latency · llm_judge</text>
+  <text x="620" y="964" text-anchor="middle" class="note">SPL: 不涉及</text>
 
   <!-- ====== RealtimeSessionExecutor Branch (Right) ====== -->
-  <rect x="844" y="624" width="372" height="340" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="844" y="624" width="372" height="354" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
   <rect x="844" y="624" width="372" height="34" rx="10" fill="#fee2e2"/>
   <rect x="844" y="648" width="372" height="10" fill="#fee2e2"/>
   <circle cx="864" cy="641" r="10" fill="#dc2626"/>
   <text x="864" y="644.5" class="num-badge" font-size="10">C</text>
   <text x="882" y="645" class="box-name" fill="#991b1b">RealtimeSessionExecutor.execute()</text>
 
-  <rect x="860" y="672" width="340" height="28" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
-  <text x="1030" y="690" text-anchor="middle" class="chip-t" fill="#991b1b">APIAdapterFactory → OpenAIRealtimeAdapter</text>
-  <rect x="860" y="706" width="340" height="28" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
-  <text x="1030" y="724" text-anchor="middle" class="chip-t" fill="#991b1b">initialize() — WS 连接 + 启动 recv 线程</text>
-  <rect x="860" y="740" width="340" height="28" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
-  <text x="1030" y="758" text-anchor="middle" class="chip-t" fill="#991b1b">pre_process() — session.update(VAD/voice) + 噪声混音缓冲</text>
-  <rect x="860" y="774" width="340" height="28" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
-  <text x="1030" y="792" text-anchor="middle" class="chip-t" fill="#991b1b">多轮循环: 正常轮 + 干扰人轮 + 打断轮 (barge-in)</text>
-  <rect x="860" y="808" width="340" height="28" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
-  <text x="1030" y="826" text-anchor="middle" class="chip-t" fill="#991b1b">post_process() — 等 AI 说话 + barge-in 检测 (5s 窗口)</text>
-  <rect x="860" y="842" width="340" height="28" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
-  <text x="1030" y="860" text-anchor="middle" class="chip-t" fill="#991b1b">teardown() — ws.close() + 清理轮次混音缓冲</text>
-  <rect x="860" y="878" width="340" height="28" rx="6" fill="#fee2e2" stroke="#dc2626" stroke-width="1"/>
-  <text x="1030" y="896" text-anchor="middle" class="chip-t" fill="#991b1b" font-weight="600">_aggregate() → create_test_result() → _submit_evaluation()</text>
-  <text x="1030" y="924" text-anchor="middle" class="note">评估: interruption_metrics · interruption_judge · noise_latency · rejection_judge</text>
-  <text x="1030" y="940" text-anchor="middle" class="note">SPL: ApiRmsSplService (api_id) · 同一 WS 连接跨多轮</text>
+  <rect x="860" y="672" width="340" height="42" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="1030" y="688" text-anchor="middle" class="chip-t" fill="#991b1b">OpenAIRealtimeAdapter (vendors/) → RealtimeAdapterBase (protocol/)</text>
+  <text x="1030" y="704" text-anchor="middle" class="chip-t" fill="#991b1b">→ RealtimeWSClient (transport/)</text>
+  <rect x="860" y="720" width="340" height="28" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="1030" y="738" text-anchor="middle" class="chip-t" fill="#991b1b">initialize() — WS 连接 + 启动 recv 线程</text>
+  <rect x="860" y="754" width="340" height="28" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="1030" y="772" text-anchor="middle" class="chip-t" fill="#991b1b">pre_process() — session.update(VAD/voice) + 噪声混音缓冲</text>
+  <rect x="860" y="788" width="340" height="28" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="1030" y="806" text-anchor="middle" class="chip-t" fill="#991b1b">多轮循环: 正常轮 + 干扰人轮 + 打断轮 (barge-in)</text>
+  <rect x="860" y="822" width="340" height="28" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="1030" y="840" text-anchor="middle" class="chip-t" fill="#991b1b">post_process() — 等 AI 说话 + barge-in 检测 (5s 窗口)</text>
+  <rect x="860" y="856" width="340" height="28" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="1030" y="874" text-anchor="middle" class="chip-t" fill="#991b1b">teardown() — ws.close() + 清理轮次混音缓冲</text>
+  <rect x="860" y="892" width="340" height="28" rx="6" fill="#fee2e2" stroke="#dc2626" stroke-width="1"/>
+  <text x="1030" y="910" text-anchor="middle" class="chip-t" fill="#991b1b" font-weight="600">_aggregate() → create_test_result() → _submit_evaluation()</text>
+  <text x="1030" y="938" text-anchor="middle" class="note">评估: interruption_metrics · interruption_judge · noise_latency · rejection_judge</text>
+  <text x="1030" y="954" text-anchor="middle" class="note">SPL: ApiRmsSplService (api_id) · 同一 WS 连接跨多轮</text>
 
   <!-- Convergence arrows -->
-  <path d="M 210 924 L 210 970 L 620 970" class="flow" stroke-dasharray="4 3"/>
-  <path d="M 620 964 L 620 970" class="flow" stroke-dasharray="4 3"/>
-  <path d="M 1030 964 L 1030 970 L 620 970" class="flow" stroke-dasharray="4 3"/>
-  <path d="M 620 970 L 620 998" class="flow"/>
+  <path d="M 210 924 L 210 984 L 620 984" class="flow" stroke-dasharray="4 3"/>
+  <path d="M 620 978 L 620 984" class="flow" stroke-dasharray="4 3"/>
+  <path d="M 1030 978 L 1030 984 L 620 984" class="flow" stroke-dasharray="4 3"/>
+  <path d="M 620 984 L 620 1012" class="flow"/>
 
   <!-- ⑥ 聚合 + 存储 + 评估 -->
-  <rect x="374" y="1002" width="492" height="50" rx="8" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
-  <text x="620" y="1024" text-anchor="middle" class="box-name" fill="#166534">5. 聚合 + 存储 + 评估</text>
-  <text x="620" y="1042" text-anchor="middle" class="body">create_multi_round_test_result() — 存库 → _submit_evaluation() — 提交评估</text>
-  <path d="M 620 1052 L 620 1078" class="flow-green"/>
+  <rect x="374" y="1016" width="492" height="50" rx="8" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <text x="620" y="1038" text-anchor="middle" class="box-name" fill="#166534">5. 聚合 + 存储 + 评估</text>
+  <text x="620" y="1056" text-anchor="middle" class="body">create_multi_round_test_result() — 存库 → _submit_evaluation() — 提交评估</text>
+  <path d="M 620 1066 L 620 1092" class="flow-green"/>
 
   <!-- ⑦ 更新 TaskCase 终态 -->
-  <rect x="394" y="1082" width="452" height="38" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4"/>
-  <text x="620" y="1106" text-anchor="middle" class="box-name" fill="#92400e">6. 更新 TaskCase 终态: execution_status → completed / failed</text>
-  <path d="M 620 1120 L 620 1146" class="flow-amber"/>
+  <rect x="394" y="1096" width="452" height="38" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4"/>
+  <text x="620" y="1120" text-anchor="middle" class="box-name" fill="#92400e">6. 更新 TaskCase 终态: execution_status → completed / failed</text>
+  <path d="M 620 1134 L 620 1160" class="flow-amber"/>
 
   <!-- ⑧ 收尾 -->
-  <rect x="414" y="1150" width="412" height="38" rx="19" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.6"/>
-  <text x="620" y="1174" text-anchor="middle" class="box-name" fill="#1e40af">7. 收尾: 更新 Task 统计 → 关闭线程池</text>
+  <rect x="414" y="1164" width="412" height="38" rx="19" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.6"/>
+  <text x="620" y="1188" text-anchor="middle" class="box-name" fill="#1e40af">7. 收尾: 更新 Task 统计 → 关闭线程池</text>
 
   <!-- Key change note -->
-  <rect x="24" y="1210" width="1192" height="62" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2" stroke-dasharray="5 3"/>
-  <text x="620" y="1234" text-anchor="middle" class="box-name" fill="#dc2626">关键变更</text>
-  <text x="620" y="1252" text-anchor="middle" class="body" fill="#dc2626">ExecutionEngine 直接路由到各执行器 · 不再通过 APIExecutor 中间层 · 不再按 task.type 路由</text>
-  <text x="620" y="1266" text-anchor="middle" class="note" fill="#dc2626">废弃: APIExecutor 路由层 · _execute_linear() · APITaskRunner (6步轮询) · task.type 字段</text>
+  <rect x="24" y="1224" width="1192" height="62" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2" stroke-dasharray="5 3"/>
+  <text x="620" y="1248" text-anchor="middle" class="box-name" fill="#dc2626">关键变更</text>
+  <text x="620" y="1266" text-anchor="middle" class="body" fill="#dc2626">ExecutionEngine（task_service）按 device_type 直接路由 → gRPC StartAPITest → api_test_service start_task → 懒加载 APIExecutor（分发外壳）</text>
+  <text x="620" y="1280" text-anchor="middle" class="note" fill="#dc2626">不再按 task.type 路由（列已物理删除，INT-263）· _execute_linear() / APITaskRunner 迁入 api_test_service 线性路径（非废弃）</text>
 
   <!-- ⑨ 并行执行时序 (v1.8+) -->
-  <rect x="24" y="1290" width="1192" height="200" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
-  <rect x="24" y="1290" width="1192" height="38" rx="10" fill="#dcfce7"/>
-  <rect x="24" y="1316" width="1192" height="12" fill="#dcfce7"/>
-  <circle cx="46" cy="1309" r="11" fill="#16a34a"/>
-  <text x="46" y="1313" class="num-badge">8</text>
-  <text x="66" y="1314" class="sec-title" fill="#166534">并行执行模式 (v1.8+) — 用例执行与评估并行处理</text>
+  <rect x="24" y="1304" width="1192" height="200" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1304" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="1330" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="1323" r="11" fill="#16a34a"/>
+  <text x="46" y="1327" class="num-badge">8</text>
+  <text x="66" y="1328" class="sec-title" fill="#166534">并行执行模式 (v1.8+) — 用例执行与评估并行处理</text>
 
-  <text x="48" y="1348" class="lbl" fill="#475569">核心流程: 用例执行完成 → 立即提交评估 → 立即返回 → 继续执行下一个用例</text>
-  <text x="48" y="1366" class="body">用例1提交 → 执行完成 → 评估提交 → ✅ 立即返回 → 执行用例2 → ... → 用例N执行完成 → 所有评估完成 → ✅ 更新统计</text>
+  <text x="48" y="1362" class="lbl" fill="#475569">核心流程: 用例执行完成 → 立即提交评估 → 立即返回 → 继续执行下一个用例</text>
+  <text x="48" y="1380" class="body">用例1提交 → 执行完成 → 评估提交 → ✅ 立即返回 → 执行用例2 → ... → 用例N执行完成 → 所有评估完成 → ✅ 更新统计</text>
 
-  <rect x="48" y="1382" width="270" height="28" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
-  <text x="183" y="1400" text-anchor="middle" class="chip-t" fill="#166534">执行与评估分离: 不等评估完成, 继续执行</text>
-  <rect x="338" y="1382" width="270" height="28" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
-  <text x="473" y="1400" text-anchor="middle" class="chip-t" fill="#166534">独立队列: 每个 api_id 对应独立执行队列</text>
-  <rect x="628" y="1382" width="270" height="28" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
-  <text x="763" y="1400" text-anchor="middle" class="chip-t" fill="#166534">统计统一: 所有评估完成后更新 task 统计</text>
-  <rect x="918" y="1382" width="270" height="28" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
-  <text x="1053" y="1400" text-anchor="middle" class="chip-t" fill="#166534">多设备: TaskCase→TestResult 一对多</text>
+  <rect x="48" y="1396" width="270" height="28" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <text x="183" y="1414" text-anchor="middle" class="chip-t" fill="#166534">执行与评估分离: 不等评估完成, 继续执行</text>
+  <rect x="338" y="1396" width="270" height="28" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <text x="473" y="1414" text-anchor="middle" class="chip-t" fill="#166534">独立队列: 每个 api_id 对应独立执行队列</text>
+  <rect x="628" y="1396" width="270" height="28" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <text x="763" y="1414" text-anchor="middle" class="chip-t" fill="#166534">统计统一: 所有评估完成后更新 task 统计</text>
+  <rect x="918" y="1396" width="270" height="28" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <text x="1053" y="1414" text-anchor="middle" class="chip-t" fill="#166534">多设备: TaskCase→TestResult 一对多</text>
 
-  <text x="48" y="1434" class="lbl" fill="#475569">TaskCase.status 最终更新条件</text>
-  <text x="68" y="1452" class="body">execution_status = 'completed' (所有设备/API 执行完成) AND evaluation_status = 'completed' (所有维度评估完成)</text>
-  <text x="68" y="1468" class="note">→ 执行引擎状态修复阶段自动更新为 completed · 评估服务 _post_evaluate_updates 统一处理 task 统计</text>
+  <text x="48" y="1448" class="lbl" fill="#475569">TaskCase.status 最终更新条件</text>
+  <text x="68" y="1466" class="body">execution_status = 'completed' (所有设备/API 执行完成) AND evaluation_status = 'completed' (所有维度评估完成)</text>
+  <text x="68" y="1482" class="note">→ 执行引擎状态修复阶段自动更新为 completed · 评估服务 _post_evaluate_updates 统一处理 task 统计</text>
 
   <!-- Footnote -->
-  <text x="620" y="1500" text-anchor="middle" class="note">同一 Task 内不同 TaskCase 可关联不同类型设备 → 混跑 E2E + API + Realtime · 所有 HTTP API 测试统一走 APISessionExecutor</text>
+  <text x="620" y="1514" text-anchor="middle" class="note">同一 Task 内不同 TaskCase 可关联不同类型设备 → 混跑 E2E + API + Realtime · 所有 HTTP API 测试统一走 APISessionExecutor</text>
 </svg>

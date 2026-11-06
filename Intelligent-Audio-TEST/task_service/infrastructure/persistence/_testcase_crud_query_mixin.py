@@ -1,0 +1,348 @@
+# -*- coding: utf-8 -*-
+"""测试用例仓储 — TestCase CRUD Mixin（从 testcase_repository.py 拆分，P4-5）。
+
+TestCase 基础 CRUD / 软删除 / 批量更新 / TestCase-Tag 关联维护。
+"""
+from typing import List, Optional
+
+from sqlalchemy.orm import joinedload
+
+from shared.models.database import get_db_session
+from task_service.infrastructure.persistence.models import Tag, TestCase
+from task_service.infrastructure.persistence._testcase_repo_common import _now
+
+
+class TestCaseCrudMixin:
+    """TestCase 基础 CRUD 与用例-标签关联维护"""
+
+    @staticmethod
+    def _visible_testcase_ids(session, ids):
+        """批量用例可见性逐行过滤（INT-423）：返回可见 id 子集（共享+owner；admin 全量）。
+
+        与 query_testcases 同口径；保持入参顺序。私有非 owner 行跳过，不整批放行。
+        """
+        from shared.infrastructure.visibility_filter import filter_visible_owners
+        from task_service.infrastructure.visibility_context import visibility_identity
+        if not ids:
+            return []
+        uid, is_admin = visibility_identity()
+        str_ids = [str(i) for i in ids]
+        rows = session.query(
+            TestCase.id, TestCase.created_by_user_id, TestCase.visibility
+        ).filter(TestCase.id.in_(str_ids)).all()
+        visible = filter_visible_owners([(r[0], r[1], r[2]) for r in rows], uid, is_admin)
+        visible_set = {str(v) for v in visible}
+        return [i for i in ids if str(i) in visible_set]
+
+    # ========== TestCase 基础 CRUD ==========
+
+    def create_testcase(self, data: dict) -> TestCase:
+        """创建测试用例记录（含 flush，未 commit）。
+
+        data 需含 id/name/group_id/config/algorithm_params/algorithm_type。
+        strategy_id/strategy_overrides（INT-590）：用例引用评估策略，写时物化
+        解析结果已并入 config，引用与覆盖源另列落库。
+        用例是纯数据载体（差异#2 收尾）：不再存储 test_type。
+        created_by_user_id（INT-141）：从 x-user-id 上下文取 JWT 操作人。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
+        session = get_db_session()
+        tc = TestCase(
+            id=data.get('id'),
+            name=data.get('name'),
+            description=data.get('description'),
+            group_id=data.get('group_id'),
+            config=data.get('config'),
+            algorithm_params=data.get('algorithm_params'),
+            algorithm_type=data.get('algorithm_type'),
+            strategy_id=data.get('strategy_id'),
+            strategy_overrides=data.get('strategy_overrides'),
+            # INT-464 跟随用例同步最小列：建用例时落可见性（默认 shared，与迁移一致）
+            visibility=data.get('visibility') or 'shared',
+            created_by_user_id=get_current_user_id(),
+        )
+        session.add(tc)
+        session.flush()
+        return tc
+
+    def get_testcase(self, tc_id: str) -> Optional[TestCase]:
+        """按 ID 查询单个未删除测试用例。"""
+        session = get_db_session()
+        return session.query(TestCase).filter_by(id=tc_id, deleted=False).first()
+
+    def get_testcase_by_name(self, name: str, group_id: str) -> Optional[TestCase]:
+        """按名称和分组 ID 查询未删除测试用例（用于重名校验）。"""
+        session = get_db_session()
+        return session.query(TestCase).filter_by(
+            name=name, group_id=group_id, deleted=False
+        ).first()
+
+    def add_tag_to_testcase(self, tc_id: str, tag_id: str) -> None:
+        """为测试用例追加标签关联（含 flush，未 commit）。
+
+        P5+DOMAIN: 封装 TestCase.tags.append(tag) 操作，避免 application 层
+        直接操作 PO 关联集合。
+        """
+        session = get_db_session()
+        tc = session.query(TestCase).filter_by(id=tc_id, deleted=False).first()
+        if tc:
+            tag = session.query(Tag).filter_by(id=tag_id).first()
+            if tag and tag not in tc.tags:
+                tc.tags.append(tag)
+                session.flush()
+
+    def _get_session_no_autoflush(self):
+        """返回 session 的 no_autoflush 上下文管理器。
+
+        供 application 层使用 session.no_autoflush 语义，而不直接依赖
+        get_db_session()。
+        """
+        session = get_db_session()
+        return session.no_autoflush
+
+    def soft_delete_testcase(self, tc_id: str) -> bool:
+        """软删除单个测试用例（未 commit；记录删除人，INT-141）。"""
+        from shared.infrastructure.user_context import get_current_user_id
+        session = get_db_session()
+        tc = session.query(TestCase).filter_by(id=tc_id, deleted=False).first()
+        if not tc:
+            return False
+        now = _now()
+        tc.deleted = True
+        tc.deleted_at = now
+        tc.deleted_by_user_id = get_current_user_id()
+        tc.updated_at = now
+        session.flush()
+        return True
+
+    def soft_delete_testcases_by_ids(self, ids: List[str]) -> int:
+        """批量软删除测试用例（未 commit；记录删除人，INT-141）。
+
+        INT-423：逐行可见性过滤——私有非 owner 用例跳过，不整批放行。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
+        session = get_db_session()
+        if not ids:
+            return 0
+        ids = self._visible_testcase_ids(session, ids)
+        if not ids:
+            return 0
+        now = _now()
+        count = session.query(TestCase).filter(TestCase.id.in_(ids)).update(
+            {"deleted": True, "deleted_at": now, "updated_at": now,
+             "deleted_by_user_id": get_current_user_id()},
+            synchronize_session=False,
+        )
+        session.flush()
+        return count
+
+    def restore_testcases_by_ids(self, ids: List[str]) -> int:
+        """批量恢复软删除测试用例（仅已删除行会恢复，未 commit）。
+
+        INT-423：逐行可见性过滤——仅恢复当前用户可见的行（共享 + 自己创建的私有行）。
+        """
+        session = get_db_session()
+        if not ids:
+            return 0
+        ids = self._visible_testcase_ids(session, ids)
+        if not ids:
+            return 0
+        now = _now()
+        count = session.query(TestCase).filter(
+            TestCase.id.in_(ids),
+            TestCase.deleted == True,  # noqa: E712
+        ).update(
+            {"deleted": False, "deleted_at": None, "updated_at": now},
+            synchronize_session=False,
+        )
+        session.flush()
+        return count
+
+    def update_testcase_group_id_by_ids(self, ids: List[str], group_id: str) -> int:
+        """批量更新测试用例的 group_id（未 commit）。
+
+        INT-423：逐行可见性过滤——私有非 owner 用例跳过。
+        """
+        session = get_db_session()
+        if not ids:
+            return 0
+        ids = self._visible_testcase_ids(session, ids)
+        if not ids:
+            return 0
+        count = session.query(TestCase).filter(TestCase.id.in_(ids)).update(
+            {"group_id": group_id}, synchronize_session=False
+        )
+        session.flush()
+        return count
+
+    def list_testcases_by_ids(self, ids: List[str], include_deleted: bool = False) -> List[TestCase]:
+        """按 ID 列表查询测试用例。
+
+        内部/后台任务（如 reference_refresh_task）使用——不做行级可见性过滤，
+        保证后台刷新私有用例参考参数不因上下文缺失而失效。
+        """
+        session = get_db_session()
+        if not ids:
+            return []
+        query = session.query(TestCase).filter(TestCase.id.in_(ids))
+        if not include_deleted:
+            query = query.filter(TestCase.deleted == False)  # noqa: E712
+        return query.all()
+
+    def list_testcases_by_ids_visible(self, ids: List[str],
+                                      include_deleted: bool = False) -> List[TestCase]:
+        """按 ID 列表查询测试用例，并套行级可见性（INT-2313 导出批量取数）。
+
+        与 `list_testcases_by_ids` 的关键区别：那个是内部/后台任务用的无过滤通道
+        （注释已明说不做行级可见性），直接给对用户暴露的读路径复用会越权导出私有用例。
+        这里照 `list_testcases_by_group` 的写法叠 `visible_condition` +
+        `visibility_identity()`，私有非 owner 行不进入结果集。
+
+        预加载 group（多对一，逐条序列化都要用）；tags 保持惰性加载——
+        关系无 order_by，预加载走 join 后数据库返回顺序与逐条惰性加载可能不同，
+        会让导出行的 tags 顺序变化（导出逐字段对拍口径要求完全一致）。
+        """
+        from shared.infrastructure.visibility_filter import visible_condition
+        from task_service.infrastructure.visibility_context import visibility_identity
+        session = get_db_session()
+        if not ids:
+            return []
+        _vis_uid, _vis_admin = visibility_identity()
+        query = session.query(TestCase).options(
+            joinedload(TestCase.group),
+        ).filter(
+            TestCase.id.in_([str(i) for i in ids]),
+            visible_condition(
+                TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin),
+        )
+        if not include_deleted:
+            query = query.filter(TestCase.deleted == False)  # noqa: E712
+        return query.all()
+
+    def list_testcases_by_group(self, group_id: str, include_deleted: bool = False) -> List[TestCase]:
+        """按分组查询测试用例。
+
+        INT-423：私有用例对非 owner 不可见（共享 + 自己创建的私有行）。
+        """
+        from shared.infrastructure.visibility_filter import visible_condition
+        from task_service.infrastructure.visibility_context import visibility_identity
+        _vis_uid, _vis_admin = visibility_identity()
+        session = get_db_session()
+        query = session.query(TestCase).filter(
+            TestCase.group_id == group_id,
+            visible_condition(
+                TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin),
+        )
+        if not include_deleted:
+            query = query.filter(TestCase.deleted == False)  # noqa: E712
+        return query.all()
+
+    def list_all_testcases(self, include_deleted: bool = False) -> List[TestCase]:
+        """查询所有测试用例（供跨域反查 config 中 audio_id 引用）。
+
+        P5+DOMAIN: 封装全表扫描，避免 application 层直接 import TestCase PO。
+        """
+        session = get_db_session()
+        query = session.query(TestCase)
+        if not include_deleted:
+            query = query.filter(TestCase.deleted == False)  # noqa: E712
+        return query.all()
+
+    def update_testcase_algorithm_params(self, tc_id: str, algorithm_params) -> None:
+        """更新测试用例的 algorithm_params 字段（含 flush，未 commit）。
+
+        P5+DOMAIN: 封装 tc.algorithm_params = ... 赋值，避免 application 层
+        直接操作 PO 字段。
+        """
+        session = get_db_session()
+        tc = session.query(TestCase).filter_by(id=tc_id, deleted=False).first()
+        if tc:
+            tc.algorithm_params = algorithm_params
+            session.flush()
+
+    # ========== TestCase-Tag 关联 ==========
+
+    def set_testcase_tags(self, tc: TestCase, tag_names: List[str]) -> None:
+        """重新设置用例的标签集合（含 flush，未 commit）。"""
+        session = get_db_session()
+        tc.tags = []
+        for tag_name in tag_names:
+            tag = self.get_or_create_tag(tag_name)
+            tc.tags.append(tag)
+        session.flush()
+
+    def add_tags_to_testcases(self, ids: List[str], tag_names: List[str]) -> List[TestCase]:
+        """为多个用例追加标签（仅追加不存在的标签，含 flush，未 commit）。
+
+        返回受影响的用例列表。
+        INT-423：私有非 owner 用例跳过（逐行可见性过滤）。
+        """
+        session = get_db_session()
+        ids = self._visible_testcase_ids(session, ids)
+        if not ids:
+            return []
+        test_cases = session.query(TestCase).filter(
+            TestCase.id.in_(ids), TestCase.deleted == False  # noqa: E712
+        ).all()
+        for tc in test_cases:
+            existing_tag_names = {tag.name for tag in tc.tags}
+            for tag_name in tag_names:
+                if tag_name not in existing_tag_names:
+                    tag = self.get_or_create_tag(tag_name)
+                    tc.tags.append(tag)
+            tc.updated_at = _now()
+        session.flush()
+        return test_cases
+
+    def remove_tags_from_testcases(self, ids: List[str], tag_names: List[str]) -> List[TestCase]:
+        """从多个用例移除指定标签（含 flush，未 commit）。
+
+        返回受影响的用例列表。
+        INT-423：私有非 owner 用例跳过（逐行可见性过滤）。
+        """
+        session = get_db_session()
+        ids = self._visible_testcase_ids(session, ids)
+        if not ids:
+            return []
+        test_cases = session.query(TestCase).filter(
+            TestCase.id.in_(ids), TestCase.deleted == False  # noqa: E712
+        ).all()
+        tags_to_remove_set = set(tag_names)
+        for tc in test_cases:
+            tc.tags = [tag for tag in tc.tags if tag.name not in tags_to_remove_set]
+            tc.updated_at = _now()
+        session.flush()
+        return test_cases
+
+    def auto_generate_names_by_tag_order(self, ids: List[str]) -> List[TestCase]:
+        """按标签名排序自动生成用例名（含 flush，未 commit）。
+
+        返回受影响的用例列表。
+        INT-423：私有非 owner 用例跳过（逐行可见性过滤）。
+        """
+        session = get_db_session()
+        ids = self._visible_testcase_ids(session, ids)
+        if not ids:
+            return []
+        test_cases = session.query(TestCase).filter(
+            TestCase.id.in_(ids), TestCase.deleted == False  # noqa: E712
+        ).all()
+        for tc in test_cases:
+            tag_names = sorted(
+                [tag.name for tag in tc.tags if len(tag.name) <= 25],
+                key=lambda x: len(x),
+            )
+            if tag_names:
+                tc.name = '-'.join(tag_names)
+            tc.updated_at = _now()
+        session.flush()
+        return test_cases
+
+    # ========== TestCase 预加载查询（供 Query Mixin 复用） ==========
+
+    def _query_testcases_with_preload(self, session):
+        """构建带 group/tags 预加载的 TestCase 查询（消除重复）。"""
+        return session.query(TestCase).options(
+            joinedload(TestCase.group),
+            joinedload(TestCase.tags),
+        )

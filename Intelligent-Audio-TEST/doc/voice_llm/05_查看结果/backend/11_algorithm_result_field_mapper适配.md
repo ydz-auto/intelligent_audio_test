@@ -1,5 +1,7 @@
 # 11 - algorithm_result_field_mapper 适配
 
+> **状态：历史文档（INT-1851 一致性审计，2026-10-25 标注）。** 文中 `Intelligent-Audio-TEST/backend/algorithm/algorithm_result_field_mapper.py` 与 `map_api_results` 已不存在：`map_api_results` 按 C0 裁定（INT-1745）全链路删除（INT-1748），输出字段清单改由 `algorithm_api_params(direction=output)` + `param_mappings(source='api')` 配置驱动，现行实现见 `algorithm_service/application/queries/result_field_mapping_queries.py` 与 `shared/domain/algorithm_result_strategy.py`。落地口径见《doc/功能设计文档/08_算法配置/智能语音算法配置适配/18_设备参数和API参数绑定方案.md》§9.6。以下内容仅作历史参考。
+
 ## 涉及文件
 - `Intelligent-Audio-TEST/backend/algorithm/algorithm_result_field_mapper.py`
 

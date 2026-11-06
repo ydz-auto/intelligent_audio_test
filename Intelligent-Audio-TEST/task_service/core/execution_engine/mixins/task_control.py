@@ -1,0 +1,588 @@
+import threading
+from collections import deque
+from task_service.core.time_utils import utcnow
+from task_service.infrastructure.persistence.models import Task, TaskCase
+from shared.models.database import create_db_session, get_db_session
+from shared.utils import distributed_coordinator as _dc
+from shared.utils.status_utils import derive_task_case_status
+from shared.utils.status_utils import task_case_not_removed
+from shared.utils.status_constants import (
+    TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus, FINISHED_CASE_STATUSES,
+    ACTIVE_EVALUATION_STATUSES,
+)
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+# gRPC 调用封装函数（模块级）
+from task_service.core.execution_engine.mixins.grpc_helpers import (
+    _stop_task_audio_via_grpc,
+    _cleanup_devices_via_grpc,
+    _unregister_task_events_via_grpc,
+    _get_task_events_via_grpc,
+    _register_task_events_via_grpc,
+)
+
+
+class TaskControlMixin:
+    """任务控制相关的方法：启动、排队检查、移除、控制（暂停/恢复/停止）"""
+
+    def start_task(self, task_id):
+        """启动测试任务
+
+        Args:
+            task_id: 任务ID
+
+        Returns:
+            tuple: (是否成功, 状态消息)
+        """
+        # 检查任务是否已在运行或队列中
+        if task_id in self.workers and self.workers[task_id].is_alive():
+            return False, "任务已在运行中"
+        
+        with self.queue_lock:
+            if any(t['id'] == task_id for t in self.task_queue):
+                return False, "任务已在队列中"
+
+        # 获取任务执行画像与关联的API（差异#2 收尾：调度互斥依据由
+        # task.type 迁至用例级 device_type —— 含物理用例占 e2e 单飞槽位，
+        # API 用例按 api_ids 并发互斥）
+        from task_service.infrastructure.persistence.task_repository import task_repository
+        local_db_session = get_db_session()
+        try:
+            task = local_db_session.get(Task, task_id)
+            if not task:
+                return False, "任务不存在"
+
+            profile = task_repository.get_execution_profile(task_id)
+            has_physical = profile['has_physical']
+            api_ids = profile['api_ids']
+        finally:
+            local_db_session.close()
+
+        # INT-418：收窄 queue_lock 至纯决策段（队列查重/互斥判定/槽位抢占），
+        # gRPC 注册与 DB CAS 移出锁外。原实现锁横跨 gRPC+CAS 全路径，CAS
+        # 失败回滚分支在同一持锁线程上重入非重入 threading.Lock → 自死锁，
+        # 任务启动链路与 DB 兜底调度整体瘫痪（INT-321 py-spy 实锤）。
+        can_run = False
+        with self.queue_lock:
+            # 槽位在途（本进程另一 start/调度线程正在启动同一任务）→ 幂等拒绝，
+            # 防止并发抢占下 CAS 输家误释放胜者槽位（破坏 e2e 单飞/API 互斥）
+            if task_id in self.running_tasks:
+                return False, "任务已在启动中"
+
+            # 物理用例占 e2e 单飞槽位；API 用例要求同 API 不重叠
+            if has_physical and self.running_e2e:
+                can_run = False
+            elif set(api_ids) & self.running_apis:
+                can_run = False
+            else:
+                can_run = True
+
+            if can_run:
+                # 锁内抢占内存槽位；DB CAS 失败时由 _release_running_slot 回滚
+                self.running_tasks[task_id] = profile
+                if has_physical:
+                    self.running_e2e = True
+                if api_ids:
+                    self.running_apis.update(api_ids)
+            else:
+                if len(self.task_queue) >= self.max_queue_size:
+                    return False, f"任务队列已满 ({self.max_queue_size})"
+                from shared.infrastructure.user_context import get_current_user_id
+                self.task_queue.append({
+                    'id': task_id,
+                    'has_physical': has_physical,
+                    'api_ids': api_ids,
+                    'user_id': get_current_user_id(),
+                })
+
+                # 更新任务状态为queued（锁内与入队保持原子，避免 _check_queue
+                # 抢先消费并置 running 后又被此处降级为 queued）
+                local_db_session = get_db_session()
+                try:
+                    task = local_db_session.get(Task, task_id)
+                    if task:
+                        task.status = TaskStatus.QUEUED
+                        local_db_session.commit()
+                finally:
+                    local_db_session.close()
+
+                # 触发调度器立即检查
+                self.trigger_scheduler_check()
+
+                return True, "任务已加入队列"
+
+        # 可以立即执行：创建停止/暂停/完成事件（锁外）
+        stop_event = threading.Event()
+        pause_event = threading.Event()
+        pause_event.set()  # 初始状态为非暂停
+        self.task_completion_events[task_id] = threading.Event()
+
+        # 多实例下用 DB 条件 UPDATE 做任务抢占 CAS，避免重复启动
+        local_db_session = get_db_session()
+        try:
+            # CAS: 只有 pending/queued 状态才能翻转为 running
+            claimed = local_db_session.query(Task).filter(
+                Task.id == task_id,
+                Task.status.in_([TaskStatus.PENDING, TaskStatus.QUEUED])
+            ).update({Task.status: TaskStatus.RUNNING}, synchronize_session=False)
+            if claimed != 1:
+                # 已被其它实例抢占，回滚本地内存槽位。此时未持 queue_lock，
+                # _release_running_slot 内部取锁 —— 原自死锁分支不复存在
+                local_db_session.rollback()
+                self._release_running_slot(task_id)
+                return False, "任务已被其它实例启动"
+            local_db_session.commit()
+        finally:
+            local_db_session.close()
+
+        # 注册任务控制事件（通过 gRPC 同步到 e2e_test_service；
+        # CAS 成功后注册，失败分支不残留无主事件）
+        _register_task_events_via_grpc(task_id, stop_event, pause_event)
+
+        # 创建任务执行线程（user_id 跨线程透传，INT-141）
+        from shared.infrastructure.user_context import get_current_user_id
+        thread = threading.Thread(
+            target=self._task_thread_main,
+            args=(task_id, stop_event, pause_event, get_current_user_id()),
+            name=f"task-worker-{task_id}",
+        )
+        self.workers[task_id] = thread
+        self.stop_flags[task_id] = stop_event
+        self.pause_flags[task_id] = pause_event
+
+        # 启动线程
+        thread.start()
+        return True, "任务已启动"
+
+    def _check_queue(self):
+        """检查任务队列，启动可以执行的任务，一次启动多个可执行任务"""
+        # INT-40：本方法被 control_task（外层仍持有 scoped session 上的 Task
+        # 对象）与 _cleanup_task_resources 嵌套调用，须用独立 Session，
+        # 避免本方法的 close 把外层会话上的对象 expunge 脱管
+        local_db_session = create_db_session()
+        try:
+            candidates = []
+
+            with self.queue_lock:
+                remaining_tasks = deque()
+
+                while self.task_queue:
+                    queued_task = self.task_queue.popleft()
+                    task_id = queued_task['id']
+                    has_physical = queued_task.get('has_physical', False)
+                    api_ids = queued_task.get('api_ids', [])
+
+                    task = local_db_session.get(Task, task_id)
+
+                    # INT-2231：只有仍待执行（pending/queued）的任务才可能被本实例
+                    # 消费。终态 / 已停止 / 已被其它实例推进 / 已删除的任务直接丢弃
+                    # 本地队列项——本方法是消费入口，不能凭内存队列的陈旧快照起线程。
+                    # 锁内只做廉价预判，真正的抢占以锁外条件 UPDATE（CAS）为准。
+                    if not task or task.status not in (TaskStatus.PENDING, TaskStatus.QUEUED):
+                        continue
+
+                    can_run = False
+
+                    if has_physical and self.running_e2e:
+                        can_run = False
+                    elif set(api_ids) & self.running_apis:
+                        can_run = False
+                    else:
+                        can_run = True
+
+                    if can_run:
+                        # 锁内抢占内存槽位；CAS 失败时由 _release_running_slot 回滚
+                        self.running_tasks[task_id] = {
+                            'has_physical': has_physical,
+                            'api_ids': api_ids,
+                        }
+                        if has_physical:
+                            self.running_e2e = True
+                        if api_ids:
+                            self.running_apis.update(api_ids)
+
+                        candidates.append({
+                            'task_id': task_id,
+                            'user_id': queued_task.get('user_id'),
+                        })
+                    else:
+                        remaining_tasks.append(queued_task)
+
+                self.task_queue = remaining_tasks
+
+            # INT-2231：多实例下用 DB 条件 UPDATE 做任务抢占 CAS，与 start_task
+            # 同口径——只有 pending/queued 才能翻转为 running；影响行数不为 1
+            # 说明任务已被其它实例抢占或已终结，放弃启动并回滚刚抢到的内存槽位。
+            # INT-418：CAS 与其回滚槽位移出 queue_lock，避免持锁做 DB 写、以及
+            # 回滚分支在持锁线程上重入非重入锁（INT-321 自死锁）。
+            tasks_to_start = []
+            for candidate in candidates:
+                task_id = candidate['task_id']
+                try:
+                    claimed = local_db_session.query(Task).filter(
+                        Task.id == task_id,
+                        Task.status.in_([TaskStatus.PENDING, TaskStatus.QUEUED]),
+                    ).update({Task.status: TaskStatus.RUNNING},
+                             synchronize_session=False)
+                    if claimed != 1:
+                        local_db_session.rollback()
+                        self._release_running_slot(task_id)
+                        logger.info(
+                            "队列任务 %s 已被其它实例抢占或已终结，放弃本地启动", task_id)
+                        continue
+                    local_db_session.commit()
+                except Exception as e:
+                    local_db_session.rollback()
+                    self._release_running_slot(task_id)
+                    logger.error("队列任务 %s 抢占 CAS 失败，放弃本地启动: %s", task_id, e)
+                    continue
+
+                tasks_to_start.append(candidate)
+
+            for task_info in tasks_to_start:
+                task_id = task_info['task_id']
+
+                stop_event = threading.Event()
+                pause_event = threading.Event()
+                pause_event.set()
+
+                # 创建任务完成事件（用于替代忙等待）
+                self.task_completion_events[task_id] = threading.Event()
+
+                # user_id 跨线程透传（INT-141；排队任务取入队时快照）
+                thread = threading.Thread(
+                    target=self._task_thread_main,
+                    args=(task_id, stop_event, pause_event, task_info.get('user_id')),
+                    name=f"task-worker-{task_id}",
+                )
+                self.workers[task_id] = thread
+                self.stop_flags[task_id] = stop_event
+                self.pause_flags[task_id] = pause_event
+                
+                thread.start()
+        finally:
+            local_db_session.close()
+    
+    def remove_from_queue(self, task_id):
+        """
+        从任务队列中移除指定任务
+
+        Args:
+            task_id: 任务ID
+        """
+        with self.queue_lock:
+            new_queue = deque()
+            removed = False
+            for queued_task in self.task_queue:
+                if queued_task['id'] == task_id:
+                    removed = True
+                else:
+                    new_queue.append(queued_task)
+            self.task_queue = new_queue
+        return removed
+
+    def _release_running_slot(self, task_id):
+        """释放任务占用的调度槽位（e2e 单飞 + API 并发互斥）。
+
+        差异#2 收尾：取代原 task.type=='e2e' 分支清理 —— 依据 start_task
+        时写入 running_tasks 的执行画像（has_physical / api_ids）释放。
+        """
+        with self.queue_lock:
+            profile = self.running_tasks.pop(task_id, None)
+            if profile is None:
+                return
+            if profile.get('has_physical'):
+                self.running_e2e = False
+            api_ids = profile.get('api_ids') or []
+            if api_ids:
+                self.running_apis.difference_update(api_ids)
+
+    def _is_worker_alive(self, task_id):
+        """任务在本实例是否有存活的工作线程（INT-2282）。
+
+        workers 字典只增删于启动/清理分支，暂停期间退出（等待超时等）的线程
+        会留下死条目；控制类判定必须看线程是否真的活着，而不是字典里有没有键。
+        """
+        worker = self.workers.get(task_id)
+        return bool(worker is not None and worker.is_alive())
+
+    def control_task(self, task_id, action):
+        """
+        控制任务执行（暂停、恢复、停止）
+
+        Args:
+            task_id: 任务ID
+            action: 操作类型，可选值：'pause', 'resume', 'stop'
+
+        Returns:
+            tuple: (是否成功, 状态消息)
+        """
+        # 处理停止任务操作，从队列中移除
+        if action == 'stop':
+            self.remove_from_queue(task_id)
+
+        # 使用本地会话确保独立可靠的会话
+        local_db_session = get_db_session()
+        try:
+            task = local_db_session.get(Task, task_id)
+            if not task:
+                return False, "任务不存在"
+
+            # 检查任务状态是否允许执行操作
+            if action == 'pause':
+                if task.status not in [TaskStatus.RUNNING, TaskStatus.QUEUED]:
+                    return False, "只有执行中或排队中的任务才能暂停"
+            elif action == 'resume':
+                if task.status != TaskStatus.PAUSED:
+                    return False, "只有已暂停的任务才能恢复"
+            elif action == 'stop':
+                if task.status not in [TaskStatus.RUNNING, TaskStatus.PAUSED, TaskStatus.QUEUED, TaskStatus.EVALUATING]:
+                    return False, "只有执行中、已暂停、排队中或评估中的任务才能停止"
+
+            # 对于停止操作，即使任务不在workers中，也应该执行
+            if action == 'stop':
+                # 更新任务状态为stopped
+                task.status = TaskStatus.STOPPED
+                task.completed_at = utcnow()
+
+                # 只处理未完成的用例（执行中、排队中、待执行），保留已完成用例的状态
+                cases = local_db_session.query(TaskCase).filter(
+                    TaskCase.task_id == task_id,
+                    # INT-305：移除留痕行不参与停止翻转（保留移除留痕语义）
+                    task_case_not_removed(TaskCase),
+                    ~TaskCase.status.in_(FINISHED_CASE_STATUSES)
+                ).all()
+                # INT-308：状态翻转前采集评估中（pending/queued/running/calculating）
+                # 的用例 ID——下方循环会把内存对象的 evaluation_status 置 STOPPED，
+                # 翻转后无法再区分哪些用例此前已提交评估
+                eval_inflight_ids = [
+                    str(tc.test_case_id) for tc in cases
+                    if (tc.evaluation_status or '') in ACTIVE_EVALUATION_STATUSES
+                ]
+                # INT-308 审计#1：联动取消评估必须在状态翻转 commit 之前发起——
+                # evaluation_service 的 CancelEvaluation 在命令语义（task_stopped）
+                # 下信任请求方直接摘除（不回读状态判定），但 adhoc 语义与未来
+                # 调用方可能依赖回读状态；commit 前发起保证任何回读路径看到的
+                # 都是翻转前的活跃状态，两层修复互为纵深
+                if eval_inflight_ids:
+                    try:
+                        from shared.clients.grpc_clients import cancel_case_evaluations
+                        cancel_result = cancel_case_evaluations(
+                            task_id, eval_inflight_ids, reason='task_stopped')
+                        self._log(level='INFO',
+                                  content=(f"任务停止联动取消评估: 用例数={len(eval_inflight_ids)}, "
+                                           f"在途摘除={cancel_result.get('data', {}).get('cancelled_inflight', 0)}"),
+                                  task_id=task_id)
+                    except Exception as e:
+                        self._log(level='WARNING',
+                                  content=f"联动取消评估 gRPC 调用失败(不阻塞停止流程): {e}",
+                                  task_id=task_id)
+                for tc in cases:
+                    tc.execution_status = ExecutionStatus.STOPPED
+                    tc.evaluation_status = EvaluationStatus.STOPPED
+                    tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
+                    tc.started_at = None
+                    tc.completed_at = utcnow()
+                    tc.duration = None
+                    tc.error_message = '任务被手动停止'
+                
+                local_db_session.commit()
+
+                # 分布式停止信号（多实例下通知所有实例的执行线程）
+                # 优先广播，确保 gRPC 调用失败时不阻塞停止信号传播
+                _dc.set_task_stop(task_id)
+                _dc.clear_task_pause(task_id)
+
+                # 如果任务在workers中，设置停止标志
+                if task_id in self.workers:
+                    self.stop_flags[task_id].set()  # 设置停止标志
+                    self.pause_flags[task_id].set()  # 确保任务不处于暂停状态，以便能响应停止指令
+                    # 唤醒等待线程，使其能立即检测到 stop_event
+                    self.notify_case_completed(task_id)
+
+                # 停止所有音频播放（通过 gRPC 调用 e2e_test_service 的 AudioService）
+                # 放在 Redis 标志位之后，gRPC 失败不影响停止信号传播
+                try:
+                    _stop_task_audio_via_grpc(task_id)
+                except Exception as e:
+                    self._log(level='WARNING',
+                              content=f"停止音频播放 gRPC 调用失败(不阻塞停止流程): {e}",
+                              task_id=task_id)
+
+                self._emit_progress(task)  # 发送进度更新
+
+                # 通过 gRPC 通知 e2e_test_service 同步停止事件
+                if task_id in self.workers:
+                    try:
+                        _register_task_events_via_grpc(
+                            task_id, self.stop_flags[task_id], self.pause_flags[task_id]
+                        )
+                    except Exception as e:
+                        self._log(level='WARNING',
+                                  content=f"同步停止事件 gRPC 调用失败(不阻塞停止流程): {e}",
+                                  task_id=task_id)
+                
+                # 立即清理运行状态，避免新任务进入排队
+                self._release_running_slot(task_id)
+                
+                # 清理线程和标志位
+                self.workers.pop(task_id, None)
+                self.stop_flags.pop(task_id, None)
+                self.pause_flags.pop(task_id, None)
+                self.task_completion_events.pop(task_id, None)
+                # 清理进度缓存，避免内存泄漏
+                self.task_progress_cache.pop(task_id, None)
+                self.last_progress_update.pop(task_id, None)
+                # 清理多轮进度缓存（key 为 tc_rel_id，需查询当前任务的用例 ID）
+                try:
+                    tc_rel_ids = [
+                        tc_id for (tc_id,) in
+                        local_db_session.query(TaskCase.id).filter_by(task_id=task_id).all()
+                    ]
+                    for tc_rel_id in tc_rel_ids:
+                        self.round_progress_cache.pop(tc_rel_id, None)
+                except Exception:
+                    logger.debug("清理多轮进度缓存失败 task_id=%s", task_id, exc_info=True)
+
+                # 检查队列并启动下一个任务
+                self._check_queue()
+
+                # 通过 gRPC 调用 e2e_test_service 的 DeviceService
+                _cleanup_devices_via_grpc(task_id)
+                _unregister_task_events_via_grpc(task_id)
+                
+                return True, "任务已停止"
+            else:
+                # 对于暂停和恢复操作，需要任务在workers中
+                if action == 'pause' and task.status == TaskStatus.QUEUED:
+                    self.remove_from_queue(task_id)
+                    task.status = TaskStatus.PAUSED
+                    local_db_session.commit()
+                    self._emit_progress(task)
+                    return True, "任务已暂停"
+
+                # INT-2282：判定依据由「在 workers 字典里」改为「工作线程仍存活」。
+                # 暂停期间工作线程可能已经退出（等待用例超时 / 异常收尾），此时
+                # workers 里只剩一条死线程：按成员判定会走到下面的「在跑」分支，
+                # 只置 pause_event 与 RUNNING 就返回成功，而没有任何线程继续执行。
+                if action == 'resume' and not self._is_worker_alive(task_id):
+                    # 恢复时任务不在运行集合：含 API 用例的任务重新入队，
+                    # 重建 API 异步等待流程；纯物理任务无法恢复
+                    from task_service.infrastructure.persistence.task_repository import task_repository
+                    profile = task_repository.get_execution_profile(task_id)
+                    if profile['api_ids']:
+                        # INT-2282：陈旧执行态清理。暂停期间退出的工作线程留下的
+                        # workers/事件登记与内存槽位（_cleanup_task_resources 见到
+                        # paused 会刻意保留）必须先摘除——否则 _check_queue 会因
+                        # 本任务自己的 API 互斥把它永远挡在队列里，恢复后无派发。
+                        self.workers.pop(task_id, None)
+                        self.stop_flags.pop(task_id, None)
+                        self.pause_flags.pop(task_id, None)
+                        self._release_running_slot(task_id)
+                        # INT-2282：清除 pause 分支置的分布式暂停信号。重新入队
+                        # 起的新执行线程会把任务带到 api_test_service，执行器
+                        # shared/infrastructure/base_executor/_control_mixin.py
+                        # 读到 `task:pause:{id}` 就阻塞等待恢复——任务显示 running、
+                        # 队列空、线程活着，但用例一步不推进。「存活线程」分支
+                        # （下方 resume 分支）本来就有 clear_task_pause，重新入队
+                        # 分支漏了。必须在入队前清：_check_queue / 调度器可能立刻
+                        # 消费队列项并起线程，晚一步新线程就会读到旧标志。
+                        _dc.clear_task_pause(task_id)
+                        with self.queue_lock:
+                            # INT-2231：状态置 QUEUED 必须与入队在同一把锁内完成，
+                            # 否则 _check_queue 可能抢先消费到仍是 PAUSED 的队列项
+                            # 并把它当作陈旧项丢弃，恢复的任务再无线程启动
+                            # INT-2282：上面的 get_execution_profile 内部用同一 scope
+                            # 的 scoped session 并在 finally close()，把本方法的 task
+                            # 实例 expunge 成脱管对象——脱管对象的赋值不会随 commit
+                            # 落库，resume 返回 success=true 而 DB 仍是 paused，入队
+                            # 项又被 _check_queue 当陈旧项丢弃。写状态前重新取回托管
+                            # 实例（close 已清空 identity map，取回的是新对象）。
+                            task = local_db_session.get(Task, task_id)
+                            if task is None:
+                                return False, "任务不存在"
+                            task.status = TaskStatus.QUEUED
+                            local_db_session.commit()
+                            self.task_queue.append({
+                                'id': task.id,
+                                'has_physical': profile['has_physical'],
+                                'api_ids': profile['api_ids'],
+                            })
+                        self._emit_progress(task)
+                        self.trigger_scheduler_check()
+                        # INT-2282：内存队列只由「停止任务」与「其它任务收尾清理」
+                        # 顺带消费一次，调度器兜底只捞 PENDING——恢复入队的队列项
+                        # 没人消费会一直停在 queued（表现为 resume 后无任何派发）。
+                        # 消费失败不翻转恢复结果：状态已是 queued，队列项仍在，
+                        # 后续任一停止/收尾触发的消费都会把它拉起。
+                        try:
+                            self._check_queue()
+                        except Exception as e:
+                            logger.error("恢复任务 %s 入队后立即消费失败: %s", task_id, e)
+                        return True, "任务已恢复"
+                    return False, "未找到运行中的任务"
+
+                if task_id not in self.workers:
+                    return False, "未找到运行中的任务"
+
+                if action == 'pause':
+                    # 暂停任务
+                    self.pause_flags[task_id].clear()  # 清除暂停标志，触发暂停
+                    # 分布式暂停信号（多实例下通知所有实例的执行线程）
+                    _dc.set_task_pause(task_id)
+                    # 通过 gRPC 通知 e2e_test_service 同步暂停事件
+                    _register_task_events_via_grpc(
+                        task_id, self.stop_flags[task_id], self.pause_flags[task_id]
+                    )
+                    task.status = TaskStatus.PAUSED  # 更新任务状态
+                    
+                    # 对于 API 用例，不重置执行中的用例状态为 pending
+                    # 因为 API 线程是在 pause_event 上阻塞，恢复时会自动继续执行
+                    # 如果重置为 pending，会导致调度器重新启动新线程，造成重复执行
+                    # 差异#2 收尾：判定依据由 task.type 改为执行画像 has_physical
+                    if self.running_tasks.get(task_id, {}).get('has_physical'):
+                        # 物理用例（E2E）是同步顺序执行的，暂停时可以将当前正在执行的用例重置
+                        running_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, execution_status=ExecutionStatus.RUNNING).all()
+                        for tc in running_cases:
+                            tc.execution_status = ExecutionStatus.PENDING
+                            tc.completed_at = None
+                            tc.duration = None
+
+                    local_db_session.commit()
+                    # 暂停时停止所有音频播放（通过 gRPC AudioService）
+                    _stop_task_audio_via_grpc(task_id)
+                    # 暂停时清理设备并注销事件（通过 gRPC DeviceService）
+                    _cleanup_devices_via_grpc(task_id)
+                    _unregister_task_events_via_grpc(task_id)
+                    self._emit_progress(task)  # 发送进度更新
+                    return True, "任务已暂停"
+                elif action == 'resume':
+                    # 恢复任务
+                    # 检查事件是否还存在，如果不存在需要重新注册
+                    # 跨服务调用：通过 gRPC DeviceService 获取任务事件
+                    if _get_task_events_via_grpc(task_id) is None:
+                        # 重新注册事件
+                        if task_id not in self.pause_flags:
+                            self.pause_flags[task_id] = threading.Event()
+                        if task_id not in self.stop_flags:
+                            self.stop_flags[task_id] = threading.Event()
+                        # 跨服务调用：通过 gRPC DeviceService 注册任务事件
+                        _register_task_events_via_grpc(task_id, self.stop_flags[task_id], self.pause_flags[task_id])
+
+                    self.pause_flags[task_id].set()  # 设置暂停标志，恢复执行
+                    # 清除分布式暂停信号（多实例下通知所有实例恢复执行）
+                    _dc.clear_task_pause(task_id)
+                    # 通过 gRPC 通知 e2e_test_service 同步恢复事件
+                    _register_task_events_via_grpc(
+                        task_id, self.stop_flags[task_id], self.pause_flags[task_id]
+                    )
+                    task.status = TaskStatus.RUNNING  # 更新任务状态
+                    local_db_session.commit()
+                    self._emit_progress(task)  # 发送进度更新
+                    return True, "任务已恢复"
+                return False, "无效的操作指令"
+        finally:
+            local_db_session.close()

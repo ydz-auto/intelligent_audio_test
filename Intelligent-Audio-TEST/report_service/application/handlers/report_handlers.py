@@ -1,0 +1,645 @@
+# -*- coding: utf-8 -*-
+"""报告命令/查询处理器（CQRS Handler，聚合模块，P4-5 大文件拆分）。
+
+原单文件 831 行，按职责拆分为 3 个内部模块，本文件保持
+`from report_service.application.handlers.report_handlers import ...`
+的全部导入路径不变：
+
+- _report_case_filters.py：TestResult / TestCase 客户端过滤公共函数
+- _report_cases_query_mixin.py：ReportCasesQueryMixin — 用例列表/搜索/导出
+- _report_stats_query_mixin.py：ReportStatsQueryMixin — 平均值统计/日志下载
+
+职责：
+- 接收 Command/Query 对象
+- 通过 report_repository 操作聚合根（不直接 import PO）
+- 返回聚合根或聚合根列表
+
+遵循 DDD 分层：application 层只依赖 domain 与 repository，
+不感知 ORM/PO，保持领域层与基础设施解耦。
+"""
+from __future__ import annotations
+
+from typing import List, Optional
+import logging
+
+from report_service.domain.entities import ReportAggregate, ReportStatus
+from report_service.infrastructure.persistence.report_repository import report_repository
+from report_service.application.commands.report_commands import (
+    CreateReportCommand,
+    DeleteReportCommand,
+    GenerateReportCommand,
+    UpdateReportCommand,
+    UpdateReportStatusCommand,
+)
+from report_service.application.queries.report_queries import (
+    GetReportByTaskQuery,
+    GetReportProgressQuery,
+    GetReportQuery,
+    GetReportSummaryQuery,
+    GetTrendDataQuery,
+    ListReportBriefsByTaskIdsQuery,
+    ListReportsQuery,
+)
+from report_service.application.handlers._report_cases_query_mixin import (
+    ReportCasesQueryMixin,
+)
+from report_service.application.handlers._report_stats_query_mixin import (
+    ReportStatsQueryMixin,
+)
+from report_service.application.services.normalize import normalize_summary_metric_dicts
+
+logger = logging.getLogger(__name__)
+
+# 对外 summary 契约的 camelCase 键 → 库内 snake_case 键（对齐旧库 normalize_summary_keys，
+# 并补齐全量编辑路径（toReportUpdateDto）的统计字段 camelCase 键）
+_SUMMARY_KEY_MAPPING = {
+    'totalCases': 'total_cases',
+    'completedCases': 'completed_cases',
+    'failedCases': 'failed_cases',
+    'passRate': 'pass_rate',
+    'caseCategories': 'case_categories',
+    'allCaseTags': 'all_case_tags',
+    'allTags': 'all_tags',
+    'resourceHeaders': 'resource_headers',
+    'allMetrics': 'all_metrics',
+    'metricData': 'metric_data',
+    'tagMetricData': 'tag_metric_data',
+    'rawData': 'raw_data',
+    'deviceStats': 'device_stats',
+    'apiStats': 'api_stats',
+    'caseTypeStats': 'case_type_stats',
+}
+
+# all_tags 为 all_case_tags 的历史别名（旧前端双写同值），落库归一到 all_case_tags
+_SUMMARY_KEY_ALIASES = {
+    'all_tags': 'all_case_tags',
+}
+
+
+def _normalize_summary_keys(summary_dict):
+    """归一 summary 快照键：camelCase → snake_case + 历史别名收敛。
+
+    非dict输入返回 None（调用方转为参数错误）；未识别的键原样保留。
+    """
+    if not isinstance(summary_dict, dict):
+        return None
+    normalized = {}
+    for k, v in summary_dict.items():
+        key = _SUMMARY_KEY_MAPPING.get(k, k)
+        key = _SUMMARY_KEY_ALIASES.get(key, key)
+        normalized[key] = v
+    return normalized
+
+
+def _assert_report_status(status: str) -> None:
+    """报告状态入参校验：只接受 ReportStatus 词表（draft / published）。
+
+    INT-2238：`test_reports.status` 全链路只有一套词表，命令侧挡住历史
+    pending/generating/completed/failed，避免混值重新落库。
+    """
+    if status not in ReportStatus.values():
+        raise ValueError(
+            'status 仅支持 ' + ' / '.join(ReportStatus.values())
+            + f'，收到 {status!r}')
+
+
+class ReportCommandHandler:
+    """报告命令处理器。
+
+    处理所有写操作命令，通过 report_repository 操作聚合根。
+    支持注入自定义仓储实例以便单元测试。
+    """
+
+    def __init__(self, repository=report_repository) -> None:
+        """初始化命令处理器。
+
+        Args:
+            repository: 报告仓储实例，默认使用模块级单例 report_repository
+        """
+        self.repository = repository
+
+    def handle_create(self, command: CreateReportCommand) -> int:
+        """处理创建报告命令。
+
+        构造一个处于 draft 状态的聚合根并持久化。
+
+        Args:
+            command: CreateReportCommand
+
+        Returns:
+            新创建的报告 ID
+
+        Raises:
+            ValueError: visibility 非 shared/private 时（与 evaluation 同口径 400）
+        """
+        from shared.models.common_enums import Visibility
+        vis = command.visibility or Visibility.SHARED.value
+        # INT-465 修复（P3）：与 evaluation parse_visibility 同口径校验——
+        # 非法值直接透传会落库并被行级过滤降级为近似私有，口径不一致
+        if vis not in (Visibility.SHARED.value, Visibility.PRIVATE.value):
+            raise ValueError('visibility 仅支持 shared/private')
+        aggregate = ReportAggregate(
+            id=0,
+            task_id=command.task_id,
+            report_type=command.report_type,
+            status=ReportStatus.DRAFT.value,
+            config=dict(command.config),
+            visibility=vis,
+        )
+        return self.repository.add(aggregate)
+
+    def handle_generate(self, command: GenerateReportCommand) -> Optional[int]:
+        """处理生成报告命令。
+
+        流程：查找任务最新报告 -> 标记回 draft（重新生成期间未发布）；
+        若报告不存在则创建新报告并直接以 draft 落库。
+
+        Args:
+            command: GenerateReportCommand
+
+        Returns:
+            报告 ID；若无法处理返回 None
+        """
+        aggregate = self.repository.get_by_task(command.task_id)
+        if aggregate is None:
+            # 任务尚无报告，新建并以 draft 落库
+            aggregate = ReportAggregate(
+                id=0,
+                task_id=command.task_id,
+                report_type=command.report_type,
+                status=ReportStatus.DRAFT.value,
+                config={},
+            )
+            return self.repository.add(aggregate)
+        # 已存在报告：更新类型并回到 draft
+        aggregate.report_type = command.report_type
+        aggregate.mark_draft()
+        self.repository.save(aggregate)
+        return aggregate.id
+
+    def handle_generate_task_report(self, task_id: int, name: str = None, description: str = None) -> dict:
+        """处理生成任务报告命令。
+
+        委托 ReportTaskGenerator 执行异步生成。
+        """
+        from report_service.application.services.report_task_generator import ReportTaskGenerator
+        return ReportTaskGenerator.generate_task_report(task_id, name, description)
+
+    def handle_generate_compare_report(self, task_ids: list, name: str = None, description: str = None) -> dict:
+        """处理生成对比报告命令。"""
+        from report_service.application.services.report_compare_generator import ReportCompareGenerator
+        return ReportCompareGenerator.compare(task_ids, name, description)
+
+    def handle_generate_secondary_compare_report(self, report_ids: list, description: str = None) -> dict:
+        """处理生成二次对比报告命令。"""
+        from report_service.application.services.report_compare_generator import ReportCompareGenerator
+        return ReportCompareGenerator.secondary_compare(report_ids, description)
+
+    def handle_update_status(self, command: UpdateReportStatusCommand) -> None:
+        """处理更新报告状态命令。
+
+        报告行状态只有一个维度（发布态）：draft ↔ published。生成过程的
+        generating / completed 不是本列取值，进度走 GET /reports/{id}/progress。
+        入口：网关 POST /reports/{id}/publish（→ published）与内部
+        PUT /reports/{id}/status。
+
+        INT-2238：入参按 ReportStatus 词表校验，非 draft/published 直接 ValueError，
+        避免把第二批词表重新写进 test_reports.status。
+
+        INT-465 命令侧校验：私有报告非 owner 发布/流转抛 VisibilityDenied（403），
+        与 update/delete 写口径闭合（内部生成引擎直调 repository.update_status，
+        不经本 Handler，不受此校验影响）。
+        """
+        _assert_report_status(command.status)
+        self._ensure_report_visible(command.report_id)
+        self.repository.update_status(command.report_id, command.status)
+
+    def _ensure_report_visible(self, report_id: int) -> None:
+        """命令侧可见性校验（INT-423）。
+
+        私有非 owner 的 update/delete 抛 VisibilityDenied（网关映射 403）；
+        报告不存在（含已软删）不抛——由后续 update/delete 返回 False（404 语义）。
+        """
+        from shared.infrastructure.user_context import (
+            get_current_user_id,
+            get_current_user_is_admin,
+        )
+        from shared.infrastructure.visibility_filter import (
+            VisibilityDenied,
+            check_visible,
+        )
+
+        info = self.repository.get_report_visibility_info(report_id)
+        if info is None:
+            return
+        try:
+            check_visible(
+                info[0], info[1],
+                get_current_user_id(), get_current_user_is_admin())
+        except VisibilityDenied:
+            raise
+
+    def handle_update(self, command: UpdateReportCommand) -> bool:
+        """处理更新报告命令（对齐旧库 PUT /reports/{id}）。
+
+        字段归一：
+        - name/title 取先提供者 → name
+        - analysis/conclusion 取先提供者 → analysis（文本结论）
+        - summary 键归一为 snake_case
+
+        Args:
+            command: UpdateReportCommand
+
+        Returns:
+            True 表示更新成功，False 表示报告不存在或无可更新字段
+        """
+        # INT-423 命令侧 owner 校验：私有非 owner 更新抛 VisibilityDenied
+        self._ensure_report_visible(command.report_id)
+        # INT-2238：状态入参同 handle_update_status 的词表校验
+        if command.status is not None:
+            _assert_report_status(command.status)
+        fields = {
+            'name': command.name,
+            'description': command.description,
+            'analysis': command.analysis,
+            'status': command.status,
+        }
+        fields = {k: v for k, v in fields.items() if v is not None}
+        if command.summary is not None:
+            normalized = _normalize_summary_keys(command.summary)
+            if normalized is None:
+                raise ValueError('summary 字段格式错误，应为对象')
+            fields['summary'] = normalized
+        # INT-466：可见性切换（None 不更新；值校验对齐 Visibility 二值）
+        if command.visibility is not None:
+            from shared.models.common_enums import Visibility
+            if command.visibility not in (Visibility.SHARED.value, Visibility.PRIVATE.value):
+                raise ValueError('visibility 仅支持 shared/private')
+            fields['visibility'] = command.visibility
+        if not fields:
+            return False
+        return self.repository.update_report_fields(command.report_id, fields)
+
+    def handle_delete(self, command: DeleteReportCommand) -> bool:
+        """处理删除报告命令。
+
+        软删除统一盖 deleted_at / deleted_by_user_id（INT-141，操作人取
+        x-user-id 上下文；AUTH_MODE=off 时为 NULL）。
+
+        Args:
+            command: DeleteReportCommand（hard=True 硬删除含子表级联）
+
+        Returns:
+            True 表示删除成功，False 表示报告不存在
+        """
+        from shared.infrastructure.user_context import get_current_user_id
+        # INT-423 命令侧 owner 校验：私有非 owner 删除抛 VisibilityDenied（网关映射 403）
+        self._ensure_report_visible(command.report_id)
+        if command.hard:
+            return self.repository.hard_delete(command.report_id)
+        return self.repository.soft_delete(
+            command.report_id, deleted_by=get_current_user_id())
+
+    # ==================================================================
+    # 收藏 / 回收站（INT-141）
+    # ==================================================================
+
+    def handle_favorite_report(self, report_id: int, user_id=None) -> dict:
+        """处理收藏报告命令。委托 report_favorite_trash_service.favorite。"""
+        from report_service.application.favorite_trash_service import report_favorite_trash_service
+        return report_favorite_trash_service.favorite(user_id, report_id)
+
+    def handle_unfavorite_report(self, report_id: int, user_id=None) -> dict:
+        """处理取消收藏报告命令。委托 report_favorite_trash_service.unfavorite。"""
+        from report_service.application.favorite_trash_service import report_favorite_trash_service
+        return report_favorite_trash_service.unfavorite(user_id, report_id)
+
+    def handle_restore_reports(self, report_ids: list) -> dict:
+        """处理恢复报告命令（单个+批量）。委托 report_favorite_trash_service.restore_reports。"""
+        from report_service.application.favorite_trash_service import report_favorite_trash_service
+        return report_favorite_trash_service.restore_reports(report_ids)
+
+    def handle_purge_reports(self, report_ids: list) -> dict:
+        """处理彻底删除报告命令。委托 report_favorite_trash_service.purge_reports。"""
+        from report_service.application.favorite_trash_service import report_favorite_trash_service
+        return report_favorite_trash_service.purge_reports(report_ids)
+
+
+class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
+    """报告查询处理器（组合用例/统计查询 Mixin）。
+
+    处理所有读操作查询，通过 report_repository 加载聚合根。
+    支持注入自定义仓储实例以便单元测试。
+    """
+
+    def __init__(self, repository=report_repository) -> None:
+        """初始化查询处理器。
+
+        Args:
+            repository: 报告仓储实例，默认使用模块级单例 report_repository
+        """
+        self.repository = repository
+
+    def handle_get(self, query: GetReportQuery) -> Optional[ReportAggregate]:
+        """处理按 ID 查询报告详情（附完整摘要统计，不含 cases 等大体积子实体）。
+
+        Args:
+            query: GetReportQuery
+
+        Returns:
+            ReportAggregate 或 None（报告不存在或已软删除）
+        """
+        aggregate = self.repository.get_by_id(query.report_id)
+        if aggregate is None:
+            return None
+        # 加载摘要统计，供序列化层派生出对外契约 summary 字段
+        aggregate.summaries = self.repository.load_summaries(query.report_id)
+        # 详情接口补充完整摘要视图（all_metrics/case_categories/all_case_tags/
+        # metric_data/tag_metric_data 等），序列化层优先输出到 summary 字段
+        full_summary = self.repository.load_full_report_data(query.report_id)
+        # 历史二次对比报告落库为 dict 形态，读侧统一归一为契约数组（报告 424）
+        aggregate.full_summary = (
+            normalize_summary_metric_dicts(full_summary)
+            if full_summary is not None else None
+        )
+        return aggregate
+
+    def handle_get_shared(self, report_id: int) -> Optional[ReportAggregate]:
+        """处理分享链接读取报告详情（跳过行级可见性过滤，INT-1043）。
+
+        分享有效性（token 未撤销/未过期/密码/访问口径）已在
+        ReportShareService.get_shared_report 校验通过——分享链接即 owner
+        显式授权，此处直取未删报告（不走 check_visible，授权不因
+        visibility 收回）；其余与 handle_get 一致（加载摘要与完整摘要视图）。
+        """
+        aggregate = self.repository.get_by_id_unchecked(report_id)
+        if aggregate is None:
+            return None
+        # 加载摘要统计，供序列化层派生出对外契约 summary 字段
+        aggregate.summaries = self.repository.load_summaries(report_id)
+        # 详情接口补充完整摘要视图（同 handle_get 口径）
+        full_summary = self.repository.load_full_report_data(report_id)
+        aggregate.full_summary = (
+            normalize_summary_metric_dicts(full_summary)
+            if full_summary is not None else None
+        )
+        return aggregate
+
+    def handle_get_by_task(self, query: GetReportByTaskQuery) -> Optional[ReportAggregate]:
+        """处理按任务 ID 查询最新报告。
+
+        Args:
+            query: GetReportByTaskQuery
+
+        Returns:
+            ReportAggregate 或 None
+        """
+        aggregate = self.repository.get_by_task(query.task_id)
+        if aggregate is None:
+            return None
+        aggregate.summaries = self.repository.load_summaries(aggregate.id)
+        return aggregate
+
+    @staticmethod
+    def _derive_generation_progress(task_id) -> int:
+        """从任务执行进度推导报告生成进度（0-100）。
+
+        任务查询失败/无进度数据时回退 0，不影响 generating 状态判定。
+        """
+        try:
+            from report_service.infrastructure.clients.grpc_clients import _grpc_get_tasks_by_ids
+            tasks = _grpc_get_tasks_by_ids([task_id])
+            task = tasks[0] if tasks else None
+            if task is None:
+                return 0
+
+            def _get(key, default=None):
+                if isinstance(task, dict):
+                    return task.get(key, default)
+                return getattr(task, key, default)
+
+            total = int(_get('total_cases', 0) or 0)
+            completed = int(_get('completed_cases', 0) or 0)
+            return int(completed / total * 100) if total > 0 else 0
+        except Exception:
+            logger.warning("推导报告生成进度失败 task_id=%s", task_id, exc_info=True)
+            return 0
+
+    def handle_get_report_progress(self, query: GetReportProgressQuery) -> Optional[dict]:
+        """处理报告生成进度查询（从任务/报告生成状态推导）。
+
+        语义：
+        - 报告不存在（或已软删除）→ None（调用方转 404）
+        - 该任务报告生成锁被持有 → generating，progress 按任务完成用例数推导
+        - 其余 → completed，progress=100（报告行落库即生成完成）
+
+        Returns:
+            dict: {report_id, task_id, status, progress, report_status?} 或 None
+        """
+        from report_service.application.services.report_task_generator import is_generation_locked
+
+        aggregate = self.repository.get_by_id(query.report_id)
+        if aggregate is None:
+            return None
+        task_id = aggregate.task_id
+        if task_id and is_generation_locked(task_id):
+            return {
+                'report_id': aggregate.id,
+                'task_id': task_id,
+                'status': 'generating',
+                'progress': self._derive_generation_progress(task_id),
+            }
+        return {
+            'report_id': aggregate.id,
+            'task_id': task_id,
+            'status': 'completed',
+            'progress': 100,
+            'report_status': aggregate.status,
+        }
+
+    def handle_list(self, query: ListReportsQuery) -> List[ReportAggregate]:
+        """处理分页列出报告（各条附摘要统计）。
+
+        Args:
+            query: ListReportsQuery（favorite/deleted/user_id 见 INT-141；
+                start_time/end_time/algorithm_type 见 INT-2351）
+
+        Returns:
+            聚合根列表（不含 cases 等大体积子实体）
+        """
+        aggregates = self.repository.list_reports(
+            status=query.status,
+            report_types=query.report_types,
+            task_id=query.task_id,
+            search=query.search,
+            start_time=query.start_time,
+            end_time=query.end_time,
+            algorithm_type=query.algorithm_type,
+            page=query.page,
+            page_size=query.page_size,
+            favorite=query.favorite,
+            deleted=query.deleted,
+            user_id=query.user_id,
+        )
+        # INT-1463：摘要统计由逐条 load_summaries（每页 20 次查询）改为单次批量加载
+        grouped = self.repository.load_summaries_batch(
+            [aggregate.id for aggregate in aggregates if aggregate is not None])
+        for aggregate in aggregates:
+            if aggregate is None:
+                continue
+            aggregate.summaries = grouped.get(aggregate.id, [])
+        return aggregates
+
+    def handle_count_reports(self, query: ListReportsQuery) -> int:
+        """处理报告总数查询（与 handle_list 同一套过滤，INT-297 信封统一）。
+
+        Args:
+            query: ListReportsQuery（favorite/deleted/user_id 见 INT-141，
+                report_types 见 INT-280，时间窗/算法类型见 INT-2351）
+
+        Returns:
+            满足过滤条件的报告总数。
+        """
+        return self.repository.count_reports(
+            status=query.status,
+            report_types=query.report_types,
+            task_id=query.task_id,
+            search=query.search,
+            start_time=query.start_time,
+            end_time=query.end_time,
+            algorithm_type=query.algorithm_type,
+            favorite=query.favorite,
+            deleted=query.deleted,
+            user_id=query.user_id,
+        )
+
+    def handle_list_report_briefs_by_task_ids(self, query) -> dict:
+        """页级批量取整页任务的报告摘要（INT-1462：任务列表 N+1 消解）。
+
+        Args:
+            query: ListReportBriefsByTaskIdsQuery（task_ids / per_task_limit）
+
+        Returns:
+            {task_id(int): [{id,name,status,type,created_at}, ...]}，无报告的任务缺席
+        """
+        return self.repository.list_report_briefs_by_task_ids(
+            task_ids=query.task_ids,
+            per_task_limit=query.per_task_limit,
+        )
+
+
+    def handle_count_reports_by_tabs(self, query) -> dict:
+        """Tab / 类型 / 收藏一次聚合计数（INT-1463；INT-2339 随筛选收缩）。
+
+        Args:
+            query: CountReportsByTabsQuery（search / favorite / deleted / user_id）
+
+        Returns:
+            {'all': N, 'draft': N, 'published': N, 'comparison': N,
+             'types': {...}, 'favorite': N}
+        """
+        return self.repository.count_reports_by_tabs(
+            search=query.search,
+            favorite=query.favorite,
+            deleted=query.deleted,
+            user_id=query.user_id,
+        )
+
+
+    def handle_list_favorite_report_ids(self, user_id) -> dict:
+        """处理收藏报告 ID 列表查询。委托 report_favorite_trash_service。"""
+        from report_service.application.favorite_trash_service import report_favorite_trash_service
+        return report_favorite_trash_service.list_favorite_ids(user_id)
+
+    def handle_list_deleted_reports(self, page: int = 1, per_page: int = 20,
+                                    search: str = None) -> dict:
+        """处理回收站报告列表查询。委托 report_favorite_trash_service。"""
+        from report_service.application.favorite_trash_service import report_favorite_trash_service
+        return report_favorite_trash_service.list_deleted_reports(page, per_page, search)
+
+    def handle_get_summary(self, query: GetReportSummaryQuery) -> Optional[ReportAggregate]:
+        """处理查询报告摘要（含子实体集合）。
+
+        加载主聚合根后，附加 summaries/cases/metric_stats/raw_data 等子实体。
+
+        Args:
+            query: GetReportSummaryQuery
+
+        Returns:
+            填充了子实体的 ReportAggregate，或 None（报告不存在）
+        """
+        aggregate = self.repository.get_by_id(query.report_id)
+        if aggregate is None:
+            return None
+        # 加载子实体集合并填充到聚合根
+        aggregate.summaries = self.repository.load_summaries(query.report_id)
+        aggregate.cases = self.repository.load_cases(query.report_id)
+        aggregate.metric_stats = self.repository.load_metric_stats(query.report_id)
+        aggregate.raw_data = self.repository.load_raw_data(query.report_id)
+        return aggregate
+
+    def handle_get_trend(self, query: GetTrendDataQuery) -> list:
+        """处理查询报告趋势数据。
+
+        返回按 created_at 升序排列的报告列表，每条含成功率/时长，
+        并计算与前一条相比的变化量。
+
+        Args:
+            query: GetTrendDataQuery
+
+        Returns:
+            list[dict]: 趋势数据列表
+        """
+        rows = self.repository.get_trend_data(
+            report_type=query.report_type,
+            task_id=query.task_id,
+            limit=query.limit,
+        )
+        trend_data = []
+        prev_rate = None
+        prev_duration = None
+        for row in rows:
+            rate = row.get('pass_rate', 0) or 0
+            duration = row.get('duration', 0) or 0
+            delta_rate = round(rate - prev_rate, 2) if prev_rate is not None else 0
+            delta_dur_pct = round((duration - prev_duration) / prev_duration * 100, 2) if prev_duration else 0
+            trend_data.append({
+                'report_id': row.get('report_id'),
+                'name': row.get('name'),
+                'created_at': row.get('created_at').isoformat() if row.get('created_at') else None,
+                'success_rate': rate,
+                'avg_duration': duration,
+                'delta_success_rate': delta_rate,
+                'delta_duration_percent': delta_dur_pct,
+            })
+            prev_rate = rate
+            prev_duration = duration
+        return trend_data
+
+    # ---- 参考参数构建（供 api_gateway task_query_service 通过 gRPC 调用）----
+
+    def handle_build_reference_params(self, case_info: dict, case_results: list) -> dict:
+        """构建参考参数和音频列表。
+
+        从 case_results 中提取 adjusted_reference_params，或回退到 case_info.reference_params / config，
+        再通过 algorithm_service gRPC 获取标准化的参考参数格式。
+        同时构建音频列表。
+
+        Args:
+            case_info: TestCase 信息 dict
+            case_results: 测试结果列表
+
+        Returns:
+            dict: {reference_params, audios_list}
+        """
+        from report_service.application.services.report_data_builder import ReportDataBuilder
+        from report_service.application.services.report_helpers import ReportHelpers
+        from types import SimpleNamespace
+
+        case = SimpleNamespace(**case_info) if isinstance(case_info, dict) else case_info
+        results = case_results or []
+
+        ref_params = ReportDataBuilder._get_reference_params(case, results)
+        audios_list = ReportHelpers._build_audios_list(case)
+
+        return {'reference_params': ref_params, 'audios_list': audios_list}

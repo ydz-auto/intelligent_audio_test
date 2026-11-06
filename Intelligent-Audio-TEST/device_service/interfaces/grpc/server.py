@@ -1,0 +1,129 @@
+# -*- coding: utf-8 -*-
+"""device_service gRPC server 启动模块。
+
+注册 device_service 相关 servicer（定义于 interfaces/grpc/servicers.py）：
+- DeviceServiceServicer
+- DeviceResultServiceServicer
+- EnvDeviceServiceServicer
+- DeviceConfigServiceServicer
+- PlaybackConfigServiceServicer
+- SPLConfigServiceServicer
+- LaboratoryConfigServiceServicer（INT-655 实验室 CRUD）
+
+端口：50053
+"""
+
+import logging
+import os
+from concurrent import futures
+
+# 加载 .env 环境变量（须先于 shared.infrastructure.config 导入）：
+# gRPC-only 服务不经 api_gateway/app.py，手工启动时无人加载 .env，
+# LOCAL_STORAGE_ROOT/AUDIO_STORAGE_PATH 会退回默认 ./storage，
+# 导致播放测试读取 <cwd>/storage/audios/test.wav 失败（INT-1502 同源）。
+try:
+    from dotenv import load_dotenv
+
+    _PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))))
+    load_dotenv(os.path.join(_PROJECT_DIR, '.env'))
+except ImportError:
+    logging.getLogger(__name__).debug("python-dotenv 未安装，跳过 .env 加载")
+
+import grpc
+
+from shared.proto import device_service_pb2_grpc as device_grpc
+from shared.infrastructure.grpc_interceptors import (
+    server_log_interceptor, server_db_scope_interceptor, server_user_context_interceptor,
+)
+from shared.utils.config_manager import config_manager
+from shared.config.service_ports import DEVICE_SERVICE_GRPC_PORT
+from device_service.interfaces.grpc.servicers import (
+    DeviceServiceServicer,
+    DeviceResultServiceServicer,
+    EnvDeviceServiceServicer,
+    DeviceConfigServiceServicer,
+    PlaybackConfigServiceServicer,
+    SPLConfigServiceServicer,
+    LaboratoryConfigServiceServicer,
+)
+
+# 注入 LoggingPort 实现（domain 层通过 ABC 代理访问日志）
+from shared.infrastructure.logging_adapter import inject as _inject_logging_port
+_inject_logging_port()
+
+logger = logging.getLogger(__name__)
+
+
+def start_grpc_server(port=DEVICE_SERVICE_GRPC_PORT):
+    """启动 device_service 的 gRPC server
+
+    Args:
+        port: gRPC 监听端口，默认 50053
+
+    Returns:
+        grpc.Server: 已启动的 server 实例，调用方持有引用以防被 GC 回收
+    """
+    # 初始化数据库连接池（device_service 无 FastAPI lifespan，在此处初始化）
+    # INT-1467：读侧并发 10 时 5+5（pool_size+max_overflow）连接不足以同时
+    # 服务「请求线程 + 监控线程 + 清理线程」，排队会放大偶发尖峰；池大小
+    # 配置化（db.device_service_pool_size，默认 10，配合 max_overflow=5）。
+    from shared.models import database as _db
+    _pool_size = int(config_manager.get_value('db', 'device_service_pool_size', 10))
+    _db.init_db(pool_size=_pool_size)
+
+    # INT-1467：后台预建连接池（建连实测 500~1500ms，不能卡住服务就绪）；
+    # 消除启动后首批并发请求同时建连导致的秒级尖峰。
+    import threading as _threading
+    _threading.Thread(
+        target=_db.warm_up_pool, kwargs={'size': _pool_size},
+        name='db-pool-warmup', daemon=True,
+    ).start()
+
+    # 启动软删除硬清理守护线程（只清理本服务 owned 表 devices/spl_mappings 及子表）
+    from device_service.infrastructure.persistence.soft_delete_cleaner import get_cleaner as get_soft_delete_cleaner
+    _cleaner = get_soft_delete_cleaner()
+    _cleaner.start()
+
+    # 启动设备热插拔实时监听（adb track-devices / hdc 变更检测 → DEVICE_EVENTS → SSE；
+    # 不支持的平台自动跳过，由下面的监控线程兜底对账）
+    from device_service.application.services.device_presence_service import (
+        get_device_presence_service,
+    )
+    get_device_presence_service().start()
+
+    # 启动设备监控守护线程（INT-80：周期健康检查 + 告警规则评估；兜底对账）
+    from device_service.application.services.device_monitor_service import get_monitor_thread
+    _monitor = get_monitor_thread()
+    _monitor.start()
+
+    # gRPC 线程池大小配置化：优先读取 concurrency_config.json 中的 grpc.device_service_workers
+    _max_workers = config_manager.get_value('grpc', 'device_service_workers', 5)
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=_max_workers),
+        interceptors=[server_db_scope_interceptor, server_log_interceptor,
+                      server_user_context_interceptor],
+    )
+    device_grpc.add_DeviceServiceServicer_to_server(DeviceServiceServicer(), server)
+    device_grpc.add_DeviceResultServiceServicer_to_server(DeviceResultServiceServicer(), server)
+    device_grpc.add_EnvDeviceServiceServicer_to_server(EnvDeviceServiceServicer(), server)
+    device_grpc.add_DeviceConfigServiceServicer_to_server(DeviceConfigServiceServicer(), server)
+    device_grpc.add_PlaybackConfigServiceServicer_to_server(PlaybackConfigServiceServicer(), server)
+    device_grpc.add_SPLConfigServiceServicer_to_server(SPLConfigServiceServicer(), server)
+    device_grpc.add_LaboratoryConfigServiceServicer_to_server(LaboratoryConfigServiceServicer(), server)
+    server.add_insecure_port(f'[::]:{port}')
+    server.start()
+    logger.info("device_service gRPC server started on port %s", port)
+    return server
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    # INT-81：挂统一日志基座，运行日志落 logs/{service_name}/（去库化前系统日志仅本地文件）
+    from shared.utils.log_handler import get_db_handler
+    logging.getLogger().addHandler(get_db_handler())
+    _server = start_grpc_server()
+    try:
+        _server.wait_for_termination()
+    except KeyboardInterrupt:
+        _server.stop(0)

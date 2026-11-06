@@ -1,0 +1,476 @@
+# -*- coding: utf-8 -*-
+"""
+维度聚合策略（策略模式 + 注册表）。
+
+每个维度的 statistic_method 字段决定报告统计时用哪种聚合方式。
+策略类通过 output_params 的 agg_role 知道用哪些字段做聚合：
+  - numerator:   分子（加权求和）
+  - denominator: 分母（加权求和）
+  - value:       直接值（简单平均）
+
+新增聚合方式只需实现 AggregationStrategy 并注册到 registry。
+
+（从 V9.7.10 backend/utils/report/aggregation_strategies.py 迁移，随
+  V9.7.31 报告聚合重构落位于 report_service 领域层。）
+"""
+
+from abc import ABC, abstractmethod
+from typing import List, Dict, Any, Optional
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _extract_by_path(data: Dict[str, Any], path: str) -> Optional[Any]:
+    """简单路径提取，支持 a.b.c 格式。"""
+    if not path or not data:
+        return None
+    try:
+        for part in path.split('.'):
+            if isinstance(data, dict):
+                data = data.get(part)
+            elif isinstance(data, list) and part.isdigit():
+                data = data[int(part)]
+            else:
+                return None
+        return data
+    except Exception:
+        return None
+
+
+def _parse_raw_response(raw: Any) -> Optional[dict]:
+    """解析 api_raw_response，返回 result 对象。"""
+    if not raw:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return None
+    if not isinstance(raw, dict):
+        return None
+    # eval_server 响应格式: {code:0, data:{result:{...}}}
+    if raw.get('code') == 0:
+        result_obj = raw.get('data', {}).get('result', {})
+    else:
+        result_obj = raw
+    return result_obj if isinstance(result_obj, dict) else None
+
+
+def _find_by_role(output_params: List[Dict], role: str) -> Optional[str]:
+    """按 agg_role 找 field_path，找不到返回 None。"""
+    for p in output_params or []:
+        if p.get('agg_role') == role and p.get('field_path'):
+            return p['field_path']
+    return None
+
+
+def _count_items(items: List[Dict[str, Any]]) -> tuple:
+    """
+    统计 item 集的用例数与轮次数（按 test_result_id 去重，round_count 按用例求和）。
+    只统计 dimension_value 非 None 的 item（无值的轮次/用例不参与分母）。
+    所有按"用例数/轮次数"取分母的策略共用，保证口径一致。
+    """
+    seen_cases = set()
+    n_cases = 0
+    total_rounds = 0
+    for item in items:
+        if item.get('dimension_value') is None:
+            continue
+        case_id = item.get('test_result_id')
+        if case_id is not None and case_id not in seen_cases:
+            seen_cases.add(case_id)
+            n_cases += 1
+            rc = item.get('round_count')
+            total_rounds += int(rc) if rc else 0
+    return n_cases, total_rounds
+
+
+class AggregationStrategy(ABC):
+    """聚合策略基类。"""
+
+    @abstractmethod
+    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
+                  denominator_mode: str = None) -> Optional[float]:
+        """
+        聚合计算。
+
+        Args:
+            items: 该分组下所有结果的列表，每项包含:
+                - dimension_value: 维度原始值
+                - score: 维度得分
+                - api_raw_response: eval_server 完整响应
+                - test_result_id: TestResult.id
+                - round_count: 该用例该维度有值的轮次数（ratio 策略按轮次口径用）
+            output_params: 维度的 output 参数配置，每项含:
+                - param_code: 参数代码
+                - field_path: 提取路径
+                - field_type: 字段类型
+                - agg_role: 聚合角色 (numerator/denominator/value)
+            denominator_mode: 比率统计分母口径 (round=按轮次 / case=按用例)，仅 ratio 策略使用
+
+        Returns:
+            聚合后的值，None 表示无法计算
+        """
+        ...
+
+
+class SimpleAverageStrategy(AggregationStrategy):
+    """
+    简单平均：sum(values) / 分母。默认策略。
+
+    分母按 denominator_mode（维度配置 agg_denominator）：
+      - 'case'（按用例，默认）：分母 = 用例数（有整体结果时每用例 1 个 item）
+      - 'round'（按轮次）：分母 = 各用例有值轮次数之和（item['round_count']）
+    """
+
+    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
+                  denominator_mode: str = None) -> Optional[float]:
+        values = [item['dimension_value'] for item in items if item.get('dimension_value') is not None]
+        if not values:
+            return None
+        n_cases, total_rounds = _count_items(items)
+        mode = (denominator_mode or 'case').lower()
+        if mode == 'round':
+            denom = total_rounds if total_rounds > 0 else n_cases
+        else:
+            denom = n_cases
+        if denom <= 0:
+            return None
+        return sum(values) / denom
+
+
+class WeightedSumRatioStrategy(AggregationStrategy):
+    """
+    加权比率：Σ(numerator) / Σ(denominator)。
+
+    按 agg_role 找分子和分母的 field_path，从每条结果的 api_raw_response 提取值后累加。
+    典型场景：WER = Σerrors / Σlength（按字数加权）。
+    """
+
+    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
+                  denominator_mode: str = None) -> Optional[float]:
+        numerator_path = _find_by_role(output_params, 'numerator') or 'errors'
+        denominator_path = _find_by_role(output_params, 'denominator') or 'length'
+
+        total_num = 0
+        total_den = 0
+
+        for item in items:
+            result_obj = _parse_raw_response(item.get('api_raw_response'))
+            if not result_obj:
+                continue
+
+            num_val = _extract_by_path(result_obj, numerator_path)
+            den_val = _extract_by_path(result_obj, denominator_path)
+
+            if num_val is not None and den_val is not None and den_val > 0:
+                total_num += num_val
+                total_den += den_val
+
+        if total_den == 0:
+            return None
+
+        # 转为百分比制 (0~100)，配合 score_unit='%' 显示为 "100%"
+        return round(total_num / total_den * 100, 4)
+
+
+def _parse_numeric(value: Any) -> Optional[float]:
+    """把 default_value / 字段值解析成 float，失败返回 None。"""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value).strip())
+    except (ValueError, TypeError):
+        return None
+
+
+class PassRateStrategy(AggregationStrategy):
+    """
+    达标率/占比：达标用例数 / 分组总用例数。
+
+    通过 output_params 的 agg_role 判断达标条件（读取该 param 的 pass_threshold 作为阈值/目标值）：
+      - pass_le: dimension_value <= pass_threshold（及格线型，越低越好，如 WER ≤ 0.1）
+      - pass_ge: dimension_value >= pass_threshold（及格线型，越高越好，如 准确率 ≥ 0.9）
+      - pass_eq: dimension_value == pass_threshold（精确匹配型，如 唤醒成功率 == 1.0）
+
+    若未配置上述任一 agg_role 或 pass_threshold 为空，则回退到 value > 0 判定。
+
+    分母按 denominator_mode（维度配置 agg_denominator）：
+      - 'case'（按用例，默认）：分母 = 配置了该维度且有值的用例数
+      - 'round'（按轮次）：分母 = 各用例该维度有值轮次数之和
+    """
+
+    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
+                  denominator_mode: str = None) -> Optional[float]:
+        threshold, compare_op = _find_pass_condition(output_params)
+
+        # 只统计 dimension_value 非 None 的条目，null 值既不计入达标数也不计入总数
+        valid_items = [item for item in items if _parse_numeric(item.get('dimension_value')) is not None]
+        if not valid_items:
+            return None
+
+        pass_count = 0
+        for item in valid_items:
+            num_val = _parse_numeric(item['dimension_value'])
+            if _is_pass(num_val, threshold, compare_op):
+                pass_count += 1
+
+        n_cases, total_rounds = _count_items(valid_items)
+        mode = (denominator_mode or 'case').lower()
+        if mode == 'round':
+            total = total_rounds if total_rounds > 0 else n_cases
+        else:
+            total = n_cases
+        if total == 0:
+            return None
+
+        # 转为百分比制 (0~100)，配合 score_unit='%' 显示为 "75%"
+        # 精度 4 位（INT-364 对齐 V9.7.10 f02ba75e）：前端聚合展示统一保留 2 位，
+        # 聚合值保留更高精度供对比报告/导出使用，展示层四舍五入即可
+        return round(pass_count / total * 100, 4)
+
+
+def _find_pass_condition(output_params: List[Dict[str, Any]]) -> tuple:
+    """
+    从 output_params 中查找达标条件。
+
+    返回 (threshold, compare_op)：
+      compare_op ∈ {'le', 'ge', 'eq', 'gt0'}
+      threshold 为 float（gt0 时为 0.0）
+    优先级：pass_eq > pass_ge > pass_le > 默认(value>0)
+    """
+    for role, op in (('pass_eq', 'eq'), ('pass_ge', 'ge'), ('pass_le', 'le')):
+        for p in output_params or []:
+            if p.get('agg_role') == role:
+                threshold = _parse_numeric(p.get('pass_threshold'))
+                if threshold is not None:
+                    return threshold, op
+    return 0.0, 'gt0'
+
+
+def _is_pass(value: float, threshold: float, compare_op: str) -> bool:
+    """按比较算符判定是否达标。"""
+    if compare_op == 'le':
+        return value <= threshold
+    if compare_op == 'ge':
+        return value >= threshold
+    if compare_op == 'eq':
+        return value == threshold
+    # 默认: value > 0
+    return value > 0
+
+
+class RatioStrategy(AggregationStrategy):
+    """
+    比率/占比统计：Σ(分子) / Σ(分母) * 100，产出百分比 (0~100)。
+
+    分子 = Σ(item['dimension_value'])（各结果/轮次的原始数量，如打断成功数量）。
+
+    分母口径由 denominator_mode 决定（维度配置 agg_denominator，值 round/case）：
+      - 'case'（按用例，默认）：分母 = 配置了该维度且有值的用例数（按 test_result_id 去重）
+      - 'round'（按轮次）：分母 = 各用例该维度有值轮次数之和（item['round_count']）
+    无论有/无整体结果，轮次数都来自每个用例自身的 round_count，天然避免每轮
+    api_raw_response 重复携带 interruption_rounds 造成的重复计数。
+
+    无轮次记录（如纯 overall 数据）时按轮次口径回退为用例数。
+
+    典型场景：打断成功数量（agg_denominator='round'）
+      → Σ(成功次数) / Σ(各用例实际打断轮数) × 100 = 打断成功率(%)。
+    """
+
+    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
+                  denominator_mode: str = None) -> Optional[float]:
+        mode = (denominator_mode or 'case').lower()
+
+        total_num = 0
+        for item in items:
+            num_val = _parse_numeric(item.get('dimension_value'))
+            if num_val is None:
+                continue
+            total_num += num_val
+
+        n_cases, total_rounds = _count_items(items)
+
+        if mode == 'round':
+            denominator = total_rounds if total_rounds > 0 else n_cases
+        else:
+            denominator = n_cases
+        if denominator == 0:
+            return None
+        # 精度 4 位（INT-364 对齐 V9.7.10 f02ba75e，与 WeightedSumRatioStrategy 一致）
+        return round(total_num / denominator * 100, 4)
+
+
+# ------------------------------------------------------------------
+#  注册表
+# ------------------------------------------------------------------
+
+_REGISTRY: Dict[str, AggregationStrategy] = {
+    'average': SimpleAverageStrategy(),
+    # 通用名：加权比率 Σ分子/Σ分母（原 weighted_wer 仅适用于 WER，现兼容保留）
+    'weighted_sum_ratio': WeightedSumRatioStrategy(),
+    'weighted_wer': WeightedSumRatioStrategy(),  # 旧枚举值兼容别名，新配置请用 weighted_sum_ratio
+    'pass_rate': PassRateStrategy(),
+    'ratio': RatioStrategy(),
+}
+
+
+def register_strategy(name: str, strategy: AggregationStrategy):
+    """注册自定义聚合策略。"""
+    _REGISTRY[name] = strategy
+
+
+def get_strategy(statistic_method: str) -> AggregationStrategy:
+    """按 statistic_method 值获取策略，未知则回退到简单平均。"""
+    return _REGISTRY.get(statistic_method, _REGISTRY['average'])
+
+
+def get_available_strategies() -> List[str]:
+    """返回所有已注册的策略名。"""
+    return list(_REGISTRY.keys())
+
+
+# ------------------------------------------------------------------
+#  INT-1752：加权聚合的原始响应依赖与降级说明
+# ------------------------------------------------------------------
+
+#: 需要 api_raw_response 才能取分子/分母的聚合方式。
+#: 维度结果不带原始响应时这些策略返回 None——此前报告侧会静默退回简单平均，
+#: 现由 explain_degradation 产出说明并随报告指标下发，前端据此标注「降级为简单平均」。
+RAW_RESPONSE_METHODS = frozenset({'weighted_sum_ratio', 'weighted_wer'})
+
+
+def needs_raw_response(statistic_method: str) -> bool:
+    """该聚合方式是否需要 api_raw_response（分子/分母来自原始响应）。"""
+    return (statistic_method or 'average') in RAW_RESPONSE_METHODS
+
+
+def explain_degradation(method: str, items: List[Dict[str, Any]],
+                        output_params: List[Dict[str, Any]] = None,
+                        denominator_mode: str = None) -> Optional[Dict[str, Any]]:
+    """策略聚合无法计算时的降级说明；能算出值或不适用时返回 None。
+
+    仅在 method 属于 RAW_RESPONSE_METHODS 时判定，且以重算一次聚合结果为准
+    （调用方在 aggregate() 返回 None 后才调用，成本只在失败路径上）：
+      - missing_api_raw_response：维度结果未携带原始响应（gRPC 未开 include_body、
+        历史数据缺失、或对比链路无维度结果映射）；
+      - numerator_denominator_unavailable：原始响应在，但配置的分子/分母字段取不到
+        或分母合计为 0。
+
+    Args:
+        method: 维度配置的 statistic_method
+        items: 参与该次聚合的 item 列表
+        output_params: 维度 output 参数（分子/分母的 field_path 来源）
+        denominator_mode: 分母口径（透传给策略，保持与调用方口径一致）
+    """
+    if not needs_raw_response(method):
+        return None
+    if not items:
+        return None
+    if get_strategy(method).aggregate(
+            items, output_params=output_params, denominator_mode=denominator_mode) is not None:
+        return None
+    if not any(_parse_raw_response(it.get('api_raw_response')) for it in items):
+        reason = 'missing_api_raw_response'
+        detail = '维度结果未携带 API 原始响应，无法提取分子/分母'
+    else:
+        reason = 'numerator_denominator_unavailable'
+        detail = 'API 原始响应中未取到配置的分子/分母字段，或分母合计为 0'
+    return {
+        'configured_method': method,
+        'applied_method': 'average',
+        'reason': reason,
+        'detail': detail,
+    }
+
+
+def simple_average_of_items(items: List[Dict[str, Any]]) -> Optional[float]:
+    """加权策略无法计算时的降级值：按 item 的 dimension_value 取算术平均。"""
+    vals = [_parse_numeric(it.get('dimension_value')) for it in items or []]
+    vals = [v for v in vals if v is not None]
+    if not vals:
+        return None
+    return sum(vals) / len(vals)
+
+
+#: INT-2379 C2：加权维度部分覆盖（部分 item 缺原始响应）的降级原因。
+PARTIAL_API_RAW_RESPONSE_COVERAGE = 'partial_api_raw_response_coverage'
+
+#: 指标/响应里缺失 result_id 明细的截断长度（总数另记 missing_total）。
+COVERAGE_MISSING_LIMIT = 50
+
+
+def _raw_response_coverage(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """统计参与聚合的 item 中带原始响应的覆盖情况。
+
+    Returns:
+        {requested, covered, missing, missing_total}
+        requested/covered 按 item 计；missing 为缺原始响应的去重 result_id。
+    """
+    requested = len(items)
+    covered = 0
+    missing_ids = []
+    seen = set()
+    for it in items or []:
+        if _parse_raw_response(it.get('api_raw_response')):
+            covered += 1
+            continue
+        rid = it.get('test_result_id')
+        if rid is not None and rid not in seen:
+            seen.add(rid)
+            missing_ids.append(rid)
+    return {
+        'requested': requested,
+        'covered': covered,
+        'missing': missing_ids[:COVERAGE_MISSING_LIMIT],
+        'missing_total': len(missing_ids),
+    }
+
+
+def explain_aggregation_degradation(method: str, items: List[Dict[str, Any]],
+                                    output_params: List[Dict[str, Any]] = None,
+                                    denominator_mode: str = None,
+                                    aggregate_value: Any = None) -> Optional[Dict[str, Any]]:
+    """加权维度的降级说明（含部分覆盖标记），无降级返回 None。
+
+    与 explain_degradation 的区别：本函数对**已算出值**的情况也会判定。
+    INT-2379 C2：部分 item 缺原始响应时，策略按有快照的 item 加权，值不再
+    静默偏小——统一标 `partial_api_raw_response_coverage` 并带 coverage 明细：
+
+      - 缺 body 比例 = 0          → 不标；
+      - 0 < 比例 < 1 且能算出值   → partial_api_raw_response_coverage（applied_method 仍为原策略）；
+      - 全部缺 body / 分子分母取不到且算不出值 → 沿用 missing_api_raw_response /
+        numerator_denominator_unavailable，并把 coverage 明细附在说明里。
+    """
+    if not needs_raw_response(method) or not items:
+        return None
+    coverage = _raw_response_coverage(items)
+    partial = 0 < coverage['covered'] < coverage['requested']
+    coverage_summary = {
+        **coverage,
+        'reason': PARTIAL_API_RAW_RESPONSE_COVERAGE if partial else None,
+    }
+
+    if aggregate_value is None:
+        degradation = explain_degradation(
+            method, items, output_params=output_params,
+            denominator_mode=denominator_mode)
+        if degradation is not None and partial:
+            degradation['coverage'] = coverage_summary
+        return degradation
+
+    if partial:
+        return {
+            'configured_method': method,
+            'applied_method': method,
+            'reason': PARTIAL_API_RAW_RESPONSE_COVERAGE,
+            'detail': (f'{coverage["requested"] - coverage["covered"]}/'
+                       f'{coverage["requested"]} 个参与聚合的 item 缺少 API 原始响应，'
+                       f'加权结果只覆盖 {coverage["covered"]} 个 item'),
+            'coverage': coverage_summary,
+        }
+    return None

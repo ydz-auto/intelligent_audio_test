@@ -1,6 +1,6 @@
 # 报告 Benchmark 排行功能设计文档
 
-> 【负责人裁定 2026-10-10：搁置，不计完成度】本功能暂缓实施，当前进度不纳入 V9.7.31 完成度统计。
+> 【实现演进裁定 2026-10-15（INT-400 #8）：已恢复实施】Benchmark 排行前端 UI 恢复设计（原 2026-10-10 搁置裁定由负责人 2026-10-15 撤销），主库 Vue 版由 INT-476/INT-482 落地，后端报告发布端点+五表缺口由 INT-481 补齐（2026-10-16）。
 
 ## 1. 文档说明
 
@@ -207,10 +207,12 @@
 
 ### 5.2 场景匹配
 
-- 排行按 **测试集 + 场景标签** 分组：同一测试集、同一场景下的被测主体才互相排名。
-- 测试集取自正式任务快照中的 `caseIds` 聚合所属 `test_case_groups`。
-- 场景标签取自已执行用例的标签聚合；无匹配场景时使用 `通用` 场景。
-- 每个被测主体在每个指标上最多一条排行记录；无数据的指标不参与排行。
+> 【实现演进裁定 2026-10-20（INT-1040 一致性审计回写）】实际实施的分组口径与本节原文不同，以本裁定为准：排行分组键为 **被测类别 + 指标 + 场景键**（`(category, metric_code, scenario_key)`），`suite`（测试集标识）仅作行级展示元数据与筛选维度、**不作为分组键**——外部基线数据无测试集概念，以「类别 + 指标 + 场景」作公共分组键保证双轨（platform_test / external_import）数据可合并排行。场景键取自指标映射 `scenario_tags` 首个非空标签（外部基线条目自带 `scenario_tags` 时优先）；无匹配场景时使用 `通用` 场景。INT-970 报告详情排行区块验收即按此口径（快照行含 `category/metric_code/scenario_key`，前端按 (category × metric_code × scenario_key) 分组、组内 rank 升序）。
+
+- 排行分组键 = 被测类别 × 指标 × 场景键：同一分组内的被测主体才互相排名。
+- `suite`（测试集标识）仅作行级展示元数据与筛选维度（排行计算 / 查询 / 报告发布可按 `suite` 限定范围），不参与分组。
+- 场景键取自指标映射 `scenario_tags` 首个非空标签（外部基线条目自带 `scenario_tags` 时优先）；无匹配场景时使用 `通用` 场景。
+- 每个被测主体在每个分组内至多一条排行记录（按 `source` 维度；同模型双轨并存可有两条：platform_test + external_import）；无数据的指标不参与排行。
 
 ### 5.3 排行算法
 
@@ -344,18 +346,33 @@
 
 ### 6.7 `benchmark_reports`（Benchmark 报告发布记录）
 
+> 【实现演进裁定 2026-10-16（INT-481）】按 INT-481 落地列口径回写：原 §6.7 仅含报告元数据列，实现新增 `task_id`/`source`/`algorithm_set`/`metric_count`/`ranking_data`（发布时点排行快照 JSON）/`updated_at`，用于报告可追溯与快照不漂移。
+
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `id` | bigint | 发布记录 ID |
 | `report_id` | bigint | 外键 → test_reports.id |
+| `task_id` | bigint | 来源任务 ID（正式任务发布聚合，可空） |
 | `suite` | varchar | 测试集标识 |
 | `category` | varchar | 被测类别 |
+| `source` | varchar | 双轨来源：platform_test / external_import（空=全量） |
+| `algorithm_set` | varchar | 算法集标识（空=全量） |
 | `published_task_count` | int | 参与排行的正式任务数 |
 | `subject_count` | int | 参与排行的被测主体数 |
+| `metric_count` | int | 参与排行的指标数 |
+| `ranking_data` | json | 排行 ReadModel 快照（发布时点定格，报告不随后续重算漂移） |
 | `version` | int | Benchmark 报告版本号 |
 | `published_by` | varchar | 发布人 |
 | `published_at` | datetime | 发布时间 |
 | `created_at` | datetime | 创建时间 |
+| `updated_at` | datetime | 更新时间 |
+
+> 【实现演进裁定 2026-10-20（INT-1040 一致性审计回写）】`ranking_data` 快照内层结构（发布时点排行 ReadModel 定格，INT-970 报告详情排行区块契约）：
+> - `filters`：`{suite, category, source}`——发布筛选口径（字符串，空串 = 全量）
+> - `counts`：`{published_task_count, subject_count, metric_count, row_count}`——参与排行的正式任务数 / 被测主体数 / 指标数 / 行数
+> - `rows`：排行行数组，每行字段同 `benchmark_rankings` 列口径（§6.3）：`source`（platform_test|external_import）/`published_task_id`/`published_task_version`/`report_id`/`baseline_id`/`subject_name`/`subject_type`/`device_type`/`benchmark_suite`/`category`/`metric_code`/`metric_name`/`metric_value`/`unit`/`direction`（lower_is_better|higher_is_better）/`rank`/`total`/`percentile`/`score100`/`gap_best`/`gap_median`/`delta_external`/`scenario_key`/`computed_at`
+>
+> 列表接口（`GET /api/v1/benchmarks/reports`）不携带 `ranking_data`（列表体积控制，详情再取）；详情接口（`GET /api/v1/benchmarks/reports/{reportId}`）返回完整快照。前端按 (category × metric_code × scenario_key) 分组呈现（组内 rank 升序）。
 
 ## 7. 接口设计
 
@@ -364,7 +381,7 @@
 接口前缀：`/api/v1/benchmarks`。
 
 ```http
-POST /api/v1/benchmarks/ranking/compute          # 全量重算排行（异步 + 进度轮询）
+POST /api/v1/benchmarks/ranking/compute          # 全量重算排行（同步接口；失败不触碰 ReadModel，上次结果保持可查看——INT-482 落地口径，原「异步 + 进度轮询」废弃）
 GET  /api/v1/benchmarks/ranking?suite=full-duplex-v1&category=voice_llm&metricCode=WER
 GET  /api/v1/benchmarks/ranking?publishedTaskId=123
 GET  /api/v1/benchmarks/ranking?source=platform_test   # 仅看平台实测
@@ -486,16 +503,18 @@ frontend/src/infrastructure/api/benchmarkApi.ts
 
 ## 9. 权限与审计
 
+> 【实现演进裁定 2026-10-16（INT-429 / INT-481）】权限码以 `资源:操作` 冒号风格对齐现有编码（原预留点号形式废弃，见 `docs/RBAC权限划分.md` §3.16 注）。INT-481 补 `benchmark:report:read/publish` 两码并授 tester / algo_engineer。
+
 预留权限编码：
 
-- `benchmark.ranking.read` — 查看排行
-- `benchmark.ranking.compute` — 触发排行计算
-- `benchmark.baseline.read` — 查看外部基线数据
-- `benchmark.baseline.write` — 导入/录入外部基线
-- `benchmark.baseline.publish` — 发布基线版本
-- `benchmark.report.read` — 查看 Benchmark 报告
-- `benchmark.report.publish` — 发布 Benchmark 报告
-- `benchmark.mapping.manage` — 管理指标映射
+- `benchmark:ranking:read` — 查看排行
+- `benchmark:ranking:compute` — 触发排行计算
+- `benchmark:baseline:read` — 查看外部基线数据
+- `benchmark:baseline:write` — 导入/录入外部基线
+- `benchmark:baseline:publish` — 发布基线版本
+- `benchmark:report:read` — 查看 Benchmark 报告
+- `benchmark:report:publish` — 发布 Benchmark 报告
+- `benchmark:mapping:manage` — 管理指标映射
 
 审计事件：
 

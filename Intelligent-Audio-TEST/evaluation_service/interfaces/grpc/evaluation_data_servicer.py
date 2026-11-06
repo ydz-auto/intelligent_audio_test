@@ -1,0 +1,182 @@
+# -*- coding: utf-8 -*-
+"""评估数据查询 gRPC servicer（EvaluationDataServiceServicer）
+
+从 servicers.py 拆分（P4-4 大文件拆分）：供 task_service 跨服务查询/删除
+TestResultDimension（evaluation_service 自有 PO，task_service 不能直接访问）。
+"""
+from shared.proto import evaluation_service_pb2 as eval_pb
+from shared.proto import evaluation_service_pb2_grpc as eval_grpc
+from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+
+
+class EvaluationDataServiceServicer(eval_grpc.EvaluationDataServiceServicer):
+    """评估数据查询 servicer — 供 task_service 跨服务查询/删除 TestResultDimension。
+
+    TestResultDimension 是 evaluation_service 自有 PO，task_service 不能直接访问。
+    本 servicer 提供按 result_id 列表批量查询/删除的接口。
+    """
+
+    @staticmethod
+    def _resp(success, message='', data=None):
+        return eval_pb.EvaluationDataResponse(
+            success=success,
+            message=message,
+            data=_dumps(data) if data is not None else "",
+        )
+
+    @staticmethod
+    def _from_result(result):
+        """将 Query/Command Service 返回的 dict 结构化为 _resp 三参数（(success, message, data)）。"""
+        if isinstance(result, dict):
+            return result.get('success', False), result.get('message', ''), result.get('data')
+        return bool(result), '', None
+
+    def GetDimensionResultsByResultIds(self, request, context=None):
+        """按 result_id 列表批量查询维度评估结果（含 dimension_name）。
+
+        INT-1752：request.include_body 为 true 时一并返回
+        api_request_body / api_raw_response（默认 false 保持既有轻量载荷）。
+        """
+        try:
+            result_ids = _loads(request.result_ids, [])
+            if not isinstance(result_ids, list) or not result_ids:
+                return self._resp(True, '', {'items': []})
+
+            # P1-3: 通过 Application Query Service，不直调 Repository
+            from evaluation_service.application.queries.evaluation_query_service import (
+                evaluation_query_service,
+            )
+            result = evaluation_query_service.get_dimension_results_by_result_ids(
+                result_ids, include_body=bool(getattr(request, 'include_body', False)))
+            return self._resp(*self._from_result(result))
+        except Exception as e:
+            return self._resp(False, str(e))
+
+    def DeleteDimensionResultsByResultIds(self, request, context=None):
+        """按 result_id 列表批量删除维度评估记录。"""
+        try:
+            result_ids = _loads(request.result_ids, [])
+            if not isinstance(result_ids, list) or not result_ids:
+                return self._resp(True, 'no-op', {'deleted': 0})
+
+            # P1-3: 通过 Application Command Service，不直调 Repository
+            from evaluation_service.application.commands.evaluation_command_service import (
+                evaluation_command_service,
+            )
+            result = evaluation_command_service.delete_dimension_results_by_result_ids(result_ids)
+            return self._resp(*self._from_result(result))
+        except Exception as e:
+            return self._resp(False, str(e))
+
+    def SetDimensionReviewStatusByResultIds(self, request, context=None):
+        """人工复核评估状态改判（INT-340）：按 result_id 列表批量更新 TRD。
+
+        evaluation_status 取 completed/failed；status（维度结论）取 passed/failed。
+        task_service 复核命令跨服务联动调用；无原子事务，失败由调用方告警降级。
+        """
+        try:
+            result_ids = _loads(request.result_ids, [])
+            if not isinstance(result_ids, list) or not result_ids:
+                return self._resp(True, 'no-op', {'updated': 0})
+            from evaluation_service.application.commands.evaluation_command_service import (
+                evaluation_command_service,
+            )
+            result = evaluation_command_service.set_dimension_review_status_by_result_ids(
+                result_ids, request.evaluation_status, request.status)
+            return self._resp(*self._from_result(result))
+        except Exception as e:
+            return self._resp(False, str(e))
+
+    def AiReviewCheck(self, request, context=None):
+        """LLM 复检（INT-800/INT-823）：单次 AI 复核。
+
+        聚合 ASR/参考文本/维度分/LLM 评语，复用 llm_judge 端点 worker 与维度
+        配置重新判分，返回 verdict/confidence/reasoning。供 task_service 异步
+        执行骨架（AiReviewExecutor）跨服务调用。
+        """
+        try:
+            result_id = int(request.result_id or 0)
+            dimension_id = int(request.dimension_id or 0)
+            task_id = int(request.task_id or 0)
+            test_case_id = request.test_case_id or ''
+            from evaluation_service.application.handlers.ai_review_checker import (
+                ai_review_checker,
+            )
+            result = ai_review_checker.execute(
+                result_id=result_id,
+                dimension_id=dimension_id or None,
+                task_id=task_id or None,
+                test_case_id=test_case_id,
+            )
+            return self._resp(*self._from_result(result))
+        except Exception as e:
+            return self._resp(False, str(e))
+
+    # ==================== 任务数据导入导出（INT-25） ====================
+
+    def ExportDimensionsForTasks(self, request, context=None):
+        """按 result_id 列表导出维度评分行 + 维度定义快照（只读）。"""
+        try:
+            result_ids = _loads(request.result_ids, [])
+            from evaluation_service.application.dimension_transfer_service import (
+                dimension_transfer_service,
+            )
+            return self._resp(*self._from_result(
+                dimension_transfer_service.export_dimensions_for_tasks(result_ids)))
+        except Exception as e:
+            return self._resp(False, str(e))
+
+    def ImportDimensions(self, request, context=None):
+        """导入维度评分（单事务 + 主键冲突剥离 + test_result_id 重映射）。"""
+        try:
+            data = _loads(request.data, {})
+            from evaluation_service.application.dimension_transfer_service import (
+                dimension_transfer_service,
+            )
+            return self._resp(*self._from_result(
+                dimension_transfer_service.import_dimensions(
+                    data.get('rows') or [],
+                    data.get('result_id_mapping') or {},
+                    data.get('batch_id') or '')))
+        except Exception as e:
+            return self._resp(False, str(e))
+
+    def RollbackDimensionImport(self, request, context=None):
+        """回滚维度导入批次（按批次登记主键删除）。"""
+        try:
+            from evaluation_service.application.dimension_transfer_service import (
+                dimension_transfer_service,
+            )
+            return self._resp(*self._from_result(
+                dimension_transfer_service.rollback_dimension_import(request.batch_id)))
+        except Exception as e:
+            return self._resp(False, str(e))
+
+    # ==================== 增量回导维度合并（INT-1762 D4） ====================
+
+    def MergeDimensions(self, request, context=None):
+        """按 (test_result_id, dimension_id) 覆盖集合并包内维度评分（覆盖集 + 快照）。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            from evaluation_service.application.dimension_merge_service import (
+                dimension_merge_service,
+            )
+            return self._resp(*self._from_result(
+                dimension_merge_service.merge_dimensions(
+                    data.get('rows') or [],
+                    data.get('result_id_mapping') or {},
+                    data.get('dimension_id_mapping') or {},
+                    data.get('batch_id') or '')))
+        except Exception as e:
+            return self._resp(False, str(e))
+
+    def RollbackDimensionMerge(self, request, context=None):
+        """按批次快照回滚维度合并（删除本批新行 + 插回被覆盖旧行）。"""
+        try:
+            from evaluation_service.application.dimension_merge_service import (
+                dimension_merge_service,
+            )
+            return self._resp(*self._from_result(
+                dimension_merge_service.rollback_merge(request.batch_id)))
+        except Exception as e:
+            return self._resp(False, str(e))

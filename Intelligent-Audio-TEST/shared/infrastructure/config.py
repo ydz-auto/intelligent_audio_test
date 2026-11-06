@@ -1,0 +1,503 @@
+"""
+基础设施配置基类（Shared Kernel）
+所有服务的公共配置：数据库、Redis、OSS、gRPC 服务发现、日志
+"""
+import os
+from typing import Optional
+
+# INT-1491：gRPC 客户端默认端口一律取自 shared/config/service_ports.py（端口唯一来源），
+# 不在本文件重复写数字。此前这里仍写 INT-901 之前的 50061/50067/50071/50091，
+# Windows 排除端口段 50060-50159 内无法监听，服务端已按 service_ports 监听 510xx，
+# 网关/服务只要没有显式环境变量就会连回旧端口 → 整批 gRPC UNAVAILABLE。
+# 改端口只改 service_ports.py，客户端默认值随之生效。
+from shared.config.service_ports import (
+    ALGORITHM_SERVICE_GRPC_PORT as _ALGORITHM_SERVICE_GRPC_PORT,
+    API_TEST_SERVICE_GRPC_PORT as _API_TEST_SERVICE_GRPC_PORT,
+    AUDIO_SERVICE_GRPC_PORT as _AUDIO_SERVICE_GRPC_PORT,
+    AUTH_SERVICE_GRPC_PORT as _AUTH_SERVICE_GRPC_PORT,
+    DEVICE_SERVICE_GRPC_PORT as _DEVICE_SERVICE_GRPC_PORT,
+    E2E_TEST_GRPC_PORT as _E2E_TEST_GRPC_PORT,
+    EVALUATION_SERVICE_GRPC_PORT as _EVALUATION_SERVICE_GRPC_PORT,
+    REPORT_SERVICE_GRPC_PORT as _REPORT_SERVICE_GRPC_PORT,
+    TASK_SERVICE_GRPC_PORT as _TASK_SERVICE_GRPC_PORT,
+)
+
+
+class ConfigValidationError(RuntimeError):
+    """配置校验异常"""
+
+
+def _get_env(key: str, default: Optional[str] = None, required: bool = False) -> str:
+    """读取环境变量，required=True 时缺失则报错"""
+    val = os.environ.get(key, default)
+    if required and not val:
+        raise ConfigValidationError(f'环境变量 {key} 未配置')
+    return val
+
+
+def _get_int(key: str, default: int = 0, required: bool = False) -> int:
+    val = _get_env(key, str(default) if default else None, required)
+    return int(val) if val else 0
+
+
+def _get_bool(key: str, default: bool = False) -> bool:
+    return os.environ.get(key, str(default)).lower() in ('true', '1', 'yes')
+
+
+def _get_float(key: str, default: float = 0.0) -> float:
+    """读取浮点环境变量；缺省按默认值，非法值回落默认值（不抛异常）。"""
+    raw = os.environ.get(key)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+# 日志归档阈值默认值（INT-1962）：logs 表行数超过该值才触发冷数据归档。
+LOG_ARCHIVE_THRESHOLD_DEFAULT = 300000
+
+
+def get_log_archive_threshold() -> int:
+    """归档阈值（env ``LOG_ARCHIVE_THRESHOLD`` 优先，缺省 300000；``<= 0`` = 禁用归档）。
+
+    INT-1962：该阈值原先是 ``shared/utils/log_handler/_constants.py`` 里的硬编码
+    常量，发版后无法关停归档。改为每次调用重新读 env（不在导入时冻结），
+    运维在部署前设 ``LOG_ARCHIVE_THRESHOLD=0`` 即可让归档巡检整体静默，
+    与其他批次的发版解耦。
+
+    空值、非整数等非法配置一律回落默认值：日志巡检跑在后台线程，
+    不能因为一个配置笔误抛异常把巡检打断。
+    """
+    raw = (os.environ.get('LOG_ARCHIVE_THRESHOLD') or '').strip()
+    if not raw:
+        return LOG_ARCHIVE_THRESHOLD_DEFAULT
+    try:
+        return int(raw)
+    except ValueError:
+        return LOG_ARCHIVE_THRESHOLD_DEFAULT
+
+
+class BaseConfig:
+    """基础设施配置（所有服务共用）"""
+
+    # --- 平台版本（/health 暴露，供 tests/api 健康检查区分不同分支，避免误连）---
+    PLATFORM_VERSION: str = _get_env('PLATFORM_VERSION', 'V10.11.2')
+
+    # --- 数据库 ---
+    AUDIO_STORAGE_PATH: str = os.environ.get(
+        'AUDIO_STORAGE_PATH',
+        os.path.join(os.environ.get('LOCAL_STORAGE_ROOT', './storage'), 'audios')
+    )
+    # 本地静态资源根（音频上传临时目录/历史数据重映射基准）
+    LOCAL_STORAGE_ROOT: str = os.environ.get('LOCAL_STORAGE_ROOT', './storage')
+    # 历史静态根（逗号分隔）：存量绝对路径音频的旧存储根，解析时重映射到
+    # LOCAL_STORAGE_ROOT 下同相对路径（存储根迁移后救活旧记录，INT-106）
+    AUDIO_LEGACY_STATIC_ROOTS: str = _get_env('AUDIO_LEGACY_STATIC_ROOTS', '')
+
+    # --- 音频标签 id→name 进程内快照缓存（INT-2000）---
+    # 列表/详情解析 tag_id → name 原先每请求跨服务拉一次全量标签表
+    # （INT-1992 分段实测 21.2ms/请求，占 ListAudios 单请求 33.7%）。改为
+    # 进程内快照 + TTL：TTL 内零跨服务调用，到期才刷新一次（并发单飞）。
+    # 0 = 关闭缓存（退回每请求打上游的旧行为，留作线上紧急开关）。
+    # 陈旧窗口：标签重命名/删除最长 TTL 秒后才可见（本服务不主动失效）。
+    AUDIO_TAG_ACL_CACHE_TTL_SECONDS: int = _get_int(
+        'AUDIO_TAG_ACL_CACHE_TTL_SECONDS', 60)
+    # 「查不到」负缓存秒数（默认 0 = 关闭）：上游成功、快照里没有该 id 时
+    # 记住该 id，窗口内重复出现只记账不重复解析。「查不了」（上游异常/
+    # 超时）一律不进负缓存 —— 否则一次上游故障会被固化成一个 TTL 的「标签
+    # 不存在」，把所有标签名降级成数字 id。
+    AUDIO_TAG_ACL_NEGATIVE_CACHE_SECONDS: int = _get_int(
+        'AUDIO_TAG_ACL_NEGATIVE_CACHE_SECONDS', 0)
+
+    # --- 标签快照刷新取证与节奏（INT-2047）---
+    # TTL 到期原先由第一个到达的请求线程自己打上游，且 ListTags 没有显式
+    # deadline（落共享 channel 的 60 s 默认），上游一抖就把整段跨服务时延
+    # 转嫁给用户请求（实测 refresh 281 ms – 29.5 s、列表 max 7958 ms）。
+    # 现改为请求线程只读快照、刷新交给后台线程，刷新调用显式带下面的 deadline。
+    AUDIO_TAG_ACL_REFRESH_TIMEOUT_SECONDS: float = _get_float(
+        'AUDIO_TAG_ACL_REFRESH_TIMEOUT_SECONDS', 2.0)
+    # refresh-ahead 比例（默认 0.7）：快照活到 TTL 的该比例时顺带排期一次
+    # 后台刷新，TTL 真正到期时通常已命中新快照。<=0 或 >=1 = 关闭预热。
+    AUDIO_TAG_ACL_REFRESH_AHEAD_RATIO: float = _get_float(
+        'AUDIO_TAG_ACL_REFRESH_AHEAD_RATIO', 0.7)
+    # 刷新失败后的重试退避（秒，默认 1）：上游挂掉时避免每个过期请求都排一次。
+    AUDIO_TAG_ACL_REFRESH_BACKOFF_SECONDS: float = _get_float(
+        'AUDIO_TAG_ACL_REFRESH_BACKOFF_SECONDS', 1.0)
+    # 起服预热开关（默认开）：audio_service 启动时同步拉一次快照，避免首轮
+    # 列表请求降级成数字 id。
+    AUDIO_TAG_ACL_WARMUP_ENABLED: bool = _get_bool(
+        'AUDIO_TAG_ACL_WARMUP_ENABLED', True)
+
+    DATABASE_URL: str = _get_env('DATABASE_URL', required=True)
+
+    # --- Redis ---
+    REDIS_URL: str = _get_env('REDIS_URL', 'redis://localhost:6379')
+
+    # --- Redis 事件总线频道前缀（INT-1235）---
+    # 真实库栈与 5000 段开发栈共用同一 Redis 实例时，pub/sub 通道名跨 DB index
+    # 全局共享：真实栈 SSE 会转发测试栈发布的 task_log / task_progress 等事件，
+    # 事件里的 task_id/report_id 在主库不存在，前端名称解析逐个 404（INT-1227）。
+    # 真实栈经 real_stack.py 设置非空前缀（如 real_）把通道隔离成
+    # real_task_events 等；默认空 = 保持原通道名，5000 段等其它栈不受影响。
+    EVENT_CHANNEL_PREFIX: str = _get_env('EVENT_CHANNEL_PREFIX', '')
+
+    # --- OSS (RustFS / S3 兼容) ---
+    OSS_ENDPOINT: str = _get_env('OSS_ENDPOINT', 'http://localhost:9000')
+    # 对浏览器/第三方暴露的 OSS 地址（INT-1719）：预签名 URL 一律由独立客户端按此
+    # endpoint 签名，内部读写仍走 OSS_ENDPOINT。
+    # compose 里 OSS_ENDPOINT=http://rustfs:9000 只有容器内可解析，把它签进 URL 交给
+    # 宿主浏览器 → net::ERR_NAME_NOT_RESOLVED（INT-1710 用例预览「音频播放失败」）。
+    # 空串 = 回落 OSS_ENDPOINT（宿主/单机部署零行为变化）；跨机访问要改成局域网 IP
+    # 或公开域名，不要写死 127.0.0.1。
+    OSS_PUBLIC_ENDPOINT: str = _get_env('OSS_PUBLIC_ENDPOINT', '')
+    OSS_ACCESS_KEY: str = _get_env('OSS_ACCESS_KEY', required=True)
+    OSS_SECRET_KEY: str = _get_env('OSS_SECRET_KEY', required=True)
+    OSS_REGION: str = _get_env('OSS_REGION', 'us-east-1')
+
+    # --- OSS 客户端管理类操作短超时（INT-1348）---
+    # delete_object/exists/delete_prefix 等管理操作对超时不敏感，若复用主客户端
+    # 长 read_timeout（60s）× 3 次重试，OSS 不可达或响应慢时会把调用悬挂到网关
+    # gRPC 60s 截止之后（DELETE /audios/{id} 偶发 DEADLINE_EXCEEDED 400 的根因）。
+    # 独立短超时客户端快速失败，业务侧 try/except 兜底保证数据库操作照常进行。
+    # OSS_ADMIN_MAX_ATTEMPTS 语义 = botocore 的 total_max_attempts（总尝试次数，
+    # 含首次调用），不是 max_attempts（重试次数 = 总尝试 - 1，botocore/args.py
+    # total_max_attempts = max_attempts + 1，易误解，INT-1348 验收打回收口）。
+    # 默认 2 次总尝试 = 首次 + 1 次重试；read 5s/connect 3s 下 OSS 假死最坏约
+    # 10~15s 快速失败，远小于网关 gRPC 60s 截止。
+    OSS_ADMIN_READ_TIMEOUT_SECONDS: int = _get_int('OSS_ADMIN_READ_TIMEOUT_SECONDS', 5)
+    OSS_ADMIN_CONNECT_TIMEOUT_SECONDS: int = _get_int('OSS_ADMIN_CONNECT_TIMEOUT_SECONDS', 3)
+    OSS_ADMIN_MAX_ATTEMPTS: int = _get_int('OSS_ADMIN_MAX_ATTEMPTS', 2)
+
+    # 单桶模式：所有数据存同一桶，用 OSS_BUCKET_NAME + OSS_KEY_PREFIX 区分。
+    # 配置了 OSS_BUCKET_NAME 后，下面各 category 的桶名被忽略，key 统一加前缀：
+    #   {OSS_KEY_PREFIX}/{category}/{原key}
+    # 不配置则回退到多桶模式（向后兼容）。
+    OSS_BUCKET_NAME: str = _get_env('OSS_BUCKET_NAME', '')  # 单桶名，空则用多桶
+    OSS_KEY_PREFIX: str = _get_env('OSS_KEY_PREFIX', '')    # 桶内统一前缀，如 intelligent_audio_test
+
+    # 多桶模式（向后兼容，OSS_BUCKET_NAME 为空时生效）
+    OSS_BUCKET_AUDIOS: str = _get_env('OSS_BUCKET_AUDIOS', 'audios')
+    OSS_BUCKET_CASE_RESULT: str = _get_env('OSS_BUCKET_CASE_RESULT', 'case-result')
+    OSS_BUCKET_REF_PARAMS: str = _get_env('OSS_BUCKET_REF_PARAMS', 'ref-params')
+    OSS_BUCKET_REPORTS: str = _get_env('OSS_BUCKET_REPORTS', 'reports')
+    OSS_BUCKET_ARCHIVES: str = _get_env('OSS_BUCKET_ARCHIVES', 'archives')
+    OSS_BUCKET_TEMP: str = _get_env('OSS_BUCKET_TEMP', 'temp')
+    OSS_BUCKET_RAW_CHUNKS: str = _get_env('OSS_BUCKET_RAW_CHUNKS', 'raw-chunks')  # 前端直传分片临时存储，带 TTL
+
+    # --- 统一存储降级 ---
+    STORAGE_FALLBACK_ENABLED: bool = _get_bool('STORAGE_FALLBACK_ENABLED', True)  # OSS 不可用时降级到本地磁盘
+    STORAGE_LOCAL_ROOT: str = _get_env('STORAGE_LOCAL_ROOT', './storage_local')   # 本地降级存储根目录
+
+    # --- 任务数据导入导出（INT-25）---
+    # 网关与 task_service 共享磁盘读写导出/导入 ZIP：docker 部署时两容器需挂载同一卷
+    DATA_TRANSFER_TMP_DIR: str = _get_env(
+        'DATA_TRANSFER_TMP_DIR',
+        os.path.join(os.environ.get('LOCAL_STORAGE_ROOT', './storage'), 'data_transfer')
+    )
+    # 网关 ZIP 上传大小上限（MB），显式设置防超大包拖垮网关
+    DATA_TRANSFER_MAX_UPLOAD_MB: int = _get_int('DATA_TRANSFER_MAX_UPLOAD_MB', 2048)
+    # 链路 1 用例一致性硬校验（INT-1759，D0 裁定 A10）：引用用例在目标库缺失/已软删/
+    # 私有且非 owner 时拒绝导入。请求级 require_case_consistency 只能放宽到 false，
+    # 请求 intent=restore 时默认不校验（回执写明无法重新执行）。
+    DATA_TRANSFER_CASE_CONSISTENCY_REQUIRED: bool = _get_bool(
+        'DATA_TRANSFER_CASE_CONSISTENCY_REQUIRED', True)
+    # 本端稳定服务标识（INT-1760 / D0 A4）：导出写 manifest.serverInfo.source，
+    # 导入侧以它作为 source_map.source_server。空则回落 SERVICE_NAME-hostname
+    # 并打 WARNING（hostname 换机即变，只作兼容兜底，生产必须显式配置）。
+    DATA_TRANSFER_SERVER_ID: str = _get_env('DATA_TRANSFER_SERVER_ID', '')
+
+    # --- 文件型独立报告导入（INT-1763 §6.2，D0 A11-2）---
+    # Report Studio 上传文件（md/html/pptx）大小上限（MB），独立于搬运整包上限；
+    # 超限网关直接 413，不落盘。
+    REPORT_STUDIO_UPLOAD_MAX_MB: int = _get_int('REPORT_STUDIO_UPLOAD_MAX_MB', 50)
+
+    # --- 报告统计分析（INT-2237 §8：/reports/statistics*）---
+    # 未传 start_time 时的默认统计窗口（天）：统计基础行不再无界全表 outer join，
+    # 统计/趋势/报表生成三入口共用同一窗口（0 = 不设默认窗，按调用方给定范围）
+    REPORT_STATISTICS_DEFAULT_WINDOW_DAYS: int = _get_int(
+        'REPORT_STATISTICS_DEFAULT_WINDOW_DAYS', 90)
+    # 统计基础行单次物化上限（条，0 = 不限）：超限显式报错让调用方缩小时间范围，
+    # 绝不静默截断成部分聚合（对齐 LOG_DB_EXPORT_MAX_ROWS 口径）
+    REPORT_STATISTICS_MAX_ROWS: int = _get_int('REPORT_STATISTICS_MAX_ROWS', 20000)
+
+    # --- 服务发现 ---
+    SERVICE_HOST: str = _get_env('SERVICE_HOST', '0.0.0.0')
+    SERVICE_NAME: str = _get_env('SERVICE_NAME', 'unknown')
+
+    # --- 日志 ---
+    LOG_LEVEL: str = _get_env('LOG_LEVEL', 'INFO').upper()
+    CONSOLE_LOG_ENABLED: bool = _get_bool('CONSOLE_LOG_ENABLED', True)
+
+    # --- 日志体系（INT-81）：服务运行日志与业务日志全部落文件 ---
+    LOG_ROOT_DIR: str = _get_env('LOG_ROOT_DIR', './logs')
+    # 环境标识（dev/prod）：prod 下 DEBUG 级日志不落业务文件
+    LOG_ENVIRONMENT: str = _get_env('LOG_ENVIRONMENT', 'dev').lower()
+    # 文件日志统一保留期（INT-1793 契约 / 负责人 2026-10-24 裁定：全部日志文件 30 天）。
+    # 审计/业务/服务三棵树都继承本值；细分类别只允许「显式覆盖」，不得内置不同默认。
+    LOG_FILE_RETENTION_DAYS: int = _get_int('LOG_FILE_RETENTION_DAYS', 30)
+    # 服务运行日志：logs/{service_name}/ 单文件上限与保留天数（按天+按大小双条件轮转）
+    LOG_SERVICE_MAX_MB: int = _get_int('LOG_SERVICE_MAX_MB', 50)
+    LOG_SERVICE_RETENTION_DAYS: int = _get_int(
+        'LOG_SERVICE_RETENTION_DAYS', LOG_FILE_RETENTION_DAYS)
+    # 业务日志（执行/评估/设备）：去库化落文件开关与阈值
+    LOG_BUSINESS_ENABLED: bool = _get_bool('LOG_BUSINESS_ENABLED', True)
+    # 回滚开关：True 时业务日志同时保留入库（历史行为），默认仅落文件
+    LOG_BUSINESS_DB_ENABLED: bool = _get_bool('LOG_BUSINESS_DB_ENABLED', False)
+    LOG_BUSINESS_MAX_MB: int = _get_int('LOG_BUSINESS_MAX_MB', 50)
+    LOG_BUSINESS_RETENTION_DAYS: int = _get_int(
+        'LOG_BUSINESS_RETENTION_DAYS', LOG_FILE_RETENTION_DAYS)
+    # --- 审计日志落文件（INT-1793 契约 §3.4，logs 表零写入）---
+    # 审计落文件总开关（关 = emit 路径退回仅服务文件、不落 DB；task_service 内
+    # S4 直写路径无服务文件兜底，关闭即不落审计——旁路记录不阻塞主流程）
+    LOG_AUDIT_ENABLED: bool = _get_bool('LOG_AUDIT_ENABLED', True)
+    # 故障回退：True 时审计事件同时入库一份（仅 emit 路径，读侧不感知，非口径开关；
+    # task_service 内 S4 直写路径只落文件）
+    LOG_AUDIT_DB_ENABLED: bool = _get_bool('LOG_AUDIT_DB_ENABLED', False)
+    # 单审计文件切分阈值（MB）
+    LOG_AUDIT_MAX_MB: int = _get_int('LOG_AUDIT_MAX_MB', 50)
+    # 审计文件保留天数：继承统一文件保留期，显式设置才覆盖
+    LOG_AUDIT_RETENTION_DAYS: int = _get_int(
+        'LOG_AUDIT_RETENTION_DAYS', LOG_FILE_RETENTION_DAYS)
+    # 到期前归档到 {storage}/archives/audit/{date}/（归档件不自动删）
+    LOG_AUDIT_ARCHIVE_ENABLED: bool = _get_bool('LOG_AUDIT_ARCHIVE_ENABLED', True)
+    # 读侧单次物化上限（0 = 不限；A 道读侧消费）
+    LOG_AUDIT_MAX_SCAN_ENTRIES: int = _get_int('LOG_AUDIT_MAX_SCAN_ENTRIES', 100000)
+    # 无时间筛选的默认窗口天数（A 道读侧消费）
+    LOG_AUDIT_QUERY_DEFAULT_DAYS: int = _get_int('LOG_AUDIT_QUERY_DEFAULT_DAYS', 30)
+    # 同参查询结果 TTL 缓存秒数（0 = 关闭；A 道读侧消费）
+    LOG_AUDIT_SCAN_CACHE_TTL_SECONDS: int = _get_int(
+        'LOG_AUDIT_SCAN_CACHE_TTL_SECONDS', 3)
+    # 唯一清扫者：其余进程跳过清扫（共享日志卷多进程并发清扫会误删/重复上传）
+    LOG_SWEEP_SERVICE: str = _get_env('LOG_SWEEP_SERVICE', 'api_gateway').strip() or 'api_gateway'
+    # DB 日志保留天数（INT-1785）：业务日志已去库化，logs 表只剩历史存量与
+    # 审计事件（auth/device/benchmark 不参与清扫）。task_service 每日一次按
+    # 本天数归档并删除过期行（归档先于删除）；0 = 关闭清扫。
+    # 负责人 2026-10-24 定：日志保留期 30 天（INT-1793 落地前为过渡期口径）
+    LOG_DB_RETENTION_DAYS: int = _get_int('LOG_DB_RETENTION_DAYS', 30)
+    # 读取侧单次查询最大物化条数（0 = 不限）：大任务轮询兜底，total 变下界语义
+    LOG_BUSINESS_MAX_SCAN_ENTRIES: int = _get_int('LOG_BUSINESS_MAX_SCAN_ENTRIES', 100000)
+    # 读取侧同参数查询结果短 TTL 缓存秒数（0 = 关闭，INT-100）：TTL 窗口内
+    # list 与 stats 共享一次文件扫描，消除任务维度轮询双遍扫描；只缓存查询
+    # 结果（CQRS 查询侧只读），新写入行在 TTL 内不可见（有界展示时延）
+    LOG_BUSINESS_SCAN_CACHE_TTL_SECONDS: int = _get_int('LOG_BUSINESS_SCAN_CACHE_TTL_SECONDS', 3)
+    # TTL 缓存单条条目物化上限（0 = 不限，INT-128）：单条缓存最多物化该条数
+    # （与扫描上限取小生效），超限结果不缓存（命中/未命中结果一致，仅失去
+    # TTL 内复扫豁免）；防大任务单条缓存数十 MB、32 条最坏 GB 级驻留
+    LOG_BUSINESS_SCAN_CACHE_ENTRY_MAX_ENTRIES: int = _get_int('LOG_BUSINESS_SCAN_CACHE_ENTRY_MAX_ENTRIES', 10000)
+    # 任务维度合并视图 DB 侧单次拉取行数上限（0 = 不限，INT-100）：替代
+    # per_page=100000 全量拉取，与文件侧 MAX_SCAN_ENTRIES 同为下界语义兜底
+    LOG_DB_MERGE_MAX_ROWS: int = _get_int('LOG_DB_MERGE_MAX_ROWS', 100000)
+    # 合并视图 DB 侧单次 gRPC 拉取行数（INT-1812 返工）：ListLogs 响应是单条
+    # JSON 字符串，实测 2~3.5KB/行，5000 行约 12~18MB；一次要 10 万行约 160MB
+    # 必撞 gRPC 单条消息上限（客户端 GRPC_MAX_MESSAGE_MB=64MB / 服务端 send
+    # 64MB）→ RESOURCE_EXHAUSTED 被代理吞成空结果，导出与深分页静默丢行。
+    # 改为按块循环拉取，单块产物必须留在上限内。
+    LOG_DB_FETCH_CHUNK_ROWS: int = _get_int('LOG_DB_FETCH_CHUNK_ROWS', 5000)
+    # 导出（无 log_ids）DB 侧命中行数上限（0 = 不限）：超限显式报错让用户缩小
+    # 范围，绝不静默截断成部分数据（INT-1812 返工；默认不限＝与列表 total 一致）
+    LOG_DB_EXPORT_MAX_ROWS: int = _get_int('LOG_DB_EXPORT_MAX_ROWS', 0)
+    # DB 侧计数/统计短 TTL 缓存秒数（0 = 关闭，INT-1468）：logs 表为最大增长
+    # 表（30 万行级），列表 total 的 count(*) 与 stats 的 group by 每次请求全表
+    # 扫描；TTL 窗口内同过滤条件共享一次聚合结果（只缓存聚合值，不缓存行数据），
+    # 新写入日志在 TTL 内不计入（与文件侧扫描缓存同为有界展示时延）
+    LOG_DB_AGGREGATE_CACHE_TTL_SECONDS: int = _get_int(
+        'LOG_DB_AGGREGATE_CACHE_TTL_SECONDS', 3)
+    # 聚合缓存条目上限（防过滤条件组合把内存撑爆，超出按最早写入淘汰）
+    LOG_DB_AGGREGATE_CACHE_MAX_ENTRIES: int = _get_int(
+        'LOG_DB_AGGREGATE_CACHE_MAX_ENTRIES', 256)
+    # 归档阈值（INT-1962）：logs 表行数超过该值才触发 OSS 归档巡检；
+    # <= 0 = 禁用归档（巡检直接返回：不查计数、不上传、不删行、无日志噪音）。
+    # 默认 300000 与改造前写死值一致；运行期判定一律走 get_log_archive_threshold()
+    # （每次重新读 env），本属性只是导入时点的快照。
+    LOG_ARCHIVE_THRESHOLD: int = get_log_archive_threshold()
+
+    # --- gRPC 服务发现 ---
+    E2E_TEST_SERVICE_HOST: str = _get_env('E2E_TEST_SERVICE_HOST', 'localhost')
+    E2E_TEST_SERVICE_GRPC_PORT: int = _get_int('E2E_TEST_SERVICE_GRPC_PORT', _E2E_TEST_GRPC_PORT)
+    # --- audio_service gRPC（P2.5 从 e2e_test_service 拆出）---
+    AUDIO_SERVICE_HOST: str = _get_env('AUDIO_SERVICE_HOST', 'localhost')
+    AUDIO_SERVICE_GRPC_PORT: int = _get_int('AUDIO_SERVICE_GRPC_PORT', _AUDIO_SERVICE_GRPC_PORT)
+    # --- device_service gRPC（P2.5 从 e2e_test_service 拆出）---
+    DEVICE_SERVICE_HOST: str = _get_env('DEVICE_SERVICE_HOST', 'localhost')
+    DEVICE_SERVICE_GRPC_PORT: int = _get_int('DEVICE_SERVICE_GRPC_PORT', _DEVICE_SERVICE_GRPC_PORT)
+    TASK_SERVICE_HOST: str = _get_env('TASK_SERVICE_HOST', 'localhost')
+    TASK_SERVICE_GRPC_PORT: int = _get_int('TASK_SERVICE_GRPC_PORT', _TASK_SERVICE_GRPC_PORT)
+    API_TEST_SERVICE_HOST: str = _get_env('API_TEST_SERVICE_HOST', 'localhost')
+    API_TEST_SERVICE_PORT: int = _get_int('API_TEST_SERVICE_PORT', 5003)
+    API_TEST_SERVICE_GRPC_PORT: int = _get_int('API_TEST_SERVICE_GRPC_PORT', _API_TEST_SERVICE_GRPC_PORT)
+
+    # --- evaluation_service gRPC ---
+    EVALUATION_SERVICE_HOST: str = _get_env('EVALUATION_SERVICE_HOST', 'localhost')
+    EVALUATION_SERVICE_GRPC_PORT: int = _get_int('EVALUATION_SERVICE_GRPC_PORT', _EVALUATION_SERVICE_GRPC_PORT)
+
+    # --- algorithm_service gRPC（proto 待接入）---
+    ALGORITHM_SERVICE_HOST: str = _get_env('ALGORITHM_SERVICE_HOST', 'localhost')
+    ALGORITHM_SERVICE_GRPC_PORT: int = _get_int('ALGORITHM_SERVICE_GRPC_PORT', _ALGORITHM_SERVICE_GRPC_PORT)
+
+    # --- report_service gRPC ---
+    REPORT_SERVICE_HOST: str = _get_env('REPORT_SERVICE_HOST', 'localhost')
+    REPORT_SERVICE_GRPC_PORT: int = _get_int('REPORT_SERVICE_GRPC_PORT', _REPORT_SERVICE_GRPC_PORT)
+
+    # --- auth_service gRPC（51069，INT-926 平移避开 Windows Hyper-V 排除端口段）---
+    AUTH_SERVICE_HOST: str = _get_env('AUTH_SERVICE_HOST', 'localhost')
+    AUTH_SERVICE_GRPC_PORT: int = _get_int('AUTH_SERVICE_GRPC_PORT', _AUTH_SERVICE_GRPC_PORT)
+
+    # --- gRPC 客户端默认 deadline（INT-54）---
+    # 未显式传 timeout 的 gRPC 客户端调用统一注入该 deadline（秒）。
+    # 依赖服务「接受连接但不响应」时，无 deadline 的调用在 grpc._channel._blocking
+    # 永久阻塞，调用点 try/except 的失败收敛路径永不执行（INT-54：StartTaskLifecycle
+    # 内 RegisterTaskEvents → 假死 device_service → 集成回归全量悬挂 25 分钟+）。
+    # 注入后 DEADLINE_EXCEEDED 与 UNAVAILABLE 同为 RpcError，走既有失败收敛路径。
+    # 显式传 timeout 的调用不受影响；已知长耗时调用点应显式传更大的 timeout。
+    GRPC_CLIENT_DEADLINE_SECONDS: int = _get_int('GRPC_CLIENT_DEADLINE_SECONDS', 60)
+
+    # --- gRPC 显式长调用 deadline（INT-54 打回修复）---
+    # StartE2ETask 在 e2e_test_service 处理器内同步执行整个 E2E 用例
+    # （多轮设备准备/播放/采集/评估），总时长结构性可超默认 deadline，须显式放宽。
+    GRPC_E2E_SYNC_TIMEOUT_SECONDS: int = _get_int('GRPC_E2E_SYNC_TIMEOUT_SECONDS', 600)
+    # 设备长时操作 gRPC 显式 deadline（INT-616）：device_service 侧 post_process
+    # 含回复等待（BASE_REPLY_END_TIMEOUT 默认 60s）+ 录屏收尾，initialize/pre_process
+    # 含 UI RPC/唤醒解锁，CollectResult(mode=round) 含 OSS 上传——均结构性可超默认
+    # deadline（60s），默认 deadline 与之相等会竞态击杀合法慢轮次（真机走查实测
+    # post_process 60,016ms 被 DEADLINE_EXCEEDED 掐断）。已知长耗时设备操作调用点
+    # 显式传本值；其余调用维持默认 deadline（INT-54 防假死悬挂的失败收敛路径不变）。
+    GRPC_DEVICE_OP_DEADLINE_SECONDS: int = _get_int('GRPC_DEVICE_OP_DEADLINE_SECONDS', 300)
+
+    # E2E 侧设备操作线程等待上限（秒）：必须严格大于 gRPC deadline，否则 e2e
+    # 先放弃等待、底层 RPC 仍在跑，形成「e2e 报超时但设备仍在操作」的错位（真机
+    # 实测 initialize 在守护自愈 + UI RPC 抖动时可超 200s，旧硬编码 60s 必然误杀，
+    # 且后续 pre_process 会在半初始化的设备上找组件而失败）。
+    # INT-2255：默认值取 GRPC_DEVICE_OP_DEADLINE_SECONDS(300) + 余量，避免两值
+    # 同时到期时 future 先抛 TimeoutError、RPC 结果被丢弃（见下方 MARGIN 配置）。
+    E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS: int = _get_int(
+        'E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS', 330)
+    # future 等待相对 gRPC deadline 的最小安全余量（秒，INT-2255）：即使环境变量
+    # 把两值配成相同（或 future 更小），调用方也按
+    # max(E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS, GRPC_DEVICE_OP_DEADLINE_SECONDS + 本值)
+    # 等待，保证 gRPC 先因 deadline 收敛、future 仍能拿到结果并落成设备失败。
+    E2E_DEVICE_OP_FUTURE_TIMEOUT_MARGIN_SECONDS: int = _get_int(
+        'E2E_DEVICE_OP_FUTURE_TIMEOUT_MARGIN_SECONDS', 30)
+
+    # 物理设备占用锁等待上限（秒）：同一 SN 的多个设备记录（如同一台手机上的
+    # 小艺/豆包两个被测 App）必须串行执行，后到的路由行在此时间内排队等待，
+    # 超时才按设备占用失败收敛。取值需覆盖单用例同步执行上限（即
+    # GRPC_E2E_SYNC_TIMEOUT_SECONDS），否则正常排队会被误判为失败。
+    TASK_PHYSICAL_LOCK_WAIT_SECONDS: int = _get_int(
+        'TASK_PHYSICAL_LOCK_WAIT_SECONDS', 900)
+
+    # device_service 同 SN 步骤互斥等待上限（秒，**单步预算**）：同一台设备上的
+    # 多个被测 App（小艺/豆包）并发初始化/采集会互相打断设备端 uitest 守护，步骤
+    # 必须串行。取值必须覆盖单步最长耗时——真机 initialize 在守护自愈 + UI RPC
+    # 抖动时可超 200s（见上 GRPC_DEVICE_OP_DEADLINE_SECONDS），旧默认 60s 是整组
+    # 排队总预算，同 SN 第 2 条起被必然误判失败（INT-2257）。现按「单步上界 ×
+    # 排队位次」累加：第 N 位最多等 N 个单步，且由 device_service 按调用方剩余
+    # deadline 截断，保证「等待 < 调用方 deadline」（默认留 10% 余量，270s < 300s）。
+    DEVICE_SN_STEP_LOCK_WAIT_SECONDS: int = _get_int(
+        'DEVICE_SN_STEP_LOCK_WAIT_SECONDS',
+        int(GRPC_DEVICE_OP_DEADLINE_SECONDS * 0.9))
+
+    # --- E2E 组执行（同实验室多设备并行，音频每轮只播一次）---
+    # 同实验室、同用例、不同 SN 的物理路由行合并为一次 StartE2ETask 执行：
+    # 一次播放驱动组内全部设备，结果按设备分别落库与评估。
+    # 关闭即回退为逐行派发（每台设备各播一遍），用于一键回滚。
+    E2E_GROUP_EXECUTION_ENABLED: bool = _get_bool(
+        'E2E_GROUP_EXECUTION_ENABLED', True)
+    # 单组设备上限：超出按行创建顺序截断，剩余行下一轮再成组。
+    E2E_GROUP_MAX_DEVICES: int = _get_int('E2E_GROUP_MAX_DEVICES', 8)
+
+    # --- E2E 异步派发（不同实验室并行，spec §9 阶段 B）---
+    # 开启后 E2E 物理用例的「按 SN 抢锁 + StartE2ETask + 逐行收敛」提交到
+    # 任务级线程池，主循环认领即返回继续派发下一行：不同实验室（不同 SN）
+    # 自然并行；同 SN 仍由物理锁串行；串行目标（mode=serial）与未绑定实验室
+    # 的行保持同步就地执行（不并发）。关闭即回退同步派发（一键回滚）。
+    TASK_E2E_ASYNC_DISPATCH: bool = _get_bool('TASK_E2E_ASYNC_DISPATCH', True)
+    # 单任务并发派发上限：同时在途的 E2E 执行数（含等 SN 锁的派发）
+    TASK_E2E_DISPATCH_WORKERS: int = _get_int('TASK_E2E_DISPATCH_WORKERS', 4)
+
+    # --- 播放设备按实验室（用例内播放设备只属于一个实验室）---
+    # 执行时按被测设备所属实验室换绑播放设备：同名优先 → 该实验室在线设备
+    # → 该实验室任一设备；实验室无可用播放设备则用例直接失败。
+    # 关闭即回退用例内配置的播放设备（一键回滚）。
+    PLAYBACK_LAB_BINDING_ENABLED: bool = _get_bool(
+        'PLAYBACK_LAB_BINDING_ENABLED', True)
+    # 播放设备互斥锁：同一只音箱同一时刻只允许一轮播放（同实验室并行用例
+    # 串行出音；不同实验室不同音箱仍并行）。TTL 覆盖单轮播放上限，
+    # 等待上限覆盖排队场景（同实验室多用例）。
+    PLAYBACK_DEVICE_LOCK_TTL_SECONDS: int = _get_int(
+        'PLAYBACK_DEVICE_LOCK_TTL_SECONDS', 1800)
+    PLAYBACK_DEVICE_LOCK_WAIT_SECONDS: int = _get_int(
+        'PLAYBACK_DEVICE_LOCK_WAIT_SECONDS', 900)
+
+    # --- gRPC 客户端收发消息上限（MB，INT-1292）---
+    # grpcio 客户端默认收包上限 4MiB：大响应 RPC（任务导出 23MB 包、报告/评估
+    # 只读导出）在客户端收不下 → RESOURCE_EXHAUSTED。统一放大到
+    # GRPC_MAX_MESSAGE_MB。默认 64MB：INT-1292 实测任务 419 导出跨服务响应
+    # ExportDimensionsForTasks 23,448,131B / ExportReportsForTasks 20,439,856B，
+    # 16MB（对齐 transfer_agent 分片口径 TRANSFER_GRPC_MAX_MESSAGE_MB）仍收不下；
+    # 64MB 覆盖最大实测单响应并留余量。服务端 send 上限默认不受 4MB 限制
+    # （实测可发送 >30MB），故只需客户端侧放开。
+    GRPC_MAX_MESSAGE_MB: int = _get_int('GRPC_MAX_MESSAGE_MB', 64)
+
+    # --- 回收站保留期（INT-141）：软删除记录保留天数，过期由各服务
+    # SoftDeleteCleaner 守护线程硬清理（定时调度走既有执行引擎/守护线程，
+    # 不走五通道事件）；环境变量可覆盖默认 60 天 ---
+    TRASH_RETENTION_DAYS: int = _get_int('TRASH_RETENTION_DAYS', 60)
+
+    # --- 用例导出异步作业（INT-2312）---
+    # 大范围导出不再依赖单次 HTTP 长连接（5000 条含音频可达 GB 级、耗时远超
+    # 15173 反代 300s）：提交秒级返回 202，后台线程池执行，产物落存储后下载。
+    # 单次提交的 ids 上限（同步接口不受此限，保持历史行为）。
+    TESTCASE_EXPORT_JOB_MAX_IDS: int = _get_int('TESTCASE_EXPORT_JOB_MAX_IDS', 20000)
+    # 全局排队深度上限（queued + 执行中尚未出队的成员数），超出即 429。
+    TESTCASE_EXPORT_JOB_MAX_QUEUE: int = _get_int('TESTCASE_EXPORT_JOB_MAX_QUEUE', 50)
+    # 网关内导出工作线程数：网关是 uvicorn workers=1，线程与请求线程同进程，
+    # 取小值避免导出把请求线程和内存吃满。
+    TESTCASE_EXPORT_MAX_WORKERS: int = _get_int('TESTCASE_EXPORT_MAX_WORKERS', 2)
+    # 作业状态（HASH）与幂等 / 在办键的存活时长，也是响应里 expires_at 的口径。
+    TESTCASE_EXPORT_JOB_TTL_SECONDS: int = _get_int(
+        'TESTCASE_EXPORT_JOB_TTL_SECONDS', 86400)
+    # 产物（下载文件）存活时长：到期由网关清理线程删存储对象并置 expired。
+    TESTCASE_EXPORT_ARTIFACT_TTL_SECONDS: int = _get_int(
+        'TESTCASE_EXPORT_ARTIFACT_TTL_SECONDS', 7200)
+    # 状态响应里 download_url（预签名）的有效期。
+    TESTCASE_EXPORT_DOWNLOAD_URL_TTL_SECONDS: int = _get_int(
+        'TESTCASE_EXPORT_DOWNLOAD_URL_TTL_SECONDS', 600)
+    # 清理线程扫描周期：产物到期置 expired、作业 TTL 到期删 HASH。
+    TESTCASE_EXPORT_CLEANUP_INTERVAL_SECONDS: int = _get_int(
+        'TESTCASE_EXPORT_CLEANUP_INTERVAL_SECONDS', 600)
+
+    # --- 工具 ---
+    FFMPEG_PATH: str = _get_env('FFMPEG_PATH', 'ffmpeg')
+    FFPROBE_PATH: str = _get_env('FFPROBE_PATH', 'ffprobe')
+
+    # --- 邮件通知 SMTP（INT-80 设备告警通知渠道，未配置=禁用）---
+    SMTP_HOST: str = _get_env('SMTP_HOST', '')
+    SMTP_PORT: int = _get_int('SMTP_PORT', 465)
+    SMTP_USER: str = _get_env('SMTP_USER', '')
+    SMTP_PASSWORD: str = _get_env('SMTP_PASSWORD', '')
+    SMTP_USE_SSL: bool = _get_env('SMTP_USE_SSL', 'true').lower() in ('true', '1', 'yes')
+    SMTP_FROM: str = _get_env('SMTP_FROM', '')  # 发件人，空则回退 SMTP_USER
+    ALERT_EMAIL_RECIPIENTS: str = _get_env('ALERT_EMAIL_RECIPIENTS', '')  # 逗号分隔收件人列表
+
+    # --- 日志归档分批（INT-1963）---
+    # 归档从「先删库后上传」改为「分批取 → 上传成功 → 才删该批」。单批两道上限：
+    # 行数硬上限，以及按 content 长度估算的字节上限（估算取 3 字节/字符的上界，
+    # 实际 UTF-8 体积不会超过它）。默认 1000 行 / 8MiB：主库冷日志单行均值约
+    # 1.2KB（237MB / 200,124 行），1000 行约 1.2MB，远低于 GRPC_MAX_MESSAGE_MB(64)
+    # 与 OSS 单次 PUT 的舒适区间；响应体只含计数（约 200 字节），与批大小无关。
+    LOG_ARCHIVE_BATCH_ROWS: int = _get_int('LOG_ARCHIVE_BATCH_ROWS', 1000)
+    LOG_ARCHIVE_BATCH_MAX_BYTES: int = _get_int('LOG_ARCHIVE_BATCH_MAX_BYTES', 8 * 1024 * 1024)
+    # 单轮归档最多推进的批数：调用方（log_worker 巡检 / 手动归档接口）按此上限
+    # 分批推进，超出的冷数据留待下一轮，避免单次调用无界占用连接与请求时长。
+    LOG_ARCHIVE_MAX_BATCHES_PER_RUN: int = _get_int('LOG_ARCHIVE_MAX_BATCHES_PER_RUN', 50)
+
+    @classmethod
+    def validate(cls):
+        """启动时调用，校验必填项"""
+        for attr in dir(cls):
+            if attr.isupper():
+                val = getattr(cls, attr)
+                if val is None:
+                    raise ConfigValidationError(f'配置 {attr} 未设置')

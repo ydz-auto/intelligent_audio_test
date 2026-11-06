@@ -36,7 +36,7 @@
 | **通用域** | 算法配置上下文 | 全系统共享的"算法类型"字典，跨上下文引用 | `algorithm_service`（PO + domain 已建，CRUD 待从 task_service 回归） |
 | **通用域** | 用户与权限上下文 | RBAC+OAuth，横切所有上下文 | `auth_service`（PO 骨架已建） |
 | **通用域** | 系统审计上下文 | 日志/首页统计，横切关注点 | `task_service`（Log CRUD 待从网关下沉）+ 各服务自维护统计 |
-| **通用域** | API 适配上下文 | 多 vendor 协议适配，已有完整 DDD 分层 | `api_adapter_service` |
+| **通用域** | API 适配上下文 | 多 vendor 协议适配，已有完整 DDD 分层 | `api_test_service` |
 
 ---
 
@@ -321,7 +321,7 @@
 - `domain/`：`entities/user.py`（UserAggregate + UserStatus）、`entities/role.py`（RoleEntity + PermissionEntity）、`value_objects/credential.py`（TokenPayload + OAuthCredential + PasswordHash）、`events/auth_events.py`、`services/auth_service.py`（validate_token_payload + check_permission + resolve_role_permissions）
 - `infrastructure/persistence/`：`models/user_models.py`（7 个 PO）、`user_repository.py`（UserRepository + RoleRepository + 4 个转换函数 + list_users 分页）
 - `application/`：commands（6 个写命令）+ queries（6 个读查询）+ handlers（AuthCommandHandler + AuthQueryHandler）
-- `interfaces/`：`grpc/servicers.py`（AuthServicer 14 个 RPC 骨架）+ `grpc/server.py`（端口 50069）+ `api/routes.py`（14 个 HTTP 路由）
+- `interfaces/`：`grpc/servicers.py`（AuthServicer 14 个 RPC 骨架）+ `grpc/server.py`（端口 51069）+ `api/routes.py`（14 个 HTTP 路由）
 
 **已实现**：认证中间件、OAuth Provider、JWT 签发/校验已实现（d9-d13 主要部分完成，详见第九章）
 
@@ -371,7 +371,7 @@
      值对象：RoundResult
 ```
 
-**已落地**：`api_adapter_service` 已有完整四层（domain/entities + value_objects + services + events + application/commands + queries + handlers + infrastructure/adapters + persistence + interfaces/api + grpc），是 DDD 演进的参考模板，无需改造。
+**已落地**：`api_test_service` 已有完整四层（domain/entities + value_objects + services + events + application/commands + queries + handlers + infrastructure/adapters + persistence + interfaces/api + grpc），是 DDD 演进的参考模板，无需改造。
 
 ---
 
@@ -419,8 +419,8 @@
 │设备管理上下文 │◄───────│ 音频管理上下文 │◄──────│ API 适配上下文 │
 │(Device)      │  播放   │(Audio)       │ 调用   │(AdapterSession)│
 │聚合根:Device │         │聚合根:Audio  │        │ 已有完整DDD分层│
-│device_service│         │audio_service │        │api_adapter_   │
-│ :50053       │         │ :50052       │        │ service :50081│
+│device_service│         │audio_service │        │api_test_svc  │
+│ :50053       │         │ :50052       │        │(infra/adapters)│
 └──────┬───────┘         └──────┬───────┘        └──────────────┘
        │ SPL 校准                │ 上传
        ▼                         ▼
@@ -447,7 +447,7 @@
 | 测试执行上下文 | 评估上下文 | **客户-供应方** | Execution 采集完原始结果→gRPC 调 Evaluation 打分（API/E2E 均走 `submit_evaluate_case`） |
 | 评估上下文 | 评估维度上下文 | **同一服务** | 均归属 evaluation_service，Dimension 定义即评估输入 |
 | 评估上下文 | 测试执行上下文 | **客户-供应方** | 重新评估时调 e2e_test_service.ReextractResult 重新提取设备输出 |
-| 评估上下文 | API 适配上下文 | **开放主机服务+发布语言** | 评估调外部评估 API 时复用 api_adapter_service 的协议适配 |
+| 评估上下文 | API 适配上下文 | **开放主机服务+发布语言** | 评估调外部评估 API 时复用 api_test_service 的协议适配 |
 | 测试任务上下文 | 报告上下文 | **客户-供应方** | Task 完成→Report 生成 |
 | 测试任务上下文 | 测试用例上下文 | **合作关系** | Task 与 TestCase 紧耦合，TaskCase 是关联实体（同归 task_service） |
 | 测试任务上下文 | 设备管理上下文 | **客户-供应方** | Task 通过 TaskDevice 引用 Device（✅ 改调 device_service gRPC，P3.2 完成） |
@@ -456,7 +456,7 @@
 | 测试执行上下文 | API 配置上下文 | **防腐层** | 执行器需将 API 配置转换为执行参数 |
 | 测试执行上下文 | 设备管理上下文 | **防腐层** | E2E 执行器需将设备配置转换为驱动指令（✅ 改调 device_service gRPC，P2.5 完成） |
 | 测试执行上下文 | 音频管理上下文 | **防腐层** | 音频播放需将音频元数据转换为播放指令（✅ 改调 audio_service gRPC，P2.5 完成） |
-| 测试执行上下文 | API 适配上下文 | **开放主机服务+发布语言** | api_adapter_service 通过 gRPC proto 对外暴露 |
+| 测试执行上下文 | API 适配上下文 | **开放主机服务+发布语言** | api_test_service 通过 gRPC proto 对外暴露 |
 | 设备管理上下文 | 音频管理上下文 | **客户-供应方** | SPL 校准时需通过 audio_service 播放测试音 |
 | 报告上下文 | 评估上下文 | **防腐层** | Report 需将 TestResultDimension 打分结果转换为报告数据视图 |
 | 报告上下文 | 设备/音频管理上下文 | **防腐层** | Report 读设备/音频信息（改调 device_service / audio_service gRPC） |
@@ -475,10 +475,10 @@
 | `audio_service` | 音频管理 + 文件上传 | **DDD 四层完成**（v3 落地），gRPC :50052 | ✅ 已完成（PO + domain + application + gRPC servicer 全套） |
 | `device_service` | 设备管理 + SPL 校准 | **DDD 四层完成**（v3 落地），gRPC :50053 | ✅ 已完成（PO + domain + application + gRPC servicer 全套） |
 | `evaluation_service` | 评估 + 评估维度 | **DDD 四层完成**，gRPC :50091/:5004 | ✅ 已完成，作为其他服务改造模板 |
-| `api_adapter_service` | API 适配 | **已有完整 DDD 分层**，gRPC :50081 | 无需改造，作为模板 |
+| `api_test_service` | API 测试 + 内嵌适配器 | **已有完整 DDD 分层**，gRPC :50071 | INT-1169/1176 后独立 adapter 服务删除，执行能力内嵌本服务 |
 | `report_service` | 报告 | **DDD 四层完成**，gRPC :50068 | CRUD 逻辑从网关下沉（P4） |
 | `algorithm_service` | 算法配置 | **DDD 四层完成**，gRPC :50067 | CRUD 从 task_service 回归（P6.2） |
-| `auth_service` | 用户与权限 | **DDD 四层完成**，gRPC :50069 | 认证中间件 + OAuth + JWT 实现（d9-d13） |
+| `auth_service` | 用户与权限 | **DDD 四层完成**，gRPC :51069 | 认证中间件 + OAuth + JWT 实现（d9-d13） |
 
 ---
 
@@ -536,9 +536,9 @@
 
 **只读例外**：报告/统计类**只读**查询，可用 raw SQL 跨表 JOIN（性能考量），但 ORM 不建模别人的 PO。Report PO 下沉时已移除 `Report.task` 跨域 relationship。
 
-### 4. api_adapter_service 作为 DDD 演进模板
+### 4. api_test_service 作为 DDD 演进模板
 
-`api_adapter_service` 已有完整四层：
+`api_test_service` 已有完整四层：
 - domain/entities + value_objects + services + events
 - application/commands + queries + handlers
 - infrastructure/adapters + persistence
@@ -1370,7 +1370,7 @@ auth_service/
 | d10 | 开发模式 LocalOAuthProvider（本地登录页+JWT 签发） | ✅ 已实现（`application/services/auth/local_oauth.py`，登录页由前端 Login 页承担） |
 | d11 | 华为云 OAuth Provider（授权码模式） | ✅ 已实现（`application/services/auth/huawei_oauth.py`，token 换取 + userinfo） |
 | d12 | RBAC 权限校验（路由层 require_permission） | ✅ 已实现（`application/services/auth/dependencies.py`，路由层按需标注） |
-| d13 | auth_service 微服务化（独立部署） | ✅ DDD 四层已建 + run_all.py 已纳入启动（:5009/:50069）；⚠️ docker-compose 未含 auth_service，需按需补充 |
+| d13 | auth_service 微服务化（独立部署） | ✅ DDD 四层已建 + run_all.py 已纳入启动（:5009/:51069）；⚠️ docker-compose 未含 auth_service，需按需补充 |
 
 ### 报告 + 网关瘦化阶段（v2 修订）
 

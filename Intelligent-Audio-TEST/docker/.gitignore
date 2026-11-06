@@ -1,0 +1,2 @@
+# 部署锁（deploy_demo_frontends.ps1 运行时创建，INT-2012）
+.deploy.lock

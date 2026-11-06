@@ -1,0 +1,238 @@
+# -*- coding: utf-8 -*-
+"""
+测试结果大数据存储模块（共享基础设施工具）
+
+将 result_data 中的重型字段（adjusted_reference_params, raw_results, alignment_info）
+拆分写入文件，轻量部分存入数据库，读取时自动合并。
+
+定位说明：
+    本模块为纯 OSS 文件读写工具，不直连任何 PO / 数据库表 / 业务逻辑，
+    仅供 task_service / report_service / api_gateway / evaluation_service /
+    device_service / api_test_service / e2e_test_service 等多个服务共享调用。
+    虽与 test_results 表语义相关，但因其无 DB 操作、无领域实体绑定，
+    作为跨服务共享基础设施工具保留在 shared/ 更合理，不迁入 task_service。
+"""
+
+import json
+import os
+import re
+from typing import Optional
+
+from shared.infrastructure.storage import storage
+from shared.utils.log_handler import log_not_emit
+# 缺值哨兵单一定义在 status_constants（零依赖），本模块 re-export 供结果文件工具共用
+from shared.utils.status_constants import RESULT_TYPE_PENDING  # noqa: F401
+
+HEAVY_KEYS = ['adjusted_reference_params', 'raw_results', 'alignment_info']
+
+_MODULE_NAME = 'result_data_store'
+
+# 存储类别（对应 OSSClient._buckets 中的 key）
+_RESULT_BUCKET = 'case_result'
+
+
+def _sanitize_path(s):
+    return re.sub(r'[^a-zA-Z0-9_-]', '_', str(s))
+
+
+def _build_result_key(task_id, test_case_id, device_sn, filename='result_data.json'):
+    """构建 OSS 对象 key：{task_id}/{case_id}/{device_sn}/{filename}"""
+    task_id_safe = _sanitize_path(task_id)
+    case_id_safe = _sanitize_path(test_case_id)
+    device_sn_safe = _sanitize_path(device_sn)
+    return f"{task_id_safe}/{case_id_safe}/{device_sn_safe}/{filename}"
+
+
+def write_result_data_file(task_id, test_case_id, device_sn, result_data):
+    """
+    将完整的 result_data 写入 OSS（case_result bucket），返回 OSS key。
+
+    Args:
+        task_id: 任务ID
+        test_case_id: 测试用例ID
+        device_sn: 设备序列号
+        result_data: 完整结果数据字典
+
+    Returns:
+        写入成功返回 OSS key 字符串，失败返回空字符串
+    """
+    try:
+        key = _build_result_key(task_id, test_case_id, device_sn)
+        data = json.dumps(result_data, ensure_ascii=False, indent=2).encode('utf-8')
+        stored_path = storage.save_bytes(data, _RESULT_BUCKET, key,
+                                         content_type='application/json')
+
+        log_not_emit(
+            'DEBUG', _MODULE_NAME,
+            f'write_result_data_file: saved to {stored_path}',
+            category='system', task_id=task_id, test_case_id=test_case_id
+        )
+
+        return stored_path
+
+    except Exception as e:
+        log_not_emit(
+            'ERROR', _MODULE_NAME,
+            f'write_result_data_file failed: {e}',
+            category='system', task_id=task_id, test_case_id=test_case_id
+        )
+        return ''
+
+
+def read_result_data_file(path):
+    """
+    从 OSS（case_result bucket）读取 result_data 字典。
+
+    Args:
+        path: OSS 对象 key（由 write_result_data_file 返回）
+
+    Returns:
+        读取成功返回字典，失败返回空字典
+    """
+    try:
+        if not path:
+            return {}
+
+        if not storage.exists(path):
+            log_not_emit(
+                'WARNING', _MODULE_NAME,
+                f'read_result_data_file: object not found: {path}',
+                category='system'
+            )
+            return {}
+
+        raw = storage.load_bytes(path)
+        data = json.loads(raw.decode('utf-8'))
+
+        if isinstance(data, dict):
+            return data
+
+        log_not_emit(
+            'WARNING', _MODULE_NAME,
+            f'read_result_data_file: unexpected data type from {path}',
+            category='system'
+        )
+        return {}
+
+    except Exception as e:
+        log_not_emit(
+            'ERROR', _MODULE_NAME,
+            f'read_result_data_file failed: {e}',
+            category='system'
+        )
+        return {}
+
+
+def split_result_data(result_data):
+    """
+    将 result_data 拆分为轻量部分（可安全存入数据库）和重型数据标记。
+
+    Args:
+        result_data: 完整结果数据字典
+
+    Returns:
+        (lightweight_dict, has_heavy_data) 元组
+        lightweight_dict: 去除了重型字段的字典
+        has_heavy_data: 布尔值，表示原始数据中是否包含重型字段
+    """
+    try:
+        if not result_data or not isinstance(result_data, dict):
+            return result_data or {}, False
+
+        has_heavy_data = False
+        lightweight = {}
+
+        for key, value in result_data.items():
+            if key in HEAVY_KEYS:
+                has_heavy_data = True
+            else:
+                lightweight[key] = value
+
+        return lightweight, has_heavy_data
+
+    except Exception as e:
+        log_not_emit(
+            'ERROR', _MODULE_NAME,
+            f'split_result_data failed: {e}',
+            category='system'
+        )
+        return result_data or {}, False
+
+
+def load_full_result_data(result_data_from_db, result_data_path):
+    """
+    合并数据库中的轻量数据与文件中的完整数据。
+
+    如果 result_data_path 存在且文件可读，直接返回文件中的完整数据。
+    否则返回数据库中的原始数据。
+
+    Args:
+        result_data_from_db: 数据库中存储的结果数据
+        result_data_path: result_data 文件路径
+
+    Returns:
+        合并后的完整结果数据字典
+    """
+    try:
+        if result_data_path:
+            file_data = read_result_data_file(result_data_path)
+            if file_data:
+                return file_data
+
+        if result_data_from_db and isinstance(result_data_from_db, dict):
+            return result_data_from_db
+
+        return {}
+
+    except Exception as e:
+        log_not_emit(
+            'ERROR', _MODULE_NAME,
+            f'load_full_result_data failed: {e}',
+            category='system'
+        )
+        return result_data_from_db if isinstance(result_data_from_db, dict) else {}
+
+
+def extract_result_type(result_data_from_db, result_data_path=None) -> str:
+    """结果级 result_type 解析（口径对齐 report_data_builder_task_mixin._extract_result_type，
+    缺省 'default'）。result_data 为 dict 时直接取键；为字符串时尝试 JSON 解析；
+    仍无则尝试 result_data_path 指向的完整结果文件（load_full_result_data 先例）。
+
+    供 task_service 购物车快照（INT-577 §11-5）与候选行补字段（§11-2）共用，
+    避免各服务重复实现口径漂移。
+    """
+    try:
+        full_data = load_full_result_data(result_data_from_db, result_data_path)
+        if isinstance(full_data, dict) and full_data.get('result_type'):
+            return str(full_data['result_type'])
+        if isinstance(result_data_from_db, str) and result_data_from_db.strip():
+            import json as _json
+            parsed = _json.loads(result_data_from_db)
+            if isinstance(parsed, dict) and parsed.get('result_type'):
+                return str(parsed['result_type'])
+        return RESULT_TYPE_PENDING
+    except Exception:
+        return RESULT_TYPE_PENDING
+
+
+def materialize_result_type(explicit_value, result_data_from_db) -> Optional[str]:
+    """写时物化 result_type（INT-1510 §8.2.3，DB-first 口径）。
+
+    优先调用方显式给出的 ``explicit_value``，否则按 ``extract_result_type`` 的
+    只读 DB 轻量 JSON 口径解析（path 传 None，**不回源对象存储**）：
+
+    - 落库口径：缺值（None / 空串 / 缺值哨兵 ``RESULT_TYPE_PENDING``）一律存
+      NULL —— 与「结果类型待补充」桶的查询口径（``IS NULL OR = ''``）一致；
+    - 对外口径：读侧把 NULL 统一输出 ``default``（§8.2.2）。
+
+    写路径（task_result 落库）与存量回填迁移共用本函数，避免两处口径漂移。
+    """
+    raw = explicit_value
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        raw = extract_result_type(result_data_from_db, None)
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text or text == RESULT_TYPE_PENDING:
+        return None
+    return text

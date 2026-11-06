@@ -1,0 +1,443 @@
+"""E2E 设备管理：设备查询、初始化、预处理、后处理、环境设备
+
+所有 gRPC 调用委托给 infrastructure/acl/ 下的 ACL 仓储。
+"""
+import time
+import threading
+from concurrent.futures import TimeoutError as FutureTimeoutError
+
+from shared.constants.ui_capture import UiCaptureDegradeReason
+from shared.infrastructure.config import BaseConfig
+from e2e_test_service.domain.repositories.acl_errors import AclQueryError
+from e2e_test_service.infrastructure.acl import (
+    AudioAclRepositoryImpl,
+    DeviceAclRepositoryImpl,
+    EnvDeviceAclRepositoryImpl,
+    TaskDataAclRepositoryImpl,
+)
+
+
+def resolve_device_op_future_timeout():
+    """设备操作 future 等待上限（秒）：强制严格大于 gRPC 长操作 deadline。
+
+    两值若同时到期（或 future 更短），future.result 先抛 TimeoutError、底层
+    RPC 的结果被丢弃，设备真实失败原因不可达（INT-2255）。这里统一取
+    max(配置值, GRPC_DEVICE_OP_DEADLINE_SECONDS + 安全余量)，保证 gRPC 先按
+    deadline 收敛、future 仍能拿到结果并落成该设备的失败。
+    """
+    configured = float(BaseConfig.E2E_DEVICE_OP_FUTURE_TIMEOUT_SECONDS)
+    minimum = (float(BaseConfig.GRPC_DEVICE_OP_DEADLINE_SECONDS)
+               + float(BaseConfig.E2E_DEVICE_OP_FUTURE_TIMEOUT_MARGIN_SECONDS))
+    return configured if configured >= minimum else minimum
+
+
+def _describe_device(info):
+    """设备描述（名称/SN/系统/关键字）：同 SN 多 App 时据此定位失败设备。"""
+    info = info or {}
+    parts = []
+    if info.get('device_name'):
+        parts.append(f"名称={info['device_name']}")
+    if info.get('device_sn'):
+        parts.append(f"SN={info['device_sn']}")
+    if info.get('system'):
+        parts.append(f"系统={info['system']}")
+    keywords = info.get('keywords')
+    if keywords:
+        if isinstance(keywords, (list, tuple, set)):
+            keywords = ','.join(str(item) for item in keywords)
+        parts.append(f"关键字={keywords}")
+    return ' '.join(parts) if parts else '未知设备'
+
+
+class E2EDeviceManager:
+    """E2E 设备管理器"""
+
+    def __init__(self, executor):
+        self._executor = executor
+        self._device_repo = DeviceAclRepositoryImpl()
+        self._audio_repo = AudioAclRepositoryImpl()
+        self._task_data_repo = TaskDataAclRepositoryImpl()
+
+    @property
+    def _log(self):
+        return self._executor._log
+
+    def get_device_info(self, task_id, case_config, device_id=None, device_ids=None):
+        """查询任务关联的设备，组装 device_info_list
+
+        device_id：当前物理路由行绑定的被测设备（task_case_relations.device_id）。
+        传入时只返回该设备——一条 E2E 用例按物理设备行逐行执行，
+        同机多 App 的多条设备记录各跑各的，避免一次运行并发驱动全部设备。
+        device_ids：组执行（同实验室、同用例、不同 SN）——非空时优先，返回
+        组内全部设备（按传入顺序），一次执行驱动组内全部设备、每轮音频只播一次。
+        两者皆空时保持历史行为（任务全部设备）。
+        """
+        # 通过 ACL 仓储查询 TaskDevice 关联记录
+        # INT-2255：查询失败（gRPC 异常/服务端失败）与「任务没有关联设备」区分，
+        # 前者返回可诊断的失败，不再误报成「没有可用的测试设备」。
+        try:
+            task_device_relations = self._task_data_repo.get_task_devices(task_id)
+        except AclQueryError as e:
+            return {'success': False, 'error': f"任务设备关联查询失败: {e}"}
+        task_device_ids = [rel.device_id for rel in task_device_relations if rel.device_id]
+
+        wanted_ids = [int(item) for item in (device_ids or []) if item]
+        if wanted_ids:
+            available = {int(did) for did in task_device_ids}
+            missing = [did for did in wanted_ids if did not in available]
+            if missing:
+                return {'success': False,
+                        'error': f"任务未关联设备 {missing}，无法执行该执行组"}
+            device_ids = [did for did in task_device_ids if int(did) in wanted_ids]
+            # 按组内传入顺序归一（组选择以行创建顺序为准）
+            device_ids.sort(key=lambda did: wanted_ids.index(int(did)))
+        else:
+            device_ids = task_device_ids
+            if device_id:
+                device_ids = [did for did in device_ids if int(did) == int(device_id)]
+                if not device_ids:
+                    return {'success': False,
+                            'error': f"任务未关联设备 {device_id}，无法执行该路由行"}
+        if not device_ids:
+            return {'success': False, 'error': "没有可用的测试设备"}
+
+        # 通过 ACL 仓储查询 device_service 的设备数据
+        # INT-2255：单台失败只丢该台（ACL 累计到 errors），此处按数量校验，
+        # 取不全即失败并写清缺失 device_id 与原因（区分查询失败/无数据），
+        # 避免空列表被下游误判为「被测设备未绑定实验室」或静默跑空。
+        query = self._device_repo.get_devices_by_ids(device_ids)
+        devices = query.devices
+        returned_ids = {int(dev.id) for dev in devices if dev.id is not None}
+        missing_ids = [int(did) for did in device_ids if int(did) not in returned_ids]
+        if missing_ids:
+            error_map = query.error_map()
+            details = []
+            for did in missing_ids:
+                reason = error_map.get(did)
+                if reason:
+                    details.append(f"device_id={did} 查询失败: {reason}")
+                else:
+                    details.append(
+                        f"device_id={did} 无设备数据（设备可能已删除或不属于该实验室）")
+            return {'success': False,
+                    'error': (f"{len(missing_ids)}/{len(device_ids)} 台设备信息未取到（"
+                              + "; ".join(details) + "）")}
+
+        device_info_list = []
+        for dev in devices:
+            # driver 对象不再跨进程返回，仅保留设备元数据
+            # 驱动操作（initialize/pre_process/post_process/teardown）通过 gRPC CreateDriver(action=...) 调用
+            prompt_path, prompt_name = self._get_prompt_audio_info(
+                dev.needs_prompt_audio, dev.prompt_config
+            )
+            device_info_list.append({
+                "device_id": dev.id, "device_sn": dev.serial_number or dev.ip,
+                "device_name": dev.name, "system": dev.system,
+                "keywords": dev.keywords,
+                # 实验室归属：执行时据此把用例内播放设备换绑为本实验室设备
+                "lab_id": dev.lab_id,
+                "prompt_audio_path": prompt_path, "prompt_audio_name": prompt_name,
+                "needs_prompt_audio": dev.needs_prompt_audio
+            })
+
+        return {'success': True, 'data': {'device_info_list': device_info_list}}
+
+    def _get_prompt_audio_info(self, needs_prompt_audio, prompt_config):
+        """获取提示音频信息 — 直接从 prompt_config 读取音频 ID"""
+        if not needs_prompt_audio or not prompt_config:
+            return None, None
+
+        audio_id = None
+        if isinstance(prompt_config, dict):
+            for v in prompt_config.values():
+                if v:
+                    audio_id = v
+                    break
+        elif isinstance(prompt_config, (int, str)):
+            audio_id = prompt_config
+
+        if not audio_id:
+            return None, None
+
+        # 通过 ACL 仓储查询 audio_service 的提示音频
+        audio_repo = AudioAclRepositoryImpl()
+        audio = audio_repo.get_prompt_audio(int(audio_id))
+        if audio:
+            return audio.file_path, audio.name
+        return None, None
+
+    def initialize_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
+        """并行初始化所有设备（通过 gRPC DeviceService.CreateDriver action=initialize）
+
+        INT-296：成功时从 device_service 结构化响应读取 ui_capabilities，
+        有设备 UI 抓取层降级（ui_capture_available=false）时通过
+        executor.set_ui_capture_degraded 留痕到用例/任务记录。
+        """
+        extra_params = {}
+        round_algo_params = kwargs.pop('round_algo_params', None)
+        if round_algo_params:
+            extra_params.update(round_algo_params)
+
+        pool = self._executor.execution_engine.device_control_pool
+        results = []
+        # results_lock 仅保护并行初始化结果收集（results.append）的线程安全，
+        # 非设备互斥；物理设备占用互斥统一由 task_service 派发层
+        # DistributedLock（RedisKeyPrefix.TASK_PHYSICAL_LOCK）承担（UC-0903 4a）
+        results_lock = threading.Lock()
+        future_timeout = resolve_device_op_future_timeout()
+
+        def _record_failure(info, err):
+            with results_lock:
+                results.append({
+                    'success': False, 'error': err,
+                    'device_name': info.get('device_name'),
+                    'device_sn': info.get('device_sn'),
+                    'system': info.get('system'),
+                    'keywords': info.get('keywords'),
+                    'data': {},
+                })
+
+        def init_device(info):
+            ok = False
+            err = None
+            data = {}
+            try:
+                # ACL 契约：成功返回结构化响应（含 ui_capabilities）或上抛
+                #（携带 device_service 真因，INT-206），不套用固定的 hypium
+                # 缺失提示误导排障方向
+                data = self._device_repo.initialize_driver(task_id, [{
+                'action': 'initialize',
+                'system': info.get('system'),
+                'keywords': info.get('keywords'),
+                'device_sn': info.get('device_sn'),
+                'test_case_id': test_case_id,
+                'kwargs': extra_params,
+                }])
+                ok = True
+            except Exception as e:
+                err = str(e)
+            if not ok and err is None:
+                err = "CreateDriver 返回失败（未提供失败原因）"
+            with results_lock:
+                results.append({'success': ok, 'error': err,
+                                'device_name': info.get('device_name'),
+                                'device_sn': info.get('device_sn'),
+                                'system': info.get('system'),
+                                'keywords': info.get('keywords'),
+                                'data': data if isinstance(data, dict) else {}})
+
+        submitted = []
+        for info in device_info_list:
+            submitted.append((info, pool.submit(init_device, info)))
+
+        for info, future in submitted:
+            try:
+                future.result(timeout=future_timeout)
+            except FutureTimeoutError:
+                # INT-2255：超时原本只写日志、不进 results，failed 为空即被判定
+                # 初始化成功，用例随后在半初始化设备上继续执行并产出空结果。
+                # 超时必须作为该设备的初始化失败参与汇总，与 gRPC 返回失败同等。
+                err = (f"设备初始化超时：{future_timeout:g}s 内未返回结果"
+                       f"（线程池排队饥饿或 RPC 悬挂，设备未就绪）")
+                _record_failure(info, err)
+                self._log(level='ERROR',
+                          content=f"{_describe_device(info)} 初始化超时: {err}",
+                          task_id=task_id, test_case_id=test_case_id)
+            except Exception as e:
+                # init_device 已兜底捕获自身异常，此处覆盖线程被取消等边缘情况
+                err = f"设备初始化异常: {e}"
+                _record_failure(info, err)
+                self._log(level='ERROR',
+                          content=f"{_describe_device(info)} 初始化异常: {e}",
+                          task_id=task_id, test_case_id=test_case_id)
+
+        failed = [r for r in results if not r['success']]
+        if failed:
+            detail = '; '.join(
+                [f"{_describe_device(r)}: {r.get('error')}" for r in failed])
+            raise RuntimeError(f"设备初始化失败: {detail}")
+
+        # INT-296：UI 抓取层降级留痕（explicit_degrade 模式下 initialize 成功但
+        # ui_capture_available=false）。结构化字段透传到任务/轮次记录，严禁无痕跳过。
+        degraded = []
+        for r in results:
+            caps = (r.get('data') or {}).get('ui_capabilities')
+            if isinstance(caps, dict) and caps.get('ui_capture_available') is False:
+                degraded.append({
+                    'device_name': r.get('device_name'),
+                    'degrade_reason': caps.get('degrade_reason') or UiCaptureDegradeReason.UITEST_DAEMON_UNAVAILABLE.value,
+                })
+        if degraded:
+            setter = getattr(self._executor, 'set_ui_capture_degraded', None)
+            if callable(setter):
+                setter(degraded, task_id=task_id, test_case_id=test_case_id)
+            else:
+                self._log(level='WARNING',
+                          content=f"设备 UI 抓取层已降级但 executor 不支持降级留痕: {degraded}",
+                          task_id=task_id, test_case_id=test_case_id)
+
+    def get_ui_capture_degraded(self):
+        """用例级 UI 抓取层降级状态（executor.set_ui_capture_degraded 写入）"""
+        return getattr(self._executor, '_ui_capture_degraded', None)
+
+    def pre_process_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
+        """并行预处理设备（通过 gRPC DeviceService.CreateDriver action=pre_process）
+
+        Returns:
+            bool: 所有设备预处理是否全部成功；任一失败返回 False
+        """
+        extra_params = kwargs.get('extra_params', {})
+        record_start_time = time.time()
+        self._executor._playback_timestamps[task_id] = {
+            'record_start_time': record_start_time,
+            'audio_play_times': [],
+            'theory_offsets': {}
+        }
+        pool = self._executor.execution_engine.device_control_pool
+        future_timeout = resolve_device_op_future_timeout()
+        submitted = []
+        for info in device_info_list:
+            future = pool.submit(
+                self._device_repo.create_driver,
+                task_id,
+                [{
+                    'action': 'pre_process',
+                    'device_sn': info.get('device_sn'),
+                    # 同 SN 多 App（小艺/豆包）时仅凭 SN 无法定位驱动，随行带元数据
+                    'system': info.get('system'),
+                    'keywords': info.get('keywords'),
+                    'test_case_id': test_case_id,
+                    'kwargs': extra_params,
+                }],
+            )
+            submitted.append((info, future))
+        success = True
+        for info, future in submitted:
+            try:
+                # 驱动返回 False（如预处理失败）需落为轮次失败，不能只看 gRPC 异常
+                if future.result(timeout=future_timeout) is False:
+                    success = False
+                    self._log(level='ERROR',
+                              content=f"{_describe_device(info)} 预处理返回失败",
+                              task_id=task_id, test_case_id=test_case_id)
+            except Exception as e:
+                success = False
+                self._log(level='ERROR',
+                          content=f"{_describe_device(info)} 预处理失败: {e}",
+                          task_id=task_id, test_case_id=test_case_id)
+        return success
+
+    def post_process_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
+        """并行后处理设备（通过 gRPC DeviceService.CreateDriver action=post_process）
+
+        Returns:
+            bool: 所有设备后处理是否全部成功；任一失败返回 False
+        """
+        extra_params = kwargs.get('extra_params', {})
+        pool = self._executor.execution_engine.device_control_pool
+        future_timeout = resolve_device_op_future_timeout()
+        submitted = []
+        for info in device_info_list:
+            future = pool.submit(
+                self._device_repo.create_driver,
+                task_id,
+                [{
+                    'action': 'post_process',
+                    'device_sn': info.get('device_sn'),
+                    'system': info.get('system'),
+                    'keywords': info.get('keywords'),
+                    'test_case_id': test_case_id,
+                    'kwargs': extra_params,
+                }],
+            )
+            submitted.append((info, future))
+        success = True
+        for info, future in submitted:
+            try:
+                if future.result(timeout=future_timeout) is False:
+                    success = False
+                    self._log(level='ERROR',
+                              content=f"{_describe_device(info)} 后处理返回失败",
+                              task_id=task_id, test_case_id=test_case_id)
+            except Exception as e:
+                success = False
+                self._log(level='ERROR',
+                          content=f"{_describe_device(info)} 后处理失败: {e}",
+                          task_id=task_id, test_case_id=test_case_id)
+        return success
+
+    def teardown_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
+        """并行 teardown 所有设备驱动（通过 gRPC DeviceService.CreateDriver action=teardown）
+
+        Returns:
+            bool: 所有设备 teardown 是否全部成功；任一失败返回 False
+        """
+        extra_params = kwargs.get('extra_params', {})
+        pool = self._executor.execution_engine.device_control_pool
+        future_timeout = resolve_device_op_future_timeout()
+        submitted = []
+        for info in device_info_list:
+            future = pool.submit(
+                self._device_repo.create_driver,
+                task_id,
+                [{
+                    'action': 'teardown',
+                    'device_sn': info.get('device_sn'),
+                    'system': info.get('system'),
+                    'keywords': info.get('keywords'),
+                    'test_case_id': test_case_id,
+                    'kwargs': extra_params,
+                }],
+            )
+            submitted.append((info, future))
+        success = True
+        for info, future in submitted:
+            try:
+                future.result(timeout=future_timeout)
+            except Exception as e:
+                success = False
+                self._log(level='ERROR',
+                          content=f"{_describe_device(info)} teardown 失败: {e}",
+                          task_id=task_id, test_case_id=test_case_id)
+        return success
+
+    def play_prompt_audio(self, device_info_list, task_id, device_index, playback_dev, main_gain):
+        """播放提示音频"""
+        prompt_info = next((info for info in device_info_list if info["prompt_audio_path"]), None)
+        if prompt_info:
+            # 通过 ACL 仓储播放音频
+            self._audio_repo.play_audio(
+                task_id=task_id, file_path=prompt_info["prompt_audio_path"],
+                device_index=device_index, channel_index=playback_dev.channel_index if playback_dev else 0,
+                gain=main_gain, player_type='dry'
+            )
+
+    def setup_env_devices_for_round(self, round_algo_params, task_id):
+        """设置本轮环境设备（导轨等），返回状态列表供 teardown 恢复。"""
+        _ENV_DEVICE_PARAM_MAP = {
+            'rail_distance': ('rail', lambda v: {'distance_cm': float(v)}),
+        }
+
+        env_states = []
+        for param_key, (device_type, build_settings) in _ENV_DEVICE_PARAM_MAP.items():
+            value = round_algo_params.get(param_key)
+            if value is None:
+                continue
+            try:
+                # 通过 ACL 仓储控制环境设备
+                dev = EnvDeviceAclRepositoryImpl(device_type)
+                if dev.is_available():
+                    state = dev.setup(build_settings(value))
+                    env_states.append((dev, state))
+                    self._log(level='INFO', content=f"环境设备 {device_type} 已设置: {param_key}={value}", task_id=task_id)
+            except Exception as e:
+                self._log(level='WARNING', content=f"环境设备 {device_type} 设置失败: {e}", task_id=task_id)
+        return env_states
+
+    def teardown_env_devices_for_round(self, env_states, task_id):
+        """恢复本轮环境设备到 setup 前的状态。"""
+        for dev, state in env_states:
+            try:
+                dev.teardown(state)
+            except Exception as e:
+                self._log(level='WARNING', content=f"环境设备 {dev.device_type} 恢复失败: {e}", task_id=task_id)

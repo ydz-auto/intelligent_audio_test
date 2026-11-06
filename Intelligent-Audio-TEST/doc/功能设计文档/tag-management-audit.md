@@ -221,6 +221,8 @@ interface TagItem {
 }
 ```
 
+> **报告快照条目（INT-2100）**：`report_summary_meta.all_case_tags` 条目结构为 `{id, name, category_id, category_name}`，与上述 `_tag_to_dict` 的 `category_id/category_name` 字段对齐；无分类 tag 保持 null（前端报告筛选「未分类」尾组兜底）。详见 `05_报告管理/report_documentation.md` §4.2.7。
+
 ---
 
 ## 五、使用说明

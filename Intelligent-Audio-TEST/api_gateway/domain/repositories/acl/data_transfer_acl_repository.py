@@ -1,0 +1,57 @@
+# -*- coding: utf-8 -*-
+"""任务数据导入导出 ACL 仓储接口（api_gateway 域层端口，INT-25）"""
+from abc import ABC, abstractmethod
+from typing import Dict, List, Optional
+
+from api_gateway.domain.dto.api_gateway_acl_dto import CommandResultDTO
+
+
+class DataTransferAclRepository(ABC):
+    """任务数据导入导出防腐层端口（网关 → task_service）"""
+
+    @abstractmethod
+    def export_tasks(self, task_ids: List[int],
+                     options: Optional[Dict] = None) -> CommandResultDTO:
+        """导出任务数据为 ZIP（返回 data.zip_path 供 FileResponse 下发）"""
+
+    @abstractmethod
+    def preview_import(self, zip_path: str,
+                       options: Optional[Dict] = None) -> CommandResultDTO:
+        """导入预检（manifest 摘要 + stats + conflicts + warnings + caseConsistency）
+
+        options（INT-1759）: {require_case_consistency?: bool, intent?: migrate/restore}
+        """
+
+    @abstractmethod
+    def execute_import(self, zip_path: str,
+                       options: Optional[Dict] = None) -> CommandResultDTO:
+        """执行导入（分段提交 + 补偿回滚；长耗时）
+
+        用例一致性不满足时返回 code=422 + data.missingCaseIds（未写任何数据）。
+        """
+
+    @abstractmethod
+    def get_progress_snapshot(self) -> CommandResultDTO:
+        """最近一次导入进度快照"""
+
+    @abstractmethod
+    def export_incremental(self, task_ids: List[int],
+                           options: Optional[Dict] = None) -> CommandResultDTO:
+        """增量导出（链路 2，INT-1761）：返回 data.zip_path 供网关下发
+
+        options: {include: ['dimensions'|'reports']}；未映射结果行 → code=409。
+        """
+
+    @abstractmethod
+    def import_incremental(self, zip_path: str,
+                           options: Optional[Dict] = None) -> CommandResultDTO:
+        """增量导入（链路 2）：合并回 A 原任务（维度覆盖集 + 报告原地替换）"""
+
+    @abstractmethod
+    def export_report_package(self, data: Dict) -> CommandResultDTO:
+        """导出报告包（INT-1764 D6：报告 7 表 + Studio 三表，返回 data.zip_path）"""
+
+    @abstractmethod
+    def import_report_package(self, zip_path: str,
+                              options: Optional[Dict] = None) -> CommandResultDTO:
+        """导入报告包（3a 原地替换 + 3b/3c 拓扑序落库；长耗时）"""

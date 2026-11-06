@@ -1,0 +1,698 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from pydantic import Field, field_validator, AliasChoices, model_validator, ConfigDict
+
+from api_gateway.schemas.base import APIModel
+from api_gateway.schemas.common import PaginatedData
+from shared.constants.testcase_transfer import TestCaseExportFormat
+
+
+class ReportAudioItem(APIModel):
+    id: Optional[int] = Field(None)
+    filename: Optional[str] = Field(None)
+    duration: Optional[float] = Field(None)
+    url: Optional[str] = Field(None)
+    spl: Optional[float] = Field(None)
+    play_order: Optional[int] = Field(None)
+    playback_device_id: Optional[int] = Field(None)
+    playback_device_name: Optional[str] = Field(None)
+    label: Optional[str] = Field(None)
+    timeline_start: Optional[float] = Field(None)
+    timeline_end: Optional[float] = Field(None)
+
+
+class ReportTestCaseItem(APIModel):
+    id: Optional[str] = Field(None)
+    name: Optional[str] = Field(None)
+    description: Optional[str] = Field(None)
+    category: Optional[str] = Field(None)
+    tags: List[Any] = Field(default_factory=list)
+    audios: List[ReportAudioItem] = Field(default_factory=list)
+    metrics: List[Any] = Field(default_factory=list)
+    asr: Optional[Dict[str, Any]] = Field(None)
+    translation: Optional[Dict[str, Any]] = Field(None)
+    results: List[Any] = Field(default_factory=list)
+    logs: Optional[str] = Field(None)
+
+if TYPE_CHECKING:
+    pass
+
+
+class TestCaseAudioConfigItem(APIModel):
+    # extra='allow' 保留前端传入的 interferers、background_noise 等额外字段
+    model_config = ConfigDict(extra='allow')
+
+    id: Optional[int] = Field(None)
+    audio_id: Optional[Union[int, str]] = Field(None)
+    audio_name: Optional[str] = Field(None)
+    spl: Optional[float] = Field(None)
+    playback_device_id: Optional[Union[int, str]] = Field(None)
+    playback_device_name: Optional[str] = Field(None)
+    play_order: Optional[int] = Field(None)
+    # 轮次级背景噪声（segment 级，case 级存在时不播放）
+    background_noise: Optional[Dict[str, Any]] = Field(None)
+    # 干扰人（segment 级）
+    interferers: Optional[List[Dict[str, Any]]] = Field(None)
+
+    @field_validator('spl', mode='before')
+    @classmethod
+    def _empty_spl_to_none(cls, v):
+        if v == '' or v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+
+class TestCaseBackgroundNoiseItem(APIModel):
+    # extra='allow' 保留 audio(文件名)、playback_device_names(设备名数组)、playback_device_name(单个设备名) 等
+    model_config = ConfigDict(extra='allow')
+
+    audio_id: Optional[Union[int, str]] = Field(None)
+    audio: Optional[str] = Field(None)
+    audio_name: Optional[str] = Field(None)
+    spl: Optional[float] = Field(None)
+    device_ids: Optional[List[Union[int, str]]] = Field(None)
+    # 设备名数组（多设备同时播放）
+    playback_device_names: Optional[List[str]] = Field(None)
+    # 单设备名（兼容旧格式）
+    playback_device_name: Optional[str] = Field(None)
+    device_names: Optional[List[str]] = Field(None)
+    loop: Optional[bool] = Field(True)
+
+
+class TestCaseDimensionItem(APIModel):
+    # INT-590 必改：APIModel 基类 extra='ignore'（base.py:17），未声明字段会在
+    # 列表/详情响应被静默丢弃。维度项额外字段 round_scope/llmJudgeConfig 需显式
+    # 声明（策略覆盖若携带这些字段必须完整回显）。extra='allow' 兜底未来新增字段。
+    model_config = ConfigDict(extra='allow')
+
+    id: int = Field(...)
+    name: str = Field(...)
+    weight: Optional[float] = Field(None)
+    threshold: Optional[float] = Field(None)
+    # 维度作用域（用例参数口径）：空=对所有设备类型生效，否则限定该 device_type
+    device_type: Optional[str] = Field(
+        None, validation_alias=AliasChoices('device_type', 'deviceType'))
+    # 多轮整体评估口径：multi=整体评估（config.dimensions 口径），
+    # single/per_round=逐轮口径（rounds[].evaluation.dimensions）
+    round_scope: Optional[str] = Field(None, validation_alias=AliasChoices('round_scope', 'roundScope'))
+    # LLM Judge 配置（{model, promptTemplate}；仅前端 UI 概念，后端评估未消费，标注）
+    llmJudgeConfig: Optional[Dict[str, Any]] = Field(None)
+
+
+class RoundConfigItem(APIModel):
+    """单轮配置项 — 只含结构性字段
+
+    算法参数和参考参数不在 config.rounds[] 中：
+      - algorithm_params → test_cases.algorithm_params 独立列（按轮分组 [{round_number, params}]）
+      - reference_params → test_cases.reference_params 独立列（按轮分组 [{round_number, reference_params_path}]）
+    """
+    model_config = ConfigDict(extra='allow')
+
+    # === 结构性字段 ===
+    round_number: Optional[int] = Field(1)
+    audios: Optional[List[TestCaseAudioConfigItem]] = Field(default_factory=list)
+    background_noise: Optional[TestCaseBackgroundNoiseItem] = Field(None)
+    evaluation: Optional[Dict[str, Any]] = Field(None)
+
+
+class TestCaseConfig(APIModel):
+    """测试用例配置 — 只含结构性配置
+    config = { rounds, dimensions, background_noise, source_audio, auto_generated }
+    算法参数和参考参数在独立列，不在 config 中
+    """
+    model_config = ConfigDict(extra='allow')
+    rounds: Optional[List[RoundConfigItem]] = Field(default_factory=list)
+    dimensions: Optional[List[TestCaseDimensionItem]] = Field(default_factory=list)
+    background_noise: Optional[Dict[str, Any]] = Field(None)
+    source_audio: Optional[str] = Field(None)
+    auto_generated: Optional[bool] = Field(False)
+
+
+class TestCaseListItem(APIModel):
+    id: str = Field(...)
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    group_id: Optional[str] = Field(None)
+    group_name: Optional[str] = Field(None)
+    tags: List[str] = Field(default_factory=list)
+    config: TestCaseConfig = Field(default_factory=TestCaseConfig)
+    algorithm_params: Optional[Any] = Field(None)
+    reference_params: Optional[Any] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
+    # INT-590：评估策略引用（列表页展示引用策略 + 覆盖标记）
+    strategy_id: Optional[str] = Field(None)
+    strategy_overrides: Optional[Any] = Field(None)
+    created_at: Optional[str] = Field(None)
+    updated_at: Optional[str] = Field(None)
+    # INT-141：收藏标记 / 回收站字段
+    is_favorite: Optional[bool] = Field(None)
+    deleted: Optional[bool] = Field(None)
+    deleted_at: Optional[str] = Field(None)
+    deleted_by_user_id: Optional[int] = Field(None)
+    total_duration: Optional[float] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
+    # INT-539：lab 归属透出（config JSONB 解析；空/缺失 = 通用用例 → lab_id=null）
+    lab_id: Optional[int] = Field(None)
+    lab_name: Optional[str] = Field(None)
+
+
+class TestCaseListData(PaginatedData[TestCaseListItem]):
+    pass
+
+
+class TestCaseDimensionBrief(APIModel):
+    id: int = Field(...)
+    name: str = Field(...)
+    type: Optional[str] = Field(None)
+
+
+class TestCaseDetailData(APIModel):
+    id: str = Field(...)
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    group_id: Optional[str] = Field(None)
+    group_name: Optional[str] = Field(None)
+    group: Optional[Dict[str, Any]] = Field(None)
+    config: TestCaseConfig = Field(default_factory=TestCaseConfig)
+    algorithm_params: Optional[Any] = Field(None)
+    reference_params: Optional[Any] = Field(None)
+    tags: List[str] = Field(default_factory=list)
+    audios: List[TestCaseAudioConfigItem] = Field(default_factory=list)
+    dimensions: List[TestCaseDimensionBrief] = Field(default_factory=list)
+    algorithm_type: Optional[str] = Field(None)
+    # INT-590：评估策略引用（详情回显引用策略 + 覆盖源，前端可编辑覆盖）
+    strategy_id: Optional[str] = Field(None)
+    strategy_overrides: Optional[Any] = Field(None)
+    created_at: Optional[str] = Field(None)
+    updated_at: Optional[str] = Field(None)
+    total_duration: Optional[float] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
+
+
+class TestCasePreviewData(APIModel):
+    test_case_id: str = Field(...)
+    preview_task_id: Optional[str] = Field(None)
+    status: str = Field(...)
+    message: Optional[str] = Field(None)
+    duration: Optional[float] = Field(None)
+    playback_mode: Optional[str] = Field('backend')
+    audio_id: Optional[Union[int, str]] = Field(None)
+    audio_stream_url: Optional[str] = Field(None)
+    # 多轮音频连续播放
+    audio_stream_urls: Optional[List[str]] = Field(None)
+
+
+class TestCaseStopPreviewData(APIModel):
+    test_case_id: str = Field(...)
+    status: str = Field(...)
+    message: Optional[str] = Field(None)
+
+
+class TestCaseStatsData(APIModel):
+    total_count: int = Field(...)
+    by_group: Dict[str, int] = Field(default_factory=dict)
+    recent_updates: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class TagListData(PaginatedData[str]):
+    """标签名分页列表（INT-297 信封统一；items 为名称字符串）"""
+
+
+class TagCategoryItem(APIModel):
+    id: int = Field(...)
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    color: Optional[str] = Field(None)
+    sort_order: int = Field(0)
+    tag_count: int = Field(0)
+    created_at: Optional[str] = Field(None)
+    updated_at: Optional[str] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
+
+
+class TagCategoryListData(PaginatedData[TagCategoryItem]):
+    pass
+
+
+class TagCategoryCreateSchema(APIModel):
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    color: Optional[str] = Field(None)
+    sort_order: Optional[int] = Field(0)
+
+
+class TagCategoryUpdateSchema(APIModel):
+    id: Optional[int] = Field(None)
+    name: Optional[str] = Field(None)
+    description: Optional[str] = Field(None)
+    color: Optional[str] = Field(None)
+    sort_order: Optional[int] = Field(None)
+
+
+class TagItem(APIModel):
+    id: int = Field(...)
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    color: Optional[str] = Field(None)
+    category_id: Optional[int] = Field(None)
+    category_name: Optional[str] = Field(None)
+    created_at: Optional[str] = Field(None)
+    updated_at: Optional[str] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
+
+
+class TagDetailListData(PaginatedData[TagItem]):
+    pass
+
+
+class TagCreateSchema(APIModel):
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    color: Optional[str] = Field(None)
+    category_id: Optional[int] = Field(None)
+
+
+class TagUpdateSchema(APIModel):
+    id: Optional[int] = Field(None)
+    name: Optional[str] = Field(None)
+    description: Optional[str] = Field(None)
+    color: Optional[str] = Field(None)
+    category_id: Optional[int] = Field(None)
+
+
+class TagCategoryListQuery(APIModel):
+    page: int = Field(1)
+    per_page: int = Field(20)
+    keyword: Optional[str] = Field(None)
+
+
+class TagListQuery(APIModel):
+    page: int = Field(1)
+    per_page: int = Field(20)
+    category_id: Optional[int] = Field(None)
+    keyword: Optional[str] = Field(None)
+
+
+class TagNameListQuery(APIModel):
+    page: int = Field(1)
+    per_page: int = Field(100)
+    keyword: Optional[str] = Field(None)
+
+
+class TestCaseExportJsonData(APIModel):
+    test_cases: List["TestCaseExportItem"] = Field(...)
+    exported_at: str = Field(...)
+    total_count: int = Field(...)
+
+
+class TestCaseImportResult(APIModel):
+    """导入回执（ZIP/Excel/CSV/JSON 共用）。
+
+    imported_count=新建；updated_count=覆盖；skipped_count=跳过重复；
+    copied_count=另存副本；errors=逐行失败/警告明细。
+    音频字段（INT-2215）：包内音频按 md5 复用/登记的汇总，失败逐条带原因，
+    `audio_orphaned_ids` 是已登记/复用但没有成功落库用例引用到的音频（允许存在，不静默）。
+    """
+    imported_count: int = Field(...)
+    updated_count: int = Field(0)
+    skipped_count: int = Field(0)
+    copied_count: int = Field(0)
+    errors: List[Any] = Field(default_factory=list)
+    audio_registered_count: int = Field(0)
+    audio_reused_count: int = Field(0)
+    audio_failed: List[Any] = Field(default_factory=list)
+    audio_orphaned_ids: List[int] = Field(default_factory=list)
+
+
+class TestCaseExportTagItem(APIModel):
+    tag_id: int = Field(...)
+    tag_name: str = Field(...)
+
+
+class TestCaseExportAudioItem(APIModel):
+    audio_id: Optional[int] = Field(None)
+    audio_name: Optional[str] = Field(None)
+    spl: Optional[float] = Field(None)
+    playback_device_id: Optional[int] = Field(None)
+    playback_device_name: Optional[str] = Field(None)
+    play_order: Optional[int] = Field(None)
+
+
+class TestCaseExportItem(APIModel):
+    id: str = Field(...)
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    group: Optional[str] = Field(None)
+    group_id: Optional[str] = Field(None)
+    tags: List[str] = Field(default_factory=list)
+    tag_items: List[TestCaseExportTagItem] = Field(default_factory=list)
+    dimensions: List[str] = Field(default_factory=list)
+    dimension_ids: List[int] = Field(default_factory=list)
+    playback_devices: List[str] = Field(default_factory=list)
+    audios: List[TestCaseExportAudioItem] = Field(default_factory=list)
+    audio_details: Optional[str] = Field(None)
+    noise_name: Optional[str] = Field(None)
+    noise_spl: Optional[Any] = Field(None)
+    noise_audio_id: Optional[int] = Field(None)
+    config: Dict[str, Any] = Field(default_factory=dict)
+    algorithm_params: Optional[Any] = Field(None)
+    reference_params: Optional[Any] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
+    strategy_id: Optional[str] = Field(None)
+    strategy_overrides: Optional[Any] = Field(None)
+    raw_config: Optional[str] = Field(None)
+
+
+class TestCaseAudioConfigRequest(APIModel):
+    audio_id: Optional[int] = Field(None)
+    spl: Optional[float] = Field(None)
+    playback_device_id: Optional[int] = Field(None)
+    play_order: Optional[int] = Field(None)
+
+
+class TestCaseBackgroundNoiseRequest(APIModel):
+    audio_id: Optional[int] = Field(None)
+    spl: Optional[float] = Field(None)
+    device_ids: Optional[List[Union[int, str]]] = Field(None)
+
+
+class TestCaseDimensionItemRequest(APIModel):
+    id: Optional[int] = Field(None)
+    name: Optional[str] = Field(None)
+    display_name: Optional[str] = Field(None)
+    weight: Optional[float] = Field(None)
+    threshold: Optional[float] = Field(None)
+
+
+class AlgorithmParamItem(APIModel):
+    """算法参数项 — {field_code, field_value}
+
+    field_value 类型由 case_algorithm_params 表的 param_type 定义决定，
+    Schema 层不限制具体类型，支持 str/int/float/bool/list/dict 等。
+    """
+    model_config = ConfigDict(extra='allow')
+
+    field_code: Optional[str] = Field(None)
+    field_value: Optional[Any] = Field(None)
+
+    @staticmethod
+    def convert_params(params) -> Optional[List['AlgorithmParamItem']]:
+        if not params:
+            return None
+        if isinstance(params, list):
+            result = []
+            for item in params:
+                if isinstance(item, dict):
+                    field_value = item.get('field_value')
+                    result.append(AlgorithmParamItem(
+                        field_code=item.get('field_code'),
+                        field_value=field_value
+                    ))
+                elif isinstance(item, AlgorithmParamItem):
+                    result.append(item)
+            return result if result else None
+        elif isinstance(params, dict):
+            result = []
+            for key, value in params.items():
+                result.append(AlgorithmParamItem(
+                    field_code=key,
+                    field_value=value
+                ))
+            return result if result else None
+        return params
+
+
+class ReferenceParamItem(APIModel):
+    model_config = ConfigDict(extra='allow')
+
+    code: Optional[str] = Field(None)
+    type: Optional[str] = Field(None)
+    value: Optional[Union[str, Dict[str, Any], List[Any]]] = Field(None)
+    annotation_code: Optional[str] = Field(None)
+    annotation_format: Optional[str] = Field(None)
+
+    @staticmethod
+    def convert_params(params) -> Optional[List['ReferenceParamItem']]:
+        if not params:
+            return None
+        if isinstance(params, list):
+            result = []
+            for item in params:
+                if isinstance(item, dict):
+                    result.append(ReferenceParamItem(
+                        code=item.get('code'),
+                        type=item.get('type'),
+                        value=item.get('value'),
+                        annotation_code=item.get('annotation_code'),
+                        annotation_format=item.get('annotation_format')
+                    ))
+                elif isinstance(item, ReferenceParamItem):
+                    result.append(item)
+            return result if result else None
+        return params
+
+
+class TestCaseCreateSchema(APIModel):
+    name: str = Field(..., validation_alias=AliasChoices('name', 'caseName', 'case_name'))
+    description: Optional[str] = Field(None, validation_alias=AliasChoices('description', 'Description'))
+    group_id: Optional[str] = Field(None, validation_alias=AliasChoices('group_id', 'groupId'))
+    group: Optional[str] = Field(None)
+    config: Optional[Dict[str, Any]] = Field(None)
+    tags: Optional[List[str]] = Field(None)
+    background_noise_id: Optional[int] = Field(None)
+    background_noise_spl: Optional[float] = Field(None)
+    audios: Optional[List[TestCaseAudioConfigRequest]] = Field(None)
+    dimensions: Optional[Any] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
+    # 按轮分组：[{round_number, params:[{field_code, field_value}]}]，兼容旧平面格式 [{field_code, field_value}]
+    algorithm_params: Optional[Any] = Field(None)
+    # 按轮分组：[{round_number, reference_params_path}]，兼容旧格式
+    reference_params: Optional[Any] = Field(None)
+    # INT-590：评估策略引用 + 覆盖（写时物化——保存时合并策略 config 与 overrides，
+    # 解析结果落库 config.dimensions / config.background_noise，引用与覆盖源另列）
+    strategy_id: Optional[str] = Field(None)
+    strategy_overrides: Optional[Dict[str, Any]] = Field(None)
+    # INT-566：新建用例可见性（shared/private；None 服务端默认 shared）
+    visibility: Optional[str] = Field(None)
+
+    @field_validator('algorithm_params', mode='before')
+    @classmethod
+    def coerce_dict_to_list(cls, v):
+        if isinstance(v, dict):
+            # 旧 dict 格式 → 平面 list（向后兼容）
+            return [
+                {'field_code': k, 'field_value': val}
+                for k, val in v.items()
+            ]
+        return v
+
+    def get_algorithm_params_dict(self) -> Optional[List[Dict[str, Any]]]:
+        """返回按轮分组的 algorithm_params
+
+        新格式：[{round_number, params:[{field_code, field_value}]}]
+        旧格式（平面 [{field_code, field_value}]）会被包装为 round_number=1 的单轮
+        """
+        if not self.algorithm_params:
+            return None
+        # 检测格式：新格式第一个元素有 round_number 键
+        if isinstance(self.algorithm_params, list) and self.algorithm_params:
+            first = self.algorithm_params[0]
+            if isinstance(first, dict) and 'round_number' in first:
+                # 新格式，直接返回
+                return self.algorithm_params
+            if isinstance(first, dict) and 'params' in first and 'field_code' not in first:
+                # 新格式（params 键）
+                return self.algorithm_params
+        # 旧格式（平面 [{field_code, field_value}]） → 包装为 round_number=1
+        result = []
+        for p in self.algorithm_params:
+            if isinstance(p, dict):
+                item = dict(p)
+                # field_value 保持原始类型（list/dict/str/number）
+                result.append(item)
+        if result:
+            return [{'round_number': 1, 'params': result}]
+        return None
+
+    def get_reference_params_dict(self) -> Optional[List[Dict[str, Any]]]:
+        """返回按轮分组的 reference_params"""
+        if not self.reference_params:
+            return None
+        if isinstance(self.reference_params, list):
+            return self.reference_params
+        return None
+
+
+class TestCasePreviewRequest(APIModel):
+    offset: Optional[float] = Field(0)
+    preview_type: Optional[str] = Field(None)
+    playback_mode: Optional[str] = Field('backend')
+    # 实验室播放必须选实验室：用例只关联逻辑音箱，需按实验室解析成实体播放设备
+    lab_id: Optional[int] = Field(None)
+
+    @field_validator('offset', mode='before')
+    @classmethod
+    def convert_offset_to_int(cls, v):
+        if v is None:
+            return 0
+        return int(v)
+
+    @field_validator('playback_mode', mode='before')
+    @classmethod
+    def validate_playback_mode(cls, v):
+        if v is None:
+            return 'backend'
+        if v not in ['frontend', 'backend']:
+            return 'backend'
+        return v
+
+
+class TestCaseBatchActionRequest(APIModel):
+    ids: List[str] = Field(...)
+    action: str = Field(...)
+    target_group_id: Optional[str] = Field(None)
+    algorithm_params: Optional[Dict[str, Any]] = Field(None)
+    playback_devices: Optional[Dict[str, Any]] = Field(None)
+    spl: Optional[Union[float, Dict[str, Any]]] = Field(None)
+    noise_spl: Optional[float] = Field(None)
+    noise_audio_id: Optional[Union[int, str]] = Field(None)
+    noise_device_ids: Optional[List[Union[int, str]]] = Field(None)
+    # 逻辑音箱组（用例只关联逻辑音箱）：批量噪声多选组 id，替代 noise_device_ids
+    noise_speaker_group_ids: Optional[List[Union[int, str]]] = Field(None)
+    group_name: Optional[str] = Field(None)
+    tag_name: Optional[str] = Field(None)
+    copy_to_new_group: Optional[bool] = Field(None)
+    tags: Optional[List[str]] = Field(None)
+    dimensions: Optional[List[Dict[str, Any]]] = Field(None)
+    round_dimensions: Optional[Dict[str, Any]] = Field(None, alias='round_dimensions', validation_alias=AliasChoices('round_dimensions', 'roundDimensions'))
+    multi_dimensions: Optional[List[Dict[str, Any]]] = Field(None, alias='multi_dimensions', validation_alias=AliasChoices('multi_dimensions', 'multiDimensions'))
+    # 逐轮设置（per_round）：round_values = {轮次号: 值}，"-1" 代表最后一轮动态解析
+    round_values: Optional[Dict[str, Any]] = Field(None, alias='round_values', validation_alias=AliasChoices('round_values', 'roundValues'))
+    # 整体设置（case 级，跨轮次）：仅作用于 config 级配置，如整体背景噪声
+    case_level: Optional[Dict[str, Any]] = Field(None, alias='case_level', validation_alias=AliasChoices('case_level', 'caseLevel'))
+    old_tag_name: Optional[str] = Field(None)
+    new_tag_name: Optional[str] = Field(None)
+    # 批量操作轮次范围
+    round_mode: Optional[str] = Field('all', alias='round_mode', validation_alias='roundMode')
+    round_numbers: Optional[List[int]] = Field(None, alias='round_numbers', validation_alias='roundNumbers')
+    # 批量操作应用层级（声压/设备/噪声用）
+    targets: Optional[List[str]] = None
+    # 幂等键（可选，INT-75）：客户端生成；未提供时后端按请求内容指纹在短窗口内去重
+    idempotency_key: Optional[str] = Field(None, validation_alias=AliasChoices('idempotency_key', 'idempotencyKey'))
+
+
+class TestCaseExportRequest(APIModel):
+    ids: List[str] = Field(default_factory=list)
+    format: Optional[str] = Field(TestCaseExportFormat.JSON.value)
+    include_deleted: Optional[bool] = Field(False)
+    # ZIP 数据包导出选项：是否把参考参数文件一并打包（默认包含，对齐任务数据导出）
+    include_reference_params: Optional[bool] = Field(True)
+    # ZIP 数据包导出选项：是否把用例引用的音频二进制一并打包（默认不包含）
+    include_audios: Optional[bool] = Field(False)
+    # 异步导出作业的可选幂等键（INT-2312）：给了按它去重，不给按请求指纹
+    idempotency_key: Optional[str] = Field(
+        None, validation_alias=AliasChoices('idempotency_key', 'idempotencyKey'))
+
+
+class TestCaseImportRequest(APIModel):
+    file_name: Optional[str] = Field(None)
+    file_content: Optional[str] = Field(None)
+    group_id: Optional[str] = Field(None)
+    overwrite: Optional[bool] = Field(False)
+
+
+class TestCaseUpdateSchema(APIModel):
+    id: Optional[str] = Field(None)
+    name: Optional[str] = Field(None, validation_alias=AliasChoices('name', 'Name'))
+    description: Optional[str] = Field(None, validation_alias=AliasChoices('description', 'Description'))
+    group_id: Optional[str] = Field(None, validation_alias=AliasChoices('group_id', 'groupId'))
+    group: Optional[str] = Field(None)
+    config: Optional[Dict[str, Any]] = Field(None)
+    tags: Optional[List[str]] = Field(None)
+    background_noise_id: Optional[int] = Field(None)
+    background_noise_spl: Optional[float] = Field(None)
+    audios: Optional[List[TestCaseAudioConfigRequest]] = Field(None)
+    dimensions: Optional[Any] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
+    # 按轮分组：[{round_number, params:[{field_code, field_value}]}]，兼容旧平面格式
+    algorithm_params: Optional[Any] = Field(None)
+    # 按轮分组：[{round_number, reference_params_path}]
+    reference_params: Optional[Any] = Field(None)
+    # INT-590：评估策略引用 + 覆盖（写时物化；显式传空字符串清空引用）
+    strategy_id: Optional[str] = Field(None)
+    strategy_overrides: Optional[Dict[str, Any]] = Field(None)
+    # INT-566：更新载荷携带可见性时落库（可见性切换走专用 share 端点）
+    visibility: Optional[str] = Field(None)
+
+    @field_validator('algorithm_params', mode='before')
+    @classmethod
+    def coerce_dict_to_list(cls, v):
+        if isinstance(v, dict):
+            return [
+                {'field_code': k, 'field_value': val}
+                for k, val in v.items()
+            ]
+        return v
+
+    def get_algorithm_params_dict(self) -> Optional[List[Dict[str, Any]]]:
+        """返回按轮分组的 algorithm_params"""
+        if not self.algorithm_params:
+            return None
+        if isinstance(self.algorithm_params, list) and self.algorithm_params:
+            first = self.algorithm_params[0]
+            if isinstance(first, dict) and 'round_number' in first:
+                return self.algorithm_params
+            if isinstance(first, dict) and 'params' in first and 'field_code' not in first:
+                return self.algorithm_params
+        result = []
+        for p in self.algorithm_params:
+            if isinstance(p, dict):
+                item = dict(p)
+                # field_value 保持原始类型（list/dict/str/number）
+                # 历史遗留：旧代码用 str() 转换，会导致 list/dict 变成 Python repr 字符串，无法 JSON 解析
+                # 现在原样保留，JSON 列原生支持 list/dict
+                result.append(item)
+        if result:
+            return [{'round_number': 1, 'params': result}]
+        return None
+
+    def get_reference_params_dict(self) -> Optional[List[Dict[str, Any]]]:
+        if not self.reference_params:
+            return None
+        if isinstance(self.reference_params, list):
+            return self.reference_params
+        return None
+
+
+class TestCaseListQuery(APIModel):
+    # INT-228：page 必须 >=1——page=0 时 task_service 派生路径负切片返回移位内容、
+    # SQL 路径口径漂移，边界统一 422
+    page: int = Field(1, ge=1)
+    per_page: int = Field(10)
+    keyword: Optional[str] = Field(None)
+    tag: Optional[str] = Field(None)
+    group_id: Optional[str] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
+    view: Optional[str] = Field(None)
+    include_deleted: bool = Field(False)
+    # INT-141：favorite=true 仅当前用户收藏；only_deleted=true 仅回收站软删除项
+    favorite: bool = Field(False)
+    only_deleted: bool = Field(False)
+    # INT-193：评估维度过滤（dimension_id 按用例 config 匹配）
+    dimension_id: Optional[int] = Field(None, validation_alias=AliasChoices('dimension_id', 'dimensionId'))
+    # INT-539：按实验室过滤（含通用用例；config JSONB 无 lab_id 的用例任意实验室可见）
+    lab_id: Optional[int] = Field(None, validation_alias=AliasChoices('lab_id', 'labId'))
+    # INT-466：可见性筛选（shared/private；空=全部，走服务端行级过滤）
+    visibility: Optional[str] = Field(None)

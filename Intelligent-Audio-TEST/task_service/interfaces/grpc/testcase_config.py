@@ -1,0 +1,239 @@
+# -*- coding: utf-8 -*-
+from shared.proto import task_service_pb2 as task_pb
+from shared.proto import task_service_pb2_grpc as task_grpc
+from shared.utils.grpc_json import loads as _loads, dumps as _dumps, fold_business_code
+
+
+class TestCaseConfigServiceServicer(task_grpc.TestCaseConfigServiceServicer):
+    """测试用例配置 CRUD servicer，委托给 TaskCommandHandler / TaskQueryHandler。
+
+    写操作（create/update/delete/copy/batch_action/update_ref_params）通过
+    CQRS Command 委托 task_command_handler；读操作通过 CQRS Query 委托
+    task_query_handler。handler 内部过渡期仍委托 testcase_crud_service。
+    """
+
+    def __init__(self):
+        self._cmd = None
+        self._qry = None
+
+    @property
+    def cmd(self):
+        """延迟加载命令处理器（CQRS 写侧入口）。"""
+        if self._cmd is None:
+            from task_service.application.handlers import task_command_handler
+            self._cmd = task_command_handler
+        return self._cmd
+
+    @property
+    def qry(self):
+        """延迟加载查询处理器（CQRS 读侧入口）。"""
+        if self._qry is None:
+            from task_service.application.handlers import task_query_handler
+            self._qry = task_query_handler
+        return self._qry
+
+    @staticmethod
+    def _resp(result):
+        """统一包装返回结果为 TestCaseConfigResponse"""
+        data = result.get('data')
+        # INT-566 P1-5：失败响应把顶层业务码折进 data JSON，网关代理按 data.code 提升
+        if not result.get('success', False):
+            data = fold_business_code(data, result.get('code'))
+        return task_pb.TestCaseConfigResponse(
+            success=result.get('success', False),
+            message=result.get('message', ''),
+            data=_dumps(data) if data is not None else "",
+        )
+
+    # ---- 写操作 ----
+
+    def CreateTestCaseConfig(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            from task_service.application.commands.task_commands import CreateTestCaseCommand
+            return self._resp(self.cmd.handle_create_testcase(CreateTestCaseCommand(data=data)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def UpdateTestCaseConfig(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            from task_service.application.commands.task_commands import UpdateTestCaseCommand
+            return self._resp(self.cmd.handle_update_testcase(
+                UpdateTestCaseCommand(tc_id=request.tc_id, data=data)
+            ))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def DeleteTestCaseConfig(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import DeleteTestCaseCommand
+            return self._resp(self.cmd.handle_delete_testcase(DeleteTestCaseCommand(tc_id=request.tc_id)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def CopyTestCaseConfig(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import CopyTestCaseCommand
+            return self._resp(self.cmd.handle_copy_testcase(CopyTestCaseCommand(tc_id=request.tc_id)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def BatchActionTestCases(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            from task_service.application.commands.task_commands import BatchActionTestCaseCommand
+            return self._resp(self.cmd.handle_batch_action_testcase(BatchActionTestCaseCommand(data=data)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def UpdateTestCaseRefParams(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            from task_service.application.commands.task_commands import UpdateTestCaseRefParamsCommand
+            return self._resp(self.cmd.handle_update_testcase_ref_params(
+                UpdateTestCaseRefParamsCommand(tc_id=request.tc_id, round_number=request.round_number, data=data)
+            ))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    # ---- 读操作 ----
+
+    def ListTestCases(self, request, context=None):
+        try:
+            from shared.infrastructure.user_context import user_id_from_context
+            from task_service.application.queries.task_queries import ListTestCasesQuery
+            query = ListTestCasesQuery(
+                page=request.page,
+                per_page=request.per_page,
+                keyword=request.keyword or None,
+                tag=request.tag or None,
+                group_id=request.group_id or None,
+                algorithm_type=request.algorithm_type or None,
+                view=request.view or None,
+                include_deleted=request.include_deleted,
+                dimension_id=request.dimension_id or None,
+                # INT-141：收藏/回收站过滤（user_id 从 x-user-id metadata 取）
+                favorite=request.favorite,
+                only_deleted=request.only_deleted,
+                user_id=user_id_from_context(context),
+                # INT-539：按实验室过滤（含通用用例；lab_ids 空 = 不过滤）
+                lab_ids=list(request.lab_ids) or None,
+                # INT-466：可见性筛选（shared/private；空=全部）
+                visibility=getattr(request, 'visibility', '') or None,
+            )
+            return self._resp(self.qry.handle_list_testcases(query))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def GetTestCaseDetail(self, request, context=None):
+        try:
+            from task_service.application.queries.task_queries import GetTestCaseDetailQuery
+            return self._resp(self.qry.handle_get_testcase_detail(GetTestCaseDetailQuery(tc_id=request.tc_id)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def GetTestCasesByIds(self, request, context=None):
+        """按 ID 列表批量取详情（INT-2313 导出批量取数，单片 ≤200）。
+
+        响应逐条为详情 JSON 字符串（与 GetTestCaseDetail.data 同构）+ 未命中 /
+        不可见 ID 列表；可见性在应用层强制（私有非 owner 进 missing_ids）。
+        INT-2323：`include_deleted` 接收但无效（§3.7.5 回收站用例不导出），
+        应用层恒按 `deleted=False` 取数。
+        """
+        try:
+            from task_service.application.queries.task_queries import GetTestCasesByIdsQuery
+            result = self.qry.handle_get_testcases_by_ids(GetTestCasesByIdsQuery(
+                ids=list(request.ids),
+                include_deleted=bool(request.include_deleted),
+            ))
+            if not result.get('success', False):
+                return task_pb.GetTestCasesByIdsResponse(
+                    success=False, message=result.get('message', ''),
+                    test_cases=[], missing_ids=[])
+            data = result.get('data') or {}
+            return task_pb.GetTestCasesByIdsResponse(
+                success=True,
+                message=result.get('message', ''),
+                test_cases=[_dumps(item) for item in data.get('test_cases') or []],
+                missing_ids=[str(i) for i in data.get('missing_ids') or []],
+            )
+        except Exception as e:
+            return task_pb.GetTestCasesByIdsResponse(
+                success=False, message=str(e), test_cases=[], missing_ids=[])
+
+    def GetTestCaseStats(self, request, context=None):
+        try:
+            from task_service.application.queries.task_queries import GetTestCaseStatsQuery
+            return self._resp(self.qry.handle_get_testcase_stats(GetTestCaseStatsQuery()))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def GetTestCaseTags(self, request, context=None):
+        try:
+            from task_service.application.queries.task_queries import GetTestCaseTagsQuery
+            return self._resp(self.qry.handle_get_testcase_tags(GetTestCaseTagsQuery()))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def GetTestCaseRefParams(self, request, context=None):
+        try:
+            from task_service.application.queries.task_queries import GetTestCaseRefParamsQuery
+            return self._resp(self.qry.handle_get_testcase_ref_params(
+                GetTestCaseRefParamsQuery(tc_id=request.tc_id, round_number=request.round_number)
+            ))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def FetchCaseIds(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            from task_service.application.queries.task_queries import FetchCaseIdsQuery
+            return self._resp(self.qry.handle_fetch_case_ids(FetchCaseIdsQuery(data=data)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    # ---- 收藏 / 回收站（INT-141）----
+
+    def FavoriteTestCase(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import FavoriteEntityCommand
+            return self._resp(self.cmd.handle_favorite_entity(
+                FavoriteEntityCommand(entity_type=request.entity_type,
+                                      entity_id=request.entity_id)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def UnfavoriteTestCase(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import FavoriteEntityCommand
+            return self._resp(self.cmd.handle_unfavorite_entity(
+                FavoriteEntityCommand(entity_type=request.entity_type,
+                                      entity_id=request.entity_id)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def ListDeletedTestCases(self, request, context=None):
+        try:
+            from task_service.application.queries.task_queries import ListDeletedTestCasesQuery
+            return self._resp(self.qry.handle_list_deleted_testcases(
+                ListDeletedTestCasesQuery(page=request.page, per_page=request.per_page,
+                                          keyword=request.keyword or None)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def RestoreTestCases(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import RestoreTestCasesCommand
+            return self._resp(self.cmd.handle_restore_testcases(
+                RestoreTestCasesCommand(case_ids=list(request.case_ids))))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def PurgeTestCases(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import PurgeTestCasesCommand
+            return self._resp(self.cmd.handle_purge_testcases(
+                PurgeTestCasesCommand(case_ids=list(request.case_ids))))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")

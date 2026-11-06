@@ -1,0 +1,336 @@
+# -*- coding: utf-8 -*-
+"""播放设备配置 gRPC servicer（从 servicers.py 拆分，P4-4）。
+
+PlaybackConfigServiceServicer：委托给 PlaybackCommandService（写）/ PlaybackQueryService（读）
+"""
+from shared.models.common_enums import PlaybackQueryCode
+from shared.proto import device_service_pb2 as e2e_pb
+from shared.proto import device_service_pb2_grpc as e2e_grpc
+from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+
+
+class PlaybackConfigServiceServicer(e2e_grpc.PlaybackConfigServiceServicer):
+    """播放设备 gRPC servicer，委托给 PlaybackCommandService（写）/ PlaybackQueryService（读）"""
+
+    def __init__(self):
+        self._command = None
+        self._query = None
+
+    @property
+    def command(self):
+        if self._command is None:
+            from device_service.application.commands.playback_command_service import playback_command_service
+            self._command = playback_command_service
+        return self._command
+
+    @property
+    def query(self):
+        if self._query is None:
+            from device_service.application.queries.playback_query_service import playback_query_service
+            self._query = playback_query_service
+        return self._query
+
+    def CreatePlaybackDevice(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            result = self.command.create(data)
+            return e2e_pb.CreatePlaybackDeviceResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return e2e_pb.CreatePlaybackDeviceResponse(success=False, message=str(e), data="")
+
+    def UpdatePlaybackDevice(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            result = self.command.update(request.device_id, data)
+            return e2e_pb.UpdatePlaybackDeviceResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return e2e_pb.UpdatePlaybackDeviceResponse(success=False, message=str(e), data="")
+
+    def DeletePlaybackDevice(self, request, context=None):
+        try:
+            result = self.command.delete(request.device_id)
+            return e2e_pb.DeletePlaybackDeviceResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return e2e_pb.DeletePlaybackDeviceResponse(success=False, message=str(e), data="")
+
+    def ListPlaybackDevices(self, request, context=None):
+        try:
+            result = self.query.get_all(
+                page=request.page or 1,
+                per_page=request.per_page or 10,
+                keyword=request.keyword or None,
+                device_type=request.device_type or None,
+                lab_id=request.lab_id or None,
+            )
+            return e2e_pb.ListPlaybackDevicesResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return e2e_pb.ListPlaybackDevicesResponse(success=False, message=str(e), data="")
+
+    def GetPlaybackDevice(self, request, context=None):
+        try:
+            result = self.query.get_one(request.device_id)
+            return e2e_pb.GetPlaybackDeviceResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', PlaybackQueryCode.UNSPECIFIED.value),
+            )
+        except Exception as e:
+            # INT-92：服务故障必须携带 code=500 上报，不得让调用方误判为「设备未找到」
+            return e2e_pb.GetPlaybackDeviceResponse(
+                success=False, message=str(e), data="",
+                code=PlaybackQueryCode.INTERNAL_ERROR.value,
+            )
+
+    def ScanPlaybackDevices(self, request, context=None):
+        try:
+            result = self.query.scan()
+            return e2e_pb.ScanPlaybackDevicesResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return e2e_pb.ScanPlaybackDevicesResponse(success=False, message=str(e), data="")
+
+    def CheckPlaybackStatus(self, request, context=None):
+        try:
+            result = self.command.check_status()
+            return e2e_pb.CheckPlaybackStatusResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return e2e_pb.CheckPlaybackStatusResponse(success=False, message=str(e), data="")
+
+    def AssociateSPL(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            result = self.command.associate_spl(request.device_id, data)
+            return e2e_pb.AssociateSPLResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return e2e_pb.AssociateSPLResponse(success=False, message=str(e), data="")
+
+    def TestPlaybackDevice(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            result = self.command.test(request.device_id, data)
+            return e2e_pb.TestPlaybackDeviceResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return e2e_pb.TestPlaybackDeviceResponse(success=False, message=str(e), data="")
+
+    def StopPlaybackTest(self, request, context=None):
+        try:
+            result = self.command.stop_test(request.device_id)
+            return e2e_pb.StopPlaybackTestResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return e2e_pb.StopPlaybackTestResponse(success=False, message=str(e), data="")
+
+    # ---- 播放设备控制（INT-1579，契约 §2.1/§2.2/§2.5）----
+    # code 透传业务码（200/400/404/409），网关据此映射 HTTP 状态码
+
+    def RestartPlaybackDevice(self, request, context=None):
+        try:
+            result = self.command.restart(request.device_id)
+            return e2e_pb.RestartPlaybackDeviceResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.RestartPlaybackDeviceResponse(success=False, message=str(e), data="", code=500)
+
+    def ResetPlaybackDeviceConfig(self, request, context=None):
+        try:
+            result = self.command.reset_config(request.device_id)
+            return e2e_pb.ResetPlaybackDeviceConfigResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.ResetPlaybackDeviceConfigResponse(success=False, message=str(e), data="", code=500)
+
+    def GetPlaybackDeviceDiagnosis(self, request, context=None):
+        try:
+            result = self.query.diagnosis(request.device_id)
+            return e2e_pb.GetPlaybackDeviceDiagnosisResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.GetPlaybackDeviceDiagnosisResponse(success=False, message=str(e), data="", code=500)
+
+    def RepairPlaybackDevice(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            result = self.command.repair(request.device_id, data)
+            return e2e_pb.RepairPlaybackDeviceResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.RepairPlaybackDeviceResponse(success=False, message=str(e), data="", code=500)
+
+    # ---- 逻辑音箱组（N 个实验室里位置相同的音箱互相对应）----
+
+    @property
+    def speaker_command(self):
+        if getattr(self, '_speaker_command', None) is None:
+            from device_service.application.commands.playback_speaker_command_service import (
+                playback_speaker_command_service,
+            )
+            self._speaker_command = playback_speaker_command_service
+        return self._speaker_command
+
+    @property
+    def speaker_query(self):
+        if getattr(self, '_speaker_query', None) is None:
+            from device_service.application.queries.playback_speaker_query_service import (
+                playback_speaker_query_service,
+            )
+            self._speaker_query = playback_speaker_query_service
+        return self._speaker_query
+
+    def ListPlaybackSpeakerGroups(self, request, context=None):
+        try:
+            result = self.speaker_query.list_groups(request.keyword or None)
+            return e2e_pb.ListPlaybackSpeakerGroupsResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.ListPlaybackSpeakerGroupsResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def CreatePlaybackSpeakerGroup(self, request, context=None):
+        try:
+            result = self.speaker_command.create_group(_loads(request.data, {}))
+            return e2e_pb.CreatePlaybackSpeakerGroupResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.CreatePlaybackSpeakerGroupResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def UpdatePlaybackSpeakerGroup(self, request, context=None):
+        try:
+            result = self.speaker_command.update_group(
+                request.group_id, _loads(request.data, {}))
+            return e2e_pb.UpdatePlaybackSpeakerGroupResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.UpdatePlaybackSpeakerGroupResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def DeletePlaybackSpeakerGroup(self, request, context=None):
+        try:
+            result = self.speaker_command.delete_group(request.group_id)
+            return e2e_pb.DeletePlaybackSpeakerGroupResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.DeletePlaybackSpeakerGroupResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def SetPlaybackSpeakerGroupItem(self, request, context=None):
+        try:
+            result = self.speaker_command.set_item(
+                request.group_id, request.lab_id, request.playback_device_id)
+            return e2e_pb.SetPlaybackSpeakerGroupItemResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.SetPlaybackSpeakerGroupItemResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def DeletePlaybackSpeakerGroupItem(self, request, context=None):
+        try:
+            result = self.speaker_command.delete_item(request.group_id, request.lab_id)
+            return e2e_pb.DeletePlaybackSpeakerGroupItemResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.DeletePlaybackSpeakerGroupItemResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def ResolvePlaybackSpeakerDevice(self, request, context=None):
+        try:
+            result = self.speaker_query.resolve(
+                request.source_device_id, request.target_lab_id)
+            return e2e_pb.ResolvePlaybackSpeakerDeviceResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.ResolvePlaybackSpeakerDeviceResponse(
+                success=False, message=str(e), data="", code=500)
+
+    def ResolvePlaybackSpeakerGroupDevice(self, request, context=None):
+        try:
+            result = self.speaker_query.resolve_group(
+                request.group_id, request.target_lab_id)
+            return e2e_pb.ResolvePlaybackSpeakerGroupDeviceResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=result.get('code', 200),
+            )
+        except Exception as e:
+            return e2e_pb.ResolvePlaybackSpeakerGroupDeviceResponse(
+                success=False, message=str(e), data="", code=500)

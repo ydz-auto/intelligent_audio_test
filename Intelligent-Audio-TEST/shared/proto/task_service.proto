@@ -1,0 +1,1273 @@
+syntax = "proto3";
+package task_service;
+option py_generic_services = true;
+
+// ===== 执行引擎服务 =====
+service ExecutionService {
+  // 创建任务
+  rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse);
+  // 启动任务
+  rpc StartTask(StartTaskRequest) returns (StartTaskResponse);
+  // 停止任务
+  rpc StopTask(StopTaskRequest) returns (StopTaskResponse);
+  // 暂停任务
+  rpc PauseTask(PauseTaskRequest) returns (PauseTaskResponse);
+  // 恢复任务
+  rpc ResumeTask(ResumeTaskRequest) returns (ResumeTaskResponse);
+  // 从队列中移除任务
+  rpc RemoveFromQueue(RemoveFromQueueRequest) returns (RemoveFromQueueResponse);
+  // 获取任务状态
+  rpc GetTaskStatus(GetTaskStatusRequest) returns (TaskStatusResponse);
+  // 获取执行引擎实例信息（如线程池状态）
+  rpc GetEngineInfo(GetEngineInfoRequest) returns (EngineInfoResponse);
+  // 通知进度更新（evaluation_service 评估完成后调用）
+  rpc NotifyProgress(NotifyProgressRequest) returns (NotifyProgressResponse);
+  // 通知用例已完成（唤醒等待线程）
+  rpc NotifyCaseCompleted(NotifyCaseCompletedRequest) returns (NotifyCaseCompletedResponse);
+  // 注：EvaluateCase / Reevaluate / ReevaluateMultiRound / ReevaluateSingle
+  // 已迁移至 evaluation_service.proto 的 EvaluationService
+}
+
+// ==================== ExecutionService Messages ====================
+
+message CreateTaskRequest {
+  string task_id = 1;
+  string task_config = 2;  // JSON 序列化的任务配置
+}
+
+message CreateTaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的创建结果
+}
+
+message StartTaskRequest {
+  string task_id = 1;
+}
+
+message StartTaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopTaskRequest {
+  string task_id = 1;
+}
+
+message StopTaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message PauseTaskRequest {
+  string task_id = 1;
+}
+
+message PauseTaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ResumeTaskRequest {
+  string task_id = 1;
+}
+
+message ResumeTaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message RemoveFromQueueRequest {
+  string task_id = 1;
+}
+
+message RemoveFromQueueResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetTaskStatusRequest {
+  string task_id = 1;
+}
+
+message TaskStatusResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的任务状态
+}
+
+// 注：ReevaluateRequest/Response, ReevaluateMultiRoundRequest/Response,
+// ReevaluateSingleRequest/Response, EvaluateCaseRequest/Response
+// 已迁移至 evaluation_service.proto
+
+message GetEngineInfoRequest {
+  string task_id = 1;
+}
+
+message EngineInfoResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的引擎信息（线程池状态等）
+}
+
+message NotifyProgressRequest {
+  string task_id = 1;
+  bool force = 2;
+}
+
+message NotifyProgressResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message NotifyCaseCompletedRequest {
+  string task_id = 1;
+}
+
+message NotifyCaseCompletedResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ===== 任务配置 CRUD 服务 =====
+service TaskConfigService {
+  // ---- 写操作 ----
+  rpc CreateTaskConfig(CreateTaskConfigRequest) returns (TaskConfigResponse);
+  rpc UpdateTaskConfig(UpdateTaskConfigRequest) returns (TaskConfigResponse);
+  rpc DeleteTaskConfig(DeleteTaskConfigRequest) returns (TaskConfigResponse);
+  rpc UpdateTaskCases(UpdateTaskCasesRequest) returns (TaskConfigResponse);
+  rpc BatchActionTasks(BatchActionTasksRequest) returns (TaskConfigResponse);
+  rpc MergeTasks(MergeTasksRequest) returns (TaskConfigResponse);
+
+  // ---- 读操作 ----
+  rpc ListTasks(ListTasksRequest) returns (TaskConfigResponse);
+  rpc GetTaskDetail(GetTaskDetailRequest) returns (TaskConfigResponse);
+  rpc GetTaskProgress(GetTaskProgressRequest) returns (TaskConfigResponse);
+  rpc GetTaskStats(GetTaskStatsRequest) returns (TaskConfigResponse);
+  rpc GetCaseDetail(GetCaseDetailRequest) returns (TaskConfigResponse);
+  rpc GetCaseResults(GetCaseResultsRequest) returns (TaskConfigResponse);
+
+  // ---- 音频删除引用检查（INT-1306）----
+  // 按 audio_id 集合一次查被测试用例/任务引用计数（DB 侧扫描 config），
+  // 供 audio_service 删除/批量删除前调用，替代逐页 ListTestCases/ListTasks 全量拉取。
+  rpc CheckAudioReferences(CheckAudioReferencesRequest) returns (TaskConfigResponse);
+
+  // ---- 收藏（INT-141：task|testcase 归 task_service，per-user，user_id 走 x-user-id metadata）----
+  rpc FavoriteTask(FavoriteEntityRequest) returns (TaskConfigResponse);
+  rpc UnfavoriteTask(FavoriteEntityRequest) returns (TaskConfigResponse);
+  rpc ListFavoriteIds(ListFavoriteIdsRequest) returns (TaskConfigResponse);
+
+  // ---- 回收站（INT-141：软删列表 / 恢复单个+批量 / 彻底删除 purge）----
+  rpc ListDeletedTasks(ListDeletedTasksRequest) returns (TaskConfigResponse);
+  rpc RestoreTasks(RestoreTasksRequest) returns (TaskConfigResponse);
+  rpc PurgeTasks(PurgeTasksRequest) returns (TaskConfigResponse);
+
+  // ---- 生命周期操作（内部调用 execution_engine）----
+  rpc StartTaskLifecycle(StartTaskLifecycleRequest) returns (TaskConfigResponse);
+  rpc RetryTaskLifecycle(RetryTaskLifecycleRequest) returns (TaskConfigResponse);
+  rpc ControlTaskLifecycle(ControlTaskLifecycleRequest) returns (TaskConfigResponse);
+  rpc StopTaskLifecycle(StopTaskLifecycleRequest) returns (TaskConfigResponse);
+  rpc RextractTaskLifecycle(RextractTaskLifecycleRequest) returns (TaskConfigResponse);
+  // ---- 用例移除（INT-305：执行详情模态窗四阶段删除用例，操作人走 x-user-id metadata）----
+  rpc RemoveTaskCaseLifecycle(RemoveTaskCaseLifecycleRequest) returns (TaskConfigResponse);
+}
+
+// ==================== TaskConfigService Messages ====================
+
+message CreateTaskConfigRequest {
+  string data = 1;  // JSON: {name, description, type, config, case_ids, device_ids, api_ids, tags, created_by}
+}
+message UpdateTaskConfigRequest {
+  int32 task_id = 1;
+  string data = 2;  // JSON: {name, description}
+}
+message DeleteTaskConfigRequest {
+  int32 task_id = 1;
+}
+message UpdateTaskCasesRequest {
+  int32 task_id = 1;
+  string data = 2;  // JSON: {action: add/remove, case_ids}
+}
+message BatchActionTasksRequest {
+  string data = 1;  // JSON: {action: delete/export, task_ids, format}
+}
+message MergeTasksRequest {
+  string data = 1;  // JSON: {task_ids}
+}
+message ListTasksRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string status = 3;
+  string type = 4;
+  string algorithm_type = 5;
+  string search = 6;
+  string start_date = 7;
+  string end_date = 8;
+  bool favorite = 9;   // INT-141：仅当前用户收藏（x-user-id metadata）
+  bool deleted = 10;   // INT-141：仅回收站（软删除项，含删除人/删除时间）
+  string evaluation_status = 11;  // INT-301：按任务级评估状态过滤（pending/evaluating/completed/failed/skipped）
+  bool merged = 12;   // INT-298：仅合并容器任务（存在 TaskMergeRelation 的任务；对齐 V9.7.10 合并页签数据源）
+  string execution_status = 13;  // INT-301 F1：按任务级执行状态过滤（pending/queued/running/paused/completed/failed/stopped/merged）
+  bool cherry_pick = 14;  // INT-339：仅挑选合并容器任务（task_cherry_pick_relations 存在性判定，§5.4）
+  // task_type 已废除（任务类型 api/e2e/mixed 概念不再存在，执行方式只看用例级 device_type）
+  reserved 15;
+  bool stats = 16;  // INT-577：仅「挑选合并」页签（stats=true）计算合并容器统计块（merged ∪ cherry_pick 并集，total/whole/picked），否则 None
+  string visibility = 17;  // INT-466：可见性筛选（shared/private；空=全部）
+}
+message GetTaskDetailRequest {
+  int32 task_id = 1;
+}
+message GetTaskProgressRequest {
+  int32 task_id = 1;
+}
+message GetTaskStatsRequest {
+  int32 task_id = 1;
+}
+message GetCaseDetailRequest {
+  int32 task_id = 1;
+  string case_id = 2;
+}
+message GetCaseResultsRequest {
+  int32 task_id = 1;
+  string case_id = 2;
+}
+message StartTaskLifecycleRequest {
+  int32 task_id = 1;
+}
+message RetryTaskLifecycleRequest {
+  int32 task_id = 1;
+  // JSON: {case_ids: [str], mode: 'selected'|'failed_only'|'all'}（INT-302，
+  // 缺省空对象保持整任务重执行语义）
+  string data = 2;
+}
+message ControlTaskLifecycleRequest {
+  int32 task_id = 1;
+  string data = 2;  // JSON: {action, case_id}
+}
+message StopTaskLifecycleRequest {
+  int32 task_id = 1;
+}
+message RextractTaskLifecycleRequest {
+  int32 task_id = 1;
+  string data = 2;  // JSON: {execution_status, evaluation_status}
+}
+// INT-305：执行详情模态窗移除用例（按任务阶段分语义：待执行摘除 / 执行中中断 / 终态软删+excluded）
+message RemoveTaskCaseLifecycleRequest {
+  int32 task_id = 1;
+  string case_id = 2;  // TaskCase.test_case_id（str）
+}
+message TaskConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+  int32 code = 4;   // HTTP 语义业务码（INT-1759：0=未填/成功；网关按 code 映射 HTTP 状态，
+                    // 与 ReportConfigResponse.code 同约定，见 shared/proto/README.md）
+}
+// INT-1306：音频删除引用检查请求（audio_id 列表）
+message CheckAudioReferencesRequest {
+  repeated int64 audio_ids = 1;  // 待检查的音频 ID 列表（Audio.id）
+}
+
+// ===== 收藏（INT-141）=====
+message FavoriteEntityRequest {
+  string entity_type = 1;  // task / testcase（EntityType 枚举）
+  string entity_id = 2;    // 实体 ID（字符串化；任务为数字 ID 的十进制串）
+}
+message ListFavoriteIdsRequest {
+  string entity_type = 1;  // task / testcase；空 = 全部
+  int64 user_id = 2;       // 可选：显式指定用户（0 = 取 x-user-id metadata 当前用户）
+}
+// ===== 回收站（INT-141）=====
+message ListDeletedTasksRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string search = 3;
+}
+message RestoreTasksRequest {
+  repeated int32 task_ids = 1;
+}
+message PurgeTasksRequest {
+  repeated int32 task_ids = 1;  // 彻底删除（物理删除，权限收敛在网关 admin/owner）
+}
+
+// ===== 挑选合并（INT-339：购物车/挑选集/候选查询/下单三出口/溯源）=====
+// per-user 语义（购物车/挑选集）user_id 走 x-user-id metadata，与收藏同口径。
+service CherryPickService {
+  // ---- 购物车（per-user 持久化，跨会话保留）----
+  rpc GetCherryPickCart(CherryPickEmptyRequest) returns (TaskConfigResponse);
+  rpc AddCherryPickCartItems(CherryPickCartAddRequest) returns (TaskConfigResponse);
+  rpc RemoveCherryPickCartItems(CherryPickCartRemoveRequest) returns (TaskConfigResponse);
+  rpc ClearCherryPickCart(CherryPickEmptyRequest) returns (TaskConfigResponse);
+  // ---- 挑选集（另存/恢复两向，§3 购物车口径）----
+  rpc SaveCherryPickSet(CherryPickSaveSetRequest) returns (TaskConfigResponse);
+  rpc ListCherryPickSets(CherryPickEmptyRequest) returns (TaskConfigResponse);
+  rpc GetCherryPickSet(CherryPickSetIdRequest) returns (TaskConfigResponse);
+  rpc DeleteCherryPickSet(CherryPickSetIdRequest) returns (TaskConfigResponse);
+  rpc RestoreCherryPickSetToCart(CherryPickSetIdRequest) returns (TaskConfigResponse);
+  // ---- 挑选候选查询（S2 多条件 AND，设备+用例为点名必支持项）----
+  rpc ListCherryPickCandidates(CherryPickCandidatesRequest) returns (TaskConfigResponse);
+  // ---- 可挑选任务清单（INT-1496 挑选向导阶段 1 数据源；服务端一次 GROUP BY 聚合）----
+  rpc ListCherryPickPickableTasks(CherryPickPickableTasksRequest) returns (TaskConfigResponse);
+  // ---- 阶段 2 候选树聚合（INT-1510 §8.2：任务→用例→设备/API→result_type，节点计数 + result_id 集）----
+  rpc ListCherryPickCandidateTree(CherryPickCandidateTreeRequest) returns (TaskConfigResponse);
+  // ---- 下单（三出口 action=merge/reexecute/reevaluate + 合并预览）----
+  rpc CherryPickPreview(CherryPickEmptyRequest) returns (TaskConfigResponse);
+  rpc CherryPickCheckout(CherryPickCheckoutRequest) returns (TaskConfigResponse);
+  // ---- 溯源（§8 GET /tasks/{taskId}/cherry-pick-source）----
+  rpc GetCherryPickSource(CherryPickSourceRequest) returns (TaskConfigResponse);
+}
+
+message CherryPickEmptyRequest {
+}
+
+message CherryPickCartAddRequest {
+  string data = 1;  // JSON: {result_ids: [int]}（溯源快照由 task_service 从源行提取）
+}
+message CherryPickCartRemoveRequest {
+  repeated int64 item_ids = 1;  // 购物车条目 ID（仅限本人条目）
+}
+message CherryPickSaveSetRequest {
+  string data = 1;  // JSON: {name, description}（内容取当前购物车）
+}
+message CherryPickSetIdRequest {
+  int64 set_id = 1;
+}
+message CherryPickCandidatesRequest {
+  string data = 1;  // JSON: {task_ids?, device_ids?, case_ids?, execution_status?,
+                    //       evaluation_status?, start_date?, end_date?, page, per_page}
+}
+message CherryPickPickableTasksRequest {
+  string data = 1;  // JSON: {keyword?, status?, sort_by?, sort_order?, page, per_page}
+                    // 任务级聚合结果（items 只含 id/name/execution_status/pickable_count/created_at）
+}
+message CherryPickCandidateTreeRequest {
+  string data = 1;  // JSON: {task_ids: [int]（必填 1–200）, device_ids?, api_ids?, case_ids?,
+                    //       case_keyword?, execution_status?, evaluation_status?,
+                    //       start_date?, end_date?}
+                    // 返回 data: {total, task_count, meta{tasks,cases,devices,apis}, tree[...]}
+                    // 聚合（分组计数 + result_id 集）由 task_service 仓储单条 SQL 完成
+}
+message CherryPickCheckoutRequest {
+  string data = 1;  // JSON: {action: 'merge'|'reexecute'|'reevaluate'（缺省 merge）,
+                    //       name?, description?, algorithm_type?, algorithm_params?, config?}
+}
+message CherryPickSourceRequest {
+  int32 task_id = 1;
+}
+
+// ===== 测试结果人工复核（INT-340）=====
+// 终态任务结果改判留痕 + 覆盖提醒计数 + 复核历史。operator 走 x-user-id metadata。
+service ReviewService {
+  // 复核提交（单条/批量）：result_ids + execution_status/evaluation_status + comment
+  rpc SubmitReview(ReviewSubmitRequest) returns (TaskConfigResponse);
+  // 覆盖提醒计数：任务下已复核结果条数（任务详情查询挂点）
+  rpc GetReviewCount(ReviewTaskRequest) returns (TaskConfigResponse);
+  // 复核历史（多次复核追加不覆盖）
+  rpc ListReviewHistory(ReviewTaskRequest) returns (TaskConfigResponse);
+
+  // ---- AI 复核（INT-822/INT-800；operator 走 x-user-id metadata）----
+  // 发起：{result_ids, dimension_ids?, force?} → {items: [AiReviewRecordDto], reused, skipped}
+  rpc InitiateAiReview(AiReviewRequest) returns (TaskConfigResponse);
+  // 任务 AI 复核历史（时间倒序；data JSON: {result_id?, dimension_id?, status?}）
+  rpc ListAiReviewHistory(AiReviewHistoryRequest) returns (TaskConfigResponse);
+  // 采纳（复用 apply_review 落人工复核语义）：data JSON {execution_status?, evaluation_status?, comment}
+  rpc AdoptAiReview(AiReviewActionRequest) returns (TaskConfigResponse);
+  // 驳回（原判定不变）
+  rpc RejectAiReview(AiReviewActionRequest) returns (TaskConfigResponse);
+}
+
+message ReviewSubmitRequest {
+  string data = 1;  // JSON: {result_ids: [int], execution_status?, evaluation_status?,
+                    //       comment: str（必填）}
+}
+message ReviewTaskRequest {
+  int32 task_id = 1;
+}
+
+message AiReviewRequest {
+  string data = 1;  // JSON: {result_ids: [int], dimension_ids?: [int], force?: bool}
+}
+message AiReviewHistoryRequest {
+  int32 task_id = 1;
+  string data = 2;  // JSON: {result_id?: int, dimension_id?: int, status?: str}
+}
+message AiReviewActionRequest {
+  int64 review_id = 1;
+  string data = 2;  // JSON: adopt {execution_status?: str, evaluation_status?: str, comment: str}
+}
+
+// ===== 已发布任务配置服务（任务发布功能）=====
+service PublishedTaskConfigService {
+  // ---- 写操作 ----
+  rpc PublishTask(PublishTaskRequest) returns (TaskConfigResponse);
+  rpc ExecutePublishedTask(ExecutePublishedTaskRequest) returns (TaskConfigResponse);
+  rpc CreatePublishedTaskVersion(CreatePublishedTaskVersionRequest) returns (TaskConfigResponse);
+  rpc ArchivePublishedTask(ArchivePublishedTaskRequest) returns (TaskConfigResponse);
+  rpc RenamePublishedTask(RenamePublishedTaskRequest) returns (TaskConfigResponse);
+
+  // ---- 读操作 ----
+  rpc ListPublishedTasks(ListPublishedTasksRequest) returns (TaskConfigResponse);
+  rpc GetPublishedTaskDetail(GetPublishedTaskDetailRequest) returns (TaskConfigResponse);
+}
+
+message PublishTaskRequest {
+  string data = 1;  // JSON: {sourceTaskId, name, description, publishReason}
+}
+message ExecutePublishedTaskRequest {
+  int32 published_task_id = 1;
+  int64 operator_user_id = 2;  // 操作人用户 ID（网关从 JWT 注入；0=未认证/AUTH_MODE=off）
+}
+message CreatePublishedTaskVersionRequest {
+  int32 published_task_id = 1;
+  string data = 2;  // JSON: {sourceTaskId, name, description, publishReason}
+}
+message ArchivePublishedTaskRequest {
+  int32 published_task_id = 1;
+  int64 operator_user_id = 2;  // 操作人用户 ID（网关从 JWT 注入；0=未认证/AUTH_MODE=off）
+}
+message RenamePublishedTaskRequest {
+  int32 published_task_id = 1;
+  string data = 2;  // JSON: {name}
+}
+message ListPublishedTasksRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string status = 3;
+  string keyword = 4;
+  // 原 type（api/e2e 任务类型）已废除：发布任务不再区分任务类型，筛选只看用例级 device_type
+  reserved 5;
+  string start_date = 6;
+  string end_date = 7;
+  // benchmark 筛选（三态字符串）：""=不过滤，"true"/"false"=按 Benchmark 标记过滤
+  string benchmark = 8;
+  // 算法类型筛选（发布时冻结的冗余列，对齐 V9.7.10）
+  string algorithm_type = 9;
+}
+message GetPublishedTaskDetailRequest {
+  int32 published_task_id = 1;
+}
+
+// ===== 测试用例配置 CRUD 服务 =====
+service TestCaseConfigService {
+  // ---- 写操作 ----
+  rpc CreateTestCaseConfig(CreateTestCaseConfigRequest) returns (TestCaseConfigResponse);
+  rpc UpdateTestCaseConfig(UpdateTestCaseConfigRequest) returns (TestCaseConfigResponse);
+  rpc DeleteTestCaseConfig(DeleteTestCaseConfigRequest) returns (TestCaseConfigResponse);
+  rpc CopyTestCaseConfig(CopyTestCaseConfigRequest) returns (TestCaseConfigResponse);
+  rpc BatchActionTestCases(BatchActionTestCasesRequest) returns (TestCaseConfigResponse);
+  rpc UpdateTestCaseRefParams(UpdateTestCaseRefParamsRequest) returns (TestCaseConfigResponse);
+
+  // ---- 读操作 ----
+  rpc ListTestCases(ListTestCasesRequest) returns (TestCaseConfigResponse);
+  rpc GetTestCaseDetail(GetTestCaseDetailRequest) returns (TestCaseConfigResponse);
+  // INT-2313：按 ID 列表分片批量取详情（导出批量取数；单片 ≤200，套行级可见性）
+  rpc GetTestCasesByIds(GetTestCasesByIdsRequest) returns (GetTestCasesByIdsResponse);
+  rpc GetTestCaseStats(GetTestCaseStatsRequest) returns (TestCaseConfigResponse);
+  rpc GetTestCaseTags(GetTestCaseTagsRequest) returns (TestCaseConfigResponse);
+  rpc GetTestCaseRefParams(GetTestCaseRefParamsRequest) returns (TestCaseConfigResponse);
+  // 按筛选条件返回全量用例ID（不分页）
+  rpc FetchCaseIds(FetchCaseIdsRequest) returns (TestCaseConfigResponse);
+
+  // ---- 收藏 / 回收站（INT-141）----
+  rpc FavoriteTestCase(FavoriteEntityRequest) returns (TestCaseConfigResponse);
+  rpc UnfavoriteTestCase(FavoriteEntityRequest) returns (TestCaseConfigResponse);
+  rpc ListDeletedTestCases(ListDeletedTestCasesRequest) returns (TestCaseConfigResponse);
+  rpc RestoreTestCases(RestoreTestCasesRequest) returns (TestCaseConfigResponse);
+  rpc PurgeTestCases(PurgeTestCasesRequest) returns (TestCaseConfigResponse);
+}
+
+// ==================== TestCaseConfigService Messages ====================
+
+message CreateTestCaseConfigRequest {
+  string data = 1;  // JSON: 完整创建请求体
+}
+message UpdateTestCaseConfigRequest {
+  string tc_id = 1;
+  string data = 2;  // JSON: 完整更新请求体
+}
+message DeleteTestCaseConfigRequest {
+  string tc_id = 1;
+}
+message CopyTestCaseConfigRequest {
+  string tc_id = 1;
+}
+message BatchActionTestCasesRequest {
+  string data = 1;  // JSON: {action, ids, ...}
+}
+message UpdateTestCaseRefParamsRequest {
+  string tc_id = 1;
+  int32 round_number = 2;
+  string data = 3;  // JSON: {referenceParams}
+}
+message ListTestCasesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+  string tag = 4;
+  string group_id = 5;
+  // 原 type（用例 api/e2e 类型）已废除：用例纯数据化，执行方式只看任务侧 device_type
+  reserved 6;
+  string algorithm_type = 7;
+  string view = 8;       // 'tag' or none
+  bool include_deleted = 9;
+  int32 dimension_id = 10;  // 评估维度ID（按 config JSON 模糊匹配）
+  bool favorite = 11;       // INT-141：仅当前用户收藏（x-user-id metadata）
+  bool only_deleted = 12;   // INT-141：仅回收站（软删除项，含删除人/删除时间）
+  // INT-539：按实验室过滤（含通用用例）。config JSONB 无 lab_id 的用例
+  // 视为通用用例，任意实验室下均可见；有值则须属于本集合。
+  repeated int32 lab_ids = 13;
+  string visibility = 14;  // INT-466：可见性筛选（shared/private；空=全部）
+}
+message GetTestCaseDetailRequest {
+  string tc_id = 1;
+}
+// INT-2313：批量详情（导出批量取数）。调用方按 200/片切分，单响应体积可控、
+// 分片失败互不影响（失败片由调用方整体计入 missing）。
+message GetTestCasesByIdsRequest {
+  repeated string ids = 1;        // 用例 ID 列表（单片 ≤200）
+  // INT-2323：接收但无效（§3.7.5 回收站用例不导出）——详情取数通道恒按
+  // deleted=False 取，软删 ID 进 missing_ids；保留字段只为 wire 兼容，不再下传
+  bool include_deleted = 2;
+}
+message GetTestCasesByIdsResponse {
+  bool success = 1;
+  string message = 2;
+  // 逐条为 JSON 字符串，结构同 GetTestCaseDetail 的 data（逐字段同口径）
+  repeated string test_cases = 3;
+  // 未命中 / 不可见（私有非 owner 按不存在处理）的 ID，保持入参顺序
+  repeated string missing_ids = 4;
+}
+message GetTestCaseStatsRequest {}
+message GetTestCaseTagsRequest {}
+message GetTestCaseRefParamsRequest {
+  string tc_id = 1;
+  int32 round_number = 2;
+}
+message FetchCaseIdsRequest {
+  string data = 1;  // JSON: {group, search, tag}
+}
+message TestCaseConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+// ===== 用例回收站（INT-141）=====
+message ListDeletedTestCasesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+}
+message RestoreTestCasesRequest {
+  repeated string case_ids = 1;
+}
+message PurgeTestCasesRequest {
+  repeated string case_ids = 1;  // 彻底删除（物理删除，权限收敛在网关 admin/owner）
+}
+
+// ===== 评估策略配置 CRUD 服务（INT-590：整体评估维度+全局背景噪声 抽为可复用策略） =====
+service EvaluationStrategyService {
+  // ---- 写操作 ----
+  // 创建评估策略（config JSON: {dimensions:[{id,name,weight,threshold,round_scope?,llmJudgeConfig?}], background_noise:{...}}，
+  // 与用例 config.dimensions / config.background_noise 同构）
+  rpc CreateEvaluationStrategy(CreateEvaluationStrategyRequest) returns (TaskConfigResponse);
+  // 更新评估策略（P1：编辑不回灌已引用用例，用例/任务均快照语义）
+  rpc UpdateEvaluationStrategy(UpdateEvaluationStrategyRequest) returns (TaskConfigResponse);
+  // 删除评估策略（被用例引用时拒绝，返回 referenced_case_count）
+  rpc DeleteEvaluationStrategy(DeleteEvaluationStrategyRequest) returns (TaskConfigResponse);
+
+  // ---- 读操作 ----
+  // 策略列表（含 referenced_case_count 关联用例计数，列表展示 + 删保护同源）
+  rpc ListEvaluationStrategies(ListEvaluationStrategiesRequest) returns (TaskConfigResponse);
+  rpc GetEvaluationStrategy(GetEvaluationStrategyRequest) returns (TaskConfigResponse);
+}
+
+message CreateEvaluationStrategyRequest {
+  string data = 1;  // JSON: {name, description, algorithm_type, enabled, config}
+}
+message UpdateEvaluationStrategyRequest {
+  string strategy_id = 1;
+  string data = 2;  // JSON: {name, description, algorithm_type, enabled, config}
+}
+message DeleteEvaluationStrategyRequest {
+  string strategy_id = 1;
+}
+message ListEvaluationStrategiesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;          // 可选，按 name 模糊匹配
+  string algorithm_type = 4;   // 可选，策略适用算法类型过滤
+  string enabled = 5;          // 可选，启用状态过滤：""=全部，"true"/"false"
+}
+message GetEvaluationStrategyRequest {
+  string strategy_id = 1;
+}
+
+// ===== 标签配置 CRUD 服务 =====
+service TagConfigService {
+  // ---- TagCategory 写操作 ----
+  rpc CreateTagCategory(CreateTagCategoryRequest) returns (TagConfigResponse);
+  rpc UpdateTagCategory(UpdateTagCategoryRequest) returns (TagConfigResponse);
+  rpc DeleteTagCategory(DeleteTagCategoryRequest) returns (TagConfigResponse);
+
+  // ---- Tag 写操作 ----
+  rpc CreateTag(CreateTagRequest) returns (TagConfigResponse);
+  rpc UpdateTag(UpdateTagRequest) returns (TagConfigResponse);
+  rpc DeleteTag(DeleteTagRequest) returns (TagConfigResponse);
+  rpc BatchUpdateTagCategory(BatchUpdateTagCategoryRequest) returns (TagConfigResponse);
+
+  // ---- 读操作 ----
+  rpc ListTagCategories(ListTagCategoriesRequest) returns (TagConfigResponse);
+  rpc GetTagCategory(GetTagCategoryRequest) returns (TagConfigResponse);
+  rpc ListTags(ListTagsRequest) returns (TagConfigResponse);
+  rpc ListTagNames(ListTagNamesRequest) returns (TagConfigResponse);
+  rpc GetTag(GetTagRequest) returns (TagConfigResponse);
+  rpc GetTagsByCategory(GetTagsByCategoryRequest) returns (TagConfigResponse);
+}
+
+// ==================== TagConfigService Messages ====================
+
+message CreateTagCategoryRequest {
+  string data = 1;  // JSON: {name, description, color, sort_order}
+}
+message UpdateTagCategoryRequest {
+  int32 category_id = 1;
+  string data = 2;  // JSON: {name, description, color, sort_order}
+}
+message DeleteTagCategoryRequest {
+  int32 category_id = 1;
+}
+message CreateTagRequest {
+  string data = 1;  // JSON: {name, description, color, category_id}
+}
+message UpdateTagRequest {
+  int32 tag_id = 1;
+  string data = 2;  // JSON: {name, description, color, category_id}
+}
+message DeleteTagRequest {
+  int32 tag_id = 1;
+  bool cascade = 2;  // true: 级联删除标签及其下所有测试用例
+}
+message BatchUpdateTagCategoryRequest {
+  string data = 1;  // JSON: {tag_ids, category_id}
+}
+message ListTagCategoriesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+}
+message GetTagCategoryRequest {
+  int32 category_id = 1;
+}
+message ListTagsRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  int32 category_id = 3;
+  string keyword = 4;
+}
+message ListTagNamesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+}
+message GetTagRequest {
+  int32 tag_id = 1;
+}
+message GetTagsByCategoryRequest {}
+message TagConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ===== 算法配置 CRUD 服务 =====
+service AlgorithmConfigService {
+  // ---- 算法定义 写操作 ----
+  rpc CreateAlgorithm(CreateAlgorithmRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateAlgorithm(UpdateAlgorithmRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteAlgorithm(DeleteAlgorithmRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 算法分组 写操作 ----
+  rpc CreateAlgorithmGroup(CreateAlgorithmGroupRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateAlgorithmGroup(UpdateAlgorithmGroupRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteAlgorithmGroup(DeleteAlgorithmGroupRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 参数(device/api) 写操作 ----
+  rpc CreateParam(CreateParamRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateParam(UpdateParamRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteParam(DeleteParamRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 用例专属参数 写操作 ----
+  rpc CreateCaseParam(CreateCaseParamRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateCaseParam(UpdateCaseParamRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteCaseParam(DeleteCaseParamRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 参考参数 写操作 ----
+  rpc CreateReferenceParam(CreateReferenceParamRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateReferenceParam(UpdateReferenceParamRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteReferenceParam(DeleteReferenceParamRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 参数映射 写操作 ----
+  rpc CreateMapping(CreateMappingRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateMapping(UpdateMappingRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteMapping(DeleteMappingRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 维度关联 写操作 ----
+  rpc AssociateDimensions(AssociateDimensionsRequest) returns (AlgorithmConfigResponse);
+  rpc CreateDimensionRelation(CreateDimensionRelationRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateDimensionRelation(UpdateDimensionRelationRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteDimensionRelation(DeleteDimensionRelationRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 批量操作 ----
+  rpc ImportAlgorithms(ImportAlgorithmsRequest) returns (AlgorithmConfigResponse);
+  rpc BulkDeleteAlgorithms(BulkDeleteAlgorithmsRequest) returns (AlgorithmConfigResponse);
+  rpc ExtractParams(ExtractParamsRequest) returns (AlgorithmConfigResponse);
+  rpc ReloadAlgorithmConfig(ReloadAlgorithmConfigRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 读操作 ----
+  rpc ListAlgorithms(ListAlgorithmsRequest) returns (AlgorithmConfigResponse);
+  rpc GetAlgorithm(GetAlgorithmRequest) returns (AlgorithmConfigResponse);
+  rpc GetAlgorithmOptions(GetAlgorithmOptionsRequest) returns (AlgorithmConfigResponse);
+  rpc ListAlgorithmGroups(ListAlgorithmGroupsRequest) returns (AlgorithmConfigResponse);
+  rpc GetAlgorithmGroup(GetAlgorithmGroupRequest) returns (AlgorithmConfigResponse);
+  rpc ListParams(ListParamsRequest) returns (AlgorithmConfigResponse);
+  rpc GetParam(GetParamRequest) returns (AlgorithmConfigResponse);
+  rpc ListCaseParams(ListCaseParamsRequest) returns (AlgorithmConfigResponse);
+  rpc GetCaseParam(GetCaseParamRequest) returns (AlgorithmConfigResponse);
+  rpc ListReferenceParams(ListReferenceParamsRequest) returns (AlgorithmConfigResponse);
+  rpc GetReferenceParam(GetReferenceParamRequest) returns (AlgorithmConfigResponse);
+  rpc ListMappings(ListMappingsRequest) returns (AlgorithmConfigResponse);
+  rpc GetFormSchema(GetFormSchemaRequest) returns (AlgorithmConfigResponse);
+  rpc GetAlgorithmDimensions(GetAlgorithmDimensionsRequest) returns (AlgorithmConfigResponse);
+  rpc GetDimensionParams(GetDimensionParamsRequest) returns (AlgorithmConfigResponse);
+}
+
+// ==================== AlgorithmConfigService Messages ====================
+
+// ---- 算法定义 ----
+message CreateAlgorithmRequest {
+  string data = 1;  // JSON: 完整创建请求体
+}
+message UpdateAlgorithmRequest {
+  string algo_type = 1;
+  string data = 2;  // JSON: 完整更新请求体
+}
+message DeleteAlgorithmRequest {
+  string algo_type = 1;
+}
+
+// ---- 算法分组 ----
+message CreateAlgorithmGroupRequest {
+  string data = 1;  // JSON: {name, description, icon, display_order}
+}
+message UpdateAlgorithmGroupRequest {
+  int32 group_id = 1;
+  string data = 2;  // JSON: {name, description, icon, display_order}
+}
+message DeleteAlgorithmGroupRequest {
+  int32 group_id = 1;
+}
+
+// ---- 参数(device/api) ----
+message CreateParamRequest {
+  string data = 1;  // JSON: 完整参数对象（含 param_type_source: device/api）
+}
+message UpdateParamRequest {
+  int32 param_id = 1;
+  string data = 2;  // JSON: 完整更新请求体
+}
+message DeleteParamRequest {
+  int32 param_id = 1;
+}
+
+// ---- 用例专属参数 ----
+message CreateCaseParamRequest {
+  string data = 1;
+}
+message UpdateCaseParamRequest {
+  int32 param_id = 1;
+  string data = 2;
+}
+message DeleteCaseParamRequest {
+  int32 param_id = 1;
+}
+
+// ---- 参考参数 ----
+message CreateReferenceParamRequest {
+  string data = 1;
+}
+message UpdateReferenceParamRequest {
+  int32 param_id = 1;
+  string data = 2;
+}
+message DeleteReferenceParamRequest {
+  int32 param_id = 1;
+}
+
+// ---- 参数映射 ----
+message CreateMappingRequest {
+  string data = 1;
+}
+message UpdateMappingRequest {
+  int32 mapping_id = 1;
+  string data = 2;
+}
+message DeleteMappingRequest {
+  int32 mapping_id = 1;
+}
+
+// ---- 维度关联 ----
+message AssociateDimensionsRequest {
+  string algo_type = 1;
+  string data = 2;  // JSON: {dimensions: [...]}
+}
+message CreateDimensionRelationRequest {
+  string data = 1;
+}
+message UpdateDimensionRelationRequest {
+  int32 relation_id = 1;
+  string data = 2;
+}
+message DeleteDimensionRelationRequest {
+  int32 relation_id = 1;
+}
+
+// ---- 批量操作 ----
+message ImportAlgorithmsRequest {
+  string data = 1;  // JSON: {algorithms: [...]}
+}
+message BulkDeleteAlgorithmsRequest {
+  string data = 1;  // JSON: {algorithm_types: [...]}
+}
+message ExtractParamsRequest {
+  string data = 1;  // JSON: {case_config}
+}
+message ReloadAlgorithmConfigRequest {}
+
+// ---- 读操作 ----
+message ListAlgorithmsRequest {
+  string status = 1;
+  int32 group_id = 2;
+}
+message GetAlgorithmRequest {
+  string algo_type = 1;
+}
+message GetAlgorithmOptionsRequest {}
+message ListAlgorithmGroupsRequest {}
+message GetAlgorithmGroupRequest {
+  int32 group_id = 1;
+}
+message ListParamsRequest {
+  string algorithm_type = 1;
+  string param_type = 2;  // device / api
+}
+message GetParamRequest {
+  int32 param_id = 1;
+}
+message ListCaseParamsRequest {
+  string algorithm_type = 1;
+  string scope = 2;
+}
+message GetCaseParamRequest {
+  int32 param_id = 1;
+}
+message ListReferenceParamsRequest {
+  string algorithm_type = 1;
+}
+message GetReferenceParamRequest {
+  int32 param_id = 1;
+}
+message ListMappingsRequest {
+  string algorithm_type = 1;
+  string source_type = 2;
+  int32 dimension_id = 3;
+}
+message GetFormSchemaRequest {
+  string algo_type = 1;
+}
+message GetAlgorithmDimensionsRequest {
+  string algo_type = 1;
+}
+message GetDimensionParamsRequest {
+  int32 dimension_id = 1;
+}
+message AlgorithmConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// 注：EvaluationConfigService（Dimension/Category CRUD）已迁移至 evaluation_service.proto
+
+
+// ===== 任务数据查询服务（P1.5 新增，供 evaluation_service / api_test_service / e2e_test_service 跨服务读 task_service 数据）=====
+service TaskDataService {
+  // 按 ID 读取单个 TestResult（归属 task_service，其他服务禁止直连 DB 查此表）
+  rpc GetTestResultById(GetTestResultByIdRequest) returns (TaskDataResponse);
+  // 按 task_id + case_ids 批量读取 TaskCase
+  rpc GetTaskCaseByIds(GetTaskCaseByIdsRequest) returns (TaskDataResponse);
+  // 按 task_id 读取 Task 详情
+  rpc GetTaskById(GetTaskByIdRequest) returns (TaskDataResponse);
+  // 按 task_id 读取关联设备
+  rpc GetTaskDevices(GetTaskDevicesRequest) returns (TaskDataResponse);
+  // 按 task_id 读取关联 API
+  rpc GetTaskApis(GetTaskApisRequest) returns (TaskDataResponse);
+  // 写入测试结果（api_test_service / e2e_test_service / evaluation_service 执行完成后调用）
+  rpc SubmitResult(SubmitResultRequest) returns (TaskDataResponse);
+  // 更新 TaskCase 状态（evaluation_service 评估完成后调用）
+  rpc UpdateTaskCaseStatus(UpdateTaskCaseStatusRequest) returns (TaskDataResponse);
+  // 更新 TestResult 的 algorithm_result（evaluation_service 多轮聚合后调用）
+  rpc UpdateTestResultAlgorithmResult(UpdateTestResultAlgorithmResultRequest) returns (TaskDataResponse);
+  // 更新 TestResult 的 result_data 和 result_data_path（evaluation_service 预提取 algorithm_results 快照时调用）
+  rpc UpdateTestResultData(UpdateTestResultDataRequest) returns (TaskDataResponse);
+  // 按 task_id + test_case_id 批量读取 TestResult
+  rpc GetTestResultsByTaskAndCase(GetTestResultsByTaskAndCaseRequest) returns (TaskDataResponse);
+  // 更新 TestResult 的 execution_status（evaluation_service 标记完成时调用）
+  rpc UpdateTestResultStatus(UpdateTestResultStatusRequest) returns (TaskDataResponse);
+  // 更新 TestResult 的执行结果字段（e2e_test_service 聚合完成后调用，一次写入全部结果字段）
+  rpc UpdateTestResultOutcome(UpdateTestResultOutcomeRequest) returns (TaskDataResponse);
+  // 更新 Task 的 status（evaluation_service 重新评估流转时调用）
+  rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (TaskDataResponse);
+  // 查询 TaskMergeRelation（api_gateway 报告对比用）
+  rpc GetTaskMergeRelations(GetTaskMergeRelationsRequest) returns (TaskDataResponse);
+  // 查询 TaskCherryPickRelation（INT-339：报告链路/读链路引用解析用）
+  rpc GetCherryPickRelations(GetCherryPickRelationsRequest) returns (TaskDataResponse);
+  // 查询 Log 列表（api_gateway 日志用）
+  rpc ListLogs(ListLogsRequest) returns (TaskDataResponse);
+  // 批量写入日志（shared/utils/log_handler 后台 worker 用，替代直连 DB）
+  rpc BatchCreateLogs(BatchCreateLogsRequest) returns (TaskDataResponse);
+  // 查询日志统计（group_by level + count）
+  rpc GetLogStats(GetLogStatsRequest) returns (TaskDataResponse);
+  // 增量查询日志（id > last_id，返回 max_id）
+  rpc ListLogsAfterId(ListLogsAfterIdRequest) returns (TaskDataResponse);
+  // 按 id 列表/条件查询日志（导出用）
+  rpc GetLogsForExport(GetLogsForExportRequest) returns (TaskDataResponse);
+  // 查询日志总数（含按日期范围）
+  rpc GetLogCount(GetLogCountRequest) returns (TaskDataResponse);
+  // 批量更新日志标记
+  rpc UpdateLogsMark(UpdateLogsMarkRequest) returns (TaskDataResponse);
+  // 批量清除日志（按日期/标记）
+  rpc ClearLogs(ClearLogsRequest) returns (TaskDataResponse);
+  // 归档日志（按天数，dry_run 预检）
+  rpc ArchiveLogs(ArchiveLogsRequest) returns (TaskDataResponse);
+  // 查询 TestCaseGroup 列表（api_gateway 分组管理用）
+  rpc ListTestCaseGroups(ListTestCaseGroupsRequest) returns (TaskDataResponse);
+  // 按 ID 列表批量查询 TestCaseGroup（导入导出用）
+  rpc GetTestCaseGroupsByIds(GetTestCaseGroupsByIdsRequest) returns (TaskDataResponse);
+  // 按名称列表批量查询 TestCaseGroup（导入导出用）
+  rpc GetTestCaseGroupsByNames(GetTestCaseGroupsByNamesRequest) returns (TaskDataResponse);
+  // 按 ID 查询单个 TestCaseGroup
+  rpc GetTestCaseGroupById(GetTestCaseGroupByIdRequest) returns (TaskDataResponse);
+  // 按名称查询单个 TestCaseGroup（导入时查重用）
+  rpc GetTestCaseGroupByName(GetTestCaseGroupByNameRequest) returns (TaskDataResponse);
+  // 创建 TestCaseGroup（导入时新建分组用）
+  rpc CreateTestCaseGroup(CreateTestCaseGroupRequest) returns (TaskDataResponse);
+  // 更新 TestCaseGroup（名称/描述/算法类型）
+  rpc UpdateTestCaseGroup(UpdateTestCaseGroupRequest) returns (TaskDataResponse);
+  // 软删除 TestCaseGroup（含 cascade 选项）
+  rpc DeleteTestCaseGroup(DeleteTestCaseGroupRequest) returns (TaskDataResponse);
+  // 聚合统计（供 stats_cache / home_service 用）— count/group_by
+  rpc GetTaskStats(TaskAggStatsRequest) returns (TaskDataResponse);
+  rpc GetTestCaseStats(TestCaseAggStatsRequest) returns (TaskDataResponse);
+  // 设备占用聚合（实验室扩展 INT-493 §4.3）— 按物理设备聚合 task_case_relations
+  // 活动行（execution_status IN pending/queued/running，device_type='physical'），
+  // 出参 data JSON: {device_id: {occupied_status, task_id, case_id}}
+  rpc GetDeviceOccupancy(GetDeviceOccupancyRequest) returns (TaskDataResponse);
+  // 用例 config lab_id 批量解析（实验室扩展 INT-540 §4.5，供 /api/tasks/validate）
+  // 入参 data JSON: {"case_ids": [str]}，出参 data JSON: {case_id: lab_id|None}
+  rpc GetTestCaseLabIds(GetTestCaseLabIdsRequest) returns (TaskDataResponse);
+  // 任务关联实验室查询（实验室扩展 INT-540，GET /api/tasks/{id}/labs）
+  // 入参 data JSON: {"task_id": int}，出参 data JSON: {task_id, labs:[{id,code,name}]}
+  rpc GetTaskLabs(GetTaskLabsRequest) returns (TaskDataResponse);
+}
+
+message GetTestResultByIdRequest {
+  int32 result_id = 1;
+}
+message GetTaskCaseByIdsRequest {
+  int32 task_id = 1;
+  repeated string case_ids = 2;
+}
+message GetTaskByIdRequest {
+  int32 task_id = 1;
+}
+message GetTaskDevicesRequest {
+  int32 task_id = 1;
+}
+message GetTaskApisRequest {
+  int32 task_id = 1;
+}
+message SubmitResultRequest {
+  int32 task_id = 1;
+  string result_data = 2;  // JSON：TestResult 字段
+}
+message UpdateTaskCaseStatusRequest {
+  int32 task_id = 1;
+  string case_id = 2;          // 实为 test_case_id（兼容旧调用）；tc_rel_id 优先时精确命中路由行
+  string status = 3;          // pending/completed/failed/skipped
+  string execution_status = 4;  // pending/running/completed/stopped/failed
+  string evaluation_status = 5; // queued/pending/running/calculating/completed/stopped/failed
+  string error_message = 6;
+  string started_at = 7;      // ISO8601，用例开始执行时间（空则不更新）
+  string completed_at = 8;    // ISO8601，用例结束执行时间（空则不更新）
+  int32 tc_rel_id = 9;        // INT-604：task_case_relations.id（可选）。多路由下同一用例
+                              // 存在设备/API 多行，执行/评估写回必须按路由行精确命中，
+                              // 避免 (task_id, test_case_id) 全量更新把兄弟路由打成同一终态。
+}
+message UpdateTestResultAlgorithmResultRequest {
+  int32 result_id = 1;
+  string algorithm_result = 2;  // JSON：完整的 algorithm_result 字段
+}
+message UpdateTestResultDataRequest {
+  int32 result_id = 1;
+  string result_data = 2;        // JSON：轻量 result_data（DB 列）
+  string result_data_path = 3;   // 大字段文件路径（可为空）
+}
+message GetTestResultsByTaskAndCaseRequest {
+  int32 task_id = 1;
+  string test_case_id = 2;  // 可选，为空返回该 task 下所有
+  string device_type = 3;   // INT-604：可选路由过滤（physical/http_api/websocket_api）
+  string device_id = 4;     // INT-604：可选路由过滤（device_id / api_id）
+}
+message UpdateTestResultStatusRequest {
+  int32 result_id = 1;
+  string execution_status = 2;  // pending/running/completed/stopped/failed
+}
+message UpdateTestResultOutcomeRequest {
+  int32 result_id = 1;
+  string algorithm_result = 2;  // JSON：完整的 algorithm_result 字段
+  string execution_status = 3;  // pending/running/completed/stopped/failed
+  int32 response_time = 4;      // 响应时间 (ms)
+  string error_message = 5;     // 错误信息（可为空）
+  string result_data_path = 6;  // 结果数据文件路径（为空则不更新该列）
+}
+message UpdateTaskStatusRequest {
+  int32 task_id = 1;
+  string status = 2;  // pending/queued/running/evaluating/reevaluate_queued/reevaluating/completed/failed/stopped/paused/skipped
+}
+message TaskDataResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的结果
+}
+
+message GetTaskMergeRelationsRequest {
+  int32 task_id = 1;  // 按 task_id 查询合并关系
+}
+message GetCherryPickRelationsRequest {
+  int32 task_id = 1;  // 按 cherry_pick_task_id 查询挑选合并关系（报告/读链路引用解析，INT-339）
+}
+message ListLogsRequest {
+  int32 task_id = 1;          // 可选，按 task_id 过滤
+  string level = 2;           // 可选，按级别过滤（支持逗号分隔多级别，INT-100 下推 DB）
+  int32 page = 3;             // 分页页码
+  int32 per_page = 4;        // 每页条数
+  string start_date = 5;     // 可选，开始日期
+  string end_date = 6;       // 可选，结束日期
+  // ---- INT-100 下推过滤（旧调用方不传 = 不过滤，行为不变）----
+  // 语义与 GetLogStatsRequest 对齐；api_gateway 合并视图以下推过滤替代
+  // per_page=100000 全量拉取。
+  string module = 7;           // 可选，模块精确匹配（忽略大小写；'all' 视为不过滤）
+  string category = 8;         // 可选，分类精确匹配（忽略大小写；'all' 视为不过滤）
+  string mark = 9;             // 可选，标记精确匹配
+  int32 device_id = 10;        // 可选，设备 ID 精确匹配
+  int32 api_id = 11;           // 可选，API ID 精确匹配
+  string test_case_id = 12;    // 可选，用例 ID 精确匹配
+  string thread_id = 13;       // 可选，线程 ID 包含匹配
+  string keyword = 14;         // 可选，content 包含匹配
+  string content_include = 15; // 可选，content 包含匹配
+  string content_exclude = 16; // 可选，content 排除包含匹配
+  string algorithm_type = 17;  // 可选，算法类型精确匹配（'all' 视为不过滤）
+  int32 user_id = 18;          // 可选，按操作人 created_by_user_id 过滤（INT-806「仅自己」）
+}
+message ListTestCaseGroupsRequest {
+  string algorithm_type = 1;  // 可选，按算法类型过滤
+  string search = 2;          // 可选，搜索关键词
+  // INT-1470：可选分页下推（0 或缺省 = 不分页，返回全部分组，旧调用方行为不变）
+  int32 page = 3;             // 可选，页码（1 起）
+  int32 per_page = 4;         // 可选，每页条数；page > 0 时生效
+}
+message GetTestCaseGroupsByIdsRequest {
+  repeated string group_ids = 1;  // TestCaseGroup ID 列表
+}
+message GetTestCaseGroupsByNamesRequest {
+  repeated string group_names = 1;  // TestCaseGroup 名称列表
+}
+message GetTestCaseGroupByIdRequest {
+  string group_id = 1;
+}
+message GetTestCaseGroupByNameRequest {
+  string group_name = 1;
+}
+message CreateTestCaseGroupRequest {
+  string name = 1;
+  string description = 2;
+  string algorithm_type = 3;
+  string group_id = 4;  // 可选，指定 ID（导入用）
+  string visibility = 5;  // 可选，数据可见性 shared/private（INT-566；空=服务端默认 shared）
+}
+message UpdateTestCaseGroupRequest {
+  string group_id = 1;
+  string name = 2;              // 新名称（可选，空则不更新）
+  string description = 3;      // 新描述（可选，空则不更新）
+  string algorithm_type = 4;   // 新算法类型（可选，空则不更新）
+  string visibility = 5;       // INT-466：新可见性（shared/private；空则不更新）
+}
+message DeleteTestCaseGroupRequest {
+  string group_id = 1;
+  bool cascade = 2;            // true: 同时软删该分组下所有 TestCase
+}
+
+// ===== TaskDataService 聚合统计 Request（供 stats_cache / home_service 用）=====
+// 注：名称带 Agg 前缀以避免与 TaskConfigService.GetTaskStatsRequest /
+// TestCaseConfigService.GetTestCaseStatsRequest 同名冲突。
+message TaskAggStatsRequest {
+  string status = 1;          // 可选，按状态过滤
+  string algorithm_type = 2;  // 可选
+  string group_by = 3;        // 可选，分组字段（status / algorithm_type / trend 完成趋势）
+  bool deleted = 4;           // 可选，true 统计回收站（软删除）任务；默认统计未删除任务（INT-200）
+  string granularity = 5;     // group_by='trend' 时分桶粒度：day/week/month/year（INT-200）
+}
+message TestCaseAggStatsRequest {
+  string algorithm_type = 1;  // 可选
+  string group_id = 2;        // 可选，TestCaseGroup ID（UUID 字符串，INT-468：不得 int 强转）
+  string group_by = 3;        // 可选，分组字段（如 algorithm_type / group_id）
+  // 原 test_type（用例 api/e2e 类型过滤）已废除：用例纯数据化，执行方式只看任务侧 device_type
+  reserved 4;
+  string keyword = 5;         // 可选，按用例 id/name/description 模糊匹配（分组列表筛选）
+  int32 dimension_id = 6;     // 可选，按评估维度过滤（config JSON 匹配，分组列表筛选）
+  bool favorite = 7;          // 可选，true 仅当前用户收藏（INT-528：分组列表收藏口径）
+  bool deleted = 8;           // 可选，true 统计回收站（软删除）用例；默认统计未删除用例（INT-528，镜像 TaskAggStatsRequest.deleted）
+}
+
+// 设备占用聚合请求（INT-493 §4.3）——device_ids/lab_id 均可选，空 = 全物理设备
+message GetDeviceOccupancyRequest {
+  string data = 1;  // JSON: {"device_ids": [int], "lab_id": int?}
+}
+
+// 用例 config lab_id 批量解析请求（INT-540 §4.5，供 /api/tasks/validate）
+message GetTestCaseLabIdsRequest {
+  string data = 1;  // JSON: {"case_ids": [str]}
+}
+
+// 任务关联实验室查询请求（INT-540，GET /api/tasks/{id}/labs）
+message GetTaskLabsRequest {
+  string data = 1;  // JSON: {"task_id": int}
+}
+
+// ===== Log CRUD RPC（P0-3 新增，替代 api_gateway/shared/utils 直连 DB）=====
+
+message BatchCreateLogsRequest {
+  string logs_json = 1;  // JSON: [{time, level, category, module, source, content, task_id?, ...}, ...]
+}
+message GetLogStatsRequest {
+  string level = 1;           // 可选，按级别过滤（支持逗号分隔多级别）
+  string module = 2;          // 可选
+  string category = 3;        // 可选
+  string mark = 4;            // 可选
+  int32 device_id = 5;       // 可选
+  int32 task_id = 6;          // 可选
+  string keyword = 7;         // 可选
+  string content_include = 8; // 可选
+  string content_exclude = 9; // 可选
+  string start_time = 10;     // 可选 ISO
+  string end_time = 11;       // 可选 ISO
+  string algorithm_type = 12; // 可选
+  int32 user_id = 13;         // 可选，按操作人 created_by_user_id 过滤（INT-806「仅自己」统计口径同步）
+}
+message ListLogsAfterIdRequest {
+  int32 last_id = 1;   // 增量基准 ID
+  int32 limit = 2;     // 返回条数上限
+}
+message GetLogsForExportRequest {
+  repeated int32 log_ids = 1;  // 可选，按 id 列表查询
+  string level = 2;             // 可选
+  string module = 3;             // 可选
+}
+message GetLogCountRequest {
+  string start_date = 1;  // 可选 ISO，统计 >= 此日期的 hot 日志
+}
+message UpdateLogsMarkRequest {
+  repeated int32 log_ids = 1;
+  string mark = 2;
+}
+message ClearLogsRequest {
+  string before_datetime = 1;  // 可选 ISO，删除此时间之前的日志
+  bool keep_marked = 2;        // 为 true 时保留有 mark 的日志
+}
+message ArchiveLogsRequest {
+  int32 days = 1;     // 归档 days 天前的日志
+  bool dry_run = 2;   // 为 true 时只统计不执行
+}
+
+// ===== 任务数据导入导出服务（INT-25）=====
+// 编排归属 task_service：导出读自身 7 表并经 gRPC 拉 evaluation/report 只读数据后打 ZIP；
+// 导入分段提交（task 7 表 → evaluation 维度 → report 7 表 → 文件），任一段失败按逆序补偿回滚。
+service DataTransferService {
+  // 导出任务数据为 ZIP：入参 {task_ids, options:{include_ref_params, include_audios}}
+  // 出参 {zip_path(共享盘相对 DATA_TRANSFER_TMP_DIR), manifest}
+  rpc ExportTasks(ExportTasksRequest) returns (TaskConfigResponse);
+  // 导入预检：入参 {zip_path}，出参 manifest 摘要 + stats + conflicts + warnings
+  rpc PreviewImport(PreviewImportRequest) returns (TaskConfigResponse);
+  // 执行导入：入参 {zip_path}，出参导入统计（含 remappedIds）。长耗时调用，
+  // 客户端超时需放宽（网关代理 timeout=3600s）；进度经 Redis 频道 import_progress 推送。
+  rpc ExecuteImport(ExecuteImportRequest) returns (TaskConfigResponse);
+  // 回滚一次导入批次：入参 {batch_id}，按批次登记的主键删除（补偿失败时人工介入的兜底入口）
+  rpc RollbackImport(RollbackImportRequest) returns (TaskConfigResponse);
+  // 增量导出（链路 2，INT-1761）：入参 {task_ids:[int], options:{include:[dimensions,reports]}}
+  // 出参 {zip_path(共享盘相对 DATA_TRANSFER_TMP_DIR), manifest, sourceTaskId,
+  //       dimensionCount, reportCount}。包内 id 已翻译回 A 原始 id；
+  // 存在未映射结果行 → success=false + code=409 + data.unmappedResultIds，不产出包。
+  rpc ExportIncremental(ExportIncrementalRequest) returns (TaskConfigResponse);
+  // 增量导入（链路 2）：入参 {zip_path}，把维度覆盖集合并 + 报告原地替换到 A 原任务。
+  // 出参合并回执（mergedDimensions / replacedReportId / warnings / batchId /
+  // rollbackAvailable）；失败按 code 透传（400/403/404/409/500）。
+  rpc ImportIncremental(ImportIncrementalRequest) returns (TaskConfigResponse);
+  // 报告包导出（INT-1764 D6，链路 3a + 3b/3c）：入参 {task_ids, report_ids?,
+  // doc_version_scope?}；出参 {zip_path, manifest}（ZIP 落共享盘，网关 FileResponse 下发）
+  rpc ExportReportPackage(ExportReportPackageRequest) returns (TaskConfigResponse);
+  // 报告包导入（INT-1764 D6）：入参 {zip_path, data:{target_report_id?, batch_id?}}；
+  // 平台报告按 sourceTask.id 原地替换，Studio 文档拓扑序落库，出参为导入回执（含 warnings）。
+  // 长耗时调用，客户端超时需放宽。
+  rpc ImportReportPackage(ImportReportPackageRequest) returns (TaskConfigResponse);
+}
+
+message ExportIncrementalRequest {
+  // JSON: {task_ids: [int], options: {include: ['dimensions'|'reports']}}
+  string data = 1;
+}
+message ImportIncrementalRequest {
+  string zip_path = 1;  // 共享盘上 ZIP 文件的绝对路径（DATA_TRANSFER_TMP_DIR/import/ 下）
+  string data = 2;      // 保留：增量包暂无请求级选项
+}
+
+message ExportReportPackageRequest {
+  string data = 1;  // JSON: {task_ids: [int], report_ids: [int], doc_version_scope: 'full'|'latest'}
+}
+message ImportReportPackageRequest {
+  string zip_path = 1;  // 共享盘上报告包 ZIP 的绝对路径
+  string data = 2;  // JSON: {target_report_id?: int, batch_id?: str, doc_version_scope?: 'full'|'latest'}
+}
+
+message ExportTasksRequest {
+  string data = 1;  // JSON: {task_ids: [int], options: {include_ref_params: bool, include_audios: bool}}
+}
+message PreviewImportRequest {
+  string zip_path = 1;  // 共享盘上 ZIP 文件的绝对路径（DATA_TRANSFER_TMP_DIR/import/ 下）
+  // JSON: {require_case_consistency?: bool, intent?: 'migrate'|'restore'}（INT-1759 请求级选项）
+  string data = 2;
+}
+message ExecuteImportRequest {
+  string zip_path = 1;  // 共享盘上 ZIP 文件的绝对路径
+  // JSON: {require_case_consistency?: bool, intent?: 'migrate'|'restore'}（INT-1759 请求级选项）
+  string data = 2;
+}
+message RollbackImportRequest {
+  string batch_id = 1;
+}
+
+

@@ -72,7 +72,7 @@
   <text x="822" y="186" class="body">· 算法配置上下文 → algorithm_service（共享"算法类型"字典，跨上下文引用）</text>
   <text x="822" y="204" class="body">· 用户与权限上下文 → auth_service（RBAC + OAuth，横切全部）</text>
   <text x="822" y="222" class="body">· 系统审计上下文 → task_service + 各服务自维护统计（Log CRUD 待下沉）</text>
-  <text x="822" y="240" class="body">· API 适配上下文 → api_adapter_service（多 vendor 协议适配，已有完整 DDD 分层）</text>
+  <text x="822" y="240" class="body">· API 适配上下文 → api_test_service（多 vendor 协议适配，已有完整 DDD 分层）</text>
   <text x="822" y="262" class="note">algorithm：PO + domain 已建，CRUD 待从 task_service 回归</text>
   <text x="822" y="280" class="note">auth：PO 骨架已建（User/OAuthClient/RefreshToken + RBAC 表）</text>
   <text x="822" y="298" class="note">审计：Log CRUD 待从网关下沉（gRPC Log CRUD RPC 补全后）</text>

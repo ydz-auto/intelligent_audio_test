@@ -1,0 +1,173 @@
+# -*- coding: utf-8 -*-
+"""业务日志路径模板（INT-81）。
+
+路径规则（唯一权威实现，写入/读取两侧共用）：
+    business/{task_id}/{device_id|api_id|common}/{evaluation_id|round|shared}/{log_type}.{service_name}[.{hostname}-{pid}][-NNN].log
+
+- 第二段：被测设备ID（E2E/设备日志）或 API 定义ID（API 用例日志），缺省 common
+- 第三段：评估ID或轮次号，缺省 shared（任务级日志不区分轮次）
+- 文件名：写入侧带进程标识 {log_type}.{service_name}.{hostname}-{pid}.log
+  —— service_name 只区分服务不区分副本；进程标识（shared.logging.identity）
+  同宿主多进程靠 PID 区分、容器多副本（副本内 PID namespace 独立、入口
+  进程 PID 恒为 1）靠 Docker 注入的短容器 ID（hostname）区分，两者合取
+  保证同一服务的每个写入进程持有独立活跃文件，轮转改名只触碰本进程文件
+  （多副本/多 worker 安全，审计问题 1 修复）
+- 超限切分 {log_type}.{service_name}.{hostname}-{pid}-001.log：切分序号
+  扫描以活跃文件 stem 为前缀，天然按进程隔离，不跨进程合并序号
+
+所有段取值经 sanitize 校验（拒绝路径分隔符/..），路径模板本身不可配置拼接。
+"""
+import os
+import re
+from typing import Optional
+
+from shared.logging.enums import AUDIT_DIR, AUDIT_FILE_SUFFIX, BusinessLogType
+
+BUSINESS_DIR = 'business'
+# 缺省段常量（枚举化，拒绝魔法字符串）
+COMMON_SEGMENT = 'common'    # 无设备且无 API 上下文
+SHARED_SEGMENT = 'shared'    # 无评估ID且无轮次上下文
+
+_SEGMENT_SAFE_RE = re.compile(r'[^A-Za-z0-9_\-.一-鿿]')
+_SPLIT_SUFFIX_RE = re.compile(r'-(\d{3})\.log$')
+_AUDIT_SPLIT_SUFFIX_RE = re.compile(r'-(\d{3})\.jsonl$')
+_AUDIT_DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+
+
+class BusinessLogPathBuilder:
+    """业务日志相对路径构建（相对 LOG_ROOT_DIR）。"""
+
+    def build_rel_path(self, *, task_id, log_type: BusinessLogType, service_name: str,
+                       device_id=None, api_id=None,
+                       evaluation_id=None, round_value=None,
+                       process_id=None) -> str:
+        """构建业务日志相对路径。
+
+        Args:
+            task_id: 任务ID（必填，业务日志的根键）
+            log_type: 业务日志类型枚举
+            service_name: 写入方服务名
+            device_id: 被测设备ID（优先于 api_id）
+            api_id: API 定义ID（无设备上下文的 API 用例日志）
+            evaluation_id: 评估ID（优先于 round_value）
+            round_value: 轮次号
+            process_id: 写入进程标识（写入侧必须传，默认 {hostname}-{pid}，
+                同宿主多进程靠 PID、容器多副本靠 Docker 短容器 ID 合取唯一；
+                读取侧按目录通配枚举，不依赖具体文件名）
+        """
+        if task_id is None or str(task_id).strip() == '':
+            raise ValueError('business log path requires task_id')
+        task_seg = self.sanitize_segment(task_id)
+        target_seg = (self.sanitize_segment(device_id) if device_id not in (None, '')
+                      else self.sanitize_segment(api_id) if api_id not in (None, '')
+                      else COMMON_SEGMENT)
+        scope_seg = (self.sanitize_segment(evaluation_id) if evaluation_id not in (None, '')
+                     else self.sanitize_segment(round_value) if round_value not in (None, '')
+                     else SHARED_SEGMENT)
+        stem = f'{log_type.value}.{self.sanitize_segment(service_name)}'
+        if process_id is not None:
+            stem = f'{stem}.{self.sanitize_segment(process_id)}'
+        filename = f'{stem}.log'
+        return os.path.join(BUSINESS_DIR, task_seg, target_seg, scope_seg, filename)
+
+    def build_log_type_scope_dir(self, *, task_id, device_id=None, api_id=None,
+                                 evaluation_id=None, round_value=None) -> Optional[str]:
+        """构建到轮次/评估层级的目录（不含文件名），缺 task_id 返回 None。
+
+        读取侧按 task/device/evaluation 检索时用它收敛扫描范围。
+        """
+        if task_id is None or str(task_id).strip() == '':
+            return None
+        task_seg = self.sanitize_segment(task_id)
+        target_seg = (self.sanitize_segment(device_id) if device_id not in (None, '')
+                      else self.sanitize_segment(api_id) if api_id not in (None, '')
+                      else COMMON_SEGMENT)
+        scope_seg = (self.sanitize_segment(evaluation_id) if evaluation_id not in (None, '')
+                     else self.sanitize_segment(round_value) if round_value not in (None, '')
+                     else SHARED_SEGMENT)
+        return os.path.join(BUSINESS_DIR, task_seg, target_seg, scope_seg)
+
+    def build_task_dir(self, task_id) -> str:
+        """任务根目录（全量检索入口）。"""
+        return os.path.join(BUSINESS_DIR, self.sanitize_segment(task_id))
+
+    @staticmethod
+    def sanitize_segment(value) -> str:
+        """路径段清洗：白名单字符，替换非法字符，拒绝空段。"""
+        seg = _SEGMENT_SAFE_RE.sub('_', str(value).strip())
+        if seg in ('', '.', '..'):
+            seg = '_'
+        return seg
+
+    @staticmethod
+    def split_index_of(filename: str) -> int:
+        """解析切分序号（{base}-001.log → 1），无序号返回 0（活跃文件）。"""
+        match = _SPLIT_SUFFIX_RE.search(filename)
+        return int(match.group(1)) if match else 0
+
+    @staticmethod
+    def next_split_path(dir_path: str, active_filename: str) -> str:
+        """返回活跃文件的下一个切分目标路径（-NNN 序号取现存最大值+1）。
+
+        序号扫描以活跃文件 stem 为前缀：写入侧文件名含 hostname+pid 进程
+        标识，切分序号天然按进程隔离，多副本各自递增互不覆盖（os.replace
+        只触碰本进程文件）。
+        """
+        stem = active_filename[:-len('.log')]
+        max_index = 0
+        if os.path.isdir(dir_path):
+            for name in os.listdir(dir_path):
+                if name.startswith(stem + '-') and name.endswith('.log'):
+                    max_index = max(max_index, BusinessLogPathBuilder.split_index_of(name))
+        return os.path.join(dir_path, f'{stem}-{max_index + 1:03d}.log')
+
+
+class AuditLogPathBuilder:
+    """审计日志相对路径构建（相对 LOG_ROOT_DIR，INT-1793 契约 §3.1）。
+
+    路径模板（写入/读取两侧唯一权威实现）：
+        audit/{YYYY-MM-DD}/{category}.{service}.{hostname}-{pid}.jsonl
+        audit/{YYYY-MM-DD}/{category}.{service}.{hostname}-{pid}-NNN.jsonl   # 超限切分
+
+    - 日期在路径最前：按时间窗筛选只枚举对应日期目录；保留期按目录日期
+      整目录回收（不依赖 mtime，进程重启后追加写不会刷新日期段）
+    - `{service}` 是**产生事件的进程**（随条目透传），`{hostname}-{pid}` 是
+      **写盘进程**标识（task_service 单写者，H4）
+    - 切分序号按写盘进程的活跃文件 stem 递增，不跨进程合并序号
+    """
+
+    def build_rel_path(self, *, category, service_name: str, date_seg: str,
+                       process_id) -> str:
+        """构建审计日志相对路径。category/日期/服务名缺一不可。"""
+        category_seg = self.sanitize_segment(category)
+        service_seg = self.sanitize_segment(service_name)
+        if not _AUDIT_DATE_RE.match(str(date_seg)):
+            raise ValueError(f'audit log path requires YYYY-MM-DD date, got {date_seg!r}')
+        stem = f'{category_seg}.{service_seg}.{self.sanitize_segment(process_id)}'
+        return os.path.join(AUDIT_DIR, str(date_seg), f'{stem}{AUDIT_FILE_SUFFIX}')
+
+    def build_date_dir(self, date_seg: str) -> str:
+        """某日审计目录（相对 LOG_ROOT_DIR），读取侧枚举用。"""
+        return os.path.join(AUDIT_DIR, str(date_seg))
+
+    @staticmethod
+    def sanitize_segment(value) -> str:
+        """路径段清洗（与业务日志同规则，拒绝分隔符/..）。"""
+        return BusinessLogPathBuilder.sanitize_segment(value)
+
+    @staticmethod
+    def split_index_of(filename: str) -> int:
+        """解析切分序号（{base}-001.jsonl → 1），无序号返回 0（活跃文件）。"""
+        match = _AUDIT_SPLIT_SUFFIX_RE.search(filename)
+        return int(match.group(1)) if match else 0
+
+    @staticmethod
+    def next_split_path(dir_path: str, active_filename: str) -> str:
+        """返回活跃审计文件的下一个切分目标路径（-NNN 取现存最大值+1）。"""
+        stem = active_filename[:-len(AUDIT_FILE_SUFFIX)]
+        max_index = 0
+        if os.path.isdir(dir_path):
+            for name in os.listdir(dir_path):
+                if name.startswith(stem + '-') and name.endswith(AUDIT_FILE_SUFFIX):
+                    max_index = max(max_index, AuditLogPathBuilder.split_index_of(name))
+        return os.path.join(dir_path, f'{stem}-{max_index + 1:03d}{AUDIT_FILE_SUFFIX}')

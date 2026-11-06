@@ -1,0 +1,135 @@
+"""
+音频引擎模块 - AudioService 与模块级单例。
+
+时间轴纯函数已拆分到 audio_timeline.py，
+驱动层（AudioDriver / PyAudioDriver）已拆分到 audio_driver.py。
+播放控制/设备通信/音频预准备/设备枚举已拆分到各 Engine*Mixin，
+本文件仅保留 AudioService 组合类定义和模块级单例 audio_service。
+
+职责拆分（Mixin 组合模式）：
+- _engine_device_comm_mixin.EngineDeviceCommMixin：驱动初始化/设备缓存/多策略匹配/API 优先级选择
+- _engine_playback_mixin.EnginePlaybackMixin：播放控制（play_audio/play_overlap/stop_*)
+- _engine_audio_prepare_mixin.EngineAudioPrepareMixin：音频预下载与按设备采样率重采样
+- _engine_device_enumeration_mixin.EngineDeviceEnumerationMixin：物理设备按声卡聚合去重枚举
+"""
+
+import threading
+from shared.utils.log_handler import log_and_emit
+from audio_service.infrastructure.audio._engine_device_comm_mixin import EngineDeviceCommMixin
+from audio_service.infrastructure.audio._engine_playback_mixin import EnginePlaybackMixin
+from audio_service.infrastructure.audio._engine_audio_prepare_mixin import EngineAudioPrepareMixin
+from audio_service.infrastructure.audio._engine_device_enumeration_mixin import EngineDeviceEnumerationMixin
+
+
+class AudioService(EngineDeviceCommMixin,
+                   EnginePlaybackMixin,
+                   EngineAudioPrepareMixin,
+                   EngineDeviceEnumerationMixin):
+    """音频管理服务：支持多通道播放控制"""
+    # 全局统一的播放 API，保证同一物理设备不会跨 API 打开流
+    # DirectSound 优先：WASAPI 对设备独占/格式限制过多，DirectSound 更宽松
+    _api_fallback_chain = ["Windows DirectSound", "Windows WDM-KS", "Windows WASAPI", "MME"]
+    _resolved_api = None  # 运行时确定的可用品 API（首次成功打开后固定）
+
+    def __init__(self):
+        # 延迟初始化 PyAudio 驱动，避免模块导入时调用 pyaudio.PyAudio() 导致启动卡死
+        # 注意：Pa_Initialize() 非线程安全，必须由 init_driver() 在主线程预初始化
+        self.driver = None
+        self.active_players = {} # taskId -> {player_type: thread}
+        self._device_cache = None
+        self._cache_time = 0
+        self._cache_duration = 5.0 # 缓存5秒
+        # INT-108：可重入锁——_get_cached_devices 持锁时会经 _get_driver 进入
+        # init_driver 再次 acquire 同一把锁；驱动初始化失败（如 INT-95 影子夹具）
+        # 后 driver 恒为 None，该嵌套路径必然触发，非重入 Lock 在此自死锁。
+        self._lock = threading.RLock()
+        self._audio_pool = None
+
+    def _get_audio_pool(self):
+        """获取音频播放专用线程池（延迟初始化）
+
+        微服务化后：音频播放完全由 audio_service 本地管理，
+        不再通过 gRPC 向 task_service 请求线程池大小。
+        容量配置化（INT-593 P2）：读取 concurrency_config.json
+        execution_engine.audio_playback_max_workers（V9.7.10 遗留语义 =
+        每声道/每设备 1 个播放 worker，默认 12），拒绝硬编码魔法数字
+        （架构红线）。背景噪声（最多4设备）+ 轮次内 play_round
+        （主讲人/干扰人/噪声，最多4-6设备）+ 试听并发需要足够容量避免排队。
+        """
+        if self._audio_pool is None:
+            from concurrent.futures import ThreadPoolExecutor
+            from shared.utils.config_manager import config_manager
+            max_workers = config_manager.get_value(
+                'execution_engine', 'audio_playback_max_workers', 12)
+            self._audio_pool = ThreadPoolExecutor(
+                max_workers=max_workers, thread_name_prefix='audio_play_')
+            log_and_emit('INFO', 'audio_engine',
+                         f"[audio_pool] created max_workers={max_workers} (config "
+                         f"execution_engine.audio_playback_max_workers)",
+                         category='audio')
+        return self._audio_pool
+
+    def audio_pool_queue_depth(self):
+        """音频播放线程池当前排队深度（INT-593 量化采集）。
+
+        播放任务提交时打点：深度 > 0 表示已满员排队 → 起播延迟风险信号。
+        ThreadPoolExecutor 队列不对外暴露，读取私有 _work_queue 仅供观测。
+        """
+        if self._audio_pool is None:
+            return 0
+        queue = getattr(self._audio_pool, '_work_queue', None)
+        return queue.qsize() if queue is not None else 0
+
+    def shutdown(self, wait_seconds=10.0):
+        """优雅停止服务（INT-2086 防楔死）。
+
+        强停带流的 audio_service 会把 WASAPI 会话锁在声卡驱动里，下一个进程
+        Pa_Initialize 撞锁挂死。退出前必须按顺序：
+        1. 停止全部播放（逐个 set stop_event）；
+        2. 等待播放线程结束——stream 在 play_multi finally 中 stop_stream + close；
+        3. driver.terminate() 调 pa.terminate()（Pa_Terminate）释放端点会话。
+
+        Args:
+            wait_seconds: 等待播放线程结束的上限（秒），超时告警不阻塞。
+        """
+        import concurrent.futures as cf
+        futures = []
+        players = getattr(self, 'active_players', {}) or {}
+        for task_id_key in list(players.keys()):
+            for p_type in list(players[task_id_key].keys()):
+                entry = players[task_id_key][p_type]
+                stop_event = entry.get("stop_event")
+                if stop_event is not None:
+                    stop_event.set()
+                fut = entry.get("future")
+                if fut is not None:
+                    futures.append(fut)
+            players.pop(task_id_key, None)
+
+        if futures:
+            done, _ = cf.wait(futures, timeout=wait_seconds)
+            if len(done) < len(futures):
+                log_and_emit('WARNING', 'audio_engine',
+                             f"优雅停止超时：{len(futures) - len(done)} 个播放线程未在 "
+                             f"{wait_seconds}s 内结束，流可能未全部释放",
+                             category='audio')
+            else:
+                log_and_emit('INFO', 'audio_engine',
+                             f"全部 {len(futures)} 个播放线程已结束，流已关闭",
+                             category='audio')
+
+        driver = getattr(self, 'driver', None)
+        if driver is not None:
+            try:
+                driver.terminate()
+            except Exception as e:
+                log_and_emit('WARNING', 'audio_engine',
+                             f"driver.terminate() 异常: {e}", category='audio')
+            self.driver = None
+
+        log_and_emit('INFO', 'audio_engine',
+                     "audio_service 优雅停止完成（播放已停 / 流已释放 / PortAudio 已终止）",
+                     category='audio')
+
+
+audio_service = AudioService()

@@ -1,0 +1,240 @@
+# -*- coding: utf-8 -*-
+"""测试用例批量复制/删除/移动 Mixin — TestCaseCopyMoveMixin。
+
+从 testcase_batch_service.py 按职责拆分，承担：
+- 批量删除（软删除）
+- 批量移动到分组
+- 批量复制到指定分组 / 原地复制 / 按分组整体复制
+- 自动命名
+
+复制用例的公共逻辑抽取为 _copy_one_testcase，消除三处重复代码。
+由 TestCaseBatchService 组合复用，不单独实例化。
+"""
+from __future__ import annotations
+
+import copy
+import logging
+import uuid
+
+logger = logging.getLogger(__name__)
+
+
+class TestCaseCopyMoveMixin:
+    """测试用例批量复制/删除/移动 Mixin。"""
+
+    def _batch_delete(self, data, common=None):
+        """批量删除（软删除）。"""
+        ids = data.get('ids', [])
+        self.repo.soft_delete_testcases_by_ids(ids)
+        return f"已成功批量删除 {len(ids)} 个用例"
+
+    def _batch_restore(self, data, common=None):
+        """批量恢复（软删除恢复，仅已删除行计入）。"""
+        ids = data.get('ids', [])
+        restored_count = self.repo.restore_testcases_by_ids(ids)
+        return f"已成功恢复 {restored_count} 个用例"
+
+    def _batch_move_to_group(self, data, common=None):
+        """批量移动用例到目标分组。
+
+        INT-2242：目标分组先校验存在性（软删/不存在 → 404）与可见性
+        （他人私有 → 403），避免把用例挂到不可写分组。
+        """
+        ids = data.get('ids', [])
+        target_group_id = data.get('target_group_id')
+        if not target_group_id:
+            return ("移动操作需要 'target_group_id'", True)
+        _target_group, error = self._resolve_target_group(target_group_id)
+        if error is not None:
+            return error
+        self.repo.update_testcase_group_id_by_ids(ids, target_group_id)
+        return f"已成功将 {len(ids)} 个用例移动至目标分组"
+
+    def _copy_one_testcase(self, tc, group_id, name=None):
+        """复制单个用例到指定分组（含标签关联与参考参数刷新），返回新用例。
+
+        name 为 None 时沿用原用例名称；复制场景需创建时即带 _copy 后缀。
+        """
+        new_id = str(uuid.uuid4())
+        new_tc = self.repo.create_testcase({
+            'id': new_id,
+            'name': name if name is not None else tc.name,
+            'description': tc.description,
+            'group_id': group_id,
+            'config': tc.config.copy() if tc.config else {},
+            'algorithm_type': tc.algorithm_type,
+            # INT-590：批量复制保留策略引用（config 已含解析后快照，引用列随拷贝，
+            # 与单用例 copy 口径一致）
+            'strategy_id': getattr(tc, 'strategy_id', None),
+            'strategy_overrides': copy.deepcopy(getattr(tc, 'strategy_overrides', None)),
+            # INT-566：批量复制用例继承源用例可见性
+            'visibility': getattr(tc, 'visibility', None),
+        })
+        # 复制标签关联
+        for tag in tc.tags:
+            new_tc.tags.append(tag)
+        try:
+            from task_service.application.testcase.testcase_batch_reference_mixin import (
+                _apply_reference_params_to_config,
+            )
+            _apply_reference_params_to_config(new_tc)
+        except Exception:
+            logger.warning("复制用例时刷新参考文本失败 tc_id=%s", tc.id, exc_info=True)
+        return new_tc
+
+    def _row_visible(self, row) -> bool:
+        """INT-423/2242 单资源可见性判定（用例/分组通用）：私有非 owner 不可见。
+
+        visibility/created_by_user_id 缺省的对象（测试替身/旧形态 PO）按
+        shared 放行——避免替身对象 AttributeError 阻断既有测试。
+        """
+        from shared.infrastructure.visibility_filter import check_visible
+        from task_service.infrastructure.visibility_context import visibility_identity
+        vis = getattr(row, 'visibility', None)
+        if not isinstance(vis, str) or not vis:
+            # 缺省/非字符串形态（测试替身、旧形态 PO）按 shared 放行
+            vis = 'shared'
+        owner = getattr(row, 'created_by_user_id', None)
+        uid, is_admin = visibility_identity()
+        try:
+            check_visible(owner, vis, uid, is_admin)
+            return True
+        except PermissionError:
+            return False
+
+    def _case_visible(self, tc) -> bool:
+        """INT-423 单资源可见性判定（复制源）：私有非 owner 跳过。"""
+        return self._row_visible(tc)
+
+    def _resolve_target_group(self, group_id):
+        """解析写操作目标分组，返回 (group, error)。
+
+        INT-2242：软删/不存在 → 404（repo 软删过滤后视为不存在）；他人私有 →
+        403。error 为 batch_action 可识别的 (message, is_error, code) 三元组。
+        """
+        target = self.repo.get_group_by_id(group_id)
+        if not target:
+            return None, (f"未找到目标分组: {group_id}", True, 404)
+        from task_service.infrastructure.visibility_context import (
+            check_object_visible, visibility_identity,
+        )
+        uid, is_admin = visibility_identity()
+        try:
+            check_object_visible(target, uid, is_admin)
+        except PermissionError as e:
+            return None, (str(e), True, 403)
+        return target, None
+
+    def _batch_copy_to_group(self, data, common=None):
+        """批量复制用例到指定分组。
+
+        INT-423：私有非 owner 源用例跳过（_case_visible 逐行校验）。
+        INT-2242：目标分组校验存在性（404）/可见性（403）。
+        """
+        ids = data.get('ids', [])
+        target_group_id = data.get('target_group_id')
+        if not target_group_id:
+            return ("复制到分组操作需要 'target_group_id'", True)
+
+        target_group, error = self._resolve_target_group(target_group_id)
+        if error is not None:
+            return error
+
+        copied_count = 0
+        for tc_id in ids:
+            tc = self.repo.get_testcase(tc_id)
+            if tc and self._case_visible(tc):
+                self._copy_one_testcase(tc, target_group_id)
+                copied_count += 1
+        return f"已成功复制 {copied_count} 个用例到分组 '{target_group.name}'"
+
+    def _batch_copy(self, data, common=None):
+        """批量复制用例（保留原分组，名称追加 _copy）。
+
+        INT-423：私有非 owner 源用例跳过（_case_visible 逐行校验）。
+        """
+        ids = data.get('ids', [])
+        copied_count = 0
+        for tc_id in ids:
+            tc = self.repo.get_testcase(tc_id)
+            if tc and self._case_visible(tc):
+                new_tc = self._copy_one_testcase(tc, tc.group_id)
+                new_tc.name = f"{tc.name}_copy"
+                copied_count += 1
+        return f"已成功批量复制 {copied_count} 个用例"
+
+    def _batch_copy_by_group(self, data, common=None):
+        """按分组整体复制（复制分组下全部用例到新分组）。
+
+        INT-2242：源分组不可见/已软删视为不存在（404）；同名目标分组若为他人
+        私有不可复用——另建当前用户自己的同名分组，避免写入不可写分组。
+        """
+        group_name = data.get('group_name')
+        if not group_name:
+            return ("复制分组操作需要 'group_name'", True)
+
+        source_group = self.repo.get_group_by_name(group_name)
+        if not source_group or not self._row_visible(source_group):
+            return (f"未找到分组: {group_name}", True, 404)
+
+        new_group_name = f"{group_name}_copy"
+        existing_group = self.repo.get_group_by_name(new_group_name)
+        if existing_group and self._row_visible(existing_group):
+            new_group = existing_group
+        else:
+            new_group = self.repo.create_group(
+                str(uuid.uuid4()), new_group_name, source_group.description,
+                # INT-566：复制分组继承源分组可见性（默认 shared）
+                visibility=getattr(source_group, 'visibility', None),
+            )
+
+        test_cases = self.repo.list_testcases_by_group(source_group.id)
+        copied_count = 0
+        for tc in test_cases:
+            self._copy_one_testcase(tc, new_group.id)
+            copied_count += 1
+        return f"已成功复制分组 '{new_group_name}' 的 {copied_count} 个用例"
+
+    def _batch_copy_by_tag(self, data, common=None):
+        """按标签整体复制（复制标签下全部用例到 'tag_name_copy' 标签）。
+
+        copy_to_new_group 为 true 时另建 'tag_name_copy' 分组，否则保留原分组。
+        """
+        tag_name = data.get('tag_name')
+        if not tag_name:
+            return ("复制标签操作需要 'tag_name'", True)
+
+        source_tag = self.repo.get_active_tag_by_name(tag_name)
+        if not source_tag:
+            return (f"未找到标签: {tag_name}", True)
+
+        new_tag_name = f"{tag_name}_copy"
+        new_tag = self.repo.get_active_tag_by_name(new_tag_name)
+        if not new_tag:
+            new_tag = self.repo.get_or_create_tag(new_tag_name)
+
+        new_group = None
+        if data.get('copy_to_new_group'):
+            new_group_name = f"{tag_name}_copy"
+            new_group = self.repo.get_group_by_name(new_group_name)
+            # INT-2242：同名分组为他人私有/已删则不复用，另建当前用户自己的分组
+            if not new_group or not self._row_visible(new_group):
+                new_group = self.repo.create_group(
+                    str(uuid.uuid4()), new_group_name, f"从标签 '{tag_name}' 复制"
+                )
+
+        test_cases = self.repo.query_testcases_by_tag_ids([source_tag.id])
+        copied_count = 0
+        for tc in test_cases:
+            group_id = new_group.id if new_group else tc.group_id
+            new_tc = self._copy_one_testcase(tc, group_id)
+            if new_tag not in new_tc.tags:
+                new_tc.tags.append(new_tag)
+            copied_count += 1
+        return f"已成功复制标签 '{new_tag_name}' 的 {copied_count} 个用例"
+
+    def _batch_auto_generate_name(self, data, common=None):
+        """批量自动生成用例名称。"""
+        ids = data.get('ids', [])
+        self.repo.auto_generate_names_by_tag_order(ids)
+        return f"已成功为 {len(ids)} 个用例自动生成名称"

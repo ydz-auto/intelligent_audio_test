@@ -6,7 +6,11 @@
 
 ### 1.1 页面定位
 
-API管理页面用于管理测试API接口，位于设备管理页面的"测试API管理"Tab中，承载智能语音算法配置化方案中的 **API 与算法类型关联**：声明每个被测 API 所属的算法类型（`algorithmType`），供测试执行时按被测设备 `device_type` 路由三执行器（物理设备→E2EExecutor、HTTP API→APISessionExecutor、WebSocket API→RealtimeSessionExecutor）场景下选择匹配算法的 API 使用。
+API管理页面用于管理测试API接口，位于设备管理页面的"测试API管理"Tab中，承载智能语音算法配置化方案中的 **API 与算法类型关联**：声明每个被测 API 所属的算法类型（`algorithmType`），供测试执行时按算法类型选择匹配算法的 API 使用。
+
+> **执行路由口径（2026-10-26 回收 B0 两道，INT-1954）**：被测 API 的执行道只有**两条**，由 `apis.streaming` 唯一派生——`streaming=false` → `non_streaming` 道，`streaming=true` → `streaming` 道。`apis.protocol`（`http` / `websocket` / `sse` / `grpc`）只是 API 的属性，**只决定 transport 适配器**，不参与执行道判断。原「按被测设备类型分派 E2E / HTTP API / WebSocket API 三个执行器」口径作废：`apis.device_type` 已废弃；物理设备仍走 `E2EExecutor`，但那是 E2E 链路，与 API 的两条道无关。裁定、组合矩阵与道内策略见 [01_测试执行/09_API协议面与执行道契约 §3.1](../../../01_测试执行/09_API协议面与执行道契约.md)。
+
+> **`device_type` 残留口径（保留，勿当被测 API 字段）**：`task_case_relations.device_type` 仍存在，语义是**调度亲和域令牌**，由 `apis.streaming` 派生（`false` → `http_api`、`true` → `websocket_api`；物理设备 `physical` 不进 `apis` 表）。前端建任务时按 `api.streaming` 派生该令牌，不再按协议名或端点 `ws://` 前缀推断。
 
 ### 1.2 页面路由
 - 路由路径：`/Device`（设备管理页面 > 测试API管理 Tab）
@@ -61,7 +65,7 @@ API管理页面用于管理测试API接口，位于设备管理页面的"测试A
 
 > **实现说明**：API 添加/编辑弹窗为**全局动态表单弹窗**（`CRUDFormModal`，由 `useDeviceManagement.addDevice()/editDevice()` 经 `modalManager.open(MODAL_TYPES.ADD_DEVICE / EDIT_DEVICE)` 打开），表单字段由 `generateDeviceFields('api')` 统一生成，其中 `algorithmType` 字段通过 `action: 'loadAlgorithmTypes'` 动态加载选项（`GET /api/v1/algorithm/options`）。
 
-> **口径说明（INT-1223/1229）**：**API 端点配置（`api_endpoints`）为被测 API 的主配置入口**；下表单示意「Master入口URL」对应 `api_url`，**可选兜底**（执行链 `_get_vendor_api_url`/`_resolve_endpoint` 均 api_endpoints 优先 → 回退 api_url）。前端表单 `apiUrl` 已放开必填，空值提交归一 `null`（防 update 覆盖既有 api_url）。
+> **口径说明（INT-1361/1362，取代 INT-1223/1229 旧口径「api_endpoints 为主、Master URL 可选兜底」）**：**Master 入口 URL（`apis.api_url` / 前端 `apiUrl`）已前后端全量移除**（负责人 2026-10-22 裁定「直接移除这个 api url 不再开放填写，前后端都移除」）；**`api_endpoints` 为被测 API 唯一端点配置入口**。执行链共享 helper `resolve_api_endpoint`（`api_test_service/domain/entities/api.py`）只取 `api_endpoints` 首个非空 endpoint，不再有 api_url 兜底；前端表单不再提供 apiUrl 字段，健康检查只测端点（`endpoints_status`）。下表单示意已删除「Master入口URL」字段。
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -72,7 +76,6 @@ API管理页面用于管理测试API接口，位于设备管理页面的"测试A
 │  设备描述:   [__________________]                                         │
 │  API名称:    [__________________]                                         │
 │  供应商:     [__________________]  (如 volc_ast, ali, tencent)           │
-│  Master入口URL: [__________________]                                      │
 │                                                                          │
 │  算法类型:   [请选择算法类型 ▼]        ← 已落地：type='select'            │
 │             选项动态加载自 GET /api/v1/algorithm/options                  │
@@ -106,7 +109,7 @@ class API(db.Model):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
     vendor = Column(String(50), nullable=True)
-    api_url = Column(String(512))
+    # INT-1361：api_url（Master 入口 URL）已移除，api_endpoints 为唯一端点配置入口
     description = Column(Text)
     status = Column(String(20), nullable=False, default='online')
     meta = Column(JSON, nullable=False)
@@ -154,7 +157,6 @@ interface APIDevice {
   id: string | number;
   name: string;
   vendor?: string;
-  apiUrl?: string;
   description?: string;
   status: 'online' | 'offline' | 'testing';   // 服务状态枚举
   meta: Record<string, any>;
@@ -208,7 +210,7 @@ const allFilteredAPIDevices = computed(() => {
 
 ```typescript
 case 'api':
-  // ... 现有字段（name / vendor / apiUrl 等）...
+  // ... 现有字段（name / vendor / endpoints 等）...
   return [...apiBaseFields, /* ... */, {
     key: 'algorithmType',          // 已落地
     label: '算法类型',

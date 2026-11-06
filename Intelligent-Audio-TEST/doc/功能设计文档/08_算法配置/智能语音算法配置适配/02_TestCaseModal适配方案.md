@@ -18,7 +18,7 @@ TestCaseModal 是测试用例创建/编辑的核心弹窗组件，已按算法�
 - 评估维度按算法过滤：通过 `useDimensions().fetchDimensionsByAlgorithmType()` 加载关联维度
 
 ### 1.4 分层与命名口径
-后端所有响应经 `success_response` 统一转换为 camelCase；前端遵循 DDD 分层——Presentation（views/components）只见 camelCase Domain 与 composables（Ports），`utils/api.ts`（Infrastructure）是唯一感知 snake_case 的层。用例执行的执行方式由被测设备 `device_type` 路由三执行器（物理设备→E2EExecutor、HTTP API→APISessionExecutor、WebSocket API→RealtimeSessionExecutor）；"api/e2e 为独立用例记录的 test_type 决定执行方式"属废弃口径。
+后端所有响应经 `success_response` 统一转换为 camelCase；前端遵循 DDD 分层——Presentation（views/components）只见 camelCase Domain 与 composables（Ports），`utils/api.ts`（Infrastructure）是唯一感知 snake_case 的层。用例执行的执行方式由**执行道**决定：只有两条，由 `apis.streaming` 唯一派生（`false` → `non_streaming`，`true` → `streaming`），`apis.protocol` 只决定 transport 适配器；"api/e2e 为独立用例记录的 test_type 决定执行方式"属废弃口径；原「按被测设备类型分派 E2E / HTTP API / WebSocket API 三个执行器」口径同属废弃（2026-10-26 回收，INT-1954：`apis.device_type` 已废弃，物理设备 E2E 链路与 API 两条道无关。裁定见 [01_测试执行/09_API协议面与执行道契约 §3.1](../../../01_测试执行/09_API协议面与执行道契约.md)）。
 
 ---
 
@@ -114,7 +114,7 @@ interface TestCaseFormData {
   group?: string;
   groupId?: string | number;
   tags?: string[];
-  test_type?: 'api' | 'e2e';      // 用例记录分类；执行方式由被测设备 device_type 路由，此字段不决定执行方式
+  test_type?: 'api' | 'e2e';      // 用例记录分类；执行道由 api.streaming 派生，此字段不决定执行方式
   algorithmType?: string;          // 算法类型（camelCase）
   config: TestCaseConfig;          // 仅结构性配置（见 4.2）
   // 独立列，与 config 平级，不内嵌于 config：

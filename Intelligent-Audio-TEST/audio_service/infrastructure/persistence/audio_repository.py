@@ -1,0 +1,550 @@
+# -*- coding: utf-8 -*-
+"""音频配置仓储 — 聚合导出模块（P4-4 大文件拆分）。
+
+原单文件 1060 行，已按职责拆分为 4 个内部模块，本文件保持
+`from audio_service.infrastructure.persistence.audio_repository import ...`
+的全部导入路径不变：
+
+- _audio_converters.py：PO ↔ Entity 显式转换函数（Audio/Upload 系列实体）
+- _audio_query_filters.py：公共查询过滤器（list/folder_tree 共用，消除重复）
+- _audio_relation_mixin.py：Tag/标注/算法关联读写 Mixin
+- upload_repository.py：UploadRepository（UploadTask/File/Chunk CRUD）
+
+AudioRepository（音频聚合根仓储，实现 AudioRepositoryInterface + UploadRepositoryInterface）
+保留在本文件，通过 Mixin 组合保持原单例 audio_repository 的全部方法可用。
+"""
+import logging
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy import case, func
+from sqlalchemy.orm import load_only
+
+from shared.models.database import build_pagination, get_db_session
+from shared.infrastructure.user_context import (
+    get_current_user_id,
+    get_current_user_is_admin,
+)
+from shared.infrastructure.visibility_filter import visible_condition
+from audio_service.infrastructure.persistence.models import Audio
+from audio_service.domain.entities import AudioAggregate
+from audio_service.domain.repositories.audio_repository_abc import (
+    AudioRepositoryInterface,
+)
+from audio_service.infrastructure.persistence._audio_converters import (
+    _now,
+    _audio_po_to_entity,
+)
+from audio_service.infrastructure.persistence._audio_query_filters import (
+    apply_audio_list_filters,
+    apply_folder_tree_filters,
+)
+from audio_service.infrastructure.persistence._audio_relation_mixin import (
+    AudioRelationMixin,
+)
+from audio_service.infrastructure.persistence.upload_repository import UploadRepository
+
+logger = logging.getLogger(__name__)
+
+
+# INT-2001 C4：列表路径取列白名单。列表 DTO（`_audio_to_dict`）与实体转换
+# （`_audio_po_to_entity`）只读下列列；`deleted_at` / `deleted_by_user_id` /
+# `updated_by_user_id` 在列表路径无下游使用（全仓 grep 确认），不取可省行宽
+# 与水合开销。`deleted` 必须保留——`_audio_po_to_entity` 会读它，裁掉会让
+# 每行触发一次惰性加载，反而变成 N+1。
+AUDIO_LIST_COLUMNS = (
+    Audio.id,
+    Audio.name,
+    Audio.original_filename,
+    Audio.file_path,
+    Audio.size,
+    Audio.duration,
+    Audio.sample_rate,
+    Audio.channels,
+    Audio.bitrate,
+    Audio.format,
+    Audio.audio_type,
+    Audio.asr_text,
+    Audio.description,
+    Audio.md5,
+    Audio.deleted,
+    Audio.source_language,
+    Audio.created_by_user_id,
+    Audio.visibility,
+    Audio.created_at,
+    Audio.updated_at,
+)
+
+
+class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadRepository):
+    """音频聚合根仓储
+
+    P5+DOMAIN: 通过 PO ↔ Entity 显式转换，仓储方法返回 domain entities，
+    聚合根不再持有 ORM 引用，领域层与 SQLAlchemy 完全隔离。
+
+    组合结构（MRO：AudioRelationMixin → AudioRepositoryInterface → UploadRepository）：
+    - AudioRelationMixin：Tag / 标注 / 算法关联读写
+    - AudioRepositoryInterface：音频聚合根 CRUD 契约（本文件实现）
+    - UploadRepository：上传任务/文件/分片 CRUD（原 AudioRepository 内联实现，拆出复用）
+
+    查询过滤逻辑复用 _audio_query_filters（list_audios / get_all_audio_ids /
+    collect_folder_files 三处共用，消除重复代码）。
+    """
+
+    # ========== Audio 基础 CRUD ==========
+
+    def create_audio(self, data: dict) -> AudioAggregate:
+        """创建音频记录，返回 AudioAggregate 聚合根。"""
+        from shared.infrastructure.user_context import get_current_user_id
+        session = get_db_session()
+        audio = Audio(
+            name=data.get('name'),
+            original_filename=data.get('original_filename'),
+            file_path=data.get('file_path'),
+            size=data.get('size', 0),
+            duration=data.get('duration', 0.0),
+            sample_rate=data.get('sample_rate'),
+            channels=data.get('channels'),
+            bitrate=data.get('bitrate'),
+            format=data.get('format', 'wav'),
+            audio_type=data.get('audio_type', 'dry'),
+            asr_text=data.get('asr_text', ''),
+            description=data.get('description'),
+            md5=data.get('md5'),
+            source_language=data.get('source_language'),
+            created_by_user_id=get_current_user_id(),
+        )
+        session.add(audio)
+        session.flush()
+        return _audio_po_to_entity(audio)
+
+    def update_audio(self, audio_id: int, update_fields: dict) -> Optional[AudioAggregate]:
+        """更新音频字段，返回更新后的 AudioAggregate。"""
+        from shared.infrastructure.user_context import get_current_user_id
+        session = get_db_session()
+        audio = session.query(Audio).filter_by(id=audio_id, deleted=False).first()
+        if not audio:
+            return None
+        for key, value in update_fields.items():
+            setattr(audio, key, value)
+        audio.updated_at = _now()
+        audio.updated_by_user_id = get_current_user_id()
+        session.flush()
+        return _audio_po_to_entity(audio)
+
+    def get_audio(self, audio_id: int) -> Optional[AudioAggregate]:
+        """按 ID 查询单个音频，返回 AudioAggregate。"""
+        session = get_db_session()
+        audio = session.query(Audio).filter_by(id=audio_id, deleted=False).first()
+        if audio is None:
+            return None
+        return _audio_po_to_entity(audio)
+
+    def get_audio_with_deleted(self, audio_id: int) -> Optional[AudioAggregate]:
+        """按 ID 查询单个音频（含已删除），返回 AudioAggregate。"""
+        session = get_db_session()
+        audio = session.get(Audio, audio_id)
+        if audio is None:
+            return None
+        return _audio_po_to_entity(audio)
+
+    def delete_audio(self, audio_id: int) -> bool:
+        """软删除音频"""
+        from shared.infrastructure.user_context import get_current_user_id
+        session = get_db_session()
+        audio = session.query(Audio).filter_by(id=audio_id, deleted=False).first()
+        if not audio:
+            return False
+        now = _now()
+        audio.deleted = True
+        audio.deleted_at = now
+        audio.deleted_by_user_id = get_current_user_id()
+        audio.updated_at = now
+        session.flush()
+        return True
+
+    def batch_soft_delete_audios(self, audio_ids: List[int]) -> int:
+        """批量软删除音频"""
+        from shared.infrastructure.user_context import get_current_user_id
+        session = get_db_session()
+        if not audio_ids:
+            return 0
+        now = _now()
+        count = session.query(Audio).filter(
+            Audio.id.in_(audio_ids), Audio.deleted == False
+        ).update(
+            {"deleted": True, "deleted_at": now, "updated_at": now,
+             "deleted_by_user_id": get_current_user_id()},
+            synchronize_session=False,
+        )
+        session.flush()
+        return count
+
+    def list_audios(self, params: dict) -> dict:
+        """分页查询音频列表。
+
+        INT-423 行级可见性：admin 全量 / 共享全可见 / 私有仅 owner
+        （user_id/is_admin 取 x-user-id / x-user-is-admin context）。
+
+        INT-2001（C3 + C4，逐项可回退）：
+        - **C3**：`count` 与分页合并为一条 SQL。计数用**标量子查询**
+          （未关联外层 → PG 作 InitPlan 求值一次）。实测这一形态的客户端墙钟
+          与改成两条独立 SQL 时持平甚至更低（page1: 3.67 vs 4.64 ms；page90:
+          4.77 vs 5.28 ms，n=40 交错），而往返少一次。**没有**用
+          `count(*) OVER ()`：窗口函数要求先把过滤后的整行集物化，EXPLAIN
+          实测 page1 服务器执行 6.75 ms / 1640 buffers，而改前「count 子查询
+          + 分页」合计 1.93 ms / 162+238 buffers——省下一次往返抵不过这份代价。
+          标量子查询随空结果集一起消失（空页时读不到 total），空页分支回退
+          单独 count。
+        - **C4**：`load_only` 只取列表需要的列（`AUDIO_LIST_COLUMNS`），跳过
+          deleted_at / deleted_by_user_id / updated_by_user_id 三列。
+        - 返回 `_Pagination` 兼容对象（pages/has_next 等派生属性口径不变），
+          items 已转换为 AudioAggregate。
+        """
+        session = get_db_session()
+        query = session.query(Audio).filter_by(deleted=False)
+        query = query.filter(visible_condition(
+            Audio.created_by_user_id, Audio.visibility,
+            get_current_user_id(), get_current_user_is_admin()))
+        query = apply_audio_list_filters(query, session, params, self._get_tag_name_to_id_map)
+
+        page = params.get('page', 1)
+        per_page = params.get('per_page', 10)
+
+        # per_page<=0：保住旧语义（items 为空、total 仍是过滤后总数）
+        if not per_page or per_page <= 0:
+            return build_pagination(
+                query, page, per_page, query.order_by(None).count(), [])
+
+        total_subquery = (
+            query.order_by(None)
+            .with_entities(func.count())
+            .scalar_subquery()
+        )
+        rows = (
+            query.order_by(Audio.created_at.desc())
+            .options(load_only(*AUDIO_LIST_COLUMNS))
+            .add_columns(total_subquery.label('_filtered_total'))
+            .limit(per_page)
+            .offset((page - 1) * per_page)
+            .all()
+        )
+        if rows:
+            total = int(rows[0][1])
+        elif page > 1:
+            # 空页：标量子查询随空结果一起消失，回退单独 count 拿真实总数
+            total = query.order_by(None).count()
+        else:
+            total = 0
+
+        items = [_audio_po_to_entity(row[0]) for row in rows]
+        return build_pagination(query, page, per_page, total, items)
+
+    def get_audios_by_ids(self, audio_ids: List[int]) -> List[AudioAggregate]:
+        """按 ID 列表批量查询音频，返回 AudioAggregate 列表。"""
+        session = get_db_session()
+        if not audio_ids:
+            return []
+        pos = session.query(Audio).filter(
+            Audio.id.in_(audio_ids), Audio.deleted == False
+        ).all()
+        return [_audio_po_to_entity(po) for po in pos]
+
+    def get_audio_by_md5(self, md5: str) -> Optional[AudioAggregate]:
+        """按 MD5 查询音频，返回 AudioAggregate。"""
+        session = get_db_session()
+        po = session.query(Audio).filter_by(md5=md5, deleted=False).first()
+        if po is None:
+            return None
+        return _audio_po_to_entity(po)
+
+    def get_audio_by_file_path(self, file_path: str) -> Optional[AudioAggregate]:
+        """按存储路径查询音频（INT-564 路径式 stream/download 可见性校验）。
+
+        尝试多种形态匹配（精确 / 去 scheme 前缀 / 尾部路径片段），命中任一
+        返回 AudioAggregate，否则 None。仅查询未删除记录。未命中返回 None
+        不抛错——路径可能为派生/缓存形态，调用方按"查不到即放行"处理。
+        """
+        session = get_db_session()
+        if not file_path:
+            return None
+
+        candidates = [file_path]
+        for scheme in ('oss://', 'local://'):
+            if file_path.startswith(scheme):
+                candidates.append(file_path[len(scheme):])
+                break
+        normalized = file_path.replace(chr(92), '/')
+        for scheme in ('oss://', 'local://'):
+            if normalized.startswith(scheme):
+                candidates.append(normalized[len(scheme):])
+                break
+
+        seen = set()
+        for cand in candidates:
+            if cand in seen:
+                continue
+            seen.add(cand)
+            po = session.query(Audio).filter(
+                Audio.file_path == cand, Audio.deleted == False
+            ).first()
+            if po is not None:
+                return _audio_po_to_entity(po)
+
+        # 尾部路径片段匹配（绝对路径 / 带分类前缀形态互转）
+        tail = normalized.rstrip('/').split('/')[-1]
+        if tail and tail != normalized:
+            po = session.query(Audio).filter(
+                Audio.file_path.like('%/' + tail), Audio.deleted == False
+            ).first()
+            if po is not None:
+                return _audio_po_to_entity(po)
+        return None
+
+    def get_audios_by_md5_list(self, md5_list: List[str]) -> List[AudioAggregate]:
+        """按 MD5 列表批量查询音频，返回 AudioAggregate 列表。"""
+        session = get_db_session()
+        if not md5_list:
+            return []
+        pos = session.query(Audio).filter(
+            Audio.md5.in_(md5_list), Audio.deleted == False
+        ).all()
+        return [_audio_po_to_entity(po) for po in pos]
+
+    def get_all_audio_ids(self, params: dict) -> List[int]:
+        """按条件查询所有音频 ID（用于全选功能）。
+
+        INT-423 行级可见性：与 list_audios 同一套可见性口径（全选只含可见行）。
+        """
+        session = get_db_session()
+        query = session.query(Audio).filter_by(deleted=False)
+        query = query.filter(visible_condition(
+            Audio.created_by_user_id, Audio.visibility,
+            get_current_user_id(), get_current_user_is_admin()))
+        query = apply_audio_list_filters(query, session, params, self._get_tag_name_to_id_map)
+        return [a.id for a in query.with_entities(Audio.id).all()]
+
+    def collect_folder_files(self, params: dict) -> List[Any]:
+        """按条件查询用于构建文件夹树的音频记录（仅选择必要列）。
+
+        INT-423 行级可见性：文件夹树同样只含可见行，私有非 owner 不进入树。
+        返回的是轻量元组列表（非聚合根），用于文件夹树构建。
+        """
+        session = get_db_session()
+        query = session.query(Audio).filter_by(deleted=False)
+        query = query.filter(visible_condition(
+            Audio.created_by_user_id, Audio.visibility,
+            get_current_user_id(), get_current_user_is_admin()))
+        query = apply_folder_tree_filters(query, session, params, self._get_tag_name_to_id_map)
+
+        audios = query.with_entities(
+            Audio.id, Audio.name, Audio.original_filename, Audio.file_path,
+            Audio.format, Audio.duration, Audio.size, Audio.audio_type, Audio.created_at
+        ).order_by(Audio.file_path).all()
+
+        return audios
+
+    def get_audio_stats(self) -> dict:
+        """获取音频统计信息（INT-423：与 list_audios 同一可见性口径，统计只含可见行）
+
+        INT-2001 C2：`sum(size)` / `sum(duration)` 与「今日上传数」由两条 SQL
+        合并成一条（省 1 次往返）。今日计数用 `CASE` 聚合而不是 `FILTER
+        (WHERE ...)`：语义等价（同一过滤集内 created_at >= 今日零点的行数），
+        但不依赖 PG 专有语法，sqlite 单测同样可跑。
+        """
+        session = get_db_session()
+        visible_cond = visible_condition(
+            Audio.created_by_user_id, Audio.visibility,
+            get_current_user_id(), get_current_user_is_admin())
+
+        from shared.utils.query_utils import now_cst
+        today_start = now_cst().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_flag = case((Audio.created_at >= today_start, 1), else_=0)
+
+        row = session.query(
+            func.sum(Audio.size),
+            func.sum(Audio.duration),
+            func.sum(today_flag),
+        ).filter(Audio.deleted == False, visible_cond).first()  # noqa: E712
+
+        return {
+            'total_size': row[0] or 0,
+            'total_duration': row[1] or 0,
+            'today_uploads': int(row[2] or 0),
+        }
+
+    def update_audio_visibility(self, audio_id: int, visibility: str) -> bool:
+        """仅更新音频可见性（INT-464 跟随用例 gRPC 同步专用）。
+
+        内部同步语义：不修改 updated_by_user_id（非用户编辑，跨服务系统写），
+        仅更新 visibility 与 updated_at。返回是否命中并更新。
+        """
+        session = get_db_session()
+        audio = session.query(Audio).filter_by(id=audio_id, deleted=False).first()
+        if not audio:
+            return False
+        audio.visibility = visibility
+        audio.updated_at = _now()
+        session.flush()
+        return True
+
+    def find_audio_by_name(self, name: str) -> Optional[AudioAggregate]:
+        """按文件名查音频（用于补全 rounds_config 中的 audio_id），返回 AudioAggregate。
+
+        先按 name 查，未命中再按 original_filename 查（兼容统一标注文件格式）。
+        同名多条记录时取最新创建的一条（最近上传的记录优先于库中陈旧同名记录）。
+        """
+        session = get_db_session()
+        _newest_first = (Audio.created_at.desc(), Audio.id.desc())
+        po = (
+            session.query(Audio)
+            .filter_by(name=name, deleted=False)
+            .order_by(*_newest_first)
+            .first()
+        )
+        if po is None:
+            po = (
+                session.query(Audio)
+                .filter_by(original_filename=name, deleted=False)
+                .order_by(*_newest_first)
+                .first()
+            )
+        if po is None:
+            return None
+        return _audio_po_to_entity(po)
+
+    # ========== 播放历史（INT-782#2） ==========
+
+    def record_playback_history(self, data: dict) -> Optional[int]:
+        """新增一条播放历史记录，返回记录 ID（不 commit，由调用方统一提交）。"""
+        from shared.infrastructure.user_context import get_current_user_id
+        from audio_service.infrastructure.persistence.models import AudioPlaybackHistory
+        session = get_db_session()
+        row = AudioPlaybackHistory(
+            audio_id=data.get('audio_id'),
+            testcase_id=data.get('testcase_id'),
+            testcase_name=data.get('testcase_name'),
+            device_id=data.get('device_id'),
+            device_name=data.get('device_name') or '未知设备',
+            result=data.get('result', 'success'),
+            duration=data.get('duration'),
+            source=data.get('source', 'preview'),
+            created_by_user_id=get_current_user_id(),
+        )
+        session.add(row)
+        session.flush()
+        return row.id
+
+    def list_playback_history(self, audio_id: int, params: dict) -> dict:
+        """分页查询音频播放历史（按播放时间倒序，最近在前）。"""
+        from audio_service.infrastructure.persistence.models import AudioPlaybackHistory
+        session = get_db_session()
+        try:
+            page = max(int(params.get('page', 1)), 1)
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            per_page = max(int(params.get('per_page', 10)), 1)
+        except (TypeError, ValueError):
+            per_page = 10
+
+        query = session.query(AudioPlaybackHistory).filter_by(audio_id=audio_id)
+        total = query.count()
+        rows = (
+            query
+            .order_by(AudioPlaybackHistory.created_at.desc(), AudioPlaybackHistory.id.desc())
+            .limit(per_page)
+            .offset((page - 1) * per_page)
+            .all()
+        )
+        pages = (total + per_page - 1) // per_page
+        return {
+            'items': [self._playback_history_to_dict(r) for r in rows],
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'pages': pages,
+        }
+
+    @staticmethod
+    def _playback_history_to_dict(row) -> dict:
+        """播放历史 PO → 接口 dict（played_at 用 created_at 承载播放时间）。"""
+        return {
+            'id': row.id,
+            'audio_id': row.audio_id,
+            'testcase_id': row.testcase_id,
+            'testcase_name': row.testcase_name,
+            'device_id': row.device_id,
+            'device_name': row.device_name,
+            'result': row.result,
+            'duration': row.duration,
+            'source': row.source,
+            'played_at': row.created_at.isoformat() if row.created_at else None,
+        }
+
+    # ========== Session 管理 ==========
+
+    def commit(self):
+        """提交事务"""
+        get_db_session().commit()
+
+    def rollback(self):
+        """回滚事务"""
+        get_db_session().rollback()
+
+    def flush(self):
+        """flush session"""
+        get_db_session().flush()
+
+    @property
+    def no_autoflush(self):
+        """禁用自动 flush 的上下文管理器（供批量注册等场景使用）"""
+        return get_db_session().no_autoflush
+
+
+# ==================== 转换函数与辅助对象再导出（保持模块内部符号可见）====================
+
+from audio_service.infrastructure.persistence._audio_converters import (  # noqa: E402
+    _apply_aggregate_to_po,
+    _audio_annotation_po_to_entity,
+    _audio_tag_po_to_entity,
+    _audio_algorithm_relation_po_to_entity,
+    _apply_algorithm_relation_entity_to_po,
+    _upload_task_po_to_entity,
+    _apply_upload_task_entity_to_po,
+    _upload_file_po_to_entity,
+    _apply_upload_file_entity_to_po,
+    _upload_chunk_po_to_entity,
+    _parse_upload_status,
+    _pair_audio_tags,
+)
+from audio_service.infrastructure.persistence.upload_repository import (  # noqa: E402
+    UploadRepository as _UploadRepository,
+)
+
+__all__ = [
+    # 仓储类与单例
+    "AudioRepository",
+    "UploadRepository",
+    "audio_repository",
+    "upload_repository",
+    # PO ↔ Entity 转换函数（保持原模块符号可见）
+    "_audio_po_to_entity",
+    "_apply_aggregate_to_po",
+    "_audio_annotation_po_to_entity",
+    "_audio_tag_po_to_entity",
+    "_audio_algorithm_relation_po_to_entity",
+    "_apply_algorithm_relation_entity_to_po",
+    "_upload_task_po_to_entity",
+    "_apply_upload_task_entity_to_po",
+    "_upload_file_po_to_entity",
+    "_apply_upload_file_entity_to_po",
+    "_upload_chunk_po_to_entity",
+    "_parse_upload_status",
+    "_pair_audio_tags",
+    "_now",
+]
+
+
+# 模块级单例
+audio_repository = AudioRepository()
+upload_repository = _UploadRepository()
