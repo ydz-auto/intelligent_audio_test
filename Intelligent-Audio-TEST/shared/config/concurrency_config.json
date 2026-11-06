@@ -85,6 +85,9 @@
     "spl_linear_approx_base_db": 65.0,
     "spl_interp_boundary": "clamp",
     "target_rms_dbfs": -30.0,
+    "gain_gate_frame_ms": 20,
+    "gain_gate_threshold_factor": 0.1,
+    "gain_gate_abs_floor_dbfs": -60.0,
     "pcm_cache_ttl_seconds": 300,
     "render_file_timeout_seconds": 600
   }

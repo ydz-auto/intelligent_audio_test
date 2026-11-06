@@ -71,15 +71,20 @@ class TestGainCompensation24bit:
         assert gain == pytest.approx(1.0, rel=1e-3)
 
     def test_quiet_24bit_boosted_correctly(self, tmp_path):
+        # INT-2407：增益补偿改为 20ms 分帧 + 静音帧门限后，本夹具电平由 -60 dBFS
+        # 上移到 -50 dBFS。原因：-60 dBFS 恰好压在绝对底 32768×10^(-60/20)=32.768 上
+        # （实测每帧 RMS 32.51~33.04），50 帧里只有约 30 帧活跃，增益 31.4805 对
+        # 整段口径 31.6247 有 -0.46% 偏差——是实现口径的正常结果，不是实现错。
+        # -50 dBFS 全帧活跃（帧 RMS 102.8~104.5 ≫ 门限 32.768），实测增益 10.0002。
         rate = 16000
         t = np.arange(rate) / rate
-        amp = 10 ** (-60.0 / 20.0) * 32768.0 * math.sqrt(2.0)
+        amp = 10 ** (-50.0 / 20.0) * 32768.0 * math.sqrt(2.0)
         samples = amp * np.sin(2 * np.pi * 440 * t)
         path = tmp_path / 'quiet_24bit.wav'
         _write_wav(path, rate, 1, 3, samples)
         gain = _GainCompDriver().calculate_gain_compensation(str(path))
-        # -60 dBFS → -30 dBFS 需要 +30 dB
-        assert gain == pytest.approx(10 ** 1.5, rel=1e-3)
+        # -50 dBFS → -30 dBFS 需要 +20 dB
+        assert gain == pytest.approx(10.0, rel=1e-3)
 
 
 class TestResampleToFile24bit:
