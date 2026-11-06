@@ -94,9 +94,9 @@ class TestRegistration:
         assert hasattr(factory_mod, 'XiaoyiLivechatReject')
 
     def test_driver_count_unchanged(self):
-        """本卡不新增驱动：注册表总数保持 13。"""
+        """注册表总数：INT-2146 后为 13，INT-2402 新增豆包拒识驱动后为 14。"""
         from device_service.infrastructure.drivers.registry import driver_registry
-        assert len(driver_registry.list_drivers()) == 13
+        assert len(driver_registry.list_drivers()) == 14
 
 
 # ──────────────────────────── 2. timing 词表映射 ────────────────────────────

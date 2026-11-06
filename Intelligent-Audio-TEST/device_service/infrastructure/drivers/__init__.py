@@ -30,6 +30,7 @@ from .driver_factory import (
     XiaoyilivechatV2,
     HarmonyXiaoyiInputMethodDriver,
     DoubaoChat,
+    DoubaoReject,
     ChatGptVoiceChat,
 )
 
@@ -39,6 +40,7 @@ __all__ = [
     "HarmonyDriver", "HarmonyXiaoyiTranslationDriver", "XiaoyiFace2FaceDriver",
     "XiaoyiSimultaneousInterpretationDriver", "HarmonyHardenXiaoyiHuiJiDriver",
     "Xiaoyilivechat", "XiaoyiLivechatReject", "XiaoyilivechatV2", "ChatGptVoiceChat", "DoubaoChat",
+    "DoubaoReject",
     "HarmonyXiaoyiInputMethodDriver", "DeviceDriverFactory",
     "device_driver_factory", "DevicePlatform", "DriverStatus",
     "DriverRegistry", "DriverNotFoundError", "driver_registry", "register_driver",

@@ -28,6 +28,7 @@ import time
 from .harmony_xiaoyichat import Xiaoyilivechat
 from .driver_types import DevicePlatform
 from .registry import register_driver
+from .reject_timing import RejectTimingMixin
 from .driver_constants import (
     CHECK_STOP_POLL_INTERVAL,
     REJECT_REPLY_WAIT_TIMEOUT,
@@ -36,7 +37,7 @@ from .driver_constants import (
 
 
 @register_driver
-class XiaoyiLivechatReject(Xiaoyilivechat):
+class XiaoyiLivechatReject(RejectTimingMixin, Xiaoyilivechat):
     """小艺通话拒识轮驱动 v1（仅拒识轮生效，其余轮次完全走基类行为）。"""
 
     # —— 驱动元数据（同源 V9.7.10 130d03ed1）——
@@ -47,37 +48,11 @@ class XiaoyiLivechatReject(Xiaoyilivechat):
     display_name = "小艺通话聊天拒识试验驱动"
     dependencies = ["hypium"]
 
-    # timing 词表（strip 后比较；英文小写归一）
-    INTERRUPTION_TIMING_VALUES = ('response', '回复过程中')
-    NON_INTERRUPTION_TIMING_VALUES = ('silence', '静默', '')
+    # timing 词表与打断型判定见 reject_timing.RejectTimingMixin（INT-2402 起与豆包
+    # 拒识驱动共用同一份口径，INTERRUPTION_TIMING_VALUES / NON_INTERRUPTION_TIMING_VALUES
+    # 仍可通过本类访问）。
     # hw_params 降级窗口内的轮询间隔（秒）；单测可压小
     REJECT_REPLY_POLL_INTERVAL = 1.0
-
-    # ------------------------------------------------------------------
-    # timing / is_interruption 解析
-    # ------------------------------------------------------------------
-    def _resolve_timing_is_interruption(self, timing, task_id=None, test_case_id=None):
-        """timing 词表映射为是否打断型；未知值记 WARNING 并按非打断型。"""
-        key = '' if timing is None else str(timing).strip().lower()
-        if key in self.INTERRUPTION_TIMING_VALUES:
-            return True
-        if key in self.NON_INTERRUPTION_TIMING_VALUES:
-            return False
-        self._log(level='WARNING',
-                  content=f'拒识轮 timing 取值未知({timing!r})，按非打断型处理',
-                  task_id=task_id, test_case_id=test_case_id)
-        return False
-
-    def _effective_is_interruption(self, kwargs, task_id=None, test_case_id=None):
-        """当轮等待策略用的打断型判定：显式 is_interruption 优先，缺省才由 timing 推导。
-
-        只读不写——kwargs['is_interruption'] 是打断族评估的轮次口径，驱动不得改写。
-        """
-        raw = kwargs.get('is_interruption')
-        if raw is not None:
-            return self._as_bool(raw)
-        return self._resolve_timing_is_interruption(
-            kwargs.get('timing'), task_id=task_id, test_case_id=test_case_id)
 
     # ------------------------------------------------------------------
     # 静默拒识轮：播放后时序与回复检测

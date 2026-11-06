@@ -556,11 +556,18 @@ class DoubaoChat(Xiaoyilivechat):
         return True
 
     @with_rpc_retry()
-    def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
+    def post_process(self, device_sn, task_id=None, test_case_id=None,
+                     reply_detected=None, **kwargs) -> bool:
         """后处理：等 AI 回复结束 → 按模式收尾 → (round 模式) 提取问答文本。
 
         回复完成检测基于 client_in.. PCM 尾部 RMS 能量(双阶段+历史兜底),
         不依赖控件文本(说话或点击打断/正在听…),后者在语音态透传性不稳定。
+
+        reply_detected=None（缺省）时自行检测，既有驱动行为逐字不变；子类已自行
+        判定回复结果时（INT-2402 豆包拒识轮）传入 True/False：True=已回复，直接
+        进入问答提取；False=未回复，走既有「未回复」收尾分支并跳过问答提取
+        （子类负责先置 question_text/answer_text）。与 Xiaoyilivechat.post_process
+        的同名形参口径一致。
 
         核心是【不挂断逻辑】——case 模式全程不挂断,保持一次连续通话:
         - case 模式(多轮连续通话): 中间轮仅等回复完成即返回(不停录屏/不挂断/不提取)；
@@ -594,6 +601,14 @@ class DoubaoChat(Xiaoyilivechat):
             if not replied:
                 self.question_text = '豆包识别为空'
                 self.answer_text = '豆包回复为空'
+        elif reply_detected is not None:
+            # 子类已自行判定回复结果（INT-2402 拒识轮）：不再做回复开始/结束检测，
+            # 也不做 AI PCM 首帧检测（该值保持 None），直接按判定结果收尾。
+            replied = self._as_bool(reply_detected)
+            self._log(level='INFO',
+                      content=(f'reply_detected={replied},子类已判定模型'
+                               f'{"已回复(直接提取问答)" if replied else "未回复(跳过问答提取)"}'),
+                      task_id=task_id, test_case_id=test_case_id)
         else:
             # 检测 ai PCM 首帧(模型回复起始时刻,替代录屏 first_frame)
             self._ai_first_frame_ms = self._detect_ai_pcm_first_frame(
