@@ -1554,7 +1554,7 @@ const getAlgorithmResults = (caseItem) => {
   }
   
   // 从 caseItem 获取直接的时间轴数据（兼容更旧的数据结构）
-  const directKeys = ['rttmRes', 'stmRes', 'rttm_res', 'stm_res', 'rttm_hyp', 'stm_hyp', 'rttmHyp', 'stmHyp'];
+  const directKeys = ['rttmRes', 'stmRes', 'rttm_hyp', 'stm_hyp', 'rttm_hyp', 'stm_hyp', 'rttmHyp', 'stmHyp'];
   for (const key of directKeys) {
     if (caseItem[key]) {
       result.push({
