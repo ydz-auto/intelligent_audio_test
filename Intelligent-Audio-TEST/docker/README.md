@@ -296,7 +296,7 @@ docker inspect -f '{{.State.ExitCode}}' intelligent-audio-test-db_bootstrap-1
 ## 9. 演示前端部署（15173 / 16173）的三道护栏（INT-2012）
 
 `docker/deploy_demo_frontends.ps1` 把 build 产物打进 nginx 镜像托管两个演示地址。2026-10-26 起
-**15173 的产物来源唯一 = `wiring/react` 产品演示**（此前脚本默认指向 `design/ux-redesign` 的 dist，
+**15173 的产物来源唯一 = 接线分支的产品演示**（此前脚本默认指向 `design/ux-redesign` 的 dist，
 按默认执行会把只有占位实现的设计稿刷上去，任务域导入导出等功能在演示上「消失」）。护栏：
 
 1. **产物来源硬门禁**：React dist 必须命中产品标记 `连接你的 agent`，且不得命中占位串
@@ -309,14 +309,21 @@ docker inspect -f '{{.State.ExitCode}}' intelligent-audio-test-db_bootstrap-1
    容器内 `static/js/async` 数量 == dist 内数量；任一失败自动回滚旧镜像（并把 `latest` 指回旧镜像）
    后退出非 0。
 
+**默认产物来源（INT-2426，2026-11-09）**：不带 `-ReactDist` / `-VueDist` 时，默认 dist =
+**当前仓库自己 build 出来的产物**（脚本在 `docker/` 下，取 `$PSScriptRoot\..\frontend-react\dist`
+与 `$PSScriptRoot\..\frontend\dist`），不再指向已冻结的 `V9.7.31-WIRING-REACT` /
+`V9.7.31-WIRING-UXVUE` 旧 clone。默认目录不存在时**直接拒绝并退出非 0**（预检在部署锁与任何
+docker 操作之前，容器与 `latest` tag 不变），提示先在当前仓库 build 或显式传
+`-ReactDist` / `-VueDist`。部署日志会打印实际 dist 的**绝对路径与构建时间**。
+
 两侧产物**先都校验通过再一起部署**：任一边校验失败，两边都不动。演练自检失败路径用
 `-FaultInject missing-chunk`（从构建上下文删一个 async chunk，预期自检失败 → 回滚 → 退出非 0）。
 
 ```powershell
-# 常规发版（只刷 React 15173，用接线分支最新 dist）
+# 常规发版（只刷 React 15173，用当前仓库 frontend-react 的最新 dist）
 pwsh -File deploy_demo_frontends.ps1 -SkipVue
 # 故意传设计稿 dist：应被拒绝，容器与 latest tag 前后 ID 一致
-pwsh -File deploy_demo_frontends.ps1 -SkipVue -ReactDist D:\00_code\V9.7.31-UX\Intelligent-Audio-TEST\frontend-react\dist
+pwsh -File deploy_demo_frontends.ps1 -SkipVue -ReactDist D:\00_code\V10.11.2\Intelligent-Audio-TEST\frontend-react\dist
 ```
 
 > 一次发版只做一次部署（环境铁律）：不要为了「再确认一下」重复执行；自检失败会自己回滚，

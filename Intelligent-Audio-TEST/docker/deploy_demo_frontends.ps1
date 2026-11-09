@@ -11,8 +11,13 @@ gzip + 分级缓存（static/assets 一年 immutable，index.html no-cache）。
 产品标记 `连接你的 agent`，且不得命中占位串 `导出流程见导出数据弹窗`，否则拒绝部署。
 设计/性能观感（E1/E2/E4 图表收敛、字体瘦身）另址或本地 build 取数，不再刷 15173。
 
+产物来源（INT-2426，2026-11-09）：默认 dist = **当前仓库自己 build 出来的产物**
+（`$PSScriptRoot\..\frontend-react\dist` / `$PSScriptRoot\..\frontend\dist`，脚本在 `docker/` 下），
+不再指向已冻结的 `V9.7.31-WIRING-REACT` / `V9.7.31-WIRING-UXVUE` 旧 clone。默认目录不存在时
+**直接拒绝并退出非 0**，不静默退回任何旧产物（旧 dist 也能通过产物门禁，自检发现不了）。
+
 用法（只从部署 clone 的 docker 目录操作；一次只部署一次，不要反复重启）：
-    # 默认从演示分支（wiring/react · wiring/ux-vue）的 build 产物部署
+    # 默认从「当前仓库」的 build 产物部署（先在仓库里 pnpm build / npm run build）
     pwsh -File deploy_demo_frontends.ps1
     # 只刷一边 / 指定产物目录（例如从运行中容器里冻结现有内容）
     pwsh -File deploy_demo_frontends.ps1 -SkipVue -ReactDist D:\tmp\react-html
@@ -32,8 +37,10 @@ gzip + 分级缓存（static/assets 一年 immutable，index.html no-cache）。
 约定：脚本用固定容器名 / 端口 / 网络，可重复执行（幂等：重建镜像并重建容器）。
 #>
 param(
-  [string]$ReactDist = "D:\00_code\V9.7.31-WIRING-REACT\Intelligent-Audio-TEST\frontend-react\dist",
-  [string]$VueDist   = "D:\00_code\V9.7.31-WIRING-UXVUE\Intelligent-Audio-TEST\frontend\dist",
+  # INT-2426：默认空 = 当前仓库（脚本上级目录）自己 build 出来的产物，见下方解析。
+  # 显式传 -ReactDist / -VueDist 仍完全覆盖默认值。
+  [string]$ReactDist = "",
+  [string]$VueDist   = "",
   [string]$Conf      = "",
   [string]$Network   = "intelligent-audio-test_default",
   [switch]$SkipReact,
@@ -48,6 +55,16 @@ $ErrorActionPreference = 'Stop'
 if (-not $Conf) { $Conf = Join-Path $PSScriptRoot 'nginx-frontend.conf' }
 if (-not (Test-Path $Conf)) { throw "nginx 配置不存在: $Conf" }
 
+# ---- 默认产物来源（INT-2426）-----------------------------------------------
+# 默认 dist = **当前仓库自己的 build 产物**（脚本在 docker/ 下，上级即仓库根），
+# 不再指向已冻结的 V9.7.31-WIRING-REACT / V9.7.31-WIRING-UXVUE 旧 clone。
+# 默认目录缺失时由 Resolve-DistSource 直接拒绝，绝不静默退回任何旧产物。
+$ReactDistIsDefault = -not $ReactDist
+$VueDistIsDefault   = -not $VueDist
+$RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+if ($ReactDistIsDefault) { $ReactDist = Join-Path $RepoRoot 'frontend-react\dist' }
+if ($VueDistIsDefault)   { $VueDist   = Join-Path $RepoRoot 'frontend\dist' }
+
 # 产品标记：wiring/react 的「连接你的 agent」入口组件；占位串只在 design/ux-redesign 上出现
 # （任务域导入导出还是占位实现，INT-2012 实测 166 个 async / 无 jsencrypt / 无标签来源）。
 $ProductMarker   = '连接你的 agent'
@@ -61,6 +78,29 @@ function Get-DistBuildTime {
   param([string]$Dist)
   try { return (Get-Item (Join-Path $Dist 'index.html')).LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss') }
   catch { return 'unknown' }
+}
+
+# ---- 产物来源解析（INT-2426）----------------------------------------------
+# 只负责「这个 dist 从哪来、存不存在」；不存在就直接 throw，不退回任何备用目录。
+function Resolve-DistSource {
+  param([string]$Name, [string]$Kind, [string]$Dist, [bool]$IsDefault, [string]$OverrideHint)
+
+  $full = $Dist
+  try { $full = [System.IO.Path]::GetFullPath($Dist) } catch { }
+  if (-not (Test-Path (Join-Path $full 'index.html'))) {
+    if ($IsDefault) {
+      throw ("[$Name] 默认产物目录里没有 index.html: $full`n" +
+        "INT-2426：默认只部署当前仓库（$RepoRoot）自己 build 出来的产物，不会退回 V9.7.31 旧 clone 的旧产物。" +
+        "请先在本仓库 build（React: cd frontend-react; pnpm i; pnpm build / 新 Vue: cd frontend; npm ci; npm run build），" +
+        "或显式传 $OverrideHint <dist 目录>。")
+    }
+    throw "[$Name] $OverrideHint 指定的产物目录里没有 index.html: $full"
+  }
+
+  $source    = if ($IsDefault) { '默认·当前仓库' } else { "$OverrideHint 显式指定" }
+  $buildTime = Get-DistBuildTime -Dist $full
+  Write-Host "[$Name] 产物来源：$full（$source，构建时间 $buildTime）"
+  return [pscustomobject]@{ Name = $Name; Kind = $Kind; Dist = $full; Source = $source; BuildTime = $buildTime }
 }
 
 function Test-MarkerInDist {
@@ -305,12 +345,21 @@ function Restore-Previous {
 
 # ---- 主流程 ---------------------------------------------------------------
 try {
+  # INT-2426：产物来源预检早于部署锁与任何 docker 操作——默认 dist 缺失时
+  # 退出码非 0，容器与 latest tag 前后不变（不再静默挑一个存在的旧目录）。
+  $sources = @()
+  if (-not $SkipReact) {
+    $sources += Resolve-DistSource -Name 'iat-react-frontend' -Kind 'react' -Dist $ReactDist -IsDefault $ReactDistIsDefault -OverrideHint '-ReactDist'
+  }
+  if (-not $SkipVue) {
+    $sources += Resolve-DistSource -Name 'iat-uxvue-frontend' -Kind 'vue' -Dist $VueDist -IsDefault $VueDistIsDefault -OverrideHint '-VueDist'
+  }
+  if ($sources.Count -eq 0) { throw '两侧都被 -SkipReact / -SkipVue 跳过，无事可做' }
+
   Acquire-DeployLock
 
   $plans = @()
-  if (-not $SkipReact) { $plans += Test-Dist -Name 'iat-react-frontend' -Dist $ReactDist -Kind 'react' }
-  if (-not $SkipVue)   { $plans += Test-Dist -Name 'iat-uxvue-frontend' -Dist $VueDist  -Kind 'vue' }
-  if ($plans.Count -eq 0) { throw '两侧都被 -SkipReact / -SkipVue 跳过，无事可做' }
+  foreach ($s in $sources) { $plans += Test-Dist -Name $s.Name -Dist $s.Dist -Kind $s.Kind }
 
   foreach ($p in $plans) {
     $port = if ($p.Kind -eq 'react') { 15173 } else { 16173 }
