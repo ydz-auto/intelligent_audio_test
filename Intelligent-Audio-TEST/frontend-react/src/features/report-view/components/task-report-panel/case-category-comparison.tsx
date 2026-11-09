@@ -115,8 +115,9 @@ export function CaseCategoryComparison({
       </div>
 
       <CollapsibleContent className='space-y-3'>
-        {/* 筛选卡（§3.3.5：用例名称 / 用例分组多选 / 评估维度多选；「应用筛选」提交生效） */}
-        <div className='rounded-xl border p-3'>
+        {/* 筛选卡（§3.3.5：用例名称 / 用例分组多选 / 评估维度多选；「应用筛选」提交生效；
+            导出快照里整块隐藏，避免留下没有输入框的空表单骨架） */}
+        <div className='rounded-xl border p-3' data-export-hide>
           <div className='flex flex-wrap items-end gap-3'>
             <div className='min-w-40 flex-1'>
               <label className='text-muted-foreground mb-1 block text-xs'>用例名称</label>

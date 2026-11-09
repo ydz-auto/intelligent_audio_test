@@ -91,6 +91,41 @@ describe('buildStaticClone', () => {
     root.remove()
   })
 
+  it('文字即内容的按钮解包为文本（表头资源名 / 分组名 / 卡片标题），操作按钮仍删除', () => {
+    const root = document.createElement('div')
+    root.className = 'report-view-container'
+    root.innerHTML = `
+      <section id="report-case-category">
+        <button data-export-keep-text>准确率 对比（单位：%）</button>
+        <table>
+          <thead>
+            <tr>
+              <th>分组</th>
+              <th><button data-export-keep-text title="点击重命名资源">9-pura90小艺-1.0.0</button></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><button data-export-keep-text title="点击重命名分组">主流程</button></td>
+              <td>90.0%</td>
+            </tr>
+          </tbody>
+        </table>
+        <button id="action-save">保存</button>
+      </section>`
+    document.body.appendChild(root)
+    const { clone } = buildStaticClone(root)
+    const headers = clone.querySelectorAll('th')
+    expect(headers[1].querySelector('button')).toBeNull()
+    expect(headers[1].textContent?.trim()).toBe('9-pura90小艺-1.0.0')
+    const firstCell = clone.querySelector('tbody td')
+    expect(firstCell?.querySelector('button')).toBeNull()
+    expect(firstCell?.textContent?.trim()).toBe('主流程')
+    expect(clone.textContent).toContain('准确率 对比（单位：%）')
+    expect(clone.querySelector('#action-save')).toBeNull()
+    root.remove()
+  })
+
   it('无 Collapsible 的分区（h3 + 内容）包出可折叠面板', () => {
     const root = document.createElement('div')
     root.className = 'report-view-container'

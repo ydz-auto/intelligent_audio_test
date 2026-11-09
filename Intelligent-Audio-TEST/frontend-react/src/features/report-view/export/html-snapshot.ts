@@ -4,7 +4,8 @@
  * 页面所见 = 克隆当前已渲染的报告 DOM，而不是让后端按数据重画一份简化 HTML：
  * - 克隆前展开全部折叠分区、把具体用例全量灌进 DOM（由调用方置导出态完成）；
  * - 克隆时清掉右导航 / 操作组 / 弹层 / 抽屉 / Toast，剪掉全部操作按钮（保留分区折叠触发器
- *   与用例「展开详情」按钮，改由导出内交互脚本接管）；
+ *   与用例「展开详情」按钮，改由导出内交互脚本接管；表头资源名 / 分组名这类「文字即内容」
+ *   的按钮解包为文本）；
  * - canvas（VChart）在克隆前 `toDataURL` 换成内联 `<img>`，SVG 原样内联；
  * - `document.styleSheets` 可读规则全量取出，字体等 `url()` 资源按同源抓取后 base64 内嵌，
  *   保证 `file://` 双击打开时零外链请求；
@@ -20,6 +21,9 @@ export const HTML_EXPORT_CASE_PAGE_SIZE = 10
 
 /** 等待导出态数据就绪的默认上限（全量用例 + 图表重绘） */
 export const HTML_EXPORT_READY_TIMEOUT_MS = 20_000
+
+/** 等待 VChart canvas 绘制完成的默认上限（超时按现状克隆） */
+export const HTML_EXPORT_CHART_READY_TIMEOUT_MS = 4_000
 
 export interface HtmlExportOptions {
   /** 报告名（zip 文件名；非法字符剔除，空则 report） */
@@ -74,6 +78,12 @@ const REMOVE_SELECTORS = [
 const KEEP_BUTTON_SELECTOR =
   '[data-slot="collapsible-trigger"], button[aria-label="展开详情"], button[aria-label="收起详情"]'
 
+/**
+ * 文本型按钮：按钮本身是操作入口，但文字是页面内容（表头资源名 / 分组名 / 维度卡片标题）。
+ * 删除按钮前把文字留在原位，否则导出后列头与标题整块丢失（INT-2418 P2-1）。
+ */
+const KEEP_TEXT_BUTTON_SELECTOR = '[data-export-keep-text]'
+
 /** 报告详情根容器选择器（与 report-print.css / 报告的壳一致） */
 export const REPORT_VIEW_ROOT_SELECTOR = '.report-view-container'
 
@@ -114,6 +124,39 @@ export async function waitForReportExportReady(
     await sleep(100)
   }
   return false
+}
+
+/** 已绘制 canvas 的 PNG data URL 至少应有这么大（空白画布只有几百字节） */
+const MIN_PAINTED_CANVAS_DATA_URL_LENGTH = 2000
+
+/**
+ * 等页面上的 canvas（VChart）绘制完成再采位图：导出态会让折叠的维度卡片展开、
+ * 图表视图切换后 VChart 异步挂载，过早 `toDataURL` 会得到空白图（INT-2418 P3-2）。
+ * 超时不抛错，按现状继续克隆。
+ */
+export async function waitForChartsPainted(
+  root: HTMLElement,
+  timeoutMs = HTML_EXPORT_CHART_READY_TIMEOUT_MS
+): Promise<void> {
+  // 至少让出两帧，等 React/VChart 完成挂载
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  )
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const canvases = Array.from(root.querySelectorAll<HTMLCanvasElement>('canvas'))
+    if (canvases.length === 0) return
+    const allPainted = canvases.every((canvas) => {
+      if (!canvas.width || !canvas.height) return false
+      try {
+        return canvas.toDataURL('image/png').length > MIN_PAINTED_CANVAS_DATA_URL_LENGTH
+      } catch {
+        return false
+      }
+    })
+    if (allPainted) return
+    await sleep(120)
+  }
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -268,6 +311,19 @@ img { max-width: 100%; height: auto; }
 `
 
 /**
+ * 用子节点替换元素本身（保留其文字/子结构，去掉交互外壳）。无父节点时按删除处理。
+ */
+function unwrapElement(el: Element): void {
+  const parent = el.parentNode
+  if (!parent) {
+    el.remove()
+    return
+  }
+  while (el.firstChild) parent.insertBefore(el.firstChild, el)
+  parent.removeChild(el)
+}
+
+/**
  * 克隆报告 DOM 并做静态化处理。`originalRoot` 用于 canvas 位图采集。
  */
 export function buildStaticClone(
@@ -284,9 +340,15 @@ export function buildStaticClone(
     clone.querySelectorAll(selector).forEach((el) => el.remove())
   }
 
-  // 3) 剪掉操作按钮（保留分区折叠触发器与用例展开按钮，改由导出脚本接管）
+  // 3) 剪掉操作按钮（保留分区折叠触发器与用例展开按钮，改由导出脚本接管；
+  //    表头资源名 / 分组名 / 维度卡片标题这类「文字即内容」的按钮解包为文本）
   clone.querySelectorAll('button').forEach((btn) => {
-    if (!btn.matches(KEEP_BUTTON_SELECTOR)) btn.remove()
+    if (btn.matches(KEEP_BUTTON_SELECTOR)) return
+    if (btn.matches(KEEP_TEXT_BUTTON_SELECTOR)) {
+      unwrapElement(btn)
+      return
+    }
+    btn.remove()
   })
   clone.querySelectorAll('input, select, textarea').forEach((el) => el.remove())
 

@@ -17,6 +17,7 @@ import {
   exportReportHtml,
   HTML_EXPORT_CASE_PAGE_SIZE,
   HTML_EXPORT_READY_TIMEOUT_MS,
+  waitForChartsPainted,
   waitForReportExportReady,
   type HtmlExportArtifact,
 } from '@/features/report-view/export/html-snapshot'
@@ -63,6 +64,8 @@ export function useReportHtmlExport(
         root,
         optionsRef.current.timeoutMs ?? HTML_EXPORT_READY_TIMEOUT_MS
       )
+      // 图表视图的 canvas 由 VChart 异步绘制；采位图前等它画完（超时按现状继续）
+      await waitForChartsPainted(root)
       const artifact = await exportReportHtml(root, {
         fileName: optionsRef.current.getReportName(),
         pageSize: HTML_EXPORT_CASE_PAGE_SIZE,

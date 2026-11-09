@@ -130,8 +130,9 @@ export function CaseTagComparison({
       </div>
 
       <CollapsibleContent className='space-y-3'>
-        {/* 标签筛选卡（按分类分组）+ 用例分组多选（§3.3.6 筛选卡） */}
-        <div className='rounded-xl border p-3'>
+        {/* 标签筛选卡（按分类分组）+ 用例分组多选（§3.3.6 筛选卡；导出快照里整块隐藏，
+            避免留下没有输入框的空表单骨架） */}
+        <div className='rounded-xl border p-3' data-export-hide>
           <p className='text-muted-foreground text-xs'>用例标签（按分类分组）：</p>
           <div className='mt-2 space-y-2'>
             {tagGroups.map(([category, tags]) => (

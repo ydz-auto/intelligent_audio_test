@@ -24,7 +24,7 @@ interface MetricMatrixTableProps {
   resources: string[]
   displayType: DisplayType
   onDisplayTypeChange: (type: DisplayType) => void
-  /** 导出模式（P2-12：强制展开 + 表格视图，canvas 图表不克隆进静态 HTML） */
+  /** 导出模式（强制展开卡片；视图保持页面当前选择，canvas 图表静态化为内联图） */
   isExporting?: boolean
   /** 分组/标签重命名映射（old → new；矩阵键保持原名，展示名跟随映射） */
   groupLabels?: Record<string, string>
@@ -55,8 +55,9 @@ export function MetricMatrixTable({
   const [editingResource, setEditingResource] = useState<string | null>(null)
   const [editResourceValue, setEditResourceValue] = useState('')
   const { series, distribution } = useReportCharts(matrix, groups, resources, metric.name, displayType)
-  const forceOpen = Boolean(isExporting)
-  const isDistribution = displayType === 'distribution' && !forceOpen
+  // 导出态只强制展开卡片；视图仍按页面当前选择（表格/柱状图/折线图…），图表由 canvas 静态化
+  const forceExpanded = Boolean(isExporting)
+  const isDistribution = displayType === 'distribution'
 
   const startRename = (group: string) => {
     if (!onRename) return
@@ -122,11 +123,12 @@ export function MetricMatrixTable({
       <div className='flex flex-wrap items-center justify-between gap-2 px-3 pt-3'>
         <button
           type='button'
+          data-export-keep-text=''
           className='flex items-center gap-1 text-sm font-medium'
-          onClick={() => !forceOpen && setCollapsed((v) => !v)}
+          onClick={() => !forceExpanded && setCollapsed((v) => !v)}
         >
           {metric.name} 对比（单位：{unit || '—'}）
-          {!forceOpen && (
+          {!forceExpanded && (
             <ChevronDown
               aria-hidden='true'
               className={cn('text-muted-foreground size-4 transition-transform', collapsed && 'rotate-180')}
@@ -152,9 +154,9 @@ export function MetricMatrixTable({
         </div>
       </div>
 
-      {(!collapsed || forceOpen) && (
+      {(!collapsed || forceExpanded) && (
         <div className='p-3'>
-          {(displayType === 'table' || forceOpen) ? (
+          {displayType === 'table' ? (
             <div className='overflow-x-auto rounded-lg border'>
               <table className='w-full min-w-[420px] text-sm'>
                 <thead>
@@ -180,6 +182,7 @@ export function MetricMatrixTable({
                         ) : onRename ? (
                           <button
                             type='button'
+                            data-export-keep-text=''
                             className='hover:text-foreground text-muted-foreground text-left transition-colors'
                             onClick={() => startResourceRename(resource)}
                             title='点击重命名资源'
@@ -230,6 +233,7 @@ export function MetricMatrixTable({
                           ) : onRename ? (
                             <button
                               type='button'
+                              data-export-keep-text=''
                               className='hover:text-foreground text-muted-foreground text-left transition-colors'
                               onClick={() => startRename(group)}
                               title='点击重命名分组'
