@@ -106,14 +106,14 @@ _FLAT_KEY_DIMENSIONS = { ..., VendorAdapterType.MY_VENDOR: (AdapterProtocol.REAL
 | 执行道 / 执行器 | 流式道 → `RealtimeSessionExecutor` | 非流式道 → `APISessionExecutor` + `WebSocketAdapter`（协议级 `(AdapterProtocol.WEBSOCKET, AdapterVendor.ANY)`） |
 | 交互形态 | 会话式全双工流式（逐 chunk 推 `input_audio_buffer.append` + 事件回流） | 连接 → 发一条请求消息 → 收响应（可多条）→ 断开 |
 | 可测轮次 | 正常轮 / 打断轮 / 推流节奏（pacing） | **正常轮 / 多轮**（每轮一次往返） |
-| 打断 / 拒识 / 推流中打断 | 有（`is_interruption` / `pacing`） | **无**——能力声明为空 `websocket+non-streaming → {}`，配了也不生效 |
+| 打断 / 拒识 / 推流中打断 | 有（`is_interruption` / `pacing`） | **无**——非流式道不声明会话能力：`APISessionExecutor` 不消费 `is_interruption` / `pacing` / 拒识字段，配了也不生效 |
 | 完成判定 | 事件驱动：`ai_audio_delta` → `ai_audio_done`，超时仅兜底 | 响应收敛：命中会话结束标记 / 服务端断开 / 首响应后静默超时（`meta.recv_timeout`，默认 2s）/ `meta.max_responses`（默认 100） |
 | 时延 / 时长 | 帧时间戳实测（`first_frame_latency_ms` / `barge_in_latency_ms`） | 轮次请求-响应实测（`latency`）；无帧时间戳指标 |
 
 - **写侧**：`(websocket, false)` 已在可用矩阵（`AVAILABLE_PROTOCOL_STREAMING`），不再 400「实现未上线」。
 - **用例 `rounds`**：与普通轮一致（`round_number` / `audio_id` / `audio_path` / `query` / `question` / `correct_answer`），不配置 `is_interruption` / `pacing` 等会话能力字段。
 - **请求体**：`body_template`（用例级 > API `meta.body_template` > `meta.body`）递归渲染 `{{placeholder}}`，占位符取轮次上下文（`session_id` / `round_number` / `total_rounds` / `input_text` / `input_audio` / `input_type` / `source_lang` / `target_lang` / `translation_direction` / `algorithm_type` / `context` / `context_for_request` / `algorithm_params` / `case_algorithm_params`）；未配模板时整份轮次上下文 JSON 作为请求消息。
-- **端点 / 头 / 密钥 / 代理**：`api_endpoints` 中首个 `ws://` / `wss://` 条目优先，否则 `api_url`（必须带 `ws://` / `wss://` 前缀）；`meta.ws_headers` 直传；密钥链与密钥池轮换、`proxy_type` / `proxy_url` 与 Realtime 同源（字段见 §七）。
+- **端点 / 头 / 密钥 / 代理**：`api_endpoints` 中首个 `ws://` / `wss://` 条目**即端点**（唯一来源——INT-1361 已移除 `api_url`）；无 ws 条目直接判轮次失败并报「未配置 WebSocket 端点」，不做兜底；`meta.ws_headers` 直传；密钥链与密钥池轮换、`proxy_type` / `proxy_url` 与 Realtime 同源（字段见 §七）。
 - **响应与失败收敛**：最后一条 JSON 作为归一 payload（`raw_response['json']`），字段映射走既有统一入口（`meta.result_parser` / `asr_mapping` / `trans_mapping`）；连接/握手/发送异常、首响应前断开、首响应超时、`{"type": "error"}` 协议错误帧都收敛为轮次失败，不静默成功。
 - **不需要新写适配器**：`WebSocketAdapter` 是协议级 base，厂商差异用配置表达（`body_template` / 响应映射）；确需替换传输语义时，才按第二节注册厂商适配器（`protocol = AdapterProtocol.WEBSOCKET` + `vendor = 你的厂商`，精确匹配优先于协议级 base）。
 
@@ -145,7 +145,7 @@ _FLAT_KEY_DIMENSIONS = { ..., VendorAdapterType.MY_VENDOR: (AdapterProtocol.REAL
 
 ## 七、APIs 表 + 建任务（配置）
 
-- **APIs 表一行**：`vendor=my_vendor`、`api_url`（`ws://` 或 `wss://`）、`device_type=websocket_api`、`audio_config`（顶层列，目标音频格式；meta.audio_config 仅存量兼容，INT-1771）、meta（session_config / ws_headers / api_key）、proxy_type / proxy_url
+- **APIs 表一行**：`vendor=my_vendor`、`protocol=websocket` + `streaming=true`（Realtime 会话式；WS 请求-响应式见 §五，用 `streaming=false`，INT-1799）、`api_endpoints`（条目 `endpoint` 带 `ws://` / `wss://` 前缀，可选 `name` / `max_process` / `max_timeout` / `max_audio_duration` / `priority` / `api_keys` 端点级密钥池；`api_url` 已移除、`device_type` 列已废弃）、`audio_config`（顶层列，目标音频格式；meta.audio_config 仅存量兼容，INT-1771）、meta（session_config / ws_headers / api_key）、proxy_type / proxy_url
 - **建任务**：选用例 + 选 API（可同时选多个 API 和物理设备混跑）→ 用例在选中目标上分别执行（case_devices 指派 device_type）
 
 ## 八、参数配置（三层解析）
@@ -170,7 +170,7 @@ _FLAT_KEY_DIMENSIONS = { ..., VendorAdapterType.MY_VENDOR: (AdapterProtocol.REAL
 ## 九、验证
 
 1. **mock 冒烟**：`mock_realtime_api.py --barge-in`（预置「AI 说话 + 打断」事件序列）→ 正常轮 + 打断轮跑通
-2. **真机**：换 `api_url` 为被测端点，核对事件协议与归一化（`response.audio.delta` 等）
+2. **真机**：把 `api_endpoints` 里的 ws 端点指向被测服务，核对事件协议与归一化（`response.audio.delta` 等）
 3. **回归**：`test_int497_openai_realtime_e2e.py`（分发 + 打断轮）、`test_int475_realtime_pacing.py`（节奏策略）
 4. **WS 非实时**：`python mock_services/mock_ws_request_response_api.py --port 5095`（`--response-delay-ms` / `--disconnect-before-response` / `--protocol-error` / `--session-end` 分别注入超时兜底、断连、协议错误帧、会话结束收敛）→ 正常轮 / 多轮跑通；单测 `test_int2079_ws_non_streaming.py`
 5. **output_duration 打断点**：`mock_realtime_api.py --barge-in --delta-bytes <n> --barge-in-audio-chunks <n>` 预置大块回复 → 打断点按已返回音频长度触发（`interrupt_trigger_ms` 与阈值对照）；单测 `test_int2080_interrupt_mode.py`
