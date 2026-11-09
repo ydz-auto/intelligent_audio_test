@@ -129,6 +129,7 @@ class TestCaseUploadConfig(APIModel):
     字段全部 optional，不传时由 _create_test_case_from_audio 降级为平面 config。
     """
     rounds: Optional[List[RoundConfigItem]] = Field(None)
+    test_case_name: Optional[str] = Field(None)
     # dimensions 接受 dict 或 list，由 _create_test_case_from_audio 统一处理
     dimensions: Optional[Any] = Field(None)
     group_name: Optional[str] = Field(None)

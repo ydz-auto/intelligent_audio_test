@@ -8,7 +8,7 @@
 - 行被硬删 → insert（按 §接口 表重插）；
 - 活行字段漂移 → update（字段对齐）；
 - 同自然键软删+活行并存 → 优先活行；
-- 目标参数表与卡面 §接口 表一一对应（10 个 param_code 与类型）。
+- 目标参数表与卡面 §接口 表一一对应（param_code 与类型）。
 """
 import importlib.util
 import os
@@ -61,15 +61,15 @@ def _expect_all_restores(ops):
 
 
 def test_target_matches_int2095_spec_table():
-    """目标参数表与卡面 §接口 表一一对应（10 个参数、自然键、类型/scope/ui_order）。"""
-    assert len(_seed.TARGET_CASE_PARAMS) == 10
+    """目标参数表与卡面 §接口 表一一对应（参数、自然键、类型/scope/ui_order）。"""
+    assert len(_seed.TARGET_CASE_PARAMS) == 11
     codes = [s['param_code'] for s in _seed.TARGET_CASE_PARAMS]
     assert codes == [
         'interferers', 'record_mode', 'type', 'timing', 'is_interruption',
-        'stop_intent', 'is_return_to_topic', 'is_reject', 'is_single_round',
-        'correctAnswer',
+        'stop_intent', 'is_return_to_topic', 'is_reject', 'input_gap_ms',
+        'is_single_round', 'correctAnswer',
     ]
-    assert {s['param_type'] for s in _seed.TARGET_CASE_PARAMS} == {'text', 'json', 'switch'}
+    assert {s['param_type'] for s in _seed.TARGET_CASE_PARAMS} == {'text', 'json', 'switch', 'number'}
     # scope 用后端 CaseParamScope 现行词表（common + DeviceType 三值）；
     # 旧词表 e2e 已废弃，物理侧统一为 physical
     assert {s['param_code']: s['scope'] for s in _seed.TARGET_CASE_PARAMS}['interferers'] == 'physical'
@@ -91,14 +91,14 @@ def test_idempotent_when_already_applied():
     existing = [_make_row(s['param_code'], deleted=False, pid=42 + i)
                 for i, s in enumerate(_seed.TARGET_CASE_PARAMS)]
     ops = _seed.plan_case_params_changes(existing)
-    assert len(ops) == 10
+    assert len(ops) == 11
     assert all(op['op'] == 'skip' for op in ops)
 
 
 def test_inserts_hard_deleted_or_missing_rows():
     """自然键不存在（行被硬删 / 全新库）→ insert。"""
     ops = _seed.plan_case_params_changes([])
-    assert len(ops) == 10
+    assert len(ops) == 11
     assert all(op['op'] == 'insert' for op in ops)
 
 

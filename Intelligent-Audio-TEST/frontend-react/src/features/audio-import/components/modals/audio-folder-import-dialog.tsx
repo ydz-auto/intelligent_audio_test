@@ -198,7 +198,12 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
       const importGroups = buildAudioImportGroups(audioFiles, caseGroups)
       const groupOfFile = new Map<
         File,
-        { rounds: UploadRoundConfig[]; tags: string[]; isGroupFinalMerge: boolean }
+        {
+          rounds: UploadRoundConfig[]
+          tags: string[]
+          isGroupFinalMerge: boolean
+          testCaseName: string
+        }
       >()
       for (const group of importGroups) {
         group.files.forEach((file, index) => {
@@ -208,6 +213,7 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
             tags: group.tags,
             // 组内最后一个待处理文件才建用例（前序文件只入库）
             isGroupFinalMerge: index === group.files.length - 1,
+            testCaseName: group.caseName,
           })
         })
       }
@@ -237,6 +243,7 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
                 : undefined,
           annotations: perFileAnnotations[idx],
           rounds: group?.rounds,
+          testCaseName: group?.testCaseName,
           tags: group?.tags,
           isGroupFinalMerge: group?.isGroupFinalMerge,
         }

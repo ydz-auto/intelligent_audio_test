@@ -39,6 +39,8 @@ export interface CaseGroup {
 export interface AudioImportGroup {
   groupKey: string
   files: File[]
+  /** 用例名（JSON 分组=JSON 文件名；无 JSON=首个音频文件名去扩展名） */
+  caseName: string
   /** 整组轮次（组内所有文件共享同一引用） */
   rounds: UploadRoundConfig[]
   /** 该分组 JSON 顶层 tags（无 JSON 分组时为空数组；per-file 覆盖用，INT-1979） */
@@ -323,6 +325,8 @@ export function buildAudioImportGroups(
   return Array.from(buckets.entries()).map(([groupKey, bucket]) => ({
     groupKey,
     files: bucket.files,
+    caseName: bucket.group ? bucket.group.groupKey
+      : baseNameWithoutExt(bucket.files[0]?.name ?? ''),
     rounds:
       bucket.group && bucket.group.rounds.length > 0
         ? bucket.group.rounds
