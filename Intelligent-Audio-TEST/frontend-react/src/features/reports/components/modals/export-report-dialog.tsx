@@ -36,6 +36,10 @@ import {
 } from '@/components/ui/tabs'
 import { ApiError } from '@/infrastructure/api/api-error'
 import { cn } from '@/lib/utils'
+import type {
+  BatchHtmlExportFailure,
+  BatchHtmlExportProgress,
+} from '@/application/reports/use-batch-report-html-export'
 
 const EXPORT_FORMATS = [
   { value: 'csv', label: 'CSV' },
@@ -87,6 +91,11 @@ interface ExportReportDialogProps {
   count: number
   /** 真实导出（POST /reports/export）；resolve 即后端已生成文件，reject 即失败 */
   onExport: (format: string) => Promise<void> | void
+  /** 批量 HTML 前端快照导出进度（INT-2419；非空时弹窗内显示 i/N + 报告名 + 取消） */
+  htmlProgress?: BatchHtmlExportProgress | null
+  onCancelHtmlExport?: () => void
+  /** 批量 HTML 导出结果（INT-2419；含失败清单：报告名 + 原因） */
+  batchResult?: { succeeded: number; failed: BatchHtmlExportFailure[] } | null
 }
 
 export function ExportReportDialog({
@@ -95,6 +104,9 @@ export function ExportReportDialog({
   scope,
   count,
   onExport,
+  htmlProgress,
+  onCancelHtmlExport,
+  batchResult,
 }: ExportReportDialogProps) {
   const [format, setFormat] = useState<string>('csv')
   const [exporting, setExporting] = useState(false)
@@ -139,8 +151,8 @@ export function ExportReportDialog({
         <DialogHeader>
           <DialogTitle>导出报告</DialogTitle>
           <DialogDescription>
-            HTML 为「当前页面所见」的前端快照打包（离线可打开的 zip）；CSV / Excel / PDF
-            由后端按报告落库数据统一生成。
+            HTML 为报告页面的前端快照打包（离线可打开的 zip；批量导出时每份报告一个子目录，产物与单份导出
+            一致）；CSV / Excel / PDF 由后端按报告落库数据统一生成。
           </DialogDescription>
         </DialogHeader>
 
@@ -172,6 +184,59 @@ export function ExportReportDialog({
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* 批量 HTML 前端快照导出进度（INT-2419）：i/N + 当前报告名 + 取消 */}
+              {htmlProgress && (
+                <div className='space-y-2 rounded-xl border p-3' data-testid='batch-export-progress'>
+                  <div className='flex items-center justify-between gap-2 text-sm'>
+                    <span className='truncate'>
+                      正在导出 {htmlProgress.current}/{htmlProgress.total} ·{' '}
+                      {htmlProgress.reportName}
+                    </span>
+                    <Badge variant='outline' className='font-mono tabular-nums'>
+                      {htmlProgress.current}/{htmlProgress.total}
+                    </Badge>
+                  </div>
+                  <div className='bg-muted h-2 overflow-hidden rounded-full'>
+                    <div
+                      className='bg-primary h-full rounded-full transition-all duration-200'
+                      style={{
+                        width: `${Math.round((htmlProgress.current / htmlProgress.total) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <Button size='sm' variant='outline' onClick={onCancelHtmlExport}>
+                    取消导出
+                  </Button>
+                </div>
+              )}
+
+              {/* 批量 HTML 导出结果（INT-2419）：成功份数 + 失败清单（报告名 + 原因） */}
+              {batchResult && !htmlProgress && (
+                <div className='space-y-2 rounded-xl border p-3 text-sm' data-testid='batch-export-result'>
+                  <p>
+                    导出完成：成功 <span className='font-mono tabular-nums'>{batchResult.succeeded}</span> 份
+                    {batchResult.failed.length > 0 && (
+                      <>
+                        ，失败{' '}
+                        <span className='text-destructive font-mono tabular-nums'>
+                          {batchResult.failed.length}
+                        </span>{' '}
+                        份
+                      </>
+                    )}
+                  </p>
+                  {batchResult.failed.length > 0 && (
+                    <ul className='text-muted-foreground max-h-32 space-y-1 overflow-auto text-xs'>
+                      {batchResult.failed.map((item) => (
+                        <li key={item.reportId}>
+                          · {item.reportName}：{item.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           </TabsContent>
 
@@ -258,7 +323,14 @@ export function ExportReportDialog({
         </Tabs>
 
         <DialogFooter>
-          <Button variant='outline' onClick={() => onOpenChange(false)}>
+          <Button
+            variant='outline'
+            onClick={() => {
+              // 导出中「取消」= 取消本次批量导出（不产出 zip），而不是只关弹窗
+              if (htmlProgress) onCancelHtmlExport?.()
+              else onOpenChange(false)
+            }}
+          >
             取消
           </Button>
           <Button disabled={exporting} onClick={() => void handleExport()}>

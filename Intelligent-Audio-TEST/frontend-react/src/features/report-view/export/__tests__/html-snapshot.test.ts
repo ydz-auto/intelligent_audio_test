@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildReportHtmlDocument,
   buildStaticClone,
+  captureReportHtmlSnapshot,
   HTML_EXPORT_CASE_PAGE_SIZE,
   sanitizeFileName,
 } from '../html-snapshot'
@@ -163,6 +164,20 @@ describe('buildReportHtmlDocument', () => {
     // 交互脚本内联（file:// 下不加载外部脚本）
     expect(html).toContain('export-case-search')
     expect(html).not.toContain('<script src=')
+    root.remove()
+  })
+})
+
+describe('captureReportHtmlSnapshot', () => {
+  it('产出 report.html / css / 用例数片段（单份与批量共用同一管线，INT-2419）', async () => {
+    const root = mountReportDom(2)
+    const parts = await captureReportHtmlSnapshot(root, { fileName: '报告A' })
+    expect(parts.caseCount).toBe(2)
+    expect(parts.html).toContain('data-export-case-total="2"')
+    expect(parts.html).toContain('<title>报告A - 报告导出</title>')
+    // 导出 reset 与文档级样式都在同一份 css 里（主题变量取自 :root 计算值，jsdom 无自定义属性，实测在 15173 覆盖）
+    expect(parts.css).toContain('#report-export-root')
+    expect(parts.css).toContain('[data-export-case-toolbar]')
     root.remove()
   })
 })

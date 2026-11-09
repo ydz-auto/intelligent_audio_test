@@ -27,13 +27,8 @@ import { ReportRenameDialog } from '@/features/reports/components/modals/report-
 import { ReportProgressDialog } from '@/features/reports/components/modals/report-progress-dialog'
 import { ReportShareDialog } from './components/modals/report-share-dialog'
 
-import { ReportHeader } from './components/report-header'
 import { ReportReadingNav, type ReadingNavSection } from './components/report-reading-nav'
-import { TaskReportPanel } from './components/task-report-panel'
-import { ComparisonReportPanel } from './components/comparison-report-panel'
-import { BenchmarkRankingBlock } from './components/benchmark-ranking-block'
-import { StudioDocumentSection } from '@/features/reports/components/studio-document-section'
-import { StudioSourceType } from '@/domain/models/report-studio'
+import { ReportViewBody } from './components/report-view-body'
 
 import '@/features/report-view/report-print.css'
 
@@ -265,98 +260,53 @@ export function ReportViewPage() {
     )
   }
 
-  const isComparison = report.type === 'comparison' || report.type === 'secondary_comparison'
-
   return (
     <div
       ref={containerRef}
       className='report-view-container min-h-0 flex-1 overflow-auto print:mx-auto print:max-w-none'
     >
-      <div className='mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6'>
-        <ReportHeader
-          report={report}
-          hasPermission={hasPermission}
-          editing={editing}
-          backLabel={backLabel}
-          onBack={handleBack}
-          onEdit={() => setEditing((v) => !v)}
-          onSave={() => setEditing(false)}
-          onRename={() => setRenameOpen(true)}
-          onPublish={() => setPublishOpen(true)}
-          onUnpublish={() => {
+      <ReportViewBody
+        report={report}
+        isExporting={htmlExport.exporting}
+        editing={editing}
+        hasPermission={hasPermission}
+        canEdit={hasPermission('report:update')}
+        onStartEditing={() => setEditing(true)}
+        onExitEditing={() => setEditing(false)}
+        onSaveAnalysis={(content) => void saveAnalysis(content)}
+        reviewCount={reportReviews.reviewCount}
+        onReviewStatsClick={() =>
+          containerRef.current
+            ?.querySelector<HTMLElement>('#report-specific-cases')
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+        header={{
+          backLabel,
+          onBack: handleBack,
+          onRename: () => setRenameOpen(true),
+          onPublish: () => setPublishOpen(true),
+          onUnpublish: () => {
             void reportActions.unpublish(report.id, report.name)
-          }}
-          onExport={() => setExportOpen(true)}
-          onRegenerate={() => setRegenerateOpen(true)}
-          onCopyLink={() => {
+          },
+          onExport: () => setExportOpen(true),
+          onRegenerate: () => setRegenerateOpen(true),
+          onCopyLink: () => {
             void navigator.clipboard?.writeText(`${window.location.origin}/report/${report.id}`)
             toast.success('链接已复制')
-          }}
-          onShare={() => share.openShare('link')}
-          onClose={handleBack}
-          reviewCount={reportReviews.reviewCount}
-          onReviewStatsClick={() =>
-            containerRef.current
-              ?.querySelector<HTMLElement>('#report-specific-cases')
-              ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          }
-        />
-
-        <div className='mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px]'>
-          <main className='min-w-0 space-y-6'>
-            {report.type === 'benchmark' && (
-              <BenchmarkRankingBlock reportId={report.id} reportName={report.name} />
-            )}
-            {isComparison ? (
-              <ComparisonReportPanel
-                report={report}
-                isExporting={htmlExport.exporting}
-                editing={editing}
-                canEdit={hasPermission('report:update')}
-                onStartEditing={() => setEditing(true)}
-                onExitEditing={() => setEditing(false)}
-                onSaveAnalysis={(content) => void saveAnalysis(content)}
-              />
-            ) : (
-              <TaskReportPanel
-                report={report}
-                isExporting={htmlExport.exporting}
-                editing={editing}
-                canEdit={hasPermission('report:update')}
-                onStartEditing={() => setEditing(true)}
-                onExitEditing={() => setEditing(false)}
-                onSaveAnalysis={(content) => void saveAnalysis(content)}
-              />
-            )}
-
-            {/* 报告文档区（INT-1766 3a/3c）：固定 report_id + source_type=platform_report，
-                上传的独立报告不混进平台报告文档列表（后端 list_documents 契约口径） */}
-            {hasPermission('report:read') && (
-              <section id='report-documents' className='scroll-mt-20'>
-                <StudioDocumentSection
-                  description='本报告的平台报告文档。上传的独立报告不在本列表，见报告中心「更多操作 → 报告文档」。'
-                  emptyText='该报告暂无平台报告文档'
-                  reportId={report.id}
-                  sourceType={StudioSourceType.PLATFORM_REPORT}
-                  title='报告文档'
-                />
-              </section>
-            )}
-          </main>
-
-          <aside className='print:hidden'>
-            <ReportReadingNav
-              sections={sections}
-              activeId={activeSection}
-              progress={progress}
-              onNavigate={handleNav}
-            />
-          </aside>
-        </div>
-
-        {/* 底部操作条（sticky bottom；15_报告域.md §3.1：保存 report:update / 发布 report:publish / 导出 / 打印 / 关闭） */}
-        <div className='print:hidden sticky bottom-3 z-10 mt-8'>
-          <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex flex-wrap items-center justify-end gap-2 rounded-xl border p-2 shadow-lg backdrop-blur-lg'>
+          },
+          onShare: () => share.openShare('link'),
+          onClose: handleBack,
+        }}
+        readingNav={
+          <ReportReadingNav
+            sections={sections}
+            activeId={activeSection}
+            progress={progress}
+            onNavigate={handleNav}
+          />
+        }
+        bottomActions={
+          <>
             {editing && hasPermission('report:update') && (
               <Button variant='secondary' size='sm' onClick={() => setEditing(false)}>
                 保存
@@ -381,9 +331,9 @@ export function ReportViewPage() {
             <Button variant='ghost' size='sm' onClick={handleBack}>
               关闭
             </Button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <ExportReportDialog
         open={exportOpen}

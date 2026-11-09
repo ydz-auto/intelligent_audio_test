@@ -43,6 +43,20 @@ export interface HtmlExportArtifact {
   html: string
 }
 
+/**
+ * 单份快照的产物片段（未打包）。
+ * 批量导出（INT-2419）复用这一步：每份报告走同一套清理 / 内联 / 图表静态化，
+ * 只是把片段放进批量 zip 的子目录，而不是各自的单份 zip。
+ */
+export interface HtmlSnapshotParts {
+  /** report.html 文本 */
+  html: string
+  /** css/report.css 文本 */
+  css: string
+  /** 导出内用例卡片数（= 接口 total） */
+  caseCount: number
+}
+
 /** 导出态就绪标记（SpecificCaseComparison 在导出态写入；含用例总数） */
 export const EXPORT_READY_ATTR = 'data-export-cases-ready'
 
@@ -675,13 +689,13 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * 主入口：克隆报告 DOM → 样式内联 → 打包 zip。
+ * 快照管线（克隆 → 静态化 → 样式内联 → 文档组装），单份与批量（INT-2419）共用。
  * 调用方需先把页面切到「导出态」（展开分区、灌满用例）并等待 `waitForReportExportReady`。
  */
-export async function exportReportHtml(
+export async function captureReportHtmlSnapshot(
   root: HTMLElement,
   options: HtmlExportOptions = {}
-): Promise<HtmlExportArtifact> {
+): Promise<HtmlSnapshotParts> {
   const pageSize = options.pageSize ?? HTML_EXPORT_CASE_PAGE_SIZE
   const reportName = options.fileName ?? 'report'
 
@@ -691,6 +705,19 @@ export async function exportReportHtml(
   const css = await inlineCssAssets(`${EXPORT_RESET_CSS}\n${collectRootCssVariables()}\n${collected}`)
 
   const html = buildReportHtmlDocument({ clone, reportName, exportedAt: new Date() })
+  return { html, css, caseCount }
+}
+
+/**
+ * 主入口：克隆报告 DOM → 样式内联 → 打包 zip。
+ * 调用方需先把页面切到「导出态」（展开分区、灌满用例）并等待 `waitForReportExportReady`。
+ */
+export async function exportReportHtml(
+  root: HTMLElement,
+  options: HtmlExportOptions = {}
+): Promise<HtmlExportArtifact> {
+  const reportName = options.fileName ?? 'report'
+  const { html, css, caseCount } = await captureReportHtmlSnapshot(root, options)
 
   const zip = new JSZip()
   zip.file('report.html', html)

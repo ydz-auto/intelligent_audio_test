@@ -19,6 +19,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -34,6 +35,8 @@ import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import { useReportList } from '@/application/reports/use-report-list'
 import { useReportCounts } from '@/application/reports/use-report-counts'
 import { useReportExportAll } from '@/application/reports/use-report-export-all'
+import { useBatchReportHtmlExport } from '@/application/reports/use-batch-report-html-export'
+import { useTheme } from '@/context/theme-provider'
 import {
   useBatchReportActions,
   useReportActions,
@@ -42,6 +45,7 @@ import type { ReportListItem, ReportType } from '@/domain/models/report'
 import type { ReportsSearch } from '@/features/reports/types'
 import { getLinkedAlgorithmLabel, toReportAlgorithmType } from '@/features/reports/lib/algorithm'
 import { buildReportListQuery } from '@/application/reports/report-query'
+import { BatchExportStage } from '@/features/report-view/export/batch-export-stage'
 
 import { ReportHero } from './components/report-hero'
 import { ReportAdvancedSearch } from './components/report-advanced-search'
@@ -75,6 +79,22 @@ export function ReportCenterPage() {
   const reportActions = useReportActions()
   const batchActions = useBatchReportActions()
   const fetchExportAllIds = useReportExportAll()
+
+  // 批量 HTML 导出（INT-2419）：每份走与详情页同一套组件树 + 同一个前端快照管线，
+  // 产出一个 zip（每份一个子目录）。采集前切浅色、结束后复原主题（同单份导出）。
+  const { theme: themePreference, resolvedTheme, setTheme } = useTheme()
+  const themeBeforeExport = useRef(themePreference)
+  const batchHtmlExport = useBatchReportHtmlExport({
+    beforeCapture: async () => {
+      themeBeforeExport.current = themePreference
+      if (resolvedTheme === 'dark') {
+        setTheme('light')
+        // VChart 按 resolvedTheme 重建，等浅色实例绘制完成再采 canvas
+        await new Promise((resolve) => setTimeout(resolve, 700))
+      }
+    },
+    afterCapture: () => setTheme(themeBeforeExport.current),
+  })
 
   const search: ReportsSearch = {
     ...rawSearch,
@@ -328,15 +348,25 @@ export function ReportCenterPage() {
     [navigate, reportActions]
   )
 
+  const resetBatchExportResult = batchHtmlExport.reset
   const openExportDialog = useCallback(
     (count: number, scope: string, ids: number[]) => {
+      // 重新打开弹窗不残留上一次批量导出的结果面板
+      resetBatchExportResult()
       setExportCount(count)
       setExportScope(scope)
       setExportIds(ids)
       setExportOpen(true)
     },
-    []
+    [resetBatchExportResult]
   )
+
+  /** 列表里已知的报告名（批量导出进度首帧直接显示名字，不必等详情返回） */
+  const knownReportNames = useMemo(() => {
+    const map: Record<number, string> = {}
+    for (const item of items) map[item.id] = item.name
+    return map
+  }, [items])
 
   // P2-2：导出范围与文案一致——已选 → 所选 id；未选 → 当前筛选全量 id（非仅当前页）
   const handleExportCsv = useCallback(async () => {
@@ -636,7 +666,35 @@ export function ReportCenterPage() {
         onOpenChange={setExportOpen}
         scope={exportScope}
         count={exportCount}
-        onExport={(format) => reportActions.exportReport(exportIds, format)}
+        htmlProgress={batchHtmlExport.progress}
+        onCancelHtmlExport={batchHtmlExport.cancel}
+        batchResult={
+          batchHtmlExport.lastResult &&
+          !batchHtmlExport.lastResult.cancelled &&
+          !batchHtmlExport.exporting
+            ? {
+                succeeded: batchHtmlExport.lastResult.succeeded,
+                failed: batchHtmlExport.lastResult.failed,
+              }
+            : null
+        }
+        onExport={(format) => {
+          // HTML = 前端快照管线（每份与详情页单独导出同产物）；其余格式仍走后端导出
+          if (format !== 'html') return reportActions.exportReport(exportIds, format)
+          return batchHtmlExport.exportBatch(exportIds, knownReportNames).then((result) => {
+            if (result.cancelled) throw new Error('已取消批量导出')
+            if (result.succeeded === 0) {
+              throw new Error(
+                result.failed.map((item) => `${item.reportName}：${item.reason}`).join('；') ||
+                  '没有导出成功的报告'
+              )
+            }
+            toast.success(
+              `HTML 报告包导出成功（${result.succeeded} 份）` +
+                (result.failed.length > 0 ? `，失败 ${result.failed.length} 份` : '')
+            )
+          })
+        }}
       />
       {/* 报告导入（INT-1766 D8）：3a 报告包 / 3b 独立报告 / Studio 文档库 */}
       <ImportReportPackageDialog
@@ -741,6 +799,11 @@ export function ReportCenterPage() {
         onWaitAbort={progressWait?.abort}
         onComplete={handleProgressComplete}
       />
+
+      {/* 批量 HTML 导出离屏渲染宿主（INT-2419）：与详情页同一棵组件树，导出结束即卸载 */}
+      {batchHtmlExport.stageReportId !== null && (
+        <BatchExportStage reportId={batchHtmlExport.stageReportId} />
+      )}
     </>
   )
 }
