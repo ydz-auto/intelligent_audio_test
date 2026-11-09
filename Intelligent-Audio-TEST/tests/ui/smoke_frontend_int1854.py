@@ -638,10 +638,30 @@ class Smoke(object):
         return out
 
     def export_html(self, d):
-        """报告详情「导出」→ 弹窗选格式 html → 导出，校验导出请求 2xx。"""
+        """报告详情「导出」→ 选 HTML → 下载 zip → 解压校验快照产物（INT-2418）。
+
+        改版后 HTML 导出走前端 DOM 快照，**不再有 `POST /reports/export` 请求**；
+        断言改为：下载到 `<报告名>.zip`、zip 内 `report.html` + `css/report.css`、
+        区块锚点齐全、用例卡数量与导出态总数一致、无操作按钮残留、
+        全程无 /export 请求，且 `file://` 打开时无任何 http(s) 请求。
+        """
+        import zipfile
         rec = {'ok': False}
+        dl_dir = os.path.join(RESULT['art'], 'downloads')
+        os.makedirs(dl_dir, exist_ok=True)
+        for name in os.listdir(dl_dir):
+            try:
+                os.remove(os.path.join(dl_dir, name))
+            except OSError:
+                pass
         try:
             parse_perf(d.get_log('performance'))  # 清空
+            page_text = body_text(d)
+            m = re.search(r'共\s*(\d+)\s*条结果', page_text)
+            rec['page_result_total'] = int(m.group(1)) if m else None
+            rec['page_case_cards'] = d.execute_script(
+                "return document.querySelectorAll('[data-export-case]').length")
+
             exp = find_buttons(d, texts=('导出', '导出报告', 'HTML 导出'))
             if not exp:
                 exp = find_buttons(d, contains=('导出',))
@@ -650,44 +670,158 @@ class Smoke(object):
                 return rec
             click_js(d, exp[0])
             time.sleep(2.5)
-            # 导出弹窗：tab 导出 / 导出进度 / 导出历史 + 格式 combobox + 主钮
             dlgs = [x for x in d.find_elements(By.CSS_SELECTOR, '[role=dialog]') if x.is_displayed()]
             scope = dlgs[-1] if dlgs else d
             rec['dialog_open'] = bool(dlgs)
             if dlgs:
                 rec['dialog_text'] = dlgs[-1].text[:300]
-                # 格式下拉：默认 csv → 选 html
-                combo = [b for b in scope.find_elements(By.CSS_SELECTOR, '[role=combobox], button')
-                         if b.is_displayed() and (b.text or '').strip().lower() in ('csv', 'excel', 'pdf', 'html', 'json')]
-                if combo:
-                    click_js(d, combo[0])
-                    time.sleep(1.5)
-                    opts = [e for e in d.find_elements(By.CSS_SELECTOR, '[role=option], [role=menuitem]')
-                            if e.is_displayed() and (e.text or '').strip().lower().startswith('html')]
-                    if opts:
-                        click_js(d, opts[0])
-                    else:
-                        # 原生 select
-                        try:
-                            d.execute_script(
-                                "const s=arguments[0]; s.value='html';"
-                                "s.dispatchEvent(new Event('change',{bubbles:true}));", combo[0])
-                        except Exception:
-                            pass
-                    time.sleep(1.0)
-                    rec['format_selected'] = 'html'
-                # 主钮「导出」
-                mains = [b for b in scope.find_elements(By.TAG_NAME, 'button')
-                         if b.is_displayed() and (b.text or '').strip() == '导出']
-                if mains:
-                    click_js(d, mains[-1])
-                    time.sleep(6)
+            combo = [b for b in scope.find_elements(By.CSS_SELECTOR, '[role=combobox], button')
+                     if b.is_displayed() and (b.text or '').strip().lower() in ('csv', 'excel', 'pdf', 'html', 'json')]
+            if not combo:
+                rec['error'] = '导出弹窗未找到格式下拉'
+                return rec
+            click_js(d, combo[0])
+            time.sleep(1.2)
+            opts = [e for e in d.find_elements(By.CSS_SELECTOR, '[role=option], [role=menuitem]')
+                    if e.is_displayed() and (e.text or '').strip().lower().startswith('html')]
+            if not opts:
+                rec['error'] = '格式下拉无 HTML 选项'
+                return rec
+            click_js(d, opts[0])
+            rec['format_selected'] = 'html'
+            time.sleep(0.8)
+            mains = [b for b in scope.find_elements(By.TAG_NAME, 'button')
+                     if b.is_displayed() and (b.text or '').strip() == '导出']
+            if not mains:
+                rec['error'] = '导出弹窗无主钮「导出」'
+                return rec
+            click_js(d, mains[-1])
+
+            # 等 zip 落盘（大报告全量用例 + 样式内嵌可能几十秒）
+            zip_path = None
+            deadline = time.time() + 180
+            last_size = -1
+            while time.time() < deadline:
+                files = [f for f in os.listdir(dl_dir)
+                         if f.lower().endswith('.zip') and not f.endswith('.crdownload')]
+                if files:
+                    cand = os.path.join(dl_dir, files[0])
+                    try:
+                        size = os.path.getsize(cand)
+                    except OSError:
+                        # Chrome 落盘过程中会 rename/占用，下一轮再看
+                        size = -1
+                    if size > 0 and size == last_size:
+                        zip_path = cand
+                        break
+                    last_size = size
+                time.sleep(1)
+            rec['zip'] = os.path.basename(zip_path) if zip_path else None
+            if not zip_path:
+                rec['error'] = '未下载到 HTML 导出 zip'
+                rec['shot'] = shot(d, '08_%s_export_fail' % self.kind)
+                return rec
+            rec['zip_size'] = os.path.getsize(zip_path)
+
+            with zipfile.ZipFile(zip_path) as zf:
+                names = zf.namelist()
+                rec['zip_entries'] = names
+                if 'report.html' not in names or 'css/report.css' not in names:
+                    rec['error'] = 'zip 内缺 report.html / css/report.css: %s' % names
+                    return rec
+                html = zf.read('report.html').decode('utf-8')
+                css = zf.read('css/report.css').decode('utf-8')
+            rec['html_size'] = len(html)
+            rec['css_size'] = len(css)
+
+            # 区块锚点
+            anchors = [aid for aid in ('report-overview', 'report-resource-stats', 'report-conclusion',
+                                       'report-case-category', 'report-case-tag', 'report-specific-cases',
+                                       'report-documents')
+                       if ('id="%s"' % aid) in html]
+            rec['section_anchors'] = anchors
+            rec['has_specific_cases'] = 'report-specific-cases' in anchors
+
+            # 用例卡片数（导出态全量；data-case-index 每卡一个）
+            case_idx = re.findall(r'data-case-index="(\d+)"', html)
+            rec['exported_case_cards'] = len(case_idx)
+            total_attr = re.search(r'data-export-case-total="(\d+)"', html)
+            rec['exported_case_total_attr'] = int(total_attr.group(1)) if total_attr else None
+            rec['has_case_search'] = 'export-case-search' in html
+            rec['has_case_pagination'] = 'export-case-prev' in html and 'export-case-next' in html
+            rec['case_detail_blocks'] = len(re.findall(r'data-export-case-detail', html))
+
+            # 无操作按钮 / 浮层残留
+            rec['residual_action_buttons'] = re.findall(
+                r'<button[^>]*>\s*(?:保存|发布|取消发布|导出|删除|彻底删除|下载日志|人工复核)\s*</button>', html)
+            rec['has_dialog_markup'] = 'data-slot="dialog-content"' in html or 'role="dialog"' in html
+            rec['has_toast_markup'] = 'data-sonner-toast' in html
+
+            # 导出后页面主题应复原（读取发生在离开页面前）
+            rec['theme_class_after_export'] = bool(d.execute_script(
+                "return document.documentElement.classList.contains('dark')"))
+
+            # 全程不应出现 POST /reports/export
             apis = parse_perf(d.get_log('performance'))
-            hits = [a for a in apis if '/export' in (a.get('url') or '')]
-            rec['export_apis'] = hits
-            rec['ok'] = any(200 <= (h.get('status') or 0) < 300 for h in hits)
+            rec['export_apis'] = [a for a in apis if '/export' in (a.get('url') or '')]
+            rec['no_backend_export_request'] = not rec['export_apis']
+
+            # file:// 离线打开：无任何 http(s) 请求 + 截图
+            open_dir = os.path.join(RESULT['art'], 'exported_html')
+            os.makedirs(os.path.join(open_dir, 'css'), exist_ok=True)
+            with open(os.path.join(open_dir, 'report.html'), 'w', encoding='utf-8') as fh:
+                fh.write(html)
+            with open(os.path.join(open_dir, 'css', 'report.css'), 'w', encoding='utf-8') as fh:
+                fh.write(css)
+            file_url = 'file:///' + os.path.join(open_dir, 'report.html').replace('\\', '/')
+            parse_perf(d.get_log('performance'))
+            d.get(file_url)
+            time.sleep(2.5)
+            offline_apis = [a for a in parse_perf(d.get_log('performance'))
+                            if (a.get('url') or '').startswith(('http://', 'https://'))]
+            rec['offline_http_requests'] = offline_apis
+            offline_text = body_text(d)
+            rec['offline_body_head'] = offline_text[:200]
+            rec['shot_export_html'] = shot(d, '08_%s_export_html' % self.kind)
+            rec['offline_text_has_cases'] = bool(re.search(r'共\s*\d+\s*页', offline_text))
+            # 导出内交互自检：用例分页可见数、搜索过滤、分区折叠
+            rec['offline_visible_cases'] = d.execute_script(
+                "return Array.prototype.filter.call("
+                "document.querySelectorAll('[data-export-case]'),"
+                "function (el) { return el.style.display !== 'none'; }).length")
+            rec['offline_case_cards'] = d.execute_script(
+                "return document.querySelectorAll('[data-export-case]').length")
+            rec['offline_search_filtered'] = d.execute_script(
+                "var input = document.getElementById('export-case-search');"
+                "if (!input) return null;"
+                "input.value = '不存在的用例关键字';"
+                "input.dispatchEvent(new Event('input', {bubbles: true}));"
+                "var visible = Array.prototype.filter.call("
+                "document.querySelectorAll('[data-export-case]'),"
+                "function (el) { return el.style.display !== 'none'; }).length;"
+                "return visible;")
+            rec['offline_section_collapse'] = d.execute_script(
+                "var btn = document.querySelector('[data-slot=\"collapsible-trigger\"]');"
+                "if (!btn) return null;"
+                "btn.click();"
+                "var holder = btn.closest('[data-slot=\"collapsible\"]');"
+                "var panel = holder ? holder.querySelector('[data-slot=\"collapsible-content\"], [data-slot=\"collapsible-panel\"]') : null;"
+                "return panel ? panel.style.display : null;")
+
+            rec['ok'] = all([
+                rec['has_specific_cases'],
+                rec['exported_case_cards'] > 0,
+                rec['exported_case_cards'] == (rec['exported_case_total_attr'] or -1),
+                rec['has_case_search'],
+                rec['has_case_pagination'],
+                not rec['residual_action_buttons'],
+                not rec['has_dialog_markup'],
+                not rec['has_toast_markup'],
+                rec['no_backend_export_request'],
+                not rec['offline_http_requests'],
+            ])
             if not rec['ok']:
-                rec['error'] = '未观察到 2xx 导出请求: %s' % (hits or 'none')
+                rec['error'] = 'HTML 快照导出校验未通过'
         except Exception as exc:
             rec['error'] = '%s: %s' % (type(exc).__name__, str(exc)[:250])
             try:
