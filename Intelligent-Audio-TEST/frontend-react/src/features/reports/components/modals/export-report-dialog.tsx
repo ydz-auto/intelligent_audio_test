@@ -95,7 +95,13 @@ interface ExportReportDialogProps {
   htmlProgress?: BatchHtmlExportProgress | null
   onCancelHtmlExport?: () => void
   /** 批量 HTML 导出结果（INT-2419；含失败清单：报告名 + 原因） */
-  batchResult?: { succeeded: number; failed: BatchHtmlExportFailure[] } | null
+  batchResult?: {
+    succeeded: number
+    failed: BatchHtmlExportFailure[]
+    /** 耗时（毫秒）与 JS 堆峰值（MB），实测口径 */
+    durationMs?: number
+    peakHeapMB?: number
+  } | null
 }
 
 export function ExportReportDialog({
@@ -223,6 +229,20 @@ export function ExportReportDialog({
                           {batchResult.failed.length}
                         </span>{' '}
                         份
+                      </>
+                    )}
+                    {typeof batchResult.durationMs === 'number' && (
+                      <>
+                        {' '}· 耗时{' '}
+                        <span className='font-mono tabular-nums'>
+                          {(batchResult.durationMs / 1000).toFixed(1)}s
+                        </span>
+                      </>
+                    )}
+                    {typeof batchResult.peakHeapMB === 'number' && batchResult.peakHeapMB > 0 && (
+                      <>
+                        {' '}· 堆峰值{' '}
+                        <span className='font-mono tabular-nums'>{batchResult.peakHeapMB} MB</span>
                       </>
                     )}
                   </p>

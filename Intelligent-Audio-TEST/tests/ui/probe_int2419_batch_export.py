@@ -446,6 +446,17 @@ def main():
         progress_text = wait_progress(driver, timeout=60)
         RESULT['checks']['progress_text'] = progress_text
         zip_path = wait_zip(dl_dir, timeout=420, since=since)
+        RESULT['checks']['batch_elapsed_s'] = round(time.time() - since, 1)
+        # 完成态结果面板（耗时 / 堆峰值由前端实测写入）
+        result_text = None
+        for _ in range(20):
+            result_text = driver.execute_script(
+                "var el = document.querySelector('[data-testid=batch-export-result]');"
+                "return el ? (el.innerText || '').trim() : null")
+            if result_text and ('耗时' in result_text or '导出完成' in result_text):
+                break
+            time.sleep(0.5)
+        RESULT['checks']['batch_result_text'] = result_text
         RESULT['checks']['batch_zip'] = os.path.basename(zip_path) if zip_path else None
         if not zip_path:
             RESULT['checks']['batch_zip_size'] = None

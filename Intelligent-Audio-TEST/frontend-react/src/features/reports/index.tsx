@@ -675,6 +675,8 @@ export function ReportCenterPage() {
             ? {
                 succeeded: batchHtmlExport.lastResult.succeeded,
                 failed: batchHtmlExport.lastResult.failed,
+                durationMs: batchHtmlExport.lastResult.durationMs,
+                peakHeapMB: batchHtmlExport.lastResult.peakHeapMB,
               }
             : null
         }
