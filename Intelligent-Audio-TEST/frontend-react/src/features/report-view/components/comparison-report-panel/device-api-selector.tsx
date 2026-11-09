@@ -25,7 +25,8 @@ export function DeviceApiSelector({
   const empty = devices.length === 0 && apis.length === 0
 
   return (
-    <div className='rounded-2xl border p-4'>
+    // 纯控制卡（选中态只影响页面内对比表），静态导出里整卡隐藏；设备/API 名单在「设备与API统计」已有
+    <div className='rounded-2xl border p-4' data-export-hide>
       <p className='text-sm font-semibold'>选择要对比的设备和API</p>
       {empty ? (
         <div className='text-muted-foreground mt-3 flex h-20 items-center justify-center rounded-lg border text-xs'>

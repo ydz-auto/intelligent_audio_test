@@ -31,7 +31,8 @@ export function ReportSaveCard({ report }: { report: ReportDetailData }) {
   }
 
   return (
-    <div className='bg-card rounded-2xl border shadow-xs p-4'>
+    // 纯控制卡（改名/改描述 + 保存），静态导出里整卡隐藏；状态徽标在报告头已有
+    <div className='bg-card rounded-2xl border shadow-xs p-4' data-export-hide>
       <div className='flex items-center justify-between gap-2'>
         <p className='text-sm font-semibold'>报告保存</p>
         <StatusBadge label={statusMeta.label} variant={statusMeta.variant} size='sm' />

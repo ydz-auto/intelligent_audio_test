@@ -583,7 +583,9 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
       card.style.display = '';
     });
     if (info) {
-      info.textContent = '显示第 ' + currentPage + ' 页，共 ' + pages + ' 页，总计 ' + total + ' 条结果';
+      // 工具条单位与卡片口径一致（用例卡 = 按 test_case_id 合并后的张数），避免与页面
+      // 区块头的「共 N 条结果」（结果行口径）同屏两个「条结果」（INT-2418 P3-2）
+      info.textContent = '显示第 ' + currentPage + ' 页，共 ' + pages + ' 页，总计 ' + total + ' 个用例';
     }
     if (prevBtn) prevBtn.disabled = currentPage <= 1;
     if (nextBtn) nextBtn.disabled = currentPage >= pages;
