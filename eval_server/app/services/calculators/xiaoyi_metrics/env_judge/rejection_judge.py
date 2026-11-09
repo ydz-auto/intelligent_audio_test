@@ -986,7 +986,11 @@ def evaluate_rejection_judge_text(user_wav: str, ai_wav: str, model: str = '',
         if not parsed:
             last_error = 'LLM 输出解析失败'
             continue
-        raw_details = parsed.get('round_details')
+        # 兼容格式波动：模型可能直接输出 JSON 数组（裸 round_details），也可能用 {"round_details": [...]} 包裹
+        if isinstance(parsed, list):
+            raw_details = parsed
+        else:
+            raw_details = parsed.get('round_details')
         if not isinstance(raw_details, list):
             last_error = 'LLM 输出缺少 round_details 数组'
             continue

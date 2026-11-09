@@ -352,10 +352,13 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
                 })
                 continue
             if j.get('evaluation_status') == 'unjudgeable':
+                # 与可判定轮同构补 evaluations，供平台报告按 evaluations.0.reason 展示裁判理由
                 per_round.append({'round_number': rn, 'rate': None,
                                   'evaluation_status': 'unjudgeable',
                                   'round_id': j.get('round_id'),
-                                  'message': j.get('message'), 'reason': j.get('reason')})
+                                  'message': j.get('message'), 'reason': j.get('reason'),
+                                  'evaluations': [{'behavior': None, 'timing': None,
+                                                   'reason': j.get('reason')}]})
                 continue
             item = dict(j)
             item['round_number'] = rn
