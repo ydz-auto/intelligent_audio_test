@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 /**
  * 登录页（对位 newAPI sign-in，12_登录与错误页.md §3.2/§3.3）：
  * 480 卡 + shadow-xl；标题「登录」左对齐 + 副行「没有账号？注册」（双页拆分）。
+ * INT-2432：根列 `mx-auto max-w-[480px]` 居中，标题/副行/卡片/标语同处一列。
  * AUTH_MODE=off 开放模式 Alert（§3.1）在卡片上方渲染。
  */
 export function SignIn({
@@ -28,7 +29,13 @@ export function SignIn({
   const isOpenMode = authMode === AUTH_MODE.OFF
 
   return (
-    <div className={cn('flex w-full flex-col gap-6', className)} {...props}>
+    <div
+      className={cn(
+        'mx-auto flex w-full max-w-[480px] flex-col gap-6',
+        className
+      )}
+      {...props}
+    >
       {isOpenMode && (
         <AuthAlert>
           <TriangleAlert aria-hidden='true' />
@@ -58,7 +65,7 @@ export function SignIn({
           </Link>
         </p>
       </div>
-      <Card className='ring-border shadow-primary/5 w-full max-w-[480px] gap-0 py-0 shadow-xl'>
+      <Card className='ring-border shadow-primary/5 w-full gap-0 py-0 shadow-xl'>
         <CardContent>
           <UserAuthForm
             redirectTo={redirectTo}

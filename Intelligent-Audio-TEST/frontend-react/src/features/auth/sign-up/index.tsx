@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 /**
  * 注册页（对位 newAPI sign-up，12_登录与错误页.md §3.6）：
  * 版式同登录页（AuthLayout 共壳）；标题「创建账号」+ 副行「已有账户？登录」。
+ * INT-2432：根列 `mx-auto max-w-[480px]` 居中，与登录页同列宽同对齐。
  * 403 引导态（注册开关关闭）由表单内切换呈现（§3.6）。
  */
 export function SignUp({
@@ -14,7 +15,13 @@ export function SignUp({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('flex w-full flex-col gap-6', className)} {...props}>
+    <div
+      className={cn(
+        'mx-auto flex w-full max-w-[480px] flex-col gap-6',
+        className
+      )}
+      {...props}
+    >
       <div className='space-y-2'>
         <h2 className='text-center text-2xl font-semibold tracking-tight sm:text-left'>
           创建账号
@@ -29,7 +36,7 @@ export function SignUp({
           </Link>
         </p>
       </div>
-      <Card className='ring-border shadow-primary/5 w-full max-w-[480px] gap-0 py-0 shadow-xl'>
+      <Card className='ring-border shadow-primary/5 w-full gap-0 py-0 shadow-xl'>
         <CardContent>
           <UserRegisterForm />
         </CardContent>
