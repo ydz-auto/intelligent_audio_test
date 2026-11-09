@@ -139,7 +139,8 @@ export function ExportReportDialog({
         <DialogHeader>
           <DialogTitle>导出报告</DialogTitle>
           <DialogDescription>
-            导出内容为报告落库数据的快照，由后端统一生成，前端不做二次计算。
+            HTML 为「当前页面所见」的前端快照打包（离线可打开的 zip）；CSV / Excel / PDF
+            由后端按报告落库数据统一生成。
           </DialogDescription>
         </DialogHeader>
 
@@ -204,10 +205,12 @@ export function ExportReportDialog({
                 </div>
                 <p className='font-mono text-muted-foreground text-xs tabular-nums'>
                   {task.status === 'failed'
-                    ? `导出失败：${task.error ?? '服务端生成异常'}`
+                    ? `导出失败：${task.error ?? '生成异常'}`
                     : task.status === 'done'
                       ? '100% · 文件已下载'
-                      : `处理中 · ${formatLabel(task.format)} · 等待后端生成`}
+                      : task.format === 'html'
+                        ? '处理中 · HTML · 正在打包当前页面快照'
+                        : `处理中 · ${formatLabel(task.format)} · 等待后端生成`}
                 </p>
                 {task.status === 'failed' && (
                   <Button size='sm' variant='outline' onClick={() => setTask(null)}>

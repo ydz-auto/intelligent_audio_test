@@ -18,6 +18,8 @@ import { useReportReviews } from '@/application/report-view/useReportReviews'
 import { useReportAnalysis } from '@/application/report-view/use-report-analysis'
 import { useReportShare } from '@/application/report-view/use-report-share'
 import { useReportActions } from '@/application/reports/use-report-actions'
+import { useReportHtmlExport } from '@/application/report-view/use-report-html-export'
+import { useTheme } from '@/context/theme-provider'
 import { waitForReportGenerated } from '@/application/reports/use-report-compare'
 import { ExportReportDialog } from '@/features/reports/components/modals/export-report-dialog'
 import { PublishReportDialog, RegenerateReportDialog } from '@/features/reports/components/modals/report-confirm-dialogs'
@@ -128,6 +130,26 @@ export function ReportViewPage() {
   const [activeSection, setActiveSection] = useState('report-overview')
   const [progress, setProgress] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // HTML 导出（INT-2418）：页面所见 DOM 快照 → zip。导出固定浅色（对齐 report-print.css 的 print 口径），
+  // 结束复原用户原主题偏好（含 system），页面折叠/分页等状态由 React state 自然回退。
+  const { theme: themePreference, resolvedTheme, setTheme } = useTheme()
+  const themeBeforeExport = useRef(themePreference)
+  const htmlExport = useReportHtmlExport({
+    getRoot: () => containerRef.current,
+    getReportName: () => report?.name ?? '报告',
+    beforeCapture: async () => {
+      themeBeforeExport.current = themePreference
+      if (resolvedTheme === 'dark') {
+        setTheme('light')
+        // VChart 按 resolvedTheme 重建（themeKey），等浅色实例绘制完成再采 canvas
+        await new Promise((resolve) => setTimeout(resolve, 700))
+      }
+    },
+    afterCapture: () => {
+      setTheme(themeBeforeExport.current)
+    },
+  })
 
   // 回退来源入口（15_报告域.md §3.1：管理页进→/report-center，展示页进→/reports，无来源默认 /reports）
   const backTarget = useMemo(() => {
@@ -288,7 +310,7 @@ export function ReportViewPage() {
             {isComparison ? (
               <ComparisonReportPanel
                 report={report}
-                isExporting={exportOpen}
+                isExporting={htmlExport.exporting}
                 editing={editing}
                 canEdit={hasPermission('report:update')}
                 onStartEditing={() => setEditing(true)}
@@ -298,7 +320,7 @@ export function ReportViewPage() {
             ) : (
               <TaskReportPanel
                 report={report}
-                isExporting={exportOpen}
+                isExporting={htmlExport.exporting}
                 editing={editing}
                 canEdit={hasPermission('report:update')}
                 onStartEditing={() => setEditing(true)}
@@ -368,7 +390,13 @@ export function ReportViewPage() {
         onOpenChange={setExportOpen}
         scope={report.name}
         count={1}
-        onExport={(format) => reportActions.exportReport([report.id], format)}
+        onExport={(format) => {
+          // HTML = 前端页面快照（不调 POST /reports/export）；其余格式仍走后端导出
+          if (format !== 'html') return reportActions.exportReport([report.id], format)
+          return htmlExport.exportHtml().then(() => {
+            toast.success('HTML 报告包导出成功')
+          })
+        }}
       />
       <PublishReportDialog
         open={publishOpen}

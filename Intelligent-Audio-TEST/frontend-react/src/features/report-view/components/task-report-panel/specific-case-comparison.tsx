@@ -156,6 +156,7 @@ export function SpecificCaseComparison({
     resetFilters,
     items,
     isLoading,
+    isFetching,
     isError,
     refetch,
     total,
@@ -487,8 +488,13 @@ export function SpecificCaseComparison({
     const pinned = pinnedIds.includes(c.id)
     const resourceCount = caseResourceKeys(c).length
     return (
-      <CaseCard
+      <div
         key={`${leafCtx.view}:${leafCtx.resourceKey ?? leafCtx.resultType ?? ''}:${c.id}`}
+        data-export-case=''
+        data-export-case-name={c.name}
+        data-export-case-id={c.id}
+      >
+      <CaseCard
         caseItem={c}
         selected={false}
         showCheckbox={false}
@@ -595,11 +601,23 @@ export function SpecificCaseComparison({
           </>
         }
         expandedContent={
-          expanded ? (
+          // 导出态：所有用例详情提前渲染并隐藏（导出的 HTML 里卡片默认折叠、点击可展开）
+          isExporting ? (
+            <div data-export-case-detail hidden>
+              <CaseReportExpanded
+                caseItem={c}
+                report={report}
+                display={undefined}
+                onRestoreDisplay={display.reset}
+                selectedRounds={selectedRounds}
+                roundsAllCleared={roundsAllCleared}
+              />
+            </div>
+          ) : expanded ? (
             <CaseReportExpanded
               caseItem={c}
               report={report}
-              display={isExporting ? undefined : settings}
+              display={settings}
               onRestoreDisplay={display.reset}
               selectedRounds={selectedRounds}
               roundsAllCleared={roundsAllCleared}
@@ -607,6 +625,7 @@ export function SpecificCaseComparison({
           ) : undefined
         }
       />
+      </div>
     )
   }
 
@@ -686,8 +705,16 @@ export function SpecificCaseComparison({
       </div>
 
       <CollapsibleContent className='space-y-3'>
+        {/* 导出态数据就绪标记：全量用例渲染完成（无加载中/刷新中） */}
+        {isExporting && (
+          <span
+            data-export-cases-ready={!isLoading && !isFetching ? 'true' : 'false'}
+            hidden
+            aria-hidden='true'
+          />
+        )}
         {/* 筛选卡（§3.3.7：名称/分组多选/标签两级多选/评估维度三级多选/排序[按评估维度含资源+维度+升降序]） */}
-        <div className='rounded-xl border p-3'>
+        <div className='rounded-xl border p-3' data-export-hide>
           <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
             <div>
               <label className='text-muted-foreground mb-1 block text-xs'>用例名称</label>
@@ -919,7 +946,7 @@ export function SpecificCaseComparison({
         </div>
 
         {/* 三视图工具栏（筛选卡之下、已固定用例之上）：左端视图 Tabs，右端组织控件 + 显示设置 */}
-        <div className='flex flex-wrap items-center gap-2 px-1'>
+        <div className='flex flex-wrap items-center gap-2 px-1' data-export-hide>
           <Tabs
             value={effectiveView}
             onValueChange={(v) => {
@@ -995,7 +1022,7 @@ export function SpecificCaseComparison({
 
         {/* 已固定用例（跨视图共享，pinnedIds 按用例 ID） */}
         {pinnedCases.length > 0 && (
-          <div className='rounded-xl border p-3'>
+          <div className='rounded-xl border p-3' data-export-hide>
             <p className='text-muted-foreground text-xs font-medium'>已固定用例</p>
             <div className='mt-2 flex flex-wrap gap-2'>
               {pinnedCases.map((c) => (
@@ -1029,8 +1056,8 @@ export function SpecificCaseComparison({
           </div>
         )}
 
-        {/* 用例列表（按视图渲染） */}
-        <div className='space-y-2'>
+        {/* 用例列表（按视图渲染；导出脚本在此容器前插入搜索/分页工具条） */}
+        <div className='space-y-2' data-export-case-list>
           {isLoading && items.length === 0 ? (
             <p className='text-muted-foreground p-4 text-center text-sm'>正在加载用例数据...</p>
           ) : isError && items.length === 0 ? (
@@ -1061,7 +1088,10 @@ export function SpecificCaseComparison({
 
               {effectiveView === 'case' ? (
                 <div className='space-y-2'>
-                  {renderOrgLayer(views.mergedCases.slice(0, caseViewLimit), { view: 'case' })}
+                  {renderOrgLayer(
+                    isExporting ? views.mergedCases : views.mergedCases.slice(0, caseViewLimit),
+                    { view: 'case' }
+                  )}
                   {views.mergedCases.length > caseViewLimit && (
                     <div className='flex justify-center'>
                       <Button

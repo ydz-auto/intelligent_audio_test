@@ -150,6 +150,8 @@ export function useReportCases(
     query,
     items,
     isLoading: listQuery.isLoading,
+    /** 后台刷新中（导出态判断「全量用例是否已渲染」用） */
+    isFetching: listQuery.isFetching,
     isError: listQuery.isError,
     refetch: listQuery.refetch,
     total: listQuery.data?.total ?? fallbackCases.length,
