@@ -482,8 +482,10 @@ class TurnEvalCalculator(BaseCalculator):
         shared_asr_injected = params.get('_shared_asr')
 
         # Whole-case semantic segmentation. No automatic fallback to local windows.
-        # Explicit single-round requests retain the legacy slice contract.
-        if rounds and task_params.get('round_number') is None and task_params.get('turn_eval_full_timeline', True):
+        # 旧评估已废弃：turn_eval 默认无条件走 full_timeline（不再受 round_number 影响，
+        # 即使调用方显式传了 round_number 也走整条录音全局切分）。
+        # 仅当显式设置 turn_eval_full_timeline=False 时才回退旧切片流程。
+        if rounds and task_params.get('turn_eval_full_timeline', True):
             from app.services.calculators.xiaoyi_metrics.turn_eval.full_timeline_judge import evaluate
             return evaluate(self, task_params)
 
