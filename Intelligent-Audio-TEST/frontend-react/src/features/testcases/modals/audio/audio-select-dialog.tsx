@@ -41,6 +41,7 @@ import {
 } from '@/infrastructure/api/audios-api'
 import { AudioUploadDialog } from '@/features/audio-import/components/modals/audio-upload-dialog'
 import { AudioFolderImportDialog } from '@/features/audio-import/components/modals/audio-folder-import-dialog'
+import { audioRelativePath, inAudioFolder } from '@/features/audio-import/lib/audio-path'
 
 /** 服务端分页每页条数（V9.7.10 useAudioList 默认 pageSize=20） */
 const PAGE_SIZE = 20
@@ -74,24 +75,6 @@ function flattenFolders(
   ])
 }
 
-/**
- * 音频相对路径（对齐 /audios/folder-tree 的 path 口径：相对音频库根）。
- * filePath 两种实存形态：`oss://audios/direct/x.wav` 与 `D:/00_static/static/audios/环境理解/…/x.wav`，
- * 统一取 `/audios/` 之后段，才能与文件夹树节点 path（如 `direct`、`环境理解`）前缀匹配。
- */
-function audioRelativePath(filePath: string | null | undefined): string {
-  if (!filePath) return ''
-  const normalized = filePath.replace(/\\/g, '/')
-  const m = normalized.match(/\/audios\/(.+)$/i)
-  if (m) return m[1]
-  return normalized.replace(/^[a-z]+:\/\//i, '')
-}
-
-/** 文件是否归属某文件夹节点（path 为树节点相对路径；按目录前缀匹配，避免同前缀文件夹串档） */
-function inFolder(filePath: string | null | undefined, folder: string): boolean {
-  return audioRelativePath(filePath).startsWith(`${folder}/`)
-}
-
 /** 由 filePath 派生顶层文件夹（后端文件夹树为空时的兜底；文件在根无文件夹则忽略） */
 function deriveFolders(items: AudioAsset[]): AudioFolderNode[] {
   const seen = new Set<string>()
@@ -104,7 +87,7 @@ function deriveFolders(items: AudioAsset[]): AudioFolderNode[] {
     path,
     name: path.split('/').pop() ?? path,
     count: 0,
-    fileCount: items.filter((a) => inFolder(a.filePath, path)).length,
+    fileCount: items.filter((a) => inAudioFolder(a.filePath, path)).length,
     depth: 1,
     children: [],
   }))
@@ -284,7 +267,7 @@ export function AudioSelectDialog({
         page: 1,
         perPage: FOLDER_ALL_PER_PAGE,
       })
-      setFolderRows(result.items.filter((a) => inFolder(a.filePath, activeFolder)))
+      setFolderRows(result.items.filter((a) => inAudioFolder(a.filePath, activeFolder)))
       setData(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : '音频列表加载失败')

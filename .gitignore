@@ -25,6 +25,10 @@ venv/
 ENV/
 env/
 
+# 前端源码 lib/ 目录不忽略（上面 Python 段的 lib/ 仅针对构建产物）
+!Intelligent-Audio-TEST/frontend-react/src/**/lib/
+!Intelligent-Audio-TEST/frontend-react/src/**/lib/**
+
 # IDE
 .idea/
 .vscode/

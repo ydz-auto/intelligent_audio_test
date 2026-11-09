@@ -14,6 +14,7 @@ import type { AudioAsset, AudioFolderNode } from '@/domain/models/audio'
 import { AudioTable } from '@/features/audio-import/components/audio-table'
 import { PaginationBar } from '@/features/audio-import/components/pagination-bar'
 import { DEFAULT_PAGE_SIZE } from '@/features/audio-import/constants'
+import { inAudioFolder } from '@/features/audio-import/lib/audio-path'
 
 export type AudioFolderViewProps = {
   tree: AudioFolderNode[]
@@ -137,9 +138,7 @@ export function AudioFolderView(props: AudioFolderViewProps) {
 
   const folderRows = useMemo(() => {
     if (!selectedPath) return []
-    return props.rows.filter(
-      (audio) => audio.filePath?.startsWith(selectedPath) ?? false
-    )
+    return props.rows.filter((audio) => inAudioFolder(audio.filePath, selectedPath))
   }, [props.rows, selectedPath])
 
   const pageCount = Math.max(1, Math.ceil(folderRows.length / pageSize))
