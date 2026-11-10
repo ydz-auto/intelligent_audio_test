@@ -243,6 +243,117 @@ Array.prototype.forEach.call(document.querySelectorAll('button'), function (b) {
 return bad;
 """
 
+JS_FILTERS = """
+// 负责人 2026-11-10 二轮反馈「具体用例卡片功能不完整，筛选功能不完整」：
+// 产物内必须带与页面同口径的筛选（关键词 / 分组 / 标签 / 维度 / 排序）与卡片操作
+// （全部展开、复制用例 ID），且是真实生效的纯 DOM 过滤，不是摆设。
+var panel = document.querySelector('[data-export-filter-panel]');
+if (!panel) return {ok: false, reason: 'no filter panel'};
+var groups = panel.querySelectorAll('[data-export-filter-group]');
+var tags = panel.querySelectorAll('[data-export-filter-tag]');
+var metrics = panel.querySelectorAll('[data-export-filter-metric]');
+var kw = document.getElementById('export-case-search');
+var sort = panel.querySelector('[data-export-filter-sort]');
+var reset = document.querySelector('[data-export-filter-reset]');
+var cards = Array.prototype.slice.call(document.querySelectorAll('[data-export-case]'));
+function visible() {
+  return cards.filter(function (c) { return c.style.display !== 'none'; });
+}
+var res = {
+  ok: false,
+  groups: groups.length,
+  tags: tags.length,
+  metrics: metrics.length,
+  keyword: !!kw,
+  sort: !!sort,
+  reset: !!reset,
+  base_visible: visible().length
+};
+if (!kw || !sort || !reset) return res;
+
+// 1) 关键词过滤：取第二张卡名称片段，命中数应 < 总卡片数
+var probe = String((cards[1] || cards[0]).getAttribute('data-export-case-name') || '').slice(0, 6);
+kw.value = probe;
+kw.dispatchEvent(new Event('input', {bubbles: true}));
+res.keyword_hits = visible().length;
+res.keyword_ok = res.keyword_hits > 0 && res.keyword_hits < cards.length;
+reset.click();
+res.reset_visible = visible().length;
+
+// 2) 分组多选：勾第一个分组后，可见卡片必须全部属于该分组
+if (groups.length > 0) {
+  var g = groups[0];
+  var gname = g.getAttribute('data-export-filter-group');
+  g.checked = true;
+  g.dispatchEvent(new Event('change', {bubbles: true}));
+  var vis = visible();
+  res.group_name = gname;
+  res.group_visible = vis.length;
+  res.group_all_match = vis.length > 0 && vis.every(function (c) {
+    return c.getAttribute('data-export-case-category') === gname;
+  });
+  var headerCount = document.querySelector('[data-export-group-count]');
+  res.group_count_text = headerCount ? headerCount.textContent.trim() : null;
+  reset.click();
+} else {
+  res.group_all_match = true;
+  res.group_count_text = 'skipped: 报告无分组';
+}
+
+// 3) 标签 / 维度：过滤后可见数应 ≤ 全部
+function axisFilter(el, attr, name) {
+  if (!el) return {skipped: true};
+  el.checked = true;
+  el.dispatchEvent(new Event('change', {bubbles: true}));
+  var hit = visible().length;
+  reset.click();
+  return {value: name, hits: hit, ok: hit > 0 && hit <= cards.length};
+}
+res.tag_filter = axisFilter(tags[0], 'data-export-filter-tag',
+  tags[0] ? tags[0].getAttribute('data-export-filter-tag') : null);
+res.metric_filter = axisFilter(metrics[0], 'data-export-filter-metric',
+  metrics[0] ? metrics[0].getAttribute('data-export-filter-metric') : null);
+
+// 4) 排序：按名称升序后，同一分组容器内的卡片名非降序
+sort.value = 'name';
+sort.dispatchEvent(new Event('change', {bubbles: true}));
+var parents = [];
+Array.prototype.forEach.call(document.querySelectorAll('[data-export-case]'), function (c) {
+  if (parents.indexOf(c.parentElement) < 0) parents.push(c.parentElement);
+});
+var sorted = true;
+var sample = null;
+parents.forEach(function (p) {
+  var names = Array.prototype.filter.call(p.children, function (c) {
+    return c.getAttribute && c.getAttribute('data-export-case') !== null;
+  }).map(function (c) { return c.getAttribute('data-export-case-name') || ''; });
+  if (names.length > 1 && !sample) sample = names.slice(0, 3);
+  for (var i = 1; i < names.length; i += 1) {
+    if (names[i - 1] > names[i]) sorted = false;
+  }
+});
+res.sorted = sorted;
+res.sort_sample = sample;
+sort.value = '';
+sort.dispatchEvent(new Event('change', {bubbles: true}));
+
+// 5) 卡片操作：全部展开 / 收起、用例 ID 徽章（可点击复制）
+var expandAll = document.getElementById('export-case-expand-all');
+if (expandAll) {
+  expandAll.click();
+  var details = Array.prototype.slice.call(document.querySelectorAll('[data-export-case-detail]'));
+  res.expand_all = details.length > 0 && details.every(function (d) { return !d.hasAttribute('hidden'); });
+  var collapseAll = document.getElementById('export-case-collapse-all');
+  if (collapseAll) collapseAll.click();
+}
+var copyEl = document.querySelector('[data-export-copy-id]');
+res.copy_id = copyEl ? copyEl.textContent.trim() : null;
+res.ok = res.keyword_ok && res.group_all_match !== false
+  && res.tag_filter.ok !== false && res.metric_filter.ok !== false
+  && res.sorted === true && res.expand_all === true && !!res.copy_id;
+return res;
+"""
+
 
 def run_report(smoke, base, report_id):
     d = smoke.drv
@@ -273,6 +384,8 @@ def run_report(smoke, base, report_id):
     rec['axes'] = d.execute_script(JS_AXES)
     rec['detail'] = d.execute_script(JS_DETAIL)
     rec['action_buttons'] = d.execute_script(JS_ACTION_BUTTONS)
+    # 产物内筛选 / 排序 / 卡片操作（INT-2434 二轮）
+    rec['filters'] = d.execute_script(JS_FILTERS)
     # 视口固定的右导航（sticky）——放在最后跑，会滚动页面
     rec['toc_fixed'] = d.execute_script(JS_TOC_FIXED)
     # 滚到页底时截一张：右栏目录仍在视口内（留证「视口固定」）
@@ -304,6 +417,7 @@ def run_report(smoke, base, report_id):
         bool(rec['tabs'] and rec['tabs'].get('ok')),
         bool(rec['axes'] and rec['axes'].get('ok')),
         bool(rec['detail'] and rec['detail'].get('ok')),
+        bool(rec['filters'] and rec['filters'].get('ok')),
         bool(rec['toc_fixed'] and rec['toc_fixed'].get('ok')),
         bool(rec['toc_jump'] and rec['toc_jump'].get('ok')),
         not rec['action_buttons'],
@@ -342,12 +456,13 @@ def main():
         for rid in ids:
             rec = run_report(smoke, base, rid)
             RESULT['reports'].append(rec)
-            log('report %s ok=%s toc=%s toc_fixed=%s tabs=%s detail=%s' % (
+            log('report %s ok=%s toc=%s toc_fixed=%s tabs=%s detail=%s filters=%s' % (
                 rid, rec['ok'],
                 (rec.get('toc') or {}).get('ok'),
                 (rec.get('toc_fixed') or {}).get('ok'),
                 (rec.get('tabs') or {}).get('ok'),
-                (rec.get('detail') or {}).get('ok')))
+                (rec.get('detail') or {}).get('ok'),
+                (rec.get('filters') or {}).get('ok')))
         RESULT['ok'] = bool(RESULT['reports']) and all(r['ok'] for r in RESULT['reports'])
         RESULT['console_errors'] = sm.console_errors(driver)
         sm.env_check('probe_end')

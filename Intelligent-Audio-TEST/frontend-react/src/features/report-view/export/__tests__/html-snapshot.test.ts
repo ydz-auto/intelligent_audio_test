@@ -9,6 +9,7 @@ import {
   buildStaticClone,
   captureReportHtmlSnapshot,
   HTML_EXPORT_CASE_PAGE_SIZE,
+  REPORT_EXPORT_SCRIPT,
   sanitizeFileName,
 } from '../html-snapshot'
 
@@ -26,22 +27,44 @@ function mountReportDom(caseCount: number): HTMLElement {
         <div data-slot="collapsible">
           <button data-slot="collapsible-trigger">具体用例</button>
           <div data-slot="collapsible-panel">
+            <div data-export-filter-panel="">
+              <input id="export-case-search" type="search" data-export-filter-keyword="" />
+              <select data-export-filter-sort="">
+                <option value="">保持页面顺序</option>
+                <option value="name">按名称</option>
+              </select>
+              <select data-export-filter-sort-order="">
+                <option value="asc">升序</option>
+                <option value="desc">降序</option>
+              </select>
+              <label><input type="checkbox" data-export-filter-group="话轮接管" />话轮接管</label>
+              <label><input type="checkbox" data-export-filter-group="别的组" />别的组</label>
+              <label><input type="checkbox" data-export-filter-tag="标签A" />标签A</label>
+              <label><input type="checkbox" data-export-filter-metric="接管率" />接管率</label>
+              <label><input type="checkbox" data-export-filter-metric="不存在的维度" />不存在的维度</label>
+              <button type="button" data-export-filter-reset="">重置筛选</button>
+            </div>
             <div class="rounded-xl border p-3" data-export-hide>
-              <input id="keyword" />
+              <button id="page-only-filter">页面筛选</button>
             </div>
             <div class="space-y-2" data-export-case-list>
-              ${Array.from({ length: caseCount })
-                .map(
-                  (_, index) => `
-                <div data-export-case data-export-case-name="用例 ${index}" data-export-case-id="case-${index}">
+              <div data-export-group="">
+                <div class="group-header"><span data-export-group-count="">1 个用例</span></div>
+                ${Array.from({ length: caseCount })
+                  .map(
+                    (_, index) => `
+                <div data-export-case data-export-case-name="用例 ${index}" data-export-case-id="case-${index}"
+                     data-export-case-category="话轮接管" data-export-case-tags='["标签A"]'
+                     data-export-case-metrics='["接管率"]' data-export-case-metric-values='{"接管率":${index}}'>
                   <div class="case-card">
                     <button aria-label="展开详情" id="toggle-${index}">v</button>
                     <button id="detail-${index}">详情</button>
                     <div data-export-case-detail hidden>detail ${index}</div>
                   </div>
                 </div>`
-                )
-                .join('')}
+                  )
+                  .join('')}
+              </div>
             </div>
           </div>
         </div>
@@ -70,7 +93,7 @@ describe('buildStaticClone', () => {
     root.remove()
   })
 
-  it('用例分页：超过一页的卡片默认隐藏，并插入搜索/分页工具条', () => {
+  it('用例分页：超过一页的卡片默认隐藏，并插入分页/展开工具条（筛选面板由页面渲染保留）', () => {
     const root = mountReportDom(HTML_EXPORT_CASE_PAGE_SIZE + 3)
     const { clone, caseCount } = buildStaticClone(root)
     expect(caseCount).toBe(HTML_EXPORT_CASE_PAGE_SIZE + 3)
@@ -80,7 +103,38 @@ describe('buildStaticClone', () => {
     expect(cards[0].style.display).toBe('')
     expect(cards[HTML_EXPORT_CASE_PAGE_SIZE].style.display).toBe('none')
     expect(clone.querySelector('[data-export-case-toolbar]')).not.toBeNull()
-    expect(clone.querySelector('#export-case-search')).not.toBeNull()
+    expect(clone.querySelector('#export-case-expand-all')).not.toBeNull()
+    expect(clone.querySelector('#export-case-collapse-all')).not.toBeNull()
+    // 关键词输入在导出态筛选面板里（不再是工具条里临时拼的搜索框）
+    expect(clone.querySelector('[data-export-filter-panel] #export-case-search')).not.toBeNull()
+    root.remove()
+  })
+
+  it('导出态筛选面板整块保留（原生控件由产物脚本接管），页面操作控件仍剪（INT-2434 二轮）', () => {
+    const root = mountReportDom(2)
+    const { clone } = buildStaticClone(root)
+    const panel = clone.querySelector('[data-export-filter-panel]')
+    expect(panel).not.toBeNull()
+    expect(panel!.querySelector('#export-case-search')).not.toBeNull()
+    expect(panel!.querySelector('[data-export-filter-sort]')).not.toBeNull()
+    expect(panel!.querySelector('[data-export-filter-group="话轮接管"]')).not.toBeNull()
+    expect(panel!.querySelector('[data-export-filter-reset]')).not.toBeNull()
+    // 页面筛选卡（data-export-hide）与它的按钮照旧剪掉
+    expect(clone.querySelector('[data-export-hide]')).toBeNull()
+    expect(clone.querySelector('#page-only-filter')).toBeNull()
+    root.remove()
+  })
+
+  it('用例卡保留筛选事实（分组 / 标签 / 维度 / 维度值）与分组头计数位（INT-2434 二轮）', () => {
+    const root = mountReportDom(2)
+    const { clone } = buildStaticClone(root)
+    const card = clone.querySelector('[data-export-case]')!
+    expect(card.getAttribute('data-export-case-category')).toBe('话轮接管')
+    expect(card.getAttribute('data-export-case-tags')).toBe('["标签A"]')
+    expect(card.getAttribute('data-export-case-metrics')).toBe('["接管率"]')
+    expect(card.getAttribute('data-export-case-metric-values')).toBe('{"接管率":0}')
+    expect(clone.querySelector('[data-export-group]')).not.toBeNull()
+    expect(clone.querySelector('[data-export-group-count]')).not.toBeNull()
     root.remove()
   })
 
@@ -227,8 +281,7 @@ describe('buildStaticClone', () => {
     root.remove()
   })
 
-  it('无 Collapsible 的分区（h3 + 内容）包出可折叠面板', () => {
-    const root = document.createElement('div')
+  it('无 Collapsible 的分区（h3 + 内容）包出可折叠面板', () => {    const root = document.createElement('div')
     root.className = 'report-view-container'
     root.innerHTML = `<section id="report-overview"><h3>总览</h3><div class="body">统计</div></section>`
     document.body.appendChild(root)
@@ -278,6 +331,89 @@ describe('captureReportHtmlSnapshot', () => {
     // 导出 reset 与文档级样式都在同一份 css 里（主题变量取自 :root 计算值，jsdom 无自定义属性，实测在 15173 覆盖）
     expect(parts.css).toContain('#report-export-root')
     expect(parts.css).toContain('[data-export-case-toolbar]')
+    // 导出内筛选面板样式 + 长字段取消截断（INT-2434 二轮）
+    expect(parts.css).toContain('[data-export-filter-panel]')
+    expect(parts.css).toContain('[data-export-case-detail] .line-clamp-2')
     root.remove()
+  })
+})
+
+describe('REPORT_EXPORT_SCRIPT（产物内交互，INT-2434 二轮）', () => {
+  function mountAndRun(caseCount: number): HTMLElement {
+    const root = mountReportDom(caseCount)
+    const { clone } = buildStaticClone(root)
+    // 原页面 DOM 不留在文档里：断言只看产物克隆
+    root.remove()
+    document.body.appendChild(clone)
+    new Function(REPORT_EXPORT_SCRIPT)()
+    return clone
+  }
+
+  function visibleCards(): HTMLElement[] {
+    return Array.from(document.querySelectorAll<HTMLElement>('[data-export-case]')).filter(
+      (card) => card.style.display !== 'none'
+    )
+  }
+
+  it('关键词检索命中名称 / ID（默认每页条数内全显示）', () => {
+    const clone = mountAndRun(3)
+    expect(visibleCards()).toHaveLength(3)
+    const input = document.getElementById('export-case-search') as HTMLInputElement
+    input.value = '用例 1'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(visibleCards()).toHaveLength(1)
+    expect(visibleCards()[0].getAttribute('data-export-case-name')).toBe('用例 1')
+    clone.remove()
+  })
+
+  it('分组 / 标签 / 维度多选过滤，分组头计数与空组隐藏联动', () => {
+    const clone = mountAndRun(3)
+    const tick = (selector: string) => {
+      const input = clone.querySelector<HTMLInputElement>(selector)!
+      input.checked = true
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+    // 不存在的分组 → 全部过滤掉，所在分组整块隐藏
+    tick('[data-export-filter-group="别的组"]')
+    expect(visibleCards()).toHaveLength(0)
+    expect((clone.querySelector('[data-export-group]') as HTMLElement).style.display).toBe('none')
+    // 选中有卡的分组 → 恢复，计数位同步
+    const group = clone.querySelector<HTMLInputElement>('[data-export-filter-group="话轮接管"]')!
+    group.checked = true
+    group.dispatchEvent(new Event('change', { bubbles: true }))
+    expect(visibleCards()).toHaveLength(3)
+    expect(clone.querySelector('[data-export-group-count]')?.textContent).toBe('3 个用例')
+    // 标签 / 维度任一命中即保留（卡片标签 = 标签A，维度 = 接管率）
+    tick('[data-export-filter-tag="标签A"]')
+    expect(visibleCards()).toHaveLength(3)
+    tick('[data-export-filter-metric="不存在的维度"]')
+    expect(visibleCards()).toHaveLength(0)
+    clone.remove()
+  })
+
+  it('「全部展开 / 收起详情」与按名称排序', () => {
+    const clone = mountAndRun(3)
+    ;(document.getElementById('export-case-expand-all') as HTMLButtonElement).click()
+    const details = Array.from(clone.querySelectorAll('[data-export-case-detail]'))
+    expect(details.every((detail) => !detail.hasAttribute('hidden'))).toBe(true)
+    ;(document.getElementById('export-case-collapse-all') as HTMLButtonElement).click()
+    expect(details.every((detail) => detail.hasAttribute('hidden'))).toBe(true)
+
+    const sort = clone.querySelector<HTMLSelectElement>('[data-export-filter-sort]')!
+    sort.value = 'name'
+    sort.dispatchEvent(new Event('change', { bubbles: true }))
+    const order = Array.from(clone.querySelectorAll('[data-export-case]')).map((card) =>
+      card.getAttribute('data-export-case-name')
+    )
+    expect(order).toEqual(['用例 0', '用例 1', '用例 2'])
+    const orderSelect = clone.querySelector<HTMLSelectElement>('[data-export-filter-sort-order]')!
+    orderSelect.value = 'desc'
+    orderSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    expect(
+      Array.from(clone.querySelectorAll('[data-export-case]')).map((card) =>
+        card.getAttribute('data-export-case-name')
+      )
+    ).toEqual(['用例 2', '用例 1', '用例 0'])
+    clone.remove()
   })
 })
