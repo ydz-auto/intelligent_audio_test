@@ -354,6 +354,9 @@ class BatchUpdateAudioAlgorithmsRequest(APIModel):
 class BatchAnnotationItem(APIModel):
     audio_id: int = Field(...)
     annotations: List[Dict] = Field(default_factory=list)
+    # VEGA-64：随行附加标签（前端标签来源三档组装的最终列表；None/空列表不触碰已有标签）。
+    # 非法类型（如字符串）走既有 ValidationError → 400「参数验证失败」路径，不新增错误分支
+    tags: Optional[List[str]] = Field(None)
 
 
 class BatchUpdateAnnotationsRequest(APIModel):

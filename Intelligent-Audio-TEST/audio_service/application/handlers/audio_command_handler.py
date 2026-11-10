@@ -433,6 +433,9 @@ class AudioCommandHandler:
                     audio_id, annotations, algorithm_type)
                 if raw_annotations:
                     raw_annotations_by_audio[audio_id] = raw_annotations
+                # VEGA-64：标签追加合并写入（位于空 annotations 跳过与 owner 检查之后，
+                # 空 annotations 的 item 整条跳过、tags 亦不写）
+                self._append_annotation_tags(audio_id, item.get('tags'))
                 updated_audio_ids.append(audio_id)
                 updated_count += 1
 
@@ -469,6 +472,31 @@ class AudioCommandHandler:
         else:
             message = f'批量更新标注成功，更新 {updated_count} 个音频'
         return _ok(data=data, message=message)
+
+    def _append_annotation_tags(self, audio_id, tags):
+        """VEGA-64：批量标注随行标签追加合并写入（绝不 delete_audio_tags 替换）。
+
+        - 非 list tags（gRPC 直连/旧客户端不经网关校验）一律按 None 跳过，
+          避免字符串逐字符建标签污染数据（对齐 resolve_tag_source 防御先例）；
+        - None / 空列表完全不触碰该音频标签（旧载荷行为兼容）；
+        - get_audio_tag_names 预查去重（audio_tags 表无唯一约束，重复需代码去重）；
+        - 单标签 TagResolutionError 只跳过并告警，不中断该 item 其余标签与整批
+          （对齐 merge_mixin._process_audio_tags INT-1533 口径）。
+        """
+        if not isinstance(tags, list) or not tags:
+            return
+        seen = set(self.repo.get_audio_tag_names(audio_id))
+        for tag_name in tags:
+            if not tag_name or tag_name in seen:
+                continue
+            try:
+                tag = self.repo.get_or_create_tag(tag_name)
+                self.repo.add_audio_tag(audio_id, tag.id)
+            except TagResolutionError as e:
+                logger.warning("批量更新标注附加标签失败，已跳过: audio_id=%s err=%s",
+                               audio_id, e)
+                continue
+            seen.add(tag_name)
 
     def _schedule_testcase_refresh(
             self, audio_ids, algorithm_type, raw_annotations_by_audio=None) -> bool:

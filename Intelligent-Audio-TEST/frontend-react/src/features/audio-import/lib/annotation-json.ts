@@ -1,8 +1,9 @@
 /**
  * 「按 JSON 批量更新标注」的纯逻辑：
- * - 只读取所选文件夹第一层的 .json（嵌套目录忽略）；
+ * - 递归读取所选文件夹的 .json（含子目录；是否递归由弹窗开关控制）；
  * - 从 JSON 内的音频名称字段提取音频文件名；
- * - 用文件名建立音频库索引（全名优先、去扩展名兜底）。
+ * - 用文件名建立音频库索引（全名优先、去扩展名兜底）；
+ * - 标签来源三档组装（VEGA-64：JSON 顶层 tags / 路径目录段 / 两者都要）。
  *
  * 音频名称兼容 `audio` / `audio_name` / `audioName` / `audio_file` / `audioFile`，
  * 既支持顶层直出，也支持 `data`、`rounds[].segments[]`、`audios[]` 等常见嵌套结构。
@@ -13,6 +14,8 @@ import {
   parseAnnotationFile,
   type AnnotationItem,
 } from '@/features/audio-import/lib/annotation'
+import { parseTopLevelTags } from '@/features/audio-import/lib/case-rounds'
+import type { AudioTagSource } from '@/infrastructure/api/audio-upload-api'
 
 const AUDIO_NAME_KEYS = [
   'audio',
@@ -38,6 +41,11 @@ export type AnnotationJsonEntry = {
   annotations: AnnotationItem[]
   /** 多轮 JSON 中该音频所属轮次；单音频 JSON 为空 */
   segmentLabel: string
+  /**
+   * JSON 顶层 tags（VEGA-64；宽容解析，畸形降级空数组）。同一 JSON 的所有条目
+   * 共享同一数组引用（解析一次），供标签来源组装使用。
+   */
+  jsonTags: string[]
 }
 
 export function normalizeAudioName(value: string): string {
@@ -146,6 +154,36 @@ export function isTopLevelJsonFile(relativePath: string): boolean {
   return parts[parts.length - 1].toLowerCase().endsWith('.json')
 }
 
+/**
+ * 目录段标签提取（VEGA-64）：与后端 merge_mixin._process_audio_tags 同规则——
+ * 按 `/` 拆、去最后一段（文件名）、去空段、按序去重，含所选根目录名段。
+ * 反斜杠按分隔符归一（与本文件 normalizeAudioName / isTopLevelJsonFile 口径一致）。
+ */
+export function pathDirectoryTags(relativePath: string): string[] {
+  const parts = relativePath.replace(/\\/g, '/').split('/')
+  const directories = parts.slice(0, -1)
+  const tags: string[] = []
+  for (const part of directories) {
+    if (part && !tags.includes(part)) tags.push(part)
+  }
+  return tags
+}
+
+/**
+ * 标签来源三档组装（VEGA-64，对齐导入 resolveSubmitTags 的口径，但本窗无手填标签）：
+ * both = JSON tags 与路径目录段并集去重（JSON 在前、路径段在后）；json = 仅 JSON tags；
+ * path = 仅路径目录段。返回的是提交给 items[].tags 的最终列表。
+ */
+export function resolveAnnotationTags(
+  jsonTags: string[],
+  relativePath: string,
+  tagSource: AudioTagSource
+): string[] {
+  if (tagSource === 'json') return [...jsonTags]
+  if (tagSource === 'path') return pathDirectoryTags(relativePath)
+  return Array.from(new Set([...jsonTags, ...pathDirectoryTags(relativePath)]))
+}
+
 function baseNameWithoutExt(name: string): string {
   return name.replace(/\.[^.]+$/, '')
 }
@@ -204,6 +242,7 @@ function segmentAnnotation(
  * 把一个 JSON 拆成「音频 + 标注」条目。
  * - 多轮用例 JSON：rounds[].segments[] 每个 segment 对应一个音频，各自生成一条标注；
  * - 单音频标注 JSON：沿用 parseAnnotationFile 的既有解析。
+ * 顶层 tags 经 parseTopLevelTags 解析一次，同一 JSON 的所有条目共享（VEGA-64）。
  */
 export function parseAnnotationJsonEntries(
   fileName: string,
@@ -211,6 +250,8 @@ export function parseAnnotationJsonEntries(
 ): AnnotationJsonEntry[] {
   const root = asRecord(raw)
   if (!root) return []
+
+  const jsonTags = parseTopLevelTags(root.tags)
 
   if (Array.isArray(root.rounds)) {
     const entries: AnnotationJsonEntry[] = []
@@ -226,6 +267,7 @@ export function parseAnnotationJsonEntries(
           audioName,
           annotations: [segmentAnnotation(fileName, segmentObj)],
           segmentLabel: `第 ${roundIndex + 1} 轮`,
+          jsonTags,
         })
       })
     })
@@ -238,6 +280,7 @@ export function parseAnnotationJsonEntries(
       audioName,
       annotations: parseAnnotationFile(fileName, JSON.stringify(raw)),
       segmentLabel: '',
+      jsonTags,
     },
   ]
 }

@@ -405,6 +405,8 @@ export async function processAudio(
 export interface BatchAnnotationItem {
   audioId: number
   annotations: unknown[]
+  /** 附加标签（VEGA-64 标签来源三档前端组装的最终列表；空/缺省不触碰已有标签） */
+  tags?: string[]
 }
 
 /**
@@ -423,6 +425,7 @@ export async function batchUpdateAnnotations(
     items: (payload.items ?? []).map((item) => ({
       audio_id: item.audioId,
       annotations: item.annotations ?? [],
+      tags: item.tags,
     })),
     algorithm_type: payload.algorithmType,
     refresh_test_cases: payload.refreshTestCases,

@@ -93,7 +93,7 @@ function audioNameOf(item: Record<string, unknown>): string {
  * JSON 顶层 `tags` 的宽容解析（INT-1979）：只接受全字符串数组，其余（缺字段 / 非数组 /
  * 含非字符串项）一律降级为空数组，绝不因 tags 畸形让整组解析失败。
  */
-function parseTopLevelTags(value: unknown): string[] {
+export function parseTopLevelTags(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   if (!value.every((item) => typeof item === 'string')) return []
   return value as string[]
