@@ -3,7 +3,6 @@ import requests
 import time
 import json
 import os
-import socket
 from typing import List, Dict, Optional
 from ..models.task import TaskModel
 from ..config import config
@@ -247,92 +246,5 @@ class RemoteService:
                     
         finally:
             self._decrement_concurrency(endpoint_url, task_type)
-
-    # ── 自转发防护 ──────────────────────────────────────────────
-    # 平台可能把"入口即目标"的地址（本服务自身）也配进 endpoints；
-    # 若直接转发会形成"转发给自己"：同一任务重复创建、状态互相覆盖、
-    # 轮询线程把自己当远程端点查询而超时误判失败（Remote task timeout after 60s）。
-    # 因此提交入口在转发前过滤掉指向本服务自身的端点，过滤后无可用端点则本地处理。
-
-    @staticmethod
-    def _local_ips() -> set:
-        """获取本机可识别的 IPv4 地址集合（含回环地址）。"""
-        ips = {'127.0.0.1', 'localhost'}
-        try:
-            hostname = socket.gethostname()
-            for ip in socket.gethostbyname_ex(hostname)[2]:
-                ips.add(ip)
-        except Exception:
-            pass
-        try:
-            for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
-                ips.add(info[4][0])
-        except Exception:
-            pass
-        return ips
-
-    @classmethod
-    def is_self_endpoint(cls, url: str) -> bool:
-        """判断端点 URL 是否指向本服务自身。
-
-        匹配维度：
-        - 回环地址（localhost / 127.0.0.1 / ::1）
-        - 请求入口 host（客户端访问本服务所用的地址）
-        - 本机 IP（主机名解析 + 网卡地址）
-
-        端口需与本服务 config.PORT 一致，避免同机不同端口的其它服务被误判。
-        """
-        if not url:
-            return False
-        try:
-            from urllib.parse import urlparse
-            parsed = urlparse(url)
-            host = (parsed.hostname or '').lower().rstrip('.')
-            if not host:
-                return False
-
-            # 端口匹配：仅当端口与本服务一致时才可能是"转发给自己"
-            port = parsed.port
-            if port is not None and port != config.PORT:
-                return False
-            if port is None and config.PORT not in (80, 443):
-                return False
-
-            if host in ('localhost', '127.0.0.1', '::1'):
-                return True
-
-            # 客户端访问本服务的入口 host（请求上下文内可用）
-            try:
-                from flask import request
-                req_host = (request.host.split(':', 1)[0] if request and request.host else '').lower().rstrip('.')
-                if req_host and host == req_host:
-                    return True
-            except RuntimeError:
-                pass  # 后台线程等非请求上下文
-
-            # 本机 IP 对比
-            try:
-                return socket.gethostbyname(host) in cls._local_ips()
-            except Exception:
-                return False
-        except Exception:
-            return False
-
-    @classmethod
-    def filter_self_endpoints(cls, endpoints) -> List[Dict]:
-        """过滤掉指向本服务自身的端点；endpoints 为空时原样返回。"""
-        if not endpoints:
-            return endpoints
-        kept = []
-        for ep in endpoints:
-            if isinstance(ep, dict):
-                url = ep.get('endpoint') or ep.get('url')
-            else:
-                url = ep.get('url')  # 数据库模型行
-            if url and cls.is_self_endpoint(url):
-                continue
-            kept.append(ep)
-        return kept
-
 
 remote_service = RemoteService()

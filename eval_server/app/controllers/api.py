@@ -274,20 +274,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         eval_task_id = f"task_{uuid.uuid4().hex}"
 
     if endpoints:
-        # 自转发防护：平台可能把"入口即目标"的地址（本服务自身）也配进 endpoints，
-        # 直接转发会形成"转发给自己"（重复建任务/状态覆盖/轮询误判失败）。
-        # 过滤掉指向自身的端点；过滤后无可用端点 → 落入下方本地处理分支。
         from ..services.remote_service import remote_service
-        original_endpoints = endpoints
-        endpoints = remote_service.filter_self_endpoints(endpoints)
-        if len(endpoints) < len(original_endpoints):
-            logger.info(
-                f"[self-forward guard] 已过滤指向本服务的端点 "
-                f"{len(original_endpoints) - len(endpoints)} 个，剩余 {len(endpoints)} 个；"
-                f"剩余为空时任务将在本地处理 (task_type={task_type})"
-            )
-
-    if endpoints:
         try:
             remote_task_id = remote_service.create_remote_task(
                 task_type=task_type,
