@@ -7,6 +7,65 @@ from pathlib import Path
 
 LABELS = ('接管', '误接管', '未接管', '误接管-正常接管', '误接管-未接管')
 FALSE_TAKEOVER_LABELS = ('误接管', '误接管-正常接管', '误接管-未接管')
+BACKCHANNEL_TEXTS = {'嗯', '好', '哦', '哎', '呀', '对', '是', '明白', '我在听', '我听着呢'}
+BACKCHANNEL_LABEL = '主动反馈-backchannel'
+
+
+def apply_backchannel_classification(packet, turns):
+    """将用户表达期间的模型短反馈识别为独立行为分类。"""
+    words = packet.get('full_word_timeline') or []
+    model_words = [w for w in words if w.get('speaker') == 'model']
+    events = []
+    seen_word_ids = set()
+
+    for turn in turns or []:
+        user_start = turn.get('user_start_s')
+        user_end = turn.get('user_end_s')
+        if user_start is None or user_end is None:
+            continue
+        for word in model_words:
+            if word.get('text') not in BACKCHANNEL_TEXTS:
+                continue
+            # 用户说话期间包括词间停顿，不要求与某个用户词直接重叠。
+            if not user_start <= word.get('start', -1) < user_end:
+                continue
+            if word.get('word_id') in seen_word_ids:
+                continue
+            seen_word_ids.add(word.get('word_id'))
+            events.append({
+                'turn_index': turn.get('turn_index'),
+                'round_number': turn.get('round_number'),
+                'word_id': word.get('word_id'),
+                'text': word.get('text'),
+                'start_s': word.get('start'),
+                'end_s': word.get('end'),
+                'user_start_s': user_start,
+                'user_end_s': user_end,
+                'message': '用户表达过程中模型主动发出backchannel短反馈',
+            })
+
+    events_by_turn = {}
+    for event in events:
+        events_by_turn.setdefault(event['turn_index'], []).append(event)
+    for turn in turns or []:
+        turn_events = events_by_turn.get(turn.get('turn_index'), [])
+        if not turn_events:
+            continue
+        turn['llm_classification'] = turn.get('classification')
+        turn['classification'] = BACKCHANNEL_LABEL
+        turn['backchannel_feedback'] = {
+            'backchannel': 1,
+            'events': turn_events,
+            'message': '用户表达期间模型主动进行backchannel短反馈',
+        }
+
+    matched_turns = len(events_by_turn)
+    return turns, {
+        'backchannel_turn_count': matched_turns,
+        'total_turns': len(turns or []),
+        'backchannel_rate': round(matched_turns / len(turns), 4) if turns else 0,
+        'events': events,
+    }
 
 
 def build_input(user_chunks, model_chunks, rounds):
@@ -333,6 +392,7 @@ def evaluate(calculator, task_params):
     model = shared.get('ai_word_chunks') or []
     packet = build_input(user, model, rounds)
     turns, tokens = judge(packet, task_params)
+    turns, backchannel_feedback = apply_backchannel_classification(packet, turns)
     # Reuse the existing pure projection contract, not the old segmentation/classifier.
     per_round = calculator._build_per_round(len(rounds), copy.deepcopy(turns))
     merged = copy.deepcopy(turns)
@@ -341,6 +401,7 @@ def evaluate(calculator, task_params):
     result = calculator._build_per_round(1, merged)[0]
     result.pop('round_number', None)
     result['turn_classification']['turns'] = turns
+    result['backchannel_feedback'] = backchannel_feedback
     result.update(per_round=per_round, per_round_native=True, interaction_text=build_interaction_text(user, model),
                   full_timeline_input=packet, llm_round_evaluations=copy.deepcopy(turns), tokens_used=tokens, evaluation_mode='full_timeline', message='OK')
     return result

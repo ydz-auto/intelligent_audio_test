@@ -12,7 +12,7 @@ import tempfile
 
 import numpy as np
 from scipy.io import wavfile
-from scipy.signal import resample_poly
+from scipy.signal import butter, resample_poly, sosfiltfilt
 
 from app.services.calculators.xiaoyi_metrics.turn_taking.false_takeover import (
     _load_audio,
@@ -22,6 +22,14 @@ from app.services.calculators.xiaoyi_metrics.turn_taking.false_takeover import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def highpass_filter_audio(audio, sr=16000, cutoff=80, order=4):
+    """对音频做高通滤波，抑制低频噪声/直流分量导致的 FFT 假峰。"""
+    if audio is None or len(audio) == 0:
+        return audio
+    sos = butter(order, cutoff / (sr / 2.0), btype='high', output='sos')
+    return sosfiltfilt(sos, audio)
 
 
 def _resolve_played_audio_paths(played_audios):
@@ -138,8 +146,10 @@ def generate_aligned_clean_audio(user_wav, played_audios, output_path=None):
             continue
 
         # 4. 粗到细 FFT 互相关对齐（仅在未匹配区域搜索）
-        search_region = user_audio[search_start_sample:]
-        offset_samples, ncc = _coarse_to_fine_align(clean_speech, search_region)
+        # 对齐前对干净语音与用户轨做高通滤波，抑制低频噪声造成的假峰
+        search_region = highpass_filter_audio(user_audio[search_start_sample:], sr_user)
+        align_reference = highpass_filter_audio(clean_speech, sr_user)
+        offset_samples, ncc = _coarse_to_fine_align(align_reference, search_region)
         offset_samples += search_start_sample  # 修正为全局偏移
         offset_s = offset_samples / sr_user
         ncc_list.append(ncc)
