@@ -13,6 +13,7 @@ import type {
   ReportReferenceParam,
 } from '@/domain/models/report'
 import { extractCaseResourceMetrics } from '@/application/report-view/case-matrix'
+import { exportShowMarker } from '@/features/report-view/export/export-markers'
 import {
   isExecutionChildVisible,
   type CaseDisplaySettings,
@@ -122,9 +123,11 @@ export function ExecutionResults({
     isExporting && roundGroup
       ? `${roundGroup}|${parseFieldRoundTag(field.paramCode, field.roundNumber) ?? ''}|${mode}`
       : undefined
-  /** 导出态目标标记：按设备/API 展示名精确匹配 */
+  /** 导出态目标标记：按设备/API 展示名精确匹配（展示名可含空格，标记走 JSON 数组） */
   const exportTarget = (resource: string): string | undefined =>
-    isExporting && targetGroup ? `${targetGroup}:${getDeviceName(resource, report.summary.resource_headers ?? [])}` : undefined
+    isExporting
+      ? exportShowMarker(targetGroup, getDeviceName(resource, report.summary.resource_headers ?? []))
+      : undefined
 
   const fieldMapping = report.summary.field_mappings?.[0]?.algorithmType
   const headers = report.summary.resource_headers ?? []
@@ -465,7 +468,7 @@ export function ExecutionResults({
               return (
                 <div
                   key={group.key}
-                  data-export-show={dimGroup ? `${dimGroup}:${panelIndex}` : undefined}
+                  data-export-show={dimGroup ? exportShowMarker(dimGroup, panelIndex) : undefined}
                   className='mt-2 space-y-2'
                 >
                   {isComparison ? (

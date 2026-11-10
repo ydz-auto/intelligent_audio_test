@@ -198,7 +198,25 @@ return {
 """
 
 JS_AXES = """
-// 评估维度 / 设备·API 目标两个轴：Tab 存在时，点击后同组面板必须只剩 1 个可见
+// 评估维度 / 设备·API 目标两个轴：Tab 存在时，点击后同组面板必须只剩 1 个可见。
+// INT-2434 四轮：`data-export-show` 改存 JSON 字符串数组（展示名可能带空格，不能用空格切分，
+// 也不能再用属性的 ^= 前缀匹配），这里 JSON.parse 后按「组:」前缀找同组面板。
+function showSpecs(el) {
+  var raw = el.getAttribute('data-export-show') || '';
+  if (!raw) return [];
+  try {
+    var parsed = JSON.parse(raw);
+    if (Object.prototype.toString.call(parsed) === '[object Array]') return parsed.map(String);
+  } catch (err) {}
+  return [raw];
+}
+function panelsOf(root, group) {
+  return Array.prototype.filter.call(root.querySelectorAll('[data-export-show]'), function (el) {
+    return showSpecs(el).some(function (spec) {
+      return spec.indexOf(group + ':') === 0;
+    });
+  });
+}
 function axisCheck(suffix) {
   var tabs = Array.prototype.slice.call(
     document.querySelectorAll('[data-export-tab*="' + suffix + '"]'));
@@ -213,20 +231,17 @@ function axisCheck(suffix) {
     return b.getAttribute('aria-selected') !== 'true';
   })[0] || same[1];
   target.click();
-  var panels = card.querySelectorAll('[data-export-show^="' + group + '"]');
-  var visible = Array.prototype.filter.call(panels, function (el) {
+  var panels = panelsOf(card, group);
+  var visible = panels.filter(function (el) {
     return el.style.display !== 'none';
   }).length;
-  var allTargets = panelVisibleAll(same[0].closest('[data-export-case]'), group);
   return {
+    group: group,
     count: same.length,
     panels: panels.length,
     visible: visible,
     ok: panels.length > 0 && visible >= 1 && visible < panels.length
   };
-}
-function panelVisibleAll(card, group) {
-  return card.querySelectorAll('[data-export-show^="' + group + '"]').length;
 }
 var dim = axisCheck('-dim:');
 var target = axisCheck('-target:');
@@ -270,13 +285,18 @@ var res = {
   base_visible: visible().length
 };
 if (!kw || !sort || !reset) return res;
+// 单卡报告（多目标 API 报告 421/422 只有 1 张卡）：没有「部分命中」可言，
+// 关键词/按选项过滤的「命中数 > 0」断言对它恒不成立 → 记为 skipped，多卡报告仍严格。
+var singleCard = cards.length <= 1;
 
 // 1) 关键词过滤：取第二张卡名称片段，命中数应 < 总卡片数
 var probe = String((cards[1] || cards[0]).getAttribute('data-export-case-name') || '').slice(0, 6);
 kw.value = probe;
 kw.dispatchEvent(new Event('input', {bubbles: true}));
 res.keyword_hits = visible().length;
-res.keyword_ok = res.keyword_hits > 0 && res.keyword_hits < cards.length;
+res.keyword_ok = singleCard
+  ? 'skipped: 单卡报告'
+  : (res.keyword_hits > 0 && res.keyword_hits < cards.length);
 reset.click();
 res.reset_visible = visible().length;
 
@@ -307,6 +327,7 @@ function axisFilter(el, attr, name) {
   el.dispatchEvent(new Event('change', {bubbles: true}));
   var hit = visible().length;
   reset.click();
+  if (singleCard) return {value: name, hits: hit, skipped: '单卡报告'};
   return {value: name, hits: hit, ok: hit > 0 && hit <= cards.length};
 }
 res.tag_filter = axisFilter(tags[0], 'data-export-filter-tag',

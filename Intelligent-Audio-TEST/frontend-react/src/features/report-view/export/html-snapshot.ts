@@ -1161,7 +1161,9 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
   // ---------- 4. Tab 纯 DOM 切换（轮次 / 评估维度 / 设备·API 目标，INT-2434） ----------
   // 契约：
   //   data-export-tab="<group>:<value>"       Tab 按钮（导出态由组件打标记，克隆时保留）
-  //   data-export-show="<group>:<value>"      精确匹配面板（多组用空格分隔，组内全部值 = __all__）
+  //   data-export-show='["<group>:<value>",…]' 面板要显示时命中的规格，值是 JSON 字符串数组
+  //                                           （组内全部值 = __all__）；空格 / 冒号 / 引号都只是值的一部分，
+  //                                           旧契约「空格分隔」遇到展示名带空格的设备/API 会整体失效。
   //   data-export-round="<group>|<tag>|<mode>" 轮次行 / 行组（tag 为空 = 全轮次恒显示；
   //                                            mode f = 字段（整体 Tab 全显），m/d = 指标与维度（整体只显空标记 + overall））
   var tabState = {};
@@ -1175,14 +1177,28 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
     return i < 0 ? '' : spec.slice(i + 1);
   }
 
+  /** 解析 data-export-show：JSON 数组；解析不了时按单条规格回退（兼容旧产物 / 手写标记）。 */
+  function showSpecsOf(el) {
+    var raw = String(el.getAttribute('data-export-show') || '');
+    if (!raw) return [];
+    try {
+      var parsed = JSON.parse(raw);
+      if (Object.prototype.toString.call(parsed) === '[object Array]') {
+        return parsed.filter(function (spec) {
+          return typeof spec === 'string' && spec;
+        });
+      }
+    } catch (err) {
+      // 不是 JSON（旧产物）：整串当一条规格，不再按空格切
+    }
+    return [raw];
+  }
+
   function applyTabs() {
     $all('[data-export-show]').forEach(function (el) {
-      // 属性由组件按「单个空格」生成：组:值[ 组:值]。注意模板字符串里不能写反斜杠 s——
-      // 反斜杠会被吃掉变成字母 s（INT-2434 自测时踩到：按字母 s 切，属性全失效）。
-      var specs = String(el.getAttribute('data-export-show') || '').split(' ');
+      var specs = showSpecsOf(el);
       var visible = true;
       for (var i = 0; i < specs.length; i += 1) {
-        if (!specs[i]) continue;
         var group = groupOf(specs[i]);
         var value = valueOf(specs[i]);
         var current = group in tabState ? tabState[group] : value;

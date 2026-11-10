@@ -21,6 +21,7 @@ import {
 } from '@/application/report-view/use-case-display-settings'
 import { useCaseRoundTabs, type CaseRoundState } from '@/application/report-view/use-case-round-tabs'
 import { caseResourceKeys } from '@/application/report-view/report-case-view-model'
+import { exportShowMarker } from '@/features/report-view/export/export-markers'
 
 import { getDeviceName } from './case-report-utils'
 import { ALL_TARGETS } from './target-tab-bar'
@@ -78,8 +79,10 @@ export function CaseReportDetailView({
   isExporting = false,
 }: CaseReportDetailViewProps) {
   const settings = display
-  // 导出内 Tab 组前缀（每张卡唯一，避免产物里跨卡联动）；React id 含冒号，属性值里去掉
-  const exportGroup = `case-${useId().replace(/[^A-Za-z0-9_-]/g, '')}`
+  // 导出内 Tab 组前缀（每张卡唯一，避免产物里跨卡联动）；React id 含冒号，属性值里去掉。
+  // 只在导出态下发：正常页面的 Tab 不带导出标记（INT-2434 四轮审计遗留 1）。
+  const exportGroupId = `case-${useId().replace(/[^A-Za-z0-9_-]/g, '')}`
+  const exportGroup = isExporting ? exportGroupId : undefined
   const visible = (key: Parameters<typeof isBlockVisible>[1]) =>
     settings ? isBlockVisible(settings, key) : true
 
@@ -213,7 +216,10 @@ export function CaseReportDetailView({
                   key={resource}
                   data-export-show={
                     isExporting
-                      ? `${exportGroup}-target:${getDeviceName(resource, report.summary.resource_headers)}`
+                      ? exportShowMarker(
+                          `${exportGroup}-target`,
+                          getDeviceName(resource, report.summary.resource_headers)
+                        )
                       : undefined
                   }
                   className='space-y-1'

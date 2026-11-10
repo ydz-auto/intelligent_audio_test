@@ -12,6 +12,7 @@ import {
   REPORT_EXPORT_SCRIPT,
   sanitizeFileName,
 } from '../html-snapshot'
+import { exportShowMarker } from '../export-markers'
 
 function mountReportDom(caseCount: number): HTMLElement {
   const root = document.createElement('div')
@@ -167,8 +168,8 @@ describe('buildStaticClone', () => {
               <button role="tab" data-export-tab="case-1-round:round:1" aria-selected="true">第 1 轮</button>
               <button role="tab" data-export-tab="case-1-round:round:2" aria-selected="false">第 2 轮</button>
             </div>
-            <div data-export-show="case-1-round:round:1">第一轮数据</div>
-            <div data-export-show="case-1-round:round:2">第二轮数据</div>
+            <div data-export-show='["case-1-round:round:1"]'>第一轮数据</div>
+            <div data-export-show='["case-1-round:round:2"]'>第二轮数据</div>
             <button id="action-detail">详情</button>
           </div>
         </div>
@@ -177,7 +178,11 @@ describe('buildStaticClone', () => {
     const { clone } = buildStaticClone(root)
     const tabs = clone.querySelectorAll('[role="tab"]')
     expect(tabs).toHaveLength(2)
-    expect(clone.querySelector('[data-export-show="case-1-round:round:2"]')).not.toBeNull()
+    expect(
+      Array.from(clone.querySelectorAll('[data-export-show]')).map((el) =>
+        el.getAttribute('data-export-show')
+      )
+    ).toEqual(['["case-1-round:round:1"]', '["case-1-round:round:2"]'])
     expect(clone.querySelector('#action-detail')).toBeNull()
     root.remove()
   })
@@ -539,5 +544,65 @@ describe('分组展开 / 收起与分组内分页（INT-2434 三轮）', () => {
     const info = document.getElementById('export-case-pageinfo')!
     expect(info.textContent).toContain('2 / 2')
     clone.remove()
+  })
+})
+
+describe('目标 Tab：设备/API 展示名含空格（INT-2434 四轮 P2）', () => {
+  /** 真实库里的 API 资源展示名自带空格（报告 421~426 的 `2-mock websocket 请求响应` 等） */
+  function mountTargetDom(): HTMLElement {
+    const root = document.createElement('div')
+    root.className = 'report-view-container'
+    root.innerHTML = `
+      <section id="report-specific-cases">
+        <div data-export-case data-export-case-name="用例" data-export-case-id="c1">
+          <div role="tablist" aria-label="设备/API 目标切换">
+            <button role="tab" data-export-tab="case-9-target:__all__" aria-selected="true">全部对比</button>
+            <button role="tab" data-export-tab="case-9-target:1-mock http 单轮 dut" aria-selected="false">1-mock http 单轮 dut</button>
+            <button role="tab" data-export-tab="case-9-target:2-mock websocket 请求响应" aria-selected="false">2-mock websocket 请求响应</button>
+          </div>
+          <div data-export-show='["case-9-target:1-mock http 单轮 dut"]'>A</div>
+          <div data-export-show='["case-9-target:2-mock websocket 请求响应"]'>B</div>
+        </div>
+      </section>`
+    document.body.appendChild(root)
+    return root
+  }
+
+  it('点带空格的目标 Tab 后只显示该目标面板，其余隐藏', () => {
+    const root = mountTargetDom()
+    const { clone } = buildStaticClone(root)
+    root.remove()
+    document.body.appendChild(clone)
+    new Function(REPORT_EXPORT_SCRIPT)()
+
+    const panels = Array.from(clone.querySelectorAll<HTMLElement>('[data-export-show]'))
+    expect(panels).toHaveLength(2)
+    // 默认「全部对比」：两个目标面板都可见
+    expect(panels.map((panel) => panel.style.display)).toEqual(['', ''])
+
+    const buttons = Array.from(clone.querySelectorAll<HTMLButtonElement>('[data-export-tab]'))
+    const second = buttons.find(
+      (btn) => btn.getAttribute('data-export-tab') === 'case-9-target:2-mock websocket 请求响应'
+    )!
+    second.click()
+
+    expect(second.getAttribute('aria-selected')).toBe('true')
+    expect(panels[1].style.display).toBe('')
+    expect(panels[0].style.display).toBe('none')
+
+    // 切回「全部对比」：两个面板都恢复
+    buttons[0].click()
+    expect(panels.map((panel) => panel.style.display)).toEqual(['', ''])
+    clone.remove()
+  })
+})
+
+describe('exportShowMarker（导出态面板标记，INT-2434 四轮）', () => {
+  it('输出 JSON 数组，展示名里的空格 / 冒号原样保留；无组前缀不落属性', () => {
+    expect(exportShowMarker('case-x-target', '2-mock websocket 请求响应')).toBe(
+      '["case-x-target:2-mock websocket 请求响应"]'
+    )
+    expect(exportShowMarker('case-x-dim', 1)).toBe('["case-x-dim:1"]')
+    expect(exportShowMarker(undefined, 'pura90豆包-1.0.0')).toBeUndefined()
   })
 })
