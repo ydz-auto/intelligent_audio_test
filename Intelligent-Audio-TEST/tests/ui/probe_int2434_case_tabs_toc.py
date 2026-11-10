@@ -355,6 +355,149 @@ return res;
 """
 
 
+JS_CASE_IDS = """
+// UX 审计 2026-11-10 P2：产物每张卡必须带可见的用例 ID 文本
+// （页面上 ID 是「点击复制」按钮，克隆时被整体剪掉，产物里整块丢失）
+var cards = Array.prototype.slice.call(document.querySelectorAll('[data-export-case]'));
+var missing = [];
+cards.forEach(function (card) {
+  var id = card.getAttribute('data-export-case-id') || '';
+  var badge = card.querySelector('[data-export-copy-id]');
+  if (!badge || !id || badge.textContent.trim() !== id) missing.push(id || '(no id)');
+});
+var first = cards.length ? cards[0].querySelector('[data-export-copy-id]') : null;
+return {
+  ok: cards.length > 0 && missing.length === 0,
+  cards: cards.length,
+  missing_count: missing.length,
+  missing_sample: missing.slice(0, 5),
+  sample_id: first ? first.textContent.trim() : null
+};
+"""
+
+JS_GROUPS = """
+// UX 审计 2026-11-10 P1：分组头必须可点开 / 收起，且点开后本组卡片可见
+// （旧产物：组头是死 DIV，全局分页把第一组以外的组全藏起来 → 只剩标题、0 卡）
+var wrappers = Array.prototype.slice.call(document.querySelectorAll('[data-export-group]'));
+if (!wrappers.length) return {ok: false, reason: 'no group wrapper'};
+var toggles = Array.prototype.slice.call(document.querySelectorAll('[data-export-group-toggle]'));
+if (!toggles.length) return {ok: false, reason: 'no group toggle'};
+function cardsOf(w) { return Array.prototype.slice.call(w.querySelectorAll('[data-export-case]')); }
+function visibleOf(w) {
+  return cardsOf(w).filter(function (c) {
+    if (c.style.display === 'none') return false;
+    var rect = c.getBoundingClientRect();
+    return rect.height > 0 && rect.width > 0;
+  });
+}
+var emptyGroups = [];
+var withCards = 0;
+wrappers.forEach(function (w) {
+  if (cardsOf(w).length === 0) return;
+  withCards += 1;
+  if (visibleOf(w).length === 0) emptyGroups.push((w.textContent || '').trim().slice(0, 24));
+});
+var result = {
+  ok: false,
+  groups: wrappers.length,
+  toggles: toggles.length,
+  groups_with_cards: withCards,
+  groups_empty_on_page1: emptyGroups,
+  first_toggle_tag: toggles[0].tagName.toLowerCase()
+};
+// 优先「打断与恢复」（负责人 08:44 问的那一组），没有就取最后一个有卡的分组。
+// 注意：按组头按钮的 aria-label 取组名——组容器 textContent 里还有卡片正文（用例标签里
+// 也可能出现「打断与恢复」），按整块 textContent 匹配会错认成第一组。
+function groupNameOf(w) {
+  var btn = w.querySelector('[data-export-group-toggle]');
+  if (!btn) return (w.textContent || '').trim().slice(0, 16);
+  var label = btn.getAttribute('aria-label') || '';
+  if (label.indexOf('展开或收起分组 ') === 0) return label.slice('展开或收起分组 '.length);
+  return (btn.textContent || '').trim().slice(0, 16);
+}
+var target = null;
+wrappers.forEach(function (w) {
+  if (target) return;
+  if (groupNameOf(w).indexOf('打断与恢复') >= 0) target = w;
+});
+if (!target) {
+  for (var i = wrappers.length - 1; i >= 0; i -= 1) {
+    if (cardsOf(wrappers[i]).length > 0) { target = wrappers[i]; break; }
+  }
+}
+if (!target) return result;
+var btn = target.querySelector('[data-export-group-toggle]');
+var body = target.querySelector('[data-export-group-body]');
+if (!btn || !body) { result.reason = 'group missing toggle/body'; return result; }
+result.target_name = groupNameOf(target);
+result.target_toggle_tag = btn.tagName.toLowerCase();
+result.cards_in_target = cardsOf(target).length;
+result.visible_before = visibleOf(target).length;
+btn.click();
+result.expanded_after_collapse = btn.getAttribute('aria-expanded');
+result.body_hidden_after_collapse = body.style.display === 'none';
+result.visible_collapsed = visibleOf(target).length;
+btn.click();
+result.expanded_after_expand = btn.getAttribute('aria-expanded');
+result.visible_after_expand = visibleOf(target).length;
+result.ok = result.target_toggle_tag === 'button'
+  && result.expanded_after_collapse === 'false'
+  && result.body_hidden_after_collapse === true
+  && result.visible_collapsed === 0
+  && result.expanded_after_expand === 'true'
+  && result.visible_after_expand > 0
+  && emptyGroups.length === 0;
+return result;
+"""
+
+JS_SCROLL_TO_CASES = """
+var sec = document.getElementById('report-specific-cases');
+if (!sec) return {ok: false};
+var top = sec.getBoundingClientRect().top + (window.scrollY || 0);
+window.scrollTo(0, Math.max(0, top - 8));
+return {ok: true, scroll_y: Math.round(window.scrollY || 0)};
+"""
+
+JS_OPEN_TARGET_GROUP = """
+// 折叠再展开「打断与恢复」并滚到组头：产物里组头可点、组内卡片可见
+var wrappers = Array.prototype.slice.call(document.querySelectorAll('[data-export-group]'));
+function groupNameOf(w) {
+  var b = w.querySelector('[data-export-group-toggle]');
+  if (!b) return (w.textContent || '').trim().slice(0, 16);
+  var label = b.getAttribute('aria-label') || '';
+  if (label.indexOf('展开或收起分组 ') === 0) return label.slice('展开或收起分组 '.length);
+  return (b.textContent || '').trim().slice(0, 16);
+}
+var target = null;
+wrappers.forEach(function (w) {
+  if (target) return;
+  if (groupNameOf(w).indexOf('打断与恢复') >= 0) target = w;
+});
+if (!target) {
+  for (var i = wrappers.length - 1; i >= 0; i -= 1) {
+    if (wrappers[i].querySelector('[data-export-case]')) { target = wrappers[i]; break; }
+  }
+}
+if (!target) return {ok: false};
+var btn = target.querySelector('[data-export-group-toggle]');
+if (!btn) return {ok: false};
+btn.click();
+btn.click();
+var rect = btn.getBoundingClientRect();
+window.scrollTo(0, Math.max(0, rect.top + (window.scrollY || 0) - 90));
+var visible = Array.prototype.filter.call(target.querySelectorAll('[data-export-case]'), function (c) {
+  var r = c.getBoundingClientRect();
+  return c.style.display !== 'none' && r.height > 0;
+}).length;
+return {
+  ok: visible > 0,
+  name: groupNameOf(target),
+  expanded: btn.getAttribute('aria-expanded'),
+  visible_cards: visible
+};
+"""
+
+
 def run_report(smoke, base, report_id):
     d = smoke.drv
     rec = {'report_id': report_id}
@@ -386,6 +529,17 @@ def run_report(smoke, base, report_id):
     rec['action_buttons'] = d.execute_script(JS_ACTION_BUTTONS)
     # 产物内筛选 / 排序 / 卡片操作（INT-2434 二轮）
     rec['filters'] = d.execute_script(JS_FILTERS)
+    # 用例 ID 文本 / 分组头可点开（UX 审计 2026-11-10 P1·P2）
+    rec['case_ids'] = d.execute_script(JS_CASE_IDS)
+    rec['groups'] = d.execute_script(JS_GROUPS)
+    # 「具体用例」区截图：筛选面板 + 卡片（含用例 ID）
+    d.execute_script(JS_SCROLL_TO_CASES)
+    time.sleep(0.8)
+    rec['shot_specific_cases'] = sm.shot(d, '2434_%s_specific_cases' % report_id)
+    # 点开「打断与恢复」分组后截图：组头 + 本组卡片
+    rec['open_group'] = d.execute_script(JS_OPEN_TARGET_GROUP)
+    time.sleep(0.8)
+    rec['shot_group_open'] = sm.shot(d, '2434_%s_group_open' % report_id)
     # 视口固定的右导航（sticky）——放在最后跑，会滚动页面
     rec['toc_fixed'] = d.execute_script(JS_TOC_FIXED)
     # 滚到页底时截一张：右栏目录仍在视口内（留证「视口固定」）
@@ -418,6 +572,9 @@ def run_report(smoke, base, report_id):
         bool(rec['axes'] and rec['axes'].get('ok')),
         bool(rec['detail'] and rec['detail'].get('ok')),
         bool(rec['filters'] and rec['filters'].get('ok')),
+        bool(rec['case_ids'] and rec['case_ids'].get('ok')),
+        bool(rec['groups'] and rec['groups'].get('ok')),
+        bool(rec['open_group'] and rec['open_group'].get('ok')),
         bool(rec['toc_fixed'] and rec['toc_fixed'].get('ok')),
         bool(rec['toc_jump'] and rec['toc_jump'].get('ok')),
         not rec['action_buttons'],
@@ -456,13 +613,15 @@ def main():
         for rid in ids:
             rec = run_report(smoke, base, rid)
             RESULT['reports'].append(rec)
-            log('report %s ok=%s toc=%s toc_fixed=%s tabs=%s detail=%s filters=%s' % (
+            log('report %s ok=%s toc=%s toc_fixed=%s tabs=%s detail=%s filters=%s ids=%s groups=%s' % (
                 rid, rec['ok'],
                 (rec.get('toc') or {}).get('ok'),
                 (rec.get('toc_fixed') or {}).get('ok'),
                 (rec.get('tabs') or {}).get('ok'),
                 (rec.get('detail') or {}).get('ok'),
-                (rec.get('filters') or {}).get('ok')))
+                (rec.get('filters') or {}).get('ok'),
+                (rec.get('case_ids') or {}).get('ok'),
+                (rec.get('groups') or {}).get('ok')))
         RESULT['ok'] = bool(RESULT['reports']) and all(r['ok'] for r in RESULT['reports'])
         RESULT['console_errors'] = sm.console_errors(driver)
         sm.env_check('probe_end')

@@ -417,3 +417,127 @@ describe('REPORT_EXPORT_SCRIPT（产物内交互，INT-2434 二轮）', () => {
     clone.remove()
   })
 })
+
+/** 两个分组的产物 DOM：第一组超过一页，第二组只有 3 张（负责人 08:44 的「打断与恢复」形态） */
+function mountGroupedReportDom(): HTMLElement {
+  const card = (group: string, index: number) => `
+    <div data-export-case data-export-case-name="${group} 用例 ${index}" data-export-case-id="${group}-${index}"
+         data-export-case-category="${group}" data-export-case-tags='[]'
+         data-export-case-metrics='[]' data-export-case-metric-values='{}'>
+      <div class="case-card">
+        <button aria-label="展开详情">v</button>
+        <div data-export-case-detail hidden>detail</div>
+      </div>
+    </div>`
+  const group = (name: string, count: number) => `
+    <div data-export-group="">
+      <button type="button" data-export-group-toggle="" aria-expanded="true">
+        <div class="header">
+          <span data-export-group-count="">${count} 个用例</span>
+          <span data-export-group-caret="">▾</span>
+        </div>
+      </button>
+      <div class="space-y-2" data-export-group-body="">
+        ${Array.from({ length: count }, (_, i) => card(name, i)).join('')}
+      </div>
+    </div>`
+
+  const root = document.createElement('div')
+  root.className = 'report-view-container'
+  root.innerHTML = `
+    <section id="report-specific-cases">
+      <div data-slot="collapsible">
+        <button data-slot="collapsible-trigger">具体用例</button>
+        <div data-slot="collapsible-panel">
+          <div data-export-filter-panel="">
+            <input id="export-case-search" type="search" data-export-filter-keyword="" />
+          </div>
+          <div class="space-y-2" data-export-case-list>
+            ${group('话轮接管', HTML_EXPORT_CASE_PAGE_SIZE + 2)}
+            ${group('打断与恢复', 3)}
+          </div>
+        </div>
+      </div>
+    </section>
+    <div data-export-cases-ready="true"></div>`
+  document.body.appendChild(root)
+  return root
+}
+
+describe('分组展开 / 收起与分组内分页（INT-2434 三轮）', () => {
+  function mountAndRunGrouped(): HTMLElement {
+    const root = mountGroupedReportDom()
+    const { clone } = buildStaticClone(root)
+    root.remove()
+    document.body.appendChild(clone)
+    new Function(REPORT_EXPORT_SCRIPT)()
+    return clone
+  }
+
+  function groupById(clone: HTMLElement, name: string): HTMLElement {
+    return Array.from(clone.querySelectorAll<HTMLElement>('[data-export-group]')).find(
+      (wrapper) => wrapper.querySelector('[data-export-case]')?.getAttribute('data-export-case-category') === name
+    )!
+  }
+
+  function visibleCardsIn(wrapper: HTMLElement): HTMLElement[] {
+    return Array.from(wrapper.querySelectorAll<HTMLElement>('[data-export-case]')).filter(
+      (card) => card.style.display !== 'none'
+    )
+  }
+
+  it('分组头是保留的白名单按钮（aria-expanded + 展开箭头）', () => {
+    const clone = mountAndRunGrouped()
+    const toggle = clone.querySelector('[data-export-group-toggle]')
+    expect(toggle).not.toBeNull()
+    expect(toggle!.getAttribute('aria-expanded')).toBe('true')
+    expect(clone.querySelector('[data-export-group-caret]')).not.toBeNull()
+    expect(clone.querySelector('[data-export-group-body]')).not.toBeNull()
+    clone.remove()
+  })
+
+  it('分组内分页：第二组不再只剩组头，第一页就有自己的卡片', () => {
+    const clone = mountAndRunGrouped()
+    const first = groupById(clone, '话轮接管')
+    const second = groupById(clone, '打断与恢复')
+    // 第一组 12 张：本页 10 张；第二组 3 张：本页 3 张（旧全局分页下这里是 0 张）
+    expect(visibleCardsIn(first)).toHaveLength(HTML_EXPORT_CASE_PAGE_SIZE)
+    expect(visibleCardsIn(second)).toHaveLength(3)
+    expect(second.style.display).not.toBe('none')
+    clone.remove()
+  })
+
+  it('组头可点开 / 收起：折叠后本组卡片不可见，再点恢复', () => {
+    const clone = mountAndRunGrouped()
+    const second = groupById(clone, '打断与恢复')
+    const toggle = second.querySelector<HTMLButtonElement>('[data-export-group-toggle]')!
+    const body = second.querySelector<HTMLElement>('[data-export-group-body]')!
+
+    toggle.click()
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(body.style.display).toBe('none')
+    expect(second.querySelector('[data-export-group-caret]')?.textContent).toBe('▸')
+    // 折叠中的组仍保留组头（否则点不开）：组块本身不隐藏
+    expect(second.style.display).not.toBe('none')
+
+    toggle.click()
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(body.style.display).toBe('')
+    expect(visibleCardsIn(second)).toHaveLength(3)
+    clone.remove()
+  })
+
+  it('翻到第二页：各组按自己的第 2 页显示，不足一页的组隐藏组头', () => {
+    const clone = mountAndRunGrouped()
+    const first = groupById(clone, '话轮接管')
+    const second = groupById(clone, '打断与恢复')
+    ;(document.getElementById('export-case-next') as HTMLButtonElement).click()
+    // 第一组 12 张 → 第 2 页剩 2 张；第二组只有 3 张 → 第 2 页无卡，组头隐藏
+    expect(visibleCardsIn(first)).toHaveLength(2)
+    expect(visibleCardsIn(second)).toHaveLength(0)
+    expect(second.style.display).toBe('none')
+    const info = document.getElementById('export-case-pageinfo')!
+    expect(info.textContent).toContain('2 / 2')
+    clone.remove()
+  })
+})

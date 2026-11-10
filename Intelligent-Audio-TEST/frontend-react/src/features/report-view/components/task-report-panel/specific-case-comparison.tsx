@@ -697,27 +697,58 @@ export function SpecificCaseComparison({
   const renderOrgLayer = (cases: ReportCaseItem[], leafCtx: LeafContext) => {
     const groups =
       org === 'tag' ? groupReportCasesByTag(cases, reportTagRegistry) : groupReportCasesByCategory(cases)
+    /**
+     * 分组头：导出态做成可点按钮（INT-2434 三轮）——产物里组头原来是死文字，除第一组外
+     * 各组只剩标题、0 卡；现在组头是 `button[data-export-group-toggle]`（aria-expanded +
+     * 展开/收起箭头），折叠状态由导出脚本接管，纯 DOM，不依赖 React 状态。
+     */
+    const renderGroupHeader = (group: ReportCaseSubGroup) => {
+      const muted = group.key === '__untagged__' || group.key === '__uncategorized__'
+      if (!isExporting) return <ReportGroupHeader group={group} muted={muted} />
+      return (
+        <button
+          type='button'
+          className='block w-full cursor-pointer text-start'
+          data-export-group-toggle=''
+          aria-expanded='true'
+          aria-label={`展开或收起分组 ${group.label}`}
+        >
+          <ReportGroupHeader
+            group={group}
+            muted={muted}
+            trailing={
+              <span data-export-group-caret='' aria-hidden='true' className='text-muted-foreground ms-auto text-xs'>
+                ▾
+              </span>
+            }
+          />
+        </button>
+      )
+    }
     const body = (list: ReportCaseItem[]) => {
       if (subView === 'flat') {
-        return <div className='space-y-2'>{list.map((c) => renderCaseCard(c, leafCtx))}</div>
+        return (
+          <div className='space-y-2' data-export-group-body={isExporting ? '' : undefined}>
+            {list.map((c) => renderCaseCard(c, leafCtx))}
+          </div>
+        )
       }
       const subgroups =
         org === 'group'
           ? groupReportCasesByTag(list, reportTagRegistry)
           : groupReportCasesByCategory(list)
       return (
-        <div className='space-y-2'>
+        <div className='space-y-2' data-export-group-body={isExporting ? '' : undefined}>
           {subgroups.map((sg) => (
             <div
               key={sg.key}
               className='space-y-2'
               data-export-group={isExporting ? '' : undefined}
             >
-              <ReportGroupHeader
-                group={sg}
-                muted={sg.key === '__untagged__' || sg.key === '__uncategorized__'}
-              />
-              <div className='space-y-2'>{sg.cases.map((c) => renderCaseCard(c, leafCtx))}</div>
+              {renderGroupHeader(sg)}
+              <div className='space-y-2' data-export-group-body={isExporting ? '' : undefined}>
+                {sg.cases.map((c) => renderCaseCard(c, leafCtx))}
+              </div>
             </div>
           ))}
         </div>
@@ -731,10 +762,7 @@ export function SpecificCaseComparison({
             className='space-y-2'
             data-export-group={isExporting ? '' : undefined}
           >
-            <ReportGroupHeader
-              group={g}
-              muted={g.key === '__untagged__' || g.key === '__uncategorized__'}
-            />
+            {renderGroupHeader(g)}
             {body(g.cases)}
           </div>
         ))}
@@ -1484,10 +1512,13 @@ function StatusDot({ status, className }: { status: string; className?: string }
 function ReportGroupHeader({
   group,
   muted = false,
+  trailing,
 }: {
   group: ReportCaseSubGroup
   /** 未分类/未设置标签桶：弱化（末尾） */
   muted?: boolean
+  /** 行尾附加（导出态的展开/收起箭头） */
+  trailing?: ReactNode
 }) {
   return (
     <div
@@ -1516,6 +1547,7 @@ function ReportGroupHeader({
       >
         {group.cases.length} 个用例
       </Badge>
+      {trailing}
     </div>
   )
 }

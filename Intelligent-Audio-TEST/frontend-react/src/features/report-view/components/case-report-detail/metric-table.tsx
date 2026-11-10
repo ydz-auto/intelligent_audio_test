@@ -282,9 +282,11 @@ export function MetricTable({
           </thead>
           {isExporting && exportRoundSheets.length > 0 ? (
             // 导出态：每轮一组行（多个 tbody，脚本按轮次 Tab 显示 / 隐藏）
-            exportRoundSheets.map((sheet) => (
+            exportRoundSheets.map((sheet, sheetIndex) => (
               <tbody
-                key={sheet.tag}
+                // 导出态轮次行组按「轮次标记 + 顺序」取 key：无轮次标记的 Tab 可能不止一个
+                // （`roundTag` 为空），只用 tag 会撞 key（React duplicate key 警告）
+                key={`${sheet.tag}-${sheetIndex}`}
                 data-export-round={roundGroup ? `${roundGroup}|${sheet.tag}|m` : undefined}
               >
                 {sheet.rows.map(renderMetricRow)}

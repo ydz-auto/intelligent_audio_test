@@ -106,12 +106,14 @@ const REMOVE_SELECTORS = [
 ]
 
 /**
- * 克隆后仍保留的按钮：分区折叠触发器 + 用例「展开详情」+ 导出内 Tab（导出脚本接管其交互）。
+ * 克隆后仍保留的按钮：分区折叠触发器 + 用例「展开详情」+ 导出内 Tab + 用例分组头
+ * （导出脚本接管其交互）。
  * Tab 一律由组件在导出态打 `data-export-tab` 白名单标记（INT-2434：不再按 role/aria-label 兜规则——
- * 旧规则把轮次 / 维度 / 目标三类 Tab 一网打尽，产物里 tablist 只剩空壳）。
+ * 旧规则把轮次 / 维度 / 目标三类 Tab 一网打尽，产物里 tablist 只剩空壳）；
+ * 分组头同理打 `data-export-group-toggle`（INT-2434 三轮：原来组头是死文字，第一组以外打不开）。
  */
 const KEEP_BUTTON_SELECTOR =
-  '[data-slot="collapsible-trigger"], button[aria-label="展开详情"], button[aria-label="收起详情"], [data-export-tab]'
+  '[data-slot="collapsible-trigger"], button[aria-label="展开详情"], button[aria-label="收起详情"], [data-export-tab], [data-export-group-toggle]'
 
 /**
  * 文本型按钮：按钮本身是操作入口，但文字是页面内容（表头资源名 / 分组名 / 维度卡片标题）。
@@ -413,6 +415,14 @@ img { max-width: 100%; height: auto; }
 /* 用例详情展开入口：图标 + 可见文字（原来只有图标，看不出可点） */
 [data-export-case-toggle] { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
 [data-export-case-toggle-label] { white-space: nowrap; }
+/* 用例分组头：产物里可点展开 / 收起（INT-2434 三轮） */
+[data-export-group-toggle] {
+  display: block; width: 100%; text-align: start; cursor: pointer;
+  background: transparent; border: 0; padding: 0; color: inherit; font: inherit;
+  border-radius: 6px;
+}
+[data-export-group-toggle]:hover { background: color-mix(in srgb, var(--muted, #e5e7eb) 40%, transparent); }
+[data-export-group-caret] { display: inline-block; min-width: 12px; }
 /* 窄窗口不出右栏（与报告页 lg 断点一致），避免挤压正文 */
 @media (max-width: 1023px) {
   #report-export-root [data-export-layout] { display: block; }
@@ -810,6 +820,45 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
     }
   }
 
+  // 被手动折叠的分组容器（组头 = button[data-export-group-toggle]，卡容器 = [data-export-group-body]）
+  var collapsedGroups = [];
+  function groupBodyOf(wrapper) {
+    var children = Array.prototype.slice.call(wrapper.children);
+    for (var i = 0; i < children.length; i += 1) {
+      if (children[i].getAttribute('data-export-group-body') !== null) return children[i];
+    }
+    return null;
+  }
+  function applyGroupState(wrapper) {
+    var body = groupBodyOf(wrapper);
+    if (!body) return;
+    var collapsed = collapsedGroups.indexOf(wrapper) >= 0;
+    body.style.display = collapsed ? 'none' : '';
+    var btn = wrapper.querySelector('[data-export-group-toggle]');
+    if (!btn) return;
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    var caret = btn.querySelector('[data-export-group-caret]');
+    if (caret) caret.textContent = collapsed ? '▸' : '▾';
+  }
+  function ownerGroupOf(card) {
+    return card.closest ? card.closest('[data-export-group]') : null;
+  }
+  /** 分组内分页后的总页数 = 各组页数的最大值（各组同步翻到同一页码） */
+  function maxPageCount() {
+    var owners = [];
+    var counts = [];
+    $all('[data-export-case]').forEach(function (card) {
+      if (card.getAttribute('data-export-match') !== 'true') return;
+      var owner = ownerGroupOf(card);
+      var index = owners.indexOf(owner);
+      if (index < 0) { owners.push(owner); counts.push(0); index = counts.length - 1; }
+      counts[index] += 1;
+    });
+    var pages = 1;
+    counts.forEach(function (n) { pages = Math.max(pages, Math.ceil(n / pageSize)); });
+    return pages;
+  }
+
   // 每张卡的筛选事实（属性读一次，后续过滤 / 排序不重复解析）
   var cardInfoList = caseCards.map(function (card) {
     return {
@@ -918,7 +967,23 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
       return info ? matches(info, state) : true;
     });
     var total = matched.length;
-    var pages = Math.max(1, Math.ceil(total / pageSize));
+    // 分组内分页（INT-2434 三轮）：每张卡归到最近的 [data-export-group]，各组各自显示
+    // 本组第 (currentPage-1)*pageSize 起的 pageSize 张。全局分页会把第一组以外的组全部藏起来
+    // ——负责人 08:44「打断与恢复这个分组能打开吗」：组头和计数都在，组内卡片却全是隐藏的。
+    var buckets = [];
+    matched.forEach(function (card) {
+      var owner = ownerGroupOf(card);
+      var bucket = null;
+      for (var i = 0; i < buckets.length; i += 1) {
+        if (buckets[i].owner === owner) { bucket = buckets[i]; break; }
+      }
+      if (!bucket) { bucket = { owner: owner, cards: [] }; buckets.push(bucket); }
+      bucket.cards.push(card);
+    });
+    var pages = 1;
+    buckets.forEach(function (bucket) {
+      pages = Math.max(pages, Math.max(1, Math.ceil(bucket.cards.length / pageSize)));
+    });
     if (currentPage > pages) currentPage = pages;
     if (currentPage < 1) currentPage = 1;
     var start = (currentPage - 1) * pageSize;
@@ -927,11 +992,14 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
       card.setAttribute('data-export-match', 'false');
     });
     matched.forEach(function (card) { card.setAttribute('data-export-match', 'true'); });
-    matched.slice(start, start + pageSize).forEach(function (card) {
-      card.style.display = '';
+    buckets.forEach(function (bucket) {
+      bucket.cards.slice(start, start + pageSize).forEach(function (card) {
+        card.style.display = '';
+      });
     });
 
-    // 分组：本页没有可见卡片的组整块隐藏；组头计数 = 命中数（含嵌套子组，筛选后实时更新）
+    // 分组：命中为 0 的组整块隐藏；本页没有可见卡的组也隐藏组头（折叠中的组保留组头，方便点开）；
+    // 组头计数 = 命中数（含嵌套子组，筛选后实时更新）
     groupWrappers.forEach(function (wrapper) {
       var inside = Array.prototype.slice.call(wrapper.querySelectorAll('[data-export-case]'));
       var hit = 0;
@@ -940,15 +1008,18 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
         if (card.getAttribute('data-export-match') === 'true') hit += 1;
         if (card.style.display !== 'none') shown += 1;
       });
-      wrapper.style.display = shown > 0 ? '' : 'none';
+      var collapsed = collapsedGroups.indexOf(wrapper) >= 0;
+      wrapper.style.display = hit > 0 && (shown > 0 || collapsed) ? '' : 'none';
       var countEl = wrapper.querySelector('[data-export-group-count]');
       if (countEl) countEl.textContent = hit + ' 个用例';
+      applyGroupState(wrapper);
     });
 
     if (info) {
       // 工具条单位与卡片口径一致（用例卡 = 按 test_case_id 合并后的张数），避免与页面
       // 区块头的「共 N 条结果」（结果行口径）同屏两个「条结果」（INT-2418 P3-2）
-      info.textContent = '显示第 ' + currentPage + ' 页，共 ' + pages + ' 页，总计 ' + total + ' 个用例';
+      info.textContent = '显示第 ' + currentPage + ' / ' + pages + ' 页（各组同页翻动），总计 '
+        + total + ' 个用例';
     }
     var filterCount = document.querySelector('[data-export-filter-count]');
     if (filterCount) {
@@ -1002,17 +1073,12 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
   }
   if (nextBtn) {
     nextBtn.addEventListener('click', function () {
-      var pages = Math.max(1, Math.ceil(caseCards.filter(function (card) {
-        return card.getAttribute('data-export-match') === 'true';
-      }).length / pageSize));
-      if (currentPage < pages) { currentPage += 1; render(); }
+      if (currentPage < maxPageCount()) { currentPage += 1; render(); }
     });
   }
   function jumpToPage() {
     if (!jumpInput) return;
-    var pages = Math.max(1, Math.ceil(caseCards.filter(function (card) {
-      return card.getAttribute('data-export-match') === 'true';
-    }).length / pageSize));
+    var pages = maxPageCount();
     var value = parseInt(jumpInput.value, 10);
     if (!isNaN(value) && value >= 1 && value <= pages) {
       currentPage = value;
@@ -1025,6 +1091,21 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
       if (event.key === 'Enter') { event.preventDefault(); jumpToPage(); }
     });
   }
+
+  // ---------- 3.a 分组展开 / 收起（INT-2434 三轮） ----------
+  // 负责人 08:44：「打断与恢复这个分组能打开吗」。组头在产物里是 button[data-export-group-toggle]，
+  // 点一下折叠本组卡片、再点展开；折叠状态记在 collapsedGroups，翻页 / 筛选后保持。
+  $all('[data-export-group-toggle]').forEach(function (btn) {
+    btn.addEventListener('click', function (event) {
+      event.preventDefault();
+      var wrapper = btn.closest('[data-export-group]');
+      if (!wrapper) return;
+      var index = collapsedGroups.indexOf(wrapper);
+      if (index >= 0) collapsedGroups.splice(index, 1);
+      else collapsedGroups.push(wrapper);
+      applyGroupState(wrapper);
+    });
+  });
 
   // ---------- 3.b 卡片操作：全部展开 / 收起、点击复制用例 ID（INT-2434 二轮） ----------
   function setAllDetails(open) {
