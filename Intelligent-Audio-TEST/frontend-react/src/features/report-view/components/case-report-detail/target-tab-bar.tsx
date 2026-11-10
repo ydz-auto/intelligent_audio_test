@@ -16,12 +16,18 @@ export function TargetTabBar({
   activeTarget,
   onSelect,
   label = '设备/API',
+  exportGroup,
 }: {
   /** 目标展示名（设备名 / API 名） */
   targetNames: string[]
   activeTarget: string
   onSelect: (target: string) => void
   label?: string
+  /**
+   * 导出态 Tab 组（INT-2434）：传入时给按钮打 `data-export-tab` 白名单标记，
+   * 克隆时保留并由导出内脚本做纯 DOM 切换（`<全部对比>` = `__all__` 表示不裁剪）。
+   */
+  exportGroup?: string
 }) {
   if (targetNames.length <= 1) return null
   const tabs = [
@@ -37,6 +43,7 @@ export function TargetTabBar({
           type='button'
           role='tab'
           aria-selected={activeTarget === tab.key}
+          data-export-tab={exportGroup ? `${exportGroup}:${tab.key}` : undefined}
           className={cn(
             'rounded-md px-2.5 py-1 text-xs transition-colors',
             activeTarget === tab.key

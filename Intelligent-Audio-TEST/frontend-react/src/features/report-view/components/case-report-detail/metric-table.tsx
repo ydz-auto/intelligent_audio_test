@@ -7,7 +7,7 @@
  * 单轮用例无轮次后缀 → 无 Tab、行集不变（不回归）。
  * 指标 key 友好化（(第N轮)/(整体)）；数值按 metricConfigs[].decimal_places（默认 2）精度显示。
  */
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 
 import type {
   ReportCaseItem,
@@ -44,6 +44,10 @@ interface MetricTableProps {
   noRoundSelected?: boolean
   /** §3.5.10 显示设置（不传 = 全显）；裁评估维度 / 轮次 / 资源 */
   display?: CaseDisplaySettings
+  /** 导出态（INT-2434）：轮次 Tab 保留并由导出脚本纯 DOM 切换；行集按轮次拆成多个 tbody */
+  isExporting?: boolean
+  /** 导出 Tab 组前缀（与执行结果块共用同一轮次轴 → 同一组名） */
+  exportGroup?: string
 }
 
 export function MetricTable({
@@ -55,7 +59,10 @@ export function MetricTable({
   currentRoundMetricKeys,
   noRoundSelected = false,
   display,
+  isExporting = false,
+  exportGroup,
 }: MetricTableProps) {
+  const roundGroup = exportGroup ? `${exportGroup}-round` : ''
   const allMetrics: ReportMetricConfig[] = report.summary.all_metrics
   const resourceMetrics = useMemo(() => extractCaseResourceMetrics(caseItem), [caseItem])
   const headers = report.summary.resource_headers ?? []
@@ -109,8 +116,7 @@ export function MetricTable({
   }
 
   // 当前轮次 key → 主/子维度层级分组行（照 V9.7.10 groupedMetricsForCurrentRound + currentRoundTableData）
-  const dimensionRows = useMemo(() => {
-    const keys = currentRoundMetricKeys.filter((k) => keepMetricKey(k, hiddenMetrics, hiddenRounds))
+  const buildDimensionRows = useCallback((keys: string[]) => {
     type Group = {
       groupLabel: string
       mainItem: { metricKey: string; base: string } | null
@@ -176,7 +182,66 @@ export function MetricTable({
       }
     }
     return rows
-  }, [currentRoundMetricKeys, allMetrics, hiddenMetrics, hiddenRounds])
+  }, [allMetrics])
+
+  const currentRowKeys = useMemo(
+    () => currentRoundMetricKeys.filter((k) => keepMetricKey(k, hiddenMetrics, hiddenRounds)),
+    [currentRoundMetricKeys, hiddenMetrics, hiddenRounds]
+  )
+  const dimensionRows = useMemo(() => buildDimensionRows(currentRowKeys), [buildDimensionRows, currentRowKeys])
+
+  /**
+   * 导出态轮次行组（INT-2434）：每个轮次一组行，渲染成多个 `<tbody>`，
+   * 由导出脚本按轮次 Tab 显示 / 隐藏（产物里没有 React 状态）。
+   * 规则与页面一致：无轮次标记的指标在所有轮次下都显示。
+   */
+  const exportRoundSheets = useMemo(() => {
+    if (!isExporting) return []
+    return visibleRoundTabs.map((tab) => ({
+      tag: tab.roundTag ?? '',
+      rows: buildDimensionRows(
+        allMetricKeys.filter((key) => {
+          if (!keepMetricKey(key, hiddenMetrics, hiddenRounds)) return false
+          const { roundTag } = parseMetricKey(key)
+          return roundTag === null || roundTag === tab.roundTag
+        })
+      ),
+    }))
+  }, [isExporting, visibleRoundTabs, allMetricKeys, buildDimensionRows, hiddenMetrics, hiddenRounds])
+
+  const renderMetricRow = (row: (typeof dimensionRows)[number]) => (
+    <tr
+      key={row.key}
+      className={row.isGroupHeader ? 'bg-muted/40 border-b font-semibold' : 'hover:bg-muted/30 border-b'}
+    >
+      <td className={row.isSubDim ? 'text-muted-foreground px-3 py-2 ps-8 text-sm' : 'px-3 py-2 text-sm'}>
+        {row.name}
+        {row.metricKey && row.metricKey !== row.name && (
+          <span className='text-muted-foreground ms-1 text-xs'>({roundTagLabel(parseMetricKey(row.metricKey).roundTag ?? '')})</span>
+        )}
+      </td>
+      {resources.map((r) => {
+        // 独立分组标题行（metricKey 为空）无值；主维度兼分组标题行照常渲染数值
+        if (!row.metricKey) return <td key={r} />
+        const v = metricValue(row.metricKey, r)
+        const unit = metricUnit(row.metricKey)
+        return (
+          <td key={r} className='px-3 py-2 font-mono text-xs tabular-nums'>
+            {typeof v === 'number' && Number.isFinite(v) ? v.toFixed(decimalPlaces(row.metricKey)) : '—'}
+            {typeof v === 'number' && unit && <span className='text-muted-foreground ms-0.5'>{unit}</span>}
+          </td>
+        )
+      })}
+    </tr>
+  )
+
+  const renderEmptyRow = (keyPrefix: string) => (
+    <tr key={`${keyPrefix}-empty`}>
+      <td colSpan={resources.length + 1} className='text-muted-foreground p-4 text-center text-sm'>
+        {allMetricsHidden ? '未选择评估维度' : allRoundsHidden || noRoundSelected ? '未选择轮次' : '暂无指标数据'}
+      </td>
+    </tr>
+  )
 
   return (
     <div className='space-y-2'>
@@ -188,6 +253,7 @@ export function MetricTable({
               type='button'
               role='tab'
               aria-selected={activeRoundTab === tab.label}
+              data-export-tab={roundGroup ? `${roundGroup}:${tab.roundTag ?? ''}` : undefined}
               className={cn(
                 'rounded-md px-2.5 py-1 text-xs transition-colors',
                 activeRoundTab === tab.label
@@ -214,44 +280,25 @@ export function MetricTable({
               ))}
             </tr>
           </thead>
-          <tbody>
-            {dimensionRows.map((row) => (
-              <tr
-                key={row.key}
-                className={row.isGroupHeader ? 'bg-muted/40 border-b font-semibold' : 'hover:bg-muted/30 border-b'}
+          {isExporting && exportRoundSheets.length > 0 ? (
+            // 导出态：每轮一组行（多个 tbody，脚本按轮次 Tab 显示 / 隐藏）
+            exportRoundSheets.map((sheet, sheetIndex) => (
+              <tbody
+                // 导出态轮次行组按「轮次标记 + 顺序」取 key：无轮次标记的 Tab 可能不止一个
+                // （`roundTag` 为空），只用 tag 会撞 key（React duplicate key 警告）
+                key={`${sheet.tag}-${sheetIndex}`}
+                data-export-round={roundGroup ? `${roundGroup}|${sheet.tag}|m` : undefined}
               >
-                <td className={row.isSubDim ? 'text-muted-foreground px-3 py-2 ps-8 text-sm' : 'px-3 py-2 text-sm'}>
-                  {row.name}
-                  {row.metricKey && row.metricKey !== row.name && (
-                    <span className='text-muted-foreground ms-1 text-xs'>({roundTagLabel(parseMetricKey(row.metricKey).roundTag ?? '')})</span>
-                  )}
-                </td>
-                {resources.map((r) => {
-                  // 独立分组标题行（metricKey 为空）无值；主维度兼分组标题行照常渲染数值
-                  if (!row.metricKey) return <td key={r} />
-                  const v = metricValue(row.metricKey, r)
-                  const unit = metricUnit(row.metricKey)
-                  return (
-                    <td key={r} className='px-3 py-2 font-mono text-xs tabular-nums'>
-                      {typeof v === 'number' && Number.isFinite(v) ? v.toFixed(decimalPlaces(row.metricKey)) : '—'}
-                      {typeof v === 'number' && unit && <span className='text-muted-foreground ms-0.5'>{unit}</span>}
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
-            {dimensionRows.length === 0 && (
-              <tr>
-                <td colSpan={resources.length + 1} className='text-muted-foreground p-4 text-center text-sm'>
-                  {allMetricsHidden
-                    ? '未选择评估维度'
-                    : allRoundsHidden || noRoundSelected
-                      ? '未选择轮次'
-                      : '暂无指标数据'}
-                </td>
-              </tr>
-            )}
-          </tbody>
+                {sheet.rows.map(renderMetricRow)}
+                {sheet.rows.length === 0 && renderEmptyRow(sheet.tag)}
+              </tbody>
+            ))
+          ) : (
+            <tbody>
+              {dimensionRows.map(renderMetricRow)}
+              {dimensionRows.length === 0 && renderEmptyRow('current')}
+            </tbody>
+          )}
         </table>
       </div>
     </div>

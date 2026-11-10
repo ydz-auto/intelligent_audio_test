@@ -13,6 +13,7 @@ import type {
   ReportReferenceParam,
 } from '@/domain/models/report'
 import { extractCaseResourceMetrics } from '@/application/report-view/case-matrix'
+import { exportShowMarker } from '@/features/report-view/export/export-markers'
 import {
   isExecutionChildVisible,
   type CaseDisplaySettings,
@@ -86,6 +87,14 @@ interface ExecutionResultsProps {
     active: string
     onSelect: (target: string) => void
   }
+  /**
+   * 导出态（INT-2434）：轮次 / 评估维度 / 设备·API 三个轴的 Tab 改为导出内纯 DOM 切换——
+   * Tab 按钮打 `data-export-tab` 白名单标记，内容全量渲染并按轮次 / 维度 / 目标打标记，
+   * 由导出脚本按 Tab 显示 / 隐藏（React 状态在产物里不存在）。
+   */
+  isExporting?: boolean
+  /** 导出 Tab 组前缀（每张用例卡唯一，避免产物内跨卡联动） */
+  exportGroup?: string
 }
 
 export function ExecutionResults({
@@ -97,9 +106,28 @@ export function ExecutionResults({
   activeRoundTag,
   display,
   targetTab,
+  isExporting = false,
+  exportGroup,
 }: ExecutionResultsProps) {
   const [playingAudio, setPlayingAudio] = useState<AudioItemMeta>()
   const [activeDimTab, setActiveDimTab] = useState(0)
+
+  const roundGroup = exportGroup ? `${exportGroup}-round` : ''
+  const dimGroup = exportGroup ? `${exportGroup}-dim` : ''
+  const targetGroup = exportGroup ? `${exportGroup}-target` : ''
+  /** 导出态轮次标记：`<组>|<轮次标记>|<模式>`（f = 字段，d = 评估维度字段） */
+  const exportRound = (
+    field: { paramCode?: string; roundNumber?: number },
+    mode: 'f' | 'd' = 'f'
+  ): string | undefined =>
+    isExporting && roundGroup
+      ? `${roundGroup}|${parseFieldRoundTag(field.paramCode, field.roundNumber) ?? ''}|${mode}`
+      : undefined
+  /** 导出态目标标记：按设备/API 展示名精确匹配（展示名可含空格，标记走 JSON 数组） */
+  const exportTarget = (resource: string): string | undefined =>
+    isExporting
+      ? exportShowMarker(targetGroup, getDeviceName(resource, report.summary.resource_headers ?? []))
+      : undefined
 
   const fieldMapping = report.summary.field_mappings?.[0]?.algorithmType
   const headers = report.summary.resource_headers ?? []
@@ -247,7 +275,9 @@ export function ExecutionResults({
   const groupedFields = useMemo(() => {
     const groups = new Map<string | null, ResultTextField[]>()
     const order: (string | null)[] = []
-    for (const field of currentResultFields) {
+    // 导出态：全轮次字段一起渲染，轮次过滤交给导出脚本（每行带 data-export-round）
+    const sourceFields = isExporting ? resultFields : currentResultFields
+    for (const field of sourceFields) {
       let dimName: string | null = field.dimensionName || null
       if (dimName) {
         const config = report.summary.all_metrics.find((m) => m.name === dimName)
@@ -272,7 +302,7 @@ export function ExecutionResults({
       result.push({ key: '_general', label: '设备/API 执行结果', fields: general })
     }
     return result
-  }, [currentResultFields, report.summary.all_metrics])
+  }, [currentResultFields, resultFields, isExporting, report.summary.all_metrics])
 
   const evalGroups = useMemo(
     () => groupedFields.filter((g) => g.key !== '_general' && !hiddenMetrics.includes(g.key)),
@@ -340,6 +370,7 @@ export function ExecutionResults({
           targetNames={targetTab.names}
           activeTarget={targetTab.active}
           onSelect={targetTab.onSelect}
+          exportGroup={targetGroup || undefined}
         />
       )}
       <p className='text-sm font-semibold'>执行结果</p>
@@ -353,6 +384,7 @@ export function ExecutionResults({
               type='button'
               role='tab'
               aria-selected={activeRoundTab === tab.label}
+              data-export-tab={roundGroup ? `${roundGroup}:${tab.roundTag ?? ''}` : undefined}
               className={cn(
                 'rounded-md px-2.5 py-1 text-xs transition-colors',
                 activeRoundTab === tab.label
@@ -367,13 +399,19 @@ export function ExecutionResults({
         </div>
       )}
 
-      {/* 参考数据 */}
-      {show('reference') && currentRefFields.length > 0 && (
+      {/* 参考数据（导出态渲染全轮次，按轮次打标记由脚本过滤） */}
+      {show('reference') && (isExporting ? referenceFields : currentRefFields).length > 0 && (
         <div>
           <p className='text-muted-foreground mb-1 text-xs font-medium'>参考数据</p>
           <div className='rounded-lg border'>
-            {currentRefFields.map((field) => (
-              <ResultField key={`ref_${field.paramCode}`} label={field.label} value={field.getValue()} type={field.paramType} />
+            {(isExporting ? referenceFields : currentRefFields).map((field) => (
+              <ResultField
+                key={`ref_${field.paramCode}`}
+                label={field.label}
+                value={field.getValue()}
+                type={field.paramType}
+                exportRound={exportRound(field, 'f')}
+              />
             ))}
           </div>
         </div>
@@ -384,18 +422,24 @@ export function ExecutionResults({
         <div>
           <p className='text-muted-foreground mb-1 text-xs font-medium'>用例参数</p>
           <div className='rounded-lg border'>
-            {currentCaseParamFields.length === 0 ? (
+            {(isExporting ? caseParamFields : currentCaseParamFields).length === 0 ? (
               <p className='text-muted-foreground px-3 py-2 text-xs'>暂无数据</p>
             ) : (
-              currentCaseParamFields.map((field) => (
-                <ResultField key={`case_${field.paramCode}`} label={field.label} value={field.value} type={field.paramType} />
+              (isExporting ? caseParamFields : currentCaseParamFields).map((field) => (
+                <ResultField
+                  key={`case_${field.paramCode}`}
+                  label={field.label}
+                  value={field.value}
+                  type={field.paramType}
+                  exportRound={exportRound(field, 'f')}
+                />
               ))
             )}
           </div>
         </div>
       )}
 
-      {/* 评估结果（块五，维度 tab 切换） */}
+      {/* 评估结果（块五，维度 tab 切换；导出态全维度渲染 + data-export-show 由脚本切换） */}
       {show('evaluation') && evalGroups.length > 0 && (
         <div>
           <p className='text-muted-foreground mb-1 text-xs font-medium'>评估结果</p>
@@ -407,6 +451,7 @@ export function ExecutionResults({
                   type='button'
                   role='tab'
                   aria-selected={safeDimTab === idx}
+                  data-export-tab={dimGroup ? `${dimGroup}:${idx}` : undefined}
                   className={cn(
                     'rounded-md px-2 py-0.5 text-xs transition-colors',
                     safeDimTab === idx ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
@@ -417,39 +462,51 @@ export function ExecutionResults({
                 </button>
               ))}
             </div>
-            <div className='mt-2 space-y-2'>
-              {isComparison ? (
-                // 对比模式：每设备一个 device-block（标题 = 资源 label）
-                resources.map((device) => (
-                  <div key={device}>
-                    <p className='text-muted-foreground text-xs font-medium'>{getDeviceName(device, headers)}</p>
-                    <div className='mt-1 rounded-lg border'>
-                      {evalGroups[safeDimTab]?.fields.map((field, i) => (
+            {(isExporting ? evalGroups : [evalGroups[safeDimTab]]).map((group, groupIdx) => {
+              const panelIndex = isExporting ? groupIdx : safeDimTab
+              if (!group) return null
+              return (
+                <div
+                  key={group.key}
+                  data-export-show={dimGroup ? exportShowMarker(dimGroup, panelIndex) : undefined}
+                  className='mt-2 space-y-2'
+                >
+                  {isComparison ? (
+                    // 对比模式：每设备一个 device-block（标题 = 资源 label）
+                    resources.map((device) => (
+                      <div key={device} data-export-show={exportTarget(device)}>
+                        <p className='text-muted-foreground text-xs font-medium'>{getDeviceName(device, headers)}</p>
+                        <div className='mt-1 rounded-lg border'>
+                          {group.fields.map((field, i) => (
+                            <ResultField
+                              key={`${device}_${field.paramCode}_${i}`}
+                              label={field.label}
+                              value={field.getValue(device)}
+                              type={field.paramType}
+                              onPlayAudio={(v) => openPlayer(v, field.label)}
+                              exportRound={exportRound(field, 'd')}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className='rounded-lg border'>
+                      {group.fields.map((field, i) => (
                         <ResultField
-                          key={`${device}_${field.paramCode}_${i}`}
+                          key={`res_${field.paramCode}_${i}`}
                           label={field.label}
-                          value={field.getValue(device)}
+                          value={field.getValue(undefined)}
                           type={field.paramType}
                           onPlayAudio={(v) => openPlayer(v, field.label)}
+                          exportRound={exportRound(field, 'd')}
                         />
                       ))}
                     </div>
-                  </div>
-                ))
-              ) : (
-                <div className='rounded-lg border'>
-                  {evalGroups[safeDimTab]?.fields.map((field, i) => (
-                    <ResultField
-                      key={`res_${field.paramCode}_${i}`}
-                      label={field.label}
-                      value={field.getValue(undefined)}
-                      type={field.paramType}
-                      onPlayAudio={(v) => openPlayer(v, field.label)}
-                    />
-                  ))}
+                  )}
                 </div>
-              )}
-            </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -461,7 +518,7 @@ export function ExecutionResults({
           {isComparison ? (
             <div className='space-y-2'>
               {resources.map((device) => (
-                <div key={device}>
+                <div key={device} data-export-show={exportTarget(device)}>
                   <p className='text-muted-foreground text-xs font-medium'>{getDeviceName(device, headers)}</p>
                   <div className='mt-1 rounded-lg border'>
                     {generalGroup.fields.length === 0 ? (
@@ -474,6 +531,7 @@ export function ExecutionResults({
                           value={field.getValue(device)}
                           type={field.paramType}
                           onPlayAudio={(v) => openPlayer(v, field.label)}
+                          exportRound={exportRound(field, 'f')}
                         />
                       ))
                     )}
@@ -493,6 +551,7 @@ export function ExecutionResults({
                     value={field.getValue(undefined)}
                     type={field.paramType}
                     onPlayAudio={(v) => openPlayer(v, field.label)}
+                    exportRound={exportRound(field, 'f')}
                   />
                 ))
               )}
@@ -502,7 +561,11 @@ export function ExecutionResults({
           {caseItem.results.length > 0 && (
             <div className='mt-1 rounded-lg border'>
               {caseItem.results.map((r) => (
-                <div key={r.resource} className='flex items-center justify-between gap-2 border-b px-3 py-1.5 text-xs last:border-0'>
+                <div
+                  key={r.resource}
+                  data-export-show={exportTarget(r.resource)}
+                  className='flex items-center justify-between gap-2 border-b px-3 py-1.5 text-xs last:border-0'
+                >
                   <span className='flex min-w-0 items-center gap-1.5'>
                     <span className='truncate font-medium'>{getDeviceName(r.resource, headers)}</span>
                     {r.result_type && (

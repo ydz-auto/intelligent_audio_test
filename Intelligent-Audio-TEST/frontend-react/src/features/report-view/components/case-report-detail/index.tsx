@@ -10,7 +10,7 @@
  * **INT-1738 §3.5.10 显示设置裁剪**：传入 `display`（区级一份状态）时按「卡片内容」一级开关 +
  * 「评估维度 / 轮次 / 资源」二级选择裁剪；不传（详情 Dialog §4.7）→ 全显七块。
  */
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { FileText } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,7 @@ import {
 } from '@/application/report-view/use-case-display-settings'
 import { useCaseRoundTabs, type CaseRoundState } from '@/application/report-view/use-case-round-tabs'
 import { caseResourceKeys } from '@/application/report-view/report-case-view-model'
+import { exportShowMarker } from '@/features/report-view/export/export-markers'
 
 import { getDeviceName } from './case-report-utils'
 import { ALL_TARGETS } from './target-tab-bar'
@@ -35,6 +36,11 @@ interface CaseReportDetailProps {
   display?: CaseDisplaySettings
   /** 隐藏全部内容时的「恢复默认」回调（§3.5.10 兜底） */
   onRestoreDisplay?: () => void
+  /**
+   * 导出态（INT-2434）：轮次 / 评估维度 / 设备·API 三类 Tab 打 `data-export-tab` 白名单标记，
+   * 内容全量渲染并按轴打标记；克隆时 Tab 不再被当操作按钮剪掉，产物内由脚本纯 DOM 切换。
+   */
+  isExporting?: boolean
 }
 
 /**
@@ -70,8 +76,13 @@ export function CaseReportDetailView({
   display,
   onRestoreDisplay,
   roundState,
+  isExporting = false,
 }: CaseReportDetailViewProps) {
   const settings = display
+  // 导出内 Tab 组前缀（每张卡唯一，避免产物里跨卡联动）；React id 含冒号，属性值里去掉。
+  // 只在导出态下发：正常页面的 Tab 不带导出标记（INT-2434 四轮审计遗留 1）。
+  const exportGroupId = `case-${useId().replace(/[^A-Za-z0-9_-]/g, '')}`
+  const exportGroup = isExporting ? exportGroupId : undefined
   const visible = (key: Parameters<typeof isBlockVisible>[1]) =>
     settings ? isBlockVisible(settings, key) : true
 
@@ -108,14 +119,17 @@ export function CaseReportDetailView({
   const activeTargetKey =
     activeTarget === ALL_TARGETS ? null : (resourceNameToKey.get(activeTarget) ?? activeTarget)
   const scopedCaseItem = useMemo(
-    () => scopeCaseItemByTarget(caseItem, activeTargetKey),
-    [caseItem, activeTargetKey]
+    // 导出态不裁剪：全部目标渲染出来，由导出脚本按目标 Tab 显示 / 隐藏
+    () => (isExporting ? caseItem : scopeCaseItemByTarget(caseItem, activeTargetKey)),
+    [caseItem, activeTargetKey, isExporting]
   )
   const scopedResourceLogs = useMemo(() => {
+    // 导出态保留全部资源日志（脚本按目标 Tab 过滤），否则单日志卡不再有目标 Tab 时无法切回
+    if (isExporting) return resourceLogs
     if (!resourceLogs || activeTargetKey == null) return resourceLogs
     const hit = Object.entries(resourceLogs).filter(([resource]) => resource === activeTargetKey)
     return hit.length > 0 ? Object.fromEntries(hit) : resourceLogs
-  }, [resourceLogs, activeTargetKey])
+  }, [resourceLogs, activeTargetKey, isExporting])
 
   if (nothingVisible) {
     return (
@@ -151,6 +165,8 @@ export function CaseReportDetailView({
             currentRoundMetricKeys={roundState.currentRoundMetricKeys}
             noRoundSelected={roundState.noRoundSelected}
             display={settings}
+            isExporting={isExporting}
+            exportGroup={exportGroup}
           />
         </section>
       )}
@@ -173,6 +189,8 @@ export function CaseReportDetailView({
             active: activeTarget,
             onSelect: setActiveTarget,
           }}
+          isExporting={isExporting}
+          exportGroup={exportGroup}
         />
       )}
 
@@ -194,7 +212,18 @@ export function CaseReportDetailView({
           {scopedResourceLogs ? (
             <div className='space-y-2'>
               {Object.entries(scopedResourceLogs).map(([resource, logs]) => (
-                <div key={resource} className='space-y-1'>
+                <div
+                  key={resource}
+                  data-export-show={
+                    isExporting
+                      ? exportShowMarker(
+                          `${exportGroup}-target`,
+                          getDeviceName(resource, report.summary.resource_headers)
+                        )
+                      : undefined
+                  }
+                  className='space-y-1'
+                >
                   <p className='text-muted-foreground text-xs font-medium'>
                     {getDeviceName(resource, report.summary.resource_headers)}
                   </p>

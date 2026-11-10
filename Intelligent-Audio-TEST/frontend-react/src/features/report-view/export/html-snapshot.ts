@@ -16,6 +16,8 @@
  */
 import JSZip from 'jszip'
 
+import { readingNavLabel } from '../report-nav-sections'
+
 /** 导出内用例分页条数（对齐 V9.7.10 `exportPageSize = 10`） */
 export const HTML_EXPORT_CASE_PAGE_SIZE = 10
 
@@ -60,6 +62,21 @@ export interface HtmlSnapshotParts {
 /** 导出态就绪标记（SpecificCaseComparison 在导出态写入；含用例总数） */
 export const EXPORT_READY_ATTR = 'data-export-cases-ready'
 
+/**
+ * 导出内筛选面板根标记（INT-2434 二轮）：面板由 `ExportCaseFilterPanel` 在导出态渲染，
+ * 里面的原生 `input / select / button` 是产物内交互控件（克隆时整块保留，脚本接管）。
+ */
+export const EXPORT_FILTER_PANEL_ATTR = 'data-export-filter-panel'
+
+/** 用例卡筛选事实（产物内脚本按这些属性做纯 DOM 过滤 / 排序） */
+export const EXPORT_CASE_DATA_ATTRS = {
+  category: 'data-export-case-category',
+  description: 'data-export-case-desc',
+  tags: 'data-export-case-tags',
+  metrics: 'data-export-case-metrics',
+  metricValues: 'data-export-case-metric-values',
+} as const
+
 /** 克隆时需要整块删除的节点（操作区 / 浮层 / 弹窗 / 导航） */
 const REMOVE_SELECTORS = [
   'aside',
@@ -88,9 +105,15 @@ const REMOVE_SELECTORS = [
   'noscript',
 ]
 
-/** 克隆后仍保留的按钮：分区折叠触发器 + 用例「展开详情」（导出脚本接管其交互） */
+/**
+ * 克隆后仍保留的按钮：分区折叠触发器 + 用例「展开详情」+ 导出内 Tab + 用例分组头
+ * （导出脚本接管其交互）。
+ * Tab 一律由组件在导出态打 `data-export-tab` 白名单标记（INT-2434：不再按 role/aria-label 兜规则——
+ * 旧规则把轮次 / 维度 / 目标三类 Tab 一网打尽，产物里 tablist 只剩空壳）；
+ * 分组头同理打 `data-export-group-toggle`（INT-2434 三轮：原来组头是死文字，第一组以外打不开）。
+ */
 const KEEP_BUTTON_SELECTOR =
-  '[data-slot="collapsible-trigger"], button[aria-label="展开详情"], button[aria-label="收起详情"]'
+  '[data-slot="collapsible-trigger"], button[aria-label="展开详情"], button[aria-label="收起详情"], [data-export-tab], [data-export-group-toggle]'
 
 /**
  * 文本型按钮：按钮本身是操作入口，但文字是页面内容（表头资源名 / 分组名 / 维度卡片标题）。
@@ -317,9 +340,98 @@ img { max-width: 100%; height: auto; }
   border: 1px solid #d1d5db; border-radius: 6px; background: #ffffff; cursor: pointer;
 }
 [data-export-case-toolbar] button:disabled { opacity: 0.45; cursor: not-allowed; }
+/* 导出内筛选面板（INT-2434 二轮）：原生控件 + details 折叠，样式与页面筛选卡同色系 */
+[data-export-filter-panel] { font-size: 12px; }
+[data-export-filter-panel] input[type="search"],
+[data-export-filter-panel] select {
+  height: 28px; padding: 0 8px; font-size: 12px; color: #111827;
+  border: 1px solid #d1d5db; border-radius: 6px; background: #ffffff;
+}
+[data-export-filter-panel] input[type="checkbox"] {
+  width: 13px; height: 13px; margin: 0; accent-color: #2563eb;
+}
+[data-export-filter-panel] button {
+  height: 28px; padding: 0 10px; font-size: 12px; color: #374151;
+  border: 1px solid #d1d5db; border-radius: 6px; background: #ffffff; cursor: pointer;
+}
+[data-export-filter-panel] button:hover { background: #f1f5f9; }
+[data-export-filter-panel] details { margin-top: 8px; }
+[data-export-filter-panel] summary { cursor: pointer; list-style: none; }
+[data-export-filter-panel] summary::-webkit-details-marker { display: none; }
+[data-export-filter-panel] summary::before { content: '▸ '; color: #9ca3af; }
+[data-export-filter-panel] details[open] > summary::before { content: '▾ '; }
+/* 用例详情里的长字段：页面上 >200 字折叠成两行 +「展开」按钮（按钮会被剪），
+   产物里取消截断，保证 JSON / 长文本能读全文 */
+[data-export-case-detail] .line-clamp-2 {
+  display: block !important;
+  overflow: visible !important;
+  -webkit-line-clamp: unset !important;
+  -webkit-box-orient: unset !important;
+}
+/* 用例 ID 点击复制后的轻反馈 */
+[data-export-copied="true"] { outline: 1px solid #16a34a; color: #16a34a !important; }
 [data-export-case-pageinfo] { font-size: 12px; color: #6b7280; margin-inline-start: auto; }
+/* 本页目录（INT-2434）：与报告页右导航 ReportReadingNav 同构的视口固定阅读栏
+   —— 正文右栏 + sticky，滚动时目录不离开视口；阅读进度条 + 当前分节高亮。 */
+#report-export-root [data-export-layout] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 24px;
+  align-items: stretch;
+}
+#report-export-root [data-export-layout] > main { min-width: 0; }
+#report-export-root [data-export-toc-aside] { min-width: 0; }
+#report-export-root [data-export-toc] { position: sticky; top: 16px; }
+#report-export-root section[id] { scroll-margin-top: 16px; }
+[data-export-toc-track] {
+  height: 1px; overflow: hidden; border-radius: 9999px;
+  background: color-mix(in srgb, var(--muted, #e5e7eb) 20%, transparent);
+}
+[data-export-toc-progress] {
+  height: 100%; width: 0;
+  background: color-mix(in srgb, var(--primary, #2563eb) 40%, transparent);
+  transition: width 150ms ease;
+}
+[data-export-toc-title] {
+  margin: 12px 0 8px; font-size: 12px; font-weight: 500;
+  color: var(--muted-foreground, #6b7280);
+}
+[data-export-toc-list] { margin: 0; padding: 0; list-style: none; }
+[data-export-toc-list] > li + li { margin-top: 4px; }
+[data-export-toc-link] {
+  display: inline-block; padding: 4px 8px; border-radius: 6px;
+  font-size: 12px; line-height: 1.5;
+  color: var(--muted-foreground, #6b7280);
+  text-decoration: none; cursor: pointer; transition: color 150ms ease;
+}
+[data-export-toc-link]:hover { color: var(--foreground, #111827); }
+[data-export-toc-link][aria-current="location"] {
+  color: var(--primary, #2563eb); font-weight: 500;
+}
+/* 导出内 Tab（轮次 / 评估维度 / 设备·API，INT-2434）：选中态只由 aria-selected 决定 */
+[data-export-tab] { cursor: pointer; }
+[data-export-tab][aria-selected="true"] { background: #2563eb; color: #ffffff; }
+[data-export-tab][aria-selected="false"] { background: transparent; color: #6b7280; }
+/* 用例详情展开入口：图标 + 可见文字（原来只有图标，看不出可点） */
+[data-export-case-toggle] { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+[data-export-case-toggle-label] { white-space: nowrap; }
+/* 用例分组头：产物里可点展开 / 收起（INT-2434 三轮） */
+[data-export-group-toggle] {
+  display: block; width: 100%; text-align: start; cursor: pointer;
+  background: transparent; border: 0; padding: 0; color: inherit; font: inherit;
+  border-radius: 6px;
+}
+[data-export-group-toggle]:hover { background: color-mix(in srgb, var(--muted, #e5e7eb) 40%, transparent); }
+[data-export-group-caret] { display: inline-block; min-width: 12px; }
+/* 窄窗口不出右栏（与报告页 lg 断点一致），避免挤压正文 */
+@media (max-width: 1023px) {
+  #report-export-root [data-export-layout] { display: block; }
+  #report-export-root [data-export-toc-aside] { display: none; }
+}
 @media print {
   [data-export-case-toolbar] { display: none !important; }
+  #report-export-root [data-export-toc-aside] { display: none !important; }
+  #report-export-root [data-export-layout] { display: block !important; }
   section { break-inside: avoid; }
 }
 `
@@ -357,6 +469,8 @@ export function buildStaticClone(
   // 3) 剪掉操作按钮（保留分区折叠触发器与用例展开按钮，改由导出脚本接管；
   //    表头资源名 / 分组名 / 维度卡片标题这类「文字即内容」的按钮解包为文本）
   clone.querySelectorAll('button').forEach((btn) => {
+    // 导出态筛选面板（INT-2434 二轮）：面板里的按钮是产物内交互控件，整块保留
+    if (btn.closest(`[${EXPORT_FILTER_PANEL_ATTR}]`)) return
     if (btn.matches(KEEP_BUTTON_SELECTOR)) return
     if (btn.matches(KEEP_TEXT_BUTTON_SELECTOR)) {
       unwrapElement(btn)
@@ -364,7 +478,11 @@ export function buildStaticClone(
     }
     btn.remove()
   })
-  clone.querySelectorAll('input, select, textarea').forEach((el) => el.remove())
+  clone.querySelectorAll('input, select, textarea').forEach((el) => {
+    // 筛选面板里的原生控件由产物内脚本接管，不再当页面操作控件删除
+    if (el.closest(`[${EXPORT_FILTER_PANEL_ATTR}]`)) return
+    el.remove()
+  })
 
   // 4) 折叠面板统一展开（导出内由脚本控制显示）
   clone
@@ -376,6 +494,11 @@ export function buildStaticClone(
 
   // 5) 纯标题分区（总览 / 对比表格）包一层可折叠面板
   prepareHeadingSections(clone)
+
+  // 5.5) 本页目录（INT-2434）：页面上「本页目录」是 React 状态驱动的右导航 <aside>，
+  //      克隆时整块删除，产物里没有目录；这里按产物内分区重生成锚点导航，
+  //      单份与批量（离屏宿主不渲染右导航）走同一条管线自动一致。
+  buildExportToc(clone)
 
   // 6) 用例分页 / 搜索 / 详情折叠
   const caseCount = prepareCases(clone, pageSize)
@@ -432,6 +555,85 @@ function prepareHeadingSections(clone: HTMLElement): void {
   })
 }
 
+/** 分区标题里由脚本加的折叠箭头（不得进目录文案） */
+const SECTION_CARET_PATTERN = /[▾▸]/g
+
+/** 取分区标题文案：页面同一份目录定义 → h1~h4 → Collapsible 触发器 → aria-label → id 兜底 */
+function sectionLabel(section: HTMLElement): string {
+  // 与报告页右导航同一份 id → 文案映射：分区标题里带统计（「设备 2 · API 0」「共 793 条结果」），
+  // 直接取标题会把统计塞进目录（INT-2434 负责人反馈「目录不对」）。
+  const mapped = readingNavLabel(section.id)
+  if (mapped) return mapped
+  const heading = section.querySelector('h1, h2, h3, h4')
+  const trigger = section.querySelector('[data-slot="collapsible-trigger"]')
+  const raw =
+    (heading?.textContent ?? '') ||
+    (trigger?.textContent ?? '') ||
+    section.getAttribute('aria-label') ||
+    section.id
+  return raw.replace(SECTION_CARET_PATTERN, '').replace(/\s+/g, ' ').trim() || section.id
+}
+
+/**
+ * 产物「本页目录」：与报告页右导航（`ReportReadingNav`，`sticky` 视口固定）同构（INT-2434）。
+ *
+ * 页面上的右导航是 `<aside class="print:hidden">`，克隆清理规则会整块删掉，批量离屏宿主
+ * 也不渲染它 —— 所以这里按产物内 `section[id]` 重建：**正文右栏 + sticky**，带阅读进度条
+ * 与当前分节高亮（滚动由导出脚本接管，纯 DOM，不依赖 React 状态）。
+ * 锚点与分区 id 一一对应（同一次克隆里收集 → 不会出现死锚点），`file://` 下点击即跳转。
+ */
+export function buildExportToc(clone: HTMLElement): HTMLElement | null {
+  const existing = clone.querySelector('nav[aria-label="本页目录"]') as HTMLElement | null
+  if (existing) return existing
+  const sections = Array.from(clone.querySelectorAll<HTMLElement>('section[id]')).filter(
+    (section) => Boolean(section.id)
+  )
+  if (sections.length === 0) return null
+
+  const nav = document.createElement('nav')
+  nav.setAttribute('aria-label', '本页目录')
+  nav.setAttribute('data-export-toc', '')
+
+  const inner = document.createElement('div')
+  const track = document.createElement('div')
+  track.setAttribute('data-export-toc-track', '')
+  const progress = document.createElement('div')
+  progress.setAttribute('data-export-toc-progress', '')
+  track.appendChild(progress)
+  const title = document.createElement('p')
+  title.setAttribute('data-export-toc-title', '')
+  title.textContent = '本页目录'
+  const list = document.createElement('ul')
+  list.setAttribute('data-export-toc-list', '')
+  for (const section of sections) {
+    const item = document.createElement('li')
+    const link = document.createElement('a')
+    link.setAttribute('href', `#${section.id}`)
+    link.setAttribute('data-export-toc-link', section.id)
+    link.textContent = sectionLabel(section)
+    item.appendChild(link)
+    list.appendChild(item)
+  }
+  inner.append(track, title, list)
+  nav.appendChild(inner)
+
+  const aside = document.createElement('aside')
+  aside.setAttribute('data-export-toc-aside', '')
+  aside.appendChild(nav)
+
+  // 放进正文两栏布局的右栏（页面里 `<main>` + `<aside>` 的位置），sticky 才有参照；
+  // 简化 DOM（单测直接喂 section、没有 main）时退回文档顶部，目录仍可用。
+  const main = clone.querySelector('main')
+  const host = main && main.parentElement && main.parentElement !== clone ? main.parentElement : null
+  if (host) {
+    host.setAttribute('data-export-layout', '')
+    host.appendChild(aside)
+  } else {
+    clone.insertBefore(aside, clone.firstChild)
+  }
+  return nav
+}
+
 function prepareCases(clone: HTMLElement, pageSize: number): number {
   const cards = Array.from(clone.querySelectorAll<HTMLElement>('[data-export-case]'))
   cards.forEach((card, index) => {
@@ -445,6 +647,14 @@ function prepareCases(clone: HTMLElement, pageSize: number): number {
     if (toggle) {
       toggle.setAttribute('data-export-case-toggle', '')
       toggle.setAttribute('aria-expanded', 'false')
+      // INT-2434：导出里的展开入口原来只有图标，看不出可点 → 补可见文字；
+      // 文案由导出脚本随展开状态切换。
+      if (!toggle.querySelector('[data-export-case-toggle-label]')) {
+        const label = document.createElement('span')
+        label.setAttribute('data-export-case-toggle-label', '')
+        label.textContent = '展开详情'
+        toggle.appendChild(label)
+      }
     }
   })
   if (cards.length === 0) return 0
@@ -457,12 +667,6 @@ function insertCaseToolbar(clone: HTMLElement, pageSize: number): void {
   const list = clone.querySelector<HTMLElement>('[data-export-case-list]')
   const toolbar = document.createElement('div')
   toolbar.setAttribute('data-export-case-toolbar', '')
-
-  const search = document.createElement('input')
-  search.type = 'search'
-  search.id = 'export-case-search'
-  search.placeholder = '搜索用例ID或名称'
-  search.setAttribute('aria-label', '搜索用例ID或名称')
 
   const sizeLabel = document.createElement('label')
   sizeLabel.style.fontSize = '12px'
@@ -479,6 +683,18 @@ function insertCaseToolbar(clone: HTMLElement, pageSize: number): void {
     sizeSelect.appendChild(option)
   }
   sizeLabel.appendChild(sizeSelect)
+
+  // 卡片操作（INT-2434 二轮）：全部展开 / 收起详情
+  const expandAll = document.createElement('button')
+  expandAll.type = 'button'
+  expandAll.id = 'export-case-expand-all'
+  expandAll.setAttribute('data-export-case-expand-all', '')
+  expandAll.textContent = '展开全部详情'
+  const collapseAll = document.createElement('button')
+  collapseAll.type = 'button'
+  collapseAll.id = 'export-case-collapse-all'
+  collapseAll.setAttribute('data-export-case-collapse-all', '')
+  collapseAll.textContent = '收起全部详情'
 
   const prev = document.createElement('button')
   prev.type = 'button'
@@ -503,7 +719,7 @@ function insertCaseToolbar(clone: HTMLElement, pageSize: number): void {
   info.id = 'export-case-pageinfo'
   info.setAttribute('data-export-case-pageinfo', '')
 
-  toolbar.append(search, sizeLabel, prev, next, jump, jumpBtn, info)
+  toolbar.append(sizeLabel, expandAll, collapseAll, prev, next, jump, jumpBtn, info)
   if (list && list.parentElement) {
     list.parentElement.insertBefore(toolbar, list)
   } else {
@@ -560,13 +776,21 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
       if (hidden) detail.removeAttribute('hidden');
       else detail.setAttribute('hidden', '');
       btn.setAttribute('aria-expanded', hidden ? 'true' : 'false');
+      var textLabel = btn.querySelector('[data-export-case-toggle-label]');
+      if (textLabel) textLabel.textContent = hidden ? '收起详情' : '展开详情';
       var icon = btn.querySelector('svg');
       if (icon) icon.style.transform = hidden ? 'rotate(180deg)' : '';
     });
   });
 
-  // ---------- 3. 用例搜索 + 分页 ----------
-  var cards = $all('[data-export-case]');
+  // ---------- 3. 用例筛选（关键词 / 分组 / 标签 / 维度）+ 排序 + 分页（INT-2434 二轮） ----------
+  // 页面筛选走服务端（POST /reports/{id}/cases/search），产物没有后端：每张卡自带
+  // data-export-case-* 筛选事实，这里按后端同口径做纯 DOM 过滤 ——
+  //   关键词 = 名称 / 用例 ID / 描述；分组 = 分类（多选取并集）；
+  //   标签、评估维度 = 任一命中（与后端 _match_tags / _match_metrics 一致）。
+  var filterPanel = document.querySelector('[data-export-filter-panel]');
+  var caseCards = $all('[data-export-case]');
+  var groupWrappers = $all('[data-export-group]');
   var searchInput = document.getElementById('export-case-search');
   var sizeSelect = document.getElementById('export-case-page-size');
   var prevBtn = document.getElementById('export-case-prev');
@@ -576,48 +800,270 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
   var info = document.getElementById('export-case-pageinfo');
   var pageSize = sizeSelect ? parseInt(sizeSelect.value, 10) || 10 : 10;
   var currentPage = 1;
-  var keyword = '';
 
-  function matches(card) {
-    if (!keyword) return true;
-    var name = (card.getAttribute('data-export-case-name') || '').toLowerCase();
-    var id = (card.getAttribute('data-export-case-id') || '').toLowerCase();
-    return name.indexOf(keyword) >= 0 || id.indexOf(keyword) >= 0;
+  function parseArray(text) {
+    if (!text) return [];
+    try {
+      var parsed = JSON.parse(text);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      return [];
+    }
+  }
+  function parseMap(text) {
+    if (!text) return {};
+    try {
+      var parsed = JSON.parse(text);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (err) {
+      return {};
+    }
+  }
+
+  // 被手动折叠的分组容器（组头 = button[data-export-group-toggle]，卡容器 = [data-export-group-body]）
+  var collapsedGroups = [];
+  function groupBodyOf(wrapper) {
+    var children = Array.prototype.slice.call(wrapper.children);
+    for (var i = 0; i < children.length; i += 1) {
+      if (children[i].getAttribute('data-export-group-body') !== null) return children[i];
+    }
+    return null;
+  }
+  function applyGroupState(wrapper) {
+    var body = groupBodyOf(wrapper);
+    if (!body) return;
+    var collapsed = collapsedGroups.indexOf(wrapper) >= 0;
+    body.style.display = collapsed ? 'none' : '';
+    var btn = wrapper.querySelector('[data-export-group-toggle]');
+    if (!btn) return;
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    var caret = btn.querySelector('[data-export-group-caret]');
+    if (caret) caret.textContent = collapsed ? '▸' : '▾';
+  }
+  function ownerGroupOf(card) {
+    return card.closest ? card.closest('[data-export-group]') : null;
+  }
+  /** 分组内分页后的总页数 = 各组页数的最大值（各组同步翻到同一页码） */
+  function maxPageCount() {
+    var owners = [];
+    var counts = [];
+    $all('[data-export-case]').forEach(function (card) {
+      if (card.getAttribute('data-export-match') !== 'true') return;
+      var owner = ownerGroupOf(card);
+      var index = owners.indexOf(owner);
+      if (index < 0) { owners.push(owner); counts.push(0); index = counts.length - 1; }
+      counts[index] += 1;
+    });
+    var pages = 1;
+    counts.forEach(function (n) { pages = Math.max(pages, Math.ceil(n / pageSize)); });
+    return pages;
+  }
+
+  // 每张卡的筛选事实（属性读一次，后续过滤 / 排序不重复解析）
+  var cardInfoList = caseCards.map(function (card) {
+    return {
+      el: card,
+      name: String(card.getAttribute('data-export-case-name') || '').toLowerCase(),
+      id: String(card.getAttribute('data-export-case-id') || '').toLowerCase(),
+      desc: String(card.getAttribute('data-export-case-desc') || '').toLowerCase(),
+      category: String(card.getAttribute('data-export-case-category') || ''),
+      tags: parseArray(card.getAttribute('data-export-case-tags')),
+      metrics: parseArray(card.getAttribute('data-export-case-metrics')),
+      metricValues: parseMap(card.getAttribute('data-export-case-metric-values'))
+    };
+  });
+  function infoOf(card) {
+    for (var i = 0; i < cardInfoList.length; i += 1) {
+      if (cardInfoList[i].el === card) return cardInfoList[i];
+    }
+    return null;
+  }
+
+  function checkedValues(attr) {
+    return $all('[data-export-filter-panel] input[' + attr + ']').filter(function (input) {
+      return input.checked;
+    }).map(function (input) {
+      return input.getAttribute(attr) || '';
+    });
+  }
+  function controlValue(attr) {
+    var el = document.querySelector('[data-export-filter-panel] [' + attr + ']');
+    return el ? String(el.value || '') : '';
+  }
+  function hasAny(list, values) {
+    for (var i = 0; i < values.length; i += 1) {
+      if (list.indexOf(values[i]) >= 0) return true;
+    }
+    return false;
+  }
+  function matches(info, state) {
+    if (state.keyword) {
+      if (info.name.indexOf(state.keyword) < 0 && info.id.indexOf(state.keyword) < 0
+        && info.desc.indexOf(state.keyword) < 0) return false;
+    }
+    if (state.groups.length > 0 && state.groups.indexOf(info.category) < 0) return false;
+    if (state.tags.length > 0 && !hasAny(info.tags, state.tags)) return false;
+    if (state.metrics.length > 0 && !hasAny(info.metrics, state.metrics)) return false;
+    return true;
+  }
+
+  /**
+   * 卡片排序（在各自所在分组容器内排，组结构不变）：
+   * - 空 sort = 保持克隆时的页面顺序（页面已经按自己选的排序取过数）；
+   * - name / testcaseid 与后端一致（testcaseid 是「按创建时间」的后端口径）；
+   * - metric = 跨资源平均值，无值卡片排最后（后端 (1, 0) 口径）。
+   */
+  function sortCards(state) {
+    if (!state.sort) return;
+    if (state.sort === 'metric' && !state.sortMetric) return;
+    var parents = [];
+    caseCards.forEach(function (card) {
+      var parent = card.parentElement;
+      if (parent && parents.indexOf(parent) < 0) parents.push(parent);
+    });
+    parents.forEach(function (parent) {
+      var own = Array.prototype.filter.call(parent.children, function (child) {
+        return child.getAttribute && child.getAttribute('data-export-case') !== null;
+      });
+      if (own.length < 2) return;
+      own.sort(function (a, b) {
+        var ia = infoOf(a);
+        var ib = infoOf(b);
+        if (!ia || !ib) return 0;
+        if (state.sort === 'metric') {
+          var va = ia.metricValues[state.sortMetric];
+          var vb = ib.metricValues[state.sortMetric];
+          var hasA = typeof va === 'number' && isFinite(va);
+          var hasB = typeof vb === 'number' && isFinite(vb);
+          if (!hasA && !hasB) return 0;
+          if (!hasA) return 1;
+          if (!hasB) return -1;
+          return state.sortOrder === 'desc' ? vb - va : va - vb;
+        }
+        var sa = state.sort === 'testcaseid' ? ia.id : ia.name;
+        var sb = state.sort === 'testcaseid' ? ib.id : ib.name;
+        var cmp = sa < sb ? -1 : sa > sb ? 1 : 0;
+        return state.sortOrder === 'desc' ? -cmp : cmp;
+      });
+      own.forEach(function (card) { parent.appendChild(card); });
+    });
   }
 
   function render() {
-    var visible = cards.filter(matches);
-    var total = visible.length;
-    var pages = Math.max(1, Math.ceil(total / pageSize));
+    var state = {
+      keyword: searchInput ? String(searchInput.value || '').trim().toLowerCase() : '',
+      groups: checkedValues('data-export-filter-group'),
+      tags: checkedValues('data-export-filter-tag'),
+      metrics: checkedValues('data-export-filter-metric'),
+      sort: controlValue('data-export-filter-sort'),
+      sortOrder: controlValue('data-export-filter-sort-order') || 'asc',
+      sortMetric: controlValue('data-export-filter-sort-metric')
+    };
+    sortCards(state);
+    // 排序会移动节点：按文档顺序重新取卡片
+    caseCards = $all('[data-export-case]');
+    var matched = caseCards.filter(function (card) {
+      var info = infoOf(card);
+      return info ? matches(info, state) : true;
+    });
+    var total = matched.length;
+    // 分组内分页（INT-2434 三轮）：每张卡归到最近的 [data-export-group]，各组各自显示
+    // 本组第 (currentPage-1)*pageSize 起的 pageSize 张。全局分页会把第一组以外的组全部藏起来
+    // ——负责人 08:44「打断与恢复这个分组能打开吗」：组头和计数都在，组内卡片却全是隐藏的。
+    var buckets = [];
+    matched.forEach(function (card) {
+      var owner = ownerGroupOf(card);
+      var bucket = null;
+      for (var i = 0; i < buckets.length; i += 1) {
+        if (buckets[i].owner === owner) { bucket = buckets[i]; break; }
+      }
+      if (!bucket) { bucket = { owner: owner, cards: [] }; buckets.push(bucket); }
+      bucket.cards.push(card);
+    });
+    var pages = 1;
+    buckets.forEach(function (bucket) {
+      pages = Math.max(pages, Math.max(1, Math.ceil(bucket.cards.length / pageSize)));
+    });
     if (currentPage > pages) currentPage = pages;
     if (currentPage < 1) currentPage = 1;
     var start = (currentPage - 1) * pageSize;
-    cards.forEach(function (card) { card.style.display = 'none'; });
-    visible.slice(start, start + pageSize).forEach(function (card) {
-      card.style.display = '';
+    caseCards.forEach(function (card) {
+      card.style.display = 'none';
+      card.setAttribute('data-export-match', 'false');
     });
+    matched.forEach(function (card) { card.setAttribute('data-export-match', 'true'); });
+    buckets.forEach(function (bucket) {
+      bucket.cards.slice(start, start + pageSize).forEach(function (card) {
+        card.style.display = '';
+      });
+    });
+
+    // 分组：命中为 0 的组整块隐藏；本页没有可见卡的组也隐藏组头（折叠中的组保留组头，方便点开）；
+    // 组头计数 = 命中数（含嵌套子组，筛选后实时更新）
+    groupWrappers.forEach(function (wrapper) {
+      var inside = Array.prototype.slice.call(wrapper.querySelectorAll('[data-export-case]'));
+      var hit = 0;
+      var shown = 0;
+      inside.forEach(function (card) {
+        if (card.getAttribute('data-export-match') === 'true') hit += 1;
+        if (card.style.display !== 'none') shown += 1;
+      });
+      var collapsed = collapsedGroups.indexOf(wrapper) >= 0;
+      wrapper.style.display = hit > 0 && (shown > 0 || collapsed) ? '' : 'none';
+      var countEl = wrapper.querySelector('[data-export-group-count]');
+      if (countEl) countEl.textContent = hit + ' 个用例';
+      applyGroupState(wrapper);
+    });
+
     if (info) {
       // 工具条单位与卡片口径一致（用例卡 = 按 test_case_id 合并后的张数），避免与页面
       // 区块头的「共 N 条结果」（结果行口径）同屏两个「条结果」（INT-2418 P3-2）
-      info.textContent = '显示第 ' + currentPage + ' 页，共 ' + pages + ' 页，总计 ' + total + ' 个用例';
+      info.textContent = '显示第 ' + currentPage + ' / ' + pages + ' 页（各组同页翻动），总计 '
+        + total + ' 个用例';
+    }
+    var filterCount = document.querySelector('[data-export-filter-count]');
+    if (filterCount) {
+      filterCount.textContent = (state.keyword || state.groups.length || state.tags.length
+        || state.metrics.length) ? '命中 ' + total + ' 个用例' : '共 ' + total + ' 个用例';
     }
     if (prevBtn) prevBtn.disabled = currentPage <= 1;
     if (nextBtn) nextBtn.disabled = currentPage >= pages;
     if (jumpInput) jumpInput.max = String(pages);
   }
 
-  if (searchInput) {
-    searchInput.addEventListener('input', function () {
-      keyword = String(searchInput.value || '').trim().toLowerCase();
-      currentPage = 1;
-      render();
-    });
+  function resetPaging() {
+    currentPage = 1;
+    render();
   }
+
+  if (filterPanel) {
+    if (searchInput) searchInput.addEventListener('input', resetPaging);
+    $all('[data-export-filter-panel] input[type="checkbox"]').forEach(function (input) {
+      input.addEventListener('change', resetPaging);
+    });
+    $all('[data-export-filter-panel] select').forEach(function (select) {
+      select.addEventListener('change', resetPaging);
+    });
+    var resetBtn = document.querySelector('[data-export-filter-reset]');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function () {
+        $all('[data-export-filter-panel] input[type="checkbox"]').forEach(function (input) {
+          input.checked = false;
+        });
+        if (searchInput) searchInput.value = '';
+        $all('[data-export-filter-panel] select').forEach(function (select) {
+          select.value = select.hasAttribute('data-export-filter-sort-order') ? 'asc' : '';
+        });
+        resetPaging();
+      });
+    }
+  }
+
+  // 每页条数 / 上下页 / 跳转
   if (sizeSelect) {
     sizeSelect.addEventListener('change', function () {
       pageSize = parseInt(sizeSelect.value, 10) || 10;
-      currentPage = 1;
-      render();
+      resetPaging();
     });
   }
   if (prevBtn) {
@@ -627,13 +1073,12 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
   }
   if (nextBtn) {
     nextBtn.addEventListener('click', function () {
-      var pages = Math.max(1, Math.ceil(cards.filter(matches).length / pageSize));
-      if (currentPage < pages) { currentPage += 1; render(); }
+      if (currentPage < maxPageCount()) { currentPage += 1; render(); }
     });
   }
   function jumpToPage() {
     if (!jumpInput) return;
-    var pages = Math.max(1, Math.ceil(cards.filter(matches).length / pageSize));
+    var pages = maxPageCount();
     var value = parseInt(jumpInput.value, 10);
     if (!isNaN(value) && value >= 1 && value <= pages) {
       currentPage = value;
@@ -647,7 +1092,222 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
     });
   }
 
-  if (cards.length > 0) render();
+  // ---------- 3.a 分组展开 / 收起（INT-2434 三轮） ----------
+  // 负责人 08:44：「打断与恢复这个分组能打开吗」。组头在产物里是 button[data-export-group-toggle]，
+  // 点一下折叠本组卡片、再点展开；折叠状态记在 collapsedGroups，翻页 / 筛选后保持。
+  $all('[data-export-group-toggle]').forEach(function (btn) {
+    btn.addEventListener('click', function (event) {
+      event.preventDefault();
+      var wrapper = btn.closest('[data-export-group]');
+      if (!wrapper) return;
+      var index = collapsedGroups.indexOf(wrapper);
+      if (index >= 0) collapsedGroups.splice(index, 1);
+      else collapsedGroups.push(wrapper);
+      applyGroupState(wrapper);
+    });
+  });
+
+  // ---------- 3.b 卡片操作：全部展开 / 收起、点击复制用例 ID（INT-2434 二轮） ----------
+  function setAllDetails(open) {
+    $all('[data-export-case]').forEach(function (card) {
+      var detail = card.querySelector('[data-export-case-detail]');
+      var toggle = card.querySelector('[data-export-case-toggle]');
+      if (detail) {
+        if (open) detail.removeAttribute('hidden');
+        else detail.setAttribute('hidden', '');
+      }
+      if (!toggle) return;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      var label = toggle.querySelector('[data-export-case-toggle-label]');
+      if (label) label.textContent = open ? '收起详情' : '展开详情';
+      var icon = toggle.querySelector('svg');
+      if (icon) icon.style.transform = open ? 'rotate(180deg)' : '';
+    });
+  }
+  $all('[data-export-case-expand-all]').forEach(function (btn) {
+    btn.addEventListener('click', function () { setAllDetails(true); });
+  });
+  $all('[data-export-case-collapse-all]').forEach(function (btn) {
+    btn.addEventListener('click', function () { setAllDetails(false); });
+  });
+
+  $all('[data-export-copy-id]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var text = el.getAttribute('data-export-copy-id') || el.textContent || '';
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text);
+        } else {
+          // file:// 下没有 clipboard API：走同页 textarea 兜底（与 V9.7.10 导出脚本一致）
+          var area = document.createElement('textarea');
+          area.value = text;
+          area.style.position = 'fixed';
+          area.style.left = '-9999px';
+          document.body.appendChild(area);
+          area.select();
+          document.execCommand('copy');
+          document.body.removeChild(area);
+        }
+        el.setAttribute('data-export-copied', 'true');
+        setTimeout(function () { el.removeAttribute('data-export-copied'); }, 1200);
+      } catch (err) {
+        // 复制失败不阻塞阅读
+      }
+    });
+  });
+
+  if (caseCards.length > 0) render();
+
+  // ---------- 4. Tab 纯 DOM 切换（轮次 / 评估维度 / 设备·API 目标，INT-2434） ----------
+  // 契约：
+  //   data-export-tab="<group>:<value>"       Tab 按钮（导出态由组件打标记，克隆时保留）
+  //   data-export-show='["<group>:<value>",…]' 面板要显示时命中的规格，值是 JSON 字符串数组
+  //                                           （组内全部值 = __all__）；空格 / 冒号 / 引号都只是值的一部分，
+  //                                           旧契约「空格分隔」遇到展示名带空格的设备/API 会整体失效。
+  //   data-export-round="<group>|<tag>|<mode>" 轮次行 / 行组（tag 为空 = 全轮次恒显示；
+  //                                            mode f = 字段（整体 Tab 全显），m/d = 指标与维度（整体只显空标记 + overall））
+  var tabState = {};
+
+  function groupOf(spec) {
+    var i = spec.indexOf(':');
+    return i < 0 ? spec : spec.slice(0, i);
+  }
+  function valueOf(spec) {
+    var i = spec.indexOf(':');
+    return i < 0 ? '' : spec.slice(i + 1);
+  }
+
+  /** 解析 data-export-show：JSON 数组；解析不了时按单条规格回退（兼容旧产物 / 手写标记）。 */
+  function showSpecsOf(el) {
+    var raw = String(el.getAttribute('data-export-show') || '');
+    if (!raw) return [];
+    try {
+      var parsed = JSON.parse(raw);
+      if (Object.prototype.toString.call(parsed) === '[object Array]') {
+        return parsed.filter(function (spec) {
+          return typeof spec === 'string' && spec;
+        });
+      }
+    } catch (err) {
+      // 不是 JSON（旧产物）：整串当一条规格，不再按空格切
+    }
+    return [raw];
+  }
+
+  function applyTabs() {
+    $all('[data-export-show]').forEach(function (el) {
+      var specs = showSpecsOf(el);
+      var visible = true;
+      for (var i = 0; i < specs.length; i += 1) {
+        var group = groupOf(specs[i]);
+        var value = valueOf(specs[i]);
+        var current = group in tabState ? tabState[group] : value;
+        if (value === '__all__') continue;
+        if (current !== '__all__' && current !== value) { visible = false; break; }
+      }
+      el.style.display = visible ? '' : 'none';
+    });
+
+    $all('[data-export-round]').forEach(function (el) {
+      var parts = String(el.getAttribute('data-export-round') || '').split('|');
+      var group = parts[0];
+      var tag = parts[1] || '';
+      var mode = parts[2] || 'f';
+      var current = group in tabState ? tabState[group] : '';
+      var show;
+      if (!current || current === '__all__') show = true;
+      else if (current === 'overall') show = mode === 'f' ? true : (tag === '' || tag === 'overall');
+      else show = tag === '' || tag === current;
+      el.style.display = show ? '' : 'none';
+    });
+  }
+
+  var tabButtons = $all('[data-export-tab]');
+  var tabGroups = {};
+
+  tabButtons.forEach(function (btn) {
+    var spec = String(btn.getAttribute('data-export-tab') || '');
+    if (!spec) return;
+    var group = groupOf(spec);
+    if (!(group in tabGroups)) tabGroups[group] = { first: valueOf(spec), selected: null };
+    if (btn.getAttribute('aria-selected') === 'true' && tabGroups[group].selected === null) {
+      tabGroups[group].selected = valueOf(spec);
+    }
+  });
+  Object.keys(tabGroups).forEach(function (group) {
+    // 默认态 = 页面克隆时的激活 Tab（aria-selected），没有则取组内第一个
+    tabState[group] = tabGroups[group].selected !== null ? tabGroups[group].selected : tabGroups[group].first;
+  });
+
+  tabButtons.forEach(function (btn) {
+    var spec = String(btn.getAttribute('data-export-tab') || '');
+    if (!spec) return;
+    var group = groupOf(spec);
+    var value = valueOf(spec);
+    btn.addEventListener('click', function (event) {
+      event.preventDefault();
+      tabState[group] = value;
+      // 选中态只切 aria-selected，配色由导出样式表按 aria-selected 控制（不拼 className）
+      tabButtons.forEach(function (other) {
+        var otherSpec = String(other.getAttribute('data-export-tab') || '');
+        if (groupOf(otherSpec) !== group) return;
+        other.setAttribute('aria-selected', valueOf(otherSpec) === value ? 'true' : 'false');
+      });
+      applyTabs();
+    });
+  });
+
+  applyTabs();
+
+  // ---------- 5. 本页目录（右栏视口固定）：平滑跳转 + scrollspy + 阅读进度 ----------
+  // 页面上的右导航靠 React scrollspy 驱动；导出里没有 React，这里用 scroll 事件
+  // 算当前分节与进度，产物双击打开即可用。
+  var tocLinks = $all('[data-export-toc-link]');
+  if (tocLinks.length > 0) {
+    var tocProgress = document.querySelector('[data-export-toc-progress]');
+    var tocEntries = [];
+    tocLinks.forEach(function (link) {
+      var id = link.getAttribute('data-export-toc-link') || '';
+      var section = id ? document.getElementById(id) : null;
+      if (!section) return;
+      tocEntries.push({ link: link, section: section });
+      link.addEventListener('click', function (event) {
+        event.preventDefault();
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, '', '#' + id);
+        }
+      });
+    });
+
+    var tocActive = null;
+    function updateToc() {
+      var scrolled = window.scrollY || window.pageYOffset || 0;
+      var scrollable = (document.documentElement.scrollHeight || 0) - window.innerHeight;
+      var ratio = scrollable > 0 ? scrolled / scrollable : 0;
+      if (tocProgress) {
+        tocProgress.style.width = (Math.max(0, Math.min(1, ratio)) * 100) + '%';
+      }
+      if (tocEntries.length === 0) return;
+      var probeLine = scrolled + 96;
+      var next = tocEntries[0];
+      tocEntries.forEach(function (entry) {
+        var top = entry.section.getBoundingClientRect().top + scrolled;
+        if (top <= probeLine) next = entry;
+      });
+      if (next === tocActive) return;
+      tocActive = next;
+      tocEntries.forEach(function (entry) {
+        if (entry === next) entry.link.setAttribute('aria-current', 'location');
+        else entry.link.removeAttribute('aria-current');
+      });
+    }
+    window.addEventListener('scroll', updateToc, { passive: true });
+    window.addEventListener('resize', updateToc);
+    // 折叠分区 / 切换 Tab 会改版面高度：点完再算一次
+    document.addEventListener('click', function () { setTimeout(updateToc, 0); }, true);
+    updateToc();
+  }
 })();`
 
 /** 组装离线可用的 report.html */
@@ -667,9 +1327,10 @@ export function buildReportHtmlDocument(params: {
 <link rel="stylesheet" href="css/report.css">
 </head>
 <body>
-<main id="report-export-root">
+<!-- 报告正文克隆里自带 <main>（正文列），外层用 div 承载，避免 main 嵌套 -->
+<div id="report-export-root">
 ${clone.outerHTML}
-</main>
+</div>
 <footer style="text-align:center;padding:24px;color:#94a3b8;font-size:12px;border-top:1px solid #e2e8f0;margin-top:24px;">
   报告导出时间：${escapeHtml(exportedLabel)} | 导出自智能音频测试系统
 </footer>

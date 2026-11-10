@@ -24,6 +24,8 @@ export interface CaseReportExpandedProps {
   selectedRounds?: string[]
   /** 显示设置「轮次」chips 被全清（显式标志，不能用空数组反推——单轮报告本就无 chip） */
   roundsAllCleared?: boolean
+  /** 导出态（INT-2434）：Tab 打导出标记、内容全量渲染（产物内纯 DOM 切换） */
+  isExporting?: boolean
 }
 
 export function CaseReportExpanded({
@@ -33,6 +35,7 @@ export function CaseReportExpanded({
   onRestoreDisplay,
   selectedRounds,
   roundsAllCleared = false,
+  isExporting = false,
 }: CaseReportExpandedProps) {
   // 一张用例卡一个轮次轴（评分指标 / 执行结果共用）
   const roundState = useCaseRoundTabs(caseItem, selectedRounds, roundsAllCleared)
@@ -45,6 +48,7 @@ export function CaseReportExpanded({
         display={display}
         onRestoreDisplay={onRestoreDisplay}
         roundState={roundState}
+        isExporting={isExporting}
       />
     </div>
   )

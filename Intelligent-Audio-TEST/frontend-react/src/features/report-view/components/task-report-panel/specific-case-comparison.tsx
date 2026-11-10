@@ -87,6 +87,7 @@ import {
 } from './specific-case-grouping'
 
 import { getDeviceName, roundTagLabel } from '../case-report-detail/case-report-utils'
+import { caseMetricAverages, caseMetricNames } from '../../export/case-metrics'
 import { CaseDetailDialog } from '../modals/case-detail-dialog'
 import { LogDownloadProgressDialog } from '../modals/log-download-progress-dialog'
 import { LogFileSelectDialog } from '../modals/log-file-select-dialog'
@@ -94,6 +95,7 @@ import { ReviewBadge } from '../review/review-badge'
 import { ManualReviewDialog } from '../review/manual-review-dialog'
 import { ReviewHistoryDrawer } from '../review/review-history-drawer'
 import { CaseDisplaySettings } from './case-display-settings'
+import { ExportCaseFilterPanel } from './export-case-filter'
 import { FilterDimensionTree } from './filter-dimension-tree'
 import { FilterTagTree } from './filter-tag-tree'
 import { MultiSelectFilter, SelectedConditionsBar } from './multi-select-filter'
@@ -121,6 +123,13 @@ type OrgDimension = 'group' | 'tag'
 
 /** 节点内 / 视图内一次加载的用例数（「加载更多（剩余 {n}）」） */
 const NODE_PAGE_SIZE = 20
+
+/** 非导出态不计算导出内筛选选项（空引用稳定，避免 memo 抖动） */
+const EMPTY_EXPORT_FILTER_DATA = {
+  groups: [] as { name: string; count: number }[],
+  tagCounts: {} as Record<string, number>,
+  metricNames: [] as string[],
+}
 
 /** 选项值兜底：真实库聚合行存在缺名项（all_metrics.name / tag_name 为空） */
 function isNonEmptyString(value: unknown): value is string {
@@ -327,6 +336,37 @@ export function SpecificCaseComparison({
   /** 算法类型码 → 中文名（真实 /algorithm/options；用例卡算法徽章，INT-1687） */
   const algorithmLabels = useAlgorithmLabels()
 
+  /**
+   * 导出内筛选面板的选项与计数（INT-2434 二轮）：页面筛选走服务端，产物没有后端——
+   * 选项来自同一份分组 / 标签 / 维度来源，计数按当前全量用例卡统计；产物内脚本据此做纯 DOM 过滤。
+   * 只在导出态计算（常规页面仍用服务端筛选卡，不让它承担全量遍历开销）。
+   */
+  const exportFilterData = useMemo(() => {
+    if (!isExporting) return EMPTY_EXPORT_FILTER_DATA
+    const groupCounts = new Map<string, number>()
+    const tagCounts: Record<string, number> = {}
+    const metricNames = new Set<string>()
+    for (const c of views.mergedCases) {
+      const category = c.category?.trim() ?? ''
+      if (category && category !== '未分类') {
+        groupCounts.set(category, (groupCounts.get(category) ?? 0) + 1)
+      }
+      for (const tag of c.tags ?? []) {
+        if (tag) tagCounts[tag] = (tagCounts[tag] ?? 0) + 1
+      }
+      for (const name of caseMetricNames(c)) metricNames.add(name)
+    }
+    const groups = [...new Set([...availableGroups, ...groupCounts.keys()])].map((name) => ({
+      name,
+      count: groupCounts.get(name) ?? 0,
+    }))
+    return {
+      groups,
+      tagCounts,
+      metricNames: [...metricNames].sort((a, b) => a.localeCompare(b, 'zh-CN')),
+    }
+  }, [isExporting, availableGroups, views.mergedCases])
+
   const [collapsed, setCollapsed] = useState(false)
   /** 显示设置 Popover 受控（叶表「未选择轮次」入口可从卡内打开，§3.3.7 兜底） */
   const [displaySettingsOpen, setDisplaySettingsOpen] = useState(false)
@@ -493,6 +533,14 @@ export function SpecificCaseComparison({
         data-export-case=''
         data-export-case-name={c.name}
         data-export-case-id={c.id}
+        // 导出内筛选 / 排序事实（产物没有后端；脚本按 data-export-case-* 做纯 DOM 过滤）
+        data-export-case-category={isExporting ? (c.category ?? '') : undefined}
+        data-export-case-desc={isExporting ? (c.description ?? '') : undefined}
+        data-export-case-tags={isExporting ? JSON.stringify(c.tags ?? []) : undefined}
+        data-export-case-metrics={isExporting ? JSON.stringify(caseMetricNames(c)) : undefined}
+        data-export-case-metric-values={
+          isExporting ? JSON.stringify(caseMetricAverages(c)) : undefined
+        }
       >
       <CaseCard
         caseItem={c}
@@ -506,6 +554,17 @@ export function SpecificCaseComparison({
             <Badge variant='outline' className='text-xs'>
               {c.category ?? '未分类'}
             </Badge>
+            {/* 导出态：用例 ID 在页面上是「点击复制」按钮（克隆时被剪），这里以内容徽章保留并可点复制 */}
+            {isExporting && (
+              <Badge
+                variant='outline'
+                className='cursor-pointer font-mono text-[11px]'
+                title='点击复制用例 ID'
+                data-export-copy-id={c.id}
+              >
+                {c.id}
+              </Badge>
+            )}
             {/* 用例视图卡头计数位：{n} 个设备·API（n > 1 才显示，§3.3.7） */}
             {leafCtx.view === 'case' && resourceCount > 1 && (
               <Badge variant='secondary' className='font-mono text-[11px] tabular-nums'>
@@ -513,7 +572,8 @@ export function SpecificCaseComparison({
               </Badge>
             )}
             {/* 卡片标记（§4.1：用例卡片头行「人工复核」Badge → 复核明细抽屉） */}
-            {isTaskReport && reviews.reviewedCases[c.id] === true && (
+            {isTaskReport && reviews.reviewedCases[c.id] === true && isExporting && <ReviewBadge />}
+            {isTaskReport && reviews.reviewedCases[c.id] === true && !isExporting && (
               <button
                 type='button'
                 className='cursor-pointer'
@@ -611,6 +671,7 @@ export function SpecificCaseComparison({
                 onRestoreDisplay={display.reset}
                 selectedRounds={selectedRounds}
                 roundsAllCleared={roundsAllCleared}
+                isExporting
               />
             </div>
           ) : expanded ? (
@@ -636,23 +697,58 @@ export function SpecificCaseComparison({
   const renderOrgLayer = (cases: ReportCaseItem[], leafCtx: LeafContext) => {
     const groups =
       org === 'tag' ? groupReportCasesByTag(cases, reportTagRegistry) : groupReportCasesByCategory(cases)
+    /**
+     * 分组头：导出态做成可点按钮（INT-2434 三轮）——产物里组头原来是死文字，除第一组外
+     * 各组只剩标题、0 卡；现在组头是 `button[data-export-group-toggle]`（aria-expanded +
+     * 展开/收起箭头），折叠状态由导出脚本接管，纯 DOM，不依赖 React 状态。
+     */
+    const renderGroupHeader = (group: ReportCaseSubGroup) => {
+      const muted = group.key === '__untagged__' || group.key === '__uncategorized__'
+      if (!isExporting) return <ReportGroupHeader group={group} muted={muted} />
+      return (
+        <button
+          type='button'
+          className='block w-full cursor-pointer text-start'
+          data-export-group-toggle=''
+          aria-expanded='true'
+          aria-label={`展开或收起分组 ${group.label}`}
+        >
+          <ReportGroupHeader
+            group={group}
+            muted={muted}
+            trailing={
+              <span data-export-group-caret='' aria-hidden='true' className='text-muted-foreground ms-auto text-xs'>
+                ▾
+              </span>
+            }
+          />
+        </button>
+      )
+    }
     const body = (list: ReportCaseItem[]) => {
       if (subView === 'flat') {
-        return <div className='space-y-2'>{list.map((c) => renderCaseCard(c, leafCtx))}</div>
+        return (
+          <div className='space-y-2' data-export-group-body={isExporting ? '' : undefined}>
+            {list.map((c) => renderCaseCard(c, leafCtx))}
+          </div>
+        )
       }
       const subgroups =
         org === 'group'
           ? groupReportCasesByTag(list, reportTagRegistry)
           : groupReportCasesByCategory(list)
       return (
-        <div className='space-y-2'>
+        <div className='space-y-2' data-export-group-body={isExporting ? '' : undefined}>
           {subgroups.map((sg) => (
-            <div key={sg.key} className='space-y-2'>
-              <ReportGroupHeader
-                group={sg}
-                muted={sg.key === '__untagged__' || sg.key === '__uncategorized__'}
-              />
-              <div className='space-y-2'>{sg.cases.map((c) => renderCaseCard(c, leafCtx))}</div>
+            <div
+              key={sg.key}
+              className='space-y-2'
+              data-export-group={isExporting ? '' : undefined}
+            >
+              {renderGroupHeader(sg)}
+              <div className='space-y-2' data-export-group-body={isExporting ? '' : undefined}>
+                {sg.cases.map((c) => renderCaseCard(c, leafCtx))}
+              </div>
             </div>
           ))}
         </div>
@@ -661,11 +757,12 @@ export function SpecificCaseComparison({
     return (
       <div className='space-y-2'>
         {groups.map((g) => (
-          <div key={g.key} className='space-y-2'>
-            <ReportGroupHeader
-              group={g}
-              muted={g.key === '__untagged__' || g.key === '__uncategorized__'}
-            />
+          <div
+            key={g.key}
+            className='space-y-2'
+            data-export-group={isExporting ? '' : undefined}
+          >
+            {renderGroupHeader(g)}
             {body(g.cases)}
           </div>
         ))}
@@ -713,7 +810,19 @@ export function SpecificCaseComparison({
             aria-hidden='true'
           />
         )}
-        {/* 筛选卡（§3.3.7：名称/分组多选/标签两级多选/评估维度三级多选/排序[按评估维度含资源+维度+升降序]） */}
+        {/* 筛选卡（§3.3.7：名称/分组多选/标签两级多选/评估维度三级多选/排序[按评估维度含资源+维度+升降序]）
+            INT-2434 二轮：导出态换成产物内可用的筛选面板（原生控件 + 纯 DOM 过滤，选项同源） */}
+        {isExporting && (
+          <ExportCaseFilterPanel
+            groups={exportFilterData.groups}
+            tagSections={taxonomy.tagSections}
+            tagCounts={exportFilterData.tagCounts}
+            dimensionSections={taxonomy.dimensionSections}
+            metricNames={exportFilterData.metricNames}
+            total={views.mergedCases.length}
+          />
+        )}
+        {!isExporting && (
         <div className='rounded-xl border p-3' data-export-hide>
           <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
             <div>
@@ -944,6 +1053,7 @@ export function SpecificCaseComparison({
             </Button>
           </div>
         </div>
+        )}
 
         {/* 三视图工具栏（筛选卡之下、已固定用例之上）：左端视图 Tabs，右端组织控件 + 显示设置 */}
         <div className='flex flex-wrap items-center gap-2 px-1' data-export-hide>
@@ -1402,10 +1512,13 @@ function StatusDot({ status, className }: { status: string; className?: string }
 function ReportGroupHeader({
   group,
   muted = false,
+  trailing,
 }: {
   group: ReportCaseSubGroup
   /** 未分类/未设置标签桶：弱化（末尾） */
   muted?: boolean
+  /** 行尾附加（导出态的展开/收起箭头） */
+  trailing?: ReactNode
 }) {
   return (
     <div
@@ -1430,9 +1543,11 @@ function ReportGroupHeader({
       <Badge
         variant='secondary'
         className='rounded-md px-1.5 font-mono text-[11px] tabular-nums'
+        data-export-group-count=''
       >
         {group.cases.length} 个用例
       </Badge>
+      {trailing}
     </div>
   )
 }
