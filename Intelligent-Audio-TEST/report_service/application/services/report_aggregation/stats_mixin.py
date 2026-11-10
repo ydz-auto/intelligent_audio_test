@@ -57,28 +57,40 @@ class _AggregationStatsMixin:
         # 1.5 维度聚合策略信息（statistic_method / agg_denominator / exclude_rounds / output_params）
         dim_strategy_info = cls._build_dim_strategy_info(all_dimensions)
 
-        # 1.6 批量查询维度评估结果（含每轮记录，供按轮次口径/排除轮次聚合）
-        # INT-1752：存在加权维度（weighted_sum_ratio / weighted_wer）时才携带
-        # api_raw_response 大字段——分子/分母从原始响应提取，不带则策略无法计算。
+        # 1.6 批量查询维度评估结果（轻量：不含原始响应），作为后续完整性基准
+        # INT-1752：存在加权维度（weighted_sum_ratio / weighted_wer）时才进一步拉取
+        # api_raw_response —— 分子/分母从原始响应提取，不带则策略无法计算。
         from report_service.domain.services.aggregation_strategies import needs_raw_response
         need_raw_body = any(
             needs_raw_response(info.get('method')) for info in dim_strategy_info.values()
         )
         res_ids = [rid for rid in (_r_get(r, 'id') for r in test_results) if rid is not None]
-        # INT-2379 C1/C4：先非 body 取全量作完整性基准，再带 body 行级合并（共用
-        # ReportDataBuilder 的合并 helper）；body 块失败只丢字段不丢行。
         base_map = _grpc_get_dim_results(res_ids, include_body=False) if res_ids else {}
         dim_results_map = base_map
-        aggregation_coverage = {}
-        if need_raw_body and res_ids:
-            from report_service.application.services.report_data_builder import ReportDataBuilder
-            dim_results_map, aggregation_coverage = (
-                ReportDataBuilder._get_dimension_results_merged(base_map, res_ids))
 
         # 1.7 统计前置过滤：用例任一维度评估状态非 completed → 该用例所有结果不参与统计
         # （对齐 V9.7.10 ReportUtils.filter_results_by_case_evaluation；filtered_case_ids
         #   保持 category/tags 过滤口径不变，仅参与统计的结果集被收窄）
+        # INT-2381 O1：过滤放在 body 拉取之前，覆盖信息按「实际参与聚合的结果集」统计，
+        # 不再把被评估过滤排除的结果误记为缺 body。
         test_results = filter_results_by_case_evaluation(test_results, dim_results_map)
+
+        # 1.8 加权维度：逐块拉取原始响应，块内提取分子/分母标量后释放（INT-2381），
+        # 沿用 INT-2379 行级合并（body 块失败只丢字段不丢行）与覆盖标记。
+        aggregation_coverage = {}
+        if need_raw_body:
+            res_ids = [rid for rid in (_r_get(r, 'id') for r in test_results) if rid is not None]
+            if res_ids:
+                from report_service.application.services.report_data_builder import ReportDataBuilder
+                output_params_by_dim = {
+                    info['dim_id']: info['output_params']
+                    for name, info in dim_strategy_info.items()
+                    if info.get('dim_id') is not None
+                    and needs_raw_response(info.get('method'))
+                }
+                dim_results_map, aggregation_coverage = (
+                    ReportDataBuilder._get_dimension_results_compressed(
+                        base_map, res_ids, output_params_by_dim))
 
         # 2. 收集维度得分并计算全局加权平均
         # INT-1752：加权策略算不出来时不再静默丢值——按 item 原始值降级为简单平均，

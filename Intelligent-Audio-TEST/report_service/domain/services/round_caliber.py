@@ -69,8 +69,9 @@ def collect_dim_items(result_id, dim_id, dim_results_map: dict, exclude_set) -> 
     取值优先级（与 V9.7.10 对齐）：
       无排除配置且整体存在 → 只取整体 1 个 item；
       有排除配置或无整体 → 取各轮独立 item（跳过被排除轮次）；否则整体兜底。
-    每项含 dimension_value / api_raw_response / test_result_id / round_count
-    （round_count = 该用例该维度有值轮次数，ratio 策略按轮次口径用）。
+    每项含 dimension_value / raw_fields / test_result_id / round_count
+    （round_count = 该用例该维度有值轮次数，ratio 策略按轮次口径用；
+    INT-2381：raw_fields 是块内从 api_raw_response 提取的标量，item 不再携带原始响应）。
 
     口径留档（INT-614）：round_count 取「有值轮次数」而非 V9.7.10 的「用例配置轮次数」
     （_get_dimension_configured_rounds，读取 test_case.config.rounds）。本实现与设计文档
@@ -94,7 +95,7 @@ def collect_dim_items(result_id, dim_id, dim_results_map: dict, exclude_set) -> 
             continue
         item = {
             'dimension_value': dr_val,
-            'api_raw_response': dr.get('api_raw_response'),
+            'raw_fields': dr.get('raw_fields'),
             'test_result_id': result_id,
         }
         if dr_round is None:

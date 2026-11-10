@@ -136,7 +136,8 @@ class MetricsMixin:
                     })
 
         # 收集需要聚合的 items: {dim_name: {group_key: {resource: [items]}}}
-        # 每个 item 是 {dimension_value, api_raw_response, test_result_id}
+        # 每个 item 是 {dimension_value, raw_fields, test_result_id}
+        # （INT-2381：raw_fields 为块内从 api_raw_response 提取的标量，item 不带原始响应）
         category_agg_items = {}
         tag_agg_items = {}
         # resource 级别累加器（不按 category 分组，与 device_stats 口径一致）
@@ -276,7 +277,7 @@ class MetricsMixin:
                     ) if agg_info else []
                     if not items and (not dim_results_map or result_id not in dim_results_map):
                         # 无维度结果映射（如对比报告 dim_results_map=None）时回退用例级值 1 个 item
-                        items = [{'dimension_value': score, 'api_raw_response': None,
+                        items = [{'dimension_value': score, 'raw_fields': None,
                                   'test_result_id': result_id, 'round_count': 0}]
                     category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).extend(items)
                     resource_agg_items.setdefault(dim_name, {}).setdefault(resource, []).extend(items)

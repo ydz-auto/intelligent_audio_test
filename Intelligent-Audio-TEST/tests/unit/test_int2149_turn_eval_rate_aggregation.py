@@ -101,8 +101,11 @@ def test_ratio_overcounts_case_rate_without_round_rows():
     def item(case_id, rate, num, den, round_count):
         return {
             'dimension_value': rate,
-            'api_raw_response': {'turn_classification': {
-                'normal_takeover_count': num, 'total_turns': den}},
+            # INT-2381：聚合 item 只携带块内提取的标量，不再带整份 api_raw_response
+            'raw_fields': {'present': True, 'values': {
+                'turn_classification.normal_takeover_count': num,
+                'turn_classification.total_turns': den,
+            }},
             'test_result_id': case_id,
             'round_count': round_count,
         }

@@ -18,6 +18,7 @@ from report_service.infrastructure.clients.grpc_clients import (
     # ---- EvaluationDataService：维度评估结果查询 ----
     _grpc_get_dimension_results_by_result_ids,
     _grpc_get_dimension_results_with_body,
+    _grpc_iter_dimension_results_with_body,
     # ---- EvaluationConfigService：维度配置查询 ----
     _grpc_list_dimensions_all,
     _grpc_get_dimension_by_ids,
@@ -68,6 +69,7 @@ __all__ = [
     # EvaluationDataService
     '_grpc_get_dimension_results_by_result_ids',
     '_grpc_get_dimension_results_with_body',
+    '_grpc_iter_dimension_results_with_body',
     # EvaluationConfigService
     '_grpc_list_dimensions_all',
     '_grpc_get_dimension_by_ids',

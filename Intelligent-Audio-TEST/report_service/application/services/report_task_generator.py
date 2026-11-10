@@ -657,11 +657,14 @@ class ReportTaskGenerator:
         # 首次拉取不带 body 是为了先确定维度集合（维度列表由维度结果推导，鸡生蛋）。
         # INT-2379 C1：二次拉取结果按行合并进首次完整 map，任何 body 块失败都不得删行；
         # C2：覆盖信息随聚合说明标注到 all_metrics 指标项。
+        # INT-2381：改为逐块拉取 + 块内提取标量，原始响应不再整份常驻（峰值只与单块相关）。
         from report_service.domain.services.aggregation_strategies import needs_raw_response
         aggregation_coverage = {}
         if any(needs_raw_response(_dim_statistic_method(d)) for d in all_dimensions):
             dim_results_map, aggregation_coverage = (
-                ReportDataBuilder._get_dimension_results_merged(dim_results_map, res_ids))
+                ReportDataBuilder._get_dimension_results_compressed(
+                    dim_results_map, res_ids,
+                    ReportDataBuilder._load_raw_field_params(all_dimensions)))
 
         test_cases, test_case_ids = ReportDataBuilder._get_task_test_cases(task_ids_for_query)
         devices_list, apis_list, device_ids, api_ids = ReportDataBuilder._get_task_resources(task_ids_for_query)

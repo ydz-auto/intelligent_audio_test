@@ -30,8 +30,14 @@ logger = logging.getLogger(__name__)
 # 被 RESOURCE_EXHAUSTED 拦下后旧实现整个返回 {}，加权维度（weighted_sum_ratio /
 # weighted_wer）静默降级为简单平均。按块拉取把单条响应压在上限内；
 # 单块仍超限时再二分（见 _call_with_shrink），直到单条为止。
+#
+# INT-2381：值同时是聚合链的峰值旋钮——逐块 yield 后峰值 ≈ 单块原始响应 +
+# 解析副本，随每块结果数线性放大（402 实测约 +44MB/条，见设计文档 §3.9.1）。
+# 默认 4 是「cgroup ≤ 600MB 且 RSS ≤ 500MB」达标前提下最大的块（402 查询实测
+# chunk=4 → cgroup 421MB / RSS 448MB；chunk=8 → 665MB / 687MB 已超）。块越大
+# 往返越少但峰值越高，调大前先按 §3.9.1 的表复测。
 _DIM_RESULT_BODY_CHUNK_SIZE = max(
-    int(_os.getenv('REPORT_DIM_RESULT_BODY_CHUNK_SIZE', '16')), 1)
+    int(_os.getenv('REPORT_DIM_RESULT_BODY_CHUNK_SIZE', '4')), 1)
 
 
 def _attach(dto, payload):
@@ -100,19 +106,19 @@ class EvaluationDataAclRepositoryImpl(EvaluationDataAclRepository):
                     merged.setdefault(rid, []).extend(rows)
             return merged
 
-    def _collect_body_map(self, ids, use_gate: bool):
-        """按块拉取带 body 的维度结果，返回 (map, failed_chunks, dropped_ids)。
+    def _iter_body_chunks(self, requested, use_gate: bool):
+        """逐块拉取带 body 的维度结果，产 (chunk_map, chunk_coverage)。
 
         INT-2379 C3：非超限失败（如服务端 success=False / 瞬断）的块先重试 1 次，
-        OSS 瞬断可自愈；仍失败才记入 failed_chunks，由上层保留基础行并打标记。
+        OSS 瞬断可自愈；仍失败才记入该块 failed_chunks，由上层保留基础行并打标记。
+        INT-2381：改为生成器形态——调用方拿到一块即可提取标量并释放，原始响应
+        不再整份常驻；峰值只与 _DIM_RESULT_BODY_CHUNK_SIZE 单块相关。
         """
-        result_map: Dict[int, List[DimensionResultDTO]] = {}
-        failed_chunks = []
-        dropped_ids = []
-
-        def _run():
-            for start in range(0, len(ids), _DIM_RESULT_BODY_CHUNK_SIZE):
-                chunk = ids[start:start + _DIM_RESULT_BODY_CHUNK_SIZE]
+        def _iter():
+            for start in range(0, len(requested), _DIM_RESULT_BODY_CHUNK_SIZE):
+                chunk = requested[start:start + _DIM_RESULT_BODY_CHUNK_SIZE]
+                failed_chunks = []
+                dropped_ids = []
                 try:
                     part = self._call_with_shrink(
                         chunk, True, dropped_ids=dropped_ids)
@@ -128,17 +134,23 @@ class EvaluationDataAclRepositoryImpl(EvaluationDataAclRepository):
                             "get_dimension_results_with_body chunk [%s:%s] failed "
                             "after retry: %s", start, start + len(chunk), e2)
                         failed_chunks.append((start, start + len(chunk), str(e2)))
-                        continue
-                for rid, rows in part.items():
-                    result_map.setdefault(rid, []).extend(rows)
+                        part = {}
+                covered_ids = [rid for rid in chunk if rid in part]
+                yield part, {
+                    'requested_ids': chunk,
+                    'covered_ids': covered_ids,
+                    'failed_chunks': failed_chunks,
+                    'dropped_ids': list(dropped_ids),
+                }
 
-        if use_gate:
-            # INT-2379 C6：大体量 include_body 拉取串行化，避免并发叠加峰值
-            with heavy_include_body_aggregation():
-                _run()
-        else:
-            _run()
-        return result_map, failed_chunks, dropped_ids
+        if not use_gate:
+            yield from _iter()
+            return
+        # INT-2379 C6：大体量 include_body 拉取串行化，避免并发叠加峰值。
+        # INT-2381 后峰值已降到单块量级，护栏保留为过渡保护：拉取窗口内串行、
+        # 等待上限与放行语义不变（REPORT_INCLUDE_BODY_GATE_TIMEOUT，默认 20s）。
+        with heavy_include_body_aggregation():
+            yield from _iter()
 
     def get_dimension_results_by_result_ids(
         self, result_ids, include_body: bool = False,
@@ -156,18 +168,31 @@ class EvaluationDataAclRepositoryImpl(EvaluationDataAclRepository):
 
         # 详情入口（按用例+维度按需展开）只取小块，不进大体量聚合护栏，避免被
         # 长批量聚合排队阻塞；覆盖信息由 get_dimension_results_with_body 提供。
-        result_map, _, _ = self._collect_body_map(ids, use_gate=False)
+        result_map: Dict[int, List[DimensionResultDTO]] = {}
+        for part, _coverage in self._iter_body_chunks(ids, use_gate=False):
+            for rid, rows in part.items():
+                result_map.setdefault(rid, []).extend(rows)
         return result_map
 
     def get_dimension_results_with_body(
         self, result_ids,
     ) -> DimensionResultsWithBody:
-        """带原始响应拉取维度结果，上抛覆盖信息（INT-2379 C2/C3/C6）。"""
+        """带原始响应拉取维度结果，上抛覆盖信息（INT-2379 C2/C3/C6）。
+
+        整份 map 形态（用于小体量/兼容调用）；报告聚合请用
+        iter_dimension_results_with_body 逐块消费。
+        """
         if not result_ids:
             return DimensionResultsWithBody({}, [], [], [], [])
         requested = list(dict.fromkeys(result_ids))
-        result_map, failed_chunks, dropped_ids = self._collect_body_map(
-            requested, use_gate=True)
+        result_map: Dict[int, List[DimensionResultDTO]] = {}
+        failed_chunks = []
+        dropped_ids = []
+        for part, coverage in self.iter_dimension_results_with_body(requested):
+            for rid, rows in part.items():
+                result_map.setdefault(rid, []).extend(rows)
+            failed_chunks.extend(coverage['failed_chunks'])
+            dropped_ids.extend(coverage['dropped_ids'])
         covered = [rid for rid in requested if rid in result_map]
         return DimensionResultsWithBody(
             dim_map=result_map,
@@ -176,6 +201,13 @@ class EvaluationDataAclRepositoryImpl(EvaluationDataAclRepository):
             failed_chunks=failed_chunks,
             dropped_ids=list(dropped_ids),
         )
+
+    def iter_dimension_results_with_body(self, result_ids):
+        """逐块产出 (chunk_map, chunk_coverage)（INT-2381）。"""
+        requested = list(dict.fromkeys(result_ids or []))
+        if not requested:
+            return
+        yield from self._iter_body_chunks(requested, use_gate=True)
 
 
 class EvaluationConfigAclRepositoryImpl(EvaluationConfigAclRepository):

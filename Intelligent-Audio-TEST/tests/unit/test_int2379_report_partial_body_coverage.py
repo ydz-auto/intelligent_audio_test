@@ -123,7 +123,8 @@ def _base_map(ids, dim_id=84):
 def _long_items(ids, with_body_ids):
     return [
         {'dimension_value': 1.0, 'test_result_id': rid,
-         'api_raw_response': _raw() if rid in with_body_ids else None}
+         'raw_fields': ({'present': True, 'values': {'errors': 1, 'length': 100}}
+                        if rid in with_body_ids else None)}
         for rid in ids
     ]
 
@@ -362,32 +363,30 @@ class TestQueryChainResponse:
 # ---------------- C6 并发护栏 ----------------
 
 class TestAggregationGate:
-    def test_concurrent_merges_are_serialized_and_identical(self, monkeypatch):
-        """A9：并发两个大体量聚合不并发执行，响应内容不变。"""
+    def test_concurrent_compression_serialized_and_identical(self, patch_stub, monkeypatch):
+        """A9：并发两个大体量聚合不并发执行；INT-2381 后块内压缩结果等价且无原始响应常驻。"""
         state = {'active': 0, 'peak': 0}
         lock = threading.Lock()
 
-        def _slow_fetch(ids):
-            with lock:
-                state['active'] += 1
-                state['peak'] = max(state['peak'], state['active'])
-            try:
-                time.sleep(0.2)
-                return ({rid: [{'test_result_id': rid, 'dimension_id': 84,
-                                'round_number': None, 'dimension_value': 1.0,
-                                'api_raw_response': _raw()}] for rid in ids},
-                        {'failed_chunks': [], 'dropped_ids': []})
-            finally:
+        class _SlowStub(_BodyStub):
+            def GetDimensionResultsByResultIds(self, request):
                 with lock:
-                    state['active'] -= 1
+                    state['active'] += 1
+                    state['peak'] = max(state['peak'], state['active'])
+                try:
+                    time.sleep(0.2)
+                    return super().GetDimensionResultsByResultIds(request)
+                finally:
+                    with lock:
+                        state['active'] -= 1
 
-        monkeypatch.setattr(builder_mod, '_grpc_get_dim_results_with_body', _slow_fetch)
+        patch_stub(_SlowStub())
         base = _base_map([1, 2, 3])
         results = []
 
         def _run():
-            results.append(builder_mod.ReportDataTaskMixin._get_dimension_results_merged(
-                base, [1, 2, 3]))
+            results.append(builder_mod.ReportDataTaskMixin._get_dimension_results_compressed(
+                base, [1, 2, 3], {84: _PARAMS}))
 
         threads = [threading.Thread(target=_run) for _ in range(2)]
         for t in threads:
@@ -397,5 +396,12 @@ class TestAggregationGate:
 
         assert len(results) == 2
         assert state['peak'] == 1                      # 串行执行
-        assert results[0][0] == results[1][0]          # 响应内容不变
-        assert all(row.get('api_raw_response') for row in results[0][0][1])
+        merged_a, cov_a = results[0]
+        merged_b, cov_b = results[1]
+        assert merged_a == merged_b                    # 压缩结果内容不变
+        assert cov_a == cov_b
+        for rows in merged_a.values():
+            for row in rows:
+                assert row.get('api_raw_response') is None
+                assert row['raw_fields']['present'] is True
+                assert row['raw_fields']['values']['errors'] == 1

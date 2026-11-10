@@ -36,18 +36,17 @@ class ReportSecondaryDataMixin:
         # 否则载荷不变；带 body 后加权策略可按分子/分母真实计算。
         # INT-2379 C4：先非 body 取全量作完整性基准，再带 body 按行合并（共用同一
         # helper，不另写一份逻辑）；body 块失败只丢字段不丢行。
+        # INT-2381：body 逐块拉取、块内提取标量后释放，峰值只与单块相关。
         need_raw_body = any(
             needs_raw_response(_dim_statistic_method(d)) for d in all_dimensions)
-        base_map, _ = ReportDataBuilder._get_dimension_results_batch(
-            res_ids, include_body=False)
+        base_map, _ = ReportDataBuilder._get_dimension_results_batch(res_ids)
         dim_results_map = base_map
         aggregation_coverage = {}
-        if need_raw_body:
-            body_map, _ = ReportDataBuilder._get_dimension_results_batch(
-                res_ids, include_body=True)
+        if need_raw_body and res_ids:
             dim_results_map, aggregation_coverage = (
-                ReportDataBuilder._get_dimension_results_merged(
-                    base_map, res_ids, body_map=body_map))
+                ReportDataBuilder._get_dimension_results_compressed(
+                    base_map, res_ids,
+                    ReportDataBuilder._load_raw_field_params(all_dimensions)))
 
         tasks_map = {}
         for t in tasks:

@@ -7,9 +7,9 @@
 - _get_resource_result_types_batch / _extract_result_type: 批量提取资源结果类型
 """
 import json
+import logging
 
 from shared.models.common_enums import TaskStatus
-from shared.utils.aggregation_gate import heavy_include_body_aggregation
 from shared.utils.response import error_response
 from shared.utils.result_data_store import load_full_result_data
 
@@ -17,9 +17,13 @@ from report_service.application.services.dimension_body_merge import (
     build_coverage,
     merge_body_into_base,
 )
+from report_service.domain.services.aggregation_strategies import (
+    extract_raw_fields,
+    needs_raw_response,
+)
 from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_dimension_results_by_result_ids as _grpc_get_dim_results,
-    _grpc_get_dimension_results_with_body as _grpc_get_dim_results_with_body,
+    _grpc_iter_dimension_results_with_body,
     _grpc_get_dimension_params,
     _grpc_get_task_case_ids,
     _grpc_get_test_results_by_task_ids,
@@ -28,7 +32,11 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_task_merge_relations,
     _grpc_get_task_merge_relations_by_source,
     _grpc_get_tasks_by_ids,
+    _dim_id,
+    _dim_statistic_method,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ReportDataTaskMixin:
@@ -125,23 +133,16 @@ class ReportDataTaskMixin:
         return list(leaf_ids)
 
     @staticmethod
-    def _get_dimension_results_batch(result_ids, include_body=False):
-        """批量查询维度评估结果。
+    def _get_dimension_results_batch(result_ids):
+        """批量查询维度评估结果（轻量：不携带原始响应）。
 
-        Args:
-            include_body: INT-1752 —— 是否携带 api_request_body / api_raw_response。
-                报告生成链在存在加权维度（weighted_sum_ratio / weighted_wer）时二次
-                拉取带 body 的结果，供策略提取分子/分母；默认不携带以控制载荷。
+        INT-2381：原始响应只经 _get_dimension_results_compressed 逐块拉取并在
+        块内提取，本方法不再提供 include_body 形态，避免整份 body map 常驻。
         """
         if not result_ids:
             return {}, []
 
-        if include_body:
-            # INT-2379：带 body 的分批拉取统一走覆盖接口（内部有 C6 串行护栏、
-            # 失败块重试与覆盖信息）；此处只要 map，覆盖信息由调用方另行合并获取。
-            dim_map, _ = _grpc_get_dim_results_with_body(result_ids)
-        else:
-            dim_map = _grpc_get_dim_results(result_ids, include_body=False)
+        dim_map = _grpc_get_dim_results(result_ids, include_body=False)
 
         dim_results_map = {}
         dim_stats = {}
@@ -171,29 +172,103 @@ class ReportDataTaskMixin:
         return dim_results_map, dim_stats
 
     @staticmethod
-    def _get_dimension_results_merged(base_map, result_ids, body_map=None,
-                                      acl_coverage=None):
-        """带 body 拉取并按行合并进基础 map（INT-2379 C1/C2/C4 共用 helper）。
+    def _load_raw_field_params(all_dimensions):
+        """加权维度的 output 参数（dim_id -> [param, ...]），供块内标量提取。"""
+        params_by_dim = {}
+        for dim in all_dimensions or []:
+            if not needs_raw_response(_dim_statistic_method(dim)):
+                continue
+            dim_id = _dim_id(dim)
+            if dim_id is None:
+                continue
+            try:
+                params = _grpc_get_dimension_params(dim_id) or []
+            except Exception as e:  # noqa: BLE001 —— 取不到参数时按策略默认路径提取
+                logger.warning(
+                    "load output params for weighted dimension %s failed: %s", dim_id, e)
+                params = []
+            params_by_dim[dim_id] = [
+                p for p in params
+                if isinstance(p, dict) and p.get('param_direction') == 'output'
+            ]
+        return params_by_dim
+
+    @staticmethod
+    def _get_dimension_results_compressed(base_map, result_ids, output_params_by_dim=None):
+        """逐块拉取带 body 的维度结果，块内提取标量后立即释放原始响应（INT-2381）。
+
+        旧的「整份 body map 常驻 + 行级合并」在真实任务 402/407 上峰值 ~2.7GB
+        （docker VM 6GB 共享 13 服务）。本方法沿用 INT-2379 的行级合并（I1：key
+        集合与基础 map 一致；body 失败只丢字段不丢行），但每块拿到后：
+          1. 按行合并进基础 map 的行（取值列仍以基础 map 为准）；
+          2. 每行调用 extract_raw_fields 把 api_raw_response 压成 raw_fields 标量；
+          3. 丢弃原始响应，只保留压缩后的行。
+        因此峰值 = 基础 map + 单块原始响应，与总结果数无关。
 
         Args:
-            base_map: 首次非 body 拉取的完整结果 {result_id: [row, ...]}，
-                作为完整性基准；任何 body 块失败都不得删行。
-            result_ids: 本次参与聚合的 result_id 列表。
-            body_map: 已带 body 拉取的结果（二次对比链复用本函数时传入）；
-                None 时本函数经 ACL 覆盖接口自行拉取。
-            acl_coverage: 与 body_map 配套的 ACL 覆盖信息（可选）。
+            base_map: 非 body 拉取的完整结果 {result_id: [row, ...]}（完整性基准）
+            result_ids: 本次参与聚合的 result_id 列表
+            output_params_by_dim: {dimension_id: [output_param, ...]}，加权维度需要
+                提取的 field_path 来源；缺省时用加权策略默认路径 errors / length
 
         Returns:
-            (merged_map, coverage)
-            merged_map：key 集合与 base_map 完全一致，body 行逐行覆盖字段；
-            coverage：{requested, covered, missing, missing_total, failed_chunks,
-                       dropped_ids, reason, ...}
+            (compressed_map, coverage)
+            compressed_map：行集合与基础 map 一致，行内不再含 api_raw_response，
+                只带 raw_fields（{present, values} 或 None）；
+            coverage：沿用 INT-2379 C2 结构（requested/covered/missing/
+                missing_total/failed_chunks/dropped_ids/rows_without_body/total_rows/reason）
         """
-        with heavy_include_body_aggregation():
-            if body_map is None:
-                body_map, acl_coverage = _grpc_get_dim_results_with_body(result_ids)
-            merged, stats = merge_body_into_base(base_map, body_map)
-        return merged, build_coverage(acl_coverage, stats)
+        base_map = base_map or {}
+        params_by_dim = output_params_by_dim or {}
+        requested = list(dict.fromkeys(result_ids or []))
+        # 只拷贝行列表，行 dict 在块内由 merge_body_into_base 复制后替换
+        compressed = {rid: list(rows) for rid, rows in base_map.items()}
+        failed_chunks = []
+        dropped_ids = []
+        matched_ids = []
+        missing_ids = []
+        total_rows = body_rows_applied = rows_without_body = ignored_body_rows = 0
+
+        for chunk_map, chunk_coverage in _grpc_iter_dimension_results_with_body(requested):
+            failed_chunks.extend(chunk_coverage.get('failed_chunks') or [])
+            dropped_ids.extend(chunk_coverage.get('dropped_ids') or [])
+            # 失败块也必须按基础行参与合并，才能记成 missing（而不是静默消失）
+            chunk_ids = [rid for rid in (chunk_coverage.get('requested_ids') or [])
+                         if rid in compressed]
+            sub_base = {rid: compressed[rid] for rid in chunk_ids}
+            merged, stats = merge_body_into_base(sub_base, chunk_map)
+
+            for rid, rows in merged.items():
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    # 聚合只需要原始响应里的标量；请求报文与原始响应同量级，
+                    # 一并丢弃（否则整份 body 仍随行常驻，压缩失效）。
+                    raw_response = row.pop('api_raw_response', None)
+                    row.pop('api_request_body', None)
+                    row['raw_fields'] = extract_raw_fields(
+                        raw_response, params_by_dim.get(row.get('dimension_id')))
+                compressed[rid] = rows
+
+            total_rows += stats['total_rows']
+            body_rows_applied += stats['body_rows_applied']
+            rows_without_body += stats['rows_without_body']
+            ignored_body_rows += stats['ignored_body_rows']
+            matched_ids.extend(stats['matched_result_ids'])
+            missing_ids.extend(stats['missing_result_ids'])
+
+        coverage = build_coverage(
+            {'failed_chunks': failed_chunks, 'dropped_ids': dropped_ids},
+            {
+                'total_rows': total_rows,
+                'body_rows_applied': body_rows_applied,
+                'rows_without_body': rows_without_body,
+                'ignored_body_rows': ignored_body_rows,
+                'matched_result_ids': matched_ids,
+                'missing_result_ids': missing_ids,
+            },
+        )
+        return compressed, coverage
 
     @staticmethod
     def _get_resource_result_types_batch(task_id_or_ids, device_ids, api_ids):

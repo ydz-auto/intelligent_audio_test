@@ -54,15 +54,24 @@ def _raw(errors, length):
     return {'code': 0, 'data': {'result': {'errors': errors, 'length': length}}}
 
 
+def _raw_fields(errors, length):
+    """INT-2381：聚合 item/行只携带块内提取的标量 raw_fields。"""
+    return {'present': True, 'values': {'errors': errors, 'length': length}}
+
+
 def _dim_results_map(with_raw=True):
-    """两条结果：WER 加权值 = (1+9)/(100+100)*100 = 5.0；简单平均 = (10+20)/2 = 15.0。"""
+    """两条结果：WER 加权值 = (1+9)/(100+100)*100 = 5.0；简单平均 = (10+20)/2 = 15.0。
+
+    INT-2381：dim_results_map 已由逐块提取压缩，行内不再有 api_raw_response，
+    只带 raw_fields。
+    """
     def _item(errors, length, rid):
         return {
             'dimension_id': 9,
             'dimension_value': 10.0 if rid == 1 else 20.0,
             'round_number': None,
             'test_result_id': rid,
-            'api_raw_response': _raw(errors, length) if with_raw else None,
+            'raw_fields': _raw_fields(errors, length) if with_raw else None,
         }
 
     return {
@@ -113,8 +122,8 @@ def _report_chain(dim_results_map):
 class TestWeightedStrategy:
     def test_weighted_value_differs_from_simple_average_with_raw_response(self):
         items = [
-            {'dimension_value': 10.0, 'api_raw_response': _raw(1, 100), 'test_result_id': 1},
-            {'dimension_value': 20.0, 'api_raw_response': _raw(9, 100), 'test_result_id': 2},
+            {'dimension_value': 10.0, 'raw_fields': _raw_fields(1, 100), 'test_result_id': 1},
+            {'dimension_value': 20.0, 'raw_fields': _raw_fields(9, 100), 'test_result_id': 2},
         ]
         params = _output_params()
         weighted = WeightedSumRatioStrategy().aggregate(items, output_params=params)
@@ -126,8 +135,8 @@ class TestWeightedStrategy:
 
     def test_strategy_returns_none_without_raw_response(self):
         items = [
-            {'dimension_value': 10.0, 'api_raw_response': None, 'test_result_id': 1},
-            {'dimension_value': 20.0, 'api_raw_response': None, 'test_result_id': 2},
+            {'dimension_value': 10.0, 'raw_fields': None, 'test_result_id': 1},
+            {'dimension_value': 20.0, 'raw_fields': None, 'test_result_id': 2},
         ]
         assert WeightedSumRatioStrategy().aggregate(items, output_params=_output_params()) is None
 
@@ -628,16 +637,22 @@ def _patch_compare_helpers():
     ]
 
 
-def _patch_secondary_helpers(all_dimensions, all_metrics, batch):
+def _patch_secondary_helpers(all_dimensions, all_metrics, batch, compressed=None):
     from report_service.application.services.report_compare_helpers import ReportCompareHelpers
     from report_service.application.services.report_data_builder import ReportDataBuilder
 
+    if compressed is None:
+        def compressed(base_map, result_ids, output_params_by_dim=None):
+            return base_map, {}
     return _patch_compare_helpers() + [
         patch.object(ReportCompareHelpers, '_collect_all_resources',
                      return_value=(_results(), ['DevA'], [], [], [1], [], None)),
         patch.object(ReportCompareHelpers, '_build_all_dimensions',
                      return_value=(all_dimensions, all_metrics, None)),
         patch.object(ReportDataBuilder, '_get_dimension_results_batch', side_effect=batch),
+        patch.object(ReportDataBuilder, '_get_dimension_results_compressed',
+                     side_effect=compressed),
+        patch.object(ReportDataBuilder, '_load_raw_field_params', return_value={}),
         patch.object(ReportDataBuilder, '_get_task_test_cases', return_value=([], [])),
         patch.object(ReportCompareHelpers, '_get_source_cases_from_reports', return_value=[{'name': 'c1'}]),
         patch.object(ReportCompareHelpers, '_build_comparison_matrix_secondary', return_value={}),
@@ -674,7 +689,8 @@ class TestComparisonChainDegradationMarking:
         assert wer['applied_method'] == 'average'
         assert 'aggregation_degraded' not in _compare_metric(data_dict, '准确率')
 
-    def test_secondary_chain_requests_raw_body_when_weighted_dimension(self):
+    def test_secondary_chain_compresses_raw_body_when_weighted_dimension(self):
+        """INT-2381：有加权维度时走逐块提取压缩，原始响应不整份常驻。"""
         from report_service.application.services.report_compare_generator_secondary_mixin import (
             ReportSecondaryDataMixin,
         )
@@ -682,19 +698,25 @@ class TestComparisonChainDegradationMarking:
 
         captured = {}
 
-        def _fake_batch(result_ids, include_body=False):
-            captured['include_body'] = include_body
+        def _fake_batch(result_ids):
+            return _dim_results_map(with_raw=False), {}
+
+        def _fake_compressed(base_map, result_ids, output_params_by_dim=None):
+            captured['compressed'] = True
+            captured['result_ids'] = list(result_ids)
             return _dim_results_map(with_raw=False), {}
 
         metrics = [{'id': 1, 'name': '准确率'}, {'id': 9, 'name': 'WER'}]
         with ExitStack() as stack:
-            for p in _patch_secondary_helpers(_dims(), metrics, _fake_batch) + _patch_grpc():
+            for p in _patch_secondary_helpers(_dims(), metrics, _fake_batch,
+                                              _fake_compressed) + _patch_grpc():
                 stack.enter_context(p)
             data_dict, error = ReportSecondaryDataMixin._prepare_secondary_data(
                 [1, 2], [], [_compare_task()], [412])
 
         assert error is None
-        assert captured['include_body'] is True
+        assert captured.get('compressed') is True
+        assert captured['result_ids'] == [1, 2]
         # 原始响应缺失 → 加权降级并打标
         wer = _compare_metric(data_dict, 'WER')
         assert wer['aggregation_degraded'] is True
@@ -708,20 +730,23 @@ class TestComparisonChainDegradationMarking:
 
         captured = {}
 
-        def _fake_batch(result_ids, include_body=False):
-            captured['include_body'] = include_body
+        def _fake_batch(result_ids):
             return {}, {}
+
+        def _fake_compressed(base_map, result_ids, output_params_by_dim=None):
+            captured['compressed'] = True
+            return base_map, {}
 
         avg_only = [{'id': 1, 'name': '准确率', 'statistic_method': 'average',
                      'agg_denominator': 'case', 'exclude_rounds': []}]
         with ExitStack() as stack:
             for p in _patch_secondary_helpers(avg_only, [{'id': 1, 'name': '准确率'}],
-                                              _fake_batch) + _patch_grpc():
+                                              _fake_batch, _fake_compressed) + _patch_grpc():
                 stack.enter_context(p)
             data_dict, error = ReportSecondaryDataMixin._prepare_secondary_data(
                 [1, 2], [], [_compare_task()], [412])
 
         assert error is None
-        assert captured['include_body'] is False       # 无加权维度时载荷不变
+        assert 'compressed' not in captured        # 无加权维度时不拉原始响应
         assert all('aggregation_degraded' not in m for m in data_dict['all_metrics'])
 
