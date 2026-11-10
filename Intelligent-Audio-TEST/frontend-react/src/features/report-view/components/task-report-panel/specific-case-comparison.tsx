@@ -611,6 +611,7 @@ export function SpecificCaseComparison({
                 onRestoreDisplay={display.reset}
                 selectedRounds={selectedRounds}
                 roundsAllCleared={roundsAllCleared}
+                isExporting
               />
             </div>
           ) : expanded ? (

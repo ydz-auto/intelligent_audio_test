@@ -88,9 +88,13 @@ const REMOVE_SELECTORS = [
   'noscript',
 ]
 
-/** 克隆后仍保留的按钮：分区折叠触发器 + 用例「展开详情」（导出脚本接管其交互） */
+/**
+ * 克隆后仍保留的按钮：分区折叠触发器 + 用例「展开详情」+ 导出内 Tab（导出脚本接管其交互）。
+ * Tab 一律由组件在导出态打 `data-export-tab` 白名单标记（INT-2434：不再按 role/aria-label 兜规则——
+ * 旧规则把轮次 / 维度 / 目标三类 Tab 一网打尽，产物里 tablist 只剩空壳）。
+ */
 const KEEP_BUTTON_SELECTOR =
-  '[data-slot="collapsible-trigger"], button[aria-label="展开详情"], button[aria-label="收起详情"]'
+  '[data-slot="collapsible-trigger"], button[aria-label="展开详情"], button[aria-label="收起详情"], [data-export-tab]'
 
 /**
  * 文本型按钮：按钮本身是操作入口，但文字是页面内容（表头资源名 / 分组名 / 维度卡片标题）。
@@ -318,6 +322,25 @@ img { max-width: 100%; height: auto; }
 }
 [data-export-case-toolbar] button:disabled { opacity: 0.45; cursor: not-allowed; }
 [data-export-case-pageinfo] { font-size: 12px; color: #6b7280; margin-inline-start: auto; }
+/* 本页目录（INT-2434：产物内锚点导航） */
+[data-export-toc] {
+  margin: 0 0 20px; padding: 10px 14px;
+  border: 1px solid #e5e7eb; border-radius: 12px; background: #f8fafc;
+}
+[data-export-toc-title] { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: #4b5563; }
+[data-export-toc-list] {
+  display: flex; flex-wrap: wrap; gap: 6px 14px;
+  margin: 0; padding: 0; list-style: none;
+}
+[data-export-toc-link] { font-size: 12px; color: #2563eb; text-decoration: none; }
+[data-export-toc-link]:hover { text-decoration: underline; }
+/* 导出内 Tab（轮次 / 评估维度 / 设备·API，INT-2434）：选中态只由 aria-selected 决定 */
+[data-export-tab] { cursor: pointer; }
+[data-export-tab][aria-selected="true"] { background: #2563eb; color: #ffffff; }
+[data-export-tab][aria-selected="false"] { background: transparent; color: #6b7280; }
+/* 用例详情展开入口：图标 + 可见文字（原来只有图标，看不出可点） */
+[data-export-case-toggle] { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+[data-export-case-toggle-label] { white-space: nowrap; }
 @media print {
   [data-export-case-toolbar] { display: none !important; }
   section { break-inside: avoid; }
@@ -377,6 +400,11 @@ export function buildStaticClone(
   // 5) 纯标题分区（总览 / 对比表格）包一层可折叠面板
   prepareHeadingSections(clone)
 
+  // 5.5) 本页目录（INT-2434）：页面上「本页目录」是 React 状态驱动的右导航 <aside>，
+  //      克隆时整块删除，产物里没有目录；这里按产物内分区重生成锚点导航，
+  //      单份与批量（离屏宿主不渲染右导航）走同一条管线自动一致。
+  buildExportToc(clone)
+
   // 6) 用例分页 / 搜索 / 详情折叠
   const caseCount = prepareCases(clone, pageSize)
 
@@ -432,6 +460,56 @@ function prepareHeadingSections(clone: HTMLElement): void {
   })
 }
 
+/** 分区标题里由脚本加的折叠箭头（不得进目录文案） */
+const SECTION_CARET_PATTERN = /[▾▸]/g
+
+/** 取分区标题文案：h1~h4 → Collapsible 触发器 → aria-label → id 兜底 */
+function sectionLabel(section: HTMLElement): string {
+  const heading = section.querySelector('h1, h2, h3, h4')
+  const trigger = section.querySelector('[data-slot="collapsible-trigger"]')
+  const raw =
+    (heading?.textContent ?? '') ||
+    (trigger?.textContent ?? '') ||
+    section.getAttribute('aria-label') ||
+    section.id
+  return raw.replace(SECTION_CARET_PATTERN, '').replace(/\s+/g, ' ').trim() || section.id
+}
+
+/**
+ * 产物「本页目录」：按产物内 `section[id]` 生成锚点导航（INT-2434）。
+ * 锚点与分区 id 一一对应（同一次克隆里收集 → 不会出现死锚点），`file://` 下点击即跳转。
+ */
+export function buildExportToc(clone: HTMLElement): HTMLElement | null {
+  if (clone.querySelector('nav[aria-label="本页目录"]')) {
+    return clone.querySelector('nav[aria-label="本页目录"]')
+  }
+  const sections = Array.from(clone.querySelectorAll<HTMLElement>('section[id]')).filter(
+    (section) => Boolean(section.id)
+  )
+  if (sections.length === 0) return null
+
+  const nav = document.createElement('nav')
+  nav.setAttribute('aria-label', '本页目录')
+  nav.setAttribute('data-export-toc', '')
+  const title = document.createElement('p')
+  title.setAttribute('data-export-toc-title', '')
+  title.textContent = '本页目录'
+  const list = document.createElement('ol')
+  list.setAttribute('data-export-toc-list', '')
+  for (const section of sections) {
+    const item = document.createElement('li')
+    const link = document.createElement('a')
+    link.setAttribute('href', `#${section.id}`)
+    link.setAttribute('data-export-toc-link', section.id)
+    link.textContent = sectionLabel(section)
+    item.appendChild(link)
+    list.appendChild(item)
+  }
+  nav.append(title, list)
+  clone.insertBefore(nav, clone.firstChild)
+  return nav
+}
+
 function prepareCases(clone: HTMLElement, pageSize: number): number {
   const cards = Array.from(clone.querySelectorAll<HTMLElement>('[data-export-case]'))
   cards.forEach((card, index) => {
@@ -445,6 +523,14 @@ function prepareCases(clone: HTMLElement, pageSize: number): number {
     if (toggle) {
       toggle.setAttribute('data-export-case-toggle', '')
       toggle.setAttribute('aria-expanded', 'false')
+      // INT-2434：导出里的展开入口原来只有图标，看不出可点 → 补可见文字；
+      // 文案由导出脚本随展开状态切换。
+      if (!toggle.querySelector('[data-export-case-toggle-label]')) {
+        const label = document.createElement('span')
+        label.setAttribute('data-export-case-toggle-label', '')
+        label.textContent = '展开详情'
+        toggle.appendChild(label)
+      }
     }
   })
   if (cards.length === 0) return 0
@@ -560,6 +646,8 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
       if (hidden) detail.removeAttribute('hidden');
       else detail.setAttribute('hidden', '');
       btn.setAttribute('aria-expanded', hidden ? 'true' : 'false');
+      var textLabel = btn.querySelector('[data-export-case-toggle-label]');
+      if (textLabel) textLabel.textContent = hidden ? '收起详情' : '展开详情';
       var icon = btn.querySelector('svg');
       if (icon) icon.style.transform = hidden ? 'rotate(180deg)' : '';
     });
@@ -648,6 +736,91 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
   }
 
   if (cards.length > 0) render();
+
+  // ---------- 4. Tab 纯 DOM 切换（轮次 / 评估维度 / 设备·API 目标，INT-2434） ----------
+  // 契约：
+  //   data-export-tab="<group>:<value>"       Tab 按钮（导出态由组件打标记，克隆时保留）
+  //   data-export-show="<group>:<value>"      精确匹配面板（多组用空格分隔，组内全部值 = __all__）
+  //   data-export-round="<group>|<tag>|<mode>" 轮次行 / 行组（tag 为空 = 全轮次恒显示；
+  //                                            mode f = 字段（整体 Tab 全显），m/d = 指标与维度（整体只显空标记 + overall））
+  var tabState = {};
+
+  function groupOf(spec) {
+    var i = spec.indexOf(':');
+    return i < 0 ? spec : spec.slice(0, i);
+  }
+  function valueOf(spec) {
+    var i = spec.indexOf(':');
+    return i < 0 ? '' : spec.slice(i + 1);
+  }
+
+  function applyTabs() {
+    $all('[data-export-show]').forEach(function (el) {
+      // 属性由组件按「单个空格」生成：组:值[ 组:值]。注意模板字符串里不能写反斜杠 s——
+      // 反斜杠会被吃掉变成字母 s（INT-2434 自测时踩到：按字母 s 切，属性全失效）。
+      var specs = String(el.getAttribute('data-export-show') || '').split(' ');
+      var visible = true;
+      for (var i = 0; i < specs.length; i += 1) {
+        if (!specs[i]) continue;
+        var group = groupOf(specs[i]);
+        var value = valueOf(specs[i]);
+        var current = group in tabState ? tabState[group] : value;
+        if (value === '__all__') continue;
+        if (current !== '__all__' && current !== value) { visible = false; break; }
+      }
+      el.style.display = visible ? '' : 'none';
+    });
+
+    $all('[data-export-round]').forEach(function (el) {
+      var parts = String(el.getAttribute('data-export-round') || '').split('|');
+      var group = parts[0];
+      var tag = parts[1] || '';
+      var mode = parts[2] || 'f';
+      var current = group in tabState ? tabState[group] : '';
+      var show;
+      if (!current || current === '__all__') show = true;
+      else if (current === 'overall') show = mode === 'f' ? true : (tag === '' || tag === 'overall');
+      else show = tag === '' || tag === current;
+      el.style.display = show ? '' : 'none';
+    });
+  }
+
+  var tabButtons = $all('[data-export-tab]');
+  var tabGroups = {};
+
+  tabButtons.forEach(function (btn) {
+    var spec = String(btn.getAttribute('data-export-tab') || '');
+    if (!spec) return;
+    var group = groupOf(spec);
+    if (!(group in tabGroups)) tabGroups[group] = { first: valueOf(spec), selected: null };
+    if (btn.getAttribute('aria-selected') === 'true' && tabGroups[group].selected === null) {
+      tabGroups[group].selected = valueOf(spec);
+    }
+  });
+  Object.keys(tabGroups).forEach(function (group) {
+    // 默认态 = 页面克隆时的激活 Tab（aria-selected），没有则取组内第一个
+    tabState[group] = tabGroups[group].selected !== null ? tabGroups[group].selected : tabGroups[group].first;
+  });
+
+  tabButtons.forEach(function (btn) {
+    var spec = String(btn.getAttribute('data-export-tab') || '');
+    if (!spec) return;
+    var group = groupOf(spec);
+    var value = valueOf(spec);
+    btn.addEventListener('click', function (event) {
+      event.preventDefault();
+      tabState[group] = value;
+      // 选中态只切 aria-selected，配色由导出样式表按 aria-selected 控制（不拼 className）
+      tabButtons.forEach(function (other) {
+        var otherSpec = String(other.getAttribute('data-export-tab') || '');
+        if (groupOf(otherSpec) !== group) return;
+        other.setAttribute('aria-selected', valueOf(otherSpec) === value ? 'true' : 'false');
+      });
+      applyTabs();
+    });
+  });
+
+  applyTabs();
 })();`
 
 /** 组装离线可用的 report.html */

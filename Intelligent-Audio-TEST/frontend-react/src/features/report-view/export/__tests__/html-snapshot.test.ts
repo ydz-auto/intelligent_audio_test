@@ -92,6 +92,73 @@ describe('buildStaticClone', () => {
     root.remove()
   })
 
+  it('用例展开入口补可见文字（INT-2434：原按钮只有图标，产物里看不出可点）', () => {
+    const root = mountReportDom(2)
+    const { clone } = buildStaticClone(root)
+    const label = clone.querySelector('#toggle-0 [data-export-case-toggle-label]')
+    expect(label?.textContent).toBe('展开详情')
+    root.remove()
+  })
+
+  it('导出内 Tab 按钮保留（轮次 / 维度 / 目标），普通操作按钮仍剪掉（INT-2434）', () => {
+    const root = document.createElement('div')
+    root.className = 'report-view-container'
+    root.innerHTML = `
+      <section id="report-specific-cases">
+        <div data-export-case data-export-case-name="用例" data-export-case-id="c1">
+          <button aria-label="展开详情">v</button>
+          <div data-export-case-detail hidden>
+            <div role="tablist" aria-label="轮次切换">
+              <button role="tab" data-export-tab="case-1-round:round:1" aria-selected="true">第 1 轮</button>
+              <button role="tab" data-export-tab="case-1-round:round:2" aria-selected="false">第 2 轮</button>
+            </div>
+            <div data-export-show="case-1-round:round:1">第一轮数据</div>
+            <div data-export-show="case-1-round:round:2">第二轮数据</div>
+            <button id="action-detail">详情</button>
+          </div>
+        </div>
+      </section>`
+    document.body.appendChild(root)
+    const { clone } = buildStaticClone(root)
+    const tabs = clone.querySelectorAll('[role="tab"]')
+    expect(tabs).toHaveLength(2)
+    expect(clone.querySelector('[data-export-show="case-1-round:round:2"]')).not.toBeNull()
+    expect(clone.querySelector('#action-detail')).toBeNull()
+    root.remove()
+  })
+
+  it('按产物内分区重建「本页目录」，锚点与 section id 一一对应（INT-2434）', () => {
+    const root = document.createElement('div')
+    root.className = 'report-view-container'
+    root.innerHTML = `
+      <section id="report-overview"><h3>总览</h3><div>统计</div></section>
+      <section id="report-resource-stats">
+        <div data-slot="collapsible">
+          <button data-slot="collapsible-trigger">设备与 API</button>
+          <div data-slot="collapsible-panel">内容</div>
+        </div>
+      </section>
+      <section id="report-specific-cases">
+        <div data-slot="collapsible">
+          <button data-slot="collapsible-trigger">具体用例</button>
+          <div data-slot="collapsible-panel">内容</div>
+        </div>
+      </section>`
+    document.body.appendChild(root)
+    const { clone } = buildStaticClone(root)
+    const nav = clone.querySelector('nav[aria-label="本页目录"]')
+    expect(nav).not.toBeNull()
+    const hrefs = Array.from(nav!.querySelectorAll('a')).map((a) => a.getAttribute('href'))
+    expect(hrefs).toEqual(['#report-overview', '#report-resource-stats', '#report-specific-cases'])
+    // 每个锚点都能在产物里找到对应分区
+    for (const href of hrefs) {
+      expect(clone.querySelector(href as string)).not.toBeNull()
+    }
+    expect(nav!.textContent).toContain('总览')
+    expect(nav!.textContent).toContain('具体用例')
+    root.remove()
+  })
+
   it('文字即内容的按钮解包为文本（表头资源名 / 分组名 / 卡片标题），操作按钮仍删除', () => {
     const root = document.createElement('div')
     root.className = 'report-view-container'

@@ -29,14 +29,22 @@ export function ResultField({
   value,
   type,
   onPlayAudio,
-}: ResultFieldValue & { onPlayAudio?: (value: unknown) => void }) {
+  exportRound,
+}: ResultFieldValue & {
+  onPlayAudio?: (value: unknown) => void
+  /** 导出态轮次标记（INT-2434）：`<组>|<轮次标记>|<模式>`，导出内脚本按 Tab 显示 / 隐藏 */
+  exportRound?: string
+}) {
   const isObject = typeof value === 'object' && value !== null
   const text = formatValueText(value)
   const needsCollapse = text.length > 200
 
   if (type === 'audio_file' && onPlayAudio) {
     return (
-      <div className='flex items-center justify-between gap-2 border-b px-3 py-1.5 text-xs last:border-0'>
+      <div
+        data-export-round={exportRound}
+        className='flex items-center justify-between gap-2 border-b px-3 py-1.5 text-xs last:border-0'
+      >
         {/* INT-2090 P3：音频字段名（label）超长时截断，不撑破行宽；title 悬停显完整名 */}
         <span className='text-muted-foreground min-w-0 flex-1 truncate' title={label}>
           {label}
@@ -55,7 +63,10 @@ export function ResultField({
   }
 
   return (
-    <div className='flex flex-wrap items-start justify-between gap-2 border-b px-3 py-1.5 text-xs last:border-0'>
+    <div
+      data-export-round={exportRound}
+      className='flex flex-wrap items-start justify-between gap-2 border-b px-3 py-1.5 text-xs last:border-0'
+    >
       <span className='text-muted-foreground shrink-0'>{label}</span>
       {isObject || needsCollapse ? (
         <CollapsibleValue text={text} />
