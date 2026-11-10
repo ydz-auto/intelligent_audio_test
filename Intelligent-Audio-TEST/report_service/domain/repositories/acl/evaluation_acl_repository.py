@@ -40,6 +40,23 @@ class EvaluationDataAclRepository(ABC):
         与 get_dimension_results_by_result_ids(include_body=True) 的分块口径一致，
         额外返回 requested / covered / failed_chunks / dropped_ids，供调用方在
         部分块失败时保留基础行并如实标注降级，而不是静默丢行。
+
+        注意：本方法是「整份 map」形态，只适合小体量/非聚合场景；报告聚合必须
+        用 iter_dimension_results_with_body 逐块消费（INT-2381），否则原始响应
+        会整份常驻内存。
+        """
+        ...
+
+    @abstractmethod
+    def iter_dimension_results_with_body(self, result_ids):
+        """逐块产出带原始响应的维度结果（INT-2381）。
+
+        Yields:
+            (chunk_map, chunk_coverage)
+            chunk_map: {result_id: [DimensionResultDTO, ...]} 一个块的 body 结果，
+                调用方提取完标量后即可释放，峰值只与块大小相关；
+            chunk_coverage: {requested_ids, covered_ids, failed_chunks, dropped_ids}
+                该块的请求/取到 id 与失败信息（覆盖口径与 C2 一致）。
         """
         ...
 

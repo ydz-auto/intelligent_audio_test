@@ -122,7 +122,13 @@ class DimensionResultsWithBody:
         covered = set(self.covered_ids or [])
         missing = [rid for rid in requested if rid not in covered]
         dropped = list(self.dropped_ids or [])
-        reason = 'partial_api_raw_response_coverage' if missing else None
+        # INT-2381 O2：全缺 body 时标 missing_api_raw_response，partial 只表示部分取到
+        if not missing:
+            reason = None
+        elif not covered:
+            reason = 'missing_api_raw_response'
+        else:
+            reason = 'partial_api_raw_response_coverage'
         return {
             'requested': len(requested),
             'covered': len(requested) - len(missing),

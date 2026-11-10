@@ -66,6 +66,67 @@ def _find_by_role(output_params: List[Dict], role: str) -> Optional[str]:
     return None
 
 
+#: 加权比率的默认分子/分母路径（维度未配置 agg_role 时的历史兜底）。
+DEFAULT_NUMERATOR_FIELD = 'errors'
+DEFAULT_DENOMINATOR_FIELD = 'length'
+
+
+def weighted_field_paths(output_params: List[Dict]) -> tuple:
+    """加权比率的 (分子路径, 分母路径)；未配置时沿用历史默认 errors / length。"""
+    return (
+        _find_by_role(output_params, 'numerator') or DEFAULT_NUMERATOR_FIELD,
+        _find_by_role(output_params, 'denominator') or DEFAULT_DENOMINATOR_FIELD,
+    )
+
+
+def extract_raw_fields(raw_response: Any,
+                       output_params: List[Dict] = None) -> Optional[Dict[str, Any]]:
+    """从 api_raw_response 中按配置提取标量字段（INT-2381）。
+
+    报告聚合不再让整份原始响应常驻内存：ACL 逐块返回带 body 的维度结果后，
+    调用方在块内调用本函数把需要的标量（加权维度的分子/分母等 field_path）
+    提取成 `raw_fields`，原始响应随即丢弃。
+
+    Args:
+        raw_response: 维度结果的 api_raw_response（dict 或 JSON 字符串）
+        output_params: 维度 output 参数配置（field_path 来源）；未配置分子/分母
+            agg_role 时按加权策略默认路径 errors / length 提取
+
+    Returns:
+        {'present': True, 'values': {field_path: value}}；
+        原始响应缺失或无法解析为对象时返回 None。
+    """
+    result_obj = _parse_raw_response(raw_response)
+    if not result_obj:
+        return None
+    paths: List[str] = []
+    for p in output_params or []:
+        path = p.get('field_path') if isinstance(p, dict) else None
+        if path and path not in paths:
+            paths.append(path)
+    for path in weighted_field_paths(output_params):
+        if path not in paths:
+            paths.append(path)
+    return {
+        'present': True,
+        'values': {path: _extract_by_path(result_obj, path) for path in paths},
+    }
+
+
+def has_raw_fields(item: Dict[str, Any]) -> bool:
+    """聚合 item 是否带可用的原始响应标量（raw_fields）。"""
+    raw_fields = item.get('raw_fields')
+    return isinstance(raw_fields, dict) and bool(raw_fields.get('present'))
+
+
+def raw_field_value(item: Dict[str, Any], field_path: str) -> Optional[Any]:
+    """读取聚合 item 中 raw_fields.values 里某字段的值。"""
+    raw_fields = item.get('raw_fields')
+    if not isinstance(raw_fields, dict) or not raw_fields.get('present'):
+        return None
+    return (raw_fields.get('values') or {}).get(field_path)
+
+
 def _count_items(items: List[Dict[str, Any]]) -> tuple:
     """
     统计 item 集的用例数与轮次数（按 test_result_id 去重，round_count 按用例求和）。
@@ -100,7 +161,9 @@ class AggregationStrategy(ABC):
             items: 该分组下所有结果的列表，每项包含:
                 - dimension_value: 维度原始值
                 - score: 维度得分
-                - api_raw_response: eval_server 完整响应
+                - raw_fields: 块内从 api_raw_response 提取的标量
+                  （{present: bool, values: {field_path: value}} 或 None；
+                  INT-2381 起聚合 item 不再携带整份 api_raw_response）
                 - test_result_id: TestResult.id
                 - round_count: 该用例该维度有值的轮次数（ratio 策略按轮次口径用）
             output_params: 维度的 output 参数配置，每项含:
@@ -145,25 +208,24 @@ class WeightedSumRatioStrategy(AggregationStrategy):
     """
     加权比率：Σ(numerator) / Σ(denominator)。
 
-    按 agg_role 找分子和分母的 field_path，从每条结果的 api_raw_response 提取值后累加。
+    按 agg_role 找分子和分母的 field_path，从每条 item 的 raw_fields（块内从
+    api_raw_response 提取的标量，INT-2381）取值后累加。
     典型场景：WER = Σerrors / Σlength（按字数加权）。
     """
 
     def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
                   denominator_mode: str = None) -> Optional[float]:
-        numerator_path = _find_by_role(output_params, 'numerator') or 'errors'
-        denominator_path = _find_by_role(output_params, 'denominator') or 'length'
+        numerator_path, denominator_path = weighted_field_paths(output_params)
 
         total_num = 0
         total_den = 0
 
         for item in items:
-            result_obj = _parse_raw_response(item.get('api_raw_response'))
-            if not result_obj:
+            if not has_raw_fields(item):
                 continue
 
-            num_val = _extract_by_path(result_obj, numerator_path)
-            den_val = _extract_by_path(result_obj, denominator_path)
+            num_val = raw_field_value(item, numerator_path)
+            den_val = raw_field_value(item, denominator_path)
 
             if num_val is not None and den_val is not None and den_val > 0:
                 total_num += num_val
@@ -374,7 +436,7 @@ def explain_degradation(method: str, items: List[Dict[str, Any]],
     if get_strategy(method).aggregate(
             items, output_params=output_params, denominator_mode=denominator_mode) is not None:
         return None
-    if not any(_parse_raw_response(it.get('api_raw_response')) for it in items):
+    if not any(has_raw_fields(it) for it in items):
         reason = 'missing_api_raw_response'
         detail = '维度结果未携带 API 原始响应，无法提取分子/分母'
     else:
@@ -416,7 +478,7 @@ def _raw_response_coverage(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     missing_ids = []
     seen = set()
     for it in items or []:
-        if _parse_raw_response(it.get('api_raw_response')):
+        if has_raw_fields(it):
             covered += 1
             continue
         rid = it.get('test_result_id')

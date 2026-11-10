@@ -82,8 +82,13 @@ def patch_stub(monkeypatch):
     return _install
 
 
-def test_include_body_chunks_by_chunk_size(patch_stub):
-    """include_body=True：按 _DIM_RESULT_BODY_CHUNK_SIZE 分块，结果完整合并。"""
+def test_include_body_chunks_by_chunk_size(patch_stub, monkeypatch):
+    """include_body=True：按 _DIM_RESULT_BODY_CHUNK_SIZE 分块，结果完整合并。
+
+    分块机械行为与默认块大小解耦：这里钉死 16 条/块（生产默认值见
+    test_int2381_include_body_iteration.py 的默认块断言）。
+    """
+    monkeypatch.setattr(acl_mod, '_DIM_RESULT_BODY_CHUNK_SIZE', 16)
     stub = patch_stub(_FakeStub())
     ids = list(range(1, 41))  # 40 条 → 16/16/8
 
@@ -91,15 +96,16 @@ def test_include_body_chunks_by_chunk_size(patch_stub):
         ids, include_body=True)
 
     chunk = acl_mod._DIM_RESULT_BODY_CHUNK_SIZE
-    expected = [chunk, chunk, 40 - 2 * chunk]
+    expected = [chunk] * (len(ids) // chunk) + ([len(ids) % chunk] if len(ids) % chunk else [])
     assert [n for n, _ in stub.calls] == expected
     assert all(body for _, body in stub.calls)
     assert sorted(result.keys()) == ids
     assert all(len(rows) == 1 for rows in result.values())
 
 
-def test_include_body_shrinks_on_resource_exhausted(patch_stub):
+def test_include_body_shrinks_on_resource_exhausted(patch_stub, monkeypatch):
     """单块撞 RESOURCE_EXHAUSTED：二分重试，最终仍拿到完整结果。"""
+    monkeypatch.setattr(acl_mod, '_DIM_RESULT_BODY_CHUNK_SIZE', 16)
     stub = patch_stub(_FakeStub(max_ids_ok=8))
     ids = list(range(1, 17))  # 一个 16 条的块
 

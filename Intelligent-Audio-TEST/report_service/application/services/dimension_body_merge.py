@@ -120,7 +120,13 @@ def build_coverage(acl_coverage: dict, merge_stats: dict,
     missing = list(merge_stats.get('missing_result_ids') or [])
     matched = set(merge_stats.get('matched_result_ids') or [])
     requested = len(matched) + len(missing)
-    reason = ('partial_api_raw_response_coverage' if missing else None)
+    # INT-2381 O2：全缺 body 时不能标 partial（partial 仅表示「部分取到」）
+    if not missing:
+        reason = None
+    elif not matched:
+        reason = 'missing_api_raw_response'
+    else:
+        reason = 'partial_api_raw_response_coverage'
     return {
         'requested': requested,
         'covered': len(matched),

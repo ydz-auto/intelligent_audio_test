@@ -169,6 +169,22 @@ def _grpc_get_dimension_results_with_body(result_ids):
     return dim_map, result.coverage()
 
 
+def _grpc_iter_dimension_results_with_body(result_ids):
+    """逐块产出带原始响应的维度结果（INT-2381）。
+
+    Yields:
+        (chunk_map, chunk_coverage)
+        chunk_map: {result_id: [item_dict, ...]} 单块结果，调用方提取标量后即可释放；
+        chunk_coverage: {requested_ids, covered_ids, failed_chunks, dropped_ids}
+    """
+    for chunk_map, coverage in _eval_data.iter_dimension_results_with_body(result_ids):
+        yield (
+            {rid: [_dto_to_dict(d) for d in items]
+             for rid, items in (chunk_map or {}).items()},
+            coverage,
+        )
+
+
 # ======================================================================
 # EvaluationConfigService —— 维度配置查询
 # ======================================================================
