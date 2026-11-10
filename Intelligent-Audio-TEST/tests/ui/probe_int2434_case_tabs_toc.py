@@ -6,7 +6,8 @@
 默认折叠且展开入口只有图标。
 
 本探针在 `file://` 打开的产物上断言（无任何 http(s) 请求）：
-  1) `nav[aria-label="本页目录"]` 存在，锚点与产物内分区 id 一一对应；
+  1) `nav[aria-label="本页目录"]` 存在，锚点与产物内分区 id 一一对应；且是与报告页同形的
+     **右栏视口固定**导航（`position: sticky`、在正文右栏、滚动后仍在视口内、高亮跟随）；
   2) `[role="tab"]` 数量 > 0，点击轮次 Tab 后对应用例卡内容区文本变化（纯 DOM 切换真实生效）；
   3) `[data-export-case-detail]` 数量 = 用例卡数，点击展开入口后可见（高度 > 0）；
   4) 产物仍满足 INT-2418 口径（zip 内 report.html + css/report.css、无操作按钮残留、浅色固定）。
@@ -53,6 +54,70 @@ return {
   section_count: sections.length,
   links: links,
   missing: missing
+};
+"""
+
+JS_TOC_FIXED = """
+// 负责人 2026-11-10 补充：要的是「视口固定显示」的右导航（报告页 ReportReadingNav 同形），
+// 不是页顶横条 —— 断言 sticky 生效、在正文右栏、滚动后仍在视口内、高亮与进度条跟随。
+var nav = document.querySelector('nav[aria-label="本页目录"]');
+if (!nav) return {ok: false, reason: 'no toc nav'};
+var aside = nav.closest('[data-export-toc-aside]');
+var main = document.querySelector('[data-export-layout] > main');
+var style = window.getComputedStyle(nav);
+var links = Array.prototype.slice.call(nav.querySelectorAll('[data-export-toc-link]'));
+function activeIndex() {
+  var cur = nav.querySelector('[data-export-toc-link][aria-current="location"]');
+  return cur ? links.indexOf(cur) : -1;
+}
+function progressWidth() {
+  var prog = nav.querySelector('[data-export-toc-progress]');
+  return prog ? prog.style.width : null;
+}
+window.scrollTo(0, 0);
+window.dispatchEvent(new Event('scroll'));
+var rect0 = nav.getBoundingClientRect();
+var mainRect = main ? main.getBoundingClientRect() : null;
+var res = {
+  position: style.position,
+  has_aside: !!aside,
+  right_of_main: mainRect ? rect0.left >= mainRect.right - 2 : null,
+  top_before: Math.round(rect0.top),
+  labels: links.map(function (a) { return a.textContent; }),
+  active_top: activeIndex(),
+  progress_top: progressWidth()
+};
+window.scrollTo(0, Math.max(0, document.documentElement.scrollHeight - window.innerHeight - 40));
+window.dispatchEvent(new Event('scroll'));
+var rect1 = nav.getBoundingClientRect();
+res.scroll_y = Math.round(window.scrollY || 0);
+res.top_after_scroll = Math.round(rect1.top);
+res.visible_after_scroll = rect1.height > 0 && rect1.bottom > 0 && rect1.top < window.innerHeight;
+res.active_bottom = activeIndex();
+res.progress_bottom = progressWidth();
+res.ok = res.position === 'sticky' && res.has_aside && res.right_of_main !== false
+  && res.visible_after_scroll && res.active_top === 0
+  && res.active_bottom > res.active_top
+  && res.progress_top !== res.progress_bottom;
+return res;
+"""
+
+JS_TOC_CLICK_JUMP = """
+// 点目录第一条锚点：平滑滚动后该分区进入视口（file:// 下纯 DOM 跳转）
+var nav = document.querySelector('nav[aria-label="本页目录"]');
+if (!nav) return {ok: false, reason: 'no toc nav'};
+var link = nav.querySelector('[data-export-toc-link]');
+var id = link ? (link.getAttribute('data-export-toc-link') || '') : '';
+var target = id ? document.getElementById(id) : null;
+if (!target) return {ok: false, reason: 'no target', id: id};
+var rect = target.getBoundingClientRect();
+var active = nav.querySelector('[data-export-toc-link][aria-current="location"]');
+return {
+  ok: rect.top >= -8 && rect.top <= 200 && active === link,
+  id: id,
+  target_top: Math.round(rect.top),
+  scroll_y: Math.round(window.scrollY || 0),
+  active: active ? active.textContent : null
 };
 """
 
@@ -208,6 +273,21 @@ def run_report(smoke, base, report_id):
     rec['axes'] = d.execute_script(JS_AXES)
     rec['detail'] = d.execute_script(JS_DETAIL)
     rec['action_buttons'] = d.execute_script(JS_ACTION_BUTTONS)
+    # 视口固定的右导航（sticky）——放在最后跑，会滚动页面
+    rec['toc_fixed'] = d.execute_script(JS_TOC_FIXED)
+    # 滚到页底时截一张：右栏目录仍在视口内（留证「视口固定」）
+    rec['shot_exported_scrolled'] = sm.shot(d, '2434_%s_exported_rail' % report_id)
+    # 点目录第一条：平滑滚动后该分区进入视口（给平滑滚动留时间，最多重试 ~4s）
+    d.execute_script("var l=document.querySelector('[data-export-toc-link]'); if(l) l.click(); return !!l;")
+    jump = None
+    for _ in range(5):
+        time.sleep(0.8)
+        jump = d.execute_script(JS_TOC_CLICK_JUMP)
+        if jump and jump.get('ok'):
+            break
+    rec['toc_jump'] = jump
+    d.execute_script("window.scrollTo(0, 0)")
+    time.sleep(0.4)
     rec['shot_exported'] = sm.shot(d, '2434_%s_exported' % report_id)
 
     # 产物按报告号留档（export_html 每次复用同一目录）
@@ -224,6 +304,8 @@ def run_report(smoke, base, report_id):
         bool(rec['tabs'] and rec['tabs'].get('ok')),
         bool(rec['axes'] and rec['axes'].get('ok')),
         bool(rec['detail'] and rec['detail'].get('ok')),
+        bool(rec['toc_fixed'] and rec['toc_fixed'].get('ok')),
+        bool(rec['toc_jump'] and rec['toc_jump'].get('ok')),
         not rec['action_buttons'],
         not (export.get('offline_http_requests') or []),
     ])
@@ -260,9 +342,10 @@ def main():
         for rid in ids:
             rec = run_report(smoke, base, rid)
             RESULT['reports'].append(rec)
-            log('report %s ok=%s toc=%s tabs=%s detail=%s' % (
+            log('report %s ok=%s toc=%s toc_fixed=%s tabs=%s detail=%s' % (
                 rid, rec['ok'],
                 (rec.get('toc') or {}).get('ok'),
+                (rec.get('toc_fixed') or {}).get('ok'),
                 (rec.get('tabs') or {}).get('ok'),
                 (rec.get('detail') or {}).get('ok')))
         RESULT['ok'] = bool(RESULT['reports']) and all(r['ok'] for r in RESULT['reports'])

@@ -16,6 +16,8 @@
  */
 import JSZip from 'jszip'
 
+import { readingNavLabel } from '../report-nav-sections'
+
 /** 导出内用例分页条数（对齐 V9.7.10 `exportPageSize = 10`） */
 export const HTML_EXPORT_CASE_PAGE_SIZE = 10
 
@@ -322,18 +324,43 @@ img { max-width: 100%; height: auto; }
 }
 [data-export-case-toolbar] button:disabled { opacity: 0.45; cursor: not-allowed; }
 [data-export-case-pageinfo] { font-size: 12px; color: #6b7280; margin-inline-start: auto; }
-/* 本页目录（INT-2434：产物内锚点导航） */
-[data-export-toc] {
-  margin: 0 0 20px; padding: 10px 14px;
-  border: 1px solid #e5e7eb; border-radius: 12px; background: #f8fafc;
+/* 本页目录（INT-2434）：与报告页右导航 ReportReadingNav 同构的视口固定阅读栏
+   —— 正文右栏 + sticky，滚动时目录不离开视口；阅读进度条 + 当前分节高亮。 */
+#report-export-root [data-export-layout] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 24px;
+  align-items: stretch;
 }
-[data-export-toc-title] { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: #4b5563; }
-[data-export-toc-list] {
-  display: flex; flex-wrap: wrap; gap: 6px 14px;
-  margin: 0; padding: 0; list-style: none;
+#report-export-root [data-export-layout] > main { min-width: 0; }
+#report-export-root [data-export-toc-aside] { min-width: 0; }
+#report-export-root [data-export-toc] { position: sticky; top: 16px; }
+#report-export-root section[id] { scroll-margin-top: 16px; }
+[data-export-toc-track] {
+  height: 1px; overflow: hidden; border-radius: 9999px;
+  background: color-mix(in srgb, var(--muted, #e5e7eb) 20%, transparent);
 }
-[data-export-toc-link] { font-size: 12px; color: #2563eb; text-decoration: none; }
-[data-export-toc-link]:hover { text-decoration: underline; }
+[data-export-toc-progress] {
+  height: 100%; width: 0;
+  background: color-mix(in srgb, var(--primary, #2563eb) 40%, transparent);
+  transition: width 150ms ease;
+}
+[data-export-toc-title] {
+  margin: 12px 0 8px; font-size: 12px; font-weight: 500;
+  color: var(--muted-foreground, #6b7280);
+}
+[data-export-toc-list] { margin: 0; padding: 0; list-style: none; }
+[data-export-toc-list] > li + li { margin-top: 4px; }
+[data-export-toc-link] {
+  display: inline-block; padding: 4px 8px; border-radius: 6px;
+  font-size: 12px; line-height: 1.5;
+  color: var(--muted-foreground, #6b7280);
+  text-decoration: none; cursor: pointer; transition: color 150ms ease;
+}
+[data-export-toc-link]:hover { color: var(--foreground, #111827); }
+[data-export-toc-link][aria-current="location"] {
+  color: var(--primary, #2563eb); font-weight: 500;
+}
 /* 导出内 Tab（轮次 / 评估维度 / 设备·API，INT-2434）：选中态只由 aria-selected 决定 */
 [data-export-tab] { cursor: pointer; }
 [data-export-tab][aria-selected="true"] { background: #2563eb; color: #ffffff; }
@@ -341,8 +368,15 @@ img { max-width: 100%; height: auto; }
 /* 用例详情展开入口：图标 + 可见文字（原来只有图标，看不出可点） */
 [data-export-case-toggle] { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
 [data-export-case-toggle-label] { white-space: nowrap; }
+/* 窄窗口不出右栏（与报告页 lg 断点一致），避免挤压正文 */
+@media (max-width: 1023px) {
+  #report-export-root [data-export-layout] { display: block; }
+  #report-export-root [data-export-toc-aside] { display: none; }
+}
 @media print {
   [data-export-case-toolbar] { display: none !important; }
+  #report-export-root [data-export-toc-aside] { display: none !important; }
+  #report-export-root [data-export-layout] { display: block !important; }
   section { break-inside: avoid; }
 }
 `
@@ -463,8 +497,12 @@ function prepareHeadingSections(clone: HTMLElement): void {
 /** 分区标题里由脚本加的折叠箭头（不得进目录文案） */
 const SECTION_CARET_PATTERN = /[▾▸]/g
 
-/** 取分区标题文案：h1~h4 → Collapsible 触发器 → aria-label → id 兜底 */
+/** 取分区标题文案：页面同一份目录定义 → h1~h4 → Collapsible 触发器 → aria-label → id 兜底 */
 function sectionLabel(section: HTMLElement): string {
+  // 与报告页右导航同一份 id → 文案映射：分区标题里带统计（「设备 2 · API 0」「共 793 条结果」），
+  // 直接取标题会把统计塞进目录（INT-2434 负责人反馈「目录不对」）。
+  const mapped = readingNavLabel(section.id)
+  if (mapped) return mapped
   const heading = section.querySelector('h1, h2, h3, h4')
   const trigger = section.querySelector('[data-slot="collapsible-trigger"]')
   const raw =
@@ -476,13 +514,16 @@ function sectionLabel(section: HTMLElement): string {
 }
 
 /**
- * 产物「本页目录」：按产物内 `section[id]` 生成锚点导航（INT-2434）。
+ * 产物「本页目录」：与报告页右导航（`ReportReadingNav`，`sticky` 视口固定）同构（INT-2434）。
+ *
+ * 页面上的右导航是 `<aside class="print:hidden">`，克隆清理规则会整块删掉，批量离屏宿主
+ * 也不渲染它 —— 所以这里按产物内 `section[id]` 重建：**正文右栏 + sticky**，带阅读进度条
+ * 与当前分节高亮（滚动由导出脚本接管，纯 DOM，不依赖 React 状态）。
  * 锚点与分区 id 一一对应（同一次克隆里收集 → 不会出现死锚点），`file://` 下点击即跳转。
  */
 export function buildExportToc(clone: HTMLElement): HTMLElement | null {
-  if (clone.querySelector('nav[aria-label="本页目录"]')) {
-    return clone.querySelector('nav[aria-label="本页目录"]')
-  }
+  const existing = clone.querySelector('nav[aria-label="本页目录"]') as HTMLElement | null
+  if (existing) return existing
   const sections = Array.from(clone.querySelectorAll<HTMLElement>('section[id]')).filter(
     (section) => Boolean(section.id)
   )
@@ -491,10 +532,17 @@ export function buildExportToc(clone: HTMLElement): HTMLElement | null {
   const nav = document.createElement('nav')
   nav.setAttribute('aria-label', '本页目录')
   nav.setAttribute('data-export-toc', '')
+
+  const inner = document.createElement('div')
+  const track = document.createElement('div')
+  track.setAttribute('data-export-toc-track', '')
+  const progress = document.createElement('div')
+  progress.setAttribute('data-export-toc-progress', '')
+  track.appendChild(progress)
   const title = document.createElement('p')
   title.setAttribute('data-export-toc-title', '')
   title.textContent = '本页目录'
-  const list = document.createElement('ol')
+  const list = document.createElement('ul')
   list.setAttribute('data-export-toc-list', '')
   for (const section of sections) {
     const item = document.createElement('li')
@@ -505,8 +553,23 @@ export function buildExportToc(clone: HTMLElement): HTMLElement | null {
     item.appendChild(link)
     list.appendChild(item)
   }
-  nav.append(title, list)
-  clone.insertBefore(nav, clone.firstChild)
+  inner.append(track, title, list)
+  nav.appendChild(inner)
+
+  const aside = document.createElement('aside')
+  aside.setAttribute('data-export-toc-aside', '')
+  aside.appendChild(nav)
+
+  // 放进正文两栏布局的右栏（页面里 `<main>` + `<aside>` 的位置），sticky 才有参照；
+  // 简化 DOM（单测直接喂 section、没有 main）时退回文档顶部，目录仍可用。
+  const main = clone.querySelector('main')
+  const host = main && main.parentElement && main.parentElement !== clone ? main.parentElement : null
+  if (host) {
+    host.setAttribute('data-export-layout', '')
+    host.appendChild(aside)
+  } else {
+    clone.insertBefore(aside, clone.firstChild)
+  }
   return nav
 }
 
@@ -821,6 +884,56 @@ export const REPORT_EXPORT_SCRIPT = `(function () {
   });
 
   applyTabs();
+
+  // ---------- 5. 本页目录（右栏视口固定）：平滑跳转 + scrollspy + 阅读进度 ----------
+  // 页面上的右导航靠 React scrollspy 驱动；导出里没有 React，这里用 scroll 事件
+  // 算当前分节与进度，产物双击打开即可用。
+  var tocLinks = $all('[data-export-toc-link]');
+  if (tocLinks.length > 0) {
+    var tocProgress = document.querySelector('[data-export-toc-progress]');
+    var tocEntries = [];
+    tocLinks.forEach(function (link) {
+      var id = link.getAttribute('data-export-toc-link') || '';
+      var section = id ? document.getElementById(id) : null;
+      if (!section) return;
+      tocEntries.push({ link: link, section: section });
+      link.addEventListener('click', function (event) {
+        event.preventDefault();
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, '', '#' + id);
+        }
+      });
+    });
+
+    var tocActive = null;
+    function updateToc() {
+      var scrolled = window.scrollY || window.pageYOffset || 0;
+      var scrollable = (document.documentElement.scrollHeight || 0) - window.innerHeight;
+      var ratio = scrollable > 0 ? scrolled / scrollable : 0;
+      if (tocProgress) {
+        tocProgress.style.width = (Math.max(0, Math.min(1, ratio)) * 100) + '%';
+      }
+      if (tocEntries.length === 0) return;
+      var probeLine = scrolled + 96;
+      var next = tocEntries[0];
+      tocEntries.forEach(function (entry) {
+        var top = entry.section.getBoundingClientRect().top + scrolled;
+        if (top <= probeLine) next = entry;
+      });
+      if (next === tocActive) return;
+      tocActive = next;
+      tocEntries.forEach(function (entry) {
+        if (entry === next) entry.link.setAttribute('aria-current', 'location');
+        else entry.link.removeAttribute('aria-current');
+      });
+    }
+    window.addEventListener('scroll', updateToc, { passive: true });
+    window.addEventListener('resize', updateToc);
+    // 折叠分区 / 切换 Tab 会改版面高度：点完再算一次
+    document.addEventListener('click', function () { setTimeout(updateToc, 0); }, true);
+    updateToc();
+  }
 })();`
 
 /** 组装离线可用的 report.html */
@@ -840,9 +953,10 @@ export function buildReportHtmlDocument(params: {
 <link rel="stylesheet" href="css/report.css">
 </head>
 <body>
-<main id="report-export-root">
+<!-- 报告正文克隆里自带 <main>（正文列），外层用 div 承载，避免 main 嵌套 -->
+<div id="report-export-root">
 ${clone.outerHTML}
-</main>
+</div>
 <footer style="text-align:center;padding:24px;color:#94a3b8;font-size:12px;border-top:1px solid #e2e8f0;margin-top:24px;">
   报告导出时间：${escapeHtml(exportedLabel)} | 导出自智能音频测试系统
 </footer>

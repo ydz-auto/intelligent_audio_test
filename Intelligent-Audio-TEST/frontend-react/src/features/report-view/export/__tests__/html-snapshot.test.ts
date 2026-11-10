@@ -57,7 +57,8 @@ describe('buildStaticClone', () => {
   it('清掉导航/操作条/筛选卡，只保留折叠触发器与用例展开按钮', () => {
     const root = mountReportDom(3)
     const { clone } = buildStaticClone(root)
-    expect(clone.querySelector('aside')).toBeNull()
+    // 页面上的右导航 aside 整块清掉；产物自己的目录右栏（data-export-toc-aside）是重建的
+    expect(clone.querySelector('aside:not([data-export-toc-aside])')).toBeNull()
     expect(clone.querySelector('.print\\:hidden')).toBeNull()
     expect(clone.querySelector('[data-export-hide]')).toBeNull()
     expect(clone.querySelector('[data-export-cases-ready]')).toBeNull()
@@ -131,19 +132,24 @@ describe('buildStaticClone', () => {
     const root = document.createElement('div')
     root.className = 'report-view-container'
     root.innerHTML = `
-      <section id="report-overview"><h3>总览</h3><div>统计</div></section>
-      <section id="report-resource-stats">
-        <div data-slot="collapsible">
-          <button data-slot="collapsible-trigger">设备与 API</button>
-          <div data-slot="collapsible-panel">内容</div>
-        </div>
-      </section>
-      <section id="report-specific-cases">
-        <div data-slot="collapsible">
-          <button data-slot="collapsible-trigger">具体用例</button>
-          <div data-slot="collapsible-panel">内容</div>
-        </div>
-      </section>`
+      <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px]">
+        <main class="min-w-0 space-y-6">
+          <section id="report-overview"><h3>总览</h3><div>统计</div></section>
+          <section id="report-resource-stats">
+            <div data-slot="collapsible">
+              <button data-slot="collapsible-trigger">设备与 API</button>
+              <div data-slot="collapsible-panel">内容</div>
+            </div>
+          </section>
+          <section id="report-specific-cases">
+            <div data-slot="collapsible">
+              <button data-slot="collapsible-trigger">具体用例</button>
+              <div data-slot="collapsible-panel">内容</div>
+            </div>
+          </section>
+        </main>
+        <aside class="print:hidden"><nav aria-label="本页目录"><button>总览</button></nav></aside>
+      </div>`
     document.body.appendChild(root)
     const { clone } = buildStaticClone(root)
     const nav = clone.querySelector('nav[aria-label="本页目录"]')
@@ -156,6 +162,33 @@ describe('buildStaticClone', () => {
     }
     expect(nav!.textContent).toContain('总览')
     expect(nav!.textContent).toContain('具体用例')
+    // 文案取报告页同一份目录定义（不是分区标题里的统计）
+    expect(Array.from(nav!.querySelectorAll('a')).map((a) => a.textContent)).toEqual([
+      '总览',
+      '设备与API',
+      '具体用例',
+    ])
+    // 视口固定的右栏：目录在正文右栏 aside 里（不是页顶横条），宿主标成两栏布局
+    const aside = nav!.closest('aside[data-export-toc-aside]')
+    expect(aside).not.toBeNull()
+    const host = clone.querySelector('[data-export-layout]')
+    expect(host).not.toBeNull()
+    expect(host!.querySelector(':scope > main')).not.toBeNull()
+    expect(host!.lastElementChild).toBe(aside)
+    // 阅读进度条 + 每个分节一个锚点
+    expect(nav!.querySelector('[data-export-toc-progress]')).not.toBeNull()
+    expect(nav!.querySelectorAll('[data-export-toc-list] li')).toHaveLength(3)
+    root.remove()
+  })
+
+  it('未登记在页面目录里的分区回退到标题文案（INT-2434）', () => {
+    const root = document.createElement('div')
+    root.className = 'report-view-container'
+    root.innerHTML = `<section id="report-custom-block"><h3>自定义区块</h3><div>内容</div></section>`
+    document.body.appendChild(root)
+    const { clone } = buildStaticClone(root)
+    const links = Array.from(clone.querySelectorAll('[data-export-toc-link]'))
+    expect(links.map((a) => a.textContent)).toEqual(['自定义区块'])
     root.remove()
   })
 

@@ -28,44 +28,10 @@ import { ReportProgressDialog } from '@/features/reports/components/modals/repor
 import { ReportShareDialog } from './components/modals/report-share-dialog'
 
 import { ReportReadingNav, type ReadingNavSection } from './components/report-reading-nav'
+import { COMPARISON_TABLES_SECTION_ID, REPORT_READING_NAV } from './report-nav-sections'
 import { ReportViewBody } from './components/report-view-body'
 
 import '@/features/report-view/report-print.css'
-
-const NAV: Record<'task' | 'comparison' | 'benchmark', ReadingNavSection[]> = {
-  task: [
-    { id: 'report-overview', label: '总览' },
-    { id: 'report-resource-stats', label: '设备与API' },
-    { id: 'report-conclusion', label: '分析结论' },
-    { id: 'report-comparison-tables', label: '对比表格' },
-    { id: 'report-case-category', label: '用例分组' },
-    { id: 'report-case-tag', label: '用例标签' },
-    { id: 'report-specific-cases', label: '具体用例' },
-    { id: 'report-documents', label: '报告文档' },
-  ],
-  benchmark: [
-    { id: 'report-benchmark-ranking', label: 'Benchmark 排行' },
-    { id: 'report-overview', label: '总览' },
-    { id: 'report-resource-stats', label: '设备与API' },
-    { id: 'report-conclusion', label: '分析结论' },
-    { id: 'report-comparison-tables', label: '对比表格' },
-    { id: 'report-case-category', label: '用例分组' },
-    { id: 'report-case-tag', label: '用例标签' },
-    { id: 'report-specific-cases', label: '具体用例' },
-    { id: 'report-documents', label: '报告文档' },
-  ],
-  comparison: [
-    { id: 'report-resource-stats', label: '设备与API' },
-    { id: 'report-conclusion', label: '分析结论' },
-    { id: 'report-case-category', label: '用例分组' },
-    { id: 'report-case-tag', label: '用例标签' },
-    { id: 'report-specific-cases', label: '具体用例' },
-    { id: 'report-documents', label: '报告文档' },
-  ],
-}
-
-/** 动态区块：仅当 summary.tables 非空时 TaskReportPanel 才渲染（§3.3.4），目录须同条件 */
-const COMPARISON_TABLES_SECTION_ID = 'report-comparison-tables'
 
 /**
  * 报告不存在的错误判定（INT-934）：后端 GET /reports/{id} 对不存在报告返回
@@ -159,9 +125,9 @@ export function ReportViewPage() {
   const sections = useMemo<ReadingNavSection[]>(() => {
     const isComparison = report?.type === 'comparison' || report?.type === 'secondary_comparison'
     const base =
-      isComparison ? [...NAV.comparison]
-      : report?.type === 'benchmark' ? [...NAV.benchmark]
-      : [...NAV.task]
+      isComparison ? [...REPORT_READING_NAV.comparison]
+      : report?.type === 'benchmark' ? [...REPORT_READING_NAV.benchmark]
+      : [...REPORT_READING_NAV.task]
     // 对比表格是动态区块：summary.tables 为空时面板不渲染，目录不得出现死锚点
     const visible = (report?.summary.tables?.length ?? 0) > 0
       ? base
