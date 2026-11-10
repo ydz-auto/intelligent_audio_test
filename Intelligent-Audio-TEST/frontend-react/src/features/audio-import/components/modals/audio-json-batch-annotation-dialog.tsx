@@ -177,8 +177,9 @@ export function AudioJsonBatchAnnotationDialog(
       }`
     )
     if (jsonFiles.length === 0) {
+      // 递归关时两路径同文案（picker 关档同样提示嵌套不读取）；递归开=文件夹内真没有 JSON
       toast.error(
-        fromPicker || recursive
+        recursive
           ? '所选文件夹内没有 .json 文件'
           : '所选文件夹第一层没有 .json 文件（嵌套目录不会读取）'
       )
@@ -371,9 +372,7 @@ export function AudioJsonBatchAnnotationDialog(
       toast.success(
         `更新完成 成功 ${result.success} 失败 ${result.failed} 刷新用例 ${result.refreshed}`
       )
-      setRows([])
-      resetProgress()
-      props.onOpenChange(false)
+      closeDialog()
     } catch {
       toast.error('批量更新标注失败，请重试')
     } finally {
@@ -381,19 +380,28 @@ export function AudioJsonBatchAnnotationDialog(
     }
   }
 
+  /** 关闭统一出口：清空行/进度并复位递归、标签来源默认档（重开不残留上次选择，
+   *  对齐导入弹窗 closeDialog §B.1）。取消 / 成功后自动关闭 / Esc / 点遮罩 / 右上角 X
+   *  都走这里——页脚「取消」直连 props.onOpenChange 会绕过 Dialog 的 onOpenChange，
+   *  故单列此函数。 */
+  const closeDialog = () => {
+    setRows([])
+    setSelectionSummary('')
+    resetProgress()
+    setRecursive(true)
+    setTagSource(DEFAULT_TAG_SOURCE)
+    props.onOpenChange(false)
+  }
+
   return (
     <Dialog
       open={props.open}
       onOpenChange={(open) => {
-        props.onOpenChange(open)
-        if (!open) {
-          setRows([])
-          setSelectionSummary('')
-          resetProgress()
-          // 关闭复位默认档（对齐导入弹窗 closeDialog 复位行为）：递归开 + 标签来源 both
-          setRecursive(true)
-          setTagSource(DEFAULT_TAG_SOURCE)
+        if (open) {
+          props.onOpenChange(true)
+          return
         }
+        closeDialog()
       }}
     >
       <DialogContent className='flex max-h-[calc(100dvh-2rem)] w-[min(90vw,64rem)] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-hidden p-0'>
@@ -548,6 +556,11 @@ export function AudioJsonBatchAnnotationDialog(
               <Select
                 value={tagSource}
                 onValueChange={(value) => setTagSource(value as AudioTagSource)}
+                // items 让触发器显示选中档的中文 label（Base UI 口径，触发器才不会渲染原始枚举值）
+                items={TAG_SOURCE_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
               >
                 <SelectTrigger id='json-batch-anno-tag-source' size='sm' className='w-full'>
                   <SelectValue />
@@ -677,7 +690,7 @@ export function AudioJsonBatchAnnotationDialog(
             variant='outline'
             size='sm'
             disabled={pending}
-            onClick={() => props.onOpenChange(false)}
+            onClick={closeDialog}
           >
             取消
           </Button>
