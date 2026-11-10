@@ -227,10 +227,10 @@ export default {
       return (refData && refData.length > 0) || (resData && resData.length > 0);
     },
     timelineFields() {
-      const fields = ['rttm_res', 'stm_res', 'rttm_ref', 'stm_ref', 'rttmRes', 'stmRes', 'rttmRef', 'stmRef'];
+      const fields = ['rttm_hyp', 'stm_hyp', 'rttm_ref', 'stm_ref', 'rttmRes', 'stmRes', 'rttmRef', 'stmRef'];
       const algoType = this.algorithmType?.toLowerCase() || '';
       if (algoType.includes('speaker') || algoType.includes('diarization')) {
-        return ['rttm_res', 'stm_res', 'rttmRes', 'stmRes', 'rttm_ref', 'stm_ref', 'rttmRef', 'stmRef'];
+        return ['rttm_hyp', 'stm_hyp', 'rttmRes', 'stmRes', 'rttm_ref', 'stm_ref', 'rttmRef', 'stmRef'];
       }
       return fields;
     },
@@ -561,7 +561,7 @@ export default {
           if (stmResult.length > 0) return stmResult;
         }
         
-        const stmJson = data.stm_res?.json || data.stmRef?.json || data.stm?.json;
+        const stmJson = data.stm_hyp?.json || data.stmRef?.json || data.stm?.json;
         if (stmJson) {
           if (Array.isArray(stmJson)) {
             return stmJson;
@@ -576,7 +576,7 @@ export default {
         }
         
         // STM text
-        const stmText = data.stm_res?.text || data.stmRef?.text || data.stm?.text;
+        const stmText = data.stm_hyp?.text || data.stmRef?.text || data.stm?.text;
         if (stmText && typeof stmText === 'string') {
           const stmResult = this.parseStmText(stmText);
           if (stmResult.length > 0) {
@@ -584,7 +584,7 @@ export default {
           }
         }
         
-        const rttmJson = data.rttm_res?.json || data.rttmRef?.json || data.rttm?.json;
+        const rttmJson = data.rttm_hyp?.json || data.rttmRef?.json || data.rttm?.json;
         if (rttmJson) {
           if (Array.isArray(rttmJson)) {
             return rttmJson;
@@ -598,7 +598,7 @@ export default {
           }
         }
         
-        const rttmText = data.rttm_res?.text || data.rttmRef?.text || data.rttm?.text;
+        const rttmText = data.rttm_hyp?.text || data.rttmRef?.text || data.rttm?.text;
         if (rttmText && typeof rttmText === 'string') {
           const rttmResult = this.parseRttmText(rttmText);
           if (rttmResult.length > 0) {

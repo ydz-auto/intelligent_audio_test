@@ -5,7 +5,7 @@
 职责：
 - 从数据库 param_mappings 表动态获取算法结果字段
 - 支持从 algorithm_result 和 result_data 中提取字段值
-- 替代硬编码的字段名 (rttm_res, stm_res, asr_result 等)
+- 替代硬编码的字段名 (rttm_hyp, stm_hyp, asr_result 等)
 """
 
 from typing import Dict, List, Any, Optional
@@ -48,8 +48,8 @@ class AlgorithmResultFieldMapper:
 
         返回格式:
         [
-            {"source_param": "rttm_res", "param_type": "rttm", "label": "RTTM结果"},
-            {"source_param": "stm_res", "param_type": "stm", "label": "STM结果"},
+            {"source_param": "rttm_hyp", "param_type": "rttm", "label": "RTTM结果"},
+            {"source_param": "stm_hyp", "param_type": "stm", "label": "STM结果"},
             {"source_param": "asr_result", "param_type": "text", "label": "ASR结果"},
             ...
         ]
@@ -218,8 +218,8 @@ class AlgorithmResultFieldMapper:
         Returns:
             按字段分组的完整结果:
             {
-                "rttm_res": {"value": {...}, "source": "algorithm_result/result_data"},
-                "stm_res": {"value": {...}, "source": "..."},
+                "rttm_hyp": {"value": {...}, "source": "algorithm_result/result_data"},
+                "stm_hyp": {"value": {...}, "source": "..."},
                 ...
             }
         """
@@ -276,7 +276,7 @@ class AlgorithmResultFieldMapper:
         返回格式:
         {
             "result": [
-                {"param_code": "rttm_res", "param_type": "rttm", "label": "RTTM结果"},
+                {"param_code": "rttm_hyp", "param_type": "rttm", "label": "RTTM结果"},
                 {"param_code": "asr_result", "param_type": "text", "label": "ASR结果"},
             ],
             "reference": [

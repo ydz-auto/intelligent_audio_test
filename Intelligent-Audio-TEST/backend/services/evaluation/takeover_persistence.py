@@ -8,7 +8,7 @@ import math
 import uuid
 from backend.models.models import TestResultDimension
 
-OWNED = {'tc_summary','tc_turns','normal_takeover_count','no_takeover_count','false_takeover_count','total_turns',
+OWNED = {'tc_summary','tc_turns','normal_takeover_count','no_takeover_count','false_takeover_count','total_turns','false_takeover_trigger_count',
          'te_interaction','te_tor','te_false_takeover','te_false_takeover_reason','te_takeover_latency_ms',
          'te_reply_quality_score','turn_eval_full_timeline_input','turn_eval_round_evaluations','turn_eval_full_timeline',
          'turn_eval_save_status'}
@@ -48,6 +48,7 @@ def replace_snapshot(result, calc, group_items, resource='evaluation', error=Non
         ed = rd['evaluation_data']
         ed.update(tc_summary=tc['summary'],tc_turns=copy.deepcopy(tc['turns']),normal_takeover_count=tc['normal_takeover_count'],
                   no_takeover_count=tc['no_takeover_count'],false_takeover_count=tc['false_takeover_count'],total_turns=tc['total_turns'],
+                  false_takeover_trigger_count=sum(int(t.get('false_takeover_trigger_count') or 0) for t in tc['turns']),
                   te_interaction=calc.get('interaction_text',''),te_tor=(calc.get('tor') or {}).get('tor'),
                   te_false_takeover=(calc.get('false_takeover') or {}).get('tor'),te_false_takeover_reason=(calc.get('false_takeover') or {}).get('reason',''),
                   te_takeover_latency_ms=(calc.get('takeover_latency') or {}).get('takeover_latency_ms'),

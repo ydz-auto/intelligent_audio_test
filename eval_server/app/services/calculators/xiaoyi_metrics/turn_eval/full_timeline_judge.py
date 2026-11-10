@@ -5,7 +5,8 @@ import logging
 import math
 from pathlib import Path
 
-LABELS = ('接管', '误接管', '未接管')
+LABELS = ('接管', '误接管', '未接管', '误接管-正常接管', '误接管-未接管')
+FALSE_TAKEOVER_LABELS = ('误接管', '误接管-正常接管', '误接管-未接管')
 
 
 def build_input(user_chunks, model_chunks, rounds):
@@ -47,6 +48,7 @@ def validate_and_derive(packet, parsed):
     used = {'user': set(), 'model': set()}
     last_user = -1
     turns = []
+    trigger_ranges = []
     for row in rows:
         label = row.get('classification')
         if label not in LABELS:
@@ -72,24 +74,57 @@ def validate_and_derive(packet, parsed):
         if ua <= last_user:
             raise ValueError('User rounds must be ordered and disjoint')
         last_user = ub
-        if label == '未接管':
+        if label in ('未接管', '误接管-未接管'):
             if row.get('response_start_word_id') is not None or row.get('response_end_word_id') is not None:
                 raise ValueError('No-takeover must not claim a reply span')
             mw = []
+            if label == '误接管-未接管':
+                span('model', row.get('false_takeover_start_word_id'), row.get('false_takeover_end_word_id'))
         else:
             mw, _, _ = span('model', row.get('response_start_word_id'), row.get('response_end_word_id'))
             if mw[0]['start'] < uw[0]['start']:
                 raise ValueError('Reply predates this user turn')
+            if label == '误接管-正常接管':
+                span('model', row.get('false_takeover_start_word_id'), row.get('false_takeover_end_word_id'))
+        triggers = row.get('false_takeover_triggers')
+        if label in FALSE_TAKEOVER_LABELS:
+            if not isinstance(triggers, list) or not triggers:
+                raise ValueError('False takeover requires trigger events')
+        elif triggers != []:
+            raise ValueError('Non false-takeover rounds must have empty triggers')
+        normalized_triggers = []
+        for trigger in triggers or []:
+            if not isinstance(trigger, dict):
+                raise ValueError('Trigger must be an object')
+            if not isinstance(trigger.get('reason'), str) or not trigger['reason'].strip():
+                raise ValueError('Trigger reason required')
+            first, last = trigger.get('start_word_id'), trigger.get('end_word_id')
+            if first not in positions['model'] or last not in positions['model']:
+                raise ValueError('Unknown model word ID / wrong speaker in trigger')
+            a, b = positions['model'][first], positions['model'][last]
+            if b < a:
+                raise ValueError('Reversed trigger word span')
+            trigger_range = (a, b)
+            if any(not (b < x or a > y) for x, y in trigger_ranges):
+                raise ValueError('Trigger spans must not overlap')
+            if streams['model'][b]['end'] <= uw[0]['start']:
+                raise ValueError('Trigger predates this user turn')
+            trigger_ranges.append(trigger_range)
+            normalized_triggers.append(dict(start_word_id=first, end_word_id=last, reason=trigger['reason'].strip()))
+        if label in FALSE_TAKEOVER_LABELS and row.get('false_takeover_start_word_id') != normalized_triggers[0]['start_word_id']:
+            raise ValueError('Initial false takeover must match first trigger')
         user_text = ''.join(w['text'] for w in uw)
         model_text = ''.join(w['text'] for w in mw)
         turn = dict(turn_index=len(turns) + 1, round_number=row['round_number'], classification=label,
                     user_start_s=uw[0]['start'], user_end_s=uw[-1]['end'], ai_start_s=mw[0]['start'] if mw else None,
                     ai_end_s=mw[-1]['end'] if mw else None, has_ai_reply=bool(mw),
-                    false_takeover=dict(false_takeover=int(label == '误接管'), reason=row['reason'], evidence=dict(user_full_utterance=user_text)),
+                    false_takeover=dict(false_takeover=int(label in FALSE_TAKEOVER_LABELS), reason=row['reason'], evidence=dict(user_full_utterance=user_text)),
                     alignment=dict(user_start_word_id=uw[0]['word_id'], user_end_word_id=uw[-1]['word_id'], reason=row['alignment_reason']),
+                    false_takeover_triggers=normalized_triggers, false_takeover_trigger_count=len(normalized_triggers),
+                    result=f'{label}；误接管次数{len(normalized_triggers)}',
                     response_start_word_id=mw[0]['word_id'] if mw else None, response_end_word_id=mw[-1]['word_id'] if mw else None,
                     response_start_reason=row['response_start_reason'], tor=None, takeover_judge=None, takeover_latency=None, reply_quality=None)
-        if label == '接管':
+        if label in ('接管', '误接管-正常接管'):
             quality = row.get('reply_quality')
             if not isinstance(quality, dict) or isinstance(quality.get('score'), bool) or not isinstance(quality.get('score'), int) or not 1 <= quality['score'] <= 5 or not isinstance(quality.get('reason'), str) or not quality['reason'].strip():
                 raise ValueError('Normal takeover requires quality score 1..5 and reason')
