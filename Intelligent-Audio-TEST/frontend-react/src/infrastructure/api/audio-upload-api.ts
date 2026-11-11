@@ -153,6 +153,8 @@ export interface UploadTestCaseConfig {
   createTestCase: boolean
   /** 整组轮次（文件夹导入：JSON 用例解析结果或按文件夹推断；缺省时按当前文件单轮） */
   rounds?: UploadRoundConfig[]
+  /** 显式用例名（文件夹导入：JSON 文件名或音频文件名） */
+  testCaseName?: string
   algorithmType: string | null
   algorithmParams: Array<{ field_code: string; field_value: unknown }>
   /** 单轮维度条目（各轮实际用到的 id 并集，含 name/weight；§5.7.7） */
@@ -335,6 +337,7 @@ export async function mergeChunks(
     test_case_config: {
       rounds: buildMergeRounds(config, filename),
       group_name: config.groupName || undefined,
+      test_case_name: config.testCaseName,
       inherit_tags: config.inheritTags,
     },
   })

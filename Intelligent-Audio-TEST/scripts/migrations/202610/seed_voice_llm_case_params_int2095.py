@@ -8,7 +8,7 @@
 - 契约：form-schema 的数据源恒为 `case_algorithm_params`（用例专属参数**定义**，
   `deleted=false`）；取值才写 `test_cases.algorithm_params`（按轮）。删除定义表
   → form-schema 空 → 批量弹窗空态（前端渲染正确，非前端 bug）。
-- 本脚本幂等恢复这 10 行：自然键 `(algorithm_type, param_code)`。软删行
+- 本脚本幂等维护这些行：自然键 `(algorithm_type, param_code)`。软删行
   `deleted=false` 回拨并按 §接口 表对齐字段；活行已一致即 SKIP；行被硬删则按
   §接口 表重插。seed_voice_llm.py Step 3 的软删陷阱由 INT-2095 同步修订
   （不再软删 case_params），本脚本补充 2026-10-22 之前已软删的存量数据。
@@ -39,7 +39,7 @@ if not os.environ.get('DATABASE_URL'):
 ALGORITHM_TYPE = 'voice_llm'
 TABLE = 'case_algorithm_params'
 
-# §接口 表：10 个用例专属参数（自然键 algorithm_type + param_code）。
+# §接口 表：voice_llm 用例专属参数（自然键 algorithm_type + param_code）。
 # 取值来源：真实库软删行（2026-10-27 快照），与 INT-2095 卡面 §接口 表一致；
 # label / help_text 取自真实行（重插路径保持展示口径与既有数据一致）。
 TARGET_CASE_PARAMS = [
@@ -188,6 +188,24 @@ TARGET_CASE_PARAMS = [
         'field_path': None,
     },
     {
+        'param_code': 'input_gap_ms',
+        'param_name': '拒识输入间隔',
+        'label': '拒识输入间隔',
+        'param_type': 'number',
+        'required': False,
+        'default_value': '0',
+        'help_text': '静默拒识轮播放后等待的输入间隔（毫秒）',
+        'ui_order': 8,
+        'hidden': False,
+        'scope': 'common',
+        'min_value': 0,
+        'max_value': None,
+        'step': 1,
+        'unit': 'ms',
+        'annotation_code': None,
+        'field_path': 'input_gap_ms',
+    },
+    {
         'param_code': 'is_single_round',
         'param_name': '单轮拒识',
         'label': '是否为单轮拒识模式',
@@ -195,7 +213,7 @@ TARGET_CASE_PARAMS = [
         'required': False,
         'default_value': 'false',
         'help_text': 'True=单轮拒识(user_wav直接为拒识内容)，False=多轮拒识(user_wav包含意图交互+拒识干扰)',
-        'ui_order': 8,
+        'ui_order': 9,
         'hidden': False,
         'scope': 'common',
         'min_value': None,
@@ -213,7 +231,7 @@ TARGET_CASE_PARAMS = [
         'required': False,
         'default_value': None,
         'help_text': '环境理解评估的标准答案（如"开关门"），从用例配置读取',
-        'ui_order': 9,
+        'ui_order': 10,
         'hidden': False,
         'scope': 'common',
         'min_value': None,
@@ -383,7 +401,8 @@ def migrate(dry_run=True):
         _print_rows('执行前', before)
 
         ops = plan_case_params_changes(before)
-        print(f"\n[{'DRY' if dry_run else 'APPLY'}] 计划 {len(ops)} 项（目标 10 个参数）：")
+        print(f"\n[{'DRY' if dry_run else 'APPLY'}] 计划 {len(ops)} 项"
+              f"（目标 {len(TARGET_CASE_PARAMS)} 个参数）：")
         for op in ops:
             if op['op'] == 'skip':
                 print(f"  - skip {op['param_code']}（活行已一致）")

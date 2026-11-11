@@ -41,6 +41,8 @@ export interface UploadProgressEvent {
 /** 每文件上传配置覆盖（文件夹导入/上传弹窗：per-folder 分组名 + 解析后的标注随 merge 落库） */
 export interface PerFileUploadConfig {
   groupName?: string
+  /** 用例名（JSON 分组=JSON 文件名；无 JSON=音频文件名） */
+  testCaseName?: string
   annotations?: unknown[]
   /** 所属分组整组轮次（文件夹导入；组内文件共享同一引用，merge 后回填 audio_id） */
   rounds?: UploadRoundConfig[]
@@ -141,6 +143,7 @@ export async function runAudioUpload(
         createTestCase: config.createTestCase && (fileConfig?.isGroupFinalMerge ?? true),
         // 每文件覆盖：分组名 / 标注（perFile 与 files 平行，缺省用 config 全局值）
         groupName: fileConfig?.groupName ?? config.groupName,
+        testCaseName: fileConfig?.testCaseName,
         annotations: fileConfig?.annotations ?? config.annotations ?? [],
         // 标签（INT-1979）：手填标签任何档位都保留，JSON 顶层 tags 按 tagSource 决定是否并入
         tags: resolveSubmitTags(config.tags, fileConfig?.tags, config.tagSource),

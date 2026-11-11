@@ -24,9 +24,8 @@ class AudioRoundConfigService:
         :return: dict，包含 create_test_case/device_type/dimensions_data 等键
         """
         tc_config = data.get('test_case_config') or data.get('testCaseConfig')
-        rounds_config, tc_group_name, tc_inherit_tags, tc_case_background_noise = (
-            self._extract_tc_config(tc_config)
-        )
+        (rounds_config, tc_group_name, tc_case_name,
+         tc_inherit_tags, tc_case_background_noise) = self._extract_tc_config(tc_config)
         test_case_group_name = self._resolve_group_name(data, tc_group_name)
         algorithm_params, algorithm_params_dict = self._resolve_algorithm_params(data, tc_config)
         dimensions_data = self._resolve_dimensions(data, tc_config)
@@ -57,12 +56,13 @@ class AudioRoundConfigService:
             'tag_source': resolve_tag_source(
                 data.get('tagSource') or data.get('tag_source')),
             'rounds_config': rounds_config,
+            'test_case_name': tc_case_name,
             'tc_inherit_tags': tc_inherit_tags,
             'case_background_noise': tc_case_background_noise,
         }
 
     def _extract_tc_config(self, tc_config):
-        """从 test_case_config 提取轮次配置/分组名/继承标签/case级背景噪声"""
+        """从 test_case_config 提取轮次配置/分组名/用例名/继承标签/case级背景噪声"""
         rounds_config = None
         if tc_config and isinstance(tc_config, dict):
             rounds_config = tc_config.get('rounds')
@@ -71,10 +71,15 @@ class AudioRoundConfigService:
             (tc_config.get('group_name') or tc_config.get('groupName'))
             if tc_config else None
         )
+        tc_case_name = (
+            (tc_config.get('test_case_name') or tc_config.get('testCaseName'))
+            if tc_config else None
+        )
         tc_inherit_tags = tc_config.get('inherit_tags', True) if tc_config else True
         # case 级背景噪声（rounds 外层），优先级高于轮次级
         tc_case_background_noise = tc_config.get('background_noise') if tc_config else None
-        return rounds_config, tc_group_name, tc_inherit_tags, tc_case_background_noise
+        return (rounds_config, tc_group_name, tc_case_name,
+                tc_inherit_tags, tc_case_background_noise)
 
     def _resolve_group_name(self, data, tc_group_name):
         """解析测试用例分组名：tc_config 优先，其次 data"""

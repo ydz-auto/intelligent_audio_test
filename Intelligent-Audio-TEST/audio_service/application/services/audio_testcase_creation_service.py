@@ -15,8 +15,8 @@ import json as _json
 import logging
 
 from shared.models.common_enums import DeviceType
-from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit
+from audio_service.domain.exceptions import TestCaseCreationError
 from audio_service.domain.repositories.audio_repository_abc import AudioRepositoryInterface
 from audio_service.infrastructure.persistence.audio_repository import audio_repository
 from audio_service.application.services.audio_annotation_service import audio_annotation_service
@@ -59,7 +59,8 @@ class AudioTestCaseCreationService(CreationRoundConfigMixin,
                                     algorithm_params=None, rounds_config=None,
                                     inherit_tags=True, raw_annotations=None,
                                     noise_device_ids=None, case_background_noise=None,
-                                    upload_task_id=None, playback_speaker_group_id=None):
+                                    upload_task_id=None, playback_speaker_group_id=None,
+                                    test_case_name=None):
         """从音频创建测试用例
 
         通过 ACL 仓储调用 gRPC TestCaseConfigService 创建测试用例（含分组/标签/参考参数），
@@ -108,17 +109,10 @@ class AudioTestCaseCreationService(CreationRoundConfigMixin,
                         break
                 if tc_audio_name != audio.name:
                     break
-        test_case_name = f"测试用例_{tc_audio_name}"
-
-        # 名称冲突检查：通过 ACL 仓储 ListTestCases 搜索同名用例
-        list_data = self._testcase_acl.list_testcases(
-            page=1, per_page=50, keyword=test_case_name,
-        )
-        if list_data:
-            for item in list_data.get('items', []):
-                if item.get('name') == test_case_name:
-                    test_case_name = f"{test_case_name}_{now_cst().strftime('%H%M%S')}"
-                    break
+        test_case_base_name = (test_case_name or tc_audio_name or '').strip()
+        if not test_case_base_name:
+            raise ValueError('测试用例名称不能为空')
+        final_case_name = f"测试用例_{test_case_base_name}"
 
         rounds_resolved, algo_params_col = self._resolve_rounds_and_strip_params(
             device_type, audio_id, audio, spl, effective_playback_device_id,
@@ -154,7 +148,7 @@ class AudioTestCaseCreationService(CreationRoundConfigMixin,
         # 通过 ACL 仓储创建测试用例
         # （task_service 侧自动处理分组创建/标签关联/参考参数生成）
         create_data = {
-            'name': test_case_name,
+            'name': final_case_name,
             'description': f"自动从音频 '{audio.name}' 创建的测试用例",
             'group': effective_group_name,
             'algorithm_type': algorithm_type,
@@ -168,8 +162,25 @@ class AudioTestCaseCreationService(CreationRoundConfigMixin,
                      f'tc.algorithm_params={_json.dumps(algo_params_col, ensure_ascii=False)[:300]}',
                      category='audio')
 
-        resp_data = self._testcase_acl.create_testcase_config(create_data)
-        tc_id = resp_data.get('id') if resp_data else None
+        list_all_testcases = getattr(self._testcase_acl, 'list_all_testcases', None)
+        existing_case = next(
+            (
+                item for item in (list_all_testcases() if callable(list_all_testcases) else [])
+                if str(item.get('name') or '').strip() == final_case_name
+                and str(item.get('group_name') or '').strip() == effective_group_name
+            ),
+            None,
+        )
+        if existing_case:
+            resp_data = self._testcase_acl.update_testcase_config(
+                existing_case.get('id'), create_data)
+            if resp_data is None:
+                raise TestCaseCreationError(
+                    f"更新测试用例失败: {final_case_name}")
+            tc_id = existing_case.get('id')
+        else:
+            resp_data = self._testcase_acl.create_testcase_config(create_data)
+            tc_id = resp_data.get('id') if resp_data else None
         return [tc_id] if tc_id else []
 
 
