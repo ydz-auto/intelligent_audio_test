@@ -40,6 +40,34 @@ def test_input_does_not_use_script_to_invent_words():
     with pytest.raises(ValueError):f.build_input([],[],[{'query':'你叫什么'}])
     with pytest.raises(ValueError):f.build_input([{'text':'你','timestamp':[1,2]}],[],[{'query':'你叫什么'}])
 
+
+def test_backchannel_rate_counts_case_once():
+    packet={'full_word_timeline':[
+        {'word_id':'M00000','speaker':'model','text':'嗯','start':1.0,'end':1.2},
+        {'word_id':'M00001','speaker':'model','text':'好','start':2.0,'end':2.2},
+    ]}
+    turns=[
+        {'turn_index':0,'round_number':0,'classification':f.BACKCHANNEL_LABEL,
+         'response_start_word_id':'M00000','response_end_word_id':'M00000',
+         'user_start_s':0.5,'user_end_s':1.5},
+        {'turn_index':1,'round_number':1,'classification':f.BACKCHANNEL_LABEL,
+         'response_start_word_id':'M00001','response_end_word_id':'M00001',
+         'user_start_s':1.5,'user_end_s':2.5},
+    ]
+    feedback=f.collect_backchannel_feedback(packet,turns)
+    assert feedback['backchannel_turn_count']==2
+    assert feedback['backchannel_case_count']==1
+    assert feedback['total_cases']==1
+    assert feedback['backchannel_rate']==1
+
+    result={'turn_classification':{'backchannel_count':2},'reasons':{}}
+    f.apply_backchannel_case_metrics(result,turns,feedback)
+    assert result['turn_classification']['backchannel_case_count']==1
+    assert result['turn_classification']['backchannel_case_total']==1
+    assert result['turn_classification']['backchannel_rate']==1
+    assert '命中1个用例 / 总用例数1个' in result['reasons']['backchannel_rate']
+
+
 def test_whole_case_bypasses_local_segmentation_and_projects_contract(example,monkeypatch):
     data,rounds,_,parsed=example
     def asr(path,**kwargs):return data['user'] if path=='raw_user.wav' else data['model']

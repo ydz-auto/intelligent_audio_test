@@ -15,6 +15,7 @@ def collect_backchannel_feedback(packet, turns):
 
     backchannel 由大模型直接判定（见 full_timeline_prompt.txt 的分类定义），
     这里只负责从已判为 backchannel 的轮次里提取短反馈词作为事件证据，不再用词表覆盖分类。
+    占比按用例统计：同一用例内多次 backchannel 只计 1 个命中用例。
     """
     streams = {
         s: sorted([w for w in (packet.get('full_word_timeline') or []) if w.get('speaker') == s],
@@ -52,12 +53,36 @@ def collect_backchannel_feedback(packet, turns):
             }
 
     matched_turns = sum(1 for t in turns or [] if t.get('classification') == BACKCHANNEL_LABEL)
+    matched_cases = 1 if matched_turns else 0
     return {
         'backchannel_turn_count': matched_turns,
+        'backchannel_case_count': matched_cases,
+        'total_cases': 1,
         'total_turns': len(turns or []),
-        'backchannel_rate': round(matched_turns / len(turns), 4) if turns else 0,
+        'backchannel_rate': matched_cases,
+        'backchannel_turn_rate': round(matched_turns / len(turns), 4) if turns else 0,
         'events': events,
     }
+
+
+def apply_backchannel_case_metrics(result, turns, feedback):
+    """把用例级 backchannel 口径写入整体结果，供平台按用例聚合并展示。"""
+    classification = result.setdefault('turn_classification', {})
+    classification['backchannel_case_count'] = feedback['backchannel_case_count']
+    classification['backchannel_case_total'] = feedback['total_cases']
+    classification['backchannel_rate'] = feedback['backchannel_rate']
+
+    matched = [
+        f"第{t.get('turn_index')}轮"
+        for t in turns or [] if t.get('classification') == BACKCHANNEL_LABEL
+    ]
+    where = '、'.join(matched) if matched else '无'
+    hit_cases = feedback['backchannel_case_count']
+    result.setdefault('reasons', {})['backchannel_rate'] = (
+        f"主动反馈-backchannel命中{hit_cases}个用例 / 总用例数1个 = {hit_cases:.2%}；"
+        f"对应轮次：{where}。"
+    )
+    return feedback
 
 
 def build_input(user_chunks, model_chunks, rounds):
@@ -395,6 +420,7 @@ def evaluate(calculator, task_params):
     result = calculator._build_per_round(1, merged)[0]
     result.pop('round_number', None)
     result['turn_classification']['turns'] = turns
+    apply_backchannel_case_metrics(result, turns, backchannel_feedback)
     result['backchannel_feedback'] = backchannel_feedback
     result.update(per_round=per_round, per_round_native=True, interaction_text=build_interaction_text(user, model),
                   full_timeline_input=packet, llm_round_evaluations=copy.deepcopy(turns), tokens_used=tokens, evaluation_mode='full_timeline', message='OK')
