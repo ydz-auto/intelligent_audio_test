@@ -1,6 +1,6 @@
 /**
  * 用例管理页（11_用例域.md §3.1 页面总骨架，SectionPageLayout fixedContent + 双视图表格）。
- * 装配：Breadcrumb 工作台/用例管理｜Title「用例管理」｜Actions（+新增用例/新建分组/导入用例/导出/模板下载）｜
+ * 装配：Breadcrumb 工作台/用例管理｜Title「用例管理」｜Actions（+新增用例/新建分组/导入用例/按 JSON 更新标注/导出/模板下载）｜
  * Content（视图页签 line → 筛选工具栏 → 分组/平铺表格 → 批量浮条）/ Footer（分页 Portal）。
  * 「导入用例」为文件/用例包导入（JSON/CSV/Excel/ZIP，含重复策略）；「导入音频生成用例」留在音频管理页。
  * 路由 /testcases/$view（by-group/by-tag 白名单在路由层）；mock 态全部弹窗/toast 演示，
@@ -8,7 +8,7 @@
  */
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { FileDown, FileSpreadsheet, FileUp, FolderPlus, Plus } from 'lucide-react'
+import { FileDown, FileJson, FileSpreadsheet, FileUp, FolderPlus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { toast } from 'sonner'
@@ -43,6 +43,7 @@ import { TagCaseList } from '@/features/testcases/components/tag-case-list'
 import { CaseBulkActions } from '@/features/testcases/components/case-bulk-actions'
 import { CaseBatchActionsHost } from '@/features/testcases/components/case-batch-actions-host'
 import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
+import { AudioJsonBatchAnnotationDialog } from '@/features/audio-import/components/modals/audio-json-batch-annotation-dialog'
 import { CaseMutateDrawer } from '@/features/testcases/modals/case-mutate-drawer'
 import { ExportDialog } from '@/features/testcases/modals/export-dialog'
 import { ImportDialog } from '@/features/testcases/modals/import-dialog'
@@ -77,6 +78,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const [presetGroupId, setPresetGroupId] = useState<string | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [jsonAnnotationOpen, setJsonAnnotationOpen] = useState(false)
   const [groupDialog, setGroupDialog] = useState<{
     open: boolean
     group: TestCaseGroup | null
@@ -540,6 +542,17 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               导入用例
             </Button>
           )}
+          {hasPermission('audio:update') && (
+            <Button
+              size='sm'
+              variant='outline'
+              className='h-7 gap-1.5'
+              onClick={() => setJsonAnnotationOpen(true)}
+            >
+              <FileJson aria-hidden='true' className='size-3.5' />
+              按 JSON 更新标注
+            </Button>
+          )}
           {hasPermission('testcase:import_export') && (
             <Button
               size='sm'
@@ -687,6 +700,10 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         open={importOpen}
         onOpenChange={setImportOpen}
         onImported={handleImported}
+      />
+      <AudioJsonBatchAnnotationDialog
+        open={jsonAnnotationOpen}
+        onOpenChange={setJsonAnnotationOpen}
       />
       <GroupMutateDialog
         open={groupDialog.open}

@@ -1,7 +1,7 @@
 /**
  * 音频管理页（16_设备域.md §5；INT-505 可视稿）。
  * SectionPageLayout fixedContent + Title「音频管理」徽标「共 {n} 个」+ 页头动作区
- * （上传音频/批量从文件夹导入/URL 导入/批量更新标注/按 JSON 更新标注/更多操作）+ 统计徽章行 + 视图切换
+ * （上传音频/批量从文件夹导入/URL 导入/批量更新标注/更多操作）+ 统计徽章行 + 视图切换
  * Tabs（列表/文件夹）+ 筛选工具栏（搜索+格式/音频类型/采样率/时长/标签 facet + 全局算法
  * chip）+ 列表视图 DataTable（§5.3）+ 文件夹视图左树右表（§5.5）+ 上传进度卡（§5.4）
  * + 批量浮条（§5.6）+ 分页 Portal（§3.9）。
@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Download, FileJson, FolderOpen, List, MoreHorizontal, Plus, RefreshCw, Tags, Trash2, UploadCloud } from 'lucide-react'
+import { Download, FolderOpen, List, MoreHorizontal, Plus, RefreshCw, Tags, Trash2, UploadCloud } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -46,7 +46,6 @@ import { AudioUploadDialog } from '@/features/audio-import/components/modals/aud
 import { AudioFolderImportDialog } from '@/features/audio-import/components/modals/audio-folder-import-dialog'
 import { AudioUrlImportDialog } from '@/features/audio-import/components/modals/audio-url-import-dialog'
 import { AudioBatchAnnotationDialog } from '@/features/audio-import/components/modals/audio-batch-annotation-dialog'
-import { AudioJsonBatchAnnotationDialog } from '@/features/audio-import/components/modals/audio-json-batch-annotation-dialog'
 import { AudioPreviewDialog } from '@/features/audio-import/components/modals/audio-preview-dialog'
 import { AudioMetadataDialog } from '@/features/audio-import/components/modals/audio-metadata-dialog'
 import { AudioConvertDialog } from '@/features/audio-import/components/modals/audio-convert-dialog'
@@ -94,7 +93,6 @@ export function AudioImportPage() {
   const [folderImportOpen, setFolderImportOpen] = useState(false)
   const [urlImportOpen, setUrlImportOpen] = useState(false)
   const [batchAnnotationOpen, setBatchAnnotationOpen] = useState(false)
-  const [jsonBatchAnnotationOpen, setJsonBatchAnnotationOpen] = useState(false)
   const [rowDialog, setRowDialog] = useState<AudioRowDialogState | null>(null)
   const [bulkDialog, setBulkDialog] = useState<AudioBulkDialogState | null>(null)
   const [bulkTagsOpen, setBulkTagsOpen] = useState(false)
@@ -388,17 +386,6 @@ export function AudioImportPage() {
                 批量更新标注
               </Button>
             )}
-            {canUpdate && (
-              <Button
-                variant='outline'
-                size='sm'
-                className='gap-1.5'
-                onClick={() => setJsonBatchAnnotationOpen(true)}
-              >
-                <FileJson aria-hidden='true' className='size-3.5' />
-                按 JSON 更新标注
-              </Button>
-            )}
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={<Button variant='outline' size='icon-sm' aria-label='更多操作' />}
@@ -550,11 +537,6 @@ export function AudioImportPage() {
         open={batchAnnotationOpen}
         onOpenChange={setBatchAnnotationOpen}
       />
-      <AudioJsonBatchAnnotationDialog
-        open={jsonBatchAnnotationOpen}
-        onOpenChange={setJsonBatchAnnotationOpen}
-      />
-
       <AudioPreviewDialog
         open={rowDialog?.kind === 'preview'}
         onOpenChange={(open) => !open && setRowDialog(null)}
