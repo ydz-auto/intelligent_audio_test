@@ -71,8 +71,9 @@ def judge(packet, call, model, max_tokens, temperature):
             raise ValueError('Invalid evaluation status')
         if row.get('timing') not in ('静默', '回复过程中', None) or row.get('behavior') not in ('恢复', '回应', '不确定询问', '无关回复', '静默', None):
             raise ValueError('Invalid judgment labels')
-        if not row.get('reason') or not row.get('alignment_reason'):
-            raise ValueError('Missing evidence reason')
+        row_reason = row.get('reason') or row.get('alignment_reason') or 'LLM 未返回判定理由'
+        row['reason'] = row_reason
+        row['alignment_reason'] = row.get('alignment_reason') or row_reason
         for key in ('user_start_word_id', 'user_end_word_id'):
             wid = row.get(key)
             if wid is not None and (wid not in words or words[wid]['speaker'] != 'query'):
