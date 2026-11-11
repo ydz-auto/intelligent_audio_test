@@ -25,7 +25,7 @@ def build_packet(user_chunks, model_chunks, configured_rounds, audio_info=None):
         rounds.append(dict(round_id=rid, sequence=i + 1, configured_round_number=number,
             role='rejection' if reject else 'intent', role_source='platform_config',
             is_reject=reject, evaluate_rejection=reject, parent_intent_round_id=parent if reject else None,
-            script_text=rd.get('script_text'), asr_hint=None))
+            script_text=rd.get('script_text'), type=rd.get('type'), timing=rd.get('timing'), asr_hint=None))
     if len({r['round_id'] for r in rounds}) != len(rounds):
         raise ValueError('Duplicate configured round numbers')
     return dict(round_inventory=dict(source='platform_config', configuration_complete=True,
@@ -52,6 +52,8 @@ def judge(packet, call, model, max_tokens, temperature):
         raise ValueError('Invalid round object')
     if [r.get('round_id') for r in rows] != [r['round_id'] for r in expected]:
         raise ValueError('Round IDs changed, duplicated, reordered or missing')
+    if any(row.get('type') != config.get('type') for row, config in zip(rows, expected)):
+        raise ValueError('Round type changed or missing')
     words = {w['word_id']: w for w in packet['full_word_timeline']}
     for row, config in zip(rows, expected):
         for field in ('sequence', 'configured_round_number', 'role', 'is_reject', 'evaluate_rejection', 'parent_intent_round_id'):
@@ -59,6 +61,10 @@ def judge(packet, call, model, max_tokens, temperature):
                 raise ValueError('Configured rejection flags must be JSON booleans')
             if row.get(field) != config[field]:
                 raise ValueError('Changed configured round field: ' + field)
+        if config.get('is_reject') and config.get('timing') in ('静默', '回复过程中') and row.get('timing') is None:
+            # Environmental noise may not expose an ASR anchor; configured timing
+            # is authoritative when the model cannot infer the anchor itself.
+            row['timing'] = config['timing']
         if row.get('alignment_status') not in ('matched', 'partial', 'ambiguous', 'not_found', 'source_mismatch'):
             raise ValueError('Invalid alignment status')
         if row.get('evaluation_status') not in ('evaluated', 'not_applicable', 'unjudgeable'):
@@ -80,7 +86,15 @@ def judge(packet, call, model, max_tokens, temperature):
             if row['evaluation_status'] != 'not_applicable' or row.get('behavior') is not None or row.get('timing') is not None:
                 raise ValueError('Normal intent round was scored')
         elif row['evaluation_status'] == 'evaluated':
-            if row['alignment_status'] not in ('matched', 'partial') or not a or not b or row.get('timing') is None or row.get('behavior') is None:
+            # Environmental noise has no user ASR words by design; allow evaluation
+            # without a user word range but still require configured timing/behavior.
+            env_noise = config.get('type') == '环境噪声'
+            valid_alignment = row['alignment_status'] in ('matched', 'partial') or (
+                env_noise and row['alignment_status'] == 'not_found')
+            valid_user_range = bool(a and b) or (env_noise and a is None and b is None)
+            valid_timing = row.get('timing') in ('静默', '回复过程中') or (
+                env_noise and config.get('timing') is None and row.get('timing') is None)
+            if not valid_alignment or not valid_user_range or not valid_timing or row.get('behavior') is None:
                 raise ValueError('Insufficient evidence for evaluated round')
         elif row['evaluation_status'] != 'unjudgeable' or row.get('behavior') is not None:
             raise ValueError('Unjudgeable rejection round must retain null behavior')

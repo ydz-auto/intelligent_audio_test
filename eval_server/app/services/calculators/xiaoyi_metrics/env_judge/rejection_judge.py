@@ -848,18 +848,31 @@ def evaluate_rejection_judge_text(user_wav: str, ai_wav: str, model: str = '',
 
     user_chunks = get_asr_chunks(user_wav) if user_wav and os.path.isfile(user_wav) else None
     model_chunks = get_asr_chunks(ai_wav) if ai_wav and os.path.isfile(ai_wav) else None
-    if not user_chunks:
+    env_noise_present = any(
+        isinstance(rd, dict) and rd.get('is_reject') is True and rd.get('type') == '环境噪声'
+        for rd in (configured_rounds or [])
+    )
+    if not user_chunks and not env_noise_present:
         return {'enabled': False, 'message': '用户侧 ASR 无词级结果，无法轮次切分', 'rounds': []}
-    if not model_chunks:
+    if not model_chunks and not env_noise_present:
         return {'enabled': False, 'message': '模型侧 ASR 无词级结果', 'rounds': []}
+    # 环境噪声允许任一侧 ASR 为空：空的模型侧词表本身就是“未回复”的判定输入。
+    user_chunks = user_chunks or []
+    model_chunks = model_chunks or []
 
     if configured_rounds is not None:
         from .rejection_rounds_v3 import build_packet, judge
         try:
             from app.utils.audio_metadata import audio_metadata
             audio_info = {
-                'query': audio_metadata(user_wav, 'success_nonempty' if user_chunks else 'unknown'),
-                'answer': audio_metadata(ai_wav, 'success_nonempty' if model_chunks else 'unknown'),
+                'query': audio_metadata(
+                    user_wav,
+                    'success_nonempty' if user_chunks else ('success_empty' if env_noise_present else 'unknown'),
+                ),
+                'answer': audio_metadata(
+                    ai_wav,
+                    'success_nonempty' if model_chunks else ('success_empty' if env_noise_present else 'unknown'),
+                ),
             }
             packet = build_packet(user_chunks, model_chunks, configured_rounds, audio_info=audio_info)
             rows, response = judge(packet, call_llm_api, model, max_tokens, temperature)
@@ -872,6 +885,15 @@ def evaluate_rejection_judge_text(user_wav: str, ai_wav: str, model: str = '',
             if not row['evaluate_rejection']:
                 continue
             ordinal += 1
+            # judge() may have filled timing from config; keep it explicit here so
+            # rate mapping and report fields never fall back to the null branch.
+            row_timing = row.get('timing') or next(
+                (rd.get('timing') for rd in (configured_rounds or [])
+                 if rd.get('configured_round_number') == row.get('configured_round_number')),
+                None,
+            )
+            if row_timing in ('静默', '回复过程中'):
+                row['timing'] = row_timing
             if row['evaluation_status'] == 'evaluated':
                 item = _text_judgment_fields(row['timing'], row['behavior'], row['reason'])
             else:
