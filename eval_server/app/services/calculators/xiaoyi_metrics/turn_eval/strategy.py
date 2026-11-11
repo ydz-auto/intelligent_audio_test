@@ -760,7 +760,11 @@ class TurnEvalCalculator(BaseCalculator):
             false_takeover = sum(1 for t in rt if t.get('classification') == TurnClassification.MISUNDERSTAND)
             false_then_normal = sum(1 for t in rt if t.get('classification') == '误接管-正常接管')
             false_then_no_takeover = sum(1 for t in rt if t.get('classification') == '误接管-未接管')
-            backchannel = sum(1 for t in rt if t.get('classification') == '主动反馈-backchannel')
+            backchannel = sum(
+                1 for t in rt
+                if t.get('has_backchannel') or t.get('classification') == '主动反馈-backchannel'
+            )
+            has_backchannel = backchannel > 0
 
             item = {
                 'round_number': i,
@@ -772,6 +776,8 @@ class TurnEvalCalculator(BaseCalculator):
                     'false_then_normal_takeover_count': false_then_normal,
                     'false_then_no_takeover_count': false_then_no_takeover,
                     'backchannel_count': backchannel,
+                    'backchannel_round_count': backchannel,
+                    'has_backchannel': has_backchannel,
                     'total_turns': len(rt),
                     'takeover_rate': round(normal / len(rt), 4) if rt else 0,
                     'no_takeover_rate': round(no_takeover / len(rt), 4) if rt else 0,

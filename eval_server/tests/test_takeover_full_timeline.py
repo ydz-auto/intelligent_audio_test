@@ -68,6 +68,35 @@ def test_backchannel_rate_counts_case_once():
     assert '命中1个用例 / 总用例数1个' in result['reasons']['backchannel_rate']
 
 
+def test_backchannel_can_coexist_with_normal_takeover_and_project_by_round():
+    packet=f.build_input(
+        [{'text':'你','timestamp':[0.0,0.3]},{'text':'好','timestamp':[0.3,1.0]}],
+        [{'text':'嗯','timestamp':[0.5,0.7]},{'text':'建议这样','timestamp':[1.1,1.8]}],
+        [{'query':'给我建议'}],
+    )
+    parsed={'rounds':[{
+        'round_number':0,'user_start_word_id':'U00000','user_end_word_id':'U00001',
+        'response_start_word_id':'M00000','response_end_word_id':'M00001',
+        'classification':'接管','has_backchannel':True,
+        'alignment_reason':'用户完整表达请求','response_start_reason':'模型先嗯后给出建议',
+        'reason':'先短反馈后给出实质建议','false_takeover_triggers':[],
+        'reply_quality':{'score':4,'reason':'给出了建议'},
+    }]}
+    turns=f.validate_and_derive(packet,parsed)
+    assert turns[0]['classification']=='接管'
+    assert turns[0]['has_backchannel'] is True
+    feedback=f.collect_backchannel_feedback(packet,turns)
+    assert feedback['backchannel_turn_count']==1
+    assert feedback['backchannel_case_count']==1
+
+    per_round=TurnEvalCalculator._build_per_round(2,[
+        dict(turns[0],round_number=0),
+        dict(turns[0],round_number=1,turn_index=2,classification='未接管',has_backchannel=False),
+    ])
+    assert per_round[0]['turn_classification']['has_backchannel'] is True
+    assert per_round[1]['turn_classification']['has_backchannel'] is False
+
+
 def test_whole_case_bypasses_local_segmentation_and_projects_contract(example,monkeypatch):
     data,rounds,_,parsed=example
     def asr(path,**kwargs):return data['user'] if path=='raw_user.wav' else data['model']

@@ -25,34 +25,40 @@ def collect_backchannel_feedback(packet, turns):
     model_pos = {w['word_id']: i for i, w in enumerate(streams['model'])}
     events = []
     for turn in turns or []:
-        if turn.get('classification') != BACKCHANNEL_LABEL:
+        has_backchannel = bool(turn.get('has_backchannel')) or turn.get('classification') == BACKCHANNEL_LABEL
+        if not has_backchannel:
             continue
-        first = turn.get('response_start_word_id')
-        last = turn.get('response_end_word_id')
         turn_events = []
-        if first in model_pos and last in model_pos:
-            a, b = model_pos[first], model_pos[last]
-            for word in streams['model'][a:b + 1]:
-                turn_events.append({
-                    'turn_index': turn.get('turn_index'),
-                    'round_number': turn.get('round_number'),
-                    'word_id': word['word_id'],
-                    'text': word['text'],
-                    'start_s': word['start'],
-                    'end_s': word['end'],
-                    'user_start_s': turn.get('user_start_s'),
-                    'user_end_s': turn.get('user_end_s'),
-                    'message': '用户表达过程中模型主动发出backchannel短反馈',
-                })
+        # 只有整轮判为 backchannel 时，response span 才是短反馈本身；
+        # 接管/误接管轮的 response span 是完整回答，不能当作 backchannel 事件证据。
+        if turn.get('classification') == BACKCHANNEL_LABEL:
+            first = turn.get('response_start_word_id')
+            last = turn.get('response_end_word_id')
+            if first in model_pos and last in model_pos:
+                a, b = model_pos[first], model_pos[last]
+                for word in streams['model'][a:b + 1]:
+                    turn_events.append({
+                        'turn_index': turn.get('turn_index'),
+                        'round_number': turn.get('round_number'),
+                        'word_id': word['word_id'],
+                        'text': word['text'],
+                        'start_s': word['start'],
+                        'end_s': word['end'],
+                        'user_start_s': turn.get('user_start_s'),
+                        'user_end_s': turn.get('user_end_s'),
+                        'message': '用户表达过程中模型主动发出backchannel短反馈',
+                    })
         events.extend(turn_events)
-        if turn_events:
-            turn['backchannel_feedback'] = {
-                'backchannel': 1,
-                'events': turn_events,
-                'message': '用户表达期间模型主动进行backchannel短反馈',
-            }
+        turn['backchannel_feedback'] = {
+            'backchannel': 1,
+            'events': turn_events,
+            'message': '该轮出现backchannel短反馈',
+        }
 
-    matched_turns = sum(1 for t in turns or [] if t.get('classification') == BACKCHANNEL_LABEL)
+    matched_turns = sum(
+        1 for t in turns or []
+        if t.get('has_backchannel') or t.get('classification') == BACKCHANNEL_LABEL
+    )
     matched_cases = 1 if matched_turns else 0
     return {
         'backchannel_turn_count': matched_turns,
@@ -74,7 +80,8 @@ def apply_backchannel_case_metrics(result, turns, feedback):
 
     matched = [
         f"第{t.get('turn_index')}轮"
-        for t in turns or [] if t.get('classification') == BACKCHANNEL_LABEL
+        for t in turns or []
+        if t.get('has_backchannel') or t.get('classification') == BACKCHANNEL_LABEL
     ]
     where = '、'.join(matched) if matched else '无'
     hit_cases = feedback['backchannel_case_count']
@@ -129,6 +136,11 @@ def validate_and_derive(packet, parsed):
         label = row.get('classification')
         if label not in LABELS:
             raise ValueError('Uncertain classification; do not convert missing evidence to success')
+        has_backchannel = row.get('has_backchannel', False)
+        if not isinstance(has_backchannel, bool):
+            raise ValueError('has_backchannel must be boolean')
+        if label == BACKCHANNEL_LABEL:
+            has_backchannel = True
         for key in ('reason', 'alignment_reason', 'response_start_reason'):
             if not isinstance(row.get(key), str) or not row[key].strip():
                 raise ValueError('Per-round evidence reasons required: ' + key)
@@ -194,6 +206,7 @@ def validate_and_derive(packet, parsed):
         user_text = ''.join(w['text'] for w in uw)
         model_text = ''.join(w['text'] for w in mw)
         turn = dict(turn_index=len(turns) + 1, round_number=row['round_number'], classification=label,
+                    has_backchannel=has_backchannel,
                     user_start_s=uw[0]['start'], user_end_s=uw[-1]['end'], ai_start_s=mw[0]['start'] if mw else None,
                     ai_end_s=mw[-1]['end'] if mw else None, has_ai_reply=bool(mw),
                     false_takeover=dict(false_takeover=int(label in FALSE_TAKEOVER_LABELS), reason=row['reason'], evidence=dict(user_full_utterance=user_text)),
