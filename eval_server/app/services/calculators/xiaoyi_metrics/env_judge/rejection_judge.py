@@ -895,7 +895,12 @@ def evaluate_rejection_judge_text(user_wav: str, ai_wav: str, model: str = '',
             if row_timing in ('静默', '回复过程中'):
                 row['timing'] = row_timing
             if row['evaluation_status'] == 'evaluated':
-                item = _text_judgment_fields(row['timing'], row['behavior'], row['reason'])
+                if row.get('timing') not in ('静默', '回复过程中'):
+                    # timing 缺失（如环境噪声轮配置无 timing 且模型未判定）→ 该轮评估失败，不计入统计
+                    item = {'evaluation_status': 'unjudgeable', 'behavior': None, 'rate': None,
+                            'message': '评估失败: timing 缺失，无法评级'}
+                else:
+                    item = _text_judgment_fields(row['timing'], row['behavior'], row['reason'])
             else:
                 item = {'evaluation_status': 'unjudgeable', 'behavior': None, 'rate': None,
                         'message': '不可判定: ' + row['reason']}
