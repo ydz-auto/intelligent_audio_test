@@ -9,7 +9,10 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from evaluation_service.domain.services.evaluation_utils import render_body_template
 from evaluation_service.domain.services.endpoint_helpers import get_api_timeout_seconds
-from evaluation_service.infrastructure.evaluation_api.api_request_handler import ApiRequestHandler
+from evaluation_service.infrastructure.evaluation_api.api_request_handler import (
+    ApiRequestHandler,
+    AudioAddressResolutionError,
+)
 from evaluation_service.infrastructure.evaluation_api.payload_builder import PayloadBuilder
 from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerMixin, get_endpoint_url, get_endpoint_field
 from shared.utils.config_manager import config_manager
@@ -239,11 +242,13 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         return create_task_payload
 
     def _has_oss_pass_through_value(self, form_fields):
-        """检测 form_fields 中是否保留了 oss:// 透传值。
+        """检测 form_fields 中是否保留了 oss:// 透传值（降级兜底信号）。
 
-        oss:// 前缀本身即信号：音频字段以 oss:// 字符串留在 form_fields 中
-        （files 为空），此时仍须走 multipart 端点 create_task_upload，
-        以复用 eval_server 侧的 rounds 字段提升逻辑（interruption_metrics 等任务类型依赖）。
+        音频地址文件化后，oss:// 正常路径已在 _extract_files_from_payload 下载为
+        multipart 文件；当 OSS 读取失败时值降级回退留在 form_fields（单轮回退 /
+        多轮留 rounds 原值）。此时仍须走 multipart 端点 create_task_upload：
+        - 复用 eval_server 侧的 rounds 字段提升逻辑（interruption_metrics 等任务类型依赖）；
+        - eval_server 本地分支可从对象存储兜底解析下载（可用性不降级）。
         """
         return any(isinstance(v, str) and 'oss://' in v for v in form_fields.values())
 
@@ -403,8 +408,27 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
             payload, dim_info, endpoints, api_url, audio_field_names, task_id, test_case_id, api_id
         )
 
-        # 2. 提取文件字段
-        form_fields, files = self._extract_files_from_payload(create_task_payload, audio_field_names=audio_field_names)
+        # 2. 提取文件字段（音频地址文件化：oss:// 经 storage 下载、presigned URL
+        # 经 http 流式下载；http 下载失败为业务级错误，与评估端点无关）
+        try:
+            form_fields, files = self._extract_files_from_payload(create_task_payload, audio_field_names=audio_field_names)
+        except AudioAddressResolutionError as e:
+            # 早退前必须先释放端点槽位：外层 _acquire_and_execute 对本方法的正常
+            # 返回无条件置 slot_released=True（跳过 finally 释放），不补释放会永久
+            # 泄漏该端点 1 个 max_process 槽位，反复下载失败将耗尽端点并发。
+            # 不得改为上抛——make_api_request_with_fallback 的 except 会捕获并
+            # 换端点重投同一 payload，违背「下载失败不换端点、不重复下载」口径
+            self.release_endpoint_slot(selected_url)
+            self._log(
+                level='ERROR',
+                category='execution',
+                content=f"音频地址下载失败，评估终止: {e}",
+                task_id=task_id,
+                test_case_id=test_case_id,
+                api_id=api_id
+            )
+            # 消息体（字段 / URL截断 / 原因）已由 AudioAddressResolutionError 携带
+            return {'__error__': str(e), '__error_kind__': EvalErrorKind.BUSINESS.value}
 
         # 3. 调用API创建任务
         create_response = self._create_async_task(

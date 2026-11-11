@@ -15,7 +15,9 @@
     "eval_poll_max_business_failures": 6,
     "redis_queue_brpop_timeout": 1,
     "redis_result_callback_timeout": 5,
-    "eval_fallback_urls": []
+    "eval_fallback_urls": [],
+    "audio_url_download_timeout_seconds": 60,
+    "audio_url_download_max_bytes": 209715200
   },
   "execution_engine": {
     "max_queue_size": 200,

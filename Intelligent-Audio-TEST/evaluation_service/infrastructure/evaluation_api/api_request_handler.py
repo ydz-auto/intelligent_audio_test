@@ -2,9 +2,11 @@ import os
 import time
 import json
 import logging
+import tempfile
 import requests
 import traceback
 import threading
+from urllib.parse import urlparse
 from shared.infrastructure.storage import storage
 from shared.models.common_enums import RedisKeyPrefix, EvalTaskStatus, EvalErrorKind
 from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerMixin
@@ -17,6 +19,35 @@ logger = logging.getLogger(__name__)
 DEFAULT_CREATE_TASK_TIMEOUT_SECONDS = 10
 # multipart 上传（音频文件）缺省给更宽的窗口
 DEFAULT_CREATE_TASK_UPLOAD_TIMEOUT_SECONDS = 30
+
+# 音频地址（http/https presigned URL）下载缺省值：超时 60 秒、大小上限 200MB。
+# 实际取值走 shared/config/concurrency_config.json 的 evaluation_service 节
+# （audio_url_download_timeout_seconds / audio_url_download_max_bytes）。
+DEFAULT_AUDIO_URL_DOWNLOAD_TIMEOUT_SECONDS = 60
+DEFAULT_AUDIO_URL_DOWNLOAD_MAX_BYTES = 209715200
+# 流式下载单块大小
+_AUDIO_URL_DOWNLOAD_CHUNK_BYTES = 256 * 1024
+
+# 音频 MIME → 扩展名映射（data URI 与 http 下载共用同一口径）
+_AUDIO_MIME_EXT_MAP = {
+    'audio/wav': '.wav', 'audio/x-wav': '.wav',
+    'audio/mpeg': '.mp3', 'audio/mp3': '.mp3',
+    'audio/flac': '.flac', 'audio/ogg': '.ogg',
+    'audio/mp4': '.m4a', 'audio/aac': '.aac',
+}
+
+# 嵌套结构中视为音频值的 dict 键（played_audios/background_noise/interferers
+# 的元素均为 {'audio_path': ...}）——仅这些键（及 audio_field_names 命中的
+# 音频字段）下的 oss:///http(s):// 地址会被本侧下载文件化，其余 URL 原样保留
+_NESTED_AUDIO_KEYS = {'audio_path'}
+
+
+class AudioAddressResolutionError(ValueError):
+    """音频地址（presigned URL）下载失败：HTTP 非 2xx / 超时 / 超限 / 连接异常。
+
+    业务级失败——与评估端点无关：调用方应终止本次评估并按 __error__ 上报，
+    不回退透传、不换端点重投（下载失败与端点无关，重投只会重复失败）。
+    """
 
 
 class EvalTaskRegistry:
@@ -315,10 +346,17 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         多轮时，每轮的音频字段提取为 ``rounds_{index}_{field_name}`` 上传，
         rounds JSON 里对应值替换为 ``__MULTIPART__:rounds_{index}_{field_name}`` 占位符。
 
-        支持的文件值形式：
+        支持的文件值形式（音频字段/audio_path 键上下文内）：
         - data URI（``data:audio/wav;base64,...``）
         - 绝对路径（本地存在）
         - 相对路径（基于 STATIC_BASE_PATH 配置目录解析，本地存在）
+        - OSS 引用（``oss://category/key``，经 storage.load_file 下载；
+          读取失败时降级回原值透传，由 eval_server 兜底解析）
+        - http(s) 音频地址（presigned URL，流式下载；失败为业务级
+          AudioAddressResolutionError，不降级不换端点）
+
+        非音频字段（如 callback_url）的 oss:///http(s):// 值不识别、不下载，
+        原样进 form_fields——防止把普通 URL 当音频文件误拉取。
 
         结构化音频字段（如被播放音频 audios 列表 ``[{audio_path, spl, ...}, ...]``）：
         递归遍历 dict/list 内部，凡是可解析为文件的字符串值都提取上传，
@@ -346,32 +384,28 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 # 深拷贝，避免修改原始 payload
                 rounds_copy = json.loads(json.dumps(value))
                 if len(rounds_copy) == 1 and isinstance(rounds_copy[0], dict):
-                    # 单轮：把字符串音频字段提到顶层上传，rounds 里删掉该字段
+                    # 单轮：把字符串音频字段提到顶层上传，rounds 里删掉该字段。
+                    # 字段名本身即音频上下文（audio_field_names 命中），oss:// 地址
+                    # 同路进 _extract_single_file 下载文件化；下载失败回退 form_fields
+                    # 原值透传（eval_server 兜底解析）
                     rd = rounds_copy[0]
                     for field_name in list(audio_field_names):
                         field_value = rd.get(field_name)
                         if isinstance(field_value, str) and field_value:
-                            if self._is_oss_pass_through(field_value):
-                                # 透传模式：oss:// 路径提到顶层 form_fields，
-                                # 由 eval_server 本地从对象存储下载（镜像文件提取逻辑，但不做字节上传）
-                                rd.pop(field_name, None)
-                                form_fields[field_name] = field_value
-                                continue
                             rd.pop(field_name, None)
                             self._extract_single_file(field_name, field_value, files,
                                                       form_fields_fallback=form_fields,
                                                       fallback_key=field_name, fallback_value=field_value)
                 else:
-                    # 多轮：每轮的音频字段提取为 rounds_{idx}_{field_name}
+                    # 多轮：每轮的音频字段提取为 rounds_{idx}_{field_name}。
+                    # oss:// 地址同路下载文件化，rounds 内替换为占位符；
+                    # 下载失败时保留原值（eval_server 兜底解析）
                     for idx, rd in enumerate(rounds_copy):
                         if not isinstance(rd, dict):
                             continue
                         for field_name in audio_field_names:
                             field_value = rd.get(field_name)
                             if isinstance(field_value, str) and field_value:
-                                if self._is_oss_pass_through(field_value):
-                                    # 透传模式：保持 oss:// 字符串在 rounds 中，eval_server 侧递归解析下载
-                                    continue
                                 upload_field_name = f'rounds_{idx}_{field_name}'
                                 extracted = self._extract_single_file(upload_field_name, field_value, files)
                                 if extracted:
@@ -387,14 +421,15 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                         field_value = rd.get(field_name)
                         if isinstance(field_value, (dict, list)):
                             rd[field_name] = self._extract_nested_files(
-                                field_value, f'rounds_{idx}_{field_name}', files
+                                field_value, f'rounds_{idx}_{field_name}', files,
+                                is_audio_field=field_name in audio_field_names
                             )
                 form_fields[key] = json.dumps(rounds_copy)
-            elif isinstance(value, str) and self._is_file_value(value):
+            elif isinstance(value, str) and self._is_file_value(value, is_audio_field=key in audio_field_names):
                 self._extract_single_file(key, value, files, form_fields_fallback=form_fields, fallback_key=key, fallback_value=value)
             elif key in audio_field_names and isinstance(value, (dict, list)):
                 # 顶层结构化音频字段：递归提取内部文件值，替换为 __MULTIPART__ 占位符
-                form_fields[key] = json.dumps(self._extract_nested_files(value, key, files))
+                form_fields[key] = json.dumps(self._extract_nested_files(value, key, files, is_audio_field=True))
             elif isinstance(value, (dict, list)):
                 form_fields[key] = json.dumps(value)
             elif isinstance(value, bool):
@@ -406,18 +441,15 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
         return form_fields, files
 
-    def _is_oss_pass_through(self, value):
-        """判断值是否为 oss:// 透传路径。
-
-        oss:// 前缀本身就是信号：透传模式下不会作为 multipart 文件提取，
-        而是原样传给 eval_server，由其在本地从对象存储下载后计算，
-        避免文件字节在主服务与评估服务之间流转。
-        """
-        return isinstance(value, str) and value.startswith('oss://')
-
     @staticmethod
-    def _is_file_value(value):
-        """判断字符串值是否可能是文件（data URI、本地路径或 OSS key）。"""
+    def _is_file_value(value, is_audio_field=False):
+        """判断字符串值是否可能是文件（data URI、本地路径、存储 key 或音频地址）。
+
+        is_audio_field：当前值是否处于音频上下文（audio_field_names 命中的字段，
+        或嵌套结构中的 audio_path 键）。oss:// 与 http(s):// 音频地址仅在音频
+        上下文识别为文件值（由本侧下载文件化）；非音频字段（如 callback_url）
+        的同形态值原样保留，不尝试下载。
+        """
         if not isinstance(value, str) or not value:
             return False
         if value.startswith('data:') and ',' in value:
@@ -427,10 +459,10 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         # 绝对路径（本地文件）
         if os.path.isabs(value):
             return os.path.exists(value)
-        # oss:// 路径不作为文件提取，原样透传给 eval_server，
-        # 由其在本地从对象存储下载（避免字节流转）
-        if value.startswith('oss://'):
-            return False
+        # 音频地址（OSS 引用 / presigned URL）：仅音频上下文提取为文件，
+        # 非音频字段原样透传给 eval_server，由其自行处置
+        if value.startswith(('oss://', 'http://', 'https://')):
+            return is_audio_field
         # 存储路径（兼容裸 OSS key）
         try:
             path = value if value.startswith(('oss://', 'local://')) else storage.build_path('audios', value)
@@ -440,7 +472,12 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
     @classmethod
     def _extract_single_file(cls, field_name, value, files, form_fields_fallback=None, fallback_key=None, fallback_value=None):
-        """提取单个文件到 files 字典。成功返回 True，失败时回退到 form_fields。"""
+        """提取单个文件到 files 字典。成功返回 True，失败时回退到 form_fields。
+
+        http(s) 音频地址下载失败抛 AudioAddressResolutionError（业务级，不回退、
+        不换端点重投）；其余失败（本地路径/OSS 读取异常）回退 form_fields 原值，
+        由 eval_server 兜底解析。
+        """
         try:
             if isinstance(value, str) and value.startswith('data:') and ',' in value:
                 header, data = value.split(',', 1)
@@ -448,28 +485,36 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 import base64
                 file_bytes = base64.b64decode(data)
 
-                ext_map = {
-                    'audio/wav': '.wav', 'audio/x-wav': '.wav',
-                    'audio/mpeg': '.mp3', 'audio/mp3': '.mp3',
-                    'audio/flac': '.flac', 'audio/ogg': '.ogg',
-                    'audio/mp4': '.m4a', 'audio/aac': '.aac',
-                }
-                ext = ext_map.get(mime, '.bin')
+                ext = _AUDIO_MIME_EXT_MAP.get(mime, '.bin')
                 filename = f"{field_name}{ext}"
                 files[field_name] = (filename, file_bytes, mime)
                 return True
+            elif isinstance(value, str) and len(value) < 4096 and value.startswith(('http://', 'https://')):
+                # presigned URL 音频地址：仅音频上下文会进入该分支
+                #（_is_file_value 已按 is_audio_field 门控；rounds 音频字段本身即音频上下文）。
+                # 长度门槛与 _is_file_value 对齐：≥4KB 的超长地址按普通字符串处理
+                #（VEGA-70 §1.5 已知边界，与改前行为一致）
+                return cls._extract_http_audio_file(field_name, value, files)
             elif isinstance(value, str) and len(value) < 4096:
-                # 绝对路径（本地文件）直接用；相对路径作为 OSS key 下载到临时文件
+                # 绝对路径（本地文件）直接用；相对路径 / oss:// 引用下载到临时文件
                 if os.path.isabs(value) and os.path.exists(value):
-                    resolved = value
+                    resolved, is_temp = value, False
                 else:
-                    resolved = cls._resolve_relative_path(value)
-                if resolved and os.path.exists(resolved):
-                    with open(resolved, 'rb') as f:
-                        file_bytes = f.read()
-                    filename = os.path.basename(resolved)
-                    files[field_name] = (filename, file_bytes, 'application/octet-stream')
-                    return True
+                    resolved, is_temp = cls._resolve_relative_path(value)
+                try:
+                    if resolved and os.path.exists(resolved):
+                        with open(resolved, 'rb') as f:
+                            file_bytes = f.read()
+                        filename = os.path.basename(resolved)
+                        files[field_name] = (filename, file_bytes, 'application/octet-stream')
+                        return True
+                finally:
+                    # storage.load_file 下载产生的临时文件读字节后即删（成功/失败路径均不残留）
+                    if is_temp and resolved:
+                        cls._remove_temp_file(resolved)
+        except AudioAddressResolutionError:
+            # 业务级失败：不吞、不回退，交调用方终止本次评估
+            raise
         except Exception:
             logger.debug("提取文件字段 %s 失败", field_name, exc_info=True)
         # 回退
@@ -477,31 +522,117 @@ class ApiRequestHandler(EvaluationLoggerMixin):
             form_fields_fallback[fallback_key] = fallback_value
         return False
 
-    def _extract_nested_files(self, value, prefix, files):
+    @classmethod
+    def _extract_http_audio_file(cls, field_name, value, files):
+        """下载 http(s) 音频地址（presigned URL）到临时文件并提取字节。
+
+        任何失败（连接异常 / 非 2xx / Content-Length 预检超限 / 流式累计超限）
+        抛 AudioAddressResolutionError；临时文件与响应连接在成功/失败路径
+        均被清理。超时与大小上限走 evaluation_service 配置（带缺省）。
+        """
+        timeout_seconds = float(config_manager.get_value(
+            'evaluation_service', 'audio_url_download_timeout_seconds',
+            DEFAULT_AUDIO_URL_DOWNLOAD_TIMEOUT_SECONDS) or DEFAULT_AUDIO_URL_DOWNLOAD_TIMEOUT_SECONDS)
+        max_bytes = int(config_manager.get_value(
+            'evaluation_service', 'audio_url_download_max_bytes',
+            DEFAULT_AUDIO_URL_DOWNLOAD_MAX_BYTES) or DEFAULT_AUDIO_URL_DOWNLOAD_MAX_BYTES)
+        # 错误消息里的 URL 截断（presigned URL 可能很长，避免污染日志与结果落库）
+        url_brief = value if len(value) <= 256 else f'{value[:256]}...'
+
+        try:
+            resp = requests.get(value, stream=True, timeout=timeout_seconds)
+        except Exception as e:
+            raise AudioAddressResolutionError(
+                f'音频地址下载失败: {field_name} {url_brief} {e}') from e
+
+        tmp_path = None
+        try:
+            if not (200 <= resp.status_code < 300):
+                raise AudioAddressResolutionError(
+                    f'音频地址下载失败: {field_name} {url_brief} HTTP {resp.status_code}')
+            content_length = resp.headers.get('Content-Length')
+            if content_length and content_length.isdigit() and int(content_length) > max_bytes:
+                raise AudioAddressResolutionError(
+                    f'音频地址下载超限: {field_name} {url_brief} '
+                    f'Content-Length {content_length} 超过上限 {max_bytes} 字节')
+            # 文件名取 URL path 的 basename；无扩展名时按 Content-Type 映射
+            # （复用 data URI 的 _AUDIO_MIME_EXT_MAP 口径）
+            filename = os.path.basename(urlparse(value).path)
+            mime = (resp.headers.get('Content-Type') or 'application/octet-stream').split(';')[0].strip()
+            if not filename or '.' not in filename:
+                filename = f"{filename or field_name}{_AUDIO_MIME_EXT_MAP.get(mime, '.bin')}"
+
+            tmp_fd, tmp_path = tempfile.mkstemp(suffix=os.path.splitext(filename)[1] or '.bin')
+            total = 0
+            try:
+                with os.fdopen(tmp_fd, 'wb') as f:
+                    for chunk in resp.iter_content(chunk_size=_AUDIO_URL_DOWNLOAD_CHUNK_BYTES):
+                        if not chunk:
+                            continue
+                        total += len(chunk)
+                        if total > max_bytes:
+                            raise AudioAddressResolutionError(
+                                f'音频地址下载超限: {field_name} {url_brief} '
+                                f'已接收 {total} 字节，超过上限 {max_bytes} 字节')
+                        f.write(chunk)
+            except AudioAddressResolutionError:
+                raise
+            except Exception as e:
+                # 流式读取中断（连接中断/读超时等）同样按业务级失败处理
+                raise AudioAddressResolutionError(
+                    f'音频地址下载失败: {field_name} {url_brief} {e}') from e
+
+            with open(tmp_path, 'rb') as f:
+                file_bytes = f.read()
+            files[field_name] = (filename, file_bytes, mime)
+            return True
+        finally:
+            resp.close()
+            if tmp_path:
+                cls._remove_temp_file(tmp_path)
+
+    @staticmethod
+    def _remove_temp_file(path):
+        """删除下载产生的临时文件（best effort，失败仅 debug 日志）"""
+        try:
+            if path and os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            logger.debug("清理下载临时文件失败: %s", path, exc_info=True)
+
+    def _extract_nested_files(self, value, prefix, files, is_audio_field=False):
         """递归提取嵌套结构（dict/list）中的文件值，替换为 __MULTIPART__ 占位符
 
         用于结构化音频字段（如被播放音频 audios 列表 [{audio_path, spl, ...}]）：
-        遍历内部所有字符串值，凡是可解析为文件的（data URI / 本地路径 / 存储 key）
-        都提取为 multipart 文件字段上传，原值替换为 ``__MULTIPART__:<upload_key>``。
+        遍历内部所有字符串值，凡是可解析为文件的（data URI / 本地路径 / 存储 key，
+        以及音频上下文中的 oss:///http(s):// 音频地址）都提取为 multipart 文件字段
+        上传，原值替换为 ``__MULTIPART__:<upload_key>``。
+
+        音频上下文传递：dict 的 ``_NESTED_AUDIO_KEYS`` 键（audio_path）视为音频值，
+        list 元素继承父级标志——oss:///http(s):// 地址只在音频上下文被下载，
+        其余键（如 callback_url）的 URL 原样保留。
 
         Args:
             value: dict/list/标量 嵌套结构
             prefix: 上传字段名前缀（如 rounds_0_played_audios）
             files: 已有的上传文件字典（避免重复 key）
+            is_audio_field: 父级是否音频上下文
         Returns:
             替换文件值后的同构结构
         """
         if isinstance(value, dict):
             return {
-                k: self._extract_nested_files(v, f'{prefix}_{k}', files)
+                k: self._extract_nested_files(v, f'{prefix}_{k}', files,
+                                               is_audio_field=k in _NESTED_AUDIO_KEYS)
                 for k, v in value.items()
             }
         if isinstance(value, list):
             return [
-                self._extract_nested_files(item, f'{prefix}_{i}', files)
+                self._extract_nested_files(item, f'{prefix}_{i}', files,
+                                           is_audio_field=is_audio_field)
                 for i, item in enumerate(value)
             ]
-        if isinstance(value, str) and value and self._is_file_value(value):
+        if isinstance(value, str) and value and self._is_file_value(value, is_audio_field=is_audio_field):
             upload_key = prefix
             seq = 0
             while upload_key in files:
@@ -514,23 +645,30 @@ class ApiRequestHandler(EvaluationLoggerMixin):
     @staticmethod
     def _resolve_relative_path(value):
         """
-        将相对路径（OSS key）解析为本地临时文件路径。
+        将相对路径（OSS key）或 oss:// 引用解析为本地文件路径。
 
-        音频文件存储在 OSS audios bucket，value 视为 OSS key，
-        下载到临时文件后返回本地路径。失败返回 None。
+        本地已存在（相对路径形态）→ 绝对路径；否则视为存储路径
+        （含 oss:// / local:// scheme），经 storage.load_file 下载到临时文件。
+
+        Returns:
+            (resolved_path, is_temp) 元组：is_temp 标记 resolved_path 是否为
+            下载产生的临时文件（调用方读字节后负责删除）；解析失败返回 (None, False)。
         """
         # 本地文件直接返回
         norm = value.replace('\\', os.sep).replace('/', os.sep)
         if os.path.exists(norm):
-            return os.path.abspath(norm)
+            return os.path.abspath(norm), False
 
         # 作为存储路径下载到临时文件
         try:
             path = value if value.startswith(('oss://', 'local://')) else storage.build_path('audios', value)
-            return storage.load_file(path)
+            return storage.load_file(path), True
         except Exception:
-            logger.debug("解析相对路径 %r 失败", value, exc_info=True)
-            return None
+            # 降级回原值透传（eval_server 兜底解析）——WARNING 留痕，不静默
+            #（storage 层另有 OSS 告警限频）
+            logger.warning("存储路径 %r 下载失败，音频值降级原值透传（eval_server 兜底）",
+                           value, exc_info=True)
+            return None, False
 
     def create_task_upload(self, url, form_fields, files, timeout=None, task_id=None):
         """

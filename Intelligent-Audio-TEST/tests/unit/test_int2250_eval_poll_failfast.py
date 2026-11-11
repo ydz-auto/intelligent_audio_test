@@ -432,7 +432,7 @@ class TestEndpointDiesMidPollEndToEnd:
             client._log = MagicMock()
             client._wait_for_redis_callback = MagicMock(return_value=None)
             # 本用例不走文件上传：跳过 storage.exists 探测（离线 OSS 会串行重试数十秒）
-            client._is_file_value = lambda value: False
+            client._is_file_value = lambda value, is_audio_field=False: False
 
             started = time.time()
             selected_url, resp = client.make_api_request_with_fallback(
