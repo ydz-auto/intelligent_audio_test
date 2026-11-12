@@ -111,3 +111,24 @@ class LlmMessageRole(str, Enum):
     USER = 'user'
     ASSISTANT = 'assistant'
     TOOL = 'tool'
+
+
+class SkillIssueCode(str, Enum):
+    """Skill 校验问题码（§4.2 frontmatter 契约）。"""
+
+    INVALID_FRONTMATTER = 'INVALID_FRONTMATTER'
+    MISSING_NAME = 'MISSING_NAME'
+    MISSING_DESCRIPTION = 'MISSING_DESCRIPTION'
+    DIRECTORY_NAME_MISMATCH = 'DIRECTORY_NAME_MISMATCH'
+    DUPLICATE_NAME = 'DUPLICATE_NAME'
+    BODY_TOO_LONG = 'BODY_TOO_LONG'
+    MISSING_REQUIRED_SECTION = 'MISSING_REQUIRED_SECTION'
+    UNKNOWN_TOOL = 'UNKNOWN_TOOL'
+    L1_BUDGET_EXCEEDED = 'L1_BUDGET_EXCEEDED'
+
+
+class SkillIssueSeverity(str, Enum):
+    """问题严重度：ERROR 剔除该 Skill，WARNING 仅告警。"""
+
+    ERROR = 'ERROR'
+    WARNING = 'WARNING'

@@ -10,6 +10,7 @@
 | GET  | /api/v1/agent/runs/{id}/events?cursor= | SSE，支持 Last-Event-ID |
 | POST | /api/v1/agent/runs/{id}/cancel | 取消 |
 | GET  | /api/v1/agent/runs/{id}/approvals | 待审批提案（M0 空列表）|
+| GET  | /api/v1/agent/skills | 当前用户可见 Skill（§4.2 规则 7）|
 """
 import json
 import logging
@@ -25,7 +26,7 @@ from agent_service.interfaces.api.dependencies import (
 )
 from agent_service.interfaces.api.schemas import (
     CreateRunRequest, CreateRunResponse, CreateSessionRequest, RunResponse,
-    SessionDetailResponse, SessionResponse,
+    SessionDetailResponse, SessionResponse, SkillResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,7 @@ def create_session(payload: CreateSessionRequest, request: Request,
     session = container.run_service.create_session(
         owner_id=identity.user_id, tenant_id=identity.tenant_id,
         title=payload.title, active_skill=payload.active_skill,
-        model=payload.model,
+        model=payload.model, permissions=identity.permissions,
     )
     return _serialize_session(session)
 
@@ -113,6 +114,7 @@ def create_run(session_id: str, payload: CreateRunRequest, request: Request,
     run, created = container.run_service.create_run(
         session_id, owner_id=identity.user_id, tenant_id=identity.tenant_id,
         message=payload.message, idempotency_key=idempotency_key,
+        permissions=identity.permissions, active_skill=payload.active_skill,
     )
     if created:
         container.executor.submit(run.id)
@@ -183,3 +185,26 @@ def list_approvals(run_id: str, request: Request,
     items = container.run_service.list_approvals(
         run_id, owner_id=identity.user_id, tenant_id=identity.tenant_id)
     return {'items': items}
+
+
+@router.get('/skills')
+def list_skills(request: Request,
+                identity: Identity = Depends(get_identity)):
+    """当前用户可见的 Skill 列表（§11；权限 = Skill ∩ 用户权限）。"""
+    container = get_container(request)
+    registry = container.skill_registry
+    visible = registry.visible_for(identity.permissions)
+    return {
+        'items': [
+            SkillResponse(
+                name=skill.name, description=skill.description,
+                version=skill.meta.version, owner=skill.meta.owner,
+                allowed_tools=list(skill.meta.allowed_tools),
+                permissions=list(skill.meta.permissions),
+                budgets=dict(skill.meta.budgets),
+            ).model_dump()
+            for skill in visible
+        ],
+        'l1_tokens': registry.l1_tokens(identity.permissions),
+        'l1_budget_tokens': registry.l1_budget_tokens,
+    }

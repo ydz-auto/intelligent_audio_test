@@ -45,3 +45,20 @@ class BudgetExceeded(AgentDomainError):
     def __init__(self, kind: str):
         self.kind = kind
         super().__init__(f'预算超限: {kind}')
+
+
+class SkillNotAvailable(AgentDomainError):
+    """Skill 未注册，或当前用户权限不满足（§4.2 规则 7）。"""
+
+    def __init__(self, name: str):
+        self.name = name
+        super().__init__(f'Skill 不可用: {name}')
+
+
+class SkillValidationError(AgentDomainError):
+    """Skill 校验失败（严格模式启动即失败，§4.2）。"""
+
+    def __init__(self, issues):
+        self.issues = tuple(issues)
+        detail = '; '.join(f'{i.code.value}:{i.skill or i.path}' for i in issues)
+        super().__init__(f'Skill 校验失败（{len(self.issues)} 项）: {detail}')

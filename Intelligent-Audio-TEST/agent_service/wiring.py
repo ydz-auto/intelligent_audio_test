@@ -19,6 +19,7 @@ from agent_service.application.run_service import RunService
 from agent_service.application.run_worker import (
     RunExecutor, ThreadPoolRunExecutor,
 )
+from agent_service.application.skill_registry import SkillRegistry
 from agent_service.config.config import Config
 from agent_service.domain.ports.llm import LlmClient
 from agent_service.domain.ports.run_wakeup import RunWakeup
@@ -31,6 +32,9 @@ from agent_service.infrastructure.persistence.repositories import (
     SqlArtifactRepository, SqlContextSnapshotRepository, SqlEventRepository,
     SqlRunRepository, SqlSessionRepository, SqlStepRepository,
     SqlToolCallRepository,
+)
+from agent_service.infrastructure.skill.fs_skill_repository import (
+    FsSkillRepository,
 )
 from agent_service.infrastructure.wakeup import LocalRunWakeup, RedisRunWakeup
 
@@ -46,6 +50,7 @@ class AgentContainer:
     wakeup: RunWakeup
     orchestrator: RunOrchestrator
     assembler: ContextAssembler
+    skill_registry: SkillRegistry
     repositories: dict = field(default_factory=dict)
 
     def shutdown(self) -> None:
@@ -77,16 +82,37 @@ def build_wakeup(wakeup: Optional[RunWakeup] = None) -> RunWakeup:
     return LocalRunWakeup()
 
 
+def build_skill_registry(tool_gateway: ToolGateway,
+                         skills_root: Optional[str] = None,
+                         strict: Optional[bool] = None) -> SkillRegistry:
+    """装配 SkillRegistry 并装载 skills 目录（§4）。
+
+    allowed-tools 的事实源是工具注册表：当前取自 ToolGateway.all_tools()；
+    INT-2453 把注册表抽到 shared/agent_tools 后，这里换成同一份 Schema 即可，
+    不为两套口径写兼容分支。
+    """
+    registry = SkillRegistry(
+        FsSkillRepository(skills_root or Config.SKILLS_ROOT),
+        known_tools=lambda: [d.name for d in tool_gateway.all_tools()],
+        max_body_lines=Config.SKILL_BODY_MAX_LINES,
+        strict=(Config.SKILL_VALIDATION_STRICT if strict is None else strict),
+        l1_budget_tokens=Config.skill_l1_budget_tokens(),
+    )
+    return registry.load()
+
+
 def build_container(session_factory,
                     llm_factory: Optional[Callable[[], LlmClient]] = None,
                     tool_gateway: Optional[ToolGateway] = None,
                     wakeup: Optional[RunWakeup] = None,
                     executor_factory: Optional[Callable] = None,
                     budget_defaults: Optional[dict] = None,
-                    terminal_grace_seconds: Optional[float] = None
+                    terminal_grace_seconds: Optional[float] = None,
+                    skill_registry: Optional[SkillRegistry] = None,
+                    skills_root: Optional[str] = None
                     ) -> AgentContainer:
-    """组合根。``budget_defaults`` / ``terminal_grace_seconds`` 仅供测试注入
-    更小的预算与宽限期；生产一律取 Config（预算只由服务端配置决定）。"""
+    """组合根。``budget_defaults`` / ``terminal_grace_seconds`` /
+    ``skill_registry`` / ``skills_root`` 仅供测试注入；生产一律取 Config。"""
     budgets = budget_defaults or Config.budget_defaults()
     sessions = SqlSessionRepository(session_factory)
     runs = SqlRunRepository(session_factory)
@@ -100,12 +126,14 @@ def build_container(session_factory,
     cancel_registry = CancelRegistry()
     side_effects = ReadOnlySideEffectChecker()
     gateway = tool_gateway or NoopToolGateway()
+    skills = skill_registry or build_skill_registry(gateway, skills_root)
 
     assembler = ContextAssembler(
         events, runs, system_prompt=Config.SYSTEM_PROMPT,
         max_runs=Config.CONTEXT_MAX_RUNS,
         max_messages=Config.CONTEXT_MAX_MESSAGES,
-        event_fetch_limit=Config.EVENT_SCAN_LIMIT)
+        event_fetch_limit=Config.EVENT_SCAN_LIMIT,
+        skills=skills)
 
     settings = OrchestratorSettings(
         budget_defaults=dict(budgets),
@@ -128,6 +156,7 @@ def build_container(session_factory,
         sessions, runs, events, wakeup, cancel_registry,
         budget_defaults=dict(budgets),
         default_model=Config.LLM_MODEL,
+        skills=skills,
     )
     event_stream = EventStreamService(
         events, runs, wakeup, page_size=Config.EVENT_PAGE_SIZE,
@@ -150,6 +179,7 @@ def build_container(session_factory,
         run_service=run_service, event_stream=event_stream,
         recovery=recovery, executor=executor, wakeup=wakeup,
         orchestrator=orchestrator, assembler=assembler,
+        skill_registry=skills,
         repositories={
             'sessions': sessions, 'runs': runs, 'events': events,
             'steps': steps, 'tool_calls': tool_calls,

@@ -13,6 +13,9 @@ import os
 from shared.config.service_ports import AGENT_SERVICE_HTTP_PORT
 from shared.infrastructure.config import BaseConfig, _get_bool, _get_float, _get_int
 
+_SERVICE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_PROJECT_DIR = os.path.dirname(_SERVICE_DIR)
+
 
 def _load_defaults() -> dict:
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -29,6 +32,7 @@ _DEFAULTS = _load_defaults()
 _BUDGET_DEFAULTS = _DEFAULTS.get('budget', {})
 _CONTEXT_DEFAULTS = _DEFAULTS.get('context', {})
 _STREAM_DEFAULTS = _DEFAULTS.get('event_stream', {})
+_SKILL_DEFAULTS = _DEFAULTS.get('skills', {})
 
 
 class Config(BaseConfig):
@@ -106,6 +110,27 @@ class Config(BaseConfig):
 
     # ===== 重启恢复（§9.2）=====
     RECOVERY_ON_STARTUP = _get_bool('AGENT_RECOVERY_ON_STARTUP', True)
+
+    # ===== Skill（§4；顶层只读目录由部署挂载，INT-2456）=====
+    SKILLS_ROOT = os.environ.get(
+        'AGENT_SKILLS_ROOT', os.path.join(_PROJECT_DIR, 'skills'))
+    SKILL_BODY_MAX_LINES = _get_int(
+        'AGENT_SKILL_BODY_MAX_LINES', int(_SKILL_DEFAULTS.get('body_max_lines', 500)))
+    # True：任何校验问题都让启动失败；False：ERROR 剔除该 Skill、WARNING 仅告警
+    SKILL_VALIDATION_STRICT = _get_bool(
+        'AGENT_SKILL_VALIDATION_STRICT',
+        bool(_SKILL_DEFAULTS.get('validation_strict', False)))
+    # L1 常驻预算 = 模型窗口 × system 区段占比（§8.3：15%）
+    CONTEXT_WINDOW_TOKENS = _get_int(
+        'AGENT_CONTEXT_WINDOW_TOKENS',
+        int(_SKILL_DEFAULTS.get('context_window_tokens', 128000)))
+    SYSTEM_SECTION_RATIO = _get_float(
+        'AGENT_SYSTEM_SECTION_RATIO',
+        float(_SKILL_DEFAULTS.get('system_section_ratio', 0.15)))
+
+    @classmethod
+    def skill_l1_budget_tokens(cls) -> int:
+        return int(cls.CONTEXT_WINDOW_TOKENS * cls.SYSTEM_SECTION_RATIO)
 
     @classmethod
     def budget_defaults(cls) -> dict:

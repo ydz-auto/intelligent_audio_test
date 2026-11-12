@@ -159,6 +159,12 @@ async def proxy_approvals(run_id: str, request: Request):
     return await _forward(request, 'GET')
 
 
+@router.get('/skills')
+async def proxy_skills(request: Request):
+    """当前用户可见 Skill 列表（INT-2452；权限由 agent_service 按身份头过滤）。"""
+    return await _forward(request, 'GET')
+
+
 @router.get('/runs/{run_id}/events')
 async def proxy_run_events(run_id: str, request: Request):
     # 预检：归属 / 存在性 / 状态由 agent_service 判定，非 200 原样返回

@@ -26,7 +26,7 @@ from fastapi.responses import JSONResponse
 
 from agent_service.config.config import Config
 from agent_service.domain.exceptions import (
-    InvalidRunTransition, RunNotFound, SessionNotFound,
+    InvalidRunTransition, RunNotFound, SessionNotFound, SkillNotAvailable,
 )
 from agent_service.interfaces.api.routes import router as agent_router
 
@@ -50,6 +50,12 @@ def _register_error_handlers(app: FastAPI) -> None:
             content={'detail': '非法的 Run 状态迁移',
                      'current': exc.current, 'target': exc.target},
         )
+
+    @app.exception_handler(SkillNotAvailable)
+    async def _skill_not_available(_request: Request, exc: SkillNotAvailable):
+        # 未注册与权限不足统一 400：不区分「存在但无权」，避免泄漏 Skill 清单
+        return JSONResponse(status_code=400,
+                            content={'detail': 'Skill 不可用'})
 
 
 def create_app(container=None) -> FastAPI:
