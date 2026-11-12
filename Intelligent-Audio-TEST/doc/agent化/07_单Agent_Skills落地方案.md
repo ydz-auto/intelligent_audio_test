@@ -9,10 +9,11 @@
 
 1. **唯一 Runtime：一个模型、一个上下文窗口、一个开放式工具循环**。不引入编排器，不按域拆 subagent。
 2. **能力扩展方式是 Skill，不是新 Agent**。Skill 承载流程、口径、判断与踩坑；工具承载动作与实时数据。
-3. **全平台 61 个业务能力全部纳入**，但内部 Agent 不暴露 205 个 MCP 原子工具，收敛为 26 个意图级工具（含 `tool_search`，业务意图工具 25 个）延迟加载。
+3. **全平台 61 个业务能力全部纳入**，但内部 Agent 不暴露 205 个 MCP 原子工具，收敛为 28 个工具（含 `tool_search` 与 2 个记忆工具，业务意图工具 25 个）延迟加载。
 4. **一套 Skill，两种宿主**：平台内置 Agent 与外部 Claude Code / Codex 共用同一批 `skills/` 资产；对外 MCP 保持现有 1:1 契约不变。
 5. **底座先行**：沙箱、上下文无感压缩、断点续跑、逐工具权限、写操作审批，先于业务 Skill 铺开。
 6. **模型密钥归用户**：用户配置自己的供应商 Key，加密存库、按用户隔离；平台默认不提供 Key，也不做隐式兜底。
+7. **记忆不用向量库**：沿用文件式记忆 + `rg/grep` + Skill references；Auto 模式审批粒度与预算见 §9.4；仅 Web 单通道，不保留 Electron。
 
 ## 2. 业界依据
 
@@ -172,12 +173,14 @@ budgets:
 
 ### 6.1 意图级工具（内部 Agent）
 
-原则：按用户意图分组，不按 API 1:1。目标 ≤30 个定义；本表合计 26 个（含 `tool_search`，业务意图工具 25 个）。
+原则：按用户意图分组，不按 API 1:1。目标 ≤30 个定义；本表合计 28 个（含 `tool_search` 与 2 个记忆工具，业务意图工具 25 个）。
 
 | 工具 | 覆盖能力 | 风险 |
 |---|---|---|
 | `platform_contract` | 查询字段、枚举、权限码、接口说明 | READ |
 | `tool_search` | 按关键词/语义查找长尾工具并返回 Schema | READ |
+| `memory_search` | `rg` 封装：按关键词检索用户/项目记忆与 Skill references | READ |
+| `memory_write` | 写入用户偏好或项目规则；需审批 | WRITE |
 | `audio_query` | 音频列表、详情、MD5、标签、目录树、特征/质量 | READ |
 | `audio_import` | URL 导入、上传初始化/合并、OSS 直传确认 | WRITE |
 | `audio_annotate` | 批量标注、元数据、算法配置 | WRITE |
@@ -233,7 +236,7 @@ budgets:
 |---|---|---|
 | `T0_NONE` | 所有业务工具调用 | 不执行代码；短时令牌（user + tenant + run + scopes），无 DB/设备凭证 |
 | `T1_TRUSTED_SCRIPT` | Skill 自带 `scripts/` | 一次性 Docker：非 root、`--network=none`、`--read-only`、`--cap-drop=ALL`、`--security-opt=no-new-privileges`、`--pids-limit=128`、`--memory=512m`、`--cpus=1`、`/tmp` tmpfs 64m；Skill 只读挂载，仅 `/work` 可写；超时 60s；输出限 1MB |
-| `T2_UNTRUSTED_CODE` | 模型生成代码、驱动代码 | 默认不执行，只产出提案；确需执行时用 gVisor/Firecracker，禁网、无宿主挂载、无凭证、用完即毁 |
+| `T2_UNTRUSTED_CODE` | 模型生成代码、驱动代码、任意分析脚本 | **首期启用**。gVisor（`runsc`）或 Firecracker microVM：禁网、无宿主挂载、无凭证、非 root、只读根 + `/work` 输出卷、pids/CPU/内存/时长硬限、用完即毁；Windows 开发机用 Linux 容器并标注“非生产等价” |
 
 硬规则：
 
@@ -242,6 +245,7 @@ budgets:
 3. 沙箱产物只通过 `/work` 输出卷回收，校验类型与大小。
 4. 生产环境 Linux 容器；Windows 开发机使用 Docker Desktop 的 Linux 容器，不使用 Windows 容器。
 5. 沙箱失败不得让 run 静默成功；按 `FAILED` 或 `BUDGET_EXCEEDED` 明确记录。
+6. T2 默认禁网；确需联网只能走出口代理白名单，并记录代码来源与 hash。
 
 ## 8. 上下文无感压缩
 
@@ -290,6 +294,15 @@ budgets:
 - 指标：每轮 token、压缩次数、事实召回率、重查率、压缩前后任务成功率差。
 - 长任务评测集：≥50 轮、跨域、含写操作审批与会话恢复。
 
+### 8.6 长期记忆（不用向量 RAG）
+
+1. 不引入向量库、embedding 或语义检索；沿用 DSH 的文件式记忆：`memory/user_profile.md`、`memory/projects/<project>/project_memory.md`、`memory/projects/<project>/<date>/topics.md` 与会话 JSONL。
+2. 知识获取靠 `rg`/`grep` + 文件读取 + Skill `references/`；代码与文档不做索引同步。
+3. 记忆分三层：用户偏好（跨项目）、项目规则（含本方案）、会话备忘（`run_scratchpad` + `context_snapshot`）。
+4. 写入只允许：用户显式“记住”、审批通过的 `memory_write`、run 结束的结构化备忘；禁止模型把猜测写入长期记忆。
+5. 会话开始时只注入用户偏好与项目规则摘要；细节由 `memory_search` 按关键词取。
+6. 记忆按 tenant/owner 目录隔离，路径不接收模型输入，写入前做敏感信息扫描。
+
 ## 9. 运行可靠性与状态
 
 ### 9.1 状态机
@@ -312,6 +325,29 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 - 超限 → `BUDGET_EXCEEDED`，保留已完成产物与事件。
 - 连续工具失败 ≥ 阈值 → 停止自动重试，转 `WAITING_APPROVAL` 或 `FAILED`，交用户决策。
 
+### 9.4 Auto 模式：审批粒度与预算（已定）
+
+审批粒度：
+
+- `READ`：自动执行。
+- `WRITE`：默认“计划级批量审批”，一次展示该步骤全部写操作 + diff/预览；以下必须单条审批：`DESTRUCTIVE`、单次影响 > 20 个对象、跨租户、导出含敏感数据、删除类。
+- `DESTRUCTIVE`：永远单条审批，不允许批量或 Auto 预授权。
+- Auto 只预授权 `WRITE`，启动前必须展示计划与预算；预算到 80% 或连续 2 次工具失败时暂停。
+
+预算（单 run，W = 当前模型上下文窗口，未声明按 128k 保守值）：
+
+| 项 | 默认 | Auto |
+|---|---|---|
+| 最大轮次 | 40 | 60 |
+| 最大工具调用 | 80 | 120 |
+| 总 token（输入+输出） | 2 × W | 4 × W |
+| 单轮输出 | 8k | 8k |
+| 时长 | 15 min | 30 min |
+| 输出字节 | 10 MB | 20 MB |
+| 压缩触发 | 60% / 80% | 60% / 80% |
+
+预算只能由服务端配置收紧，请求不可放宽；超限统一 `BUDGET_EXCEEDED`。
+
 ## 10. 数据模型
 
 | 表 | 关键字段 |
@@ -327,6 +363,8 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 | `agent_context_snapshot` | id, run_id, version, token_count, dropped_ids, memo, level |
 
 索引：session owner、run owner/status、(`run_id`, `sequence`)、approval status/expiry、idempotency key 唯一索引。
+
+长期记忆不建表：使用 `memory/` 文件树（按 tenant/owner 隔离），检索走 `rg`；`agent_context_snapshot` 只存会话内压缩快照。
 
 敏感数据：音频、完整日志、Prompt 全文、模型 API Key 明文均不入事件表与日志；Key 只存密文与掩码，日志脱敏。
 
@@ -400,7 +438,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 | Auto 模式 | 目标输入、预算设置、进度汇报、中断/暂停/继续 | INT-2477 |
 | `features/agent-workbench` | 保留页面能力映射，快捷指令仍只回填不自动发送 | INT-2457（保留） |
 
-要求：加载/空/错误态齐全；审批按钮防重复；SSE 重连不重复渲染；Web 单通道验证（当前全仓无 Electron 依赖，桌面壳另行立项）。
+要求：加载/空/错误态齐全；审批按钮防重复；SSE 重连不重复渲染；仅 Web 单通道，不保留 Electron/桌面壳方案。
 
 ## 13. 安全
 
@@ -412,6 +450,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 6. 外部 Skill zip 与 MCP 继续使用 `at_` Access Token，权限 = 用户权限 ∩ token scopes。
 7. 用户模型 Key 加密存储、掩码返回，只在模型调用时内存解密；平台默认无 Key，禁止隐式回退。
 8. 生产缺少 `AGENT_CREDENTIAL_MASTER_KEY` 时拒绝启动；主密钥轮换期间新旧版本并存。
+9. 记忆文件按 tenant/owner 隔离，路径不接收模型输入；写入需审批，读取前做敏感信息扫描。
 
 ## 14. 评测
 
@@ -429,8 +468,8 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 
 | 阶段 | 交付 | 验收 |
 |---|---|---|
-| M0 底座 | 单 loop、SkillRegistry、意图工具 3 个、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1；压缩 L1–L3；`platform-reference` | 沙箱逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
-| M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；tool search | 每域 10 条任务；Skill 触发准确率 ≥90%；无编造数值 |
+| M0 底座 | 单 loop、SkillRegistry、意图工具 3 个、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1 + T2（首期启用）；压缩 L1–L3；`platform-reference` | T1/T2 逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
+| M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；tool search；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%；无编造数值；记忆写入需审批 |
 | M2 写操作与报告 | 写工具、审批、幂等；Report Studio 取数→起草→版本→导出；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；三类报告指标与 Report Service 逐字段一致 |
 | M3 自动化与评测 | Auto 模式、预算/熔断、全量评测、外部 Skill zip/MCP 对齐、文档更新 | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致 |
 
@@ -449,9 +488,10 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 开放问题（需负责人后续拍板）：
 
 1. ~~默认模型与供应商~~ **已定（2026-11-12）**：用户自带 Key，AES-256-GCM 加密存 `agent_llm_provider`，按用户隔离；平台默认不提供 Key（`AGENT_ALLOW_PLATFORM_KEY=false`）；协议支持 OpenAI 兼容与 Anthropic。
-2. T2 沙箱是否首期启用，或只保留提案不执行。
-3. Auto 模式的默认审批粒度与预算上限。
-4. 长期记忆是否引入向量检索（首期不做）。
+2. ~~T2 沙箱~~ **已定（2026-11-12）**：首期启用，gVisor/Firecracker，禁网、无宿主挂载、无凭证。
+3. ~~Auto 模式审批粒度与预算~~ **已定（2026-11-12）**：见 §9.4；WRITE 计划级批量审批，DESTRUCTIVE 单条；预算按模型上下文窗口 W 计算。
+4. ~~长期记忆~~ **已定（2026-11-12）**：文件式记忆 + `rg/grep` + Skill references，不引入向量 RAG。
+5. 无其他开放问题。
 
 ## 17. 参考
 
