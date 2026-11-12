@@ -15,6 +15,7 @@
 6. **模型密钥归用户**：用户配置自己的供应商 Key，加密存库、按用户隔离；平台默认不提供 Key，也不做隐式兜底。
 7. **记忆不用向量库**：沿用文件式记忆 + `rg/grep` + Skill references；Auto 模式审批粒度与预算见 §9.4；仅 Web 单通道，不保留 Electron。
 8. **上下文窗口可配**：按模型目录给默认值，用户可在供应商配置里覆盖；预算与压缩阈值按有效窗口计算。
+9. **主场景是 App/API 接入**：用户说“我要测这个 App/API”，Agent 交付驱动/适配器 + 配置 + 冒烟用例 + 验证证据，而不是只给一段代码。
 
 ## 2. 业界依据
 
@@ -117,7 +118,7 @@ budgets:
 
 ### 4.3 首批 Skill 清单（全平台）
 
-合计 13 个：M0 交付 `platform-reference`，其余 12 个在 M1 出 L1/L2（§15）。
+合计 14 个：M0 交付 `platform-reference`，其余 12 个在 M1 出 L1/L2，`app-api-onboarding` 在 M2（依赖 `driver_propose` 与 staging 冒烟）。
 
 | Skill | 覆盖域 | 主要意图工具 | 优先级 |
 |---|---|---|---|
@@ -134,6 +135,7 @@ budgets:
 | `report-compare` | 多报告对比、趋势、异常下钻 | `report_compare`、`report_query` | P1 |
 | `log-diagnostics` | 日志搜索、失败诊断、导出 | `log_diagnose` | P1 |
 | `driver-proposal` | UiAutoDev 元素 → 设备驱动（`AppDriver`）+ 厂商 API 适配器（`ApiVendorAdapter`）提案 | `driver_propose`（对外唯一工具名；`target_kind` = `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；`generate_driver_from_elements` / `publish_driver_proposal` 是内部步骤，不新增对外工具，落地卡 INT-2467） | P2 |
+| `app-api-onboarding` | App/API 接入全流程：受理、发现、计划、生成、验证、迭代、交付 | `driver_propose`、`device_query`、`testcase_generate`、`task_run`、`tool_search` | P1 |
 
 ## 5. 单 Agent Loop 契约
 
@@ -270,6 +272,56 @@ budgets:
 - 设备驱动提案通过 `(app_type, version, platform)` resolve；API 适配器提案通过 `(protocol, vendor)` resolve 与 mock 契约测试。
 - 静态检查/单测失败时，不产生可发布产物。
 - 未审批不能写入驱动/适配器注册表。
+
+### 6.6 App/API 接入（onboarding）
+
+这是最主要的落地场景：用户说“我要测这个 App/API”，Agent 交付一套可运行的接入包，而不是一段代码。
+
+#### 入口
+
+| 入口 | 用户提供 | Agent 产出 |
+|---|---|---|
+| App（设备驱动） | 设备 + App 包名/版本、UiAutoDev 选中的元素卡片（点击/输入/提取/等待） | `AppDriver` + 配置 + 冒烟用例 + 验证报告 |
+| API（厂商适配器） | OpenAPI / gRPC proto / WS 帧文档、样例请求响应、鉴权方式 | `ApiVendorAdapter` + `vendor_adapter` 配置 + mock 契约测试 + 冒烟用例 |
+| App + API | 两者都给 | 成对交付：驱动负责设备侧 UI，适配器负责服务端协议 |
+
+UiAutoDev 元素卡片通过受认证的桥接事件进入会话，不作为新的对外工具；`driver_propose` 消费这些结构化输入。元素选择仍在 UiAutoDev 完成，Agent 不替代它。
+
+#### 流程
+
+1. **受理**：确认 app_type/vendor、platform、protocol、版本、测试目标（ASR/翻译/对话/…）、是否已有同类驱动。
+2. **发现**：App 侧读元素卡片/页面树；API 侧解析 OpenAPI/proto/WS 样例；`tool_search` 找同类实现与既有约定。
+3. **计划**：输出接入计划与缺口清单（缺元素、缺鉴权、缺样例、缺设备），用户确认后再生成。
+4. **生成**：调用 `driver_propose`，`target_kind` = `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；产出代码、配置、测试、manifest。
+5. **验证**：T2 编译/单测/mock 契约/注册表 resolve；App 侧在租用设备上跑冒烟用例。
+6. **迭代**：失败必须带新证据（日志/截图/元素变化/报文差异），最多 3 轮；不收敛就交回诊断，不无限重试。
+7. **交付**：提案包 + 验证报告 + 已知限制 + 回滚方案；合并/注册生产需单独的 `DESTRUCTIVE` 审批。
+
+#### 交付包
+
+```text
+onboarding/<app_type|vendor>/
+├─ driver.py / adapter.py
+├─ config.yaml
+├─ tests/
+├─ smoke_case.json
+├─ manifest.json
+└─ onboarding_report.md
+```
+
+#### 边界
+
+- 不直接写生产目录、不自动注册、不下发设备。
+- 设备侧必须租用/锁定设备，操作前有用户授权；API 侧默认 mock，真实调用需审批。
+- 生成代码不含凭证；Key 走现有 resolver。
+- 不替代 UiAutoDev：元素选择仍在 UiAutoDev 完成。
+
+#### 验收
+
+- 驱动按 `(app_type, version, platform)` resolve；适配器按 `(protocol, vendor)` resolve。
+- 冒烟用例在租用设备/mock 上通过，结果可回放。
+- 交付包可复现；报告含证据、限制、回滚。
+- 未审批不写生产注册表。
 
 ## 7. 沙箱
 
@@ -527,7 +579,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 |---|---|---|
 | M0 底座 | 单 loop、SkillRegistry、意图工具 3 个、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1 + T2（首期启用）；压缩 L1–L3；`platform-reference` | T1/T2 逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
 | M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；tool search；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%；无编造数值；记忆写入需审批 |
-| M2 写操作与报告 | 写工具、审批、幂等；驱动提案（设备驱动 + API 适配器，提案 + T2 验证，不自动发布）；Report Studio 取数→起草→版本→导出；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；两类提案均可复现且未审批不写注册表；三类报告指标与 Report Service 逐字段一致 |
+| M2 写操作与报告 | 写工具、审批、幂等；App/API 接入全流程（受理→发现→计划→生成→验证→迭代→交付）；驱动提案（设备驱动 + API 适配器，提案 + T2 验证，不自动发布）；Report Studio 取数→起草→版本→导出；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；两类提案均可复现且未审批不写注册表；接入包在 staging 冒烟通过；三类报告指标与 Report Service 逐字段一致 |
 | M3 自动化与评测 | Auto 模式、预算/熔断、全量评测、外部 Skill zip/MCP 对齐、文档更新 | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致 |
 
 ## 16. 风险与开放问题
