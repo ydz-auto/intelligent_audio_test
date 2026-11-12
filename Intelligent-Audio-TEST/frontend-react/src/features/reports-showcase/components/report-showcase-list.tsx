@@ -8,11 +8,11 @@
 import { ArrowUpDown, Copy, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { ErrorState } from '@/components/error-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Empty,
-  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -60,21 +60,14 @@ export function ReportShowcaseList({
   }
 
   if (hasError && items.length === 0) {
+    // INT-2447：错误态统一走公共 ErrorState（此前手搓 Empty，误用排序图标、按钮写「请重试」）。
     return (
-      <Empty className='min-h-fit border-dashed'>
-        <EmptyHeader>
-          <EmptyMedia variant='icon'>
-            <ArrowUpDown className='size-4' />
-          </EmptyMedia>
-          <EmptyTitle>加载失败</EmptyTitle>
-          <EmptyDescription>报告列表加载失败，请重试</EmptyDescription>
-        </EmptyHeader>
-        <EmptyContent>
-          <Button variant='outline' size='sm' onClick={onRetry}>
-            请重试
-          </Button>
-        </EmptyContent>
-      </Empty>
+      <ErrorState
+        className='min-h-fit'
+        title='报告列表加载失败'
+        description='报告列表获取失败，请重试'
+        onRetry={onRetry}
+      />
     )
   }
 

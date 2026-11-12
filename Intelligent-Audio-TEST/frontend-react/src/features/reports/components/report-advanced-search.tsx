@@ -88,7 +88,11 @@ export function ReportAdvancedSearch({
               onValueChange={(v) => onChange({ deviceType: v === 'all' ? undefined : v ?? undefined })}
             >
               <SelectTrigger id='adv-device-type' className='h-9 w-40'>
-                <SelectValue placeholder='全部' />
+                {/* INT-2447：Base UI Select 无 items/子节点时直接回显 value（英文 all/smart_speaker），
+                    按 Hero / pick-filter-bar 同款写法用选项表解析中文 label。 */}
+                <SelectValue placeholder='全部'>
+                  {DEVICE_TYPE_OPTIONS.find((option) => option.value === deviceType)?.label ?? '全部'}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent align='start'>
                 <SelectItem value='all'>全部</SelectItem>
@@ -110,7 +114,9 @@ export function ReportAdvancedSearch({
               onValueChange={(v) => onChange({ creator: v === 'all' ? undefined : v ?? undefined })}
             >
               <SelectTrigger id='adv-creator' className='h-9 w-40'>
-                <SelectValue placeholder='全部' />
+                <SelectValue placeholder='全部'>
+                  {CREATOR_OPTIONS.find((option) => option.value === creator)?.label ?? '全部'}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent align='start'>
                 <SelectItem value='all'>全部</SelectItem>
@@ -132,7 +138,10 @@ export function ReportAdvancedSearch({
               onValueChange={(v) => onTimeRangeChange(v as ReportTimeRange | 'all')}
             >
               <SelectTrigger id='adv-time-range' className='h-9 w-36'>
-                <SelectValue placeholder='全部时间' />
+                <SelectValue placeholder='全部时间'>
+                  {TIME_RANGE_OPTIONS.find((option) => option.value === (timeRange ?? 'all'))?.label ??
+                    '全部时间'}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent align='start'>
                 {TIME_RANGE_OPTIONS.map((option) => (
