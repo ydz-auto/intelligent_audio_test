@@ -9,7 +9,7 @@
 
 1. **唯一 Runtime：一个模型、一个上下文窗口、一个开放式工具循环**。不引入编排器，不按域拆 subagent。
 2. **能力扩展方式是 Skill，不是新 Agent**。Skill 承载流程、口径、判断与踩坑；工具承载动作与实时数据。
-3. **全平台 61 个业务能力全部纳入**，但内部 Agent 不暴露 150 个 MCP 原子工具，收敛为约 29 个意图级工具 + `tool_search` 延迟加载。
+3. **全平台 61 个业务能力全部纳入**，但内部 Agent 不暴露 205 个 MCP 原子工具，收敛为 26 个意图级工具（含 `tool_search`，业务意图工具 25 个）延迟加载。
 4. **一套 Skill，两种宿主**：平台内置 Agent 与外部 Claude Code / Codex 共用同一批 `skills/` 资产；对外 MCP 保持现有 1:1 契约不变。
 5. **底座先行**：沙箱、上下文无感压缩、断点续跑、逐工具权限、写操作审批，先于业务 Skill 铺开。
 
@@ -113,6 +113,8 @@ budgets:
 
 ### 4.3 首批 Skill 清单（全平台）
 
+合计 13 个：M0 交付 `platform-reference`，其余 12 个在 M1 出 L1/L2（§15）。
+
 | Skill | 覆盖域 | 主要意图工具 | 优先级 |
 |---|---|---|---|
 | `platform-reference` | 平台接口、字段别名、枚举、Gotchas | `tool_search`、`platform_contract` | P0 |
@@ -127,7 +129,7 @@ budgets:
 | `report-studio` | 三类报告取数、起草、改稿、版本、导出 | `report_query`、`report_generate`、`report_export` | P0 |
 | `report-compare` | 多报告对比、趋势、异常下钻 | `report_compare`、`report_query` | P1 |
 | `log-diagnostics` | 日志搜索、失败诊断、导出 | `log_diagnose` | P1 |
-| `driver-proposal` | UiAutoDev 元素 → 驱动代码提案 | `driver_propose` | P2 |
+| `driver-proposal` | UiAutoDev 元素 → 驱动代码提案 | `driver_propose`（对外唯一工具名；`generate_driver_from_elements` / `publish_driver_proposal` 是内部步骤，不新增对外工具，落地卡 INT-2467） | P2 |
 
 ## 5. 单 Agent Loop 契约
 
@@ -168,7 +170,7 @@ budgets:
 
 ### 6.1 意图级工具（内部 Agent）
 
-原则：按用户意图分组，不按 API 1:1。目标 ≤30 个定义。
+原则：按用户意图分组，不按 API 1:1。目标 ≤30 个定义；本表合计 26 个（含 `tool_search`，业务意图工具 25 个）。
 
 | 工具 | 覆盖能力 | 风险 |
 |---|---|---|
@@ -196,8 +198,8 @@ budgets:
 | `report_compare` | 多报告/二次对比、趋势 | READ |
 | `report_export` | 导出 PDF/PPTX/HTML/MD | WRITE |
 | `log_diagnose` | 日志搜索、统计、诊断 | READ |
-| `driver_propose` | 生成驱动代码提案（不执行、不发布） | WRITE |
-| `dashboard_query` | 首页统计、缓存刷新 | READ |
+| `driver_propose` | 生成驱动代码提案（不执行、不发布）；落地卡 INT-2467。对外意图工具名唯一为 `driver_propose`，`generate_driver_from_elements` / `publish_driver_proposal` 是内部步骤，不新增对外工具；首期只出提案、默认不发布 | WRITE |
+| `dashboard_query` | 首页统计（只读；缓存刷新留 M2，与 INT-2461 一致） | READ |
 
 ### 6.2 外部 MCP
 
@@ -364,15 +366,18 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 
 ### 12.2 前端（frontend-react）
 
-| 位置 | 改造 |
-|---|---|
-| `infrastructure/api/agentApi.ts` | 由占位桩改为真实契约 |
-| `infrastructure/dto/` | 新增 Agent DTO 转换，snake_case 只在此层 |
-| `application/agent/use-agent-run.ts` | 发起 run、订阅 SSE、断线续传、取消 |
-| `features/ai-chat` | 接真实事件流；新增审批卡、Run 时间线；保留工具卡与来源卡 |
-| `features/agent-workbench` | 保留页面能力映射，快捷指令仍只回填不自动发送 |
+| 位置 | 改造 | 落地卡 |
+|---|---|---|
+| `infrastructure/api/agentApi.ts` | 由占位桩改为真实契约（sessions / runs / events SSE / approvals 占位） | INT-2457 |
+| `infrastructure/dto/` | 新增 Agent DTO 转换，snake_case 只在此层 | INT-2457 |
+| `application/agent/use-agent-run.ts` | 发起 run、订阅 SSE、断线续传、取消 | INT-2457 |
+| `features/ai-chat` | 接真实事件流；保留工具卡与来源卡 | INT-2457 |
+| `features/ai-chat` 审批卡 + Run 时间线 | 审批提案/diff/风险/过期；事件时间线；重连恢复待审批 | INT-2472 |
+| `features/ai-chat` Report Studio 文档面板 | 取数 → 起草 → 版本 → 导出（PDF/PPTX/HTML/MD） | INT-2473 |
+| Auto 模式 | 目标输入、预算设置、进度汇报、中断/暂停/继续 | INT-2477 |
+| `features/agent-workbench` | 保留页面能力映射，快捷指令仍只回填不自动发送 | INT-2457（保留） |
 
-要求：加载/空/错误态齐全；审批按钮防重复；SSE 重连不重复渲染；Electron 与 Web 双通道验证。
+要求：加载/空/错误态齐全；审批按钮防重复；SSE 重连不重复渲染；Web 单通道验证（当前全仓无 Electron 依赖，桌面壳另行立项）。
 
 ## 13. 安全
 
@@ -400,7 +405,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 | 阶段 | 交付 | 验收 |
 |---|---|---|
 | M0 底座 | 单 loop、SkillRegistry、意图工具 3 个、SSE 回放、Run 持久化；沙箱 T1；压缩 L1–L3；`platform-reference` | 沙箱逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；10 条 golden tasks 通过 |
-| M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2；tool search | 每域 10 条任务；Skill 触发准确率 ≥90%；无编造数值 |
+| M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；tool search | 每域 10 条任务；Skill 触发准确率 ≥90%；无编造数值 |
 | M2 写操作与报告 | 写工具、审批、幂等；Report Studio 取数→起草→版本→导出；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；三类报告指标与 Report Service 逐字段一致 |
 | M3 自动化与评测 | Auto 模式、预算/熔断、全量评测、外部 Skill zip/MCP 对齐、文档更新 | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致 |
 
@@ -408,7 +413,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 
 | 风险 | 应对 |
 |---|---|
-| 150 个工具注入导致选择退化 | 意图工具 ≤30 + tool search；Skill 限定工具集 |
+| 205 个工具注入导致选择退化 | 意图工具 ≤30 + tool search；Skill 限定工具集 |
 | 模型能力不足导致计划漂移 | scratchpad + 确定性校验 + 审批 + 预算 |
 | 压缩丢关键事实 | 永不压缩清单；事实带来源 ID，可重查 |
 | 沙箱逃逸 | 三层隔离 + 逃逸用例纳入 CI |
