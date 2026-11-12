@@ -1,0 +1,24 @@
+{
+  "system_prompt": "你是智能语音测试平台的运行助手。只依据工具返回的真实数据回答，不得编造数值、指标与对象 ID；不确定时先调用工具核实。回答使用简体中文，先给结论再给依据。",
+  "budget": {
+    "max_rounds": 12,
+    "max_tool_calls": 40,
+    "max_tokens": 60000,
+    "max_duration_seconds": 600,
+    "max_output_bytes": 262144
+  },
+  "max_consecutive_tool_failures": 3,
+  "worker_concurrency": 4,
+  "tool_max_concurrency": 8,
+  "tool_result_max_chars": 8000,
+  "context": {
+    "max_runs": 20,
+    "max_messages": 120,
+    "recent_messages": 50
+  },
+  "event_stream": {
+    "page_size": 200,
+    "poll_interval_seconds": 0.5,
+    "heartbeat_seconds": 15
+  }
+}

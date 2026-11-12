@@ -1,0 +1,163 @@
+# -*- coding: utf-8 -*-
+"""会话 / Run 应用服务（命令侧）。
+
+- 建会话、发起 run（支持 Idempotency-Key）、取消、查询；
+- 发起 run 时先落 run_started 事件，保证 SSE 从任意时刻连上都能回放到首事件；
+- 状态推进一律过 RunStateMachine + 条件更新，终态不可覆盖。
+"""
+import logging
+import uuid
+from typing import Any, Dict, Optional, Tuple
+
+from agent_service.application.cancel_registry import CancelRegistry
+from agent_service.domain.enums import EventType, RunStatus
+from agent_service.domain.exceptions import (
+    InvalidRunTransition, RunNotFound, SessionNotFound,
+)
+from agent_service.domain.model.budget import RunBudget
+from agent_service.domain.model.entities import AgentRun, AgentSession
+from agent_service.domain.repositories import (
+    EventRepository, RunRepository, SessionRepository,
+)
+from agent_service.domain.services.state_machine import RunStateMachine
+from agent_service.domain.ports.run_wakeup import RunWakeup
+from shared.utils.time_utils import utcnow
+
+logger = logging.getLogger(__name__)
+
+
+class RunService:
+    def __init__(self, sessions: SessionRepository, runs: RunRepository,
+                 events: EventRepository, wakeup: RunWakeup,
+                 cancel_registry: CancelRegistry, *,
+                 budget_defaults: Dict[str, int],
+                 default_model: str = ''):
+        self._sessions = sessions
+        self._runs = runs
+        self._events = events
+        self._wakeup = wakeup
+        self._cancel_registry = cancel_registry
+        self._budget_defaults = dict(budget_defaults)
+        self._default_model = default_model
+
+    # ------------------------------------------------------------ sessions
+
+    def create_session(self, *, owner_id: int, tenant_id: str,
+                       title: str = '', active_skill: Optional[str] = None,
+                       model: str = '') -> AgentSession:
+        now = utcnow()
+        session = AgentSession(
+            id=str(uuid.uuid4()), owner_id=owner_id, tenant_id=tenant_id,
+            title=(title or '')[:200], active_skill=active_skill,
+            model=(model or self._default_model or '')[:100],
+            created_at=now, updated_at=now,
+        )
+        return self._sessions.add(session)
+
+    def get_session(self, session_id: str, *, owner_id: int,
+                    tenant_id: str) -> AgentSession:
+        session = self._sessions.get_for_owner(session_id, owner_id, tenant_id)
+        if session is None:
+            raise SessionNotFound(session_id)
+        return session
+
+    # ------------------------------------------------------------ runs
+
+    def create_run(self, session_id: str, *, owner_id: int, tenant_id: str,
+                   message: str, idempotency_key: Optional[str] = None,
+                   budget_override: Optional[Dict[str, Any]] = None
+                   ) -> Tuple[AgentRun, bool]:
+        session = self.get_session(session_id, owner_id=owner_id,
+                                   tenant_id=tenant_id)
+        normalized_key = self._normalize_key(idempotency_key, owner_id, tenant_id)
+        if normalized_key:
+            existing = self._runs.get_by_idempotency_key(normalized_key)
+            if existing is not None:
+                return existing, False
+
+        budget = self._resolve_budget(budget_override)
+        now = utcnow()
+        run = AgentRun(
+            id=str(uuid.uuid4()), session_id=session.id, owner_id=owner_id,
+            tenant_id=tenant_id, status=RunStatus.QUEUED,
+            model=session.model or self._default_model or '',
+            budget=budget.to_dict(), idempotency_key=normalized_key,
+            created_at=now, updated_at=now,
+        )
+        run, created = self._runs.add_if_absent(run)
+        if created:
+            self._events.append(run.id, EventType.RUN_STARTED, {
+                'user_message': message,
+                'session_id': session.id,
+                'model': run.model,
+                'budget': run.budget,
+            })
+            self._sessions.touch(session.id)
+            self._wakeup.notify(run.id)
+        return run, created
+
+    def get_run(self, run_id: str, *, owner_id: int,
+                tenant_id: str) -> AgentRun:
+        run = self._runs.get_for_owner(run_id, owner_id, tenant_id)
+        if run is None:
+            raise RunNotFound(run_id)
+        return run
+
+    def cancel_run(self, run_id: str, *, owner_id: int,
+                   tenant_id: str) -> AgentRun:
+        run = self.get_run(run_id, owner_id=owner_id, tenant_id=tenant_id)
+        if run.status.is_terminal:
+            return run
+        RunStateMachine.assert_transition(run.status, RunStatus.CANCELLED)
+        self._cancel_registry.cancel(run.id)
+        if not self._runs.request_cancel(run.id):
+            # 并发下已被其它路径收口：以库内最新状态为准
+            return self._runs.get(run.id) or run
+        hit = self._runs.transition_if(
+            run.id, {run.status}, RunStatus.CANCELLED,
+            finished_at=utcnow(), error=None)
+        if hit:
+            self._events.append(run.id, EventType.RUN_FINISHED, {
+                'status': RunStatus.CANCELLED.value,
+                'reason': 'user_cancelled',
+                'error': None,
+            })
+            self._wakeup.notify(run.id)
+        return self._runs.get(run.id) or run
+
+    def list_approvals(self, run_id: str, *, owner_id: int,
+                       tenant_id: str) -> list:
+        """M0 占位：审批表由 M2 建立，恒返回空列表（仍校验 run 归属）。"""
+        self.get_run(run_id, owner_id=owner_id, tenant_id=tenant_id)
+        return []
+
+    # ------------------------------------------------------------ internals
+
+    @staticmethod
+    def _normalize_key(raw: Optional[str], owner_id: int,
+                       tenant_id: str) -> Optional[str]:
+        if not raw:
+            return None
+        # 幂等键按所有者命名空间隔离并哈希：不同用户的同名字符串互不影响，
+        # 也不会因截断在同前缀的长键之间误撞（唯一索引仍是数据库兜底）
+        import hashlib
+        scoped = f'{tenant_id}:{owner_id}:{raw}'
+        return hashlib.sha256(scoped.encode('utf-8')).hexdigest()
+
+    def _resolve_budget(self, override: Optional[Dict[str, Any]]) -> RunBudget:
+        values = dict(self._budget_defaults)
+        if override:
+            for key in values:
+                if key not in override:
+                    continue
+                try:
+                    requested = int(override[key])
+                except (TypeError, ValueError):
+                    continue
+                if requested < 0:
+                    continue
+                values[key] = min(requested, values[key]) if values[key] > 0 else requested
+        return RunBudget.from_dict(values)
+
+
+__all__ = ['RunService', 'InvalidRunTransition', 'RunNotFound', 'SessionNotFound']

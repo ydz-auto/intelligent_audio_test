@@ -442,6 +442,14 @@ BOOTSTRAP_STEPS = [
     #     algorithm_api_params / source='api' 映射恢复为可见，并解绑迁移期 default 策略。
     #     幂等（只命中 deleted=true 且同键无活跃行的记录）；纯数据 UPDATE，须排在 ㊽ 之前。
     ('python', 'scripts/migrations/202611/restore_api_algorithm_level.py', '--apply'),
+    # ㊾-8 agent_service 运行底座七表（INT-2451，落地方案 §10）：
+    #     agent_session / agent_run / agent_run_event / agent_step /
+    #     agent_tool_call / agent_artifact / agent_context_snapshot。
+    #     create_all 只建缺失的表，建库早于本卡的存量库在本步自愈；含
+    #     (run_id, sequence) / (run_id, tool_call_id) / idempotency_key 唯一约束。
+    #     幂等（表/索引 IF NOT EXISTS、约束先查 pg_constraint），全新库为全 SKIP；
+    #     默认 dry-run，引导链必须带 --apply。须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_agent_runtime_tables.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
@@ -530,6 +538,8 @@ PROD_DDL_SCRIPTS = frozenset({
     'scripts/migrations/202611/add_audios_md5_filepath_index.py',
     'scripts/migrations/202611/add_task_list_indexes.py',
     'scripts/migrations/202611/add_param_change_history.py',
+    # INT-2451 agent_service 运行底座七表（结构 DDL，幂等）
+    'scripts/migrations/202611/add_agent_runtime_tables.py',
     'scripts/migrations/202610/analyze_stale_statistics_int1741.py',
 })
 
