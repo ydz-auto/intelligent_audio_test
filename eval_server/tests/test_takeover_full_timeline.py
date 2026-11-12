@@ -13,7 +13,7 @@ def example():
     rows=[]
     for i,(a,b,lo,hi) in enumerate([(0,3,6,20),(4,7,26,45),(8,13,54,70)]):
         ids=[w['word_id'] for w in packet['full_word_timeline'] if w['speaker']=='model' and lo<=w['start']<hi]
-        rows.append(dict(round_number=i,user_start_word_id=f'U{a:05d}',user_end_word_id=f'U{b:05d}',response_start_word_id=ids[0],response_end_word_id=ids[-1],classification='接管',reason='用户本轮完整提问后模型作答',alignment_reason='下一问题首词不属于本轮',response_start_reason='对应本轮实际回答首词',reply_quality={'score':4,'reason':'回应问题'}))
+        rows.append(dict(round_number=i,user_start_word_id=f'U{a:05d}',user_end_word_id=f'U{b:05d}',response_start_word_id=ids[0],response_end_word_id=ids[-1],classification='接管',has_backchannel=False,false_takeover_triggers=[],reason='用户本轮完整提问后模型作答',alignment_reason='下一问题首词不属于本轮',response_start_reason='对应本轮实际回答首词',reply_quality={'score':4,'reason':'回应问题'}))
     return data,rounds,packet,{'rounds':rows}
 
 def test_real_jg0211_word_ranges_are_disjoint(example):
@@ -241,6 +241,13 @@ def test_broken_tail_passes_judge_with_repair(example):
 def test_false_takeover_and_no_takeover_project_without_fake_quality(example,monkeypatch):
     data,rounds,packet,parsed=example
     parsed['rounds'][0]['classification']='误接管'
+    parsed['rounds'][0]['false_takeover_start_word_id']=parsed['rounds'][0]['response_start_word_id']
+    parsed['rounds'][0]['false_takeover_end_word_id']=parsed['rounds'][0]['response_end_word_id']
+    parsed['rounds'][0]['false_takeover_triggers']=[{
+        'start_word_id':parsed['rounds'][0]['response_start_word_id'],
+        'end_word_id':parsed['rounds'][0]['response_end_word_id'],
+        'reason':'用户尚未表达完整时模型提前实质回应',
+    }]
     parsed['rounds'][0]['reply_quality']=None
     parsed['rounds'][2].update(classification='未接管',response_start_word_id=None,response_end_word_id=None,reply_quality=None)
     monkeypatch.setattr(TurnTakingBase,'_get_asr_chunks',staticmethod(lambda path,**kw:data['user'] if 'user' in path else data['model']))
