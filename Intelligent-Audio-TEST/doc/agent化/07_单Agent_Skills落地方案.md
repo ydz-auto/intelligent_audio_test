@@ -135,7 +135,7 @@ budgets:
 | `report-compare` | 多报告对比、趋势、异常下钻 | `report_compare`、`report_query` | P1 |
 | `log-diagnostics` | 日志搜索、失败诊断、导出 | `log_diagnose` | P1 |
 | `driver-proposal` | UiAutoDev 元素 → 设备驱动（`AppDriver`）+ 厂商 API 适配器（`ApiVendorAdapter`）提案 | `driver_propose`（对外唯一工具名；`target_kind` = `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；`generate_driver_from_elements` / `publish_driver_proposal` 是内部步骤，不新增对外工具，落地卡 INT-2467） | P2 |
-| `app-api-onboarding` | App/API 接入全流程：受理、发现、计划、生成、验证、迭代、交付 | `driver_propose`、`device_query`、`testcase_generate`、`task_run`、`tool_search` | P1 |
+| `app-api-onboarding` | App/API 接入全流程（含 ASR/TTS 测量路径）：受理、发现、计划、生成、验证、迭代、交付 | `driver_propose`、`device_query`、`testcase_generate`、`task_run`、`tool_search` | P1 |
 
 ## 5. 单 Agent Loop 契约
 
@@ -244,6 +244,33 @@ budgets:
 | 设备驱动 | `AppDriver`（[app_driver.py](file:///d:/00_code/V10.11.2/Intelligent-Audio-TEST/device_service/infrastructure/drivers/contracts/app_driver.py)） | `(app_type, version, platform)` | 在真机上操作 App：`initialize` / `pre_process` / `get_results` / `teardown`，采集结果 |
 | API 适配器 | `ApiVendorAdapter`（[api_vendor_adapter.py](file:///d:/00_code/V10.11.2/Intelligent-Audio-TEST/api_test_service/domain/ports/api_vendor_adapter.py)） | `(AdapterProtocol, AdapterVendor)` | 适配厂商协议：`render_request_parts` / `execute` / 流式钩子，覆盖 HTTP/WS/gRPC/Realtime |
 
+#### 6.5.1 ASR/TTS 测量路径
+
+接入前必须先定“怎么喂、怎么收、怎么算”，否则生成的驱动不可测。现有驱动已形成五类可复用模板：
+
+| 模板 | 参考驱动 | 输入 | 采集 | 适用 |
+|---|---|---|---|---|
+| UI 文本 | `DouBaoAndroidAsrDriver`、`HarmonyXiaoyiInputMethodDriver` | 声学播放 / 手动说话 | 消息列表或编辑器文本 | ASR 文本、对话回复 |
+| 录屏音频 | `HarmonyDriver` + `HarmonyCollectionMixin` | 声学播放 | 每轮 mp4 → wav → OSS，首帧时间 | TTS 播放、对话回复音频 |
+| PCM 抓取 | `HarmonyDoubaoChat` / `XiaoyiLiveChat` | 声学播放 | `cap_client_out.pcm`（用户）/ `client_in..pcm`（AI），RMS 判结束 | 低延迟、打断、TTS 音频 |
+| App 导出 | `PlaudDriver` | 声学播放 | App 内转写/导出/分享 | 长录音转写、离线结果 |
+| API 响应 | `OpenAIRealtimeAdapter` / `WebSocketAdapter` | 文件上传 / 流式音频 / 文本 | JSON 文本 + 音频流/文件 | API ASR/TTS |
+
+生成驱动/适配器时必须声明能力画像 `capabilities.json`：
+
+- `stimulus_modes`：`ACOUSTIC_PLAYBACK` / `VIRTUAL_MIC` / `FILE_UPLOAD` / `TEXT_INPUT`
+- `capture_modes`：`UI_TEXT` / `SCREEN_RECORD` / `PCM_CAPTURE` / `APP_EXPORT` / `API_RESPONSE`
+- `timing_points`：`PLAYBACK_START` / `PLAYBACK_END` / `FIRST_FRAME` / `FIRST_PARTIAL` / `FINAL_TEXT` / `FIRST_AUDIO_PACKET` / `REPLY_END`
+- `result_fields`：必须对齐现有结果契约
+- `supported_metrics`：`WER` / `CER` / `SENTENCE_ACC` / `FIRST_TOKEN_LATENCY` / `REPLY_LATENCY` / `TTS_QUALITY` / `BARGE_IN`
+- `limitations`：如“无 PCM，仅能录屏”“只能取文本，无法评 TTS 音质”
+
+结果字段沿用现有驱动契约，不另造 schema：
+
+`success`、`message`、`asr`、`text`、`question`、`answer`、`wav_path`、`user_wav`、`ai_wav`、`record_path`、`start_ms`、`end_ms`、`first_frame_ms`、`latency_ms`。
+
+指标由 algorithm_service / evaluation_service 计算，驱动只负责采集文本、音频与时序，不在驱动里算 WER/MOS。
+
 `driver_propose` 的 `target_kind` 支持 `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；新 App/新厂商接入通常一次生成一对。
 
 流程：
@@ -289,8 +316,8 @@ UiAutoDev 元素卡片通过受认证的桥接事件进入会话，不作为新�
 
 #### 流程
 
-1. **受理**：确认 app_type/vendor、platform、protocol、版本、测试目标（ASR/翻译/对话/…）、是否已有同类驱动。
-2. **发现**：App 侧读元素卡片/页面树；API 侧解析 OpenAPI/proto/WS 样例；`tool_search` 找同类实现与既有约定。
+1. **受理**：确认 app_type/vendor、platform、protocol、版本；明确测试目标（ASR/TTS/对话/翻译/降噪/打断）；按 §6.5.1 确认输入方式、采集方式、完成判定、时序点、指标与测试资产；确认是否已有同类驱动。
+2. **发现**：App 侧读元素卡片/页面树；API 侧解析 OpenAPI/proto/WS 样例；`tool_search` 找同类实现与既有约定；校验测量路径可测——只能取 UI 文本就不能评 TTS 音质，只能录屏则 ASR 文本需要额外识别步骤。
 3. **计划**：输出接入计划与缺口清单（缺元素、缺鉴权、缺样例、缺设备），用户确认后再生成。
 4. **生成**：调用 `driver_propose`，`target_kind` = `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；产出代码、配置、测试、manifest。
 5. **验证**：T2 编译/单测/mock 契约/注册表 resolve；App 侧在租用设备上跑冒烟用例。
@@ -303,6 +330,8 @@ UiAutoDev 元素卡片通过受认证的桥接事件进入会话，不作为新�
 onboarding/<app_type|vendor>/
 ├─ driver.py / adapter.py
 ├─ config.yaml
+├─ capabilities.json
+├─ test_plan.md
 ├─ tests/
 ├─ smoke_case.json
 ├─ manifest.json
@@ -319,7 +348,8 @@ onboarding/<app_type|vendor>/
 #### 验收
 
 - 驱动按 `(app_type, version, platform)` resolve；适配器按 `(protocol, vendor)` resolve。
-- 冒烟用例在租用设备/mock 上通过，结果可回放。
+- 冒烟用例在租用设备/mock 上通过，至少产出一个可计算指标（ASR 文本或 TTS 音频 + 时序）。
+- 驱动返回字段对齐现有契约；指标由平台计算，不在驱动里算 WER/MOS。
 - 交付包可复现；报告含证据、限制、回滚。
 - 未审批不写生产注册表。
 
