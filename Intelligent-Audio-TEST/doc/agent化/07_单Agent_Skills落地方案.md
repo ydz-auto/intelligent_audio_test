@@ -12,6 +12,7 @@
 3. **全平台 61 个业务能力全部纳入**，但内部 Agent 不暴露 205 个 MCP 原子工具，收敛为 26 个意图级工具（含 `tool_search`，业务意图工具 25 个）延迟加载。
 4. **一套 Skill，两种宿主**：平台内置 Agent 与外部 Claude Code / Codex 共用同一批 `skills/` 资产；对外 MCP 保持现有 1:1 契约不变。
 5. **底座先行**：沙箱、上下文无感压缩、断点续跑、逐工具权限、写操作审批，先于业务 Skill 铺开。
+6. **模型密钥归用户**：用户配置自己的供应商 Key，加密存库、按用户隔离；平台默认不提供 Key，也不做隐式兜底。
 
 ## 2. 业界依据
 
@@ -51,6 +52,7 @@ agent_service  ── 唯一 Agent Loop
 | 能力 | 归属 |
 |---|---|
 | 模型调用、流式、工具调度、上下文管理 | `agent_service` 的 Loop |
+| 用户模型供应商与 Key | 用户自行配置；加密存库，仅 `agent_service` 调用时内存解密 |
 | 身份、租户、资源授权、审批决策、审计 | `api_gateway` + 各业务服务（强制校验） |
 | 业务事实与指标计算 | 现有领域服务；模型不得编造数值 |
 | 文档与版本 | Report Studio 文档/版本表 |
@@ -214,6 +216,17 @@ budgets:
 3. 越权返回模型可读的普通拒绝文本，不抛内部异常，不泄漏资源是否存在。
 4. 所有工具调用写审计：`run_id`、`tool`、`args_hash`、`decision`、`latency`、`result_code`。
 
+### 6.4 模型供应商与密钥（P0-1 已定）
+
+1. 用户在平台内配置自己的模型供应商（名称、协议、Base URL、模型名、API Key），保存到 `agent_llm_provider`；平台默认不提供任何 Key，`AGENT_ALLOW_PLATFORM_KEY=false`。
+2. API Key 使用 AES-256-GCM 加密落库：主密钥来自 KMS / 环境变量 `AGENT_CREDENTIAL_MASTER_KEY`，每条记录独立 nonce，AAD 绑定 `owner_id + provider_id`；禁止明文、禁止可逆日志、禁止向前端返回明文，列表只返回 `sk-****abcd` 掩码。
+3. 每次模型调用按 run 的 `owner_id` 取默认供应商，仅在内存中解密；用后即弃，不进入上下文、事件、沙箱、审计日志。
+4. 无可用 Key 时 run 以 `LLM_PROVIDER_NOT_CONFIGURED` 失败，前端引导配置；不回退到平台 Key。
+5. 协议支持：OpenAI 兼容（DeepSeek / Qwen / 自建网关）与 Anthropic；协议适配放 `infrastructure/llm/`，与 Key 存储解耦。
+6. 密钥管理 API 需 `agent:provider:manage` 权限；审计只记 `provider_id` 与操作类型，不记 Key。
+7. 主密钥支持版本号轮换，旧版本仍可解密；删除供应商为逻辑删除并清空密文。
+8. 前端 `llmProviderApi` 的 localStorage 方案降级为“直连 Demo”，平台 Agent 一律走服务端供应商配置。
+
 ## 7. 沙箱
 
 | 层级 | 场景 | 方案 |
@@ -304,6 +317,7 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 | 表 | 关键字段 |
 |---|---|
 | `agent_session` | id, owner_id, tenant_id, title, active_skill, model, created_at, updated_at |
+| `agent_llm_provider` | id, owner_id, tenant_id, name, protocol, base_url, model, api_key_ciphertext, key_version, is_default, status, last_verified_at, created_at, updated_at |
 | `agent_run` | id, session_id, owner_id, status, model, budget, token_in, token_out, started_at, finished_at, error |
 | `agent_run_event` | id, run_id, sequence, type, payload, created_at |
 | `agent_step` | id, run_id, index, plan_snapshot, status, created_at |
@@ -314,7 +328,7 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 
 索引：session owner、run owner/status、(`run_id`, `sequence`)、approval status/expiry、idempotency key 唯一索引。
 
-敏感数据：音频、完整日志、Prompt 全文不入事件表；只存授权引用，日志脱敏。
+敏感数据：音频、完整日志、Prompt 全文、模型 API Key 明文均不入事件表与日志；Key 只存密文与掩码，日志脱敏。
 
 ## 11. API 与 SSE
 
@@ -329,6 +343,12 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 | GET | `/api/v1/agent/runs/{id}/approvals` | 待审批提案 |
 | POST | `/api/v1/agent/approvals/{id}/decision` | 批准/拒绝 |
 | GET | `/api/v1/agent/skills` | 当前用户可见 Skill 列表 |
+| GET | `/api/v1/agent/providers` | 我的模型供应商（Key 掩码） |
+| POST | `/api/v1/agent/providers` | 新建供应商（Key 加密入库） |
+| PUT | `/api/v1/agent/providers/{id}` | 修改供应商；Key 留空表示不变 |
+| DELETE | `/api/v1/agent/providers/{id}` | 逻辑删除并清空密文 |
+| POST | `/api/v1/agent/providers/{id}/verify` | 轻量连通性验证 |
+| POST | `/api/v1/agent/providers/{id}/set-default` | 设为默认 |
 | GET | `/api/v1/agent/skill` | 外部 Skill zip 下载（保留） |
 | POST | `/api/v1/mcp` | 外部 MCP（保留） |
 
@@ -351,6 +371,9 @@ agent_service/
 ├─ domain/model/ + enums.py
 └─ infrastructure/
    ├─ llm/openai_compatible.py
+   ├─ llm/anthropic.py
+   ├─ llm/provider_registry.py      # 用户供应商解析/默认选择
+   ├─ llm/credential_store.py       # AES-GCM 加解密，禁止明文落盘
    ├─ skill/fs_skill_repository.py
    ├─ tools/registry_bridge.py
    ├─ persistence/
@@ -387,6 +410,8 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 4. 日志与事件脱敏：不落 Prompt 全文、不落密钥、不落原始音频。
 5. 每个 run 可审计：谁发起、用了哪个 Skill、调了什么工具、谁批准、产生了什么副作用。
 6. 外部 Skill zip 与 MCP 继续使用 `at_` Access Token，权限 = 用户权限 ∩ token scopes。
+7. 用户模型 Key 加密存储、掩码返回，只在模型调用时内存解密；平台默认无 Key，禁止隐式回退。
+8. 生产缺少 `AGENT_CREDENTIAL_MASTER_KEY` 时拒绝启动；主密钥轮换期间新旧版本并存。
 
 ## 14. 评测
 
@@ -404,7 +429,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 
 | 阶段 | 交付 | 验收 |
 |---|---|---|
-| M0 底座 | 单 loop、SkillRegistry、意图工具 3 个、SSE 回放、Run 持久化；沙箱 T1；压缩 L1–L3；`platform-reference` | 沙箱逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；10 条 golden tasks 通过 |
+| M0 底座 | 单 loop、SkillRegistry、意图工具 3 个、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1；压缩 L1–L3；`platform-reference` | 沙箱逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
 | M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；tool search | 每域 10 条任务；Skill 触发准确率 ≥90%；无编造数值 |
 | M2 写操作与报告 | 写工具、审批、幂等；Report Studio 取数→起草→版本→导出；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；三类报告指标与 Report Service 逐字段一致 |
 | M3 自动化与评测 | Auto 模式、预算/熔断、全量评测、外部 Skill zip/MCP 对齐、文档更新 | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致 |
@@ -423,7 +448,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 
 开放问题（需负责人后续拍板）：
 
-1. 默认模型与供应商（DeepSeek / OpenAI 兼容 / Claude）。
+1. ~~默认模型与供应商~~ **已定（2026-11-12）**：用户自带 Key，AES-256-GCM 加密存 `agent_llm_provider`，按用户隔离；平台默认不提供 Key（`AGENT_ALLOW_PLATFORM_KEY=false`）；协议支持 OpenAI 兼容与 Anthropic。
 2. T2 沙箱是否首期启用，或只保留提案不执行。
 3. Auto 模式的默认审批粒度与预算上限。
 4. 长期记忆是否引入向量检索（首期不做）。
