@@ -233,6 +233,31 @@ budgets:
 8. 前端 `llmProviderApi` 的 localStorage 方案降级为“直连 Demo”，平台 Agent 一律走服务端供应商配置。
 9. 上下文窗口：`config/model_catalog.json` 按协议 + 模型名给默认 `context_window` 与 `max_output_tokens`；用户可在供应商配置里覆盖（8k–2M，1024 对齐）。有效值优先级：用户覆盖 → 目录默认 → 128k 兜底，并记录 `context_window_source`。覆盖值高于目录最大值时允许保存但 UI 告警，预算按覆盖值计算。
 
+### 6.5 驱动提案（driver-propose）
+
+能力：把 UiAutoDev 元素/页面结构 + 设备型号 + 驱动接口契约，生成可审查的驱动代码提案。**只出提案，不自动发布、不直接下发设备。**
+
+流程：
+
+1. `device_query` 取设备型号、现有驱动版本与接口契约。
+2. 激活 `driver-proposal` Skill，按需读 `references/driver-contract.md`、`references/examples.md`、`references/gotchas.md`。
+3. `driver_propose` 生成提案：文件清单、diff、依赖、风险、回滚方案。
+4. T2 沙箱运行静态检查、单测与最小契约测试，产出验证报告；失败只回诊断，不产生可发布产物。
+5. 用户审批：通过 → 保存为草稿/分支/PR；发布到驱动注册表需要单独的 `DESTRUCTIVE` 审批。
+6. 记录模型、输入元素、代码 hash、测试结果与审批人。
+
+边界：
+
+- 不自动发布、不自动重启设备、不覆盖线上驱动。
+- 生成代码不得包含凭证、不得联网。
+- 与 `device_control` 分开：一个是写代码提案，一个是设备动作。
+
+验收：
+
+- 同一输入重复生成，提案可复现（同 hash 或可解释 diff）。
+- 静态检查/单测失败时，不产生可发布产物。
+- 未审批不能写入驱动注册表。
+
 ## 7. 沙箱
 
 | 层级 | 场景 | 方案 |
@@ -489,7 +514,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 |---|---|---|
 | M0 底座 | 单 loop、SkillRegistry、意图工具 3 个、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1 + T2（首期启用）；压缩 L1–L3；`platform-reference` | T1/T2 逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
 | M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；tool search；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%；无编造数值；记忆写入需审批 |
-| M2 写操作与报告 | 写工具、审批、幂等；Report Studio 取数→起草→版本→导出；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；三类报告指标与 Report Service 逐字段一致 |
+| M2 写操作与报告 | 写工具、审批、幂等；驱动提案（提案 + T2 验证，不自动发布）；Report Studio 取数→起草→版本→导出；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；驱动提案可复现且未审批不写注册表；三类报告指标与 Report Service 逐字段一致 |
 | M3 自动化与评测 | Auto 模式、预算/熔断、全量评测、外部 Skill zip/MCP 对齐、文档更新 | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致 |
 
 ## 16. 风险与开放问题
