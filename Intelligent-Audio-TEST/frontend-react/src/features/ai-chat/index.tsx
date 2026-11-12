@@ -19,7 +19,11 @@ import {
 
 import { AgentConnectButton } from '@/components/layout/components/agent-connect-button'
 
-import type { ChatConfig } from '@/domain/models/aiChat'
+import {
+  normalizeChatChannel,
+  type ChatChannel,
+  type ChatConfig,
+} from '@/domain/models/aiChat'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
 import { useChatConversation } from '@/features/ai-chat/hooks/use-chat-conversation'
 import { useChatState } from '@/features/ai-chat/hooks/use-chat-state'
@@ -28,7 +32,7 @@ import { AiChat } from '@/features/ai-chat/components/chat/ai-chat'
 import { AiChatInput } from '@/features/ai-chat/components/input/ai-chat-input'
 import { ProviderManager } from '@/features/ai-chat/components/input/provider-manager'
 import { DocumentPanel } from '@/features/ai-chat/components/studio/document-panel'
-import { DEMO_COPY } from '@/features/ai-chat/constants'
+import { DEFAULT_CHAT_CHANNEL, DEMO_COPY } from '@/features/ai-chat/constants'
 import type { AiChatContextStatus } from '@/infrastructure/stores/aiChatSessionStore'
 
 /**
@@ -151,7 +155,21 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     }
   }, [currentProvider, config.modelId, updateConfig])
 
-  const { sendChat, stopGeneration, isGenerating } = useChatHandler({
+  /** 对话通道（INT-2457）：默认平台 Agent；自带供应商为降级模式 */
+  const channel = normalizeChatChannel(config.chatMode ?? DEFAULT_CHAT_CHANNEL)
+  const handleChannelChange = (next: ChatChannel) => {
+    updateConfig('chatMode', next)
+  }
+
+  const {
+    sendChat,
+    stopGeneration,
+    isGenerating,
+    isCancelling,
+    runPhase,
+    resetChat,
+  } = useChatHandler({
+    channel,
     config,
     provider: currentProvider,
     messages,
@@ -187,6 +205,8 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
 
   const handleClearMessages = () => {
     handleEditOpenChange(false)
+    // 平台通道同时结束会话上下文（下次发送新建会话，避免服务端残留旧历史）
+    resetChat()
     clearMessages()
   }
 
@@ -252,16 +272,20 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                   onSaveEdit={(content) => applyEdit(content, false)}
                   onSaveEditAndSubmit={(content) => applyEdit(content, true)}
                   onUndoMessage={handleUndoMessage}
+                  runPhase={runPhase}
                 />
               </div>
               <div className='shrink-0'>
                 <AiChatInput
+                  channel={channel}
                   compact
                   config={config}
                   disabled={isGenerating}
+                  isStopping={isCancelling}
                   hasMessages={messages.length > 0}
                   isGenerating={isGenerating}
                   onClearMessages={handleClearMessages}
+                  onChannelChange={handleChannelChange}
                   onManageProviders={() => setProviderManagerOpen(true)}
                   onSelectModel={handleSelectModel}
                   onSelectProvider={handleSelectProvider}
@@ -301,17 +325,21 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
               onSaveEdit={(content) => applyEdit(content, false)}
               onSaveEditAndSubmit={(content) => applyEdit(content, true)}
               onUndoMessage={handleUndoMessage}
+              runPhase={runPhase}
             />
           </div>
 
           {/* 输入区（max-w-4xl 居中钳制，§3.1） */}
           <div className='mx-auto w-full max-w-4xl'>
             <AiChatInput
+              channel={channel}
               config={config}
               disabled={isGenerating}
+              isStopping={isCancelling}
               hasMessages={messages.length > 0}
               isGenerating={isGenerating}
               onClearMessages={handleClearMessages}
+              onChannelChange={handleChannelChange}
               onManageProviders={() => setProviderManagerOpen(true)}
               onSelectModel={handleSelectModel}
               onSelectProvider={handleSelectProvider}

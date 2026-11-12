@@ -1,20 +1,40 @@
 /**
- * AI 对话发送/停止（interfaces 层 hooks；照 newAPI use-chat-handler/use-stream-request
- * 平移流式骨架——**Demo 态对话由用户自配 LLM 供应商驱动**（§3.8「Demo 可先行」，
- * §3.11/§3.10 红线「不做假数据回显」）。
- * 2026-10-17 审计返修（P1）：删除本地 mock 回显与杜撰工具卡/来源（通过率 92.3% 等
- * 假数值），发送真实 POST /chat/completions（llmProviderApi.sendChatCompletion），
- * 正文本地逐块渲染模拟打字机；无供应商/无模型 → 语义化错误消息；Agent 工具链待后端立项。
- * 2026-10-17 新口径：无模型参数（仅模型/供应商切换），发送体不带 parameterEnabled。
+ * AI 对话发送/停止（interfaces 层 hooks；08_AI对话页.md §3.8 + INT-2457 M0）。
+ *
+ * 两条通道（§12.2，默认由配置决定 = 平台 Agent）：
+ * - platform：POST /agent/sessions/{id}/runs + GET /agent/runs/{id}/events（SSE），
+ *   事件流（message_delta / tool_call / tool_result / run_finished / error）驱动消息渲染；
+ *   取消走 POST /agent/runs/{id}/cancel（同一 run 只发一次），断线续传与去重在
+ *   application/agent/use-agent-run。
+ * - provider：保留「用户自配 LLM 供应商直连」降级模式（P0-1 拍板后二选一，不长期双轨）；
+ *   正文本地逐块渲染模拟打字机（既有行为，未接平台后端）。
+ *
+ * 红线：不写 mock、不杜撰工具卡/来源；无供应商 / Agent 未开启 / 未部署均落语义化错误。
  */
 import { useCallback, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
-import type {
-  ChatConfig,
-  ChatMessage,
-  LlmProvider,
+import {
+  AGENT_ERROR_COPY,
+  AGENT_EVENT_TYPE,
+  AGENT_RUN_STATUS,
+  type AgentRunEvent,
+  type AgentRunStatus,
+} from '@/domain/models/agent'
+import {
+  CHAT_CHANNEL,
+  type ChatChannel,
+  type ChatConfig,
+  type ChatMessage,
+  type LlmProvider,
 } from '@/domain/models/aiChat'
-import { ERROR_MESSAGES, MESSAGE_STATUS } from '@/features/ai-chat/constants'
+import { useAgentRun } from '@/application/agent/use-agent-run'
+import {
+  AGENT_TOOL_LABELS,
+  AGENT_RUN_PHASE_COPY,
+  ERROR_MESSAGES,
+  MESSAGE_STATUS,
+} from '@/features/ai-chat/constants'
 import {
   sendChatCompletion,
   type ChatCompletionMessage,
@@ -30,12 +50,11 @@ export type SendChatOptions = {
   appendUserMessage?: boolean
 }
 
-/** Demo 系统提示（中文；主推全部能力——2026-10-17 08:06 负责人口径：灵犀Agent 主工作台
- * 主推全部能力、不只报告三件；不注入杜撰报告事实，数值一律由真实回复承载） */
+/** Demo 系统提示（中文；主推全部能力——2026-10-17 08:06 负责人口径；仅供应商通道使用） */
 const SYSTEM_PROMPT =
   '你是智能音频测试平台的灵犀Agent，帮助用户完成平台各类事务：报告生成/对比/分析、用例生成、音频导入、任务管理、设备驱动、日志诊断等。回答简洁专业，不确定的信息不要编造。'
 
-/** 流式合帧节奏（照 STREAM_UPDATE_FLUSH_MS=50 语义；真实回复本地逐块渲染） */
+/** 流式合帧节奏（供应商通道：真实回复本地逐块渲染） */
 const STREAM_CHUNK_MS = 40
 const STREAM_CHUNK_SIZE = 12
 
@@ -79,13 +98,30 @@ function buildLoadingMessage(key: string): ChatMessage {
   }
 }
 
+/** 平台 Agent 通道：run 终态 → 消息状态补丁（保留已生成正文，仅标终态徽标） */
+function toTerminalPatch(
+  status: AgentRunStatus,
+  startedAt: number | undefined,
+  now: number
+): Partial<ChatMessage> {
+  return {
+    status: MESSAGE_STATUS.COMPLETE,
+    runStatus: status,
+    completedAt: now,
+    durationMs: startedAt ? now - startedAt : 0,
+    isReasoningStreaming: false,
+  }
+}
+
 export function useChatHandler({
   config,
   provider,
   messages,
   onMessageUpdate,
-  /** 系统提示覆盖（AI 复核等有界会话注入专用上下文；缺省用通用灵犀Agent 提示） */
+  /** 系统提示覆盖（AI 复核等有界会话注入专用上下文；仅供应商通道） */
   systemPrompt,
+  /** 对话通道（缺省 = 自带供应商，保持既有调用方行为；页面按配置传平台 Agent） */
+  channel = CHAT_CHANNEL.PROVIDER,
 }: {
   config: ChatConfig
   /** 当前供应商（调用方从 useLlmProviders 解析：config.providerId 命中或默认） */
@@ -93,11 +129,19 @@ export function useChatHandler({
   messages: ChatMessage[]
   onMessageUpdate: UpdateMessagesFn
   systemPrompt?: string
+  channel?: ChatChannel
 }) {
   const [isGenerating, setIsGenerating] = useState(false)
   const runRef = useRef<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const timersRef = useRef<number[]>([])
+
+  /** 平台通道：当前 assistant 消息补丁器（新一轮发送时重置） */
+  const patchAssistantRef = useRef<
+    ((updater: (message: ChatMessage) => ChatMessage) => void) | null
+  >(null)
+  /** 平台通道：已累积正文（message_delta 逐段拼接） */
+  const contentRef = useRef('')
 
   // 最新闭包值（useCallback 内读取避免陈旧）
   const configRef = useRef(config)
@@ -108,6 +152,8 @@ export function useChatHandler({
   messagesRef.current = messages
   const systemPromptRef = useRef(systemPrompt)
   systemPromptRef.current = systemPrompt
+  const channelRef = useRef(channel)
+  channelRef.current = channel
 
   const schedule = useCallback((fn: () => void, delay: number) => {
     const id = window.setTimeout(fn, delay)
@@ -120,7 +166,122 @@ export function useChatHandler({
     timersRef.current = []
   }, [])
 
+  /** 平台通道事件 → 消息补丁（去重已在 use-agent-run 完成） */
+  const handleAgentEvent = useCallback((event: AgentRunEvent) => {
+    switch (event.type) {
+      case AGENT_EVENT_TYPE.MESSAGE_DELTA: {
+        contentRef.current += event.delta
+        const content = contentRef.current
+        patchAssistantRef.current?.((message) => ({
+          ...message,
+          status: MESSAGE_STATUS.STREAMING,
+          startedAt: message.startedAt ?? Date.now(),
+          versions: [
+            { id: message.versions[0]?.id ?? `${message.key}-v1`, content },
+          ],
+        }))
+        return
+      }
+      case AGENT_EVENT_TYPE.TOOL_CALL: {
+        patchAssistantRef.current?.((message) => {
+          const existing = message.toolCalls ?? []
+          const call = {
+            id: event.toolCallId,
+            tool: event.tool,
+            label: AGENT_TOOL_LABELS[event.tool] ?? event.tool,
+            status: 'running' as const,
+            summary: event.summary,
+          }
+          const next = existing.some((item) => item.id === call.id)
+            ? existing.map((item) => (item.id === call.id ? { ...item, ...call } : item))
+            : [...existing, call]
+          return { ...message, toolCalls: next }
+        })
+        return
+      }
+      case AGENT_EVENT_TYPE.TOOL_RESULT: {
+        patchAssistantRef.current?.((message) => ({
+          ...message,
+          toolCalls: (message.toolCalls ?? []).map((call) =>
+            call.id === event.toolCallId
+              ? {
+                  ...call,
+                  status:
+                    event.status === 'SUCCEEDED'
+                      ? ('completed' as const)
+                      : ('error' as const),
+                  summary: event.summary ?? call.summary,
+                  errorCode: event.errorCode,
+                  sourceRefs: event.sourceRefs ?? call.sourceRefs,
+                }
+              : call
+          ),
+        }))
+        return
+      }
+      case AGENT_EVENT_TYPE.RUN_FINISHED: {
+        const patch = patchAssistantRef.current
+        const now = Date.now()
+        patch?.((message) =>
+          message.versions[0]?.content || contentRef.current
+            ? { ...message, ...toTerminalPatch(event.status, message.startedAt, now) }
+            : {
+                ...message,
+                ...toTerminalPatch(event.status, message.startedAt, now),
+                versions: [
+                  {
+                    id: message.versions[0]?.id ?? `${message.key}-v1`,
+                    content:
+                      event.status === AGENT_RUN_STATUS.CANCELLED
+                        ? AGENT_RUN_PHASE_COPY.cancelled
+                        : event.error || AGENT_ERROR_COPY.runFailed,
+                  },
+                ],
+              }
+        )
+        patchAssistantRef.current = null
+        setIsGenerating(false)
+        runRef.current = null
+        return
+      }
+      default:
+        // run_started / approval_required（M2）/ context_compacted：不改变消息正文
+        return
+    }
+  }, [])
+
+  const handleAgentError = useCallback((message: string) => {
+    patchAssistantRef.current?.((current) => ({
+      ...current,
+      status: MESSAGE_STATUS.ERROR,
+      errorCode: 'AGENT_ERROR',
+      versions: [
+        {
+          id: current.versions[0]?.id ?? `${current.key}-v1`,
+          content: message,
+        },
+      ],
+      completedAt: Date.now(),
+      durationMs: current.startedAt ? Date.now() - current.startedAt : 0,
+    }))
+    patchAssistantRef.current = null
+    setIsGenerating(false)
+    runRef.current = null
+  }, [])
+
+  const agentRun = useAgentRun({
+    onEvent: handleAgentEvent,
+    onError: handleAgentError,
+  })
+
   const stopGeneration = useCallback(() => {
+    if (channelRef.current === CHAT_CHANNEL.PLATFORM) {
+      // 平台通道：取消由后端下发 CANCELLED 终态；同一 run 只发一次取消请求（use-agent-run 兜底）
+      void agentRun.cancel().then((failure) => {
+        if (failure) toast.error(failure)
+      })
+      return
+    }
     if (runRef.current === null) return
     runRef.current = null
     cancelTimers()
@@ -147,10 +308,50 @@ export function useChatHandler({
       })
     )
     setIsGenerating(false)
-  }, [cancelTimers, onMessageUpdate])
+  }, [agentRun, cancelTimers, onMessageUpdate])
+
+  /** 平台通道发送：补 user 消息 + assistant 占位，run 事件驱动后续渲染 */
+  const sendPlatformChat = useCallback(
+    (text: string, options?: SendChatOptions) => {
+      if (runRef.current !== null) return
+      const appendUserMessage = options?.appendUserMessage ?? true
+      const userKey = `user-${Date.now()}`
+      const assistantKey = `assistant-${Date.now()}`
+      const userMessage: ChatMessage = {
+        key: userKey,
+        from: 'user',
+        versions: [{ id: `${userKey}-v1`, content: text }],
+        createdAt: Date.now(),
+      }
+      const loadingMessage = buildLoadingMessage(assistantKey)
+      onMessageUpdate((prev) => [
+        ...(appendUserMessage ? [...prev, userMessage] : prev),
+        loadingMessage,
+      ])
+      setIsGenerating(true)
+      const runToken = Date.now()
+      runRef.current = runToken
+      contentRef.current = ''
+      patchAssistantRef.current = (updater) => {
+        if (runRef.current !== runToken) return
+        onMessageUpdate((prev) =>
+          prev.map((message) =>
+            message.key === assistantKey ? updater(message) : message
+          )
+        )
+      }
+      void agentRun.send(text)
+    },
+    [agentRun, onMessageUpdate]
+  )
 
   const sendChat = useCallback(
     (text: string, options?: SendChatOptions) => {
+      if (channelRef.current === CHAT_CHANNEL.PLATFORM) {
+        sendPlatformChat(text, options)
+        return
+      }
+      // ===== 供应商通道（降级模式，既有行为保持） =====
       if (runRef.current !== null) return
 
       const appendUserMessage = options?.appendUserMessage ?? true
@@ -270,13 +471,34 @@ export function useChatHandler({
         }
       })()
     },
-    [onMessageUpdate, schedule]
+    [onMessageUpdate, schedule, sendPlatformChat]
   )
+
+  /** 清空对话：平台通道同时结束当前会话上下文（下次发送新建会话） */
+  const resetChat = useCallback(() => {
+    cancelTimers()
+    abortRef.current?.abort()
+    abortRef.current = null
+    runRef.current = null
+    patchAssistantRef.current = null
+    contentRef.current = ''
+    agentRun.reset()
+    setIsGenerating(false)
+  }, [agentRun, cancelTimers])
+
+  const isCancelling = agentRun.phase === 'cancelling'
 
   return {
     sendChat,
     stopGeneration,
     isGenerating,
+    /** 取消请求在途（输入区停止钮禁用，防重复） */
+    isCancelling,
+    /** 平台通道生命周期（reconnecting 时页面显示重连提示） */
+    runPhase: agentRun.phase,
+    /** 当前 run（终态含 CANCELLED / FAILED） */
+    run: agentRun.run,
+    resetChat,
     // Demo 态对话由用户自配 LLM 供应商驱动（§3.11），无平台后端依赖
     pendingRequest: { config },
   }

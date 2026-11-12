@@ -18,7 +18,15 @@ import {
   getEditingMessageContent,
   getMessageAlignment,
 } from '@/features/ai-chat/lib/message'
-import { EMPTY_STATE_COPY, MAX_RENDERED_HISTORY_MESSAGES } from '@/features/ai-chat/constants'
+import {
+  AGENT_RUN_PHASE_COPY,
+  EMPTY_STATE_COPY,
+  MAX_RENDERED_HISTORY_MESSAGES,
+} from '@/features/ai-chat/constants'
+import {
+  AGENT_RUN_PHASE,
+  type AgentRunPhase,
+} from '@/application/agent/use-agent-run'
 import type { ChatMessage } from '@/domain/models/aiChat'
 
 import { AiChatEmptyState } from './ai-chat-empty-state'
@@ -42,6 +50,8 @@ type AiChatProps = {
   onCancelEdit?: (open: boolean) => void
   onSaveEdit?: (newContent: string) => void
   onSaveEditAndSubmit?: (newContent: string) => void
+  /** 平台 Agent run 阶段（INT-2457：准备 / 重连 / 取消在会话区顶部提示） */
+  runPhase?: AgentRunPhase
   /** 全局 Agent 工作台浮窗紧凑形态（§3.1B：高度受限更紧凑间距） */
   compact?: boolean
 }
@@ -60,6 +70,7 @@ export function AiChat({
   onCancelEdit,
   onSaveEdit,
   onSaveEditAndSubmit,
+  runPhase,
   compact = false,
 }: AiChatProps) {
   const [editText, setEditText] = useState('')
@@ -162,6 +173,16 @@ export function AiChat({
     ]
   }
 
+  /** SSE 重连 / 取消 / 准备态提示（§12.2「SSE 重连不重复渲染」：只提示不改消息） */
+  const runPhaseHint =
+    runPhase === AGENT_RUN_PHASE.RECONNECTING
+      ? AGENT_RUN_PHASE_COPY.reconnecting
+      : runPhase === AGENT_RUN_PHASE.CANCELLING
+        ? AGENT_RUN_PHASE_COPY.cancelling
+        : runPhase === AGENT_RUN_PHASE.PREPARING
+          ? AGENT_RUN_PHASE_COPY.preparing
+          : null
+
   if (isLoadingMessages) {
     chatContent = [
       <div
@@ -184,6 +205,16 @@ export function AiChat({
               : 'mx-auto w-full max-w-4xl px-4 py-4'
           }
         >
+          {runPhaseHint && (
+            <div
+              className='border-border/60 bg-muted/30 text-muted-foreground mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs'
+              data-agent-run-phase={runPhase}
+              role='status'
+            >
+              <Loader />
+              <span>{runPhaseHint}</span>
+            </div>
+          )}
           {chatContent}
         </div>
       </ConversationContent>
