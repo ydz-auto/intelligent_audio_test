@@ -5,8 +5,91 @@ import logging
 import math
 from pathlib import Path
 
-LABELS = ('接管', '误接管', '未接管', '误接管-正常接管', '误接管-未接管')
+LABELS = ('接管', '误接管', '未接管', '误接管-正常接管', '误接管-未接管', '主动反馈-backchannel')
 FALSE_TAKEOVER_LABELS = ('误接管', '误接管-正常接管', '误接管-未接管')
+BACKCHANNEL_LABEL = '主动反馈-backchannel'
+
+
+def collect_backchannel_feedback(packet, turns):
+    """聚合 LLM 判为 backchannel 的轮次，生成与旧版一致的 backchannel_feedback 汇总。
+
+    backchannel 由大模型直接判定（见 full_timeline_prompt.txt 的分类定义），
+    这里只负责从已判为 backchannel 的轮次里提取短反馈词作为事件证据，不再用词表覆盖分类。
+    占比按用例统计：同一用例内多次 backchannel 只计 1 个命中用例。
+    """
+    streams = {
+        s: sorted([w for w in (packet.get('full_word_timeline') or []) if w.get('speaker') == s],
+                  key=lambda w: (w['start'], w['end'], w['word_id']))
+        for s in ('user', 'model')
+    }
+    model_pos = {w['word_id']: i for i, w in enumerate(streams['model'])}
+    events = []
+    for turn in turns or []:
+        has_backchannel = bool(turn.get('has_backchannel')) or turn.get('classification') == BACKCHANNEL_LABEL
+        if not has_backchannel:
+            continue
+        turn_events = []
+        # 只有整轮判为 backchannel 时，response span 才是短反馈本身；
+        # 接管/误接管轮的 response span 是完整回答，不能当作 backchannel 事件证据。
+        if turn.get('classification') == BACKCHANNEL_LABEL:
+            first = turn.get('response_start_word_id')
+            last = turn.get('response_end_word_id')
+            if first in model_pos and last in model_pos:
+                a, b = model_pos[first], model_pos[last]
+                for word in streams['model'][a:b + 1]:
+                    turn_events.append({
+                        'turn_index': turn.get('turn_index'),
+                        'round_number': turn.get('round_number'),
+                        'word_id': word['word_id'],
+                        'text': word['text'],
+                        'start_s': word['start'],
+                        'end_s': word['end'],
+                        'user_start_s': turn.get('user_start_s'),
+                        'user_end_s': turn.get('user_end_s'),
+                        'message': '用户表达过程中模型主动发出backchannel短反馈',
+                    })
+        events.extend(turn_events)
+        turn['backchannel_feedback'] = {
+            'backchannel': 1,
+            'events': turn_events,
+            'message': '该轮出现backchannel短反馈',
+        }
+
+    matched_turns = sum(
+        1 for t in turns or []
+        if t.get('has_backchannel') or t.get('classification') == BACKCHANNEL_LABEL
+    )
+    matched_cases = 1 if matched_turns else 0
+    return {
+        'backchannel_turn_count': matched_turns,
+        'backchannel_case_count': matched_cases,
+        'total_cases': 1,
+        'total_turns': len(turns or []),
+        'backchannel_rate': matched_cases,
+        'backchannel_turn_rate': round(matched_turns / len(turns), 4) if turns else 0,
+        'events': events,
+    }
+
+
+def apply_backchannel_case_metrics(result, turns, feedback):
+    """把用例级 backchannel 口径写入整体结果，供平台按用例聚合并展示。"""
+    classification = result.setdefault('turn_classification', {})
+    classification['backchannel_case_count'] = feedback['backchannel_case_count']
+    classification['backchannel_case_total'] = feedback['total_cases']
+    classification['backchannel_rate'] = feedback['backchannel_rate']
+
+    matched = [
+        f"第{t.get('turn_index')}轮"
+        for t in turns or []
+        if t.get('has_backchannel') or t.get('classification') == BACKCHANNEL_LABEL
+    ]
+    where = '、'.join(matched) if matched else '无'
+    hit_cases = feedback['backchannel_case_count']
+    result.setdefault('reasons', {})['backchannel_rate'] = (
+        f"主动反馈-backchannel命中{hit_cases}个用例 / 总用例数1个 = {hit_cases:.2%}；"
+        f"对应轮次：{where}。"
+    )
+    return feedback
 
 
 def build_input(user_chunks, model_chunks, rounds):
@@ -53,6 +136,21 @@ def validate_and_derive(packet, parsed):
         label = row.get('classification')
         if label not in LABELS:
             raise ValueError('Uncertain classification; do not convert missing evidence to success')
+        has_backchannel = row.get('has_backchannel', False)
+        if not isinstance(has_backchannel, bool):
+            raise ValueError('has_backchannel must be boolean')
+        if label == BACKCHANNEL_LABEL:
+            has_backchannel = True
+        substantive_start_id = row.get('substantive_response_start_word_id')
+        if substantive_start_id is not None and (
+            not isinstance(substantive_start_id, str) or not substantive_start_id.strip()
+        ):
+            raise ValueError('substantive_response_start_word_id must be a word ID or null')
+        quick_start_id = row.get('quick_response_start_word_id')
+        if quick_start_id is not None and (
+            not isinstance(quick_start_id, str) or not quick_start_id.strip()
+        ):
+            raise ValueError('quick_response_start_word_id must be a word ID or null')
         for key in ('reason', 'alignment_reason', 'response_start_reason'):
             if not isinstance(row.get(key), str) or not row[key].strip():
                 raise ValueError('Per-round evidence reasons required: ' + key)
@@ -84,8 +182,36 @@ def validate_and_derive(packet, parsed):
             mw, _, _ = span('model', row.get('response_start_word_id'), row.get('response_end_word_id'))
             if mw[0]['start'] < uw[0]['start']:
                 raise ValueError('Reply predates this user turn')
+            if label == BACKCHANNEL_LABEL and not mw[0]['start'] < uw[-1]['end']:
+                raise ValueError('Backchannel feedback must start during user speech')
             if label == '误接管-正常接管':
                 span('model', row.get('false_takeover_start_word_id'), row.get('false_takeover_end_word_id'))
+        substantive_start_word = None
+        if substantive_start_id is not None:
+            if label not in ('接管', '误接管-正常接管'):
+                raise ValueError('Only normal takeover may claim a substantive reply start')
+            substantive_start_word = next(
+                (word for word in mw if word.get('word_id') == substantive_start_id),
+                None,
+            )
+            if substantive_start_word is None:
+                raise ValueError('Substantive reply start must be inside the response span')
+        quick_start_word = None
+        if quick_start_id is not None:
+            if label not in ('接管', '误接管-正常接管'):
+                raise ValueError('Only normal takeover may claim a quick response start')
+            quick_start_word = next(
+                (word for word in mw if word.get('word_id') == quick_start_id),
+                None,
+            )
+            if quick_start_word is None:
+                raise ValueError('Quick response start must be inside the response span')
+            if quick_start_word['start'] < uw[-1]['end']:
+                raise ValueError('Quick response must start after user speech ends')
+            if substantive_start_word is not None and quick_start_word['start'] > substantive_start_word['start']:
+                raise ValueError('Quick response must not start after substantive reply')
+        if label in ('接管', '误接管-正常接管') and has_backchannel and substantive_start_word is None:
+            raise ValueError('Backchannel takeover requires substantive_response_start_word_id')
         triggers = row.get('false_takeover_triggers')
         if label in FALSE_TAKEOVER_LABELS:
             if not isinstance(triggers, list) or not triggers:
@@ -116,6 +242,7 @@ def validate_and_derive(packet, parsed):
         user_text = ''.join(w['text'] for w in uw)
         model_text = ''.join(w['text'] for w in mw)
         turn = dict(turn_index=len(turns) + 1, round_number=row['round_number'], classification=label,
+                    has_backchannel=has_backchannel,
                     user_start_s=uw[0]['start'], user_end_s=uw[-1]['end'], ai_start_s=mw[0]['start'] if mw else None,
                     ai_end_s=mw[-1]['end'] if mw else None, has_ai_reply=bool(mw),
                     false_takeover=dict(false_takeover=int(label in FALSE_TAKEOVER_LABELS), reason=row['reason'], evidence=dict(user_full_utterance=user_text)),
@@ -123,15 +250,38 @@ def validate_and_derive(packet, parsed):
                     false_takeover_triggers=normalized_triggers, false_takeover_trigger_count=len(normalized_triggers),
                     result=f'{label}；误接管次数{len(normalized_triggers)}',
                     response_start_word_id=mw[0]['word_id'] if mw else None, response_end_word_id=mw[-1]['word_id'] if mw else None,
+                    quick_response_start_word_id=quick_start_word['word_id'] if quick_start_word else None,
+                    substantive_response_start_word_id=substantive_start_word['word_id'] if substantive_start_word else None,
                     response_start_reason=row['response_start_reason'], tor=None, takeover_judge=None, takeover_latency=None, reply_quality=None)
         if label in ('接管', '误接管-正常接管'):
             quality = row.get('reply_quality')
             if not isinstance(quality, dict) or isinstance(quality.get('score'), bool) or not isinstance(quality.get('score'), int) or not 1 <= quality['score'] <= 5 or not isinstance(quality.get('reason'), str) or not quality['reason'].strip():
                 raise ValueError('Normal takeover requires quality score 1..5 and reason')
-            latency = round((mw[0]['start'] - uw[-1]['end']) * 1000, 1)
+            # Backchannel overlaps the user's speech and is excluded. A quick
+            # acknowledgment after the user stops is part of the model turn, so
+            # latency starts there; otherwise use the substantive reply start.
+            latency_start = quick_start_word or substantive_start_word or mw[0]
+            if quick_start_word is not None:
+                latency_start_kind = 'quick_response'
+                latency_message = 'word ASR: quick response start minus user last end'
+            elif substantive_start_word is not None:
+                latency_start_kind = 'substantive_response'
+                latency_message = 'word ASR: substantive reply start minus user last end'
+            else:
+                latency_start_kind = 'response_start'
+                latency_message = 'word ASR: model first start minus user last end'
+            latency = round((latency_start['start'] - uw[-1]['end']) * 1000, 1)
             turn.update(tor=dict(tor=1, n_words=len(mw), duration=round(mw[-1]['end']-mw[0]['start'], 3), hit_words=[dict(text=w['text'], timestamp=[w['start'], w['end']]) for w in mw], message='OK'),
                         takeover_judge=dict(takeover=1, reason=row['reason']),
-                        takeover_latency=dict(takeover_latency_ms=latency, user_last_word_end_ms=uw[-1]['end']*1000, ai_first_word_start_ms=mw[0]['start']*1000, message='word ASR: model first start minus user last end'),
+                        takeover_latency=dict(takeover_latency_ms=latency, user_last_word_end_ms=uw[-1]['end']*1000,
+                                              ai_first_word_start_ms=latency_start['start']*1000,
+                                              latency_start_word_id=latency_start['word_id'],
+                                              latency_start_text=latency_start['text'],
+                                              latency_start_kind=latency_start_kind,
+                                              backchannel_start_ms=mw[0]['start']*1000 if has_backchannel else None,
+                                              backchannel_start_word_id=mw[0]['word_id'] if has_backchannel else None,
+                                              backchannel_start_text=mw[0]['text'] if has_backchannel else None,
+                                              message=latency_message),
                         reply_quality=dict(copy.deepcopy(quality), user_text=user_text, ai_text=model_text, message='OK'))
         turns.append(turn)
     return turns
@@ -333,6 +483,7 @@ def evaluate(calculator, task_params):
     model = shared.get('ai_word_chunks') or []
     packet = build_input(user, model, rounds)
     turns, tokens = judge(packet, task_params)
+    backchannel_feedback = collect_backchannel_feedback(packet, turns)
     # Reuse the existing pure projection contract, not the old segmentation/classifier.
     per_round = calculator._build_per_round(len(rounds), copy.deepcopy(turns))
     merged = copy.deepcopy(turns)
@@ -341,6 +492,8 @@ def evaluate(calculator, task_params):
     result = calculator._build_per_round(1, merged)[0]
     result.pop('round_number', None)
     result['turn_classification']['turns'] = turns
+    apply_backchannel_case_metrics(result, turns, backchannel_feedback)
+    result['backchannel_feedback'] = backchannel_feedback
     result.update(per_round=per_round, per_round_native=True, interaction_text=build_interaction_text(user, model),
                   full_timeline_input=packet, llm_round_evaluations=copy.deepcopy(turns), tokens_used=tokens, evaluation_mode='full_timeline', message='OK')
     return result
