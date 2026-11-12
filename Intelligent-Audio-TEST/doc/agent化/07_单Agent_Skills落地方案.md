@@ -14,6 +14,7 @@
 5. **底座先行**：沙箱、上下文无感压缩、断点续跑、逐工具权限、写操作审批，先于业务 Skill 铺开。
 6. **模型密钥归用户**：用户配置自己的供应商 Key，加密存库、按用户隔离；平台默认不提供 Key，也不做隐式兜底。
 7. **记忆不用向量库**：沿用文件式记忆 + `rg/grep` + Skill references；Auto 模式审批粒度与预算见 §9.4；仅 Web 单通道，不保留 Electron。
+8. **上下文窗口可配**：按模型目录给默认值，用户可在供应商配置里覆盖；预算与压缩阈值按有效窗口计算。
 
 ## 2. 业界依据
 
@@ -165,6 +166,7 @@ budgets:
 | `ToolRisk` | `READ` / `WRITE` / `DESTRUCTIVE` |
 | `SandboxTier` | `T0_NONE` / `T1_TRUSTED_SCRIPT` / `T2_UNTRUSTED_CODE` |
 | `CompactionLevel` | `L1_TRIM` / `L2_DEDUPE` / `L3_MEMO` / `L4_REBUILD` |
+| `ContextWindowSource` | `MODEL_DEFAULT` / `USER_OVERRIDE` / `FALLBACK` |
 | `EventType` | `run_started` / `message_delta` / `tool_call` / `tool_result` / `approval_required` / `context_compacted` / `run_finished` / `error` |
 
 所有预算、阈值、超时、并发数写入配置（环境变量 + `config/`），不在代码中硬编码。
@@ -229,6 +231,7 @@ budgets:
 6. 密钥管理 API 需 `agent:provider:manage` 权限；审计只记 `provider_id` 与操作类型，不记 Key。
 7. 主密钥支持版本号轮换，旧版本仍可解密；删除供应商为逻辑删除并清空密文。
 8. 前端 `llmProviderApi` 的 localStorage 方案降级为“直连 Demo”，平台 Agent 一律走服务端供应商配置。
+9. 上下文窗口：`config/model_catalog.json` 按协议 + 模型名给默认 `context_window` 与 `max_output_tokens`；用户可在供应商配置里覆盖（8k–2M，1024 对齐）。有效值优先级：用户覆盖 → 目录默认 → 128k 兜底，并记录 `context_window_source`。覆盖值高于目录最大值时允许保存但 UI 告警，预算按覆盖值计算。
 
 ## 7. 沙箱
 
@@ -266,6 +269,8 @@ budgets:
 | `L4_REBUILD` | 进程重启或换模型时，从 Run 表 + 产物索引重建上下文 | 否 | 使用最近快照 |
 
 ### 8.3 预算模型
+
+W = 有效上下文窗口 = 用户覆盖值 → 模型目录默认值 → 128k 兜底；输出预留在 W 内，单轮输出不超过 `min(8k, 10% × W)`。
 
 | 区段 | 上限 |
 |---|---|
@@ -345,7 +350,7 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 - `DESTRUCTIVE`：永远单条审批，不允许批量或 Auto 预授权。
 - Auto 只预授权 `WRITE`，启动前必须展示计划与预算；预算到 80% 或连续 2 次工具失败时暂停。
 
-预算（单 run，W = 当前模型上下文窗口，未声明按 128k 保守值）：
+预算（单 run，W = 有效上下文窗口：用户覆盖 → 模型目录默认 → 128k 兜底）：
 
 | 项 | 默认 | Auto |
 |---|---|---|
@@ -364,7 +369,7 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 | 表 | 关键字段 |
 |---|---|
 | `agent_session` | id, owner_id, tenant_id, title, active_skill, model, created_at, updated_at |
-| `agent_llm_provider` | id, owner_id, tenant_id, name, protocol, base_url, model, api_key_ciphertext, key_version, is_default, status, last_verified_at, created_at, updated_at |
+| `agent_llm_provider` | id, owner_id, tenant_id, name, protocol, base_url, model, api_key_ciphertext, key_version, context_window, context_window_source, is_default, status, last_verified_at, created_at, updated_at |
 | `agent_run` | id, session_id, owner_id, status, model, budget, token_in, token_out, started_at, finished_at, error |
 | `agent_run_event` | id, run_id, sequence, type, payload, created_at |
 | `agent_step` | id, run_id, index, plan_snapshot, status, created_at |
@@ -392,9 +397,10 @@ QUEUED → RUNNING → WAITING_APPROVAL → RUNNING → SUCCEEDED
 | GET | `/api/v1/agent/runs/{id}/approvals` | 待审批提案 |
 | POST | `/api/v1/agent/approvals/{id}/decision` | 批准/拒绝 |
 | GET | `/api/v1/agent/skills` | 当前用户可见 Skill 列表 |
-| GET | `/api/v1/agent/providers` | 我的模型供应商（Key 掩码） |
-| POST | `/api/v1/agent/providers` | 新建供应商（Key 加密入库） |
-| PUT | `/api/v1/agent/providers/{id}` | 修改供应商；Key 留空表示不变 |
+| GET | `/api/v1/agent/providers` | 我的模型供应商（Key 掩码；含有效窗口与来源） |
+| POST | `/api/v1/agent/providers` | 新建供应商（Key 加密入库；可带 `context_window`） |
+| PUT | `/api/v1/agent/providers/{id}` | 修改供应商；Key 留空表示不变；可改 `context_window` |
+| GET | `/api/v1/agent/model-catalog` | 按协议/模型返回默认上下文窗口与最大输出，供表单预填 |
 | DELETE | `/api/v1/agent/providers/{id}` | 逻辑删除并清空密文 |
 | POST | `/api/v1/agent/providers/{id}/verify` | 轻量连通性验证 |
 | POST | `/api/v1/agent/providers/{id}/set-default` | 设为默认 |
@@ -418,6 +424,8 @@ agent_service/
 │  ├─ approval_service.py
 │  └─ sandbox_runner.py
 ├─ domain/model/ + enums.py
+├─ domain/services/context_window_resolver.py
+├─ config/model_catalog.json        # 模型默认窗口/最大输出（配置化）
 └─ infrastructure/
    ├─ llm/openai_compatible.py
    ├─ llm/anthropic.py
@@ -502,7 +510,8 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 2. ~~T2 沙箱~~ **已定（2026-11-12）**：首期启用，gVisor/Firecracker，禁网、无宿主挂载、无凭证。
 3. ~~Auto 模式审批粒度与预算~~ **已定（2026-11-12）**：见 §9.4；WRITE 计划级批量审批，DESTRUCTIVE 单条；预算按模型上下文窗口 W 计算。
 4. ~~长期记忆~~ **已定（2026-11-12）**：文件式记忆 + `rg/grep` + Skill references，不引入向量 RAG。
-5. 无其他开放问题。
+5. ~~上下文窗口~~ **已定（2026-11-12）**：模型目录给默认值，用户可覆盖（8k–2M，1024 对齐）；有效窗口 = 覆盖 → 默认 → 128k，预算与压缩阈值按有效窗口计算。
+6. 无其他开放问题。
 
 ## 17. 参考
 
