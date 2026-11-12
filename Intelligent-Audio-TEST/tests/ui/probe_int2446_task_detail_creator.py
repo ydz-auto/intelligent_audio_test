@@ -107,7 +107,13 @@ class Probe:
 
                 page.goto('%s/tasks/%d' % (self.base, self.task_id),
                           wait_until='domcontentloaded')
-                time.sleep(4)
+                # 冷启动首个上下文要等 rsbuild 现编译，固定 sleep 不够稳 → 先等信息卡出现
+                try:
+                    page.wait_for_function(
+                        "() => document.body.innerText.includes('创建人')", timeout=30000)
+                except Exception:
+                    pass
+                time.sleep(2)
                 body_text = page.inner_text('body')
 
                 m = re.search(r'创建人\s*([^\s·|]+)', body_text)
@@ -142,6 +148,37 @@ class Probe:
                            % ([c['status'] for c in api_calls], [c['status'] for c in user_calls]))
 
                 ctx.close()
+
+            # 3) 降级路径：浏览器侧拦掉用户详情请求（等价于无 user:read / 查不到人）
+            #    → 创建人回退「用户 #id」，页面其余部分照常，且绝不写死假名。
+            ctx = browser.new_context(viewport={'width': 1680, 'height': 1050})
+            page = ctx.new_page()
+            cdp = ctx.new_cdp_session(page)
+            cdp.send('Network.enable')
+            cdp.send('Network.setBlockedURLs', {'urls': ['*/api/v1/auth/users/*']})
+            page.goto(self.base + '/login', wait_until='domcontentloaded')
+            time.sleep(2)
+            page.fill('#username', self.username)
+            page.fill('#password', self.password)
+            page.click('button[type=submit]')
+            page.wait_for_url(lambda u: 'login' not in u, timeout=30000)
+            page.goto('%s/tasks/%d' % (self.base, self.task_id),
+                      wait_until='domcontentloaded')
+            try:
+                page.wait_for_function(
+                    "() => document.body.innerText.includes('创建人')", timeout=30000)
+            except Exception:
+                pass
+            time.sleep(2)
+            body_text = page.inner_text('body')
+            fallback_ok = ('创建人 用户 #%s' % owner_id) in body_text and '张测试' not in body_text
+            title_ok = ('测试任务' in body_text)
+            self.check('用户详情不可用时回退「用户 #id」且页面不崩',
+                       fallback_ok and title_ok,
+                       '含「创建人 用户 #%s」=%s / 详情卡仍渲染=%s / 含「张测试」=%s'
+                       % (owner_id, fallback_ok, title_ok, '张测试' in body_text),
+                       self.shot(page, '03_task_detail_user_lookup_blocked'))
+            ctx.close()
             browser.close()
 
         ok = all(c['ok'] for c in self.checks)
