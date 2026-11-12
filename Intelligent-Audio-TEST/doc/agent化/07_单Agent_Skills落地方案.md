@@ -9,13 +9,14 @@
 
 1. **唯一 Runtime：一个模型、一个上下文窗口、一个开放式工具循环**。不引入编排器，不按域拆 subagent。
 2. **能力扩展方式是 Skill，不是新 Agent**。Skill 承载流程、口径、判断与踩坑；工具承载动作与实时数据。
-3. **全平台 61 个业务能力全部纳入**，但内部 Agent 不暴露 205 个 MCP 原子工具，收敛为 28 个工具（含 `tool_search` 与 2 个记忆工具，业务意图工具 25 个）延迟加载。
+3. **全平台 61 个业务能力全部纳入**，但内部 Agent 不暴露 205 个 MCP 原子工具，收敛为 31 个工具（含 `tool_search`、2 个记忆工具、3 个探索工具，业务意图工具 25 个）延迟加载。
 4. **一套 Skill，两种宿主**：平台内置 Agent 与外部 Claude Code / Codex 共用同一批 `skills/` 资产；对外 MCP 保持现有 1:1 契约不变。
 5. **底座先行**：沙箱、上下文无感压缩、断点续跑、逐工具权限、写操作审批，先于业务 Skill 铺开。
 6. **模型密钥归用户**：用户配置自己的供应商 Key，加密存库、按用户隔离；平台默认不提供 Key，也不做隐式兜底。
 7. **记忆不用向量库**：沿用文件式记忆 + `rg/grep` + Skill references；Auto 模式审批粒度与预算见 §9.4；仅 Web 单通道，不保留 Electron。
 8. **上下文窗口可配**：按模型目录给默认值，用户可在供应商配置里覆盖；预算与压缩阈值按有效窗口计算。
 9. **主场景是 App/API 接入**：用户说“我要测这个 App/API”，Agent 交付驱动/适配器 + 配置 + 冒烟用例 + 验证证据，而不是只给一段代码。
+10. **探索-生成是一等能力**：Agent 自己读 UI 树、API 契约、领域 schema，生成驱动/适配器/用例/配置/报告草案，再在 T1/T2/staging 验证；不依赖用户手工点选全部元素。
 
 ## 2. 业界依据
 
@@ -135,7 +136,7 @@ budgets:
 | `report-compare` | 多报告对比、趋势、异常下钻 | `report_compare`、`report_query` | P1 |
 | `log-diagnostics` | 日志搜索、失败诊断、导出 | `log_diagnose` | P1 |
 | `driver-proposal` | UiAutoDev 元素 → 设备驱动（`AppDriver`）+ 厂商 API 适配器（`ApiVendorAdapter`）提案 | `driver_propose`（对外唯一工具名；`target_kind` = `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；`generate_driver_from_elements` / `publish_driver_proposal` 是内部步骤，不新增对外工具，落地卡 INT-2467） | P2 |
-| `app-api-onboarding` | App/API 接入全流程（含 ASR/TTS 测量路径）：受理、发现、计划、生成、验证、迭代、交付 | `driver_propose`、`device_query`、`testcase_generate`、`task_run`、`tool_search` | P1 |
+| `app-api-onboarding` | App/API 接入全流程（含 ASR/TTS 测量路径）：受理、发现、计划、生成、验证、迭代、交付 | `ui_tree`、`ui_action`、`api_spec`、`driver_propose`、`device_query`、`testcase_generate`、`task_run`、`tool_search` | P1 |
 
 ## 5. 单 Agent Loop 契约
 
@@ -169,6 +170,9 @@ budgets:
 | `SandboxTier` | `T0_NONE` / `T1_TRUSTED_SCRIPT` / `T2_UNTRUSTED_CODE` |
 | `CompactionLevel` | `L1_TRIM` / `L2_DEDUPE` / `L3_MEMO` / `L4_REBUILD` |
 | `ContextWindowSource` | `MODEL_DEFAULT` / `USER_OVERRIDE` / `FALLBACK` |
+| `UiActionType` | `TAP` / `LONG_PRESS` / `SWIPE` / `INPUT_TEXT` / `BACK` / `HOME` / `WAIT` |
+| `ArtifactKind` | `DEVICE_DRIVER` / `API_ADAPTER` / `TESTCASE_SET` / `REPORT_DRAFT` / `ALGORITHM_CONFIG` / `EVALUATION_CONFIG` / `SPL_PLAN` / `DIAGNOSIS_PLAN` |
+| `ExplorationStopReason` | `DONE` / `BUDGET` / `LOGIN_REQUIRED` / `CAPTCHA` / `DESTRUCTIVE_BLOCKED` / `USER_CANCEL` |
 | `EventType` | `run_started` / `message_delta` / `tool_call` / `tool_result` / `approval_required` / `context_compacted` / `run_finished` / `error` |
 
 所有预算、阈值、超时、并发数写入配置（环境变量 + `config/`），不在代码中硬编码。
@@ -177,12 +181,15 @@ budgets:
 
 ### 6.1 意图级工具（内部 Agent）
 
-原则：按用户意图分组，不按 API 1:1。目标 ≤30 个定义；本表合计 28 个（含 `tool_search` 与 2 个记忆工具，业务意图工具 25 个）。
+原则：按用户意图分组，不按 API 1:1。本表合计 31 个（含 `tool_search`、2 个记忆工具、3 个探索工具；业务意图工具 25 个），仍在 30–50 安全区间下限。
 
 | 工具 | 覆盖能力 | 风险 |
 |---|---|---|
 | `platform_contract` | 查询字段、枚举、权限码、接口说明 | READ |
 | `tool_search` | 按关键词/语义查找长尾工具并返回 Schema | READ |
+| `ui_tree` | 读取设备 UI 树：裁剪节点、截图引用、与上次快照 diff；需设备租用 | READ |
+| `ui_action` | 设备 UI 动作：点击/长按/滑动/输入/返回/Home/等待；需设备租用与审批 | WRITE |
+| `api_spec` | 解析 OpenAPI/proto/WS 契约：端点、鉴权、请求响应样例 | READ |
 | `memory_search` | `rg` 封装：按关键词检索用户/项目记忆与 Skill references | READ |
 | `memory_write` | 写入用户偏好或项目规则；需审批 | WRITE |
 | `audio_query` | 音频列表、详情、MD5、标签、目录树、特征/质量 | READ |
@@ -302,27 +309,36 @@ budgets:
 
 ### 6.6 App/API 接入（onboarding）
 
-这是最主要的落地场景：用户说“我要测这个 App/API”，Agent 交付一套可运行的接入包，而不是一段代码。
+这是最主要的落地场景：用户说“我要测这个 App/API”，Agent 交付一套可运行的接入包，而不是一段代码。**Agent 自己探索 UI 树/API 契约；UiAutoDev 只作为可选的可视化辅助。**
 
 #### 入口
 
 | 入口 | 用户提供 | Agent 产出 |
 |---|---|---|
-| App（设备驱动） | 设备 + App 包名/版本、UiAutoDev 选中的元素卡片（点击/输入/提取/等待） | `AppDriver` + 配置 + 冒烟用例 + 验证报告 |
-| API（厂商适配器） | OpenAPI / gRPC proto / WS 帧文档、样例请求响应、鉴权方式 | `ApiVendorAdapter` + `vendor_adapter` 配置 + mock 契约测试 + 冒烟用例 |
+| App（设备驱动） | 设备 + App 包名/版本；Agent 用 `ui_tree` / `ui_action` 自主探索，也可由 UiAutoDev 推送元素卡片 | `AppDriver` + 配置 + 冒烟用例 + 验证报告 |
+| API（厂商适配器） | OpenAPI / gRPC proto / WS 帧文档、样例请求响应、鉴权方式；Agent 用 `api_spec` 解析 | `ApiVendorAdapter` + `vendor_adapter` 配置 + mock 契约测试 + 冒烟用例 |
 | App + API | 两者都给 | 成对交付：驱动负责设备侧 UI，适配器负责服务端协议 |
 
-UiAutoDev 元素卡片通过受认证的桥接事件进入会话，不作为新的对外工具；`driver_propose` 消费这些结构化输入。元素选择仍在 UiAutoDev 完成，Agent 不替代它。
+UiAutoDev 元素卡片通过受认证的桥接事件进入会话，不作为新的对外工具；`driver_propose` 消费这些结构化输入。元素选择仍可用 UiAutoDev，但不是唯一入口。
 
 #### 流程
 
 1. **受理**：确认 app_type/vendor、platform、protocol、版本；明确测试目标（ASR/TTS/对话/翻译/降噪/打断）；按 §6.5.1 确认输入方式、采集方式、完成判定、时序点、指标与测试资产；确认是否已有同类驱动。
-2. **发现**：App 侧读元素卡片/页面树；API 侧解析 OpenAPI/proto/WS 样例；`tool_search` 找同类实现与既有约定；校验测量路径可测——只能取 UI 文本就不能评 TTS 音质，只能录屏则 ASR 文本需要额外识别步骤。
+2. **发现**：App 侧用 `ui_tree` 逐页读取裁剪后的 UI 树，用 `ui_action` 导航并记录 `ui_trace.json`；API 侧用 `api_spec` 解析端点/鉴权/样例；`tool_search` 找同类实现与既有约定；校验测量路径可测——只能取 UI 文本就不能评 TTS 音质，只能录屏则 ASR 文本需要额外识别步骤。
 3. **计划**：输出接入计划与缺口清单（缺元素、缺鉴权、缺样例、缺设备），用户确认后再生成。
 4. **生成**：调用 `driver_propose`，`target_kind` = `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；产出代码、配置、测试、manifest。
 5. **验证**：T2 编译/单测/mock 契约/注册表 resolve；App 侧在租用设备上跑冒烟用例。
 6. **迭代**：失败必须带新证据（日志/截图/元素变化/报文差异），最多 3 轮；不收敛就交回诊断，不无限重试。
 7. **交付**：提案包 + 验证报告 + 已知限制 + 回滚方案；合并/注册生产需单独的 `DESTRUCTIVE` 审批。
+
+#### UI 探索会话
+
+- `ui_tree` 返回裁剪树（最多 200 节点）：`id`、`text`、`resource_id`/`key`、`class`、`bounds`、`clickable`、`enabled`，附截图引用与上次快照 diff；不返回整页 XML/base64。
+- `ui_action` 支持 `TAP` / `LONG_PRESS` / `SWIPE` / `INPUT_TEXT` / `BACK` / `HOME` / `WAIT`；每次动作返回新的树 diff，并写入 `ui_trace.json`。
+- 预算：单次探索最多 30 个动作 / 5 分钟；超限以 `BUDGET` 停止并交回。
+- 安全：必须先租用/锁定设备；首个动作需审批，后续在同一探索计划内自动放行；卸载、重启、支付、删账号等 `DESTRUCTIVE` 动作一律拒绝。
+- 遇到登录、验证码、实名/支付页，立即以 `LOGIN_REQUIRED` / `CAPTCHA` 停止，交给用户接管，不尝试绕过。
+- 探索轨迹是 `driver_propose` 的输入之一：动作序列 + 页面树 + 截图，用来生成稳定的元素定位和生命周期步骤。
 
 #### 交付包
 
@@ -332,6 +348,7 @@ onboarding/<app_type|vendor>/
 ├─ config.yaml
 ├─ capabilities.json
 ├─ test_plan.md
+├─ ui_trace.json
 ├─ tests/
 ├─ smoke_case.json
 ├─ manifest.json
@@ -352,6 +369,38 @@ onboarding/<app_type|vendor>/
 - 驱动返回字段对齐现有契约；指标由平台计算，不在驱动里算 WER/MOS。
 - 交付包可复现；报告含证据、限制、回滚。
 - 未审批不写生产注册表。
+
+### 6.7 探索-生成类任务（跨领域）
+
+共性：用户给一个不熟悉的系统，Agent 先探索、建模，再生成可验证产物。不是每个领域写一套新 Agent，而是复用同一套“探索 → 建模 → 生成 → 验证 → 迭代 → 审批”。
+
+| 领域 | 探索对象 | 生成产物 | 验证方式 |
+|---|---|---|---|
+| App 驱动 | UI 树、页面流、控件状态 | `AppDriver` + `capabilities.json` | T2 + 真机冒烟 |
+| API 适配器 | OpenAPI/proto/WS、鉴权、样例 | `ApiVendorAdapter` + `vendor_adapter` 配置 | mock 契约 + 网关冒烟 |
+| 用例生成 | 标注、音频、维度、标签 | 用例草案 + 覆盖矩阵 | schema + 覆盖 + 试跑 |
+| 算法配置 | 定义、参数、映射 | 配置草案 | schema + dry-run + 热重载 |
+| 评估维度 | 维度树、分类、映射 | 维度配置草案 | schema + 引用检查 |
+| SPL 校准 | 设备、通道、测试音、历史 | 校准计划 | 试播 + 回读 |
+| 报告草稿 | 指标、模板、基线 | 报告草案 | Report Service 逐字段复算 |
+| 日志诊断 | 日志、错误、任务、设备状态 | 诊断 + 重试计划 | 证据链 + dry-run |
+| 任务编排 | 用例、设备、音频、时间窗 | 任务计划 | 容量/冲突检查 |
+
+统一约束：
+
+1. 探索只读优先；生成物与写动作必须提案 + 审批。
+2. 每个生成物带 `artifact_kind`、`source_trace`、`validation_report`。
+3. 写工具标配 `dry_run` / `validate=true`，先校验再落库。
+4. 迭代必须带新证据；最多 3 轮；不收敛交回诊断。
+5. 领域规则写 Skill/references，校验写工具；不在 Agent 里硬编码业务规则。
+
+现有 CRUD 工具的缺口与补法：
+
+- 缺 UI 树/动作 → `ui_tree` / `ui_action`
+- 缺 API 契约解析 → `api_spec`
+- 缺 schema 自省 → `platform_contract` 扩展字段/枚举/别名
+- 缺产物校验 → 写工具统一支持 `dry_run` / `validate`
+- 缺 staging 冒烟 → `task_run(mode=SMOKE)`，需设备租用与审批
 
 ## 7. 沙箱
 
@@ -609,7 +658,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 |---|---|---|
 | M0 底座 | 单 loop、SkillRegistry、意图工具 3 个、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1 + T2（首期启用）；压缩 L1–L3；`platform-reference` | T1/T2 逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
 | M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；tool search；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%；无编造数值；记忆写入需审批 |
-| M2 写操作与报告 | 写工具、审批、幂等；App/API 接入全流程（受理→发现→计划→生成→验证→迭代→交付）；驱动提案（设备驱动 + API 适配器，提案 + T2 验证，不自动发布）；Report Studio 取数→起草→版本→导出；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；两类提案均可复现且未审批不写注册表；接入包在 staging 冒烟通过；三类报告指标与 Report Service 逐字段一致 |
+| M2 写操作与报告 | 探索-生成层（`ui_tree`/`ui_action`/`api_spec`）；写工具、审批、幂等；App/API 接入全流程（受理→发现→计划→生成→验证→迭代→交付）；驱动提案（设备驱动 + API 适配器，提案 + T2 验证，不自动发布）；Report Studio 取数→起草→版本→导出；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；两类提案均可复现且未审批不写注册表；接入包在 staging 冒烟通过；三类报告指标与 Report Service 逐字段一致 |
 | M3 自动化与评测 | Auto 模式、预算/熔断、全量评测、外部 Skill zip/MCP 对齐、文档更新 | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致 |
 
 ## 16. 风险与开放问题
