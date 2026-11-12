@@ -13,6 +13,10 @@ TRANSFER_AGENT_HTTP_PORT = 5010
 # INT-2451：Agent 运行底座（唯一 Loop / Run 持久化 / SSE 回放）
 AGENT_SERVICE_HTTP_PORT = 5011
 
+# 独立沙箱 runner/sidecar（INT-2455）：唯一持有 Docker 访问权的进程，
+# agent_service 经 HTTP 调用，不挂载 docker.sock（方案 07 §7）。
+AGENT_SANDBOX_RUNNER_PORT = 51110
+
 # gRPC 服务端口（来源：各服务 grpc/server.py 默认参数与 BaseConfig）
 # INT-901：Windows 排除端口段 50060-50159（WinError 10013）gRPC 无法绑定，
 # 全部迁出到 510xx（510xx 空闲且不与 parallel 栈 535xx 冲突）；e2e/audio/device 5005x 与 report 51068 不受影响。
