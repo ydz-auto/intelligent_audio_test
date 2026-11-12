@@ -149,6 +149,7 @@ const detailDto: TaskDetailDto = {
   review_count: 2,
   created_at: '2026-10-30T09:59:00',
   updated_at: '2026-10-30T10:06:00',
+  created_by_user_id: 1,
 }
 
 describe('toTaskListItem', () => {
@@ -214,6 +215,8 @@ describe('toTaskDetail', () => {
     expect(detail.expectedCompleteTime).toBe('2026-10-30T10:05:00')
     expect(detail.usedTime).toBe('5 分钟')
     expect(detail.reviewCount).toBe(2)
+    // INT-2446：创建人 id 映射到领域对象（姓名不在详情接口，application 层另查）
+    expect(detail.createdByUserId).toBe(1)
     // 派生字段（config 内部是后端配置原文，键不转换）
     expect(detail.concurrency).toBe(3)
     expect(detail.apiCount).toBe(1)
@@ -239,16 +242,18 @@ describe('toTaskDetail', () => {
     })
   })
 
-  it('review_count 缺省容错为 0、concurrency 非数值时为 null', () => {
+  it('review_count 缺省容错为 0、concurrency 非数值时为 null、created_by_user_id 缺省为 null', () => {
     const detail = toTaskDetail({
       ...detailDto,
       review_count: null,
       config: { concurrent_tasks: '3' },
       cases: [],
+      created_by_user_id: undefined,
     })
 
     expect(detail.reviewCount).toBe(0)
     expect(detail.concurrency).toBeNull()
+    expect(detail.createdByUserId).toBeNull()
   })
 })
 

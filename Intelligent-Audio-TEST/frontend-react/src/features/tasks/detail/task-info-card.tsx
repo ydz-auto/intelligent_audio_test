@@ -1,8 +1,9 @@
 /**
  * 任务信息卡（09_任务域.md §4.2，Card）。
- * 头行：任务名 + 双状态徽章 + 创建时间 + 创建人；
+ * 头行：任务名 + 双状态徽章 + 创建时间 + 创建人（INT-2446：真实创建人，取
+ * created_by_user_id 经 application 层解析的显示名，未解析到回退「用户 #id」）；
  * 信息网格 `grid gap-4 sm:grid-cols-3 lg:grid-cols-4`（label text-xs muted + 值 text-sm font-medium tabular-nums）；
- * 标签行 BadgeListCell。
+ * 标签行：label「标签」+ BadgeListCell（空态给带标签名的「—」，不裸露无归属短横线）。
  */
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -33,14 +34,24 @@ function InfoGrid({ items }: { items: Array<{ label: string; value: string | num
 
 export function TaskInfoCard({
   detail,
+  createdByName,
   headerExtra,
 }: {
   detail: TaskDetailData
+  /**
+   * 创建人显示名（application 层 useTaskCreatorName 经 GET /auth/users/{id} 解析）。
+   * 未传 / 未解析到（无 user:read 或用户已删）→ 回退「用户 #id」；id 也为空 → 「—」。
+   */
+  createdByName?: string | null
   /** 头行附加内容（容器信息头徽章组，§5.5.2 ②；非容器不传） */
   headerExtra?: React.ReactNode
 }) {
   const execMeta = getExecutionStatusMeta(detail.executionStatus)
   const evalMeta = getEvaluationStatusMeta(detail.evaluationStatus)
+  const creatorLabel =
+    detail.createdByUserId == null
+      ? '—'
+      : createdByName?.trim() || `用户 #${detail.createdByUserId}`
 
   return (
     <Card size='sm' className='gap-3 py-3'>
@@ -60,7 +71,7 @@ export function TaskInfoCard({
           {headerExtra}
         </div>
         <div className='text-muted-foreground text-xs tabular-nums'>
-          创建时间 {formatDateTime(detail.createdAt)} · 创建人 张测试
+          创建时间 {formatDateTime(detail.createdAt)} · 创建人 {creatorLabel}
         </div>
       </CardHeader>
       <CardContent className='px-4 pb-1'>
@@ -79,16 +90,20 @@ export function TaskInfoCard({
             { label: '并发数', value: detail.concurrency ?? '—' },
           ]}
         />
-        <div className='mt-3 flex flex-wrap items-center gap-1'>
-          {detail.tags.length === 0 ? (
-            <span className='text-muted-foreground text-xs'>—</span>
-          ) : (
-            detail.tags.map((tag) => (
-              <Badge key={tag} variant='outline' className='rounded-md px-1.5'>
-                {tag}
-              </Badge>
-            ))
-          )}
+        {/* INT-2446 P3：标签行补标签名——空态不再是一个无归属的「—」 */}
+        <div className='mt-3'>
+          <p className='text-muted-foreground text-xs'>标签</p>
+          <div className='mt-1 flex flex-wrap items-center gap-1'>
+            {detail.tags.length === 0 ? (
+              <span className='text-sm font-medium'>—</span>
+            ) : (
+              detail.tags.map((tag) => (
+                <Badge key={tag} variant='outline' className='rounded-md px-1.5'>
+                  {tag}
+                </Badge>
+              ))
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

@@ -124,6 +124,7 @@ function makeDetail(overrides: Partial<TaskDetailData> = {}): TaskDetailData {
     apis: [],
     createdAt: null,
     updatedAt: null,
+    createdByUserId: null,
     apiCount: null,
     concurrency: null,
     reviewCount: 0,

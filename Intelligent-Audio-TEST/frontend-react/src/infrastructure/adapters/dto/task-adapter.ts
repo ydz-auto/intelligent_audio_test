@@ -200,6 +200,8 @@ export function toTaskDetail(dto: TaskDetailDto): TaskDetailData {
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
     reviewCount: dto.review_count ?? 0,
+    // INT-2446：创建人 id 原样映射（姓名字段后端未提供，由 application 层查用户详情）
+    createdByUserId: dto.created_by_user_id ?? null,
   }
 }
 
