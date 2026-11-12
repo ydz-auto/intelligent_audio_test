@@ -106,6 +106,20 @@ export interface AgentRun {
   error?: string
 }
 
+/** 会话历史消息（GET /agent/sessions/{id} 的 messages 项） */
+export interface AgentSessionMessage {
+  role: string
+  content: string
+  toolCallId?: string
+}
+
+/** 会话详情（GET /agent/sessions/{id}：`{session, messages, runs}` 信封） */
+export interface AgentSessionDetail {
+  session: AgentSession
+  messages: AgentSessionMessage[]
+  runs: AgentRun[]
+}
+
 /** 待审批提案（§10 agent_approval；M2 审批卡实现，本卡只接空列表契约） */
 export interface AgentApproval {
   id: string
@@ -160,6 +174,8 @@ export interface AgentToolResultEvent extends AgentRunEventBase {
   toolCallId: string
   status: AgentToolResultStatus
   summary?: string
+  /** 工具失败时的后端错误码（error_code；成功为空） */
+  errorCode?: string
   sourceRefs?: AgentEventSourceRef[]
 }
 

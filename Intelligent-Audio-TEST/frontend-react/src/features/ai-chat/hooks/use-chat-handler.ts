@@ -211,6 +211,7 @@ export function useChatHandler({
                       ? ('completed' as const)
                       : ('error' as const),
                   summary: event.summary ?? call.summary,
+                  errorCode: event.errorCode,
                   sourceRefs: event.sourceRefs ?? call.sourceRefs,
                 }
               : call

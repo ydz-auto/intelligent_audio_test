@@ -24,17 +24,23 @@ import {
   type AgentRunEvent,
   type AgentRunInput,
   type AgentSession,
+  type AgentSessionDetail,
 } from '@/domain/models/agent'
 import {
-  toAgentApproval,
+  toAgentApprovals,
   toAgentRun,
   toAgentRunCreateDto,
   toAgentRunEvent,
+  toAgentRunFromCreateResponse,
   toAgentSession,
   toAgentSessionCreateDto,
+  toAgentSessionDetail,
   type AgentApprovalDto,
+  type AgentApprovalsResponseDto,
   type AgentEventDto,
+  type AgentRunCreateResponseDto,
   type AgentRunDto,
+  type AgentSessionDetailDto,
   type AgentSessionDto,
 } from '@/infrastructure/dto/agent.dto'
 import { parseSseFrame } from '@/infrastructure/realtime/sse'
@@ -148,24 +154,29 @@ export async function createAgentSession(
   return toAgentSession(dto)
 }
 
-/** GET /agent/sessions/{id} —— 会话与最近消息 */
+/**
+ * GET /agent/sessions/{id} —— 会话与最近消息。
+ * 真实响应是 `{session, messages, runs}` 信封（网关透明转发），解信封在此层做。
+ */
 export async function getAgentSession(
   sessionId: string,
   options?: ApiRequestOptions
-): Promise<AgentSession> {
-  const dto = await request<AgentSessionDto>(
+): Promise<AgentSessionDetail> {
+  const dto = await request<AgentSessionDetailDto>(
     'GET',
     AGENT_API_PATHS.session(sessionId),
     undefined,
     options
   )
-  return toAgentSession(dto)
+  return toAgentSessionDetail(dto)
 }
 
 /**
  * POST /agent/sessions/{id}/runs —— 发起 run。
  * 幂等键走 Idempotency-Key 头（§9.2：run_id + step_id + tool + args_hash 由后端落；
  * 前端只保证「同一轮发送只发一次」且重试复用同一键）。
+ * 真实响应是 `{run, created}` 信封：created=true 为 201 新建、false 为 200 幂等回放；
+ * 两种都返回同一个 run，解信封不泄漏到 application 层。
  */
 export async function createAgentRun(
   sessionId: string,
@@ -177,13 +188,13 @@ export async function createAgentRun(
     ...((options?.headers as Record<string, string> | undefined) ?? {}),
     'Idempotency-Key': idempotencyKey,
   }
-  const dto = await request<AgentRunDto>(
+  const dto = await request<AgentRunCreateResponseDto | AgentRunDto>(
     'POST',
     AGENT_API_PATHS.sessionRuns(sessionId),
     toAgentRunCreateDto(input),
     { ...options, headers: controllerHeaders }
   )
-  return toAgentRun(dto)
+  return toAgentRunFromCreateResponse(dto)
 }
 
 /** GET /agent/runs/{id} —— run 快照（重连时核对终态） */
@@ -229,13 +240,13 @@ export async function listAgentApprovals(
   options?: ApiRequestOptions
 ): Promise<AgentApproval[]> {
   try {
-    const dto = await request<AgentApprovalDto[]>(
+    const dto = await request<AgentApprovalDto[] | AgentApprovalsResponseDto>(
       'GET',
       AGENT_API_PATHS.runApprovals(runId),
       undefined,
       options
     )
-    return Array.isArray(dto) ? dto.map(toAgentApproval) : []
+    return toAgentApprovals(dto)
   } catch (error) {
     if (error instanceof ApiError && error.httpStatus === 404) return []
     throw error
@@ -339,7 +350,8 @@ export function subscribeAgentRunEvents(
     const payload = toFramePayload(frame.data)
     if (!isObject(payload)) return
 
-    // 事件类型优先取帧 event: 名（已知 Agent 事件），否则取载荷 type 字段。
+    // 真实帧：event: <type> + data 为平铺 JSON（事件字段与 run_id/sequence/type/
+    // timestamp 同级）；事件类型优先取帧 event 名，缺省回退载荷 type 字段。
     const frameType =
       frame.eventType !== 'message' && frame.eventType !== '' ? frame.eventType : undefined
     const dto: AgentEventDto = {

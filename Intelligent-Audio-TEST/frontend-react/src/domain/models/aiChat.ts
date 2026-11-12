@@ -49,6 +49,8 @@ export interface AgentToolCall {
   label: string
   status: AgentToolStatus
   summary?: string
+  /** 工具失败时的后端错误码（tool_result.error_code） */
+  errorCode?: string
   sourceRefs?: ChatSourceRef[]
 }
 

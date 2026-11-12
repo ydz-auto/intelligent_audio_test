@@ -25,6 +25,11 @@ export function ToolCallCard({ call }: ToolCallCardProps) {
           {call.summary && (
             <p className='text-foreground/90 text-xs leading-5'>{call.summary}</p>
           )}
+          {call.errorCode && (
+            <p className='text-destructive font-mono text-[11px] leading-5'>
+              错误码：{call.errorCode}
+            </p>
+          )}
           {call.sourceRefs && call.sourceRefs.length > 0 && (
             <div className='flex flex-wrap gap-1.5'>
               {call.sourceRefs.map((ref, index) => (

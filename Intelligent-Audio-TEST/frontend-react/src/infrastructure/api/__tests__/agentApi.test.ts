@@ -9,6 +9,8 @@ import {
   AGENT_API_PATHS,
   cancelAgentRun,
   createAgentRun,
+  getAgentSession,
+  listAgentApprovals,
   subscribeAgentRunEvents,
   toAgentErrorMessage,
 } from '@/infrastructure/api/agentApi'
@@ -47,12 +49,16 @@ describe('agentApi', () => {
     vi.unstubAllGlobals()
   })
 
-  it('createAgentRun：POST /agent/sessions/{id}/runs + Idempotency-Key，响应转 camelCase', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        jsonResponse({ id: 'r-1', session_id: 's-1', status: 'RUNNING' })
+  it('createAgentRun：POST /agent/sessions/{id}/runs + Idempotency-Key，拆 {run, created} 信封', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          run: { id: 'r-1', session_id: 's-1', status: 'RUNNING' },
+          created: true,
+        },
+        201
       )
+    )
     vi.stubGlobal('fetch', fetchMock)
 
     const run = await createAgentRun('s-1', { message: '帮我生成报告' }, 'idem-1')
@@ -67,6 +73,40 @@ describe('agentApi', () => {
     expect(init.method).toBe('POST')
     expect((init.headers as Record<string, string>)['Idempotency-Key']).toBe('idem-1')
     expect(JSON.parse(String(init.body))).toEqual({ message: '帮我生成报告' })
+  })
+
+  it('createAgentRun：幂等回放（created=false）同样取到 run', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({ run: { id: 'r-9', session_id: 's-1', status: 'QUEUED' }, created: false })
+      )
+    )
+    const run = await createAgentRun('s-1', { message: '重试' }, 'idem-1')
+    expect(run.id).toBe('r-9')
+    expect(run.status).toBe(AGENT_RUN_STATUS.QUEUED)
+  })
+
+  it('getAgentSession：拆 {session, messages, runs} 信封', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          session: { id: 's-1', title: '会话' },
+          messages: [{ role: 'user', content: '你好', tool_call_id: null }],
+          runs: [{ id: 'r-1', session_id: 's-1', status: 'SUCCEEDED' }],
+        })
+      )
+    )
+    const detail = await getAgentSession('s-1')
+    expect(detail.session.id).toBe('s-1')
+    expect(detail.messages).toEqual([{ role: 'user', content: '你好', toolCallId: undefined }])
+    expect(detail.runs[0]).toMatchObject({ id: 'r-1', status: AGENT_RUN_STATUS.SUCCEEDED })
+  })
+
+  it('listAgentApprovals：拆 {"items": [...]} 信封（M0 空列表）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ items: [] })))
+    await expect(listAgentApprovals('r-1')).resolves.toEqual([])
   })
 
   it('cancelAgentRun：空响应体返回 null（不因无 JSON 报错）', async () => {
@@ -94,19 +134,19 @@ describe('agentApi', () => {
     )
   })
 
-  it('SSE：解析事件 → run_finished 终止；重连带 Last-Event-ID 与 cursor 续传', async () => {
+  it('SSE：真实平铺帧 → run_finished 终止；重连带 Last-Event-ID 与 cursor 续传', async () => {
     const fetchMock = vi
       .fn()
       // 第一次连接：吐一条 message_delta 后服务端关流 → 触发重连
       .mockResolvedValueOnce(
         sseResponse(
-          'id: 1\nevent: message_delta\ndata: {"run_id":"r-1","sequence":1,"timestamp":"t","payload":{"message_id":"m-1","delta":"你好"}}\n\n'
+          'id: 1\nevent: message_delta\ndata: {"message_id":"m-1","delta":"你好","index":0,"turn":1,"run_id":"r-1","sequence":1,"type":"message_delta","timestamp":"t"}\n\n'
         )
       )
       // 第二次连接：从游标续传终态
       .mockResolvedValueOnce(
         sseResponse(
-          'id: 2\nevent: run_finished\ndata: {"run_id":"r-1","sequence":2,"timestamp":"t","payload":{"status":"SUCCEEDED"}}\n\n'
+          'id: 2\nevent: run_finished\ndata: {"status":"SUCCEEDED","reason":null,"error":null,"run_id":"r-1","sequence":2,"type":"run_finished","timestamp":"t"}\n\n'
         )
       )
     vi.stubGlobal('fetch', fetchMock)
