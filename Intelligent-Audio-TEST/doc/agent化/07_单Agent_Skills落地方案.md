@@ -133,7 +133,7 @@ budgets:
 | `report-studio` | 三类报告取数、起草、改稿、版本、导出 | `report_query`、`report_generate`、`report_export` | P0 |
 | `report-compare` | 多报告对比、趋势、异常下钻 | `report_compare`、`report_query` | P1 |
 | `log-diagnostics` | 日志搜索、失败诊断、导出 | `log_diagnose` | P1 |
-| `driver-proposal` | UiAutoDev 元素 → 驱动代码提案 | `driver_propose`（对外唯一工具名；`generate_driver_from_elements` / `publish_driver_proposal` 是内部步骤，不新增对外工具，落地卡 INT-2467） | P2 |
+| `driver-proposal` | UiAutoDev 元素 → 设备驱动（`AppDriver`）+ 厂商 API 适配器（`ApiVendorAdapter`）提案 | `driver_propose`（对外唯一工具名；`target_kind` = `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；`generate_driver_from_elements` / `publish_driver_proposal` 是内部步骤，不新增对外工具，落地卡 INT-2467） | P2 |
 
 ## 5. 单 Agent Loop 契约
 
@@ -205,7 +205,7 @@ budgets:
 | `report_compare` | 多报告/二次对比、趋势 | READ |
 | `report_export` | 导出 PDF/PPTX/HTML/MD | WRITE |
 | `log_diagnose` | 日志搜索、统计、诊断 | READ |
-| `driver_propose` | 生成驱动代码提案（不执行、不发布）；落地卡 INT-2467。对外意图工具名唯一为 `driver_propose`，`generate_driver_from_elements` / `publish_driver_proposal` 是内部步骤，不新增对外工具；首期只出提案、默认不发布 | WRITE |
+| `driver_propose` | 生成设备驱动（`AppDriver`）+ 厂商 API 适配器（`ApiVendorAdapter`）代码提案（不执行、不注册、不发布）；`target_kind` = `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；落地卡 INT-2467。对外意图工具名唯一为 `driver_propose`，`generate_driver_from_elements` / `publish_driver_proposal` 是内部步骤，不新增对外工具 | WRITE |
 | `dashboard_query` | 首页统计（只读；缓存刷新留 M2，与 INT-2461 一致） | READ |
 
 ### 6.2 外部 MCP
@@ -235,28 +235,41 @@ budgets:
 
 ### 6.5 驱动提案（driver-propose）
 
-能力：把 UiAutoDev 元素/页面结构 + 设备型号 + 驱动接口契约，生成可审查的驱动代码提案。**只出提案，不自动发布、不直接下发设备。**
+这里的“驱动”是两条并行的 Port，不是泛指的硬件驱动：
+
+| 类型 | 契约 | 注册键 | 作用 |
+|---|---|---|---|
+| 设备驱动 | `AppDriver`（[app_driver.py](file:///d:/00_code/V10.11.2/Intelligent-Audio-TEST/device_service/infrastructure/drivers/contracts/app_driver.py)） | `(app_type, version, platform)` | 在真机上操作 App：`initialize` / `pre_process` / `get_results` / `teardown`，采集结果 |
+| API 适配器 | `ApiVendorAdapter`（[api_vendor_adapter.py](file:///d:/00_code/V10.11.2/Intelligent-Audio-TEST/api_test_service/domain/ports/api_vendor_adapter.py)） | `(AdapterProtocol, AdapterVendor)` | 适配厂商协议：`render_request_parts` / `execute` / 流式钩子，覆盖 HTTP/WS/gRPC/Realtime |
+
+`driver_propose` 的 `target_kind` 支持 `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；新 App/新厂商接入通常一次生成一对。
 
 流程：
 
-1. `device_query` 取设备型号、现有驱动版本与接口契约。
-2. 激活 `driver-proposal` Skill，按需读 `references/driver-contract.md`、`references/examples.md`、`references/gotchas.md`。
-3. `driver_propose` 生成提案：文件清单、diff、依赖、风险、回滚方案。
-4. T2 沙箱运行静态检查、单测与最小契约测试，产出验证报告；失败只回诊断，不产生可发布产物。
-5. 用户审批：通过 → 保存为草稿/分支/PR；发布到驱动注册表需要单独的 `DESTRUCTIVE` 审批。
-6. 记录模型、输入元素、代码 hash、测试结果与审批人。
+1. 输入：`target_kind`、app_type/vendor、platform/protocol、UiAutoDev 元素/页面树、API 契约（OpenAPI / WS 帧 / gRPC proto）、样例请求响应、音频格式。
+2. `device_query` 取设备型号、现有驱动版本；`tool_search` 找同类驱动/适配器样例。
+3. 激活 `driver-proposal`，按需读 `references/device-driver-contract.md`、`references/api-adapter-contract.md`、`references/examples.md`、`references/gotchas.md`。
+4. 生成提案：
+   - 设备驱动：`AppDriver` 子类（元数据 + 生命周期桩 + 结果解析），按平台复用 `BaseDeviceDriver` / `AndroidDriver` / `HarmonyDriver`。
+   - API 适配器：`ApiVendorAdapter` 子类（`protocol` / `vendor` 声明 + `render_request_parts` + `execute` + 流式钩子），按协议复用 `WebSocketAdapter` / `GrpcAdapter` / `RealtimeAdapterBase`。
+   - 注册与配置：`@register_driver` / `@register_vendor_adapter`、`AdapterProtocol`/`AdapterVendor` 枚举、`vendor_adapter` 配置示例；只生成提案，不写入生产注册表。
+5. T2 沙箱：导入/编译、单测、mock 厂商契约测试、注册表 resolve 测试；禁网、无凭证。
+6. 审批：保存草稿/分支/PR；合并与注册到生产需要单独的 `DESTRUCTIVE` 审批。
+7. 记录模型、输入元素、代码 hash、测试结果、审批人。
 
 边界：
 
-- 不自动发布、不自动重启设备、不覆盖线上驱动。
-- 生成代码不得包含凭证、不得联网。
+- 不自动注册、不自动发布、不重启设备、不覆盖线上驱动/适配器。
+- 生成代码不得含凭证、不得联网；API Key 只通过现有 key resolver 注入。
+- 设备驱动与 API 适配器职责不能混：驱动不写厂商报文，适配器不操作 UI。
 - 与 `device_control` 分开：一个是写代码提案，一个是设备动作。
 
 验收：
 
 - 同一输入重复生成，提案可复现（同 hash 或可解释 diff）。
+- 设备驱动提案通过 `(app_type, version, platform)` resolve；API 适配器提案通过 `(protocol, vendor)` resolve 与 mock 契约测试。
 - 静态检查/单测失败时，不产生可发布产物。
-- 未审批不能写入驱动注册表。
+- 未审批不能写入驱动/适配器注册表。
 
 ## 7. 沙箱
 
@@ -514,7 +527,7 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 |---|---|---|
 | M0 底座 | 单 loop、SkillRegistry、意图工具 3 个、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1 + T2（首期启用）；压缩 L1–L3；`platform-reference` | T1/T2 逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
 | M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；tool search；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%；无编造数值；记忆写入需审批 |
-| M2 写操作与报告 | 写工具、审批、幂等；驱动提案（提案 + T2 验证，不自动发布）；Report Studio 取数→起草→版本→导出；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；驱动提案可复现且未审批不写注册表；三类报告指标与 Report Service 逐字段一致 |
+| M2 写操作与报告 | 写工具、审批、幂等；驱动提案（设备驱动 + API 适配器，提案 + T2 验证，不自动发布）；Report Studio 取数→起草→版本→导出；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；两类提案均可复现且未审批不写注册表；三类报告指标与 Report Service 逐字段一致 |
 | M3 自动化与评测 | Auto 模式、预算/熔断、全量评测、外部 Skill zip/MCP 对齐、文档更新 | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致 |
 
 ## 16. 风险与开放问题
