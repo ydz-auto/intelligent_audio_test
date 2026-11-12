@@ -9,6 +9,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { PromptInputButton, PromptInputTools } from '@/components/ai-elements/prompt-input'
+import { Badge } from '@/components/ui/badge'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import {
   Tooltip,
@@ -16,12 +17,17 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
-import type { ChatConfig, LlmProvider } from '@/domain/models/aiChat'
+import { CHAT_CHANNEL, type ChatChannel, type ChatConfig, type LlmProvider } from '@/domain/models/aiChat'
+import { CHAT_CHANNEL_COPY } from '@/features/ai-chat/constants'
+import { ChatChannelSwitcher } from './chat-channel-switcher'
 import { ModelProviderSwitcher } from './model-provider-switcher'
 
 type AiChatInputToolsProps = {
   config: ChatConfig
   providers: LlmProvider[]
+  /** 对话通道（平台 Agent / 自带供应商，INT-2457） */
+  channel: ChatChannel
+  onChannelChange?: (channel: ChatChannel) => void
   disabled?: boolean
   hasMessages?: boolean
   onClearMessages?: () => void
@@ -33,6 +39,8 @@ type AiChatInputToolsProps = {
 export function AiChatInputTools({
   config,
   providers,
+  channel,
+  onChannelChange,
   disabled,
   hasMessages = false,
   onClearMessages,
@@ -51,15 +59,38 @@ export function AiChatInputTools({
   return (
     <>
       <PromptInputTools className='bg-background/70 border-border/60 rounded-lg border p-1 shadow-xs'>
-        <ModelProviderSwitcher
-          className='bg-transparent shadow-none'
-          config={config}
-          disabled={disabled}
-          onManageProviders={onManageProviders}
-          onSelectModel={onSelectModel}
-          onSelectProvider={onSelectProvider}
-          providers={providers}
-        />
+        {onChannelChange && (
+          <ChatChannelSwitcher
+            channel={channel}
+            disabled={disabled}
+            onChannelChange={onChannelChange}
+          />
+        )}
+
+        {channel === CHAT_CHANNEL.PLATFORM ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Badge className='text-muted-foreground' variant='secondary'>
+                  {CHAT_CHANNEL_COPY.platformModelBadge}
+                </Badge>
+              }
+            />
+            <TooltipContent>
+              <p>{CHAT_CHANNEL_COPY.platformHint}</p>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <ModelProviderSwitcher
+            className='bg-transparent shadow-none'
+            config={config}
+            disabled={disabled}
+            onManageProviders={onManageProviders}
+            onSelectModel={onSelectModel}
+            onSelectProvider={onSelectProvider}
+            providers={providers}
+          />
+        )}
 
         <Tooltip>
           <TooltipTrigger

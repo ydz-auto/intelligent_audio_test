@@ -3,10 +3,27 @@
  * 形态对照 api_gateway/schemas/report.py + task.py（ReportListItem/TaskListItem）与
  * Agent 会话契约占位（§3.8，待后端立项）；mock 数据与真实 schema 对齐，后续接线字段不返工。
  */
+import type { AgentRunStatus } from './agent'
 
 export type ChatMessageRole = 'user' | 'assistant' | 'system'
 
 export type ChatMessageStatus = 'loading' | 'streaming' | 'complete' | 'error'
+
+/**
+ * 对话通道（INT-2457 M0）：
+ * - platform：走平台 Agent（agent_service 会话 / Run / SSE，默认）；
+ * - provider：自带 LLM 供应商直连（降级模式；P0-1 拍板后二选一，不长期双轨）。
+ */
+export const CHAT_CHANNEL = {
+  PLATFORM: 'platform',
+  PROVIDER: 'provider',
+} as const
+
+export type ChatChannel = (typeof CHAT_CHANNEL)[keyof typeof CHAT_CHANNEL]
+
+export function normalizeChatChannel(value: unknown): ChatChannel {
+  return value === CHAT_CHANNEL.PROVIDER ? CHAT_CHANNEL.PROVIDER : CHAT_CHANNEL.PLATFORM
+}
 
 /** 消息版本（编辑器保存产生新版本；照 newAPI MessageVersion） */
 export interface ChatMessageVersion {
@@ -32,6 +49,8 @@ export interface AgentToolCall {
   label: string
   status: AgentToolStatus
   summary?: string
+  /** 工具失败时的后端错误码（tool_result.error_code） */
+  errorCode?: string
   sourceRefs?: ChatSourceRef[]
 }
 
@@ -63,6 +82,11 @@ export interface ChatMessage {
   toolCalls?: AgentToolCall[]
   documentChanges?: ChatDocumentChange[]
   sourceRefs?: ChatSourceRef[]
+  /**
+   * 平台 Agent 通道的 run 终态（INT-2457）：CANCELLED / FAILED / BUDGET_EXCEEDED
+   * 在消息尾部显示状态徽标；成功完成不显示。
+   */
+  runStatus?: AgentRunStatus
 }
 
 /**
@@ -95,6 +119,11 @@ export interface ChatConfig {
   providerId?: string
   /** 当前模型 id（供应商可用模型列表内） */
   modelId?: string
+  /**
+   * 对话通道（INT-2457）：platform=平台 Agent（默认，配置决定）；provider=自带供应商直连。
+   * 缺省按 platform 处理（normalizeChatChannel）。
+   */
+  chatMode?: ChatChannel
   reportContextId?: string
   reportContextLabel?: string
   reportContextType?: ReportContextType
