@@ -85,6 +85,11 @@ class EventRepository(ABC):
                    limit: int) -> List[AgentRunEvent]: ...
 
     @abstractmethod
+    def list_by_types(self, run_id: str, event_types: Sequence,
+                      limit: int) -> List[AgentRunEvent]:
+        """按事件类型定向查询，sequence 升序。"""
+
+    @abstractmethod
     def max_sequence(self, run_id: str) -> int: ...
 
     @abstractmethod

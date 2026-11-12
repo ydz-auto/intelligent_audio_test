@@ -7,7 +7,7 @@
 """
 import logging
 import uuid
-from typing import Any, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from agent_service.application.cancel_registry import CancelRegistry
 from agent_service.domain.enums import EventType, RunStatus
@@ -64,8 +64,7 @@ class RunService:
     # ------------------------------------------------------------ runs
 
     def create_run(self, session_id: str, *, owner_id: int, tenant_id: str,
-                   message: str, idempotency_key: Optional[str] = None,
-                   budget_override: Optional[Dict[str, Any]] = None
+                   message: str, idempotency_key: Optional[str] = None
                    ) -> Tuple[AgentRun, bool]:
         session = self.get_session(session_id, owner_id=owner_id,
                                    tenant_id=tenant_id)
@@ -75,7 +74,7 @@ class RunService:
             if existing is not None:
                 return existing, False
 
-        budget = self._resolve_budget(budget_override)
+        budget = RunBudget.from_dict(self._budget_defaults)
         now = utcnow()
         run = AgentRun(
             id=str(uuid.uuid4()), session_id=session.id, owner_id=owner_id,
@@ -143,21 +142,6 @@ class RunService:
         import hashlib
         scoped = f'{tenant_id}:{owner_id}:{raw}'
         return hashlib.sha256(scoped.encode('utf-8')).hexdigest()
-
-    def _resolve_budget(self, override: Optional[Dict[str, Any]]) -> RunBudget:
-        values = dict(self._budget_defaults)
-        if override:
-            for key in values:
-                if key not in override:
-                    continue
-                try:
-                    requested = int(override[key])
-                except (TypeError, ValueError):
-                    continue
-                if requested < 0:
-                    continue
-                values[key] = min(requested, values[key]) if values[key] > 0 else requested
-        return RunBudget.from_dict(values)
 
 
 __all__ = ['RunService', 'InvalidRunTransition', 'RunNotFound', 'SessionNotFound']

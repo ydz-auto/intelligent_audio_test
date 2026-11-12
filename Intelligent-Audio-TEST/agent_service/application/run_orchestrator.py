@@ -337,15 +337,19 @@ class RunOrchestrator:
                        turn: int) -> List[ToolResult]:
         workers = max(1, min(int(self._settings.tool_max_concurrency or 1),
                              len(calls)))
+        # 已落库的 tool 事件每批查一次（定向查询，不整条 run 全扫）
+        emitted = self._emitted_tool_events(run.id)
         results: List[ToolResult] = []
         if workers == 1:
             for call in calls:
-                results.append(self._execute_one(run, step_id, call, turn))
+                results.append(self._execute_one(
+                    run, step_id, call, turn, emitted))
             return results
         with ThreadPoolExecutor(max_workers=workers,
                                 thread_name_prefix='agent-tool') as pool:
             futures = {
-                pool.submit(self._execute_one, run, step_id, call, turn): call
+                pool.submit(self._execute_one, run, step_id, call, turn,
+                            emitted): call
                 for call in calls
             }
             for future in as_completed(futures):
@@ -361,7 +365,8 @@ class RunOrchestrator:
         return results
 
     def _execute_one(self, run: AgentRun, step_id: str,
-                     call: ToolCallRequest, turn: int) -> ToolResult:
+                     call: ToolCallRequest, turn: int,
+                     emitted: set) -> ToolResult:
         if self._cancel_registry.is_cancelled(run.id):
             return ToolResult(
                 tool_call_id=call.tool_call_id, tool=call.name, ok=False,
@@ -383,11 +388,11 @@ class RunOrchestrator:
         if existing is not None:
             # 崩溃可能发生在「落库 tool call」与「写 tool_call 事件」之间：
             # 补事件，保证上下文重建时 assistant tool_calls 不丢
-            self._ensure_tool_call_event(run.id, existing, turn)
+            self._ensure_tool_call_event(run.id, existing, turn, emitted)
         if existing is not None and existing.status is ToolCallStatus.COMPLETED:
             # 断点恢复 / 重复投递：直接复用已落库结果，不再执行
             result = self._result_from_record(existing)
-            self._ensure_tool_result_event(run.id, result, turn)
+            self._ensure_tool_result_event(run.id, result, turn, emitted)
             return result
         if existing is not None and existing.status is ToolCallStatus.RUNNING:
             if not self._side_effects.can_replay(existing):
@@ -402,14 +407,17 @@ class RunOrchestrator:
                     ok=False, content=message,
                     error_code='RESTART_WRITE_UNVERIFIED')
                 self._append_error(run.id, 'RESTART_WRITE_UNVERIFIED', message)
-                self._append_tool_result(run.id, result, turn)
+                self._append_tool_result(run.id, result, turn, emitted)
                 return result
             self._tool_calls.update(existing.tool_call_id, run.id,
                                     status=ToolCallStatus.PENDING)
-        elif existing is not None:
-            # 上一次已判失败（例如上游抖动）：保留结果，不再重试
+        elif existing is not None and existing.status in (
+                ToolCallStatus.FAILED, ToolCallStatus.DENIED):
+            # 上一次已判失败 / 被拒（例如上游抖动、审批缺失）：保留结果，不重试。
+            # PENDING 表示「落库后还没开始执行」（含进程重启后重置的只读调用），
+            # 必须继续执行，不能拿空结果冒充已完成。
             result = self._result_from_record(existing)
-            self._ensure_tool_result_event(run.id, result, turn)
+            self._ensure_tool_result_event(run.id, result, turn, emitted)
             return result
 
         if existing is None:
@@ -433,6 +441,7 @@ class RunOrchestrator:
                 'risk': risk.value,
                 'turn': turn,
             })
+            emitted.add((EventType.TOOL_CALL, call.tool_call_id))
 
         if risk.requires_approval:
             # M0 只读：写操作一律拒绝（审批链路 M2 落地）
@@ -447,7 +456,7 @@ class RunOrchestrator:
             result = ToolResult(
                 tool_call_id=call.tool_call_id, tool=call.name,
                 ok=False, content=message, error_code='APPROVAL_REQUIRED')
-            self._append_tool_result(run.id, result, turn)
+            self._append_tool_result(run.id, result, turn, emitted)
             return result
 
         self._tool_calls.update(call.tool_call_id, run.id,
@@ -482,16 +491,28 @@ class RunOrchestrator:
             latency_ms=latency_ms,
             permission_decision='allow',
             error=None if result.ok else (result.error_code or 'TOOL_FAILED'))
-        self._append_tool_result(run.id, result, turn)
+        self._append_tool_result(run.id, result, turn, emitted)
         return result
 
+    def _emitted_tool_events(self, run_id: str) -> set:
+        """已落库的 tool 事件集合 ``{(EventType, tool_call_id)}``。
+
+        按 (run_id, type) 定向查询，只碰 tool 事件，不整条 run 全扫。
+        """
+        emitted = set()
+        for event in self._events.list_by_types(
+                run_id, (EventType.TOOL_CALL, EventType.TOOL_RESULT),
+                self._settings.event_scan_limit):
+            call_id = (event.payload or {}).get('tool_call_id')
+            if call_id:
+                emitted.add((event.type, call_id))
+        return emitted
+
     def _ensure_tool_call_event(self, run_id: str, record: AgentToolCall,
-                                turn: int) -> None:
-        for event in self._events.list_after(
-                run_id, 0, self._settings.event_scan_limit):
-            if event.type is EventType.TOOL_CALL and \
-                    (event.payload or {}).get('tool_call_id') == record.tool_call_id:
-                return
+                                turn: int, emitted: set) -> None:
+        key = (EventType.TOOL_CALL, record.tool_call_id)
+        if key in emitted:
+            return
         self._events.append(run_id, EventType.TOOL_CALL, {
             'tool_call_id': record.tool_call_id,
             'tool': record.tool,
@@ -499,18 +520,16 @@ class RunOrchestrator:
             'risk': record.risk.value,
             'turn': turn,
         })
+        emitted.add(key)
 
     def _ensure_tool_result_event(self, run_id: str, result: ToolResult,
-                                  turn: int) -> None:
-        for event in self._events.list_after(
-                run_id, 0, self._settings.event_scan_limit):
-            if event.type is EventType.TOOL_RESULT and \
-                    (event.payload or {}).get('tool_call_id') == result.tool_call_id:
-                return
-        self._append_tool_result(run_id, result, turn)
+                                  turn: int, emitted: set) -> None:
+        if (EventType.TOOL_RESULT, result.tool_call_id) in emitted:
+            return
+        self._append_tool_result(run_id, result, turn, emitted)
 
     def _append_tool_result(self, run_id: str, result: ToolResult,
-                            turn: int) -> None:
+                            turn: int, emitted: set) -> None:
         self._events.append(run_id, EventType.TOOL_RESULT, {
             'tool_call_id': result.tool_call_id,
             'tool': result.tool,
@@ -519,6 +538,7 @@ class RunOrchestrator:
             'error_code': result.error_code,
             'turn': turn,
         })
+        emitted.add((EventType.TOOL_RESULT, result.tool_call_id))
 
     @staticmethod
     def _result_from_record(record: AgentToolCall) -> ToolResult:

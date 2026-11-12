@@ -81,8 +81,13 @@ def build_container(session_factory,
                     llm_factory: Optional[Callable[[], LlmClient]] = None,
                     tool_gateway: Optional[ToolGateway] = None,
                     wakeup: Optional[RunWakeup] = None,
-                    executor_factory: Optional[Callable] = None
+                    executor_factory: Optional[Callable] = None,
+                    budget_defaults: Optional[dict] = None,
+                    terminal_grace_seconds: Optional[float] = None
                     ) -> AgentContainer:
+    """组合根。``budget_defaults`` / ``terminal_grace_seconds`` 仅供测试注入
+    更小的预算与宽限期；生产一律取 Config（预算只由服务端配置决定）。"""
+    budgets = budget_defaults or Config.budget_defaults()
     sessions = SqlSessionRepository(session_factory)
     runs = SqlRunRepository(session_factory)
     events = SqlEventRepository(session_factory)
@@ -103,7 +108,7 @@ def build_container(session_factory,
         event_fetch_limit=Config.EVENT_SCAN_LIMIT)
 
     settings = OrchestratorSettings(
-        budget_defaults=Config.budget_defaults(),
+        budget_defaults=dict(budgets),
         max_consecutive_tool_failures=Config.MAX_CONSECUTIVE_TOOL_FAILURES,
         tool_max_concurrency=Config.TOOL_MAX_CONCURRENCY,
         tool_result_max_chars=Config.TOOL_RESULT_MAX_CHARS,
@@ -121,13 +126,16 @@ def build_container(session_factory,
     )
     run_service = RunService(
         sessions, runs, events, wakeup, cancel_registry,
-        budget_defaults=Config.budget_defaults(),
+        budget_defaults=dict(budgets),
         default_model=Config.LLM_MODEL,
     )
     event_stream = EventStreamService(
         events, runs, wakeup, page_size=Config.EVENT_PAGE_SIZE,
         poll_interval_seconds=Config.EVENT_POLL_INTERVAL_SECONDS,
         heartbeat_seconds=Config.EVENT_HEARTBEAT_SECONDS,
+        terminal_grace_seconds=(
+            Config.EVENT_TERMINAL_GRACE_SECONDS
+            if terminal_grace_seconds is None else terminal_grace_seconds),
     )
     recovery = RecoveryService(
         runs=runs, steps=steps, tool_calls=tool_calls, events=events,

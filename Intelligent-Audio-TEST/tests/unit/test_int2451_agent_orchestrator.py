@@ -29,16 +29,15 @@ from agent_service.domain.model.entities import AgentToolCall, ToolCallRequest
 from agent_service.domain.ports.llm import LlmUsage
 from tests.unit.int2451_agent_fakes import (
     FakeLlm, FakeToolGateway, Pause, build_stack, event_types, events_of,
-    new_session, read_tool, text_turn, tool_turn, wait_until, write_tool,
+    new_session, read_tool, server_budget, text_turn, tool_turn, wait_until,
+    write_tool,
 )
 from shared.utils.time_utils import utcnow
 
 
-def _submit(container, session, message='你好', budget=None,
-            owner_id=7, tenant_id='t1'):
+def _submit(container, session, message='你好', owner_id=7, tenant_id='t1'):
     run, created = container.run_service.create_run(
-        session.id, owner_id=owner_id, tenant_id=tenant_id,
-        message=message, budget_override=budget)
+        session.id, owner_id=owner_id, tenant_id=tenant_id, message=message)
     assert created
     container.executor.submit(run.id)
     return run
@@ -115,11 +114,11 @@ def test_tool_budget_exceeded_keeps_events_and_artifacts(tmp_path):
     llm = FakeLlm([tool_turn(calls), tool_turn(calls)])
     gateway = FakeToolGateway(tools=[read_tool('task_query')])
     container, _engine, _sf = build_stack(
-        tmp_path / 'c.db', llm, gateway=gateway, executor_factory=_inline)
+        tmp_path / 'c.db', llm, gateway=gateway, executor_factory=_inline,
+        budget_defaults=server_budget(max_tool_calls=2))
     session = new_session(container)
     run, _created = container.run_service.create_run(
-        session.id, owner_id=7, tenant_id='t1', message='预算',
-        budget_override={'max_tool_calls': 2})
+        session.id, owner_id=7, tenant_id='t1', message='预算')
     from agent_service.domain.model.entities import AgentArtifact
     container.repositories['artifacts'].add(AgentArtifact(
         id=str(uuid.uuid4()), run_id=run.id, kind='export',
@@ -142,9 +141,10 @@ def test_round_budget_exceeded(tmp_path):
     llm = FakeLlm([tool_turn([call]), tool_turn([call])])
     gateway = FakeToolGateway(tools=[read_tool('task_query')])
     container, _engine, _sf = build_stack(
-        tmp_path / 'd.db', llm, gateway=gateway, executor_factory=_inline)
+        tmp_path / 'd.db', llm, gateway=gateway, executor_factory=_inline,
+        budget_defaults=server_budget(max_rounds=1))
     session = new_session(container)
-    run = _submit(container, session, budget={'max_rounds': 1})
+    run = _submit(container, session)
 
     stored = container.repositories['runs'].get(run.id)
     assert stored.status is RunStatus.BUDGET_EXCEEDED
@@ -160,9 +160,10 @@ def test_token_budget_exceeded(tmp_path):
                     LlmUsage(prompt_tokens=100, completion_tokens=1),
                     LlmFinished()]])
     container, _engine, _sf = build_stack(
-        tmp_path / 'e.db', llm, executor_factory=_inline)
+        tmp_path / 'e.db', llm, executor_factory=_inline,
+        budget_defaults=server_budget(max_tokens=10))
     session = new_session(container)
-    run = _submit(container, session, budget={'max_tokens': 10})
+    run = _submit(container, session)
     stored = container.repositories['runs'].get(run.id)
     assert stored.status is RunStatus.BUDGET_EXCEEDED
     container.shutdown()
@@ -284,4 +285,62 @@ def test_recovery_refuses_to_replay_inflight_write(tmp_path):
     call = repos['tool_calls'].find(run.id, 'w1')
     assert call.status is ToolCallStatus.FAILED
     assert call.permission_decision == 'restart_write_unverified'
+    container.shutdown()
+
+
+# ---------------------------------------------------------------- 返工回归
+# 审计 P1：上下文必须取「最近」N 个 run（正序取最早 N 个会丢掉最近对话）
+
+def test_context_uses_most_recent_runs(tmp_path):
+    container, _engine, _sf = build_stack(
+        tmp_path / 'j.db', FakeLlm([]), executor_factory=_inline)
+    session = new_session(container)
+    runs = []
+    for index in range(25):
+        run, created = container.run_service.create_run(
+            session.id, owner_id=7, tenant_id='t1', message=f'msg-{index}')
+        assert created
+        runs.append(run)
+
+    messages = container.assembler.assemble(session.id, runs[-1])
+    users = [m.content for m in messages if m.role == 'user']
+    assert users[-1] == 'msg-24'
+    assert users == [f'msg-{index}' for index in range(5, 25)], users
+    assert 'msg-4' not in users  # 窗口外的更早轮次被挤出，而不是挤掉最近的
+
+    recent = container.repositories['runs'].list_session_runs(session.id, 20)
+    assert [runs_item.id for runs_item in recent] == [
+        run.id for run in runs[-20:]]
+    assert recent[-1].id == runs[-1].id  # 末位仍是 latest
+    container.shutdown()
+
+
+# 审计 P3：PENDING 表示「落库后尚未执行」，必须执行，不能拿空结果复用
+
+def test_pending_tool_call_is_executed(tmp_path):
+    call = ToolCallRequest(tool_call_id='p1', name='task_query', arguments={})
+    llm = FakeLlm([tool_turn([call]), text_turn('完成')])
+    gateway = FakeToolGateway(tools=[read_tool('task_query')])
+    container, _engine, _sf = build_stack(
+        tmp_path / 'k.db', llm, gateway=gateway, executor_factory=_inline)
+    session = new_session(container)
+    run, _created = container.run_service.create_run(
+        session.id, owner_id=7, tenant_id='t1', message='pending')
+    now = utcnow()
+    container.repositories['tool_calls'].create(AgentToolCall(
+        id=str(uuid.uuid4()), run_id=run.id, step_id=None,
+        tool_call_id='p1', tool='task_query', arguments={}, args_hash='h',
+        risk=ToolRisk.READ, status=ToolCallStatus.PENDING,
+        idempotency_key=f'{run.id}:preset:p1:h',
+        created_at=now, updated_at=now))
+    container.executor.submit(run.id)
+
+    assert [entry[0] for entry in gateway.executed] == ['p1']
+    stored = container.repositories['tool_calls'].find(run.id, 'p1')
+    assert stored.status is ToolCallStatus.COMPLETED
+    assert (stored.result or {}).get('content') == 'ok:task_query'
+    results = [e for e in events_of(container, run.id)
+               if e.type.value == 'tool_result'
+               and e.payload.get('tool_call_id') == 'p1']
+    assert len(results) == 1
     container.shutdown()

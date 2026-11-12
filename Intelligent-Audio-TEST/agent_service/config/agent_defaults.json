@@ -19,6 +19,7 @@
   "event_stream": {
     "page_size": 200,
     "poll_interval_seconds": 0.5,
-    "heartbeat_seconds": 15
+    "heartbeat_seconds": 15,
+    "terminal_grace_seconds": 5
   }
 }

@@ -128,7 +128,8 @@ def write_tool(name='task_run'):
 
 
 def build_stack(db_path, llm, gateway=None, executor_factory=None,
-                wakeup=None):
+                wakeup=None, budget_defaults=None,
+                terminal_grace_seconds=None):
     engine, session_factory = make_engine(db_path)
     container = build_container(
         session_factory,
@@ -136,8 +137,18 @@ def build_stack(db_path, llm, gateway=None, executor_factory=None,
         tool_gateway=gateway,
         wakeup=wakeup or LocalRunWakeup(),
         executor_factory=executor_factory,
+        budget_defaults=budget_defaults,
+        terminal_grace_seconds=terminal_grace_seconds,
     )
     return container, engine, session_factory
+
+
+def server_budget(**overrides):
+    """服务器侧预算注入（客户端不再能覆盖）：默认全放行，只改被测维度。"""
+    from agent_service.config.config import Config
+    budgets = dict(Config.budget_defaults())
+    budgets.update(overrides)
+    return budgets
 
 
 def new_session(container, owner_id=7, tenant_id='t1'):

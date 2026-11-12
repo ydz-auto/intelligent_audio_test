@@ -8,8 +8,9 @@ Session，close 不影响调用链），测试注入 ``sessionmaker(bind=test_en
 import logging
 import threading
 import uuid
+import weakref
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -38,8 +39,10 @@ from shared.utils.time_utils import utcnow
 
 logger = logging.getLogger(__name__)
 
-# run 级事件序列化锁（进程内；跨进程由 (run_id, sequence) 唯一约束兜底）
-_run_locks: Dict[str, threading.RLock] = {}
+# run 级事件序列化锁（进程内；跨进程由 (run_id, sequence) 唯一约束兜底）。
+# 弱引用：没有线程持有某 run 的锁时自动回收，长跑服务不会按 run 数线性增长。
+_run_locks: 'weakref.WeakValueDictionary[str, threading.RLock]' = (
+    weakref.WeakValueDictionary())
 _run_locks_guard = threading.Lock()
 
 
@@ -270,12 +273,20 @@ class SqlRunRepository(_BaseRepo, RunRepository):
             db.close()
 
     def list_session_runs(self, session_id: str, limit: int) -> List[AgentRun]:
+        """返回会话**最近** ``limit`` 个 run，按时间升序（末位即 latest）。
+
+        上下文回灌与「会话最近消息」都要的是最近对话；正序取最早 N 个会把
+        最新的轮次静默丢掉。
+        """
+        bounded = max(1, int(limit))
         db = self._session()
         try:
             rows = db.query(AgentRunPO).filter(
                 AgentRunPO.session_id == session_id
-            ).order_by(AgentRunPO.created_at.asc()).limit(limit).all()
-            return [_to_run(r) for r in rows]
+            ).order_by(
+                AgentRunPO.created_at.desc(), AgentRunPO.id.desc()
+            ).limit(bounded).all()
+            return [_to_run(r) for r in reversed(rows)]
         finally:
             db.close()
 
@@ -392,6 +403,23 @@ class SqlEventRepository(_BaseRepo, EventRepository):
                 AgentRunEventPO.run_id == run_id,
                 AgentRunEventPO.sequence > sequence_exclusive,
             ).order_by(AgentRunEventPO.sequence.asc()).limit(limit).all()
+            return [_to_event(r) for r in rows]
+        finally:
+            db.close()
+
+    def list_by_types(self, run_id: str, event_types: Sequence,
+                      limit: int) -> List[AgentRunEvent]:
+        """按事件类型定向查询（tool 事件配对校验用，避免扫描整条 run）。"""
+        wanted = [_enum_value(item) for item in event_types]
+        if not wanted:
+            return []
+        db = self._session()
+        try:
+            rows = db.query(AgentRunEventPO).filter(
+                AgentRunEventPO.run_id == run_id,
+                AgentRunEventPO.type.in_(wanted),
+            ).order_by(AgentRunEventPO.sequence.asc()).limit(
+                max(1, int(limit))).all()
             return [_to_event(r) for r in rows]
         finally:
             db.close()

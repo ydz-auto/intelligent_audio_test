@@ -136,3 +136,18 @@ def test_tool_call_identities_are_unique(stack):
         created_at=now, updated_at=now)
     with pytest.raises(IntegrityError):
         calls.create(duplicate)
+
+
+def test_run_lock_is_released_when_idle(stack):
+    """审计 P3：run 级序列化锁用完即回收，长跑服务不按 run 数线性增长。"""
+    import gc
+    from agent_service.domain.enums import EventType
+    from agent_service.infrastructure.persistence import repositories
+
+    events = repositories.SqlEventRepository(stack)
+    events.append('r-lock', EventType.RUN_STARTED, {'x': 1})
+    gc.collect()
+    assert 'r-lock' not in repositories._run_locks
+
+    # 释放后再写仍然严格递增（锁按需重建）
+    assert events.append('r-lock', EventType.MESSAGE_DELTA, {}).sequence == 2

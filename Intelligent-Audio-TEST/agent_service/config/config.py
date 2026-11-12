@@ -95,6 +95,10 @@ class Config(BaseConfig):
     EVENT_HEARTBEAT_SECONDS = _get_float(
         'AGENT_EVENT_HEARTBEAT_SECONDS',
         float(_STREAM_DEFAULTS.get('heartbeat_seconds', 15)))
+    # 终态先落、run_finished 事件后落库的窗口内，SSE 最多再等多久
+    EVENT_TERMINAL_GRACE_SECONDS = _get_float(
+        'AGENT_EVENT_TERMINAL_GRACE_SECONDS',
+        float(_STREAM_DEFAULTS.get('terminal_grace_seconds', 5)))
     # redis：发布唤醒消息（正文仍回表读）；local：仅进程内唤醒 + 轮询
     EVENT_WAKEUP_BACKEND = os.environ.get('AGENT_EVENT_WAKEUP_BACKEND', 'redis').strip().lower()
     # 勤务通道：与现有 EventChannel 五通道隔离，只作 wakeup，不承载事件正文

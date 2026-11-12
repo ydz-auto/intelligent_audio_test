@@ -16,8 +16,10 @@ class CreateSessionRequest(BaseModel):
 
 
 class CreateRunRequest(BaseModel):
+    # 预算只由服务端配置（agent_defaults.json + AGENT_MAX_* 环境变量）给定，
+    # 请求体不接受覆盖：任何调用方都不能把 token / 时长 / 轮次 / 输出字节
+    # 的上限关掉。未知字段按 pydantic 默认忽略，不报错、也不生效。
     message: str = Field(min_length=1)
-    budget: Optional[Dict[str, Any]] = None
 
 
 class SessionResponse(BaseModel):

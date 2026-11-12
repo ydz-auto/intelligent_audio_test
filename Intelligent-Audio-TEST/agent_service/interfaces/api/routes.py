@@ -113,7 +113,6 @@ def create_run(session_id: str, payload: CreateRunRequest, request: Request,
     run, created = container.run_service.create_run(
         session_id, owner_id=identity.user_id, tenant_id=identity.tenant_id,
         message=payload.message, idempotency_key=idempotency_key,
-        budget_override=payload.budget,
     )
     if created:
         container.executor.submit(run.id)

@@ -216,3 +216,111 @@ def test_event_stream_follows_live_updates(tmp_path):
         pass
     producer.join(timeout=5)
     container.shutdown()
+
+
+# ---------------------------------------------------------------- 返工回归
+
+def test_client_budget_in_body_cannot_disable_limits(tmp_path):
+    """审计 P2：请求体不能再把五项预算清零；上限只由服务端配置决定。"""
+    from agent_service.domain.enums import RunStatus
+    from agent_service.domain.ports.llm import (
+        LlmFinished, LlmTextDelta, LlmUsage,
+    )
+    from tests.unit.int2451_agent_fakes import server_budget
+
+    llm = FakeLlm([[LlmTextDelta('a'),
+                    LlmUsage(prompt_tokens=100, completion_tokens=1),
+                    LlmFinished()]])
+    container, _engine, _sf = build_stack(
+        tmp_path / 'budget.db', llm,
+        executor_factory=lambda orch: InlineRunExecutor(orch),
+        budget_defaults=server_budget(max_tokens=10))
+    client = TestClient(create_app(container=container))
+    with client:
+        session = client.post('/api/v1/agent/sessions', json={},
+                              headers=OWNER).json()
+        resp = client.post(
+            f"/api/v1/agent/sessions/{session['id']}/runs",
+            json={'message': '预算',
+                  'budget': {'max_tokens': 0, 'max_rounds': 0,
+                             'max_duration_seconds': 0,
+                             'max_output_bytes': 0}},
+            headers={**OWNER, 'Idempotency-Key': 'budget-zero'})
+        assert resp.status_code == 201, resp.text
+        run = resp.json()['run']
+        assert run['budget']['max_tokens'] == 10  # 客户端清零无效
+        assert container.repositories['runs'].get(
+            run['id']).status is RunStatus.BUDGET_EXCEEDED
+
+
+def test_stream_waits_for_run_finished_after_terminal_state(tmp_path):
+    """审计 P3：状态先终态、run_finished 后落库的窗口，SSE 不得提前结束。"""
+    import pytest
+    from agent_service.domain.enums import EventType, RunStatus
+
+    container, _engine, _sf = build_stack(
+        tmp_path / 'grace.db', FakeLlm([]), terminal_grace_seconds=0.5,
+        executor_factory=lambda orch: InlineRunExecutor(orch))
+    session = container.run_service.create_session(
+        owner_id=7, tenant_id='t1', title='grace')
+    run, _created = container.run_service.create_run(
+        session.id, owner_id=7, tenant_id='t1', message='grace')
+
+    stream = container.event_stream.iter_events(run.id, 0)
+    assert next(stream).type.value == 'run_started'
+    repos = container.repositories
+
+    def produce():
+        time.sleep(0.05)
+        repos['runs'].transition_if(
+            run.id, {RunStatus.QUEUED}, RunStatus.RUNNING)
+        repos['runs'].transition_if(
+            run.id, {RunStatus.RUNNING}, RunStatus.SUCCEEDED)
+        container.wakeup.notify(run.id)  # 终态已落、run_finished 还没落
+        time.sleep(0.15)
+        repos['events'].append(
+            run.id, EventType.RUN_FINISHED, {'status': 'SUCCEEDED'})
+        container.wakeup.notify(run.id)
+
+    producer = threading.Thread(target=produce)
+    producer.start()
+    event = next(stream)
+    assert event.type.value == 'run_finished'
+    with pytest.raises(StopIteration):
+        next(stream)
+    producer.join(timeout=5)
+    container.shutdown()
+
+
+class _NoopExecutor:
+    """不执行 run，只验证会话详情/上下文的窗口口径。"""
+
+    def submit(self, run_id):
+        pass
+
+    def shutdown(self):
+        pass
+
+
+def test_session_detail_returns_most_recent_runs(tmp_path):
+    """审计 P1：会话详情也要返回最近的 run，latest 是最后一个而不是第 20 个。"""
+    container, _engine, _sf = build_stack(
+        tmp_path / 'detail.db', FakeLlm([]),
+        executor_factory=lambda orch: _NoopExecutor())
+    client = TestClient(create_app(container=container))
+    with client:
+        session = client.post('/api/v1/agent/sessions', json={},
+                              headers=OWNER).json()
+        run_ids = []
+        for index in range(25):
+            resp = client.post(
+                f"/api/v1/agent/sessions/{session['id']}/runs",
+                json={'message': f'msg-{index}'}, headers=OWNER)
+            assert resp.status_code == 201, resp.text
+            run_ids.append(resp.json()['run']['id'])
+        detail = client.get(f"/api/v1/agent/sessions/{session['id']}",
+                            headers=OWNER).json()
+        assert [item['id'] for item in detail['runs']] == run_ids[-20:]
+        assert detail['runs'][-1]['id'] == run_ids[-1]
+        assert detail['messages'][-1]['content'] == 'msg-24'
+        assert detail['messages'][0]['content'] == 'msg-5'
