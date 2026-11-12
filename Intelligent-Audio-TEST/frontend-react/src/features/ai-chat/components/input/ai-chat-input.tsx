@@ -16,7 +16,12 @@ import {
 } from '@/components/ai-elements/prompt-input'
 
 import { getInputControlState, getSubmittableInputText } from '@/features/ai-chat/lib/input'
-import type { ChatConfig, LlmProvider } from '@/domain/models/aiChat'
+import {
+  CHAT_CHANNEL,
+  type ChatChannel,
+  type ChatConfig,
+  type LlmProvider,
+} from '@/domain/models/aiChat'
 
 import { AiChatInputTools } from './ai-chat-input-tools'
 
@@ -28,6 +33,9 @@ type AiChatInputProps = {
   isGenerating?: boolean
   hasMessages?: boolean
   providers: LlmProvider[]
+  /** 对话通道（平台 Agent / 自带供应商，INT-2457；缺省自带供应商=既有行为） */
+  channel?: ChatChannel
+  onChannelChange?: (channel: ChatChannel) => void
   onSelectProvider: (providerId: string) => void
   onSelectModel: (providerId: string, modelId: string) => void
   onManageProviders: () => void
@@ -37,6 +45,8 @@ type AiChatInputProps = {
   onValueChange: (text: string) => void
   /** 输入框聚焦句柄（starter 回填后聚焦） */
   textareaRef?: RefObject<HTMLTextAreaElement | null>
+  /** 取消请求在途：停止钮禁用，防重复取消（INT-2457） */
+  isStopping?: boolean
   /** 全局 Agent 工作台浮窗紧凑形态（§3.1B） */
   compact?: boolean
 }
@@ -49,6 +59,8 @@ export function AiChatInput({
   isGenerating = false,
   hasMessages = false,
   providers,
+  channel = CHAT_CHANNEL.PROVIDER,
+  onChannelChange,
   onSelectProvider,
   onSelectModel,
   onManageProviders,
@@ -56,6 +68,7 @@ export function AiChatInput({
   value,
   onValueChange,
   textareaRef,
+  isStopping = false,
   compact = false,
 }: AiChatInputProps) {
   const { canSubmit, shouldShowStop } = getInputControlState({
@@ -64,12 +77,14 @@ export function AiChatInput({
     hasStopHandler: Boolean(onStop),
     text: value,
   })
-  /** 无供应商时发送钮 disabled（§3.11 行为：对话由用户自配 LLM 供应商驱动） */
-  const effectiveCanSubmit = canSubmit && providers.length > 0
+  /** 供应商通道无供应商时禁用发送（§3.11）；平台 Agent 通道不依赖本机供应商 */
+  const requiresProvider = channel === CHAT_CHANNEL.PROVIDER
+  const effectiveCanSubmit =
+    canSubmit && (!requiresProvider || providers.length > 0)
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    if (providers.length === 0) return
+    if (requiresProvider && providers.length === 0) return
     const submittableText = getSubmittableInputText(value, disabled)
     if (!submittableText) return
     onSubmit(submittableText)
@@ -79,7 +94,7 @@ export function AiChatInput({
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault()
-      if (providers.length === 0) return
+      if (requiresProvider && providers.length === 0) return
       const submittableText = getSubmittableInputText(value, disabled)
       if (!submittableText) return
       onSubmit(submittableText)
@@ -91,6 +106,7 @@ export function AiChatInput({
     shouldShowStop ? (
       <PromptInputButton
         className='border-destructive/25 bg-destructive/10 text-destructive hover:bg-destructive/15 font-medium'
+        disabled={isStopping}
         onClick={onStop}
         variant='secondary'
       >
@@ -137,8 +153,10 @@ export function AiChatInput({
           <div className='flex w-full flex-col gap-2.5 md:flex-row md:items-center md:justify-between'>
             <div className='flex items-center justify-between gap-2 md:justify-start'>
               <AiChatInputTools
+                channel={channel}
                 config={config}
                 disabled={disabled}
+                onChannelChange={onChannelChange}
                 hasMessages={hasMessages}
                 onClearMessages={onClearMessages}
                 onManageProviders={onManageProviders}

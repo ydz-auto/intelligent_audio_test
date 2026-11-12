@@ -6,6 +6,7 @@
 import type { ReactNode } from 'react'
 
 import { CodeBlock } from '@/components/ai-elements/code-block'
+import { Badge } from '@/components/ui/badge'
 import { Loader } from '@/components/ai-elements/loader'
 import { MessageContent } from '@/components/ai-elements/message'
 import {
@@ -17,7 +18,8 @@ import { Response } from '@/components/ai-elements/response'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { cn } from '@/lib/utils'
 
-import { MESSAGE_STATUS } from '@/features/ai-chat/constants'
+import { AGENT_RUN_STATUS } from '@/domain/models/agent'
+import { AGENT_RUN_STATUS_LABELS, MESSAGE_STATUS } from '@/features/ai-chat/constants'
 import {
   getMessageAlignmentClass,
   isErrorMessage,
@@ -67,6 +69,13 @@ export function AiChatMessageContent({
   const hasSources = (message.sourceRefs?.length ?? 0) > 0
   const hasToolCalls = (message.toolCalls?.length ?? 0) > 0
   const hasDocumentChanges = (message.documentChanges?.length ?? 0) > 0
+  /** 平台 Agent 终态徽标（INT-2457）：只标取消/失败/超预算，成功完成不占位 */
+  const runStatus = message.runStatus
+  const showRunStatus =
+    !isUser &&
+    (runStatus === AGENT_RUN_STATUS.CANCELLED ||
+      runStatus === AGENT_RUN_STATUS.FAILED ||
+      runStatus === AGENT_RUN_STATUS.BUDGET_EXCEEDED)
 
   // user 消息：气泡内纯文本
   if (isUser) {
@@ -168,6 +177,18 @@ export function AiChatMessageContent({
             durationMs={message.durationMs}
             timestamp={message.completedAt ?? message.createdAt}
           />
+          {showRunStatus && runStatus && (
+            <div className='mt-1.5'>
+              <Badge
+                data-agent-run-status={runStatus}
+                variant={
+                  runStatus === AGENT_RUN_STATUS.FAILED ? 'destructive' : 'secondary'
+                }
+              >
+                {AGENT_RUN_STATUS_LABELS[runStatus]}
+              </Badge>
+            </div>
+          )}
           {actions}
         </>
       )}

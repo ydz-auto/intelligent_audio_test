@@ -23,9 +23,19 @@ import {
 import type { LucideIcon } from 'lucide-react'
 
 import type { ChatConfig } from '@/domain/models/aiChat'
-import { AGENT_CAPABILITY_PERMISSIONS, AI_CHAT_STORAGE_KEYS } from '@/domain/models/aiChat'
+import {
+  AGENT_CAPABILITY_PERMISSIONS,
+  AI_CHAT_STORAGE_KEYS,
+  CHAT_CHANNEL,
+} from '@/domain/models/aiChat'
 
 export { AI_CHAT_STORAGE_KEYS as STORAGE_KEYS }
+
+/**
+ * 默认对话通道（INT-2457 §12.2：默认走平台 Agent；双通道仅过渡）。
+ * 由配置决定：P0-1（供应商与密钥归属）拍板后在这里二选一即可，不改调用方。
+ */
+export const DEFAULT_CHAT_CHANNEL: ChatConfig['chatMode'] = CHAT_CHANNEL.PLATFORM
 
 export const MESSAGE_ROLES = {
   USER: 'user',
@@ -42,10 +52,11 @@ export const MESSAGE_STATUS = {
 
 export const MAX_RENDERED_HISTORY_MESSAGES = 24
 
-/** 会话配置默认值（§3.5/§3.11：模型/供应商选择；无模型参数） */
+/** 会话配置默认值（§3.5/§3.11：模型/供应商选择；无模型参数；默认平台 Agent 通道） */
 export const DEFAULT_CONFIG: ChatConfig = {
   providerId: undefined,
   modelId: undefined,
+  chatMode: DEFAULT_CHAT_CHANNEL,
 }
 
 /** 空态四 starter（§3.3 区一「常用入门」表；权限过滤，隐藏而非置灰） */
@@ -298,6 +309,41 @@ export const MODEL_PROVIDER_COPY = {
   selectProvider: '选择供应商',
   noProvider: '未配置 LLM 供应商 → 点击配置',
   manageProviders: '管理供应商',
+}
+
+/** 对话通道切换（INT-2457 M0：默认平台 Agent，自带供应商为降级模式） */
+export const CHAT_CHANNEL_COPY = {
+  label: '对话通道',
+  platform: '平台 Agent',
+  provider: '自带供应商',
+  platformHint: '由平台 Agent 托管：会话续传、工具调用、来源可溯',
+  providerHint: '使用你配置的 LLM 供应商直连（降级模式，无工具调用）',
+  platformModelBadge: '平台托管模型',
+  switchToPlatform: '切换到平台 Agent',
+  switchToProvider: '切换到自带供应商',
+} as const
+
+/** Run 生命周期提示（§12.2「SSE 重连不重复渲染」+ 取消态） */
+export const AGENT_RUN_PHASE_COPY = {
+  preparing: '正在准备会话…',
+  running: 'Agent 正在处理…',
+  reconnecting: '连接中断，正在重连…',
+  cancelling: '正在取消…',
+  /** 取消后终态提示（消息尾部徽标同文案） */
+  cancelled: '已取消',
+  failed: '运行失败',
+  budgetExceeded: '超出预算',
+} as const
+
+/** RunStatus → 中文徽标（只用于终态展示） */
+export const AGENT_RUN_STATUS_LABELS = {
+  QUEUED: '排队中',
+  RUNNING: '运行中',
+  WAITING_APPROVAL: '等待审批',
+  SUCCEEDED: '已完成',
+  FAILED: '失败',
+  CANCELLED: '已取消',
+  BUDGET_EXCEEDED: '超出预算',
 } as const
 
 /** 供应商管理弹窗文案（§3.11/§6） */
