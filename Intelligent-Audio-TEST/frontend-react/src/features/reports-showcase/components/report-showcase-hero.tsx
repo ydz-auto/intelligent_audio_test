@@ -15,6 +15,7 @@ import {
 import type { ReportTimeRange, ReportType } from '@/domain/models/report'
 import { cn } from '@/lib/utils'
 
+import { TIME_RANGE_OPTIONS } from '@/features/reports/constants'
 import { SearchBar } from '@/features/reports/components/search-bar'
 
 const TYPE_CHIPS: { value: ReportType | 'all'; label: string }[] = [
@@ -23,15 +24,6 @@ const TYPE_CHIPS: { value: ReportType | 'all'; label: string }[] = [
   { value: 'comparison', label: '对比报告' },
   { value: 'secondary_comparison', label: '二次对比报告' },
   { value: 'benchmark', label: 'Benchmark 报告' },
-]
-
-const TIME_RANGE_OPTIONS: { value: ReportTimeRange | 'all'; label: string }[] = [
-  { value: 'all', label: '全部时间' },
-  { value: 'today', label: '今日' },
-  { value: 'yesterday', label: '昨日' },
-  { value: 'week', label: '近7天' },
-  { value: 'month', label: '近30天' },
-  { value: 'custom', label: '自定义' },
 ]
 
 interface ReportShowcaseHeroProps {

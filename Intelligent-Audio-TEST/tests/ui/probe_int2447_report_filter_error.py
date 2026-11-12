@@ -8,6 +8,11 @@
   P3-1  /report-center 与 /reports 的 `[aria-label=时间范围]` 触发器显示「全部时间」
         （修复前为英文 value `all`）；下拉选「今日」后回显「今日」，再切回「全部时间」；
         报告展示页顶部 Badge 也不再回显英文 value。
+  P3-1 残余  /report-center「高级搜索」折叠区 设备类型 / 创建者 / 时间范围 三个 Select
+        默认显示「全部 / 全部 / 全部时间」（修复前 `all` / `all` / `all`），切换后回显中文
+        （智能音箱 / 今日），与 Hero 的 timeRange 同 state 保持一致；重置后复原。
+  同根因扫描  报告中心可达弹窗里的裸 SelectValue：导出弹窗「格式」= CSV（非 `csv`）、
+        对比弹窗「对比维度」= 测试用例 / 「对比方式」= 横向对比（同指标多主体）（非 `test_cases` / `horizontal`）。
   P3-2  列表请求被 CDP 拦截 → 报告中心（表格 / 卡片视图）与报告展示页（列表 / 卡片视图）
         都渲染公共 ErrorState：红色 AlertTriangle + 「报告列表加载失败」+ 「重试」，
         不再出现排序图标 ↑↓ 与「请重试」；解除拦截后点「重试」恢复真实列表。
@@ -124,6 +129,126 @@ class Probe:
         back = self.time_trigger(page).inner_text().strip()
         self.check('%s：切回「全部时间」' % tag, back == '全部时间', '回显=%r' % back)
 
+    # ── 高级搜索（P3-1 残余）───────────────────────────
+    def adv_trigger(self, page, sel):
+        loc = page.locator('#adv-%s' % sel)
+        return loc.first
+
+    def adv_text(self, page, sel):
+        loc = self.adv_trigger(page, sel)
+        return loc.inner_text().strip() if loc.count() and loc.is_visible() else ''
+
+    def ensure_adv_open(self, page):
+        if not self.adv_trigger(page, 'device-type').count() or not self.adv_trigger(page, 'device-type').first.is_visible():
+            page.locator('button:has-text("高级搜索")').first.click()
+            time.sleep(0.8)
+
+    def adv_pick(self, page, sel, option):
+        self.ensure_adv_open(page)
+        self.adv_trigger(page, sel).click()
+        time.sleep(1.0)
+        try:
+            page.get_by_role('option', name=option, exact=True).first.click(timeout=5000)
+        except Exception:
+            page.get_by_text(option, exact=True).first.click(timeout=5000)
+        time.sleep(2.0)
+
+    def check_advanced_search(self, page):
+        """高级搜索三个 Select：默认中文 + 切换后中文 + 重置复原（修复前为 all/all/all）。"""
+        self.ensure_adv_open(page)
+        dev, cre, rng = (self.adv_text(page, 'device-type'),
+                         self.adv_text(page, 'creator'),
+                         self.adv_text(page, 'time-range'))
+        panel = page.inner_text('body')
+        raw_present = any(tok in panel for tok in ('smart_speaker', 'car_voice', 'demo_admin'))
+        self.check('高级搜索：默认显示「全部 / 全部 / 全部时间」',
+                   dev == '全部' and cre == '全部' and rng == '全部时间' and not raw_present,
+                   '设备类型=%r 创建者=%r 时间范围=%r 面板含英文原始值=%s（修复前 all/all/all）'
+                   % (dev, cre, rng, raw_present),
+                   self.shot(page, '12_adv_search_light'))
+        self.set_dark(page, True)
+        self.ensure_adv_open(page)
+        dark_rng = self.adv_text(page, 'time-range')
+        self.check('高级搜索：深色下文案仍为中文', dark_rng == '全部时间', 'deep 时间范围=%r' % dark_rng,
+                   self.shot(page, '12b_adv_search_dark'))
+        self.set_dark(page, False)
+
+        # 切换：设备类型=智能音箱、时间范围=今日 → 触发器与 Hero 同步回显中文
+        self.adv_pick(page, 'device-type', '智能音箱')
+        after_dev = self.adv_text(page, 'device-type')
+        self.check('高级搜索：选「智能音箱」后回显中文（非 smart_speaker）',
+                   after_dev == '智能音箱', '回显=%r' % after_dev,
+                   self.shot(page, '13_adv_device_picked'))
+
+        self.adv_pick(page, 'time-range', '今日')
+        after_rng = self.adv_text(page, 'time-range')
+        hero_rng = self.time_trigger(page).inner_text().strip()
+        total_text = page.inner_text('body')
+        self.check('高级搜索：选「今日」后回显「今日」，Hero 同 state 同步',
+                   after_rng == '今日' and hero_rng == '今日' and 'today' not in total_text,
+                   '高级搜索时间范围=%r Hero=%r 页面含英文 today=%s'
+                   % (after_rng, hero_rng, 'today' in total_text),
+                   self.shot(page, '14_adv_time_today'))
+
+        # 重置高级搜索 → 三个控件复原
+        try:
+            page.get_by_role('button', name='重置高级搜索', exact=True).first.click(timeout=5000)
+            time.sleep(2.2)
+        except Exception:
+            pass
+        self.ensure_adv_open(page)
+        r_dev, r_cre, r_rng = (self.adv_text(page, 'device-type'),
+                               self.adv_text(page, 'creator'),
+                               self.adv_text(page, 'time-range'))
+        self.check('高级搜索：重置后复原「全部 / 全部 / 全部时间」',
+                   r_dev == '全部' and r_cre == '全部' and r_rng == '全部时间',
+                   '设备类型=%r 创建者=%r 时间范围=%r' % (r_dev, r_cre, r_rng),
+                   self.shot(page, '15_adv_reset'))
+
+    # ── 同根因扫描：报告中心可达弹窗的裸 SelectValue ──────
+    def check_dialog_selects(self, page):
+        # 导出弹窗「格式」：修前回显英文 value csv
+        try:
+            page.get_by_role('button', name='更多操作', exact=True).first.click(timeout=5000)
+            time.sleep(1.0)
+            page.get_by_role('menuitem', name='导出 CSV', exact=True).first.click(timeout=5000)
+            time.sleep(2.0)
+            dialog = page.locator('[role=dialog]').first
+            fmt = dialog.locator('[data-slot=select-trigger]').first.inner_text().strip()
+            self.check('导出弹窗：格式回显「CSV」（非英文 value csv）',
+                       fmt.upper().startswith('CSV'), '格式触发器=%r' % fmt,
+                       self.shot(page, '16_export_dialog_format'))
+            page.keyboard.press('Escape')
+            time.sleep(1.0)
+        except Exception as exc:  # noqa: BLE001 - 探针：打开失败也要留记录
+            self.check('导出弹窗：格式回显「CSV」', False, '打开/读取失败：%r' % exc)
+
+        # 对比弹窗「对比维度 / 对比方式」：修前回显 test_cases / horizontal
+        try:
+            rows = page.locator('tbody tr')
+            boxes = page.locator('tbody tr [role=checkbox]')
+            for i in range(min(2, boxes.count())):
+                boxes.nth(i).click(timeout=5000)
+                time.sleep(0.6)
+            page.get_by_role('button', name='批量对比', exact=True).first.click(timeout=8000)
+            time.sleep(2.0)
+            # 对比维度 / 对比方式在「对比配置」页签（默认停在「基于任务」）
+            page.get_by_role('tab', name='对比配置', exact=True).first.click(timeout=5000)
+            time.sleep(1.2)
+            dialog = page.locator('[role=dialog]').first
+            selects = dialog.locator('[data-slot=select-trigger]')
+            dim = selects.nth(0).inner_text().strip() if selects.count() > 0 else ''
+            mode = selects.nth(1).inner_text().strip() if selects.count() > 1 else ''
+            self.check('对比弹窗：对比维度 / 对比方式回显中文 label',
+                       dim == '测试用例' and mode.startswith('横向对比'),
+                       '对比维度=%r 对比方式=%r（修复前 test_cases / horizontal）' % (dim, mode),
+                       self.shot(page, '17_compare_dialog_selects'))
+            page.keyboard.press('Escape')
+            time.sleep(1.0)
+        except Exception as exc:  # noqa: BLE001
+            self.check('对比弹窗：对比维度 / 对比方式回显中文 label', False,
+                       '打开/读取失败：%r' % exc)
+
     # ── 错误态 ──────────────────────────────────────────
     def check_error_state(self, page, tag, shot_name, expect_rows=True):
         """列表请求已被拦截的状态下检查错误态；返回 body 文本。"""
@@ -218,6 +343,12 @@ class Probe:
             self.check_time_range_label(page, '报告中心', '02_report_center_light',
                                         '03_report_center_dark')
             self.check_time_range_options(page, '报告中心')
+
+            # 2b) P3-1 残余：高级搜索三个 Select（本轮打回项）
+            self.check_advanced_search(page)
+
+            # 2c) 同根因扫描：报告中心可达弹窗的裸 SelectValue（导出 / 对比）
+            self.check_dialog_selects(page)
 
             # 3) 报告展示页 /reports：同款控件 + 顶部 Badge
             self.go(page, '/reports', 4)
