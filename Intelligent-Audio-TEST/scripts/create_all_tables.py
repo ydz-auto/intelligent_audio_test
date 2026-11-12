@@ -21,7 +21,8 @@ import sys
 import os
 
 # 模型全集应有的表数（新增表必须同时改这里）
-EXPECTED_TABLE_COUNT = 100
+# INT-2451：agent_service 7 张运行底座表登记后 101 → 108
+EXPECTED_TABLE_COUNT = 108
 
 # 确保项目根目录在 sys.path 中
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -98,6 +99,12 @@ def _import_all_models():
     #                 自行 create_all 才有这两张表，全新库 / 重引导库都缺）
     from transfer_agent.infrastructure.persistence.models import (  # noqa: F401
         TransferRecord, TransferChunk,
+    )
+    # agent_service: 7 张表（INT-2451 运行底座：会话 / run / 事件 / step /
+    #                 tool call / 产物 / 上下文快照；agent_approval 属 M2）
+    from agent_service.infrastructure.persistence.models import (  # noqa: F401
+        AgentArtifact, AgentContextSnapshot, AgentRun, AgentRunEvent,
+        AgentSession, AgentStep, AgentToolCall,
     )
 
 

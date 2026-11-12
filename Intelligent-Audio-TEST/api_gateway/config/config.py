@@ -1,5 +1,7 @@
 """API Gateway 领域配置"""
 import os
+
+from shared.config.service_ports import AGENT_SERVICE_HTTP_PORT
 from shared.infrastructure.config import BaseConfig, _get_int
 
 
@@ -110,6 +112,18 @@ class Config(BaseConfig):
     # 容器网络后如需显式指定内部入口，设 MCP_SELF_FORWARD_BASE
     # （如 http://api_gateway:5000）。
     MCP_SELF_FORWARD_BASE = os.environ.get('MCP_SELF_FORWARD_BASE', '')
+
+    # ===== Agent 运行底座代理（INT-2451）=====
+    # 网关只做鉴权 / 租户 / 审计后转发，Agent Loop 在 agent_service。
+    # 部署编排（compose）由 M0-06 负责；此处缺省指向同机端口。
+    AGENT_SERVICE_URL = os.environ.get(
+        'AGENT_SERVICE_URL', f'http://127.0.0.1:{AGENT_SERVICE_HTTP_PORT}')
+    AGENT_SERVICE_TIMEOUT_SECONDS = float(
+        os.environ.get('AGENT_SERVICE_TIMEOUT_SECONDS', '30'))
+    # SSE 连接读超时（秒）；0 = 不设读超时（长连接）。连接超时单独限制。
+    AGENT_SERVICE_SSE_READ_TIMEOUT_SECONDS = float(
+        os.environ.get('AGENT_SERVICE_SSE_READ_TIMEOUT_SECONDS', '0'))
+    AGENT_DEFAULT_TENANT_ID = os.environ.get('AGENT_DEFAULT_TENANT_ID', 'default')
 
     # ===== 报告对比（INT-1406）=====
     # 跨任务大结果集同步聚合的 GenerateCompareReport gRPC 调用显式超时（秒）。

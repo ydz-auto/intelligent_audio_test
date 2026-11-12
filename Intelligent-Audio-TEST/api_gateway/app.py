@@ -215,6 +215,12 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(agent_router, prefix='/api/v1/agent', tags=['agent-skill'])
     app.include_router(mcp_router, prefix='/api/v1/mcp', tags=['mcp'])
 
+    # INT-2451：Agent 运行底座（sessions / runs / events / approvals）代理到
+    # agent_service；鉴权/租户/限流/审计仍在网关，代理不绕过 AuthMiddleware
+    from api_gateway.routes.agent_runtime_bp import router as agent_runtime_router
+    app.include_router(agent_runtime_router, prefix='/api/v1/agent',
+                       tags=['agent-runtime'])
+
     # INT-766/INT-787：系统健康汇总（网关 + 认证服务），供「关于」页版本与服务状态卡真实接线
     from api_gateway.routes.system_bp import router as system_router
     app.include_router(system_router, prefix='/api/v1/system', tags=['system'])
