@@ -529,6 +529,80 @@ def test_recorded_sandbox_failure_is_replayed_on_recovery(tmp_path):
     container.shutdown()
 
 
+def _create_run(container, message='恢复'):
+    session = new_session(container)
+    run, _created = container.run_service.create_run(
+        session.id, owner_id=7, tenant_id='t1', message=message)
+    return run
+
+
+def _crash_before_sandbox_finish(container, run):
+    """模拟「沙箱失败已落库、run 收口前」进程崩溃：不执行收口函数。"""
+    original = container.orchestrator._finish_sandbox_failure
+    container.orchestrator._finish_sandbox_failure = lambda *a, **k: None
+    try:
+        container.executor.submit(run.id)
+    finally:
+        container.orchestrator._finish_sandbox_failure = original
+
+
+def test_crash_before_sandbox_finish_closes_run_on_real_recovery(tmp_path):
+    """P1 打回：崩溃在「沙箱失败落库」与「run 收口」之间。
+
+    走真实恢复链路（``recovery.recover()`` + 重新投递），而不是直接调
+    ``_execute_one``：重启后 Loop 会开新 step，模型新一轮给出的是新的
+    tool_call_id，落库的失败调用不会再进 ``_execute_one``。必须在发起模型
+    轮次前按落库原因码收口，否则模型回一段文本就会把 run 判 SUCCEEDED。
+    """
+    executor = FakeExecutor(ContainerExecution(exit_code=3, stdout='boom'))
+    container, llm, _gateway, _session_factory = build_loop(
+        tmp_path, dispatcher_for(executor, tmp_path))
+    run = _create_run(container)
+
+    _crash_before_sandbox_finish(container, run)
+    crashed = container.repositories['runs'].get(run.id)
+    assert crashed.status is RunStatus.RUNNING
+    persisted = container.repositories['tool_calls'].list_by_run(run.id)
+    assert [row.result['sandbox_reason'] for row in persisted] == [
+        'EXIT_CODE_NONZERO']
+
+    assert run.id in container.recovery.recover()
+    container.executor.submit(run.id)
+
+    stored = container.repositories['runs'].get(run.id)
+    assert stored.status is RunStatus.FAILED
+    finished = finished_payload(container, run.id)
+    assert finished['reason'] == 'EXIT_CODE_NONZERO'
+    assert finished['reason_code'] == 'EXIT_CODE_NONZERO'
+    assert 'EXIT_CODE_NONZERO' in error_codes(container, run.id)
+    # 恢复后不再发起模型轮次：模型没有机会用一段文本把失败「洗」成成功
+    assert len(llm.requests) == 1
+    container.shutdown()
+
+
+def test_crash_before_sandbox_finish_closes_run_as_budget_exceeded(tmp_path):
+    """同一条恢复口子对预算类失败（超时）必须收口 BUDGET_EXCEEDED。"""
+    executor = FakeExecutor(ContainerExecution(exit_code=124, timed_out=True))
+    container, llm, _gateway, _session_factory = build_loop(
+        tmp_path, dispatcher_for(executor, tmp_path))
+    run = _create_run(container)
+
+    _crash_before_sandbox_finish(container, run)
+    assert container.repositories['runs'].get(run.id).status is RunStatus.RUNNING
+
+    assert run.id in container.recovery.recover()
+    container.executor.submit(run.id)
+
+    stored = container.repositories['runs'].get(run.id)
+    assert stored.status is RunStatus.BUDGET_EXCEEDED
+    finished = finished_payload(container, run.id)
+    assert finished['reason'] == 'TIMEOUT'
+    assert finished['reason_code'] == 'TIMEOUT'
+    assert 'TIMEOUT' in error_codes(container, run.id)
+    assert len(llm.requests) == 1
+    container.shutdown()
+
+
 # ------------------------------------------------------------- wiring
 
 

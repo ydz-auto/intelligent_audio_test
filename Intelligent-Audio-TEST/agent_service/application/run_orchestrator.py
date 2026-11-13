@@ -183,6 +183,16 @@ class RunOrchestrator:
 
     def _loop(self, run_id: str) -> None:
         run = self._runs.get(run_id)
+        # §7 硬规则 5 的恢复口子：崩溃可能停在「沙箱失败已落库」与「run 收口」
+        # 之间。重启后本方法会开新 step，模型新一轮给出的是新的 tool_call_id，
+        # 已落库的失败调用不会再进 _execute_one —— 若不在进入模型循环前按落库
+        # 原因码收口，模型回一段文本就会把 run 判 SUCCEEDED，沙箱失败静默丢失。
+        persisted_step, persisted_failure = self._persisted_sandbox_failure(
+            run_id)
+        if persisted_failure is not None:
+            self._finish_sandbox_failure(
+                run_id, persisted_step, persisted_failure)
+            return
         try:
             provider = self._provider_resolver.resolve_for_run(run)
         except LlmProviderNotConfigured as exc:
@@ -907,32 +917,83 @@ class RunOrchestrator:
     def _recover_sandbox_failure(self, record: AgentToolCall,
                                  failures: SandboxFailureLog) -> None:
         """断点恢复：把已落库的沙箱失败信号补回本批次（不重跑容器）。"""
+        failure = self._sandbox_failure_from_record(record)
+        if failure is not None:
+            failures.record(failure)
+
+    def _persisted_sandbox_failure(
+            self, run_id: str) -> Tuple[Optional[str],
+                                        Optional[SandboxFailure]]:
+        """读取本 run 已落库的沙箱失败记录，供 Loop 入口补回收口。
+
+        正常路径上沙箱失败会立即收口 run；只有「失败落库后、run 收口前」
+        进程崩溃，run 才会带着失败记录重新进入 Loop。此时新 step 拿到的是
+        模型新一轮调用（新的 tool_call_id），旧失败不会再进 ``_execute_one``，
+        必须在发起任何模型轮次前按落库原因码收口，否则会被静默当成成功。
+        返回 ``(失败记录所属 step_id, 失败信号)``；无失败时 ``(None, None)``。
+        """
+        try:
+            records = self._tool_calls.list_by_run(run_id)
+        except Exception:  # noqa: BLE001 - 读取失败不阻断 Loop 正常执行
+            logger.warning('读取 run 工具记录失败 run=%s', run_id, exc_info=True)
+            return None, None
+        failures = SandboxFailureLog()
+        step_by_call: Dict[str, Optional[str]] = {}
+        for record in records:
+            failure = self._sandbox_failure_from_record(record)
+            if failure is None:
+                continue
+            failures.record(failure)
+            step_by_call[record.tool_call_id] = record.step_id
+        winner = failures.winner()
+        if winner is None:
+            return None, None
+        return step_by_call.get(winner.tool_call_id), winner
+
+    def _sandbox_failure_from_record(
+            self, record: AgentToolCall) -> Optional[SandboxFailure]:
+        """从已落库的 tool_call 重建沙箱失败信号（未知原因码按无信号处理）。"""
         stored = record.result or {}
         outcome = stored.get('sandbox_outcome')
         reason = stored.get('sandbox_reason')
         if not outcome or not reason:
-            return
+            return None
         try:
             sandbox_outcome = SandboxOutcome(outcome)
             sandbox_reason = SandboxFailureReason(reason)
         except ValueError:
             logger.warning('恢复沙箱失败信号遇到未知原因码：%s/%s',
                            outcome, reason)
-            return
-        failures.record(SandboxFailure(
+            return None
+        return SandboxFailure(
             outcome=sandbox_outcome, reason=sandbox_reason,
             tool_call_id=record.tool_call_id,
-            detail=record.error or str(stored.get('content') or ''),
-        ))
+            detail=self._sandbox_detail_from_record(record),
+        )
 
-    def _finish_sandbox_failure(self, run_id: str, step_id: str,
+    @staticmethod
+    def _sandbox_detail_from_record(record: AgentToolCall) -> str:
+        """从落库的 tool_result 还原人读的失败详情（与首次收口文案对齐）。"""
+        stored = record.result or {}
+        try:
+            payload = json.loads(str(stored.get('content') or '{}'))
+        except (TypeError, ValueError):
+            payload = None
+        if isinstance(payload, dict):
+            detail = payload.get('detail')
+            if detail:
+                return str(detail)
+        return record.error or str(stored.get('content') or '')
+
+    def _finish_sandbox_failure(self, run_id: str, step_id: Optional[str],
                                 failure: SandboxFailure) -> None:
         """沙箱失败收口：step FAILED + run FAILED / BUDGET_EXCEEDED + 原因码。"""
         reason = failure.reason.value
         detail = failure.detail or reason
         message = f'{reason}: {detail}'
         self._append_error(run_id, reason, message)
-        self._steps.finish(step_id, StepStatus.FAILED, message)
+        if step_id:
+            self._steps.finish(step_id, StepStatus.FAILED, message)
         target = (RunStatus.BUDGET_EXCEEDED
                   if failure.outcome is SandboxOutcome.BUDGET_EXCEEDED
                   else RunStatus.FAILED)
