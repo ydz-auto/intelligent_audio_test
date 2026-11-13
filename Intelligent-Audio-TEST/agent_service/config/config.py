@@ -143,6 +143,23 @@ class Config(BaseConfig):
     # ===== 重启恢复（§9.2）=====
     RECOVERY_ON_STARTUP = _get_bool('AGENT_RECOVERY_ON_STARTUP', True)
 
+    # ===== T1 沙箱接线（INT-2495；执行器参数仍由 AGENT_SANDBOX_* 单一读取）=====
+    # runner_http = 生产（只向 runner/sidecar 发 HTTP，不持有 docker.sock）；
+    # host_cli = 开发机 / 宿主 runner 进程内执行。
+    SANDBOX_EXECUTOR_MODE = os.environ.get(
+        'AGENT_SANDBOX_EXECUTOR_MODE', 'runner_http').strip().lower()
+    SANDBOX_RUNNER_URL = (os.environ.get('AGENT_SANDBOX_RUNNER_URL') or '').strip()
+    SANDBOX_RUNNER_TOKEN = (
+        os.environ.get('AGENT_SANDBOX_RUNNER_TOKEN') or '').strip()
+    SANDBOX_DOCKER_BIN = os.environ.get(
+        'AGENT_SANDBOX_DOCKER_BIN', 'docker').strip() or 'docker'
+    # /work 临时目录根（空 = 系统临时目录）；容器内需挂载到该路径。
+    SANDBOX_WORK_ROOT = (os.environ.get('AGENT_SANDBOX_WORK_ROOT') or '').strip()
+    # 回灌模型的 stdout / stderr 摘要上限（字符）；原始输出仍由执行器按
+    # output_limit_bytes（默认 1MB）截断。
+    SANDBOX_OUTPUT_SUMMARY_CHARS = _get_int(
+        'AGENT_SANDBOX_OUTPUT_SUMMARY_CHARS', 2000)
+
     # ===== Skill（§4；顶层只读目录由部署挂载，INT-2456）=====
     SKILLS_ROOT = os.environ.get(
         'AGENT_SKILLS_ROOT', os.path.join(_PROJECT_DIR, 'skills'))
@@ -247,3 +264,5 @@ class Config(BaseConfig):
         if cls.TOKEN_BUDGET_MULTIPLIER_DEFAULT <= 0 \
                 or cls.TOKEN_BUDGET_MULTIPLIER_AUTO <= 0:
             raise ValueError('AGENT_TOKEN_BUDGET_MULTIPLIER_* 必须为正数')
+        if cls.SANDBOX_OUTPUT_SUMMARY_CHARS < 0:
+            raise ValueError('AGENT_SANDBOX_OUTPUT_SUMMARY_CHARS 不能为负数')
