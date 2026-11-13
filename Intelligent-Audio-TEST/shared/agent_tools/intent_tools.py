@@ -65,6 +65,11 @@ from shared.agent_tools.diagnostics import (
     MAX_LOG_ROWS as LOG_DIAGNOSE_MAX_ROWS,
 )
 from shared.agent_tools.mcp_registry import TOOLS as MCP_TOOLS, get_tool
+from shared.agent_tools.pagination import (
+    PAGE_MIN,
+    PER_PAGE_MAX,
+    check_page_bounds,
+)
 from shared.models.common_enums import DeviceType
 
 # ---------------------------------------------------------------- schema 辅助
@@ -89,6 +94,17 @@ def _prop(kind, description: str, *, required: bool = False,
     if required:
         prop['x-required'] = True
     return prop
+
+
+def _page_prop(description: str) -> dict:
+    """``page`` 参数 Schema：下界与工具层共用 ``pagination.PAGE_MIN``。"""
+    return _prop('integer', description, minimum=PAGE_MIN)
+
+
+def _per_page_prop(description: str) -> dict:
+    """``per_page`` 参数 Schema：上下界与工具层共用 ``pagination`` 常量。"""
+    return _prop('integer', f'{description}，最大 {PER_PAGE_MAX}',
+                 minimum=PAGE_MIN, maximum=PER_PAGE_MAX)
 
 
 def _schema(properties: Dict[str, Any],
@@ -260,8 +276,10 @@ REPORT_QUERY_PARAMS: Dict[str, Tuple[str, ...]] = {
 
 # 分页边界：网关对 page=0 与超大 per_page **不报错**（实测 page=0 返回首页、
 # per_page=1000 一次返回全量），放过去会让模型用一次调用拉全表。
-REPORT_PAGE_MIN = 1
-REPORT_PER_PAGE_MAX = 200
+# 常量集中在 ``shared.agent_tools.pagination``（INT-2552 起全部查询类意图工具
+# 与 Schema 共用同一份）；这里保留报告域先落地时的旧名，指向同一对象。
+REPORT_PAGE_MIN = PAGE_MIN
+REPORT_PER_PAGE_MAX = PER_PAGE_MAX
 
 # 报告对比的只读动作（INT-2463，本地组合实现，见模块 docstring）
 # - ``compare``：按报告 ID 逐个读权威字段并排（任意报告类型）；
@@ -530,8 +548,8 @@ INTENT_TOOLS: List[IntentTool] = [
             'stats': _prop('boolean', '返回合并容器统计块（list）'),
             'granularity': _prop('string', '趋势分桶粒度（domain_stats，默认 day）',
                                  enum=list(TASK_DOMAIN_STATS_GRANULARITIES)),
-            'page': _prop('integer', '页码（list，默认 1）'),
-            'per_page': _prop('integer', '每页条数（list）'),
+            'page': _page_prop('页码（list，默认 1）'),
+            'per_page': _per_page_prop('每页条数（list）'),
         }, required=('action',)),
         risk='READ', permissions=('task:read',), enabled=True, kind='intent_rest'),
     IntentTool(
@@ -564,8 +582,8 @@ INTENT_TOOLS: List[IntentTool] = [
                           'diagnose 只用它取样，级别统计不支持按用例过滤）'),
             'start_time': _prop('string', '开始时间（ISO 8601）'),
             'end_time': _prop('string', '结束时间（ISO 8601）'),
-            'page': _prop('integer', '页码（search，默认 1）'),
-            'per_page': _prop('integer', '每页条数（search，默认 50）'),
+            'page': _page_prop('页码（search，默认 1）'),
+            'per_page': _per_page_prop('每页条数（search，默认 50）'),
             'max_rows': _prop('integer',
                               f'diagnose 取样行数上限（默认 '
                               f'{LOG_DIAGNOSE_DEFAULT_MAX_ROWS}，最大 '
@@ -615,9 +633,8 @@ INTENT_TOOLS: List[IntentTool] = [
             'deleted': _prop('boolean', '仅回收站软删除项（list / tab_counts）'),
             'dimension': _prop('string', '统计维度（statistics）',
                                enum=list(platform_contract_catalog.REPORT_STATISTICS_DIMENSIONS)),
-            'page': _prop('integer', '页码，从 1 开始（list / cases / cases_search）'),
-            'per_page': _prop('integer', f'每页条数，最大 {REPORT_PER_PAGE_MAX}'
-                                         '（list / cases / cases_search）'),
+            'page': _page_prop('页码，从 1 开始（list / cases / cases_search）'),
+            'per_page': _per_page_prop('每页条数（list / cases / cases_search）'),
             'category': _prop('string', '用例分类过滤（cases / cases_search / '
                                         'case_averages；单分类）'),
             'categories': _prop('array', '用例分类多选过滤（cases_search / '
@@ -656,8 +673,8 @@ INTENT_TOOLS: List[IntentTool] = [
                               items={'type': 'string'}),
             'keyword': _prop('string', '关键词过滤（list 匹配文件名 / 原名，'
                                        'folder_tree 额外匹配 asr_text）'),
-            'page': _prop('integer', '页码（list / playback_history，默认 1）'),
-            'per_page': _prop('integer', '每页条数（list / playback_history）'),
+            'page': _page_prop('页码（list / playback_history，默认 1）'),
+            'per_page': _per_page_prop('每页条数（list / playback_history）'),
             'format': _prop('string', '音频格式过滤（list / folder_tree，如 wav / mp3）'),
             'audio_type': _prop('string', '音频类型过滤（list / folder_tree，如 dry / noise）'),
             'sample_rate': _prop(('string', 'number'),
@@ -692,8 +709,8 @@ INTENT_TOOLS: List[IntentTool] = [
             'dim_id': _prop('integer', '维度 ID（dimension 动作必填）'),
             'category_id': _prop('integer', '分类 ID 过滤（dimensions）'),
             'search': _prop('string', '关键词过滤（dimensions）'),
-            'page': _prop('integer', '页码（dimensions，默认 1）'),
-            'per_page': _prop('integer', '每页条数（dimensions）'),
+            'page': _page_prop('页码（dimensions，默认 1）'),
+            'per_page': _per_page_prop('每页条数（dimensions）'),
         }, required=('action',)),
         risk='READ', permissions=('evaluation:read',), enabled=True,
         kind='intent_rest'),
@@ -713,8 +730,8 @@ INTENT_TOOLS: List[IntentTool] = [
             'round_number': _prop('integer', '轮次号，从 1 开始（round_ref_params 必填）'),
             'task_id': _prop('string', '作业 / 刷新任务 ID（export_status / '
                                        'refresh_status 必填）'),
-            'page': _prop('integer', '页码（list，默认 1）'),
-            'per_page': _prop('integer', '每页条数（list）'),
+            'page': _page_prop('页码（list，默认 1）'),
+            'per_page': _per_page_prop('每页条数（list）'),
             'keyword': _prop('string', '关键词过滤（list，匹配用例名 / 描述）'),
             'tag': _prop('string', '标签名过滤（list）'),
             'group_id': _prop('string', '用例分组 ID 过滤（list）'),
@@ -950,8 +967,8 @@ INTENT_TOOLS: List[IntentTool] = [
                          items={'type': 'integer'}),
             'device_ids': _prop('array', '被测设备 ID 列表（status_history 全量口径）',
                                 items={'type': 'integer'}),
-            'page': _prop('integer', '页码（列表类动作，默认 1）'),
-            'per_page': _prop('integer', '每页条数（列表类动作）'),
+            'page': _page_prop('页码（列表类动作，默认 1）'),
+            'per_page': _per_page_prop('每页条数（列表类动作）'),
             'keyword': _prop('string', '关键词过滤（list 匹配设备名 / 序列号等；'
                                        'groups 匹配分组名；spl_mappings 匹配映射名）'),
             'status': _prop('string', '状态过滤：list 按设备状态原值（如 online / offline），'
@@ -1422,13 +1439,6 @@ def _normalize_testcase_query_arguments(action: str,
     if unknown:
         return f'action={action} 不支持参数：{"、".join(unknown)}'
 
-    if action == 'list':
-        for name in ('page', 'per_page'):
-            value = merged.get(name)
-            if value is not None and (not isinstance(value, int)
-                                      or isinstance(value, bool)
-                                      or value < 1):
-                return f'参数 {name} 必须是 ≥ 1 的整数'
     if action == 'round_ref_params':
         round_number = merged.get('round_number')
         if round_number is not None and (not isinstance(round_number, int)
@@ -1485,30 +1495,13 @@ def _normalize_log_diagnose_arguments(action: str,
     return _normalize_action_arguments('log_diagnose', action, merged)
 
 
-def _check_page_bounds(action: str, merged: Dict[str, Any]) -> Optional[str]:
-    """分页边界：网关对 page<1 / 超大 per_page 不报错，工具层必须拦。"""
-    page = merged.get('page')
-    if page is not None:
-        if isinstance(page, bool) or not isinstance(page, int) or page < REPORT_PAGE_MIN:
-            return (f'参数 page 必须是 ≥{REPORT_PAGE_MIN} 的整数'
-                    f'（action={action} 收到 {page!r}）')
-    per_page = merged.get('per_page')
-    if per_page is not None:
-        if isinstance(per_page, bool) or not isinstance(per_page, int) or per_page < 1:
-            return f'参数 per_page 必须是正整数（action={action} 收到 {per_page!r}）'
-        if per_page > REPORT_PER_PAGE_MAX:
-            return (f'参数 per_page 上限 {REPORT_PER_PAGE_MAX}'
-                    f'（action={action} 收到 {per_page}）；需要更多请分页取')
-    return None
-
-
 def _normalize_report_query_arguments(action: str,
                                      merged: Dict[str, Any]) -> Optional[str]:
     """按动作校验 / 归一 report_query 参数，返回错误文本或 None。
 
     - 动作不支持的参数直接拒绝（网关查询 Schema ``extra='ignore'``，传错参数
       会被静默丢弃并返回全量）；
-    - ``page`` / ``per_page`` 有边界（网关不校验）；
+    - ``page`` / ``per_page`` 边界由 ``pagination.check_page_bounds`` 统一校验；
     - ``case_averages`` 的 ``report_id`` / ``task_id`` 二选一。
     """
     allowed = set(REPORT_QUERY_PARAMS.get(action, ()))
@@ -1517,10 +1510,6 @@ def _normalize_report_query_arguments(action: str,
                      if name not in allowed and merged[name] is not None)
     if unknown:
         return f'action={action} 不支持参数：{"、".join(unknown)}'
-
-    bounds_error = _check_page_bounds(action, merged)
-    if bounds_error:
-        return bounds_error
 
     if action == 'case_averages':
         if merged.get('report_id') is None and merged.get('task_id') is None:
@@ -1621,6 +1610,11 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
                 f'工具 {mcp["name"]} 不在 Agent 可用通道内：'
                 f'{AGENT_UNEXPOSED_MCP_TOOLS[mcp["name"]]}')
         merged = {k: v for k, v in arguments.items() if k != 'action'}
+        # 分页边界：全部查询类意图工具同口径（Schema 的 minimum / maximum 同源），
+        # 网关本身对 page=0 / 超大 per_page 不报错（INT-2552）。
+        bounds_error = check_page_bounds(action, merged)
+        if bounds_error:
+            return None, None, bounds_error
         if name == 'audio_query':
             normalize_error = _normalize_audio_query_arguments(action, merged)
             if normalize_error:
@@ -1711,6 +1705,7 @@ __all__ = [
     'LOG_DIAGNOSE_LOCAL_ACTIONS', 'LOG_DIAGNOSE_MAX_ROWS',
     'LOG_DIAGNOSE_PARAMS', 'LOG_DIAGNOSE_STATS_UNSUPPORTED_PARAMS', 'MCP_TOOLS',
     'REPORT_COMPARE_ACTIONS', 'REPORT_COMPARE_MAX_REPORTS',
+    'PAGE_MIN', 'PER_PAGE_MAX',
     'REPORT_COMPARE_MIN_REPORTS', 'REPORT_PAGE_MIN', 'REPORT_PER_PAGE_MAX',
     'REPORT_QUERY_ACTIONS', 'REPORT_QUERY_PARAMS',
     'TASK_DOMAIN_STATS_GRANULARITIES',

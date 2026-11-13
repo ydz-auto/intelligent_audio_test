@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Sequence, Tuple
 
 from shared.agent_tools import mcp_registry
+from shared.agent_tools.pagination import check_page_bounds
 from shared.models.common_enums import (
     AlarmMetricType,
     AlarmSeverity,
@@ -234,12 +235,11 @@ def normalize_arguments(action: str, merged: Dict[str, Any]) -> Optional[str]:
         return (f'参数 status 取值必须是 {"/".join(ALARM_STATUS_VALUES)} 之一'
                 '（告警状态）')
 
-    for name in ('page', 'per_page'):
-        if merged.get(name) is None:
-            continue
-        value = merged[name]
-        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-            return f'参数 {name} 必须是 ≥1 的整数'
+    # 分页边界与其余查询类意图工具同源（INT-2552）：网关对 page<1 / 超大
+    # per_page 不报错，工具层必须拦（Schema 的 minimum / maximum 同源）。
+    bounds_error = check_page_bounds(action, merged)
+    if bounds_error:
+        return bounds_error
 
     for name in _CSV_ARRAY_PARAMS:
         if merged.get(name) is None:
