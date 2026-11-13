@@ -6,7 +6,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AgentRun, AgentRunEvent } from '@/domain/models/agent'
-import { AGENT_EVENT_TYPE, AGENT_RUN_STATUS } from '@/domain/models/agent'
+import { AGENT_ERROR_COPY, AGENT_EVENT_TYPE, AGENT_RUN_STATUS } from '@/domain/models/agent'
 import { useAgentRun, AGENT_RUN_PHASE } from '@/application/agent/use-agent-run'
 import {
   cancelAgentRun,
@@ -126,6 +126,76 @@ describe('useAgentRun', () => {
     expect(received.map((event) => (event as { delta: string }).delta)).toEqual(['A', 'B'])
   })
 
+  it('上游中断：等于水位的可恢复 error 帧不去重、不落终态，只提示重连', async () => {
+    const received: AgentRunEvent[] = []
+    const errors: string[] = []
+    const { result } = renderHook(() =>
+      useAgentRun({
+        onEvent: (event) => received.push(event),
+        onError: (message) => errors.push(message),
+      })
+    )
+    await act(async () => {
+      await result.current.send('你好')
+    })
+
+    act(() => {
+      streamOptions?.onEvent(messageDelta(5, 'm-1', 'A'))
+      // 网关合成帧：sequence 恒等于已下发水位
+      streamOptions?.onEvent({
+        type: AGENT_EVENT_TYPE.ERROR,
+        runId: 'r-1',
+        sequence: 5,
+        timestamp: 't',
+        errorCode: 'UPSTREAM_UNAVAILABLE',
+        errorMessage: '上游事件流转发中断，请按 Last-Event-ID 续传',
+        recoverable: true,
+      })
+    })
+
+    // 不被全局去重丢弃，但也不关流、不进终态
+    expect(received.map((event) => event.type)).toEqual([
+      AGENT_EVENT_TYPE.MESSAGE_DELTA,
+      AGENT_EVENT_TYPE.ERROR,
+    ])
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.RECONNECTING)
+    expect(result.current.error).toBeNull()
+    expect(errors).toHaveLength(0)
+
+    // 续传后仍按 sequence 继续应用增量，终态正常收口
+    act(() => {
+      streamOptions?.onStatus?.('open')
+      streamOptions?.onEvent(messageDelta(6, 'm-1', 'B'))
+      streamOptions?.onEvent(runFinished(7))
+    })
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
+    expect(received).toHaveLength(4)
+  })
+
+  it('终态错误：不可恢复的 error 帧仍判失败并关流', async () => {
+    const errors: string[] = []
+    const { result } = renderHook(() => useAgentRun({ onError: (m) => errors.push(m) }))
+    await act(async () => {
+      await result.current.send('你好')
+    })
+
+    act(() => {
+      streamOptions?.onEvent({
+        type: AGENT_EVENT_TYPE.ERROR,
+        runId: 'r-1',
+        sequence: 1,
+        timestamp: 't',
+        errorCode: 'RESTART_WRITE_UNVERIFIED',
+        errorMessage: '进程重启前的中断写操作需人工确认',
+        recoverable: false,
+      })
+    })
+
+    expect(result.current.phase).toBe(AGENT_RUN_PHASE.ERROR)
+    expect(result.current.error).toBe('进程重启前的中断写操作需人工确认')
+    expect(errors).toEqual(['进程重启前的中断写操作需人工确认'])
+  })
+
   it('重连状态：reconnecting → 提示；open → 回到运行态', async () => {
     const { result } = renderHook(() => useAgentRun())
     await act(async () => {
@@ -180,8 +250,10 @@ describe('useAgentRun', () => {
     expect(result.current.phase).toBe(AGENT_RUN_PHASE.FINISHED)
   })
 
-  it('错误归一：Agent 总开关关闭（503）→ error 态 + 中文文案', async () => {
-    createRunMock.mockRejectedValue(new ApiError({ httpStatus: 503 }))
+  it('错误归一：503 服务不可达 → error 态 + 中文文案（不误报未开启）', async () => {
+    createRunMock.mockRejectedValue(
+      new ApiError({ httpStatus: 503, detail: 'agent service unavailable' })
+    )
     const errors: string[] = []
     const { result } = renderHook(() => useAgentRun({ onError: (m) => errors.push(m) }))
 
@@ -190,7 +262,7 @@ describe('useAgentRun', () => {
     })
 
     expect(result.current.phase).toBe(AGENT_RUN_PHASE.ERROR)
-    expect(errors[0]).toContain('Agent')
+    expect(errors[0]).toBe(AGENT_ERROR_COPY.serviceUnavailable)
     expect(result.current.error).toBe(errors[0])
   })
 

@@ -17,6 +17,7 @@
  * infrastructure/dto/agent.dto.ts。
  */
 import {
+  AGENT_DISABLED_CODE,
   AGENT_ERROR_COPY,
   AGENT_EVENT_TYPE,
   type AgentApproval,
@@ -47,7 +48,7 @@ import { parseSseFrame } from '@/infrastructure/realtime/sse'
 import { authTokenStore } from '@/infrastructure/storage/auth-token'
 
 import { ApiError } from './api-error'
-import { API_BASE_URL, request, type ApiRequestOptions } from './client'
+import { API_BASE_URL, request, tryRefreshToken, type ApiRequestOptions } from './client'
 
 /** 契约路径（§11；相对 API_BASE_URL=/api/v1） */
 export const AGENT_API_PATHS = {
@@ -95,23 +96,49 @@ export interface SubscribeAgentRunEventsOptions {
   signal?: AbortSignal
 }
 
-/** HTTP 状态 → Agent 通道中文错误文案（§13 Agent 总开关关闭 = 503） */
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/**
+ * 503 是否真的是「Agent 总开关关闭」：网关 agent_guard 抛
+ * HTTPException(detail={code: AGENT_DISABLED, message})，FastAPI 落成
+ * `{"detail": {"code": "AGENT_DISABLED", ...}}`。其余 503（网关转发不到
+ * agent_service、credential store 不可用等）是服务不可达，不能报成未开启。
+ */
+function isAgentDisabledPayload(payload: unknown): boolean {
+  if (!isObject(payload)) return false
+  if (payload.code === AGENT_DISABLED_CODE) return true
+  return isObject(payload.detail) && payload.detail.code === AGENT_DISABLED_CODE
+}
+
+/** HTTP 状态 + 响应体 → Agent 通道中文错误文案 */
 export function toAgentErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.isNetworkError) return AGENT_ERROR_COPY.network
     if (error.httpStatus === 401 || error.httpStatus === 403) {
       return AGENT_ERROR_COPY.unauthorized
     }
-    if (error.httpStatus === 404) return AGENT_ERROR_COPY.unavailable
-    if (error.httpStatus === 503) return AGENT_ERROR_COPY.disabled
+    if (error.httpStatus === 404) return AGENT_ERROR_COPY.notFound
+    if (error.httpStatus === 503) {
+      return isAgentDisabledPayload({ detail: error.detail })
+        ? AGENT_ERROR_COPY.disabled
+        : AGENT_ERROR_COPY.serviceUnavailable
+    }
     return error.userMessage || AGENT_ERROR_COPY.runFailed
   }
   if (error instanceof Error && error.message) return error.message
   return AGENT_ERROR_COPY.runFailed
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
+/** 事件流错误响应体（空体 / 非 JSON 返回 null，仅用于 503 来源判定） */
+async function readStreamErrorPayload(response: Response): Promise<unknown> {
+  try {
+    const text = await response.text()
+    return text.trim() ? (JSON.parse(text) as unknown) : null
+  } catch {
+    return null
+  }
 }
 
 /** SSE 帧 data：object 直接用；string 尝试 JSON 解析（后端可能不写 event: 行） */
@@ -131,10 +158,14 @@ function isFatalStreamStatus(status: number): boolean {
   return status === 401 || status === 403 || status === 404 || status === 410 || status === 503
 }
 
-function streamFailureMessage(status: number): string {
+function streamFailureMessage(status: number, payload: unknown): string {
   if (status === 401 || status === 403) return AGENT_ERROR_COPY.unauthorized
-  if (status === 404 || status === 410) return AGENT_ERROR_COPY.unavailable
-  if (status === 503) return AGENT_ERROR_COPY.disabled
+  if (status === 404 || status === 410) return AGENT_ERROR_COPY.notFound
+  if (status === 503) {
+    return isAgentDisabledPayload(payload)
+      ? AGENT_ERROR_COPY.disabled
+      : AGENT_ERROR_COPY.serviceUnavailable
+  }
   return AGENT_ERROR_COPY.streamFailed
 }
 
@@ -277,6 +308,8 @@ export function subscribeAgentRunEvents(
   let stopped = false
   let terminal = false
   let attempt = 0
+  /** 本轮连接是否已因 401 刷过 token（只刷一次，防死循环） */
+  let refreshTried = false
   let cursor: string | null = options.lastEventId ?? null
   let controller: AbortController | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -412,11 +445,28 @@ export function subscribeAgentRunEvents(
       scheduleReconnect()
       return
     }
-    if (!response.ok || !response.body) {
+    if (!response.ok) {
+      // 401：与 client.ts 同口径（refresh 一次后重放）。JWT 24h，长 run 续传
+      // 时可能已过期，直接判「无权使用」会把登录态临近过期误报成权限问题。
+      if (response.status === 401 && !refreshTried) {
+        refreshTried = true
+        if (await tryRefreshToken()) {
+          if (!stopped && !terminal) void connect()
+          return
+        }
+      }
+      // 503 要区分「总开关关闭」与「服务不可达」，需读响应体里的 code
+      const errorPayload = isFatalStreamStatus(response.status)
+        ? await readStreamErrorPayload(response)
+        : null
       if (isFatalStreamStatus(response.status)) {
-        fail(streamFailureMessage(response.status))
+        fail(streamFailureMessage(response.status, errorPayload))
         return
       }
+      scheduleReconnect()
+      return
+    }
+    if (!response.body) {
       scheduleReconnect()
       return
     }
@@ -425,6 +475,7 @@ export function subscribeAgentRunEvents(
     startHeartbeat()
     setStatus(AGENT_STREAM_STATUS.OPEN)
     attempt = 0
+    refreshTried = false
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()

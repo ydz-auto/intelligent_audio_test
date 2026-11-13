@@ -200,8 +200,13 @@ describe('useChatHandler 平台 Agent 通道', () => {
     expect(latest[1].versions[0].content).toBe('部分输出')
   })
 
-  it('Agent 总开关关闭（503）→ error 消息 + 中文文案，无杜撰内容', async () => {
-    createRunMock.mockRejectedValue(new ApiError({ httpStatus: 503 }))
+  it('Agent 总开关关闭（503 + AGENT_DISABLED）→ error 消息 + 未开启文案，无杜撰内容', async () => {
+    createRunMock.mockRejectedValue(
+      new ApiError({
+        httpStatus: 503,
+        detail: { code: 'AGENT_DISABLED', message: 'Agent 未启用' },
+      })
+    )
     const { result } = renderPlatformChat()
 
     await act(async () => {
@@ -213,6 +218,20 @@ describe('useChatHandler 平台 Agent 通道', () => {
     expect(latest[1].versions[0].content).toBe(AGENT_ERROR_COPY.disabled)
     expect(latest[1].toolCalls).toBeUndefined()
     expect(latest[1].sourceRefs).toBeUndefined()
+  })
+
+  it('agent_service 不可达（503 无总开关码）→ 报服务暂不可用，不误报未开启', async () => {
+    createRunMock.mockRejectedValue(
+      new ApiError({ httpStatus: 503, detail: 'agent service unavailable' })
+    )
+    const { result } = renderPlatformChat()
+
+    await act(async () => {
+      result.current.sendChat('你好')
+    })
+
+    expect(latest[1].status).toBe(MESSAGE_STATUS.ERROR)
+    expect(latest[1].versions[0].content).toBe(AGENT_ERROR_COPY.serviceUnavailable)
   })
 
   it('run 失败但已有正文：保留正文 + FAILED 徽标，不清空内容', async () => {

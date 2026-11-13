@@ -202,6 +202,12 @@ export interface AgentErrorEvent extends AgentRunEventBase {
   type: typeof AGENT_EVENT_TYPE.ERROR
   errorCode?: string
   errorMessage: string
+  /**
+   * 可恢复（上游中断，按 Last-Event-ID 续传即可，不是 run 终态）。
+   * 网关在转发中断时合成 error 帧（agent_runtime_bp._sse_error_frame），其
+   * `id` 取已下发水位，前端去重要允许「等于水位的可恢复帧」通过且不得关流。
+   */
+  recoverable?: boolean
 }
 
 /** 归一后的 SSE 事件（未识别类型由 DTO 层丢弃，避免把未知载荷当已知结构渲染） */
@@ -222,15 +228,39 @@ export interface AgentRunInput {
 }
 
 /**
+ * 网关总开关关闭的业务码（INT-2456 agent_guard.AGENT_DISABLED_CODE）。
+ * 只有带此码的 503 才表示「功能未开启」，其余 503 是服务不可达。
+ */
+export const AGENT_DISABLED_CODE = 'AGENT_DISABLED'
+
+/**
+ * 网关合成的「上游中断」错误码（agent_runtime_bp._stream_events）：
+ * 这两类不是 run 终态，按 Last-Event-ID 重连即可续传，前端不得判失败关流。
+ */
+export const AGENT_RECOVERABLE_ERROR_CODES: ReadonlySet<string> = new Set([
+  'UPSTREAM_ERROR',
+  'UPSTREAM_UNAVAILABLE',
+])
+
+export function isRecoverableAgentErrorCode(code: string | undefined): boolean {
+  return code !== undefined && AGENT_RECOVERABLE_ERROR_CODES.has(code)
+}
+
+/**
  * Agent 通道错误文案（中文；§13 安全「Agent 总开关默认关闭，故障不影响人工流程」）。
  * 归 domain 而非 features：infrastructure 错误归一与页面文案共用同一口径，
  * 避免 infrastructure 反向依赖 features。
  */
 export const AGENT_ERROR_COPY = {
-  /** Agent 总开关关闭（网关 503 / code=AGENT_DISABLED） */
+  /** Agent 总开关关闭（网关 503 + code=AGENT_DISABLED） */
   disabled: '平台 Agent 当前未开启，请联系管理员开启后再试',
-  /** 接口未部署 / 路径不存在（404） */
-  unavailable: '平台 Agent 暂不可用，请稍后重试或切换到「自带供应商」通道',
+  /**
+   * 服务不可达 / 未部署（503 但不是总开关：网关转发不到 agent_service、
+   * 凭据主密钥不可用等）。不能报成「未开启」，否则把环境问题误导成配置问题。
+   */
+  serviceUnavailable: '平台 Agent 服务暂不可用，请稍后重试或切换到「自带供应商」通道',
+  /** 会话 / run 不存在（404：run_id / session_id 无效或已被清理） */
+  notFound: '会话或运行不存在，请重新开始对话',
   /** 无权限 / 会话失效 */
   unauthorized: '无权使用平台 Agent，请重新登录或联系管理员',
   network: '网络连接失败或服务无响应',

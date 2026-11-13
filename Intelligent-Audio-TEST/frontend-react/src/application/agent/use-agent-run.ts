@@ -192,8 +192,12 @@ export function useAgentRun(handlers: UseAgentRunHandlers = {}): UseAgentRunResu
 
   const handleEvent = useCallback(
     (event: AgentRunEvent) => {
-      // 全局 sequence 单调去重：重连回放时跳过已渲染事件
-      if (event.sequence <= lastSequenceRef.current) return
+      const isRecoverableInterrupt =
+        event.type === AGENT_EVENT_TYPE.ERROR && event.recoverable === true
+      // 全局 sequence 单调去重：重连回放时跳过已渲染事件。
+      // 网关合成的上游中断帧 id 取「已下发水位」，恰好等于水位，必须放行，
+      // 否则用户既看不到中断提示、也只剩静默重连（INT-2520 P2-2）。
+      if (event.sequence <= lastSequenceRef.current && !isRecoverableInterrupt) return
       if (event.type === AGENT_EVENT_TYPE.MESSAGE_DELTA) {
         // message_id 维度去重：同一 message 的增量按 sequence 只应用一次
         const applied = lastDeltaSequenceRef.current.get(event.messageId) ?? -1
@@ -210,6 +214,14 @@ export function useAgentRun(handlers: UseAgentRunHandlers = {}): UseAgentRunResu
         return
       }
       if (event.type === AGENT_EVENT_TYPE.ERROR) {
+        if (isRecoverableInterrupt) {
+          // 可恢复的上游中断：不关流、不进终态，只提示「连接中断，正在重连…」，
+          // 由 SSE 层按 Last-Event-ID 续传（游标仍取已确认水位）。
+          if (phaseRef.current !== AGENT_RUN_PHASE.CANCELLING) {
+            setPhase(AGENT_RUN_PHASE.RECONNECTING)
+          }
+          return
+        }
         failRun(event.errorMessage || AGENT_ERROR_COPY.runFailed)
         return
       }
@@ -217,7 +229,7 @@ export function useAgentRun(handlers: UseAgentRunHandlers = {}): UseAgentRunResu
         setRun(runRef.current ? { ...runRef.current, status: event.status } : runRef.current)
       }
     },
-    [failRun, finishRun, setRun]
+    [failRun, finishRun, setPhase, setRun]
   )
 
   const openStream = useCallback(

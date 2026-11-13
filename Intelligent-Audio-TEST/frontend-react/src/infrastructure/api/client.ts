@@ -223,7 +223,7 @@ async function buildApiError(response: Response): Promise<ApiError> {
 }
 
 /** 401 刷新流程：POST /auth/refresh 换新 token，成功落 storage 返回 true */
-async function tryRefreshToken(): Promise<boolean> {
+export async function tryRefreshToken(): Promise<boolean> {
   const token = authTokenStore.get()
   if (!token) return false
   try {
