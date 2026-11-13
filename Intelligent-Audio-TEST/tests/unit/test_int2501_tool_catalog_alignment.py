@@ -28,10 +28,12 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
 _PENDING_PERMISSION_SPEC = {'driver_propose'}
 
 # 本卡按 RBAC / MCP 事实源改正的 7 个预留工具
+# INT-2468：tag_group_manage 启用后补批量打标要用的 testcase:update / :delete。
 _EXPECTED_PERMISSIONS = {
     'audio_import': {'audio:upload'},
     'tag_group_manage': {'tag:create', 'tag:update', 'tag:delete',
-                         'group:create', 'group:update', 'group:delete'},
+                         'group:create', 'group:update', 'group:delete',
+                         'testcase:update', 'testcase:delete'},
     'evaluation_manage': {'evaluation:dim_manage',
                           'evaluation:category_manage',
                           'evaluation:execute'},
@@ -127,8 +129,9 @@ def test_pending_permission_spec_is_exactly_the_known_tools():
 
 def test_fixed_tools_use_fact_source_permission_codes():
     rbac = _rbac_codes()
-    # INT-2461 启用了 dashboard_query（首页只读），其余本卡修正项仍停用
-    enabled_later = {'dashboard_query'}
+    # INT-2461 启用了 dashboard_query（首页只读），INT-2468 启用 tag_group_manage
+    # （标签 / 分组写 + 批量打标），其余本卡修正项仍停用
+    enabled_later = {'dashboard_query', 'tag_group_manage'}
     for name, expected in _EXPECTED_PERMISSIONS.items():
         tool = intent_tools.INTENT_TOOL_BY_NAME[name]
         assert set(tool.permissions) == expected, name

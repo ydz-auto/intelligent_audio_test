@@ -1,25 +1,30 @@
 ---
 name: task-operations
 description: >-
-  任务域的只读查询与失败诊断：任务列表与过滤、任务详情与用例清单、实时执行进度、
-  用例统计与通过率、用例执行详情 / 结果、关联实验室，以及失败用例 + 真实错误日志
-  的归因和重测建议。创建 / 启动 / 停止 / 重试 / 合并 / 重提取是写动作，M2 才可
-  执行，本 Skill 只查询与解释，不触发重跑、不改任务状态。
+  任务域的查询、失败诊断与写操作：任务列表与过滤、任务详情与用例清单、实时执行
+  进度、用例统计与通过率、用例执行详情 / 结果、关联实验室，失败用例 + 真实错误
+  日志的归因和重测建议；创建 / 启动 / 停止 / 重试 / 合并 / 重提取经提案 + 审批
+  后执行。
   触发词：任务列表、任务详情、执行进度、任务进度、任务统计、通过率、失败用例、
   失败原因、任务诊断、任务诊断报告、重测建议、用例结果、任务实验室、重试任务、
-  合并任务、创建任务。
+  合并任务、创建任务、启动任务、停止任务、重新提取、重新执行。
   不适用：日志全文检索 / 日志级别统计 / 日志来源归因（log-diagnostics）、
   报告与指标取数（report-studio）、音频导入与标注（audio-import）、评估维度配置
   （evaluation-config）、算法参数与表单（algorithm-config）。
-version: 1.0.0
+version: 1.1.0
 owner: task-team
 allowed-tools:
   - task_query
   - task_diagnose
+  - task_run
   - log_diagnose
   - tool_search
 permissions:
   - task:read
+  - task:create
+  - task:execute
+  - task:merge
+  - task:reextract
 budgets:
   maxToolCalls: 40
   maxTokens: 40000
@@ -27,8 +32,10 @@ budgets:
 
 # task-operations
 
-任务域只读入口：任务现在什么状态、执行到哪、哪些用例失败、失败能对到什么日志。
-所有事实来自 `task_query` / `task_diagnose` 的真实接口返回；本 Skill 不做写操作。
+任务域的入口：任务现在什么状态、执行到哪、哪些用例失败、失败能对到什么日志，
+以及经审批的任务写操作（创建 / 启动 / 停止 / 重试 / 合并 / 重提取）。查询事实
+来自 `task_query` / `task_diagnose` 的真实接口返回；**写操作一律先提案、等审批**，
+提案阶段没有副作用。
 
 ## 何时用
 
@@ -37,7 +44,9 @@ budgets:
 - 看实时执行进度（百分比、当前用例）与用例统计（通过率、失败数）；
 - 看某条用例的执行详情或执行结果；
 - 任务失败了要定位：哪些用例失败、失败时写了什么 error_message、日志里有哪些
-  error / critical 行、该重测哪些用例。
+  error / critical 行、该重测哪些用例；
+- 用户要**创建 / 启动 / 停止 / 重试 / 合并 / 重提取**任务：用 `task_run` 发起
+  写提案。
 
 ## 何时不用
 
@@ -45,8 +54,8 @@ budgets:
 - 报告事实、指标、趋势、导出：走 `report-studio` / `report-compare`；
 - 音频、用例、评估维度、算法配置：分别走 `audio-import` / `testcase-authoring` /
   `evaluation-config` / `algorithm-config`；
-- 要真正创建 / 启动 / 停止 / 重试 / 合并任务：M2（`task_run`）之前不可执行，
-  只解释口径与所需权限，不承诺「已经提交」。
+- 只是问「能不能启动」而不要求执行：解释状态与所需权限即可，不要为了「看起来
+  办成了」发起不必要的写提案。
 
 ## 任务状态是三条线，不是一条
 
@@ -107,25 +116,54 @@ budgets:
 - `attribution` 是按日志 `module` / `category` 聚合的**线索**（带样本日志 ID 和
   首行内容），不是根因判定；不要把它说成「确定是 X 模块的 bug」；
 - `notes` 写明了哪些来源缺失（无权限 / 接口失败 / 没有失败用例），照实转述；
-- `retest.suggestions` 只是建议重测的用例清单（`executed=false`），重测执行在
-  M2，不要声称已重跑；
+- `retest.suggestions` 只是建议重测的用例清单（`executed=false`）；要真正重测用
+  `task_run` 的 `retry`（`mode=selected` + `case_ids`）发起提案，批准后才执行，
+  不要声称已重跑；
 - 没有失败用例、没有错误日志时，直接说「没有命中」，不要编造失败原因或数值。
 
 如果用户只想看日志、不看任务，改用 `log_diagnose`（见 log-diagnostics）。
 
-## 写动作（M2 之前只解释）
+## 写操作（`task_run`，M2 提案 + 审批）
 
-| 动作 | 接口 | 权限码 |
-|---|---|---|
-| 创建任务 | `POST /api/v1/tasks` | `task:create` |
-| 启动 / 停止 / 控制 | `POST /api/v1/tasks/{id}/start`、`/stop`、`/control` | `task:execute` |
-| 重试 | `POST /api/v1/tasks/{id}/retry` | `task:execute` |
-| 删除 / 修改 | `DELETE /api/v1/tasks/{id}`、`PUT /api/v1/tasks/{id}` | `task:delete` / `task:update` |
-| 合并 / 挑选合并 | `POST /api/v1/tasks/merge` | `task:merge` / `task:cherry_pick` |
-| 重新提取 | `POST /api/v1/tasks/{id}/reextract` | `task:reextract` |
+**批准前不产生任何副作用**：工具调用先落审批单（带方法、路径、参数预览），
+审批通过后才回源真实接口执行一次；拒绝 / 过期都不执行。回答时说明「已提交提案、
+等待审批」，不能把提案说成「任务已启动 / 已停止」。
 
-M2 之前 `task_run` 调用返回 `TOOL_NOT_ENABLED` / `APPROVAL_REQUIRED`：
-如实说明当前阶段只能解释和查询，不要换其它写接口绕过审批。
+| action | 接口 | 必填 | 权限 | 风险 |
+|---|---|---|---|---|
+| `create` | `POST /api/v1/tasks` | `body`（至少 `name`） | `task:create` | WRITE |
+| `start` | `POST /api/v1/tasks/{task_id}/start` | `task_id` | `task:execute` | WRITE |
+| `stop` | `POST /api/v1/tasks/{task_id}/stop` | `task_id` | `task:execute` | WRITE |
+| `retry` | `POST /api/v1/tasks/{task_id}/retry` | `task_id` | `task:execute` | WRITE |
+| `merge` | `POST /api/v1/tasks/merge` | `body.task_ids`（≥ 2 个） | `task:merge` | WRITE |
+| `reextract` | `POST /api/v1/tasks/{task_id}/reextract` | `task_id` | `task:reextract` | WRITE |
+
+动作口径：
+
+1. **`create` 的 `body` 走 REST 创建载荷**：`name`（必填）、`description`、
+   `case_ids`、`device_ids`、`api_ids`、`algorithm_type`、`algorithm_params`、
+   `lab_ids`、`target_modes` 等；`case_ids` 是**用例 ID 字符串数组**，
+   `device_ids` / `api_ids` 是整数数组。
+2. **`start` / `stop` 是幂等的**：任务已在运行 / 已在队列时 start 返回成功并说明
+   「已在运行中 / 队列中」，**不会**重复建任务或重复执行；原样转述接口文案，
+   不要自己判定成「重复启动失败」。已完成的任务不能直接 start（服务端要求走
+   `retry`，会明确报 400）。
+3. **`retry` 指定 `case_ids` 时必须同时给 `mode=selected`**：只给 `case_ids` 不给
+   mode 时服务端按整任务语义执行，不是所选用例；`mode=failed_only` 只重跑失败
+   用例；`mode=all` 整任务。
+4. **`merge` 至少两个任务，且源任务必须已完成**（未完成的任务会被服务端拒绝：
+   「任务 'X' 未完成，无法合并」，实测）；`body` 只接受 `task_ids`（其它字段会
+   被网关静默丢弃，工具层直接拒绝）；返回 `merged_task_id` 以接口为准，不要预先
+   编造。
+5. **`reextract` 会注入 body**（`task_id` + 可选 `execution_status` /
+   `evaluation_status`，缺省 `completed`）：网关要求 body 里的 `task_id`，
+   这不是多余参数。
+6. **重复执行无副作用**：同一次 tool call 的重放由审批幂等键领取一次；
+   start / stop 本身也有服务端幂等。不要为了「多试一次」重复发起提案。
+7. 写提案前会校验参数与权限；**审批后、执行前还会再校验一次**（权限被收回、
+   参数变非法都会中止并写明原因），如实转述，不要重试同一提案。
+8. **删除 / 修改任务不在本工具里**（`task_run` 只有上面六个动作）；用户要删任务
+   请说明在产品页操作，不要去找长尾写工具绕过审批。
 
 ## Gotchas
 
@@ -145,8 +183,12 @@ M2 之前 `task_run` 调用返回 `TOOL_NOT_ENABLED` / `APPROVAL_REQUIRED`：
    `true` 才过滤，不传就是全部（`deleted=true` 才是回收站）。
 9. **日志归因需要 `log:read`**：账号没有该权限时 `task_diagnose` 会跳过日志并在
    `notes` 说明；回答时不要臆测「没有日志错误」。
-10. **写动作全部在 M2**：`task_run` 未启用；`task:execute` 不是读权限，别拿它
-    当查询依据。
+10. **写操作是提案，不是结果**：`task_run` 返回的是待审批提案；没批准就没有
+    副作用，不要把「提案已提交」说成「任务已启动 / 已停止 / 已重跑」。
+11. **`start` 幂等不是失败**：已在运行 / 队列中时 start 返回成功并说明，这不算
+    重复启动；已完成任务要重跑用 `retry`（服务端会拒绝直接 start）。
+12. **`task_run` 没有删除 / 修改动作**：别拿 `create` 重建来「改任务」，也不要
+    去调长尾写工具绕过审批。
 
 ## 验收
 
@@ -158,5 +200,8 @@ M2 之前 `task_run` 调用返回 `TOOL_NOT_ENABLED` / `APPROVAL_REQUIRED`：
 - [ ] 失败诊断的每条结论都带用例 `case_id` 或日志 `id`，没有「大概 / 可能」式归因；
 - [ ] 日志来源聚合明确标注是样本线索，没有当成确定根因；
 - [ ] 缺数据（无权限 / 接口失败 / 没有失败用例）时照实说明，没有补 0 或编造；
-- [ ] 涉及创建 / 启动 / 重试 / 合并时说明 M2 之前不可执行及所需权限；
-- [ ] 不需要写接口的场合没有调用写工具，也没有承诺「已经重跑」。
+- [ ] 写操作说明「提案 → 审批 → 执行」三态，没有把提案说成已经执行；
+- [ ] `start` / `stop` 的「已在运行 / 队列中」按幂等文案转述，没有当成重复失败；
+- [ ] `retry` 的 `case_ids` 与 `mode=selected` 成对出现，没有按整任务误重跑；
+- [ ] `merge` 至少两个任务、`reextract` 的 body 注入按接口口径解释；
+- [ ] 不承诺「已经重跑 / 已经启动」，也没有换其它写接口绕过审批。

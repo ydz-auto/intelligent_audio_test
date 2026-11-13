@@ -47,6 +47,12 @@ M1_SKILLS = frozenset({
 })
 MCP_TOTAL = 207
 
+# INT-2468（M2）：三个域写意图工具已启用，允许被对应写入 Skill 声明。
+# 写工具仍走提案 + 审批；Skill 只负责「什么时候该发起写提案」。
+M2_WRITE_TOOLS = frozenset({'testcase_write', 'tag_group_manage', 'task_run'})
+M2_WRITE_SKILLS = frozenset(
+    {'testcase-authoring', 'tag-group', 'task-operations'})
+
 
 def _load_contract():
     with io.open(CONTRACT_FILE, encoding='utf-8') as handle:
@@ -103,7 +109,13 @@ def test_skills_allowed_tools_stay_inside_the_31_names():
         for name in allowed:
             tool = intent_tools.INTENT_TOOL_BY_NAME[name]
             assert tool.enabled is True, f'{skill.name} 引用未启用工具 {name}'
-            assert tool.risk == 'READ', f'{skill.name} 引用非只读工具 {name}'
+            if tool.risk != 'READ':
+                # M1 Skill 只读；M2 写意图只能出现在对应的写入 Skill 里，
+                # 且必须是登记在册的写工具（不允许别处偷偷挂写工具）。
+                assert name in M2_WRITE_TOOLS, (
+                    f'{skill.name} 引用了非只读工具 {name}')
+                assert skill.name in M2_WRITE_SKILLS, (
+                    f'{skill.name} 不在 M2 写入 Skill 名单里，却引用了 {name}')
     assert M1_SKILLS <= seen_skills, f'缺少 M1 Skill：{M1_SKILLS - seen_skills}'
     assert 'platform-reference' in seen_skills
 
@@ -129,7 +141,14 @@ def test_enabled_read_tools_are_declared_or_documented():
                     and tool.name not in intent_tools.ALWAYS_AVAILABLE_TOOLS}
     assert enabled_read - declared == SKILL_LESS_ENABLED_READ, (
         f'未声明的已启用只读工具变了：{enabled_read - declared}')
-    assert declared <= enabled_read, f'Skill 声明了写 / 未启用工具：{declared - enabled_read}'
+    enabled_all = {tool.name for tool in intent_tools.INTENT_TOOLS
+                   if tool.enabled}
+    assert declared <= enabled_all, f'Skill 声明了未启用工具：{declared - enabled_all}'
+    # 写工具只能出现在 M2 写入 Skill 里，且每个都已登记（INT-2468）
+    declared_write = {name for name in declared
+                      if intent_tools.INTENT_TOOL_BY_NAME[name].risk != 'READ'}
+    assert declared_write <= M2_WRITE_TOOLS, (
+        f'Skill 声明了未登记的写工具：{declared_write - M2_WRITE_TOOLS}')
 
 
 # ---------------------------------------------------------------- tools/list

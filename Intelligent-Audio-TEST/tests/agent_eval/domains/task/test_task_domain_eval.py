@@ -849,7 +849,7 @@ def test_skill_loads_with_required_sections(skill_name):
 
 
 @pytest.mark.parametrize('skill_name', ['task-operations', 'log-diagnostics'])
-def test_skill_allowed_tools_are_enabled_readonly(skill_name):
+def test_skill_allowed_tools_are_enabled(skill_name):
     skill = _skill(skill_name)
     assert skill.meta.allowed_tools
     by_name = {t.name: t for t in intent_tools.INTENT_TOOLS}
@@ -857,8 +857,12 @@ def test_skill_allowed_tools_are_enabled_readonly(skill_name):
         tool = by_name.get(name)
         assert tool is not None, f'allowed-tools 引用了未注册工具：{name}'
         assert tool.enabled is True, f'allowed-tools 引用了未启用工具：{name}'
-        assert tool.risk == 'READ', f'allowed-tools 引用了写工具：{name}'
-    assert 'task_run' not in skill.meta.allowed_tools
+        if tool.risk != 'READ':
+            # INT-2468：M2 写意图只挂在 task-operations 上，仍走提案 + 审批
+            assert name == 'task_run', f'allowed-tools 引用了未登记的写工具：{name}'
+            assert skill_name == 'task-operations'
+    if skill_name == 'log-diagnostics':
+        assert 'task_run' not in skill.meta.allowed_tools
 
 
 def test_task_skill_l2_documents_every_action():
@@ -867,6 +871,18 @@ def test_task_skill_l2_documents_every_action():
         assert f'`{action}`' in body, f'L2 正文没有覆盖动作 {action}'
     for keyword in ('task_diagnose', 'task:read', 'status', 'execution_status',
                     'evaluation_status', 'log:read', 'M2'):
+        assert keyword in body, keyword
+
+
+def test_task_skill_l2_documents_every_write_action():
+    """INT-2468：写章节覆盖 task_run 的六个动作与审批 / 幂等口径。"""
+    from shared.agent_tools import task_write_tools
+
+    body = _skill('task-operations').body
+    for action in task_write_tools.ACTION_NAMES:
+        assert f'`{action}`' in body, f'L2 正文没有覆盖写动作 {action}'
+    for keyword in ('task_run', '提案', '审批', '幂等', 'task:merge',
+                    'task:reextract', 'failed_only', 'task_ids'):
         assert keyword in body, keyword
 
 

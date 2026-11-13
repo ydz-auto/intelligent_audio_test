@@ -78,6 +78,18 @@ class ToolGateway(ABC):
         """
         return None
 
+    def risk_for(self, name: str,
+                 arguments: Optional[Dict[str, Any]] = None
+                 ) -> Optional[ToolRisk]:
+        """按调用参数解析的**动作级**风险；无法解析返回 ``None``。
+
+        写意图工具（``testcase_write`` / ``tag_group_manage`` / ``task_run``）
+        的删除类动作是 ``DESTRUCTIVE``，其余动作是 ``WRITE``：审批单与审计要
+        记动作级值，审批人才能看到「这条提案会删什么」。默认实现返回 ``None``
+        （沿用工具级 ``risk_of``），不改变既有测试替身的行为。
+        """
+        return None
+
     def proposal_capable(self, name: str) -> bool:
         """工具是否自带提案原语（不经通用 ``agent_approval`` 审批表）。
 

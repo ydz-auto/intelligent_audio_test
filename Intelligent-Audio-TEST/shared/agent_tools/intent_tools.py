@@ -46,6 +46,13 @@ INT-2461、``report_query`` / ``report_compare`` INT-2463）；
 ``GET /reports/{id}`` 的权威字段并排列出，对比结论由模型基于返回原文叙述，
 数值不重算、不落报告（大结果由上下文压缩落 ``context_tool_result`` artifact）。
 
+M2 写意图（``testcase_write`` / ``tag_group_manage`` / ``task_run``，INT-2468）
+已启用：动作表 / 参数白名单 / 条件必填 / 动作级权限与风险在
+``testcase_write_tools`` / ``tag_group_tools`` / ``task_write_tools``，本文件
+只做分发（``WRITE_RESOLVERS``）。写工具一律经 M2 基座（INT-2466）的
+提案 → 审批 → 幂等执行，工具层本身不执行任何未经审批的写；删除类动作在动作
+层记 ``DESTRUCTIVE``（``risk_for``）。
+
 其余意图工具在本注册表**预留名称与 Schema**（``enabled=False``），调用返回
 ``TOOL_NOT_ENABLED``；实现分别归 M1 / M2 各域卡。预留名称进入 Skill
 allowed-tools 校验与 tool_search 索引，启动时不会出现 ``UNKNOWN_TOOL``。
@@ -59,7 +66,10 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from shared.agent_tools import contract as platform_contract_catalog
 from shared.agent_tools import device_tools
+from shared.agent_tools import tag_group_tools
+from shared.agent_tools import task_write_tools
 from shared.agent_tools import testcase_tools as case_tools
+from shared.agent_tools import testcase_write_tools as case_write_tools
 from shared.agent_tools.diagnostics import (
     DEFAULT_LOG_ROWS as LOG_DIAGNOSE_DEFAULT_MAX_ROWS,
     MAX_LOG_ROWS as LOG_DIAGNOSE_MAX_ROWS,
@@ -753,7 +763,8 @@ INTENT_TOOLS: List[IntentTool] = [
                      '「新建用例」的草案（含 config.rounds、algorithm_params、'
                      'evaluation.dimensions）。引用资源（算法类型 / 评估维度 / '
                      '播放设备 / 分组）先回源校验存在性，非法参数显式失败。草案'
-                     '没有真实用例 ID，返回后不会写库；创建用例是写操作，M2 才开放。'),
+                     '没有真实用例 ID，返回后不会写库；确认后创建请用 '
+                     'testcase_write（提案 + 审批）。'),
         parameters=_schema({
             'audio_ids': _prop('array', '源音频 ID 列表（必填，单次最多 '
                                        f'{case_tools.MAX_GENERATE_AUDIOS} 条）',
@@ -879,27 +890,68 @@ INTENT_TOOLS: List[IntentTool] = [
             'body': _prop('object', '标注 / 元数据字段'),
         }, required=('action',)),
         risk='WRITE', permissions=('audio:update',), enabled=False, kind='reserved'),
+    # ---------------- M2 已实现（INT-2468 用例 / 标签 / 任务写意图） ----------------
     IntentTool(
-        name='testcase_write', description='创建、修改、复制、删除、打标签（写）。',
+        name='testcase_write',
+        description=('用例写操作（需提案 + 审批，批准后才执行）：create 新建、'
+                     'update 修改、copy 复制、delete 删除（软删进回收站，按破坏性'
+                     '动作审批）、tag 给单条用例加 / 去标签。用例字段一律用 body '
+                     '透传网关用例载荷（字段口径同 testcase-authoring 的字段表）；'
+                     '加标签对不存在的标签名会由服务端自动登记标签字典'
+                     '（get-or-create，与产品页一致），要指定颜色 / 分类 / 可见性'
+                     '请先用 tag_group_manage 建标签。删除后可到产品回收站恢复，'
+                     '本工具不提供恢复 / 彻底删除。'),
         parameters=_schema({
             'action': _prop('string', '写动作', required=True,
-                            enum=['create', 'update', 'copy', 'delete', 'tag']),
-            'case_id': _prop('string', '用例 ID'),
-            'body': _prop('object', '用例字段'),
+                            enum=list(case_write_tools.ACTION_NAMES)),
+            'tc_id': _prop('string', '用例 ID（update / copy / delete / tag 必填）'),
+            'body': _prop('object', '用例字段：create 至少含 name 与 group_id（或 group）；'
+                                    'update 只放要改的字段；形状同 REST 创建 / 修改载荷'
+                                    '（snake_case）'),
+            'tag_mode': _prop('string', '打标签方式（tag 必填）',
+                              enum=list(case_write_tools.TAG_MODES)),
+            'tags': _prop('array', '标签名数组（tag 必填、非空；不存在的名字会被'
+                                   '服务端自动登记为标签）', items={'type': 'string'}),
         }, required=('action',)),
-        risk='WRITE', permissions=('testcase:update',), enabled=False, kind='reserved'),
+        risk='WRITE',
+        permissions=('testcase:create', 'testcase:update', 'testcase:copy',
+                     'testcase:delete'),
+        enabled=True, kind='intent_rest'),
     IntentTool(
-        name='tag_group_manage', description='标签与分组 CRUD、批量打标（写）。',
+        name='tag_group_manage',
+        description=('标签与用例分组写操作（需提案 + 审批）：target_kind=tag / group '
+                     '的 create / update / delete，以及 batch_tag 批量打标'
+                     '（add_tags / remove_tags / rename_tag）。删除与 rename_tag 按'
+                     '破坏性动作审批；分组下仍有未删除用例时 delete 必须显式 '
+                     'cascade=true（会连带把分组下的用例软删进回收站），否则接口'
+                     '拒绝。add_tags 对不存在的标签名由服务端自动登记标签字典'
+                     '（get-or-create，与产品页一致）。'),
         parameters=_schema({
-            'action': _prop('string', '动作', required=True,
-                            enum=['create', 'update', 'delete', 'batch_tag']),
-            'target_kind': _prop('string', '目标类型', enum=['tag', 'group']),
-            'body': _prop('object', '标签 / 分组字段'),
-        }, required=('action', 'target_kind')),
-        risk='WRITE', permissions=('tag:create', 'tag:update', 'tag:delete',
-                                   'group:create', 'group:update',
-                                   'group:delete'),
-        enabled=False, kind='reserved'),
+            'action': _prop('string', '写动作', required=True,
+                            enum=list(tag_group_tools.ACTION_NAMES)),
+            'target_kind': _prop('string', '目标类型（create / update / delete 必填）',
+                                 enum=list(tag_group_tools.TARGET_KINDS)),
+            'tag_id': _prop('integer', '标签 ID（target_kind=tag 的 update / delete 必填）'),
+            'group_id': _prop('string', '分组 ID（UUID 字符串；target_kind=group 的 '
+                                        'update / delete 必填）'),
+            'body': _prop('object', '标签 / 分组字段：create 至少含 name；update 只放'
+                                    '要改的字段（snake_case）'),
+            'cascade': _prop('boolean', '是否级联删除（delete；分组下有用例时缺省会'
+                                        '被接口拒绝）'),
+            'batch_action': _prop('string', '批量打标子动作（batch_tag 必填）',
+                                  enum=list(tag_group_tools.BATCH_ACTIONS)),
+            'ids': _prop('array', '用例 ID 数组（add_tags / remove_tags 必填）',
+                         items={'type': 'string'}),
+            'tags': _prop('array', '标签名数组（add_tags / remove_tags 必填）',
+                          items={'type': 'string'}),
+            'old_tag_name': _prop('string', '原标签名（rename_tag 必填）'),
+            'new_tag_name': _prop('string', '新标签名（rename_tag 必填）'),
+        }, required=('action',)),
+        risk='WRITE',
+        permissions=('tag:create', 'tag:update', 'tag:delete',
+                     'group:create', 'group:update', 'group:delete',
+                     'testcase:update', 'testcase:delete'),
+        enabled=True, kind='intent_rest'),
     IntentTool(
         name='evaluation_manage', description='维度/分类 CRUD、触发重评估（写）。',
         parameters=_schema({
@@ -1008,15 +1060,30 @@ INTENT_TOOLS: List[IntentTool] = [
                                    'algorithm:group_manage'),
         enabled=False, kind='reserved'),
     IntentTool(
-        name='task_run', description='创建、启动、停止、重试、合并、重提取（写）。',
+        name='task_run',
+        description=('任务写操作（需提案 + 审批，批准后才执行）：create 创建、'
+                     'start 启动、stop 停止、retry 重新执行、merge 合并已完成任务、'
+                     'reextract 重新提取设备输出。start / stop 是幂等的（已运行 / '
+                     '已在队列时接口返回成功并说明），不会重复建任务或重复执行；'
+                     'merge 至少两个任务；retry 指定 case_ids 时必须同时给 '
+                     'mode=selected。'),
         parameters=_schema({
-            'action': _prop('string', '动作', required=True,
-                            enum=['create', 'start', 'stop', 'retry', 'merge',
-                                  'reextract']),
-            'task_id': _prop('integer', '任务 ID'),
-            'body': _prop('object', '任务字段'),
+            'action': _prop('string', '写动作', required=True,
+                            enum=list(task_write_tools.ACTION_NAMES)),
+            'task_id': _prop('integer', '任务 ID（start / stop / retry / reextract 必填）'),
+            'body': _prop('object', '任务字段：create 至少含 name（同 REST 创建载荷）；'
+                                    'retry 可放 {case_ids, mode}；merge 放 {task_ids}'),
+            'execution_status': _prop(
+                'string', '重新提取时执行线状态（reextract，缺省 completed）',
+                enum=list(task_write_tools.EXECUTION_STATUS_VALUES)),
+            'evaluation_status': _prop(
+                'string', '重新提取时评估线状态（reextract，可选）',
+                enum=list(task_write_tools.EVALUATION_STATUS_VALUES)),
         }, required=('action',)),
-        risk='WRITE', permissions=('task:execute',), enabled=False, kind='reserved'),
+        risk='WRITE',
+        permissions=('task:create', 'task:execute', 'task:merge',
+                     'task:reextract'),
+        enabled=True, kind='intent_rest'),
     IntentTool(
         name='spl_calibrate', description='SPL 映射、校准、测试音、历史（写）。',
         parameters=_schema({
@@ -1267,6 +1334,22 @@ _ACTION_PARAM_TABLE: Dict[str, Dict[str, Tuple[str, ...]]] = {
 LOCAL_TOOL_NAMES = frozenset({'tool_search', 'platform_contract',
                               'task_diagnose', 'log_diagnose'})
 
+# 写意图工具的动作级解析（INT-2468，M2）：三个域的动作表、参数白名单、
+# 条件必填与 body 注入都在各自模块（testcase_write_tools / tag_group_tools /
+# task_write_tools），本文件只做分发，不复制第二套动作口径。
+WRITE_RESOLVERS: Dict[str, Any] = {
+    'testcase_write': case_write_tools.resolve,
+    'tag_group_manage': tag_group_tools.resolve,
+    'task_run': task_write_tools.resolve,
+}
+
+# 动作级权限 / 风险的分发：testcase_write / task_run 按动作表，tag_group_manage
+# 还要看 target_kind 与 batch_action（见其模块的 permissions_for / risk_for）。
+WRITE_ACTION_TABLES: Dict[str, Dict[str, Any]] = {
+    'testcase_write': case_write_tools.ACTIONS,
+    'task_run': task_write_tools.ACTIONS,
+}
+
 
 def _lookup_rest_tool(name: str) -> Optional[dict]:
     """按工具名取 REST 工具定义：MCP 注册表优先，其次用例域只读表。"""
@@ -1281,7 +1364,11 @@ def permissions_for(name: str,
     绝大多数工具是「工具 = 一个权限域」，直接用工具级声明。``device_query``
     横跨 device / spl / digital_spl 三个域，工具级声明只表达可见性，调用时按
     ``action`` 收窄，避免持有 device:read 的用户读 SPL 映射（反之亦然）。
-    动作非法时回落到工具级权限，由解析层给出明确的 action 错误。
+    M2 写意图工具同理按动作收窄（``task_run.start`` 要 ``task:execute``，
+    ``task_run.merge`` 要 ``task:merge``；``tag_group_manage.delete`` 按
+    target_kind 分别要 ``tag:delete`` / ``group:delete``），避免持有单一权限码
+    的用户执行其它写动作。动作非法时回落到工具级权限，由解析层给出明确的
+    action 错误。
     """
     tool = INTENT_TOOL_BY_NAME.get(name)
     if tool is None:
@@ -1289,11 +1376,53 @@ def permissions_for(name: str,
             return None
         mcp = get_tool(name)
         return tuple(mcp['permissions']) if mcp is not None else None
-    if name == 'device_query' and isinstance(arguments, dict):
-        by_action = device_tools.action_permissions(arguments.get('action'))
-        if by_action is not None:
-            return by_action
+    if isinstance(arguments, dict):
+        if name == 'device_query':
+            by_action = device_tools.action_permissions(arguments.get('action'))
+            if by_action is not None:
+                return by_action
+        elif name == 'tag_group_manage':
+            by_action = tag_group_tools.permissions_for(
+                arguments.get('action'), arguments)
+            if by_action is not None:
+                return by_action
+        else:
+            actions = WRITE_ACTION_TABLES.get(name)
+            if actions is not None:
+                spec = actions.get(arguments.get('action')) \
+                    if isinstance(arguments.get('action'), str) else None
+                if spec is not None:
+                    return tuple(spec.permissions)
     return tuple(tool.permissions)
+
+
+def risk_for(name: str,
+             arguments: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """按调用参数解析工具风险（动作级优先）；未知工具返回 ``None``。
+
+    写意图工具的工具级风险是 ``WRITE``（与方案 §6.1 表一致），但删除类动作
+    （``testcase_write.delete`` / ``tag_group_manage.delete`` /
+    ``batch_tag.rename_tag``）在动作层是 ``DESTRUCTIVE``。审批单与
+    ``agent_tool_call.risk`` 记录动作级值，审批人能看到「这条提案会删什么」；
+    审批门禁不变（WRITE / DESTRUCTIVE 都要先提案）。
+    """
+    tool = INTENT_TOOL_BY_NAME.get(name)
+    if tool is None:
+        return risk_of(name)
+    if isinstance(arguments, dict):
+        if name == 'tag_group_manage':
+            by_action = tag_group_tools.risk_for(
+                arguments.get('action'), arguments)
+            if by_action is not None:
+                return by_action
+        else:
+            actions = WRITE_ACTION_TABLES.get(name)
+            if actions is not None:
+                spec = actions.get(arguments.get('action')) \
+                    if isinstance(arguments.get('action'), str) else None
+                if spec is not None:
+                    return spec.risk
+    return tool.risk
 
 
 # 本地实现的意图工具（不映射 REST）：tool_search / platform_contract 在网关
@@ -1578,6 +1707,9 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
       后其余参数原样透传（路径 / 查询 / body 由共享构造器决定）；
     - ``device_query``：设备动作映射 MCP ``device_*`` GET 工具，SPL 动作映射
       ``device_tools`` 的 Agent 专用只读目标（该域没有对外 MCP 工具）；
+    - M2 写意图工具（``testcase_write`` / ``tag_group_manage`` / ``task_run``）：
+      交给各域模块的动作表解析（``WRITE_RESOLVERS``），动作级权限 / 风险 /
+      条件必填 / body 注入都在那边；
     - 其他 MCP 工具名（tool_search 命中后直接调用）：原样透传参数；
     - 本地实现的工具（``LOCAL_INTENT_TOOL_NAMES``，含 ``report_compare``）不走
       REST 映射：返回错误文本，避免同名 MCP 的写接口被当成本地只读工具执行；
@@ -1585,6 +1717,9 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
     """
     if name == 'device_query':
         return device_tools.resolve_call(arguments or {})
+    write_resolver = WRITE_RESOLVERS.get(name)
+    if write_resolver is not None:
+        return write_resolver(arguments or {})
     if name in LOCAL_INTENT_TOOL_NAMES:
         return None, None, f'工具 {name} 由本地实现，不映射 REST 接口'
     mapping = _REST_ACTION_MAP.get(name)
@@ -1711,8 +1846,9 @@ __all__ = [
     'TASK_DOMAIN_STATS_GRANULARITIES',
     'TASK_QUERY_ACTIONS', 'TASK_QUERY_PARAMS', 'TESTCASE_QUERY_ACTIONS',
     'TESTCASE_QUERY_PARAMS', 'TESTCASE_VISIBILITY_VALUES', 'TOOL_INDEX',
-    'TOOL_INDEX_BY_NAME', 'action_params', 'conditional_required',
-    'permissions_for',
+    'TOOL_INDEX_BY_NAME', 'WRITE_ACTION_TABLES', 'WRITE_RESOLVERS',
+    'action_params', 'conditional_required',
+    'permissions_for', 'risk_for',
     'platform_contract', 'redact_for_audit',
     'required_for_action', 'resolve_rest_call', 'risk_of', 'tool_search',
     'validate_arguments', 'validate_report_compare',

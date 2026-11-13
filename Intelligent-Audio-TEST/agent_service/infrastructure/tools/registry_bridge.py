@@ -174,6 +174,13 @@ class SharedToolRegistryBridge(ToolRegistryPort):
         value = intent_tools.risk_of(name)
         return ToolRisk(value) if value else None
 
+    def risk_for(self, name: str,
+                 arguments: Optional[Dict[str, Any]] = None
+                 ) -> Optional[ToolRisk]:
+        """动作级风险（写意图工具的删除类动作 → DESTRUCTIVE）。"""
+        value = intent_tools.risk_for(name, arguments)
+        return ToolRisk(value) if value else None
+
     def validate(self, name: str, arguments: Any) -> Optional[str]:
         """意图工具用自身 Schema；长尾 MCP 工具用共享 MCP Schema。
 
@@ -190,6 +197,12 @@ class SharedToolRegistryBridge(ToolRegistryPort):
             if name == 'report_compare':
                 return intent_tools.validate_report_compare(
                     str((arguments or {}).get('action') or ''), arguments or {})
+            if name in intent_tools.WRITE_RESOLVERS:
+                # 写意图工具的动作级校验（必填 / 参数白名单 / body 注入）：
+                # 提案前就要拦下不可能执行成功的请求，不能等审批通过后才发现。
+                _, _, resolve_error = intent_tools.resolve_rest_call(
+                    name, dict(arguments or {}))
+                return resolve_error
             return None
         mcp = mcp_registry.get_tool(name)
         if mcp is None:

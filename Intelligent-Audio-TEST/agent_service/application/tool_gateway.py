@@ -302,6 +302,15 @@ class SharedToolGateway(ToolGateway):
         """
         return self._bridge.risk_of(name)
 
+    def risk_for(self, name: str,
+                 arguments: Optional[Dict[str, Any]] = None
+                 ) -> Optional[ToolRisk]:
+        """动作级风险（INT-2468）：写意图工具的删除类动作是 DESTRUCTIVE。
+
+        审批单 / 审计 / 执行期门禁用这一个口径；非写工具回落到工具级风险。
+        """
+        return self._bridge.risk_for(name, arguments or {})
+
     # ------------------------------------------------------------ execute
 
     def execute(self, call: ToolCallRequest,
@@ -337,7 +346,8 @@ class SharedToolGateway(ToolGateway):
         # 构造，模型无法伪造）才允许产生副作用。Loop 在提案阶段不会调用本方法；
         # 这里再做一次防御，避免绕过审批直接 execute。
         # 两份注册表都查不到（None）按未知工具拒绝，不降级成 READ。
-        risk = self.risk_of(name)
+        # 动作级风险优先（写意图工具的删除类动作是 DESTRUCTIVE），门禁相同。
+        risk = self.risk_for(name, arguments) or self.risk_of(name)
         if risk is None:
             return self._fail(call, UNKNOWN_TOOL, f'工具不存在：{name}')
         if risk is not ToolRisk.READ and context.approval is None:

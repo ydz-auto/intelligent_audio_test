@@ -802,7 +802,10 @@ class RunOrchestrator:
         # 两份注册表都查不到才算未注册（fail-closed，INT-2500）。
         descriptor = descriptors.get(call.name)
         if descriptor is not None:
-            risk = descriptor.risk
+            # 动作级风险优先：写意图工具的删除类动作是 DESTRUCTIVE（INT-2468），
+            # 工具级声明是 WRITE；审批单 / 审计记录动作级值。
+            risk = (self._tool_gateway.risk_for(call.name, call.arguments)
+                    or descriptor.risk)
         else:
             risk = self._tool_gateway.risk_of(call.name)
             if risk is None:
