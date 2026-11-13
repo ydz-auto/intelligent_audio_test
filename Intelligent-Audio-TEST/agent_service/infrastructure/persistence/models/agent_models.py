@@ -132,6 +132,8 @@ class AgentToolCall(Base):
     result_ref = Column(Text, nullable=True, comment='大结果外置引用')
     latency_ms = Column(Integer, nullable=True)
     permission_decision = Column(String(50), nullable=True, comment='allow / deny / approval_required')
+    result_code = Column(String(50), nullable=True,
+                         comment='工具结果码（OK / PERMISSION_DENIED / TOOL_NOT_ENABLED…）')
     error = Column(Text, nullable=True)
     idempotency_key = Column(String(255), nullable=True,
                              comment='run_id + step_id + tool_call_id + tool + args_hash')

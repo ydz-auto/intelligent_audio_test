@@ -21,13 +21,14 @@ from agent_service.application.run_worker import (
     RunExecutor, ThreadPoolRunExecutor,
 )
 from agent_service.application.skill_registry import SkillRegistry
+from agent_service.application.tool_gateway import SharedToolGateway
 from agent_service.config.config import Config
 from agent_service.domain.ports.llm_provider import (
     LlmProviderResolver, ProviderVerifier,
 )
 from agent_service.domain.ports.run_wakeup import RunWakeup
 from agent_service.domain.ports.side_effects import ReadOnlySideEffectChecker
-from agent_service.domain.ports.tool_gateway import NoopToolGateway, ToolGateway
+from agent_service.domain.ports.tool_gateway import ToolGateway
 from agent_service.domain.services.context_window_resolver import (
     ContextWindowResolver,
 )
@@ -41,6 +42,9 @@ from agent_service.infrastructure.persistence.repositories import (
 )
 from agent_service.infrastructure.skill.fs_skill_repository import (
     FsSkillRepository,
+)
+from agent_service.infrastructure.tools.registry_bridge import (
+    RestToolClient, RunCredentialRegistry, SharedToolRegistryBridge,
 )
 from agent_service.infrastructure.wakeup import LocalRunWakeup, RedisRunWakeup
 
@@ -59,6 +63,8 @@ class AgentContainer:
     skill_registry: SkillRegistry
     provider_service: ProviderService = None
     provider_registry: LlmProviderResolver = None
+    tool_gateway: ToolGateway = None
+    credentials: RunCredentialRegistry = None
     repositories: dict = field(default_factory=dict)
 
     def shutdown(self) -> None:
@@ -162,7 +168,14 @@ def build_container(session_factory,
     wakeup = build_wakeup(wakeup)
     cancel_registry = CancelRegistry()
     side_effects = ReadOnlySideEffectChecker()
-    gateway = tool_gateway or NoopToolGateway()
+    tool_credentials = RunCredentialRegistry(Config.TOOL_CREDENTIAL_TTL_SECONDS)
+    gateway = tool_gateway or SharedToolGateway(
+        bridge=SharedToolRegistryBridge(),
+        rest=RestToolClient(
+            Config.TOOL_GATEWAY_BASE_URL,
+            timeout_seconds=Config.TOOL_HTTP_TIMEOUT_SECONDS),
+        credentials=tool_credentials,
+    )
     skills = skill_registry or build_skill_registry(gateway, skills_root)
 
     assembler = ContextAssembler(
@@ -222,6 +235,7 @@ def build_container(session_factory,
         orchestrator=orchestrator, assembler=assembler,
         skill_registry=skills,
         provider_service=provider_service, provider_registry=registry,
+        tool_gateway=gateway, credentials=tool_credentials,
         repositories={
             'sessions': sessions, 'runs': runs, 'events': events,
             'steps': steps, 'tool_calls': tool_calls,

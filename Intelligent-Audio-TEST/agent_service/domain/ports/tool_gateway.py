@@ -23,6 +23,7 @@ class ToolDescriptor:
     risk: ToolRisk
     sandbox_tier: SandboxTier = SandboxTier.T0_NONE
     permissions: tuple = ()
+    enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,13 @@ class ToolGateway(ABC):
     @abstractmethod
     def describe(self, names: Sequence[str]) -> Sequence[ToolDescriptor]:
         """返回本轮需要的工具描述（供 LLM tools 定义与风险判定）。"""
+
+    def risk_of(self, name: str) -> ToolRisk:
+        """工具风险等级（含 tool_search 命中的长尾工具）。
+
+        默认 READ；实现方必须覆盖，否则未知写工具会被 Loop 当只读放行。
+        """
+        return ToolRisk.READ
 
     @abstractmethod
     def execute(self, call: ToolCallRequest,
