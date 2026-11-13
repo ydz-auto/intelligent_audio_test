@@ -1,0 +1,113 @@
+{
+  "domain": "algorithm",
+  "skill": "algorithm-config",
+  "tool": "algorithm_query",
+  "permission": "algorithm:read",
+  "cases": [
+    {
+      "id": "algo-01",
+      "utterance": "现在有哪些算法定义？只要上线状态的",
+      "action": "definitions",
+      "arguments": {"action": "definitions", "status": "online"},
+      "expected_tool": "algorithm_definition_list",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/algorithm/definitions?status=online"
+    },
+    {
+      "id": "algo-02",
+      "utterance": "voice_llm 的算法定义详情发我看看",
+      "action": "definition",
+      "arguments": {"action": "definition", "algo_type": "voice_llm"},
+      "expected_tool": "algorithm_definition_get",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/algorithm/definitions/voice_llm"
+    },
+    {
+      "id": "algo-03",
+      "utterance": "voice_llm 的表单 Schema 有哪些字段，默认值分别是多少",
+      "action": "form_schema",
+      "arguments": {"action": "form_schema", "algo_type": "voice_llm"},
+      "expected_tool": "algorithm_form_schema",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/algorithm/form-schema/voice_llm"
+    },
+    {
+      "id": "algo-04",
+      "utterance": "算法下拉选项里现在有哪些算法",
+      "action": "options",
+      "arguments": {"action": "options"},
+      "expected_tool": "algorithm_options",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/algorithm/options"
+    },
+    {
+      "id": "algo-05",
+      "utterance": "算法分组列表给我看一下",
+      "action": "groups",
+      "arguments": {"action": "groups"},
+      "expected_tool": "algorithm_group_list",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/algorithm/groups"
+    },
+    {
+      "id": "algo-06",
+      "utterance": "voice_llm 的参考参数有哪些",
+      "action": "reference_params",
+      "arguments": {"action": "reference_params", "algorithm_type": "voice_llm"},
+      "expected_tool": "algorithm_reference_param_list",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/algorithm/reference-params?algorithm_type=voice_llm"
+    },
+    {
+      "id": "algo-07",
+      "utterance": "设备参数带上 device_id=10 的三层解析结果是什么",
+      "action": "params",
+      "arguments": {"action": "params", "param_type": "device",
+                    "device_id": 10, "algorithm_type": "voice_llm"},
+      "expected_tool": "algorithm_param_list",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/algorithm/params?param_type=device&device_id=10&algorithm_type=voice_llm"
+    },
+    {
+      "id": "algo-08",
+      "utterance": "voice_llm 的参数映射里 source_type=device 的行",
+      "action": "mappings",
+      "arguments": {"action": "mappings", "algorithm_type": "voice_llm",
+                    "source_type": "device", "device_id": 10},
+      "expected_tool": "algorithm_mapping_list",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/algorithm/mappings?algorithm_type=voice_llm&source_type=device&device_id=10"
+    },
+    {
+      "id": "algo-09",
+      "utterance": "用例参数里 scope=physical 的都有哪些",
+      "action": "case_params",
+      "arguments": {"action": "case_params", "algorithm_type": "voice_llm",
+                    "scope": "physical"},
+      "expected_tool": "algorithm_case_param_list",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/algorithm/case-params?algorithm_type=voice_llm&scope=physical"
+    },
+    {
+      "id": "algo-10",
+      "utterance": "voice_llm 关联的算法维度有哪些",
+      "action": "dimensions",
+      "arguments": {"action": "dimensions", "algo_type": "voice_llm"},
+      "expected_tool": "algorithm_dimension_list",
+      "expected_method": "GET",
+      "expected_path": "/api/v1/algorithm/dimensions/voice_llm"
+    }
+  ],
+  "negatives": [
+    "把这次任务的报告导出成 PDF",
+    "导入一批音频并打上标注",
+    "评估维度的分类怎么配置",
+    "SPL 校准怎么做",
+    "启动任务并查看执行进度",
+    "查一下日志里最近的错误",
+    "从这批标注生成用例草案",
+    "看看设备的连接状态",
+    "这份报告里的 WER 指标是多少",
+    "把上次失败的任务重试一次"
+  ]
+}

@@ -5,16 +5,21 @@
 3 个探索工具；业务意图工具 25 个），与方案 §6.1 表逐条对应。
 
 本卡（M0）实现 3 个业务意图工具 + ``tool_search``，M1 音频域卡（INT-2458）
-追加 ``audio_query``，评估域卡（INT-2462）追加 ``evaluation_query``：
+追加 ``audio_query``，评估域卡（INT-2462）追加 ``evaluation_query``，
+算法域卡（INT-2464）追加 ``algorithm_query``：
 
 - ``platform_contract``：平台口径（服务 / 接口前缀 / 枚举 / 权限码 / 工具 Schema）；
 - ``task_query``：任务只读子集（映射 MCP ``task_*`` 只读工具）；
 - ``report_query``：报告只读子集（映射 MCP ``report_*`` 只读工具）；
 - ``audio_query``：音频只读子集（映射 MCP ``audio_*`` 只读工具）；
 - ``evaluation_query``：评估维度 / 分类只读子集（映射 MCP ``evaluation_*`` 只读工具）；
+- ``algorithm_query``：算法定义 / 参数 / 映射 / 表单 Schema 只读子集（映射 MCP ``algorithm_*`` 只读工具）；
 - ``tool_search``：对 205 个 MCP 工具 + 意图工具建索引，按关键词返回 Schema。
 
-M1 各域卡按同一模式逐个启用：INT-2462 启用 ``evaluation_query``（评估域只读）。
+M1 各域卡按域启用自己的只读意图工具（已完成：``audio_query`` INT-2458、
+``evaluation_query`` INT-2462、``algorithm_query`` INT-2464）；
+每个域工具 = 动作 → MCP 只读工具的映射，REST 路径 / 查询参数仍由
+``mcp_registry`` 的共享构造器决定，不复制 Schema。
 
 其余意图工具在本注册表**预留名称与 Schema**（``enabled=False``），调用返回
 ``TOOL_NOT_ENABLED``；实现分别归 M1 / M2 各域卡。预留名称进入 Skill
@@ -150,6 +155,30 @@ EVALUATION_QUERY_ACTIONS: Dict[str, str] = {
     'categories': 'evaluation_category_list',
 }
 
+# 算法只读动作 → MCP 工具名（INT-2464；写动作归 M2 algorithm_manage / 热重载）
+# 逐条对应网关 GET /api/v1/algorithm/* 的只读路由（routes/algorithm_bp.py）。
+ALGORITHM_QUERY_ACTIONS: Dict[str, str] = {
+    'definitions': 'algorithm_definition_list',
+    'definition': 'algorithm_definition_get',
+    'definition_draft': 'algorithm_definition_draft_get',
+    'groups': 'algorithm_group_list',
+    'group': 'algorithm_group_get',
+    'params': 'algorithm_param_list',
+    'param': 'algorithm_param_get',
+    'reference_params': 'algorithm_reference_param_list',
+    'reference_param': 'algorithm_reference_param_get',
+    'mappings': 'algorithm_mapping_list',
+    'case_params': 'algorithm_case_param_list',
+    'case_param': 'algorithm_case_param_get',
+    'form_schema': 'algorithm_form_schema',
+    'options': 'algorithm_options',
+    'dimensions': 'algorithm_dimension_list',
+    'dimension_params': 'algorithm_dimension_params',
+}
+
+# 算法定义状态 / 参数作用域 / 映射源类型的接口取值见
+# ``contract.ALGORITHM_*``（平台口径单一事实源），此处不再重复字面量。
+
 # 动作的必填参数（参数 Schema 无法表达的条件必填）
 ACTION_REQUIRED: Dict[str, Dict[str, Tuple[str, ...]]] = {
     'task_query': {
@@ -180,6 +209,37 @@ ACTION_REQUIRED: Dict[str, Dict[str, Tuple[str, ...]]] = {
     },
     'evaluation_query': {
         'dimension': ('dim_id',),
+    },
+    'algorithm_query': {
+        'definition': ('algo_type',),
+        'definition_draft': ('algo_type',),
+        # 网关 GET /algorithm/reference-params 无 algorithm_type 直接 400
+        'reference_params': ('algorithm_type',),
+        'param': ('param_id',),
+        'reference_param': ('param_id',),
+        'case_param': ('param_id',),
+        'group': ('group_id',),
+        'form_schema': ('algo_type',),
+        'dimensions': ('algo_type',),
+        'dimension_params': ('dimension_id',),
+    },
+}
+
+# 条件必填：同一动作下，某参数出现（或取到某值）时连带必填的参数。
+# 结构：tool -> action -> ((触发参数, 触发值 | '*', 连带必填), ...)；
+# '*' 表示「该参数出现即触发」。事实源为网关侧校验：
+# - AlgorithmQueryService.list_params：param_type=api 必须带 api_id；
+#   带 device_id 时必须带 algorithm_type 且 param_type 必须是 device。
+# - list_mappings：device_id 需要 algorithm_type 定位算法行。
+CONDITIONAL_REQUIRED: Dict[str, Dict[str, Tuple[Tuple[str, str, Tuple[str, ...]], ...]]] = {
+    'algorithm_query': {
+        'params': (
+            ('param_type', 'api', ('api_id',)),
+            ('device_id', '*', ('algorithm_type',)),
+        ),
+        'mappings': (
+            ('device_id', '*', ('algorithm_type',)),
+        ),
     },
 }
 
@@ -424,13 +484,29 @@ INTENT_TOOLS: List[IntentTool] = [
         }, required=('action',)),
         risk='WRITE', permissions=('evaluation:update',), enabled=False, kind='reserved'),
     IntentTool(
-        name='algorithm_query', description='算法定义、参数、映射、表单 Schema（只读）。',
+        name='algorithm_query',
+        description=('算法配置只读查询（INT-2464）：定义 / 草稿 / 分组、设备与 API 参数、'
+                     '参考参数、参数映射、用例专属参数、表单 Schema、下拉选项、'
+                     '关联评估维度。字段与默认值一律以接口返回为准，不编造可选值。'),
         parameters=_schema({
             'action': _prop('string', '查询动作', required=True,
-                            enum=['definitions', 'params', 'mappings', 'form_schema']),
-            'algorithm_type': _prop('string', '算法类型'),
+                            enum=list(ALGORITHM_QUERY_ACTIONS)),
+            'algo_type': _prop('string', '算法类型（如 voice_llm；取值以 options 动作为准）'),
+            'algorithm_type': _prop('string', '算法类型过滤（列表 / 参数 / 映射 / 参考参数用）'),
+            'param_id': _prop('integer', '参数 ID（param / reference_param / case_param 必填）'),
+            'group_id': _prop('integer', '算法分组 ID（group 必填）'),
+            'dimension_id': _prop('integer', '评估维度 ID（dimension_params 必填）'),
+            'status': _prop('string', '算法定义状态过滤（definitions）',
+                            enum=list(platform_contract_catalog.ALGORITHM_STATUS_VALUES)),
+            'param_type': _prop('string', '参数作用域（params；缺省 device）',
+                                enum=list(platform_contract_catalog.ALGORITHM_PARAM_TYPE_VALUES)),
+            'api_id': _prop('integer', 'API 实例 ID（param_type=api 或 API 作用域映射）'),
+            'device_id': _prop('integer', '设备 ID（设备作用域参数 / 映射）'),
+            'source_type': _prop('string', '映射源类型（mappings）',
+                                 enum=list(platform_contract_catalog.ALGORITHM_MAPPING_SOURCE_VALUES)),
+            'scope': _prop('string', '用例参数作用域（case_params，取值以接口返回为准）'),
         }, required=('action',)),
-        risk='READ', permissions=('algorithm:read',), enabled=False, kind='reserved'),
+        risk='READ', permissions=('algorithm:read',), enabled=True, kind='intent_rest'),
     IntentTool(
         name='algorithm_manage', description='定义/参数/映射写操作、热重载（写）。',
         parameters=_schema({
@@ -627,11 +703,27 @@ def required_for_action(name: str, action: str) -> Tuple[str, ...]:
     return ACTION_REQUIRED.get(name, {}).get(action, ())
 
 
+def conditional_required(name: str, action: str,
+                         arguments: Dict[str, Any]) -> Tuple[str, ...]:
+    """按「触发参数 → 连带必填」规则返回本次调用额外必填的参数。"""
+    rules = CONDITIONAL_REQUIRED.get(name, {}).get(action, ())
+    missing: List[str] = []
+    for trigger, value, needed in rules:
+        actual = arguments.get(trigger)
+        if actual is None:
+            continue
+        if value != '*' and actual != value:
+            continue
+        missing.extend(p for p in needed if arguments.get(p) is None)
+    return tuple(missing)
+
+
 _REST_ACTION_MAP: Dict[str, Dict[str, str]] = {
     'task_query': TASK_QUERY_ACTIONS,
     'report_query': REPORT_QUERY_ACTIONS,
     'audio_query': AUDIO_QUERY_ACTIONS,
     'evaluation_query': EVALUATION_QUERY_ACTIONS,
+    'algorithm_query': ALGORITHM_QUERY_ACTIONS,
 }
 
 
@@ -736,6 +828,7 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
                 f'action 取值必须是 {"/".join(mapping)} 之一')
         missing = [p for p in required_for_action(name, action)
                    if arguments.get(p) is None]
+        missing.extend(conditional_required(name, action, arguments))
         if missing:
             return None, None, f'action={action} 缺少必填参数：{"、".join(missing)}'
         mcp = get_tool(mapping[action])
@@ -792,10 +885,11 @@ def _serialize_intent(tool: IntentTool) -> dict:
 
 
 __all__ = [
-    'ACTION_REQUIRED', 'AUDIO_QUERY_ACTIONS', 'ENABLED_TOOLS',
-    'EVALUATION_QUERY_ACTIONS',
+    'ACTION_REQUIRED', 'ALGORITHM_QUERY_ACTIONS', 'AUDIO_QUERY_ACTIONS',
+    'CONDITIONAL_REQUIRED', 'ENABLED_TOOLS', 'EVALUATION_QUERY_ACTIONS',
     'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool', 'MCP_TOOLS',
     'REPORT_QUERY_ACTIONS', 'TASK_QUERY_ACTIONS', 'TOOL_INDEX',
-    'TOOL_INDEX_BY_NAME', 'platform_contract', 'required_for_action',
-    'resolve_rest_call', 'risk_of', 'tool_search', 'validate_arguments',
+    'TOOL_INDEX_BY_NAME', 'conditional_required', 'platform_contract',
+    'required_for_action', 'resolve_rest_call', 'risk_of', 'tool_search',
+    'validate_arguments',
 ]

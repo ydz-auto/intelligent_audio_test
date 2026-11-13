@@ -11,7 +11,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Sequence, Tuple
 
 from shared.config import service_ports
 from shared.models.common_enums import ReportStatus, ReportType, Visibility
@@ -80,6 +80,15 @@ ENDPOINT_PREFIXES: List[Dict[str, str]] = [
     {'prefix': '/api/v1/mcp', 'domain': '外部 MCP JSON-RPC'},
 ]
 
+# 算法域接口取值（INT-2464）。事实源：网关 GET /api/v1/algorithm/* 的 schema 与
+# algorithm_service 的 PO 口径——
+# - 状态：`handlers/algorithm_handlers.py` 的 `_STATUS_STR_TO_ENUM` 三个键；
+# - 参数作用域：`AlgorithmParamListQuery.param_type`（device / api）；
+# - 映射源类型：`AlgorithmMappingListQuery.source_type`（device / api）。
+ALGORITHM_STATUS_VALUES: Tuple[str, ...] = ('online', 'offline', 'draft')
+ALGORITHM_PARAM_TYPE_VALUES: Tuple[str, ...] = ('device', 'api')
+ALGORITHM_MAPPING_SOURCE_VALUES: Tuple[str, ...] = ('device', 'api')
+
 # 枚举速查：值取「接口里的值」（小写），来源标注在 source
 ENUMS: List[Dict[str, Any]] = [
     {'name': 'task_status', 'label': '任务状态',
@@ -107,6 +116,15 @@ ENUMS: List[Dict[str, Any]] = [
      'values': ['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'SUCCEEDED',
                 'FAILED', 'CANCELLED', 'BUDGET_EXCEEDED'],
      'source': 'agent_service.domain.enums.RunStatus'},
+    {'name': 'algorithm_status', 'label': '算法定义状态',
+     'values': list(ALGORITHM_STATUS_VALUES),
+     'source': 'algorithm_service AlgorithmStatus（接口值 online/offline/draft）'},
+    {'name': 'algorithm_param_type', 'label': '算法参数作用域',
+     'values': list(ALGORITHM_PARAM_TYPE_VALUES),
+     'source': 'api_gateway AlgorithmParamListQuery.param_type'},
+    {'name': 'algorithm_mapping_source', 'label': '参数映射源类型',
+     'values': list(ALGORITHM_MAPPING_SOURCE_VALUES),
+     'source': 'api_gateway AlgorithmMappingListQuery.source_type'},
 ]
 
 NAMING_RULES: List[str] = [
@@ -173,6 +191,7 @@ def lookup(query: str = '', section: str = 'all') -> Dict[str, Any]:
 
 
 __all__ = [
-    'CONVENTIONS', 'ENDPOINT_PREFIXES', 'ENUMS', 'NAMING_RULES', 'SERVICES',
-    'lookup',
+    'ALGORITHM_MAPPING_SOURCE_VALUES', 'ALGORITHM_PARAM_TYPE_VALUES',
+    'ALGORITHM_STATUS_VALUES', 'CONVENTIONS', 'ENDPOINT_PREFIXES', 'ENUMS',
+    'NAMING_RULES', 'SERVICES', 'lookup',
 ]
