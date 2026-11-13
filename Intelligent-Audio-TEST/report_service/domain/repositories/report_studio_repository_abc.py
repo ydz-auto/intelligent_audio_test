@@ -53,6 +53,16 @@ class ReportStudioRepository(ABC):
         成功返回新版本号。
         """
 
+    @abstractmethod
+    def find_document_by_content(self, report_id: int, source_type: str,
+                                 created_by: Optional[int],
+                                 markdown_content: str
+                                 ) -> Optional[ReportStudioDocument]:
+        """按「报告 + 来源 + 操作人 + 正文」查已有文档（起草幂等用，INT-2471）。
+
+        重复起草同一报告且正文完全一致时复用原文档，不产生第二份文档 / 版本。
+        """
+
     # ---- 版本 ----
     @abstractmethod
     def list_versions(self, doc_id: str) -> List[ReportStudioVersion]:
@@ -85,6 +95,20 @@ class ReportStudioRepository(ABC):
     @abstractmethod
     def get_export_job(self, export_id: str) -> Optional[ReportStudioExportJob]:
         """按 export_id 读作业。"""
+
+    @abstractmethod
+    def find_latest_export_job(self, doc_id: str, version: int, fmt: str,
+                               theme: Optional[str],
+                               created_by: Optional[int] = None
+                               ) -> Optional[ReportStudioExportJob]:
+        """按「文档 + 固定版本 + 格式 + 主题 + 操作人」读最近一次导出作业。
+
+        导出幂等用：同一产物的进行中 / 已完成作业复用，不重复渲染文件。
+        ``created_by`` 是必给的隔离维度（INT-2471 复审 P2-1）：作业按操作人
+        归属，复用到他人作业会返回一个当前用户下载被拒（403）的引用，
+        因此复用只在本人的作业里找；``None`` 表示未认证运行（AUTH_MODE=off），
+        只匹配 ``created_by IS NULL`` 的作业，与起草幂等口径一致。
+        """
 
     @abstractmethod
     def update_export_job(self, export_id: str, **fields) -> bool:

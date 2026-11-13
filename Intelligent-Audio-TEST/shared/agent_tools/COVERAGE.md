@@ -167,7 +167,7 @@
 | `report_share_revoke` | DELETE | report:update | WRITE | 内部归属（`report_generate`） | mcp | report 域写动作，归 report_generate |
 | `report_secondary_compare` | POST | report:compare | WRITE | 内部归属（`report_compare`） | mcp | 二次对比只读取数 |
 | `report_regenerate` | POST | report:create | WRITE | 内部归属（`report_generate`） | mcp | 重新生成报告 |
-| `report_export` | POST | report:read | WRITE | 内部归属（`report_export`） | mcp | 导出 PDF / PPTX / HTML / MD |
+| `report_export` | POST | report:read | WRITE | 内部归属（`report_export`） | intent | 导出 PDF / PPTX / HTML / MD |
 | `report_case_averages` | POST | report:read | WRITE | 内部归属（`report_query`） | mcp | POST 但按过滤条件取用例平均值、权限仅 report:read |
 | `report_cases` | GET | report:read | READ | 内部归属（`report_query`） | mcp | report 域GET，归 report_query |
 | `report_cases_search` | POST | report:read | WRITE | 内部归属（`report_query`） | mcp | POST 但只搜索报告内用例、权限仅 report:read |

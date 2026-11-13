@@ -47,7 +47,8 @@ _EXPECTED_PERMISSIONS = {
                       'spl:test_tone', 'digital_spl:create',
                       'digital_spl:update', 'digital_spl:delete'},
     'driver_propose': {'device:update'},
-    'report_export': {'report:read'},
+    # INT-2471：Studio 导出是写权限码（不是只读 report:read）
+    'report_export': {'report:studio:export'},
     'dashboard_query': {'home:read'},
 }
 
@@ -138,11 +139,13 @@ def test_fixed_tools_use_fact_source_permission_codes():
     # INT-2461 启用 dashboard_query（首页只读）；INT-2469 启用 evaluation_manage
     # （M2 写工具，权限码补上可见性分享 evaluation:share）；INT-2467 启用
     # 音频 / 设备 / SPL 写与驱动提案；INT-2468 启用用例 / 标签 / 任务写意图；
-    # INT-2470 启用算法写意图（定义 / 参数 / 参考参数 / 映射 / 导入 / 热重载）
+    # INT-2470 启用算法写意图（定义 / 参数 / 参考参数 / 映射 / 导入 / 热重载）；
+    # INT-2471 启用报告写 / Studio 编排（report_generate / report_export）
     enabled_later = {'dashboard_query', 'evaluation_manage', 'audio_import',
                      'audio_annotate', 'device_control', 'spl_calibrate',
                      'driver_propose', 'testcase_write', 'tag_group_manage',
-                     'task_run', 'algorithm_manage'}
+                     'task_run', 'algorithm_manage', 'report_generate',
+                     'report_export'}
     for name, expected in _EXPECTED_PERMISSIONS.items():
         tool = intent_tools.INTENT_TOOL_BY_NAME[name]
         assert set(tool.permissions) == expected, name

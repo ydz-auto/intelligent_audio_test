@@ -14,6 +14,10 @@
 - ``task_query``：任务只读子集（映射 MCP ``task_*`` 只读工具）；
 - ``report_query``：报告只读子集（映射 MCP ``report_*`` 只读工具）；
 - ``report_compare``：多报告 / 二次对比与趋势（只读；本地组合，不生成平台报告）；
+- ``report_generate`` / ``report_export``：报告写（INT-2471，M2）—— 生成 /
+  重生成任务报告、Studio 草稿 / 编辑 / 版本恢复、Studio 文档导出
+  （pdf/pptx/html/md）；动作表、动作级权限、body 白名单在 ``report_tools``，
+  写调用一律提案 + 审批（INT-2466 通用审批表）。
 - ``audio_query``：音频只读子集（映射 MCP ``audio_*`` 只读工具）；
 - ``evaluation_query``：评估维度 / 分类只读子集（映射 MCP ``evaluation_*`` 只读工具）；
 - ``evaluation_manage``：评估域写操作（INT-2469，M2）—— 维度 / 分类 CRUD、
@@ -52,7 +56,7 @@ M2 写域卡按域启用写意图工具（当前：``evaluation_manage`` INT-246
 参数校验、权限收窄与审批预览。分类更新 / 删除在外部 MCP 表未登记，映射到
 ``evaluation_tools.EVALUATION_WRITE_TOOLS``（同形工具项，不外扩外部契约）。
 
-``report_compare`` 是唯一的**本地组合**域工具（``kind='local'``，与
+``report_compare`` 是**本地组合**的只读域工具（``kind='local'``，与
 ``tool_search`` / ``platform_contract`` 同层）：平台的对接口径
 （``POST /reports/compare`` / ``POST /reports/secondary-compare``）会**落库生成
 新报告**，属写操作，不能作为只读工具暴露；本工具改为按报告 ID 逐个读
@@ -72,6 +76,10 @@ M2 写意图（``testcase_write`` / ``tag_group_manage`` / ``task_run``，INT-24
 ``algorithm:param_manage``，与网关真实路由一致）。热重载只重建配置缓存、
 不改业务数据，失败按 ``UPSTREAM_ERROR`` 如实返回，不静默成功。
 
+报告写工具（INT-2471）同属 ``kind='local'``：``report_generate`` 按动作映射到
+平台既有生成 / Studio 写接口，``report_export`` 在网关内编排「解析文档 →
+固定版本 → 建异步导出作业 → 轮询终态」，避免把二进制产物塞进工具结果。
+
 其余意图工具在本注册表**预留名称与 Schema**（``enabled=False``），调用返回
 ``TOOL_NOT_ENABLED``；实现分别归 M1 / M2 各域卡。预留名称进入 Skill
 allowed-tools 校验与 tool_search 索引，启动时不会出现 ``UNKNOWN_TOOL``。
@@ -89,6 +97,7 @@ from shared.agent_tools import contract as platform_contract_catalog
 from shared.agent_tools import algorithm_tools
 from shared.agent_tools import audio_tools, device_tools, driver_tools
 from shared.agent_tools import evaluation_tools
+from shared.agent_tools import report_tools
 from shared.agent_tools import tag_group_tools
 from shared.agent_tools import task_write_tools
 from shared.agent_tools import testcase_tools as case_tools
@@ -342,6 +351,11 @@ REPORT_COMPARE_TREND_PARAMS: Tuple[str, ...] = (
 # 单次上下文可承载的上限，超过请分批（多轮对比结果由 artifact 承载）。
 REPORT_COMPARE_MAX_REPORTS = 10
 REPORT_COMPARE_MIN_REPORTS = 2
+
+# 报告写动作 / 导出格式（INT-2471，M2）：动作表、动作级权限、body 白名单在
+# ``report_tools``，此处别名只供注册表与调用方按同一份口径读取。
+REPORT_GENERATE_ACTIONS: Dict[str, str] = report_tools.REPORT_GENERATE_ACTIONS
+REPORT_EXPORT_FORMATS: Tuple[str, ...] = report_tools.REPORT_EXPORT_FORMATS
 
 # 音频只读动作 → MCP 工具名（映射 MCP audio_* 只读子集，INT-2458）
 #
@@ -1249,16 +1263,35 @@ INTENT_TOOLS: List[IntentTool] = [
         risk='DESTRUCTIVE',
         permissions=device_tools.DEVICE_CONTROL,
         enabled=True, kind='intent_rest'),
+    # ---------------- M2 已实现（INT-2471 报告域写 / Studio 编排） ----------------
     IntentTool(
-        name='report_generate', description='生成/重生成报告、创建 Studio 草稿（写）。',
+        name='report_generate',
+        description=('报告生成与 Studio 文档写（提案 → 审批 → 执行，审批前不产生'
+                     '副作用）：按任务生成标准报告、重生成任务报告（旧报告软删进'
+                     '回收站后重建）、用已取数的报告创建 Studio 草稿、编辑 Studio '
+                     '文档生成新版本（乐观锁 expected_version）、把历史版本恢复为'
+                     '新版本。任务已有报告时 generate 复用原报告（status=exists），'
+                     '正在生成时返回 generating，不产生第二份报告；起草必须基于 '
+                     'report_query 的真实数值，正文里每个数字都要能对上返回字段。'),
         parameters=_schema({
-            'action': _prop('string', '动作', required=True,
-                            enum=['generate', 'regenerate', 'studio_draft']),
-            'task_id': _prop('integer', '任务 ID'),
-            'report_id': _prop('integer', '报告 ID'),
-            'body': _prop('object', '生成参数'),
+            'action': _prop('string', '写动作', required=True,
+                            enum=list(report_tools.REPORT_GENERATE_ACTIONS)),
+            'task_id': _prop('integer', '任务 ID（generate 必填）', minimum=1),
+            'report_id': _prop('integer', '报告 ID（regenerate / studio_draft 必填）',
+                               minimum=1),
+            'doc_id': _prop('string', 'Studio 文档 ID（studio_edit / '
+                                      'studio_restore 必填）'),
+            'body': _prop('object', '动作参数：generate / regenerate 收 '
+                                    'name/description；studio_draft 收 '
+                                    'markdown_content（必填）/title/chart_refs/'
+                                    'style_prefs；studio_edit 收 expected_version+'
+                                    'markdown_content（必填）；studio_restore 收 '
+                                    'version+expected_version（必填）'),
         }, required=('action',)),
-        risk='WRITE', permissions=('report:create',), enabled=False, kind='reserved'),
+        risk='WRITE', permissions=(
+            report_tools.REPORT_CREATE, report_tools.STUDIO_CREATE,
+            report_tools.STUDIO_EDIT, report_tools.STUDIO_UNDO),
+        enabled=True, kind='local'),
     IntentTool(
         name='report_compare',
         description=('报告对比（只读）：多报告并排取数（指标矩阵 / 设备与 API 统计 / '
@@ -1281,13 +1314,28 @@ INTENT_TOOLS: List[IntentTool] = [
         }, required=('action',)),
         risk='READ', permissions=('report:compare',), enabled=True, kind='local'),
     IntentTool(
-        name='report_export', description='导出 PDF / PPTX / HTML / MD（写）。',
+        name='report_export',
+        description=('导出 Report Studio 文档（提案 → 审批 → 执行）：按固定文档'
+                     '版本异步渲染 PDF / PPTX / HTML / MD，返回导出作业与鉴权'
+                     '下载引用。doc_id 优先，也可给 report_id 自动定位该报告最近'
+                     '更新的 Studio 文档；version 缺省为当前版本。作业复用只在'
+                     '**当前操作人本人**的同参数作业里找（他人作业下载会被拒），'
+                     '不重复产文件；作业超时未推进会判失效并重建；作业未完成时'
+                     '如实返回 pending，再调一次同一入参即继续复用/查询该作业。'
+                     '声明权限是 report:studio:export，编排内部读文档另需 '
+                     'report:read（RBAC 里含 export 的角色都已具备）。'),
         parameters=_schema({
-            'report_id': _prop('integer', '报告 ID', required=True),
+            'doc_id': _prop('string', 'Studio 文档 ID（与 report_id 二选一，优先）'),
+            'report_id': _prop('integer', '平台报告 ID（自动定位其 Studio 文档）',
+                               minimum=1),
+            'version': _prop('integer', '要导出的文档版本（缺省当前版本）',
+                             minimum=1),
             'format': _prop('string', '导出格式', required=True,
-                            enum=['pdf', 'pptx', 'html', 'md']),
-        }, required=('report_id', 'format')),
-        risk='WRITE', permissions=('report:read',), enabled=False, kind='reserved'),
+                            enum=list(report_tools.REPORT_EXPORT_FORMATS)),
+            'theme': _prop('string', '导出主题（缺省 default）'),
+        }, required=('format',)),
+        risk='WRITE', permissions=(report_tools.STUDIO_EXPORT,),
+        enabled=True, kind='local'),
     IntentTool(
         name='driver_propose',
         description=('生成设备驱动（AppDriver）与厂商 API 适配器（ApiVendorAdapter）'
@@ -1677,6 +1725,9 @@ def permissions_for(name: str,
     target_kind 分别要 ``tag:delete`` / ``group:delete``），避免持有单一权限码
     的用户执行其它写动作。动作非法时回落到工具级权限，由解析层给出明确的
     action 错误。
+    ``report_generate`` 同理：生成报告 vs Studio 起草 / 编辑 / 恢复是四个权限域，
+    按 ``action`` 收窄，避免持有 report:create 的用户改 Studio 文档。
+    动作非法时回落到工具级权限，由解析层给出明确的 action 错误。
     """
     tool = INTENT_TOOL_BY_NAME.get(name)
     if tool is None:
@@ -1701,6 +1752,10 @@ def permissions_for(name: str,
                 spec = actions.get(action)
                 if spec is not None:
                     by_action = tuple(spec.permissions)
+        if by_action is not None:
+            return by_action
+    if name == 'report_generate' and isinstance(arguments, dict):
+        by_action = report_tools.action_permissions(arguments.get('action'))
         if by_action is not None:
             return by_action
     return tuple(tool.permissions)
@@ -1735,10 +1790,12 @@ def risk_for(name: str,
     return tool.risk
 
 
-# 本地实现的意图工具（不映射 REST）：tool_search / platform_contract 在网关
-# 内部完成；report_compare 由 ToolGateway 组合只读 REST（见模块 docstring）。
+# 本地实现的意图工具（不映射单一 REST）：tool_search / platform_contract 在网关
+# 内部完成；report_compare 由 ToolGateway 组合只读 REST；report_generate /
+# report_export 由 ToolGateway 按动作映射 / 编排（见模块 docstring）。
 LOCAL_INTENT_TOOL_NAMES = frozenset(
-    {'tool_search', 'platform_contract', 'report_compare', 'driver_propose'})
+    {'tool_search', 'platform_contract', 'report_compare', 'report_generate',
+     'report_export', 'driver_propose'})
 
 # 写意图工具（INT-2467）：动作 → 目标 REST 由各域模块解析。执行前一律走
 # INT-2466 的提案 + 审批 + 幂等；`driver_propose` 是本地工具（代码生成 + T2
@@ -2200,6 +2257,7 @@ __all__ = [
     'REPORT_COMPARE_ACTIONS', 'REPORT_COMPARE_MAX_REPORTS',
     'PAGE_MIN', 'PER_PAGE_MAX',
     'REPORT_COMPARE_MIN_REPORTS', 'REPORT_PAGE_MIN', 'REPORT_PER_PAGE_MAX',
+    'REPORT_EXPORT_FORMATS', 'REPORT_GENERATE_ACTIONS',
     'REPORT_QUERY_ACTIONS', 'REPORT_QUERY_PARAMS', 'READ_ONLY_NON_GET_TOOLS',
     'RISK_LEVELS',
     'TASK_DOMAIN_STATS_GRANULARITIES',

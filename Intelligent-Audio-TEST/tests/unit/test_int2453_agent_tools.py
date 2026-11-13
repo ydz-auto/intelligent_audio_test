@@ -115,7 +115,9 @@ def test_intent_registry_has_31_unique_tools():
                              'testcase_write', 'tag_group_manage', 'task_run',
                              # INT-2470 算法写（定义 / 参数 / 参考参数 / 映射 /
                              # 导入 / 热重载）
-                             'algorithm_manage'}
+                             'algorithm_manage',
+                             # INT-2471 报告写 / Studio 编排
+                             'report_generate', 'report_export'}
 
 
 def test_reserved_tool_names_present_and_disabled():

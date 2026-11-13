@@ -36,7 +36,9 @@ def test_both_skills_load_without_errors_or_unknown_tools():
 
 
 @pytest.mark.parametrize('name,permissions', [
-    (SKILL_STUDIO, {'report:read'}),
+    (SKILL_STUDIO, {'report:read', 'report:create', 'report:studio:create',
+                    'report:studio:edit', 'report:studio:undo',
+                    'report:studio:export'}),
     (SKILL_COMPARE, {'report:read', 'report:compare'}),
 ])
 def test_upstream_contracts(name, permissions):
@@ -52,27 +54,68 @@ def test_upstream_contracts(name, permissions):
     assert '## 验收' in body
 
 
+# M2 起 report-studio 声明写工具（INT-2471）；report-compare 仍只声明只读工具。
+STUDIO_WRITE_TOOLS = frozenset({'report_generate', 'report_export'})
+
+
 @pytest.mark.parametrize('name,tool', [
     (SKILL_STUDIO, 'report_query'),
     (SKILL_COMPARE, 'report_compare'),
 ])
-def test_allowed_tools_exist_enabled_and_readonly(name, tool):
+def test_allowed_tools_exist_enabled_and_scoped(name, tool):
+    """M1 只挂只读工具；INT-2471 起 Studio 写工具也在白名单内（README 口径）。"""
     meta = skill_meta(name)
     assert meta.allowed_tools, 'allowed-tools 不能为空'
     for tool_name in meta.allowed_tools:
         registered = intent_tools.INTENT_TOOL_BY_NAME.get(tool_name)
         assert registered is not None, f'未注册工具：{tool_name}'
         assert registered.enabled is True, f'工具未启用：{tool_name}'
+        if tool_name in STUDIO_WRITE_TOOLS:
+            assert name == SKILL_STUDIO, f'{name} 不应声明写工具 {tool_name}'
+            assert ToolRisk(registered.risk) is ToolRisk.WRITE
+            continue
         assert ToolRisk(registered.risk) is ToolRisk.READ, f'非只读工具：{tool_name}'
     assert tool in meta.allowed_tools
+    assert metadata_has_write_tools(name, meta)
+
+
+def metadata_has_write_tools(name, meta):
+    """Studio 必须声明两个写工具；compare 不得声明任何写工具。"""
+    if name == SKILL_STUDIO:
+        assert STUDIO_WRITE_TOOLS <= set(meta.allowed_tools)
+    else:
+        assert not (STUDIO_WRITE_TOOLS & set(meta.allowed_tools))
+    return True
 
 
 def test_studio_skill_documents_every_query_action():
     body = skill_body(SKILL_STUDIO)
     for action in REPORT_QUERY_ACTIONS:
         assert f'`{action}`' in body, f'L2 正文没有覆盖动作 {action}'
-    # 写动作边界必须写明
-    assert 'M2' in body and '审批' in body
+    # 写链路必须写明：提案 / 审批 / 执行，且不得把提案说成已执行
+    assert 'report_generate' in body and 'report_export' in body
+    assert '提案' in body and '审批' in body
+    assert 'APPROVAL_REQUIRED' in body
+    assert '已提交审批' in body or '批准后' in body
+
+
+def test_studio_skill_documents_write_chain_topics():
+    """卡面要求：生成 vs 重生成、OTS 版本口径、导出格式与失败处置。"""
+    body = skill_body(SKILL_STUDIO)
+    for action in ('generate', 'regenerate', 'studio_draft', 'studio_edit',
+                   'studio_restore'):
+        assert f'`{action}`' in body, f'L2 正文没有覆盖写动作 {action}'
+    # 生成 vs 重生成
+    assert 'exists' in body and 'generating' in body
+    assert '软删' in body and '回收站' in body
+    # 版本（乐观锁 / 恢复产生新版本）
+    assert 'expected_version' in body and '乐观锁' in body
+    assert '409' in body and 'restore' in body
+    # 导出格式与失败处置
+    for fmt in ('pdf', 'pptx', 'html', 'md'):
+        assert f'`{fmt}`' in body, fmt
+    assert 'download_ref' in body and 'pending' in body and 'failed' in body
+    assert '403' in body and '404' in body
 
 
 def test_compare_skill_documents_every_compare_action():

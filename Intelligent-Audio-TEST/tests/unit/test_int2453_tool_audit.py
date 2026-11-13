@@ -268,7 +268,9 @@ def test_skills_endpoint_lists_31_tools_without_duplicates(tmp_path):
                            'testcase_write', 'tag_group_manage', 'task_run',
                            # INT-2470 算法写（定义 / 参数 / 参考参数 / 映射 /
                            # 导入 / 热重载）
-                           'algorithm_manage'}
+                           'algorithm_manage',
+                           # INT-2471 报告写 / Studio 编排
+                           'report_generate', 'report_export'}
 
         low = client.get('/api/v1/agent/skills',
                          headers={'X-User-Id': '8', 'X-Tenant-Id': 't1',

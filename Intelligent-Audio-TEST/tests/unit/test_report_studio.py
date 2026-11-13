@@ -7,13 +7,15 @@
 - 版本恢复：restore 产生新版本（version+1），历史只读不可变
 - 图表：按当前报告数据 + ChartSpec 返回；非法/越权 chartId → 404/403
 - 导出：POST 创建作业（pending）→ 轮询至 done → download 可得文件；
-  重复导出同版本可重试稳定；PPTX/PDF 失败带错误信息
+  HTML / MD / PDF / PPTX 四格式真实渲染（INT-2471）；重复导出同文档版本
+  + 同格式 + 同主题复用同一作业，不重复产文件
 - 对象级权限：跨账号读文档/图表/导出作业 → 403（§15.8）
 """
 import os
 import sys
 import tempfile
 import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -29,6 +31,7 @@ from shared.infrastructure.user_context import (
     set_current_user_is_admin,
 )
 from shared.models import common_enums
+from shared.models.common_enums import DEFAULT_EXPORT_THEME
 from report_service.config.config import Config
 from report_service.infrastructure.persistence.models import (
     Report,
@@ -89,6 +92,27 @@ def _wait_status(repo, export_id, target, timeout=15.0):
     return job
 
 
+# Studio 时间列落库口径：东八区墙钟（PO 默认值 utc8now，见 INT-2283）
+_TZ8 = timezone(timedelta(hours=8))
+
+
+def _seed_export_job(doc_id, *, export_id, status, moment, fmt='md',
+                     created_by=None):
+    """直接落一条导出作业行（造 pending / running 等不可控状态用）。"""
+    from report_service.infrastructure.persistence.models import (
+        ReportStudioExportJob as ExportJobPO,
+    )
+    session = database.get_db_session()
+    try:
+        session.add(ExportJobPO(
+            export_id=export_id, doc_id=doc_id, version=1, format=fmt,
+            theme=DEFAULT_EXPORT_THEME, status=status, progress=10,
+            created_by=created_by, created_at=moment, updated_at=moment))
+        session.commit()
+    finally:
+        session.close()
+
+
 class TestDocumentCrud:
     def test_create_get_roundtrip(self, sqlite_db):
         session = database.get_db_session()
@@ -119,6 +143,49 @@ class TestDocumentCrud:
         r = report_studio_service.create_document({'report_id': 999999})
         assert r['success'] is False
         assert r['code'] == 404
+
+    def test_create_same_content_reuses_document(self, sqlite_db):
+        """起草幂等（INT-2471）：同报告同操作人同正文再次起草 → 复用原文档。"""
+        session = database.get_db_session()
+        report_id = _seed_report(session)
+        session.close()
+        svc = report_studio_service
+        payload = {'report_id': report_id, 'title': '草稿A',
+                   'markdown_content': '# 同一份正文'}
+        first = svc.create_document(dict(payload))
+        assert first['success'] is True
+        assert first['data']['reused'] is not True
+
+        again = svc.create_document(dict(payload))
+        assert again['success'] is True
+        assert again['data']['doc_id'] == first['data']['doc_id']
+        assert again['data']['reused'] is True
+        docs, total = svc.repo.list_documents(report_id=report_id)
+        assert total == 1
+
+    def test_create_reuse_reports_ignored_fields(self, sqlite_db):
+        """复审 P3-2：同正文但显式传了不同的 title → 复用并列出来，不静默忽略。"""
+        session = database.get_db_session()
+        report_id = _seed_report(session)
+        session.close()
+        svc = report_studio_service
+        payload = {'report_id': report_id, 'title': '草稿A',
+                   'markdown_content': '# 同一份正文'}
+        first = svc.create_document(dict(payload))
+        assert first['success'] is True
+
+        again = svc.create_document({**payload, 'title': '草稿B'})
+        assert again['data']['reused'] is True
+        assert again['data']['doc_id'] == first['data']['doc_id']
+        assert again['data']['ignored'] == ['title']
+        assert again['data']['title'] == '草稿A'  # 旧值保留
+        assert 'title' in again['message']
+
+        # 没显式传的字段不算「传了没生效」
+        same = svc.create_document({'report_id': report_id,
+                                    'markdown_content': '# 同一份正文'})
+        assert same['data']['reused'] is True
+        assert 'ignored' not in same['data']
 
     def test_update_optimistic_lock_conflict_409(self, sqlite_db):
         session = database.get_db_session()
@@ -268,37 +335,159 @@ class TestExportJob:
         dl = svc.download_export({'export_id': export_id})
         assert '# MD 内容' in __import__('base64').b64decode(dl['data']['content_base64']).decode('utf-8')
 
-    def test_export_retry_same_version_stable(self, sqlite_db):
-        """同一版本重复导出可重试稳定（§15.6）。"""
+    def test_export_retry_same_version_reuses_job(self, sqlite_db):
+        """同一文档版本 + 同格式 + 同主题重复导出复用同一作业（INT-2471 幂等）。"""
         session = database.get_db_session()
         report_id = _seed_report(session)
         session.close()
         svc = report_studio_service
         doc_id = svc.create_document({'report_id': report_id,
                                       'markdown_content': '# 重试'})['data']['doc_id']
-        ids = []
-        for _ in range(2):
-            r = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': 'md'})
-            assert r['success'] is True
-            ids.append(r['data']['export_id'])
-        for export_id in ids:
-            job = _wait_status(svc.repo, export_id, target={'done', 'failed'})
-            assert job.status == 'done', job.error
-            dl = svc.download_export({'export_id': export_id})
-            assert dl['success'] is True
+        r1 = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': 'md'})
+        assert r1['success'] is True
+        assert r1['data']['reused'] is False
+        job = _wait_status(svc.repo, r1['data']['export_id'],
+                           target={'done', 'failed'})
+        assert job.status == 'done', job.error
 
-    def test_export_unsupported_format_fails_with_error(self, sqlite_db):
-        """PPTX/PDF 属 S3 增强候选技术（§15.6）：作业 failed 带错误信息。"""
+        r2 = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': 'md'})
+        assert r2['success'] is True
+        assert r2['data']['export_id'] == r1['data']['export_id']
+        assert r2['data']['reused'] is True
+        assert r2['data']['status'] == 'done'
+        # 只落一个产物文件（重复导出不产生重复文件）
+        files = os.listdir(Config.REPORT_STUDIO_EXPORT_DIR)
+        assert len([f for f in files if f.endswith('.md')]) == 1, files
+        dl = svc.download_export({'export_id': r2['data']['export_id']})
+        assert dl['success'] is True
+
+    def test_export_job_not_reused_across_operators(self, sqlite_db):
+        """复审 P2-1：他人作业不复用——否则拿到一个下载被判 403 的引用。"""
         session = database.get_db_session()
         report_id = _seed_report(session)
         session.close()
         svc = report_studio_service
-        doc_id = svc.create_document({'report_id': report_id})['data']['doc_id']
-        r = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': 'pptx'})
-        assert r['success'] is True
-        job = _wait_status(svc.repo, r['data']['export_id'], target={'done', 'failed'})
-        assert job.status == 'failed'
-        assert 'S3' in (job.error or '') or 'html/md' in (job.error or '')
+        set_current_user_id(1)
+        set_current_user_is_admin(False)
+        try:
+            doc_id = svc.create_document(
+                {'report_id': report_id,
+                 'markdown_content': '# 跨操作人'})['data']['doc_id']
+            # 管理员 99 先导出他人文档 → 作业归属 99
+            set_current_user_id(99)
+            set_current_user_is_admin(True)
+            admin_job = svc.create_export_job(
+                {'doc_id': doc_id, 'version': 1, 'format': 'md'})
+            assert admin_job['success'] is True, admin_job
+            _wait_status(svc.repo, admin_job['data']['export_id'],
+                         target={'done', 'failed'})
+
+            # 文档 owner 用同一组参数导出 → 不复用管理员的作业，建自己的
+            set_current_user_is_admin(False)
+            set_current_user_id(1)
+            mine = svc.create_export_job(
+                {'doc_id': doc_id, 'version': 1, 'format': 'md'})
+            assert mine['success'] is True, mine
+            assert mine['data']['reused'] is False
+            assert mine['data']['export_id'] != admin_job['data']['export_id']
+            assert mine['data']['created_by'] == 1
+            _wait_status(svc.repo, mine['data']['export_id'],
+                         target={'done', 'failed'})
+            # 本人作业可下载（复用到他人作业时这里会是 403）
+            dl = svc.download_export({'export_id': mine['data']['export_id']})
+            assert dl['success'] is True, dl
+            # 管理员作业仍归属管理员（他人不可读）
+            assert svc.repo.get_export_job(
+                admin_job['data']['export_id']).created_by == 99
+        finally:
+            set_current_user_id(None)
+            set_current_user_is_admin(False)
+
+    def test_stale_running_export_job_is_expired_and_rebuilt(self, sqlite_db):
+        """复审 P2-2：超时未推进的 running 作业落 failed，同参导出新建作业。"""
+        session = database.get_db_session()
+        report_id = _seed_report(session)
+        session.close()
+        svc = report_studio_service
+        set_current_user_id(None)  # 与后台线程同口径（未认证运行）
+        doc_id = svc.create_document(
+            {'report_id': report_id, 'markdown_content': '# 陈旧作业'})['data']['doc_id']
+        # 造一条 15 分钟前停在 running 的作业（模拟渲染进程中断）
+        stale_at = datetime.now(_TZ8) - timedelta(minutes=15)
+        _seed_export_job(doc_id, export_id='job-stale-running',
+                         status='running', moment=stale_at)
+
+        r = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': 'md'})
+        assert r['success'] is True, r
+        assert r['data']['reused'] is False
+        assert r['data']['export_id'] != 'job-stale-running'
+        expired = svc.repo.get_export_job('job-stale-running')
+        assert expired.status == 'failed'
+        assert '超时' in (expired.error or '')
+        _wait_status(svc.repo, r['data']['export_id'], target={'done', 'failed'})
+
+    def test_fresh_running_export_job_is_still_reused(self, sqlite_db):
+        """失效窗口内（刚提交）的 running 作业照常复用，不误伤并发去重。"""
+        session = database.get_db_session()
+        report_id = _seed_report(session)
+        session.close()
+        svc = report_studio_service
+        set_current_user_id(None)
+        doc_id = svc.create_document(
+            {'report_id': report_id,
+             'markdown_content': '# 进行中'})['data']['doc_id']
+        _seed_export_job(doc_id, export_id='job-fresh-running', status='running',
+                         moment=datetime.now(_TZ8) - timedelta(seconds=30))
+
+        r = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': 'md'})
+        assert r['success'] is True, r
+        assert r['data']['reused'] is True
+        assert r['data']['export_id'] == 'job-fresh-running'
+        assert svc.repo.get_export_job('job-fresh-running').status == 'running'
+
+    def test_export_pdf_and_pptx_produce_artifacts(self, sqlite_db):
+        """PDF / PPTX 真实渲染（INT-2471）：产物可打开、含文档正文。"""
+        session = database.get_db_session()
+        report_id = _seed_report(session)
+        session.close()
+        svc = report_studio_service
+        doc_id = svc.create_document({
+            'report_id': report_id,
+            'markdown_content': '# 报告标题\n\n## 一、结论\n\n- 通过率 93.68\n\n'
+                                '| 指标 | 值 |\n| --- | --- |\n| 通过率 | 93.68 |',
+        })['data']['doc_id']
+        for fmt, magic in (('pdf', b'%PDF'), ('pptx', b'PK')):
+            r = svc.create_export_job({'doc_id': doc_id, 'version': 1, 'format': fmt})
+            assert r['success'] is True, r
+            job = _wait_status(svc.repo, r['data']['export_id'],
+                               target={'done', 'failed'})
+            assert job.status == 'done', job.error
+            assert os.path.exists(job.file_path)
+            with open(job.file_path, 'rb') as handle:
+                content = handle.read()
+            assert content.startswith(magic), (fmt, content[:8])
+
+        # PPTX 能被 python-pptx 重新打开，且正文进入幻灯片
+        pptx_job = svc.create_export_job(
+            {'doc_id': doc_id, 'version': 1, 'format': 'pptx'})
+        job = _wait_status(svc.repo, pptx_job['data']['export_id'],
+                           target={'done', 'failed'})
+        from pptx import Presentation
+        presentation = Presentation(job.file_path)
+        texts = ' '.join(
+            shape.text_frame.text
+            for slide in presentation.slides for shape in slide.shapes
+            if getattr(shape, 'has_text_frame', False))
+        assert '报告标题' in texts or '一、结论' in texts, texts
+
+        # PDF 可读且包含中文 CID 字体声明
+        pdf_job = svc.create_export_job(
+            {'doc_id': doc_id, 'version': 1, 'format': 'pdf'})
+        job = _wait_status(svc.repo, pdf_job['data']['export_id'],
+                           target={'done', 'failed'})
+        with open(job.file_path, 'rb') as handle:
+            pdf_bytes = handle.read()
+        assert b'STSong-Light' in pdf_bytes or b'/Type /Page' in pdf_bytes
 
     def test_export_bad_format_400(self, sqlite_db):
         session = database.get_db_session()
@@ -357,7 +546,11 @@ class TestObjectLevelPermission:
 
 class TestRenderHtml:
     def test_render_escapes_content(self):
-        html_out = ReportStudioService._render_html('# <script>alert(1)</script>', 't', 'T')
+        """受控渲染：模型输出按不可信内容处理，HTML 全部转义（直连渲染器）。"""
+        from report_service.application.services.report_studio_renderer import (
+            render_html,
+        )
+        html_out = render_html('# <script>alert(1)</script>', 't', 'T').decode('utf-8')
         assert '<script>' not in html_out
         assert '&lt;script&gt;' in html_out
 

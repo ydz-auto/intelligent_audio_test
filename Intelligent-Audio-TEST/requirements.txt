@@ -79,6 +79,8 @@ PyJWT>=2.8.0
 # ===== Report Generation =====
 reportlab>=4.0.0
 python-docx>=1.1.0
+# INT-2471：Report Studio 导出 PPTX（Studio 文档 → 幻灯片，设计文档 §15.6）
+python-pptx>=1.0.0
 
 # ===== Utilities =====
 python-dotenv>=1.0.0
