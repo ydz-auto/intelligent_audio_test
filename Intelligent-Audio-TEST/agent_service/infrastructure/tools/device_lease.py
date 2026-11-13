@@ -26,12 +26,21 @@ DEVICE_DETAIL_TOOL = 'device_get'
 
 
 class _Lease:
-    """一个已持久的设备互斥锁句柄（release 幂等）。"""
+    """一个已持久的设备互斥锁句柄（release 幂等）。
 
-    def __init__(self, lock: Any, device_id: int, lock_key: str):
+    ``lease_mode`` / ``degraded`` 如实反映底层锁是否真的加上了：平台既有的
+    ``DistributedLock`` 在 Redis 不可用 / 关闭分布式协调时会降级放行
+    （返回 True 但其实没有锁），租约句柄必须把这个事实带给编排层留痕，
+    不能让「降级放行」看起来像「已锁定设备」。
+    """
+
+    def __init__(self, lock: Any, device_id: int, lock_key: str,
+                 lease_mode: str = 'UNKNOWN'):
         self._lock = lock
         self.device_id = device_id
         self.lock_key = lock_key
+        self.lease_mode = str(lease_mode or 'UNKNOWN').upper()
+        self.degraded = self.lease_mode == 'DEGRADED'
 
     def release(self) -> None:
         lock, self._lock = self._lock, None
@@ -90,7 +99,12 @@ class PhysicalDeviceLeaseAdapter(DeviceLeasePort):
             return None
         if not acquired:
             return None
-        return _Lease(lock, device_id, key)
+        lease_mode = str(getattr(lock, 'mode', '') or 'UNKNOWN').upper()
+        if lease_mode == 'DEGRADED':
+            logger.warning(
+                '设备 %s 租约降级放行（Redis 不可用，未真正锁定）：'
+                '本次探索可能与其他任务 / 用例使用同一设备', device_id)
+        return _Lease(lock, device_id, key, lease_mode=lease_mode)
 
     def release(self, lease: Any) -> None:
         if lease is None:

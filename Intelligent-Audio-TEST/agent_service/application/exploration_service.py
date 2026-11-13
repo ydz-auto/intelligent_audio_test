@@ -23,10 +23,12 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, Iterator, List, Optional, Sequence
 
 from agent_service.domain.model.entities import AgentArtifact
 from agent_service.domain.ports.artifact_store import ArtifactStore
@@ -82,6 +84,10 @@ _STOP_REASON_BY_RUN_STATUS: Dict[str, ux.ExplorationStopReason] = {
 #: trace 里保存的 run 失败原因长度上限（异常栈可能很长，截断保留关键信息）
 _RUN_ERROR_MAX_CHARS = 500
 
+#: 会话已被其他线程停止 / run 已收口时，等待锁的调用方拿到的说明
+_SESSION_CLOSED_MESSAGE = ('探索会话已结束（已被停止或 run 已收口），'
+                           '请重新开始新的探索计划。')
+
 
 class ExplorationError(RuntimeError):
     """探索失败：``code`` 直接作为工具错误码，``message`` 回灌模型。"""
@@ -100,6 +106,15 @@ class _Session:
     device_id: int
     platform: str
     lease: Any
+    #: 同一 (run, device) 的探索调用串行化（预算判定 + 自增、轨迹 / 产物登记
+    #: 都在这个临界区内）。同一轮工具调用会被编排器并行下发（默认 8 路），
+    #: 没有这把锁时预算硬上限与「一次探索一条 ui_trace 产物」都会被绕过。
+    lock: Any = field(default_factory=threading.RLock, repr=False,
+                      compare=False)
+    #: 设备租约的获取方式（DISTRIBUTED / SINGLE_INSTANCE / DEGRADED / UNKNOWN）
+    #: 与是否降级放行：Redis 不可用时底层锁会放行，必须留痕（P3-2）。
+    lease_mode: str = 'UNKNOWN'
+    lease_degraded: bool = False
     started_monotonic: float = field(default_factory=time.monotonic)
     actions: int = 0
     action_log: List[Dict[str, Any]] = field(default_factory=list)
@@ -126,8 +141,31 @@ class _Session:
         return int(self.elapsed_seconds() * 1000)
 
 
+class _CreationLock:
+    """按 ``(run, device)`` 的一次性建会话锁（引用计数，用完即删）。
+
+    同一时刻可能有多个并发首次调用：只允许一个线程去抢设备租约并登记会话，
+    其余线程等它建好后复用同一会话——否则第二个调用会因租约已被占而误报
+    ``DEVICE_NOT_LEASED``，或（注入 fake 时）覆盖旧会话泄漏租约。
+    """
+
+    __slots__ = ('lock', 'users')
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.users = 0
+
+
 class ExplorationService:
-    """探索会话编排（进程内状态；设备租约与产物落库为跨进程事实）。"""
+    """探索会话编排（进程内状态；设备租约与产物落库为跨进程事实）。
+
+    并发口径：编排器会把同一轮的多个工具调用并行下发（默认 8 路），因此
+    一切会话状态都只在**该会话自己的锁**里读写——``ui_tree`` / ``ui_action``
+    的整个流程、预算检查 + 动作自增、``ui_trace`` 与 ``agent_artifact`` 的
+    登记都串行执行；``_sessions`` 字典本身由 ``_sessions_lock`` 保护，
+    建会话则按 ``(run, device)`` 再加一把一次性创建锁（避免两个并发首次
+    调用各自抢租约导致误报 ``DEVICE_NOT_LEASED`` / 泄漏租约）。
+    """
 
     def __init__(self, *, devices: Optional[UiDevicePort],
                  leases: DeviceLeasePort,
@@ -140,6 +178,9 @@ class ExplorationService:
         self._store = store
         self._budget = budget or ux.ExplorationBudget()
         self._sessions: Dict[tuple, _Session] = {}
+        self._sessions_lock = threading.RLock()
+        #: (run, device) → 一次性建会话锁（带引用计数，用完即删，不随 run 累积）
+        self._creating: Dict[tuple, '_CreationLock'] = {}
 
     # ------------------------------------------------------------ 状态查询
 
@@ -150,15 +191,23 @@ class ExplorationService:
 
     def plan_approved(self, run_id: str, device_id: Any) -> bool:
         """同一探索计划（同 run + 同设备）是否已审批通过首个动作。"""
-        session = self._sessions.get(self._key(run_id, device_id))
-        return bool(session and session.approved
-                    and session.stop_reason is None)
+        key = self._key(run_id, device_id)
+        with self._sessions_lock:
+            session = self._sessions.get(key)
+        if session is None:
+            return False
+        with session.lock:
+            return bool(session.approved and session.stop_reason is None)
 
     def mark_approved(self, run_id: str, device_id: Any,
                       approval_id: Optional[str]) -> None:
         """首个动作审批通过：后续同计划动作自动放行（由网关在放行路径调用）。"""
-        session = self._sessions.get(self._key(run_id, device_id))
-        if session is not None:
+        key = self._key(run_id, device_id)
+        with self._sessions_lock:
+            session = self._sessions.get(key)
+        if session is None:
+            return
+        with session.lock:
             session.approved = True
             session.approval_id = approval_id
 
@@ -170,18 +219,27 @@ class ExplorationService:
         ``USER_CANCEL``，预算超限记 ``BUDGET``；失败时把失败原因写进
         ``trace.run_status`` / ``trace.run_error``。都不传时保持原口径
         （``DONE``），便于旧调用方。
+
+        每个会话在自己的锁里收尾：并发的 ``ui_action`` 要么先完成自己的
+        一步，要么在拿到锁后发现会话已停止而明确失败，不会与收尾交叉写
+        ``ui_trace`` / ``agent_artifact``。
         """
         run_status, reason = self._close_status(status)
-        for key, session in list(self._sessions.items()):
-            if session.run_id != run_id:
-                continue
-            try:
-                session.run_status = run_status
-                session.run_error = (str(error)[:_RUN_ERROR_MAX_CHARS]
-                                     if error else None)
-                self._finalize(session, session.stop_reason or reason)
-            finally:
-                self._sessions.pop(key, None)
+        with self._sessions_lock:
+            sessions = [(key, session)
+                        for key, session in self._sessions.items()
+                        if session.run_id == run_id]
+        for key, session in sessions:
+            with session.lock:
+                if not self._is_registered(key, session):
+                    continue
+                try:
+                    session.run_status = run_status
+                    session.run_error = (str(error)[:_RUN_ERROR_MAX_CHARS]
+                                         if error else None)
+                    self._finalize(session, session.stop_reason or reason)
+                finally:
+                    self._drop_session(session)
 
     @staticmethod
     def _close_status(status: Any
@@ -197,60 +255,72 @@ class ExplorationService:
 
     def ui_tree(self, arguments: Dict[str, Any],
                 context: ToolInvocationContext) -> Dict[str, Any]:
-        """读取裁剪 UI 树（≤200 节点）+ 截图引用 + 与上次快照 diff。"""
+        """读取裁剪 UI 树（≤200 节点）+ 截图引用 + 与上次快照 diff。
+
+        整个读取在会话锁内执行：并发调用会按 (run, device) 串行，快照 /
+        diff 基准不会被两个线程同时轮转（否则 diff 基准会错乱）。
+        """
         self._require_available()
         device_id = self._require_device_id(arguments)
         max_nodes = self._max_nodes(arguments.get('max_nodes'))
         include_screenshot = bool(arguments.get('include_screenshot', True))
         diff_with_last = bool(arguments.get('diff_with_last', True))
-        session = self._session(context, device_id)
-        self._refuse_if_stopped(session)
+        with self._locked_session(context, device_id) as session:
+            self._refuse_if_stopped(session)
 
-        nodes, coverage = self._dump(session, max_nodes)
-        cropped, stats = ux.crop_nodes(nodes, max_nodes)
-        image_ref = None
-        if include_screenshot:
-            image_ref = self._screenshot(session)
-            if image_ref:
-                session.screenshots.append(image_ref)
-        # diff 的基准是「上一次快照」：session 里保留的就是上一版树与它的 id
-        previous_id = session.snapshot_id or None
-        diff = None
-        if diff_with_last and session.nodes:
-            diff = ux.diff_trees(session.nodes, cropped)
-        self._rotate_snapshot(session, cropped, coverage)
+            nodes, coverage = self._dump(session, max_nodes)
+            cropped, stats = ux.crop_nodes(nodes, max_nodes)
+            image_ref = None
+            if include_screenshot:
+                image_ref = self._screenshot(session)
+                if image_ref:
+                    session.screenshots.append(image_ref)
+            # diff 的基准是「上一次快照」：session 里保留的就是上一版树与它的 id
+            previous_id = session.snapshot_id or None
+            diff = None
+            if diff_with_last and session.nodes:
+                diff = ux.diff_trees(session.nodes, cropped)
+            self._rotate_snapshot(session, cropped, coverage)
 
-        blocked = ux.detect_blocked_page(nodes)
-        stop_reason = ux.stop_reason_for_page(blocked)
-        payload: Dict[str, Any] = {
-            'device_id': device_id,
-            'platform': session.platform,
-            'snapshot_id': session.snapshot_id,
-            'node_count': stats['node_count'],
-            'total_nodes': stats['total_nodes'],
-            'truncated': stats['truncated'],
-            'max_nodes': stats['max_nodes'],
-            'nodes': ux.nodes_for_response(cropped),
-            'screenshot_ref': image_ref,
-            'diff_from_snapshot_id': previous_id,
-            'diff': diff,
-            'coverage': coverage,
-            'stop_reason': stop_reason.value if stop_reason else None,
-        }
-        if blocked is not None:
-            payload['blocked_page'] = blocked.value
-            reason = stop_reason or ux.ExplorationStopReason.LOGIN_REQUIRED
-            self._finalize(session, reason)
-            self._sessions.pop(self._key(context.run_id, device_id), None)
-            payload['message'] = _STOP_MESSAGES.get(reason)
-        return payload
+            blocked = ux.detect_blocked_page(nodes)
+            stop_reason = ux.stop_reason_for_page(blocked)
+            payload: Dict[str, Any] = {
+                'device_id': device_id,
+                'platform': session.platform,
+                'snapshot_id': session.snapshot_id,
+                'node_count': stats['node_count'],
+                'total_nodes': stats['total_nodes'],
+                'truncated': stats['truncated'],
+                'max_nodes': stats['max_nodes'],
+                'nodes': ux.nodes_for_response(cropped),
+                'screenshot_ref': image_ref,
+                'diff_from_snapshot_id': previous_id,
+                'diff': diff,
+                'coverage': coverage,
+                'stop_reason': stop_reason.value if stop_reason else None,
+                'lease_mode': session.lease_mode,
+                'lease_degraded': session.lease_degraded,
+            }
+            if blocked is not None:
+                payload['blocked_page'] = blocked.value
+                reason = stop_reason or ux.ExplorationStopReason.LOGIN_REQUIRED
+                self._finalize(session, reason)
+                self._drop_session(session)
+                payload['message'] = _STOP_MESSAGES.get(reason)
+            return payload
 
     # ------------------------------------------------------------ ui_action
 
     def ui_action(self, arguments: Dict[str, Any],
                   context: ToolInvocationContext,
                   approval_id: Optional[str] = None) -> Dict[str, Any]:
-        """执行一个 UI 动作 → 新树 diff + 轨迹；首个动作后同计划自动放行。"""
+        """执行一个 UI 动作 → 新树 diff + 轨迹；首个动作后同计划自动放行。
+
+        整个动作（预算判定 + 设备下发 + 动作编号自增 + 轨迹 / 产物登记）在
+        会话锁内完成：同一 (run, device) 的并发调用串行执行，预算按「已实际
+        下发动作数」原子判定，``ui_trace`` 的 index 严格递增且只登记一条
+        ``agent_artifact``（INT-2492 终审 P2-1）。
+        """
         self._require_available()
         device_id = self._require_device_id(arguments)
         action_type, params = self._action_arguments(arguments)
@@ -258,123 +328,130 @@ class ExplorationService:
         # 目标 / 安全 / 预算校验（写工具统一支持 dry_run / validate=true）。
         validate_only = bool(arguments.get('validate', False))
         dry_run = bool(arguments.get('dry_run', False)) or validate_only
-        session = self._session(context, device_id)
-        self._refuse_if_stopped(session)
+        with self._locked_session(context, device_id) as session:
+            self._refuse_if_stopped(session)
 
-        # 预算：第 31 个动作 / 超 5 分钟前先停，不产生设备动作
-        stop = self._budget.check_next(session.actions, session.elapsed_seconds())
-        if stop is not None:
-            self._stop(session, stop)
+            # 预算：第 31 个动作 / 超 5 分钟前先停，不产生设备动作
+            stop = self._budget.check_next(session.actions,
+                                           session.elapsed_seconds())
+            if stop is not None:
+                self._stop(session, stop)
 
-        # 首个动作前还没有快照：先读一页树作为定位与 diff 的基准
-        # （目标元素必须在最近一次快照里存在，不能凭空定位）。
-        if not session.nodes:
-            nodes, coverage = self._dump(session, ux.DEFAULT_TREE_NODES)
-            cropped, _stats = ux.crop_nodes(nodes, ux.DEFAULT_TREE_NODES)
+            # 首个动作前还没有快照：先读一页树作为定位与 diff 的基准
+            # （目标元素必须在最近一次快照里存在，不能凭空定位）。
+            if not session.nodes:
+                nodes, coverage = self._dump(session, ux.DEFAULT_TREE_NODES)
+                cropped, _stats = ux.crop_nodes(nodes, ux.DEFAULT_TREE_NODES)
+                self._rotate_snapshot(session, cropped, coverage)
+
+            # 已经停在登录 / 验证码 / 实名 / 支付页：直接交回，不在这些页面上做动作
+            blocked = ux.detect_blocked_page(session.nodes)
+            blocked_stop = ux.stop_reason_for_page(blocked)
+            if blocked_stop is not None:
+                self._stop(session, blocked_stop,
+                           extra={'blocked_page': blocked.value})
+
+            target = self._resolve_target(session, arguments.get('target'))
+            if action_type.needs_target and target is None:
+                raise ExplorationError(
+                    INVALID_ARGUMENTS,
+                    f'{action_type.value} 需要 target（id / resource_id / text），'
+                    '且必须在最近一次 ui_tree 快照里能找到该元素')
+
+            destructive = ux.detect_destructive(
+                action_type.value, target, params)
+            if destructive:
+                self._stop(session,
+                           ux.ExplorationStopReason.DESTRUCTIVE_BLOCKED,
+                           extra={'matched_keyword': destructive,
+                                  'action_type': action_type.value,
+                                  'dry_run': dry_run})
+
+            if dry_run:
+                # 预演：不下发设备动作、不取新快照、**不落轨迹产物**（预演不是一次
+                # 真实动作，登记成 UI_TRACE 会让 run 的产物列表出现一条 0 动作、
+                # 校验不通过的轨迹）。返回「预计变化」= 当前树无变化，并显式标注
+                # projected，避免模型把预演当成已生效。
+                return {
+                    'device_id': device_id,
+                    'platform': session.platform,
+                    'action_type': action_type.value,
+                    'dry_run': True,
+                    'validate_only': validate_only,
+                    'applied': False,
+                    'projected': True,
+                    'trace_ref': None,
+                    'trace_recorded': False,
+                    'action_index': session.actions,
+                    'tree_diff': {
+                        'projected': True,
+                        'counts': {'added': 0, 'removed': 0, 'changed': 0,
+                                   'unchanged': len(session.nodes),
+                                   'previous': len(session.nodes),
+                                   'current': len(session.nodes)},
+                        'notes': ['dry_run 未下发设备动作：页面不会变化，'
+                                  '预计 diff 只在目标可见时给出（当前树不变）'],
+                    },
+                    'stop_reason': ux.ExplorationStopReason.DONE.value,
+                    'lease_mode': session.lease_mode,
+                    'lease_degraded': session.lease_degraded,
+                    'budget': self._budget.as_dict(
+                        session.actions, session.elapsed_seconds()),
+                }
+
+            performed = self._perform(session, action_type, target, params)
+            session.actions += 1
+            image_ref = self._screenshot(session)
+            if image_ref:
+                session.screenshots.append(image_ref)
+            action = ux.build_action_record(
+                index=session.actions, action_type=action_type.value,
+                params=params, node=target, at_ms=session.elapsed_ms(),
+                dry_run=False, applied=bool(performed.get('applied', True)),
+                image_ref=image_ref)
+            session.action_log.append(action)
+
+            new_nodes, coverage = self._dump(session, ux.DEFAULT_TREE_NODES)
+            cropped, _stats = ux.crop_nodes(new_nodes, ux.DEFAULT_TREE_NODES)
+            diff = ux.diff_trees(session.nodes, cropped)
             self._rotate_snapshot(session, cropped, coverage)
+            session.pages.append(ux.build_page_record(
+                snapshot_id=session.snapshot_id, nodes=cropped,
+                captured_ms=session.elapsed_ms(), screenshot_ref=image_ref))
+            trace_ref = self._write_trace(session)
 
-        # 已经停在登录 / 验证码 / 实名 / 支付页：直接交回，不在这些页面上做动作
-        blocked = ux.detect_blocked_page(session.nodes)
-        blocked_stop = ux.stop_reason_for_page(blocked)
-        if blocked_stop is not None:
-            self._stop(session, blocked_stop,
-                       extra={'blocked_page': blocked.value})
-
-        target = self._resolve_target(session, arguments.get('target'))
-        if action_type.needs_target and target is None:
-            raise ExplorationError(
-                INVALID_ARGUMENTS,
-                f'{action_type.value} 需要 target（id / resource_id / text），'
-                '且必须在最近一次 ui_tree 快照里能找到该元素')
-
-        destructive = ux.detect_destructive(
-            action_type.value, target, params)
-        if destructive:
-            self._stop(session, ux.ExplorationStopReason.DESTRUCTIVE_BLOCKED,
-                       extra={'matched_keyword': destructive,
-                              'action_type': action_type.value,
-                              'dry_run': dry_run})
-
-        if dry_run:
-            # 预演：不下发设备动作、不取新快照、**不落轨迹产物**（预演不是一次
-            # 真实动作，登记成 UI_TRACE 会让 run 的产物列表出现一条 0 动作、
-            # 校验不通过的轨迹）。返回「预计变化」= 当前树无变化，并显式标注
-            # projected，避免模型把预演当成已生效。
-            return {
+            blocked = ux.detect_blocked_page(new_nodes)
+            stop_reason = ux.stop_reason_for_page(blocked)
+            payload: Dict[str, Any] = {
                 'device_id': device_id,
                 'platform': session.platform,
                 'action_type': action_type.value,
-                'dry_run': True,
-                'validate_only': validate_only,
-                'applied': False,
-                'projected': True,
-                'trace_ref': None,
-                'trace_recorded': False,
+                'dry_run': False,
+                'applied': bool(performed.get('applied', True)),
+                'trace_ref': trace_ref,
                 'action_index': session.actions,
-                'tree_diff': {
-                    'projected': True,
-                    'counts': {'added': 0, 'removed': 0, 'changed': 0,
-                               'unchanged': len(session.nodes),
-                               'previous': len(session.nodes),
-                               'current': len(session.nodes)},
-                    'notes': ['dry_run 未下发设备动作：页面不会变化，'
-                              '预计 diff 只在目标可见时给出（当前树不变）'],
-                },
-                'stop_reason': ux.ExplorationStopReason.DONE.value,
+                'snapshot_id': session.snapshot_id,
+                'tree_diff': diff,
+                'stop_reason': (stop_reason or
+                                ux.ExplorationStopReason.DONE).value,
+                'trace_validation': self._trace_summary(session),
+                'lease_mode': session.lease_mode,
+                'lease_degraded': session.lease_degraded,
                 'budget': self._budget.as_dict(
                     session.actions, session.elapsed_seconds()),
             }
-
-        performed = self._perform(session, action_type, target, params)
-        session.actions += 1
-        image_ref = self._screenshot(session)
-        if image_ref:
-            session.screenshots.append(image_ref)
-        action = ux.build_action_record(
-            index=session.actions, action_type=action_type.value,
-            params=params, node=target, at_ms=session.elapsed_ms(),
-            dry_run=False, applied=bool(performed.get('applied', True)),
-            image_ref=image_ref)
-        session.action_log.append(action)
-
-        new_nodes, coverage = self._dump(session, ux.DEFAULT_TREE_NODES)
-        cropped, _stats = ux.crop_nodes(new_nodes, ux.DEFAULT_TREE_NODES)
-        diff = ux.diff_trees(session.nodes, cropped)
-        self._rotate_snapshot(session, cropped, coverage)
-        session.pages.append(ux.build_page_record(
-            snapshot_id=session.snapshot_id, nodes=cropped,
-            captured_ms=session.elapsed_ms(), screenshot_ref=image_ref))
-        trace_ref = self._write_trace(session)
-
-        blocked = ux.detect_blocked_page(new_nodes)
-        stop_reason = ux.stop_reason_for_page(blocked)
-        payload: Dict[str, Any] = {
-            'device_id': device_id,
-            'platform': session.platform,
-            'action_type': action_type.value,
-            'dry_run': False,
-            'applied': bool(performed.get('applied', True)),
-            'trace_ref': trace_ref,
-            'action_index': session.actions,
-            'snapshot_id': session.snapshot_id,
-            'tree_diff': diff,
-            'stop_reason': (stop_reason or
-                            ux.ExplorationStopReason.DONE).value,
-            'trace_validation': self._trace_summary(session),
-            'budget': self._budget.as_dict(
-                session.actions, session.elapsed_seconds()),
-        }
-        if blocked is not None and stop_reason is not None:
-            payload['blocked_page'] = blocked.value
-            payload['message'] = _STOP_MESSAGES.get(stop_reason)
-            self._finalize(session, stop_reason)
-            self._sessions.pop(self._key(context.run_id, device_id), None)
-            payload['trace_ref'] = trace_ref
-        elif context.approval is not None or approval_id:
-            # 首个已审批动作：同一探索计划内后续自动放行
-            self.mark_approved(context.run_id, device_id,
-                               approval_id or context.approval.approval_id)
-        return payload
+            if blocked is not None and stop_reason is not None:
+                payload['blocked_page'] = blocked.value
+                payload['message'] = _STOP_MESSAGES.get(stop_reason)
+                self._finalize(session, stop_reason)
+                self._drop_session(session)
+                payload['trace_ref'] = trace_ref
+            elif context.approval is not None or approval_id:
+                # 首个已审批动作：同一探索计划内后续自动放行
+                # （RLock：同线程内再进会话锁，安全）
+                self.mark_approved(context.run_id, device_id,
+                                   approval_id or context.approval.approval_id)
+            return payload
 
     # ------------------------------------------------------------ helpers
 
@@ -448,9 +525,42 @@ class ExplorationService:
     def _session(self, context: ToolInvocationContext,
                  device_id: int) -> _Session:
         key = self._key(context.run_id, device_id)
-        session = self._sessions.get(key)
+        with self._sessions_lock:
+            session = self._sessions.get(key)
         if session is not None:
             return session
+
+        entry = self._acquire_creation_lock(key)
+        try:
+            with entry.lock:
+                with self._sessions_lock:
+                    session = self._sessions.get(key)
+                if session is not None:
+                    return session
+                session = self._create_session(context, device_id)
+                with self._sessions_lock:
+                    self._sessions[key] = session
+                return session
+        finally:
+            self._release_creation_lock(key, entry)
+
+    def _acquire_creation_lock(self, key: tuple) -> _CreationLock:
+        with self._sessions_lock:
+            entry = self._creating.get(key)
+            if entry is None:
+                entry = _CreationLock()
+                self._creating[key] = entry
+            entry.users += 1
+            return entry
+
+    def _release_creation_lock(self, key: tuple, entry: _CreationLock) -> None:
+        with self._sessions_lock:
+            entry.users -= 1
+            if entry.users <= 0 and self._creating.get(key) is entry:
+                self._creating.pop(key, None)
+
+    def _create_session(self, context: ToolInvocationContext,
+                        device_id: int) -> _Session:
         lease = self._leases.acquire(device_id, holder=context.run_id)
         if lease is None:
             raise ExplorationError(
@@ -462,12 +572,56 @@ class ExplorationService:
         except UiDeviceError as exc:
             self._leases.release(lease)
             raise ExplorationError(DEVICE_UNAVAILABLE, str(exc)) from exc
-        session = _Session(run_id=context.run_id,
-                           session_id=context.session_id,
-                           device_id=device_id, platform=platform,
-                           lease=lease)
-        self._sessions[key] = session
-        return session
+        lease_mode, lease_degraded = self._lease_metadata(lease)
+        if lease_degraded:
+            logger.warning(
+                '设备 %s 的租约在 Redis 不可用时降级放行（未真正锁定）：'
+                '可能与其他任务 / 用例冲突', device_id)
+        return _Session(run_id=context.run_id,
+                        session_id=context.session_id,
+                        device_id=device_id, platform=platform,
+                        lease=lease, lease_mode=lease_mode,
+                        lease_degraded=lease_degraded)
+
+    @staticmethod
+    def _lease_metadata(lease: Any) -> tuple[str, bool]:
+        """读取租约句柄上的获取方式 / 降级标记（适配器提供；缺失按未降级）。"""
+        if isinstance(lease, dict):
+            mode = lease.get('lease_mode')
+            degraded = lease.get('degraded')
+        else:
+            mode = getattr(lease, 'lease_mode', None)
+            degraded = getattr(lease, 'degraded', None)
+        value = str(mode or 'UNKNOWN').upper()
+        return value, bool(degraded) or value == 'DEGRADED'
+
+    @contextmanager
+    def _locked_session(self, context: ToolInvocationContext,
+                        device_id: int) -> Iterator[_Session]:
+        """取会话并独占它：同一 (run, device) 的探索调用由此串行化。"""
+        session = self._session(context, device_id)
+        key = self._key(context.run_id, device_id)
+        with session.lock:
+            if not self._is_registered(key, session):
+                # 等待期间会话已被别的线程停止 / run 已收口：明确失败，不
+                # 在一个已经释放租约的会话上继续下发动作（若会话带着停止
+                # 原因，回灌同一个错误码，模型看到的仍是真实原因）。
+                if session.stop_reason is not None:
+                    self._refuse_if_stopped(session)
+                raise ExplorationError(EXPLORATION_STOPPED,
+                                       _SESSION_CLOSED_MESSAGE,
+                                       payload={'stop_reason': 'USER_CANCEL'})
+            yield session
+
+    def _is_registered(self, key: tuple, session: _Session) -> bool:
+        with self._sessions_lock:
+            return self._sessions.get(key) is session
+
+    def _drop_session(self, session: _Session) -> None:
+        key = self._key(session.run_id, session.device_id)
+        with self._sessions_lock:
+            if self._sessions.get(key) is session:
+                self._sessions.pop(key, None)
 
     @staticmethod
     def _refuse_if_stopped(session: _Session) -> None:
@@ -546,7 +700,7 @@ class ExplorationService:
               *, extra: Optional[Dict[str, Any]] = None) -> None:
         """安全 / 预算停止：落轨迹、释放租约，抛带 stop_reason 的失败负载。"""
         trace_ref = self._finalize(session, reason)
-        self._sessions.pop(self._key(session.run_id, session.device_id), None)
+        self._drop_session(session)
         payload = {
             'device_id': session.device_id,
             'platform': session.platform,
@@ -555,6 +709,8 @@ class ExplorationService:
             'stop_reason': reason.value,
             'trace_validation': self._trace_summary(session),
             'message': _STOP_MESSAGES.get(reason, reason.value),
+            'lease_mode': session.lease_mode,
+            'lease_degraded': session.lease_degraded,
             'budget': self._budget.as_dict(
                 session.actions, session.elapsed_seconds()),
             'ok': False,
@@ -605,7 +761,9 @@ class ExplorationService:
             screenshots=session.screenshots,
             started_ms=0, finished_ms=session.elapsed_ms(),
             stop_reason=stop, coverage=session.coverage,
-            run_status=session.run_status, run_error=session.run_error)
+            run_status=session.run_status, run_error=session.run_error,
+            lease_mode=session.lease_mode,
+            lease_degraded=session.lease_degraded)
         trace, trimmed = ux.fit_trace_to_bytes(trace)
         text = json.dumps(trace, ensure_ascii=False, sort_keys=True)
         raw = text.encode('utf-8')
@@ -637,6 +795,8 @@ class ExplorationService:
             'package_filename': ux.UI_TRACE_FILENAME,
             'device_id': session.device_id,
             'platform': session.platform,
+            'lease_mode': session.lease_mode,
+            'lease_degraded': session.lease_degraded,
             'stop_reason': stop.value,
             'run_status': session.run_status,
             'run_error': session.run_error,
@@ -654,6 +814,12 @@ class ExplorationService:
             'validation_report': report,
             'created_at': utcnow().isoformat(),
         }
+        if session.artifact_id is None:
+            # 幂等登记：同一 run + 同一 URI 已有行时复用（覆盖写同一个对象，
+            # 不该出现第二行）。会话锁已经保证同进程内只有一个写者，这里再
+            # 兜一层「add 已提交但返回前抛异常」与跨进程重启的重复。
+            session.artifact_id = self._find_artifact_id(
+                session.run_id, uri)
         if session.artifact_id is None:
             artifact = AgentArtifact(
                 id=str(uuid.uuid4()), run_id=session.run_id,
@@ -673,6 +839,21 @@ class ExplorationService:
                 logger.warning('ui_trace 更新 agent_artifact 失败 run=%s: %s',
                                session.run_id, exc)
         return uri
+
+    def _find_artifact_id(self, run_id: str, uri: str) -> Optional[str]:
+        """按 run + URI 找已登记的 ``UI_TRACE`` 产物（查不到 / 查询失败返回 None）。"""
+        if self._artifacts is None:
+            return None
+        try:
+            artifacts = self._artifacts.list_by_run(run_id)
+        except Exception as exc:  # noqa: BLE001 - 查询失败退回正常登记
+            logger.warning('查询 agent_artifact 失败 run=%s: %s', run_id, exc)
+            return None
+        for artifact in artifacts or ():
+            if (getattr(artifact, 'kind', None) == ux.ARTIFACT_KIND_UI_TRACE
+                    and getattr(artifact, 'uri', None) == uri):
+                return getattr(artifact, 'id', None)
+        return None
 
     def _finalize(self, session: _Session,
                   reason: ux.ExplorationStopReason) -> Optional[str]:

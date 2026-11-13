@@ -16,6 +16,8 @@
 import json
 import os
 import hashlib
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 os.environ.setdefault('DATABASE_URL', 'sqlite:///:memory:')
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
@@ -25,7 +27,8 @@ import pytest
 
 from agent_service.application.exploration_service import (
     BUDGET_EXCEEDED, DESTRUCTIVE_BLOCKED, DEVICE_NOT_LEASED,
-    EXPLORATION_UNAVAILABLE, LOGIN_REQUIRED, ExplorationService,
+    EXPLORATION_UNAVAILABLE, LOGIN_REQUIRED, ExplorationError,
+    ExplorationService,
 )
 from agent_service.application.tool_gateway import SharedToolGateway
 from agent_service.domain.enums import RunStatus, ToolRisk
@@ -44,25 +47,35 @@ from shared.agent_tools import ui_exploration as ux
 
 
 class FakeDevice(UiDevicePort):
-    """脚本化设备：按动作推进页面；记录真实下发的动作（dry_run 断言用）。"""
+    """脚本化设备：按动作推进页面；记录真实下发的动作（dry_run 断言用）。
 
-    def __init__(self, pages, platform='ANDROID', screenshot=True):
+    ``delay`` 用来放大并发窗口：真机上读树 / 下发动作是真实 I/O（会释放
+    GIL），并发用例没有延迟时可能碰巧串行、测不出竞态。
+    """
+
+    def __init__(self, pages, platform='ANDROID', screenshot=True,
+                 delay=0.0):
         self.pages = [list(page) for page in pages]
         self.index = 0
         self.performed = []
         self._platform = platform
         self._screenshot = screenshot
+        self.delay = delay
         self.shots = 0
 
     def platform(self, device_id):
         return self._platform
 
     def dump_nodes(self, device_id, *, max_nodes):
+        if self.delay:
+            time.sleep(self.delay)
         return {'nodes': list(self.pages[self.index]),
                 'coverage': ux.coverage_notes(self.pages[self.index],
                                               self._platform)}
 
     def perform(self, device_id, action_type, *, node=None, params=None):
+        if self.delay:
+            time.sleep(self.delay)
         self.performed.append({'action': action_type, 'node': node,
                                'params': dict(params or {})})
         self.index = min(self.index + 1, len(self.pages) - 1)
@@ -616,6 +629,187 @@ def test_close_run_preserves_failure_reason_and_budget_reason():
         assert trace['run_status'] == status.value
         if error:
             assert trace['run_error'] == error
+
+
+# ------------------------------------------------ 并发串行化（终审 P2-1）
+
+
+def _outcome(service, arguments, context):
+    """并发调用结果：``('ok', payload)`` 或 ``('error', code)``。"""
+    try:
+        return 'ok', service.ui_action(dict(arguments), context)
+    except ExplorationError as exc:
+        return 'error', exc.code
+
+
+def test_concurrent_actions_cannot_bypass_budget():
+    """并行 5 个动作不能都「先过预算检查再各自执行」（硬上限 30 动作）。"""
+    device = FakeDevice([[_node('n1', '按钮')]], delay=0.01)
+    artifacts, store = FakeArtifacts(), FakeStore()
+    service = ExplorationService(
+        devices=device, leases=FakeLease(), artifacts=artifacts,
+        store=store,
+        budget=ux.ExplorationBudget(max_actions=30, max_seconds=300))
+    context = _ctx(approval=_approval())
+    wait = {'device_id': 3, 'action_type': 'WAIT',
+            'params': {'duration_ms': 1}}
+    for _ in range(29):
+        service.ui_action(dict(wait), context)
+    assert len(device.performed) == 29
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        results = list(pool.map(
+            lambda _index: _outcome(service, wait, context), range(5)))
+
+    codes = [value for kind, value in results if kind == 'error']
+    assert sum(1 for kind, _value in results if kind == 'ok') == 1
+    assert codes.count(BUDGET_EXCEEDED) == 4
+    # 设备实际只收到第 30 个动作：预算硬上限没有被并行调用绕过
+    assert len(device.performed) == 30
+    trace = json.loads(store.written[artifacts.items[0].uri])
+    assert [item['index'] for item in trace['actions']] == list(
+        range(1, 31))
+
+
+def test_concurrent_first_calls_share_one_session_and_lease():
+    """同一 (run, device) 的首次并发调用只抢一次租约、只建一个会话。"""
+    lease = FakeLease()
+    device = FakeDevice([[_node('n1', '按钮')]], delay=0.01)
+    service = ExplorationService(devices=device, leases=lease)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        payloads = list(pool.map(
+            lambda _index: service.ui_tree({'device_id': 3}, _ctx()),
+            range(8)))
+
+    assert lease.acquired == 1
+    assert len(service._sessions) == 1
+    assert all(payload['node_count'] == 1 for payload in payloads)
+    # 每个响应都有独立快照 id（串行轮转，不互相覆盖）
+    assert len({payload['snapshot_id'] for payload in payloads}) == 8
+
+
+def test_concurrent_actions_register_one_trace_artifact_with_final_content():
+    """并发动作：index 严格递增 1..N，agent_artifact 恰好一行且描述最终内容。"""
+    device = FakeDevice([[_node('n1', '按钮')]], delay=0.005)
+    artifacts, store = FakeArtifacts(), FakeStore()
+    service = ExplorationService(
+        devices=device, leases=FakeLease(), artifacts=artifacts,
+        store=store)
+    context = _ctx(approval=_approval())
+    args = {'device_id': 3, 'action_type': 'BACK'}
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = list(pool.map(
+            lambda _index: _outcome(service, args, context), range(16)))
+
+    assert [kind for kind, _ in outcomes] == ['ok'] * 16
+    assert len(device.performed) == 16
+    assert len(artifacts.items) == 1
+    artifact = artifacts.items[0]
+    text = store.written[artifact.uri]
+    raw = text.encode('utf-8')
+    trace = json.loads(text)
+    indexes = [item['index'] for item in trace['actions']]
+    assert indexes == list(range(1, 17))          # 无重复、无跳号
+    assert len({page['snapshot_id'] for page in trace['pages']}) == 16
+    assert artifact.size == len(raw)
+    assert artifact.metadata['source_trace']['sha256'] == \
+        hashlib.sha256(raw).hexdigest()
+    assert artifact.metadata['source_trace']['actions'] == 16
+    assert artifact.metadata['validation_report']['ok'] is True
+    assert artifacts.updates == 15               # 首版 add，其余都是 update
+
+
+def test_existing_trace_artifact_row_is_reused_not_duplicated():
+    """已有同 run + URI 的 UI_TRACE 行时复用（add 已提交但返回前失败的兜底）。"""
+    from agent_service.domain.model.entities import AgentArtifact
+
+    device = FakeDevice([[_node('n1', '按钮')]])
+    artifacts, store = FakeArtifacts(), FakeStore()
+    service = ExplorationService(devices=device, leases=FakeLease(),
+                                 artifacts=artifacts, store=store)
+    uri = 'oss://archives/agent-context/run-1/ui_trace_3.json'
+    artifacts.items.append(AgentArtifact(
+        id='artifact-existing', run_id='run-1', kind='UI_TRACE', uri=uri,
+        size=1, metadata={'artifact_kind': 'UI_TRACE'}))
+
+    service.ui_action({'device_id': 3, 'action_type': 'BACK'},
+                      _ctx(approval=_approval()))
+
+    assert len(artifacts.items) == 1
+    assert artifacts.items[0].id == 'artifact-existing'
+    assert artifacts.items[0].size > 1
+    assert artifacts.items[0].uri == uri
+
+
+# ---------------------------------------------------------------- 租约降级标注（P3-2）
+
+
+class DegradedLease(FakeLease):
+    """模拟底层 Redis 锁「降级放行」：返回的租约标注 DEGRADED。"""
+
+    def acquire(self, device_id, *, holder):
+        lease = super().acquire(device_id, holder=holder)
+        if lease is not None:
+            lease['lease_mode'] = 'DEGRADED'
+            lease['degraded'] = True
+        return lease
+
+
+def test_degraded_lease_is_marked_in_result_and_trace():
+    """Redis 不可用降级放行必须在工具结果 / 轨迹 / 产物元数据里留痕。"""
+    artifacts, store = FakeArtifacts(), FakeStore()
+    gateway = make_gateway(devices=FakeDevice([[_node('n1', '按钮')]]),
+                           lease=DegradedLease(), artifacts=artifacts,
+                           store=store)
+    tree = payload_of(gateway.execute(call('ui_tree', {'device_id': 3}),
+                                      _ctx()))
+    assert tree['lease_mode'] == 'DEGRADED' and tree['lease_degraded'] is True
+    action = payload_of(gateway.execute(
+        call('ui_action', {'device_id': 3, 'action_type': 'BACK'}),
+        _ctx(approval=_approval())))
+    assert action['lease_degraded'] is True
+    trace = json.loads(store.written[artifacts.items[0].uri])
+    assert trace['lease'] == {'mode': 'DEGRADED', 'degraded': True}
+    assert artifacts.items[0].metadata['lease_degraded'] is True
+
+
+class _FakeLock:
+    def __init__(self, mode='DISTRIBUTED'):
+        self.mode = mode
+        self.released = False
+
+    def acquire(self, blocking=True):
+        return True
+
+    def release(self):
+        self.released = True
+
+
+def test_device_lease_adapter_reports_lock_mode():
+    from agent_service.infrastructure.tools.device_lease import (
+        PhysicalDeviceLeaseAdapter,
+    )
+
+    for mode, degraded in (('DISTRIBUTED', False), ('DEGRADED', True),
+                           ('SINGLE_INSTANCE', False)):
+        locks = []
+
+        def factory(key, ttl, _mode=mode):
+            lock = _FakeLock(mode=_mode)
+            locks.append(lock)
+            return lock
+
+        adapter = PhysicalDeviceLeaseAdapter(
+            rest=FakeRestClient(), credentials=RunCredentialRegistry(),
+            ttl_seconds=60, lock_factory=factory)
+        lease = adapter.acquire(3, holder='run-1')
+        assert lease is not None
+        assert lease.lease_mode == mode
+        assert lease.degraded is degraded
+        adapter.release(lease)
+        assert locks[0].released is True
 
 
 # ---------------------------------------------------------------- api_spec

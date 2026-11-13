@@ -550,13 +550,17 @@ def build_ui_trace(*, device_id: Any, platform: str, run_id: str,
                    stop_reason: ExplorationStopReason,
                    coverage: Optional[Dict[str, Any]] = None,
                    run_status: Optional[str] = None,
-                   run_error: Optional[str] = None
+                   run_error: Optional[str] = None,
+                   lease_mode: Optional[str] = None,
+                   lease_degraded: bool = False
                    ) -> Dict[str, Any]:
     """组装 ``ui_trace.json``（动作序列 + 页面树 + 截图引用）。
 
     ``stop_reason`` 只描述**探索**为什么停（``ExplorationStopReason`` 六值）；
     ``run_status`` / ``run_error`` 记录收口时 run 的终态与失败原因（取消 /
-    失败也要留痕，不能都记成 ``DONE`` 把失败原因丢掉）。
+    失败也要留痕，不能都记成 ``DONE`` 把失败原因丢掉）。``lease_mode`` /
+    ``lease_degraded`` 记录设备租约的实际获取方式：底层 Redis 锁不可用时会
+    「降级放行」，轨迹里必须能看到这次探索并没有真正锁住设备（P3-2）。
     """
     trace: Dict[str, Any] = {
         'version': 1,
@@ -572,6 +576,9 @@ def build_ui_trace(*, device_id: Any, platform: str, run_id: str,
         'screenshots': list(screenshots)[-MAX_SCREENSHOTS:],
         'coverage': coverage or {},
     }
+    if lease_mode:
+        trace['lease'] = {'mode': str(lease_mode).upper(),
+                          'degraded': bool(lease_degraded)}
     if run_status:
         trace['run_status'] = str(run_status)
     if run_error:

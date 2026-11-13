@@ -6,7 +6,11 @@
 - ``DeviceLeasePort``：设备租用 / 锁定。实现复用平台既有的物理设备互斥
   （``RedisKeyPrefix.TASK_PHYSICAL_LOCK``，与任务派发同一把锁、按设备 SN 归一），
   因此「探索中的设备」和「跑任务的设备」互斥，不需要另建一套租约系统。
-  **必须 fail-closed**：拿不到租约就拒绝探索，不能降级成「无锁也放行」。
+  **必须 fail-closed**：``acquire`` 返回 ``None``（被占用 / 不可租用）就拒绝探索。
+  实现还应在租约句柄上带 ``lease_mode``（``DISTRIBUTED`` / ``SINGLE_INSTANCE``
+  / ``DEGRADED``）与 ``degraded``：平台底层锁在 Redis 不可用时会降级放行，
+  那种情况必须如实标注（``DEGRADED``）并写进工具结果 / 轨迹，不能看起来像
+  「已锁定设备」。
 - ``UiDevicePort``：从设备读取裁剪 UI 树 / 执行 UI 动作 / 取截图引用。
   平台格式差异（Android uiautomator XML / HarmonyOS hypium 组件）由实现层解析成
   共享节点结构（``shared.agent_tools.ui_exploration``），application 不碰原始格式。
