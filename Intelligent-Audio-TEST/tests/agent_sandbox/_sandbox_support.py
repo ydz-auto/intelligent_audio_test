@@ -6,8 +6,20 @@ from __future__ import annotations
 import os
 import subprocess
 
-from agent_service.application.sandbox_runner import ContainerExecution, ContainerInvocation
+from agent_service.application.sandbox_runner import (
+    ContainerExecution,
+    ContainerInvocation,
+    T2ContainerInvocation,
+)
 from agent_service.infrastructure.sandbox.docker_runner import HostCliDockerExecutor
+from agent_service.infrastructure.sandbox.t2_runner import T2DockerExecutor
+
+DEFAULT_SANDBOX_IMAGE = 'python:3.11-slim'
+
+
+def sandbox_image() -> str:
+    """沙箱镜像：与 runner 配置同源（``AGENT_SANDBOX_IMAGE``），不写死。"""
+    return (os.environ.get('AGENT_SANDBOX_IMAGE') or '').strip() or DEFAULT_SANDBOX_IMAGE
 
 DEFAULT_SANDBOX_IMAGE = 'python:3.11-slim'
 
@@ -33,3 +45,16 @@ class RecordingDockerExecutor(HostCliDockerExecutor):
     def run(self, invocation: ContainerInvocation) -> ContainerExecution:
         self.container_names.append(invocation.name)
         return super().run(invocation)
+
+
+class RecordingT2Executor(T2DockerExecutor):
+    """T2 执行器 + 容器名记录（用例结束后确认无遗留容器）。"""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.container_names: list[str] = []
+
+    def run(self, invocation: T2ContainerInvocation) -> ContainerExecution:
+        self.container_names.append(invocation.name)
+        return super().run(invocation)
+

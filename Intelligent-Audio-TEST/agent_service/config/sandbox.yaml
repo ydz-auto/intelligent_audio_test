@@ -1,0 +1,54 @@
+# T2 不可信代码沙箱配置（方案 doc/agent化/07 §7，INT-2489）
+#
+# 本文件是**安全默认值**，部署时只读挂载进 agent_service（INT-2456 接线）。
+# 所有值都可用 AGENT_SANDBOX_T2_* 环境变量覆盖（最高优先级）：
+#   AGENT_SANDBOX_T2_RUNTIME / _RUNTIME_NAME / _IMAGE / _MEMORY / _CPUS /
+#   _PIDS_LIMIT / _TMPFS_SIZE / _TIMEOUT_SECONDS / _TOTAL_TIMEOUT_SECONDS /
+#   _OUTPUT_LIMIT_BYTES / _CONTAINER_USER / _MAX_ARTIFACTS /
+#   _MAX_ARTIFACT_BYTES / _MAX_TOTAL_ARTIFACT_BYTES / _MAX_INPUT_* /
+#   _EGRESS_ENABLED / _EGRESS_NETWORK / _EGRESS_PROXY_URL / _EGRESS_ALLOWED_HOSTS
+#
+# 运行时：gvisor（docker --runtime=runsc，首选）。runsc 不可用时执行层明确返回
+# T2_RUNTIME_UNAVAILABLE，**绝不**降级到 T1。Firecracker 本期只保留配置开关与
+# 显式不可用提示（本卡只交付 gVisor 路径，生产运维归 INT-2456）。
+t2:
+  runtime: gvisor
+  runtime_name: runsc
+  runsc_binary: runsc
+  firecracker_enabled: false
+  firecracker_binary: /usr/local/bin/firecracker
+  docker_binary: docker
+
+  # 分析/驱动代码需要导入、编译、跑单测：默认镜像需带 Python 3.11。
+  image: python:3.11-slim
+  interpreter: python3
+  memory: 512m
+  memory_swap: 512m
+  cpus: 1
+  pids_limit: 128
+  tmpfs_size: 64m
+  # 单阶段超时 / 整份验证计划总时长（T2 含编译与测试，比 T1 宽）。
+  timeout_seconds: 120
+  total_timeout_seconds: 300
+  output_limit_bytes: 1048576
+  # 非 root（nobody）；禁止 0/root，配置层会拦截。
+  container_user: "65534:65534"
+
+  artifact:
+    max_artifacts: 32
+    max_artifact_bytes: 8388608       # 8MB / 单文件
+    max_total_bytes: 33554432         # 32MB / 总量
+
+  input:
+    max_files: 200
+    max_file_bytes: 1048576           # 1MB / 单文件
+    max_total_bytes: 2097152          # 2MB / 代码包总量
+
+  # 出口代理白名单（§7 硬规则 6）：默认关闭 = 完全禁网。
+  # 开启条件：network 必须是 internal 网络（只有代理 sidecar 可达），
+  # proxy_url 指向代理；非白名单主机在进容器前拒绝并记录代码来源/hash。
+  egress:
+    enabled: false
+    network: agent-sandbox-egress
+    proxy_url: ""
+    allowed_hosts: []
