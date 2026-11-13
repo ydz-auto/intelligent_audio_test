@@ -637,6 +637,16 @@ class SqlToolCallRepository(_BaseRepo, ToolCallRepository):
         finally:
             db.close()
 
+    def list_by_run(self, run_id: str) -> List[AgentToolCall]:
+        db = self._session()
+        try:
+            rows = db.query(AgentToolCallPO).filter(
+                AgentToolCallPO.run_id == run_id
+            ).order_by(AgentToolCallPO.created_at.asc()).all()
+            return [_to_tool_call(r) for r in rows]
+        finally:
+            db.close()
+
     def list_running(self, run_id: str) -> List[AgentToolCall]:
         db = self._session()
         try:

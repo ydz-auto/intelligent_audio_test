@@ -227,6 +227,20 @@ def list_skills(request: Request,
             ).model_dump()
             for skill in visible
         ],
+        # 装载摘要（INT-2506）：装载总数与目录级 / 校验问题码，供看板与审计
+        # 判断「Skill 层是否整体消失」，避免错挂载时接口仍然 200 全绿。
+        'skills_count': len(registry.skills),
+        'issues': [
+            {
+                'code': issue.code.value,
+                'severity': issue.severity.value,
+                'skill': issue.skill,
+                'path': issue.path,
+                'message': issue.message,
+            }
+            for issue in registry.issues
+        ],
+        'issues_count': len(registry.issues),
         'tools': tools,
         'tools_count': len(tools),
         'l1_tokens': registry.l1_tokens(identity.permissions),

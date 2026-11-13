@@ -16,6 +16,7 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 import pytest
 from fastapi.testclient import TestClient
 
+import agent_service.app as agent_app
 from agent_service.app import create_app
 from agent_service.application.run_worker import InlineRunExecutor
 from agent_service.infrastructure.wakeup import LocalRunWakeup
@@ -142,6 +143,66 @@ def test_low_permission_user_does_not_see_restricted_skill(tmp_path,
         names = [i['name'] for i in admin.json()['items']]
         assert 'restricted-demo' in names and 'platform-reference' in names
         assert low.json()['l1_tokens'] < admin.json()['l1_tokens']
+
+
+def test_skills_endpoint_exposes_load_summary(tmp_path, skills_root):
+    """INT-2506：/skills 带装载总数与问题摘要，正常态问题数为 0。"""
+    stack = _stack(tmp_path, skills_root)
+    with stack.client as client:
+        body = client.get('/api/v1/agent/skills', headers=OWNER).json()
+        assert body['skills_count'] >= 2
+        assert body['issues_count'] == 0
+        assert body['issues'] == []
+        assert body['l1_tokens'] > 0
+
+
+def test_skills_endpoint_surfaces_directory_level_issue(tmp_path):
+    """INT-2506：skills 根目录不存在时 /skills 能看出原因码，而不是 200 全绿。"""
+    stack = _stack(tmp_path, tmp_path / 'missing-skills')
+    with stack.client as client:
+        body = client.get('/api/v1/agent/skills', headers=OWNER).json()
+        assert body['items'] == []
+        assert body['skills_count'] == 0
+        assert body['issues_count'] == 1
+        issue = body['issues'][0]
+        assert issue['code'] == 'SKILLS_ROOT_MISSING'
+        assert issue['severity'] == 'ERROR'
+        assert issue['skill'] == '' and issue['path']
+
+
+def test_health_reports_skill_load_summary(tmp_path, skills_root, monkeypatch):
+    """INT-2506：/health 能看到装载了几个 Skill、几个问题、问题码。
+
+    INT-2456 起 /health 改为真实探测 DB / Redis（DB 不可用 → 503 +
+    status=error）。本用例栈用 ``make_engine`` 建临时 sqlite，
+    ``shared.models.database.get_engine()`` 未初始化，真实探测必然失败；
+    这里按合并后的契约把两个探测桩为可用，断言 HTTP 状态与
+    ``checks.database`` 结论一致，再核对装载摘要。
+    """
+    monkeypatch.setattr(agent_app, '_probe_database', lambda: (True, ''))
+    monkeypatch.setattr(agent_app, '_probe_redis', lambda: (True, ''))
+    stack = _stack(tmp_path, skills_root)
+    with stack.client as client:
+        resp = client.get('/health')
+        assert resp.status_code == 200
+        health = resp.json()
+        assert health['status'] == 'ok'
+        assert health['checks']['database']['status'] == 'ok'
+        assert health['skills']['loaded'] >= 2
+        assert health['skills']['issues'] == 0
+        assert health['skills']['issue_codes'] == []
+
+
+def test_health_surfaces_missing_skills_root(tmp_path):
+    """INT-2506：错挂载到不存在的目录时 /health 不再与正常态无差别。"""
+    work = tmp_path / 'degraded'
+    work.mkdir()
+    stack = _stack(work, tmp_path / 'missing-skills')
+    with stack.client as client:
+        health = client.get('/health').json()
+        assert health['skills']['loaded'] == 0
+        assert health['skills']['issues'] == 1
+        assert health['skills']['issue_codes'] == ['SKILLS_ROOT_MISSING']
 
 
 # ---------------------------------------------------------------- activation
