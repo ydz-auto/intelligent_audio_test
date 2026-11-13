@@ -2,11 +2,13 @@
 """只读 ToolGateway（INT-2453，方案 §6.1 / §6.3）。
 
 意图工具（31 个注册项；M0 启用 4 个，M1 各域卡按域追加只读工具——
-当前含 ``algorithm_query``）→ 目标 REST；逐调用校验：
+当前含 ``audio_query`` / ``evaluation_query`` / ``algorithm_query`` /
+``device_query``）→ 目标 REST；逐调用校验：
 
 1. 用户 / 租户：身份来自网关注入，回源请求带同一 Authorization；
 2. 权限：intent 工具声明 permissions（OR 语义，``*`` 通配），不满足返回
    模型可读的普通拒绝文本，不抛内部异常、不泄漏资源是否存在；
+   ``device_query`` 跨 device / spl / digital_spl 三域，按 ``action`` 收窄；
 3. 参数 Schema：必填 / 类型 / 枚举先校验，目标端点仍做 pydantic 二次校验；
 4. 实时状态：目标 REST 的 403/404 统一收敛为「无权访问 / 资源不存在或无权访问」；
 5. 预留工具（ui_tree / memory_* 等）返回 ``TOOL_NOT_ENABLED``；
@@ -90,7 +92,9 @@ class SharedToolGateway(ToolGateway):
         name = call.name
         arguments: Dict[str, Any] = call.arguments or {}
         descriptor = self._bridge.describe(name)
-        required = self._bridge.permissions_of(name)
+        # 按调用参数解析权限：横跨多个权限域的工具（device_query）按 action
+        # 收窄，其余工具等价于工具级声明；未知工具返回 None。
+        required = self._bridge.permissions_for(name, arguments)
         if required is None:
             return self._fail(call, UNKNOWN_TOOL, f'工具不存在：{name}')
 

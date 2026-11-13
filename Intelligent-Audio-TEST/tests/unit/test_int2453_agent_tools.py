@@ -89,11 +89,12 @@ def test_intent_registry_has_31_unique_tools():
     names = [t.name for t in INTENT_TOOLS]
     assert len(names) == len(set(names))
     # M0 四项常驻 + M1 各域卡按域追加
-    # （INT-2458 audio_query / INT-2462 evaluation_query / INT-2464 algorithm_query）
+    # （INT-2458 audio_query / INT-2462 evaluation_query / INT-2464 algorithm_query
+    #   / INT-2459 device_query，含 SPL 只读子集）
     # 精确等值：新增启用工具必须在本卡同步更新该集合，避免无意多启用。
     assert ENABLED_TOOLS == {'platform_contract', 'tool_search', 'task_query',
                              'report_query', 'audio_query', 'evaluation_query',
-                             'algorithm_query'}
+                             'algorithm_query', 'device_query'}
 
 
 def test_reserved_tool_names_present_and_disabled():

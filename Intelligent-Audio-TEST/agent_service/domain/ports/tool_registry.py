@@ -42,6 +42,17 @@ class ToolRegistryPort(ABC):
     def permissions_of(self, name: str) -> Optional[Tuple[str, ...]]:
         """工具所需权限（OR 语义）；未知工具返回 None。"""
 
+    def permissions_for(self, name: str,
+                        arguments: Optional[Dict[str, Any]] = None
+                        ) -> Optional[Tuple[str, ...]]:
+        """按调用参数解析所需权限（默认回落到工具级声明）。
+
+        横跨多个权限域的工具（如 ``device_query`` 覆盖 device / spl /
+        digital_spl）按 ``action`` 收窄授权，避免「持有 A 域读权限即可读 B 域」。
+        未知工具返回 None。
+        """
+        return self.permissions_of(name)
+
     @abstractmethod
     def risk_of(self, name: str) -> Optional[ToolRisk]:
         """工具风险；未知工具返回 None。"""
