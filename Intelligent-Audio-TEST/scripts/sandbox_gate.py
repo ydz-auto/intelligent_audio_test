@@ -44,6 +44,7 @@ T1_TESTS = [
 T2_TESTS = [
     'test_t2_contract.py',
     'test_t2_escape.py',
+    'test_t2_boundary_p1.py',
 ]
 
 
@@ -74,8 +75,15 @@ def _preflight_image(image: str, pull: bool) -> tuple[bool, str]:
 
 
 def _preflight_runsc() -> tuple[bool, str]:
-    """T2 预检：docker runtime 列表必须有 runsc（gVisor）。"""
-    info = _run(['docker', 'info', '--format', '{{json .Runtimes}}'], timeout=120)
+    """T2 预检：docker runtime 列表必须有 runsc（gVisor）。
+
+    本机已知问题：``docker info`` 偶发分钟级卡顿；超时按预检失败处理（退出码 2），
+    不让门禁抛异常——预检失败与「无 runsc」同样是 exit 2，日志给出具体原因。
+    """
+    try:
+        info = _run(['docker', 'info', '--format', '{{json .Runtimes}}'], timeout=120)
+    except subprocess.TimeoutExpired:
+        return False, 'docker info 超时（本机偶发卡顿，已知环境问题）：无法确认 runsc'
     if info.returncode != 0:
         return False, f'docker info 失败：{info.stderr.strip()[:300]}'
     try:

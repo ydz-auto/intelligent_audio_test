@@ -705,7 +705,11 @@ class SandboxRunner:
     ) -> None:
         self._executor = executor
         self._artifact_policy = artifact_policy or SandboxArtifactPolicy.from_env()
-        self._work_root = Path(work_root) if work_root is not None else None
+        # 一次性输入/产物目录必须建在 runner 的允许根下（AGENT_SANDBOX_WORK_ROOT，
+        # 与 runner 侧同一配置项）；未配置时用系统临时目录（runner 的缺省根）。
+        self._work_root = (
+            Path(work_root) if work_root is not None else self._configured_work_root()
+        )
         self._untrusted_executor = untrusted_executor
         self._t2_options = t2_options or T2RunnerOptions()
         self._artifact_repository = artifact_repository
@@ -714,6 +718,24 @@ class SandboxRunner:
         # 无法证明 runsc/firecracker 可用，按 fail-closed 报 T2_RUNTIME_UNAVAILABLE。
         # 装配点见 infrastructure/sandbox/t2_runtime.py:probe_t2_runtime。
         self._t2_runtime_probe = t2_runtime_probe
+
+    @staticmethod
+    def _configured_work_root() -> Path | None:
+        """应用侧一次性目录根：取 ``AGENT_SANDBOX_WORK_ROOT`` 的第一个允许根。
+
+        与 runner 侧同一配置项（runner 按全部根复核），保证这里建出来的目录
+        一定在 runner 允许根内；未配置时返回 None（系统临时目录，runner 缺省根）。
+        """
+        raw = (os.environ.get('AGENT_SANDBOX_WORK_ROOT') or '').strip()
+        first = raw.split(',')[0].strip() if raw else ''
+        if not first:
+            return None
+        path = Path(first)
+        if not path.is_absolute():
+            raise SandboxConfigurationError(
+                f'AGENT_SANDBOX_WORK_ROOT 必须是绝对路径：{first!r}'
+            )
+        return path
 
     # ── 公开入口 ────────────────────────────────────────────────
     def run_by_tier(self, request) -> SandboxResult:
@@ -1191,6 +1213,14 @@ class SandboxRunner:
                 detail=f'超时终止（{timeout_seconds}s）',
                 **base,
             )
+        if execution.work_limit_exceeded:
+            # 与 T1 同口径：运行中 /work 超容量即终止，判资源超限而非普通失败。
+            return T2PhaseResult(
+                outcome=SandboxOutcome.BUDGET_EXCEEDED,
+                reason=SandboxFailureReason.RESOURCE_LIMIT_EXCEEDED,
+                detail='执行中 /work 写入超过容量上限，容器被终止',
+                **base,
+            )
         if execution.output_truncated:
             return T2PhaseResult(
                 outcome=SandboxOutcome.BUDGET_EXCEEDED,
@@ -1203,6 +1233,15 @@ class SandboxRunner:
                 outcome=SandboxOutcome.BUDGET_EXCEEDED,
                 reason=SandboxFailureReason.MEMORY_LIMIT_EXCEEDED,
                 detail=f'内存超限终止（{limits.memory}）',
+                **base,
+            )
+        if execution.exit_code == SANDBOX_TIMEOUT_EXIT_CODE:
+            # 容器内 ``timeout`` 自限到点（runner 计时器已消失时的兜底）：
+            # 这是超时，不是阶段代码失败，必须判 BUDGET_EXCEEDED。
+            return T2PhaseResult(
+                outcome=SandboxOutcome.BUDGET_EXCEEDED,
+                reason=SandboxFailureReason.TIMEOUT,
+                detail=f'容器内 timeout 自限终止（{timeout_seconds}s）',
                 **base,
             )
         if execution.exit_code == 137:

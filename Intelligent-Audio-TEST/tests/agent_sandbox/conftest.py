@@ -26,6 +26,10 @@ from agent_service.application.sandbox_runner import (
     T2RunnerOptions,
     T2SandboxRequest,
 )
+from agent_service.infrastructure.sandbox.docker_runner import (
+    WORK_ROOT_ENV,
+    parse_work_roots,
+)
 from agent_service.infrastructure.sandbox.policy import T2Policy, load_t2_policy
 from agent_service.infrastructure.sandbox.t2_runner import probe_t2_runtime
 from tests.agent_sandbox._sandbox_support import (
@@ -62,8 +66,14 @@ def pytest_configure(config: pytest.Config) -> None:
 
 @pytest.fixture(autouse=True)
 def sandbox_skills_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """runner 的 Skill 根目录白名单限定在本用例的 tmp_path 下（P2-2）。"""
+    """Runner 允许根限定在本用例的 tmp_path 下。
+
+    - ``AGENT_SKILLS_ROOT``：T1 Skill 挂载白名单（P2-2）；
+    - ``AGENT_SANDBOX_WORK_ROOT``：T1 ``work_dir`` / T2 ``input_root``、``work_dir``
+      的宿主目录允许根（INT-2518 P1-4）——测试一律用 tmp 目录，不用宿主真实目录。
+    """
     monkeypatch.setenv('AGENT_SKILLS_ROOT', str(tmp_path))
+    monkeypatch.setenv('AGENT_SANDBOX_WORK_ROOT', str(tmp_path))
     return tmp_path
 
 
@@ -90,8 +100,13 @@ def docker_available() -> str:
 
 
 def _t2_policy(**overrides) -> T2Policy:
-    """T2 测试策略：yaml 默认值（不读宿主 AGENT_SANDBOX_T2_*）+ 用例覆盖。"""
+    """T2 测试策略：yaml 默认值（不读宿主 AGENT_SANDBOX_T2_*）+ 用例覆盖。
+
+    允许根例外：跟随 ``AGENT_SANDBOX_WORK_ROOT``（autouse 夹具指到 tmp_path），
+    这样用例的 input/work 目录与 runner 允许根一致，而不是依赖宿主临时目录。
+    """
     base = load_t2_policy(environ={})
+    overrides.setdefault('work_roots', parse_work_roots(os.environ.get(WORK_ROOT_ENV)))
     return replace(base, **overrides)
 
 

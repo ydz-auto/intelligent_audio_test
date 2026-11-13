@@ -194,5 +194,5 @@ def test_default_root_still_enforces_skill_whitelist(
         work_dir=str(work),
         script_relative_path='scripts/main.py',
     )
-    with pytest.raises(SandboxConfigurationError, match='Skills 根目录'):
+    with pytest.raises(SandboxConfigurationError, match='skill_root'):
         validate_invocation(invocation, policy)
