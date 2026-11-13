@@ -50,7 +50,7 @@ python -m pytest tests/agent_sandbox -q
 | `AGENT_SANDBOX_MAX_TOTAL_ARTIFACT_BYTES` | `33554432` | 产物总量上限 |
 | `AGENT_SANDBOX_ALLOWED_IMAGES` | = `AGENT_SANDBOX_IMAGE` | runner 允许的镜像集合（逗号分隔）；payload 超出即 400 |
 | `AGENT_SANDBOX_ALLOWED_INTERPRETERS` | = `AGENT_SANDBOX_INTERPRETER` | runner 允许的解释器集合 |
-| `AGENT_SKILLS_ROOT` | agent_service `Config.SKILLS_ROOT` | 允许只读挂进容器的 Skill 根目录；根外 `skill_root` 一律 400 |
+| `AGENT_SKILLS_ROOT` | `<项目根>/skills` | 允许只读挂进容器的 Skill 根目录；根外 `skill_root` 一律 400。缺省按 runner 自身位置本地计算（与 `Config.SKILLS_ROOT` 同源，不 import 业务配置）；给了相对路径等无法确定的值即配置错误，fail closed |
 | `AGENT_SANDBOX_WORK_LIMIT_BYTES` | `33554432` | 运行中 `/work` 容量巡检上限，超限 terminate 并按资源超限收口 |
 | `AGENT_SANDBOX_CONTAINER_KILL_GRACE_SECONDS` | `5` | 容器内 `timeout --kill-after` 宽限 |
 | `AGENT_SANDBOX_ORPHAN_GRACE_SECONDS` | `30` | 孤儿容器回收阈值 = `timeout` + 本宽限 |

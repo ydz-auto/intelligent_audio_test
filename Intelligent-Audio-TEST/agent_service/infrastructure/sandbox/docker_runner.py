@@ -87,6 +87,13 @@ DEFAULT_REAPER_INTERVAL_SECONDS = 30
 #: runner HTTP 响应读取上限（防止返回体撑爆 agent_service 内存）。
 DEFAULT_RUNNER_RESPONSE_LIMIT_BYTES = 8 * 1024 * 1024
 
+#: 默认 Skill 根目录 = ``<项目根>/skills``，与 ``agent_service.config.Config.SKILLS_ROOT``
+#: 同源。这里按本文件位置本地计算，**禁止 import ``agent_service.config``**：
+#: ``shared`` 的 ``BaseConfig`` 在类定义期就要求 ``DATABASE_URL`` / ``OSS_*``，而独立
+#: runner 是只带沙箱 env 的 sidecar，导入业务配置会让裸 runner 启动即崩（INT-2494）。
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_SKILLS_ROOT = str(_PROJECT_ROOT / 'skills')
+
 _MEMORY_UNITS = {
     '': 1, 'b': 1,
     'k': 1024, 'kb': 1024, 'kib': 1024,
@@ -114,11 +121,19 @@ class SandboxPolicy:
     limits: ContainerLimits
     allowed_images: frozenset[str]
     allowed_interpreters: frozenset[str]
-    skills_root: str | None = None
+    skills_root: str = DEFAULT_SKILLS_ROOT
     work_limit_bytes: int = DEFAULT_WORK_LIMIT_BYTES
     container_kill_grace_seconds: int = DEFAULT_CONTAINER_KILL_GRACE_SECONDS
     orphan_grace_seconds: int = DEFAULT_ORPHAN_GRACE_SECONDS
     reaper_interval_seconds: int = DEFAULT_REAPER_INTERVAL_SECONDS
+
+    def __post_init__(self) -> None:
+        # fail closed：允许根确定不了就不放行，绝不能退化成「不校验 skill_root」。
+        root = str(self.skills_root or '').strip()
+        if not root or not Path(root).is_absolute():
+            raise SandboxConfigurationError(
+                f'沙箱 Skill 根目录未配置或不是绝对路径：{self.skills_root!r}'
+            )
 
     @classmethod
     def from_env(cls) -> 'SandboxPolicy':
@@ -155,17 +170,24 @@ def _split_csv(raw: str | None) -> set[str]:
     return {item.strip() for item in (raw or '').split(',') if item.strip()}
 
 
-def _configured_skills_root() -> str | None:
-    """允许被只读挂进容器的 Skill 根目录；未配置时回落到 agent_service 配置。"""
-    raw = (os.environ.get('AGENT_SKILLS_ROOT') or '').strip()
-    if raw:
-        return raw
-    try:
-        from agent_service.config.config import Config
+def _configured_skills_root() -> str:
+    """允许被只读挂进容器的 Skill 根目录（fail closed，绝不返回 None）。
 
-        return str(Config.SKILLS_ROOT)
-    except (ImportError, AttributeError):  # pragma: no cover - 配置缺失时不做放宽
-        return None
+    未配置 ``AGENT_SKILLS_ROOT`` 时用本地可计算的默认 ``<项目根>/skills``，与
+    ``agent_service.config.Config.SKILLS_ROOT`` 同源，但**不 import 业务配置**
+    （独立 runner 不需要 DB / OSS 凭据也应能启动）。环境变量给了相对路径等无法
+    确定的值时抛 ``SandboxConfigurationError``，让 runner 明确启动失败，而不是
+    跳过白名单校验。
+    """
+    raw = (os.environ.get('AGENT_SKILLS_ROOT') or '').strip()
+    if not raw:
+        return DEFAULT_SKILLS_ROOT
+    path = Path(raw)
+    if not path.is_absolute():
+        raise SandboxConfigurationError(
+            f'AGENT_SKILLS_ROOT 必须是绝对路径：{raw!r}'
+        )
+    return str(path.resolve())
 
 
 def parse_memory_bytes(text: str) -> int:
@@ -343,12 +365,13 @@ def validate_invocation(
 
     if policy is None:
         return
-    if policy.skills_root:
-        allowed_root = Path(policy.skills_root).resolve()
-        if skill_root != allowed_root and allowed_root not in skill_root.parents:
-            raise SandboxConfigurationError(
-                f'skill_root 必须在允许的 Skills 根目录 {allowed_root} 下：{skill_root}'
-            )
+    # P2-2：允许根由 SandboxPolicy 保证非空（构造期 fail closed），这里无条件校验，
+    # 不存在「根目录解析不出来就跳过白名单」的放宽分支。
+    allowed_root = Path(policy.skills_root).resolve()
+    if skill_root != allowed_root and allowed_root not in skill_root.parents:
+        raise SandboxConfigurationError(
+            f'skill_root 必须在允许的 Skills 根目录 {allowed_root} 下：{skill_root}'
+        )
     validate_limits_within(policy.limits, invocation.limits)
 
 
@@ -537,7 +560,9 @@ class HostCliDockerExecutor(SandboxExecutor):
         except SandboxConfigurationError as exc:
             return ContainerExecution(exit_code=-1, error=str(exc))
 
-        output = _BoundedOutput(self._limits.output_limit_bytes)
+        # 单一口径：payload 限额已按 runner 配置复核（只允许更严格），此处直接取
+        # invocation 的生效值，避免「更严格的请求被静默放宽回 runner 默认」。
+        output = _BoundedOutput(invocation.limits.output_limit_bytes)
         limit_reached = threading.Event()
         work_limit_exceeded = threading.Event()
         logger.info(
@@ -546,7 +571,7 @@ class HostCliDockerExecutor(SandboxExecutor):
             invocation.name, invocation.limits.image, invocation.limits.container_user,
             invocation.limits.memory, invocation.limits.cpus, invocation.limits.pids_limit,
             invocation.limits.tmpfs_size, invocation.limits.timeout_seconds,
-            self._limits.output_limit_bytes, self._policy.work_limit_bytes,
+            invocation.limits.output_limit_bytes, self._policy.work_limit_bytes,
         )
 
         def _mark_limit() -> None:
@@ -582,7 +607,7 @@ class HostCliDockerExecutor(SandboxExecutor):
         state: dict | None = None
         # P1-1：Popen 之后的任何路径（含异常）都必须在 finally 里回收容器。
         try:
-            deadline = time.monotonic() + self._limits.timeout_seconds
+            deadline = time.monotonic() + invocation.limits.timeout_seconds
             next_work_check = time.monotonic() + WORK_DIR_CHECK_INTERVAL_SECONDS
             while process.poll() is None:
                 if limit_reached.is_set():
