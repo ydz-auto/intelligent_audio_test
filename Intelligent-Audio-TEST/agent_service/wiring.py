@@ -6,6 +6,7 @@
 """
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Optional
 
 from agent_service.application.cancel_registry import CancelRegistry
@@ -19,6 +20,12 @@ from agent_service.application.run_orchestrator import (
 from agent_service.application.run_service import RunService
 from agent_service.application.run_worker import (
     RunExecutor, ThreadPoolRunExecutor,
+)
+from agent_service.application.sandbox_dispatch import (
+    SandboxScriptDispatcher, SandboxToolExecutor, SkillScripts,
+)
+from agent_service.application.sandbox_runner import (
+    SandboxArtifactPolicy, SandboxConfigurationError, SandboxRunner,
 )
 from agent_service.application.skill_registry import SkillRegistry
 from agent_service.application.tool_gateway import SharedToolGateway
@@ -43,6 +50,9 @@ from agent_service.infrastructure.persistence.repositories import (
 from agent_service.infrastructure.skill.fs_skill_repository import (
     FsSkillRepository,
 )
+from agent_service.infrastructure.sandbox.docker_runner import (
+    DockerRunnerConfig, DockerRunnerMode, SandboxPolicy, build_sandbox_executor,
+)
 from agent_service.infrastructure.tools.registry_bridge import (
     RestToolClient, RunCredentialRegistry, SharedToolRegistryBridge,
 )
@@ -65,6 +75,7 @@ class AgentContainer:
     provider_registry: LlmProviderResolver = None
     tool_gateway: ToolGateway = None
     credentials: RunCredentialRegistry = None
+    sandbox: SandboxToolExecutor = None
     repositories: dict = field(default_factory=dict)
 
     def shutdown(self) -> None:
@@ -125,6 +136,66 @@ def build_skill_registry(tool_gateway: ToolGateway,
     return registry.load()
 
 
+def _skill_script_locator(skills: Optional[SkillRegistry]):
+    """Skill 名 → 已登记的 ``scripts/`` 清单（T1 只执行登记过的脚本）。"""
+
+    def locate(name: str) -> Optional[SkillScripts]:
+        skill = skills.get(name) if skills is not None else None
+        if skill is None:
+            return None
+        return SkillScripts(skill_name=skill.name, root=Path(skill.path),
+                            scripts=tuple(skill.scripts))
+
+    return locate
+
+
+def build_sandbox_tool_executor(
+        skills: Optional[SkillRegistry] = None,
+        *, runner: Optional[SandboxRunner] = None,
+        output_summary_chars: Optional[int] = None,
+        max_result_chars: Optional[int] = None) -> SandboxScriptDispatcher:
+    """按配置装配 T1 沙箱执行链（INT-2495）。
+
+    - ``runner_http``（生产默认）：只向 runner/sidecar 发 HTTP；``host_cli``
+      供开发机 / 宿主 runner 进程内执行。执行器由 ``AGENT_SANDBOX_*`` 配置。
+    - 配置不完整（例如还没部署 runner）**不阻断 agent_service 启动**：T1 调用
+      按 ``RUNNER_ERROR`` 显式失败，绝不降级成 T0 静默执行。
+    """
+    options = dict(
+        output_summary_chars=(
+            Config.SANDBOX_OUTPUT_SUMMARY_CHARS
+            if output_summary_chars is None else output_summary_chars),
+        max_result_chars=(
+            Config.TOOL_RESULT_MAX_CHARS
+            if max_result_chars is None else max_result_chars),
+    )
+    locate = _skill_script_locator(skills)
+    if runner is not None:
+        return SandboxScriptDispatcher(runner, locate, **options)
+    try:
+        policy = SandboxPolicy.from_env()
+        config = DockerRunnerConfig(
+            mode=DockerRunnerMode(Config.SANDBOX_EXECUTOR_MODE),
+            docker_binary=Config.SANDBOX_DOCKER_BIN,
+            runner_url=Config.SANDBOX_RUNNER_URL.rstrip('/'),
+            runner_token=Config.SANDBOX_RUNNER_TOKEN,
+            limits=policy.limits,
+            policy=policy,
+        )
+        sandbox_runner = SandboxRunner(
+            build_sandbox_executor(config),
+            SandboxArtifactPolicy.from_env(),
+            work_root=Path(Config.SANDBOX_WORK_ROOT) if Config.SANDBOX_WORK_ROOT else None,
+        )
+    except (SandboxConfigurationError, ValueError) as exc:
+        logger.warning(
+            '沙箱执行器未就绪（T1 工具调用将按 RUNNER_ERROR 失败）：%s', exc)
+        return SandboxScriptDispatcher.unavailable(
+            configuration_error=str(exc), **options)
+    logger.info('沙箱执行器已装配：mode=%s', config.mode.value)
+    return SandboxScriptDispatcher(sandbox_runner, locate, **options)
+
+
 def build_container(session_factory,
                     provider_resolver: Optional[LlmProviderResolver] = None,
                     tool_gateway: Optional[ToolGateway] = None,
@@ -137,12 +208,13 @@ def build_container(session_factory,
                     credential_store: Optional[CredentialStore] = None,
                     window_resolver: Optional[ContextWindowResolver] = None,
                     provider_verifier: Optional[ProviderVerifier] = None,
+                    sandbox: Optional[SandboxToolExecutor] = None,
                     http_transport=None
                     ) -> AgentContainer:
     """组合根。``budget_defaults`` / ``terminal_grace_seconds`` /
     ``skill_registry`` / ``skills_root`` 与 ``provider_resolver`` /
     ``credential_store`` / ``window_resolver`` / ``provider_verifier`` /
-    ``http_transport`` 仅供测试注入替身；生产一律取 Config + 环境。"""
+    ``sandbox`` / ``http_transport`` 仅供测试注入替身；生产一律取 Config + 环境。"""
     budgets = budget_defaults or Config.budget_defaults()
     sessions = SqlSessionRepository(session_factory)
     runs = SqlRunRepository(session_factory)
@@ -177,6 +249,7 @@ def build_container(session_factory,
         credentials=tool_credentials,
     )
     skills = skill_registry or build_skill_registry(gateway, skills_root)
+    sandbox_executor = sandbox or build_sandbox_tool_executor(skills)
 
     assembler = ContextAssembler(
         events, runs, system_prompt=Config.SYSTEM_PROMPT,
@@ -205,6 +278,7 @@ def build_container(session_factory,
         provider_resolver=registry,
         tool_gateway=gateway, side_effects=side_effects, wakeup=wakeup,
         cancel_registry=cancel_registry, settings=settings,
+        sandbox=sandbox_executor,
     )
     run_service = RunService(
         sessions, runs, events, wakeup, cancel_registry,
@@ -236,6 +310,7 @@ def build_container(session_factory,
         skill_registry=skills,
         provider_service=provider_service, provider_registry=registry,
         tool_gateway=gateway, credentials=tool_credentials,
+        sandbox=sandbox_executor,
         repositories={
             'sessions': sessions, 'runs': runs, 'events': events,
             'steps': steps, 'tool_calls': tool_calls,
