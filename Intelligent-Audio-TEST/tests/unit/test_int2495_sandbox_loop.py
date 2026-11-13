@@ -455,6 +455,54 @@ def test_t0_tool_still_uses_tool_gateway(tmp_path):
     container.shutdown()
 
 
+class LongTailGateway(FakeToolGateway):
+    """模拟 tool_search 命中的长尾 MCP 工具：不在意图注册表，风险由网关推导。"""
+
+    def __init__(self, tools=None, long_tail=None):
+        super().__init__(tools=tools)
+        self._long_tail = dict(long_tail or {})
+
+    def risk_of(self, name):
+        return self._long_tail.get(name, super().risk_of(name))
+
+
+def test_long_tail_mcp_tool_without_descriptor_dispatches_t0(tmp_path):
+    """INT-2527：descriptor=None 的长尾工具按 T0 走 ToolGateway，不崩在 tier 分派。
+
+    INT-2500 允许 tool_search 动态发现的长尾 MCP 工具没有 descriptor；INT-2495
+    的 tier 分派曾无条件读 ``descriptor.sandbox_tier``，把这类调用崩成
+    RUNNER_ERROR。组合场景必须同时保住两侧：长尾工具走网关，T1 脚本走沙箱。
+    """
+    executor = FakeExecutor()
+    dispatcher = dispatcher_for(executor, tmp_path)
+    gateway = LongTailGateway(tools=[sandbox_tool()],
+                              long_tail={'task_list': ToolRisk.READ})
+    script = [tool_turn([
+        ToolCallRequest('c_long', 'task_list', {'page': 1}),
+        script_call(tool_call_id='c_script'),
+    ]), text_turn('完成')]
+    container, llm, gateway, _engine = build_loop(
+        tmp_path, dispatcher, tools=[sandbox_tool()],
+        script=script, gateway=gateway)
+
+    run = run_once(container)
+
+    stored = container.repositories['runs'].get(run.id)
+    assert stored.status is RunStatus.SUCCEEDED
+    # 长尾工具真的发到 ToolGateway（不再 AttributeError → RUNNER_ERROR）
+    assert [item[1] for item in gateway.executed] == ['task_list']
+    long_record = container.repositories['tool_calls'].find(run.id, 'c_long')
+    assert long_record.status is ToolCallStatus.COMPLETED
+    assert long_record.risk is ToolRisk.READ
+    # 同批 T1 脚本仍走沙箱，分派没有被削弱
+    assert len(executor.invocations) == 1
+    script_record = container.repositories['tool_calls'].find(
+        run.id, 'c_script')
+    assert script_record.status is ToolCallStatus.COMPLETED
+    assert finished_payload(container, run.id)['reason'] is None
+    container.shutdown()
+
+
 def test_sandbox_calls_count_against_tool_budget(tmp_path):
     from tests.unit.int2451_agent_fakes import server_budget
 

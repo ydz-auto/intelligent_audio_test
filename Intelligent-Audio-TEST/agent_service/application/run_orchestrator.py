@@ -748,7 +748,12 @@ class RunOrchestrator:
         sandbox_failure: Optional[SandboxFailure] = None
         # §7 硬规则 1：业务工具调用在沙箱外（ToolGateway），脚本在沙箱内；
         # 按 descriptor 的沙箱层级分派，T1 不经过 ToolGateway。
-        tier = _as_sandbox_tier(descriptor.sandbox_tier)
+        # descriptor 为 None 表示 tool_search 动态发现的长尾 MCP 工具，未编入
+        # Skill 装配表（INT-2500）：没有沙箱层级可依，按 T0_NONE 走 ToolGateway。
+        if descriptor is None:
+            tier = SandboxTier.T0_NONE
+        else:
+            tier = _as_sandbox_tier(descriptor.sandbox_tier)
         try:
             if tier is SandboxTier.T0_NONE:
                 result = self._tool_gateway.execute(call, context)
