@@ -35,7 +35,6 @@ import {
   type StudioDocumentDto,
   type StudioDocumentListDto,
   type StudioExportJobDto,
-  type StudioVersionDto,
   type StudioVersionListDto,
 } from '@/infrastructure/dto/report-studio.dto'
 
@@ -113,15 +112,18 @@ export async function updateStudioDocument(
   return toStudioDocument(dto)
 }
 
-/** 版本链（snake_case → camelCase 只在 DTO 层） */
+/**
+ * 版本链（snake_case → camelCase 只在 DTO 层）。
+ * 后端固定返回 `{items,total}`（report_service `list_versions`），不再兼容裸数组——
+ * 双口径会掩盖契约漂移。
+ */
 export async function listStudioDocumentVersions(
   docId: string
 ): Promise<StudioDocumentVersion[]> {
-  const data = await apiClient.get<StudioVersionListDto | StudioVersionDto[]>(
+  const data = await apiClient.get<StudioVersionListDto>(
     `/report-studio/documents/${encodeURIComponent(docId)}/versions`
   )
-  const items = Array.isArray(data) ? data : (data?.items ?? [])
-  return items.map(toStudioDocumentVersion)
+  return (data?.items ?? []).map(toStudioDocumentVersion)
 }
 
 /**

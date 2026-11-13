@@ -143,6 +143,17 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     : config.reportContextId && Number.isFinite(Number(config.reportContextId))
       ? Number(config.reportContextId)
       : null
+  /**
+   * 任务 → 报告解析态：解析中 / 接口失败要与「该任务没有报告」「未绑定上下文」
+   * 分开显示（404 = 该任务确实没有报告，由 fetchReportIdByTask 吞成 null）。
+   */
+  const isTaskResolvePending = isTaskContext && taskReportQuery.isLoading
+  const taskResolveError =
+    isTaskContext && taskReportQuery.isError
+      ? taskReportQuery.error instanceof Error
+        ? taskReportQuery.error.message
+        : '任务关联报告解析失败'
+      : null
 
   const selectedContextOption = contextOptions.find(
     (option) => option.id === config.reportContextId
@@ -315,7 +326,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
 
       {/* 会话区 + 报告工作模式双栏（§3.6：Agent 后端立项前整块不渲染） */}
       {REPORT_WORK_MODE_ENABLED && workModeOpen ? (
-        <div className='flex min-h-0 flex-1'>
+        <div className='relative flex min-h-0 flex-1'>
           <div className='grid min-h-0 min-w-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(22rem,2fr)_minmax(0,3fr)]'>
             <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
               <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
@@ -360,11 +371,18 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                 />
               </div>
             </div>
-            <div className='hidden min-h-0 min-w-0 lg:block'>
+            {/*
+             * lg 以下：文档面板改为覆盖式抽屉（右对齐，占宽 ≤34rem），宽屏才与会话并排。
+             * 原来 <lg 直接 hidden 右栏 → 「报告工作模式」在 <1024px 是死按钮（UX 审计 P2-1）。
+             */}
+            <div className='bg-background absolute inset-y-0 right-0 z-30 block w-full max-w-[34rem] min-h-0 min-w-0 shadow-xl lg:static lg:z-auto lg:w-auto lg:max-w-none lg:bg-transparent lg:shadow-none'>
               <DocumentPanel
                 agentSessionId={agentSessionId}
                 onClose={() => setWorkModeOpen(false)}
+                onRetryResolve={() => void taskReportQuery.refetch()}
                 reportId={boundReportId}
+                resolveError={taskResolveError}
+                resolvePending={isTaskResolvePending}
                 runId={agentRunId}
                 sourceId={config.reportContextId ?? null}
                 sourceKind={

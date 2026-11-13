@@ -16,13 +16,16 @@
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import traceback
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from selenium.webdriver.common.by import By  # noqa: E402
+from selenium.webdriver.common.keys import Keys  # noqa: E402
 from selenium.webdriver.support import expected_conditions as EC  # noqa: E402
 from selenium.webdriver.support.ui import WebDriverWait  # noqa: E402
 
@@ -97,20 +100,50 @@ def open_work_mode(drv, timeout=30):
     return bool(drv.find_elements(By.CSS_SELECTOR, "[data-testid='studio-document-panel']"))
 
 
+def ensure_work_mode(drv, timeout=30):
+    """已开着就不再点（按钮此时是「关闭文档预览」，再点会关掉面板）。"""
+    if drv.find_elements(By.CSS_SELECTOR, "[data-testid='studio-document-panel']"):
+        return True
+    return open_work_mode(drv, timeout)
+
+
 def close_dialog(drv, testid):
-    """关闭指定对话框（只点对话框内的「关闭」，避免误点页头「关闭文档预览」）"""
-    els = drv.find_elements(By.CSS_SELECTOR, "[data-testid='%s']" % testid)
+    """关闭指定对话框：先找「关闭」按钮，找不到（只有右上角 X）就发 ESC。
+
+    版本链弹窗没有文字「关闭」按钮，旧实现静默失败 → 后续窄屏截图上还压着弹窗。
+    """
+    sel = "[data-testid='%s']" % testid
+    els = drv.find_elements(By.CSS_SELECTOR, sel)
     if not els:
-        return False
+        return True
+    # 首选弹窗自带的关闭钮（DialogContent 的 X，文案在 sr-only 里，b.text 取不到）
+    for x in els[0].find_elements(By.CSS_SELECTOR, "[data-slot='dialog-close']"):
+        try:
+            drv.execute_script('arguments[0].click()', x)
+            if wait_for(drv, lambda: not drv.find_elements(By.CSS_SELECTOR, sel), 8, 0.2):
+                return True
+        except Exception:
+            continue
     for b in els[0].find_elements(By.TAG_NAME, 'button'):
-        if (b.text or '').strip() == '关闭':
-            drv.execute_script('arguments[0].click()', b)
-            return True
-    return False
+        try:
+            if (b.text or '').strip() == '关闭':
+                drv.execute_script('arguments[0].click()', b)
+                if wait_for(drv, lambda: not drv.find_elements(By.CSS_SELECTOR, sel), 8, 0.2):
+                    return True
+                break
+        except Exception:
+            continue
+    drv.find_element(By.TAG_NAME, 'body').send_keys(Keys.ESCAPE)
+    return bool(wait_for(
+        drv, lambda: not drv.find_elements(By.CSS_SELECTOR, sel), 8, 0.2))
 
 
-def cleanup_studio_rows(report_ids, title_like='%INT2473%'):
-    """删掉本 run 建的 Studio 测试行（Studio 无删除接口；只按 doc_id 精确删）。"""
+def cleanup_studio_rows(report_ids, title_like='%INT2473%', since=None):
+    """删掉本 run 建的 Studio 测试行（Studio 无删除接口；只按 doc_id 精确删）。
+
+    `since` = 本 run 开工时间（东八区 naive，与后端 utc8now 落库口径一致）：
+    只删本 run 之后建的行，避免把共享库里别人/历史 run 的文档一起清掉。
+    """
     import psycopg2
 
     conn = psycopg2.connect(
@@ -123,10 +156,13 @@ def cleanup_studio_rows(report_ids, title_like='%INT2473%'):
     )
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                'select doc_id from report_studio_documents '
-                'where report_id = any(%s) or title like %s',
-                (list(report_ids), title_like))
+            sql = ('select doc_id from report_studio_documents '
+                   'where (report_id = any(%s) or title like %s)')
+            params = [list(report_ids), title_like]
+            if since is not None:
+                sql += ' and created_at >= %s'
+                params.append(since)
+            cur.execute(sql, tuple(params))
             ids = [row[0] for row in cur.fetchall()]
             if ids:
                 for table in ('report_studio_export_jobs',
@@ -225,7 +261,13 @@ def main():
     ap.add_argument('--password', default='dev_password')
     ap.add_argument('--report-id', type=int, default=426)
     ap.add_argument('--empty-report-id', type=int, default=425)
+    # 任务上下文两例：451 = 已完成任务但无报告（by_task 404）；460 = 已完成任务且有报告 426
+    ap.add_argument('--task-without-report-id', type=int, default=451)
+    ap.add_argument('--task-with-report-id', type=int, default=460)
     args = ap.parse_args()
+
+    # 本 run 开工时间：清理只删这之后建的行（后端 created_at 用东八区 naive）
+    run_start = datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
 
     os.makedirs(ART, exist_ok=True)
     downloads = os.path.join(ART, 'downloads')
@@ -299,6 +341,20 @@ def main():
         step('document_loaded', doc_loaded, {'panel': panel[:300]})
         shot(drv, '04_document_light')
 
+        # 编辑前记录「当前版本号 + 正文渲染文本」：恢复后逐字比对，不依赖起草模板字面量
+        # （旧脚本断言出现「初始内容 v1」，而 V10.11.2 模板是「数据来源：报告 #N…」→ 干净库必挂）
+        base_version = 1
+        version_match = re.search(r'版本\s*(\d+)', panel)
+        if version_match:
+            base_version = int(version_match.group(1))
+        baseline_text = ''
+        content_els = drv.find_elements(By.CSS_SELECTOR, "[data-testid='studio-document-content']")
+        if content_els:
+            baseline_text = content_els[0].text.strip()
+        step('capture_baseline', bool(baseline_text), {
+            'version': base_version, 'content': baseline_text[:160],
+        })
+
         # 4. 编辑保存 = 新版本（真实 PUT，乐观锁）
         edit_btn = click_aria(drv, '编辑文档')
         if edit_btn is None:
@@ -347,8 +403,12 @@ def main():
         version_numbers = [v.get_attribute('data-version') for v in versions]
         step('version_list', len(versions) >= 2, {'versions': version_numbers})
         shot(drv, '06_version_list_light')
-        # 选最小版本（v1）恢复
-        target = sorted(versions, key=lambda v: int(v.get_attribute('data-version') or 0))[0]
+        # 恢复到编辑前的那个版本（干净库即 v1；有历史版本时也不会误恢复更早的快照）
+        target = next(
+            (v for v in versions if v.get_attribute('data-version') == str(base_version)),
+            None)
+        if target is None:
+            target = sorted(versions, key=lambda v: int(v.get_attribute('data-version') or 0))[0]
         restore_btn = target.find_element(By.CSS_SELECTOR, 'button')
         drv.execute_script('arguments[0].click()', restore_btn)
         wait_for(drv, lambda: not drv.find_elements(By.CSS_SELECTOR, "[data-testid='studio-version-list']"), 20)
@@ -357,9 +417,12 @@ def main():
         restored_text = ''
         content_els = drv.find_elements(By.CSS_SELECTOR, "[data-testid='studio-document-content']")
         if content_els:
-            restored_text = content_els[0].text
-        step('restore_v1', ('初始内容 v1' in restored_text) and (marker not in restored_text), {
+            restored_text = content_els[0].text.strip()
+        step('restore_baseline', (restored_text == baseline_text) and (marker not in restored_text), {
+            'restored_version': base_version,
+            'matches_baseline': restored_text == baseline_text,
             'content': restored_text[:160],
+            'baseline': baseline_text[:160],
         })
         shot(drv, '07_after_restore_light')
 
@@ -441,6 +504,34 @@ def main():
         else:
             step('dark_version_list', False, {'reason': 'history button missing'})
 
+        # 8a. 复位浅色（CDP emulated media 会话级生效，不复位后面 14/15/16 会被标成浅色实为深色）
+        drv.execute_cdp_cmd('Emulation.setEmulatedMedia', {
+            'features': [{'name': 'prefers-color-scheme', 'value': 'light'}]
+        })
+        time.sleep(1.0)
+
+        # 8b. 窄屏（<1024px）报告工作模式：文档面板以覆盖式抽屉呈现，不再是死按钮（UX 审计 P2-1）
+        close_dialog(drv, 'studio-version-list')
+        close_dialog(drv, 'studio-export-panel')
+        drv.set_window_size(900, 900)
+        time.sleep(1.2)
+        ensure_work_mode(drv, 15)
+        panels = drv.find_elements(By.CSS_SELECTOR, "[data-testid='studio-document-panel']")
+        visible = [p for p in panels if p.is_displayed()]
+        rect = visible[0].rect if visible else {}
+        dialogs_open = [
+            d for d in drv.find_elements(By.CSS_SELECTOR, "[data-slot='dialog-content']")
+            if d.is_displayed()]
+        in_viewport = bool(visible) and rect.get('width', 0) >= 320 and rect.get('x', -1) >= 0
+        step('work_mode_narrow_900', in_viewport and not dialogs_open, {
+            'panels': len(panels), 'visible': len(visible), 'rect': rect,
+            'dialogs_open': len(dialogs_open),
+            'panel': panel_text(drv)[:160],
+        })
+        shot(drv, '18_workmode_900w_light')
+        drv.set_window_size(1680, 1050)
+        time.sleep(1.0)
+
         # 9. 加载态：CDP 网络延迟下截取「正在加载」中间态（真实请求仍发往网关）
         drv.execute_cdp_cmd('Network.enable', {})
         drv.execute_cdp_cmd('Network.emulateNetworkConditions', {
@@ -506,6 +597,102 @@ def main():
         shot(drv, '15_error_state_light')
         drv.execute_cdp_cmd('Network.setBlockedURLs', {'urls': []})
 
+        # 10c. 任务上下文三态（UX 审计 P2-2）：
+        #   解析中 → 「正在解析任务关联报告…」（不闪「未绑定报告上下文」）；
+        #   解析完无报告（by_task 404）→ 「该任务暂无关联报告」；
+        #   解析出报告 → 面板载入该报告文档，来源卡「任务 #y → 报告 #x」。
+        drv.execute_cdp_cmd('Network.enable', {})
+        drv.execute_cdp_cmd('Network.emulateNetworkConditions', {
+            'offline': False, 'latency': 2500,
+            'downloadThroughput': -1, 'uploadThroughput': -1,
+            'connectionType': 'cellular3g',
+        })
+        drv.get('%s/ai-chat?task=%d' % (base, args.task_without_report_id))
+        time.sleep(2.0)
+        toggle = wait_for(drv, lambda: click_button(drv, contains='报告工作模式'), 40, 0.3)
+        if toggle is not None:
+            drv.execute_script('arguments[0].click()', toggle)
+            resolving = wait_for(
+                drv, lambda: '正在解析任务关联报告' in panel_text(drv), 15, 0.2)
+            step('task_context_resolving', bool(resolving), {
+                'panel': panel_text(drv)[:160]})
+            shot(drv, '21_task_resolving_light')
+        else:
+            step('task_context_resolving', False, {'reason': 'work-mode toggle missing'})
+        drv.execute_cdp_cmd('Network.emulateNetworkConditions', {
+            'offline': False, 'latency': 0,
+            'downloadThroughput': -1, 'uploadThroughput': -1,
+            'connectionType': 'none',
+        })
+        # 延迟复位后同一页面：by_task 404 落「该任务暂无关联报告」
+        no_report_ready = wait_for(
+            drv, lambda: '该任务暂无关联报告' in panel_text(drv), 30, 0.3)
+        panel_task_missing = panel_text(drv)
+        step('task_context_no_report',
+             bool(no_report_ready) and '未绑定报告上下文' not in panel_task_missing,
+             {'panel': panel_task_missing[:220]})
+        shot(drv, '19_task_no_report_light')
+
+        drv.get('%s/ai-chat?task=%d' % (base, args.task_with_report_id))
+        wait_quiet(drv, timeout=40)
+        time.sleep(1.0)
+        opened = ensure_work_mode(drv)
+        wait_for(drv, lambda: '取数来源' in panel_text(drv), 25, 0.3)
+        panel_task_with = panel_text(drv)
+        step('task_context_with_report',
+             opened and ('→ 报告 #%d' % args.report_id) in panel_task_with,
+             {'panel': panel_task_with[:260]})
+        shot(drv, '20_task_with_report_light')
+
+        # 10d. 同一报告多文档切换（UX 审计 P3-1）：用页面内登录态再建一份，
+        #      头部文档名变成切换器，可切回另一份（旧实现只显示最新一份、无法切换）
+        second_title = '接线测试_INT2473 第二份文档'
+        created = drv.execute_async_script(
+            """
+            const done = arguments[arguments.length - 1];
+            const body = arguments[0];
+            const token = window.localStorage.getItem('iatp:auth:token:v1');
+            fetch('/api/v1/report-studio/documents', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + (token || '')},
+              body: JSON.stringify(body)
+            }).then(async r => done({status: r.status, data: await r.json()}))
+              .catch(e => done({status: -1, error: String(e)}));
+            """,
+            {
+                'report_id': args.report_id,
+                'title': second_title,
+                'markdown_content': '# 第二份文档\n\n接线测试_INT2473 多文档切换\n',
+            })
+        SUMMARY['second_doc'] = created
+        step('multi_doc_created', created.get('status') in (200, 201), {
+            'status': created.get('status')})
+        drv.get('%s/ai-chat?report=%d' % (base, args.report_id))
+        wait_quiet(drv, timeout=40)
+        time.sleep(1.0)
+        ensure_work_mode(drv)
+        tabs = wait_for(
+            drv,
+            lambda: drv.find_elements(By.CSS_SELECTOR, "[data-testid='studio-doc-tab']"),
+            25, 0.3) or []
+        labels = [(tab.text or '').strip() for tab in tabs]
+        step('multi_doc_switcher', len(tabs) >= 2, {'tabs': labels})
+        shot(drv, '22_doc_switcher_light')
+        draft_tab = next((tab for tab in tabs if '草稿' in (tab.text or '')), None)
+        if draft_tab is not None:
+            # 这排页签在 overflow-x-auto 容器里，WebDriver 原生 click 实测不派发 click 事件；
+            # 统一走 JS 点击（本脚本其他按钮同理）
+            drv.execute_script('arguments[0].click()', draft_tab)
+            time.sleep(1.2)
+        title_el = drv.find_elements(By.CSS_SELECTOR, "[data-testid='studio-doc-title']")
+        title_text = title_el[0].text.strip() if title_el else ''
+        # 断言头部标题（页签行里仍会有两份文档的名字，不能拿整块面板文本比）
+        switched = ('草稿' in title_text) and (second_title not in title_text)
+        step('multi_doc_switch', bool(switched), {
+            'title': title_text, 'panel': panel_text(drv)[:200]})
+        shot(drv, '23_doc_switched_light')
+
         # 11. 真实请求记录（/api/v1）
         apis = parse_perf(drv.get_log('performance'))
         studio_reqs = [r for r in apis if '/api/v1/' in (r.get('url') or '')]
@@ -522,14 +709,23 @@ def main():
             'api_errors': errors[:10],
         })
         SUMMARY['console'] = console_errors(drv)
-        step('console_clean', not SUMMARY['console'], {'errors': SUMMARY['console'][:5]})
+        # 「该任务没有报告」是本轮要验的业务事实（by_task 404），浏览器必然记一条资源 SEVERE；
+        # 只排除这条预期内 404，其他 SEVERE 仍判失败。
+        expected_404 = '/reports/by_task/%d' % args.task_without_report_id
+        expected_hits = [c for c in SUMMARY['console'] if expected_404 in c]
+        unexpected_hits = [c for c in SUMMARY['console'] if expected_404 not in c]
+        step('console_clean', not unexpected_hits, {
+            'errors': unexpected_hits[:5],
+            'expected_404_ignored': len(expected_hits),
+        })
 
-        # 12. 清理本 run 建的 Studio 测试行（报告 425 起草件 + INT2473 测试文档）
+        # 12. 清理本 run 建的 Studio 测试行（报告 425 起草件 + 报告 426 编辑件，只删本 run 之后建的）
         try:
             removed = cleanup_studio_rows(
-                [args.empty_report_id], title_like='%INT2473%')
+                [args.empty_report_id, args.report_id],
+                title_like='%INT2473%', since=run_start)
             SUMMARY['cleanup_doc_ids'] = removed
-            step('cleanup', True, {'doc_ids': removed})
+            step('cleanup', True, {'doc_ids': removed, 'since': run_start.isoformat()})
         except Exception as exc:
             step('cleanup', False, {'error': str(exc)[:300]})
 

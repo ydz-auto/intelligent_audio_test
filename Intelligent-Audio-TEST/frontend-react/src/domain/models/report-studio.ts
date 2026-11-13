@@ -24,6 +24,15 @@ export const STUDIO_SOURCE_TYPE_LABEL: Record<StudioSourceTypeValue, string> = {
 export const STUDIO_UPLOAD_FORMATS = ['md', 'html', 'pptx'] as const
 export type StudioUploadFormat = (typeof STUDIO_UPLOAD_FORMATS)[number]
 
+/**
+ * 上传件里的二进制格式：源文件不是 markdown，不能当正文编辑（只能用源文件预览/下载）。
+ * 是 {@link STUDIO_UPLOAD_FORMATS} 的子集——md 上传件仍是可编辑正文。
+ */
+export const STUDIO_BINARY_SOURCE_FORMATS: readonly StudioUploadFormat[] = [
+  'html',
+  'pptx',
+]
+
 /** 上传大小上限默认值（后端 REPORT_STUDIO_UPLOAD_MAX_MB 默认 50，超限 413） */
 export const STUDIO_UPLOAD_MAX_MB = 50
 

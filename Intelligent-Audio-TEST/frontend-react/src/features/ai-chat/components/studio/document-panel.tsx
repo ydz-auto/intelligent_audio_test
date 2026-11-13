@@ -37,8 +37,12 @@ import {
   useStudioDocuments,
   useUpdateStudioDocument,
 } from '@/application/reports/use-report-studio'
-import { StudioSourceType } from '@/domain/models/report-studio'
+import {
+  STUDIO_BINARY_SOURCE_FORMATS,
+  StudioSourceType,
+} from '@/domain/models/report-studio'
 import { usePendingApprovals } from '@/features/ai-chat/hooks/use-pending-approvals'
+import { cn } from '@/lib/utils'
 
 import { ExportPanel } from './export-panel'
 import { VersionList } from './version-list'
@@ -50,6 +54,14 @@ type DocumentPanelProps = {
   sourceKind: 'report' | 'task' | null
   sourceId: string | null
   sourceLabel?: string
+  /**
+   * 任务上下文「任务 → 报告」解析中：此时 reportId 还是 null，必须显示解析中，
+   * 否则会把「解析中 / 该任务无报告」误报成「未绑定报告上下文」。
+   */
+  resolvePending?: boolean
+  /** 任务关联报告解析失败（非 404 的接口错误）；null 表示未失败 */
+  resolveError?: string | null
+  onRetryResolve?: () => void
   /** 当前平台 Agent 会话 id（AI 起草时随起草请求落库） */
   agentSessionId?: string | null
   /** 当前 run id（读待审批写操作数；空表示无在跑 run） */
@@ -72,6 +84,9 @@ export function DocumentPanel({
   sourceKind,
   sourceId,
   sourceLabel,
+  resolvePending = false,
+  resolveError = null,
+  onRetryResolve,
   agentSessionId,
   runId,
   onClose,
@@ -115,6 +130,11 @@ export function DocumentPanel({
 
   const createDraft = useCreateStudioDocument()
   const updateDoc = useUpdateStudioDocument()
+
+  // 上下文切换后回到该报告的最新文档（旧报告的文档 id 不再命中）
+  useEffect(() => {
+    setActiveDocId(null)
+  }, [reportId])
 
   // 上下文切换 / 文档被删后回到最新文档
   useEffect(() => {
@@ -175,19 +195,25 @@ export function DocumentPanel({
 
   const createError =
     createDraft.error instanceof Error ? createDraft.error.message : null
-  const isPlainFile = doc?.sourceFormat === 'html' || doc?.sourceFormat === 'pptx'
-  const canEditDoc = canEdit && doc !== null && !isPlainFile
+  const isBinarySource =
+    doc?.sourceFormat != null &&
+    (STUDIO_BINARY_SOURCE_FORMATS as readonly string[]).includes(doc.sourceFormat)
+  const canEditDoc = canEdit && doc !== null && !isBinarySource
+  const hasMultipleDocs = documents.length > 1
 
   return (
     <div
-      className='border-border/60 bg-background/60 dark:bg-background/40 flex min-h-0 flex-col border-l'
+      className='border-border/60 bg-background/60 dark:bg-background/40 flex h-full min-h-0 flex-col border-l'
       data-testid='studio-document-panel'
     >
       {/* 头行：文档名 + 版本 + 历史版本 / 导出 / 编辑 / 关闭 */}
       <div className='border-b px-4 py-2.5'>
         <div className='flex items-center gap-2'>
           <FileText className='text-muted-foreground size-4 shrink-0' />
-          <span className='min-w-0 truncate text-sm font-semibold'>
+          <span
+            className='min-w-0 truncate text-sm font-semibold'
+            data-testid='studio-doc-title'
+          >
             {doc?.title ?? sourceTitle}
           </span>
           {doc && (
@@ -245,15 +271,73 @@ export function DocumentPanel({
             </Button>
           </div>
         </div>
+        {/*
+         * 同一报告多份文档时给切换入口（UX 审计 P3-1）：旧实现只取排序后的最新一份，
+         * 其余文档在工作台里看不到。用一排页签而不是下拉：目标小、键盘可达、无需浮层。
+         */}
+        {hasMultipleDocs && (
+          <div
+            aria-label='报告文档'
+            className='mt-1.5 flex gap-1 overflow-x-auto pb-0.5'
+            role='tablist'
+          >
+            {documents.map((item) => {
+              const active = item.docId === activeSummary?.docId
+              return (
+                <button
+                  aria-selected={active}
+                  className={cn(
+                    'max-w-[14rem] shrink-0 cursor-pointer truncate rounded-md border px-2 py-1 text-[11px] transition-colors',
+                    active
+                      ? 'border-primary/40 bg-primary/10 text-foreground font-medium'
+                      : 'text-muted-foreground hover:bg-accent border-transparent'
+                  )}
+                  data-testid='studio-doc-tab'
+                  key={item.docId}
+                  onClick={() => setActiveDocId(item.docId)}
+                  role='tab'
+                  type='button'
+                >
+                  {item.title}
+                  <span className='ml-1 tabular-nums opacity-70'>
+                    v{item.currentVersion}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* 正文区：加载 / 错误 / 空 / 预览 / 编辑 */}
       <div className='min-h-0 flex-1 overflow-y-auto px-5 py-4'>
         {reportId === null ? (
-          <EmptyBlock
-            description='先在输入框左侧绑定报告上下文，再打开报告工作模式。'
-            title='未绑定报告上下文'
-          />
+          sourceKind === 'task' ? (
+            resolvePending ? (
+              <div data-testid='studio-task-resolving'>
+                <LoadingBlock label='正在解析任务关联报告…' />
+              </div>
+            ) : resolveError ? (
+              <div data-testid='studio-task-resolve-error'>
+                <ErrorBlock
+                  message='任务关联报告解析失败'
+                  onRetry={() => onRetryResolve?.()}
+                />
+              </div>
+            ) : (
+              <div data-testid='studio-task-no-report'>
+                <EmptyBlock
+                  description='请在输入框左侧改选报告上下文，或先在报告中心为该任务生成报告。'
+                  title='该任务暂无关联报告'
+                />
+              </div>
+            )
+          ) : (
+            <EmptyBlock
+              description='先在输入框左侧绑定报告上下文，再打开报告工作模式。'
+              title='未绑定报告上下文'
+            />
+          )
         ) : docsQuery.isLoading ? (
           <LoadingBlock label='正在加载报告文档…' />
         ) : docsQuery.isError ? (
@@ -452,7 +536,7 @@ function ApprovalStrip({
   if (!runId) {
     return (
       <div data-testid='studio-approval-status'>
-        审批：手动起草 / 编辑 / 导出按当前账号权限直写；Agent 代操作走审批卡。
+        审批：未在 Agent run 中——手动起草 / 编辑 / 导出按当前账号权限直写。
       </div>
     )
   }
