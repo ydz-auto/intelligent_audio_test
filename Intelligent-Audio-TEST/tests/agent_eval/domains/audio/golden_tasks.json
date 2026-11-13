@@ -1,0 +1,136 @@
+{
+  "domain": "audio",
+  "skill": "audio-import",
+  "version": 1,
+  "source": "INT-2458（M1 音频域只读）",
+  "description": "音频域 Skill 触发与工具选择的 golden tasks；由 m1-08 的统一评测器消费，本卡只提供数据与字段口径。",
+  "tasks": [
+    {
+      "id": "audio-01",
+      "prompt": "帮我看一下音频库里最近有哪些音频，按页给我列出来",
+      "expect_skill": true,
+      "expected_tool": "audio_query",
+      "expected_actions": ["list"],
+      "expected_params": {"page": 1},
+      "must_not_call": ["audio_import", "audio_annotate"],
+      "notes": "列表 + 分页；不得编造条数，以 total 为准"
+    },
+    {
+      "id": "audio-02",
+      "prompt": "音频 12345 的详细信息是什么？时长、采样率、格式、标签都要",
+      "expect_skill": true,
+      "expected_tool": "audio_query",
+      "expected_actions": ["detail"],
+      "expected_params": {"audio_id": 12345},
+      "must_not_call": ["audio_import", "audio_annotate"],
+      "notes": "单条详情；字段口径与 AudioItem 一致"
+    },
+    {
+      "id": "audio-03",
+      "prompt": "这个文件的 md5 是 0d6a1c6d9f2b7e4a8c3f5d1b2e9a7c40，库里是不是已经有同内容的音频了？",
+      "expect_skill": true,
+      "expected_tool": "audio_query",
+      "expected_actions": ["by_md5"],
+      "expected_params": {"md5_list": ["0d6a1c6d9f2b7e4a8c3f5d1b2e9a7c40"]},
+      "must_not_call": ["audio_import", "audio_annotate"],
+      "notes": "导入前查重；命中走秒传，by_md5 只回 id/name"
+    },
+    {
+      "id": "audio-04",
+      "prompt": "把 id 为 11、12、13 的这几个音频的元数据一起拉给我",
+      "expect_skill": true,
+      "expected_tool": "audio_query",
+      "expected_actions": ["by_ids"],
+      "expected_params": {"ids": [11, 12, 13]},
+      "must_not_call": ["audio_import", "audio_annotate"],
+      "notes": "批量回填；by_ids 是宿主语境通道"
+    },
+    {
+      "id": "audio-05",
+      "prompt": "音频库现在都有哪些标签？",
+      "expect_skill": true,
+      "expected_tool": "audio_query",
+      "expected_actions": ["tags"],
+      "must_not_call": ["audio_import", "audio_annotate"],
+      "notes": "标签名全量；无分页语义"
+    },
+    {
+      "id": "audio-06",
+      "prompt": "看一下音频的目录结构，先展开根目录一层",
+      "expect_skill": true,
+      "expected_tool": "audio_query",
+      "expected_actions": ["folder_tree"],
+      "expected_params": {"depth": 1},
+      "must_not_call": ["audio_import", "audio_annotate"],
+      "notes": "目录树；需 audio:folder 权限，权限不足返回普通拒绝文本"
+    },
+    {
+      "id": "audio-07",
+      "prompt": "分析一下音频 456 的频谱特征和基频范围",
+      "expect_skill": true,
+      "expected_tool": "audio_query",
+      "expected_actions": ["features"],
+      "expected_params": {"audio_id": 456},
+      "must_not_call": ["audio_import", "audio_annotate"],
+      "notes": "特征分析字段：spectral / energy / time_domain"
+    },
+    {
+      "id": "audio-08",
+      "prompt": "音频 456 的质量怎么样？信噪比和整体评分是多少",
+      "expect_skill": true,
+      "expected_tool": "audio_query",
+      "expected_actions": ["quality"],
+      "expected_params": {"audio_id": 456},
+      "must_not_call": ["audio_import", "audio_annotate"],
+      "notes": "质量字段：snr_db / dynamic_range_db / frequency_response_score / quality_score"
+    },
+    {
+      "id": "audio-09",
+      "prompt": "音频 456 都关联了哪些算法，主算法是哪个",
+      "expect_skill": true,
+      "expected_tool": "audio_query",
+      "expected_actions": ["algorithms"],
+      "expected_params": {"audio_id": 456},
+      "must_not_call": ["audio_import", "audio_annotate"],
+      "notes": "算法关系列表；is_primary 标主算法"
+    },
+    {
+      "id": "audio-10",
+      "prompt": "这个音频被哪些设备播过？给我最近的播放记录",
+      "expect_skill": true,
+      "expected_tool": "audio_query",
+      "expected_actions": ["playback_history"],
+      "expected_params": {"audio_id": 456, "page": 1},
+      "must_not_call": ["audio_import", "audio_annotate"],
+      "notes": "播放历史分页；未给 audio_id 时应先追问而不是猜"
+    },
+    {
+      "id": "audio-11",
+      "prompt": "把 test_data/noise 下的音频导进来，顺便给它们打上 noise 标签",
+      "expect_skill": true,
+      "expected_tool": null,
+      "expected_actions": [],
+      "must_not_call": [],
+      "expected_reply_contains": ["未启用", "页面"],
+      "notes": "写操作：M1 只读。允许先 audio_query 查重/看目录；若调 audio_import / audio_annotate 必须得到 TOOL_NOT_ENABLED，且不得声称已导入，必须说明写工具未启用并给出替代路径"
+    },
+    {
+      "id": "audio-12",
+      "prompt": "用最近那批音频的标注帮我生成一套测试用例",
+      "expect_skill": false,
+      "expected_tool": "testcase_generate",
+      "expected_actions": [],
+      "must_not_call": ["audio_query"],
+      "notes": "负例：属于用例域（testcase-authoring），audio-import 不应被激活执行"
+    },
+    {
+      "id": "audio-13",
+      "prompt": "把 id=12 的任务停掉，它跑出来的报告先别发了",
+      "expect_skill": false,
+      "expected_tool": null,
+      "expected_actions": [],
+      "must_not_call": ["audio_query"],
+      "notes": "负例：任务/报告域，与音频 Skill 无关"
+    }
+  ]
+}
