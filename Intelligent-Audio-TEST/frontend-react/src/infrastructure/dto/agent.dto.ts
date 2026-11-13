@@ -1,8 +1,8 @@
 /**
  * Agent DTO 与转换（infrastructure/dto 层——后端 snake_case 契约唯一出现层）。
  * 契约来源：doc/agent化/07_单Agent_Skills落地方案.md §10 数据模型 + §11 API 与 SSE；
- * 路径/方法按 §11 冻结，请求体与事件 payload 的字段按 §5/§9 语义命名，待 INT-2451
- * 后端落地后按实际 schema 微调（本层是唯一改动点）。
+ * 字段形态以 agent_service/interfaces/api/schemas.py 与 routes.py::_sse_frame 为唯一
+ * 真实口径（INT-2519）：不保留早期草案 / 单测桩的多形态兼容分支，形态不符即报错。
  *
  * 架构红线：前端（domain / application / interfaces）只见 camelCase；
  * snake_case ↔ camelCase 只在此文件发生。
@@ -21,6 +21,18 @@ import {
   type AgentSession,
   type AgentSessionDetail,
 } from '@/domain/models/agent'
+
+/**
+ * 后端契约不符（信封/字段形态漂移）。
+ * 不静默回退：契约漂移必须显式失败，让页面落错误态并暴露真实原因，
+ * 而不是表现成空列表 / 空事件。
+ */
+export class AgentContractError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AgentContractError'
+  }
+}
 
 /** POST /agent/sessions 请求体（title 缺省由后端按首条消息生成） */
 export interface AgentSessionCreateDto {
@@ -66,9 +78,9 @@ export interface AgentSessionMessageDto {
   tool_call_id?: string
 }
 
-/** GET /agent/runs/{id}/approvals 响应（后端 `{"items": [...]}`；M0 恒为空列表） */
+/** GET /agent/runs/{id}/approvals 响应（后端 routes.py::list_approvals 恒返 `{"items": [...]}`；M0 为空列表） */
 export interface AgentApprovalsResponseDto {
-  items?: AgentApprovalDto[]
+  items: AgentApprovalDto[]
 }
 
 /** GET /agent/runs/{id} / POST /agent/runs/{id}/cancel 响应（agent_run 表字段，扁平） */
@@ -106,29 +118,15 @@ export interface AgentSourceRefDto {
 
 /**
  * 单条 SSE 事件原始帧。
- * 真实形态（agent_service/routes.py::_sse_frame）：`event.payload` 的键与
+ * 真实形态（agent_service/routes.py::_sse_frame）：事件载荷的键与
  * run_id / sequence / type / timestamp **平铺在同一层**，没有嵌套 payload。
- * `payload` 字段仅兼容早期草案形态，转换时两层合并（顶层优先）。
  */
 export interface AgentEventDto {
   run_id?: string
   sequence?: number
   type?: string
   timestamp?: string
-  payload?: Record<string, unknown>
   [key: string]: unknown
-}
-
-/** 从事件顶层或 payload 里取字段（后端两种落法都兼容；snake 键只在本层出现） */
-function pick(
-  payload: Record<string, unknown>,
-  ...keys: string[]
-): unknown {
-  for (const key of keys) {
-    const value = payload[key]
-    if (value !== undefined && value !== null) return value
-  }
-  return undefined
 }
 
 function toStringValue(value: unknown): string | undefined {
@@ -148,15 +146,15 @@ export function toAgentSourceRefs(value: unknown): AgentEventSourceRef[] | undef
   for (const item of value) {
     if (typeof item !== 'object' || item === null) continue
     const raw = item as Record<string, unknown>
-    const reportId = toFiniteNumber(pick(raw, 'report_id', 'reportId'))
+    const reportId = toFiniteNumber(raw['report_id'])
     if (reportId === undefined) continue
     refs.push({
       reportId,
-      metricId: toStringValue(pick(raw, 'metric_id', 'metricId')),
-      dataVersion: toStringValue(pick(raw, 'data_version', 'dataVersion')),
+      metricId: toStringValue(raw['metric_id']),
+      dataVersion: toStringValue(raw['data_version']),
       verified:
-        typeof pick(raw, 'verified') === 'boolean'
-          ? (pick(raw, 'verified') as boolean)
+        typeof raw['verified'] === 'boolean'
+          ? (raw['verified'] as boolean)
           : undefined,
     })
   }
@@ -189,17 +187,20 @@ export function toAgentRun(dto: AgentRunDto): AgentRun {
 }
 
 /**
- * POST /agent/sessions/{id}/runs 响应解信封：真实后端为 `{run, created}`，
- * 网关透明转发不拆；解信封只在 infrastructure 做（application 拿不到 run.id 会
- * 用 undefined 订阅事件流，服务端 run 继续跑成孤儿）。
- * 兼容扁平 run 形态（早期草案/单测桩）。
+ * POST /agent/sessions/{id}/runs 响应解信封：真实后端为 `{run, created}`
+ * （schemas.py::CreateRunResponse），网关透明转发不拆；解信封只在 infrastructure
+ * 做（application 拿不到 run.id 会用 undefined 订阅事件流，服务端 run 继续跑成孤儿）。
+ * 缺 run 视为契约错误直接抛，不回退成「把响应本身当 run」。
  */
 export function toAgentRunFromCreateResponse(
-  dto: AgentRunCreateResponseDto | AgentRunDto
+  dto: AgentRunCreateResponseDto
 ): AgentRun {
-  const envelope = dto as AgentRunCreateResponseDto
-  const run = isObject(envelope.run) ? envelope.run : (dto as AgentRunDto)
-  return toAgentRun(run)
+  if (!isObject(dto) || !isObject(dto.run)) {
+    throw new AgentContractError(
+      '创建 Run 响应缺少 run 信封（期望 {run, created}）'
+    )
+  }
+  return toAgentRun(dto.run)
 }
 
 /** GET /agent/sessions/{id} 响应（`{session, messages, runs}` 信封，网关不拆） */
@@ -217,12 +218,14 @@ export function toAgentSessionDetail(
   }
 }
 
-/** GET /agent/runs/{id}/approvals 响应（真实 `{"items": [...]}`；兼容直接数组） */
-export function toAgentApprovals(
-  dto: AgentApprovalDto[] | AgentApprovalsResponseDto
-): AgentApproval[] {
-  const items = Array.isArray(dto) ? dto : (dto.items ?? [])
-  return items.map(toAgentApproval)
+/** GET /agent/runs/{id}/approvals 响应（真实 `{"items": [...]}`；裸数组视为契约错误） */
+export function toAgentApprovals(dto: AgentApprovalsResponseDto): AgentApproval[] {
+  if (!isObject(dto) || !Array.isArray(dto.items)) {
+    throw new AgentContractError(
+      '审批列表响应缺少 items 信封（期望 {"items": [...]}）'
+    )
+  }
+  return dto.items.map(toAgentApproval)
 }
 
 export function toAgentApproval(dto: AgentApprovalDto): AgentApproval {
@@ -281,30 +284,20 @@ function summarizeToolArguments(value: unknown): string | undefined {
 }
 
 /**
- * 事件载荷合并：真实后端把事件字段（message_id / delta / status / ok ...）
- * 平铺在 SSE data 顶层（routes.py::_sse_frame），早期草案则嵌在 `payload`；
- * 两层合并、顶层优先，两种形态都能解析。
- */
-function toEventPayload(dto: AgentEventDto): Record<string, unknown> {
-  const nested = isObject(dto.payload) ? dto.payload : {}
-  return { ...nested, ...dto }
-}
-
-/**
  * SSE 原始事件 → camelCase 领域事件。
+ * 只读真实帧的平铺 snake_case 键（routes.py::_sse_frame：事件载荷与
+ * run_id/sequence/type/timestamp 同层，无嵌套 payload、无 camelCase 键）。
  * 未识别的事件类型返回 null（忽略未知事件，不把未知载荷当已知结构渲染）。
- * 字段读取口径见 toEventPayload（平铺优先，兼容嵌套）。
  */
 export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
-  const payload = toEventPayload(dto)
-  const type = toStringValue(pick(payload, 'type'))
-  const sequence = toFiniteNumber(pick(payload, 'sequence'))
+  const type = toStringValue(dto['type'])
+  const sequence = toFiniteNumber(dto['sequence'])
   if (!type || sequence === undefined) return null
 
   const base = {
-    runId: toStringValue(pick(payload, 'run_id')) ?? '',
+    runId: toStringValue(dto['run_id']) ?? '',
     sequence,
-    timestamp: toStringValue(pick(payload, 'timestamp')) ?? '',
+    timestamp: toStringValue(dto['timestamp']) ?? '',
   }
 
   switch (type) {
@@ -314,39 +307,37 @@ export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
       return {
         ...base,
         type: AGENT_EVENT_TYPE.RUN_STARTED,
-        status: normalizeRunStatus(pick(payload, 'status')),
-        model: toStringValue(pick(payload, 'model')),
+        status: normalizeRunStatus(dto['status']),
+        model: toStringValue(dto['model']),
       }
     case AGENT_EVENT_TYPE.MESSAGE_DELTA: {
-      const messageId = toStringValue(pick(payload, 'message_id', 'messageId'))
+      const messageId = toStringValue(dto['message_id'])
       if (!messageId) return null
       return {
         ...base,
         type: AGENT_EVENT_TYPE.MESSAGE_DELTA,
         messageId,
-        delta: toStringValue(pick(payload, 'delta', 'content')) ?? '',
+        delta: toStringValue(dto['delta']) ?? '',
       }
     }
     case AGENT_EVENT_TYPE.TOOL_CALL: {
-      const toolCallId = toStringValue(pick(payload, 'tool_call_id', 'toolCallId'))
-      const tool = toStringValue(pick(payload, 'tool', 'name'))
+      const toolCallId = toStringValue(dto['tool_call_id'])
+      const tool = toStringValue(dto['tool'])
       if (!toolCallId || !tool) return null
       return {
         ...base,
         type: AGENT_EVENT_TYPE.TOOL_CALL,
         toolCallId,
         tool,
-        risk: normalizeToolRisk(pick(payload, 'risk')),
-        summary:
-          toStringValue(pick(payload, 'summary', 'args_summary')) ??
-          summarizeToolArguments(pick(payload, 'arguments')),
+        risk: normalizeToolRisk(dto['risk']),
+        summary: summarizeToolArguments(dto['arguments']),
       }
     }
     case AGENT_EVENT_TYPE.TOOL_RESULT: {
-      const toolCallId = toStringValue(pick(payload, 'tool_call_id', 'toolCallId'))
+      const toolCallId = toStringValue(dto['tool_call_id'])
       if (!toolCallId) return null
-      const rawStatus = toStringValue(pick(payload, 'status'))
-      const ok = pick(payload, 'ok')
+      const rawStatus = toStringValue(dto['status'])
+      const ok = dto['ok']
       // 真实载荷为 {ok, content, error_code}，没有 status；ok=false → FAILED。
       const status =
         rawStatus === AGENT_TOOL_RESULT_STATUS.FAILED ||
@@ -355,44 +346,42 @@ export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
           : typeof ok === 'boolean' && !ok
             ? AGENT_TOOL_RESULT_STATUS.FAILED
             : AGENT_TOOL_RESULT_STATUS.SUCCEEDED
-      const errorCode = toStringValue(pick(payload, 'error_code', 'errorCode'))
+      const errorCode = toStringValue(dto['error_code'])
       return {
         ...base,
         type: AGENT_EVENT_TYPE.TOOL_RESULT,
         toolCallId,
         status,
-        summary:
-          toStringValue(pick(payload, 'summary', 'result_summary')) ??
-          clampText(
-            toStringValue(pick(payload, 'content')) ?? errorCode,
-            TOOL_RESULT_SUMMARY_MAX_CHARS
-          ),
+        summary: clampText(
+          toStringValue(dto['content']) ?? errorCode,
+          TOOL_RESULT_SUMMARY_MAX_CHARS
+        ),
         errorCode,
-        sourceRefs: toAgentSourceRefs(pick(payload, 'source_refs', 'sourceRefs')),
+        sourceRefs: toAgentSourceRefs(dto['source_refs']),
       }
     }
     case AGENT_EVENT_TYPE.APPROVAL_REQUIRED: {
-      const approvalId = toStringValue(pick(payload, 'approval_id', 'approvalId'))
+      const approvalId = toStringValue(dto['approval_id'])
       if (!approvalId) return null
       return {
         ...base,
         type: AGENT_EVENT_TYPE.APPROVAL_REQUIRED,
         approvalId,
-        toolCallId: toStringValue(pick(payload, 'tool_call_id', 'toolCallId')),
-        proposal: pick(payload, 'proposal'),
+        toolCallId: toStringValue(dto['tool_call_id']),
+        proposal: dto['proposal'],
       }
     }
     case AGENT_EVENT_TYPE.CONTEXT_COMPACTED:
       return {
         ...base,
         type: AGENT_EVENT_TYPE.CONTEXT_COMPACTED,
-        level: toStringValue(pick(payload, 'level')),
+        level: toStringValue(dto['level']),
       }
     case AGENT_EVENT_TYPE.RUN_FINISHED: {
       // 真实载荷 {status, reason, error}：status 必填；异常缺失时按 error 判定，
       // 无 error 才视为成功（不能把取消 / 预算超限一律显示成功）。
-      const rawStatus = toStringValue(pick(payload, 'status'))
-      const error = toStringValue(pick(payload, 'error', 'detail'))
+      const rawStatus = toStringValue(dto['status'])
+      const error = toStringValue(dto['error'])
       const status: AgentRun['status'] =
         rawStatus && rawStatus in AGENT_RUN_STATUS
           ? (rawStatus as AgentRun['status'])
@@ -406,16 +395,13 @@ export function toAgentRunEvent(dto: AgentEventDto): AgentRunEvent | null {
         error,
       }
     }
-    case AGENT_EVENT_TYPE.ERROR: {
-      const errorMessage =
-        toStringValue(pick(payload, 'message', 'detail', 'error')) ?? ''
+    case AGENT_EVENT_TYPE.ERROR:
       return {
         ...base,
         type: AGENT_EVENT_TYPE.ERROR,
-        errorCode: toStringValue(pick(payload, 'code', 'error_code')),
-        errorMessage,
+        errorCode: toStringValue(dto['code']),
+        errorMessage: toStringValue(dto['message']) ?? '',
       }
-    }
     default:
       return null
   }

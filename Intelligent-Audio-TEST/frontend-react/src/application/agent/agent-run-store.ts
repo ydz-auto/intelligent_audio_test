@@ -608,8 +608,8 @@ export const useAgentRunStore = create<AgentRunStoreState>()((set, get) => {
     try {
       const snapshot = await cancelAgentRun(current.id)
       if (runToken !== token) return null
-      if (snapshot) set({ run: snapshot })
-      if (snapshot && isTerminalRunStatus(snapshot.status)) {
+      set({ run: snapshot })
+      if (isTerminalRunStatus(snapshot.status)) {
         emitSyntheticFinished(snapshot, snapshot.status, snapshot.error)
         finishRun(snapshot.status, snapshot.error)
         return null
