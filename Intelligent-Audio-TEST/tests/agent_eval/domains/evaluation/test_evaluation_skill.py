@@ -84,6 +84,21 @@ def test_trigger_accuracy_at_least_90_percent():
         f'{[q for q in positives if q not in hits]}')
 
 
+@pytest.mark.parametrize('skill_name', [
+    'algorithm-config', 'audio-import', 'platform-reference',
+])
+def test_off_domain_skill_does_not_borrow_evaluation_core_terms(skill_name):
+    """INT-2511：评估核心词只属于本域。
+
+    这些通用词若对每个 Skill 都计分，口语化问题会跨域同分，route() 平局取
+    目录序第一个（algorithm-config 排在最前），评估域就永远拿不到命中。
+    """
+    skills = {s.name: s for s in load_skills().skills}
+    assert skill_name in skills
+    probe = '维度 121 的详细配置是什么？'
+    assert route(probe, [skills[skill_name]]) == (None, 0)
+
+
 @pytest.mark.parametrize('query', fixtures.TRIGGER_NEGATIVE)
 def test_off_domain_queries_not_routed_to_evaluation(query):
     assert route(query)[0] != 'evaluation-config', query

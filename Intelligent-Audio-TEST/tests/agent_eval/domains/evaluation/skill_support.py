@@ -51,15 +51,21 @@ def skill_meta(name: str = 'evaluation-config'):
 _TRIGGER_SECTION = re.compile(r'触发词[：:]\s*(.+?)(?:。|不适用|$)', re.S)
 _SPLIT = re.compile(r'[、，,；;\s]+')
 
-# 领域核心词也参与匹配（描述里的短语常被口语拆开，如「维度 121 的配置」）
+# 评估域核心词也参与匹配（描述里的短语常被口语拆开，如「维度 121 的配置」）。
+# 它们只属于 evaluation-config：audio-import / algorithm-config /
+# platform-reference 的 L1 描述同样含「评估 / 维度 / 评分 / 参数」一类通用词，
+# 若对所有 Skill 一律拼入，口语化问题会跨域同分，而 route() 平局取目录序第一个
+# （algorithm-config < audio-import < evaluation-config），评估域必然输（INT-2511）。
+_EVALUATION_SKILL = 'evaluation-config'
 _CORE_TERMS = ('评估', '维度', '评分', '分类', '权重', '重评估')
 
 
-def trigger_terms(description: str) -> List[str]:
+def trigger_terms(description: str,
+                  core_terms: Iterable[str] = _CORE_TERMS) -> List[str]:
     section = _TRIGGER_SECTION.search(description or '')
     raw = section.group(1) if section else (description or '')
     terms = [t.strip() for t in _SPLIT.split(raw) if len(t.strip()) >= 2]
-    terms.extend(_CORE_TERMS)
+    terms.extend(core_terms)
     seen, ordered = set(), []
     for term in terms:
         if term not in seen:
@@ -68,8 +74,16 @@ def trigger_terms(description: str) -> List[str]:
     return ordered
 
 
-def score_skill(description: str, query: str) -> int:
-    return sum(1 for term in trigger_terms(description) if term in query)
+def score_skill(description: str, query: str,
+                core_terms: Iterable[str] = ()) -> int:
+    """core_terms 由调用方按 Skill 归属传入（见 ``_core_terms_for``）。"""
+    return sum(1 for term in trigger_terms(description, core_terms)
+               if term in query)
+
+
+def _core_terms_for(skill_name: str) -> Tuple[str, ...]:
+    """只有评估域享受评估核心词的宽松匹配，其余 Skill 按各自声明计分。"""
+    return _CORE_TERMS if skill_name == _EVALUATION_SKILL else ()
 
 
 def route(query: str, skills: Optional[Iterable] = None
@@ -79,7 +93,8 @@ def route(query: str, skills: Optional[Iterable] = None
     best_name: Optional[str] = None
     best_score = 0
     for skill in skills:
-        score = score_skill(skill.description, query)
+        score = score_skill(skill.description, query,
+                            _core_terms_for(skill.name))
         if score > best_score:
             best_name, best_score = skill.name, score
     return best_name, best_score
