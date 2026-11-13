@@ -382,7 +382,7 @@ run 级预算、阈值、超时、并发数写入配置（环境变量 + `config
 > **实现演进裁定（INT-2459 / 2460 / 2461 / 2463，2026-11-13）**：M1 各域只读卡落地后，
 > 口径按以下事实同步，工具总数与风险等级仍与本表逐项一致（31 项）。
 >
-> 1. **启用集合 14 个**：`platform_contract` / `tool_search` / `task_query` /
+> 1. **启用集合 14 个**（INT-2490 后为 16 个，见下一条裁定）：`platform_contract` / `tool_search` / `task_query` /
 >    `report_query` / `audio_query` / `evaluation_query` / `algorithm_query` /
 >    `device_query` / `testcase_query` / `testcase_generate` / `task_diagnose` /
 >    `log_diagnose` / `dashboard_query` / `report_compare`；其余 17 个 `enabled=false`
