@@ -322,10 +322,19 @@ class SkillService:
         self._validate_for_save(
             skill, frontmatter=frontmatter, body=body,
             permissions=permissions, resources=resources)
+        # 发布额外做注入检测：正文、描述（经 L1 进系统提示）与文本资源
+        # （经 L3 进上下文）都算不可信内容（复核 P2）。
         injection = self._guard.check_injection(body)
+        if row.description:
+            injection.extend(self._guard.check_injection(
+                row.description, field='description'))
+        for path, text in _text_resources(resources).items():
+            injection.extend(self._guard.check_injection(
+                text, field=f'resources.{path}'))
         if injection:
             raise SkillInjectionDetected(
-                '正文命中注入规则，拒绝发布（草稿仍可保存，ACTIVE 不生效）',
+                '正文 / 描述 / 资源命中注入规则，拒绝发布'
+                '（草稿仍可保存，ACTIVE 不生效）',
                 issues=[_guard_issue_to_skill(item, row.name)
                         for item in injection])
         gate = self._evaluate_gate(row)
@@ -596,17 +605,21 @@ class SkillService:
                       for item in self._guard.check_structure(
                           skill_md=build_skill_md(frontmatter, body),
                           resources=dict(resources or {})))
-        issues.extend(_guard_issue_to_skill(item, skill.name)
-                      for item in self._guard.check_content(
-                          body, field='body'))
-        issues.extend(_guard_issue_to_skill(item, skill.name)
-                      for item in self._guard.check_binary_text(
-                          body, field='body'))
-        for path, payload in (resources or {}).items():
-            try:
-                text = payload.decode('utf-8')
-            except UnicodeDecodeError:
-                continue  # 二进制资源由 check_structure 的 NUL / 体积检测兜底
+        # 正文 / 描述 / frontmatter 自由文本都按不可信内容处理：描述不是纯
+        # 展示字段，会经 L1 进系统提示（复核 P2，禁止凭证 / 内网 / 二进制）。
+        text_sources: List[Tuple[str, str]] = [('body', body or '')]
+        if skill.description:
+            text_sources.append(('description', skill.description))
+        text_sources.extend(_iter_frontmatter_texts(
+            frontmatter, skip={FIELD_DESCRIPTION}))
+        for field_name, text in text_sources:
+            issues.extend(_guard_issue_to_skill(item, skill.name)
+                          for item in self._guard.check_content(
+                              text, field=field_name))
+            issues.extend(_guard_issue_to_skill(item, skill.name)
+                          for item in self._guard.check_binary_text(
+                              text, field=field_name))
+        for path, text in _text_resources(resources).items():
             issues.extend(_guard_issue_to_skill(item, skill.name)
                           for item in self._guard.check_content(
                               text, field=f'resources.{path}'))
@@ -910,6 +923,45 @@ def _package_code(code: PackageIssueCode) -> SkillIssueCode:
 
 def _is_text(payload: bytes) -> bool:
     return b'\x00' not in payload
+
+
+def _text_resources(resources: Optional[Mapping[str, bytes]]
+                    ) -> Dict[str, str]:
+    """可解码为 UTF-8 的资源（二进制资源由 ``check_structure`` 兜底）。"""
+    texts: Dict[str, str] = {}
+    for path, payload in (resources or {}).items():
+        try:
+            texts[path] = payload.decode('utf-8')
+        except UnicodeDecodeError:
+            continue
+    return texts
+
+
+def _iter_frontmatter_texts(frontmatter: Mapping[str, Any],
+                            *, skip: Iterable[str] = ()
+                            ) -> List[Tuple[str, str]]:
+    """frontmatter 里的自由文本值（逐项做凭证 / 内网 / 二进制检测）。
+
+    键名只用于报错定位；``skip`` 跳过已单独判定的顶层键（``description``
+    由调用方以 ``description`` 字段名单独校验，避免一处命中报两次）。
+    """
+    skipped = set(skip)
+    found: List[Tuple[str, str]] = []
+
+    def walk(node, prefix: str) -> None:
+        if isinstance(node, Mapping):
+            for key, value in node.items():
+                if not prefix and str(key) in skipped:
+                    continue
+                walk(value, f'{prefix}.{key}' if prefix else str(key))
+        elif isinstance(node, (list, tuple)):
+            for index, value in enumerate(node):
+                walk(value, f'{prefix}[{index}]')
+        elif isinstance(node, str) and node:
+            found.append((f'frontmatter.{prefix}', node))
+
+    walk(frontmatter or {}, '')
+    return found
 
 
 def _granted(skill: Skill, granted: set) -> bool:

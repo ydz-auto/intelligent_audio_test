@@ -27,7 +27,7 @@ from fastapi.responses import StreamingResponse
 from agent_service.application.skill_service import SkillDraftPayload
 from agent_service.config.config import Config
 from agent_service.domain.enums import (
-    ApprovalDecision, SkillScope, SkillStatus,
+    ApprovalDecision, SkillErrorCode, SkillScope, SkillStatus,
 )
 from agent_service.domain.exceptions import ApprovalExpired
 from agent_service.domain.model.entities import AgentRun, AgentSession
@@ -366,7 +366,7 @@ def _skill_scope(raw: Optional[str]):
     except ValueError:
         raise HTTPException(
             status_code=400,
-            detail={'code': 'SKILL_VALIDATION_FAILED',
+            detail={'code': SkillErrorCode.SKILL_VALIDATION_FAILED.value,
                     'message': f'不支持的 scope：{raw}'
                                '（只能是 PLATFORM / TENANT / USER）'})
 
@@ -379,7 +379,7 @@ def _skill_status(raw: Optional[str]):
     except ValueError:
         raise HTTPException(
             status_code=400,
-            detail={'code': 'SKILL_STATUS_INVALID',
+            detail={'code': SkillErrorCode.SKILL_STATUS_INVALID.value,
                     'message': f'不支持的 status：{raw}'
                                '（只能是 DRAFT / ACTIVE / DISABLED）'})
 
@@ -389,7 +389,7 @@ def _reject_identity_fields(payload) -> None:
     if forbidden:
         raise HTTPException(
             status_code=400,
-            detail={'code': 'SKILL_VALIDATION_FAILED',
+            detail={'code': SkillErrorCode.SKILL_VALIDATION_FAILED.value,
                     'message': ('请求体不得携带服务端身份字段：'
                                 + '、'.join(forbidden)
                                 + '（scope / owner_id / tenant_id 由服务端填写）')})

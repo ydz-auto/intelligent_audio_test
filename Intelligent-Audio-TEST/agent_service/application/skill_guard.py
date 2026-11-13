@@ -5,9 +5,11 @@
 - 结构 / 体积 / 路径：``SKILL.md`` ≤ 64 KB、单资源 ≤ 512 KB、整包 ≤ 5 MB、
   条目数与压缩比上限（zip bomb）、绝对路径 / ``..`` / 软链 / 外链拒绝；
 - 内容：凭证（复用 ``shared/utils/secret_mask.has_secret`` 同一判据）、
-  内网地址、可执行二进制；
+  内网地址、可执行二进制。``SKILL.md`` 正文、``description``（会经 L1 进
+  系统提示）与 frontmatter 自由文本、文本资源都按不可信内容判定；
 - 注入：**规则化**启发式（规则表配置化，不做模型判定）。保存只做结构与内容
-  校验；发布额外做注入检测，命中即拒绝发布（草稿仍可保存）。
+  校验；发布额外对正文 / 描述 / 文本资源做注入检测，命中即拒绝发布（草稿仍
+  可保存）。
 
 口径：规则化检测存在漏报，回执写「命中拒绝、未命中不等于安全」，不对外
 宣称安全保证。
@@ -186,8 +188,13 @@ class SkillGuard:
 
     # ------------------------------------------------------------ 注入（仅发布）
 
-    def check_injection(self, body: str) -> List[GuardIssue]:
-        """规则化注入检测：命中即拒绝发布（草稿仍可保存）。"""
+    def check_injection(self, body: str, *, field: str = 'body'
+                        ) -> List[GuardIssue]:
+        """规则化注入检测：命中即拒绝发布（草稿仍可保存）。
+
+        ``field`` 标注命中位置：正文用 ``body``；``description`` 与文本资源
+        也按不可信内容检测（描述会经 L1 进入系统提示，资源会进 L3 上下文）。
+        """
         text = body or ''
         found: List[GuardIssue] = []
         for rule in self._injection_rules:
@@ -195,7 +202,7 @@ class SkillGuard:
             if match:
                 found.append(GuardIssue(
                     SkillIssueCode.INJECTION_DETECTED, SkillIssueSeverity.ERROR,
-                    'body', f'{rule.message}（规则 {rule.rule_id}）'))
+                    field, f'{rule.message}（规则 {rule.rule_id}）'))
         return found
 
     # ------------------------------------------------------------ internals

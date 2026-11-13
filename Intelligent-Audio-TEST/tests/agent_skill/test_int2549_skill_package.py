@@ -82,9 +82,23 @@ def test_platform_skill_export_is_importable_shape(tmp_path):
         assert archive.read('SKILL.md').decode('utf-8').startswith('---\n')
 
 
-def test_shared_package_structure_matches_platform_package(tmp_path):
-    from api_gateway.application.services.mcp.skill_package import build_skill_zip
-    platform = zipfile.ZipFile(io.BytesIO(build_skill_zip('http://example')))
+def test_shared_package_structure_matches_platform_package(monkeypatch):
+    """平台包与用户包走**同一个**打包实现、同一套根级口径（不出现双口径）。"""
+    from api_gateway.application.services.mcp import skill_package as gateway_pkg
+    calls = {}
+    real_build_zip = gateway_pkg.build_zip
+
+    def spy(entries, **kwargs):
+        calls['entries'] = dict(entries)
+        return real_build_zip(entries, **kwargs)
+
+    monkeypatch.setattr(gateway_pkg, 'build_zip', spy)
+    platform_bytes = gateway_pkg.build_skill_zip('http://example')
+    assert 'entries' in calls, '平台包必须复用 shared.skill_package.build_zip'
+    assert skill_package.SKILL_FILE_NAME in calls['entries']
+    assert all('/' not in name for name in calls['entries'])
+
+    platform = zipfile.ZipFile(io.BytesIO(platform_bytes))
     assert 'SKILL.md' in platform.namelist()
     assert all('/' not in name for name in platform.namelist())
     # 两处常量指向同一物理文件名 / 目录约定（不各写一套）
@@ -156,6 +170,24 @@ def test_import_missing_skill_md_rejected(tmp_path):
         service.import_package(data, owner_id=OWNER_ID, tenant_id=TENANT_ID,
                                permissions=['*'])
     assert 'SKILL_FILE_MISSING' in issues_codes(exc.value)
+
+
+def test_platform_package_not_importable_until_int2476(tmp_path):
+    """平台下载包（SKILL.md + mcp.json）当前**不支持**导入 —— 归 INT-2476。
+
+    卡面「导入接受同一结构」指打包口径：根级直接是 ``SKILL.md``、不套外层
+    目录、资源只放 ``references/ scripts/ assets/``。``GET /api/v1/agent/skill``
+    额外带的 ``mcp.json`` 是网关 MCP 配置模板，且其 ``SKILL.md`` 没有
+    frontmatter（不是可落库的用户 Skill）；平台包生成对齐由 INT-2476 负责，
+    本卡先钉住「明确拒绝 + 给原因码」，避免静默接受半成品。
+    """
+    from api_gateway.application.services.mcp.skill_package import build_skill_zip
+    _container, service, _store = _stack(tmp_path)
+    with pytest.raises(SkillImportInvalid) as exc:
+        service.import_package(build_skill_zip('http://example'),
+                               owner_id=OWNER_ID, tenant_id=TENANT_ID,
+                               permissions=['*'])
+    assert 'INVALID_PATH' in issues_codes(exc.value)
 
 
 def test_import_unexpected_root_file_rejected(tmp_path):

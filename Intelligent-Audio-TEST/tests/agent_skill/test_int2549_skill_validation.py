@@ -112,6 +112,27 @@ def test_internal_address_rejected(service):
     _expect(service, draft_payload(body=body), 'INTERNAL_ADDRESS')
 
 
+def test_description_embedded_secret_rejected(service):
+    """description 会经 L1 进系统提示，不是纯展示字段（复核 P2）。"""
+    _expect(service,
+            draft_payload(
+                description='说明。key sk-abcdefghijklmnopqrstuvwxyz123456'),
+            'EMBEDDED_SECRET')
+
+
+def test_description_internal_address_rejected(service):
+    _expect(service, draft_payload(description='内网入口 http://10.0.0.5/api'),
+            'INTERNAL_ADDRESS')
+
+
+def test_frontmatter_free_text_secret_rejected(service):
+    """frontmatter 自由文本值同样按不可信内容判定。"""
+    _expect(service,
+            draft_payload(extra_frontmatter={
+                'notes': 'token: sk-abcdefghijklmnopqrstuvwxyz123456'}),
+            'EMBEDDED_SECRET')
+
+
 def test_binary_resource_rejected(service):
     _expect(service,
             draft_payload(resources={'assets/bin.dat': '\x00\x01\x02'}),
