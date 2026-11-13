@@ -112,7 +112,10 @@ def test_intent_registry_has_31_unique_tools():
                              'audio_import', 'audio_annotate', 'device_control',
                              'spl_calibrate', 'driver_propose',
                              # INT-2468 用例 / 标签 / 任务写
-                             'testcase_write', 'tag_group_manage', 'task_run'}
+                             'testcase_write', 'tag_group_manage', 'task_run',
+                             # INT-2470 算法写（定义 / 参数 / 参考参数 / 映射 /
+                             # 导入 / 热重载）
+                             'algorithm_manage'}
 
 
 def test_reserved_tool_names_present_and_disabled():

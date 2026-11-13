@@ -66,6 +66,12 @@ M2 写意图（``testcase_write`` / ``tag_group_manage`` / ``task_run``，INT-24
 提案 → 审批 → 幂等执行，工具层本身不执行任何未经审批的写；删除类动作在动作
 层记 ``DESTRUCTIVE``（``risk_for``）。
 
+算法域写意图（``algorithm_manage``，INT-2470）已启用：定义 / 参数 / 参考参数 /
+映射的 CRUD、批量导入与热重载，动作表与 body 字段白名单在
+``algorithm_tools``（权限按动作收窄到 ``algorithm:definition_manage`` /
+``algorithm:param_manage``，与网关真实路由一致）。热重载只重建配置缓存、
+不改业务数据，失败按 ``UPSTREAM_ERROR`` 如实返回，不静默成功。
+
 其余意图工具在本注册表**预留名称与 Schema**（``enabled=False``），调用返回
 ``TOOL_NOT_ENABLED``；实现分别归 M1 / M2 各域卡。预留名称进入 Skill
 allowed-tools 校验与 tool_search 索引，启动时不会出现 ``UNKNOWN_TOOL``。
@@ -80,6 +86,7 @@ from typing import (
 )
 
 from shared.agent_tools import contract as platform_contract_catalog
+from shared.agent_tools import algorithm_tools
 from shared.agent_tools import audio_tools, device_tools, driver_tools
 from shared.agent_tools import evaluation_tools
 from shared.agent_tools import tag_group_tools
@@ -1133,17 +1140,32 @@ INTENT_TOOLS: List[IntentTool] = [
         risk='READ', permissions=device_tools.DEVICE_QUERY_PERMISSIONS,
         enabled=True, kind='intent_rest'),
     IntentTool(
-        name='algorithm_manage', description='定义/参数/映射写操作、热重载（写）。',
+        name='algorithm_manage',
+        description=('算法配置写操作（需提案 + 审批，批准后才执行）：算法定义新建 / '
+                     '修改 / 全量保存 / 软删除、设备与 API 参数增改软删、参考参数增改软删、'
+                     '参数映射增改软删、批量导入算法定义、热重载（重建配置缓存）。'
+                     '定义 / 导入 / 热重载要 algorithm:definition_manage，'
+                     '参数 / 参考参数 / 映射要 algorithm:param_manage。'
+                     '动作与字段以 algorithm-config Skill 的写章节为准；'
+                     '热重载不改配置数据，可重复执行。'),
         parameters=_schema({
-            'action': _prop('string', '动作', required=True,
-                            enum=['definition_upsert', 'param_upsert',
-                                  'mapping_upsert', 'reload']),
-            'body': _prop('object', '算法配置字段'),
+            'action': _prop('string', '写动作', required=True,
+                            enum=list(algorithm_tools.ACTION_NAMES)),
+            'algo_type': _prop('string', '算法类型代码（definition_update / '
+                                         'definition_delete 必填；取值以 '
+                                         'algorithm_query 的 options 为准）'),
+            'param_id': _prop('integer', '参数 ID（param_update / param_delete / '
+                                         'reference_param_update / '
+                                         'reference_param_delete 必填；先查 '
+                                         'algorithm_query 的 param / reference_param）'),
+            'mapping_id': _prop('integer', '映射 ID（mapping_update / '
+                                           'mapping_delete 必填；先查 algorithm_query '
+                                           '的 mappings）'),
+            'body': _prop('object', '请求体（create / update / save / import 动作必填；'
+                                    '字段白名单见 algorithm-config Skill 的动作表）'),
         }, required=('action',)),
-        risk='WRITE', permissions=('algorithm:definition_manage',
-                                   'algorithm:param_manage',
-                                   'algorithm:group_manage'),
-        enabled=False, kind='reserved'),
+        risk='WRITE', permissions=algorithm_tools.MANAGE_PERMISSIONS,
+        enabled=True, kind='intent_rest'),
     IntentTool(
         name='task_run',
         description=('任务写操作（需提案 + 审批，批准后才执行）：create 创建、'
@@ -1508,6 +1530,9 @@ WRITE_RESOLVERS: Dict[str, Any] = {
     'testcase_write': case_write_tools.resolve,
     'tag_group_manage': tag_group_tools.resolve,
     'task_run': task_write_tools.resolve,
+    # 算法域写（INT-2470）：定义 / 参数 / 参考参数 / 映射 / 导入 / 热重载，
+    # 动作表与 body 白名单在 ``algorithm_tools``。
+    'algorithm_manage': algorithm_tools.resolve,
 }
 
 # 动作级权限 / 风险的分发：testcase_write / task_run 按动作表，tag_group_manage
@@ -1515,6 +1540,7 @@ WRITE_RESOLVERS: Dict[str, Any] = {
 WRITE_ACTION_TABLES: Dict[str, Dict[str, Any]] = {
     'testcase_write': case_write_tools.ACTIONS,
     'task_run': task_write_tools.ACTIONS,
+    'algorithm_manage': algorithm_tools.ACTIONS,
 }
 
 
@@ -1605,6 +1631,12 @@ DOMAIN_ACTION_MAPS: Dict[str, DomainActionMap] = {
     'tag_group_manage': DomainActionMap(
         tuple(tag_group_tools.ACTION_NAMES),
         _tag_group_target),
+    # 算法写（INT-2470）：定义 / 参数 / 参考参数 / 映射 / 导入 / 热重载，
+    # 目标全部取自 MCP 注册表的 ``algorithm_*`` 写工具（无内部写入口）。
+    'algorithm_manage': DomainActionMap(
+        tuple(algorithm_tools.ACTION_NAMES),
+        lambda action: _write_action_target(
+            algorithm_tools.ACTIONS.get(action))),
 }
 
 
@@ -2024,7 +2056,8 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
     - 音频 / 设备 / SPL 写意图工具（``audio_import`` / ``audio_annotate`` /
       ``device_control`` / ``spl_calibrate``）：由 ``resolve_write_call`` 交给
       各域模块解析；
-    - M2 写意图工具（``testcase_write`` / ``tag_group_manage`` / ``task_run``）：
+    - M2 写意图工具（``testcase_write`` / ``tag_group_manage`` / ``task_run`` /
+      ``algorithm_manage``）：
       交给各域模块的动作表解析（``WRITE_RESOLVERS``），动作级权限 / 风险 /
       条件必填 / body 注入都在那边；
     - 其他 MCP 工具名（tool_search 命中后直接调用）：原样透传参数；

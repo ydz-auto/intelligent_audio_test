@@ -8,7 +8,8 @@ INT-2464 交付物之一。M1 的验收口径是「每域 10 条任务 + Skill �
 | 文件 | 内容 |
 |---|---|
 | `golden_tasks.json` | 10 条 golden task（utterance → action / 参数 → 目标 MCP 工具与 REST 路径）+ 10 条其他域负样本 |
-| `test_algorithm_domain_eval.py` | 工具契约、golden task 解析、Skill L1/L2、触发准确率、真实接口口径 |
+| `test_algorithm_domain_eval.py` | 工具契约、golden task 解析、Skill L1/L2（含 INT-2470 写章节）、触发准确率、真实接口口径 |
+| `test_algorithm_manage_live.py` | INT-2470 写意图工具实测：真实网关上定义 / 参数 / 参考参数 / 映射的提案 → 审批 → 执行 → 读回、热重载可重复执行、导入只增不改、权限收窄（默认真机跳过） |
 
 ## 跑法
 
@@ -18,6 +19,10 @@ python -m pytest tests/agent_eval/domains/algorithm -q
 
 # 真机契约核对（本机 docker 网关 15000，可用 AGENT_EVAL_BASE / USER / PASSWORD 覆盖）
 $env:AGENT_EVAL_LIVE='1'; python -m pytest tests/agent_eval/domains/algorithm -q -k live
+
+# 写操作实测（真实网关，只写「接线测试_」前缀数据并软删清理）
+$env:AGENT_LIVE_GATEWAY='http://localhost:15000'
+python -m pytest tests/agent_eval/domains/algorithm/test_algorithm_manage_live.py -q
 ```
 
 ## golden task 口径
