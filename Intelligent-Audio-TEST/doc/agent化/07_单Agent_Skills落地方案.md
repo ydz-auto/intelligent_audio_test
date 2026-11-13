@@ -17,6 +17,7 @@
 8. **上下文窗口可配**：按模型目录给默认值，用户可在供应商配置里覆盖；预算与压缩阈值按有效窗口计算。
 9. **主场景是 App/API 接入**：用户说“我要测这个 App/API”，Agent 交付驱动/适配器 + 配置 + 冒烟用例 + 验证证据，而不是只给一段代码。
 10. **探索-生成是一等能力**：Agent 自己读 UI 树、API 契约、领域 schema，生成驱动/适配器/用例/配置/报告草案，再在 T1/T2/staging 验证；不依赖用户手工点选全部元素。
+11. **Skill 可被用户扩展**：平台内置只读，用户可自建/导入/fork/导出个人 Skill（§4.4）；自定义 Skill 与内置走同一套校验、版本快照与触发评测，不允许绕过权限与审批。
 
 ## 2. 业界依据
 
@@ -187,6 +188,92 @@ budgets:
 | `log-diagnostics` | 日志搜索、失败诊断、导出 | `log_diagnose` | P1 |
 | `driver-proposal` | UiAutoDev 元素 → 设备驱动（`AppDriver`）+ 厂商 API 适配器（`ApiVendorAdapter`）提案 | `driver_propose`（对外唯一工具名；`target_kind` = `DEVICE_DRIVER` / `API_ADAPTER` / `PAIR`；`generate_driver_from_elements` / `publish_driver_proposal` 是内部步骤，不新增对外工具，落地卡 INT-2467） | P2 |
 | `app-api-onboarding` | App/API 接入全流程（含 ASR/TTS 测量路径）：受理、发现、计划、生成、验证、迭代、交付 | `ui_tree`、`ui_action`、`api_spec`、`driver_propose`、`device_query`、`testcase_generate`、`task_run`、`tool_search` | P1 |
+
+### 4.4 用户自定义 Skill
+
+现状：只有只读的平台 `skills/` 目录（[fs_skill_repository.py](file:///d:/00_code/V10.11.2/Intelligent-Audio-TEST/agent_service/infrastructure/skill/fs_skill_repository.py)），用户无法自建、修改、导入导出。补齐三层来源。
+
+#### 来源与优先级
+
+| 层 | 存储 | 可写 | 优先级 | 说明 |
+|---|---|---|---|---|
+| `PLATFORM` | `skills/<name>/`，容器只读挂载 | 否 | 0 | 平台内置，不允许被覆盖 |
+| `TENANT` | `agent_skill` 表 + 对象存储 | 租户管理员 | 1 | 同租户共享 |
+| `USER` | 同上，`owner_id` 非空 | 本人 | 2 | 个人私有 |
+
+命名冲突规则：
+
+1. 自定义 Skill 不得与 `PLATFORM` 同名，冲突返回 `SKILL_NAME_CONFLICT`，引导改名或 fork。
+2. `TENANT` 与 `USER` 同名时 `USER` 优先，并在列表中标注被遮蔽的项。
+3. 同一作用域内同名直接拒绝，不做静默覆盖。
+
+#### 数据模型
+
+`agent_skill`
+
+| 字段 | 说明 |
+|---|---|
+| `id` | uuid |
+| `scope` | `PLATFORM` / `TENANT` / `USER` |
+| `tenant_id` / `owner_id` | 作用域键，由服务端按登录身份填，模型不可传入 |
+| `name` / `description` | frontmatter 关键字段冗余，便于列表与检索 |
+| `version` | 每次保存递增 |
+| `status` | `DRAFT` / `ACTIVE` / `DISABLED` |
+| `content_hash` | 正文 + 资源 sha256，run 记录引用 |
+| `frontmatter_json` / `body` | 原始 frontmatter 与 SKILL.md 正文 |
+| `resources` | `references/` / `scripts/` / `assets/` 的对象存储 key |
+| `created_by` / `updated_at` | 审计 |
+
+`agent_skill_version` 保存历史版本；`agent_run` 记录 `(skill_id, version, content_hash)`，历史 run 按当时版本回放，不随 Skill 修改而漂移。
+
+仓储：新增 `CompositeSkillRepository`，平台层保持只读扫描，自定义层读写数据库；`SkillRegistry` 的校验逻辑复用，不另写一套。
+
+#### 入口
+
+1. **对话沉淀**：onboarding、报告、诊断等任务完成后，Agent 提议“把这套流程沉淀为 Skill”，生成草案供确认。
+2. **上传导入**：zip 包，兼容 agentskills.io 目录格式，与外部 Claude Code / Codex 使用的 `skill zip` 同一格式。
+3. **从内置 fork**：复制平台 Skill 作为模板，在副本上改。
+4. **在线编辑**：直接编辑 `SKILL.md`，保存后即时校验。
+
+#### 落库前校验
+
+| 项 | 规则 |
+|---|---|
+| 名称 | `^[a-z0-9][a-z0-9-]{1,63}$` |
+| 必填 | `name`、`description`（含触发词与不适用边界） |
+| 正文 | 必须含 `## Gotchas`、`## 验收`；≤ 500 行 |
+| 工具 | `allowed-tools` ⊆ 已注册意图工具（31 个）+ `tool_search` 可发现的长尾工具 |
+| 权限 | `permissions` ⊆ 当前用户权限，不得提权 |
+| 体积 | `SKILL.md` ≤ 64 KB；单资源 ≤ 512 KB；整包 ≤ 5 MB |
+| 路径 | 禁止绝对路径、`..`、软链、外链资源 |
+| 内容 | 禁止凭证、内网地址、可执行二进制；`scripts/` 只登记不自动执行 |
+
+校验失败返回逐项原因，不落库、不进入触发候选。
+
+#### 安全与生命周期
+
+- 自定义 Skill 正文视为**不可信内容**：其中的指令不得覆盖系统不变量；注入检测命中时拒绝发布。
+- `USER` 级：本人 `DRAFT → ACTIVE` 需显式确认；`TENANT` 级发布需租户管理员审批。
+- 停用/删除立即生效；已运行的 run 按版本快照继续，不中途换内容。
+- 发布门槛：至少 3 条 golden tasks 且触发判定通过；未达标只能留在 `DRAFT`，不参与自动触发。
+
+#### 接口
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/v1/agent/skills?scope=` | 列表（含来源、状态、版本、校验结果） |
+| POST | `/api/v1/agent/skills` | 新建草稿 |
+| PUT | `/api/v1/agent/skills/{id}` | 保存，version +1 |
+| POST | `/api/v1/agent/skills/{id}/publish` | 发布（校验 + 评测门槛 + 审批） |
+| POST | `/api/v1/agent/skills/{id}/disable` | 停用 |
+| POST | `/api/v1/agent/skills/{id}/fork` | 从内置或他人可见 Skill 复制 |
+| POST | `/api/v1/agent/skills/import` | zip 导入 |
+| GET | `/api/v1/agent/skills/{id}/export` | zip 导出（与外部 Skill 格式一致） |
+| GET | `/api/v1/agent/skills/{id}/versions` | 版本历史与回放 |
+
+前端新增 Skill 管理页：列表、来源标签、状态、编辑器、逐项校验反馈、评测门槛、导入导出。
+
+里程碑：M2 末交付 `USER` 级 + 导入导出 + 校验 + 版本；`TENANT` 级共享与审核流放 M3。
 
 ## 5. 单 Agent Loop 契约
 
@@ -727,8 +814,8 @@ shared/agent_tools/              # 工具 Schema 单一事实源
 |---|---|---|
 | M0 底座 | 单 loop、SkillRegistry、意图工具 3 个 + `tool_search`（关键词检索，INT-2453）、SSE 回放、Run 持久化；用户供应商密钥库（加密/掩码/无 Key 失败）；沙箱 T1 + T2（首期启用）；压缩 L1–L3；`platform-reference` | T1/T2 逃逸测试全拦截；60 轮压缩任务不丢事实；kill Worker 可恢复；无 Key 时明确失败且不回退平台 Key；10 条 golden tasks 通过 |
 | M1 只读全平台 | 11 域只读意图工具；12 个 Skill 的 L1/L2（§4.3 余下 12 个）；`tool_search` 语义检索（关键词检索已随 M0 交付）；文件式长期记忆（`rg` 检索，无向量库） | 每域 10 条任务；Skill 触发准确率 ≥90%；无编造数值；记忆写入需审批 |
-| M2 写操作与报告 | 探索-生成层（`ui_tree`/`ui_action`/`api_spec`）；写工具、审批、幂等；App/API 接入全流程（受理→发现→计划→生成→验证→迭代→交付）；驱动提案（设备驱动 + API 适配器，提案 + T2 验证，不自动发布）；Report Studio 取数→起草→版本→导出；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；两类提案均可复现且未审批不写注册表；接入包在 staging 冒烟通过；三类报告指标与 Report Service 逐字段一致 |
-| M3 自动化与评测 | Auto 模式、预算/熔断、全量评测、外部 Skill zip/MCP 对齐、文档更新 | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致 |
+| M2 写操作与报告 | 探索-生成层（`ui_tree`/`ui_action`/`api_spec`）；写工具、审批、幂等；App/API 接入全流程（受理→发现→计划→生成→验证→迭代→交付）；驱动提案（设备驱动 + API 适配器，提案 + T2 验证，不自动发布）；Report Studio 取数→起草→版本→导出；**用户自定义 Skill（USER 级 CRUD + zip 导入导出 + 逐项校验 + 版本快照 + 触发门槛）+ Skill 管理页**；前端审批卡与时间线 | 提案→审批→执行可重放；重复执行无副作用；两类提案均可复现且未审批不写注册表；接入包在 staging 冒烟通过；三类报告指标与 Report Service 逐字段一致；自定义 Skill 不得提权、不得越权引用工具、同名不得覆盖内置、历史 run 按版本回放 |
+| M3 自动化与评测 | Auto 模式、预算/熔断、全量评测；**TENANT 级共享 Skill 与发布审核流**；外部 Skill zip/MCP 对齐、文档更新 | 端到端成功率与成本达标；Agent 关闭不影响原系统；外部 Agent 能力清单一致 |
 
 ## 16. 风险与开放问题
 
