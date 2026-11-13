@@ -128,7 +128,7 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/v1/testcases?keyword=唤�
 | --- | --- | --- | --- |
 | audio_list | `GET /api/v1/audios` | 列出音频（keyword/page/per_page） | audio:read |
 | audio_get | `GET /api/v1/audios/{audio_id}` | 音频详情 | audio:read |
-| audio_get_by_ids | `POST /api/v1/audios/by-ids` | 按 ID 列表批量获取 | audio:read |
+| audio_get_by_ids | `POST /api/v1/audios/by-ids` | 按 ID 列表批量获取（宿主语境，不做归属校验；内部 Agent 的 `audio_query` 不暴露该动作） | audio:read |
 | audio_get_by_md5 | `POST /api/v1/audios/by-md5` | 按 MD5 查音频 | audio:read |
 | audio_list_tags | `GET /api/v1/audios/tags` | 音频标签 | audio:read |
 | audio_update_metadata | `PUT /api/v1/audios/{audio_id}/metadata` | 更新元数据（name 等） | audio:update |
@@ -158,9 +158,9 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/v1/testcases?keyword=唤�
 # 音频列表
 curl -H "Authorization: Bearer $TOKEN" "$BASE_URL/api/v1/audios?page=1&per_page=10"
 
-# 按 MD5 定位音频
+# 按 MD5 定位音频（请求体字段是 md5_list 数组）
 curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"md5":"d41d8cd98f00b204e9800998ecf8427e"}' "$BASE_URL/api/v1/audios/by-md5"
+  -d '{"md5_list":["d41d8cd98f00b204e9800998ecf8427e"]}' "$BASE_URL/api/v1/audios/by-md5"
 ```
 
 ### 5.5 被测设备 device（`device_*`）

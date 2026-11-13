@@ -6,7 +6,9 @@ M1 音频域只读卡提供的评测数据，由 m1-08 的统一评测器消费�
 ## 文件
 
 - `golden_tasks.json`：13 条 trigger / tool-selection 用例（10 条音频查询正例 +
-  1 条写操作边界 + 2 条跨域负例），覆盖 `audio_query` 的全部 10 个动作。
+  1 条写操作边界 + 2 条跨域负例），覆盖 `audio_query` 的全部 9 个动作。
+  （INT-2530 起 `by_ids` 为宿主语境通道，Agent 侧不暴露，不再作为正例动作；
+  audio-04 改为逐个 `detail` 并禁止调用 `audio_get_by_ids`。）
 
 ## 字段
 

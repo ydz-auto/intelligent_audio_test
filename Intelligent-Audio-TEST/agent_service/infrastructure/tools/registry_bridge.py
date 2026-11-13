@@ -152,6 +152,10 @@ class SharedToolRegistryBridge(ToolRegistryPort):
         tool = intent_tools.INTENT_TOOL_BY_NAME.get(name)
         if tool is not None:
             return tuple(tool.permissions)
+        # 宿主语境专用工具（如 audio_get_by_ids，INT-2530）不在 Agent 通道：
+        # 返回 None 让网关按「工具不存在」fail-closed，不回源。
+        if name in intent_tools.AGENT_UNEXPOSED_MCP_TOOLS:
+            return None
         mcp = mcp_registry.get_tool(name)
         if mcp is None:
             return None

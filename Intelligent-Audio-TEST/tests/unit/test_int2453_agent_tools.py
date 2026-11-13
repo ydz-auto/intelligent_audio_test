@@ -189,7 +189,7 @@ def test_tool_search_index_includes_reserved_names():
     names = {t['name'] for t in TOOL_INDEX}
     assert {'memory_search', 'memory_write', 'ui_tree', 'ui_action',
             'api_spec'} <= names
-    assert len(TOOL_INDEX) == 205 + 31 - 2  # 两个与 MCP 同名项去重
+    assert len(TOOL_INDEX) == (205 - 1) + 31 - 2  # 两个同名项去重 + 排除 audio_get_by_ids（INT-2530 宿主语境）
 
 
 def test_tool_search_limit_is_bounded():

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""INT-2458 音频域只读实机探针：audio_query 10 个动作 → docker 栈 REST 逐字段比对。
+"""INT-2458 音频域只读实机探针：audio_query 9 个动作 → docker 栈 REST 逐字段比对。
+
+（INT-2530 起 ``by_ids`` 不再是 Agent 动作，改为负例：工具层拒绝、宿主 REST 不变。）
 
 做三件事（不接受 mock）：
 
@@ -108,10 +110,29 @@ def main():
             run_action(gateway, context, 'detail', audio_id=audio_id),
             client.request('GET', f'/audios/{audio_id}'))
 
-    # 3) 按 ID 批量
-    compare('by_ids 逐字段一致',
-            run_action(gateway, context, 'by_ids', ids=[audio_id]),
-            client.request('POST', '/audios/by-ids', {'ids': [audio_id]}))
+    # 3) 按 ID 批量：INT-2530 起 Agent 侧不暴露 by_ids（宿主语境通道），
+    #    但宿主 REST /audios/by-ids 行为保持不变，直连仍可回填。
+    by_ids_result = run_action(gateway, context, 'by_ids', ids=[audio_id])
+    check('by_ids 动作在 Agent 侧不可调用',
+          (not by_ids_result.ok
+           and by_ids_result.error_code == INVALID_ARGUMENTS
+           and '取值必须是' in by_ids_result.content),
+          f'{by_ids_result.error_code}: {by_ids_result.content[:120]}')
+    direct_by_ids = client.request('POST', '/audios/by-ids',
+                                   {'ids': [audio_id]})
+    check('宿主 REST by-ids 行为不变（直连仍返回元数据）',
+          isinstance(direct_by_ids.get('data'), list)
+          and any(item.get('id') == audio_id
+                  for item in direct_by_ids['data']),
+          json.dumps(direct_by_ids, ensure_ascii=False)[:200])
+    direct_tool = gateway.execute(
+        ToolCallRequest(tool_call_id='by-ids-direct',
+                        name='audio_get_by_ids', arguments={'ids': [audio_id]}),
+        context)
+    check('MCP 直呼 audio_get_by_ids 被 Agent 网关拒绝',
+          (not direct_tool.ok
+           and direct_tool.error_code == 'UNKNOWN_TOOL'),
+          f'{direct_tool.error_code}: {direct_tool.content[:120]}')
 
     # 4) 按 MD5（真实库遗留记录 md5 多为 null；这里验证请求体口径与空命中形态）
     probe_md5 = '0d6a1c6d9f2b7e4a8c3f5d1b2e9a7c40'

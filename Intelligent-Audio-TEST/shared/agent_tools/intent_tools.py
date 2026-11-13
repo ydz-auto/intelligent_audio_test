@@ -15,6 +15,8 @@
 - ``evaluation_query``：评估维度 / 分类只读子集（映射 MCP ``evaluation_*`` 只读工具）；
 - ``algorithm_query``：算法定义 / 参数 / 映射 / 表单 Schema 只读子集（映射 MCP ``algorithm_*`` 只读工具）；
 - ``tool_search``：对 205 个 MCP 工具 + 意图工具建索引，按关键词返回 Schema。
+  其中宿主语境专用工具（``AGENT_UNEXPOSED_MCP_TOOLS``，当前为
+  ``audio_get_by_ids``）不进索引、不可被 Agent 调用（INT-2530）。
 
 M1 各域卡按域启用自己的只读意图工具（已完成：``audio_query`` INT-2458、
 ``evaluation_query`` INT-2462、``algorithm_query`` INT-2464）；
@@ -109,10 +111,16 @@ REPORT_QUERY_ACTIONS: Dict[str, str] = {
 }
 
 # 音频只读动作 → MCP 工具名（映射 MCP audio_* 只读子集，INT-2458）
+#
+# INT-2530（INT-2523 P1-1）：不暴露 ``by_ids``。该动作是无归属校验的批量读
+# 通道（INT-564 规划师裁定为宿主语境专用：用例回填 / 批量标注匹配），而 Agent
+# 工具调用沿用**用户自己的** Authorization，不是宿主语境——有 ``audio:read``
+# 的用户即可用任意 id 枚举他人 ``private`` 音频的元数据 / 标签 / 标注。
+# 宿主侧 REST ``/api/v1/audios/by-ids`` 行为不变，只是不进 Agent 动作表，
+# 见 ``AGENT_UNEXPOSED_MCP_TOOLS``。
 AUDIO_QUERY_ACTIONS: Dict[str, str] = {
     'list': 'audio_list',
     'detail': 'audio_get',
-    'by_ids': 'audio_get_by_ids',
     'by_md5': 'audio_get_by_md5',
     'tags': 'audio_list_tags',
     'folder_tree': 'audio_folder_tree',
@@ -130,7 +138,6 @@ AUDIO_QUERY_PARAMS: Dict[str, Tuple[str, ...]] = {
              'sample_rate', 'duration', 'tags', 'direction',
              'algorithm_type', 'visibility'),
     'detail': (),
-    'by_ids': (),
     'by_md5': (),
     'tags': (),
     'folder_tree': ('keyword', 'format', 'audio_type', 'sample_rate',
@@ -200,7 +207,6 @@ ACTION_REQUIRED: Dict[str, Dict[str, Tuple[str, ...]]] = {
     # 不在这里做改名映射，避免意图层与 REST 出现两套字段口径。
     'audio_query': {
         'detail': ('audio_id',),
-        'by_ids': ('ids',),
         'by_md5': ('md5_list',),
         'features': ('audio_id',),
         'quality': ('audio_id',),
@@ -299,7 +305,7 @@ INTENT_TOOLS: List[IntentTool] = [
         risk='READ', permissions=('report:read',), enabled=True, kind='intent_rest'),
     IntentTool(
         name='audio_query',
-        description=('音频只读查询：列表 / 详情 / 按 ID 批量 / 按 MD5 查重 / 标签 / '
+        description=('音频只读查询：列表 / 详情 / 按 MD5 查重 / 标签 / '
                      '目录树 / 特征分析 / 质量评估 / 已配算法 / 播放历史。'
                      '字段口径与 REST /api/v1/audios 一致，缺失就是缺失，不编造数值。'),
         parameters=_schema({
@@ -307,8 +313,6 @@ INTENT_TOOLS: List[IntentTool] = [
                             enum=list(AUDIO_QUERY_ACTIONS)),
             'audio_id': _prop('integer', '音频 ID（detail / features / quality / '
                                          'algorithms / playback_history 必填）'),
-            'ids': _prop('array', '音频 ID 列表（by_ids 必填）',
-                         items={'type': 'integer'}),
             'md5_list': _prop('array', 'MD5 列表（by_md5 必填）',
                               items={'type': 'string'}),
             'keyword': _prop('string', '关键词过滤（list 匹配文件名 / 原名，'
@@ -630,16 +634,25 @@ INTENT_TOOL_BY_NAME: Dict[str, IntentTool] = {t.name: t for t in INTENT_TOOLS}
 # 已启用的工具集合（执行前判定；预留工具返回 TOOL_NOT_ENABLED）
 ENABLED_TOOLS = frozenset(t.name for t in INTENT_TOOLS if t.enabled)
 
+# 宿主语境专用工具：REST 端点在用（用例回填 / 批量标注匹配），但 Agent 侧
+# 一律不暴露 —— 不进 tool_search 索引、platform_contract 不返回、解析层拒绝。
+# 理由见 AUDIO_QUERY_ACTIONS 上方注释（INT-2530 / INT-2523 P1-1）：这类批量
+# 读通道不做归属 / 可见性校验，模型可借用户 Authorization 越过行级可见性。
+AGENT_UNEXPOSED_MCP_TOOLS: Dict[str, str] = {
+    'audio_get_by_ids': '按 ID 批量读是宿主语境通道（不做归属校验），Agent 侧不可调用',
+}
+
 # tool_search 索引：205 个 MCP 工具 + 意图工具（含 5 个预留名称）。
 # MCP 与意图工具存在同名项（report_compare / report_export）：保留 MCP 条目
 # （可直接调用），同名意图条目不再重复进索引，避免同一 name 出现两次。
+# 宿主语境工具（AGENT_UNEXPOSED_MCP_TOOLS）不计入索引。
 _MCP_NAMES = frozenset(t['name'] for t in MCP_TOOLS)
 
 TOOL_INDEX: List[dict] = [
     {'name': t['name'], 'description': t['description'],
      'inputSchema': t['inputSchema'], 'permissions': list(t['permissions']),
      'risk': 'READ' if t['method'] == 'GET' else 'WRITE', 'kind': 'mcp'}
-    for t in MCP_TOOLS
+    for t in MCP_TOOLS if t['name'] not in AGENT_UNEXPOSED_MCP_TOOLS
 ] + [
     {'name': t.name, 'description': t.description,
      'inputSchema': t.parameters, 'permissions': list(t.permissions),
@@ -728,10 +741,16 @@ _REST_ACTION_MAP: Dict[str, Dict[str, str]] = {
 
 
 def risk_of(name: str) -> Optional[str]:
-    """工具风险：意图工具取声明值；MCP 工具 GET=READ、其余=WRITE。"""
+    """工具风险：意图工具取声明值；MCP 工具 GET=READ、其余=WRITE。
+
+    宿主语境专用 MCP 工具（``AGENT_UNEXPOSED_MCP_TOOLS``）返回 ``None``，
+    与「两份注册表都查不到」同口径 —— 调用方按未注册 / 不可用 fail-closed。
+    """
     tool = INTENT_TOOL_BY_NAME.get(name)
     if tool is not None:
         return tool.risk
+    if name in AGENT_UNEXPOSED_MCP_TOOLS:
+        return None
     mcp = get_tool(name)
     if mcp is None:
         return None
@@ -834,12 +853,20 @@ def resolve_rest_call(name: str, arguments: Dict[str, Any]
         mcp = get_tool(mapping[action])
         if mcp is None:  # pragma: no cover - 注册表内部一致性防御
             return None, None, f'工具映射失效：{name}.{action}'
+        if mcp['name'] in AGENT_UNEXPOSED_MCP_TOOLS:  # pragma: no cover - 同上
+            return None, None, (
+                f'工具 {mcp["name"]} 不在 Agent 可用通道内：'
+                f'{AGENT_UNEXPOSED_MCP_TOOLS[mcp["name"]]}')
         merged = {k: v for k, v in arguments.items() if k != 'action'}
         if name == 'audio_query':
             normalize_error = _normalize_audio_query_arguments(action, merged)
             if normalize_error:
                 return None, None, normalize_error
         return mcp, merged, None
+    if name in AGENT_UNEXPOSED_MCP_TOOLS:
+        return None, None, (
+            f'工具 {name} 不在 Agent 可用通道内：'
+            f'{AGENT_UNEXPOSED_MCP_TOOLS[name]}')
     mcp = get_tool(name)
     if mcp is not None:
         return mcp, dict(arguments), None
@@ -858,7 +885,8 @@ def platform_contract(query: str = '', section: str = 'all') -> dict:
     if query in INTENT_TOOL_BY_NAME:
         tool = INTENT_TOOL_BY_NAME[query]
         return {'query': query, 'tool': _serialize_intent(tool)}
-    if query in {t['name'] for t in MCP_TOOLS}:
+    if query in {t['name'] for t in MCP_TOOLS} \
+            and query not in AGENT_UNEXPOSED_MCP_TOOLS:
         mcp = next(t for t in MCP_TOOLS if t['name'] == query)
         return {'query': query, 'tool': {
             'name': mcp['name'], 'description': mcp['description'],
@@ -885,7 +913,8 @@ def _serialize_intent(tool: IntentTool) -> dict:
 
 
 __all__ = [
-    'ACTION_REQUIRED', 'ALGORITHM_QUERY_ACTIONS', 'AUDIO_QUERY_ACTIONS',
+    'ACTION_REQUIRED', 'AGENT_UNEXPOSED_MCP_TOOLS', 'ALGORITHM_QUERY_ACTIONS',
+    'AUDIO_QUERY_ACTIONS',
     'CONDITIONAL_REQUIRED', 'ENABLED_TOOLS', 'EVALUATION_QUERY_ACTIONS',
     'INTENT_TOOL_BY_NAME', 'INTENT_TOOLS', 'IntentTool', 'MCP_TOOLS',
     'REPORT_QUERY_ACTIONS', 'TASK_QUERY_ACTIONS', 'TOOL_INDEX',

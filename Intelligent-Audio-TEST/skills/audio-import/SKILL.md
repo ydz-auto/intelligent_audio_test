@@ -56,7 +56,6 @@ budgets:
 |---|---|---|---|
 | `list` | `GET /api/v1/audios` | 分页列表 + 统计 | — |
 | `detail` | `GET /api/v1/audios/{audio_id}` | 单条完整元数据（严格可见性） | `audio_id` |
-| `by_ids` | `POST /api/v1/audios/by-ids` | 批量回填元数据（宿主语境） | `ids` |
 | `by_md5` | `POST /api/v1/audios/by-md5` | 按 MD5 查重 | `md5_list` |
 | `tags` | `GET /api/v1/audios/tags` | 全部标签名 | — |
 | `folder_tree` | `POST /api/v1/audios/folder-tree` | 目录树（可按需展开） | — |
@@ -139,11 +138,12 @@ budgets:
 - **by_md5 只回 id/name**：想确认格式、时长、标签，必须再 `detail`，别拿 name 推断格式。
 - **detail 对私有音频严格**：`visibility=private` 且非创建人时返回「资源不存在或无权访问」
   （404 与 403 同一文案，防探测）。**不要**据此断言音频一定不存在，只能说「无权访问或不存在」。
-- **by_ids 是宿主语境批量通道**：不做 owner 过滤（用例回填场景），能见宿主即可见其引用
-  音频；不要把 `by_ids` 的可见范围当成用户对音频的完整权限。
+- **没有「按 ID 数组批量读」动作**：`audio_query` 不提供（REST 侧那个批量端点
+  只服务宿主语境用例回填，不做归属校验，Agent 侧不可调用）；要多个音频的元数据
+  就按需逐个 `detail`，不要构造 id 数组试探。
 - **目录树权限单独**：`folder_tree` 需要 `audio:folder` 权限；只有 `audio:read` 的用户
   调它会得到普通拒绝文本。其余只读动作只需要 `audio:read`。
-- **空结果不是错误**：`by_md5` 无命中返回 `{}`；`by_ids` 空数组返回 `[]`；列表
+- **空结果不是错误**：`by_md5` 无命中返回 `{}`；列表
   `items=[]` 且 `total=0` 是正常空态。不要把它说成「查询失败」。
 - **遗留音频的 `md5` 可能为空**：早期入库的音频 `md5` 字段可能是 null。`by_md5`
   无命中只说明库里没有该 MD5 的记录，不能反推文件本身有问题，也不能因此断言「没导入过」。
@@ -175,7 +175,7 @@ budgets:
 - 任一动作返回的字段名与 REST `/api/v1/audios` 实际返回逐字一致，没有补造字段；
 - 列表返回 `total` / `stats` 时与接口一致，不出现自算的近似值；
 - 查询前先想清楚必填参数：`detail` / `features` / `quality` / `algorithms` /
-  `playback_history` 必须有 `audio_id`，`by_ids` 要有 `ids`，`by_md5` 要有 `md5_list`，
+  `playback_history` 必须有 `audio_id`，`by_md5` 要有 `md5_list`，
   缺参数会得到「缺少必填参数」，不要绕过；
 - 越权 / 不存在资源时如实转述普通拒绝文本，不泄漏资源是否存在；
 - 只读工具列表内调用；写动作一律说明未启用并给出替代路径。

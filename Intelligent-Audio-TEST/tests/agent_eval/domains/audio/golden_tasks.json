@@ -40,10 +40,10 @@
       "prompt": "把 id 为 11、12、13 的这几个音频的元数据一起拉给我",
       "expect_skill": true,
       "expected_tool": "audio_query",
-      "expected_actions": ["by_ids"],
-      "expected_params": {"ids": [11, 12, 13]},
-      "must_not_call": ["audio_import", "audio_annotate"],
-      "notes": "批量回填；by_ids 是宿主语境通道"
+      "expected_actions": ["detail"],
+      "expected_params": {"audio_id": 11},
+      "must_not_call": ["audio_get_by_ids", "audio_import", "audio_annotate"],
+      "notes": "INT-2530：by_ids 是宿主语境通道，Agent 侧不暴露；多音频逐个 detail"
     },
     {
       "id": "audio-05",
