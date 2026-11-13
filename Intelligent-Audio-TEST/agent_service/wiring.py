@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from agent_service.application.cancel_registry import CancelRegistry
-from agent_service.application.context_assembler import ContextAssembler
+from agent_service.application.context_assembler import (
+    CompactionSettings, ContextAssembler,
+)
 from agent_service.application.event_stream import EventStreamService
 from agent_service.application.provider_service import ProviderService
 from agent_service.application.recovery_service import RecoveryService
@@ -30,14 +32,22 @@ from agent_service.application.sandbox_runner import (
 from agent_service.application.skill_registry import SkillRegistry
 from agent_service.application.tool_gateway import SharedToolGateway
 from agent_service.config.config import Config
+from agent_service.domain.model.context_budget import SectionRatios
+from agent_service.domain.ports.artifact_store import ArtifactStore
 from agent_service.domain.ports.llm_provider import (
     LlmProviderResolver, ProviderVerifier,
 )
 from agent_service.domain.ports.run_wakeup import RunWakeup
 from agent_service.domain.ports.side_effects import ReadOnlySideEffectChecker
 from agent_service.domain.ports.tool_gateway import ToolGateway
+from agent_service.domain.services.context_budget_policy import (
+    ContextBudgetPolicy,
+)
 from agent_service.domain.services.context_window_resolver import (
     ContextWindowResolver,
+)
+from agent_service.infrastructure.artifacts.oss_artifact_store import (
+    OssArtifactStore,
 )
 from agent_service.infrastructure.llm.credential_store import CredentialStore
 from agent_service.infrastructure.llm.provider_registry import ProviderRegistry
@@ -76,6 +86,8 @@ class AgentContainer:
     tool_gateway: ToolGateway = None
     credentials: RunCredentialRegistry = None
     sandbox: SandboxToolExecutor = None
+    budget_policy: Optional[ContextBudgetPolicy] = None
+    compaction_settings: Optional[CompactionSettings] = None
     repositories: dict = field(default_factory=dict)
 
     def shutdown(self) -> None:
@@ -209,12 +221,21 @@ def build_container(session_factory,
                     window_resolver: Optional[ContextWindowResolver] = None,
                     provider_verifier: Optional[ProviderVerifier] = None,
                     sandbox: Optional[SandboxToolExecutor] = None,
-                    http_transport=None
+                    http_transport=None,
+                    context_max_runs: Optional[int] = None,
+                    context_max_messages: Optional[int] = None,
+                    artifact_store: Optional[ArtifactStore] = None,
+                    compaction_settings: Optional[CompactionSettings] = None,
+                    budget_ratios: Optional[SectionRatios] = None,
+                    context_debug: Optional[bool] = None,
                     ) -> AgentContainer:
     """组合根。``budget_defaults`` / ``terminal_grace_seconds`` /
     ``skill_registry`` / ``skills_root`` 与 ``provider_resolver`` /
     ``credential_store`` / ``window_resolver`` / ``provider_verifier`` /
-    ``sandbox`` / ``http_transport`` 仅供测试注入替身；生产一律取 Config + 环境。"""
+    ``sandbox`` / ``http_transport`` 仅供测试注入替身；生产一律取 Config + 环境。
+    ``context_max_runs`` / ``context_max_messages`` / ``artifact_store`` /
+    ``compaction_settings`` / ``budget_ratios`` / ``context_debug`` 同样仅供
+    测试（如 50 轮压缩评测）覆盖配置。"""
     budgets = budget_defaults or Config.budget_defaults()
     sessions = SqlSessionRepository(session_factory)
     runs = SqlRunRepository(session_factory)
@@ -251,12 +272,41 @@ def build_container(session_factory,
     skills = skill_registry or build_skill_registry(gateway, skills_root)
     sandbox_executor = sandbox or build_sandbox_tool_executor(skills)
 
+    compaction = compaction_settings or CompactionSettings(
+        enabled=True,
+        keep_recent_turns=Config.CONTEXT_KEEP_RECENT_TURNS,
+        tool_summary_chars=Config.CONTEXT_TOOL_SUMMARY_CHARS,
+        max_summary_chars=Config.CONTEXT_MAX_SUMMARY_CHARS,
+        artifact_threshold_chars=Config.CONTEXT_ARTIFACT_THRESHOLD_CHARS,
+        list_top_n=Config.CONTEXT_LIST_TOP_N,
+        list_trim_threshold_chars=Config.CONTEXT_LIST_TRIM_THRESHOLD_CHARS,
+        max_key_fields=Config.CONTEXT_MAX_KEY_FIELDS,
+        memo_min_candidates=Config.CONTEXT_MEMO_MIN_CANDIDATES,
+        artifact_store_timeout_seconds=(
+            Config.CONTEXT_ARTIFACT_TIMEOUT_SECONDS),
+        debug=(Config.CONTEXT_DEBUG if context_debug is None
+               else bool(context_debug)),
+    )
+
     assembler = ContextAssembler(
         events, runs, system_prompt=Config.SYSTEM_PROMPT,
-        max_runs=Config.CONTEXT_MAX_RUNS,
-        max_messages=Config.CONTEXT_MAX_MESSAGES,
+        max_runs=(Config.CONTEXT_MAX_RUNS if context_max_runs is None
+                  else int(context_max_runs)),
+        max_messages=(Config.CONTEXT_MAX_MESSAGES
+                      if context_max_messages is None
+                      else int(context_max_messages)),
         event_fetch_limit=Config.EVENT_SCAN_LIMIT,
-        skills=skills)
+        skills=skills, snapshots=snapshots, artifacts=artifacts,
+        artifact_store=artifact_store or OssArtifactStore(),
+        settings=compaction)
+
+    ratios = budget_ratios or SectionRatios.from_dict(
+        Config.context_section_ratios())
+    budget_policy = ContextBudgetPolicy(
+        windows, ratios=ratios,
+        soft_ratio=Config.COMPACTION_SOFT_RATIO,
+        hard_ratio=Config.COMPACTION_HARD_RATIO,
+        token_budget_multiplier=Config.TOKEN_BUDGET_MULTIPLIER_DEFAULT)
 
     settings = OrchestratorSettings(
         budget_defaults=dict(budgets),
@@ -271,6 +321,8 @@ def build_container(session_factory,
         auto_token_budget_multiplier=Config.TOKEN_BUDGET_MULTIPLIER_AUTO,
         compaction_soft_ratio=Config.COMPACTION_SOFT_RATIO,
         compaction_hard_ratio=Config.COMPACTION_HARD_RATIO,
+        budget_policy=budget_policy,
+        memo_max_output_tokens=Config.CONTEXT_MEMO_MAX_OUTPUT_TOKENS,
     )
     orchestrator = RunOrchestrator(
         sessions=sessions, runs=runs, events=events, steps=steps,
@@ -311,6 +363,7 @@ def build_container(session_factory,
         provider_service=provider_service, provider_registry=registry,
         tool_gateway=gateway, credentials=tool_credentials,
         sandbox=sandbox_executor,
+        budget_policy=budget_policy, compaction_settings=compaction,
         repositories={
             'sessions': sessions, 'runs': runs, 'events': events,
             'steps': steps, 'tool_calls': tool_calls,

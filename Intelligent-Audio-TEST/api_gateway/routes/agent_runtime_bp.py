@@ -220,6 +220,12 @@ async def proxy_approvals(run_id: str, request: Request):
     return await _forward(request, 'GET')
 
 
+@router.get('/runs/{run_id}/context-snapshots')
+async def proxy_context_snapshots(run_id: str, request: Request):
+    """上下文压缩快照（INT-2454；调试模式下由 agent_service 带回备忘）。"""
+    return await _forward(request, 'GET')
+
+
 @router.get('/skills')
 async def proxy_skills(request: Request):
     """当前用户可见 Skill 列表（INT-2452；权限由 agent_service 按身份头过滤）。"""
