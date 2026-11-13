@@ -106,6 +106,7 @@ def _to_tool_call(row: AgentToolCallPO) -> AgentToolCall:
         risk=ToolRisk(row.risk), status=ToolCallStatus(row.status),
         result=row.result, result_ref=row.result_ref,
         latency_ms=row.latency_ms, permission_decision=row.permission_decision,
+        result_code=row.result_code,
         error=row.error, idempotency_key=row.idempotency_key,
         created_at=row.created_at, updated_at=row.updated_at,
     )
@@ -517,7 +518,7 @@ class SqlStepRepository(_BaseRepo, StepRepository):
 
 _UPDATABLE_TOOL_CALL_FIELDS = frozenset({
     'status', 'step_id', 'result', 'result_ref', 'latency_ms',
-    'permission_decision', 'error', 'idempotency_key',
+    'permission_decision', 'result_code', 'error', 'idempotency_key',
 })
 
 

@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS agent_tool_call (
     result_ref TEXT NULL,
     latency_ms INTEGER NULL,
     permission_decision VARCHAR(50) NULL,
+    result_code VARCHAR(50) NULL,
     error TEXT NULL,
     idempotency_key VARCHAR(255) NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),

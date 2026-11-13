@@ -450,6 +450,11 @@ BOOTSTRAP_STEPS = [
     #     幂等（表/索引 IF NOT EXISTS、约束先查 pg_constraint），全新库为全 SKIP；
     #     默认 dry-run，引导链必须带 --apply。须排在 ㊽ ANALYZE 之前。
     ('python', 'scripts/migrations/202611/add_agent_runtime_tables.py', '--apply'),
+    # ㊾-9 agent_tool_call 补 result_code 审计列（INT-2453 §6.3）：
+    #     审计行字段 run_id / tool / args_hash / decision / latency / result_code
+    #     齐全。列可 NULL，存量行不迁移；幂等（列存在即 SKIP，全新库 create_all
+    #     已含为全 SKIP）；须排在 ㊽ ANALYZE 之前。
+    ('python', 'scripts/migrations/202611/add_agent_tool_call_result_code.py', '--apply'),
     # ㊽ 统计信息兜底重建（INT-1741）：Postgres 统计子系统在**非正常关机**后从零
     #     开始计数（本机 2026-10-23 一天 7 次 crash-restart），而 autoanalyze 的
     #     触发阈值 = 50 + 0.1×reltuples，大表（logs 304k 行需 3 万次变更）在计数器
@@ -540,6 +545,8 @@ PROD_DDL_SCRIPTS = frozenset({
     'scripts/migrations/202611/add_param_change_history.py',
     # INT-2451 agent_service 运行底座七表（结构 DDL，幂等）
     'scripts/migrations/202611/add_agent_runtime_tables.py',
+    # INT-2453 agent_tool_call 补 result_code 审计列（纯 DDL，幂等）
+    'scripts/migrations/202611/add_agent_tool_call_result_code.py',
     'scripts/migrations/202610/analyze_stale_statistics_int1741.py',
 })
 

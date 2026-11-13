@@ -22,7 +22,7 @@ from typing import Callable, Dict, List, Optional, Sequence
 from agent_service.application.cancel_registry import CancelRegistry
 from agent_service.application.context_assembler import ContextAssembler
 from agent_service.domain.enums import (
-    EventType, RunStatus, StepStatus, ToolCallStatus, ToolRisk,
+    EventType, RunStatus, StepStatus, ToolCallStatus,
 )
 from agent_service.domain.exceptions import (
     InvalidRunTransition, LlmConfigurationError, LlmInvocationError, RunCancelled,
@@ -47,6 +47,17 @@ from agent_service.domain.services.state_machine import RunStateMachine
 from shared.utils.time_utils import utcnow
 
 logger = logging.getLogger(__name__)
+
+
+def _has_permission(granted: Sequence[str],
+                    required: Sequence[str]) -> bool:
+    """权限 OR 语义；``*`` 通配；required 为空表示仅需登录。"""
+    if not required:
+        return True
+    perms = set(granted or ())
+    if '*' in perms:
+        return True
+    return bool(perms & set(required))
 
 
 @dataclass
@@ -134,6 +145,12 @@ class RunOrchestrator:
         # Skill 披露口径在发起 run 时固化（run_started）：权限用于 L1 过滤，
         # active_skill 决定是否注入 L2；恢复时读同一条事件，口径不变。
         permissions, active_skill = self._run_scope(run_id)
+        # §6.3 allowed-tools ∩ 用户权限：None = 未激活 Skill（不按 Skill 收窄）
+        allowed_tools = self._assembler.allowed_tools(permissions, active_skill)
+        # Skill 授权了 tool_search 时，检索到的长尾 MCP 工具允许在本次 run 执行；
+        # 未激活 Skill 时同样允许（仅受用户权限约束）。
+        allow_discovered = (allowed_tools is None
+                            or 'tool_search' in allowed_tools)
 
         def cancel_check() -> bool:
             nonlocal db_check_counter
@@ -180,7 +197,7 @@ class RunOrchestrator:
                 llm = self._llm_factory()
                 request = self._build_request(
                     run, turn, permissions=permissions,
-                    active_skill=active_skill)
+                    active_skill=active_skill, allowed_tools=allowed_tools)
                 stream = llm.stream(request, cancel_check=cancel_check)
                 try:
                     for chunk in stream:
@@ -263,7 +280,10 @@ class RunOrchestrator:
                              reason='max_tool_calls')
                 return
 
-            results = self._execute_batch(run, step.id, calls, turn)
+            results = self._execute_batch(
+                run, step.id, calls, turn, permissions=permissions,
+                allowed_tools=allowed_tools,
+                allow_discovered=allow_discovered)
             if any(result.error_code == 'RESTART_WRITE_UNVERIFIED'
                    for result in results):
                 self._finish(
@@ -284,11 +304,12 @@ class RunOrchestrator:
 
     def _build_request(self, run: AgentRun, turn: int, *,
                        permissions: Sequence[str] = (),
-                       active_skill: Optional[str] = None) -> LlmRequest:
+                       active_skill: Optional[str] = None,
+                       allowed_tools: Optional[frozenset] = None) -> LlmRequest:
         messages = self._assembler.assemble(
             run.session_id, run, permissions=permissions,
             active_skill=active_skill)
-        tools = tuple(self._tool_specs())
+        tools = tuple(self._tool_specs(permissions, allowed_tools))
         return LlmRequest(
             messages=tuple(messages), tools=tools,
             model=run.model, temperature=self._settings.temperature,
@@ -310,7 +331,13 @@ class RunOrchestrator:
         return (tuple(payload.get('permissions') or ()),
                 payload.get('active_skill') or None)
 
-    def _tool_specs(self) -> List[Dict]:
+    def _tool_specs(self, permissions: Sequence[str] = (),
+                    allowed_tools: Optional[frozenset] = None) -> List[Dict]:
+        """本轮暴露给模型的意图工具（§6.3）。
+
+        - 用户权限不满足的工具不装配；
+        - 激活 Skill 时只装配其 ``allowed-tools`` 声明过的工具（交集）。
+        """
         specs: List[Dict] = []
         try:
             descriptors = self._tool_gateway.all_tools()
@@ -318,6 +345,10 @@ class RunOrchestrator:
             logger.warning('读取工具注册表失败', exc_info=True)
             return specs
         for descriptor in descriptors:
+            if allowed_tools is not None and descriptor.name not in allowed_tools:
+                continue
+            if not _has_permission(permissions, descriptor.permissions):
+                continue
             specs.append({
                 'type': 'function',
                 'function': {
@@ -333,6 +364,26 @@ class RunOrchestrator:
             return {d.name: d for d in self._tool_gateway.all_tools()}
         except Exception:  # noqa: BLE001
             return {}
+
+    def _scope_denial(self, name: str, descriptor: Optional[ToolDescriptor],
+                      allowed_tools: Optional[frozenset],
+                      allow_discovered: bool) -> Optional[tuple]:
+        """执行期工具范围校验（§6.3）。
+
+        意图工具：激活 Skill 时只允许其 ``allowed-tools``；
+        长尾 MCP 工具（descriptor 为 None，tool_search 命中）：仅当未激活
+        Skill，或 Skill 明确声明了 ``tool_search`` 时开放。
+        """
+        if descriptor is not None:
+            if allowed_tools is not None and name not in allowed_tools:
+                return ('SKILL_TOOL_DENIED',
+                        f'工具 {name} 未对当前激活 Skill 开放，请改用声明过的工具。',
+                        'deny')
+            return None
+        if not allow_discovered:
+            return ('SKILL_TOOL_DENIED',
+                    '当前激活 Skill 未声明 tool_search，长尾工具未开放。', 'deny')
+        return None
 
     def _next_turn(self, run_id: str) -> int:
         max_turn = -1
@@ -357,7 +408,10 @@ class RunOrchestrator:
 
     def _execute_batch(self, run: AgentRun, step_id: str,
                        calls: Sequence[ToolCallRequest],
-                       turn: int) -> List[ToolResult]:
+                       turn: int, *,
+                       permissions: Sequence[str] = (),
+                       allowed_tools: Optional[frozenset] = None,
+                       allow_discovered: bool = True) -> List[ToolResult]:
         workers = max(1, min(int(self._settings.tool_max_concurrency or 1),
                              len(calls)))
         # 已落库的 tool 事件每批查一次（定向查询，不整条 run 全扫）
@@ -366,13 +420,17 @@ class RunOrchestrator:
         if workers == 1:
             for call in calls:
                 results.append(self._execute_one(
-                    run, step_id, call, turn, emitted))
+                    run, step_id, call, turn, emitted,
+                    permissions=permissions, allowed_tools=allowed_tools,
+                    allow_discovered=allow_discovered))
             return results
         with ThreadPoolExecutor(max_workers=workers,
                                 thread_name_prefix='agent-tool') as pool:
             futures = {
                 pool.submit(self._execute_one, run, step_id, call, turn,
-                            emitted): call
+                            emitted, permissions=permissions,
+                            allowed_tools=allowed_tools,
+                            allow_discovered=allow_discovered): call
                 for call in calls
             }
             for future in as_completed(futures):
@@ -389,13 +447,18 @@ class RunOrchestrator:
 
     def _execute_one(self, run: AgentRun, step_id: str,
                      call: ToolCallRequest, turn: int,
-                     emitted: set) -> ToolResult:
+                     emitted: set, *,
+                     permissions: Sequence[str] = (),
+                     allowed_tools: Optional[frozenset] = None,
+                     allow_discovered: bool = True) -> ToolResult:
         if self._cancel_registry.is_cancelled(run.id):
             return ToolResult(
                 tool_call_id=call.tool_call_id, tool=call.name, ok=False,
                 content='run 已取消，工具未执行', error_code='RUN_CANCELLED')
         descriptor = self._descriptor_map().get(call.name)
-        risk = descriptor.risk if descriptor else ToolRisk.READ
+        # 意图工具以注册表声明的风险为准；长尾 MCP 工具由网关按 HTTP 方法推导。
+        risk = (descriptor.risk if descriptor is not None
+                else self._tool_gateway.risk_of(call.name))
         args_hash = self._args_hash(call.arguments)
         # 幂等键 = run + step + tool_call_id + tool + args_hash。card 口径是
         # run+step+tool+args_hash，但同一批并行且参数相同的两次调用会撞键，
@@ -466,6 +529,43 @@ class RunOrchestrator:
             })
             emitted.add((EventType.TOOL_CALL, call.tool_call_id))
 
+        # §6.3 allowed-tools ∩ 用户权限：装配时收窄，执行时再校验一次 ——
+        # 模型可能调用未装配的工具（幻觉 / 旧上下文），不能只靠 exposure。
+        scope_error = self._scope_denial(call.name, descriptor,
+                                         allowed_tools, allow_discovered)
+        if scope_error is not None:
+            code, message, decision = scope_error
+            self._tool_calls.update(
+                call.tool_call_id, run.id,
+                status=ToolCallStatus.DENIED,
+                permission_decision=decision,
+                result={'ok': False, 'content': message, 'error_code': code},
+                result_code=code,
+                error=message)
+            result = ToolResult(
+                tool_call_id=call.tool_call_id, tool=call.name,
+                ok=False, content=message, error_code=code)
+            self._append_tool_result(run.id, result, turn, emitted)
+            return result
+
+        # 预留意图工具（M1 / M2 实现）：返回明确的「未启用」错误码，
+        # 不按写操作审批语义处理（否则会被误读为「平台不支持」）。
+        if descriptor is not None and not descriptor.enabled:
+            message = f'工具 {call.name} 尚未启用（当前阶段为预留 Schema）'
+            self._tool_calls.update(
+                call.tool_call_id, run.id,
+                status=ToolCallStatus.DENIED,
+                permission_decision='not_enabled',
+                result={'ok': False, 'content': message,
+                        'error_code': 'TOOL_NOT_ENABLED'},
+                result_code='TOOL_NOT_ENABLED',
+                error=message)
+            result = ToolResult(
+                tool_call_id=call.tool_call_id, tool=call.name,
+                ok=False, content=message, error_code='TOOL_NOT_ENABLED')
+            self._append_tool_result(run.id, result, turn, emitted)
+            return result
+
         if risk.requires_approval:
             # M0 只读：写操作一律拒绝（审批链路 M2 落地）
             message = '写操作需要审批，M0 未启用审批执行'
@@ -475,6 +575,7 @@ class RunOrchestrator:
                 permission_decision='approval_required',
                 result={'ok': False, 'content': message,
                         'error_code': 'APPROVAL_REQUIRED'},
+                result_code='APPROVAL_REQUIRED',
                 error=message)
             result = ToolResult(
                 tool_call_id=call.tool_call_id, tool=call.name,
@@ -486,7 +587,8 @@ class RunOrchestrator:
                                 status=ToolCallStatus.RUNNING)
         context = ToolInvocationContext(
             run_id=run.id, session_id=run.session_id, owner_id=run.owner_id,
-            tenant_id=run.tenant_id, step_id=step_id, permissions=(),
+            tenant_id=run.tenant_id, step_id=step_id,
+            permissions=tuple(permissions),
             idempotency_key=idempotency_key,
         )
         started = utcnow()
@@ -505,14 +607,21 @@ class RunOrchestrator:
             result = ToolResult(
                 tool_call_id=result.tool_call_id, tool=result.tool,
                 ok=result.ok, content=content, error_code=result.error_code)
+        if result.ok:
+            final_status = ToolCallStatus.COMPLETED
+        elif result.error_code in ('PERMISSION_DENIED', 'APPROVAL_REQUIRED'):
+            final_status = ToolCallStatus.DENIED
+        else:
+            final_status = ToolCallStatus.FAILED
         self._tool_calls.update(
             call.tool_call_id, run.id,
-            status=(ToolCallStatus.COMPLETED if result.ok
-                    else ToolCallStatus.FAILED),
+            status=final_status,
             result={'ok': result.ok, 'content': result.content,
                     'error_code': result.error_code},
             latency_ms=latency_ms,
-            permission_decision='allow',
+            permission_decision=('deny' if result.error_code == 'PERMISSION_DENIED'
+                                 else 'allow'),
+            result_code=result.error_code or ('OK' if result.ok else 'TOOL_FAILED'),
             error=None if result.ok else (result.error_code or 'TOOL_FAILED'))
         self._append_tool_result(run.id, result, turn, emitted)
         return result

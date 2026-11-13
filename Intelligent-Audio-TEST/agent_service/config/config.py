@@ -10,7 +10,7 @@ LLM 四项（base_url / api_key / model / timeout）按卡面口径用 ``LLM_*``
 import json
 import os
 
-from shared.config.service_ports import AGENT_SERVICE_HTTP_PORT
+from shared.config.service_ports import AGENT_SERVICE_HTTP_PORT, API_GATEWAY_PORT
 from shared.infrastructure.config import BaseConfig, _get_bool, _get_float, _get_int
 
 _SERVICE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -107,6 +107,17 @@ class Config(BaseConfig):
     EVENT_WAKEUP_BACKEND = os.environ.get('AGENT_EVENT_WAKEUP_BACKEND', 'redis').strip().lower()
     # 勤务通道：与现有 EventChannel 五通道隔离，只作 wakeup，不承载事件正文
     EVENT_CHANNEL = (BaseConfig.EVENT_CHANNEL_PREFIX or '') + 'agent_run_wakeup'
+
+    # ===== 工具层（INT-2453）=====
+    # 意图工具 → 网关 REST 的基址：容器内用 http://api_gateway:5000，
+    # 本机 docker 栈用宿主映射端口；默认取网关 HTTP 端口。
+    TOOL_GATEWAY_BASE_URL = os.environ.get(
+        'AGENT_TOOL_GATEWAY_BASE_URL',
+        f'http://127.0.0.1:{API_GATEWAY_PORT}')
+    TOOL_HTTP_TIMEOUT_SECONDS = _get_float('AGENT_TOOL_HTTP_TIMEOUT_SECONDS', 30.0)
+    # run 级 Authorization 暂存 TTL（只在 run 执行窗口内需要，不落库）
+    TOOL_CREDENTIAL_TTL_SECONDS = _get_int(
+        'AGENT_TOOL_CREDENTIAL_TTL_SECONDS', 3600)
 
     # ===== 重启恢复（§9.2）=====
     RECOVERY_ON_STARTUP = _get_bool('AGENT_RECOVERY_ON_STARTUP', True)

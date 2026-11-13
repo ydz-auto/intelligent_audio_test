@@ -49,8 +49,22 @@ class ContextAssembler:
         self._event_fetch_limit = max(1, int(event_fetch_limit))
         self._skills = skills
 
-    def assemble(self, session_id: str, run: AgentRun, *,
-                 permissions: Iterable[str] = (),
+    def allowed_tools(self, permissions: Iterable[str],
+                      active_skill: Optional[str]) -> Optional[frozenset]:
+        """当前 run 的 Skill 工具白名单（§6.3 allowed-tools 交集）。
+
+        - 未激活 Skill：返回 ``None``，表示不按 Skill 收窄（仅受用户权限约束）；
+        - 激活 Skill 且可见：返回其 ``allowed-tools`` 集合（空集合 = 不装配工具）；
+        - 激活 Skill 但不可见（未注册 / 权限不足）：返回空集合，不泄漏 Skill 内容。
+        """
+        if not active_skill or self._skills is None:
+            return None
+        skill = self._skills.get_visible(active_skill, permissions)
+        if skill is None:
+            return frozenset()
+        return frozenset(skill.meta.allowed_tools)
+
+    def assemble(self, session_id: str, run: AgentRun, *,                 permissions: Iterable[str] = (),
                  active_skill: Optional[str] = None) -> List[LlmMessage]:
         """组装本次模型调用的完整消息列表（system + 历史 + 当前轮）。
 

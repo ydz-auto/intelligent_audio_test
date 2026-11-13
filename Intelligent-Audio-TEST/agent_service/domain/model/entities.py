@@ -82,6 +82,7 @@ class AgentToolCall:
     result_ref: Optional[str] = None
     latency_ms: Optional[int] = None
     permission_decision: Optional[str] = None
+    result_code: Optional[str] = None
     error: Optional[str] = None
     idempotency_key: Optional[str] = None
     created_at: Optional[datetime] = None
