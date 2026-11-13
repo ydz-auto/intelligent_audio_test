@@ -39,7 +39,8 @@ def _run(argv: list[str], **kwargs) -> subprocess.CompletedProcess:
 def _preflight(image: str, pull: bool) -> tuple[bool, str]:
     if shutil.which('docker') is None:
         return False, 'docker CLI 不可用（需要 Docker Desktop / Docker Engine）'
-    info = _run(['docker', 'info', '--format', '{{.ServerVersion}}'], timeout=60)
+    # 探活用 `docker version`：部分开发机 `docker info` 会卡到分钟级（已知环境问题）。
+    info = _run(['docker', 'version', '--format', '{{.Server.Version}}'], timeout=120)
     if info.returncode != 0:
         return False, f'docker daemon 不可用：{info.stderr.strip()[:300]}'
     inspect = _run(['docker', 'image', 'inspect', '--format', '{{.Id}}', image], timeout=60)

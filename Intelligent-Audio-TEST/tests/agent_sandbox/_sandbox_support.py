@@ -3,10 +3,18 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 
 from agent_service.application.sandbox_runner import ContainerExecution, ContainerInvocation
 from agent_service.infrastructure.sandbox.docker_runner import HostCliDockerExecutor
+
+DEFAULT_SANDBOX_IMAGE = 'python:3.11-slim'
+
+
+def sandbox_image() -> str:
+    """沙箱镜像：与 runner 配置同源（``AGENT_SANDBOX_IMAGE``），不写死。"""
+    return (os.environ.get('AGENT_SANDBOX_IMAGE') or '').strip() or DEFAULT_SANDBOX_IMAGE
 
 
 def docker_cli(*args: str, timeout: int = 60) -> subprocess.CompletedProcess:

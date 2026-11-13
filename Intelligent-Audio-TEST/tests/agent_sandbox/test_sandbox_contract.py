@@ -12,7 +12,6 @@ from pathlib import Path
 import pytest
 
 from agent_service.application.sandbox_runner import (
-    SANDBOX_TIER_T1,
     ContainerExecution,
     ContainerInvocation,
     ContainerLimits,
@@ -23,6 +22,7 @@ from agent_service.application.sandbox_runner import (
     SandboxRequest,
     SandboxRunner,
 )
+from agent_service.domain.enums import SandboxTier
 from agent_service.infrastructure.sandbox import docker_runner
 
 
@@ -225,7 +225,17 @@ def test_non_t1_tier_rejected(skill_root: Path) -> None:
 def test_default_tier_is_t1(skill_root: Path) -> None:
     executor = FakeExecutor()
     _run(skill_root, executor)
-    assert SANDBOX_TIER_T1 == 'T1_TRUSTED_SCRIPT'
+    request = SandboxRequest(skill_name='demo', skill_root=skill_root, script='scripts/main.py')
+    assert request.tier is SandboxTier.T1_TRUSTED_SCRIPT
+
+
+def test_tier_string_is_coerced_to_enum(skill_root: Path) -> None:
+    """JSON 边界按 value 传入的字符串在构造时转成领域枚举。"""
+    request = SandboxRequest(
+        skill_name='demo', skill_root=skill_root, script='scripts/main.py',
+        tier=SandboxTier.T1_TRUSTED_SCRIPT.value,
+    )
+    assert request.tier is SandboxTier.T1_TRUSTED_SCRIPT
 
 
 # ── 结果映射：失败不得静默成功 ───────────────────────────────
@@ -385,9 +395,29 @@ def test_limits_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert limits.memory == '256m'
 
 
-def test_root_container_user_rejected() -> None:
+@pytest.mark.parametrize(
+    'container_user', ['0', '000', '0:0', '0:65534', 'root', 'root:root', '-1', '65534:']
+)
+def test_root_or_non_numeric_container_user_rejected(container_user: str) -> None:
+    """按数值判定：``000`` / ``0:65534`` 也是 uid 0，不能只比字面量。"""
     with pytest.raises(SandboxConfigurationError):
-        ContainerLimits(container_user='0')
+        ContainerLimits(container_user=container_user)
+
+
+def test_non_root_numeric_container_user_accepted() -> None:
+    assert ContainerLimits(container_user='65534:65534').container_user == '65534:65534'
+    assert ContainerLimits(container_user='1000').container_user == '1000'
+
+
+def test_container_entry_is_wrapped_with_timeout(tmp_path: Path) -> None:
+    """容器内自限：宿主计时器消失时容器自己会死（P1-1 第三层）。"""
+    argv = _argv(_invocation(tmp_path))
+    image_index = argv.index('python:3.11-slim')
+    assert argv[image_index + 1] == 'timeout'
+    assert argv[image_index + 2] == '--kill-after'
+    assert int(argv[image_index + 3]) > 0
+    assert argv[image_index + 4] == '60'
+    assert argv[image_index + 5] == 'python3'
 
 
 def test_runner_url_must_be_http() -> None:
